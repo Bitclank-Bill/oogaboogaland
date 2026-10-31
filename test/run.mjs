@@ -18751,13 +18751,13 @@ const genesisRide = { name: "genesis ride", why: "playthrough: the visitor drive
     JSON.stringify({ start, out, turned, station, p0, p1, reading, kept, closed, wheel }));
 } };
 // Hop off and walk: J stops the boat where it is with no prompt, a fall comes back to the dock, J by the boat boards;
-// on Era 0's island the Ooga walks down its ramp to board; at the stamp desk it walks to the PC, Space opens its
+// on Era 0's bank the Ooga walks down its ramp to board; at the stamp desk it walks to the PC, Space opens its
 // prompt, DIR lists its own years, and the room's ramp boards.
 const genesisWalk = { name: "genesis walk", why: "playthrough: jump out, a fall in the water, an island's ramp, the PC's prompt and the room's ramp, with the boat held ashore and no pause prompt", run: async (b) => {
   const read = () => b.evaluate(`(() => { const D = BL.scenes.genesis.debug, a = D.avatar, p = a && a.root.position; return { walking: D.walk.on, area: D.walk.area && D.walk.area.id, falls: D.walk.falls, mode: D.view.mode, state: D.ride.state, d: D.ride.d, paused: D.view.paused, shown: !!a && a.root.visible, x: p && p.x, z: p && p.z, prop: D.walk.prop && D.walk.prop.id, term: document.getElementById("genesis-terminal").open, screen: document.getElementById("genesis-terminal-screen").textContent, jump: document.getElementById("genesis-jump").textContent, sail: document.getElementById("genesis-sail").hidden, caption: document.getElementById("genesis-caption").textContent }; })()`);
   const step = async (seconds) => { for (let t = 0; t < seconds; t += 5) await b.evaluate(`window.__ooga.advance(${Math.min(5, seconds - t)}, 0.25)`); };
   const put = (x, z, yaw = 0) => b.evaluate(`(() => { const D = BL.scenes.genesis.debug; D.pilot.navigate({ position: { x: ${x}, y: D.footing.supportAt(${x}, ${z}), z: ${z} }, yaw: ${yaw}, pitch: 0.2, dist: 4 }); })()`);
-  const sz = await b.evaluate(`BL.genesisWorld.ROOM_SHIFT.z`), e0 = await b.evaluate(`JSON.stringify(BL.genesisWorld.ERAS[0])`).then(JSON.parse);
+  const sz = await b.evaluate(`BL.genesisWorld.ROOM_SHIFT.z`), sx = await b.evaluate(`BL.genesisWorld.ROOM_SHIFT.x`), e0 = await b.evaluate(`JSON.stringify(BL.genesisWorld.ERAS[0])`).then(JSON.parse), ch = await b.evaluate(`JSON.stringify(BL.genesisWorld.CHANNEL)`).then(JSON.parse);
   await b.key("j"); await step(2);
   const ashore = await read();
   await put(0, -5); await step(1.5);
@@ -18767,23 +18767,23 @@ const genesisWalk = { name: "genesis walk", why: "playthrough: jump out, a fall 
   await b.evaluate(`(() => { const D = BL.scenes.genesis.debug; D.jumpTo(D.built.plaques[0]); })()`); await step(1);
   await b.key("j"); await step(1);
   const island = await read();
-  await put(e0.dock.x + 1.6, e0.z, -Math.PI / 2); await step(0.5);
+  await put(ch.x0 - 0.8, e0.z, Math.PI / 2); await step(0.5);
   const islandBoarded = await read();
   await b.evaluate(`(() => { const D = BL.scenes.genesis.debug; D.jumpTo(D.built.plaques[3]); })()`); await step(1.5);
   await b.key("j"); await step(1);
   const room = await read();
-  await put(-8.4, -20.6 + sz, -Math.PI / 2); await step(0.5);
+  await put(-8.4 + sx, -20.6 + sz, -Math.PI / 2); await step(0.5);
   const atPc = await read();
   await b.key(" "); await step(0.2);
   await b.evaluate(`(() => { const i = document.getElementById("genesis-terminal-input"); i.value = "DIR"; document.getElementById("genesis-terminal-form").requestSubmit(); })()`);
   const typed = await read();
   await b.evaluate(`document.getElementById("genesis-terminal").close()`); await step(0.2);
-  await put(-4.6, -26.1 + sz, Math.PI / 2); await step(0.5);
+  await put(-4.6 + sx, -26.1 + sz, Math.PI / 2); await step(0.5);
   const boarded = await read();
-  record("genesis walk: J stops the boat without a prompt and lands the Ooga on the dock, a fall comes back to the dock, J boards, Era 0's ramp boards, at the desk Space at the PC opens a prompt whose DIR lists only its own years, and the room's ramp boards",
+  record("genesis walk: J stops the boat without a prompt and lands the Ooga on the dock, a fall comes back to the dock, J boards, Era 0's bank ramp boards, at the desk Space at the PC opens a prompt whose DIR lists only its own years, and the room's ramp boards",
     ashore.walking && ashore.shown && ashore.area === "dock" && ashore.jump === "Board" && ashore.sail && !/Paused/.test(ashore.caption)
     && fell.walking && fell.falls === 1 && fell.x < -1.8 && fell.x > -6.6 && !aboard.walking && !aboard.shown
-    && island.walking && island.area === "era-0" && !islandBoarded.walking
+    && island.walking && island.area === "era-0-left" && !islandBoarded.walking
     && room.walking && room.state === "station" && !room.paused && (room.area === "step" || room.area === "room") && atPc.prop === "pc"
     && typed.term && /STAMPS/.test(typed.screen) && !/B-MONEY/.test(typed.screen) && !boarded.walking && boarded.state === "station" && Math.abs(boarded.d - room.d) < 1e-9,
     JSON.stringify({ ashore, fell, aboard, island, islandBoarded, room, atPc, typed: { ...typed, screen: typed.screen.slice(0, 200) }, boarded }));
@@ -22908,9 +22908,9 @@ const artifactUnitProof = () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
   return { parsed: true, rows };
 };
-// Rule: the Genesis Voyage's sea and driven boat, through genesis-world.js and genesis-boat.js themselves: islands in
-// date order, eraAt matches them, the boat leaves the harbour only by its mouth, boost raises the top speed, a
-// shoreline stops the boat, a dock reports at low speed, and the Tour's course stops at every dock.
+// Rule: the Genesis Voyage's stream and driven boat, through genesis-world.js and genesis-boat.js themselves: caves in
+// date order, eraAt matches them, the boat leaves the harbour only by its mouth, boost raises the top speed, a bank
+// keeps the boat in the stream, a dock reports at low speed, and the Tour's course stops at every dock.
 const genesisWaterProof = async () => {
   const context = { window: {} };
   for (const f of ["genesis-voyage", "genesis-world", "genesis-boat"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
@@ -22923,11 +22923,11 @@ const genesisWaterProof = async () => {
   const leaves = out.state.z < W.MOUTH_Z - 2 && out.state.era === 0 && out.state.bumps === 0;
   const wall = B.create(W, { x: -8, z: 0, heading: Math.PI }); wall.input.throttle = 1; run(wall, 10);
   const walled = wall.state.z > W.MOUTH_Z && wall.state.bumps > 0;
-  const plain = B.create(W, { x: 0, z: -60, heading: Math.PI }); plain.state.kind = "rib"; plain.input.throttle = 1; run(plain, 6);
-  const fast = B.create(W, { x: 0, z: -60, heading: Math.PI }); fast.state.kind = "rib"; fast.input.throttle = 1; fast.input.boost = true; run(fast, 6);
+  const plain = B.create(W, { x: W.LANE_X, z: -60, heading: Math.PI }); plain.state.kind = "rib"; plain.input.throttle = 1; run(plain, 6);
+  const fast = B.create(W, { x: W.LANE_X, z: -60, heading: Math.PI }); fast.state.kind = "rib"; fast.input.throttle = 1; fast.input.boost = true; run(fast, 6);
   const boosted = fast.state.speed > plain.state.speed * 1.5 && plain.state.speed <= W.BOATS.rib.top + 1e-9;
-  const e0 = W.ERAS[0], shore = B.create(W, { x: 0, z: e0.z, heading: Math.PI / 2 }); shore.state.kind = "rib"; shore.input.throttle = 1; run(shore, 8);
-  const stopped = shore.state.bumps > 0 && shore.state.x < e0.island.x - e0.island.rx;
+  const e0 = W.ERAS[0], shore = B.create(W, { x: W.LANE_X, z: e0.z, heading: Math.PI / 2 }); shore.state.kind = "rib"; shore.input.throttle = 1; run(shore, 8);
+  const stopped = shore.state.bumps > 0 && shore.state.x <= W.CHANNEL.x1 - B.RADIUS + 1e-9 && W.ERAS.every((e, i) => i === 0 || e.z1 < W.ERAS[i - 1].z0);
   const docked = B.create(W, { x: e0.dock.x, z: e0.dock.z, heading: 0 }); docked.update(1 / 30);
   const dock = docked.state.dock === 0 && W.dockAt(0, -60) === -1;
   const tour = W.tourCourse(), course = G.createCourse(tour.points), ride = G.createRide({ course, stations: W.ERAS.map((e, i) => ({ at: tour.stops[i], dwell: 1 })), speed: 6 });
@@ -23027,7 +23027,7 @@ const unitChecks = async () => {
   const genesis = await genesisVoyageProof();
   record("Genesis Voyage: the boat boards, stops at the stamp desk and docks, pause holds it, a plaque jump lands on its stop, a changed page breaks only the links after it, and every exhibit source is a link", Object.values(genesis).every(Boolean), JSON.stringify(genesis));
   const genesisWater = await genesisWaterProof();
-  record("Genesis Voyage sea: eight islands in date order with eraAt matching, era boats from the dossiers, the boat leaves the harbour by its mouth and walls hold, boost raises the top speed, a shoreline stops the boat, a dock reports, and the Tour stops at every dock", Object.values(genesisWater).every(Boolean), JSON.stringify(genesisWater));
+  record("Genesis Voyage stream: eight caves in date order with eraAt matching, era boats from the dossiers, the boat leaves the harbour by its mouth and walls hold, boost raises the top speed, the banks keep the boat in the stream, a dock reports, and the Tour stops at every dock", Object.values(genesisWater).every(Boolean), JSON.stringify(genesisWater));
   const genesisProps = await genesisPropsProof();
   record("Genesis Voyage props: Jump out lands on the nearest ledge, obstacles hold, a fall returns to the dock, ramps board; the PC shows only its own years, TYPE cites, HASH is the desk's fingerprint; a visitor's page links onto Tock's chain and a change is caught; every prop label shows its year", Object.values(genesisProps).every(Boolean), JSON.stringify(genesisProps));
   const heldPad = await gamepadHoldProof();
