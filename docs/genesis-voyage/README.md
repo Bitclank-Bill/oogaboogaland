@@ -31,11 +31,14 @@ npm run serve          # then open http://localhost:<port>/?wip=genesis
 
 | Action | Keyboard | Mouse / touch |
 |---|---|---|
-| Sail, ride again | Enter | **Sail** button |
+| Drive (throttle and rudder) | W A S D or the arrows | left stick (touch) |
+| Go faster | hold Shift | **Boost** button |
+| Tour (autopilot dock to dock) or take the wheel back | Enter | **Tour** / **Drive** button |
 | Pause, carry on | Space or P | **Pause** button |
-| Skip a stop or a leg | N | **Skip** button |
+| Skip a Tour stop | N | **Skip** button |
+| Jump out, or board | J | **Jump out** / **Board** button |
 | Info panel (short, deep, unsolved, sources) | I | **Info** button, or tap the lectern |
-| Sail straight to a room | | tap its plaque on the harbour's timeline wall |
+| Sail straight to an era's island | | tap its plaque on the harbour's timeline wall |
 | Captions on or off | C | **Captions** |
 | Read captions aloud | T | **Voice** (shown only where the browser can speak) |
 | Fixed view (still camera per area) | V | **Fixed view** |
@@ -274,6 +277,23 @@ For Billy, Astra and the maintainer:
 - [ ] No allocation in `update` or `overlay`.
 - [ ] Existing scenes unaffected (unit tier passes; scene suites of touched shared files).
 - [ ] The built `oogaboogaland.html` is not committed.
+
+## Sea and driven boat (`gv/water-boat`)
+
+The fixed course became open water. From the harbour's mouth a wide lane runs past one island per era in date order
+(Eras 0 to 7, names and years from the era dossiers on `gv/research`), each with its years on a sign, a lamp, a dock
+and a boarding ramp. Fingerprints and Time moved, unchanged, onto Era 3's island (`ROOM_SHIFT`). The visitor drives;
+**Tour** keeps the old autopilot, now dock to dock along the lane, and Boost or Shift hurries it.
+
+- `src/js/genesis-world.js` (pure): the eras, their islands, docks and signs, `eraAt`, `collide` (harbour walls,
+  the dock, island shores, the sea's edge), `dockAt` and the Tour's course.
+- `src/js/genesis-boat.js` (pure, fixed 1/60 s steps, allocation-free): throttle, rudder that needs way on, boost,
+  drag, reverse, a top speed per boat type, soft collision and the dock it lies at.
+- Boats by era, per the dossiers' dated examples, all original and unbranded: a rowing skiff (Era 0 and the harbour),
+  an outboard runabout (Eras 1 and 2), a personal watercraft (Era 3, ridden seated), and a rigid inflatable boat (Eras
+  4 to 7). The boat changes, with a splash, as it crosses into an era.
+- Jump out works at every island: each has a square of ground and a ramp that boards only with the boat at its foot.
+- Only Era 3 has exhibits. The other islands say so in their caption; their signs carry only names and years.
 
 ## Milestone 1 report
 

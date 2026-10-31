@@ -207,9 +207,10 @@
 
   // What the captions say, keyed by what is happening. Captions are the ride's narration; Voice reads them aloud.
   const CAPTIONS = {
-    boarding: "Welcome aboard the Genesis Voyage. Press Sail (Enter) when you are ready.",
-    sailing: "Long before the first block, people solved smaller puzzles, one at a time. First stop: Fingerprints and Time.",
-    arrive: "Tock the archivist Ooga stamps every page with a fingerprint. Press Info (I) to read more.",
+    boarding: "Welcome aboard the Genesis Voyage. Drive with W A S D or the arrows (Shift for speed) down the lane of eras, or press Tour (Enter) to ride along.",
+    drive: "You have the wheel. W A S D or the arrows steer, Shift goes faster, Enter starts the Tour again.",
+    sailing: "Tour: the boat visits every era's island in order and waits at each dock. Press Drive (Enter) to take the wheel.",
+    arrive: "Tock the archivist Ooga stamps every page with a fingerprint. Press Info (I) to read more, or Jump out (J) to walk the island.",
     feed: "A page goes into the fingerprint machine.",
     stamp: "Out comes a short code: the page's fingerprint. Change one letter and the code changes completely.",
     link: "Each new stamp also takes in the fingerprint before it, so the stamps form a chain.",
@@ -217,12 +218,12 @@
     tamper: "Someone changes page 2. Its fingerprint no longer matches, and every link after it breaks.",
     restore: "Put the page back and the whole chain checks out again. The past is hard to change quietly.",
     rest: "Tock starts a fresh chain.",
-    current: "The boat rides the data current: a stream of messages, the way every idea on this voyage travelled.",
-    unbuilt: "That room is still being built. Fingerprints and Time is open now.",
-    leaving: "More rooms are being built. For now the boat heads back to the harbour.",
-    docked: "That is the first room built so far. Ride again (Enter) or go back to the island (Escape).",
+    unbuilt: "That era's island has no exhibits yet. Fingerprints and Time is open now.",
+    leaving: "On to the next era.",
+    docked: "That is the end of the lane so far. Press Drive (Enter) to take the wheel, or Escape for the island.",
     paused: "Paused. Press Pause or Space to carry on."
   };
+
 
   BL.genesisVoyage = { ROOMS, SOURCES, PAGES, TAMPERED, TAMPER_AT, FINGERPRINTS, CAPTIONS, STAMP_CYCLE, fingerprint, chain, createStampDemo, createCourse, createRide };
 })();

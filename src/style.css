@@ -10124,7 +10124,7 @@ body[data-active-scene="genesis"] .magazine-hud {
   font-size: 17px; line-height: 1.4; text-align: center;
 }
 .genesis-caption:empty { display: none; }
-.genesis-controls { display: flex; gap: 8px; pointer-events: auto; }
+.genesis-controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; pointer-events: auto; }
 .genesis-controls button {
   min-height: 40px; min-width: 76px; padding: 0 14px; cursor: pointer;
   border: 2px solid var(--wood-edge); border-radius: 6px;
