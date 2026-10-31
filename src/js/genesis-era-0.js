@@ -1,15 +1,152 @@
 // Era 0's cave in the Genesis Voyage, Machines That Count (1956–1969): the reference example for the era files (see
 // genesis-exhibits.js for the kit and the rules). Facts from docs/genesis-voyage/eras/era-0-machines-that-count.md
 // (branch gv/research): Feller's probability shelf (whitepaper citation [8], the cited 1957 edition) and ARPANET's
-// interrupted first login (context, 29 October 1969). The IBM 350 plinth still stands in Era 3's cave
-// (genesis-props.js) until it moves here.
+// interrupted first login (context, 29 October 1969). Extra stations are original museum toys, not historical
+// software emulations. Commands change fixed scene nodes; there is no frame callback, timer, network or audio.
+// The older drive plinth still stands in Era 3; its removal is an integrator task, outside this file's ownership.
 (() => {
   "use strict";
   const sources = {
     e0Feller: { label: "Satoshi Nakamoto Institute library: Feller, An Introduction to Probability Theory and Its Applications, Vol. I",
       href: "https://nakamotoinstitute.org/library/introduction-probability-theory-vol-i/", kind: "whitepaper citation [8]", verified: true },
     e0Arpanet: { label: "Leonard Kleinrock (UCLA): the first words sent over the ARPANET, 29 October 1969",
-      href: "https://www.lk.cs.ucla.edu/internet_first_words.html", kind: "context", verified: true }
+      href: "https://www.lk.cs.ucla.edu/internet_first_words.html", kind: "context", verified: true },
+    e0Storage: { label: "Computer History Museum: first commercial hard disk drive shipped, 1956",
+      href: "https://www.computerhistory.org/storageengine/first-commercial-hard-disk-drive-shipped/", kind: "context", verified: true },
+    e0Cards: { label: "IBM: RAMAC and the punched-card storage it replaced",
+      href: "https://www.ibm.com/history/ramac", kind: "context", verified: true },
+    e0Card2019: { label: "Micron: c200 1 TB microSD announcement, 25 February 2019",
+      href: "https://investors.micron.com/news/press-release/2019/Micron-Unveils-Worlds-First-1TB-microSD-Card-to-Meet-Consumer-Demand-for-Mobile-Storage-02-25-2019/default.aspx", kind: "context", verified: true }
+  };
+  // Parsing and response arrays allocate only on deliberate use, never in the scene's frame loop. A bad command
+  // returns help without changing state; commands accept bounded decimal integers, not arbitrary expressions.
+  const reply = (...lines) => ({ lines });
+  const integer = (word, lo, hi) => /^\d+$/.test(word || "") && Number(word) >= lo && Number(word) <= hi ? Number(word) : -1;
+  const terminal = (banner, help, command) => ({
+    banner: [banner, "Original museum toy. Type HELP; RESET starts again.", ...help], prompt: "EXHIBIT>",
+    run(line) {
+      const text = String(line).trim().slice(0, 96), words = text.toUpperCase().split(/\s+/), cmd = words[0];
+      if (cmd === "HELP" || !cmd) return { lines: help };
+      return command(cmd, words, text);
+    }
+  });
+  const buildToys = (kit) => {
+    const { era, top, solid, sign, obstacle, prop } = kit;
+    // Stations have separate clear approach pads; all footprints stay well away from the stream and its ramps.
+    const station = (id, year, title, keys, x, z, width, depth, term) => {
+      obstacle(x - width / 2, x + width / 2, z - depth / 2, z + depth / 2);
+      prop({ id, year, title, label: `${title.toUpperCase()} · ${year}`, sourceKeys: keys,
+        at: { x, y: top, z: z + depth / 2 + 0.8 }, reach: 1.8,
+        pick: { w: width, h: 1.8, d: 0.7 }, onUse: () => ({ terminal: term }) });
+    };
+    sign("1956-1969", "MACHINES THAT COUNT", -17, top + 7, era.z1 - 8, 0, 1.5);
+    sign("STORE / COUNT / CONNECT", "Period technology: context, not early Bitcoin", -17, top + 4.6, era.z1 - 8, 0, 0.65);
+    sign("STEPS TOWARD BITCOIN", "1957 Feller edition: whitepaper reference 8", -9, top + 4.5, era.z1 - 22, 0, 0.6);
+    prop({ id: "e0-overview", year: 1956, title: "Machines That Count: 1956-1969", label: "ERA OVERVIEW · 1956-1969",
+      sourceKeys: ["e0Storage", "e0Feller", "e0Arpanet", "whitepaper"], at: { x: -17, y: top, z: era.z1 - 6 }, reach: 2,
+      onUse: () => ({ board: { room: "Machines That Count / 1956-1969", sources: ["e0Storage", "e0Feller", "e0Arpanet", "whitepaper"], pages: [
+        { caption: "Explore", title: "Store, count and connect", text: ["1956: a disk-storage system reaches selected records. 1957: the edition of Feller cited later by Bitcoin. 1969: an ARPANET host-message attempt.", "Gold signs identify the whitepaper connection. Other machines explain the period; they were not Bitcoin prototypes."] },
+        { caption: "Play", title: "Five things to try", text: ["Seek a record, punch a short message, change the odds of a race, retry a network login, and inspect a clearly labelled 2019 comparison.", "The controls and codes are invented for this museum. Dates identify historical events or the period illustrated, not the invention of these games."] }
+      ] } }) });
+    // Human-scale schematic storage cabinet: 50 square platter silhouettes, not an engineering reconstruction.
+    const dx = -23, dz = era.z - 3;
+    solid(3.5, 0.25, 2.8, "#494d4e", dx, top + 0.125, dz);
+    for (const side of [-1, 1]) solid(0.15, 3.4, 2.8, "#c3c4b8", dx + side * 1.7, top + 1.8, dz);
+    for (let i = 0; i < 50; i++) solid(2.25, 0.025, 2.1, i % 2 ? "#707a7f" : "#9aa2a5", dx - 0.25, top + 0.45 + i * 0.05, dz);
+    const arm = solid(1.2, 0.07, 0.12, "#ffd276", dx + 0.75, top + 0.45, dz + 0.5, 0.3);
+    sign("DISK STORAGE · 1956", "Five million characters / schematic", dx, top + 4.1, dz + 1.5, 0, 0.6);
+    let record = 0;
+    const seek = terminal("1956 disk-storage illustration: select a numbered museum record.", ["SEEK 0..49 | INFO | RESET"], (cmd, w) => {
+      if (cmd === "INFO") return reply("June 1956: CHM dates the first commercial shipment of the Model 350 with the RAMAC system.", "Fifty 24-inch disks stored five million data characters. CHM counts six data bits per character; IBM's account includes a different encoded-bit description.", "This schematic maps 50 toy records to 50 disks. Real records and tracks were not organised this way. No exact modern-capacity ratio is claimed.");
+      const n = cmd === "RESET" ? 0 : cmd === "SEEK" && w.length === 2 ? integer(w[1], 0, 49) : -1;
+      if (n < 0) return reply("Use SEEK with one whole number from 0 to 49, INFO or RESET.");
+      record = n; arm.position.y = top + 0.45 + record * 0.05;
+      return reply(`Arm selected toy record ${record}; see its height change in the cabinet after closing this window.`, "Selected access avoids reading every earlier toy record. Motion is schematic, not real access timing.");
+    });
+    station("e0-disk-seek", 1956, "Disk record finder", ["e0Storage"], dx, dz, 3.7, 3, seek);
+    // Invented eight-column, seven-bit code: explicitly NOT Hollerith, BCD, or a historical card format.
+    const cx = -23, cz = era.z0 + 13, holes = [];
+    solid(3.8, 0.9, 2.1, "#705239", cx, top + 0.45, cz);
+    solid(3.3, 0.05, 1.6, "#e4d4a1", cx, top + 0.94, cz);
+    for (let i = 0; i < 8; i++) for (let b = 0; b < 7; b++) {
+      const h = solid(0.2, 0.02, 0.12, "#20292c", cx - 1.35 + i * 0.38, top + 0.98, cz - 0.6 + b * 0.2);
+      h.visible = false; holes.push(h);
+    }
+    const codes = new Uint8Array(8); let count = 0;
+    const showCard = () => { for (let i = 0; i < 56; i++) holes[i].visible = (codes[Math.floor(i / 7)] & (1 << (6 - i % 7))) !== 0; };
+    sign("PUNCHED RECORDS · 1956-1969", "Invented code / not a historical card format", cx, top + 2.7, cz + 1.3, 0, 0.55);
+    const punch = terminal("Punched-card idea: holes can carry a message. This code was invented today.", ["PUNCH up to 8 letters or digits | FLIP column(1..8) bit(1..7) | READ | INFO | RESET"], (cmd, w, text) => {
+      if (cmd === "INFO") return reply("IBM describes punched cards as an earlier way of feeding and retrieving data before RAMAC.", "Our eight-column, seven-bit exercise is a modern teaching code, not an authentic period card, character set or machine.");
+      if (cmd === "RESET") { codes.fill(0); count = 0; showCard(); return reply("Card cleared."); }
+      if (cmd === "PUNCH") {
+        const msg = text.replace(/^\S+\s*/, "").toUpperCase();
+        if (!/^[A-Z0-9 ]{1,8}$/.test(msg)) return reply("Use PUNCH followed by 1 to 8 letters, digits or spaces.");
+        codes.fill(0); count = msg.length;
+        for (let i = 0; i < count; i++) codes[i] = msg.charCodeAt(i);
+      } else if (cmd === "FLIP") {
+        const col = integer(w[1], 1, count), bit = integer(w[2], 1, 7);
+        if (w.length !== 3 || col < 0 || bit < 0) return reply("Punch a message first, then FLIP an existing column and bit (1..7).");
+        codes[col - 1] ^= 1 << (7 - bit);
+      } else if (cmd !== "READ") return reply("Use PUNCH, FLIP, READ, INFO or RESET.");
+      showCard();
+      let decoded = "";
+      for (let i = 0; i < count; i++) decoded += codes[i] >= 32 && codes[i] <= 126 ? String.fromCharCode(codes[i]) : "[control]";
+      return reply(`Read: ${decoded || "(empty)"}`, "Changing one hole can change the decoded message; this toy has no error correction.");
+    });
+    station("e0-punch", 1956, "Punch a museum message", ["e0Cards"], cx, cz, 4, 2.3, punch);
+    // Seeded, finite race. It illustrates changing odds, not the whitepaper's attack-success calculation.
+    const rx = 18, rz = era.z1 - 20;
+    solid(8, 0.8, 2.7, "#66502e", rx, top + 0.4, rz);
+    const racers = [solid(0.35, 0.3, 0.35, "#f2c14e", rx - 3.3, top + 0.95, rz - 0.6), solid(0.35, 0.3, 0.35, "#68c6ed", rx - 3.3, top + 0.95, rz + 0.6)];
+    let odds = 50, gold = 0, blue = 0, steps = 0, seed = 1957;
+    const resetRace = () => { gold = blue = steps = 0; seed = 1957; racers[0].position.x = racers[1].position.x = rx - 3.3; };
+    sign("PROBABILITY RACE · 1957", "Cited edition [8] / toy, not Bitcoin security", rx, top + 2.8, rz + 1.6, 0, 0.6);
+    const race = terminal("1957 is the Feller edition cited by Bitcoin, not probability's invention date.", ["ODDS 0..100 | STEP 1..64 | STATUS | INFO | RESET"], (cmd, w) => {
+      if (cmd === "INFO") return reply("Bitcoin's section 11 cites Feller's 1957 edition for its random-walk discussion.", "This invented two-racer game gives gold a chosen percentage chance of taking each step; otherwise blue advances. It is not the paper's security calculation or a forecast.", "RESET repeats the same seeded sequence. That repeatability is for teaching, not secure randomness.");
+      if (cmd === "RESET") { odds = 50; resetRace(); }
+      else if (cmd === "ODDS") {
+        const n = w.length === 2 ? integer(w[1], 0, 100) : -1;
+        if (n < 0) return reply("ODDS needs one whole percentage from 0 to 100.");
+        odds = n; resetRace();
+      } else if (cmd === "STEP") {
+        const n = w.length === 2 ? integer(w[1], 1, 64) : -1;
+        if (n < 0) return reply("STEP needs one whole number from 1 to 64.");
+        for (let i = 0; i < n && steps < 64; i++) {
+          seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+          if (seed / 4294967296 < odds / 100) gold++; else blue++;
+          steps++;
+        }
+        racers[0].position.x = rx - 3.3 + gold / 64 * 6.6; racers[1].position.x = rx - 3.3 + blue / 64 * 6.6;
+      } else if (cmd !== "STATUS") return reply("Use ODDS, STEP, STATUS, INFO or RESET.");
+      return reply(`Gold chance ${odds}%; gold ${gold}, blue ${blue}; ${steps}/64 steps.`, steps === 64 ? "Race complete. Change ODDS or RESET to try again." : "STEP advances the race. Close this window to inspect the counters.");
+    });
+    station("e0-race", 1957, "Probability race", ["e0Feller", "whitepaper"], rx, rz, 8.2, 2.9, race);
+    // Adjacent to the existing ARPANET display: an explicit reconstruction, not an invented historical transcript.
+    const nx = 20, nz = era.z - 1;
+    solid(2.5, 1, 1.1, "#b7b3a0", nx, top + 0.5, nz);
+    const lamp = solid(0.3, 0.3, 0.1, "#8effab", nx, top + 1.25, nz + 0.4, 0.5);
+    let attempt = 0;
+    sign("RETRY THE LOGIN · 1969", "Museum reconstruction / context", nx, top + 2.5, nz + 0.7, 0, 0.5);
+    const network = terminal("29 October 1969: UCLA to SRI. Our prompts are a reconstruction, not a transcript.", ["LOGIN | RETRY | STATUS | INFO | RESET"], (cmd) => {
+      if (cmd === "INFO") return reply("The UCLA log and Kleinrock's account date the host-message attempt to 29 October 1969. L and O arrived before failure; a later full login succeeded.", "Sending data is context, not a whitepaper reference. It does not establish ownership or stop digital double-spending.");
+      if (cmd === "RESET") { attempt = 0; lamp.visible = true; return reply("Ready. Type LOGIN."); }
+      if (cmd === "LOGIN" && !attempt) { attempt = 1; lamp.visible = false; return reply("Toy received: LO. Connection stopped.", "Try RETRY. Historical elapsed time is not simulated."); }
+      if (cmd === "RETRY" && attempt === 1) { attempt = 2; lamp.visible = true; return reply("Toy received: LOGIN. Link restored.", "The historical retry succeeded later; this instant replay compresses the wait."); }
+      if (cmd === "STATUS") return reply(attempt === 0 ? "Ready for LOGIN." : attempt === 1 ? "Interrupted after LO. RETRY is available." : "Full LOGIN delivered. RESET to replay.");
+      return reply(attempt === 0 ? "Start with LOGIN." : attempt === 1 ? "Use RETRY after the interruption." : "Complete. RESET to replay.");
+    });
+    station("e0-login", 1969, "Retry the login", ["e0Arpanet"], nx, nz, 2.7, 1.3, network);
+    const mx = 20, mz = era.z0 + 13;
+    solid(2.4, 1, 1.4, "#697b87", mx, top + 0.5, mz);
+    solid(0.3, 0.04, 0.4, "#252c32", mx, top + 1.04, mz);
+    sign("2019 COMPARISON", "Outside this era / schematic card", mx, top + 2.8, mz + 0.9, 0, 0.65);
+    obstacle(mx - 1.3, mx + 1.3, mz - 0.8, mz + 0.8);
+    prop({ id: "e0-compare", year: 2019, title: "2019 comparison - outside this era", label: "OUTSIDE THIS ERA · 2019", sourceKeys: ["e0Storage", "e0Card2019"],
+      at: { x: mx, y: top, z: mz + 1.6 }, reach: 1.8,
+      onUse: () => ({ board: { room: "1956 storage / 2019 comparison", sources: ["e0Storage", "e0Card2019"], pages: [
+        { caption: "1956", title: "Five million characters", text: ["The disk cabinet stored five million data characters. Characters and bytes are not interchangeable without specifying an encoding.", "The model is schematic. Its dimensions, square platters, toy records and movement are not engineering measurements."] },
+        { caption: "Outside this era", title: "25 February 2019: announcement", text: ["Micron announced its c200 one-terabyte microSD card in 2019. That is a modern comparison, not an object from 1956-1969.", "The original blank card model is enlarged for visibility. No exact capacity ratio or physical scale comparison is claimed."] }
+      ] } }) });
   };
   window.BL.genesisExhibits.register(0, {
     sources,
@@ -56,6 +193,7 @@
             "Moving a message between computers does not show who owns something, or stop a digital token being spent twice.",
             "This is context for the voyage: the ARPANET is not in the Bitcoin whitepaper's references."] }
         ] } }) });
+      buildToys(kit);
     }
   });
 })();
