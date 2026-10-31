@@ -113,6 +113,8 @@
 
   // --- Building -------------------------------------------------------------------------------------------------
   const place = (node) => { addChild(root, node); return node; };
+  // A tap box: a node the picker sees (it skips hidden nodes) with a box's corners and no faces, so nothing draws.
+  const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
   const solid = (w, h, d, color, x, y, z, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } }));
   const buildCavern = () => {
     // The harbour cavern: stone walls and roof round the dock, its front wall open onto the lane at the mouth.
@@ -380,7 +382,7 @@
     solid(0.45, 0.42, 0.5, "#e2d9be", pc.x - 0.15, pc.y + 1.13, pc.z);
     built.pcScreen = place(createNode({ geometry: M.box({ w: 0.02, h: 0.3, d: 0.38, color: "#38ff7a", emissive: 1.2 }), position: { x: pc.x + 0.085, y: pc.y + 1.14, z: pc.z } }));
     solid(0.22, 0.03, 0.62, "#cfc6aa", pc.x + 0.32, pc.y + 0.78, pc.z);
-    built.pc = place(createNode({ geometry: M.box({ w: 1.2, h: 1.4, d: 1.3, color: "#000000" }), position: { x: pc.x, y: pc.y + 0.7, z: pc.z }, visible: false }));
+    built.pc = place(createNode({ geometry: pickBox(1.2, 1.4, 1.3), position: { x: pc.x, y: pc.y + 0.7, z: pc.z } }));
     sign(props.get("pc"), "DIR · TYPE · HASH", 1.75);
     solid(1, 0.5, 1, "#5a524a", dr.x, dr.y + 0.25, dr.z);
     // A schematic of the 1956 cabinet (not to scale), its stack of disks in a window, and the card beside it.
@@ -388,12 +390,12 @@
     for (let i = 0; i < 6; i++) solid(0.04, 0.012, 0.14, "#c9ced4", dr.x + 0.0, dr.y + 0.62 + i * 0.04, dr.z - 0.2);
     solid(0.011, 0.001, 0.015, "#202020", dr.x + 0.25, dr.y + 0.501, dr.z + 0.3);
     solid(0.12, 0.01, 0.12, "#ffd25f", dr.x + 0.25, dr.y + 0.5, dr.z + 0.3, 0.6);
-    built.drives = place(createNode({ geometry: M.box({ w: 1.1, h: 1.1, d: 1.1, color: "#000000" }), position: { x: dr.x, y: dr.y + 0.55, z: dr.z }, visible: false }));
+    built.drives = place(createNode({ geometry: pickBox(1.1, 1.1, 1.1), position: { x: dr.x, y: dr.y + 0.55, z: dr.z } }));
     sign(props.get("drives"), "schematic, not to scale", 1.55);
     solid(0.5, 0.95, 0.5, "#7a5534", bk.x, bk.y + 0.47, bk.z);
     solid(0.42, 0.04, 0.56, "#f5f0e2", bk.x, bk.y + 0.97, bk.z);
     solid(0.02, 0.05, 0.02, "#2a2a2a", bk.x + 0.1, bk.y + 1.0, bk.z + 0.15);
-    built.book = place(createNode({ geometry: M.box({ w: 0.7, h: 1.2, d: 0.8, color: "#000000" }), position: { x: bk.x, y: bk.y + 0.6, z: bk.z }, visible: false }));
+    built.book = place(createNode({ geometry: pickBox(0.7, 1.2, 0.8), position: { x: bk.x, y: bk.y + 0.6, z: bk.z } }));
     sign(props.get("book"), "stamp your own page", 1.45);
     // The boarding ramps: planks sloping down to where the boat lies.
     for (const a of FOOTING.areas) {
@@ -445,7 +447,7 @@
           entry.prop = prop;
           built.exhibitProps.push(entry);
           const pick = d.pick || { w: 1, h: 1.4, d: 1 };
-          built.propNodes[prop.id] = place(createNode({ geometry: M.box({ w: pick.w, h: pick.h, d: pick.d, color: "#000000" }), position: { x: pick.x !== undefined ? pick.x : prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : prop.at.z }, visible: false }));
+          built.propNodes[prop.id] = place(createNode({ geometry: pickBox(pick.w, pick.h, pick.d), position: { x: pick.x !== undefined ? pick.x : prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : prop.at.z } }));
           return prop;
         }
       };
@@ -544,7 +546,7 @@
       const ry = Math.PI / 2 - 0.55, lift = ISLAND_TOP + 0.9 + board.height / 2;
       solid(0.3, 0.9 + board.height / 2, 0.3, "#3b2a1a", p.x, ISLAND_TOP + (0.9 + board.height / 2) / 2, p.z);
       hangSign(board, p.x, lift, p.z, ry, glow);
-      const pick = place(createNode({ geometry: M.box({ w: 3.6, h: board.height + 1.2, d: 0.6, color: "#000000" }), position: { x: p.x, y: lift, z: p.z }, rotation: { x: 0, y: ry, z: 0 }, visible: false }));
+      const pick = place(createNode({ geometry: pickBox(3.6, board.height + 1.2, 0.6), position: { x: p.x, y: lift, z: p.z }, rotation: { x: 0, y: ry, z: 0 } }));
       built.overviews.push({ era: e.n, pick, at: { x: p.x + 1.4, y: ISLAND_TOP, z: p.z + 1.2 } });
       built.obstacles.push({ x0: p.x - 1.4, x1: p.x + 1.4, z0: p.z - 1.4, z1: p.z + 1.4 });
     });
