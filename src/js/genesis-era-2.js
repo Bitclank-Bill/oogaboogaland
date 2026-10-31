@@ -1,53 +1,63 @@
-// The Genesis Voyage, Era 2: Trees and Blind Money (1980–1989). The cave's exhibits, as one module the integrator wires
-// into scene-genesis.js (docs/genesis-voyage/exhibits/era-2.md says how). Built from the Era 2 dossier
-// (docs/genesis-voyage/eras/era-2-trees-and-blind-money.md on gv/research); every claim carries one of its source
-// keys in SOURCES.
+// Era 2's cave in the Genesis Voyage, Trees and Blind Money (1980–1989), built through the era exhibit kit
+// (genesis-exhibits.js: BL.genesisExhibits.register(2, { sources, build(kit), update, dispose })). Facts from the Era 2
+// dossier (docs/genesis-voyage/eras/era-2-trees-and-blind-money.md, branch gv/research); every claim carries one of
+// the source keys in SOURCES, which the kit's registry resolves (genesis-props.js sourceOf).
 //
 // - The rules, pure and Node-checkable: a Merkle-tree table (`createMerkle`), a blind-stamp teaching station
 //   (`createBlind`, a paper analogy, not cryptography), an invented 1980s-style office PC with a bounded read-only
 //   disk (`createPc`), a 5.25-inch floppy sorting and loading toy (`createFloppies`) and an original 8-bit-style maze
 //   (`createMaze`). `createLive()` makes one of each for a visit, with a terminal per exhibit (`{ banner, prompt,
 //   run(line) }`, as genesis-props.js's terminals are) and `resetAll()`.
-// - The layout on the cave's left bank (`LAYOUT`, `obstacles()`), kept clear of the stream's edge, the boarding ramp
-//   and its walkway inland.
-// - The models (`build`), original and procedural, and `sync`, which poses them from the live state each frame
-//   without allocating: lit tree paths, the envelope and stamp, the disks in their crate and the maze on its screen.
-// - `register(registry, live)` adds the five props to genesis-props.js's registry.
+// - `build(kit)`: the era sign, a timeline rail and the five exhibits on the cave's left bank (`LAYOUT`), clear of the
+//   stream's edge, the boarding ramp and its walkway; a kit obstacle under each footprint; each exhibit a kit prop
+//   whose use opens its terminal. Original procedural models from kit boxes only.
+// - `update`: poses the models from the live state while the visitor is in this cave, allocating nothing: lit tree
+//   paths, the envelope and stamp, the disks in their crate and the maze on its screen. `dispose` drops the visit.
 //
 // Elliptic curves: no visualization. The dossier holds only the 1985 paper's abstract and leaves a joint attribution
 // pending, and the primary pages could not be read for this build, so the exhibit is on HOLD (see HELD); the PC
 // keeps a dated text note only. The 1988 manifesto, blind signatures and elliptic curves are context, not whitepaper
-// citations. Guides and records are invented; nothing quotes a real person beyond the dossier's short passages.
+// citations. Guides and records are invented; nothing quotes a real person.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const G = BL.genesisVoyage, GP = BL.genesisProps, GW = BL.genesisWorld;
   const ERA = 2, YEARS = "1980–1989", NAME = "Trees and Blind Money";
+  // The mazes' carving needs a seeded generator; the kit's Node check loads no math.js, so this is math.js's
+  // mulberry32, kept here.
+  const mulberry32 = (seed) => () => {
+    seed |= 0; seed = seed + 0x6d2b79f5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
 
   // --- Sources ------------------------------------------------------------------------------------------------------
   // From the Era 2 dossier: `kind` is the connection, `marks` what the date marks, `locator` the passage it rests on.
+  // `verified` is true where the dossier records reading that page (this build could not reopen them).
   const DOSSIER = "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/research/docs/genesis-voyage/eras/era-2-trees-and-blind-money.md";
   const SOURCES = {
     "E2-MERKLE": { label: "Ralph C. Merkle, Protocols for Public Key Cryptosystems, IEEE Symposium on Security and Privacy proceedings, 1980, §6 (author's copy)",
-      href: "https://www.ralphmerkle.com/papers/Protocols.pdf", kind: "whitepaper citation [7]", marks: "1980 proceedings publication", locator: "§6, pp. 125–127" },
+      href: "https://www.ralphmerkle.com/papers/Protocols.pdf", kind: "whitepaper citation [7]", verified: true, marks: "1980 proceedings publication", locator: "§6, pp. 125–127" },
     "E2-MERKLE-BIB": { label: "Ralph C. Merkle, bibliography of papers (author's site)",
-      href: "https://www.ralphmerkle.com/merkleDir/papers.html", kind: "whitepaper citation [7]", marks: "confirms the 1980 year", locator: "list entry" },
+      href: "https://www.ralphmerkle.com/merkleDir/papers.html", kind: "whitepaper citation [7]", verified: true, marks: "confirms the 1980 year", locator: "list entry" },
     "E2-WHITEPAPER": { label: "Satoshi Nakamoto, Bitcoin: A Peer-to-Peer Electronic Cash System (2008), References, item [7]",
-      href: "https://bitcoin.org/bitcoin.pdf", kind: "the paper itself", marks: "31 October 2008 announcement", locator: "References [7]" },
+      href: "https://bitcoin.org/bitcoin.pdf", kind: "whitepaper citation [7]", verified: false, marks: "31 October 2008 announcement", locator: "References [7]" },
     "E2-CHAUM": { label: "David Chaum, Blind Signatures for Untraceable Payments, CRYPTO '82 (author-hosted scan)",
-      href: "https://chaum.com/wp-content/uploads/2022/01/Chaum-blind-signatures.pdf", kind: "context", marks: "1982 conference; 1983 printed proceedings", locator: "opening envelope analogy" },
+      href: "https://chaum.com/wp-content/uploads/2022/01/Chaum-blind-signatures.pdf", kind: "context", verified: true, marks: "1982 conference; 1983 printed proceedings", locator: "opening envelope analogy" },
     "E2-CHAUM-CAT": { label: "David Chaum, publications catalogue (author's site)",
-      href: "https://chaum.com/publications/", kind: "context", marks: "cites the 1982 conference year", locator: "catalogue entry" },
+      href: "https://chaum.com/publications/", kind: "context", verified: true, marks: "cites the 1982 conference year", locator: "catalogue entry" },
     "E2-ECC": { label: "Victor S. Miller, Use of Elliptic Curves in Cryptography, CRYPTO '85 (publisher's abstract)",
-      href: "https://link.springer.com/chapter/10.1007/3-540-39799-X_31", kind: "context", marks: "1985 conference; 1986 printed volume", locator: "abstract" },
+      href: "https://link.springer.com/chapter/10.1007/3-540-39799-X_31", kind: "context", verified: true, marks: "1985 conference; 1986 printed volume", locator: "abstract" },
     "E2-MAY": { label: "Timothy C. May, The Crypto Anarchist Manifesto, 1988 (Satoshi Nakamoto Institute reprint)",
-      href: "https://nakamotoinstitute.org/library/crypto-anarchist-manifesto/", kind: "context", marks: "1988, the reprint's date", locator: "reprinted text" },
+      href: "https://nakamotoinstitute.org/library/crypto-anarchist-manifesto/", kind: "context", verified: true, marks: "1988, the reprint's date", locator: "reprinted text" },
     "E2-PC": { label: "IBM, The IBM PC (company history page)",
-      href: "https://www.ibm.com/history/personal-computer", kind: "context (period gear)", marks: "unveiled 12 August 1981", locator: "base configuration" },
-    "E2-DOSSIER": { label: "Genesis Voyage research, Era 2 dossier v0.1 (period gear and easter-egg notes)",
-      href: DOSSIER, kind: "museum research record", marks: "written 31 October 2026", locator: "Period gear; Easter eggs" }
+      href: "https://www.ibm.com/history/personal-computer", kind: "context", verified: true, marks: "unveiled 12 August 1981", locator: "base configuration" },
+    "E2-DOSSIER": { label: "Museum research record: Genesis Voyage Era 2 dossier v0.1 (period gear and easter-egg notes)",
+      href: DOSSIER, kind: "context", verified: true, marks: "written 31 October 2026", locator: "Period gear; Easter eggs" }
   };
-  const sourceOf = (key) => SOURCES[key] || GP.sourceOf(key);
+  // Keys resolve through the kit's registry (genesis-props.js sourceOf); before registration, this table answers.
+  const sourceOf = (key) => GP.sourceOf(key) || SOURCES[key] || null;
   const sourceLines = (keys) => keys.map((k) => `Source [${k}]: ${sourceOf(k).label}`);
   // Exhibits the dossier does not clear for display, with why. Nothing here is built.
   const HELD = [
@@ -432,7 +442,7 @@
   const MAZE = { w: 7, h: 5, seeds: [8, 2, 12, 4], leaves: 4, maxRun: 60 };
   const GW_ = MAZE.w * 2 + 1, GH_ = MAZE.h * 2 + 1;
   const carve = (seed) => {
-    const grid = new Uint8Array(GW_ * GH_).fill(1), rand = BL.math.mulberry32(seed);
+    const grid = new Uint8Array(GW_ * GH_).fill(1), rand = mulberry32(seed);
     const seen = new Uint8Array(MAZE.w * MAZE.h), stack = [0];
     seen[0] = 1; grid[GW_ + 1] = 0;
     const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]], open = [];
@@ -554,7 +564,7 @@
       dateMeaning: "1980: published in the IEEE Symposium on Security and Privacy proceedings; the exact presentation day is not established in the research.",
       connection: "whitepaper citation [7]", sourceKeys: ["E2-MERKLE", "E2-MERKLE-BIB", "E2-WHITEPAPER"],
       short: "Change one record and only its path to the root changes; three fingerprints prove one record is in the tree.",
-      deeper: { room: "Merkle-tree table · 1980", sources: ["E2-MERKLE", "E2-MERKLE-BIB", "E2-WHITEPAPER"], pages: [
+      deeper: { room: "Merkle tree table - 1980", sources: ["E2-MERKLE", "E2-MERKLE-BIB", "E2-WHITEPAPER"], pages: [
         { caption: "1980", title: "Check a branch, trust a root", text: [
           "Ralph Merkle's paper Protocols for Public Key Cryptosystems was published in 1980. It describes tree authentication: once you trust the root, you can check any single entry using its authentication path.",
           "The Bitcoin whitepaper of 2008 lists this paper as reference [7]."] },
@@ -570,7 +580,7 @@
       dateMeaning: "1982: presented at the CRYPTO '82 conference; the printed proceedings are dated 1983. The exact day is not established.",
       connection: "context", sourceKeys: ["E2-CHAUM", "E2-CHAUM-CAT"],
       short: "Get a stamp on a token the signer cannot see, then reveal it and check the stamp.",
-      deeper: { room: "Blind-stamp station · 1982", sources: ["E2-CHAUM", "E2-CHAUM-CAT"], pages: [
+      deeper: { room: "Blind stamp station - 1982", sources: ["E2-CHAUM", "E2-CHAUM-CAT"], pages: [
         { caption: "1982", title: "Sign without seeing", text: [
           "David Chaum's Blind Signatures for Untraceable Payments was a 1982 conference contribution (CRYPTO '82); its printed proceedings are dated 1983.",
           "A blind signature separates what the signer sees from what is later presented. The paper explains it with carbon-lined envelopes."] },
@@ -585,7 +595,7 @@
       dateMeaning: "12 August 1981: the IBM Personal Computer was unveiled. This PC is an invented design in the style of the decade.",
       connection: "context (period gear)", sourceKeys: ["E2-PC", "E2-DOSSIER"],
       short: "An invented 1980s-style PC: its disk holds museum notes about the era's ideas, each with its date and source.",
-      deeper: { room: "Office PC · 1981", sources: ["E2-PC", "E2-DOSSIER"], pages: [
+      deeper: { room: "Office PC - 1981", sources: ["E2-PC", "E2-DOSSIER"], pages: [
         { caption: "1981", title: "A personal computer", text: [
           "IBM unveiled its Personal Computer on 12 August 1981. Its base configuration cost USD 1,565 and had 16 kilobytes of memory and no disk drive.",
           "Memory is working space that empties when the power goes off; a disk keeps files."] },
@@ -596,7 +606,7 @@
       dateMeaning: "Period gear of the decade; the research clears no introduction date or capacity for these disks, so none is shown.",
       connection: "context (period gear)", sourceKeys: ["E2-DOSSIER", "E2-PC"],
       short: "Sort the disks by year, then load one into the PC to read what its date marks.",
-      deeper: { room: "5.25-inch disks · 1980s", sources: ["E2-DOSSIER", "E2-PC"], pages: [
+      deeper: { room: "5.25-inch disks - 1980s", sources: ["E2-DOSSIER", "E2-PC"], pages: [
         { caption: "Disks", title: "Floppy disks", text: [
           "Files were carried between PCs on floppy disks. Each disk in this crate holds one note about what an Era 2 date marks: written, presented, published or printed.",
           "The 1981 base PC had no disk drive; a drive cost extra."] },
@@ -627,8 +637,8 @@
   // --- Layout on the left bank ----------------------------------------------------------------------------------------
   // Every exhibit stands well in from the stream (x < -5) and off the walkway inland from the bank's boarding ramp
   // (|z - cave middle| < 2.6), facing the stream (+x), where the visitor stands to use it. `half` is the footprint's
-  // half size in x and z; `reach` how near the visitor must be to `at`.
-  const E = GW.ERAS[ERA], Y = GW.BANK_TOP;
+  // half size in x and z (a kit obstacle); `reach` how near the visitor must be to the exhibit's middle.
+  const E = GW.ERAS[ERA];
   const LAYOUT = {
     sign: { x: -17, z: E.z, half: { x: 0.25, z: 5 } },
     rail: { x: -6.4, z: E.z - 4.2, half: { x: 0.2, z: 1.1 } },
@@ -638,159 +648,157 @@
     floppy: { x: -10, z: E.z + 19, half: { x: 0.45, z: 0.6 }, reach: 1.4 },
     maze: { x: -10, z: E.z - 16, half: { x: 0.45, z: 0.45 }, reach: 1.4 }
   };
-  // Obstacle boxes for scene-genesis.js's FOOTING (the sign stands on two posts, so only the posts block).
-  const obstacles = () => {
+  const PROPS = ["merkle", "blind", "pc", "floppy", "maze"];
+  // The footprints build passes to kit.obstacle: one box per exhibit and the rail, and the big sign's two posts.
+  const footprints = () => {
     const out = [];
-    for (const key of ["rail", "merkle", "blind", "pc", "floppy", "maze"]) { const l = LAYOUT[key]; out.push({ x0: l.x - l.half.x, x1: l.x + l.half.x, z0: l.z - l.half.z, z1: l.z + l.half.z }); }
+    for (const key of ["rail", ...PROPS]) { const l = LAYOUT[key]; out.push({ x0: l.x - l.half.x, x1: l.x + l.half.x, z0: l.z - l.half.z, z1: l.z + l.half.z }); }
     const s = LAYOUT.sign;
     for (const dz of [-s.half.z + 0.2, s.half.z - 0.2]) out.push({ x0: s.x - 0.2, x1: s.x + 0.2, z0: s.z + dz - 0.2, z1: s.z + dz + 0.2 });
     return out;
   };
-  // The exhibits' use points, for the registry.
-  const useAt = (key) => ({ x: LAYOUT[key].x, y: Y, z: LAYOUT[key].z });
-
-  const register = (registry, live) => {
-    for (const key of ["merkle", "blind", "pc", "floppy", "maze"]) {
-      const ex = EXHIBITS[key];
-      registry.register({ id: ex.id, era: ERA, year: ex.year, title: ex.title, label: ex.label, sourceKeys: ex.sourceKeys, at: useAt(key), reach: LAYOUT[key].reach,
-        short: ex.short, deeper: ex.deeper, onUse: () => ({ terminal: live.terminals[key] }) });
-    }
-  };
 
   // --- Models -------------------------------------------------------------------------------------------------------
-  // Original procedural geometry from BL.models boxes, built once per visit under one node. Static parts merge into
-  // a few geometries; moving or lighting parts are their own nodes, posed by `sync`. Labels come from `label` (the
-  // scene passes BL.factoryModels.label). Faces +x, toward the stream.
-  const build = ({ M, createNode, addChild, label, parent }) => {
-    const root = createNode({ position: { x: 0, y: 0, z: 0 } });
-    addChild(parent, root);
-    const parts = { root, tiles: [], lit: [], proofs: [], marks: [], disks: [], mazes: [], leaves: [], phase: 0 };
-    const node = (geometry, x, y, z, visible = true) => { const n = createNode({ geometry, position: { x, y, z }, visible }); addChild(root, n); return n; };
-    const B = (w, h, d, color, x, y, z, emissive = 0) => M.moved(M.box({ w, h, d, color, emissive }), x, y, z);
-    const sign = (title, sub, height, style, x, y, z) => {
-      const s = label(title, sub, { height, style });
-      const n = createNode({ position: { x, y, z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } });
-      addChild(root, n); addChild(n, createNode({ geometry: s.back }), createNode({ geometry: s.face }));
-      return n;
-    };
+  // Original procedural geometry, built once per visit through the kit: static parts with kit.solid, moving or
+  // lighting parts as their own nodes (kit.M.box) posed by `sync`. Everything faces +x, toward the stream. The maze's
+  // walls are a fixed pool of row runs, re-laid only when the maze changes.
+  const FACE_X = Math.PI / 2;
+  const buildModels = (kit, live) => {
+    const { top: Y, M, createNode, addChild, place, solid, sign } = kit;
+    const parts = { tiles: [], lit: [], proofs: [], marks: [], disks: [], runs: [], leaves: [], phase: 0, mazeShown: -1 };
+    const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, visible }));
+    const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
     // The era's big sign on two posts, and a timeline rail of what each date marks, by the ramp's head.
     {
-      const s = LAYOUT.sign, posts = [];
-      for (const dz of [-s.half.z + 0.2, s.half.z - 0.2]) posts.push(B(0.3, 5.2, 0.3, "#2a2230", s.x, Y + 2.6, s.z + dz));
-      node(M.merge(...posts), 0, 0, 0);
-      sign(YEARS, `Era ${ERA} · ${NAME}`, 3.2, "gold", s.x + 0.2, Y + 4.4, s.z);
+      const s = LAYOUT.sign;
+      for (const dz of [-s.half.z + 0.2, s.half.z - 0.2]) solid(0.3, 5.2, 0.3, "#2a2230", s.x, Y + 2.6, s.z + dz);
+      const big = kit.label(YEARS, `Era ${ERA} · ${NAME}`, { height: 3.2, style: "gold" });
+      const n = place(createNode({ position: { x: s.x + 0.2, y: Y + 4.4, z: s.z }, rotation: { x: 0, y: FACE_X, z: 0 } }));
+      addChild(n, createNode({ geometry: big.back }), createNode({ geometry: big.face }));
       const r = LAYOUT.rail;
-      node(M.merge(B(0.1, 2.6, 2.2, "#3b2f48", r.x - 0.05, Y + 1.3, r.z), B(0.3, 0.1, 2.4, "#2a2230", r.x, Y + 0.05, r.z)), 0, 0, 0);
+      solid(0.1, 2.6, 2.2, "#3b2f48", r.x - 0.05, Y + 1.3, r.z);
+      solid(0.3, 0.1, 2.4, "#2a2230", r.x, Y + 0.05, r.z);
       const rows = [["1980 · MERKLE · PUBLISHED", "whitepaper reference [7]"], ["1982 · CHAUM · PRESENTED", "context · printed 1983"],
         ["1985 · MILLER · PRESENTED", "context · printed 1986"], ["1988 · MAY · DATED IN REPRINT", "context · the author's views"]];
-      rows.forEach(([t, sub], i) => sign(t, sub, 0.42, i ? "plain" : "gold", r.x + 0.02, Y + 2.25 - i * 0.55, r.z));
+      rows.forEach(([t, sub], i) => sign(t, sub, r.x + 0.02, Y + 2.25 - i * 0.55, r.z, FACE_X, 0.42));
     }
     // 1. The Merkle table: a table, an upright board of fifteen tiles in four rows wired as a tree, the eight record
     // cards on the table and the trusted-root lamp. Each tile has a dark face, a lit face (path) and a blue one (proof).
     {
-      const l = LAYOUT.merkle, x = l.x, z = l.z, geos = [];
-      geos.push(B(1.6, 0.08, 3.8, "#5a4630", x, Y + 0.8, z));
-      for (const [dx, dz] of [[-0.7, -1.8], [0.7, -1.8], [-0.7, 1.8], [0.7, 1.8]]) geos.push(B(0.08, 0.8, 0.08, "#3d2f20", x + dx, Y + 0.4, z + dz));
-      geos.push(B(0.08, 1.9, 3.8, "#241c2e", x - 0.75, Y + 1.8, z));
+      const l = LAYOUT.merkle, x = l.x, z = l.z;
+      solid(1.6, 0.08, 3.8, "#5a4630", x, Y + 0.8, z);
+      for (const [dx, dz] of [[-0.7, -1.8], [0.7, -1.8], [-0.7, 1.8], [0.7, 1.8]]) solid(0.08, 0.8, 0.08, "#3d2f20", x + dx, Y + 0.4, z + dz);
+      solid(0.08, 1.9, 3.8, "#241c2e", x - 0.75, Y + 1.8, z);
       const tileAt = (k) => { const level = 31 - Math.clz32(k), first = 1 << level, span = 3.4 / first, i = k - first; return { y: Y + 2.5 - level * 0.45, z: z + 1.7 - span * (i + 0.5) }; };
       // The wiring: from each parent down to a bar that spans its two children, and from the bar down to each child.
       for (let k = 1; k < LEAVES; k++) {
         const p = tileAt(k), a = tileAt(2 * k), b = tileAt(2 * k + 1), bar = (p.y + a.y) / 2, wire = "#8a7aa8";
-        geos.push(B(0.03, p.y - bar, 0.03, wire, x - 0.7, (p.y + bar) / 2, p.z), B(0.03, 0.03, Math.abs(a.z - b.z), wire, x - 0.7, bar, (a.z + b.z) / 2),
-          B(0.03, bar - a.y, 0.03, wire, x - 0.7, (bar + a.y) / 2, a.z), B(0.03, bar - b.y, 0.03, wire, x - 0.7, (bar + b.y) / 2, b.z));
+        solid(0.03, p.y - bar, 0.03, wire, x - 0.7, (p.y + bar) / 2, p.z);
+        solid(0.03, 0.03, Math.abs(a.z - b.z), wire, x - 0.7, bar, (a.z + b.z) / 2);
+        solid(0.03, bar - a.y, 0.03, wire, x - 0.7, (bar + a.y) / 2, a.z);
+        solid(0.03, bar - b.y, 0.03, wire, x - 0.7, (bar + b.y) / 2, b.z);
       }
-      for (let i = 0; i < LEAVES; i++) geos.push(B(0.5, 0.02, 0.32, "#efe6cf", x + 0.25, Y + 0.85, z + 1.7 - 0.425 * (i + 0.5)));
-      geos.push(B(0.3, 1.6, 0.3, "#3d2f20", x - 0.75, Y + 1.6, z - 2.15));
-      node(M.merge(...geos), 0, 0, 0);
-      parts.tiles.length = parts.lit.length = parts.proofs.length = 0;
-      for (let k = 0; k < 2 * LEAVES; k++) {
-        if (!k) { parts.tiles.push(null); parts.lit.push(null); parts.proofs.push(null); continue; }
-        const a = tileAt(k), w = 0.28;
-        parts.tiles.push(node(M.box({ w: 0.04, h: 0.24, d: w, color: "#4b3d68" }), x - 0.7, a.y, a.z));
-        parts.lit.push(node(M.box({ w: 0.04, h: 0.26, d: w + 0.02, color: "#ffd36a", emissive: 1.4 }), x - 0.67, a.y, a.z, false));
-        parts.proofs.push(node(M.box({ w: 0.04, h: 0.26, d: w + 0.02, color: "#7fd0ff", emissive: 1.2 }), x - 0.67, a.y, a.z, false));
+      for (let i = 0; i < LEAVES; i++) solid(0.5, 0.02, 0.32, "#efe6cf", x + 0.25, Y + 0.85, z + 1.7 - 0.425 * (i + 0.5));
+      solid(0.3, 1.6, 0.3, "#3d2f20", x - 0.75, Y + 1.6, z - 2.15);
+      parts.tiles.push(null); parts.lit.push(null); parts.proofs.push(null);
+      for (let k = 1; k < 2 * LEAVES; k++) {
+        const a = tileAt(k);
+        parts.tiles.push(node(box(0.04, 0.24, 0.28, "#4b3d68"), x - 0.7, a.y, a.z));
+        parts.lit.push(node(box(0.04, 0.26, 0.3, "#ffd36a", 1.4), x - 0.67, a.y, a.z, false));
+        parts.proofs.push(node(box(0.04, 0.26, 0.3, "#7fd0ff", 1.2), x - 0.67, a.y, a.z, false));
       }
-      parts.marks.length = 0;
-      for (let i = 0; i < LEAVES; i++) parts.marks.push(node(M.box({ w: 0.12, h: 0.03, d: 0.12, color: "#ff6a5a", emissive: 0.9 }), x + 0.42, Y + 0.87, z + 1.7 - 0.425 * (i + 0.5), false));
+      for (let i = 0; i < LEAVES; i++) parts.marks.push(node(box(0.12, 0.03, 0.12, "#ff6a5a", 0.9), x + 0.42, Y + 0.87, z + 1.7 - 0.425 * (i + 0.5), false));
       // The trusted-root lamp on its post beside the root: green while today's root matches the trusted one.
-      parts.rootOk = node(M.box({ w: 0.26, h: 0.26, d: 0.26, color: "#6aff9a", emissive: 1.3 }), x - 0.75, Y + 2.55, z - 2.15);
-      parts.rootBad = node(M.box({ w: 0.26, h: 0.26, d: 0.26, color: "#ff5a4a", emissive: 1.3 }), x - 0.75, Y + 2.55, z - 2.15, false);
-      sign(EXHIBITS.merkle.label, EXHIBITS.merkle.sub, 0.45, "plain", x - 0.68, Y + 3.15, z);
+      parts.rootOk = node(box(0.26, 0.26, 0.26, "#6aff9a", 1.3), x - 0.75, Y + 2.55, z - 2.15);
+      parts.rootBad = node(box(0.26, 0.26, 0.26, "#ff5a4a", 1.3), x - 0.75, Y + 2.55, z - 2.15, false);
+      sign(EXHIBITS.merkle.label, EXHIBITS.merkle.sub, x - 0.68, Y + 3.15, z, FACE_X, 0.45);
     }
-    // 2. The blind-stamp desk: a desk, the signer's booth behind a screen, a slip, an envelope and a stamp on an arm.
+    // 2. The blind-stamp desk: a desk, the signer's screen, a slip, an envelope and a stamp on an arm.
     {
       const l = LAYOUT.blind, x = l.x, z = l.z;
-      node(M.merge(B(1.4, 0.08, 2.6, "#6b4a2b", x, Y + 0.78, z),
-        ...[[-0.6, -1.2], [0.6, -1.2], [-0.6, 1.2], [0.6, 1.2]].map(([dx, dz]) => B(0.07, 0.78, 0.07, "#4c331d", x + dx, Y + 0.39, z + dz)),
-        B(0.06, 1.2, 2.6, "#3b2f48", x - 0.66, Y + 1.42, z), B(0.5, 0.06, 0.06, "#2a2230", x - 0.4, Y + 1.95, z - 0.2),
-        B(0.06, 1.2, 0.06, "#2a2230", x - 0.62, Y + 1.4, z - 0.2)), 0, 0, 0);
-      parts.slip = node(M.box({ w: 0.34, h: 0.012, d: 0.22, color: "#f5f0e2" }), x + 0.2, Y + 0.83, z + 0.6);
-      parts.envelope = node(M.box({ w: 0.42, h: 0.03, d: 0.3, color: "#8e7ab8" }), x - 0.15, Y + 0.84, z - 0.2, false);
-      parts.envMark = node(M.box({ w: 0.14, h: 0.005, d: 0.14, color: "#d0304a", emissive: 0.4 }), x - 0.15, Y + 0.858, z - 0.2, false);
-      parts.slipMark = node(M.box({ w: 0.12, h: 0.005, d: 0.12, color: "#d0304a", emissive: 0.4 }), x + 0.22, Y + 0.838, z + 0.6, false);
-      parts.stamp = node(M.merge(M.box({ w: 0.16, h: 0.12, d: 0.16, color: "#d0304a" }), M.moved(M.box({ w: 0.05, h: 0.25, d: 0.05, color: "#2a2230" }), 0, 0.18, 0)), x - 0.15, Y + 1.6, z - 0.2);
+      solid(1.4, 0.08, 2.6, "#6b4a2b", x, Y + 0.78, z);
+      for (const [dx, dz] of [[-0.6, -1.2], [0.6, -1.2], [-0.6, 1.2], [0.6, 1.2]]) solid(0.07, 0.78, 0.07, "#4c331d", x + dx, Y + 0.39, z + dz);
+      solid(0.06, 1.2, 2.6, "#3b2f48", x - 0.66, Y + 1.42, z);
+      solid(0.5, 0.06, 0.06, "#2a2230", x - 0.4, Y + 1.95, z - 0.2);
+      solid(0.06, 1.2, 0.06, "#2a2230", x - 0.62, Y + 1.4, z - 0.2);
+      parts.slip = node(box(0.34, 0.012, 0.22, "#f5f0e2"), x + 0.2, Y + 0.83, z + 0.6);
+      parts.envelope = node(box(0.42, 0.03, 0.3, "#8e7ab8"), x - 0.15, Y + 0.84, z - 0.2, false);
+      parts.envMark = node(box(0.14, 0.005, 0.14, "#d0304a", 0.4), x - 0.15, Y + 0.858, z - 0.2, false);
+      parts.slipMark = node(box(0.12, 0.005, 0.12, "#d0304a", 0.4), x + 0.22, Y + 0.838, z + 0.6, false);
+      parts.stamp = node(box(0.16, 0.12, 0.16, "#d0304a"), x - 0.15, Y + 1.6, z - 0.2);
+      addChild(parts.stamp, createNode({ geometry: box(0.05, 0.25, 0.05, "#2a2230"), position: { x: 0, y: 0.18, z: 0 } }));
       parts.stampRest = Y + 1.6; parts.stampLow = Y + 0.92;
-      parts.okLamp = node(M.box({ w: 0.2, h: 0.2, d: 0.2, color: "#6aff9a", emissive: 1.3 }), x - 0.6, Y + 2.2, z + 0.9, false);
-      parts.badLamp = node(M.box({ w: 0.2, h: 0.2, d: 0.2, color: "#ff5a4a", emissive: 1.3 }), x - 0.6, Y + 2.2, z + 0.9, false);
-      sign(EXHIBITS.blind.label, EXHIBITS.blind.sub, 0.45, "plain", x + 0.75, Y + 1.25, z);
+      parts.okLamp = node(box(0.2, 0.2, 0.2, "#6aff9a", 1.3), x - 0.6, Y + 2.2, z + 0.9, false);
+      parts.badLamp = node(box(0.2, 0.2, 0.2, "#ff5a4a", 1.3), x - 0.6, Y + 2.2, z + 0.9, false);
+      sign(EXHIBITS.blind.label, EXHIBITS.blind.sub, x + 0.75, Y + 1.25, z, FACE_X, 0.45);
     }
-    // 3. The office PC: an invented beige box with a disk slot, a monitor, a blank-keyed keyboard, on a table.
+    // 3. The office PC: an invented beige box with a disk slot, a monitor and a blank-keyed keyboard, on a table.
     {
       const l = LAYOUT.pc, x = l.x, z = l.z;
-      node(M.merge(B(1.1, 0.08, 1.2, "#6b4a2b", x, Y + 0.72, z),
-        ...[[-0.45, -0.5], [0.45, -0.5], [-0.45, 0.5], [0.45, 0.5]].map(([dx, dz]) => B(0.07, 0.72, 0.07, "#4c331d", x + dx, Y + 0.36, z + dz)),
-        B(0.5, 0.16, 0.9, "#d8cfb4", x - 0.15, Y + 0.84, z), B(0.01, 0.03, 0.3, "#2a2a2a", x + 0.1, Y + 0.86, z - 0.2),
-        B(0.45, 0.42, 0.5, "#e2d9be", x - 0.15, Y + 1.13, z), B(0.22, 0.03, 0.62, "#cfc6aa", x + 0.32, Y + 0.78, z)), 0, 0, 0);
-      parts.screen = node(M.box({ w: 0.02, h: 0.3, d: 0.38, color: "#ffb347", emissive: 1.2 }), x + 0.085, Y + 1.14, z);
-      parts.driveLight = node(M.box({ w: 0.01, h: 0.025, d: 0.025, color: "#6aff9a", emissive: 1.4 }), x + 0.105, Y + 0.86, z + 0.05, false);
-      sign(EXHIBITS.pc.label, EXHIBITS.pc.sub, 0.45, "plain", x + 0.35, Y + 1.75, z);
+      solid(1.1, 0.08, 1.2, "#6b4a2b", x, Y + 0.72, z);
+      for (const [dx, dz] of [[-0.45, -0.5], [0.45, -0.5], [-0.45, 0.5], [0.45, 0.5]]) solid(0.07, 0.72, 0.07, "#4c331d", x + dx, Y + 0.36, z + dz);
+      solid(0.5, 0.16, 0.9, "#d8cfb4", x - 0.15, Y + 0.84, z);
+      solid(0.01, 0.03, 0.3, "#2a2a2a", x + 0.1, Y + 0.86, z - 0.2);
+      solid(0.45, 0.42, 0.5, "#e2d9be", x - 0.15, Y + 1.13, z);
+      solid(0.22, 0.03, 0.62, "#cfc6aa", x + 0.32, Y + 0.78, z);
+      solid(0.02, 0.3, 0.38, "#ffb347", x + 0.085, Y + 1.14, z, 1.2);
+      parts.driveLight = node(box(0.01, 0.025, 0.025, "#6aff9a", 1.4), x + 0.105, Y + 0.86, z + 0.05, false);
+      sign(EXHIBITS.pc.label, EXHIBITS.pc.sub, x + 0.35, Y + 1.75, z, FACE_X, 0.45);
     }
     // 4. The disk crate: an open crate whose five disks stand in slots, each a square sleeve with a coloured label.
     {
       const l = LAYOUT.floppy, x = l.x, z = l.z;
-      node(M.merge(B(0.7, 0.62, 0.9, "#7a5534", x, Y + 0.31, z), B(0.6, 0.02, 0.8, "#3d2a19", x, Y + 0.63, z)), 0, 0, 0);
-      parts.disks.length = 0;
-      FLOPPY_DISKS.forEach((d) => {
-        const n = createNode({ position: { x, y: Y + 0.78, z } });
-        addChild(n, createNode({ geometry: M.box({ w: 0.26, h: 0.26, d: 0.012, color: "#1d1d22" }) }));
-        addChild(n, createNode({ geometry: M.box({ w: 0.2, h: 0.06, d: 0.014, color: d.color }), position: { x: 0, y: 0.08, z: 0 } }));
-        addChild(root, n); parts.disks.push(n);
-      });
-      sign(EXHIBITS.floppy.label, EXHIBITS.floppy.sub, 0.4, "plain", x + 0.5, Y + 1.3, z);
-    }
-    // 5. The maze cabinet: an upright cabinet with an original marquee, a screen holding one of four prebuilt mazes,
-    // the player, four leaves and the gate as small blocks moved by `sync`.
-    {
-      const l = LAYOUT.maze, x = l.x, z = l.z;
-      node(M.merge(B(0.8, 1.7, 0.8, "#2b2440", x, Y + 0.85, z), B(0.3, 0.06, 0.7, "#151020", x + 0.4, Y + 0.95, z), B(0.04, 0.18, 0.72, "#ff5ac8", x + 0.4, Y + 1.78, z, 1.1)), 0, 0, 0);
-      const p = 0.6 / GW_, sx = x + 0.41, top = Y + 1.62;
-      parts.mazeCell = (c, out) => { out.x = sx; out.y = top - ((c / GW_) | 0) * p; out.z = z + 0.3 - (c % GW_ + 0.5) * p; return out; };
-      node(M.box({ w: 0.01, h: GH_ * p + 0.02, d: GW_ * p + 0.02, color: "#05040a" }), sx - 0.004, top - (GH_ - 1) * p / 2, z, true);
-      const cell = { x: 0, y: 0, z: 0 }, live = createMaze();
-      parts.mazes.length = 0;
-      for (const m of live.mazes) {
-        const geos = [];
-        for (let c = 0; c < m.grid.length; c++) if (m.grid[c]) { parts.mazeCell(c, cell); geos.push(B(0.006, p, p, "#3a5cff", cell.x, cell.y, cell.z, 0.9)); }
-        parts.mazes.push(node(M.merge(...geos), 0, 0, 0, false));
+      solid(0.7, 0.62, 0.9, "#7a5534", x, Y + 0.31, z);
+      solid(0.6, 0.02, 0.8, "#3d2a19", x, Y + 0.63, z);
+      for (const d of FLOPPY_DISKS) {
+        const n = node(box(0.26, 0.26, 0.012, "#1d1d22"), x, Y + 0.78, z);
+        addChild(n, createNode({ geometry: box(0.2, 0.06, 0.014, d.color), position: { x: 0, y: 0.08, z: 0 } }));
+        parts.disks.push(n);
       }
-      parts.player = node(M.box({ w: 0.012, h: p * 0.8, d: p * 0.8, color: "#ffe14a", emissive: 1.4 }), sx, top, z);
-      parts.leaves.length = 0;
-      for (let i = 0; i < MAZE.leaves; i++) parts.leaves.push(node(M.box({ w: 0.012, h: p * 0.6, d: p * 0.6, color: "#6aff7a", emissive: 1.4 }), sx, top, z));
-      parts.gate = node(M.box({ w: 0.012, h: p * 0.9, d: p * 0.9, color: "#ff5a4a", emissive: 1.2 }), sx, top, z);
-      parts.cell = cell;
-      sign(EXHIBITS.maze.label, EXHIBITS.maze.sub, 0.42, "plain", x + 0.5, Y + 2.15, z);
+      sign(EXHIBITS.floppy.label, EXHIBITS.floppy.sub, x + 0.5, Y + 1.3, z, FACE_X, 0.4);
+    }
+    // 5. The maze cabinet: an upright cabinet with an original marquee strip and a screen; the walls are a pool of
+    // row runs (each a unit box stretched along z), the player, four leaves and the gate are small blocks.
+    {
+      const l = LAYOUT.maze, x = l.x, z = l.z, w = live.maze.size.w, h = live.maze.size.h;
+      solid(0.8, 1.7, 0.8, "#2b2440", x, Y + 0.85, z);
+      solid(0.3, 0.06, 0.7, "#151020", x + 0.4, Y + 0.95, z);
+      solid(0.04, 0.18, 0.72, "#ff5ac8", x + 0.4, Y + 1.78, z, 1.1);
+      const p = 0.6 / w, sx = x + 0.41, top = Y + 1.62;
+      solid(0.01, h * p + 0.02, w * p + 0.02, "#05040a", sx - 0.004, top - (h - 1) * p / 2, z);
+      parts.mazeCell = (c, out) => { out.x = sx; out.y = top - ((c / w) | 0) * p; out.z = z + 0.3 - (c % w + 0.5) * p; return out; };
+      parts.mazeRun = { sx, top, z, p, w };
+      let most = 0;
+      for (const m of live.maze.mazes) most = Math.max(most, mazeRuns(m.grid, w, h, null));
+      for (let i = 0; i < most; i++) parts.runs.push(node(box(0.006, p, p, "#3a5cff", 0.9), sx, top, z, false));
+      parts.player = node(box(0.012, p * 0.8, p * 0.8, "#ffe14a", 1.4), sx, top, z);
+      for (let i = 0; i < MAZE.leaves; i++) parts.leaves.push(node(box(0.012, p * 0.6, p * 0.6, "#6aff7a", 1.4), sx, top, z));
+      parts.gate = node(box(0.012, p * 0.9, p * 0.9, "#ff5a4a", 1.2), sx, top, z);
+      parts.cell = { x: 0, y: 0, z: 0 };
+      sign(EXHIBITS.maze.label, EXHIBITS.maze.sub, x + 0.5, Y + 2.15, z, FACE_X, 0.42);
     }
     return parts;
   };
+  // The horizontal runs of wall in a maze grid; with `lay`, calls lay(i, row, col, length) for each. Returns the count.
+  const mazeRuns = (grid, w, h, lay) => {
+    let n = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (!grid[y * w + x] || (x > 0 && grid[y * w + x - 1])) continue;
+      let len = 1; while (x + len < w && grid[y * w + x + len]) len++;
+      if (lay) lay(n, y, x, len);
+      n++;
+    }
+    return n;
+  };
 
-  // Poses the models from the live state: allocation-free, bounded (fixed node counts), stilled by `calm`.
+  // Poses the models from the live state: allocation-free (the runs are re-laid only when the maze changes), with a
+  // fixed node count. `calm` stills the stamp's press; the lit tiles do not move.
   const sync = (parts, live, dt, calm) => {
     parts.phase = (parts.phase + dt) % 1000;
-    const m = live.merkle, pulse = calm ? 1 : 1 + 0.12 * Math.sin(parts.phase * 6);
+    const m = live.merkle;
     for (let k = 1; k < 2 * LEAVES; k++) {
       parts.lit[k].visible = m.lit[k] === 1 || m.lit[k] === 3;
       parts.proofs[k].visible = m.lit[k] === 2;
-      parts.lit[k].scale.y = pulse;
     }
     for (let i = 0; i < LEAVES; i++) parts.marks[i].visible = m.leaves[i] !== RECORDS[i];
     const ok = m.matches();
@@ -812,7 +820,7 @@
     }
     parts.driveLight.visible = f.loaded >= 0;
     const z = live.maze, mz = z.maze();
-    for (let i = 0; i < parts.mazes.length; i++) parts.mazes[i].visible = i === z.index;
+    if (parts.mazeShown !== z.index) { parts.mazeShown = z.index; layRuns(parts, mz.grid, z.size.w, z.size.h); }
     const c = parts.cell;
     parts.mazeCell(z.at, c); parts.player.position.x = c.x + 0.004; parts.player.position.y = c.y; parts.player.position.z = c.z;
     for (let i = 0; i < MAZE.leaves; i++) {
@@ -823,13 +831,39 @@
     parts.mazeCell(mz.gate, c); parts.gate.position.x = c.x + 0.004; parts.gate.position.y = c.y; parts.gate.position.z = c.z;
     parts.gate.visible = z.held() < MAZE.leaves && !z.won;
   };
-  // Takes the models off the scene graph; the renderer releases them at its next housekeeping pass.
-  const dispose = (parts, removeChild) => {
-    if (parts.root.parent) removeChild(parts.root.parent, parts.root);
-    parts.tiles.length = parts.lit.length = parts.proofs.length = parts.marks.length = parts.disks.length = parts.mazes.length = parts.leaves.length = 0;
+  // Lays the pool of wall runs out for one maze and hides the rest. The callback is built once per visit.
+  const layRuns = (parts, grid, w, h) => {
+    const R = parts.mazeRun;
+    if (!parts.lay) parts.lay = (i, row, col, len) => {
+      const n = parts.runs[i];
+      n.visible = true; n.scale.z = len;
+      n.position.x = R.sx; n.position.y = R.top - row * R.p; n.position.z = R.z + 0.3 - (col + len / 2) * R.p;
+    };
+    const used = mazeRuns(grid, w, h, parts.lay);
+    for (let i = used; i < parts.runs.length; i++) parts.runs[i].visible = false;
   };
 
-  BL.genesisEra2 = { ERA, YEARS, NAME, SOURCES, HELD, RECORDS, SEAL, PC_FILES, PC_YEAR, FLOPPY_DISKS, MAZE, EXHIBITS, LAYOUT,
+  // --- Registration -------------------------------------------------------------------------------------------------
+  // One visit's state and models; `update` runs only while the visitor is in this cave, `dispose` on leave.
+  let visit = null;
+  BL.genesisExhibits.register(ERA, {
+    sources: SOURCES,
+    build(kit) {
+      const live = createLive(), parts = buildModels(kit, live);
+      for (const o of footprints()) kit.obstacle(o.x0, o.x1, o.z0, o.z1);
+      for (const key of PROPS) {
+        const ex = EXHIBITS[key], l = LAYOUT[key];
+        kit.prop({ id: ex.id, year: ex.year, title: ex.title, label: ex.label, sourceKeys: ex.sourceKeys, at: { x: l.x, y: kit.top, z: l.z }, reach: l.reach,
+          pick: { w: l.half.x * 2, h: key === "merkle" ? 2.8 : 1.8, d: l.half.z * 2 }, short: ex.short, deeper: ex.deeper, onUse: () => ({ terminal: live.terminals[key] }) });
+      }
+      sync(parts, live, 0, true);
+      visit = { live, parts };
+    },
+    update(dt, elapsed, state) { if (visit) sync(visit.parts, visit.live, dt, state.calm === true); },
+    dispose() { visit = null; }
+  });
+
+  BL.genesisEra2 = { ERA, YEARS, NAME, SOURCES, HELD, RECORDS, SEAL, PC_FILES, PC_YEAR, FLOPPY_DISKS, MAZE, EXHIBITS, LAYOUT, PROPS,
     sourceOf, createMerkle, createBlind, createPc, createFloppies, createMaze, merkleTerminal, blindTerminal, floppyTerminal, mazeTerminal,
-    createLive, obstacles, register, build, sync, dispose };
+    createLive, footprints, buildModels, sync, get visit() { return visit; } };
 })();

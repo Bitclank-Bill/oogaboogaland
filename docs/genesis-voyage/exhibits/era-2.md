@@ -1,25 +1,33 @@
 # Era 2 exhibits: Trees and Blind Money (1980–1989)
 
-Workstream branch `gv/era-2-exhibits`, cut from the current cave base **`gv/water-boat` at `a95536b`** ("the boat shows
-from the start; Space jumps out and back in"), which already contains `gv/walk-props`. `feature/genesis-voyage` was
-still at `12f7c4f` (the plan only), so it was not used as the base. Built from the Era 2 dossier on `gv/research`
+Workstream branch `gv/era-2-exhibits`. Built from the Era 2 dossier on `gv/research`
 (`docs/genesis-voyage/eras/era-2-trees-and-blind-money.md`, v0.1).
 
-This stream owns only two files: `src/js/genesis-era-2.js` and this note. Nothing shared (`scene-genesis.js`,
-`index.html`, `test/run.mjs`, `genesis-props.js`) is changed. The integrator wires it in with the patch below.
+**How it plugs in.** `src/js/genesis-era-2.js` registers through the agreed era exhibit kit
+(`src/js/genesis-exhibits.js`, introduced at `aa91542` on `gv/water-boat` and merged into this branch):
 
-**No `EXHIBIT-CONTRACT.md` was found** on any branch of the fork when this was built. The module therefore follows the
-contract the code already has: genesis-props.js's registry (`{ id, era, year, title, label, sourceKeys, at, reach,
-onUse }`, label must show the year), its terminal shape (`{ banner, prompt, run(line) → { lines, cls? } }`) and
-makeBoard's panel shape (`{ room, pages: [{ caption, title, text }], sources }`). If the contract says otherwise, the
-pure halves need no change; only `register` and the panel wiring would.
+```js
+BL.genesisExhibits.register(2, { sources, build(kit), update(dt, elapsed, state), dispose() })
+```
+
+- `sources`: the nine `E2-*` keys below, resolved for every panel, terminal and link by genesis-props.js's `sourceOf`
+  through the kit's registry.
+- `build(kit)`: makes one visit's live state and models through the kit only (`kit.solid`, `kit.M.box` with
+  `kit.createNode`/`kit.place`/`kit.addChild`, `kit.label`, `kit.sign`), puts a `kit.obstacle` under every footprint
+  (seven exhibit and rail boxes and the big sign's two posts), and adds the five exhibits with `kit.prop` (each with
+  a pick box; using one opens its terminal).
+- `update`: poses the models from the live state while the visitor is in Era 2's cave; allocates nothing.
+- `dispose`: drops the visit's state on leave (the scene's root takes the nodes).
+
+The page already loads `genesis-era-2.js` (index.html at `aa91542`) and scene-genesis.js builds, updates and disposes
+every registered era, so **no shared file changes and no scene wiring are needed**. This branch touches only
+`src/js/genesis-era-2.js` and this note; the merge brings `gv/water-boat`'s files in unchanged.
 
 - [What is in the cave](#what-is-in-the-cave)
 - [Classification and dates](#classification-and-dates)
 - [Held: the elliptic-curve picture](#held-the-elliptic-curve-picture)
 - [Source keys](#source-keys)
-- [Integration patch](#integration-patch)
-- [Unit proof for test/run.mjs](#unit-proof-for-testrunmjs)
+- [Unit proof (optional, for the integrator)](#unit-proof-optional-for-the-integrator)
 - [What was checked, and the limits](#what-was-checked-and-the-limits)
 - [Open questions for the integrator](#open-questions-for-the-integrator)
 
@@ -27,7 +35,7 @@ pure halves need no change; only `register` and the panel wiring would.
 
 Everything stands on the cave's **left bank**, facing the stream, well in from the edge (x < −5) and off the walkway
 that runs inland from the bank's boarding ramp (|z − cave middle| < 2.6). Positions are in `LAYOUT`, derived from
-`GW.ERAS[2]`; `obstacles()` gives their footprints for `FOOTING.obstacles`.
+the kit's `era`; `footprints()` lists the boxes passed to `kit.obstacle`.
 
 | Exhibit | Year label | Connection | Hands-on | Short explanation |
 |---|---|---|---|---|
@@ -41,12 +49,14 @@ that runs inland from the bank's boarding ramp (|z − cave middle| < 2.6). Posi
 Every exhibit has: source keys, a year label, `RESET` (and `live.resetAll()` for a new visit), a one-line `short`, a
 `deeper` panel (pages in makeBoard's shape, also printed by `MORE` in its terminal) and `SOURCES`.
 
-**Models.** All procedural from `BL.models` boxes, original and unbranded: a tiled tree board with wiring and record
-cards; a desk with a signer's screen, slip, envelope and a stamp on an arm; a beige box, monitor and blank keyboard; an
-open crate with five labelled sleeves; an upright cabinet with an invented marquee and a screen holding the maze.
-About 150 nodes in all, a fixed number (checked). Static parts are merged per exhibit; only lit tiles, the envelope,
-stamp, disks, maze sprites and lamps are separate nodes, posed by `sync` without allocating. Calm mode stills the
-tile pulse and the stamp press. Nothing registers input, audio or timers; `dispose` takes the root off the graph.
+**Models.** All procedural from kit boxes, original and unbranded: a tiled tree board with wiring and record cards; a
+desk with a signer's screen, slip, envelope and a stamp on an arm; a beige box, monitor and blank keyboard; an open
+crate with five labelled sleeves; an upright cabinet with an invented marquee strip and a screen. Static parts are
+`kit.solid` boxes; lit tiles, the envelope, stamp, disks, maze sprites and lamps are their own nodes posed by
+`update`. The maze's walls are a fixed pool of 44 row runs (unit boxes stretched along z), re-laid only when the
+maze changes. Under 400 nodes in all, a fixed number (checked); the kit has no merge helper, so static parts are not
+merged (see the open questions). Nothing registers input, audio or timers. The stamp's press is stilled when the
+kit's update state carries `calm: true` (it does not yet; see the open questions); the lit tiles do not move.
 
 **What is not shown, on purpose.** No floppy capacity (the dossier clears none; 1.44 MB is a different format). No
 ROMs, logos, product names on models, game tunes or sounds (this module makes no sound). No invented quotes: the one
@@ -75,64 +85,32 @@ environment failed (DNS blocked), so nothing beyond the dossier was verified. Th
 
 ## Source keys
 
-All in `BL.genesisEra2.SOURCES` (`sourceOf` falls back to genesis-props.js's and genesis-voyage.js's keys):
+Registered with the kit as `sources` (also `BL.genesisEra2.SOURCES`). `kind` uses the kit's classes; `verified` follows the dossier's reading:
 
 | Key | Points to | Kind |
 |---|---|---|
 | `E2-MERKLE` | ralphmerkle.com/papers/Protocols.pdf, §6, pp. 125–127 | whitepaper citation [7] |
 | `E2-MERKLE-BIB` | ralphmerkle.com/merkleDir/papers.html | whitepaper citation [7] |
-| `E2-WHITEPAPER` | bitcoin.org/bitcoin.pdf, References [7] | the paper itself |
+| `E2-WHITEPAPER` | bitcoin.org/bitcoin.pdf, References [7] | whitepaper citation [7] (verified: false, the dossier quotes no passage) |
 | `E2-CHAUM` | chaum.com author-hosted scan, envelope analogy | context |
 | `E2-CHAUM-CAT` | chaum.com/publications | context |
 | `E2-ECC` | link.springer.com chapter 10.1007/3-540-39799-X_31, abstract | context |
 | `E2-MAY` | nakamotoinstitute.org/library/crypto-anarchist-manifesto | context |
-| `E2-PC` | ibm.com/history/personal-computer | context (period gear) |
-| `E2-DOSSIER` | the Era 2 dossier on gv/research (period-gear and easter-egg notes) | museum research record |
+| `E2-PC` | ibm.com/history/personal-computer | context |
+| `E2-DOSSIER` | the Era 2 dossier on gv/research (period-gear and easter-egg notes), labelled a museum research record | context |
 
-## Integration patch
+## Unit proof (optional, for the integrator)
 
-Five small edits, all in files the integrator owns. This exact patch was applied in a throwaway worktree (not
-committed) for the browser smoke run below.
-
-`src/index.html`, after `genesis-boat.js`:
-
-```html
-  <script src="js/genesis-era-2.js" data-defer="genesis-scene"></script>
-```
-
-`src/js/scene-genesis.js`:
+The kit's shared check (`Genesis Voyage exhibits` in `test/run.mjs`) already builds Era 2 with its stand-in kit and
+passes. This deeper proof is offered for the integrator to add if wanted; it is not required, and this branch does
+not edit `test/run.mjs`. It loads `math`, `scene`, `models`, `genesis-voyage`, `genesis-world`, `genesis-props`,
+`genesis-exhibits` and `genesis-era-2`, builds Era 2 through `BL.genesisExhibits.eras[2].build` with a real kit (the
+engine's models and scene graph, a stub label), and checks the rules, the registration, the footprints and the models.
+41 named checks.
 
 ```js
-  // after the loops that fill FOOTING, before `const JUMP_REACH`:
-  FOOTING.obstacles.push(...BL.genesisEra2.obstacles());
-
-  // in enter(), after registerProps():
-  built.era2Live = BL.genesisEra2.createLive(); BL.genesisEra2.register(props, built.era2Live);
-
-  // in enter(), after buildProps():
-  built.era2 = BL.genesisEra2.build({ M, createNode, addChild, label: BL.factoryModels.label, parent: root });
-
-  // first line of update(dt), after `sceneTime += dt;`:
-  BL.genesisEra2.sync(built.era2, built.era2Live, dt, view.calm);
-```
-
-Optional, when the integrator wants the deeper panels as boards (they are already printed by each terminal's `MORE`):
-let `GP.sourceOf` fall back to `BL.genesisEra2.sourceOf` (makeBoard looks keys up through it), and open
-`props.get(id).deeper` with `openPanel(makeBoard(...))`. `dispose(parts, removeChild)` is available but not needed:
-the parts hang under the scene's root, which leave drops.
-
-Also for the integrator: the cave's arrival caption still says "Its exhibits are still being built" for every era
-without a room; Era 2 may want its own line (for example from `EXHIBITS.merkle.short`).
-
-## Unit proof for test/run.mjs
-
-Paste the function next to `genesisPropsProof`, and the two lines in the trailing comment into `unitChecks`. It loads
-`math`, `scene`, `models`, `genesis-voyage`, `genesis-props`, `genesis-world` and `genesis-era-2` with
-`runInNewContext`, as the existing genesis proofs do. 39 named checks; it also builds the models in Node with a stub
-label.
-
-```js
-// Rule: the Genesis Voyage's Era 2 exhibits, through genesis-era-2.js itself. The Merkle table changes only the changed
+// Rule: the Genesis Voyage's Era 2 exhibits, through genesis-exhibits.js and genesis-era-2.js themselves, built with a
+// real kit (the engine's models and scene graph, a stub label). The Merkle table changes only the changed
 // record's path, proves a record with three fingerprints and fails against a stale root; the blind-stamp desk keeps
 // its order, never shows the signer a token, carries the stamp through and refuses a second spend; the PC's disk is
 // bounded, read-only, dated no later than 1989 and reads a loaded floppy; the crate sorts in the fewest swaps it
@@ -142,8 +120,19 @@ label.
 // exhibit reachable; and the models pose from state without growing and leave the graph on dispose.
 const genesisEra2Proof = async () => {
   const context = { window: {} };
-  for (const f of ["math", "scene", "models", "genesis-voyage", "genesis-props", "genesis-world", "genesis-era-2"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
-  const BL = context.window.BL, G = BL.genesisVoyage, P = BL.genesisProps, W = BL.genesisWorld, E2 = BL.genesisEra2, era = W.ERAS[E2.ERA];
+  for (const f of ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BL = context.window.BL, G = BL.genesisVoyage, P = BL.genesisProps, W = BL.genesisWorld, EX = BL.genesisExhibits, E2 = BL.genesisEra2, era = W.ERAS[E2.ERA];
+  // The kit, as scene-genesis.js makes it, over a bare parent node; props go to a registry, obstacles to a list.
+  const { createNode, addChild } = BL.scene, M = BL.models, parent = createNode(), reg = P.createRegistry(), obs = [];
+  const label = () => ({ back: M.box({ w: 1, h: 0.3, d: 0.05, color: "#000000" }), face: M.box({ w: 1, h: 0.3, d: 0.01, color: "#ffffff" }), width: 1, height: 0.3 });
+  const place = (n) => { addChild(parent, n); return n; };
+  const kit = { era, top: W.BANK_TOP, channel: W.CHANNEL, M, createNode, addChild, place, label,
+    solid: (w, h, d, color, x, y, z, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } })),
+    sign: (t, sub, x, y, z, yaw = 0, height = 0.6) => { const l = label(), n = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } })); addChild(n, createNode({ geometry: l.back }), createNode({ geometry: l.face })); return n; },
+    obstacle: (x0, x1, z0, z1) => { obs.push({ x0, x1, z0, z1 }); }, prop: (d) => reg.register({ ...d, era: E2.ERA }) };
+  const def = EX.eras[E2.ERA];
+  const registered = !!def && def.build && def.update && def.dispose && ["E2-MERKLE", "E2-CHAUM", "E2-ECC", "E2-MAY", "E2-PC"].every((k) => EX.sources[k] && P.sourceOf(k) === EX.sources[k]);
+  def.build(kit);
   const run = (term, ...lines) => lines.map((l) => term.run(l)).pop();
   const text = (out) => out.lines.join("\n");
   // Merkle.
@@ -176,7 +165,7 @@ const genesisEra2Proof = async () => {
   run(bt, "RESET");
   const blindReset = b.step === "blank" && !b.log.length && !b.spent.length && b.checked === null && /NOT real cryptography/.test(bt.banner[1]);
   // The PC and the floppies.
-  const live = E2.createLive(), pc = live.terminals.pc, fl = live.terminals.floppy;
+  const live = E2.visit.live, pc = live.terminals.pc, fl = live.terminals.floppy;
   const dir = text(pc.run("dir")), dated = E2.PC_FILES.every((f) => f.year <= E2.PC_YEAR && f.text.every((l) => l.length <= 80))
     && pc.disk.length === E2.PC_FILES.length && /6 file\(s\)/.test(dir);
   const typed = pc.run("TYPE merkle.txt"), cites = typed.lines.some((l) => /^Source \[E2-MERKLE\]/.test(l)) && typed.lines.some((l) => /reference \[7\]/.test(l));
@@ -231,10 +220,9 @@ const genesisEra2Proof = async () => {
   const capped = z.runMoves("D".repeat(500)) <= E2.MAZE.maxRun && /ROOT|leaves/.test(text(live.terminals.maze.run("SHOW")));
   z.reset(0);
   // Every exhibit: year label, sources, short line, deeper panel, RESET and MORE through its terminal; the registry.
-  const reg = P.createRegistry(); E2.register(reg, live);
   const exhibits = Object.entries(E2.EXHIBITS).every(([k, ex]) => {
     const term = live.terminals[k], prop = reg.get(ex.id);
-    return prop && prop.era === 2 && String(ex.label).includes(String(ex.year)) && ex.short.length > 20 && ex.short.length < 140 && ex.deeper.pages.length >= 2
+    return prop && prop.era === 2 && /^[A-Za-z0-9 /:!?+\-.]+$/.test(ex.deeper.room) && String(ex.label).includes(String(ex.year)) && ex.short.length > 20 && ex.short.length < 140 && ex.deeper.pages.length >= 2
       && ex.sourceKeys.every((s) => /^https:\/\//.test(E2.sourceOf(s).href)) && ex.deeper.sources.every((s) => /^https:\/\//.test(E2.sourceOf(s).href))
       && term.run("HELP").lines.some((l) => /^RESET/.test(l)) && text(term.run("MORE")).includes(ex.dateMeaning) && !!term.run("RESET")
       && reg.near(prop.at.x + 0.3, prop.at.z, prop.at.y) === prop && reg.use(prop, {}).terminal === term;
@@ -252,9 +240,10 @@ const genesisEra2Proof = async () => {
     && /1986/.test(E2.PC_FILES.find((f) => f.name === "ECC1985").text.join(" ")) && E2.FLOPPY_DISKS.every((d) => /PRESENTED|PUBLISHED|UNVEILED|WRITTEN/.test(d.file.text.join(" ")));
   const held = E2.HELD.some((h) => h.id === "ecc-curve" && h.sourceKeys.includes("E2-ECC")) && !Object.values(E2.EXHIBITS).some((ex) => /curve/i.test(ex.title));
   // Layout: inside the left bank, clear of the stream's edge, the ramp, its walkway and the lamp posts; all reachable.
-  const obs = E2.obstacles(), C = W.CAVE, ch = W.CHANNEL, pad = 0.3;
+  const C = W.CAVE, ch = W.CHANNEL, pad = 0.3;
   const hits = (o, x0, x1, z0, z1) => o.x0 < x1 && o.x1 > x0 && o.z0 < z1 && o.z1 > z0;
   const lamps = [[-14, 0.25], [-8, 0.8]].map(([x, fr]) => ({ x0: x - 0.15, x1: x + 0.15, z0: era.z1 - fr * C.len - 0.15, z1: era.z1 - fr * C.len + 0.15 }));
+  const footprinted = obs.length === E2.footprints().length && reg.byEra(2).length === 5;
   const clear = obs.every((o) => o.x0 > C.x0 + 1 && o.x1 < ch.x0 - 4.5 && o.z0 > era.z0 + 2 && o.z1 < era.z1 - 2
     && !hits(o, E2.LAYOUT.sign.x + 0.5, ch.x0, era.z - 2.6, era.z + 2.6) && !lamps.some((l) => hits(o, l.x0 - pad, l.x1 + pad, l.z0 - pad, l.z1 + pad)));
   // Breadth-first walk on a 0.2 grid from the ramp's head over the left bank, a 0.3-radius body against every box.
@@ -271,80 +260,79 @@ const genesisEra2Proof = async () => {
     }
   }
   const reachable = reg.byEra(2).every((p) => { for (let i = 0; i < reached.length; i++) if (reached[i] && Math.hypot(C.x0 + ((i / nz) | 0) * cell - p.at.x, era.z0 + (i % nz) * cell - p.at.z) <= p.reach - 0.05) return true; return false; });
-  // Models: build in Node with a stub label, pose a thousand frames, and the graph neither grows nor keeps them.
-  const { createNode, addChild, removeChild } = BL.scene, M = BL.models;
-  const count = (n) => 1 + n.children.reduce((s, c) => s + count(c), 0);
-  const parent = createNode(), label = () => ({ back: M.box({ w: 1, h: 0.3, d: 0.05, color: "#000000" }), face: M.box({ w: 1, h: 0.3, d: 0.01, color: "#ffffff" }) });
-  const parts = E2.build({ M, createNode, addChild, label, parent }), nodes = count(parent);
-  live.merkle.change(4, "changed"); live.blind.write(""); live.blind.seal(); live.blind.stamp(); live.floppy.load(1); live.maze.runMoves("SSDD");
+  // Models: built by def.build above; a thousand frames of update neither grow the graph nor fail to pose it; dispose
+  // drops the visit (the scene's root takes the nodes).
+  const count = (n) => 1 + n.children.reduce((s, c) => s + count(c), 0), nodes = count(parent), parts = E2.visit.parts;
+  live.merkle.change(4, "changed"); live.blind.write(""); live.blind.seal(); live.blind.stamp(); live.floppy.load(1); live.maze.reset(1); live.maze.runMoves("SSDD");
   let posed = true;
   for (let i = 0; i < 1000; i++) {
-    E2.sync(parts, live, 1 / 60, i > 500);
-    if (i === 10) posed = parts.lit[12].visible && parts.envMark.visible && !parts.disks[live.floppy.loaded].visible && parts.mazes[0].visible && !parts.mazes[1].visible && parts.stamp.position.y < parts.stampRest;
+    def.update(1 / 60, i / 60, { era: 2, walking: true, x: -8, z: era.z, calm: i > 500 });
+    if (i === 10) posed = parts.lit[12].visible && parts.envMark.visible && !parts.disks[live.floppy.loaded].visible && parts.stamp.position.y < parts.stampRest
+      && parts.runs.some((r) => r.visible && r.scale.z > 1) && parts.mazeShown === 1;
   }
   const settled = parts.stamp.position.y === parts.stampRest && live.blind.stampT === 0 && parts.rootBad.visible && !parts.rootOk.visible;
   const steady = count(parent) === nodes && nodes < 400;
-  E2.dispose(parts, removeChild);
-  const disposed = parent.children.length === 0 && parts.root.parent === null;
-  return { allVerify, path, small, stale, forged, retrusted, termOk, merkleReset, order, blind, carried, unstamped, bounded, blindReset,
+  def.dispose();
+  const disposed = E2.visit === null;
+  return { registered, footprinted, allVerify, path, small, stale, forged, retrusted, termOk, merkleReset, order, blind, carried, unstamped, bounded, blindReset,
     dated, cites, readOnly, noDisk, fewest, sortedOk, loaded, floppyReset, noCapacity, swapCap, mazes, solved, gateShut, capped, exhibits, resetAll,
     classified, dates, held, clear, reachable, posed, settled, steady, disposed };
 };
 // In unitChecks:
 //   const genesisEra2 = await genesisEra2Proof();
-//   record("Genesis Voyage Era 2: the Merkle table lights only the changed path and proves a record in three fingerprints, the blind-stamp desk keeps its order, hides the token and refuses a second spend, the PC is bounded and read-only, the crate sorts in its fewest swaps, every maze is solvable at par, every exhibit has a year label, sources, a panel and a reset, context stays context, the curve stays held, the walkways stay clear and the models stay bounded", Object.values(genesisEra2).every(Boolean), JSON.stringify(genesisEra2));
+//   record("Genesis Voyage Era 2: the Merkle table lights only the changed path and proves a record in three fingerprints, the blind-stamp desk keeps its order, hides the token and refuses a second spend, the PC is bounded and read-only, the crate sorts in its fewest swaps, every maze is solvable at par, it registers through the exhibit kit, every exhibit has a year label, sources, a panel and a reset, context stays context, the curve stays held, the walkways stay clear and the models stay bounded", Object.values(genesisEra2).every(Boolean), JSON.stringify(genesisEra2));
 ```
 
-The proof was mutation-tested: each of these deliberate breaks made it fail (and the name of the failing check is
-given): a parent hashing only its left child (`path`, `allVerify`, …), the signer's log showing the token (`blind`), a
-second spend allowed (`carried`), a "1.44 MB" claim in a panel (`noCapacity`), the swap cap removed (`swapCap`), the
-table moved onto the walkway (`clear`), May reclassified as documented influence (`classified`), a node added to the
-graph per frame (`steady`), a 1993 file on the 1989 disk (`dated`).
+It was mutation-tested: each of these deliberate breaks made it fail (failing check in brackets): a parent hashing only
+its left child (`path`, `allVerify`, …), the signer's log showing the token (`blind`), a second spend allowed
+(`carried`), a "1.44 MB" claim in a panel (`noCapacity`), the swap cap removed (`swapCap`), the table moved onto the
+walkway (`clear`), May reclassified as documented influence (`classified`), a node added to the graph per frame
+(`steady`), a 1993 file on the 1989 disk (`dated`), the kit obstacles not passed (`footprinted`), the maze walls never
+laid (`posed`), a panel title outside the sign alphabet (`exhibits`).
 
 ## What was checked, and the limits
 
-Run on this branch (Node 22.23.4, Linux container):
+Run on this branch after the merge (Node 22.23.4, Linux container):
 
 - `node --check src/js/genesis-era-2.js`: clean.
-- `npm run build`: clean (the module is not in `index.html` yet, so the built page does not include it; the build was
-  also run with the patch applied in the throwaway worktree, clean). The built `oogaboogaland.html` is not committed.
-- `npm run test:unit` (the existing global tier): 350/350 passed. Nothing shared was changed.
-- The Era 2 proof above, standalone against the module: all checks pass.
-- **Browser smoke**, headless Chromium (Playwright, SwiftShader WebGL) on the built page with the patch applied in a
-  throwaway worktree, `?wip=genesis&debug=1`, 1280×800: sailed to Era 2 by its plaque, Space jumped out onto the left
-  bank, walked to each exhibit and Space opened its terminal (all five), ran a scripted command list on each, and the
-  models answered (lit path, blue proof tiles, red root lamp, envelope mark, disk leaving the crate, maze sprites).
-  Screenshots were taken of the hall, the Merkle board, the blind desk, the maze and the era sign. `go("hub")` and
-  `go("genesis")` round trips under `debug=1` raised no leave-contract error and no page error; one lap's poll returned
-  before the scene had finished loading, so one complete round trip is confirmed, not two. The console was clean apart
-  from the page's live feeds (mempool.space, Coinbase and similar), which the container's network blocks.
+- `npm run build`: clean. The built `oogaboogaland.html` is not committed.
+- `npm run test:unit`: **351/351** passed, including the kit's `Genesis Voyage exhibits` check, which builds every era
+  (Era 2 included) with its stand-in kit and checks years, sources, openers and placement.
+- The optional Era 2 proof above: 41/41.
+- **Browser smoke**, headless Chromium (Playwright, SwiftShader WebGL) on this branch's own build, `?wip=genesis&debug=1`,
+  1280×800, with no extra wiring: sailed to Era 2 by its plaque, Space jumped out onto the left bank, walked to each
+  exhibit and Space opened its terminal (all five), ran a scripted command list on each; the models answered (lit path,
+  blue proof tiles, red root lamp, envelope mark, disk leaving the crate). The scene's arrival caption now reads "Jump
+  out (Space) to explore its exhibits". `go("hub")` / `go("genesis")` under `debug=1` raised no leave-contract or page
+  error, and the second entry rebuilt Era 2's five props from fresh state; the first lap's poll returned before the
+  scene had finished loading, so one complete round trip is confirmed, not two. The maze's wall runs were confirmed
+  from the scene state (42 of the 44 pooled runs laid for maze 1); the close-up screenshot was blocked by the Ooga, so
+  they were not confirmed visually on this build. The console was clean apart from the page's live feeds, which the
+  container's network blocks.
 
 Not checked, stated plainly:
 
-- **No real GPU, phone or tablet.** SwiftShader only; frame rate and the perf floor were not measured (`npm run
-  test:perf` was not run). The scene suite (`npm test -- genesis`) was not run on the integrated branch, because the
-  integration patch is the integrator's to apply.
-- **Touch.** The exhibits are terminals, so they inherit the scene's terminal dialog; typing commands on a phone
-  keyboard works in principle but was not tried on a device. The maze is turn-based by typed moves; direct
-  arrow/stick control would be the integrator's choice (`live.maze.move("W")` is the hook).
-- **Screen readers.** Terminal text is plain text in the existing dialog; not tested with assistive tech.
-- **Visual review.** Proportions are judged from five screenshots only; signs were not checked at every camera angle,
-  and the boulders the scene scatters in each cave were not cross-checked against the layout (they are not obstacles).
+- **Frame rate.** SwiftShader cannot judge it: Era 2's cave runs at about 1 fps there **with or without** these
+  exhibits (measured on `aa91542` with Era 2 empty: 1–1.5 fps; this branch: 0.5–1 fps; the harbour 11 fps on both).
+  No real GPU, phone or tablet was tried and `npm run test:perf` was not run.
+- **The scene suite** (`npm test -- genesis`) was not run.
+- **Touch and screen readers.** The exhibits are terminals in the scene's existing dialog; typing on a phone keyboard
+  and assistive tech were not tried. The maze is turn-based by typed moves (`live.maze.move("W")` is the hook if
+  direct control is wanted).
+- **Visual review** is from a handful of screenshots, not every camera angle.
 - The facts are the dossier's. The primary pages could not be opened from this environment, so nothing was
-  re-verified beyond what the dossier records.
+  re-verified beyond what the dossier records (`verified` in SOURCES follows the dossier's reading).
 
 ## Open questions for the integrator
 
-1. **EXHIBIT-CONTRACT.md** was not on the fork. If it exists elsewhere, check `register`'s fields against it.
-2. **Merkle date.** The README's timeline says "14–16 Apr 1980, IEEE S&P conference" and genesis-voyage.js's
-   `merkle1980` label says "April 1980"; the Era 2 dossier says an exact presentation day is not established and uses
-   the year only. These exhibits follow the dossier (1980). One of the two should be reconciled.
-3. **Floppy introduction date and capacity**, **8-bit console** and **modem** specifications remain deferred in the
-   dossier; the crate shows none and the cabinet is labelled as an original made in 2026.
-4. **Elliptic curves**: a primary record for Koblitz's independent work and a verified source for the curve picture's
-   mathematics would lift the hold.
-5. The boat for Era 2 stays the outboard runabout (genesis-world.js), which the dossier supports with a 1958 example.
-
----
-*Prepared with AI assistance (Claude, by Anthropic) for Bitcoin-Bill. Not reviewed or endorsed by the Ooga Booga Land
-maintainers.*
+1. **EXHIBIT-CONTRACT.md** was not on the fork; this follows `genesis-exhibits.js` at `aa91542` as the agreed interface.
+2. **Calm.** The kit's `update` state has no `calm`; Era 2 reads `state.calm === true` if the scene adds it (to still
+   the stamp's 0.7 s press). A kit request, not an edit here.
+3. **Merging static parts.** The stand-in kit's `M` has only `box`, so era files cannot use `M.merge`; Era 2's static
+   parts are separate nodes (under 400 in all). A kit helper for merged static geometry would cut draw calls.
+4. **Merkle date.** The README's timeline says "14–16 Apr 1980" and genesis-voyage.js's `merkle1980` says "April
+   1980"; the dossier uses the year only, and so do these exhibits.
+5. **Deferred gear.** Floppy introduction date and capacity, 8-bit console and modem specifications stay deferred in
+   the dossier; the crate shows none and the cabinet is labelled an original made in 2026.
+6. **Elliptic curves stay on hold** until a primary record for Koblitz's independent work and a verified source for
+   the curve picture's mathematics are in the dossier.
