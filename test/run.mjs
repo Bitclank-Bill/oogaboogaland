@@ -22958,7 +22958,54 @@ const genesisExhibitsProof = async () => {
   const ordered = trail.every((x, i) => x.step === i + 1 && (i === 0 || trail[i - 1].def.year <= x.def.year)) && built.every((x) => !!x.step === !!(x.def.connection && EX.CONNECTIONS[x.def.connection].trail));
   const refuses = !!EX.checkProp(3, { id: "a", connection: "context", ref: "[3]" }) && !!EX.checkProp(3, { id: "b", connection: "citation" }) && !!EX.checkProp(3, { id: "c", connection: "anchor" })
     && !!EX.checkProp(3, { id: "d", connection: "rumour" }) && !EX.checkProp(6, { id: "e", connection: "anchor" }) && !EX.checkProp(3, { id: "f" });
-  return { registered, count, steps: trail.length, ordered, refuses, bad };
+  // Era 0's activities (docs/genesis-voyage/exhibits/era-0.md "Verification"), through their own terminals on a
+  // recording kit: each command's effect on the model's nodes, bad input changing nothing, RESET, and a rebuild
+  // (a fresh visit) sharing no state or nodes with the last.
+  const era0 = () => {
+    const nodes = [], props = {};
+    const kit0 = { era: W.ERAS[0], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: () => ({ position: { x: 0, y: 0, z: 0 }, children: [] }), addChild: () => {},
+      place: (x) => x, label: () => ({ face: {}, back: {}, width: 1, height: 1 }), sign: () => ({}), obstacle: () => {},
+      solid: (w, h, d, color, x, y, z) => { const node = { position: { x, y, z }, visible: true, color }; nodes.push(node); return node; },
+      prop: (d) => { props[d.id] = d; return d; } };
+    EX.eras[0].build(kit0);
+    const term = (id) => { const t = props[id].onUse({}).terminal; return (line) => t.run(line).lines.join(" | "); };
+    const last = (color) => nodes.filter((n) => n.color === color).at(-1);
+    return { nodes, props, term, last, holes: () => nodes.filter((n) => n.color === "#20292c").map((n) => n.visible).join("") };
+  };
+  const A = era0(), top = W.BANK_TOP, arm = A.last("#ffd276"), seek = A.term("e0-disk-seek");
+  seek("SEEK 49"); const y49 = arm.position.y; seek("SEEK 0"); const y0 = arm.position.y; seek("SEEK 7"); const y7 = arm.position.y;
+  const seekBad = ["SEEK 50", "SEEK 1.5", "SEEK -1", "SEEK", "SEEK 3 4", "SEEK x", "SEEK 1e1"].every((c) => /^Use SEEK/.test(seek(c)) && arm.position.y === y7);
+  const seekOk = Math.abs(y49 - (top + 0.45 + 49 * 0.05)) < 1e-9 && Math.abs(y0 - (top + 0.45)) < 1e-9 && seekBad && (seek("RESET"), Math.abs(arm.position.y - y0) < 1e-9);
+  const punch = A.term("e0-punch");
+  punch("PUNCH A"); const flipped = /^Read: @/.test(punch("FLIP 1 7"));
+  const eight = /^Read: ABCDEFGH/.test(punch("PUNCH ABCDEFGH")), card = A.holes();
+  const nine = /^Use PUNCH/.test(punch("PUNCH ABCDEFGHI")) && A.holes() === card && /^Read: ABCDEFGH/.test(punch("READ"));
+  const flipBad = ["FLIP 9 1", "FLIP 1 8", "FLIP 0 1", "FLIP 1", "FLIP a b"].every((c) => /^Punch a message first/.test(punch(c)) && A.holes() === card);
+  const cleared = /^Card cleared/.test(punch("RESET")) && !A.holes().includes("true") && /^Read: \(empty\)/.test(punch("READ"));
+  const punchOk = flipped && eight && nine && flipBad && cleared;
+  const race = A.term("e0-race"), goldNode = A.last("#f2c14e");
+  race("ODDS 100"); race("STEP 64"); const allGold = /gold 64, blue 0; 64\/64/.test(race("STATUS")) && /gold 64, blue 0; 64\/64/.test(race("STEP 5"));
+  const goldAtEnd = Math.abs(goldNode.position.x - (A.last("#68c6ed").position.x + 6.6)) < 1e-9;
+  race("ODDS 0"); race("STEP 64"); const allBlue = /gold 0, blue 64; 64\/64/.test(race("STATUS"));
+  const raceBad = ["ODDS 101", "ODDS -1", "ODDS 5.5", "STEP 0", "STEP 65", "STEP"].every((c) => /needs one whole/.test(race(c))) && /gold 0, blue 64/.test(race("STATUS"));
+  race("RESET"); const r1 = race("STEP 10"); race("RESET"); const r2 = race("STEP 10");
+  const raceOk = allGold && goldAtEnd && allBlue && raceBad && r1 === r2 && /Gold chance 50%/.test(r1) && /10\/64/.test(r1);
+  const login = A.term("e0-login"), lamp = A.last("#8effab");
+  const noSkip = /Start with LOGIN/.test(login("RETRY")) && lamp.visible && /Ready for LOGIN/.test(login("STATUS"));
+  const lo = /Toy received: LO\. /.test(login("LOGIN")) && !lamp.visible && !/Toy received/.test(login("LOGIN")) && /Interrupted after LO/.test(login("STATUS"));
+  const full = /Toy received: LOGIN\. Link restored/.test(login("RETRY")) && lamp.visible && /Full LOGIN delivered/.test(login("STATUS"));
+  const loginReset = (login("LOGIN"), login("RESET"), lamp.visible && /Ready for LOGIN/.test(login("STATUS")));
+  const loginOk = noSkip && lo && full && loginReset;
+  // A long or empty line answers without throwing.
+  const robust = [seek, punch, race, login].every((t) => typeof t("X".repeat(300)) === "string" && typeof t("") === "string");
+  // A second visit: fresh state and fresh nodes, and its commands never touch the first visit's.
+  seek("SEEK 49"); const firstArm = arm.position.y;
+  const B = era0(), seekB = B.term("e0-disk-seek");
+  const fresh = Math.abs(B.last("#ffd276").position.y - (top + 0.45)) < 1e-9 && /0\/64/.test(B.term("e0-race")("STATUS")) && /^Read: \(empty\)/.test(B.term("e0-punch")("READ"))
+    && /Ready for LOGIN/.test(B.term("e0-login")("STATUS")) && B.nodes.every((n) => !A.nodes.includes(n));
+  seekB("SEEK 3"); const isolated = fresh && arm.position.y === firstArm;
+  const era0Commands = { seekOk, punchOk, raceOk, loginOk, robust, isolated };
+  return { registered, count, steps: trail.length, ordered, refuses, era0Commands, bad };
 };
 // Rule: the Genesis Voyage's stream and driven boat, through genesis-world.js and genesis-boat.js themselves: caves in
 // date order, eraAt matches them, the boat leaves the harbour only by its mouth, boost raises the top speed, a bank
@@ -23079,7 +23126,7 @@ const unitChecks = async () => {
   const genesis = await genesisVoyageProof();
   record("Genesis Voyage: the boat boards, stops at the stamp desk and docks, pause holds it, a plaque jump lands on its stop, a changed page breaks only the links after it, and every exhibit source is a link", Object.values(genesis).every(Boolean), JSON.stringify(genesis));
   const genesisExhibits = await genesisExhibitsProof();
-  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid and the Steps toward Bitcoin run in date order", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
+  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();
   record("Genesis Voyage stream: eight caves in date order with eraAt matching, era boats from the dossiers, the boat leaves the harbour by its mouth and walls hold, boost raises the top speed, the banks keep the boat in the stream, a dock reports, and the Tour stops at every dock", Object.values(genesisWater).every(Boolean), JSON.stringify(genesisWater));
   const genesisProps = await genesisPropsProof();
