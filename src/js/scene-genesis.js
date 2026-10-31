@@ -397,6 +397,49 @@
       place(createNode({ geometry: M.box({ w: Math.hypot(len, drop), h: 0.06, d: a.z1 - a.z0, color: "#8a6440" }), position: { x: cx, y: (a.ramp.from + a.ramp.to) / 2 - 0.03, z: cz }, rotation: { x: 0, y: 0, z: -Math.atan2(drop, len) } }));
     }
   };
+  // --- Era exhibits (genesis-exhibits.js, one genesis-era-<n>.js per cave) ---------------------------------------------
+  // Each era's file builds its cave's exhibits through a kit; usable ones become props like the room's, with a pick box
+  // that taps select. Built once a visit, before the footing, so their obstacles count.
+  const buildExhibits = () => {
+    const EX = BL.genesisExhibits, label = BL.factoryModels.label;
+    built.propNodes = {}; built.obstacles = [];
+    if (!EX) return;
+    for (let n = 0; n < GW.ERAS.length; n++) {
+      const def = EX.eras[n];
+      if (!def) continue;
+      const era = GW.ERAS[n];
+      const kit = {
+        era, top: ISLAND_TOP, channel: CHANNEL, M, createNode, addChild, place, solid, label,
+        sign: (title, sub, x, y, z, yaw = 0, height = 0.6) => {
+          const l = label(title, sub, { height, style: "plain" }), node = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } }));
+          addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
+          return node;
+        },
+        obstacle: (x0, x1, z0, z1) => { built.obstacles.push({ x0, x1, z0, z1 }); },
+        prop: (d) => {
+          const prop = props.register({ ...d, era: n });
+          const pick = d.pick || { w: 1, h: 1.4, d: 1 };
+          built.propNodes[prop.id] = place(createNode({ geometry: M.box({ w: pick.w, h: pick.h, d: pick.d, color: "#000000" }), position: { x: prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: prop.at.z }, visible: false }));
+          return prop;
+        }
+      };
+      def.build(kit);
+    }
+  };
+  // Each frame, the exhibits of the cave the visitor is in (aboard or ashore) may move; nothing else runs.
+  const exhibitState = { era: -1, walking: false, x: 0, z: 0 };
+  const updateExhibits = (dt, elapsed) => {
+    const EX = BL.genesisExhibits;
+    if (!EX) return;
+    const p = walk.on && avatar ? avatar.root.position : boat, era = GW.eraAt(p.x, p.z), def = era >= 0 ? EX.eras[era] : null;
+    if (!def || !def.update) return;
+    exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.x = p.x; exhibitState.z = p.z;
+    def.update(dt, elapsed, exhibitState);
+  };
+  const disposeExhibits = () => {
+    const EX = BL.genesisExhibits;
+    if (EX) for (const def of EX.eras) if (def && def.dispose) def.dispose();
+  };
   const registerProps = () => {
     props = GP.createRegistry();
     const dos = GP.createDos({ year: 1993, files: GP.PC_FILES });
@@ -445,6 +488,7 @@
     const r = props.use(prop, propState);
     if (r.terminal) openTerminal(prop.title, r.terminal);
     else if (r.board) openPanel(makeBoard(r.board));
+    else if (r.caption) { captionKey = ""; setCaption(`prop-${prop.id}`, r.caption); }
   };
 
   // Jump out: the boat stays where it is and the Ooga lands on the nearest ledge, facing inland.
@@ -566,7 +610,9 @@
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
     const b = {
-      title: ex.room, help: "Arrows page · Escape closes and the ride carries on", canvas, count: ex.pages.length, index: 0,
+      // The title is lettered from the sign alphabet (letters, digits, space and / : ! ? + - .); anything else is
+      // turned into a dash or dropped.
+      title: ex.room.replace(/[·–—]/g, "-").replace(/[^A-Za-z0-9 /:!?+\-.]/g, ""), help: "Arrows page · Escape closes and the ride carries on", canvas, count: ex.pages.length, index: 0,
       caption: ex.pages[0].caption, note: ex.pages[0].text.join(" "), version: 0, wide: true,
       links: ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} ↗` })),
       go(i) {
@@ -835,7 +881,7 @@
     if (era !== lastEra) {
       if (era >= 0 && !walk.on) {
         const e = GW.ERAS[era], boatName = GW.BOATS[e.boat].name;
-        setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}). Your boat is now a ${boatName}.${e.room ? " Dock at the ramp to see Fingerprints and Time." : " Its exhibits are still being built; jump out (Space) to walk the cave."}`);
+        setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}). Your boat is now a ${boatName}.${e.room ? " Dock at the ramp to see Fingerprints and Time." : props.byEra(era).length ? " Jump out (Space) to explore its exhibits." : " Its exhibits are still being built; jump out (Space) to walk the cave."}`);
       }
       lastEra = era;
     }
@@ -891,6 +937,7 @@
     updateEra(dt);
     renderOpts.shadowCenter.x = boat.x; renderOpts.shadowCenter.z = boat.z;
     stepDemo(dt);
+    updateExhibits(dt, sceneTime);
     built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
     built.pcScreen.glow = 1 + (Math.floor(sceneTime * 2) & 1) * 0.2;
     // The boat's camera rides along; ashore the pilot frames the Ooga and the boat sits still on the water.
@@ -915,7 +962,9 @@
     course = G.createCourse(TOUR.points);
     buildCavern(); buildStream(); buildCaves(); buildTimeline(); buildDesk(); buildBoat();
     registerProps();
-    footing = GP.createFooting(FOOTING);
+    buildExhibits();
+    // The visit's footing: the fixed ledges and banks, plus whatever this visit's exhibits put in the way.
+    footing = GP.createFooting({ areas: FOOTING.areas, obstacles: FOOTING.obstacles.concat(built.obstacles) });
     buildProps();
     ride = G.createRide({ course, stations: STATIONS, speed: 4 });
     driver = GB.create(GW, GW.HARBOUR.start);
@@ -938,6 +987,7 @@
     target(built.guide.parts.head, { kind: "guide" });
     for (const plaque of built.plaques) target(plaque.face, { kind: "plaque", plaque });
     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
+    for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
     // Hop off and walk: the pilot and crew for the visitor's Ooga, idle until Jump out (as the arcade's are).
     const boatFov = camera.fov;
     const clampTarget = (p) => { p.x = clamp(p.x, GW.SEA.x0, GW.SEA.x1); p.y = clamp(p.y, 0.3, GW.CAVE.height - 1); p.z = clamp(p.z, GW.SEA.z0, 8.5); };
@@ -1048,6 +1098,7 @@
     stopVoice();
     if (view.reading) hud.closeBoard();
     if (el.term.open) el.term.close();
+    disposeExhibits();
     terminal = null;
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.
     world.pilot = arrivedPilot || (walk.jumps && playerName) || null;

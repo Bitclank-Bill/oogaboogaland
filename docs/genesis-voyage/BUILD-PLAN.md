@@ -295,3 +295,90 @@ reviewed emulation page) with URL · or an original mini-game idea in that style
 ---
 *Prepared with AI assistance (Claude, by Anthropic) at Billy's request. Not reviewed or endorsed by the Ooga Booga
 Land maintainers.*
+
+## Phase 2: filling the caves (from 31 Oct 2026)
+
+The stream and the eight caves are built on `gv/water-boat`: a stream through one 76 × 72 m, 24 m high cave per era,
+walkable banks, the visitor's Ooga in the boat, Space to jump out and back in, and a jetpack ashore. Each cave is now
+filled from its own file, so several builders can work at once:
+
+- `src/js/genesis-exhibits.js` holds the registry and documents **the kit** each era file builds with: `solid`, `sign`,
+  `obstacle`, `prop` (a usable exhibit with a panel, a terminal or a caption), the era's cave and banks.
+- `src/js/genesis-era-0.js` … `genesis-era-7.js` are one file per cave, already loaded by the page. **Era 0 is the worked
+  example**: Feller's probability shelf and ARPANET's two terminals, each with a panel and sources.
+- A unit check (`Genesis Voyage exhibits`) builds every era with a stand-in kit and fails on: a label without its year,
+  a source that does not resolve to an https link, an exhibit that opens nothing, or anything outside its cave, off
+  the banks or within 1.5 m of the stream. Builders need not edit `test/run.mjs` or `scene-genesis.js`.
+
+| Era file | Cave | Builder | Branch (from `gv/water-boat`) |
+|---|---|---|---|
+| `genesis-era-1.js` | Networks and Keys, 1970–1979 | Claude Code | `gv/era-1` |
+| `genesis-era-2.js` | Trees and Blind Money, 1980–1989 | Claude Code | `gv/era-2` |
+| `genesis-era-3.js` | Cypherpunks and Timestamps, 1990–1995 (around the existing room) | Claude Code | `gv/era-3` |
+| `genesis-era-4.js` | Work and Scarcity, 1996–1999 | Astra Codex | `gv/era-4` |
+| `genesis-era-5.js` | Peers and Reusable Work, 2000–2007 | Astra Codex | `gv/era-5` |
+| `genesis-era-6.js` | The Whitepaper, 31 October 2008 | Astra Codex | `gv/era-6` |
+| `genesis-era-7.js` | Genesis, 3–12 January 2009 | Astra Codex | `gv/era-7` |
+| `genesis-era-0.js` | Machines That Count, 1956–1969 (finish: the IBM 350 moves here, the probability race) | Claude Code (integrator) | `gv/water-boat` |
+
+**Each builder owns only its era file.** Changes needed elsewhere (a new kit feature, a shared model) go to the
+integrator as a request, not an edit.
+
+### Prompt: an era builder (Claude Code or Astra Codex)
+
+> Repo: https://github.com/Bitcoin-Bill/oogaboogaland. Create branch `gv/era-<n>` from `gv/water-boat` and build
+> **only** `src/js/genesis-era-<n>.js`: the exhibits for the Genesis Voyage's Era `<n>` cave.
+>
+> **Read first:**
+> - `AGENTS.md`.
+> - `docs/genesis-voyage/BUILD-PLAN.md`, especially "Phase 2".
+> - `src/js/genesis-exhibits.js`, which documents the kit and the rules.
+> - `src/js/genesis-era-0.js`, the worked example.
+> - The era's dossier on branch `gv/research`: `docs/genesis-voyage/eras/era-<n>-*.md`.
+>
+> **Build:** fill the cave with fun, explorable technology from its years.
+> - The Bitcoin-line exhibits from the dossier, each with a panel: in short, the deeper story, what was still
+>   unsolved, with sources.
+> - The period gear to play with, from the dossier's table, each with a mechanic the visitor can try: a terminal, a
+>   caption sequence, or a panel. Use `update(dt, elapsed, state)` for animation, with no per-frame allocation.
+> - The era's easter-egg mini-game ideas, as original toys, where they fit.
+> - The caves are 76 m wide and 24 m high, and the Ooga has a jetpack, so use height (galleries, hanging displays).
+>   Keep the stream and 1.5 m beside it clear.
+>
+> **Rules:**
+> - Words come only from the dossier's entries that are ready. Anything marked HOLD, deferred or unverified stays
+>   out, or is labelled as such.
+> - Every label shows its year. Dates say what they mark. Context is labelled context.
+> - Original, unbranded models only: no logos, no copied product designs, no ROMs or copied music.
+> - No speculation about Satoshi Nakamoto's identity, and no invented quotes.
+> - Panel titles use only letters, digits, space and / : ! ? + - .
+> - Vanilla JS and strict CSP; build only through the kit.
+>
+> **Checks:**
+> - `node test/run.mjs unit`; the "Genesis Voyage exhibits" check must pass.
+> - `npm run build` and `node --check src/js/genesis-era-<n>.js`. Don't commit `oogaboogaland.html`.
+> - Try it: `npm run serve`, then open `/src/?wip=genesis`, click your era's plaque, press Space to jump out and walk
+>   it.
+>
+> **Deliver:**
+> - Commit as Bitcoin-Bill (`185141343+Bitcoin-Bill@users.noreply.github.com`) with an honest AI-assistance note and
+>   no session links.
+> - Push `gv/era-<n>` to the fork. No force-push; never touch OogaBoogaX.
+> - Report: the exhibits built, each with its dossier entry, checks run, and open questions.
+
+### Prompt: Astra (browser), research and review
+
+> For each era `<n>` in BUILD-PLAN.md "Phase 2": when `gv/era-<n>` is pushed, review `src/js/genesis-era-<n>.js`
+> against `docs/genesis-voyage/eras/era-<n>-*.md` on `gv/research`. Check that:
+> - every caption, label and panel sentence traces to a ready entry;
+> - dates say what they mark, and context is labelled;
+> - sources resolve;
+> - nothing is branded or copied;
+> - there's no identity speculation;
+> - the file touches nothing outside its era.
+>
+> Report findings by severity with line numbers.
+>
+> In parallel, keep resolving the dossiers' open questions and HOLD items (the chart's unverified entries: PGP 1991,
+> CyberCash 1994, the Crypto Anarchist Manifesto 1988, ECC 1985, the Cyphernomicon 1994, Szabo's 1997–98 essays,
+> BitTorrent and DHTs 2001), so builders can move them to ready.
