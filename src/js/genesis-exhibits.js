@@ -28,7 +28,10 @@
 //                  whitepaper itself, Era 6 only) or "context"; the first three put the exhibit on the Steps toward
 //                  Bitcoin trail, numbered in date order across all eras. A board's last page then says how it connects.
 //
-// `register`'s def may also carry `overview: { summary }` (at most 280 characters), shown on the era's overview board.
+// `register`'s def may also carry `overview: { summary, pages, sourceKeys }`: `summary` (at most 280 characters) is shown on the
+// era's overview board and panel; `pages` (optional, at most 3, as a board's pages) follow it in that panel, for an
+// era's own guide (what to try, how to read the cave). A prop's `pick` may name its centre (`x`, `z`) so a tap can
+// land on the model itself; without them it stands on the prop's `at`.
 //
 // Plots (checked by the unit tier with genesis-world.js `reservedZones`): nothing in a cave's gateway (its first
 // 10 m, the pylons and overview board), the dock and its boarding ramps by the middle of the cave, the lamp posts or,
@@ -70,6 +73,9 @@
     if (eras[n]) throw new Error(`genesis exhibits: era ${n} registered twice`);
     if (!def || typeof def.build !== "function") throw new Error(`genesis exhibits: era ${n} needs build(kit)`);
     if (def.overview !== undefined && (typeof def.overview.summary !== "string" || !def.overview.summary || def.overview.summary.length > 280)) throw new Error(`genesis exhibits: era ${n} overview.summary must be 1 to 280 characters`);
+    for (const k of (def.overview && def.overview.sourceKeys) || []) if (typeof k !== "string") throw new Error(`genesis exhibits: era ${n} overview.sourceKeys must be source keys`);
+    const pages = def.overview && def.overview.pages;
+    if (pages !== undefined && (!Array.isArray(pages) || pages.length > 3 || pages.some((p) => !p || typeof p.caption !== "string" || typeof p.title !== "string" || !Array.isArray(p.text) || !p.text.length))) throw new Error(`genesis exhibits: era ${n} overview.pages must be at most 3 pages, each with a caption, a title and text`);
     for (const key of Object.keys(def.sources || {})) {
       const s = def.sources[key];
       if (sources[key]) throw new Error(`genesis exhibits: source ${key} defined twice`);
