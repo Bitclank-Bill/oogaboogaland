@@ -150,6 +150,7 @@
   };
   window.BL.genesisExhibits.register(0, {
     sources,
+    overview: { summary: "Storing information once filled cabinets bigger than you. People learned to keep records on spinning disks, connect distant computers and reason about uncertain races with probability. Background, not Bitcoin prototypes." },
     build(kit) {
       const { era, top, solid, sign, obstacle, prop } = kit;
       // Feller's shelf on the left bank: a tall bookcase of probability, the cited volume lit.
@@ -162,7 +163,7 @@
       }
       obstacle(fx - 1.7, fx + 1.7, fz - 0.5, fz + 0.5);
       sign("FELLER'S PROBABILITY · 1957", "the edition Bitcoin's paper cites [8]", fx, top + 3.3, fz + 0.4, 0, 0.5);
-      prop({ id: "e0-feller", year: 1957, title: "Feller's probability shelf", label: "FELLER · 1957", sourceKeys: ["e0Feller", "whitepaper"],
+      prop({ id: "e0-feller", year: 1957, connection: "citation", ref: "[8]", date: "1957 is the edition year Bitcoin's bibliography gives", title: "Feller's probability shelf", label: "FELLER · 1957", sourceKeys: ["e0Feller", "whitepaper"],
         at: { x: fx, y: top, z: fz + 1.2 }, reach: 1.8, pick: { w: 3.2, h: 2.6, d: 1 },
         onUse: () => ({ board: { room: "Feller probability shelf - 1957", sources: ["e0Feller", "whitepaper"], pages: [
           { caption: "In short", title: "Odds you can reason about", text: [
@@ -183,7 +184,7 @@
       }
       solid(7, 0.08, 0.08, "#2a2a2a", ax + 4, top + 0.05, az - 0.2);
       sign("ARPANET · 29 OCTOBER 1969", "the first host-to-host message, UCLA to SRI", ax + 4, top + 3.2, az + 0.4, 0, 0.5);
-      prop({ id: "e0-arpanet", year: 1969, title: "ARPANET's interrupted login", label: "ARPANET · 1969", sourceKeys: ["e0Arpanet"],
+      prop({ id: "e0-arpanet", year: 1969, connection: "context", date: "29 October 1969: the first recorded host-to-host message", title: "ARPANET's interrupted login", label: "ARPANET · 1969", sourceKeys: ["e0Arpanet"],
         at: { x: ax + 4, y: top, z: az + 1.3 }, reach: 2.2, pick: { w: 9, h: 2, d: 1 },
         onUse: () => ({ board: { room: "ARPANET - 29 October 1969", sources: ["e0Arpanet"], pages: [
           { caption: "In short", title: "Two letters arrive", text: [

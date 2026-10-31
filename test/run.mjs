@@ -22910,26 +22910,38 @@ const artifactUnitProof = () => {
 };
 // Rule: every era's exhibits, through genesis-exhibits.js and genesis-era-<n>.js themselves, built with a stand-in
 // kit: each era registers once; every usable exhibit shows its year, has a title, sources that resolve to https links
-// and something to open; everything stands inside its own era's cave, on a bank and clear of the stream.
+// and something to open; everything stands inside its own era's cave, on a bank and clear of the stream, out of the
+// reserved plots (gateway, dock and ramps, lamps, Fingerprints and Time) and no taller than the bank's limit; connection
+// fields are valid, the Steps toward Bitcoin trail runs in date order, and the kit refuses bad connections.
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
   for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
-  const BLc = context.window.BL, W = BLc.genesisWorld, P = BLc.genesisProps, EX = BLc.genesisExhibits, bad = [];
+  const BLc = context.window.BL, W = BLc.genesisWorld, P = BLc.genesisProps, EX = BLc.genesisExhibits, bad = [], built = [];
   const registered = W.ERAS.every((e, n) => !!EX.eras[n]);
   let count = 0;
   W.ERAS.forEach((e, n) => {
     const def = EX.eras[n]; if (!def) return;
     const inCave = (x, z, pad = 0) => z <= e.z1 - pad && z >= e.z0 + pad && x >= e.cave.x0 + pad && x <= e.cave.x1 - pad;
+    const reserved = W.reservedZones(n), clash = (x0, x1, z0, z1, what) => { for (const r of reserved) if (x0 < r.x1 && x1 > r.x0 && z0 < r.z1 && z1 > r.z0) bad.push(`era ${n}: ${what} is in the ${r.why} plot`); };
     const clearOfStream = (x0, x1) => x1 <= W.CHANNEL.x0 - 1.5 || x0 >= W.CHANNEL.x1 + 1.5;
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
     const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {},
       place: (n2) => n2, label: () => ({ face: {}, back: {}, width: 1, height: 1 }),
-      solid: (w, h, d, c, x, y, z) => { if (!inCave(x, z) || !clearOfStream(x - w / 2, x + w / 2)) bad.push(`era ${n}: a solid at ${x},${z} is outside its cave or in the stream`); return node(); },
+      solid: (w, h, d, c, x, y, z) => {
+        if (!inCave(x, z) || !clearOfStream(x - w / 2, x + w / 2)) bad.push(`era ${n}: a solid at ${x},${z} is outside its cave or in the stream`);
+        if (y + h / 2 > W.BANK_TOP + W.BANK.MAX_H) bad.push(`era ${n}: a solid at ${x},${z} is taller than the bank's limit`);
+        clash(x - w / 2, x + w / 2, z - d / 2, z + d / 2, `a solid at ${x},${z}`);
+        return node();
+      },
       sign: (t, sub, x, y, z) => { if (!inCave(x, z)) bad.push(`era ${n}: sign "${t}" outside its cave`); return node(); },
-      obstacle: (x0, x1, z0, z1) => { if (!inCave(x0, z0) || !inCave(x1, z1)) bad.push(`era ${n}: an obstacle outside its cave`); },
+      obstacle: (x0, x1, z0, z1) => { if (!inCave(x0, z0) || !inCave(x1, z1) || !clearOfStream(x0, x1)) bad.push(`era ${n}: an obstacle outside its cave or in the stream`); clash(x0, x1, z0, z1, "an obstacle"); },
       prop: (d) => {
         count++;
+        const problem = EX.checkProp(n, d);
+        if (problem) bad.push(problem);
+        if (d.at) clash(d.at.x - 0.3, d.at.x + 0.3, d.at.z - 0.3, d.at.z + 0.3, `${d.id}'s use point`);
+        built.push({ era: n, def: d, order: built.length, step: 0 });
         if (!String(d.label || "").includes(String(d.year))) bad.push(`${d.id}: label without its year`);
         if (!d.title || !d.at || typeof d.onUse !== "function") bad.push(`${d.id}: missing title, place or onUse`);
         for (const k of d.sourceKeys || []) { const src = P.sourceOf(k); if (!src || !/^https:\/\//.test(src.href)) bad.push(`${d.id}: source ${k} does not resolve`); }
@@ -22942,7 +22954,11 @@ const genesisExhibitsProof = async () => {
       } };
     def.build(kit);
   });
-  return { registered, count, bad };
+  const trail = EX.trailOf(built);
+  const ordered = trail.every((x, i) => x.step === i + 1 && (i === 0 || trail[i - 1].def.year <= x.def.year)) && built.every((x) => !!x.step === !!(x.def.connection && EX.CONNECTIONS[x.def.connection].trail));
+  const refuses = !!EX.checkProp(3, { id: "a", connection: "context", ref: "[3]" }) && !!EX.checkProp(3, { id: "b", connection: "citation" }) && !!EX.checkProp(3, { id: "c", connection: "anchor" })
+    && !!EX.checkProp(3, { id: "d", connection: "rumour" }) && !EX.checkProp(6, { id: "e", connection: "anchor" }) && !EX.checkProp(3, { id: "f" });
+  return { registered, count, steps: trail.length, ordered, refuses, bad };
 };
 // Rule: the Genesis Voyage's stream and driven boat, through genesis-world.js and genesis-boat.js themselves: caves in
 // date order, eraAt matches them, the boat leaves the harbour only by its mouth, boost raises the top speed, a bank
@@ -23063,7 +23079,7 @@ const unitChecks = async () => {
   const genesis = await genesisVoyageProof();
   record("Genesis Voyage: the boat boards, stops at the stamp desk and docks, pause holds it, a plaque jump lands on its stop, a changed page breaks only the links after it, and every exhibit source is a link", Object.values(genesis).every(Boolean), JSON.stringify(genesis));
   const genesisExhibits = await genesisExhibitsProof();
-  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream", genesisExhibits.registered && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
+  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid and the Steps toward Bitcoin run in date order", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();
   record("Genesis Voyage stream: eight caves in date order with eraAt matching, era boats from the dossiers, the boat leaves the harbour by its mouth and walls hold, boost raises the top speed, the banks keep the boat in the stream, a dock reports, and the Tour stops at every dock", Object.values(genesisWater).every(Boolean), JSON.stringify(genesisWater));
   const genesisProps = await genesisPropsProof();
