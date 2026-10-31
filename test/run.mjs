@@ -22941,7 +22941,9 @@ const genesisPropsProof = async () => {
   const water = footing.walkable(-2.1, 0, -1.9, 0) && footing.fallen(P.WATER) && !footing.fallen(0.35);
   const blocked = !footing.walkable(-9.5, -25, -9.8, -25) && footing.walkable(-9.8, -25, -9.5, -25);
   const docks = footing.dockOf(footing.areaAt(-9, -22)).z === -25 && footing.dockOf(null).x === -4;
-  const ramp = footing.onBoardingRamp(-1.5, 2.5, 0.3) && !footing.onBoardingRamp(-4, 0, 0.35);
+  const rampArea = footing.boardingRampAt(-1.5, 2.5, 0.3);
+  const ramp = footing.onBoardingRamp(-1.5, 2.5, 0.3) && !footing.onBoardingRamp(-4, 0, 0.35) && !!rampArea && footing.boardingRampAt(-4, 0, 0.35) === null
+    && footing.rampReaches(rampArea, 0, 2.5, 3) && !footing.rampReaches(rampArea, 0, -20, 3);
   const dos = P.createDos({ year: 1993, files: P.PC_FILES }), dir = dos.run("dir").lines.join("\n");
   const listed = /STAMPS/.test(dir) && /MERKLE/.test(dir) && !/B-MONEY/.test(dir) && dos.disk.every(f => f.year <= 1993) && P.PC_FILES.some(f => f.year > 1993);
   const typed = dos.run("TYPE stamps.txt"), sourced = typed.file && typed.file.year === 1991 && typed.lines.some(l => /^Source: Haber and Stornetta/.test(l));

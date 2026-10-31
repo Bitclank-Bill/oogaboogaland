@@ -219,7 +219,7 @@
   // The pilot and crew are made once per visit; while the visitor rides they are inactive and the Ooga is hidden.
   // Jump out stops the boat (the ride simply does not advance; no pause, no prompt) and hands the camera and keys to
   // the pilot; boarding hands them back to the boat's camera.
-  const walk = { on: false, area: null, prop: null, nearBoat: false, falls: 0, boards: 0, jumps: 0, saved: { fov: 0, near: 0 } };
+  const walk = { on: false, area: null, prop: null, rampHint: null, nearBoat: false, falls: 0, boards: 0, jumps: 0, saved: { fov: 0, near: 0 } };
   const landing = { area: null, distance: 0, x: 0, y: 0, z: 0 };
   const walkPose = { position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0.2, dist: 4.5 };
   let pilot = null, people = null, avatar = null, fx = null, footsteps = null, remotes = null, footing = null, props = null;
@@ -257,13 +257,13 @@
     built.pc = place(createNode({ geometry: M.box({ w: 1.2, h: 1.4, d: 1.3, color: "#000000" }), position: { x: pc.x, y: pc.y + 0.7, z: pc.z }, visible: false }));
     sign(props.get("pc"), "DIR · TYPE · HASH", 1.75);
     solid(1, 0.5, 1, "#5a524a", dr.x, dr.y + 0.25, dr.z);
-    // The 1956 cabinet at a tenth of its size, its stack of disks in a window, and the card at true size beside it.
+    // A schematic of the 1956 cabinet (not to scale), its stack of disks in a window, and the card beside it.
     solid(0.6, 0.5, 0.18, "#8d939a", dr.x - 0.1, dr.y + 0.75, dr.z - 0.2);
     for (let i = 0; i < 6; i++) solid(0.04, 0.012, 0.14, "#c9ced4", dr.x + 0.0, dr.y + 0.62 + i * 0.04, dr.z - 0.2);
     solid(0.011, 0.001, 0.015, "#202020", dr.x + 0.25, dr.y + 0.501, dr.z + 0.3);
     solid(0.12, 0.01, 0.12, "#ffd25f", dr.x + 0.25, dr.y + 0.5, dr.z + 0.3, 0.6);
     built.drives = place(createNode({ geometry: M.box({ w: 1.1, h: 1.1, d: 1.1, color: "#000000" }), position: { x: dr.x, y: dr.y + 0.55, z: dr.z }, visible: false }));
-    sign(props.get("drives"), "10× smaller model · card true size", 1.55);
+    sign(props.get("drives"), "schematic, not to scale", 1.55);
     solid(0.5, 0.95, 0.5, "#7a5534", bk.x, bk.y + 0.47, bk.z);
     solid(0.42, 0.04, 0.56, "#f5f0e2", bk.x, bk.y + 0.97, bk.z);
     solid(0.02, 0.05, 0.02, "#2a2a2a", bk.x + 0.1, bk.y + 1.0, bk.z + 0.15);
@@ -387,7 +387,11 @@
     const p = driven.root.position, feet = p.y - driven.baseY;
     const here = footing.areaAt(p.x, p.z, feet);
     if (here && !here.ramp) walk.area = here;
-    if (footing.onBoardingRamp(p.x, p.z, feet)) { reboard(); return; }
+    // A ramp boards only where the boat lies at its foot; elsewhere it is just a ramp.
+    const ramp = footing.boardingRampAt(p.x, p.z, feet);
+    if (ramp && footing.rampReaches(ramp, boat.x, boat.z, BOARD_REACH)) { reboard(); return; }
+    if (ramp && walk.rampHint !== ramp) { walk.rampHint = ramp; hud.hint("The boat isn't at this ramp. Walk to it and press J.", 2500); }
+    else if (!ramp) walk.rampHint = null;
     if (footing.fallen(feet)) {
       const dock = footing.dockOf(walk.area);
       walk.falls++;

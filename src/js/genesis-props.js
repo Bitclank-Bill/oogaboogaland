@@ -74,10 +74,22 @@
       const a = areaAt(x, z, feet);
       return !!a && !!a.boards;
     };
+    // The boarding ramp under (x, z), or null.
+    const boardingRampAt = (x, z, feet) => {
+      const a = areaAt(x, z, feet);
+      return a && a.boards ? a : null;
+    };
+    // Whether the boat at (bx, bz) lies within `reach` of a ramp's low end, the only place it can be boarded from.
+    const rampReaches = (ramp, bx, bz, reach) => {
+      const low = ramp.ramp.to <= ramp.ramp.from;
+      const fx = ramp.ramp.axis === "x" ? (low ? ramp.x1 : ramp.x0) : (ramp.x0 + ramp.x1) / 2;
+      const fz = ramp.ramp.axis === "z" ? (low ? ramp.z1 : ramp.z0) : (ramp.z0 + ramp.z1) / 2;
+      return Math.hypot(bx - fx, bz - fz) < reach;
+    };
     // Below this the Ooga is in the water and goes back to its ledge's dock.
     const fallen = (feet) => feet < water + 0.5;
     const dockOf = (area) => (area && area.dock) || areas.find((a) => a.dock).dock;
-    return { areas, obstacles, water, areaAt, supportAt, walkable, nearestLedge, onBoardingRamp, fallen, dockOf };
+    return { areas, obstacles, water, areaAt, supportAt, walkable, nearestLedge, onBoardingRamp, boardingRampAt, rampReaches, fallen, dockOf };
   };
 
   // --- Registry -----------------------------------------------------------------------------------------------------
@@ -153,7 +165,7 @@
       }
       if (cmd === "HASH") {
         if (!arg) return { lines: ["Required parameter missing"] };
-        return { lines: [`${fingerprint(arg)}  "${arg}"`, "(a toy fingerprint, FNV-1a; real systems use SHA-256)"], hash: fingerprint(arg) };
+        return { lines: [`${fingerprint(arg)}  "${arg}"`, "Museum note (added today): a toy fingerprint (FNV-1a), not a real secure hash."], hash: fingerprint(arg) };
       }
       return { lines: ["Bad command or file name"] };
     };
@@ -164,7 +176,8 @@
   const PC_FILES = [
     { name: "README", ext: "TXT", year: 1993, sourceKeys: ["whitepaper"], text: [
       "This PC belongs to Tock, the archivist Ooga (an invented guide).",
-      "Its files are short notes on ideas the Bitcoin whitepaper later cited.",
+      "MUSEUM NOTES, written today for the voyage, about ideas from these years.",
+      "(Bitcoin came much later: its whitepaper was published in 2008.)",
       "Try TYPE MERKLE.TXT, TYPE STAMPS.TXT or HASH followed by any words."] },
     { name: "MERKLE", ext: "TXT", year: 1980, sourceKeys: ["merkle1980"], text: [
       "1980: Ralph Merkle's paper Protocols for Public Key Cryptosystems",
