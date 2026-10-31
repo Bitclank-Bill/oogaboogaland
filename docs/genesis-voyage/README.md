@@ -205,19 +205,18 @@ measured.
 - Frame-rate budgets are **not set**. Headless software rendering is no guide; budgets wait for measurements on the
   maintainer's machines and real phones and tablets. **No device or frame-rate claim is made.**
 
-**Statue integration.**
-- **What the statue is:** the monolith in `scene-hub.js` (around lines 7394–7700).
-  - It is **temporary**: it is raised by the library book or the Whitepaper Day weekend event, and sinks after
-    `sinkAfter` (300 s) or when the visit ends.
-  - Double-click or double-tap opens reading mode.
-  - `hub-guide.js` tours it; `hud.js` owns `whitepaperNav`.
-- **The conflict:** a permanent portal cannot hang off a statue that is usually underground, and changing when it
-  rises would change the island's event.
-- **For now:** the voyage is reached by the dev entrance `?wip=genesis`. Nothing in `scene-hub.js` changes.
-- **Proposed (Milestone 4, for maintainer review):** add an **Enter Genesis Voyage** action to the monolith's reading
-  mode, and a hub `place` beside it so Escape from the voyage lands the visitor back at the statue. If the maintainer
-  wants a permanent entrance, a small standing replica in the library nook is the alternative. Either touches
-  `scene-hub.js` in one place and adds one route.
+**Statue integration (done, wip only).** The whitepaper stone in `scene-hub.js` is temporary. It is raised by the
+library book or the Whitepaper Day weekend (31 Oct to 1 Nov 2026), and sinks after `sinkAfter` (300 s) or when the
+visit ends. The portal therefore lives on the stone itself, while it stands:
+- **In:** walking the played Ooga into either face of the standing stone goes to the voyage (`wpPortal` in
+  `scene-hub.js`). The stone's tooltip adds "walk in for the Genesis Voyage".
+- **Back:** Escape or Back from the voyage returns the same Ooga to the crest beside the stone, facing it
+  (`navigate("genesis")`, plus `genesis` in `handsBack`).
+- **Only with the scene registered:** without `?wip=genesis` the scene is dropped at boot and the stone is only the
+  paper, so nothing changes for ordinary visitors.
+
+Whether the voyage needs a permanent entrance once the stone has sunk is an open decision (a standing replica in the
+library nook, or a route).
 
 ## Milestones
 

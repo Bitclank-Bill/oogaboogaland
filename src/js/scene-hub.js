@@ -5504,6 +5504,7 @@
         return `${BOOKS[o.index].title} · open it`;
       case "whitepaper":
         if (wpRead) return COARSE ? "Drag to slide · two fingers to zoom" : "Double-click to zoom in · right-click back · wheel scrolls";
+        if (BL.scenes.genesis) return COARSE ? "The whitepaper · double-tap to read · walk in for the Genesis Voyage" : "The whitepaper · double-click to read · walk in for the Genesis Voyage";
         return COARSE ? "The whitepaper · double-tap to read" : "The whitepaper · double-click to read";
       case "prop":
         if (o.prop === "timechainentrance") return "Timechain Sphere · nine rooms, chosen at the keypad";
@@ -6606,6 +6607,14 @@
       setVec(target, M.worldX(0, M.layout.CHAMBER_R - 0.1), floor + 2.3, M.worldZ(0, M.layout.CHAMBER_R - 0.1));
       pitch = player ? 0.1 : 0.06;
       dist = player ? 5 : 7.5;
+    } else if (name === "genesis") {
+      // Back from the Genesis Voyage (wip): on the crest beside the whitepaper stone's spot, looking at it.
+      const dx = -Math.sin(LIBRARY.ry), dz = -Math.cos(LIBRARY.ry), sx = LIBRARY.x + dx * WP.out, sz = LIBRARY.z + dz * WP.out;
+      yaw = LIBRARY.ry + Math.PI / 2;
+      x = sx - Math.sin(yaw) * 2.2; z = sz - Math.cos(yaw) * 2.2;
+      setVec(target, sx, island.surfaceAt(sx, sz) + 1.4, sz);
+      pitch = player ? 0.12 : 0.2;
+      dist = player ? 5 : 8;
     } else if (underground) {
       z = 6;
       setVec(target, 0, (basement ? island.headquarters.basement.floor : island.headquarters.floor) + 0.8, 0);
@@ -8061,6 +8070,19 @@
     t.x += (WP_TARGET.x - t.x) * k; t.y += (WP_TARGET.y - t.y) * k; t.z += (WP_TARGET.z - t.z) * k;
     camera.fov += (WP.readFov - camera.fov) * k;
   };
+  // The Genesis Voyage (wip, `?wip=genesis`): while the stone stands, the played Ooga walking into either face goes
+  // through it. Without the scene registered the stone is only the paper.
+  const wpPortal = () => {
+    const player = pilot.player;
+    if (!BL.scenes.genesis || !player || entering || !wpStanding || wpSinkT >= 0 || !wpGroup) return;
+    const ry = wpGroup.rotation.y, dx = player.root.position.x - wpGroup.position.x, dz = player.root.position.z - wpGroup.position.z;
+    const through = dx * Math.sin(ry) + dz * Math.cos(ry), across = dx * Math.cos(ry) - dz * Math.sin(ry);
+    if (Math.abs(across) > WP.w / 2 + 0.1 || Math.abs(through) > WP.depth / 2 + 0.55) return;
+    entering = true;
+    world.pilot = player.traits.name;
+    pilot.controls.reset(); input.reset(); pilot.setActive(false); hud.tooltip.hide();
+    go("genesis");
+  };
   const wpUpdate = (dt) => {
     wpEventUpdate(dt);
     // The scorch outlives the strike, then fades even while the paper is read or the camera has been released.
@@ -8114,7 +8136,7 @@
       if (wpSinkTimer >= WP.sinkAfter) { wpSinkTimer = -1; wpSinkT = 0; wpStanding = false; }
     }
     if (wpRead) { wpReadUpdate(dt); return; }
-    if (wpTime < 0) return;
+    if (wpTime < 0) { wpPortal(); return; }
     wpTime = Math.min(wpTime + dt, WP.strike + WP.rise);
     // The bolt strikes the ground where the stone will break out: three flashes of it, and sparks where it lands.
     if (wpTime < WP.strike) {
@@ -11198,7 +11220,7 @@
     totemUnsub = BL.totemFeed.subscribe(onTotem);
     BL.net.setHub(true);
     crew.refreshStates(true);
-    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain";
+    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain" || ctx.from === "genesis";
     const returningCharacter = handsBack ? world.pilot : null;
     if (handsBack) world.pilot = null;
     if (returningCharacter) {
@@ -11220,8 +11242,8 @@
     world.factoryCrossing = null;
     if (returningCharacter && sphereExit && pilot.player) timechainIsland.gate.arrive(sphereExit);
     else if (returningCharacter && factoryCrossing && pilot.player && factoryMouth) arriveFromFactory(factoryCrossing);
-    else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
-    else navigate(routedPlace || (ctx.from === "bifrost" ? "bifrost" : "pile"), false, false);
+    else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "genesis" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
+    else navigate(routedPlace || (ctx.from === "bifrost" || ctx.from === "genesis" ? ctx.from : "pile"), false, false);
     if (donate) hud.openFeed();
     clankers.sync(); clankerMeshes.sync();
     for (let i = 0; i < crew.list.length; i++) crew.refreshRosterRow(crew.list[i]);
@@ -12141,7 +12163,7 @@
     if (ctx.from === null && !signedInArrival && !pilot.loginViewRestored && (preloadedJetpackWear || preloadedEquipment) && !params.has("character") && !initialCharacter) initialCharacter = contributors.activeRoster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.activeRoster[0];
     const initialGorilla = initialCharacter && preloadedGorilla ? crew.cavemen.get(initialCharacter.name) : null;
     // The Ooga that went into DSB, the Lightning Factory, ₿IFRÖST or Ooga Arcade comes back out as the one played.
-    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain";
+    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain" || ctx.from === "genesis";
     const returningCharacter = handsBack ? world.pilot : null;
     if (handsBack) world.pilot = null;
     if (initialGorilla) {
@@ -12178,8 +12200,8 @@
     world.factoryCrossing = null;
     if (returningCharacter && sphereExit && pilot.player) timechainIsland.gate.arrive(sphereExit);
     else if (returningCharacter && factoryCrossing && pilot.player && factoryMouth) arriveFromFactory(factoryCrossing);
-    else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
-    else if (ctx.from === "bifrost" && !routedPlace) navigate("bifrost", false, false);
+    else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "genesis" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
+    else if ((ctx.from === "bifrost" || ctx.from === "genesis") && !routedPlace) navigate(ctx.from, false, false);
     else if (!signedInArrival && !pilot.loginViewRestored && !crew.sleeping && !initialGorilla && (routedPlace || preloadedView || initialCharacter || initialFirstPerson)) navigate(routedPlace || preloadedView || "pile", false, false);
     if (donate) hud.openFeed();
     if (initialCharacter && !initialGorilla && preloadedJetpack) {
