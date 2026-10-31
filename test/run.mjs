@@ -3940,7 +3940,7 @@ const orbitFlow = async (b) => {
 // perf floor; `perf` runs the perf floor alone; `unit` (or nothing) runs only the global tier.
 // Two lanes limit concurrent WebGL boot pressure; four produced long startups
 // and a GPU context loss during the full suite.
-const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
+const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker", "genesis"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
 for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
@@ -18717,6 +18717,33 @@ scene("race", { label:"optional rig link fallback",url:hubPage(src),steps:[{name
   } finally {await b.evaluate('(()=>{const f=__rigFault;f.gl.createProgram=f.create;f.gl.getProgramParameter=f.parameter;delete window.__rigFault;})()');}
 }}]});
 scene("race", { query: "rain=0&draw=0", steps: [raceStart, raceOwn, raceBench, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: one drawn field of fifteen runs every race and finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
+// The Genesis Voyage (wip): the ride from the dock to the stamp desk and home, with its pause and its panel.
+const genesisRide = { name: "genesis ride", why: "playthrough: the boat sails to the stamp desk and docks; Space holds boat and desk, the panel holds the ride and keeps its keys, and closing it carries on", run: async (b) => {
+  const read = () => b.evaluate(`(() => { const D = BL.scenes.genesis.debug; return { state: D.ride.state, d: D.ride.d, paused: D.ride.paused, demo: D.demo.elapsed, fixed: D.view.fixed, reading: D.view.reading, open: document.getElementById("board-modal").open, caption: document.getElementById("genesis-caption").textContent }; })()`);
+  // Short evaluates of coarse steps: the ride's rules take any dt, and a long single evaluate stalls a software GPU.
+  const sail = async (seconds) => { for (let t = 0; t < seconds; t += 5) await b.evaluate(`window.__ooga.advance(${Math.min(5, seconds - t)}, 0.5)`); };
+  const start = await read();
+  await b.key("Enter");
+  await sail(30);
+  const station = await read();
+  await b.key(" ");
+  const p0 = await read(); await sail(3); const p1 = await read();
+  await b.key(" ");
+  await b.key("i");
+  const reading = await read();
+  await b.key("v"); await b.key("n"); await sail(2);
+  const kept = await read();
+  await b.evaluate(`document.querySelector('#board-modal [data-action="board-close"]').click()`);
+  await sail(0.5);
+  const closed = await read();
+  await b.key("n");
+  await sail(60);
+  const docked = await read();
+  record("genesis ride: Enter sails to the stamp desk, Space holds boat and desk, the panel holds the ride and its keys, closing it carries on, and the boat docks",
+    start.state === "boarding" && station.state === "station" && p0.d === p1.d && p0.demo === p1.demo && reading.open && reading.paused && !kept.fixed && kept.state === "station" && kept.d === reading.d
+    && !closed.open && !closed.paused && docked.state === "docked" && /Ride again/.test(docked.caption), JSON.stringify({ start, station, p0, p1, reading, kept, closed, docked }));
+} };
+scene("genesis", { query: "wip=genesis", steps: [genesisRide, trip("genesis")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop"), dropOwn] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit"), orbitOwn] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls, mineOwn] });
@@ -22836,6 +22863,31 @@ const artifactUnitProof = () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
   return { parsed: true, rows };
 };
+// Rule: the Genesis Voyage's ride and stamp desk, through genesis-voyage.js itself: every stop is reached and left,
+// pause holds the boat, a jump lands on its stop, the desk's chain breaks only after the changed page, and every
+// exhibit source is a link the panel can open.
+const genesisVoyageProof = async () => {
+  const context = { window: {} };
+  runInNewContext(await readFile(join(root, "src/js/genesis-voyage.js"), "utf8"), context);
+  const G = context.window.BL.genesisVoyage, honest = G.chain(false), tampered = G.chain(true);
+  const course = G.createCourse([[0, 3], [0, -8], [0, -17], [-1.2, -25], [1.5, -33], [5.5, -29], [6, -18], [5.5, -6], [3, 1], [0.6, 3.6]]);
+  const ride = G.createRide({ course, stations: [{ at: 3, dwell: 5 }], speed: 1.7 }), seen = [];
+  const boarding = (ride.update(1), ride.state === "boarding" && ride.d === 0);
+  ride.start();
+  for (let t = 0; t < 120 && ride.state !== "docked"; t += 0.1) { ride.update(0.1); if (seen[seen.length - 1] !== ride.state) seen.push(ride.state); }
+  ride.start(); ride.update(1); ride.pause(true);
+  const held = ride.d; ride.update(5);
+  const paused = ride.d === held;
+  ride.pause(false); ride.jump(0);
+  for (let i = 0; i < 20 && ride.state !== "station"; i++) ride.update(0.1);
+  const jumped = ride.state === "station" && Math.abs(ride.d - ride.stops[0].d) < 1e-6;
+  const demo = G.createStampDemo(), phases = new Set();
+  let brokenOk = true;
+  for (let t = 0; t < G.STAMP_CYCLE + 1; t += 0.05) { demo.update(0.05); phases.add(demo.phase); if (demo.broken && demo.tiles !== G.PAGES.length) brokenOk = false; }
+  const chainOk = honest.every((h, i) => (h === tampered[i]) === (i < G.TAMPER_AT)) && new Set(honest).size === honest.length;
+  const sources = G.FINGERPRINTS.sources.every(k => /^https:\/\//.test(G.SOURCES[k].href)) && G.FINGERPRINTS.pages.length === 4;
+  return { boarding, sequence: seen.join(">") === "sailing>station>sailing>docked", paused, jumped, phases: phases.size === 7, cycles: demo.cycles === 1, brokenOk, chainOk, sources, built: G.ROOMS.filter(r => r.built).length === 1 && G.ROOMS.length === 7 };
+};
 const unitChecks = async () => {
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
@@ -22852,6 +22904,8 @@ const unitChecks = async () => {
   const studio=await studioSessionProof();
   record("Studio session: receive-only readiness and blocked sound, Q&A consent, source selection, buffering and deterministic cleanup",Object.values(studio).every(Boolean),JSON.stringify(studio));
   await canvasSurfaceCacheChecks();
+  const genesis = await genesisVoyageProof();
+  record("Genesis Voyage: the boat boards, stops at the stamp desk and docks, pause holds it, a plaque jump lands on its stop, a changed page breaks only the links after it, and every exhibit source is a link", Object.values(genesis).every(Boolean), JSON.stringify(genesis));
   const heldPad = await gamepadHoldProof();
   record("gamepad entry hold: real pad polling stays neutral, preserves trigger hysteresis and requires a fresh button after release or reconnect", Object.values(heldPad).every(Boolean), JSON.stringify(heldPad));
   const retention = await hubRetentionProof();

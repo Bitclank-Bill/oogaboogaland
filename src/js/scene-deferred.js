@@ -3,6 +3,6 @@
 // wip scenes at boot, before a hosted page has fetched a single definition.
 (() => {
   "use strict";
-  const WIP = [];
-  for (const id of ["factory", "hangar", "arcade", "race", "drop", "mine", "orbit"]) window.BL.deferred.scene(id, null, WIP.includes(id));
+  const WIP = ["genesis"];
+  for (const id of ["factory", "hangar", "arcade", "race", "drop", "mine", "orbit", "genesis"]) window.BL.deferred.scene(id, null, WIP.includes(id));
 })();

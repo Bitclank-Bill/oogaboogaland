@@ -10105,3 +10105,45 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 body.cloud-hopper-active #destination-hud,
 body.cloud-hopper-active #own-ooga-hud,
 body.cloud-hopper-active #mode-hud { display: none; }
+
+/* The Genesis Voyage (wip): captions and the ride's own buttons along the bottom, the fingerprint chain on the left. */
+body[data-active-scene="genesis"] .sheet,
+body[data-active-scene="genesis"] .primary-hud,
+body[data-active-scene="genesis"] .weapon-hud,
+body[data-active-scene="genesis"] .magazine-hud {
+  display: none;
+}
+.genesis-hud { position: fixed; inset: auto 0 0 0; z-index: 5; pointer-events: none; }
+.genesis-bar {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 0 16px calc(14px + var(--safe-bottom));
+}
+.genesis-caption {
+  max-width: 44em; margin: 0; padding: 10px 16px;
+  border-radius: var(--radius); background: rgba(10, 10, 11, 0.82); color: var(--fg);
+  font-size: 17px; line-height: 1.4; text-align: center;
+}
+.genesis-caption:empty { display: none; }
+.genesis-controls { display: flex; gap: 8px; pointer-events: auto; }
+.genesis-controls button {
+  min-height: 40px; min-width: 76px; padding: 0 14px; cursor: pointer;
+  border: 2px solid var(--wood-edge); border-radius: 6px;
+  background: linear-gradient(var(--plank), var(--wood)); color: var(--paper);
+  font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5); box-shadow: 0 3px 0 var(--nail);
+}
+.genesis-controls button:disabled { opacity: 0.45; cursor: default; }
+.genesis-controls button[aria-pressed="true"] { background: linear-gradient(var(--wood), var(--wood-dk)); }
+.genesis-help { margin: 0; color: var(--muted); font-size: 12px; text-align: center; }
+.genesis-chain {
+  position: fixed; left: calc(12px + var(--safe-left)); top: 96px; padding: 8px 12px;
+  border-radius: var(--radius); background: rgba(10, 10, 11, 0.78); color: var(--fg);
+}
+.genesis-chain .section-head { margin: 0 0 4px; font-size: 11px; }
+.genesis-chain ol { margin: 0; padding-left: 1.4em; font-family: var(--mono); font-size: 13px; }
+.genesis-chain li.broken { color: var(--danger); text-decoration: line-through; }
+@media (max-width: 640px) {
+  .genesis-caption { font-size: 15px; }
+  .genesis-chain { top: auto; bottom: 190px; }
+  .genesis-help { display: none; }
+}

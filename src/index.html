@@ -163,6 +163,7 @@
         <p data-scene="hangar" hidden>Lightning Jet Hangar</p>
         <p data-scene="bifrost" hidden>₿IFRÖST</p>
         <p data-scene="timechain" id="sphere-subtitle" hidden>Timechain Sphere</p>
+        <p data-scene="genesis" hidden>The Genesis Voyage</p>
         <p data-scene="arcade" hidden>Ooga Arcade</p>
         <p data-scene="skee" hidden>Ooga Arcade · Thro-ball</p>
         <p data-scene="hoops" hidden>Ooga Arcade · Hoop Shot</p>
@@ -315,6 +316,13 @@
         <button type="button" data-preset="poker">Poker</button>
         <button type="button" data-preset="sky">Sky</button>
         <button type="button" class="leave" data-action="leave">Leave<span> chamber</span></button>
+      </nav>
+      <nav class="presets" aria-label="Genesis Voyage" data-scene="genesis" hidden>
+        <button type="button" data-action="genesis-cc" id="genesis-cc" aria-pressed="true" title="Captions · C">Captions</button>
+        <button type="button" data-action="genesis-voice" id="genesis-voice" aria-pressed="false" title="Read captions aloud · T">Voice</button>
+        <button type="button" data-action="genesis-view" id="genesis-view" aria-pressed="false" title="Fixed view · V">Fixed view</button>
+        <button type="button" data-action="genesis-calm" id="genesis-calm" aria-pressed="false" title="Reduced motion · R">Calm</button>
+        <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
       </nav>
       <nav class="presets" aria-label="Drop" data-scene="drop" hidden>
         <button type="button" data-action="drop-board" id="drop-board-btn">Board</button>
@@ -830,6 +838,21 @@
           <button type="button" data-action="leave">Back to the island</button>
         </div>
       </section>
+    </div>
+    <div class="genesis-hud" id="genesis" data-scene="genesis" hidden>
+      <section class="genesis-chain" id="genesis-chain-wrap" aria-label="Fingerprint chain" hidden>
+        <h3 class="section-head">Fingerprint chain</h3>
+        <ol id="genesis-chain"></ol>
+      </section>
+      <div class="genesis-bar">
+        <p class="genesis-caption" id="genesis-caption" aria-live="polite"></p>
+        <div class="genesis-controls">
+          <button type="button" data-action="genesis-sail" id="genesis-sail" aria-pressed="false">Sail</button>
+          <button type="button" data-action="genesis-skip" id="genesis-skip" title="Skip · N">Skip</button>
+          <button type="button" data-action="genesis-info" id="genesis-info" title="Info · I">Info</button>
+        </div>
+        <p class="genesis-help" id="genesis-help"></p>
+      </div>
     </div>
     <div class="race" id="drop" data-scene="drop" hidden>
       <section class="garage" id="drop-board" aria-label="Drop board">
@@ -1962,6 +1985,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/drop-hud.js"></script>
   <script src="js/drop-audio.js" data-defer="drop"></script>
   <script src="js/scene-drop.js" data-defer="drop-scene"></script>
+  <script src="js/genesis-voyage.js" data-defer="genesis-scene"></script>
+  <script src="js/scene-genesis.js" data-defer="genesis-scene"></script>
   <script src="js/mine-models.js"></script>
   <script src="js/mine-sim.js"></script>
   <script src="js/mine-hud.js" data-defer="mine"></script>
