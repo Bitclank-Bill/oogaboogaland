@@ -402,6 +402,12 @@
       place(createNode({ geometry: M.box({ w: Math.hypot(len, drop), h: 0.06, d: a.z1 - a.z0, color: "#8a6440" }), position: { x: cx, y: (a.ramp.from + a.ramp.to) / 2 - 0.03, z: cz }, rotation: { x: 0, y: 0, z: -Math.atan2(drop, len) } }));
     }
   };
+  // Fingerprints and Time's whitepaper citations, as trail stops at its lectern (tap it, or I, for the panel).
+  const LECTERN = { x: -5.6 + SX, z: -22.6 + SZ };
+  const ROOM_LINKS = [
+    { id: "era3-room-haber1991", year: 1991, title: "Timestamp a page, at Fingerprints and Time", connection: "citation", ref: "[3]", date: "1991 journal publication", at: { x: LECTERN.x + 1, y: ISLAND_TOP, z: LECTERN.z } },
+    { id: "era3-room-bayer1993", year: 1993, title: "One tree, many pages, at Fingerprints and Time", connection: "citation", ref: "[4]", date: "1993 book chapter; manuscript dated March 1992", at: { x: LECTERN.x + 1, y: ISLAND_TOP, z: LECTERN.z - 1.4 } }
+  ];
   // --- Era exhibits (genesis-exhibits.js, one genesis-era-<n>.js per cave) ---------------------------------------------
   // Each era's file builds its cave's exhibits through a kit; usable ones become props like the room's, with a pick box
   // that taps select. Built once a visit, before the footing, so their obstacles count.
@@ -439,12 +445,15 @@
           entry.prop = prop;
           built.exhibitProps.push(entry);
           const pick = d.pick || { w: 1, h: 1.4, d: 1 };
-          built.propNodes[prop.id] = place(createNode({ geometry: M.box({ w: pick.w, h: pick.h, d: pick.d, color: "#000000" }), position: { x: prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: prop.at.z }, visible: false }));
+          built.propNodes[prop.id] = place(createNode({ geometry: M.box({ w: pick.w, h: pick.h, d: pick.d, color: "#000000" }), position: { x: pick.x !== undefined ? pick.x : prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : prop.at.z }, visible: false }));
           return prop;
         }
       };
       def.build(kit);
     }
+    // Fingerprints and Time's own exhibits are trail stops too, linked rather than duplicated: the lectern's panel
+    // tells both papers' story (genesis-voyage.js FINGERPRINTS).
+    for (const link of ROOM_LINKS) built.exhibitProps.push({ era: ROOM_ERA, def: link, prop: { id: link.id, at: link.at }, order: built.exhibitProps.length, step: 0, room: true });
     built.trail = EX.trailOf(built.exhibitProps);
   };
   // Each frame, the exhibits of the cave the visitor is in (aboard or ashore) may move; nothing else runs.
@@ -575,8 +584,9 @@
       const mine = built.exhibitProps.filter((x) => x.era === o.era).sort((a, b) => a.def.year - b.def.year || a.order - b.order);
       const steps = built.trail.map((x) => `${x.step}. ${x.def.year} · ${x.def.title}${x.era === o.era ? " (this cave)" : ` (Era ${x.era})`}`);
       props.register({ id: `era${o.era}-overview`, era: o.era, year, title: `Era ${e.n} overview`, label: `ERA ${e.n} OVERVIEW · ${year}`, sourceKeys: ["whitepaper"], at: o.at, reach: 2.4,
-        onUse: () => ({ board: { room: `Era ${e.n} - ${e.name} - ${e.years}`, sources: [], pages: [
+        onUse: () => ({ board: { room: `Era ${e.n} - ${e.name} - ${e.years}`, sources: def && def.overview && def.overview.sourceKeys ? def.overview.sourceKeys : [], pages: [
           { caption: "This era", title: `${e.name} (${e.years})`, text: [def && def.overview ? def.overview.summary : "This cave's exhibits are still being built."] },
+          ...(def && def.overview && def.overview.pages ? def.overview.pages : []),
           { caption: "Exhibits", title: "In this cave, by year", text: mine.length ? mine.map((x) => `${x.def.year} · ${x.def.title}${x.step ? ` · step ${x.step}` : ""}`) : ["No exhibits yet."] },
           { caption: "Steps toward Bitcoin", title: "The trail, in date order", text: [steps.length ? steps.join(" · ") : "No steps placed yet."] }
         ] } }) });

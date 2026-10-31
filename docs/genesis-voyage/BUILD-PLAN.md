@@ -330,6 +330,15 @@ citation, documented influence and the whitepaper itself, numbered in date order
 `date`) on each Bitcoin-line prop, and an `overview.summary` on the era. Keep out of the reserved plots: the gateway,
 the dock and its ramps, the lamps and, in Era 3, the room. The integration branch is `gv/exhibits`.
 
+### Future build menu (integrator-reserved)
+
+- **Shimmering entrance timeline.** A clickable chronological display near the starting dock, inspired by Billy's
+  chart. It opens sourced events across all eight eras, with readable keyboard and touch navigation and reduced motion.
+  Browsing holds the boat and the camera still; travelling to an era is a separate action. A shared feature, so it is
+  reserved for the integrator. **Not started:** it waits for the data corrections to
+  `genesis-entrance-timeline-brief.md` (in preparation by Claude in the browser). Its research is not duplicated
+  here, and the chart's artwork is not copied.
+
 ### Prompt: an era builder (Claude Code or Astra Codex)
 
 > Repo: https://github.com/Bitcoin-Bill/oogaboogaland. Create branch `gv/era-<n>` from `gv/water-boat` and build

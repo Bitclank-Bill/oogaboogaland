@@ -42,19 +42,32 @@ Every label must still show its year: your `kit.sign` labels, and each prop's `l
 As in `genesis-exhibits.js`: call `BL.genesisExhibits.register(n, { sources, overview, build(kit), update, dispose })`
 once.
 
-- **`overview: { summary }`** (optional, at most 280 characters, for a curious 12-year-old): shown on the era's
-  overview board and panel.
+- **`overview: { summary, pages, sourceKeys }`** (all optional):
+  - `summary`: at most 280 characters, for a curious 12-year-old. Shown on the era's overview board and panel.
+  - `pages`: at most 3 board pages that follow the summary in that panel, for the era's own guide (what to try, how
+    to read the cave).
+  - `sourceKeys`: links for those pages.
+
+  Don't build a second overview board, era sign or "steps" sign: the shared signage provides them.
 - **`kit.prop(def)`** takes three optional fields:
   - `connection`: `"citation"` (whitepaper reference list; give `ref`, e.g. `"[3]"`), `"influence"` (documented with a
     primary source such as Satoshi's own words), `"anchor"` (the whitepaper itself, Era 6 only) or `"context"`. Leave
     it out and the exhibit is neither on the trail nor labelled; please set it on every Bitcoin-line exhibit.
   - `ref`: citations only.
   - `date`: what the year marks, in words, e.g. `"1991 journal publication; manuscript received 19 August 1990"`.
+- **`pick`** may name its centre: `{ w, h, d, x, z }`. Put the tap box over the model itself; without `x` and `z` it
+  stands on the prop's `at`, the walk-up point.
 
 **Prop ids:** yours start `e<n>-` (e.g. `e3-timestamp`). Ids starting `era<n>-` belong to the shared signage (the overview board is `era<n>-overview`). A duplicate id throws.
 
 A prop with a bad connection (a reference on context, a citation without one, the anchor outside Era 6) throws when
 it's built, and the unit tier reports it.
+
+## Fingerprints and Time on the trail
+
+The Era 3 room's two whitepaper citations, Haber–Stornetta 1991 [3] and Bayer–Haber–Stornetta 1993 [4], are trail
+stops linked to its existing lectern, which opens their panel. Era 3's builder should **not** rebuild those papers as
+new exhibits to put them on the trail.
 
 ## Plots
 
