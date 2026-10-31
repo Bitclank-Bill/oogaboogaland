@@ -34,9 +34,9 @@ npm run serve          # then open http://localhost:<port>/?wip=genesis
 | Drive (throttle and rudder) | W A S D or the arrows | left stick (touch) |
 | Go faster | hold Shift | **Boost** button |
 | Tour (autopilot dock to dock) or take the wheel back | Enter | **Tour** / **Drive** button |
-| Pause, carry on | Space or P | **Pause** button |
+| Pause, carry on | P | **Pause** button |
 | Skip a Tour stop | N | **Skip** button |
-| Jump out, or board | J | **Jump out** / **Board** button |
+| Jump out (the boat stops and waits), or jump back in beside it | Space or J | **Jump out** / **Board** button |
 | Info panel (short, deep, unsolved, sources) | I | **Info** button, or tap the lectern |
 | Sail straight to an era's island | | tap its plaque on the harbour's timeline wall |
 | Captions on or off | C | **Captions** |

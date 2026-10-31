@@ -8,7 +8,8 @@
 //
 // Driving is the default: W A S D or the arrows (or the left stick), Shift (or Boost) for speed; genesis-boat.js moves
 // the boat. Tour (Enter) hands the wheel to an autopilot that visits every dock in order and waits at each; Enter
-// again takes it back. Space pauses everything. The camera follows the boat, looks where the visitor drags and turns
+// again takes it back. P pauses everything. Space jumps out of the boat at any time (it stops where it is and waits)
+// and, ashore by the boat, jumps back in. The camera follows the boat, looks where the visitor drags and turns
 // to an exhibit at its dock; Fixed view swaps to a still vantage per area. Opening the panel holds the boat and the
 // desk; closing it carries on as before. Calm (reduced motion, on when the system asks) stills the bob, the swell
 // and the desk's flying tiles.
@@ -94,7 +95,7 @@
     }
   }
   // How near land Jump out works, and how near the boat J re-boards.
-  const JUMP_REACH = 8, BOARD_REACH = 6;
+  const JUMP_REACH = 8, BOARD_REACH = 6, BOARD_JUMP = BOARD_REACH;
   // The first props, on the room's ledge: the office PC, the hard-drive plinth and Tock's book by the desk.
   const PROPS = { pc: { x: -9.6 + SX, y: 0.545, z: -20.6 + SZ }, drives: { x: -9.8 + SX, y: 0.545, z: -32.4 + SZ }, book: { x: -5.8 + SX, y: 0.545, z: -23.6 + SZ } };
   const WALK_PRESETS = { dock: { yaw: 0.6, pitch: 0.3, dist: 6, target: { x: -3.2, y: 1, z: 1.5 } } };
@@ -467,7 +468,7 @@
     walkPose.yaw = facing - Math.PI;
     pilot.navigate(walkPose);
     walk.on = true; walk.area = landing.area; walk.prop = null; walk.jumps++;
-    hud.hint(COARSE ? "Stick walks · USE by a prop · Board on the ramp" : "W A S D walk · Space jumps, hold it in the air to jetpack · Space by a prop uses it · J or a ramp boards", 6000);
+    hud.hint(COARSE ? "Stick walks · USE by a prop · Board on the ramp" : "W A S D walk · Space jumps, hold it in the air to jetpack · Space by a prop uses it · Space beside the boat jumps back in", 6000);
     showControls();
     return true;
   };
@@ -512,7 +513,7 @@
     // A ramp boards only where the boat lies at its foot; elsewhere it is just a ramp.
     const ramp = footing.boardingRampAt(p.x, p.z, feet);
     if (ramp && footing.rampReaches(ramp, boat.x, boat.z, BOARD_REACH)) { reboard(); return; }
-    if (ramp && walk.rampHint !== ramp) { walk.rampHint = ramp; hud.hint("The boat isn't at this ramp. Walk to it and press J.", 2500); }
+    if (ramp && walk.rampHint !== ramp) { walk.rampHint = ramp; hud.hint("The boat isn't at this ramp. Walk to it and press Space.", 2500); }
     else if (!ramp) walk.rampHint = null;
     if (footing.fallen(feet)) {
       const dock = footing.dockOf(walk.area);
@@ -703,6 +704,13 @@
     if (view.reading || terminal || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "j") { audio.wake(); toggleWalk(); return; }
+    // Space jumps out of the boat wherever it is; ashore, Space beside the boat jumps back in (anywhere else the pilot
+    // has it: a jump, the jetpack, or a prop).
+    if (k === " " && !e.repeat) {
+      if (!walk.on) { e.preventDefault(); audio.wake(); jumpOut(); return; }
+      const p = avatar && avatar.root.position;
+      if (p && Math.hypot(p.x - boat.x, p.z - boat.z) < BOARD_JUMP) { e.preventDefault(); reboard(); return; }
+    }
     // Ashore the pilot has the walking keys (W A S D, Q E, Space), Escape and 0; letting go of the Ooga re-boards.
     if (walk.on) {
       if (k === "Escape") { if (!pilot.escape()) reboard(); }
@@ -714,7 +722,7 @@
     }
     if (k === "Escape") leave();
     else if (k === "Enter") { e.preventDefault(); sail(); }
-    else if (k === " " || k === "p") { e.preventDefault(); pause(); }
+    else if (k === "p") { e.preventDefault(); pause(); }
     else if (k === "n") skip();
     else if (k === "i") openInfo();
     else if (k === "c") toggle("captions");
@@ -819,7 +827,7 @@
   // Which era's boat is showing, a splash when it changes, and the era's caption as the boat crosses into it.
   const updateEra = (dt) => {
     const era = GW.eraAt(boat.x, boat.z), kind = era < 0 ? "skiff" : GW.ERAS[era].boat;
-    if (driver.state.kind !== kind) {
+    if (driver.state.kind !== kind || !built.boats[kind].visible) {
       for (const name in built.boats) built.boats[name].visible = name === kind;
       if (lastEra !== -2) { splashT = 0.7; audio.splash(); }
       driver.state.kind = kind;
@@ -827,7 +835,7 @@
     if (era !== lastEra) {
       if (era >= 0 && !walk.on) {
         const e = GW.ERAS[era], boatName = GW.BOATS[e.boat].name;
-        setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}). Your boat is now a ${boatName}.${e.room ? " Dock at the ramp to see Fingerprints and Time." : " Its exhibits are still being built; hop out (J) to walk the cave."}`);
+        setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}). Your boat is now a ${boatName}.${e.room ? " Dock at the ramp to see Fingerprints and Time." : " Its exhibits are still being built; jump out (Space) to walk the cave."}`);
       }
       lastEra = era;
     }
@@ -985,7 +993,7 @@
         else if (hit && hit.owner.kind === "plaque" && !walk.on) jumpTo(hit.owner.plaque);
         else if (hit && hit.owner.kind === "prop") {
           if (walk.on && walk.prop === hit.owner.prop) openProp(hit.owner.prop);
-          else hud.hint(walk.on ? `Walk up to ${hit.owner.prop.title} to use it` : "Jump out (J) and walk up to use it", 2500);
+          else hud.hint(walk.on ? `Walk up to ${hit.owner.prop.title} to use it` : "Jump out (Space) and walk up to use it", 2500);
         }
       },
       // Ashore the pilot takes the look, zoom and double-tap; aboard the boat's own camera does.
@@ -1012,7 +1020,7 @@
     for (const id of ["caption", "sail", "pause", "boost", "skip", "info", "jump", "cc", "voice", "view", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
-    el.help.textContent = COARSE ? "Stick drives · Boost for speed · Tour rides along · Jump out by an island" : "W A S D or arrows drive · Shift speed · Enter tour · Space pause · N skip · I info · J jump out · C captions · T voice · V view · R calm · drag to look · Esc leave";
+    el.help.textContent = COARSE ? "Stick drives · Boost for speed · Tour rides along · Jump out by an island" : "W A S D or arrows drive · Shift speed · Space jumps out and back in · Enter tour · P pause · N skip · I info · C captions · T voice · V view · R calm · drag to look · Esc leave";
     el.term = document.getElementById("genesis-terminal");
     for (const id of ["Title", "Screen", "Prompt", "Input", "Form"]) el["term" + id] = document.getElementById(`genesis-terminal-${id.toLowerCase()}`);
     el.termForm.addEventListener("submit", (e) => { e.preventDefault(); runTerminal(el.termInput.value); el.termInput.value = ""; }, { signal: ctx.signal });

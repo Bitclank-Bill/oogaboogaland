@@ -18718,7 +18718,7 @@ scene("race", { label:"optional rig link fallback",url:hubPage(src),steps:[{name
 }}]});
 scene("race", { query: "rain=0&draw=0", steps: [raceStart, raceOwn, raceBench, { name: "race tracks", why: "regression: the 12-slot grid spawned a free banana on Banana Bay", run: async (b) => { await b.evaluate(`window.__ooga.race.toGarage()`); await raceTracks[1](b); } }, raceRigs, raceRigContext, racePause, play("race", "a whole cup under the autopilot: one drawn field of fifteen runs every race and finishes in order, the cup medal and every track's best are saved", cupRun), raceMirror, raceAgain, trip("race")] });
 // The Genesis Voyage (wip): the ride from the dock to the stamp desk and home, with its pause and its panel.
-const genesisRide = { name: "genesis ride", why: "playthrough: the visitor drives out of the harbour into the first era, right steers right, a plaque's Tour reaches the stamp desk, Space holds boat and desk, the panel holds the ride and keeps its keys, and Enter hands the wheel back", run: async (b) => {
+const genesisRide = { name: "genesis ride", why: "playthrough: the visitor drives out of the harbour into the first era, right steers right, a plaque's Tour reaches the stamp desk, P holds boat and desk, the panel holds the ride and keeps its keys, and Enter hands the wheel back", run: async (b) => {
   const read = () => b.evaluate(`(() => { const D = BL.scenes.genesis.debug, S = D.driver.state; return { mode: D.view.mode, state: D.ride.state, station: D.ride.station, d: D.ride.d, x: S.x, z: S.z, heading: S.heading, era: S.era, kind: S.kind, paused: D.view.paused, demo: D.demo.elapsed, fixed: D.view.fixed, reading: D.view.reading, open: document.getElementById("board-modal").open, caption: document.getElementById("genesis-caption").textContent }; })()`);
   // Short evaluates of coarse steps: the rules take any dt in fixed steps, and a long single evaluate stalls a software GPU.
   const sail = async (seconds, dt = 0.25) => { for (let t = 0; t < seconds; t += 5) await b.evaluate(`window.__ooga.advance(${Math.min(5, seconds - t)}, ${dt})`); };
@@ -18731,9 +18731,9 @@ const genesisRide = { name: "genesis ride", why: "playthrough: the visitor drive
   await b.evaluate(`(() => { const D = BL.scenes.genesis.debug; D.jumpTo(D.built.plaques[3]); })()`);
   await sail(2);
   const station = await read();
-  await b.key(" ");
+  await b.key("p");
   const p0 = await read(); await sail(3); const p1 = await read();
-  await b.key(" ");
+  await b.key("p");
   await b.key("i");
   const reading = await read();
   await b.key("v"); await b.key("n"); await b.key("Enter"); await sail(2);
@@ -18743,7 +18743,7 @@ const genesisRide = { name: "genesis ride", why: "playthrough: the visitor drive
   const closed = await read();
   await b.key("Enter"); await sail(0.5);
   const wheel = await read();
-  record("genesis ride: W drives out of the harbour into Era 0 in its own boat, D turns the bow to the right, a plaque's Tour reaches the stamp desk, Space holds boat and desk, the panel holds the ride and its keys, closing it carries on, and Enter hands back the wheel",
+  record("genesis ride: W drives out of the harbour into Era 0 in its own boat, D turns the bow to the right, a plaque's Tour reaches the stamp desk, P holds boat and desk, the panel holds the ride and its keys, closing it carries on, and Enter hands back the wheel",
     start.mode === "drive" && start.era === -1 && start.kind === "skiff" && out.z < -12 && out.era === 0 && turned.x > out.x + 0.2
     && station.mode === "tour" && station.state === "station" && station.station === 3 && station.kind === "watercraft" && p0.d === p1.d && p0.demo === p1.demo
     && reading.open && reading.paused && !kept.fixed && kept.mode === "tour" && kept.state === "station" && kept.d === reading.d
@@ -18758,7 +18758,7 @@ const genesisWalk = { name: "genesis walk", why: "playthrough: jump out, a fall 
   const step = async (seconds) => { for (let t = 0; t < seconds; t += 5) await b.evaluate(`window.__ooga.advance(${Math.min(5, seconds - t)}, 0.25)`); };
   const put = (x, z, yaw = 0) => b.evaluate(`(() => { const D = BL.scenes.genesis.debug; D.pilot.navigate({ position: { x: ${x}, y: D.footing.supportAt(${x}, ${z}), z: ${z} }, yaw: ${yaw}, pitch: 0.2, dist: 4 }); })()`);
   const sz = await b.evaluate(`BL.genesisWorld.ROOM_SHIFT.z`), sx = await b.evaluate(`BL.genesisWorld.ROOM_SHIFT.x`), e0 = await b.evaluate(`JSON.stringify(BL.genesisWorld.ERAS[0])`).then(JSON.parse), ch = await b.evaluate(`JSON.stringify(BL.genesisWorld.CHANNEL)`).then(JSON.parse);
-  await b.key("j"); await step(2);
+  await b.key(" "); await step(2);
   const ashore = await read();
   await put(0, -5); await step(1.5);
   const fell = await read();
@@ -18780,7 +18780,7 @@ const genesisWalk = { name: "genesis walk", why: "playthrough: jump out, a fall 
   await b.evaluate(`document.getElementById("genesis-terminal").close()`); await step(0.2);
   await put(-4.6 + sx, -26.1 + sz, Math.PI / 2); await step(0.5);
   const boarded = await read();
-  record("genesis walk: J stops the boat without a prompt and lands the Ooga on the dock, a fall comes back to the dock, J boards, Era 0's bank ramp boards, at the desk Space at the PC opens a prompt whose DIR lists only its own years, and the room's ramp boards",
+  record("genesis walk: Space jumps out, the boat stopping without a prompt, and lands the Ooga on the dock, a fall comes back to the dock, J boards, Era 0's bank ramp boards, at the desk Space at the PC opens a prompt whose DIR lists only its own years, and the room's ramp boards",
     ashore.walking && ashore.shown && ashore.area === "dock" && ashore.jump === "Board" && ashore.sail && !/Paused/.test(ashore.caption)
     && fell.walking && fell.falls === 1 && fell.x < -1.8 && fell.x > -6.6 && !aboard.walking && !aboard.shown
     && island.walking && island.area === "era-0-left" && !islandBoarded.walking
