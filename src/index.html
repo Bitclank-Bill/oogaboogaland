@@ -850,9 +850,22 @@
           <button type="button" data-action="genesis-sail" id="genesis-sail" aria-pressed="false">Sail</button>
           <button type="button" data-action="genesis-skip" id="genesis-skip" title="Skip · N">Skip</button>
           <button type="button" data-action="genesis-info" id="genesis-info" title="Info · I">Info</button>
+          <button type="button" data-action="genesis-jump" id="genesis-jump" aria-pressed="false" title="Jump out or board · J">Jump out</button>
         </div>
         <p class="genesis-help" id="genesis-help"></p>
       </div>
+      <dialog class="modal genesis-terminal" id="genesis-terminal" aria-labelledby="genesis-terminal-title">
+        <div class="panel-head">
+          <h2><span data-sign id="genesis-terminal-title">Terminal</span></h2>
+          <button type="button" class="modal-close" data-terminal-close aria-label="Close">&times;</button>
+        </div>
+        <pre class="genesis-screen" id="genesis-terminal-screen" aria-live="polite"></pre>
+        <form class="genesis-prompt" id="genesis-terminal-form">
+          <label for="genesis-terminal-input" id="genesis-terminal-prompt">C:\&gt;</label>
+          <input id="genesis-terminal-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60">
+        </form>
+        <p class="help">Enter runs the line · Escape closes</p>
+      </dialog>
     </div>
     <div class="race" id="drop" data-scene="drop" hidden>
       <section class="garage" id="drop-board" aria-label="Drop board">
@@ -1986,6 +1999,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/drop-audio.js" data-defer="drop"></script>
   <script src="js/scene-drop.js" data-defer="drop-scene"></script>
   <script src="js/genesis-voyage.js" data-defer="genesis-scene"></script>
+  <script src="js/genesis-props.js" data-defer="genesis-scene"></script>
   <script src="js/scene-genesis.js" data-defer="genesis-scene"></script>
   <script src="js/mine-models.js"></script>
   <script src="js/mine-sim.js"></script>

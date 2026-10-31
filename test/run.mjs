@@ -18743,7 +18743,37 @@ const genesisRide = { name: "genesis ride", why: "playthrough: the boat sails to
     start.state === "boarding" && station.state === "station" && p0.d === p1.d && p0.demo === p1.demo && reading.open && reading.paused && !kept.fixed && kept.state === "station" && kept.d === reading.d
     && !closed.open && !closed.paused && docked.state === "docked" && /Ride again/.test(docked.caption), JSON.stringify({ start, station, p0, p1, reading, kept, closed, docked }));
 } };
-scene("genesis", { query: "wip=genesis", steps: [genesisRide, trip("genesis")] });
+// Hop off and walk: J stops the boat where it is with no prompt, a fall comes back to the dock, J by the boat boards,
+// and at the stamp desk the Ooga walks to the PC, Space opens its prompt, DIR lists its own years, and the ramp boards.
+const genesisWalk = { name: "genesis walk", why: "playthrough: jump out, a fall in the water, the PC's prompt and the boarding ramp, with the boat held ashore and no pause prompt", run: async (b) => {
+  const read = () => b.evaluate(`(() => { const D = BL.scenes.genesis.debug, a = D.avatar, p = a && a.root.position; return { walking: D.walk.on, area: D.walk.area && D.walk.area.id, falls: D.walk.falls, state: D.ride.state, d: D.ride.d, paused: D.ride.paused, shown: !!a && a.root.visible, x: p && p.x, z: p && p.z, prop: D.walk.prop && D.walk.prop.id, term: document.getElementById("genesis-terminal").open, screen: document.getElementById("genesis-terminal-screen").textContent, jump: document.getElementById("genesis-jump").textContent, sail: document.getElementById("genesis-sail").hidden, caption: document.getElementById("genesis-caption").textContent }; })()`);
+  const step = async (seconds) => { for (let t = 0; t < seconds; t += 5) await b.evaluate(`window.__ooga.advance(${Math.min(5, seconds - t)}, 0.25)`); };
+  const put = (x, z, yaw = 0) => b.evaluate(`(() => { const D = BL.scenes.genesis.debug; D.pilot.navigate({ position: { x: ${x}, y: D.footing.supportAt(${x}, ${z}), z: ${z} }, yaw: ${yaw}, pitch: 0.2, dist: 4 }); })()`);
+  await b.key("j"); await step(2);
+  const ashore = await read();
+  await put(0, -5); await step(1.5);
+  const fell = await read();
+  await b.key("j"); await step(0.5);
+  const aboard = await read();
+  await b.key("Enter"); await step(30);
+  await b.key("j"); await step(1);
+  const room = await read();
+  await put(-8.4, -20.6, -Math.PI / 2); await step(0.5);
+  const atPc = await read();
+  await b.key(" "); await step(0.2);
+  await b.evaluate(`(() => { const i = document.getElementById("genesis-terminal-input"); i.value = "DIR"; document.getElementById("genesis-terminal-form").requestSubmit(); })()`);
+  const typed = await read();
+  await b.evaluate(`document.getElementById("genesis-terminal").close()`); await step(0.2);
+  await put(-4.6, -26.1, Math.PI / 2); await step(0.5);
+  const boarded = await read();
+  record("genesis walk: J stops the boat without a prompt and lands the Ooga on the dock, a fall comes back to the dock, J boards, at the desk Space at the PC opens a prompt whose DIR lists only its own years, and the ramp boards",
+    ashore.walking && ashore.shown && ashore.area === "dock" && ashore.state === "boarding" && ashore.jump === "Board" && ashore.sail && !/Paused/.test(ashore.caption)
+    && fell.walking && fell.falls === 1 && fell.x < -1.8 && fell.x > -6.6 && !aboard.walking && !aboard.shown
+    && room.walking && room.state === "station" && !room.paused && (room.area === "step" || room.area === "room") && atPc.prop === "pc"
+    && typed.term && /STAMPS/.test(typed.screen) && !/B-MONEY/.test(typed.screen) && !boarded.walking && boarded.state === "station" && Math.abs(boarded.d - room.d) < 1e-9,
+    JSON.stringify({ ashore, fell, aboard, room, atPc, typed: { ...typed, screen: typed.screen.slice(0, 200) }, boarded }));
+} };
+scene("genesis", { query: "wip=genesis", steps: [genesisRide, genesisWalk, trip("genesis")] });
 scene("drop", { steps: [dropStart, dropSteering, play("drop", "a jump lands on the target, scores its own medal and is saved as the best", dropRun), dropCrash, trip("drop"), dropOwn] });
 scene("orbit", { steps: [{ name: "orbit flow", why: "regression: the spacewalk air bonus was missing from the flight log", run: orbitFlow }, orbitSteering, orbitMissed, orbitEscape, trip("orbit"), orbitOwn] });
 scene("mine", { steps: [mineResume, trip("mine"), mineControls, mineOwn] });
@@ -22888,6 +22918,51 @@ const genesisVoyageProof = async () => {
   const sources = G.FINGERPRINTS.sources.every(k => /^https:\/\//.test(G.SOURCES[k].href)) && G.FINGERPRINTS.pages.length === 4;
   return { boarding, sequence: seen.join(">") === "sailing>station>sailing>docked", paused, jumped, phases: phases.size === 7, cycles: demo.cycles === 1, brokenOk, chainOk, sources, built: G.ROOMS.filter(r => r.built).length === 1 && G.ROOMS.length === 7 };
 };
+// Rule: the Genesis Voyage's hop-off footing and props, through genesis-props.js itself: an Ooga lands on the nearest
+// ledge, may step into the water but not into an obstacle, a fall comes back to its ledge's dock, a boarding ramp is
+// found; the PC lists only files of its own year or older, TYPE shows a source, HASH is the stamp desk's fingerprint;
+// a visitor's page links onto the end of Tock's chain and a changed page is caught; every prop label shows its year.
+const genesisPropsProof = async () => {
+  const context = { window: {} };
+  runInNewContext(await readFile(join(root, "src/js/genesis-voyage.js"), "utf8"), context);
+  runInNewContext(await readFile(join(root, "src/js/genesis-props.js"), "utf8"), context);
+  const G = context.window.BL.genesisVoyage, P = context.window.BL.genesisProps;
+  const footing = P.createFooting({ areas: [
+    { id: "dock", x0: -6, x1: -2, z0: -2, z1: 6, top: 0.35, dock: { x: -4, z: 1, facing: 0 } },
+    { id: "ledge", x0: -12, x1: -8, z0: -30, z1: -20, top: 0.55, dock: { x: -9, z: -25, facing: 0 } },
+    { id: "ramp", x0: -2, x1: -1, z0: 2, z1: 3, ramp: { from: 0.35, to: 0.2, axis: "x" }, boards: true }],
+    obstacles: [{ x0: -11, x1: -10, z0: -26, z1: -24 }] });
+  const out = {};
+  footing.nearestLedge(0, -25, 9, out);
+  const landed = out.area && out.area.id === "ledge" && Math.abs(out.x + 8.5) < 1e-9 && out.y === 0.55;
+  footing.nearestLedge(20, 40, 8, out);
+  const tooFar = out.area === null;
+  const ground = footing.supportAt(-4, 0) === 0.35 && footing.supportAt(0, 0) === P.WATER && Math.abs(footing.supportAt(-1.5, 2.5) - 0.275) < 1e-9;
+  const water = footing.walkable(-2.1, 0, -1.9, 0) && footing.fallen(P.WATER) && !footing.fallen(0.35);
+  const blocked = !footing.walkable(-9.5, -25, -9.8, -25) && footing.walkable(-9.8, -25, -9.5, -25);
+  const docks = footing.dockOf(footing.areaAt(-9, -22)).z === -25 && footing.dockOf(null).x === -4;
+  const ramp = footing.onBoardingRamp(-1.5, 2.5, 0.3) && !footing.onBoardingRamp(-4, 0, 0.35);
+  const dos = P.createDos({ year: 1993, files: P.PC_FILES }), dir = dos.run("dir").lines.join("\n");
+  const listed = /STAMPS/.test(dir) && /MERKLE/.test(dir) && !/B-MONEY/.test(dir) && dos.disk.every(f => f.year <= 1993) && P.PC_FILES.some(f => f.year > 1993);
+  const typed = dos.run("TYPE stamps.txt"), sourced = typed.file && typed.file.year === 1991 && typed.lines.some(l => /^Source: Haber and Stornetta/.test(l));
+  const hashed = dos.run("HASH hello ooga").hash === G.fingerprint("hello ooga");
+  const refused = dos.run("TYPE B-MONEY.TXT").missing === "B-MONEY.TXT" && /Bad command/.test(dos.run("FORMAT C:").lines[0]) && dos.run("cls").cls;
+  const book = P.createStampBook({ max: 2 }), last = G.chain(false)[G.PAGES.length - 1];
+  const a = book.add("Ooga was here\u0007"), b = book.add("Bananas for all"), full = !!book.add("one more").error;
+  const linked = a.code === G.fingerprint(last + "|Ooga was here") && b.prev === a.code && b.code === G.fingerprint(a.code + "|Bananas for all") && a.page === G.PAGES.length + 1 && book.verify() === -1;
+  book.entries[0].text = "Ooga was NOT here";
+  const caught = book.verify() === 0 && !!P.createStampBook().add("   ").error;
+  const reg = P.createRegistry(), state = {};
+  reg.register({ id: "pc", era: 3, year: 1993, title: "PC", label: "OFFICE PC · 1993", sourceKeys: ["haber1991"], at: { x: 0, y: 0, z: 0 }, onUse: () => ({ terminal: dos }) });
+  reg.register({ id: "drives", era: 0, year: 1956, title: "Drives", label: "HARD DRIVES · 1956", sourceKeys: ["chm350"], at: { x: 5, y: 0, z: 0 }, reach: 1, onUse: () => ({ board: { pages: P.drivePages() } }) });
+  let unlabelled = false;
+  try { reg.register({ id: "x", era: 1, year: 1977, title: "X", label: "NO YEAR", sourceKeys: [], at: { x: 0, y: 0, z: 0 }, onUse: () => ({}) }); } catch (_) { unlabelled = true; }
+  const near = reg.near(0.8, 0) === reg.get("pc") && reg.near(5.5, 0) === reg.get("drives") && reg.near(3, 0) === null && reg.near(0, 0, 3) === null;
+  const used = reg.use(reg.get("pc"), state).terminal === dos && reg.use(reg.get("drives"), state).board.pages.length === 4 && state.uses === 2 && state.last === "drives";
+  const keys = [...P.PC_FILES.flatMap(f => f.sourceKeys), ...P.DRIVES.old.sourceKeys, ...P.DRIVES.now.sourceKeys];
+  const sources = keys.every(k => /^https:\/\//.test(P.sourceOf(k).href)) && P.driveRatio() > 100000 && P.DRIVES.old.year === 1956;
+  return { landed, tooFar, ground, water, blocked, docks, ramp, listed, sourced, hashed, refused, linked, full, caught, unlabelled, near, used, sources };
+};
 const unitChecks = async () => {
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
@@ -22906,6 +22981,8 @@ const unitChecks = async () => {
   await canvasSurfaceCacheChecks();
   const genesis = await genesisVoyageProof();
   record("Genesis Voyage: the boat boards, stops at the stamp desk and docks, pause holds it, a plaque jump lands on its stop, a changed page breaks only the links after it, and every exhibit source is a link", Object.values(genesis).every(Boolean), JSON.stringify(genesis));
+  const genesisProps = await genesisPropsProof();
+  record("Genesis Voyage props: Jump out lands on the nearest ledge, obstacles hold, a fall returns to the dock, ramps board; the PC shows only its own years, TYPE cites, HASH is the desk's fingerprint; a visitor's page links onto Tock's chain and a change is caught; every prop label shows its year", Object.values(genesisProps).every(Boolean), JSON.stringify(genesisProps));
   const heldPad = await gamepadHoldProof();
   record("gamepad entry hold: real pad polling stays neutral, preserves trigger hysteresis and requires a fresh button after release or reconnect", Object.values(heldPad).every(Boolean), JSON.stringify(heldPad));
   const retention = await hubRetentionProof();

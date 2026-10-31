@@ -323,7 +323,7 @@ New event geometry and pickup nodes must stay capped and take part in `liveGeome
 | `scene-arcade.js`, `arcade-*` | `arcade` (and `hub` for its mouth); `arcade-games.js`, `arcade-models.js` and `arcade-scene-models.js` also `skee`, `hoops`, `shy`, `claw`, `hockey`, `billiards`, `darts`, `pinball`, `ride`; both model modules also the retro scenes |
 | `scene-carnival.js`, `carnival-audio.js` | `skee`, `hoops`, `shy`, `claw`, `hockey`, `billiards`, `darts`, `pinball`, `ride`, `invaders`, `snake`, `pong`, `stampede`, `flap`, `breaker`, `dash`, `stacker` |
 | `retro-games.js` | `invaders`, `snake`, `pong`, `stampede`, `flap`, `breaker`, `dash`, `stacker` |
-| `scene-genesis.js`, `genesis-voyage.js` (wip: `?wip=genesis`) | `genesis` (and `hub`, whose whitepaper stone is its portal) |
+| `scene-genesis.js`, `genesis-voyage.js`, `genesis-props.js` (wip: `?wip=genesis`) | `genesis` (and `hub`, whose whitepaper stone is its portal) |
 | anything shared (`director.js`, `scene.js`, the renderers, `icon-renderer.js`, `crew.js`, `pile.js`, `fx.js`, `game.js`, `hud.js`, `models.js`, `terrain.js`, `deferred.js`, `scene-deferred.js`, `build-tasks.js`) | `full` |
 
 | Command | Runs | Takes |

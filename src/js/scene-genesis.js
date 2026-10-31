@@ -8,10 +8,15 @@
 // rides in the boat, looks where the visitor drags and turns to the exhibit only at a stop; Fixed view swaps to a
 // still vantage per area. Opening the panel pauses the ride and the desk; closing it carries on as before. Calm
 // (reduced motion, on when the system asks for it) stills the boat's bob and the desk's flying tiles.
+//
+// Hop off and walk (marked section below): Jump out (J, or the button) by any ledge stops the boat where it is, with
+// no prompt, and the visitor walks as their own Ooga (the one the portal brought, `world.pilot`) through the shared
+// pilot and crew, as the arcade and factory scenes do. Walking up a boarding ramp, or J by the boat, re-boards; a fall
+// into the water comes back to the ledge's dock. Space by a prop uses it (genesis-props.js holds the props' rules).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const G = BL.genesisVoyage, M = BL.models;
+  const G = BL.genesisVoyage, M = BL.models, GP = BL.genesisProps;
   const { createNode, addChild, removeChild, createCamera } = BL.scene;
   const { clamp } = BL.math;
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
@@ -33,12 +38,34 @@
   const LIGHTS = [[-4, 3.2, 3, 11, 1.25, 0.95, 0.6], [4, 3.2, -2, 10, 1.1, 0.85, 0.55], [0, 3, -12, 9, 0.7, 0.8, 1.1],
     [-6.5, 3.4, -25, 12, 1.35, 1.05, 0.7], [-9, 3.2, -31.5, 7, 1, 0.9, 0.7], [3, 4, -30, 12, 0.6, 0.75, 1.2], [5.5, 3, -14, 8, 0.8, 0.8, 1]];
 
+  // --- Hop off and walk: where an Ooga may stand ------------------------------------------------------------------
+  // The harbour's dock, the room's ledge with the desk's step, and two boarding ramps down to the boat: one at the
+  // dock and one from the desk's step toward the stop. The statue, the desk and the newspaper stand in the way.
+  const FOOTING = {
+    areas: [
+      { id: "dock", x0: -6.6, x1: -1.8, z0: -2, z1: 7, top: 0.355, dock: { x: -3.2, z: 1.5, facing: -Math.PI / 2 } },
+      { id: "room", x0: -12, x1: -7.6, z0: -34, z1: -19, top: 0.545, dock: { x: -6, z: -26.6, facing: Math.PI / 2 } },
+      { id: "step", x0: -7.6, x1: -5, z0: -27.7, z1: -22.7, top: 0.545, dock: { x: -6, z: -26.6, facing: Math.PI / 2 } },
+      { id: "dock-ramp", x0: -1.8, x1: -0.7, z0: 2.4, z1: 3.6, ramp: { from: 0.355, to: 0.2, axis: "x" }, boards: true },
+      { id: "room-ramp", x0: -5, x1: -3.4, z0: -26.6, z1: -25.6, ramp: { from: 0.545, to: 0.25, axis: "x" }, boards: true }
+    ],
+    obstacles: [{ x0: -5.6, x1: -2.8, z0: 6.15, z1: 7.05 }, { x0: -8.5, x1: -5.9, z0: -25.9, z1: -24.5 }, { x0: -10.6, x1: -10.4, z0: -33.1, z1: -30.1 },
+      { x0: -10.2, x1: -9, z0: -21.2, z1: -20 }, { x0: -10.3, x1: -9.3, z0: -32.9, z1: -31.9 }, { x0: -6.2, x1: -5.4, z0: -24, z1: -23.2 }]
+  };
+  // How near land Jump out works, and how near the boat J re-boards.
+  const JUMP_REACH = 8, BOARD_REACH = 5;
+  // The first props, on the room's ledge: the office PC, the hard-drive plinth and Tock's book by the desk.
+  const PROPS = { pc: { x: -9.6, y: 0.545, z: -20.6 }, drives: { x: -9.8, y: 0.545, z: -32.4 }, book: { x: -5.8, y: 0.545, z: -23.6 } };
+  // The years on the harbour's timeline plaques (TODO: confirm against the era dossiers; draft from BUILD-PLAN.md).
+  const ROOM_YEARS = { keys: "1970s", "private-money": "1980s", workshop: "1992", fingerprints: "1991", work: "1997", together: "2008", genesis: "2009" };
+  const WALK_PRESETS = { dock: { yaw: 0.6, pitch: 0.3, dist: 6, target: { x: -3.2, y: 1, z: 1.5 } } };
+
   let root = null, camera = null, input = null, hud = null, game = null, world = null, go = null, overlayCanvas = null;
   let ride = null, course = null, demo = null, built = null, board = null, audio = null;
   const targets = [];
   const view = { yaw: 0, pitch: 0, look: 0, fixed: false, calm: false, captions: true, voice: false, readingPaused: false, reading: false };
   const boat = { x: 0, z: 0, heading: 0 }, eye = { x: 0, y: 0, z: 0 };
-  let sceneTime = 0, captionKey = "", lastStamps = 0, lastPhase = "", lastTiles = -1, lastBroken = false, overlayClean = false;
+  let sceneTime = 0, captionKey = "", lastStamps = 0, lastPhase = "", lastTiles = -1, lastBroken = false;
   const el = {};
 
   // --- Building -------------------------------------------------------------------------------------------------
@@ -71,13 +98,13 @@
     solid(4.6, 0.55, 15, "#4a4038", -9.9, 0.27, -26.5);
     solid(2.6, 0.55, 5, "#4a4038", -6.3, 0.27, -25.2);
     const label = BL.factoryModels.label;
-    const roomSign = label("FINGERPRINTS AND TIME", "Room 4 of the Genesis Voyage", { height: 1.4, style: "gold" });
+    const roomSign = label("FINGERPRINTS AND TIME · 1991", "Room 4 of the Genesis Voyage", { height: 1.4, style: "gold" });
     const sign = place(createNode({ position: { x: -1, y: 5.3, z: -38.9 } }));
     addChild(sign, createNode({ geometry: roomSign.back }), createNode({ geometry: roomSign.face }));
-    const harbourSign = label("THE GENESIS VOYAGE", "Before the first block", { height: 1.4, style: "gold" });
+    const harbourSign = label("THE GENESIS VOYAGE", "Before the first block · 1956 to 2009", { height: 1.4, style: "gold" });
     const hs = place(createNode({ position: { x: 1, y: 5.2, z: ROOM_Z + 0.65 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
     addChild(hs, createNode({ geometry: harbourSign.back }), createNode({ geometry: harbourSign.face }));
-    const paperSign = label("THE DAILY OOGA", "today's fingerprint", { height: 0.9, style: "plain" });
+    const paperSign = label("THE DAILY OOGA", "widely publish the fingerprint · 1991", { height: 0.9, style: "plain" });
     const ps = place(createNode({ position: { x: PAPER.x + 0.05, y: PAPER.y + 1.25, z: PAPER.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
     addChild(ps, createNode({ geometry: paperSign.back }), createNode({ geometry: paperSign.face }));
     solid(0.12, 1.8, 3, "#e9e1cc", PAPER.x, PAPER.y, PAPER.z);
@@ -164,7 +191,7 @@
     addChild(hn, createNode({ geometry: head.back }), createNode({ geometry: head.face }));
     built.plaques = [];
     G.ROOMS.forEach((room, i) => {
-      const sign = label(`${i + 1}. ${room.title.toUpperCase()}`, room.built ? "open now · sail there" : room.optional ? "optional · being built" : "being built", { height: 0.5, style: room.built ? "gold" : "plain" });
+      const sign = label(`${i + 1}. ${room.title.toUpperCase()} · ${ROOM_YEARS[room.id]}`, room.built ? "open now · sail there" : room.optional ? "optional · being built" : "being built", { height: 0.5, style: room.built ? "gold" : "plain" });
       const node = place(createNode({ position: { x: -11.72, y: 3.5 - (i % 4) * 0.62, z: i < 4 ? 3.6 : -3.2 }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
       const face = createNode({ geometry: sign.face });
       addChild(node, createNode({ geometry: sign.back }), face);
@@ -187,6 +214,200 @@
     addChild(node, createNode({ geometry: M.box({ w: 0.26, h: 0.26, d: 0.26, color: "#ffd27a", emissive: 1.5 }), position: { x: 0, y: 1.8, z: 1.55 } }));
     built.boat = node;
   };
+
+  // === Hop off and walk (stream B) ================================================================================
+  // The pilot and crew are made once per visit; while the visitor rides they are inactive and the Ooga is hidden.
+  // Jump out stops the boat (the ride simply does not advance; no pause, no prompt) and hands the camera and keys to
+  // the pilot; boarding hands them back to the boat's camera.
+  const walk = { on: false, area: null, prop: null, nearBoat: false, falls: 0, boards: 0, jumps: 0, saved: { fov: 0, near: 0 } };
+  const landing = { area: null, distance: 0, x: 0, y: 0, z: 0 };
+  const walkPose = { position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0.2, dist: 4.5 };
+  let pilot = null, people = null, avatar = null, fx = null, footsteps = null, remotes = null, footing = null, props = null;
+  let playerName = null, arrivedPilot = null, terminal = null;
+  const propState = { uses: 0, last: "" };
+  const NO_ACTORS = [];
+  const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name, BL.contributors.stateFor(cave.contributor) === "working");
+  const mayPick = (c) => !BL.net.mayDrive(c.name, BL.contributors.stateFor(c) === "working");
+  const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
+  const groundFor = (x, z, feet) => footing.supportAt(x, z, feet);
+  const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3));
+  const useNear = (x, z, reach, feet = feetOf()) => {
+    const prop = props.near(x, z, feet, Math.max(0, reach - 1.4));
+    if (!prop) return false;
+    openProp(prop);
+    return true;
+  };
+
+  // The props' models: an original beige office PC on a table, the 1956 drive cabinet beside a fingernail-sized
+  // card on a plinth, and Tock's book on a stand. Each has a sign naming it and its year.
+  const buildProps = () => {
+    const label = BL.factoryModels.label;
+    const sign = (prop, sub, y) => {
+      const s = label(prop.label, sub, { height: 0.45, style: "plain" });
+      const n = place(createNode({ position: { x: prop.at.x + 0.35, y: prop.at.y + y, z: prop.at.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
+      addChild(n, createNode({ geometry: s.back }), createNode({ geometry: s.face }));
+    };
+    const pc = props.get("pc").at, dr = props.get("drives").at, bk = props.get("book").at;
+    solid(1.1, 0.08, 1.2, "#6b4a2b", pc.x, pc.y + 0.72, pc.z);
+    for (const [dx, dz] of [[-0.45, -0.5], [0.45, -0.5], [-0.45, 0.5], [0.45, 0.5]]) solid(0.07, 0.72, 0.07, "#4c331d", pc.x + dx, pc.y + 0.36, pc.z + dz);
+    solid(0.5, 0.16, 0.9, "#d8cfb4", pc.x - 0.15, pc.y + 0.84, pc.z);
+    solid(0.45, 0.42, 0.5, "#e2d9be", pc.x - 0.15, pc.y + 1.13, pc.z);
+    built.pcScreen = place(createNode({ geometry: M.box({ w: 0.02, h: 0.3, d: 0.38, color: "#38ff7a", emissive: 1.2 }), position: { x: pc.x + 0.085, y: pc.y + 1.14, z: pc.z } }));
+    solid(0.22, 0.03, 0.62, "#cfc6aa", pc.x + 0.32, pc.y + 0.78, pc.z);
+    built.pc = place(createNode({ geometry: M.box({ w: 1.2, h: 1.4, d: 1.3, color: "#000000" }), position: { x: pc.x, y: pc.y + 0.7, z: pc.z }, visible: false }));
+    sign(props.get("pc"), "DIR · TYPE · HASH", 1.75);
+    solid(1, 0.5, 1, "#5a524a", dr.x, dr.y + 0.25, dr.z);
+    // The 1956 cabinet at a tenth of its size, its stack of disks in a window, and the card at true size beside it.
+    solid(0.6, 0.5, 0.18, "#8d939a", dr.x - 0.1, dr.y + 0.75, dr.z - 0.2);
+    for (let i = 0; i < 6; i++) solid(0.04, 0.012, 0.14, "#c9ced4", dr.x + 0.0, dr.y + 0.62 + i * 0.04, dr.z - 0.2);
+    solid(0.011, 0.001, 0.015, "#202020", dr.x + 0.25, dr.y + 0.501, dr.z + 0.3);
+    solid(0.12, 0.01, 0.12, "#ffd25f", dr.x + 0.25, dr.y + 0.5, dr.z + 0.3, 0.6);
+    built.drives = place(createNode({ geometry: M.box({ w: 1.1, h: 1.1, d: 1.1, color: "#000000" }), position: { x: dr.x, y: dr.y + 0.55, z: dr.z }, visible: false }));
+    sign(props.get("drives"), "10× smaller model · card true size", 1.55);
+    solid(0.5, 0.95, 0.5, "#7a5534", bk.x, bk.y + 0.47, bk.z);
+    solid(0.42, 0.04, 0.56, "#f5f0e2", bk.x, bk.y + 0.97, bk.z);
+    solid(0.02, 0.05, 0.02, "#2a2a2a", bk.x + 0.1, bk.y + 1.0, bk.z + 0.15);
+    built.book = place(createNode({ geometry: M.box({ w: 0.7, h: 1.2, d: 0.8, color: "#000000" }), position: { x: bk.x, y: bk.y + 0.6, z: bk.z }, visible: false }));
+    sign(props.get("book"), "stamp your own page", 1.45);
+    // The boarding ramps: planks sloping down to where the boat lies.
+    for (const a of FOOTING.areas) {
+      if (!a.ramp) continue;
+      const len = a.x1 - a.x0, cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2, drop = a.ramp.from - a.ramp.to;
+      place(createNode({ geometry: M.box({ w: Math.hypot(len, drop), h: 0.06, d: a.z1 - a.z0, color: "#8a6440" }), position: { x: cx, y: (a.ramp.from + a.ramp.to) / 2 - 0.03, z: cz }, rotation: { x: 0, y: 0, z: -Math.atan2(drop, len) } }));
+    }
+  };
+  const registerProps = () => {
+    props = GP.createRegistry();
+    const dos = GP.createDos({ year: 1993, files: GP.PC_FILES });
+    props.register({ id: "pc", era: 3, year: 1993, title: "Tock's office PC", label: "OFFICE PC · 1993", sourceKeys: ["merkle1980", "haber1991", "bayer1993"], at: PROPS.pc,
+      onUse: () => ({ terminal: dos }) });
+    // TODO: moves to Era 0's island (1956) when the islands are built; it stands here until then.
+    props.register({ id: "drives", era: 0, year: 1956, title: "Hard drives, 1956 and 2019", label: "HARD DRIVES · 1956 AND 2019", sourceKeys: GP.DRIVES.old.sourceKeys.concat(GP.DRIVES.now.sourceKeys), at: PROPS.drives,
+      onUse: () => ({ board: { room: "Hard drives: 1956 and 2019", pages: GP.drivePages(), sources: GP.DRIVES.old.sourceKeys.concat(GP.DRIVES.now.sourceKeys) } }) });
+    const book = GP.createStampBook();
+    built.stampBook = book;
+    props.register({ id: "book", era: 3, year: 1991, title: "Tock's book", label: "TOCK'S BOOK · 1991", sourceKeys: ["haber1991"], at: PROPS.book,
+      onUse: () => ({ terminal: GP.stampTerminal(book) }) });
+  };
+
+  // The terminal: one dialog for every prop with a text prompt (the PC, Tock's book). Typing stays in the field, so
+  // no key reaches the walk while it is open; closing it hands the keys back.
+  const MAX_SCREEN = 200;
+  const openTerminal = (title, term) => {
+    terminal = { term, lines: term.banner.slice() };
+    el.termTitle.textContent = title;
+    el.termPrompt.textContent = term.prompt;
+    el.termScreen.textContent = terminal.lines.join("\n");
+    el.termInput.value = "";
+    if (pilot) pilot.setActive(false);
+    hud.tooltip.hide();
+    el.term.showModal();
+    el.termInput.focus();
+  };
+  const runTerminal = (line) => {
+    if (!terminal) return;
+    const out = terminal.term.run(line);
+    if (out.cls) terminal.lines.length = 0;
+    else terminal.lines.push(`${terminal.term.prompt} ${GP.clean(line)}`, ...out.lines, "");
+    if (terminal.lines.length > MAX_SCREEN) terminal.lines.splice(0, terminal.lines.length - MAX_SCREEN);
+    el.termScreen.textContent = terminal.lines.join("\n");
+    el.termScreen.scrollTop = el.termScreen.scrollHeight;
+    if (out.entry) { audio.stamp(); hud.toast(`Page ${out.entry.page} stamped: ${out.entry.code}`); }
+    return out;
+  };
+  const terminalClosed = () => {
+    terminal = null;
+    if (pilot) pilot.setActive(walk.on && !view.reading);
+  };
+  const openProp = (prop) => {
+    audio.wake();
+    const r = props.use(prop, propState);
+    if (r.terminal) openTerminal(prop.title, r.terminal);
+    else if (r.board) openPanel(makeBoard(r.board));
+  };
+
+  // Jump out: the boat stays where it is and the Ooga lands on the nearest ledge, facing inland.
+  const jumpOut = () => {
+    if (walk.on || view.reading || terminal) return false;
+    if (!avatar) { hud.toast("No Ooga to walk with here"); return false; }
+    footing.nearestLedge(boat.x, boat.z, JUMP_REACH, landing);
+    if (!landing.area) { hud.hint("Too far from land to jump out. Sail closer to a ledge.", 3000); return false; }
+    audio.wake();
+    const facing = Math.atan2(landing.x - boat.x, landing.z - boat.z);
+    avatar.root.visible = true;
+    Object.assign(avatar.root.position, { x: landing.x, y: avatar.baseY + landing.y, z: landing.z });
+    avatar.root.rotation.y = facing;
+    walk.saved.fov = camera.fov; walk.saved.near = camera.near;
+    pilot.setActive(true);
+    if (!pilot.possess(avatar)) { pilot.setActive(false); avatar.root.visible = false; return false; }
+    walkPose.position.x = landing.x; walkPose.position.y = landing.y; walkPose.position.z = landing.z;
+    walkPose.yaw = facing - Math.PI;
+    pilot.navigate(walkPose);
+    walk.on = true; walk.area = landing.area; walk.prop = null; walk.jumps++;
+    hud.hint(COARSE ? "Stick walks · USE by a prop · Board on the ramp" : "W A S D walk · Space uses what is next to you · J or the ramp boards", 6000);
+    showControls();
+    return true;
+  };
+  // Back aboard: the pilot lets go, the Ooga is hidden and the boat's camera takes over where it left off.
+  const reboard = () => {
+    if (!walk.on) return false;
+    walk.on = false; walk.prop = null; walk.boards++;
+    if (pilot.player) pilot.release(true);
+    pilot.setActive(false);
+    avatar.root.visible = false;
+    camera.fov = walk.saved.fov; camera.near = walk.saved.near; camera.up = null; camera.orthoMix = camera.orthoHeight = 0;
+    BL.net.setBody(null);
+    hud.el.act.hidden = true;
+    captionKey = "";
+    showControls();
+    return true;
+  };
+  const toggleWalk = () => {
+    if (!walk.on) return jumpOut();
+    if (walk.nearBoat) return reboard();
+    hud.hint("Walk back to the boat or up a boarding ramp to board.", 2500);
+    return false;
+  };
+  // Per frame while walking, allocation-free: the pilot and crew, the room's presence, then the ramps, the water,
+  // the boat's reach and the prop in reach.
+  const updateWalk = (dt, elapsed) => {
+    pilot.readInput(dt);
+    people.update(dt, elapsed);
+    pilot.update(dt);
+    const driven = people.player;
+    BL.net.setBody(driven ? driven.traits.name : null);
+    if (driven) {
+      const p = driven.root.position;
+      BL.net.sendPose(p.x, p.y - driven.baseY, p.z, driven.root.rotation.y);
+      BL.net.setHealth(driven.health.value, driven.health.stunned);
+    }
+    footsteps.update(driven);
+    // Let go of (Escape, or the room taking the Ooga back): the visitor is back in the boat.
+    if (!driven) { reboard(); return; }
+    const p = driven.root.position, feet = p.y - driven.baseY;
+    const here = footing.areaAt(p.x, p.z, feet);
+    if (here && !here.ramp) walk.area = here;
+    if (footing.onBoardingRamp(p.x, p.z, feet)) { reboard(); return; }
+    if (footing.fallen(feet)) {
+      const dock = footing.dockOf(walk.area);
+      walk.falls++;
+      audio.splash();
+      walkPose.position.x = dock.x; walkPose.position.z = dock.z;
+      walkPose.position.y = footing.supportAt(dock.x, dock.z);
+      walkPose.yaw = dock.facing - Math.PI;
+      pilot.navigate(walkPose);
+      hud.hint("Splash! Back to the dock.", 2000);
+      return;
+    }
+    walk.nearBoat = Math.hypot(p.x - boat.x, p.z - boat.z) < BOARD_REACH;
+    const near = props.near(p.x, p.z, feet);
+    if (near !== walk.prop) {
+      walk.prop = near;
+      if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.title} (${near.year})`); hud.setAct("USE"); }
+      else pilot.showAct();
+    }
+  };
+  // === End of hop off and walk ====================================================================================
 
   // --- Panel ----------------------------------------------------------------------------------------------------
   const W = 960, H = 540;
@@ -213,13 +434,14 @@
       y += 14;
     }
   };
-  const makeBoard = () => {
-    const ex = G.FINGERPRINTS, canvas = document.createElement("canvas");
+  // A panel of pages ({ room, pages, sources }): the exhibit's, or a prop's board.
+  const makeBoard = (ex = G.FINGERPRINTS) => {
+    const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
     const b = {
       title: ex.room, help: "Arrows page · Escape closes and the ride carries on", canvas, count: ex.pages.length, index: 0,
       caption: ex.pages[0].caption, note: ex.pages[0].text.join(" "), version: 0, wide: true,
-      links: ex.sources.map((k) => ({ href: G.SOURCES[k].href, label: `${G.SOURCES[k].label} ↗` })),
+      links: ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} ↗` })),
       go(i) {
         b.index = i; b.caption = ex.pages[i].caption; b.note = ex.pages[i].text.join(" ");
         paintPage(canvas, ex.pages[i]); b.version++;
@@ -228,16 +450,19 @@
     paintPage(canvas, ex.pages[0]);
     return b;
   };
-  const openInfo = () => {
-    if (!hud || view.reading) return;
+  // Opening a panel holds the ride (and, ashore, the walk) until it closes.
+  const openPanel = (panel) => {
+    if (!hud || view.reading || terminal) return;
     view.readingPaused = !ride.paused;
     ride.pause(true);
     view.reading = true;
+    if (pilot) pilot.setActive(false);
     stopVoice();
-    board.go(0);
-    hud.openBoard(board);
+    panel.go(0);
+    hud.openBoard(panel);
     showControls();
   };
+  const openInfo = () => openPanel(board);
 
   // --- Sound and voice --------------------------------------------------------------------------------------------
   // Short synthesized cues through the page's environment mute (M), made only after a gesture and closed on leave.
@@ -260,6 +485,7 @@
       stamp: () => { tone(140, 0.18, "square", 0.08, 0.5); tone(70, 0.25, "sine", 0.14, 0.7); },
       link: () => tone(880, 0.35, "triangle", 0.05, 1.5),
       broken: () => { tone(220, 0.6, "sawtooth", 0.04, 0.6); tone(233, 0.6, "sawtooth", 0.04, 0.6); },
+      splash: () => { tone(320, 0.45, "triangle", 0.07, 0.3); tone(90, 0.5, "sine", 0.12, 0.6); },
       dispose: () => { if (context) context.close().catch(() => {}); context = out = null; }
     };
   };
@@ -288,6 +514,10 @@
     press(el.cc, view.captions); press(el.voice, view.voice); press(el.view, view.fixed); press(el.calm, view.calm);
     el.voice.hidden = !speech;
     el.caption.hidden = !view.captions || !el.caption.textContent;
+    // Ashore the boat waits: its own buttons step aside and Jump out becomes Board.
+    el.sail.hidden = el.skip.hidden = walk.on;
+    el.jump.textContent = walk.on ? "Board" : "Jump out";
+    press(el.jump, walk.on);
   };
   const paintChain = () => {
     const codes = demo.broken ? built.codes.tampered : built.codes.honest;
@@ -317,8 +547,18 @@
   const leave = () => go("hub");
 
   const onKey = (e) => {
-    if (view.reading || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (view.reading || terminal || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === "j") { audio.wake(); toggleWalk(); return; }
+    // Ashore the pilot has the walking keys (W A S D, Q E, Space), Escape and 0; letting go of the Ooga re-boards.
+    if (walk.on) {
+      if (k === "Escape") { if (!pilot.escape()) reboard(); }
+      else if (k === "0") pilot.resetCamera();
+      else if (k === "i") openInfo();
+      else if (k === "c") toggle("captions");
+      else if (k === "t") toggle("voice");
+      return;
+    }
     if (k === "Escape") leave();
     else if (k === "Enter" || k === " " || k === "p") { e.preventDefault(); sail(); }
     else if (k === "n") skip();
@@ -369,11 +609,15 @@
     if (ride.state === "station" && !ride.paused && p !== lastPhase) setCaption(p);
     lastPhase = p;
   };
-  const updateCamera = (dt) => {
+  const updateBoatModel = () => {
     const bob = view.calm || ride.paused ? 0 : Math.sin(sceneTime * 1.7) * 0.05;
     built.boat.position.x = boat.x; built.boat.position.z = boat.z; built.boat.position.y = bob;
     built.boat.rotation.y = boat.heading;
     built.boat.rotation.z = view.calm ? 0 : Math.sin(sceneTime * 1.1) * 0.025;
+    return bob;
+  };
+  const updateCamera = (dt) => {
+    const bob = updateBoatModel();
     const c = camera.position, target = camera.target;
     if (view.fixed) {
       const v = boat.z > ROOM_Z ? FIXED_VIEWS.harbour : FIXED_VIEWS.room;
@@ -406,11 +650,13 @@
     if (view.reading && !hud.el.board.open) {
       view.reading = false;
       if (view.readingPaused) ride.pause(false);
+      if (walk.on && !terminal) pilot.setActive(true);
       captionKey = "";
       showControls();
     }
     const before = ride.state;
-    if (!view.reading) ride.update(dt);
+    // Ashore the boat simply waits where it is.
+    if (!view.reading && !walk.on) ride.update(dt);
     course.sample(ride.d, boat);
     if (captionKey === "current" && boat.z < ROOM_Z) setCaption("sailing");
     if (ride.state !== before) {
@@ -422,20 +668,19 @@
     stepDemo(dt);
     flowCurrent(dt);
     built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
-    updateCamera(dt);
+    built.pcScreen.glow = 1 + (Math.floor(sceneTime * 2) & 1) * 0.2;
+    // The boat's camera rides along; ashore the pilot frames the Ooga and the boat sits still on the water.
+    if (walk.on) { updateBoatModel(); updateWalk(dt, sceneTime); }
+    else updateCamera(dt);
+    remotes.update(dt);
+    fx.update(dt, sceneTime);
     hud.updateBoard(sceneTime);
   };
-  const overlay = () => {
-    // Nothing is drawn over the world here; the canvas is cleared once so the last scene's overlay does not linger.
-    if (overlayClean) return;
-    overlayClean = true;
-    const g = overlayCanvas.getContext("2d");
-    g.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-    hud.tooltip.beginFrame();
-  };
+  const drawExtra = (g, project) => remotes.drawNames(g, project);
+  const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   // --- Visit ----------------------------------------------------------------------------------------------------
-  const tooltipFor = (hit) => hit && hit.owner.kind === "plaque" ? (hit.owner.plaque.station >= 0 ? `${hit.owner.plaque.room.title} · tap to sail there` : `${hit.owner.plaque.room.title} · being built`) : hit && hit.owner.kind === "exhibit" ? "Fingerprints and Time · tap to read" : hit && hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : "";
+  const tooltipFor = (hit) => hit && hit.owner.kind === "plaque" ? (hit.owner.plaque.station >= 0 ? `${hit.owner.plaque.room.title} · tap to sail there` : `${hit.owner.plaque.room.title} · being built`) : hit && hit.owner.kind === "exhibit" ? "Fingerprints and Time (1991) · tap to read" : hit && hit.owner.kind === "prop" ? `${hit.owner.prop.title} (${hit.owner.prop.year}) · ${walk.on ? `walk up and press ${COARSE ? "USE" : "Space"}` : "jump out (J) to use it"}` : hit && hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : "";
   const enter = (ctx) => {
     ({ game, world, go } = ctx);
     overlayCanvas = ctx.overlay;
@@ -445,13 +690,16 @@
     built = {};
     course = G.createCourse(COURSE);
     buildCavern(); buildCurrent(); buildTimeline(); buildDesk(); buildBoat();
+    registerProps();
+    footing = GP.createFooting(FOOTING);
+    buildProps();
     ride = G.createRide({ course, stations: STATIONS, speed: 1.7 });
     demo = G.createStampDemo();
     board = makeBoard();
     audio = createAudio();
     view.yaw = view.pitch = view.look = 0; view.reading = view.readingPaused = false; view.fixed = false;
     view.calm = PREFERS_CALM.matches;
-    sceneTime = 0; captionKey = ""; lastStamps = 0; lastPhase = ""; lastTiles = -1; lastBroken = false; overlayClean = false;
+    sceneTime = 0; captionKey = ""; lastStamps = 0; lastPhase = ""; lastTiles = -1; lastBroken = false;
     renderOpts.lightCount = LIGHTS.length;
     for (let i = 0; i < LIGHTS.length; i++) { const l = LIGHTS[i], o = i * 8; for (let k = 0; k < 7; k++) renderOpts.lights[o + k] = l[k]; renderOpts.lights[o + 7] = 0; }
     hud = BL.hud.create({ signal: ctx.signal, roster: BL.contributors.activeRoster, catalog: M.SWAG, tierColors: M.TIER_COLORS, renderIcon: BL.hud.renderIcon, lootEnabled: false });
@@ -463,20 +711,68 @@
     target(built.guide.parts.torso, { kind: "guide" });
     target(built.guide.parts.head, { kind: "guide" });
     for (const plaque of built.plaques) target(plaque.face, { kind: "plaque", plaque });
+    for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
+    // Hop off and walk: the pilot and crew for the visitor's Ooga, idle until Jump out (as the arcade's are).
+    const boatFov = camera.fov;
+    const clampTarget = (p) => { p.x = clamp(p.x, -11.5, 9.5); p.y = clamp(p.y, 0.3, 6.2); p.z = clamp(p.z, -38.5, 8.5); };
+    const clampCamera = (p) => { p.x = clamp(p.x, -11.8, 9.8); p.y = clamp(p.y, 0.4, 6.6); p.z = clamp(p.z, -38.8, 8.8); };
+    pilot = BL.pilot.create({
+      renderer: ctx.renderer, canvas: ctx.canvas, camera, hud, presets: WALK_PRESETS, landing: "dock", pitch: [-0.2, 1.2], dist: [2.5, 12],
+      follow: { y: 0.9, min: 2.5, max: 6, pitch: [0.2, 0.8] }, fly: { speed: 4, perDist: 0.4, climb: 2, yMax: 6 }, clampTarget, clampCamera,
+      ceilingAt: () => 6.6, coarse: COARSE, mayPossess,
+      close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: (x, z) => footing.supportAt(x, z, feetOf()) }
+    });
+    camera.fov = boatFov;
+    fx = BL.fx.create({ root, renderer: ctx.renderer, camera, overlay: ctx.overlay, tickerAt: { x: -1, y: 5, z: -10 }, hud });
+    // The visitor's Ooga: the one the portal brought (`world.pilot`), `character=` on a page that opens here, else the
+    // roster's default pick, under the island's driving rules.
+    arrivedPilot = world.pilot;
+    world.pilot = null;
+    const asked = ctx.from === null ? new URLSearchParams(location.search).get("character")?.trim().toLowerCase() : null;
+    const named = asked ? BL.contributors.roster.find((c) => c.name.toLowerCase() === asked) : null;
+    const wanted = named ? named.name : arrivedPilot;
+    const wantedEntry = wanted && BL.contributors.roster.find((c) => c.name === wanted);
+    playerName = wantedEntry && mayPick(wantedEntry) ? wanted : BL.contributors.activeRoster.find(mayPick)?.name || null;
+    if (playerName) {
+      const shared = { root, input, hud, game, world: { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } }, playerName, fx, viewYaw: 0,
+        outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor, useNear };
+      people = shared.crew = BL.crew.create(shared);
+      pilot.bind(shared);
+      avatar = people.cavemen.get(playerName);
+      // Empty-handed, as in the arcade: no rifle, no aiming.
+      avatar.weapon.secondaryOwned = false;
+      people.selectWeapon(0, avatar);
+      avatar.weapon.aiming = false;
+      avatar.parts.gun.visible = false;
+      avatar.root.visible = false;
+    }
+    pilot.setActive(false);
+    remotes = BL.remotePlayers.create({ root, crew: people, fx });
+    footsteps = BL.footsteps.create();
+    walk.on = false; walk.area = walk.prop = null; walk.nearBoat = false; walk.falls = walk.boards = walk.jumps = 0;
+    propState.uses = 0; propState.last = ""; terminal = null;
+    const boatOrbit = (dx, dy) => {
+      if (view.fixed || view.reading) return;
+      view.yaw = clamp(view.yaw - dx * 4e-3, -2.6, 2.6);
+      view.pitch = clamp(view.pitch + dy * 3e-3, -0.7, 0.6);
+    };
     Object.assign(hooks, {
       onHover: (hit, p) => { const t = tooltipFor(hit); if (t) hud.tooltip.show(t, p.x, p.y); else hud.tooltip.hide(); },
       onHoverMove: (hit, p) => { const t = tooltipFor(hit); if (t) hud.tooltip.show(t, p.x, p.y); else hud.tooltip.hide(); },
       onTap: (hit) => {
         audio.wake();
         if (hit && hit.owner.kind === "exhibit") openInfo();
-        else if (hit && hit.owner.kind === "plaque") jumpTo(hit.owner.plaque);
+        else if (hit && hit.owner.kind === "plaque" && !walk.on) jumpTo(hit.owner.plaque);
+        else if (hit && hit.owner.kind === "prop") {
+          if (walk.on && walk.prop === hit.owner.prop) openProp(hit.owner.prop);
+          else hud.hint(walk.on ? `Walk up to ${hit.owner.prop.title} to use it` : "Jump out (J) and walk up to use it", 2500);
+        }
       },
-      onOrbit: (dx, dy) => {
-        if (view.fixed || view.reading) return;
-        view.yaw = clamp(view.yaw - dx * 4e-3, -2.6, 2.6);
-        view.pitch = clamp(view.pitch + dy * 3e-3, -0.7, 0.6);
-      },
-      onZoom: () => {}
+      // Ashore the pilot takes the look, zoom and double-tap; aboard the boat's own camera does.
+      hoverIgnore: () => walk.on ? pilot.hooks.hoverIgnore() : null,
+      onOrbit: (dx, dy) => { if (walk.on) pilot.hooks.onOrbit(dx, dy); else boatOrbit(dx, dy); },
+      onZoom: (factor, gesture, px, py) => { if (walk.on) pilot.hooks.onZoom(factor, gesture, px, py); },
+      onDoubleTap: (hit) => { if (walk.on) pilot.hooks.onDoubleTap(hit); }
     });
     hud.onAction((action) => {
       audio.wake();
@@ -487,12 +783,19 @@
       else if (action === "genesis-voice") toggle("voice");
       else if (action === "genesis-view") toggle("fixed");
       else if (action === "genesis-calm") toggle("calm");
+      else if (action === "genesis-jump") toggleWalk();
+      else if (action === "reset-view" && walk.on) pilot.resetCamera();
       else if (action === "leave") leave();
     });
-    for (const id of ["caption", "sail", "skip", "info", "cc", "voice", "view", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
+    for (const id of ["caption", "sail", "skip", "info", "jump", "cc", "voice", "view", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
-    el.help.textContent = COARSE ? "Drag to look · tap the lectern to read" : "Enter sail · Space pause · N skip · I info · C captions · T voice · V view · R calm · drag to look · Esc leave";
+    el.help.textContent = COARSE ? "Drag to look · tap the lectern to read · Jump out by a ledge" : "Enter sail · Space pause · N skip · I info · J jump out · C captions · T voice · V view · R calm · drag to look · Esc leave";
+    el.term = document.getElementById("genesis-terminal");
+    for (const id of ["Title", "Screen", "Prompt", "Input", "Form"]) el["term" + id] = document.getElementById(`genesis-terminal-${id.toLowerCase()}`);
+    el.termForm.addEventListener("submit", (e) => { e.preventDefault(); runTerminal(el.termInput.value); el.termInput.value = ""; }, { signal: ctx.signal });
+    el.term.addEventListener("close", terminalClosed, { signal: ctx.signal });
+    el.term.querySelector("[data-terminal-close]").addEventListener("click", () => el.term.close(), { signal: ctx.signal });
     window.addEventListener("pointerdown", audio.wake, { signal: ctx.signal });
     window.addEventListener("keydown", audio.wake, { signal: ctx.signal });
     course.sample(0, boat);
@@ -500,7 +803,8 @@
     paintChain();
     showControls();
     hud.setStats(game.state);
-    Object.assign(scene, { root, camera, input, debug: { get ride() { return ride; }, get demo() { return demo; }, view, built, board, sail, skip, openInfo, toggle, jumpTo } });
+    Object.assign(scene, { root, camera, input, debug: { get ride() { return ride; }, get demo() { return demo; }, view, built, board, sail, skip, openInfo, toggle, jumpTo,
+      walk, boat, footing, props, pilot, get avatar() { return avatar; }, get terminal() { return terminal; }, jumpOut, reboard, toggleWalk, openProp, runTerminal } });
   };
   const onDonation = (donation, counted = null) => {
     game.recordDonation(donation, counted && counted.exact);
@@ -512,7 +816,18 @@
   const leaveScene = () => {
     stopVoice();
     if (view.reading) hud.closeBoard();
+    if (el.term.open) el.term.close();
+    terminal = null;
+    // The Ooga that came in (or the one walked here) goes back out to the island as itself.
+    world.pilot = arrivedPilot || (walk.jumps && playerName) || null;
+    walk.on = false; walk.area = walk.prop = null;
+    BL.net.setBody(null);
     audio.dispose();
+    remotes.dispose();
+    footsteps.dispose();
+    if (people) people.dispose();
+    fx.dispose();
+    pilot.dispose();
     for (const node of targets) input.remove(node);
     targets.length = 0;
     const count = input.targetCount;
@@ -524,6 +839,7 @@
     for (const key of Object.keys(el)) el[key] = null;
     view.reading = false;
     ride = course = demo = board = audio = built = input = hud = game = world = go = overlayCanvas = null;
+    pilot = people = avatar = fx = footsteps = remotes = footing = props = playerName = arrivedPilot = null;
     scene.input = scene.debug = null;
     return { targets: count };
   };
@@ -531,12 +847,18 @@
     let nodes = 0;
     const all = (n) => { nodes++; for (const c of n.children) all(c); };
     all(root);
-    return { allNodes: nodes, targets: input.targetCount, ride: ride.state, station: ride.station, demo: demo.phase, paused: ride.paused, reading: view.reading };
+    return { allNodes: nodes, targets: input.targetCount, ride: ride.state, station: ride.station, demo: demo.phase, paused: ride.paused, reading: view.reading,
+      walking: walk.on, falls: walk.falls, uses: propState.uses, fx: fx.stats ? fx.stats() : null, crew: people ? people.stats() : null };
   };
   const scene = BL.deferred.scene("genesis", {
     id: "genesis", wip: true, renderOpts, root: null, camera: null, input: null, debug: null,
     enter, update, overlay, onDonation, onKey, onLootCleared: () => {}, leave: leaveScene, stats,
-    liveGeometry: (set) => { if (built && built.guide) set.add(built.guide.headOpen).add(built.guide.headClosed); },
-    get inMotion() { return !!ride && !ride.paused && !view.reading && ride.state !== "boarding" && ride.state !== "docked"; }
+    voiceZone: "genesis.voyage",
+    liveGeometry: (set) => {
+      if (built && built.guide) set.add(built.guide.headOpen).add(built.guide.headClosed);
+      if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
+      if (remotes) remotes.liveGeometry(set);
+    },
+    get inMotion() { return !!ride && (walk.on || !ride.paused && !view.reading && ride.state !== "boarding" && ride.state !== "docked"); }
   });
 })();

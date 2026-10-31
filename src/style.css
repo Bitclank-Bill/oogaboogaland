@@ -10142,6 +10142,16 @@ body[data-active-scene="genesis"] .magazine-hud {
 .genesis-chain .section-head { margin: 0 0 4px; font-size: 11px; }
 .genesis-chain ol { margin: 0; padding-left: 1.4em; font-family: var(--mono); font-size: 13px; }
 .genesis-chain li.broken { color: var(--danger); text-decoration: line-through; }
+.genesis-terminal { width: 640px; pointer-events: auto; }
+.genesis-screen {
+  height: 300px; margin: 8px 0; padding: 10px 12px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  border-radius: 4px; background: #08110b; color: #7dff9e; font-family: var(--mono); font-size: 14px; line-height: 1.35;
+}
+.genesis-prompt { display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 14px; }
+.genesis-prompt input {
+  flex: 1; min-width: 0; padding: 6px 8px; border: 2px solid var(--wood-edge); border-radius: 4px;
+  background: #08110b; color: #7dff9e; font: inherit;
+}
 @media (max-width: 640px) {
   .genesis-caption { font-size: 15px; }
   .genesis-chain { top: auto; bottom: 190px; }
