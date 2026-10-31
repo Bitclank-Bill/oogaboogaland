@@ -353,9 +353,25 @@ did the same things by hand.
 | `genesisEra3Proof` (above), run from a scratch script against the real modules | all 25 fields true |
 | `node test/run.mjs genesis` with the patch, in this container | see "Limitations" |
 
-Browser probe (Playwright, headless Chromium, software GL, patch applied, built page under `?wip=genesis&debug=1&nosim=1`): results are recorded in the follow-up commit below this line.
+Browser probe: Playwright driving headless Chromium with software GL, with the patch applied, on the built page with
+`?scene=genesis&wip=genesis&debug=1&nosim=1&hour=12&day=80`. Steps used the real keyboard; time advanced with
+`__ooga.advance`.
 
-<!-- probe results -->
+| Step | Result |
+|---|---|
+| Boot | 8.7 s; one advanced second took 1.4 s of wall time |
+| Mount | 5 Era 3 props registered beside `pc`, `drives` and `book`; 26 input targets |
+| Tour plaque 3, jump out, walk to the press | Ooga ashore; nearest prop `era3-newspaper`; the pager had already paged twice |
+| Space, then `EDIT 2 ...` | Prompt open. Page 1 matches, page 2 is CHANGED, pages 3-5 say "link FAILS", and the printed fingerprint NO LONGER MATCHES |
+| Hold W with the prompt open | the Ooga moved 0 m |
+| Cabinet: Space, Space, hold Left for 1 s, then hold W | Board open, game in `play`, paddle moved to 0.08; the Ooga moved 0 m; `view.reading` was true |
+| R | game back to `serve` |
+| Escape | board closed; `reading` false; the module's active panel cleared |
+| Pager stand | 4 messages listed, newest first, with their times |
+| Console errors or warnings | none recorded |
+| Round trip `go("hub")` then `go("genesis")`, twice | **not confirmed**: genesis wasn't back within 240 s either time. The hub's sliced build under software GL probably hadn't finished, so `go("genesis")` was likely ignored. The probe couldn't tell that apart from a fault. The suite's `trip("genesis")` on a real GPU is the check that counts. |
+
+Screenshots of the rally panel, the bank sign and the exhibit row were taken and inspected; they aren't committed.
 
 ## Limitations (honest)
 
