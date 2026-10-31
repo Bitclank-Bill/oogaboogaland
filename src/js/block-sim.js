@@ -1989,6 +1989,9 @@
       const a = sim.actors[sim.flip ? N - 1 - n : n];
       if (a.cooldown > 0) a.cooldown -= dt;
       if (a.monkeyCool > 0) a.monkeyCool -= dt;
+      // Status clocks belong to every actor, including mounted riders and grabbed actors that return early.
+      if (a.knock > 0) a.knock = Math.max(0, a.knock - dt);
+      if (a.soot > 0) a.soot = Math.max(0, a.soot - dt);
       if (a.boots > 0) a.boots = Math.max(0, a.boots - dt);
       if (a.laser > 0) a.laser = Math.max(0, a.laser - dt);
       if (a.beam > 0) stepBeam(sim, a, dt);
@@ -2046,9 +2049,7 @@
       }
       const free = a.splat <= 0 && a.trapped <= 0;
       let jump = false;
-      if (a.knock > 0) a.knock -= dt;
       if (a.spooked > 0) { a.spooked -= dt; a.vx = a.vz = 0; }
-      if (a.soot > 0) a.soot = Math.max(0, a.soot - dt);
       if (a.slip > 0 || a.flight === 1 || a.knock > 0) {
         // No steering, no jumping: the slide (or the catapult's throw) carries on.
         if (!a.bot) input.jump = 0;

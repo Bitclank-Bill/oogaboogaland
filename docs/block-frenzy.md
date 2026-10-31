@@ -102,3 +102,13 @@ a quiz trap through a wrong and a right answer, an autopilot round to its saved 
 The global tier passes (271 of 271). Browser scenes could not finish in the sandbox this was built in (software
 rendering, and the existing `drop` scene timed out there too), so `npm test -- block arcade` needs a run on real
 hardware before merge.
+
+
+## Upstream issue 362: game-only piggyback
+
+Per w-s-bitcoin's review, piggyback remains local Block Frenzy gameplay. This contribution
+does not add shared-island riding, human-player invitations or a new network protocol.
+Mounted riders keep their existing trap/blast behaviour, but their knockback and soot
+clocks now expire normally while riding. The existing piggyback proof checks intermediate
+and completed expiry without dismounting. Multiplayer, low-ceiling/overhang geometry,
+physical touch controls and browser performance still require verification.

@@ -5426,6 +5426,18 @@ const gameRulesChecks = async () => {
         on && carried && along && stays && off, JSON.stringify({ on, carried, along, stays, off }));
     }
     {
+      const { r, me, b1, run } = piggy();
+      Object.assign(me, { x: 0, z: 10 }); Object.assign(b1, { x: 0.9, z: 10 });
+      const on = S.hopOn(r, 0);
+      me.knock = me.soot = 1;
+      run(0.5);
+      const halfway = me.ride === b1.id + 1 && me.knock > 0.49 && me.knock < 0.51 && me.soot > 0.49 && me.soot < 0.51;
+      run(1.5);
+      record("block frenzy piggyback: mounted riders' knockback and soot expire without ending the ride",
+        on && halfway && me.ride === b1.id + 1 && me.knock === 0 && me.soot === 0,
+        JSON.stringify({ on, halfway, ride: me.ride, knock: me.knock, soot: me.soot }));
+    }
+    {
       // J: a closer teammate that can't come (splatted) doesn't stop a healthy one answering.
       const { r, me, b1, b2, run } = piggy();
       Object.assign(me, { x: 0, z: 10 }); Object.assign(b1, { x: 2, z: 10, bot: true, splat: 1e9 }); Object.assign(b2, { x: 6, z: 14, bot: true });
