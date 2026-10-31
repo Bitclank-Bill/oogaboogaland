@@ -22954,6 +22954,24 @@ const genesisExhibitsProof = async () => {
       } };
     def.build(kit);
   });
+  // The trail entries each built era must carry, from its dossier's classes (an era file that places its exhibits
+  // well but leaves these out must fail): every listed prop with exactly that connection and reference, every other
+  // prop of that era context, and no era-owned overview (the shared signage holds the overview).
+  const EXPECTED_TRAIL = {
+    0: { "e0-feller": "citation [8]" },
+    4: { "e4-hashcash": "influence", "e4-bmoney": "citation [1]", "e4-names": "citation [5]", "e4-timesec": "citation [2]" }
+  };
+  const describe = (d) => d.connection ? `${d.connection}${d.ref ? ` ${d.ref}` : ""}` : "none";
+  for (const [era, want] of Object.entries(EXPECTED_TRAIL)) {
+    const mine = built.filter((x) => x.era === +era);
+    for (const [id, link] of Object.entries(want)) {
+      const x = mine.find((m) => m.def.id === id);
+      if (!x) bad.push(`era ${era}: expected trail entry ${id} is missing`);
+      else if (describe(x.def) !== link) bad.push(`era ${era}: ${id} is ${describe(x.def)}, expected ${link}`);
+    }
+    for (const x of mine) if (!want[x.def.id] && x.def.connection !== "context") bad.push(`era ${era}: ${x.def.id} should be context, is ${describe(x.def)}`);
+    for (const x of mine) if (/-overview$/.test(x.def.id)) bad.push(`era ${era}: ${x.def.id} duplicates the shared overview`);
+  }
   const trail = EX.trailOf(built);
   const ordered = trail.every((x, i) => x.step === i + 1 && (i === 0 || trail[i - 1].def.year <= x.def.year)) && built.every((x) => !!x.step === !!(x.def.connection && EX.CONNECTIONS[x.def.connection].trail));
   const refuses = !!EX.checkProp(3, { id: "a", connection: "context", ref: "[3]" }) && !!EX.checkProp(3, { id: "b", connection: "citation" }) && !!EX.checkProp(3, { id: "c", connection: "anchor" })
@@ -23079,7 +23097,7 @@ const unitChecks = async () => {
   const genesis = await genesisVoyageProof();
   record("Genesis Voyage: the boat boards, stops at the stamp desk and docks, pause holds it, a plaque jump lands on its stop, a changed page breaks only the links after it, and every exhibit source is a link", Object.values(genesis).every(Boolean), JSON.stringify(genesis));
   const genesisExhibits = await genesisExhibitsProof();
-  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid and the Steps toward Bitcoin run in date order", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
+  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();
   record("Genesis Voyage stream: eight caves in date order with eraAt matching, era boats from the dossiers, the boat leaves the harbour by its mouth and walls hold, boost raises the top speed, the banks keep the boat in the stream, a dock reports, and the Tour stops at every dock", Object.values(genesisWater).every(Boolean), JSON.stringify(genesisWater));
   const genesisProps = await genesisPropsProof();
