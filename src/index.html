@@ -163,6 +163,7 @@
         <p data-scene="hangar" hidden>Lightning Jet Hangar</p>
         <p data-scene="bifrost" hidden>₿IFRÖST</p>
         <p data-scene="timechain" id="sphere-subtitle" hidden>Timechain Sphere</p>
+        <p data-scene="cloudarchive" hidden>Cloud Archive</p>
         <p data-scene="arcade" hidden>Ooga Arcade</p>
         <p data-scene="skee" hidden>Ooga Arcade · Thro-ball</p>
         <p data-scene="hoops" hidden>Ooga Arcade · Hoop Shot</p>
@@ -308,6 +309,10 @@
       <nav class="presets" aria-label="Timechain Sphere room" data-scene="timechain" hidden>
         <span class="sphere-mode" id="sphere-mode" role="status"></span>
         <button type="button" class="leave" data-action="leave">Leave<span> room</span></button>
+      </nav>
+      <nav class="presets" aria-label="Cloud Archive" data-scene="cloudarchive" hidden>
+        <span class="sphere-mode" id="archive-mode" role="status"></span>
+        <button type="button" class="leave" data-action="leave">Leave<span> archive</span></button>
       </nav>
       <nav class="presets" aria-label="₿IFRÖST" data-scene="bifrost" hidden>
         <button type="button" data-preset="core">Core</button>
@@ -2056,6 +2061,11 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/timechain-charts.js" data-defer="timechain"></script>
   <script src="js/timechain-room-models.js" data-defer="timechain"></script>
   <script src="js/timechain-interior.js" data-defer="timechain"></script>
+  <script src="js/cloud-archive-entry.js"></script>
+  <script src="js/scene-cloudarchive.js"></script>
+  <script src="js/cloud-archive-data.js" data-defer="cloudarchive"></script>
+  <script src="js/cloud-archive-models.js" data-defer="cloudarchive"></script>
+  <script src="js/cloud-archive-interior.js" data-defer="cloudarchive"></script>
   <script src="js/routes.js"></script>
   <script src="js/router.js"></script>
   <script src="js/poker-rules.js" data-defer="poker"></script>
