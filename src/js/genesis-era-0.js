@@ -33,21 +33,16 @@
   const buildToys = (kit) => {
     const { era, top, solid, sign, obstacle, prop } = kit;
     // Stations have separate clear approach pads; all footprints stay well away from the stream and its ramps.
-    const station = (id, year, title, keys, x, z, width, depth, term) => {
+    // Each station is context (the dossier's classes): a period machine or a toy, not a whitepaper citation. Its tap
+    // box covers the model; its walk-up point is just in front of it.
+    const station = (id, year, date, title, keys, x, z, width, depth, term) => {
       obstacle(x - width / 2, x + width / 2, z - depth / 2, z + depth / 2);
-      prop({ id, year, title, label: `${title.toUpperCase()} · ${year}`, sourceKeys: keys,
+      prop({ id, year, date, connection: "context", title, label: `${title.toUpperCase()} · ${year}`, sourceKeys: keys,
         at: { x, y: top, z: z + depth / 2 + 0.8 }, reach: 1.8,
-        pick: { w: width, h: 1.8, d: 0.7 }, onUse: () => ({ terminal: term }) });
+        pick: { w: width, h: 1.8, d: depth + 0.4, x, z }, onUse: () => ({ terminal: term }) });
     };
-    sign("1956-1969", "MACHINES THAT COUNT", -17, top + 7, era.z1 - 8, 0, 1.5);
-    sign("STORE / COUNT / CONNECT", "Period technology: context, not early Bitcoin", -17, top + 4.6, era.z1 - 8, 0, 0.65);
-    sign("STEPS TOWARD BITCOIN", "1957 Feller edition: whitepaper reference 8", -9, top + 4.5, era.z1 - 22, 0, 0.6);
-    prop({ id: "e0-overview", year: 1956, title: "Machines That Count: 1956-1969", label: "ERA OVERVIEW · 1956-1969",
-      sourceKeys: ["e0Storage", "e0Feller", "e0Arpanet", "whitepaper"], at: { x: -17, y: top, z: era.z1 - 6 }, reach: 2,
-      onUse: () => ({ board: { room: "Machines That Count / 1956-1969", sources: ["e0Storage", "e0Feller", "e0Arpanet", "whitepaper"], pages: [
-        { caption: "Explore", title: "Store, count and connect", text: ["1956: a disk-storage system reaches selected records. 1957: the edition of Feller cited later by Bitcoin. 1969: an ARPANET host-message attempt.", "Gold signs identify the whitepaper connection. Other machines explain the period; they were not Bitcoin prototypes."] },
-        { caption: "Play", title: "Five things to try", text: ["Seek a record, punch a short message, change the odds of a race, retry a network login, and inspect a clearly labelled 2019 comparison.", "The controls and codes are invented for this museum. Dates identify historical events or the period illustrated, not the invention of these games."] }
-      ] } }) });
+    // The era's big sign, pylons, overview board and the Steps toward Bitcoin are the shared signage's
+    // (docs/genesis-voyage/EXHIBIT-CONTRACT.md); this era's guide is in its overview's pages, below.
     // Human-scale schematic storage cabinet: 50 square platter silhouettes, not an engineering reconstruction.
     const dx = -23, dz = era.z - 3;
     solid(3.5, 0.25, 2.8, "#494d4e", dx, top + 0.125, dz);
@@ -63,7 +58,7 @@
       record = n; arm.position.y = top + 0.45 + record * 0.05;
       return reply(`Arm selected toy record ${record}; see its height change in the cabinet after closing this window.`, "Selected access avoids reading every earlier toy record. Motion is schematic, not real access timing.");
     });
-    station("e0-disk-seek", 1956, "Disk record finder", ["e0Storage"], dx, dz, 3.7, 3, seek);
+    station("e0-disk-seek", 1956, "June 1956: the first commercial shipment, as the Computer History Museum dates it", "Disk record finder", ["e0Storage"], dx, dz, 3.7, 3, seek);
     // Invented eight-column, seven-bit code: explicitly NOT Hollerith, BCD, or a historical card format.
     const cx = -23, cz = era.z0 + 13, holes = [];
     solid(3.8, 0.9, 2.1, "#705239", cx, top + 0.45, cz);
@@ -93,7 +88,7 @@
       for (let i = 0; i < count; i++) decoded += codes[i] >= 32 && codes[i] <= 126 ? String.fromCharCode(codes[i]) : "[control]";
       return reply(`Read: ${decoded || "(empty)"}`, "Changing one hole can change the decoded message; this toy has no error correction.");
     });
-    station("e0-punch", 1956, "Punch a museum message", ["e0Cards"], cx, cz, 4, 2.3, punch);
+    station("e0-punch", 1956, "1956-1969: the period illustrated; the code is invented today", "Punch a museum message", ["e0Cards"], cx, cz, 4, 2.3, punch);
     // Seeded, finite race. It illustrates changing odds, not the whitepaper's attack-success calculation.
     const rx = 18, rz = era.z1 - 20;
     solid(8, 0.8, 2.7, "#66502e", rx, top + 0.4, rz);
@@ -120,9 +115,10 @@
       } else if (cmd !== "STATUS") return reply("Use ODDS, STEP, STATUS, INFO or RESET.");
       return reply(`Gold chance ${odds}%; gold ${gold}, blue ${blue}; ${steps}/64 steps.`, steps === 64 ? "Race complete. Change ODDS or RESET to try again." : "STEP advances the race. Close this window to inspect the counters.");
     });
-    station("e0-race", 1957, "Probability race", ["e0Feller", "whitepaper"], rx, rz, 8.2, 2.9, race);
+    station("e0-race", 1957, "1957: the Feller edition the whitepaper cites; the race itself is a toy", "Probability race", ["e0Feller", "whitepaper"], rx, rz, 8.2, 2.9, race);
     // Adjacent to the existing ARPANET display: an explicit reconstruction, not an invented historical transcript.
-    const nx = 20, nz = era.z - 1;
+    // Clear of the right bank's lamp post at x 22 by the middle of the cave.
+    const nx = 18.5, nz = era.z - 1;
     solid(2.5, 1, 1.1, "#b7b3a0", nx, top + 0.5, nz);
     const lamp = solid(0.3, 0.3, 0.1, "#8effab", nx, top + 1.25, nz + 0.4, 0.5);
     let attempt = 0;
@@ -135,14 +131,14 @@
       if (cmd === "STATUS") return reply(attempt === 0 ? "Ready for LOGIN." : attempt === 1 ? "Interrupted after LO. RETRY is available." : "Full LOGIN delivered. RESET to replay.");
       return reply(attempt === 0 ? "Start with LOGIN." : attempt === 1 ? "Use RETRY after the interruption." : "Complete. RESET to replay.");
     });
-    station("e0-login", 1969, "Retry the login", ["e0Arpanet"], nx, nz, 2.7, 1.3, network);
+    station("e0-login", 1969, "29 October 1969: the host-message attempt reconstructed here", "Retry the login", ["e0Arpanet"], nx, nz, 2.7, 1.3, network);
     const mx = 20, mz = era.z0 + 13;
     solid(2.4, 1, 1.4, "#697b87", mx, top + 0.5, mz);
     solid(0.3, 0.04, 0.4, "#252c32", mx, top + 1.04, mz);
     sign("2019 COMPARISON", "Outside this era / schematic card", mx, top + 2.8, mz + 0.9, 0, 0.65);
     obstacle(mx - 1.3, mx + 1.3, mz - 0.8, mz + 0.8);
-    prop({ id: "e0-compare", year: 2019, title: "2019 comparison - outside this era", label: "OUTSIDE THIS ERA · 2019", sourceKeys: ["e0Storage", "e0Card2019"],
-      at: { x: mx, y: top, z: mz + 1.6 }, reach: 1.8,
+    prop({ id: "e0-compare", year: 2019, connection: "context", date: "25 February 2019: an announcement, outside this era", title: "2019 comparison - outside this era", label: "OUTSIDE THIS ERA · 2019", sourceKeys: ["e0Storage", "e0Card2019"],
+      at: { x: mx, y: top, z: mz + 1.6 }, reach: 1.8, pick: { w: 2.4, h: 1.6, d: 1.6, x: mx, z: mz },
       onUse: () => ({ board: { room: "1956 storage / 2019 comparison", sources: ["e0Storage", "e0Card2019"], pages: [
         { caption: "1956", title: "Five million characters", text: ["The disk cabinet stored five million data characters. Characters and bytes are not interchangeable without specifying an encoding.", "The model is schematic. Its dimensions, square platters, toy records and movement are not engineering measurements."] },
         { caption: "Outside this era", title: "25 February 2019: announcement", text: ["Micron announced its c200 one-terabyte microSD card in 2019. That is a modern comparison, not an object from 1956-1969.", "The original blank card model is enlarged for visibility. No exact capacity ratio or physical scale comparison is claimed."] }
@@ -150,7 +146,11 @@
   };
   window.BL.genesisExhibits.register(0, {
     sources,
-    overview: { summary: "Storing information once filled cabinets bigger than you. People learned to keep records on spinning disks, connect distant computers and reason about uncertain races with probability. Background, not Bitcoin prototypes." },
+    overview: { summary: "Storing information once filled cabinets bigger than you. People learned to keep records on spinning disks, connect distant computers and reason about uncertain races with probability. Background, not Bitcoin prototypes.",
+      sourceKeys: ["e0Storage", "e0Feller", "e0Arpanet", "whitepaper"], pages: [
+        { caption: "Explore", title: "Store, count and connect", text: ["1956: a disk-storage system reaches selected records. 1957: the edition of Feller cited later by Bitcoin. 1969: an ARPANET host-message attempt.", "The gold path and its STEP post mark the whitepaper connection. The other machines explain the period; they were not Bitcoin prototypes."] },
+        { caption: "Play", title: "Five things to try", text: ["Seek a record, punch a short message, change the odds of a race, retry a network login, and inspect a clearly labelled 2019 comparison.", "The controls and codes are invented for this museum. Dates identify historical events or the period illustrated, not the invention of these games."] }
+      ] },
     build(kit) {
       const { era, top, solid, sign, obstacle, prop } = kit;
       // Feller's shelf on the left bank: a tall bookcase of probability, the cited volume lit.
@@ -164,7 +164,7 @@
       obstacle(fx - 1.7, fx + 1.7, fz - 0.5, fz + 0.5);
       sign("FELLER'S PROBABILITY · 1957", "the edition Bitcoin's paper cites [8]", fx, top + 3.3, fz + 0.4, 0, 0.5);
       prop({ id: "e0-feller", year: 1957, connection: "citation", ref: "[8]", date: "1957 is the edition year Bitcoin's bibliography gives", title: "Feller's probability shelf", label: "FELLER · 1957", sourceKeys: ["e0Feller", "whitepaper"],
-        at: { x: fx, y: top, z: fz + 1.2 }, reach: 1.8, pick: { w: 3.2, h: 2.6, d: 1 },
+        at: { x: fx, y: top, z: fz + 1.2 }, reach: 1.8, pick: { w: 3.2, h: 2.6, d: 1, x: fx, z: fz },
         onUse: () => ({ board: { room: "Feller probability shelf - 1957", sources: ["e0Feller", "whitepaper"], pages: [
           { caption: "In short", title: "Odds you can reason about", text: [
             "Probability gave people ways to reason about races with uncertain outcomes.",
@@ -185,7 +185,7 @@
       solid(7, 0.08, 0.08, "#2a2a2a", ax + 4, top + 0.05, az - 0.2);
       sign("ARPANET · 29 OCTOBER 1969", "the first host-to-host message, UCLA to SRI", ax + 4, top + 3.2, az + 0.4, 0, 0.5);
       prop({ id: "e0-arpanet", year: 1969, connection: "context", date: "29 October 1969: the first recorded host-to-host message", title: "ARPANET's interrupted login", label: "ARPANET · 1969", sourceKeys: ["e0Arpanet"],
-        at: { x: ax + 4, y: top, z: az + 1.3 }, reach: 2.2, pick: { w: 9, h: 2, d: 1 },
+        at: { x: ax + 4, y: top, z: az + 1.3 }, reach: 2.2, pick: { w: 9, h: 2, d: 1, x: ax + 4, z: az },
         onUse: () => ({ board: { room: "ARPANET - 29 October 1969", sources: ["e0Arpanet"], pages: [
           { caption: "In short", title: "Two letters arrive", text: [
             "On 29 October 1969 a computer at UCLA sent the first host-to-host message over the ARPANET to one at SRI.",

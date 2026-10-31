@@ -6,9 +6,10 @@ Uses the existing `genesisExhibits.register(0, { sources, build })` kit.
 
 ## What is playable
 
-The original Feller shelf and ARPANET information display remain. A large bank-level
-1956–1969 sign, overview panel and highlighted whitepaper-reference sign introduce
-five original activities. Walk up and use the existing Space/USE interaction.
+The original Feller shelf and ARPANET information display remain. The era's large years
+sign, pylons, overview board and the Steps toward Bitcoin trail come from the shared signage
+(see "Integration review" below); this era's guide pages sit in that overview. Five
+original activities follow. Walk up and use the existing Space/USE interaction.
 The existing terminal dialog takes typed commands; these are not real operating systems.
 
 | Station | Commands | Visitor-visible result |
@@ -91,3 +92,31 @@ Real-browser rendering, touch, hardware performance and human playtesting remain
 The models are intentionally a first version, not historically exact reconstructions.
 
 Prepared with AI assistance (OpenAI Codex).
+
+## Integration review (Claude Code, integrator)
+
+Reviewed on `gv/era-0-exhibits` after Astra's commit `ed52b771`, merged with the shared infrastructure
+(`gv/exhibits`). The activities, their rules, the work limits (8 characters, 64 steps, 96-character
+input) and the wording are kept as written. The changes:
+
+- **Consolidated:** the shared signage provides the era's big sign, pylons, overview board and the trail's
+  STEP post. Astra's second era sign, "Steps toward Bitcoin" sign and `e0-overview` prop are removed. The
+  "Explore" and "Play" pages now sit in the shared overview panel (`overview.pages`) with their sources.
+  The `e0-overview` prop also stood in the cave's gateway, a reserved plot.
+- **Lamp post:** "Retry the login" moved from x 20 to x 18.5, clear of the right bank's lamp post (its
+  cabinet and obstacle overlapped it).
+- **Trail metadata:** Feller is `citation [8]`, trail step 1. The five activities, ARPANET and the 2019
+  comparison are `context`, each with a `date` saying what its year marks.
+- **Tap boxes:** each station's `pick` now covers its model, not just its walk-up point. A shared fix also
+  makes tap boxes pickable at all: before it, no tap box anywhere in the voyage could be tapped.
+- **Shared proof:** "Genesis Voyage exhibits" in `test/run.mjs` now checks this era's command rules 1–5
+  above (SEEK endpoints and refusals, PUNCH/FLIP/READ/RESET, ODDS/STEP limits and seeded repeat,
+  LOGIN/RETRY order and lamp, long or empty input, and a fresh visit sharing no state or nodes).
+
+Checks on that branch:
+- **Unit tier:** `npm run test:unit` passes, including the command rules.
+- **Real browser:** Chromium on WebGL2 (software GPU). Signage from the boat and bank, walk-up and Space at
+  all seven stations, typing W A S D in a terminal leaves the Ooga still, RESET, the overview's five pages,
+  tapping Feller and the overview (WebGL2 and Canvas 2D), and two leave/return laps with steady node and
+  target counts and a clean console.
+- **Still unverified:** touch text entry on a phone, hardware performance and human play.
