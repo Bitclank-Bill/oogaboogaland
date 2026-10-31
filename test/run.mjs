@@ -5630,9 +5630,21 @@ const hammockChecks = async () => {
   ham.settle([], 500, shown, move, stand);
   const gone = ham.seats.every((s) => !s.remote);
   const signedOut = (ham.settle([rec(1, now)], 0, shown, move, stand), moves.length === 2);
+  // Other pages' Oogas tipped back in the bed: one whose body the pool dropped gives up its place, and the bed coming
+  // down (an anchor palm taken by the ring path) sets the rest upright with their marks cleared.
+  const remote = (k) => {
+    const body = { root: node({ parent: root }), traits: { height: 1.2 }, parts: { legL: node(), legR: node(), armL: node(), armR: node() } };
+    Object.assign(body.root.position, { x: ham.seats[k].restX, z: ham.seats[k].restZ });
+    return body;
+  };
+  const gone1 = remote(0), kept = remote(2);
+  const tipped = ham.poseRemote(gone1, feet) && ham.poseRemote(kept, feet) && gone1.root.rotation.x < 0 && kept.hammockRest;
+  gone1.root.parent = null;
+  ham.poseRemote(remote(1), feet);
+  const pruned = gone1.root.rotation.x === 0 && !gone1.hammockRest && kept.hammockRest;
   ham.dispose();
-  const disposed = !root.children.length && !added.length && ham.seats.every((s) => !s.sitter);
-  record("hub hammock: ties high enough to clear the path, hangs the bed and its places to stand off it, refuses spans, low headroom and crowded ground, swings bounded, knows a resting Ooga by place and height, and the lower room id keeps a seat",
+  const disposed = !root.children.length && !added.length && ham.seats.every((s) => !s.sitter) && tipped && pruned && kept.root.rotation.x === 0 && !kept.hammockRest;
+  record("hub hammock: ties high enough to clear the path, hangs the bed and its places to stand off it, refuses spans, low headroom and crowded ground, swings bounded, knows a resting Ooga by place and height, and the lower room id keeps a seat; regression: the bed coming down left other pages' Oogas tipped back",
     !!fit && headroom >= H.HEADROOM && standClear && bedClear && fit.seats.length === H.SLOTS && !short && !long && !hill && !crowded && sideHeld
       && peak <= H.SWAY_MAX + 1e-9 && peak > 0.02 && still && rests && higherYields && lowerKeeps && fullStands && gone && signedOut && disposed,
     JSON.stringify({ fit: !!fit, headroom, standClear, bedClear, short: !!short, long: !!long, hill: !!hill, crowded: !!crowded, sideHeld, peak, still, rests, higherYields, lowerKeeps, fullStands, gone, signedOut, disposed, moves }));

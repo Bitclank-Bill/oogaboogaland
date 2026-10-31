@@ -236,12 +236,24 @@
       for (const seat of seats) if (Math.hypot(x - seat.walkAt.x, z - seat.walkAt.z) < reach || Math.hypot(x - seat.restX, z - seat.restZ) < reach) return true;
       return false;
     };
-    // Another page's resting Ooga, posed in this bed; `cave.hammockRest` marks one this has tipped, to set upright.
+    // Other pages' Oogas this bed has tipped back (`cave.hammockRest`), to set upright when they leave it or the bed
+    // comes down; one whose body the remote pool has since dropped (off the graph) gives up its place.
+    const tipped = [];
+    const upright = (cave) => {
+      cave.root.rotation.x = 0;
+      cave.hammockRest = false;
+      tipped.splice(tipped.indexOf(cave), 1);
+    };
+    // Another page's resting Ooga, posed in this bed.
     const poseRemote = (cave, feet) => {
       const r = cave.root, k = restingAt(r.position.x, feet, r.position.z);
       if (k < 0) {
-        if (cave.hammockRest) { r.rotation.x = 0; cave.hammockRest = false; }
+        if (cave.hammockRest) upright(cave);
         return false;
+      }
+      if (!cave.hammockRest) {
+        for (let i = tipped.length - 1; i >= 0; i--) if (!tipped[i].root.parent) upright(tipped[i]);
+        tipped.push(cave);
       }
       const parts = cave.parts;
       parts.legL.rotation.x = parts.legR.rotation.x = -Math.PI / 2;
@@ -252,6 +264,7 @@
     };
     const dispose = () => {
       for (const seat of seats) seat.sitter = null;
+      while (tipped.length) upright(tipped[0]);
       solids.remove(ridgeNode);
       removeChild(root, ridgeNode); removeChild(root, bedNode);
     };
