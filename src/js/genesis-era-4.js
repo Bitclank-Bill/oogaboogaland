@@ -5,7 +5,10 @@
   const BL = window.BL;
   const sources = {
     "E4-HC": { label: "28 March 1997: Back's computational-postage implementation announcement",
-      href: "https://mailing-list-archive.cryptoanarchy.wiki/archive/1997/03/1fea96e9a08fb74d7f1fdeca362f943dcb2ca70017b092359eb8f931e11004cf/", kind: "context", verified: true },
+      href: "https://mailing-list-archive.cryptoanarchy.wiki/archive/1997/03/1fea96e9a08fb74d7f1fdeca362f943dcb2ca70017b092359eb8f931e11004cf/", kind: "documented influence", verified: true },
+    // The dossier's evidence for that influence: Satoshi's own announcement names Hashcash-style proof-of-work.
+    "E4-INFL": { label: "Satoshi Nakamoto, the Bitcoin announcement on the cryptography mailing list (2008): Hashcash-style proof-of-work",
+      href: "https://satoshi.nakamotoinstitute.org/emails/cryptography/1/", kind: "documented influence", verified: true },
     "E4-BM": { label: "November 1998 publication: Wei Dai, b-money (proposal)",
       href: "https://nakamotoinstitute.org/library/b-money/", kind: "whitepaper citation", verified: true },
     "E4-NAMES": { label: "Haber and Stornetta: Secure Names for Bit-Strings (1997), whitepaper [5]",
@@ -27,7 +30,8 @@
   const history = {
     HASHCASH: ["28 March 1997 · implementation announcement [E4-HC]",
       "Adam Back announced computational postage: finding a stamp costs searches; checking costs much less. A service also needs spent-stamp tracking.",
-      "This announcement is separate from the 2002 Hashcash paper cited as [6] by Bitcoin. That paper belongs in Era 5."],
+      "This announcement is separate from the 2002 Hashcash paper cited as [6] by Bitcoin. That paper belongs in Era 5.",
+      "Documented influence: Satoshi's 2008 announcement of Bitcoin names Hashcash-style proof-of-work. [E4-INFL]"],
     BMONEY: ["November 1998 · proposal publication month [E4-BM]",
       "Wei Dai proposed work-based creation and signed transfers. Protocol 1 gives each participant balances and assumes synchronous, unjammable anonymous broadcast.",
       "Protocol 2 uses a subset of servers with deposits and published commitments. Agreeing computation cost remains a problem. Proposal, not a deployed Bitcoin network; reference [1]. Exact first posting day unresolved."],
@@ -220,6 +224,8 @@
   });
   BL.genesisExhibits.register(4, {
     sources,
+    overview: { summary: "1996-1999: computers could pay for stamps with work, and proposals asked how strangers could share balances. These ideas left open questions about ordering, communication and trust.",
+      sourceKeys: ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC"], pages: [{ caption: "Era overview", title: "Work, accounts and trust", text: overview }] },
     build(kit) {
       work = { message: "hello museum", seed: seedOf("hello museum"), bits: 8, total: 0, attempts: 0, nonce: -1, hash: 0, running: false, bound: "", boundSeed: 0, boundBits: 8 };
       desktop = { pages: ["HOME"], index: 0, connected: false };
@@ -227,10 +233,12 @@
       balances = { a: new Uint8Array([5, 5]), b: new Uint8Array([3, 3]), created: 0 };
       const { era, top, solid, sign, obstacle, prop } = kit;
       const board = (room, keys, pages) => ({ board: { room, sources: keys, pages } });
-      sign("1996-1999", "WORK AND SCARCITY", -13, top + 7, era.z1 - 14, 0, 1.25);
-      sign("WORK / ACCOUNTS / TRUST", "1997 announcement - 1998 proposal - 1999 publication", -13, top + 4.5, era.z1 - 14, 0, 0.5);
+      // The era's big sign, pylons, overview board and the trail are the shared signage's; this era's own
+      // introduction is its overview's page (register's `overview`, below).
       // Station footprints stay at least 1.5 m from the channel and leave broad bank routes.
-      const station = (id, x, z, year, title, sub, keys, use, style) => {
+      // `link` is the station's place on the Steps toward Bitcoin (docs/genesis-voyage/EXHIBIT-CONTRACT.md):
+      // { connection, ref, date }, from the Era 4 dossier's classes.
+      const station = (id, x, z, year, title, sub, keys, use, style, link) => {
         solid(3.6, 0.9, 1.6, "#625346", x, top + 0.45, z);
         if (style === "screen") {
           solid(1.8, 1.3, 1, "#c4baa2", x, top + 1.55, z);
@@ -261,21 +269,29 @@
         }
         obstacle(x - 1.9, x + 1.9, z - 0.9, z + 1.3);
         sign(title, sub, x, top + 3, z + 0.2, 0, 0.42);
-        prop({ id, year, title, label: `${title} / ${year}`, sourceKeys: keys, at: { x, y: top, z: z + 2 }, reach: 2.2, pick: { w: 3.6, h: 2.5, d: 1.2 }, onUse: use });
+        prop({ id, year, ...link, title, label: `${title} / ${year}`, sourceKeys: keys, at: { x, y: top, z: z + 2 }, reach: 2.2, pick: { w: 3.6, h: 2.5, d: 1.6, x, z }, onUse: use });
       };
-      station("e4-overview", -8, era.z1 - 18, 1996, "1996-1999 / WORK AND SCARCITY", "era overview - read here", ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC"],
-        () => board("Work and Scarcity / 1996-1999", ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC"], [{ caption: "Era overview", title: "Work, accounts and trust", text: overview }]));
-      station("e4-hashcash", -9, era.z - 3, 1997, "HASHCASH / 28 MAR 1997", "implementation announcement - educational workbench", ["E4-HC"], () => ({ terminal: hashTerminal() }));
-      station("e4-bmoney", -21, era.z - 3, 1998, "B-MONEY / NOV 1998", "proposal publication - compare accounts", ["E4-BM"], () => ({ terminal: balanceTerminal() }));
-      station("e4-shelf", -13, era.z0 + 12, 1999, "REFERENCE SHELF / 1997 + 1999", "publication dates - naming and timestamp services", ["E4-NAMES", "E4-NAMES-CAT", "E4-TIMESEC", "E4-TIMESEC-CAT"],
-        () => board("Reference shelf / 1997 + 1999", ["E4-NAMES", "E4-NAMES-CAT", "E4-TIMESEC", "E4-TIMESEC-CAT"], [
-          { caption: "April 1997 publication", title: "Secure Names for Bit-Strings", text: history.NAMES },
+      station("e4-hashcash", -9, era.z - 3, 1997, "HASHCASH / 28 MAR 1997", "implementation announcement - educational workbench", ["E4-HC", "E4-INFL"], () => ({ terminal: hashTerminal() }), undefined,
+        { connection: "influence", date: "28 March 1997: implementation announcement (the 2002 paper, reference [6], is Era 5's)" });
+      station("e4-bmoney", -21, era.z - 3, 1998, "B-MONEY / NOV 1998", "proposal publication - compare accounts", ["E4-BM"], () => ({ terminal: balanceTerminal() }), undefined,
+        { connection: "citation", ref: "[1]", date: "November 1998: proposal publication month" });
+      // The reference shelf, as two dated stops: each paper is its own whitepaper citation.
+      station("e4-names", -16, era.z0 + 12, 1997, "SECURE NAMES / APR 1997", "proceedings publication - naming exact data", ["E4-NAMES", "E4-NAMES-CAT"],
+        () => board("Secure Names for Bit-Strings / April 1997", ["E4-NAMES", "E4-NAMES-CAT"], [
+          { caption: "April 1997 publication", title: "Secure Names for Bit-Strings", text: history.NAMES }
+        ]), undefined, { connection: "citation", ref: "[5]", date: "April 1997: proceedings publication" });
+      station("e4-timesec", -10, era.z0 + 12, 1999, "TIMESEC / MAY 1999", "proceedings publication - a timestamp service", ["E4-TIMESEC", "E4-TIMESEC-CAT"],
+        () => board("TIMESEC / May 1999", ["E4-TIMESEC", "E4-TIMESEC-CAT"], [
           { caption: "May 1999 publication", title: "TIMESEC / a timestamp service", text: history.TIMESEC }
-        ]));
-      station("e4-desktop", 17, era.z1 - 19, 1999, "LOCAL WEB DESKTOP / 1999", "original museum design - OPEN HOME", ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC", "E4-MODEM"], () => ({ terminal: browserTerminal() }), "screen");
-      station("e4-modem", 29, era.z1 - 19, 1998, "MODEM / 1 SEP 1998", "V.90 approval - DIAL plays original tones", ["E4-MODEM"], () => ({ terminal: browserTerminal() }), "modem");
-      station("e4-cd", 17, era.z - 9, 1999, "CD-ROM ARCHIVE / 1999", "invented museum puzzle - select discs by date", ["E4-HC", "E4-NAMES-CAT", "E4-BM", "E4-TIMESEC-CAT"], () => ({ terminal: discTerminal() }), "discs");
-      station("e4-pocket", 29, era.z0 + 14, 1999, "POCKET ROUTE / 1999", "original maze - N S E W - no ROM", ["E4-MODEM"], () => ({ terminal: mazeTerminal() }), "pocket");
+        ]), undefined, { connection: "citation", ref: "[2]", date: "May 1999: proceedings publication month" });
+      station("e4-desktop", 17, era.z1 - 19, 1999, "LOCAL WEB DESKTOP / 1999", "original museum design - OPEN HOME", ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC", "E4-MODEM"], () => ({ terminal: browserTerminal() }), "screen",
+        { connection: "context", date: "1999: the period illustrated; an original museum design" });
+      station("e4-modem", 29, era.z1 - 19, 1998, "MODEM / 1 SEP 1998", "V.90 approval - DIAL plays original tones", ["E4-MODEM"], () => ({ terminal: browserTerminal() }), "modem",
+        { connection: "context", date: "1 September 1998: ITU-T V.90 recommendation approved" });
+      station("e4-cd", 17, era.z - 9, 1999, "CD-ROM ARCHIVE / 1999", "invented museum puzzle - select discs by date", ["E4-HC", "E4-NAMES-CAT", "E4-BM", "E4-TIMESEC-CAT"], () => ({ terminal: discTerminal() }), "discs",
+        { connection: "context", date: "1999: the period illustrated; an invented museum puzzle" });
+      station("e4-pocket", 29, era.z0 + 14, 1999, "POCKET ROUTE / 1999", "original maze - N S E W - no ROM", ["E4-MODEM"], () => ({ terminal: mazeTerminal() }), "pocket",
+        { connection: "context", date: "1999: the period illustrated; an original maze" });
     },
     update() {
       if (!work || !work.running) return;

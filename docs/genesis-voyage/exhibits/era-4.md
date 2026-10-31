@@ -9,14 +9,15 @@ Research: `gv/research:docs/genesis-voyage/eras/era-4-work-and-scarcity.md`, v0.
 
 ## What visitors can use
 
-Eight dated stations, with obstacles under all furniture, on the banks away from the stream:
+Eight dated stations, with obstacles under all furniture, on the banks away from the stream. The era's big sign,
+pylons, overview board and the Steps toward Bitcoin trail come from the shared signage (see "Integration review"):
 
 | Prop ID | Location relative to era | Interaction |
 |---|---|---|
-| `e4-overview` | left, near entrance | Era overview board; large 1996–1999 signage above |
-| `e4-hashcash` | left, middle | `TARGET 4..12`, `MESSAGE text`, `SEARCH`, `STATUS`, `VERIFY`, `STOP` |
-| `e4-bmoney` | farther left, middle | `COMPARE`, `TRANSFER`, `CREATE`, `MISS`, `RESET` |
-| `e4-shelf` | left, near exit | Two publication-labelled reference pages |
+| `e4-hashcash` | left, middle | `TARGET 4..12`, `MESSAGE text`, `SEARCH`, `STATUS`, `VERIFY`, `STOP` · documented influence, trail |
+| `e4-bmoney` | farther left, middle | `COMPARE`, `TRANSFER`, `CREATE`, `MISS`, `RESET` · citation [1], trail |
+| `e4-names` | left, near exit | Secure Names for Bit-Strings, April 1997 · citation [5], trail |
+| `e4-timesec` | left, near exit | TIMESEC, May 1999 · citation [2], trail |
 | `e4-desktop` | right, near entrance | Original beige desktop, local text browser; `OPEN page`, `BACK`, `FORWARD` |
 | `e4-modem` | farther right, near entrance | `DIAL`, `HANGUP`, `SIZE 1..64` KiB |
 | `e4-cd` | right, middle | `PICK HC`, `PICK NAMES`, `PICK BM`, `PICK TIMESEC` in date order; `LIST`, `RESET` |
@@ -203,3 +204,37 @@ console.log('Era 4 rules/playthrough/disposal passed');
 
 No merge, deployment or upstream PR. Integrator should run the Genesis browser scene/phone checks on a
 working browser setup and play-test the listed interface limitations before merging.
+
+## Integration review (Claude Code, integrator)
+
+This is a trail-metadata repair on `gv/era-4-exhibits`, after `9f812691`, merged with the shared
+infrastructure (`gv/exhibits`). The games, their rules and the work limits are kept as written: 64 attempts a
+frame, 32,768 a visit, the creation cap, 64 maze moves, and 48-character input.
+
+- **Trail entries, from the Era 4 dossier's classes:**
+  - Hashcash's 28 March 1997 announcement is **documented influence**. The evidence is Satoshi's
+    announcement naming Hashcash-style proof-of-work (`E4-INFL`, now a source of that station and a line in
+    its banner). The 2002 paper, reference [6], belongs to Era 5.
+  - b-money is **citation [1]**.
+  - The reference shelf is now two dated stops: Secure Names for Bit-Strings, April 1997, **citation [5]**
+    (`e4-names`), and TIMESEC, May 1999, **citation [2]** (`e4-timesec`).
+  - The desktop, modem, CD-ROM archive and pocket maze are **context**, each with a `date`.
+- **Overview consolidated:** the era's own `e4-overview` station and its two big signs duplicated the
+  shared signage. They are removed, and its introduction is now the page of the shared overview
+  (`overview.pages`), with its summary and sources.
+- **Tap boxes** cover each station's model.
+- **Shared proof:** "Genesis Voyage exhibits" now requires each built era's dossier trail entries (Era 0:
+  Feller [8]; Era 4: the four above), everything else in those eras as context, and no era-owned overview.
+  Run against `9f812691`'s file, it fails on exactly the gaps repaired here.
+
+Checks:
+- **Unit tier:** `npm run test:unit` passes.
+- **Real browser:** Chromium, WebGL2 on a software GPU.
+  - The trail runs in date order: Feller, the two Fingerprints and Time links, Hashcash 1997, Secure Names
+    1997, b-money 1998, TIMESEC 1999.
+  - A Hashcash search finds a stamp and VERIFY is valid.
+  - The b-money MISS shows disagreeing replicas.
+  - Both shelf panels end with "How it connects" ([5], [2]) and their step.
+  - The shared overview shows the era's page.
+  - Two leave/return laps hold steady node and target counts, with a clean console.
+- **Still unverified:** sound (DIAL), touch, hardware performance and human play.
