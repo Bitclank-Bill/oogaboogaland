@@ -1739,10 +1739,12 @@
     const plant = (x, z) => {
       if (!stands(x, z)) return null;
       const y = island.surfaceAt(x, z);
-      const node = createNode({ geometry: BL.dressing.palm(n++ % 3), position: { x, y, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, sightHidden: true });
+      const variant = n++ % 3;
+      const node = createNode({ geometry: BL.dressing.palm(variant), position: { x, y, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, sightHidden: true });
       addChild(root, node);
       placed.push(node);
       const owner = addProp("palm", node, x, z, 1.6);
+      owner.variant = variant;
       solids.add(node);
       return { owner, reservation: claim(x, z, 1.2) };
     };
@@ -1820,6 +1822,7 @@
       owner.x = x; owner.z = z;
       reservation.x = x; reservation.z = z;
     }
+    plantHammock(offRuns);
     // Along the cliff tops, where they break the skyline.
     const cliffTop = (x, z) => island.surfaceAt(x, z) > 2.5 && !nearMouth(x, z, 5);
     for (let deg = 11, placedTop = 0; deg < 360 && placedTop < 16; deg += 34) {
@@ -1842,9 +1845,100 @@
       meadowPalms.splice(i, 1);
       input.remove(owner.node); drop(targets, owner.node); drop(props, owner); drop(claimed, reservation);
       solids.remove(owner.node); removeChild(root, owner.node); drop(placed, owner.node);
+      if (hammock && hammock.anchors.includes(owner)) removeHammock();
       removed = true;
     }
     if (removed && clankers) clankers.supportRemoved();
+  };
+  // The hammock (hub-hammock.js), slung between the two meadow palms that flank the path before Ooga Arcade when this
+  // visit planted such a pair: one each side of the arcade's spoke, within ARCADE_PALM_REACH of its line and between
+  // ARCADE_PALM_ALONG of the way out from the plaza and the arcade's apron. Of the pairs whose plan fits, the one whose
+  // middle is nearest the arcade. Its claims keep the scenery planted after it off the bed and the places to stand.
+  const ARCADE_PALM_REACH = 6, ARCADE_PALM_ALONG = 0.15;
+  let hammock = null;
+  const hammockClaims = [];
+  const plantHammock = (offRuns) => {
+    if (!arcadeMouth) return;
+    const H = BL.hubHammock, lines = island.path.centerlines;
+    let spoke = null, best = Infinity;
+    for (const line of lines) {
+      const end = line[line.length - 1], d = Math.hypot(end.x - arcadeMouth.x, end.z - arcadeMouth.z);
+      if (d < best) { best = d; spoke = line; }
+    }
+    // Each palm's side of the spoke, its distance from it and how far along it lies.
+    const sides = [];
+    for (const { owner } of meadowPalms) {
+      if (!owner) continue;
+      let distance = Infinity, side = 0, along = 0;
+      for (let i = 0; i + 1 < spoke.length; i++) {
+        const a = spoke[i], b = spoke[i + 1], dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz;
+        const t = clamp(((owner.x - a.x) * dx + (owner.z - a.z) * dz) / len2, 0, 1), px = a.x + dx * t - owner.x, pz = a.z + dz * t - owner.z;
+        const d = Math.hypot(px, pz);
+        if (d < distance) { distance = d; side = Math.sign(dx * (owner.z - a.z) - dz * (owner.x - a.x)); along = (i + t) / (spoke.length - 1); }
+      }
+      if (distance < ARCADE_PALM_REACH && along > ARCADE_PALM_ALONG && side) sides.push({ owner, side });
+    }
+    // A trunk where the ridgeline ties round it: its middle at TIE over its foot, turned by the palm's yaw.
+    const tie = (owner) => {
+      const node = owner.node, trunk = BL.dressing.palmTrunk(owner.variant, H.TIE), ry = node.rotation.y;
+      return { x: node.position.x + Math.cos(ry) * trunk.x, z: node.position.z - Math.sin(ry) * trunk.x, ground: node.position.y, r: trunk.r };
+    };
+    let chosen = null, nearest = Infinity;
+    for (const a of sides) for (const b of sides) {
+      if (a.side !== 1 || b.side !== -1) continue;
+      const ta = tie(a.owner), tb = tie(b.owner), mid = Math.hypot((ta.x + tb.x) / 2 - arcadeMouth.x, (ta.z + tb.z) / 2 - arcadeMouth.z);
+      if (mid >= nearest) continue;
+      const skip = [meadowPalms.find((entry) => entry.owner === a.owner).reservation, meadowPalms.find((entry) => entry.owner === b.owner).reservation];
+      const clear = (x, z, r) => {
+        if (nearPath(x, z, r) || !entranceClear(x, z, r) || island.overlapsStairs(x, z, r) || nearMouth(x, z, 4) || !offRuns(x, z)) return false;
+        for (const c of claimed) if (c !== skip[0] && c !== skip[1] && Math.hypot(c.x - x, c.z - z) < c.r + r) return false;
+        return true;
+      };
+      const plan = H.plan({ a: ta, b: tb, clear, surfaceAt: island.surfaceAt });
+      if (plan) { chosen = { plan, a, b, ta, tb }; nearest = mid; }
+    }
+    if (!chosen) return;
+    const { plan } = chosen;
+    hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock") });
+    hammock.anchors = [chosen.a.owner, chosen.b.owner];
+    for (const k of [-1, 0, 1]) hammockClaims.push(claim(plan.x + plan.ux * k, plan.z + plan.uz * k, 1));
+    for (const seat of hammock.seats) hammockClaims.push(claim(seat.walkAt.x, seat.walkAt.z, 0.5));
+  };
+  // A visitor resting in the hammock gets up first: stood beside it where there is room, else let go where it sits.
+  const vacateHammock = () => {
+    for (const seat of hammock.seats) {
+      const cave = seat.sitter;
+      if (!cave || cave.camp.seat !== seat || crew.standPlayer(cave)) continue;
+      seat.sitter = null;
+      cave.camp.seat = null;
+      cave.root.rotation.x = 0;
+    }
+  };
+  // The hammock comes down with either palm (the pile's ring path can take one mid-visit), or with the visit.
+  const removeHammock = () => {
+    vacateHammock();
+    hammock.dispose();
+    for (const reservation of hammockClaims) drop(claimed, reservation);
+    hammockClaims.length = 0;
+    hammock = null;
+  };
+  const HAMMOCK_FULL = { kind: "hammock-full" };
+  // Space beside the hammock: into the free seat nearest, with a push to the swing.
+  const restInHammock = (seat) => {
+    if (crew.sitPlayer(seat)) hammock.kick();
+    else hud.toast("No room to get into the hammock from here");
+  };
+  // Another page's Ooga took this visitor's seat first (the lower room id keeps it): along to a free seat, or up.
+  const moveHammockSeat = (cave, from, to) => {
+    from.sitter = null;
+    to.sitter = cave;
+    cave.camp.seat = to;
+    hud.toast("Someone got there first: you shuffle along");
+    return true;
+  };
+  const leaveFullHammock = (cave) => {
+    if (crew.standPlayer(cave)) hud.toast("Someone got there first, and the hammock is full");
+    return true;
   };
   // The sea far below and the islands on it, standing well out past the clouds.
   const SEA_Y = -70;
@@ -5628,6 +5722,7 @@
         break;
       case "palm":
         if (!wobble(o.node, 0.05)) return;
+        if (hammock && hammock.anchors.includes(o)) hammock.kick();
         fx.burst(x, w[13] + 3.6, z, 12, [LEAF], 1.6);
         if (!dropBanana(o, TREE_CHANCE)) hud.toast(PALM_WORDS[fnv1a(`${o.x}/${o.z}/${Math.floor(now)}`) % PALM_WORDS.length]);
         break;
@@ -5774,6 +5869,9 @@
       }
       if (nearest) return nearest;
     }
+    if (player && hammock && player.hop < 0.03 && player.hopV <= 0 && Math.abs(y - 1.1 - hammock.plan.ground) < 0.5 && hammock.near(x, z, Math.min(reach, 1.5))) {
+      return hammock.free({ x, z }) || HAMMOCK_FULL;
+    }
     if (arcadeMouth && actionWithinReach(x, y, z, arcadeMouth.x, arcadeMouth.y, arcadeMouth.z, MOUTH_REACH)) return arcadeMouth;
     if (player && timechainIsland.gate && timechainIsland.gate.nearKeypad(x, y, z)) return timechainIsland.gate.action;
     return null;
@@ -5784,6 +5882,8 @@
     else if (action === ROLL_ACTION) crew.dropRoll();
     else if (action === STAND_ACTION) crew.standPlayer();
     else if (action.kind === "bench") crew.sitPlayer(action);
+    else if (action === HAMMOCK_FULL) hud.toast("The hammock is full: three Oogas at most");
+    else if (action.kind === "hammock") restInHammock(action);
     else if (action.sleep) crew.sleepPlayer(action);
     else if (action === timechainIsland.gate.action) timechainIsland.gate.engage();
     else enterCave(action.slot);
@@ -6364,6 +6464,12 @@
       } else if (action.kind === "bench") {
         hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
         hud.setAct("SIT");
+      } else if (action === HAMMOCK_FULL) {
+        hud.hint("The hammock is full: three Oogas at most");
+        hud.setAct("FULL");
+      } else if (action.kind === "hammock") {
+        hud.hint(COARSE ? "Tap REST to lie back in the hammock" : "Press Space to rest in the hammock");
+        hud.setAct("REST");
       } else if (action.sleep) {
         hud.hint(COARSE ? "Tap SLEEP to lie down" : "Press Space to sleep");
         hud.setAct("SLEEP");
@@ -8561,6 +8667,10 @@
     }
     if (!cloudHopper.held) crew.update(dt, elapsed);
     cloudHopper.postUpdate();
+    if (hammock) {
+      hammock.settle(BL.net.remotes.values(), BL.net.state.selfId, remoteShown, moveHammockSeat, leaveFullHammock);
+      hammock.update(dt, elapsed, gameMode);
+    }
     for (let i = 0; i < crew.list.length; i++) {
       const cave = crew.list[i];
       if (cave.root.visible) floatPose(cave, cave.root.position.y - cave.baseY, cave.bodyHeight, cave.phase, elapsed);
@@ -9065,6 +9175,11 @@
       if (g[0] & 64) g[3] = gorilla.sleep.pose === "left" ? -1 : gorilla.sleep.pose === "right" ? 1 : 0;
       BL.net.sendPose(p.x, p.y, p.z, gorilla.heading, g);
       BL.net.setHealth(gorilla.health.value / gorilla.health.max * 100, gorilla.health.value <= 0);
+    } else if (driven.camp.seat && driven.camp.seat.kind === "hammock") {
+      // A resting Ooga reports the seat's still point, so its swing sends nothing; every page swings its own bed.
+      const seat = driven.camp.seat;
+      BL.net.sendPose(seat.restX, seat.restY + driven.traits.height * 0.08 - driven.baseY, seat.restZ, seat.ry);
+      BL.net.setHealth(driven.health.value, driven.health.stunned);
     } else {
       BL.net.sendPose(p.x, p.y - driven.baseY, p.z, driven.root.rotation.y);
       BL.net.setHealth(driven.health.value, driven.health.stunned);
@@ -11076,6 +11191,8 @@
   const onTotem = (event) => { if (event.fresh) flareTotem(event.index); };
   const suspendHub = () => {
     stopLazyBedding();
+    // A kept hammock stays hung; its sitter gets up to go.
+    if (hammock) vacateHammock();
     // A kept island ends its hunt and its game as a full leave does, and lowers the ring at once.
     if (ghostEntry) { ghostEntry.dispose(); ghostEntry = null; }
     if (ghosts) { ghosts.dispose(); ghosts = null; }
@@ -11847,6 +11964,7 @@
       }, posed: (cave, feet) => {
         const p = cave.root.position, height = cave.bodyHeight || 1.4;
         floatPose(cave, feet, height, 0, now);
+        if (hammock) hammock.poseRemote(cave, feet);
         if (poolEffectsActive) mempoolIsland.wake(cave.root, p.x, feet, p.z, height, 0.35);
       }
     });
@@ -12233,7 +12351,7 @@
         get shown() {
           return pile.shown;
         },
-        terrainSections, caveSections, cutawayPaths: CUTAWAY_PATH_STATE, terrainRampRoof, get cutawayTravelRamp() { return cutawayTravelRamp; }, get cutawayTravelChannel() { return cutawayTravelChannel; }, get cutawayTravelStation() { return cutawayTravelStation; }, island, mouths: island.mouths, labels, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, totems: { list: totems, flare: flareTotem }, get npcSync() { return npcSync; }, clankers, clankerPlay, rageThrowMap, rageEdgeGoal, rageLandAt, rageCaptureLandAt, rageMapRouteClear, rageCaptureEligible, rageApproach, rageWarpRequired, rageGrab, rageCaptive, rageRelease, rageThrow, rageDragClear,
+        terrainSections, caveSections, cutawayPaths: CUTAWAY_PATH_STATE, terrainRampRoof, get cutawayTravelRamp() { return cutawayTravelRamp; }, get cutawayTravelChannel() { return cutawayTravelChannel; }, get cutawayTravelStation() { return cutawayTravelStation; }, island, mouths: island.mouths, labels, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, get hammock() { return hammock; }, altar, path: island.path.debug, headquarters, jumbotron, totems: { list: totems, flare: flareTotem }, get npcSync() { return npcSync; }, clankers, clankerPlay, rageThrowMap, rageEdgeGoal, rageLandAt, rageCaptureLandAt, rageMapRouteClear, rageCaptureEligible, rageApproach, rageWarpRequired, rageGrab, rageCaptive, rageRelease, rageThrow, rageDragClear,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -12384,6 +12502,7 @@
     rememberCharacterLocations();
     stopLazyBedding();
     if (reuseHub && !destroy) return suspendHub();
+    if (hammock) removeHammock();
     // Restore the lens before dropping a fly-back; a retained hub does the same in suspendHub.
     if (wpReturn >= 0) camera.fov = WP_FROM.toFov;
     wpReturn = -1;
