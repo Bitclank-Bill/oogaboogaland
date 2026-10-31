@@ -4058,6 +4058,11 @@ body.dsb-menu-open .rescue-equipment { visibility: hidden; pointer-events: none;
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The touch CROUCH toggle stands over the act button, under the same thumb. */
+.act.crouch {
+  bottom: calc(116px + var(--safe-bottom));
+}
+
 .act:hover,
 .act.virtual-hover,
 .act:focus-visible {
@@ -6684,6 +6689,10 @@ body[data-active-scene] .mic-note { top: var(--hub-equipment-bottom, calc(72px +
 
   .act {
     bottom: calc(112px + var(--safe-bottom));
+  }
+
+  .act.crouch {
+    bottom: calc(164px + var(--safe-bottom));
   }
 
   .garage {

@@ -7,6 +7,16 @@
     w: "forward", s: "back", a: "left", d: "right", q: "yawLeft", e: "yawRight", r: "pitchDown", f: "pitchUp",
     z: "up", " ": "up", x: "down", arrowup: "forward", arrowdown: "back", arrowleft: "left", arrowright: "right", shift: "sprint"
   };
+  // Crouch (for scenes that opt in) holds K, which no scene binds; a visitor may move it to I or U, the other letters
+  // nothing uses, with localStorage `oogaboogaland.crouch-key`. Any other value is ignored.
+  const CROUCH_KEYS = ["k", "i", "u"];
+  const CROUCH_KEY = (() => {
+    try {
+      const key = window.localStorage.getItem("oogaboogaland.crouch-key");
+      return CROUCH_KEYS.includes(key) ? key : "k";
+    } catch { return "k"; }
+  })();
+  KEYS[CROUCH_KEY] = "crouch";
   const KNOB = 18;
   const SHIFT_KEYS = ["ShiftLeft", "ShiftRight", "Shift"];
   const keyName = (e) => e.key === "Shift" && (e.code === "ShiftRight" || e.location === 2) ? "peek" : KEYS[e.key.toLowerCase()];
@@ -76,8 +86,8 @@
   };
   // Joystick bases, a hold-to-climb button, a canvas whose mouse chord walks, and a Space handler
   const create = ({ move = null, look = null, boost = null, chord = null, onAction = null, pressActions = false, tabNavigation = false, shooter = () => false, canDescend = () => true } = {}) => {
-    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0, sprint: 0, peek: 0 };
-    const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0, keyPitch: 0, orbitYaw: 0, sprint: 0, peek: 0, shiftTap: 0 };
+    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0, sprint: 0, peek: 0, crouch: 0 };
+    const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0, keyPitch: 0, orbitYaw: 0, sprint: 0, peek: 0, shiftTap: 0, crouch: 0 };
     let pitchBorrowed = false;
     let spaceDown = false, boostPointer = null, boostClick = false, shiftAt = 0, shiftUsed = false, shiftTap = 0;
     let padFrame = -1, padUp = 0, padSprint = 0;
@@ -239,6 +249,7 @@
       axes.sprint = Math.max(held.sprint, padSprint);
       axes.peek = shooter() ? held.peek : 0;
       axes.shiftTap = shiftTap;
+      axes.crouch = held.crouch;
       shiftTap = 0;
       return axes;
     };
@@ -309,5 +320,5 @@
     };
     return { read, axes, clearPointer, reset, consumeTab, resume, borrowPitch, dispose, get rightShift() { return !!held.peek; } };
   };
-  BL.controls = { create, uiKey };
+  BL.controls = { create, uiKey, CROUCH_KEY };
 })();

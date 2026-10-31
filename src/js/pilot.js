@@ -2335,6 +2335,8 @@
       freeStrafe = freeForward = freeClimb = 0;
       freeMoveYaw = orbit.yaw;
       hud.el.act.hidden = true;
+      crouchLatch = crouchBlocked = false; crouchCave = null;
+      hud.setCrouch(null);
       syncJetpackHud();
       syncWeaponHud();
       syncModeHud();
@@ -2624,6 +2626,24 @@
       if (pad.pressed & PAD.y) weaponAction("weapon-toggle");
       if (pad.pressed & PAD.b && armed() && cave.weapon.equipped) weaponAction("weapon-bash");
     };
+    // Crouch: held on its key, or latched by the touch button (`toggleCrouch`); the latch belongs to the Ooga it was
+    // set on, and a refused stand says so once.
+    let crouchLatch = false, crouchCave = null, crouchBlocked = false;
+    const syncCrouch = (cave, held) => {
+      if (cave !== crouchCave) { crouchLatch = false; crouchCave = cave; }
+      crew.crouch(held || crouchLatch);
+      if (!crew.crouchEnabled) return;
+      hud.setCrouch(cave.crouch.on ? "STAND" : "CROUCH");
+      if (cave.crouch.blocked && !crouchBlocked) hud.hint("No room to stand up here");
+      crouchBlocked = cave.crouch.blocked;
+    };
+    const toggleCrouch = () => {
+      const cave = player();
+      if (!active || !cave || !crew.crouchEnabled) return false;
+      if (cave !== crouchCave) { crouchLatch = false; crouchCave = cave; }
+      crouchLatch = !crouchLatch;
+      return true;
+    };
     const readInput = (dt) => {
       readPad();
       if (!active || externalControl || menuOpen) return;
@@ -2663,6 +2683,7 @@
         followTarget.y = p.y - cave.baseY + follow.y + frameLift;
         followTarget.z = p.z;
         orbit.target = followTarget;
+        syncCrouch(cave, a.crouch > 0);
         if (cave.jet) crew.thrust(a.up > 0);
         else if (cave.traits.footRockets) crew.holdRocketJump(a.up > 0);
         crew.steer(fx0 * moveY + rx * moveX, fz0 * moveY + rz * moveX, armed() ? 1 : close ? closeMix : 0, moveY, moveX,
@@ -3714,6 +3735,8 @@
         crew.stopBurst(player()); crew.stopReload(player(), true); crew.releaseSwing(player(), true);
         // Held propulsion lets go too: readInput, which would see its key released, does not run while inactive.
         crew.steer(0, 0, 0, 0, 0); crew.thrust(false); crew.holdRocketJump(false);
+        // A held crouch key cannot be read while inactive either; only the touch latch stays.
+        crew.crouch(crouchLatch && player() === crouchCave);
       }
       reticle.hidden = menuOpen || !value || !armed();
     };
@@ -3752,6 +3775,8 @@
       restoreHead();
       hud.el.act.hidden = true;
       hud.setAct(ACT_DO);
+      crouchLatch = crouchBlocked = false; crouchCave = null;
+      hud.setCrouch(null);
       hud.setPrimary(false, false, null, 0, false, 1, false);
       hud.setWeapon(false, false, 0);
       hud.setMagazine(0, 0, 0, false);
@@ -3846,7 +3871,7 @@
       get shoulderEntryMix() { return aimMix; },
       // The view being kept: "first-person", "shoulder", "birds-eye", "orbit", or "detached" with nobody driven.
       get view() { return viewMode(); },
-      bind, setActive, refreshCombat, readInput, update, syncHeadVisibility, goPreset, resetCamera, freeCursor, navigate, travelRefusal, travel, transformView, tiltView, framePoint, releaseFrame, pickCarryTarget, enterClose, exitClose, possess, release, escape, action, modeAction, weaponAction, weaponMode, showAct, suspend, resume, dispose, get player() {
+      bind, setActive, refreshCombat, readInput, update, syncHeadVisibility, goPreset, resetCamera, freeCursor, navigate, travelRefusal, travel, transformView, tiltView, framePoint, releaseFrame, pickCarryTarget, enterClose, exitClose, possess, release, escape, action, toggleCrouch, modeAction, weaponAction, weaponMode, showAct, suspend, resume, dispose, get player() {
       return player();
     }, get assistedTarget() {
       if (birdsEye() && assistedTargetActive) return assistedTargetHit;

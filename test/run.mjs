@@ -7246,6 +7246,32 @@ const wallPerformance = async (b) => {
 };
 // Suggested extension to test/run.mjs's permitted global tier. This snippet was NOT executed by the helper.
 // Use the real gamepad module; the fixture observes published state/actions, not a duplicate input formula.
+// Crouch's key: K by default, moved only to another unbound letter from storage, held through the shared controls so
+// blur and Tab let it go like every other held key.
+const crouchKeyProof = async () => {
+  const source = await readFile(join(root, "src/js/controls.js"), "utf8"), math = await readFile(join(root, "src/js/math.js"), "utf8");
+  const load = (stored) => {
+    const events = new Map();
+    const context = { window: { addEventListener: (name, fn) => events.set(name, [...(events.get(name) || []), fn]), removeEventListener: () => {},
+      localStorage: { getItem: () => { if (stored instanceof Error) throw stored; return stored; } }, BL: { gamepad: { BUTTON: {}, state: { frame: 0, pressed: 0, released: 0, lx: 0, ly: 0, rx: 0, ry: 0 } } } } };
+    runInNewContext(math, context);
+    runInNewContext(source, context);
+    return { C: context.window.BL.controls, events };
+  };
+  const keys = [null, "u", "i", "w", "K", "", new Error("blocked")].map((stored) => load(stored).C.CROUCH_KEY);
+  const { C, events } = load(null), controls = C.create({ tabNavigation: true });
+  const fire = (type, e) => { for (const fn of events.get(type)) fn(e); };
+  const key = (type, k) => fire(type, { key: k, code: "Key" + k.toUpperCase(), timeStamp: 0, target: null, preventDefault() {}, stopImmediatePropagation() {} });
+  key("keydown", "k");
+  const held = controls.read().crouch === 1;
+  fire("blur", {});
+  const blurred = controls.read().crouch === 0;
+  key("keydown", "k"); key("keyup", "k");
+  const released = controls.read().crouch === 0;
+  key("keydown", "k"); controls.reset();
+  const reset = controls.read().crouch === 0;
+  return { keys: keys.join(), held, blurred, released, reset };
+};
 const gamepadHoldProof = async () => {
   const events = new Map();
   const buttons = Array.from({ length: 12 }, () => ({ pressed: false, value: 0 }));
@@ -7543,6 +7569,95 @@ const trip = (id) => ({ name: `${id} round trip`, why: "contract: a scene left a
   const donated = await b.evaluate(`(() => { const B = window.__ooga, g = B.game.state, before = { donations: g.donations, sats: g.totalSats, bananas: g.bananas }; window.BL.scenes[B.scene].onDonation({ id: "trip-${id}", sats: 2100, handle: "tester", message: "ooga", at: Date.now() }, { exact: 1.25, rounded: 1 }); B.advance(1, 1 / 30); return { scene: B.scene, donations: g.donations - before.donations, sats: g.totalSats - before.sats, bananas: g.bananas - before.bananas }; })()`);
   record(`${id} round trip: leaving and entering twice keeps the leave contract and holds nothing the first visit did not, and a donation mid-visit is taken`, grew.length === 0 && beds.every(state => !state.failures.length) && donated.scene === id && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25, JSON.stringify({ grew, beds, donated, first: laps[0], second: laps[1] }));
 } });
+// Crouching on the island, through the real keyboard: lower, slower, never running, standing only where there is
+// room (a test slab with a crouch's headroom under it, in the hub's own solids), and let go on blur and on a switch.
+const hubCrouch = { name: "hub crouch", why: "rule: crouch lowers the Ooga's body, camera and collision together, slows it, and never stands it up into a ceiling", run: async (b) => {
+  const hold = (type, key, code) => b.send("Input.dispatchKeyEvent", { type, key, code, ...(type === "keyDown" && key.length === 1 ? { text: key } : {}) });
+  const setup = await b.evaluate(`(() => {
+    const B = __ooga, a = B.cavemen.get("portlandhodl"), P = B.pilot, I = B.island;
+    if (B.crew.player !== a) P.possess(a);
+    P.navigate({ position: { x: -6, y: I.surfaceAt(-6, 6), z: 6 }, yaw: 0, pitch: 0.4, dist: 6 }); B.advance(0.4, 1 / 60);
+    window.__crouch = { stand: a.bodyHeight, follow: P.orbit.target.y, lift: a.viewLift };
+    return { enabled: B.crew.crouchEnabled, key: BL.controls.CROUCH_KEY };
+  })()`);
+  await hold("keyDown", "k", "KeyK");
+  const low = await b.evaluate(`(() => {
+    const B = __ooga, a = B.crew.player, P = B.pilot, C = window.__crouch;
+    B.advance(0.4, 1 / 60);
+    const r = { on: a.crouch.on, height: a.bodyHeight / C.stand, drop: a.viewLift - a.stepLift, expect: -0.36 * a.baseY, camera: C.follow - P.orbit.target.y, label: document.getElementById("crouch").textContent };
+    return r;
+  })()`);
+  const walk = async (shift) => {
+    await b.evaluate(`window.__walkFrom = { x: __ooga.crew.player.root.position.x, z: __ooga.crew.player.root.position.z }`);
+    if (shift) await hold("keyDown", "Shift", "ShiftLeft");
+    await hold("keyDown", "w", "KeyW");
+    await b.evaluate(`__ooga.advance(1, 1 / 60)`);
+    await hold("keyUp", "w", "KeyW");
+    if (shift) await hold("keyUp", "Shift", "ShiftLeft");
+    return b.evaluate(`(() => { const p = __ooga.crew.player.root.position, d = Math.hypot(p.x - __walkFrom.x, p.z - __walkFrom.z); __ooga.pilot.navigate({ position: { x: -6, y: __ooga.island.surfaceAt(-6, 6), z: 6 }, yaw: 0, pitch: 0.4, dist: 6 }); __ooga.advance(0.4, 1 / 60); return d; })()`);
+  };
+  const crouched = await walk(false), crouchedRun = await walk(true);
+  await hold("keyUp", "k", "KeyK");
+  const standing = await walk(false);
+  const speed = await b.evaluate(`BL.pilot.WALK.speed`);
+  record("hub crouch: K lowers the collision height, body and follow camera together and walks at 0.45 of the walk, Shift or not",
+    setup.enabled && setup.key === "k" && low.on && Math.abs(low.height - 0.64) < 1e-6 && Math.abs(low.drop - low.expect) < 1e-6 && low.camera > 0.1 && low.label === "STAND"
+      && Math.abs(crouched - 0.45 * speed) < 0.15 && Math.abs(crouchedRun - crouched) < 0.05 && standing > crouched * 1.8,
+    JSON.stringify({ setup, low, crouched, crouchedRun, standing, speed }));
+  // A slab whose underside is between crouched and standing height: crouch under it, let go, and stay down.
+  await b.evaluate(`(() => {
+    const B = __ooga, a = B.crew.player, g = B.island.surfaceAt(-6, 6);
+    const slab = BL.scene.createNode({ geometry: BL.models.box({ w: 3, h: 2, d: 3, color: "#777777", offset: { x: 0, y: 1, z: 0 } }), position: { x: -6, y: g + window.__crouch.stand * 0.82, z: 3 } });
+    BL.scene.addChild(BL.scenes.hub.root, slab); B.headquarters.solids.props.add(slab); window.__slab = slab;
+    B.advance(0.1, 1 / 60);
+  })()`);
+  await hold("keyDown", "k", "KeyK");
+  await b.evaluate(`__ooga.advance(0.3, 1 / 60)`);
+  await hold("keyDown", "w", "KeyW");
+  await b.evaluate(`__ooga.advance(0.6, 1 / 60)`);
+  await hold("keyUp", "w", "KeyW");
+  await hold("keyUp", "k", "KeyK");
+  const under = await b.evaluate(`(() => {
+    const B = __ooga, a = B.crew.player, p = a.root.position;
+    B.advance(0.5, 1 / 60);
+    return { under: Math.abs(p.x + 6) < 1.5 && Math.abs(p.z - 3) < 1.5, on: a.crouch.on, blocked: a.crouch.blocked, height: a.bodyHeight / window.__crouch.stand, hint: document.getElementById("hint").textContent };
+  })()`);
+  await b.key(" ");
+  const out = await b.evaluate(`(() => {
+    const B = __ooga, a = B.crew.player, p = a.root.position;
+    B.advance(0.1, 1 / 60);
+    const jumpRefused = !(a.hop > 0 || a.hopV > 0) && a.crouch.on;
+    return { jumpRefused };
+  })()`);
+  await hold("keyDown", "w", "KeyW");
+  await b.evaluate(`__ooga.advance(1.2, 1 / 60)`);
+  await hold("keyUp", "w", "KeyW");
+  const clear = await b.evaluate(`(() => {
+    const B = __ooga, a = B.crew.player;
+    B.advance(0.5, 1 / 60);
+    const r = { on: a.crouch.on, height: a.bodyHeight === window.__crouch.stand };
+    B.headquarters.solids.props.remove(__slab); BL.scene.removeChild(BL.scenes.hub.root, __slab);
+    return r;
+  })()`);
+  record("hub crouch: under a ceiling too low to stand, letting go of K keeps the Ooga down with a hint and refuses a jump, and out from under it stands by itself",
+    under.under && under.on && under.blocked && Math.abs(under.height - 0.64) < 1e-6 && under.hint === "No room to stand up here" && out.jumpRefused && !clear.on && clear.height,
+    JSON.stringify({ under, out, clear }));
+  // Let go: a blur drops the held key, the touch toggle latches for the Ooga it was set on, a switch stands it up.
+  await hold("keyDown", "k", "KeyK");
+  const released = await b.evaluate(`(() => {
+    const B = __ooga, a = B.crew.player, P = B.pilot;
+    B.advance(0.3, 1 / 60);
+    const r = { held: a.crouch.on };
+    window.dispatchEvent(new Event("blur")); B.advance(0.4, 1 / 60); r.blurred = !a.crouch.on;
+    document.getElementById("crouch").click(); B.advance(0.3, 1 / 60); r.latched = a.crouch.on;
+    const other = B.crew.list.find(c => c !== a && c.root.visible && c.state !== "away" && !c.camp.seat);
+    if (other) { P.possess(other); B.advance(0.4, 1 / 60); r.switched = !a.crouch.on && !other.crouch.on; P.possess(a); B.advance(0.3, 1 / 60); r.notRelatched = !a.crouch.on; }
+    return r;
+  })()`);
+  await hold("keyUp", "k", "KeyK");
+  record("hub crouch: a blur lets go of a held K, the touch button latches a crouch, and switching Oogas stands the one let go without crouching the next",
+    released.held && released.blurred && released.latched && released.switched && released.notRelatched, JSON.stringify(released));
+} };
 // Keep the real sheet controls working while their rows survive a scene's lifetime.
 const hudVisit = { name: "hub HUD lifetime", why: "regression: scene visits recreated roster SVGs and donor rows; their handlers must end on leave while the attached rows keep their identity", run: async (b) => {
   await b.evaluate(`(() => {
@@ -14530,6 +14645,7 @@ scene("hub", { label: "entry spinner", query: "hubcache=keep", steps: [{ name: "
       && (row.label.startsWith("instant") ? row.fade === 0 && row.black === 0 && row.clears > 0 : row.fade === 1 && row.black === row.frames && row.clears === 0)), JSON.stringify(rows));
 } }] });
 scene("hub", { query: "ooga=portlandhodl:clank:lab,obl,lf&ooga=w-s-bitcoin:clank:lab,obl,lf&ooga=bc1gui:clank:lab,obl,lf&ooga=DrNeski:clank:lab,obl,lf&ooga=2140data:clank:lab,obl,lf", steps: [{ name: "work movement cave trips", why: "regression: cave traffic aimed through obstacles, started backwards detours and got trapped behind players by short lane hints", run: workCaveTrips }] });
+scene("hub", { label: "crouch", query: "character=portlandhodl&pos=0", steps: [hubCrouch] });
 scene("hub", { label: "room sign", query: "pos=0", steps: [{ name: "room sign copies hash", why: "rule: tapping a room sign swings it and copies its displayed eight-character code with visible confirmation", run: async (b) => {
   const point = await b.evaluate(`(() => { const B = __ooga, sign = B.headquarters.roomSigns[0], n = sign.node; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (value) => { window.__roomHash = value; return Promise.resolve(); } } }); window.__roomSignBefore = sign.hits; B.pilot.release(true); B.pilot.navigate({ position: { x: n.position.x, y: n.position.y, z: n.position.z }, target: { x: n.position.x, y: n.position.y - 0.2, z: n.position.z }, yaw: n.rotation.y, pitch: 0, dist: 4 }); B.advance(0.6, 1 / 60); return B.project(n.position.x, n.position.y - 0.2, n.position.z, {}); })()`);
   await b.click(point.x, point.y);
@@ -22852,6 +22968,9 @@ const unitChecks = async () => {
   const studio=await studioSessionProof();
   record("Studio session: receive-only readiness and blocked sound, Q&A consent, source selection, buffering and deterministic cleanup",Object.values(studio).every(Boolean),JSON.stringify(studio));
   await canvasSurfaceCacheChecks();
+  const crouchKey = await crouchKeyProof();
+  record("crouch key: K unless storage names I or U (anything else, or storage failing, keeps K), held through the shared controls and let go on keyup, blur and reset",
+    crouchKey.keys === "k,u,i,k,k,k,k" && crouchKey.held && crouchKey.blurred && crouchKey.released && crouchKey.reset, JSON.stringify(crouchKey));
   const heldPad = await gamepadHoldProof();
   record("gamepad entry hold: real pad polling stays neutral, preserves trigger hysteresis and requires a fresh button after release or reconnect", Object.values(heldPad).every(Boolean), JSON.stringify(heldPad));
   const retention = await hubRetentionProof();

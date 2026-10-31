@@ -117,6 +117,11 @@
   const chillPause = (cave) => CHILL_MIN + ((cave.index * 0.61803398875 + cave.act.trips * 0.41421356237) % 1) * CHILL_SPREAD;
   const { WALK } = BL.pilot;
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
+  // Crouching, for a scene that opts in (`ctx.crouch`): the driven Ooga's collision height falls to CROUCH_HEIGHT of its
+  // standing height and its body drops CROUCH_DROP of its hip height through the same lift as step smoothing, so the
+  // head, the held weapons and the follow camera come down with it, easing at CROUCH_RATE a second; it walks at
+  // CROUCH_SPEED and never runs. It stands only where the ceiling leaves its standing height.
+  const CROUCH_HEIGHT = 0.64, CROUCH_DROP = 0.36, CROUCH_RATE = 10, CROUCH_SPEED = 0.45;
   const PLAYER_STEP = 0.125;
   const LADDER_SPEED = 2.4;
   const SHOULDER_GAP = 0.68, SHOULDER_TOUCH = 1.1, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
@@ -649,6 +654,8 @@
         riding: { support: null, x: 0, y: 0, z: 0, vy: 0, updated: false, continuous: false },
         grabbedBy: null,
         viewLift: 0,
+        stepLift: 0,
+        crouch: { wanted: false, on: false, mix: 0, blocked: false, stand: 0 },
         peek: 0,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN, sit: false } },
         swagNodes: []
@@ -2789,6 +2796,7 @@
     };
     const prepareDragged = (cave) => {
       if (!combatEnabled) return false;
+      clearCrouch(cave);
       if (cave === player) elevatePlayer(0);
       clearHeadLook(cave);
       clearShoulder(cave);
@@ -2845,6 +2853,7 @@
       const cave = player;
       if (!cave || cave.grabbedBy || cave.camp.burning || cave.camp.rolling || cave.camp.seat || seat.sitter || !grounded(cave)) return false;
       if (!walkable(seat.walkAt.x, seat.walkAt.z, seat.walkAt.x, seat.walkAt.z, seat.floor, cave.bodyHeight, cave)) return false;
+      clearCrouch(cave);
       elevatePlayer(0);
       removeJetpack(cave);
       releaseBuild(cave);
@@ -3051,6 +3060,7 @@
       const c = cave.camp;
       if (c.rolling) return true;
       clearShoulder(cave);
+      clearCrouch(cave);
       if (cave === player) elevatePlayer(0);
       if (cave.jet) {
         cave.jet.thrust = false;
@@ -4783,7 +4793,7 @@
       if (!l) return false;
       const p = cave.root.position, feet = p.y - cave.baseY;
       l.cooldown = Math.max(0, l.cooldown - dt);
-      if (!l.plane && driving && l.cooldown === 0 && !(cave.jet && cave.jet.thrust)) {
+      if (!l.plane && driving && l.cooldown === 0 && !(cave.jet && cave.jet.thrust) && !cave.crouch.on) {
         for (const plane of ctx.ladders) {
           const dx = p.x - plane.x, dz = p.z - plane.z, along = dx * plane.nx + dz * plane.nz;
           const across = dx * plane.nz - dz * plane.nx, outward = steer.x * plane.nx + steer.z * plane.nz;
@@ -5505,7 +5515,8 @@
       return true;
     };
     const thrust = (on) => {
-      if (player && player.jet) player.jet.thrust = !!on && !player.grabbedBy && !player.health.stunned && !player.jetRecovering && player.jetFuel > 0;
+      if (player && player.jet) player.jet.thrust = !!on && !player.grabbedBy && !player.health.stunned && !player.jetRecovering && player.jetFuel > 0
+        && (!player.crouch.on || standFromCrouch(player));
     };
     const holdRocketJump = (on) => {
       if (player && player.traits.footRockets && !player.jet) player.rocketJumpHeld = !!on && !player.grabbedBy && jetpackRefills(player);
@@ -5516,6 +5527,7 @@
       if (!cave || cave.grabbedBy || cave.camp.burning || cave.camp.seat || cave.state === "sleeping" || !bed || bed.sleeper && bed.sleeper !== cave) return false;
       // Step smoothing may still be settling when SLEEP appears; admission uses planted feet, before clearing it.
       if (!grounded(cave)) return false;
+      clearCrouch(cave);
       elevatePlayer(0);
       releaseBuild(cave);
       removeJetpack(cave);
@@ -5616,6 +5628,8 @@
       if (!player) return;
       const cave = player;
       clearGunBashThrust(cave);
+      // Let go crouched, it stands as soon as there is room (`updateCrouch`).
+      cave.crouch.wanted = false;
       cave.humanControlled = false;
       cave.rocketJumpHeld = false;
       cave.weapon.aiming = false;
@@ -5703,7 +5717,7 @@
       steer.view = clamp(view, 0, 1);
       steer.forward = forward;
       steer.strafe = strafe;
-      steer.speed = speed;
+      steer.speed = player && player.crouch.on ? Math.min(speed, 1) * CROUCH_SPEED : speed;
       steer.peek = clamp(peek, -1, 1);
     };
     // Keeps possession and equipment while discarding motion at a safe arrival.
@@ -5717,6 +5731,7 @@
       if (cave.camp.seat) { cave.camp.seat.sitter = null; cave.camp.seat = null; }
       if (cave.camp.rolling) { cave.camp.rolling = false; cave.root.quaternion = null; }
       if (cave.bedTravel.manual) wakePlayer();
+      clearCrouch(cave);
       elevatePlayer(0);
       steer.x = steer.z = steer.view = steer.forward = steer.strafe = steer.peek = 0;
       cave.peek = 0;
@@ -5781,12 +5796,18 @@
     // Scaling each leg about its hip keeps the feet on that same voxel step.
     const elevatePlayer = (lift) => {
       if (!player || player.grabbedBy || player.bedTravel.manual || player.camp.seat || player.camp.rolling) return;
-      const cave = player, parts = cave.parts;
+      const cave = player;
       // Step smoothing moves the rendered head after physics; clamp the lift to the same full-footprint ceiling.
       if (lift > 0 && ctx.ceilingAt) {
         const p = cave.root.position, feet = p.y - cave.baseY;
         lift = Math.min(lift, Math.max(0, ctx.ceilingAt(p.x, p.z, feet, cave) - feet - cave.bodyHeight));
       }
+      cave.stepLift = lift;
+      applyLift(cave);
+    };
+    // The drawn lift: step smoothing's less the crouch's drop.
+    const applyLift = (cave) => {
+      const parts = cave.parts, lift = cave.stepLift - CROUCH_DROP * cave.baseY * cave.crouch.mix;
       const delta = lift - cave.viewLift;
       if (!delta) return;
       parts.legR.position.y += delta;
@@ -5800,8 +5821,51 @@
       cave.viewLift = lift;
       parts.legR.scale.y = parts.legL.scale.y = (cave.baseY + lift) / cave.baseY;
     };
+    // Room to stand: the ceiling over the feet at least the standing height up.
+    const standRoom = (cave) => {
+      if (!ctx.ceilingAt) return true;
+      const p = cave.root.position, feet = p.y - cave.baseY;
+      return ctx.ceilingAt(p.x, p.z, feet, cave) - feet >= cave.crouch.stand - 1e-6;
+    };
+    // Only the driven Ooga crouches, on the ground, out of a seat, bed, ladder, grab, roll or thrust.
+    const mayCrouch = (cave) => !!ctx.crouch && cave === player && grounded(cave) && !cave.camp.seat && !cave.camp.rolling && !cave.grabbedBy
+      && !cave.bedTravel.mode && !(cave.ladder && cave.ladder.plane) && !(cave.jet && cave.jet.thrust) && cave.state !== "sleeping";
+    // Up from a crouch where there is room; false, still crouched and marked `blocked`, where there is not.
+    const standFromCrouch = (cave) => {
+      const c = cave.crouch;
+      if (!c.on) return true;
+      if (!standRoom(cave)) { c.blocked = true; return false; }
+      c.on = c.blocked = false;
+      cave.bodyHeight = c.stand;
+      return true;
+    };
+    // Up at once, whatever is overhead: for a body that other code is placing (a seat, a bed, a relocation, a roll, a grab).
+    const clearCrouch = (cave) => {
+      const c = cave.crouch;
+      if (c.on) cave.bodyHeight = c.stand;
+      c.on = c.wanted = c.blocked = false;
+      if (!c.mix) return;
+      c.mix = 0;
+      applyLift(cave);
+    };
+    const updateCrouch = (cave, dt) => {
+      const c = cave.crouch;
+      if (c.wanted && !c.on && mayCrouch(cave)) {
+        c.stand = cave.bodyHeight;
+        cave.bodyHeight = c.stand * CROUCH_HEIGHT;
+        c.on = true;
+      } else if (!c.wanted && c.on) standFromCrouch(cave);
+      const target = c.on ? 1 : 0;
+      if (c.mix === target) return;
+      c.mix = target > c.mix ? Math.min(1, c.mix + CROUCH_RATE * dt) : Math.max(0, c.mix - CROUCH_RATE * dt);
+      applyLift(cave);
+    };
+    // The visitor's crouch held (the pilot's crouch key or touch toggle); ignored where the scene has not opted in.
+    const crouchPlayer = (on) => { if (player) player.crouch.wanted = !!on && !!ctx.crouch; };
     const jumpPlayer = () => {
       if (!player || player.grabbedBy || player.health.stunned || player.bedTravel.manual || player.camp.seat || player.camp.rolling || player.jet && !player.jetRecovering) return false;
+      // A jump from a crouch stands first, and is refused under a ceiling too low to stand.
+      if (player.crouch.on && !standFromCrouch(player)) return false;
       if (player.ladder && player.ladder.plane) {
         const plane = player.ladder.plane;
         leaveLadder(player);
@@ -5846,7 +5910,7 @@
       const p = player.root.position, feet = p.y - player.baseY;
       if (!player.weapon.reloading && !player.weapon.swapTime && !player.weapon.reloadHandoff && ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6, feet)) return true;
       if (player.jet && !player.jetRecovering) {
-        if (player.jetFuel > 0 && grounded(player)) {
+        if (player.jetFuel > 0 && grounded(player) && standFromCrouch(player)) {
           elevatePlayer(0);
           player.jumps = 1;
           player.hopV = JUMP_SPEED * Math.SQRT1_2;
@@ -6382,6 +6446,10 @@
       }
       if (!npcPaused && combatEnabled && dt > 0) updateFireContacts();
       if (!npcPaused && combatEnabled) updateFireThreats();
+      for (let i = 0; i < crewList.length; i++) {
+        const c = crewList[i].crouch;
+        if (c.wanted || c.on || c.mix) updateCrouch(crewList[i], dt);
+      }
       for (let i = 0; i < crewList.length; i++) if (!crewList[i].puppet && (!npcPaused || crewList[i] === player)) updateMember(crewList[i], dt);
       if (!npcPaused && combatEnabled) updateStunGear(dt);
       if (!npcPaused || player) syncMagazine(npcPaused ? player : null);
@@ -6494,7 +6562,7 @@
       get combatEnabled() { return combatEnabled; },
       get weaponsEnabled() { return weaponsEnabled; },
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, refreshRosterRow, updateFan, rush, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawDrops,
-      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
+      throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, crouch: crouchPlayer, get crouchEnabled() { return !!ctx.crouch; }, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
       actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
