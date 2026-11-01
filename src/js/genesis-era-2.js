@@ -16,7 +16,7 @@
 //   marks, a tap box over its model and a walk-up point in front of it; using one opens its terminal. Original
 //   procedural models from kit boxes only, each with its own sign.
 // - `update`: poses the models from the live state while the visitor is in this cave, allocating nothing: lit tree
-//   paths, the envelope and stamp, the disks in their crate and the maze on its screen. `dispose` drops the visit.
+//   paths, the envelope and stamp, the disks in their box and the maze on its screen. `dispose` drops the visit.
 //
 // Elliptic curves: no visualization. The dossier holds only the 1985 paper's abstract and leaves a joint attribution
 // pending, and the primary pages could not be read for this build, so the exhibit is on HOLD (see HELD); the PC
@@ -71,6 +71,20 @@
 
   const clean = GP.clean;
   const words = (input) => { const s = input.indexOf(" "); return [(s < 0 ? input : input.slice(0, s)).toUpperCase(), s < 0 ? "" : input.slice(s + 1).trim()]; };
+
+  // --- How to use -------------------------------------------------------------------------------------------------
+  // Each terminal opens with its name, then two to four steps for a 12-year-old; HELP and MORE keep the full commands
+  // and the deeper text.
+  const HOW = {
+    merkle: ["Type SHOW and press Enter to see the tree of fingerprints.", "Type CHANGE 3 Bob to change record 3, and watch its path to the root light up.",
+      "Type VERIFY 5 to check record 5 with just three fingerprints.", "Type RESET to start again, or MORE to read more."],
+    blind: ["Type WRITE and press Enter to write a token.", "Type SEAL, then STAMP: the signer stamps the envelope without looking inside.",
+      "Type OPEN, then CHECK: the stamp came through onto your token.", "Type SPEND, then SPEND again: the second try is refused."],
+    pc: ["Type DIR and press Enter to list the files.", "Type TYPE MERKLE.TXT to read one.", "Load a disk at the disk box, then type DIR A: here.", "Type HELP for every command."],
+    floppy: ["Type LIST and press Enter to see the disks.", "Type SWAP 1 2 to swap two disks. Sort them oldest to newest.", "Type LOAD 1 to put a disk in the PC, then read it at the PC."],
+    maze: ["Type moves with W A S D (W up, A left, S down, D right) and press Enter.", "Type several at once, like DDSS.", "Collect all four * leaves; then the gate opens as R. Reach it!", "Type NEXT for another maze, or RESET to try again."]
+  };
+  const howTo = (key) => ["HOW TO USE", ...HOW[key].map((step, i) => `${i + 1}. ${step}`), ""];
 
   // --- 1. The Merkle-tree table ---------------------------------------------------------------------------------------
   // Eight records (an invented file of keys, as the 1980 paper's own example is a file of public keys) hashed in pairs
@@ -134,7 +148,7 @@
       ...m.leaves.map((t, i) => `  ${i + 1}. ${m.nodes[LEAVES + i]}  ${t}`),
       `Trusted root on the board: ${m.trusted}`];
     return {
-      banner: ["MERKLE-TREE TABLE · 1980 publication · Bitcoin whitepaper reference [7]",
+      banner: ["MERKLE-TREE TABLE · 1980 publication · Bitcoin whitepaper reference [7]", ...howTo("merkle"),
         "Eight records hashed in pairs up to one root. Type HELP.", "Toy fingerprints (FNV-1a), not a secure hash.", ""],
       prompt: "TREE>",
       run: (line) => {
@@ -225,7 +239,7 @@
     return Object.assign(s, { reset, write, seal, stamp, open, check, spend, reached: at });
   };
   const blindTerminal = (b) => ({
-    banner: ["BLIND-STAMP STATION · 1982 conference contribution · context", "A paper analogy, NOT real cryptography. Type HELP.", ""],
+    banner: ["BLIND-STAMP STATION · 1982 conference contribution · context", "A paper analogy, NOT real cryptography. Type HELP.", ...howTo("blind")],
     prompt: "DESK>",
     run: (line) => {
       const [cmd, arg] = words(clean(line));
@@ -273,7 +287,7 @@
     { name: "README", ext: "TXT", year: 1989, sourceKeys: ["E2-DOSSIER"], text: [
       "MUSEUM NOTES, written in 2026 for the Genesis Voyage, about 1980-1989.",
       "This PC and OOGA-DOS are invented: no real product's design or text.",
-      "Try DIR, TYPE MERKLE.TXT, or load a floppy from the crate and DIR A:"] },
+      "Try DIR, TYPE MERKLE.TXT, or load a floppy from the disk box and DIR A:"] },
     { name: "MERKLE", ext: "TXT", year: 1980, sourceKeys: ["E2-MERKLE", "E2-WHITEPAPER"], text: [
       "1980 publication: Ralph Merkle, Protocols for Public Key Cryptosystems.",
       "Tree authentication: trust one root, then check one entry by its path.",
@@ -321,12 +335,12 @@
       if (cmd === "VER") return { lines: [`OOGA-DOS, an invented system in the style of ${PC_YEAR}. Museum replica, read-only.`] };
       if (cmd === "MORE") return { lines: boardLines(EXHIBITS.pc) };
       if (cmd === "A:" || cmd === "C:") {
-        if (cmd === "A:" && !(floppies && floppies.loaded >= 0)) return { lines: ["Not ready reading drive A: put a disk in from the crate."] };
+        if (cmd === "A:" && !(floppies && floppies.loaded >= 0)) return { lines: ["Not ready reading drive A: put a disk in from the disk box."] };
         s.drive = cmd[0]; s.version++; return { lines: [] };
       }
       if (cmd === "DIR") {
         const drive = /^[AC]:?$/i.test(arg) ? arg[0].toUpperCase() : s.drive, files = filesOf(drive);
-        if (drive === "A" && !files.length) return { lines: ["Not ready reading drive A: put a disk in from the crate."] };
+        if (drive === "A" && !files.length) return { lines: ["Not ready reading drive A: put a disk in from the disk box."] };
         const total = files.reduce((n, f) => n + sizeOf(f), 0);
         return { lines: [` Volume in drive ${drive} is ${drive === "C" ? "MUSEUM" : "FLOPPY"}`, ` Directory of ${drive}:\\`, "",
           ...files.map((f) => `${pad(f.name, 9)}${pad(f.ext, 4)}${String(sizeOf(f)).padStart(7)}  ${f.year}`),
@@ -345,7 +359,7 @@
       if (["DEL", "ERASE", "COPY", "FORMAT", "MD", "MKDIR", "REN", "EDIT"].includes(cmd)) return { lines: ["This museum disk is read-only."] };
       return { lines: ["Bad command or file name"] };
     };
-    Object.assign(s, { disk, run, reset, sizeOf, filesOf, banner: [`OOGA-DOS · an invented system in the style of ${PC_YEAR}`, "Museum replica. Type HELP.", ""] });
+    Object.assign(s, { disk, run, reset, sizeOf, filesOf, banner: [`OOGA-DOS · an invented system in the style of ${PC_YEAR}`, "Museum replica. Type HELP.", ...howTo("pc")] });
     // The prompt follows the drive (the scene reads it for every line it echoes).
     return Object.defineProperty(s, "prompt", { get: () => `${s.drive}:\\>`, enumerable: true });
   };
@@ -412,18 +426,18 @@
   const floppyTerminal = (f) => {
     const list = () => f.order.map((d, i) => `  slot ${i + 1}: [${f.disks[d].label}]${f.loaded === d ? "  <- in the PC's drive" : ""}`);
     return {
-      banner: ["5.25-INCH DISK CRATE · period gear of the 1980s", "Sort the disks by year, then load one into the PC. Type HELP.", ""],
-      prompt: "CRATE>",
+      banner: ["5.25-INCH DISK BOX · period gear of the 1980s", ...howTo("floppy")],
+      prompt: "DISKS>",
       run: (line) => {
         const [cmd, arg] = words(clean(line));
         if (!cmd) return { lines: [] };
-        if (cmd === "HELP") return { lines: ["LIST        the disks in the crate", "SWAP 1 4    swap the disks in slots 1 and 4", "LOAD 2      put slot 2's disk in the PC's drive A",
-          "EJECT       take the disk out of the drive", "RESET       shuffle the crate back", "MORE        the deeper panel", "SOURCES     where this comes from"] };
+        if (cmd === "HELP") return { lines: ["LIST        the disks in the box", "SWAP 1 4    swap the disks in slots 1 and 4", "LOAD 2      put slot 2's disk in the PC's drive A",
+          "EJECT       take the disk out of the drive", "RESET       shuffle the box back", "MORE        the deeper panel", "SOURCES     where this comes from"] };
         if (cmd === "LIST") return { lines: [...list(), f.sorted() ? "Sorted by year." : "Not in year order yet."] };
-        if (cmd === "RESET") { f.reset(); return { lines: ["The crate is shuffled back.", ...list()], reset: true }; }
+        if (cmd === "RESET") { f.reset(); return { lines: ["The box is shuffled back.", ...list()], reset: true }; }
         if (cmd === "MORE") return { lines: boardLines(EXHIBITS.floppy) };
         if (cmd === "SOURCES") return { lines: sourceLines(EXHIBITS.floppy.sourceKeys) };
-        if (cmd === "EJECT") { const r = f.eject(); return { lines: [r.disk ? `[${r.disk.label}] is back in the crate.` : "The drive is empty."] }; }
+        if (cmd === "EJECT") { const r = f.eject(); return { lines: [r.disk ? `[${r.disk.label}] is back in the box.` : "The drive is empty."] }; }
         if (cmd === "LOAD") {
           const r = f.load(parseInt(arg, 10) - 1);
           return { lines: r.error ? [r.error] : [`[${r.disk.label}] is in the PC's drive A. On the PC: DIR A: then TYPE ${r.disk.file.name}.TXT`] };
@@ -539,7 +553,7 @@
     return {
       // Drawn fresh each time the cabinet is opened, so it shows the game where it was left.
       get banner() {
-        return ["LEAVES TO ROOT · an original maze in the style of the 1980s", "@ you  * leaf  X gate (opens as R with all four leaves)",
+        return ["LEAVES TO ROOT · an original maze in the style of the 1980s", ...howTo("maze"), "@ you  * leaf  X gate (opens as R with all four leaves)",
           "Type moves with W A S D, up to 60 at once, e.g. DDSS. HELP for more.", ...z.ascii(), ...status(), ""];
       },
       prompt: "MAZE>",
@@ -564,7 +578,7 @@
   // --- The exhibits: words, dates and panels ------------------------------------------------------------------------
   // `short` is the one-line explanation; `deeper` the optional panel ({ room, pages, sources }, as makeBoard takes).
   const EXHIBITS = {
-    merkle: { id: "e2-merkle", year: 1980, connection: "citation", ref: "[7]", title: "Merkle-tree table", label: "MERKLE-TREE TABLE · 1980", sub: "Bitcoin whitepaper reference [7]",
+    merkle: { id: "e2-merkle", year: 1980, connection: "citation", ref: "[7]", title: "Merkle-tree table: change a record, watch its path light up", label: "MERKLE-TREE TABLE · 1980", sub: "Bitcoin whitepaper reference [7]",
       date: "1980: published in the IEEE Symposium on Security and Privacy proceedings; the exact presentation day is not established in the research",
       kind: "whitepaper citation [7]", sourceKeys: ["E2-MERKLE", "E2-MERKLE-BIB", "E2-WHITEPAPER"],
       short: "Change one record and only its path to the root changes; three fingerprints prove one record is in the tree.",
@@ -580,7 +594,7 @@
           "A proof shows a record is included. It does not prove who owns it, that it is true, or that everyone agrees.",
           "The paper's example is a file of public keys, not Bitcoin's transactions. It does not claim the tree was first thought of in 1980, and Merkle's 1978 puzzles paper is a different work.",
           "The fingerprints here are a toy (FNV-1a), not a secure hash."] }] } },
-    blind: { id: "e2-blind", year: 1982, connection: "context", title: "Blind-stamp station", label: "BLIND-STAMP STATION · 1982", sub: "context · a paper analogy, not cryptography",
+    blind: { id: "e2-blind", year: 1982, connection: "context", title: "Blind-stamp station: get a hidden token stamped", label: "BLIND-STAMP STATION · 1982", sub: "context · a paper analogy, not cryptography",
       date: "1982: presented at the CRYPTO '82 conference; the printed proceedings are dated 1983, and the exact day is not established",
       kind: "context, not a whitepaper reference", sourceKeys: ["E2-CHAUM", "E2-CHAUM-CAT"],
       short: "Get a stamp on a token the signer cannot see, then reveal it and check the stamp.",
@@ -595,7 +609,7 @@
           "This desk is a physical analogy. Its stamp is a picture anyone could copy; in the paper, the hiding, signing and checking are done with mathematics.",
           "The signer is still one central party, and someone still keeps a list of spent tokens to stop one being spent twice.",
           "Context only: it is not one of the whitepaper's references and not a mechanism Bitcoin uses. Companies founded later are separate events."] }] } },
-    pc: { id: "e2-pc", year: 1981, connection: "context", title: "1980s office PC", label: "OFFICE PC · 1981", sub: "DIR · TYPE · invented design",
+    pc: { id: "e2-pc", year: 1981, connection: "context", title: "1980s office PC: list its files and read one", label: "OFFICE PC · 1981", sub: "DIR · TYPE · invented design",
       date: "12 August 1981: the IBM Personal Computer was unveiled; this PC is an invented design in the style of the decade",
       kind: "context (period gear)", sourceKeys: ["E2-PC", "E2-DOSSIER"],
       short: "An invented 1980s-style PC: its disk holds museum notes about the era's ideas, each with its date and source.",
@@ -606,18 +620,18 @@
         { caption: "Replica", title: "An invented machine", text: [
           "This beige box, its keyboard and OOGA-DOS are invented for the voyage, not copies of any product. Its notes are written today and dated by what they describe.",
           "Its disk is read-only and holds only notes dated 1989 or earlier."] }] } },
-    floppy: { id: "e2-floppy", year: "1980s", connection: "context", title: "5.25-inch disk crate", label: "5.25-INCH DISKS · 1980s", sub: "sort by year · load into the PC",
+    floppy: { id: "e2-floppy", year: "1980s", connection: "context", title: "5.25-inch disk box: sort the disks by year", label: "5.25-INCH DISKS · 1980s", sub: "sort by year · load into the PC",
       date: "1980s: period gear of the decade; the research clears no introduction date or capacity for these disks, so none is shown",
       kind: "context (period gear)", sourceKeys: ["E2-DOSSIER", "E2-PC"],
       short: "Sort the disks by year, then load one into the PC to read what its date marks.",
       deeper: { room: "5.25-inch disks - 1980s", sources: ["E2-DOSSIER", "E2-PC"], pages: [
         { caption: "Disks", title: "Floppy disks", text: [
-          "Files were carried between PCs on floppy disks. Each disk in this crate holds one note about what an Era 2 date marks: written, presented, published or printed.",
+          "Files were carried between PCs on floppy disks. Each disk in this box holds one note about what an Era 2 date marks: written, presented, published or printed.",
           "The 1981 base PC had no disk drive; a drive cost extra."] },
         { caption: "Limits", title: "Why no capacity", text: [
           "Different 5.25-inch disks held different amounts, and the museum's research has not yet verified one, so no capacity is shown. The 1.44 MB figure belongs to a different format.",
           "The disks and labels are original designs, not to scale."] }] } },
-    maze: { id: "e2-maze", year: "1980s", connection: "context", title: "LEAVES TO ROOT cabinet", label: "LEAVES TO ROOT · 1980s STYLE", sub: "an original maze · made 2026",
+    maze: { id: "e2-maze", year: "1980s", connection: "context", title: "LEAVES TO ROOT table: collect four leaves, reach the gate", label: "LEAVES TO ROOT · 1980s STYLE", sub: "an original maze · made 2026",
       date: "1980s style: made for the voyage in 2026, in a blocky style of 1980s games; not a real game of the decade",
       kind: "context (an original easter egg)", sourceKeys: ["E2-DOSSIER", "E2-MERKLE"],
       short: "Collect the four leaves, then reach the root gate in as few moves as you can.",
@@ -640,7 +654,7 @@
       { caption: "Try", title: "Five things to try", text: [
         "Merkle-tree table (1980): change a record and watch its path to the root light up; prove one record with three fingerprints.",
         "Blind-stamp station (1982): seal a token, get it stamped unseen, open it, check the stamp, spend it once. A paper analogy, not cryptography.",
-        "Office PC (1981), disk crate and LEAVES TO ROOT: read the dated notes, sort the disks by year and load one, then play the maze."] },
+        "Office PC (1981), disk box and LEAVES TO ROOT: read the dated notes, sort the disks by year and load one, then play the maze."] },
       { caption: "Dates", title: "What each date marks", text: [
         "1980: Merkle's paper published in the IEEE Symposium on Security and Privacy proceedings. Whitepaper citation [7].",
         "1982: Chaum's blind signatures presented at CRYPTO '82; proceedings printed 1983. 1985: Miller's elliptic curves presented at CRYPTO '85; printed 1986. 1988: May's manifesto, the date in a later reprint. All context.",
@@ -670,13 +684,25 @@
   const LAYOUT = {
     merkle: { x: -10, z: E.z + 7, half: { x: 1, z: 2.35 }, h: 3.4, reach: 1.6 },
     blind: { x: -10, z: E.z - 7.5, half: { x: 0.8, z: 1.4 }, h: 2.3, reach: 1.5 },
-    pc: { x: -10, z: E.z + 16, half: { x: 0.6, z: 0.65 }, h: 1.6, reach: 1.4 },
-    floppy: { x: -10, z: E.z + 19, half: { x: 0.45, z: 0.6 }, h: 1.1, reach: 1.4 },
-    maze: { x: -10, z: E.z - 16, half: { x: 0.45, z: 0.45 }, h: 2.2, reach: 1.4 }
+    pc: { x: -10, z: E.z + 16, half: { x: 0.6, z: 0.95 }, h: 1.6, reach: 1.4 },
+    floppy: { x: -10, z: E.z + 19, half: { x: 0.4, z: 0.5 }, h: 1.1, reach: 1.4 },
+    maze: { x: -10, z: E.z - 16, half: { x: 0.8, z: 0.5 }, h: 1.0, reach: 1.4 }
   };
   const PROPS = ["merkle", "blind", "pc", "floppy", "maze"];
-  // The footprints build passes to kit.obstacle, one box per exhibit.
-  const footprints = () => PROPS.map((key) => { const l = LAYOUT[key]; return { x0: l.x - l.half.x, x1: l.x + l.half.x, z0: l.z - l.half.z, z1: l.z + l.half.z }; });
+  // The era's set dressing on the floor, as boxes walkers bump into (the wall pieces hang flat on the cave wall): a
+  // lounge corner far back on the bank and a shelf unit against the wall, well behind the exhibits so nothing stands
+  // between the corridor and their signs, and off the ramp's walkway.
+  const LOUNGE = { x: -24, z: E.z + 12 }, SHELF = { x: -32.6, z: E.z - 9 };
+  const DECOR_BOXES = [
+    { x0: LOUNGE.x - 3.0, x1: LOUNGE.x - 2.1, z0: LOUNGE.z - 1.4, z1: LOUNGE.z + 1.4 },
+    { x0: LOUNGE.x - 1.15, x1: LOUNGE.x - 0.45, z0: LOUNGE.z - 0.65, z1: LOUNGE.z + 0.65 },
+    { x0: LOUNGE.x + 0.5, x1: LOUNGE.x + 1.3, z0: LOUNGE.z + 1.1, z1: LOUNGE.z + 1.9 },
+    { x0: LOUNGE.x - 3.0, x1: LOUNGE.x - 2.5, z0: LOUNGE.z - 2.3, z1: LOUNGE.z - 1.8 },
+    { x0: LOUNGE.x - 3.1, x1: LOUNGE.x - 2.3, z0: LOUNGE.z + 1.8, z1: LOUNGE.z + 2.6 },
+    { x0: SHELF.x - 0.35, x1: SHELF.x + 0.35, z0: SHELF.z - 1.3, z1: SHELF.z + 1.3 }
+  ];
+  // The footprints build passes to kit.obstacle: one box per exhibit, then the dressing's.
+  const footprints = () => [...PROPS.map((key) => { const l = LAYOUT[key]; return { x0: l.x - l.half.x, x1: l.x + l.half.x, z0: l.z - l.half.z, z1: l.z + l.half.z }; }), ...DECOR_BOXES];
   // Where the visitor stands to use an exhibit: in front of it, toward the stream.
   const walkUp = (key, y) => { const l = LAYOUT[key]; return { x: l.x + l.half.x + FRONT, y, z: l.z }; };
 
@@ -741,53 +767,194 @@
       parts.badLamp = node(box(0.2, 0.2, 0.2, "#ff5a4a", 1.3), x - 0.6, Y + 2.2, z + 0.9, false);
       sign(EXHIBITS.blind.label, EXHIBITS.blind.sub, x + 0.75, Y + 1.25, z, FACE_X, 0.45);
     }
-    // 3. The office PC: an invented beige box with a disk slot, a monitor and a blank-keyed keyboard, on a table.
+    // 3. The office PC, an invented early-1980s desk machine and nothing like the later caves' towers and terminals: a
+    // wide, flat putty system unit with twin full-height disk doors and their latches, a green-screen monitor on a
+    // tilt-and-swivel foot on top, a separate chunky keyboard with its function keys in a block down the left and a
+    // coiled cord, and a dot-matrix printer feeding striped fanfold paper. All original and unbranded.
     {
-      const l = LAYOUT.pc, x = l.x, z = l.z;
-      solid(1.1, 0.08, 1.2, "#6b4a2b", x, Y + 0.72, z);
-      for (const [dx, dz] of [[-0.45, -0.5], [0.45, -0.5], [-0.45, 0.5], [0.45, 0.5]]) solid(0.07, 0.72, 0.07, "#4c331d", x + dx, Y + 0.36, z + dz);
-      solid(0.5, 0.16, 0.9, "#d8cfb4", x - 0.15, Y + 0.84, z);
-      solid(0.01, 0.03, 0.3, "#2a2a2a", x + 0.1, Y + 0.86, z - 0.2);
-      solid(0.45, 0.42, 0.5, "#e2d9be", x - 0.15, Y + 1.13, z);
-      solid(0.22, 0.03, 0.62, "#cfc6aa", x + 0.32, Y + 0.78, z);
-      solid(0.02, 0.3, 0.38, "#ffb347", x + 0.085, Y + 1.14, z, 1.2);
-      parts.driveLight = node(box(0.01, 0.025, 0.025, "#6aff9a", 1.4), x + 0.105, Y + 0.86, z + 0.05, false);
+      const l = LAYOUT.pc, x = l.x, z = l.z, putty = "#cbbd97", dark = "#4a4136";
+      solid(1.1, 0.08, 1.8, "#6b4a2b", x, Y + 0.72, z);
+      for (const [dx, dz] of [[-0.45, -0.8], [0.45, -0.8], [-0.45, 0.8], [0.45, 0.8]]) solid(0.07, 0.72, 0.07, "#4c331d", x + dx, Y + 0.36, z + dz);
+      const ux = x - 0.12, uz = z - 0.3;
+      solid(0.5, 0.17, 0.78, putty, ux, Y + 0.845, uz);
+      for (const dz of [-0.19, 0.19]) {
+        solid(0.012, 0.11, 0.3, dark, ux + 0.255, Y + 0.85, uz + dz);
+        solid(0.02, 0.02, 0.24, "#1c1a17", ux + 0.262, Y + 0.85, uz + dz);
+        solid(0.03, 0.05, 0.03, "#1c1a17", ux + 0.27, Y + 0.85, uz + dz + 0.1);
+      }
+      solid(0.012, 0.02, 0.06, "#8a8070", ux + 0.256, Y + 0.79, uz - 0.34);
+      solid(0.16, 0.05, 0.22, putty, ux - 0.02, Y + 0.955, uz);
+      solid(0.4, 0.36, 0.44, "#bfb08a", ux - 0.04, Y + 1.16, uz);
+      solid(0.02, 0.3, 0.38, "#2e2a22", ux + 0.165, Y + 1.17, uz);
+      solid(0.012, 0.24, 0.31, "#0b2a12", ux + 0.177, Y + 1.17, uz, 0.6);
+      for (let r = 0; r < 5; r++) solid(0.008, 0.018, 0.12 + ((r * 7) % 4) * 0.04, "#39ff6a", ux + 0.185, Y + 1.26 - r * 0.045, uz + 0.1 - ((r * 7) % 4) * 0.02, 1.3);
+      solid(0.012, 0.03, 0.03, "#39ff6a", ux + 0.185, Y + 1.035, uz + 0.11, 1.3);
+      const kx = x + 0.32, kz = z - 0.28;
+      solid(0.22, 0.05, 0.6, putty, kx, Y + 0.785, kz);
+      solid(0.16, 0.012, 0.12, "#6e6250", kx, Y + 0.816, kz + 0.22);
+      for (let r = 0; r < 4; r++) solid(0.035, 0.014, 0.4, r === 3 ? "#5b5142" : "#8f8470", kx + 0.075 - r * 0.045, Y + 0.818, kz - 0.06);
+      solid(0.03, 0.014, 0.2, "#8f8470", kx + 0.095, Y + 0.818, kz - 0.05);
+      for (const [dx, dz] of [[0, 0], [0.05, 0.02], [0.1, -0.01]]) solid(0.04, 0.03, 0.03, "#2a2622", kx - 0.14 - dx, Y + 0.78, kz + 0.3 + dz);
+      const px = x - 0.08, pz = z + 0.48;
+      solid(0.36, 0.14, 0.5, "#d9cfb5", px, Y + 0.83, pz);
+      solid(0.06, 0.06, 0.46, "#24211d", px - 0.05, Y + 0.92, pz);
+      solid(0.01, 0.42, 0.4, "#f4f2ea", px - 0.1, Y + 1.15, pz);
+      for (let r = 0; r < 4; r++) solid(0.012, 0.05, 0.4, "#cfe8c8", px - 0.095, Y + 1.0 + r * 0.1, pz);
+      for (const dz of [-0.21, 0.21]) solid(0.013, 0.42, 0.012, "#c9c4b4", px - 0.096, Y + 1.15, pz + dz);
+      solid(0.3, 0.12, 0.4, "#f1eee4", px - 0.02, Y + 0.06, pz);
+      solid(0.012, 0.02, 0.04, "#ff9a3a", px + 0.181, Y + 0.85, pz - 0.18, 1.2);
+      parts.driveLight = node(box(0.01, 0.022, 0.03, "#ff5a3a", 1.4), ux + 0.27, Y + 0.89, uz - 0.19, false);
       sign(EXHIBITS.pc.label, EXHIBITS.pc.sub, x + 0.35, Y + 1.75, z, FACE_X, 0.45);
     }
-    // 4. The disk crate: an open crate whose five disks stand in slots, each a square sleeve with a coloured label.
+    // 4. The disks: a smoked-lid storage box on a low black cabinet, the five sleeves standing in its slots.
     {
       const l = LAYOUT.floppy, x = l.x, z = l.z;
-      solid(0.7, 0.62, 0.9, "#7a5534", x, Y + 0.31, z);
-      solid(0.6, 0.02, 0.8, "#3d2a19", x, Y + 0.63, z);
+      solid(0.7, 0.6, 0.9, "#1f1d24", x, Y + 0.3, z);
+      solid(0.72, 0.02, 0.92, "#3a3742", x, Y + 0.61, z);
+      solid(0.32, 0.16, 0.86, "#121115", x, Y + 0.7, z);
+      const lid = node(box(0.3, 0.012, 0.86, "#5a5368", 0.15), x - 0.24, Y + 0.86, z);
+      lid.rotation.z = 1.05;
+      parts.diskY = Y + 0.84;
       for (const d of FLOPPY_DISKS) {
-        const n = node(box(0.26, 0.26, 0.012, "#1d1d22"), x, Y + 0.78, z);
+        const n = node(box(0.26, 0.26, 0.012, "#1d1d22"), x + 0.02, parts.diskY, z);
         addChild(n, createNode({ geometry: box(0.2, 0.06, 0.014, d.color), position: { x: 0, y: 0.08, z: 0 } }));
+        addChild(n, createNode({ geometry: box(0.06, 0.06, 0.015, "#6f6a60"), position: { x: 0, y: -0.02, z: 0 } }));
         parts.disks.push(n);
       }
       sign(EXHIBITS.floppy.label, EXHIBITS.floppy.sub, x + 0.5, Y + 1.3, z, FACE_X, 0.4);
     }
-    // 5. The maze cabinet: an upright cabinet with an original marquee strip and a screen; the walls are a pool of
-    // row runs (each a unit box stretched along z), the player, four leaves and the gate are small blocks.
+    // 5. The maze: a sit-down cocktail-table cabinet (screen face up under glass, a stick and button at each end, a
+    // stool on the far side), unlike the upright cabinets elsewhere. The walls are a pool of row runs (unit boxes
+    // stretched along z), the player, four leaves and the gate small blocks on the screen.
     {
       const l = LAYOUT.maze, x = l.x, z = l.z, w = live.maze.size.w, h = live.maze.size.h;
-      solid(0.8, 1.7, 0.8, "#2b2440", x, Y + 0.85, z);
-      solid(0.3, 0.06, 0.7, "#151020", x + 0.4, Y + 0.95, z);
-      solid(0.04, 0.18, 0.72, "#ff5ac8", x + 0.4, Y + 1.78, z, 1.1);
-      const p = 0.6 / w, sx = x + 0.41, top = Y + 1.62;
-      solid(0.01, h * p + 0.02, w * p + 0.02, "#05040a", sx - 0.004, top - (h - 1) * p / 2, z);
-      parts.mazeCell = (c, out) => { out.x = sx; out.y = top - ((c / w) | 0) * p; out.z = z + 0.3 - (c % w + 0.5) * p; return out; };
-      parts.mazeRun = { sx, top, z, p, w };
+      solid(0.6, 0.66, 0.7, "#2a2140", x, Y + 0.33, z);
+      solid(0.74, 0.06, 0.94, "#16111f", x, Y + 0.69, z);
+      solid(0.7, 0.012, 0.9, "#7fb3c8", x, Y + 0.726, z, 0.15);
+      for (const s2 of [-1, 1]) {
+        solid(0.12, 0.05, 0.36, "#e8c43a", x + s2 * 0.41, Y + 0.67, z);
+        solid(0.03, 0.08, 0.03, "#111", x + s2 * 0.42, Y + 0.73, z + 0.08);
+        solid(0.05, 0.05, 0.05, "#e2312f", x + s2 * 0.42, Y + 0.78, z + 0.08);
+        solid(0.05, 0.02, 0.05, "#2f7fe2", x + s2 * 0.42, Y + 0.705, z - 0.08);
+      }
+      solid(0.32, 0.46, 0.32, "#c0306f", x - 0.6, Y + 0.23, z);
+      solid(0.38, 0.06, 0.38, "#1a1520", x - 0.6, Y + 0.49, z);
+      const p = 0.6 / w, sx = x - (h * p) / 2, sy = Y + 0.722;
+      solid(h * p + 0.02, 0.006, w * p + 0.02, "#05040a", x, sy - 0.003, z);
+      parts.mazeCell = (c, out) => { out.x = sx + (((c / w) | 0) + 0.5) * p; out.y = sy + 0.006; out.z = z + 0.3 - (c % w + 0.5) * p; return out; };
+      parts.mazeRun = { sx, sy, z, p, w };
       let most = 0;
       for (const m of live.maze.mazes) most = Math.max(most, mazeRuns(m.grid, w, h, null));
-      for (let i = 0; i < most; i++) parts.runs.push(node(box(0.006, p, p, "#3a5cff", 0.9), sx, top, z, false));
-      parts.player = node(box(0.012, p * 0.8, p * 0.8, "#ffe14a", 1.4), sx, top, z);
-      for (let i = 0; i < MAZE.leaves; i++) parts.leaves.push(node(box(0.012, p * 0.6, p * 0.6, "#6aff7a", 1.4), sx, top, z));
-      parts.gate = node(box(0.012, p * 0.9, p * 0.9, "#ff5a4a", 1.2), sx, top, z);
+      for (let i = 0; i < most; i++) parts.runs.push(node(box(p, 0.006, p, "#3a5cff", 0.9), sx, sy, z, false));
+      parts.player = node(box(p * 0.8, 0.012, p * 0.8, "#ffe14a", 1.4), sx, sy, z);
+      for (let i = 0; i < MAZE.leaves; i++) parts.leaves.push(node(box(p * 0.6, 0.012, p * 0.6, "#6aff7a", 1.4), sx, sy, z));
+      parts.gate = node(box(p * 0.9, 0.012, p * 0.9, "#ff5a4a", 1.2), sx, sy, z);
       parts.cell = { x: 0, y: 0, z: 0 };
-      sign(EXHIBITS.maze.label, EXHIBITS.maze.sub, x + 0.5, Y + 2.15, z, FACE_X, 0.42);
+      sign(EXHIBITS.maze.label, EXHIBITS.maze.sub, x + 0.5, Y + 1.5, z, FACE_X, 0.42);
     }
+    buildDecor(kit);
     return parts;
   };
+  // --- Era decor ----------------------------------------------------------------------------------------------------
+  // Original set dressing in a 1980s style, making no claims and naming nothing: on the cave's back wall a neon sunset
+  // over a wireframe grid, neon strips along the wall's foot and top and four framed posters of original art; a lounge
+  // corner (a checked rug, a teal sofa, a glass coffee table, a beanbag, a neon floor lamp, a potted palm) under a
+  // neon triangle and ring hung on chains; and a bright shelf unit holding a portable stereo, cassettes and a corded
+  // phone. Emissive colour only, no lights. Built once a visit; nothing moves.
+  const WALL_X = -33.9;
+  const buildDecor = (kit) => {
+    const { top: Y, M, createNode, place, solid } = kit;
+    const tilt = (w, h, d, color, x, y, z, rx, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z }, rotation: { x: rx, y: 0, z: 0 } }));
+    // A line in the wall's plane from (y0, z0) to (y1, z1), standing just off the wall.
+    const line = (y0, z0, y1, z1, color, t = 0.06) => { const dy = y1 - y0, dz = z1 - z0; tilt(0.04, Math.hypot(dy, dz), t, color, WALL_X + 0.06, (y0 + y1) / 2, (z0 + z1) / 2, Math.atan2(dz, dy), 1.3); };
+    // The neon sunset over a grid, on the wall at the end of the ramp's walkway.
+    {
+      const z = E.z, hy = Y + 3.4;
+      solid(0.08, 5.2, 8.4, "#120a1e", WALL_X - 0.02, Y + 3.9, z);
+      const sun = ["#ff4fa3", "#ff5f8e", "#ff7577", "#ff8c63", "#ffa252", "#ffb94a"];
+      for (let i = 0; i < 6; i++) { const r = 0.25 + i * 0.25, w = 2 * Math.sqrt(1.6 * 1.6 - r * r); solid(0.04, 0.14, w, sun[i], WALL_X + 0.04, hy + r, z, 1.2); }
+      solid(0.04, 0.05, 8, "#3ff0ff", WALL_X + 0.05, hy, z, 1.4);
+      for (let k = 1; k <= 3; k++) solid(0.04, 0.04, 8, "#3ff0ff", WALL_X + 0.05, hy - k * k * 0.22, z, 1.2);
+      for (let k = -3; k <= 3; k++) line(hy, z, Y + 1.4, z + k * 1.25, "#3ff0ff", 0.04);
+      for (const c of [-3, 3]) { line(hy, z + c - 1.1, hy + 1.1, z + c, "#c45bff"); line(hy + 1.1, z + c, hy, z + c + 1.1, "#c45bff"); }
+    }
+    // Neon strips along the wall's foot and top, the length of the bank past the gateway.
+    solid(0.05, 0.08, 56, "#3ff0ff", WALL_X + 0.05, Y + 0.25, E.z - 6, 1.1);
+    solid(0.05, 0.1, 56, "#ff4fd8", WALL_X + 0.05, Y + 7.2, E.z - 6, 1.1);
+    // Four framed posters of original art, at eye height on the wall.
+    const poster = (z, bg) => { solid(0.05, 1.9, 1.4, "#d8d8e4", WALL_X + 0.02, Y + 2.4, z); solid(0.06, 1.74, 1.24, bg, WALL_X + 0.04, Y + 2.4, z); return WALL_X + 0.08; };
+    {
+      // Shapes: a zigzag, dots and a stepped triangle.
+      const z = E.z + 19, px = poster(z, "#14121c");
+      line(Y + 2.9, z - 0.45, Y + 2.6, z - 0.15, "#ffe14a"); line(Y + 2.6, z - 0.15, Y + 2.9, z + 0.15, "#ffe14a"); line(Y + 2.9, z + 0.15, Y + 2.6, z + 0.45, "#ffe14a");
+      for (const [dy, dz] of [[0.2, -0.4], [0.05, 0.3], [-0.2, -0.1], [-0.05, 0.45]]) solid(0.02, 0.08, 0.08, "#ff5fa8", px, Y + 2.4 + dy, z + dz, 0.6);
+      for (let i = 0; i < 4; i++) solid(0.02, 0.1, 0.7 - i * 0.17, "#2fd1c4", px, Y + 1.85 + i * 0.1, z, 0.4);
+    }
+    {
+      // A pixel Ooga's face.
+      const z = E.z + 6, px = poster(z, "#1e8f86");
+      solid(0.02, 0.5, 0.6, "#d9a56b", px, Y + 2.35, z);
+      solid(0.025, 0.18, 0.68, "#4a2c18", px + 0.005, Y + 2.68, z);
+      for (const dz of [-0.14, 0.14]) solid(0.025, 0.1, 0.1, "#1a1210", px + 0.005, Y + 2.42, z + dz);
+      solid(0.025, 0.05, 0.28, "#7a2b22", px + 0.005, Y + 2.2, z);
+    }
+    {
+      // A palm against a striped sun.
+      const z = E.z - 14, px = poster(z, "#1d1846");
+      for (let i = 0; i < 3; i++) solid(0.02, 0.08, 0.7 - i * 0.18, ["#ffb14a", "#ff8a5c", "#ff5f8e"][i], px, Y + 2.75 - i * 0.14, z + 0.15, 0.7);
+      line(Y + 1.7, z - 0.2, Y + 2.7, z - 0.05, "#3b2412", 0.05);
+      for (const [dy, dz] of [[2.75, -0.45], [2.85, 0.25], [2.55, 0.3]]) line(Y + 2.7, z - 0.05, Y + dy, z + dz, "#38c46a", 0.05);
+    }
+    {
+      // Checks and a ring of bars.
+      const z = E.z - 22, px = poster(z, "#f2ece0");
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) if ((r + c) % 2) solid(0.02, 0.18, 0.2, "#16141c", px, Y + 1.9 + r * 0.18, z - 0.3 + c * 0.2);
+      for (let i = 0; i < 4; i++) solid(0.02, 0.06, [0.3, 0.5, 0.5, 0.3][i], "#e2312f", px, Y + 2.55 + i * 0.12, z);
+    }
+    // The lounge corner, its back to the wall side.
+    {
+      const x = LOUNGE.x, z = LOUNGE.z;
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) solid(1.0, 0.02, 1.0, (r + c) % 2 ? "#1b1b2b" : "#e8e3d8", x - 1 + r, Y + 0.01, z - 1 + c);
+      solid(0.9, 0.42, 2.8, "#2fb5a8", x - 2.55, Y + 0.21, z);
+      solid(0.25, 0.55, 2.8, "#27998e", x - 2.88, Y + 0.6, z);
+      for (const dz of [-1.3, 1.3]) solid(0.9, 0.3, 0.2, "#27998e", x - 2.55, Y + 0.57, z + dz);
+      for (const dz of [-0.6, 0.6]) solid(0.12, 0.35, 0.5, "#ff5fa8", x - 2.68, Y + 0.6, z + dz);
+      solid(0.7, 0.04, 1.3, "#9fd8e6", x - 0.8, Y + 0.42, z, 0.2);
+      for (const dz of [-0.5, 0.5]) solid(0.4, 0.4, 0.12, "#1a1a22", x - 0.8, Y + 0.2, z + dz);
+      solid(0.8, 0.32, 0.8, "#c43bd1", x + 0.9, Y + 0.16, z + 1.5);
+      solid(0.6, 0.18, 0.6, "#d24fe0", x + 0.9, Y + 0.41, z + 1.5);
+      solid(0.3, 0.06, 0.3, "#202028", x - 2.75, Y + 0.03, z - 2.05);
+      solid(0.05, 1.5, 0.05, "#202028", x - 2.75, Y + 0.8, z - 2.05);
+      solid(0.09, 0.7, 0.09, "#ff4fd8", x - 2.75, Y + 1.9, z - 2.05, 1.4);
+      solid(0.45, 0.45, 0.45, "#e07a3c", x - 2.7, Y + 0.23, z + 2.2);
+      solid(0.08, 1.2, 0.08, "#6b4a2b", x - 2.7, Y + 1.05, z + 2.2);
+      for (const [dx, dz] of [[0.35, 0], [-0.35, 0], [0, 0.35], [0, -0.35]]) solid(dx ? 0.6 : 0.14, 0.06, dz ? 0.6 : 0.14, "#2f9a4f", x - 2.7 + dx / 2, Y + 1.62, z + 2.2 + dz / 2);
+      // Hung on chains high over it: a neon triangle and a neon ring of eight bars.
+      const hy = Y + 6.2;
+      for (const dz of [-1, 1]) solid(0.04, 1.5, 0.04, "#2a2630", x - 1, Y + 7.25, z + dz);
+      const tri = (y0, z0, y1, z1) => { const dy = y1 - y0, dz = z1 - z0; tilt(0.06, Math.hypot(dy, dz), 0.08, "#3ff0ff", x - 1, (y0 + y1) / 2, (z0 + z1) / 2, Math.atan2(dz, dy), 1.4); };
+      tri(hy - 0.7, z - 1, hy - 0.7, z + 1); tri(hy - 0.7, z - 1, hy + 0.9, z); tri(hy - 0.7, z + 1, hy + 0.9, z);
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; tilt(0.06, 0.5, 0.06, "#ff4fd8", x - 1.05, hy - 0.05 + Math.cos(a) * 0.6, z + Math.sin(a) * 0.6, -a + Math.PI / 2, 1.4); }
+    }
+    // The shelf unit against the wall, in mismatched bright blocks, with its small props.
+    {
+      const x = SHELF.x, z = SHELF.z;
+      for (const dz of [-1.2, 0.1, 1.2]) solid(0.6, 2.4, 0.08, dz > 1 ? "#ffe14a" : "#2fd1c4", x, Y + 1.2, z + dz);
+      for (const [dy, c] of [[0.05, "#16141c"], [0.85, "#ff5fa8"], [1.6, "#3a5cff"], [2.4, "#16141c"]]) solid(0.6, 0.06, 2.5, c, x, Y + dy, z);
+      // A portable stereo: its body, two speakers, a tape door and a handle.
+      solid(0.22, 0.3, 0.8, "#2a2a30", x + 0.05, Y + 1.04, z - 0.55);
+      for (const dz of [-0.25, 0.25]) solid(0.02, 0.2, 0.2, "#8a8a96", x + 0.17, Y + 1.04, z - 0.55 + dz);
+      solid(0.02, 0.1, 0.18, "#4a4a56", x + 0.17, Y + 1.07, z - 0.55);
+      solid(0.04, 0.04, 0.6, "#c0c0cc", x + 0.05, Y + 1.24, z - 0.55);
+      // Cassettes in a stack.
+      for (let i = 0; i < 4; i++) solid(0.18, 0.03, 0.28, ["#ff5fa8", "#ffe14a", "#2fd1c4", "#f2ece0"][i], x + 0.05, Y + 1.65 + i * 0.032, z + 0.6);
+      // A corded phone: its base, handset and coil.
+      solid(0.2, 0.1, 0.26, "#e2312f", x + 0.05, Y + 0.13, z + 0.65);
+      solid(0.06, 0.06, 0.3, "#e2312f", x + 0.08, Y + 0.21, z + 0.65);
+      for (let i = 0; i < 3; i++) solid(0.03, 0.03, 0.03, "#b02420", x + 0.16, Y + 0.12 - i * 0.03, z + 0.82 + i * 0.03);
+    }
+  };
+
   // The horizontal runs of wall in a maze grid; with `lay`, calls lay(i, row, col, length) for each. Returns the count.
   const mazeRuns = (grid, w, h, lay) => {
     let n = 0;
@@ -831,13 +998,13 @@
     const z = live.maze, mz = z.maze();
     if (parts.mazeShown !== z.index) { parts.mazeShown = z.index; layRuns(parts, mz.grid, z.size.w, z.size.h); }
     const c = parts.cell;
-    parts.mazeCell(z.at, c); parts.player.position.x = c.x + 0.004; parts.player.position.y = c.y; parts.player.position.z = c.z;
+    parts.mazeCell(z.at, c); parts.player.position.x = c.x; parts.player.position.y = c.y; parts.player.position.z = c.z;
     for (let i = 0; i < MAZE.leaves; i++) {
       const n = parts.leaves[i];
       n.visible = !z.got[i];
-      parts.mazeCell(mz.leaves[i], c); n.position.x = c.x + 0.004; n.position.y = c.y; n.position.z = c.z;
+      parts.mazeCell(mz.leaves[i], c); n.position.x = c.x; n.position.y = c.y; n.position.z = c.z;
     }
-    parts.mazeCell(mz.gate, c); parts.gate.position.x = c.x + 0.004; parts.gate.position.y = c.y; parts.gate.position.z = c.z;
+    parts.mazeCell(mz.gate, c); parts.gate.position.x = c.x; parts.gate.position.y = c.y; parts.gate.position.z = c.z;
     parts.gate.visible = z.held() < MAZE.leaves && !z.won;
   };
   // Lays the pool of wall runs out for one maze and hides the rest. The callback is built once per visit.
@@ -846,7 +1013,7 @@
     if (!parts.lay) parts.lay = (i, row, col, len) => {
       const n = parts.runs[i];
       n.visible = true; n.scale.z = len;
-      n.position.x = R.sx; n.position.y = R.top - row * R.p; n.position.z = R.z + 0.3 - (col + len / 2) * R.p;
+      n.position.x = R.sx + (row + 0.5) * R.p; n.position.y = R.sy; n.position.z = R.z + 0.3 - (col + len / 2) * R.p;
     };
     const used = mazeRuns(grid, w, h, parts.lay);
     for (let i = used; i < parts.runs.length; i++) parts.runs[i].visible = false;
