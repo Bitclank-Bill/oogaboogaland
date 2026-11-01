@@ -380,36 +380,49 @@ outside the sign alphabet (`exhibits`).
 
 ## What was checked, and the limits
 
-Run on this branch after the merge (Node 22.23.4, Linux container):
+Run after the contract repair (`7b67bb4`, on `gv/exhibits` at `27d14ff`), Node 22.23.4, Linux container:
 
 - `node --check src/js/genesis-era-2.js`: clean.
 - `npm run build`: clean. The built `oogaboogaland.html` is not committed.
-- `npm run test:unit`: **351/351** passed, including the kit's `Genesis Voyage exhibits` check, which builds every era
-  (Era 2 included) with its stand-in kit and checks years, sources, openers and placement.
-- The optional Era 2 proof above: 41/41.
-- **Browser smoke**, headless Chromium (Playwright, SwiftShader WebGL) on this branch's own build, `?wip=genesis&debug=1`,
-  1280×800, with no extra wiring: sailed to Era 2 by its plaque, Space jumped out onto the left bank, walked to each
-  exhibit and Space opened its terminal (all five), ran a scripted command list on each; the models answered (lit path,
-  blue proof tiles, red root lamp, envelope mark, disk leaving the crate). The scene's arrival caption now reads "Jump
-  out (Space) to explore its exhibits". `go("hub")` / `go("genesis")` under `debug=1` raised no leave-contract or page
-  error, and the second entry rebuilt Era 2's five props from fresh state; the first lap's poll returned before the
-  scene had finished loading, so one complete round trip is confirmed, not two. The maze's wall runs were confirmed
-  from the scene state (42 of the 44 pooled runs laid for maze 1); the close-up screenshot was blocked by the Ooga, so
-  they were not confirmed visually on this build. The console was clean apart from the page's live feeds, which the
-  container's network blocks.
+- `node test/run.mjs unit`: **351/351** passed. The contract's `Genesis Voyage exhibits` check reports
+  `{"registered":true,"count":7,"steps":2,"ordered":true,"refuses":true,"bad":[]}`: seven props across the built eras,
+  two trail steps (Era 0's Feller [8], then Era 2's Merkle [7]), nothing in a reserved plot or over the height limit.
+- The optional Era 2 proof above: **50/50**; against the previous module it fails the ten checks listed above.
+- Repair mutations, each caught: Merkle citing `[8]` (`citation7`, `classified`); the tap box left on the walk-up
+  point (`picks`); one id back to `era2-` (`ids`); the blind stamps as documented influence (`citation7`,
+  `contextOnly`, `classified`); the table moved onto the ramp's walkway (`clear`); the PC moved onto a lamp post's
+  square (`plots`, `clear`).
+
+**Browser pass**, headless Chromium (Playwright, SwiftShader WebGL) on this branch's own build, 640×400,
+`?wip=genesis&debug=1`, frames stepped with `__ooga.advance`. Each probe says how the Ooga got there: **walking** means
+keys held through the real keyboard path; **teleport** means `pilot.navigate` placed it.
+
+| Probe | How | Result |
+|---|---|---|
+| Era 2's props in the scene's registry | — | `e2-merkle (citation [7])`, `e2-blind`, `e2-pc`, `e2-floppy`, `e2-maze` (all `context`), plus the shared `era2-overview` |
+| Shared trail | — | `1. 1957 e0-feller [8]`, `2. 1980 e2-merkle [7]`, `3. 1991` and `4. 1993` (Fingerprints and Time's room links) |
+| Space jumps out at Era 2 (after the plaque jump) | the scene's jump-out | walking, landed at x −0.25, z −225 on the left bank |
+| W held 3 s from the landing | walking | 23.25 m straight inland along the ramp's walkway, unobstructed (the old era sign stood on it) |
+| W held 3 s into the Merkle table | teleport to its walk-up point, then walking | stopped at x −8.64; the table's front is x −9 (held out) |
+| Space at each walk-up point | teleport | all five open their own terminal |
+| Terminal isolation | teleport, then typing and holding W | moved 0 m, terminal still open, scene still `genesis`, the keys went into the input |
+| Escape with a terminal open | — | closes only the terminal; still walking in `genesis` |
+| Merkle CHANGE 3 | terminal | nodes 10, 5, 2, 1 lit |
+| Tap the middle of each model, from beyond reach | teleport | each gives the scene's own hint naming **that** exhibit ("Walk up to … to use it"), so each tap landed on its box |
+| Tap the middle of each model, inside reach | teleport | Merkle and blind open; for the PC, crate and cabinet the Ooga's own body stood between the camera and the small models and took the tap. With the camera swung to the side, all three open |
+| Shared overview board | its prop opened through the scene | open, shows Era 2's summary; six pages (this era, three Era 2 guide pages, exhibits, trail) |
+| Leave and return twice | `go("hub")`, `go("genesis")` under `debug=1` | `hub, genesis, fresh, hub, genesis, fresh`: no leave-contract error, Era 2 rebuilt from fresh state with six props each time |
+| Console | — | clean apart from 29 blocked live-feed requests (the container's network) |
 
 Not checked, stated plainly:
 
-- **Frame rate.** SwiftShader cannot judge it: Era 2's cave runs at about 1 fps there **with or without** these
-  exhibits (measured on `aa91542` with Era 2 empty: 1–1.5 fps; this branch: 0.5–1 fps; the harbour 11 fps on both).
-  No real GPU, phone or tablet was tried and `npm run test:perf` was not run.
-- **The scene suite** (`npm test -- genesis`) was not run.
+- **Walking to every exhibit.** Real walking was shown from the landing along the walkway and into the table; the
+  other approaches were teleports.
+- **Frame rate.** SwiftShader cannot judge it (about 1 fps in a cave with or without exhibits, measured earlier). No
+  real GPU, phone or tablet was tried; `npm run test:perf` and the scene suite (`npm test -- genesis`) were not run.
 - **Touch and screen readers.** The exhibits are terminals in the scene's existing dialog; typing on a phone keyboard
-  and assistive tech were not tried. The maze is turn-based by typed moves (`live.maze.move("W")` is the hook if
-  direct control is wanted).
-- **Visual review** is from a handful of screenshots, not every camera angle.
-- The facts are the dossier's. The primary pages could not be opened from this environment, so nothing was
-  re-verified beyond what the dossier records (`verified` in SOURCES follows the dossier's reading).
+  and assistive tech were not tried.
+- The facts are the dossier's; the primary pages could not be opened from this environment.
 
 ## Open questions for the integrator
 
