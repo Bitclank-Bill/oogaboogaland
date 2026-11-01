@@ -31,6 +31,15 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+  /* An installed web app has no browser toolbar. --home-chrome is how far the touch cluster can drop. */
+  --home-chrome: 0px;
+  --stick-inset: 96px;
+  --stick-size: 112px;
+  --act-inset: 64px;
+}
+
+@media (display-mode: standalone) {
+  :root { --home-chrome: 36px; }
 }
 
 * {
@@ -718,6 +727,27 @@ body[data-active-scene="arcade"] .magazine-hud {
 .sheet[data-dock="bottom"][data-open="false"] { transform: translateY(100%); }
 .sheet[data-dock="bottom"][data-open="true"]:not([hidden])~.joysticks,
 .sheet[data-dock="bottom"][data-open="true"]:not([hidden])~.bottom-hud>.act { display: none; }
+
+/* On a phone the untouched drawer sits above the sticks and drops Feed the Ooga Boogas, so the
+   roster of who's talking stays up while the visitor keeps walking. A resized drawer still covers
+   the sticks, and they step aside as before. */
+@media (pointer: coarse) {
+  .sheet[data-dock="bottom"][data-sized="false"] {
+    --sheet-stick-clear: calc(max(48px, var(--stick-inset) - var(--home-chrome)) + var(--stick-size) + 12px + var(--safe-bottom));
+    bottom: max(var(--chat-keyboard, 0px), var(--sheet-stick-clear));
+    height: min(36vh, calc(100% - var(--sheet-stick-clear) - 86px - var(--safe-top)));
+    max-height: calc(100% - var(--sheet-stick-clear) - 86px - var(--safe-top));
+  }
+
+  .sheet[data-dock="bottom"][data-sized="false"][data-open="false"] {
+    transform: translateY(calc(100% + var(--sheet-stick-clear)));
+  }
+
+  .sheet[data-dock="bottom"] .sheet-foot > .feed-open { display: none; }
+
+  .sheet[data-dock="bottom"][data-sized="false"][data-open="true"]:not([hidden])~.joysticks,
+  .sheet[data-dock="bottom"][data-sized="false"][data-open="true"]:not([hidden])~.bottom-hud>.act { display: block; }
+}
 
 .sheet[data-dock="bottom"] .sheet-toggle {
   top: -39px;
@@ -4109,9 +4139,9 @@ body.dsb-menu-open .rescue-equipment { visibility: hidden; pointer-events: none;
 
 .joystick {
   position: absolute;
-  bottom: calc(96px + var(--safe-bottom));
-  width: 112px;
-  height: 112px;
+  bottom: calc(max(48px, var(--stick-inset) - var(--home-chrome)) + var(--safe-bottom));
+  width: var(--stick-size);
+  height: var(--stick-size);
   border-radius: 50%;
   background: rgba(18, 18, 20, 0.35);
   border: 2px solid rgba(255, 255, 255, 0.18);
@@ -4165,7 +4195,7 @@ body.dsb-menu-open .rescue-equipment { visibility: hidden; pointer-events: none;
   position: absolute;
   z-index: 13;
   left: 50%;
-  bottom: calc(64px + var(--safe-bottom));
+  bottom: calc(max(48px, var(--act-inset) - var(--home-chrome)) + var(--safe-bottom));
   transform: translateX(-50%);
   min-height: 44px;
   padding: 0 22px;
@@ -6791,10 +6821,10 @@ body[data-active-scene] .mic-note { top: var(--hub-equipment-bottom, calc(72px +
     padding: 6px 14px calc(6px + var(--safe-bottom));
   }
 
-  .joystick {
-    bottom: calc(84px + var(--safe-bottom));
-    width: 100px;
-    height: 100px;
+  :root {
+    --stick-inset: 84px;
+    --stick-size: 100px;
+    --act-inset: 112px;
   }
 
   .equipment-hud {
@@ -6804,10 +6834,6 @@ body[data-active-scene] .mic-note { top: var(--hub-equipment-bottom, calc(72px +
 
   .topbar:not(:has(.presets:not([hidden])))~.equipment-hud {
     top: calc(55px + var(--safe-top));
-  }
-
-  .act {
-    bottom: calc(112px + var(--safe-bottom));
   }
 
   .garage {
@@ -6881,7 +6907,7 @@ body[data-active-scene] .mic-note { top: var(--hub-equipment-bottom, calc(72px +
   }
 
   .race-item-btn {
-    bottom: calc(112px + var(--safe-bottom));
+    bottom: calc(max(48px, var(--act-inset) - var(--home-chrome)) + var(--safe-bottom));
   }
 }
 
@@ -6957,16 +6983,15 @@ body[data-active-scene] .mic-note { top: var(--hub-equipment-bottom, calc(72px +
     top: auto;
   }
 
-  .joystick {
-    bottom: calc(70px + var(--safe-bottom));
-    width: 96px;
-    height: 96px;
+  :root {
+    --stick-inset: 70px;
+    --stick-size: 96px;
+    --act-inset: 96px;
   }
 
   .act {
     left: auto;
     right: calc(140px + var(--safe-right));
-    bottom: calc(96px + var(--safe-bottom));
     z-index: 13;
     transform: none;
   }
