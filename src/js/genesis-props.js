@@ -128,7 +128,7 @@
     microsd2019: { label: "Western Digital press release, 25 February 2019: a 1 TB microSD card",
       href: "https://www.westerndigital.com/company/newsroom/press-releases/2019/2019-02-25-western-digital-unveils-worlds-fastest-1tb-uhs-i-microsd-card", kind: "context", verified: false }
   };
-  const sourceOf = (key) => SOURCES[key] || (G && G.SOURCES[key]) || null;
+  const sourceOf = (key) => SOURCES[key] || (BL.genesisExhibits && BL.genesisExhibits.sources[key]) || (G && G.SOURCES[key]) || null;
 
   // --- The DOS PC ---------------------------------------------------------------------------------------------------
   // An invented system ("OOGA-DOS") in the style of an early-1990s office PC, no real product's name or text. `files`:
