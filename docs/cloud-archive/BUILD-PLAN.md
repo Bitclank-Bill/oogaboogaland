@@ -165,9 +165,12 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
   does (`oogatronLive.subscribe`); the archive never fetches anything itself. Its sides page it where it hangs. A tap
   on its screen, or Space (READ) looking down the aisle at it, opens the same floating close-up as on the island.
 - **LOAD (done, v1).** On a page's first climb the floor holds only the sign and the lounge. Space (or LOAD) rolls
-  the racks in out of the white past the armchairs, down both sides like two trains braking into place, to a short
-  synthesized digital-rain cue (`cloud-archive-audio.js`, page mute respected). Under reduced motion the racks appear
-  in place. Later visits in the same page find them loaded.
+  the racks in out of the white past the armchairs, down both sides like two trains braking into place, to "dive"
+  (`cloud-archive-audio.js`): a synthesized warp, chosen by Billy from three candidates, written after the character
+  of a reference clip but not from it. It dives from 300 Hz to the sub-bass, warbles while the racks run, swoops back
+  up as they lock, with a thunk. It follows the page's sound rules (pooled voices built once, opened only after a
+  gesture, page mute, closed on leave); no recording ships. Under reduced motion the racks appear in place. Later
+  visits in the same page find them loaded.
 - **Taking your Ooga back (fixed).** Escape lets the Ooga go, as on the island; W A S D, Space, the act button or its
   portrait now take it back, and a hint says so. Before, nothing in the archive did, and play was stuck.
 - **View assist (done in the archive).** `view-assist.js` is a scene-agnostic slice of the hub's visibility stack.
