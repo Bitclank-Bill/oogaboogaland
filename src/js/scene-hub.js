@@ -524,6 +524,8 @@
   const factoryWalk = { phase: 0, cave: null, t: 0, x: 0, z: 0, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false };
   // Tess, the island's guide, for the visit (`hub-guide.js`).
   let islandGuide = null;
+  // The Goldbug in the bushes (`hub-goldbug.js`), for the visit: null while the mirror's four bushes are not all there.
+  let goldbug = null;
   let reuseHub = false, heldHub = false, heldDebug = null;
   let stateTimer = 0, hintTimer = 0, now = 0, hour = 12, unsubscribeActivity = null, unsubscribeAccount = null, ownOogaClaimed = false;
   // The daylight inputs as last sampled; sampledDay starts at a never-true 0 so the first frame always samples.
@@ -5600,6 +5602,48 @@
     });
     return true;
   };
+  // The Goldbug's four bushes: the meadow bushes nearest the mirror cave's mouth on its open side (the seeded scatter
+  // puts four there), in order round their middle so a loop is a walk round them. Fewer than four, and he never comes.
+  const GOLDBUG_REACH = 16;
+  const goldbugBushes = () => {
+    const m = mirrorCave.mouth, ox = Math.sin(m.ry), oz = Math.cos(m.ry), near = [], gap = [];
+    for (const o of scenery) {
+      if (o.prop !== "bush" || !o.active || !o.node.visible || o.node.position.y !== 0) continue;
+      const dx = o.x - m.x, dz = o.z - m.z, d = Math.hypot(dx, dz);
+      if (dx * ox + dz * oz <= 0 || d >= GOLDBUG_REACH) continue;
+      let at = near.length;
+      while (at > 0 && gap[at - 1] > d) at--;
+      near.splice(at, 0, o); gap.splice(at, 0, d);
+      if (near.length > 4) { near.pop(); gap.pop(); }
+    }
+    if (near.length < 4) return null;
+    let cx = 0, cz = 0;
+    for (const o of near) { cx += o.x / 4; cz += o.z / 4; }
+    const turn = near.map((o) => Math.atan2(o.z - cz, o.x - cx)), order = [];
+    for (let i = 0; i < 4; i++) {
+      let at = order.length;
+      while (at > 0 && turn[order[at - 1]] > turn[i]) at--;
+      order.splice(at, 0, i);
+    }
+    return order.map((i) => ({ x: near[i].x, z: near[i].z, footprint: near[i].footprint, node: near[i].node }));
+  };
+  const goldbugCalm = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+  const createGoldbug = () => {
+    const bushes = goldbugBushes();
+    if (!bushes) return;
+    goldbug = BL.hubGoldbug.create({
+      root, fx, bushes, mirror: mirrorCave, memory: world,
+      groundAt: (x, z) => Math.max(0, island.surfaceAt(x, z)),
+      // The bush's own rustle, as a tap or Space gives it, without its words or banana; Calm keeps the leaves still.
+      rustle: (b, calm) => {
+        if (!wobble(b.node, 0.25) || calm) return;
+        fx.burst(b.x, b.node.world[13] + 0.7, b.z, 6, [LEAF], 1.2);
+      },
+      calm: () => !!(goldbugCalm && goldbugCalm.matches),
+      // GAME MODE and the island's other events: Cloud Hopper, the hunt, the whitepaper's show, a walk through a shield.
+      busy: () => gameMode || !!cloudHopper?.active || !!(ghosts && ghosts.busy) || wpTime >= 0 || wpRead || factoryDeparting || bifrostDeparting
+    });
+  };
   const dropBanana = (o, chance) => {
     if (now < o.ripe || Math.random() > chance) return false;
     o.ripe = now + RIPEN;
@@ -8490,6 +8534,7 @@
       else pilot.readInput(dt);
     }
     mirrorCave.ripples.update(dt, elapsed);
+    if (goldbug) goldbug.update(dt, !clankerPlay.active && pilot.player ? pilot.player.root.position : null);
     updatePortalEffects(entropyLab.phase, dt);
     for (const veil of caveVeils) updatePortalEffects(veil.phase, dt);
     if (factoryMouth && !cloudPlaying()) factoryShield(dt, elapsed);
@@ -11163,6 +11208,8 @@
     if (ghosts) { ghosts.dispose(); ghosts = null; }
     ghostSeal = null;
     setGameMode(false);
+    // The Goldbug's show ends with the visit; a kept hub builds him again the next time the loop is walked.
+    if (goldbug) goldbug.dispose();
     gameRingK = gameRingWait = ringPulseWait = 0; gameRing.visible = false;
     // The veils' waves and glyph outlines end with the visit as leave ends them; an outline is made again where a body
     // next touches its veil (`ringBodies`).
@@ -12314,6 +12361,7 @@
         get factory() { return factoryMouth && factoryMouth.hall ? factoryMouth.hall.debug : null; },
         get bifrost() { return bifrostIsle; },
         get footsteps() { return footsteps; },
+        get goldbug() { return goldbug ? goldbug.debug : null; },
         slots: pile.slots, drops: pile.drops, core: pile.core, shell: pile.shell, delivery: pile.delivery, spillEffect: pile.spillEffect, cavemen: crew.cavemen, crates: crates.list, lab: null, hud, applyAllSwag: crew.applyAllSwag, renderLocker: crew.renderLocker, demoTip, setPileLevel: pile.setLevel, refreshStates: crew.refreshStates, trimPool: fx.trimPool,
         get shown() {
           return pile.shown;
@@ -12408,6 +12456,7 @@
     });
     yield* pause(slice);
     cloudRememberNodes(cloudNodeStart);
+    createGoldbug();
     cloudIsland = BL.cloudHopperIsland.create({ root, island, solids });
     cloudPile = createNode({ geometry: pile.core.geometry });
     cloudPileSolids = BL.solidProps.create(); cloudPileSolids.add(cloudPile);
@@ -12490,6 +12539,7 @@
     selectDebugGorilla(null);
     islandGuide.dispose();
     islandGuide = null;
+    if (goldbug) { goldbug.dispose(); goldbug = null; }
     // HALLOWEEN: the entry cancels its handoff before the hunt and the crew, fx and targets they use leave.
     if (ghostEntry) { ghostEntry.dispose(); ghostEntry = null; }
     if (ghosts) { ghosts.dispose(); ghosts = null; }

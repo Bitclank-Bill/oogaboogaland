@@ -14650,6 +14650,101 @@ const tessCacheChecks = async BL => {
 };
 
 // Regression: one hub variant pinned every other index built by a later scene.
+// The Goldbug in the bushes: the loop that calls him and the coins he drops, measured through hub-goldbug.js itself.
+const goldbugChecks = BL => {
+  const G = BL.hubGoldbug, S = BL.scene;
+  // Each row is the bushes entered in turn (-1 between them: out of every bush), one a second unless timed.
+  const walk = (loop, entries, at = (i) => i) => { let fired = 0; entries.forEach((index, i) => { if (loop.step(index, at(i))) fired++; }); return fired; };
+  const out = (seq) => seq.flatMap((i) => [i, -1]);
+  const cases = {
+    forward: walk(G.loop(), out([0, 1, 2, 3, 0])) === 1,
+    backward: walk(G.loop(), out([2, 1, 0, 3, 2])) === 1,
+    anyStart: walk(G.loop(), out([3, 0, 1, 2, 3])) === 1,
+    short: walk(G.loop(), out([0, 1, 2, 3])) === 0,
+    wrongOrder: walk(G.loop(), out([0, 2, 1, 3, 0])) === 0 && walk(G.loop(), out([0, 1, 3, 2, 1, 0])) === 0,
+    // A wrong bush starts a new loop from itself; a step back reverses nothing, it restarts there.
+    restartsFromWrong: walk(G.loop(), out([0, 1, 3, 0, 1, 2, 3])) === 1,
+    reversal: walk(G.loop(), out([0, 1, 0, 3, 2, 1, 0])) === 1,
+    // Standing still in a bush, or stepping out and back into it, counts once.
+    reentry: walk(G.loop(), [0, 0, 0, -1, 0, 1, 1, -1, 1, 2, -1, 3, 3, -1, 0]) === 1,
+    timeout: walk(G.loop(), out([0, 1, 2, 3, 0]), (i) => i * 2.6) === 0,
+    withinWindow: walk(G.loop(), out([0, 1, 2, 3, 0]), (i) => i * 2.45) === 1,
+    timeoutRestarts: walk(G.loop(), out([0, 1, 2, 3, 0, 1, 2, 3, 0]), (i) => i < 9 ? i * 2.6 : 12 + i) === 1
+  };
+  {
+    // Cooldown: a second loop right after the first is ignored, the same loop after `cooldown` fires.
+    const loop = G.loop(), first = walk(loop, out([0, 1, 2, 3, 0]));
+    const soon = walk(loop, out([0, 1, 2, 3, 0]), (i) => 20 + i);
+    const later = walk(loop, out([0, 1, 2, 3, 0]), (i) => 10 + G.LOOP.cooldown + i);
+    cases.cooldown = first === 1 && soon === 0 && later === 1 && loop.fired === 2;
+    const custom = G.loop({ cooldown: 5 });
+    cases.customCooldown = walk(custom, out([0, 1, 2, 3, 0])) === 1 && walk(custom, out([0, 1, 2, 3, 0]), (i) => 9 + i) === 0 && walk(custom, out([0, 1, 2, 3, 0]), (i) => 60 + i) === 1;
+  }
+  record("goldbug loop: all four bushes in cyclic order either way round, back to the start within the window, fires once; wrong order, a short loop or a stale one never fires, and the cooldown holds", Object.values(cases).every(Boolean), JSON.stringify(cases));
+
+  const parent = S.createNode(), geometry = BL.models.particleGeometry("#f4d26a", 0.05, 0.3);
+  const pool = G.coinPool({ parent, geometry, capacity: 5, life: 1.5 });
+  const spawned = [];
+  for (let i = 0; i < 8; i++) spawned.push(!!pool.spawn(0, 0.5, 0, 0.4, 1.2, -0.3, 0.012));
+  const bounds = { nodes: parent.children.length === 5, accepted: spawned.filter(Boolean).length === 5, refused: pool.refused === 3, live: pool.live === 5 };
+  let lowest = Infinity, maxLive = 0;
+  for (let f = 0; f < 120; f++) {
+    pool.update(1 / 120);
+    for (const c of pool.coins) if (c.life > 0) lowest = Math.min(lowest, c.node.position.y);
+    maxLive = Math.max(maxLive, pool.live);
+  }
+  bounds.restsOnFloor = lowest >= 0.012 - 1e-9 && pool.coins.every((c) => c.node.position.y === 0.012 && !c.vy);
+  for (let f = 0; f < 120; f++) pool.update(1 / 120);
+  bounds.reclaimed = pool.live === 0 && pool.coins.every((c) => !c.node.visible && c.life === 0) && maxLive === 5;
+  for (let round = 0; round < 50; round++) { pool.spawn(0, 0.5, 0, 0, 1, 0, 0); pool.update(0.2); }
+  bounds.steady = parent.children.length === 5 && pool.live <= 5 && pool.live > 0;
+  pool.clear();
+  bounds.cleared = pool.live === 0 && pool.coins.every((c) => !c.node.visible);
+  record("goldbug coins: a fixed pool that refuses past capacity, lands coins on their floor, returns every one after its life and never adds nodes", Object.values(bounds).every(Boolean), JSON.stringify(bounds));
+
+  // The show through create's own update, driven by positions as a walking Ooga gives them: a loop fires it, it runs to
+  // the end within the coin pool and the scene's particle pool, and leaves the scene's children as they were.
+  const run = (calm, busyAt = Infinity) => {
+    const root = S.createNode(), mirrorNode = S.createNode({ position: { x: 0, y: 1.5, z: 0.5 } });
+    S.addChild(root, mirrorNode);
+    const tally = { puffs: 0, pulses: 0, rustles: 0, maxCoins: 0, phases: new Set(), frames: 0 };
+    const bushes = [[-2, 8], [2, 8], [2, 12], [-2, 12]].map(([x, z]) => ({ x, z, footprint: 0.7, node: S.createNode({ position: { x, y: 0, z } }) }));
+    let busy = false;
+    const egg = G.create({
+      root, bushes, memory: {}, groundAt: () => 0, calm: () => calm, busy: () => busy, random: () => 0.5,
+      fx: { puff: () => { tally.puffs++; } },
+      mirror: { mouth: { x: 0, z: 0, ry: 0 }, node: mirrorNode, ripples: { pulse: () => { tally.pulses++; return true; } } },
+      rustle: () => { tally.rustles++; }
+    });
+    const before = root.children.length, point = { x: 0, y: 0, z: 0 };
+    for (const i of [0, 1, 2, 3, 0]) {
+      Object.assign(point, { x: 0, z: 10 }); egg.update(1, point);
+      Object.assign(point, { x: bushes[i].x, z: bushes[i].z }); egg.update(1, point);
+    }
+    const fired = egg.active;
+    for (let f = 0; f < 60 * 20 && egg.active; f++) {
+      tally.frames++;
+      if (tally.frames === busyAt) busy = true;
+      egg.update(1 / 60, point);
+      tally.phases.add(egg.debug.phase);
+      tally.maxCoins = Math.max(tally.maxCoins, egg.debug.coins.live);
+    }
+    const rig = egg.debug.rig, ended = !egg.active && root.children.length === before;
+    const result = { fired, ended, phases: [...tally.phases].join(","), puffs: tally.puffs, pulses: tally.pulses, rustles: tally.rustles,
+      coins: egg.debug.coins, maxCoins: tally.maxCoins, aborted: egg.debug.aborted, golden: rig && rig.golden, seconds: +(tally.frames / 60).toFixed(2) };
+    egg.dispose();
+    return result;
+  };
+  const full = run(false), calm = run(true), cut = run(false, 90);
+  const show = {
+    full: full.fired && full.ended && /run/.test(full.phases) && /look/.test(full.phases) && /melt/.test(full.phases) && /puddle/.test(full.phases)
+      && full.pulses === 1 && full.rustles === 1 && full.puffs > 10 && full.coins.spawned > 0 && full.maxCoins <= G.COINS.capacity && !full.golden && full.seconds < 15,
+    calm: calm.fired && calm.ended && !/melt|run|puddle/.test(calm.phases) && /walk/.test(calm.phases) && /fade/.test(calm.phases)
+      && calm.puffs === 0 && calm.pulses === 0 && calm.coins.spawned === 0 && calm.seconds < 4,
+    busyCuts: cut.fired && cut.ended && cut.aborted === 1 && cut.seconds < 1.6
+  };
+  record("goldbug show: the loop calls him, he runs, double-takes, ripples the glass once and melts to nothing within the pools; Calm only walks and fades; an island event ends him at once", Object.values(show).every(Boolean), JSON.stringify({ full, calm, cut }));
+};
 const variantCacheChecks = BL => {
   const M = BL.models, builds = new Map(), read = M.variants(i => ({ i, serial: builds.set(i, (builds.get(i) || 0) + 1).get(i) }));
   M.setScope("hub"); const hub = read();
@@ -23296,6 +23391,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   }
   factoryChecks(BL);
   tessAnswerChecks(BL);
+  goldbugChecks(BL);
   const clearance = claimClearanceProof();
   record("hub footprint clearance: conservative rejection preserves circular boundaries, live reservations and exceptional numbers", clearance.failures === 0 && clearance.cases >= 4000, JSON.stringify(clearance));
   await cloudHopperFailureChecks(BL);
