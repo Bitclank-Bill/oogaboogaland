@@ -23649,10 +23649,35 @@ const genesisCartridgeProof = async () => {
   if (game.playing) bad.push("the dummy did not end after three acts");
   con.key("down", "Escape", false);
   if (con.isOpen || closed !== 1) bad.push("Escape did not close and hand the view back");
-  // Closing mid-run stops the game.
-  con.open("dummy-test"); const g2 = con.game; con.key("down", "Enter", false); con.close();
-  if (g2.playing || calls[calls.length - 1][0] !== "stop") bad.push("closing mid-run did not stop the game");
+  // Regression (review of 3961ce9): close() stopped a game only while it was playing. Every close lets the game clean
+  // up once, whatever its state (idle, running or finished), and a second close stops nothing more.
+  const stopsOf = () => calls.filter((c) => c[0] === "stop").length;
+  let base = stopsOf();
+  con.open("dummy-test"); con.close();
+  if (stopsOf() !== base + 1) bad.push("closing an idle game did not clean it up once");
+  base = stopsOf(); con.open("dummy-test"); const g2 = con.game; con.key("down", "Enter", false); con.close(); con.close();
+  if (g2.playing || stopsOf() !== base + 1) bad.push("closing a running game (twice) did not clean it up exactly once");
+  base = stopsOf(); con.open("dummy-test"); con.key("down", "Enter", false);
+  for (let i = 0; i < 3; i++) { con.key("down", "Space", false); con.key("up", "Space", false); }
+  con.update(0.1); const finished = !con.game.playing; con.close();
+  if (!finished || stopsOf() !== base + 1) bad.push("closing a finished game did not clean it up once");
   con.dispose();
+  // Regression (review of 3961ce9): the touch pad's buttons acted without waking the console's sound, so a
+  // buttons-only visitor heard no cues. A start through the touch A button wakes it.
+  {
+    const made = [];
+    class FakeContext { constructor() { this.currentTime = 0; this.destination = {}; made.push(this); } createOscillator() { return { type: "", frequency: { setValueAtTime() {} }, connect() {}, start() {} }; }
+      createGain() { return { gain: { value: 0, cancelScheduledValues() {}, setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; } close() {} }
+    context.window.AudioContext = FakeContext; context.window.navigator = { userActivation: { isActive: true } };
+    context.window.BL.sound = { output: (c) => c.destination, muted: false };
+    const tc = C.create({ root: null });
+    tc.open("dummy-test");
+    const before = tc.stats().audio;
+    tc.touch("act", true); tc.touch("act", false);
+    if (before || !tc.stats().audio || made.length !== 1 || !tc.game.playing) bad.push("a start through the touch A button did not wake the console's sound");
+    tc.dispose();
+    delete context.window.AudioContext; delete context.window.navigator; delete context.window.BL.sound;
+  }
   return { bad };
 };
 const genesisMuseumProof = async () => {

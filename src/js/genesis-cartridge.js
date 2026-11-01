@@ -120,26 +120,23 @@
       el.addEventListener("click", (e) => {
         const b = e.target.closest("button");
         if (!b || !st.open) return;
+        wake();
         if (b.dataset.cart === "close") close();
         else if (b.dataset.cart === "pause") togglePause();
         else if (b.dataset.cart === "mute") toggleMute();
         screen.focus({ preventScroll: true });
       }, { signal });
+      // Every press on the panel is a gesture: it unlocks the console's sound, whatever it lands on.
       el.addEventListener("pointerdown", (e) => {
+        wake();
         const b = e.target.closest("[data-hold]");
-        if (e.target === screen) { wake(); press(); return; }
+        if (e.target === screen) { press(); return; }
         if (!b) return;
         e.preventDefault();
-        touchHeld[b.dataset.hold]++;
         if (b.setPointerCapture) b.setPointerCapture(e.pointerId);
-        if (b.dataset.hold === "act") press();
-        else if (b.dataset.hold === "left") aim.steps--;
-        else if (b.dataset.hold === "right") aim.steps++;
-        else if (b.dataset.hold === "up") aim.stepsY--;
-        else if (b.dataset.hold === "down") aim.stepsY++;
-        syncHeld();
+        touch(b.dataset.hold, true);
       }, { signal });
-      const lift = (e) => { const b = e.target.closest && e.target.closest("[data-hold]"); if (!b || touchHeld[b.dataset.hold] <= 0) return; touchHeld[b.dataset.hold]--; syncHeld(); };
+      const lift = (e) => { const b = e.target.closest && e.target.closest("[data-hold]"); if (b) touch(b.dataset.hold, false); };
       el.addEventListener("pointerup", lift, { signal });
       el.addEventListener("pointercancel", lift, { signal });
     };
@@ -167,6 +164,22 @@
       if (!game.playing) { st.ended = false; aim.x = 0; game.start((Date.now() % 2147483646) + 1); }
       else game.act();
       paintText();
+    };
+    // A touch button pressed or let go (the pad's ◀ ▲ ▼ ▶ and A): wakes the sound on a press, counts a step or acts,
+    // and holds the button while a pointer is on it.
+    const touch = (button, down) => {
+      if (!st.open || touchHeld[button] === undefined) return false;
+      if (down) {
+        wake();
+        touchHeld[button]++;
+        if (button === "act") press();
+        else if (button === "left") aim.steps--;
+        else if (button === "right") aim.steps++;
+        else if (button === "up") aim.stepsY--;
+        else if (button === "down") aim.stepsY++;
+      } else if (touchHeld[button] > 0) touchHeld[button]--;
+      syncHeld();
+      return true;
     };
     const togglePause = () => { if (!st.open) return; st.paused = !st.paused; clearHeld(); paintText(); };
     const toggleMute = () => { if (BL.sound) BL.sound.toggle(); paintText(); };
@@ -227,8 +240,12 @@
     // Close: the game stops, held buttons are let go, the panel hides and the scene takes its view back (`onClose`).
     const close = (quiet = false) => {
       if (!st.open) return;
-      if (game && game.playing && game.stop) game.stop();
-      game = null; st.open = false; st.paused = false; st.entry = null; st.id = null;
+      // The game cleans up whatever state it is in (idle, running or finished), exactly once: the console lets go of
+      // it first, so a second close finds nothing to stop.
+      const g = game;
+      game = null;
+      if (g && typeof g.stop === "function") g.stop();
+      st.open = false; st.paused = false; st.entry = null; st.id = null;
       if (watch) { watch.abort(); watch = null; }
       clearHeld();
       if (audio.ctx) { audio.ctx.close(); audio.ctx = audio.voices = audio.out = null; }
@@ -248,7 +265,7 @@
       if (game.playing !== wasPlaying) { wasPlaying = game.playing; paintText(); }
     };
     return {
-      open, close, update, key, interrupted,
+      open, close, update, key, touch, interrupted,
       get isOpen() { return st.open; }, get id() { return st.id; }, get paused() { return st.paused; }, get game() { return game; },
       aim, held,
       stats: () => ({ open: st.open, id: st.id, paused: st.paused, updates: st.updates, cues: st.cues, best: st.best, w: st.w, h: st.h, audio: !!audio.ctx }),
