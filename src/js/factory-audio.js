@@ -13,12 +13,12 @@
 // way the view faces, and `cue(name, x, y, z, loud, n)` plays a cue there, quieter with distance and panned to its
 // side, `n` its note, its syllables or its kind. Kortik's cues fall off sooner, so his board comes up as the visitor
 // walks up to it, and he speaks through a throat of his own. It honours the page-wide mute (`oogaboogaland.audio`)
-// and the tab's visibility, and `dispose` closes it. `heard` counts every cue asked for, heard or not.
+// while the tab is hidden too, and `dispose` closes it. `heard` counts every cue asked for, heard or not.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { clamp } = BL.math;
-  const TONES = 18, NOISES = 10, NOISE_SECONDS = 2, MASTER = 0.55, STORAGE_KEY = "oogaboogaland.audio";
+  const TONES = 18, NOISES = 10, NOISE_SECONDS = 2, MASTER = 0.55;
   // At REF metres a cue is at half its level, a machine of the bed at BED_REF, and Kortik's board at NEAR_REF.
   const REF = 8, BED_REF = 9, NEAR_REF = 4.5, PAN = 0.75;
   // Each featured line's note as its sats arrive, struck like a soft mallet: a pentatonic run so a busy floor plays a
@@ -33,11 +33,7 @@
 
   const create = (spots) => {
     let ctx = null, master = null, buffer = null, ready = false, muted = false, disposed = false;
-    try {
-      muted = localStorage.getItem(STORAGE_KEY) === "off";
-    } catch {
-      muted = false;
-    }
+    muted = BL.sound.muted;
     const tones = [], noises = [], bed = {};
     let toneNext = 0, noiseNext = 0, since = 0, clock = 0, anvilIn = 0, speed = 0;
     // Where the visitor hears from, the way the view faces on the ground, and where the last cue was placed.
@@ -176,7 +172,7 @@
     const activate = () => {
       if (disposed) return;
       if (ready) {
-        if (ctx.state === "suspended" && !document.hidden) ctx.resume().catch(() => {});
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
         return;
       }
       if (muted || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
@@ -184,11 +180,9 @@
     };
     window.addEventListener("pointerdown", activate, true);
     window.addEventListener("keydown", activate, true);
-    // A hidden tab stops the hall's loops and voices; showing it again picks them up.
+    // The hall keeps sounding in the background; returning can wake a context the browser suspended.
     const onVisibility = () => {
-      if (!ready) return;
-      if (document.hidden) ctx.suspend().catch(() => {});
-      else ctx.resume().catch(() => {});
+      if (ready && !document.hidden && ctx.state === "suspended") ctx.resume().catch(() => {});
     };
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -528,7 +522,7 @@
       if (!entry) throw new Error(`No factory cue named ${name}`);
       heard[name]++;
       if (!ready) activate();
-      if (!ready || muted || document.hidden) return;
+      if (!ready || muted) return;
       place(x, y, z, entry[0]);
       AT.level = Math.max(AT.level, entry[1]) * loud * (name === "anvil" ? 1 : EVENTS);
       entry[2](n);
@@ -616,18 +610,17 @@
     };
     const setMuted = (value) => {
       muted = !!value;
-      try {
-        localStorage.setItem(STORAGE_KEY, muted ? "off" : "on");
-      } catch {
-      }
+      BL.sound.setMuted(muted);
       if (ready) {
         if (muted) quiet();
         master.gain.setTargetAtTime(muted ? 0 : MASTER, ctx.currentTime, 0.05);
       } else if (!muted) activate();
       return muted;
     };
+    const offSound = BL.sound.subscribe(setMuted);
 
     const dispose = () => {
+      offSound();
       disposed = true;
       window.removeEventListener("pointerdown", activate, true);
       window.removeEventListener("keydown", activate, true);

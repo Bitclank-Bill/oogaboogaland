@@ -189,8 +189,7 @@
     if(menuZone()){openVenue();return true;}return false;
   };
   const act=()=>{if(menuOpen())return true;if(!interiors?.transitioning&&studioAct())return true;if(nearTv()){tv.open();return true;}if(!overview&&interiors?.request(avatar.root.position,avatar.root.rotation.y))return true;if(interiors?.active)return false;if(nearGate()&&!overview){gate.open();return true;}return false;};
-  const syncSound=()=>{const on=weather.shared.state.muted,button=document.getElementById("dsb-mute"),label=on?"Unmute DSB sound":"Mute DSB sound";button.setAttribute("aria-label",label);button.title=label+" · M";button.setAttribute("aria-pressed",String(on));};
-  const mute=()=>{const on=weather.toggleMuted();interiors?.audio.update(on);syncSound();};
+  const mute=()=>{const on=weather.toggleMuted();interiors?.audio.update(on);};
   const modeAction=name=>!leaving&&!gate?.isOpen&&!interiors?.transitioning&&pilot.modeAction(name);
   const action=(name,value)=>{if(entrance?.action(name))return;if(menuOpen())return;if(modeAction(name)||(name.startsWith("weapon-primary")||seatRoom())&&pilot.weaponAction(name))return;if(name==="dsb-mute")mute();else if(name==="jetpack-toggle")toggleJetpack();else if(interiors?.transitioning)return;else if(name==="mode-preset")presetView(value);else if(name==="reset-view")pilot.resetCamera();else if(name==="dsb-context")act();else if(name==="act")pilot.action();else if(name==="leave")hud.toast("Return through the Portara at the summit.");};
   const shore={x:0,z:0,nx:0,nz:0};
@@ -280,7 +279,7 @@
     crew=shared.crew=BL.crew.create(shared);pilot.bind(shared);avatar=crew.cavemen.get(name);
     crew.setJetpackOwnership(avatar,true,BL.hubModels.jetpack(),BL.hubModels.jetFlame());
     crew.wearJetpack(avatar,BL.hubModels.jetpack(),BL.hubModels.jetFlame());
-    remotes=BL.remotePlayers.create({root,crew,visible:rec=>rec.zone===voiceZone()&&(!entrance||entrance.phase==="done")});
+    remotes=BL.remotePlayers.create({root,crew,fx,visible:rec=>rec.zone===voiceZone()&&(!entrance||entrance.phase==="done")});
     footsteps=BL.footsteps.create(); // The driven Ooga's own footsteps, heard by this page alone (footsteps.js).
     document.addEventListener("focusin",sheetFocus,{signal:ctx.signal});
     Object.assign(avatar.root.position,{x:-45,y:land.heightAt(-45,-43)+avatar.baseY,z:-43});avatar.root.rotation.y=0;
@@ -297,7 +296,6 @@
     document.body.classList.add("dsb-active");
     noderunner=BL.dsbNoderunner.create({root:exterior,land});
     weather=BL.dsbWeather.create({root:exterior,renderer:ctx.renderer,camera,land,water,params,audioFactory:noderunner.createAudio});
-    syncSound();
     input.add(noderunner.screenFace,{kind:"dsb-tv"});
     // A ground tap while carrying: the first point down the pointer's ray that meets the floor, if a device fits there.
     // The ray is walked down in quarter metres and the crossing halved eight times, since a slope or a step (the beach
