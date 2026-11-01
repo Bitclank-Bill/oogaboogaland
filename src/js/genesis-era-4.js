@@ -46,6 +46,10 @@
       "The museum modem makes original synthesized tones. It never calls anyone or connects to a network."]
   };
   const reply = (...lines) => ({ lines });
+  // Every station opens with a short HOW TO USE: a terminal's first lines, a panel's first page.
+  const howTo = (steps) => ["HOW TO USE", ...steps.map((step, i) => `  ${i + 1}. ${step}`), ""];
+  const guided = (make, steps) => () => { const t = make(); return { ...t, banner: [...howTo(steps), ...t.banner] }; };
+  const howToPage = (steps) => ({ caption: "How to use", title: "How to use", text: steps.map((step, i) => `${i + 1}. ${step}`) });
   const clean = text => String(text).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 48).trim();
   // FNV-style message seed and integer avalanche: deliberately NOT cryptographic Hashcash/SHA-1.
   const seedOf = text => {
@@ -60,7 +64,7 @@
     return (h ^ (h >>> 16)) >>> 0;
   };
   const PER_FRAME = 64, TOTAL = 32768;
-  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null;
+  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null, decor = null;
   const status = () => reply(`Message: ${work.message}; target: ${work.bits} leading zero bits.`,
     `Attempts this visit: ${work.total}/${TOTAL}; this search: ${work.attempts}.`,
     work.running ? "Searching. Use STATUS in a moment, or STOP." : work.nonce >= 0 ? `Stamp nonce ${work.nonce}; digest ${work.hash.toString(16).padStart(8, "0")}. Use VERIFY, then MESSAGE changed.` : "No stamp. SEARCH starts; TARGET 4..12 adjusts difficulty.");
@@ -233,6 +237,35 @@
       balances = { a: new Uint8Array([5, 5]), b: new Uint8Array([3, 3]), created: 0 };
       const { era, top, solid, sign, obstacle, prop } = kit;
       const board = (room, keys, pages) => ({ board: { room, sources: keys, pages } });
+      decor = { modem: [], hub: [], step: -1, quiet: null, line: null };
+      const y = (h) => top + h;
+      const boxes = (list) => { for (const b of list) solid(...b); };
+      // Recognisable details on each station, all inside its own obstacle (x +-1.9, z -0.9 to +1.3): original,
+      // unbranded shapes that say nothing about real products.
+      const book = (x, z) => boxes([[1, 0.05, 0.42, "#7a5c3e", x, y(0.93), z + 0.58], [0.46, 0.03, 0.36, "#f3ecda", x - 0.24, y(0.97), z + 0.58], [0.46, 0.03, 0.36, "#f3ecda", x + 0.24, y(0.97), z + 0.58]]);
+      const dress = {
+        // An envelope with a stamp on it beside the work blocks: postage that is paid for with searching.
+        "e4-hashcash": (x, z) => boxes([[0.6, 0.02, 0.36, "#efe8d6", x + 1.45, y(0.91), z + 0.56], [0.13, 0.025, 0.15, "#c8463c", x + 1.66, y(0.92), z + 0.47],
+          [0.42, 0.012, 0.02, "#b7ab92", x + 1.4, y(0.925), z + 0.6], [0.42, 0.012, 0.02, "#b7ab92", x + 1.4, y(0.925), z + 0.66]]),
+        // Two open account books, one for each replica that COMPARE reads.
+        "e4-bmoney": (x, z) => { for (const dx of [-0.8, 0.8]) boxes([[0.74, 0.04, 0.4, "#f1ead8", x + dx, y(0.92), z + 0.58], [0.03, 0.045, 0.4, "#6d5a45", x + dx, y(0.925), z + 0.58],
+          ...[0, 1, 2].map((k) => [0.6, 0.006, 0.02, "#8aa0c4", x + dx, y(0.943), z + 0.48 + k * 0.1])]); },
+        // An open bound volume on a reading board: these two stations are papers.
+        "e4-names": (x, z) => book(x, z),
+        "e4-timesec": (x, z) => book(x, z),
+        // A deep CRT back, a beige tower with drive slots and a mouse: a desktop computer at a glance.
+        "e4-desktop": (x, z) => boxes([[1.3, 1, 0.4, "#b9b09a", x, y(1.5), z - 0.65], [0.5, 1.1, 0.9, "#cfc6ae", x - 1.4, y(1.45), z - 0.1],
+          [0.36, 0.05, 0.02, "#3a3a3a", x - 1.4, y(1.75), z + 0.36], [0.36, 0.05, 0.02, "#3a3a3a", x - 1.4, y(1.62), z + 0.36], [0.05, 0.05, 0.02, "#7dff8a", x - 1.52, y(1.1), z + 0.36, 0.6],
+          [0.5, 0.01, 0.4, "#2d3a4a", x + 1.25, y(0.91), z + 0.6], [0.12, 0.05, 0.18, "#d8d0bb", x + 1.25, y(0.94), z + 0.6]]),
+        // A telephone cord from the modem's back to a wall-style jack post, and a plain desk telephone beside it.
+        "e4-modem": (x, z) => boxes([[0.04, 0.04, 0.4, "#2a2a2a", x + 0.6, y(1.0), z - 0.65], [0.04, 0.5, 0.04, "#2a2a2a", x + 0.6, y(0.75), z - 0.84],
+          [0.2, 0.3, 0.06, "#e8e2d2", x + 0.6, y(0.35), z - 0.86], [0.56, 0.12, 0.4, "#3b3f48", x + 1.45, y(0.96), z + 0.2], [0.6, 0.08, 0.14, "#2f333b", x + 1.45, y(1.06), z + 0.08]]),
+        // A slim drive with an open tray behind the discs, where an archive disc would go.
+        "e4-cd": (x, z) => boxes([[1.4, 0.24, 0.36, "#cfc6ae", x, y(1.04), z - 0.6], [0.7, 0.03, 0.04, "#3a3a3a", x - 0.2, y(1.06), z - 0.41], [0.06, 0.04, 0.02, "#7dff8a", x + 0.5, y(1.06), z - 0.41, 0.6]]),
+        // A second button, a speaker grille and a wrist strap: a handheld game.
+        "e4-pocket": (x, z) => boxes([[0.1, 0.06, 0.1, "#d69654", x + 0.36, y(1.12), z + 0.24], ...[0, 1, 2].map((k) => [0.16, 0.06, 0.02, "#263039", x + 0.25, y(1.11), z + 0.5 + k * 0.05]),
+          [0.04, 0.03, 0.4, "#2f3a44", x - 0.47, y(0.93), z + 0.4]])
+      };
       // The era's big sign, pylons, overview board and the trail are the shared signage's; this era's own
       // introduction is its overview's page (register's `overview`, below).
       // Station footprints stay at least 1.5 m from the channel and leave broad bank routes.
@@ -253,7 +286,7 @@
           solid(0.1, 0.06, 0.1, "#d69654", x + 0.23, top + 1.12, z + 0.35);
         } else if (style === "modem") {
           solid(2.2, 0.4, 0.9, "#b7b09e", x, top + 1.13, z);
-          for (let i = 0; i < 4; i++) solid(0.1, 0.09, 0.04, "#78cb96", x - 0.7 + i * 0.3, top + 1.14, z + 0.47, 0.5);
+          for (let i = 0; i < 4; i++) decor.modem.push(solid(0.1, 0.09, 0.04, "#78cb96", x - 0.7 + i * 0.3, top + 1.14, z + 0.47, 0.5));
           sign("LINK / LOCAL", "DIAL / HANGUP", x, top + 1.6, z + 0.5, 0, 0.2);
         } else if (style === "discs") {
           for (let i = 0; i < 4; i++) {
@@ -267,33 +300,123 @@
         } else {
           for (let i = 0; i < 4; i++) solid(0.45, 0.25 + i * 0.13, 0.7, ["#d9ac52", "#729eac", "#9987b9", "#99aa68"][i], x - 1.15 + i * 0.75, top + 1.05 + i * 0.065, z);
         }
+        if (dress[id]) dress[id](x, z);
         obstacle(x - 1.9, x + 1.9, z - 0.9, z + 1.3);
         sign(title, sub, x, top + 3, z + 0.2, 0, 0.42);
         prop({ id, year, ...link, title, label: `${title} / ${year}`, sourceKeys: keys, at: { x, y: top, z: z + 2 }, reach: 2.2, pick: { w: 3.6, h: 2.5, d: 1.6, x, z }, onUse: use });
       };
-      station("e4-hashcash", -9, era.z - 3, 1997, "HASHCASH / 28 MAR 1997", "implementation announcement - educational workbench", ["E4-HC", "E4-INFL"], () => ({ terminal: hashTerminal() }), undefined,
-        { connection: "influence", date: "28 March 1997: implementation announcement (the 2002 paper, reference [6], is Era 5's)" });
-      station("e4-bmoney", -21, era.z - 3, 1998, "B-MONEY / NOV 1998", "proposal publication - compare accounts", ["E4-BM"], () => ({ terminal: balanceTerminal() }), undefined,
-        { connection: "citation", ref: "[1]", date: "November 1998: proposal publication month" });
+      station("e4-hashcash", -9, era.z - 3, 1997, "HASHCASH / 28 MAR 1997", "implementation announcement - educational workbench", ["E4-HC", "E4-INFL"], () => ({ terminal: guided(hashTerminal, ["Type SEARCH and press Enter to hunt for a stamp.",
+          "Type STATUS until it shows a stamp nonce.", "Type VERIFY: one hash checks the stamp.", "Type MESSAGE and new words, then VERIFY: the old stamp fails."])() }), undefined,
+        { hint: "Type SEARCH, then STATUS, then VERIFY", connection: "influence", date: "28 March 1997: implementation announcement (the 2002 paper, reference [6], is Era 5's)" });
+      station("e4-bmoney", -21, era.z - 3, 1998, "B-MONEY / NOV 1998", "proposal publication - compare accounts", ["E4-BM"], () => ({ terminal: guided(balanceTerminal, ["Type COMPARE: both replicas agree.",
+          "Type MISS: one replica misses a transfer.", "Type COMPARE again: the balances disagree.", "Type RESET to start over; TRANSFER and CREATE reach both."])() }), undefined,
+        { hint: "Type COMPARE, then MISS, then COMPARE", connection: "citation", ref: "[1]", date: "November 1998: proposal publication month" });
       // The reference shelf, as two dated stops: each paper is its own whitepaper citation.
       station("e4-names", -16, era.z0 + 12, 1997, "SECURE NAMES / APR 1997", "proceedings publication - naming exact data", ["E4-NAMES", "E4-NAMES-CAT"],
         () => board("Secure Names for Bit-Strings / April 1997", ["E4-NAMES", "E4-NAMES-CAT"], [
+          howToPage(["Page on with the arrows to read about the April 1997 paper.", "The last page says how it connects to Bitcoin.", "Sources lists the paper and its catalogue record."]),
           { caption: "April 1997 publication", title: "Secure Names for Bit-Strings", text: history.NAMES }
-        ]), undefined, { connection: "citation", ref: "[5]", date: "April 1997: proceedings publication" });
+        ]), undefined, { hint: "Read about naming exact data", connection: "citation", ref: "[5]", date: "April 1997: proceedings publication" });
       station("e4-timesec", -10, era.z0 + 12, 1999, "TIMESEC / MAY 1999", "proceedings publication - a timestamp service", ["E4-TIMESEC", "E4-TIMESEC-CAT"],
         () => board("TIMESEC / May 1999", ["E4-TIMESEC", "E4-TIMESEC-CAT"], [
+          howToPage(["Page on with the arrows to read about the May 1999 paper.", "The last page says how it connects to Bitcoin.", "Sources lists the paper and its catalogue record."]),
           { caption: "May 1999 publication", title: "TIMESEC / a timestamp service", text: history.TIMESEC }
-        ]), undefined, { connection: "citation", ref: "[2]", date: "May 1999: proceedings publication month" });
-      station("e4-desktop", 17, era.z1 - 19, 1999, "LOCAL WEB DESKTOP / 1999", "original museum design - OPEN HOME", ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC", "E4-MODEM"], () => ({ terminal: browserTerminal() }), "screen",
-        { connection: "context", date: "1999: the period illustrated; an original museum design" });
-      station("e4-modem", 29, era.z1 - 19, 1998, "MODEM / 1 SEP 1998", "V.90 approval - DIAL plays original tones", ["E4-MODEM"], () => ({ terminal: browserTerminal() }), "modem",
-        { connection: "context", date: "1 September 1998: ITU-T V.90 recommendation approved" });
-      station("e4-cd", 17, era.z - 9, 1999, "CD-ROM ARCHIVE / 1999", "invented museum puzzle - select discs by date", ["E4-HC", "E4-NAMES-CAT", "E4-BM", "E4-TIMESEC-CAT"], () => ({ terminal: discTerminal() }), "discs",
-        { connection: "context", date: "1999: the period illustrated; an invented museum puzzle" });
-      station("e4-pocket", 29, era.z0 + 14, 1999, "POCKET ROUTE / 1999", "original maze - N S E W - no ROM", ["E4-MODEM"], () => ({ terminal: mazeTerminal() }), "pocket",
-        { connection: "context", date: "1999: the period illustrated; an original maze" });
+        ]), undefined, { hint: "Read about a timestamp service", connection: "citation", ref: "[2]", date: "May 1999: proceedings publication month" });
+      station("e4-desktop", 17, era.z1 - 19, 1999, "LOCAL WEB DESKTOP / 1999", "original museum design - OPEN HOME", ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC", "E4-MODEM"], () => ({ terminal: guided(browserTerminal, ["Type OPEN HASHCASH (or HOME, BMONEY, NAMES, TIMESEC, MODEM).",
+          "Type BACK and FORWARD to move through the pages you opened.", "Type SIZE 16 to time a 16 KiB page at the 1998 ceiling."])() }), "screen",
+        { hint: "Type OPEN HOME, then OPEN a page", connection: "context", date: "1999: the period illustrated; an original museum design" });
+      station("e4-modem", 29, era.z1 - 19, 1998, "MODEM / 1 SEP 1998", "V.90 approval - DIAL plays original tones", ["E4-MODEM"], () => ({ terminal: guided(browserTerminal, ["Type DIAL and press Enter: original tones play if sound is on.",
+          "Watch the modem's second lamp: it stays lit while the toy link is up.", "Type SIZE 64 to time 64 KiB at the 56,000 bit/s ceiling.", "Type HANGUP to stop the tones."])() }), "modem",
+        { hint: "Type DIAL, then SIZE 64, then HANGUP", connection: "context", date: "1 September 1998: ITU-T V.90 recommendation approved" });
+      station("e4-cd", 17, era.z - 9, 1999, "CD-ROM ARCHIVE / 1999", "invented museum puzzle - select discs by date", ["E4-HC", "E4-NAMES-CAT", "E4-BM", "E4-TIMESEC-CAT"], () => ({ terminal: guided(discTerminal, ["Type LIST to read each disc's dated label.",
+          "Type PICK HC for the earliest disc.", "PICK the other three in date order.", "Type RESET to play again."])() }), "discs",
+        { hint: "Type LIST, then PICK HC", connection: "context", date: "1999: the period illustrated; an invented museum puzzle" });
+      station("e4-pocket", 29, era.z0 + 14, 1999, "POCKET ROUTE / 1999", "original maze - N S E W - no ROM", ["E4-MODEM"], () => ({ terminal: guided(mazeTerminal, ["Type E and press Enter to step the @ east.",
+          "Use N, S, E and W to reach the + exit.", "Type LOOK to redraw the map, or RESET to start again."])() }), "pocket",
+        { hint: "Type E, then steer with N S E W", connection: "context", date: "1999: the period illustrated; an original maze" });
+
+      // --- Era decor: late-1990s set dressing, original and unbranded, making no claims ------------------------------
+      // Against the two cave walls, behind every station (left x -34 to -29.4, right 36.4 to 42), so the stream,
+      // the waterside walk, the stations' paths and the views to the far wall and the overview board stay open. No
+      // words, makers, model names, dates or specifications: a home office with a CRT and a phone line, a study shelf
+      // of spiral-bound manuals under glow stars, a networked games corner on folding tables, a stack of shipping
+      // boxes. Up the walls, two alcoves for the jetpack: a loft shelf (with the cave's dated notes) and a server niche.
+      const L = era.cave.x0, R = era.cave.x1, U = (u) => era.z1 - u;
+      const group = (x0, x1, u0, u1, list) => { obstacle(x0, x1, U(u1), U(u0)); boxes(list); };
+      const crt = (x, z, face) => [[0.62, 0.55, 0.6, "#cfc6b0", x, y(1.05), z], [0.02, 0.42, 0.5, "#2e5470", x + face * 0.32, y(1.07), z, 0.35],
+        [0.4, 0.4, 0.42, "#c2b9a2", x - face * 0.48, y(1.03), z], [0.22, 0.04, 0.55, "#d8d0bb", x + face * 0.5, y(0.79), z]];
+      // Home office, left wall: desk, CRT, keyboard and mouse, a tower on the floor, a cordless phone, the phone
+      // line from a wall jack, and an inflatable armchair in see-through violet.
+      const zo = U(23);
+      group(L, -29.4, 20, 26, [[1.1, 0.06, 2.4, "#8a6f52", L + 1.1, y(0.75), zo], [1, 0.72, 0.06, "#6e573f", L + 1.1, y(0.36), zo - 1.15], [1, 0.72, 0.06, "#6e573f", L + 1.1, y(0.36), zo + 1.15],
+        ...crt(L + 0.95, zo - 0.4, 1), [0.1, 0.04, 0.07, "#d8d0bb", L + 1.45, y(0.8), zo + 0.05],
+        [0.6, 0.9, 0.24, "#d3cab3", L + 1.1, y(0.45), zo + 1.5], [0.02, 0.05, 0.16, "#3a3a3a", L + 1.41, y(0.75), zo + 1.5], [0.02, 0.03, 0.03, "#7dff8a", L + 1.41, y(0.2), zo + 1.5, 0.6],
+        [0.22, 0.06, 0.16, "#3b3f48", L + 1.3, y(0.81), zo + 0.6], [0.06, 0.05, 0.22, "#2f333b", L + 1.3, y(0.86), zo + 0.6],
+        [0.03, 0.12, 0.08, "#e8e2d2", L + 0.04, y(0.35), zo + 0.9], [0.02, 0.45, 0.02, "#2a2a2a", L + 0.1, y(0.6), zo + 0.9], [0.5, 0.02, 0.02, "#2a2a2a", L + 0.35, y(0.82), zo + 0.9],
+        [0.9, 0.35, 0.9, "#9b6fd6", L + 2.4, y(0.2), zo - 0.4, 0.15], [0.3, 0.6, 0.9, "#9b6fd6", L + 2.8, y(0.6), zo - 0.4, 0.15],
+        [0.8, 0.28, 0.24, "#a77fe0", L + 2.45, y(0.5), zo - 0.9, 0.15], [0.8, 0.28, 0.24, "#a77fe0", L + 2.45, y(0.5), zo + 0.1, 0.15],
+        [3.6, 0.01, 3.6, "#2f6f8f", L + 2.2, y(0.005), zo]]);
+      // The loft above it: a lit niche 3.8 m up, with jewel cases, a box of disks, manuals and a coiled cable.
+      const shelfX = L + 0.5;
+      boxes([[0.08, 2.6, 3.4, "#1b2433", L + 0.06, y(5.1), zo], [0.9, 0.12, 3.4, "#4b5d7a", shelfX, y(3.8), zo], [0.9, 0.12, 3.4, "#4b5d7a", shelfX, y(6.4), zo],
+        [0.9, 2.6, 0.12, "#4b5d7a", shelfX, y(5.1), zo - 1.7], [0.9, 2.6, 0.12, "#4b5d7a", shelfX, y(5.1), zo + 1.7], [0.8, 0.08, 3.2, "#4b5d7a", shelfX, y(5.1), zo],
+        [0.04, 0.04, 3.2, "#9fd0ff", L + 0.9, y(6.28), zo, 0.9],
+        ...[0, 1, 2, 3, 4, 5].map((k) => [0.36, 0.03, 0.4, ["#d7dde6", "#9fc6e8", "#e8b9c9"][k % 3], shelfX, y(3.88 + k * 0.035), zo - 1.1]),
+        [0.4, 0.3, 0.4, "#5b6b8a", shelfX, y(4.01), zo - 0.4], [0.5, 0.03, 0.05, "#8f8f8f", shelfX, y(3.875), zo + 0.55], [0.5, 0.03, 0.05, "#8f8f8f", shelfX, y(3.875), zo + 1.0],
+        [0.05, 0.03, 0.45, "#8f8f8f", shelfX - 0.22, y(3.875), zo + 0.775], [0.05, 0.03, 0.45, "#8f8f8f", shelfX + 0.22, y(3.875), zo + 0.775],
+        ...[0, 1, 2, 3].map((k) => [0.3, 0.42, 0.08, ["#e0a03c", "#4f8fc0", "#c0504f", "#6aa86a"][k], shelfX, y(5.35), zo - 1.2 + k * 0.12])]);
+      sign("LOFT NOTES / 1996-1999", "jetpack find - hold Space in the air", L + 0.6, y(7.05), zo, Math.PI / 2, 0.3);
+      prop({ id: "e4-loft", year: 1996, hint: "Fly up to the lit loft and press Space", connection: "context", date: "1996-1999: the era's years; each line inside says what its own date marks",
+        title: "Loft notes: what each date marks", label: "LOFT NOTES / 1996-1999", sourceKeys: ["E4-HC", "E4-NAMES", "E4-BM", "E4-MODEM", "E4-TIMESEC"],
+        at: { x: -28.8, y: y(3.9), z: zo }, reach: 2.4, pick: { w: 1, h: 2.6, d: 3.4, x: shelfX, z: zo },
+        onUse: () => board("Loft notes / what each date marks", ["E4-HC", "E4-NAMES", "E4-BM", "E4-MODEM", "E4-TIMESEC"], [
+          howToPage(["You found the loft: hold Space in the air (Blast off on a touch screen) to climb.", "Page on with the arrows: one dated line for each station below.", "Close this panel, then let go of Space to land."]),
+          { caption: "Dates in this cave", title: "What each date marks", text: [history.HASHCASH[0], history.NAMES[0], history.BMONEY[0], history.MODEM[0], history.TIMESEC[0], overview[2]] },
+          { caption: "About the scenery", title: "Office, shelves and corners", text: [
+            "The office, study shelf, games corner, boxes, this loft and the server niche are original late-1990s-style scenery.",
+            "They model no real product and make no historical claim. The dated stations below carry the history."] }
+        ]) });
+      // Study shelf, left wall: spiral-bound manuals in four rows, a magazine stack, and glow-in-the-dark stars above.
+      const zs = U(34.5), inks = ["#e0a03c", "#4f8fc0", "#c0504f", "#6aa86a", "#d7d0be", "#8a6fc0"], shelf = [];
+      for (let row = 0; row < 4; row++) for (let i = 0; i < 6; i++) shelf.push([0.36, 0.42, 0.12, inks[(i + row * 2) % 6], L + 0.5, y(0.29 + row * 0.55), zs - 0.75 + i * 0.3]);
+      group(L, -30.6, 32, 37, [[0.5, 2.2, 0.06, "#5d4a39", L + 0.5, y(1.1), zs - 1], [0.5, 2.2, 0.06, "#5d4a39", L + 0.5, y(1.1), zs + 1], [0.04, 2.2, 2, "#4a3b2d", L + 0.27, y(1.1), zs],
+        ...[0.05, 0.6, 1.15, 1.7, 2.2].map((h) => [0.5, 0.05, 2, "#6e573f", L + 0.5, y(h), zs]), ...shelf,
+        [0.5, 0.3, 0.4, "#c9c2b0", L + 1.4, y(0.15), zs + 1.6], [0.5, 0.01, 0.4, "#e05a7a", L + 1.4, y(0.305), zs + 1.6],
+        ...[[3.1, -0.6], [3.4, 0.2], [3.0, 0.9], [3.7, -0.1], [3.9, 0.7], [3.3, -1.1], [4.1, -0.5]].map(([h, dz]) => [0.02, 0.08, 0.08, "#c8ff9e", L + 0.03, y(h), zs + dz, 0.8])]);
+      // Games corner, right wall: two folding tables, three beige towers and CRTs on a shared hub whose lamps blink
+      // quietly, folding chairs, a cable coil and a pizza box.
+      const zg = U(26);
+      const corner = [[1.2, 0.05, 3.6, "#8f8a80", R - 1.1, y(0.74), zg - 1.85], [1.2, 0.05, 3.6, "#8f8a80", R - 1.1, y(0.74), zg + 1.85],
+        [0.3, 0.08, 0.7, "#4a4f57", R - 1.05, y(0.81), zg + 1.3], [0.03, 0.015, 2.6, "#9a9a9a", R - 0.8, y(0.775), zg],
+        [0.6, 0.04, 0.06, "#8f8f8f", R - 4, y(0.02), zg - 3.3], [0.6, 0.04, 0.06, "#8f8f8f", R - 4, y(0.02), zg - 3.84], [0.06, 0.04, 0.6, "#8f8f8f", R - 4.27, y(0.02), zg - 3.57], [0.06, 0.04, 0.6, "#8f8f8f", R - 3.73, y(0.02), zg - 3.57],
+        [0.5, 0.05, 0.5, "#e0d6c2", R - 0.8, y(0.795), zg + 3.3]];
+      for (const tz of [-1.85, 1.85]) for (const lx of [-0.5, 0.5]) for (const lz of [-1.7, 1.7]) corner.push([0.05, 0.72, 0.05, "#55606e", R - 1.1 + lx, y(0.36), zg + tz + lz]);
+      for (const dz of [-2.6, 0, 2.6]) corner.push(...crt(R - 0.95, zg + dz, -1), [0.6, 0.9, 0.24, "#d3cab3", R - 1.1, y(0.45), zg + dz + 0.6],
+        [0.5, 0.05, 0.5, "#3d4a5c", R - 2.6, y(0.46), zg + dz], [0.05, 0.5, 0.5, "#3d4a5c", R - 2.85, y(0.72), zg + dz], [0.06, 0.44, 0.06, "#55606e", R - 2.6, y(0.22), zg + dz]);
+      group(36.4, R, 21.5, 30.5, corner);
+      for (let i = 0; i < 8; i++) decor.hub.push(solid(0.02, 0.03, 0.04, "#7dff8a", R - 1.21, y(0.815), zg + 1.02 + i * 0.08, 0.6));
+      // Server niche, right wall, 4.4 m up: stacked rack units with steady lamps. Shipping boxes on the floor below.
+      const zn = U(47), nicheX = R - 0.5;
+      const niche = [[0.08, 2.4, 3, "#1b2433", R - 0.06, y(5.6), zn], [0.9, 0.12, 3, "#4b5d7a", nicheX, y(4.4), zn], [0.9, 0.12, 3, "#4b5d7a", nicheX, y(6.8), zn],
+        [0.9, 2.4, 0.12, "#4b5d7a", nicheX, y(5.6), zn - 1.5], [0.9, 2.4, 0.12, "#4b5d7a", nicheX, y(5.6), zn + 1.5], [0.04, 0.04, 2.8, "#9fd0ff", R - 0.9, y(6.68), zn, 0.9],
+        [0.5, 0.6, 0.8, "#6d7f99", nicheX, y(4.76), zn + 0.8]];
+      for (let k = 0; k < 5; k++) niche.push([0.7, 0.32, 1.2, "#2d3138", nicheX, y(4.62 + k * 0.36), zn - 0.6], [0.02, 0.03, 0.03, k % 2 ? "#ffb347" : "#7dff8a", R - 0.86, y(4.62 + k * 0.36), zn - 0.95, 0.7]);
+      boxes(niche);
+      group(38.6, R, 45, 49, [[1, 0.8, 1, "#b08a5a", R - 1, y(0.4), zn - 0.9], [0.9, 0.7, 0.9, "#a57f50", R - 0.95, y(1.15), zn - 0.8], [0.8, 0.6, 0.8, "#b8925f", R - 2, y(0.3), zn + 0.9],
+        [1.02, 0.02, 0.12, "#d8c9a0", R - 1, y(0.805), zn - 0.9], [0.82, 0.02, 0.1, "#d8c9a0", R - 2, y(0.605), zn + 0.9]]);
     },
-    update() {
+    update(dt, elapsed, state) {
+      // The games corner's hub lamps step twice a second; while a panel or terminal is open, or under Calm, they hold
+      // steady. The modem's second lamp shows the toy link's state (a state, not an animation).
+      if (decor) {
+        const still = !!(state && (state.calm || state.reading)), step = still ? -1 : Math.floor((elapsed || 0) * 2);
+        if (step !== decor.step) {
+          decor.step = step;
+          for (let i = 0; i < decor.hub.length; i++) { const n = decor.hub[i]; if (n && typeof n === "object") n.glow = step < 0 ? 1.2 : (step + i * 3) % 5 === 0 ? 2.2 : 0.8; }
+        }
+        const line = decor.modem[1], up = !!(desktop && desktop.connected);
+        if (line && typeof line === "object" && decor.line !== up) { decor.line = up; line.glow = up ? 2.4 : 1; }
+      }
       if (!work || !work.running) return;
       for (let i = 0; i < PER_FRAME && work.total < TOTAL; i++) {
         const nonce = work.attempts++, h = stampHash(work.boundSeed, nonce);
@@ -308,7 +431,7 @@
         for (const v of synth.voices) { v.osc.stop(); v.osc.disconnect(); v.gain.disconnect(); }
         synth.context.close().catch(() => {}); synth = null;
       }
-      work = desktop = maze = discs = balances = null;
+      work = desktop = maze = discs = balances = decor = null;
     }
   });
 })();
