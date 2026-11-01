@@ -129,8 +129,10 @@
     const clampCamera = (p) => {
       const x = p.x, y = p.y, z = p.z;
       p.x = clamp(p.x, B.x0 - 4, B.x1 + 4); p.z = clamp(p.z, B.z0 - 4, B.z1 + 4);
-      // Below the floor the eye stays in the shaft, pulled in toward the stalk rather than lifted onto the floor.
-      if (p.y < 0.3) {
+      // Below the floor the eye stays in the shaft while what it follows is down there too, pulled in toward the stalk
+      // rather than lifted onto the floor; otherwise (the Ooga up on the floor) it is lifted out.
+      if (p.y < 0.3 && camera.target.y > 0) p.y = 0.3;
+      else if (p.y < 0.3) {
         if (!L.inShaft(p.x, p.z, 0.15)) { p.x = clamp(p.x, S.x0 + 0.15, S.x1 - 0.15); p.z = clamp(p.z, S.z0 + 0.15, S.z1 - 0.15); }
         p.y = Math.max(p.y, -S.depth + 0.3);
       } else p.y = Math.min(p.y, 34);
@@ -322,6 +324,17 @@
     BL.net.setBody(null);
     BL.net.setZone("none");
     const footsteps = BL.footsteps.create();
+    // View assist: the Ooga's outline over the racks, the floor (from above, into the shaft) and the lounge's furniture.
+    const solidAt = (x, y, z) => {
+      if (y < 0) return !L.inShaft(x, z);
+      if (y < RACK.h) for (let i = 0; i < built.racks.length; i++) {
+        const q = built.racks[i].position;
+        if (Math.abs(x - q.x) < RACK.d / 2 && Math.abs(z - q.z) < RACK.w / 2) return true;
+      }
+      if (y < 1.1) for (let i = 0; i < L.solids.length; i++) { const o = L.solids[i]; if (Math.hypot(x - o.x, z - o.z) < o.r - 0.1) return true; }
+      return false;
+    };
+    const assist = BL.viewAssist.create({ overlay: ctx.overlay, solidAt });
 
     // Up and back down: `climbed` once the Ooga has stood on the floor; after that, standing at the shaft's foot a
     // moment takes it home.
@@ -412,7 +425,10 @@
       fx.update(dt, elapsed);
     };
     const drawExtra = () => {};
-    const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
+    const overlay = (dt) => {
+      fx.drawOverlay(dt, drawExtra);
+      assist.update(camera, people && people.player, dt, pilot.closeMix);
+    };
     const onKey = (e) => {
       if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera();
       if (e.key.toLowerCase() === "x" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); return pilot.modeAction("mode-toggle"); }
@@ -430,7 +446,7 @@
     shell.input = input;
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      cloudArchive: { layout: L, built, board, openDay, tv, tvBoard, seats, views, get avatar() { return avatar; }, get climbed() { return climbed; }, exit: handOff }
+      cloudArchive: { layout: L, built, board, openDay, tv, tvBoard, seats, views, assist: assist.state, get avatar() { return avatar; }, get climbed() { return climbed; }, exit: handOff }
     };
 
     const leave = () => {
@@ -444,6 +460,7 @@
       for (const plaque of plaques) { renderer.releaseGeometry(plaque.geometry); plaque.geometry = null; }
       renderer.releaseGeometry(tvGeometry); built.screen.geometry = null;
       footsteps.dispose();
+      assist.dispose();
       if (people) people.dispose();
       fx.dispose();
       pilot.dispose();

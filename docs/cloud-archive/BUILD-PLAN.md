@@ -103,9 +103,10 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
   the north gate and the beanstalk), drawn by the hub once each while the view moves in on the climb
   (`world.archiveViews`). Tapping the TV opens them as a board. Next: a live feed. Under the hub's `keep` policy the
   island stays in memory, so it could be re-rendered every few seconds from the archive.
-- **View assist.** The hub draws a hidden character's silhouette and nearby outlines when scenery covers it (the
-  visibility stack: `object-guides.js`, `sight-guides.js`, `camera-cover.js`). Bring a scene-agnostic form of it to
-  the archive (racks, the shaft) and to Block Frenzy.
+- **View assist (done in the archive).** `view-assist.js` is a scene-agnostic slice of the hub's visibility stack.
+  When the racks, the floor or the lounge furniture hide your Ooga, its outline is drawn in the hub's own rim
+  (`camera-cover.js`). A scene supplies only `solidAt(x, y, z)`. Next: Block Frenzy. Later: the nearby-scenery outlines,
+  which need the object registry.
 
 - Milestone plinths for the days scenes opened (the Arcade, the Factory, the Sphere, ₿IFRÖST, the ghost hunt) as
   hand-written entries checked against the history.
