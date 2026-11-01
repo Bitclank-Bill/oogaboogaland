@@ -1901,7 +1901,9 @@
     const { plan } = chosen;
     hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock") });
     hammock.anchors = [chosen.a.owner, chosen.b.owner];
-    for (const k of [-1, 0, 1]) hammockClaims.push(claim(plan.x + plan.ux * k, plan.z + plan.uz * k, 1));
+    // Three circles along the bed's swing (its `envelope`), each covering a third of its length and its whole width.
+    const { half, across } = plan.envelope, cover = Math.hypot(half / 3, across);
+    for (const k of [-1, 0, 1]) hammockClaims.push(claim(plan.x + plan.ux * k * half * 2 / 3, plan.z + plan.uz * k * half * 2 / 3, cover));
     for (const seat of hammock.seats) hammockClaims.push(claim(seat.walkAt.x, seat.walkAt.z, 0.5));
   };
   // A visitor resting in the hammock gets up first: stood beside it where there is room, else let go where it sits.

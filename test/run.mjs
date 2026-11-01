@@ -5595,7 +5595,6 @@ const hammockChecks = async () => {
   let headroom = Infinity;
   for (let k = 0; k <= 100; k++) { const t = k / 100, z = fit.az + (fit.bz - fit.az) * t; if (onPath(0, z, 0)) headroom = Math.min(headroom, H.ridgeY(fit, t)); }
   const standClear = fit.seats.every((s) => !onPath(s.walkAt.x, s.walkAt.z, 0.3) && Math.hypot(s.walkAt.x - fit.x, s.walkAt.z - fit.z) > 1);
-  const bedClear = !onPath(fit.x, fit.z, 1.25 * Math.abs(fit.uz) + 0.3);
   const short = plan({ x: 0, z: -2 }, { x: 0, z: 2 }), long = plan({ x: 0, z: -6 }, { x: 0, z: 6 });
   const hill = plan(a, b, { surfaceAt: (x, z) => onPath(x, z, 0) ? 0.6 : 0 });
   const crowded = plan(a, b, { clear: (x, z, r) => !onPath(x, z, r) && !(Math.abs(z) > 1.9 && Math.abs(z) < 3.4 && Math.abs(x) < 1.5) });
@@ -5644,10 +5643,45 @@ const hammockChecks = async () => {
   const pruned = gone1.root.rotation.x === 0 && !gone1.hammockRest && kept.hammockRest;
   ham.dispose();
   const disposed = !root.children.length && !added.length && ham.seats.every((s) => !s.sitter) && tipped && pruned && kept.root.rotation.x === 0 && !kept.hammockRest;
-  record("hub hammock: ties high enough to clear the path, hangs the bed and its places to stand off it, refuses spans, low headroom and crowded ground, swings bounded, knows a resting Ooga by place and height, and the lower room id keeps a seat; regression: the bed coming down left other pages' Oogas tipped back",
-    !!fit && headroom >= H.HEADROOM && standClear && bedClear && fit.seats.length === H.SLOTS && !short && !long && !hill && !crowded && sideHeld
+  // The bed as drawn, on the real builders, swung through its whole range: every vertex inside the ridgeline's collision
+  // shell (to a micrometre, for rounding where it touches), the shell off the path, and the places to stand outside it.
+  // Flat ground, trunks eight metres apart.
+  const real = { window: {}, document: { createElement: () => ({ getContext: () => null }) }, performance, console };
+  for (const name of ["math", "scene", "models", "hub-models", "hub-hammock"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), real);
+  const R = real.window.BL, swing = (hammock) => {
+    const p = hammock.plan, ridgeNode = hammock.ridgeNode, shell = ridgeNode.geometry.collisionGeometry, o = ridgeNode.position;
+    const corners = [];
+    for (let i = 0; i < shell.verts.length; i += 3) corners.push([shell.verts[i] + o.x, shell.verts[i + 1] + o.y, shell.verts[i + 2] + o.z]);
+    const mid = [0, 1, 2].map((k) => corners.reduce((sum, c) => sum + c[k], 0) / corners.length);
+    // Each face's plane (Newell's normal), turned to face away from the shell's middle.
+    const planes = shell.faces.map(({ i }) => {
+      const n = [0, 0, 0], q = i.map((k) => corners[k]);
+      q.forEach((a, k) => { const b = q[(k + 1) % q.length]; n[0] += (a[1] - b[1]) * (a[2] + b[2]); n[1] += (a[2] - b[2]) * (a[0] + b[0]); n[2] += (a[0] - b[0]) * (a[1] + b[1]); });
+      const len = Math.hypot(...n), u = n.map((c) => c / len), d = u[0] * q[0][0] + u[1] * q[0][1] + u[2] * q[0][2];
+      return u[0] * mid[0] + u[1] * mid[1] + u[2] * mid[2] > d ? [-u[0], -u[1], -u[2], -d] : [...u, d];
+    });
+    // How far outside the shell a point lies by its farthest face (negative inside); the shell is convex.
+    const outside = (x, y, z) => Math.max(...planes.map(([a, b, c, d]) => a * x + b * y + c * z - d));
+    const bed = hammock.bedNode, verts = bed.geometry.verts, at = [0, 0, 0], world = R.scene.createNode();
+    R.scene.addChild(world, bed);
+    let worst = -Infinity;
+    for (let k = -20; k <= 20; k++) {
+      bed.rotation.x = R.hubHammock.SWAY_MAX * k / 20 * p.side;
+      R.scene.updateWorld(world);
+      for (let i = 0; i < verts.length; i += 3) { R.math.mat4.transformPoint(at, bed.world, verts[i], verts[i + 1], verts[i + 2]); worst = Math.max(worst, outside(at[0], at[1], at[2])); }
+    }
+    const stands = Math.min(...hammock.seats.map((s) => outside(s.walkAt.x, mid[1], s.walkAt.z)));
+    return { worst, corners, stands };
+  };
+  const open8 = R.hubHammock.plan({ a: { x: 0, z: -4, ground: 0 }, b: { x: 0, z: 4, ground: 0 }, clear: () => true, surfaceAt: flat });
+  const swung8 = swing(R.hubHammock.create({ plan: open8, root: R.scene.createNode(), solids: { add: () => {}, remove: () => {} }, ra: 0.15, rb: 0.15, seed: 1 }));
+  const fitR = R.hubHammock.plan({ a: { ...a, ground: 0 }, b: { ...b, ground: 0 }, clear: (x, z, r) => !onPath(x, z, r), surfaceAt: flat });
+  const swungFit = swing(R.hubHammock.create({ plan: fitR, root: R.scene.createNode(), solids: { add: () => {}, remove: () => {} }, ra: 0.15, rb: 0.15, seed: 1 }));
+  const enveloped = swung8.worst <= 1e-6 && swungFit.worst <= 1e-6 && swung8.stands > 0.3 && swungFit.stands > 0.3 && swungFit.corners.every(([x, , z]) => !onPath(x, z, 0));
+  record("hub hammock: ties high enough to clear the path, hangs the bed and its places to stand off it, refuses spans, low headroom and crowded ground, swings bounded, knows a resting Ooga by place and height, and the lower room id keeps a seat; regression: the bed coming down left other pages' Oogas tipped back; regression: the swung bed reached past its collision shell",
+    !!fit && headroom >= H.HEADROOM && standClear && enveloped && fit.seats.length === H.SLOTS && !short && !long && !hill && !crowded && sideHeld
       && peak <= H.SWAY_MAX + 1e-9 && peak > 0.02 && still && rests && higherYields && lowerKeeps && fullStands && gone && signedOut && disposed,
-    JSON.stringify({ fit: !!fit, headroom, standClear, bedClear, short: !!short, long: !!long, hill: !!hill, crowded: !!crowded, sideHeld, peak, still, rests, higherYields, lowerKeeps, fullStands, gone, signedOut, disposed, moves }));
+    JSON.stringify({ fit: !!fit, headroom, standClear, enveloped, worst8: swung8.worst, worstFit: swungFit.worst, stands8: swung8.stands, standsFit: swungFit.stands, short: !!short, long: !!long, hill: !!hill, crowded: !!crowded, sideHeld, peak, still, rests, higherYields, lowerKeeps, fullStands, gone, signedOut, disposed, moves }));
 };
 const weatherStepChecks = async () => {
   const context = { window: { BL: { math: null, models: { cached: (f) => f, noShadow: (g) => g, box: () => ({}), merge: () => ({}), polyline: () => ({}), particleGeometry: () => ({}) }, scene: {} } } };

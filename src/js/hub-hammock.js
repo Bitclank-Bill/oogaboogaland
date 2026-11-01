@@ -23,19 +23,20 @@
   const BED_LEN = 2.5, BED_W = 0.95, END_Y = 0.86, BED_SAG = 0.2, CRADLE = 0.07, TRUNK_CLEAR = 0.6;
   // Seats along the bed from its middle, each SEAT_LIFT over the cloth so the seat is the surface the crew sits on.
   const SEAT_AT = [-0.8, 0, 0.8], SEAT_LIFT = 0.04, SLOTS = SEAT_AT.length;
-  // Where an Ooga stands up: OUT from the ridgeline's line, past the bed's edge, its swing and the widest Ooga.
-  const OUT = 1.25;
+  // Where an Ooga stands up: STAND past the bed's swing (`envelope`'s `across`), room for the widest Ooga.
+  const STAND = 0.6;
   // The swing: the bed's angle about the ridgeline is `amp` sin(OMEGA t), `amp` easing toward REST (or REST_HELD with
   // anyone in it) at DECAY a second and never past SWAY_MAX; a sitter's landing and a shaken palm add KICK.
   const OMEGA = 2.1, REST = 0.012, REST_HELD = 0.035, DECAY = 0.35, KICK = 0.06, SWAY_MAX = 0.11;
-  // The swing's widest reach across the ridgeline at the bed, kept clear of the path with the bed; the shell is
-  // ENVELOPE_LOW to ENVELOPE_HIGH over the ground.
-  const SWAY_REACH = 0.18, ENVELOPE_LOW = 0.3, ENVELOPE_HIGH = 1.05;
-  // The suspension past each end of the bed, out to its drop line, kept clear with it.
-  const END_CLEAR = 0.1, RING_OUT = 0.28, DROP_OUT = 0.32;
+  // The cloth's grid, and the radii of the parts drawn round it: the spreaders (whose knuckles stand SPREADER_KNUCKLE
+  // proud), the edge cords, the cords to each ring, the drop line and the knot where it ties on.
+  const BED_NX = 14, BED_NZ = 4, SPREADER_R = 0.035, SPREADER_KNUCKLE = 1.14, EDGE_R = 0.016, CORD_R = 0.011, DROP_R = 0.022, KNOT_R = 0.05;
+  const CORD_Z = [-BED_W / 2 - 0.06, -BED_W / 4, BED_W / 4, BED_W / 2 + 0.06];
+  // The suspension past each end of the bed: the ring RING_OUT out, the drop line DROP_OUT.
+  const RING_OUT = 0.28, DROP_OUT = 0.32;
   // A resting Ooga as another page sends it: within REST_NEAR of a seat across, its feet REST_LOW to REST_HIGH over
   // the ground. No walker reaches a seat's place across (the bed's shell is in the way), and REST_HIGH stays under the
-  // shell's top, so one standing on the bed or flying over is not resting.
+  // shell's top (the ridgeline), so one standing on the bed or flying over is not resting.
   const REST_NEAR = 0.4, REST_LOW = 0.05, REST_HIGH = 0.9;
   // A sitter leans back LEAN into the cloth.
   const LEAN = -0.16;
@@ -46,6 +47,65 @@
   const ridgeY = (p, t) => p.ay + (p.by - p.ay) * t - Math.sin(Math.PI * t) * RIDGE_SAG;
   // The cloth's height under the pivot at x along the bed and z across it, before any swing.
   const clothY = (p, x, z) => p.endY - Math.sin(Math.PI * (x / BED_LEN + 0.5)) * BED_SAG - Math.cos(Math.PI * z / BED_W) * CRADLE;
+
+  // How far the bed reaches as it swings, in the pivot's frame (x along the ridgeline, y up from it, z across): every
+  // point `bedGeometry` draws through, with the thickness of the part there, turned through +-SWAY_MAX about the
+  // ridgeline. Seen from above it is an octagon: the `body` (the cloth, its edge cords and the spreaders) `half` along
+  // and `across` either side, and past it the `tip` (each ring, drop line and knot, hanging near the middle), the cords
+  // between the two inside the outline; `lo` and `hi` under and over the pivot. The collision shell is this octagon
+  // from `lo` to `hi`, and `plan` keeps the ground under it clear.
+  const envelope = (p) => {
+    const body = { half: 0, across: 0 }, tip = { half: 0, across: 0 }, e = { body, tip, lo: Infinity, hi: -Infinity };
+    const c = Math.cos(SWAY_MAX), s = Math.sin(SWAY_MAX);
+    // A cos a + B sin a over the swing: its ends, and where its slope is zero when that falls inside.
+    const swung = (A, B) => {
+      const out = [A * c - B * s, A * c + B * s], a = A ? Math.atan(B / A) : Infinity;
+      if (Math.abs(a) < SWAY_MAX) out.push(A * Math.cos(a) + B * Math.sin(a));
+      return out;
+    };
+    // Turned by a, a point lies y sin a + z cos a across and y cos a - z sin a high.
+    const at = (part, x, y, z, r) => {
+      part.half = Math.max(part.half, Math.abs(x) + r);
+      for (const v of swung(z, y)) part.across = Math.max(part.across, Math.abs(v) + r);
+      for (const v of swung(y, -z)) { e.lo = Math.min(e.lo, v - r); e.hi = Math.max(e.hi, v + r); }
+    };
+    for (let i = 0; i <= BED_NX; i++) for (let j = 0; j <= BED_NZ; j++) {
+      const x = (i / BED_NX - 0.5) * BED_LEN, z = (j / BED_NZ - 0.5) * BED_W;
+      at(body, x, clothY(p, x, z), z, 0);
+    }
+    for (const z of [-BED_W / 2, BED_W / 2]) for (let i = 0; i <= BED_NX; i += 2) { const x = (i / BED_NX - 0.5) * BED_LEN; at(body, x, clothY(p, x, z) + 0.012, z, EDGE_R); }
+    for (const end of [-1, 1]) {
+      const x = end * BED_LEN / 2, top = ridgeY(p, p.t + end * (BED_LEN / 2 + DROP_OUT) / p.span) - p.y;
+      for (const z of [-1, 1]) at(body, x, p.endY + 0.02, z * (BED_W / 2 + 0.1), SPREADER_R * SPREADER_KNUCKLE);
+      for (const z of CORD_Z) at(body, x, p.endY + 0.03, z, CORD_R);
+      at(tip, x + end * RING_OUT, p.endY + 0.42, 0, DROP_R);
+      at(tip, x + end * DROP_OUT, top - 0.06, 0, KNOT_R);
+      at(tip, x + end * DROP_OUT, top + 0.05, 0, KNOT_R);
+    }
+    // Its bounds, and its corners round from the tip's on +x in the order the shell's faces wind.
+    e.half = tip.half; e.across = body.across;
+    e.outline = [[tip.half, -tip.across], [tip.half, tip.across], [body.half, body.across], [-body.half, body.across],
+      [-tip.half, tip.across], [-tip.half, -tip.across], [-body.half, -body.across], [body.half, -body.across]];
+    // The point of the octagon nearest (along, across), written into `out`: itself inside, else the nearest on the
+    // edges of its quarter, the tip's end, the slant and the body's side.
+    const sx = body.across - tip.across, sz = tip.half - body.half, sl = Math.hypot(sx, sz);
+    const edges = [[tip.half, 0, tip.half, tip.across], [tip.half, tip.across, body.half, body.across], [body.half, body.across, 0, body.across]];
+    e.nearest = (along, side, out) => {
+      const u = Math.abs(along), v = Math.abs(side);
+      out[0] = u; out[1] = v;
+      if (Math.max(u - tip.half, v - body.across, ((u - body.half) * sx + (v - body.across) * sz) / sl) > 0) {
+        let best = Infinity;
+        for (const [ax, az, bx, bz] of edges) {
+          const dx = bx - ax, dz = bz - az, k = Math.max(0, Math.min(1, ((u - ax) * dx + (v - az) * dz) / (dx * dx + dz * dz)));
+          const x = ax + dx * k, z = az + dz * k, d = Math.hypot(u - x, v - z);
+          if (d < best) { best = d; out[0] = x; out[1] = z; }
+        }
+      }
+      out[0] *= Math.sign(along) || 1; out[1] *= Math.sign(side) || 1;
+      return out;
+    };
+    return e;
+  };
 
   // `a` and `b` are the trunks at the tie, { x, z, ground } with the ground at each foot; `clear(x, z, r)` says a
   // spot r across is off the path and unclaimed, `surfaceAt(x, z)` the island's ground. A plan, or null.
@@ -59,12 +119,25 @@
       const t = k / 40, x = a.x + dx * t, z = a.z + dz * t;
       if (!clear(x, z, 0.6) && ridgeY(p, t) - surfaceAt(x, z) < HEADROOM) return null;
     }
-    const half = BED_LEN / 2 + END_CLEAR, across = BED_W / 2 + SWAY_REACH, t0 = (BED_LEN / 2 + TRUNK_CLEAR) / span;
+    const t0 = (BED_LEN / 2 + TRUNK_CLEAR) / span;
+    // The bed hung t of the way along: its pivot, ground, ends and swing.
+    const hang = (t) => {
+      p.t = t;
+      p.x = a.x + dx * t; p.z = a.z + dz * t; p.ground = surfaceAt(p.x, p.z);
+      p.y = ridgeY(p, t);
+      p.endY = p.ground + END_Y - p.y;
+      p.envelope = envelope(p);
+    };
+    // Its whole swing on level ground, clear: a grid no coarser than CLEAR_STEP over the envelope's bounds, each spot
+    // moved to the outline's nearest point and asked CLEAR_R across. Every point of the outline lies within half a
+    // cell's diagonal (under CLEAR_R) of a grid spot, and no nearer to it moved, so the spots cover it all.
+    const CLEAR_STEP = 0.4, CLEAR_R = 0.3, at = [0, 0];
     const fits = (t) => {
-      const cx = a.x + dx * t, cz = a.z + dz * t, ground = surfaceAt(cx, cz);
-      for (let i = -2; i <= 2; i++) for (let j = -1; j <= 1; j++) {
-        const x = cx + ux * half * i / 2 + nx * across * j, z = cz + uz * half * i / 2 + nz * across * j;
-        if (!clear(x, z, 0.3) || Math.abs(surfaceAt(x, z) - ground) > 0.2) return false;
+      hang(t);
+      const { half, across, nearest } = p.envelope, ni = Math.ceil(2 * half / CLEAR_STEP), nj = Math.ceil(2 * across / CLEAR_STEP);
+      for (let i = 0; i <= ni; i++) for (let j = 0; j <= nj; j++) {
+        const [along, side] = nearest(half * (2 * i / ni - 1), across * (2 * j / nj - 1), at), x = p.x + ux * along + nx * side, z = p.z + uz * along + nz * side;
+        if (!clear(x, z, CLEAR_R) || Math.abs(surfaceAt(x, z) - p.ground) > 0.2) return false;
       }
       return true;
     };
@@ -75,16 +148,14 @@
       if (t >= t0 && t <= 1 - t0 && fits(t)) { tc = t; break; }
     }
     if (Number.isNaN(tc)) return null;
-    p.t = tc;
-    p.x = a.x + dx * tc; p.z = a.z + dz * tc; p.ground = surfaceAt(p.x, p.z);
-    p.y = ridgeY(p, tc);
-    p.endY = p.ground + END_Y - p.y;
+    hang(tc);
+    const out = p.envelope.across + STAND;
     // Seats face out to the side whose places to stand are all clear, the side away from the path when both are.
     let side = 0;
     for (const s of [1, -1]) {
       let ok = true;
       for (const at of SEAT_AT) {
-        const x = p.x + ux * at + nx * s * OUT, z = p.z + uz * at + nz * s * OUT;
+        const x = p.x + ux * at + nx * s * out, z = p.z + uz * at + nz * s * out;
         if (!clear(x, z, 0.35) || Math.abs(surfaceAt(x, z) - p.ground) > 0.25) { ok = false; break; }
       }
       if (ok) { side = s; break; }
@@ -94,7 +165,7 @@
     p.yaw = Math.atan2(-uz, ux);
     p.seatRy = Math.atan2(nx * side, nz * side);
     p.seats = SEAT_AT.map((at) => {
-      const wx = p.x + ux * at + nx * side * OUT, wz = p.z + uz * at + nz * side * OUT;
+      const wx = p.x + ux * at + nx * side * out, wz = p.z + uz * at + nz * side * out;
       return { at, y: clothY(p, at, 0) + SEAT_LIFT, walkAt: { x: wx, z: wz }, floor: surfaceAt(wx, wz) };
     });
     return p;
@@ -104,7 +175,7 @@
   // ridgeline): woven cloth cradled between two bamboo spreaders, cords from each spreader's ends to a ring and a drop
   // line from the ring up to where the ridgeline passes, and a cord along each edge.
   const bedGeometry = (p) => {
-    const M = BL.models, J = BL.hubModels, NX = 14, NZ = 4, cloth = M.geometry(), v = cloth.verts, ids = [];
+    const M = BL.models, J = BL.hubModels, NX = BED_NX, NZ = BED_NZ, cloth = M.geometry(), v = cloth.verts, ids = [];
     for (let i = 0; i <= NX; i++) for (let j = 0; j <= NZ; j++) {
       const x = (i / NX - 0.5) * BED_LEN, z = (j / NZ - 0.5) * BED_W;
       v.push(x, clothY(p, x, z), z);
@@ -119,19 +190,19 @@
     const ends = [-1, 1], round = [];
     for (const e of ends) {
       const x = e * BED_LEN / 2, y = p.endY + 0.02;
-      round.push(J.bamboo(x, y, -BED_W / 2 - 0.1, x, y, BED_W / 2 + 0.1, 0.035, "#cdb06a"));
+      round.push(J.bamboo(x, y, -BED_W / 2 - 0.1, x, y, BED_W / 2 + 0.1, SPREADER_R, "#cdb06a"));
     }
     return J.withJungle(M.shaded(round, [cloth]), (g) => {
       for (const e of ends) {
         const x = e * BED_LEN / 2, top = ridgeY(p, p.t + e * (BED_LEN / 2 + DROP_OUT) / p.span) - p.y, ring = [x + e * RING_OUT, p.endY + 0.42, 0];
-        for (const z of [-BED_W / 2 - 0.06, -BED_W / 4, BED_W / 4, BED_W / 2 + 0.06]) J.liana(g, [[x, p.endY + 0.03, z], ring], 0.011, 0.011, ROPE);
-        J.liana(g, [ring, [x + e * DROP_OUT, top - 0.02, 0]], 0.022, 0.018, ROPE);
-        J.liana(g, [[x + e * DROP_OUT, top - 0.06, 0], [x + e * DROP_OUT, top + 0.05, 0]], 0.05, 0.05, CORD);
+        for (const z of CORD_Z) J.liana(g, [[x, p.endY + 0.03, z], ring], CORD_R, CORD_R, ROPE);
+        J.liana(g, [ring, [x + e * DROP_OUT, top - 0.02, 0]], DROP_R, 0.018, ROPE);
+        J.liana(g, [[x + e * DROP_OUT, top - 0.06, 0], [x + e * DROP_OUT, top + 0.05, 0]], KNOT_R, KNOT_R, CORD);
       }
       for (const z of [-BED_W / 2, BED_W / 2]) {
         const edge = [];
         for (let i = 0; i <= NX; i += 2) { const x = (i / NX - 0.5) * BED_LEN; edge.push([x, clothY(p, x, z) + 0.012, z]); }
-        J.liana(g, edge, 0.016, 0.016, CORD);
+        J.liana(g, edge, EDGE_R, EDGE_R, CORD);
       }
     });
   };
@@ -146,13 +217,15 @@
       J.sprig(g, ax, ay + 0.06, az, -p.ux, 0.5, -p.uz, 3, 0.3, rand);
       J.sprig(g, bx, by + 0.06, bz, p.ux, 0.5, p.uz, 3, 0.3, rand);
     });
-    // Its collision is the bed's whole swing, a closed box turned with the ridgeline: walkers go round the bed and
-    // stand clear of it, and the ridgeline itself, overhead, blocks nothing.
-    const half = BED_LEN / 2 + END_CLEAR, across = BED_W / 2 + SWAY_REACH, lo = p.ground + ENVELOPE_LOW - my, hi = p.ground + ENVELOPE_HIGH - my;
+    // Its collision is the bed's whole swing (`envelope`), a closed octagonal prism turned with the ridgeline: walkers
+    // go round the bed and stand clear of it, and the ridgeline itself, overhead between the trunks and the bed,
+    // blocks nothing.
+    const { outline } = p.envelope, n = outline.length, lo = p.y + p.envelope.lo - my, hi = p.y + p.envelope.hi - my;
     const cx = p.x - mx, cz = p.z - mz, shell = M.geometry();
-    for (const y of [lo, hi]) for (const [i, j] of [[-1, -1], [1, -1], [1, 1], [-1, 1]])
-      shell.verts.push(cx + p.ux * half * i + p.nx * across * j, y, cz + p.uz * half * i + p.nz * across * j);
-    for (const f of [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]]) shell.faces.push({ i: f, color: WEAVE_UNDER, emissive: 0 });
+    for (const y of [lo, hi]) for (const [along, side] of outline)
+      shell.verts.push(cx + p.ux * along + p.nx * side, y, cz + p.uz * along + p.nz * side);
+    shell.faces.push({ i: outline.map((_, k) => k), color: WEAVE_UNDER, emissive: 0 }, { i: outline.map((_, k) => 2 * n - 1 - k), color: WEAVE_UNDER, emissive: 0 });
+    for (let k = 0; k < n; k++) shell.faces.push({ i: [k, k + n, (k + 1) % n + n, (k + 1) % n], color: WEAVE_UNDER, emissive: 0 });
     geo.collisionGeometry = shell;
     return { geo, x: mx, y: my, z: mz };
   };
@@ -271,5 +344,5 @@
     return { plan: p, seats, ridgeNode, bedNode, update, kick, restingAt, settle, free, near, poseRemote, dispose, get angle() { return angle; }, get amp() { return amp; } };
   };
 
-  BL.hubHammock = { SLOTS, TIE, HEADROOM, SPAN_MIN, SPAN_MAX, SWAY_MAX, OUT, plan, create, ridgeY };
+  BL.hubHammock = { SLOTS, TIE, HEADROOM, SPAN_MIN, SPAN_MAX, SWAY_MAX, STAND, plan, create, ridgeY };
 })();
