@@ -3020,6 +3020,7 @@
       if (cardFigures.gorilla) cardFigures.gorilla.rig.dispose();
       if (cardRenderer) cardRenderer.dispose();
       hub.setSeal(null);
+      restoreIsland();
       hub.gameMode(false);
       letGo();
       for (const w of walls) {
@@ -3027,7 +3028,6 @@
         const at = hub.closedZones.indexOf(w.zone);
         if (at >= 0) hub.closedZones.splice(at, 1);
       }
-      restoreIsland();
       disarmHunters();
       guide.lend(null);
       audio.dispose();

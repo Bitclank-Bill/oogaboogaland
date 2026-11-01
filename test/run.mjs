@@ -10293,6 +10293,61 @@ const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visit
   })()`);
   record("hub game-only combat: HUB weapons fire, swing, swap magazines and reload without damage; regeneration, knockouts, dropped gear, rage and grabbing stay off, X keeps both look modes, and game exit restores health and releases held Oogas", Object.values(r).every(Boolean), JSON.stringify(r));
 } };
+const hubGorillaPopulation = { name: "gorilla population restoration", why: "regression: non-sleepers consumed rainforest beds and event exit deferred the gorilla population handoff", run: async b => {
+  await untilPage(b, "BL.scenes.hub.debug.halloween?.herald.geometry", 15000);
+  await b.evaluate("BL.scenes.hub.debug.halloween.start()");
+  const loaded = await untilPage(b, "BL.scenes.hub.debug.halloween?.sim", 15000);
+  record("gorilla population: local hunt controller loads", loaded);
+  if (!loaded) return;
+  const r = await b.evaluate(`(() => {
+    const B = __ooga, H = BL.scenes.hub.debug, C = H.clankers, G = H.halloween;
+    B.pilot.release();
+    const entries = C.list, worker = entries[0], chiller = entries[1], away = entries[2];
+    const sleepers = entries.slice(-2);
+    const reset = many => {
+      C.setAway(true); C.update(1 / 30);
+      for (const e of entries) e.owner.override = "away";
+      worker.owner.override = "working"; chiller.owner.override = "chilling";
+      for (const e of many) e.owner.override = "sleeping";
+      B.crew.refreshStates(true);
+      C.setAway(false);
+    };
+    const visible = e => e.active && e.root.visible;
+    const normal = () => visible(worker) && worker.mode === "working" && visible(chiller) && chiller.mode === "chilling"
+      && !visible(away) && sleepers.every(e => visible(e) && e.sleep.slot >= 0)
+      && [worker, chiller, away].every(e => e.sleep.slot < 0);
+    reset(sleepers);
+    const lateSleepers = normal(), firstSlots = sleepers.map(e => e.sleep.slot);
+    C.update(1 / 30);
+    const stable = sleepers.every((e, i) => e.sleep.slot === firstSlots[i]);
+    // More actual sleepers than beds: exactly the authored capacity, no shared
+    // bed, then a newly free bed reaches a waiting sleeper without a reload.
+    const many = entries.slice(3, 25);
+    reset(many);
+    const occupied = many.filter(e => e.sleep.slot >= 0), waiting = many.filter(e => e.sleep.slot < 0);
+    const capped = occupied.length === 20 && new Set(occupied.map(e => e.sleep.slot)).size === 20
+      && waiting.length === 2 && waiting.every(e => !visible(e));
+    const waking = occupied[0], held = occupied.slice(1).map(e => [e, e.sleep.slot]);
+    waking.owner.override = "chilling"; B.crew.refreshStates(true);
+    C.update(1 / 30); C.update(1 / 30);
+    const reused = waking.sleep.slot < 0 && visible(waking) && waiting.some(e => visible(e) && e.sleep.slot >= 0)
+      && held.every(([e, slot]) => e.sleep.slot === slot);
+    reset(sleepers);
+    const rounds = [];
+    for (const exit of ["DAWN", "IDLE"]) {
+      G.start(); G.skip("ACTIVE", 1); G.simulate(1 / 30); C.update(1 / 30);
+      const hidden = [worker, chiller, ...sleepers].every(e => !visible(e) && e.sleep.slot < 0);
+      if (exit === "DAWN") G.end(); else G.skip("IDLE");
+      G.simulate(1 / 30); // No hub/clanker frame: the exit itself must reconcile.
+      rounds.push({ exit, hidden, restored: normal() });
+      G.skip("IDLE"); G.simulate(1 / 30);
+    }
+    return { lateSleepers, stable, capped, reused, rounds,
+      population: [worker, chiller, away, ...sleepers].map(e => ({ state: e.owner.state, mode: e.mode, active: e.active, visible: e.root.visible, bed: e.sleep.slot })) };
+  })()`);
+  record("gorilla population: late-roster sleepers get exclusive beds; working, chilling and away owners get none; overflow waits at the 20-bed cap and reuses released beds", r.lateSleepers && r.stable && r.capped && r.reused, JSON.stringify(r));
+  record("gorilla population: Ghost Hunter hides companions during play and restores current working, chilling and sleeping gorillas immediately on dawn and direct idle exit", r.rounds.length === 2 && r.rounds.every(row => row.hidden && row.restored), JSON.stringify(r));
+} };
 const hubGhostEntry = (melee) => ({ name: `ghost entry ${melee ? "melee" : "shooting"}`, why: "regression: only a HUB rifle shot wakes the herald, and its lobby must release mouse-look until it closes", run: async b => {
   const loaded = await untilPage(b, "BL.scenes.hub.debug.halloween?.herald.geometry", 15000);
   const lazy = await b.evaluate("BL.scenes.hub.debug.halloween?.loaded === false");
@@ -18873,6 +18928,7 @@ scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="
 } }] });
 scene("hub", { label: "weapons", query: "character=portlandhodl&weapon=2&mag=1&ammo=6&jetpack=1&gorillarage=1", steps: [hubCombatGate, ...[hubAk, hubMelee, hubJetpack].map(gameCombat)] });
 for (const melee of [false, true]) scene("hub", { label: `ghost entry ${melee ? "melee" : "shooting"}`, query: "halloween=1&character=portlandhodl&weapon=2&ammo=30", exclusive: true, steps: [hubGhostEntry(melee)] });
+scene("hub", { label: "gorilla population restoration", query: "halloween=1&status=clankin", exclusive: true, steps: [hubGorillaPopulation] });
 scene("hub", { label: "ghost entry touch", opts: PHONE_SIZE, query: "halloween=1&character=portlandhodl&weapon=2&ammo=30", exclusive: true, steps: [hubGhostEntry(false)] });
 // Her greeting comes once a page, to a fresh landing nothing has moved, so the guide has its own page.
 scene("hub", { label: "guide", query: "character=portlandhodl&jetpack=1", steps: [hubGuide, hubAsk] });
