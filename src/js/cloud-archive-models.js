@@ -32,9 +32,13 @@
     const x = side * 1.25, z = LOUNGE_Z;
     return { x, z, ry: Math.atan2(TV.x - x, TV.z - z) };
   });
-  // The island's Oogatron, hung over the aisle between the first two pairs of racks, its screen toward the shaft (`y` is
-  // its middle; `ropes` the local x of the two ropes it hangs from, which run up out of sight).
-  const SIGN = { x: 0, y: 5.2, z: RACK.first - RACK.pitch / 2, scale: 2.2, ropes: 1.0, ropeTop: 18 };
+  // The island's Oogatron, hung two-sided over the aisle, high enough to clear the plaques (`y` is its middle; `ropes`
+  // the local x of the two ropes it hangs from, which run up out of sight; `gap` how far each face's middle sits from
+  // the ropes, in board units). It rests over the aisle's middle (`rest`) but never more than `range` from the walker,
+  // gliding along the aisle (`zMax` its start, `zMin` its last racks) as the aisle grows with the history.
+  const AISLE_END = RACK.first - (rows - 1) * RACK.pitch;
+  const SIGN = { x: 0, y: 5.6, scale: 2.8, ropes: 1.0, ropeTop: 20, gap: 0.25, range: 24,
+    zMax: RACK.first - RACK.pitch / 2, zMin: AISLE_END, rest: (RACK.first + AISLE_END) / 2 };
   const LAYOUT = {
     SHAFT, STALK, LADDER, RACK, rackAt, TV, CHAIRS: CHAIR_AT, SIGN, shelve,
     arrival: { x: 0, z: 7.0 },
@@ -164,14 +168,15 @@
     // The screen's picture is the interior's (`plaque` over a canvas), just proud of the bezel.
     const screen = createNode({ position: { x: TV.x - 0.05, y: TV.table + TV.h / 2, z: TV.z + TV.d / 2 + 0.02 } });
     addChild(root, tv); addChild(root, screen);
-    const ropes = createNode({ geometry: signRopes(), position: { x: SIGN.x, y: SIGN.y, z: SIGN.z } });
+    const ropes = createNode({ geometry: signRopes(), position: { x: SIGN.x, y: SIGN.y, z: SIGN.rest } });
     addChild(root, ropes);
     return { root, stalk: stalkNode, racks: rackNodes, chairs, tv, screen, ropes };
   };
-  // The sign's two ropes, from inside its cap plank up out of sight, in world units round the sign's middle.
+  // The sign's two ropes, from inside its cap plank up out of sight, in world units round the sign's middle; the
+  // interior moves them with it.
   const signRopes = own(() => {
     const G = SIGN, from = 0.7 * G.scale, h = G.ropeTop - G.y - from;
-    return merge(...[-1, 1].map((side) => box({ w: 0.07, h, d: 0.07, color: "#6b5233", offset: { x: side * G.ropes * G.scale, y: from + h / 2, z: -0.05 * G.scale } })));
+    return merge(...[-1, 1].map((side) => box({ w: 0.07, h, d: 0.07, color: "#6b5233", offset: { x: side * G.ropes * G.scale, y: from + h / 2, z: 0 } })));
   });
   const geometries = () => [floor(), stalk(), ...racks(), chair(), tvSet(), signRopes()];
   BL.cloudArchiveModels = { LAYOUT, build, plaque, geometries, personColor };

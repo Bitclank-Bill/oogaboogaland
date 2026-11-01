@@ -558,7 +558,7 @@
     let dirty = true;
     // All canvases use one minute-aligned age sample, even when painted at different times or paused on RECENT.
     let recentNow = Math.floor(Date.now() / 60000) * 60000;
-    // World->local for board taps, cached: the cabinet never moves once placed.
+    // World->local for board taps, cached until `moved()` (a board hung over the Cloud Archive's aisle glides).
     const tapInverse = new Float32Array(16);
     let tapInverseValid = false;
     const TAP_P = [0, 0, 0], TAP_D = [0, 0, 0];
@@ -922,6 +922,8 @@
         api.nextView();
         return "next";
       },
+      // The caller moved the cabinet: taps re-read its world matrix.
+      moved() { tapInverseValid = false; },
       autoRotate(seconds) {
         rotateEvery = seconds > 0 ? seconds : 0;
       },

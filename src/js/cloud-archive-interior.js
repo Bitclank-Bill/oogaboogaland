@@ -5,8 +5,10 @@
 // on a rack or its plaque opens that day's board: its commits, PR-head matches and their authors as git recorded
 // them, with links out to GitHub; the arrows page through the days. At the far end, two armchairs (Space or SIT) face
 // a small TV showing the pictures the island took on the way up.
-// Over the aisle hangs the island's own Oogatron (jumbotron.js), live as the hub's: a tap on its screen, or Space
-// (READ) looking down the aisle at it, opens the same close-up; its sides page it.
+// Over the aisle hangs the island's own Oogatron (jumbotron.js), live as the hub's and two-sided, gliding along the
+// aisle to stay near the walker: a tap on its screen, or Space (READ) looking along the aisle at it, opens the same
+// close-up; its sides page it. On a page's first climb the floor is bare but for the sign and the lounge: Space (LOAD)
+// rolls the racks in out of the white down both sides, to a synthesized cue (cloud-archive-audio.js).
 //
 // The way home is always deliberate: climbing all the way down the stalk, Space (ISLAND) at its foot once the Ooga has
 // been up, Leave, or Escape. Falling into the shaft only leaves the Ooga at its foot, where it can climb back up. Any
@@ -41,6 +43,9 @@
   const READ_REACH = 1.4, READ_FACING = 0.45, FOOT_REACH = 1.8;
   // The hanging Oogatron is offered to Space from the aisle in front of it, within SIGN_REACH, looking down the aisle.
   const SIGN_REACH = 9, SIGN_FACING = 0.8;
+  // LOAD: the racks wait out in the white past the lounge, TRAIN_RUN behind their places, and roll in down both sides
+  // over TRAIN_SECONDS, braking to a stop, the right-hand line TRAIN_STAGGER behind the left.
+  const TRAIN_SECONDS = 3.6, TRAIN_STAGGER = 0.3, TRAIN_RUN = 80;
   const ARRIVAL_PITCH = -0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
   // Authors are identities (GitHub accounts and unlinked contributors); automation, agents and
   // organisations are counted apart and never as people.
@@ -147,9 +152,11 @@
 
     // Walking: inside the shaft while down it, else the floor within the bounds and clear of the racks.
     const B = L.bounds;
+    // Walkers keep out of the racks' home places (`L.rackAt`), not where a loading rack is passing, so a rack rolling in
+    // can never trap anyone.
     const clearOfRacks = (x, z, r) => {
       for (let i = 0; i < built.racks.length; i++) {
-        const p = built.racks[i].position;
+        const p = L.rackAt(i);
         if (Math.abs(x - p.x) < RACK.d / 2 + r && Math.abs(z - p.z) < RACK.w / 2 + r) return false;
       }
       return true;
@@ -288,10 +295,56 @@
     // The island's Oogatron, hung over the aisle: the hub's own board (jumbotron.js), from the baked stats and then the
     // live poller's latest reading as the hub's is. Its rails page it where it hangs; its screen, or Space in front of
     // it, opens the same close-up as the island's.
-    const SG = L.SIGN, SIGN_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
-    const sign = BL.models.withScope("cloudarchive", () => BL.jumbotron.create({ data: BL.jumbotronData, position: { x: SG.x, y: SG.y, z: SG.z }, scale: SG.scale, stand: false }));
-    addChild(root, sign.node);
-    target(sign.node, { kind: "sign", pickRay: (ray) => sign.pickRay(ray) }, 1.6);
+    // Two-sided: a second board back to back with the first, on the same page as it (the front one rotates; a tap on
+    // the back's rails pages the front). It glides along the aisle with the walker (`placeSign`; LAYOUT.SIGN says how).
+    // The racks' load-in. Once a page has loaded the archive (`world.archiveLoaded`), later visits find them in place.
+    const homes = built.racks.map((r) => r.position.z);
+    const train = { loaded: !!world.archiveLoaded, t: -1, span: 0 };
+    train.span = TRAIN_RUN + Math.max(0, homes[0] - homes[homes.length - 1]);
+    const parkRacks = (left, right) => {
+      for (let i = 0; i < built.racks.length; i++) built.racks[i].position.z = homes[i] - train.span * (i % 2 ? right : left);
+    };
+    if (!train.loaded) parkRacks(1, 1);
+    const archiveAudio = BL.cloudArchiveAudio.create();
+    const load = () => {
+      if (train.loaded) return false;
+      train.loaded = world.archiveLoaded = true;
+      archiveAudio.play(REDUCED.matches ? 0.4 : TRAIN_SECONDS + TRAIN_STAGGER);
+      if (REDUCED.matches) parkRacks(0, 0);
+      else train.t = 0;
+      hint("floor");
+      return true;
+    };
+    const updateTrain = (dt) => {
+      if (train.t < 0) return;
+      train.t += dt;
+      const left = Math.min(1, train.t / TRAIN_SECONDS), right = clamp((train.t - TRAIN_STAGGER) / TRAIN_SECONDS, 0, 1);
+      parkRacks((1 - left) ** 3, (1 - right) ** 3);
+      if (right >= 1) train.t = -1;
+    };
+
+    const SG = L.SIGN, SIGN_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 }, SIGN_HALF = SG.gap * SG.scale;
+    const hang = (ry) => BL.models.withScope("cloudarchive", () => BL.jumbotron.create({ data: BL.jumbotronData, position: { x: SG.x, y: SG.y, z: SG.rest }, ry, scale: SG.scale, stand: false }));
+    const sign = hang(0), signBack = hang(Math.PI);
+    signBack.autoRotate(0);
+    addChild(root, sign.node); addChild(root, signBack.node);
+    target(sign.node, { kind: "sign", back: false, pickRay: (ray) => sign.pickRay(ray) }, 1.6);
+    target(signBack.node, { kind: "sign", back: true, pickRay: (ray) => signBack.pickRay(ray) }, 1.6);
+    let signZ = NaN;
+    const placeSign = (z) => {
+      if (z === signZ) return;
+      signZ = z;
+      sign.node.position.z = z + SIGN_HALF; signBack.node.position.z = z - SIGN_HALF; built.ropes.position.z = z;
+      sign.moved(); signBack.moved();
+    };
+    // Rests over the aisle's middle, never more than SG.range from the walker, within the aisle.
+    const signGoal = (z) => clamp(clamp(SG.rest, z - SG.range, z + SG.range), SG.zMin, SG.zMax);
+    const SIGN_GLIDE = 1.5;
+    const updateSign = (dt) => {
+      const z = avatar ? avatar.root.position.z : camera.target.z, goal = signGoal(z);
+      placeSign(REDUCED.matches || Number.isNaN(signZ) ? goal : Math.abs(goal - signZ) < 0.001 ? goal : signZ + (goal - signZ) * Math.min(1, dt * SIGN_GLIDE));
+      if (signBack.index !== sign.index) signBack.goToView(sign.index);
+    };
     const signBoard = {
       title: "Oogatron", help: "OogaBoogaX on the big screen. Arrow keys flip the boards.", note: "", floating: true,
       get canvas() { return sign.canvas; }, get count() { return sign.count; }, get index() { return sign.index; },
@@ -301,7 +354,7 @@
       go: (i) => sign.goToView(i)
     };
     const openSign = () => hud.openBoard(signBoard);
-    const signUnsub = BL.oogatronLive.subscribe((event) => { if (event.type === "stats") sign.refreshData(event.stats); });
+    const signUnsub = BL.oogatronLive.subscribe((event) => { if (event.type === "stats") { sign.refreshData(event.stats); signBack.refreshData(event.stats); } });
 
     // The board: one page a day, painted when shown.
     const boardCanvas = document.createElement("canvas");
@@ -373,6 +426,7 @@
         return near;
       }
       if (Math.abs(feet) > 0.1) return near;
+      if (!train.loaded) { near.kind = "load"; near.distance = 0; return near; }
       const chairReach = 0.5 + avatar.bodyRadius + SIT_REACH;
       for (const s of seats) {
         const dx = s.x - p.x, dz = s.z - p.z, d = Math.hypot(dx, dz);
@@ -383,8 +437,8 @@
         if (ahead < 0 || ahead > READ_REACH + avatar.bodyRadius || Math.abs(p.z - q.z) > RACK.w / 2 || ahead >= near.distance) continue;
         if (facing(-side, 0) > READ_FACING) { near.kind = "shelf"; near.index = i; near.seat = null; near.distance = ahead; }
       }
-      const toSign = p.z - SG.z;
-      if (!near.kind && toSign > 1 && toSign < SIGN_REACH && Math.abs(p.x - SG.x) < RACK.aisle - RACK.d && facing(0, -1) > SIGN_FACING) { near.kind = "sign"; near.distance = toSign; }
+      const toSign = p.z - signZ, ahead = Math.abs(toSign);
+      if (!near.kind && ahead > 1 && ahead < SIGN_REACH && Math.abs(p.x - SG.x) < RACK.aisle - RACK.d && facing(0, toSign > 0 ? -1 : 1) > SIGN_FACING) { near.kind = "sign"; near.distance = ahead; }
       return near;
     };
     // Into the chair, the view turned to the TV.
@@ -410,6 +464,7 @@
       if (n.kind === "chair") return sit(n.seat);
       if (n.kind === "shelf") { openDay(n.index); return true; }
       if (n.kind === "sign") { openSign(); return true; }
+      if (n.kind === "load") return load();
       if (n.kind === "island") { handOff(); return true; }
       return false;
     };
@@ -447,7 +502,7 @@
 
     // Home: the same Ooga to the island, beside the beanstalk, which stands from now on (a page that opened here has
     // not grown it, and arrives there all the same).
-    let hintStage = null, actKind = null, actIndex = -1, wasOnLadder = false;
+    let hintStage = null, actKind = null, actIndex = -1, wasOnLadder = false, wasHeld = true;
     const handOff = () => {
       if (leaving) return;
       world.pilot = avatar ? avatar.traits.name : null;
@@ -481,8 +536,13 @@
         const o = hit.owner;
         if (o.kind === "rack") openDay(o.index);
         else if (o.kind === "sign") {
-          if (p) { renderer.ray(p.x, p.y, camera, SIGN_RAY); if (sign.tapAt(SIGN_RAY) === "screen") openSign(); }
-          else openSign();
+          const face = o.back ? signBack : sign;
+          if (!p) openSign();
+          else {
+            renderer.ray(p.x, p.y, camera, SIGN_RAY);
+            if (face.tapAt(SIGN_RAY) === "screen") openSign();
+            else if (o.back) sign.goToView(signBack.index);
+          }
         }
         else if (o.kind === "tv") openTv();
         else if (o.kind === "chair") {
@@ -497,6 +557,7 @@
       if (action === "leave") handOff();
       else if (action === "reset-view") pilot.resetCamera();
       else if (action === "jetpack-toggle") hud.toast("No jetpacks in the archive");
+      else if ((action === "act" || action === "mode-retake") && !pilot.player && avatar) retake();
       else if (action.startsWith("mode-")) pilot.modeAction(action);
     });
     const mode = document.getElementById("archive-mode");
@@ -518,6 +579,7 @@
       if (kind === "sit" || kind === "chair") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
       else if (kind === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
       else if (kind === "shelf") { hud.setAct("READ"); hud.hint(COARSE ? `Tap READ for ${DATA.days[index].date}` : `Space · Read ${DATA.days[index].date}`); }
+      else if (kind === "load") { hud.setAct("LOAD"); hud.hint(COARSE ? "Tap LOAD to bring in the archive" : "Space · Load the archive", 9000); }
       else if (kind === "sign") { hud.setAct("READ"); hud.hint(COARSE ? "Tap READ for the Oogatron" : "Space · Read the Oogatron"); }
       else if (kind === "island") { hud.setAct("ISLAND"); hud.hint(COARSE ? "Tap ISLAND to go home down the beanstalk" : "Space · Home to the island"); }
       else pilot.showAct();
@@ -533,16 +595,23 @@
         const feet = avatar.root.position.y - avatar.baseY, onLadder = !!(avatar.ladder && avatar.ladder.plane), bottom = feet < -S.depth + 0.05;
         // On the stalk a first-person eye is pressed to the shaft's wall: step back to the trailing view for the climb.
         if (onLadder && pilot.mode === "first-person") pilot.exitClose(false);
-        if (!climbed && feet > -0.05 && !onLadder) { climbed = true; hint("floor"); }
+        if (!climbed && feet > -0.05 && !onLadder) { climbed = true; if (train.loaded) hint("floor"); }
         // Climbed all the way down the stalk (off it at the foot, having been up): home. Dropping in is not climbing down.
         if (climbed && wasOnLadder && !onLadder && bottom) handOff();
         else if (climbed && bottom && !onLadder && !wasOnLadder) hint("fell");
         else if (climbed && !bottom && hintStage === "fell") hint("floor");
         wasOnLadder = onLadder;
       }
+      // Let go: say how to take the Ooga back, once each time.
+      const held = !!pilot.player;
+      if (avatar && !leaving && wasHeld && !held) hud.hint(COARSE ? `${avatar.traits.display} is waiting · tap its portrait or the act button to take it back` : `${avatar.traits.display} is waiting · W A S D, Space or its portrait takes it back · Escape again leaves`, 8000);
+      wasHeld = held;
       showNear();
       updateTv(dt);
+      updateTrain(dt);
+      updateSign(dt);
       sign.update(elapsed, renderer);
+      signBack.update(elapsed, renderer);
       hud.updateBoard(elapsed);
       stepTweens(dt);
       fx.update(dt, elapsed);
@@ -554,7 +623,17 @@
       if (cave) assist.update(camera, cave.root, p.x, p.y - cave.baseY, p.z, cave.bodyHeight || cave.traits.height, dt, pilot.closeMix);
       else assist.update(camera, null, 0, 0, 0, 0, dt);
     };
+    // A let-go Ooga (Escape, or the mode button) waits where it is; walking keys, Space, the act button or its portrait
+    // take it straight back, so the visit can never be left without control.
+    const RETAKE_KEYS = new Set(["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", " "]);
+    const retake = () => {
+      if (leaving || !avatar || pilot.player) return false;
+      if (!pilot.possess(avatar)) return false;
+      hud.hideHint();
+      return true;
+    };
     const onKey = (e) => {
+      if (!pilot.player && !e.metaKey && !e.ctrlKey && !e.altKey && RETAKE_KEYS.has(e.key.toLowerCase())) { if (retake()) return true; }
       if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera();
       if (e.key.toLowerCase() === "x" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); return pilot.modeAction("mode-toggle"); }
       if (e.key === "Escape") { if (!pilot.escape()) handOff(); return true; }
@@ -572,7 +651,7 @@
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
       cloudArchive: {
-        layout: L, built, board, openDay, openTv, tv, tvBoard, sign, signBoard, openSign, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
+        layout: L, built, board, openDay, openTv, tv, tvBoard, sign, signBack, signBoard, openSign, get signZ() { return signZ; }, signGoal, train, load, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
         get avatar() { return avatar; }, get climbed() { return climbed; }, get dayIndex() { return dayIndex; }, get leaving() { return !!leaving; }, exit: handOff
       }
     };
@@ -588,7 +667,9 @@
       for (const plaque of plaques) { renderer.releaseGeometry(plaque.geometry); plaque.geometry = null; }
       renderer.releaseGeometry(tvGeometry); built.screen.geometry = null;
       signUnsub();
+      archiveAudio.dispose();
       sign.dispose(renderer);
+      signBack.dispose(renderer);
       footsteps.dispose();
       assist.dispose();
       if (people) people.dispose();
