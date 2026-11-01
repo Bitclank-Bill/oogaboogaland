@@ -320,7 +320,6 @@
       <nav class="presets" aria-label="Genesis Voyage" data-scene="genesis" hidden>
         <button type="button" data-action="genesis-cc" id="genesis-cc" aria-pressed="true" title="Captions · C">Captions</button>
         <button type="button" data-action="genesis-voice" id="genesis-voice" aria-pressed="false" title="Read captions aloud · T">Voice</button>
-        <button type="button" data-action="genesis-view" id="genesis-view" aria-pressed="false" title="Fixed view · V">Fixed view</button>
         <button type="button" data-action="genesis-calm" id="genesis-calm" aria-pressed="false" title="Reduced motion · R">Calm</button>
         <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
       </nav>
@@ -847,26 +846,57 @@
       <div class="genesis-bar">
         <p class="genesis-caption" id="genesis-caption" aria-live="polite"></p>
         <div class="genesis-controls">
-          <button type="button" data-action="genesis-sail" id="genesis-sail" aria-pressed="false" title="Tour or drive · Enter">Tour</button>
+          <button type="button" data-action="genesis-menu" id="genesis-menu-open" title="The museum's timeline · G">Timeline</button>
           <button type="button" data-action="genesis-pause" id="genesis-pause" aria-pressed="false" title="Pause · P">Pause</button>
-          <button type="button" data-action="genesis-boost" id="genesis-boost" aria-pressed="false" title="Faster · hold Shift">Boost</button>
-          <button type="button" data-action="genesis-skip" id="genesis-skip" title="Skip a Tour stop · N">Skip</button>
           <button type="button" data-action="genesis-info" id="genesis-info" title="Info · I">Info</button>
-          <button type="button" data-action="genesis-jump" id="genesis-jump" aria-pressed="false" title="Jump out or board · Space or J">Jump out</button>
         </div>
         <p class="genesis-help" id="genesis-help"></p>
       </div>
-      <dialog class="modal genesis-terminal" id="genesis-terminal" aria-labelledby="genesis-terminal-title">
-        <div class="panel-head">
-          <h2><span data-sign id="genesis-terminal-title">Terminal</span></h2>
-          <button type="button" class="modal-close" data-terminal-close aria-label="Close">&times;</button>
+      <section class="genesis-bench" id="genesis-bench" role="dialog" aria-modal="true" aria-labelledby="genesis-bench-title" hidden>
+        <header class="bench-head">
+          <div class="bench-titles">
+            <p class="bench-kicker" id="genesis-bench-kicker"></p>
+            <h2 id="genesis-bench-title">Exhibit</h2>
+          </div>
+          <nav class="bench-nav" aria-label="Exhibits in date order">
+            <button type="button" data-bench="prev" id="genesis-bench-prev" aria-label="Previous invention">&#9664; Previous</button>
+            <span class="bench-pos" id="genesis-bench-pos" aria-live="polite"></span>
+            <button type="button" data-bench="next" id="genesis-bench-next" aria-label="Next invention">Next &#9654;</button>
+            <button type="button" data-bench="go" id="genesis-bench-go" title="Walk your Ooga there">Take me there</button>
+            <button type="button" data-bench="close" class="bench-close" aria-label="Close and return">Close &times;</button>
+          </nav>
+        </header>
+        <div class="bench-body">
+          <div class="bench-left">
+            <div class="bench-stage" id="genesis-bench-stage" aria-label="The live demonstration: the exhibit's own model"><span class="bench-live">LIVE</span></div>
+            <div class="bench-controls">
+              <form class="bench-form" id="genesis-bench-form" autocomplete="off">
+                <label for="genesis-bench-input" id="genesis-bench-prompt">&gt;</label>
+                <input id="genesis-bench-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64" aria-describedby="genesis-bench-output">
+                <button type="submit" class="bench-run">Run</button>
+                <button type="button" data-bench="reset">Reset</button>
+              </form>
+              <div class="bench-actions" id="genesis-bench-actions" aria-label="Commands"></div>
+              <pre class="bench-output" id="genesis-bench-output" aria-live="polite"></pre>
+              <p class="bench-panel-note" id="genesis-bench-panel-note" hidden>This exhibit is a panel: read it on the right. Its model is live above.</p>
+            </div>
+          </div>
+          <aside class="bench-info" id="genesis-bench-info" aria-label="About this invention"></aside>
         </div>
-        <pre class="genesis-screen" id="genesis-terminal-screen" aria-live="polite"></pre>
-        <form class="genesis-prompt" id="genesis-terminal-form">
-          <label for="genesis-terminal-input" id="genesis-terminal-prompt">C:\&gt;</label>
-          <input id="genesis-terminal-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60">
-        </form>
-        <p class="help">Enter runs the line · Escape closes</p>
+      </section>
+      <dialog class="modal genesis-menu" id="genesis-menu" aria-labelledby="genesis-menu-title">
+        <div class="panel-head">
+          <h2><span data-sign id="genesis-menu-title">The museum timeline</span></h2>
+          <button type="button" class="modal-close" data-menu-close aria-label="Close">&times;</button>
+        </div>
+        <p class="menu-key"><span class="key-cited">● Whitepaper citation</span> <span class="key-influence">○ Documented influence</span> <span class="key-context">● Context</span> <span class="key-note">Dates are a time line, not influence: only gold marks a documented link.</span></p>
+        <div class="menu-filters" role="group" aria-label="Show">
+          <button type="button" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-filter="trail" aria-pressed="false">Steps toward Bitcoin</button>
+          <button type="button" data-filter="context" aria-pressed="false">Context</button>
+        </div>
+        <div class="menu-list" id="genesis-menu-list"></div>
+        <p class="help">Choose an invention to open its workbench · Escape closes</p>
       </dialog>
     </div>
     <div class="race" id="drop" data-scene="drop" hidden>
@@ -2005,6 +2035,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/genesis-world.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-boat.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-exhibits.js" data-defer="genesis-scene"></script>
+  <script src="js/genesis-bench.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-era-0.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-era-1.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-era-2.js" data-defer="genesis-scene"></script>
