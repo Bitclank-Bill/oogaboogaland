@@ -1,401 +1,287 @@
 # Era 3 exhibits: Cypherpunks and Timestamps (1990–1995)
 
-Branch `gv/era-3-exhibits`. Owner files: `src/js/genesis-era-3.js` and this document. Everything else here (the scene,
-the page, the test runner) belongs to the integrator, so this document carries the integration patch and the test
-addition instead of edits to those files.
+Branch `gv/era-3-exhibits`. The era builder owns `src/js/genesis-era-3.js` and this file. Everything shared belongs to
+the Genesis integrator: `scene-genesis.js`, `genesis-exhibits.js`, the page, the styles and `test/run.mjs`. Era 3 now
+plugs in through the shared exhibit kit (`docs/genesis-voyage/EXHIBIT-CONTRACT.md` on `gv/exhibits`):
 
-## Base, and what still needs the integrator
+```js
+BL.genesisExhibits.register(3, { sources, overview, build(kit), update, dispose })
+```
 
-- No Genesis integrator session was reachable when this was built, so the "latest cave implementation" could not be
-  confirmed with them. This branch is based on **`gv/water-boat` at `a95536b`** ("the boat shows from the start; Space
-  jumps out and back in"), the newest commit with the one-cave-per-era stream (`b2a90c9`). `feature/genesis-voyage`
-  (`12f7c4f`) does not have the caves yet. **Integrator: confirm this base, or tell me the right one and I'll rebase.**
-- Content comes from the Era 3 dossier on `gv/research` (`4b0d1b8`,
-  `docs/genesis-voyage/eras/era-3-cypherpunks-and-timestamps.md`). Only entries marked READY are stated as facts.
-- The office PC (genesis-props.js's `pc` prop) **stays where it is.** `mount` extends it: a modem and a floppy on its
-  table, a second sign, and a prompt that keeps OOGA-DOS's DIR, TYPE, HASH and CLS exactly and adds NOTES, DIR A:,
-  TYPE A:, DIAL, READ, POST, HANGUP, RESET, MORE and SOURCES. That is done by replacing the registered prop's `onUse`
-  inside `mount`. If the integrator would rather move the PC into the exhibit row, or switch `onUse` in
-  `registerProps` instead, `BL.genesisEra3.createDesktop().terminal` is the same terminal.
+The earlier `mount(host)` module and its manual scene and page patch are gone. The kit's loader, `src/index.html`'s
+script tag and the shared signage already build this cave. The requested hooks below are small, optional, and the
+cave works without them.
+
+## What changed in the adaptation
+
+**Removed:**
+- The bank-level "1990–1995" sign and the overview lectern. The shared years sign, pylons and overview board do this
+  job, and this module now supplies only `overview.summary` and three pages.
+- The extension of the office PC. The module no longer replaces the shared `pc` prop's `onUse`; hook request 1
+  below is the smallest way to give that prompt the floppy and BBS commands.
+- Its own point lights, the boulder clear zone and the integration patch for `scene-genesis.js` and `index.html`.
+
+**Kept or adapted:**
+- **Fingerprints and Time is untouched**, including its desk, lectern, book and PC. Its lectern's two trail stops, [3]
+  and [4], stay the only Era 3 stops, and no exhibit here duplicates them.
+- **The press** still re-links Tock's own pages with the desk's own fingerprint and rule (`G.chain`). No second stamp
+  system was added.
+- **The padlock post, the pager and Tick-Tock Rally** are kept.
+- **The dial-up corner** is new: its own terminal, holding the BBS and floppy that used to ride on the PC.
 
 ## The exhibits
 
-All of them stand on Era 3's left bank, around Fingerprints and Time, which is not changed: no second stamp system.
-The newspaper re-links the desk's own pages with the desk's own fingerprint and rule, and its DESK command makes the
-desk's own change, so the two always agree (the proof checks this against `G.chain`).
+All five stand on Era 3's left bank, west of Fingerprints and Time. Each is a **terminal**, the kit's `{ terminal }`
+result: typing stays in the prompt's field, and the scene holds the walk while a prompt is open. Each prompt shows its
+dated label, the date's meaning and a short explanation when it opens. MORE gives the deeper story, SOURCES the links,
+and RESET (CLEAR on the pager) starts that exhibit again.
 
-| Exhibit | Sign (dated label) | What the date marks | Sources | Reset |
-|---|---|---|---|---|
-| Bank sign | **1990–1995** / Cypherpunks and Timestamps (bank level, 10.6 m wide, faces the way in) | the cave's years | — | — |
-| Overview lectern | 1990–1995 · CYPHERPUNKS AND TIMESTAMPS | the cave's years; each exhibit dates its own | E3-HS, E3-BHS, E3-BHS-PUB, E3-WP, E3-DN, E3-PGP, E3-HUGHES | R: back to the start |
-| The Daily Ooga press (newspaper) | THE DAILY OOGA PRESS · 1991 | 1991 journal publication (received 19 Aug 1990, revised 26 Oct 1990); March 1992 manuscript and 1993 book for the tree paper | E3-HS, E3-BHS, E3-BHS-PUB, E3-WP, E3-ORIGINAL | RESET (and UNDO n) |
-| Padlock post (keys) | PADLOCK POST · 1991 | 1991, when PGP's author says he published it (essay June 1991, updated 1999) | E3-PGP, E3-WP, E3-ORIGINAL | RESET |
-| Office PC and BBS | OFFICE PC · 1993 (existing sign) + NOTES · DIR A: · DIAL | an early-1990s office PC; Intel dates the 486 DX family to 10 April 1989 | E3-CPU, E3-GEAR, E3-ORIGINAL | RESET (hangs up, clears posts) |
-| Pocket pager | POCKET PAGER · 1990–1995 | period-style; no model or date claimed | E3-GEAR, E3-ORIGINAL | Reset page, or R |
-| Tick-Tock Rally (cabinet) | TICK-TOCK RALLY · 1990–1995 | period style; the game is original | E3-ORIGINAL, E3-GEAR | Reset page, or R |
+| Prop id | Sign (dated label) | `date` (what it marks) | `connection` | Sources | Dossier entry |
+|---|---|---|---|---|---|
+| `e3-press` | THE DAILY OOGA PRESS · 1991 | 1991 journal publication of Haber and Stornetta (received 19 Aug 1990); March 1992 manuscript and 1993 chapter of Bayer, Haber and Stornetta | none: it **demonstrates** the room's two trail stops (`demonstrates: ["era3-room-haber1991", "era3-room-bayer1993"]`). See request 4 | E3-HS, E3-BHS, E3-BHS-PUB, whitepaper, E3-ORIGINAL | Timestamp a page; One tree, many pages (READY) |
+| `e3-padlock` | PADLOCK POST · 1991 | 1991, when PGP's author says he published it (essay June 1991, updated 1999); the padlock is a teaching model | context | E3-PGP, whitepaper, E3-ORIGINAL | Private messages on ordinary computers (READY, context) |
+| `e3-bbs` | DIAL-UP CORNER · 1990–1995 | period style; no model, date or specification claimed | context | E3-GEAR, E3-ORIGINAL | Period gear: BBS and floppy deferred, so no specifications are given |
+| `e3-pager` | POCKET PAGER · 1990–1995 | period style; no model, date or specification claimed | context | E3-GEAR, E3-ORIGINAL | Period gear: pager deferred, so no specifications are given |
+| `e3-rally` | TICK-TOCK RALLY · 1990–1995 | period style; the game is original to the voyage | context | E3-ORIGINAL, E3-GEAR | An original mini-game (the dossier's Easter eggs) |
 
-Each exhibit's words (`EXHIBITS` in the module) have: `label`, `dated`, `kid` (the short explanation, 70 words at
-most), `deeper` (the optional panel), `sourceKeys` and `pager`. Prompts show the label, the date and the short text
-when they open; MORE gives the deeper story and SOURCES the links. Panels open on the short text; the next page is the
-deeper story. Commentary written today always starts **"Museum note (written today):"**.
+What each exhibit does:
 
-### The newspaper: what the timestamp papers establish
-
-The visitor changes any of Tock's five pages (EDIT 2 …) and sees that page's fingerprint change, every later link fail,
-and this morning's printed fingerprint stop matching. The 3D stand shows it too: the tiles from the changed page on
-turn red, and so does the printed box. UNDO n or RESET puts things back.
-
-The deeper panel separates:
-- **What they establish:** a record whose fingerprint is linked into a chain whose newest value was widely published
-  existed no later than that publication, and nobody can later change it, or slip in or reorder records before it,
-  without the links failing for anyone who kept a later value. Haber and Stornetta argue certain backdating and
-  forward-dating attacks are infeasible under stated assumptions, "even with the collusion of a time-stamping service"
-  (the dossier's quotation). Bayer, Haber and Stornetta batch many documents into a tree each round and publish one
-  value.
-- **What they don't:** that a page's content is true, or who wrote it; publication still needs a widely witnessed
-  place; nothing here is money or a way for strangers to agree on one history.
-
-### The whitepaper's timestamp references
-
-The overview has a page for them, and the newspaper's deeper panel repeats it. Section 3 (Timestamp Server): "such as
-in a newspaper or Usenet post [2-5]". This wording is as recorded in `docs/genesis-voyage/sources.md`; I did not
-re-read the PDF in this session. [3] and [4] are this cave's two papers. [2] (1999) and [5] (1997) belong to Era 4, so
-they are named but not dated here. Only those two sources are tagged "whitepaper citation".
-
-### Context only, and what's on hold
-
-PGP, the BBS, the pager, the floppy and the cabinet are context. The padlock post says plainly that it is a teaching
-model with tiny textbook numbers (n = 3233), not PGP and not real encryption. Bitcoin's own link is signatures: the
-whitepaper defines a coin as a chain of digital signatures.
-
-The dossier hasn't cleared BBS, pager, 3.5-inch floppy or console specifications, so no capacity, model, price or
-launch year appears; DIR A: says so. The Cypherpunks list (September 1992 recollection), DigiCash and Surety are HOLD:
-the overview names them on a "Named, not yet dated" page with no dates or influence claims.
-
-### Pager, rally, BBS: limits
-
-- **Pager:** a ring of 6 messages (`Int16Array`/`Float32Array`). Each exhibit (and the desk) pages once as the
-  visitor comes within 4 m, re-arming only after they go 7 m away. Nothing pages while a panel, prompt or pause holds.
-  Messages show as a HUD toast and on the pager stand's panel.
-- **BBS:** the pretend board keeps at most 8 visitor posts (oldest out), for the visit only. Nothing is sent anywhere.
-  The number dialled is a 555-01xx fictional number.
+- **Press:** EDIT 2 … changes a page, and the prompt shows that page CHANGED, every later link FAILS, and the printed
+  fingerprint NO LONGER MATCHES. On the stand, the tiles from the changed page on and the printed box turn red. DESK
+  makes the desk's own change. UNDO n and RESET put pages back.
+  - MORE says precisely what the papers establish: existence no later than a widely witnessed publication, and that
+    no change, insertion or reordering goes unnoticed by whoever kept a later value. It also says what they don't
+    establish: truth, authorship, a way for strangers to agree on one history, or money.
+  - MORE also gives the whitepaper's section 3 timestamp references, "[2-5]": [3] and [4] are this cave's, their
+    stops are at the lectern, and [2] and [5] are Era 4's.
+- **Padlock post:** textbook RSA with n = 3233, labelled a teaching model and not real encryption or PGP. Commands:
+  KEYS, LOCK, PEEK, OPEN, SIGN, CHECK, CHANGE, RESET. The padlock model's shackle shuts while a note is locked.
+- **Dial-up corner:** NOTES (museum notes), DIR A: and TYPE A: (a pretend floppy, with no capacity claimed), and
+  DIAL, READ, POST and HANGUP for the pretend board. The board keeps at most 8 visitor posts, for the visit only, and
+  nothing leaves the page. The number dialled is a fictional 555-01xx.
+- **Pager:** a ring of 6 messages. Each of the cave's seven spots (the overview board, the desk and the five
+  exhibits) pages once as the visitor comes within 4 m, and again only after they've been 7 m away. The newest
+  message and the unread count show on the stand's display board (a canvas screen), and READ and CLEAR are at its
+  prompt.
 - **Tick-Tock Rally:** an original single-player paddle-and-ball game, with no copied program, name, art or sound.
-  It runs on fixed 1/120 s steps, at most four a frame, and the proof shows the same moves give the same game at 30
-  and 120 fps. Controls: ← → or A D move, Space/Enter or a tap serves, a drag or the mouse aims, R resets. Its panel
-  keeps its keys: R, the game's keys, and everything except Escape, Tab, the page arrows and M stop at the panel
-  (`stopImmediatePropagation` in a capture listener on the board dialog), so nothing reaches the walk, the boat or the
-  scene. It steps only while its Play page is open; closing and reopening goes back to serve.
+  - At its prompt it plays **a tick at a time**: S serves, and each L, R or W (A, D, .) advances 0.25 s with the
+    paddle held that way, up to 8 a line. The field is drawn in text after every line.
+  - The cabinet's screen (a canvas, repainted 20 times a second) shows a self-playing demo, or the visitor's own game
+    for 30 s after their last move.
+  - The rules run on fixed 1/120 s steps and play the same at any frame rate. Real-time play needs hook request 3.
 
-## Layout (Era 3 cave: z −345 to −273; stream x 0.25 to 7.25)
+The overview (`overview`):
+- **Summary:** 238 of the 280 characters allowed.
+- **"What to try":** the five stations and RESET.
+- **"In the whitepaper":** §3's "[2-5]"; [3] and [4] here, [2] and [5] in Era 4.
+- **"Context, and on hold":** Dwork–Naor, PGP and Hughes as context. The HOLD items (the Cypherpunks list, DigiCash,
+  Surety) are named only, with no dates claimed.
 
-| What | Centre (x, z) | Footprint |
-|---|---|---|
-| Bank sign | −9.5, −279 | 10.6 × 0.8, facing +z |
-| Overview | −3.6, −283 | 0.7 × 0.5 |
-| Newspaper | −13.5, −310 | 1.2 × 2.6 |
-| Padlock post | −13.5, −299 | 1.1 × 1.3 |
-| Pager stand | −13.5, −291 | 0.7 × 0.7 |
-| Rally cabinet | −20.5, −305 | 1.5 × 1.1 |
+Words: only the Era 3 dossier's READY entries are stated as facts. Commentary written today starts **"Museum note
+(written today):"**. The quotations are the dossier's own (at most 15 words each). The pager, BBS, floppy and cabinet
+carry no unsupported specifications.
 
-The room (x −8.4 to −1.4, z −316.5 to −301.5) keeps a walkway of at least 3 m to the row. The stream's 2 m lip, the
-room's boarding ramp and the cave's left-bank ramp (even though the room replaces that one) stay clear by 2 m or
-more. The proof checks all of this. `CLEAR` asks the scene not to drop scattered boulders on the exhibits or the room.
-Its draws are kept, so the other caves don't change. `LIGHTS` adds two point lights (30 of 32 in use).
+## Layout (Era 3 cave: z −345 to −273; stream x 0.25 to 7.25; left bank x −34 to 0.25)
 
-## Module contract
+Everything faces the stream (+x). `at` is the walk-up point in front of each exhibit, and the tap box (`pick` with `x`
+and `z`) sits on the model itself. Every model stands on a `kit.obstacle`.
 
-`BL.genesisEra3` (loads after genesis-world.js and before scene-genesis.js):
+| Prop | Centre (x, z) | Obstacle (x by z) | Use point (x, z) | Tallest part |
+|---|---|---|---|---|
+| `e3-press` | −13.5, −310 | 1.2 × 2.6 | −12.1, −310 | sign top ≈ 3.7 m |
+| `e3-padlock` | −13.5, −299 | 1.1 × 1.3 | −12.2, −299 | sign ≈ 2.4 m |
+| `e3-pager` | −13.5, −320 | 0.8 × 1.0 | −12.4, −320 | sign ≈ 2.6 m |
+| `e3-rally` | −20.5, −305 | 1.5 × 1.1 | −19.0, −305 | sign ≈ 2.9 m |
+| `e3-bbs` | −20.5, −296 | 0.9 × 1.5 | −19.3, −296 | sign ≈ 2.3 m |
 
-- Pure: `SOURCES`, `EXHIBITS`, `HOLD`, `LAYOUT`, `OBSTACLES`, `CLEAR`, `LIGHTS`, `PAGE_SPOTS`, `createNewspaper`,
-  `newspaperTerminal`, `createKeyStation`, `keyTerminal`, `createDesktop`, `createPager`, `createTriggers`,
-  `createRally`, `link`, `sourceOf`.
-- `mount({ root, hud, props, audio })`, called in `enter` once the HUD and the prop registry exist. It returns:
-  - `targets`: `[{ node, prop }]`, registered as `{ kind: "prop" }`.
-  - `update(dt, x, z, frozen)`: per frame, allocation-free.
-  - `dispose()`: aborts its listeners and removes its nodes.
-  - `debug`.
-- A prop's `onUse` returns `{ terminal }` (the scene's prompt dialog) or a new `{ panel }`: a ready board object for
-  `openPanel`, with the same shape as `makeBoard`'s (`go`, `canvas`, `version`, `links`, optional `update`). The
-  patch adds that one branch to `openProp`.
-- **Geometry:** each exhibit's still parts are one merged geometry, about 40 nodes in all. The dynamic parts are a
-  fixed set of nodes toggled by `visible` or `glow`. Labels go through the cached `factoryModels.label`.
-- **Allocation:** `update` and the rally's step allocate nothing. Strings are built only when a prompt runs or a
-  panel page is shown; the rally's score text is rebuilt only when its version moves.
-- **Listeners:** a keydown/keyup capture listener on the board dialog, plus pointer listeners on `board-screen`. All
-  of them go through one `AbortController` that `dispose` aborts.
+**Plots:**
+- Everything stays out of `reservedZones(3)`: the gateway (u < 10), both docks, the three lamp squares (one at
+  (−14, −291)) and Fingerprints and Time's room and margin (which ends at x −9.9).
+- The stream's 1.5 m walk is kept clear.
+- Nothing is near the 8 m height limit.
 
-## Integration patch (scene-genesis.js, index.html)
+**Walks:**
+- 3 m between the front row and the room's margin, and about 5.6 m between the two rows.
+- Obstacles keep at least 2.5 m apart.
+- No point lights are added.
 
-Apply with `git apply` on this branch's base. It is about 20 changed lines and touches no other stream's section
-beyond what's named:
+## Requested shared hooks (for the integrator; nothing here edits shared files)
 
-- load the module;
-- obstacles and lights;
-- the boulder skip;
-- `mount` after the HUD, its targets, and the `panel` branch;
-- `update` before `hud.updateBoard`;
-- `dispose` in `leave`;
-- `debug.era3`.
+All are optional, and the cave already works without them. The patch below shows requests 1 and 2 as the smallest
+edits to `scene-genesis.js`. I wrote it, checked it with `node --check`, then reverted it; it is **not committed**.
+
+1. **The office PC's hand-on (four lines).** Wrap the PC's terminal so a line it doesn't know can go to Era 3 first:
+   `run: (line) => (BL.genesisEra3 && BL.genesisEra3.pcRun(line)) || dos.run(line)`.
+   - `pcRun` answers only NOTES, DIR A:, TYPE A:, DIAL, READ, POST and HANGUP. It returns `null` for everything else,
+     including HELP, MORE, SOURCES and RESET.
+   - So DIR, TYPE, HASH and CLS stay the PC's own, and the PC shares the dial-up corner's board for the visit.
+2. **`kit.notify(text)` and `state.reading`.**
+   - `notify` toasts an exhibit's message once the HUD exists (the kit is built before it). The pager already calls
+     it, with precomputed strings, when it is given.
+   - `reading: view.reading || !!terminal` in the update state lets the pager hold while a panel or prompt is open.
+     Without it, nothing pages while reading anyway, because the Ooga can't move then; but the scene doesn't say so.
+3. **A live panel result (larger; only if wanted).** For real-time Tick-Tock Rally: `onUse` returning
+   `{ panel }`, a board object with `update(elapsed)`, which the HUD already calls each frame, and the scene opening it
+   through `openPanel`. Keys would be captured on `#board-modal` (`stopImmediatePropagation`) so they can't reach the
+   walk. The earlier branch had this working (see fbe8da4); until it exists, the rally is played a tick at a time at
+   its prompt.
+4. **Metadata for a demonstration.** The press demonstrates the room's two trail stops, so I gave it no
+   `connection`. "citation" would duplicate the trail stops, and "context" would be inaccurate. Instead it carries
+   `demonstrates: [ids]`, which the kit currently ignores. Please decide whether the kit should know this kind, or
+   whether the press should carry `"context"`. Its prompt's MORE already explains the link.
 
 ```diff
-diff --git a/src/index.html b/src/index.html
-index c547b40..c37d3f2 100644
---- a/src/index.html
-+++ b/src/index.html
-@@ -2004,6 +2004,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
-   <script src="js/genesis-props.js" data-defer="genesis-scene"></script>
-   <script src="js/genesis-world.js" data-defer="genesis-scene"></script>
-   <script src="js/genesis-boat.js" data-defer="genesis-scene"></script>
-+  <script src="js/genesis-era-3.js" data-defer="genesis-scene"></script>
-   <script src="js/scene-genesis.js" data-defer="genesis-scene"></script>
-   <script src="js/mine-models.js"></script>
-   <script src="js/mine-sim.js"></script>
 diff --git a/src/js/scene-genesis.js b/src/js/scene-genesis.js
-index b7900d5..cae563f 100644
+index 3a54496..39c1e78 100644
 --- a/src/js/scene-genesis.js
 +++ b/src/js/scene-genesis.js
-@@ -21,7 +21,7 @@
- (() => {
-   "use strict";
-   const BL = window.BL = window.BL || {};
--  const G = BL.genesisVoyage, M = BL.models, GP = BL.genesisProps, GW = BL.genesisWorld, GB = BL.genesisBoat;
-+  const G = BL.genesisVoyage, M = BL.models, GP = BL.genesisProps, GW = BL.genesisWorld, GB = BL.genesisBoat, E3 = BL.genesisEra3;
-   const { createNode, addChild, removeChild, createCamera } = BL.scene;
-   const { clamp } = BL.math;
-   const COARSE = window.matchMedia("(pointer: coarse)").matches;
-@@ -51,7 +51,7 @@
-   const CAVE_LAMPS = [[-14, 0.25], [22, 0.5], [-8, 0.8]];
-   const LIGHTS = [[-4, 3.2, 3, 11, 1.25, 0.95, 0.6], [4, 3.2, -2, 10, 1.1, 0.85, 0.55],
-     [-6.5 + SX, 3.4, -25 + SZ, 12, 1.35, 1.05, 0.7], [-9 + SX, 3.2, -31.5 + SZ, 7, 1, 0.9, 0.7],
--    ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => [x, 9, e.z1 - f * GW.CAVE.len, 34, ...e.theme.lamp]))];
-+    ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => [x, 9, e.z1 - f * GW.CAVE.len, 34, ...e.theme.lamp])), ...E3.LIGHTS];
- 
-   // --- Hop off and walk: where an Ooga may stand ------------------------------------------------------------------
-   // The harbour's dock, the room's ledge with the desk's step, and two boarding ramps down to the boat: one at the
-@@ -94,6 +94,8 @@
-         : { id: `era-${e.n}-right-ramp`, x0: CHANNEL.x1 - 0.2, x1: CHANNEL.x1 + 1.6, z0: e.z - 0.6, z1: e.z + 0.6, ramp: { from: 0.25, to: ISLAND_TOP, axis: "x" }, boards: true });
-     }
-   }
-+  // Era 3's exhibits stand in the way too (genesis-era-3.js).
-+  FOOTING.obstacles.push(...E3.OBSTACLES);
-   // How near land Jump out works, and how near the boat J re-boards.
-   const JUMP_REACH = 8, BOARD_REACH = 6, BOARD_JUMP = BOARD_REACH;
-   // The first props, on the room's ledge: the office PC, the hard-drive plinth and Tock's book by the desk.
-@@ -101,7 +103,7 @@
-   const WALK_PRESETS = { dock: { yaw: 0.6, pitch: 0.3, dist: 6, target: { x: -3.2, y: 1, z: 1.5 } } };
- 
-   let root = null, camera = null, input = null, hud = null, game = null, world = null, go = null, overlayCanvas = null;
--  let ride = null, course = null, demo = null, built = null, board = null, audio = null, driver = null, controls = null;
-+  let ride = null, course = null, demo = null, built = null, board = null, audio = null, driver = null, controls = null, era3 = null;
-   const targets = [];
-   // `mode` is "drive" (the visitor has the wheel) or "tour" (the autopilot follows the course); `paused` holds both.
-   const view = { yaw: 0, pitch: 0, look: 0, fixed: false, calm: false, captions: true, voice: false, readingPaused: false, reading: false, paused: false, mode: "drive", boost: false };
-@@ -245,8 +247,10 @@
-       }
-       for (let k = 0; k < 10; k++) {
-         const left = rand() < 0.5, x = left ? C.x0 + 2 + rand() * (CHANNEL.x0 - C.x0 - 6) : CHANNEL.x1 + 4 + rand() * (C.x1 - CHANNEL.x1 - 6);
--        const s = 0.8 + rand() * 2.2;
--        solid(s * 1.3, s, s, t.rock, x, ISLAND_TOP + s / 2, e.z1 - 4 - rand() * (len - 8));
-+        const s = 0.8 + rand() * 2.2, z = e.z1 - 4 - rand() * (len - 8);
-+        // None where Era 3's exhibits stand; the draws are kept, so every other boulder stays where it was.
-+        if (e.n === E3.ERA && E3.CLEAR.some((c) => x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1)) continue;
-+        solid(s * 1.3, s, s, t.rock, x, ISLAND_TOP + s / 2, z);
-       }
-       for (let k = 0; k < 12; k++) {
-         const left = k % 2 === 0, z = e.z1 - 4 - (k >> 1) * (len - 8) / 5, y = 3 + rand() * (H - 8);
-@@ -445,6 +449,7 @@
-     const r = props.use(prop, propState);
-     if (r.terminal) openTerminal(prop.title, r.terminal);
-     else if (r.board) openPanel(makeBoard(r.board));
-+    else if (r.panel) openPanel(r.panel);
+@@ -423,6 +423,8 @@
+       const era = GW.ERAS[n];
+       const kit = {
+         era, top: ISLAND_TOP, channel: CHANNEL, M, createNode, addChild, place, solid, label,
++        // A short notice from an exhibit's update (a toast once the HUD is up; the kit is built before it).
++        notify: (text) => { if (hud) hud.toast(text); },
+         sign: (title, sub, x, y, z, yaw = 0, height = 0.6) => {
+           const l = label(title, sub, { height, style: "plain" }), node = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } }));
+           addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
+@@ -459,13 +461,13 @@
+     built.trail = EX.trailOf(built.exhibitProps);
    };
- 
-   // Jump out: the boat stays where it is and the Ooga lands on the nearest ledge, facing inland.
-@@ -896,6 +901,9 @@
-     // The boat's camera rides along; ashore the pilot frames the Ooga and the boat sits still on the water.
-     if (walk.on) { updateBoatModel(); updateWalk(dt, sceneTime); }
-     else updateCamera(dt);
-+    // Era 3's exhibits: the pager pages near them, and nothing moves while a panel, a prompt or a pause holds.
-+    const here = walk.on && avatar ? avatar.root.position : boat;
-+    era3.update(dt, here.x, here.z, view.reading || !!terminal || view.paused);
-     remotes.update(dt);
-     fx.update(dt, sceneTime);
-     hud.updateBoard(sceneTime);
-@@ -929,6 +937,7 @@
-     renderOpts.lightCount = LIGHTS.length;
-     for (let i = 0; i < LIGHTS.length; i++) { const l = LIGHTS[i], o = i * 8; for (let k = 0; k < 7; k++) renderOpts.lights[o + k] = l[k]; renderOpts.lights[o + 7] = 0; }
-     hud = BL.hud.create({ signal: ctx.signal, roster: BL.contributors.activeRoster, catalog: M.SWAG, tierColors: M.TIER_COLORS, renderIcon: BL.hud.renderIcon, lootEnabled: false });
-+    era3 = E3.mount({ root, hud, props, audio, signal: ctx.signal });
-     const hooks = {};
-     input = BL.interact.create({ canvas: ctx.canvas, renderer: ctx.renderer, camera, hooks });
-     const target = (node, owner) => { input.add(node, owner); targets.push(node); };
-@@ -938,6 +947,7 @@
-     target(built.guide.parts.head, { kind: "guide" });
-     for (const plaque of built.plaques) target(plaque.face, { kind: "plaque", plaque });
-     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
-+    for (const t of era3.targets) target(t.node, { kind: "prop", prop: t.prop, priority: 1 });
-     // Hop off and walk: the pilot and crew for the visitor's Ooga, idle until Jump out (as the arcade's are).
-     const boatFov = camera.fov;
-     const clampTarget = (p) => { p.x = clamp(p.x, GW.SEA.x0, GW.SEA.x1); p.y = clamp(p.y, 0.3, GW.CAVE.height - 1); p.z = clamp(p.z, GW.SEA.z0, 8.5); };
-@@ -1034,7 +1044,7 @@
-     showControls();
-     hud.setStats(game.state);
-     Object.assign(scene, { root, camera, input, debug: { get ride() { return ride; }, get demo() { return demo; }, view, built, board, sail, skip, openInfo, toggle, jumpTo,
--      walk, boat, footing, props, pilot, get avatar() { return avatar; }, get terminal() { return terminal; }, jumpOut, reboard, toggleWalk, openProp, runTerminal,
-+      walk, boat, footing, props, pilot, get avatar() { return avatar; }, get terminal() { return terminal; }, get era3() { return era3 && era3.debug; }, jumpOut, reboard, toggleWalk, openProp, runTerminal,
-       get driver() { return driver; }, pause, boost } });
+   // Each frame, the exhibits of the cave the visitor is in (aboard or ashore) may move; nothing else runs.
+-  const exhibitState = { era: -1, walking: false, x: 0, z: 0 };
++  const exhibitState = { era: -1, walking: false, reading: false, x: 0, z: 0 };
+   const updateExhibits = (dt, elapsed) => {
+     const EX = BL.genesisExhibits;
+     if (!EX) return;
+     const p = walk.on && avatar ? avatar.root.position : boat, era = GW.eraAt(p.x, p.z), def = era >= 0 ? EX.eras[era] : null;
+     if (!def || !def.update) return;
+-    exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.x = p.x; exhibitState.z = p.z;
++    exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.reading = view.reading || !!terminal; exhibitState.x = p.x; exhibitState.z = p.z;
+     def.update(dt, elapsed, exhibitState);
    };
-   const onDonation = (donation, counted = null) => {
-@@ -1057,6 +1067,7 @@
-     controls.dispose();
-     remotes.dispose();
-     footsteps.dispose();
-+    era3.dispose(); era3 = null;
-     if (people) people.dispose();
-     fx.dispose();
-     pilot.dispose();
+   const disposeExhibits = () => {
+@@ -600,7 +602,8 @@
+     props = GP.createRegistry();
+     const dos = GP.createDos({ year: 1993, files: GP.PC_FILES });
+     props.register({ id: "pc", era: 3, year: 1993, title: "Tock's office PC", label: "OFFICE PC · 1993", sourceKeys: ["merkle1980", "haber1991", "bayer1993"], at: PROPS.pc,
+-      onUse: () => ({ terminal: dos }) });
++      // An era file may answer commands the PC doesn't know (Era 3's floppy and pretend BBS); DIR, TYPE and HASH stay its own.
++      onUse: () => ({ terminal: { banner: dos.banner, prompt: dos.prompt, run: (line) => (BL.genesisEra3 && BL.genesisEra3.pcRun(line)) || dos.run(line) } }) });
+     // TODO: moves to Era 0's cave (1956) when its exhibits are built; it stands here until then.
+     props.register({ id: "drives", era: 0, year: 1956, title: "Hard drives, 1956 and 2019", label: "HARD DRIVES · 1956 AND 2019", sourceKeys: GP.DRIVES.old.sourceKeys.concat(GP.DRIVES.now.sourceKeys), at: PROPS.drives,
+       onUse: () => ({ board: { room: "Hard drives: 1956 and 2019", pages: GP.drivePages(), sources: GP.DRIVES.old.sourceKeys.concat(GP.DRIVES.now.sourceKeys) } }) });
 ```
 
-## Test addition (test/run.mjs, global tier)
+## Rule proof (for `test/run.mjs`, unit tier)
 
-Add this proof beside `genesisPropsProof`, and its `record` in `unitChecks` after `genesisProps`. It measures the app
-through the module's own functions (no formula is re-implemented as an oracle: the newspaper is checked against
-`G.chain`, the PC against `createDos`).
+The integrator owns the runner, so this proof is documented here instead of added to it. It measures the module and
+the kit through their own functions: the press against `G.chain`, and placement against `reservedZones`. I ran it
+from a scratch script against the real files; all 31 fields were true.
 
 ```js
-// Rule: the Genesis Voyage's Era 3 exhibits, through genesis-era-3.js itself: every exhibit has a dated label, sources
-// that link out, a short text, a deeper panel and a reset; the newspaper re-links Tock's own pages by the desk's own
-// rule, so the desk's change breaks the same links and a visitor's change breaks only the links after it; the toy
-// padlock opens what it locks and a changed note fails its seal; the PC keeps OOGA-DOS and adds a floppy and a capped
-// pretend board; the pager is a bounded ring paged once per approach and never while reading; the rally plays the same
-// at any frame rate and ends after its balls; and the exhibits stand on Era 3's left bank clear of the stream's edge,
-// the room, the ramps and each other.
+// Rule: the Genesis Voyage's Era 3 exhibits, through genesis-era-3.js and the kit itself: it registers through the kit
+// with an overview within the contract and no sign or overview of its own; every exhibit has an e3- id, a dated label,
+// a `date`, sources that resolve, a short text, a deeper story and a reset at its prompt, and adds no trail stop (the
+// room's [3] and [4] stay the only ones); its prompts are terminals, so typing stays out of the walk; the press re-links
+// the desk's own pages by the desk's own rule, so the desk's change breaks the same links and a visitor's change breaks
+// only the links after it; the toy padlock opens what it locks and a changed note fails its seal; the dial-up corner
+// caps its board and answers nothing it doesn't know (for the PC's hand-on); the pager is a bounded ring paged once
+// per approach; the rally plays the same at any frame rate, ends after its balls and plays a tick at a time at its
+// prompt; and every model, obstacle, tap box and use point stands on Era 3's left bank, clear of the reserved plots,
+// the stream's walk and each other, with an obstacle under every exhibit and nothing taller than the limit.
 const genesisEra3Proof = async () => {
   const context = { window: {} };
-  for (const f of ["genesis-voyage", "genesis-props", "genesis-world", "genesis-era-3"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
-  const G = context.window.BL.genesisVoyage, P = context.window.BL.genesisProps, W = context.window.BL.genesisWorld, E = context.window.BL.genesisEra3;
-  const ids = ["overview", "newspaper", "keys", "desktop", "pager", "rally"];
-  const exhibits = ids.every(id => { const x = E.EXHIBITS[id]; return x.label.includes(String(x.year)) && /\d{4}/.test(x.dated) && x.kid.split(" ").length <= 70 && x.deeper.length > 0 && x.sourceKeys.length > 0
-    && x.sourceKeys.every(k => /^https:\/\//.test(E.sourceOf(k).href)) && x.pager.length <= 32; });
-  // Commentary written today says so; whitepaper citations are only the two this cave dates.
-  const modern = ids.every(id => E.EXHIBITS[id].deeper.filter(p => /^Museum note/.test(p)).every(p => p.startsWith(E.NOTE))) && ["keys", "desktop", "pager", "rally"].every(id => E.EXHIBITS[id].deeper.some(p => p.startsWith(E.NOTE)))
-    && Object.values(E.SOURCES).filter(s => /whitepaper citation/.test(s.kind)).every(s => /\[3\]|\[4\]/.test(s.kind)) && E.HOLD.every(h => !/\b\d{1,2} \w+ 199\d/.test(h));
-  // The newspaper is the desk's chain: the same pages, rule and change.
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-3"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, G = BLc.genesisVoyage, P = BLc.genesisProps, W = BLc.genesisWorld, EX = BLc.genesisExhibits, E = BLc.genesisEra3, def = EX.eras[3];
+  const era = W.ERAS[3], bank = era.banks[0], reserved = W.reservedZones(3);
+  const solids = [], obstacles = [], signs = [], props = [], node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+  const kit = { era, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (n) => n,
+    label: () => ({ face: {}, back: {}, width: 1, height: 1 }),
+    solid: (w, h, d, c, x, y, z) => { solids.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, top: y + h / 2 }); return node(); },
+    sign: (t, sub, x, y, z) => { signs.push({ t, x, y, z }); return node(); },
+    obstacle: (x0, x1, z0, z1) => { obstacles.push({ x0, x1, z0, z1 }); },
+    prop: (d) => { if (EX.checkProp(3, d)) throw new Error(EX.checkProp(3, d)); props.push(d); return { ...d, era: 3 }; } };
+  def.build(kit);
+  const registered = typeof def.update === "function" && typeof def.dispose === "function" && def.overview.summary.length <= 280 && def.overview.pages.length <= 3
+    && def.overview.sourceKeys.every(k => /^https:\/\//.test(P.sourceOf(k).href)) && !signs.some(s => /^(ERA 3|1990–1995)$/.test(s.t)) && !props.some(p => /overview/.test(p.id));
+  const exhibits = props.length === 5 && props.every(p => /^e3-/.test(p.id) && p.label.includes(String(p.year)) && typeof p.date === "string" && /\d{4}/.test(p.date) && p.sourceKeys.length && p.sourceKeys.every(k => /^https:\/\//.test(P.sourceOf(k).href)))
+    && Object.values(E.EXHIBITS).filter(x => x.kid).every(x => x.kid.split(" ").length <= 70 && x.deeper.length > 0 && x.pager.length <= 32);
+  // The trail: none of these is a stop; the press names the room's stops it demonstrates.
+  const trail = props.every(p => !p.connection || !EX.CONNECTIONS[p.connection].trail) && props.filter(p => p.connection === "context").length === 4 && props.find(p => p.id === "e3-press").demonstrates.join() === "era3-room-haber1991,era3-room-bayer1993";
+  // Every prompt: a terminal with a banner naming its label, HELP, MORE, SOURCES and RESET.
+  const terms = props.map(p => p.onUse({}).terminal);
+  const prompts = terms.every((t, i) => t && t.banner.some(l => l.includes(props[i].label)) && t.run("HELP").lines.length > 0 && t.run("MORE").lines.length > 0 && t.run("SOURCES").lines.every(l => /https:\/\//.test(l)) && t.run("RESET").reset);
+  const modern = Object.values(E.EXHIBITS).filter(x => x.deeper).every(x => x.deeper.filter(p => /^Museum note/.test(p)).every(p => p.startsWith(E.NOTE))) && ["keys", "bbs", "pager", "rally"].every(id => E.EXHIBITS[id].deeper.some(p => p.startsWith(E.NOTE)))
+    && Object.values(E.sources).filter(s => s.kind === "whitepaper citation").length === 3 && E.HOLD.every(h => !/\b\d{1,2} \w+ 199\d/.test(h));
+  // The press is the desk's chain: the same pages, rule and change.
   const paper = E.createNewspaper(), honest = G.chain(false), tampered = G.chain(true);
   const same = paper.printedChain.join() === honest.join() && paper.printed === honest[honest.length - 1];
-  const desk = paper.desk(), deskSame = paper.stamps.join() === tampered.join() && desk.first === G.TAMPER_AT && !desk.matches;
+  const desk = paper.desk(), deskSame = paper.stamps.join() === tampered.join() && desk.first === G.TAMPER_AT && !desk.matches && paper.result === desk;
   paper.reset();
   const edit = paper.edit(4, "Day 4: Ooga lends TWO shells"), later = edit.first === 3 && !edit.matches && paper.stamps.slice(0, 3).join() === honest.slice(0, 3).join() && paper.stamps.slice(3).every((s, i) => s !== honest[3 + i]);
   const undo = paper.restore(4), back = undo.first === -1 && undo.matches && !!paper.edit(9, "x").error && !!paper.edit(2, "  ").error;
-  paper.edit(1, "Day 1: Ooga finds a million bananas"); const reset = paper.reset().first === -1 && paper.pages.join() === G.PAGES.join();
   const nt = E.newspaperTerminal(E.createNewspaper()), shown = nt.run("EDIT 2 Ooga trades ten shells").lines.join("\n");
-  const newsTerm = /Page 2 .*CHANGED/.test(shown) && /Page 3 .*link FAILS/.test(shown) && /Page 1 .*matches/.test(shown) && /NO LONGER MATCHES/.test(shown) && /\[E3-WP\]/.test(nt.run("MORE").lines.join(" ")) && nt.run("RESET").reset && nt.banner.some(l => /RESET/.test(l));
+  const press = /Page 2 .*CHANGED/.test(shown) && /Page 3 .*link FAILS/.test(shown) && /Page 1 .*matches/.test(shown) && /NO LONGER MATCHES/.test(shown) && /\[whitepaper\]/.test(nt.run("MORE").lines.join(" "));
   // The padlock: every printable letter comes back (none locks to itself), a changed note fails its seal, reset clears.
   const k = E.createKeyStation(), all = Array.from({ length: 94 }, (_, i) => String.fromCharCode(33 + i)).join("");
   let roundTrip = true; for (let i = 0; i < all.length; i += 40) { k.lock(all.slice(i, i + 40)); if (k.open() !== all.slice(i, i + 40) || k.locked.some((c, j) => c === all.charCodeAt(i + j))) roundTrip = false; }
   k.seal("two bananas for a shell"); const sealed = k.verify() === true && (k.change(), k.verify() === false);
   const wrongKey = (k.lock("meet at the dock"), k.open(17) !== "meet at the dock");
-  k.reset(); const keysReset = k.locked === null && k.sealed === null && k.verify() === null && E.keyTerminal(k).run("RESET").reset && k.lock("x".repeat(80)).locked.length === E.MAX_NOTE;
-  // The PC: OOGA-DOS answers as before, the floppy lists, the board keeps at most MAX_POSTS.
-  const d = E.createDesktop(), t = d.terminal, dos = P.createDos({ year: 1993, files: P.PC_FILES });
-  const kept = ["DIR", "TYPE STAMPS.TXT", "HASH ooga", "TYPE B-MONEY.TXT", "FORMAT C:"].every(c => t.run(c).lines.join("\n") === dos.run(c).lines.join("\n"));
+  k.reset(); const keysReset = k.locked === null && k.sealed === null && k.verify() === null && k.lock("x".repeat(80)).locked.length === E.MAX_NOTE;
+  // The dial-up corner: its floppy and board, capped; unknown commands are left for the PC.
+  const b = E.createBbs(), t = b.terminal;
   const floppy = /CHAIN\s+TXT/.test(t.run("DIR A:").lines.join("\n")) && t.run("TYPE A:CHAIN.TXT").lines.some(l => l.includes(honest[0])) && /no disk capacity/.test(t.run("DIR A:").lines.join(" "));
   const offline = /DIAL first/.test(t.run("POST hello").lines[0]); t.run("DIAL");
   for (let i = 0; i < 20; i++) t.run(`POST message ${i}`);
-  const capped = d.posts.length === E.MAX_POSTS && d.posts[0].text === `message ${20 - E.MAX_POSTS}` && d.sent === 20 && t.run("RESET").reset && d.posts.length === 0 && !d.online;
-  // The pager: a ring that keeps its newest; one page per approach; nothing while frozen.
+  const capped = b.posts.length === E.MAX_POSTS && b.posts[0].text === `message ${20 - E.MAX_POSTS}` && b.sent === 20 && t.run("RESET").reset && b.posts.length === 0 && !b.online
+    && b.run("DIR") === null && b.run("HASH ooga") === null && /Unknown/.test(t.run("FORMAT C:").lines[0]) && E.pcRun("DIAL") !== null && E.pcRun("HELP") === null && E.pcRun("DIR") === null && E.pcRun("RESET") === null;
+  // The pager: a ring that keeps its newest; one page per approach; nothing while frozen; CLEAR re-arms.
   const pg = E.createPager(E.PAGER_TEXTS, 6); for (let i = 0; i < 9; i++) pg.receive(i % E.PAGER_TEXTS.length, i);
   const slot = {}; const ring = pg.count === 6 && pg.at(0, slot).time === 8 && pg.at(5, slot).time === 3 && pg.unread === 9 && (pg.read(), pg.unread === 0) && (pg.clear(), pg.count === 0);
-  const tr = E.createTriggers(E.PAGE_SPOTS), s = E.PAGE_SPOTS[2];
-  const frozen = tr.update(s.x + 1, s.z, true) === -1; const first = tr.update(s.x + 1, s.z, false) === 2, stay = tr.update(s.x + 0.5, s.z, false) === -1;
-  tr.update(s.x + 10, s.z, false); const again = tr.update(s.x + 1, s.z, false) === 2;
-  // The rally: the same moves give the same game at 30 and 144 frames a second; the ball stays in the field; three
-  // misses end it; reset starts over.
+  const tr = E.createTriggers(E.PAGE_SPOTS), s = E.PAGE_SPOTS.find(p => p.id === "newspaper"), si = E.PAGE_SPOTS.indexOf(s);
+  const frozen = tr.update(s.x + 1, s.z, true) === -1; const first = tr.update(s.x + 1, s.z, false) === si, stay = tr.update(s.x + 0.5, s.z, false) === -1;
+  tr.update(s.x + 10, s.z, false); const again = tr.update(s.x + 1, s.z, false) === si;
+  const spaced = E.PAGE_SPOTS.every((a, i) => E.PAGE_SPOTS.every((c, j) => i === j || Math.hypot(a.x - c.x, a.z - c.z) > 7));
+  // The rally: the same moves give the same game at 30 and 120 fps; three misses end it; a tick at its prompt.
   const play = (fps) => { const g = E.createRally(); let inField = true; g.serve(); for (let f = 0; f < fps * 20; f++) { g.input.aim = g.x; g.update(1 / fps); if (g.state === "serve") g.serve(); if (g.x < 0 || g.x > 1 || g.y < 0) inField = false; } return { g, inField }; };
-  const a = play(30), b = play(120);
-  const steady = a.g.hits === b.g.hits && a.g.score === b.g.score && a.g.hits > 5 && a.inField && b.inField && a.g.misses === 0;
+  const a = play(30), c = play(120);
+  const steady = a.g.hits === c.g.hits && a.g.score === c.g.score && a.g.hits > 5 && a.inField && c.inField && a.g.misses === 0;
   const lose = E.createRally(); for (let n = 0; n < 3; n++) { lose.serve(); lose.input.aim = lose.x < 0.5 ? 0.95 : 0.05; for (let f = 0; f < 600 && lose.state === "play"; f++) lose.update(1 / 60); lose.input.aim = -1; }
   const over = lose.state === "over" && lose.balls === 0 && lose.misses === 3 && (lose.serve(), lose.state === "serve" && lose.balls === E.RALLY.balls && lose.score === 0);
-  const capStep = E.createRally(); const steps = capStep.update(5) === E.RALLY.maxSteps;
-  // Where it stands: on Era 3's left bank, clear of the stream's 2 m lip, the room (and its walkway), the ramps and
-  // each other; the boulders' clear zone covers them all.
-  const era = W.ERAS[E.ERA], bank = era.banks[0], room = { x0: -12 + W.ROOM_SHIFT.x, x1: -5 + W.ROOM_SHIFT.x, z0: -34 + W.ROOM_SHIFT.z, z1: -19 + W.ROOM_SHIFT.z };
-  const overlaps = (p, q, pad = 0) => p.x0 < q.x1 + pad && p.x1 > q.x0 - pad && p.z0 < q.z1 + pad && p.z1 > q.z0 - pad;
-  const ramps = [{ x0: W.CHANNEL.x0 - 1.6, x1: W.CHANNEL.x0 + 0.2, z0: era.z - 0.6, z1: era.z + 0.6 }, { x0: -5 + W.ROOM_SHIFT.x, x1: -3.4 + W.ROOM_SHIFT.x, z0: -26.6 + W.ROOM_SHIFT.z, z1: -25.6 + W.ROOM_SHIFT.z }];
-  const O = E.OBSTACLES, placed = O.every(o => o.x0 >= bank.x0 + 1 && o.x1 <= bank.x1 - 2 && o.z0 >= era.z0 + 2 && o.z1 <= era.z1 - 2 && !overlaps(o, room, 2) && ramps.every(r => !overlaps(o, r, 2)))
-    && O.every((o, i) => O.every((q, j) => i === j || !overlaps(o, q, 1.5))) && O.every(o => E.CLEAR.some(c => o.x0 >= c.x0 && o.x1 <= c.x1 && o.z0 >= c.z0 && o.z1 <= c.z1))
-    && E.LIGHTS.length <= 4 && Object.keys(E.LAYOUT).every(id => E.LAYOUT[id].y === W.BANK_TOP);
-  return { exhibits, modern, same, deskSame, later, back, reset, newsTerm, roundTrip, sealed, wrongKey, keysReset, kept, floppy, offline, capped, ring, frozen, first, stay, again, steady, over, steps, placed };
+  const capStep = E.createRally().update(5) === E.RALLY.maxSteps;
+  const rg = E.createRally(), rt = E.rallyTerminal(rg, () => {}), p0 = rg.paddle;
+  rt.run("S"); rt.run("LLLL"); const moved = rg.paddle < p0 && rg.state === "play" && Math.abs(rg.time - 5 * E.TICK) < 1e-6;
+  rt.run("W".repeat(40)); const capTicks = Math.abs(rg.time - (5 + E.MAX_TICKS) * E.TICK) < 1e-6 && rt.run("RESET").reset && rg.state === "serve" && rg.score === 0;
+  // Where it stands: on Era 3's left bank, clear of every reserved plot, the stream's walk and each other.
+  const inBank = (b2) => b2.x0 >= bank.x0 + 1 && b2.x1 <= W.CHANNEL.x0 - W.BANK.FRONT && b2.z0 >= era.z0 + 1 && b2.z1 <= era.z1 - 1;
+  const clash = (b2, pad = 0) => reserved.some(r => b2.x0 < r.x1 + pad && b2.x1 > r.x0 - pad && b2.z0 < r.z1 + pad && b2.z1 > r.z0 - pad);
+  const overlaps = (p1, q, pad = 0) => p1.x0 < q.x1 + pad && p1.x1 > q.x0 - pad && p1.z0 < q.z1 + pad && p1.z1 > q.z0 - pad;
+  const placed = solids.every(b2 => inBank(b2) && !clash(b2) && b2.top <= W.BANK_TOP + W.BANK.MAX_H && obstacles.some(o => overlaps(b2, o) && b2.x0 >= o.x0 - 1e-9 && b2.x1 <= o.x1 + 1e-9 && b2.z0 >= o.z0 - 1e-9 && b2.z1 <= o.z1 + 1e-9))
+    && obstacles.every(o => inBank(o) && !clash(o, 1)) && obstacles.every((o, i) => obstacles.every((q, j) => i === j || !overlaps(o, q, 2.5)))
+    && props.every(p => !clash({ x0: p.at.x - 0.3, x1: p.at.x + 0.3, z0: p.at.z - 0.3, z1: p.at.z + 0.3 }) && !obstacles.some(o => overlaps({ x0: p.at.x - 0.3, x1: p.at.x + 0.3, z0: p.at.z - 0.3, z1: p.at.z + 0.3 }, o))
+      && obstacles.some(o => p.pick.x > o.x0 && p.pick.x < o.x1 && p.pick.z > o.z0 && p.pick.z < o.z1))
+    && signs.every(s2 => s2.y < W.BANK_TOP + W.BANK.MAX_H - 0.5);
+  // The frame: update runs (headless, so no screens), holds the pager while reading and notifies once an approach.
+  const notes = []; def.build({ ...kit, notify: (t) => notes.push(t) });
+  const st = { era: 3, walking: true, reading: true, x: s.x + 1, z: s.z };
+  for (let i = 0; i < 30; i++) def.update(1 / 30, i / 30, st);
+  const held = notes.length === 0; st.reading = false;
+  for (let i = 0; i < 30; i++) def.update(1 / 30, 1 + i / 30, st);
+  const frame = held && notes.length === 1 && /^Pager · PRESS/.test(notes[0]) && E.visit.pager.count === 1 && E.visit.demo.time > 1.5;
+  def.dispose(); const disposed = E.visit === null && E.pcRun("DIAL") === null;
+  return { frame, disposed, registered, exhibits, trail, prompts, modern, same, deskSame, later, back, press, roundTrip, sealed, wrongKey, keysReset, floppy, offline, capped, ring, frozen, first, stay, again, spaced, steady, over, capStep, moved, capTicks, placed };
 };
 ```
 
 ```js
   const genesisEra3 = await genesisEra3Proof();
-  record("Genesis Voyage Era 3: every exhibit is dated, sourced, explained and resettable; the newspaper breaks the desk's own links after a changed page and only those; the toy padlock opens what it locks and a changed note fails its seal; the PC keeps OOGA-DOS and caps its pretend board; the pager pages once per approach and never while reading; the rally plays the same at any frame rate; the exhibits keep the stream's edge, the room and the ramps clear", Object.values(genesisEra3).every(Boolean), JSON.stringify(genesisEra3));
+  record("Genesis Voyage Era 3: it registers through the kit with no signage of its own; every exhibit is dated, sourced, explained and resettable at its prompt and adds no trail stop; the press breaks the desk's own links after a changed page and only those; the toy padlock opens what it locks and a changed note fails its seal; the dial-up corner caps its board; the pager pages once per approach and never while reading; the rally plays the same at any frame rate and a tick at a time at its prompt; everything keeps the reserved plots, the stream's walk and each other clear", Object.values(genesisEra3).every(Boolean), JSON.stringify(genesisEra3));
 ```
 
-A browser step for the `genesis` scene, once the patch is in, should cover:
-1. jump out at Era 3;
-2. walk to the newspaper and use it with Space; EDIT 2 shows "link FAILS";
-3. hold W in the prompt and the Ooga doesn't move;
-4. at the cabinet, Space opens the panel; ← moves the paddle, W doesn't move the Ooga, R resets;
-5. Escape closes it, and `view.reading` is false.
+## Checks and evidence
 
-`trip("genesis")` already covers the leave contract. I haven't written that step into the runner; the probe below
-did the same things by hand.
-
-## Checks run
-
-| Check | Result |
-|---|---|
-| `node --check src/js/genesis-era-3.js`, and on `scene-genesis.js` with the patch applied | pass |
-| `npm run build` with the patch applied | clean |
-| `genesisEra3Proof` (above), run from a scratch script against the real modules | all 25 fields true |
-| `node test/run.mjs genesis` with the patch, in this container | see "Limitations" |
-
-Browser probe: Playwright driving headless Chromium with software GL, with the patch applied, on the built page with
-`?scene=genesis&wip=genesis&debug=1&nosim=1&hour=12&day=80`. Steps used the real keyboard; time advanced with
-`__ooga.advance`.
-
-| Step | Result |
-|---|---|
-| Boot | 8.7 s; one advanced second took 1.4 s of wall time |
-| Mount | 5 Era 3 props registered beside `pc`, `drives` and `book`; 26 input targets |
-| Tour plaque 3, jump out, walk to the press | Ooga ashore; nearest prop `era3-newspaper`; the pager had already paged twice |
-| Space, then `EDIT 2 ...` | Prompt open. Page 1 matches, page 2 is CHANGED, pages 3-5 say "link FAILS", and the printed fingerprint NO LONGER MATCHES |
-| Hold W with the prompt open | the Ooga moved 0 m |
-| Cabinet: Space, Space, hold Left for 1 s, then hold W | Board open, game in `play`, paddle moved to 0.08; the Ooga moved 0 m; `view.reading` was true |
-| R | game back to `serve` |
-| Escape | board closed; `reading` false; the module's active panel cleared |
-| Pager stand | 4 messages listed, newest first, with their times |
-| Console errors or warnings | none recorded |
-| Round trip `go("hub")` then `go("genesis")`, twice | **not confirmed**: genesis wasn't back within 240 s either time. The hub's sliced build under software GL probably hadn't finished, so `go("genesis")` was likely ignored. The probe couldn't tell that apart from a fault. The suite's `trip("genesis")` on a real GPU is the check that counts. |
-
-Screenshots of the rally panel, the bank sign and the exhibit row were taken and inspected; they aren't committed.
-
-## Limitations (honest)
-
-- **Browser:** this cloud container has only headless Chromium with software GL (SwiftShader), and it must run with
-  `--no-sandbox` as root (I used a wrapper script; the driver wasn't changed).
-  - With the patch applied, the suite's `genesis` session ran into its 120 s watchdog twice ("Chrome was killed"),
-    and the runner printed STOP, so I didn't retry it. 350 of 351 checks passed; the global tier passed.
-  - I did not run the unpatched baseline under the same conditions, so it's unproven whether the timeout comes from
-    this container's software GPU or from the patch. The GPU process sat at about 350% CPU during the probe.
-  - **Play-test on a real GPU** before trusting it either way.
-- **Not tested:** phones and touch (the rally's drag and tap aiming), Canvas 2D (`?canvas2d=1`), Safari, Firefox,
-  gamepads, screen readers on the new panels, and sound for the pager beep (it reuses the scene's `link` cue).
-  Frame rate wasn't measured.
-- **Per-frame DOM work:** while the rally panel's Play page is open, the HUD repaints the board every frame. That
-  means a `drawImage` plus re-setting the caption, note and links text, which is HUD behaviour, not this module's.
-  It's fine on a desktop; on low-end phones it may cost frames.
-- **Unconfirmed:** the integrator never confirmed the base (see the top).
-
-## Open questions for the integrator and research
-
-1. Keep the PC in place and extended (current), or move it into the exhibit row?
-2. Should the era caption on entering Era 3 mention the new exhibits? (Not changed; it's the scene's text.)
-3. The HOLD items (Cypherpunks list date, DigiCash, Surety) stay undated until research clears them.
-4. `E3-ORIGINAL` links to this file on `gv/era-3-exhibits`. Re-point it if the doc moves on merge.
+Results, exact commands and browser evidence for this adaptation are in the review bundle's `START-HERE.md`, and are
+summarised in the commit message.
 
 ---
 *Prepared with AI assistance (Claude, by Anthropic) at Billy's request. Not reviewed or endorsed by the Ooga Booga Land
