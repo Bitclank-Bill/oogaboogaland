@@ -51,8 +51,13 @@ once.
   Don't build a second overview board, era sign or "steps" sign: the shared signage provides them.
 - **`kit.prop(def)`** takes three optional fields:
   - `connection`: `"citation"` (whitepaper reference list; give `ref`, e.g. `"[3]"`), `"influence"` (documented with a
-    primary source such as Satoshi's own words), `"anchor"` (the whitepaper itself, Era 6 only) or `"context"`. Leave
-    it out and the exhibit is neither on the trail nor labelled; please set it on every Bitcoin-line exhibit.
+    primary source such as Satoshi's own words), `"anchor"` (the whitepaper itself, Era 6 only), `"demonstration"` or
+    `"context"`. Leave it out and the exhibit is neither on the trail nor labelled; please set it on every Bitcoin-line
+    exhibit.
+  - `demonstrates`: a demonstration's list of the trail stops whose idea it shows working (ids, e.g. Era 3's press:
+    `["era3-room-haber1991", "era3-room-bayer1993"]`). A demonstration is never a stop of its own, so the trail
+    keeps one stop per paper; its "How it connects" names those stops by their step numbers. An id that isn't a
+    trail stop throws when the cave is built.
   - `ref`: citations only.
   - `date`: what the year marks, in words, e.g. `"1991 journal publication; manuscript received 19 August 1990"`.
 - **`pick`** may name its centre: `{ w, h, d, x, z }`. Put the tap box over the model itself; without `x` and `z` it
@@ -65,7 +70,9 @@ it's built, and the unit tier reports it.
 
 ## Calm, and leaving or entering your cave
 
-- **`update(dt, elapsed, state)`:** `state` is `{ era, walking, x, z, calm }`.
+- **`update(dt, elapsed, state)`:** `state` is `{ era, walking, reading, x, z, calm }`.
+  - While `state.reading` is on (a panel or a terminal is open), hold anything that would call for the visitor's
+    attention, such as a pager. `kit.notify(text)` toasts a short notice, made ahead rather than per frame.
   - While `state.calm` is on (the visit's Calm: reduced motion, the R key or the system setting), hold decorative
     movement and blinking still.
   - Show each command's result at once, in its final, readable state.

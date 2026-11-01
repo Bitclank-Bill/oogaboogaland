@@ -538,7 +538,7 @@
     const paper = createNewspaper(), keys = createKeyStation(), bbs = createBbs(), pager = createPager(PAGER_TEXTS), triggers = createTriggers(PAGE_SPOTS);
     const rally = createRally(), demo = createRally();
     // `notify` is the hook the notes ask for (a toast); without it the pager's display board and prompt hold its messages.
-    v = { notify: notify || null, paper, keys, bbs, pager, triggers, rally, demo, slot: { index: 0, time: 0, text: "" }, showPlayer: 0, screenT: 0, paperShown: -1, keysShown: -1,
+    v = { notify: notify || null, paper, keys, bbs, pager, triggers, rally, demo, slot: { index: 0, time: 0, text: "" }, showPlayer: 0, screenT: 0, rallyAt: -1, rallyMine: false, rallyScore: -1, paperShown: -1, keysShown: -1,
       tiles: [], links: [], printedOk: null, printedBad: null, shackleOpen: null, shackleShut: null, pagerLamp: null, rallyCtx: null, rallySurface: null, pagerCtx: null, pagerSurface: null };
     const visit = v;
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 }, visible }));
@@ -568,9 +568,9 @@
     v.printedBad = node(M.box({ w: 0.6, h: 0.5, d: 0.05, color: "#ff3b30", emissive: 1.1 }), N.x - 0.42, top + 1.3, N.z, false);
     sign(ex.newspaper.label, "change a page · EDIT, UNDO, RESET", N.x - 0.3, top + 3.45, N.z, yaw, 0.45);
     const news = newspaperTerminal(paper);
-    // It demonstrates the papers whose trail stops are Fingerprints and Time's lectern ([3], [4]): no connection of its
-    // own, so the trail keeps one stop each (docs/genesis-voyage/exhibits/era-3.md, hook request 4).
-    exhibit("newspaper", { id: "e3-press", year: 1991, title: ex.newspaper.title, label: ex.newspaper.label, sourceKeys: ex.newspaper.sourceKeys, demonstrates: ["era3-room-haber1991", "era3-room-bayer1993"],
+    // It demonstrates the papers whose trail stops are Fingerprints and Time's lectern ([3], [4]): a demonstration, not
+    // a stop, so the trail keeps one stop each (docs/genesis-voyage/exhibits/era-3.md, hook request 4).
+    exhibit("newspaper", { id: "e3-press", year: 1991, connection: "demonstration", title: ex.newspaper.title, label: ex.newspaper.label, sourceKeys: ex.newspaper.sourceKeys, demonstrates: ["era3-room-haber1991", "era3-room-bayer1993"],
       date: "1991 journal publication of Haber and Stornetta (received 19 August 1990); March 1992 manuscript and 1993 book chapter of Bayer, Haber and Stornetta", onUse: () => ({ terminal: news }) });
 
     // The padlock post: a post box with Bea's padlock, its shackle up while open and down while a note is locked.
@@ -640,8 +640,10 @@
 
   // Per frame while the visitor is in this cave, allocation-free: the pager (held while a panel or prompt is open, when
   // the scene says so with `state.reading`), the press's and the padlock's models following their state, and the
-  // cabinet's screen (a demo, or the visitor's game for 30 s after their last move).
+  // cabinet's screen (a demo, or the visitor's game for 30 s after their last move). In Calm (`state.calm`) the pager's
+  // lamp holds steady and the self-playing demo holds still; the screen repaints only when what it shows changes.
   const update = (dt, elapsed, state) => {
+    const calm = !!state.calm;
     const fired = v.triggers.update(state.x, state.z, !!state.reading);
     if (fired >= 0) { v.pager.receive(fired, elapsed); if (v.pagerCtx) paintPager(); if (v.notify) v.notify(PAGER_TOASTS[fired]); }
     if (v.paper.version !== v.paperShown) {
@@ -655,14 +657,20 @@
       v.printedOk.visible = r.matches; v.printedBad.visible = !r.matches;
     }
     if (v.keys.version !== v.keysShown) { v.keysShown = v.keys.version; v.shackleShut.visible = !!v.keys.locked; v.shackleOpen.visible = !v.keys.locked; }
-    v.pagerLamp.glow = v.pager.unread ? 1 + (Math.floor(elapsed * 3) & 1) * 0.6 : 0.4;
+    v.pagerLamp.glow = v.pager.unread ? (calm ? 1.3 : 1 + (Math.floor(elapsed * 3) & 1) * 0.6) : 0.4;
     const d = v.demo;
-    if (d.state === "serve") d.serve(); else if (d.state === "over") d.reset();
-    d.input.aim = d.x;
-    d.update(dt);
+    if (!calm) {
+      if (d.state === "serve") d.serve(); else if (d.state === "over") d.reset();
+      d.input.aim = d.x;
+      d.update(dt);
+    }
     if (v.showPlayer > 0) v.showPlayer = Math.max(0, v.showPlayer - dt);
     v.screenT += dt;
-    if (v.rallyCtx && v.screenT >= 0.05) { v.screenT = 0; paintRally(); }
+    if (v.rallyCtx && v.screenT >= 0.05) {
+      v.screenT = 0;
+      const mine = v.showPlayer > 0, shown = mine ? v.rally : d;
+      if (!calm || shown.time !== v.rallyAt || mine !== v.rallyMine || shown.score !== v.rallyScore) { v.rallyAt = shown.time; v.rallyMine = mine; v.rallyScore = shown.score; paintRally(); }
+    }
   };
   const dispose = () => { v = null; };
 

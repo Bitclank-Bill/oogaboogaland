@@ -6,7 +6,8 @@
 // once. `sources` adds source keys ({ key: { label, href, kind, verified } }, `kind` one of "whitepaper citation",
 // "documented influence" or "context"; `verified: false` until the page itself was read). `build(kit)` runs once a
 // visit, inside `enter`, and must only create nodes through the kit. `update` (optional) runs every frame while the
-// visitor's boat or Ooga is in that era's cave and must allocate nothing; `state` is { era, walking, x, z, calm }, and
+// visitor's boat or Ooga is in that era's cave and must allocate nothing; `state` is { era, walking, reading, x, z, calm } (`reading`: a panel or
+// terminal is open, so hold anything that would call for attention, such as a pager), and
 // while `state.calm` (the visit's Calm, reduced motion) is on, hold decorative movement and blinking still, showing
 // command results in their final, readable state instead. `active` (optional) is called with false when the visitor
 // leaves the era's cave (stop anything that outlives frames, such as sound scheduled ahead; coming back must not
@@ -22,6 +23,7 @@
 //   label(title, sub, opts)  BL.factoryModels.label: { face, back, width, height }
 //   sign(title, sub, x, y, z, yaw = 0, height = 0.6)  a two-sided label standing at (x, y, z), facing +z turned by yaw
 //   obstacle(x0, x1, z0, z1)  a box a walking Ooga cannot enter (put one under every solid exhibit)
+//   notify(text)   a short toast from `update` (a string made ahead, not per frame); nothing before the HUD is up
 //   prop(def)      a usable exhibit: def is genesis-props.js's prop ({ id, year, title, label, sourceKeys, at, onUse,
 //                  reach }) plus `pick: { w, h, d }`, the box a tap selects. `era` is filled in. The label must show
 //                  the year. onUse(state) returns { board: { room, pages: [{ caption, title, text: [..] }], sources } },
@@ -29,8 +31,11 @@
 //                  panel's `room` is its lettered title: letters, digits, space and / : ! ? + - . only.
 //                  Optional, for the shared signage (docs/genesis-voyage/EXHIBIT-CONTRACT.md): `connection`, one of
 //                  "citation" (with `ref`, the whitepaper's reference, e.g. "[3]"), "influence", "anchor" (the
-//                  whitepaper itself, Era 6 only) or "context"; the first three put the exhibit on the Steps toward
-//                  Bitcoin trail, numbered in date order across all eras. A board's last page then says how it connects.
+//                  whitepaper itself, Era 6 only), "demonstration" (with `demonstrates`, the ids of the trail stops
+//                  whose idea it shows working, e.g. Era 3's press for Fingerprints and Time's [3] and [4]) or
+//                  "context"; the first three put the exhibit on the Steps toward Bitcoin trail, numbered in date order
+//                  across all eras, and a demonstration is never a stop of its own. A board's last page (a terminal's
+//                  first lines) then says how it connects.
 //
 // `register`'s def may also carry `overview: { summary, pages, sourceKeys }`: `summary` (at most 280 characters) is shown on the
 // era's overview board and panel; `pages` (optional, at most 3, as a board's pages) follow it in that panel, for an
@@ -53,15 +58,19 @@
     citation: { label: "Whitepaper citation", trail: true },
     influence: { label: "Documented influence", trail: true },
     anchor: { label: "The whitepaper itself", trail: true },
+    demonstration: { label: "Demonstration", trail: false },
     context: { label: "Context", trail: false }
   };
   // What is wrong with a prop's connection fields, or null.
   const checkProp = (n, d) => {
-    if (d.connection === undefined) return d.ref ? `${d.id}: a reference without a connection` : null;
+    if (d.connection === undefined) return d.ref ? `${d.id}: a reference without a connection` : d.demonstrates ? `${d.id}: \`demonstrates\` needs connection "demonstration"` : null;
     if (!CONNECTIONS[d.connection]) return `${d.id}: connection must be one of ${Object.keys(CONNECTIONS).join(", ")}`;
     if (d.connection === "citation" && !/^\[[1-8]\]$/.test(d.ref || "")) return `${d.id}: a whitepaper citation names its reference, e.g. "[3]"`;
     if (d.connection !== "citation" && d.ref) return `${d.id}: only a whitepaper citation has a reference number`;
     if (d.connection === "anchor" && n !== 6) return `${d.id}: only Era 6 holds the whitepaper itself`;
+    const shows = d.demonstrates;
+    if (d.connection === "demonstration" && !(Array.isArray(shows) && shows.length && shows.every((id) => typeof id === "string" && id))) return `${d.id}: a demonstration names the trail stops it shows (\`demonstrates\`)`;
+    if (d.connection !== "demonstration" && shows !== undefined) return `${d.id}: only a demonstration names stops it shows`;
     return null;
   };
   // A year to sort by: a whole year as itself; a decade such as "1980s" (an era file's honest "some time in these

@@ -23185,6 +23185,137 @@ const genesisEra2Proof = async () => {
     dated, cites, readOnly, noDisk, fewest, sortedOk, loaded, floppyReset, noCapacity, swapCap, mazes, solved, gateShut, capped, exhibits, resetAll,
     classified, dates, held, clear, reachable, posed, settled, steady, disposed };
 };
+// Rule: the Genesis Voyage's Era 3 exhibits, through genesis-era-3.js and the kit itself: it registers through the kit
+// with an overview within the contract and no sign or overview of its own; every exhibit has an e3- id, a dated label,
+// a `date`, sources that resolve, a short text, a deeper story and a reset at its prompt, and adds no trail stop (the
+// room's [3] and [4] stay the only ones); its prompts are terminals, so typing stays out of the walk; the press re-links
+// the desk's own pages by the desk's own rule, so the desk's change breaks the same links and a visitor's change breaks
+// only the links after it; the toy padlock opens what it locks and a changed note fails its seal; the dial-up corner
+// caps its board and answers nothing it doesn't know (for the PC's hand-on); the pager is a bounded ring paged once
+// per approach; the rally plays the same at any frame rate, ends after its balls and plays a tick at a time at its
+// prompt; and every model, obstacle, tap box and use point stands on Era 3's left bank, clear of the reserved plots,
+// the stream's walk and each other, with an obstacle under every exhibit and nothing taller than the limit.
+const genesisEra3Proof = async () => {
+  const context = { window: {} };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-3"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, G = BLc.genesisVoyage, P = BLc.genesisProps, W = BLc.genesisWorld, EX = BLc.genesisExhibits, E = BLc.genesisEra3, def = EX.eras[3];
+  const era = W.ERAS[3], bank = era.banks[0], reserved = W.reservedZones(3);
+  const solids = [], obstacles = [], signs = [], props = [], node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+  const kit = { era, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (n) => n,
+    label: () => ({ face: {}, back: {}, width: 1, height: 1 }),
+    solid: (w, h, d, c, x, y, z) => { solids.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, top: y + h / 2 }); return node(); },
+    sign: (t, sub, x, y, z) => { signs.push({ t, x, y, z }); return node(); },
+    obstacle: (x0, x1, z0, z1) => { obstacles.push({ x0, x1, z0, z1 }); },
+    prop: (d) => { if (EX.checkProp(3, d)) throw new Error(EX.checkProp(3, d)); props.push(d); return { ...d, era: 3 }; } };
+  def.build(kit);
+  const registered = typeof def.update === "function" && typeof def.dispose === "function" && def.overview.summary.length <= 280 && def.overview.pages.length <= 3
+    && def.overview.sourceKeys.every(k => /^https:\/\//.test(P.sourceOf(k).href)) && !signs.some(s => /^(ERA 3|1990–1995)$/.test(s.t)) && !props.some(p => /overview/.test(p.id));
+  const exhibits = props.length === 5 && props.every(p => /^e3-/.test(p.id) && p.label.includes(String(p.year)) && typeof p.date === "string" && /\d{4}/.test(p.date) && p.sourceKeys.length && p.sourceKeys.every(k => /^https:\/\//.test(P.sourceOf(k).href)))
+    && Object.values(E.EXHIBITS).filter(x => x.kid).every(x => x.kid.split(" ").length <= 70 && x.deeper.length > 0 && x.pager.length <= 32);
+  // The trail: none of these is a stop; the press names the room's stops it demonstrates.
+  const trail = props.every(p => !p.connection || !EX.CONNECTIONS[p.connection].trail) && props.filter(p => p.connection === "context").length === 4 && props.find(p => p.id === "e3-press").demonstrates.join() === "era3-room-haber1991,era3-room-bayer1993";
+  // Every prompt: a terminal with a banner naming its label, HELP, MORE, SOURCES and RESET.
+  const terms = props.map(p => p.onUse({}).terminal);
+  const prompts = terms.every((t, i) => t && t.banner.some(l => l.includes(props[i].label)) && t.run("HELP").lines.length > 0 && t.run("MORE").lines.length > 0 && t.run("SOURCES").lines.every(l => /https:\/\//.test(l)) && t.run("RESET").reset);
+  const modern = Object.values(E.EXHIBITS).filter(x => x.deeper).every(x => x.deeper.filter(p => /^Museum note/.test(p)).every(p => p.startsWith(E.NOTE))) && ["keys", "bbs", "pager", "rally"].every(id => E.EXHIBITS[id].deeper.some(p => p.startsWith(E.NOTE)))
+    && Object.values(E.sources).filter(s => s.kind === "whitepaper citation").length === 3 && E.HOLD.every(h => !/\b\d{1,2} \w+ 199\d/.test(h));
+  // The press is the desk's chain: the same pages, rule and change.
+  const paper = E.createNewspaper(), honest = G.chain(false), tampered = G.chain(true);
+  const same = paper.printedChain.join() === honest.join() && paper.printed === honest[honest.length - 1];
+  const desk = paper.desk(), deskSame = paper.stamps.join() === tampered.join() && desk.first === G.TAMPER_AT && !desk.matches && paper.result === desk;
+  paper.reset();
+  const edit = paper.edit(4, "Day 4: Ooga lends TWO shells"), later = edit.first === 3 && !edit.matches && paper.stamps.slice(0, 3).join() === honest.slice(0, 3).join() && paper.stamps.slice(3).every((s, i) => s !== honest[3 + i]);
+  const undo = paper.restore(4), back = undo.first === -1 && undo.matches && !!paper.edit(9, "x").error && !!paper.edit(2, "  ").error;
+  const nt = E.newspaperTerminal(E.createNewspaper()), shown = nt.run("EDIT 2 Ooga trades ten shells").lines.join("\n");
+  const press = /Page 2 .*CHANGED/.test(shown) && /Page 3 .*link FAILS/.test(shown) && /Page 1 .*matches/.test(shown) && /NO LONGER MATCHES/.test(shown) && /\[whitepaper\]/.test(nt.run("MORE").lines.join(" "));
+  // The padlock: every printable letter comes back (none locks to itself), a changed note fails its seal, reset clears.
+  const k = E.createKeyStation(), all = Array.from({ length: 94 }, (_, i) => String.fromCharCode(33 + i)).join("");
+  let roundTrip = true; for (let i = 0; i < all.length; i += 40) { k.lock(all.slice(i, i + 40)); if (k.open() !== all.slice(i, i + 40) || k.locked.some((c, j) => c === all.charCodeAt(i + j))) roundTrip = false; }
+  k.seal("two bananas for a shell"); const sealed = k.verify() === true && (k.change(), k.verify() === false);
+  const wrongKey = (k.lock("meet at the dock"), k.open(17) !== "meet at the dock");
+  k.reset(); const keysReset = k.locked === null && k.sealed === null && k.verify() === null && k.lock("x".repeat(80)).locked.length === E.MAX_NOTE;
+  // The dial-up corner: its floppy and board, capped; unknown commands are left for the PC.
+  const b = E.createBbs(), t = b.terminal;
+  const floppy = /CHAIN\s+TXT/.test(t.run("DIR A:").lines.join("\n")) && t.run("TYPE A:CHAIN.TXT").lines.some(l => l.includes(honest[0])) && /no disk capacity/.test(t.run("DIR A:").lines.join(" "));
+  const offline = /DIAL first/.test(t.run("POST hello").lines[0]); t.run("DIAL");
+  for (let i = 0; i < 20; i++) t.run(`POST message ${i}`);
+  const capped = b.posts.length === E.MAX_POSTS && b.posts[0].text === `message ${20 - E.MAX_POSTS}` && b.sent === 20 && t.run("RESET").reset && b.posts.length === 0 && !b.online
+    && b.run("DIR") === null && b.run("HASH ooga") === null && /Unknown/.test(t.run("FORMAT C:").lines[0]) && E.pcRun("DIAL") !== null && E.pcRun("HELP") === null && E.pcRun("DIR") === null && E.pcRun("RESET") === null;
+  // The pager: a ring that keeps its newest; one page per approach; nothing while frozen; CLEAR re-arms.
+  const pg = E.createPager(E.PAGER_TEXTS, 6); for (let i = 0; i < 9; i++) pg.receive(i % E.PAGER_TEXTS.length, i);
+  const slot = {}; const ring = pg.count === 6 && pg.at(0, slot).time === 8 && pg.at(5, slot).time === 3 && pg.unread === 9 && (pg.read(), pg.unread === 0) && (pg.clear(), pg.count === 0);
+  const tr = E.createTriggers(E.PAGE_SPOTS), s = E.PAGE_SPOTS.find(p => p.id === "newspaper"), si = E.PAGE_SPOTS.indexOf(s);
+  const frozen = tr.update(s.x + 1, s.z, true) === -1; const first = tr.update(s.x + 1, s.z, false) === si, stay = tr.update(s.x + 0.5, s.z, false) === -1;
+  tr.update(s.x + 10, s.z, false); const again = tr.update(s.x + 1, s.z, false) === si;
+  const spaced = E.PAGE_SPOTS.every((a, i) => E.PAGE_SPOTS.every((c, j) => i === j || Math.hypot(a.x - c.x, a.z - c.z) > 7));
+  // The rally: the same moves give the same game at 30 and 120 fps; three misses end it; a tick at its prompt.
+  const play = (fps) => { const g = E.createRally(); let inField = true; g.serve(); for (let f = 0; f < fps * 20; f++) { g.input.aim = g.x; g.update(1 / fps); if (g.state === "serve") g.serve(); if (g.x < 0 || g.x > 1 || g.y < 0) inField = false; } return { g, inField }; };
+  const a = play(30), c = play(120);
+  const steady = a.g.hits === c.g.hits && a.g.score === c.g.score && a.g.hits > 5 && a.inField && c.inField && a.g.misses === 0;
+  const lose = E.createRally(); for (let n = 0; n < 3; n++) { lose.serve(); lose.input.aim = lose.x < 0.5 ? 0.95 : 0.05; for (let f = 0; f < 600 && lose.state === "play"; f++) lose.update(1 / 60); lose.input.aim = -1; }
+  const over = lose.state === "over" && lose.balls === 0 && lose.misses === 3 && (lose.serve(), lose.state === "serve" && lose.balls === E.RALLY.balls && lose.score === 0);
+  const capStep = E.createRally().update(5) === E.RALLY.maxSteps;
+  const rg = E.createRally(), rt = E.rallyTerminal(rg, () => {}), p0 = rg.paddle;
+  rt.run("S"); rt.run("LLLL"); const moved = rg.paddle < p0 && rg.state === "play" && Math.abs(rg.time - 5 * E.TICK) < 1e-6;
+  rt.run("W".repeat(40)); const capTicks = Math.abs(rg.time - (5 + E.MAX_TICKS) * E.TICK) < 1e-6 && rt.run("RESET").reset && rg.state === "serve" && rg.score === 0;
+  // Where it stands: on Era 3's left bank, clear of every reserved plot, the stream's walk and each other.
+  const inBank = (b2) => b2.x0 >= bank.x0 + 1 && b2.x1 <= W.CHANNEL.x0 - W.BANK.FRONT && b2.z0 >= era.z0 + 1 && b2.z1 <= era.z1 - 1;
+  const clash = (b2, pad = 0) => reserved.some(r => b2.x0 < r.x1 + pad && b2.x1 > r.x0 - pad && b2.z0 < r.z1 + pad && b2.z1 > r.z0 - pad);
+  const overlaps = (p1, q, pad = 0) => p1.x0 < q.x1 + pad && p1.x1 > q.x0 - pad && p1.z0 < q.z1 + pad && p1.z1 > q.z0 - pad;
+  const placed = solids.every(b2 => inBank(b2) && !clash(b2) && b2.top <= W.BANK_TOP + W.BANK.MAX_H && obstacles.some(o => overlaps(b2, o) && b2.x0 >= o.x0 - 1e-9 && b2.x1 <= o.x1 + 1e-9 && b2.z0 >= o.z0 - 1e-9 && b2.z1 <= o.z1 + 1e-9))
+    && obstacles.every(o => inBank(o) && !clash(o, 1)) && obstacles.every((o, i) => obstacles.every((q, j) => i === j || !overlaps(o, q, 2.5)))
+    && props.every(p => !clash({ x0: p.at.x - 0.3, x1: p.at.x + 0.3, z0: p.at.z - 0.3, z1: p.at.z + 0.3 }) && !obstacles.some(o => overlaps({ x0: p.at.x - 0.3, x1: p.at.x + 0.3, z0: p.at.z - 0.3, z1: p.at.z + 0.3 }, o))
+      && obstacles.some(o => p.pick.x > o.x0 && p.pick.x < o.x1 && p.pick.z > o.z0 && p.pick.z < o.z1))
+    && signs.every(s2 => s2.y < W.BANK_TOP + W.BANK.MAX_H - 0.5);
+  // The frame: update runs (headless, so no screens), holds the pager while reading and notifies once an approach.
+  const notes = []; def.build({ ...kit, notify: (t) => notes.push(t) });
+  const st = { era: 3, walking: true, reading: true, x: s.x + 1, z: s.z };
+  for (let i = 0; i < 30; i++) def.update(1 / 30, i / 30, st);
+  const held = notes.length === 0; st.reading = false;
+  for (let i = 0; i < 30; i++) def.update(1 / 30, 1 + i / 30, st);
+  const frame = held && notes.length === 1 && /^Pager · PRESS/.test(notes[0]) && E.visit.pager.count === 1 && E.visit.demo.time > 1.5;
+  def.dispose(); const disposed = E.visit === null && E.pcRun("DIAL") === null;
+  return { frame, disposed, registered, exhibits, trail, prompts, modern, same, deskSame, later, back, press, roundTrip, sealed, wrongKey, keysReset, floppy, offline, capped, ring, frozen, first, stay, again, spaced, steady, over, capStep, moved, capTicks, placed };
+};
+// Rule: Era 3 in Calm (docs/genesis-voyage/EXHIBIT-CONTRACT.md): without Calm the pager's unread lamp blinks and the
+// rally cabinet's self-playing demo moves; in Calm the lamp holds steady and the demo holds still, frame after frame,
+// while a command's result (the press's broken links) still shows at once; and the pager holds while a panel or
+// terminal is open (`state.reading`), paging once as the visitor arrives after reading ends. The press is a
+// demonstration (it shows the room's [3] and [4] working), so the kit refuses a demonstration naming no stops and a
+// `demonstrates` list on anything else.
+const genesisEra3CalmProof = async () => {
+  const context = { window: {} };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-3"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, E = BLc.genesisEra3, def = EX.eras[3];
+  const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true, glow: 1 });
+  const props = {}, notes = [];
+  const kit = { era: W.ERAS[3], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (n) => n,
+    label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle: () => {}, notify: (t) => notes.push(t),
+    prop: (d) => { props[d.id] = d; return { ...d, era: 3 }; } };
+  def.build(kit);
+  const V = E.visit, far = { era: 3, walking: true, reading: false, calm: false, x: -30, z: -340 };
+  V.pager.receive(0, 0);
+  const glows = [], demo = [];
+  let t = 0;
+  for (let i = 0; i < 40; i++) { def.update(1 / 30, t += 1 / 30, far); glows.push(V.pagerLamp.glow); demo.push(V.demo.time); }
+  const livelyLamp = new Set(glows).size > 1, livelyDemo = demo[39] > demo[0];
+  far.calm = true; glows.length = 0; demo.length = 0;
+  for (let i = 0; i < 90; i++) { def.update(1 / 30, t += 1 / 30, far); glows.push(V.pagerLamp.glow); demo.push(V.demo.time); }
+  const steadyLamp = new Set(glows).size === 1 && glows[0] > 0.4, stillDemo = new Set(demo).size === 1;
+  props["e3-press"].onUse({}).terminal.run("EDIT 2 Ooga trades ten shells"); def.update(1 / 30, t += 1 / 30, far);
+  const resultAtOnce = V.tiles[1].bad.visible && !V.tiles[0].bad.visible && V.printedBad.visible;
+  far.calm = false; def.update(1 / 30, t += 1 / 30, far); const resumes = V.demo.time > demo[0];
+  // Reading: at the press's own spot with a panel open, nothing pages; once reading ends it pages once.
+  const spot = E.PAGE_SPOTS.find((s) => s.id === "newspaper"), at = { era: 3, walking: true, reading: true, calm: false, x: spot.x + 1, z: spot.z }, before = notes.length;
+  for (let i = 0; i < 30; i++) def.update(1 / 30, t += 1 / 30, at);
+  const heldWhileReading = notes.length === before;
+  at.reading = false; for (let i = 0; i < 30; i++) def.update(1 / 30, t += 1 / 30, at);
+  const pagesAfter = notes.length === before + 1;
+  const demonstration = props["e3-press"].connection === "demonstration" && !EX.CONNECTIONS.demonstration.trail && !EX.checkProp(3, props["e3-press"])
+    && !!EX.checkProp(3, { id: "x", connection: "demonstration" }) && !!EX.checkProp(3, { id: "y", demonstrates: ["era3-room-haber1991"] }) && !!EX.checkProp(3, { id: "z", connection: "context", demonstrates: ["a"] });
+  def.dispose();
+  return { livelyLamp, livelyDemo, steadyLamp, stillDemo, resultAtOnce, resumes, heldWhileReading, pagesAfter, demonstration, disposed: E.visit === null };
+};
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
@@ -23235,9 +23366,12 @@ const genesisExhibitsProof = async () => {
     1: {},
     // Era 2's only stop is Merkle's 1980 paper; blind signatures, the PC, the floppies and the maze are context.
     2: { "e2-merkle": "citation [7]" },
+    // Era 3's stops are Fingerprints and Time's [3] and [4], at its lectern; the press demonstrates them, and its other
+    // four exhibits are context.
+    3: { "e3-press": "demonstration of era3-room-haber1991,era3-room-bayer1993" },
     4: { "e4-hashcash": "influence", "e4-bmoney": "citation [1]", "e4-names": "citation [5]", "e4-timesec": "citation [2]" }
   };
-  const describe = (d) => d.connection ? `${d.connection}${d.ref ? ` ${d.ref}` : ""}` : "none";
+  const describe = (d) => !d.connection ? "none" : d.connection === "demonstration" ? `demonstration of ${(d.demonstrates || []).join(",")}` : `${d.connection}${d.ref ? ` ${d.ref}` : ""}`;
   for (const [era, want] of Object.entries(EXPECTED_TRAIL)) {
     const mine = built.filter((x) => x.era === +era);
     for (const [id, link] of Object.entries(want)) {
@@ -23436,6 +23570,10 @@ const unitChecks = async () => {
   record("Genesis Voyage Era 1 lifecycle: Calm holds every decorative movement and blink while a command still shows its result at once; leaving the cave cancels the coupler's tones scheduled ahead and clears its readout, and coming back schedules nothing; no gesture, no audio; the sound goes through the page-wide mute and dispose closes it", Object.values(era1Life.calm).every(Boolean) && Object.values(era1Life.sound).every(Boolean), JSON.stringify(era1Life));
   const genesisEra2 = await genesisEra2Proof();
   record("Genesis Voyage Era 2: the Merkle table lights only the changed path and proves a record in three fingerprints, the blind-stamp desk keeps its order, hides the token and refuses a second spend, the PC is bounded and read-only, the crate sorts in its fewest swaps, every maze is solvable at par, it registers through the exhibit kit with e2- ids, citation [7] for the 1980 paper and context for the rest, dated, with its overview and no era-wide sign, clear of the reserved plots, every exhibit has a year label, sources, a panel and a reset, context stays context, the curve stays held, the walkways stay clear and the models stay bounded", Object.values(genesisEra2).every(Boolean), JSON.stringify(genesisEra2));
+  const genesisEra3 = await genesisEra3Proof();
+  record("Genesis Voyage Era 3: it registers through the kit with no signage of its own; every exhibit is dated, sourced, explained and resettable at its prompt and adds no trail stop; the press breaks the desk's own links after a changed page and only those; the toy padlock opens what it locks and a changed note fails its seal; the dial-up corner caps its board; the pager pages once per approach and never while reading; the rally plays the same at any frame rate and a tick at a time at its prompt; everything keeps the reserved plots, the stream's walk and each other clear", Object.values(genesisEra3).every(Boolean), JSON.stringify(genesisEra3));
+  const era3Calm = await genesisEra3CalmProof();
+  record("Genesis Voyage Era 3 in Calm and while reading: the pager's lamp and the rally's demo move without Calm and hold still with it while a command's result shows at once; nothing pages while a panel or terminal is open, and it pages once after; the press is a demonstration of the room's stops, never a stop itself", Object.values(era3Calm).every(Boolean), JSON.stringify(era3Calm));
   const genesisExhibits = await genesisExhibitsProof();
   record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none, all context; Era 2: Merkle [7]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();

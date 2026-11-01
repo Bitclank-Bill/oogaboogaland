@@ -283,6 +283,31 @@ const genesisEra3Proof = async () => {
 Results, exact commands and browser evidence for this adaptation are in the review bundle's `START-HERE.md`, and are
 summarised in the commit message.
 
+## Integration (Claude Code, integrator, on `gv/integration-1`)
+
+Merged from `8dc7569` with an ordinary merge. The integrator's changes, made while the Era 3 builder is paused:
+
+- **Request 4, the press, resolved:** the kit now has a `"demonstration"` connection, never a trail stop, with a
+  required `demonstrates` list of stops. The press carries it (one line in this file).
+  - The scene checks that each listed id is a trail stop, and throws if one isn't.
+  - Its terminal opens by naming them by step: "It shows step 3 (… [3]) and step 4 (… [4]) on the Steps toward
+    Bitcoin working; it is not a step of its own."
+  - The room's [3] and [4] stay the only Era 3 stops, so there are still 8 in all.
+- **Request 2, done:** `state.reading` (a panel or a terminal is open) and `kit.notify(text)`, a toast. The pager
+  holds while reading.
+- **Calm, added:** the pager's unread lamp holds steady and the cabinet's self-playing demo holds still. The screen
+  repaints only when what it shows changes. The press's and the padlock's models still show each command's result at
+  once.
+- **The leave contract:** nothing in Era 3 outlives its frames (no sound, timers or listeners). `dispose` drops the
+  visit, and the screens' canvases go with the scene's nodes.
+- **Deferred, as asked:** request 1 (the office PC's hand-on to the dial-up corner) and request 3 (a live panel for
+  real-time Tick-Tock Rally). The rally stays prompt-based, a tick at a time.
+- **Checks:**
+  - "Rule proof" above is in `test/run.mjs` as written, with its record line.
+  - `genesisEra3CalmProof` is added (Calm, reading, the demonstration's refusals). It fails against this file before
+    the Calm change, on the lamp and the demo.
+  - The shared proof's trail table requires the press's demonstration.
+
 ---
 *Prepared with AI assistance (Claude, by Anthropic) at Billy's request. Not reviewed or endorsed by the Ooga Booga Land
 maintainers.*

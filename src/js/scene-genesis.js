@@ -424,6 +424,8 @@
       const era = GW.ERAS[n];
       const kit = {
         era, top: ISLAND_TOP, channel: CHANNEL, M, createNode, addChild, place, solid, label,
+        // A short notice from an exhibit's update (a toast once the HUD is up; the kit is built before it).
+        notify: (text) => { if (hud) hud.toast(text); },
         sign: (title, sub, x, y, z, yaw = 0, height = 0.6) => {
           const l = label(title, sub, { height, style: "plain" }), node = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } }));
           addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
@@ -441,6 +443,7 @@
             const c = EX.CONNECTIONS[d.connection];
             const how = [`${c.label}${d.ref ? ` ${d.ref}` : ""}.${d.date ? ` ${d.date}.` : ""}`, entry.step
               ? `Step ${entry.step} of ${built.trail.length} on the Steps toward Bitcoin: follow the gold path along the banks, in date order.`
+              : entry.shows ? `It shows ${entry.shows} on the Steps toward Bitcoin working; it is not a step of its own.`
               : "Part of the story of these years, not something the Bitcoin whitepaper cites or is shown to have drawn on."];
             // A terminal has no pages: the same words open its screen, as its banner's first lines.
             if (r.terminal) { const t = r.terminal; return { ...r, terminal: { banner: [`HOW IT CONNECTS: ${how[0]}`, how[1], "", ...t.banner], prompt: t.prompt, run: (line) => t.run(line) } }; }
@@ -460,18 +463,25 @@
     // tells both papers' story (genesis-voyage.js FINGERPRINTS).
     for (const link of ROOM_LINKS) built.exhibitProps.push({ era: ROOM_ERA, def: link, prop: { id: link.id, at: link.at }, order: built.exhibitProps.length, step: 0, room: true });
     built.trail = EX.trailOf(built.exhibitProps);
+    // A demonstration links to the stops it shows, by their numbers, and must name stops that exist.
+    for (const e of built.exhibitProps) {
+      if (!e.def.demonstrates) continue;
+      const steps = e.def.demonstrates.map((id) => { const s = built.trail.find((t) => (t.def.id || t.prop.id) === id); if (!s) throw new Error(`genesis exhibits: ${e.def.id} demonstrates ${id}, which is not a trail stop`); return s; });
+      e.shows = steps.map((s) => `step ${s.step} (${s.def.title}${s.def.ref ? ` ${s.def.ref}` : ""})`).join(" and ");
+    }
   };
   // Each frame, the exhibits of the cave the visitor is in (aboard or ashore) may move; nothing else runs.
   // `calm` is the visit's Calm (reduced motion): era files hold decorative movement and blinking while it is on. When
   // the cave the visitor is in (aboard or ashore) changes, the era left gets `active(false, state)` and the era entered
   // `active(true, state)`, so a cave can stop what outlives its frames (sound scheduled ahead) the moment it is left.
-  const exhibitState = { era: -1, walking: false, x: 0, z: 0, calm: false };
+  const exhibitState = { era: -1, walking: false, reading: false, x: 0, z: 0, calm: false };
   let exhibitEra = -1;
   const updateExhibits = (dt, elapsed) => {
     const EX = BL.genesisExhibits;
     if (!EX) return;
     const p = walk.on && avatar ? avatar.root.position : boat, era = GW.eraAt(p.x, p.z), def = era >= 0 ? EX.eras[era] : null;
     exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.x = p.x; exhibitState.z = p.z; exhibitState.calm = view.calm;
+    exhibitState.reading = view.reading || !!terminal;
     if (era !== exhibitEra) {
       const left = exhibitEra >= 0 ? EX.eras[exhibitEra] : null;
       exhibitEra = era;
