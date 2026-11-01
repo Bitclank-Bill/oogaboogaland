@@ -18,6 +18,12 @@
     ["jetpack", "Jetpacks", "Collect a pack, then use J to equip or stow it. Hold Space for lift. Extra packs refill fuel; it never regenerates, and an empty pack disappears."],
     ["finish", "Banana pile", "Land on the banana pile to stop the clock. Your fastest finish becomes a ghost you can race next time."]
   ];
+  // The power-ups, each introduced the first time a session plays a level that carries it.
+  const ITEMS = {
+    xray: ["xray", "X-ray goggles", "Take the stone goggles to see how long each nearby cloud has before it fades, for 12 seconds (15 in the storm). A gold ∞ marks a cloud that never fades, a red ring one that is about to, and a dashed ring counts down until a cloud comes back."],
+    updraft: ["updraft", "Sky feather", "Carry one feather at a time. Once both your jumps are spent and you wear no fuelled jetpack, Space lets it go: a gust throws you about eight metres up."],
+    anchor: ["anchor", "Bone anchor", "Carry one anchor at a time. The next cloud you land on stops drifting and fading for 12 seconds, and if it was about to fade it is whole again. When the hold ends, its fade starts with a full warning."]
+  };
   const formatTime = (value) => `${String(Math.floor(value / 6000)).padStart(2, "0")}:${String(Math.floor(value / 100) % 60).padStart(2, "0")}.${String(value % 100).padStart(2, "0")}`;
   const create = ({ onStart, onReplay, onExit, onGuideDone, onSelect, onNext, letterSign } = {}) => {
     const node = (tag, className, text = "") => {
@@ -28,6 +34,9 @@
     };
     const hud = node("section", "cloud-hopper-hud"), name = node("div", "cloud-hopper-name", "CLOUD HOPPER");
     const timer = node("output", "cloud-hopper-time", "00:00.00"), title = node("div", "cloud-hopper-status");
+    // The power-ups that apply now, under the clock: X-ray's seconds, a feather held, an anchor held or holding.
+    const powers = node("div", "cloud-hopper-powers"), xrayChip = node("span", "cloud-hopper-power xray");
+    const featherChip = node("span", "cloud-hopper-power updraft", "FEATHER"), anchorChip = node("span", "cloud-hopper-power anchor");
     const ghost = node("p", "cloud-hopper-help", "Finish a run to set your ghost");
     const help = node("p", "cloud-hopper-help"), panel = node("dialog", "race-results game-intro cloud-hopper-panel");
     const glow = node("div", "game-intro-glow"), rays = node("div", "game-intro-rays");
@@ -101,14 +110,18 @@
       scoresList.append(row);
       scoreRows.push({ row, run, time });
     }
-    hud.append(name, timer, title, ghost, help);
+    powers.append(xrayChip, featherChip, anchorChip);
+    powers.hidden = xrayChip.hidden = featherChip.hidden = anchorChip.hidden = true;
+    hud.append(name, timer, powers, title, ghost, help);
     scoresPanel.append(scoresTitle, scoresList, scoresEmpty);
     actions.append(back, next, play, leaders, select, exit);
     panel.append(glow, kicker, panelTitle, goal, levels, introArt, guideArt, resultArt, panelHelp, resultTime, scoresPanel, actions);
     hud.hidden = panel.hidden = levels.hidden = next.hidden = select.hidden = leaders.hidden = true;
     document.body.append(hud, panel);
     let phase = "", hundredths = -1, previousFocus = null, disposed = false, frameY = 0.4;
-    let guideIndex = 0, guidePictures = null, spaceTarget = null;
+    // The guide's cards this time (`setGuide`): the cloud guide, then the items new to this session's level.
+    let guideIndex = 0, guidePictures = null, spaceTarget = null, guide = GUIDE;
+    let shownXray = -2, shownFeather = false, shownAnchor = -2;
     // The level choice: the one selected, the highest unlocked, the player's best per level (ms, 0 for none), and
     // whether the result card is showing the cards instead of the result (Level select).
     let selected = 1, unlocked = 1, bests = [], picking = false;
@@ -162,8 +175,8 @@
         ? `Best ghost · ${formatTime(Math.max(0, Math.floor(time * 100)))} · original route` : "Finish a run to set your ghost";
     };
     const showGuide = () => {
-      const [kind, name, text] = GUIDE[guideIndex];
-      kicker.textContent = `Cloud guide · ${guideIndex + 1} of ${GUIDE.length}`;
+      const [kind, name, text] = guide[guideIndex];
+      kicker.textContent = `Cloud guide · ${guideIndex + 1} of ${guide.length}`;
       if (letterSign) letterSign(panelTitle, name);
       else panelTitle.textContent = name;
       panelHelp.textContent = text;
@@ -173,7 +186,7 @@
       picture.setAttribute("aria-hidden", "true");
       guideArt.replaceChildren(picture);
       back.disabled = guideIndex === 0;
-      play.textContent = guideIndex === GUIDE.length - 1 ? "Let's go" : "Next";
+      play.textContent = guideIndex === guide.length - 1 ? "Let's go" : "Next";
       panel.scrollTop = 0;
     };
     const previous = () => {
@@ -183,7 +196,7 @@
       if (phase === "intro") { if (!locked()) onStart?.(); }
       else if (phase === "won" || phase === "dq") { if (!picking || !locked()) onReplay?.(); }
       else if (phase === "briefing") {
-        if (guideIndex < GUIDE.length - 1) { guideIndex++; showGuide(); }
+        if (guideIndex < guide.length - 1) { guideIndex++; showGuide(); }
         else onGuideDone?.();
       }
     };
@@ -205,6 +218,15 @@
       e.stopPropagation();
       if (e.key === "Shift") { clearActivation(); e.preventDefault(); return; }
       if (e.key === "Enter" || e.key === " ") {
+        // A fresh Enter or Space on a level card plays that level, as Play would (a locked one stays put).
+        const card = e.target.closest?.(".cloud-hopper-level"), modifiedCard = e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing;
+        if (card && !modifiedCard && (e.key === "Enter" ? e.type === "keydown" && !e.repeat : e.type === "keyup" && spaceTarget === e.target)) {
+          e.preventDefault(); clearActivation();
+          onSelect?.(cards.find(each => each.card === card).level.id);
+          start();
+          return;
+        }
+        if (card && e.key === "Enter") { e.preventDefault(); return; }
         // Focus moves here while sprint/jump may still be held. Only a fresh,
         // unmodified press may activate a button; an orphan Space release
         // must not become a click on the newly focused Play Again button.
@@ -401,7 +423,29 @@
       guidePictures?.dispose(); guidePictures = null;
       hud.remove(); panel.remove();
     };
-    return { show, update, setGhost, setHighscores, setLevels, setRunner, hide, dispose, get frameY() { return frameY; } };
+    // The guide's next cards: the cloud guide unless `cloud` is false, then each power-up named in `items`.
+    const setGuide = (cloud, items) => {
+      guide = cloud ? GUIDE.concat(items.map(kind => ITEMS[kind])) : items.map(kind => ITEMS[kind]);
+    };
+    // X-ray's whole seconds left (-1 off), whether a feather is held, and the anchor's (-1 none, 0 held, else the
+    // whole seconds it still holds a cloud). Text changes only when a figure does; X-ray blinks its last two seconds.
+    const setPowers = (xray, feather, anchor) => {
+      if (disposed || xray === shownXray && feather === shownFeather && anchor === shownAnchor) return;
+      if (xray !== shownXray) {
+        xrayChip.hidden = xray < 0;
+        if (xray >= 0) xrayChip.textContent = `X-RAY ${xray}`;
+        xrayChip.classList.toggle("ending", xray >= 0 && xray < 2);
+      }
+      featherChip.hidden = !feather;
+      if (anchor !== shownAnchor) {
+        anchorChip.hidden = anchor < 0;
+        anchorChip.textContent = anchor > 0 ? `ANCHOR ${anchor}` : "ANCHOR";
+        anchorChip.classList.toggle("holding", anchor > 0);
+      }
+      shownXray = xray; shownFeather = feather; shownAnchor = anchor;
+      powers.hidden = xray < 0 && !feather && anchor < 0;
+    };
+    return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, hide, dispose, get frameY() { return frameY; } };
   };
   BL.cloudHopperHud = { create };
 })();

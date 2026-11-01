@@ -187,7 +187,7 @@ only (`fogNear` 180 m), and the Anchor power-up is dropped.
 Today's course is shown for reference. All numbers are starting values, to be adjusted in
 play-testing within the stated bounds.
 
-| | Today | L1 Bluebird Hop | L2 Amber Spires | L3 Aurora Heights | L4 Thunderhead |
+| | Today | L1 Floating Isles | L2 Amber Spires | L3 Aurora Heights | L4 Thunderhead |
 |---|---|---|---|---|---|
 | Route R | 430.5 m | 340.1 m | 482.9 m | 685.8 m | 973.8 m |
 | Start radius / height | 472.5 / 232.5 m | 382.1 / 190 m | 524.9 / 247 m | 727.8 / 308 m | 1015.8 / 390 m |
@@ -367,6 +367,10 @@ the `movePass` guards. Decision 3 in section 7.
 | Air dash | No | It needs a new key, touch button and gamepad mapping. It adds a horizontal impulse that undoes L3's precise movement, and it overlaps with the jetpack |
 | Wind shield | No | No wind is proposed. Wind would be a physics change, to suggest separately |
 
+*Built in milestones 9, 10 and 12, as below. The pickups come from their own seeded stream, after everything else
+in the course, so they move nothing already there; a level's layout says how many of each. Crumble clouds and forks
+(milestone 11) are not built, so Updraft and Anchor are placed by stretch of the course instead of before them.*
+
 ### 3.2 How each works
 
 | | X-ray | Updraft | Anchor |
@@ -412,7 +416,15 @@ the sky is the level's `sky` in `cloud-hopper-levels.js`, sampled once by the hu
 its clock, whose phases still turn (so no phase toast) while the lamps follow the sky shown; the scenery is
 `cloud-hopper-sky.js`, laid each run from a fixed seed a level, with each islet stepped out across the route
 until it clears every cloud's swept lane by 6 m; the camera's far plane widens to take the scenery in. The sky
-changes as the ride up begins, without a blend. L4 keeps the island's clock until milestone 12.*
+changes as the ride up begins, without a blend. L4's storm came in milestone 12 (below).
+
+A detail pass after milestone 8 replaced the first scenery: L1's isles are voxel isles with strata, drips, vines,
+flowers, palms, trees and a hut, two pour a waterfall into mist, smaller isles hang on rope bridges, and two Ooga
+balloons, wheeling gulls and a rainbow opposite the sun join them; L2's spires are cumulus coloured face by face
+for the low sun, with banks along the horizon, rising sky lanterns and geese in a V; L3's aurora is curtains of
+instanced rays round the course's middle whose folds ripple and rays flicker, under a violet crown, with shooting
+stars, dark crystal isles with glowing vines and great turning crystals. Measured unlocked at 1920x1080 against
+milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh instead of twenty puffs).*
 
 - **How it is drawn.** In `scene-hub.js`, the `cloudPlaying()` branch already overrides
   clouds and fog. Each level adds a preset there. It calls `daylight.sample` at a fixed
@@ -422,14 +434,18 @@ changes as the ride up begins, without a blend. L4 keeps the island's clock unti
 - **Landing surfaces stay white.** L3 and L4 use night-readable cloud variants with an
   emissive floor. That adds three cached variants per kind and lighting mood, so the number
   of geometries stays bounded.
-- **L1 Bluebird Hop.** Warm blue midday sky. Floating grassy islets with small palms hang
+- **L1 Floating Isles** (named Bluebird Hop until the detail pass). Warm blue midday sky. Floating grassy islets with small palms hang
   well below and beside the lanes. They are built with the hub's cached foliage, marked
   `sightHidden`, have no collision, and are never under a cloud's footprint.
 - **L2 Amber Spires.** Sunset with amber light. Towering cumulus spires stand far outside
   the course, built from the hub's cloud variants scaled up and placed beyond every lane.
 - **L3 Aurora Heights.** Clear moonlit night. A few large aurora curtains (emissive glass
   ribbons, cached, gently waving) and silent lightning far off on the horizon.
-- **L4 Thunderhead.** Storm haze with `fogNear` 70 m and `fogFar` 260 m.
+- **L4 Thunderhead.** *Built in milestone 12, with the chosen look B: 18:36 greyed by the sky's `storm` (0.86) once as
+  it is sampled, haze 50–200 m on the clouds and the sea, rain, forked lightning 60–110 m off with the sky's flash
+  and thunder by distance, and dark scud clouds with rain shafts drifting well below the lanes. Measured in one
+  page against the same view without it, the storm costs nothing at 1920x1080 on High.* (The plan had: storm haze
+  with `fogNear` 70 m and `fogFar` 260 m.)
   - Within 70 m nothing is fogged. At 120 m (about four hops) a cloud is 26% fogged, so
     nearby landings and their warnings stay clear. Beyond 260 m clouds are hidden, which is
     the route-planning challenge.
@@ -592,10 +608,10 @@ it touches.
 | 6 | Sessions and ghosts per level | `cloud-hopper.js`, `cloud-hopper-ghost.js`, `cloud-hopper-hud.js` |
 | 7 | Shared boards per level, legacy board retired | `highscore-rules.js`, `worker/migrations/0004_cloud_hopper_levels.sql`, `worker/test/highscores.test.mjs`, `docs/highscores.md`, `cloud-hopper-hud.js` |
 | 8 | Environments for L1–L3 | `scene-hub.js` (presets), new `cloud-hopper-sky.js` (decor), `cloud-hopper-models.js` (night variants, previews) |
-| 9 | X-ray | `cloud-hopper-course.js`, `cloud-hopper.js`, `cloud-hopper-models.js`, `cloud-hopper-audio.js`, `cloud-hopper-hud.js` |
-| 10 | Updraft | the same, plus a crew hook for a Space press with no other use |
+| 9 | X-ray (*built*) | `cloud-hopper-course.js`, `cloud-hopper.js`, `cloud-hopper-models.js`, `cloud-hopper-audio.js`, `cloud-hopper-hud.js` |
+| 10 | Updraft (*built*) | the same, plus a crew hook for a Space press with no other use (`spentJump`) |
 | 11 | L3 hazards: crumble clouds and forks | `cloud-hopper-course.js`, `cloud-hopper-models.js`, `cloud-hopper.js` |
-| 12 | L4: haze, rain, lightning, Anchor (go/no-go first) | `scene-hub.js`, `weather.js` (expose rain and bolt builders), `cloud-hopper-sky.js`, power-up files |
+| 12 | L4: haze, rain, lightning, Anchor (*built*) | `scene-hub.js`, `weather.js` (expose rain and bolt builders), `cloud-hopper-sky.js`, power-up files |
 | 13 | Docs | `AGENTS.md` (Cloud Hopper row, the `highscore-rules.js` row, testing table), README controls, `docs/highscores.md` |
 
 Milestones 2–3 could ship alone, ahead of the levels, but only by retiring or resetting
@@ -627,7 +643,7 @@ in milestone 8 and left it.
 
 | What | Choice |
 |---|---|
-| L1 Bluebird Hop | **B**: 08:15 morning, floating grassy islets with trees under soft painted cumulus |
+| L1 Floating Isles | **B**: 08:15 morning, floating grassy islets with trees under soft painted cumulus |
 | L2 Amber Spires | **A**: 17:30 golden hour, towering cumulus stacks far around the island, light painted clouds |
 | L3 Aurora Heights | **A**: 00:30 moonlit night, stars, green aurora curtains |
 | L4 Thunderhead | **B**: dark storm, haze 50–200 m that also hazes out the sea, rain, nearer lightning |
@@ -637,8 +653,9 @@ in milestone 8 and left it.
 | Level select | **B, refined**: picture cards with the number in the picture's corner and the name on its own row |
 
 The storm's haze needed one renderer change: the sea, drawn in the sky pass, now follows the
-scene's fog when a scene asks for it (`seaFog`, WebGL). The Canvas 2D sea follows in
-milestone 12.
+scene's fog when a scene asks for it (`seaFog`, WebGL). Canvas 2D draws no sea plane, so its
+fog alone covers the storm. Every look chosen here now lives in the level modules, and the
+looks module is gone.
 
 ## 8. Acceptance criteria
 

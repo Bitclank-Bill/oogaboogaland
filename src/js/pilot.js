@@ -418,6 +418,9 @@
       const cave = player();
       return weaponViewReady(cave) && cave.weapon.aiming;
     };
+    // A scene may keep combat out of the overhead view (`noOverhead`, Cloud Hopper's): combat then keeps to the
+    // shoulder and first person, X entering it at the shoulder and nothing leaving the shoulder for overhead.
+    const noOverhead = () => !!ctx.noOverhead?.();
     const aimView = () => {
       const cave = player();
       return weaponViewReady(cave) && (closeWanted || shoulderView);
@@ -1835,7 +1838,7 @@
       if (!closeWanted || firstOnly) return;
       clearRightGesture();
       const cave = player();
-      shoulderView = !!cave && shoulder;
+      shoulderView = !!cave && (shoulder || cave.weapon.aiming && noOverhead());
       if (aimView()) {
         if (cave && !cave.camp.rolling) lockCurrentAimPoint();
         closeWanted = false;
@@ -2018,7 +2021,7 @@
     const shooterView = (active, px = null, py = null, scroll = false) => {
       resumePose();
       const cave = player();
-      if (!weaponViewReady(cave)) return;
+      if (!weaponViewReady(cave) || !active && cave.weapon.aiming && noOverhead()) return;
       clearRightGesture();
       if (active && birdsEye() && !closeWanted) {
         anchorOverheadPointer(cave);
@@ -2132,7 +2135,7 @@
         return true;
       }
       const enteringOrbit = !cave.weapon.aiming && !closeWanted && !shoulderView;
-      const enteringView = enteringOrbit ? combatEntryView(camera.position, cave.root.position) : null;
+      const enteringView = enteringOrbit ? noOverhead() ? "shoulder" : combatEntryView(camera.position, cave.root.position) : null;
       if (enteringOrbit) {
         captureControl(controlTransition);
         if (handoff.active) eyeMotionValid = false;
@@ -2456,6 +2459,8 @@
             zoomStopped = true;
             return;
           }
+          // Combat that may not go overhead stops at the shoulder.
+          if (noOverhead() && cave.weapon.aiming) { zoomStopped = true; return; }
           shooterView(false, null, null, true);
           if (birdsEye()) {
             overheadWanted = clamp(overheadWanted * factor, Math.min(overheadWanted, overheadScrollMin(cave)), Math.max(overheadWanted, DIST_MAX));

@@ -4,13 +4,15 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const MASTER = 0.45, CLOUD_VOICES = 6, CLOUD_NEAR = 4, CLOUD_FAR = 50, WARN_VOICES = 3, WARN_FAR = 40;
+  // Power-up and storm cues: pooled tones and filtered-noise voices, two thunder voices and the rain's bed.
+  const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.055;
   const BACKGROUND_AHEAD = 2, BACKGROUND_MS = 250;
   const create = () => {
     let ctx = null, master = null, musicGain = null, jetGain = null, jetTone = null, jetWhine = null, jetFilter = null, music = null;
     let armed = false, disposed = false, resuming = false, jetOn = false, muted = BL.sound.muted, nextJump = 0;
-    let musicStage = "", musicSong = 0, backgroundTimer = 0;
+    let musicStage = "", musicSong = 0, backgroundTimer = 0, rainGain = null, rainOn = false, nextTone = 0, nextAir = 0, nextThunder = 0;
     let musicLevel = 0, musicFrom = 0, musicAt = 0, musicUntil = 0, musicFade = 0.12;
-    const jumps = [], clouds = [], warnings = [];
+    const jumps = [], clouds = [], warnings = [], tones = [], airs = [], thunders = [];
     const resultStage = value => value === "won" || value === "best" || value === "dq";
     const levelAt = now => musicUntil <= now ? musicLevel
       : musicFrom + (musicLevel - musicFrom) * Math.max(0, (now - musicAt) / (musicUntil - musicAt));
@@ -41,12 +43,17 @@
         voice.gain.gain.cancelScheduledValues(now);
         voice.gain.gain.setValueAtTime(0, now);
       }
-      for (const voices of [clouds, warnings]) for (let i = 0; i < voices.length; i++) {
+      for (const voices of [clouds, warnings, tones, airs]) for (let i = 0; i < voices.length; i++) {
         const voice = voices[i];
         voice.gain.gain.cancelScheduledValues(now);
         voice.gain.gain.setValueAtTime(0, now);
         voice.until = 0;
       }
+      for (let i = 0; i < thunders.length; i++) for (const level of [thunders[i].crack.gain, thunders[i].rumble.gain]) {
+        level.cancelScheduledValues(now); level.setValueAtTime(0, now);
+      }
+      rainOn = false;
+      if (rainGain) { rainGain.gain.cancelScheduledValues(now); rainGain.gain.setValueAtTime(0, now); }
       if (jetGain) {
         jetGain.gain.cancelScheduledValues(now);
         jetGain.gain.setValueAtTime(0, now);
@@ -121,6 +128,27 @@
         noise.connect(filter("bandpass", 2600, 1.2, gain(0.35, level)));
         warnings.push({ gain: level, tone, until: 0, level: 0 });
       }
+      for (let i = 0; i < TONE_VOICES; i++) {
+        const level = gain(0, master), tone = ctx.createOscillator();
+        tone.type = "sine"; tone.frequency.value = 440;
+        tone.connect(level); tone.start();
+        tones.push({ gain: level, tone, until: 0 });
+      }
+      for (let i = 0; i < AIR_VOICES; i++) {
+        const level = gain(0, master), band = filter("bandpass", 800, 1.2, level);
+        noise.connect(band);
+        airs.push({ gain: level, band, until: 0 });
+      }
+      for (let i = 0; i < THUNDER_VOICES; i++) {
+        // A crack in the upper band over a deep rumble, each its own level.
+        const crack = gain(0, master), rumble = gain(0, master);
+        noise.connect(filter("bandpass", 900, 0.6, crack));
+        noise.connect(filter("lowpass", 140, 0.7, rumble));
+        thunders.push({ crack, rumble });
+      }
+      // A storm's rain: a soft hiss under everything while it falls.
+      rainGain = gain(0, master);
+      noise.connect(filter("highpass", 900, 0.5, filter("lowpass", 5200, 0.5, rainGain)));
       jetGain = gain(0, master);
       // Soft exhaust, a warm motor body and a faint turbine whistle. A small
       // retained flutter keeps the air alive without a harsh sawtooth buzz.
@@ -233,6 +261,70 @@
       volume.exponentialRampToValueAtTime(0.0001, now + 0.6);
       volume.setValueAtTime(0, now + 0.62);
     };
+    // A pooled tone gliding `from` to `to` Hz over `seconds`, peaking at `peak`, `delay` seconds from now.
+    const toneCue = (type, from, to, seconds, peak, delay = 0) => {
+      const voice = tones[nextTone], now = ctx.currentTime + delay, pitch = voice.tone.frequency, level = voice.gain.gain;
+      nextTone = (nextTone + 1) % tones.length;
+      voice.tone.type = type;
+      pitch.cancelScheduledValues(now); pitch.setValueAtTime(from, now); pitch.exponentialRampToValueAtTime(to, now + seconds);
+      level.cancelScheduledValues(now); level.setValueAtTime(0, now);
+      level.linearRampToValueAtTime(peak, now + 0.015);
+      level.exponentialRampToValueAtTime(0.0001, now + seconds); level.setValueAtTime(0, now + seconds + 0.01);
+    };
+    // A pooled breath of noise through a band gliding `from` to `to` Hz.
+    const airCue = (from, to, seconds, peak, q, delay = 0) => {
+      const voice = airs[nextAir], now = ctx.currentTime + delay, band = voice.band.frequency, level = voice.gain.gain;
+      nextAir = (nextAir + 1) % airs.length;
+      voice.band.Q.setValueAtTime(q, now);
+      band.cancelScheduledValues(now); band.setValueAtTime(from, now); band.exponentialRampToValueAtTime(to, now + seconds);
+      level.cancelScheduledValues(now); level.setValueAtTime(0, now);
+      level.linearRampToValueAtTime(peak, now + seconds * 0.3);
+      level.exponentialRampToValueAtTime(0.0001, now + seconds); level.setValueAtTime(0, now + seconds + 0.01);
+    };
+    // A power-up taken: a two-note chime, and X-ray's shimmer rising as it comes on.
+    const power = (kind) => {
+      if (!ready()) return;
+      toneCue("triangle", 1320, 1320, 0.16, 0.11); toneCue("triangle", 1980, 1980, 0.24, 0.09, 0.09);
+      if (kind === "xray") { toneCue("sine", 520, 1700, 0.7, 0.08, 0.05); airCue(1500, 5200, 0.7, 0.06, 3, 0.05); }
+    };
+    // X-ray's shimmer falling, two seconds before it ends.
+    const xrayEnding = () => {
+      if (!ready()) return;
+      toneCue("sine", 1700, 480, 0.9, 0.07); airCue(4800, 1300, 0.9, 0.045, 3);
+    };
+    // The sky feather's gust lifting the Ooga.
+    const updraft = () => {
+      if (!ready()) return;
+      airCue(260, 2600, 0.75, 0.3, 1.1); toneCue("sine", 220, 660, 0.5, 0.05);
+    };
+    // The bone anchor biting: a stone thunk and the vine taking the strain; `creak` alone two seconds before it lets go.
+    const creak = (delay = 0) => { if (ready()) toneCue("sawtooth", 150, 215, 0.45, 0.04, delay); };
+    const anchor = () => {
+      if (!ready()) return;
+      toneCue("sine", 120, 52, 0.4, 0.3); airCue(420, 180, 0.18, 0.16, 0.8); creak(0.14);
+    };
+    // A lightning strike `distance` metres off: its crack and rumble arrive when its sound would, quieter further off.
+    const thunder = (distance) => {
+      if (!ready() || !Number.isFinite(distance)) return;
+      const voice = thunders[nextThunder], near = Math.max(0.15, Math.min(1, 1 - distance / THUNDER_FAR));
+      const now = ctx.currentTime + distance / SOUND_SPEED, crack = voice.crack.gain, rumble = voice.rumble.gain;
+      nextThunder = (nextThunder + 1) % thunders.length;
+      crack.cancelScheduledValues(now); crack.setValueAtTime(0, now);
+      crack.linearRampToValueAtTime(0.22 * near, now + 0.02); crack.exponentialRampToValueAtTime(0.0001, now + 0.4); crack.setValueAtTime(0, now + 0.41);
+      rumble.cancelScheduledValues(now); rumble.setValueAtTime(0, now);
+      rumble.linearRampToValueAtTime(0.55 * (0.5 + 0.5 * near), now + 0.18);
+      rumble.linearRampToValueAtTime(0.32 * (0.5 + 0.5 * near), now + 0.7);
+      rumble.exponentialRampToValueAtTime(0.0001, now + 3.2); rumble.setValueAtTime(0, now + 3.21);
+    };
+    // The storm's rain bed, on while a storm level plays.
+    const rain = (on) => {
+      on = !!on && !!ready();
+      if (on === rainOn || !rainGain) return;
+      rainOn = on;
+      const now = ctx.currentTime, level = rainGain.gain;
+      level.cancelScheduledValues(now); level.setValueAtTime(level.value, now);
+      level.setTargetAtTime(on ? RAIN : 0, now, on ? 0.6 : 0.25);
+    };
     const jet = (on) => {
       on = !!on && !!ready();
       if (on === jetOn) return;
@@ -281,9 +373,10 @@
         ctx.close().catch(() => {});
       }
       ctx = master = musicGain = jetGain = jetTone = jetWhine = jetFilter = music = null;
-      jumps.length = clouds.length = 0;
+      jumps.length = clouds.length = warnings.length = tones.length = airs.length = thunders.length = 0;
+      rainGain = null;
     };
-    return { unlock, stage, level, tick, song, jump, fade, warn, jet, stop, dispose };
+    return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, anchor, creak, thunder, rain, stop, dispose };
   };
   BL.cloudHopperAudio = { create };
 })();

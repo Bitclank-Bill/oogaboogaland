@@ -8422,8 +8422,11 @@
     // a frozen one hits from the second frame on.
     if (fixedSky ? fixedSky !== sampledSky : sampledSky || clock.dayOfYear !== sampledDay || islandLatitude !== sampledLatitude || Math.abs(hour - sampledHour) >= DAY_RESAMPLE_HOUR
       || Math.abs(clock.continuousDay - sampledContinuousDay) >= DAY_RESAMPLE_DAY || Math.abs(clock.utcMs - sampledUtcMs) >= DAY_RESAMPLE_MS) {
-      if (fixedSky) daylight.sample(skyHour, RENDER_OPTS, BL.cloudHopperSky.DAY);
-      else daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay, clock.utcMs);
+      if (fixedSky) {
+        daylight.sample(skyHour, RENDER_OPTS, BL.cloudHopperSky.DAY);
+        // A storm level greys its sample once, before the stash keeps it.
+        if (fixedSky.storm) BL.cloudHopperSky.grade(RENDER_OPTS, fixedSky.storm);
+      } else daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay, clock.utcMs);
       sampledSky = fixedSky;
       sampledHour = hour; sampledDay = clock.dayOfYear; sampledLatitude = islandLatitude; sampledContinuousDay = clock.continuousDay; sampledUtcMs = clock.utcMs;
       DAY_STASH.directStrength = RENDER_OPTS.directStrength; DAY_STASH.ambientFloor = RENDER_OPTS.ambientFloor;
@@ -8448,12 +8451,15 @@
     const sheltered = !cloudPlaying() && mempoolIsland.coveredAt(camera.position.x, camera.position.y, camera.position.z) ? 1 : 0;
     poolShade += clamp(sheltered - poolShade, -dt * 1.6, dt * 1.6);
     poolUnder += clamp((cutawayPool === 2 ? 1 : 0) - poolUnder, -dt * 1.6, dt * 1.6);
+    // A storm level's haze takes in the sea too.
+    RENDER_OPTS.seaFog = !!fixedSky?.fog;
     if (cloudPlaying()) {
-      // Keep the destination clear across the whole Cloud Hopper course: only the level's own painted clouds.
+      // Keep the destination clear across the whole Cloud Hopper course: only the level's own painted clouds, and
+      // its own haze where it has one (Thunderhead's), which its lightning lifts with the sky.
       RENDER_OPTS.clouds = fixedSky ? fixedSky.clouds : 0;
       RENDER_OPTS.fog = RENDER_OPTS.horizon;
-      RENDER_OPTS.fogNear = 900; RENDER_OPTS.fogFar = 2000;
-      cloudHopper.looks?.sky(RENDER_OPTS);
+      RENDER_OPTS.fogNear = fixedSky?.fog ? fixedSky.fog[0] : 900; RENDER_OPTS.fogFar = fixedSky?.fog ? fixedSky.fog[1] : 2000;
+      if (cloudHopper.flash > 0) BL.cloudHopperSky.flash(RENDER_OPTS, cloudHopper.flash);
     } else if (gameMode) RENDER_OPTS.clouds = 0;
     else weather.update(dt, RENDER_OPTS, poolShade);
     if (poolShade > 0) {
@@ -11013,6 +11019,8 @@
       if (e.key === "Escape") { e.preventDefault(); if (!e.repeat) cloudHopper.exit(); }
       else if (!cloudHopper.held && (e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
       else if (!cloudHopper.held && e.key === "0" && !e.repeat) pilot.resetCamera();
+      // X still switches carry and combat; combat keeps to the shoulder and first person here (`noOverhead`).
+      else if (!cloudHopper.held && (e.key === "x" || e.key === "X") && !e.repeat) pilot.modeAction("mode-toggle");
       return;
     }
     // Reading the poster: Space and the arrows step it, Escape hands the view back.
@@ -11379,7 +11387,7 @@
       wpContextOn = true;
     }
     presets = { pile: PILE_VIEW, gate: GATE_VIEW };
-    pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, enterFreeView: enterFreeCameraView, coarse: COARSE, onFreeAction: freeAction, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
+    pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, enterFreeView: enterFreeCameraView, coarse: COARSE, onFreeAction: freeAction, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly, noOverhead: () => !!cloudHopper?.active, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
     chalkboard = BL.chalkboard.create({
       renderer,
       onOpen: () => { pilot.setActive(false); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
@@ -11571,6 +11579,8 @@
     shared.jetpackLiftOnly = cave => !!cloudHopper?.active && cave === cloudHopper.actor;
     shared.autoLedgeJump = cave => !(cloudHopper?.active && cave === cloudHopper.actor);
     shared.onJump = cave => cloudHopper?.onJump(cave);
+    // Space with both jumps spent: Cloud Hopper's sky feather, when one is held.
+    shared.spentJump = cave => !!cloudHopper?.updraft(cave);
     shared.npcPaused = cloudPlaying;
     shared.tickerVisible = donationTickerVisible;
     shared.abyssAt = (x, z, y, actor) => !cloudHopper?.active && abyssAt(x, z, y, actor);

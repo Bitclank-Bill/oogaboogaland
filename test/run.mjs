@@ -4716,11 +4716,12 @@ const cloudHopperFailureChecks = async engine => {
       }
     } };
   Object.assign(BL, { hubModels: { jetpack: () => ({}), jetFlame: () => ({}) },
-    cloudHopperSky: { create: () => ({ build: () => 0, update: noop, clear: noop, dispose: noop }) },
+    cloudHopperSky: { create: () => ({ build: () => 0, update: noop, clear: noop, dispose: noop, flash: 0 }) },
     cloudHopperModels: { cloud(radius) { platformRadius ||= radius; return S.createNode(); }, cloudMesh: () => null, boostSurface: () => S.createNode(), updateBoostSurface: noop,
-      bounceMarker: () => S.createNode(), updateBounceMarker: noop, jetpackPickup: () => S.createNode(), updateJetpackPickup: noop,
-      cabinet: () => S.createNode(), updateCabinet: noop },
+      bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
+      tether: () => S.createNode(), leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
     cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song: noop, jump: noop, fade: noop, warn: noop, jet: noop,
+      power: noop, xrayEnding: noop, updraft: noop, anchor: noop, creak: noop, thunder: noop, rain: noop,
       stage(name) { audioStage = name; }, tick() { audioTicks++; },
       level(value, seconds = 0.12) { audioLevel = value; audioFade = seconds; },
       stop() { audioStage = ""; audioLevel = 0; audioStops++; }, dispose() { audioDisposed = true; } }) },
@@ -4736,7 +4737,7 @@ const cloudHopperFailureChecks = async engine => {
     }) },
     cloudHopperHud: { create(options) { callbacks = options; return {
       show(phase, time, scores, latest) { shown = phase; shownScores = scores; shownLatest = latest; },
-      update: noop, setGhost: noop, setLevels: noop, setRunner: noop, hide: noop, dispose: noop, frameY: 0.4
+      update: noop, setGhost: noop, setLevels: noop, setRunner: noop, setGuide: noop, setPowers: noop, hide: noop, dispose: noop, frameY: 0.4
     }; } } });
   const controllerSource = await readFile(join(root, "src/js/cloud-hopper.js"), "utf8");
   runInNewContext(controllerSource, context);
