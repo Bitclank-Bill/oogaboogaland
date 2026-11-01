@@ -14704,7 +14704,8 @@ const goldbugChecks = BL => {
 
   // The show through create's own update, driven by positions as a walking Ooga gives them: a loop fires it, it runs to
   // the end within the coin pool and the scene's particle pool, and leaves the scene's children as they were.
-  const run = (calm, busyAt = Infinity) => {
+  // feet: the height the walker's feet stand at over the bushes (3 m is a jetpack's or a jump's).
+  const run = (calm, busyAt = Infinity, feet = 0) => {
     const root = S.createNode(), mirrorNode = S.createNode({ position: { x: 0, y: 1.5, z: 0.5 } });
     S.addChild(root, mirrorNode);
     const tally = { puffs: 0, pulses: 0, rustles: 0, maxCoins: 0, phases: new Set(), frames: 0 };
@@ -14716,34 +14717,61 @@ const goldbugChecks = BL => {
       mirror: { mouth: { x: 0, z: 0, ry: 0 }, node: mirrorNode, ripples: { pulse: () => { tally.pulses++; return true; } } },
       rustle: () => { tally.rustles++; }
     });
-    const before = root.children.length, point = { x: 0, y: 0, z: 0 };
+    // Built with the visit, off the graph until a show.
+    const before = root.children.length, point = { x: 0, y: 0, z: 0 }, builtDetached = egg.debug.built && !egg.debug.attached;
     for (const i of [0, 1, 2, 3, 0]) {
-      Object.assign(point, { x: 0, z: 10 }); egg.update(1, point);
-      Object.assign(point, { x: bushes[i].x, z: bushes[i].z }); egg.update(1, point);
+      Object.assign(point, { x: 0, z: 10 }); egg.update(1, point, feet);
+      Object.assign(point, { x: bushes[i].x, z: bushes[i].z }); egg.update(1, point, feet);
     }
     const fired = egg.active;
     for (let f = 0; f < 60 * 20 && egg.active; f++) {
       tally.frames++;
       if (tally.frames === busyAt) busy = true;
-      egg.update(1 / 60, point);
+      egg.update(1 / 60, point, feet);
       tally.phases.add(egg.debug.phase);
       tally.maxCoins = Math.max(tally.maxCoins, egg.debug.coins.live);
     }
     const rig = egg.debug.rig, ended = !egg.active && root.children.length === before;
     const result = { fired, ended, phases: [...tally.phases].join(","), puffs: tally.puffs, pulses: tally.pulses, rustles: tally.rustles,
-      coins: egg.debug.coins, maxCoins: tally.maxCoins, aborted: egg.debug.aborted, golden: rig && rig.golden, seconds: +(tally.frames / 60).toFixed(2) };
+      coins: egg.debug.coins, maxCoins: tally.maxCoins, aborted: egg.debug.aborted, golden: rig && rig.golden, seconds: +(tally.frames / 60).toFixed(2), builtDetached };
+    // A kept hub's suspend ends a show and keeps the nodes, which play again; a full leave lets them go.
+    egg.debug.fire(false); egg.update(1 / 60, point, feet);
+    egg.suspend();
+    result.suspendKeeps = !egg.active && egg.debug.built && root.children.length === before && egg.debug.fire(false) && egg.debug.attached;
     egg.dispose();
+    result.disposed = !egg.debug.built && root.children.length === before;
     return result;
   };
-  const full = run(false), calm = run(true), cut = run(false, 90);
+  const full = run(false), calm = run(true), cut = run(false, 90), flown = run(false, Infinity, 3), hopped = run(false, Infinity, G.FEET_REACH - 0.05);
   const show = {
+    builtOnce: full.builtDetached && full.suspendKeeps && full.disposed,
+    feetOnGround: !flown.fired && hopped.fired,
     full: full.fired && full.ended && /run/.test(full.phases) && /look/.test(full.phases) && /melt/.test(full.phases) && /puddle/.test(full.phases)
       && full.pulses === 1 && full.rustles === 1 && full.puffs > 10 && full.coins.spawned > 0 && full.maxCoins <= G.COINS.capacity && !full.golden && full.seconds < 15,
     calm: calm.fired && calm.ended && !/melt|run|puddle/.test(calm.phases) && /walk/.test(calm.phases) && /fade/.test(calm.phases)
       && calm.puffs === 0 && calm.pulses === 0 && calm.coins.spawned === 0 && calm.seconds < 4,
     busyCuts: cut.fired && cut.ended && cut.aborted === 1 && cut.seconds < 1.6
   };
-  record("goldbug show: the loop calls him, he runs, double-takes, ripples the glass once and melts to nothing within the pools; Calm only walks and fades; an island event ends him at once", Object.values(show).every(Boolean), JSON.stringify({ full, calm, cut }));
+  record("goldbug show: the loop calls him, walked with feet on the ground, never flown over; he runs, double-takes, ripples the glass once and melts to nothing within the pools; Calm only walks and fades; an island event ends him at once; his nodes are built once a visit and kept through a suspend", Object.values(show).every(Boolean), JSON.stringify({ show, full, calm, cut, flown: flown.fired, hopped: hopped.fired }));
+
+  // The current island's bushes round the mirror cave's mouth (c1), as the hub's seeded scatter places them: the
+  // meadow's four in front of it, a fifth meadow bush further out, and cliff bushes on ledges (y above 0), plus one
+  // hidden, one inactive and one behind the mouth. pickBushes must yield exactly the four, in loop order.
+  const mouth = { x: 11, z: -19.052558883257653, ry: -Math.PI / 6 };
+  const bush = (x, y, z, footprint, extra = {}) => ({ prop: "bush", active: true, x, z, footprint, node: { visible: true, position: { x, y, z } }, ...extra });
+  const four = [[-1.49, -16.14], [2.68, -16.21], [2.15, -10.27], [-1.61, -11.76]];
+  const scatter = [
+    bush(2.68, 0, -16.21, 0.7), bush(-1.61, 0, -11.76, 0.7), bush(3.79, 2, -23.53, 0.5), bush(20.7, 6.75, -15.56, 0.5),
+    bush(2.15, 0, -10.27, 0.7), bush(-1.49, 0, -16.14, 0.7), bush(2.7, 0, -6.91, 0.7), bush(-3.16, 2, -23.63, 0.5),
+    bush(13.39, 0, -2.21, 0.7), bush(6, 0, -14, 0.7, { active: false }), bush(5, 0, -15, 0.7, { node: { visible: false, position: { x: 5, y: 0, z: -15 } } }),
+    bush(14, 0, -24, 0.7), { prop: "flower", active: true, x: 4, z: -14, footprint: 0.35, node: { visible: true, position: { x: 4, y: 0, z: -14 } } }
+  ];
+  const picked = G.pickBushes(scatter, mouth), at = picked ? picked.map((b) => [b.x, b.z]) : [];
+  const key = (p) => p.join(","), ring = four.map(key), start = picked ? ring.indexOf(key(at[0])) : -1;
+  const forward = at.every((p, i) => key(p) === ring[(start + i) % 4]), backward = at.every((p, i) => key(p) === ring[(start - i + 8) % 4]);
+  const pick = { four: !!picked && picked.length === 4, theFour: at.every((p) => ring.includes(key(p))), loopOrder: start >= 0 && (forward || backward),
+    footprints: !!picked && picked.every((b) => b.footprint === 0.7), tooFew: G.pickBushes(scatter.slice(0, 3), mouth) === null };
+  record("goldbug bushes: the current island's scatter round the mirror cave yields exactly its four meadow bushes, in loop order, past cliff, hidden, inactive and far ones", Object.values(pick).every(Boolean), JSON.stringify({ pick, at }));
 };
 const variantCacheChecks = BL => {
   const M = BL.models, builds = new Map(), read = M.variants(i => ({ i, serial: builds.set(i, (builds.get(i) || 0) + 1).get(i) }));

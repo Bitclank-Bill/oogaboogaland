@@ -16,6 +16,33 @@
   // The run's two turns, in the mirror mouth's frame (+z out of the cave): a point on the path out front, then the
   // spot just before the glass, which stands half a metre in from the mouth.
   const APPROACH_Z = 4.2, STAND_Z = 1.5;
+  // A bush counts only for feet on the ground in it: a jetpack or a jump over the bushes is no walk through them.
+  const FEET_REACH = 0.5;
+  // The mirror's four: the walk-through meadow bushes nearest the mouth on its open side, within `reach`, in order
+  // round their middle so a loop is a walk round them; null with fewer than four. The meadow's scatter stands its
+  // bushes at y 0 exactly; the cliffs' sit on ledges at the rock's height, out of reach of a walked loop.
+  const pickBushes = (scenery, mouth, reach = 16) => {
+    const ox = Math.sin(mouth.ry), oz = Math.cos(mouth.ry), near = [], gap = [];
+    for (const o of scenery) {
+      if (o.prop !== "bush" || !o.active || !o.node.visible || o.node.position.y !== 0) continue;
+      const dx = o.x - mouth.x, dz = o.z - mouth.z, d = Math.hypot(dx, dz);
+      if (dx * ox + dz * oz <= 0 || d >= reach) continue;
+      let at = near.length;
+      while (at > 0 && gap[at - 1] > d) at--;
+      near.splice(at, 0, o); gap.splice(at, 0, d);
+      if (near.length > 4) { near.pop(); gap.pop(); }
+    }
+    if (near.length < 4) return null;
+    let cx = 0, cz = 0;
+    for (const o of near) { cx += o.x / 4; cz += o.z / 4; }
+    const turn = near.map((o) => Math.atan2(o.z - cz, o.x - cx)), order = [];
+    for (let i = 0; i < 4; i++) {
+      let at = order.length;
+      while (at > 0 && turn[order[at - 1]] > turn[i]) at--;
+      order.splice(at, 0, i);
+    }
+    return order.map((i) => ({ x: near[i].x, z: near[i].z, footprint: near[i].footprint, node: near[i].node }));
+  };
 
   // A full circuit of `count` places: entering place i starts a loop there; each next entry must be the neighbour in
   // the direction the first step took, until the loop is back at its start. A wrong place restarts the loop from it, a
@@ -124,7 +151,11 @@
     const inverse = mat4.create(), local = new Float64Array(3);
     BL.scene.updateWorld(mirror.node);
     mat4.invert(inverse, mirror.node.world);
-    let group = null, rig = null, puddle = null, coins = null, attached = false;
+    // The show's nodes, built once with the visit and kept off the graph between shows.
+    let group = createNode({ sightHidden: true }), rig = GM.create(), attached = false;
+    let puddle = createNode({ geometry: GM.puddleGeometry(), visible: false, sightHidden: true });
+    addChild(group, rig.root, puddle);
+    let coins = coinPool({ parent: group, geometry: GM.coinGeometry() });
     let phase = IDLE, t = 0, travelled = 0, total = 0, stride = 0, coinAt = 0, steamAt = 0, coinSide = 1, calmShow = false, from = 0, shows = 0, aborted = 0;
     let audio = null, voice = null, voiceGain = null;
     const audioOn = () => {
@@ -145,14 +176,6 @@
       f.exponentialRampToValueAtTime(1250, t0 + 0.09); f.exponentialRampToValueAtTime(780, t0 + 0.26);
       g.cancelScheduledValues(t0); g.setValueAtTime(0, t0); g.linearRampToValueAtTime(0.2, t0 + 0.02);
       g.setValueAtTime(0.2, t0 + 0.17); g.exponentialRampToValueAtTime(0.001, t0 + 0.32); g.setValueAtTime(0, t0 + 0.34);
-    };
-    // Built the first time it fires, in the hub's model scope, and kept for the visit.
-    const build = () => {
-      group = createNode({ sightHidden: true });
-      rig = GM.create();
-      puddle = createNode({ geometry: GM.puddleGeometry(), visible: false, sightHidden: true });
-      addChild(group, rig.root, puddle);
-      coins = coinPool({ parent: group, geometry: GM.coinGeometry() });
     };
     const place = (x, z, ground, lift) => {
       rig.root.position.x = x; rig.root.position.z = z;
@@ -178,7 +201,6 @@
       attached = false;
     };
     const start = (calmNow) => {
-      if (!group) build();
       calmShow = calmNow;
       from = Math.floor(random() * count) % count;
       const b = bushes[from];
@@ -273,15 +295,16 @@
       }
       coins.update(dt);
     };
-    // Which bush the point stands in, or -1: the bushes' own footprints.
-    const inside = (x, z) => {
+    // Which bush the point stands in, or -1: the bushes' own footprints, with the feet on the ground there.
+    const inside = (x, z, feet) => {
       for (let i = 0; i < count; i++) {
         const b = bushes[i], dx = x - b.x, dz = z - b.z;
-        if (dx * dx + dz * dz <= b.footprint * b.footprint) return i;
+        if (dx * dx + dz * dz <= b.footprint * b.footprint) return Math.abs(feet - groundAt(x, z)) <= FEET_REACH ? i : -1;
       }
       return -1;
     };
-    const update = (dt, player) => {
+    // player: the driven Ooga's root position or null; feet: the height its feet stand at.
+    const update = (dt, player, feet) => {
       state.clock += dt;
       if (phase !== IDLE) {
         if (busy()) { aborted++; finish(); return; }
@@ -290,18 +313,22 @@
       }
       if (!player || count !== LOOP.count) { state.step(-1, 0); return; }
       const dx = player.x - cx, dz = player.z - cz;
-      const index = dx * dx + dz * dz > reach2 ? -1 : inside(player.x, player.z);
+      const index = dx * dx + dz * dz > reach2 ? -1 : inside(player.x, player.z, feet);
       if (index === state.inside) return;
       if (busy()) { state.step(-1, 0); return; }
       if (state.step(index, state.clock)) start(!!calm());
     };
-    const dispose = () => {
+    // A kept hub's suspend: the show ends and the sound closes; the nodes stay built for the next visit.
+    const suspend = () => {
       finish();
       if (audio) { audio.close().catch(() => {}); audio = voice = voiceGain = null; }
+    };
+    const dispose = () => {
+      suspend();
       group = rig = puddle = coins = null;
     };
     return {
-      update, dispose,
+      update, suspend, dispose,
       get active() { return phase !== IDLE; },
       debug: {
         bushes, path, loop: state,
@@ -310,6 +337,7 @@
         get calm() { return calmShow; },
         get shows() { return shows; },
         get aborted() { return aborted; },
+        get built() { return !!rig; },
         get coins() { return coins ? { live: coins.live, capacity: coins.capacity, spawned: coins.spawned, refused: coins.refused } : null; },
         get attached() { return attached; },
         get rig() { return rig ? { x: rig.root.position.x, y: rig.root.position.y, z: rig.root.position.z, visible: rig.root.visible, golden: rig.golden } : null; },
@@ -317,5 +345,5 @@
       }
     };
   };
-  BL.hubGoldbug = { create, loop, coinPool, LOOP, COINS, SHOW };
+  BL.hubGoldbug = { create, loop, coinPool, pickBushes, LOOP, COINS, SHOW, FEET_REACH };
 })();

@@ -5603,30 +5603,8 @@
     return true;
   };
   // The Goldbug's four bushes: the meadow bushes nearest the mirror cave's mouth on its open side (the seeded scatter
-  // puts four there), in order round their middle so a loop is a walk round them. Fewer than four, and he never comes.
-  const GOLDBUG_REACH = 16;
-  const goldbugBushes = () => {
-    const m = mirrorCave.mouth, ox = Math.sin(m.ry), oz = Math.cos(m.ry), near = [], gap = [];
-    for (const o of scenery) {
-      if (o.prop !== "bush" || !o.active || !o.node.visible || o.node.position.y !== 0) continue;
-      const dx = o.x - m.x, dz = o.z - m.z, d = Math.hypot(dx, dz);
-      if (dx * ox + dz * oz <= 0 || d >= GOLDBUG_REACH) continue;
-      let at = near.length;
-      while (at > 0 && gap[at - 1] > d) at--;
-      near.splice(at, 0, o); gap.splice(at, 0, d);
-      if (near.length > 4) { near.pop(); gap.pop(); }
-    }
-    if (near.length < 4) return null;
-    let cx = 0, cz = 0;
-    for (const o of near) { cx += o.x / 4; cz += o.z / 4; }
-    const turn = near.map((o) => Math.atan2(o.z - cz, o.x - cx)), order = [];
-    for (let i = 0; i < 4; i++) {
-      let at = order.length;
-      while (at > 0 && turn[order[at - 1]] > turn[i]) at--;
-      order.splice(at, 0, i);
-    }
-    return order.map((i) => ({ x: near[i].x, z: near[i].z, footprint: near[i].footprint, node: near[i].node }));
-  };
+  // puts four there), in loop order (`hubGoldbug.pickBushes`). Fewer than four, and he never comes.
+  const goldbugBushes = () => BL.hubGoldbug.pickBushes(scenery, mirrorCave.mouth);
   const goldbugCalm = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
   const createGoldbug = () => {
     const bushes = goldbugBushes();
@@ -8534,7 +8512,10 @@
       else pilot.readInput(dt);
     }
     mirrorCave.ripples.update(dt, elapsed);
-    if (goldbug) goldbug.update(dt, !clankerPlay.active && pilot.player ? pilot.player.root.position : null);
+    if (goldbug) {
+      const walker = !clankerPlay.active ? pilot.player : null;
+      goldbug.update(dt, walker ? walker.root.position : null, walker ? walker.root.position.y - walker.baseY : 0);
+    }
     updatePortalEffects(entropyLab.phase, dt);
     for (const veil of caveVeils) updatePortalEffects(veil.phase, dt);
     if (factoryMouth && !cloudPlaying()) factoryShield(dt, elapsed);
@@ -11208,8 +11189,8 @@
     if (ghosts) { ghosts.dispose(); ghosts = null; }
     ghostSeal = null;
     setGameMode(false);
-    // The Goldbug's show ends with the visit; a kept hub builds him again the next time the loop is walked.
-    if (goldbug) goldbug.dispose();
+    // The Goldbug's show ends with the visit and his sound closes; a kept hub keeps his nodes for the next.
+    if (goldbug) goldbug.suspend();
     gameRingK = gameRingWait = ringPulseWait = 0; gameRing.visible = false;
     // The veils' waves and glyph outlines end with the visit as leave ends them; an outline is made again where a body
     // next touches its veil (`ringBodies`).
