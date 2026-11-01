@@ -54,6 +54,37 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   stilt huts' floors and the centre deck, carrying or not. Shift sprints for up to 4 s, refilling after a rest. C
   crouches: slower, shorter, under chest-height paint.
 
+## Towers, ziplines and ammo caches
+
+- **Sniper towers.** One beside each end on every map: four posts, an open platform 6.4 m up (`TOWER_TOP`) with a
+  parapet, and a ladder up its inward side (a climb zone, not a block). Standing on either tower's platform hands you
+  the sniper rifle off its rack; stepping off puts it back. The rifle fires only from a platform: fast, flat and long
+  (60 m/s, 1.1 s between shots, no ammunition). Up the tower the view drops into first person through a scope with
+  three zoom steps (34°, 20° and 11° of view; wheel, two-finger swipe or `+` `−`), and leaving the tower restores the
+  tool and view you had. The results card names the round's longest sniper hit.
+- **Ziplines.** Each tower's cable leaves from the platform's ladder side and runs down into the other end. `E` (or the
+  Zip button) by the cable rides it at 15 m/s, hands on the cable; at its end, or on a jump, you let go and fall. From
+  your own tower it is a raid into their fort; with their block in hand, their tower's line takes you home. Closed
+  while fortifying and while holding a crate. A carrier who climbs their tower keeps the rifle on `5` and is told the
+  zipline is the way home.
+- **Ammo caches.** Five on Fort Chaos (each stilt hut's floor and the centre deck; the other maps place their own).
+  Walking onto one refills grenades, rockets, nets and the crate stock as your stand does, then it goes dark for 15 s
+  (`CACHE_S`). A real Bitcoin block found while you play makes every cache and quiz pad ready again.
+
+## Held weapons
+
+Keys `1` to `7` pick paint, grenade, rocket, net, sniper rifle, Golden Dual AKs and Ooga AK; `R`, right click or the
+wheel cycles through the ones you can use.
+
+- **Ooga AK** (`7`). The island's rifle: a tap fires one round, a held trigger fires on full auto every 0.09 s, from a
+  30-round magazine that reloads itself in 1.4 s when it runs dry.
+- **Golden Dual AKs** (`6`). One in each hand, full auto, both firing every round, never empty. Two pairs a round:
+  scoring a capture wins a pair while any are left, and a wallet bomb stuck on whoever holds a pair takes it when it
+  goes off.
+- **Sniper rifle** (`5`). Tower-only, above.
+
+Paint balls, the AKs and the rifle splat as paint does; nobody is removed and nobody has health.
+
 ## Fort Chaos
 
 44 by 74 m, mirrored half round between the halves so neither side is favoured. Each fort has a back wall, side
@@ -71,7 +102,7 @@ float and anything whose top an Ooga reaches is somewhere to stand.
 | A / D, Q / E | Turn; the chase camera swings round behind by itself (no mouse needed) |
 | Click the view, then move the mouse | Locks the mouse; moving it turns and aims. Escape lets go |
 | Left click or Enter | Throw the chosen tool at the crosshair (the crate, when holding one) |
-| R, right click, wheel, 1 to 4 | Switch weapon: paint, grenade, rocket or net |
+| R, right click, wheel, 1 to 7 | Switch weapon: paint, grenade, rocket, net, sniper rifle (on a tower), Golden Dual AKs (once won), Ooga AK |
 | Space, Space again in the air | Jump, double jump |
 | Shift (held) | Sprint |
 | Tab or T | Pass the block |
@@ -79,6 +110,8 @@ float and anything whose top an Ooga reaches is somewhere to stand.
 | F | Lift the crate in front, or set the held one down (stacking it) |
 | G | Drop the block |
 | C (held) | Crouch |
+| E | Ride the zipline from a tower's platform |
+| + / −, wheel | Zoom the sniper scope |
 | V | Chase camera or first person |
 
 Touch: the left stick runs and turns, the right stick turns, Jump and Throw! buttons, a tool bar, and a View button.
@@ -99,9 +132,15 @@ and thrown to stun, and a seeded round on
 autopilot replaying exactly to three captures. The `block` scene runs the title card and Escape, W S and A D on screen,
 a quiz trap through a wrong and a right answer, an autopilot round to its saved results, and the round trip.
 
-The global tier passes (271 of 271). Browser scenes could not finish in the sandbox this was built in (software
-rendering, and the existing `drop` scene timed out there too), so `npm test -- block arcade` needs a run on real
-hardware before merge.
+On 2026-11-01, after merging rock, the global tier passes 363 of 363, including a check that every retro cabinet
+still maps to its own retro game and score ID behind the fifth live cabinet. Browser scenes have not been run for this
+head: `npm test -- block arcade` needs real Chrome on real hardware before merge.
+
+## High scores
+
+Rock's shared high-score registry (`highscore-rules.js` and the Worker) does not know Block Frenzy, so its cabinet
+carries no `scoreId` (`null` in `arcadeModels.GAMES`) and submits nothing. Its best stays local through
+`game.recordBlock`. Registering it is a maintainer question.
 
 
 ## Upstream issue 362: game-only piggyback

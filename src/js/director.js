@@ -41,6 +41,9 @@
   const HUB_CACHE = params.get("hubcache") || "auto";
   const MEMORY_REPORTED = Number.isFinite(DEVICE_MEMORY) && DEVICE_MEMORY > 0;
   const KEEP_HUB = HUB_CACHE === "keep" || HUB_CACHE !== "release" && (MEMORY_REPORTED ? DEVICE_MEMORY >= 8 : !COARSE);
+  // The island cache follows the same rule: a miss's fill runs a second island build in a Worker beside the page's, and
+  // the cache is read only at boot, never for a released hub's rebuild. `?terrainworker=1` forces it, `=0` stops it.
+  const TERRAIN_CACHE = params.get("terrainworker") === "1" || params.get("terrainworker") !== "0" && KEEP_HUB;
   const mark = (name) => performance.mark(`ooga:${name}`);
   mark("boot");
   let sceneCanvas = $("scene");
@@ -57,7 +60,27 @@
   const qualityLabel = $("quality");
   const curtain = $("curtain");
   const worldBlock = $("world-block"), worldBlockHeight = $("world-block-height");
-  const worldClock = $("world-clock");
+  const worldClock = $("world-clock"), soundButton = $("environment-sound");
+  const sound = window.BL.sound;
+  const showSound = () => {
+    const label = sound.muted ? "Unmute environment sounds" : "Mute environment sounds";
+    const voice = window.BL.voice.stats;
+    soundButton.setAttribute("aria-label", label); soundButton.title = voice.enabled || voice.joining ? label : `${label} · M`;
+    soundButton.setAttribute("aria-pressed", String(sound.muted));
+  };
+  const offSound = sound.subscribe(showSound);
+  soundButton.addEventListener("click", sound.toggle);
+  showSound();
+  // Reserve M before scene capture listeners and transition holds; editable fields keep it for typing.
+  const onVoiceMuteKey = (e) => {
+    const voice = window.BL.voice;
+    if (e.key.toLowerCase() !== "m" || e.metaKey || e.ctrlKey || e.altKey || !voice.stats.enabled && !voice.stats.joining) return;
+    if (e.target && (e.target.isContentEditable || e.target.closest && e.target.closest("input, textarea, select"))) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!e.repeat) voice.setMuted(!voice.stats.muted);
+  };
+  window.addEventListener("keydown", onVoiceMuteKey, true);
   let renderer = null;
   if (!params.has("canvas2d")) {
     try {
@@ -93,8 +116,7 @@
   const game = gameMod.create({ catalog: models.SWAG });
   window.BL.donationPopup = window.BL.donationPopup.create(game, (donation) => {
     if (donations.real) return;
-    if (active) active.onDonation(donation);
-    else game.recordDonation(donation);
+    deliverDonation(donation);
     window.BL.hud.setDonationStats(game.state);
   });
   window.BL.hud.setDonationStats(game.state);
@@ -104,6 +126,23 @@
   world.magazine = { owned: debugMagazines > 0, count: debugMagazines, ammo: debugMagazines ? 30 : 0, carrier: null };
 
   let active = null, activeMeshRigs = false, visitController = null;
+  // The first scene is the only arrival that can wait without an active donation receiver. Keep a bounded queue and
+  // let the scene record each tip when it arrives, so a boot tip is both shown and counted exactly once.
+  let bootPending = true;
+  const bootDonations = [];
+  const deliverDonation = (donation, bananas = null) => {
+    if (active) active.onDonation(donation, bananas);
+    else if (bootPending && bootDonations.length < 16) bootDonations.push({ donation, bananas });
+    else game.recordDonation(donation, bananas && bananas.exact);
+  };
+  const finishBootDonations = () => {
+    bootPending = false;
+    while (bootDonations.length) { const pending = bootDonations.shift(); active.onDonation(pending.donation, pending.bananas); }
+  };
+  const failBootDonations = () => {
+    bootPending = false;
+    while (bootDonations.length) { const pending = bootDonations.shift(); game.recordDonation(pending.donation, pending.bananas && pending.bananas.exact); }
+  };
   let sceneTime = 0;
   let transition = null;
   let fade = 0;
@@ -249,8 +288,11 @@
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   if (coarse) for (const n of document.querySelectorAll("[data-intro] [data-coarse]")) n.textContent = n.dataset.coarse;
   const openIntro = () => intros.find((el) => !el.hidden) || null;
-  // The microphone's note, which names M only in a scene whose M mutes the microphone (`micKey`).
-  const showMic = () => window.BL.hud.showMic(window.BL.voice.stats, !!(active && active.micKey));
+  const showMic = () => {
+    const voice = window.BL.voice.stats;
+    window.BL.hud.showMic(voice, voice.enabled || voice.joining);
+    showSound();
+  };
   // An arrival in three parts: `arriving` before the scene's own enter, the enter, then `arrived`. A scene with
   // `enterSteps` may run its enter in slices between them (see `swap`).
   const arriving = (next, place) => {
@@ -362,8 +404,8 @@
     // The previous visit has gone and leave cannot tear down a half-built one. Keep its controls held and offer
     // a way out, with honest wording: an entry error says nothing about whether the deployment changed.
     active = null;
-    t.entering = t.building = t.entryFailed = true;
-    visitController.abort();
+    if (t) t.entering = t.building = t.entryFailed = true;
+    visitController?.abort();
     holdInput(true);
     window.BL.hud.offerReload("Ooga Booga Land could not be opened");
     $("reload-notice").querySelector("button").focus({ preventScroll: true });
@@ -687,11 +729,10 @@
       location.reload();
       return;
     }
-    // M mutes and unmutes the microphone while in voice, in the scenes that share voice and leave M free
-    // (`micKey`); a game's or a hall's own M still mutes its sound.
-    if (key === "m" && active.micKey && window.BL.voice.stats.enabled && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // With voice off, M retains the environment shortcut outside focused UI.
+    if (key === "m" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
-      window.BL.voice.toggle();
+      sound.toggle();
       return;
     }
     // Every scene's B shortcut adds demo bananas; ordinary visits leave donations to the feed.
@@ -733,6 +774,10 @@
   });
   showBlockHeight(chain.snapshot);
   if (!params.has("nosim") && params.get("mempool") !== "0") mempool.start();
+  // Contributor activity belongs to the page, including while the hub is suspended or absent.
+  const unsubscribeOogatron = window.BL.oogatronLive.subscribe((event) => {
+    if (event.type === "stats") window.BL.contributors.applySnapshot(event.stats);
+  });
   if (!params.has("nosim") && params.get("oogatron") !== "0") window.BL.oogatronLive.start();
   if (!params.has("nosim") && params.get("totems") !== "0") window.BL.totemFeed.start();
   // `?chain=esplora` or `?chain=https://host/api` pins the provider; otherwise mempool.space leads
@@ -755,8 +800,8 @@
   // Each donation goes to the active scene with the API's banana count (null when simulated); in real mode the pile
   // follows the API's. The page's own Worker turns real mode on in the account's look at /api/me, so the subscription
   // waits for that look (bounded, as the boot's wait is) and a page about to go real never plays a simulated tip. A
-  // donation pushed before the first scene is ready still counts in the saved tally. An on-chain tip the visitor left
-  // the kiosk waiting on says it was theirs, in whatever scene they are, in place of the scene's own toast.
+  // donation pushed before the first scene is ready joins a bounded replay queue and counts once on arrival. An
+  // on-chain tip the visitor left the kiosk waiting on says it was theirs, in whatever scene they are, in place of the scene's own toast.
   const pileFeed = { bananas: 0, eatPerHour: 0, at: 0 };
   let unsubscribeDonations = null;
   accountReady.then(() => {
@@ -765,8 +810,7 @@
     unsubscribeDonations = donations.subscribe((donation, bananas) => {
       if (donations.receivedOwnInvoice(donation.id)) game.rememberHandle(donation.handle);
       window.BL.donationPopup.receive(donation, bananas);
-      if (active) active.onDonation(donation, bananas);
-      else game.recordDonation(donation, bananas && bananas.exact);
+      deliverDonation(donation, bananas);
       window.BL.hud.setDonationStats(game.state);
       if (donations.waited(donation.id)) {
         const n = bananas && bananas.rounded;
@@ -844,20 +888,28 @@
   // Run boot from a task after the first frame so the leaf curtain is on screen, not the previous page.
   let destroyed = false;
   const bootBuildController = new AbortController();
-  const terrainController = params.get("terrainworker") === "1" ? new AbortController() : null;
+  // On where `npm run site` packaged the terrain Worker and the device keeps the hub (`TERRAIN_CACHE`).
+  const terrainController = TERRAIN_CACHE ? new AbortController() : null;
+  // Its chunk downloads beside the account lookup and the first frame, not after them; boot's own load below takes
+  // the same request, or retries a failed one.
+  const ISLAND_FIRST = ["hub", "drop", "orbit"].includes(Object.hasOwn(scenes, sceneId) ? sceneId : Object.keys(scenes)[0]);
+  if (terrainController && ISLAND_FIRST) window.BL.deferred.load("terrain-cache")?.catch(() => {});
   const boot = async () => {
     // A signed-in newcomer must join before crew construction, including direct routes.
     // net.start is bounded; an unavailable backend leaves the static island usable.
     await accountReady;
     if (destroyed) return;
+    // Explicit debug fixtures retain their own cast and arrival; ordinary routes start with this visitor's Ooga.
+    if (!DEBUG) world.pilot = net.prepareLocalCharacter().handle;
     const constructionCPU = window.BL.buildTasks.cpu;
     let first = Object.hasOwn(scenes, sceneId) ? scenes[sceneId] : scenes[Object.keys(scenes)[0]], place = routed && routed.place;
-    if (terrainController && ["hub", "drop", "orbit"].includes(first.id)) {
+    if (terrainController && ISLAND_FIRST) {
       try {
         const ready = window.BL.deferred.load("terrain-cache"); if (ready) await ready;
         const factory = first.id === "hub" && window.BL.caves.slots.find(slot => slot.status === "open" && slot.scene === "factory");
         const roofHole = factory ? { id: factory.id, ...window.BL.factoryModels.ROOF_TUBE } : null;
-        await window.BL.terrainCache.prepare({ seed: 1, roofHole }, first.id, terrainController.signal);
+        const nook = first.id === "hub" ? first.libraryNook || null : null;
+        await window.BL.terrainCache.prepare({ seed: 1, roofHole, nook }, first.id, terrainController.signal);
       } catch { /* A rejected opt-in build uses the ordinary path unless this page was destroyed. */ }
       if (destroyed) { models.release(first.id, []); return; }
     }
@@ -874,23 +926,67 @@
       }
       if (destroyed) { models.release(first.id, []); return; }
     }
+    // Nothing has drawn yet, so a failed boot lifts the curtain off the Reload notice entryFailed offers.
+    const bootFailed = (error) => { failBootDonations(); entryFailed(null, error); openCurtain(); };
     if (first.buildSteps) {
       try {
         const steps = window.BL.buildTasks.measure(() => models.withScope(first.id, () => first.buildSteps({ ...ctx, place, signal: bootBuildController.signal })));
         await window.BL.buildTasks.run(steps, first.id, bootBuildController.signal);
-      } catch {
+      } catch (error) {
         models.release(first.id, []);
         if (destroyed) return;
+        if (first.id === Object.keys(scenes)[0]) { bootFailed(error); return; }
         first = scenes[Object.keys(scenes)[0]];
         place = null;
         window.BL.hud.toast("That place could not be opened · here is the island");
       }
       if (destroyed) { models.release(first.id, []); return; }
     }
-    window.BL.buildTasks.measure(() => enter(first, place));
+    let uploadCPU = 0;
+    if (first.enterSteps) {
+      // Boot gives the event loop the same responsive construction path as a scene swap. Scenes without steps keep
+      // their ordinary enter; GPU upload timing stays out of the construction input used to choose the opening tier.
+      try {
+        holdInput(true);
+        const retainedTime = arriving(first, place);
+        const steps = models.withScope(first.id, () => first.enterSteps(ctx));
+        const step = window.BL.buildTasks.measure(() => models.withScope(first.id, () => steps.next()));
+        const finish = () => window.BL.buildTasks.measure(() => { arrived(first, place, retainedTime); finishBootDonations(); });
+        if (step.done) finish();
+        else {
+          active = null;
+          const rest = (function* () {
+            yield* steps;
+            yield;
+            const beforeUpload = performance.now();
+            yield* renderer.prepareSteps(first.root, first.renderOpts?.meshRigs === true, { until: beforeUpload + window.BL.buildTasks.SLICE_MS / 2 });
+            uploadCPU = performance.now() - beforeUpload;
+          })();
+          await window.BL.buildTasks.run(rest, first.id, bootBuildController.signal);
+          finish();
+        }
+      } catch (error) {
+        if (destroyed) { models.release(first.id, []); return; }
+        bootFailed(error); return;
+      }
+    } else window.BL.buildTasks.measure(() => { enter(first, place); finishBootDonations(); });
     mark("ready");
-    tierFromBoot(window.BL.buildTasks.cpu - constructionCPU);
+    // A restored island counts as the build it replaced, so the cache never starts a device a tier higher.
+    tierFromBoot(window.BL.buildTasks.cpu - constructionCPU - uploadCPU + (window.BL.terrainCache?.stats.credit || 0));
     raf = window.requestAnimationFrame(frame);
+    if (terrainController && window.BL.terrainCache?.stats.lastSource === "miss") fillTerrain();
+  };
+  // After a cache miss the island was built here as usual; at idle, never during a transition, the Worker builds the
+  // snapshot and stores it for the next visit. Nothing waits on it, and nothing happens without a miss to fill.
+  const fillTerrain = () => {
+    const idle = typeof window.requestIdleCallback === "function";
+    const start = () => {
+      if (destroyed) return;
+      if (transition) { schedule(); return; }
+      window.BL.terrainCache.fill(terrainController.signal)?.catch(() => {});
+    };
+    const schedule = () => (idle ? window.requestIdleCallback(start, { timeout: 2000 }) : window.setTimeout(start, 1000));
+    schedule();
   };
   window.requestAnimationFrame(() => window.setTimeout(boot, 0));
   if (DEBUG) {
@@ -967,6 +1063,7 @@
     router.dispose();
     mempool.dispose();
     chain.dispose();
+    unsubscribeOogatron();
     window.BL.oogatronLive.dispose();
     window.BL.totemFeed.dispose();
     unsubscribeAccount();
@@ -975,7 +1072,10 @@
     unsubscribeVoiceMarks();
     unsubscribeMic();
     window.BL.voice.dispose();
+    window.BL.highscores.dispose();
     net.dispose();
+    offSound(); soundButton.removeEventListener("click", sound.toggle);
+    window.removeEventListener("keydown", onVoiceMuteKey, true);
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("keyup", clearRightShift);
     window.removeEventListener("blur", clearRightShift);

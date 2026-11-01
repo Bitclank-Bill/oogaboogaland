@@ -16,8 +16,8 @@
 // Fixed pools throughout: `BOMB_CAP` devices in typed arrays, one instanced batch a look (screen and LED glow ride the
 // instance's glow) and one of soft glowing rings under the devices on the ground, `SCORCH_CAP` scorch marks in a ring,
 // `FIREBALL_CAP` fireballs. The labels are prebuilt strings, the beep and boom two pooled synthesized voices on one
-// AudioContext opened only after a gesture and suspended while no device is out (once the last boom has rung out), DSB
-// is muted or the tab is hidden. The frame loop writes `instanceData` in place and allocates nothing; the overlay
+// AudioContext opened only after a gesture and suspended while no device is out (once the last boom has rung out) or DSB
+// is muted. Already playing cues finish while hidden. The frame loop writes `instanceData` in place and allocates nothing; the overlay
 // returns at once while no device is out. No camera shake (the camera moves only on input): the blast is a flash of point light,
 // particles from the fx pool, smoke and the boom.
 (() => {
@@ -72,7 +72,18 @@
   // the REKT on it, the LED and the clown nose, which blink by the instance glow.
   // Like the other builder caches here, they are dropped when the scenes that used them are left.
   const geometryOf = BL.models.variants((look) => build(look));
-  const build = (look) => {
+  const snitchPhotoGeometry = BL.models.cached(() => build(5, true));
+  const passpoorScreenGeometry = BL.models.cached(() => build(3, true));
+  const passpoorBalanceGeometry = BL.models.variants(balance=>{
+    const text=String(-balance),parts=[],px=.014;
+    [...text].forEach((ch,i)=>BL.hubModels.SIGN_GLYPHS[ch].forEach((row,r)=>[...row].forEach((on,c)=>{
+      if(on==="1")parts.push(BL.models.box({color:"#4c6e5e",w:px,h:.004,d:px,emissive:1,offset:{x:(i*4+c-(text.length*4-2)/2)*px,y:.072,z:-.105+(r-2)*px}}));
+    })));
+    return BL.models.merge(...parts);
+  });
+  const jadedTrackingGeometry = BL.models.cached(() => build(4, false, true));
+  const jadedEyesGeometry = BL.models.cached(() => BL.models.merge(...[-.145,-.039].map(x=>BL.models.box({color:"#17191c",w:.009,h:.004,d:.018,offset:{x,y:.153,z:-.011}}))));
+  const build = (look, blankScreen = false, trackingEyes = false) => {
     const M=BL.models,parts=[],dark="#17191c",cream="#efe5cd",steel="#aeb6bd";
     const b=(color,x,y,z,w,h,d,emissive=0)=>parts.push(M.box({color,w,h,d,emissive,offset:{x,y,z}}));
     const shell=(color,w,h,d,bevel)=>parts.push(M.bevelBox({color,w,h,d,bevel,offset:{y:h/2}}));
@@ -137,7 +148,7 @@
       b(dark,0,.058,0,.25,.006,.484);
       parts.push(M.bevelBox({color:"#f5f4ef",w:.25,h:.006,d:.49,bevel:.002}));
       b("#e6ecdf",0,.065,-.021,.22,.006,.373,.4);
-      pixels("0",0,.072,-.105,.014,"#4c6e5e");pixels("SATS",0,.072,-.04,.008,"#4c6e5e");
+      if(!blankScreen)pixels("0",0,.072,-.105,.014,"#4c6e5e");pixels("SATS",0,.072,-.04,.008,"#4c6e5e");
       for(const x of [-.063,0,.063])b("#a2b6a4",x,.072,.095,.046,.004,.047,.5);
       b(cream,0,.069,.214,.06,.006,.012,.5);
       parts.push(M.bevelBox({color:"#d7ad95",w:.085,h:.018,d:.012,bevel:.004,offset:{y:.028,z:-.254}}));
@@ -150,7 +161,7 @@
       // Original Jade: left-hand landscape screen, front application button and a click-wheel on the top edge.
       shell("#39785b",.48,.136,.192,.012);b(dark,-.092,.14,0,.252,.006,.153);
       b("#9dc9a6",-.092,.147,0,.232,.006,.132,.4);
-      for(const x of [-.145,-.039]){b(dark,x,.153,-.024,.059,.004,.009);b(dark,x+.015,.153,-.011,.009,.004,.018);}
+      for(const x of [-.145,-.039]){b(dark,x,.153,-.024,.059,.004,.009);if(!trackingEyes)b(dark,x+.015,.153,-.011,.009,.004,.018);}
       b(dark,-.092,.153,.035,.06,.004,.008);
       b("#25533f",.104,.143,0,.078,.014,.074);b("#75ac8d",.104,.153,0,.058,.006,.054);
       const wheel=M.lathe({profile:[[0,-.042],[.027,-.042],[.027,.042],[0,.042]],segments:12,color:dark});
@@ -166,7 +177,7 @@
       parts.push(M.bevelBox({color:"#ff841f",w:.482,h:.012,d:.262,bevel:.005,offset:{y:.123}}));
       b(dark,.025,.132,0,.226,.008,.234);
       pixels("SNITCH",.025,.138,-.095,.005,cream);
-      for(let r=0;r<2;r++)for(let c=0;c<2;c++){
+      if(!blankScreen)for(let r=0;r<2;r++)for(let c=0;c<2;c++){
         const x=-.023+c*.098,z=-.039+r*.093;
         b(r===0&&c===0?"#ffb21c":"#353b3e",x,.139,z,.088,.004,.083,.3);
         const ink=r===0&&c===0?dark:cream;
@@ -287,7 +298,7 @@
     }
     const DEBRIS = [BL.models.particleGeometry("#ff8a1f", 0.07, 1), BL.models.particleGeometry("#ffd66b", 0.06, 1), BL.models.particleGeometry("#3d3d44", 0.07, 0), BL.models.particleGeometry("#efe6cc", 0.05, 0)];
     // Sound: one beep and one boom voice, synthesized, opened after a gesture. The context runs only while a device is
-    // out (and a boom rings on, TAIL seconds), DSB's sound is on and the tab is shown; otherwise it is suspended.
+    // out (and a boom rings on, TAIL seconds) and DSB's sound is on; otherwise it is suspended.
     let audio = null, audible = false, tail = 0, out = 0;
     const hear = (on) => {
       if (!audio || on === audible) return;
@@ -295,13 +306,11 @@
       if (on) audio.ctx.resume().catch(() => {});
       else audio.ctx.suspend().catch(() => {});
     };
-    const onVisibility = () => hear(!document.hidden && (out > 0 || tail > 0) && !muted());
-    document.addEventListener("visibilitychange", onVisibility);
     const openAudio = () => {
       if (audio || muted() || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return !!audio;
       const ctx = new AudioContext(), master = ctx.createGain();
       master.gain.value = 0.25;
-      master.connect(ctx.destination);
+      master.connect(BL.sound.output(ctx));
       const tone = ctx.createOscillator(), beep = ctx.createGain();
       tone.type = "square";
       tone.frequency.value = 1760;
@@ -326,13 +335,14 @@
       return true;
     };
     const cue = (gain, level, attack, length) => {
-      if (!openAudio() || muted() || document.hidden) return;
+      if (!openAudio() || muted()) return;
       hear(true);
       const t = audio.ctx.currentTime;
       gain.cancelScheduledValues(t);
       gain.setValueAtTime(0.0001, t);
       gain.exponentialRampToValueAtTime(Math.max(0.0002, level), t + attack);
       gain.exponentialRampToValueAtTime(0.0001, t + length);
+      gain.setValueAtTime(0, t + length + 0.01);
     };
     const slot = () => {
       for (let i = 0; i < BOMB_CAP; i++) if (state[i] === FREE) return i;
@@ -547,7 +557,7 @@
       halos.instanceCount = rings;
       halos.visible = rings > 0;
       if (rings) halos.instanceVersion++;
-      const wantSound = (out > 0 || tail > 0) && !muted() && !document.hidden;
+      const wantSound = (out > 0 || tail > 0) && !muted();
       // Taking the first device while muted creates no context; unmuting must still start its sound.
       if (wantSound && !audio) openAudio();
       hear(wantSound);
@@ -625,7 +635,6 @@
       carriers.fill(null);
       picks.length = 0;
       flash.t = 0;
-      document.removeEventListener("visibilitychange", onVisibility);
       if (audio) audio.ctx.close().catch(() => {});
       audio = null; audible = false;
     };
@@ -665,5 +674,5 @@
     };
     return { update, releasePose, drawOverlay, flashLight, get flashing() { return flash.t > 0; }, take, refusal, throwCarried, setDown, tap, where, held, lookAt, secondsLeft, stats, dispose, debug };
   };
-  BL.walletBombs = { create, BOMB_CAP, SCORCH_CAP, FUSE, CHAIN_RADIUS, BASE_RADIUS, BASE_POWER, POWER_CAP, SCALE, LOOKS, geometryOf, blastOf, chainFrom };
+  BL.walletBombs = { create, BOMB_CAP, SCORCH_CAP, FUSE, CHAIN_RADIUS, BASE_RADIUS, BASE_POWER, POWER_CAP, SCALE, LOOKS, geometryOf, snitchPhotoGeometry, passpoorScreenGeometry, passpoorBalanceGeometry, jadedTrackingGeometry, jadedEyesGeometry, blastOf, chainFrom };
 })();
