@@ -1,8 +1,8 @@
 # Ooga Booga Land's live systems, for the Cloud Archive TV
 
 An inventory of the official repository's public live feeds, statistics, tools and repository activity, taken against
-official `rock` at `a1100ee`. Our branch is based on `37d9f39`; the six commits since add `players.js` and
-`zone-map.js` and merge cleanly. Each entry gives the interface the TV reads, whether the page already exposes it,
+official `rock` at `a1100ee`. The branch now includes a normal merge of `a1100ee`, including `players.js` and
+`zone-map.js`. Each entry gives the interface the TV reads, whether the page already exposes it,
 and what the TV does with it. The TV reads only what these systems already hold. It adds no polling, no socket and
 no fetch of its own, and none from `update()`.
 
@@ -14,7 +14,7 @@ Freshness is judged from each feed's own record of success, never from its being
 | Feed | Success record | Rule |
 |---|---|---|
 | Oogatron | `lastAt` | 60 s cadence |
-| Totems | the `polls` and `failures` counters (no success time), noted as they move | 90 s step |
+| Totems | successful `polls` observed after the initial baseline (no success timestamp) | Existing readings are HELD until a later success; 90 s step, STALE after 3 steps or an error. Failures never refresh the age clock. |
 | Lightning Jet | one read | LIVE for its 30 min cache |
 | Chain | per-field `*At` times | its 60 s cadence |
 

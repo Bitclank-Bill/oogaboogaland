@@ -114,3 +114,9 @@ The rack-allocation and Cloud Hopper findings are closed.
 
 `feature/block-frenzy-view-assist` (`5f42979…`) was inspected. Its `view-assist.js` is byte-identical to this branch's,
 and none of these findings touch view assist's logic, so it needs no matching change and was left untouched.
+
+## Final Totems freshness qualification (#385 / #386)
+
+The first observed successful-poll count is now only a baseline: pre-existing readings show HELD, not LIVE. A later observed success starts the guide's age clock. Failures and clearing an error cannot refresh that clock. Disabled, never-loaded and failed feeds retain their OFF/WAITING/STALE handling. No feed changes, polling, sockets or requests were added.
+
+The existing TV rule proof now checks entry with old data, failure on that data, cleared errors, an observed success and failures that must not renew stale data. Live-server, production-CSP, phone and reduced-motion browser acceptance remain unverified.

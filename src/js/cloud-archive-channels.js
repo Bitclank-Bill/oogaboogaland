@@ -17,7 +17,7 @@
 // island's pictures from the climb.
 // Status is judged from each feed's own record of success, cadence and failure, never from its being enabled: the
 // Oogatron's `lastAt` against its minute (its bake is HELD until a read, and after failures with none), the totems'
-// poll and failure counters as they move (the feed keeps no success time, so the guide notes when they change)
+// successful poll counter as it moves (the feed keeps no success time, so pre-existing readings stay HELD)
 // against their 90 s step, Lightning Jet's one read against its 30 min cache, after which it is STALE.
 // `stampOf(channel, env)` is the repaint key: the channel's stamp with its status folded in, so a transition alone
 // (LIVE to STALE) repaints. `detailFor(channel, reader)` is the board a pick opens: an Oogatron page's own view, the
@@ -94,15 +94,18 @@
   };
   const channels = (env) => {
     const B = env.BL, list = [];
-    // The totems' poller keeps counts, not times: the guide notes when its polls or failures move.
-    const totem = { polls: -1, failures: -1, at: 0 };
+    // The poller has no success time. Its first observed count is a baseline, not a fresh read.
+    // Only a later successful poll starts the age clock; failures cannot refresh old data.
+    const totem = { polls: -1, at: 0 };
     const totemStatus = () => {
       const s = B.totemFeed.state, now = env.now();
-      if (s.polls !== totem.polls || s.failures !== totem.failures) { totem.polls = s.polls; totem.failures = s.failures; totem.at = now; }
+      if (totem.polls >= 0 && s.polls > totem.polls) totem.at = now;
+      else if (s.polls < totem.polls) totem.at = 0;
+      totem.polls = s.polls;
       if (!s.enabled) return s.polls ? "stale" : "off";
       if (!s.polls) return s.failures ? "off" : "waiting";
       // The newest attempt failed, or nothing has moved for three steps.
-      return s.lastError || now - totem.at > TOTEM_MS * STALE_AFTER ? "stale" : "live";
+      return s.lastError ? "stale" : !totem.at ? "held" : now - totem.at > TOTEM_MS * STALE_AFTER ? "stale" : "live";
     };
     const jetStatus = () => {
       const J = B.jetFeed;
