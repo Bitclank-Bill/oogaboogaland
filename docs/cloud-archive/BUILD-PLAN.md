@@ -157,6 +157,11 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
   the north gate and the beanstalk), drawn by the hub once each while the view moves in on the climb
   (`world.archiveViews`). Tapping the TV opens them as a board. Next: a live feed. Under the hub's `keep` policy the
   island stays in memory, so it could be re-rendered every few seconds from the archive.
+- **The hanging Oogatron (done, v1).** The island's own live GitHub board (`jumbotron.js`) hangs on two ropes over
+  the aisle between the first pairs of racks, its screen toward the shaft. It is the same module, built flat without
+  its posts (`stand: false`). It starts from the baked stats and takes the live poller's readings as the hub's board
+  does (`oogatronLive.subscribe`); the archive never fetches anything itself. Its sides page it where it hangs. A tap
+  on its screen, or Space (READ) looking down the aisle at it, opens the same floating close-up as on the island.
 - **View assist (done in the archive).** `view-assist.js` is a scene-agnostic slice of the hub's visibility stack.
   When the racks, the floor or the lounge furniture hide your Ooga, its outline is drawn in the hub's own rim
   (`camera-cover.js`). A scene supplies only `solidAt(x, y, z)`. Next: Block Frenzy. Later: the nearby-scenery outlines,

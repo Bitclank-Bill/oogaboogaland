@@ -376,7 +376,8 @@
   const FX = 2 * OPEN_X / SW, FY = 2 * OPEN_Y / SH;
   const CURVE_HALF = (SW + 2 * BORDER + 0.2) / 2, CURVE_SAG = 0.07, CURVE_STEP = CURVE_HALF / 6;
   const curveOffset = (x, curved) => curved ? CURVE_SAG * (x / CURVE_HALF) ** 2 : 0;
-  const cabinetGeometry = cached(() => {
+  // `posts` false: the cabinet alone, for a board hung from above (the Cloud Archive's) rather than standing.
+  const cabinetFrom = (posts) => {
     const outerW = SW + 2 * BORDER, outerH = SH + 2 * BORDER;
     const t = RAIL;
     // Rails sit forward of the backing, never flush: coplanar faces make the board sparkle from either side.
@@ -402,14 +403,16 @@
       parts.push(box({ w: 0.07, h: 0.07, d: 0.028, color: PALETTE.nail, offset: { x: px, y: py, z: DEPTH / 2 + 0.042 } }));
     }
     const legX = SW / 2 - 0.18, legH = LEG_H, bottom = -outerH / 2;
-    for (const sx of [-legX, legX]) {
+    if (posts) for (const sx of [-legX, legX]) {
       // Posts run up into the frame rather than butting flush against its underside, and down past DROP into
       // the ground, so they stay buried on the uneven rim and never show a flush base.
       const postH = legH + FOOT_H + 0.015 + POST_BURY;
       parts.push(bevelBox({ w: 0.2, h: postH, d: 0.2, color: PALETTE.woodDark, offset: { x: sx, y: bottom + 0.015 - postH / 2, z: fz } }));
     }
     return merge(...parts);
-  });
+  };
+  const cabinetGeometry = cached(() => cabinetFrom(true));
+  const hangingCabinetGeometry = cached(() => cabinetFrom(false));
   // Clip only the long timber faces into shallow strips before bending them; short joints and posts keep their shape.
   const curvedCabinetGeometry = cached(() => {
     const source = cabinetGeometry(), geo = { verts: [], faces: [], lines: [] }, verts = source.verts;
@@ -525,7 +528,9 @@
     return geo;
   };
 
-  const create = ({ data, position = { x: 0, y: 0, z: 0 }, ry = 0, scale = 1, width = 1, curved = false } = {}) => {
+  // `stand: false` builds the cabinet without its posts, flat, for hanging; the caller hangs it.
+  const create = ({ data, position = { x: 0, y: 0, z: 0 }, ry = 0, scale = 1, width = 1, curved = false, stand = true } = {}) => {
+    if (!stand) curved = false;
     const canvas = document.createElement("canvas");
     canvas.width = BOARD_W;
     canvas.height = BOARD_H;
@@ -647,7 +652,7 @@
       position: { x: position.x, y: position.y, z: position.z },
       rotation: { x: 0, y: ry, z: 0 },
       scale: { x: scale * width, y: scale, z: scale },
-      geometry: curved ? curvedCabinetGeometry() : cabinetGeometry()
+      geometry: !stand ? hangingCabinetGeometry() : curved ? curvedCabinetGeometry() : cabinetGeometry()
     });
     // Drawn at board size then scaled in to clear the rails; z is left alone.
     const screenNode = createNode({ geometry: screenGeometryFrom(worldContext, curved), scale: { x: FX, y: FY, z: 1 } });

@@ -5,6 +5,8 @@
 // on a rack or its plaque opens that day's board: its commits, PR-head matches and their authors as git recorded
 // them, with links out to GitHub; the arrows page through the days. At the far end, two armchairs (Space or SIT) face
 // a small TV showing the pictures the island took on the way up.
+// Over the aisle hangs the island's own Oogatron (jumbotron.js), live as the hub's: a tap on its screen, or Space
+// (READ) looking down the aisle at it, opens the same close-up; its sides page it.
 //
 // The way home is always deliberate: climbing all the way down the stalk, Space (ISLAND) at its foot once the Ooga has
 // been up, Leave, or Escape. Falling into the shaft only leaves the Ooga at its foot, where it can climb back up. Any
@@ -37,6 +39,8 @@
   // facing it within READ_FACING; ISLAND is offered within FOOT_REACH of the stalk at the shaft's foot.
   const CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, TV_W = 480, TV_H = 360, SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.35;
   const READ_REACH = 1.4, READ_FACING = 0.45, FOOT_REACH = 1.8;
+  // The hanging Oogatron is offered to Space from the aisle in front of it, within SIGN_REACH, looking down the aisle.
+  const SIGN_REACH = 9, SIGN_FACING = 0.8;
   const ARRIVAL_PITCH = -0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
   // Authors are identities (GitHub accounts and unlinked contributors); automation, agents and
   // organisations are counted apart and never as people.
@@ -281,6 +285,24 @@
       walkAt: { x: c.x - Math.sin(c.ry) * SEAT_BACK, z: c.z - Math.cos(c.ry) * SEAT_BACK } }));
     built.chairs.forEach((node, i) => target(node, { kind: "chair", index: i }, 0.7));
 
+    // The island's Oogatron, hung over the aisle: the hub's own board (jumbotron.js), from the baked stats and then the
+    // live poller's latest reading as the hub's is. Its rails page it where it hangs; its screen, or Space in front of
+    // it, opens the same close-up as the island's.
+    const SG = L.SIGN, SIGN_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+    const sign = BL.models.withScope("cloudarchive", () => BL.jumbotron.create({ data: BL.jumbotronData, position: { x: SG.x, y: SG.y, z: SG.z }, scale: SG.scale, stand: false }));
+    addChild(root, sign.node);
+    target(sign.node, { kind: "sign", pickRay: (ray) => sign.pickRay(ray) }, 1.6);
+    const signBoard = {
+      title: "Oogatron", help: "OogaBoogaX on the big screen. Arrow keys flip the boards.", note: "", floating: true,
+      get canvas() { return sign.canvas; }, get count() { return sign.count; }, get index() { return sign.index; },
+      get caption() { return sign.caption; }, get version() { return sign.version; },
+      get paused() { return sign.paused; }, setPaused: (paused) => sign.setPaused(paused),
+      createReader: (state) => sign.createReader(state),
+      go: (i) => sign.goToView(i)
+    };
+    const openSign = () => hud.openBoard(signBoard);
+    const signUnsub = BL.oogatronLive.subscribe((event) => { if (event.type === "stats") sign.refreshData(event.stats); });
+
     // The board: one page a day, painted when shown.
     const boardCanvas = document.createElement("canvas");
     boardCanvas.width = BOARD_W; boardCanvas.height = BOARD_H;
@@ -361,6 +383,8 @@
         if (ahead < 0 || ahead > READ_REACH + avatar.bodyRadius || Math.abs(p.z - q.z) > RACK.w / 2 || ahead >= near.distance) continue;
         if (facing(-side, 0) > READ_FACING) { near.kind = "shelf"; near.index = i; near.seat = null; near.distance = ahead; }
       }
+      const toSign = p.z - SG.z;
+      if (!near.kind && toSign > 1 && toSign < SIGN_REACH && Math.abs(p.x - SG.x) < RACK.aisle - RACK.d && facing(0, -1) > SIGN_FACING) { near.kind = "sign"; near.distance = toSign; }
       return near;
     };
     // Into the chair, the view turned to the TV.
@@ -385,6 +409,7 @@
       const n = findNear();
       if (n.kind === "chair") return sit(n.seat);
       if (n.kind === "shelf") { openDay(n.index); return true; }
+      if (n.kind === "sign") { openSign(); return true; }
       if (n.kind === "island") { handOff(); return true; }
       return false;
     };
@@ -442,6 +467,7 @@
     const tipFor = (hit) => {
       const o = hit.owner;
       if (o.kind === "rack") { const s = STATS[o.index]; return `${DATA.days[o.index].date} · ${plural(s.commits, "commit")} · ${COARSE ? "tap" : "click, or face it and press Space,"} to read the day`; }
+      if (o.kind === "sign") return COARSE ? "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up, its sides to page it" : "Oogatron · OogaBoogaX on the big screen · click the screen for a close-up, its sides to page it";
       if (o.kind === "tv") return views.length ? `Island cam · ${views[tv.channel].label} · ${COARSE ? "tap" : "click"} to watch` : "A little TV · no signal yet";
       if (o.kind === "chair") return COARSE ? "Leather armchair · walk up and tap SIT" : "Leather armchair · Space beside it sits";
       if (o.kind === "stalk") return COARSE ? "Beanstalk · climb down it, or tap ISLAND at its foot, to go home" : "Beanstalk · climb down it (S), or Space at its foot, to go home";
@@ -450,10 +476,14 @@
     Object.assign(hooks, {
       onHover: (hit, p) => { if (hit) hud.tooltip.show(tipFor(hit), p.x, p.y); else hud.tooltip.hide(); },
       onHoverMove: (hit, p) => hud.tooltip.show(tipFor(hit), p.x, p.y),
-      onTap: (hit) => {
+      onTap: (hit, p) => {
         if (!hit) return;
         const o = hit.owner;
         if (o.kind === "rack") openDay(o.index);
+        else if (o.kind === "sign") {
+          if (p) { renderer.ray(p.x, p.y, camera, SIGN_RAY); if (sign.tapAt(SIGN_RAY) === "screen") openSign(); }
+          else openSign();
+        }
         else if (o.kind === "tv") openTv();
         else if (o.kind === "chair") {
           const seat = seats[o.index], n = findNear();
@@ -488,6 +518,7 @@
       if (kind === "sit" || kind === "chair") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
       else if (kind === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
       else if (kind === "shelf") { hud.setAct("READ"); hud.hint(COARSE ? `Tap READ for ${DATA.days[index].date}` : `Space · Read ${DATA.days[index].date}`); }
+      else if (kind === "sign") { hud.setAct("READ"); hud.hint(COARSE ? "Tap READ for the Oogatron" : "Space · Read the Oogatron"); }
       else if (kind === "island") { hud.setAct("ISLAND"); hud.hint(COARSE ? "Tap ISLAND to go home down the beanstalk" : "Space · Home to the island"); }
       else pilot.showAct();
     };
@@ -511,6 +542,8 @@
       }
       showNear();
       updateTv(dt);
+      sign.update(elapsed, renderer);
+      hud.updateBoard(elapsed);
       stepTweens(dt);
       fx.update(dt, elapsed);
     };
@@ -539,7 +572,7 @@
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
       cloudArchive: {
-        layout: L, built, board, openDay, openTv, tv, tvBoard, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
+        layout: L, built, board, openDay, openTv, tv, tvBoard, sign, signBoard, openSign, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
         get avatar() { return avatar; }, get climbed() { return climbed; }, get dayIndex() { return dayIndex; }, get leaving() { return !!leaving; }, exit: handOff
       }
     };
@@ -554,6 +587,8 @@
       BL.net.setBody(null);
       for (const plaque of plaques) { renderer.releaseGeometry(plaque.geometry); plaque.geometry = null; }
       renderer.releaseGeometry(tvGeometry); built.screen.geometry = null;
+      signUnsub();
+      sign.dispose(renderer);
       footsteps.dispose();
       assist.dispose();
       if (people) people.dispose();
