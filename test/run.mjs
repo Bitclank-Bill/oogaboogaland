@@ -23517,6 +23517,31 @@ const genesisBenchProof = async () => {
 // genesis-workbench:end
 // genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
 // genesis-timeline:end
+// rule (gv/ovh-polish, the gallery walls): each era's board quotes only verified headlines (publication, date, headline
+// and an https source each), its posters and art are museum originals in styles that exist, and the board hangs inside
+// its own gallery, against the back wall, facing into the room; every board paints with a recording canvas.
+const genesisWallsProof = async () => {
+  const context = { window: { BL: {} } };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-walls"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, L = BLc.genesisWalls, MU = W.MUSEUM, bad = [];
+  if (L.ERAS.length !== W.ERAS.length) bad.push(`${L.ERAS.length} boards for ${W.ERAS.length} eras`);
+  const src = await readFile(join(root, "src/js/genesis-walls.js"), "utf8");
+  L.ERAS.forEach((d, n) => {
+    if (!d.clippings.length) bad.push(`era ${n}: no clipping`);
+    for (const c of d.clippings) if (!c.paper || !c.date || !c.head || !/^https:\/\//.test(c.src || "")) bad.push(`era ${n}: a clipping lacks its paper, date, headline or source`);
+    if (!new RegExp(`\\b${d.poster.style}\\(g,`).test(src) || !new RegExp(`\\b${d.art.style}\\(g,`).test(src)) bad.push(`era ${n}: a style is missing`);
+    if (!d.poster.note || !d.art.note) bad.push(`era ${n}: a museum original lacks its caption`);
+  });
+  for (const r of MU.rects) {
+    const out = MU.rotate(MU.bays[r.n].rot, 0, -1, { x: 0, z: 0 }), at = L.layout(r, out);
+    const inside = at.x > r.x0 && at.x < r.x1 && at.z > r.z0 && at.z < r.z1;
+    const facing = { x: Math.sin(at.ry), z: Math.cos(at.ry) }, back = Math.abs(out.x) > 0.5 ? (out.x < 0 ? at.x - r.x0 : r.x1 - at.x) : (out.z < 0 ? at.z - r.z0 : r.z1 - at.z);
+    if (!inside || back > 1 || facing.x * out.x + facing.z * out.z > -0.99 || at.wall < L.BOARD.w + 4) bad.push(`era ${r.n}: the board does not hang on its back wall facing in (${JSON.stringify(at)})`);
+  }
+  const ctx = new Proxy({ measureText: (t) => ({ width: String(t).length * 10 }) }, { get: (t, k) => (k in t ? t[k] : (k === "createLinearGradient" || k === "createRadialGradient") ? () => ({ addColorStop() {} }) : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
+  for (let n = 0; n < L.ERAS.length; n++) { const k = L.paintBoard(ctx, 2048, 637, n, { name: W.ERAS[n].name, years: W.ERAS[n].years }); if (k !== 2 + L.ERAS[n].clippings.length) bad.push(`era ${n}: painted ${k} pieces`); }
+  return { bad };
+};
 // Regression (review of gv/ovh-polish 20eec91): the white screen's painter skipped any label it found no row for, so
 // the timestamp papers [3] and [4] silently vanished, and two entries of the same year (Hashcash's announcement and
 // Secure Names, 1997) drew their markers on one spot, the citation's dot covering the influence's ring. Every
@@ -25885,6 +25910,8 @@ const unitChecks = async () => {
   const genesisCartridge = await genesisCartridgeProof();
   const genesisEraCartridges = await genesisEraCartridgeProof();
   const genesisTimelineLayout = await genesisTimelineLayoutProof();
+  const genesisWalls = await genesisWallsProof();
+  record("Genesis gallery walls (rule): each era's board quotes only verified headlines with publication, date and source, labels its posters and art as museum originals in styles that exist, and hangs inside its gallery on the back wall facing in", !genesisWalls.bad.length, JSON.stringify(genesisWalls));
   record("Genesis white screen (regression, review of 20eec91): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));
   record("Genesis era cartridges (rule, gv/integration-3 4d): the nine era playables are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));

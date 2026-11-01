@@ -822,6 +822,27 @@
     });
     built.atriumLayout = L;
   };
+  // The gallery walls (genesis-walls.js): one exhibition board high on each era's back wall, above its exhibits, with
+  // that era's verified headlines and the museum's original posters and art. One picture a board, painted once a
+  // visit; no light and nothing per frame.
+  const buildWalls = () => {
+    const GWL = BL.genesisWalls;
+    if (!GWL) return;
+    const B = GWL.BOARD, PX = B.px, PY = Math.round(PX * B.h / B.w);
+    built.wallBoards = [];
+    for (const r of MU.rects) {
+      const out = MU.rotate(MU.bays[r.n].rot, 0, -1, { x: 0, z: 0 }), at = GWL.layout(r, out), era = GW.ERAS[r.n];
+      const w = Math.min(B.w, at.wall - 4), h = w * B.h / B.w;
+      const canvas = document.createElement("canvas"); canvas.width = PX; canvas.height = PY;
+      const pieces = GWL.paintBoard(canvas.getContext("2d"), PX, PY, r.n, { name: era.name, years: era.years });
+      const image = new Image(); image.src = canvas.toDataURL("image/png");
+      const face = { verts: [-w / 2, -h / 2, 0.06, w / 2, -h / 2, 0.06, w / 2, h / 2, 0.06, -w / 2, h / 2, 0.06], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+      face.imageSurface = { asset: { width: PX, height: PY, load: () => image }, rect: [-w / 2, -h / 2, w, h] };
+      const node = place(createNode({ position: { x: at.x, y: ISLAND_TOP + B.y, z: at.z }, rotation: { x: 0, y: at.ry, z: 0 }, sightHidden: true }));
+      addChild(node, createNode({ geometry: M.box({ w: w + 0.3, h: h + 0.3, d: 0.08, color: "#2a2018" }) }), createNode({ geometry: face }));
+      built.wallBoards.push({ era: r.n, x: at.x, z: at.z, ry: at.ry, w, pieces });
+    }
+  };
   // The courtyard (genesis-courtyard.js): the atrium dressed as an Ooga crossroads, grass and sand paths to every
   // gallery and a clockwise loop, wooden signs, benches, plants and the "You are here" board. Built once a visit, no
   // lights and nothing per frame; its obstacles join the footing.
@@ -1168,7 +1189,7 @@
     // The era files build first, so the galleries' boulders, the legend and the shared signage know them.
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
-    buildExhibits(); buildCatalogue(); buildAtrium(); buildCourtyard();
+    buildExhibits(); buildCatalogue(); buildAtrium(); buildCourtyard(); buildWalls();
     buildGalleries(); buildLegend(); buildEraFrames(); buildTrail();
     registerOverviews();
     // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
