@@ -32,9 +32,10 @@
   };
   // The TV changes channel every CHANNEL_SECONDS through STATIC_SECONDS of snow (neither under reduced motion, where it
   // holds its picture until changed by hand). A chair is sat in from within SIT_REACH of its edge, facing it; the
-  // sitter sits SEAT_Y up and stands up SEAT_BACK behind it. A shelf is read from within READ_REACH of its front,
+  // sitter sits SEAT_Y up and stands up SEAT_BACK behind it, room enough past the chair's 0.5 m solid for the widest Ooga
+  // (as the Sphere's chairs leave): any closer and the crew refuses the seat for a wide body, and Space jumps instead. A shelf is read from within READ_REACH of its front,
   // facing it within READ_FACING; ISLAND is offered within FOOT_REACH of the stalk at the shaft's foot.
-  const CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, TV_W = 480, TV_H = 360, SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.1;
+  const CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, TV_W = 480, TV_H = 360, SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.35;
   const READ_REACH = 1.4, READ_FACING = 0.45, FOOT_REACH = 1.8;
   const ARRIVAL_PITCH = -0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
   // Authors are identities as git recorded them (linked accounts and unlinked git names); automation, agents and

@@ -77,6 +77,14 @@ on `4dbfff8` and passes on this branch (`regression-three-way` in the review ZIP
 | 4 · Wording | The plaque reads "N PR-head matches · N author identities", sized to fit. The board header and note say "author identities". Links read "PR #N (PR-head match) · merge message: “…”". Unlinked names show "(git name)" instead of `*`, explained in the note | Code; browser evidence |
 | 5 · PR-ref provenance | `provenance.pullRefs` records `fetchedAt`, `source`, `count` and a deterministic SHA-256 `digest` of the sorted `<n> <sha>` lines. The provenance, plan and note say matches depend on that snapshot as well as `--rev`. `prHeadMatches` (distinct PR numbers, 257) is counted apart from `prHeadMatchRows` (matching merges, 261). `--pull-refs <file>` regenerates against a saved ref list, and doing so reproduces the committed snapshot exactly, apart from fetch time and source | Unit `pullRefs`, `snapshot`. Snapshot validation in the ZIP |
 
+## Found by the browser checks on `66dcb3b`
+
+| Finding | Status | Evidence |
+|---|---|---|
+| **Space at an armchair jumped instead of sitting** for wide Oogas. The chair's stand-up spot sat 1.1 m from its centre; with the chair's 0.5 m solid, an Ooga wider than 0.6 m (this run's has a 0.82 m body radius) could not stand there, so the crew's `sitPlayer` refused the seat and Space fell through to a jump | **Fixed** in the commit after `66dcb3b`: `SEAT_BACK` 1.35, as the Timechain Sphere's chairs leave for the widest Ooga | `diagnose-chair*` logs: SIT shown and the chair nearest, yet `sitPlayer` refused while grounded with no key involved; the 0.82 m radius against the 1.1 m gap. Re-checked on the fix commit |
+| **After a page opens straight in the archive, the island arrives with no Ooga under control.** Leaving by Escape or by the Leave button gives the same result. Leaving an archive entered from the island (the usual path) keeps the Ooga | **Open: a product defect, root cause not isolated.** The island's fresh-build arrival does call `pilot.possess` for the returning Ooga, and `navigate("beanstalk")` releases no actor, so the possession is not taking or is released later in that build. Not fixed here | Session 2 (`66dcb3b`) timed out waiting for a controlled Ooga, with a state dump. Diagnostic A: Escape #1 detaches, #2 leaves, and the island arrives detached. Diagnostic B: Leave, never detached, and the island still arrives detached. Session 1: Escape exits from island-entered visits came back controlled |
+| Session 2's double Escape: is it the probe? | **Not the cause.** The first Escape does detach inside the archive (pilot's Escape steps: free the mouse, detach, then leave), so two presses are "detach, leave", but variant B shows the defect without any Escape | Diagnostic A and B |
+
 ## Block Frenzy view-assist branch
 
 `feature/block-frenzy-view-assist` (`5f42979…`) was inspected. Its `view-assist.js` is byte-identical to this branch's,
