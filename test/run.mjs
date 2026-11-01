@@ -23491,6 +23491,20 @@ const genesisBenchProof = async () => {
 // genesis-workbench:end
 // genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
 // genesis-timeline:end
+// Regression (review of 53974ad): Era 0's three new terminals did not answer MORE, which the workbench asks every
+// exhibit for its deeper story (OVERHAUL-CONTRACT.md §3). Each answers it with its own deeper lines.
+const genesisEra0MoreProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const G = context.window.BL.genesisEra0Games, bad = [];
+  const terms = { nim: G.nim.terminal(G.nim.create()), crt: G.crt.terminal(G.crt.create()), pointer: G.pointer.terminal(G.pointer.create()) };
+  for (const [k, t] of Object.entries(terms)) {
+    const more = (t.run("MORE") || {}).lines || [], info = (t.run("INFO") || {}).lines || [];
+    if (!more.length || /^Use |Unknown/i.test(more[0]) || more.join("\n") !== info.join("\n")) bad.push(`${k}: MORE does not answer with its deeper lines`);
+  }
+  return { bad };
+};
 // Era 0's upgrade suite, folded in from test/genesis-era-0-upgrade.mjs (gv/upgrade-era-0) so test/ keeps its two
 // files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
 const genesisEra0UpgradeSuite = async () => {
@@ -25664,6 +25678,8 @@ const unitChecks = async () => {
   record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
   const genesisBenchCheck = await genesisBenchProof();
   record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
+  const era0More = await genesisEra0MoreProof();
+  record("Genesis Era 0 terminals answer MORE: Nim, the scan-line CRT and the pointer station each give their deeper lines (the workbench asks every exhibit for them)", !era0More.bad.length, JSON.stringify(era0More));
   const era0Suite = await genesisEra0UpgradeSuite();
   record("Genesis Era 0 upgrade suite (folded from its branch): every one of its own checks passes", era0Suite.code === 0 && !era0Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era0Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const era1Suite = await genesisEra1UpgradeSuite();

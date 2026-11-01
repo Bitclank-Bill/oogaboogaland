@@ -70,7 +70,7 @@
       run(line) {
         const text = String(line).trim().slice(0, 96), w = text.toUpperCase().split(/\s+/), cmd = w[0];
         if (cmd === "HELP" || !cmd) return { lines: HELP };
-        if (cmd === "INFO") return { lines: ["A cathode-ray tube lights a phosphor where its beam lands. This toy sweeps it in horizontal lines, as a television raster does.", "Brightness adds to every line, even the black background. Contrast widens the gap between dark and light tones.", "Many early computer displays plotted separate points instead of sweeping lines; no particular period display or date is claimed here."] };
+        if (cmd === "INFO" || cmd === "MORE") return { lines: ["A cathode-ray tube lights a phosphor where its beam lands. This toy sweeps it in horizontal lines, as a television raster does.", "Brightness adds to every line, even the black background. Contrast widens the gap between dark and light tones.", "Many early computer displays plotted separate points instead of sweeping lines; no particular period display or date is claimed here."] };
         if (cmd === "RESET") { crt.reset(); onChange(crt); return { lines: ["Settings restored.", ...status()] }; }
         if (cmd === "STATUS") return { lines: status() };
         const spec = cmd === "BRIGHT" ? [crt.setBright, LEVEL_MAX] : cmd === "CONTRAST" ? [crt.setContrast, LEVEL_MAX] : cmd === "LINES" ? [crt.setLines, LINES] : null;

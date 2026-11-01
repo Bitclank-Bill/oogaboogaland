@@ -78,7 +78,7 @@
       run(line) {
         const text = String(line).trim().slice(0, 96), w = text.toUpperCase().split(/\s+/), cmd = w[0];
         if (cmd === "HELP" || !cmd) return { lines: HELP };
-        if (cmd === "INFO") return { lines: ["Nim's rules are generic and public domain; this board, its 3-5-7 start and its opponent were made for this museum.", "No date is given here for Nim or for any machine that played it: those claims are still being checked, so none is shown.", "The computer is bounded: it weighs at most the 15 legal moves in front of it and never searches ahead."] };
+        if (cmd === "INFO" || cmd === "MORE") return { lines: ["Nim's rules are generic and public domain; this board, its 3-5-7 start and its opponent were made for this museum.", "No date is given here for Nim or for any machine that played it: those claims are still being checked, so none is shown.", "The computer is bounded: it weighs at most the 15 legal moves in front of it and never searches ahead."] };
         if (cmd === "RESET") { game.reset(S.seed); onChange(game); return { lines: ["New game.", board(), "Your turn."] }; }
         if (cmd === "STATUS") return { lines: [board(), ending()] };
         if (cmd === "HINT") {

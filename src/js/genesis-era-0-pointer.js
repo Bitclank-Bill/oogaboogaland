@@ -55,7 +55,7 @@
       run(line) {
         const text = String(line).trim().slice(0, 96), w = text.toUpperCase().split(/\s+/), cmd = w[0];
         if (cmd === "HELP" || !cmd) return { lines: HELP };
-        if (cmd === "INFO") return { lines: ["A typed command names what it wants, so you must know the name. A pointer is moved by hand to what you can see, then clicked.", "Here the pointer moves in whole cells for the terminal; on a console it follows your drag or keys.", "The device on the desk is generic. The history of early pointing devices is still being checked, so no date or person is named."] };
+        if (cmd === "INFO" || cmd === "MORE") return { lines: ["A typed command names what it wants, so you must know the name. A pointer is moved by hand to what you can see, then clicked.", "Here the pointer moves in whole cells for the terminal; on a console it follows your drag or keys.", "The device on the desk is generic. The history of early pointing devices is still being checked, so no date or person is named."] };
         if (cmd === "RESET") { board.reset(); onChange(board); return { lines: ["New run.", now()] }; }
         if (cmd === "STATUS") return { lines: [now(), tally()] };
         if (board.done() && (cmd === "SELECT" || cmd === "MOVE" || cmd === "CLICK")) return { lines: [now(), tally(), "RESET to try again."] };
