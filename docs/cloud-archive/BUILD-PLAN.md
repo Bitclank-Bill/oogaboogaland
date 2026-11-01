@@ -55,8 +55,9 @@ to regenerate against exactly that PR-ref snapshot.
 
   A linked commit shows its login, one identity per account id. One GitHub links to no account is an "unlinked
   contributor". A git display name is never used. The `[bot]` and reviewed-agent rules stay, and GitHub's `Bot` and
-  `Organization` types set those kinds. Without the file (`--provisional`, as the committed snapshot is until the file
-  is saved), the noreply rules below give the only account links. These are GitHub's records when read, not proof of
+  `Organization` types set those kinds. The committed snapshot uses the records saved 2026-11-01: 2,022 of 2,029 commits
+  linked; 17 account identities, 1 unlinked contributor. Without such a file (`--provisional`) the noreply rules below
+  give the only account links. These are GitHub's records when read, not proof of
   current ownership. Every count is of identities, never of unique people or bots.
   - **Accounts:** a numbered GitHub noreply address (`<id>+<login>@users.noreply.github.com`) is one identity per
     account number, labelled by the newest login it was recorded under, so a renamed account shows its later login.
