@@ -46,7 +46,10 @@
     e1Altair: { label: "Computer History Museum timeline: 1975 (the Altair 8800)",
       href: "https://www.computerhistory.org/timeline/1975/", kind: "context", verified: true },
     e1Dossier: { label: "Genesis Voyage research dossier, Era 1 (acoustic-coupler model and speed: not yet cleared)",
-      href: DOSSIER, kind: "context", verified: true }
+      href: DOSSIER, kind: "context", verified: true },
+    // The home cluster's only source: the exhibit notes that keep its historical references on HOLD (unverified).
+    e1HoldNotes: { label: "Genesis Voyage exhibit notes, Era 1: the home TV, paddle console and pocket calculator's historical references are on HOLD (not yet verified)",
+      href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/upgrade-era-1/docs/genesis-voyage/exhibits/era-1.md", kind: "context", verified: false }
   };
 
   const clean = (line) => BL.genesisProps.clean(line).toUpperCase();
@@ -319,6 +322,203 @@
     };
   };
 
+  // --- At home in the 1970s: a paddle console, a home TV and a pocket calculator (the upgrade's cluster) -----------
+  // Three museum toys in the right bank's living room. Their historical references (which consoles, which TV
+  // connection, which calculators, and when) are on HOLD until a source is verified, so no date, maker, model or
+  // specification is claimed: each says so, and its only source is the exhibit notes that hold that HOLD.
+  const HOLD_NOTE = "Museum note: the historical reference for this toy is on HOLD until a source is verified, so no date, maker, model or specification is claimed here.";
+
+  // Ooga Paddle: a turn-based paddle-and-ball game on the Ooga console, a modern museum homage (original rules,
+  // names and look; not historical software). A 20 x 9 court, your paddle on the left, Ooga's on the right, three rows
+  // tall; up to 8 moves a line; first to 5. Seeded, so RESET replays the same game.
+  const PW = 20, PH = 9, PADDLE = 3, P_WIN = 5, P_TICKS = 8, P_SEED = 1975;
+  const createPaddle = () => ({ rng: P_SEED, py: 3, cy: 3, bx: 10, by: 4, dx: 0, dy: 0, live: false, you: 0, ooga: 0, toward: 1, over: false, hits: 0, dirty: true });
+  const prand = (s) => { s.rng = (Math.imul(s.rng, 1103515245) + 12345) >>> 0; return (s.rng >>> 8) / 16777216; };
+  const paddleField = (s) => {
+    const rows = ["+--------------------+"];
+    for (let y = 0; y < PH; y++) {
+      let row = "";
+      for (let x = 0; x < PW; x++) {
+        const c = x === 0 && y >= s.py && y < s.py + PADDLE ? "]" : x === PW - 1 && y >= s.cy && y < s.cy + PADDLE ? "[" : s.live && x === s.bx && y === s.by ? "o" : x === PW / 2 && y % 2 === 0 ? ":" : " ";
+        row += c;
+      }
+      rows.push(`|${row}|`);
+    }
+    rows.push("+--------------------+", `YOU ${s.you}   OOGA ${s.ooga}   (first to ${P_WIN})`);
+    return rows;
+  };
+  // One tick: your move, Ooga's move, then the ball. Returns "you" or "ooga" when a point is scored, else "".
+  const paddleTick = (s, move) => {
+    if (move === "U") s.py = Math.max(0, s.py - 1); else if (move === "D") s.py = Math.min(PH - PADDLE, s.py + 1);
+    const mid = s.cy + 1;
+    if (s.dx > 0 && prand(s) < 0.72) s.cy = Math.max(0, Math.min(PH - PADDLE, s.cy + Math.sign(s.by - mid)));
+    if (!s.live) return "";
+    let nx = s.bx + s.dx, ny = s.by + s.dy;
+    if (ny < 0 || ny > PH - 1) { s.dy = -s.dy; ny = s.by + s.dy; }
+    if (nx <= 0) {
+      if (ny >= s.py && ny < s.py + PADDLE) { s.dx = 1; s.dy = ny - s.py - 1; nx = 1; s.hits++; }
+      else { s.live = false; s.ooga++; s.toward = -1; return "ooga"; }
+    } else if (nx >= PW - 1) {
+      if (ny >= s.cy && ny < s.cy + PADDLE) { s.dx = -1; s.dy = ny - s.cy - 1; nx = PW - 2; }
+      else { s.live = false; s.you++; s.toward = 1; return "you"; }
+    }
+    s.bx = nx; s.by = ny;
+    return "";
+  };
+  const paddleTerminal = (s) => ({
+    banner: ["HOW TO USE", "  1. Type S to serve the ball.", "  2. Type U or D to move your paddle one step, or W to wait: up to 8 a line, e.g. UUW.", "  3. Keep the ball in play; first to 5 points wins.", "  4. Tune the TV across the rug to the console's channel to watch it.", "",
+      "OOGA PADDLE · a modern museum homage on an original Ooga console. Not historical software.", "Type HELP for the commands.", ""],
+    prompt: "PADDLE>",
+    run: (line) => {
+      const [cmd] = words(line);
+      if (!cmd) return { lines: [] };
+      if (cmd === "HELP") return { lines: ["S        serve (or start a new game once one is won)", "U D W    move up, move down or wait one step; up to 8 a line, e.g. UUDW", "MORE     about this console", "SOURCES  where this comes from", "RESET    start again from the same first serve"] };
+      if (cmd === "MORE") return { lines: ["This console, its two paddle controllers and its game are original to the museum: no copied game, program,", "name, logo, artwork, sound or shell. The game is a modern museum homage, not historical software.",
+        "When the museum's live console arrives, the same console will also play Ooga Pong, the arcade's caveman version.", HOLD_NOTE] };
+      if (cmd === "SOURCES") return { lines: [`Source: ${sources.e1HoldNotes.label}`] };
+      if (cmd === "RESET") { Object.assign(s, createPaddle()); return { lines: ["Reset: scores 0-0, the same first serve. Type S.", ...paddleField(s)] }; }
+      if (cmd === "S") {
+        if (s.live) return { lines: ["The ball is already in play: move with U, D or W.", ...paddleField(s)] };
+        if (s.over) { s.you = 0; s.ooga = 0; s.over = false; }
+        s.bx = PW / 2; s.by = 1 + Math.floor(prand(s) * (PH - 2)); s.dx = s.toward; s.dy = prand(s) < 0.5 ? -1 : 1; s.live = true; s.dirty = true;
+        return { lines: [s.dx > 0 ? "Served toward Ooga." : "Served toward you.", ...paddleField(s)] };
+      }
+      if (!/^[UDW]+$/.test(cmd) || cmd.length > P_TICKS) return { lines: [`Moves are U, D and W, up to ${P_TICKS} a line (e.g. UUW). Type HELP.`] };
+      if (s.over) return { lines: ["The game is over. Type S for a new one."] };
+      const said = [];
+      for (let i = 0; i < cmd.length; i++) {
+        const pt = paddleTick(s, cmd[i]);
+        if (!pt) continue;
+        said.push(pt === "you" ? "Your point! The ball got past Ooga." : "Ooga's point: the ball got past you.");
+        if (s.you >= P_WIN || s.ooga >= P_WIN) { s.over = true; said.push(s.you >= P_WIN ? "You win the game! Type S to play again." : "Ooga wins this one. Type S to play again."); }
+        else said.push("Type S to serve again.");
+        break;
+      }
+      s.dirty = true;
+      return { lines: [...said, ...paddleField(s)] };
+    }
+  });
+
+  // Home TV: a toy tuner. The dial picks one of 12 channels (the toy's numbers); three carry invented programmes, the
+  // console's picture arrives on the channel its selector box is set to, and the rest are snow. Each channel comes in
+  // clearest at one fine-tuning setting. The real connection consoles of the period used is on HOLD.
+  const TV_STATIONS = { 2: "card", 8: "sky", 11: "fish" };
+  const TV_NAMES = { card: "an invented test card: colour bars", sky: "an invented night-sky programme", fish: "an invented fish-tank programme", console: "the Ooga console's picture: the paddle game" };
+  // The fine setting each dial comes in clearest at (the console's two channels at the centre, so it shows at once).
+  const TV_FINE = [0, 1, -1, 0, 2, 0, 0, 0, -1, 2, 0, -2, 1];
+  const CONSOLE_CH = { A: 5, B: 6 };
+  const createTv = () => ({ on: false, dial: 2, fine: 0, sw: "A", dirty: true, rng: 7 });
+  const tvShows = (t) => !t.on ? "off" : t.dial === CONSOLE_CH[t.sw] ? "console" : TV_STATIONS[t.dial] || "snow";
+  const tvClear = (t) => t.fine === TV_FINE[t.dial];
+  const tvWhat = (t) => {
+    const on = tvShows(t);
+    if (on === "off") return ["The screen is dark. Type POWER to switch the TV on."];
+    if (on === "snow") return [`Dial ${t.dial}: snow. Nothing is on this channel in this toy. Try UP or DOWN.`];
+    return [`Dial ${t.dial}: ${TV_NAMES[on]}.`, tvClear(t) ? "The picture is clear." : "The picture is fuzzy: try FINE + or FINE -."];
+  };
+  const tvTerminal = (t) => ({
+    banner: ["HOW TO USE", "  1. Type POWER to switch the TV on.", "  2. Type UP or DOWN (or DIAL 5) to turn the channel dial.", "  3. The console's picture is on the channel its selector box is set to: SWITCH A or SWITCH B.", "  4. If a picture is fuzzy, type FINE + or FINE - until it is clear.", "",
+      "HOME TV · a toy tuner with invented programmes, so you can see how tuning picks one channel.", "Type HELP for the commands.", ""],
+    prompt: "TV>",
+    run: (line) => {
+      const [cmd, arg] = words(line);
+      if (!cmd) return { lines: [] };
+      if (cmd === "HELP") return { lines: ["POWER          switch on or off", "UP / DOWN      turn the dial one channel", "DIAL <n>       turn straight to channel n (1-12, the toy's numbers)", "FINE + / FINE - fine-tune the picture", "SWITCH A or B  set the console's selector box", "WHAT           what is on now", "PATH           how the console's picture reaches the screen", "MORE  SOURCES  RESET"] };
+      if (cmd === "MORE") return { lines: ["How the toy works: many signals reach a TV at once, and its tuner picks out one channel; turning the dial", "changes which. The console's picture comes in as one more channel, so you tune to it like any other.",
+        "The programmes on this TV are invented for the museum.", "Which connection home consoles of the period actually used is not named here.", HOLD_NOTE] };
+      if (cmd === "SOURCES") return { lines: [`Source: ${sources.e1HoldNotes.label}`] };
+      if (cmd === "RESET") { Object.assign(t, createTv()); return { lines: ["The TV is off, on dial 2, fine tuning centred, selector on A."] }; }
+      if (cmd === "PATH") return { lines: ["In this toy: console -> cable -> selector box -> the TV's input -> the tuner picks one channel -> the screen.", `The selector is on ${t.sw}, so the console comes in on dial ${CONSOLE_CH[t.sw]}.`, "The real connection of the period is on HOLD and not labelled."] };
+      if (cmd === "WHAT") return { lines: tvWhat(t) };
+      if (cmd === "POWER" || cmd === "ON" || cmd === "OFF") { t.on = cmd === "ON" ? true : cmd === "OFF" ? false : !t.on; t.dirty = true; return { lines: [t.on ? "Click: the TV warms up." : "Click: the picture shrinks to a dot and the screen goes dark.", ...(t.on ? tvWhat(t) : [])] }; }
+      if (cmd === "UP" || cmd === "DOWN" || cmd === "DIAL") {
+        const n = cmd === "DIAL" ? Number.parseInt(arg, 10) : t.dial + (cmd === "UP" ? 1 : -1);
+        if (cmd === "DIAL" && !(n >= 1 && n <= 12)) return { lines: ["DIAL 1 to 12 (the toy's channel numbers)."] };
+        t.dial = ((n - 1 + 12) % 12) + 1; t.fine = 0; t.dirty = true;
+        return { lines: [`Clunk: dial ${t.dial}.`, ...tvWhat(t)] };
+      }
+      if (cmd === "FINE") {
+        if (arg !== "+" && arg !== "-") return { lines: ["FINE + or FINE -."] };
+        t.fine = Math.max(-3, Math.min(3, t.fine + (arg === "+" ? 1 : -1))); t.dirty = true;
+        return { lines: [`Fine tuning ${t.fine > 0 ? "+" : ""}${t.fine}.`, ...tvWhat(t)] };
+      }
+      if (cmd === "SWITCH") {
+        if (arg !== "A" && arg !== "B") return { lines: ["SWITCH A or SWITCH B."] };
+        t.sw = arg; t.dirty = true;
+        return { lines: [`The console's selector box is on ${arg}: its picture now comes in on dial ${CONSOLE_CH[arg]}.`, ...(t.on ? tvWhat(t) : [])] };
+      }
+      return { lines: unknown };
+    }
+  });
+
+  // Pocket calculator: a toy with an 8-place display (the toy's, not a claimed specification), working left to right.
+  // Digits beyond 8 are refused, results are cut (not rounded) to fit, and a result too big shows E until C.
+  const CALC_PLACES = 8;
+  const createCalc = () => ({ acc: 0, op: "", entry: "", shown: "0", error: false, after: false, dirty: true });
+  const calcFit = (n) => {
+    if (!Number.isFinite(n)) return { text: "E", error: true, cut: false };
+    const neg = n < 0, abs = Math.abs(n), room = CALC_PLACES - (neg ? 1 : 0), whole = String(Math.trunc(abs)).length;
+    if (whole > room) return { text: "E", error: true, cut: false };
+    const d = room - whole, p = 10 ** d, t = Math.trunc(abs * p + 1e-7) / p;
+    let text = t.toFixed(d);
+    if (text.includes(".")) text = text.replace(/0+$/, "").replace(/\.$/, "");
+    return { text: (neg && t !== 0 ? "-" : "") + text, error: false, cut: Math.abs(t - abs) > 1e-9 * Math.max(1, abs) };
+  };
+  const calcApply = (a, op, b) => op === "+" ? a + b : op === "-" ? a - b : op === "X" ? a * b : b === 0 ? NaN : a / b;
+  const calcKey = (c, k, notes) => {
+    if (k === "C") { Object.assign(c, createCalc()); return; }
+    if (c.error) { notes.add("E: press C to clear."); return; }
+    if (k >= "0" && k <= "9" || k === ".") {
+      if (c.after) { c.acc = 0; c.op = ""; c.after = false; }
+      if (k === "." && c.entry.includes(".")) return;
+      if (c.entry.replace(/[^0-9]/g, "").length >= CALC_PLACES && k !== ".") { notes.add(`The display is full: ${CALC_PLACES} places.`); return; }
+      c.entry = k === "." ? (c.entry || "0") + "." : c.entry === "0" ? k : c.entry + k;
+      c.shown = c.entry;
+      return;
+    }
+    const value = c.entry ? Number(c.entry) : c.acc;
+    const result = c.op && (c.entry || k === "=") ? calcApply(c.acc, c.op, value) : value;
+    const fit = calcFit(result);
+    c.entry = ""; c.shown = fit.text;
+    if (fit.error) { c.error = true; notes.add("E: the answer does not fit the display (or divides by zero). Press C."); return; }
+    if (fit.cut) notes.add(`Cut to fit: the display has only ${CALC_PLACES} places.`);
+    c.acc = Number(fit.text);
+    if (k === "=") { c.op = ""; c.after = true; } else { c.op = k; c.after = false; }
+  };
+  const calcTerminal = (c) => ({
+    banner: ["HOW TO USE", "  1. Type a short sum and =, e.g. 12+30= (X multiplies, / divides).", "  2. Read the display, then try 2/3= to see what it cuts off.", "  3. Type C to clear, then try a sum too big for it, e.g. 99999999X9=.", "",
+      "POCKET CALCULATOR · a toy with an 8-place display, working left to right.", "Type HELP for the commands.", ""],
+    prompt: "CALC>",
+    run: (line) => {
+      const [cmd] = words(line), keys = clean(line).replace(/\s+/g, "").replace(/\*/g, "X");
+      if (!cmd) return { lines: [] };
+      if (cmd === "HELP") return { lines: ["0-9 .          digits and the point", "+ - X /        add, take away, multiply, divide (worked left to right)", "=              the answer", "C              clear", "MORE  SOURCES  RESET"] };
+      if (cmd === "MORE") return { lines: ["A calculator's display holds only so many digits. This toy holds 8: it refuses a ninth digit, cuts a long", "answer to fit (it does not round), and shows E for an answer too big, until C clears it.",
+        "It works each step as you press it, left to right, so 2+3X4= gives 20.", HOLD_NOTE] };
+      if (cmd === "SOURCES") return { lines: [`Source: ${sources.e1HoldNotes.label}`] };
+      if (cmd === "RESET") { Object.assign(c, createCalc()); return { lines: ["Cleared.", `Display: [${c.shown.padStart(9)}]`] }; }
+      if (!/^[0-9.+\-X/=C]+$/.test(keys) || keys.length > 40) return { lines: ["Use digits, the point, + - X /, = and C (up to 40 keys). Type HELP."] };
+      const notes = new Set();
+      for (let i = 0; i < keys.length; i++) calcKey(c, keys[i], notes);
+      c.dirty = true;
+      return { lines: [`Display: [${c.shown.padStart(9)}]`, ...notes] };
+    }
+  });
+  // The calculator's display as seven segments a place (a b c d e f g), for the model.
+  const SEGS = { "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg", "5": "acdfg", "6": "acdefg", "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", E: "adefg" };
+  const SEG_ORDER = "abcdefg";
+  // Writes the shown text into `cells` (CALC_PLACES chars, right-aligned, spaces before) and `dots` (the point after a cell).
+  const calcCells = (text, cells, dots) => {
+    for (let i = 0; i < CALC_PLACES; i++) { cells[i] = " "; dots[i] = 0; }
+    let at = CALC_PLACES - 1;
+    for (let i = text.length - 1; i >= 0 && at >= 0; i--) {
+      const ch = text[i];
+      if (ch === ".") { dots[at] = 1; continue; }
+      cells[at--] = ch;
+    }
+    for (let i = 0; i < CALC_PLACES; i++) if (dots[i] && cells[i] === " ") cells[i] = "0";
+  };
+
   // The floppy: each use is one step of handling it. Captions only; the model moves in `update`.
   const FLOPPY_STEPS = [
     "Step 1 of 4: slide the disk out of its paper sleeve. Hold it by its square jacket.",
@@ -488,7 +688,8 @@
       const { era, top, M, createNode, addChild, place, solid, sign, obstacle, prop, label } = kit;
       const Z1 = era.z1;
       closeAudio();
-      S = { gw: createGateway(), dh: createDh(), rsa: createRsa(), panel: createPanel(), coupler: createCoupler(), floppy: { step: 0, spin: 0 }, post: { opened: -1 }, rackStep: -1, n: {} };
+      S = { gw: createGateway(), dh: createDh(), rsa: createRsa(), panel: createPanel(), coupler: createCoupler(), floppy: { step: 0, spin: 0 }, post: { opened: -1 }, rackStep: -1, speckStep: -1, paddle: createPaddle(), tv: createTv(), calc: createCalc(), n: {} };
+      S.paddleTerm = paddleTerminal(S.paddle); S.tvTerm = tvTerminal(S.tv); S.calcTerm = calcTerminal(S.calc);
       S.gwTerm = gatewayTerminal(S.gw); S.dhTerm = dhTerminal(S.dh); S.rsaTerm = rsaTerminal(S.rsa);
       S.panelTerm = panelTerminal(S.panel); S.couplerTerm = couplerTerminal(S.coupler);
       const N = S.n;
@@ -867,10 +1068,11 @@
           block(0.95, 0.3, 0.22, color, x, top + 0.57, z - len / 2 + 0.11); block(0.95, 0.3, 0.22, color, x, top + 0.57, z + len / 2 - 0.11);
           for (let c = 0; c < Math.round(len / 0.8); c++) solid(0.6, 0.08, len / Math.round(len / 0.8) - 0.06, color, x + facing * 0.08, top + 0.46, z - len / 2 + (c + 0.5) * len / Math.round(len / 0.8));
         };
-        const coffeeTable = (x, u) => {
+        const coffeeTable = (x, u, bare = false) => {
           const z = Z1 - u;
           block(1.2, 0.34, 1.6, "#5a3a20", x, top + 0.17, z);
           solid(1.3, 0.04, 1.7, "#7a5232", x, top + 0.36, z);
+          if (bare) return;
           solid(0.3, 0.02, 0.4, "#d9641e", x - 0.2, top + 0.39, z + 0.3); solid(0.28, 0.02, 0.38, "#4f8a8b", x - 0.18, top + 0.41, z + 0.32);
           solid(0.2, 0.18, 0.2, "#e8dcc0", x + 0.3, top + 0.47, z - 0.4); solid(0.12, 0.2, 0.12, "#4f6a3a", x + 0.3, top + 0.66, z - 0.4);
         };
@@ -926,11 +1128,94 @@
         office(-29.5, 41.5, 1); filing(-31.6, 38.8); plant(-31.6, 44.3);
         // Right bank: a lounge between the coupler and the timeline, an office corner by the back wall.
         rug(27, 52, 8, 4.4, ["#4f6a3a", "#e9a23b", "#c8692a", "#e9a23b", "#4f6a3a"]);
-        sofa(31.2, 52, -1, "#7b8a3c", 2.6); sofa(22.9, 52, 1, "#d9641e", 1.0); coffeeTable(27, 52);
-        arcLamp(32.4, 49.6, -1); plant(32.4, 54.6);
+        sofa(31.2, 52, -1, "#7b8a3c", 2.6); coffeeTable(27, 52, true);
+        arcLamp(32.4, 49.6, -1); plant(33.2, 55.9);
         pendant(27, 51, 2.2); pendant(27, 53.4, 2.6);
         bookshelf(1, 23.5);
         office(36, 23.5, -1); filing(38.6, 20.8); plant(38.6, 26.2);
+      }
+
+      // --- At home in the 1970s (right bank's living room): a floor-standing TV, the Ooga paddle console on the coffee
+      // table, and a pocket calculator on a side table by the sofa. Original, unbranded models; the calculator is
+      // enlarged so its display reads from the rug. History on HOLD (see HOLD_NOTE).
+      {
+        const U = 52, zt = Z1 - U, tx = 22.6, sx = tx + 0.31;
+        // The TV: a wood-veneer cabinet on legs, screen on the left, speaker grille and two knobs on the right, ears on top.
+        for (const [lx, lz] of [[-0.22, -0.65], [0.22, -0.65], [-0.22, 0.65], [0.22, 0.65]]) solid(0.05, 0.25, 0.05, "#2a2018", tx + lx, top + 0.125, zt + lz);
+        obstacle(tx - 0.33, tx + 0.33, zt - 0.8, zt + 0.8);
+        solid(0.6, 0.85, 1.5, "#6b4a2b", tx, top + 0.675, zt);
+        solid(0.02, 0.62, 0.86, "#2a2622", sx, top + 0.72, zt + 0.2);
+        N.tvOff = solid(0.02, 0.5, 0.7, "#3a4038", sx + 0.008, top + 0.72, zt + 0.2);
+        solid(0.02, 0.36, 0.42, "#c9a77a", sx, top + 0.6, zt - 0.47);
+        for (let i = 0; i < 3; i++) solid(0.025, 0.015, 0.4, "#6b4a2b", sx + 0.004, top + 0.48 + i * 0.12, zt - 0.47);
+        N.tvDial = place(createNode({ position: { x: sx + 0.02, y: top + 0.93, z: zt - 0.58 } }));
+        addChild(N.tvDial, createNode({ geometry: M.box({ w: 0.04, h: 0.1, d: 0.1, color: "#d9cfb8" }) }), createNode({ geometry: M.box({ w: 0.05, h: 0.045, d: 0.012, color: "#2a2622" }), position: { x: 0.005, y: 0.025, z: 0 } }));
+        N.tvFine = place(createNode({ geometry: M.box({ w: 0.04, h: 0.07, d: 0.07, color: "#d9cfb8" }), position: { x: sx + 0.02, y: top + 0.93, z: zt - 0.38 } }));
+        N.tvLamp = at(lit("#ff4c4c"), sx + 0.01, top + 0.84, zt - 0.3, false);
+        const rod = M.box({ w: 0.02, h: 0.7, d: 0.02, color: "#c9c3b4" });
+        solid(0.16, 0.06, 0.16, "#2a2622", tx, top + 1.13, zt + 0.2);
+        place(createNode({ geometry: rod, position: { x: tx, y: top + 1.45, z: zt + 0.05 }, rotation: { x: -0.45, y: 0, z: 0 } }));
+        place(createNode({ geometry: rod, position: { x: tx, y: top + 1.45, z: zt + 0.35 }, rotation: { x: 0.45, y: 0, z: 0 } }));
+        // What the screen shows (toggled in update): snow, the test card, the night sky, the fish tank, the console's court.
+        const scr = (d, h, color, x, y, z, em = 0.9) => at(M.box({ w: 0.006, h, d, color, emissive: em }), x, y, z, false);
+        const sy = top + 0.72, sz = zt + 0.2, l1 = sx + 0.015, l2 = sx + 0.02;
+        N.snowBg = scr(0.7, 0.5, "#8a8f8a", l1, sy, sz, 0.6);
+        const speck = M.box({ w: 0.006, h: 0.03, d: 0.05, color: "#f4f4ee", emissive: 1.1 });
+        N.specks = [];
+        for (let i = 0; i < 8; i++) N.specks.push(at(speck, l2, sy, sz, false));
+        const bars = ["#f4f1e6", "#f2e14e", "#46d2d2", "#58c05a", "#c84fbf", "#d94a3a"];
+        N.card = bars.map((c, i) => scr(0.7 / 6, 0.5, c, l1, sy, sz + 0.35 - (i + 0.5) * 0.7 / 6));
+        N.sky = [scr(0.7, 0.5, "#1a2350", l1, sy, sz, 0.5)];
+        const star = M.box({ w: 0.006, h: 0.025, d: 0.025, color: "#fff2b0", emissive: 1.4 });
+        for (const [dz, dy] of [[0.25, 0.15], [0.05, 0.1], [-0.2, 0.17], [0.15, -0.05], [-0.1, -0.12]]) N.sky.push(at(star, l2, sy + dy, sz + dz, false));
+        N.fish = [scr(0.7, 0.5, "#2a8a8f", l1, sy, sz, 0.6), scr(0.12, 0.06, "#ff8a2a", l2, sy + 0.08, sz + 0.1, 1.1), scr(0.1, 0.05, "#f2e14e", l2, sy - 0.1, sz - 0.15, 1.1)];
+        N.court = [scr(0.7, 0.5, "#1e3a26", l1, sy, sz, 0.5), scr(0.008, 0.46, "#cfe8c8", l2, sy, sz, 1)];
+        N.youPad = scr(0.012, 0.16, "#f4f1e6", l2 + 0.001, sy, sz + 0.32, 1.2);
+        N.oogaPad = scr(0.012, 0.16, "#f4f1e6", l2 + 0.001, sy, sz - 0.32, 1.2);
+        N.ball = scr(0.03, 0.03, "#f4f1e6", l2 + 0.002, sy, sz, 1.3);
+        N.screen = { sy, sz, half: 0.32, rowH: 0.42 / (PH - 1) };
+        station({ id: "e1-tv", hint: "Type POWER, then UP or DOWN to find the console", year: "1970s", date: "a toy tuner; the period, the set and its connection are on HOLD (not yet verified)", title: "Home TV: tune a channel", label: "HOME TV · 1970s TOY", sourceKeys: ["e1HoldNotes"], x: 24.4, z: zt, on: { w: 0.8, h: 1.5, d: 1.7, x: tx, z: zt }, onUse: () => ({ terminal: S.tvTerm }) });
+
+        // The Ooga console on the bare coffee table: a cream case with a walnut front and orange stripe, a selector
+        // switch, two paddle controllers with big orange knobs on coiled leads, and its cable across the rug to the TV.
+        const cx = 27, cz = Z1 - 52.0, ty = top + 0.38;
+        solid(0.56, 0.09, 0.38, "#e8dcc0", cx, ty + 0.045, cz);
+        solid(0.57, 0.05, 0.02, "#6b4a2b", cx, ty + 0.045, cz + 0.2);
+        solid(0.57, 0.012, 0.39, "#d9822b", cx, ty + 0.085, cz);
+        solid(0.08, 0.03, 0.04, "#2a2622", cx + 0.18, ty + 0.105, cz - 0.08);
+        N.switchZ = cz - 0.08; N.switchKnob = solid(0.03, 0.02, 0.03, "#f4f1e6", cx + 0.16, ty + 0.125, cz - 0.08);
+        const knob = M.box({ w: 0.07, h: 0.04, d: 0.07, color: "#d9641e" });
+        for (const dx of [-0.2, 0.2]) {
+          solid(0.11, 0.05, 0.15, "#e8dcc0", cx + dx, ty + 0.025, cz + 0.42);
+          place(createNode({ geometry: knob, position: { x: cx + dx, y: ty + 0.07, z: cz + 0.44 } }));
+          place(createNode({ geometry: knob, position: { x: cx + dx, y: ty + 0.07, z: cz + 0.44 }, rotation: { x: 0, y: Math.PI / 4, z: 0 } }));
+          solid(0.012, 0.012, 0.24, "#2a2622", cx + dx * 0.6, ty + 0.012, cz + 0.27);
+        }
+        solid(cx - 0.3 - (sx - 0.3), 0.012, 0.02, "#2a2622", (cx - 0.3 + sx - 0.3) / 2, top + 0.032, cz);
+        station({ id: "e1-paddle", hint: "Type S to serve, then U and D to move", year: "1970s", date: "a modern museum homage on an original console; the historical reference is on HOLD (not yet verified)", title: "Ooga Paddle: play the console", label: "PADDLE CONSOLE · 1970s HOMAGE", sourceKeys: ["e1HoldNotes"], x: cx, z: Z1 - 49.9, on: { w: 1.4, h: 0.9, d: 1.6, x: cx, z: cz + 0.15 }, onUse: () => ({ terminal: S.paddleTerm }) });
+
+        // The pocket calculator, enlarged about six times, upright on a stand on a side table, facing the rug: a
+        // brown case, a dark window with eight red seven-segment places, and sixteen keys.
+        const kx = 31.6, kz = Z1 - 54.9, fx = kx - 0.038, ky = top + 0.5;
+        block(0.6, 0.5, 0.6, "#5a3a20", kx, top + 0.25, kz);
+        solid(0.12, 0.06, 0.4, "#2a2622", kx + 0.04, ky + 0.03, kz);
+        solid(0.05, 0.86, 0.52, "#5a3a20", kx, ky + 0.49, kz);
+        solid(0.01, 0.14, 0.46, "#1a1414", fx, ky + 0.8, kz);
+        const segH = M.box({ w: 0.006, h: 0.008, d: 0.03, color: "#ff3a2a", emissive: 1.6 }), segV = M.box({ w: 0.006, h: 0.032, d: 0.008, color: "#ff3a2a", emissive: 1.6 }), dot = M.box({ w: 0.006, h: 0.01, d: 0.01, color: "#ff3a2a", emissive: 1.6 });
+        // Seen from the rug (facing +x), right is +z: places run left to right with z, and b and c are on the +z side.
+        const SEG_AT = { a: [0, 0.04, segH], b: [0.02, 0.02, segV], c: [0.02, -0.02, segV], d: [0, -0.04, segH], e: [-0.02, -0.02, segV], f: [-0.02, 0.02, segV], g: [0, 0, segH] };
+        N.segs = []; N.dots = [];
+        for (let i = 0; i < CALC_PLACES; i++) {
+          const dz = kz - 0.21 + i * 0.06, row = [];
+          for (const k of SEG_ORDER) { const [hz, vy, geo] = SEG_AT[k]; row.push(at(geo, fx - 0.006, ky + 0.8 + vy, dz + hz, false)); }
+          N.segs.push(row);
+          N.dots.push(at(dot, fx - 0.006, ky + 0.755, dz + 0.028, false));
+        }
+        const key = M.box({ w: 0.012, h: 0.07, d: 0.09, color: "#e8dcc0" }), keyC = M.box({ w: 0.012, h: 0.07, d: 0.09, color: "#d9641e" });
+        for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) at(r === 0 && c === 0 ? keyC : key, fx - 0.004, ky + 0.6 - r * 0.11, kz - 0.17 + c * 0.113);
+        S.cells = new Array(CALC_PLACES).fill(" "); S.dots = new Uint8Array(CALC_PLACES);
+        station({ id: "e1-calc", hint: "Type 12+30= then try 2/3=", year: "1970s", date: "a toy with an 8-place display; real models' dates and specifications are on HOLD (not yet verified)", title: "Pocket calculator: try a sum", label: "POCKET CALCULATOR · 1970s TOY", sourceKeys: ["e1HoldNotes"], x: 30.0, z: kz, on: { w: 0.8, h: 1.5, d: 0.8, x: kx, z: kz }, onUse: () => ({ terminal: S.calcTerm }) });
+        sign("AT HOME · 1970s", "museum toys: a TV, a paddle console and a calculator · their history is on HOLD", 27, top + 2.7, Z1 - 49.0, 0, 0.42);
       }
 
       // --- Timeline wall (right bank) ------------------------------------------------------------------------------
@@ -1036,6 +1321,50 @@
           N.handset.position.y = N.handsetY + (calm ? 0 : Math.sin(c.t * 40) * 0.008);
         }
         if (!c.playing) { N.bitLamps[0].visible = N.bitLamps[1].visible = false; for (let b = 0; b < 8; b++) N.bars[b].scale.y = 0.1; N.handset.position.y = N.handsetY; }
+      }
+      // The home cluster. The TV's screen and knobs, the console's selector and the calculator's display follow their
+      // toys when a command changed them (flags, not every frame); snow and fuzz flicker while a fuzzy channel is up,
+      // held still in Calm. Idle (TV off) nothing moves.
+      const tv = S.tv, shows = tvShows(tv), pd = S.paddle, Sc = N.screen;
+      if (tv.dirty || pd.dirty) {
+        const onConsole = shows === "console";
+        if (tv.dirty) {
+          N.tvLamp.visible = tv.on; N.snowBg.visible = shows === "snow";
+          for (let i = 0; i < N.card.length; i++) N.card[i].visible = shows === "card";
+          for (let i = 0; i < N.sky.length; i++) N.sky[i].visible = shows === "sky";
+          for (let i = 0; i < N.fish.length; i++) N.fish[i].visible = shows === "fish";
+          for (let i = 0; i < N.court.length; i++) N.court[i].visible = onConsole;
+          N.tvDial.rotation.x = tv.dial * 0.5; N.tvFine.rotation.x = tv.fine * 0.4;
+          N.switchKnob.position.z = N.switchZ + (tv.sw === "B" ? -0.02 : 0.02);
+          const fuzzy = shows === "snow" || (shows !== "off" && !tvClear(tv));
+          for (let i = 0; i < N.specks.length; i++) N.specks[i].visible = fuzzy;
+          S.speckStep = -1;
+        }
+        N.youPad.visible = N.oogaPad.visible = onConsole; N.ball.visible = onConsole && pd.live;
+        N.youPad.position.y = Sc.sy + 0.21 - (pd.py + 1) * Sc.rowH; N.oogaPad.position.y = Sc.sy + 0.21 - (pd.cy + 1) * Sc.rowH;
+        N.ball.position.y = Sc.sy + 0.21 - pd.by * Sc.rowH; N.ball.position.z = Sc.sz + Sc.half - pd.bx * (2 * Sc.half / (PW - 1));
+        tv.dirty = false; pd.dirty = false;
+      }
+      if (N.specks[0].visible && (!calm || S.speckStep < 0)) {
+        const step = calm ? 0 : Math.floor(elapsed * 12);
+        if (step !== S.speckStep) {
+          S.speckStep = step;
+          for (let i = 0; i < N.specks.length; i++) {
+            tv.rng = (Math.imul(tv.rng, 1103515245) + 12345) >>> 0;
+            N.specks[i].position.z = Sc.sz + ((tv.rng >>> 8) / 16777216 - 0.5) * 0.64;
+            N.specks[i].position.y = Sc.sy + ((tv.rng & 255) / 256 - 0.5) * 0.44;
+          }
+        }
+      }
+      const calc = S.calc;
+      if (calc.dirty) {
+        calc.dirty = false;
+        calcCells(calc.shown, S.cells, S.dots);
+        for (let i = 0; i < CALC_PLACES; i++) {
+          const on = SEGS[S.cells[i]] || "";
+          for (let k = 0; k < 7; k++) N.segs[i][k].visible = on.indexOf(SEG_ORDER[k]) >= 0;
+          N.dots[i].visible = S.dots[i] === 1;
+        }
       }
     },
 

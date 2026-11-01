@@ -176,3 +176,62 @@ leaving or entering your cave".
 
 The shared unit check "Genesis Voyage Era 1 lifecycle" proves these. Against this branch's original file it fails on
 both gaps.
+
+## Upgrade cluster: at home in the 1970s (branch `gv/upgrade-era-1`, base `cb2b0b9`)
+
+Three museum toys in the right bank's living room, at about u 49–56 and x 22–33 in Era 1's old coordinates. That spot
+is inside the gallery and well back from the walk (x ≥ 21). The cryptography stations, the acoustic coupler and every
+existing id are unchanged.
+
+| Id | What | Opens | Walk-up point |
+|---|---|---|---|
+| `e1-tv` | **Home TV**: a toy tuner. Commands: POWER, UP and DOWN or DIAL n (the toy's channels 1–12), FINE + and −, SWITCH A or B (the console's selector box), WHAT and PATH. Dials 2, 8 and 11 carry invented programmes (colour bars, a night sky, a fish tank), the console comes in on dial 5 (A) or 6 (B), and the rest are snow. Each station is clear at one fine setting. | terminal | x 24.4, u 52 |
+| `e1-paddle` | **Ooga Paddle**: a turn-based paddle-and-ball game on an original Ooga console (cream case, walnut front, orange knobs on two controllers). Commands: S to serve, then U, D or W, up to 8 a line. It's a 20 × 9 court and first to 5 wins. It is seeded, so RESET replays it. The rally shows on the TV when the TV is tuned to the console. | terminal | x 27, u 49.9 |
+| `e1-calc` | **Pocket calculator**: a toy with 8 places, working left to right. A ninth digit is refused, long answers are cut to fit (not rounded) with a note, and an answer that's too big, or a division by zero, shows E until C. The model is enlarged about six times and shows eight red seven-segment places. | terminal | x 30, u 54.9 |
+
+- **Every new terminal** opens with HOW TO USE (3–4 steps). Each answers HELP, MORE (the workbench's story column),
+  SOURCES and RESET, and each prop carries a `hint`.
+- **Classification:** all three are **context**. Their labels read "1970s", which places them in this gallery's
+  decade; see HOLD below.
+- **Scene records:** the base has 1408 and the head 1551, so the cluster adds **143**. They're measured with the same
+  counting kit in `test/genesis-era-1-upgrade.mjs`. The TV replaced the lounge's orange armchair, and the coffee table
+  lost its magazines and pot.
+- **No point lights.** The screens, lamps and segments are emissive only.
+
+### HOLD: no historical claim is made
+
+The brief asks for sourced references: the historical paddle console, the TV connection and period, and the
+calculator's specifications. This build's sandbox network refused every source host (HTTP 403 from the proxy), and the
+Era 1 dossier on `gv/research` has no entry for any of the three. So:
+
+- No date, maker, model, price, speed, display size or connection type is claimed for any real product. Each MORE
+  ends: "the historical reference for this toy is on HOLD until a source is verified".
+- The TV teaches tuning in general (a tuner picks one channel; the console's picture comes in as one more channel).
+  It names no period connection (no channel numbers of a real system, no RF or modulator labels). PATH says the real
+  connection is on HOLD.
+- The calculator's 8 places are the toy's own, stated as such, not a specification.
+- The only source key, `e1HoldNotes`, is marked `verified: false` and points to these notes.
+- **Before display as history:** verify each item from a manufacturer archive, manual, patent or museum record, then
+  replace the HOLD lines and keep the "1970s" label only if the evidence supports it. Candidates to research: the
+  first home paddle-and-ball console and the arcade game, their introduction dates, how such consoles connected to a
+  TV, and early pocket calculators' dates and display widths.
+
+### Live console (for the Genesis tab)
+
+`src/js/genesis-era-1-paddle.js` (new, not yet loaded) exposes `BL.genesisEra1Paddle.make(host)`. That returns
+`BL.retroGames.pong(host)`, the arcade's Ooga Pong, untouched except for its display name ("Ooga Pong · museum
+homage") and a `museum` note. It keeps retro-games.js's factory interface exactly. `BL.genesisEra1Paddle.needs`
+lists the hooks a console host must provide; see the integration requests in START-HERE.
+
+### Checks
+
+`node --expose-gc test/genesis-era-1-upgrade.mjs` runs 40 rule checks:
+- ids and labels, HOLD wording, no brands, no period connection;
+- placement in the gallery, walk-up points clear and 2 m apart, the records budget;
+- the paddle game's determinism, end and RESET;
+- the TV's tuning, fine tuning, wrap, PATH and RESET;
+- the calculator's arithmetic, cut, ninth digit, E, divide by zero and bad keys;
+- idle still, snow flickering, Calm still, results at once;
+- the adapter's interface and needs; disposal.
+
+The heap check is evidence only: a stable heap does not prove there is no per-frame allocation.
