@@ -449,6 +449,7 @@
             const how = [`${c.label}${d.ref ? ` ${d.ref}` : ""}.${d.date ? ` ${d.date}.` : ""}`, entry.step
               ? `Step ${entry.step} of ${built.trail.length} on the Steps toward Bitcoin: follow the gold path along the banks, in date order.`
               : entry.shows ? `It shows ${entry.shows} on the Steps toward Bitcoin working; it is not a step of its own.`
+              : entry.listed ? `Listed in the paper's own references. Its story, and its place on the Steps toward Bitcoin, are upstream: ${entry.listed}. This slot is not a second step.`
               : "Part of the story of these years, not something the Bitcoin whitepaper cites or is shown to have drawn on."];
             // A terminal has no pages: the same words open its screen, as its banner's first lines.
             if (r.terminal) { const t = r.terminal; return { ...r, terminal: { banner: [`HOW IT CONNECTS: ${how[0]}`, how[1], "", ...t.banner], prompt: t.prompt, run: (line) => t.run(line) } }; }
@@ -473,6 +474,13 @@
       if (!e.def.demonstrates) continue;
       const steps = e.def.demonstrates.map((id) => { const s = built.trail.find((t) => (t.def.id || t.prop.id) === id); if (!s) throw new Error(`genesis exhibits: ${e.def.id} demonstrates ${id}, which is not a trail stop`); return s; });
       e.shows = steps.map((s) => `step ${s.step} (${s.def.title}${s.def.ref ? ` ${s.def.ref}` : ""})`).join(" and ");
+    }
+    // A bibliography entry points to the citation stop with its reference, which must exist.
+    for (const e of built.exhibitProps) {
+      if (e.def.connection !== "bibliography") continue;
+      const stop = built.trail.find((t) => t.def.connection === "citation" && t.def.ref === e.def.ref);
+      if (!stop) throw new Error(`genesis exhibits: ${e.def.id} lists ${e.def.ref}, which no citation stop carries`);
+      e.listed = `step ${stop.step}, ${stop.def.title}, in Era ${stop.era}`;
     }
   };
   // Each frame, the exhibits of the cave the visitor is in (aboard or ashore) may move; nothing else runs.
@@ -856,7 +864,8 @@
     if (near !== walk.prop || offer !== walk.offer) {
       const was = walk.offer;
       walk.prop = near; walk.offer = offer;
-      if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.title} (${near.year})`); hud.setAct("USE"); }
+      // An exhibit's own hint (genesis-exhibits.js) says what to do there; otherwise its title and year.
+      if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.hint || `${near.title} (${near.year})`}`); hud.setAct("USE"); }
       else if (offer === "board") { hud.hint(COARSE ? "BOARD · back into the boat" : "Space · board", 600000); hud.setAct("BOARD"); }
       else { if (was === "board") hud.hideHint(); pilot.showAct(); }
       showControls();

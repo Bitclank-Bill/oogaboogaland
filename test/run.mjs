@@ -23469,7 +23469,15 @@ const genesisExhibitsProof = async () => {
     // Era 3's stops are Fingerprints and Time's [3] and [4], at its lectern; the press demonstrates them, and its other
     // four exhibits are context.
     3: { "e3-press": "demonstration of era3-room-haber1991,era3-room-bayer1993" },
-    4: { "e4-hashcash": "influence", "e4-bmoney": "citation [1]", "e4-names": "citation [5]", "e4-timesec": "citation [2]" }
+    4: { "e4-hashcash": "influence", "e4-bmoney": "citation [1]", "e4-names": "citation [5]", "e4-timesec": "citation [2]" },
+    // Era 5: the 2002 Hashcash paper is reference [6]; bit gold's influence is documented by Satoshi's 20 July 2010 post.
+    5: { "e5-hashcash": "citation [6]", "e5-bitgold": "influence" },
+    // Era 6: the paper itself is the anchor; the payments model demonstrates it; the eight shelf slots are the paper's
+    // own reference list (bibliography), each pointing to its citation stop upstream, never a second stop.
+    6: { "e6-paper": "anchor", "e6-payments": "demonstration of e6-paper",
+      ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`e6-ref-${n}`, `bibliography [${n}]`])) },
+    // Era 7's dossier places nothing on the trail: the launch is after the paper, all context.
+    7: {}
   };
   const describe = (d) => !d.connection ? "none" : d.connection === "demonstration" ? `demonstration of ${(d.demonstrates || []).join(",")}` : `${d.connection}${d.ref ? ` ${d.ref}` : ""}`;
   for (const [era, want] of Object.entries(EXPECTED_TRAIL)) {
@@ -23495,7 +23503,16 @@ const genesisExhibitsProof = async () => {
   const trail = EX.trailOf(built);
   const ordered = trail.every((x, i) => x.step === i + 1 && (i === 0 || trail[i - 1].def.year <= x.def.year)) && built.every((x) => !!x.step === !!(x.def.connection && EX.CONNECTIONS[x.def.connection].trail));
   const refuses = !!EX.checkProp(3, { id: "a", connection: "context", ref: "[3]" }) && !!EX.checkProp(3, { id: "b", connection: "citation" }) && !!EX.checkProp(3, { id: "c", connection: "anchor" })
-    && !!EX.checkProp(3, { id: "d", connection: "rumour" }) && !EX.checkProp(6, { id: "e", connection: "anchor" }) && !EX.checkProp(3, { id: "f" });
+    && !!EX.checkProp(3, { id: "d", connection: "rumour" }) && !EX.checkProp(6, { id: "e", connection: "anchor" }) && !EX.checkProp(3, { id: "f" })
+    // A bibliography entry needs its reference and lives only on Era 6's shelf; a hint is a short line.
+    && !!EX.checkProp(6, { id: "g", connection: "bibliography" }) && !!EX.checkProp(4, { id: "h", connection: "bibliography", ref: "[2]" }) && !EX.checkProp(6, { id: "i", connection: "bibliography", ref: "[2]" })
+    && !!EX.checkProp(4, { id: "j", hint: "" }) && !!EX.checkProp(4, { id: "k", hint: "x".repeat(91) }) && !EX.checkProp(4, { id: "l", hint: "Type SEARCH, then VERIFY" });
+  // The paper's reference list maps one to one onto the citation stops: each of [1] to [8] is listed once on Era 6's
+  // shelf, and each has exactly one citation stop ([3] and [4] are Fingerprints and Time's lectern, scene-genesis.js).
+  const listed = built.filter((x) => x.def.connection === "bibliography").map((x) => x.def.ref).sort().join();
+  const stops = [...built.filter((x) => x.def.connection === "citation").map((x) => x.def.ref), "[3]", "[4]"].sort().join();
+  const bibliography = listed === "[1],[2],[3],[4],[5],[6],[7],[8]" && stops === listed;
+  if (!bibliography) bad.push(`the reference list (${listed}) does not map one to one onto citation stops (${stops})`);
   // Decade years ("1980s") sort just after their first year, deliberately, never as NaN.
   const decades = EX.yearKey(1983) === 1983 && EX.yearKey("1980s") === 1980.5 && EX.yearKey("1970s") === 1970.5
     && [1981, "1980s", 1980].sort((a, b) => EX.yearKey(a) - EX.yearKey(b)).join() === "1980,1980s,1981";
@@ -23546,7 +23563,7 @@ const genesisExhibitsProof = async () => {
     && /Ready for LOGIN/.test(B.term("e0-login")("STATUS")) && B.nodes.every((n) => !A.nodes.includes(n));
   seekB("SEEK 3"); const isolated = fresh && arm.position.y === firstArm;
   const era0Commands = { seekOk, punchOk, raceOk, loginOk, robust, isolated };
-  return { registered, count, steps: trail.length, ordered, refuses, decades, era0Commands, bad };
+  return { registered, count, steps: trail.length, ordered, refuses, decades, bibliography, era0Commands, bad };
 };
 // Rule: the Genesis Voyage's stream and driven boat, through genesis-world.js and genesis-boat.js themselves: caves in
 // date order, eraAt matches them, the boat leaves the harbour only by its mouth, boost raises the top speed, a bank
@@ -23765,7 +23782,7 @@ const unitChecks = async () => {
   const genesisSightlines = await genesisSightlinesProof();
   record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
   const genesisExhibits = await genesisExhibitsProof();
-  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none, all context; Era 2: Merkle [7]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
+  record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none; Era 2: Merkle [7]; Era 3: the press demonstrates [3] and [4]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]; Era 5: Hashcash 2002 [6], bit gold influence; Era 6: the paper as anchor, its payments demonstration and its eight-slot reference list as bibliography entries mapping one to one onto the citation stops; Era 7: none) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && genesisExhibits.bibliography && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();
   record("Genesis Voyage stream: eight caves in date order with eraAt matching, era boats from the dossiers, the boat leaves the harbour by its mouth and walls hold, boost raises the top speed, the banks keep the boat in the stream, a dock reports, and the Tour stops at every dock", Object.values(genesisWater).every(Boolean), JSON.stringify(genesisWater));
   const genesisProps = await genesisPropsProof();

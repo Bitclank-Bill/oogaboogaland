@@ -23,8 +23,10 @@
 (() => {
   "use strict";
   const BL = window.BL;
-  // `verified: true`: the gv/research dossier records reading the page (31 October 2026). This build could not reach
-  // the web; the GPS and encyclopedia pages come from the build brief's records and are marked unverified.
+  // `verified: true`: the gv/research dossier records reading the page (31 October 2026). The GPS and encyclopedia
+  // entries follow the consolidated research supplied to the integrator (genesis-research-consolidated v1.1, its
+  // timeline events tl-5-gps and Wikipedia's January 2001): `verified` follows that record's own note (true where it
+  // records the page as read, false for its secondary research-agent record). The integrator did not fetch them.
   const sources = {
     "E5-CHORD": { label: "Stoica, Morris, Karger, Kaashoek and Balakrishnan: Chord (SIGCOMM, 27-31 August 2001)",
       href: "https://pdos.csail.mit.edu/papers/chord:sigcomm01/chord_sigcomm.pdf", kind: "context", verified: true },
@@ -42,10 +44,14 @@
       href: "https://satoshi.nakamotoinstitute.org/posts/bitcointalk/249/", kind: "documented influence", verified: true },
     "E5-GEAR": { label: "Manufacturer's announcement of a pocket hard-disk music player, 23 October 2001",
       href: "https://www.apple.com/newsroom/2001/10/23Apple-Presents-iPod/", kind: "context", verified: true },
-    "E5-GPS": { label: "GPS.gov: Selective Availability (the 1 May 2000 decision; the change on 2 May 2000)",
-      href: "https://www.gps.gov/systems/gps/modernization/sa/", kind: "context", verified: false },
-    "E5-WIKI": { label: "History of the volunteer-written online encyclopedia launched in January 2001",
-      href: "https://en.wikipedia.org/wiki/History_of_Wikipedia", kind: "context", verified: false }
+    "E5-GPS": { label: "GPS.gov: Selective Availability (switched off just after midnight EDT on 2 May 2000)",
+      href: "https://gps.gov/selective-availability", kind: "context", verified: true },
+    "E5-GPS-WH": { label: "White House statement of 1 May 2000 announcing the decision (archived)",
+      href: "https://clintonwhitehouse5.archives.gov/WH/New/html/20000501_2.html", kind: "context", verified: true },
+    "E5-WIKI": { label: "Wikimedia Meta: a community draft of Wikipedia's first press release (January 2002; a draft, not the final release)",
+      href: "https://meta.wikimedia.org/wiki/Wikipedia%27s_first_press_release--draft_for_comment", kind: "context", verified: true },
+    "E5-WIKI-CA": { label: "Wikimedia Canada: Wikipedia turns 25 (a secondary source)",
+      href: "https://www.wikimedia.ca/en/wikipedia-turns-25/", kind: "context", verified: false }
   };
   const reply = (...lines) => ({ lines });
   const clean = (text) => String(text).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 64).trim();
@@ -299,7 +305,8 @@
     "Every change is kept, so a bad edit can be undone.",
     ["Type READ to see the article.", "Type EDIT and new text to change it.", "Type HISTORY, then REVERT and a number to bring an old version back."],
     "WIKI>", "READ | EDIT text | HISTORY | REVERT n | RESET",
-    ["2001: a volunteer-written online encyclopedia launched that January. The article here is original sample text."])((cmd, w, text) => {
+    ["2001: a volunteer-written online encyclopedia launched that January. The article here is original sample text.",
+      "Sources: a community draft of its first press release (January 2002, a draft, not the final release) and a later secondary source. Neither is a dated launch record, so this kiosk keeps the month, January 2001."])((cmd, w, text) => {
     const k = S.wiki;
     if (cmd === "RESET") { k.revs.length = 0; k.revs.push(ARTICLE); k.at = 0; wikiShow(); return reply("Article restored to revision 1."); }
     if (cmd === "READ") return reply(`Revision ${k.at + 1}: ${k.revs[k.at]}`);
@@ -526,7 +533,7 @@
         obstacle(x - 1.7, x + 1.7, z - 1.7, z + 1.7);
         sign("GPS SHARPENS · MAY 2000", "announced 1 May / changed 2 May - illustrative circles", x, top + 2.4, z + 1.6, 0, 0.4);
         prop({ id: "e5-gps", year: 2000, connection: "context", date: "1 May 2000: the announcement; 2 May 2000, just after midnight EDT: the change took effect",
-          title: "GPS sharpens", label: "GPS SHARPENS · MAY 2000", sourceKeys: ["E5-GPS"],
+          title: "GPS sharpens", label: "GPS SHARPENS · MAY 2000", sourceKeys: ["E5-GPS", "E5-GPS-WH"],
           at: { x, y: top, z: z + 2.5 }, reach: 1.9, pick: { w: 3.4, h: 1.6, d: 3.4, x, z }, onUse: () => ({ terminal: gpsTerm }) });
       }
       // Volunteer encyclopedia, u 17 further back: a kiosk with a flat screen on a pole.
@@ -539,7 +546,7 @@
         obstacle(x - 0.75, x + 0.75, z - 0.5, z + 0.5);
         sign("VOLUNTEER ENCYCLOPEDIA · 2001", "anyone may EDIT / every revision kept", x, top + 3.1, z + 0.2, 0, 0.4);
         prop({ id: "e5-wiki", year: 2001, connection: "context", date: "January 2001: the launch month of a volunteer-written online encyclopedia; no exact day is claimed",
-          title: "Volunteer encyclopedia", label: "VOLUNTEER ENCYCLOPEDIA · 2001", sourceKeys: ["E5-WIKI"],
+          title: "Volunteer encyclopedia", label: "VOLUNTEER ENCYCLOPEDIA · 2001", sourceKeys: ["E5-WIKI", "E5-WIKI-CA"],
           at: { x, y: top, z: z + 1.3 }, reach: 1.9, pick: { w: 1.6, h: 2.8, d: 1, x, z }, onUse: () => ({ terminal: wikiTerm }) });
       }
       // Pocket music player, u 34 (behind the right lamp at x 22, u 36): a big generic box with arrow buttons.

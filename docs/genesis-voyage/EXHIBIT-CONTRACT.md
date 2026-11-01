@@ -57,6 +57,11 @@ once.
     primary source such as Satoshi's own words), `"anchor"` (the whitepaper itself, Era 6 only), `"demonstration"` or
     `"context"`. Leave it out and the exhibit is neither on the trail nor labelled; please set it on every Bitcoin-line
     exhibit.
+  - `"bibliography"` with `ref` (Era 6's shelf only): an entry of the whitepaper's own reference list. It is neither
+    uncited context nor a second stop: its "How it connects" names the citation stop upstream with the same reference,
+    and the scene throws if there isn't exactly such a stop. The unit tier checks that [1] to [8] each appear once.
+  - `hint`: an optional short line (at most 90 characters) of what to do there, shown when the visitor walks up, in
+    place of the exhibit's title and year.
   - `demonstrates`: a demonstration's list of the trail stops whose idea it shows working (ids, e.g. Era 3's press:
     `["era3-room-haber1991", "era3-room-bayer1993"]`). A demonstration is never a stop of its own, so the trail
     keeps one stop per paper; its "How it connects" names those stops by their step numbers. An id that isn't a

@@ -59,7 +59,7 @@
   ];
   // Navigation is explanatory only: no shelf slot moves the visitor.
   const GO_BACK = "This slot is a pointer, not a link. To visit, board a boat, turn it and sail back upstream: each cave's years sign over its way in tells you where you are.";
-  const NOT_LISTED = "The list has eight numbered entries. Chord, BitTorrent, RPOW and bit gold are not among them; any claim that they influenced Bitcoin needs its own evidence.";
+  const NOT_LISTED = "The list has eight numbered entries. Chord, BitTorrent, RPOW and bit gold are not among them. \"Not listed\" means absent from the whitepaper's bibliography, not that no influence is documented: Era 5 explains bit gold's documented link through Satoshi's retrospective post of 20 July 2010. Any other influence claim needs its own evidence.";
   const slotBoard = (r) => ({ board: { room: `Reference ${r.n} - ${r.who.replace(/,/g, "")} - ${r.year}`, sources: r.keys, pages: [
     { caption: "In short", title: `Reference ${r.n}: ${r.year}`, text: [
       `Reference [${r.n}] in the whitepaper's list: ${r.who}, ${r.work}.`,
@@ -170,7 +170,8 @@
   const CARDS = [
     ...REFS.map((r) => ({ id: `R${r.n}`, name: `${r.who}, ${r.work} (${r.year})`, cited: r.n })),
     { id: "CHORD", name: "Chord", cited: 0 }, { id: "BITTORRENT", name: "BitTorrent", cited: 0 },
-    { id: "RPOW", name: "RPOW", cited: 0 }, { id: "BITGOLD", name: "bit gold", cited: 0 }
+    { id: "RPOW", name: "RPOW", cited: 0 },
+    { id: "BITGOLD", name: "bit gold", cited: 0, note: "\"Not listed\" means absent from the whitepaper's bibliography. Era 5 explains bit gold's documented link through Satoshi's retrospective 20 July 2010 post." }
   ];
   let desk = null, cursor = null, blink = 0;
   const filed = () => desk.filed.reduce((n, f) => n + (f ? 1 : 0), 0);
@@ -192,7 +193,7 @@
         const c = CARDS[i];
         if ((pile === "CITED") !== !!c.cited) return reply(c.cited ? `Not quite: ${c.name} is reference [${c.cited}] in the list.` : `Not quite: ${c.name} is not among the eight numbered references.`, "Your other cards stay filed.");
         desk.filed[i] = 1;
-        return reply(c.cited ? `Filed: reference [${c.cited}]. Its slot on the shelf points to Era ${REFS[c.cited - 1].era}.` : `Filed: not listed. ${c.name} is not among the eight numbered references; any influence claim needs its own evidence.`,
+        return reply(c.cited ? `Filed: reference [${c.cited}]. Its slot on the shelf points to Era ${REFS[c.cited - 1].era}.` : c.note ? `Filed: not listed. ${c.note}` : `Filed: not listed. ${c.name} is not among the eight numbered references; any influence claim needs its own evidence.`,
           filed() === 12 ? "All twelve filed! Eight citations, four not listed." : `${filed()}/12 filed.`);
       }
       if (cmd === "ZOOM") {
@@ -271,7 +272,8 @@
           // Upper, decorative spines.
           for (let row = 0; row < 2; row++) for (let b = 0; b < 4; b++) solid(0.45, 0.5, 0.2, inks[(i + b + row) % inks.length], sx + 0.1, top + 4.25 + row * 1.6, z - 0.45 + b * 0.3);
           sign(`[${r.n}] ${r.who.toUpperCase()} · ${r.year}`, `${r.year}: the year the paper's list gives · story upstream in Era ${r.era}`, sx + 0.75, top + 2.2, z, Math.PI / 2, 0.24);
-          prop({ id: `e6-ref-${r.n}`, year: r.year, title: `Reference ${r.n}: ${r.who}`, label: `REFERENCE [${r.n}] · ${r.who.toUpperCase()} · ${r.year}`, sourceKeys: r.keys,
+          // A bibliography entry ([n]), not context and not a second stop: it names the citation stop upstream.
+          prop({ id: `e6-ref-${r.n}`, year: r.year, connection: "bibliography", ref: `[${r.n}]`, date: `${r.year}: the year the paper's reference list gives`, title: `Reference ${r.n}: ${r.who}`, label: `REFERENCE [${r.n}] · ${r.who.toUpperCase()} · ${r.year}`, sourceKeys: r.keys,
             at: { x: sx + 1.9, y: top, z }, reach: 1.3, pick: { w: 1, h: 2.2, d: 1.6, x: sx + 0.3, z }, onUse: () => slotBoard(r) });
         });
         obstacle(sx - 0.7, sx + 0.7, z0, z1);

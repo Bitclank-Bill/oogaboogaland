@@ -32,10 +32,15 @@
 //                  Optional, for the shared signage (docs/genesis-voyage/EXHIBIT-CONTRACT.md): `connection`, one of
 //                  "citation" (with `ref`, the whitepaper's reference, e.g. "[3]"), "influence", "anchor" (the
 //                  whitepaper itself, Era 6 only), "demonstration" (with `demonstrates`, the ids of the trail stops
-//                  whose idea it shows working, e.g. Era 3's press for Fingerprints and Time's [3] and [4]) or
-//                  "context"; the first three put the exhibit on the Steps toward Bitcoin trail, numbered in date order
-//                  across all eras, and a demonstration is never a stop of its own. A board's last page (a terminal's
-//                  first lines) then says how it connects.
+//                  whose idea it shows working, e.g. Era 3's press for Fingerprints and Time's [3] and [4]),
+//                  "bibliography" (with `ref`: an entry of the whitepaper's own reference list as Era 6's shelf
+//                  shows it; it names the citation stop upstream that tells that work's story, so the list is
+//                  neither uncited context nor a second stop for the same paper) or "context"; the first three put
+//                  the exhibit on the Steps toward Bitcoin trail, numbered in date order across all eras, and a
+//                  demonstration or a bibliography entry is never a stop of its own. A board's last page (a
+//                  terminal's first lines) then says how it connects.
+//                  Optional `hint`: a short line of what to do there (e.g. "Type SEARCH, then VERIFY"), shown at the
+//                  foot of the screen when the visitor walks up, instead of the exhibit's title and year.
 //
 // `register`'s def may also carry `overview: { summary, pages, sourceKeys }`: `summary` (at most 280 characters) is shown on the
 // era's overview board and panel; `pages` (optional, at most 3, as a board's pages) follow it in that panel, for an
@@ -59,14 +64,18 @@
     influence: { label: "Documented influence", trail: true },
     anchor: { label: "The whitepaper itself", trail: true },
     demonstration: { label: "Demonstration", trail: false },
+    bibliography: { label: "In the whitepaper's reference list", trail: false },
     context: { label: "Context", trail: false }
   };
   // What is wrong with a prop's connection fields, or null.
   const checkProp = (n, d) => {
+    if (d.hint !== undefined && (typeof d.hint !== "string" || !d.hint || d.hint.length > 90)) return `${d.id}: a hint is a short line (1 to 90 characters)`;
     if (d.connection === undefined) return d.ref ? `${d.id}: a reference without a connection` : d.demonstrates ? `${d.id}: \`demonstrates\` needs connection "demonstration"` : null;
     if (!CONNECTIONS[d.connection]) return `${d.id}: connection must be one of ${Object.keys(CONNECTIONS).join(", ")}`;
     if (d.connection === "citation" && !/^\[[1-8]\]$/.test(d.ref || "")) return `${d.id}: a whitepaper citation names its reference, e.g. "[3]"`;
-    if (d.connection !== "citation" && d.ref) return `${d.id}: only a whitepaper citation has a reference number`;
+    if (d.connection === "bibliography" && !/^\[[1-8]\]$/.test(d.ref || "")) return `${d.id}: a bibliography entry names its reference, e.g. "[3]"`;
+    if (d.connection === "bibliography" && n !== 6) return `${d.id}: only Era 6's shelf holds the whitepaper's reference list`;
+    if (d.connection !== "citation" && d.connection !== "bibliography" && d.ref) return `${d.id}: only a whitepaper citation or a bibliography entry has a reference number`;
     if (d.connection === "anchor" && n !== 6) return `${d.id}: only Era 6 holds the whitepaper itself`;
     const shows = d.demonstrates;
     if (d.connection === "demonstration" && !(Array.isArray(shows) && shows.length && shows.every((id) => typeof id === "string" && id))) return `${d.id}: a demonstration names the trail stops it shows (\`demonstrates\`)`;

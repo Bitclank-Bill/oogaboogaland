@@ -9,7 +9,8 @@ Research: `gv/research:docs/genesis-voyage/eras/era-4-work-and-scarcity.md`, v0.
 
 ## What visitors can use
 
-Eight dated stations, with obstacles under all furniture, on the banks away from the stream. The era's big sign,
+Nine dated stations (eight on the banks and the loft notes up in the left wall's loft), with obstacles under all
+furniture, away from the stream. The era's big sign,
 pylons, overview board and the Steps toward Bitcoin trail come from the shared signage (see "Integration review"):
 
 | Prop ID | Location relative to era | Interaction |
@@ -22,6 +23,7 @@ pylons, overview board and the Steps toward Bitcoin trail come from the shared s
 | `e4-modem` | farther right, near entrance | `DIAL`, `HANGUP`, `SIZE 1..64` KiB |
 | `e4-cd` | right, middle | `PICK HC`, `PICK NAMES`, `PICK BM`, `PICK TIMESEC` in date order; `LIST`, `RESET` |
 | `e4-pocket` | farther right, near exit | Original turn-based maze; `N`, `S`, `E`, `W`, `LOOK`, `RESET` |
+| `e4-loft` | left wall's loft (fly up with the jetpack) | Loft notes: one dated line per station saying what its date marks · context |
 
 Open each station with the existing tap/near-use interaction. All games use the existing modal terminal;
 close it with its existing control or Escape to return to walking. No new scene inputs, DOM, listeners,
@@ -31,7 +33,7 @@ fetches, sockets, storage, scripts, artwork files, recordings, ROMs or dependenc
 
 | Displayed date and meaning | Dossier keys | Boundary |
 |---|---|---|
-| 28 March 1997, Hashcash implementation announcement | `E4-HC` | Computational postage; not Bitcoin consensus. The **2002** paper cited as [6] is explicitly assigned to Era 5. No direct-influence assertion is made here. |
+| 28 March 1997, Hashcash implementation announcement | `E4-HC`, `E4-INFL` | Computational postage; not Bitcoin consensus. Labelled **documented influence**: Satoshi's dated 2008 announcement of Bitcoin names Hashcash-style proof-of-work (`E4-INFL`). The **2002** paper cited as whitepaper reference [6] stays distinct and is Era 5's. |
 | April 1997, Secure Names proceedings publication | `E4-NAMES`, `E4-NAMES-CAT` | Haber/Stornetta, whitepaper [5]; names exact data, not ownership of money. |
 | November 1998, b-money publication month | `E4-BM` | Proposal, not a deployed Bitcoin network; whitepaper [1]. Exact first posting day unresolved and labelled so. Protocol assumptions and server alternative shown. |
 | May 1999, TIMESEC proceedings publication month | `E4-TIMESEC`, `E4-TIMESEC-CAT` | Massias/Serret Avila/Quisquater, whitepaper [2]; retains a third party. Singular PDF title vs plural catalogue title explained. |
@@ -108,7 +110,7 @@ const out = (term, command) => term.run(command).lines.join('\n');
 const frame = () => def.update(1 / 60, 0, { era: 4 });
 const count = term => Number(out(term, 'STATUS').match(/visit: (\d+)/)[1]);
 build();
-assert.equal(props.size, 8);
+assert.equal(props.size, 9);
 for (const p of props.values()) {
   assert(p.label.includes(String(p.year)));
   assert(p.sourceKeys.length && p.sourceKeys.every(k => BL.genesisExhibits.sources[k]));
@@ -204,6 +206,14 @@ console.log('Era 4 rules/playthrough/disposal passed');
 
 No merge, deployment or upstream PR. Integrator should run the Genesis browser scene/phone checks on a
 working browser setup and play-test the listed interface limitations before merging.
+
+## Reconciled with the implementation (integrator, candidate 3)
+
+The table and the rules above now match `genesis-era-4.js` as merged from `gv/era-4-decor` (`4488458`):
+- **Nine props.** The loft notes (`e4-loft`, context) joined the eight stations, so the embedded proof expects 9.
+- **Hashcash 1997 is documented influence,** supported by the dated evidence `E4-INFL`. The 2002 paper (whitepaper
+  [6]) remains a separate citation stop in Era 5.
+- **Hints:** each station's `hint` is shown when the visitor walks up (the kit's optional field).
 
 ## Integration review (Claude Code, integrator)
 
