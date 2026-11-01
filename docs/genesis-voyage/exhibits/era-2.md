@@ -33,6 +33,7 @@ The page already loads `genesis-era-2.js` and scene-genesis.js builds, updates a
 **no shared file changes and no scene wiring are needed**. This branch authors only `src/js/genesis-era-2.js` and this
 note; the merges bring `gv/water-boat`'s and `gv/exhibits`' files in unchanged.
 
+- [Upgrade cluster (gv/upgrade-era-2)](#upgrade-cluster-gvupgrade-era-2)
 - [What is in the cave](#what-is-in-the-cave)
 - [Classification and dates](#classification-and-dates)
 - [Held: the elliptic-curve picture](#held-the-elliptic-curve-picture)
@@ -40,6 +41,45 @@ note; the merges bring `gv/water-boat`'s and `gv/exhibits`' files in unchanged.
 - [Unit proof (optional, for the integrator)](#unit-proof-optional-for-the-integrator)
 - [What was checked, and the limits](#what-was-checked-and-the-limits)
 - [Open questions for the integrator](#open-questions-for-the-integrator)
+
+## Upgrade cluster (gv/upgrade-era-2)
+
+Three hands-on **modern museum homages** in one compact corner of the gallery's left bank, behind the blind-stamp
+station (old-world x −15.6 to −14.4, z from the middle −12.45 to −4.3; old u 40 to 48). They add no historical claim:
+each is `year: "1980s"`, labelled "1980s STYLE", `connection: "context"`, and its `date` says it is a homage made in 2026
+whose historical placement is on HOLD. Their source key is `E2-UPGRADE`, this section, which supports no historical
+statement.
+
+| Exhibit (id) | Hands-on | Files |
+|---|---|---|
+| Four in a row table (`e2-four`) | Type a column 1–7 (or DROP 4); the museum's simple computer answers (it takes a win, blocks yours, avoids handing you one, then prefers the middle; ties broken by a seeded generator). NEW, RESET, SHOW, HELP, MORE. The same game is a `make(host)` factory to `retro-games.js`'s interface for a future console | `genesis-era-2-four.js` |
+| Colour screen toy (`e2-crt`) | R n, G n, B n (0–4), ALL n, MIX r g b: an original 8 × 5 picture (a sun over hills by a pond) appears as red, green and blue light mix. The explanation is labelled simplified and claims no date | `genesis-era-2-cluster.js` |
+| Cassette player (`e2-cassette`) | PLAY, STOP, REW, STATUS, RESET: the reels turn, the tape winds from one to the other (wound radius follows the share of tape), the buttons press down. No sound, no recording, a toy pace; no running time or capacity is claimed | `genesis-era-2-cluster.js` |
+
+Every terminal opens with its name, then a 2–4 step HOW TO USE. Each prop's title (shown in the walk-up hint) says what
+to try. Models are original and unbranded. The board uses a timber frame with teal and banana counters, so no product's
+colours or shape are copied. Nothing adds a light or plays a sound.
+
+**How it loads.** `genesis-era-2.js` builds the cluster from its own `build` when `BL.genesisEra2Cluster` is present,
+and updates it from its `update`. Until the integrator adds the two script tags (see the ZIP's START-HERE), Era 2 builds
+exactly as before, with five props. **The cluster adds 129 scene records** (nodes), measured by
+`test/genesis-era-2-upgrade.mjs`.
+
+**FUD Patrol floor (kept clear).** `BL.genesisEra2.FUD_PATROL_ZONE`, in Era 2's own (old-world) coordinates:
+`x0 −12, x1 −9, z0 E.z1 − 13.5, z1 E.z1 − 10.5`, a 3 × 3 m square on the left bank just inside the arch (old u 10.5 to
+13.5, v 9.25 to 12.25). It is clear of the gateway, the lamp posts and every Era 2 solid, obstacle and use point
+(checked). Boulders avoid only reserved plots and obstacles, so the integrator should add it to `reservedZones(2)`; at
+this base none lands there (browser probe).
+
+**Historical placement on HOLD (not displayed).** None of these could be verified here: the build environment could
+not reach any source site, and the Era 2 dossier has no entry for them. Candidates for the research stream to check
+against primary records before any label is added:
+- Four-in-a-row-style games: the dates games of this kind were published or analysed (for example a 1988 university
+  thesis analysing the standard 7 × 6 board, by V. Allis), from the publication itself.
+- Colour picture tubes and home colour displays: manufacturer documentation or a museum collection record for a
+  specific set.
+- Portable cassette players: a manufacturer's archive or a museum collection record for a specific model and its
+  introduction date.
 
 ## What is in the cave
 

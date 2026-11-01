@@ -58,7 +58,11 @@
     "E2-PC": { label: "IBM, The IBM PC (company history page)",
       href: "https://www.ibm.com/history/personal-computer", kind: "context", verified: true, marks: "unveiled 12 August 1981", locator: "base configuration" },
     "E2-DOSSIER": { label: "Museum research record: Genesis Voyage Era 2 dossier v0.1 (period gear and easter-egg notes)",
-      href: DOSSIER, kind: "context", verified: true, marks: "written 31 October 2026", locator: "Period gear; Easter eggs" }
+      href: DOSSIER, kind: "context", verified: true, marks: "written 31 October 2026", locator: "Period gear; Easter eggs" },
+    // The upgrade cluster's own record (genesis-era-2-cluster.js): what each homage is, and that its historical
+    // placement is on HOLD. It supports no historical claim.
+    "E2-UPGRADE": { label: "Museum record: Era 2 upgrade cluster notes (modern homages; historical placement on HOLD)",
+      href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/upgrade-era-2/docs/genesis-voyage/exhibits/era-2.md", kind: "context", verified: true, marks: "written 1 November 2026", locator: "Upgrade cluster" }
   };
   // Keys resolve through the kit's registry (genesis-props.js sourceOf); before registration, this table answers.
   const sourceOf = (key) => GP.sourceOf(key) || SOURCES[key] || null;
@@ -1021,6 +1025,12 @@
 
   // --- Registration -------------------------------------------------------------------------------------------------
   // One visit's state and models; `update` runs only while the visitor is in this cave, `dispose` on leave.
+  // The floor kept clear for the integrator's FUD Patrol console (about 3 x 3 m), in Era 2's own coordinates: on the
+  // left bank just inside the arch (old u 10.5 to 13.5 down the gallery, v 9.25 to 12.25 out from the old stream's
+  // edge), clear of the gateway, the lamp posts and every Era 2 exhibit. Nothing of Era 2's stands in it.
+  const FUD_PATROL_ZONE = { x0: -12, x1: -9, z0: E.z1 - 13.5, z1: E.z1 - 10.5 };
+  // The upgrade cluster (genesis-era-2-cluster.js) is built here when the page has loaded its file; until the
+  // integrator adds its script tag, Era 2 builds as before.
   let visit = null;
   BL.genesisExhibits.register(ERA, {
     sources: SOURCES,
@@ -1035,13 +1045,18 @@
           short: ex.short, deeper: ex.deeper, onUse: () => ({ terminal: live.terminals[key] }) });
       }
       sync(parts, live, 0, true);
-      visit = { live, parts };
+      const cluster = BL.genesisEra2Cluster;
+      visit = { live, parts, cluster: cluster ? cluster.build(kit) : null };
     },
-    update(dt, elapsed, state) { if (visit) sync(visit.parts, visit.live, dt, state.calm === true); },
+    update(dt, elapsed, state) {
+      if (!visit) return;
+      sync(visit.parts, visit.live, dt, state.calm === true);
+      if (visit.cluster) BL.genesisEra2Cluster.update(visit.cluster, dt, state);
+    },
     dispose() { visit = null; }
   });
 
-  BL.genesisEra2 = { ERA, YEARS, NAME, SOURCES, OVERVIEW, HELD, RECORDS, SEAL, PC_FILES, PC_YEAR, FLOPPY_DISKS, MAZE, EXHIBITS, LAYOUT, PROPS,
+  BL.genesisEra2 = { ERA, YEARS, NAME, SOURCES, OVERVIEW, HELD, FUD_PATROL_ZONE, RECORDS, SEAL, PC_FILES, PC_YEAR, FLOPPY_DISKS, MAZE, EXHIBITS, LAYOUT, PROPS,
     sourceOf, createMerkle, createBlind, createPc, createFloppies, createMaze, merkleTerminal, blindTerminal, floppyTerminal, mazeTerminal,
     createLive, footprints, walkUp, buildModels, sync, get visit() { return visit; } };
 })();
