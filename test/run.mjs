@@ -3728,6 +3728,19 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
     // Force destruction even in POOL mode: a timed-out Chrome must never return to the pool.
     const browser = b;
     watchdog = setTimeout(() => { overran = true; browser.close(true); }, Math.max(0, SESSION_MS-(Date.now()-t0)));
+    // These resource checks compare repeated room visits, not the first upload of a roaming dog's fixed pool.
+    // Observe the rescue's own nodes at construction; never infer ownership from a scene-child index.
+    if (steps.some(([name]) => name === "dsb interior checkpoint" || name === "dsb studio checkpoint")) await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
+      window.BL = {}; let module;
+      Object.defineProperty(BL, "rescueDogs", { configurable: true, get: () => module, set: next => {
+        module = next; const create = next.create;
+        next.create = options => {
+          const before = new Set(options.root.children), dogs = create(options);
+          window.__dsbRescueBatches = options.root.children.filter(node => !before.has(node) && node.fixedInstanceCapacity);
+          return dogs;
+        };
+      } });
+    })()` });
     if(process.env.DSB_TRACE==="1") {
       const evaluate=b.evaluate;
       b.evaluate=async code=>{console.log("DSB STEP",Date.now()-started,String(code).slice(0,150));const value=await evaluate(code);console.log("DSB DONE",Date.now()-started);return value;};
@@ -24775,6 +24788,25 @@ const dsbHarborCheckpoint = { name:"dsb harbor checkpoint", why:"rule: normal wa
 scene("dsb",{label:"harbor checkpoint",query:"&weather=clear&time=1200",steps:[dsbHarborCheckpoint]});
 scene("dsb",{label:"harbor checkpoint phone",query:"&weather=clear&time=1200",opts:{w:390,h:844,mobile:true},steps:[dsbHarborCheckpoint]});
 
+// Rescue dogs have two shadow variants of body/legs/tail for each breed, plus poop and flies, all built once.
+// Their camera-dependent visibility (and a brief muzzle flash/banana projectile) may first upload after the
+// warm itinerary. Prepare only those exact existing meshes, without changing any scene state or resource bound.
+const warmDsbRoomResidents = async b => {
+  const r = await b.evaluate(`(() => {
+    const B = __ooga, nodes = window.__dsbRescueBatches || [], before = nodes.map(n => [n.geometry, n.visible, n.instanceCount, n.instanceData]);
+    const geometries = new Set(nodes.map(n => n.geometry));
+    geometries.add(B.dsb.avatar.parts.gunFlash.geometry); geometries.add(B.dsb.avatar.parts.snack.geometry);
+    let prepared = true;
+    for (const geometry of geometries) prepared = B.renderer.prepareGeometry(geometry) && prepared;
+    const resident = new Set(B.renderer.geometryRecords()), records = B.renderer.stats.records;
+    for (const geometry of geometries) prepared = B.renderer.prepareGeometry(geometry) && prepared;
+    return { batches: nodes.length, expected: BL.rescueDogs.BREEDS.length * 6 + 2, geometries: geometries.size,
+      prepared: prepared && [...geometries].every(g => resident.has(g)), idempotent: B.renderer.stats.records === records,
+      unchanged: nodes.every((n, i) => n.geometry === before[i][0] && n.visible === before[i][1] && n.instanceCount === before[i][2] && n.instanceData === before[i][3]) };
+  })()`);
+  record("DSB room residency: the finite rescue batches, muzzle flash and banana warm once without changing visibility, counts or instance storage",
+    r.batches === r.expected && r.geometries === r.expected + 2 && r.prepared && r.idempotent && r.unchanged, JSON.stringify(r));
+};
 const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a real door isolates its room and returns the same player to current exterior weather without accumulating resources", run: async b => {
   const step=()=>b.evaluate('for(let i=0;i<36;i++)BL.scenes.dsb.update(1/60,i/60)');
   const tap=async()=>{
@@ -24810,6 +24842,7 @@ const dsbInteriorCheckpoint = { name: "dsb interior checkpoint", why: "rule: a r
     const result=await b.send("DOMDebugger.getEventListeners",{objectId:obj.result.result.objectId});
     await b.send("Runtime.releaseObject",{objectId:obj.result.result.objectId});return result.result.listeners.length;
   };
+  await warmDsbRoomResidents(b);
   const initial=await snapshot(),base=initial.counts,listeners=await listenerCount();
   let cycles=1;
   for(;cycles<10;cycles++){await tap();await b.evaluate('__ooga.pilot.navigate({position:__ooga.dsb.interiors.active.room.spawn,yaw:Math.PI,pitch:.22,dist:3})');await step();await tap();}
@@ -24980,6 +25013,7 @@ const dsbStudioCheckpoint = {name:"dsb studio checkpoint",why:"playthrough: Stud
     B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:0,pitch:.12,dist:3});B.crew.sitPlayer(s);B.crew.throwTomato();B.advance(1);B.crew.standPlayer();
     let splat=null;const visit=n=>{if(n.visible&&n.geometry&&n.geometry.verts.length===24&&n.geometry.faces[0].color[0]===227)splat=n;for(const c of n.children)visit(c);};visit(BL.scenes.dsb.root);
     if(splat){const x=splat.world[12],z=splat.world[14];B.pilot.navigate({position:{x,y:B.dsb.interiors.groundAt(x,z),z},yaw:0,pitch:.6,dist:4});B.advance(.5);}})()`);
+  await warmDsbRoomResidents(b);
   const throws0=await b.evaluate('__ooga.crew.stats().tomatoesThrown');
   let baseline=null;
   // Warm the whole guest/host itinerary, then repeat the same views and interactions before comparing residency.
