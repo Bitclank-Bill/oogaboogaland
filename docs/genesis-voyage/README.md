@@ -302,6 +302,14 @@ autopilot, now dock to dock down the stream, and Boost or Shift hurries it.
   yet; their captions say so and their signs carry only names and years. Each era's exhibits come next, from the
   dossiers' READY items only.
 
+## Era exhibits (`gv/exhibits`)
+
+Each era's exhibits come from one file, `src/js/genesis-era-<n>.js`, built through the kit in `src/js/genesis-exhibits.js`
+under [EXHIBIT-CONTRACT.md](EXHIBIT-CONTRACT.md); Era 0 is the worked example. Every cave has the same frame: a large
+years sign with a lit border, an era pylon on each bank, an overview board on the left bank's gateway, and the **Steps
+toward Bitcoin** trail. That trail is a gold path to every exhibit the whitepaper cites or demonstrably drew on,
+numbered in date order across the eras.
+
 ## Milestone 1 report
 
 **Branch.** `feature/genesis-voyage`, from upstream `rock` 37d9f394 (2026-10-31). It contains no Block Frenzy,

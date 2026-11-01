@@ -113,6 +113,8 @@
 
   // --- Building -------------------------------------------------------------------------------------------------
   const place = (node) => { addChild(root, node); return node; };
+  // A tap box: a node the picker sees (it skips hidden nodes) with a box's corners and no faces, so nothing draws.
+  const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
   const solid = (w, h, d, color, x, y, z, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } }));
   const buildCavern = () => {
     // The harbour cavern: stone walls and roof round the dock, its front wall open onto the lane at the mouth.
@@ -210,7 +212,11 @@
   // the stream with its years over the way in, lamps on the banks, and stone tunnels between caves.
   const buildCaves = () => {
     const label = BL.factoryModels.label, C = GW.CAVE, H = C.height, gap = GW.TUNNEL_HEIGHT;
-    const hex = (rgb) => "#" + rgb.map((v) => Math.round(Math.min(1, v / 1.4) * 255).toString(16).padStart(2, "0")).join("");
+    // Whether a boulder of radius r at (x, z) in era n would sit in a reserved plot or on an exhibit's obstacle.
+    const clutter = (n, x, z, r) => {
+      const hit = (b) => x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1;
+      return GW.reservedZones(n).some(hit) || built.obstacles.some(hit);
+    };
     const across = (z, color, closed) => {
       if (closed) { solid(C.x1 - C.x0, H, 1, color, (C.x0 + C.x1) / 2, H / 2, z); return; }
       solid(CHANNEL.x0 - C.x0, H, 1, color, (C.x0 + CHANNEL.x0) / 2, H / 2, z);
@@ -238,26 +244,27 @@
       if (i < GW.ERAS.length - 1) tunnel(e.z0 - 0.5, GW.ERAS[i + 1].z1 + 0.5);
       // Hanging rocks and boulders, so the roof is not a lid and the banks are worth walking; glowing seams in the
       // era's colour light the walls.
-      const rand = BL.math.mulberry32(31 + i), w = C.x1 - C.x0, glow = hex(t.lamp);
+      const rand = BL.math.mulberry32(31 + i), w = C.x1 - C.x0, glow = glowHex(t.lamp);
       for (let k = 0; k < 14; k++) {
         const h = 2 + rand() * 6;
         solid(1.5 + rand() * 3, h, 1.5 + rand() * 3, t.rock, C.x0 + 2 + rand() * (w - 4), H - h / 2, e.z1 - 3 - rand() * (len - 6));
       }
       for (let k = 0; k < 10; k++) {
         const left = rand() < 0.5, x = left ? C.x0 + 2 + rand() * (CHANNEL.x0 - C.x0 - 6) : CHANNEL.x1 + 4 + rand() * (C.x1 - CHANNEL.x1 - 6);
-        const s = 0.8 + rand() * 2.2;
-        solid(s * 1.3, s, s, t.rock, x, ISLAND_TOP + s / 2, e.z1 - 4 - rand() * (len - 8));
+        const s = 0.8 + rand() * 2.2, z = e.z1 - 4 - rand() * (len - 8), r = s * 0.7 + 0.5;
+        // Boulders keep off the exhibits, the gateway, the docks, the lamps and the trail's walk.
+        if (Math.abs(x - (x < GW.LANE_X ? CHANNEL.x0 : CHANNEL.x1)) < GW.BANK.FRONT + r || clutter(i, x, z, r)) continue;
+        solid(s * 1.3, s, s, t.rock, x, ISLAND_TOP + s / 2, z);
       }
       for (let k = 0; k < 12; k++) {
         const left = k % 2 === 0, z = e.z1 - 4 - (k >> 1) * (len - 8) / 5, y = 3 + rand() * (H - 8);
         solid(0.12, 0.4 + rand() * 0.6, 3 + rand() * 6, glow, left ? C.x0 + 0.06 : C.x1 - 0.06, y, z, 1.3);
       }
       // The years over the way in, and the era's name under them.
-      const sign = label(e.years.toUpperCase(), `Era ${e.n} · ${e.name}`, { height: 2.4, style: e.room ? "gold" : "plain" });
+      const sign = label(e.years.toUpperCase(), `Era ${e.n} · ${e.name}`, { height: 3.2, style: "plain" });
       // Two chains up to the roof.
       for (const dx of [-3, 3]) solid(0.08, C.height - e.sign.y - 1, 0.08, "#2a2622", e.sign.x + dx, (C.height + e.sign.y + 1) / 2, e.sign.z);
-      const sn = place(createNode({ position: { x: e.sign.x, y: e.sign.y, z: e.sign.z } }));
-      addChild(sn, createNode({ geometry: sign.back }), createNode({ geometry: sign.face }));
+      hangSign(sign, e.sign.x, e.sign.y, e.sign.z, 0, glow);
       // Lamp posts on the banks, where the cave's lights hang.
       for (const [x, f] of CAVE_LAMPS) {
         const z = e.z1 - f * len, bx = x < GW.LANE_X ? Math.min(x, CHANNEL.x0 - 1.2) : Math.max(x, CHANNEL.x1 + 1.2);
@@ -315,7 +322,7 @@
     built.plaques = [];
     GW.ERAS.forEach((era, i) => {
       const room = { id: era.id, title: `Era ${era.n}: ${era.name} (${era.years})` };
-      const sign = label(`${era.n}. ${era.name.toUpperCase()}`, `${era.years} · ${era.room ? "open now" : era.optional ? "optional · cave only so far" : "cave only so far"}`, { height: 0.5, style: era.room ? "gold" : "plain" });
+      const sign = label(`${era.n}. ${era.name.toUpperCase()}`, `${era.years} · ${exhibitCount(i) ? `${exhibitCount(i)} exhibit${exhibitCount(i) === 1 ? "" : "s"}${era.room ? " · Fingerprints and Time" : ""}` : era.room ? "Fingerprints and Time" : era.optional ? "optional · cave only so far" : "cave only so far"}`, { height: 0.5, style: era.room ? "gold" : "plain" });
       const node = place(createNode({ position: { x: -11.72, y: 3.5 - (i % 4) * 0.62, z: i < 4 ? 3.6 : -3.2 }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
       const face = createNode({ geometry: sign.face });
       addChild(node, createNode({ geometry: sign.back }), face);
@@ -375,7 +382,7 @@
     solid(0.45, 0.42, 0.5, "#e2d9be", pc.x - 0.15, pc.y + 1.13, pc.z);
     built.pcScreen = place(createNode({ geometry: M.box({ w: 0.02, h: 0.3, d: 0.38, color: "#38ff7a", emissive: 1.2 }), position: { x: pc.x + 0.085, y: pc.y + 1.14, z: pc.z } }));
     solid(0.22, 0.03, 0.62, "#cfc6aa", pc.x + 0.32, pc.y + 0.78, pc.z);
-    built.pc = place(createNode({ geometry: M.box({ w: 1.2, h: 1.4, d: 1.3, color: "#000000" }), position: { x: pc.x, y: pc.y + 0.7, z: pc.z }, visible: false }));
+    built.pc = place(createNode({ geometry: pickBox(1.2, 1.4, 1.3), position: { x: pc.x, y: pc.y + 0.7, z: pc.z } }));
     sign(props.get("pc"), "DIR · TYPE · HASH", 1.75);
     solid(1, 0.5, 1, "#5a524a", dr.x, dr.y + 0.25, dr.z);
     // A schematic of the 1956 cabinet (not to scale), its stack of disks in a window, and the card beside it.
@@ -383,12 +390,12 @@
     for (let i = 0; i < 6; i++) solid(0.04, 0.012, 0.14, "#c9ced4", dr.x + 0.0, dr.y + 0.62 + i * 0.04, dr.z - 0.2);
     solid(0.011, 0.001, 0.015, "#202020", dr.x + 0.25, dr.y + 0.501, dr.z + 0.3);
     solid(0.12, 0.01, 0.12, "#ffd25f", dr.x + 0.25, dr.y + 0.5, dr.z + 0.3, 0.6);
-    built.drives = place(createNode({ geometry: M.box({ w: 1.1, h: 1.1, d: 1.1, color: "#000000" }), position: { x: dr.x, y: dr.y + 0.55, z: dr.z }, visible: false }));
+    built.drives = place(createNode({ geometry: pickBox(1.1, 1.1, 1.1), position: { x: dr.x, y: dr.y + 0.55, z: dr.z } }));
     sign(props.get("drives"), "schematic, not to scale", 1.55);
     solid(0.5, 0.95, 0.5, "#7a5534", bk.x, bk.y + 0.47, bk.z);
     solid(0.42, 0.04, 0.56, "#f5f0e2", bk.x, bk.y + 0.97, bk.z);
     solid(0.02, 0.05, 0.02, "#2a2a2a", bk.x + 0.1, bk.y + 1.0, bk.z + 0.15);
-    built.book = place(createNode({ geometry: M.box({ w: 0.7, h: 1.2, d: 0.8, color: "#000000" }), position: { x: bk.x, y: bk.y + 0.6, z: bk.z }, visible: false }));
+    built.book = place(createNode({ geometry: pickBox(0.7, 1.2, 0.8), position: { x: bk.x, y: bk.y + 0.6, z: bk.z } }));
     sign(props.get("book"), "stamp your own page", 1.45);
     // The boarding ramps: planks sloping down to where the boat lies.
     for (const a of FOOTING.areas) {
@@ -397,12 +404,18 @@
       place(createNode({ geometry: M.box({ w: Math.hypot(len, drop), h: 0.06, d: a.z1 - a.z0, color: "#8a6440" }), position: { x: cx, y: (a.ramp.from + a.ramp.to) / 2 - 0.03, z: cz }, rotation: { x: 0, y: 0, z: -Math.atan2(drop, len) } }));
     }
   };
+  // Fingerprints and Time's whitepaper citations, as trail stops at its lectern (tap it, or I, for the panel).
+  const LECTERN = { x: -5.6 + SX, z: -22.6 + SZ };
+  const ROOM_LINKS = [
+    { id: "era3-room-haber1991", year: 1991, title: "Timestamp a page, at Fingerprints and Time", connection: "citation", ref: "[3]", date: "1991 journal publication", at: { x: LECTERN.x + 1, y: ISLAND_TOP, z: LECTERN.z } },
+    { id: "era3-room-bayer1993", year: 1993, title: "One tree, many pages, at Fingerprints and Time", connection: "citation", ref: "[4]", date: "1993 book chapter; manuscript dated March 1992", at: { x: LECTERN.x + 1, y: ISLAND_TOP, z: LECTERN.z - 1.4 } }
+  ];
   // --- Era exhibits (genesis-exhibits.js, one genesis-era-<n>.js per cave) ---------------------------------------------
   // Each era's file builds its cave's exhibits through a kit; usable ones become props like the room's, with a pick box
   // that taps select. Built once a visit, before the footing, so their obstacles count.
   const buildExhibits = () => {
     const EX = BL.genesisExhibits, label = BL.factoryModels.label;
-    built.propNodes = {}; built.obstacles = [];
+    built.propNodes = {}; built.obstacles = []; built.exhibitProps = []; built.trail = [];
     if (!EX) return;
     for (let n = 0; n < GW.ERAS.length; n++) {
       const def = EX.eras[n];
@@ -417,14 +430,33 @@
         },
         obstacle: (x0, x1, z0, z1) => { built.obstacles.push({ x0, x1, z0, z1 }); },
         prop: (d) => {
-          const prop = props.register({ ...d, era: n });
+          const problem = EX.checkProp(n, d);
+          if (problem) throw new Error(`genesis exhibits: era ${n}: ${problem}`);
+          // A board's last page says how the exhibit connects, with its trail step (numbered once every era is built).
+          const entry = { era: n, def: d, order: built.exhibitProps.length, step: 0 };
+          const onUse = d.connection ? (state) => {
+            const r = d.onUse(state);
+            if (!r || !r.board) return r;
+            const c = EX.CONNECTIONS[d.connection];
+            const how = [`${c.label}${d.ref ? ` ${d.ref}` : ""}.${d.date ? ` ${d.date}.` : ""}`, entry.step
+              ? `Step ${entry.step} of ${built.trail.length} on the Steps toward Bitcoin: follow the gold path along the banks, in date order.`
+              : "Part of the story of these years, not something the Bitcoin whitepaper cites or is shown to have drawn on."];
+            return { ...r, board: { ...r.board, pages: [...r.board.pages, { caption: "How it connects", title: c.label, text: how }] } };
+          } : d.onUse;
+          const prop = props.register({ ...d, era: n, onUse });
+          entry.prop = prop;
+          built.exhibitProps.push(entry);
           const pick = d.pick || { w: 1, h: 1.4, d: 1 };
-          built.propNodes[prop.id] = place(createNode({ geometry: M.box({ w: pick.w, h: pick.h, d: pick.d, color: "#000000" }), position: { x: prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: prop.at.z }, visible: false }));
+          built.propNodes[prop.id] = place(createNode({ geometry: pickBox(pick.w, pick.h, pick.d), position: { x: pick.x !== undefined ? pick.x : prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : prop.at.z } }));
           return prop;
         }
       };
       def.build(kit);
     }
+    // Fingerprints and Time's own exhibits are trail stops too, linked rather than duplicated: the lectern's panel
+    // tells both papers' story (genesis-voyage.js FINGERPRINTS).
+    for (const link of ROOM_LINKS) built.exhibitProps.push({ era: ROOM_ERA, def: link, prop: { id: link.id, at: link.at }, order: built.exhibitProps.length, step: 0, room: true });
+    built.trail = EX.trailOf(built.exhibitProps);
   };
   // Each frame, the exhibits of the cave the visitor is in (aboard or ashore) may move; nothing else runs.
   const exhibitState = { era: -1, walking: false, x: 0, z: 0 };
@@ -440,6 +472,130 @@
     const EX = BL.genesisExhibits;
     if (EX) for (const def of EX.eras) if (def && def.dispose) def.dispose();
   };
+  // --- Shared era signage (integrator; docs/genesis-voyage/EXHIBIT-CONTRACT.md) ---------------------------------------
+  // Every cave gets the same frame, whatever its era file builds: a large years sign with a lit border over the way in
+  // (buildCaves), a pylon naming the era on each bank's gateway, an overview board on the left bank's gateway (tap or
+  // Space for its panel), and the Steps toward Bitcoin: a gold path along each bank's waterside walk to every exhibit
+  // whose connection is on the trail, with a STEP post by each, numbered in date order across all eras.
+  const glowHex = (rgb) => "#" + rgb.map((v) => Math.round(Math.min(1, v / 1.4) * 255).toString(16).padStart(2, "0")).join("");
+  const firstYear = (years) => +years.match(/\d{4}/)[0];
+  // A board of text painted once into an unlit picture (as factoryModels.label is, so it reads in any cave light): a
+  // kicker, a title, wrapped body lines and a list (gold items for trail steps). `width` is in metres.
+  const SIGN_PX = 96;
+  const textBoard = ({ kicker = "", title, body = [], list = [], width = 3, accent = "#e8c35a" }) => {
+    const canvas = document.createElement("canvas"), g = canvas.getContext("2d"), w = Math.round(width * SIGN_PX * 2);
+    const font = (px, bold) => `${bold ? "bold " : ""}${px}px system-ui, sans-serif`;
+    canvas.width = w; g.font = font(30);
+    const lines = [];
+    for (const para of body) { lines.push(...wrap(g, para, w - 72)); lines.push(""); }
+    const h = 150 + lines.length * 38 + list.length * 40 + 30;
+    canvas.height = h;
+    g.fillStyle = "#0d0b0a"; g.fillRect(0, 0, w, h);
+    g.strokeStyle = accent; g.lineWidth = 6; g.strokeRect(8, 8, w - 16, h - 16);
+    g.textBaseline = "top"; g.fillStyle = accent; g.font = font(28, true); g.fillText(kicker, 36, 30);
+    g.fillStyle = "#f8f4ec"; g.font = font(48, true); g.fillText(title, 36, 66);
+    g.font = font(30); g.fillStyle = "#e6dfd1";
+    let y = 140;
+    for (const line of lines) { g.fillText(line, 36, y); y += 38; }
+    for (const item of list) { g.fillStyle = item.gold ? accent : "#d6cfc1"; g.font = font(30, item.gold); g.fillText(item.text, 36, y); y += 40; }
+    const image = new Image();
+    image.src = canvas.toDataURL("image/png");
+    const W = width, H = h / (SIGN_PX * 2);
+    const face = { verts: [-W / 2, -H / 2, 0.03, W / 2, -H / 2, 0.03, W / 2, H / 2, 0.03, -W / 2, H / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+    face.imageSurface = { asset: { width: w, height: h, load: () => image }, rect: [-W / 2, -H / 2, W, H] };
+    const back = M.bevelBox({ w: W + 0.16, h: H + 0.16, d: 0.1, color: "#2a2622", bevel: 0.03, offset: { z: -0.03 } });
+    back.castShadow = false;
+    return { face, back, width: W, height: H };
+  };
+  // A sign (a label or a text board) at (x, y, z) turned `ry`, framed by four lit bars in `glow` if given: they read
+  // from in front and stay a thin frame from behind.
+  const hangSign = (sign, x, y, z, ry, glow = null) => {
+    const n = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: ry, z: 0 } }));
+    if (glow) {
+      const w = sign.width + 0.42, h = sign.height + 0.42, t = 0.12;
+      for (const [bw, bh, bx, by] of [[w, t, 0, h / 2], [w, t, 0, -h / 2], [t, h, w / 2, 0], [t, h, -w / 2, 0]]) addChild(n, createNode({ geometry: M.box({ w: bw, h: bh, d: 0.1, color: glow, emissive: 1.1 }), position: { x: bx, y: by, z: -0.02 } }));
+    }
+    addChild(n, createNode({ geometry: sign.back }), createNode({ geometry: sign.face }));
+    return n;
+  };
+  // A prop's place on its bank: which side and its (u, v) in genesis-world.js's bank frame.
+  const bankPlace = (era, at) => {
+    const side = at.x < GW.LANE_X ? -1 : 1, f = GW.bankFrame(era, side);
+    return { f, side, u: f.z1 - at.z, v: (at.x - f.edge) * side };
+  };
+  const buildEraFrames = () => {
+    const label = BL.factoryModels.label, B = GW.BANK, p = { x: 0, z: 0 }, EX = BL.genesisExhibits;
+    built.overviews = [];
+    GW.ERAS.forEach((e) => {
+      const glow = glowHex(e.theme.lamp);
+      for (const side of [-1, 1]) {
+        const f = GW.bankFrame(e.n, side);
+        GW.bankToWorld(f, 3, 3.2, p);
+        solid(1.2, 5.2, 1.2, e.theme.rock, p.x, ISLAND_TOP + 2.6, p.z);
+        solid(1.3, 0.2, 1.3, glow, p.x, ISLAND_TOP + 5.3, p.z, 1.2);
+        hangSign(label(`ERA ${e.n}`, e.years, { height: 1.1, style: "plain" }), p.x, ISLAND_TOP + 4.1, p.z + 0.62, 0);
+        built.obstacles.push({ x0: p.x - 0.7, x1: p.x + 0.7, z0: p.z - 0.7, z1: p.z + 0.7 });
+      }
+      const f = GW.bankFrame(e.n, -1);
+      GW.bankToWorld(f, 7, 6, p);
+      const def = EX && EX.eras[e.n], mine = built.exhibitProps.filter((x) => x.era === e.n).sort((a, b) => a.def.year - b.def.year || a.order - b.order);
+      const board = textBoard({ kicker: `ERA ${e.n} · ${e.years.toUpperCase()}`, title: e.name, width: 3.4,
+        body: [def && def.overview ? def.overview.summary : mine.length ? "Walk the banks: every exhibit here shows its year." : "This cave's exhibits are still being built."],
+        list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
+          ...(mine.some((x) => x.step) ? [{ text: "★ Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
+      const ry = Math.PI / 2 - 0.55, lift = ISLAND_TOP + 0.9 + board.height / 2;
+      solid(0.3, 0.9 + board.height / 2, 0.3, "#3b2a1a", p.x, ISLAND_TOP + (0.9 + board.height / 2) / 2, p.z);
+      hangSign(board, p.x, lift, p.z, ry, glow);
+      const pick = place(createNode({ geometry: pickBox(3.6, board.height + 1.2, 0.6), position: { x: p.x, y: lift, z: p.z }, rotation: { x: 0, y: ry, z: 0 } }));
+      built.overviews.push({ era: e.n, pick, at: { x: p.x + 1.4, y: ISLAND_TOP, z: p.z + 1.2 } });
+      built.obstacles.push({ x0: p.x - 1.4, x1: p.x + 1.4, z0: p.z - 1.4, z1: p.z + 1.4 });
+    });
+  };
+  // The trail's path: a gold strip along each bank's walk (BANK.TRAIL_V) from the gateway to its last step, chevrons
+  // pointing downstream (later in time), a spur to each step and a numbered post; pieces crossing a reserved plot
+  // other than the gateway (the dock and its ramps, a lamp, Fingerprints and Time) are left out. One merged mesh.
+  const buildTrail = () => {
+    const label = BL.factoryModels.label, B = GW.BANK, p = { x: 0, z: 0 }, parts = [];
+    for (const e of GW.ERAS) {
+      const reserved = GW.reservedZones(e.n).filter((r) => r.why !== "gateway");
+      for (const side of [-1, 1]) {
+        const stops = built.trail.filter((x) => x.era === e.n).map((x) => ({ x, ...bankPlace(e.n, x.prop.at) })).filter((s) => s.side === side);
+        if (!stops.length) continue;
+        const f = stops[0].f, end = Math.max(...stops.map((s) => s.u));
+        for (let u = 6; u < end; u += 2) {
+          GW.bankToWorld(f, u + 1, B.TRAIL_V, p);
+          if (reserved.some((r) => p.x > r.x0 - 0.3 && p.x < r.x1 + 0.3 && p.z > r.z0 - 1 && p.z < r.z1 + 1)) continue;
+          parts.push(M.moved(M.box({ w: 0.4, h: 0.03, d: 1.9, color: "#e8c35a", emissive: 0.9 }), p.x, ISLAND_TOP + 0.02, p.z));
+          if (u % 4 === 0) for (const s of [-1, 1]) parts.push(M.moved(M.turnedY(M.box({ w: 0.08, h: 0.035, d: 0.5, color: "#fff2c4", emissive: 1.2 }), s * 0.6), p.x + s * 0.13, ISLAND_TOP + 0.03, p.z - 0.1));
+        }
+        for (const s of stops) {
+          if (s.v - B.TRAIL_V > 0.2) { GW.bankToWorld(f, s.u, (s.v + B.TRAIL_V) / 2, p); parts.push(M.moved(M.box({ w: s.v - B.TRAIL_V, h: 0.03, d: 0.4, color: "#e8c35a", emissive: 0.9 }), p.x, ISLAND_TOP + 0.02, p.z)); }
+          GW.bankToWorld(f, s.u - 1.2, Math.max(B.TRAIL_V + 0.4, s.v - 0.6), p);
+          solid(0.18, 1.5, 0.18, "#3b2a1a", p.x, ISLAND_TOP + 0.75, p.z);
+          hangSign(label(`STEP ${s.x.step}`, `${s.x.def.year}`, { height: 0.55, style: "gold" }), p.x, ISLAND_TOP + 1.75, p.z, side < 0 ? Math.PI / 2 : -Math.PI / 2);
+        }
+      }
+    }
+    if (parts.length) place(createNode({ geometry: M.merge(...parts), sightHidden: true }));
+  };
+  // Each overview board as a prop: Space beside it, or a tap, opens the era's panel.
+  const registerOverviews = () => {
+    const EX = BL.genesisExhibits;
+    for (const o of built.overviews) {
+      const e = GW.ERAS[o.era], year = firstYear(e.years), def = EX && EX.eras[o.era];
+      const mine = built.exhibitProps.filter((x) => x.era === o.era).sort((a, b) => a.def.year - b.def.year || a.order - b.order);
+      const steps = built.trail.map((x) => `${x.step}. ${x.def.year} · ${x.def.title}${x.era === o.era ? " (this cave)" : ` (Era ${x.era})`}`);
+      props.register({ id: `era${o.era}-overview`, era: o.era, year, title: `Era ${e.n} overview`, label: `ERA ${e.n} OVERVIEW · ${year}`, sourceKeys: ["whitepaper"], at: o.at, reach: 2.4,
+        onUse: () => ({ board: { room: `Era ${e.n} - ${e.name} - ${e.years}`, sources: def && def.overview && def.overview.sourceKeys ? def.overview.sourceKeys : [], pages: [
+          { caption: "This era", title: `${e.name} (${e.years})`, text: [def && def.overview ? def.overview.summary : "This cave's exhibits are still being built."] },
+          ...(def && def.overview && def.overview.pages ? def.overview.pages : []),
+          { caption: "Exhibits", title: "In this cave, by year", text: mine.length ? mine.map((x) => `${x.def.year} · ${x.def.title}${x.step ? ` · step ${x.step}` : ""}`) : ["No exhibits yet."] },
+          { caption: "Steps toward Bitcoin", title: "The trail, in date order", text: [steps.length ? steps.join(" · ") : "No steps placed yet."] }
+        ] } }) });
+    }
+  };
+  // How many exhibits stand in an era (captions, plaques).
+  const exhibitCount = (era) => built.exhibitProps.filter((x) => x.era === era).length;
   const registerProps = () => {
     props = GP.createRegistry();
     const dos = GP.createDos({ year: 1993, files: GP.PC_FILES });
@@ -881,7 +1037,7 @@
     if (era !== lastEra) {
       if (era >= 0 && !walk.on) {
         const e = GW.ERAS[era], boatName = GW.BOATS[e.boat].name;
-        setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}). Your boat is now a ${boatName}.${e.room ? " Dock at the ramp to see Fingerprints and Time." : props.byEra(era).length ? " Jump out (Space) to explore its exhibits." : " Its exhibits are still being built; jump out (Space) to walk the cave."}`);
+        setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}). Your boat is now a ${boatName}.${e.room ? " Dock at the ramp to see Fingerprints and Time." : exhibitCount(era) ? ` ${exhibitCount(era)} exhibit${exhibitCount(era) === 1 ? "" : "s"} on the banks${built.trail.some((x) => x.era === era) ? "; the gold path marks the Steps toward Bitcoin" : ""}. Jump out (Space) to explore.` : " Its exhibits are still being built; jump out (Space) to walk the cave."}`);
       }
       lastEra = era;
     }
@@ -914,7 +1070,7 @@
       if (ride.state !== before) {
         if (ride.state === "station") {
           if (ride.station === ROOM_ERA) { demo.reset(); lastPhase = ""; lastTiles = -1; setCaption("arrive"); }
-          else setCaption(`dock-${ride.station}`, `${GW.ERAS[ride.station].name} (${GW.ERAS[ride.station].years}): this cave's exhibits are still being built. The Tour moves on in a moment.`);
+          else setCaption(`dock-${ride.station}`, `${GW.ERAS[ride.station].name} (${GW.ERAS[ride.station].years}): ${exhibitCount(ride.station) ? "jump out to walk its exhibits, or stay aboard;" : "this cave's exhibits are still being built."} The Tour moves on in a moment.`);
         } else if (before === "station") setCaption("leaving");
         else if (ride.state === "docked") setCaption("docked");
         showControls();
@@ -960,9 +1116,12 @@
     camera = createCamera({ fov: 62, near: 0.15, far: 240 });
     built = {};
     course = G.createCourse(TOUR.points);
-    buildCavern(); buildStream(); buildCaves(); buildTimeline(); buildDesk(); buildBoat();
+    // The era files build first, so the caves' boulders, the timeline's plaques and the shared signage know them.
+    buildCavern(); buildStream(); buildDesk(); buildBoat();
     registerProps();
     buildExhibits();
+    buildCaves(); buildTimeline(); buildEraFrames(); buildTrail();
+    registerOverviews();
     // The visit's footing: the fixed ledges and banks, plus whatever this visit's exhibits put in the way.
     footing = GP.createFooting({ areas: FOOTING.areas, obstacles: FOOTING.obstacles.concat(built.obstacles) });
     buildProps();
@@ -988,6 +1147,7 @@
     for (const plaque of built.plaques) target(plaque.face, { kind: "plaque", plaque });
     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
+    for (const o of built.overviews) target(o.pick, { kind: "prop", prop: props.get(`era${o.era}-overview`), priority: 1 });
     // Hop off and walk: the pilot and crew for the visitor's Ooga, idle until Jump out (as the arcade's are).
     const boatFov = camera.fov;
     const clampTarget = (p) => { p.x = clamp(p.x, GW.SEA.x0, GW.SEA.x1); p.y = clamp(p.y, 0.3, GW.CAVE.height - 1); p.z = clamp(p.z, GW.SEA.z0, 8.5); };
@@ -1085,7 +1245,7 @@
     hud.setStats(game.state);
     Object.assign(scene, { root, camera, input, debug: { get ride() { return ride; }, get demo() { return demo; }, view, built, board, sail, skip, openInfo, toggle, jumpTo,
       walk, boat, footing, props, pilot, get avatar() { return avatar; }, get terminal() { return terminal; }, jumpOut, reboard, toggleWalk, openProp, runTerminal,
-      get driver() { return driver; }, pause, boost } });
+      get driver() { return driver; }, pause, boost, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; } } });
   };
   const onDonation = (donation, counted = null) => {
     game.recordDonation(donation, counted && counted.exact);

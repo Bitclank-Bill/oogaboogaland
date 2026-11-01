@@ -26,7 +26,7 @@ register) first.
 
 ## Eras (draft, to be confirmed by the research stream)
 
-The rooms become eras. The current room, Fingerprints and Time, becomes part of Era 4.
+The rooms become eras. The current room, Fingerprints and Time, becomes part of **Era 3** (Cypherpunks and Timestamps, 1990–1995), where the timestamp papers it shows (Haber–Stornetta 1991, Bayer–Haber–Stornetta 1993) belong. An earlier draft of this sentence said Era 4, against this plan's own table.
 
 | # | Era island | Years | Bitcoin-line exhibits (connection) | Period gear to play with (to research) | Boat (to research) |
 |---|---|---|---|---|---|
@@ -324,6 +324,21 @@ filled from its own file, so several builders can work at once:
 **Each builder owns only its era file.** Changes needed elsewhere (a new kit feature, a shared model) go to the
 integrator as a request, not an edit.
 
+**Shared signage, plot rules and ownership:** [EXHIBIT-CONTRACT.md](EXHIBIT-CONTRACT.md). Every cave now gets a lit
+years sign, era pylons, an overview board and the **Steps toward Bitcoin** trail (a gold path to every whitepaper
+citation, documented influence and the whitepaper itself, numbered in date order). Set `connection` (and `ref`,
+`date`) on each Bitcoin-line prop, and an `overview.summary` on the era. Keep out of the reserved plots: the gateway,
+the dock and its ramps, the lamps and, in Era 3, the room. The integration branch is `gv/exhibits`.
+
+### Future build menu (integrator-reserved)
+
+- **Shimmering entrance timeline.** A clickable chronological display near the starting dock, inspired by Billy's
+  chart. It opens sourced events across all eight eras, with readable keyboard and touch navigation and reduced motion.
+  Browsing holds the boat and the camera still; travelling to an era is a separate action. A shared feature, so it is
+  reserved for the integrator. **Not started:** it waits for the data corrections to
+  `genesis-entrance-timeline-brief.md` (in preparation by Claude in the browser). Its research is not duplicated
+  here, and the chart's artwork is not copied.
+
 ### Prompt: an era builder (Claude Code or Astra Codex)
 
 > Repo: https://github.com/Bitcoin-Bill/oogaboogaland. Create branch `gv/era-<n>` from `gv/water-boat` and build
@@ -334,6 +349,7 @@ integrator as a request, not an edit.
 > - `docs/genesis-voyage/BUILD-PLAN.md`, especially "Phase 2".
 > - `src/js/genesis-exhibits.js`, which documents the kit and the rules.
 > - `src/js/genesis-era-0.js`, the worked example.
+> - `docs/genesis-voyage/EXHIBIT-CONTRACT.md`: ownership, the shared signage, `connection` / `ref` / `date`, and the reserved plots.
 > - The era's dossier on branch `gv/research`: `docs/genesis-voyage/eras/era-<n>-*.md`.
 >
 > **Build:** fill the cave with fun, explorable technology from its years.

@@ -46,7 +46,7 @@
     // Where the Tour stops and the boat counts as docked: by the left bank, halfway down the cave.
     e.dock = { x: CHANNEL.x0 + 1.4, z: e.z, facing: -Math.PI / 2 };
     // The years hang over the stream just inside the cave, facing the boat as it comes in.
-    e.sign = { x: LANE_X, y: 8, z: e.z1 - 10 };
+    e.sign = { x: LANE_X, y: 6.5, z: e.z1 - 10 };
   });
   const ROOM_ERA = ERAS.findIndex((e) => e.room);
   // The room was centred on z -26.5; it lands in the middle of Era 3's cave.
@@ -113,11 +113,44 @@
     return { points, stops };
   };
 
+  // --- Era exhibits: the banks as building plots -----------------------------------------------------------------
+  // The lamps on each cave's banks: [x, fraction of the cave's length from its way in] (scene-genesis.js hangs them).
+  const LAMPS = [[-14, 0.25], [22, 0.5], [-8, 0.8]];
+  // A bank's own frame (docs/genesis-voyage/EXHIBIT-CONTRACT.md): u runs from the cave's way in (0) downstream to its
+  // far wall (CAVE.len); v runs from the stream's edge (0) out to the cave wall (`width`). Exhibits stand at
+  // u >= GATE and FRONT <= v <= width - WALL, no taller than MAX_H; the gateway (u < GATE) holds the era's pylons and
+  // overview board, and the strip v < FRONT is the waterside walk, where the Steps toward Bitcoin trail runs (TRAIL_V).
+  const BANK = { GATE: 10, FRONT: 1.5, WALL: 1.5, END: 2, MAX_H: 8, TRAIL_V: 0.9 };
+  const bankFrame = (n, side) => {
+    const e = ERAS[n], b = e.banks[side < 0 ? 0 : 1];
+    return { era: n, side: side < 0 ? -1 : 1, edge: side < 0 ? CHANNEL.x0 : CHANNEL.x1, z1: e.z1, len: CAVE.len, width: b.x1 - b.x0 };
+  };
+  // A bank point (u, v) as a world point, written into `out` ({ x, z }).
+  const bankToWorld = (f, u, v, out) => { out.x = f.edge + f.side * v; out.z = f.z1 - u; return out; };
+  // The plots no exhibit may take, in world boxes with a reason: the gateway, the dock and its ramps by the middle of
+  // each cave, the lamp posts, and on Era 3's left bank Fingerprints and Time's room.
+  const reservedZones = (n) => {
+    const e = ERAS[n], out = [];
+    for (const side of [-1, 1]) {
+      const f = bankFrame(n, side), xa = f.edge, xb = f.edge + f.side * f.width;
+      const x0 = Math.min(xa, xb), x1 = Math.max(xa, xb);
+      out.push({ x0, x1, z0: e.z1 - BANK.GATE, z1: e.z1, why: "gateway" });
+      const near = f.edge + f.side * 6;
+      out.push({ x0: Math.min(xa, near), x1: Math.max(xa, near), z0: e.z - 4, z1: e.z + 4, why: "dock" });
+    }
+    for (const [x, f] of LAMPS) {
+      const bx = x < LANE_X ? Math.min(x, CHANNEL.x0 - 1.2) : Math.max(x, CHANNEL.x1 + 1.2), z = e.z1 - f * CAVE.len;
+      out.push({ x0: bx - 0.8, x1: bx + 0.8, z0: z - 0.8, z1: z + 0.8, why: "lamp" });
+    }
+    if (e.room) out.push({ x0: -12 + ROOM_SHIFT.x - 1.5, x1: CHANNEL.x0, z0: -34 + ROOM_SHIFT.z - 1.5, z1: -19 + ROOM_SHIFT.z + 1.5, why: "Fingerprints and Time" });
+    return out;
+  };
+
   // How high an Ooga may fly at (x, z): the harbour's roof, a cave's, or a tunnel's.
   const ceilingAt = (x, z) => {
     if (z > MOUTH_Z) return 6.6;
     for (let i = 0; i < ERAS.length; i++) if (z <= ERAS[i].z1 && z >= ERAS[i].z0) return CAVE.height - 0.6;
     return TUNNEL_HEIGHT - 0.4;
   };
-  BL.genesisWorld = { ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  BL.genesisWorld = { LAMPS, BANK, bankFrame, bankToWorld, reservedZones, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();
