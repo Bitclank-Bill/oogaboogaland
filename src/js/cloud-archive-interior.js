@@ -4,7 +4,7 @@
 // book a commit (cloud-archive-models.js, cloud-archive-data.js). Space (or the READ button) facing a shelf, a tap
 // on a rack or its plaque opens that day's board: its commits, PR-head matches and their authors as git recorded
 // them, with links out to GitHub; the arrows page through the days. At the far end, two armchairs (Space or SIT) face
-// a small TV showing the pictures the island took on the way up.
+// a small TV playing the island's live feeds and the pictures from the climb, on shuffle (cloud-archive-tv.js).
 // Over the aisle hangs the island's own Oogatron (jumbotron.js), live as the hub's and two-sided, gliding along the
 // aisle to stay near the walker: a tap on its screen, or Space (READ) looking along the aisle at it, opens the same
 // close-up; its sides page it. On a page's first climb the floor is bare but for the sign and the lounge: Space (LOAD)
@@ -34,12 +34,13 @@
     shadowCenter: { x: 0, y: 1, z: -10 }, shadowExtent: 30,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 0.2
   };
-  // The TV changes channel every CHANNEL_SECONDS through STATIC_SECONDS of snow (neither under reduced motion, where it
-  // holds its picture until changed by hand). A chair is sat in from within SIT_REACH of its edge, facing it; the
+  // The TV's channels and shuffle are cloud-archive-tv.js's. A chair is sat in from within SIT_REACH of its edge, facing it; the
   // sitter sits SEAT_Y up and stands up SEAT_BACK behind it, room enough past the chair's 0.5 m solid for the widest Ooga
   // (as the Sphere's chairs leave): any closer and the crew refuses the seat for a wide body, and Space jumps instead. A shelf is read from within READ_REACH of its front,
   // facing it within READ_FACING; ISLAND is offered within FOOT_REACH of the stalk at the shaft's foot.
-  const CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, TV_W = 480, TV_H = 360, SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.35;
+  const SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.35;
+  // Anywhere within LOUNGE_REACH of the point between the chairs offers one; nearer by less than SEAT_TIE is a tie.
+  const LOUNGE_REACH = 2.6, SEAT_TIE = 0.15, SEAT_KEEP = 0.6;
   const READ_REACH = 1.4, READ_FACING = 0.45, FOOT_REACH = 1.8;
   // The hanging Oogatron is offered to Space from the aisle in front of it, within SIGN_REACH, looking down the aisle.
   const SIGN_REACH = 9, SIGN_FACING = 0.8;
@@ -214,80 +215,10 @@
     });
     target(built.stalk, { kind: "stalk" }, 1.2);
 
-    // The TV: the island's pictures from the climb (`world.archiveViews`), one at a time; with none (a page that opened
-    // here), a test card. It is painted only when the channel changes, from buffers made here: the snow's image, and
-    // each channel's caption, worked out once.
-    const views = world.archiveViews ? world.archiveViews.filter((v) => v.ready) : [];
-    const captions = views.map((v) => `ISLAND CAM · ${v.label.toUpperCase()}`), counters = views.map((_, i) => `${i + 1}/${views.length}`);
-    const tvCanvas = document.createElement("canvas");
-    tvCanvas.width = TV_W; tvCanvas.height = TV_H;
-    const tvContext = tvCanvas.getContext("2d"), snow = tvContext.createImageData(TV_W / 4, TV_H / 4);
-    const tvGeometry = CM.plaque(tvCanvas, L.TV.screenW, L.TV.screenH);
-    built.screen.geometry = tvGeometry;
-    // `still`: the picture changes only by hand (reduced motion, or while its board is open, where the page is the
-    // reader's). The board's pages are the channels themselves, so turning one turns the other.
-    const tv = { channel: 0, wait: CHANNEL_SECONDS, snow: 0, version: 0, open: false };
-    const boardDialog = document.getElementById("board-modal");
-    let snowSeed = 1;
-    const paintTv = () => {
-      const g = tvContext;
-      if (tv.snow > 0) {
-        const d = snow.data;
-        for (let i = 0; i < d.length; i += 4) { snowSeed = (Math.imul(snowSeed, 1103515245) + 12345) | 0; d[i] = d[i + 1] = d[i + 2] = (snowSeed >>> 24); d[i + 3] = 255; }
-        g.imageSmoothingEnabled = false;
-        g.putImageData(snow, 0, 0);
-        g.drawImage(tvCanvas, 0, 0, TV_W / 4, TV_H / 4, 0, 0, TV_W, TV_H);
-      } else if (views.length) {
-        g.imageSmoothingEnabled = true;
-        g.drawImage(views[tv.channel].canvas, 0, 0, TV_W, TV_H);
-        g.fillStyle = "rgba(0,0,0,0.12)";
-        for (let y = 0; y < TV_H; y += 3) g.fillRect(0, y, TV_W, 1);
-        g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, TV_H - 44, TV_W, 44);
-        g.fillStyle = "#ffffff"; g.font = `700 22px ${FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
-        g.fillText(captions[tv.channel], 14, TV_H - 22);
-        g.fillStyle = "#e8b04a"; g.textAlign = "right"; g.fillText(counters[tv.channel], TV_W - 14, TV_H - 22);
-      } else {
-        const bars = ["#c0c0c0", "#c0c000", "#00c0c0", "#00c000", "#c000c0", "#c00000", "#0000c0"];
-        bars.forEach((c, i) => { g.fillStyle = c; g.fillRect(i * TV_W / 7, 0, TV_W / 7 + 1, TV_H); });
-        g.fillStyle = "rgba(0,0,0,0.7)"; g.fillRect(0, TV_H / 2 - 40, TV_W, 80);
-        g.fillStyle = "#ffffff"; g.font = `700 26px ${FONT}`; g.textAlign = "center"; g.textBaseline = "middle";
-        g.fillText("NO SIGNAL", TV_W / 2, TV_H / 2 - 12);
-        g.font = `500 16px ${FONT}`; g.fillText("Climb the beanstalk from the island to tune in", TV_W / 2, TV_H / 2 + 18);
-      }
-      tvGeometry.imageSurface.version++;
-      tv.version++;
-    };
-    paintTv();
-    const tune = (channel, byHand) => {
-      if (!views.length) return;
-      tv.channel = (channel + views.length) % views.length;
-      tv.wait = CHANNEL_SECONDS;
-      tv.snow = REDUCED.matches || byHand ? 0 : STATIC_SECONDS;
-      paintTv();
-    };
-    const still = () => REDUCED.matches || tv.open;
-    const updateTv = (dt) => {
-      if (tv.open && !(boardDialog && boardDialog.open)) tv.open = false;
-      if (!views.length) return;
-      if (tv.snow > 0 && (tv.snow -= dt) <= 0) { tv.snow = 0; paintTv(); }
-      if (!still() && (tv.wait -= dt) <= 0) tune(tv.channel + 1, false);
-    };
-    const tvBoard = {
-      title: "Island cam", wide: true,
-      get help() { return views.length ? "The island as it looked on your way up. Arrow keys change channel; it holds still while this is open." : "No pictures yet."; },
-      get canvas() { return views.length ? views[tv.channel].canvas : tvCanvas; }, get count() { return Math.max(1, views.length); }, get index() { return views.length ? tv.channel : 0; },
-      get caption() { return views.length ? views[tv.channel].label : "No signal"; },
-      get note() {
-        if (!views.length) return "No pictures yet: climb the beanstalk from the island and the TV tunes in to it.";
-        return `Pictures the island drew as you climbed the beanstalk, not a live feed. ${REDUCED.matches ? "With reduced motion the TV holds each picture until you change it here." : `The TV changes channel every ${CHANNEL_SECONDS} seconds while nobody is reading this.`}`;
-      },
-      get version() { return tv.version; },
-      go: (i) => tune(i, true)
-    };
-    const openTv = () => { tv.open = true; tv.version++; hud.openBoard(tvBoard); };
-    target(built.tv, { kind: "tv" }, 0.6);
-    target(built.screen, { kind: "tv" }, 0.4);
     // The two armchairs, each a seat facing the TV; standing up leaves it behind the chair.
+    // The lounge: the point between the chairs, and how far from it a seat is offered.
+    const LOUNGE = { x: (L.CHAIRS[0].x + L.CHAIRS[1].x) / 2, z: (L.CHAIRS[0].z + L.CHAIRS[1].z) / 2 };
+    let offered = null;
     const seats = L.CHAIRS.map((c) => ({ kind: "chair", x: c.x, y: SEAT_Y, z: c.z, floor: 0, ry: c.ry, sitter: null,
       walkAt: { x: c.x - Math.sin(c.ry) * SEAT_BACK, z: c.z - Math.cos(c.ry) * SEAT_BACK } }));
     built.chairs.forEach((node, i) => target(node, { kind: "chair", index: i }, 0.7));
@@ -355,6 +286,25 @@
     };
     const openSign = () => hud.openBoard(signBoard);
     const signUnsub = BL.oogatronLive.subscribe((event) => { if (event.type === "stats") { sign.refreshData(event.stats); signBack.refreshData(event.stats); } });
+
+    // The TV (cloud-archive-tv.js): the island's live feeds, a channel for each page of the hanging Oogatron (read
+    // through its own paused reader), and the pictures from the climb (`world.archiveViews`), on shuffle. Its canvas is
+    // the screen's picture; the screen's surface is bumped whenever the TV repaints.
+    const views = world.archiveViews ? world.archiveViews.filter((v) => v.ready) : [];
+    const boardDialog = document.getElementById("board-modal");
+    const tv = BL.cloudArchiveTv.create({ views, reader: sign.createReader({ paused: true, screen: { name: "recent", params: undefined } }), font: FONT,
+      reduced: () => REDUCED.matches, boardOpen: () => !!(boardDialog && boardDialog.open) });
+    const tvGeometry = CM.plaque(tv.canvas, L.TV.screenW, L.TV.screenH);
+    built.screen.geometry = tvGeometry;
+    let tvShown = -1;
+    const updateTv = (dt, elapsed) => {
+      tv.update(dt, elapsed);
+      if (tv.tv.version !== tvShown) { tvShown = tv.tv.version; tvGeometry.imageSurface.version++; }
+    };
+    const tvBoard = tv.board;
+    const openTv = () => { tv.open(); hud.openBoard(tvBoard); };
+    target(built.tv, { kind: "tv" }, 0.6);
+    target(built.screen, { kind: "tv" }, 0.4);
 
     // The board: one page a day, painted when shown.
     const boardCanvas = document.createElement("canvas");
@@ -427,11 +377,23 @@
       }
       if (Math.abs(feet) > 0.1) return near;
       if (!train.loaded) { near.kind = "load"; near.distance = 0; return near; }
+      // Anywhere in the lounge offers a seat, the Ooga's choice made for it: the free chair it is plainly facing within
+      // reach, else the one already offered while it stays free (so the choice never flickers between them), else the
+      // nearer, a tie in the middle going to the left one.
       const chairReach = 0.5 + avatar.bodyRadius + SIT_REACH;
+      let faced = null, nearest = null, nearestD = Infinity;
       for (const s of seats) {
+        if (s.sitter) continue;
         const dx = s.x - p.x, dz = s.z - p.z, d = Math.hypot(dx, dz);
-        if (!s.sitter && d < chairReach && d < near.distance && facing(dx, dz) > SIT_FACING) { near.kind = "chair"; near.seat = s; near.distance = d; }
+        if (d < chairReach && facing(dx, dz) > SIT_FACING && (!faced || d < Math.hypot(faced.x - p.x, faced.z - p.z))) faced = s;
+        if (d < nearestD - SEAT_TIE) { nearest = s; nearestD = d; }
       }
+      if (Math.hypot(p.x - LOUNGE.x, p.z - LOUNGE.z) < LOUNGE_REACH || faced) {
+        // The one already offered is kept only while the two are about as near (within SEAT_KEEP of each other).
+        const kept = offered && !offered.sitter && Math.hypot(offered.x - p.x, offered.z - p.z) < nearestD + SEAT_KEEP ? offered : null, seat = faced || kept || nearest;
+        if (seat) { near.kind = "chair"; near.seat = seat; near.index = seats.indexOf(seat); near.distance = Math.hypot(seat.x - p.x, seat.z - p.z); }
+      }
+      offered = near.seat;
       for (let i = 0; i < built.racks.length; i++) {
         const q = built.racks[i].position, side = q.x < 0 ? 1 : -1, front = q.x + side * RACK.d / 2, ahead = (p.x - front) * side;
         if (ahead < 0 || ahead > READ_REACH + avatar.bodyRadius || Math.abs(p.z - q.z) > RACK.w / 2 || ahead >= near.distance) continue;
@@ -502,7 +464,7 @@
 
     // Home: the same Ooga to the island, beside the beanstalk, which stands from now on (a page that opened here has
     // not grown it, and arrives there all the same).
-    let hintStage = null, actKind = null, actIndex = -1, wasOnLadder = false, wasHeld = true;
+    let hintStage = null, actKind = null, actIndex = -1, wasOnLadder = false, wasHeld = true, wasOffered = false;
     const handOff = () => {
       if (leaving) return;
       world.pilot = avatar ? avatar.traits.name : null;
@@ -523,7 +485,7 @@
       const o = hit.owner;
       if (o.kind === "rack") { const s = STATS[o.index]; return `${DATA.days[o.index].date} · ${plural(s.commits, "commit")} · ${COARSE ? "tap" : "click, or face it and press Space,"} to read the day`; }
       if (o.kind === "sign") return COARSE ? "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up, its sides to page it" : "Oogatron · OogaBoogaX on the big screen · click the screen for a close-up, its sides to page it";
-      if (o.kind === "tv") return views.length ? `Island cam · ${views[tv.channel].label} · ${COARSE ? "tap" : "click"} to watch` : "A little TV · no signal yet";
+      if (o.kind === "tv") return `Island TV · ${tv.title} · ${COARSE ? "tap" : "click"} to watch and change channel`;
       if (o.kind === "chair") return COARSE ? "Leather armchair · walk up and tap SIT" : "Leather armchair · Space beside it sits";
       if (o.kind === "stalk") return COARSE ? "Beanstalk · climb down it, or tap ISLAND at its foot, to go home" : "Beanstalk · climb down it (S), or Space at its foot, to go home";
       return "";
@@ -547,7 +509,8 @@
         else if (o.kind === "tv") openTv();
         else if (o.kind === "chair") {
           const seat = seats[o.index], n = findNear();
-          if (seat.sitter || n.kind !== "chair" || n.seat !== seat || !sit(seat)) hud.toast(COARSE ? "Walk up to a free chair, then tap SIT" : "Walk up to a free chair and press Space to sit");
+          // From anywhere in the lounge the tapped chair is the one taken.
+          if (seat.sitter || n.kind !== "chair" || !sit(seat)) hud.toast(COARSE ? "Walk up to a free chair, then tap SIT" : "Walk up to a free chair and press Space to sit");
         }
         else if (o.kind === "stalk") hud.toast(COARSE ? "Climb down the beanstalk, or tap ISLAND at its foot, to go home" : "Climb down the beanstalk (S), or press Space at its foot, to go home");
       },
@@ -576,13 +539,14 @@
       const n = avatar.camp.seat ? null : findNear(), kind = avatar.camp.seat ? "stand" : n.kind, index = n ? n.index : -1;
       if (kind === actKind && index === actIndex) return;
       actKind = kind; actIndex = index;
-      if (kind === "sit" || kind === "chair") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
+      if (kind === "sit" || kind === "chair") { const side = index === 0 ? "left" : "right"; hud.setAct("SIT"); hud.hint(COARSE ? `Tap SIT for the ${side} chair` : `Space · Sit in the ${side} chair`); }
       else if (kind === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
       else if (kind === "shelf") { hud.setAct("READ"); hud.hint(COARSE ? `Tap READ for ${DATA.days[index].date}` : `Space · Read ${DATA.days[index].date}`); }
       else if (kind === "load") { hud.setAct("LOAD"); hud.hint(COARSE ? "Tap LOAD to bring in the archive" : "Space · Load the archive", 9000); }
       else if (kind === "sign") { hud.setAct("READ"); hud.hint(COARSE ? "Tap READ for the Oogatron" : "Space · Read the Oogatron"); }
       else if (kind === "island") { hud.setAct("ISLAND"); hud.hint(COARSE ? "Tap ISLAND to go home down the beanstalk" : "Space · Home to the island"); }
-      else pilot.showAct();
+      else { pilot.showAct(); if (wasOffered) hud.hideHint(); }
+      wasOffered = kind !== null && kind !== "stand";
     };
 
     const update = (dt, elapsed) => {
@@ -607,7 +571,7 @@
       if (avatar && !leaving && wasHeld && !held) hud.hint(COARSE ? `${avatar.traits.display} is waiting · tap its portrait or the act button to take it back` : `${avatar.traits.display} is waiting · W A S D, Space or its portrait takes it back · Escape again leaves`, 8000);
       wasHeld = held;
       showNear();
-      updateTv(dt);
+      updateTv(dt, elapsed);
       updateTrain(dt);
       updateSign(dt);
       sign.update(elapsed, renderer);
@@ -666,6 +630,7 @@
       BL.net.setBody(null);
       for (const plaque of plaques) { renderer.releaseGeometry(plaque.geometry); plaque.geometry = null; }
       renderer.releaseGeometry(tvGeometry); built.screen.geometry = null;
+      tv.dispose();
       signUnsub();
       archiveAudio.dispose();
       sign.dispose(renderer);

@@ -171,6 +171,16 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
   up as they lock, with a thunk. It follows the page's sound rules (pooled voices built once, opened only after a
   gesture, page mute, closed on leave); no recording ships. Under reduced motion the racks appear in place. Later
   visits in the same page find them loaded.
+- **The live TV (done, v2).** The lounge TV plays the island's live feeds on shuffle (a fresh order each round), with
+  the island-cam pictures from the climb. Each page of the Oogatron is its own channel (GitHub), plus the chain
+  (height, price, fees, backlog, hashrate, difficulty), the totems' latest merges, who is working, chilling or asleep
+  (and online, where the island's server runs), and the banana tips. Live channels repaint every second. Tapping the
+  TV opens its board, which pages through every channel. It reads only the feeds the page already runs, so it never
+  makes a request of its own; a feed that is off says it is waiting.
+- **Sitting from anywhere in the lounge (fixed).** Before, you had to stand right behind a chair; between the two the
+  choice flickered. Now anywhere in the lounge offers SIT and picks the chair for you (the one you face, else the one
+  already offered while both are about as near, else the nearer; the middle goes to the left), and a tap on either
+  chair takes it.
 - **Taking your Ooga back (fixed).** Escape lets the Ooga go, as on the island; W A S D, Space, the act button or its
   portrait now take it back, and a hint says so. Before, nothing in the archive did, and play was stuck.
 - **View assist (done in the archive).** `view-assist.js` is a scene-agnostic slice of the hub's visibility stack.
