@@ -18,23 +18,24 @@
   const level = (id, name, sky, slope, layout, timing) => Object.freeze({ id, name, sky: sky && Object.freeze(sky), courseVersion: 1, board: `cloud-hopper-l${id}`,
     route: BASE_ROUTE * GROWTH ** (id - 1), slope, layout: Object.freeze({ sides: 0.55, sideMax: 64, ...layout }), timing: Object.freeze(timing) });
   const LEVELS = Object.freeze([
-    // Wider, calmer clouds closer together in drop, gentle turns, more that never fade, longer warnings.
+    // Wider, calmer clouds closer together in drop, gentle turns, most that never fade, longer warnings.
     level(1, "Floating Isles", { hour: 8.25, clouds: 0.36, scenery: "islets" }, 0.5,
       { step: 12, main: [3.1, 1, 2.2, 0.8], side: [3.2, 0.8, 2.4, 0.6], turn: 25, sway: 5, lane: [3, 2], speed: [0.6, 0.4],
         boost: 0.2, bounce: 0.06, bounceMax: 1, twoPacks: 1 },
-      { permanent: 0.2, long: 0.3, ordinary: [18, 46], longSlot: [70, 150], warn: 3, hidden: [1.5, 3], spine: 1, pace: 3, airJump: false }),
-    // The old course's challenge, made fair.
+      { permanent: 0.8, ordinary: [19.8, 47.4], warn: 3, fade: 1, hidden: [1.5, 3], spine: 1, pace: 3, airJump: false }),
+    // The course's own timing (cloud-hopper-course.js's TIMING).
     level(2, "Amber Spires", { hour: 17.45, clouds: 0.42, scenery: "spires" }, 0.47, { step: 11.4, xray: 2 }, {}),
-    // Smaller clouds, wider turns and lanes, shorter lives and warnings, safe ground further apart.
+    // Smaller clouds, wider turns and lanes, shorter lives and warnings, less safe ground.
     level(3, "Aurora Heights", { hour: 0.5, clouds: 0, night: true, scenery: "aurora" }, 0.42,
       { step: 12.2, main: [2.3, 0.8, 1.6, 0.6], side: [2.4, 0.6, 1.8, 0.4], turn: 50, sway: 8, lane: [6, 3], speed: [1, 0.7],
         boost: 0.18, bounce: 0.18, xray: 2, updraft: 2 },
-      { permanent: 0.04, long: 0.18, ordinary: [12, 32], longSlot: [50, 110], warn: 2, hidden: [2, 4], spine: 4, pace: 3.2 }),
-    // The longest climb down, in a storm: today's cloud sizes, wide turns, safe ground as sparse as Level 3's, haze
-    // that hides what lies beyond 160 m, and tornadoes.
+      { permanent: 0.6, ordinary: [15.35, 36.7], warn: 2, fade: 0.75, hidden: [2.5, 4], spine: 4, pace: 3.2 }),
+    // The longest climb down, in a storm: today's cloud sizes, wide turns, half its clouds fading, the quickest
+    // warnings, haze that hides what lies beyond 160 m, and tornadoes. Its fairness counts on 80% of a running jump
+    // rather than 70%, or too few of its clouds could fade fairly.
     level(4, "Thunderhead", { hour: 18.6, clouds: 1, night: true, storm: 0.86, fog: Object.freeze([40, 160]), scenery: "storm", tornado: true }, 0.38,
       { step: 12.5, turn: 50, sway: 8, twoPacks: 1, xray: 3, updraft: 1, hook: 2 },
-      { permanent: 0.05, long: 0.2, ordinary: [12, 32], longSlot: [50, 110], warn: 2, hidden: [2, 4], spine: 4, pace: 3.4 })
+      { permanent: 0.5, ordinary: [13.9, 33.2], warn: 1.5, fade: 0.625, hidden: [3, 4.5], spine: 4, pace: 3.4, reach: 0.8 })
   ]);
   BL.cloudHopperLevels = { LEVELS, BASE_ROUTE, GROWTH, get: id => LEVELS[id - 1] || null };
 })();

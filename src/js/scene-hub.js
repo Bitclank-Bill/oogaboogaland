@@ -313,6 +313,7 @@
     cloudFinishFruit.visible = on && pile.shown === 0;
     document.body.classList.toggle("cloud-hopper-active", on);
     hud.setPanelsHidden(on);
+    if (wpHolder) wpHolder.visible = !on;
     if (on) { cloudMask(); BL.net.setBody(null); BL.net.setZone("none"); }
     else {
       for (const [node, visible] of cloudHidden) node.visible = visible;
@@ -7407,6 +7408,8 @@
                sinkAfter: 300, sinkTime: 2.5, charHold: 8, charFade: 12,
                readFov: 0.55, readAir: 1.06, readZoomStep: 1.5, readZoomMax: 6, glide: 7 };
   let wpGroup = null, wpImage = null, wpSheet = null, wpBackSheet = null, wpReadingSheet = null, wpPoster = null, wpBolt = null, wpChar = null, wpBanner = null;
+  // The stone, its bolt and its char hang under one node, which Cloud Hopper hides while a run plays.
+  let wpHolder = null;
   let wpCharAge = 0;
   // This anniversary is October 31 and November 1, 2026, in the visitor's local calendar, not a yearly trigger.
   const WP_WEEKEND_START = new Date(2026, 9, 31).getTime(), WP_WEEKEND_END = new Date(2026, 10, 2).getTime();
@@ -7569,6 +7572,9 @@
     return banner;
   };
   const wpBuild = () => {
+    wpHolder = createNode({});
+    wpHolder.visible = !cloudPlaying();
+    addChild(root, wpHolder);
     // Follow the bookshelf's centreline into the cliff; the stone and its camera share the shelf's facing.
     const dx = -Math.sin(LIBRARY.ry), dz = -Math.cos(LIBRARY.ry);
     const x = LIBRARY.x + dx * WP.out, z = LIBRARY.z + dz * WP.out;
@@ -7623,7 +7629,7 @@
     wpBolt = createNode({ geometry: models.moved(models.merge(...segments), -bx, 0, -bz), position: { x, y: wpGround, z } });
     wpBolt.geometry.castShadow = false;
     wpBolt.visible = false;
-    addChild(root, wpBolt);
+    addChild(wpHolder, wpBolt);
     placed.push(wpBolt);
     // The char it leaves: the crest blackened cell by cell around the stone's foot, laid on the ground it finds there.
     const charVerts = [], charFaces = [], charRand = mulberry32(fnv1a("whitepaper-char")), step = 0.28, reach = 2.2;
@@ -7639,10 +7645,10 @@
     }
     wpChar = createNode({ geometry: { verts: charVerts, faces: charFaces, lines: [], castShadow: false }, position: { x, y: 0, z } });
     wpChar.visible = false;
-    addChild(root, wpChar);
+    addChild(wpHolder, wpChar);
     placed.push(wpChar);
     group.visible = false;
-    addChild(root, group);
+    addChild(wpHolder, group);
     placed.push(group);
     wpGroup = group;
     // Where the view stands once the stone is up: in front of the sheet's middle, the field of view left as it was.

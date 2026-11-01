@@ -434,6 +434,8 @@ uniform vec4 uSpotLight[3];
 ${VIEW_DIRECTION_GLSL}
 uniform vec3 uFog;
 uniform vec2 uFogRange;
+// The share of the fog a geometry takes off itself (its fogPierce), so a glowing thing shows through haze.
+uniform float uFogPierce;
 // xyz follows the played character; w enables the room's fluorescence and visibility falloff.
 uniform vec4 uBlacklight;
 uniform vec4 uMatrixParams;
@@ -898,7 +900,7 @@ void main() {
   float cloud = step(3.5, vParams.z) * (1.0 - nativeMode);
 #ifdef PLAIN
   // No Matrix this frame and no special faces in the mesh: the plain variant compiles all of it away.
-  float fog = smoothstep(uFogRange.x, uFogRange.y, distance(vWorld, uEye));
+  float fog = smoothstep(uFogRange.x, uFogRange.y, distance(vWorld, uEye)) * (1.0 - uFogPierce);
   const float front = 0.0;
   const vec3 matrixColorResult = vec3(0.0), matrixBrightResult = vec3(0.0);
 #else
@@ -960,7 +962,7 @@ void main() {
     oBright = vec4(matrixGreen * (glow * 0.9 + tip * 0.85) * (1.0 - matrixFog), reveal);
     return;
   }
-  float fog = smoothstep(uFogRange.x, uFogRange.y, distance(vWorld, uEye));
+  float fog = smoothstep(uFogRange.x, uFogRange.y, distance(vWorld, uEye)) * (1.0 - uFogPierce);
   vec3 matrixColorResult = vec3(0.0);
   vec3 matrixBrightResult = vec3(0.0);
   if (front > 0.0) {
@@ -1115,7 +1117,7 @@ void main() {
   const ORDINARY_MESH_FS = derive(MESH_FS, ["flat in vec4 vVoxel;", "uniform vec4 uVoxel;"], [/\bvVoxel\b/g, "uVoxel"]);
   // The camera's depth pre-pass: the mesh shader's cuts and nothing else, the rest compiled away.
   const DEPTH_MESH_FS = ORDINARY_MESH_FS.slice(0, ORDINARY_MESH_FS.indexOf("void main() {")) + "void main() {\n  if (clipped()) discard;\n}";
-  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
+  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uFogPierce", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
   const ORDINARY_SHADOW_VS = derive(SHADOW_VS, [RIG_GLSL, ""], ["rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)"],
     ["layout(location=6) in vec4 aM3;\n\n", "layout(location=6) in vec4 aM3;\n"]);
   const LINE_VS = `#version 300 es
@@ -3600,6 +3602,11 @@ void main() {
         const stage = kind === "mesh" && meshPass ? g.matrixRevealBacking ? 1 : g.matrixGlyph ? 2 : g.glassOpacity ? 3 : 0 : 0;
         if (stage !== matrixStage) continue;
         applyCutaway(program, g);
+        const pierce = g.fogPierce || 0;
+        if (pierce !== program.fogPierce && program.u.uFogPierce) {
+          gl.uniform1f(program.u.uFogPierce, pierce);
+          program.fogPierce = pierce;
+        }
         if (glassPass) {
           const mesh = programs.mesh;
           if (g.glass !== mesh.glass) {

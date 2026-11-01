@@ -3,18 +3,21 @@
 //   Level 1 "Coconut Breeze": 112 BPM tropical pluck-pop in G major, bright and bouncy, for the morning islets.
 //   Level 2 "Golden Hour Groove": 118 BPM sunset disco-synthwave in D major, octave bass and offbeat hats under a saw hook.
 //   Level 3 "Cloudbreak Sprint": 128 BPM progressive trance in B minor, the restrained motif under the aurora.
-//   Level 4 "Thunderhead Run": 140 BPM dark driving trance in D minor, rolling bass and a tense phrygian edge.
+//   Level 4 "Thunderhead Run": 150 BPM dark hard techno in D minor, a driven kick, rolling rumble and a phrygian riff.
 // One transport spans the dock, ascent, races, results and replays; only the drums follow the race state, entering
 // and leaving on bar boundaries. Switching songs starts the new one on the old one's next beat and crossfades them.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const AHEAD = 0.12, MAX_AHEAD = 2, LEVEL = 0.6, CROSSFADE = 2.5;
+  const AHEAD = 0.12, MAX_AHEAD = 2, LEVEL = 0.6, CROSSFADE = 2.5, KICK_PITCH = [115, 47, 0.13];
   const HZ = new Float32Array(128), PITCH = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   for (let i = 0; i < HZ.length; i++) HZ[i] = 440 * Math.pow(2, (i - 69) / 12);
   // Equal-power crossfade curves, made once.
   const FADE_IN = new Float32Array(33), FADE_OUT = new Float32Array(33);
   for (let i = 0; i <= 32; i++) { FADE_IN[i] = Math.sin(i / 32 * Math.PI / 2); FADE_OUT[i] = Math.cos(i / 32 * Math.PI / 2); }
+  // A soft clip for a song's driven kick (`kick.drive`), made once.
+  const DRIVE = new Float32Array(1024);
+  for (let i = 0; i < DRIVE.length; i++) { const x = i / (DRIVE.length - 1) * 2 - 1; DRIVE[i] = Math.tanh(4 * x) / Math.tanh(4); }
   // Decode a melody once: sixteen steps a bar, a dash sustaining the previous note and a dot resting.
   const line = (bars) => {
     const note = new Uint8Array(bars.length * 16), length = new Uint8Array(note.length);
@@ -42,7 +45,8 @@
   // Each song: its tempo; its melody; six chord voicings and the chord (and bass root) for each two bars of the
   // thirty-two; the order answering notes walk a chord; each voice's waveform and detune (pads four of them), and
   // when, how loud, how long and how bright each part plays, `open` the louder, brighter values of bars 9–16 and
-  // 25–32. Bars 17–20 are the breakdown, where only the parts' `breakdown` steps sound.
+  // 25–32. Bars 17–20 are the breakdown, where only the parts' `breakdown` steps sound. A kick may set its `pitch`
+  // sweep [from, to, seconds] and `length`, and `drive` it through a soft clip.
   const SONGS = [
     {
       name: "Coconut Breeze", bpm: 112,
@@ -150,39 +154,41 @@
       echo: 0.22
     },
     {
-      name: "Thunderhead Run", bpm: 140,
+      name: "Thunderhead Run", bpm: 150,
+      // A staccato riff low in the mix's middle, D minor with the phrygian E flat, then a tenser answer an octave up.
       melody: line([
-        "a4 - - . a4 - . d5 - . c5 - a4 - . .",
-        "g4 - - - f4 - - - e4 - - - . . . .",
-        "a4 - - . a4 - . f5 - . e5 - d5 - . .",
-        "c#5 - - - - - - - . . . . . . . .",
-        "a4 - - . a4 - . d5 - . c5 - a4 - . .",
-        "a#4 - - - a4 - - - g4 - - - . . . .",
-        "f4 - - . g4 - . a4 - . a#4 - a4 - . .",
-        "a4 - - - - - - - . . . . . . . .",
-        "d5 - - . d5 - . f5 - . e5 - d5 - . .",
-        "c5 - - - a#4 - - - a4 - - - . . . .",
-        "d5 - - . d5 - . g5 - . f5 - d5 - . .",
-        "e5 - - - - - - - c#5 - - - . . . .",
-        "d5 - - . a4 - . d5 - . f5 - a5 - . .",
-        "g5 - - - f5 - - - d#5 - - - . . . .",
-        "e5 - - . c5 - . e5 - . g5 - e5 - . .",
-        "c#5 - - - - - - - . . . . . . . ."
+        "d4 . . d4 . . f4 . d4 . . d#4 . . c4 .",
+        "d4 . . d4 . . f4 . g4 . f4 . d#4 . . .",
+        "d4 . . d4 . . f4 . d4 . . d#4 . . c4 .",
+        "a#3 . . a#3 . . c4 . d4 - - - . . . .",
+        "d4 . . d4 . . f4 . d4 . . d#4 . . c4 .",
+        "d4 . . d4 . . a4 . g4 . f4 . d#4 . . .",
+        "d4 . . d4 . . f4 . d4 . . d#4 . . f4 .",
+        "g4 . f4 . d#4 . d4 . c4 . a#3 . a3 - . .",
+        "d5 . . d5 . . c5 . a#4 . . a4 . . g4 .",
+        "a4 . . a4 . . a#4 . a4 . g4 . f4 . . .",
+        "d5 . . d5 . . d#5 . d5 . . c5 . . a#4 .",
+        "a4 - - - . . a#4 . a4 - - - . . . .",
+        "d5 . . d5 . . c5 . a#4 . . a4 . . g4 .",
+        "f4 . . f4 . . g4 . a4 . a#4 . c5 . . .",
+        "d5 . d5 . d#5 . d5 . c5 . a#4 . a4 . g4 .",
+        "a4 - - - - - - - . . . . . . . ."
       ]),
-      // Dm(add9), A7, Gm9, Bbmaj7, Ebmaj7 (the phrygian lift), Dm again.
-      chords: [[50, 53, 57, 64], [52, 55, 57, 61], [53, 55, 58, 62], [50, 53, 57, 58], [51, 55, 58, 62], [50, 53, 57, 62]],
-      harmony: [0, 1, 2, 1, 0, 1, 4, 1, 5, 1, 2, 1, 0, 3, 4, 1], roots: [38, 33, 31, 33, 38, 33, 39, 33, 38, 33, 31, 33, 38, 34, 39, 33],
-      walk: [3, 1, 2, 0],
-      lead: { type: "sawtooth", spread: 9, level: [0.1, 0.12], cutoff: [1500, 2100], attack: 0.01, held: true, gap: 0.02 },
-      pads: { types: ["sawtooth", "sawtooth", "sawtooth", "triangle"], spreads: [6, 4, 5, 3], level: 0.11, cutoff: [520, 760], attack: 0.4 },
-      arp: { type: "sawtooth", steps: on(3, 11), breakdown: on(11), level: 0.07, length: 1.4, cutoff: 1900, attack: 0.004 },
-      bass: { type: "sawtooth", steps: EVERY & ~on(0, 4, 8, 12), level: 0.21, length: 0.8, cutoff: 760 },
-      sub: { steps: on(0, 4, 8, 12), level: 0.4, length: 1.2 },
-      kick: { steps: on(0, 4, 8, 12), breakdown: on(0, 8), level: 0.84, soft: 0.4 },
-      clap: { steps: on(4, 12), level: 0.18 },
-      hat: { steps: on(1, 3, 5, 7, 9, 11, 13, 15), level: 0.032, length: 0.022 },
-      openHat: { steps: on(2, 6, 10, 14), level: 0.05, length: 0.08 },
-      echo: 0.2
+      // Dm, Eb (the phrygian lift), Bb/D, Cm, Gm/D, A: low and close, under a dark filter.
+      chords: [[50, 53, 57, 62], [51, 55, 58, 63], [50, 53, 58, 62], [48, 51, 55, 60], [50, 55, 58, 62], [49, 52, 57, 61]],
+      harmony: [0, 0, 1, 0, 0, 0, 1, 5, 0, 4, 1, 0, 0, 0, 1, 5], roots: [38, 38, 39, 38, 38, 38, 39, 33, 38, 31, 39, 38, 38, 38, 39, 33],
+      walk: [0, 2, 1, 3],
+      lead: { type: "sawtooth", spread: 14, level: [0.085, 0.1], cutoff: [1100, 1600], attack: 0.003, held: false, gap: 0.03 },
+      pads: { types: ["sawtooth", "sawtooth", "square", "triangle"], spreads: [9, 7, 5, 3], level: 0.07, cutoff: [380, 520], attack: 0.6 },
+      arp: { type: "square", steps: on(2, 10), breakdown: on(10), level: 0.05, length: 0.6, cutoff: 1400, attack: 0.002 },
+      // The rumble rolls on every step the kick leaves.
+      bass: { type: "sawtooth", steps: EVERY & ~on(0, 4, 8, 12), level: 0.24, length: 0.7, cutoff: 420 },
+      sub: { steps: on(0, 8), level: 0.22, length: 1 },
+      kick: { steps: on(0, 4, 8, 12), breakdown: on(0), level: 0.8, soft: 0.3, pitch: [160, 42, 0.09], length: 0.32, drive: true },
+      clap: { steps: on(4, 12), level: 0.2 },
+      hat: { steps: EVERY, level: 0.022, length: 0.018 },
+      openHat: { steps: on(2, 6, 10, 14), level: 0.06, length: 0.07 },
+      echo: 0.12
     }
   ];
   for (const song of SONGS) {
@@ -211,14 +217,15 @@
       delays.push(delay);
     }
     const voices = [];
-    const voice = (pan, count = 1, echo = false, drums = false) => {
+    const voice = (pan, count = 1, echo = false, drums = false, insert = null) => {
       const volume = ctx.createGain(), stereo = ctx.createStereoPanner(), low = ctx.createBiquadFilter();
       volume.gain.value = 0; stereo.pan.value = pan;
       low.type = "lowpass"; low.frequency.value = 1000; low.Q.value = 0.65;
       low.connect(volume); volume.connect(stereo); stereo.connect(drums ? drumBus : pump);
       if (echo) stereo.connect(echoSend);
       const tones = [], pitches = [], blend = ctx.createGain();
-      blend.gain.value = 1 / count; blend.connect(low);
+      blend.gain.value = 1 / count;
+      if (insert) { blend.connect(insert); insert.connect(low); } else blend.connect(low);
       for (let i = 0; i < count; i++) {
         const tone = ctx.createOscillator();
         tone.frequency.value = 220; tone.connect(blend); tone.start(); tones.push(tone); pitches.push(tone.frequency);
@@ -237,7 +244,8 @@
     const lead = voice(0, 3, true), bass = voice(0), sub = voice(0);
     const arps = [voice(-0.36, 1, true), voice(0.36, 1, true)];
     const pads = [voice(-0.45, 3), voice(-0.15, 3), voice(0.15, 3), voice(0.45, 3)];
-    const kick = voice(0, 1, false, true), hat = hiss("highpass", 7600, 0.25);
+    const drive = ctx.createWaveShaper(), kick = voice(0, 1, false, true, drive), hat = hiss("highpass", 7600, 0.25);
+    drive.oversample = "2x";
     const openHat = hiss("highpass", 5600, -0.2), clap = hiss("bandpass", 1700, 0);
     sub.tones[0].type = kick.tones[0].type = "sine";
     let song = SONGS[0], step = song.step, bar = song.bar;
@@ -252,6 +260,7 @@
       tune(lead, song.lead.type, song.lead.spread); tune(bass, song.bass.type, 0);
       for (const arp of arps) tune(arp, song.arp.type, 0);
       for (let p = 0; p < pads.length; p++) tune(pads[p], song.pads.types[p], song.pads.spreads[p]);
+      drive.curve = song.kick.drive ? DRIVE : null;
       delays[0].delayTime.value = step * 3; delays[1].delayTime.value = step * 6;
       echoSend.gain.value = song.echo;
     };
@@ -302,10 +311,10 @@
       envelope(v, peak, duration, at, attack, held);
     };
     const thump = (at, level) => {
-      const pitch = kick.pitches[0];
-      pitch.cancelScheduledValues(at); pitch.setValueAtTime(115, at);
-      pitch.exponentialRampToValueAtTime(47, at + 0.13);
-      envelope(kick, level, 0.24, at, 0.002);
+      const pitch = kick.pitches[0], sweep = song.kick.pitch || KICK_PITCH;
+      pitch.cancelScheduledValues(at); pitch.setValueAtTime(sweep[0], at);
+      pitch.exponentialRampToValueAtTime(sweep[1], at + sweep[2]);
+      envelope(kick, level, song.kick.length || 0.24, at, 0.002);
       // The duck follows the audible drum mix; silent scheduled kicks leave
       // the melody at full level. Drums stay outside that gain.
       duck(at);

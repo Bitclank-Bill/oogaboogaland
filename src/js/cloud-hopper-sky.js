@@ -7,8 +7,9 @@
 //   drips and hanging vines under them; two shapes pour a waterfall off the rim into mist, smaller isles hang off
 //   some on rope bridges, two Ooga balloons drift by, gulls wheel and a rainbow stands opposite the sun.
 // - `spires` (Amber Spires): towering cumulus coloured for the low sun (gold where faces turn to it, lavender where
-//   they turn away, cream on the tops, glowing a little), young ones nearer off to the sides of the course growing
-//   from the Play press, long cloud banks along the horizon, sky lanterns rising past the course and geese flying a V.
+//   they turn away, cream on the tops, glowing a little), all at one scale, young ones nearer off to the sides of the
+//   course and some of the far ones growing from the Play press, long cloud banks along the horizon, sky lanterns
+//   rising past the course and geese flying a V.
 // - `aurora` (Aurora Heights): the aurora as pixel art draws it, bright green bands curving across the sky toward the
 //   island with rays hanging from them through teal and blue to violet, stepped at every edge, rippling and swaying
 //   like waves; shooting stars; dark
@@ -61,8 +62,8 @@
   // soil, then sandstone strata tapering to a ragged keel with drips under it, and vines and roots hanging off the
   // rim. Variants 0 and 2 by day carry a stream from a pool to the rim and a waterfall off it. By night the rock is
   // slate, the grass dark moss, the flowers glowing crystals a few cells tall. A variant returns its mesh with where
-  // things stand on it: `spots` for trees, its `rim` radius every 1/32 turn, how far it reaches (`radius`) and the
-  // mist under its fall.
+  // things stand on it: `spots` for trees, its `rim` radius every 1/32 turn, how far it reaches (`radius`), its `fall`
+  // and the mist under it.
   const CELL = 0.5;
   const INKS = {
     day: ["#62bb3e", "#7ad04c", "#4e9e32", "#7a5232", "#5e3d24", "#c9a06a", "#ad8156", "#958270", "#a8a296", "#3f7a2c", "#5d9436", "#6b4a2e", "#ffd84a", "#ff8cc0", "#ffffff", "#c58bff", "#3f9ee6"],
@@ -70,7 +71,8 @@
   };
   // Palette slots: 1-3 grass, 4-5 soil, 6-9 strata, 10-12 vines and roots, 13-16 flowers (crystals at night), 17 water.
   const GRASS = 1, SOIL = 4, STRATA = 6, HANG = 10, BLOOM = 13, WATER = 17;
-  const FALL = hexToRgb("#5ab4f0"), FALL_HEIGHT = 20, RIM_STEPS = 32;
+  // A fall is the Mempool rainforest's: thick strands in its lake's moving water, each its own length (FALL_LENGTHS).
+  const FALL = hexToRgb(BL.poolModels.WATER[1]), FALL_HEIGHT = 20, FALL_LENGTHS = [0.71, 0.91, 0.82, 1, 0.88, 0.63, 0.77], RIM_STEPS = 32;
   const isle = M.variants((i) => {
     const v = i % 4, night = i >= 4, palette = INKS[night ? "night" : "day"].map(hexToRgb), rand = mulberry32(911 + v * 37);
     const R = 9 + v * 1.6 + rand() * 1.5, depth = R * (1.35 + rand() * 0.35), p1 = rand() * TAU, p2 = rand() * TAU, p3 = rand() * TAU;
@@ -162,37 +164,50 @@
       if (glow.has(f.color)) f.emissive = glow.get(f.color);
       if (f.color === water) f.water = true;
     }
-    // The fall: four strands from under the lip, curving out and down, widening as they go and ending ragged in mist.
+    // The fall, after the Mempool rainforest's: seven thick strands from under the lip, curving a little out as they
+    // drop and widening, each ending at its own height, in the lake's moving translucent water, mist under it. It is
+    // its own mesh, which each isle lays with its own flow (`standIsle`).
     const mist = [];
-    let geometry = mesh;
+    let fall = null;
+    const geometry = mesh;
     if (falls) {
-      const ribbon = M.geometry(), rim = rimAt(fa) * CELL;
+      const g = M.geometry(), rim = rimAt(fa) * CELL, ux = fz, uz = -fx, STRANDS = FALL_LENGTHS.length, W = 1.6;
       let lip = -1;
       for (let d = rimAt(fa) - 0.7; lip < 0; d -= 0.5) lip = surface[Math.floor(c + fx * d) * S + Math.floor(c + fz * d)];
-      const ly = (lip + 1 - top) * CELL - 0.03, px = -fz, pz = fx, W = 1.1, STRANDS = 4, ROWS = 10;
+      const ly = (lip + 1 - top) * CELL - 0.03, at = (u, down, front) => {
+        const t = down / FALL_HEIGHT, out = rim - 0.3 + 1.2 * Math.sqrt(t) + front, w = u * W * (1 + 0.6 * t);
+        return M.pushVert(g, out * fx + w * ux, ly - down, out * fz + w * uz);
+      };
+      const quad = (ids) => M.face(g, ids, FALL, { emissive: 0.9 });
       let low = 0;
       for (let j = 0; j < STRANDS; j++) {
-        const end = j === 0 || j === STRANDS - 1 ? 0.5 + rand() * 0.25 : 0.75 + rand() * 0.25, ids = [];
-        for (let r = 0; r <= ROWS; r++) {
-          const t = end * r / ROWS, spread = 1 + 1.4 * t, out = rim - 0.4 + 1.6 * Math.sqrt(t), y = ly - FALL_HEIGHT * Math.pow(t, 1.2);
-          const u0 = (j / STRANDS - 0.5) * W * spread, u1 = ((j + 1) / STRANDS - 0.5) * W * spread;
-          ids.push([M.pushVert(ribbon, out * fx + u0 * px, y, out * fz + u0 * pz), M.pushVert(ribbon, out * fx + u1 * px, y, out * fz + u1 * pz)]);
+        const drop = FALL_HEIGHT * FALL_LENGTHS[(j + v * 2) % STRANDS], depth = 0.18 + ((j * 3 + v) % 5) * 0.04, rows = Math.ceil(drop / 0.5);
+        let previous = null;
+        for (let i = 0; i <= rows; i++) {
+          const down = drop * i / rows, inset = down > drop - 0.8 ? 0.035 : down > drop * 0.65 ? 0.018 : 0;
+          const left = j / STRANDS - 0.5 + inset, right = (j + 1) / STRANDS - 0.5 - inset, front = depth * Math.min(1, down / 0.5);
+          const row = [at(left, down, front), at(right, down, front), at(left, down, 0), at(right, down, 0)];
+          if (previous) {
+            quad([previous[0], row[0], row[1], previous[1]]);
+            quad([previous[3], row[3], row[2], previous[2]]);
+            quad([previous[2], row[2], row[0], previous[0]]);
+            quad([previous[1], row[1], row[3], previous[3]]);
+          }
+          previous = row;
         }
-        for (let r = 0; r < ROWS; r++) {
-          const [a, b] = ids[r], [d, e] = ids[r + 1];
-          M.face(ribbon, [a, d, e, b], FALL); M.face(ribbon, [a, b, e, d], FALL);
-        }
-        low = Math.max(low, end);
+        quad([previous[0], previous[2], previous[3], previous[1]]);
+        low = Math.max(low, drop);
       }
-      for (const f of ribbon.faces) f.water = true;
-      const out = rim - 0.4 + 1.6 * Math.sqrt(low * 0.85), y = ly - FALL_HEIGHT * Math.pow(low * 0.85, 1.2);
+      for (const f of g.faces) f.lake = true;
+      g.glass = 0.64; g.castShadow = false;
+      fall = { geometry: g, ux, uz, ox: (rim - 0.3) * fx, oy: ly, oz: (rim - 0.3) * fz };
+      const t = low * 0.85 / FALL_HEIGHT, out = rim - 0.3 + 1.2 * Math.sqrt(t), y = ly - low * 0.85, px = -fz, pz = fx;
       mist.push({ x: out * fx, y, z: out * fz, size: 1.9 }, { x: (out + 1.2) * fx + px * 1.3, y: y - 1.2, z: (out + 1.2) * fz + pz * 1.3, size: 1.3 });
-      geometry = M.merge(mesh, ribbon);
     }
     geometry.castShadow = false;
     const rim = new Float32Array(RIM_STEPS);
     for (let k = 0; k < RIM_STEPS; k++) rim[k] = rimAt(k / RIM_STEPS * TAU) * CELL;
-    return { geometry, spots, rim, mist, hangs, radius: R * 1.3 * CELL, lip: -2 * CELL };
+    return { geometry, fall, spots, rim, mist, hangs, radius: R * 1.3 * CELL, lip: -2 * CELL };
   });
   // An Ooga hut for the biggest isle: a round wattle wall with a doorway under a thatched cone.
   const hut = M.cached(() => {
@@ -239,6 +254,8 @@
   });
   // A rainbow: seven bands round a unit arc. Its local x runs down from the crown to the feet, so the beam's fade,
   // full at the crown, dissolves the feet; y runs across it.
+  // How far behind the island's middle the rainbow stands (m), and its radius.
+  const RAINBOW = { behind: 220, size: 430 };
   const rainbow = M.cached(() => {
     const g = M.geometry(), BANDS = ["#ff4d4d", "#ff9b3d", "#ffe34f", "#62e06c", "#4cb2ff", "#5d6cff", "#a66cff"], SEGS = 64, W = 0.016;
     for (let b = 0; b < BANDS.length; b++) {
@@ -316,10 +333,12 @@
   // A towering cumulus five metres a cell: billows stacked up a leaning axis, narrowing as they climb, each with a
   // few smaller billows round it, under an anvil spread across the top (or, on variant 1, a rounded crown).
   const SPIRE_CELL = 5;
-  // Amber Spires' young towers: their scale and how far off the course they stand (least and spread), and in seconds
-  // from the Play press: how long after one the next starts, how far apart its billows start to puff up the column
-  // and how long each takes, and when its top starts to spread out over it and how long that takes.
-  const YOUNG = { scale: [0.8, 0.15], across: [220, 50], every: 2.5, gap: 1.4, puff: 3.5, top: 12, spread: 5 };
+  // Every Amber Spires tower stands at one scale, so their blocks match and the near ones tower over the course.
+  const SPIRE_SCALE = 1.3;
+  // Its young towers: how far off the course they stand (least and spread), and in seconds from the Play press: how
+  // long after one the next starts, how far apart a tower's billows start to puff up the column and how long each
+  // takes, and when its top starts to spread out over it and how long that takes.
+  const YOUNG = { across: [220, 50], every: 2.5, gap: 1.4, puff: 3.5, top: 12, spread: 5 };
   // A tower's lobes in cells ([x, y, z, rx, ry, rz]): its column's nine billows, each followed by its three small
   // ones, then its anvil or crown.
   const spireLobes = (v) => {
@@ -406,8 +425,15 @@
   const RAY_GLASS = [0.42, 0.5];
   const ray = M.variants((kind) => {
     const g = M.geometry(), inks = RAY_INKS[kind].map(hexToRgb), ids = [];
-    for (const r of RAY_ROWS) ids.push([M.pushVert(g, r, 0, -0.5), M.pushVert(g, r, 0, 0.5)]);
-    for (let r = 0; r < inks.length; r++) M.face(g, [ids[r][0], ids[r][1], ids[r + 1][1], ids[r + 1][0]], inks[r], { emissive: 1 });
+    // Each band in two, its lower half a step toward the next band's ink, for a finer grain.
+    for (let r = 0; r < RAY_ROWS.length; r++) {
+      ids.push([M.pushVert(g, RAY_ROWS[r], 0, -0.5), M.pushVert(g, RAY_ROWS[r], 0, 0.5)]);
+      if (r < inks.length) { const m = (RAY_ROWS[r] + RAY_ROWS[r + 1]) / 2; ids.push([M.pushVert(g, m, 0, -0.5), M.pushVert(g, m, 0, 0.5)]); }
+    }
+    for (let r = 0; r < inks.length * 2; r++) {
+      const ink = r % 2 ? mix(inks[r >> 1], inks[Math.min(inks.length - 1, (r >> 1) + 1)], 0.5) : inks[r >> 1];
+      M.face(g, [ids[r][0], ids[r][1], ids[r + 1][1], ids[r + 1][0]], ink, { emissive: 1 });
+    }
     g.glass = RAY_GLASS[kind]; g.lightBeam = 2; g.castShadow = false;
     return g;
   });
@@ -537,7 +563,7 @@
   // The flash strobes twice, then decays: full, a dip, a second bright, the tail (weather.js's own envelope).
   const flashAt = (t) => t < 0.08 ? 1 : t < 0.14 ? 0.25 : t < 0.22 ? 0.85 : 0.85 * Math.exp(-(t - 0.22) / 0.12);
   // A bolt, unit height from its top (y 1) down to its foot (0): a jagged trunk with forks, two crossed ribbons so
-  // it reads from any side, one shape a variant.
+  // it reads from any side, one shape a variant; it shows through most of the haze.
   const bolt = M.variants((v) => {
     const g = M.geometry(), rand = mulberry32(4242 + v * 131), ink = hexToRgb("#f2ecff"), lit = { emissive: 1 }, w = 0.007;
     const segment = (x0, y0, x1, y1, width) => {
@@ -556,7 +582,7 @@
       }
       x = nx; y = ny;
     }
-    g.castShadow = false;
+    g.castShadow = false; g.fogPierce = 0.8;
     return g;
   });
   // Scud: the island's cloud in a storm's dark slate, unlit by any glow, for the cartoon cumulus shading to grey.
@@ -652,6 +678,15 @@
     const standIsle = (shape, x, y, z, s, spin) => {
       const base = node(shape.geometry, x, y, z, s);
       base.rotation.y = spin;
+      if (shape.fall) {
+        // Its fall flows as the Mempool rainforest's do: the lake's water runs down it from the lip, its texture laid
+        // across it and down it in metres, from where this isle stands. Canvas 2D draws a face from one side only.
+        const f = shape.fall, c = Math.cos(spin), n = Math.sin(spin), ax = f.ux * c + f.uz * n, az = -f.ux * n + f.uz * c;
+        const ox = x + (f.ox * c + f.oz * n) * s, oz = z + (-f.ox * n + f.oz * c) * s;
+        const geometry = { ...f.geometry, lakeFlow: new Float32Array([ax, 0, az, -ax * ox - az * oz, 0, -1, 0, y + f.oy * s]) };
+        if (lite) geometry.faces = [...f.geometry.faces, ...f.geometry.faces.map((face) => ({ ...face, i: [...face.i].reverse() }))];
+        node(geometry, 0, 0, 0, 1, base);
+      }
       for (const m of shape.mist) {
         const holder = node(null, m.x, m.y, m.z, 1, base);
         addChild(holder, BL.cloudHopperModels.cloud(m.size, m.size * 0.8, m.size * 0.7, "normal", spin));
@@ -715,8 +750,8 @@
           holder.rotation.y = ph + time * 0.04; holder.rotation.z = Math.sin(time * 0.5 + ph) * 0.03;
         });
       }
-      // The rainbow, its crown over the horizon opposite the sun, facing the island.
-      const sun = sunAt(level.sky.hour), a = Math.atan2(-sun.z, -sun.x), r = 560, size = 330;
+      // The rainbow, centred over the island beyond it as the course sees it, facing the course.
+      const a = Math.atan2(-route.nz, -route.nx), r = RAINBOW.behind, size = RAINBOW.size;
       const arc = node(rainbow(), route.finish.x + Math.cos(a) * r, seaY + size, route.finish.z + Math.sin(a) * r, size);
       arc.rotation.z = -Math.PI / 2; arc.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
       reached(arc.position.x, seaY + size, arc.position.z, size);
@@ -731,10 +766,28 @@
 
     const spires = (level, course, rand) => {
       const sun = sunAt(level.sky.hour), sl = Math.hypot(sun.x, sun.z) || 1, sunX = sun.x / sl, sunZ = sun.z / sl, { finish } = route;
+      // Towers that grow from the Play press, starting at `at`: billow after billow puffs up out of the one below and
+      // flows up the column, then the top spreads out over it. Each is its tower's pieces on nodes of its own, eased
+      // into place until all have grown.
+      const towers = [], from = new Float32Array(16), s = SPIRE_SCALE;
+      let grownAt = 0, grown = false;
+      const grow = (v, x, y, z, at) => {
+        const tower = createNode({ position: { x, y, z }, scale: { x: s, y: s, z: s }, sightHidden: true });
+        for (const piece of spirePieces(v, sunX, sunZ)) {
+          renderer?.prepareGeometry(piece.geo);
+          const n = createNode({ geometry: piece.geo, position: { x: piece.x, y: piece.y, z: piece.z }, visible: false, matrixCloud: true, sightHidden: true });
+          n.piece = piece;
+          addChild(tower, n);
+        }
+        from[towers.length] = at; grownAt = Math.max(grownAt, at + YOUNG.top + YOUNG.spread);
+        towers.push(tower); addChild(scenery, tower);
+      };
+      // Far round the island, four of them growing too (standing grown on Canvas 2D).
       for (let k = 0; k < 10; k++) {
-        const a = route.ahead + (k % 2 ? 1 : -1) * (0.15 + rand() * 1.2), r = 420 + rand() * 330, s = 0.8 + rand() * 0.45;
-        const x = finish.x + Math.cos(a) * r, z = finish.z + Math.sin(a) * r, y = seaY + 25 + rand() * 20, geo = spire(k % 3, sunX, sunZ);
-        node(geo, x, y, z, s).matrixCloud = true;
+        const a = route.ahead + (k % 2 ? 1 : -1) * (0.15 + rand() * 1.2), r = 420 + rand() * 330;
+        const x = finish.x + Math.cos(a) * r, z = finish.z + Math.sin(a) * r, y = seaY + 25 + rand() * 20;
+        if (!lite && k % 5 % 2) grow(k % 3, x, y, z, 1.2 + 3 * towers.length);
+        else node(spire(k % 3, sunX, sunZ), x, y, z, s).matrixCloud = true;
         reached(x, y + 230 * s, z, 110 * s);
       }
       // Banks round the horizon, gold where they face the sun and dusky where they do not.
@@ -773,27 +826,14 @@
         }
         geese.instanceVersion++;
       });
-      // Young towers off to the sides of the course, nearer than the rest, growing from the Play press one after another
-      // down the course (`YOUNG`): billow after billow puffs up out of the one below and flows up the column, then the
-      // top spreads out over it. Each is its tower's pieces on nodes of its own, eased into place until all have grown.
-      const towers = [], from = new Float32Array(6);
+      // Young towers off to the sides of the course, nearer than the rest, growing one after another down it (`YOUNG`).
       for (let k = 0; k < 6; k++) {
-        const t = 0.92 - 0.13 * k, s = YOUNG.scale[0] + rand() * YOUNG.scale[1], pieces = spirePieces(k % 3, sunX, sunZ);
-        const p = place(course, t, (k % 2 ? 1 : -1) * (YOUNG.across[0] + rand() * YOUNG.across[1]), 100 * s);
+        const p = place(course, 0.92 - 0.13 * k, (k % 2 ? 1 : -1) * (YOUNG.across[0] + rand() * YOUNG.across[1]), 100 * s);
         if (!p) continue;
-        const tower = createNode({ position: { x: p.x, y: seaY + 20 + rand() * 15, z: p.z }, scale: { x: s, y: s, z: s }, sightHidden: true });
-        for (const piece of pieces) {
-          renderer?.prepareGeometry(piece.geo);
-          const n = createNode({ geometry: piece.geo, position: { x: piece.x, y: piece.y, z: piece.z }, visible: false, matrixCloud: true, sightHidden: true });
-          n.piece = piece;
-          addChild(tower, n);
-        }
-        from[towers.length] = k * YOUNG.every;
-        towers.push(tower); addChild(scenery, tower);
-        reached(p.x, tower.position.y + 250 * s, p.z, 100 * s);
+        const x = p.x, z = p.z, y = seaY + 20 + rand() * 15;
+        grow(k % 3, x, y, z, k * YOUNG.every);
+        reached(x, y + 250 * s, z, 100 * s);
       }
-      const grownAt = towers.length ? from[towers.length - 1] + YOUNG.top + YOUNG.spread : 0;
-      let grown = false;
       movers.push((time) => {
         if (grown) return;
         for (let i = 0; i < towers.length; i++) {
@@ -873,53 +913,84 @@
       // The aurora, drawn as pixel art draws it: bright green bands curving across the sky, rays hanging from them
       // through teal and blue to violet and fading to ragged tips. Each band arcs from high beside the start down
       // along the course toward the island, closing in on it (`RIBBONS`: an inner pair and an outer pair, wider),
-      // winding from side to side and rising and dipping as it goes, so it curls. A ribbon is pixel columns laid edge
+      // winding from side to side and rising and dipping as it goes, so it curls; and a pair overhead winds back and
+      // forth across the course all the way down, its heights over the course beneath it (`above`), rising and
+      // dipping less and its rays hanging short of the course, the two side by side at one height and in step (one
+      // `wave`), so they never cross. Every band reaches on behind the starting cloud at its height there, a side band
+      // drawing in toward the course, so it hangs in the view back. A ribbon is pixel columns laid edge
       // to edge along its band, so it turns unbroken through its bends; each hangs its own length, the band's edge
       // stepping by `STEP` and each tip by the column's width (`px`) so they are staircases, and each glows its own
       // brightness, flickering, so the rays are streaked. Every column is fill, so the quality tiers draw fewer (Canvas 2D the
       // outer pair alone).
       const RIBBONS = [
-        { kind: 1, from: -230, to: -110, high: 110, low: -60, hang: 150, wind: 70, px: 6 },
-        { kind: 1, from: 240, to: 120, high: 120, low: -55, hang: 160, wind: 75, px: 6 },
-        { kind: 0, from: -430, to: -220, high: 170, low: -20, hang: 200, wind: 100, px: 8 },
-        { kind: 0, from: 440, to: 230, high: 180, low: -15, hang: 210, wind: 100, px: 8 }];
+        { kind: 1, from: -230, to: -110, high: 110, low: -60, hang: 150, wind: 70, px: 4 },
+        { kind: 1, from: 240, to: 120, high: 120, low: -55, hang: 160, wind: 75, px: 4 },
+        { kind: 0, from: -430, to: -220, high: 170, low: -20, hang: 200, wind: 100, px: 5 },
+        { kind: 0, from: 440, to: 230, high: 180, low: -15, hang: 210, wind: 100, px: 5 },
+        { kind: 1, from: -55, to: -55, high: 120, low: 105, hang: 60, wind: 18, px: 4, above: true, wave: 1.3 },
+        { kind: 1, from: 55, to: 55, high: 120, low: 105, hang: 60, wind: 18, px: 4, above: true, wave: 1.3 }];
       // The band's edge steps by `STEP` metres, finer than a column is wide, so it climbs and falls in small stairs.
-      const STEP = 3;
-      // From a little behind the start (t 1.08) out over the island (t -0.1); the bands' heights are over the start's.
-      const BEHIND = 1.08, BEYOND = -0.1, length = (route.length - SHORE) * (BEHIND - BEYOND), base = routeY(1), curtains = [];
+      const STEP = 2;
+      // From well behind the starting cloud (t 1.5) out over the island (t -0.1). A band is laid out from a little
+      // behind the start (START, t 1.08) to BEYOND, its heights over the start's (an overhead band's over the course
+      // beneath it); past START it keeps its height there, and a side band draws in toward the course by DRAW of its
+      // distance from it for each length of the course it goes on.
+      const BEHIND = 1.5, START = 1.08, BEYOND = -0.1, DRAW = 1.7;
+      const length = (route.length - SHORE) * (BEHIND - BEYOND), base = routeY(1), curtains = [];
+      // Now and then a ribbon sweeps away from one end to the other in SWEEP seconds, stays gone a while and sweeps
+      // back in from one end, each on its own cycle, so some leave while others return; none leaves before a few
+      // seconds of the run have passed. EDGE is the soft front's share of the ribbon.
+      const SWEEP = 2, EDGE = 0.08;
       const layers = [0, 1].filter((kind) => !lite || kind === 0).map((kind) => {
         const mine = RIBBONS.filter((r) => r.kind === kind);
-        const counts = mine.map((r) => Math.max(12, Math.round(length / r.px * (lite ? 0.15 : tier)))), total = counts.reduce((a, b) => a + b, 0);
+        const counts = mine.map((r) => Math.max(12, Math.round(length / r.px * (lite ? 0.08 : tier)))), total = counts.reduce((a, b) => a + b, 0);
         const sheet = batch(ray(kind), total);
         const layer = { node: sheet, data: sheet.instanceData, wide: new Float32Array(total), beat: new Float32Array(total), base: RAY_GLASS[kind] };
         for (let i = 0; i < total; i++) { layer.wide[i] = 0.7 + rand() * 0.8; layer.beat[i] = rand() * TAU; }
         let first = 0;
         mine.forEach((r, n) => {
+          const phase = rand() * TAU, cycle = 24 + rand() * 14, gone = 3 + rand() * 4, shown = cycle - 2 * SWEEP - gone;
           const curtain = { layer, first, rays: counts[n], from: r.from, to: r.to, high: r.high, low: r.low, h: r.hang * (0.9 + rand() * 0.2), wind: r.wind,
-            phase: rand() * TAU, px: length / counts[n] };
+            phase, wave: r.wave ?? phase, px: length / counts[n], above: !!r.above,
+            cycle, gone, shown, order: curtains.length, lag: shown - Math.min(shown, 6 + 4 * curtains.length) };
           first += counts[n];
           curtains.push(curtain);
-          for (const t of [BEHIND, 0.5, BEYOND]) { const p = at(t, r.from + (r.to - r.from) * (BEHIND - t) / (BEHIND - BEYOND)); reached(p.x, base + r.high, p.z, r.wind * 2.2); }
         });
         addChild(scenery, sheet);
         return layer;
       });
       // Where a ribbon's band runs at s along it (0 behind the start, 1 over the island) at `time`, into P: high beside
-      // the start, down toward the island, winding and rising and dipping as it goes. It flows: ripples run along it
-      // toward the island and back, and the whole ribbon sways from side to side and back.
+      // the start, down toward the island, winding and rising and dipping as it goes. It drifts slowly, as a real aurora
+      // does: gentle ripples run along it toward the island and back, and the whole ribbon sways from side to side and
+      // back over half a minute or so.
       const P = { x: 0, y: 0, z: 0 };
-      const point = (c, s, time) => {
-        const t = BEHIND + (BEYOND - BEHIND) * s, ph = c.phase;
-        const across = c.from + (c.to - c.from) * s + c.wind * (Math.sin(TAU * 1.5 * s + 0.2 * time + ph) + 0.3 * Math.sin(TAU * 3.1 * s - 0.3 * time + 2 * ph)
-          + 0.32 * Math.sin(TAU * 2.6 * s - 0.9 * time + 3 * ph) + 0.18 * Math.sin(TAU * 4.3 * s + 1.3 * time + ph)
-          + 0.3 * Math.sin(0.55 * time + ph) * Math.sin(Math.PI * s + 0.3 * Math.sin(0.4 * time)));
+      const point = (c, q, time) => {
+        const t = BEHIND + (BEYOND - BEHIND) * q, s = (START - t) / (START - BEYOND), ph = c.wave;
+        const lane = s < 0 && !c.above ? c.from * (1 + s * DRAW) : c.from + (c.to - c.from) * s;
+        const across = lane + c.wind * (Math.sin(TAU * 1.5 * s + 0.06 * time + ph) + 0.3 * Math.sin(TAU * 3.1 * s - 0.09 * time + 2 * ph)
+          + 0.2 * Math.sin(TAU * 2.6 * s - 0.25 * time + 3 * ph) + 0.08 * Math.sin(TAU * 4.3 * s + 0.35 * time + ph)
+          + 0.18 * Math.sin(0.16 * time + ph) * Math.sin(Math.PI * s + 0.3 * Math.sin(0.11 * time)));
         const p = at(t, across);
-        P.x = p.x; P.y = base + c.high + (c.low - c.high) * s + 22 * Math.sin(TAU * 2.2 * s + 0.35 * time + 2 * ph)
-          + 9 * Math.sin(TAU * 3.4 * s - 1.1 * time + ph) + 6 * Math.sin(0.7 * time + 2 * ph); P.z = p.z;
+        P.x = p.x; P.y = (c.above ? routeY(Math.min(t, START)) : base) + c.high + (c.low - c.high) * Math.max(0, s) + (c.above ? 0.4 : 1) * (22 * Math.sin(TAU * 2.2 * s + 0.1 * time + 2 * ph)
+          + 5 * Math.sin(TAU * 3.4 * s - 0.3 * time + ph) + 3 * Math.sin(0.2 * time + 2 * ph)); P.z = p.z;
       };
+      for (const c of curtains) for (const q of [0, 0.5, 1]) { point(c, q, 0); reached(P.x, P.y, P.z, c.wind * 2.2); }
       movers.push((time) => {
         for (let n = 0; n < curtains.length; n++) {
           const c = curtains[n], { data, wide, beat: phase } = c.layer, px = c.px;
+          // Where its cycle stands: shown, sweeping away (1), gone (2) or sweeping back (3), `u` how far a sweep has
+          // come and `back` whether it runs from the island's end; a cycle's way out and way back each pick an end.
+          const at = time + c.lag, round = Math.floor(at / c.cycle), local = at - round * c.cycle - c.shown;
+          let mode = 0, u = 0, back = 0;
+          if (local >= 0) {
+            if (local < SWEEP) { mode = 1; u = local / SWEEP; back = (round + c.order) & 1; }
+            else if (local < SWEEP + c.gone) mode = 2;
+            else { mode = 3; u = (local - SWEEP - c.gone) / SWEEP; back = ((round >> 1) + c.order) & 1; }
+          }
+          if (mode === 2) {
+            for (let i = 0; i < c.rays; i++) write(data, (c.first + i) * 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            continue;
+          }
           // Each column spans the band from one point on its line to the next, so it runs on unbroken through its turns,
           // and hangs from it its own length.
           point(c, 0, time);
@@ -927,21 +998,29 @@
           for (let i = 0; i < c.rays; i++) {
             const s = (i + 0.5) / c.rays, j = c.first + i;
             point(c, (i + 1) / c.rays, time);
+            // A sweep's soft front: the columns it has passed are gone (on the way out) or back (on the way back).
+            let k = 1;
+            if (mode) {
+              const a = Math.max(0, Math.min(1, ((back ? 1 - s : s) - u * (1 + EDGE) + EDGE) / EDGE));
+              k = mode === 1 ? a : 1 - a; k = k * k * (3 - 2 * k);
+              if (k <= 0) { write(data, j * 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); lx = P.x; ly = P.y; lz = P.z; continue; }
+            }
             // Rays come in streaks several columns wide, bright and dim, long and short, drifting along the band.
             const taper = Math.sqrt(Math.min(1, s * 14, (1 - s) * 5)), w = wide[j] - 1.1;
-            const streak = 0.5 + 0.3 * Math.sin(TAU * 6.3 * s + 0.5 * time + c.phase) + 0.2 * Math.sin(TAU * 17 * s - 0.7 * time + 3 * c.phase);
-            const h = px * Math.max(1, Math.round(c.h * taper * (0.5 + 0.22 * Math.sin(TAU * 3.7 * s + 0.4 * time + c.phase) + 0.12 * Math.sin(TAU * 11 * s - 0.6 * time + 2 * c.phase) + 0.15 * w) / px));
+            const streak = 0.5 + 0.28 * Math.sin(TAU * 6.3 * s + 0.15 * time + c.phase) + 0.16 * Math.sin(TAU * 17 * s - 0.2 * time + 3 * c.phase)
+              + 0.1 * Math.sin(TAU * 41 * s + 0.3 * time + 5 * c.phase);
+            const h = px * Math.max(1, Math.round(c.h * taper * k * (0.5 + 0.22 * Math.sin(TAU * 3.7 * s + 0.12 * time + c.phase) + 0.12 * Math.sin(TAU * 11 * s - 0.18 * time + 2 * c.phase) + 0.15 * w) / px));
             const top = STEP * Math.round((ly + P.y) / 2 / STEP);
             const dx = P.x - lx, dz = P.z - lz, l = Math.hypot(dx, dz) || 1;
             write(data, j * 20, 0, -h * 1.25, 0, -dz / l, 0, dx / l, dx, 0, dz, (lx + P.x) / 2, top, (lz + P.z) / 2);
-            data[j * 20 + 16] = (0.35 + 0.75 * streak + 0.25 * w) * (0.9 + 0.1 * Math.sin(1.3 * time + phase[j]));
+            data[j * 20 + 16] = k * (0.35 + 0.75 * streak + 0.25 * w) * (0.92 + 0.08 * Math.sin(0.5 * time + phase[j]));
             lx = P.x; ly = P.y; lz = P.z;
           }
         }
         for (let n = 0; n < layers.length; n++) {
           const layer = layers[n];
           layer.node.instanceVersion++;
-          layer.node.geometry.glass = layer.base * (0.85 + 0.15 * Math.sin(time * 0.6 + n));
+          layer.node.geometry.glass = layer.base * (0.88 + 0.12 * Math.sin(time * 0.25 + n));
         }
       });
       if (lite) return;
@@ -1075,5 +1154,5 @@
     const dispose = () => { clear(); removeChild(root, scenery); };
     return { build, update, clear, dispose, get flash() { return flash; } };
   };
-  BL.cloudHopperSky = { DAY, create, grade, flash: flashSky };
+  BL.cloudHopperSky = { DAY, create, grade, flash: flashSky, bolt };
 })();

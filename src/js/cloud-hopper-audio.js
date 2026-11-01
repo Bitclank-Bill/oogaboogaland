@@ -6,7 +6,7 @@
   const MASTER = 0.45, CLOUD_VOICES = 6, CLOUD_NEAR = 4, CLOUD_FAR = 50, WARN_VOICES = 3, WARN_FAR = 40;
   // Power-up and storm cues: pooled tones and filtered-noise voices, two thunder voices, the rain's bed and a
   // tornado's roar (`ROAR` at its loudest).
-  const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.055, ROAR = 0.3;
+  const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.011, ROAR = 0.3;
   const BACKGROUND_AHEAD = 2, BACKGROUND_MS = 250;
   const create = () => {
     let ctx = null, master = null, musicGain = null, jetGain = null, jetTone = null, jetWhine = null, jetFilter = null, music = null;

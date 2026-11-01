@@ -924,7 +924,8 @@
               const cg = lerp(c[1] * scorch, heat * (0.12 + ember * 0.85), ember * 0.9);
               const cb = lerp(c[2] * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
               const tip = node.tip > 1.5 ? 0 : node.tip || 0;
-              const fog = localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear)));
+              const fog = (localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear))))
+                * (1 - (node.geometry.fogPierce || 0));
               const beam = localMatrixGlyph ? 0 : spotEnergy(centerX, centerY, centerZ, nx, ny, nz) * (1 - Math.min(1, emissive));
               let pointR = 0, pointG = 0, pointB = 0;
               if (!localMatrixGlyph) for (let i = 0; i < pointLightCount; i++) {

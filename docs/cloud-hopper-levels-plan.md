@@ -212,6 +212,11 @@ play-testing within the stated bounds.
 
 Notes on the table:
 
+- **Since built (November 2026):** the long-lived class is gone. Every cloud is permanent or ordinary, and each
+  level's timing (`cloud-hopper-levels.js`) sets its blend and clocks: permanent 80%, 70%, 60% and 50% (L1–L4);
+  ordinary clouds solid a median 22.5, 20, 17.5 and 15 s between disappearances; warning then fade 3 + 1,
+  2.5 + 0.875, 2 + 0.75 and 1.5 + 0.625 s; hidden 1.5–3, 2–3.5, 2.5–4 and 3–4.5 s. The rows below are the
+  original plan.
 - **Classes**: P permanent, L long-lived, O ordinary, C crumble (see 2.4).
 - **Alternatives** include fork detour chains in L3 and L4.
 - **Camera far** is `max(900, hypot(startRadius, startHeight) + 150)`, set on entering
@@ -419,7 +424,7 @@ changes as the ride up begins, without a blend. L4's storm came in milestone 12 
 
 A detail pass after milestone 8 replaced the first scenery: L1's isles are voxel isles with strata, drips, vines,
 flowers, palms, trees and a hut, two pour a waterfall into mist, smaller isles hang on rope bridges, and two Ooga
-balloons, wheeling gulls and a rainbow opposite the sun join them; L2's spires are cumulus coloured face by face
+balloons, wheeling gulls and a rainbow join them (later a great one centred over the island, and the waterfalls the Mempool island's lake water); L2's spires are cumulus coloured face by face
 for the low sun, with banks along the horizon, rising sky lanterns and geese in a V; L3's aurora is curtains of
 instanced rays round the course's middle whose folds ripple and rays flicker, under a violet crown, with shooting
 stars, dark crystal isles with glowing vines and great turning crystals. Measured unlocked at 1920x1080 against
@@ -446,7 +451,9 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
   page against the same view without it, the storm costs nothing at 1920x1080 on High. Tornadoes came after
   (cloud-hopper-tornado.js): a spot in the storm turns, a giant voxel tornado after the maintainer's reference (stacked
   stepped slabs, white to deep blue) lowers through the course and drifts across it, swirling the clouds near it and
-  carrying the Ooga round its outside until it ropes out.* (The plan had: storm haze
+  carrying the Ooga round its outside until it ropes out. Later it brewed over seeded spots until the rider came near,
+  came down from 75 m over the clouds there, and grew strong enough to draw clouds and Ooga in, round and up; an Ooga
+  drawn into the funnel is spun up its wall and thrown out of the top, a DQ with its own card.* (The plan had: storm haze
   with `fogNear` 70 m and `fogFar` 260 m.)
   - Within 70 m nothing is fogged. At 120 m (about four hops) a cloud is 26% fogged, so
     nearby landings and their warnings stay clear. Beyond 260 m clouds are hidden, which is
@@ -467,7 +474,7 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
 - **Music.** *Built.* Each level has its own score in `cloud-hopper-music.js`, written for
   its sky: Coconut Breeze (L1, bright tropical pluck-pop), Golden Hour Groove (L2, upbeat
   sunset disco-synthwave), Cloudbreak Sprint (L3, the original trance score) and Thunderhead Run
-  (L4, dark driving trance). All four keep the old score's rules: one transport through the
+  (L4, dark driving trance, later 150 BPM hard techno with a driven kick). All four keep the old score's rules: one transport through the
   dock, ascent, race, results and replays, with only the drums following the race and
   entering and leaving on bar lines. Choosing another level card starts its song on the
   playing song's next beat and crossfades the two over 2.5 s. The dock plays the level last

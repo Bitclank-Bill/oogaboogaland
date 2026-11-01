@@ -9,7 +9,9 @@
     ready: ["Race to the banana pile", "Leave this cloud to start · J toggles a collected jetpack. Extra packs refill fuel."],
     running: ["Reach the banana pile", "Space jumps / holds jetpack lift · release to fall · J toggles your jetpack"],
     won: ["Banana pile reached!", "A clean landing and a time to beat."],
-    dq: ["Disqualified", "Splash! No cloud was within reach."]
+    dq: ["Disqualified", "Splash! No cloud was within reach."],
+    // A run lost to a tornado says so, under its own picture.
+    swept: ["Disqualified", "Swept up and thrown out of the tornado!"]
   };
   const GUIDE = [
     ["normal", "Drifting clouds", "WASD or arrows move, Shift runs and Space jumps. Leave the starting cloud to start the clock. A cloud shimmers and whistles before it fades, so jump for one that isn't shimmering; some clouds never fade at all."],
@@ -20,7 +22,7 @@
   ];
   // The power-ups, each introduced the first time a session plays a level that carries it.
   const ITEMS = {
-    xray: ["xray", "X-ray goggles", "Take the stone goggles to see how long each nearby cloud has before it fades, for 12 seconds (15 in the storm). A gold ∞ marks a cloud that never fades, a red ring one that is about to, and a dashed ring counts down until a cloud comes back."],
+    xray: ["xray", "X-ray goggles", "Take the stone goggles to see how long each nearby cloud has before it fades, for 30 seconds. A gold ∞ marks a cloud that never fades, a red ring one that is about to, and a dashed ring counts down until a cloud comes back."],
     updraft: ["updraft", "Sky feather", "Carry one feather at a time. Once both your jumps are spent and you wear no fuelled jetpack, Space lets it go: a gust throws you about eight metres up."],
     hook: ["hook", "Grappling hook", "Aim at a cloud and click to throw: hold to be reeled toward it, let go to fly on as the hook comes back. A cloud in reach shows a gold ring. Miss, and the hook is gone. On a pad it is RT; on a touch screen, hold the HOOK button."]
   };
@@ -340,6 +342,9 @@
       (on ? play : nextOpen() ? next : play).focus({ preventScroll: true });
     };
     let helpText = "";
+    // How the next lost run was lost: "water" or "tornado" (`setDq`).
+    let dqKind = "water";
+    const setDq = (kind) => { dqKind = kind; };
     const resultHelp = () => { panelHelp.textContent = helpText; };
     const show = (to, time = 0, scores = [], latest = null) => {
       if (disposed || !COPY[to]) return;
@@ -350,7 +355,7 @@
       phase = to; picking = false;
       clearActivation();
       panel.classList.remove("cloud-hopper-picking");
-      const copy = COPY[to], intro = to === "intro", briefing = to === "briefing";
+      const copy = to === "dq" && dqKind === "tornado" ? COPY.swept : COPY[to], intro = to === "intro", briefing = to === "briefing";
       panel.classList.toggle("cloud-hopper-dq", to === "dq");
       panel.classList.toggle("cloud-hopper-intro", intro);
       panel.classList.toggle("cloud-hopper-guide", briefing);
@@ -379,8 +384,11 @@
         guideArt.hidden = back.hidden = !briefing;
         resultArt.hidden = !ended;
         if (ended) {
-          resultArt.src = BL.cloudHopperArt[to === "dq" ? "rekt" : best ? "best" : "complete"];
-          resultArt.alt = to === "dq" ? "Ooga rekt underwater after the fall."
+          const swept = to === "dq" && dqKind === "tornado", art = BL.cloudHopperArt[swept ? "swept" : to === "dq" ? "rekt" : best ? "best" : "complete"];
+          // The tornado's picture is still to come; until it does its card shows none.
+          resultArt.hidden = !art;
+          if (art) resultArt.src = art;
+          resultArt.alt = swept ? "Ooga flung spinning out of the top of the tornado." : to === "dq" ? "Ooga rekt underwater after the fall."
             : best ? "Ooga celebrating a new session best time." : "Ooga celebrating a completed run at the banana pile.";
         }
         panel.setAttribute("aria-describedby", ended ? `${resultArt.id} ${panelHelp.id}` : intro ? `${goal.id} ${panelHelp.id}` : panelHelp.id);
@@ -449,7 +457,7 @@
       shownXray = xray; shownFeather = feather; shownHook = hook;
       powers.hidden = xray < 0 && !feather && hook < 0;
     };
-    return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, hide, dispose, get frameY() { return frameY; } };
+    return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, setDq, hide, dispose, get frameY() { return frameY; } };
   };
   BL.cloudHopperHud = { create };
 })();
