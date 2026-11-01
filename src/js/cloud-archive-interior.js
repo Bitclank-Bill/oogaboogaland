@@ -38,7 +38,7 @@
   const CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, TV_W = 480, TV_H = 360, SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.35;
   const READ_REACH = 1.4, READ_FACING = 0.45, FOOT_REACH = 1.8;
   const ARRIVAL_PITCH = -0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
-  // Authors are identities as git recorded them (linked accounts and unlinked git names); automation, agents and
+  // Authors are identities (GitHub accounts and unlinked contributors); automation, agents and
   // organisations are counted apart and never as people.
   const AUTHOR = { account: true, unconfirmed: true, unlinked: true };
   const dayStats = (day) => {
@@ -59,9 +59,12 @@
   // When, and against how many PR refs, the matches were read: they depend on that snapshot as well as on the revision.
   const REFS = DATA.provenance.pullRefs;
   const PULL_REFS = `${REFS.fetchedAt ? REFS.fetchedAt.slice(0, 16).replace("T", " ") + " UTC" : "from a saved list"} (${REFS.count} refs, digest ${REFS.digest.slice(0, 12)})`;
-  // An unlinked identity is a name as written in git, not a GitHub account, and says so. (An uncertain one's label
-  // already says it is unconfirmed.)
-  const label = (p) => DATA.people[p].kind === "unlinked" ? `${DATA.people[p].label} (git name)` : DATA.people[p].label;
+  // Labels are GitHub logins or the neutral "unlinked contributor" (never a git display name), as the data has them.
+  const label = (p) => DATA.people[p].label;
+  // Which authors' records the snapshot was built from, said on every board.
+  const RECORDS = DATA.provenance.authorRecords, AUTHORS_NOTE = RECORDS.mode === "github"
+    ? `Authors are the GitHub logins GitHub's records link each commit to (read ${RECORDS.readAt.slice(0, 10)}): its records, not proof of who owns an account today. "Unlinked contributor" marks a commit GitHub links to no account.`
+    : `This build has no GitHub author records yet, so an account is shown only where a commit used a GitHub noreply address; every other author is an "unlinked contributor".`;
   // Text drawn as large as fits `width`, from `size` down to 14px.
   const fitText = (g, text, x, y, width, size, weight = 500) => {
     let px = size;
@@ -304,7 +307,7 @@
         const s = STATS[dayIndex], who = s.authors.map(([p, n]) => `${label(p)} (${n})`).join(", ");
         const shelf = s.shelf.overflow ? ` ${s.shelf.books} stand as books; the other ${s.shelf.overflow} are in the overflow binder.` : "";
         return `${plural(s.commits, "commit")}, ${plural(s.prs, "PR-head match", "PR-head matches")}${who ? `, by ${who}` : ""}${others(s).replace(/ · /g, "; ")}.${shelf} `
-          + `Author identities are as git recorded them: self-reported and historical, not proof of who owns an account today. An account is shown by the newest login its numbered GitHub address was used under; "(git name)" marks a name written in git that is not linked to any GitHub account, shown as most recently written. They count identities, not people. `
+          + `${AUTHORS_NOTE} Counts are of author identities, not people. `
           + `A PR number appears where a merge brought in the exact head GitHub publishes for that one PR: a PR-head match, which does not prove GitHub marked it merged; a head several PRs share is credited to none. `
           + `From ${DATA.repo} ${DATA.provenance.branch} at ${DATA.rev.slice(0, 7)}, PR refs read ${PULL_REFS}, days in UTC.`;
       },
@@ -322,7 +325,10 @@
       const entry = name && contributors.roster.find((c) => c.name === name);
       if (entry && mayPick(entry)) { playerName = entry.name; break; }
     }
-    if (!playerName) playerName = contributors.activeRoster.find(mayPick)?.name || null;
+    // Else (a page opened here) one the island will hand back: it keeps an away Ooga away (crew.stateOf ignores a
+    // wake-up for one that is neither the player nor the signed-in owner), so the hub's possess on the way home would
+    // refuse it and the visitor would land with no Ooga. Only if every drivable Ooga is away, the first of them.
+    if (!playerName) playerName = (contributors.activeRoster.find((e) => mayPick(e) && contributors.stateFor(e) !== "away") || contributors.activeRoster.find(mayPick))?.name || null;
     world.pilot = null;
     const playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
     let people = null, avatar = null, climbed = false, leaving = false;

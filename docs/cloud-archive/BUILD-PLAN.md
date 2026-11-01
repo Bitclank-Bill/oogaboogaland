@@ -46,8 +46,18 @@ to regenerate against exactly that PR-ref snapshot.
   shallow clone. The snapshot records its `provenance` (repository, branch, revision, official tip, and the rules
   below), and every commit link points at `OogaBoogaX/oogaboogaland`, where that revision lives. The current snapshot
   is generated from `rock` at `37d9f3947bbff844f792595471e3eb99ab13e7f9`.
-- **Author identities** are as git recorded them: self-reported, historical identities, not verified current account
-  ownership. Every count is of identities, never of unique people or bots.
+- **Author identities come from GitHub's own records.** `--github-authors <file>` is the REST commits API's author per
+  commit, saved with:
+
+  ```sh
+  gh api --paginate "repos/OogaBoogaX/oogaboogaland/commits?sha=37d9f3947bbff844f792595471e3eb99ab13e7f9&per_page=100" --jq '.[] | {sha: .sha, login: .author.login, id: .author.id, type: .author.type}' > docs/cloud-archive/inputs/github-authors-37d9f39.ndjson
+  ```
+
+  A linked commit shows its login, one identity per account id. One GitHub links to no account is an "unlinked
+  contributor". A git display name is never used. The `[bot]` and reviewed-agent rules stay, and GitHub's `Bot` and
+  `Organization` types set those kinds. Without the file (`--provisional`, as the committed snapshot is until the file
+  is saved), the noreply rules below give the only account links. These are GitHub's records when read, not proof of
+  current ownership. Every count is of identities, never of unique people or bots.
   - **Accounts:** a numbered GitHub noreply address (`<id>+<login>@users.noreply.github.com`) is one identity per
     account number, labelled by the newest login it was recorded under, so a renamed account shows its later login.
   - **Unnumbered noreply addresses:** the older form (`<login>@users.noreply.github.com`) joins a numbered identity only
@@ -55,9 +65,8 @@ to regenerate against exactly that PR-ref snapshot.
     numbered, it stays a separate identity of the same kind (account, automation, agent or organisation), marked
     `uncertain` and labelled "<login> (unnumbered address, unconfirmed)". It may be that account, or an earlier
     holder of the login.
-  - **Unlinked authors:** every other author is its own identity per exact address, labelled by the newest git name
-    recorded with it and shown as "<name> (git name)". It is never matched to an account by name, so two people
-    sharing a name stay two.
+  - **Unlinked contributors:** every other author is its own identity per exact address, labelled neutrally
+    ("unlinked contributor", numbered). No git name is shown, and two people sharing a name stay two.
   - **No addresses:** no address, and no hash of a personal address, is written out. Every exported title and label
     (git names and the mapping's labels alike) has any run of non-space text with something on both sides of an
     "@" replaced. That catches Unicode, local-domain and bracketed-IP addresses a narrow pattern misses, and leaves
@@ -183,7 +192,7 @@ untouched.
 
 ## Open questions for the maintainer
 
-1. Unlinked authors are shown by their newest git name, marked "(git name)". Should they instead appear without a name ("an unlinked
+1. (Decided: authors come from GitHub's records; unlinked ones are labelled neutrally.) Should they instead appear without a name ("an unlinked
    author"), given AGENTS.md's privacy section? Their names are already public in the repository's history.
 2. If the GitHub API becomes available to whoever regenerates the snapshot, should unlinked authors be linked to
    accounts through it, and PR authors shown? Today neither is claimed.

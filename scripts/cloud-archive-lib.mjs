@@ -2,13 +2,13 @@
 // suite's global tier checks them on made-up histories). What the archive may claim, and on what evidence:
 //
 // - Every book is a commit reachable from one explicit revision of the official `rock`, checked to be on it.
-// - A commit is shown under its author identity as git recorded it: self-reported and historical, not verified current
-//   account ownership. A numbered GitHub noreply address (`<id>+<login>@users.noreply.github.com`) is one identity
-//   per account number, labelled by the newest login it was recorded under. The older unnumbered form (`<login>@…`)
-//   joins a numbered identity only through a reviewed alias; while its login also appears numbered without one, it
-//   stays a separate identity marked uncertain, whatever its kind. Any other author is "unlinked": its own identity
-//   per exact address (never shown), labelled by the newest git name recorded with it, never matched by name.
-//   Counts are of identities, never of unique people or bots.
+// - A commit is shown under the GitHub login GitHub's own records link it to (the REST commits API's author.login,
+//   saved to a file and passed with --github-authors), keyed by account id; a commit GitHub links to no account is an
+//   "unlinked contributor". A git author's display name is never used. Without those records the snapshot is
+//   provisional: a numbered GitHub noreply address is one identity per account number, an unnumbered one joins it only
+//   through a reviewed alias (else kept apart, marked uncertain), and anything else is an unlinked contributor.
+//   These are GitHub's records when read, not proof of current account ownership. Counts are of identities, never of
+//   unique people or bots.
 // - A `[bot]` login (a GitHub App's reserved suffix) is automation. AI agents and organisations are only what the
 //   reviewed mapping (scripts/cloud-archive-identities.json) names, by login or by the SHA-256 of an exact address.
 // - Pull requests: a merge commit is a "PR-head match" for PR n when its second parent is the head GitHub publishes
@@ -62,21 +62,52 @@ export const checkRevision = ({ rev, officialTip, isAncestor }) => {
   return null;
 };
 // Who a commit is, as far as the evidence goes: { key, label, kind, login, numbered }. The key never leaves the
-// generator. A reviewed entry with `kind` sets a kind and label (by noreply login, either form, or by the SHA-256 of an
-// exact address); one with `login` and `noreplyId` says the older, unnumbered noreply address of that login is that
-// numbered identity. Nothing else joins two forms.
-export const identityOf = (commit, identities = []) => {
+// generator. A git author's display name is never read: an author is labelled only by a GitHub login or neutrally.
+//
+// With GitHub's records (`github`, Map sha → { login, id, type } or null, from the REST commits API), a commit is the
+// account GitHub links it to: keyed by account id, labelled by its login; type "Bot" is automation and
+// "Organization" an organisation. A commit GitHub links to no account is an "unlinked contributor", one identity per
+// exact address, unless its noreply login is a `[bot]` (automation) or the reviewed mapping names it.
+// Without them (a provisional snapshot), the older rules stand: a numbered noreply address is one identity per account
+// number, an unnumbered one joins it only by reviewed alias, and anything else is an unlinked contributor.
+// A reviewed entry with `kind` sets a kind and label (by login, or by the SHA-256 of an exact address) in both modes.
+export const UNLINKED = "unlinked contributor";
+export const identityOf = (commit, identities = [], github = null) => {
   const m = NOREPLY.exec(commit.email.trim());
-  const login = m ? m[2] : null, lower = login && login.toLowerCase();
-  const reviewed = identities.find((e) => e.kind && (m && e.login && e.login.toLowerCase() === lower || e.emailSha256 && e.emailSha256 === emailHash(commit.email)));
+  const hash = emailHash(commit.email);
+  const byAddress = identities.find((e) => e.kind && e.emailSha256 && e.emailSha256 === hash);
+  if (byAddress) return { key: `email:${hash}`, label: byAddress.label, reviewedLabel: true, kind: byAddress.kind, login: null, numbered: false };
+  const reviewedLogin = (login) => identities.find((e) => e.kind && e.login && login && e.login.toLowerCase() === login.toLowerCase());
+  if (github) {
+    if (!github.has(commit.sha)) throw new Error(`GitHub author records have no entry for ${commit.sha}`);
+    const linked = github.get(commit.sha);
+    if (linked && linked.login) {
+      const reviewed = reviewedLogin(linked.login);
+      const kind = reviewed ? reviewed.kind : linked.type === "Bot" || /\[bot\]$/i.test(linked.login) ? "automation" : linked.type === "Organization" ? "organisation" : "account";
+      return { key: `gh:${linked.id}`, label: reviewed && reviewed.label || linked.login, reviewedLabel: !!(reviewed && reviewed.label), kind, login: linked.login, numbered: true };
+    }
+    if (m && /\[bot\]$/i.test(m[2])) return { key: `bot:${m[2].toLowerCase()}`, label: m[2], reviewedLabel: false, kind: "automation", login: null, numbered: false };
+    return { key: `email:${hash}`, label: UNLINKED, reviewedLabel: false, kind: "unlinked", login: null, numbered: false };
+  }
   if (m) {
+    const login = m[2], lower = login.toLowerCase(), reviewed = reviewedLogin(login);
     const alias = !m[1] && identities.find((e) => e.noreplyId && e.login && e.login.toLowerCase() === lower);
     const id = m[1] || (alias ? String(alias.noreplyId) : null), key = id ? `id:${id}` : `unnumbered:${lower}`;
     return { key, label: reviewed && reviewed.label || login, reviewedLabel: !!(reviewed && reviewed.label), kind: reviewed ? reviewed.kind : /\[bot\]$/i.test(login) ? "automation" : "account", login, numbered: !!id };
   }
-  const key = `email:${emailHash(commit.email)}`;
-  if (reviewed) return { key, label: reviewed.label, reviewedLabel: true, kind: reviewed.kind, login: null, numbered: false };
-  return { key, label: commit.name.trim() || "unknown", reviewedLabel: false, kind: "unlinked", login: null, numbered: false };
+  return { key: `email:${hash}`, label: UNLINKED, reviewedLabel: false, kind: "unlinked", login: null, numbered: false };
+};
+// GitHub's author records as saved by `gh api --paginate … --jq '.[] | {sha, login: .author.login, id: .author.id,
+// type: .author.type}'`: one JSON object a line. Returns Map sha → { login, id, type } or null (linked to no account).
+export const parseGithubAuthors = (text) => {
+  const out = new Map();
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    const e = JSON.parse(line);
+    if (!SHA.test(e.sha || "")) throw new Error("GitHub author records: a line without a full commit SHA");
+    out.set(e.sha, e.login ? { login: String(e.login), id: Number(e.id), type: String(e.type || "User") } : null);
+  }
+  return out;
 };
 // Published heads by commit: every PR number whose head it is.
 export const pullsByHead = (pullHeads) => {
@@ -110,7 +141,7 @@ export const utcDay = (seconds) => new Date(seconds * 1000).toISOString().slice(
 // The archive's data: people (label, kind, and `uncertain` where it applies), days of [sha, person, title, pr, flags],
 // counts of author identities (not of people or bots) and where it all came from. `pullRefs` says when and how the
 // PR refs were read ({ fetchedAt, source }); the matches depend on that snapshot as much as on `rev`.
-export const buildArchive = ({ commits, pullHeads = new Map(), pullRefs = {}, identities = [], rev, officialTip, repo = OFFICIAL.repo }) => {
+export const buildArchive = ({ commits, pullHeads = new Map(), pullRefs = {}, identities = [], github = null, githubInfo = {}, rev, officialTip, repo = OFFICIAL.repo }) => {
   const ids = [], index = new Map();
   // Commits come oldest first, so an identity's label ends as the newest it was recorded under (a renamed login, a
   // changed git name); a reviewed label stays. Every login a numbered identity was seen under is kept for the check
@@ -131,7 +162,7 @@ export const buildArchive = ({ commits, pullHeads = new Map(), pullRefs = {}, id
     const title = scrub(pr ? pullTitle(c) : c.subject);
     const day = utcDay(c.time);
     if (!days.has(day)) days.set(day, []);
-    days.get(day).push([c.sha, person(identityOf(c, identities)), title.trim(), pr, (c.parents.length > 1 ? FLAG.merge : 0) | (shared ? FLAG.sharedHead : 0)]);
+    days.get(day).push([c.sha, person(identityOf(c, identities, github)), title.trim(), pr, (c.parents.length > 1 ? FLAG.merge : 0) | (shared ? FLAG.sharedHead : 0)]);
   }
   // An unnumbered noreply login also seen on a numbered identity, with no reviewed alias, may be that identity or an
   // earlier holder of the login. Whatever its kind, it is kept apart, marked uncertain and labelled so; the counts
@@ -168,7 +199,10 @@ export const buildArchive = ({ commits, pullHeads = new Map(), pullRefs = {}, id
     provenance: {
       repo, branch: OFFICIAL.branch, rev, officialTip,
       days: "UTC, by committer date",
-      authors: "author identities as recorded in git (self-reported historical identities, not verified current account ownership): a numbered GitHub noreply address is one identity per account number, labelled by the newest login it was recorded under; an unnumbered noreply address joins one only by reviewed alias, and while its login also appears numbered it stays a separate identity marked uncertain, whatever its kind; any other address is an unlinked identity, labelled by the newest git name recorded with it and never matched to an account by name. Counts are of identities, not of people or bots. Every label and title is scrubbed of anything address-shaped",
+      authorRecords: github ? { mode: "github", source: githubInfo.source || null, readAt: githubInfo.readAt || null, digest: githubInfo.digest || null,
+        entries: github.size, linked: commits.filter((c) => github.get(c.sha)).length, unlinked: commits.filter((c) => !github.get(c.sha)).length }
+        : { mode: "provisional", source: null, note: "GitHub's author records were not supplied: accounts only where a commit used a GitHub noreply address; every other author an unlinked contributor" },
+      authors: "author identities, never git display names. With GitHub's records (authorRecords.mode 'github'): the login GitHub links each commit to, keyed by account id (GitHub's records when read, not proof of current account ownership); a commit it links to no account is an 'unlinked contributor', one identity per exact address. Provisionally, without them: a numbered GitHub noreply address is one identity per account number labelled by its newest login, an unnumbered one joins it only by reviewed alias (else kept apart, marked uncertain), and any other author is an unlinked contributor. Counts are of identities, not of people or bots; every label and title is scrubbed of anything address-shaped",
       pulls: "PR-head matches: a merge commit whose second parent is the head GitHub publishes for exactly one PR (refs/pull/<n>/head). This shows the merge brought in that PR's head, not that GitHub marked the PR merged; a head several PRs share credits none; PR authors are not shown. Matches depend on the PR ref snapshot below as well as on rev. prHeadMatches counts distinct PR numbers; prHeadMatchRows counts merge commits with a match (one PR head can be merged more than once)",
       pullRefs: { fetchedAt: pullRefs.fetchedAt || null, source: pullRefs.source || null, count: pullHeads.size, digest: pullRefsDigest(pullHeads) },
       kinds: "automation: a [bot] noreply login; agent and organisation: the reviewed mapping only"
