@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -23491,6 +23491,1570 @@ const genesisBenchProof = async () => {
 // genesis-workbench:end
 // genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
 // genesis-timeline:end
+// Era 0's upgrade suite, folded in from test/genesis-era-0-upgrade.mjs (gv/upgrade-era-0) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra0UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Era 0 upgrade checks (the counting cluster: Nim, the scan-line CRT and the pointer station). Run with
+  //   node test/genesis-era-0-upgrade.mjs
+  // It loads the Genesis world, props, exhibits and every era file as the shared unit tier does, plus the three toy
+  // modules, builds Era 0 on a recording kit and drives each toy through its terminal and its console factory.
+
+  const TOYS = ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer"];
+  const BASE = ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits"];
+  const load = async (withToys) => {
+    const context = { window: { BL: {} } };
+    const files = [...BASE, ...(withToys ? TOYS : []), ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)];
+    for (const f of files) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+    return context.window.BL;
+  };
+  const results = [];
+  const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok || !detail ? "" : ` :: ${detail}`}`); };
+
+  // A recording kit: every solid and sign in build order, obstacles, and props; `mark` notes where the cluster starts.
+  const build = (BL) => {
+    const W = BL.genesisWorld, records = [], obstacles = [], props = {}, order = [];
+    const kit = { era: W.ERAS[0], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) },
+      createNode: () => ({ position: { x: 0, y: 0, z: 0 }, children: [] }), addChild: () => {}, place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
+      sign: (t, sub, x, y, z) => { const n = { kind: "sign", t, x, y, z, position: { x, y, z } }; records.push(n); return n; },
+      solid: (w, h, d, color, x, y, z, emissive = 0) => { const n = { kind: "solid", w, h, d, color, emissive, position: { x, y, z }, visible: true, glow: 1 }; records.push(n); return n; },
+      obstacle: (x0, x1, z0, z1) => obstacles.push({ x0, x1, z0, z1, after: order.length }),
+      prop: (d) => { props[d.id] = d; order.push({ id: d.id, at: records.length }); return d; } };
+    BL.genesisExhibits.eras[0].build(kit);
+    const term = (id) => { const r = props[id].onUse({}); return r.terminal ? (line) => r.terminal.run(line).lines.join(" | ") : null; };
+    return { W, kit, records, obstacles, props, order, term };
+  };
+
+  const BL = await load(true), A = build(BL), W = A.W, EX = BL.genesisExhibits, P = BL.genesisProps, G = BL.genesisEra0Games;
+  const ORIGINAL = ["e0-feller", "e0-arpanet", "e0-disk-seek", "e0-punch", "e0-race", "e0-login", "e0-compare"], NEW = ["e0-nim", "e0-crt", "e0-pointer"];
+
+  // ---- placement, labels, sources -----------------------------------------------------------------------------------
+  check("every original Era 0 exhibit keeps its id, in its original build order", ORIGINAL.every((id) => A.props[id]) && A.order.slice(0, 7).map((o) => o.id).join() === ["e0-feller", "e0-arpanet", "e0-disk-seek", "e0-punch", "e0-race", "e0-login", "e0-compare"].join());
+  check("the cluster adds exactly e0-nim, e0-crt and e0-pointer", Object.keys(A.props).length === 10 && NEW.every((id) => A.props[id]));
+  const clusterStart = A.order.find((o) => o.id === "e0-compare").at;
+  const added = A.records.length - clusterStart;
+  check(`the cluster adds at most 150 scene records (${added})`, added > 0 && added <= 150, String(added));
+  const bad = [];
+  for (const id of NEW) {
+    const d = A.props[id];
+    if (EX.checkProp(0, d)) bad.push(EX.checkProp(0, d));
+    if (d.connection !== "context") bad.push(`${id} is not context`);
+    if (!String(d.label).includes(String(d.year))) bad.push(`${id} label lacks its year`);
+    if (!/modern/i.test(d.label) || !/modern/i.test(d.title) || !/no historical date/i.test(d.date)) bad.push(`${id} is not labelled a modern toy without a date`);
+    for (const k of d.sourceKeys) { const s = P.sourceOf(k); if (!s || !/^https:\/\//.test(s.href)) bad.push(`${id}: source ${k}`); }
+  }
+  check("the new stations are context, labelled modern toys with no historical date, with resolving sources", !bad.length, bad.join("; "));
+  // No new record uses a colour the shared proof finds Era 0's models by (it takes the last node of each colour).
+  const watched = ["#ffd276", "#20292c", "#f2c14e", "#68c6ed", "#8effab"];
+  check("no cluster record reuses a colour the shared Era 0 proof looks up", A.records.slice(clusterStart).every((r) => !watched.includes(r.color)));
+  // Inside the gallery, clear of the old stream's walk, the reserved plots and every other exhibit's footprint; no
+  // taller than the limit; walk-up points free to stand on.
+  const M = W.MUSEUM, rect = M.rects[0], reserved = W.reservedZones(0), place = [];
+  const inGallery = (x, z) => { const p = M.toMuseum(0, x, z, {}); return p.x >= rect.x0 - 0.05 && p.x <= rect.x1 + 0.05 && p.z >= rect.z0 - 0.05 && p.z <= rect.z1 + 0.05; };
+  const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
+  for (const r of A.records.slice(clusterStart)) {
+    const box = r.kind === "solid" ? { x0: r.position.x - r.w / 2, x1: r.position.x + r.w / 2, z0: r.position.z - r.d / 2, z1: r.position.z + r.d / 2 } : { x0: r.x, x1: r.x, z0: r.z, z1: r.z };
+    if (!inGallery(box.x0, box.z0) || !inGallery(box.x1, box.z1)) place.push("a record outside the gallery");
+    if (!(box.x1 <= W.CHANNEL.x0 - 1.5 || box.x0 >= W.CHANNEL.x1 + 1.5)) place.push("a record on the old stream's walk");
+    for (const z of reserved) if (overlap(box, z)) place.push(`a record in the ${z.why} plot`);
+    if (r.kind === "solid" && r.position.y + r.h / 2 > W.BANK_TOP + W.BANK.MAX_H) place.push("a record too tall");
+  }
+  const mine = A.obstacles.filter((o) => o.after >= 7), theirs = A.obstacles.filter((o) => o.after < 7);
+  for (const o of mine) for (const t of theirs) if (overlap(o, t)) place.push("a cluster footprint overlaps an existing exhibit");
+  for (const id of NEW) {
+    const at = A.props[id].at, r = 0.3;
+    if (A.obstacles.some((o) => at.x > o.x0 - r && at.x < o.x1 + r && at.z > o.z0 - r && at.z < o.z1 + r)) place.push(`${id}'s walk-up point is blocked`);
+    if (reserved.some((z) => at.x > z.x0 && at.x < z.x1 && at.z > z.z0 && at.z < z.z1)) place.push(`${id}'s walk-up point is reserved`);
+    if (!inGallery(at.x, at.z)) place.push(`${id}'s walk-up point is outside the gallery`);
+  }
+  check("the cluster sits inside the gallery, off the walk, reserved plots and other footprints, walk-ups clear", !place.length, [...new Set(place)].join("; "));
+
+  // ---- Nim -----------------------------------------------------------------------------------------------------------
+  const nim = A.term("e0-nim"), counters = A.records.filter((r) => r.color === "#e8dcc0");
+  const lit = () => counters.filter((c) => c.visible).length;
+  check("Nim starts with 3, 5 and 7 counters standing", counters.length === 15 && lit() === 15 && /A 3, B 5, C 7/.test(nim("STATUS")));
+  const badNim = ["TAKE", "TAKE D 1", "TAKE A 0", "TAKE A 4", "TAKE A 1.5", "TAKE A -1", "TAKE A 1 2", "LEVEL 0", "LEVEL 4", "FLY"].map(nim);
+  check("bad Nim input changes nothing", lit() === 15 && /A 3, B 5, C 7/.test(nim("STATUS")), badNim.join(" / "));
+  const r1 = nim("TAKE C 2");
+  check("TAKE C 2 removes two, the computer answers once, counters follow", /You take 2 from C\./.test(r1) && /The computer takes \d from [ABC]\./.test(r1) && lit() < 13 && lit() >= 6);
+  // A perfect visitor always wins at every level (3-5-7 has a non-zero nim-sum, and the visitor moves first).
+  const perfect = (term, game) => {
+    for (let guard = 0; guard < 40; guard++) {
+      const s = term("STATUS");
+      if (/you win/.test(s)) return true;
+      if (/computer took the last/.test(s)) return false;
+      const h = game.heaps, x = h[0] ^ h[1] ^ h[2];
+      let move = null;
+      for (let i = 0; i < 3 && !move; i++) if ((h[i] ^ x) < h[i]) move = [i, h[i] - (h[i] ^ x)];
+      if (!move) for (let i = 0; i < 3 && !move; i++) if (h[i]) move = [i, 1];
+      term(`TAKE ${"ABC"[move[0]]} ${move[1]}`);
+    }
+    return false;
+  };
+  let perfectWins = 0, greedyLosses = 0;
+  for (const level of [1, 2, 3]) {
+    const g = G.nim.create(), t = G.nim.terminal(g), run = (l) => t.run(l).lines.join(" | ");
+    run(`LEVEL ${level}`); if (perfect(run, g)) perfectWins++;
+  }
+  // A visitor who always takes one from heap C (then the next non-empty) loses to level 3 at least once.
+  {
+    const g = G.nim.create(), t = G.nim.terminal(g), run = (l) => t.run(l).lines.join(" | ");
+    run("LEVEL 3");
+    for (let guard = 0; guard < 40 && g.state.winner < 0; guard++) { const h = [2, 1, 0].find((i) => g.heaps[i]); run(`TAKE ${"ABC"[h]} 1`); }
+    if (g.state.winner === 1) greedyLosses++;
+  }
+  check("a perfect visitor wins at levels 1, 2 and 3; level 3 punishes a careless one", perfectWins === 3 && greedyLosses === 1);
+  {
+    const g = G.nim.create(), run = (l) => G.nim.terminal(g).run(l).lines.join(" | ");
+    run("TAKE C 2"); const first = Array.from(g.heaps).join(); run("RESET"); run("TAKE C 2"); const again = Array.from(g.heaps).join();
+    // The computer's opponent looks only at the current position: one reply per visitor turn, none after a win.
+    const ended = G.nim.create(); ended.heaps.set([0, 0, 1]); ended.take(2, 1);
+    check("Nim RESET replays the seeded computer, and a finished game takes no more moves", first === again && ended.state.winner === 0 && !ended.reply() && ended.take(0, 1) === 1);
+  }
+  check("HINT names the nim-sum and INFO keeps the toy undated", /nim-sum is \d+/.test(nim("HINT")) && /No date is given/.test(nim("INFO")) && !/\b1[89]\d\d\b/.test(nim("INFO")));
+
+  // ---- the CRT -------------------------------------------------------------------------------------------------------
+  const crt = A.term("e0-crt"), strips = A.records.filter((r) => r.color === "#0f1a12"), runs = A.records.filter((r) => r.color === "#5fc47a" || r.color === "#b8ffcc");
+  check("the CRT draws twelve scan lines and the original picture's runs", strips.length === 12 && runs.length === G.crt.segments().length && runs.length >= 10);
+  const brightRun = runs.find((r) => r.color === "#b8ffcc");
+  crt("BRIGHT 0"); crt("CONTRAST 0");
+  const black = strips.every((s) => !s.visible) && runs.every((r) => !r.visible);
+  crt("CONTRAST 4"); const contrasty = strips.every((s) => !s.visible) && brightRun.visible && brightRun.glow > 2;
+  crt("BRIGHT 4"); const lifted = strips.every((s) => s.visible && s.glow > 0.9);
+  const badCrt = ["BRIGHT 5", "BRIGHT -1", "BRIGHT 2.5", "CONTRAST", "LINES 13"].every((c) => /needs one whole number/.test(crt(c)));
+  check("brightness and contrast change the tones: off at 0/0, black kept at 0/4, black lifted at 4/4; bad values refused", black && contrasty && lifted && badCrt && /Brightness 4, contrast 4/.test(crt("STATUS")));
+  crt("LINES 6");
+  const half = strips.filter((s) => s.visible).length === 6 && runs.every((r) => r.visible === (r.position.y > strips[6].position.y + 1e-9));
+  crt("RESET");
+  check("LINES draws only the first lines of the frame; RESET restores the defaults", half && strips.every((s) => s.visible) && /Brightness 2, contrast 2, 12 of 12/.test(crt("STATUS")));
+
+  // ---- the pointer station ------------------------------------------------------------------------------------------
+  const pt = A.term("e0-pointer"), targets = A.records.filter((r) => r.color === "#e0b84a"), cursor = A.records.find((r) => r.color === "#f4f4f4");
+  const litTarget = () => targets.findIndex((t) => t.glow > 1);
+  const name = (i) => G.pointer.nameOf(i);
+  const startX = cursor.position.x;
+  check("nine targets, one lit, the cursor in the middle", targets.length === 9 && targets.filter((t) => t.glow > 1).length === 1 && /cursor is on B2/.test(pt("STATUS")));
+  const badPt = ["SELECT", "SELECT D1", "SELECT A4", "MOVE 3 0", "MOVE 1", "MOVE a b", "MOVE 1.5 0"].every((c) => /needs/.test(pt(c)));
+  check("bad pointer input is refused and counts nothing", badPt && /Typed: 0 command\(s\), 0 characters\. Pointer: 0 move\(s\), 0 click\(s\)\. Misses: 0/.test(pt("STATUS")));
+  const first = litTarget(), typed = pt(`SELECT ${name(first)}`);
+  const second = litTarget();
+  const miss = pt(`SELECT ${name((second + 1) % 9)}`);
+  check("a typed SELECT of the lit target hits and lights the next; a wrong name misses", /hit/.test(typed) && second !== first && second >= 0 && /miss/.test(miss) && litTarget() === second);
+  const dx = second % 3 - 1, dy = Math.floor(second / 3) - 1;
+  pt(`MOVE ${dx} ${dy}`);
+  const moved = Math.abs(cursor.position.x - (startX + dx * 0.36)) < 1e-9;
+  const click = pt("CLICK");
+  pt("MOVE -2 -2"); const clamped = /cursor is on A1/.test(pt("STATUS"));
+  check("MOVE steers the cursor (clamped to the board) and CLICK chooses the cell under it", moved && /hit/.test(click) && clamped);
+  for (let guard = 0; guard < 10 && litTarget() >= 0 && !/All 5/.test(pt("STATUS")); guard++) pt(`SELECT ${name(litTarget())}`);
+  const done = pt("STATUS");
+  check("five targets finish the run with a tally of both methods; RESET starts again", /All 5 targets found/.test(done) && /Typed: \d+ command/.test(done) && /Pointer: 1 move|Pointer: 2 move/.test(done) && /New run/.test(pt("RESET")) && /Target 1 of 5/.test(pt("STATUS")));
+
+  // ---- long input, fresh visits, missing modules ---------------------------------------------------------------------
+  check("long and empty lines answer without throwing", [nim, crt, pt].every((t) => typeof t("X".repeat(400)) === "string" && typeof t("") === "string"));
+  nim("TAKE A 3");
+  const B = build(BL);
+  const fresh = /A 3, B 5, C 7/.test(B.term("e0-nim")("STATUS")) && B.records.every((r) => !A.records.includes(r));
+  B.term("e0-nim")("TAKE B 5");
+  check("a second visit starts fresh and shares no state or nodes", fresh && lit() < 15 && /A 0/.test(nim("STATUS")));
+  const bare = build(await load(false));
+  check("without the toy scripts the stations still stand, ids intact, and open a caption", NEW.every((id) => bare.props[id] && bare.props[id].onUse({}).caption) && ORIGINAL.every((id) => bare.props[id]));
+
+  // ---- the console factories (retro-games.js interface) on a stub kit ------------------------------------------------
+  const stubKit = () => {
+    const makeStatus = (label) => ({ score: 0, left: 0, label, round: 1, target: 0, meter: -1, streak: 0, fire: false, verb: "", mult: 0, note: "" });
+    const rng = () => { const s = new Uint32Array(1); const next = () => { s[0] += 0x6d2b79f5; let t = s[0]; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; return { seed: (n) => { s[0] = n >>> 0; }, next, int: (n) => Math.floor(next() * n) }; };
+    const noop = () => {};
+    return { W: 160, H: 120, INK: new Proxy({}, { get: () => "#000000" }), TEXT: new Proxy({}, { get: () => 0 }), text: noop, centre: noop, number: noop, makeStatus, rng,
+      hooks: (host) => ({ popup: noop, cue: noop, shake: noop, crack: noop, flop: noop, aim: host.aim, onEnd: host.onEnd || noop, over: host.over || noop }) };
+  };
+  BL.retroGames = { kit: stubKit() };
+  const ctx = { fillStyle: "", fillRect() {}, drawImage() {} };
+  const face = (make, drive) => {
+    const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, host = { aim, still: false, onEnd: (s) => { host.ended = s; }, over: () => { host.overs = (host.overs || 0) + 1; } };
+    const g = make(host), shape = ["kind", "name", "help", "coach", "stars", "tickets", "status", "start", "act", "stop", "update", "draw"].every((k) => g[k] !== undefined) && g.aims === true;
+    g.start(7); let frames = 0;
+    for (; frames < 6000 && host.ended === undefined; frames++) { drive(g, aim, frames); g.update(1 / 60); g.draw(ctx); }
+    return { shape, ended: host.ended, overs: host.overs, frames, playing: g.playing, tickets: g.tickets(1e6) };
+  };
+  // Nim: always take the whole heap the cursor is on after moving to the largest.
+  const nimRun = face(G.nim.make, (g, aim, f) => { if (f % 20 === 0) { aim.stepsY -= 7; g.act(); } if (f % 20 === 10) aim.steps++; });
+  check("the Nim console game keeps the factory shape, plays five games and ends once", nimRun.shape && nimRun.ended >= 0 && nimRun.overs === 1 && !nimRun.playing && nimRun.tickets === 0, JSON.stringify(nimRun));
+  const crtRun = face(G.crt.make, (g, aim, f) => { const t = g.target, S = g.crt.state; if (f % 10 === 0) { if (S.bright < t.tb) aim.steps++; else if (S.bright > t.tb) aim.steps--; else if (S.contrast < t.tc) aim.stepsY--; else if (S.contrast > t.tc) aim.stepsY++; else g.act(); } });
+  check("the CRT console game: matching the reference scores 100 a round over three rounds", crtRun.shape && crtRun.ended === 300 && crtRun.overs === 1, JSON.stringify(crtRun));
+  const ptRun = face(G.pointer.make, (g, aim) => {
+    const b = g.board, C = g.round, t = b.target(); if (t < 0) return;
+    if (C.mode === 0) { const tx = t % 3 + 0.5, ty = Math.floor(t / 3) + 0.5; aim.x = Math.max(-1, Math.min(1, (tx - C.px) * 4)); aim.y = Math.max(-1, Math.min(1, (ty - C.py) * 4)); if (Math.abs(tx - C.px) < 0.2 && Math.abs(ty - C.py) < 0.2) g.act(); }
+    else { aim.x = aim.y = 0; if (C.col !== t % 3) aim.steps++; else if (C.row !== Math.floor(t / 3)) aim.stepsY++; else g.act(); }
+  });
+  check("the pointer console game times a pointer round and a typed round and ends once", ptRun.shape && ptRun.ended > 0 && ptRun.overs === 1, JSON.stringify(ptRun));
+
+  const failed = results.filter((r) => !r.ok).length;
+  console.log(`\n${results.length - failed}/${results.length} Era 0 upgrade checks passed`);
+  process.exit(failed ? 1 : 0);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
+// Era 1's upgrade suite, folded in from test/genesis-era-1-upgrade.mjs (gv/upgrade-era-1) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra1UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Rule checks for Era 1's upgrade cluster (the home TV, the Ooga paddle console and the pocket calculator), through
+  // genesis-era-1.js and genesis-era-1-paddle.js themselves in Node. Run: node test/genesis-era-1-upgrade.mjs
+  // Prints one line per check and exits non-zero on any failure. Not part of test/run.mjs (the integrator may hook it in).
+
+  const results = [];
+  const record = (name, ok, detail = "") => { results.push({ name, ok: !!ok, detail }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok || !detail ? "" : ` · ${detail}`}`); };
+  const load = async (files, extra = {}) => {
+    const context = { window: {}, ...extra };
+    context.window.BL = {};
+    for (const f of files) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+    return context.window.BL;
+  };
+
+  // The base's scene records for Era 1 (commit cb2b0b9, measured with the same counting kit): the cluster may add at
+  // most about 150.
+  const BASE_RECORDS = 1408, BUDGET = 150;
+  const OLD_IDS = ["e1-gateway-puzzle", "e1-gateway", "e1-puzzle-post", "e1-merkle", "e1-dh-table", "e1-dh", "e1-rsa-desk", "e1-rsa", "e1-floppy-toy", "e1-floppy", "e1-panel-toy", "e1-panel", "e1-coupler-toy", "e1-coupler", "e1-timeline"];
+  const NEW_IDS = ["e1-tv", "e1-paddle", "e1-calc"];
+
+  const BL = await load(["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-1"]);
+  const W = BL.genesisWorld, P = BL.genesisProps, EX = BL.genesisExhibits, E1 = EX.eras[1], era = W.ERAS[1], top = W.BANK_TOP;
+
+  // A recording kit: every node, solid (with its box), obstacle and prop, in the era's old coordinates.
+  const build = () => {
+    const nodes = [], solids = [], obstacles = [], props = {};
+    let records = 0;
+    const node = (o = {}) => {
+      const n = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: o.visible !== false, children: [] };
+      for (const k of ["position", "rotation", "scale"]) if (o[k]) Object.assign(n[k], o[k]);
+      nodes.push(n);
+      return n;
+    };
+    const kit = { era, top, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: (o) => { records++; return node(o); }, addChild: () => {}, place: (n) => n,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }),
+      solid: (w, h, d, c, x, y, z) => { records++; solids.push({ w, h, d, x, y, z }); return node({ position: { x, y, z } }); },
+      sign: () => { records += 3; return node(); }, obstacle: (x0, x1, z0, z1) => { obstacles.push({ x0, x1, z0, z1 }); },
+      prop: (d) => { records++; props[d.id] = d; return d; } };
+    E1.build(kit);
+    return { nodes, solids, obstacles, props, records };
+  };
+  const B = build();
+  const snap = () => JSON.stringify(B.nodes.map((n) => [n.position.x, n.position.y, n.position.z, n.rotation.x, n.scale.y, n.visible]));
+  const term = (id) => B.props[id].onUse({}).terminal;
+  const run = (t, line) => t.run(line).lines.join("\n");
+  let clock = 0;
+  const frames = (seconds, calm) => { const state = { era: 1, walking: true, reading: false, x: 0, z: 0, calm }; for (let i = 0; i < Math.round(seconds * 30); i++) { clock += 1 / 30; E1.update(1 / 30, clock, state); } };
+
+  // --- Identity, labels and sources -----------------------------------------------------------------------------
+  record("existing Era 1 exhibits keep their ids", OLD_IDS.every((id) => B.props[id]), OLD_IDS.filter((id) => !B.props[id]).join(","));
+  record("the cluster's three exhibits are registered", NEW_IDS.every((id) => B.props[id]));
+  record("each new exhibit is context, with a date, a hint and its year on its label", NEW_IDS.every((id) => { const d = B.props[id]; return d.connection === "context" && d.date && d.hint && String(d.label).includes(String(d.year)) && !EX.checkProp(1, d); }));
+  record("each new exhibit's source resolves to an https link marked unverified (the HOLD notes)", NEW_IDS.every((id) => B.props[id].sourceKeys.every((k) => { const s = P.sourceOf(k); return s && /^https:\/\//.test(s.href) && s.verified === false; })));
+  const visible = NEW_IDS.map((id) => { const t = term(id); return [B.props[id].label, B.props[id].title, B.props[id].date, ...t.banner, run(t, "HELP"), run(t, "MORE"), run(t, "SOURCES")].join("\n"); }).join("\n");
+  record("each new exhibit says its history is on HOLD (MORE), and claims no historical date, maker or model", NEW_IDS.every((id) => /on HOLD/.test(run(term(id), "MORE"))) && !/\b(19[0-9]{2})\b/.test(visible.replace(/1970s/g, "")));
+  record("no brand, product or trade name appears in the cluster's words", !/\b(atari|magnavox|odyssey|texas instruments|casio|sinclair|bowmar|hewlett|sharp|canon|sony|zenith|rca|philips|pong)\b/i.test(visible.replace(/Ooga Pong/g, "")));
+  record("the paddle game is labelled a modern museum homage, not historical software", /modern museum homage/.test(visible) && /not historical software/i.test(visible));
+  record("the TV names no particular period connection", !/\bRF\b|channel 3|channel 4|coax|aerial switch|antenna switch|modulator/i.test(visible));
+
+  // --- Placement --------------------------------------------------------------------------------------------------
+  const MU = W.MUSEUM, bay = MU.bays[1], uOf = (z) => era.z1 - z;
+  const cluster = (x, z) => x > 21 && x < 34.5 && uOf(z) > 47.5 && uOf(z) < 57;
+  const inGallery = (x, z) => x >= bay.x0 && x <= bay.x1 && uOf(z) >= MU.OPEN && uOf(z) <= bay.depth;
+  const newSolids = B.solids.filter((s) => cluster(s.x, s.z));
+  record("everything in the living room stands inside Era 1's gallery, back from the walk (x >= 21) and below 8 m",
+    newSolids.length > 0 && newSolids.every((s) => inGallery(s.x, s.z) && s.x - s.w / 2 >= 21 && s.y + s.h / 2 <= top + W.BANK.MAX_H));
+  const reachable = NEW_IDS.every((id) => { const a = B.props[id].at; return !B.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3) && inGallery(a.x, a.z); });
+  record("each new exhibit's walk-up point is in the gallery and clear of every obstacle", reachable);
+  const all = Object.values(B.props), far = NEW_IDS.every((id) => all.every((d) => d.id === id || Math.hypot(d.at.x - B.props[id].at.x, d.at.z - B.props[id].at.z) >= 2));
+  record("each new walk-up point is at least 2 m from every other exhibit's", far);
+  const reserved = W.reservedZones(1), clash = B.obstacles.filter((o) => cluster(o.x0, o.z0)).some((o) => reserved.some((r) => o.x0 < r.x1 && o.x1 > r.x0 && o.z0 < r.z1 && o.z1 > r.z0));
+  record("the living room's obstacles miss the reserved plots", !clash);
+  record(`scene records added stay within about ${BUDGET}`, B.records - BASE_RECORDS <= BUDGET, `${B.records - BASE_RECORDS}`);
+  console.log(`INFO scene records: base ${BASE_RECORDS}, head ${B.records}, added ${B.records - BASE_RECORDS}`);
+
+  // --- Ooga Paddle ------------------------------------------------------------------------------------------------
+  {
+    const script = ["S", "UUW", "DDDD", "WWWWWWWW", "UUUU", "WWWWWWWW", "S", "WWWWWWWW", "WWWWWWWW", "DDWW"];
+    const play = () => { const t = term("e1-paddle"); run(t, "RESET"); return script.map((l) => run(t, l)).join("\n"); };
+    record("the paddle game replays the same from RESET (seeded)", play() === play());
+    const t = term("e1-paddle");
+    run(t, "RESET");
+    record("moves need a serve first, and bad or overlong lines change nothing", /Served/.test(run(t, "S")) && /U, D and W/.test(run(t, "UUUUUUUUU")) && /U, D and W/.test(run(t, "UXD")));
+    // Play on with a simple player that follows the ball, up to a whole game, keeping the ball inside the court.
+    const s = { lines: 0, inside: true };
+    let out = "", won = false;
+    for (let i = 0; i < 600 && !won; i++) {
+      out = run(t, i % 9 === 0 ? "S" : ["U", "D", "W"][i % 3].repeat(4));
+      const rows = out.split("\n").filter((r) => /^\|/.test(r));
+      if (rows.length !== 9 || rows.some((r) => r.length !== 22)) s.inside = false;
+      won = /win/.test(out);
+    }
+    record("a game reaches its end (first to 5) and the court stays 20 x 9 throughout", won && s.inside, out.slice(-120));
+    record("after a win, S starts a new game at 0-0", /Served/.test(run(t, "S")) && /YOU 0 {3}OOGA 0/.test(run(t, "W")));
+    const fresh = run(t, "RESET");
+    record("RESET returns to 0-0 and the first serve", /YOU 0 {3}OOGA 0/.test(fresh));
+  }
+
+  // --- Home TV ----------------------------------------------------------------------------------------------------
+  {
+    const t = term("e1-tv");
+    run(t, "RESET");
+    const off = run(t, "WHAT");
+    run(t, "POWER");
+    const five = run(t, "DIAL 5"), console5 = /Ooga console/.test(five);
+    run(t, "SWITCH B");
+    const moved = /snow/.test(run(t, "WHAT")) && /Ooga console/.test(run(t, "DIAL 6"));
+    record("tuning: off until POWER; the console comes in on its selector's channel (A: 5, B: 6), other dials are snow or invented programmes", /dark/.test(off) && console5 && moved && /test card/.test(run(t, "DIAL 2")) && /snow/.test(run(t, "DIAL 3")));
+    const fuzzy = /fuzzy/.test(run(t, "DIAL 2")), clear = /clear/.test(run(t, "FINE -")), console0 = (run(t, "SWITCH A"), /clear/.test(run(t, "DIAL 5")));
+    record("fine tuning: a station is fuzzy until its fine setting is found; the console comes in clear", fuzzy && clear && console0);
+    record("the dial wraps 12 to 1 and refuses channels outside 1-12", /dial 1\./.test((run(t, "DIAL 12"), run(t, "UP"))) && /1 to 12/.test(run(t, "DIAL 13")));
+    record("PATH describes the toy's signal path and keeps the real connection on HOLD", /selector box/.test(run(t, "PATH")) && /HOLD/.test(run(t, "PATH")));
+    run(t, "RESET");
+    record("RESET switches the TV off on dial 2, selector A", /dark/.test(run(t, "WHAT")) && /dial 5/.test(run(t, "PATH")));
+  }
+
+  // --- Pocket calculator -----------------------------------------------------------------------------------------
+  {
+    const t = term("e1-calc"), shows = (line) => (run(t, "C"), run(t, line));
+    const disp = (out) => (out.match(/\[\s*([^\]]*)\]/) || [])[1];
+    record("12+30= shows 42", disp(shows("12+30=")) === "42");
+    record("2+3X4= works left to right: 20", disp(shows("2+3X4=")) === "20");
+    record("2/3= is cut (not rounded) to 8 places and says so", disp(shows("2/3=")) === "0.6666666" && /Cut to fit/.test(run(t, "C") && shows("2/3=")));
+    record("3-8= shows -5", disp(shows("3-8=")) === "-5");
+    record("a ninth digit is refused", disp(shows("123456789")) === "12345678" && /full/.test(shows("123456789")));
+    record("an answer too big shows E until C", disp(shows("99999999X9=")) === "E" && disp(run(t, "5")) === "E" && disp(run(t, "C")) === "0");
+    record("dividing by zero shows E", disp(shows("7/0=")) === "E");
+    record("after =, a new digit starts a new sum", disp(shows("5+5=7+1=")) === "8");
+    record("bad keys are refused", /Use digits/.test(run(t, "12#4")));
+  }
+
+  // --- Motion: idle still, Calm still, results at once -----------------------------------------------------------
+  {
+    for (const id of NEW_IDS) run(term(id), "RESET");
+    frames(1, false);
+    const a = snap(); frames(2, false);
+    record("idle (TV off), the living room does not move", snap() === a);
+    const tv = term("e1-tv"); run(tv, "POWER"); run(tv, "DIAL 3");
+    frames(0.1, false); const b = snap(); frames(0.5, false);
+    record("snow flickers on an empty channel", snap() !== b);
+    frames(1 / 30, true); const c = snap(); frames(2, true);
+    record("Calm holds the snow still", snap() === c);
+    run(tv, "DIAL 5"); frames(1 / 30, true);
+    const d = snap();
+    record("in Calm a command's result shows at once", d !== c);
+    run(term("e1-calc"), "C"); run(term("e1-calc"), "8="); frames(1 / 30, true);
+    record("the calculator's display follows its answer at once", snap() !== d);
+    run(tv, "OFF"); frames(1 / 30, false);
+  }
+
+  // --- Allocation (a stable heap is evidence, not proof, of no per-frame allocation) -------------------------------
+  if (global.gc) {
+    run(term("e1-tv"), "POWER"); run(term("e1-tv"), "DIAL 3");
+    global.gc(); const h0 = process.memoryUsage().heapUsed;
+    frames(20000 / 30, false);
+    global.gc(); const h1 = process.memoryUsage().heapUsed;
+    console.log(`INFO heap delta over 20,000 frames with snow flickering: ${h1 - h0} bytes (evidence only; it does not prove zero per-frame allocation)`);
+  } else console.log("INFO heap check skipped: run with node --expose-gc for it");
+
+  // --- The live console adapter (genesis-era-1-paddle.js) over a stand-in Ooga Pong -------------------------------
+  {
+    const calls = [];
+    const fake = { kind: "pong", name: "Ooga Pong", aims: true, status: {}, playing: false, help: "", coach: ["", ""], stars: [], tickets: () => 0, start() {}, act() {}, stop() {}, update() {}, draw() {} };
+    const ctx = { window: { BL: { retroGames: { pong: (host) => { calls.push(host); return { ...fake }; } } } } };
+    runInNewContext(await readFile(join(root, "src/js/genesis-era-1-paddle.js"), "utf8"), ctx);
+    const A = ctx.window.BL.genesisEra1Paddle, host = { best: 0 }, g = A.make(host);
+    const keys = ["kind", "name", "help", "coach", "stars", "tickets", "status", "playing", "start", "act", "stop", "update", "draw", "aims"];
+    record("the live console adapter hands its host to Ooga Pong and keeps the retro-games interface", calls[0] === host && keys.every((k) => k in g) && g.museum.homage && /homage/.test(g.name) && A.id === "e1-paddle");
+    record("the adapter lists the console hooks it needs (load, screen, input, pause, calm, mute, clear)", ["load", "screen", "input", "pause", "calm", "mute", "clear"].every((k) => typeof A.needs[k] === "string"));
+  }
+
+  // --- Disposal -----------------------------------------------------------------------------------------------------
+  E1.dispose();
+  let threw = false;
+  try { E1.update(1 / 30, 0, { era: 1, calm: false }); } catch { threw = true; }
+  record("dispose drops the visit; update after it does nothing", !threw);
+
+  const failed = results.filter((r) => !r.ok).length;
+  console.log(`${results.length - failed}/${results.length} checks passed`);
+  process.exit(failed ? 1 : 0);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
+// Era 2's upgrade suite, folded in from test/genesis-era-2-upgrade.mjs (gv/upgrade-era-2) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra2UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Era 2's upgrade cluster: rule checks for genesis-era-2-four.js and genesis-era-2-cluster.js, and their build through
+  // the exhibit kit with genesis-era-2.js. Run from the repository root: `node test/genesis-era-2-upgrade.mjs`.
+  // (A builder's own file; the suite's runner is the integrator's. It needs no Chrome and no build.)
+
+  const load = async (context, files) => { for (const f of files) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context); };
+  const results = {};
+  const check = (name, ok) => { results[name] = !!ok; };
+
+  // A canvas stand-in for the cabinet game's draw: every 2D call is a no-op, so draw runs end to end without a DOM.
+  const fakeCtx = () => new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
+  const fakeDocument = { createElement: () => ({ width: 0, height: 0, getContext: () => fakeCtx() }) };
+
+  const context = { window: {}, document: fakeDocument, crypto: globalThis.crypto };
+  await load(context, ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2"]);
+  const BL = context.window.BL, F = BL.genesisEra2Four, C = BL.genesisEra2Cluster, E2 = BL.genesisEra2, W = BL.genesisWorld, P = BL.genesisProps, EX = BL.genesisExhibits;
+
+  // --- Four in a row: the rules and the computer -----------------------------------------------------------------------
+  {
+    const g = F.createGame(7);
+    // You 1,2,3 along the bottom with the computer answering on top: a horizontal four for you.
+    for (const [you, it] of [[0, 0], [1, 1], [2, 2]]) { g.drop(you); g.drop(it); }
+    g.drop(3);
+    check("fourAcross", g.winner === F.YOU && [...g.line].sort((a, b) => a - b).join() === "0,1,2,3");
+    const v = F.createGame(1);
+    for (let i = 0; i < 3; i++) { v.drop(0); v.drop(1); }
+    v.drop(0);
+    check("fourUp", v.winner === F.YOU);
+    // A slant: you at (0,0),(1,1),(2,2),(3,3) with filler.
+    const d = F.createGame(1), seq = [0, 1, 1, 2, 2, 3, 2, 3, 3, 6, 3];
+    for (const c of seq) d.drop(c);
+    check("fourSlant", d.winner === F.YOU);
+    // A full column is refused and the turn does not pass.
+    const f = F.createGame(1);
+    for (let i = 0; i < 6; i++) f.drop(0);
+    const turn = f.turn;
+    check("fullColumn", f.drop(0) === -1 && f.turn === turn && f.moves === 6);
+    // A draw: a known no-win fill (columns in this order), every space taken and nobody's four.
+    const dr = F.createGame(1), fill = [0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 2, 3, 2, 3, 2, 3, 3, 2, 3, 2, 3, 2, 4, 5, 4, 5, 4, 5, 5, 4, 5, 4, 5, 4, 6, 6, 6, 6, 6, 6];
+    for (const c of fill) dr.drop(c);
+    check("draw", dr.winner === 3 && dr.moves === 42);
+    // The computer takes a win when it has one, blocks yours, and avoids handing you one.
+    const w = F.createGame(1);
+    for (const c of [6, 0, 6, 1, 5, 2]) w.drop(c);
+    // You (O) 6,6,5; computer (X) 0,1,2: now your move; you play elsewhere and the computer must take column 3.
+    w.drop(6);
+    check("takesWin", w.choose() === 3);
+    // Your three up the edge column: only a block explains the computer choosing it over the middle it prefers.
+    const b = F.createGame(1);
+    for (const c of [6, 1, 6, 2, 6]) b.drop(c);
+    check("blocks", b.choose() === 6);
+    // Seeded: two games on one seed play the same against the same moves; another seed may differ but stays legal.
+    const replay = (seed) => { const x = F.createGame(seed), out = []; for (let i = 0; i < 6 && !x.winner; i++) { x.drop([3, 3, 2, 4, 1, 5][i]); if (!x.winner) { const c = x.choose(); out.push(c); x.drop(c); } } return out.join(); };
+    check("seeded", replay(11) === replay(11) && replay(12).split(",").every((c) => +c >= 0 && +c < 7));
+    const t = F.terminal(F.createGame(1));
+    check("fourHowTo", /^FOUR IN A ROW TABLE/.test(t.banner[0]) && t.banner[1] === "HOW TO USE" && /^1\. /.test(t.banner[2]) && t.banner.slice(2, 6).every((l) => /^\d\. /.test(l)));
+    const r1 = t.run("4"), r2 = t.run("DROP 9"), r3 = t.run("MORE");
+    check("fourTerminal", r1.moved && r1.lines.some((l) => /computer drops/.test(l)) && /1 to 7/.test(r2.lines[0]) && r3.lines.some((l) => /HOLD/.test(l)) && r3.lines.some((l) => /modern museum homage/.test(l)));
+    const rs = t.run("RESET");
+    check("fourReset", rs.reset && rs.lines.some((l) => /Your move/.test(l)) && !rs.lines.join("").includes("O"));
+  }
+
+  // --- Four in a row: the cabinet game (retro-games.js factory interface) ------------------------------------------
+  {
+    // retro-games.js reads the jumbotron's font at load; Node gets a stand-in with the same shape.
+    BL.jumbotron = { text: { glyphOf: () => [], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } };
+    await load(context, ["retro-games"]);
+    const calls = { over: 0, end: 0, score: -1 };
+    const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 };
+    const host = { best: 0, aim, still: false, onEnd: (s) => { calls.end++; calls.score = s; }, over: () => { calls.over++; } };
+    const game = F.make(host);
+    const shape = ["kind", "name", "help", "coach", "stars", "tickets", "status", "start", "act", "stop", "update", "draw"].every((k) => k in game) && game.aims === true && typeof game.playing === "boolean";
+    game.start(5);
+    aim.steps = 10; game.update(1 / 60);
+    const right = game.game && game.playing;
+    // Always drop in the chosen column; step the frames until the run is decided and its beat is done.
+    const ctx = fakeCtx();
+    let frames = 0;
+    while (calls.end === 0 && frames < 20000) {
+      game.act(); game.update(1 / 60); game.draw(ctx); frames++;
+      if (frames % 40 === 0) aim.steps += (frames / 40) % 2 ? -3 : 2;
+    }
+    check("factoryShape", shape && right);
+    check("factoryRun", calls.over === 1 && calls.end === 1 && calls.score === game.status.score && game.game.winner > 0 && !game.playing);
+    const replayScore = (seed) => { const c2 = { end: 0, s: 0 }, a2 = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, g2 = F.make({ aim: a2, onEnd: (s) => { c2.end++; c2.s = s; }, over: () => {} }); g2.start(seed); let n = 0; while (!c2.end && n < 20000) { g2.act(); g2.update(1 / 60); n++; if (n % 40 === 0) a2.steps += (n / 40) % 2 ? -3 : 2; } return `${c2.s}:${g2.game.moves}:${[...g2.game.cells].join("")}`; };
+    check("factorySeeded", replayScore(9) === replayScore(9));
+    game.stop();
+    check("factoryStop", !game.playing && game.game.moves === 0);
+  }
+
+  // --- The colour screen ------------------------------------------------------------------------------------------
+  {
+    const s = C.createScreen();
+    const lit = () => { let n = 0; for (let i = 0; i < C.PIC_W * C.PIC_H; i++) if (s.colourOf(i)) n++; return n; };
+    const redOnly = lit();
+    s.set("g", 4); s.set("b", 4);
+    const all = lit() === C.PIC_W * C.PIC_H;
+    const white = (() => { for (let i = 0; i < C.PIC_W * C.PIC_H; i++) if (C.PICTURE[(i / C.PIC_W) | 0][i % C.PIC_W] === "W" && s.colourOf(i) !== 124) return false; return true; })();
+    check("screenMix", redOnly > 0 && redOnly < C.PIC_W * C.PIC_H && all && white && s.nameOf(4, 4, 0) === "yellow" && s.nameOf(4, 0, 4) === "magenta" && s.nameOf(2, 2, 2) === "dim white" && s.nameOf(0, 0, 0) === "black");
+    check("screenBounds", !s.set("r", 5) && !s.set("r", -1) && !s.set("r", 1.5) && s.r === 4);
+    const t = C.screenTerminal(C.createScreen());
+    const a = t.run("G 4"), bad = t.run("B 9"), mix = t.run("MIX 4 4 0"), rs = t.run("RESET");
+    check("screenTerminal", t.banner[1] === "HOW TO USE" && a.lines[0].includes("Green 4") && /0 to 4/.test(bad.lines[0]) && /yellow/.test(mix.lines[0]) && rs.reset && rs.lines.some((l) => /Red 4  Green 0  Blue 0/.test(l)));
+    check("screenHonest", C.SCREEN_DEEPER.some((l) => /simplifies/.test(l)) && C.SCREEN_DEEPER.some((l) => /HOLD/.test(l)) && !C.SCREEN_DEEPER.join(" ").match(/\b1[89]\d\d\b/));
+  }
+
+  // --- The cassette player ----------------------------------------------------------------------------------------
+  {
+    const t = C.createCassette();
+    t.play();
+    for (let i = 0; i < 60 * 60; i++) t.step(1 / 60, false);
+    const ended = t.pos === 1 && t.mode === "stop";
+    const spun = t.spinR !== 0 && t.spinL !== 0;
+    t.rew(); for (let i = 0; i < 60 * 10; i++) t.step(1 / 60, false);
+    const back = t.pos === 0 && t.mode === "stop";
+    t.play(); t.step(0.5, false); t.stop(); const held = t.pos; t.step(5, false);
+    const stopHolds = t.pos === held && t.mode === "stop";
+    const calm = C.createCassette(); calm.play(); calm.step(2, true);
+    check("cassetteRun", ended && spun && back && stopHolds && calm.pos > 0 && calm.spinL === 0 && calm.spinR === 0 && t.radius(0) < t.radius(0.5) && t.radius(1) === 1);
+    const term = C.cassetteTerminal(C.createCassette());
+    const p = term.run("PLAY"), st = term.run("STATUS"), s2 = term.run("STOP"), rw = term.run("REW"), rs = term.run("RESET");
+    check("cassetteTerminal", term.banner[1] === "HOW TO USE" && /no sound/i.test(p.lines[0]) && /Playing/.test(st.lines[0]) && /stand still/.test(s2.lines[0]) && /REW|already/.test(rw.lines[0]) && rs.reset);
+    const words = [...C.CASSETTE_DEEPER, ...term.banner].join(" ");
+    check("cassetteHonest", !/\bminutes?\b|\bseconds? of\b|\bhours?\b|\bMB\b|\bcapacity of\b|\b1[89]\d\d\b/i.test(words) && /no running time/i.test(words) && /HOLD/.test(words));
+  }
+
+  // --- The cluster through the kit, with Era 2 ----------------------------------------------------------------------
+  const buildEra2 = (BLx) => {
+    const { createNode, addChild } = BLx.scene, M = BLx.models, Wx = BLx.genesisWorld, parent = createNode(), reg = BLx.genesisProps.createRegistry();
+    const obs = [], solids = [], defs = [], placed = [];
+    const label = () => ({ back: M.box({ w: 1, h: 0.3, d: 0.05, color: "#000000" }), face: M.box({ w: 1, h: 0.3, d: 0.01, color: "#ffffff" }), width: 1, height: 0.3 });
+    const place = (n) => { addChild(parent, n); placed.push(n); return n; };
+    const era = Wx.ERAS[2];
+    const kit = { era, top: Wx.BANK_TOP, channel: Wx.CHANNEL, M, createNode, addChild, place, label,
+      solid: (w, h, d, color, x, y, z, emissive = 0) => { solids.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, top: y + h / 2, x, z }); return place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } })); },
+      sign: (t, sub, x, y, z, yaw = 0) => { const l = label(), n = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } })); addChild(n, createNode({ geometry: l.back }), createNode({ geometry: l.face })); return n; },
+      obstacle: (x0, x1, z0, z1) => { obs.push({ x0, x1, z0, z1 }); }, prop: (d) => { defs.push(d); return reg.register({ ...d, era: 2 }); } };
+    BLx.genesisExhibits.eras[2].build(kit);
+    return { parent, reg, obs, solids, defs, era, def: BLx.genesisExhibits.eras[2] };
+  };
+  const count = (n) => 1 + n.children.reduce((s, c) => s + count(c), 0);
+  {
+    const B = buildEra2(BL), ids = B.defs.map((d) => d.id);
+    check("eightProps", ids.length === 8 && ["e2-merkle", "e2-blind", "e2-pc", "e2-floppy", "e2-maze", "e2-four", "e2-crt", "e2-cassette"].every((id) => ids.includes(id)));
+    const mine = B.defs.filter((d) => C.KEYS.some((k) => C.EXHIBITS[k].id === d.id));
+    check("contextOnly", mine.length === 3 && mine.every((d) => d.connection === "context" && d.ref === undefined && EX.checkProp(2, d) === null && d.year === "1980s" && d.label.includes("1980s") && /museum homage/.test(d.date) && /HOLD|claimed/.test(d.date)));
+    check("sources", mine.every((d) => d.sourceKeys.every((k) => { const s = P.sourceOf(k); return s && /^https:\/\//.test(s.href); })));
+    check("opensTerminal", mine.every((d) => { const r = d.onUse({}); return r.terminal && typeof r.terminal.run === "function" && r.terminal.banner.includes("HOW TO USE"); }));
+    // Plots: the reserved zones, the old stream and 1.5 m beside it, the height limit, and Era 2's gallery.
+    const bay = W.MUSEUM.bays[2], reserved = W.reservedZones(2), hit = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
+    const inGallery = (b) => b.x0 >= bay.x0 && b.x1 <= bay.x1 && b.z0 >= B.era.z1 - bay.depth && b.z1 <= B.era.z1 - W.MUSEUM.OPEN;
+    const cl = C.footprints();
+    check("plots", cl.every((b) => inGallery(b) && !reserved.some((r) => hit(b, r)) && b.x1 <= W.CHANNEL.x0 - W.BANK.FRONT) && B.solids.every((s) => s.top <= W.BANK_TOP + W.BANK.MAX_H));
+    // The cluster takes no existing exhibit's floor, and stays off the old ramp's walkway.
+    const old = E2.footprints();
+    check("noOverlap", cl.every((b) => !old.some((o) => hit(b, o)) && !hit(b, { x0: -16.5, x1: W.CHANNEL.x0, z0: B.era.z - 2.6, z1: B.era.z + 2.6 })) && cl.every((a, i) => cl.every((b, j) => i === j || !hit(a, b))));
+    // The FUD Patrol floor: about 3 x 3 m, inside the gallery near the arch, clear of every Era 2 solid, obstacle and use point.
+    const Z = E2.FUD_PATROL_ZONE;
+    const fud = Math.abs(Z.x1 - Z.x0 - 3) < 1e-9 && Math.abs(Z.z1 - Z.z0 - 3) < 1e-9 && inGallery(Z) && B.era.z1 - Z.z1 >= W.MUSEUM.OPEN && B.era.z1 - Z.z1 <= 12 && !reserved.some((r) => hit(Z, r))
+      && !B.solids.some((s) => hit(s, Z)) && !B.obs.some((o) => hit(o, Z)) && !B.defs.some((d) => d.at.x > Z.x0 - 0.3 && d.at.x < Z.x1 + 0.3 && d.at.z > Z.z0 - 0.3 && d.at.z < Z.z1 + 0.3);
+    check("fudZoneClear", fud);
+    // Taps and walk-ups: each tap box over its model's footprint, each walk-up point in front of it toward the old stream.
+    check("picks", mine.every((d) => { const o = B.obs.find((b) => Math.abs((b.x0 + b.x1) / 2 - d.pick.x) < 1e-9 && Math.abs((b.z0 + b.z1) / 2 - d.pick.z) < 1e-9); return o && d.at.x >= o.x1 + 0.6 && d.at.z > o.z0 && d.at.z < o.z1; }));
+    // Every Era 2 exhibit, old and new, can still be walked to: a breadth-first walk on a 0.2 m grid over the left bank
+    // from the gallery's way in, a 0.3 m body against every obstacle and lamp post.
+    const lamps = W.lampPosts(2).map((l) => ({ x0: l.x0, x1: l.x1, z0: l.z0, z1: l.z1 }));
+    const blockers = [...B.obs, ...lamps], cell = 0.2, pad = 0.3, x0 = bay.x0, x1 = W.CHANNEL.x0, zTop = B.era.z1 - W.MUSEUM.OPEN, zBot = B.era.z1 - bay.depth;
+    const nx = Math.round((x1 - x0) / cell), nz = Math.round((zTop - zBot) / cell);
+    const free = (x, z) => x > x0 + pad && x < x1 - pad && z > zBot + pad && z < zTop - pad && !blockers.some((o) => x > o.x0 - pad && x < o.x1 + pad && z > o.z0 - pad && z < o.z1 + pad);
+    const seen = new Uint8Array(nx * nz), q = [], idx = (x, z) => Math.round((x - x0) / cell) * nz + Math.round((z - zBot) / cell);
+    const s0 = idx(x1 - 1, zTop - 1); seen[s0] = 1; q.push(s0);
+    for (let h = 0; h < q.length; h++) { const i = q[h], ix = (i / nz) | 0, iz = i % nz; for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const jx = ix + dx, jz = iz + dz, j = jx * nz + jz; if (jx < 0 || jz < 0 || jx >= nx || jz >= nz || seen[j] || !free(x0 + jx * cell, zBot + jz * cell)) continue; seen[j] = 1; q.push(j); } }
+    check("reachable", B.defs.every((d) => { for (let i = 0; i < seen.length; i++) if (seen[i] && Math.hypot(x0 + ((i / nz) | 0) * cell - d.at.x, zBot + (i % nz) * cell - d.at.z) <= (d.reach || 1.4) - 0.05) return true; return false; }));
+    // Scene records the cluster adds (nodes in its graph), and that the graph holds steady over many frames.
+    const nodes = count(B.parent), v = E2.visit, live = v.cluster.live;
+    live.game.drop(3); live.screen.set("g", 4); live.tape.play();
+    for (let i = 0; i < 1000; i++) B.def.update(1 / 60, i / 60, { era: 2, walking: true, reading: false, x: -14, z: B.era.z - 8, calm: i > 600 });
+    const posed = v.cluster.parts.holes[3].geometry !== v.cluster.parts.holeGeo[0] && v.cluster.parts.pixels.some((p) => p.geometry === v.cluster.parts.colours[0 * 25 + 4 * 5 + 0]) && live.tape.pos > 0;
+    check("steady", count(B.parent) === nodes && posed && v.cluster.parts.colours.filter(Boolean).length <= 125);
+    results.clusterRecords = 0;
+    // Era 2 without the cluster file builds its five props as before (the hook is optional).
+    const plain = { window: {}, document: fakeDocument, crypto: globalThis.crypto };
+    await load(plain, ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2"]);
+    const P2 = buildEra2(plain.window.BL);
+    const baseNodes = count(P2.parent);
+    check("withoutCluster", P2.defs.length === 5 && plain.window.BL.genesisEra2.visit.cluster === null);
+    results.clusterRecords = nodes - baseNodes;
+    check("recordBudget", nodes - baseNodes > 0 && nodes - baseNodes <= 150);
+    P2.def.dispose(); B.def.dispose();
+    check("disposed", E2.visit === null && plain.window.BL.genesisEra2.visit === null);
+  }
+
+  const failed = Object.entries(results).filter(([k, v]) => k !== "clusterRecords" && !v).map(([k]) => k);
+  console.log(JSON.stringify(results));
+  console.log(failed.length ? `FAILED: ${failed.join(", ")}` : `PASS: ${Object.keys(results).length - 1} checks · cluster scene records ${results.clusterRecords}`);
+  process.exit(failed.length ? 1 : 0);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
+// Era 3's upgrade suite, folded in from test/genesis-era-3-upgrade.mjs (gv/upgrade-era-3) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra3UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Era 3's upgrade cluster, checked in Node through the modules' own functions (no browser, no build):
+  //   node test/genesis-era-3-upgrade.mjs        prints one line a check and the scene-record count; exit 1 on a failure.
+  // Owned by the Era 3 builder; the integrator may call `era3UpgradeProof` from the unit tier (see
+  // docs/genesis-voyage/exhibits/era-3.md, integration requests). Nothing here re-implements a rule as its oracle: the live
+  // game is checked against the cabinet's own rules, the buttons against the workbench's own `actionsFrom`.
+
+
+  // A canvas and 2D context that only count what is asked of them, for drawing in Node.
+  const stubCtx = () => {
+    const calls = { fill: 0, image: 0, text: 0 };
+    const ctx = new Proxy({ calls }, { get: (t, k) => k in t ? t[k] : k === "fillRect" ? () => { calls.fill++; } : k === "drawImage" ? () => { calls.image++; } : k === "fillText" ? () => { calls.text++; }
+      : k === "createRadialGradient" || k === "createLinearGradient" ? () => ({ addColorStop: () => {} }) : typeof k === "string" && /^[a-z]/.test(k) ? () => {} : undefined, set: () => true });
+    return ctx;
+  };
+  const stubDocument = { createElement: () => ({ width: 0, height: 0, getContext: () => stubCtx() }) };
+
+  const era3UpgradeProof = async () => {
+    const context = { window: {}, document: stubDocument, crypto: globalThis.crypto };
+    // The jumbotron's font, as the retro kit reads it: every glyph a 5 by 7 block of nothing, enough to draw.
+    context.window.BL = { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } };
+    for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-bench", "genesis-era-3", "retro-games", "genesis-era-3-rally"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+    const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, E = BLc.genesisEra3, GN = BLc.genesisBench, LIVE = BLc.genesisEra3Rally, def = EX.eras[3];
+    const r = {};
+
+    // --- Building: still five exhibits, the cluster inside the dial-up corner's own footprint, records counted. -------
+    const solids = [], obstacles = [], props = {};
+    let records = 0;
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true, glow: 1 });
+    const kit = { era: W.ERAS[3], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}), merge: () => ({}), moved: (g) => g, turnedX: (g) => g, turnedZ: (g) => g },
+      createNode: (o = {}) => { records++; return Object.assign(node(), o, { children: [] }); }, addChild: () => {}, place: (n) => n,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }),
+      solid: (w, h, d, c, x, y, z) => { records++; solids.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, top: y + h / 2 }); return node(); },
+      sign: () => { records += 3; return node(); }, obstacle: (x0, x1, z0, z1) => { obstacles.push({ x0, x1, z0, z1 }); },
+      notify: () => {}, prop: (d) => { if (EX.checkProp(3, d)) throw new Error(EX.checkProp(3, d)); props[d.id] = d; return { ...d, era: 3 }; } };
+    def.build(kit);
+    const inside = (b, o) => b.x0 >= o.x0 - 1e-9 && b.x1 <= o.x1 + 1e-9 && b.z0 >= o.z0 - 1e-9 && b.z1 <= o.z1 + 1e-9;
+    const overlaps = (p, q, pad = 0) => p.x0 < q.x1 + pad && p.x1 > q.x0 - pad && p.z0 < q.z1 + pad && p.z1 > q.z0 - pad;
+    const B = E.LAYOUT.bbs, corner = obstacles.find((o) => o.x0 < B.x && o.x1 > B.x && o.z0 < B.z && o.z1 > B.z);
+    r.fiveExhibits = Object.keys(props).join() === "e3-press,e3-padlock,e3-bbs,e3-pager,e3-rally" && props["e3-press"].connection === "demonstration";
+    r.cartInsideCorner = !!corner && solids.filter((s) => s.z0 > B.z + 0.9).length >= 4 && solids.every((s) => obstacles.some((o) => inside(s, o)))
+      && obstacles.every((o, i) => obstacles.every((q, j) => i === j || !overlaps(o, q, 2.5)));
+
+    // --- 1. Tick-Tock Rally: the prompt's buttons, and the live game on the cabinet's own rules. ----------------------
+    const rally = props["e3-rally"].onUse({}).terminal, rallyButtons = GN.actionsFrom(rally.run("HELP").lines).map((a) => a.cmd);
+    r.rallyButtons = ["SERVE", "LEFT", "RIGHT", "WAIT"].every((c) => rallyButtons.includes(c)) && rally.banner[0] === "HOW TO USE";
+    const g = E.visit.rally, p0 = g.paddle;
+    rally.run("SERVE"); const t1 = g.time; rally.run("LEFT");
+    r.rallyTick = g.state === "play" && g.paddle < p0 && Math.abs(g.time - t1 - E.TICK) < 1e-9 && rally.run("LLW").lines.length > 3 && rally.run("RESET").reset && g.state === "serve";
+    // A stub console host; the retro kit's `hooks` takes its functions loose, so they close over the record `h`.
+    const host = (opts = {}) => {
+      const h = { best: 0, still: false, aim: { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, cues: [], ends: [], overs: 0, popups: [], ...opts };
+      Object.assign(h, { cue: (name) => h.cues.push(name), popup: (t) => h.popups.push(t), over: () => { h.overs++; }, onEnd: (score) => h.ends.push(score), shake: () => {}, crack: () => {}, flop: () => {} });
+      return h;
+    };
+    // The live game against a twin of the cabinet's own rules, fed the same inputs in lockstep: the same score at 30 and
+    // 120 frames a second.
+    const twin = (fps, seconds) => {
+      const h = host(), game = LIVE.make(h), rules = E.createRally();
+      game.start(7); game.act(); rules.serve();
+      let same = true;
+      for (let f = 0; f < fps * seconds; f++) {
+        h.aim.x = Math.max(-1, Math.min(1, rules.x * 2 - 1));
+        rules.input.aim = (h.aim.x + 1) / 2;
+        game.update(1 / fps); rules.update(1 / fps);
+        if (rules.state === "serve") { rules.serve(); game.act(); }
+        if (game.status.score !== rules.score) same = false;
+      }
+      return { same, score: rules.score, game, h };
+    };
+    const a = twin(30, 25), b = twin(120, 25);
+    r.liveMatchesRules = a.same && b.same && a.score === b.score && a.score >= 5 && a.h.cues.includes("hit");
+    const idle = host(), lose = LIVE.make(idle), status0 = lose.status;
+    lose.start(3);
+    const ctx = stubCtx();
+    for (let n = 0; n < 4000 && idle.ends.length === 0; n++) { if (lose.status.verb === "Serve!") lose.act(); lose.update(1 / 60); if (n % 5 === 0) lose.draw(ctx); }
+    r.liveEnds = idle.overs === 1 && idle.ends.length === 1 && lose.status === status0 && lose.status.left === 0 && !lose.playing && ctx.calls.image + ctx.calls.fill > 0;
+    const fields = ["kind", "name", "help", "coach", "stars", "tickets", "status", "start", "act", "stop", "update", "draw"];
+    r.liveInterface = fields.every((k) => lose[k] !== undefined) && lose.aims === true && /museum homage/i.test(lose.help) && lose.tickets(25) === 5;
+    // Calm: the attract's demo holds still; without Calm it plays.
+    const calmHost = host({ still: true }), calmGame = LIVE.make(calmHost), d1 = stubCtx();
+    for (let f = 0; f < 120; f++) calmGame.update(1 / 60);
+    calmGame.draw(d1);
+    const liveHost = host(), liveGame = LIVE.make(liveHost);
+    for (let f = 0; f < 120; f++) liveGame.update(1 / 60);
+    r.calmAttract = calmGame.demoTime === 0 && liveGame.demoTime > 1.5;
+
+    // --- 2. The CRT test screen: four illustrative grids, one button, reset, nothing claimed. -------------------------
+    const bbs = props["e3-bbs"].onUse({}).terminal, bbsButtons = GN.actionsFrom(bbs.run("HELP").lines).map((x) => x.cmd), crt = E.visit.bbs.crt;
+    r.crtButton = ["DIAL", "CRT", "READ", "POST", "HANGUP"].every((c) => bbsButtons.includes(c)) && bbsButtons.length <= GN.MAX_ACTIONS;
+    const levels = [];
+    for (let i = 0; i < 4; i++) { bbs.run("CRT"); levels.push(crt.level); }
+    const said = bbs.run("CRT 1").lines;
+    r.crtCycles = levels.join() === "2,3,0,1" && crt.level === 0 && said.some((l) => /20 by 15/.test(l)) && said.some((l) => /Illustrative setting/.test(l)) && said.slice(-15).every((l) => l.length === 20)
+      && /Pick a sample grid/.test(bbs.run("CRT 9").lines[0]) && (bbs.run("RESET"), crt.level === 1) && E.pcRun("CRT") === null;
+    const inks = new Set(); for (let y = 0; y < 60; y++) for (let x = 0; x < 80; x++) inks.add(E.crtPixel((x + 0.5) / 80, (y + 0.5) / 60));
+    r.crtPicture = inks.size >= 8 && E.GRIDS.every(([w, h], i) => i === 0 || w > E.GRIDS[i - 1][0] && w / h === 4 / 3) && E.EXHIBITS.bbs.deeper.some((p) => /illustrative settings/.test(p) && /verified no display specification/.test(p));
+    // The frame notices a new grid at once (the screen repaints only then).
+    const st = { era: 3, walking: true, reading: true, calm: false, x: -30, z: -340 };
+    def.update(1 / 30, 1, st); const shown = E.visit.crtShown; bbs.run("CRT"); def.update(1 / 30, 1.1, st);
+    r.crtRepaintsOnChange = E.visit.crtShown === crt.version && shown !== crt.version && (def.update(1 / 30, 1.2, st), E.visit.crtShown === crt.version);
+
+    // --- 3. The pager: one-button pages to Bea, her reply at once, bounded, CLEAR. -------------------------------------
+    const pagerT = props["e3-pager"].onUse({}).terminal, pagerButtons = GN.actionsFrom(pagerT.run("HELP").lines).map((x) => x.cmd), pg = E.visit.pager;
+    r.pagerButtons = ["HELLO", "MEET", "LATE", "THANKS", "READ", "CLEAR"].every((c) => pagerButtons.includes(c)) && pagerButtons.every((c) => !/[a-z]/.test(c));
+    const before = pg.received, sent = pagerT.run("MEET"), slot = {};
+    r.pagerReplies = sent.sent === "MEET" && pg.received === before + 2 && pg.at(0, slot).text === "BEA: OK, AT THE PRESS" && pg.at(1, slot).text === "YOU: MEET AT THE PRESS" && pg.unread === 1;
+    for (let i = 0; i < 20; i++) pagerT.run(["HELLO", "LATE", "THANKS"][i % 3]);
+    st.calm = true; def.update(1 / 30, 2, st); const g1 = E.visit.pagerLamp.glow; def.update(1 / 30, 2.2, st);
+    r.pagerBounded = pg.count === pg.capacity && pg.capacity === 6 && g1 > 0.4 && E.visit.pagerLamp.glow === g1 && (pagerT.run("CLEAR"), pg.count === 0)
+      && E.visit.triggers.armed.every((x) => x === 1) && /Unknown/.test(pagerT.run("SHOUT").lines[0]);
+    r.howTo = ["e3-press", "e3-padlock", "e3-bbs", "e3-pager", "e3-rally"].every((id) => { const b = props[id].onUse({}).terminal.banner; const i = b.indexOf(""); return b[0] === "HOW TO USE" && i >= 3 && i <= 5; });
+
+    def.dispose();
+    r.disposed = E.visit === null;
+    return r;
+  };
+  const r = await era3UpgradeProof();
+  let ok = true;
+  for (const [k, v] of Object.entries(r)) { if (k === "records") continue; console.log(`${v ? "PASS" : "FAIL"} ${k}`); if (!v) ok = false; }
+  console.log(ok ? "era 3 upgrade: all checks passed" : "era 3 upgrade: FAILED");
+  process.exit(ok ? 0 : 1);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
+// Era 4's upgrade suite, folded in from test/genesis-era-4-upgrade.mjs (gv/upgrade-era-4) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra4UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Era 4 upgrade cluster checks (gv/upgrade-era-4): the strategy board, the information screen and the wireless packet
+  // toy, through their own modules and the era file's real build. Node only, no Chrome: `node test/genesis-era-4-upgrade.mjs`.
+  // Each check says why it exists, as test/run.mjs's do. Prints one line a check and exits non-zero on any failure.
+
+  const results = [];
+  const record = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` ${detail}`}`); };
+  const load = async (files, context) => { for (const f of files) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context); return context.window.BL; };
+
+  // A canvas whose context draws nothing, and the jumbotron's font stubbed (its glyphs blank), so retro-games.js's real
+  // kit loads in Node and the consoles run their own update and draw.
+  const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => ({ addColorStop() {} })), set: (t, k, v) => { t[k] = v; return true; } });
+  const document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
+  const context = () => ({ window: { BL: { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } } }, document, crypto: webcrypto });
+  const MODULES = ["genesis-era-4-strategy", "genesis-era-4-teletext", "genesis-era-4-wireless"];
+  const BL = await load(["math", "retro-games", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-bench", ...MODULES, "genesis-era-4"], context());
+  const W = BL.genesisWorld, EX = BL.genesisExhibits, TD = BL.genesisTimelineData, GAMES = BL.genesisEra4Games, B = BL.genesisBench;
+
+  // Build Era 4 on a recording kit.
+  const build = (BLx) => {
+    const W2 = BLx.genesisWorld, e = W2.ERAS[4], out = { solids: [], signs: [], obstacles: [], props: [] };
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], glow: 1 });
+    BLx.genesisExhibits.eras[4].build({ era: e, top: W2.BANK_TOP, channel: W2.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o), addChild: () => {}, place: (n) => n,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
+      solid: (w, h, d, c, x, y, z) => { const n = node(); out.solids.push({ w, h, d, x, y, z, n }); return n; },
+      sign: (t, sub, x, y, z) => { out.signs.push({ t, sub, x, z }); return node(); },
+      obstacle: (x0, x1, z0, z1) => out.obstacles.push({ x0, x1, z0, z1 }),
+      prop: (d) => { out.props.push(d); return { ...d, era: 4 }; } });
+    return out;
+  };
+  const built = build(BL), era = W.ERAS[4], NEW = ["e4-strategy", "e4-teletext", "e4-wireless"];
+  const OLD = ["e4-hashcash", "e4-bmoney", "e4-names", "e4-timesec", "e4-desktop", "e4-modem", "e4-cd", "e4-pocket", "e4-loft"];
+  const byId = Object.fromEntries(built.props.map((p) => [p.id, p]));
+  const term = (id) => byId[id].onUse({}).terminal;
+  const text = (r) => r.lines.join("\n");
+
+  // rule: the existing exhibits keep their ids and connections; the three new ones are context, dated, sourced.
+  {
+    const ids = built.props.map((p) => p.id), bad = [];
+    if (ids.length !== OLD.length + NEW.length || [...OLD, ...NEW].some((id) => !ids.includes(id))) bad.push(`ids ${ids}`);
+    const trail = { "e4-hashcash": "influence", "e4-bmoney": "citation", "e4-names": "citation", "e4-timesec": "citation" };
+    for (const p of built.props) {
+      const want = trail[p.id] || "context";
+      if (p.connection !== want) bad.push(`${p.id} is ${p.connection}`);
+      if (EX.checkProp(4, p)) bad.push(EX.checkProp(4, p));
+      if (!String(p.label).includes(String(p.year))) bad.push(`${p.id} label lacks its year`);
+      for (const k of p.sourceKeys) { const s = BL.genesisProps.sourceOf(k); if (!s || !/^https:\/\//.test(s.href)) bad.push(`${p.id} source ${k}`); }
+      if (NEW.includes(p.id) && (!p.hint || !p.date)) bad.push(`${p.id} needs a hint and a date that says what it marks`);
+    }
+    record("rule: Era 4 keeps its nine exhibits and trail entries; the cluster adds three context exhibits, each dated, hinted and sourced", !bad.length, bad.join("; "));
+  }
+
+  // rule: the cluster stands inside Era 4's gallery, off the old stream's walk, and overlaps no other obstacle or lamp;
+  // it adds at most about 150 scene records.
+  {
+    const bad = [], r = W.MUSEUM.rects[4], inGallery = (x, z) => { const p = W.MUSEUM.toMuseum(4, x, z, {}); return p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1; };
+    const zone = { x0: 24.5, x1: 36.5, z0: era.z - 1, z1: era.z + 3.2 }, inZone = (x, z) => x >= zone.x0 && x <= zone.x1 && z >= zone.z0 && z <= zone.z1;
+    const mine = built.obstacles.filter((o) => inZone((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)), others = built.obstacles.filter((o) => !mine.includes(o));
+    if (mine.length !== 3) bad.push(`${mine.length} cluster obstacles`);
+    for (const o of mine) {
+      if (others.some((q) => o.x0 < q.x1 && o.x1 > q.x0 && o.z0 < q.z1 && o.z1 > q.z0)) bad.push("overlaps another obstacle");
+      if (!inGallery(o.x0, o.z0) || !inGallery(o.x1, o.z1)) bad.push("outside the gallery");
+      if (o.x0 < W.CHANNEL.x1 + 1.5) bad.push("on the old stream's walk");
+      for (const z of W.reservedZones(4)) if (o.x0 < z.x1 && o.x1 > z.x0 && o.z0 < z.z1 && o.z1 > z.z0) bad.push(`in the ${z.why} plot`);
+    }
+    for (const id of NEW) {
+      const at = byId[id].at;
+      if (!inGallery(at.x, at.z) || others.concat(mine).some((q) => at.x > q.x0 - 0.3 && at.x < q.x1 + 0.3 && at.z > q.z0 - 0.3 && at.z < q.z1 + 0.3)) bad.push(`${id}'s walk-up spot is blocked or outside`);
+    }
+    const records = built.solids.filter((s) => inZone(s.x, s.z)).length + built.signs.filter((s) => inZone(s.x, s.z)).length + mine.length + NEW.length;
+    record(`rule: the cluster stands inside the gallery, clear of walkways, lamps and other exhibits, in ${records} scene records (at most about 150)`, !bad.length && records <= 150, bad.join("; "));
+  }
+
+  // rule: every new terminal answers HELP, MORE and RESET, and the workbench finds buttons in its HELP with no line
+  // repeated in its right column.
+  {
+    const bad = [];
+    for (const id of NEW) {
+      const t = term(id), help = t.run("HELP").lines, more = t.run("MORE").lines, reset = t.run("RESET");
+      if (!help.length || !more.length || !reset.reset) bad.push(`${id} HELP/MORE/RESET`);
+      if (!B.actionsFrom(help).length) bad.push(`${id} has no buttons`);
+      const all = B.sections({ banner: t.banner, more, hint: byId[id].hint }).flatMap((s) => s.lines);
+      if (new Set(all).size !== all.length) bad.push(`${id} repeats a line`);
+    }
+    const cmds = (id) => B.actionsFrom(term(id).run("HELP").lines).map((a) => a.cmd).join(" ");
+    if (!/MOVE/.test(cmds("e4-strategy")) || !/SEND/.test(cmds("e4-wireless")) || !/NEXT/.test(cmds("e4-teletext"))) bad.push(`buttons ${cmds("e4-strategy")} / ${cmds("e4-wireless")} / ${cmds("e4-teletext")}`);
+    record("rule: the new terminals answer HELP, MORE and RESET, and the workbench reads buttons from each HELP without repeating a line", !bad.length, bad.join("; "));
+  }
+
+  // rule: every strategy board can be won within its move limit (a search over positions through the module's own
+  // moves), a caught piece goes home, walls and taken squares refuse, and the limit ends the board.
+  const S = GAMES.strategy;
+  const solve = (n) => {
+    const core = S.create(); core.load(n);
+    const s = core.s, start = [s.at[0], s.at[1], s.guard], prev = new Map([[start.join(), null]]);
+    let frontier = [start];
+    for (let depth = 0; depth < S.MOVES && frontier.length; depth++) {
+      const next = [];
+      for (const st of frontier) for (let p = 0; p < 2; p++) for (let d = 0; d < 4; d++) {
+        core.set(st[0], st[1], st[2], depth);
+        const r = core.move(p, d);
+        if (r === "won") { const line = [[p, d]]; for (let k = st.join(); prev.get(k); k = prev.get(k).from) line.unshift(prev.get(k).move); return line; }
+        if (r !== "ok" && r !== "caught") continue;
+        const key = [s.at[0], s.at[1], s.guard].join();
+        if (!prev.has(key)) { prev.set(key, { from: st.join(), move: [p, d] }); next.push([s.at[0], s.at[1], s.guard]); }
+      }
+      frontier = next;
+    }
+    return null;
+  };
+  const lines = S.BOARDS.map((_, n) => solve(n));
+  {
+    const bad = [];
+    lines.forEach((l, n) => { if (!l || l.length > S.MOVES) bad.push(`board ${n + 1} unwinnable`); });
+    const core = S.create(); core.load(0);
+    const s = core.s;
+    if (core.move(0, 3) !== "wall") bad.push("edge not refused");
+    // Stalling never wins: B steps north and back until the limit ends the board.
+    core.load(0);
+    for (let k = 0; k < 200 && !s.lost && !s.won; k++) for (const d of [0, 2, 1, 3]) { const r = core.move(1, d); if (r !== "wall" && r !== "blocked") break; }
+    if (!s.lost || s.used !== S.MOVES) bad.push(`limit: used ${s.used}, lost ${s.lost}`);
+    const t = term("e4-strategy"); t.run("RESET");
+    const solvedBoard1 = lines[0].every(([p, d]) => !/wall|taken/i.test(text(t.run(`MOVE ${"AB"[p]} ${"NESW"[d]}`))));
+    if (!solvedBoard1 || !/GOAL REACHED/.test(text(t.run("LOOK")))) bad.push("the winning line through the terminal does not reach the goal");
+    const caught = (() => { const c = S.create(); c.load(1); for (let k = 0; k < 20; k++) { for (let d = 0; d < 4; d++) { const r2 = c.move(0, d); if (r2 === "caught") return c.s.at[0] === c.s.home[0] || c.s.at[1] === c.s.home[1]; if (r2 !== "wall" && r2 !== "blocked") break; } if (c.s.won || c.s.lost) break; } return null; })();
+    if (caught === false) bad.push("a caught piece did not go home");
+    record(`rule: each strategy board is winnable within ${S.MOVES} moves (shortest ${lines.map((l) => l && l.length).join(", ")}), edges refuse, the limit ends a board, a capture sends a piece home${caught === null ? " (no capture met on this probe)" : ""}`, !bad.length, bad.join("; "));
+  }
+
+  // playthrough: the strategy console (retro-games.js factory interface) reaches its result, shown and scored.
+  const host = () => {
+    const h = { best: 0, still: false, aim: { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, overs: 0, ends: [], popup() {}, cue() {}, shake() {}, crack() {}, flop() {} };
+    h.over = () => { h.overs++; }; h.onEnd = (score) => { h.ends.push(score); };
+    return h;
+  };
+  const keys = ["kind", "name", "help", "coach", "stars", "tickets", "status", "playing", "start", "act", "stop", "update", "draw", "aims"];
+  {
+    const h = host(), g = S.make(h), bad = [];
+    if (keys.some((k) => !(k in g))) bad.push("interface incomplete");
+    h.aim.steps = 5; g.start(0);
+    g.update(1 / 60);
+    if (g.status.left !== S.MOVES) bad.push("a step held before start moved a piece");
+    let piece = 0;
+    for (const [p, d] of lines[0]) {
+      if (p !== piece) { g.act(); piece = p; }
+      if (d === 1) h.aim.steps++; else if (d === 3) h.aim.steps--; else if (d === 2) h.aim.stepsY++; else h.aim.stepsY--;
+      g.update(1 / 60); g.draw(ctx2d);
+    }
+    for (let k = 0; k < 200; k++) g.update(1 / 60);
+    g.draw(ctx2d);
+    if (h.overs !== 1 || h.ends.length !== 1 || !(h.ends[0] > 0) || g.playing) bad.push(`over ${h.overs}, ends ${h.ends}`);
+    if (!(g.tickets(h.ends[0]) > 0)) bad.push("no tickets for a win");
+    record("playthrough: the strategy console plays a winning line from its own input to one over(), one onEnd with a score and tickets; a step held before start moves nothing", !bad.length, bad.join("; "));
+  }
+
+  // rule: the information screen ships only READY context records, word for word, names no real service, and its
+  // remote reaches every page; the HOLD stays on the screen's own About page.
+  const T = GAMES.teletext;
+  {
+    const bad = [], core = T.create(TD.records), t = term("e4-teletext");
+    const want = TD.records.filter((r) => r.era === 4 && r.connection.contextOnly);
+    for (const r of want) {
+      const p = core.pages.find((q) => q.title === r.sign);
+      if (!p) { bad.push(`no page for ${r.id}`); continue; }
+      const words = p.rows.join(" ");
+      for (const part of [r.kid, r.marks]) for (const w of part.toUpperCase().split(/\s+/)) if (!words.includes(w.slice(0, 26))) bad.push(`${r.id} lost "${w}"`);
+    }
+    if (core.pages.some((p) => /HASHCASH|B-MONEY|TIMESEC|SECURE NAMES/.test(p.rows.join(" ")))) bad.push("a citation's record leaked onto the screen");
+    const all = core.pages.map((p) => `${p.title} ${p.rows.join(" ")}`).join(" ").toUpperCase();
+    if (/CEEFAX|ORACLE|TELETEXT|VIDEOTEX|WI-FI|WIFI/.test(all)) bad.push("names a service or brand");
+    if (!/ON HOLD/.test(all)) bad.push("the HOLD is not stated");
+    if (!/Page 999 is not/.test(text(t.run("999")))) bad.push("a missing page is not refused");
+    if (!/P110/.test(text(t.run("110"))) || !/REVEAL/.test(text(t.run("190"))) || !/CAME FIRST/.test(text(t.run("REVEAL")))) bad.push("pages or reveal");
+    for (const p of core.pages) if (p.rows.some((row) => row.length > T.COLS)) bad.push(`P${p.number} row too wide`);
+    record(`rule: the information screen shows ${want.length} READY context records word for word, no citation, service name or brand, refuses a missing page, reveals its quiz, and states the HOLD`, !bad.length, bad.join("; "));
+  }
+  {
+    const h = host(), g = T.make(h), bad = [];
+    if (keys.some((k) => !(k in g))) bad.push("interface incomplete");
+    g.start(1);
+    for (let k = 0; k < 20 && g.playing; k++) { h.aim.steps++; g.update(1 / 60); g.draw(ctx2d); h.aim.stepsY++; g.update(1 / 60); }
+    for (let k = 0; k < 200; k++) g.update(1 / 60);
+    const pages = T.create(TD.records).pages.length;
+    if (h.overs !== 1 || h.ends.length !== 1 || h.ends[0] !== pages || g.playing) bad.push(`over ${h.overs}, ends ${h.ends}, pages ${pages}`);
+    record("playthrough: the information screen's console turns through every page to one over() and one onEnd scoring the pages read", !bad.length, bad.join("; "));
+  }
+
+  // rule: the packet toy is seeded (a seed replays its tries), bounds retries per hop and packets per session, routes
+  // round a switched-off box, reports no route when none remains, and its dates are the READY record's.
+  const R = GAMES.wireless;
+  {
+    const bad = [], run = (seed) => { const c = R.create(); c.seed(seed); c.reset(); c.setNoise(2); const out = []; for (let k = 0; k < 8; k++) { out.push(c.send(0, 4), Array.from(c.log.tries.slice(0, c.log.hops)).join("")); } return out.join(); };
+    if (run(7) !== run(7) || run(7) === run(8)) bad.push("seeding");
+    const c = R.create(); c.setNoise(3);
+    for (let k = 0; k < 30; k++) { c.send(0, 4); for (let h2 = 0; h2 < c.log.hops; h2++) if (c.log.tries[h2] > R.RETRIES + 1) bad.push("too many tries"); }
+    if (c.s.sent !== R.SESSION || c.send(0, 4) !== "full") bad.push("session cap");
+    c.reset(); c.setNoise(0); c.power(1, false);
+    let via = ""; for (let k = 0; k < 5 && !via; k++) if (c.send(0, 4) === "delivered") via = Array.from(c.log.to.slice(0, c.log.hops)).join("");
+    if (via !== "234") bad.push(`route round B was ${via}`);
+    c.power(3, false);
+    if (c.send(0, 4) !== "noroute") bad.push("no route not reported");
+    const rec = TD.records.find((r) => r.id === "tl-4-wifi"), banner = term("e4-wireless").banner.join(" ");
+    if (!rec || rec.date !== "1997-06-26" || !/18 November 1997/.test(rec.marks) || !/1 and 2 Mbit\/s/.test(rec.marks)) bad.push("the READY record changed");
+    if (!/26 June 1997/.test(banner) || !/18 November 1997/.test(banner) || !/1 and 2 Mbit\/s/.test(banner) || /Wi-Fi/i.test(banner)) bad.push("the banner's dates or names");
+    const t = term("e4-wireless");
+    const sent = text(t.run("SEND A E"));
+    if (!/A -> /.test(sent) || !/(DELIVERED|LOST)/.test(sent)) bad.push("no visible delivery result");
+    record("rule: the packet toy replays from its seed, caps retries and packets, routes round a switched-off box, reports no route, shows each hop's result, and dates 802.11 from the READY record (approved 26 June, published 18 November 1997, 1 and 2 Mbit/s)", !bad.length, bad.join("; "));
+  }
+  {
+    const h = host(), g = R.make(h), bad = [];
+    if (keys.some((k) => !(k in g))) bad.push("interface incomplete");
+    h.still = true; g.start(3);
+    for (let k = 0; k < 12 && g.playing; k++) { g.act(); for (let f = 0; f < 30; f++) g.update(1 / 60); g.draw(ctx2d); }
+    for (let k = 0; k < 200; k++) g.update(1 / 60);
+    if (h.overs !== 1 || h.ends.length !== 1 || g.playing) bad.push(`over ${h.overs}, ends ${h.ends}`);
+    // The era's box lamps follow the toy's switches.
+    const radio = byId["e4-wireless"].onUse({}).terminal;
+    radio.run("OFF C");
+    EX.eras[4].update(1 / 60, 0, { calm: false, reading: true });
+    const lamps = built.solids.filter((s) => s.n.glow !== 1 && s.z > era.z && s.x > 33);
+    if (lamps.length !== 1 || !(lamps[0].n.glow < 0.5)) bad.push(`lamps ${lamps.length}`);
+    record("playthrough: the packet console sends its ten packets to one over() and one onEnd; the stand's lamp shows a switched-off box", !bad.length, bad.join("; "));
+  }
+
+  // contract: disposing Era 4 drops the cluster's state; a rebuild starts fresh.
+  {
+    term("e4-strategy").run("MOVE A N");
+    EX.eras[4].dispose();
+    const again = build(BL), t = again.props.find((p) => p.id === "e4-strategy").onUse({}).terminal;
+    record("contract: dispose drops the cluster's games; a fresh visit starts each from its first board, page and session", /20 of 20 moves left/.test(text(t.run("LOOK"))), text(t.run("LOOK")));
+  }
+
+  // rule: without the game modules on the page, each stand still opens something (a caption), so the integrator can
+  // land the era file before the script tags.
+  {
+    const BL2 = await load(["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-4"], context());
+    const b = build(BL2), opened = NEW.map((id) => b.props.find((p) => p.id === id).onUse({}));
+    record("rule: without the game modules each new stand opens a caption, never nothing", opened.every((r) => r && typeof r.caption === "string"), JSON.stringify(opened));
+  }
+
+  const passed = results.filter(Boolean).length;
+  console.log(`${passed}/${results.length} Era 4 upgrade checks passed`);
+  process.exit(passed === results.length ? 0 : 1);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
+// Era 5's upgrade suite, folded in from test/genesis-era-5-upgrade.mjs (gv/upgrade-era-5) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra5UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Era 5 upgrade checks (the period-gear cluster): node test/genesis-era-5-upgrade.mjs. Node only, no Chrome, no build.
+  // Rule checks on the two new games' own modules, their retro-games.js factories driven through a stub host and the real
+  // kit, the era file building with and without the modules, the cluster staying in its plot and its record count.
+
+  const results = [];
+  const record = (name, ok, detail = "") => { results.push({ name, ok }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` · ${detail}`}`); };
+  const src = (f) => readFile(join(root, `src/js/${f}.js`), "utf8");
+
+  // A canvas stand-in that counts the calls a frame makes (retro-games.js builds its atlas and screen from it).
+  const ctx2d = () => { const c = { calls: 0 }; for (const k of ["fillRect", "strokeRect", "drawImage", "clearRect", "getImageData", "putImageData", "setTransform", "fillText", "beginPath", "fill", "stroke", "moveTo", "lineTo", "arc", "rect", "save", "restore", "translate", "scale"]) c[k] = () => { c.calls++; }; c.measureText = () => ({ width: 0 }); return c; };
+  const contextWith = async (files, extra = {}) => {
+    const document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d() }) };
+    const context = { window: { BL: {} }, document, crypto: globalThis.crypto, console, ...extra };
+    context.window.document = document;
+    for (const f of files) runInNewContext(await src(f), context);
+    return context.window.BL;
+  };
+
+  // ---- Peer Patchwork rules ----------------------------------------------------------------------------------------
+  const { genesisEra5Patchwork: PW } = await contextWith(["genesis-era-5-patchwork"]);
+  // A plain strategy: rarest piece first, from a free holder to a peer that lacks it. If every deal falls to it inside
+  // the round limit, every deal is winnable.
+  const solve = (p, onSend) => {
+    for (let guard = 0; guard < 200 && !p.P.won && !p.P.lost; guard++) {
+      let best = null, rarity = 9;
+      for (let piece = 0; piece < PW.PIECES; piece++) {
+        let holders = 0; for (let s = 0; s < 3; s++) holders += p.holds(s, piece) ? 1 : 0;
+        for (let s = 0; s < 3; s++) if (p.holds(s, piece) && !p.used[s]) for (let d = 0; d < 3; d++) if (!p.holds(d, piece) && holders < rarity) { rarity = holders; best = [s, d, piece]; }
+      }
+      if (!best) { p.pass(); continue; }
+      const code = p.send(...best);
+      if (onSend) onSend(best, code);
+    }
+  };
+  {
+    const p = PW.puzzle(); p.deal(7);
+    const snap = Array.from(p.have).join(""), q = PW.puzzle(); q.deal(7);
+    const deterministic = snap === Array.from(q.have).join("");
+    let wins = 0, boundHolds = true, spread = true;
+    for (let seed = 1; seed <= 500; seed++) {
+      p.deal(seed);
+      for (let d = 0; d < 3; d++) { const n = p.count(d); if (n < 2 || n > 6) spread = false; }
+      for (let piece = 0; piece < 9; piece++) if (!(p.holds(0, piece) || p.holds(1, piece) || p.holds(2, piece))) spread = false;
+      const bound = p.P.bound; solve(p);
+      if (p.P.won) wins++;
+      if (p.P.won && p.P.round < bound) boundHolds = false;
+    }
+    record("patchwork: a seed replays its deal, every piece is held by someone, each peer starts with 2 to 6", deterministic && spread);
+    record("patchwork: all 500 seeded deals are winnable inside the round limit, never in fewer rounds than the bound", wins === 500 && boundHolds, `wins ${wins}`);
+    // The refusals change nothing.
+    p.deal(11);
+    const before = Array.from(p.have).join("");
+    let s0 = -1, piece0 = -1, d0 = -1;
+    for (let s = 0; s < 3 && s0 < 0; s++) for (let i = 0; i < 9 && s0 < 0; i++) if (p.holds(s, i)) for (let d = 0; d < 3; d++) if (d !== s && !p.holds(d, i)) { s0 = s; piece0 = i; d0 = d; break; }
+    const lacks = [0, 1, 2].find((s) => !p.holds(s, piece0));
+    const holder = [0, 1, 2].find((s) => s !== s0 && p.holds(s, piece0));
+    const refusals = p.send(s0, s0, piece0) === 2 && p.send(lacks, s0, piece0) === 3 && (holder === undefined || p.send(s0, holder, piece0) === 4) && p.send(9, 0, 0) === 2 && p.send(0, 1, 9) === 2;
+    const unchanged = Array.from(p.have).join("") === before && p.P.moves === 0;
+    const sent = p.send(s0, d0, piece0) === 0 && p.holds(d0, piece0) && p.used[s0] === 1;
+    const other = (piece0 + 1) % 9;
+    const slot = !p.holds(s0, other) || p.holds((s0 + 1) % 3, other) || p.used[s0] === 0 || p.send(s0, (s0 + 1) % 3, other) === 5;
+    record("patchwork: a self-send, a missing piece, a duplicate and out-of-range input are refused and change nothing; a send uses the sender's slot", refusals && unchanged && sent && slot);
+    // Over the limit: passing every round loses, and nothing more is accepted.
+    p.deal(13); for (let i = 0; i < 9; i++) p.pass();
+    record("patchwork: passing through every round loses and accepts no more sends", p.P.lost && !p.P.won && p.send(0, 1, 0) === 6 && p.stars() === 0);
+    // The terminal over the same rules.
+    p.deal(21);
+    const t = PW.terminal(p, ["era words"]);
+    const banner = t.banner.join(" ");
+    const words = t.run("BOARD").lines.join(" ");
+    const bad = t.run("SEND A A 1").lines[0], junk = t.run("X".repeat(400)).lines.length > 0, empty = t.run("").lines.length > 0;
+    const lim = t.run("LIMITS").lines.join(" ");
+    t.run("SEND A B 1"); const resetTo = (t.run("RESET"), Array.from(p.have).join(""));
+    const fresh = PW.puzzle(); fresh.deal(21);
+    record("patchwork terminal: labelled a modern museum homage, shows the era's words, refuses bad sends, explains the analogy's limits, RESET replays the deal",
+      /modern museum homage/.test(banner) && /not historical software/.test(banner) && banner.includes("era words") && /Peer A: /.test(words) && /two different peers/.test(bad)
+      && junk && empty && /not agreeing who owns/.test(lim) && /checks each piece/.test(lim) && resetTo === Array.from(fresh.have).join(""));
+  }
+
+  // ---- Pattern Pocket rules ----------------------------------------------------------------------------------------
+  const { genesisEra5Mixtape: MX } = await contextWith(["genesis-era-5-mixtape"]);
+  {
+    const m = MX.player();
+    // Spiral 4 + Rings 3 + Dots 3 is exactly the budget; then nothing more fits.
+    const a = m.add(4) === 0 && m.add(4) === 2 && m.add(1) === 0 && m.used() === 7;
+    const fill = m.add(5) === 0 && m.used() === 10 && m.add(3) === 4 && m.used() === 10 && m.score() === 10 * 10 + 3 * 10 + 100;
+    const moved = m.move(0, 1) === 0 && Array.from(m.list).join() === "1,4,5,-1" && m.move(0, -1) === 1 && m.move(2, 1) === 1;
+    const removed = m.remove(4) === 0 && Array.from(m.list).join() === "1,5,-1,-1" && m.M.length === 2 && m.remove(4) === 5;
+    // Four small ones fill the four slots under the budget; a fifth is refused for the slots.
+    const slots = (m.reset(), m.add(3), m.add(0), m.add(2), m.add(1), m.M.length === 4 && m.used() === 8 && m.add(5) === 3);
+    const badId = m.add(9) === 1 && m.add(-1) === 1 && m.remove(9) === 5;
+    record("pocket: the budget and the four slots hold, a pattern loads once, moves stay in range, removal closes the gap, a perfect fit pays",
+      a && fill && moved && removed && slots && badId);
+    m.reset();
+    const t = MX.terminal(m, ["context words"]);
+    const banner = t.banner.join(" "), add = t.run("ADD 5").lines.join(" "), big = (t.run("ADD 2"), t.run("ADD 1"), t.run("ADD 6").lines.join(" ")), play = t.run("PLAY").lines.join(" ");
+    const budget = t.run("BUDGET").lines.join(" ");
+    record("pocket terminal: labelled a homage with no recordings or brand, enforces the budget, plays the list in order, says toy units are not a real capacity",
+      /modern museum homage/.test(banner) && /no recordings or brand/.test(banner) && banner.includes("context words") && /Slot 1: Spiral/.test(add) && /pass the 10-unit budget/.test(big)
+      && /^1\. Spiral/.test(play) && /2\. Rings/.test(play) && /3\. Bars/.test(play) && /1 units still free/.test(play) && /Toy units only/.test(budget) && t.run("X".repeat(400)).lines.length > 0 && (t.run("RESET"), m.M.length === 0));
+  }
+
+  // ---- The retro factories, on the real kit with a stub host ----------------------------------------------------------
+  {
+    const jumbotron = { text: { glyphOf: () => [], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } };
+    const BLk = await contextWith(["genesis-era-5-patchwork", "genesis-era-5-mixtape"]);
+    BLk.jumbotron = jumbotron; BLk.math = { mulberry32: () => () => 0.5 };
+    const ctx = { window: { BL: BLk }, document: { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d() }) }, crypto: globalThis.crypto };
+    runInNewContext(await src("retro-games"), ctx);
+    const host = () => { const h = { best: 0, still: false, aim: { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, ended: -1, overs: 0, cues: [] };
+      Object.assign(h, { onEnd: (s) => { h.ended = s; }, over: () => { h.overs++; }, popup() {}, cue: (n) => { h.cues.push(n); }, shake() {}, crack() {}, flop() {} }); return h; };
+    const iface = (g) => ["kind", "name", "help", "coach", "stars", "tickets", "status", "start", "act", "stop", "update", "draw"].every((k) => g[k] !== undefined) && g.aims === true && Array.isArray(g.coach) && g.coach.length === 2;
+    const frames = (g, h, n) => { const c = ctx2d(); for (let i = 0; i < n; i++) { g.update(1 / 60); g.draw(c); } return c.calls; };
+
+    // Patchwork, played through the cursor: the same plan the solver finds, as cursor steps and presses.
+    const h1 = host(), g1 = BLk.genesisEra5Patchwork.make(h1);
+    const plan = []; { const q = BLk.genesisEra5Patchwork.puzzle(); q.deal(42); solve(q, (s) => plan.push(s)); }
+    g1.start(42);
+    let col = 0, row = 0;
+    const go = (c, r) => { h1.aim.steps += c - col; h1.aim.stepsY += r - row; col = c; row = r; frames(g1, h1, 2); };
+    for (const [s, d, piece] of plan) {
+      if (piece < 0) continue;
+      go(s * 3 + piece % 3, Math.floor(piece / 3)); g1.act();
+      go(d * 3 + piece % 3, Math.floor(piece / 3)); g1.act();
+    }
+    const drew = frames(g1, h1, 240);
+    const cuesKnown = h1.cues.every((c) => ["tick", "bonk", "buzzer", "win", "round"].includes(c));
+    record("patchwork game: the retro-games interface, a seeded deal won through cursor steps and Space, over() once, onEnd with the score, and only known cue names",
+      iface(g1) && h1.overs === 1 && h1.ended > 0 && h1.ended === g1.status.score && !g1.playing && drew > 0 && cuesKnown, JSON.stringify({ overs: h1.overs, ended: h1.ended, plan: plan.length, cues: [...new Set(h1.cues)] }));
+    // Interruption drops a held piece; reduced motion still draws.
+    const h2 = host(); h2.still = true; const g2 = BLk.genesisEra5Patchwork.make(h2); g2.start(5); g2.act(); g2.stop();
+    record("patchwork game: stop() ends play and a still (Calm) host still draws its screen", !g2.playing && frames(g2, h2, 3) > 0);
+
+    // Pocket, played through the cursor: load Spiral, Rings and Dots (exactly the budget), then PLAY.
+    const h3 = host(), g3 = BLk.genesisEra5Mixtape.make(h3);
+    g3.start(1);
+    let r3 = 0;
+    const row3 = (r) => { h3.aim.stepsY += r - r3; r3 = r; frames(g3, h3, 2); };
+    for (const id of [4, 1, 5]) { row3(id); g3.act(); }
+    const fit = g3.status.left === 0;
+    h3.aim.steps += 2; frames(g3, h3, 2); g3.act();
+    const playing = g3.playing;
+    frames(g3, h3, 60 * 10);
+    const cues3 = h3.cues.every((c) => ["tick", "click", "buzzer", "win", "round"].includes(c));
+    record("pocket game: the retro-games interface, a perfect-fit playlist made with cursor steps, played through to over() once and onEnd with its score",
+      iface(g3) && fit && playing && h3.overs === 1 && h3.ended === 10 * 10 + 3 * 10 + 100 && !g3.playing && cues3, JSON.stringify({ fit, overs: h3.overs, ended: h3.ended }));
+  }
+
+  // ---- The era file: with and without the modules, its plot and its record count -----------------------------------
+  {
+    const kitFiles = ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits"];
+    const build = async (withModules, eraText = null) => {
+      const BLe = await contextWith([...kitFiles, ...(withModules ? ["genesis-era-5-patchwork", "genesis-era-5-mixtape"] : []), ...(eraText ? [] : ["genesis-era-5"])]);
+      if (eraText) runInNewContext(eraText, { window: { BL: BLe }, console });
+      const W = BLe.genesisWorld, e = W.ERAS[5], props = {}, recs = [], node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: {}, scale: { x: 1, y: 1, z: 1 }, visible: true });
+      const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: node, addChild() {}, place: (x) => x, label: () => ({}),
+        sign: (t, s, x, y, z) => { recs.push({ kind: "sign", x, z, y }); return node(); },
+        obstacle: (x0, x1, z0, z1) => { recs.push({ kind: "obstacle", x: (x0 + x1) / 2, z: (z0 + z1) / 2, x0, x1, z0, z1 }); },
+        solid: (w, h, d, c, x, y, z) => { const n = node(); recs.push({ kind: "solid", x, z, y, w, d, top: y + h / 2, node: n }); return n; },
+        prop: (d) => { const p = BLe.genesisExhibits.checkProp(5, d); if (p) throw new Error(p); props[d.id] = d; recs.push({ kind: "prop", x: d.at.x, z: d.at.z }); return d; } };
+      BLe.genesisExhibits.eras[5].build(kit);
+      return { BLe, W, e, props, recs };
+    };
+    const A = await build(true), B = await build(false);
+    // The base commit's era file, for the count and for "moves nothing else" (skipped outside a git checkout).
+    let baseText = null;
+    try { baseText = execFileSync("git", ["show", "cb2b0b9405a2d6363c9f284146b4c0aab6d3b34f:src/js/genesis-era-5.js"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { baseText = null; }
+    const Z0 = baseText ? await build(false, baseText) : null;
+    const NEW = ["e5-patchwork", "e5-displays", "e5-pocket"];
+    const OLD = ["e5-chord", "e5-ring", "e5-hashcash", "e5-stamp", "e5-rpow", "e5-rpow-desk", "e5-cabinet", "e5-bitgold", "e5-bitgold-bench", "e5-gps", "e5-wiki", "e5-player", "e5-bittorrent", "e5-mosaic", "e5-loft-trust", "e5-loft-route"];
+    const kept = OLD.every((id) => A.props[id]) && A.props["e5-hashcash"].connection === "citation" && A.props["e5-hashcash"].ref === "[6]" && A.props["e5-bitgold"].connection === "influence";
+    const contextOnly = NEW.every((id) => A.props[id] && A.props[id].connection === "context" && String(A.props[id].label).includes(String(A.props[id].year)));
+    record("era file: every existing exhibit keeps its id and connection; the three new ones are context and show their year", kept && contextOnly);
+    // The cluster's plot: x 13 to 33, u 57 to 63 on the right side; nothing else of Era 5's stands in it, nothing of it
+    // is in the stream's 1.5 m, a reserved plot, or above 8 m.
+    const z0 = A.e.z1 - 63.5, z1 = A.e.z1 - 57;
+    const inPlot = (r) => r.x >= 12.9 && r.x <= 33.1 && r.z >= z0 && r.z <= z1;
+    const cluster = A.recs.filter(inPlot), added = Z0 ? A.recs.length - Z0.recs.length : cluster.length;
+    const reserved = A.W.reservedZones(5);
+    const clear = cluster.every((r) => (r.kind !== "solid" || (r.x - r.w / 2 >= A.W.CHANNEL.x1 + 1.5 && r.top <= A.W.BANK_TOP + A.W.BANK.MAX_H))
+      && !reserved.some((q) => r.x > q.x0 && r.x < q.x1 && r.z > q.z0 && r.z < q.z1));
+    const key = (r) => `${r.kind}:${r.x.toFixed(3)}:${r.z.toFixed(3)}`;
+    const sameElsewhere = !Z0 || (Z0.recs.filter(inPlot).length === 0 && JSON.stringify(A.recs.filter((r) => !inPlot(r)).map(key)) === JSON.stringify(Z0.recs.map(key)));
+    record(`era file: the cluster adds ${added} scene records (budget about 150), all inside its plot, clear of the stream's strip, reserved plots and the height limit, and moves nothing else`,
+      added > 0 && added <= 150 && cluster.length === added && clear && sameElsewhere, JSON.stringify({ added, cluster: cluster.length, base: !!Z0 }));
+    // Without the modules the stations still open something honest; with them, terminals that move the model.
+    const missing = ["e5-patchwork", "e5-pocket"].every((id) => /not on this page yet/.test(B.props[id].onUse({}).board.pages[0].title));
+    const term = A.props["e5-patchwork"].onUse({}).terminal, banner = term.banner.join(" ");
+    const reuse = banner.includes("BitTorrent lectern") && banner.includes("RPOW desk") && banner.includes("Bitcoin does not use Chord");
+    const disp = A.props["e5-displays"].onUse({}).board, dispText = disp.pages.map((p) => p.text.join(" ")).join(" ");
+    const schematic = /^[A-Za-z0-9 \/:!?+\-.]+$/.test(disp.room) && /schematic/i.test(disp.room) && !/\d+\s?(cm|mm|kg|inch|in\b|")/i.test(dispText) && /not verified any particular display/.test(dispText);
+    record("era file: without the modules both games' stations say they aren't loaded; with them the puzzle reuses the era's peer and RPOW words; the display board is schematic with no figures",
+      missing && reuse && schematic);
+    const lit = (w) => A.recs.filter((r) => r.kind === "solid" && r.w === w && r.node.visible).length;
+    const pt = A.props["e5-pocket"].onUse({}).terminal;
+    const bar0 = lit(0.035); pt.run("ADD 5"); const bar4 = lit(0.035); pt.run("RESET"); const barR = lit(0.035);
+    const tt = A.props["e5-patchwork"].onUse({}).terminal, tiles0 = lit(0.22);
+    const send = tt.run("BOARD").lines.slice(0, 3);
+    // The first piece one peer holds and the next lacks, sent: one more tile lights.
+    let cmd = "";
+    for (let i = 0; i < 9 && !cmd; i++) for (const [a, b] of [[0, 1], [1, 2], [2, 0]]) if (!cmd) { const ha = send[a].slice(8, 19).replace(/ /g, "")[i], hb = send[b].slice(8, 19).replace(/ /g, "")[i]; if (ha !== "." && hb === ".") cmd = `SEND ${"ABC"[a]} ${"ABC"[b]} ${i + 1}`; }
+    tt.run(cmd); const tiles1 = lit(0.22); tt.run("RESET");
+    record("era file: a pocket command fills the cluster's storage-bar model and RESET empties it; a patchwork send lights one more tile and RESET restores it",
+      bar0 === 0 && bar4 === 4 && barR === 0 && tiles1 === tiles0 + 1 && lit(0.22) === tiles0, JSON.stringify({ bar0, bar4, barR, tiles0, tiles1, cmd }));
+  }
+
+  const failed = results.filter((r) => !r.ok).length;
+  console.log(`${results.length - failed}/${results.length} checks passed`);
+  process.exit(failed ? 1 : 0);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
+// Era 6's upgrade suite, folded in from test/genesis-era-6-upgrade.mjs (gv/upgrade-era-6) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra6UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Era 6's reading-corner cluster (gv/upgrade-era-6): rule checks run in Node, through the era file and the kit
+  // themselves, with a stand-in kit that records what the gallery builds. Run: node test/genesis-era-6-upgrade.mjs
+  // It prints one line a check and exits 1 on any failure. It loads no browser and changes no file.
+
+  const results = [];
+  const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${!ok && detail ? ` · ${detail}` : ""}`); };
+
+  // A stand-in 2D context and canvas, enough for the retro kit's atlas and a game's draw (no pixels are checked).
+  const ctx2d = new Proxy({}, { get: (t, k) => k in t ? t[k] : () => {}, set: (t, k, v) => { t[k] = v; return true; } });
+  const context = {
+    window: {}, crypto: globalThis.crypto, Math,
+    document: { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) }
+  };
+  context.window.window = context.window;
+  context.window.document = context.document;
+  context.window.BL = { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } };
+  const load = async (f) => runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`),
+    "genesis-bench", "retro-games", "genesis-era-6-argument"]) await load(f);
+  const BL = context.window.BL, W = BL.genesisWorld, EX = BL.genesisExhibits, P = BL.genesisProps, E6 = BL.genesisEra6;
+
+  // Build Era 6 with a recording kit: every node keeps its position, scale and visibility so commands can be read back.
+  const build = () => {
+    const rec = { solid: 0, sign: 0, obstacle: 0, prop: 0 }, props = {}, places = [], obstacles = [], solids = [];
+    const node = (x = 0, y = 0, z = 0) => ({ position: { x, y, z }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true });
+    EX.eras[6].build({
+      era: W.ERAS[6], top: W.BANK_TOP, channel: W.CHANNEL, M: {}, createNode: () => node(), addChild() {}, place: (n) => n, label: () => ({}), notify() {},
+      solid: (w, h, d, c, x, y, z) => { rec.solid++; const n = node(x, y, z); solids.push({ w, h, d, x, y, z, n }); return n; },
+      sign: (t, sub, x, y, z) => { rec.sign++; places.push({ what: `sign ${t}`, x, z }); return node(x, y, z); },
+      obstacle: (x0, x1, z0, z1) => { rec.obstacle++; obstacles.push({ x0, x1, z0, z1 }); },
+      prop: (d) => { rec.prop++; props[d.id] = d; return d; }
+    });
+    return { rec, props, places, obstacles, solids };
+  };
+  const A = build();
+  const total = A.rec.solid + A.rec.sign + A.rec.obstacle + A.rec.prop;
+  const BASE = 196, NEW = ["e6-argument", "e6-layout", "e6-workstation"];
+  const KEPT = ["e6-announce", "e6-paper", ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `e6-ref-${n}`), "e6-not-listed", "e6-laptop", "e6-payments", "e6-january"];
+  console.log(`scene records: ${total} (base ${BASE}, added ${total - BASE}) ${JSON.stringify(A.rec)}`);
+  check("rule: the cluster adds at most 150 scene records", total - BASE > 0 && total - BASE <= 150, `${total - BASE}`);
+  check("rule: every earlier Era 6 exhibit keeps its id and connection", KEPT.every((id) => A.props[id])
+    && A.props["e6-paper"].connection === "anchor" && A.props["e6-payments"].connection === "demonstration"
+    && [1, 2, 3, 4, 5, 6, 7, 8].every((n) => A.props[`e6-ref-${n}`].connection === "bibliography" && A.props[`e6-ref-${n}`].ref === `[${n}]`));
+  check("rule: the three new exhibits are context (no new trail step), label their year, carry a short hint and resolve their sources",
+    NEW.every((id) => { const d = A.props[id]; return d && d.connection === "context" && !d.ref && String(d.label).includes(String(d.year)) && d.hint && d.hint.length <= 90 && !EX.checkProp(6, d)
+      && d.sourceKeys.every((k) => { const s = P.sourceOf(k); return s && /^https:\/\//.test(s.href); }); }));
+  check("rule: the trail still has exactly one Era 6 stop (the paper)", Object.values(A.props).filter((d) => d.connection && EX.CONNECTIONS[d.connection].trail).map((d) => d.id).join() === "e6-paper");
+
+  // Placement: inside Era 6's gallery, clear of the walk (the old stream and 1.5 m beside it), the reserved plots and
+  // the earlier exhibits' obstacles; the new ones are the last three obstacles built.
+  const M = W.MUSEUM, r = M.rects[6], reserved = W.reservedZones(6);
+  const inGallery = (x, z) => { const p = M.toMuseum(6, x, z, {}); return p.x >= r.x0 - 0.05 && p.x <= r.x1 + 0.05 && p.z >= r.z0 - 0.05 && p.z <= r.z1 + 0.05; };
+  const fresh = A.obstacles.slice(-3), older = A.obstacles.slice(0, -3);
+  const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
+  check("rule: the cluster stands inside its gallery, off the walk and the reserved plots, and clear of every earlier exhibit",
+    fresh.every((o) => inGallery(o.x0, o.z0) && inGallery(o.x1, o.z1) && o.x0 >= W.CHANNEL.x1 + 1.5 && !reserved.some((z) => overlap(o, z)) && !older.some((b) => overlap(o, b)))
+    && NEW.every((id) => { const a = A.props[id].at; return inGallery(a.x, a.z) && !A.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3); }),
+    JSON.stringify(fresh));
+  check("rule: nothing new is taller than the 8 m limit", A.solids.every((s) => s.y + s.h / 2 <= W.BANK_TOP + W.BANK.MAX_H));
+
+  // The terminals: HELP gives the workbench its buttons, MORE its deeper story, and no right-column line repeats.
+  const term = (id) => A.props[id].onUse({}).terminal;
+  const run = (t, line) => t.run(line).lines.join(" | ");
+  const G = BL.genesisBench;
+  check("rule: each new terminal's HELP lists its commands as workbench buttons and its story has no repeated line",
+    NEW.every((id) => { const t = term(id), help = t.run("HELP").lines, acts = G.actionsFrom(help), more = t.run("MORE").lines;
+      const secs = G.sections({ banner: t.banner, more, howTo: [], hint: A.props[id].hint }), lines = secs.flatMap((s) => s.lines);
+      return acts.length >= 3 && more.some((l) => /STILL UNSOLVED/.test(l)) && new Set(lines).size === lines.length && secs.some((s) => s.title === "How to use"); }));
+  check("rule: long, empty and odd input answers without throwing", NEW.every((id) => { const t = term(id); return ["", "X".repeat(300), "PLACE", "SHOW 99", "STORAGE -4", "PAGE 0", "COMPARE 3 3", "DEAL x"].every((l) => Array.isArray(t.run(l).lines)); }));
+
+  // Assemble the argument: commands move its cards on the table; CHECK lights the lamps; RESET puts everything back.
+  const snap = (nodes) => nodes.map((n) => `${n.position.x.toFixed(4)},${n.position.y.toFixed(4)},${n.position.z.toFixed(4)},${n.scale.x.toFixed(4)},${n.visible}`).join(";");
+  {
+    const t = term("e6-argument"), table = A.solids.filter((s) => s.z < 0 && Math.abs(s.z - (W.ERAS[6].z1 - 33)) < 1 && s.x > 13).map((s) => s.n), before = snap(table);
+    const wrong = run(t, "PLACE WORK 1"), moved = snap(table) !== before;
+    for (const [k, c] of ["SIGN", "TIME", "NODE", "COIN", "ODDS"].entries()) run(t, `PLACE ${c} ${k + 2}`);
+    const partial = run(t, "CHECK");
+    ["SIGN", "TIME", "WORK", "NODE", "COIN", "ODDS"].forEach((c, k) => run(t, `PLACE ${c} ${k + 1}`));
+    const solved = run(t, "CHECK"), lit = snap(table);
+    run(t, "RESET");
+    check("rule: PLACE moves a card on the table, CHECK grades the order, the paper's order solves it and RESET restores the table exactly",
+      moved && /slot 1/.test(wrong) && /\d\/6 in place/.test(partial) && /Solved/.test(solved) && lit !== before && snap(table) === before, `${partial} / ${solved}`);
+    const g1 = E6.createArgument(), g2 = E6.createArgument();
+    g1.deal(42); g2.deal(42); const same = g1.tray.join() === g2.tray.join(); g2.deal(43);
+    check("rule: a seed deals the same tray every time", same && g1.tray.join() !== g2.tray.join() && [...g1.tray].sort().join() === "0,1,2,3,4,5");
+  }
+  // The document layout: SHOW lifts a tab, COMPARE adds the second marker and reports shared references, RESET lowers.
+  {
+    const t = term("e6-layout"), board = A.solids.filter((s) => Math.abs(s.z - (W.ERAS[6].z1 - 41)) < 0.6 && s.x > 13).map((s) => s.n), before = snap(board);
+    const show = run(t, "SHOW 4"), lifted = snap(board) !== before, cmp = run(t, "COMPARE 3 7"), page = run(t, "PAGE 2"), refs = run(t, "SHOW REFS");
+    run(t, "RESET");
+    check("rule: SHOW lifts a tab, COMPARE names both jobs and the references they share, PAGE lists a page and RESET lowers every tab exactly",
+      lifted && /Proof-of-Work \(page 3\).*Cites: \[6\]/.test(show) && /Shared references: \[2\] \[5\]/.test(cmp) && /Transactions; 3 Timestamp Server/.test(page) && /References \(page 9\)/.test(refs) && snap(board) === before, cmp);
+    check("rule: the sections are the paper's twelve plus its references, on pages 1 to 9 in order, and the cited numbers cover [1] to [8]",
+      E6.SECTIONS.length === 13 && E6.SECTIONS.every((s, i) => s.n === i + 1 && (i === 0 || s.page >= E6.SECTIONS[i - 1].page) && s.page >= 1 && s.page <= 9)
+      && [1, 2, 3, 4, 5, 6, 7, 8].every((n) => E6.SECTIONS.slice(0, 12).some((s) => s.refs.includes(n))));
+  }
+  // The workstation: STORAGE redoes the paper's section 7 sum (80 bytes x 6 x 24 x 365 = 4,204,800 bytes, about
+  // 4.2 MB a year) and fills the bar; PAGE lights a square; LAMP and RESET.
+  {
+    const t = term("e6-workstation"), desk = A.solids.filter((s) => Math.abs(s.z - (W.ERAS[6].z1 - 49)) < 0.7 && s.x > 13).map((s) => s.n), before = snap(desk);
+    const one = run(t, "STORAGE 1"), ten = run(t, "STORAGE 10"), filled = snap(desk) !== before, page = run(t, "PAGE 5"), lamp = run(t, "LAMP");
+    run(t, "RESET");
+    check("rule: STORAGE gives the paper's own 4.2 MB a year and fills the bar, PAGE and LAMP change the desk, RESET restores it exactly",
+      E6.headerBytes(1) === 4204800 && /4,204,800 bytes, about 4\.2 MB/.test(one) && /42,048,000 bytes/.test(ten) && filled && /Simplified Payment Verification, Combining and Splitting Value/.test(page) && /off/.test(lamp) && snap(desk) === before, one);
+  }
+  // A fresh visit shares no state with the last.
+  {
+    const B = build(), t = B.props["e6-argument"].onUse({}).terminal;
+    check("rule: a second visit starts with an empty table", /0\/6 down|slot 1/.test(run(t, "PLACE SIGN 1")) && /1\/6 down/.test(run(t, "PLACE SIGN 1")));
+  }
+
+  // The screen game on the retro interface, played by its own act() and aim steps.
+  {
+    const calls = { over: 0, end: [], popup: 0 }, aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 };
+    const host = { best: 0, aim, still: true, onEnd: (s) => calls.end.push(s), over: () => calls.over++, popup: () => calls.popup++ };
+    const g = BL.genesisEra6Games.argument(host);
+    const keys = ["kind", "name", "help", "coach", "stars", "tickets", "status", "start", "act", "stop", "update", "draw"];
+    const shape = keys.every((k) => g[k] !== undefined) && g.aims === true && g.tickets(600) === 0 && Array.isArray(g.coach) && g.coach.length === 2;
+    const move = (to, from) => { aim.steps += to - from; g.update(1 / 60); };
+    const play = (seed, mistakes) => {
+      g.start(seed);
+      const E = BL.genesisEra6.createArgument(); E.deal(seed);
+      let cur = 0;
+      // Lay card k (the right one) or, for a planned mistake, swap the first two.
+      const order = mistakes ? [1, 0, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5];
+      for (let s = 0; s < 6; s++) {
+        const k = order[s], t = [...E.tray].indexOf(k);
+        move(t, cur); cur = t; g.act();
+        move(s, cur); cur = s; g.act();
+      }
+      return cur;
+    };
+    play(7, false);
+    for (let i = 0; i < 150; i++) g.update(1 / 60);
+    const won = calls.over === 1 && calls.end.length === 1 && calls.end[0] === 600 && g.status.score === 600;
+    g.draw(ctx2d);
+    let cur = play(9, true);
+    const retried = g.playing && g.status.left === 2 && calls.over === 1;
+    const E = BL.genesisEra6.createArgument(); E.deal(9);
+    for (const k of [0, 1]) { const t = [...E.tray].indexOf(k); move(t, cur); cur = t; g.act(); move(k, cur); cur = k; g.act(); }
+    for (let i = 0; i < 150; i++) g.update(1 / 60);
+    check("rule: the screen game keeps the retro interface; laying the paper's order wins once for 600, a wrong table sends the wrong cards back and costs 100",
+      shape && won && retried && calls.over === 2 && calls.end[1] === 500, JSON.stringify({ shape, won, retried, calls }));
+    g.stop();
+    check("rule: stop leaves the game idle and drawable", !g.playing && (g.draw(ctx2d), true));
+  }
+
+  const failed = results.filter((r) => !r.ok).length;
+  console.log(`${results.length - failed}/${results.length} checks passed`);
+  process.exit(failed ? 1 : 0);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
+// Era 7's upgrade suite, folded in from test/genesis-era-7-upgrade.mjs (gv/upgrade-era-7) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra7UpgradeSuite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, exit: (code) => { throw { suiteExit: code }; } };
+  try {
+  // Era 7's launch cluster (gv/upgrade-era-7): rule checks in Node, no Chrome and no build. Run: node test/genesis-era-7-upgrade.mjs
+  // It loads the Genesis modules as the page does (genesis-era-7-sync.js before genesis-era-7.js, the order the
+  // integrator is asked for) and checks, through the modules' own functions:
+  // - placement: every piece of Era 7 stands in its own museum gallery, clear of the old stream and reserved plots, and
+  //   the cluster adds at most 150 scene records;
+  // - identity: the six existing exhibit ids stay, the three new ones join, all context, each with a hint;
+  // - Peer Sync: a seed replays a run, a plugged terminal catches up exactly, refused records change nothing, a run is
+  //   bounded and winnable, the terminal answers bad input without throwing, and make(host) keeps the retro interface;
+  // - the counting frame: every move conserves the 50 beads, a refused move changes nothing, RESET restores, CHECK
+  //   matches 10 + 40;
+  // - without the sync module the era still builds, leaving only the cabinet out.
+
+  const results = [];
+  const record = (name, ok, detail = "") => { results.push({ name, ok }); if (!ok || process.env.VERBOSE) console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` · ${detail}`}`); };
+
+  const load = async (withSync) => {
+    const context = { window: {}, crypto: globalThis.crypto };
+    const files = ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 7 }, (_, n) => `genesis-era-${n}`), ...(withSync ? ["genesis-era-7-sync"] : []), "genesis-era-7"];
+    for (const f of files) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+    return context.window.BL;
+  };
+
+  // A recording kit: counts scene records (solid, placed node, sign's three), checks each piece against gallery 7 and the
+  // reserved plots, and keeps the props.
+  const buildEra7 = (BL) => {
+    const W = BL.genesisWorld, M = W.MUSEUM, EX = BL.genesisExhibits, r = M.rects[7], reserved = W.reservedZones(7), bad = [], props = {};
+    let records = 0;
+    const inBay = (x, z, what) => { const p = M.toMuseum(7, x, z, {}); if (p.x < r.x0 - 0.05 || p.x > r.x1 + 0.05 || p.z < r.z0 - 0.05 || p.z > r.z1 + 0.05) bad.push(`${what} at ${x.toFixed(1)},${z.toFixed(1)} outside gallery 7`); };
+    const clash = (x0, x1, z0, z1, what) => { for (const q of reserved) if (x0 < q.x1 && x1 > q.x0 && z0 < q.z1 && z1 > q.z0) bad.push(`${what} in the ${q.why} plot`); };
+    const clearOfStream = (x0, x1) => x1 <= W.CHANNEL.x0 - 1.5 || x0 >= W.CHANNEL.x1 + 1.5;
+    const node = (o = {}) => Object.assign({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, children: [] }, o);
+    const kit = { era: W.ERAS[7], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: (o) => o }, createNode: (o = {}) => node(o), addChild: () => {},
+      place: (n) => { records++; return n; }, label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
+      solid: (w, h, d, c, x, y, z) => { records++; inBay(x - w / 2, z - d / 2, "a solid"); inBay(x + w / 2, z + d / 2, "a solid"); if (!clearOfStream(x - w / 2, x + w / 2)) bad.push(`a solid at ${x},${z} by the stream`); clash(x - w / 2, x + w / 2, z - d / 2, z + d / 2, `a solid at ${x.toFixed(1)},${z.toFixed(1)}`); if (y + h / 2 > W.BANK_TOP + 8) bad.push("too tall"); return node(); },
+      sign: (t, sub, x, y, z) => { records += 3; inBay(x, z, `sign ${t}`); return node(); },
+      obstacle: (x0, x1, z0, z1) => { inBay(x0, z0, "an obstacle"); inBay(x1, z1, "an obstacle"); clash(x0, x1, z0, z1, "an obstacle"); },
+      prop: (d) => { const p = EX.checkProp(7, d); if (p) bad.push(p); inBay(d.at.x, d.at.z, d.id); clash(d.at.x - 0.3, d.at.x + 0.3, d.at.z - 0.3, d.at.z + 0.3, `${d.id}'s use point`); props[d.id] = d; return d; } };
+    EX.eras[7].build(kit);
+    return { props, bad, records: () => records, kit };
+  };
+
+  const BL = await load(true), E7 = BL.genesisEra7, S7 = BL.genesisEra7Sync;
+  const built = buildEra7(BL);
+  record("placement: every Era 7 piece stands in its own gallery, clear of the stream and reserved plots", built.bad.length === 0, built.bad.slice(0, 5).join("; "));
+
+  // The cluster's own records, built alone on the same kit.
+  let before = built.records();
+  E7.buildCluster(built.kit, E7.createClusterLive());
+  const clusterRecords = built.records() - before;
+  record(`records: the cluster adds ${clusterRecords} scene records (at most 150)`, clusterRecords > 0 && clusterRecords <= 150, String(clusterRecords));
+
+  const OLD = ["e7-genesis", "e7-genesis-panel", "e7-desk", "e7-desk-panel", "e7-payment", "e7-payment-panel"], NEW = ["e7-sync", "e7-pc", "e7-frame"];
+  const ids = Object.keys(built.props);
+  record("identity: the six existing exhibits stay and the three new ones join, all context with a hint and a dated label",
+    OLD.concat(NEW).every((id) => ids.includes(id)) && ids.length === 9 && NEW.every((id) => { const d = built.props[id]; return d.connection === "context" && d.hint && d.label.includes(String(d.year)) && d.date; }), ids.join(","));
+  record("identity: the genesis text and header timestamps are unchanged",
+    E7.GENESIS.headline === "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks" && E7.GENESIS.time === 1231006505 && E7.B170.time === 1231731025 && E7.stamp(E7.GENESIS.time) === "2009-01-03 18:15:05");
+  const labels = NEW.map((id) => built.props[id].label + " " + built.props[id].date).join(" ");
+  record("labels: Peer Sync says it is a modern homage; the corner says January 2009 context", /homage/i.test(built.props["e7-sync"].date) && /not historical software/i.test(built.props["e7-sync"].date) && /January 2009 context/.test(built.props["e7-pc"].date), labels);
+
+  // --- Peer Sync rules ---
+  const run = (seed, policy) => {
+    const R = S7.createRules(); R.start(seed);
+    const trace = [];
+    while (!R.done) { R.beat(); trace.push(R.last, R.by, R.head); if (policy) for (let i = 0; i < 3; i++) if (!R.online[i]) R.plug(i); }
+    return { R, trace: trace.join(",") };
+  };
+  const a = run(77, true), b = run(77, true);
+  record("Peer Sync: a seed replays a run exactly", a.trace === b.trace && a.R.score() === b.R.score());
+  let winnable = true, bounded = true, scores = true;
+  for (let seed = 1; seed <= 200; seed++) {
+    const g = run(seed, true), idle = run(seed, false);
+    if (!g.R.won) winnable = false;
+    if (g.R.beats > S7.BEATS || idle.R.beats > S7.BEATS || !idle.R.done) bounded = false;
+    if (!(g.R.score() >= 300 && g.R.score() <= 1000) || (!idle.R.won && idle.R.score() > 30 * S7.TARGET)) scores = false;
+  }
+  record("Peer Sync: a visitor who plugs every dropped terminal always wins within the beats; doing nothing always ends", winnable && bounded);
+  record("Peer Sync: scores stay in range, and a won run outscores an unfinished one", scores);
+  {
+    const R = S7.createRules(); R.start(5);
+    let guard = 0;
+    while (R.last !== 2 && guard++ < 200) R.beat();
+    const off = R.by, had = R.len[off];
+    let refusedSeen = 0, refusedKept = true, more = 0;
+    while (R.head < 6 && !R.done && more++ < 100) {
+      const snap = Array.from(R.len), e = R.beat();
+      if (e === 3) { refusedSeen++; if (Array.from(R.len).some((v, i) => v !== snap[i])) refusedKept = false; }
+    }
+    const lenBefore = R.len[off], copied = R.plug(off);
+    record("Peer Sync: an unplugged terminal misses new records and, plugged back in, copies exactly what it lacks",
+      lenBefore === had && copied === R.head - had && R.len[off] === R.head && R.plug(off) === -1 && R.plug(7) === -1);
+    let refusals = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const Q = S7.createRules(); Q.start(seed);
+      while (!Q.done) { const snap = Array.from(Q.len), e = Q.beat(); if (e === 3) { refusals++; if (Array.from(Q.len).some((v, i) => v !== snap[i])) refusedKept = false; } for (let i = 0; i < 3; i++) if (!Q.online[i]) Q.plug(i); }
+    }
+    record("Peer Sync: a refused broken record changes no terminal's records", refusedKept && refusals > 0, String(refusals));
+  }
+  {
+    const t = S7.terminal(S7.createRules());
+    const said = (l) => t.run(l).lines.join(" | ");
+    const robust = [said("X".repeat(400)), said(""), said("PLUG"), said("PLUG Z"), said("plug a")].every((x) => typeof x === "string");
+    said("RESET"); const first = said("WAIT"); said("RESET"); const again = said("WAIT");
+    record("Peer Sync terminal: bad input answers without throwing, and RESET replays the same run", robust && first === again && /Unknown command/.test(said("DANCE")));
+    const ex = built.props["e7-sync"].onUse({}).terminal;
+    record("Peer Sync exhibit: its terminal opens with How to use and a hint, and answers MORE and SOURCES",
+      /HOW TO USE/.test(ex.banner.join(" ")) && /HINT:/.test(ex.banner.join(" ")) && /homage/i.test(ex.run("MORE").lines.join(" ")) && /E7-REL/.test(ex.run("SOURCES").lines.join(" ")));
+  }
+  {
+    // make(host) on a stub kit with the retro kit's shape: start, act, update to the end, over and onEnd once each.
+    const noop = () => {};
+    const ctx = new Proxy({}, { get: (o, k) => (k in o ? o[k] : noop), set: (o, k, v) => { o[k] = v; return true; } });
+    BL.retroGames = { kit: { W: 160, H: 120, INK: new Proxy({}, { get: () => "#000" }), TEXT: new Proxy({}, { get: () => 0 }), text: noop, centre: noop, number: noop,
+      hooks: (h) => ({ popup: noop, cue: noop, shake: noop, crack: noop, flop: noop, aim: h.aim, onEnd: h.onEnd, over: h.over }),
+      makeStatus: (label) => ({ score: 0, left: 0, label, round: 1, target: 0, meter: -1, streak: 0, fire: false, verb: "", mult: 0, note: "" }),
+      juice: () => ({ shake: noop, flash: noop, update: noop, begin: noop, end: noop, reset: noop }),
+      rng: () => ({ fresh: () => 1 }), stepper: (step) => { const A = { acc: 0 }; return (dt) => { A.acc += dt; while (A.acc >= 1 / 120) { A.acc -= 1 / 120; step(1 / 120); } }; } } };
+    let ends = 0, overs = 0, endScore = -1;
+    const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 };
+    const g = S7.make({ aim, still: false, onEnd: (s) => { ends++; endScore = s; }, over: () => overs++ });
+    const shape = ["kind", "name", "help", "coach", "stars", "tickets", "status", "start", "act", "stop", "update", "draw"].every((k) => g[k] !== undefined) && g.aims === true;
+    g.draw(ctx); g.start(42);
+    for (let f = 0; f < 60 * 120 && ends === 0; f++) {
+      // Step the selection to each unplugged terminal and plug it, as a visitor would.
+      for (let i = 0; i < 3; i++) if (g.playing && !g.rules.online[i] && !g.rules.done) { aim.steps += (i - g.selected + 3) % 3; g.update(1 / 120); if (g.selected === i) g.act(); }
+      g.update(1 / 60); g.draw(ctx);
+    }
+    record("Peer Sync make(host): keeps the retro interface, ends its run once with over() then onEnd(score)", shape && ends === 1 && overs === 1 && endScore === g.rules.score() && !g.playing, `${shape} ${ends} ${overs}`);
+  }
+
+  // --- The counting frame ---
+  {
+    const f = E7.createFrame(), total = () => f.count(0) + f.count(1) + f.count(2);
+    let conserved = true, refusedKeep = true;
+    let seed = 9;
+    const rnd = (n) => { seed = (seed * 1103515245 + 12345) >>> 0; return seed % n; };
+    for (let i = 0; i < 500; i++) {
+      const snap = Array.from(f.zone), n = rnd(60) - 5, from = rnd(4) - 0, to = rnd(4);
+      const r = f.move(n, from, to);
+      if (total() !== 50) conserved = false;
+      if (r.error && Array.from(f.zone).some((v, k) => v !== snap[k])) refusedKeep = false;
+    }
+    f.reset();
+    const reset = f.count(0) === 50 && !f.matches();
+    f.move(10, 0, 1); f.move(40, 0, 2);
+    record("Counting frame: every move keeps all 50 beads, a refused move changes nothing, RESET puts them back, 10 + 40 matches block 170",
+      conserved && refusedKeep && reset && f.matches() && f.count(0) === 0);
+    const t = built.props["e7-frame"].onUse({}).terminal, said = (l) => t.run(l).lines.join(" | ");
+    said("RESET");
+    const ok = /= 50 beads/.test(said("MOVE 10 TO 1")) && /matches block 170/.test(said("MOVE 40 TO 2")) && /lamp is lit/.test(said("CHECK"))
+      && /Only 0 bead/.test(said("MOVE 5 TO 1")) && /Nothing moved/.test(said("MOVE 99 TO 1")) && /= 50 beads/.test(said("MOVE 5 FROM 2 TO 1"))
+      && /back to the input/.test(said("RESET")) && typeof said("Z".repeat(300)) === "string";
+    record("Counting frame terminal: every reply shows the 50-bead total, bad moves are refused, CHECK and RESET answer", ok);
+  }
+
+  // --- Without the sync module ---
+  {
+    const BL2 = await load(false), b2 = buildEra7(BL2), ids2 = Object.keys(b2.props);
+    record("Without genesis-era-7-sync.js the era still builds, leaving only the cabinet out", b2.bad.length === 0 && ids2.length === 8 && !ids2.includes("e7-sync") && ids2.includes("e7-frame"), ids2.join(","));
+  }
+
+  const passed = results.filter((r) => r.ok).length;
+  console.log(`${passed}/${results.length} Era 7 upgrade checks passed`);
+  process.exit(passed === results.length ? 0 : 1);
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+  return { code: process.exitCode || 0, lines };
+};
+
 // Regression (checkpoint a6e2726 review): an explicit pause did not hold the open exhibit, the walk or the scene's
 // clock, and the timeline menu did not hold the walk, era music or captions (OVERHAUL-CONTRACT.md §4). The rule is
 // genesis-world.js holdsFor; the scene's update() must gate each part on it.
@@ -24100,6 +25664,22 @@ const unitChecks = async () => {
   record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
   const genesisBenchCheck = await genesisBenchProof();
   record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
+  const era0Suite = await genesisEra0UpgradeSuite();
+  record("Genesis Era 0 upgrade suite (folded from its branch): every one of its own checks passes", era0Suite.code === 0 && !era0Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era0Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era1Suite = await genesisEra1UpgradeSuite();
+  record("Genesis Era 1 upgrade suite (folded from its branch): every one of its own checks passes", era1Suite.code === 0 && !era1Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era1Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era2Suite = await genesisEra2UpgradeSuite();
+  record("Genesis Era 2 upgrade suite (folded from its branch): every one of its own checks passes", era2Suite.code === 0 && !era2Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era2Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era3Suite = await genesisEra3UpgradeSuite();
+  record("Genesis Era 3 upgrade suite (folded from its branch): every one of its own checks passes", era3Suite.code === 0 && !era3Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era3Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era4Suite = await genesisEra4UpgradeSuite();
+  record("Genesis Era 4 upgrade suite (folded from its branch): every one of its own checks passes", era4Suite.code === 0 && !era4Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era4Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era5Suite = await genesisEra5UpgradeSuite();
+  record("Genesis Era 5 upgrade suite (folded from its branch): every one of its own checks passes", era5Suite.code === 0 && !era5Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era5Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era6Suite = await genesisEra6UpgradeSuite();
+  record("Genesis Era 6 upgrade suite (folded from its branch): every one of its own checks passes", era6Suite.code === 0 && !era6Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era6Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era7Suite = await genesisEra7UpgradeSuite();
+  record("Genesis Era 7 upgrade suite (folded from its branch): every one of its own checks passes", era7Suite.code === 0 && !era7Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era7Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const genesisHolds = await genesisHoldsProof();
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisAtrium = await genesisAtriumProof();
