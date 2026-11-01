@@ -22913,6 +22913,72 @@ const artifactUnitProof = () => {
 // and something to open; everything stands inside its own era's cave, on a bank and clear of the stream, out of the
 // reserved plots (gateway, dock and ramps, lamps, Fingerprints and Time) and no taller than the bank's limit; connection
 // fields are valid, the Steps toward Bitcoin trail runs in date order, and the kit refuses bad connections.
+// Rule: Era 1's lifecycle through the shared hooks (Calm in update's state, active(on) on leaving and entering the
+// cave), built for real on a recording kit with a mocked AudioContext: Calm holds every decorative movement and
+// blink while a command still shows its result at once; leaving the cave cancels the coupler's tones scheduled
+// ahead and clears its readout, and coming back schedules nothing; no gesture, no audio; the sound goes through the
+// page-wide mute; dispose closes it.
+const genesisEra1LifecycleProof = async () => {
+  const contexts = [], gates = [];
+  const param = () => ({ value: 0, events: [], setValueAtTime(v, t) { this.events.push(["set", v, t]); }, linearRampToValueAtTime(v, t) { this.events.push(["ramp", v, t]); },
+    setTargetAtTime(v, t) { this.events.push(["target", v, t]); }, exponentialRampToValueAtTime(v, t) { this.events.push(["exp", v, t]); }, cancelScheduledValues() { this.events.length = 0; } });
+  const gains = [], oscs = [];
+  const audioNode = () => ({ gain: param(), frequency: param(), type: "", connect() {}, disconnect() {}, start() {}, stop() {} });
+  class AudioContext {
+    constructor() { this.state = "running"; this.currentTime = 1; this.destination = {}; this.listeners = new Map(); contexts.push(this); }
+    createGain() { const g = audioNode(); gains.push(g); return g; } createOscillator() { const o = audioNode(); oscs.push(o); return o; }
+    addEventListener(k, fn) { this.listeners.set(k, fn); } removeEventListener(k) { this.listeners.delete(k); }
+    resume() { return Promise.resolve(); } close() { this.state = "closed"; const fn = this.listeners.get("statechange"); if (fn) fn(); return Promise.resolve(); }
+  }
+  const activation = { isActive: false, hasBeenActive: false };
+  const context = { window: { addEventListener() {} }, AudioContext, navigator: { userActivation: activation }, localStorage: { getItem: () => "on", setItem() {} }, Promise };
+  for (const f of ["sound", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-1"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, E1 = BLc.genesisExhibits.eras[1], output = BLc.sound.output;
+  BLc.sound.output = (c) => { const g = output(c); gates.push(g); return g; };
+  const nodes = [], props = {};
+  const node = (o = {}) => { const n = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, children: [] }; for (const k of ["position", "rotation", "scale"]) if (o[k]) Object.assign(n[k], o[k]); if (o.visible === false) n.visible = false; nodes.push(n); return n; };
+  const kit = { era: W.ERAS[1], top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: node, addChild: () => {}, place: (n) => n,
+    label: () => ({ face: {}, back: {}, width: 1, height: 1 }), sign: () => node(), obstacle: () => {},
+    solid: (w, h, d, c, x, y, z, e) => node({ position: { x, y, z } }), prop: (d) => { props[d.id] = d; return d; } };
+  E1.build(kit);
+  const snap = () => JSON.stringify(nodes.map((n) => [n.position, n.rotation, n.scale, n.visible]));
+  let t = 0;
+  const frames = (seconds, calm) => { const state = { era: 1, walking: true, x: 0, z: 0, calm }; for (let i = 0; i < seconds * 30; i++) { t += 1 / 30; E1.update(1 / 30, t, state); } };
+  for (let i = 0; i < 3; i++) props["e1-floppy-toy"].onUse({});
+  frames(1, false);
+  let moved = 0;
+  for (let i = 0; i < 20; i++) { const a = snap(); frames(0.1, false); if (snap() !== a) moved++; }
+  frames(1 / 30, true);
+  const held = snap();
+  frames(3, true);
+  const calmStill = snap() === held;
+  props["e1-floppy-toy"].onUse({});
+  frames(1 / 30, true);
+  const resultShown = snap() !== held, settled = snap();
+  frames(2, true);
+  const calm = { decorationMovesWithoutCalm: moved > 10, calmHoldsEveryFrame: calmStill, commandResultShowsAtOnce: resultShown, thenStill: snap() === settled };
+  // Sound: no gesture, nothing; a gesture's HELLO schedules tones through the mute; leaving cancels them.
+  const coupler = props["e1-coupler-toy"].onUse({}).terminal;
+  coupler.run("HELLO");
+  const noGesture = contexts.length === 0;
+  activation.isActive = activation.hasBeenActive = true;
+  coupler.run("HELLO");
+  // The coupler's own gain is the first made; sound.js's mute gate the second.
+  const ctx = contexts[0], tone = gains[0] && gains[0].gain, pitch = oscs[0];
+  const scheduled = !!ctx && gates.length === 1 && gates[0] === gains[1] && tone.events.some(([k, v]) => k === "ramp" && v > 0) && pitch.frequency.events.length >= 12;
+  frames(0.2, false);
+  const readout = snap();
+  if (E1.active) E1.active(false, { era: 2, calm: false });
+  const silenced = tone.events.length === 1 && tone.events[0][0] === "set" && tone.events[0][1] === 0 && pitch.frequency.events.length === 0;
+  const cleared = snap() !== readout;
+  if (E1.active) E1.active(true, { era: 1, calm: false });
+  const quietSnap = snap(), quietEvents = tone.events.length;
+  frames(1, false);
+  const noResume = snap() === quietSnap && tone.events.length === quietEvents && pitch.frequency.events.length === 0;
+  E1.dispose();
+  const closed = ctx.state === "closed" && !ctx.listeners.has("statechange");
+  return { calm, sound: { noGesture, scheduled, silenced, cleared, noResume, closed } };
+};
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
@@ -23155,6 +23221,8 @@ const unitChecks = async () => {
   await canvasSurfaceCacheChecks();
   const genesis = await genesisVoyageProof();
   record("Genesis Voyage: the boat boards, stops at the stamp desk and docks, pause holds it, a plaque jump lands on its stop, a changed page breaks only the links after it, and every exhibit source is a link", Object.values(genesis).every(Boolean), JSON.stringify(genesis));
+  const era1Life = await genesisEra1LifecycleProof();
+  record("Genesis Voyage Era 1 lifecycle: Calm holds every decorative movement and blink while a command still shows its result at once; leaving the cave cancels the coupler's tones scheduled ahead and clears its readout, and coming back schedules nothing; no gesture, no audio; the sound goes through the page-wide mute and dispose closes it", Object.values(era1Life.calm).every(Boolean) && Object.values(era1Life.sound).every(Boolean), JSON.stringify(era1Life));
   const genesisExhibits = await genesisExhibitsProof();
   record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none, all context; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();

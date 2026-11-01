@@ -160,3 +160,19 @@ Needed in the integrator's browser pass:
 ---
 *Prepared with AI assistance (Claude Code) at Billy's request. Not reviewed or endorsed by the Ooga Booga Land
 maintainers.*
+
+## Integration changes (Claude Code, integrator, while the Era 1 builder is paused)
+
+These close two gaps from Era 1's acceptance checklist, through the shared hooks in EXHIBIT-CONTRACT.md "Calm, and
+leaving or entering your cave".
+
+- **Calm:** `update` now holds the decoration in Calm: no blinking host or disk lamp, no spinning hub, no flying
+  packets or key tokens, no stamp bounce, no card cycling, no handset jiggle. Each command's result shows at once:
+  the lamps, the disk where its step puts it, the verdict. The coupler's bit lamps and bars still read out the data.
+- **Coupler on leaving the cave:** `active(false)` now cancels the coupler's tones scheduled ahead (they could run
+  about nine seconds after leaving) and clears its readout. Coming back schedules nothing until a new SEND or HELLO.
+  STOP and RESET use the same `hush`.
+- **Unchanged:** gesture-only start, the page-wide mute and disposal on exit.
+
+The shared unit check "Genesis Voyage Era 1 lifecycle" proves these. Against this branch's original file it fails on
+both gaps.

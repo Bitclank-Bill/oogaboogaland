@@ -251,6 +251,14 @@
   const createCoupler = () => ({ bits: new Uint8Array(MAX_BITS), count: 0, t: 0, playing: false, sends: 0 });
   let audio = null;
   const closeAudio = () => { if (audio) { try { audio.osc.stop(); } catch {} audio.context.close().catch(() => {}); } audio = null; };
+  // Silences the coupler at once: its tones are scheduled ahead on the audio clock, so they are cancelled, not left to
+  // run out. Used by STOP and RESET, and when the visitor leaves the cave (`active(false)`).
+  const hush = () => {
+    if (!audio) return;
+    const now = audio.context.currentTime;
+    audio.gain.gain.cancelScheduledValues(0); audio.gain.gain.setValueAtTime(0, now);
+    audio.osc.frequency.cancelScheduledValues(0);
+  };
   const sound = () => {
     const active = typeof navigator === "undefined" || !navigator.userActivation || navigator.userActivation.isActive;
     if (audio || !active || typeof AudioContext === "undefined" || !BL.sound) return audio;
@@ -299,8 +307,8 @@
           const note = play(s, true);
           return { lines: [`An original greeting: a steady high tone, then a warble. ${note}`] };
         }
-        if (cmd === "STOP") { s.playing = false; if (audio) { audio.gain.gain.cancelScheduledValues(0); audio.gain.gain.setValueAtTime(0, audio.context.currentTime); } return { lines: ["Quiet."] }; }
-        if (cmd === "RESET") { if (audio) { audio.gain.gain.cancelScheduledValues(0); audio.gain.gain.setValueAtTime(0, audio.context.currentTime); } Object.assign(s, createCoupler()); return { lines: ["Demo cleared."] }; }
+        if (cmd === "STOP") { s.playing = false; hush(); return { lines: ["Quiet."] }; }
+        if (cmd === "RESET") { hush(); Object.assign(s, createCoupler()); return { lines: ["Demo cleared."] }; }
         return { lines: unknown };
       }
     };
@@ -665,16 +673,21 @@
     },
 
     // Every frame in this cave: move what the toys changed. Allocation-free.
-    update(dt, elapsed) {
+    // Calm (`state.calm`, the visit's reduced motion) holds the decoration still: no blinking, spinning, flying
+    // packets or tokens, stamp bounce, card cycling or handset jiggle; each command's result shows at once, in its
+    // final state (the lamps, the disk where its step puts it, the verdict), and the coupler's bit lamps and bars,
+    // which read out the data, still follow it.
+    update(dt, elapsed, state) {
       if (!S) return;
-      const N = S.n, k = Math.min(1, dt * 6);
+      const calm = !!(state && state.calm), N = S.n, k = calm ? 1 : Math.min(1, dt * 6);
       // Gateway: lamps, then the packets' run (up to MAX_FRAGS cubes, one lost unless it is a resend).
       const gw = S.gw;
       for (let g = 1; g <= 2; g++) {
         const l = N.gwLamps[g], known = gw.pinged[g], down = GW_ROUNDS[gw.round].down === g;
         l.off.visible = !known; l.up.visible = known && !down; l.down.visible = known && down;
       }
-      N.hostLamp.visible = gw.solved > 0 && (elapsed % 1.2) < 0.8;
+      N.hostLamp.visible = gw.solved > 0 && (calm || (elapsed % 1.2) < 0.8);
+      if (calm && gw.anim >= 0) { gw.anim = -1; for (let i = 0; i < MAX_FRAGS; i++) N.packets[i].visible = false; }
       if (gw.anim >= 0) {
         gw.anim += dt / 3;
         const G = N.gw, dz = gw.route === 2 ? -2.6 : 2.6, n = gw.single ? 1 : Math.min(MAX_FRAGS, Math.max(1, gw.frags.length || MAX_FRAGS));
@@ -691,6 +704,7 @@
       }
       // Key exchange: the two public numbers cross the wire, then the matching lamps.
       const dh = S.dh;
+      if (calm && dh.anim >= 0) { dh.anim = -1; N.dhTokens[0].visible = N.dhTokens[1].visible = false; }
       if (dh.anim >= 0) {
         dh.anim = Math.min(2, dh.anim + dt * 0.8);
         const a = N.dhTokens[0], b = N.dhTokens[1], t = Math.min(1, dh.anim);
@@ -701,7 +715,7 @@
       for (let i = 0; i < N.dhLamps.length; i++) { const on = dh.key > 0 && dh.key % LAMP_COLORS.length === i; N.dhLamps[i][0].visible = on; N.dhLamps[i][1].visible = on; }
       // Signature desk: the stamp comes down, the verdict lamp shows.
       const rsa = S.rsa;
-      if (rsa.stamp > 0) { rsa.stamp = Math.max(0, rsa.stamp - dt * 2); N.stamp.position.y = N.stampY - Math.sin(rsa.stamp * Math.PI) * 0.22; }
+      if (rsa.stamp > 0) { rsa.stamp = calm ? 0 : Math.max(0, rsa.stamp - dt * 2); N.stamp.position.y = N.stampY - Math.sin(rsa.stamp * Math.PI) * 0.22; }
       N.verdict[0].visible = rsa.verdict === 1; N.verdict[1].visible = rsa.verdict === 2;
       // Floppy: ease the disk to where its step puts it, spin while loaded, cards in turn.
       const f = S.floppy, F = N.floppy, step = f.step;
@@ -709,10 +723,10 @@
       for (let i = 0; i < 3; i++) F.pos[i] += (target[i] - F.pos[i]) * k;
       N.disk.position.x = F.pos[0]; N.disk.position.y = F.pos[1]; N.disk.position.z = F.pos[2];
       const loaded = step === 3;
-      if (loaded) N.hub.rotation.z += dt * 6;
+      if (loaded && !calm) N.hub.rotation.z += dt * 6;
       N.door.rotation.x += ((loaded ? -1.2 : 0) - N.door.rotation.x) * k;
-      N.diskLamp.visible = loaded && (elapsed % 0.4) < 0.2;
-      const card = loaded ? Math.floor(elapsed * 1.5) % 4 : -1;
+      N.diskLamp.visible = loaded && (calm || (elapsed % 0.4) < 0.2);
+      const card = loaded ? (calm ? 3 : Math.floor(elapsed * 1.5) % 4) : -1;
       for (let i = 0; i < 3; i++) N.cards[i].visible = card >= 0 && i <= card - 1;
       // Front panel: only when a command changed it.
       const p = S.panel;
@@ -735,10 +749,20 @@
           N.bitLamps[0].visible = !c.bits[i]; N.bitLamps[1].visible = !!c.bits[i];
           const base = i - (i & 7);
           for (let b = 0; b < 8; b++) N.bars[b].scale.y = base + b < c.count && c.bits[base + b] ? 1 : 0.2;
-          N.handset.position.y = N.handsetY + Math.sin(c.t * 40) * 0.008;
+          N.handset.position.y = N.handsetY + (calm ? 0 : Math.sin(c.t * 40) * 0.008);
         }
         if (!c.playing) { N.bitLamps[0].visible = N.bitLamps[1].visible = false; for (let b = 0; b < 8; b++) N.bars[b].scale.y = 0.1; N.handset.position.y = N.handsetY; }
       }
+    },
+
+    // Leaving the cave: the coupler falls silent and its readout clears, so nothing plays on out of sight and coming
+    // back starts quiet (a new send starts a new run). The context stays for the visit; `dispose` closes it.
+    active(on) {
+      if (on || !S) return;
+      const c = S.coupler, N = S.n;
+      c.playing = false; c.t = 0;
+      hush();
+      if (N.bitLamps) { N.bitLamps[0].visible = N.bitLamps[1].visible = false; for (let b = 0; b < 8; b++) N.bars[b].scale.y = 0.1; N.handset.position.y = N.handsetY; }
     },
 
     dispose() {

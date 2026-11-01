@@ -63,6 +63,21 @@ once.
 A prop with a bad connection (a reference on context, a citation without one, the anchor outside Era 6) throws when
 it's built, and the unit tier reports it.
 
+## Calm, and leaving or entering your cave
+
+- **`update(dt, elapsed, state)`:** `state` is `{ era, walking, x, z, calm }`.
+  - While `state.calm` is on (the visit's Calm: reduced motion, the R key or the system setting), hold decorative
+    movement and blinking still.
+  - Show each command's result at once, in its final, readable state.
+  - Readouts that carry information may still change.
+- **`active(on, state)`** (optional, on your `register` definition): called with `false` when the visitor (aboard or
+  ashore) leaves your cave and `true` on entering it.
+  - Stop anything that outlives your frames, such as sound scheduled ahead on the audio clock.
+  - Coming back must not resume it.
+  - Your context stays for the visit; `dispose` closes it on exit.
+- **Unchanged:** sound still starts only from a gesture and goes through the page-wide mute (`BL.sound.output`).
+- **Reference:** Era 1 is the worked example (`hush`, `active`, and the `calm` branches in `update`).
+
 ## Fingerprints and Time on the trail
 
 The Era 3 room's two whitepaper citations, Haber–Stornetta 1991 [3] and Bayer–Haber–Stornetta 1993 [4], are trail

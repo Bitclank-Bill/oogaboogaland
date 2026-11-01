@@ -416,6 +416,7 @@
   const buildExhibits = () => {
     const EX = BL.genesisExhibits, label = BL.factoryModels.label;
     built.propNodes = {}; built.obstacles = []; built.exhibitProps = []; built.trail = [];
+    exhibitEra = -1;
     if (!EX) return;
     for (let n = 0; n < GW.ERAS.length; n++) {
       const def = EX.eras[n];
@@ -459,13 +460,23 @@
     built.trail = EX.trailOf(built.exhibitProps);
   };
   // Each frame, the exhibits of the cave the visitor is in (aboard or ashore) may move; nothing else runs.
-  const exhibitState = { era: -1, walking: false, x: 0, z: 0 };
+  // `calm` is the visit's Calm (reduced motion): era files hold decorative movement and blinking while it is on. When
+  // the cave the visitor is in (aboard or ashore) changes, the era left gets `active(false, state)` and the era entered
+  // `active(true, state)`, so a cave can stop what outlives its frames (sound scheduled ahead) the moment it is left.
+  const exhibitState = { era: -1, walking: false, x: 0, z: 0, calm: false };
+  let exhibitEra = -1;
   const updateExhibits = (dt, elapsed) => {
     const EX = BL.genesisExhibits;
     if (!EX) return;
     const p = walk.on && avatar ? avatar.root.position : boat, era = GW.eraAt(p.x, p.z), def = era >= 0 ? EX.eras[era] : null;
+    exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.x = p.x; exhibitState.z = p.z; exhibitState.calm = view.calm;
+    if (era !== exhibitEra) {
+      const left = exhibitEra >= 0 ? EX.eras[exhibitEra] : null;
+      exhibitEra = era;
+      if (left && left.active) left.active(false, exhibitState);
+      if (def && def.active) def.active(true, exhibitState);
+    }
     if (!def || !def.update) return;
-    exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.x = p.x; exhibitState.z = p.z;
     def.update(dt, elapsed, exhibitState);
   };
   const disposeExhibits = () => {

@@ -1,13 +1,17 @@
 // The Genesis Voyage's era exhibits: what stands in each era's cave, one file per era (genesis-era-0.js to
 // genesis-era-7.js), so several builders can work at once without touching the scene. Each file calls
 //
-//   BL.genesisExhibits.register(n, { sources, build(kit), update(dt, elapsed, state), dispose() })
+//   BL.genesisExhibits.register(n, { sources, build(kit), update(dt, elapsed, state), active(on, state), dispose() })
 //
 // once. `sources` adds source keys ({ key: { label, href, kind, verified } }, `kind` one of "whitepaper citation",
 // "documented influence" or "context"; `verified: false` until the page itself was read). `build(kit)` runs once a
 // visit, inside `enter`, and must only create nodes through the kit. `update` (optional) runs every frame while the
-// visitor's boat or Ooga is in that era's cave and must allocate nothing. `dispose` (optional) runs on leave; nodes
-// are removed with the scene's root anyway.
+// visitor's boat or Ooga is in that era's cave and must allocate nothing; `state` is { era, walking, x, z, calm }, and
+// while `state.calm` (the visit's Calm, reduced motion) is on, hold decorative movement and blinking still, showing
+// command results in their final, readable state instead. `active` (optional) is called with false when the visitor
+// leaves the era's cave (stop anything that outlives frames, such as sound scheduled ahead; coming back must not
+// resume it) and with true on entering it. `dispose` (optional) runs on leave; nodes are removed with the scene's
+// root anyway.
 //
 // The kit (made by scene-genesis.js for the era being built):
 //   era            the era (genesis-world.js ERAS[n]): n, name, years, z0, z1, z (middle), cave, banks, theme
