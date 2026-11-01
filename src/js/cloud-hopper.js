@@ -1026,12 +1026,11 @@
       c2.font = "bold 13px ui-monospace, monospace"; c2.fillStyle = "#ffe49a";
       c2.strokeText("BANANA PILE", x, y - 48);
       c2.fillText("BANANA PILE", x, y - 48);
-      // How far the rider is from it, live, just to the label's right.
+      // How far the rider is from it, live, centred over the label.
       const a = actor.root.position, metres = METRES[Math.min(METRES.length - 1, Math.round(Math.hypot(liftGoal.x - a.x, ctx.pileTop() - (a.y - actor.baseY), liftGoal.z - a.z)))];
-      c2.textAlign = "left"; c2.fillStyle = "#ffffff";
-      c2.strokeText(metres, x + 50, y - 48);
-      c2.fillText(metres, x + 50, y - 48);
-      c2.textAlign = "center";
+      c2.fillStyle = "#ffffff";
+      c2.strokeText(metres, x, y - 65);
+      c2.fillText(metres, x, y - 65);
       c2.font = "bold 11px ui-monospace, monospace"; c2.fillStyle = "#fff5d8";
       c2.strokeText("TOUCH TO FINISH", x, y - 31);
       c2.fillText("TOUCH TO FINISH", x, y - 31);
