@@ -437,11 +437,13 @@
           const entry = { era: n, def: d, order: built.exhibitProps.length, step: 0 };
           const onUse = d.connection ? (state) => {
             const r = d.onUse(state);
-            if (!r || !r.board) return r;
+            if (!r || !(r.board || r.terminal)) return r;
             const c = EX.CONNECTIONS[d.connection];
             const how = [`${c.label}${d.ref ? ` ${d.ref}` : ""}.${d.date ? ` ${d.date}.` : ""}`, entry.step
               ? `Step ${entry.step} of ${built.trail.length} on the Steps toward Bitcoin: follow the gold path along the banks, in date order.`
               : "Part of the story of these years, not something the Bitcoin whitepaper cites or is shown to have drawn on."];
+            // A terminal has no pages: the same words open its screen, as its banner's first lines.
+            if (r.terminal) { const t = r.terminal; return { ...r, terminal: { banner: [`HOW IT CONNECTS: ${how[0]}`, how[1], "", ...t.banner], prompt: t.prompt, run: (line) => t.run(line) } }; }
             return { ...r, board: { ...r.board, pages: [...r.board.pages, { caption: "How it connects", title: c.label, text: how }] } };
           } : d.onUse;
           const prop = props.register({ ...d, era: n, onUse });
@@ -549,7 +551,7 @@
       }
       const spot = GW.overviewSpot(e.n);
       p.x = spot.x; p.z = spot.z;
-      const def = EX && EX.eras[e.n], mine = built.exhibitProps.filter((x) => x.era === e.n).sort((a, b) => a.def.year - b.def.year || a.order - b.order);
+      const def = EX && EX.eras[e.n], mine = built.exhibitProps.filter((x) => x.era === e.n).sort((a, b) => EX.yearKey(a.def.year) - EX.yearKey(b.def.year) || a.order - b.order);
       const board = textBoard({ kicker: `ERA ${e.n} · ${e.years.toUpperCase()}`, title: e.name, width: 3.4,
         body: [def && def.overview ? def.overview.summary : mine.length ? "Walk the banks: every exhibit here shows its year." : "This cave's exhibits are still being built."],
         list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
@@ -595,7 +597,7 @@
     const EX = BL.genesisExhibits;
     for (const o of built.overviews) {
       const e = GW.ERAS[o.era], year = firstYear(e.years), def = EX && EX.eras[o.era];
-      const mine = built.exhibitProps.filter((x) => x.era === o.era).sort((a, b) => a.def.year - b.def.year || a.order - b.order);
+      const mine = built.exhibitProps.filter((x) => x.era === o.era).sort((a, b) => EX.yearKey(a.def.year) - EX.yearKey(b.def.year) || a.order - b.order);
       const steps = built.trail.map((x) => `${x.step}. ${x.def.year} · ${x.def.title}${x.era === o.era ? " (this cave)" : ` (Era ${x.era})`}`);
       props.register({ id: `era${o.era}-overview`, era: o.era, year, title: `Era ${e.n} overview`, label: `ERA ${e.n} OVERVIEW · ${year}`, sourceKeys: ["whitepaper"], at: o.at, reach: 2.4,
         onUse: () => ({ board: { room: `Era ${e.n} - ${e.name} - ${e.years}`, sources: def && def.overview && def.overview.sourceKeys ? def.overview.sourceKeys : [], pages: [

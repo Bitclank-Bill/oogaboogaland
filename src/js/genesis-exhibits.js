@@ -64,11 +64,14 @@
     if (d.connection === "anchor" && n !== 6) return `${d.id}: only Era 6 holds the whitepaper itself`;
     return null;
   };
+  // A year to sort by: a whole year as itself; a decade such as "1980s" (an era file's honest "some time in these
+  // years") just after its first year, 1980.5, so it sorts deliberately rather than as NaN.
+  const yearKey = (year) => typeof year === "number" ? year : +String(year).match(/\d{4}/)[0] + 0.5;
   // The trail: every prop whose connection is on it, in date order (era, then build order, breaking ties), each given
   // its `step`. `list` is [{ era, def, order }].
   const trailOf = (list) => {
     const trail = list.filter((p) => p.def.connection && CONNECTIONS[p.def.connection].trail)
-      .sort((a, b) => a.def.year - b.def.year || a.era - b.era || a.order - b.order);
+      .sort((a, b) => yearKey(a.def.year) - yearKey(b.def.year) || a.era - b.era || a.order - b.order);
     trail.forEach((p, i) => { p.step = i + 1; });
     return trail;
   };
@@ -88,5 +91,5 @@
     }
     eras[n] = def;
   };
-  BL.genesisExhibits = { register, eras, sources, CONNECTIONS, checkProp, trailOf };
+  BL.genesisExhibits = { register, eras, sources, CONNECTIONS, checkProp, trailOf, yearKey };
 })();
