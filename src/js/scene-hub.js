@@ -6384,6 +6384,9 @@
       } else if (action === timechainIsland.gate.action) {
         hud.hint(COARSE ? "Tap USE KEYPAD to choose a room" : "Space · Use keypad to choose a room");
         hud.setAct("USE KEYPAD");
+      } else if (archiveEntry && action === archiveEntry.action) {
+        hud.hint(COARSE ? "Tap CLIMB to climb the beanstalk" : "Space · Climb the beanstalk");
+        hud.setAct("CLIMB");
       } else {
         hud.hint(COARSE ? "Tap ENTER ARCADE to go in" : "Press Space to enter Ooga Arcade");
         if (player) hud.setAct("ENTER ARCADE");
@@ -8951,11 +8954,23 @@
       } });
     cloudRememberNodes(start);
   };
+  // The archive TV's pictures are drawn as snapFromShield draws: no cutaway, and the visitor's own Ooga (possibly
+  // headless in first person) out of the picture. The options are written into one object, not spread per picture.
+  const ARCHIVE_SHOT_OPTS = {};
+  const renderArchiveView = (view) => {
+    Object.assign(ARCHIVE_SHOT_OPTS, RENDER_OPTS);
+    ARCHIVE_SHOT_OPTS.birdsEyeCutaway = false; ARCHIVE_SHOT_OPTS.cutawayFade = 0; ARCHIVE_SHOT_OPTS.cutawayMaxY = 1e6; ARCHIVE_SHOT_OPTS.cutawayRegionCount = 0;
+    const me = pilot.player, shown = !!me && me.root.visible;
+    if (me) me.root.visible = false;
+    const drawn = renderer.render(root, view, ARCHIVE_SHOT_OPTS);
+    if (me) me.root.visible = shown;
+    return drawn;
+  };
   const createArchiveEntry = () => {
     if (!BL.scenes.cloudarchive || archiveEntry) return;
     const start = root.children.length;
     archiveEntry = BL.cloudArchiveEntry.create({ root, island, world, free, nearPath, addTarget, removeTarget, hud, canvas: glCanvas,
-      renderView: (view) => renderer.render(root, view, RENDER_OPTS) });
+      renderView: renderArchiveView });
     cloudRememberNodes(start);
   };
   const ghostHub = () => ({

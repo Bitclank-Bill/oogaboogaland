@@ -22836,7 +22836,83 @@ const artifactUnitProof = () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
   return { parsed: true, rows };
 };
+// The Cloud Archive's history rules (scripts/cloud-archive-lib.mjs) on made-up histories, the generator end to end on
+// throwaway repositories, and the committed snapshot's own invariants.
+const cloudArchiveProof = async () => {
+  const L = await import("../scripts/cloud-archive-lib.mjs");
+  const at = (day, n = 0) => Date.parse(`${day}T12:00:00Z`) / 1000 + n;
+  const sha = (n) => n.toString(16).padStart(40, "0");
+  const commit = (n, name, email, subject, parents = [sha(n + 1000)], body = "", time = at("2026-09-07", n)) => ({ sha: sha(n), time, name, email, parents, subject, body });
+  const build = (commits, heads = new Map(), identities = []) => L.buildArchive({ commits, pullHeads: heads, identities, rev: sha(1), officialTip: sha(1) });
+  const who = (data, n) => { for (const d of data.days) for (const c of d.commits) if (c[0] === sha(n)) return { ...data.people[c[1]], index: c[1], pr: c[3], title: c[2] }; return null; };
+  const r = {};
+  // Two people who share a display name stay two; neither is folded into a login seen under that name.
+  const same = build([commit(1, "Sam", "sam.one@example.org", "a"), commit(2, "Sam", "sam.two@example.net", "b"), commit(3, "Sam", "5+sam@users.noreply.github.com", "c")]);
+  r.collision = who(same, 1).index !== who(same, 2).index && who(same, 1).index !== who(same, 3).index && same.counts.unlinked === 2 && same.counts.account === 1 && who(same, 3).label === "sam";
+  // A merge-looking subject, a "(#n)" suffix or a branch owner's login proves nothing; only a published head does.
+  const heads = new Map([[7, sha(70)], [8, sha(80)]]);
+  const merges = build([
+    commit(10, "Ann", "ann@example.org", "Merge pull request #7 from mallory/feature", [sha(11), sha(99)], "Fake title"),
+    commit(12, "Ann", "ann@example.org", "Add a thing (#8)"),
+    commit(13, "Bo", "9+bo@users.noreply.github.com", "Merge pull request #8 from mallory/feature", [sha(14), sha(80)], "Real title\n\nCo-Authored-By: X <x@example.com>"),
+    commit(15, "Cy", "cy@example.org", "Merge branch 'rock' into topic", [sha(16), sha(70)])
+  ], heads);
+  r.fakeMerge = who(merges, 10).pr === 0 && who(merges, 12).pr === 0;
+  r.realMerge = who(merges, 13).pr === 8 && who(merges, 13).label === "bo" && who(merges, 13).title === "Real title" && who(merges, 15).pr === 7 && merges.counts.pulls === 2;
+  r.noBranchOwner = !merges.people.some((p) => p.label === "mallory");
+  // Unknowns stay unknown: a private address is an unlinked author under its git name, never an account or an agent by
+  // name; only the reviewed mapping and a [bot] login change a kind.
+  const kinds = build([
+    commit(20, "Claude", "claude.person@example.org", "x"), commit(21, "github-actions[bot]", "41898282+github-actions[bot]@users.noreply.github.com", "y"),
+    commit(22, "Helper", "agent@example.com", "z"), commit(23, "OrgName", "77+orgname@users.noreply.github.com", "w")
+  ], new Map(), [{ emailSha256: L.emailHash("agent@example.com"), kind: "agent", label: "Helper (AI agent)" }, { login: "orgname", kind: "organisation", label: "OrgName" }]);
+  r.unknown = who(kinds, 20).kind === "unlinked" && who(kinds, 20).label === "Claude" && who(kinds, 21).kind === "automation" && who(kinds, 22).kind === "agent" && who(kinds, 23).kind === "organisation";
+  r.noAddress = !/@/.test(JSON.stringify(build([commit(30, "Di", "di@example.org", "Reach me at di@example.org")]))) && !/@/.test(JSON.stringify(merges));
+  // Shelves: a day over capacity keeps capacity - 1 books and one overflow binder; nothing is dropped.
+  const cap = L.SHELF.capacity, over = L.shelve(cap + 57), full = L.shelve(cap);
+  r.overflow = full.books === cap && full.overflow === 0 && over.books === cap - 1 && over.books + over.overflow === cap + 57;
+  // The generator itself: an official branch with two commits and a fork one ahead, the fork checked out.
+  const dir = mkdtempSync(join(tmpdir(), "cloud-archive-")), off = join(dir, "official"), fork = join(dir, "fork"), out = join(dir, "data.js");
+  const g = (cwd, ...args) => spawnSync("git", ["-c", "commit.gpgsign=false", "-c", "user.name=Test", "-c", "user.email=test@example.org", ...args], { cwd, encoding: "utf8" });
+  try {
+    mkdirSync(off);
+    g(off, "init", "-q", "-b", "rock"); g(off, "commit", "-q", "--allow-empty", "-m", "one"); g(off, "commit", "-q", "--allow-empty", "-m", "two");
+    const tip = g(off, "rev-parse", "HEAD").stdout.trim();
+    g(dir, "clone", "-q", off, fork); g(fork, "commit", "-q", "--allow-empty", "-m", "fork only");
+    const forkHead = g(fork, "rev-parse", "HEAD").stdout.trim();
+    const run = (rev) => spawnSync(process.execPath, [join(root, "scripts/cloud-archive.mjs"), "--cwd", fork, "--official", off, "--out", out, ...(rev ? ["--rev", rev] : [])], { encoding: "utf8" });
+    const good = run(tip), context = { window: {} };
+    if (good.status === 0) runInNewContext(readFileSync(out, "utf8"), context);
+    const data = context.window.BL && context.window.BL.cloudArchiveData;
+    r.selectsRev = good.status === 0 && !!data && data.rev === tip && data.commits === 2 && !JSON.stringify(data).includes(forkHead);
+    r.refusesFork = run(forkHead).status === 1 && run(null).status === 1 && run(tip.slice(0, 7)).status === 1;
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  // The rack the page builds agrees: a 250-commit day shows capacity - 1 books and the binder's two boxes, a 12-commit
+  // day twelve books, measured as faces added over an empty day's rack (six a box).
+  {
+    const context = { window: {}, document: { createElement: () => ({ getContext: () => null }) } };
+    for (const name of ["math", "scene", "models"]) runInNewContext(readFileSync(join(root, `src/js/${name}.js`), "utf8"), context);
+    const W = context.window, day = (date, n) => ({ date, commits: Array.from({ length: n }, (_, i) => [sha(i + 1), 0, "t", 0, 0]) });
+    W.BL.cloudArchiveData = { shelf: { capacity: cap }, people: [{ label: "a", kind: "account" }], days: [day("2026-09-07", 0), day("2026-09-08", 12), day("2026-09-09", 250)] };
+    W.BL.cloudArchiveEntry = { stalkGeometry: () => ({ verts: [], faces: [], lines: [] }) };
+    runInNewContext(readFileSync(join(root, "src/js/cloud-archive-models.js"), "utf8"), context);
+    const built = W.BL.models.withScope("cloudarchive", () => W.BL.cloudArchiveModels.build());
+    const faces = built.racks.map((n) => n.geometry.faces.length), shelf = W.BL.cloudArchiveModels.LAYOUT.shelve(250);
+    r.rackOverflow = faces[1] - faces[0] === 12 * 6 && faces[2] - faces[0] === (cap - 1 + 2) * 6 && shelf.books === cap - 1 && shelf.overflow === 250 - (cap - 1);
+  }
+  // The committed snapshot: from a full SHA of the official repository, people as label and kind only, no address,
+  // every commit on a day, and each day shelved within capacity.
+  const context = { window: {} };
+  runInNewContext(readFileSync(join(root, "src/js/cloud-archive-data.js"), "utf8"), context);
+  const D = context.window.BL.cloudArchiveData;
+  r.snapshot = D.repo === L.OFFICIAL.repo && /^[0-9a-f]{40}$/.test(D.rev) && D.provenance.rev === D.rev && D.shelf.capacity === cap
+    && D.people.every((p) => Object.keys(p).join() === "label,kind" && L.KINDS.includes(p.kind)) && !/@[A-Za-z0-9-]+\.[A-Za-z]{2,}/.test(JSON.stringify(D))
+    && D.days.reduce((n, d) => n + d.commits.length, 0) === D.commits && D.days.every((d) => { const s = L.shelve(d.commits.length); return s.books + s.overflow === d.commits.length && s.books <= cap; });
+  return r;
+};
 const unitChecks = async () => {
+  const archive = await cloudArchiveProof();
+  record("cloud archive history: shared display names stay separate people, merge-looking subjects and branch owners prove no PR, unknown and unreviewed identities stay unlinked, no address is published, an over-full day overflows without dropping commits, and the generator shelves only an explicit revision of the official branch", Object.values(archive).every(Boolean), JSON.stringify(archive));
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
   const previewRange=await studioPreviewRangeProof();

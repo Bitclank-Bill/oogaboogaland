@@ -11,7 +11,7 @@
   const { tube, box, merge, cached, turnedY, moved } = BL.models;
   const { clamp, mulberry32 } = BL.math;
   const HEIGHT = 26, GROW_SECONDS = 3.2, FOOT_REACH = 1.5, STALK_R = 0.32;
-  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)"), COARSE = window.matchMedia("(pointer: coarse)").matches;
   // A beanstalk `height` tall from y = 0: a gently winding tube, thick at the foot, with `leaves` broad leaves up it,
   // from `leafFrom` of the way up (the archive's shaft keeps its stretch bare, so the climb's view stays open).
   const stalkGeometry = (height, radius, leaves, leafFrom = 0) => {
@@ -40,10 +40,12 @@
   // stalk stands in the same place on every visit.
   const SPOTS = [[-9, 5], [-7, -8], [9, 8], [-11, 2], [6, -9]];
   // What the archive's TV shows: the island seen from a few of its places, drawn once each on the way up (one a frame
-  // while the view moves in, through the hub's `renderView`) and handed over as `world.archiveViews`. The banana pit
-  // first; then whichever of these mouths and the north gate the island has.
+  // while the view moves in, through the hub's `renderView`, which draws as the hub's other snapshots do: no cutaway,
+  // the visitor's own Ooga hidden) and handed over as `world.archiveViews`. The banana pit first; then whichever of
+  // these mouths and the north gate the island has, and the stalk: at most MAX_VIEWS pictures of VIEW_W x VIEW_H, in
+  // canvases made once a page and reused by every climb (the archive is not open while they are redrawn).
   const MOUTH_VIEWS = [["c2", "Lightning Factory"], ["c3", "Ooga Arcade"], ["c11", "EntropyLab"]];
-  const VIEW_W = 480, VIEW_H = 360;
+  const VIEW_W = 480, VIEW_H = 360, MAX_VIEWS = 6, pool = [];
   const shotList = (island, foot) => {
     const list = [{ label: "Banana pit", from: [0, 5.5, 9.5], at: [0, 0.6, 0] }];
     for (const [id, label] of MOUTH_VIEWS) {
@@ -52,7 +54,7 @@
     }
     if (island.gate) list.push({ label: "North gate", from: [island.gate.x, 6, island.gate.z + 14], at: [island.gate.x, 3, island.gate.z] });
     list.push({ label: "The beanstalk", from: [foot.x + 9, foot.y + 4, foot.z + 9], at: [foot.x, foot.y + 9, foot.z] });
-    return list;
+    return list.slice(0, MAX_VIEWS);
   };
   const create = ({ root, island, world, free, nearPath, addTarget, removeTarget, hud, renderView = null, canvas = null }) => {
     let foot = null;
@@ -74,21 +76,22 @@
     };
     showStalk();
     const action = { kind: "beanstalk" };
-    // The TV's pictures: queued when the climb starts, one drawn and copied a frame.
+    // The TV's pictures: queued when the climb starts, everything they need made then; one drawn and copied a frame.
     const shot = BL.scene.createCamera({ fov: 55, near: 0.2, far: 400 });
-    let shots = null;
+    let shots = null, next = 0;
+    const costs = [];
     const takeShot = () => {
-      const s = shots.shift();
+      const s = shots[next++], v = world.archiveViews[next - 1];
       shot.position.x = s.from[0]; shot.position.y = s.from[1]; shot.position.z = s.from[2];
       shot.target.x = s.at[0]; shot.target.y = s.at[1]; shot.target.z = s.at[2];
+      const start = performance.now();
       if (!canvas || !canvas.width || !renderView(shot)) return;
       // The frame just drawn, cropped to the TV's 4:3 from the middle of the page's canvas.
-      const out = document.createElement("canvas"), g = out.getContext("2d");
-      out.width = VIEW_W; out.height = VIEW_H;
-      const cw = Math.min(canvas.width, canvas.height * 4 / 3), ch = cw * 3 / 4;
+      const cw = Math.min(canvas.width, canvas.height * 4 / 3), ch = cw * 3 / 4, g = v.canvas.getContext("2d");
       g.imageSmoothingQuality = "high";
       g.drawImage(canvas, (canvas.width - cw) / 2, (canvas.height - ch) / 2, cw, ch, 0, 0, VIEW_W, VIEW_H);
-      world.archiveViews.push({ canvas: out, label: s.label, at: Date.now() });
+      v.ready = true;
+      costs[next - 1] = performance.now() - start;
     };
     return {
       action, foot,
@@ -98,26 +101,31 @@
       // Space at the foot: the island's pictures for the TV start now, while the view moves in.
       climb: () => {
         if (!renderView) return;
-        world.archiveViews = [];
-        shots = shotList(island, foot);
+        shots = shotList(island, foot); next = 0; costs.length = shots.length; costs.fill(0);
+        while (pool.length < shots.length) { const c = document.createElement("canvas"); c.width = VIEW_W; c.height = VIEW_H; pool.push(c); }
+        world.archiveViews = shots.map((s, i) => ({ canvas: pool[i], label: s.label, ready: false }));
       },
+      // Milliseconds each picture took to draw and copy (on this device, this visit).
+      get shotCosts() { return costs; },
       tip: (owner) => owner.kind === "archivecloud" ? (grow > 0 ? "A cloud with something in it" : "A cloud that doesn't drift · something's in it")
-        : owner.kind === "beanstalk" ? "Beanstalk · Space at its foot to climb" : null,
+        : owner.kind === "beanstalk" ? (COARSE ? "Beanstalk · walk to its foot and tap CLIMB" : "Beanstalk · Space at its foot to climb") : null,
       isTarget: (owner) => owner === cloudOwner,
       // A weapon landed on the cloud: only the visitor's own shot or swing wakes it, once.
       hit: (byPlayer) => {
         if (disposed || !byPlayer || grow > 0 || growing) return;
-        growing = true; flash = 1;
+        growing = true;
         world.archiveRevealed = true;
+        // Reduced motion: the stalk simply stands, and the cloud neither flashes nor pulses.
         if (REDUCED.matches) { grow = 1; growing = false; showStalk(); }
+        else flash = 1;
         hud.toast("The cloud shudders · something is growing below");
       },
       nearFoot: (x, y, z) => grow >= 1 && Math.hypot(x - foot.x, z - foot.z) < FOOT_REACH + STALK_R && Math.abs(y - foot.y - 1.1) < 1.6,
       update: (dt, elapsed) => {
-        if (shots && shots.length) takeShot();
+        if (shots && next < shots.length) takeShot();
         if (growing) {
           grow = Math.min(1, grow + dt / GROW_SECONDS);
-          if (grow >= 1) { growing = false; hud.toast("A beanstalk · Space at its foot to climb"); }
+          if (grow >= 1) { growing = false; hud.toast(COARSE ? "A beanstalk · walk to its foot and tap CLIMB" : "A beanstalk · Space at its foot to climb"); }
           showStalk();
         }
         flash = Math.max(0, flash - dt * 1.5);

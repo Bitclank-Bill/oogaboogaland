@@ -1,9 +1,14 @@
 // One visit to the Cloud Archive (scene-cloudarchive.js), climbed into up the island's beanstalk. The Ooga arrives at
 // the foot of a shaft under the cloud floor and climbs the stalk on the crew's own ladder (W/S, A/D, Space jumps off)
 // up into a white room without walls, where one dark rack a day of the game's history stands down a long aisle, a
-// book a commit (cloud-archive-models.js, cloud-archive-data.js). Tap a rack, or its plaque, for that day's board:
-// its commits, merged PRs and who made them, with links out to GitHub; the arrows page through the days. Climbing back
-// down to the foot of the shaft (or Leave, or Escape) hands the same Ooga back to the island at the beanstalk.
+// book a commit (cloud-archive-models.js, cloud-archive-data.js). Space (or the READ button) facing a shelf, a tap
+// on a rack or its plaque opens that day's board: its commits, verified merged PRs and their authors as git recorded
+// them, with links out to GitHub; the arrows page through the days. At the far end, two armchairs (Space or SIT) face
+// a small TV showing the pictures the island took on the way up.
+//
+// The way home is always deliberate: climbing all the way down the stalk, Space (ISLAND) at its foot once the Ooga has
+// been up, Leave, or Escape. Falling into the shaft only leaves the Ooga at its foot, where it can climb back up. Any
+// way out hands the same Ooga back to the island beside the beanstalk, which stands from then on.
 //
 // Solo for now: no presence, poses or voice. The Ooga walks empty-handed and without a jetpack, as in the Sphere.
 (() => {
@@ -14,6 +19,7 @@
   const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const DATA = BL.cloudArchiveData, CM = BL.cloudArchiveModels, L = CM.LAYOUT, S = L.SHAFT, RACK = L.RACK;
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
+  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
   const NO_JETPACK = { owned: false, equipped: false, fuel: 1, blocked: false };
   const REPO_URL = `https://github.com/${DATA.repo}`;
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
@@ -24,25 +30,35 @@
     shadowCenter: { x: 0, y: 1, z: -10 }, shadowExtent: 30,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 0.2
   };
-  // How long the Ooga must stand at the shaft's foot after climbing down before the island takes it back.
-  // The TV changes channel every CHANNEL_SECONDS, through STATIC_SECONDS of snow. A chair is sat in from within
-  // SIT_REACH of its edge, facing it; the sitter sits SEAT_Y up and stands up SEAT_BACK behind it.
+  // The TV changes channel every CHANNEL_SECONDS through STATIC_SECONDS of snow (neither under reduced motion, where it
+  // holds its picture until changed by hand). A chair is sat in from within SIT_REACH of its edge, facing it; the
+  // sitter sits SEAT_Y up and stands up SEAT_BACK behind it. A shelf is read from within READ_REACH of its front,
+  // facing it within READ_FACING; ISLAND is offered within FOOT_REACH of the stalk at the shaft's foot.
   const CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, TV_W = 480, TV_H = 360, SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.1;
-  const ARRIVAL_PITCH = -0.35, EXIT_HOLD = 0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
+  const READ_REACH = 1.4, READ_FACING = 0.45, FOOT_REACH = 1.8;
+  const ARRIVAL_PITCH = -0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
+  // Authors are identities as git recorded them (linked accounts and unlinked git names); automation, agents and
+  // organisations are counted apart and never as people.
+  const AUTHOR = { account: true, unlinked: true };
   const dayStats = (day) => {
-    let prs = 0, bots = 0;
+    let prs = 0, automation = 0, agents = 0, organisations = 0;
     const by = new Map();
     for (const c of day.commits) {
       if (c[3]) prs++;
-      if (c[4] & 1) { bots++; continue; }
-      by.set(c[1], (by.get(c[1]) || 0) + 1);
+      const kind = DATA.people[c[1]].kind;
+      if (kind === "automation") automation++;
+      else if (kind === "agent") agents++;
+      else if (kind === "organisation") organisations++;
+      if (AUTHOR[kind]) by.set(c[1], (by.get(c[1]) || 0) + 1);
     }
-    const people = [...by].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
-    return { commits: day.commits.length, prs, bots, people };
+    const authors = [...by].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+    return { commits: day.commits.length, prs, automation, agents, organisations, authors, shelf: L.shelve(day.commits.length) };
   };
   const STATS = DATA.days.map(dayStats);
+  const label = (p) => DATA.people[p].kind === "unlinked" ? `${DATA.people[p].label}*` : DATA.people[p].label;
   const longDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+  const others = (s) => `${s.automation ? ` · ${s.automation} by automation` : ""}${s.agents ? ` · ${s.agents} by AI agents` : ""}${s.organisations ? ` · ${s.organisations} by organisations` : ""}`;
   const paintPlaque = (i) => {
     const canvas = document.createElement("canvas"), g = canvas.getContext("2d"), s = STATS[i];
     canvas.width = PLAQUE_W; canvas.height = PLAQUE_H;
@@ -50,37 +66,42 @@
     g.fillStyle = "#e8b04a"; g.fillRect(0, PLAQUE_H - 6, PLAQUE_W, 6);
     g.fillStyle = "#ffffff"; g.font = `700 52px ${FONT}`; g.textAlign = "center"; g.textBaseline = "alphabetic";
     g.fillText(DATA.days[i].date, PLAQUE_W / 2, 62);
-    g.fillStyle = "#c9ccd3"; g.font = `500 26px ${FONT}`;
-    g.fillText(`${plural(s.commits, "commit")} · ${plural(s.prs, "PR")} · ${plural(s.people.length, "person")}`.replace("persons", "people"), PLAQUE_W / 2, 104);
+    g.fillStyle = "#c9ccd3"; g.font = `500 ${s.shelf.overflow ? 21 : 26}px ${FONT}`;
+    const line = `${plural(s.commits, "commit")} · ${plural(s.prs, "PR")} · ${plural(s.authors.length, "author")}`;
+    g.fillText(s.shelf.overflow ? `${line} · ${s.shelf.overflow} in the binder` : line, PLAQUE_W / 2, 104);
     return canvas;
   };
-  // The day's board: date, counts, who (with their shelf colour) and the commits, as many as the page holds.
+  // The day's board: date, counts, authors (with their shelf colour) and the commits, as many as the page holds; the
+  // rest are a link away.
   const paintDay = (g, i) => {
     const day = DATA.days[i], s = STATS[i];
     g.fillStyle = "#f6f7f9"; g.fillRect(0, 0, BOARD_W, BOARD_H);
     g.fillStyle = "#1d1f24"; g.font = `700 34px ${FONT}`; g.textAlign = "left"; g.textBaseline = "alphabetic";
     g.fillText(longDate(day.date), 36, 56);
-    g.fillStyle = "#5b606b"; g.font = `500 20px ${FONT}`;
-    g.fillText(`${plural(s.commits, "commit")} · ${plural(s.prs, "merged PR")} · ${s.people.length} ${s.people.length === 1 ? "person" : "people"}${s.bots ? ` · ${s.bots} by automation` : ""}`, 36, 88);
-    let x = 36, y = 126;
+    g.fillStyle = "#5b606b"; g.font = `500 19px ${FONT}`;
+    g.fillText(`${plural(s.commits, "commit")} · ${plural(s.prs, "verified merged PR")} · ${plural(s.authors.length, "author")}${others(s)}`, 36, 86);
+    let x = 36, y = 124;
     g.font = `600 18px ${FONT}`;
-    for (const [p, n] of s.people) {
-      const label = `${DATA.people[p]} ${n}`, w = g.measureText(label).width + 34;
+    for (const [p, n] of s.authors) {
+      const text = `${label(p)} ${n}`, w = g.measureText(text).width + 34;
       if (x + w > BOARD_W - 36) { x = 36; y += 32; }
       if (y > 220) break;
       g.fillStyle = CM.personColor(p); g.fillRect(x, y - 16, 14, 20);
-      g.fillStyle = "#1d1f24"; g.fillText(label, x + 20, y);
+      g.fillStyle = "#1d1f24"; g.fillText(text, x + 20, y);
       x += w;
     }
     y += 40;
     g.fillStyle = "#d4d7dd"; g.fillRect(36, y - 24, BOARD_W - 72, 2);
-    g.font = `500 17px ${FONT}`;
-    const lines = Math.floor((BOARD_H - 24 - y) / 25), list = day.commits;
+    const list = day.commits, lines = Math.floor((BOARD_H - 24 - y) / 25);
     for (let n = 0; n < Math.min(list.length, lines); n++) {
-      const c = list[n], more = n === lines - 1 && list.length > lines;
-      if (more) { g.fillStyle = "#5b606b"; g.fillText(`…and ${list.length - n} more: open this day's commits on GitHub below`, 36, y); break; }
-      g.fillStyle = c[4] & 1 ? "#8a9099" : c[3] ? "#a8741a" : "#1d1f24";
-      const head = `${c[0].slice(0, 7)}  ${c[3] ? `#${c[3]} ` : ""}`, who = DATA.people[c[1]];
+      const c = list[n], kind = DATA.people[c[1]].kind;
+      if (n === lines - 1 && list.length > lines) {
+        g.font = `500 17px ${FONT}`; g.fillStyle = "#5b606b";
+        g.fillText(`${list.length - n} more commits: follow this day's history link below`, 36, y);
+        break;
+      }
+      g.fillStyle = kind === "automation" || kind === "agent" ? "#7a828c" : c[3] ? "#a8741a" : "#1d1f24";
+      const head = `${c[0].slice(0, 7)}  ${c[3] ? `#${c[3]} ` : ""}`, who = label(c[1]);
       g.font = `600 17px ui-monospace, Menlo, Consolas, monospace`; g.fillText(head, 36, y);
       const hw = g.measureText(head).width;
       g.font = `500 17px ${FONT}`;
@@ -117,7 +138,7 @@
       const r = actor && actor.bodyRadius || 0.35;
       if (y < -1.8) return L.inShaft(bx, bz, r * 0.6);
       if (!(bx > B.x0 && bx < B.x1 && bz > B.z0 && bz < B.z1 && clearOfRacks(bx, bz, r))) return false;
-      for (const o of L.solids) if (Math.hypot(bx - o.x, bz - o.z) < o.r + r) return false;
+      for (let i = 0; i < L.solids.length; i++) { const o = L.solids[i]; if (Math.hypot(bx - o.x, bz - o.z) < o.r + r) return false; }
       return true;
     };
     const groundAt = (x, z) => L.inShaft(x, z) ? -S.depth : 0;
@@ -164,34 +185,40 @@
       target(rack, { kind: "rack", index: i }, 1.7);
       target(plaque, { kind: "rack", index: i }, 0.8);
     });
-    target(built.root.children[1], { kind: "stalk" }, 1.2);
+    target(built.stalk, { kind: "stalk" }, 1.2);
 
-    // The TV: the island's pictures from the climb (`world.archiveViews`), one at a time, changing channel through a
-    // moment of snow; with none (a page that opened here), a test card. Painted only when the channel changes.
-    const views = world.archiveViews && world.archiveViews.length ? world.archiveViews : [];
+    // The TV: the island's pictures from the climb (`world.archiveViews`), one at a time; with none (a page that opened
+    // here), a test card. It is painted only when the channel changes, from buffers made here: the snow's image, and
+    // each channel's caption, worked out once.
+    const views = world.archiveViews ? world.archiveViews.filter((v) => v.ready) : [];
+    const captions = views.map((v) => `ISLAND CAM · ${v.label.toUpperCase()}`), counters = views.map((_, i) => `${i + 1}/${views.length}`);
     const tvCanvas = document.createElement("canvas");
     tvCanvas.width = TV_W; tvCanvas.height = TV_H;
+    const tvContext = tvCanvas.getContext("2d"), snow = tvContext.createImageData(TV_W / 4, TV_H / 4);
     const tvGeometry = CM.plaque(tvCanvas, L.TV.screenW, L.TV.screenH);
     built.screen.geometry = tvGeometry;
-    const tv = { channel: 0, wait: CHANNEL_SECONDS, snow: 0, version: 0 };
+    // `still`: the picture changes only by hand (reduced motion, or while its board is open, where the page is the
+    // reader's). The board's pages are the channels themselves, so turning one turns the other.
+    const tv = { channel: 0, wait: CHANNEL_SECONDS, snow: 0, version: 0, open: false };
+    const boardDialog = document.getElementById("board-modal");
     let snowSeed = 1;
     const paintTv = () => {
-      const g = tvCanvas.getContext("2d");
+      const g = tvContext;
       if (tv.snow > 0) {
-        const image = g.createImageData(TV_W / 4, TV_H / 4), d = image.data;
+        const d = snow.data;
         for (let i = 0; i < d.length; i += 4) { snowSeed = (Math.imul(snowSeed, 1103515245) + 12345) | 0; d[i] = d[i + 1] = d[i + 2] = (snowSeed >>> 24); d[i + 3] = 255; }
         g.imageSmoothingEnabled = false;
-        g.putImageData(image, 0, 0);
+        g.putImageData(snow, 0, 0);
         g.drawImage(tvCanvas, 0, 0, TV_W / 4, TV_H / 4, 0, 0, TV_W, TV_H);
       } else if (views.length) {
-        const v = views[tv.channel];
-        g.drawImage(v.canvas, 0, 0, TV_W, TV_H);
+        g.imageSmoothingEnabled = true;
+        g.drawImage(views[tv.channel].canvas, 0, 0, TV_W, TV_H);
         g.fillStyle = "rgba(0,0,0,0.12)";
         for (let y = 0; y < TV_H; y += 3) g.fillRect(0, y, TV_W, 1);
         g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, TV_H - 44, TV_W, 44);
         g.fillStyle = "#ffffff"; g.font = `700 22px ${FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
-        g.fillText(`ISLAND CAM · ${v.label.toUpperCase()}`, 14, TV_H - 22);
-        g.fillStyle = "#e8b04a"; g.textAlign = "right"; g.fillText(`${tv.channel + 1}/${views.length}`, TV_W - 14, TV_H - 22);
+        g.fillText(captions[tv.channel], 14, TV_H - 22);
+        g.fillStyle = "#e8b04a"; g.textAlign = "right"; g.fillText(counters[tv.channel], TV_W - 14, TV_H - 22);
       } else {
         const bars = ["#c0c0c0", "#c0c000", "#00c0c0", "#00c000", "#c000c0", "#c00000", "#0000c0"];
         bars.forEach((c, i) => { g.fillStyle = c; g.fillRect(i * TV_W / 7, 0, TV_W / 7 + 1, TV_H); });
@@ -204,27 +231,33 @@
       tv.version++;
     };
     paintTv();
-    const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const tune = (channel) => {
+    const tune = (channel, byHand) => {
       if (!views.length) return;
       tv.channel = (channel + views.length) % views.length;
       tv.wait = CHANNEL_SECONDS;
-      tv.snow = REDUCED.matches ? 0 : STATIC_SECONDS;
+      tv.snow = REDUCED.matches || byHand ? 0 : STATIC_SECONDS;
       paintTv();
     };
+    const still = () => REDUCED.matches || tv.open;
     const updateTv = (dt) => {
+      if (tv.open && !(boardDialog && boardDialog.open)) tv.open = false;
       if (!views.length) return;
       if (tv.snow > 0 && (tv.snow -= dt) <= 0) { tv.snow = 0; paintTv(); }
-      if ((tv.wait -= dt) <= 0) tune(tv.channel + 1);
+      if (!still() && (tv.wait -= dt) <= 0) tune(tv.channel + 1, false);
     };
     const tvBoard = {
-      title: "Island cam", help: "The island as it looked on your way up. Arrow keys change channel.", wide: true,
+      title: "Island cam", wide: true,
+      get help() { return views.length ? "The island as it looked on your way up. Arrow keys change channel; it holds still while this is open." : "No pictures yet."; },
       get canvas() { return views.length ? views[tv.channel].canvas : tvCanvas; }, get count() { return Math.max(1, views.length); }, get index() { return views.length ? tv.channel : 0; },
       get caption() { return views.length ? views[tv.channel].label : "No signal"; },
-      get note() { return views.length ? "Pictures taken as you climbed the beanstalk. A live feed is planned." : "No pictures yet: climb the beanstalk from the island and the TV tunes in to it."; },
+      get note() {
+        if (!views.length) return "No pictures yet: climb the beanstalk from the island and the TV tunes in to it.";
+        return `Pictures the island drew as you climbed the beanstalk, not a live feed. ${REDUCED.matches ? "With reduced motion the TV holds each picture until you change it here." : `The TV changes channel every ${CHANNEL_SECONDS} seconds while nobody is reading this.`}`;
+      },
       get version() { return tv.version; },
-      go: (i) => tune(i)
+      go: (i) => tune(i, true)
     };
+    const openTv = () => { tv.open = true; tv.version++; hud.openBoard(tvBoard); };
     target(built.tv, { kind: "tv" }, 0.6);
     target(built.screen, { kind: "tv" }, 0.4);
     // The two armchairs, each a seat facing the TV; standing up leaves it behind the chair.
@@ -241,20 +274,24 @@
       if (painted !== dayIndex) { paintDay(boardCanvas.getContext("2d"), dayIndex); painted = dayIndex; }
       boardVersion++;
     };
+    // GitHub's history from the day's last commit back: exact, where a date filter would be read in the viewer's time
+    // zone. Then the day's verified PRs.
     const dayLinks = (i) => {
-      const day = DATA.days[i], next = new Date(Date.parse(`${day.date}T00:00:00Z`) + 864e5).toISOString().slice(0, 10);
-      const links = [{ href: `${REPO_URL}/commits/rock/?since=${day.date}&until=${next}`, label: "This day's commits on GitHub (new tab)" }];
+      const day = DATA.days[i], last = day.commits[day.commits.length - 1][0];
+      const links = [{ href: `${REPO_URL}/commits/${last}`, label: `History from this day's last commit, ${last.slice(0, 7)} (new tab)` }];
       for (const c of day.commits) if (c[3] && links.length < 5) links.push({ href: `${REPO_URL}/pull/${c[3]}`, label: `PR #${c[3]}: ${c[2]} (new tab)` });
       return links;
     };
     const board = {
       title: "Cloud Archive", help: "One shelf a day, one book a commit. Arrow keys flip the days.", wide: true,
       get canvas() { return boardCanvas; }, get count() { return DATA.days.length; }, get index() { return dayIndex; },
-      get caption() { return `${DATA.days[dayIndex].date} · day ${dayIndex + 1} of ${DATA.days.length}`; },
+      get caption() { return `${DATA.days[dayIndex].date} (UTC) · day ${dayIndex + 1} of ${DATA.days.length}`; },
       get note() {
-        const s = STATS[dayIndex];
-        const who = s.people.map(([p, n]) => `${DATA.people[p]} (${n})`).join(", ");
-        return `${plural(s.commits, "commit")}, ${plural(s.prs, "merged PR")}${who ? `, by ${who}` : ""}${s.bots ? `; ${s.bots} by automation` : ""}. From the game's own git history at ${DATA.head.slice(0, 7)}.`;
+        const s = STATS[dayIndex], who = s.authors.map(([p, n]) => `${label(p)} (${n})`).join(", ");
+        const shelf = s.shelf.overflow ? ` ${s.shelf.books} stand as books; the other ${s.shelf.overflow} are in the overflow binder.` : "";
+        return `${plural(s.commits, "commit")}, ${plural(s.prs, "verified merged PR")}${who ? `, by ${who}` : ""}${others(s).replace(/ · /g, "; ")}.${shelf} `
+          + `Authors are as git recorded them; * marks a git name not linked to a GitHub account. A PR counts only when GitHub's published PR head was merged. `
+          + `From ${DATA.repo} ${DATA.provenance.branch} at ${DATA.rev.slice(0, 7)}, days in UTC.`;
       },
       get links() { return dayLinks(dayIndex); },
       get version() { return boardVersion; },
@@ -272,14 +309,36 @@
     }
     if (!playerName) playerName = contributors.activeRoster.find(mayPick)?.name || null;
     world.pilot = null;
-    // A free chair within reach, the view facing it, the Ooga on the floor.
-    const nearChair = () => {
-      if (!avatar || avatar.camp.seat || avatar.hop > 0 || avatar.root.position.y - avatar.baseY > 0.1) return null;
-      const p = avatar.root.position, c = camera.position, t = camera.target, fx = t.x - c.x, fz = t.z - c.z, f = Math.hypot(fx, fz) || 1;
-      let near = null, best = 0.5 + avatar.bodyRadius + SIT_REACH;
+    const playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
+    let people = null, avatar = null, climbed = false, leaving = false;
+    const NO_ACTORS = [];
+
+    // What Space (or the act button) does here, one thing at a time: the nearer of a free chair and a shelf faced on
+    // the floor, or the way home at the shaft's foot once the Ooga has been up. `near` is reused, never reallocated.
+    const near = { kind: null, seat: null, index: -1, distance: Infinity };
+    const facing = (dx, dz) => {
+      const c = camera.position, t = camera.target, fx = t.x - c.x, fz = t.z - c.z, f = Math.hypot(fx, fz) || 1, d = Math.hypot(dx, dz) || 1;
+      return (dx * fx + dz * fz) / (d * f);
+    };
+    const findNear = () => {
+      near.kind = null; near.seat = null; near.index = -1; near.distance = Infinity;
+      if (!avatar || avatar.camp.seat || avatar.hop > 0 || avatar.ladder && avatar.ladder.plane) return near;
+      const p = avatar.root.position, feet = p.y - avatar.baseY;
+      if (feet < -S.depth + 0.1) {
+        const d = Math.hypot(p.x - L.LADDER.x, p.z - L.LADDER.z);
+        if (climbed && d < FOOT_REACH) { near.kind = "island"; near.distance = d; }
+        return near;
+      }
+      if (Math.abs(feet) > 0.1) return near;
+      const chairReach = 0.5 + avatar.bodyRadius + SIT_REACH;
       for (const s of seats) {
         const dx = s.x - p.x, dz = s.z - p.z, d = Math.hypot(dx, dz);
-        if (!s.sitter && d < best && (dx * fx + dz * fz) / (d * f) > SIT_FACING) { near = s; best = d; }
+        if (!s.sitter && d < chairReach && d < near.distance && facing(dx, dz) > SIT_FACING) { near.kind = "chair"; near.seat = s; near.distance = d; }
+      }
+      for (let i = 0; i < built.racks.length; i++) {
+        const q = built.racks[i].position, side = q.x < 0 ? 1 : -1, front = q.x + side * RACK.d / 2, ahead = (p.x - front) * side;
+        if (ahead < 0 || ahead > READ_REACH + avatar.bodyRadius || Math.abs(p.z - q.z) > RACK.w / 2 || ahead >= near.distance) continue;
+        if (facing(-side, 0) > READ_FACING) { near.kind = "shelf"; near.index = i; near.seat = null; near.distance = ahead; }
       }
       return near;
     };
@@ -301,12 +360,16 @@
       }
       return true;
     };
-    const playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
-    let people = null, avatar = null;
-    const NO_ACTORS = [];
+    const useNear = () => {
+      const n = findNear();
+      if (n.kind === "chair") return sit(n.seat);
+      if (n.kind === "shelf") { openDay(n.index); return true; }
+      if (n.kind === "island") { handOff(); return true; }
+      return false;
+    };
     if (playerName) {
       const sharedCtx = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors: () => NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT,
-        groundAt, walkable, ladders: [L.LADDER], useNear: () => { const chair = nearChair(); return !!chair && sit(chair); }, jetpackAllowed: () => false };
+        groundAt, walkable, ladders: [L.LADDER], useNear, jetpackAllowed: () => false };
       people = sharedCtx.crew = BL.crew.create(sharedCtx);
       pilot.bind(sharedCtx);
       avatar = people.cavemen.get(playerName);
@@ -336,18 +399,17 @@
     };
     const assist = BL.viewAssist.create({ overlay: ctx.overlay, solidAt });
 
-    // Up and back down: `climbed` once the Ooga has stood on the floor; after that, standing at the shaft's foot a
-    // moment takes it home.
-    let climbed = false, atFoot = 0, leaving = false, hintStage = null, actNear = null;
+    // Home: the same Ooga to the island, beside the beanstalk, which stands from now on (a page that opened here has
+    // not grown it, and arrives there all the same).
+    let hintStage = null, actKind = null, actIndex = -1, wasOnLadder = false;
     const handOff = () => {
       if (leaving) return;
       world.pilot = avatar ? avatar.traits.name : null;
       world.pilotDetached = !avatar;
-      world.archiveExit = true;
+      world.archiveRevealed = true;
       leaving = go("hub");
-      if (!leaving) world.archiveExit = false;
     };
-    const stay = () => { leaving = false; world.archiveExit = false; climbed = false; atFoot = 0; };
+    const stay = () => { leaving = false; };
     const WEAPON_KEYS = new Set(["1", "2", "r", "f", "g", "j"]);
     const armsKeys = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || !WEAPON_KEYS.has(e.key.toLowerCase()) || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
@@ -358,10 +420,10 @@
 
     const tipFor = (hit) => {
       const o = hit.owner;
-      if (o.kind === "rack") { const s = STATS[o.index]; return `${DATA.days[o.index].date} · ${plural(s.commits, "commit")} · tap to read the day`; }
-      if (o.kind === "tv") return views.length ? `Island cam · ${views[tv.channel].label} · tap to watch` : "A little TV · no signal yet";
-      if (o.kind === "chair") return COARSE ? "Leather armchair · tap SIT beside it" : "Leather armchair · Space beside it sits";
-      if (o.kind === "stalk") return COARSE ? "Beanstalk · climb down it to go home" : "Beanstalk · walk into the shaft and climb down (S) to go home";
+      if (o.kind === "rack") { const s = STATS[o.index]; return `${DATA.days[o.index].date} · ${plural(s.commits, "commit")} · ${COARSE ? "tap" : "click, or face it and press Space,"} to read the day`; }
+      if (o.kind === "tv") return views.length ? `Island cam · ${views[tv.channel].label} · ${COARSE ? "tap" : "click"} to watch` : "A little TV · no signal yet";
+      if (o.kind === "chair") return COARSE ? "Leather armchair · walk up and tap SIT" : "Leather armchair · Space beside it sits";
+      if (o.kind === "stalk") return COARSE ? "Beanstalk · climb down it, or tap ISLAND at its foot, to go home" : "Beanstalk · climb down it (S), or Space at its foot, to go home";
       return "";
     };
     Object.assign(hooks, {
@@ -371,12 +433,12 @@
         if (!hit) return;
         const o = hit.owner;
         if (o.kind === "rack") openDay(o.index);
-        else if (o.kind === "tv") { tv.version++; hud.openBoard(tvBoard); }
+        else if (o.kind === "tv") openTv();
         else if (o.kind === "chair") {
-          const seat = seats[o.index];
-          if (seat.sitter || nearChair() !== seat || !sit(seat)) hud.toast(COARSE ? "Walk up to a free chair, then tap SIT" : "Walk up to a free chair and press Space to sit");
+          const seat = seats[o.index], n = findNear();
+          if (seat.sitter || n.kind !== "chair" || n.seat !== seat || !sit(seat)) hud.toast(COARSE ? "Walk up to a free chair, then tap SIT" : "Walk up to a free chair and press Space to sit");
         }
-        else if (o.kind === "stalk") hud.toast("Climb down the beanstalk to go back to the island");
+        else if (o.kind === "stalk") hud.toast(COARSE ? "Climb down the beanstalk, or tap ISLAND at its foot, to go home" : "Climb down the beanstalk (S), or press Space at its foot, to go home");
       },
       ...pilot.hooks
     });
@@ -391,10 +453,23 @@
     const hint = (stage) => {
       if (stage === hintStage) return;
       hintStage = stage;
-      if (stage === "climb") hud.hint(COARSE ? "Walk into the beanstalk and push the stick forward to climb" : "Walk into the beanstalk and hold W to climb · S climbs down", 9000);
-      else if (stage === "floor") hud.hint(COARSE ? "Walk the aisle · tap a shelf to read its day" : "W A S D walk the aisle · click a shelf to read its day · climb down the stalk to leave", 6000);
+      if (stage === "climb") hud.hint(COARSE ? "Walk into the beanstalk and push the stick forward to climb · Leave goes home" : "Walk into the beanstalk and hold W to climb · S climbs down · Leave or Escape goes home", 9000);
+      else if (stage === "floor") hud.hint(COARSE ? "Walk the aisle · face a shelf and tap READ, or tap it · climb down the stalk to go home" : "W A S D walk the aisle · face a shelf and press Space, or click it · climb down the stalk to go home", 6000);
+      else if (stage === "fell") hud.hint(COARSE ? "Down the shaft · climb the stalk to go back up, or tap ISLAND to go home" : "Down the shaft · W on the stalk climbs back up · Space here goes home", 6000);
     };
     hint("climb");
+    // The act button follows what Space would do, changed only when that changes.
+    const showNear = () => {
+      if (!avatar || !climbed) return;
+      const n = avatar.camp.seat ? null : findNear(), kind = avatar.camp.seat ? "stand" : n.kind, index = n ? n.index : -1;
+      if (kind === actKind && index === actIndex) return;
+      actKind = kind; actIndex = index;
+      if (kind === "sit" || kind === "chair") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
+      else if (kind === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
+      else if (kind === "shelf") { hud.setAct("READ"); hud.hint(COARSE ? `Tap READ for ${DATA.days[index].date}` : `Space · Read ${DATA.days[index].date}`); }
+      else if (kind === "island") { hud.setAct("ISLAND"); hud.hint(COARSE ? "Tap ISLAND to go home down the beanstalk" : "Space · Home to the island"); }
+      else pilot.showAct();
+    };
 
     const update = (dt, elapsed) => {
       pilot.readInput(dt);
@@ -403,23 +478,17 @@
       keepCameraInside();
       footsteps.update(people && people.player);
       if (avatar && !leaving) {
-        const feet = avatar.root.position.y - avatar.baseY, onLadder = !!(avatar.ladder && avatar.ladder.plane);
+        const feet = avatar.root.position.y - avatar.baseY, onLadder = !!(avatar.ladder && avatar.ladder.plane), bottom = feet < -S.depth + 0.05;
         // On the stalk a first-person eye is pressed to the shaft's wall: step back to the trailing view for the climb.
         if (onLadder && pilot.mode === "first-person") pilot.exitClose(false);
         if (!climbed && feet > -0.05 && !onLadder) { climbed = true; hint("floor"); }
-        if (climbed && feet < -S.depth + 0.05 && !onLadder) {
-          if ((atFoot += dt) > EXIT_HOLD) handOff();
-        } else atFoot = 0;
+        // Climbed all the way down the stalk (off it at the foot, having been up): home. Dropping in is not climbing down.
+        if (climbed && wasOnLadder && !onLadder && bottom) handOff();
+        else if (climbed && bottom && !onLadder && !wasOnLadder) hint("fell");
+        else if (climbed && !bottom && hintStage === "fell") hint("floor");
+        wasOnLadder = onLadder;
       }
-      if (avatar && climbed) {
-        const near = avatar.camp.seat ? "stand" : nearChair() ? "sit" : null;
-        if (near !== actNear) {
-          actNear = near;
-          if (near === "sit") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
-          else if (near === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
-          else pilot.showAct();
-        }
-      }
+      showNear();
       updateTv(dt);
       stepTweens(dt);
       fx.update(dt, elapsed);
@@ -448,14 +517,17 @@
     shell.input = input;
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      cloudArchive: { layout: L, built, board, openDay, tv, tvBoard, seats, views, assist: assist.state, get avatar() { return avatar; }, get climbed() { return climbed; }, exit: handOff }
+      cloudArchive: {
+        layout: L, built, board, openDay, openTv, tv, tvBoard, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
+        get avatar() { return avatar; }, get climbed() { return climbed; }, get dayIndex() { return dayIndex; }, get leaving() { return !!leaving; }, exit: handOff
+      }
     };
 
     const leave = () => {
       if (!leaving) {
         world.pilotDetached = !avatar;
         world.pilot = avatar ? avatar.traits.name : null;
-        world.archiveExit = true;
+        world.archiveRevealed = true;
       }
       window.removeEventListener("keydown", armsKeys, true);
       BL.net.setBody(null);

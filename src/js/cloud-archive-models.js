@@ -1,6 +1,8 @@
 // The Cloud Archive's room: a white floor without edges, the shaft the beanstalk comes up through, and one dark rack a
 // day down a long aisle, each holding a book per commit (cloud-archive-data.js), coloured by who made it: grey for
-// automation, gold for a merged PR. Every rack is one merged mesh, books and all; nothing here is per book.
+// automation, slate for a reviewed AI agent, gold for a verified merged PR. A day with more commits than a rack holds
+// (`shelve`, the generator's own rule) keeps capacity - 1 books and one overflow binder standing for the rest, which
+// the plaque and the day's board count. Every rack is one merged mesh, books and all; nothing here is per book.
 // `LAYOUT` is the walking plan the interior reads; `build` makes the nodes. Geometry is cached under the
 // `cloudarchive` scope and released with it.
 (() => {
@@ -17,6 +19,9 @@
   const LADDER = { x: 0, z: STALK.z + STALK.r, nx: 0, nz: 1, width: 1.2, bottom: -SHAFT.depth, top: 0, inset: 0.5 };
   // Racks: one a day, oldest nearest, alternating left and right of the aisle.
   const RACK = { w: 2.6, d: 0.5, h: 2.7, levels: 4, perLevel: 48, aisle: 3.2, pitch: 3.2, first: -1.5 };
+  // The generator shelved the data for this rack; a rack of another size would miscount its overflow.
+  if (RACK.levels * RACK.perLevel !== DATA.shelf.capacity) throw new Error("Cloud Archive: the rack does not match the data's shelf capacity");
+  const shelve = (count) => count <= DATA.shelf.capacity ? { books: count, overflow: 0 } : { books: DATA.shelf.capacity - 1, overflow: count - (DATA.shelf.capacity - 1) };
   const rackAt = (i) => ({ x: (i % 2 ? 1 : -1) * RACK.aisle, z: RACK.first - Math.floor(i / 2) * RACK.pitch, ry: i % 2 ? -Math.PI / 2 : Math.PI / 2 });
   const rows = Math.ceil(DATA.days.length / 2);
   // At the aisle's far end, past the last day: a small TV on a low table facing back up the aisle, and two leather
@@ -28,7 +33,7 @@
     return { x, z, ry: Math.atan2(TV.x - x, TV.z - z) };
   });
   const LAYOUT = {
-    SHAFT, STALK, LADDER, RACK, rackAt, TV, CHAIRS: CHAIR_AT,
+    SHAFT, STALK, LADDER, RACK, rackAt, TV, CHAIRS: CHAIR_AT, shelve,
     arrival: { x: 0, z: 7.0 },
     // Walkers stay on the floor within these bounds.
     bounds: { x0: -9, x1: 9, z0: LOUNGE_Z - 6, z1: 11 },
@@ -37,7 +42,7 @@
     inShaft: (x, z, margin = 0) => x > SHAFT.x0 + margin && x < SHAFT.x1 - margin && z > SHAFT.z0 + margin && z < SHAFT.z1 - margin
   };
   const own = (build) => { const read = cached(build); return () => BL.models.withScope("cloudarchive", read); };
-  const WHITE = "#f4f5f7", LIP = "#e6e9ee", FRAME = "#2a2c31", BOARD = "#3a3d44", GOLD = "#e8b04a", BOT = "#9aa0a8";
+  const WHITE = "#f4f5f7", LIP = "#e6e9ee", FRAME = "#2a2c31", BOARD = "#3a3d44", GOLD = "#e8b04a", BOT = "#9aa0a8", AGENT = "#6f8fa8", BINDER = "#1f2125";
   const flat = (x0, z0, x1, z1, y, color) => {
     const c = hexToRgb(color);
     return { verts: [x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0], faces: [{ i: [0, 1, 2, 3], color: c, emissive: 0 }], lines: [] };
@@ -57,9 +62,13 @@
     geo.castShadow = false;
     return geo;
   });
-  // A colour a person keeps on every shelf: a hue from their name, never too pale for the white room.
+  // A colour an identity keeps on every shelf: a hue from its label and place (two identities sharing a name differ),
+  // never too pale for the white room; automation and agents in their own greys.
   const personColor = (index) => {
-    const h = fnv1a(DATA.people[index]) % 360, s = 0.55, l = 0.48;
+    const p = DATA.people[index];
+    if (p.kind === "automation") return BOT;
+    if (p.kind === "agent") return AGENT;
+    const h = fnv1a(`${p.label}#${index}`) % 360, s = 0.55, l = 0.48;
     const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
     const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))));
     return `#${[f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
@@ -71,15 +80,20 @@
     for (const sx of [-1, 1]) parts.push(box({ w: 0.06, h: H, d: D, color: FRAME, offset: { x: sx * (W / 2 - 0.03), y: H / 2 } }));
     parts.push(box({ w: W, h: H, d: 0.04, color: FRAME, offset: { y: H / 2, z: -D / 2 + 0.02 } }));
     for (let level = 0; level <= RACK.levels; level++) parts.push(box({ w: W - 0.08, h: 0.04, d: D, color: BOARD, offset: { y: 0.12 + level * gap } }));
-    const step = (W - 0.16) / RACK.perLevel;
-    day.commits.forEach((c, n) => {
-      const level = Math.floor(n / RACK.perLevel), slot = n % RACK.perLevel;
-      if (level >= RACK.levels) return;
+    const step = (W - 0.16) / RACK.perLevel, shelf = shelve(day.commits.length);
+    const at = (n) => ({ x: -W / 2 + 0.08 + step * (n % RACK.perLevel + 0.5), y: 0.14 + Math.floor(n / RACK.perLevel) * gap });
+    for (let n = 0; n < shelf.books; n++) {
+      const c = day.commits[n], o = at(n);
       const hash = fnv1a(c[0]), tall = 0.28 + (hash % 1000) / 1000 * 0.16, deep = 0.26 + (hash >>> 10) % 100 / 100 * 0.1;
-      const color = c[4] & 1 ? BOT : c[3] ? GOLD : personColor(c[1]);
-      parts.push(box({ w: step * 0.86, h: tall, d: deep, color, emissive: c[3] ? 0.25 : 0,
-        offset: { x: -W / 2 + 0.08 + step * (slot + 0.5), y: 0.14 + level * gap + tall / 2, z: D / 2 - deep / 2 - 0.03 } }));
-    });
+      parts.push(box({ w: step * 0.86, h: tall, d: deep, color: c[3] ? GOLD : personColor(c[1]), emissive: c[3] ? 0.25 : 0,
+        offset: { x: o.x, y: o.y + tall / 2, z: D / 2 - deep / 2 - 0.03 } }));
+    }
+    // The overflow binder in the last slot: a full-height black box with a gold band, standing for every later commit.
+    if (shelf.overflow) {
+      const o = at(shelf.books);
+      parts.push(box({ w: step * 0.95, h: 0.46, d: 0.38, color: BINDER, offset: { x: o.x, y: o.y + 0.23, z: D / 2 - 0.22 } }),
+        box({ w: step * 0.97, h: 0.05, d: 0.39, color: GOLD, emissive: 0.3, offset: { x: o.x, y: o.y + 0.32, z: D / 2 - 0.22 } }));
+    }
     return merge(...parts);
   };
   const racks = own(() => DATA.days.map(rackGeometry));
@@ -130,8 +144,9 @@
   };
   const build = () => {
     const root = createNode();
+    const stalkNode = createNode({ geometry: stalk(), position: { x: STALK.x, y: 0, z: STALK.z } });
     addChild(root, createNode({ geometry: floor() }));
-    addChild(root, createNode({ geometry: stalk(), position: { x: STALK.x, y: 0, z: STALK.z } }));
+    addChild(root, stalkNode);
     const rackNodes = racks().map((geometry, i) => {
       const at = rackAt(i), node = createNode({ geometry, position: { x: at.x, y: 0, z: at.z }, rotation: { x: 0, y: at.ry, z: 0 } });
       addChild(root, node);
@@ -146,7 +161,7 @@
     // The screen's picture is the interior's (`plaque` over a canvas), just proud of the bezel.
     const screen = createNode({ position: { x: TV.x - 0.05, y: TV.table + TV.h / 2, z: TV.z + TV.d / 2 + 0.02 } });
     addChild(root, tv); addChild(root, screen);
-    return { root, racks: rackNodes, chairs, tv, screen };
+    return { root, stalk: stalkNode, racks: rackNodes, chairs, tv, screen };
   };
   const geometries = () => [floor(), stalk(), ...racks(), chair(), tvSet()];
   BL.cloudArchiveModels = { LAYOUT, build, plaque, geometries, personColor };
