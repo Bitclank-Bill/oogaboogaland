@@ -6,7 +6,8 @@
 // - `createRules()`: the rules, pure and Node-checkable. `start(seed)`, `beat()` (one seeded event: a new record shared
 //   by the online terminals, a link dropping, or a broken record that every online terminal refuses), `plug(i)` (a
 //   terminal comes back, checks the link and copies what it lacks), `inStep()`, `score()`. Bounded: TARGET records,
-//   at most BEATS beats a run. A seed replays a run exactly.
+//   at most BEATS beats a run, and every seed can be won within them (records are forced when they would otherwise run
+//   out of beats). A seed replays a run exactly.
 // - `terminal(rules)`: the game through the exhibit workbench's terminal shape ({ banner, prompt, run }), playable today.
 // - `make(host)`: the same rules on retro-games.js's factory interface (`make(host)` → { kind, name, help, coach,
 //   stars, tickets, status, playing, start, act, stop, update, draw, aims }), drawing on BL.retroGames.kit's shared
@@ -46,8 +47,11 @@
       S.beats++;
       for (let i = 0; i < PEERS; i++) if (!online[i]) S.offline++;
       if (S.head >= TARGET) { S.last = 4; S.by = -1; settle(); return S.last; }
-      const r = next(), on = countOnline();
-      if (r < P_RECORD) {
+      // Every seed is winnable within the beat limit: when the records still to come need every remaining beat but one
+      // (one spare beat to plug a terminal back in), this beat brings a record whatever the draw says. The draw is
+      // still made, so every other beat of a seed plays as it did.
+      const r = next(), on = countOnline(), due = TARGET - S.head >= BEATS - S.beats;
+      if (due || r < P_RECORD) {
         S.by = nthOnline(Math.floor(next() * on)); S.head++;
         for (let i = 0; i < PEERS; i++) if (online[i]) len[i] = S.head;
         S.last = 1;

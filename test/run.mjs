@@ -24908,6 +24908,33 @@ const genesisEra6UpgradeSuite = async () => {
   return { code: process.exitCode || 0, lines };
 };
 
+// Regression (review of 2ec7b30): Peer Sync's seed 1762 could not be won within the beat limit (too few records
+// arrived). Every seed is winnable now: 1762 plays to a win through the rules and through its terminal, and a sweep of
+// seeds all win when every dropped terminal is plugged straight back in. The counting frame's bead layout reuses one
+// preallocated zone counter, so laying the beads (from update) allocates nothing.
+const genesisEra7SyncProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  runInNewContext(await readFile(join(root, "src/js/genesis-era-7-sync.js"), "utf8"), context);
+  const S = context.window.BL.genesisEra7Sync, bad = [];
+  const play = (seed) => { const R = S.createRules(); R.start(seed); while (!R.done) { R.beat(); for (let i = 0; i < 3; i++) if (!R.online[i]) R.plug(i); } return R; };
+  const r1762 = play(1762);
+  if (!r1762.won || r1762.beats > S.BEATS) bad.push(`seed 1762 is not won within ${S.BEATS} beats`);
+  const t = S.terminal(S.createRules(), { seed: 1762 });
+  let won = false;
+  for (let i = 0; i < 60 && !won; i++) {
+    const out = t.run("WAIT").lines.join(" ");
+    for (const n of ["A", "B", "C"]) t.run(`PLUG ${n}`);
+    won = /IN STEP!/.test(t.run("COMPARE").lines.join(" ")) || /IN STEP!/.test(out);
+  }
+  if (!won) bad.push("seed 1762 is not won through the terminal");
+  const lost = [];
+  for (let seed = 0; seed < 3000; seed++) if (!play(seed).won) lost.push(seed);
+  if (lost.length) bad.push(`seeds not winnable: ${lost.slice(0, 8).join(", ")}`);
+  const src = await readFile(join(root, "src/js/genesis-era-7.js"), "utf8"), a = src.indexOf("const layBeads"), body = src.slice(a, src.indexOf("\n  };", a));
+  if (!/zoneFill: new Uint8Array\(3\)/.test(src) || /\[\s*0\s*,\s*0\s*,\s*0\s*\]|new [A-Z]|\{\s*\}/.test(body.slice(body.indexOf("=>")))) bad.push("layBeads builds an array or object when it lays the beads");
+  return { bad, sweep: 3000 };
+};
 // Era 7's upgrade suite, folded in from test/genesis-era-7-upgrade.mjs (gv/upgrade-era-7) so test/ keeps its two
 // files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
 const genesisEra7UpgradeSuite = async () => {
@@ -25712,6 +25739,8 @@ const unitChecks = async () => {
   record("Genesis Era 5 upgrade suite (folded from its branch): every one of its own checks passes", era5Suite.code === 0 && !era5Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era5Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const era6Suite = await genesisEra6UpgradeSuite();
   record("Genesis Era 6 upgrade suite (folded from its branch): every one of its own checks passes", era6Suite.code === 0 && !era6Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era6Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era7Sync = await genesisEra7SyncProof();
+  record("Genesis Era 7 Peer Sync and counting frame: seed 1762 plays to a win within the beat limit through the rules and the terminal, every seed of a 3,000-seed sweep is winnable, and laying the frame's beads reuses one preallocated zone counter", !era7Sync.bad.length, JSON.stringify(era7Sync));
   const era7Suite = await genesisEra7UpgradeSuite();
   record("Genesis Era 7 upgrade suite (folded from its branch): every one of its own checks passes", era7Suite.code === 0 && !era7Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era7Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const genesisHolds = await genesisHoldsProof();

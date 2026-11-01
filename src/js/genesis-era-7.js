@@ -653,7 +653,7 @@
     const { top: Y, M, createNode, place: put, solid, sign } = kit;
     const node = (geometry, x, y, z, visible = true) => put(createNode({ geometry, position: { x, y, z }, visible }));
     const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
-    const parts = { winOk: [], winBehind: [], winOff: [], pips: [], beads: [], bx: new Float32Array(COUNTERS), bz: new Float32Array(COUNTERS), laid: -1, frameAt: null, lamp: null };
+    const parts = { winOk: [], winBehind: [], winOff: [], pips: [], beads: [], bx: new Float32Array(COUNTERS), bz: new Float32Array(COUNTERS), zoneFill: new Uint8Array(3), laid: -1, frameAt: null, lamp: null };
     {
       const a = at(1, CL_FLOOR.u0, CL_FLOOR.v0), b = at(1, CL_FLOOR.u1, CL_FLOOR.v1), x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), z0 = Math.min(a.z, b.z), z1 = Math.max(a.z, b.z);
       solid(x1 - x0, 0.02, z1 - z0, "#2e2724", (x0 + x1) / 2, Y + 0.012, (z0 + z1) / 2);
@@ -712,7 +712,9 @@
   };
   // Bead targets: each zone a 5 by 10 grid, filled in bead order. Allocation-free.
   const layBeads = (parts, f) => {
-    const A = parts.frameAt, k = [0, 0, 0];
+    // The three zones' counts reuse one preallocated array (parts.zoneFill), so laying the beads allocates nothing.
+    const A = parts.frameAt, k = parts.zoneFill;
+    k[0] = k[1] = k[2] = 0;
     for (let i = 0; i < COUNTERS; i++) {
       const zn = f.zone[i], n = k[zn]++;
       parts.bx[i] = A.x + ((n % 5) - 2) * BEAD;
