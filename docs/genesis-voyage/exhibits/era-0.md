@@ -120,3 +120,106 @@ Checks on that branch:
   tapping Feller and the overview (WebGL2 and Canvas 2D), and two leave/return laps with steady node and
   target counts and a clean console.
 - **Still unverified:** touch text entry on a phone, hardware performance and human play.
+
+## Counting cluster (`gv/upgrade-era-0`)
+
+Branch `gv/upgrade-era-0` from `gv/overhaul` at `cb2b0b9405a2d6363c9f284146b4c0aab6d3b34f` (left frozen).
+Three modern explanatory toys stand in one row on the left bank, 48 m in from the gallery's way in (old
+coordinates x −22, −15.5 and −9), between the disk cabinet and the punched-card desk, under one "COUNTING CLUSTER"
+sign. Feller, ARPANET, the disk, the punch card, the race, the login and the 2019 comparison are unchanged, keep
+their ids and build order, and none of their mechanisms is repeated (no seeking, punching, odds or retry here).
+
+| Station (id) | Terminal commands today | What changes in the world | Console game (`make(host)`) |
+|---|---|---|---|
+| Nim board (`e0-nim`) | `TAKE C 2`, `LEVEL 1..3`, `HINT`, `STATUS`, `INFO`, `RESET` | 15 bone counters in heaps of 3, 5, 7 disappear as they are taken | Left/right heap, up/down count, act takes; five games, 100 a win |
+| Scan-line CRT (`e0-crt`) | `BRIGHT 0..4`, `CONTRAST 0..4`, `LINES 0..12`, `STATUS`, `INFO`, `RESET` | Twelve scan-line strips and 14 picture runs change glow; tones at zero switch off; `LINES` draws only the first lines | Match a seeded reference picture's brightness and contrast; act redraws line by line and locks; three rounds |
+| Point or type (`e0-pointer`) | `SELECT B2`, `MOVE dx dy`, `CLICK`, `STATUS`, `INFO`, `RESET` | Nine targets on an upright board, one lit; a cursor marker moves | A pointer round (cursor follows drag or held keys, act clicks) then a typed round (step a code, act enters); both timed |
+
+**Rules and opponent.** Nim uses generic public-domain rules: three heaps (3, 5, 7), take one or more from one
+heap, whoever takes the last counter wins, visitor first. The computer is bounded: it weighs only the legal moves in
+front of it (at most 15), never searches ahead, and at level 1, 2 or 3 looks for the winning (zero nim-sum) reply on
+25%, 60% or 100% of turns, otherwise taking one or two from the largest heap. Seeded, so `RESET` replays a game.
+A perfect visitor wins at every level; level 3 punishes careless play.
+
+**Labels.** Every station is `connection: "context"`, titled and labelled "modern toy", and its `date` reads "No
+historical date: a modern explanatory toy shown in the 1956-1969 gallery". The catalogue needs a year, so `year` is
+1956 and the label says "1956-1969 GALLERY": the gallery's span, not a date for the toy. The CRT picture (a sailing
+boat under a sun) is original; the pointing device is a generic box. Source key `e0Toys` points at this document,
+the museum's own provenance, not at a historical source.
+
+**Scene records: 65** (Nim 18, CRT 30, pointer 16, cluster sign 1). No point lights, no frame callback, no timer,
+no audio; commands change existing nodes' `visible`, `glow` and position only. Nothing widens the gallery: all
+footprints are inside x −27..27, clear of the old stream's walk, the gateway, the dock, the lamp posts and every
+other exhibit's footprint, below the height limit, with clear walk-up points.
+
+**Files.** `src/js/genesis-era-0-nim.js`, `genesis-era-0-crt.js`, `genesis-era-0-pointer.js` each register
+`BL.genesisEra0Games.<toy> = { create, terminal, make, … }`: one rules core shared by the terminal and the console
+game. `genesis-era-0.js` reads them when the era builds. Until their script tags land (below), each station still
+stands and keeps its id, and opens a caption saying its program has not loaded.
+
+## Research: what is on HOLD (not displayed)
+
+This session's network policy refused every research host tried on 1 November 2026 (patents.google.com,
+www.computerhistory.org, web.stanford.edu, dougengelbart.org, www.jstor.org, www.computinghistory.org.uk), and the
+Era 0 dossier on `gv/research` has no entry for Nim, CRT displays or pointing devices. Nothing below was read, so
+none of it is shown; every toy ships as a modern explanatory toy with no introduction date, as the brief allows.
+
+| Candidate claim (HOLD) | What would release it | Primary source to read |
+|---|---|---|
+| An early mouse was publicly demonstrated in December 1968 (date, event, venue, lab, system, buttons) | Read the demonstration's archival record; quote only what it states | SRI / Doug Engelbart Institute archive; Stanford MouseSite's 1968 demo page |
+| A patent for an "X-Y position indicator for a display system" (number, filing and grant dates, how motion was sensed) | Read the patent text itself | US 3,541,541 at USPTO or Google Patents |
+| A published comparison of display-selection devices in the late 1960s | Read the paper's own abstract and methods | IEEE Transactions on Human Factors in Electronics (1967) |
+| Nim's complete mathematical theory was published in 1901–1902 (publication date) | Check the journal's volume, issue and year | Annals of Mathematics (JSTOR stable record) |
+| A Nim-playing computer was exhibited in 1951 (outside this era either way) | A museum record naming the machine and event | Centre for Computing History; The National Museum of Computing |
+| Any Nim-playing program or machine shown 1956–1969 | A contemporary document or museum record | None identified |
+| A period computer display (e.g. a 1960s point-plotting CRT) for the CRT station's INFO | Museum or manufacturer record of the display and its drawing method | Computer History Museum PDP-1 pages; DEC manuals (bitsavers) |
+
+If an entry is released, it becomes a dated `INFO` line or a board page with its own source key and a date saying
+what it marks; the station's connection stays `context`. The CRT `INFO` says only, generally, that many early
+computer displays plotted points rather than sweeping lines; it names no machine or date.
+
+## START-HERE (gv/upgrade-era-0)
+
+**Checks run here (Linux container, 1 November 2026):**
+- `node test/genesis-era-0-upgrade.mjs`: 26/26. Placement and record count; labels and sources; Nim, CRT and pointer
+  rules through their terminals (bad input changes nothing, RESET, long input); the nodes follow the state; a
+  perfect Nim visitor wins at every level; a fresh visit shares nothing; stations stand and open a caption without
+  their scripts; each console factory keeps the retro-games.js shape and plays to one `over()` and one `onEnd`.
+- `node test/run.mjs unit`: 361/361, including the shared Genesis exhibit, museum-layout and sightline proofs
+  (which load the era files without the toy scripts, so they see the caption fallback).
+- `node test/run.mjs genesis` (Chromium, `--no-sandbox` wrapper): 361/364. "genesis ride" and "genesis walk"
+  fail with `Cannot read properties of undefined (reading 'state')` and "genesis round trip" times out. The base
+  commit `cb2b0b9` fails the same three the same way with this change stashed, so they predate it.
+- **Not verified:** the cluster in a real browser (the toy scripts aren't in `src/index.html` yet), the console
+  games on a real console host, touch input, hardware performance and human play.
+
+### Integration requests (for the Genesis tab)
+
+1. **Script tags**, in `src/index.html` before `js/genesis-era-0.js`, same deferral group:
+   ```html
+   <script src="js/genesis-era-0-nim.js" data-defer="genesis-scene"></script>
+   <script src="js/genesis-era-0-crt.js" data-defer="genesis-scene"></script>
+   <script src="js/genesis-era-0-pointer.js" data-defer="genesis-scene"></script>
+   ```
+   The order among the three doesn't matter; each only adds to `BL.genesisEra0Games`.
+2. **Runner hook:** add `test/genesis-era-0-upgrade.mjs` to the unit tier (or call it from the Genesis proofs);
+   it exits non-zero on failure. Optionally load the three toy scripts in `genesisExhibitsProof` and
+   `genesisMuseumProof` so those proofs see the live terminals instead of the fallback caption.
+3. **Console hooks** (for whatever the console's `onUse` result becomes; nothing is assumed here):
+   - *Loading:* `BL.genesisEra0Games.nim.make`, `.crt.make` and `.pointer.make` are retro-games.js factories. They read
+     `BL.retroGames.kit` when called (so `retro-games.js` must have loaded), draw into the shared 160×120 screen and
+     return `{ kind, name, help, coach, stars, tickets, status, playing, start(seed), act(), stop(), update(dt), draw(ctx), aims: true }`.
+     `tickets` is always 0: these are museum toys, not arcade prizes.
+   - *Input:* they read `host.aim.steps`, `aim.stepsY` (Nim, CRT, the pointer's typed round) and `aim.x`, `aim.y`
+     (the pointer round, which steers a cursor). A true pointer round would be better with an absolute screen
+     position: an optional `host.pointer = { x, y, down }` in screen pixels would let the cursor follow a tap or
+     mouse directly. Without it the round uses `aim`.
+   - *Pause:* while the console is paused, don't call `update`; nothing is timer-driven outside it.
+   - *Calm / reduced motion:* `host.still` makes the CRT's line-by-line redraw appear complete at once.
+   - *Screen:* `draw(ctx)` paints the whole screen each frame; the scene lays it over a screen, as the arcade does.
+   - *Which station:* map `e0-nim` → `nim`, `e0-crt` → `crt`, `e0-pointer` → `pointer`. The terminal versions stay
+     the stations' `onUse` today; a console game should be a second way in, not a replacement.
+4. **No other shared file changes are needed.** `scene-genesis.js`, `genesis-world.js`, the catalogue, the timeline
+   data, the workbench and `test/run.mjs` are untouched.
+
+Prepared with AI assistance (Claude Code).
