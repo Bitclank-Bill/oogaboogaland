@@ -427,7 +427,9 @@
     const drawExtra = () => {};
     const overlay = (dt) => {
       fx.drawOverlay(dt, drawExtra);
-      assist.update(camera, people && people.player, dt, pilot.closeMix);
+      const cave = people && people.player, p = cave && cave.root.position;
+      if (cave) assist.update(camera, cave.root, p.x, p.y - cave.baseY, p.z, cave.bodyHeight || cave.traits.height, dt, pilot.closeMix);
+      else assist.update(camera, null, 0, 0, 0, 0, dt);
     };
     const onKey = (e) => {
       if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera();
