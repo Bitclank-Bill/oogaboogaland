@@ -6,7 +6,7 @@
   const RADIUS = 4.5, DEPTH = 2.5;
   const LIFT_SECONDS = 6, LIFT_VIEW_SECONDS = 1.5, DOCK_LENGTH = 4;
   const START_VIEW = { height: 6, distance: 18 };
-  const BOOST_SPEED = 28, BOOST_RISE = 4, BOUNCE_RISE = 22, LAUNCH_CLEARANCE = 0.04;
+  const BOOST_SPEED = 28, BOOST_RISE = 4, BOUNCE_RISE = 12, LAUNCH_CLEARANCE = 0.04;
   const RECOVERY_GRACE_SECONDS = 0.75, DOCK_MUSIC_LEVEL = 0.28, WARNING_THIN = 0.32, TAU = Math.PI * 2;
   // Power-ups (plan 3): X-ray's seconds (more in a hazy level) and how far it reads clouds, and the sky feather's lift.
   // A guide card introduces each the first time a browser session plays a level that has it.
@@ -21,6 +21,10 @@
     hook: "Grappling hook · click a cloud and hold to swing to it" };
   // Where the hook is: in hand, flying out, biting a cloud, or reeling back in.
   const HAND = 0, OUT = 1, BIT = 2, REEL = 3, HOOK_NAMES = ["hand", "out", "bit", "reel"];
+  // A tornado (Thunderhead's) takes an Ooga within `WHIRL_TAKE` of its side and lets it go past `WHIRL_LET_GO`: it is
+  // carried round at `WHIRL_SPIN` m/s, drawn toward an orbit `WHIRL_ORBIT` off its side and lifted `WHIRL_RISE` over
+  // where it was taken. Its roar is heard within `WHIRL_HEARD` of its axis.
+  const WHIRL_TAKE = 4, WHIRL_LET_GO = 7, WHIRL_SPIN = 8, WHIRL_ORBIT = 2.5, WHIRL_RISE = 5, WHIRL_HEARD = 90;
   let guideSeen = false, itemsSeen = null;
   const hasSeenGuide = () => {
     if (!guideSeen) {
@@ -160,6 +164,11 @@
     const ghost = BL.cloudHopperGhost.create({ root, renderer: ctx.renderer });
     const audio = BL.cloudHopperAudio.create();
     const scenery = BL.cloudHopperSky.create({ root, renderer: ctx.renderer, seaY: ctx.seaY, onStrike: (distance) => audio.thunder(distance) });
+    // Thunderhead's tornadoes, and whether one has the Ooga (and the height it took it at).
+    const tornado = BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer,
+      onForm: (x, y, z) => { if (actor) audio.tornadoForm(Math.hypot(x - actor.root.position.x, y - actor.root.position.y, z - actor.root.position.z)); } });
+    let whirled = false, whirlFrom = 0;
+    const whirlAxis = { x: 0, z: 0 };
     // The hook's rope and head, and the feather's gust of leaves: built once, shown when used.
     const rope = createNode({ geometry: BL.cloudHopperModels.rope(), visible: false, sightHidden: true });
     const hookNode = createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true }), leaves = [];
@@ -226,7 +235,7 @@
       for (const node of pickupNodes) removeChild(routeRoot, node);
       cloudNodes.length = boostNodes.length = bounceNodes.length = pickupNodes.length = 0;
       launchContacts.fill(0); unrecoverableAt = -1;
-      scenery.clear(); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
+      scenery.clear(); tornado.clear(); whirled = false; audio.tornado(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
       xrayUntil = gustAt = -1; xrayWarned = feather = hookHeld = hookDown = false; hookAt = HAND; hookCloud = null;
       rope.visible = hookNode.visible = false;
       for (const leaf of leaves) leaf.visible = false;
@@ -318,9 +327,10 @@
       watched = level.board;
       unwatchScores = BL.highscores?.watch(level.board, (board) => overlay.setHighscores(board)) || null;
     };
+    // The next level rides up from beside the island to its own start, as a first run does.
     const nextLevel = () => {
       if (phase !== "won" || level.id >= opened()) return;
-      level = LEVELS[level.id]; beginRun();
+      level = LEVELS[level.id]; beginRun(true);
     };
     const launch = () => {
       if (active()) return false;
@@ -344,8 +354,8 @@
       setPhase("intro"); pilot.freeCursor();
       return true;
     };
-    const beginRun = () => {
-      const replay = phase === "won" || phase === "dq";
+    const beginRun = (ride = false) => {
+      const replay = phase === "won" || phase === "dq", climb = !replay || ride;
       if (phase !== "intro" && !replay || level.id > opened()) return false;
       const cave = actor;
       if (!cave || pilot.player !== cave || crew.player !== cave) { cancel(); return false; }
@@ -360,6 +370,7 @@
       endFall();
       clearRoute(true);
       audio.unlock();
+      if (ride) Object.assign(platform.position, home);
       Object.assign(from, platform.position);
       liftViewMix = 0;
       const record = played();
@@ -376,6 +387,7 @@
         layout: level.layout, timing: level.timing, runSpeed: BL.pilot.WALK.speed * BL.pilot.WALK.run, jumpSpeed: BL.crew.JUMP_SPEED });
       // Far starts keep the island in view, and the level's scenery too.
       const reach = scenery.build(level, course, start, liftGoal);
+      if (level.sky?.tornado) tornado.start(courseSeed, Math.hypot(start.x - liftGoal.x, start.z - liftGoal.z));
       if (!farBefore) farBefore = camera.far;
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
       overlay.setGhost(record.best?.courseVersion === level.courseVersion ? record.best.duration : null);
@@ -408,17 +420,18 @@
         pickupNodes.push(node); addChild(routeRoot, node);
       }
       routeRoot.visible = true;
-      if (replay) Object.assign(platform.position, start);
-      // A replay starts at the top at once, after a card for any power-up of the next level not met yet.
-      const items = replay ? newItems() : null;
+      if (!climb) Object.assign(platform.position, start);
+      // A replay starts at the top at once, after a card for any power-up of the level not met yet; a ride shows
+      // those cards at the top.
+      const items = climb ? null : newItems();
       if (items?.length) overlay.setGuide(false, items);
-      setPhase(replay ? items.length ? "briefing" : "ready" : "lifting");
+      setPhase(climb ? "lifting" : items.length ? "briefing" : "ready");
       // No carry here: the run is played in combat, at the shoulder or in first person. The hub's `combatOnly` holds
       // it there from now on, and lets the pilot enter it while the ride holds the controls.
       if (!cave.weapon.aiming) pilot.modeAction("mode-toggle");
       if (!replay) ctx.mode(true);
       moveRider();
-      if (replay) {
+      if (!climb) {
         if (!items.length) stageGhost();
         pilot.controls.reset(); turnLiftView(1);
         if (items.length) pilot.freeCursor();
@@ -474,6 +487,8 @@
         if (actor.jet) crew.cutJet(actor);
       }
       ghost.hide();
+      // A tornado ends with the run, and lets the clouds go.
+      tornado.clear(course.whirl); whirled = false; audio.tornado(0);
       // A hook out comes home with the run's end.
       hookAt = HAND; hookCloud = null; hookDown = false; rope.visible = hookNode.visible = false;
       scoreTicket = null;
@@ -538,6 +553,13 @@
         const contact = course.contactAt(p.x, p.z, feet);
         if (contact && Math.abs(feet - contact.top) < 0.06) { riding = contact; oldTop = contact.top; }
       }
+      // A tornado on its own clock, turning the clouds near it as the course moves them.
+      if (phase === "running" && level.sky?.tornado) {
+        tornado.update(dt, (raceNow() - startedAt) / 1000, p.x, feet, p.z, liftGoal, course.whirl, camera.position);
+        tornado.axisAt(feet, whirlAxis);
+        const near = Math.max(0, 1 - Math.max(0, Math.hypot(p.x - whirlAxis.x, p.z - whirlAxis.z) - 6) / WHIRL_HEARD);
+        audio.tornado(near * Math.max(tornado.strength, tornado.forming * 0.35));
+      }
       course.update(dt, phase === "running" ? (raceNow() - startedAt) / 1000 : undefined);
       // Lanes swing smoothly, so a planted rider rides the cloud's whole move however long the frame.
       if (riding) {
@@ -572,6 +594,7 @@
         if (node.visible) BL.cloudHopperModels.updateJetpackPickup(node, camera, displayTime + i * 2);
       }
       if (hookHeld && (phase === "ready" || phase === "running")) updateHook(dt);
+      whirlOoga();
       scenery.update(dt, camera);
       if (phase === "lifting") {
         age += dt;
@@ -672,7 +695,7 @@
         const jump = Math.hypot(actor.jumps < 2 ? BL.crew.JUMP_SPEED : 0, feather ? UPDRAFT_RISE : 0);
         const tank = actor.traits.jetTank > 0 ? actor.traits.jetTank : 1;
         const jetSeconds = actor.jetpackOwned ? actor.jetFuel * BL.crew.JET_FUEL_SECONDS * tank : 0;
-        if (hookReach() || course.canRecover(p.x, feet, p.z, actor.hopV, speed, jump, ctx.seaY,
+        if (whirled || hookReach() || course.canRecover(p.x, feet, p.z, actor.hopV, speed, jump, ctx.seaY,
           jetSeconds, BL.crew.JET_ACCEL, BL.crew.JET_RISE, actor.bodyHeight)) unrecoverableAt = -1;
         else {
           // Keep control briefly beyond the reach envelope. A recovered
@@ -783,6 +806,25 @@
       rope.rotation.x = hookNode.rotation.x = pitch; rope.rotation.y = hookNode.rotation.y = yaw;
       rope.scale.z = Math.max(0.01, length);
       hookNode.position.x = hookTip.x; hookNode.position.y = hookTip.y; hookNode.position.z = hookTip.z;
+    };
+    // A tornado down near the Ooga takes it: lifted off whatever it stands on and carried round the funnel's outside,
+    // drawn toward an orbit `WHIRL_ORBIT` off its side at the Ooga's height and up to `WHIRL_RISE` over where it was
+    // taken, all of it easing as the tornado dies, until it does or the Ooga steers out past `WHIRL_LET_GO`; it keeps
+    // the speed it has when let go. A hook biting a cloud holds it out of the whirl, and a run is never lost while it
+    // is whirled.
+    const whirlOoga = () => {
+      if (!tornado.down || hookAt === BIT || phase !== "running") { whirled = false; return; }
+      const p = actor.root.position, feet = p.y - actor.baseY;
+      tornado.axisAt(feet, whirlAxis);
+      const dx = p.x - whirlAxis.x, dz = p.z - whirlAxis.z, r = Math.max(0.1, Math.hypot(dx, dz)), side = tornado.radiusAt(feet);
+      if (feet > tornado.top - 6 || feet < tornado.bottom || r > side + (whirled ? WHIRL_LET_GO : WHIRL_TAKE)) { whirled = false; return; }
+      if (!whirled) { whirled = true; whirlFrom = feet; }
+      const s = tornado.strength, spin = WHIRL_SPIN * s, pull = Math.max(-5, Math.min(5, (side + WHIRL_ORBIT - r) * 1.6)) * s;
+      if (actor.hop < 0.001) { crew.elevate(0); p.y += LAUNCH_CLEARANCE; actor.hop += LAUNCH_CLEARANCE; }
+      actor.leap.vx = -dz / r * spin + dx / r * pull + tornado.vx * s;
+      actor.leap.vz = dx / r * spin + dz / r * pull + tornado.vz * s;
+      actor.hopV = Math.max(-3, Math.min(5, (whirlFrom + WHIRL_RISE - feet) * 1.4)) * s + (actor.hop <= LAUNCH_CLEARANCE ? 2 : 0);
+      actor.jumps = 1; actor.leap.land = 0; actor.leap.thrown = actor.leap.rageThrown = false;
     };
     // A hook held saves a fall while any cloud stands in its reach, since its pull outruns gravity.
     const hookReach = () => {
@@ -918,7 +960,7 @@
       c2.restore();
     };
     const dispose = () => {
-      cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose();
+      cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose(); tornado.dispose();
       audio.dispose();
       document.removeEventListener("visibilitychange", onVisibility);
       removeChild(root, routeRoot); removeChild(root, platform);
@@ -926,7 +968,7 @@
     };
     const liveGeometry = (set) => {
       ghost.liveGeometry(set);
-      set.add(rope.geometry); set.add(hookNode.geometry);
+      set.add(rope.geometry); set.add(hookNode.geometry); tornado.liveGeometry(set);
       set.add(leaves[0].geometry);
       for (const surface of boostNodes) if (surface) set.add(surface.geometry);
       for (const marker of bounceNodes) if (marker) for (const part of marker.children) set.add(part.geometry);
@@ -970,6 +1012,8 @@
       get sky() { return level.sky; }, get flash() { return playing() ? scenery.flash : 0; },
       // The power-ups held now, for debugging.
       get powers() { return { xray: Math.max(0, xrayUntil - seconds), feather, hook: hookHeld ? HOOK_NAMES[hookAt] : "" }; },
+      // Thunderhead's tornado and whether it has the Ooga, for debugging.
+      get tornado() { return tornado; }, get whirled() { return whirled; },
       get bound() { return Math.hypot(start.x, start.z) + 80; } };
   };
   BL.cloudHopper = { create, LIFT_SECONDS };

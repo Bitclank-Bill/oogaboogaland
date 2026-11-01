@@ -443,7 +443,10 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
 - **L4 Thunderhead.** *Built in milestone 12, with the chosen look B: 18:36 greyed by the sky's `storm` (0.86) once as
   it is sampled, haze 40–160 m on the clouds and, in the haze's own grey, the sea, rain, forked lightning 60–110 m off with the sky's flash
   and thunder by distance, and dark scud clouds with rain shafts drifting well below the lanes. Measured in one
-  page against the same view without it, the storm costs nothing at 1920x1080 on High.* (The plan had: storm haze
+  page against the same view without it, the storm costs nothing at 1920x1080 on High. Tornadoes came after
+  (cloud-hopper-tornado.js): a spot in the storm turns, a giant voxel tornado after the maintainer's reference (stacked
+  stepped slabs, white to deep blue) lowers through the course and drifts across it, swirling the clouds near it and
+  carrying the Ooga round its outside until it ropes out.* (The plan had: storm haze
   with `fogNear` 70 m and `fogFar` 260 m.)
   - Within 70 m nothing is fogged. At 120 m (about four hops) a cloud is 26% fogged, so
     nearby landings and their warnings stay clear. Beyond 260 m clouds are hidden, which is

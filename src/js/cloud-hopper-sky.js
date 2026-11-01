@@ -7,11 +7,12 @@
 //   drips and hanging vines under them; two shapes pour a waterfall off the rim into mist, smaller isles hang off
 //   some on rope bridges, two Ooga balloons drift by, gulls wheel and a rainbow stands opposite the sun.
 // - `spires` (Amber Spires): towering cumulus coloured for the low sun (gold where faces turn to it, lavender where
-//   they turn away, cream on the tops, glowing a little), long cloud banks along the horizon, sky lanterns rising
-//   past the course and geese flying a V.
-// - `aurora` (Aurora Heights): the aurora as curtains of light rays whose folds ripple along them and whose rays
-//   flicker, with a violet crown over the green; shooting stars; dark isles growing glowing crystals; and great
-//   crystals turning in the air.
+//   they turn away, cream on the tops, glowing a little), young ones nearer off to the sides of the course growing
+//   from the Play press, long cloud banks along the horizon, sky lanterns rising past the course and geese flying a V.
+// - `aurora` (Aurora Heights): the aurora as pixel art draws it, bright green bands curving across the sky toward the
+//   island with rays hanging from them through teal and blue to violet, stepped at every edge, rippling and swaying
+//   like waves; shooting stars; dark
+//   isles growing glowing crystals; and great crystals turning in the air.
 // - `storm` (Thunderhead): rain round the eye, lightning striking the sea with the sky's flash and the strike's
 //   distance for its thunder, and dark scud clouds well below the lanes drifting across on the wind, rain shafts
 //   hanging from them. `grade` greys the hub's sampled sky for it and `flash` lifts it for a frame of lightning.
@@ -315,10 +316,13 @@
   // A towering cumulus five metres a cell: billows stacked up a leaning axis, narrowing as they climb, each with a
   // few smaller billows round it, under an anvil spread across the top (or, on variant 1, a rounded crown).
   const SPIRE_CELL = 5;
-  const spireCache = M.scopedMap();
-  const spire = (v, sunX, sunZ) => {
-    const key = `${v}:${sunX.toFixed(3)}:${sunZ.toFixed(3)}`;
-    if (spireCache.has(key)) return spireCache.get(key);
+  // Amber Spires' young towers: their scale and how far off the course they stand (least and spread), and in seconds
+  // from the Play press: how long after one the next starts, how far apart its billows start to puff up the column
+  // and how long each takes, and when its top starts to spread out over it and how long that takes.
+  const YOUNG = { scale: [0.8, 0.15], across: [220, 50], every: 2.5, gap: 1.4, puff: 3.5, top: 12, spread: 5 };
+  // A tower's lobes in cells ([x, y, z, rx, ry, rz]): its column's nine billows, each followed by its three small
+  // ones, then its anvil or crown.
+  const spireLobes = (v) => {
     const rand = mulberry32(431 + v * 19), height = 32 + v * 5 + rand() * 6, base = 8 + rand() * 3, lean = (rand() - 0.5) * 0.3, lobes = [];
     for (let k = 0; k < 9; k++) {
       const f = k / 8, y = 2 + f * height * 0.82, r = base * (1 - 0.42 * f) * (0.88 + rand() * 0.24), lx = lean * f * height, lz = lean * 0.4 * f * height;
@@ -334,10 +338,36 @@
       lobes.push([tx, height * 0.88, tz, base * 1.75, 2.6, base * 1.4]);
       for (let s = 0; s < 5; s++) { const a = s / 5 * TAU + rand(); lobes.push([tx + Math.cos(a) * base, height * 0.9, tz + Math.sin(a) * base * 0.8, base * 0.55, 2.2, base * 0.5]); }
     }
-    const { geo, height: h } = billow(lobes, SPIRE_CELL, 3);
+    return lobes;
+  };
+  const spireCache = M.scopedMap(), pieceCache = M.scopedMap();
+  const spire = (v, sunX, sunZ) => {
+    const key = `${v}:${sunX.toFixed(3)}:${sunZ.toFixed(3)}`;
+    if (spireCache.has(key)) return spireCache.get(key);
+    const { geo, height: h } = billow(spireLobes(v), SPIRE_CELL, 3);
     sunset(geo, h, sunX, sunZ);
     spireCache.set(key, geo);
     return geo;
+  };
+  // The same tower in pieces to grow it: each column billow with its small ones, then its top, each a mesh centred on
+  // its billow and coloured for its place in the whole tower, with where it stands in the tower (`x`, `y`, `z`) and
+  // how far below that it starts (`rise`).
+  const spirePieces = (v, sunX, sunZ) => {
+    const key = `${v}:${sunX.toFixed(3)}:${sunZ.toFixed(3)}`;
+    if (pieceCache.has(key)) return pieceCache.get(key);
+    const lobes = spireLobes(v), pieces = [];
+    let height = 0;
+    for (const lobe of lobes) height = Math.max(height, (lobe[1] + lobe[4]) * SPIRE_CELL);
+    for (let at = 0; at < lobes.length; at += 4) {
+      const part = at < 36 ? lobes.slice(at, at + 4) : lobes.slice(at), [lx, ly, lz, , ry] = part[0], { geo } = billow(part, SPIRE_CELL, 3);
+      sunset(geo, height, sunX, sunZ);
+      // A cell's centre stands a cell lower in metres than in the lobes' cells (`billow`'s origin).
+      const x = lx * SPIRE_CELL, y = (ly - 1) * SPIRE_CELL, z = lz * SPIRE_CELL;
+      pieces.push({ geo: M.moved(geo, -x, -y, -z), x, y, z, rise: ry * SPIRE_CELL * 0.9 });
+      if (at >= 36) break;
+    }
+    pieceCache.set(key, pieces);
+    return pieces;
   };
   // A long low bank for the horizon, six metres a cell, its long side down x; `warm` is how squarely it faces the sun.
   const bank = M.variants((i) => {
@@ -365,21 +395,20 @@
   });
 
   // ---- The aurora and the night --------------------------------------------------------------------------------
-  // One ray: a vertical sheet, its local x up from 0 (the hem) to 1 and z across it; the beam fades it up x. Each
-  // kind is one band of the aurora, a single sheet from hem to crown: the middle curtains white-green at the hem,
-  // green through the body, teal into a violet crown (0); the near ones brighter (1); the far ones bluer and dimmer
-  // (2); and the bright streaks that run along the curtains, a pink hem under white-green (3).
+  // One ray: a pixel column of the aurora hanging from the ribbon's band, a vertical sheet with its local x running
+  // down it from 0 (the band's top edge) to 1 and z across it, in hard bands of colour as pixel art draws it
+  // (`RAY_ROWS` where each band starts): a lime edge over the bright green band, then teal, cyan, blue and violet
+  // down to its tip, which the beam fades out down x. The outer ribbons (0) and the inner ones, brighter (1).
   const RAY_INKS = [
-    ["#d4ffe6", "#7dffb8", "#3ef59c", "#2ee08e", "#2cc8a6", "#3a9ed6", "#7d7bff", "#b77bff", "#e07be8"],
-    ["#e6fff0", "#9effc8", "#52ffab", "#33ec95", "#2ad6ae", "#3aa8e0", "#8a86ff", "#c486ff", "#ee86ec"],
-    ["#a8f5d8", "#5ee6b0", "#2fc996", "#25b39a", "#2a98b8", "#3a7cd0", "#6a6ae8", "#9a6ae0", "#b86ad8"],
-    ["#ff7ab8", "#ffd0ea", "#f4fff8", "#b8ffd8", "#6dffb4", "#3ee89a", "#33c9a8", "#4a9ee0", "#8a7bff"]];
-  const RAY_GLASS = [0.28, 0.3, 0.18, 0.5];
+    ["#c4ff86", "#6cf064", "#2fd884", "#1cbfa8", "#2098cc", "#3570dc", "#5a50d6", "#7440c4"],
+    ["#e2ff9a", "#86ff6c", "#3ef08a", "#22d8b0", "#25b6dc", "#3f88ee", "#6a5ee6", "#8648d6"]];
+  const RAY_ROWS = [0, 0.035, 0.14, 0.27, 0.4, 0.54, 0.68, 0.84, 1];
+  const RAY_GLASS = [0.42, 0.5];
   const ray = M.variants((kind) => {
-    const g = M.geometry(), inks = RAY_INKS[kind].map(hexToRgb), ROWS = inks.length, ids = [];
-    for (let r = 0; r <= ROWS; r++) ids.push([M.pushVert(g, r / ROWS, 0, -0.5), M.pushVert(g, r / ROWS, 0, 0.5)]);
-    for (let r = 0; r < ROWS; r++) M.face(g, [ids[r][0], ids[r][1], ids[r + 1][1], ids[r + 1][0]], inks[r], { emissive: 1 });
-    g.glass = RAY_GLASS[kind]; g.lightBeam = kind === 3 ? 1.15 : 1.3; g.castShadow = false;
+    const g = M.geometry(), inks = RAY_INKS[kind].map(hexToRgb), ids = [];
+    for (const r of RAY_ROWS) ids.push([M.pushVert(g, r, 0, -0.5), M.pushVert(g, r, 0, 0.5)]);
+    for (let r = 0; r < inks.length; r++) M.face(g, [ids[r][0], ids[r][1], ids[r + 1][1], ids[r + 1][0]], inks[r], { emissive: 1 });
+    g.glass = RAY_GLASS[kind]; g.lightBeam = 2; g.castShadow = false;
     return g;
   });
   // A crystal shard from the origin, `len` along its axis leaned `tilt` from upright toward the bearing `lean`: a six-
@@ -744,6 +773,41 @@
         }
         geese.instanceVersion++;
       });
+      // Young towers off to the sides of the course, nearer than the rest, growing from the Play press one after another
+      // down the course (`YOUNG`): billow after billow puffs up out of the one below and flows up the column, then the
+      // top spreads out over it. Each is its tower's pieces on nodes of its own, eased into place until all have grown.
+      const towers = [], from = new Float32Array(6);
+      for (let k = 0; k < 6; k++) {
+        const t = 0.92 - 0.13 * k, s = YOUNG.scale[0] + rand() * YOUNG.scale[1], pieces = spirePieces(k % 3, sunX, sunZ);
+        const p = place(course, t, (k % 2 ? 1 : -1) * (YOUNG.across[0] + rand() * YOUNG.across[1]), 100 * s);
+        if (!p) continue;
+        const tower = createNode({ position: { x: p.x, y: seaY + 20 + rand() * 15, z: p.z }, scale: { x: s, y: s, z: s }, sightHidden: true });
+        for (const piece of pieces) {
+          renderer?.prepareGeometry(piece.geo);
+          const n = createNode({ geometry: piece.geo, position: { x: piece.x, y: piece.y, z: piece.z }, visible: false, matrixCloud: true, sightHidden: true });
+          n.piece = piece;
+          addChild(tower, n);
+        }
+        from[towers.length] = k * YOUNG.every;
+        towers.push(tower); addChild(scenery, tower);
+        reached(p.x, tower.position.y + 250 * s, p.z, 100 * s);
+      }
+      const grownAt = towers.length ? from[towers.length - 1] + YOUNG.top + YOUNG.spread : 0;
+      let grown = false;
+      movers.push((time) => {
+        if (grown) return;
+        for (let i = 0; i < towers.length; i++) {
+          const nodes = towers[i].children, age = time - from[i];
+          for (let n = 0; n < nodes.length; n++) {
+            const node = nodes[n], top = n === nodes.length - 1;
+            const p = Math.max(0, Math.min(1, (age - (top ? YOUNG.top : n * YOUNG.gap)) / (top ? YOUNG.spread : YOUNG.puff))), e = 1 - (1 - p) ** 3;
+            node.visible = e > 0.02;
+            node.scale.x = node.scale.y = node.scale.z = e;
+            node.position.y = node.piece.y - (1 - e) * node.piece.rise;
+          }
+        }
+        grown = time >= grownAt;
+      });
     };
 
     const aurora = (level, course, rand) => {
@@ -806,68 +870,79 @@
           halo.rotation.y = Math.atan2(dx, dz); halo.rotation.x = -Math.atan2(dy, Math.hypot(dx, dz));
         });
       }
-      // The aurora in three depth bands round the course's middle: far curtains high, broad and dim behind; the
-      // middle curtains ahead and to both sides; near curtains off to either side, lower and brighter. A curtain is a
-      // run of rays along an arc whose folds travel along it and turn it back on itself, each ray its own width and
-      // height, flickering; bright streaks run along the middle and near curtains, pink at the hem. Every ray is
-      // fill, so the quality tiers draw fewer (Canvas 2D the middle band alone, and no streaks).
-      const BANDS = [
-        { kind: 2, n: 3, rays: 32, r: 800, dr: 90, step: 0.95, y: 110, h: 300, fold: 1.4, span: 0.9, overlap: 1.7 },
-        { kind: 0, n: 4, rays: 48, r: 470, dr: 140, step: 0.75, y: 40, h: 240, fold: 1, span: 0.8, overlap: 2 },
-        { kind: 1, n: 2, rays: 30, r: 330, dr: 40, step: 2.6, y: 15, h: 180, fold: 0.7, span: 0.75, overlap: 1.6 }];
-      const middle = at(0.5, 0), mx = middle.x, mz = middle.z, mid = routeY(0.5), curtains = [];
-      const layers = BANDS.filter((band) => !lite || band.kind === 0).map((band) => {
-        const rays = lite ? 16 : Math.max(8, Math.round(band.rays * tier)), total = band.n * rays, sheet = batch(ray(band.kind), total);
-        const layer = { node: sheet, data: sheet.instanceData, rays, wide: new Float32Array(total), tall: new Float32Array(total), beat: new Float32Array(total), base: RAY_GLASS[band.kind] };
-        for (let i = 0; i < total; i++) { layer.wide[i] = 0.7 + rand() * 0.8; layer.tall[i] = 0.8 + rand() * 0.4; layer.beat[i] = rand() * TAU; }
-        for (let c = 0; c < band.n; c++) {
-          const a = route.ahead + (c - (band.n - 1) / 2) * band.step + (rand() - 0.5) * 0.15, r = band.r + (c % 2) * band.dr + rand() * 40;
-          const curtain = { layer, first: c * rays, a, r, y: mid + band.y + rand() * 50, h: band.h + rand() * 80, phase: rand() * TAU, fold: band.fold, span: band.span,
-            width: band.span * r / rays * band.overlap };
+      // The aurora, drawn as pixel art draws it: bright green bands curving across the sky, rays hanging from them
+      // through teal and blue to violet and fading to ragged tips. Each band arcs from high beside the start down
+      // along the course toward the island, closing in on it (`RIBBONS`: an inner pair and an outer pair, wider),
+      // winding from side to side and rising and dipping as it goes, so it curls. A ribbon is pixel columns laid edge
+      // to edge along its band, so it turns unbroken through its bends; each hangs its own length, the band's edge
+      // stepping by `STEP` and each tip by the column's width (`px`) so they are staircases, and each glows its own
+      // brightness, flickering, so the rays are streaked. Every column is fill, so the quality tiers draw fewer (Canvas 2D the
+      // outer pair alone).
+      const RIBBONS = [
+        { kind: 1, from: -230, to: -110, high: 110, low: -60, hang: 150, wind: 70, px: 6 },
+        { kind: 1, from: 240, to: 120, high: 120, low: -55, hang: 160, wind: 75, px: 6 },
+        { kind: 0, from: -430, to: -220, high: 170, low: -20, hang: 200, wind: 100, px: 8 },
+        { kind: 0, from: 440, to: 230, high: 180, low: -15, hang: 210, wind: 100, px: 8 }];
+      // The band's edge steps by `STEP` metres, finer than a column is wide, so it climbs and falls in small stairs.
+      const STEP = 3;
+      // From a little behind the start (t 1.08) out over the island (t -0.1); the bands' heights are over the start's.
+      const BEHIND = 1.08, BEYOND = -0.1, length = (route.length - SHORE) * (BEHIND - BEYOND), base = routeY(1), curtains = [];
+      const layers = [0, 1].filter((kind) => !lite || kind === 0).map((kind) => {
+        const mine = RIBBONS.filter((r) => r.kind === kind);
+        const counts = mine.map((r) => Math.max(12, Math.round(length / r.px * (lite ? 0.15 : tier)))), total = counts.reduce((a, b) => a + b, 0);
+        const sheet = batch(ray(kind), total);
+        const layer = { node: sheet, data: sheet.instanceData, wide: new Float32Array(total), beat: new Float32Array(total), base: RAY_GLASS[kind] };
+        for (let i = 0; i < total; i++) { layer.wide[i] = 0.7 + rand() * 0.8; layer.beat[i] = rand() * TAU; }
+        let first = 0;
+        mine.forEach((r, n) => {
+          const curtain = { layer, first, rays: counts[n], from: r.from, to: r.to, high: r.high, low: r.low, h: r.hang * (0.9 + rand() * 0.2), wind: r.wind,
+            phase: rand() * TAU, px: length / counts[n] };
+          first += counts[n];
           curtains.push(curtain);
-          reached(mx + Math.cos(a) * r, curtain.y + curtain.h * 1.25, mz + Math.sin(a) * r, r * band.span * 0.6 + 82 * band.fold);
-        }
+          for (const t of [BEHIND, 0.5, BEYOND]) { const p = at(t, r.from + (r.to - r.from) * (BEHIND - t) / (BEHIND - BEYOND)); reached(p.x, base + r.high, p.z, r.wind * 2.2); }
+        });
         addChild(scenery, sheet);
         return layer;
       });
-      // Where a curtain stands at s along it (0 to 1) at `time`, and which way it runs there, into P.
-      const P = { x: 0, z: 0, tx: 0, tz: 0 }, K1 = TAU * 1.3, K2 = TAU * 3.4, K3 = TAU * 0.6;
+      // Where a ribbon's band runs at s along it (0 behind the start, 1 over the island) at `time`, into P: high beside
+      // the start, down toward the island, winding and rising and dipping as it goes. It flows: ripples run along it
+      // toward the island and back, and the whole ribbon sways from side to side and back.
+      const P = { x: 0, y: 0, z: 0 };
       const point = (c, s, time) => {
-        const a = c.a + (s - 0.5) * c.span, u1 = K1 * s + 0.33 * time + c.phase, u2 = K2 * s - 0.7 * time + 2 * c.phase, u3 = K3 * s + 0.15 * time + 3 * c.phase;
-        const r = c.r + c.fold * (38 * Math.sin(u1) + 14 * Math.sin(u2) + 30 * Math.sin(u3));
-        const dr = c.fold * (38 * K1 * Math.cos(u1) + 14 * K2 * Math.cos(u2) + 30 * K3 * Math.cos(u3)), cos = Math.cos(a), sin = Math.sin(a);
-        const tx = cos * dr - sin * r * c.span, tz = sin * dr + cos * r * c.span, l = Math.hypot(tx, tz) || 1;
-        P.x = mx + cos * r; P.z = mz + sin * r; P.tx = tx / l; P.tz = tz / l;
+        const t = BEHIND + (BEYOND - BEHIND) * s, ph = c.phase;
+        const across = c.from + (c.to - c.from) * s + c.wind * (Math.sin(TAU * 1.5 * s + 0.2 * time + ph) + 0.3 * Math.sin(TAU * 3.1 * s - 0.3 * time + 2 * ph)
+          + 0.32 * Math.sin(TAU * 2.6 * s - 0.9 * time + 3 * ph) + 0.18 * Math.sin(TAU * 4.3 * s + 1.3 * time + ph)
+          + 0.3 * Math.sin(0.55 * time + ph) * Math.sin(Math.PI * s + 0.3 * Math.sin(0.4 * time)));
+        const p = at(t, across);
+        P.x = p.x; P.y = base + c.high + (c.low - c.high) * s + 22 * Math.sin(TAU * 2.2 * s + 0.35 * time + 2 * ph)
+          + 9 * Math.sin(TAU * 3.4 * s - 1.1 * time + ph) + 6 * Math.sin(0.7 * time + 2 * ph); P.z = p.z;
       };
-      // The streaks: each rides one middle or near curtain, sliding along it and back round.
-      const S = lite ? 0 : Math.round(32 * tier), streaks = S ? batch(ray(3), S) : null, streakData = streaks?.instanceData;
-      const lit = curtains.filter((c) => c.layer !== layers[0] || lite), on = new Uint8Array(S), from = new Float32Array(S), pace = new Float32Array(S), beat = new Float32Array(S);
-      for (let i = 0; i < S; i++) { on[i] = Math.floor(rand() * lit.length); from[i] = rand(); pace[i] = (0.015 + rand() * 0.035) * (rand() < 0.5 ? -1 : 1); beat[i] = rand() * TAU; }
-      if (streaks) addChild(scenery, streaks);
       movers.push((time) => {
         for (let n = 0; n < curtains.length; n++) {
-          const c = curtains[n], { data, rays, wide, tall, beat: phase } = c.layer;
-          for (let i = 0; i < rays; i++) {
-            const s = i / (rays - 1), j = c.first + i;
-            point(c, s, time);
-            const taper = Math.sqrt(Math.min(1, s * 6, (1 - s) * 6));
-            const h = c.h * tall[j] * taper * (0.72 + 0.16 * Math.sin(TAU * 5.3 * s + 1.6 * time + c.phase + phase[j]) + 0.12 * Math.sin(TAU * 11.1 * s - 2.7 * time));
-            const w = c.width * wide[j];
-            write(data, j * 20, 0, h * 1.25, 0, -P.tz, 0, P.tx, P.tx * w, 0, P.tz * w, P.x, c.y + 8 * Math.sin(TAU * 2 * s + 0.5 * time + c.phase), P.z);
+          const c = curtains[n], { data, wide, beat: phase } = c.layer, px = c.px;
+          // Each column spans the band from one point on its line to the next, so it runs on unbroken through its turns,
+          // and hangs from it its own length.
+          point(c, 0, time);
+          let lx = P.x, ly = P.y, lz = P.z;
+          for (let i = 0; i < c.rays; i++) {
+            const s = (i + 0.5) / c.rays, j = c.first + i;
+            point(c, (i + 1) / c.rays, time);
+            // Rays come in streaks several columns wide, bright and dim, long and short, drifting along the band.
+            const taper = Math.sqrt(Math.min(1, s * 14, (1 - s) * 5)), w = wide[j] - 1.1;
+            const streak = 0.5 + 0.3 * Math.sin(TAU * 6.3 * s + 0.5 * time + c.phase) + 0.2 * Math.sin(TAU * 17 * s - 0.7 * time + 3 * c.phase);
+            const h = px * Math.max(1, Math.round(c.h * taper * (0.5 + 0.22 * Math.sin(TAU * 3.7 * s + 0.4 * time + c.phase) + 0.12 * Math.sin(TAU * 11 * s - 0.6 * time + 2 * c.phase) + 0.15 * w) / px));
+            const top = STEP * Math.round((ly + P.y) / 2 / STEP);
+            const dx = P.x - lx, dz = P.z - lz, l = Math.hypot(dx, dz) || 1;
+            write(data, j * 20, 0, -h * 1.25, 0, -dz / l, 0, dx / l, dx, 0, dz, (lx + P.x) / 2, top, (lz + P.z) / 2);
+            data[j * 20 + 16] = (0.35 + 0.75 * streak + 0.25 * w) * (0.9 + 0.1 * Math.sin(1.3 * time + phase[j]));
+            lx = P.x; ly = P.y; lz = P.z;
           }
-        }
-        for (let i = 0; i < S; i++) {
-          const c = lit[on[i]], s = 0.08 + 0.84 * ((from[i] + pace[i] * time) % 1 + 1) % 1;
-          point(c, s, time);
-          const h = c.h * (0.85 + 0.3 * Math.sin(time * 3 + beat[i])) * Math.sqrt(Math.min(1, s * 6, (1 - s) * 6)), w = c.width * 0.45;
-          write(streakData, i * 20, 0, h, 0, -P.tz, 0, P.tx, P.tx * w, 0, P.tz * w, P.x, c.y - 4, P.z);
         }
         for (let n = 0; n < layers.length; n++) {
           const layer = layers[n];
           layer.node.instanceVersion++;
           layer.node.geometry.glass = layer.base * (0.85 + 0.15 * Math.sin(time * 0.6 + n));
         }
-        if (streaks) streaks.instanceVersion++;
       });
       if (lite) return;
       // Shooting stars: up to three at once, each a streak across the sky beyond the course for under a second.

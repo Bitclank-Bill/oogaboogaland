@@ -85,7 +85,8 @@
   // pass the greater of the previous/current feet heights to catch a falling body.
   // pickupAt consumes one pickup (a jetpack, or an `xray`, `updraft` or `hook`
   // power-up: its `kind`) and returns its stable record; equipping belongs to the
-  // caller. `hit` finds where a ray first meets a cloud, for the grappling hook. runSpeed and jumpSpeed are the player's, for the fairness checks;
+  // caller. `hit` finds where a ray first meets a cloud, for the grappling hook. `whirl` is a tornado's hold on the
+  // clouds near it (cloud-hopper-tornado.js), the one thing besides race time that moves them. runSpeed and jumpSpeed are the player's, for the fairness checks;
   // `layout` and `timing` override LAYOUT's and TIMING's fields (a level's).
   const create = ({ start, finish, mainlandRadius = 30, seed = 1, layout: shape = LAYOUT, timing: tune = TIMING,
     runSpeed = RUN_SPEED, jumpSpeed = JUMP_SPEED }) => {
@@ -128,7 +129,7 @@
         index: clouds.length, x, y, z, rx, rz, depth: CLOUD_DEPTH, top: y, opacity: 1, active: true, fading: false,
         yaw, cosYaw, sinYaw,
         kind: "normal", boostX: 0, boostZ: 0,
-        baseX: x, baseZ: z, previousX: x, previousZ: z, previousActive: true,
+        baseX: x, baseZ: z, previousX: x, previousZ: z, previousActive: true, turn: 0,
         moveX, moveZ, moveRange, moveSpeed, swing: 0,
         // The second draw is each cloud's clock phase, which keeps a seed's landings where they always were.
         seed: (rand() * 4294967296) >>> 0, clock: rand(), life: ORDINARY, late: false, main: !side, arrival: 0, held: 0,
@@ -438,6 +439,11 @@
       }
       return beganAt;
     };
+    // A tornado's whirl: within `reach` of its axis (x, z) a cloud turns round it, as a vortex turns, at `speed` m/s on
+    // the edge of its `core` and slower outside it; each cloud keeps its own angle round it (`turn`) while it is
+    // near, and `strength` (0 to 1) blends it from its lane to that turned place, so as the whirl dies or moves off a
+    // cloud eases back into its lane. Every step is smooth, so a planted rider is carried round.
+    const whirl = { x: 0, z: 0, strength: 0, reach: 1, core: 1, speed: 0 };
     const update = (dt, raceTime) => {
       if (beganAt >= 0 && Number.isFinite(raceTime)) movementTime = beganAt + Math.max(0, raceTime);
       else movementTime += dt;
@@ -454,6 +460,14 @@
           : offsetAt(cloud, time, cloud.held * (1 - settle * settle * (3 - 2 * settle)));
         cloud.x = cloud.baseX + cloud.moveX * offset;
         cloud.z = cloud.baseZ + cloud.moveZ * offset;
+        if (whirl.strength > 0) {
+          const dx = cloud.x - whirl.x, dz = cloud.z - whirl.z, r = Math.hypot(dx, dz), near = 1 - (r / whirl.reach) ** 2;
+          if (near > 0) {
+            cloud.turn += dt * whirl.speed * (r < whirl.core ? 1 / whirl.core : whirl.core / (r * r));
+            const k = whirl.strength * Math.min(1, 1.6 * near), c = Math.cos(cloud.turn) - 1, s = Math.sin(cloud.turn);
+            cloud.x += k * (dx * c - dz * s); cloud.z += k * (dx * s + dz * c);
+          } else cloud.turn = 0;
+        } else cloud.turn = 0;
         evaluate(cloud, time);
         const opacity = cloud.phase === FADING ? 1 - cloud.progress : cloud.phase === HIDDEN ? 0
           : cloud.phase === APPEARING ? cloud.progress : 1;
@@ -680,7 +694,7 @@
       return false;
     };
     return { clouds, pickups, layout, timing, horizon, start: begin, update, supportAt, contactAt, touchTime, pickupAt, canRecover, solidLeft,
-      hit, windowAt, escapes, steadyAt, linked, presence, offsetAt };
+      hit, whirl, windowAt, escapes, steadyAt, linked, presence, offsetAt };
   };
   BL.cloudHopperCourse = { create, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, FADE_SECONDS, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
     PERMANENT, LONG, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING };

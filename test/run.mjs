@@ -4718,11 +4718,12 @@ const cloudHopperFailureChecks = async engine => {
     } };
   Object.assign(BL, { hubModels: { jetpack: () => ({}), jetFlame: () => ({}) },
     cloudHopperSky: { create: () => ({ build: () => 0, update: noop, clear: noop, dispose: noop, flash: 0 }) },
+    cloudHopperTornado: { create: () => ({ start: noop, update: noop, clear: noop, axisAt: noop, radiusAt: () => 0, dispose: noop, liveGeometry: noop, down: false, strength: 0, forming: 0 }) },
     cloudHopperModels: { cloud(radius) { platformRadius ||= radius; return S.createNode(); }, cloudMesh: () => null, boostSurface: () => S.createNode(), updateBoostSurface: noop,
       bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
       rope: () => null, hookHead: () => null, leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
     cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song: noop, jump: noop, fade: noop, warn: noop, jet: noop,
-      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop,
+      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop,
       stage(name) { audioStage = name; }, tick() { audioTicks++; },
       level(value, seconds = 0.12) { audioLevel = value; audioFade = seconds; },
       stop() { audioStage = ""; audioLevel = 0; audioStops++; }, dispose() { audioDisposed = true; } }) },
@@ -5050,16 +5051,16 @@ const cloudHopperFailureChecks = async engine => {
   leaveCloud(boost);
   actor.leap.vx = actor.leap.vz = 0;
   touchCloud(bounce);
-  const highBounce = actor.hopV === 22 && actor.hop > 0 && actor.jumps === 1;
+  const highBounce = actor.hopV === 12 && actor.hop > 0 && actor.jumps === 1;
   touchCloud(bounce);
   const singleBounce = actor.hopV === 0;
   leaveCloud(bounce);
   actor.jetpackOwned = true; actor.jetFuel = 0.25; actor.jet = pack();
   touchCloud(bounce);
-  const idlePackBounce = actor.hopV === 22 && !actor.jet.thrust;
+  const idlePackBounce = actor.hopV === 12 && !actor.jet.thrust;
   leaveCloud(bounce); actor.jet.thrust = true;
   touchCloud(bounce, 0, 0.5);
-  const poweredBounce = actor.hopV === 22 && actor.jet.thrust;
+  const poweredBounce = actor.hopV === 12 && actor.jet.thrust;
   actor.jet.thrust = false;
   // Enter each side and the underside while already rising. A fast crossing
   // also has to trigger when neither endpoint overlaps the cloud.
@@ -5084,7 +5085,7 @@ const cloudHopperFailureChecks = async engine => {
         y: cloud.y + feet + actor.baseY, z: cloud.z - cloud.sinYaw * x + cloud.cosYaw * z });
       hopper.postUpdate();
       const isBounce = cloud.kind === "bounce";
-      airborneLaunches &&= actor.hopV === (isBounce ? 22 : 4) && actor.jumps === 1
+      airborneLaunches &&= actor.hopV === (isBounce ? 12 : 4) && actor.jumps === 1
         && Math.abs(actor.leap.vx - (isBounce ? 0 : cloud.boostX * 28)) < 1e-8
         && Math.abs(actor.leap.vz - (isBounce ? 0 : cloud.boostZ * 28)) < 1e-8;
       if (i < cases.length - 1) {

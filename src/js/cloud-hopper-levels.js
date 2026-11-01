@@ -6,7 +6,8 @@
 // TIMING; `board` is its shared high-score game and machine (highscore-rules.js). `sky` is the level's own fixed
 // sky for a run (plan 4 and 7a), sampled at `hour` on the equinox: how much painted cloud it has, whether its
 // clouds take the night fill (cloud-hopper-models.js, for L3's night and L4's storm), a `storm` greying of the sky
-// with its `fog` [near, far] haze, and its `scenery` (cloud-hopper-sky.js). A layout's `xray`, `updraft` and `hook`
+// with its `fog` [near, far] haze, its `scenery` (cloud-hopper-sky.js) and whether `tornado`es form in it
+// (cloud-hopper-tornado.js). A layout's `xray`, `updraft` and `hook`
 // are how many of each power-up its course carries (plan 3).
 // `courseVersion` changes whenever a level's challenge does, as does that board's registry version.
 (() => {
@@ -29,9 +30,9 @@
       { step: 12.2, main: [2.3, 0.8, 1.6, 0.6], side: [2.4, 0.6, 1.8, 0.4], turn: 50, sway: 8, lane: [6, 3], speed: [1, 0.7],
         boost: 0.18, bounce: 0.18, xray: 2, updraft: 2 },
       { permanent: 0.04, long: 0.18, ordinary: [12, 32], longSlot: [50, 110], warn: 2, hidden: [2, 4], spine: 4, pace: 3.2 }),
-    // The longest climb down, in a storm: today's cloud sizes, wide turns, safe ground as sparse as Level 3's, and
-    // haze that hides what lies beyond 200 m.
-    level(4, "Thunderhead", { hour: 18.6, clouds: 1, night: true, storm: 0.86, fog: Object.freeze([40, 160]), scenery: "storm" }, 0.38,
+    // The longest climb down, in a storm: today's cloud sizes, wide turns, safe ground as sparse as Level 3's, haze
+    // that hides what lies beyond 160 m, and tornadoes.
+    level(4, "Thunderhead", { hour: 18.6, clouds: 1, night: true, storm: 0.86, fog: Object.freeze([40, 160]), scenery: "storm", tornado: true }, 0.38,
       { step: 12.5, turn: 50, sway: 8, twoPacks: 1, xray: 3, updraft: 1, hook: 2 },
       { permanent: 0.05, long: 0.2, ordinary: [12, 32], longSlot: [50, 110], warn: 2, hidden: [2, 4], spine: 4, pace: 3.4 })
   ]);

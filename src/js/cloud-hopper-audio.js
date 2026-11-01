@@ -4,13 +4,15 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const MASTER = 0.45, CLOUD_VOICES = 6, CLOUD_NEAR = 4, CLOUD_FAR = 50, WARN_VOICES = 3, WARN_FAR = 40;
-  // Power-up and storm cues: pooled tones and filtered-noise voices, two thunder voices and the rain's bed.
-  const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.055;
+  // Power-up and storm cues: pooled tones and filtered-noise voices, two thunder voices, the rain's bed and a
+  // tornado's roar (`ROAR` at its loudest).
+  const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.055, ROAR = 0.3;
   const BACKGROUND_AHEAD = 2, BACKGROUND_MS = 250;
   const create = () => {
     let ctx = null, master = null, musicGain = null, jetGain = null, jetTone = null, jetWhine = null, jetFilter = null, music = null;
     let armed = false, disposed = false, resuming = false, jetOn = false, muted = BL.sound.muted, nextJump = 0;
     let musicStage = "", musicSong = 0, backgroundTimer = 0, rainGain = null, rainOn = false, nextTone = 0, nextAir = 0, nextThunder = 0;
+    let roarGain = null, roarHowl = null, roarLevel = 0;
     let musicLevel = 0, musicFrom = 0, musicAt = 0, musicUntil = 0, musicFade = 0.12;
     const jumps = [], clouds = [], warnings = [], tones = [], airs = [], thunders = [];
     const resultStage = value => value === "won" || value === "best" || value === "dq";
@@ -54,6 +56,8 @@
       }
       rainOn = false;
       if (rainGain) { rainGain.gain.cancelScheduledValues(now); rainGain.gain.setValueAtTime(0, now); }
+      roarLevel = 0;
+      if (roarGain) { roarGain.gain.cancelScheduledValues(now); roarGain.gain.setValueAtTime(0, now); }
       if (jetGain) {
         jetGain.gain.cancelScheduledValues(now);
         jetGain.gain.setValueAtTime(0, now);
@@ -149,6 +153,14 @@
       // A storm's rain: a soft hiss under everything while it falls.
       rainGain = gain(0, master);
       noise.connect(filter("highpass", 900, 0.5, filter("lowpass", 5200, 0.5, rainGain)));
+      // A tornado: a low roar of wind with a howl over it that wavers and climbs as it nears.
+      roarGain = gain(0, master);
+      noise.connect(filter("lowpass", 320, 0.7, roarGain));
+      roarHowl = filter("bandpass", 600, 3, gain(0.4, roarGain));
+      noise.connect(roarHowl);
+      const waver = ctx.createOscillator();
+      waver.type = "sine"; waver.frequency.value = 0.35;
+      waver.connect(gain(140, roarHowl.frequency)); waver.start();
       jetGain = gain(0, master);
       // Soft exhaust, a warm motor body and a faint turbine whistle. A small
       // retained flutter keeps the air alive without a harsh sawtooth buzz.
@@ -319,6 +331,24 @@
       rumble.linearRampToValueAtTime(0.32 * (0.5 + 0.5 * near), now + 0.7);
       rumble.exponentialRampToValueAtTime(0.0001, now + 3.2); rumble.setValueAtTime(0, now + 3.21);
     };
+    // A tornado's roar at `level` (0 to 1, by how near and how strong it is), followed each frame and changed only
+    // when it moves; `tornadoForm` is the wind gathering as one begins to turn, quieter `distance` metres off.
+    const tornado = (level) => {
+      if (!roarGain) return;
+      level = ready() ? Math.max(0, Math.min(1, level)) : 0;
+      if (Math.abs(level - roarLevel) < 0.02 && (level > 0 || roarLevel === 0)) return;
+      roarLevel = level;
+      const now = ctx.currentTime;
+      roarGain.gain.cancelScheduledValues(now); roarGain.gain.setValueAtTime(roarGain.gain.value, now);
+      roarGain.gain.setTargetAtTime(level * ROAR, now, 0.3);
+      roarHowl.frequency.cancelScheduledValues(now); roarHowl.frequency.setValueAtTime(roarHowl.frequency.value, now);
+      roarHowl.frequency.setTargetAtTime(420 + 520 * level, now, 0.5);
+    };
+    const tornadoForm = (distance) => {
+      if (!ready()) return;
+      const near = Math.max(0.2, Math.min(1, 1 - distance / 140));
+      airCue(140, 700, 3.6, 0.2 * near, 0.7); toneCue("sine", 62, 96, 3.4, 0.06 * near);
+    };
     // The storm's rain bed, on while a storm level plays.
     const rain = (on) => {
       on = !!on && !!ready();
@@ -377,9 +407,10 @@
       }
       ctx = master = musicGain = jetGain = jetTone = jetWhine = jetFilter = music = null;
       jumps.length = clouds.length = warnings.length = tones.length = airs.length = thunders.length = 0;
-      rainGain = null;
+      rainGain = roarGain = roarHowl = null;
     };
-    return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, hookThrow, hookHit, hookRelease, hookLost, thunder, rain, stop, dispose };
+    return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, hookThrow, hookHit, hookRelease, hookLost, thunder, rain,
+      tornado, tornadoForm, stop, dispose };
   };
   BL.cloudHopperAudio = { create };
 })();
