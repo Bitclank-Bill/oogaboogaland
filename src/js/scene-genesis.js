@@ -536,19 +536,20 @@
         hangSign(label(`ERA ${e.n}`, e.years, { height: 1.1, style: "plain" }), p.x, ISLAND_TOP + 4.1, p.z + 0.62, 0);
         built.obstacles.push({ x0: p.x - 0.7, x1: p.x + 0.7, z0: p.z - 0.7, z1: p.z + 0.7 });
       }
-      const f = GW.bankFrame(e.n, -1);
-      GW.bankToWorld(f, 7, 6, p);
+      const spot = GW.overviewSpot(e.n);
+      p.x = spot.x; p.z = spot.z;
       const def = EX && EX.eras[e.n], mine = built.exhibitProps.filter((x) => x.era === e.n).sort((a, b) => a.def.year - b.def.year || a.order - b.order);
       const board = textBoard({ kicker: `ERA ${e.n} · ${e.years.toUpperCase()}`, title: e.name, width: 3.4,
         body: [def && def.overview ? def.overview.summary : mine.length ? "Walk the banks: every exhibit here shows its year." : "This cave's exhibits are still being built."],
         list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
           ...(mine.some((x) => x.step) ? [{ text: "★ Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
-      const ry = Math.PI / 2 - 0.55, lift = ISLAND_TOP + 0.9 + board.height / 2;
+      const ry = spot.ry, lift = ISLAND_TOP + 0.9 + board.height / 2;
       solid(0.3, 0.9 + board.height / 2, 0.3, "#3b2a1a", p.x, ISLAND_TOP + (0.9 + board.height / 2) / 2, p.z);
       hangSign(board, p.x, lift, p.z, ry, glow);
       const pick = place(createNode({ geometry: pickBox(3.6, board.height + 1.2, 0.6), position: { x: p.x, y: lift, z: p.z }, rotation: { x: 0, y: ry, z: 0 } }));
-      built.overviews.push({ era: e.n, pick, at: { x: p.x + 1.4, y: ISLAND_TOP, z: p.z + 1.2 } });
-      built.obstacles.push({ x0: p.x - 1.4, x1: p.x + 1.4, z0: p.z - 1.4, z1: p.z + 1.4 });
+      // Walkers meet the board along its line and use it from in front of its face (genesis-world.js overviewSpot).
+      built.overviews.push({ era: e.n, pick, at: { x: spot.at.x, y: ISLAND_TOP, z: spot.at.z } });
+      for (const box of spot.boxes) built.obstacles.push(box);
     });
   };
   // The trail's path: a gold strip along each bank's walk (BANK.TRAIL_V) from the gateway to its last step, chevrons
