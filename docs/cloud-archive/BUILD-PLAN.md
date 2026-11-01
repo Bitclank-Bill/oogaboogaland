@@ -2,8 +2,9 @@
 
 A hidden white archive above the island. Jetpack up to one marked cloud and shoot it, and a beanstalk grows from the
 meadow to it. Climb the stalk and you come out through the cloud floor into a bright, empty white space. Shelves run
-off toward the horizon, one for each day of Ooga Booga Land's history. Each book is a commit. Tap a shelf to read that
-day: its commits, merged PRs and the people who made them, each linking to GitHub.
+off toward the horizon, one for each day of Ooga Booga Land's history. Each book is a commit. Tap a shelf, or face it
+and press Space, to read that day: its commits, its verified merged PRs and their authors as git recorded them, with
+links to GitHub.
 
 Branch: `feature/cloud-archive`, cut from the official `OogaBoogaX/oogaboogaland` `rock` (37d9f39, 2026-10-31). It stays
 behind the director's existing WIP flag (`?wip=cloudarchive`) until the phases below are done. Nothing is proposed
@@ -29,54 +30,77 @@ This is what inspecting `rock` turned up. Each item is something the archive reu
 
 ## Data: what counts as verified
 
-- `scripts/cloud-archive.mjs` (`npm run archive`) reads the git history of the checkout it runs in. It refuses to run
-  on a shallow clone, so it never writes a partial history. It writes `src/js/cloud-archive-data.js`, which is
-  committed as a snapshot so CI's shallow checkouts still build. The snapshot is refreshed by hand, like `cards/`.
-- Every book is a real commit, stored with its full 40-character SHA and linked to
-  `github.com/OogaBoogaX/oogaboogaland/commit/<sha>`. A PR counts only when its merge commit says
-  `Merge pull request #N from …`, so every PR shown has a merge in the history. Days are in UTC, by commit date.
-- **Credits.** A commit is credited to a GitHub login when one can be read from the history: the
-  `…@users.noreply.github.com` address, or the `from <login>/…` of a PR merge. A name that has ever committed under a
-  login is credited to that login. Anyone else is shown by the author name exactly as it appears in the public
-  history. No email address leaves the script. Bots (`[bot]`) are shelved as grey automation volumes and are not
-  counted as contributors.
-- Not in v1: GitHub's signature "Verified" badge. Reading it needs the API or the signers' keys. If it's wanted, the
-  script can add it later through `gh api` at generation time, never from the page.
+The rules live in `scripts/cloud-archive-lib.mjs` (pure functions, checked in the suite's global tier) and run through
+`scripts/cloud-archive.mjs`:
+
+```sh
+npm run archive -- --rev <full official rock SHA>
+```
+
+- **Which history.** One explicit revision, given as a full SHA, never whichever HEAD is checked out. The script reads
+  the official branch's tip with `git ls-remote https://github.com/OogaBoogaX/oogaboogaland refs/heads/rock` (no refs
+  are written). It refuses a revision that isn't on that branch, a revision or tip missing from the clone, and a
+  shallow clone. The snapshot records its `provenance` (repository, branch, revision, official tip, and the rules
+  below), and every commit link points at `OogaBoogaX/oogaboogaland`, where that revision lives. The current snapshot
+  is generated from `rock` at `37d9f3947bbff844f792595471e3eb99ab13e7f9`.
+- **Authors** are as git recorded them, which is self-reported:
+  - **Linked accounts:** a commit belongs to a GitHub account only when its author address is a GitHub noreply address
+    (`<id>+<login>@users.noreply.github.com`), which GitHub issues per account.
+  - **Unlinked authors:** every other author is kept as its own identity per exact address and labelled by its git
+    name, marked `*` on the page. It is never matched to an account by name, so two people sharing a name stay two,
+    and an account's own login is never renamed.
+  - **No addresses:** no address, and no hash of a personal address, is written out. Anything shaped like an address
+    in a commit title is replaced.
+- **Kinds.** A `[bot]` login (GitHub reserves that suffix for apps) is automation. AI agents and organisations are only
+  what `scripts/cloud-archive-identities.json` names after review, by login or by the SHA-256 of a service address;
+  today that is Claude Code's and Codex's commit identities. Display names alone never decide a kind. Automation,
+  agents and organisations are counted apart from authors.
+- **Pull requests.** A merged PR counts only when a merge commit's second parent is the head GitHub publishes for it,
+  `refs/pull/<n>/head`, read with `git ls-remote`. Subjects such as `Merge pull request #n from owner/branch` or a
+  `(#n)` suffix prove nothing on their own, and PR authorship is not shown. Neither a branch's owner nor the merged
+  commit's author is taken as the PR's author.
+- **Why not the API.** Verified account links for private addresses, PR authors and signature badges need the GitHub
+  API. This build container has no API access to the official repository, so the archive makes the narrower,
+  checkable claims above. The page says so in every day's note.
+- **Days** are UTC, by committer date. Each day links to GitHub's history from its last commit (an exact SHA), not
+  to a date filter, which GitHub would read in the viewer's time zone.
+- **Shelves** hold 4 x 48 = 192 books (the generator's `SHELF`, which the models check at load). A busier day keeps 191
+  books and one overflow binder; the plaque and board count the binder's commits. No day in today's snapshot
+  overflows (the busiest, 2026-10-25, has 184).
 
 ## Phases
 
 ### Phase 1 · small playable slice (this branch, now)
 
 1. `cloud-archive-entry.js` (HUB, only when the scene is registered): one marked cloud that never drifts, high over
-   the north-east meadow. It is an `archivecloud` weapon target. A round from the player's own Ooga makes it flash
-   and grow the beanstalk from the meadow up to it. The stalk is a prop with a tooltip, and **Space at its foot**
-   climbs: the view moves in and the scene changes.
+   the west meadow, about 26 m up. It is an `archivecloud` weapon target. A round from the player's own Ooga makes it
+   flash (not under reduced motion) and grows the beanstalk from the meadow up to it. The stalk is a prop with a
+   tooltip, and **Space, or the CLIMB button, at its foot** climbs in: the view moves in and the scene changes.
 2. `scene-cloudarchive.js` shell (`wip: true`) and a deferred `cloudarchive` group with `cloud-archive-data.js`,
    `cloud-archive-models.js` and `cloud-archive-interior.js`.
 3. The interior starts at the bottom of a shaft under the cloud floor. A **ladder plane up the beanstalk** (the
    crew's own climbing) brings the Ooga up into a white void. A long aisle has one shelf unit per day, alternating
    sides, each with a dated plaque and one book per commit, coloured by contributor. Walking, views, first person
    and footsteps all come from the pilot and the crew, as in the Sphere.
-4. Tapping a shelf opens the day's board. It shows the date, commit, PR and contributor counts, the people and the
-   commits, and the arrow keys page through the days. Its links open the day's commits and PRs on GitHub.
-5. To leave, climb back down the stalk, or use Leave or Escape. The same Ooga returns to the beanstalk's foot.
+4. Tapping a shelf, or facing one on the floor and pressing Space (READ), opens the day's board. Space and READ do
+   one thing at a time, whichever of a faced shelf and a free chair is nearer. The board shows the date, the commit,
+   verified PR and author counts, the authors and the commits, and the arrow keys page through the days without
+   moving the Ooga. Its links open the day's history from its last commit, and its PRs, on GitHub.
+5. Going home is always deliberate: climb all the way down the stalk, press Space (ISLAND) at its foot after having
+   been up, or use Leave or Escape. Falling into the shaft only leaves the Ooga at its foot, with a hint. The same Ooga
+   returns beside the beanstalk, which stands from then on, even for a page that opened straight in the archive.
 6. Done when it is built, `node --check` passes on every touched file, and a manual run reaches the archive, reads
    a board and returns without console noise.
 
-**Status (2026-10-31): playable behind `?wip=cloudarchive`.** Checked headless on software GL:
+**Status (2026-11-01): playable behind `?wip=cloudarchive`, reviewed and repaired.** See `REVIEW-REPAIRS.md` beside
+this plan for each finding, its fix and its evidence.
 
-- A shot grows the stalk (driven through the entry's `hit`, not yet a real round in the probe).
-- Space at the foot climbs in with the same Ooga.
-- W climbs the beanstalk on the ladder plane.
-- A day's board opens with its links.
-- Leaving puts the same Ooga back beside the stalk.
-- `npm run test:unit` passes 347/347.
+Known limits:
 
-Known v1 limits:
-
-- The day board's canvas clips long titles and lists the first commits of a busy day, sending the rest to GitHub.
-  The DOM note and links carry the summary.
-- A real jetpack shot is untested by script, though the cloud sits well inside the 60 m targeting ray.
+- The day board's canvas clips long titles and lists the first commits of a busy day; the rest is one link away on
+  GitHub. The DOM note and links carry the summary.
+- The browser suite has no `cloudarchive` scene yet (Phase 4). The repairs were checked with the global tier and
+  scripted browser sessions on software GL, whose timings say nothing about real hardware.
 
 Try it:
 
@@ -111,8 +135,8 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
 - Milestone plinths for the days scenes opened (the Arcade, the Factory, the Sphere, ₿IFRÖST, the ghost hunt) as
   hand-written entries checked against the history.
 - An ambient hum and page-turn sounds that follow the page-wide mute.
-- Set dressing, with any look from the reference stills used as mood only. It stays our own design: no film props,
-  chairs, TV or costumes.
+- Set dressing, with any look from the reference stills used as mood only. It stays our own design: the armchairs and
+  the TV are generic voxel pieces, not replicas of anything in a film, and there are no costumes.
 
 ### Phase 4 · before proposing upstream
 
@@ -121,8 +145,9 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
 - **Performance:** about 2,000 books are baked into one merged mesh per shelf, with no per-book nodes, and `update`
   allocates nothing. Check the frame rate on the Low tier and on Canvas 2D (`hub canvas2d` boots every scene).
 - **Accessibility:** the boards are DOM text with real links. Every action has a keyboard path (Space, the arrows,
-  Escape) and a touch path (tap and the ACT button). The white void respects `prefers-reduced-motion` (no
-  flash or pulse) and keeps text contrast on the plaques.
+  Escape) and a touch path (tap and the ACT button: CLIMB, READ, SIT, ISLAND). Under `prefers-reduced-motion` the
+  cloud neither flashes nor pulses, the stalk stands at once, and the TV holds its picture until changed by hand.
+  Still to do: a contrast check of the plaques on real displays.
 - **Suite:** `scene("cloudarchive", { steps })` in `test/run.mjs` covers a playthrough (climb in, open a board, climb
   out), keys on screen, and `trip("cloudarchive")`. Add a `hub` step for the cloud: a shot grows the stalk, and Space
   at the foot enters. Then run `npm test -- cloudarchive hub` and `hub canvas2d`.
@@ -138,7 +163,8 @@ untouched.
 
 ## Open questions for the maintainer
 
-1. Should authors without a known login be shown by their git name, or as "a contributor"?
-2. Should automation commits (`github-actions[bot]`, about 220) be shelved at all, or only counted?
-3. Where should the cloud sit? v1 puts it over the north-east meadow, about 26 m up, which takes roughly half a tank
-   of jetpack fuel.
+1. Unlinked authors are shown by their git name, marked `*`. Should they instead appear without a name ("an unlinked
+   author"), given AGENTS.md's privacy section? Their names are already public in the repository's history.
+2. If the GitHub API becomes available to whoever regenerates the snapshot, should unlinked authors be linked to
+   accounts through it, and PR authors shown? Today neither is claimed.
+3. Is the west meadow, about 26 m up (about half a tank of jetpack fuel), the right place for the cloud?
