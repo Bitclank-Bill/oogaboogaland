@@ -130,6 +130,36 @@
   const JET_FUEL_SECONDS = 8, JET_MOVE_SECONDS = JET_FUEL_SECONDS * 2, JET_REFILL_SECONDS = 4, JET_LAUNCH_FUEL = 0.2;
   // Fuel limits range and altitude; releasing thrust falls back to ordinary gravity.
   const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
+  const COMPANION_FLIGHT = Object.freeze({ gain: 3, catchUp: 1.35, climbOver: 8 });
+  // Shared dog flight steering, extracted from rescue-dogs.js. Both the authored
+  // companion and DSB's adopted dog use this exact clearance/floor/speed path.
+  // State and callbacks are retained by the caller; no per-frame objects are made.
+  const flyCompanion = (s, tx, ty, tz, dt, floorAt, clear) => {
+    const dx = tx - s.x, dz = tz - s.z, d = Math.hypot(dx, dz);
+    s.speed += (Math.min(JET_SPEED * COMPANION_FLIGHT.catchUp, d * COMPANION_FLIGHT.gain) - s.speed) * Math.min(1, dt * 4);
+    if (d > 0.1) {
+      let turn = Math.atan2(dx, dz) - s.heading;
+      turn -= Math.round(turn / (Math.PI * 2)) * Math.PI * 2;
+      s.heading += turn * Math.min(1, dt * 6);
+    }
+    let rise = clamp((ty - s.y) * COMPANION_FLIGHT.gain, -JET_RISE, JET_RISE);
+    if (d > 0.02 && s.speed > 0.01) {
+      const go = Math.min(s.speed * dt, d), nx = s.x + dx / d * go, nz = s.z + dz / d * go;
+      if (clear(s.x, s.z, nx, nz, s.y)) { s.x = nx; s.z = nz; }
+      else { s.speed = 0; rise = s.y < ty + COMPANION_FLIGHT.climbOver ? JET_RISE : Math.min(rise, 0); }
+    }
+    let floor = floorAt(s.x, s.z, s.y);
+    if (floor > s.y + 0.05) floor = floorAt(s.x, s.z, s.y - 0.65);
+    const y = Math.max(s.y + rise * dt, floor + 0.15);
+    let at = s.y, free = Number.isFinite(y);
+    while (free && Math.abs(y - at) > 1e-7) {
+      at += Math.sign(y - at) * Math.min(0.2, Math.abs(y - at));
+      free = clear(s.x, s.z, s.x, s.z, at);
+    }
+    if (free) s.y = y;
+    s.phase += dt * 4;
+    return d < 0.15 && Math.abs(ty - s.y) < 0.15;
+  };
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
   const MASK_SMOKE = { ...models.particleGeometry("#c9cbce", 0.09, 0.15) };
@@ -435,7 +465,7 @@
     // A character's pet: the node its file builds as `parts.dog`, where it stands by its Ooga (a step behind and to one
     // side, in the Ooga's frame), is lifted off the body into the crew's root. Each frame it trots for that spot at up
     // to `PET_SPEED`, every step checked with the scene's `walkable` (stopped by a wall, it waits) and set on the floor
-    // under it at its own height plus a step, so it climbs no roof after its Ooga and waits underneath a flight. Out of
+    // under it at its own height plus a step. A jetpack owner brings it aloft through the shared DSB flight helper. Out of
     // reach (`PET_SNAP`, a door, a relocation) it turns up at its spot. Hidden with its Ooga. Allocates nothing.
     const PET_SPEED = 9.5, PET_SNAP = 7, PET_STEP = 0.45, PET_HEIGHT = 0.5, PET_ARRIVE = 0.15;
     const attachPet = (cave) => {
@@ -443,7 +473,15 @@
       removeChild(cave.root, node);
       addChild(root, node);
       node.visible = false;
-      cave.pet = { node, side: p.x, back: -p.z, lift: p.y, x: 0, z: 0, feet: 0, heading: 0, step: 0, warm: false };
+      const pack = createNode({ geometry: BL.hubModels.jetpack(), rotation: { x: Math.PI / 2 }, scale: { x: 0.25, y: 0.25, z: 0.25 }, visible: false });
+      const flame = createNode({ geometry: BL.hubModels.jetFlame(), visible: false });
+      let top = 0;
+      for (let i = 1; i < node.geometry.verts.length; i += 3) top = Math.max(top, node.geometry.verts[i]);
+      pack.position.y = top; addChild(pack, flame); addChild(node, pack);
+      const pet = cave.pet = { node, pack, flame, side: p.x, back: -p.z, lift: p.y, x: 0, y: 0, z: 0, feet: 0, heading: 0, step: 0,
+        speed: 0, phase: 0, mode: 0, fall: 0, stuck: 0, warm: false };
+      pet.floorAt = (x, z, y) => groundAt(x, z, y, y, cave);
+      pet.clear = (ax, az, bx, bz, y) => (ctx.flyable || walkable)(ax, az, bx, bz, y, PET_HEIGHT, cave);
     };
     // A relocation may put the authored trailing spot inside a wall or off an edge.
     // Try that spot, the owner's feet, then a bounded ring; never publish invalid ground.
@@ -464,10 +502,45 @@
     const updatePet = (cave, dt) => {
       const pet = cave.pet, r = cave.root, node = pet.node;
       node.visible = r.visible;
-      if (!r.visible) { pet.warm = false; return; }
+      if (!r.visible) { pet.warm = false; pet.mode = 0; pet.pack.visible = pet.flame.visible = false; return; }
       const h = r.rotation.y, sh = Math.sin(h), ch = Math.cos(h);
       const tx = r.position.x - sh * pet.back + ch * pet.side, tz = r.position.z - ch * pet.back - sh * pet.side;
       const feet = r.position.y - cave.baseY;
+      const equipped = !!cave.jet, powered = equipped && !cave.jetRecovering && cave.jetFuel > 0 && (cave.jet.thrust || cave.jet.power > 0);
+      const ownerFloor = groundAt(r.position.x, r.position.z, feet, feet, cave);
+      const airborne = equipped && feet > ownerFloor + (powered ? 0.02 : 1.2);
+      pet.pack.visible = equipped;
+      if (airborne && (powered || cave.hopV >= -0.05)) pet.mode = 1;
+      else if (pet.mode === 1) { pet.mode = 2; pet.fall = Math.min(0, cave.hopV); }
+      if (pet.mode && !(dt > 0)) return;
+      if (pet.mode && dt > 0) {
+        if (!pet.warm) {
+          if (!pet.clear(r.position.x, r.position.z, tx, tz, feet + 0.4)) { node.visible = false; return; }
+          pet.x = tx; pet.z = tz; pet.feet = feet + 0.4; pet.warm = true;
+        }
+        if (pet.mode === 1) {
+          pet.y = pet.feet;
+          flyCompanion(pet, r.position.x + ch * (pet.side < 0 ? -1.2 : 1.2), feet + 0.4, r.position.z - sh * (pet.side < 0 ? -1.2 : 1.2), dt, pet.floorAt, pet.clear);
+          pet.feet = pet.y;
+        } else {
+          const floor = groundAt(pet.x, pet.z, pet.feet, pet.feet, cave);
+          const next = Math.max(floor, pet.feet + pet.fall * dt - 0.5 * BL.pilot.WALK.gravity * dt * dt);
+          pet.fall -= BL.pilot.WALK.gravity * dt;
+          let clear = Number.isFinite(next), y = pet.feet;
+          while (clear && y > next) { y = Math.max(next, y - 0.2); clear = pet.clear(pet.x, pet.z, pet.x, pet.z, y); }
+          if (clear && floor > -100) { pet.feet = next; pet.stuck = 0; }
+          else pet.stuck += dt;
+          if (clear && pet.feet <= floor + 0.001 && walkable(pet.x, pet.z, pet.x, pet.z, floor, PET_HEIGHT, cave)) { pet.mode = 0; pet.fall = 0; }
+          // DSB's bounded recovery: a blocked landing may relocate only to checked ground.
+          else if (pet.stuck > 1.5 && feet <= ownerFloor + PET_STEP && placePet(cave, tx, tz, feet, h)) { pet.mode = 0; pet.stuck = pet.fall = 0; }
+        }
+        pet.flame.visible = equipped && pet.mode === 1;
+        pet.flame.scale.y = 0.7 + Math.sin(pet.phase * 10) * 0.3;
+        node.position.x = pet.x; node.position.z = pet.z; node.position.y = cave.baseY + pet.feet + pet.lift;
+        node.rotation.y = pet.heading; node.rotation.z = 0;
+        return;
+      }
+      pet.flame.visible = false;
       const dx = tx - pet.x, dz = tz - pet.z, d = Math.hypot(dx, dz);
       let moving = false;
       if (!pet.warm || d > PET_SNAP) {
@@ -6564,5 +6637,5 @@
       }
     };
   };
-  BL.crew = { create, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, flyCompanion, COMPANION_FLIGHT, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();
