@@ -94,7 +94,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 const context = { window: { navigator: { userActivation: { isActive: false } } } };
-for (const f of ['genesis-world', 'genesis-exhibits', 'genesis-era-4'])
+for (const f of ['genesis-world', 'genesis-exhibits', 'genesis-timeline-data', 'genesis-era-4-strategy', 'genesis-era-4-teletext', 'genesis-era-4-wireless', 'genesis-era-4'])
   runInNewContext(readFileSync(`src/js/${f}.js`, 'utf8'), context);
 const BL = context.window.BL, def = BL.genesisExhibits.eras[4], era = BL.genesisWorld.ERAS[4];
 let props, boxes, obstacles;
@@ -110,7 +110,7 @@ const out = (term, command) => term.run(command).lines.join('\n');
 const frame = () => def.update(1 / 60, 0, { era: 4 });
 const count = term => Number(out(term, 'STATUS').match(/visit: (\d+)/)[1]);
 build();
-assert.equal(props.size, 9);
+assert.equal(props.size, 12); // eight stations and the loft, plus the upgrade cluster's three
 for (const p of props.values()) {
   assert(p.label.includes(String(p.year)));
   assert(p.sourceKeys.length && p.sourceKeys.every(k => BL.genesisExhibits.sources[k]));
@@ -248,3 +248,61 @@ Checks:
   - The shared overview shows the era's page.
   - Two leave/return laps hold steady node and target counts, with a clean console.
 - **Still unverified:** sound (DIAL), touch, hardware performance and human play.
+
+## Upgrade cluster (gv/upgrade-era-4)
+
+Prepared with AI assistance (Claude Code) at Bitcoin-Bill's request. Base `cb2b0b9405a2d6363c9f284146b4c0aab6d3b34f`.
+
+Three compact stands on the right bank, between the CD-ROM archive and the games corner (old x 24.6 to 36.4, around
+`era.z + 1`), clear of the lamp at x 22, the old stream's walk and every other station. They're kept apart from the
+Hashcash, b-money and timestamp demonstrations. All three are **context**.
+
+| Prop ID | Label | Game module | Terminal commands |
+|---|---|---|---|
+| `e4-strategy` | STRATEGY BOARD / MAY 1997 | `genesis-era-4-strategy.js` | `LOOK`, `MOVE A N` (or `A N`), `BOARD 1..3`, `RESET` |
+| `e4-teletext` | INFORMATION SCREEN / 1996-1999 | `genesis-era-4-teletext.js` | a page number (`100`, `110`…), `NEXT`, `PREV`, `INDEX`, `REVEAL`, `SOURCES`, `RESET` |
+| `e4-wireless` | PACKETS BY RADIO / 26 JUN 1997 | `genesis-era-4-wireless.js` | `MAP`, `SEND A E`, `NOISE 0..3`, `OFF C`, `ON C`, `STATS`, `RESET` |
+
+Each module exposes a pure rules core (Node-loadable), a museum terminal, and `make(host)` to the `retro-games.js`
+factory interface (that file's header is the contract). Until the integrator adds the script tags, each stand opens a
+caption saying its module isn't loaded.
+
+### What the dates say, and where they come from
+
+- **Strategy board: May 1997.** From the READY record `tl-4-deep-blue`: a chess machine won its rematch 3.5-2.5 in New
+  York. The CHM catalogue dates the final game 11 May 1997, and IBM's page gives the month. The board is **not chess**:
+  its rules are generic (two pieces, one guard, a goal, 20 moves), and its boards and art are original. It's labelled a
+  modern museum homage. Any likeness to proof-of-work is stated as an analogy only.
+- **Wireless: 26 June 1997.** From the READY record `tl-4-wifi`: IEEE Std 802.11 approved 26 June 1997 and published
+  18 November 1997, with basic rates of 1 and 2 Mbit/s. The toy's ranges, losses and retries are invented, and the
+  banner says it isn't the 802.11 protocol. No later brand names or logos. It's context, not an influence on Bitcoin.
+- **Information screen: 1996-1999, the gallery's years, with no historical claim.** Its record pages repeat only the
+  READY **context** records of Era 4 (currently `tl-4-deep-blue`, `tl-4-wifi` and `tl-4-v90`), word for word. The
+  interface, page numbers and words are original, and it names no real service.
+
+### HOLD
+
+- **Which real broadcast-text system, country and period the screen resembles.** No source could be read during this
+  build: the BBC hosts were refused and the museum host didn't resolve. So nothing is displayed. To lift the hold,
+  register a primary source (for example the broadcaster's own history page) and add it as a dated, context-only label.
+
+### Verification
+
+- This build could not reach `standards.ieee.org`, `ieeexplore.ieee.org`, `grouper.ieee.org`, `ibm.com`'s history pages
+  or `computerhistory.org`. The dates and rates shown come from the READY records as the research recorded them.
+- The new source keys (`E4-CHESS`, `E4-CHESS-CHM`, `E4-WIFI`, `E4-WIFI-PAR`) are therefore `verified: false`.
+- `E4-ORIGINAL` points to this document.
+
+### Checks
+
+`node test/genesis-era-4-upgrade.mjs` runs 11 checks in Node, with no Chrome:
+- the ids and connections of all twelve exhibits;
+- the cluster's placement and scene-record count;
+- HELP, MORE and RESET, and the workbench buttons;
+- each board winnable within its limit;
+- each console playing to one `over()` and one `onEnd`;
+- the screen's records word for word, with no brand, service or citation;
+- the packet toy's seeding, caps, rerouting and no-route result, with the 802.11 dates from the record;
+- the lamp state;
+- dispose;
+- the caption fallback.
