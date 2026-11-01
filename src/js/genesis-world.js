@@ -152,6 +152,9 @@
     }
     for (const l of lampPosts(n)) out.push({ x0: l.x - 0.8, x1: l.x + 0.8, z0: l.z - 0.8, z1: l.z + 0.8, why: "lamp" });
     if (e.room) out.push({ x0: -12 + ROOM_SHIFT.x - 1.5, x1: CHANNEL.x0, z0: -34 + ROOM_SHIFT.z - 1.5, z1: -19 + ROOM_SHIFT.z + 1.5, why: "Fingerprints and Time" });
+    // Era 2 keeps a floor clear for the FUD Patrol cabinet (genesis-era-2.js FUD_PATROL_ZONE, in its own coordinates).
+    const E2 = n === 2 && BL.genesisEra2 && BL.genesisEra2.FUD_PATROL_ZONE;
+    if (E2) out.push({ x0: E2.x0, x1: E2.x1, z0: E2.z0, z1: E2.z1, why: "FUD Patrol" });
     return out;
   };
 

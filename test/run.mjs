@@ -22991,7 +22991,7 @@ const genesisEra1LifecycleProof = async () => {
 // exhibit reachable; and the models pose from state without growing and leave the graph on dispose.
 const genesisEra2Proof = async () => {
   const context = { window: {} };
-  for (const f of ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BL = context.window.BL, G = BL.genesisVoyage, P = BL.genesisProps, W = BL.genesisWorld, EX = BL.genesisExhibits, E2 = BL.genesisEra2, era = W.ERAS[E2.ERA];
   // The kit, as scene-genesis.js makes it, over a bare parent node; props go to a registry, obstacles to a list.
   const { createNode, addChild } = BL.scene, M = BL.models, parent = createNode(), reg = P.createRegistry(), obs = [];
@@ -23115,7 +23115,9 @@ const genesisEra2Proof = async () => {
   const C = W.CAVE, ch = W.CHANNEL, pad = 0.3;
   const hits = (o, x0, x1, z0, z1) => o.x0 < x1 && o.x1 > x0 && o.z0 < z1 && o.z1 > z0;
   const lamps = [[-14, 0.25], [-8, 0.8]].map(([x, fr]) => ({ x0: x - 0.15, x1: x + 0.15, z0: era.z1 - fr * C.len - 0.15, z1: era.z1 - fr * C.len + 0.15 }));
-  const footprinted = obs.length === E2.footprints().length && reg.byEra(2).length === 5;
+  // With its upgrade cluster loaded (as the page loads it): the five exhibits and the cluster's three, each footprint.
+  const CL = context.window.BL.genesisEra2Cluster;
+  const footprinted = obs.length === E2.footprints().length + CL.footprints().length && reg.byEra(2).length === 5 + CL.KEYS.length;
   const clear = obs.every((o) => o.x0 > C.x0 + 1 && o.x1 < ch.x0 - 4.5 && o.z0 > era.z0 + 2 && o.z1 < era.z1 - 2
     && !hits(o, -16.5, ch.x0, era.z - 2.6, era.z + 2.6) && !lamps.some((l) => hits(o, l.x0 - pad, l.x1 + pad, l.z0 - pad, l.z1 + pad)));
   // Breadth-first walk on a 0.2 grid from the ramp's head over the left bank, a 0.3-radius body against every box.
@@ -23137,15 +23139,18 @@ const genesisEra2Proof = async () => {
   // it marks; the overview through the shared interface; no era-wide sign of our own; tap boxes over the models,
   // walk-up points in front of them; nothing in a reserved plot, the waterside walk or above the height limit; the
   // shared trail's STEP post clear of our exhibits.
+  // The five original exhibits are checked in detail here; the upgrade cluster's three (genesis-era-2-cluster.js,
+  // loaded as the page loads it) are context and keep their walk-up points clear, and its own suite checks the rest.
+  const BASE_IDS = ["e2-merkle", "e2-blind", "e2-pc", "e2-floppy", "e2-maze"], baseDefs = defs.filter((d) => BASE_IDS.includes(d.id)), clusterDefs = defs.filter((d) => !BASE_IDS.includes(d.id));
   const byId = Object.fromEntries(defs.map((d) => [d.id, d]));
-  const ids = defs.length === 5 && ["e2-merkle", "e2-blind", "e2-pc", "e2-floppy", "e2-maze"].every((id) => byId[id]) && defs.every((d) => /^e2-/.test(d.id) && !/^era\d/.test(d.id));
+  const ids = baseDefs.length === 5 && clusterDefs.length === 3 && BASE_IDS.every((id) => byId[id]) && defs.every((d) => /^e2-/.test(d.id) && !/^era\d/.test(d.id));
   const trailList = defs.map((d, order) => ({ era: 2, def: d, order, step: 0 })), trail = EX.trailOf(trailList);
   const m7 = byId["e2-merkle"];
   const citation7 = !!m7 && m7.connection === "citation" && m7.ref === "[7]" && EX.checkProp(2, m7) === null && trail.length === 1 && trail[0].def === m7
     && /^1980\b/.test(m7.date || "") && /published/.test(m7.date || "");
-  const contextOnly = defs.length === 5 && defs.filter((d) => d !== m7).every((d) => d.connection === "context" && d.ref === undefined && EX.checkProp(2, d) === null)
+  const contextOnly = baseDefs.length === 5 && defs.filter((d) => d !== m7).every((d) => d.connection === "context" && d.ref === undefined && EX.checkProp(2, d) === null)
     && trailList.filter((x) => x.def !== m7).every((x) => !x.step);
-  const datesMark = defs.length === 5 && defs.every((d) => typeof d.date === "string" && d.date.includes(String(d.year)) && /published|presented|unveiled|period gear|made/.test(d.date) && !/\.$/.test(d.date))
+  const datesMark = baseDefs.length === 5 && baseDefs.every((d) => typeof d.date === "string" && d.date.includes(String(d.year)) && /published|presented|unveiled|period gear|made/.test(d.date) && !/\.$/.test(d.date))
     && /1983/.test((byId["e2-blind"] || {}).date || "") && /12 August 1981/.test((byId["e2-pc"] || {}).date || "");
   const ov = def.overview;
   const overview = !!ov && typeof ov.summary === "string" && ov.summary.length > 40 && ov.summary.length <= 280 && /1980/.test(ov.summary)
@@ -23157,7 +23162,7 @@ const genesisEra2Proof = async () => {
   const walkStrip = (b) => b.x1 > ch.x0 - W.BANK.FRONT;
   const plots = [...solids, ...obs].every((b) => !inPlot(b) && !walkStrip(b)) && solids.every((b) => b.top <= W.BANK_TOP + W.BANK.MAX_H)
     && defs.every((d) => !inPlot({ x0: d.at.x - 0.3, x1: d.at.x + 0.3, z0: d.at.z - 0.3, z1: d.at.z + 0.3 }));
-  const picks = defs.length === 5 && defs.every((d) => {
+  const picks = baseDefs.length === 5 && clusterDefs.every((d) => !obs.some((o) => d.at.x > o.x0 - 0.3 && d.at.x < o.x1 + 0.3 && d.at.z > o.z0 - 0.3 && d.at.z < o.z1 + 0.3)) && baseDefs.every((d) => {
     const o = obs.find((b) => Math.abs((b.x0 + b.x1) / 2 - d.pick.x) < 1e-9 && Math.abs((b.z0 + b.z1) / 2 - d.pick.z) < 1e-9);
     return o && Math.abs(o.x1 - o.x0 - d.pick.w) < 1e-9 && Math.abs(o.z1 - o.z0 - d.pick.d) < 1e-9 && d.pick.h > 0.8
       && d.at.x >= o.x1 + 0.6 && d.at.z > o.z0 && d.at.z < o.z1 && Math.hypot(d.at.x - d.pick.x, d.at.z - d.pick.z) <= d.reach + (o.x1 - o.x0) / 2 + 0.9;
@@ -23178,7 +23183,8 @@ const genesisEra2Proof = async () => {
       && parts.runs.some((r) => r.visible && r.scale.z > 1) && parts.mazeShown === 1;
   }
   const settled = parts.stamp.position.y === parts.stampRest && live.blind.stampT === 0 && parts.rootBad.visible && !parts.rootOk.visible;
-  const steady = count(parent) === nodes && nodes < 400;
+  // The cluster adds about 130 records to the five exhibits' (under 400), so the bound rises to 560.
+  const steady = count(parent) === nodes && nodes < 560;
   def.dispose();
   const disposed = E2.visit === null;
   return { ids, citation7, contextOnly, datesMark, overview, noEraSign, plots, picks, stepClear, registered, footprinted, allVerify, path, small, stale, forged, retrusted, termOk, merkleReset, order, blind, carried, unstamped, bounded, blindReset,
@@ -23321,6 +23327,13 @@ const genesisEra3CalmProof = async () => {
 // far up a bank it is not, and calling the boat brings it to the edge of that Ooga's bank, level with it and inside its
 // cave, after which Space boards. A called boat sails there without touching a wall, from the harbour into any cave and
 // back out through the mouth, and Space at the water's edge (or on the harbour's dock) is what calls it.
+// Every Genesis era file in the page's script order (src/index.html): each era's own modules where its notes ask
+// (before the era file, or after it for Era 1's paddle, Era 3's rally and Era 6's argument), so the shared proofs build
+// the eras with their upgrade clusters live.
+const GENESIS_ERA_FILES = ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer", "genesis-era-0", "genesis-era-1", "genesis-era-1-paddle",
+  "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2", "genesis-era-3", "genesis-era-3-rally", "genesis-era-4-strategy", "genesis-era-4-teletext",
+  "genesis-era-4-wireless", "genesis-era-4", "genesis-era-5-patchwork", "genesis-era-5-mixtape", "genesis-era-5", "genesis-era-6", "genesis-era-6-argument",
+  "genesis-era-7-sync", "genesis-era-7"];
 const genesisBoardingProof = async () => {
   const context = { window: {} };
   for (const f of ["genesis-voyage", "genesis-world"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
@@ -23363,7 +23376,7 @@ const genesisBoardingProof = async () => {
 const genesisSightlinesProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, C = W.CHANNEL, T = W.BANK_TOP;
   // Does the segment a→b pass through box o ({ x0, x1, y0, y1, z0, z1 })? The slab test.
   const hits = (a, b, o) => {
@@ -23424,7 +23437,7 @@ const genesisSightlinesProof = async () => {
 const genesisBenchProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-bench", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-bench", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, B = BLc.genesisBench, C = BLc.genesisCatalogue, TD = BLc.genesisTimelineData, props = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true });
@@ -24086,8 +24099,9 @@ const genesisEra2UpgradeSuite = async () => {
     const old = E2.footprints();
     check("noOverlap", cl.every((b) => !old.some((o) => hit(b, o)) && !hit(b, { x0: -16.5, x1: W.CHANNEL.x0, z0: B.era.z - 2.6, z1: B.era.z + 2.6 })) && cl.every((a, i) => cl.every((b, j) => i === j || !hit(a, b))));
     // The FUD Patrol floor: about 3 x 3 m, inside the gallery near the arch, clear of every Era 2 solid, obstacle and use point.
+    // (Integration: the zone is itself a reserved plot of Era 2 now, genesis-world.js reservedZones; it is compared with the others.)
     const Z = E2.FUD_PATROL_ZONE;
-    const fud = Math.abs(Z.x1 - Z.x0 - 3) < 1e-9 && Math.abs(Z.z1 - Z.z0 - 3) < 1e-9 && inGallery(Z) && B.era.z1 - Z.z1 >= W.MUSEUM.OPEN && B.era.z1 - Z.z1 <= 12 && !reserved.some((r) => hit(Z, r))
+    const fud = Math.abs(Z.x1 - Z.x0 - 3) < 1e-9 && Math.abs(Z.z1 - Z.z0 - 3) < 1e-9 && inGallery(Z) && B.era.z1 - Z.z1 >= W.MUSEUM.OPEN && B.era.z1 - Z.z1 <= 12 && !reserved.filter((r) => r.why !== "FUD Patrol").some((r) => hit(Z, r))
       && !B.solids.some((s) => hit(s, Z)) && !B.obs.some((o) => hit(o, Z)) && !B.defs.some((d) => d.at.x > Z.x0 - 0.3 && d.at.x < Z.x1 + 0.3 && d.at.z > Z.z0 - 0.3 && d.at.z < Z.z1 + 0.3);
     check("fudZoneClear", fud);
     // Taps and walk-ups: each tap box over its model's footprint, each walk-up point in front of it toward the old stream.
@@ -24767,7 +24781,7 @@ const genesisEra6UpgradeSuite = async () => {
   context.window.document = context.document;
   context.window.BL = { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } };
   const load = async (f) => runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`),
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES,
     "genesis-bench", "retro-games", "genesis-era-6-argument"]) await load(f);
   const BL = context.window.BL, W = BL.genesisWorld, EX = BL.genesisExhibits, P = BL.genesisProps, E6 = BL.genesisEra6;
 
@@ -25150,7 +25164,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25304,7 +25318,7 @@ const genesisCartridgeProof = async () => {
 const genesisMuseumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const W = context.window.BL.genesisWorld, EX = context.window.BL.genesisExhibits, M = W.MUSEUM, bad = [];
   const overlap = (a, b) => a.x0 < b.x1 - 1e-6 && a.x1 > b.x0 + 1e-6 && a.z0 < b.z1 - 1e-6 && a.z1 > b.z0 + 1e-6;
   // Galleries never overlap each other or the atrium; each opens onto the atrium along one of its sides.
@@ -25338,12 +25352,16 @@ const genesisMuseumProof = async () => {
       prop: (d) => { inBay(d.at.x, d.at.z, d.id); return { ...d, era: n }; } };
     if (EX.eras[n]) EX.eras[n].build(kit);
   });
+  // Era 2's FUD Patrol floor is a reserved plot of its gallery, inside it and so clear of the atrium's courtyard.
+  const fud = context.window.BL.genesisEra2 && context.window.BL.genesisEra2.FUD_PATROL_ZONE, fz = W.reservedZones(2).find((r) => r.why === "FUD Patrol");
+  const fm = fud && M.boxToMuseum(2, fud), r2 = M.rects[2];
+  if (!fud || !fz || fm.x0 < r2.x0 || fm.x1 > r2.x1 || fm.z0 < r2.z0 || fm.z1 > r2.z1) bad.push("Era 2's FUD Patrol floor is not a reserved plot inside its gallery");
   return { galleries: M.rects.length, clockwise, roundTrip, pieces, atrium: [M.atrium.x1 - M.atrium.x0, M.atrium.z1 - M.atrium.z0], bad: bad.slice(0, 8) };
 };
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, P = BLc.genesisProps, EX = BLc.genesisExhibits, bad = [], built = [], walls = [];
   const registered = W.ERAS.every((e, n) => !!EX.eras[n]);
   let count = 0;
@@ -25751,7 +25769,7 @@ const unitChecks = async () => {
   const genesisCartridge = await genesisCartridgeProof();
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisMuseum = await genesisMuseumProof();
-  record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles land inside its own gallery", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
+  record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles (its upgrade cluster included) land inside its own gallery, and Era 2's FUD Patrol floor is a reserved plot there", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
   const genesisExhibits = await genesisExhibitsProof();
   record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none; Era 2: Merkle [7]; Era 3: the press demonstrates [3] and [4]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]; Era 5: Hashcash 2002 [6], bit gold influence; Era 6: the paper as anchor, its payments demonstration and its eight-slot reference list as bibliography entries mapping one to one onto the citation stops; Era 7: none) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && genesisExhibits.bibliography && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();
