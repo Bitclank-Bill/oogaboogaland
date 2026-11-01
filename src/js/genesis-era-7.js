@@ -520,14 +520,240 @@
     }
   };
 
+  // --- The launch cluster (gv/upgrade-era-7): Peer Sync, a 2009 computer corner and the counting frame ---------------
+  // One compact group on the right side past the software desk (u 42.5 to 55, v 4.5 to 10.5), clear of the dock, the
+  // lamps and the walk. Its game's rules live in genesis-era-7-sync.js (BL.genesisEra7Sync); until the integrator loads
+  // that file before this one, the cabinet is left out and the other two still stand. The corner and the frame are
+  // context; Peer Sync is a modern museum homage, labelled as such, never historical software.
+  const SYNC = () => BL.genesisEra7Sync || null;
+  const CLUSTER = {
+    sync: { id: "e7-sync", year: 2009, title: "Peer Sync cabinet", label: "PEER SYNC · 2009 STYLE", sub: "a modern museum homage · made 2026",
+      date: "Made for the museum in 2026: a modern homage on the 8 January 2009 software desk's idea, not historical software",
+      sourceKeys: ["E7-REL", "E7-DOSSIER"],
+      hint: "Type WAIT to let a beat pass, and PLUG any terminal whose link drops.",
+      howTo: ["Type WAIT: one beat passes and something happens.", "When a terminal's link drops, type PLUG and its letter, like PLUG B.",
+        "Win when all three hold the same 8 records. COMPARE shows them.", "NEW plays a fresh run; RESET replays this one."],
+      more: ["Peer Sync is a modern museum homage, made in 2026. It is not historical software and copies no real program.",
+        "It extends the software desk: three pretend terminals keep the same records; one that drops off keeps what it had, and when plugged back in it checks the link and catches up. A broken record is refused.",
+        "Nothing here is a network, wallet, payment or mining. Real software checks far more than one link.",
+        "The software it nods to was announced on 8 January 2009, 19:27:40 UTC (archived email timestamp), as experimental software for Windows with its source code included."] },
+    pc: { id: "e7-pc", year: 2009, title: "A January 2009 computer corner", label: "A 2009 COMPUTER CORNER", sub: "January 2009 context · invented design",
+      date: "January 2009 context: the 8 January 2009 release email named Windows as its only platform; this desk and machine are an invented, unbranded design",
+      sourceKeys: ["E7-REL"],
+      hint: "Open the panel: what the release email says the software ran on.",
+      panel: { room: "A 2009 computer corner", pages: [
+        { caption: "In short", title: "Windows only for now", text: [
+          "The release email of 8 January 2009 (archived timestamp 19:27:40 UTC) named one platform for the first software: Windows, with its source code included.",
+          "This corner shows an ordinary desktop of the kind such software ran on: a tower, a flat screen, a keyboard and a mouse."] },
+        { caption: "Deeper story", title: "Context only", text: [
+          `The email says: "${RELEASE.quote}"`,
+          "The machine here is invented and unbranded: no real product's shape, name or logo. It is period context for the software desk, not a historical object.",
+          "Separate events: the October 2008 paper, the 3 January 2009 block header timestamp, the 8 January 2009 release email and the 12 January 2009 test payment."] },
+        { caption: "Unsolved", title: "What this does not claim", text: [
+          "It says nothing about what computer anyone involved used, and it shows no specifications: the museum's research has not verified one for this corner.",
+          "A laptop configuration from October 2008 is held back until its manufacturer's page can be read for this build."] },
+        { caption: "Sources", title: "Where this comes from", text: sourceLines(["E7-REL"]) }] } },
+    frame: { id: "e7-frame", year: 2009, title: "The counting frame", label: "COUNTING FRAME · 2009", sub: "50 counters · move them, keep them all",
+      date: "12 January 2009, 03:30:25 UTC: block 170's header timestamp; the frame is an original demonstration of its 50 = 10 + 40 split",
+      sourceKeys: ["E7-170", "E7-170-TXS"],
+      hint: "Type MOVE 10 TO 1, then MOVE 40 TO 2, and watch the total stay 50.",
+      howTo: ["Type MOVE 10 TO 1: ten beads slide from the input to output 1.", "Type MOVE 40 TO 2, or MOVE 5 FROM 1 TO 2 to move between outputs.",
+        "Every reply counts all three zones: the beads always add up to 50.", "CHECK compares with block 170's record; RESET slides them all back."],
+      more: ["Fifty beads stand for block 170's 50-coin input. Move them between the input and the two outputs however you like: none is ever made or lost.",
+        "Block 170's record pays outputs of 1,000,000,000 and 4,000,000,000 satoshis: 10 and 40 coins. CHECK lights the lamp when your frame matches.",
+        "The record holds amounts and keys, not names. Finney's account of receiving ten coins is his 19 March 2013 recollection, not part of the record.",
+        "An original demonstration: a real payment is checked in many more ways."] }
+  };
+  // The counting frame's rules: each bead in zone 0 (input), 1 (output 1) or 2 (output 2). Moves are whole numbers of
+  // beads that exist in the zone they come from; a refused move changes nothing.
+  const ZONE_NAMES = ["input", "output 1", "output 2"];
+  const createFrame = () => {
+    const s = { zone: new Uint8Array(COUNTERS), version: 0, moves: 0 };
+    const count = (z) => { let c = 0; for (let i = 0; i < COUNTERS; i++) if (s.zone[i] === z) c++; return c; };
+    const reset = () => { s.zone.fill(0); s.moves = 0; s.version++; };
+    const move = (n, from, to) => {
+      if (!(n >= 1 && n <= COUNTERS) || from === to || !(from >= 0 && from < 3) || !(to >= 0 && to < 3)) return { error: true };
+      if (count(from) < n) return { error: true, short: count(from) };
+      for (let i = COUNTERS - 1, k = n; i >= 0 && k > 0; i--) if (s.zone[i] === from) { s.zone[i] = to; k--; }
+      s.moves++; s.version++;
+      return { n, from, to };
+    };
+    const matches = () => count(1) === B170.outputs[0] && count(2) === B170.outputs[1];
+    return Object.assign(s, { count, reset, move, matches });
+  };
+  const zoneOf = (word) => { const w = String(word).toUpperCase(); return w === "IN" || w === "INPUT" ? 0 : w === "1" ? 1 : w === "2" ? 2 : -1; };
+  const frameTerminal = (f) => {
+    const ex = CLUSTER.frame;
+    const total = () => `Input ${f.count(0)} + output 1 ${f.count(1)} + output 2 ${f.count(2)} = ${f.count(0) + f.count(1) + f.count(2)} beads.`;
+    return {
+      get banner() { return [...howTo(ex), ex.label, `${ex.date}.`, "", "Fifty beads on a frame. An original demonstration, not a wallet.", "", total(), ""]; },
+      prompt: "FRAME>",
+      run: (line) => {
+        const parts = clean(line).toUpperCase().split(/\s+/).filter(Boolean), cmd = parts[0] || "";
+        if (!cmd) return { lines: [] };
+        if (cmd === "HELP") return { lines: ["MOVE 10 TO 1          ten beads from the input to output 1", "MOVE 5 FROM 1 TO 2    between zones (IN, 1, 2)",
+          "SHOW                  count every zone", "CHECK                 compare with block 170's record", "MORE                  the story", "SOURCES               where this comes from", "RESET                 every bead back to the input"] };
+        if (cmd === "RESET") { f.reset(); return { lines: ["Every bead slid back to the input.", total()], reset: true }; }
+        if (cmd === "SHOW") return { lines: [total()] };
+        if (cmd === "MORE") return { lines: [ex.label, `${ex.date}.`, "Connection: context, an original demonstration.", "", ...ex.more] };
+        if (cmd === "SOURCES") return { lines: sourceLines(ex.sourceKeys) };
+        if (cmd === "CHECK") return { lines: [total(), f.matches() ? `That is block 170's split: ${B170.outputs[0]} and ${B170.outputs[1]}. The lamp is lit.`
+          : `Block 170 records ${B170.outputs[0]} and ${B170.outputs[1]}. Keep moving beads; none is ever made or lost.`] };
+        if (cmd === "MOVE") {
+          // MOVE n TO z, or MOVE n FROM z TO z.
+          const n = /^\d{1,2}$/.test(parts[1] || "") ? +parts[1] : -1;
+          let from = 0, to = -1;
+          if (parts[2] === "TO" && parts.length === 4) to = zoneOf(parts[3]);
+          else if (parts[2] === "FROM" && parts[4] === "TO" && parts.length === 6) { from = zoneOf(parts[3]); to = zoneOf(parts[5]); }
+          const r = n > 0 && from >= 0 && to >= 0 ? f.move(n, from, to) : { error: true };
+          if (r.error) return { lines: [r.short !== undefined ? `Only ${r.short} bead(s) in the ${ZONE_NAMES[from]}: nothing moved.` : "Use MOVE 10 TO 1, or MOVE 5 FROM 1 TO 2 (zones IN, 1 and 2). Nothing moved.", total()] };
+          return { lines: [`${r.n} bead(s) slid from the ${ZONE_NAMES[r.from]} to ${ZONE_NAMES[r.to]}.`, total(), ...(f.matches() ? ["That matches block 170's record: 10 and 40."] : [])] };
+        }
+        return { lines: ["Unknown command. Type HELP."] };
+      }
+    };
+  };
+  // Peer Sync through the workbench's terminal: the game module's own terminal with this exhibit's How to use, MORE and
+  // SOURCES around it.
+  const syncTerminal = (t) => {
+    const ex = CLUSTER.sync;
+    return {
+      get banner() { return [...howTo(ex), ex.label, `${ex.date}.`, "", ...t.banner]; },
+      prompt: t.prompt,
+      run: (line) => {
+        const cmd = clean(line).toUpperCase();
+        if (cmd === "MORE") return { lines: [ex.label, `${ex.date}.`, "Connection: context, a modern museum homage.", "", ...ex.more] };
+        if (cmd === "SOURCES") return { lines: sourceLines(ex.sourceKeys) };
+        return t.run(line);
+      }
+    };
+  };
+  // Where the cluster stands (bank frame, right side), its floor and lanterns.
+  const CL = {
+    sync: place(1, 44, 8, { x: 0.45, z: 0.45 }, 2.0, 1.5),
+    pc: place(1, 48.5, 8, { x: 0.65, z: 0.95 }, 1.5, 1.6),
+    frame: place(1, 53, 8, { x: 0.6, z: 1.0 }, 1.2, 1.6)
+  };
+  const CL_FLOOR = { side: 1, u0: 42.5, u1: 55, v0: 4.5, v1: 10.5 };
+  const CL_LANTERNS = [at(1, 42.9, 10.1), at(1, 54.6, 10.1)];
+  const clusterKeys = () => SYNC() ? ["sync", "pc", "frame"] : ["pc", "frame"];
+  const clusterFootprints = () => [
+    ...clusterKeys().map((key) => { const l = CL[key]; return { x0: l.x - l.half.x, x1: l.x + l.half.x, z0: l.z - l.half.z, z1: l.z + l.half.z }; }),
+    ...CL_LANTERNS.map((p) => ({ x0: p.x - 0.15, x1: p.x + 0.15, z0: p.z - 0.15, z1: p.z + 0.15 }))];
+  const clusterWalkUp = (key, y) => { const l = CL[key]; return { x: l.x - l.side * (l.half.x + FRONT), y, z: l.z }; };
+  const createClusterLive = () => {
+    const S7 = SYNC(), frame = createFrame(), rules = S7 ? S7.createRules() : null;
+    const terminals = { frame: frameTerminal(frame), sync: S7 ? syncTerminal(S7.terminal(rules)) : null };
+    return { frame, rules, terminals };
+  };
+  // The cluster's models: a cabinet whose three windows and record pips show the Peer Sync run live, the computer
+  // corner, and the frame with its 50 beads in three coloured zones and a lamp that lights on block 170's split.
+  const BEAD = 0.06;
+  const buildCluster = (kit, cl) => {
+    const { top: Y, M, createNode, place: put, solid, sign } = kit;
+    const node = (geometry, x, y, z, visible = true) => put(createNode({ geometry, position: { x, y, z }, visible }));
+    const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
+    const parts = { winOk: [], winBehind: [], winOff: [], pips: [], beads: [], bx: new Float32Array(COUNTERS), bz: new Float32Array(COUNTERS), laid: -1, frameAt: null, lamp: null };
+    {
+      const a = at(1, CL_FLOOR.u0, CL_FLOOR.v0), b = at(1, CL_FLOOR.u1, CL_FLOOR.v1), x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), z0 = Math.min(a.z, b.z), z1 = Math.max(a.z, b.z);
+      solid(x1 - x0, 0.02, z1 - z0, "#2e2724", (x0 + x1) / 2, Y + 0.012, (z0 + z1) / 2);
+      solid(x1 - x0, 0.025, 0.08, "#c86a28", (x0 + x1) / 2, Y + 0.014, z0 + 0.04, 0.6);
+      solid(x1 - x0, 0.025, 0.08, "#c86a28", (x0 + x1) / 2, Y + 0.014, z1 - 0.04, 0.6);
+      for (const p of CL_LANTERNS) { solid(0.18, 1.3, 0.18, "#2a2320", p.x, Y + 0.65, p.z); solid(0.26, 0.2, 0.26, "#d07a30", p.x, Y + 1.4, p.z, 0.8); }
+    }
+    if (cl.rules) {
+      const l = CL.sync, x = l.x, z = l.z, s = -l.side;
+      solid(0.8, 1.7, 0.8, "#2b2a30", x, Y + 0.85, z);
+      solid(0.3, 0.06, 0.7, "#151519", x + s * 0.42, Y + 0.95, z);
+      solid(0.02, 0.62, 0.66, "#07080d", x + s * 0.405, Y + 1.32, z);
+      for (let k = 0; k < 3; k++) {
+        const zz = z + 0.2 - k * 0.2, xx = x + s * 0.418;
+        parts.winOk.push(node(box(0.01, 0.14, 0.15, "#4ad08a", 1.1), xx, Y + 1.48, zz));
+        parts.winBehind.push(node(box(0.01, 0.14, 0.15, "#f0a030", 1.1), xx, Y + 1.48, zz, false));
+        parts.winOff.push(node(box(0.01, 0.14, 0.15, "#55555a"), xx, Y + 1.48, zz, false));
+        const row = [];
+        for (let i = 0; i < 8; i++) row.push(node(box(0.01, 0.022, 0.12, "#ffd23a", 0.9), xx, Y + 1.08 + i * 0.03, zz, false));
+        parts.pips.push(row);
+      }
+      sign(CLUSTER.sync.label, CLUSTER.sync.sub, x, Y + 2.0, z, yawOf(s), 0.36);
+    }
+    {
+      const l = CL.pc, x = l.x, z = l.z, s = -l.side;
+      solid(1.2, 0.06, 1.8, "#4f4436", x, Y + 0.74, z);
+      for (const [dx, dz] of [[-0.52, -0.82], [0.52, -0.82], [-0.52, 0.82], [0.52, 0.82]]) solid(0.06, 0.74, 0.06, "#332b22", x + dx, Y + 0.37, z + dz);
+      solid(0.2, 0.46, 0.46, "#2a2a30", x - s * 0.3, Y + 1.0, z + 0.62);
+      solid(0.01, 0.02, 0.02, "#6aff9a", x - s * 0.19, Y + 1.12, z + 0.5, 1.2);
+      solid(0.05, 0.4, 0.62, "#1c1c22", x - s * 0.36, Y + 1.15, z - 0.05);
+      solid(0.02, 0.34, 0.56, "#2c5a8a", x - s * 0.33, Y + 1.15, z - 0.05, 0.9);
+      solid(0.012, 0.03, 0.36, "#d8e6f0", x - s * 0.318, Y + 1.25, z - 0.05, 1.1);
+      solid(0.012, 0.03, 0.24, "#d8e6f0", x - s * 0.318, Y + 1.18, z - 0.11, 1.1);
+      solid(0.012, 0.02, 0.56, "#3a3a44", x - s * 0.318, Y + 0.99, z - 0.05, 0.4);
+      solid(0.12, 0.16, 0.06, "#1c1c22", x - s * 0.38, Y + 0.85, z - 0.05);
+      solid(0.18, 0.025, 0.52, "#2a2a30", x + s * 0.12, Y + 0.785, z - 0.05);
+      solid(0.1, 0.03, 0.06, "#2a2a30", x + s * 0.14, Y + 0.785, z - 0.45);
+      sign(CLUSTER.pc.label, CLUSTER.pc.sub, x - s * 0.5, Y + 1.75, z + 0.5, yawOf(s), 0.36);
+    }
+    {
+      const l = CL.frame, x = l.x, z = l.z, s = -l.side;
+      solid(1.1, 0.06, 2.0, "#5a4632", x, Y + 0.8, z);
+      for (const [dx, dz] of [[-0.48, -0.92], [0.48, -0.92], [-0.48, 0.92], [0.48, 0.92]]) solid(0.06, 0.8, 0.06, "#3d2f20", x + dx, Y + 0.4, z + dz);
+      const ZONE_Z = [z + 0.66, z, z - 0.66], ZONE_C = ["#6a5a4a", "#2f6a6a", "#5a3f7a"];
+      for (let k = 0; k < 3; k++) solid(0.36, 0.02, 0.62, ZONE_C[k], x, Y + 0.84, ZONE_Z[k]);
+      solid(0.4, 0.04, 0.03, "#c8a060", x, Y + 0.85, z + 0.33);
+      solid(0.4, 0.04, 0.03, "#c8a060", x, Y + 0.85, z - 0.33);
+      solid(0.12, 0.3, 0.12, "#2a2320", x - s * 0.42, Y + 0.98, z - 0.9);
+      parts.lampOff = node(box(0.14, 0.12, 0.14, "#3a3a3a"), x - s * 0.42, Y + 1.19, z - 0.9);
+      parts.lamp = node(box(0.15, 0.13, 0.15, "#6aff9a", 1.4), x - s * 0.42, Y + 1.19, z - 0.9, false);
+      parts.frameAt = { x, z, zoneZ: ZONE_Z, y: Y + 0.875 };
+      for (let i = 0; i < COUNTERS; i++) parts.beads.push(node(box(0.045, 0.03, 0.045, "#e8b04a", 0.5), x, Y + 0.875, z));
+      sign(CLUSTER.frame.label, CLUSTER.frame.sub, x - s * 0.5, Y + 1.5, z + 0.3, yawOf(s), 0.36);
+    }
+    return parts;
+  };
+  // Bead targets: each zone a 5 by 10 grid, filled in bead order. Allocation-free.
+  const layBeads = (parts, f) => {
+    const A = parts.frameAt, k = [0, 0, 0];
+    for (let i = 0; i < COUNTERS; i++) {
+      const zn = f.zone[i], n = k[zn]++;
+      parts.bx[i] = A.x + ((n % 5) - 2) * BEAD;
+      parts.bz[i] = A.zoneZ[zn] + 0.27 - ((n / 5) | 0) * BEAD;
+    }
+    parts.laid = f.version;
+  };
+  const syncCluster = (parts, cl, dt, snap) => {
+    const R = cl.rules;
+    if (R) for (let k = 0; k < 3; k++) {
+      const on = R.online[k] === 1, behind = on && R.len[k] < R.head;
+      parts.winOk[k].visible = on && !behind; parts.winBehind[k].visible = behind; parts.winOff[k].visible = !on;
+      for (let i = 0; i < 8; i++) parts.pips[k][i].visible = i < R.len[k];
+    }
+    const f = cl.frame;
+    if (parts.laid !== f.version) layBeads(parts, f);
+    const t = snap ? 1 : Math.min(1, dt * STEP_RATE);
+    for (let i = 0; i < COUNTERS; i++) {
+      const q = parts.beads[i];
+      q.position.x += (parts.bx[i] - q.position.x) * t;
+      q.position.z += (parts.bz[i] - q.position.z) * t;
+    }
+    const lit = f.matches();
+    parts.lamp.visible = lit; parts.lampOff.visible = !lit;
+  };
+
   // --- Registration -------------------------------------------------------------------------------------------------
   let visit = null;
   BL.genesisExhibits.register(ERA, {
     sources: SOURCES,
     overview: OVERVIEW,
     build(kit) {
-      const live = createLive(), parts = buildModels(kit, live);
+      const live = createLive(), parts = buildModels(kit, live), cl = createClusterLive(), cparts = buildCluster(kit, cl);
       for (const o of footprints()) kit.obstacle(o.x0, o.x1, o.z0, o.z1);
+      for (const o of clusterFootprints()) kit.obstacle(o.x0, o.x1, o.z0, o.z1);
+      for (const key of clusterKeys()) {
+        const ex = CLUSTER[key], l = CL[key];
+        kit.prop({ id: ex.id, year: ex.year, connection: "context", date: ex.date, title: ex.title, label: ex.label, sourceKeys: ex.sourceKeys,
+          at: clusterWalkUp(key, kit.top), reach: l.reach, pick: { w: l.half.x * 2, h: l.h, d: l.half.z * 2, x: l.x, z: l.z }, hint: ex.hint,
+          ...(ex.howTo ? { howTo: ex.howTo } : {}), onUse: ex.panel ? () => ({ board: boardOf(ex) }) : () => ({ terminal: cl.terminals[key] }) });
+      }
       for (const { key, ex: name, panel } of PROPS) {
         const ex = EXHIBITS[name], l = LAYOUT[key];
         kit.prop({ id: panel ? ex.panelId : ex.id, year: ex.year, connection: "context", date: ex.date, title: panel ? ex.panelTitle : ex.title,
@@ -543,15 +769,21 @@
         kit.solid(0.46, 0.02, 0.84, "#e9dcc0", l.x, kit.top + 1.16, l.z, 0.25);
       }
       sync(parts, live, 0, true, true);
-      visit = { live, parts };
+      syncCluster(cparts, cl, 0, true);
+      visit = { live, parts, cl, cparts };
     },
-    update(dt, elapsed, state) { if (visit) sync(visit.parts, visit.live, dt, state.calm === true || state.reading === true, state.calm === true); },
+    update(dt, elapsed, state) {
+      if (!visit) return;
+      sync(visit.parts, visit.live, dt, state.calm === true || state.reading === true, state.calm === true);
+      syncCluster(visit.cparts, visit.cl, dt, state.calm === true);
+    },
     // Nothing outlives a frame here; leaving settles the counters and the activity lights so a return resumes nothing.
-    active(on) { if (visit && !on) { visit.live.net.blink = 0; sync(visit.parts, visit.live, 0, true, true); } },
+    active(on) { if (visit && !on) { visit.live.net.blink = 0; sync(visit.parts, visit.live, 0, true, true); syncCluster(visit.cparts, visit.cl, 0, true); } },
     dispose() { visit = null; }
   });
 
   BL.genesisEra7 = { ERA, YEARS, NAME, SOURCES, OVERVIEW, EXHIBITS, ISLANDS, LAYOUT, PROPS, GENESIS, B170, RELEASE, ROWS, PEERS, MAX_RECORDS, COUNTERS,
+    CLUSTER, CL, createFrame, frameTerminal, createClusterLive, clusterFootprints, clusterKeys, buildCluster, syncCluster,
     sourceOf, stamp, createRecord, createNet, createCounting, recordTerminal, netTerminal, countingTerminal, createLive, footprints, walkUp,
     buildModels, sync, get visit() { return visit; } };
 })();
