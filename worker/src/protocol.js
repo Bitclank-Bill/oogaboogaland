@@ -14,6 +14,7 @@ import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy
 //                                checks `playback` against the state's playbackRevision
 //                                (`parseStudioCommand` in studio-policy.js; see docs/dsb-studio-session.md)
 //                 { t: "ghost", k, g?, d?, h? }  HALLOWEEN: the ghost hunt's `start`, `ready` or `pause`, or `hits` h, for the host
+//                 { t: "thump" }                 a voice participant's Ooga thump (see Thumps below); no other field
 //                 binary                         the NPC host's frame of every Ooga's pose, relayed as is
 // Room → client:  welcome { you, players, tickHz, now, loopEpoch, connectionToken }, join { p }, leave { id, reason },
 //                 body { id, name }, state { now, ps: [id, x, y, z, yaw, ...], gs? }, kick { reason },
@@ -35,6 +36,7 @@ import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy
 //                 chat-rejected { clientId?, reason }  refused; rate retries keep the same id
 //                 chat-history { messages }  after welcome: the lines the room still holds, oldest first
 //                 ghost { k, g, d, from }    HALLOWEEN: a follower's start or hit, relayed to the NPC host alone
+//                 thump { id }               player `id` thumped: sent only to their voice peers, never the sender
 // Zones: `<group>` or `<group>.<place>`. Voice is shared within a group; who is shown is matched on the whole
 // name, since a place inside a group can have coordinates of its own (the Factory's tunnel on the island and
 // its hall). `none` is nowhere: off the island's edge, or between scenes; it shares voice with nobody.
@@ -44,6 +46,14 @@ import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy
 // that joins. A line is CHAT_MAX characters at most after `sanitizeChat`. A chat frame gets its own size
 // limit: one that starts with CHAT_PREFIX, as the page sends it, may run to CHAT_FRAME_MAX and is ignored past
 // it, so a long line is dropped rather than closing the socket; every other frame keeps MESSAGE_MAX.
+// Thumps: a reaction in voice instead of unmuting to say "yes!". Taken only from a current voice participant (a receive
+// session, as `voicePeers` counts a listener: talking or listen-only) and relayed as `{"t":"thump","id":N}` only to the
+// players voice joins them with (`thumpPeers`): those the sender hears and those who would hear the sender if they
+// spoke, by the same predicates as `voicePeers`, so poker tables, DSB Studio permissions and `none` all hold. A frame
+// with any other field is ignored. Each account spends a bucket of THUMP_HZ a second bursting to THUMP_BURST
+// (`takeToken`); buckets live in memory alone, at most THUMP_BUCKET_KEEP, and an absent account's full bucket is
+// dropped when the next one is made (`thumpBucketFor`). No timer, alarm, storage, reply or history: a dropped thump is
+// simply not relayed. The page counts supporters and draws everything.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -84,6 +94,10 @@ export const CHAT_HZ = 1;
 export const CHAT_BURST = 3;
 // Active accounts plus bounded reconnect debt, held only while the room is awake.
 export const CHAT_BUCKET_KEEP = MAX_PLAYERS * 2;
+// Thumps: about two a second per player, three in a burst; active accounts plus bounded reconnect debt.
+export const THUMP_HZ = 2;
+export const THUMP_BURST = 3;
+export const THUMP_BUCKET_KEEP = MAX_PLAYERS * 2;
 // The page sends `{"t":"chat","text":…}` with its text already sanitized, under MESSAGE_MAX; the margin is
 // for a page that sends it raw (every character escaped as \uXXXX is six).
 export const CHAT_PREFIX = '{"t":"chat",';
@@ -182,6 +196,7 @@ export const parseClientMessage = (text) => {
     if (msg.k === "hits") return ghostHits(msg.h);
     return msg.k === "hit" && ghostHit(msg.g, msg.d) ? { t: "ghost", k: "hit", g: msg.g, d: msg.d } : null;
   }
+  if (msg.t === "thump") return Object.keys(msg).length === 1 ? { t: "thump" } : null;
   if (msg.t === "poker-voice") return msg.table === null || Number.isInteger(msg.table) && msg.table >= 0 && msg.table < 10 ? { t: "poker-voice", table: msg.table } : null;
   return null;
 };
@@ -193,6 +208,18 @@ export const takeToken = (bucket, rate, now, burst = rate) => {
   if (bucket.tokens < 1) return false;
   bucket.tokens -= 1;
   return true;
+};
+
+/** A thump bucket for account `id`, made full on first use and kept while the room is awake; on making one, absent
+ *  accounts whose bucket has refilled are dropped (lazy expiry), and at THUMP_BUCKET_KEEP none is made (null). */
+export const thumpBucketFor = (buckets, id, now, present) => {
+  let bucket = buckets.get(id);
+  if (bucket) return bucket;
+  for (const [account, b] of buckets) if (!present.has(account) && b.tokens + (now - b.at) * THUMP_HZ / 1000 >= THUMP_BURST) buckets.delete(account);
+  if (buckets.size >= THUMP_BUCKET_KEEP) return null;
+  bucket = { tokens: THUMP_BURST, at: now };
+  buckets.set(id, bucket);
+  return bucket;
 };
 
 /** The chat's last `keep` lines in a fixed ring: `push` is constant time, `list` copies them out oldest first. */
@@ -272,19 +299,42 @@ export const zoneGroup = (zone) => {
   return dot < 0 ? zone : zone.slice(0, dot);
 };
 
+// The three halves of who hears whom, shared by `voicePeers` and `thumpPeers`. Both restrictions hold together: a
+// bodiless listener counts only inside the Studio, a Studio speaker only while permitted, and Ember Den voice only
+// between players at the same poker table.
+/** Whether `p` is a voice participant who can hear anyone: a receive session, driving (or in the Studio), not `none`. */
+export const voiceListener = (p, studio = null) => !!((p.body || (studio && p.zone === STUDIO_ZONE)) && p.voice && p.voice.sub && zoneGroup(p.zone) !== NOWHERE);
+/** Whether `q` may be heard where they are, microphone aside. */
+export const voiceAudible = (q, studio = null) => !!((q.body || (studio && q.zone === STUDIO_ZONE)) && (!studio || q.zone !== STUDIO_ZONE || studioCanSpeak(studio, q)));
+/** Whether `p` and `q` share a voice place: one zone group, and in the Ember Den one table. */
+export const voiceTogether = (p, q) => {
+  const group = zoneGroup(p.zone);
+  return zoneGroup(q.zone) === group && (group !== "ember-den" || (p.pokerVoice ?? null) === (q.pokerVoice ?? null));
+};
+
 /** Map of player id → sorted ids that player should hear. */
 export const voicePeers = (players, studio = null) => {
   const out = new Map();
   for (const p of players) {
     const ids = [];
-    const group = zoneGroup(p.zone);
-    // Both restrictions hold together: a bodiless listener counts only inside the Studio, a Studio
-    // speaker only while permitted, and Ember Den voice only between players at the same poker table.
-    if ((p.body || (studio && p.zone === STUDIO_ZONE)) && p.voice && p.voice.sub && group !== NOWHERE) {
-      for (const q of players) if (q !== p && (q.body || (studio && q.zone === STUDIO_ZONE)) && zoneGroup(q.zone) === group && (group !== "ember-den" || (p.pokerVoice ?? null) === (q.pokerVoice ?? null)) && q.voice && q.voice.track && (!studio || q.zone !== STUDIO_ZONE || studioCanSpeak(studio, q))) ids.push(q.id);
+    if (voiceListener(p, studio)) {
+      for (const q of players) if (q !== p && voiceAudible(q, studio) && voiceTogether(p, q) && q.voice && q.voice.track) ids.push(q.id);
       ids.sort((a, b) => a - b);
     }
     out.set(p.id, ids);
+  }
+  return out;
+};
+
+/** The players a thump from `sender` reaches: other voice participants it hears (`voicePeers`), or who would hear it
+ *  were its microphone live. Empty unless the sender is a voice participant itself. */
+export const thumpPeers = (players, sender, studio = null) => {
+  const out = [];
+  if (!voiceListener(sender, studio)) return out;
+  const audible = voiceAudible(sender, studio);
+  for (const q of players) {
+    if (q === sender || !voiceListener(q, studio) || !voiceTogether(sender, q)) continue;
+    if (audible || voiceAudible(q, studio) && q.voice.track) out.push(q);
   }
   return out;
 };

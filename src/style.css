@@ -1301,6 +1301,11 @@ body[data-active-scene="arcade"] .magazine-hud {
 
 .chat-row[data-own="true"] .chat-name { color: #8fe3a8; }
 
+/* An Ooga thump crowd's notice (thump.js): this page's own row, a pixel mallet and its words, never a chat line. */
+.chat-row.chat-notice { display: flex; align-items: center; gap: 6px; }
+.chat-notice .pixel-mallet { flex: none; width: 12px; height: 12px; color: var(--accent); shape-rendering: crispEdges; }
+.chat-notice .chat-text { margin-top: 0; color: var(--accent-text); font-style: italic; }
+
 .chat-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 .panel .chat-status {
@@ -1738,8 +1743,21 @@ body[data-active-scene="arcade"] .magazine-hud {
 }
 
 .roster-host[hidden],
-.roster-voice[hidden] {
+.roster-voice[hidden],
+.roster-thump[hidden] {
   display: none;
+}
+
+/* An Ooga thump's support mark beside a name, pulsed by thump.js and hidden again when its animation ends. */
+.roster-thump {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+.roster-thump svg {
+  width: 12px;
+  height: 12px;
+  shape-rendering: crispEdges;
 }
 
 .roster-host {
@@ -2514,6 +2532,41 @@ body.wp-reading .joysticks {
   color: #ffb3a6;
   border-color: var(--danger);
 }
+
+/* The Ooga thump crowd's banner (thump.js): a pixel mallet and the count, under the mic note, never taking a pointer. */
+.thump-crowd {
+  position: absolute;
+  left: 50%;
+  top: calc(86px + var(--safe-top));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 14px;
+  background: var(--tablet);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: var(--tablet-shadow);
+  color: var(--accent-text);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.thump-crowd[hidden] { display: none; }
+.thump-crowd .pixel-mallet { width: 16px; height: 16px; color: var(--accent); shape-rendering: crispEdges; }
+
+/* Thump beside the voice controls: its mallet before the word, and quick repeated taps never zoom a phone. */
+.foot-thump {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  touch-action: manipulation;
+}
+
+.foot-thump .pixel-mallet { width: 11px; height: 11px; shape-rendering: crispEdges; }
 
 /* HALLOWEEN: the ghost hunt (ghost-hud.js). The round line and the visitor's bar under the clock and the hint, the
    banners across the middle, the flash when a ghost gets you; none of it takes a pointer. */
@@ -6641,6 +6694,7 @@ body[data-active-scene] .equipment-hud:is([data-banner="compact"], [data-banner=
 
 body[data-active-scene] .sheet[data-dock="right"][data-sized="false"] { top: calc(72px + var(--safe-top)); }
 body[data-active-scene] .mic-note { top: var(--hub-equipment-bottom, calc(72px + var(--safe-top))); }
+body[data-active-scene] .thump-crowd { top: calc(var(--hub-equipment-bottom, calc(72px + var(--safe-top))) + 34px); }
 
 @media (max-width: 720px) {
   body[data-active-scene] #equipment-hud~.bottom-hud>#message-stack {

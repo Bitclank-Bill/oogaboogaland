@@ -19,13 +19,15 @@
 // Chat: each line is named from the session, rate limited per account across awake-room reconnects, sent to every socket and kept in a
 // ring of the last CHAT_KEEP in memory alone, which a joiner gets after `welcome`. No durable chat storage: a room
 // that hibernates, restarts or is redeployed wakes with an empty ring, and the lines are gone.
+// Thumps: a voice participant's reaction, relayed to its voice peers alone (`thumpPeers`) within a per-account bucket;
+// nothing is kept, timed or answered, and the attachment is untouched.
 
 import { DurableObject } from "cloudflare:workers";
 import {
   CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, CLEANUP_MS, TICK_HZ,
   NPC_FRAME_MAX, NPC_HZ, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP,
-  DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST,
-  chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
+  DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST, THUMP_HZ, THUMP_BURST,
+  chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers, thumpPeers, thumpBucketFor,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
 import { getPlayer } from "./db.js";
@@ -52,6 +54,7 @@ export class Room extends DurableObject {
     this.chatId = 0;
     this.chatAccepted = new Map();
     this.chatBuckets = new Map();
+    this.thumpBuckets = new Map();
     this.doorQueue = [];
     this.doorActive = null;
     this.doorPasses = new Map();
@@ -382,6 +385,9 @@ export class Room extends DurableObject {
     } else if (msg.t === "chat") {
       // Nothing in the attachment changes.
       return this.say(p, msg.text, msg.clientId);
+    } else if (msg.t === "thump") {
+      // Nothing in the attachment changes.
+      return this.thump(p);
     } else if (msg.t === "door") {
       return this.doorMessage(p, msg);
     } else if (msg.t === "ghost") {
@@ -513,6 +519,17 @@ export class Room extends DurableObject {
     this.chat.push(line);
     this.broadcast({ t: "chat", ...line });
     if (key) this.send(p.ws, { t: "chat-ack", clientId });
+  }
+
+  // A thump from a voice participant goes to its voice peers as one tiny frame, never back to the sender; over the
+  // bucket, or from anyone voice does not join with anybody, it is dropped without a word.
+  thump(p) {
+    const peers = thumpPeers(this.players.values(), p, this.studio);
+    if (!peers.length) return;
+    if (!p.thumpBucket) p.thumpBucket = thumpBucketFor(this.thumpBuckets, p.id, p.seenAt, this.players);
+    if (!p.thumpBucket || !takeToken(p.thumpBucket, THUMP_HZ, p.seenAt, THUMP_BURST)) return;
+    const frame = `{"t":"thump","id":${p.id}}`;
+    for (const q of peers) this.send(q.ws, frame);
   }
 
   // Also after any page's `hub` flag changes: the host sends frames only while someone follows.

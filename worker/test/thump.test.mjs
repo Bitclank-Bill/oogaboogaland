@@ -1,0 +1,189 @@
+// Ooga thumps: the wire rule, who a thump reaches (the same predicates as voicePeers, so poker tables, the DSB Studio
+// and `none` hold), the per-account bucket, and the real room driven through its socket handler with storage, alarms
+// and timers that fail the test if anything touches them.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import * as protocol from "../src/protocol.js";
+import * as studio from "../src/studio-policy.js";
+import { sfuClient } from "../src/sfu.js";
+import { getPlayer } from "../src/db.js";
+
+const { THUMP_HZ, THUMP_BURST, THUMP_BUCKET_KEEP, MESSAGE_MAX, parseClientMessage, thumpPeers, thumpBucketFor, voicePeers, takeToken } = protocol;
+const listening = { sub: "receive", pub: null, track: null };
+const talking = { sub: "receive", pub: "publish", track: "mic" };
+const player = (id, zone, voice = listening, extra = {}) => ({ id, zone, body: `ooga-${id}`, voice: { ...voice }, ...extra });
+const ids = (list) => list.map((p) => p.id).sort((a, b) => a - b);
+
+test("a thump is {t:\"thump\"} alone: no payload, a tiny frame, and anything more is ignored, never fatal", () => {
+  assert.deepEqual(parseClientMessage('{"t":"thump"}'), { t: "thump" });
+  for (const extra of [{ id: 9 }, { to: 3 }, { n: 5 }, { text: "yes" }, { t2: 1 }]) assert.equal(parseClientMessage(JSON.stringify({ t: "thump", ...extra })), null, JSON.stringify(extra));
+  assert.equal(parseClientMessage(JSON.stringify({ t: "thump", pad: "x".repeat(MESSAGE_MAX) })), false, "an oversized frame closes as any other");
+  assert.equal('{"t":"thump"}'.length, 13);
+});
+
+test("thump membership: listen-only and talking participants reach their voice group; nobody else sends or receives", () => {
+  const players = [
+    player(1, "outside"), // listen-only, never a microphone
+    player(2, "outside", talking),
+    player(3, "outside"),
+    player(4, "outside", { sub: null, pub: null, track: null }), // driving, not in voice
+    player(5, "lab", talking), // another group
+    player(6, "outside", talking, { body: null }), // let go of their Ooga
+    player(7, "factory.hall"), player(8, "factory", talking), // one group across its places
+  ];
+  assert.deepEqual(ids(thumpPeers(players, players[0])), [2, 3], "a listen-only thump reaches everyone in voice in its group");
+  assert.deepEqual(ids(thumpPeers(players, players[1])), [1, 3]);
+  assert.deepEqual(thumpPeers(players, players[3]), [], "not in voice: nothing is relayed");
+  assert.deepEqual(thumpPeers(players, players[5]), [], "bodiless outside the Studio: nothing is relayed");
+  assert.deepEqual(ids(thumpPeers(players, players[4])), [], "alone in its group");
+  assert.deepEqual(ids(thumpPeers(players, players[6])), [8], "the Factory's tunnel and hall are one voice group");
+});
+
+test("thump boundaries: `none` shares with nobody and Ember Den tables stay apart", () => {
+  const nowhere = [player(1, "none", talking), player(2, "none", talking), player(3, "none")];
+  for (const p of nowhere) assert.deepEqual(thumpPeers(nowhere, p), [], "nobody hears anyone `none`");
+  const den = [player(1, "ember-den", talking, { pokerVoice: 1 }), player(2, "ember-den", listening, { pokerVoice: 1 }),
+    player(3, "ember-den", talking, { pokerVoice: 2 }), player(4, "ember-den", talking, { pokerVoice: null }), player(5, "ember-den", listening)];
+  assert.deepEqual(ids(thumpPeers(den, den[1])), [1], "table 1 reaches table 1 alone");
+  assert.deepEqual(ids(thumpPeers(den, den[2])), [], "table 2 has nobody else");
+  assert.deepEqual(ids(thumpPeers(den, den[3])), [5], "the floor (null, or never set) is its own place");
+  assert.deepEqual(ids(thumpPeers(den, den[4])), [4]);
+});
+
+test("thump boundaries: DSB Studio permissions hold; an audience reaches only the speakers it hears", () => {
+  const s = { ...studio.studioState(1000), hostId: 1, mode: "presentation", restrictedIds: [6] };
+  const zone = studio.STUDIO_ZONE;
+  const players = [
+    player(1, zone, talking), // the host
+    player(2, zone, listening, { body: null }), // bodiless audience
+    player(3, zone, listening, { body: null }),
+    player(4, zone, talking, { studioSeat: 0 }), // seated attendee, not permitted in a presentation
+    player(5, "dsb-outside", talking), // outside the Studio
+    player(6, zone, talking, { studioSeat: 1 }), // restricted
+  ];
+  assert.deepEqual(ids(thumpPeers(players, players[0], s)), [2, 3, 4, 6], "everyone in the Studio hears the host");
+  assert.deepEqual(ids(thumpPeers(players, players[1], s)), [1], "an audience member reaches the host it hears, never another listener");
+  assert.deepEqual(ids(thumpPeers(players, players[3], s)), [1], "an unpermitted attendee reaches only the host");
+  assert.deepEqual(ids(thumpPeers(players, players[5], s)), [1], "a restricted attendee reaches only the host");
+  assert.deepEqual(thumpPeers(players, players[4], s), [], "DSB Land outside does not reach the Studio");
+  assert.deepEqual(thumpPeers([player(2, "dsb-outside", listening, { body: null }), player(1, "dsb-outside", talking)], { id: 2, zone: "dsb-outside", body: null, voice: listening }, s), [],
+    "a bodiless listener counts only inside the Studio");
+  s.mode = "discussion";
+  assert.deepEqual(ids(thumpPeers(players, players[3], s)), [1, 2, 3, 6], "a permitted attendee reaches the Studio, restricted players still hear");
+  assert.deepEqual(ids(thumpPeers(players, players[5], s)), [1, 4], "restriction keeps a speaker unheard in discussion too");
+});
+
+test("thumpPeers is exactly voicePeers both ways: whom the sender hears, and who would hear it speak", () => {
+  let seed = 7;
+  const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const zones = ["outside", "lab", "factory", "factory.hall", "none", "ember-den", studio.STUDIO_ZONE];
+  for (let round = 0; round < 300; round++) {
+    const s = { ...studio.studioState(1000), hostId: 1 + Math.floor(rand() * 6), mode: ["presentation", "discussion", "qa"][Math.floor(rand() * 3)], invited: [2], restrictedIds: rand() < 0.3 ? [3] : [] };
+    const players = Array.from({ length: 2 + Math.floor(rand() * 7) }, (_, i) => player(i + 1, zones[Math.floor(rand() * zones.length)],
+      rand() < 0.2 ? { sub: null, pub: null, track: null } : rand() < 0.5 ? listening : talking,
+      { body: rand() < 0.2 ? null : `ooga-${i + 1}`, pokerVoice: rand() < 0.5 ? null : Math.floor(rand() * 2), studioSeat: rand() < 0.5 ? i : undefined }));
+    const heard = voicePeers(players, s);
+    for (const sender of players) {
+      const live = players.map((p) => p === sender ? { ...p, voice: { ...p.voice, track: "mic" } } : p);
+      const wouldHear = voicePeers(live, s);
+      const participant = (q) => heard.has(q.id) && protocol.voiceListener(q, s);
+      const want = protocol.voiceListener(sender, s) ? players.filter((q) => q !== sender && participant(q)
+        && (heard.get(sender.id).includes(q.id) || wouldHear.get(q.id).includes(sender.id))).map((q) => q.id) : [];
+      assert.deepEqual(ids(thumpPeers(players, sender, s)), want.sort((a, b) => a - b), JSON.stringify({ round, sender: sender.id }));
+    }
+  }
+});
+
+test("the thump bucket: about two a second, three in a burst, kept per account and expired lazily", () => {
+  const buckets = new Map(), present = new Map([[1, {}]]);
+  const bucket = thumpBucketFor(buckets, 1, 0, present);
+  assert.equal(thumpBucketFor(buckets, 1, 5, present), bucket, "one bucket per account, reused across sockets");
+  const taken = [0, 0, 0, 0].map(() => takeToken(bucket, THUMP_HZ, 0, THUMP_BURST));
+  assert.deepEqual(taken, [true, true, true, false], "a burst of three, then nothing");
+  assert.equal(takeToken(bucket, THUMP_HZ, 400, THUMP_BURST), false);
+  assert.equal(takeToken(bucket, THUMP_HZ, 500, THUMP_BURST), true, "one more every half second");
+  // A departed account's bucket stays while it is in debt, so a reconnect cannot refill it, and goes once it is full.
+  present.delete(1);
+  thumpBucketFor(buckets, 2, 1000, present);
+  assert.ok(buckets.has(1), "a departed account in debt keeps its bucket");
+  thumpBucketFor(buckets, 3, 3000, present);
+  assert.ok(!buckets.has(1), "a departed account's full bucket is dropped on the next new one");
+  // Bounded: at the cap, no new debt is made rather than evicting a depleted one.
+  const full = new Map(), here = new Map();
+  for (let id = 1; id <= THUMP_BUCKET_KEEP; id++) { here.set(id, {}); thumpBucketFor(full, id, 0, here); }
+  assert.equal(thumpBucketFor(full, THUMP_BUCKET_KEEP + 1, 0, here), null);
+  assert.equal(full.size, THUMP_BUCKET_KEEP);
+});
+
+// The real room, its host mocked so that any storage, alarm or timer use fails.
+const roomClass = (extra = {}) => {
+  const source = readFileSync(new URL("../src/room.js", import.meta.url), "utf8")
+    .replace(/import\s+[\s\S]*?from\s+"[^"]+";/g, "")
+    .replace("export class Room", "class Room") + "\nglobalThis.Room = Room;";
+  const context = { ...protocol, ...studio, getPlayer, DurableObject: class {}, WebSocketRequestResponsePair: class {}, sfuClient, CAST_ROWS: [], Date, Map, Set, Response, Promise, ...extra };
+  runInNewContext(source, context);
+  return context.Room;
+};
+const forbidden = (what) => () => { throw new Error(`a thump touched ${what}`); };
+const thumpRoom = (clock) => {
+  const Room = roomClass({ Date: { now: () => clock.now }, setTimeout: forbidden("setTimeout"), setInterval: forbidden("setInterval"), clearTimeout: () => {} });
+  const room = Object.create(Room.prototype);
+  room.ctx = { storage: new Proxy({}, { get: (_, key) => forbidden(`storage.${String(key)}`) }) };
+  room.env = {};
+  room.players = new Map(); room.chatBuckets = new Map(); room.thumpBuckets = new Map(); room.chat = protocol.chatLog();
+  room.studio = studio.studioState(0);
+  const join = (id, zone, voice, extra = {}) => {
+    const ws = { sent: [], attachments: 0, deserializeAttachment: () => ({ id }), serializeAttachment: () => { ws.attachments++; }, send: (text) => ws.sent.push(text) };
+    const p = room.record(ws, { id, login: `player${id}`, display: `P${id}`, contributor: true, body: `player${id}`, x: 0, y: 0, z: 0, yaw: 0, ...extra });
+    p.zone = zone; p.voice = { ...p.voice, ...voice };
+    room.players.set(id, p);
+    return ws;
+  };
+  return { room, join };
+};
+
+test("the room relays a thump as one tiny frame to the sender's voice peers alone, with no storage, alarm, timer or reply", () => {
+  const clock = { now: 1000 };
+  const { room, join } = thumpRoom(clock);
+  const a = join(1, "outside", listening), b = join(2, "outside", talking), c = join(3, "outside", listening);
+  const off = join(4, "outside", {}), lab = join(5, "lab", talking), nowhere = join(6, "none", talking);
+  room.webSocketMessage(a, '{"t":"thump"}');
+  assert.deepEqual(b.sent, ['{"t":"thump","id":1}']);
+  assert.deepEqual(c.sent, ['{"t":"thump","id":1}']);
+  for (const ws of [a, off, lab, nowhere]) assert.deepEqual(ws.sent, [], "never the sender, nobody outside voice or the group");
+  room.webSocketMessage(off, '{"t":"thump"}');
+  room.webSocketMessage(nowhere, '{"t":"thump"}');
+  assert.equal(b.sent.length, 1, "a thump from outside voice, or from `none`, goes nowhere");
+  room.webSocketMessage(a, '{"t":"thump","n":40}');
+  assert.equal(b.sent.length, 1, "a frame carrying anything more is ignored");
+  for (const ws of [a, b, c, off, lab, nowhere]) assert.equal(ws.attachments, 0, "the attachment is untouched");
+  assert.equal(room.chat.size, 0, "no history");
+});
+
+test("the room spends the sender's bucket: three at once, then two a second, and a reconnect does not refill it", () => {
+  const clock = { now: 5000 };
+  const { room, join } = thumpRoom(clock);
+  let a = join(1, "outside", listening);
+  const b = join(2, "outside", listening);
+  for (let i = 0; i < 6; i++) room.webSocketMessage(a, '{"t":"thump"}');
+  assert.equal(b.sent.length, THUMP_BURST, "the burst, then nothing");
+  clock.now += 500;
+  room.webSocketMessage(a, '{"t":"thump"}');
+  room.webSocketMessage(a, '{"t":"thump"}');
+  assert.equal(b.sent.length, THUMP_BURST + 1, "one more after half a second");
+  // The same account on a fresh socket keeps its debt.
+  room.players.delete(1);
+  a = join(1, "outside", listening);
+  room.webSocketMessage(a, '{"t":"thump"}');
+  assert.equal(b.sent.length, THUMP_BURST + 1, "reconnecting does not refill the bucket");
+  clock.now += 2000;
+  for (let i = 0; i < 6; i++) room.webSocketMessage(a, '{"t":"thump"}');
+  assert.equal(b.sent.length, THUMP_BURST * 2 + 1, "refilled to the burst, never past it");
+  // A thump that reaches nobody spends nothing.
+  const { room: lone, join: joinLone } = thumpRoom(clock);
+  const solo = joinLone(1, "outside", listening);
+  for (let i = 0; i < 5; i++) lone.webSocketMessage(solo, '{"t":"thump"}');
+  assert.equal(lone.thumpBuckets.size, 0);
+});

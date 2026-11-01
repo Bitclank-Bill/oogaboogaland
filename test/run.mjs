@@ -21562,6 +21562,143 @@ const chatClientChecks = async () => {
   C.account({ backend: true, me: null, room: "off", logoutEpoch: 1 }); receipt(second);
   record("ooga chat client: lost receipts time out to a stable retry; edited identical drafts and newer sends survive old receipts; explicit logout clears local text and unsupported characters are explained", waiting && uncertain && stable && revision && late && policy && input.value === "" && C.stats.lines === 0 && timers.size === 0, JSON.stringify({ waiting, uncertain, stable, revision, late, policy, lines: C.stats.lines, timers: timers.size }));
 };
+// Ooga thump on the page (thump.js): distinct supporters and the group's cooldown, the pooled sound's caps and no
+// backlog, Reaction sounds Off against every variant, and the wire in net.js. The module runs on a small DOM with
+// fake audio that records every scheduled value, so silence is measured, not assumed.
+const thumpChecks = async BL => {
+  const source = await readFile(join(root, "src/js/thump.js"), "utf8");
+  // Fake Web Audio: a node per create call, every AudioParam event kept with its time.
+  const fakeAudio = () => {
+    const events = [], made = { nodes: 0, contexts: 0 };
+    const param = (name) => {
+      const p = { value: 0 };
+      for (const k of ["setValueAtTime", "linearRampToValueAtTime", "exponentialRampToValueAtTime", "setTargetAtTime"]) p[k] = (v, t) => { events.push({ name, k, v, t }); return p; };
+      p.cancelScheduledValues = () => p;
+      return p;
+    };
+    class Context {
+      constructor() { made.contexts++; this.state = "running"; this.currentTime = 0; this.sampleRate = 8000; this.destination = {}; }
+      node(extra) { made.nodes++; return { connect: (n) => n, start() {}, ...extra }; }
+      createGain() { return this.node({ gain: param("gain") }); }
+      createOscillator() { return this.node({ frequency: param("frequency") }); }
+      createStereoPanner() { return this.node({ pan: param("pan") }); }
+      createBiquadFilter() { return this.node({ frequency: param("filter") }); }
+      createBufferSource() { return this.node({}); }
+      createBuffer(c, n) { const data = new Float32Array(n); return { getChannelData: () => data }; }
+      close() { this.state = "closed"; return Promise.resolve(); }
+    }
+    return { Context, events, made };
+  };
+  // Pure parts first, from a page with no Thump button.
+  const bare = { window: { BL: {}, matchMedia: () => ({ matches: false }) }, document: { getElementById: () => null } };
+  runInNewContext(source, bare);
+  const { createLedger, createMixer } = bare.window.BL.thump;
+  const ledger = createLedger({ windowMs: 2000, crowd: 3, cooldownMs: 12000 });
+  const taps = [ledger.add(1, 0), ledger.add(1, 100), ledger.add(1, 200)].map(r => r.count).join();
+  const third = [ledger.add(2, 300).crowd, ledger.add(3, 400)];
+  const expired = createLedger({ windowMs: 2000 });
+  expired.add(1, 0); expired.add(2, 100); const late = expired.add(3, 2050);
+  // Switching speakers or supporters cannot bring the notice back inside the cooldown: it is the group's.
+  const switched = [ledger.add(4, 3000), ledger.add(5, 3100), ledger.add(6, 3200)].map(r => r.crowd);
+  ledger.reset();
+  const afterReset = [ledger.add(7, 5000), ledger.add(8, 5100), ledger.add(9, 5200)].map(r => r.crowd);
+  const cooled = [ledger.add(7, 12400), ledger.add(8, 12450), ledger.add(9, 12500)].map(r => r.crowd);
+  const bounded = createLedger({ max: 33, windowMs: 1e9 });
+  for (let id = 1; id <= 100; id++) bounded.add(id, id);
+  record("ooga thump counting: distinct supporters, never taps (three from one are one); a crowd at three inside about 2 s, then a cooldown no new supporters, speakers or group change can skip; the window expires and holds at most the room",
+    taps === "1,1,1" && third[0] === false && third[1].count === 3 && third[1].crowd && late.count === 2 && !late.crowd && switched.join() === "false,false,false"
+      && afterReset.join() === "false,false,false" && cooled.join() === "false,false,true" && bounded.size === 33,
+    JSON.stringify({ taps, third, late, switched, afterReset, cooled, size: bounded.size }));
+  // The pool: four at once, six a second, nothing later for what was dropped.
+  const a = fakeAudio(), ctx = new a.Context(), mixer = createMixer(ctx, ctx.destination, () => 0.5);
+  const built = a.made.nodes;
+  const burst = Array.from({ length: 6 }, () => mixer.play(0, false));
+  const atOnce = mixer.playing;
+  const playedAt0 = a.events.filter(e => e.k === "setValueAtTime" && e.name === "pan").length;
+  const rate = [];
+  for (let i = 1; i <= 6; i++) { ctx.currentTime = 0.17 * i; rate.push(mixer.play(0, false)); }
+  ctx.currentTime = 3;
+  const pans = a.events.filter(e => e.name === "pan");
+  const ahead = a.events.filter(e => e.t > 3);
+  const resumed = mixer.play(0.5, true);
+  const ducked = a.events.filter(e => e.name === "gain" && e.k === "linearRampToValueAtTime" && e.t > 3).map(e => e.v);
+  ctx.state = "suspended";
+  const suspended = mixer.play(0, false);
+  record("ooga thump sound: at most four sounding at once and six started a second; a thump that cannot sound now is dropped, never queued; quieter under speech; every node built once",
+    burst.join() === "true,true,true,true,false,false" && atOnce === 4 && playedAt0 === 4 && rate.join() === "true,true,false,false,false,true" && pans.length === 7 && ahead.length === 0
+      && resumed && Math.max(...ducked) < 0.15 && !suspended && a.made.nodes === built && mixer.counts.busy === 2 && mixer.counts.rate === 3,
+    JSON.stringify({ burst, atOnce, rate, pans: pans.length, ahead: ahead.length, resumed, ducked, nodes: [built, a.made.nodes], counts: mixer.counts }));
+
+  // The page module, on a small DOM, with every collaborator recording what it was asked to do.
+  const page = (stored = null) => {
+    const audio = fakeAudio(), storage = new Map(stored ? [["ooga-thump-sound", stored]] : []), calls = { thumped: [], support: [], pulse: [], chat: [], animate: 0 }, sent = [];
+    const el = () => ({ hidden: true, textContent: "", title: "", attrs: {}, prepend() {}, setAttribute(k, v) { this.attrs[k] = v; },
+      animate() { calls.animate++; return { cancel() {}, set onfinish(fn) { this.done = fn; } }; } });
+    const nodes = { "account-thump": el(), "account-thump-sound": el(), "thump-crowd": el(), "thump-crowd-text": el() };
+    const remotes = new Map([[2, { id: 2, login: "bea", body: "Bea" }], [3, { id: 3, login: "cal", body: "gorilla:Cal" }], [4, { id: 4, login: "dee", body: "Dee" }], [5, { id: 5, login: "muted", body: "Mu" }]]);
+    let roster = null, account = null, heard = null, voiceFn = null;
+    const net = { state: { room: "live", me: { login: "me" }, selfId: 1, body: "Me", zone: "outside" }, remotes,
+      subscribe: fn => { account = fn; }, subscribeRoster: fn => { roster = fn; }, subscribeThump: fn => { heard = fn; }, sendThump: () => { sent.push('{"t":"thump"}'); return net.state.room === "live"; } };
+    const voice = { stats: { enabled: true, joining: false, speaking: false }, speaking: () => false, mutedLocally: login => login === "muted", subscribe: fn => { voiceFn = fn; } };
+    let clock = 10000;
+    const window = { BL: { net, voice, hud: { malletIcon: { cloneNode: () => ({}) }, showSupport: (login) => { calls.support.push(login); return true; } }, players: { pulse: id => calls.pulse.push(id) },
+      chat: { support: text => calls.chat.push(text) }, remotePlayers: { thumped: id => { calls.thumped.push(id); return 0; } }, sound: { output: c => c.destination } },
+      AudioContext: audio.Context, matchMedia: () => ({ matches: false }) };
+    const context = { window, document: { hidden: false, getElementById: id => nodes[id] || null }, navigator: { userActivation: { hasBeenActive: true } },
+      localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, performance: { now: () => clock }, Float64Array, Map, Math, JSON, Promise };
+    runInNewContext(source, context);
+    account(); roster();
+    clock += 2000; // past the first zone's settling
+    return { T: window.BL.thump, net, voice, nodes, calls, sent, audio, storage, context, heard: id => heard(id), roster: () => roster(), tick: ms => { clock += ms; }, voiceChanged: () => voiceFn() };
+  };
+  // Every variant with Reaction sounds On, so the Off run below is measured against real sound.
+  const on = page();
+  on.T.press(); on.heard(2); on.heard(3); on.heard(4);
+  const onStats = on.T.stats, onEvents = on.audio.events.length;
+  const off = page();
+  const offButton = [off.T.setSound(false), off.storage.get("ooga-thump-sound"), off.nodes["account-thump-sound"].textContent, off.nodes["account-thump-sound"].attrs["aria-pressed"]];
+  off.T.press(); off.heard(2); off.heard(3); off.heard(4); // own, an Ooga, a gorilla, and the crowd they make
+  off.tick(600); for (let i = 0; i < 4; i++) off.T.press(); // refilled to three, then the send bucket holds the fourth
+  const offStats = off.T.stats;
+  const remembered = page("off");
+  remembered.heard(2);
+  record("ooga thump Reaction sounds Off: own, remote and crowd thumps make no sound at all, while the bodies, support marks, banner and chat notice still show; Off is remembered in this browser",
+    onStats.sounded === 4 && onEvents > 0 && on.calls.chat.join() === "3 Oogas thumped" && offButton.join() === "false,off,Reaction sounds: Off,false"
+      && off.audio.made.contexts === 0 && off.audio.events.length === 0 && offStats.sounded === 0 && offStats.silenced === offStats.shown
+      && off.calls.thumped.join() === "0,2,3,4,0,0,0" && off.calls.support.join() === "me,bea,cal,dee,me,me,me" && off.calls.pulse.length === 7
+      && off.calls.chat.join() === "3 Oogas thumped" && off.calls.animate === 1 && off.nodes["thump-crowd"].hidden === false && off.nodes["thump-crowd-text"].textContent === "3 Oogas thumped"
+      && off.sent.length === 4 && !remembered.T.soundOn && remembered.audio.made.contexts === 0 && remembered.calls.thumped.join() === "2",
+    JSON.stringify({ onStats, offStats, offButton, thumped: off.calls.thumped, sent: off.sent.length, chat: off.calls.chat }));
+  // Muted for this visitor, hidden, disconnected, between zones, or not in voice: neither heard nor shown.
+  const gate = page();
+  gate.heard(5); gate.heard(99);
+  gate.context.document.hidden = true; gate.heard(2); gate.context.document.hidden = false;
+  gate.net.state.room = "connecting"; gate.heard(2); const offline = gate.T.press(); gate.net.state.room = "live";
+  gate.net.state.zone = "lab"; gate.roster(); gate.heard(2); gate.tick(1600); gate.heard(3);
+  gate.net.state.zone = "lab.back"; gate.roster(); gate.heard(4);
+  gate.net.state.zone = "none"; gate.roster(); gate.tick(2000); gate.heard(2);
+  gate.net.state.zone = "lab"; gate.roster(); gate.tick(2000);
+  gate.voice.stats.enabled = false; gate.voiceChanged(); gate.heard(2);
+  const buttonHidden = gate.nodes["account-thump"].hidden && gate.nodes["account-thump-sound"].hidden, pressedOutOfVoice = gate.T.press();
+  record("ooga thump gates: a locally muted player is neither heard nor shown; nothing plays or shows while hidden, disconnected, nowhere or settling into another voice group (a place inside one group does not settle); out of voice the button goes and pressing sends nothing",
+    gate.calls.thumped.join() === "3,4" && gate.calls.support.join() === "cal,dee" && !offline && !pressedOutOfVoice && buttonHidden && gate.sent.length === 0,
+    JSON.stringify({ thumped: gate.calls.thumped, sent: gate.sent, stats: gate.T.stats }));
+  // The wire: `{"t":"thump"}` while live, and only known players' relayed thumps reach the module.
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }));
+  const early = f.net.sendThump(), got = [];
+  f.net.subscribeThump(id => got.push(id));
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) });
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), players: [{ id: 2, login: "a", display: "A", body: "NickDaGreek", zone: "outside", x: 0, y: 0, z: 0, yaw: 0 }] });
+  const live = f.net.sendThump();
+  message({ t: "thump", id: 2 }); message({ t: "thump", id: 99 }); message({ t: "thump", id: "2" }); message({ t: "thump" });
+  const frames = f.sent.filter(m => m.t === "thump");
+  ws.readyState = 3;
+  const closed = f.net.sendThump();
+  f.net.dispose();
+  record("ooga thump wire: the page sends {\"t\":\"thump\"} alone and only while the room is live; only a known remote player's relayed thump is heard",
+    !early && live && !closed && frames.length === 1 && Object.keys(frames[0]).join() === "t" && got.join() === "2", JSON.stringify({ early, live, closed, frames, got }));
+};
 const chatAccountChecks = async BL => {
   const requests = [], player = { id: 71, login: "Tester", display: "Tester" };
   let release = null;
@@ -23153,6 +23290,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   if(ARGS.includes("dsb-menus-unit")){stackchainChecks(BL);memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
   await chatNetChecks(BL);
   await chatClientChecks();
+  await thumpChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);
   await playersTabChecks(BL);

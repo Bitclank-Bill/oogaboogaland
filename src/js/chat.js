@@ -10,7 +10,9 @@
 // A refusal or disconnect keeps the draft and id, unless the player edits it into a different message.
 // Escape leaves the input with the sheet open. Keys typed in the sheet never reach a scene
 // (controls.js, director.js). On a phone the sheet rises above the keyboard while the input has focus.
-// Exports account (fed `BL.net.state`), heard (fed the room's lines) and stats.
+// An Ooga thump crowd (thump.js) shows here as one notice row of this page's own (`support`): a pixel mallet and its words,
+// after the newest line when it came. It is never a line: never sent, kept, counted in the history or announced twice.
+// Exports account (fed `BL.net.state`), heard (fed the room's lines), support and stats.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -31,6 +33,18 @@
   const identity = $("chat-identity"), accountLogin = $("chat-account-login"), displayForm = $("chat-display-form"), displayInput = $("chat-display"), displaySave = $("chat-display-save"), displayStatus = $("chat-display-status");
   let identityId = "", identityDisplay = "", displaySaving = false, displayComposing = false;
   let showing = false, drawn = true, live = false, me = "", composing = false, pending = null, notice = "", revision = 0, logoutEpoch = 0, ackTimer = 0;
+  // The thump notice: one row, made on the first and reused; `supportAfter` is the id of the line it follows (0 before
+  // any), -1 for none.
+  let supportRow = null, supportText = null, supportAfter = -1;
+  const placeSupport = () => {
+    if (!supportRow) return;
+    if (supportAfter < 0) { supportRow.remove(); return; }
+    if (supportAfter === 0) { log.prepend(supportRow); return; }
+    for (const child of log.children) if (child.dataset.id === String(supportAfter)) { child.after(supportRow); return; }
+    // Its line scrolled out of the history: so does the notice.
+    supportAfter = -1;
+    supportRow.remove();
+  };
   const stopWaiting = () => { window.clearTimeout(ackTimer); ackTimer = 0; if (pending) pending.awaiting = false; };
 
   const row = (line) => {
@@ -65,6 +79,7 @@
     const rows = document.createDocumentFragment();
     for (const line of lines) rows.append(row(line));
     log.replaceChildren(rows);
+    placeSupport();
     if (follow) log.scrollTop = log.scrollHeight;
     else {
       log.scrollTop = oldTop;
@@ -113,7 +128,12 @@
     }
     const follow = atFoot();
     for (const line of list) log.append(row(line));
-    for (let i = 0; i < over; i++) log.firstElementChild.remove();
+    for (let i = 0; i < over;) {
+      const first = log.firstElementChild;
+      first.remove();
+      if (first !== supportRow) i++;
+      else supportAfter = -1;
+    }
     if (follow) log.scrollTop = log.scrollHeight;
   };
 
@@ -141,7 +161,7 @@
     if (epoch !== logoutEpoch) {
       logoutEpoch = epoch;
       stopWaiting(); pending = null; notice = ""; revision++; input.value = "";
-      lines.length = 0; log.replaceChildren(); drawn = true;
+      lines.length = 0; log.replaceChildren(); drawn = true; supportAfter = -1;
       announce("Signed out. Local chat and draft cleared.");
     }
     if (identity) {
@@ -273,7 +293,22 @@
     if (viewport && (document.activeElement === input || document.activeElement === displayInput)) fit();
   });
 
+  // The crowd's notice, as thump.js words it, after the newest line.
+  const support = (text) => {
+    if (!supportRow) {
+      supportRow = document.createElement("li"); supportText = document.createElement("span");
+      supportRow.className = "chat-row chat-notice"; supportText.className = "chat-text";
+      supportRow.append(BL.hud.malletIcon.cloneNode(true), supportText);
+    }
+    supportText.textContent = text;
+    supportAfter = lines.length ? lines[lines.length - 1].id : 0;
+    if (!showing || !drawn) { drawn = false; return; }
+    const follow = atFoot();
+    log.append(supportRow);
+    if (follow) log.scrollTop = log.scrollHeight;
+  };
+
   net.subscribe(account);
   net.subscribeChat(heard);
-  BL.chat = { account, heard, get stats() { return { lines: lines.length, rows: log.childElementCount, showing, drawn, live }; } };
+  BL.chat = { account, heard, support, get stats() { return { lines: lines.length, rows: log.childElementCount - (supportRow && supportRow.parentNode === log ? 1 : 0), support: supportRow && supportRow.parentNode === log ? supportText.textContent : "", showing, drawn, live }; } };
 })();

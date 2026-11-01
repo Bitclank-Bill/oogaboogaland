@@ -13,7 +13,7 @@
 // changed it does nothing, and the next event redraws the rows.
 // Cost: rows are placed only when someone joins, leaves or changes zone, body or name, and only while the panel shows;
 // distances and crosshairs are rewritten as positions arrive (`subscribeMoves`, a few times a second at most), and only
-// what changed. No timers. Exports setDoors and stats.
+// what changed. No timers. An Ooga thump pulses a support mark beside its thumper's name (`pulse`). Exports setDoors, pulse and stats.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -106,6 +106,16 @@
       button.title = words; button.setAttribute("aria-label", words);
     }
     if (row.hostOn !== host) { row.hostOn = host; row.host.hidden = !host; }
+  };
+
+  // An Ooga thump's support mark beside a player's name, while the tab shows (thump.js); 0 or the visitor's own id is their row.
+  const pulse = (id) => {
+    if (!showing || stale) return false;
+    const row = id === 0 || id === net.state.selfId ? selfRow : rows.get(id);
+    if (!row || !row.li.isConnected) return false;
+    const marks = row.voice.parentElement;
+    BL.hud.pulseSupport(marks.querySelector(":scope > .roster-thump") || BL.hud.supportMark(marks));
+    return true;
   };
 
   // Distances and crosshairs, from where everyone stands now.
@@ -239,5 +249,5 @@
     doors = fn;
     measure();
   };
-  BL.players = { setDoors, get stats() { return { showing, rows: rows.size, groups: groups.size }; } };
+  BL.players = { setDoors, pulse, get stats() { return { showing, rows: rows.size, groups: groups.size }; } };
 })();

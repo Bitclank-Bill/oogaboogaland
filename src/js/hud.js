@@ -171,6 +171,37 @@
     path.setAttribute("fill", "currentColor");
     voiceIcon.append(path);
   }
+  // The Ooga thump's pixel mallet (thump.js), on the voice mark's 9x9 grid: the crowd notice, the chat board and the
+  // support mark beside a name all clone it.
+  const malletIcon = document.createElementNS(SIGN_NS, "svg");
+  malletIcon.setAttribute("viewBox", "0 0 9 9");
+  malletIcon.setAttribute("aria-hidden", "true");
+  malletIcon.setAttribute("class", "pixel-mallet");
+  {
+    const path = document.createElementNS(SIGN_NS, "path");
+    path.setAttribute("d", "M1 1h7v3H1zM4 4h1v5H4z");
+    path.setAttribute("fill", "currentColor");
+    malletIcon.append(path);
+  }
+  // A support mark beside a name (the roster's and the players tab's), made once a row, shown for a pulse and hidden
+  // again when its animation finishes: no timer. Under Calm it holds still for the same time.
+  const SUPPORT_MS = 1400, CALM = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const SUPPORT_PULSE = [{ opacity: 0, transform: "scale(0.6)" }, { opacity: 1, transform: "scale(1.25)", offset: 0.18 }, { opacity: 1, transform: "scale(1)", offset: 0.4 }, { opacity: 0, transform: "scale(1)" }];
+  const SUPPORT_STILL = [{ opacity: 1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }];
+  const supportMark = (marks) => {
+    const mark = document.createElement("span");
+    mark.className = "roster-thump"; mark.hidden = true; mark.setAttribute("role", "img");
+    mark.setAttribute("aria-label", "Thumped in support"); mark.title = "Thumped in support";
+    mark.append(malletIcon.cloneNode(true));
+    marks.prepend(mark);
+    return mark;
+  };
+  const pulseSupport = (mark) => {
+    if (mark.pulse) mark.pulse.cancel();
+    mark.hidden = false;
+    const pulse = mark.pulse = mark.animate(CALM.matches ? SUPPORT_STILL : SUPPORT_PULSE, { duration: SUPPORT_MS, easing: "ease-out" });
+    pulse.onfinish = () => { if (mark.pulse === pulse) { mark.pulse = null; mark.hidden = true; } };
+  };
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -1967,6 +1998,8 @@
       else if (b.dataset.action === "account-rejoin") BL.net.rejoin();
       else if (b.dataset.action === "account-voice") BL.voice.toggle();
       else if (b.dataset.action === "account-voice-leave") BL.voice.stop();
+      else if (b.dataset.action === "account-thump") BL.thump.press();
+      else if (b.dataset.action === "account-thump-sound") BL.thump.toggleSound();
       else actionHandler && actionHandler(b.dataset.action);
     });
     // A game's side panels fold away and come back from a tab on the screen's edge: a `data-fold`
@@ -2489,6 +2522,14 @@
       liveOnline(row);
     }
   };
+  // An Ooga thump's support mark on the thumper's roster row (their own Ooga's, else the one they drive).
+  const showSupport = (login, body) => {
+    const row = liveRows && voiceRowOf(login, body);
+    if (!row) return false;
+    const marks = row.voice.parentElement;
+    pulseSupport(marks.querySelector(":scope > .roster-thump") || supportMark(marks));
+    return true;
+  };
   // A game's Ooga list (`rows`, name to button, each button in its own <li>) held to one Ooga, a signed-in
   // visitor's own: its row stands alone, moved last so it keeps no divider. `null` brings every row back in order.
   const holdRow = (list, rows, name) => {
@@ -2508,5 +2549,5 @@
       else b.textContent = `Back to ${place}`;
     }
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, showSupport, supportMark, pulseSupport, malletIcon, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

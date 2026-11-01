@@ -513,6 +513,8 @@
             <button type="button" class="foot-button foot-primary" data-action="account-rejoin" id="account-rejoin" hidden>Play here</button>
             <button type="button" class="foot-button" data-action="account-voice" id="account-voice" aria-pressed="false" hidden>Join voice</button>
             <button type="button" class="foot-button" data-action="account-voice-leave" id="account-voice-leave" hidden>Leave voice</button>
+            <button type="button" class="foot-button foot-thump" data-action="account-thump" id="account-thump" hidden title="Thump your mallet in support instead of unmuting" aria-label="Thump: support in voice without unmuting">Thump</button>
+            <button type="button" class="foot-button" data-action="account-thump-sound" id="account-thump-sound" aria-pressed="true" hidden>Reaction sounds: On</button>
             <button type="button" class="link" data-action="account-logout" id="account-logout" hidden>Sign out</button>
           </span>
         </span>
@@ -1712,6 +1714,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       </div>
     </div>
     <output class="mic-note" id="mic-note" data-muted="false" hidden></output>
+    <p class="thump-crowd" id="thump-crowd" role="status" aria-live="polite" hidden><span id="thump-crowd-text"></span></p>
     <!-- HALLOWEEN: the ghost hunt's HUD (ghost-hud.js shows and hides it; no data-scene, or every arrival would show it). -->
     <ol class="ghost-scores" id="ghost-scores" aria-label="Hunters' points" hidden></ol>
     <p class="ghost-halving" id="ghost-halving" role="status" hidden>Halving · rifles at half power</p>
@@ -1885,6 +1888,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/studio-session.js"></script>
   <script src="js/chat.js"></script>
   <script src="js/players.js"></script>
+  <script src="js/thump.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/camera-cover.js"></script>
   <script src="js/crew.js"></script>

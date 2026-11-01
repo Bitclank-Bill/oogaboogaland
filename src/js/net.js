@@ -53,8 +53,10 @@
 // zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
 // position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
 // snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
+// Ooga thumps (thump.js): `sendThump` sends `{"t":"thump"}` while the room is live (the room checks voice and rate),
+// and `subscribeThump` hears `fn(id)` for a remote player's thump the room relayed; a sender never hears its own.
 // Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost and subscribeGhost (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost and subscribeGhost (HALLOWEEN), sendThump, subscribeThump, npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -355,6 +357,8 @@
       if (Array.isArray(msg.peers)) BL.voice.setPeers(msg.peers, Array.isArray(msg.gens) ? msg.gens : null, state.zone === "dsb-studio" ? msg.listeners : undefined);
     } else if (msg.t === "ghost") {
       if (ghostHeard) ghostHeard(msg); // HALLOWEEN
+    } else if (msg.t === "thump") {
+      if (thumpHeard && remotes.has(msg.id)) thumpHeard(msg.id);
     } else if (msg.t === "release") {
       state.released = { name: String(msg.name), reason: String(msg.reason) };
       emit();
@@ -559,6 +563,17 @@
   document.addEventListener("visibilitychange", onVisibility);
 
   // HALLOWEEN: the ghost hunt's word to the room's host (ghost-sync.js): a start or a hit, relayed to the host alone.
+  // One listener, thump.js; false when the room is not live.
+  let thumpHeard = null;
+  const sendThump = () => {
+    if (state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    send('{"t":"thump"}');
+    return true;
+  };
+  const subscribeThump = (fn) => {
+    thumpHeard = fn;
+    return () => { if (thumpHeard === fn) thumpHeard = null; };
+  };
   let ghostHeard = null;
   const sendGhost = (msg) => {
     if (state.room === "live" && state.hostId && state.hostId !== state.selfId) send(JSON.stringify(msg));
@@ -765,8 +780,9 @@
     chatSubscribers.clear();
     doorSubscribers.clear();
     ghostHeard = null; // HALLOWEEN
+    thumpHeard = null;
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendThump, subscribeThump, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
