@@ -88,10 +88,12 @@
       FOOTING.areas.push({ id: `era-${e.n}-${b.side < 0 ? "left" : "right"}`, x0: b.x0, x1: b.x1, z0: b.z0, z1: b.z1, top: ISLAND_TOP,
         dock: { x: edge, z: e.z, facing: b.side < 0 ? -Math.PI / 2 : Math.PI / 2 } });
       if (e.room && b.side < 0) continue;
-      // `from` is the height at x0 and `to` at x1: the low end is the foot, at the stream.
+      // `from` is the height at x0 and `to` at x1: the low end is the foot, at the stream. Each ramp starts at the
+      // bank's edge, level with it, and runs out over the water toward the boat: one buried in the bank was never the
+      // highest footing under a walker, so it could not be walked onto (only stepped off the bank's edge past).
       FOOTING.areas.push(b.side < 0
-        ? { id: `era-${e.n}-left-ramp`, x0: CHANNEL.x0 - 1.6, x1: CHANNEL.x0 + 0.2, z0: e.z - 0.6, z1: e.z + 0.6, ramp: { from: ISLAND_TOP, to: 0.25, axis: "x" }, boards: true }
-        : { id: `era-${e.n}-right-ramp`, x0: CHANNEL.x1 - 0.2, x1: CHANNEL.x1 + 1.6, z0: e.z - 0.6, z1: e.z + 0.6, ramp: { from: 0.25, to: ISLAND_TOP, axis: "x" }, boards: true });
+        ? { id: `era-${e.n}-left-ramp`, x0: CHANNEL.x0, x1: CHANNEL.x0 + 0.9, z0: e.z - 0.6, z1: e.z + 0.6, ramp: { from: ISLAND_TOP, to: 0.25, axis: "x" }, boards: true }
+        : { id: `era-${e.n}-right-ramp`, x0: CHANNEL.x1 - 0.9, x1: CHANNEL.x1, z0: e.z - 0.6, z1: e.z + 0.6, ramp: { from: 0.25, to: ISLAND_TOP, axis: "x" }, boards: true });
     }
   }
   // How near land Jump out works, and how near the boat J re-boards.
@@ -901,7 +903,8 @@
   const pause = () => {
     audio.wake();
     setPaused(!view.paused);
-    if (view.paused) { stopVoice(); setCaption("paused"); } else captionKey = "";
+    // Carrying on takes the paused caption down with it (the next caption puts up its own).
+    if (view.paused) { stopVoice(); setCaption("paused"); } else { captionKey = ""; el.caption.hidden = true; }
     showControls();
   };
   const skip = () => { if (view.mode === "tour" && ride.skip()) showControls(); };
