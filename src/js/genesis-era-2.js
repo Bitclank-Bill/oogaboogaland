@@ -8,9 +8,13 @@
 //   disk (`createPc`), a 5.25-inch floppy sorting and loading toy (`createFloppies`) and an original 8-bit-style maze
 //   (`createMaze`). `createLive()` makes one of each for a visit, with a terminal per exhibit (`{ banner, prompt,
 //   run(line) }`, as genesis-props.js's terminals are) and `resetAll()`.
-// - `build(kit)`: the era sign, a timeline rail and the five exhibits on the cave's left bank (`LAYOUT`), clear of the
-//   stream's edge, the boarding ramp and its walkway; a kit obstacle under each footprint; each exhibit a kit prop
-//   whose use opens its terminal. Original procedural models from kit boxes only.
+// - `overview`: the summary and guide pages the shared overview board shows (docs/genesis-voyage/EXHIBIT-CONTRACT.md);
+//   the cave's years sign, pylons and overview board are the shared signage's, so this era builds no era-wide sign.
+// - `build(kit)`: the five exhibits on the cave's left bank (`LAYOUT`), clear of the reserved plots (gateway, dock and
+//   ramp, lamps), the waterside walk and the ramp's walkway; a kit obstacle under each footprint; each exhibit a kit
+//   prop (ids `e2-`) with its connection (the 1980 paper a whitepaper citation [7], the rest context), what its date
+//   marks, a tap box over its model and a walk-up point in front of it; using one opens its terminal. Original
+//   procedural models from kit boxes only, each with its own sign.
 // - `update`: poses the models from the live state while the visitor is in this cave, allocating nothing: lit tree
 //   paths, the envelope and stamp, the disks in their crate and the maze on its screen. `dispose` drops the visit.
 //
@@ -560,9 +564,9 @@
   // --- The exhibits: words, dates and panels ------------------------------------------------------------------------
   // `short` is the one-line explanation; `deeper` the optional panel ({ room, pages, sources }, as makeBoard takes).
   const EXHIBITS = {
-    merkle: { id: "era2-merkle", year: 1980, title: "Merkle-tree table", label: "MERKLE-TREE TABLE · 1980", sub: "Bitcoin whitepaper reference [7]",
-      dateMeaning: "1980: published in the IEEE Symposium on Security and Privacy proceedings; the exact presentation day is not established in the research.",
-      connection: "whitepaper citation [7]", sourceKeys: ["E2-MERKLE", "E2-MERKLE-BIB", "E2-WHITEPAPER"],
+    merkle: { id: "e2-merkle", year: 1980, connection: "citation", ref: "[7]", title: "Merkle-tree table", label: "MERKLE-TREE TABLE · 1980", sub: "Bitcoin whitepaper reference [7]",
+      date: "1980: published in the IEEE Symposium on Security and Privacy proceedings; the exact presentation day is not established in the research",
+      kind: "whitepaper citation [7]", sourceKeys: ["E2-MERKLE", "E2-MERKLE-BIB", "E2-WHITEPAPER"],
       short: "Change one record and only its path to the root changes; three fingerprints prove one record is in the tree.",
       deeper: { room: "Merkle tree table - 1980", sources: ["E2-MERKLE", "E2-MERKLE-BIB", "E2-WHITEPAPER"], pages: [
         { caption: "1980", title: "Check a branch, trust a root", text: [
@@ -576,9 +580,9 @@
           "A proof shows a record is included. It does not prove who owns it, that it is true, or that everyone agrees.",
           "The paper's example is a file of public keys, not Bitcoin's transactions. It does not claim the tree was first thought of in 1980, and Merkle's 1978 puzzles paper is a different work.",
           "The fingerprints here are a toy (FNV-1a), not a secure hash."] }] } },
-    blind: { id: "era2-blind", year: 1982, title: "Blind-stamp station", label: "BLIND-STAMP STATION · 1982", sub: "context · a paper analogy, not cryptography",
-      dateMeaning: "1982: presented at the CRYPTO '82 conference; the printed proceedings are dated 1983. The exact day is not established.",
-      connection: "context", sourceKeys: ["E2-CHAUM", "E2-CHAUM-CAT"],
+    blind: { id: "e2-blind", year: 1982, connection: "context", title: "Blind-stamp station", label: "BLIND-STAMP STATION · 1982", sub: "context · a paper analogy, not cryptography",
+      date: "1982: presented at the CRYPTO '82 conference; the printed proceedings are dated 1983, and the exact day is not established",
+      kind: "context, not a whitepaper reference", sourceKeys: ["E2-CHAUM", "E2-CHAUM-CAT"],
       short: "Get a stamp on a token the signer cannot see, then reveal it and check the stamp.",
       deeper: { room: "Blind stamp station - 1982", sources: ["E2-CHAUM", "E2-CHAUM-CAT"], pages: [
         { caption: "1982", title: "Sign without seeing", text: [
@@ -591,9 +595,9 @@
           "This desk is a physical analogy. Its stamp is a picture anyone could copy; in the paper, the hiding, signing and checking are done with mathematics.",
           "The signer is still one central party, and someone still keeps a list of spent tokens to stop one being spent twice.",
           "Context only: it is not one of the whitepaper's references and not a mechanism Bitcoin uses. Companies founded later are separate events."] }] } },
-    pc: { id: "era2-pc", year: 1981, title: "1980s office PC", label: "OFFICE PC · 1981", sub: "DIR · TYPE · invented design",
-      dateMeaning: "12 August 1981: the IBM Personal Computer was unveiled. This PC is an invented design in the style of the decade.",
-      connection: "context (period gear)", sourceKeys: ["E2-PC", "E2-DOSSIER"],
+    pc: { id: "e2-pc", year: 1981, connection: "context", title: "1980s office PC", label: "OFFICE PC · 1981", sub: "DIR · TYPE · invented design",
+      date: "12 August 1981: the IBM Personal Computer was unveiled; this PC is an invented design in the style of the decade",
+      kind: "context (period gear)", sourceKeys: ["E2-PC", "E2-DOSSIER"],
       short: "An invented 1980s-style PC: its disk holds museum notes about the era's ideas, each with its date and source.",
       deeper: { room: "Office PC - 1981", sources: ["E2-PC", "E2-DOSSIER"], pages: [
         { caption: "1981", title: "A personal computer", text: [
@@ -602,9 +606,9 @@
         { caption: "Replica", title: "An invented machine", text: [
           "This beige box, its keyboard and OOGA-DOS are invented for the voyage, not copies of any product. Its notes are written today and dated by what they describe.",
           "Its disk is read-only and holds only notes dated 1989 or earlier."] }] } },
-    floppy: { id: "era2-floppy", year: "1980s", title: "5.25-inch disk crate", label: "5.25-INCH DISKS · 1980s", sub: "sort by year · load into the PC",
-      dateMeaning: "Period gear of the decade; the research clears no introduction date or capacity for these disks, so none is shown.",
-      connection: "context (period gear)", sourceKeys: ["E2-DOSSIER", "E2-PC"],
+    floppy: { id: "e2-floppy", year: "1980s", connection: "context", title: "5.25-inch disk crate", label: "5.25-INCH DISKS · 1980s", sub: "sort by year · load into the PC",
+      date: "1980s: period gear of the decade; the research clears no introduction date or capacity for these disks, so none is shown",
+      kind: "context (period gear)", sourceKeys: ["E2-DOSSIER", "E2-PC"],
       short: "Sort the disks by year, then load one into the PC to read what its date marks.",
       deeper: { room: "5.25-inch disks - 1980s", sources: ["E2-DOSSIER", "E2-PC"], pages: [
         { caption: "Disks", title: "Floppy disks", text: [
@@ -613,9 +617,9 @@
         { caption: "Limits", title: "Why no capacity", text: [
           "Different 5.25-inch disks held different amounts, and the museum's research has not yet verified one, so no capacity is shown. The 1.44 MB figure belongs to a different format.",
           "The disks and labels are original designs, not to scale."] }] } },
-    maze: { id: "era2-maze", year: "1980s", title: "LEAVES TO ROOT cabinet", label: "LEAVES TO ROOT · 1980s STYLE", sub: "an original maze · made 2026",
-      dateMeaning: "Made for the voyage in 2026, in a blocky style of 1980s games; not a real game of the decade.",
-      connection: "easter egg (original)", sourceKeys: ["E2-DOSSIER", "E2-MERKLE"],
+    maze: { id: "e2-maze", year: "1980s", connection: "context", title: "LEAVES TO ROOT cabinet", label: "LEAVES TO ROOT · 1980s STYLE", sub: "an original maze · made 2026",
+      date: "1980s style: made for the voyage in 2026, in a blocky style of 1980s games; not a real game of the decade",
+      kind: "context (an original easter egg)", sourceKeys: ["E2-DOSSIER", "E2-MERKLE"],
       short: "Collect the four leaves, then reach the root gate in as few moves as you can.",
       deeper: { room: "LEAVES TO ROOT", sources: ["E2-DOSSIER", "E2-MERKLE"], pages: [
         { caption: "Play", title: "Leaves to root", text: [
@@ -624,7 +628,28 @@
         { caption: "Original", title: "Made for the voyage", text: [
           "Its rules, maze and cabinet are new, drawn in an 8-bit-like style. It copies no game, sound, character or logo, and it is not a game released in the 1980s."] }] } }
   };
-  const boardLines = (ex) => [ex.deeper.room, ex.dateMeaning, `Connection: ${ex.connection}.`, ...ex.deeper.pages.flatMap((p) => ["", `${p.caption}: ${p.title}`, ...p.text]), "", ...sourceLines(ex.deeper.sources)];
+  const boardLines = (ex) => [ex.deeper.room, `${ex.date}.`, `Connection: ${ex.kind}.`, ...ex.deeper.pages.flatMap((p) => ["", `${p.caption}: ${p.title}`, ...p.text]), "", ...sourceLines(ex.deeper.sources)];
+
+  // --- The era's overview ------------------------------------------------------------------------------------------
+  // For the shared overview board on the left bank's gateway (docs/genesis-voyage/EXHIBIT-CONTRACT.md): the summary and
+  // the era's own guide pages. The shared signage gives the cave its years sign, pylons and board; this era builds none.
+  const OVERVIEW = {
+    summary: "Check one record without carrying a whole library: a tree of fingerprints does it, and Bitcoin's whitepaper cites the 1980 paper. Blind signatures try another trick, a stamp on a hidden message. Personal computers arrived too. None of it yet made digital money.",
+    sourceKeys: ["E2-MERKLE", "E2-WHITEPAPER", "E2-CHAUM", "E2-ECC", "E2-MAY", "E2-PC", "E2-DOSSIER"],
+    pages: [
+      { caption: "Try", title: "Five things to try", text: [
+        "Merkle-tree table (1980): change a record and watch its path to the root light up; prove one record with three fingerprints.",
+        "Blind-stamp station (1982): seal a token, get it stamped unseen, open it, check the stamp, spend it once. A paper analogy, not cryptography.",
+        "Office PC (1981), disk crate and LEAVES TO ROOT: read the dated notes, sort the disks by year and load one, then play the maze."] },
+      { caption: "Dates", title: "What each date marks", text: [
+        "1980: Merkle's paper published in the IEEE Symposium on Security and Privacy proceedings. Whitepaper citation [7].",
+        "1982: Chaum's blind signatures presented at CRYPTO '82; proceedings printed 1983. 1985: Miller's elliptic curves presented at CRYPTO '85; printed 1986. 1988: May's manifesto, the date in a later reprint. All context.",
+        "12 August 1981: the IBM Personal Computer unveiled. Period gear, context."] },
+      { caption: "Held", title: "Context, and what is held back", text: [
+        "Only the 1980 paper is in the whitepaper's references. Blind signatures, elliptic curves and May's manifesto are context: no borrowed design is claimed.",
+        "An elliptic-curve picture is on hold until its mathematics and attribution are checked against primary sources. The PC keeps a dated note instead."] }
+    ]
+  };
 
   // --- One visit's live state -----------------------------------------------------------------------------------------
   const createLive = () => {
@@ -635,28 +660,25 @@
   };
 
   // --- Layout on the left bank ----------------------------------------------------------------------------------------
-  // Every exhibit stands well in from the stream (x < -5) and off the walkway inland from the bank's boarding ramp
-  // (|z - cave middle| < 2.6), facing the stream (+x), where the visitor stands to use it. `half` is the footprint's
-  // half size in x and z (a kit obstacle); `reach` how near the visitor must be to the exhibit's middle.
-  const E = GW.ERAS[ERA];
+  // Every exhibit stands on the left bank about 10 m in from the stream's edge, at u 17 to 52 down the cave (the bank
+  // frame of genesis-world.js), clear of the gateway (u < 10), the dock and its ramp (u 32 to 40, v < 6), the lamp
+  // posts and the waterside walk, and off the walkway inland from the ramp (|z - cave middle| < 2.6). Each faces the
+  // stream (+x). `half` is its footprint's half size in x and z (a kit obstacle); `h` its height, for the tap box,
+  // which stands over the model; `at` is the walk-up point in front of it, toward the stream, which the shared trail's
+  // spur and STEP post lead to; `reach` how near the visitor must be to `at`.
+  const E = GW.ERAS[ERA], FRONT = 0.8;
   const LAYOUT = {
-    sign: { x: -17, z: E.z, half: { x: 0.25, z: 5 } },
-    rail: { x: -6.4, z: E.z - 4.2, half: { x: 0.2, z: 1.1 } },
-    merkle: { x: -10, z: E.z + 7, half: { x: 1, z: 2.35 }, reach: 2.2 },
-    blind: { x: -10, z: E.z - 7.5, half: { x: 0.8, z: 1.4 }, reach: 1.9 },
-    pc: { x: -10, z: E.z + 16, half: { x: 0.6, z: 0.65 }, reach: 1.5 },
-    floppy: { x: -10, z: E.z + 19, half: { x: 0.45, z: 0.6 }, reach: 1.4 },
-    maze: { x: -10, z: E.z - 16, half: { x: 0.45, z: 0.45 }, reach: 1.4 }
+    merkle: { x: -10, z: E.z + 7, half: { x: 1, z: 2.35 }, h: 3.4, reach: 1.6 },
+    blind: { x: -10, z: E.z - 7.5, half: { x: 0.8, z: 1.4 }, h: 2.3, reach: 1.5 },
+    pc: { x: -10, z: E.z + 16, half: { x: 0.6, z: 0.65 }, h: 1.6, reach: 1.4 },
+    floppy: { x: -10, z: E.z + 19, half: { x: 0.45, z: 0.6 }, h: 1.1, reach: 1.4 },
+    maze: { x: -10, z: E.z - 16, half: { x: 0.45, z: 0.45 }, h: 2.2, reach: 1.4 }
   };
   const PROPS = ["merkle", "blind", "pc", "floppy", "maze"];
-  // The footprints build passes to kit.obstacle: one box per exhibit and the rail, and the big sign's two posts.
-  const footprints = () => {
-    const out = [];
-    for (const key of ["rail", ...PROPS]) { const l = LAYOUT[key]; out.push({ x0: l.x - l.half.x, x1: l.x + l.half.x, z0: l.z - l.half.z, z1: l.z + l.half.z }); }
-    const s = LAYOUT.sign;
-    for (const dz of [-s.half.z + 0.2, s.half.z - 0.2]) out.push({ x0: s.x - 0.2, x1: s.x + 0.2, z0: s.z + dz - 0.2, z1: s.z + dz + 0.2 });
-    return out;
-  };
+  // The footprints build passes to kit.obstacle, one box per exhibit.
+  const footprints = () => PROPS.map((key) => { const l = LAYOUT[key]; return { x0: l.x - l.half.x, x1: l.x + l.half.x, z0: l.z - l.half.z, z1: l.z + l.half.z }; });
+  // Where the visitor stands to use an exhibit: in front of it, toward the stream.
+  const walkUp = (key, y) => { const l = LAYOUT[key]; return { x: l.x + l.half.x + FRONT, y, z: l.z }; };
 
   // --- Models -------------------------------------------------------------------------------------------------------
   // Original procedural geometry, built once per visit through the kit: static parts with kit.solid, moving or
@@ -665,23 +687,10 @@
   const FACE_X = Math.PI / 2;
   const buildModels = (kit, live) => {
     const { top: Y, M, createNode, addChild, place, solid, sign } = kit;
+    // Only exhibit signs here: the cave's years sign, pylons and overview board are the shared signage's.
     const parts = { tiles: [], lit: [], proofs: [], marks: [], disks: [], runs: [], leaves: [], phase: 0, mazeShown: -1 };
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, visible }));
     const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
-    // The era's big sign on two posts, and a timeline rail of what each date marks, by the ramp's head.
-    {
-      const s = LAYOUT.sign;
-      for (const dz of [-s.half.z + 0.2, s.half.z - 0.2]) solid(0.3, 5.2, 0.3, "#2a2230", s.x, Y + 2.6, s.z + dz);
-      const big = kit.label(YEARS, `Era ${ERA} · ${NAME}`, { height: 3.2, style: "gold" });
-      const n = place(createNode({ position: { x: s.x + 0.2, y: Y + 4.4, z: s.z }, rotation: { x: 0, y: FACE_X, z: 0 } }));
-      addChild(n, createNode({ geometry: big.back }), createNode({ geometry: big.face }));
-      const r = LAYOUT.rail;
-      solid(0.1, 2.6, 2.2, "#3b2f48", r.x - 0.05, Y + 1.3, r.z);
-      solid(0.3, 0.1, 2.4, "#2a2230", r.x, Y + 0.05, r.z);
-      const rows = [["1980 · MERKLE · PUBLISHED", "whitepaper reference [7]"], ["1982 · CHAUM · PRESENTED", "context · printed 1983"],
-        ["1985 · MILLER · PRESENTED", "context · printed 1986"], ["1988 · MAY · DATED IN REPRINT", "context · the author's views"]];
-      rows.forEach(([t, sub], i) => sign(t, sub, r.x + 0.02, Y + 2.25 - i * 0.55, r.z, FACE_X, 0.42));
-    }
     // 1. The Merkle table: a table, an upright board of fifteen tiles in four rows wired as a tree, the eight record
     // cards on the table and the trusted-root lamp. Each tile has a dark face, a lit face (path) and a blue one (proof).
     {
@@ -848,13 +857,15 @@
   let visit = null;
   BL.genesisExhibits.register(ERA, {
     sources: SOURCES,
+    overview: OVERVIEW,
     build(kit) {
       const live = createLive(), parts = buildModels(kit, live);
       for (const o of footprints()) kit.obstacle(o.x0, o.x1, o.z0, o.z1);
       for (const key of PROPS) {
         const ex = EXHIBITS[key], l = LAYOUT[key];
-        kit.prop({ id: ex.id, year: ex.year, title: ex.title, label: ex.label, sourceKeys: ex.sourceKeys, at: { x: l.x, y: kit.top, z: l.z }, reach: l.reach,
-          pick: { w: l.half.x * 2, h: key === "merkle" ? 2.8 : 1.8, d: l.half.z * 2 }, short: ex.short, deeper: ex.deeper, onUse: () => ({ terminal: live.terminals[key] }) });
+        kit.prop({ id: ex.id, year: ex.year, connection: ex.connection, ...(ex.ref ? { ref: ex.ref } : {}), date: ex.date, title: ex.title, label: ex.label,
+          sourceKeys: ex.sourceKeys, at: walkUp(key, kit.top), reach: l.reach, pick: { w: l.half.x * 2, h: l.h, d: l.half.z * 2, x: l.x, z: l.z },
+          short: ex.short, deeper: ex.deeper, onUse: () => ({ terminal: live.terminals[key] }) });
       }
       sync(parts, live, 0, true);
       visit = { live, parts };
@@ -863,7 +874,7 @@
     dispose() { visit = null; }
   });
 
-  BL.genesisEra2 = { ERA, YEARS, NAME, SOURCES, HELD, RECORDS, SEAL, PC_FILES, PC_YEAR, FLOPPY_DISKS, MAZE, EXHIBITS, LAYOUT, PROPS,
+  BL.genesisEra2 = { ERA, YEARS, NAME, SOURCES, OVERVIEW, HELD, RECORDS, SEAL, PC_FILES, PC_YEAR, FLOPPY_DISKS, MAZE, EXHIBITS, LAYOUT, PROPS,
     sourceOf, createMerkle, createBlind, createPc, createFloppies, createMaze, merkleTerminal, blindTerminal, floppyTerminal, mazeTerminal,
-    createLive, footprints, buildModels, sync, get visit() { return visit; } };
+    createLive, footprints, walkUp, buildModels, sync, get visit() { return visit; } };
 })();
