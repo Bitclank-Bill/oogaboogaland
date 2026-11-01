@@ -71,7 +71,8 @@
       // path, its arrow pointing along the gallery's path.
       j.nx = west ? 1 : east ? -1 : 0; j.nz = west || east ? 0 : door.z < 0 ? 1 : -1;
       const g = entries.filter((x) => x.era === e.n && !/-panel$/.test(x.id) && x.connection !== "bibliography");
-      const picks = [...g.filter((x) => x.trail), ...g.filter((x) => !x.trail)].slice(0, 2);
+      // Two of the gallery's exhibits: the trail's first, then dated ones, a modern toy or game only if nothing else.
+      const picks = [...g.filter((x) => x.trail), ...g.filter((x) => !x.trail && !x.modern), ...g.filter((x) => !x.trail && x.modern)].slice(0, 2);
       signs.push({ era: e.n, x: j.x, z: j.z, ry: Math.atan2(ux, uz),
         lines: [signText(`ERA ${e.n} ${e.years}`), signText(e.name), ...picks.map((x) => shortTitle(x.title))], exhibits: picks.map((x) => x.id) });
     }

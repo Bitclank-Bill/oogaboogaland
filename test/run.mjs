@@ -23497,6 +23497,17 @@ const genesisBenchProof = async () => {
     // Wi-Fi's 1997 standard is told by Era 4's wireless station; Deep Blue's match is not mapped to the strategy homage.
     mapped: TD.records.find((r) => r.id === "tl-4-wifi").exhibit === "e4-wireless" && TD.records.find((r) => r.id === "tl-4-deep-blue").exhibit === null,
     sourced: E.every((e) => e.sources.length && e.sources.every((s) => /^https:\/\//.test(s.href))) };
+  // Modern museum toys and games (genesis-catalogue.js MODERN): every one shows its gallery label, never a bare year
+  // (Era 0's toys never show their placeholder 1956), stands after its era's dated exhibits, stays off the white screen
+  // and out of the trail; every listed id is a real exhibit; the scene shows the label on overview boards and hints.
+  const modern = E.filter((e) => e.modern), lastOf = (y) => { const m = String(y).match(/\d{4}/g); return +m[m.length - 1]; };
+  const sceneSrc = await readFile(join(root, "src/js/scene-genesis.js"), "utf8");
+  catalogue.modern = modern.length >= 35 && Object.keys(C.MODERN).every((id) => ids.has(id))
+    && modern.every((e) => /^modern museum (toy|game) · .+ gallery$/.test(e.year) && !/^\d{4}s?$/.test(String(e.year)) && !e.trail)
+    && ["e0-nim", "e0-crt", "e0-pointer"].every((id) => cat.get(id).modern && String(cat.get(id).year) === "modern museum toy · 1956–1969 gallery" && !/^1956\b/.test(String(cat.get(id).year)))
+    && modern.every((m) => E.filter((e) => e.era === m.era && !e.modern && e.yearKey <= lastOf(W.ERAS[m.era].years) + 0.5).every((e) => e.index < m.index))
+    && !cat.dated().some((e) => e.modern) && cat.shown("e2-four", 1985) === cat.get("e2-four").year
+    && /paint\(g, W, H, \{ entries: catalogue\.dated\(\) \}/.test(sceneSrc) && (sceneSrc.match(/catalogue\.shown\(/g) || []).length >= 3;
   let refuses = false;
   try { C.create({ items: [items[0], items[0]], eras: W.ERAS, connections: EX.CONNECTIONS, sourceOf: () => null }); } catch (_) { refuses = true; }
   catalogue.refusesTwice = refuses;

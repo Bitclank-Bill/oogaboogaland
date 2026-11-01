@@ -270,7 +270,9 @@
   const buildLegend = () => {
     const W = 4096, H = Math.round(W * LEGEND.h / LEGEND.w), canvas = document.createElement("canvas"), g = canvas.getContext("2d");
     canvas.width = W; canvas.height = H;
-    const count = BL.genesisTimeline.paint(g, W, H, catalogue, host.records);
+    // The white screen places exhibits on a time line, so it is handed the dated exhibits only: a modern toy or game
+    // has no date to stand at (genesis-catalogue.js MODERN).
+    const count = BL.genesisTimeline.paint(g, W, H, { entries: catalogue.dated() }, host.records);
     const image = new Image();
     image.src = canvas.toDataURL("image/png");
     const face = { verts: [-LEGEND.w / 2, -LEGEND.h / 2, 0.03, LEGEND.w / 2, -LEGEND.h / 2, 0.03, LEGEND.w / 2, LEGEND.h / 2, 0.03, -LEGEND.w / 2, LEGEND.h / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
@@ -446,6 +448,8 @@
   // wall (buildCaves), a pylon naming the era on each bank's gateway, an overview board on the left bank's gateway (tap or
   // Space for its panel), and the Steps toward Bitcoin: a gold path along each bank's waterside walk to every exhibit
   // whose connection is on the trail, with a STEP post by each, numbered in date order across all eras.
+  // Exhibits in the catalogue's order (dated first, by date; then each era's modern toys and games).
+  const byCatalogue = (list) => list.slice().sort((a, b) => catalogue.indexOf(a.prop.id) - catalogue.indexOf(b.prop.id));
   const glowHex = (rgb) => "#" + rgb.map((v) => Math.round(Math.min(1, v / 1.4) * 255).toString(16).padStart(2, "0")).join("");
   const firstYear = (years) => +years.match(/\d{4}/)[0];
   // A board of text painted once into an unlit picture (as factoryModels.label is, so it reads in any cave light): a
@@ -580,10 +584,10 @@
       const glow = glowHex(e.theme.lamp);
       const spot = GW.overviewSpot(e.n);
       p.x = spot.x; p.z = spot.z;
-      const def = EX && EX.eras[e.n], mine = built.exhibitProps.filter((x) => x.era === e.n).sort((a, b) => EX.yearKey(a.def.year) - EX.yearKey(b.def.year) || a.order - b.order);
+      const def = EX && EX.eras[e.n], mine = byCatalogue(built.exhibitProps.filter((x) => x.era === e.n));
       const board = textBoard({ kicker: `ERA ${e.n} · ${e.years.toUpperCase()}`, title: e.name, width: 3.4,
         body: [def && def.overview ? def.overview.summary : mine.length ? "Walk the gallery: every exhibit here shows its year." : "This gallery's exhibits are still being built."],
-        list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
+        list: mine.length ? [...mine.map((x) => ({ text: `${catalogue.shown(x.prop.id, x.def.year)} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
           ...(mine.some((x) => x.step) ? [{ text: "★ Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
       const ry = spot.ry, lift = ISLAND_TOP + 0.9 + board.height / 2;
       // Its post stands behind the board (genesis-world.js overviewSpot), never through its face.
@@ -629,13 +633,13 @@
     const EX = BL.genesisExhibits;
     for (const o of built.overviews) {
       const e = GW.ERAS[o.era], year = firstYear(e.years), def = EX && EX.eras[o.era];
-      const mine = built.exhibitProps.filter((x) => x.era === o.era).sort((a, b) => EX.yearKey(a.def.year) - EX.yearKey(b.def.year) || a.order - b.order);
+      const mine = byCatalogue(built.exhibitProps.filter((x) => x.era === o.era));
       const steps = built.trail.map((x) => `${x.step}. ${x.def.year} · ${x.def.title}${x.era === o.era ? " (this cave)" : ` (Era ${x.era})`}`);
       props.register({ id: `era${o.era}-overview`, era: o.era, year, title: `Era ${e.n} overview`, label: `ERA ${e.n} OVERVIEW · ${year}`, sourceKeys: ["whitepaper"], at: o.at, reach: 2.4,
         onUse: () => ({ board: { room: `Era ${e.n} - ${e.name} - ${e.years}`, sources: def && def.overview && def.overview.sourceKeys ? def.overview.sourceKeys : [], pages: [
           { caption: "This era", title: `${e.name} (${e.years})`, text: [def && def.overview ? def.overview.summary : "This cave's exhibits are still being built."] },
           ...(def && def.overview && def.overview.pages ? def.overview.pages : []),
-          { caption: "Exhibits", title: "In this cave, by year", text: mine.length ? mine.map((x) => `${x.def.year} · ${x.def.title}${x.step ? ` · step ${x.step}` : ""}`) : ["No exhibits yet."] },
+          { caption: "Exhibits", title: "In this gallery, dated first", text: mine.length ? mine.map((x) => `${catalogue.shown(x.prop.id, x.def.year)} · ${x.def.title}${x.step ? ` · step ${x.step}` : ""}`) : ["No exhibits yet."] },
           { caption: "Steps toward Bitcoin", title: "The trail, in date order", text: [steps.length ? steps.join(" · ") : "No steps placed yet."] }
         ] } }) });
     }
@@ -881,7 +885,7 @@
     const near = props.near(p.x, p.z, feet);
     if (near !== walk.prop) {
       walk.prop = near;
-      if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
+      if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
       else { hud.hideHint(); pilot.showAct(); }
     }
   };
