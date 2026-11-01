@@ -15,7 +15,7 @@
   const CHANNEL = { x0: LANE_X - HALF, x1: LANE_X + HALF };
   // Every cave is the same size, large enough to explore and to fly a jetpack in: wide banks from the stream to its
   // walls and a high roof. Low stone tunnels join them.
-  const CAVE = { x0: -34, x1: 42, len: 72, height: 24 }, TUNNEL = 12, TUNNEL_HEIGHT = 4.6, BANK_TOP = 0.545;
+  const CAVE = { x0: -34, x1: 42, len: 72, height: 24 }, TUNNEL = 12, TUNNEL_HEIGHT = 4.6, BANK_TOP = 0.545, SIGN_H = 4.2;
   // `theme` colours a cave's rock, its banks and its lamps. `boat` is one of BOATS. Era 3 holds Fingerprints and Time,
   // moved out of the old cavern by ROOM_SHIFT onto its left bank.
   const ERAS = [
@@ -45,8 +45,9 @@
     e.banks = [{ side: -1, x0: CAVE.x0, x1: CHANNEL.x0, z0: e.z0, z1: e.z1 }, { side: 1, x0: CHANNEL.x1, x1: CAVE.x1, z0: e.z0, z1: e.z1 }];
     // Where the Tour stops and the boat counts as docked: by the left bank, halfway down the cave.
     e.dock = { x: CHANNEL.x0 + 1.4, z: e.z, facing: -Math.PI / 2 };
-    // The years hang over the stream just inside the cave, facing the boat as it comes in.
-    e.sign = { x: LANE_X, y: 6.5, z: e.z1 - 10 };
+    // The era's big sign: on the far back wall over the way out, facing the boat as it comes in, readable down the
+    // whole cave (its height in metres; scene-genesis.js paints it in the era's own signage style).
+    e.sign = { x: LANE_X, y: TUNNEL_HEIGHT + 0.8 + SIGN_H / 2, z: e.z0 + 0.7, height: SIGN_H };
   });
   const ROOM_ERA = ERAS.findIndex((e) => e.room);
   // The room was centred on z -26.5; it lands in the middle of Era 3's cave.
@@ -129,6 +130,17 @@
   const bankToWorld = (f, u, v, out) => { out.x = f.edge + f.side * v; out.z = f.z1 - u; return out; };
   // The plots no exhibit may take, in world boxes with a reason: the gateway, the dock and its ramps by the middle of
   // each cave, the lamp posts, and on Era 3's left bank Fingerprints and Time's room.
+  // The lamp posts in era n's cave, where its lights hang: each { x, z } and its box { x0, x1, y0, y1, z0, z1 }.
+  const lampPosts = (n) => LAMPS.map(([x, f]) => {
+    const bx = x < LANE_X ? Math.min(x, CHANNEL.x0 - 1.2) : Math.max(x, CHANNEL.x1 + 1.2), z = ERAS[n].z1 - f * CAVE.len;
+    return { x: bx, z, x0: bx - 0.15, x1: bx + 0.15, y0: BANK_TOP, y1: BANK_TOP + 9.35, z0: z - 0.15, z1: z + 0.15 };
+  });
+  // The gateway's two pylons in era n's cave (scene-genesis.js builds them), as boxes like lampPosts'. They stand 9 m
+  // from the stream's edge, past the overview board's far end, so neither hides the board from the boat.
+  const pylons = (n) => [-1, 1].map((side) => {
+    const p = bankToWorld(bankFrame(n, side), 3, 9, { x: 0, z: 0 });
+    return { x: p.x, z: p.z, x0: p.x - 0.65, x1: p.x + 0.65, y0: BANK_TOP, y1: BANK_TOP + 5.4, z0: p.z - 0.65, z1: p.z + 0.65 };
+  });
   const reservedZones = (n) => {
     const e = ERAS[n], out = [];
     for (const side of [-1, 1]) {
@@ -138,22 +150,53 @@
       const near = f.edge + f.side * 6;
       out.push({ x0: Math.min(xa, near), x1: Math.max(xa, near), z0: e.z - 4, z1: e.z + 4, why: "dock" });
     }
-    for (const [x, f] of LAMPS) {
-      const bx = x < LANE_X ? Math.min(x, CHANNEL.x0 - 1.2) : Math.max(x, CHANNEL.x1 + 1.2), z = e.z1 - f * CAVE.len;
-      out.push({ x0: bx - 0.8, x1: bx + 0.8, z0: z - 0.8, z1: z + 0.8, why: "lamp" });
-    }
+    for (const l of lampPosts(n)) out.push({ x0: l.x - 0.8, x1: l.x + 0.8, z0: l.z - 0.8, z1: l.z + 0.8, why: "lamp" });
     if (e.room) out.push({ x0: -12 + ROOM_SHIFT.x - 1.5, x1: CHANNEL.x0, z0: -34 + ROOM_SHIFT.z - 1.5, z1: -19 + ROOM_SHIFT.z + 1.5, why: "Fingerprints and Time" });
     return out;
   };
 
   // An era's overview board on its left bank's gateway (scene-genesis.js builds it): where it stands, its turn
   // (between the stream and the way in), the boxes walkers meet along its line (its lower edge is at head height),
-  // and where a visitor uses it, 1.5 m in front of its face, clear of those boxes.
+  // and where a visitor uses it, 1.5 m in front of its face, clear of those boxes. Its post stands behind the board,
+  // never through its face (a post at the board's own line hid its middle from the stream).
   const overviewSpot = (n) => {
     const f = bankFrame(n, -1), ry = Math.PI / 2 - 0.55, p = bankToWorld(f, 7, 6, { x: 0, z: 0 });
     const fx = Math.sin(ry), fz = Math.cos(ry), ax = Math.cos(ry), az = -Math.sin(ry);
     const boxes = [-1.2, 0, 1.2].map((k) => ({ x0: p.x + ax * k - 0.45, x1: p.x + ax * k + 0.45, z0: p.z + az * k - 0.45, z1: p.z + az * k + 0.45 }));
-    return { x: p.x, z: p.z, ry, boxes, at: { x: p.x + fx * 1.5, z: p.z + fz * 1.5 } };
+    return { x: p.x, z: p.z, ry, normal: { x: fx, z: fz }, axis: { x: ax, z: az }, boxes, at: { x: p.x + fx * 1.5, z: p.z + fz * 1.5 },
+      post: { x: p.x - fx * 0.4, z: p.z - fz * 0.4, w: 0.3 } };
+  };
+
+  // --- Boarding --------------------------------------------------------------------------------------------------
+  // Space boards the boat from anywhere within `reach` of it, measured flat (from a bank, a ramp, a jetpack over the
+  // water): the Ooga is put straight onto its deck. Further off, the visitor can call the boat: it sails down the
+  // stream to the edge of the bank the Ooga is on, `edge` metres out, level with the Ooga, inside the cave it stands in.
+  // `call` is how near the stream's edge Space calls it (elsewhere Space stays a jump).
+  const BOARD = { reach: 8, call: 3, edge: 1.4, speed: 9 };
+  const canBoard = (ox, oz, bx, bz) => Math.hypot(ox - bx, oz - bz) <= BOARD.reach;
+  // Whether (x, z) is on a bank within `call` of the stream's edge (the waterside walk), or on the harbour's dock.
+  const byWater = (x, z) => z > MOUTH_Z ? x > -6.8 && x < -1.4 : (x < CHANNEL.x0 && x > CHANNEL.x0 - BOARD.call) || (x > CHANNEL.x1 && x < CHANNEL.x1 + BOARD.call);
+  // Where a called boat comes to for an Ooga at (ox, oz), written into `out` ({ x, z }): alongside the harbour's dock,
+  // or at the stream's edge on the Ooga's side, level with it and kept inside its cave.
+  const callSpot = (ox, oz, out) => {
+    const era = eraAt(ox, oz);
+    if (era < 0) { out.x = -0.4; out.z = Math.max(-1.6, Math.min(6.4, oz)); return out; }
+    const e = ERAS[era];
+    out.x = ox < LANE_X ? CHANNEL.x0 + BOARD.edge : CHANNEL.x1 - BOARD.edge;
+    out.z = Math.max(e.z0 + 3, Math.min(e.z1 - 3, oz));
+    return out;
+  };
+  // Sails a boat `state` ({ x, z, heading, speed }) toward `to` ({ x, z }) by `dt` seconds at BOARD.speed, bow first:
+  // straight along the stream, or through the harbour's mouth first when one end is in the harbour and the other past
+  // it. Returns true once there.
+  const sailToward = (state, to, dt) => {
+    const cross = (state.z < MOUTH_Z) !== (to.z < MOUTH_Z), tx = cross ? LANE_X : to.x, tz = cross ? MOUTH_Z + (to.z < MOUTH_Z ? -1 : 1) : to.z;
+    const dx = tx - state.x, dz = tz - state.z, d = Math.hypot(dx, dz), step = BOARD.speed * dt;
+    state.speed = 0;
+    if (d <= step) { state.x = tx; state.z = tz; return !cross; }
+    state.heading = Math.atan2(dx, dz);
+    state.x += dx / d * step; state.z += dz / d * step;
+    return false;
   };
 
   // How high an Ooga may fly at (x, z): the harbour's roof, a cave's, or a tunnel's.
@@ -162,5 +205,5 @@
     for (let i = 0; i < ERAS.length; i++) if (z <= ERAS[i].z1 && z >= ERAS[i].z0) return CAVE.height - 0.6;
     return TUNNEL_HEIGHT - 0.4;
   };
-  BL.genesisWorld = { LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  BL.genesisWorld = { BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();

@@ -23316,6 +23316,106 @@ const genesisEra3CalmProof = async () => {
   def.dispose();
   return { livelyLamp, livelyDemo, steadyLamp, stillDemo, resultAtOnce, resumes, heldWhileReading, pagesAfter, demonstration, disposed: E.visit === null };
 };
+// Rule: getting back into the boat is easy (genesis-world.js BOARD). From either bank of every cave, standing at the
+// water's edge, an Ooga is within reach of the boat wherever it lies across the stream, and from the water beside it;
+// far up a bank it is not, and calling the boat brings it to the edge of that Ooga's bank, level with it and inside its
+// cave, after which Space boards. A called boat sails there without touching a wall, from the harbour into any cave and
+// back out through the mouth, and Space at the water's edge (or on the harbour's dock) is what calls it.
+const genesisBoardingProof = async () => {
+  const context = { window: {} };
+  for (const f of ["genesis-voyage", "genesis-world"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const W = context.window.BL.genesisWorld, C = W.CHANNEL, B = W.BOARD, out = { x: 0, z: 0 };
+  let banks = true, water = true, far = true, called = true, edge = true;
+  for (const e of W.ERAS) for (const z of [e.z1 - 12, e.z, e.z0 + 12]) {
+    for (const bx of [C.x0 + 1.4, W.LANE_X, C.x1 - 1.4]) if (!W.canBoard(C.x0 - 1, z, bx, z) || !W.canBoard(C.x1 + 1, z, bx, z)) banks = false;
+    if (!W.canBoard(W.LANE_X + 2, z + 1, W.LANE_X, z)) water = false;
+    if (W.canBoard(C.x0 - 12, z, C.x1 - 1.4, z) || W.canBoard(C.x1 + 12, z, C.x0 + 1.4, z)) far = false;
+    for (const ox of [C.x0 - 12, C.x1 + 12]) {
+      W.callSpot(ox, z, out);
+      if (Math.abs(out.z - z) > 1e-9 || out.x !== (ox < W.LANE_X ? C.x0 + B.edge : C.x1 - B.edge) || !W.canBoard(ox < W.LANE_X ? C.x0 - 1 : C.x1 + 1, z, out.x, out.z)) called = false;
+    }
+    if (!W.byWater(C.x0 - 1, z) || !W.byWater(C.x1 + 1, z) || W.byWater(C.x0 - 6, z) || W.byWater(C.x1 + 6, z)) edge = false;
+  }
+  // Called from past a cave's end, the boat stops inside that cave.
+  const e3 = W.ERAS[3]; W.callSpot(C.x0 - 2, e3.z1 - 0.5, out); const inside = out.z <= e3.z1 - 3 && out.z >= e3.z0 + 3;
+  const dockEdge = W.byWater(-3, 2) && !W.byWater(-9, 2);
+  // Sailing there: never into a wall (the boat driver's own collision would move it), and it arrives.
+  const sail = (from, to) => {
+    const s = { x: from.x, z: from.z, heading: 0, speed: 0 }, probe = { x: 0, z: 0 };
+    for (let i = 0; i < 4000; i++) {
+      const done = W.sailToward(s, to, 1 / 60);
+      probe.x = s.x; probe.z = s.z;
+      if (W.collide(probe, 1.05)) return { ok: false, at: [s.x, s.z] };
+      if (done) return { ok: Math.hypot(s.x - to.x, s.z - to.z) < 1e-6, steps: i + 1 };
+    }
+    return { ok: false, stuck: [s.x, s.z] };
+  };
+  const into = W.callSpot(C.x1 + 2, W.ERAS[5].z, { x: 0, z: 0 }), back = W.callSpot(-3, 3, { x: 0, z: 0 });
+  const out1 = sail(W.HARBOUR.start, into), out2 = sail(into, back), out3 = sail({ x: C.x0 + 1.4, z: W.ERAS[1].z }, W.callSpot(C.x1 + 1, W.ERAS[1].z, { x: 0, z: 0 }));
+  const sails = out1.ok && out2.ok && out3.ok;
+  return { banks, water, far, called, edge, inside, dockEdge, sails, reach: B.reach };
+};
+// Rule: sightlines from the stream (docs/genesis-voyage/EXHIBIT-CONTRACT.md). From the boat's lanes in every cave, at a
+// seated Ooga's eye and the chase camera's, nothing stands between the stream and the overview board's face, nor the
+// era's big sign on the far back wall: no lamp post or lamp, no pylon, no board post and no exhibit solid any era file
+// builds. The sign hangs over the way out, above the tunnel, large enough to read down the cave. Regression: the board's
+// post stood at the board's own line, through its face, and hid Era 2's board from the stream; the check catches that.
+const genesisSightlinesProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, C = W.CHANNEL, T = W.BANK_TOP;
+  // Does the segment a→b pass through box o ({ x0, x1, y0, y1, z0, z1 })? The slab test.
+  const hits = (a, b, o) => {
+    let t0 = 0, t1 = 1;
+    for (const [p, q, lo, hi] of [[a.x, b.x, o.x0, o.x1], [a.y, b.y, o.y0, o.y1], [a.z, b.z, o.z0, o.z1]]) {
+      const d = q - p;
+      if (Math.abs(d) < 1e-12) { if (p < lo || p > hi) return false; continue; }
+      let u = (lo - p) / d, v = (hi - p) / d; if (u > v) [u, v] = [v, u];
+      t0 = Math.max(t0, u); t1 = Math.min(t1, v); if (t0 > t1) return false;
+    }
+    return true;
+  };
+  const blocked = [];
+  let sightlines = 0;
+  const signsOk = W.ERAS.every((e) => e.sign.height >= 3.5 && e.sign.y - e.sign.height / 2 >= W.TUNNEL_HEIGHT && e.sign.z > e.z0 && e.sign.z < e.z0 + 1.2 && Math.abs(e.sign.x - W.LANE_X) < 1e-9);
+  let regression = false;
+  W.ERAS.forEach((e, n) => {
+    const solids = [];
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+    const kit = { era: e, top: T, channel: C, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), sign: () => node(), obstacle: () => {}, notify: () => {}, prop: (d) => ({ ...d, era: n }),
+      solid: (w, h, d, c, x, y, z) => { solids.push({ what: `era ${n} solid at ${x.toFixed(1)},${z.toFixed(1)}`, x0: x - w / 2, x1: x + w / 2, y0: y - h / 2, y1: y + h / 2, z0: z - d / 2, z1: z + d / 2 }); return node(); } };
+    if (EX.eras[n]) { EX.eras[n].build(kit); if (EX.eras[n].dispose) EX.eras[n].dispose(); }
+    const spot = W.overviewSpot(n), boardTop = T + 0.9 + 1.8;
+    const post = { what: "the board's post", x0: spot.post.x - spot.post.w / 2, x1: spot.post.x + spot.post.w / 2, y0: T, y1: boardTop - 0.9, z0: spot.post.z - spot.post.w / 2, z1: spot.post.z + spot.post.w / 2 };
+    const boxes = [...solids, post, ...W.pylons(n).map((p) => ({ ...p, what: "a pylon" })),
+      ...W.lampPosts(n).flatMap((l) => [{ ...l, what: "a lamp post" }, { what: "a lamp", x0: l.x - 0.45, x1: l.x + 0.45, y0: T + 8.45, y1: T + 9.35, z0: l.z - 0.45, z1: l.z + 0.45 }])];
+    const eyes = [];
+    for (const x of [C.x0 + 1.4, W.LANE_X, C.x1 - 1.4]) for (const y of [1.6, 3.2]) for (let z = e.z1 - 1; z >= e.z0 + 12; z -= 3) eyes.push({ x, y, z });
+    // The board's face: three columns across its lower part, just in front of it, seen only from in front.
+    const face = [];
+    for (const k of [-1.4, 0, 1.4]) for (const y of [T + 1.1, T + 1.9]) face.push({ x: spot.x + spot.axis.x * k + spot.normal.x * 0.06, y, z: spot.z + spot.axis.z * k + spot.normal.z * 0.06 });
+    const W2 = e.sign.height * 2.5 / 2 - 0.3, H2 = e.sign.height / 2 - 0.3, sign = [];
+    for (const dx of [-W2, 0, W2]) for (const dy of [-H2, 0, H2]) sign.push({ x: e.sign.x + dx, y: e.sign.y + dy, z: e.sign.z + 0.12 });
+    const look = (targets, front, what, list) => {
+      for (const a of eyes) {
+        if (front && (a.x - spot.x) * spot.normal.x + (a.z - spot.z) * spot.normal.z < 0.3) continue;
+        for (const b of targets) {
+          sightlines++;
+          const o = list.find((box) => hits(a, b, box));
+          if (o && blocked.length < 12) blocked.push(`era ${n}: ${o.what} between the stream (${a.x.toFixed(2)}, ${a.y}, ${a.z.toFixed(1)}) and the ${what}`);
+        }
+      }
+    };
+    look(face, true, "overview board", boxes);
+    look(sign, false, "era sign", boxes);
+    // The old post, at the board's own line: it must be caught.
+    const old = { what: "old post", x0: spot.x - 0.15, x1: spot.x + 0.15, y0: T, y1: boardTop - 0.9, z0: spot.z - 0.15, z1: spot.z + 0.15 };
+    if (n === 2) regression = eyes.some((a) => (a.x - spot.x) * spot.normal.x + (a.z - spot.z) * spot.normal.z >= 0.3 && face.some((b) => hits(a, b, old)));
+  });
+  return { clear: blocked.length === 0, sightlines, signsOk, regression, blocked };
+};
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
@@ -23660,6 +23760,10 @@ const unitChecks = async () => {
   record("Genesis Voyage Era 3: it registers through the kit with no signage of its own; every exhibit is dated, sourced, explained and resettable at its prompt and adds no trail stop; the press breaks the desk's own links after a changed page and only those; the toy padlock opens what it locks and a changed note fails its seal; the dial-up corner caps its board; the pager pages once per approach and never while reading; the rally plays the same at any frame rate and a tick at a time at its prompt; everything keeps the reserved plots, the stream's walk and each other clear", Object.values(genesisEra3).every(Boolean), JSON.stringify(genesisEra3));
   const era3Calm = await genesisEra3CalmProof();
   record("Genesis Voyage Era 3 in Calm and while reading: the pager's lamp and the rally's demo move without Calm and hold still with it while a command's result shows at once; nothing pages while a panel or terminal is open, and it pages once after; the press is a demonstration of the room's stops, never a stop itself", Object.values(era3Calm).every(Boolean), JSON.stringify(era3Calm));
+  const genesisBoarding = await genesisBoardingProof();
+  record("Genesis Voyage boarding: from either bank of every cave at the water's edge, or the water beside it, the boat is within Space's reach wherever it lies across the stream; far up a bank it is not, and calling brings it to that bank's edge level with the Ooga inside its cave; a called boat sails there without touching a wall, through the harbour's mouth too; Space at the water's edge or on the dock calls it", Object.entries(genesisBoarding).every(([k, v]) => k === "reach" || v === true), JSON.stringify(genesisBoarding));
+  const genesisSightlines = await genesisSightlinesProof();
+  record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
   const genesisExhibits = await genesisExhibitsProof();
   record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none, all context; Era 2: Merkle [7]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();

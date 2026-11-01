@@ -1,6 +1,6 @@
 // The Genesis Voyage (work in progress, `?wip=genesis`): a boat trip through the ideas that came before Bitcoin.
 // From the harbour (the whitepaper stone's portal lands here) the visitor drives a boat down a stream through a chain of
-// large caves, one per era in date order, each with its years over the way in and walkable banks on both sides
+// large caves, one per era in date order, each with its era's sign on the far back wall and walkable banks on both sides
 // (genesis-world.js). The visitor's own Ooga rides in the boat, which changes to a type the era's dossier dates as
 // available then. Era 3's cave holds Fingerprints and Time, where Tock the archivist
 // Ooga runs a stamp desk: pages are fingerprinted, each stamp links to the last, the newest is published, and a
@@ -16,8 +16,10 @@
 //
 // Hop off and walk (marked section below): Jump out (J, or the button) by any ledge stops the boat where it is, with
 // no prompt, and the visitor walks as their own Ooga (the one the portal brought, `world.pilot`) through the shared
-// pilot and crew, as the arcade and factory scenes do. Walking up a boarding ramp, or J by the boat, re-boards; a fall
-// into the water comes back to the ledge's dock. Space by a prop uses it (genesis-props.js holds the props' rules).
+// pilot and crew, as the arcade and factory scenes do. Space anywhere within reach of the boat (genesis-world.js
+// BOARD), or walking up a boarding ramp, puts the Ooga straight back on its deck; further off, J, the Call boat button
+// or Space at the water's edge brings the boat down the stream to that bank. A fall into the water boards the boat when
+// it is near, else comes back to the ledge's dock. Space by a prop uses it (genesis-props.js holds the props' rules).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -96,8 +98,8 @@
         : { id: `era-${e.n}-right-ramp`, x0: CHANNEL.x1 - 0.9, x1: CHANNEL.x1, z0: e.z - 0.6, z1: e.z + 0.6, ramp: { from: 0.25, to: ISLAND_TOP, axis: "x" }, boards: true });
     }
   }
-  // How near land Jump out works, and how near the boat J re-boards.
-  const JUMP_REACH = 8, BOARD_REACH = 6, BOARD_JUMP = BOARD_REACH;
+  // How near land Jump out works; boarding's reach is genesis-world.js BOARD.
+  const JUMP_REACH = 8;
   // The first props, on the room's ledge: the office PC, the hard-drive plinth and Tock's book by the desk.
   const PROPS = { pc: { x: -9.6 + SX, y: 0.545, z: -20.6 + SZ }, drives: { x: -9.8 + SX, y: 0.545, z: -32.4 + SZ }, book: { x: -5.8 + SX, y: 0.545, z: -23.6 + SZ } };
   const WALK_PRESETS = { dock: { yaw: 0.6, pitch: 0.3, dist: 6, target: { x: -3.2, y: 1, z: 1.5 } } };
@@ -211,9 +213,9 @@
     built.splash = place(createNode({ geometry: M.box({ w: 3.4, h: 0.04, d: 3.4, color: "#ffffff", emissive: 0.8 }), visible: false }));
   };
   // One cave per era: banks either side of the stream, rock walls and roof in the era's colours, a way in and out for
-  // the stream with its years over the way in, lamps on the banks, and stone tunnels between caves.
+  // the stream with the era's sign on the back wall over the way out, lamps on the banks, and stone tunnels between caves.
   const buildCaves = () => {
-    const label = BL.factoryModels.label, C = GW.CAVE, H = C.height, gap = GW.TUNNEL_HEIGHT;
+    const C = GW.CAVE, H = C.height, gap = GW.TUNNEL_HEIGHT;
     // Whether a boulder of radius r at (x, z) in era n would sit in a reserved plot or on an exhibit's obstacle.
     const clutter = (n, x, z, r) => {
       const hit = (b) => x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1;
@@ -262,16 +264,14 @@
         const left = k % 2 === 0, z = e.z1 - 4 - (k >> 1) * (len - 8) / 5, y = 3 + rand() * (H - 8);
         solid(0.12, 0.4 + rand() * 0.6, 3 + rand() * 6, glow, left ? C.x0 + 0.06 : C.x1 - 0.06, y, z, 1.3);
       }
-      // The years over the way in, and the era's name under them.
-      const sign = label(e.years.toUpperCase(), `Era ${e.n} · ${e.name}`, { height: 3.2, style: "plain" });
-      // Two chains up to the roof.
-      for (const dx of [-3, 3]) solid(0.08, C.height - e.sign.y - 1, 0.08, "#2a2622", e.sign.x + dx, (C.height + e.sign.y + 1) / 2, e.sign.z);
-      hangSign(sign, e.sign.x, e.sign.y, e.sign.z, 0, glow);
+      // The era's big sign on the far back wall, over the way out, facing the boat as it comes in (genesis-world.js
+      // e.sign), in its era's own signage.
+      const sign = eraSign(e);
+      hangSign(sign, e.sign.x, e.sign.y, e.sign.z, 0, sign.frame);
       // Lamp posts on the banks, where the cave's lights hang.
-      for (const [x, f] of CAVE_LAMPS) {
-        const z = e.z1 - f * len, bx = x < GW.LANE_X ? Math.min(x, CHANNEL.x0 - 1.2) : Math.max(x, CHANNEL.x1 + 1.2);
-        solid(0.3, 8.6, 0.3, "#3b2a1a", bx, ISLAND_TOP + 4.3, z);
-        solid(0.9, 0.9, 0.9, "#ffcf7a", bx, ISLAND_TOP + 8.9, z, 1.5);
+      for (const l of GW.lampPosts(i)) {
+        solid(0.3, 8.6, 0.3, "#3b2a1a", l.x, ISLAND_TOP + 4.3, l.z);
+        solid(0.9, 0.9, 0.9, "#ffcf7a", l.x, ISLAND_TOP + 8.9, l.z, 1.5);
       }
       built.caves.push(e);
     });
@@ -349,7 +349,8 @@
   // The pilot and crew are made once per visit; while the visitor rides they are inactive and the Ooga is hidden.
   // Jump out stops the boat (the ride simply does not advance; no pause, no prompt) and hands the camera and keys to
   // the pilot; boarding hands them back to the boat's camera.
-  const walk = { on: false, area: null, prop: null, rampHint: null, nearBoat: false, falls: 0, boards: 0, jumps: 0, saved: { fov: 0, near: 0 } };
+  const walk = { on: false, area: null, prop: null, offer: "", rampHint: null, nearBoat: false, falls: 0, boards: 0, jumps: 0, calls: 0,
+    call: { active: false, x: 0, z: 0 }, saved: { fov: 0, near: 0 } };
   const landing = { area: null, distance: 0, x: 0, y: 0, z: 0 };
   const walkPose = { position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0.2, dist: 4.5 };
   let pilot = null, people = null, avatar = null, fx = null, footsteps = null, remotes = null, footing = null, props = null;
@@ -363,6 +364,8 @@
   const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3));
   const useNear = (x, z, reach, feet = feetOf()) => {
     const prop = props.near(x, z, feet, Math.max(0, reach - 1.4));
+    // No prop in reach: the act button boards the boat when it is near enough.
+    if (!prop && walk.on && walk.nearBoat) { reboard(); return true; }
     if (!prop) return false;
     openProp(prop);
     return true;
@@ -498,8 +501,8 @@
     if (EX) for (const def of EX.eras) if (def && def.dispose) def.dispose();
   };
   // --- Shared era signage (integrator; docs/genesis-voyage/EXHIBIT-CONTRACT.md) ---------------------------------------
-  // Every cave gets the same frame, whatever its era file builds: a large years sign with a lit border over the way in
-  // (buildCaves), a pylon naming the era on each bank's gateway, an overview board on the left bank's gateway (tap or
+  // Every cave gets the same frame, whatever its era file builds: a large sign in its era's signage on the far back
+  // wall (buildCaves), a pylon naming the era on each bank's gateway, an overview board on the left bank's gateway (tap or
   // Space for its panel), and the Steps toward Bitcoin: a gold path along each bank's waterside walk to every exhibit
   // whose connection is on the trail, with a STEP post by each, numbered in date order across all eras.
   const glowHex = (rgb) => "#" + rgb.map((v) => Math.round(Math.min(1, v / 1.4) * 255).toString(16).padStart(2, "0")).join("");
@@ -532,6 +535,87 @@
     back.castShadow = false;
     return { face, back, width: W, height: H };
   };
+  // Each cave's big sign on its back wall, painted once in its era's own signage, all original and unbranded: Era 0
+  // enamel on steel, Era 1 a wood-panel board with seventies stripes, Era 2 neon on black, Era 3 a beige terminal's
+  // banner, Era 4 a chrome-framed LCD, Era 5 a glossy two-thousands panel, Era 6 a printed page, Era 7 a glowing block.
+  // The years read large, the era's name under them. `frame` is the lit trim hung round it (null for none).
+  const ERA_SIGN_STYLES = [
+    { frame: "#c9ced4", paint: (g, w, h, a, b) => {
+      g.fillStyle = "#f1ead6"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#1f3a5f"; g.fillRect(0, 0, w, 26); g.fillRect(0, h - 26, w, 26); g.fillRect(0, 0, 26, h); g.fillRect(w - 26, 0, 26, h);
+      g.fillStyle = "#8d939a"; for (const [x, y] of [[48, 48], [w - 48, 48], [48, h - 48], [w - 48, h - 48]]) { g.beginPath(); g.arc(x, y, 12, 0, 7); g.fill(); }
+      signText(g, a, w / 2, h * 0.43, "bold 190px Georgia, serif", "#1f3a5f"); signText(g, b, w / 2, h * 0.76, "bold 66px Georgia, serif", "#a3262a");
+    } },
+    { frame: null, paint: (g, w, h, a, b) => {
+      g.fillStyle = "#5a3a22"; g.fillRect(0, 0, w, h);
+      g.strokeStyle = "rgba(30,16,8,0.35)"; g.lineWidth = 3; for (let x = 18; x < w; x += 46) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 6, h); g.stroke(); }
+      const bands = ["#f0a032", "#e0622a", "#b5361f", "#7a2a16"]; bands.forEach((c, i) => { g.fillStyle = c; g.fillRect(0, h - 120 + i * 24, w, 24); });
+      signText(g, a, w / 2, h * 0.36, "bold 180px Trebuchet MS, system-ui, sans-serif", "#f6e3b4"); signText(g, b, w / 2, h * 0.64, "bold 62px Trebuchet MS, system-ui, sans-serif", "#f0c27a");
+    } },
+    { frame: "#ff4fd8", paint: (g, w, h, a, b) => {
+      g.fillStyle = "#0c0614"; g.fillRect(0, 0, w, h);
+      g.strokeStyle = "#4ff3ff"; g.lineWidth = 8; g.shadowColor = "#4ff3ff"; g.shadowBlur = 24; g.strokeRect(30, 30, w - 60, h - 60);
+      signGlow(g, a, w / 2, h * 0.42, "bold 190px system-ui, sans-serif", "#ff4fd8"); signGlow(g, b, w / 2, h * 0.75, "bold 64px system-ui, sans-serif", "#4ff3ff");
+    } },
+    { frame: null, paint: (g, w, h, a, b) => {
+      g.fillStyle = "#d8cfb4"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#b9b096"; g.fillRect(0, h - 40, w, 40);
+      g.fillStyle = "#081008"; g.fillRect(56, 44, w - 112, h - 124);
+      g.fillStyle = "rgba(56,255,122,0.08)"; for (let y = 48; y < h - 84; y += 8) g.fillRect(60, y, w - 120, 3);
+      signGlow(g, a, w / 2, h * 0.36, "bold 170px Courier New, monospace", "#38ff7a"); signGlow(g, `> ${b}_`, w / 2, h * 0.64, "bold 56px Courier New, monospace", "#38ff7a");
+    } },
+    { frame: "#d9dde1", paint: (g, w, h, a, b) => {
+      const chrome = g.createLinearGradient(0, 0, 0, h); chrome.addColorStop(0, "#f4f6f8"); chrome.addColorStop(0.5, "#8a929a"); chrome.addColorStop(1, "#e2e6ea");
+      g.fillStyle = chrome; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#9fb39a"; g.fillRect(48, 48, w - 96, h - 96);
+      g.fillStyle = "rgba(20,40,20,0.08)"; for (let x = 52; x < w - 52; x += 10) g.fillRect(x, 52, 2, h - 104);
+      signText(g, a, w / 2, h * 0.42, "bold 180px Courier New, monospace", "#1d2a1d"); signText(g, b, w / 2, h * 0.74, "bold 58px Courier New, monospace", "#26381f");
+    } },
+    { frame: "#8fd3ff", paint: (g, w, h, a, b) => {
+      const sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, "#5fb8ff"); sky.addColorStop(1, "#0b4f9c");
+      g.fillStyle = sky; g.fillRect(0, 0, w, h);
+      const gloss = g.createLinearGradient(0, 0, 0, h / 2); gloss.addColorStop(0, "rgba(255,255,255,0.55)"); gloss.addColorStop(1, "rgba(255,255,255,0.08)");
+      g.fillStyle = gloss; g.fillRect(0, 0, w, h / 2);
+      g.shadowColor = "rgba(0,0,0,0.45)"; g.shadowBlur = 14; g.shadowOffsetY = 6;
+      signText(g, a, w / 2, h * 0.42, "bold 180px Verdana, system-ui, sans-serif", "#ffffff"); signText(g, b, w / 2, h * 0.74, "60px Verdana, system-ui, sans-serif", "#e8f4ff");
+    } },
+    { frame: null, paint: (g, w, h, a, b) => {
+      g.fillStyle = "#faf8f2"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#1a1a1a"; g.fillRect(90, 150, w - 180, 3); g.fillRect(90, h - 120, w - 180, 2);
+      signText(g, b, w / 2, 100, "bold 62px Times New Roman, Georgia, serif", "#111111"); signText(g, a, w / 2, h * 0.56, "150px Times New Roman, Georgia, serif", "#111111");
+      signText(g, "an original printed sign · the paper itself is in this cave", w / 2, h - 70, "italic 34px Times New Roman, Georgia, serif", "#444444");
+    } },
+    { frame: "#ff9a2e", paint: (g, w, h, a, b) => {
+      g.fillStyle = "#120c08"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#ff9a2e"; g.shadowColor = "#ff9a2e"; g.shadowBlur = 18;
+      for (let x = 20; x < w - 20; x += 40) { g.fillRect(x, 20, 28, 28); g.fillRect(x, h - 48, 28, 28); }
+      for (let y = 60; y < h - 60; y += 40) { g.fillRect(20, y, 28, 28); g.fillRect(w - 48, y, 28, 28); }
+      signGlow(g, a, w / 2, h * 0.43, "bold 170px Courier New, monospace", "#ffb45a"); signGlow(g, b, w / 2, h * 0.73, "bold 58px Courier New, monospace", "#ff9a2e");
+    } }
+  ];
+  // Centred text, its font shrunk to fit inside the sign's margins (a long date such as Era 7's would run off it).
+  const SIGN_TEXT_MAX = 1320;
+  const signText = (g, s, x, y, font, color) => {
+    g.font = font;
+    const w = g.measureText(s).width;
+    if (w > SIGN_TEXT_MAX) g.font = font.replace(/(\d+)px/, (m, px) => `${Math.floor(px * SIGN_TEXT_MAX / w)}px`);
+    g.fillStyle = color; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(s, x, y);
+  };
+  const signGlow = (g, s, x, y, font, color) => { g.save(); g.shadowColor = color; g.shadowBlur = 28; signText(g, s, x, y, font, color); g.shadowBlur = 0; signText(g, s, x, y, font, "#ffffff"); g.restore(); g.save(); g.globalAlpha = 0.55; signText(g, s, x, y, font, color); g.restore(); };
+  const eraSign = (e) => {
+    const canvas = document.createElement("canvas"), g = canvas.getContext("2d"), w = 1500, h = 600;
+    canvas.width = w; canvas.height = h;
+    ERA_SIGN_STYLES[e.n].paint(g, w, h, e.years.toUpperCase(), `Era ${e.n} · ${e.name}`);
+    const image = new Image();
+    image.src = canvas.toDataURL("image/png");
+    const H = e.sign.height, W = H * w / h;
+    const face = { verts: [-W / 2, -H / 2, 0.03, W / 2, -H / 2, 0.03, W / 2, H / 2, 0.03, -W / 2, H / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+    face.imageSurface = { asset: { width: w, height: h, load: () => image }, rect: [-W / 2, -H / 2, W, H] };
+    // The backing ends behind the face (at +0.01, the face at +0.03), so the two never fight for the same depth.
+    const back = M.bevelBox({ w: W + 0.3, h: H + 0.3, d: 0.16, color: "#1c1916", bevel: 0.04, offset: { z: -0.07 } });
+    back.castShadow = false;
+    return { face, back, width: W, height: H, frame: ERA_SIGN_STYLES[e.n].frame };
+  };
   // A sign (a label or a text board) at (x, y, z) turned `ry`, framed by four lit bars in `glow` if given: they read
   // from in front and stay a thin frame from behind.
   const hangSign = (sign, x, y, z, ry, glow = null) => {
@@ -553,9 +637,7 @@
     built.overviews = [];
     GW.ERAS.forEach((e) => {
       const glow = glowHex(e.theme.lamp);
-      for (const side of [-1, 1]) {
-        const f = GW.bankFrame(e.n, side);
-        GW.bankToWorld(f, 3, 3.2, p);
+      for (const p of GW.pylons(e.n)) {
         solid(1.2, 5.2, 1.2, e.theme.rock, p.x, ISLAND_TOP + 2.6, p.z);
         solid(1.3, 0.2, 1.3, glow, p.x, ISLAND_TOP + 5.3, p.z, 1.2);
         hangSign(label(`ERA ${e.n}`, e.years, { height: 1.1, style: "plain" }), p.x, ISLAND_TOP + 4.1, p.z + 0.62, 0);
@@ -569,7 +651,8 @@
         list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
           ...(mine.some((x) => x.step) ? [{ text: "★ Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
       const ry = spot.ry, lift = ISLAND_TOP + 0.9 + board.height / 2;
-      solid(0.3, 0.9 + board.height / 2, 0.3, "#3b2a1a", p.x, ISLAND_TOP + (0.9 + board.height / 2) / 2, p.z);
+      // Its post stands behind the board (genesis-world.js overviewSpot), never through its face.
+      solid(spot.post.w, 0.9 + board.height / 2, spot.post.w, "#3b2a1a", spot.post.x, ISLAND_TOP + (0.9 + board.height / 2) / 2, spot.post.z);
       hangSign(board, p.x, lift, p.z, ry, glow);
       const pick = place(createNode({ geometry: pickBox(3.6, board.height + 1.2, 0.6), position: { x: p.x, y: lift, z: p.z }, rotation: { x: 0, y: ry, z: 0 } }));
       // Walkers meet the board along its line and use it from in front of its face (genesis-world.js overviewSpot).
@@ -693,15 +776,17 @@
     walkPose.position.x = landing.x; walkPose.position.y = landing.y; walkPose.position.z = landing.z;
     walkPose.yaw = facing - Math.PI;
     pilot.navigate(walkPose);
-    walk.on = true; walk.area = landing.area; walk.prop = null; walk.jumps++;
-    hud.hint(COARSE ? "Stick walks · USE by a prop · Board on the ramp" : "W A S D walk · Space jumps, hold it in the air to jetpack · Space by a prop uses it · Space beside the boat jumps back in", 6000);
+    // A fresh walk: nothing offered yet, so the same Space press (the walking controls' act) cannot board straight back.
+    walk.on = true; walk.area = landing.area; walk.prop = null; walk.offer = ""; walk.nearBoat = false; walk.call.active = false; walk.jumps++;
+    hud.hint(COARSE ? "Stick walks · USE by a prop · BOARD near the boat · Call boat from anywhere" : "W A S D walk · Space jumps (hold for the jetpack) · Space by a prop uses it · Space near the boat boards · J calls the boat", 6000);
     showControls();
     return true;
   };
   // Back aboard: the pilot lets go, the Ooga is hidden and the boat's camera takes over where it left off.
   const reboard = () => {
     if (!walk.on) return false;
-    walk.on = false; walk.prop = null; walk.boards++;
+    walk.on = false; walk.prop = null; walk.offer = ""; walk.call.active = false; walk.boards++;
+    hud.hideHint();
     if (pilot.player) pilot.release(true);
     pilot.setActive(false);
     camera.fov = walk.saved.fov; camera.near = walk.saved.near; camera.up = null; camera.orthoMix = camera.orthoHeight = 0;
@@ -714,8 +799,19 @@
   const toggleWalk = () => {
     if (!walk.on) return jumpOut();
     if (walk.nearBoat) return reboard();
-    hud.hint("Walk back to the boat or up a boarding ramp to board.", 2500);
-    return false;
+    return callBoat();
+  };
+  // Calls the boat: it sails down the stream (taking the wheel back from the Tour) to the edge of the bank the Ooga is
+  // on, level with it (genesis-world.js callSpot), and waits there.
+  const callBoat = () => {
+    if (!walk.on || !avatar) return false;
+    const p = avatar.root.position;
+    if (view.mode === "tour") { view.mode = "drive"; driver.place(boat.x, boat.z, boat.heading); }
+    GW.callSpot(p.x, p.z, walk.call);
+    walk.call.active = true; walk.calls++;
+    hud.hint("The boat is on its way to you.", 2500);
+    showControls();
+    return true;
   };
   // Per frame while walking, allocation-free: the pilot and crew, the room's presence, then the ramps, the water,
   // the boat's reach and the prop in reach.
@@ -738,9 +834,12 @@
     if (here && !here.ramp) walk.area = here;
     // A ramp boards only where the boat lies at its foot; elsewhere it is just a ramp.
     const ramp = footing.boardingRampAt(p.x, p.z, feet);
-    if (ramp && footing.rampReaches(ramp, boat.x, boat.z, BOARD_REACH)) { reboard(); return; }
-    if (ramp && walk.rampHint !== ramp) { walk.rampHint = ramp; hud.hint("The boat isn't at this ramp. Walk to it and press Space.", 2500); }
+    if (ramp && footing.rampReaches(ramp, boat.x, boat.z, GW.BOARD.reach)) { reboard(); return; }
+    if (ramp && walk.rampHint !== ramp) { walk.rampHint = ramp; hud.hint(COARSE ? "Call boat brings the boat here." : "J (or Call boat) brings the boat here.", 2500); }
     else if (!ramp) walk.rampHint = null;
+    walk.nearBoat = GW.canBoard(p.x, p.z, boat.x, boat.z);
+    // In the water by the boat is as good as beside it.
+    if (footing.fallen(feet) && walk.nearBoat) { reboard(); return; }
     if (footing.fallen(feet)) {
       const dock = footing.dockOf(walk.area);
       walk.falls++;
@@ -752,12 +851,15 @@
       hud.hint("Splash! Back to the dock.", 2000);
       return;
     }
-    walk.nearBoat = Math.hypot(p.x - boat.x, p.z - boat.z) < BOARD_REACH;
-    const near = props.near(p.x, p.z, feet);
-    if (near !== walk.prop) {
-      walk.prop = near;
+    // The prompt: a prop in reach first, else boarding whenever the boat is in reach.
+    const near = props.near(p.x, p.z, feet), offer = near ? "prop" : walk.nearBoat ? "board" : "";
+    if (near !== walk.prop || offer !== walk.offer) {
+      const was = walk.offer;
+      walk.prop = near; walk.offer = offer;
       if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.title} (${near.year})`); hud.setAct("USE"); }
-      else pilot.showAct();
+      else if (offer === "board") { hud.hint(COARSE ? "BOARD · back into the boat" : "Space · board", 600000); hud.setAct("BOARD"); }
+      else { if (was === "board") hud.hideHint(); pilot.showAct(); }
+      showControls();
     }
   };
   // === End of hop off and walk ====================================================================================
@@ -867,7 +969,7 @@
     el.caption.hidden = !view.captions || !el.caption.textContent;
     // Ashore the boat waits: its own buttons step aside and Jump out becomes Board.
     el.sail.hidden = el.skip.hidden = el.boost.hidden = walk.on;
-    el.jump.textContent = walk.on ? "Board" : "Jump out";
+    el.jump.textContent = walk.on ? (walk.nearBoat ? "Board" : "Call boat") : "Jump out";
     press(el.jump, walk.on);
   };
   const paintChain = () => {
@@ -921,12 +1023,14 @@
     if (view.reading || terminal || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "j") { audio.wake(); toggleWalk(); return; }
-    // Space jumps out of the boat wherever it is; ashore, Space beside the boat jumps back in (anywhere else the pilot
-    // has it: a jump, the jetpack, or a prop).
+    // Space jumps out of the boat wherever it is. Ashore, a prop in reach takes it; otherwise Space boards the boat
+    // from anywhere within its reach, and at the water's edge calls it over (anywhere else the pilot has it: a jump or
+    // the jetpack).
     if (k === " " && !e.repeat) {
       if (!walk.on) { e.preventDefault(); audio.wake(); jumpOut(); return; }
       const p = avatar && avatar.root.position;
-      if (p && Math.hypot(p.x - boat.x, p.z - boat.z) < BOARD_JUMP) { e.preventDefault(); reboard(); return; }
+      if (p && !walk.prop && GW.canBoard(p.x, p.z, boat.x, boat.z)) { e.preventDefault(); reboard(); return; }
+      if (p && !walk.prop && !walk.call.active && GW.byWater(p.x, p.z)) { e.preventDefault(); callBoat(); return; }
     }
     // Ashore the pilot has the walking keys (W A S D, Q E, Space), Escape and 0; letting go of the Ooga re-boards.
     if (walk.on) {
@@ -1116,7 +1220,14 @@
     built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
     built.pcScreen.glow = 1 + (Math.floor(sceneTime * 2) & 1) * 0.2;
     // The boat's camera rides along; ashore the pilot frames the Ooga and the boat sits still on the water.
-    if (walk.on) { updateBoatModel(); updateWalk(dt, sceneTime); }
+    if (walk.on) {
+      // A called boat sails to the bank (held by pause and reading, as the ride is).
+      if (walk.call.active && !view.paused && !view.reading) {
+        if (GW.sailToward(driver.state, walk.call, dt)) { walk.call.active = false; showControls(); }
+        boat.x = driver.state.x; boat.z = driver.state.z; boat.heading = driver.state.heading;
+      }
+      updateBoatModel(); updateWalk(dt, sceneTime);
+    }
     else updateCamera(dt);
     remotes.update(dt);
     fx.update(dt, sceneTime);
@@ -1207,7 +1318,7 @@
     pilot.setActive(false);
     remotes = BL.remotePlayers.create({ root, crew: people, fx });
     footsteps = BL.footsteps.create();
-    walk.on = false; walk.area = walk.prop = null; walk.nearBoat = false; walk.falls = walk.boards = walk.jumps = 0;
+    walk.on = false; walk.area = walk.prop = null; walk.offer = ""; walk.nearBoat = false; walk.falls = walk.boards = walk.jumps = walk.calls = 0; walk.call.active = false;
     propState.uses = 0; propState.last = ""; terminal = null;
     const boatOrbit = (dx, dy) => {
       if (view.fixed || view.reading) return;
@@ -1250,7 +1361,7 @@
     for (const id of ["caption", "sail", "pause", "boost", "skip", "info", "jump", "cc", "voice", "view", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
-    el.help.textContent = COARSE ? "Stick drives · Boost for speed · Tour rides along · Jump out by an island" : "W A S D or arrows drive · Shift speed · Space jumps out and back in · Enter tour · P pause · N skip · I info · C captions · T voice · V view · R calm · drag to look · Esc leave";
+    el.help.textContent = COARSE ? "Stick drives · Boost for speed · Tour rides along · Jump out by a bank" : "W A S D or arrows drive · Shift speed · Space jumps out and back in · Enter tour · P pause · N skip · I info · C captions · T voice · V view · R calm · drag to look · Esc leave";
     el.term = document.getElementById("genesis-terminal");
     for (const id of ["Title", "Screen", "Prompt", "Input", "Form"]) el["term" + id] = document.getElementById(`genesis-terminal-${id.toLowerCase()}`);
     el.termForm.addEventListener("submit", (e) => { e.preventDefault(); runTerminal(el.termInput.value); el.termInput.value = ""; }, { signal: ctx.signal });

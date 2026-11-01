@@ -22,8 +22,11 @@ kit doesn't offer, ask the integrator.
 
 ## What every cave gets without you (shared signage)
 
-- **Entrance:** a large years sign over the stream just inside the way in, with a lit border in the era's colour, and
-  a stone pylon on each bank's gateway naming the era and its years.
+- **Era sign:** a large sign on the cave's far back wall, over the way out, facing the arriving boat. It shows the
+  years and the era's name, painted in that era's own signage (scene-genesis.js `ERA_SIGN_STYLES`, original designs).
+- **Entrance:** a stone pylon on each bank's gateway naming the era and its years.
+- **Sightlines:** keep the line from the stream to the overview board and to the era sign clear. The unit tier checks
+  your solids, the lamp posts and the pylons against it.
 - **Overview board:** on the left bank's gateway. It shows the era, its years, your `overview.summary`, and your
   exhibits by year, with trail steps starred. Space beside it, or a tap, opens its panel: the summary, the exhibits,
   and the whole Steps toward Bitcoin trail with this era's steps marked.
