@@ -3889,6 +3889,7 @@
         }
         orbit.tPitch = (low + high) * 0.5;
       } else if (orbitFollow) {
+        endCenteredCarry();
         // Centre the selected point on a ray passing above the whole head (including hats), rather than through
         // the follow anchor in the torso. Solve only on the click; ordinary camera damping owns the transition.
         // The eight world bounds corners also cover wide heads when looking uphill or downhill at close zoom.
