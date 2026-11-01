@@ -17,7 +17,49 @@
   // The white screen is read from the walk, metres away: it carries only the whitepaper's citations and documented
   // influences (the gold entries), each in large type on its own straight leader, placed so no line or label crosses
   // another; every other exhibit is in the menu the screen opens (Billy's play, integration-3).
-  const SHORT = (title) => String(title).split(/:| \/ | - /)[0].trim();
+  const SHORT = (title) => String(title).split(/:| \/ | - |, at /)[0].trim();
+  // The entries the screen labels: the whitepaper's citations and documented influences before the paper's own era.
+  const labelled = (entries) => entries.filter((e) => (e.connection === "citation" || e.connection === "influence") && e.era < 6);
+  const MARK_GAP = 38, MARK_R = 15, RING = 8; // markers' spacing within a shared year, radius and the ring's stroke
+  // Where every label goes (pure, so Node can check it). Each label is two lines on a straight leader up or down from
+  // its marker. Entries sharing a year get markers side by side within that year (MARK_GAP apart, catalogue order).
+  // Placed rightmost marker first, each takes the nearest free row above or below the axis, running right of its
+  // leader or else left: free when no label in that row overlaps its span, its leader misses every label in the rows
+  // nearer the axis, and no leader to a farther row runs through its span. So no line crosses a label. A label that
+  // finds no place throws: the screen never drops an entry silently.
+  const layoutLabels = ({ items, X, axisY, measure, x0: left, x1: right, FONT1, FONT2 }) => {
+    const ROW = 150, GAP = 20, rows = { up: [0, 1, 2].map((k) => axisY - 130 - k * ROW), down: [0, 1, 2].map((k) => axisY + 200 + k * ROW) };
+    const taken = { up: [], down: [] }, groups = [], byYear = new Map();
+    for (const e of items) { const k = e.yearKey; if (!byYear.has(k)) { byYear.set(k, []); groups.push(byYear.get(k)); } byYear.get(k).push({ e }); }
+    for (const grp of groups) grp.forEach((m, j) => { m.year = X(m.e.yearKey); m.mx = m.year + (j - (grp.length - 1) / 2) * MARK_GAP; });
+    const clear = (at, r) => at < r.x0 - GAP || at > r.x1 + GAP;
+    const free = (side, k, x0, x1, at) => taken[side].every((r) => r.k === k ? x1 + GAP < r.x0 || x0 > r.x1 + GAP : r.k < k ? clear(at, r) : r.at < x0 - GAP || r.at > x1 + GAP);
+    // A search, not a greedy pass: each label tries its places nearest-first, and a label left without one sends the
+    // search back to move an earlier label (a few hundred steps at most for the screen's entries).
+    const marks = groups.flat().sort((a, b) => b.mx - a.mx).map((m) => {
+      const e = m.e, cited = e.connection === "citation", top = `${e.year}${cited && e.ref ? `  ${e.ref}` : ""}`, name = SHORT(e.title);
+      return { m, e, cited, top, name, w: Math.min(760, Math.max(measure(top, FONT1), measure(name, FONT2))) + 24 };
+    });
+    const chosen = new Array(marks.length);
+    let steps = 0;
+    const place = (i) => {
+      if (i === marks.length) return true;
+      const t = marks[i], at = t.m.mx;
+      for (let k = 0; k < 3; k++) for (const side of ["up", "down"]) for (const dir of ["right", "left"]) {
+        if (++steps > 200000) return false;
+        const x0 = dir === "right" ? at - 12 : at + 12 - t.w, x1 = x0 + t.w;
+        if (x0 < left || x1 > right || !free(side, k, x0, x1, at)) continue;
+        const r = { k, x0, x1, at };
+        taken[side].push(r); chosen[i] = { side, k, dir, x0, x1 };
+        if (place(i + 1)) return true;
+        taken[side].pop();
+      }
+      return false;
+    };
+    if (!place(0)) throw new Error(`genesis timeline: no room on the white screen for all ${marks.length} labels (${marks.map((t) => t.e.id).join(", ")})`);
+    const labels = marks.map((t, i) => ({ id: t.e.id, cited: t.cited, top: t.top, name: t.name, mx: t.m.mx, year: t.m.year, ...chosen[i], ly: rows[chosen[i].side][chosen[i].k] }));
+    return { labels, groups: groups.map((grp) => grp.map((m) => labels.find((l) => l.id === m.e.id))), rows };
+  };
   const paint = (g, W, H, catalogue) => {
     g.fillStyle = "#f7f4ec"; g.fillRect(0, 0, W, H);
     const Y0 = 1955, Y1 = 2010, ax0 = 150, ax1 = W - 560, axisY = Math.round(H * 0.5), X = (y) => ax0 + (y - Y0) / (Y1 - Y0) * (ax1 - ax0);
@@ -38,35 +80,28 @@
     g.strokeStyle = "#1c1a17"; g.lineWidth = 14; g.beginPath(); g.moveTo(ax0, axisY); g.lineTo(ax1, axisY); g.stroke();
     g.font = "bold 40px system-ui, sans-serif"; g.fillStyle = "#5c564d"; g.textAlign = "center"; g.lineWidth = 4;
     for (let y = 1960; y <= 2000; y += 10) { g.beginPath(); g.moveTo(X(y), axisY - 18); g.lineTo(X(y), axisY + 18); g.stroke(); g.fillText(String(y), X(y), axisY + 64); }
-    const items = catalogue.entries.filter((e) => (e.connection === "citation" || e.connection === "influence") && e.era < 6);
-    // Each label is two lines (the year and reference, then a short name), left-aligned on a straight leader up or
-    // down from its date. Placed rightmost first, each takes the nearest free row: free when no label in that row
-    // overlaps its span, its leader misses every label in the rows nearer the axis, and no leader to a farther row runs
-    // through its span. So no line crosses a label, wherever the dates cluster.
-    const ROW = 170, GAP = 20, rows = { up: [0, 1, 2].map((k) => axisY - 132 - k * ROW), down: [0, 1].map((k) => axisY + 205 + k * ROW) }, taken = { up: [], down: [] };
-    const clear = (at, r) => at < r.x0 - GAP || at > r.x1 + GAP;
-    const free = (side, k, x0, x1, at) => taken[side].every((r) => r.k === k ? x1 + GAP < r.x0 || x0 > r.x1 + GAP : r.k < k ? clear(at, r) : r.at < x0 - GAP || r.at > x1 + GAP);
-    const order = items.slice().sort((a, b) => b.yearKey - a.yearKey);
-    let drawn = 0;
-    for (const e of order) {
-      const x = X(e.yearKey), cited = e.connection === "citation";
-      const top = `${e.year}${cited && e.ref ? `  ${e.ref}` : ""}`, name = SHORT(e.title);
-      g.font = "bold 70px system-ui, sans-serif"; const w1 = g.measureText(top).width;
-      g.font = "54px system-ui, sans-serif"; const w2 = g.measureText(name).width;
-      const w = Math.min(760, Math.max(w1, w2)) + 24, x0 = x - 12, x1 = x0 + w;
-      let spot = null;
-      for (let k = 0; k < 3 && !spot; k++) for (const side of ["up", "down"]) if (!spot && rows[side][k] !== undefined && free(side, k, x0, x1, x)) spot = { side, k };
-      if (!spot) continue;
-      taken[spot.side].push({ k: spot.k, x0, x1, at: x });
-      const ly = rows[spot.side][spot.k], up = spot.side === "up";
-      g.strokeStyle = "#b98512"; g.lineWidth = 6;
-      g.beginPath(); g.moveTo(x, axisY); g.lineTo(x, up ? ly + 76 : ly - 82); g.stroke();
-      g.textAlign = "left"; g.fillStyle = "#7a5200"; g.font = "bold 70px system-ui, sans-serif"; g.fillText(top, x + 10, ly, 760);
-      g.fillStyle = "#2a2621"; g.font = "54px system-ui, sans-serif"; g.fillText(name, x + 10, ly + 62, 760);
-      g.beginPath(); g.arc(x, axisY, 20, 0, 7);
-      if (cited) { g.fillStyle = "#d9a11a"; g.fill(); } else { g.fillStyle = "#f7f4ec"; g.fill(); g.lineWidth = 8; g.strokeStyle = "#d9a11a"; g.stroke(); }
-      drawn++;
+    const items = labelled(catalogue.entries), FONT1 = "bold 62px system-ui, sans-serif", FONT2 = "48px system-ui, sans-serif";
+    const measure = (text, font) => { g.font = font; return g.measureText(text).width; };
+    const placed = layoutLabels({ items, X, axisY, measure, x0: 20, x1: W - 470, FONT1, FONT2 });
+    // A year shared by several entries: one bracket on the axis spans their markers, which stand side by side within
+    // that year (catalogue order), so a ring is never hidden under a dot.
+    for (const grp of placed.groups) if (grp.length > 1) {
+      g.strokeStyle = "#b98512"; g.lineWidth = 5; g.beginPath(); g.moveTo(grp[0].mx, axisY + 30); g.lineTo(grp[grp.length - 1].mx, axisY + 30); g.stroke();
+      g.beginPath(); g.moveTo(grp[0].year, axisY + 30); g.lineTo(grp[0].year, axisY + 44); g.stroke();
     }
+    for (const p of placed.labels) {
+      const up = p.side === "up", right = p.dir === "right";
+      g.strokeStyle = "#b98512"; g.lineWidth = 6;
+      g.beginPath(); g.moveTo(p.mx, axisY); g.lineTo(p.mx, up ? p.ly + 66 : p.ly - 74); g.stroke();
+      g.textAlign = right ? "left" : "right"; const tx = right ? p.mx + 10 : p.mx - 10;
+      g.fillStyle = "#7a5200"; g.font = FONT1; g.fillText(p.top, tx, p.ly, 760);
+      g.fillStyle = "#2a2621"; g.font = FONT2; g.fillText(p.name, tx, p.ly + 56, 760);
+    }
+    for (const p of placed.labels) {
+      g.beginPath(); g.arc(p.mx, axisY, MARK_R, 0, 7);
+      if (p.cited) { g.fillStyle = "#d9a11a"; g.fill(); } else { g.fillStyle = "#f7f4ec"; g.fill(); g.lineWidth = RING; g.strokeStyle = "#d9a11a"; g.stroke(); }
+    }
+    const drawn = placed.labels.length;
     const px = W - 300;
     g.fillStyle = "#d9a11a"; g.beginPath(); g.arc(px, axisY, 130, 0, 7); g.fill();
     g.fillStyle = "#1c1a17"; g.font = "bold 58px Georgia, serif"; g.textAlign = "center"; g.fillText("31 OCT", px, axisY - 6); g.fillText("2008", px, axisY + 56);
@@ -113,5 +148,5 @@
       dispose: () => { if (root.open) root.close(); ac.abort(); }
     };
   };
-  BL.genesisTimeline = { paint, create };
+  BL.genesisTimeline = { paint, create, layoutLabels, labelled, SHORT, MARK_GAP, MARK_R, RING };
 })();

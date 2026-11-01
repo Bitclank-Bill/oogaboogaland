@@ -23517,6 +23517,56 @@ const genesisBenchProof = async () => {
 // genesis-workbench:end
 // genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
 // genesis-timeline:end
+// Regression (review of gv/ovh-polish 20eec91): the white screen's painter skipped any label it found no row for, so
+// the timestamp papers [3] and [4] silently vanished, and two entries of the same year (Hashcash's announcement and
+// Secure Names, 1997) drew their markers on one spot, the citation's dot covering the influence's ring. Every
+// labelled entry of the real catalogue (with Fingerprints and Time's two room links) is placed, no leader crosses a
+// label and no labels overlap, same-year markers stand apart within their year, and a screen too small throws.
+const genesisTimelineLayoutProof = async () => {
+  const context = { window: { BL: {} }, console };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-catalogue", ...GENESIS_ERA_FILES, "genesis-timeline"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, T = BLc.genesisTimeline, items = [], bad = [];
+  W.ERAS.forEach((e, n) => {
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true, glow: 1 });
+    const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle: () => {}, notify: () => {}, prop: (d) => { items.push({ id: d.id, era: n, order: items.length, def: d }); return { ...d, era: n }; } };
+    if (EX.eras[n]) EX.eras[n].build(kit);
+  });
+  // Fingerprints and Time's room links, read from the scene as it registers them.
+  const scene = await readFile(join(root, "src/js/scene-genesis.js"), "utf8");
+  for (const m of scene.matchAll(/\{ id: "(era3-room-[a-z0-9]+)", year: (\d+), title: "([^"]+)", connection: "(citation)", ref: "(\[\d\])"/g))
+    items.push({ id: m[1], era: W.ROOM_ERA, order: items.length, def: { id: m[1], year: +m[2], title: m[3], connection: m[4], ref: m[5], sourceKeys: [] } });
+  const cat = BLc.genesisCatalogue.create({ items, eras: W.ERAS, connections: EX.CONNECTIONS, sourceOf: () => null, records: [] });
+  const want = T.labelled(cat.dated());
+  if (want.length !== 10 || !want.some((e) => e.ref === "[3]") || !want.some((e) => e.ref === "[4]")) bad.push(`the screen's entries: ${want.map((e) => `${e.year}${e.ref}`)}`);
+  // The screen's geometry (genesis-timeline.js paint), with text measured at 0.58 of the font size a character.
+  const Wd = 4096, H = Math.round(4096 * 8 / 24), axisY = Math.round(H * 0.5), ax0 = 150, ax1 = Wd - 560, X = (y) => ax0 + (y - 1955) / 55 * (ax1 - ax0);
+  const measure = (text, font) => String(text).length * 0.58 * +font.match(/(\d+)px/)[1];
+  const run = (right) => T.layoutLabels({ items: want, X, axisY, measure, x0: 20, x1: right, FONT1: "bold 62px x", FONT2: "48px x" });
+  const L = run(Wd - 470);
+  const ids = L.labels.map((l) => l.id).sort();
+  if (ids.join() !== want.map((e) => e.id).sort().join()) bad.push(`placed ${ids.length} of ${want.length}`);
+  for (const a of L.labels) for (const b of L.labels) {
+    if (a === b || a.side !== b.side) continue;
+    if (a.k === b.k && !(a.x1 < b.x0 || a.x0 > b.x1)) bad.push(`${a.id} and ${b.id} overlap`);
+    if (a.k > b.k && a.mx >= b.x0 && a.mx <= b.x1) bad.push(`${a.id}'s leader crosses ${b.id}`);
+  }
+  const yearW = X(1) - X(0);
+  for (const l of L.labels) { const e = want.find((x) => x.id === l.id); if (Math.abs(l.mx - X(e.yearKey)) >= yearW / 2) bad.push(`${l.id}'s marker leaves its year`); }
+  // No two marker discs touch (a ring's stroke reaches half its width past the radius).
+  const apart = 2 * T.MARK_R + T.RING;
+  for (const a of L.labels) for (const b of L.labels) if (a !== b && Math.abs(a.mx - b.mx) < apart) bad.push(`${a.id} and ${b.id} markers touch`);
+  const hashcash = L.labels.find((l) => l.id === "e4-hashcash"), names = L.labels.find((l) => l.id === "e4-names");
+  if (!hashcash || !names || hashcash.cited || !names.cited || Math.abs(hashcash.mx - names.mx) < apart) bad.push("1997's ring and dot are not apart");
+  let threw = false;
+  try { run(ax0 + 400); } catch (_) { threw = true; }
+  if (!threw) bad.push("a screen with no room dropped labels silently instead of throwing");
+  // paint itself labels every entry (a recording canvas).
+  const ctx = new Proxy({ font: "10px x", measureText(t) { return { width: measure(t, this.font) }; } }, { get: (t, k) => (k in t ? t[k] : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
+  const drawn = T.paint(ctx, Wd, H, { entries: cat.dated() });
+  if (drawn !== want.length) bad.push(`paint labelled ${drawn} of ${want.length}`);
+  return { bad, placed: L.labels.length };
+};
 // Regression (review of 53974ad): Era 0's three new terminals did not answer MORE, which the workbench asks every
 // exhibit for its deeper story (OVERHAUL-CONTRACT.md §3). Each answers it with its own deeper lines.
 const genesisEra0MoreProof = async () => {
@@ -25834,6 +25884,8 @@ const unitChecks = async () => {
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
   const genesisEraCartridges = await genesisEraCartridgeProof();
+  const genesisTimelineLayout = await genesisTimelineLayoutProof();
+  record("Genesis white screen (regression, review of 20eec91): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));
   record("Genesis era cartridges (rule, gv/integration-3 4d): the nine era playables are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisMuseum = await genesisMuseumProof();
