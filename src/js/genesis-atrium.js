@@ -19,7 +19,7 @@
   const BL = window.BL = window.BL || {};
   // The spiral: from the south-west (where Era 0's gallery begins), clockwise seen from above (north is -z), inward
   // from R0 to R1 and rising from H0 to H1; the paper's dais in the middle; the map's markers on a ring at MAP_R.
-  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2;
+  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2, STATUE_BASE = 3.8;
   // The view from the arrival to the white timeline screen (scene-genesis.js ENTRY and LEGEND) stays clear.
   const CLEAR = { x0: -13, x1: 13, z0: 47, z1: 66 };
   const bearingPoint = (r, a, out) => { out.x = r * Math.sin(a); out.z = -r * Math.cos(a); return out; };
@@ -43,6 +43,9 @@
     const paperStop = paper ? { id: paper.id, step: paper.step, year: paper.year, kind: "anchor", title: paper.title, era: paper.era, x: 0, z: 0, h: 0.4, ry: Math.PI, at: { x: 0, z: DAIS / 2 + 1.4 } } : null;
     const genesis = genesisEntry ? { id: genesisEntry.id, year: genesisEntry.year, title: genesisEntry.title, era: genesisEntry.era, kind: "context", x: 4.2, z: 0.6, h: 0.9, ry: Math.PI, at: { x: 4.2, z: 2.3 } } : null;
     if (genesis) obstacles.push({ x0: genesis.x - 0.55, x1: genesis.x + 0.55, z0: genesis.z - 0.55, z1: genesis.z + 0.55 });
+    // The Satoshi statue behind the dais, facing the paper's way (+z) over it, inside the spiral's innermost turn.
+    const statue = { x: 0, z: -5.4, base: STATUE_BASE };
+    obstacles.push({ x0: statue.x - STATUE_BASE / 2 - 0.1, x1: statue.x + STATUE_BASE / 2 + 0.1, z0: statue.z - STATUE_BASE / 2 - 0.1, z1: statue.z + STATUE_BASE / 2 + 0.1 });
     // The floor map: one marker per era, on the ring, pointing at the middle of its gallery's opening.
     const markers = eras.map((e) => {
       const r = museum.rects[e.n], A = museum.atrium;
@@ -50,7 +53,7 @@
       const a = Math.atan2(ox, -oz), p = bearingPoint(MAP_R, a, { x: 0, z: 0 });
       return { era: e.n, name: e.name, years: e.years, x: p.x, z: p.z, toward: { x: ox, z: oz }, a, ry: a + Math.PI };
     });
-    return { steps, paper: paperStop, genesis, markers, path, obstacles, clear: CLEAR, radius: { inner: R1, outer: R0, map: MAP_R } };
+    return { steps, paper: paperStop, genesis, statue, markers, path, obstacles, clear: CLEAR, radius: { inner: R1, outer: R0, map: MAP_R } };
   };
 
   const GOLD = "#e8c35a", GOLD_DK = "#9a7418", STONE = "#6a645a", STONE_LT = "#8a8378";
@@ -92,6 +95,11 @@
       sign(`${L.genesis.year} · AFTER THE PAPER`, `${L.genesis.title} · context, not a step`, L.genesis.x, top + L.genesis.h + 1.3, L.genesis.z, Math.PI, "plain", 0.38);
       picks.push({ id: L.genesis.id, at: L.genesis.at, node: place(createNode({ geometry: pickBox(1, L.genesis.h + 1, 1), position: { x: L.genesis.x, y: top + (L.genesis.h + 1) / 2, z: L.genesis.z } })) });
     }
+    // The Satoshi statue: an original Ooga monument after the real hooded Satoshi statues, about 11 m tall on its
+    // pedestal. From Budapest's, a bronze hood whose face is a mirror (a reflector: the visitor sees themselves in it);
+    // from Lugano's, a body of thin steel slices that half vanishes seen head-on and stands whole from the side. Its
+    // hands hold a gold coin. One merged mesh, the mirror its own reflector quad, no light and nothing per frame.
+    if (L.statue) statueParts(M, L.statue, top, sign, place, createNode);
     // The floor map: for each era a chevron on the floor pointing at its gallery and a low sign facing the middle.
     for (const m of L.markers) {
       const c = eraColor(m.era);
@@ -112,6 +120,47 @@
       if (cube) cube.rotation.y += dt * 0.6;
     };
     return { picks, update, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
+  };
+  const BRONZE = "#7c5a32", BRONZE_DK = "#4f381f", STEEL = "#a7b0b6", STEEL_DK = "#6f7a82";
+  const statueParts = (M, S, top, sign, place, createNode) => {
+    const parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z), b = (w, h, d, color, x, y, z, emissive = 0) => parts.push(at(M.box({ w, h, d, color, emissive }), x, y, z));
+    // The pedestal: a stone block with a stepped cap.
+    b(S.base, 1.0, S.base, "#4a453e", 0, 0.5, 0);
+    b(S.base + 0.3, 0.3, S.base + 0.3, "#6a645a", 0, 1.15, 0);
+    const P = 1.3;
+    // The body: fifteen steel slices across, each a thin plate front to back, the robe flaring to its hem and the
+    // shoulders sloping; the gaps between them are as wide as the plates.
+    for (let i = 0; i < 15; i++) {
+      const x = -1.4 + i * 0.2, t = Math.abs(x) / 1.4, c = i % 2 ? STEEL : STEEL_DK;
+      const robe = 4.6 - 0.5 * t * t, depth = 1.9 - 0.5 * t;
+      b(0.1, robe, depth, c, x, P + robe / 2, 0);
+      const chest = 2.2 - 1.2 * t * t;
+      b(0.1, chest, 1.3 - 0.3 * t, c, x, P + robe + chest / 2, 0);
+    }
+    // The mantle over the shoulders, bronze, tying the slices into one figure.
+    b(3.0, 0.5, 1.7, BRONZE, 0, P + 6.55, 0);
+    b(2.2, 0.35, 1.5, BRONZE_DK, 0, P + 6.95, 0);
+    // The arms: bronze sleeves down the sides to hands joined in front over the coin.
+    for (const sx of [-1, 1]) {
+      b(0.55, 2.4, 0.7, BRONZE, sx * 1.55, P + 5.3, 0.15);
+      b(0.5, 0.5, 1.1, BRONZE, sx * 1.15, P + 4.05, 0.55);
+      b(0.45, 0.45, 0.45, BRONZE_DK, sx * 0.55, P + 4.05, 1.0);
+    }
+    parts.push(at(M.forwardLathe(M.lathe({ profile: [[0, -0.06], [0.55, -0.06], [0.6, 0], [0.55, 0.06], [0, 0.06]], segments: 20, color: GOLD, emissive: 0.45 })), 0, P + 4.35, 1.2));
+    // The head and hood: a bronze head set back inside a deep hood open at the front, the face recessed.
+    const HY = P + 7.2;
+    b(1.3, 1.5, 1.2, BRONZE_DK, 0, HY + 0.75, -0.1);
+    b(1.8, 2.1, 0.45, BRONZE, 0, HY + 1.0, -0.85);
+    for (const sx of [-1, 1]) b(0.3, 2.1, 1.75, BRONZE, sx * 0.9, HY + 1.0, 0.0);
+    b(1.8, 0.4, 1.75, BRONZE, 0, HY + 2.2, 0.0);
+    b(1.2, 0.3, 1.2, BRONZE, 0, HY + 2.55, -0.2);
+    b(1.5, 0.25, 0.3, BRONZE_DK, 0, HY + 2.0, 0.78);
+    // The mirror face: a reflector quad in the hood's opening, facing out.
+    const fw = 1.1, fh = 1.3, fz = S.z + 0.55;
+    const face = { verts: [-fw / 2, 0, 0, fw / 2, 0, 0, fw / 2, fh, 0, -fw / 2, fh, 0], faces: [{ i: [0, 1, 2, 3], color: [158, 168, 178], emissive: 0 }], lines: [], castShadow: false, reflector: true };
+    place(createNode({ geometry: face, position: { x: S.x, y: top + HY + 0.15, z: fz } }));
+    place(createNode({ geometry: M.merge(...parts) }));
+    sign("SATOSHI NAKAMOTO", "an original Ooga statue after the hooded Satoshi statues in Budapest and Lugano · look into the face: we are all Satoshi", S.x, top + 0.75, S.z + S.base / 2 + 0.25, Math.PI, "gold", 0.5);
   };
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
   BL.genesisAtrium = { layout, build, CLEAR };
