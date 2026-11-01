@@ -95,6 +95,8 @@
 
   let home = "hub";
   let renderer, game, world, go, root, camera, hud, hooks, input, fx, controls, clock;
+  // View assist (view-assist.js): the played Ooga's outline while the fort's walls hide it from the chase camera.
+  let assist = null;
   let sim = null, phase = "board", sceneTime = 0, stateTimer = 0, hintTimer = 0, lineN = 0, result = null;
   let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, walletNodes = null, vendNodes = null, zipNear = false, trampNodes = null, trampSeen = false, powerNodes = null;
   let mapRoot = null, fireNode = null, dancers = null, burnSeen = false, peelNodes = null, catapults = null, catNear = false;
@@ -1780,7 +1782,12 @@
     stepTweens(dt);
   };
   const NO_EXTRA = () => { };
-  const overlay = (dt) => fx.drawOverlay(dt, NO_EXTRA);
+  const overlay = (dt) => {
+    fx.drawOverlay(dt, NO_EXTRA);
+    const a = phase === "play" && actors && !cam.first ? actors[0] : null, p = a && a.cave ? a.body.position : null;
+    if (p) assist.update(camera, a.body, p.x, p.y, p.z, sim.actors[0].crouch ? SIM.CONFIG.CROUCH_H : SIM.CONFIG.HEIGHT, dt);
+    else assist.update(camera, null, 0, 0, 0, 0, dt);
+  };
 
   const onDonation = (donation, counted = null) => {
     game.recordDonation(donation, counted && counted.exact);
@@ -2022,6 +2029,7 @@
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     fx = fxMod.create({ root, renderer, camera, hud, overlay: ctx.overlay, tickerAt: { x: 0, y: 8, z: 0 } });
+    assist = BL.viewAssist.create({ overlay: ctx.overlay, solidAt: SIM.solidAt });
     for (const id of ["board", "results", "strip", "center", "notice", "best", "record", "score-blue", "score-red", "own", "theirs", "time", "drop", "summary", "stats", "result-title", "quiz", "quiz-q", "quiz-note", "quiz-fill"]) {
       el[id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = document.getElementById(`block-${id}`);
     }
@@ -2231,6 +2239,7 @@
           get cam() { return cam; },
           get quiz() { return { open: quiz.open, right: quiz.right, locked: quiz.locked, asked: quiz.asked, solved: quiz.solved }; },
           get tool() { return tool; },
+          get assist() { return assist && assist.state; },
           selection, start, showBoard, paint, drop: dropBlock, build: buildCrate, chooseTool, chooseTeam, chooseOoga, answer,
           // Runs the round forward without frames, the visitor's Ooga on the sim's autopilot when `auto` is set.
           simulate: (seconds, auto = false) => {
@@ -2295,6 +2304,7 @@
     disposeActors();
     disposeGorillas();
     fx.dispose();
+    assist.dispose(); assist = null;
     controls.dispose();
     hud.el.act.hidden = true;
     hud.setAct("Ooga!");
