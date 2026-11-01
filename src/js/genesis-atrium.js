@@ -19,7 +19,7 @@
   const BL = window.BL = window.BL || {};
   // The spiral: from the south-west (where Era 0's gallery begins), clockwise seen from above (north is -z), inward
   // from R0 to R1 and rising from H0 to H1; the paper's dais in the middle; the map's markers on a ring at MAP_R.
-  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2, STATUE_BASE = 5.2;
+  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2, STATUE_BASE = 5.6;
   // The view from the arrival to the white timeline screen (scene-genesis.js ENTRY and LEGEND) stays clear.
   const CLEAR = { x0: -13, x1: 13, z0: 47, z1: 66 };
   const bearingPoint = (r, a, out) => { out.x = r * Math.sin(a); out.z = -r * Math.cos(a); return out; };
@@ -44,7 +44,7 @@
     const genesis = genesisEntry ? { id: genesisEntry.id, year: genesisEntry.year, title: genesisEntry.title, era: genesisEntry.era, kind: "context", x: 4.2, z: 0.6, h: 0.9, ry: Math.PI, at: { x: 4.2, z: 2.3 } } : null;
     if (genesis) obstacles.push({ x0: genesis.x - 0.55, x1: genesis.x + 0.55, z0: genesis.z - 0.55, z1: genesis.z + 0.55 });
     // The Satoshi statue behind the dais, facing the paper's way (+z) over it, inside the spiral's innermost turn.
-    const statue = { x: 0, z: -6.4, base: STATUE_BASE };
+    const statue = { x: 0, z: -6.2, base: STATUE_BASE };
     obstacles.push({ x0: statue.x - STATUE_BASE / 2 - 0.1, x1: statue.x + STATUE_BASE / 2 + 0.1, z0: statue.z - STATUE_BASE / 2 - 0.1, z1: statue.z + STATUE_BASE / 2 + 0.1 });
     // The floor map: one marker per era, on the ring, pointing at the middle of its gallery's opening.
     const markers = eras.map((e) => {
@@ -95,12 +95,13 @@
       sign(`${L.genesis.year} · AFTER THE PAPER`, `${L.genesis.title} · context, not a step`, L.genesis.x, top + L.genesis.h + 1.3, L.genesis.z, Math.PI, "plain", 0.38);
       picks.push({ id: L.genesis.id, at: L.genesis.at, node: place(createNode({ geometry: pickBox(1, L.genesis.h + 1, 1), position: { x: L.genesis.x, y: top + (L.genesis.h + 1) / 2, z: L.genesis.z } })) });
     }
-    // The Satoshi statue: an original Ooga monument after the real Satoshi statues, about 9.5 m tall with its
-    // pedestal. From Lugano's: a hooded figure sitting cross-legged with a laptop on its lap, on a rust-brown steel
-    // block, built of thin polished slices that dissolve into slats seen head-on and stand whole from the side. From
-    // Budapest's: the face in the hood is a mirror (a reflector: visitors see themselves). One merged mesh plus the
-    // mirror quad, no light and nothing per frame.
-    if (L.statue) statueParts(M, L.statue, top, sign, place, createNode);
+    // The Satoshi statue: an original monument after the real Satoshi statues, about 8.5 m tall with its pedestal.
+    // From Lugano's: a hooded figure sitting cross-legged over a laptop, on a rust-brown steel block, built of thin
+    // slats front to back, each following the body's outline where it cuts, so from the side it is one smooth
+    // contoured figure and head-on it dissolves into lines; here the slats are polished gold. From Budapest's: the
+    // gold mirror face in the hood (a reflector: visitors see themselves). One merged mesh plus the mirror quad, built
+    // once a visit; no light and nothing per frame.
+    const statuePlates = L.statue ? statueParts(M, L.statue, top, sign, place, createNode) : 0;
     // The floor map: for each era a chevron on the floor pointing at its gallery and a low sign facing the middle.
     for (const m of L.markers) {
       const c = eraColor(m.era);
@@ -120,53 +121,112 @@
       bead.position.x = a.x + (b.x - a.x) * f; bead.position.z = a.z + (b.z - a.z) * f;
       if (cube) cube.rotation.y += dt * 0.6;
     };
-    return { picks, update, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
+    return { picks, update, statuePlates, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
   };
-  const STEEL = "#b4bcc2", STEEL_DK = "#7d878e";
-  // The seated figure in side profile, before scaling (STATUE_K): boxes { x0, x1, y0, y1, z0, z1 } in metres, y up
-  // from the pedestal's top, +z the way it faces. Every slice across x takes the part of each box it cuts through.
-  const STATUE_K = 1.25, SLICE = 0.18, PLATE = 0.09;
-  const FIGURE = [
-    { x0: -2.0, x1: 2.0, y0: 0, y1: 0.9, z0: -1.2, z1: 1.5 }, // the crossed legs
-    { x0: -2.0, x1: -1.2, y0: 0.9, y1: 1.3, z0: -0.4, z1: 1.2 }, { x0: 1.2, x1: 2.0, y0: 0.9, y1: 1.3, z0: -0.4, z1: 1.2 }, // the knees
-    { x0: -0.7, x1: 0.7, y0: 0, y1: 0.35, z0: 1.5, z1: 1.9 }, // a foot tucked in front
-    { x0: -1.3, x1: 1.3, y0: 0.9, y1: 1.7, z0: -1.4, z1: 0.3 }, // the hips
-    { x0: -1.2, x1: 1.2, y0: 1.7, y1: 3.4, z0: -1.2, z1: 0.45 }, // the body, leaning in
-    { x0: -1.4, x1: 1.4, y0: 3.4, y1: 4.1, z0: -1.0, z1: 0.6 }, // the shoulders
-    { x0: -1.65, x1: -1.2, y0: 2.6, y1: 4.0, z0: -0.5, z1: 0.4 }, { x0: 1.2, x1: 1.65, y0: 2.6, y1: 4.0, z0: -0.5, z1: 0.4 }, // the upper arms
-    { x0: -1.4, x1: -0.8, y0: 2.1, y1: 2.65, z0: 0.0, z1: 1.55 }, { x0: 0.8, x1: 1.4, y0: 2.1, y1: 2.65, z0: 0.0, z1: 1.55 }, // the forearms to the keys
-    { x0: -0.95, x1: -0.55, y0: 4.1, y1: 5.9, z0: -0.7, z1: 1.15 }, { x0: 0.55, x1: 0.95, y0: 4.1, y1: 5.9, z0: -0.7, z1: 1.15 }, // the hood's sides, deep
-    { x0: -0.55, x1: 0.55, y0: 4.1, y1: 5.9, z0: -0.9, z1: 0.35 }, // the head inside, the face recessed
-    { x0: -0.95, x1: 0.95, y0: 5.9, y1: 6.3, z0: -0.8, z1: 1.0 }, // the hood's crown
-    { x0: -0.55, x1: 0.55, y0: 5.55, y1: 5.9, z0: 0.35, z1: 1.15 } // the hood's brow over the face
+  // The seated figure as smooth solids in its own frame (metres before STATUE_K; y up from the pedestal's top, +z the
+  // way it faces): ellipsoids [cx, cy, cz, rx, ry, rz] and capsules [ax, ay, az, bx, by, bz, r], less the face's
+  // hollow in the hood. The laptop is apart, in steel. `statueInside(x, y, z)` is 1 inside the figure, 2 inside the
+  // laptop, 0 outside; the slats are its sections, scanned once a visit.
+  const STATUE_K = 1.2, SLAT_STEP = 0.12, SLAT = 0.06, ROW = 0.07, DEPTH = 0.04;
+  const ELLIPSOIDS = [
+    [0, 0.95, -0.4, 1.2, 0.6, 0.95], // the seat and hips
+    [0, 2.1, -0.5, 1.08, 1.05, 0.7], // the small of the back
+    [0, 3.15, -0.2, 1.38, 0.5, 0.78], // the shoulders, rounded forward
+    [0, 2.95, -0.62, 0.95, 0.75, 0.55], // the hunched upper back
+    [0, 4.0, 0.42, 0.68, 0.78, 0.8], // the hood, bowed over the laptop
+    [0, 3.7, -0.15, 0.8, 0.6, 0.62], // the hood's drape down the back
+    [0, 4.62, 0.2, 0.44, 0.3, 0.55], // the hood's peak
+    [-0.46, 1.72, 1.22, 0.24, 0.1, 0.3], [0.46, 1.72, 1.22, 0.24, 0.1, 0.3], // the hands on the keys
+    [-0.55, 0.26, 1.5, 0.22, 0.2, 0.42] // a foot tucked out in front
   ];
-  const LAPTOP = [
-    { x0: -1.05, x1: 1.05, y0: 1.7, y1: 1.85, z0: 0.6, z1: 1.9 }, // its base on the lap
-    { x0: -1.05, x1: 1.05, y0: 1.85, y1: 3.3, z0: 1.85, z1: 2.0 } // its screen, toward the figure
+  const CAPSULES = [
+    [0, 1.2, -0.45, 0, 2.9, -0.15, 0.95], // the body, leaning in
+    [0, 3.15, 0.0, 0, 3.75, 0.3, 0.42], // the neck inside the hood
+    [-1.22, 3.1, -0.1, -1.15, 2.1, 0.45, 0.32], [1.22, 3.1, -0.1, 1.15, 2.1, 0.45, 0.32], // the upper arms
+    [-1.15, 2.1, 0.45, -0.5, 1.75, 1.15, 0.26], [1.15, 2.1, 0.45, 0.5, 1.75, 1.15, 0.26], // the forearms down to the keys
+    [-0.55, 0.62, -0.2, -1.78, 0.62, 0.72, 0.43], [0.55, 0.62, -0.2, 1.78, 0.62, 0.72, 0.43], // the thighs out to the knees
+    [-1.78, 0.48, 0.72, 0.4, 0.33, 1.28, 0.34], [1.78, 0.52, 0.72, -0.4, 0.4, 1.12, 0.33] // the shins crossing in front
   ];
+  const FACE_HOLLOW = [0, 3.92, 1.15, 0.42, 0.55, 0.42];
+  const inEllipsoid = (e, x, y, z) => { const a = (x - e[0]) / e[3], b = (y - e[1]) / e[4], c = (z - e[2]) / e[5]; return a * a + b * b + c * c <= 1; };
+  const inCapsule = (c, x, y, z) => {
+    const dx = c[3] - c[0], dy = c[4] - c[1], dz = c[5] - c[2], px = x - c[0], py = y - c[1], pz = z - c[2];
+    const t = Math.max(0, Math.min(1, (px * dx + py * dy + pz * dz) / (dx * dx + dy * dy + dz * dz)));
+    const qx = px - dx * t, qy = py - dy * t, qz = pz - dz * t;
+    return qx * qx + qy * qy + qz * qz <= c[6] * c[6];
+  };
+  // Each solid's box, for culling: [x0, x1, y0, y1].
+  const boundsOf = (list, cap) => list.map((p) => cap
+    ? [Math.min(p[0], p[3]) - p[6], Math.max(p[0], p[3]) + p[6], Math.min(p[1], p[4]) - p[6], Math.max(p[1], p[4]) + p[6]]
+    : [p[0] - p[3], p[0] + p[3], p[1] - p[4], p[1] + p[4]]);
+  const E_BOX = boundsOf(ELLIPSOIDS, false), C_BOX = boundsOf(CAPSULES, true);
+  const inside = (es, cs, x, y, z) => {
+    if (Math.abs(x) <= 0.95) {
+      if (y >= 1.5 && y <= 1.62 && z >= 0.55 && z <= 1.9) return 2;
+      if (y > 1.6 && y <= 3.0) { const zs = 1.9 + (y - 1.6) * 0.18; if (z >= zs - 0.1 && z <= zs) return 2; }
+    }
+    if (inEllipsoid(FACE_HOLLOW, x, y, z)) return 0;
+    for (const e of es) if (inEllipsoid(e, x, y, z)) return 1;
+    for (const c of cs) if (inCapsule(c, x, y, z)) return 1;
+    return 0;
+  };
+  // The slat plates, in the figure's own units: { x, y0, y1, z0, z1, kind, i }. For each plane across x the section is
+  // scanned in rows, each row's runs along z a plate, a run repeating the row below extending that plate. Pure and
+  // computed once a page (the shape never changes), against only the solids each plane and row can meet.
+  let PLATES = null;
+  const statuePlates = () => {
+    if (PLATES) return PLATES;
+    PLATES = [];
+    const open = [], es = [], cs = [];
+    const emit = (o) => PLATES.push(o);
+    for (let i = 0, n = Math.round(4.6 / SLAT_STEP); i <= n; i++) {
+      const x = -2.3 + i * SLAT_STEP;
+      const ex = ELLIPSOIDS.filter((_, j) => x >= E_BOX[j][0] && x <= E_BOX[j][1]), exb = E_BOX.filter((bx) => x >= bx[0] && x <= bx[1]);
+      const cx = CAPSULES.filter((_, j) => x >= C_BOX[j][0] && x <= C_BOX[j][1]), cxb = C_BOX.filter((bx) => x >= bx[0] && x <= bx[1]);
+      open.length = 0;
+      for (let y = ROW / 2; y < 5.6; y += ROW) {
+        es.length = cs.length = 0;
+        for (let j = 0; j < ex.length; j++) if (y >= exb[j][2] && y <= exb[j][3]) es.push(ex[j]);
+        for (let j = 0; j < cx.length; j++) if (y >= cxb[j][2] && y <= cxb[j][3]) cs.push(cx[j]);
+        const runs = [];
+        if (es.length || cs.length || Math.abs(x) <= 0.95) {
+          let start = 0, kind = 0;
+          for (let z = -1.6; z <= 2.3; z += DEPTH) {
+            const v = inside(es, cs, x, y, z);
+            if (v !== kind) { if (kind) runs.push([start, z, kind]); start = z; kind = v; }
+          }
+          if (kind) runs.push([start, 2.3, kind]);
+        }
+        for (let j = open.length - 1; j >= 0; j--) {
+          const o = open[j], same = runs.findIndex((r) => r[2] === o.kind && Math.abs(r[0] - o.z0) < 1e-6 && Math.abs(r[1] - o.z1) < 1e-6);
+          if (same >= 0) { o.y1 = y + ROW / 2; runs.splice(same, 1); } else { emit(o); open.splice(j, 1); }
+        }
+        for (const r of runs) open.push({ x, i, z0: r[0], z1: r[1], kind: r[2], y0: y - ROW / 2, y1: y + ROW / 2 });
+      }
+      for (const o of open) emit(o);
+    }
+    return PLATES;
+  };
   const statueParts = (M, S, top, sign, place, createNode) => {
     const parts = [], k = STATUE_K, P = 2.0, at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
     const b = (w, h, d, color, x, y, z, emissive = 0) => parts.push(at(M.box({ w, h, d, color, emissive }), x, y, z));
-    // The pedestal: a rust-brown weathering-steel block with a darker lip.
+    // The pedestal: a rust-brown weathering-steel block, its lip darker.
     b(S.base, P - 0.1, S.base, "#7a3b1c", 0, (P - 0.1) / 2, 0);
     b(S.base + 0.1, 0.1, S.base + 0.1, "#5e2c14", 0, P - 0.05, 0);
-    // The slices: thin polished plates, front to back, a slice's width apart; each takes its cut through every box.
-    const slices = Math.round(4.0 / SLICE);
-    for (let i = 0; i <= slices; i++) {
-      const x = -2.0 + i * SLICE, c = i % 2 ? STEEL : STEEL_DK;
-      for (const list of [FIGURE, LAPTOP]) for (const p of list) {
-        if (x < p.x0 || x > p.x1) continue;
-        const h = (p.y1 - p.y0) * k, d = (p.z1 - p.z0) * k;
-        b(PLATE * k, h, d, list === LAPTOP ? "#c9d0d4" : c, x * k, P + p.y0 * k + h / 2, (p.z0 + p.z1) / 2 * k - 0.3, 0.05);
-      }
+    // The slats: thin polished plates, two golds in turn, the laptop's in steel.
+    const GOLDS = ["#e3b341", "#c8952a"];
+    for (const o of statuePlates()) {
+      const steel = o.kind === 2, h = (o.y1 - o.y0) * k, d = (o.z1 - o.z0) * k;
+      b(SLAT * k, h, d, steel ? "#c4cbd0" : GOLDS[o.i % 2], o.x * k, P + o.y0 * k + h / 2, (o.z0 + o.z1) / 2 * k - 0.35, steel ? 0.05 : 0.18);
     }
-    // The mirror face in the hood's opening, set in the recess and facing out.
-    const fw = 1.0 * k, fh = 1.2 * k;
-    const face = { verts: [-fw / 2, 0, 0, fw / 2, 0, 0, fw / 2, fh, 0, -fw / 2, fh, 0], faces: [{ i: [0, 1, 2, 3], color: [158, 168, 178], emissive: 0 }], lines: [], castShadow: false, reflector: true };
-    place(createNode({ geometry: face, position: { x: S.x, y: top + P + 4.25 * k, z: S.z + 0.37 * k - 0.3 } }));
+    // The mirror face in the hood's hollow, gold-tinted, facing out.
+    const fw = 0.78 * k, fh = 1.0 * k;
+    const face = { verts: [-fw / 2, 0, 0, fw / 2, 0, 0, fw / 2, fh, 0, -fw / 2, fh, 0], faces: [{ i: [0, 1, 2, 3], color: [222, 186, 96], emissive: 0 }], lines: [], castShadow: false, reflector: true };
+    place(createNode({ geometry: face, position: { x: S.x, y: top + P + 3.88 * k, z: S.z + 0.62 * k - 0.35 } }));
     place(createNode({ geometry: M.merge(...parts) }));
     sign("SATOSHI NAKAMOTO", "an original Ooga statue after the Satoshi statues in Lugano and Budapest · look into the face: we are all Satoshi", S.x, top + 1.0, S.z + S.base / 2 + 0.25, Math.PI, "gold", 0.5);
+    return parts.length;
   };
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
-  BL.genesisAtrium = { layout, build, CLEAR };
+  BL.genesisAtrium = { layout, build, CLEAR, statuePlates };
 })();
