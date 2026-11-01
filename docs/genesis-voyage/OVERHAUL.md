@@ -52,7 +52,16 @@ stream, sailing, boarding or transport UI.
   - an era's coordinates turn into the museum and back exactly;
   - every one of the era files' 2,000-odd solids, signs, obstacles and exhibits lands inside its own gallery.
 - **Unit (catalogue):** `genesisBenchProof` checks the catalogue (OVERHAUL-CONTRACT.md §1) beside the workbench rules.
-- **Browser:** automated software-rendered probes; see the checkpoint's `START-HERE.md`.
+- **Unit (holds):** `genesisHoldsProof` covers OVERHAUL-CONTRACT.md §4.
+  - An explicit pause holds the scene's clock, the open exhibit, the walk, the ambient show and era changes.
+  - The workbench keeps only its own exhibit running.
+  - The timeline menu holds the walk, ambient activity, era music and captions.
+  - The scene's `update()` gates each part on those holds.
+- **Browser:** automated, software-rendered probes; see the checkpoint's `START-HERE.md`.
+  - The 82-exhibit sweep checks that each exhibit opens through the host and that **each model's centre is framed in
+    the stage**: one projected point per exhibit.
+  - It is not complete visibility verification. A model can still be partly cut off by the stage's edge or hidden
+    behind something.
 
 ## What remains
 

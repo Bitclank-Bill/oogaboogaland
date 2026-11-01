@@ -230,6 +230,19 @@
     return { OPEN, PART, AX, AZ, HEIGHT, bays, rects, atrium, bounds, toMuseum, fromMuseum, boxToMuseum, bayAt, eraNear, inside, rotate };
   })();
 
+  // --- What holds while the museum's dialogs or the visitor's pause are up (OVERHAUL-CONTRACT.md §4) --------------
+  // `holdsFor({ paused, bench, menu }, out)` writes which parts of a frame run: `time` (the scene's clock, which era
+  // files and animations read), `exhibit` (an era file's update: only the workbench's exhibit while it is open,
+  // the visitor's gallery otherwise), `ambient` (the desk's show, glows and particles), `walk` (the pilot, the crew
+  // and the room's presence), `era` (music and caption changes on crossing into a gallery). An explicit pause holds
+  // all of them, the open exhibit included (its commands still answer; its model catches up on resume). The
+  // workbench and the timeline menu hold everything but, for the workbench, its own exhibit. Allocation-free.
+  const holdsFor = (state, out) => {
+    const run = !state.paused, quiet = run && !state.bench && !state.menu;
+    out.time = run; out.exhibit = run && !state.menu; out.ambient = quiet; out.walk = quiet; out.era = quiet;
+    return out;
+  };
+
   // --- Boarding --------------------------------------------------------------------------------------------------
   // Space boards the boat from anywhere within `reach` of it, measured flat (from a bank, a ramp, a jetpack over the
   // water): the Ooga is put straight onto its deck. Further off, the visitor can call the boat: it sails down the
@@ -298,5 +311,5 @@
     out.dist = dist;
     return out;
   };
-  BL.genesisWorld = { MUSEUM, frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  BL.genesisWorld = { holdsFor, MUSEUM, frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();

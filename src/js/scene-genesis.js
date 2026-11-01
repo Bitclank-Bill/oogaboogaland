@@ -1039,32 +1039,38 @@
     }
     lastEra = era;
   };
+  // What runs this frame (genesis-world.js holdsFor): an explicit pause holds everything, the scene's clock included,
+  // so nothing jumps on resume; the timeline menu and the workbench hold the walk, the crew, the desk's show, era
+  // changes and captions, and only an open, unpaused workbench keeps its own exhibit's era running.
+  const HOLD = { time: true, exhibit: true, ambient: true, walk: true, era: true }, holdState = { paused: false, bench: false, menu: false };
   const update = (dt) => {
-    sceneTime += dt;
+    holdState.paused = view.paused; holdState.bench = bench.open; holdState.menu = !!(timeline && timeline.isOpen);
+    const h = GW.holdsFor(holdState, HOLD);
+    if (h.time) sceneTime += dt;
     // A panel's dialog closing (its button, Escape or a press outside) hands the walk back as it was.
-    if (view.reading && !hud.el.board.open && !(timeline && timeline.isOpen)) {
+    if (view.reading && !hud.el.board.open && !holdState.menu) {
       view.reading = false;
       if (view.readingPaused) setPaused(false);
       if (!bench.open) pilot.setActive(true);
       captionKey = "";
       showControls();
     }
-    if (!bench.open) updateEra();
+    if (h.era) updateEra();
     syncAudio();
-    // A workbench holds the walk, the crew and the desk's show; its exhibit's era runs and the camera frames it.
-    if (bench.open) { updateExhibits(dt, sceneTime); updateBench(dt); }
-    else {
+    if (h.exhibit) updateExhibits(dt, sceneTime);
+    // The workbench's camera keeps framing its model in the stage (not simulation: it settles on a resize too).
+    if (bench.open) updateBench(dt);
+    if (h.ambient) {
       stepDemo(dt);
-      updateExhibits(dt, sceneTime);
       built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
       built.pcScreen.glow = 1 + (view.calm ? 0 : (Math.floor(sceneTime * 2) & 1) * 0.2);
-      updateWalk(dt, sceneTime);
     }
+    if (h.walk) updateWalk(dt, sceneTime);
     const p = avatar ? avatar.root.position : ENTRY;
     renderOpts.shadowCenter.x = bench.open ? bench.focus.x : p.x; renderOpts.shadowCenter.z = bench.open ? bench.focus.z : p.z;
     orderLights(renderOpts.shadowCenter.x, renderOpts.shadowCenter.z);
     remotes.update(dt);
-    fx.update(dt, sceneTime);
+    fx.update(h.ambient ? dt : 0, sceneTime);
     hud.updateBoard(sceneTime);
   };
   const drawExtra = (g, project) => remotes.drawNames(g, project);

@@ -23491,6 +23491,34 @@ const genesisBenchProof = async () => {
 // genesis-workbench:end
 // genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
 // genesis-timeline:end
+// Regression (checkpoint a6e2726 review): an explicit pause did not hold the open exhibit, the walk or the scene's
+// clock, and the timeline menu did not hold the walk, era music or captions (OVERHAUL-CONTRACT.md §4). The rule is
+// genesis-world.js holdsFor; the scene's update() must gate each part on it.
+const genesisHoldsProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const H = context.window.BL.genesisWorld.holdsFor, out = {}, bad = [];
+  const want = (state, expect) => { H(state, out); for (const [k, v] of Object.entries(expect)) if (out[k] !== v) bad.push(`${JSON.stringify(state)}: ${k} should be ${v}`); };
+  // Walking: everything runs.
+  want({ paused: false, bench: false, menu: false }, { time: true, exhibit: true, ambient: true, walk: true, era: true });
+  // An explicit pause holds everything, with or without a dialog, the open exhibit included.
+  for (const bench of [false, true]) for (const menu of [false, true]) want({ paused: true, bench, menu }, { time: false, exhibit: false, ambient: false, walk: false, era: false });
+  // The workbench keeps only its exhibit (and the clock it reads) running.
+  want({ paused: false, bench: true, menu: false }, { time: true, exhibit: true, ambient: false, walk: false, era: false });
+  // The timeline menu holds the walk, the ambient show, era changes and exhibits.
+  want({ paused: false, bench: false, menu: true }, { time: true, exhibit: false, ambient: false, walk: false, era: false });
+  // Wiring: each part of the scene's update() runs only under its hold.
+  const src = await readFile(join(root, "src/js/scene-genesis.js"), "utf8"), a = src.indexOf("  const update = (dt) => {"), body = src.slice(a, src.indexOf("\n  };\n", a));
+  const gated = { "sceneTime += dt": "h.time", "updateEra()": "h.era", "updateExhibits(dt, sceneTime)": "h.exhibit", "stepDemo(dt)": "h.ambient", "updateWalk(dt, sceneTime)": "h.walk" };
+  for (const [call, flag] of Object.entries(gated)) {
+    const lines = body.split("\n").filter((l) => l.includes(call));
+    const at = body.indexOf(call), before = body.slice(0, at), open = before.lastIndexOf(`if (${flag})`);
+    if (lines.length !== 1 || open < 0 || before.slice(open).split("\n").length > 3) bad.push(`update(): ${call} is not gated on ${flag}`);
+  }
+  if (!/holdsFor\(holdState, HOLD\)/.test(body) || !/fx\.update\(h\.ambient \? dt : 0/.test(body)) bad.push("update(): holds not read, or particles not held");
+  return { bad };
+};
 const genesisMuseumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
@@ -23897,6 +23925,8 @@ const unitChecks = async () => {
   record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
   const genesisBenchCheck = await genesisBenchProof();
   record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
+  const genesisHolds = await genesisHoldsProof();
+  record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisMuseum = await genesisMuseumProof();
   record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles land inside its own gallery", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
   const genesisExhibits = await genesisExhibitsProof();
