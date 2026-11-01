@@ -23566,7 +23566,15 @@ const genesisAtriumProof = async () => {
   // The floor map: one marker per era, pointing at its own gallery's opening.
   const pointing = L.markers.length === 8 && L.markers.every((m) => { const r = M.rects[m.era], cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2; return (Math.sin(m.a) * cx - Math.cos(m.a) * cz) > 0.9 * Math.hypot(cx, cz); });
   // The courtyard round it (genesis-courtyard.js): navigation, laid from the real layout.
-  const C = BLc.genesisCourtyard, Y = C.layout({ museum: M, eras: W.ERAS, entries: cat.entries, lane: W.LANE_X }), cb = [];
+  const C = BLc.genesisCourtyard, Y = C.layout({ museum: M, eras: W.ERAS, entries: cat.entries, lane: W.LANE_X, cartridges: [{ id: "e3-pogs", era: 3, title: "POGs" }] }), cb = [];
+  // The POGs table stands beside Era 3's signpost, off every path, with its walk-up point clear.
+  const table = Y.games.find((t) => t.id === "e3-pogs");
+  if (!table) cb.push("no game table for the POGs cartridge");
+  else {
+    if (Y.paths.some((q) => C.segDist(table.x, table.z, q) < q.w / 2 + 1)) cb.push("the POGs table stands on a path");
+    if (Math.hypot(table.x - Y.signs[3].x, table.z - Y.signs[3].z) > 9) cb.push("the POGs table is not by Era 3's signpost");
+    if (Y.obstacles.some((o) => o !== Y.obstacles.find((q) => q.x0 === table.x - 0.6 && q.z0 === table.z - 0.6) && table.at.x > o.x0 - 0.3 && table.at.x < o.x1 + 0.3 && table.at.z > o.z0 - 0.3 && table.at.z < o.z1 + 0.3)) cb.push("the POGs table's walk-up point is blocked");
+  }
   // A path reaches each gallery's real opening, on the line of its central walk, and none crosses the centrepiece,
   // a pillar, the white screen, the map board or the statue.
   const doors = W.ERAS.map((e) => M.toMuseum(e.n, W.LANE_X, e.z1 - M.OPEN, {}));
@@ -23653,7 +23661,28 @@ const genesisCartridgeProof = async () => {
   con.open("dummy-test"); const g2 = con.game; con.key("down", "Enter", false); con.close();
   if (g2.playing || calls[calls.length - 1][0] !== "stop") bad.push("closing mid-run did not stop the game");
   con.dispose();
-  return { bad };
+  // POGs (genesis-era-3-pogs.js), the first real cartridge: registered the agreed way, played to its end through the
+  // console with a slam at each turn, and the same seed with the same timing gives the same score.
+  runInNewContext(await readFile(join(root, "src/js/genesis-era-3-pogs.js"), "utf8"), context);
+  if (C.checkAll() !== 2 || !C.find("e3-pogs")) bad.push("POGs did not register as a cartridge");
+  const playPogs = (seed) => {
+    let ended = null;
+    const host = { best: 0, aim: { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, held: {}, still: false, onEnd: (sc) => { ended = sc; }, over() {}, popup() {}, cue() {}, shake() {}, crack() {}, flop() {} };
+    const g = C.find("e3-pogs").make(host);
+    g.start(seed);
+    let frames = 0;
+    while (ended === null && frames < 20000) {
+      g.update(1 / 60); frames++;
+      // Slam on the player's turn when the meter is near the gold mark.
+      if (g.status.meter >= 0 && Math.abs(g.status.meter - context.window.BL.genesisPogs.SWEET) < 0.04) g.act();
+    }
+    return { ended, frames, left: g.status.left, playing: g.playing };
+  };
+  const p1 = playPogs(1993), p2 = playPogs(1993);
+  if (p1.ended === null || p1.left !== 0 || p1.playing) bad.push(`POGs did not play to its end (${JSON.stringify(p1)})`);
+  if (p1.ended !== p2.ended || p1.frames !== p2.frames) bad.push("POGs did not replay the same from the same seed");
+  if (!/modern/i.test(C.find("e3-pogs").label) || !/original/i.test(C.find("e3-pogs").label)) bad.push("POGs' label does not say modern original");
+  return { bad, pogs: p1 };
 };
 const genesisMuseumProof = async () => {
   const context = { window: {} };
@@ -24081,7 +24110,7 @@ const unitChecks = async () => {
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
-  record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
+  record("Genesis cartridge console and POGs: POGs, the first real cartridge, plays to its end through the console and replays the same from a seed; an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisMuseum = await genesisMuseumProof();
   record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles land inside its own gallery", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
   const genesisExhibits = await genesisExhibitsProof();

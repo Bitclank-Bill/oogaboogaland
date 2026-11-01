@@ -41,8 +41,8 @@
     const dx = s.x1 - s.x0, dz = s.z1 - s.z0, L = dx * dx + dz * dz, t = L ? Math.max(0, Math.min(1, ((px - s.x0) * dx + (pz - s.z0) * dz) / L)) : 0;
     return Math.hypot(px - (s.x0 + dx * t), pz - (s.z0 + dz * t));
   };
-  const layout = ({ museum, eras, entries, lane }) => {
-    const A = museum.atrium, paths = [], junctions = [], signs = [], plants = [], benches = [], obstacles = [];
+  const layout = ({ museum, eras, entries, lane, cartridges = [] }) => {
+    const A = museum.atrium, paths = [], junctions = [], signs = [], plants = [], benches = [], obstacles = [], games = [];
     // The ring: 24 straight pieces round the centrepiece.
     for (let i = 0; i < 24; i++) {
       const a0 = i / 24 * Math.PI * 2, a1 = (i + 1) / 24 * Math.PI * 2;
@@ -88,6 +88,24 @@
       benches.push({ x, z, turns });
       obstacles.push((turns & 1) ? { x0: x - 0.4, x1: x + 0.4, z0: z - 0.9, z1: z + 0.9 } : { x0: x - 0.9, x1: x + 0.9, z0: z - 0.4, z1: z + 0.4 });
     }
+    // A game table for each console cartridge (genesis-cartridge.js), beside its era's signpost on the inner side,
+    // clear of every path, sign and bench, with its walk-up point in front of it.
+    for (const c of cartridges) {
+      const sg = signs.find((x) => x.era === c.era), j = junctions.find((x) => x.era === c.era);
+      if (!sg || !j) continue;
+      const tx = -j.nz, tz = j.nx;
+      let spot = null;
+      for (const [k, d] of [[3.5, 2.5], [-3.5, 2.5], [5, 4], [-5, 4], [2, 5], [-2, 5], [7, 3], [-7, 3]]) {
+        const x = sg.x + tx * k + j.nx * d, z = sg.z + tz * k + j.nz * d;
+        const clear = paths.every((q) => segDist(x, z, q) > q.w / 2 + 1.6) && signs.every((o) => Math.hypot(x - o.x, z - o.z) > 2.4)
+          && benches.every((o) => Math.hypot(x - o.x, z - o.z) > 2.8) && games.every((o) => Math.hypot(x - o.x, z - o.z) > 3);
+        if (clear) { spot = { x, z }; break; }
+      }
+      if (!spot) continue;
+      const toward = Math.atan2(sg.x - spot.x, sg.z - spot.z);
+      games.push({ id: c.id, era: c.era, title: c.title, x: spot.x, z: spot.z, at: { x: spot.x - j.nx * 1.4, z: spot.z - j.nz * 1.4 }, ry: toward });
+      obstacles.push({ x0: spot.x - 0.6, x1: spot.x + 0.6, z0: spot.z - 0.6, z1: spot.z + 0.6 });
+    }
     // The map board beside the white screen.
     obstacles.push({ x0: MAP.x - MAP.w / 2, x1: MAP.x + MAP.w / 2, z0: MAP.z - 0.3, z1: MAP.z + 0.3 });
     // Plants: a jittered grid inside the loop and outside the ring, clear of everything that must stay open.
@@ -104,14 +122,14 @@
       const nearPath = Math.min(...paths.map((s) => segDist(x, z, s) - s.w / 2));
       const nearSign = Math.min(...signs.map((s) => Math.hypot(x - s.x, z - s.z)));
       const nearBench = Math.min(...benches.map((b) => Math.hypot(x - b.x, z - b.z)));
-      if (nearPath < 1.6 || nearBench < 3) continue;
+      if (nearPath < 1.6 || nearBench < 3 || games.some((o) => Math.hypot(x - o.x, z - o.z) < 3.2)) continue;
       // Low planting only near a sign or close to a path; palms only well clear of both.
       const kind = nearSign < 6 || nearPath < 3.5 ? "flower" : roll < 0.28 && nearPath > 5 ? "palm" : roll < 0.75 ? "bush" : "flower";
       if (nearSign < 2.5) continue;
       plants.push({ kind, x, z, v: Math.floor(rand() * 3), ry: rand() * Math.PI * 2 });
       if (kind !== "flower") obstacles.push({ x0: x - 0.45, x1: x + 0.45, z0: z - 0.45, z1: z + 0.45 });
     }
-    return { paths, junctions, signs, plants, benches, map: MAP, obstacles, loop: L, ring: { r: RING_R, w: RING_W }, view: VIEW };
+    return { paths, junctions, signs, plants, benches, games, map: MAP, obstacles, loop: L, ring: { r: RING_R, w: RING_W }, view: VIEW };
   };
 
   const GRASS = "#6f8f3c", SAND = "#b8955a", SAND_DK = "#9a7a46", WOOD = "#7a5534", WOOD_DK = "#4c331d";
@@ -167,6 +185,20 @@
     const legs = [];
     for (const dx of [-map.w / 2 + 0.6, map.w / 2 - 0.6]) legs.push(M.bevelBox({ w: 0.22, h: map.y - map.h / 2 + 0.2, d: 0.22, color: WOOD_DK, offset: { x: map.x + dx, y: top + (map.y - map.h / 2 + 0.2) / 2, z: map.z - 0.15 } }));
     place(createNode({ geometry: M.merge(...legs) }));
+    // The game tables: a round timber top on a post, a stack of caps and a slammer on it (one merged mesh); the
+    // scene stands each table's tap box and prop.
+    const tables = [], picks = [];
+    for (const t of Lo.games) {
+      const parts = [M.bevelBox({ w: 0.24, h: 0.72, d: 0.24, color: WOOD_DK, offset: { y: 0.36 } }), M.bevelBox({ w: 1.1, h: 0.08, d: 1.1, color: WOOD, offset: { y: 0.76 } }),
+        M.bevelBox({ w: 0.7, h: 0.06, d: 0.7, color: WOOD_DK, offset: { y: 0.03 } })];
+      const CAP = ["#ff5fa2", "#5ec8ff", "#c8ff5a", "#b98cff", "#ffb02e"];
+      for (let i = 0; i < 8; i++) parts.push(M.box({ w: 0.16, h: 0.018, d: 0.16, color: i === 7 ? CAP[1] : "#9aa1aa", offset: { y: 0.81 + i * 0.02 } }));
+      parts.push(M.box({ w: 0.2, h: 0.04, d: 0.2, color: "#2b2f36", offset: { x: 0.28, y: 0.82, z: 0.18 } }));
+      for (let i = 0; i < 3; i++) parts.push(M.box({ w: 0.16, h: 0.018, d: 0.16, color: CAP[(i + 2) % 5], offset: { x: -0.3 + i * 0.05, y: 0.81, z: -0.25 + i * 0.03 } }));
+      tables.push(M.moved(M.turnedY(M.merge(...parts), t.ry), t.x, top, t.z));
+      picks.push({ id: t.id, node: place(createNode({ geometry: pickBoxOf(1.2, 1.4, 1.2), position: { x: t.x, y: top + 0.7, z: t.z } })) });
+    }
+    if (tables.length) place(createNode({ geometry: M.merge(...tables) }));
     // Benches from the dressing kit, baked once into the set's meshes.
     const set = dressing.set();
     for (const b of Lo.benches) set.put("bench", b.x, top, b.z, b.turns);
@@ -176,8 +208,9 @@
       const geometry = p.kind === "palm" ? dressing.palm(p.v) : p.kind === "bush" ? hub.bush(p.v) : hub.flowerTuft();
       place(createNode({ geometry, position: { x: p.x, y: top, z: p.z }, rotation: { x: 0, y: p.ry, z: 0 }, sightHidden: true }));
     }
-    return { mapNode: node };
+    return { mapNode: node, gamePicks: picks };
   };
+  const pickBoxOf = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
   // The "You are here" map, painted from the layout: north up, as the board faces the arrival looking north.
   const paintMap = (g, W, H, { museum, eras, layout: Lo, atriumLayout }) => {
     const B = museum.bounds, pad = 40, top = 120, k = Math.min((W - 2 * pad) / (B.x1 - B.x0), (H - top - pad - 60) / (B.z1 - B.z0));

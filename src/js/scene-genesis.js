@@ -802,11 +802,19 @@
   // gallery and a clockwise loop, wooden signs, benches, plants and the "You are here" board. Built once a visit, no
   // lights and nothing per frame; its obstacles join the footing.
   const buildCourtyard = () => {
-    const C = BL.genesisCourtyard, L = C.layout({ museum: MU, eras: GW.ERAS, entries: catalogue.entries, lane: GW.LANE_X });
-    C.build({ M, createNode, addChild, place, top: ISLAND_TOP, layout: L, hub: BL.hubModels, dressing: BL.dressing, atrium: MU.atrium,
+    const carts = (BL.genesisCartridges && BL.genesisCartridges.list) || [];
+    const C = BL.genesisCourtyard, L = C.layout({ museum: MU, eras: GW.ERAS, entries: catalogue.entries, lane: GW.LANE_X, cartridges: carts });
+    const made = C.build({ M, createNode, addChild, place, top: ISLAND_TOP, layout: L, hub: BL.hubModels, dressing: BL.dressing, atrium: MU.atrium,
       paintMap: (g, w, h) => C.paintMap(g, w, h, { museum: MU, eras: GW.ERAS, layout: L, atriumLayout: built.atriumLayout }) });
     for (const o of L.obstacles) built.obstacles.push(o);
     built.courtyard = L;
+    // Each game table is a prop: Space beside it, or a tap, opens its cartridge on the console. Not an exhibit.
+    built.gameProps = made.gamePicks.map((gp) => {
+      const g = L.games.find((x) => x.id === gp.id), c = carts.find((x) => x.id === gp.id), era = GW.ERAS[g.era];
+      const prop = props.register({ id: `game-${g.id}`, era: g.era, year: firstYear(era.years), title: c.title, label: `${c.title} · console game · ${firstYear(era.years)}s style`,
+        sourceKeys: [], at: { x: g.at.x, y: ISLAND_TOP, z: g.at.z }, reach: 2.2, hint: `play ${c.title}: ${c.label}`, onUse: () => ({ cartridge: g.id }) });
+      return { prop, node: gp.node };
+    });
   };
   const openMenu = (focusId) => {
     if (bench.open) host.close();
@@ -1172,6 +1180,7 @@
     target(built.guide.parts.head, { kind: "guide" });
     target(built.legend, { kind: "legend", priority: 1 });
     for (const a of built.atriumProps) target(a.node, { kind: "prop", prop: a.prop, priority: 1 });
+    for (const a of built.gameProps) target(a.node, { kind: "prop", prop: a.prop, priority: 1 });
     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const o of built.overviews) target(o.pick, { kind: "prop", prop: props.get(`era${o.era}-overview`), priority: 1 });
