@@ -1,233 +1,211 @@
-// The Cloud Archive lounge TV: Ooga Booga Land's live feeds and pictures of the island's places, on shuffle. GitHub is
-// the hanging Oogatron's; the TV carries everything else the page keeps live: the chain (chain.js: height, price,
-// hashrate, difficulty, block pace), the mempool as its socket streams it (mempool.js with chain.js: backlog, arrivals,
-// fee tiers, blocks seen), the Mempool island's weather (the storm step weather.js names from the arrivals, the lake
-// from the backlog), the totems' repositories' latest merges (totem-feed.js), who is working, chilling and asleep and
-// who is online out on the island or inside (contributors.js, net.js), the bananas (the island's pile, the tips tally,
-// the latest tip and the top tipper, donations.js) and the arcade's records (highscores.js, watched for this visit as a
-// scene may), and the pictures the hub drew of the island's places on the climb (`world.archiveViews`). A new block on
-// the socket cuts to the mempool channel. It never fetches anything itself; a feed that is off (nosim, a static host,
-// no island server) says so.
-// `update(dt)` steps the shuffle (every CHANNEL_SECONDS through STATIC_SECONDS of snow, a fresh order each round; held
-// under reduced motion or while its board is open) and repaints a live channel once a LIVE_SECONDS. `board` is the
-// shared board dialog's view of it: every channel a page, live as the screen. `dispose` in leave.
+// The Cloud Archive lounge TV and its channel guide. What each channel reads, and the guide's selection and rotation,
+// are cloud-archive-channels.js's; this paints the tuned channel onto the TV's canvas, keeps the guide (a dialog in
+// the page, `#archive-guide`: the channels by category with each one's status, a tap tunes one and opens its detail,
+// and "change channel by itself") and the board the dialog reads.
+// Painting: the tuned channel's `stamp` is checked once a LIVE_SECONDS; its rows are formatted and the canvas
+// repainted only when the stamp moved, or on tuning. Nothing is formatted or built per frame.
+// A GitHub page draws the hanging Oogatron's own paused reader (`reader`, paged here); a place draws its picture.
+// Holds: the guide open, the TV's board open; under reduced motion rotation starts off and there is no snow.
+// `dispose` releases the selector's subscriptions and record watches, the reader and the guide's rows.
 (() => {
   "use strict";
   const BL = window.BL;
-  const W = 480, H = 360, CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, LIVE_SECONDS = 1, BAR = 44;
-  const INK = "#f3efe4", DIM = "#a6a6a2", ACCENT = "#e8b04a", GREEN = "#46ff70", BG = "#0a0c0a", RED = "#e5533d", BLUE = "#6f9fca";
-  // The arcade's records the TV lists, in this order, with their names.
-  const RECORDS = [["skee", "Skee-ball"], ["hoops", "Hoops"], ["claw", "Claw"], ["hockey", "Air hockey"], ["shy", "Coconut shy"],
-    ["drop", "The drop"], ["orbit", "Orbit"], ["mine", "The mine"], ["race", "Rally"], ["cloud-hopper", "Cloud Hopper"]];
-  const ageOf = (at, now) => {
-    if (!at) return null;
-    const s = Math.max(0, Math.round((now - at) / 1000));
-    return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;
-  };
-  const num = (n, digits = 0) => Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits }) : "—";
-  const time = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.${String(Math.floor(ms / 10) % 100).padStart(2, "0")}`;
-  const create = ({ views, world, font, reduced, boardOpen }) => {
+  const W = 480, H = 360, BAR = 44, STATIC_SECONDS = 0.25, LIVE_SECONDS = 1;
+  const INK = "#f3efe4", DIM = "#a6a6a2", ACCENT = "#e8b04a", GOOD = "#46ff70", BG = "#0a0c0a", RED = "#e5533d", BLUE = "#6f9fca";
+  const TONES = { "": INK, accent: ACCENT, good: GOOD, up: GOOD, down: RED, dim: DIM, blue: BLUE };
+  const STATUS_INK = { live: GOOD, stale: ACCENT, held: BLUE, demo: ACCENT, waiting: DIM, off: DIM };
+  const create = ({ views, world, font, reduced, boardOpen, reader, guide, signal, onDetail }) => {
+    const C = BL.cloudArchiveChannels, env = { BL, world, now: () => Date.now(), reader, views };
+    const list = C.channels(env);
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
     const g = canvas.getContext("2d"), snow = g.createImageData(W / 4, H / 4);
-    // Channel painters for the live feeds: a title, then rows of label and value, then whether the feed is live.
-    const frame = (title, status, live) => {
+    const stamps = new Float64Array(list.length).fill(NaN), readings = new Array(list.length).fill(null);
+    const counters = list.map((_, i) => `${i + 1}/${list.length}`);
+    const tv = { snow: 0, live: 0, version: 0, open: false };
+    let seed = 1, clock = 0, guideShown = false;
+    const readingOf = (i) => {
+      const s = list[i].stamp(env);
+      if (s !== stamps[i] || !readings[i]) { stamps[i] = s; readings[i] = list[i].read(env); readings[i].status = list[i].status(env); }
+      return readings[i];
+    };
+    // The frame every live channel shares: its title, its status in words and colour, rows, its source and age.
+    const header = (c, r) => {
       g.fillStyle = BG; g.fillRect(0, 0, W, H);
       g.fillStyle = "#1b1f1b"; g.fillRect(0, 0, W, 46);
-      g.font = `700 22px ${font}`; g.textBaseline = "middle"; g.textAlign = "left"; g.fillStyle = ACCENT;
-      g.fillText(title, 16, 24);
-      g.textAlign = "right"; g.font = `600 14px ${font}`; g.fillStyle = live ? GREEN : DIM;
-      g.fillText(live ? `● LIVE · ${status}` : status, W - 16, 24);
+      g.font = `700 21px ${font}`; g.textBaseline = "middle"; g.textAlign = "left"; g.fillStyle = ACCENT;
+      g.fillText(c.title.toUpperCase(), 16, 24, W - 140);
+      g.textAlign = "right"; g.font = `700 14px ${font}`; g.fillStyle = STATUS_INK[r.status];
+      g.fillText(`● ${C.WORDS[r.status]}`, W - 16, 24);
     };
-    const rows = (list, top = 72, step = 36) => {
-      g.textBaseline = "middle";
-      for (let i = 0; i < list.length; i++) {
-        const [label, value, color] = list[i], y = top + i * step;
-        g.textAlign = "left"; g.font = `600 17px ${font}`; g.fillStyle = DIM; g.fillText(label, 18, y);
-        g.textAlign = "right"; g.font = `700 22px ${font}`; g.fillStyle = color || INK; g.fillText(value, W - 18, y);
+    const rows = (lines) => {
+      const step = lines.length > 6 ? 31 : 36, top = 72;
+      for (let i = 0; i < lines.length; i++) {
+        const [label, value, tone] = lines[i], y = top + i * step;
+        g.textAlign = "left"; g.font = `600 16px ${font}`; g.fillStyle = DIM; g.fillText(label, 18, y, 230);
+        g.textAlign = "right"; g.font = `700 20px ${font}`; g.fillStyle = TONES[tone] || INK; g.fillText(value, W - 18, y, W - 250);
       }
     };
-    const footnote = (text) => { g.textAlign = "center"; g.textBaseline = "middle"; g.font = `500 15px ${font}`; g.fillStyle = DIM; g.fillText(text, W / 2, H - BAR - 18); };
-    const meter = (label, value, y, color) => {
-      g.textAlign = "left"; g.textBaseline = "middle"; g.font = `600 17px ${font}`; g.fillStyle = DIM; g.fillText(label, 18, y);
-      g.fillStyle = "#1b1f1b"; g.fillRect(170, y - 9, W - 188, 18);
-      g.fillStyle = color; g.fillRect(170, y - 9, Math.round((W - 188) * Math.max(0, Math.min(1, value))), 18);
+    const footer = (c, r) => {
+      g.textAlign = "left"; g.font = `500 13px ${font}`; g.fillStyle = DIM; g.textBaseline = "middle";
+      g.fillText(r.at > 0 ? `${c.source} · ${C.ago(r.at, env.now())}` : c.source, 16, H - BAR - 14, W - 32);
     };
-    const chain = () => {
-      const s = BL.chain.snapshot, now = Date.now(), live = s.at > 0;
-      frame("BITCOIN · THE CHAIN", live ? `updated ${ageOf(s.at, now)}` : "waiting for the chain feed", live);
-      rows([
-        ["Block height", s.height ? num(s.height) : "—", ACCENT],
-        ["Price", s.priceUsd ? `$${num(s.priceUsd)}` : "—", s.priceOpenUsd && s.priceUsd < s.priceOpenUsd ? RED : GREEN],
-        ["Hashrate", s.hashrate ? `${num(s.hashrate / 1e18)} EH/s` : "—"],
-        ["Difficulty", s.remainingBlocks ? `${s.difficultyChange >= 0 ? "+" : ""}${num(s.difficultyChange, 1)}% in ${num(s.remainingBlocks)} blocks` : "—"],
-        ["Block pace", s.avgBlockMs ? `${num(s.avgBlockMs / 60000, 1)} min a block` : "—"],
-        ["Last block", s.lastBlockAt ? ageOf(s.lastBlockAt, now) : "—"]
-      ], 74, 40);
+    const paintLive = (i) => {
+      const c = list[i], r = readingOf(i);
+      header(c, r);
+      if (r.reader !== undefined) {
+        g.imageSmoothingEnabled = false;
+        g.drawImage(reader.canvas, 0, 56, W, Math.round(W * reader.canvas.height / reader.canvas.width));
+      } else if (r.big) {
+        g.textAlign = "center"; g.font = `700 42px ${font}`; g.fillStyle = r.status === "live" ? INK : DIM;
+        g.fillText(r.big, W / 2, 104);
+        for (let m = 0; m < r.meters.length; m++) {
+          const [label, value, tone] = r.meters[m], y = 172 + m * 42;
+          g.textAlign = "left"; g.font = `600 16px ${font}`; g.fillStyle = DIM; g.fillText(label, 18, y);
+          g.fillStyle = "#1b1f1b"; g.fillRect(170, y - 9, W - 188, 18);
+          g.fillStyle = TONES[tone]; g.fillRect(170, y - 9, Math.round((W - 188) * Math.max(0, Math.min(1, value))), 18);
+        }
+      } else rows(r.rows);
+      if (r.empty) { g.textAlign = "center"; g.font = `500 15px ${font}`; g.fillStyle = DIM; g.fillText(r.empty, W / 2, r.rows.length ? H - BAR - 40 : 170, W - 40); }
+      footer(c, r);
     };
-    const mempool = () => {
-      const m = BL.mempool.state, s = BL.chain.snapshot, live = m.connected;
-      frame("MEMPOOL · LIVE", live ? "socket open" : s.backlogAt ? "from the chain's last read" : "waiting for the socket", live);
-      rows([
-        ["Waiting", s.count ? `${num(s.count)} tx` : "—", ACCENT],
-        ["Backlog", s.vsize ? `${num(s.vsize / 1e6, 1)} MvB` : "—"],
-        ["Arriving", s.inflow ? `${num(s.inflow)} vB/s` : "—"],
-        ["Next block fee", s.nextFee ? `${num(s.nextFee, 1)} sat/vB` : "—", GREEN],
-        ["Fees · fast / 30 min / 1 h", s.fastestFee ? `${num(s.fastestFee)} / ${num(s.halfHourFee)} / ${num(s.hourFee)}` : "—"],
-        ["Blocks found this visit", num(m.blocks), BLUE]
-      ], 74, 40);
-    };
-    const weather = () => {
-      const s = BL.chain.snapshot, wx = BL.weather, fresh = s.socketAt > 0 && Date.now() - s.socketAt < wx.ARRIVALS_FRESH_MS;
-      let step = wx.STEPS[0];
-      for (const st of wx.STEPS) if (s.gale >= st.from) step = st;
-      frame("ISLAND WEATHER", fresh ? "from arrivals" : "no arrivals reading", fresh);
-      g.textAlign = "center"; g.textBaseline = "middle"; g.font = `700 42px ${font}`; g.fillStyle = fresh ? INK : DIM;
-      g.fillText(fresh ? step.name.toUpperCase() : "CALM", W / 2, 112);
-      meter("Storm", fresh ? s.gale : 0, 184, BLUE);
-      meter("Lake (backlog)", s.soak, 226, ACCENT);
-      footnote("The storm follows what arrives; the lake fills with what waits");
-    };
-    const totems = () => {
-      const f = BL.totemFeed, now = Date.now(), live = f.state.polls > 0;
-      frame("TOTEMS · LATEST MERGES", live ? `${f.state.polls} reads` : "waiting for GitHub", live);
-      rows(f.REPOS.map((r, i) => {
-        const m = f.state.repos[i];
-        return [r.name, m.number ? `#${m.number} · ${ageOf(m.changedAt, now)}` : "no merge read yet", m.number ? INK : DIM];
-      }), 92, 56);
-    };
-    const island = () => {
-      const C = BL.contributors, counts = { working: 0, chilling: 0, sleeping: 0, away: 0 }, now = Date.now();
-      for (const e of C.activeRoster) { const s = C.stateFor(e, now); if (s in counts) counts[s]++; }
-      const net = BL.net, room = net.state.backend;
-      let outside = 0, inside = 0;
-      if (room) for (const r of net.remotes.values()) { if (!r.zone || r.zone === "outside") outside++; else inside++; }
-      frame("ON THE ISLAND", BL.oogatronLive.state.enabled ? "activity from GitHub" : "baked activity", BL.oogatronLive.state.enabled);
-      rows([
-        ["Working", num(counts.working), GREEN], ["Chilling", num(counts.chilling), ACCENT], ["Sleeping", num(counts.sleeping), DIM],
-        ["Away", num(counts.away), DIM],
-        ["Online · outside / inside", room ? `${num(outside + (net.state.me ? 1 : 0))} / ${num(inside)}` : "—", room ? INK : DIM]
-      ], 74, 42);
-      if (!room) footnote("Who is online shows where the island's own server runs");
-    };
-    const bananas = () => {
-      const s = BL.donations.state, t = s.tally, live = !!s.connected, top = s.board && s.board[0], last = s.recent && s.recent[0];
-      frame("BANANAS", live ? (s.network && s.network !== "mainnet" ? `test network (${s.network})` : "tips over Lightning") : "no tips feed here", live);
-      rows([
-        ["The island's pile", `${num(Math.floor(world.level || 0))} bananas`, ACCENT],
-        ["Tips, all time", t ? `${num(t.count)} · ${num(t.sats)} sats` : "—"],
-        ["Latest tip", last ? `${last.handle || "anon"} · ${num(last.sats)} sats` : "—", last ? GREEN : DIM],
-        ["Top tipper", top ? `${top.handle} · ${num(top.bananas)} bananas` : "—", top ? ACCENT : DIM]
-      ], 82, 48);
-      if (!live) footnote("Tips go live where the island's own server runs");
-    };
-    // The arcade's records, watched for this visit (they answer only where the island's server keeps them).
-    const offRecords = RECORDS.map(([id]) => BL.highscores.watch(id, () => {}));
-    const records = () => {
-      const available = BL.net.state.backend && BL.net.state.highscores === true;
-      frame("ARCADE · RECORDS", available ? "shared records" : "no records server here", available);
-      const list = [];
-      for (const [id, name] of RECORDS) {
-        const data = BL.highscores.get(id), rule = BL.highscoreRules.get(id);
-        if (!data || !rule) continue;
-        let best = null;
-        for (const m of rule.machines) { const v = data.highscores[m]; if (v && (best === null || (rule.direction === "asc" ? v < best : v > best))) best = v; }
-        if (best !== null) list.push([name, rule.unit === "milliseconds" ? time(best) : num(best), ACCENT]);
-        if (list.length === 6) break;
-      }
-      if (list.length) rows(list, 74, 40);
-      else footnote(available ? "No records set yet" : "Records show where the island's own server runs");
-    };
-    const cam = (v) => () => {
+    const paintCam = (c) => {
       g.imageSmoothingEnabled = true;
-      g.drawImage(v.canvas, 0, 0, W, H);
+      g.drawImage(c.cam.canvas, 0, 0, W, H);
       g.fillStyle = "rgba(0,0,0,0.12)";
       for (let y = 0; y < H; y += 3) g.fillRect(0, y, W, 1);
     };
-    const MEMPOOL = 1;
-    const channels = [
-      { title: "Bitcoin · the chain", paint: chain, live: true, cam: null },
-      { title: "Mempool · live", paint: mempool, live: true, cam: null },
-      { title: "Mempool island · weather", paint: weather, live: true, cam: null },
-      { title: "Totems · latest merges", paint: totems, live: true, cam: null },
-      { title: "On the island", paint: island, live: true, cam: null },
-      { title: "Bananas", paint: bananas, live: true, cam: null },
-      { title: "Arcade · records", paint: records, live: true, cam: null },
-      ...views.map((v) => ({ title: `Island cam · ${v.label}`, paint: cam(v), live: false, cam: v }))
-    ];
-    const captions = channels.map((c) => c.title.toUpperCase()), counters = channels.map((_, i) => `${i + 1}/${channels.length}`);
-    // The shuffle: a fresh order each round, never repeating the channel just shown.
-    const order = channels.map((_, i) => i);
-    const shuffle = () => {
-      const last = order[order.length - 1];
-      for (let i = order.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0, t = order[i]; order[i] = order[j]; order[j] = t; }
-      if (order.length > 1 && order[0] === last) { const t = order[0]; order[0] = order[1]; order[1] = t; }
-    };
-    shuffle();
-    const tv = { channel: order[0], slot: 0, wait: CHANNEL_SECONDS, snow: 0, live: 0, version: 0, open: false, newBlock: 0 };
-    let seed = 1;
-    const caption = () => {
+    const bar = (i) => {
       g.fillStyle = "rgba(0,0,0,0.6)"; g.fillRect(0, H - BAR, W, BAR);
-      g.fillStyle = "#ffffff"; g.font = `700 18px ${font}`; g.textAlign = "left"; g.textBaseline = "middle";
-      g.fillText(tv.newBlock > 0 && tv.channel === MEMPOOL ? "NEW BLOCK FOUND!" : captions[tv.channel], 14, H - BAR / 2);
-      g.fillStyle = ACCENT; g.textAlign = "right"; g.fillText(counters[tv.channel], W - 14, H - BAR / 2);
+      g.fillStyle = "#ffffff"; g.font = `700 17px ${font}`; g.textAlign = "left"; g.textBaseline = "middle";
+      g.fillText(selector.state.newBlock > 0 && list[i].id === "mempool" ? "NEW BLOCK FOUND!" : `${list[i].category === "cams" ? "ISLAND CAM · " : ""}${list[i].title.toUpperCase()}`, 14, H - BAR / 2, W - 90);
+      g.fillStyle = ACCENT; g.textAlign = "right"; g.fillText(counters[i], W - 14, H - BAR / 2);
     };
+    // A GitHub page: the reader turned to it and brought up to date before it is read.
+    const prime = (i) => {
+      const c = list[i];
+      if (c.page === undefined) return;
+      if (reader.index !== c.page % reader.count) reader.go(c.page % reader.count);
+      reader.update(clock);
+    };
+    let selector = null;
     const paint = () => {
+      const i = selector.index;
       if (tv.snow > 0) {
         const d = snow.data;
-        for (let i = 0; i < d.length; i += 4) { seed = (Math.imul(seed, 1103515245) + 12345) | 0; d[i] = d[i + 1] = d[i + 2] = (seed >>> 24); d[i + 3] = 255; }
+        for (let k = 0; k < d.length; k += 4) { seed = (Math.imul(seed, 1103515245) + 12345) | 0; d[k] = d[k + 1] = d[k + 2] = (seed >>> 24); d[k + 3] = 255; }
         g.imageSmoothingEnabled = false;
         g.putImageData(snow, 0, 0);
         g.drawImage(canvas, 0, 0, W / 4, H / 4, 0, 0, W, H);
       } else {
-        channels[tv.channel].paint();
-        caption();
+        if (list[i].cam) paintCam(list[i]); else paintLive(i);
+        bar(i);
       }
       tv.version++;
+      if (guideShown) markGuide();
     };
-    const tune = (channel, byHand) => {
-      tv.channel = (channel + channels.length) % channels.length;
-      tv.wait = CHANNEL_SECONDS;
+    selector = C.createSelector(list, env, { reduced: reduced(), onTune: (i, byHand) => {
       tv.live = LIVE_SECONDS;
       tv.snow = reduced() || byHand ? 0 : STATIC_SECONDS;
+      stamps[i] = NaN;
+      prime(i);
       paint();
+    } });
+    // The guide: built once a visit; a row's status word is rewritten only when its status changes.
+    const buttons = new Array(list.length).fill(null), shown = new Array(list.length).fill("");
+    const auto = guide ? guide.querySelector("#archive-guide-auto") : null, holder = guide ? guide.querySelector("#archive-guide-list") : null;
+    const markGuide = () => {
+      for (let i = 0; i < list.length; i++) {
+        const b = buttons[i];
+        if (!b) continue;
+        const s = list[i].status(env);
+        if (shown[i] !== s) { shown[i] = s; b.dataset.status = s; b.lastElementChild.textContent = C.WORDS[s]; }
+        const current = i === selector.index ? "true" : "false";
+        if (b.getAttribute("aria-current") !== current) b.setAttribute("aria-current", current);
+      }
     };
-    const next = () => {
-      tv.slot++;
-      if (tv.slot >= order.length) { shuffle(); tv.slot = 0; }
-      tune(order[tv.slot], false);
+    if (holder) {
+      const groups = [];
+      for (const group of selector.categories()) {
+        const section = document.createElement("section"), heading = document.createElement("h3"), items = document.createElement("ul");
+        heading.textContent = group.name;
+        for (const c of group.channels) {
+          const item = document.createElement("li"), button = document.createElement("button"), name = document.createElement("span"), status = document.createElement("span");
+          button.type = "button"; button.dataset.channel = String(c.index);
+          name.className = "archive-guide-name"; name.textContent = c.title;
+          status.className = "archive-guide-status";
+          button.append(name, status); item.append(button); items.append(item);
+          buttons[c.index] = button;
+        }
+        section.append(heading, items); groups.push(section);
+      }
+      holder.replaceChildren(...groups);
+      holder.addEventListener("click", (e) => {
+        const button = e.target.closest("[data-channel]");
+        if (!button) return;
+        const i = +button.dataset.channel;
+        selector.select(i);
+        // Off the closed guide first: a board opened next would hand focus back to this row when it closes, and keys
+        // pressed in a dialog are the page's, not the game's (T, W A S D would stop reaching the archive).
+        button.blur();
+        guide.close();
+        onDetail(list[i]);
+      }, { signal });
+      auto.addEventListener("change", () => selector.setAuto(auto.checked), { signal });
+      guide.addEventListener("close", () => { guideShown = false; selector.hold("guide", false); }, { signal });
+    }
+    const openGuide = () => {
+      if (!guide || guide.open) return false;
+      guideShown = true;
+      markGuide();
+      auto.checked = selector.auto;
+      selector.hold("guide", true);
+      guide.showModal();
+      buttons[selector.index].focus();
+      return true;
     };
+    prime(selector.index);
     paint();
-    const still = () => reduced() || tv.open;
-    // A block found while watching cuts to the mempool, unless the viewer is holding a channel.
-    const offBlocks = BL.mempool.subscribe((event) => {
-      if (event.type !== "block") return;
-      tv.newBlock = CHANNEL_SECONDS;
-      if (!still()) tune(MEMPOOL, false);
-    });
-    const update = (dt) => {
-      if (tv.open && !boardOpen()) tv.open = false;
-      if (tv.newBlock > 0) tv.newBlock -= dt;
+    const update = (dt, elapsed) => {
+      clock = elapsed;
+      if (tv.open && !boardOpen()) { tv.open = false; selector.hold("board", false); }
+      const before = selector.index;
+      selector.update(dt);
+      if (selector.index !== before) return;
       if (tv.snow > 0 && (tv.snow -= dt) <= 0) { tv.snow = 0; paint(); return; }
-      if (!still() && (tv.wait -= dt) <= 0) { next(); return; }
-      if (tv.snow <= 0 && channels[tv.channel].live && (tv.live -= dt) <= 0) { tv.live = LIVE_SECONDS; paint(); }
+      if ((tv.live -= dt) > 0) return;
+      tv.live = LIVE_SECONDS;
+      const i = selector.index;
+      if (!list[i].cam) { prime(i); if (list[i].stamp(env) !== stamps[i]) { paint(); return; } }
+      if (guideShown) markGuide();
     };
+    // The board the shared dialog reads: every channel a page, live as the screen; its play button is rotation.
     const board = {
-      title: "Island TV", wide: true,
-      help: "Ooga Booga Land's live feeds and its places, on shuffle; GitHub is on the big sign. Arrow keys change channel; it holds still while this is open.",
-      get canvas() { const c = channels[tv.channel]; return c.cam && tv.snow <= 0 ? c.cam.canvas : canvas; },
-      get count() { return channels.length; }, get index() { return tv.channel; },
-      get caption() { return channels[tv.channel].title; },
+      title: "Island TV", wide: true, carousel: true,
+      help: "Ooga Booga Land's live systems by channel. Arrow keys change channel; play turns rotation on and off.",
+      get canvas() { const c = list[selector.index]; return c.cam && tv.snow <= 0 ? c.cam.canvas : canvas; },
+      get count() { return list.length; }, get index() { return selector.index; },
+      get caption() { return list[selector.index].title; },
       get note() {
-        const c = channels[tv.channel];
+        const c = list[selector.index];
         if (c.cam) return "A picture the island drew of this place as you climbed the beanstalk.";
-        return `Live from the island's own feeds, refreshed every second. ${reduced() ? "With reduced motion the TV holds each channel until you change it here." : `The TV shuffles channels every ${CHANNEL_SECONDS} seconds while nobody is reading this, and cuts to the mempool when a block is found.`}`;
+        const r = readingOf(selector.index);
+        return `${r.note ? `${r.note} ` : ""}Source: ${c.source}. ${C.WORDS[r.status]}${r.at > 0 ? `, updated ${C.ago(r.at, env.now())}` : ""}.`;
       },
+      get links() { const c = list[selector.index]; return c.cam ? null : readingOf(selector.index).links || null; },
+      get paused() { return !selector.auto; }, setPaused: (paused) => selector.setAuto(!paused),
       get version() { return tv.version; },
-      go: (i) => tune(i, true)
+      go: (i) => selector.select(i)
     };
-    const open = () => { tv.open = true; tv.version++; };
-    return { canvas, channels, tv, board, update, open, tune, get title() { return channels[tv.channel].title; }, dispose: () => { offBlocks(); for (const off of offRecords) off(); canvas.width = canvas.height = 0; } };
+    const openBoard = () => { tv.open = true; selector.hold("board", true); tv.version++; };
+    const dispose = () => {
+      selector.dispose();
+      reader.dispose();
+      if (guide && guide.open) guide.close();
+      if (holder) holder.replaceChildren();
+      canvas.width = canvas.height = 0;
+    };
+    return { canvas, list, selector, tv, board, update, openGuide, openBoard, get title() { return list[selector.index].title; }, get guideOpen() { return guideShown; }, dispose };
   };
-  BL.cloudArchiveTv = { create, W, H, CHANNEL_SECONDS };
+  BL.cloudArchiveTv = { create, W, H };
 })();

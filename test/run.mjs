@@ -22995,8 +22995,83 @@ const cloudArchiveProof = async () => {
     && D.days.reduce((n, d) => n + d.commits.length, 0) === D.commits && D.days.every((d) => { const s = L.shelve(d.commits.length); return s.books + s.overflow === d.commits.length && s.books <= cap; });
   return r;
 };
+// The Cloud Archive TV's channel guide over stand-ins for the page's live systems (the real score rules): each game's
+// records read by its own score type, the guide's selection and rotation, stale and unavailable feeds, a channel's
+// rows rebuilt only when its stamp moves, and every subscription and record watch released.
+const cloudArchiveTvProof = () => {
+  const context = { window: {} };
+  runInNewContext(readFileSync(join(root, "src/js/highscore-rules.js"), "utf8"), context);
+  const B = context.window.BL, now = { t: 10_000_000 }, subs = new Set(), watches = new Map();
+  const records = new Map();
+  Object.assign(B, {
+    chain: { snapshot: { source: "mempool.space", at: 0, heightAt: 0, priceAt: 0, feesAt: 0, backlogAt: 0, socketAt: 0, height: 0, gale: 0, soak: 0 } },
+    mempool: { state: { connected: false, blocks: 0 }, subscribe: (fn) => { subs.add(fn); return () => subs.delete(fn); } },
+    weather: { STEPS: [{ name: "dry", from: 0 }, { name: "rain", from: 0.4 }], ARRIVALS_FRESH_MS: 30000 },
+    contributors: { activeRoster: [{ name: "a" }, { name: "b" }], stateFor: (e) => e.name === "a" ? "working" : "sleeping" },
+    net: { state: { backend: false, highscores: false, room: "off", me: null }, remotes: new Map() },
+    donations: { state: { connected: false, donations: 0, tally: null, board: null, recent: null } },
+    oogatronLive: { state: { enabled: false } },
+    totemFeed: { REPOS: [{ name: "Bitcoin Core" }], state: { enabled: true, polls: 0, repos: [{ number: 0, url: "", changedAt: 0 }] } },
+    characters: { displayOf: (login) => `Ooga ${login}` },
+    highscores: { get: (id) => records.get(id) || null, watch: (id) => { watches.set(id, (watches.get(id) || 0) + 1); return () => watches.set(id, watches.get(id) - 1); } }
+  });
+  runInNewContext(readFileSync(join(root, "src/js/cloud-archive-channels.js"), "utf8"), context);
+  const C = B.cloudArchiveChannels, world = { level: 42 }, env = { BL: B, world, now: () => now.t, reader: null, views: [{ label: "The pile", canvas: {} }] };
+  const list = C.channels(env), byId = (id) => list.find((c) => c.id === id), r = {};
+  const data = (id, highscores) => ({ game: id, scoreType: B.highscoreRules.get(id).scoreType, highscores, achieved: Object.fromEntries(Object.keys(highscores).map((k) => [k, 1])), revision: 1 });
+  // Score types: a cabinet game keeps one record a cabinet (an unknown key is no cabinet); Cloud Hopper keeps one a
+  // player, keyed by login and best (fastest) first, and is never read as a cabinet.
+  const skee = C.scoresOf(B.highscoreRules.get("skee"), data("skee", { "skee-1": 900, "skee-2": 1240 }));
+  const hopper = C.scoresOf(B.highscoreRules.get("cloud-hopper"), data("cloud-hopper", { alice: 95000, bob: 81000, "cloud-hopper-1": 1 }));
+  r.machineScores = skee.kind === "machine" && skee.rows.map((x) => x.key).join() === "skee-2,skee-1";
+  r.playerScores = hopper.kind === "ooga" && hopper.rows.map((x) => x.key).join() === "cloud-hopper-1,bob,alice" && hopper.rows.length === 3;
+  B.net.state.backend = true; B.net.state.highscores = true;
+  records.set("skee", data("skee", { "skee-2": 1240 }));
+  records.set("cloud-hopper", data("cloud-hopper", { alice: 95000, bob: 81000 }));
+  const cab = byId("cabinets").read(env), hop = byId("hopper").read(env);
+  r.cabinetChannel = cab.rows[0][0] === "Thro-ball · cabinet 2" && cab.rows[0][1] === "1,240";
+  r.hopperChannel = hop.rows[0][0] === "1. Ooga bob" && hop.rows[0][1] === "1:21.00" && hop.rows[1][0] === "2. Ooga alice" && /2/.test(hop.rows[2][1]);
+  // Freshness: waiting with no reading, live within its cadence, stale after, and off where nothing can supply it.
+  const chain = byId("chain"), snap = B.chain.snapshot;
+  r.waiting = chain.status(env) === "waiting";
+  snap.at = now.t - 30_000; r.live = chain.status(env) === "live";
+  snap.at = now.t - 10 * 60_000; r.stale = chain.status(env) === "stale";
+  B.net.state.backend = false;
+  r.unavailable = ["online", "cabinets", "rally", "hopper", "pools", "jet", "factory"].every((id) => byId(id).status(env) === "off")
+    && byId("online").read(env).empty && byId("bananas").status(env) === "held";
+  world.factoryNode = { version: 1, cooker: { tips: 0 }, feed: { counts: { accepted: 0 }, reading: { channels: 3, peers: 2, settled: 1, failed: 0, rebalances: 0 } } };
+  r.demoSaysDemo = byId("factory").status(env) === "demo" && /demo node/.test(byId("factory").read(env).note);
+  // A stamp moves only with what the channel shows: the same inputs give the same stamp, a new height another.
+  const s1 = chain.stamp(env), s2 = chain.stamp(env); snap.heightAt = now.t; snap.height = 900001;
+  r.stamps = s1 === s2 && chain.stamp(env) !== s1;
+  // Selection: rotation off under reduced motion; by hand a channel holds; on, it turns after its wait, skipping
+  // channels with nothing to show, and stands still while held; a block cuts to the mempool only when free to.
+  const still = C.createSelector(list, env, { reduced: true });
+  still.update(60);
+  r.reducedHolds = !still.auto && still.index === 0;
+  still.dispose();
+  const sel = C.createSelector(list, env, { reduced: false });
+  const off = list.findIndex((c) => c.status(env) === "off");
+  sel.select(off - 1); sel.update(C.ROTATE_SECONDS + 0.1);
+  r.skipsOff = sel.index !== off && list[sel.index].status(env) !== "off";
+  const at = sel.index; sel.hold("guide", true); sel.update(60);
+  r.holds = sel.index === at;
+  for (const fn of subs) fn({ type: "block", height: 1 });
+  r.blockWaitsWhileHeld = sel.index === at;
+  sel.hold("guide", false);
+  for (const fn of subs) fn({ type: "block", height: 2 });
+  r.blockCuts = list[sel.index].id === "mempool";
+  sel.select(list.findIndex((c) => c.id === "hopper"));
+  r.watchesOnShow = watches.get("cloud-hopper") === 1 && !watches.has("race");
+  sel.dispose();
+  r.cleanup = subs.size === 0 && [...watches.values()].every((n) => n === 0);
+  r.categories = C.CATEGORIES.map((c) => c[0]).every((id) => list.some((c) => c.category === id) || id === "github");
+  return r;
+};
 const unitChecks = async () => {
   const archive = await cloudArchiveProof();
+  const tv = cloudArchiveTvProof();
+  record("cloud archive tv: records read by the game's own score type (one a cabinet, Cloud Hopper one a player), the guide's channel selection and rotation (off under reduced motion, held while read, skipping channels with nothing to show, a block cutting in only when free), stale and unavailable feeds said so, a channel rebuilt only when its stamp moves, and every subscription and record watch released", Object.values(tv).every(Boolean), JSON.stringify(tv));
   record("cloud archive history: shared display names stay separate people, merge-looking subjects and branch owners prove no PR, a PR is only ever a PR-head match and a shared head credits none, unique PR matches are counted apart from merge rows against a recorded PR-ref snapshot, the two noreply forms join only by reviewed alias for every kind, renamed identities show their newest name, authors come from GitHub's records when supplied (login or a neutral label, never a git name, and a missing record refused), unknown and unreviewed identities stay unlinked, no address of any shape appears anywhere in the output and labels are distinct, an over-full day overflows without dropping commits, and the generator shelves only an explicit revision of the official branch", Object.values(archive).every(Boolean), JSON.stringify(archive));
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));

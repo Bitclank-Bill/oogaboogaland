@@ -154,12 +154,13 @@
 
     // Walking: inside the shaft while down it, else the floor within the bounds and clear of the racks.
     const B = L.bounds;
-    // Walkers keep out of the racks' home places (`L.rackAt`), not where a loading rack is passing, so a rack rolling in
-    // can never trap anyone.
+    // Walkers keep out of the racks' home places (`L.rackAt`, read once here into typed arrays, so a step allocates
+    // nothing), not where a loading rack is passing, so a rack rolling in can never trap anyone.
+    const RACK_X = new Float32Array(built.racks.length), RACK_Z = new Float32Array(built.racks.length);
+    for (let i = 0; i < built.racks.length; i++) { const p = L.rackAt(i); RACK_X[i] = p.x; RACK_Z[i] = p.z; }
     const clearOfRacks = (x, z, r) => {
-      for (let i = 0; i < built.racks.length; i++) {
-        const p = L.rackAt(i);
-        if (Math.abs(x - p.x) < RACK.d / 2 + r && Math.abs(z - p.z) < RACK.w / 2 + r) return false;
+      for (let i = 0; i < RACK_X.length; i++) {
+        if (Math.abs(x - RACK_X[i]) < RACK.d / 2 + r && Math.abs(z - RACK_Z[i]) < RACK.w / 2 + r) return false;
       }
       return true;
     };
@@ -288,13 +289,17 @@
     const openSign = () => hud.openBoard(signBoard);
     const signUnsub = BL.oogatronLive.subscribe((event) => { if (event.type === "stats") { sign.refreshData(event.stats); signBack.refreshData(event.stats); } });
 
-    // The TV (cloud-archive-tv.js): the island's live feeds other than GitHub (the sign's) and the pictures of its
-    // places from the climb (`world.archiveViews`), on shuffle. Its canvas is the screen's picture; the screen's surface
-    // is bumped whenever the TV repaints.
+    // The TV (cloud-archive-tv.js, its channels cloud-archive-channels.js): a channel guide to the island's live
+    // systems, GitHub through a paused reader of the hanging board, and the pictures of its places from the climb
+    // (`world.archiveViews`). Its canvas is the screen's picture; the screen's surface is bumped whenever it repaints.
+    // A tap on the TV, the TV guide button or T opens the guide; a channel picked there opens its detail: the hanging
+    // Oogatron's board for GitHub, else the TV's own board.
     const views = world.archiveViews ? world.archiveViews.filter((v) => v.ready) : [];
     const boardDialog = document.getElementById("board-modal");
-    const tv = BL.cloudArchiveTv.create({ views, world, font: FONT,
-      reduced: () => REDUCED.matches, boardOpen: () => !!(boardDialog && boardDialog.open) });
+    const tv = BL.cloudArchiveTv.create({ views, world, font: FONT, guide: document.getElementById("archive-guide"), signal: ctx.signal,
+      reader: sign.createReader({ paused: true, screen: { name: "recent", params: undefined } }),
+      reduced: () => REDUCED.matches, boardOpen: () => !!(boardDialog && boardDialog.open),
+      onDetail: (channel) => { if (channel.detail === "oogatron") openSign(); else openTvBoard(); } });
     const tvGeometry = CM.plaque(tv.canvas, L.TV.screenW, L.TV.screenH);
     built.screen.geometry = tvGeometry;
     let tvShown = -1;
@@ -303,7 +308,8 @@
       if (tv.tv.version !== tvShown) { tvShown = tv.tv.version; tvGeometry.imageSurface.version++; }
     };
     const tvBoard = tv.board;
-    const openTv = () => { tv.open(); hud.openBoard(tvBoard); };
+    const openTvBoard = () => { tv.openBoard(); hud.openBoard(tvBoard); };
+    const openTv = () => tv.openGuide();
     target(built.tv, { kind: "tv" }, 0.6);
     target(built.screen, { kind: "tv" }, 0.4);
 
@@ -486,7 +492,7 @@
       const o = hit.owner;
       if (o.kind === "rack") { const s = STATS[o.index]; return `${DATA.days[o.index].date} · ${plural(s.commits, "commit")} · ${COARSE ? "tap" : "click, or face it and press Space,"} to read the day`; }
       if (o.kind === "sign") return COARSE ? "Oogatron · OogaBoogaX on the big screen · tap the screen for a close-up, its sides to page it" : "Oogatron · OogaBoogaX on the big screen · click the screen for a close-up, its sides to page it";
-      if (o.kind === "tv") return `Island TV · ${tv.title} · ${COARSE ? "tap" : "click"} to watch and change channel`;
+      if (o.kind === "tv") return `Island TV · ${tv.title} · ${COARSE ? "tap" : "click, or press T,"} for the channel guide`;
       if (o.kind === "chair") return COARSE ? "Leather armchair · walk up and tap SIT" : "Leather armchair · Space beside it sits";
       if (o.kind === "stalk") return COARSE ? "Beanstalk · climb down it, or tap ISLAND at its foot, to go home" : "Beanstalk · climb down it (S), or Space at its foot, to go home";
       return "";
@@ -519,6 +525,7 @@
     });
     hud.onAction((action) => {
       if (action === "leave") handOff();
+      else if (action === "tv-guide") openTv();
       else if (action === "reset-view") pilot.resetCamera();
       else if (action === "jetpack-toggle") hud.toast("No jetpacks in the archive");
       else if ((action === "act" || action === "mode-retake") && !pilot.player && avatar) retake();
@@ -601,6 +608,7 @@
       if (!pilot.player && !e.metaKey && !e.ctrlKey && !e.altKey && RETAKE_KEYS.has(e.key.toLowerCase())) { if (retake()) return true; }
       if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera();
       if (e.key.toLowerCase() === "x" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); return pilot.modeAction("mode-toggle"); }
+      if (e.key.toLowerCase() === "t" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); openTv(); return true; }
       if (e.key === "Escape") { if (!pilot.escape()) handOff(); return true; }
       return false;
     };
@@ -616,7 +624,7 @@
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
       cloudArchive: {
-        layout: L, built, board, openDay, openTv, tv, tvBoard, sign, signBack, signBoard, openSign, get signZ() { return signZ; }, signGoal, train, load, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
+        layout: L, built, board, openDay, openTv, openTvBoard, tv, tvBoard, sign, signBack, signBoard, openSign, get signZ() { return signZ; }, signGoal, train, load, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
         get avatar() { return avatar; }, get climbed() { return climbed; }, get dayIndex() { return dayIndex; }, get leaving() { return !!leaving; }, exit: handOff
       }
     };

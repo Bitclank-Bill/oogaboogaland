@@ -171,16 +171,15 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
   up as they lock, with a thunk. It follows the page's sound rules (pooled voices built once, opened only after a
   gesture, page mute, closed on leave); no recording ships. Under reduced motion the racks appear in place. Later
   visits in the same page find them loaded.
-- **The live TV (done, v3).** The big sign is GitHub's; the lounge TV plays the rest of Ooga Booga Land's live feeds
-  on shuffle (a fresh order each round): the chain (height, price, hashrate, difficulty, block pace, last block), the
-  mempool as its socket streams it (backlog, arrivals, fees, blocks found; a new block cuts to it), the Mempool
-  island's weather (the storm step from arrivals, the lake from the backlog), the totems' latest merges, who is
-  working, chilling or asleep and who is online outside or inside, the bananas (the island's pile, the tips, the
-  latest tip, the top tipper) and the arcade's records. Between them, pictures of every place on Tess's official
-  island tour (the whitepaper, the pile, the jumbotron and totems, the Timechain Sphere, B.C.A., EntropyLab, ₿IFRÖST,
-  the Lightning Factory, the Ooga Arcade, the Mempool island) and the beanstalk, drawn by the island as you climb.
-  Live channels repaint every second; tapping the TV opens its board, which pages every channel. It never makes a
-  request of its own (the arcade records are watched as any scene watches them); a feed that is off says so.
+- **The TV channel guide (done, v4; issue #385, draft PR #386).** The TV is a channel guide to the island's live
+  systems: Bitcoin (chain and mining, fees, mempool, latest block, mining pools from the Sphere), the island (who's
+  working, players online, the weather, bananas and tips, the Factory's demo node), the arcade (cabinet records, Rally
+  records, Cloud Hopper players, each by its own score type), GitHub (every Oogatron page, repositories, the totems'
+  latest merges, Lightning Jet) and the island's places. T, the TV guide button or a tap on the TV opens the guide:
+  channels by category with each one's status (LIVE, STALE, HELD, DEMO, WAITING, OFF). A pick tunes the TV and opens
+  its board (the Oogatron's own for GitHub). Rotation is optional, starts off under reduced motion, and holds while
+  the guide or a board is open. `LIVE-SYSTEMS.md` is the inventory of what is included, what needs another scene and
+  what is not available.
 - **Sitting from anywhere in the lounge (fixed).** Before, you had to stand right behind a chair; between the two the
   choice flickered. Now anywhere in the lounge offers SIT and picks the chair for you (the one you face, else the one
   already offered while both are about as near, else the nearer; the middle goes to the left), and a tap on either
