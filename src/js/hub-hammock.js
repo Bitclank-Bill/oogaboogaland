@@ -5,7 +5,8 @@
 // its swing and the three places to stand up are clear of the path and anything claimed, on level ground; null when
 // there is none, and the island has no hammock that visit.
 // `create` builds it into the hub's graph: the ridgeline a static node whose collision shell (`collisionGeometry`) is
-// the bed's whole swing, so walkers go round and nothing below the ridgeline collides, and the bed a node swinging
+// the bed's whole swing seen from above, up to the swung bed's top, so walkers go round, an Ooga that comes down on it
+// stands at the bed and the ropes above it and the ridgeline collide with nothing, and the bed a node swinging
 // about the ridgeline, a bounded pendulum costing one sine a frame. Its three `seats` are the crew's (`sitPlayer`,
 // `standPlayer`), placed and posed here every frame as the forklift places its driver. Nothing is networked beyond
 // the driven Ooga's ordinary pose: a resting Ooga reports its seat's still point (`restPoint`), never its swing, so
@@ -36,7 +37,7 @@
   const RING_OUT = 0.28, DROP_OUT = 0.32;
   // A resting Ooga as another page sends it: within REST_NEAR of a seat across, its feet REST_LOW to REST_HIGH over
   // the ground. No walker reaches a seat's place across (the bed's shell is in the way), and REST_HIGH stays under the
-  // shell's top (the ridgeline), so one standing on the bed or flying over is not resting.
+  // shell's top (the swung bed's highest point), so one standing on the bed or flying over is not resting.
   const REST_NEAR = 0.4, REST_LOW = 0.05, REST_HIGH = 0.9;
   // A sitter leans back LEAN into the cloth.
   const LEAN = -0.16;
@@ -52,10 +53,12 @@
   // point `bedGeometry` draws through, with the thickness of the part there, turned through +-SWAY_MAX about the
   // ridgeline. Seen from above it is an octagon: the `body` (the cloth, its edge cords and the spreaders) `half` along
   // and `across` either side, and past it the `tip` (each ring, drop line and knot, hanging near the middle), the cords
-  // between the two inside the outline; `lo` and `hi` under and over the pivot. The collision shell is this octagon
-  // from `lo` to `hi`, and `plan` keeps the ground under it clear.
+  // between the two inside the outline; `lo` and `hi` under and over the pivot, `top` the body's highest. The
+  // collision shell is this octagon from `lo` to `top`: the suspension above `top` hangs inside the outline, where no
+  // walker reaches, and a shell up to `hi` would be a floor at the ridgeline for an Ooga coming down on it. `plan`
+  // keeps the ground under the octagon clear.
   const envelope = (p) => {
-    const body = { half: 0, across: 0 }, tip = { half: 0, across: 0 }, e = { body, tip, lo: Infinity, hi: -Infinity };
+    const body = { half: 0, across: 0 }, tip = { half: 0, across: 0 }, e = { body, tip, lo: Infinity, hi: -Infinity, top: -Infinity };
     const c = Math.cos(SWAY_MAX), s = Math.sin(SWAY_MAX);
     // A cos a + B sin a over the swing: its ends, and where its slope is zero when that falls inside.
     const swung = (A, B) => {
@@ -67,7 +70,10 @@
     const at = (part, x, y, z, r) => {
       part.half = Math.max(part.half, Math.abs(x) + r);
       for (const v of swung(z, y)) part.across = Math.max(part.across, Math.abs(v) + r);
-      for (const v of swung(y, -z)) { e.lo = Math.min(e.lo, v - r); e.hi = Math.max(e.hi, v + r); }
+      for (const v of swung(y, -z)) {
+        e.lo = Math.min(e.lo, v - r); e.hi = Math.max(e.hi, v + r);
+        if (part === body) e.top = Math.max(e.top, v + r);
+      }
     };
     for (let i = 0; i <= BED_NX; i++) for (let j = 0; j <= BED_NZ; j++) {
       const x = (i / BED_NX - 0.5) * BED_LEN, z = (j / BED_NZ - 0.5) * BED_W;
@@ -217,10 +223,10 @@
       J.sprig(g, ax, ay + 0.06, az, -p.ux, 0.5, -p.uz, 3, 0.3, rand);
       J.sprig(g, bx, by + 0.06, bz, p.ux, 0.5, p.uz, 3, 0.3, rand);
     });
-    // Its collision is the bed's whole swing (`envelope`), a closed octagonal prism turned with the ridgeline: walkers
-    // go round the bed and stand clear of it, and the ridgeline itself, overhead between the trunks and the bed,
-    // blocks nothing.
-    const { outline } = p.envelope, n = outline.length, lo = p.y + p.envelope.lo - my, hi = p.y + p.envelope.hi - my;
+    // Its collision is the bed's whole swing (`envelope`), a closed octagonal prism turned with the ridgeline from under
+    // the bed to the swung bed's top: walkers go round the bed and stand clear of it, one coming down on it stands at
+    // the bed, and the ropes above it and the ridgeline itself, overhead between the trunks and the bed, block nothing.
+    const { outline } = p.envelope, n = outline.length, lo = p.y + p.envelope.lo - my, hi = p.y + p.envelope.top - my;
     const cx = p.x - mx, cz = p.z - mz, shell = M.geometry();
     for (const y of [lo, hi]) for (const [along, side] of outline)
       shell.verts.push(cx + p.ux * along + p.nx * side, y, cz + p.uz * along + p.nz * side);
@@ -273,20 +279,26 @@
     // The seat a body with its feet at (x, feet, z) rests on, judged against the still bed; -1 for none.
     const restingAt = (x, feet, z) => {
       if (feet - p.ground < REST_LOW || feet - p.ground > REST_HIGH) return -1;
-      for (const seat of seats) if (Math.hypot(x - seat.restX, z - seat.restZ) < REST_NEAR) return seat.index;
+      for (let i = 0; i < seats.length; i++) if (Math.hypot(x - seats[i].restX, z - seats[i].restZ) < REST_NEAR) return i;
       return -1;
     };
-    // Who rests where on other pages: the room's remotes with an Ooga body that `shown` accepts, the lower id holding
-    // a seat two claim. The visitor's own Ooga, resting on a seat a lower id holds, moves to a free seat (`move`) or,
-    // with none free, stands (`stand`); true when it moved or stood.
+    // Who rests where on other pages: the room's remotes (`BL.net.remotes` itself, or any collection with `forEach`)
+    // with an Ooga body that `shown` accepts, the lower id holding a seat two claim. The visitor's own Ooga, resting on
+    // a seat a lower id holds, moves to a free seat (`move`) or, with none free, stands (`stand`); true when it moved or
+    // stood. It runs every frame, so it walks the remotes with `forEach` and the one `claim` made here, never an iterator.
+    let shownBy = null;
+    const claim = (rec) => {
+      if (!rec.body || rec.bodyKind === "gorilla" || !shownBy(rec)) return;
+      const k = restingAt(rec.x, rec.y, rec.z);
+      if (k >= 0 && (!seats[k].remote || rec.id < seats[k].remote)) seats[k].remote = rec.id;
+    };
     const settle = (remotes, selfId, shown, move, stand) => {
-      for (const seat of seats) seat.remote = 0;
-      for (const rec of remotes) {
-        if (!rec.body || rec.bodyKind === "gorilla" || !shown(rec)) continue;
-        const k = restingAt(rec.x, rec.y, rec.z);
-        if (k >= 0 && (!seats[k].remote || rec.id < seats[k].remote)) seats[k].remote = rec.id;
-      }
-      for (const seat of seats) {
+      for (let i = 0; i < seats.length; i++) seats[i].remote = 0;
+      shownBy = shown;
+      remotes.forEach(claim);
+      shownBy = null;
+      for (let i = 0; i < seats.length; i++) {
+        const seat = seats[i];
         if (!seat.sitter || !seat.remote || !selfId || seat.remote > selfId) continue;
         const to = free(seat);
         if (to) return move(seat.sitter, seat, to);

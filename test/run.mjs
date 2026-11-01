@@ -5642,6 +5642,12 @@ const hammockChecks = async () => {
   ham.settle([], 500, shown, move, stand);
   const gone = ham.seats.every((s) => !s.remote);
   const signedOut = (ham.settle([rec(1, now)], 0, shown, move, stand), moves.length === 2);
+  // The room's remotes as net.js keeps them, a Map, settled every frame without an iterator (regression: the hub
+  // passed `remotes.values()`, a fresh iterator each frame): any iterator throws here, the lower id still keeps the seat.
+  const room = new (class extends Map { [Symbol.iterator]() { throw new Error("iterator"); } values() { throw new Error("values"); } keys() { throw new Error("keys"); } entries() { throw new Error("entries"); } })();
+  room.set(102, rec(102, 2)); room.set(98, rec(98, 2)); room.set(7, rec(7, 0, "gorilla:Ape"));
+  let mapped;
+  try { ham.settle(room, 0, shown, move, stand); mapped = ham.seats[2].remote === 98 && ham.seats[0].remote === 0 && moves.length === 2; } catch (error) { mapped = error.message; }
   // Other pages' Oogas tipped back in the bed: one whose body the pool dropped gives up its place, and the bed coming
   // down (an anchor palm taken by the ring path) sets the rest upright with their marks cleared.
   const remote = (k) => {
@@ -5656,11 +5662,12 @@ const hammockChecks = async () => {
   const pruned = gone1.root.rotation.x === 0 && !gone1.hammockRest && kept.hammockRest;
   ham.dispose();
   const disposed = !root.children.length && !added.length && ham.seats.every((s) => !s.sitter) && tipped && pruned && kept.root.rotation.x === 0 && !kept.hammockRest;
-  // The bed as drawn, on the real builders, swung through its whole range: every vertex inside the ridgeline's collision
-  // shell (to a micrometre, for rounding where it touches), the shell off the path, and the places to stand outside it.
+  // The bed as drawn, on the real builders, swung through its whole range: every vertex up to the shell's top inside the
+  // ridgeline's collision shell, and the suspension above it inside the shell's outline, where no walker reaches (to a
+  // micrometre, for rounding where it touches); the shell off the path, and the places to stand outside it.
   // Flat ground, trunks eight metres apart.
   const real = { window: {}, document: { createElement: () => ({ getContext: () => null }) }, performance, console };
-  for (const name of ["math", "scene", "models", "hub-models", "hub-hammock"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), real);
+  for (const name of ["math", "scene", "models", "hub-models", "solid-props", "hub-hammock"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), real);
   const R = real.window.BL, swing = (hammock) => {
     const p = hammock.plan, ridgeNode = hammock.ridgeNode, shell = ridgeNode.geometry.collisionGeometry, o = ridgeNode.position;
     const corners = [];
@@ -5675,13 +5682,14 @@ const hammockChecks = async () => {
     });
     // How far outside the shell a point lies by its farthest face (negative inside); the shell is convex.
     const outside = (x, y, z) => Math.max(...planes.map(([a, b, c, d]) => a * x + b * y + c * z - d));
+    const top = Math.max(...corners.map((c) => c[1]));
     const bed = hammock.bedNode, verts = bed.geometry.verts, at = [0, 0, 0], world = R.scene.createNode();
     R.scene.addChild(world, bed);
     let worst = -Infinity;
     for (let k = -20; k <= 20; k++) {
       bed.rotation.x = R.hubHammock.SWAY_MAX * k / 20 * p.side;
       R.scene.updateWorld(world);
-      for (let i = 0; i < verts.length; i += 3) { R.math.mat4.transformPoint(at, bed.world, verts[i], verts[i + 1], verts[i + 2]); worst = Math.max(worst, outside(at[0], at[1], at[2])); }
+      for (let i = 0; i < verts.length; i += 3) { R.math.mat4.transformPoint(at, bed.world, verts[i], verts[i + 1], verts[i + 2]); worst = Math.max(worst, outside(at[0], Math.min(at[1], top), at[2])); }
     }
     const stands = Math.min(...hammock.seats.map((s) => outside(s.walkAt.x, mid[1], s.walkAt.z)));
     return { worst, corners, stands };
@@ -5691,10 +5699,29 @@ const hammockChecks = async () => {
   const fitR = R.hubHammock.plan({ a: { ...a, ground: 0 }, b: { ...b, ground: 0 }, clear: (x, z, r) => !onPath(x, z, r), surfaceAt: flat });
   const swungFit = swing(R.hubHammock.create({ plan: fitR, root: R.scene.createNode(), solids: { add: () => {}, remove: () => {} }, ra: 0.15, rb: 0.15, seed: 1 }));
   const enveloped = swung8.worst <= 1e-6 && swungFit.worst <= 1e-6 && swung8.stands > 0.3 && swungFit.stands > 0.3 && swungFit.corners.every(([x, , z]) => !onPath(x, z, 0));
-  record("hub hammock: ties high enough to clear the path, hangs the bed and its places to stand off it, refuses spans, low headroom and crowded ground, swings bounded, knows a resting Ooga by place and height, and the lower room id keeps a seat; regression: the bed coming down left other pages' Oogas tipped back; regression: the swung bed reached past its collision shell",
-    !!fit && headroom >= H.HEADROOM && standClear && enveloped && fit.seats.length === H.SLOTS && !short && !long && !hill && !crowded && sideHeld
+  // Coming down on it (a fall or the jetpack), through the props' real footing: anywhere over the hammock the floor is
+  // the bed's swung top, about a metre up where the spreaders swing, never an invisible one at the ridgeline, and an
+  // Ooga stood there is not resting in a seat; under the bed the shell still meets a walker. Regression: the shell ran
+  // up to the knots, a 3 m floor over the whole bed.
+  const props = R.solidProps.create(), hungRoot = R.scene.createNode();
+  const hung = R.hubHammock.create({ plan: open8, root: hungRoot, solids: props, ra: 0.15, rb: 0.15, seed: 1 });
+  R.scene.updateWorld(hungRoot); props.sync();
+  const { half: hh, across: ha } = open8.envelope;
+  let highest = -Infinity, perched = false;
+  for (let i = -10; i <= 10; i++) for (let j = -6; j <= 6; j++) {
+    const along = hh * i / 10, side = ha * j / 6, x = open8.x + open8.ux * along + open8.nx * side, z = open8.z + open8.uz * along + open8.nz * side;
+    const floor = props.supportAt(x, z, open8.y + 3, 0, 0.3);
+    if (!Number.isFinite(floor)) continue;
+    highest = Math.max(highest, floor);
+    if (hung.restingAt(x, floor, z) >= 0) perched = true;
+  }
+  const underBed = props.ceilingAt(open8.x, open8.z, open8.ground, 0.3) - open8.ground;
+  const footing = { top: highest - open8.ground, belowRidge: open8.y - highest, perched, underBed };
+  const landing = footing.top > 0.5 && footing.top <= 1.1 && footing.belowRidge > 1.5 && !perched && underBed < 0.7;
+  record("hub hammock: ties high enough to clear the path, hangs the bed and its places to stand off it, refuses spans, low headroom and crowded ground, swings bounded, knows a resting Ooga by place and height, and the lower room id keeps a seat; regression: the bed coming down left other pages' Oogas tipped back; regression: the swung bed reached past its collision shell; regression: settling the room's remotes made an iterator every frame; regression: the shell's top was an invisible floor at the ridgeline",
+    !!fit && headroom >= H.HEADROOM && standClear && enveloped && mapped === true && landing && fit.seats.length === H.SLOTS && !short && !long && !hill && !crowded && sideHeld
       && peak <= H.SWAY_MAX + 1e-9 && peak > 0.02 && still && rests && higherYields && lowerKeeps && fullStands && gone && signedOut && disposed,
-    JSON.stringify({ fit: !!fit, headroom, standClear, enveloped, worst8: swung8.worst, worstFit: swungFit.worst, stands8: swung8.stands, standsFit: swungFit.stands, short: !!short, long: !!long, hill: !!hill, crowded: !!crowded, sideHeld, peak, still, rests, higherYields, lowerKeeps, fullStands, gone, signedOut, disposed, moves }));
+    JSON.stringify({ fit: !!fit, headroom, standClear, enveloped, mapped, footing, worst8: swung8.worst, worstFit: swungFit.worst, stands8: swung8.stands, standsFit: swungFit.stands, short: !!short, long: !!long, hill: !!hill, crowded: !!crowded, sideHeld, peak, still, rests, higherYields, lowerKeeps, fullStands, gone, signedOut, disposed, moves }));
 };
 const weatherStepChecks = async () => {
   const context = { window: { BL: { math: null, models: { cached: (f) => f, noShadow: (g) => g, box: () => ({}), merge: () => ({}), polyline: () => ({}), particleGeometry: () => ({}) }, scene: {} } } };
@@ -10163,8 +10190,8 @@ const hubMirrorMedium = { name: "hub mirror medium size", why: "regression: lowe
 // colour (sampled small, after the arrival fade) and keeps the leave contract; the console stays clean.
 const canvasTour = { name: "canvas2d tour", why: "contract: the Canvas 2D fallback boots and draws every scene with the leave contract kept", run: async (b) => {
   // Construction slices and prepared builds run as real tasks, so each stepped frame yields one, as tourGo does.
-  const r = await b.evaluate(`(async () => { const B = window.__ooga, c = document.getElementById("scene"), t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d", { willReadFrequently: true }); const paint = () => { x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data, seen = new Set(); for (let i = 0; i < d.length; i += 4) seen.add(d[i] + "," + d[i + 1] + "," + d[i + 2]); return seen.size; }; const rows = { hub: { kind: B.renderer.kind, colours: paint() } }; for (const id of ["lab", "race", "drop", "orbit", "mine", "arcade", "hub"]) { B.go(id); const t0 = performance.now(); while ((B.transitioning || B.scene !== id) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.5, 1 / 30); rows[id === "hub" ? "back" : id] = { arrived: B.scene === id && !B.transitioning, colours: paint() }; } return rows; })()`);
-  record("canvas2d tour: with WebGL2 unavailable every scene still boots, arrives and paints", r.hub.kind === "canvas2d" && Object.entries(r).every(([, row]) => row.colours >= 4 && row.arrived !== false), JSON.stringify(r));
+  const r = await b.evaluate(`(async () => { const B = window.__ooga, c = document.getElementById("scene"), t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d", { willReadFrequently: true }); const paint = () => { x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data, seen = new Set(); for (let i = 0; i < d.length; i += 4) seen.add(d[i] + "," + d[i + 1] + "," + d[i + 2]); return seen.size; }; const rows = { hub: { kind: B.renderer.kind, colours: paint(), hammock: !!BL.scenes.hub.debug.hammock } }; for (const id of ["lab", "race", "drop", "orbit", "mine", "arcade", "hub"]) { B.go(id); const t0 = performance.now(); while ((B.transitioning || B.scene !== id) && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.5, 1 / 30); rows[id === "hub" ? "back" : id] = { arrived: B.scene === id && !B.transitioning, colours: paint() }; } return rows; })()`);
+  record("canvas2d tour: with WebGL2 unavailable every scene still boots, arrives and paints, and the island, planting no meadow palms, hangs no hammock (no shell, claims or REST)", r.hub.kind === "canvas2d" && r.hub.hammock === false && Object.entries(r).every(([, row]) => row.colours >= 4 && row.arrived !== false), JSON.stringify(r));
 } };
 
 // Weapons and the jetpack, through real keys with time driven by advance: melee breaks each prop in its

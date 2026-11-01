@@ -8670,7 +8670,7 @@
     if (!cloudHopper.held) crew.update(dt, elapsed);
     cloudHopper.postUpdate();
     if (hammock) {
-      hammock.settle(BL.net.remotes.values(), BL.net.state.selfId, remoteShown, moveHammockSeat, leaveFullHammock);
+      hammock.settle(BL.net.remotes, BL.net.state.selfId, remoteShown, moveHammockSeat, leaveFullHammock);
       hammock.update(dt, elapsed, gameMode);
     }
     for (let i = 0; i < crew.list.length; i++) {
