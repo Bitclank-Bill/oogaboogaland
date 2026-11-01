@@ -278,14 +278,17 @@
       placeSign(REDUCED.matches || Number.isNaN(signZ) ? goal : Math.abs(goal - signZ) < 0.001 ? goal : signZ + (goal - signZ) * Math.min(1, dt * SIGN_GLIDE));
       if (signBack.index !== sign.index) signBack.goToView(sign.index);
     };
-    const signBoard = {
+    // The Oogatron's floating board, as the hub's; `createReader` decides where a new window starts (the sign's own
+    // page unless a TV pick names one).
+    const signBoardWith = (createReader) => ({
       title: "Oogatron", help: "OogaBoogaX on the big screen. Arrow keys flip the boards.", note: "", floating: true,
       get canvas() { return sign.canvas; }, get count() { return sign.count; }, get index() { return sign.index; },
       get caption() { return sign.caption; }, get version() { return sign.version; },
       get paused() { return sign.paused; }, setPaused: (paused) => sign.setPaused(paused),
-      createReader: (state) => sign.createReader(state),
+      createReader,
       go: (i) => sign.goToView(i)
-    };
+    });
+    const signBoard = signBoardWith((state) => sign.createReader(state));
     const openSign = () => hud.openBoard(signBoard);
     const signUnsub = BL.oogatronLive.subscribe((event) => { if (event.type === "stats") { sign.refreshData(event.stats); signBack.refreshData(event.stats); } });
 
@@ -296,10 +299,11 @@
     // Oogatron's board for GitHub, else the TV's own board.
     const views = world.archiveViews ? world.archiveViews.filter((v) => v.ready) : [];
     const boardDialog = document.getElementById("board-modal");
+    const tvReader = sign.createReader({ paused: true, screen: { name: "recent", params: undefined } });
     const tv = BL.cloudArchiveTv.create({ views, world, font: FONT, guide: document.getElementById("archive-guide"), signal: ctx.signal,
-      reader: sign.createReader({ paused: true, screen: { name: "recent", params: undefined } }),
+      reader: tvReader,
       reduced: () => REDUCED.matches, boardOpen: () => !!(boardDialog && boardDialog.open),
-      onDetail: (channel) => { if (channel.detail === "oogatron") openSign(); else openTvBoard(); } });
+      onDetail: (channel) => openDetail(channel) });
     const tvGeometry = CM.plaque(tv.canvas, L.TV.screenW, L.TV.screenH);
     built.screen.geometry = tvGeometry;
     let tvShown = -1;
@@ -310,6 +314,21 @@
     const tvBoard = tv.board;
     const openTvBoard = () => { tv.openBoard(); hud.openBoard(tvBoard); };
     const openTv = () => tv.openGuide();
+    // A pick's detail. GitHub opens the Oogatron's board on the picked page's own view (or, for Repositories, the top
+    // repository's totals filtered to it), paused there for reading; the TV's rotation and block cuts hold until every
+    // reader it opened is closed (a floating board disposes its reader as it closes, and leaving closes them all).
+    let lastDetail = null;
+    const openDetail = (channel) => {
+      const detail = BL.cloudArchiveChannels.detailFor(channel, tvReader);
+      if (detail.kind !== "oogatron") { lastDetail = null; openTvBoard(); return; }
+      const held = tv.selector.holdDetail((state) => {
+        const reader = sign.createReader(state || { screen: detail.screen, filters: detail.filters, paused: true });
+        lastDetail = { channel: channel.id, reader };
+        return reader;
+      });
+      hud.openBoard(signBoardWith(held.createReader));
+      held.settle();
+    };
     target(built.tv, { kind: "tv" }, 0.6);
     target(built.screen, { kind: "tv" }, 0.4);
 
@@ -624,7 +643,7 @@
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
       cloudArchive: {
-        layout: L, built, board, openDay, openTv, openTvBoard, tv, tvBoard, sign, signBack, signBoard, openSign, get signZ() { return signZ; }, signGoal, train, load, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
+        layout: L, built, board, openDay, openTv, openTvBoard, tv, tvBoard, sign, signBack, signBoard, openSign, openDetail, get detail() { return lastDetail && { channel: lastDetail.channel, index: lastDetail.reader.index, caption: lastDetail.reader.caption }; }, get signZ() { return signZ; }, signGoal, train, load, seats, views, assist: assist.state, near: () => ({ kind: findNear().kind, index: near.index }),
         get avatar() { return avatar; }, get climbed() { return climbed; }, get dayIndex() { return dayIndex; }, get leaving() { return !!leaving; }, exit: handOff
       }
     };

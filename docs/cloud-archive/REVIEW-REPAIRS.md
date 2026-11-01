@@ -100,6 +100,16 @@ on `4dbfff8` and passes on this branch (`regression-three-way` in the review ZIP
 | The Cloud Hopper records channel read its scores as a cabinet's (`machines: ["cloud-hopper-1"]`), but the game's `scoreType` is `ooga`: records are keyed by player login, so the channel found none | `scoresOf(rule, data)` reads by the game's own score type: a machine game one record a cabinet (only its own cabinets), Cloud Hopper one a player, best first. The arcade is three channels: cabinet records, Rally (a track and mode each) and Cloud Hopper players | `cloud archive tv` in the global tier: `machineScores`, `playerScores`, `cabinetChannel`, `hopperChannel` |
 | The TV rebuilt arrays and formatted unchanged readings on every update | Each channel has a `stamp` (numbers only) that moves only with what it shows; the TV checks the tuned channel's stamp once a second and formats and repaints only when it moved. The guide rewrites a row's status only when it changes | `stamps` in the check; the smoke check counts no repaints while nothing changes |
 
+## Astra's follow-ups on `f4a6339` (#385/#386)
+
+The rack-allocation and Cloud Hopper findings are closed.
+
+| Finding | Resolution | Evidence |
+|---|---|---|
+| A GitHub pick opened the Oogatron at whatever page the sign showed, with no reading hold | `detailFor(channel, reader)`: an Oogatron page opens its own view; Repositories opens the top repository's totals, filtered to it. The board's readers are made through `selector.holdDetail`, which holds rotation and block cuts until the last of them is disposed (a floating board disposes its reader on close; leaving closes all; `settle` releases a board that never opened; the selector's `dispose` releases everything) | unit `detailPage`, `detailRepos`, `detailBoard`, `detailHolds`, `detailReleases`, `settleReleases`, `disposeReleases`; the focused browser check |
+| Enabled was shown as LIVE | Status comes from each feed's own record. The Oogatron uses `lastAt` against 60 s and is HELD (the bake) before a good read once one failed. The totems' poll and failure counters are noted as they move (the feed keeps no success time) and judged against the 90 s step: an error in the newest attempt, or no movement for three steps, is STALE. Lightning Jet's single read is LIVE for its 30 min cache, then STALE, and its bake or cache is HELD. The chain is OFF when it has failed before any reading. `stampOf` folds the status into the repaint key | unit `oogatronNever`/`Failed`/`Fresh`/`Stale`, `totemNever`/`Failed`/`Fresh`/`Failing`/`Quiet`, `jetAbsent`/`Bake`/`Fresh`/`Old`, `statusInStamp`; `before-after.txt` on `f4a6339` |
+| Players online missed a zone-only move | The stamp folds every remote's zone in through an allocation-free string code, bounded by the room's size | unit `zoneMove` (same population and NPC version) |
+
 ## Block Frenzy view-assist branch
 
 `feature/block-frenzy-view-assist` (`5f42979…`) was inspected. Its `view-assist.js` is byte-identical to this branch's,

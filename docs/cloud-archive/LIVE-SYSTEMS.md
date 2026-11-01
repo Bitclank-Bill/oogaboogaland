@@ -9,6 +9,26 @@ no fetch of its own, and none from `update()`.
 The one exception is that the arcade's records are watched (`highscores.watch`) the first time a records channel is
 shown. That is the module's own scene-visit contract, and on a page with no island server it sends nothing.
 
+Freshness is judged from each feed's own record of success, never from its being enabled:
+
+| Feed | Success record | Rule |
+|---|---|---|
+| Oogatron | `lastAt` | 60 s cadence |
+| Totems | the `polls` and `failures` counters (no success time), noted as they move | 90 s step |
+| Lightning Jet | one read | LIVE for its 30 min cache |
+| Chain | per-field `*At` times | its 60 s cadence |
+
+The words mean:
+
+| Word | Meaning |
+|---|---|
+| LIVE | a good read within its cadence |
+| STALE | an older read, or the newest attempt failed |
+| WAITING | the feed is on but has not answered |
+| HELD | a bake, a cache, or another scene's reading |
+| DEMO | simulated |
+| OFF | nothing here can supply it |
+
 ## Included: exposed by the page (started by the director for the page's life)
 
 | System | Interface | Channels | Freshness shown |

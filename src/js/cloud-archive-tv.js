@@ -2,7 +2,7 @@
 // are cloud-archive-channels.js's; this paints the tuned channel onto the TV's canvas, keeps the guide (a dialog in
 // the page, `#archive-guide`: the channels by category with each one's status, a tap tunes one and opens its detail,
 // and "change channel by itself") and the board the dialog reads.
-// Painting: the tuned channel's `stamp` is checked once a LIVE_SECONDS; its rows are formatted and the canvas
+// Painting: the tuned channel's `stampOf` (its stamp with its status) is checked once a LIVE_SECONDS; its rows are formatted and the canvas
 // repainted only when the stamp moved, or on tuning. Nothing is formatted or built per frame.
 // A GitHub page draws the hanging Oogatron's own paused reader (`reader`, paged here); a place draws its picture.
 // Holds: the guide open, the TV's board open; under reduced motion rotation starts off and there is no snow.
@@ -25,7 +25,7 @@
     const tv = { snow: 0, live: 0, version: 0, open: false };
     let seed = 1, clock = 0, guideShown = false;
     const readingOf = (i) => {
-      const s = list[i].stamp(env);
+      const s = C.stampOf(list[i], env);
       if (s !== stamps[i] || !readings[i]) { stamps[i] = s; readings[i] = list[i].read(env); readings[i].status = list[i].status(env); }
       return readings[i];
     };
@@ -176,7 +176,7 @@
       if ((tv.live -= dt) > 0) return;
       tv.live = LIVE_SECONDS;
       const i = selector.index;
-      if (!list[i].cam) { prime(i); if (list[i].stamp(env) !== stamps[i]) { paint(); return; } }
+      if (!list[i].cam) { prime(i); if (C.stampOf(list[i], env) !== stamps[i]) { paint(); return; } }
       if (guideShown) markGuide();
     };
     // The board the shared dialog reads: every channel a page, live as the screen; its play button is rotation.

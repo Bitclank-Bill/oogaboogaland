@@ -23066,6 +23066,71 @@ const cloudArchiveTvProof = () => {
   sel.dispose();
   r.cleanup = subs.size === 0 && [...watches.values()].every((n) => n === 0);
   r.categories = C.CATEGORIES.map((c) => c[0]).every((id) => list.some((c) => c.category === id) || id === "github");
+  // A GitHub pick opens its own page, whatever page the hanging sign shows; Repositories opens its top repository.
+  const views = ["recent", "totals", "commit", "pr", "review", "comment", "issue"].map((name, i) => i < 2 ? { name, params: undefined } : { name: "leaderboard", params: { type: name } });
+  const reader = { index: 0, count: views.length, version: 1, repos: [{ name: "small", totals: { commits: 3, prs: 1, contributors: 1 } }, { name: "big", totals: { commits: 90, prs: 9, contributors: 4 } }],
+    go(i) { this.index = i; }, get view() { return views[this.index]; }, get caption() { return `page ${this.index}`; }, dispose() {} };
+  const ghList = C.channels({ ...env, reader }), page5 = ghList.find((c) => c.page === 5);
+  reader.go(0); // the hanging sign shows page 0
+  const d5 = C.detailFor(page5, reader), dRepos = C.detailFor(ghList.find((c) => c.id === "repos"), reader);
+  r.detailPage = d5.kind === "oogatron" && d5.screen.name === "leaderboard" && d5.screen.params.type === "comment" && reader.index === 0;
+  r.detailRepos = dRepos.screen.name === "repo" && dRepos.screen.params.name === "big" && dRepos.filters.repos.join() === "big";
+  r.detailBoard = C.detailFor(byId("fees"), reader).kind === "board";
+  // Its board holds rotation and block cuts while a reader it made is open, and releases on close and on dispose.
+  const dsel = C.createSelector(ghList, env, { reduced: false });
+  const opened = dsel.holdDetail((state) => ({ state, dispose() {} }));
+  const win = opened.createReader(null), at2 = dsel.index;
+  dsel.update(60);
+  for (const fn of subs) fn({ type: "block", height: 3 });
+  r.detailHolds = dsel.held && dsel.index === at2;
+  win.dispose(); win.dispose();
+  dsel.update(C.ROTATE_SECONDS + 0.1);
+  r.detailReleases = !dsel.held && dsel.index !== at2;
+  const never = dsel.holdDetail(() => ({ dispose() {} })); never.settle();
+  r.settleReleases = !dsel.held;
+  dsel.holdDetail(() => ({ dispose() {} })).createReader(null);
+  dsel.dispose();
+  r.disposeReleases = !dsel.held && subs.size === 0;
+  // Freshness from each feed's own success, cadence and failure, never from its being enabled.
+  const O = B.oogatronLive.state, act = byId("activity");
+  Object.assign(O, { enabled: true, polls: 0, failures: 0, lastAt: 0 });
+  r.oogatronNever = act.status(env) === "waiting";
+  Object.assign(O, { failures: 2 });
+  r.oogatronFailed = act.status(env) === "held";
+  Object.assign(O, { polls: 1, lastAt: now.t - 30_000 });
+  r.oogatronFresh = act.status(env) === "live";
+  O.lastAt = now.t - 10 * 60_000;
+  r.oogatronStale = act.status(env) === "stale" && ghList.find((c) => c.page === 0).status(env) === "stale";
+  const T = B.totemFeed.state, tot = byId("totems");
+  Object.assign(T, { enabled: true, polls: 0, failures: 0, lastError: "" });
+  r.totemNever = tot.status(env) === "waiting";
+  T.failures = 1; T.lastError = "HTTP 403";
+  r.totemFailed = tot.status(env) === "off";
+  T.polls = 1; T.lastError = "";
+  r.totemFresh = tot.status(env) === "live";
+  T.failures = 2; T.lastError = "HTTP 403";
+  r.totemFailing = tot.status(env) === "stale";
+  T.lastError = ""; T.polls = 2; tot.status(env); now.t += 3 * C.TOTEM_MS + 1;
+  r.totemQuiet = tot.status(env) === "stale";
+  const jet = byId("jet");
+  r.jetAbsent = jet.status(env) === "off";
+  B.jetFeed = { state: { fetched: null, failures: 0 }, reading: () => ({ source: "bake", at: "2026-10-25T05:07:36Z", stars: 1, forks: 1, commits: 1, commitsWeek: 0, openIssues: 0, releases: [] }) };
+  r.jetBake = jet.status(env) === "held";
+  B.jetFeed.state.fetched = { at: new Date(now.t - 10 * 60_000).toISOString() };
+  r.jetFresh = jet.status(env) === "live";
+  B.jetFeed.state.fetched = { at: new Date(now.t - C.JET_MS - 60_000).toISOString() };
+  r.jetOld = jet.status(env) === "stale";
+  // A status change alone repaints: the totems' stamp is unchanged by a new error, its stampOf is not.
+  T.lastError = ""; T.polls = 3; tot.status(env);
+  const raw = tot.stamp(env), keyed = C.stampOf(tot, env);
+  T.lastError = "HTTP 500";
+  r.statusInStamp = tot.stamp(env) === raw && C.stampOf(tot, env) !== keyed;
+  // Players online: a remote moving outside to an interior repaints with population and NPC version unchanged.
+  Object.assign(B.net.state, { backend: true, room: "live", npcVersion: 4 });
+  B.net.remotes.set(1, { zone: "outside" }); B.net.remotes.set(2, { zone: "outside" });
+  const online = byId("online"), before = online.stamp(env);
+  B.net.remotes.get(2).zone = "lab";
+  r.zoneMove = online.stamp(env) !== before && B.net.remotes.size === 2 && B.net.state.npcVersion === 4 && online.read(env).rows.some((x) => x[0] === "Inside somewhere");
   return r;
 };
 const unitChecks = async () => {

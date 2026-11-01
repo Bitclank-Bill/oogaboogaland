@@ -15,6 +15,13 @@
 //           watches them, and released with the guide.
 // `env` is { BL, world, now, reader, views }: `reader` a paused reader of the hanging Oogatron (or null), `views` the
 // island's pictures from the climb.
+// Status is judged from each feed's own record of success, cadence and failure, never from its being enabled: the
+// Oogatron's `lastAt` against its minute (its bake is HELD until a read, and after failures with none), the totems'
+// poll and failure counters as they move (the feed keeps no success time, so the guide notes when they change)
+// against their 90 s step, Lightning Jet's one read against its 30 min cache, after which it is STALE.
+// `stampOf(channel, env)` is the repaint key: the channel's stamp with its status folded in, so a transition alone
+// (LIVE to STALE) repaints. `detailFor(channel, reader)` is the board a pick opens: an Oogatron page's own view, the
+// Repositories channel's top repository's totals filtered to it, else the TV's board.
 // `createSelector(channels, env)` is the guide's state: the tuned channel, manual selection, optional rotation (off
 // by default under reduced motion) that skips channels with nothing to show and holds while anyone reads, and a
 // subscription to new blocks with its cleanup. `scoresOf(rule, data)` reads a game's records by the game's own score
@@ -71,13 +78,44 @@
   const CABINET_IDS = CABINET_GAMES.map((g) => g[0]);
   const TRACKS = [["bay", "Bay"], ["gorge", "Gorge"], ["peak", "Peak"]];
 
+  const OOGATRON_MS = MINUTE, TOTEM_MS = 90e3, JET_MS = 30 * MINUTE;
+  // The Oogatron's poller: LIVE within its cadence of a good read, STALE after; before any good read its bake is
+  // what shows: WAITING while the first read is due, HELD once one has failed or with the poller off.
+  const oogatronStatus = (B, now) => {
+    const s = B.oogatronLive.state;
+    if (s.lastAt > 0) return fresh(s.lastAt, now, OOGATRON_MS);
+    return s.enabled && !s.failures ? "waiting" : "held";
+  };
+  // A small, allocation-free code for a zone name, so a stamp sees a move between zones.
+  const zoneCode = (zone) => {
+    let h = 7;
+    for (let i = 0; i < zone.length; i++) h = (Math.imul(h, 31) + zone.charCodeAt(i)) | 0;
+    return h;
+  };
   const channels = (env) => {
     const B = env.BL, list = [];
+    // The totems' poller keeps counts, not times: the guide notes when its polls or failures move.
+    const totem = { polls: -1, failures: -1, at: 0 };
+    const totemStatus = () => {
+      const s = B.totemFeed.state, now = env.now();
+      if (s.polls !== totem.polls || s.failures !== totem.failures) { totem.polls = s.polls; totem.failures = s.failures; totem.at = now; }
+      if (!s.enabled) return s.polls ? "stale" : "off";
+      if (!s.polls) return s.failures ? "off" : "waiting";
+      // The newest attempt failed, or nothing has moved for three steps.
+      return s.lastError || now - totem.at > TOTEM_MS * STALE_AFTER ? "stale" : "live";
+    };
+    const jetStatus = () => {
+      const J = B.jetFeed;
+      if (!J) return "off";
+      const f = J.state.fetched;
+      // One read a page life, not a cadence: LIVE only within the cache's half hour of it, STALE after.
+      return f ? (env.now() - Date.parse(f.at) > JET_MS ? "stale" : "live") : "held";
+    };
     const add = (c) => { c.index = list.length; c.detail ||= "board"; c.watch ||= null; list.push(c); };
     // ---- Bitcoin (chain.js, mempool.js; the Sphere's readings when it was visited).
     add({ id: "chain", category: "bitcoin", title: "Chain and mining", get source() { return `chain.js · ${B.chain.snapshot.source}`; },
-      status: () => fresh(B.chain.snapshot.at, env.now(), MINUTE),
-      stamp: () => { const s = B.chain.snapshot; return s.at + s.heightAt + s.priceAt + minuteOf(s.at, env.now()) + CODE[fresh(s.at, env.now(), MINUTE)]; },
+      status: () => { const s = B.chain.snapshot; return !(s.at > 0) && s.errors ? "off" : fresh(s.at, env.now(), MINUTE); },
+      stamp: () => { const s = B.chain.snapshot; return s.at + s.heightAt + s.priceAt + minuteOf(s.at, env.now()); },
       read: () => {
         const s = B.chain.snapshot, now = env.now();
         return { at: s.at, rows: [
@@ -91,7 +129,7 @@
       } });
     add({ id: "fees", category: "bitcoin", title: "Fees", source: "chain.js · recommended tiers and the next block",
       status: () => fresh(B.chain.snapshot.feesAt, env.now(), MINUTE),
-      stamp: () => { const s = B.chain.snapshot; return s.feesAt + s.nextFee + minuteOf(s.feesAt, env.now()) + CODE[fresh(s.feesAt, env.now(), MINUTE)]; },
+      stamp: () => { const s = B.chain.snapshot; return s.feesAt + s.nextFee + minuteOf(s.feesAt, env.now()); },
       read: () => {
         const s = B.chain.snapshot, f = (v) => v ? `${num(v, v < 10 ? 1 : 0)} sat/vB` : "—";
         return { at: s.feesAt, rows: [row("Next block", f(s.nextFee), "good"), row("Fastest", f(s.fastestFee)), row("Half an hour", f(s.halfHourFee)),
@@ -126,8 +164,8 @@
       } });
     // ---- The island (contributors.js, net.js, chain.js's weather axes, the pile, donations.js, the Factory's node).
     add({ id: "activity", category: "island", title: "Who's working", get source() { return B.oogatronLive.state.enabled ? "oogatron-live.js · GitHub activity" : "the baked roster"; },
-      status: () => B.oogatronLive.state.enabled ? "live" : "held",
-      stamp: () => Math.floor(env.now() / MINUTE) + (B.oogatronLive.state.enabled ? 1e9 : 0),
+      status: () => oogatronStatus(B, env.now()),
+      stamp: () => Math.floor(env.now() / MINUTE) + B.oogatronLive.state.lastAt,
       read: () => {
         const C = B.contributors, counts = { working: 0, chilling: 0, sleeping: 0, away: 0 }, now = env.now();
         for (const e of C.activeRoster) { const s = C.stateFor(e, now); if (s in counts) counts[s]++; }
@@ -136,7 +174,12 @@
       } });
     add({ id: "online", category: "island", title: "Players online", source: "net.js · the island room (counts only)",
       status: () => !B.net.state.backend ? "off" : B.net.state.room === "live" ? "live" : "waiting",
-      stamp: () => (B.net.state.backend ? 1 : 0) + B.net.remotes.size * 3 + (B.net.state.room === "live" ? 11 : 0) + (B.net.state.npcVersion || 0) * 17,
+      // Population alone misses a move between zones: the stamp folds every remote's zone in (bounded by the room).
+      stamp: () => {
+        let h = (B.net.state.backend ? 1 : 0) + B.net.remotes.size * 3 + (B.net.state.room === "live" ? 11 : 0);
+        for (const r of B.net.remotes.values()) h = (Math.imul(h, 33) + zoneCode(r.zone || "outside")) | 0;
+        return h;
+      },
       read: () => {
         if (!B.net.state.backend) return { at: 0, rows: [], empty: "Who is online shows where the island's own server runs." };
         // Counts by the land each stands in (zone-map.js where the page has it); never names or positions.
@@ -223,29 +266,30 @@
       env.reader.go(i);
       add({ id: `oogatron-${i}`, category: "github", title: `Oogatron · ${env.reader.caption}`, page: i, detail: "oogatron",
         get source() { return B.oogatronLive.state.enabled ? "oogatron-live.js · GitHub" : "the baked Oogatron stats"; },
-        status: () => B.oogatronLive.state.enabled ? "live" : "held",
-        stamp: () => env.reader.version + (B.oogatronLive.state.enabled ? 1e9 : 0), read: () => ({ at: 0, rows: [], reader: i }) });
+        status: () => oogatronStatus(B, env.now()),
+        stamp: () => env.reader.version + B.oogatronLive.state.lastAt + minuteOf(B.oogatronLive.state.lastAt, env.now()),
+        read: () => ({ at: B.oogatronLive.state.lastAt, rows: [], reader: i }) });
     }
     add({ id: "repos", category: "github", title: "Repositories", detail: "oogatron", get source() { return B.oogatronLive.state.enabled ? "oogatron-live.js · GitHub" : "the baked Oogatron stats"; },
-      status: () => !env.reader ? "off" : B.oogatronLive.state.enabled ? "live" : "held",
-      stamp: () => (env.reader ? env.reader.repos.length + env.reader.version * 3 : 0) + (B.oogatronLive.state.enabled ? 1e9 : 0),
+      status: () => !env.reader ? "off" : oogatronStatus(B, env.now()),
+      stamp: () => (env.reader ? env.reader.repos.length + env.reader.version * 3 : 0) + B.oogatronLive.state.lastAt + minuteOf(B.oogatronLive.state.lastAt, env.now()),
       read: () => {
         const repos = env.reader ? env.reader.repos : [];
         const rows = [...repos].sort((a, b) => b.totals.commits - a.totals.commits).slice(0, 6)
           .map((r, i) => row(r.name, `${num(r.totals.commits)} commits · ${num(r.totals.prs)} PRs · ${num(r.totals.contributors)} people`, i ? "" : "accent"));
-        return { at: 0, rows };
+        return { at: B.oogatronLive.state.lastAt, rows };
       } });
     add({ id: "totems", category: "github", title: "Bitcoin projects · latest merges", source: "totem-feed.js · GitHub",
-      status: () => { const s = B.totemFeed.state; return !s.enabled ? "off" : s.polls ? "live" : "waiting"; },
-      stamp: () => { const s = B.totemFeed.state; let n = s.polls * 3 + (s.enabled ? 1 : 0); for (const r of s.repos) n += r.changedAt + r.number; return n + Math.floor(env.now() / MINUTE); },
+      status: totemStatus,
+      stamp: () => { const s = B.totemFeed.state; let n = s.polls * 3 + s.failures * 5 + (s.enabled ? 1 : 0); for (const r of s.repos) n += r.changedAt + r.number; return n + Math.floor(env.now() / MINUTE); },
       read: () => {
         const F = B.totemFeed, now = env.now();
-        return { at: 0, rows: F.REPOS.map((r, i) => { const m = F.state.repos[i]; return row(r.name, m.number ? `#${m.number} · ${ago(m.changedAt, now)}` : "no merge in the last day", m.number ? "" : "dim"); }),
+        return { at: 0, note: F.state.lastError ? `Its last request failed (${F.state.lastError}).` : "", rows: F.REPOS.map((r, i) => { const m = F.state.repos[i]; return row(r.name, m.number ? `#${m.number} · ${ago(m.changedAt, now)}` : "no merge in the last day", m.number ? "" : "dim"); }),
           links: F.REPOS.map((r, i) => F.state.repos[i]).filter((m) => m.url).map((m) => ({ href: m.url, label: `${m.url.split("/").slice(3, 5).join("/")} #${m.number} (new tab)` })) };
       } });
     add({ id: "jet", category: "github", title: "Lightning Jet", source: "jet-feed.js · read by the Lightning Jet Hangar",
-      status: () => { const J = B.jetFeed; if (!J) return "off"; const r = J.reading(); return r && r.source === "fetch" ? "live" : "held"; },
-      stamp: () => { const J = B.jetFeed, r = J && J.reading(); return r ? Date.parse(r.at) + r.source.length : 0; },
+      status: jetStatus,
+      stamp: () => { const J = B.jetFeed, f = J && J.state.fetched; return J ? (f ? Date.parse(f.at) : 1) + J.state.failures * 7 + minuteOf(f ? Date.parse(f.at) : 0, env.now()) : 0; },
       read: () => {
         const r = B.jetFeed && B.jetFeed.reading();
         if (!r) return { at: 0, rows: [], empty: "The Lightning Jet Hangar reads this. Visit it, and its reading shows here." };
@@ -259,6 +303,28 @@
     return list;
   };
 
+  // The repaint key: a channel's stamp with its status folded in, so a status change alone repaints. Stamps stay
+  // well under 2^53 with the status as its top digit.
+  const stampOf = (c, env) => c.stamp(env) + CODE[c.status(env)] * 1e15;
+  // The board a pick opens. An Oogatron page opens the Oogatron's own board on that page's view (not on the page the
+  // hanging sign happens to show); Repositories opens it on the top repository's totals, filtered to it (the filter
+  // menu reaches the rest); every other channel opens the TV's own board.
+  const detailFor = (c, reader) => {
+    if (reader && c.page !== undefined) {
+      const at = reader.index;
+      reader.go(c.page % reader.count);
+      const v = reader.view, screen = { name: v.name, params: v.params ? { ...v.params } : undefined };
+      reader.go(at);
+      return { kind: "oogatron", screen, filters: null };
+    }
+    if (reader && c.id === "repos") {
+      let top = null;
+      for (const r of reader.repos) if (!top || r.totals.commits > top.totals.commits) top = r;
+      return top ? { kind: "oogatron", screen: { name: "repo", params: { name: top.name } }, filters: { repos: [top.name], users: null, types: null } }
+        : { kind: "oogatron", screen: { name: "totals", params: undefined }, filters: null };
+    }
+    return { kind: "board" };
+  };
   // The guide's state. `index` the tuned channel; `auto` rotation on or off (off by default under reduced motion);
   // `hold(reason, on)` keeps the channel still while a reason stands (the guide or a board open); `select(i)` tunes by
   // hand and restarts the wait; `update(dt)` turns the channel when it is due, skipping channels that are "off".
@@ -297,6 +363,23 @@
       select: (i) => tune(i, true),
       setAuto: (on) => { state.auto = !!on; state.wait = ROTATE_SECONDS; },
       hold: (reason, on) => { if (on) holds.add(reason); else holds.delete(reason); },
+      // A detail board held open: rotation and block cuts wait while any reader it makes is open, and resume when the
+      // last is disposed (a floating board disposes its reader as it closes). `settle` releases the hold when the board
+      // never opened a reader (panels hidden). `dispose` releases every hold.
+      holdDetail: (make) => {
+        const reason = { open: 0 };
+        holds.add(reason);
+        return {
+          createReader: (state) => {
+            reason.open++;
+            const r = make(state), done = r.dispose;
+            let disposed = false;
+            r.dispose = () => { done.call(r); if (disposed) return; disposed = true; if (--reason.open <= 0) holds.delete(reason); };
+            return r;
+          },
+          settle: () => { if (reason.open <= 0) holds.delete(reason); }
+        };
+      },
       update: (dt) => {
         if (state.newBlock > 0) state.newBlock -= dt;
         if (!state.auto || holds.size) return;
@@ -306,5 +389,5 @@
       dispose: () => { offBlocks(); for (const off of watched.values()) off(); watched.clear(); holds.clear(); }
     };
   };
-  BL.cloudArchiveChannels = { CATEGORIES, WORDS, CODE, ROTATE_SECONDS, STALE_AFTER, channels, createSelector, scoresOf, fresh, ago };
+  BL.cloudArchiveChannels = { CATEGORIES, WORDS, CODE, ROTATE_SECONDS, STALE_AFTER, JET_MS, TOTEM_MS, channels, createSelector, scoresOf, fresh, ago, stampOf, detailFor };
 })();
