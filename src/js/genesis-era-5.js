@@ -384,7 +384,7 @@
       sourceKeys: ["E5-CHORD", "E5-BT", "E5-HC", "E5-RPOW", "E5-BG", "E5-ATTR"],
       pages: [
         { caption: "Explore", title: "A workshop of competing ideas", text: [
-          "Left bank: four idea benches. Each lectern has the paper's story; each toy beside it lets you try the idea. Right bank: a peer-sharing bench and period gear.",
+          "Left side: four idea benches. Each lectern has the paper's story; each toy beside it lets you try the idea. Right side: a peer-sharing bench and period gear.",
           PEERS_TEXT, "Every toy has HELP, a hint and How to use steps, and RESET starts it again."] },
         { caption: "How to read it", title: "Citation, influence, context", text: [
           "Whitepaper citation: the 2002 Hashcash paper is the whitepaper's reference [6]. Documented influence: bit gold, named in Satoshi's retrospective 20 July 2010 post.",

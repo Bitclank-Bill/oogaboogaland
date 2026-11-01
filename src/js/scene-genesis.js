@@ -1,17 +1,16 @@
-// The Genesis Voyage (work in progress, `?wip=genesis`): one museum cave of the ideas that came before Bitcoin.
-// From the entrance hall (the whitepaper stone's portal lands here) the visitor walks, as their own Ooga, through a
-// short corridor into one long hall: the eras one after another down both walls in date order, each with its sign
-// hung over the promenade where it begins, the promenade open down the middle (genesis-world.js keeps every era's
-// coordinates). Era 3's part holds Fingerprints and Time, where Tock the archivist Ooga runs a stamp desk: pages are
-// fingerprinted, each stamp links to the last, the newest is published, and a changed page breaks every link after
-// it. The rules, words and sources are in genesis-voyage.js.
+// The Genesis museum (work in progress, `?wip=genesis`): one cave of the ideas that came before Bitcoin.
+// The visitor arrives on foot in an open atrium (the whitepaper stone's portal lands here), facing the huge white
+// timeline screen. Round the atrium, clockwise in date order from the south-west, the eight eras each have a gallery
+// in their own rock, floor and lamp colours, its sign over its arch (genesis-world.js MUSEUM). Each era's file builds
+// its exhibits in its old cave's coordinates, inside its gallery's frame node, so the researched layouts, models and
+// demonstrations stand as they were built. Era 3's gallery holds Fingerprints and Time, where Tock the archivist Ooga
+// runs a stamp desk: pages are fingerprinted, each stamp links to the last, the newest is published, and a changed
+// page breaks every link after it. The rules, words and sources are in genesis-voyage.js.
 //
 // Walking is the pilot and crew, as the arcade and factory scenes do. Space by an exhibit, or a tap on it, opens its
-// workbench (genesis-bench.js): the exhibit's own model live in a clear stage on the left, framed by the camera, with
-// its command input, Run, Reset and its actions under it, and its story, how to use it and its sources on the right;
-// Previous and Next walk the exhibits in date order; Close (or Escape) returns to where the visitor stood. The white
-// timeline screen in the entrance hall (and the Timeline button, or G) opens the museum's menu: every exhibit by date
-// and by how it connects, each opening its workbench. P pauses, R (or Calm) holds decorative motion, M mutes.
+// workbench (genesis-workbench.js) on the host (OVERHAUL-CONTRACT.md); the white screen, the Timeline button or G opens
+// the timeline menu (genesis-timeline.js). Both read the catalogue (genesis-catalogue.js). P pauses, the Calm button
+// holds decorative motion, M mutes.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -25,7 +24,6 @@
   // lights) onto Era 3's cave, along its left bank.
   const SX = GW.ROOM_SHIFT.x, SZ = GW.ROOM_SHIFT.z, ROOM_ERA = GW.ROOM_ERA;
   const DESK = { x: -7.2 + SX, y: 0.55, z: -25.2 + SZ }, CHAIN = { x: -10.55 + SX, y: 3.7, z0: -21.6 + SZ, step: 1.75 }, PAPER = { x: -10.5 + SX, y: 2.2, z: -31.6 + SZ };
-  const ROOM_Z = GW.MOUTH_Z;
   const ISLAND_TOP = GW.BANK_TOP;
   const TILE_COLORS = (codes) => codes.map((c) => "#" + c.slice(0, 6));
 
@@ -34,43 +32,71 @@
     direct: [0.72, 0.7, 0.66], directStrength: 0.3, ambientFloor: 0.52, sun: { x: 0.25, y: 1, z: 0.35 },
     shadowCenter: { x: 0, y: 0, z: 0 }, shadowExtent: 34, bloomStrength: 0.35,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0 };
-  // The harbour's lamps, the desk and the newspaper, then three lamps in each cave in its era's colour.
-  const CAVE_LAMPS = [[-14, 0.25], [22, 0.5], [-8, 0.8]];
-  const LIGHTS = [[-4, 3.2, 3, 11, 1.25, 0.95, 0.6], [4, 3.2, -2, 10, 1.1, 0.85, 0.55],
-    [-6.5 + SX, 3.4, -25 + SZ, 12, 1.35, 1.05, 0.7], [-9 + SX, 3.2, -31.5 + SZ, 7, 1, 0.9, 0.7],
-    ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => [x, 9, e.z1 - f * GW.CAVE.len, 34, ...e.theme.lamp]))];
+  // The museum (genesis-world.js MUSEUM): an atrium in the middle and the eras' galleries round it. Each era is built
+  // in its old cave's coordinates inside its gallery's frame node; `mu(n, x, z)` is a point of era n's old world in the
+  // museum, `muBox` a box.
+  const MU = GW.MUSEUM, ROOF = MU.HEIGHT;
+  const DESK_AT = MU.toMuseum(ROOM_ERA, DESK.x, DESK.z, { x: 0, z: 0 });
+  const mu = (n, x, z, out = { x: 0, z: 0 }) => MU.toMuseum(n, x, z, out);
+  const muBox = (n, b) => ({ ...b, ...MU.boxToMuseum(n, b) });
+  const muAt = (n, at) => { const p = mu(n, at.x, at.z); return { ...at, x: p.x, z: p.z }; };
+  // Lamps: the atrium's, the desk's and the newspaper's in Fingerprints and Time, then three in each gallery in its
+  // era's colour. Each frame the nearest come first (the tiers keep the first ones).
+  const CAVE_LAMPS = [[-14, 0.3], [22, 0.5], [-8, 0.78]];
+  const LIGHTS = [[0, 9, 40, 30, 1.2, 1.05, 0.85], [0, 9, -40, 30, 1.2, 1.05, 0.85], [-30, 9, 0, 30, 1.1, 1, 0.85], [30, 9, 0, 30, 1.1, 1, 0.85], [0, 7, 66, 16, 1.25, 0.95, 0.6],
+    ...[[-6.5 + SX, 3.4, -25 + SZ, 12, 1.35, 1.05, 0.7], [-9 + SX, 3.2, -31.5 + SZ, 7, 1, 0.9, 0.7]].map((l) => { const q = mu(ROOM_ERA, l[0], l[2]); return [q.x, l[1], q.z, ...l.slice(3)]; }),
+    ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => { const q = mu(e.n, x, e.z1 - f * GW.CAVE.len); return [q.x, 9, q.z, 34, ...e.theme.lamp]; }))];
 
   // --- Walking: where an Ooga may stand ----------------------------------------------------------------------------
-  // The museum is one floor at bank height: the entrance hall (the old harbour), the short corridor in, and the hall,
-  // the eras one after another down both long walls with the promenade (where the stream ran) open down the middle.
-  // The statue, the room's desk and the newspaper stand in the way, as do the walls.
+  // One floor at bank height: the atrium and every gallery, walled round. Fingerprints and Time's ledge (Era 3), its
+  // desk and the newspaper stand in the way, and so do the statue and the walls.
   const { CHANNEL } = GW;
-  // Where the visitor arrives, by the statue, facing into the museum (a fall out of bounds comes back here too).
-  const ENTRY = { x: GW.LANE_X, z: 3.5, facing: Math.PI };
+  // Where the visitor arrives: in the atrium's south, by the statue, facing north across it (a fall comes back here).
+  const ENTRY = { x: 0, z: 64, facing: Math.PI };
+  // The walls (one height, ROOF): each gallery's back and sides (half a partition each, so neighbours meet without
+  // overlapping), and the atrium's sides between the galleries' openings.
+  const WALLS = (() => {
+    const out = [], T = MU.PART / 2;
+    for (const r of MU.rects) {
+      const b = MU.bays[r.n], out1 = MU.rotate(b.rot, 0, -1, { x: 0, z: 0 });
+      // The gallery's back is the side its old -z points to; its sides the two across it.
+      if (out1.x < 0) out.push({ x0: r.x0 - 1, x1: r.x0, z0: r.z0 - T, z1: r.z1 + T }, { x0: r.x0 - 1, x1: r.x1, z0: r.z0 - T, z1: r.z0 }, { x0: r.x0 - 1, x1: r.x1, z0: r.z1, z1: r.z1 + T });
+      if (out1.x > 0) out.push({ x0: r.x1, x1: r.x1 + 1, z0: r.z0 - T, z1: r.z1 + T }, { x0: r.x0, x1: r.x1 + 1, z0: r.z0 - T, z1: r.z0 }, { x0: r.x0, x1: r.x1 + 1, z0: r.z1, z1: r.z1 + T });
+      if (out1.z < 0) out.push({ x0: r.x0 - T, x1: r.x1 + T, z0: r.z0 - 1, z1: r.z0 }, { x0: r.x0 - T, x1: r.x0, z0: r.z0 - 1, z1: r.z1 }, { x0: r.x1, x1: r.x1 + T, z0: r.z0 - 1, z1: r.z1 });
+      if (out1.z > 0) out.push({ x0: r.x0 - T, x1: r.x1 + T, z0: r.z1, z1: r.z1 + 1 }, { x0: r.x0 - T, x1: r.x0, z0: r.z0, z1: r.z1 + 1 }, { x0: r.x1, x1: r.x1 + T, z0: r.z0, z1: r.z1 + 1 });
+    }
+    // The atrium's four sides, less the openings.
+    const A = MU.atrium;
+    const side = (fixed, lo, hi, axis, outward) => {
+      const opens = MU.rects.filter((r) => axis === "z" ? (outward < 0 ? r.x1 <= A.x0 + 0.01 : r.x0 >= A.x1 - 0.01) : (outward < 0 ? r.z1 <= A.z0 + 0.01 : r.z0 >= A.z1 - 0.01))
+        .map((r) => axis === "z" ? [r.z0, r.z1] : [r.x0, r.x1]).sort((a, b) => a[0] - b[0]);
+      let at = lo - 1;
+      for (const [a, b] of [...opens, [hi + 1, hi + 1]]) {
+        if (a > at) out.push(axis === "z" ? { x0: outward < 0 ? fixed - 1 : fixed, x1: outward < 0 ? fixed : fixed + 1, z0: at, z1: a } : { x0: at, x1: a, z0: outward < 0 ? fixed - 1 : fixed, z1: outward < 0 ? fixed : fixed + 1 });
+        at = Math.max(at, b);
+      }
+    };
+    side(A.x0, A.z0, A.z1, "z", -1); side(A.x1, A.z0, A.z1, "z", 1); side(A.z0, A.x0, A.x1, "x", -1); side(A.z1, A.x0, A.x1, "x", 1);
+    return out;
+  })();
   const FOOTING = {
     areas: [
       { id: "room", x0: -12, x1: -7.6, z0: -34, z1: -19, top: 0.545, dock: { x: -6, z: -26.6, facing: Math.PI / 2 } },
       { id: "step", x0: -7.6, x1: -5, z0: -27.7, z1: -22.7, top: 0.545, dock: { x: -6, z: -26.6, facing: Math.PI / 2 } }
     ],
-    obstacles: [{ x0: -5.6, x1: -2.8, z0: 6.15, z1: 7.05 }, { x0: -8.5, x1: -5.9, z0: -25.9, z1: -24.5 }, { x0: -10.6, x1: -10.4, z0: -33.1, z1: -30.1 },
+    obstacles: [{ x0: -8.5, x1: -5.9, z0: -25.9, z1: -24.5 }, { x0: -10.6, x1: -10.4, z0: -33.1, z1: -30.1 },
       { x0: -10.2, x1: -9, z0: -21.2, z1: -20 }, { x0: -10.3, x1: -9.3, z0: -32.9, z1: -31.9 }, { x0: -6.2, x1: -5.4, z0: -24, z1: -23.2 }]
   };
-  // The room's ledges and obstacles move with it to Era 3's part of the hall.
-  for (const a of FOOTING.areas) { a.x0 += SX; a.x1 += SX; a.z0 += SZ; a.z1 += SZ; if (a.dock) a.dock = { ...a.dock, x: a.dock.x + SX, z: a.dock.z + SZ }; }
-  for (let i = 1; i < FOOTING.obstacles.length; i++) { const o = FOOTING.obstacles[i]; o.x0 += SX; o.x1 += SX; o.z0 += SZ; o.z1 += SZ; }
+  // The room's ledges and obstacles move with it into Era 3's gallery.
+  for (const a of FOOTING.areas) { a.x0 += SX; a.x1 += SX; a.z0 += SZ; a.z1 += SZ; Object.assign(a, MU.boxToMuseum(ROOM_ERA, a)); a.dock = { ...muAt(ROOM_ERA, { x: a.dock.x + SX, z: a.dock.z + SZ }), facing: a.dock.facing + MU.bays[ROOM_ERA].rot }; }
+  for (const o of FOOTING.obstacles) { o.x0 += SX; o.x1 += SX; o.z0 += SZ; o.z1 += SZ; Object.assign(o, MU.boxToMuseum(ROOM_ERA, o)); }
   {
-    const C = GW.CAVE, H = GW.HARBOUR, first = GW.ERAS[0].z1, last = GW.END_Z, dock = { x: ENTRY.x, z: ENTRY.z, facing: ENTRY.facing };
-    FOOTING.areas.push({ id: "entrance", x0: H.x0, x1: H.x1, z0: GW.MOUTH_Z - 0.6, z1: H.z1, top: ISLAND_TOP, dock },
-      { id: "corridor", x0: CHANNEL.x0, x1: CHANNEL.x1, z0: first - 0.5, z1: GW.MOUTH_Z, top: ISLAND_TOP, dock },
-      { id: "hall", x0: C.x0, x1: C.x1, z0: last, z1: first, top: ISLAND_TOP, dock });
-    // The hall's walls and end, the corridor's rock, and the entrance hall's walls either side of its way in.
-    FOOTING.obstacles.push({ x0: C.x0 - 6, x1: C.x0, z0: last - 6, z1: first + 2 }, { x0: C.x1, x1: C.x1 + 6, z0: last - 6, z1: first + 2 },
-      { x0: C.x0 - 6, x1: C.x1 + 6, z0: last - 6, z1: last },
-      { x0: C.x0, x1: CHANNEL.x0 - 0.05, z0: first, z1: GW.MOUTH_Z - 0.6 }, { x0: CHANNEL.x1 + 0.05, x1: C.x1, z0: first, z1: GW.MOUTH_Z - 0.6 },
-      { x0: -16, x1: -12, z0: GW.MOUTH_Z - 1, z1: 12 }, { x0: 10, x1: 16, z0: GW.MOUTH_Z - 1, z1: 12 }, { x0: -16, x1: 16, z0: 9, z1: 12 },
-      { x0: -16, x1: H.mouth.x0, z0: GW.MOUTH_Z - 0.6, z1: GW.MOUTH_Z + 0.6 }, { x0: H.mouth.x1, x1: 16, z0: GW.MOUTH_Z - 0.6, z1: GW.MOUTH_Z + 0.6 });
+    const dock = { x: ENTRY.x, z: ENTRY.z, facing: ENTRY.facing };
+    FOOTING.areas.push({ id: "atrium", ...MU.atrium, top: ISLAND_TOP, dock }, ...MU.rects.map((r) => ({ id: `gallery-${r.n}`, x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, top: ISLAND_TOP, dock })));
+    // The statue in the atrium, and the walls.
+    FOOTING.obstacles.push({ x0: -1.4, x1: 1.4, z0: 69.5, z1: 70.5 }, ...WALLS);
   }
-  // The first props, on the room's ledge: the office PC, the hard-drive plinth and Tock's book by the desk.
+  // The first props, on the room's ledge (in Era 3's old world): the office PC, the hard-drive plinth and Tock's book.
   const PROPS = { pc: { x: -9.6 + SX, y: 0.545, z: -20.6 + SZ }, drives: { x: -9.8 + SX, y: 0.545, z: -32.4 + SZ }, book: { x: -5.8 + SX, y: 0.545, z: -23.6 + SZ } };
   const WALK_PRESETS = { dock: { yaw: 0, pitch: 0.3, dist: 6, target: { x: ENTRY.x, y: 1, z: ENTRY.z } } };
 
@@ -84,45 +110,43 @@
   const el = {};
 
   // --- Building -------------------------------------------------------------------------------------------------
-  const place = (node) => { addChild(root, node); return node; };
+  // Nodes built for an era go under its gallery's frame node (`inFrame`), in that era's old coordinates.
+  let frameParent = null;
+  const place = (node) => { addChild(frameParent || root, node); return node; };
+  const inFrame = (n, fn) => { const was = frameParent; frameParent = n >= 0 ? built.frames[n] : null; try { return fn(); } finally { frameParent = was; } };
   // A tap box: a node the picker sees (it skips hidden nodes) with a box's corners and no faces, so nothing draws.
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
   const solid = (w, h, d, color, x, y, z, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } }));
   const buildCavern = () => {
-    // The entrance hall: a stone floor at the museum's level, walls and roof, its front wall open onto the corridor in.
-    solid(24, 0.6, 19.4, "#4a453e", -1, ISLAND_TOP - 0.3, 0.3);
-    for (const [w, d, x, z] of [[1.2, 19.8, -12.6, 0.3], [1.2, 19.8, 10.6, 0.3], [26, 1.2, -1, 9.6]]) solid(w, 7, d, "#3a3530", x, 3.4, z);
-    solid(26, 0.6, 19.8, "#2a2622", -1, 7.1, 0.3);
-    solid(14, 7, 1.2, "#3a3530", -6.5, 3.4, ROOM_Z);
-    solid(5, 7, 1.2, "#3a3530", 9.5, 3.4, ROOM_Z);
-    solid(6.5, 2.2, 1.2, "#3a3530", 3.75, 5.8, ROOM_Z);
-    // The dock, the harbour's lanterns and the statue the visitor came through.
-    const statue = place(createNode({ position: { x: -4.2, y: ISLAND_TOP, z: 6.6 } }));
+    // The statue the visitor came through, in the atrium's south, with lanterns either side.
+    const statue = place(createNode({ position: { x: 0, y: ISLAND_TOP, z: 70 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
     addChild(statue, createNode({ geometry: M.bevelBox({ w: 2.2, h: 3.1, d: 0.4, color: "#ece6d6" }), position: { x: 0, y: 1.9, z: 0 } }));
     addChild(statue, createNode({ geometry: M.box({ w: 1.5, h: 2.3, d: 0.06, color: "#9ad8ff", emissive: 0.9 }), position: { x: 0, y: 1.75, z: -0.23 } }));
     addChild(statue, createNode({ geometry: M.box({ w: 2.8, h: 0.35, d: 0.9, color: "#8a8174" }), position: { x: 0, y: 0.17, z: 0 } }));
     built.portal = statue.children[1];
-    for (const [x, z] of [[-1.6, -1.8], [-6.6, -1.8], [-6.6, 6], [7.5, 2], [7.5, -6]]) {
+    for (const [x, z] of [[-3, 70.5], [3, 70.5], [-6, 72], [6, 72]]) {
       solid(0.14, 2.4, 0.14, "#3b2a1a", x, ISLAND_TOP + 1.2, z);
       solid(0.36, 0.36, 0.36, "#ffcf7a", x, ISLAND_TOP + 2.55, z, 1.4);
     }
+    const label = BL.factoryModels.label;
+    const museumSign = label("THE GENESIS MUSEUM", "Before the first block · 1956 to 2009 · in date order, clockwise", { height: 1.6, style: "gold" });
+    const hs = place(createNode({ position: { x: 0, y: 9, z: MU.atrium.z1 - 0.6 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
+    addChild(hs, createNode({ geometry: museumSign.back }), createNode({ geometry: museumSign.face }));
+    inFrame(ROOM_ERA, () => {
     // The room's ledge, the desk, the chain wall and the newspaper, on Era 3's left bank.
     solid(4.6, 0.55, 15, "#4a4038", -9.9 + SX, 0.27, -26.5 + SZ);
     solid(2.6, 0.55, 5, "#4a4038", -6.3 + SX, 0.27, -25.2 + SZ);
-    const label = BL.factoryModels.label;
     const roomSign = label("FINGERPRINTS AND TIME · 1991", "Era 3 · Cypherpunks and Timestamps", { height: 1.4, style: "gold" });
     const sign = place(createNode({ position: { x: CHAIN.x - 0.4, y: 6.2, z: -26.5 + SZ }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
     addChild(sign, createNode({ geometry: roomSign.back }), createNode({ geometry: roomSign.face }));
-    const harbourSign = label("THE GENESIS VOYAGE", "Before the first block · 1956 to 2009", { height: 1.4, style: "gold" });
-    const hs = place(createNode({ position: { x: -5.5, y: 5.2, z: ROOM_Z + 0.65 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
-    addChild(hs, createNode({ geometry: harbourSign.back }), createNode({ geometry: harbourSign.face }));
     const paperSign = label("THE DAILY OOGA", "widely publish the fingerprint · 1991", { height: 0.9, style: "plain" });
     const ps = place(createNode({ position: { x: PAPER.x + 0.05, y: PAPER.y + 1.25, z: PAPER.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
     addChild(ps, createNode({ geometry: paperSign.back }), createNode({ geometry: paperSign.face }));
     solid(0.12, 1.8, 3, "#e9e1cc", PAPER.x, PAPER.y, PAPER.z);
     built.paperTile = place(createNode({ geometry: M.box({ w: 0.1, h: 0.7, d: 1.4, color: "#ffffff", emissive: 1 }), position: { x: PAPER.x + 0.1, y: PAPER.y, z: PAPER.z }, visible: false }));
+    });
   };
-  const buildDesk = () => {
+  const buildDesk = () => inFrame(ROOM_ERA, () => {
     const honest = G.chain(false), tampered = G.chain(true), plain = TILE_COLORS(honest), changed = TILE_COLORS(tampered);
     built.codes = { honest, tampered };
     solid(2.6, 0.12, 1.3, "#7a5534", DESK.x, DESK.y + 0.6, DESK.z);
@@ -161,99 +185,86 @@
     // A lectern by the water: tap it (or press I) for the panel.
     built.lectern = place(createNode({ geometry: M.bevelBox({ w: 0.7, h: 1.1, d: 0.5, color: "#7a5534" }), position: { x: -5.6 + SX, y: 1.1, z: -22.6 + SZ } }));
     built.lecternLight = place(createNode({ geometry: M.box({ w: 0.5, h: 0.06, d: 0.35, color: "#ffe9a8", emissive: 1.3 }), position: { x: -5.6 + SX, y: 1.68, z: -22.6 + SZ } }));
-  };
-  // The promenade, where the stream ran: polished stone at the floor's level down the corridor and the middle of the
-  // hall, with a thin gold line along each edge (a slab per era and one across each join, so no two lie on top of one
-  // another), and the joins between eras floored across the hall's whole width.
-  const buildFloor = () => {
-    const C = GW.CAVE, w = CHANNEL.x1 - CHANNEL.x0, first = GW.ERAS[0].z1;
-    const slab = (x0, x1, z0, z1, color) => solid(x1 - x0, 1.15, z1 - z0, color, (x0 + x1) / 2, ISLAND_TOP - 0.575, (z0 + z1) / 2);
-    slab(CHANNEL.x0, CHANNEL.x1, first, GW.MOUTH_Z - 0.6, "#5d5850");
-    for (let i = 0; i < GW.ERAS.length; i++) {
-      const e = GW.ERAS[i];
-      slab(CHANNEL.x0, CHANNEL.x1, e.z0, e.z1, "#5d5850");
-      if (i < GW.ERAS.length - 1) slab(C.x0, C.x1, GW.ERAS[i + 1].z1, e.z0, "#4c4740");
-    }
+    built.lectern.museumFrame = ROOM_ERA;
+  });
+  // The museum's shell (in the museum's own coordinates): the atrium's floor, a band of gold round its edge and
+  // a ring of round pillars well in from the galleries' openings, the walls (WALLS) and one roof over all.
+  const buildMuseum = () => {
+    const A = MU.atrium, B = MU.bounds;
+    solid(A.x1 - A.x0, 1.15, A.z1 - A.z0, "#57524a", 0, ISLAND_TOP - 0.575, 0);
     const lines = [];
-    for (const x of [CHANNEL.x0 + 0.15, CHANNEL.x1 - 0.15]) lines.push(M.moved(M.box({ w: 0.08, h: 0.02, d: first - GW.END_Z, color: "#e8c35a", emissive: 0.6 }), x, ISLAND_TOP + 0.01, (first + GW.END_Z) / 2));
+    for (const [w, d, x, z] of [[A.x1 - A.x0 - 24, 0.12, 0, A.z0 + 12], [A.x1 - A.x0 - 24, 0.12, 0, A.z1 - 12], [0.12, A.z1 - A.z0 - 24, A.x0 + 12, 0], [0.12, A.z1 - A.z0 - 24, A.x1 - 12, 0]])
+      lines.push(M.moved(M.box({ w, h: 0.02, d, color: "#e8c35a", emissive: 0.6 }), x, ISLAND_TOP + 0.01, z));
     place(createNode({ geometry: M.merge(...lines), sightHidden: true }));
-    void w;
+    for (const w of WALLS) solid(w.x1 - w.x0, ROOF, w.z1 - w.z0, "#3a3530", (w.x0 + w.x1) / 2, ROOF / 2, (w.z0 + w.z1) / 2);
+    solid(B.x1 - B.x0 + 4, 1, B.z1 - B.z0 + 4, "#2a2622", (B.x0 + B.x1) / 2, ROOF + 0.5, (B.z0 + B.z1) / 2);
+    const pillars = [];
+    for (const x of [-26, 26]) for (const z of [-52, -18, 18, 52]) {
+      pillars.push(M.moved(M.box({ w: 2.2, h: ROOF, d: 2.2, color: "#4a453e" }), x, ROOF / 2, z));
+      pillars.push(M.moved(M.box({ w: 3, h: 0.6, d: 3, color: "#5d5850" }), x, ISLAND_TOP + 0.3, z));
+      built.obstacles.push({ x0: x - 1.5, x1: x + 1.5, z0: z - 1.5, z1: z + 1.5 });
+    }
+    place(createNode({ geometry: M.merge(...pillars) }));
   };
-  // One hall: each era's stretch of floor either side of the promenade, walls and roof in its colours, the joins
-  // between eras walled and roofed in plain stone, the corridor's rock wall at the near end and the last era's wall
-  // closing the far end. Each era's sign hangs over the promenade where the next begins (genesis-world.js e.sign),
-  // facing the visitor walking down the hall, in its era's signage; the last era's is on the end wall.
-  const buildCaves = () => {
-    const C = GW.CAVE, H = C.height, gap = GW.TUNNEL_HEIGHT;
-    // Whether a boulder of radius r at (x, z) in era n would sit in a reserved plot or on an exhibit's obstacle.
-    const clutter = (n, x, z, r) => {
-      const hit = (b) => x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1;
-      return GW.reservedZones(n).some(hit) || built.obstacles.some(hit);
-    };
-    const across = (z, color, closed) => {
-      if (closed) { solid(C.x1 - C.x0, H, 1, color, (C.x0 + C.x1) / 2, H / 2, z); return; }
-      solid(CHANNEL.x0 - C.x0, H, 1, color, (C.x0 + CHANNEL.x0) / 2, H / 2, z);
-      solid(C.x1 - CHANNEL.x1, H, 1, color, (CHANNEL.x1 + C.x1) / 2, H / 2, z);
-      solid(CHANNEL.x1 - CHANNEL.x0, H - gap, 1, color, GW.LANE_X, gap + (H - gap) / 2, z);
-    };
-    const tunnel = (z1, z0) => {
-      const len = z1 - z0, mid = (z0 + z1) / 2;
-      for (const x of [CHANNEL.x0 - 0.5, CHANNEL.x1 + 0.5]) solid(1, gap + 0.4, len, "#3a3530", x, gap / 2, mid);
-      solid(CHANNEL.x1 - CHANNEL.x0 + 2, 0.6, len, "#2a2622", GW.LANE_X, gap + 0.3, mid);
-    };
-    tunnel(GW.MOUTH_Z - 0.6, GW.ERAS[0].z1);
+  // Each era's gallery, in its frame and its old coordinates: its floor in the era's colour, a gold walk down the
+  // middle where the stream ran, an arch over its opening with the era's sign, hanging rocks and boulders (kept off
+  // the exhibits), glowing seams on its walls and its lamp posts.
+  const buildGalleries = () => {
+    const H = ROOF;
     built.caves = [];
-    GW.ERAS.forEach((e, i) => {
-      const t = e.theme, len = C.len, mid = e.z;
-      for (const bank of e.banks) {
-        solid(bank.x1 - bank.x0, 1.15, len, t.bank, (bank.x0 + bank.x1) / 2, ISLAND_TOP - 0.575, mid);
-      }
-      for (const x of [C.x0 - 0.5, C.x1 + 0.5]) solid(1, H, len, t.rock, x, H / 2, mid);
-      solid(C.x1 - C.x0 + 2, 0.8, len, t.rock, (C.x0 + C.x1) / 2, H + 0.4, mid);
-      if (i === 0) across(e.z1, t.rock, false);
-      if (i === GW.ERAS.length - 1) across(e.z0, t.rock, true);
-      else {
-        // The join to the next era: plain stone walls and roof, and the sign hung from the roof on two chains.
-        const z1 = e.z0, z0 = GW.ERAS[i + 1].z1, jm = (z0 + z1) / 2, jl = z1 - z0;
-        for (const x of [C.x0 - 0.5, C.x1 + 0.5]) solid(1, H, jl, "#3a3530", x, H / 2, jm);
-        solid(C.x1 - C.x0 + 2, 0.8, jl, "#2a2622", (C.x0 + C.x1) / 2, H + 0.4, jm);
-        for (const dx of [-4.5, 4.5]) solid(0.08, H - e.sign.y - e.sign.height / 2, 0.08, "#2a2622", e.sign.x + dx, (H + e.sign.y + e.sign.height / 2) / 2, e.sign.z);
-      }
-      // Hanging rocks and boulders, so the roof is not a lid and the banks are worth walking; glowing seams in the
-      // era's colour light the walls.
-      const rand = BL.math.mulberry32(31 + i), w = C.x1 - C.x0, glow = glowHex(t.lamp);
-      for (let k = 0; k < 14; k++) {
+    GW.ERAS.forEach((e, i) => inFrame(i, () => {
+      const t = e.theme, b = MU.bays[i], z0 = e.z1 - b.depth, z1 = e.z1 - MU.OPEN, len = z1 - z0, mid = (z0 + z1) / 2, w = b.x1 - b.x0, cx = (b.x0 + b.x1) / 2;
+      const clutter = (x, z, r) => {
+        const hit = (q) => x + r > q.x0 && x - r < q.x1 && z + r > q.z0 && z - r < q.z1;
+        return GW.reservedZones(i).some(hit) || built.oldObstacles.some((o) => o.era === i && hit(o));
+      };
+      solid(w, 1.15, len, t.bank, cx, ISLAND_TOP - 0.575, mid);
+      // The era's own rock on its walls, just inside the museum's (so its colour shows), and its roof.
+      for (const x of [b.x0 + 0.05, b.x1 - 0.05]) solid(0.1, H, len, t.rock, x, H / 2, mid);
+      solid(w, H, 0.1, t.rock, cx, H / 2, z0 + 0.05);
+      solid(w, 0.4, len, t.rock, cx, H - 0.2, mid);
+      place(createNode({ geometry: M.moved(M.box({ w: CHANNEL.x1 - CHANNEL.x0, h: 0.02, d: len, color: "#5d5850" }), GW.LANE_X, ISLAND_TOP + 0.005, mid), sightHidden: true }));
+      // The arch over the opening: two piers and a lintel in the era's rock, its lamp colour along the lintel, and the
+      // era's sign in its own signage over the way in, facing the atrium.
+      const glow = glowHex(t.lamp), archY = 12;
+      for (const x of [b.x0 + 1.5, b.x1 - 1.5]) solid(3, archY, 2, t.rock, x, archY / 2, z1);
+      solid(w, H - archY, 2, t.rock, cx, archY + (H - archY) / 2, z1);
+      solid(w - 6, 0.25, 0.2, glow, cx, archY - 0.15, z1 + 1.05, 1.2);
+      built.oldObstacles.push({ era: i, x0: b.x0, x1: b.x0 + 3, z0: z1 - 1, z1: z1 + 1 }, { era: i, x0: b.x1 - 3, x1: b.x1, z0: z1 - 1, z1: z1 + 1 });
+      const sign = eraSign(e);
+      hangSign(sign, GW.LANE_X, archY + 1 + sign.height / 2, z1 + 1.1, 0, sign.frame);
+      const rand = BL.math.mulberry32(31 + i);
+      for (let k = 0; k < 10; k++) {
         const h = 2 + rand() * 6;
-        solid(1.5 + rand() * 3, h, 1.5 + rand() * 3, t.rock, C.x0 + 2 + rand() * (w - 4), H - h / 2, e.z1 - 3 - rand() * (len - 6));
+        solid(1.5 + rand() * 3, h, 1.5 + rand() * 3, t.rock, b.x0 + 2 + rand() * (w - 4), H - h / 2, z1 - 3 - rand() * (len - 6));
       }
       for (let k = 0; k < 10; k++) {
-        const left = rand() < 0.5, x = left ? C.x0 + 2 + rand() * (CHANNEL.x0 - C.x0 - 6) : CHANNEL.x1 + 4 + rand() * (C.x1 - CHANNEL.x1 - 6);
-        const s = 0.8 + rand() * 2.2, z = e.z1 - 4 - rand() * (len - 8), r = s * 0.7 + 0.5;
-        // Boulders keep off the exhibits, the gateway, the docks, the lamps and the trail's walk.
-        if (Math.abs(x - (x < GW.LANE_X ? CHANNEL.x0 : CHANNEL.x1)) < GW.BANK.FRONT + r || clutter(i, x, z, r)) continue;
-        solid(s * 1.3, s, s, t.rock, x, ISLAND_TOP + s / 2, z);
+        const left = rand() < 0.5, x = left ? b.x0 + 2 + rand() * (CHANNEL.x0 - b.x0 - 6) : CHANNEL.x1 + 4 + rand() * (b.x1 - CHANNEL.x1 - 6);
+        const sz = 0.8 + rand() * 2.2, z = z1 - 4 - rand() * (len - 8), r = sz * 0.7 + 0.5;
+        if (x < b.x0 + 1 || x > b.x1 - 1 || Math.abs(x - (x < GW.LANE_X ? CHANNEL.x0 : CHANNEL.x1)) < GW.BANK.FRONT + r || clutter(x, z, r)) continue;
+        solid(sz * 1.3, sz, sz, t.rock, x, ISLAND_TOP + sz / 2, z);
+        built.oldObstacles.push({ era: i, x0: x - sz * 0.65, x1: x + sz * 0.65, z0: z - sz / 2, z1: z + sz / 2 });
       }
-      for (let k = 0; k < 12; k++) {
-        const left = k % 2 === 0, z = e.z1 - 4 - (k >> 1) * (len - 8) / 5, y = 3 + rand() * (H - 8);
-        solid(0.12, 0.4 + rand() * 0.6, 3 + rand() * 6, glow, left ? C.x0 + 0.06 : C.x1 - 0.06, y, z, 1.3);
+      for (let k = 0; k < 10; k++) {
+        const left = k % 2 === 0, z = z1 - 4 - (k >> 1) * (len - 8) / 4, y = 3 + rand() * (H - 8);
+        solid(0.12, 0.4 + rand() * 0.6, 3 + rand() * 6, glow, left ? b.x0 + 0.16 : b.x1 - 0.16, y, z, 1.3);
       }
-      // The era's big sign, in its era's own signage.
-      const sign = eraSign(e);
-      hangSign(sign, e.sign.x, e.sign.y, e.sign.z, 0, sign.frame);
-      // Lamp posts on the banks, where the cave's lights hang.
       for (const l of GW.lampPosts(i)) {
+        if (l.z < z0 + 1 || l.x < b.x0 + 1 || l.x > b.x1 - 1) continue;
         solid(0.3, 8.6, 0.3, "#3b2a1a", l.x, ISLAND_TOP + 4.3, l.z);
         solid(0.9, 0.9, 0.9, "#ffcf7a", l.x, ISLAND_TOP + 8.9, l.z, 1.5);
+        built.oldObstacles.push({ era: i, x0: l.x - 0.3, x1: l.x + 0.3, z0: l.z - 0.3, z1: l.z + 0.3 });
       }
       built.caves.push(e);
-    });
+    }));
   };
   // The museum's legend: a huge white screen on the entrance hall's left wall, an original timeline in the style of a
   // "prehistory" fishbone chart, painted once from this visit's exhibits. Every exhibit hangs off the time line at its
   // date (a date only, never a claim of influence); gold marks a whitepaper citation, a gold ring documented influence,
   // grey context; the paper (31 October 2008) and the first block (January 2009) stand apart at the right. A tap on it,
   // or Space beside it, opens the menu (the timeline as buttons, openMenu).
-  const LEGEND = { x: -11.8, y: 3.1, z: 0.2, w: 15, h: 5, at: { x: -9.4, z: 0.2 } };
+  // The white screen stands in the atrium ahead of the arrival, facing it (south): 24 m wide.
+  const LEGEND = { x: 0, y: 4.4, z: 48, w: 24, h: 8, ry: 0, at: { x: 0, z: 51 } };
   const buildLegend = () => {
     const W = 4096, H = Math.round(W * LEGEND.h / LEGEND.w), canvas = document.createElement("canvas"), g = canvas.getContext("2d");
     canvas.width = W; canvas.height = H;
@@ -262,9 +273,12 @@
     image.src = canvas.toDataURL("image/png");
     const face = { verts: [-LEGEND.w / 2, -LEGEND.h / 2, 0.03, LEGEND.w / 2, -LEGEND.h / 2, 0.03, LEGEND.w / 2, LEGEND.h / 2, 0.03, -LEGEND.w / 2, LEGEND.h / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
     face.imageSurface = { asset: { width: W, height: H, load: () => image }, rect: [-LEGEND.w / 2, -LEGEND.h / 2, LEGEND.w, LEGEND.h] };
-    const node = place(createNode({ position: { x: LEGEND.x, y: ISLAND_TOP + LEGEND.y, z: LEGEND.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
+    const node = place(createNode({ position: { x: LEGEND.x, y: ISLAND_TOP + LEGEND.y, z: LEGEND.z }, rotation: { x: 0, y: LEGEND.ry, z: 0 } }));
+    // Its two legs, and the box walkers meet under it.
+    for (const dx of [-LEGEND.w / 2 + 1, LEGEND.w / 2 - 1]) solid(0.3, LEGEND.y - LEGEND.h / 2 + 0.2, 0.3, "#3b2a1a", LEGEND.x + dx, ISLAND_TOP + (LEGEND.y - LEGEND.h / 2 + 0.2) / 2, LEGEND.z - 0.15);
+    built.obstacles.push({ x0: LEGEND.x - LEGEND.w / 2, x1: LEGEND.x + LEGEND.w / 2, z0: LEGEND.z - 0.4, z1: LEGEND.z + 0.2 });
     addChild(node, createNode({ geometry: M.bevelBox({ w: LEGEND.w + 0.4, h: LEGEND.h + 0.4, d: 0.16, color: "#d9d4c8", bevel: 0.05, offset: { z: -0.08 } }) }), createNode({ geometry: face }));
-    built.legend = place(createNode({ geometry: pickBox(LEGEND.w, LEGEND.h, 0.4), position: { x: LEGEND.x + 0.2, y: ISLAND_TOP + LEGEND.y, z: LEGEND.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
+    built.legend = place(createNode({ geometry: pickBox(LEGEND.w, LEGEND.h, 0.4), position: { x: LEGEND.x, y: ISLAND_TOP + LEGEND.y, z: LEGEND.z + 0.2 }, rotation: { x: 0, y: LEGEND.ry, z: 0 } }));
     built.legendItems = count;
   };
   // === Walking and the workbench ===================================================================================
@@ -289,14 +303,14 @@
 
   // The props' models: an original beige office PC on a table, the 1956 drive cabinet beside a fingernail-sized
   // card on a plinth, and Tock's book on a stand. Each has a sign naming it and its year.
-  const buildProps = () => {
+  const buildProps = () => inFrame(ROOM_ERA, () => {
     const label = BL.factoryModels.label;
     const sign = (prop, sub, y) => {
       const s = label(prop.label, sub, { height: 0.45, style: "plain" });
-      const n = place(createNode({ position: { x: prop.at.x + 0.35, y: prop.at.y + y, z: prop.at.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
+      const at = PROPS[prop.id], n = place(createNode({ position: { x: at.x + 0.35, y: at.y + y, z: at.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
       addChild(n, createNode({ geometry: s.back }), createNode({ geometry: s.face }));
     };
-    const pc = props.get("pc").at, dr = props.get("drives").at, bk = props.get("book").at;
+    const pc = PROPS.pc, dr = PROPS.drives, bk = PROPS.book;
     solid(1.1, 0.08, 1.2, "#6b4a2b", pc.x, pc.y + 0.72, pc.z);
     for (const [dx, dz] of [[-0.45, -0.5], [0.45, -0.5], [-0.45, 0.5], [0.45, 0.5]]) solid(0.07, 0.72, 0.07, "#4c331d", pc.x + dx, pc.y + 0.36, pc.z + dz);
     solid(0.5, 0.16, 0.9, "#d8cfb4", pc.x - 0.15, pc.y + 0.84, pc.z);
@@ -318,7 +332,8 @@
     solid(0.02, 0.05, 0.02, "#2a2a2a", bk.x + 0.1, bk.y + 1.0, bk.z + 0.15);
     built.book = place(createNode({ geometry: pickBox(0.7, 1.2, 0.8), position: { x: bk.x, y: bk.y + 0.6, z: bk.z } }));
     sign(props.get("book"), "stamp your own page", 1.45);
-  };
+    for (const id of ["pc", "drives", "book"]) built[id].museumFrame = ROOM_ERA;
+  });
   // Fingerprints and Time's whitepaper citations, as trail stops at its lectern (tap it, or I, for the panel).
   const LECTERN = { x: -5.6 + SX, z: -22.6 + SZ };
   const ROOM_LINKS = [
@@ -330,12 +345,12 @@
   // that taps select. Built once a visit, before the footing, so their obstacles count.
   const buildExhibits = () => {
     const EX = BL.genesisExhibits, label = BL.factoryModels.label;
-    built.propNodes = {}; built.obstacles = []; built.exhibitProps = []; built.trail = [];
+    built.propNodes = {}; built.exhibitProps = []; built.trail = [];
     exhibitEra = -1;
     if (!EX) return;
-    for (let n = 0; n < GW.ERAS.length; n++) {
+    for (let n = 0; n < GW.ERAS.length; n++) inFrame(n, () => {
       const def = EX.eras[n];
-      if (!def) continue;
+      if (!def) return;
       const era = GW.ERAS[n];
       const kit = {
         era, top: ISLAND_TOP, channel: CHANNEL, M, createNode, addChild, place, solid, label,
@@ -346,7 +361,7 @@
           addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
           return node;
         },
-        obstacle: (x0, x1, z0, z1) => { built.obstacles.push({ x0, x1, z0, z1 }); },
+        obstacle: (x0, x1, z0, z1) => { built.oldObstacles.push({ era: n, x0, x1, z0, z1 }); },
         prop: (d) => {
           const problem = EX.checkProp(n, d);
           if (problem) throw new Error(`genesis exhibits: era ${n}: ${problem}`);
@@ -357,27 +372,30 @@
             if (!r || !(r.board || r.terminal)) return r;
             const c = EX.CONNECTIONS[d.connection];
             const how = [`${c.label}${d.ref ? ` ${d.ref}` : ""}.${d.date ? ` ${d.date}.` : ""}`, entry.step
-              ? `Step ${entry.step} of ${built.trail.length} on the Steps toward Bitcoin: follow the gold path along the banks, in date order.`
+              ? `Step ${entry.step} of ${built.trail.length} on the Steps toward Bitcoin: follow the gold path through the galleries, in date order.`
               : entry.shows ? `It shows ${entry.shows} on the Steps toward Bitcoin working; it is not a step of its own.`
-              : entry.listed ? `Listed in the paper's own references. Its story, and its place on the Steps toward Bitcoin, are upstream: ${entry.listed}. This slot is not a second step.`
+              : entry.listed ? `Listed in the paper's own references. Its story, and its place on the Steps toward Bitcoin, are earlier in the museum: ${entry.listed}. This slot is not a second step.`
               : "Part of the story of these years, not something the Bitcoin whitepaper cites or is shown to have drawn on."];
             // A terminal has no pages: the same words open its screen, as its banner's first lines.
             if (r.terminal) { const t = r.terminal; return { ...r, terminal: { banner: [`HOW IT CONNECTS: ${how[0]}`, how[1], "", ...t.banner], prompt: t.prompt, run: (line) => t.run(line) } }; }
             return { ...r, board: { ...r.board, pages: [...r.board.pages, { caption: "How it connects", title: c.label, text: how }] } };
           } : d.onUse;
-          const prop = props.register({ ...d, era: n, onUse });
+          // Registered where it stands in the museum; its tap box goes in the gallery's frame, in the era's coordinates.
+          const prop = props.register({ ...d, era: n, onUse, at: muAt(n, d.at) });
           entry.prop = prop;
           built.exhibitProps.push(entry);
           const pick = d.pick || { w: 1, h: 1.4, d: 1 };
-          built.propNodes[prop.id] = place(createNode({ geometry: pickBox(pick.w, pick.h, pick.d), position: { x: pick.x !== undefined ? pick.x : prop.at.x, y: (prop.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : prop.at.z } }));
-          return prop;
+          const node = place(createNode({ geometry: pickBox(pick.w, pick.h, pick.d), position: { x: pick.x !== undefined ? pick.x : d.at.x, y: (d.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : d.at.z } }));
+          node.museumFrame = n;
+          built.propNodes[prop.id] = node;
+          return { ...d, era: n };
         }
       };
       def.build(kit);
-    }
+    });
     // Fingerprints and Time's own exhibits are trail stops too, linked rather than duplicated: the lectern's panel
     // tells both papers' story (genesis-voyage.js FINGERPRINTS).
-    for (const link of ROOM_LINKS) built.exhibitProps.push({ era: ROOM_ERA, def: link, prop: { id: link.id, at: link.at }, order: built.exhibitProps.length, step: 0, room: true });
+    for (const link of ROOM_LINKS) built.exhibitProps.push({ era: ROOM_ERA, def: link, prop: { id: link.id, at: muAt(ROOM_ERA, link.at) }, order: built.exhibitProps.length, step: 0, room: true });
     built.trail = EX.trailOf(built.exhibitProps);
     // A demonstration links to the stops it shows, by their numbers, and must name stops that exist.
     for (const e of built.exhibitProps) {
@@ -397,14 +415,16 @@
   // `calm` is the visit's Calm (reduced motion): era files hold decorative movement and blinking while it is on. When
   // the cave the visitor is in (aboard or ashore) changes, the era left gets `active(false, state)` and the era entered
   // `active(true, state)`, so a cave can stop what outlives its frames (sound scheduled ahead) the moment it is left.
-  const exhibitState = { era: -1, walking: false, reading: false, x: 0, z: 0, calm: false };
+  const exhibitState = { era: -1, walking: false, reading: false, x: 0, z: 0, calm: false }, oldPoint = { x: 0, z: 0 };
   let exhibitEra = -1;
   const updateExhibits = (dt, elapsed) => {
     const EX = BL.genesisExhibits;
     if (!EX) return;
     // While a workbench is open its exhibit's era runs (so its model answers), wherever the visitor stands.
-    const p = bench.open ? bench.focus : avatar ? avatar.root.position : ENTRY, era = bench.open ? bench.era : GW.eraAt(p.x, p.z), def = era >= 0 ? EX.eras[era] : null;
-    exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.x = p.x; exhibitState.z = p.z; exhibitState.calm = view.calm;
+    const p = bench.open ? bench.focus : avatar ? avatar.root.position : ENTRY, era = bench.open ? bench.era : MU.eraNear(p.x, p.z), def = era >= 0 ? EX.eras[era] : null;
+    // An era file reads the visitor's place in its own old coordinates.
+    if (era >= 0) MU.fromMuseum(era, p.x, p.z, oldPoint); else { oldPoint.x = p.x; oldPoint.z = p.z; }
+    exhibitState.era = era; exhibitState.walking = walk.on; exhibitState.x = oldPoint.x; exhibitState.z = oldPoint.z; exhibitState.calm = view.calm;
     exhibitState.reading = view.reading || bench.open;
     if (era !== exhibitEra) {
       const left = exhibitEra >= 0 ? EX.eras[exhibitEra] : null;
@@ -554,40 +574,34 @@
   const buildEraFrames = () => {
     const label = BL.factoryModels.label, B = GW.BANK, p = { x: 0, z: 0 }, EX = BL.genesisExhibits;
     built.overviews = [];
-    GW.ERAS.forEach((e) => {
+    GW.ERAS.forEach((e) => inFrame(e.n, () => {
       const glow = glowHex(e.theme.lamp);
-      for (const p of GW.pylons(e.n)) {
-        solid(1.2, 5.2, 1.2, e.theme.rock, p.x, ISLAND_TOP + 2.6, p.z);
-        solid(1.3, 0.2, 1.3, glow, p.x, ISLAND_TOP + 5.3, p.z, 1.2);
-        hangSign(label(`ERA ${e.n}`, e.years, { height: 1.1, style: "plain" }), p.x, ISLAND_TOP + 4.1, p.z + 0.62, 0);
-        built.obstacles.push({ x0: p.x - 0.7, x1: p.x + 0.7, z0: p.z - 0.7, z1: p.z + 0.7 });
-      }
       const spot = GW.overviewSpot(e.n);
       p.x = spot.x; p.z = spot.z;
       const def = EX && EX.eras[e.n], mine = built.exhibitProps.filter((x) => x.era === e.n).sort((a, b) => EX.yearKey(a.def.year) - EX.yearKey(b.def.year) || a.order - b.order);
       const board = textBoard({ kicker: `ERA ${e.n} · ${e.years.toUpperCase()}`, title: e.name, width: 3.4,
-        body: [def && def.overview ? def.overview.summary : mine.length ? "Walk the banks: every exhibit here shows its year." : "This cave's exhibits are still being built."],
-        list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  \u2605 step ${x.step}` : ""}`, gold: !!x.step })),
-          ...(mine.some((x) => x.step) ? [{ text: "\u2605 Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
+        body: [def && def.overview ? def.overview.summary : mine.length ? "Walk the gallery: every exhibit here shows its year." : "This gallery's exhibits are still being built."],
+        list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
+          ...(mine.some((x) => x.step) ? [{ text: "★ Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
       const ry = spot.ry, lift = ISLAND_TOP + 0.9 + board.height / 2;
       // Its post stands behind the board (genesis-world.js overviewSpot), never through its face.
       solid(spot.post.w, 0.9 + board.height / 2, spot.post.w, "#3b2a1a", spot.post.x, ISLAND_TOP + (0.9 + board.height / 2) / 2, spot.post.z);
       hangSign(board, p.x, lift, p.z, ry, glow);
       const pick = place(createNode({ geometry: pickBox(3.6, board.height + 1.2, 0.6), position: { x: p.x, y: lift, z: p.z }, rotation: { x: 0, y: ry, z: 0 } }));
       // Walkers meet the board along its line and use it from in front of its face (genesis-world.js overviewSpot).
-      built.overviews.push({ era: e.n, pick, at: { x: spot.at.x, y: ISLAND_TOP, z: spot.at.z } });
-      for (const box of spot.boxes) built.obstacles.push(box);
-    });
+      built.overviews.push({ era: e.n, pick, at: muAt(e.n, { x: spot.at.x, y: ISLAND_TOP, z: spot.at.z }) });
+      for (const box of spot.boxes) built.oldObstacles.push({ era: e.n, ...box });
+    }));
   };
   // The trail's path: a gold strip along each bank's walk (BANK.TRAIL_V) from the gateway to its last step, chevrons
   // pointing downstream (later in time), a spur to each step and a numbered post; pieces crossing a reserved plot
   // other than the gateway (the dock and its ramps, a lamp, Fingerprints and Time) are left out. One merged mesh.
   const buildTrail = () => {
     const label = BL.factoryModels.label, B = GW.BANK, p = { x: 0, z: 0 }, parts = [];
-    for (const e of GW.ERAS) {
+    for (const e of GW.ERAS) inFrame(e.n, () => {
       const reserved = GW.reservedZones(e.n).filter((r) => r.why !== "gateway");
       for (const side of [-1, 1]) {
-        const stops = built.trail.filter((x) => x.era === e.n).map((x) => ({ x, ...bankPlace(e.n, x.prop.at) })).filter((s) => s.side === side);
+        const stops = built.trail.filter((x) => x.era === e.n).map((x) => ({ x, ...bankPlace(e.n, x.def.at) })).filter((s) => s.side === side);
         if (!stops.length) continue;
         const f = stops[0].f, end = Math.max(...stops.map((s) => s.u));
         for (let u = 6; u < end; u += 2) {
@@ -603,8 +617,10 @@
           hangSign(label(`STEP ${s.x.step}`, `${s.x.def.year}`, { height: 0.55, style: "gold" }), p.x, ISLAND_TOP + 1.75, p.z, side < 0 ? Math.PI / 2 : -Math.PI / 2);
         }
       }
-    }
-    if (parts.length) place(createNode({ geometry: M.merge(...parts), sightHidden: true }));
+      // One merged mesh per gallery, in its frame.
+      if (parts.length) place(createNode({ geometry: M.merge(...parts), sightHidden: true }));
+      parts.length = 0;
+    });
   };
   // Each overview board as a prop: Space beside it, or a tap, opens the era's panel.
   const registerOverviews = () => {
@@ -630,14 +646,14 @@
     props.register({ id: "legend", era: 0, year: 1956, title: "The Genesis timeline", label: "THE GENESIS TIMELINE · 1956-2009", sourceKeys: [],
       at: { x: LEGEND.at.x, y: ISLAND_TOP, z: LEGEND.at.z }, reach: 3.4, onUse: () => ({ menu: true }) });
     const dos = GP.createDos({ year: 1993, files: GP.PC_FILES });
-    props.register({ id: "pc", era: 3, year: 1993, title: "Tock's office PC", label: "OFFICE PC · 1993", sourceKeys: ["merkle1980", "haber1991", "bayer1993"], at: PROPS.pc,
+    props.register({ id: "pc", era: 3, year: 1993, title: "Tock's office PC", label: "OFFICE PC · 1993", sourceKeys: ["merkle1980", "haber1991", "bayer1993"], at: muAt(ROOM_ERA, PROPS.pc),
       onUse: () => ({ terminal: dos }) });
     // TODO: moves to Era 0's cave (1956) when its exhibits are built; it stands here until then.
-    props.register({ id: "drives", era: 0, year: 1956, title: "Hard drives, 1956 and 2019", label: "HARD DRIVES · 1956 AND 2019", sourceKeys: GP.DRIVES.old.sourceKeys.concat(GP.DRIVES.now.sourceKeys), at: PROPS.drives,
+    props.register({ id: "drives", era: 0, year: 1956, title: "Hard drives, 1956 and 2019", label: "HARD DRIVES · 1956 AND 2019", sourceKeys: GP.DRIVES.old.sourceKeys.concat(GP.DRIVES.now.sourceKeys), at: muAt(ROOM_ERA, PROPS.drives),
       onUse: () => ({ board: { room: "Hard drives: 1956 and 2019", pages: GP.drivePages(), sources: GP.DRIVES.old.sourceKeys.concat(GP.DRIVES.now.sourceKeys) } }) });
     const book = GP.createStampBook();
     built.stampBook = book;
-    props.register({ id: "book", era: 3, year: 1991, title: "Tock's book", label: "TOCK'S BOOK · 1991", sourceKeys: ["haber1991"], at: PROPS.book,
+    props.register({ id: "book", era: 3, year: 1991, title: "Tock's book", label: "TOCK'S BOOK · 1991", sourceKeys: ["haber1991"], at: muAt(ROOM_ERA, PROPS.book),
       onUse: () => ({ terminal: GP.stampTerminal(book) }) });
   };
 
@@ -665,7 +681,9 @@
     const id = bench.id, at = bench.prop.at, room = /^era3-room-/.test(id);
     const node = room ? built.lectern : built.propNodes[id] || built[id], pick = room ? { w: 0.7, h: 1.1, d: 0.5 } : bench.entry && (propOf(id).pick || PICK_SIZES[id]) || { w: 1, h: 1.4, d: 1 };
     const c = frameIn.c;
-    c.x = node ? node.position.x : at.x; c.y = node ? node.position.y : (at.y || 0) + pick.h / 2; c.z = node ? node.position.z : at.z;
+    if (node && node.museumFrame !== undefined) { mu(node.museumFrame, node.position.x, node.position.z, c); c.y = node.position.y; }
+    else if (node) { c.x = node.position.x; c.y = node.position.y; c.z = node.position.z; }
+    else { c.x = at.x; c.y = (at.y || 0) + pick.h / 2; c.z = at.z; }
     frameIn.size = Math.max(pick.w, pick.h, pick.d, 0.8);
     frameIn.toward.x = at.x - c.x; frameIn.toward.z = at.z - c.z;
     if (Math.hypot(frameIn.toward.x, frameIn.toward.z) < 0.3) { frameIn.toward.x = 0.0001; frameIn.toward.z = 1; }
@@ -692,6 +710,8 @@
         s2.fov = camera.fov; s2.near = camera.near; s2.up = camera.up || null; s2.orthoMix = camera.orthoMix || 0; s2.orthoHeight = camera.orthoHeight || 0;
         camera.up = null; camera.orthoMix = camera.orthoHeight = 0;
         pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
+        // The visitor's Ooga steps out of the picture, so it never stands between the camera and the model.
+        if (avatar) { bench.avatarShown = avatar.root.visible; avatar.root.visible = false; }
       }
       bench.open = true; bench.id = id; bench.entry = entry; bench.prop = prop; bench.era = entry.era; bench.framing = false; bench.eased = false;
       bench.from = from; bench.opens++;
@@ -728,6 +748,7 @@
       const s2 = bench.saved;
       camera.position.x = s2.x; camera.position.y = s2.y; camera.position.z = s2.z; camera.target.x = s2.tx; camera.target.y = s2.ty; camera.target.z = s2.tz;
       camera.fov = s2.fov; camera.near = s2.near; camera.up = s2.up; camera.orthoMix = s2.orthoMix; camera.orthoHeight = s2.orthoHeight;
+      if (avatar) avatar.root.visible = bench.avatarShown !== false;
       pilot.setActive(true);
       if (overlayCanvas.focus) overlayCanvas.focus({ preventScroll: true });
       if (at && avatar) {
@@ -850,9 +871,9 @@
     const b = {
       // The title is lettered from the sign alphabet (letters, digits, space and / : ! ? + - .); anything else is
       // turned into a dash or dropped.
-      title: ex.room.replace(/[·\u2013\u2014]/g, "-").replace(/[^A-Za-z0-9 /:!?+\-.]/g, ""), help: "Arrows page · Escape closes and the walk carries on", canvas, count: ex.pages.length, index: 0,
+      title: ex.room.replace(/[·–—]/g, "-").replace(/[^A-Za-z0-9 /:!?+\-.]/g, ""), help: "Arrows page · Escape closes and the walk carries on", canvas, count: ex.pages.length, index: 0,
       caption: ex.pages[0].caption, note: ex.pages[0].text.join(" "), version: 0, wide: true,
-      links: ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} \u2197` })),
+      links: ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} ↗` })),
       go(i) {
         b.index = i; b.caption = ex.pages[i].caption; b.note = ex.pages[i].text.join(" ");
         paintPage(canvas, ex.pages[i]); b.version++;
@@ -959,6 +980,14 @@
   };
 
   // --- Frame ----------------------------------------------------------------------------------------------------
+  // The lamps nearest the visitor first, so a tier that keeps fewer keeps the ones in sight. Allocation-free.
+  const lightOrder = new Int32Array(LIGHTS.length), lightDist = new Float32Array(LIGHTS.length);
+  const orderLights = (px, pz) => {
+    for (let i = 0; i < LIGHTS.length; i++) { const l = LIGHTS[i]; lightDist[i] = (l[0] - px) * (l[0] - px) + (l[2] - pz) * (l[2] - pz); lightOrder[i] = i; }
+    for (let i = 1; i < LIGHTS.length; i++) { const v = lightOrder[i], d = lightDist[v]; let j = i - 1; while (j >= 0 && lightDist[lightOrder[j]] > d) { lightOrder[j + 1] = lightOrder[j]; j--; } lightOrder[j + 1] = v; }
+    const n = renderOpts.lightCount;
+    for (let i = 0; i < n; i++) { const l = LIGHTS[lightOrder[i]], o = i * 8; for (let k = 0; k < 7; k++) renderOpts.lights[o + k] = l[k]; renderOpts.lights[o + 7] = 0; }
+  };
   const stepDemo = (dt) => {
     if (!view.paused && !view.reading) demo.update(dt);
     if (demo.stamps !== lastStamps) { lastStamps = demo.stamps; audio.cue("stamp"); }
@@ -995,18 +1024,18 @@
     const arm = built.guide.parts.armR;
     if (arm) arm.rotation.x = p === "stamp" ? -1.2 + Math.sin(Math.min(1, t * 1.6) * Math.PI) * 0.6 : p === "tamper" ? -0.4 : -0.15;
     // The desk narrates while the visitor stands near it.
-    const nearDesk = walk.on && avatar && Math.hypot(avatar.root.position.x - DESK.x, avatar.root.position.z - DESK.z) < 9;
+    const nearDesk = walk.on && avatar && Math.hypot(avatar.root.position.x - DESK_AT.x, avatar.root.position.z - DESK_AT.z) < 9;
     if (nearDesk && !view.paused && p !== lastPhase) setCaption(p);
     lastPhase = p;
   };
   // The era the visitor stands in: its music and, on crossing into it, its caption.
   const updateEra = () => {
-    const p = avatar ? avatar.root.position : ENTRY, era = GW.eraAt(p.x, p.z);
+    const p = avatar ? avatar.root.position : ENTRY, era = MU.eraNear(p.x, p.z);
     if (era === lastEra) return;
     audio.setEra(Math.max(0, era));
     if (era >= 0 && lastEra !== -2) {
       const e = GW.ERAS[era], n = exhibitCount(era);
-      setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}).${e.room ? " Fingerprints and Time is on the left." : ""} ${n ? `${n} exhibits along both walls; Space by one opens its workbench.` : "Its exhibits are still being built."}`);
+      setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}).${e.room ? " Fingerprints and Time is on the left." : ""} ${n ? `${n} exhibits in this gallery; Space by one opens its workbench.` : "Its exhibits are still being built."}`);
     }
     lastEra = era;
   };
@@ -1033,6 +1062,7 @@
     }
     const p = avatar ? avatar.root.position : ENTRY;
     renderOpts.shadowCenter.x = bench.open ? bench.focus.x : p.x; renderOpts.shadowCenter.z = bench.open ? bench.focus.z : p.z;
+    orderLights(renderOpts.shadowCenter.x, renderOpts.shadowCenter.z);
     remotes.update(dt);
     fx.update(dt, sceneTime);
     hud.updateBoard(sceneTime);
@@ -1048,15 +1078,18 @@
     BL.hud.leaveTo("genesis", "hub");
     root = createNode();
     camera = createCamera({ fov: 62, near: 0.15, far: 240 });
-    built = {};
-    // The era files build first, so the hall's boulders, the legend and the shared signage know them.
-    buildCavern(); buildFloor(); buildDesk();
+    built = { obstacles: [], oldObstacles: [] };
+    // Each era's gallery frame: its old cave turned and moved round the atrium (genesis-world.js MUSEUM).
+    built.frames = MU.bays.map((b) => place(createNode({ position: { x: b.tx, y: 0, z: b.tz }, rotation: { x: 0, y: b.rot, z: 0 } })));
+    // The era files build first, so the galleries' boulders, the legend and the shared signage know them.
+    buildMuseum(); buildCavern(); buildDesk();
     registerProps();
     buildExhibits(); buildCatalogue();
-    buildCaves(); buildLegend(); buildEraFrames(); buildTrail();
+    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail();
     registerOverviews();
-    // The visit's footing: the fixed ledges and banks, plus whatever this visit's exhibits put in the way.
-    footing = GP.createFooting({ areas: FOOTING.areas, obstacles: FOOTING.obstacles.concat(built.obstacles) });
+    // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
+    // its old world, turned into the museum's).
+    footing = GP.createFooting({ areas: FOOTING.areas, obstacles: FOOTING.obstacles.concat(built.obstacles, built.oldObstacles.map((o) => MU.boxToMuseum(o.era, o))) });
     buildProps();
     demo = G.createStampDemo();
     board = makeBoard();
@@ -1066,8 +1099,8 @@
     bench.open = false; bench.entry = bench.term = bench.board = null; bench.era = -1; bench.id = null; bench.framing = false; bench.opens = bench.runs = 0;
     view.calm = PREFERS_CALM.matches;
     sceneTime = 0; captionKey = ""; lastStamps = 0; lastPhase = ""; lastTiles = -1; lastBroken = false;
-    renderOpts.lightCount = LIGHTS.length;
-    for (let i = 0; i < LIGHTS.length; i++) { const l = LIGHTS[i], o = i * 8; for (let k = 0; k < 7; k++) renderOpts.lights[o + k] = l[k]; renderOpts.lights[o + 7] = 0; }
+    renderOpts.lightCount = Math.min(LIGHTS.length, BL.glRenderer.POINT_LIGHT_CAPACITY);
+    orderLights(ENTRY.x, ENTRY.z);
     hud = BL.hud.create({ signal: ctx.signal, roster: BL.contributors.activeRoster, catalog: M.SWAG, tierColors: M.TIER_COLORS, renderIcon: BL.hud.renderIcon, lootEnabled: false });
     const hooks = {};
     input = BL.interact.create({ canvas: ctx.canvas, renderer: ctx.renderer, camera, hooks });
@@ -1082,18 +1115,23 @@
     for (const o of built.overviews) target(o.pick, { kind: "prop", prop: props.get(`era${o.era}-overview`), priority: 1 });
     // Walking: the pilot and crew for the visitor's Ooga (as the arcade's are).
     const viewFov = camera.fov;
-    const clampTarget = (p) => { p.x = clamp(p.x, GW.SEA.x0, GW.SEA.x1); p.y = clamp(p.y, 0.3, GW.CAVE.height - 1); p.z = clamp(p.z, GW.SEA.z0, 8.5); };
-    // The camera keeps inside the walls: the hall's, the corridor's and the entrance hall's (which is narrower).
-    const clampCamera = (p) => {
-      p.x = clamp(p.x, GW.SEA.x0 + 0.3, GW.SEA.x1 - 0.3); p.z = clamp(p.z, GW.SEA.z0, 8.6);
-      if (p.z > GW.MOUTH_Z - 0.6) p.x = clamp(p.x, GW.HARBOUR.x0 - 0.5, GW.HARBOUR.x1 + 0.5);
-      else if (p.z > GW.ERAS[0].z1) p.x = clamp(p.x, CHANNEL.x0 + 0.2, CHANNEL.x1 - 0.2);
-      p.y = clamp(p.y, 0.4, GW.ceilingAt(p.x, p.z));
+    // The camera and its target keep inside the museum: the atrium or a gallery, under the roof. A point outside
+    // goes to the nearest point of the room it is nearest.
+    const keepInside = (p, pad) => {
+      if (MU.inside(p.x, p.z, -pad)) return;
+      let bx = p.x, bz = p.z, best = Infinity;
+      for (const r of [MU.atrium, ...MU.rects]) {
+        const x = clamp(p.x, r.x0 + pad, r.x1 - pad), z = clamp(p.z, r.z0 + pad, r.z1 - pad), d = (x - p.x) ** 2 + (z - p.z) ** 2;
+        if (d < best) { best = d; bx = x; bz = z; }
+      }
+      p.x = bx; p.z = bz;
     };
+    const clampTarget = (p) => { keepInside(p, 0.2); p.y = clamp(p.y, 0.3, ROOF - 1); };
+    const clampCamera = (p) => { keepInside(p, 0.4); p.y = clamp(p.y, 0.4, ROOF - 0.6); };
     pilot = BL.pilot.create({
       renderer: ctx.renderer, canvas: ctx.canvas, camera, hud, presets: WALK_PRESETS, landing: "dock", pitch: [-0.2, 1.2], dist: [2.5, 12],
       follow: { y: 0.9, min: 2.5, max: 6, pitch: [0.2, 0.8] }, fly: { speed: 6, perDist: 0.3, climb: 4, yMax: 22 }, clampTarget, clampCamera,
-      ceilingAt: (x, z) => GW.ceilingAt(x, z), coarse: COARSE, mayPossess,
+      ceilingAt: () => ROOF - 0.6, coarse: COARSE, mayPossess,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: (x, z) => footing.supportAt(x, z, feetOf()) }
     });
     camera.fov = viewFov;
@@ -1163,7 +1201,7 @@
     window.addEventListener("resize", () => { if (bench.open) { bench.eased = false; workbench.resize(); } }, { signal: ctx.signal });
     window.addEventListener("pointerdown", audio.wake, { signal: ctx.signal });
     window.addEventListener("keydown", audio.wake, { signal: ctx.signal });
-    setCaption("arrive-museum", "The Genesis museum: the ideas that came before Bitcoin, in date order down the hall. The white timeline on your left lists every invention (or press G). Walk up to any exhibit and press Space, or tap it, to open its workbench.");
+    setCaption("arrive-museum", "The Genesis museum: the ideas that came before Bitcoin, in galleries round this hall in date order, clockwise from your left. The white timeline ahead lists every invention (or press G). Walk up to any exhibit and press Space, or tap it, to open its workbench.");
     paintChain();
     showControls();
     hud.setStats(game.state);
@@ -1218,7 +1256,7 @@
     const all = (n) => { nodes++; for (const c of n.children) all(c); };
     all(root);
     const p = avatar ? avatar.root.position : ENTRY;
-    return { allNodes: nodes, targets: input.targetCount, era: GW.eraAt(p.x, p.z), bench: bench.open ? bench.id : null, opens: bench.opens, runs: bench.runs,
+    return { allNodes: nodes, targets: input.targetCount, era: MU.eraNear(p.x, p.z), bench: bench.open ? bench.id : null, opens: bench.opens, runs: bench.runs,
       demo: demo.phase, paused: view.paused, reading: view.reading,
       walking: walk.on, falls: walk.falls, uses: propState.uses, fx: fx.stats ? fx.stats() : null, crew: people ? people.stats() : null };
   };

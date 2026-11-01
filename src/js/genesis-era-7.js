@@ -6,7 +6,7 @@
 // Three islands, each a device (a terminal) and a panel lectern (In short, Deeper story, Unsolved, Sources):
 // - THE FIRST BLOCK (left bank, upstream): a record case showing the genesis block's stored fields, its embedded
 //   headline as recorded data, and why its output is special. All times are labelled block-header timestamps.
-// - THE SOFTWARE DESK (right bank): the 8 January 2009 release announcement, and an invented network of three
+// - THE SOFTWARE DESK (right side): the 8 January 2009 release announcement, and an invented network of three
 //   simulated terminals that unplug, catch up and compare records. Nothing real: no ports, downloads, mining,
 //   wallets or payments.
 // - AN EARLY TEST PAYMENT (left bank, downstream): a counting table that splits 50 counters into 10 and 40, with
@@ -335,9 +335,9 @@
     sourceKeys: ["E7-GEN", "E7-GEN-DATA", "E7-REL", "E7-170", "E7-170-TXS", "E7-FIN", "E7-DOSSIER"],
     pages: [
       { caption: "Try", title: "Three islands", text: [
-        "The first block (left bank, nearest the way in): read the stored fields and the words inside the genesis block.",
-        "The software desk (right bank): unplug a pretend terminal, add a record, plug it back in and compare.",
-        "An early test payment (left bank, past the dock): split 50 counters into 10 and 40."] },
+        "The first block (left side, nearest the way in): read the stored fields and the words inside the genesis block.",
+        "The software desk (right side): unplug a pretend terminal, add a record, plug it back in and compare.",
+        "An early test payment (left side, further in): split 50 counters into 10 and 40."] },
       { caption: "Dates", title: "What each date marks", text: [
         "3 January 2009, 18:15:05 UTC: the genesis block's header timestamp.",
         "8 January 2009, 19:27:40 UTC: the archived timestamp of the release email.",

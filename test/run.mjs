@@ -23491,6 +23491,45 @@ const genesisBenchProof = async () => {
 // genesis-workbench:end
 // genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
 // genesis-timeline:end
+const genesisMuseumProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const W = context.window.BL.genesisWorld, EX = context.window.BL.genesisExhibits, M = W.MUSEUM, bad = [];
+  const overlap = (a, b) => a.x0 < b.x1 - 1e-6 && a.x1 > b.x0 + 1e-6 && a.z0 < b.z1 - 1e-6 && a.z1 > b.z0 + 1e-6;
+  // Galleries never overlap each other or the atrium; each opens onto the atrium along one of its sides.
+  M.rects.forEach((r, i) => {
+    if (overlap(r, M.atrium)) bad.push(`gallery ${i} overlaps the atrium`);
+    M.rects.forEach((q, k) => { if (k > i && overlap(r, q)) bad.push(`galleries ${i} and ${k} overlap`); });
+    const A = M.atrium, touches = Math.abs(r.x1 - A.x0) < 1e-6 || Math.abs(r.x0 - A.x1) < 1e-6 || Math.abs(r.z1 - A.z0) < 1e-6 || Math.abs(r.z0 - A.z1) < 1e-6;
+    if (!touches) bad.push(`gallery ${i} does not open onto the atrium`);
+  });
+  // The galleries run clockwise in date order (seen from above, north is -z): their openings' bearing from the
+  // atrium's middle turns one way all round.
+  const bearings = M.rects.map((r) => Math.atan2((r.x0 + r.x1) / 2, -(r.z0 + r.z1) / 2));
+  const turns = bearings.map((b, i) => { const d = bearings[(i + 1) % 8] - b; return ((d % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); });
+  const clockwise = turns.slice(0, 7).every((t) => t > 0 && t < Math.PI);
+  // An era's old world turns into the museum and back exactly.
+  let roundTrip = true;
+  for (let n = 0; n < 8; n++) for (const [x, z] of [[-20, W.ERAS[n].z1 - 30], [7, W.ERAS[n].z1 - 55]]) {
+    const a = M.toMuseum(n, x, z, {}), b = M.fromMuseum(n, a.x, a.z, {});
+    if (Math.abs(b.x - x) > 1e-9 || Math.abs(b.z - z) > 1e-9) roundTrip = false;
+  }
+  // Every era's exhibits, solids, signs and obstacles land inside its own gallery, none in the atrium.
+  let pieces = 0;
+  W.ERAS.forEach((e, n) => {
+    const r = M.rects[n], inBay = (x, z, what) => { pieces++; const p = M.toMuseum(n, x, z, {}); if (p.x < r.x0 - 0.05 || p.x > r.x1 + 0.05 || p.z < r.z0 - 0.05 || p.z > r.z1 + 0.05) bad.push(`era ${n}: ${what} at ${x.toFixed(1)},${z.toFixed(1)} is outside its gallery`); };
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+    const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: (o = {}) => Object.assign(node(), o), addChild: (p, ...c) => c[0],
+      place: (nd) => nd, label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
+      solid: (w, h, d, c, x, y, z) => { inBay(x - w / 2, z - d / 2, "a solid"); inBay(x + w / 2, z + d / 2, "a solid"); return node(); },
+      sign: (t, sub, x, y, z) => { inBay(x, z, `sign "${t}"`); return node(); },
+      obstacle: (x0, x1, z0, z1) => { inBay(x0, z0, "an obstacle"); inBay(x1, z1, "an obstacle"); },
+      prop: (d) => { inBay(d.at.x, d.at.z, d.id); return { ...d, era: n }; } };
+    if (EX.eras[n]) EX.eras[n].build(kit);
+  });
+  return { galleries: M.rects.length, clockwise, roundTrip, pieces, atrium: [M.atrium.x1 - M.atrium.x0, M.atrium.z1 - M.atrium.z0], bad: bad.slice(0, 8) };
+};
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
@@ -23858,6 +23897,8 @@ const unitChecks = async () => {
   record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
   const genesisBenchCheck = await genesisBenchProof();
   record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
+  const genesisMuseum = await genesisMuseumProof();
+  record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles land inside its own gallery", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
   const genesisExhibits = await genesisExhibitsProof();
   record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none; Era 2: Merkle [7]; Era 3: the press demonstrates [3] and [4]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]; Era 5: Hashcash 2002 [6], bit gold influence; Era 6: the paper as anchor, its payments demonstration and its eight-slot reference list as bibliography entries mapping one to one onto the citation stops; Era 7: none) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && genesisExhibits.bibliography && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();

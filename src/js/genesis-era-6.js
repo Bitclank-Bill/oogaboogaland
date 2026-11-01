@@ -41,30 +41,30 @@
   };
   const REFS = [
     { n: 1, year: 1998, who: "Wei Dai", work: "b-money", era: 4, keys: ["E6-WP", "E4-BM"],
-      there: "Its station stands on Era 4's left bank, with a STEP post beside it." },
+      there: "Its station stands in Era 4's gallery, on its left side, with a STEP post beside it." },
     { n: 2, year: 1999, who: "Massias, Avila and Quisquater", work: "a secure timestamping service with minimal trust", era: 4, keys: ["E6-WP", "E4-TIMESEC"],
-      there: "Its station stands on Era 4's left bank, near the way in, with a STEP post beside it." },
+      there: "Its station stands in Era 4's gallery, on its left side, near the way in, with a STEP post beside it." },
     { n: 3, year: 1991, who: "Haber and Stornetta", work: "How to Time-Stamp a Digital Document", era: 3, keys: ["E6-WP", "haber1991"],
-      there: "Its story is told at Fingerprints and Time's lectern, in Era 3's room on the left bank." },
+      there: "Its story is told at Fingerprints and Time's lectern, in Era 3's gallery, on its left side." },
     { n: 4, year: 1993, who: "Bayer, Haber and Stornetta", work: "more efficient and reliable digital time-stamping", era: 3, keys: ["E6-WP", "bayer1993"],
-      there: "Its story is told at Fingerprints and Time's lectern, in Era 3's room on the left bank." },
+      there: "Its story is told at Fingerprints and Time's lectern, in Era 3's gallery, on its left side." },
     { n: 5, year: 1997, who: "Haber and Stornetta", work: "Secure Names for Bit-Strings", era: 4, keys: ["E6-WP", "E4-NAMES"],
-      there: "Its station stands on Era 4's left bank, near the way in, with a STEP post beside it." },
+      there: "Its station stands in Era 4's gallery, on its left side, near the way in, with a STEP post beside it." },
     { n: 6, year: 2002, who: "Adam Back", work: "Hashcash", era: 5, keys: ["E6-WP"],
       there: "Its year places it in Era 5's cave. Era 4 holds the separate 28 March 1997 Hashcash announcement." },
     { n: 7, year: 1980, who: "Ralph Merkle", work: "Protocols for Public Key Cryptosystems", era: 2, keys: ["E6-WP", "E2-MERKLE"],
       there: "Its Merkle-tree table stands in Era 2's cave, with a STEP post beside it." },
     { n: 8, year: 1957, who: "William Feller", work: "An Introduction to Probability Theory and Its Applications", era: 0, keys: ["E6-WP", "e0Feller"],
-      there: "Its probability shelf stands on Era 0's left bank, with a STEP post beside it." }
+      there: "Its probability shelf stands in Era 0's gallery, on its left side, with a STEP post beside it." }
   ];
   // Navigation is explanatory only: no shelf slot moves the visitor.
-  const GO_BACK = "This slot is a pointer, not a link. To visit, board a boat, turn it and sail back upstream: each cave's years sign over its way in tells you where you are.";
+  const GO_BACK = "This slot is a pointer, not a link. To visit, walk back round the museum to that era's gallery: each gallery's sign over its arch names its era and years, or open it from the timeline (G).";
   const NOT_LISTED = "The list has eight numbered entries. Chord, BitTorrent, RPOW and bit gold are not among them. \"Not listed\" means absent from the whitepaper's bibliography, not that no influence is documented: Era 5 explains bit gold's documented link through Satoshi's retrospective post of 20 July 2010. Any other influence claim needs its own evidence.";
   const slotBoard = (r) => ({ board: { room: `Reference ${r.n} - ${r.who.replace(/,/g, "")} - ${r.year}`, sources: r.keys, pages: [
     { caption: "In short", title: `Reference ${r.n}: ${r.year}`, text: [
       `Reference [${r.n}] in the whitepaper's list: ${r.who}, ${r.work}.`,
       `${r.year} is the year the paper's reference list gives for it, not the year the idea was invented. Other caves keep the finer dates.`] },
-    { caption: "Where its story is", title: `Upstream in Era ${r.era}`, text: [`${CAVES[r.era]}. ${r.there}`, GO_BACK] },
+    { caption: "Where its story is", title: `Earlier in the museum: Era ${r.era}`, text: [`${CAVES[r.era]}. ${r.there}`, GO_BACK] },
     { caption: "Reading it", title: "A citation is not a copy", text: [
       "A citation shows the paper's author pointed readers to this work. It does not say the work was an unfinished Bitcoin, or that its authors were trying to build one.",
       "The slot stands here as part of the paper's own bibliography; it is not a separate step on the trail."] }
@@ -108,7 +108,7 @@
       "From this cave's date, 31 October 2008, that is 69 days in the future. The door stays shut here."] },
     { caption: "The deeper story", title: "Three dates to keep apart", text: [
       "31 October 2008: the whitepaper's announcement (this cave). 3 January 2009: the genesis block's recorded timestamp. 8 January 2009: the software-release announcement.",
-      "The next cave, Genesis, covers 3 to 12 January 2009. Sail on downstream to reach it."] },
+      "The next gallery, Genesis, covers 3 to 12 January 2009. It is the next one round the museum."] },
     { caption: "Still unsolved", title: "Early software", text: [
       "Early experimental software still required testing and fixes. A first release is not the end of the story."] }
   ] } };
@@ -216,11 +216,11 @@
     sourceKeys: ["E6-ANN", "E6-WP", "E6-REL", "E6-GEAR"],
     pages: [
       { caption: "What to try", title: "A reading room", text: [
-        "Left bank: the announcement, the paper's reading desk, its eight-slot reference shelf, and a 2008-style laptop where you sort reference cards.",
-        "Right bank: two conflicting payments (a simplified teaching model) and the January door, which stays shut. Walk up and press Space."] },
+        "Left side: the announcement, the paper's reading desk, its eight-slot reference shelf, and a 2008-style laptop where you sort reference cards.",
+        "Right side: two conflicting payments (a simplified teaching model) and the January door, which stays shut. Walk up and press Space."] },
       { caption: "How to read this cave", title: "Dates and connections", text: [
         "Every label says what its date marks: the announcement's posting time, a reference year as the paper's list gives it, or a later date shown as the future.",
-        "Only the paper itself is a step on the trail here. Each shelf slot points upstream to the cave that tells its story. The upper shelves are optional, for jetpack readers."] }
+        "Only the paper itself is a step on the trail here. Each shelf slot points back to the gallery that tells its story. The upper shelves are optional, for jetpack readers."] }
     ]
   };
 
@@ -271,13 +271,13 @@
           for (let b = 0; b < 5; b++) solid(0.5, 0.55, 0.22, b === 2 ? "#f2c14e" : inks[(i + b) % inks.length], sx + 0.15, top + 1.25, z - 0.6 + b * 0.3, b === 2 ? 0.5 : 0);
           // Upper, decorative spines.
           for (let row = 0; row < 2; row++) for (let b = 0; b < 4; b++) solid(0.45, 0.5, 0.2, inks[(i + b + row) % inks.length], sx + 0.1, top + 4.25 + row * 1.6, z - 0.45 + b * 0.3);
-          sign(`[${r.n}] ${r.who.toUpperCase()} · ${r.year}`, `${r.year}: the year the paper's list gives · story upstream in Era ${r.era}`, sx + 0.75, top + 2.2, z, Math.PI / 2, 0.24);
+          sign(`[${r.n}] ${r.who.toUpperCase()} · ${r.year}`, `${r.year}: the year the paper's list gives · story earlier, in Era ${r.era}`, sx + 0.75, top + 2.2, z, Math.PI / 2, 0.24);
           // A bibliography entry ([n]), not context and not a second stop: it names the citation stop upstream.
           prop({ id: `e6-ref-${r.n}`, year: r.year, connection: "bibliography", ref: `[${r.n}]`, date: `${r.year}: the year the paper's reference list gives`, title: `Reference ${r.n}: ${r.who}`, label: `REFERENCE [${r.n}] · ${r.who.toUpperCase()} · ${r.year}`, sourceKeys: r.keys,
             at: { x: sx + 1.9, y: top, z }, reach: 1.3, pick: { w: 1, h: 2.2, d: 1.6, x: sx + 0.3, z }, onUse: () => slotBoard(r) });
         });
         obstacle(sx - 0.7, sx + 0.7, z0, z1);
-        sign("THE REFERENCE SHELF · 2008", "eight numbered references in the whitepaper · each slot points upstream", sx + 0.75, top + 3.4, at(u0 + step * 3.5), Math.PI / 2, 0.42);
+        sign("THE REFERENCE SHELF · 2008", "eight numbered references in the whitepaper · each slot points back to its era", sx + 0.75, top + 3.4, at(u0 + step * 3.5), Math.PI / 2, 0.42);
         // Optional for flyers: the upper shelf of names that are not references, with the same note on the paper's desk.
         const uz = at(u0 + step * 3.5);
         solid(0.6, 0.6, 2.4, "#3a6b8a", sx + 0.2, top + 5.6, uz, 0.25);

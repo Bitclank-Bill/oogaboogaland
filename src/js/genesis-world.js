@@ -19,14 +19,14 @@
   // `theme` colours a cave's rock, its banks and its lamps. `boat` is one of BOATS. Era 3 holds Fingerprints and Time,
   // moved out of the old cavern by ROOM_SHIFT onto its left bank.
   const ERAS = [
-    { n: 0, id: "machines", name: "Machines That Count", years: "1956\u20131969", boat: "skiff", theme: { rock: "#4a4d4f", bank: "#6d6f6a", lamp: [1.15, 1.1, 0.95] } },
-    { n: 1, id: "keys", name: "Networks and Keys", years: "1970\u20131979", boat: "runabout", theme: { rock: "#5a4430", bank: "#8a6a44", lamp: [1.3, 0.9, 0.5] } },
-    { n: 2, id: "blind-money", name: "Trees and Blind Money", years: "1980\u20131989", boat: "runabout", theme: { rock: "#33284a", bank: "#4b3d68", lamp: [1.2, 0.55, 1.15] } },
-    { n: 3, id: "timestamps", name: "Cypherpunks and Timestamps", years: "1990\u20131995", boat: "watercraft", room: "fingerprints", theme: { rock: "#24403f", bank: "#4a4038", lamp: [1.35, 1.05, 0.7] } },
-    { n: 4, id: "work", name: "Work and Scarcity", years: "1996\u20131999", boat: "rib", theme: { rock: "#25344d", bank: "#3f5272", lamp: [0.7, 0.9, 1.35] } },
-    { n: 5, id: "peers", name: "Peers and Reusable Work", years: "2000\u20132007", boat: "rib", theme: { rock: "#4f5459", bank: "#7c838a", lamp: [1.05, 1.1, 1.2] } },
+    { n: 0, id: "machines", name: "Machines That Count", years: "1956–1969", boat: "skiff", theme: { rock: "#4a4d4f", bank: "#6d6f6a", lamp: [1.15, 1.1, 0.95] } },
+    { n: 1, id: "keys", name: "Networks and Keys", years: "1970–1979", boat: "runabout", theme: { rock: "#5a4430", bank: "#8a6a44", lamp: [1.3, 0.9, 0.5] } },
+    { n: 2, id: "blind-money", name: "Trees and Blind Money", years: "1980–1989", boat: "runabout", theme: { rock: "#33284a", bank: "#4b3d68", lamp: [1.2, 0.55, 1.15] } },
+    { n: 3, id: "timestamps", name: "Cypherpunks and Timestamps", years: "1990–1995", boat: "watercraft", room: "fingerprints", theme: { rock: "#24403f", bank: "#4a4038", lamp: [1.35, 1.05, 0.7] } },
+    { n: 4, id: "work", name: "Work and Scarcity", years: "1996–1999", boat: "rib", theme: { rock: "#25344d", bank: "#3f5272", lamp: [0.7, 0.9, 1.35] } },
+    { n: 5, id: "peers", name: "Peers and Reusable Work", years: "2000–2007", boat: "rib", theme: { rock: "#4f5459", bank: "#7c838a", lamp: [1.05, 1.1, 1.2] } },
     { n: 6, id: "whitepaper", name: "The Whitepaper", years: "31 October 2008", boat: "rib", theme: { rock: "#5c4a2c", bank: "#9a8456", lamp: [1.35, 1.15, 0.7] } },
-    { n: 7, id: "genesis", name: "Genesis", years: "3\u201312 January 2009", boat: "rib", optional: true, theme: { rock: "#2a2522", bank: "#46403a", lamp: [1.4, 0.75, 0.3] } }
+    { n: 7, id: "genesis", name: "Genesis", years: "3–12 January 2009", boat: "rib", optional: true, theme: { rock: "#2a2522", bank: "#46403a", lamp: [1.4, 0.75, 0.3] } }
   ];
   // Boats per type: top speed and turn.
   const BOATS = {
@@ -167,6 +167,69 @@
       post: { x: p.x - fx * 0.4, z: p.z - fz * 0.4, w: 0.3 } };
   };
 
+  // --- The museum (the overhaul: one cave, no stream) ----------------------------------------------------------------
+  // One large cave: an open atrium in the middle and the eight eras round it in date order, clockwise from the
+  // south-west (Era 0) to the south (Era 7), each in a gallery opening off the atrium. Each era keeps the layout its
+  // file built, in its old cave's coordinates (the voyage's "old world": the stream down -z, its way in at z1); its
+  // gallery is that cave turned a quarter turn at a time and moved, so its way in faces the atrium. Galleries are as
+  // wide as their exhibits need (`x0`..`x1` in old x, always keeping the old stream's walk down the middle) and as deep
+  // (`depth` from the old way in); the first OPEN metres of each lie inside the atrium, where its overview board stands.
+  // `toMuseum(n, x, z, out)` and `fromMuseum` turn points between era n's old world and the museum's; `boxToMuseum`
+  // turns a box. `bayAt(x, z)` is the era whose gallery holds a point (-1 in the atrium or outside). Pure, so Node can
+  // check that the galleries never overlap and every era's exhibits stand inside its own.
+  const MUSEUM = (() => {
+    const OPEN = 8, PART = 1, AX = 48, AZ = 78, HEIGHT = 24;
+    const SPEC = [[-27, 27, 63], [-34, 42, 71], [-34, 10, 72], [-34, 10, 72], [-34, 42, 64], [-34, 42, 72], [-22, 20, 63], [-14, 26, 57]];
+    // The four walls' galleries in order along each wall, the wall's line, the turn that sends old -z outward and the
+    // direction old +x runs along it: west (south to north), north (west to east), east (north to south), south
+    // (east to west).
+    const WALLS = [{ eras: [0, 1], rot: Math.PI / 2 }, { eras: [2, 3], rot: 0 }, { eras: [4, 5], rot: -Math.PI / 2 }, { eras: [6, 7], rot: Math.PI }];
+    const bays = [];
+    const rotate = (rot, x, z, out) => { const c = Math.round(Math.cos(rot)), s = Math.round(Math.sin(rot)); out.x = x * c + z * s; out.z = -x * s + z * c; return out; };
+    for (const wall of WALLS) {
+      const widths = wall.eras.map((n) => SPEC[n][1] - SPEC[n][0]), total = widths.reduce((a, b) => a + b, 0) + PART * (wall.eras.length - 1);
+      let along = -total / 2;
+      wall.eras.forEach((n, k) => {
+        const [x0, x1, depth] = SPEC[n], e = ERAS[n], b = { n, x0, x1, depth, rot: wall.rot, tx: 0, tz: 0 };
+        // Old (x0, z1 - OPEN), the near corner of the gallery's opening, lands `along` the wall from its middle.
+        const r = rotate(wall.rot, x0, e.z1 - OPEN, { x: 0, z: 0 }), side = rotate(wall.rot, 1, 0, { x: 0, z: 0 }), out = rotate(wall.rot, 0, -1, { x: 0, z: 0 });
+        const wx = out.x * AX + side.x * along, wz = out.z * AZ + side.z * along;
+        b.tx = wx - r.x; b.tz = wz - r.z;
+        bays[n] = b;
+        along += widths[k] + PART;
+      });
+    }
+    const toMuseum = (n, x, z, out) => { const b = bays[n]; rotate(b.rot, x, z, out); out.x += b.tx; out.z += b.tz; return out; };
+    const fromMuseum = (n, x, z, out) => { const b = bays[n]; return rotate(-b.rot, x - b.tx, z - b.tz, out); };
+    const A = { x: 0, z: 0 }, B = { x: 0, z: 0 };
+    const boxToMuseum = (n, box, out = {}) => {
+      toMuseum(n, box.x0, box.z0, A); toMuseum(n, box.x1, box.z1, B);
+      out.x0 = Math.min(A.x, B.x); out.x1 = Math.max(A.x, B.x); out.z0 = Math.min(A.z, B.z); out.z1 = Math.max(A.z, B.z);
+      return out;
+    };
+    // Each gallery's floor in the museum (outside the atrium, from its opening to its back wall), and the atrium's.
+    const rects = bays.map((b) => ({ n: b.n, ...boxToMuseum(b.n, { x0: b.x0, x1: b.x1, z0: ERAS[b.n].z1 - b.depth, z1: ERAS[b.n].z1 - OPEN }) }));
+    const atrium = { x0: -AX, x1: AX, z0: -AZ, z1: AZ };
+    const within = (r, x, z, pad = 0) => x >= r.x0 - pad && x <= r.x1 + pad && z >= r.z0 - pad && z <= r.z1 + pad;
+    const bayAt = (x, z) => { for (let i = 0; i < rects.length; i++) if (within(rects[i], x, z)) return i; return -1; };
+    // The era a point belongs to for music and captions: its gallery, or in the atrium the gallery whose opening is
+    // nearest (within OPEN + 6 m of it), else -1.
+    const eraNear = (x, z) => {
+      const b = bayAt(x, z);
+      if (b >= 0 || !within(atrium, x, z)) return b;
+      let best = -1, d = OPEN + 6;
+      for (const r of rects) {
+        const dx = Math.max(r.x0 - x, 0, x - r.x1), dz = Math.max(r.z0 - z, 0, z - r.z1), dd = Math.hypot(dx, dz);
+        if (dd < d) { d = dd; best = r.n; }
+      }
+      return best;
+    };
+    const inside = (x, z, pad = 0) => within(atrium, x, z, pad) || rects.some((r) => within(r, x, z, pad));
+    // The outer bounds, for the roof.
+    const bounds = { x0: Math.min(...rects.map((r) => r.x0)), x1: Math.max(...rects.map((r) => r.x1)), z0: Math.min(...rects.map((r) => r.z0)), z1: Math.max(...rects.map((r) => r.z1)) };
+    return { OPEN, PART, AX, AZ, HEIGHT, bays, rects, atrium, bounds, toMuseum, fromMuseum, boxToMuseum, bayAt, eraNear, inside, rotate };
+  })();
+
   // --- Boarding --------------------------------------------------------------------------------------------------
   // Space boards the boat from anywhere within `reach` of it, measured flat (from a bank, a ramp, a jetpack over the
   // water): the Ooga is put straight onto its deck. Further off, the visitor can call the boat: it sails down the
@@ -235,5 +298,5 @@
     out.dist = dist;
     return out;
   };
-  BL.genesisWorld = { frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  BL.genesisWorld = { MUSEUM, frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();

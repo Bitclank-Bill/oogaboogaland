@@ -210,7 +210,7 @@
     boarding: "Welcome aboard the Genesis Voyage. Drive with W A S D or the arrows (Shift for speed), Space to jump out and back in, down the stream through the eras' caves, or press Tour (Enter) to ride along.",
     drive: "You have the wheel. W A S D or the arrows steer, Shift goes faster, Enter starts the Tour again.",
     sailing: "Tour: the boat visits every era's cave in order and waits at each dock. Press Drive (Enter) to take the wheel.",
-    arrive: "Tock the archivist Ooga stamps every page with a fingerprint. Press Info (I) to read more, or press Space to jump out and walk the cave.",
+    arrive: "Tock the archivist Ooga stamps every page with a fingerprint. Press Info (I) to read more.",
     feed: "A page goes into the fingerprint machine.",
     stamp: "Out comes a short code: the page's fingerprint. Change one letter and the code changes completely.",
     link: "Each new stamp also takes in the fingerprint before it, so the stamps form a chain.",

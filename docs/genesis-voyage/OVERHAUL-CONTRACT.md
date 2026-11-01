@@ -159,6 +159,11 @@ host = { catalogue, records, view: { calm, paused },
 
 ## Freeze
 
-The host, catalogue and timeline data land in the commit whose message starts **"Genesis overhaul: interface freeze"**
-on `gv/overhaul`. Its SHA will be posted. That commit also moves the gv/museum prototype's workbench and menu into the
-two builder files as their starting point. From then on each builder owns its file and the host is v1.
+**Frozen at `a29195b5e1d7c4bb8ae54fd1a7a1f737dd6203c9`** ("Genesis overhaul: interface freeze") on `gv/overhaul`.
+- That commit moved the gv/museum prototype's workbench and menu into the two builder files as their starting
+  point. From then on each builder owns its file, and the host is v1.
+- **Proved end to end on Merkle and Hashcash** by an automated, software-rendered browser pass at that commit (13/13):
+  menu → workbench, a command changing Merkle's model, Reset, date-ordered Next/Back, close restoring the camera
+  exactly, typing that moves nothing, and the stacked narrow layout.
+- **Builders:** branch from that commit (`gv/ovh-workbench`, `gv/ovh-timeline`). Edit only your files and marker
+  blocks, and report a branch and SHA.

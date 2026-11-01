@@ -465,10 +465,10 @@
     summary: "Computers learned to talk across different networks, but a public wire could have listeners. Researchers explored agreeing on a secret and signatures anyone can check. Small computers let more people experiment. Context for Bitcoin, not citations.",
     sourceKeys: ["e1CerfKahn", "e1Rfc675", "e1MerkleHistory", "e1DH", "e1RSA", "e1FloppyIbm", "e1Altair", "e1Dossier", "whitepaper"],
     pages: [
-      { caption: "Left bank", title: "Ideas (gold signs)", text: [
+      { caption: "Left side", title: "Ideas (gold signs)", text: [
         "A gateway between packet networks (May and December 1974), with a packet puzzle. Merkle's puzzles (proposed autumn 1974, published April 1978). Diffie and Hellman's public keys (November 1976), with a key-exchange table. RSA's checkable signatures (manuscript 1977, journal February 1978), with a signing desk.",
         "These help explain Bitcoin's setting, but none of them is cited by the Bitcoin whitepaper. All are context."] },
-      { caption: "Right bank", title: "Period technology (plain signs)", text: [
+      { caption: "Right side", title: "Period technology (plain signs)", text: [
         "IBM's 8-inch floppy (drives sold from 1971), a front panel inspired by the January 1975 Altair, an acoustic-coupler demonstration with original tones, and a dated timeline wall.",
         "These are context too: the gear of the decade, not steps toward Bitcoin."] },
       { caption: "How to play", title: "Toys are teaching models", text: [

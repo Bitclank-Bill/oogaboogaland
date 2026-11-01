@@ -1,5 +1,7 @@
 # The Genesis museum (redesign, branch `gv/museum`)
 
+> Superseded by `OVERHAUL.md` (branch `gv/overhaul`): the long hall became one cave with galleries round an atrium. Kept as the prototype's record.
+
 Billy's candidate-3 playtest changed the direction: one museum cave walked on foot, not a boat down a stream.
 Candidate 3 (`db28481793e7a31b71d6bea8b7b923843fbf9ff7`) is untouched; this work starts from it on `gv/museum`.
 
