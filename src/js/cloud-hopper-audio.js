@@ -297,12 +297,15 @@
       if (!ready()) return;
       airCue(260, 2600, 0.75, 0.3, 1.1); toneCue("sine", 220, 660, 0.5, 0.05);
     };
-    // The bone anchor biting: a stone thunk and the vine taking the strain; `creak` alone two seconds before it lets go.
-    const creak = (delay = 0) => { if (ready()) toneCue("sawtooth", 150, 215, 0.45, 0.04, delay); };
-    const anchor = () => {
+    // The grappling hook: a whoosh as it is thrown, a thunk and the rope's creak as it bites, a zip as it lets go and
+    // reels in, and a whoosh falling away when it misses.
+    const hookThrow = () => { if (ready()) airCue(500, 2600, 0.28, 0.2, 1.4); };
+    const hookHit = () => {
       if (!ready()) return;
-      toneCue("sine", 120, 52, 0.4, 0.3); airCue(420, 180, 0.18, 0.16, 0.8); creak(0.14);
+      toneCue("sine", 140, 60, 0.3, 0.28); airCue(380, 160, 0.16, 0.14, 0.8); toneCue("sawtooth", 150, 215, 0.4, 0.035, 0.1);
     };
+    const hookRelease = () => { if (ready()) { toneCue("triangle", 900, 1500, 0.12, 0.08); airCue(1800, 4200, 0.3, 0.08, 2); } };
+    const hookLost = () => { if (ready()) airCue(2200, 300, 0.7, 0.14, 1.2); };
     // A lightning strike `distance` metres off: its crack and rumble arrive when its sound would, quieter further off.
     const thunder = (distance) => {
       if (!ready() || !Number.isFinite(distance)) return;
@@ -376,7 +379,7 @@
       jumps.length = clouds.length = warnings.length = tones.length = airs.length = thunders.length = 0;
       rainGain = null;
     };
-    return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, anchor, creak, thunder, rain, stop, dispose };
+    return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, hookThrow, hookHit, hookRelease, hookLost, thunder, rain, stop, dispose };
   };
   BL.cloudHopperAudio = { create };
 })();

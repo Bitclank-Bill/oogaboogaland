@@ -6,7 +6,7 @@
 // TIMING; `board` is its shared high-score game and machine (highscore-rules.js). `sky` is the level's own fixed
 // sky for a run (plan 4 and 7a), sampled at `hour` on the equinox: how much painted cloud it has, whether its
 // clouds take the night fill (cloud-hopper-models.js, for L3's night and L4's storm), a `storm` greying of the sky
-// with its `fog` [near, far] haze, and its `scenery` (cloud-hopper-sky.js). A layout's `xray`, `updraft` and `anchor`
+// with its `fog` [near, far] haze, and its `scenery` (cloud-hopper-sky.js). A layout's `xray`, `updraft` and `hook`
 // are how many of each power-up its course carries (plan 3).
 // `courseVersion` changes whenever a level's challenge does, as does that board's registry version.
 (() => {
@@ -31,8 +31,8 @@
       { permanent: 0.04, long: 0.18, ordinary: [12, 32], longSlot: [50, 110], warn: 2, hidden: [2, 4], spine: 4, pace: 3.2 }),
     // The longest climb down, in a storm: today's cloud sizes, wide turns, safe ground as sparse as Level 3's, and
     // haze that hides what lies beyond 200 m.
-    level(4, "Thunderhead", { hour: 18.6, clouds: 1, night: true, storm: 0.86, fog: Object.freeze([50, 200]), scenery: "storm" }, 0.38,
-      { step: 12.5, turn: 50, sway: 8, twoPacks: 1, xray: 3, updraft: 1, anchor: 2 },
+    level(4, "Thunderhead", { hour: 18.6, clouds: 1, night: true, storm: 0.86, fog: Object.freeze([40, 160]), scenery: "storm" }, 0.38,
+      { step: 12.5, turn: 50, sway: 8, twoPacks: 1, xray: 3, updraft: 1, hook: 2 },
       { permanent: 0.05, long: 0.2, ordinary: [12, 32], longSlot: [50, 110], warn: 2, hidden: [2, 4], spine: 4, pace: 3.4 })
   ]);
   BL.cloudHopperLevels = { LEVELS, BASE_ROUTE, GROWTH, get: id => LEVELS[id - 1] || null };

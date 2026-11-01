@@ -1517,6 +1517,7 @@
       if (e.type === "pointercancel") {
         ads = mouseAds = false;
         aimLeftAccepted = aimLeftFocused = false;
+        if (primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
         const cave = player();
         crew.stopBurst(cave);
         crew.releaseSwing(cave, true);
@@ -1536,7 +1537,9 @@
           if (!alreadyFocused) return;
         }
         resumePose();
-        if (e.button === 0) {
+        // A scene may take the left button first (`primaryAction`, Cloud Hopper's grappling hook), and then its release.
+        if (e.button === 0 && ctx.primaryAction?.(true)) primaryTaken = true;
+        else if (e.button === 0) {
           attackReleaseBlocked = !crew.weaponsEnabled;
           if (player().weapon.primaryEquipped) crew.swingWeapon(player(), true, ads);
           else {
@@ -1551,7 +1554,8 @@
           if (!attackReleaseBlocked && e.buttons & 1 && !player().weapon.primaryEquipped && crew.setWeaponTrigger(true, true)) aimLeftAccepted = true;
         }
       } else if (e.type === "pointerup" || e.type === "pointermove") {
-        if (e.button === 0) {
+        if (e.button === 0 && primaryTaken) { primaryTaken = false; ctx.primaryAction(false); }
+        else if (e.button === 0) {
           releaseAimAttack(e);
           releasePrimary(player(), ads);
         }
@@ -2599,10 +2603,12 @@
     // the sights (in bird's-eye it takes the shoulder, as right-click does). X is R, Y is G, B is F and View is X.
     // Each press is acted on once; a trigger held when the pilot lets go of input is let go of with it, and LT also
     // when combat ends. Letting go of LT leaves a right-click aim held with the mouse.
-    let padFrame = -1, padFire = false, padAds = false;
+    // `primaryTaken` and `padPrimary`: a scene's `primaryAction` took the mouse's left press or the pad's RT.
+    let padFrame = -1, padFire = false, padAds = false, padPrimary = false, primaryTaken = false;
     const resetPad = () => { padFrame = pad.frame; padFire = padAds = mouseAds = ads = false; };
     const readPad = () => {
       const live = active && !externalControl && !menuOpen;
+      if (padPrimary && (!live || !(pad.held & PAD.rt))) { padPrimary = false; ctx.primaryAction(false); }
       if (padFire && (!live || !(pad.held & PAD.rt))) {
         padFire = false;
         weaponAction("weapon-primary-up");
@@ -2621,7 +2627,8 @@
         if (birdsEye()) shooterView(true, renderer.size.width / 2, renderer.size.height / 2);
         else padAds = ads = true;
       }
-      if (pad.pressed & PAD.rt) {
+      if (pad.pressed & PAD.rt && ctx.primaryAction?.(true)) padPrimary = true;
+      else if (pad.pressed & PAD.rt) {
         if (!armed()) weaponAction("weapon-fire");
         else padFire = weaponAction(cave.weapon.primaryEquipped ? "weapon-primary-down" : "weapon-fire", true);
       }

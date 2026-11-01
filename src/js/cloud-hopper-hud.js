@@ -22,10 +22,10 @@
   const ITEMS = {
     xray: ["xray", "X-ray goggles", "Take the stone goggles to see how long each nearby cloud has before it fades, for 12 seconds (15 in the storm). A gold ∞ marks a cloud that never fades, a red ring one that is about to, and a dashed ring counts down until a cloud comes back."],
     updraft: ["updraft", "Sky feather", "Carry one feather at a time. Once both your jumps are spent and you wear no fuelled jetpack, Space lets it go: a gust throws you about eight metres up."],
-    anchor: ["anchor", "Bone anchor", "Carry one anchor at a time. The next cloud you land on stops drifting and fading for 12 seconds, and if it was about to fade it is whole again. When the hold ends, its fade starts with a full warning."]
+    hook: ["hook", "Grappling hook", "Aim at a cloud and click to throw: hold to be reeled toward it, let go to fly on as the hook comes back. A cloud in reach shows a gold ring. Miss, and the hook is gone. On a pad it is RT; on a touch screen, hold the HOOK button."]
   };
   const formatTime = (value) => `${String(Math.floor(value / 6000)).padStart(2, "0")}:${String(Math.floor(value / 100) % 60).padStart(2, "0")}.${String(value % 100).padStart(2, "0")}`;
-  const create = ({ onStart, onReplay, onExit, onGuideDone, onSelect, onNext, letterSign } = {}) => {
+  const create = ({ onStart, onReplay, onExit, onGuideDone, onSelect, onNext, onHook, letterSign } = {}) => {
     const node = (tag, className, text = "") => {
       const el = document.createElement(tag);
       el.className = className;
@@ -34,9 +34,16 @@
     };
     const hud = node("section", "cloud-hopper-hud"), name = node("div", "cloud-hopper-name", "CLOUD HOPPER");
     const timer = node("output", "cloud-hopper-time", "00:00.00"), title = node("div", "cloud-hopper-status");
-    // The power-ups that apply now, under the clock: X-ray's seconds, a feather held, an anchor held or holding.
+    // The power-ups that apply now, under the clock: X-ray's seconds, a feather held, the hook held or thrown. On a
+    // touch screen the hook's chip is also its button, held to throw at the middle of the view and reel in.
     const powers = node("div", "cloud-hopper-powers"), xrayChip = node("span", "cloud-hopper-power xray");
-    const featherChip = node("span", "cloud-hopper-power updraft", "FEATHER"), anchorChip = node("span", "cloud-hopper-power anchor");
+    const featherChip = node("span", "cloud-hopper-power updraft", "FEATHER"), hookChip = node("button", "cloud-hopper-power hook", "HOOK");
+    hookChip.type = "button"; hookChip.tabIndex = -1;
+    const hookDown = (e) => { e.preventDefault(); hookChip.setPointerCapture?.(e.pointerId); onHook?.(true); };
+    const hookUp = (e) => { e.preventDefault(); onHook?.(false); };
+    hookChip.addEventListener("pointerdown", hookDown);
+    hookChip.addEventListener("pointerup", hookUp);
+    hookChip.addEventListener("pointercancel", hookUp);
     const ghost = node("p", "cloud-hopper-help", "Finish a run to set your ghost");
     const help = node("p", "cloud-hopper-help"), panel = node("dialog", "race-results game-intro cloud-hopper-panel");
     const glow = node("div", "game-intro-glow"), rays = node("div", "game-intro-rays");
@@ -110,8 +117,8 @@
       scoresList.append(row);
       scoreRows.push({ row, run, time });
     }
-    powers.append(xrayChip, featherChip, anchorChip);
-    powers.hidden = xrayChip.hidden = featherChip.hidden = anchorChip.hidden = true;
+    powers.append(xrayChip, featherChip, hookChip);
+    powers.hidden = xrayChip.hidden = featherChip.hidden = hookChip.hidden = true;
     hud.append(name, timer, powers, title, ghost, help);
     scoresPanel.append(scoresTitle, scoresList, scoresEmpty);
     actions.append(back, next, play, leaders, select, exit);
@@ -121,7 +128,7 @@
     let phase = "", hundredths = -1, previousFocus = null, disposed = false, frameY = 0.4;
     // The guide's cards this time (`setGuide`): the cloud guide, then the items new to this session's level.
     let guideIndex = 0, guidePictures = null, spaceTarget = null, guide = GUIDE;
-    let shownXray = -2, shownFeather = false, shownAnchor = -2;
+    let shownXray = -2, shownFeather = false, shownHook = -2;
     // The level choice: the one selected, the highest unlocked, the player's best per level (ms, 0 for none), and
     // whether the result card is showing the cards instead of the result (Level select).
     let selected = 1, unlocked = 1, bests = [], picking = false;
@@ -427,23 +434,20 @@
     const setGuide = (cloud, items) => {
       guide = cloud ? GUIDE.concat(items.map(kind => ITEMS[kind])) : items.map(kind => ITEMS[kind]);
     };
-    // X-ray's whole seconds left (-1 off), whether a feather is held, and the anchor's (-1 none, 0 held, else the
-    // whole seconds it still holds a cloud). Text changes only when a figure does; X-ray blinks its last two seconds.
-    const setPowers = (xray, feather, anchor) => {
-      if (disposed || xray === shownXray && feather === shownFeather && anchor === shownAnchor) return;
+    // X-ray's whole seconds left (-1 off), whether a feather is held, and the hook (-1 none, 0 held, 1 thrown). Text
+    // changes only when a figure does; X-ray blinks its last two seconds.
+    const setPowers = (xray, feather, hook) => {
+      if (disposed || xray === shownXray && feather === shownFeather && hook === shownHook) return;
       if (xray !== shownXray) {
         xrayChip.hidden = xray < 0;
         if (xray >= 0) xrayChip.textContent = `X-RAY ${xray}`;
         xrayChip.classList.toggle("ending", xray >= 0 && xray < 2);
       }
       featherChip.hidden = !feather;
-      if (anchor !== shownAnchor) {
-        anchorChip.hidden = anchor < 0;
-        anchorChip.textContent = anchor > 0 ? `ANCHOR ${anchor}` : "ANCHOR";
-        anchorChip.classList.toggle("holding", anchor > 0);
-      }
-      shownXray = xray; shownFeather = feather; shownAnchor = anchor;
-      powers.hidden = xray < 0 && !feather && anchor < 0;
+      hookChip.hidden = hook < 0;
+      hookChip.classList.toggle("thrown", hook > 0);
+      shownXray = xray; shownFeather = feather; shownHook = hook;
+      powers.hidden = xray < 0 && !feather && hook < 0;
     };
     return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, hide, dispose, get frameY() { return frameY; } };
   };

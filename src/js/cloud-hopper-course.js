@@ -26,13 +26,13 @@
   // and the most a landing `sway`s from the last, each cloud's swing `lane` and `speed` [least, range], side
   // clouds per main landing (`sides`, at most `sideMax`) and how far out they sit (`offset` [least, range]),
   // the `boost` and `bounce` shares of eligible clouds (at most `bounceMax` bounces), the chance of a second
-  // jetpack (`twoPacks`), and how many X-ray, Updraft and Anchor pickups it carries (plan 3). These defaults are
-  // the old course's.
+  // jetpack (`twoPacks`), and how many X-ray, Updraft and grappling hook pickups it carries (plan 3). These defaults
+  // are the old course's.
   const LAYOUT = Object.freeze({ step: 11.5, main: Object.freeze([2.7, 0.9, 1.9, 0.7]), side: Object.freeze([2.8, 0.7, 2.1, 0.5]),
     turn: 40, sway: 7, lane: Object.freeze([5, 3]), speed: Object.freeze([0.9, 0.6]), sides: Infinity, sideMax: 24,
-    offset: Object.freeze([22, 12]), boost: 0.22, bounce: 0.16, bounceMax: Infinity, twoPacks: 0.45, xray: 0, updraft: 0, anchor: 0 });
+    offset: Object.freeze([22, 12]), boost: 0.22, bounce: 0.16, bounceMax: Infinity, twoPacks: 0.45, xray: 0, updraft: 0, hook: 0 });
   // Where along the main landings each power-up kind is spread: [first, span] as shares of the course.
-  const STRETCH = Object.freeze({ xray: Object.freeze([0.12, 0.6]), updraft: Object.freeze([0.35, 0.45]), anchor: Object.freeze([0.25, 0.55]) });
+  const STRETCH = Object.freeze({ xray: Object.freeze([0.12, 0.6]), updraft: Object.freeze([0.35, 0.45]), hook: Object.freeze([0.1, 0.5]) });
   const cycleRandom = (seed, cycle, salt) => {
     let value = seed ^ Math.imul(cycle + 1, 0x9e3779b9) ^ salt;
     value = Math.imul(value ^ value >>> 16, 0x21f0aaad);
@@ -83,9 +83,9 @@
   // sinks as it fades. `phase` and `warning` say where its schedule stands and
   // solidLeft reads it. supportAt returns the highest eligible top or -Infinity;
   // pass the greater of the previous/current feet heights to catch a falling body.
-  // pickupAt consumes one pickup (a jetpack, or an `xray`, `updraft` or `anchor`
+  // pickupAt consumes one pickup (a jetpack, or an `xray`, `updraft` or `hook`
   // power-up: its `kind`) and returns its stable record; equipping belongs to the
-  // caller. `anchor` holds a cloud still for a while (plan 3). runSpeed and jumpSpeed are the player's, for the fairness checks;
+  // caller. `hit` finds where a ray first meets a cloud, for the grappling hook. runSpeed and jumpSpeed are the player's, for the fairness checks;
   // `layout` and `timing` override LAYOUT's and TIMING's fields (a level's).
   const create = ({ start, finish, mainlandRadius = 30, seed = 1, layout: shape = LAYOUT, timing: tune = TIMING,
     runSpeed = RUN_SPEED, jumpSpeed = JUMP_SPEED }) => {
@@ -132,10 +132,7 @@
         moveX, moveZ, moveRange, moveSpeed, swing: 0,
         // The second draw is each cloud's clock phase, which keeps a seed's landings where they always were.
         seed: (rand() * 4294967296) >>> 0, clock: rand(), life: ORDINARY, late: false, main: !side, arrival: 0, held: 0,
-        slotSeconds: 0, t0: 0, firstGoneAt: 0, phase: SOLID, progress: 0, warning: -1, windowStart: 0, windowEnd: 0,
-        // An anchor's hold (`anchor`): until when the schedule and the lane stand still, where, and how far each
-        // runs behind race time after.
-        anchorUntil: -Infinity, anchorAt: 0, anchorShift: 0, driftAt: 0, driftShift: 0
+        slotSeconds: 0, t0: 0, firstGoneAt: 0, phase: SOLID, progress: 0, warning: -1, windowStart: 0, windowEnd: 0
       };
       cloud.swing = cycleRandom(cloud.seed, 0, 0x7f4a7c15) * Math.PI * 2;
       clouds.push(cloud);
@@ -418,17 +415,15 @@
     }
 
     // ---- power-ups --------------------------------------------------------------------------------------------
-    // X-ray, Updraft and Anchor pickups, each kind spread over its own stretch of the main landings, on plain clouds
-    // no pickup holds, clear of the first and last three, from their own stream so nothing above moves. An anchor
-    // wants a long-lived cloud first, then any that fades: it does nothing for one that never does.
+    // X-ray, Updraft and grappling hook pickups, each kind spread over its own stretch of the main landings, on plain
+    // clouds no pickup holds, clear of the first and last three, from their own stream so nothing above moves.
     const powerRand = mulberry32(seed ^ 0x6a09e667);
-    for (const kind of ["xray", "updraft", "anchor"]) for (let k = 0, n = layout[kind]; k < n; k++) {
+    for (const kind of ["xray", "updraft", "hook"]) for (let k = 0, n = layout[kind]; k < n; k++) {
       const [first, span] = STRETCH[kind], want = Math.round((first + span * (k + 0.3 + powerRand() * 0.4) / n) * (count - 1));
       let cloud = null;
-      for (let pass = 0; pass < 2 && !cloud; pass++) for (let d = 0; d < count && !cloud; d++) for (let side = 0; side < 2 && !cloud; side++) {
+      for (let d = 0; d < count && !cloud; d++) for (let side = 0; side < 2 && !cloud; side++) {
         const i = side ? want - d : want + d, c = landings[i];
         if (i < 3 || i > count - 4 || c.kind !== "normal" || pickups.some(p => p.cloud === c)) continue;
-        if (kind === "anchor" && (c.life === PERMANENT || pass === 0 && c.life !== LONG)) continue;
         cloud = c;
       }
       if (cloud) pickups.push({ index: pickups.length, kind, cloud, x: cloud.x, y: cloud.top + PICKUP_LIFT, z: cloud.z,
@@ -443,9 +438,6 @@
       }
       return beganAt;
     };
-    // A cloud's own clocks, which an anchor holds still: its schedule's and its lane's.
-    const scheduleTime = (cloud, t) => t < cloud.anchorUntil ? cloud.anchorAt : t - cloud.anchorShift;
-    const laneTime = (cloud, t) => t < cloud.anchorUntil ? cloud.driftAt : t - cloud.driftShift;
     const update = (dt, raceTime) => {
       if (beganAt >= 0 && Number.isFinite(raceTime)) movementTime = beganAt + Math.max(0, raceTime);
       else movementTime += dt;
@@ -459,10 +451,10 @@
         // keeps long frames exact. The wobble held at departure eases out over the run's first SETTLE seconds.
         const settle = Math.min(1, time / SETTLE);
         const offset = beganAt < 0 ? offsetAt(cloud, 0, wobbleAt(cloud, movementTime))
-          : offsetAt(cloud, laneTime(cloud, time), cloud.held * (1 - settle * settle * (3 - 2 * settle)));
+          : offsetAt(cloud, time, cloud.held * (1 - settle * settle * (3 - 2 * settle)));
         cloud.x = cloud.baseX + cloud.moveX * offset;
         cloud.z = cloud.baseZ + cloud.moveZ * offset;
-        evaluate(cloud, scheduleTime(cloud, time));
+        evaluate(cloud, time);
         const opacity = cloud.phase === FADING ? 1 - cloud.progress : cloud.phase === HIDDEN ? 0
           : cloud.phase === APPEARING ? cloud.progress : 1;
         cloud.opacity = opacity;
@@ -483,7 +475,7 @@
           // Detach at the exact zero-opacity instant, even if a frame spans the
           // whole disappearance. A returning cloud never recalls its pickup.
           if (!pickup.falling) {
-            const offset = offsetAt(cloud, laneTime(cloud, cloud.firstGoneAt));
+            const offset = offsetAt(cloud, cloud.firstGoneAt);
             pickup.x = cloud.baseX + cloud.moveX * offset;
             pickup.z = cloud.baseZ + cloud.moveZ * offset;
             pickup.falling = true;
@@ -497,31 +489,40 @@
     };
     // Seconds of support this cloud has left by its schedule, read after update: Infinity when it never fades,
     // the time to the end of its fade otherwise, or minus the time until it is back while it is gone.
-    const solidLeft = (cloud) => {
-      const t = scheduleTime(cloud, courseTime);
-      return cloud.phase === HIDDEN || cloud.phase === APPEARING ? t - cloud.windowEnd
-        : cloud.windowStart + GONE - t + Math.max(0, cloud.anchorUntil - courseTime);
-    };
-    // Holds a cloud still for `seconds` from now: its schedule and its lane stop. One warning, fading or coming back
-    // is whole again at once and, after the hold, picks up at the start of that warning, so its next loss of support
-    // still follows a full warning; its lane picks up where it stopped. A pickup still on it falls when the moved
-    // schedule first takes the cloud away. False for a cloud that never fades.
-    const anchor = (cloud, seconds) => {
-      if (cloud.life === PERMANENT) return false;
-      const now = courseTime, until = now + seconds;
-      let at = scheduleTime(cloud, now);
-      evaluate(cloud, at);
-      if (cloud.phase === WARNING || cloud.phase === FADING) at = cloud.windowStart - 1e-6;
-      else if (cloud.phase === HIDDEN || cloud.phase === APPEARING) at = cloud.windowEnd;
-      cloud.driftAt = laneTime(cloud, now); cloud.driftShift = until - cloud.driftAt;
-      cloud.anchorAt = at; cloud.anchorUntil = until; cloud.anchorShift = until - at;
-      const firstGone = windowAt(cloud, 0) + GONE;
-      if (firstGone > at) cloud.firstGoneAt = firstGone + cloud.anchorShift;
-      evaluate(cloud, at);
+    const solidLeft = (cloud) => cloud.phase === HIDDEN || cloud.phase === APPEARING ? courseTime - cloud.windowEnd
+      : cloud.windowStart + GONE - courseTime;
+    // Where a ray from (ox, oy, oz) along the unit (dx, dy, dz) first meets a solid cloud's body, out to `far` metres:
+    // into `out` (x, y, z, the cloud and how far), true when it does. A body is the cloud's footprint from its top down
+    // its depth, `pad` wider.
+    const hit = (ox, oy, oz, dx, dy, dz, far, out, pad = 0.3) => {
+      let best = far;
+      out.cloud = null;
+      for (let i = 0; i < clouds.length; i++) {
+        const cloud = clouds[i];
+        if (!cloud.active) continue;
+        const bottom = cloud.top - cloud.depth, rx = cloud.rx + pad, rz = cloud.rz + pad;
+        // In the cloud's frame, scaled so its footprint is the unit circle.
+        const px = ox - cloud.x, pz = oz - cloud.z;
+        const lx = (px * cloud.cosYaw - pz * cloud.sinYaw) / rx, lz = (px * cloud.sinYaw + pz * cloud.cosYaw) / rz;
+        const ex = (dx * cloud.cosYaw - dz * cloud.sinYaw) / rx, ez = (dx * cloud.sinYaw + dz * cloud.cosYaw) / rz;
+        let t = Infinity;
+        // Through the top, from above.
+        if (dy < 0 && oy > cloud.top) {
+          const s = (cloud.top - oy) / dy, qx = lx + ex * s, qz = lz + ez * s;
+          if (qx * qx + qz * qz <= 1) t = s;
+        }
+        // Through the side, between its top and its foot.
+        const a = ex * ex + ez * ez, b = 2 * (lx * ex + lz * ez), c = lx * lx + lz * lz - 1, root = b * b - 4 * a * c;
+        if (a > 1e-12 && root >= 0) {
+          const s = (-b - Math.sqrt(root)) / (2 * a), y = oy + dy * s;
+          if (s >= 0 && s < t && y <= cloud.top && y >= bottom) t = s;
+        }
+        if (t < best) { best = t; out.cloud = cloud; }
+      }
+      if (!out.cloud) return false;
+      out.x = ox + dx * best; out.y = oy + dy * best; out.z = oz + dz * best; out.t = best;
       return true;
     };
-    // Seconds an anchor still holds this cloud, 0 when none does.
-    const anchoredFor = (cloud) => Math.max(0, cloud.anchorUntil - courseTime);
     const supportAt = (x, z, y, maxStep, radius = 0.3) => {
       const ceiling = y + maxStep;
       let top = -Infinity;
@@ -679,7 +680,7 @@
       return false;
     };
     return { clouds, pickups, layout, timing, horizon, start: begin, update, supportAt, contactAt, touchTime, pickupAt, canRecover, solidLeft,
-      anchor, anchoredFor, windowAt, escapes, steadyAt, linked, presence, offsetAt };
+      hit, windowAt, escapes, steadyAt, linked, presence, offsetAt };
   };
   BL.cloudHopperCourse = { create, LAYOUT, TIMING, MAX_CLOUDS, CLOUD_DEPTH, FADE_SECONDS, APPEAR_SECONDS, PICKUP_LIFT, PICKUP_RADIUS,
     PERMANENT, LONG, ORDINARY, SOLID, WARNING, FADING, HIDDEN, APPEARING };

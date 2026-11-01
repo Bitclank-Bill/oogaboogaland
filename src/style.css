@@ -10022,7 +10022,7 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 .cloud-hopper-time[hidden] { display: none; }
 .cloud-hopper-status { font-weight: 700; }
 /* Power-ups under the clock, only while one applies: X-ray in cyan (blinking its last seconds), the feather in mint,
-   the anchor in gold (brighter while it holds a cloud). */
+   the hook in gold (brighter while it is thrown); on a touch screen the hook's chip is a button to hold. */
 .cloud-hopper-powers { display: flex; justify-content: center; gap: 6px; margin: 2px 0 6px; }
 .cloud-hopper-powers[hidden], .cloud-hopper-power[hidden] { display: none; }
 .cloud-hopper-power { padding: 2px 8px; border: 1px solid; border-radius: 9px; font-size: 10px; font-weight: 700; letter-spacing: .08em;
@@ -10030,8 +10030,11 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 .cloud-hopper-power.xray { border-color: #4fe3ff; color: #9ef2ff; background: #0e3a4ccc; }
 .cloud-hopper-power.xray.ending { animation: cloud-hopper-blink .5s steps(2, jump-none) infinite; }
 .cloud-hopper-power.updraft { border-color: #7fe0a8; color: #c4f7d6; background: #12402acc; }
-.cloud-hopper-power.anchor { border-color: #c9a24a; color: #f2d58a; background: #3c2e10cc; }
-.cloud-hopper-power.anchor.holding { border-color: #ffd54a; color: #fff0b8; background: #5a4410e0; }
+.cloud-hopper-power.hook { border-color: #c9a24a; color: #f2d58a; background: #3c2e10cc; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.cloud-hopper-power.hook.thrown { border-color: #ffd54a; color: #fff0b8; background: #5a4410e0; }
+@media (pointer: coarse) {
+  .cloud-hopper-power.hook { pointer-events: auto; padding: 10px 22px; font-size: 13px; border-radius: 14px; touch-action: none; }
+}
 @keyframes cloud-hopper-blink { 50% { opacity: .25; } }
 .cloud-hopper-help { margin: 5px 0 0; color: #d8e9f3; font-size: 11px; line-height: 1.5; }
 .cloud-hopper-panel {

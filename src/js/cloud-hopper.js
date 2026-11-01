@@ -8,14 +8,19 @@
   const START_VIEW = { height: 6, distance: 18 };
   const BOOST_SPEED = 28, BOOST_RISE = 4, BOUNCE_RISE = 22, LAUNCH_CLEARANCE = 0.04;
   const RECOVERY_GRACE_SECONDS = 0.75, DOCK_MUSIC_LEVEL = 0.28, WARNING_THIN = 0.32, TAU = Math.PI * 2;
-  // Power-ups (plan 3): X-ray's seconds (more in a hazy level) and how far it reads clouds, the sky feather's lift,
-  // and the anchor's hold. A guide card introduces each the first time a browser session plays a level that has it.
-  const XRAY_SECONDS = 12, XRAY_HAZE_SECONDS = 15, XRAY_RADIUS = 60, XRAY_HAZE_RADIUS = 120, UPDRAFT_RISE = 13, ANCHOR_SECONDS = 12;
-  const POWERS = ["xray", "updraft", "anchor"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
+  // Power-ups (plan 3): X-ray's seconds (more in a hazy level) and how far it reads clouds, and the sky feather's lift.
+  // A guide card introduces each the first time a browser session plays a level that has it.
+  const XRAY_SECONDS = 12, XRAY_HAZE_SECONDS = 15, XRAY_RADIUS = 60, XRAY_HAZE_RADIUS = 120, UPDRAFT_RISE = 13;
+  // The grappling hook: how far it reaches from the Ooga's chest, how fast it flies out and reels back, how fast it
+  // pulls, how near the bite it lets go by itself, and the longest pull.
+  const HOOK_RANGE = 40, HOOK_FLY = 90, HOOK_REEL = 70, HOOK_PULL = 18, HOOK_ARRIVE = 1, HOOK_PULL_SECONDS = 4;
+  const POWERS = ["xray", "updraft", "hook"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
   // Each pickup's light under it, by kind, in the tint of its glow.
-  const PICKUP_LIGHT = { jetpack: [0.55, 0.65, 0.75], xray: [0.35, 0.78, 0.88], updraft: [0.45, 0.8, 0.6], anchor: [0.88, 0.72, 0.4] };
+  const PICKUP_LIGHT = { jetpack: [0.55, 0.65, 0.75], xray: [0.35, 0.78, 0.88], updraft: [0.45, 0.8, 0.6], hook: [0.88, 0.72, 0.4] };
   const PICKUP_TOAST = { xray: "X-ray goggles · every nearby cloud's time", updraft: "Sky feather · Space once both jumps are spent",
-    anchor: "Bone anchor · the next cloud you land on holds still" };
+    hook: "Grappling hook · click a cloud and hold to swing to it" };
+  // Where the hook is: in hand, flying out, biting a cloud, or reeling back in.
+  const HAND = 0, OUT = 1, BIT = 2, REEL = 3, HOOK_NAMES = ["hand", "out", "bit", "reel"];
   let guideSeen = false, itemsSeen = null;
   const hasSeenGuide = () => {
     if (!guideSeen) {
@@ -63,10 +68,15 @@
     let session = null, latest = null, run = 0, courseSeed = 0, courseDrift = 0;
     let unrecoverableAt = -1;
     let runnerName = "", dockMusicOn = false, scoreTicket = null, unwatchScores = null;
-    // The power-ups this attempt: when X-ray ends (race seconds, -1 off) and whether its end was cued, a feather and
-    // an anchor held, the cloud an anchor holds (and whether its last creak sounded), the cloud the rider stood on last
-    // frame (an anchor takes the next touchdown), and when the feather's gust began (-1 none).
-    let xrayUntil = -1, xrayWarned = false, feather = false, anchorHeld = false, anchored = null, anchorCreaked = false, wasRiding = null, gustAt = -1;
+    // The power-ups this attempt: when X-ray ends (race seconds, -1 off) and whether its end was cued, a feather held,
+    // and when the feather's gust began (-1 none).
+    let xrayUntil = -1, xrayWarned = false, feather = false, gustAt = -1;
+    // The grappling hook: whether one is held, where it is (`HAND`, `OUT`, `BIT`, `REEL`), whether its button is down,
+    // the cloud it flies to or bites (null on a miss), its bite in that cloud's frame (across, and down from its top),
+    // its head and where a miss stops, and how long it has pulled.
+    let hookHeld = false, hookAt = HAND, hookDown = false, hookCloud = null, hookPull = 0;
+    const hookTip = { x: 0, y: 0, z: 0 }, hookEnd = { x: 0, y: 0, z: 0 }, hookBite = { x: 0, y: 0, z: 0 }, hookChest = { x: 0, y: 0, z: 0 };
+    const aimRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 }, aimHit = { x: 0, y: 0, z: 0, t: 0, cloud: null };
     // Rendering and player physics pause in a hidden tab. Keep the race's
     // wall clock on that same timeline while the soundtrack plays on.
     let hiddenAt = document.hidden ? performance.now() : -1, hiddenTime = 0;
@@ -145,13 +155,15 @@
     const active = () => phase !== "idle", playing = () => active() && phase !== "intro";
     const held = () => phase === "intro" || phase === "lifting" || phase === "briefing" || phase === "won" || phase === "dq";
     const overlay = BL.cloudHopperHud.create({ onStart: () => beginRun(), onReplay: () => beginRun(), onExit: () => exit(),
-      onGuideDone: () => finishGuide(), onSelect: (id) => selectLevel(id), onNext: () => nextLevel(), letterSign: hud.letterSign });
+      onGuideDone: () => finishGuide(), onSelect: (id) => selectLevel(id), onNext: () => nextLevel(), onHook: (down) => hookAction(down),
+      letterSign: hud.letterSign });
     const ghost = BL.cloudHopperGhost.create({ root, renderer: ctx.renderer });
     const audio = BL.cloudHopperAudio.create();
     const scenery = BL.cloudHopperSky.create({ root, renderer: ctx.renderer, seaY: ctx.seaY, onStrike: (distance) => audio.thunder(distance) });
-    // The anchor's tether under the cloud it holds, and the feather's gust of leaves: built once, shown when used.
-    const tether = BL.cloudHopperModels.tether(), leaves = [];
-    addChild(routeRoot, tether);
+    // The hook's rope and head, and the feather's gust of leaves: built once, shown when used.
+    const rope = createNode({ geometry: BL.cloudHopperModels.rope(), visible: false, sightHidden: true });
+    const hookNode = createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true }), leaves = [];
+    addChild(routeRoot, rope, hookNode);
     for (let i = 0; i < 12; i++) {
       const leaf = createNode({ geometry: BL.cloudHopperModels.leaf(), visible: false, sightHidden: true });
       leaves.push(leaf); addChild(routeRoot, leaf);
@@ -215,8 +227,8 @@
       cloudNodes.length = boostNodes.length = bounceNodes.length = pickupNodes.length = 0;
       launchContacts.fill(0); unrecoverableAt = -1;
       scenery.clear(); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
-      xrayUntil = gustAt = -1; xrayWarned = feather = anchorHeld = anchorCreaked = false; anchored = wasRiding = null;
-      tether.visible = false;
+      xrayUntil = gustAt = -1; xrayWarned = feather = hookHeld = hookDown = false; hookAt = HAND; hookCloud = null;
+      rope.visible = hookNode.visible = false;
       for (const leaf of leaves) leaf.visible = false;
       overlay.setPowers(-1, false, -1);
       course = null; routeRoot.visible = false;
@@ -243,6 +255,8 @@
       audio.stage(next === "won" && latest?.run === played().scores[0]?.run ? "best" : next);
       audio.level(next === "intro" || next === "lifting" ? DOCK_MUSIC_LEVEL : 1, 0.8);
       if (next === "intro") audio.unlock();
+      // The run is played in combat; control back at the top takes mouse-look again (natively inside a gesture).
+      if (next === "ready") pilot.focusAim(typeof navigator !== "undefined" && !!navigator.userActivation?.isActive);
     };
     // The power-ups this level carries that this browser session has not been shown yet.
     const newItems = () => POWERS.filter((kind) => level.layout[kind] > 0 && !seenItems().has(kind));
@@ -267,6 +281,8 @@
       if (saved.jetWorn) crew.wearJetpack(actor, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
       actor.weapon.primaryOwned = saved.primary; actor.weapon.secondaryOwned = saved.secondary;
       crew.selectWeapon(saved.slot, actor);
+      // An Ooga that came in carrying goes back to carrying.
+      if (!saved.aiming && actor.weapon.aiming && pilot.player === actor) pilot.modeAction("mode-toggle");
       saved = null; pilot.showAct();
     };
     // A level's start stands its route out from the final cloud, which is 12 m off the coast, and its slope
@@ -336,7 +352,8 @@
       const refusal = ctx.refusal();
       if (refusal) { hud.toast(refusal); return false; }
       if (!saved) saved = { jetOwned: cave.jetpackOwned, jetWorn: !!cave.jet, fuel: cave.jetFuel, recovering: cave.jetRecovering,
-        primary: cave.weapon.primaryOwned, secondary: cave.weapon.secondaryOwned, slot: cave.weapon.equipped ? 2 : cave.weapon.primaryEquipped ? 1 : 0 };
+        primary: cave.weapon.primaryOwned, secondary: cave.weapon.secondaryOwned, slot: cave.weapon.equipped ? 2 : cave.weapon.primaryEquipped ? 1 : 0,
+        aiming: cave.weapon.aiming };
       crew.selectWeapon(0, cave); cave.weapon.primaryOwned = cave.weapon.secondaryOwned = false;
       crew.setJetpackOwnership(cave, false); cave.jetFuel = 0; cave.jetRecovering = false;
       crew.clearProjectiles();
@@ -396,6 +413,9 @@
       const items = replay ? newItems() : null;
       if (items?.length) overlay.setGuide(false, items);
       setPhase(replay ? items.length ? "briefing" : "ready" : "lifting");
+      // No carry here: the run is played in combat, at the shoulder or in first person. The hub's `combatOnly` holds
+      // it there from now on, and lets the pilot enter it while the ride holds the controls.
+      if (!cave.weapon.aiming) pilot.modeAction("mode-toggle");
       if (!replay) ctx.mode(true);
       moveRider();
       if (replay) {
@@ -454,6 +474,8 @@
         if (actor.jet) crew.cutJet(actor);
       }
       ghost.hide();
+      // A hook out comes home with the run's end.
+      hookAt = HAND; hookCloud = null; hookDown = false; rope.visible = hookNode.visible = false;
       scoreTicket = null;
       setPhase(won ? "won" : "dq");
       pilot.freeCursor();
@@ -549,21 +571,7 @@
         node.position.x = pickup.x; node.position.y = pickup.y; node.position.z = pickup.z;
         if (node.visible) BL.cloudHopperModels.updateJetpackPickup(node, camera, displayTime + i * 2);
       }
-      // An anchor held bites on the rider's next touchdown on a cloud that fades; its tether hangs there while it holds.
-      if (anchorHeld && riding && riding !== wasRiding && phase === "running" && course.anchor(riding, ANCHOR_SECONDS)) {
-        anchorHeld = false; anchored = riding; anchorCreaked = false; audio.anchor();
-      }
-      wasRiding = riding;
-      if (anchored) {
-        const left = course.anchoredFor(anchored);
-        if (left <= 0) { anchored = null; tether.visible = false; }
-        else {
-          if (!anchorCreaked && left <= 2) { audio.creak(); anchorCreaked = true; }
-          tether.visible = true;
-          tether.position.x = anchored.x; tether.position.y = anchored.y - anchored.depth + 0.3; tether.position.z = anchored.z;
-          tether.rotation.z = Math.sin(displayTime * 1.3) * 0.06; tether.rotation.x = Math.sin(displayTime * 0.9) * 0.05;
-        }
-      }
+      if (hookHeld && (phase === "ready" || phase === "running")) updateHook(dt);
       scenery.update(dt, camera);
       if (phase === "lifting") {
         age += dt;
@@ -641,18 +649,18 @@
           actor.jetFuel = 1; actor.jetRecovering = false;
           pilot.showAct(); hud.toast(refill ? "Jetpack refilled" : "Jetpack collected · J to equip");
         } else {
-          // Another X-ray goggles refresh it to full; a feather or an anchor is taken only with none held.
+          // Another X-ray goggles refresh it to full; a feather or a hook is taken only with none held.
           if (pickup.kind === "xray") { xrayUntil = seconds + (level.sky?.fog ? XRAY_HAZE_SECONDS : XRAY_SECONDS); xrayWarned = false; }
           else if (pickup.kind === "updraft") feather = true;
-          else anchorHeld = true;
+          else { hookHeld = true; hookAt = HAND; hookDown = false; }
           audio.power(pickup.kind); hud.toast(PICKUP_TOAST[pickup.kind]);
         }
         for (let i = 0; i < pickupNodes.length; i++) if (!course.pickups[i].active) pickupNodes[i].visible = false;
       }
       const xrayLeft = phase === "running" && xrayUntil > seconds ? xrayUntil - seconds : -1;
       if (!xrayWarned && xrayLeft >= 0 && xrayLeft <= 2) { audio.xrayEnding(); xrayWarned = true; }
-      overlay.setPowers(xrayLeft >= 0 ? Math.ceil(xrayLeft) : -1, feather, anchored ? Math.ceil(course.anchoredFor(anchored)) : anchorHeld ? 0 : -1);
-      updateGust();
+      overlay.setPowers(xrayLeft >= 0 ? Math.ceil(xrayLeft) : -1, feather, hookHeld ? hookAt === HAND ? 0 : 1 : -1);
+      updateGust(); placeHook();
       if (actor.jetpackOwned && actor.jetFuel <= 0) {
         crew.setJetpackOwnership(actor, false); actor.jetRecovering = false;
         pilot.showAct(); hud.toast("Jetpack empty");
@@ -664,7 +672,7 @@
         const jump = Math.hypot(actor.jumps < 2 ? BL.crew.JUMP_SPEED : 0, feather ? UPDRAFT_RISE : 0);
         const tank = actor.traits.jetTank > 0 ? actor.traits.jetTank : 1;
         const jetSeconds = actor.jetpackOwned ? actor.jetFuel * BL.crew.JET_FUEL_SECONDS * tank : 0;
-        if (course.canRecover(p.x, feet, p.z, actor.hopV, speed, jump, ctx.seaY,
+        if (hookReach() || course.canRecover(p.x, feet, p.z, actor.hopV, speed, jump, ctx.seaY,
           jetSeconds, BL.crew.JET_ACCEL, BL.crew.JET_RISE, actor.bodyHeight)) unrecoverableAt = -1;
         else {
           // Keep control briefly beyond the reach envelope. A recovered
@@ -674,10 +682,118 @@
         }
       } else unrecoverableAt = -1;
     };
-    // Which pickups the rider takes now: a jetpack unless the tank is full, X-ray always, a feather or an anchor only
+    // Which pickups the rider takes now: a jetpack unless the tank is full, X-ray always, a feather or a hook only
     // with none held.
     const wants = (kind) => kind === "jetpack" ? !actor.jetpackOwned || actor.jetFuel < 1
-      : kind === "updraft" ? !feather : kind === "anchor" ? !anchorHeld : true;
+      : kind === "updraft" ? !feather : kind === "hook" ? !hookHeld : true;
+    // The Ooga's chest, where the rope starts.
+    const chest = () => {
+      const p = actor.root.position;
+      hookChest.x = p.x; hookChest.y = p.y - actor.baseY + actor.bodyHeight * 0.6; hookChest.z = p.z;
+      return hookChest;
+    };
+    // Where the crosshair points, from the Ooga's chest on (so nothing behind it is aimed at): the cloud in the hook's
+    // reach it lands on, in `aimHit`, or false.
+    const aim = () => {
+      const size = ctx.renderer.size, c = chest();
+      ctx.renderer.ray(size.width / 2, size.height / 2, camera, aimRay);
+      const along = Math.max(0, (c.x - aimRay.ox) * aimRay.dx + (c.y - aimRay.oy) * aimRay.dy + (c.z - aimRay.oz) * aimRay.dz);
+      const ox = aimRay.ox + aimRay.dx * along, oy = aimRay.oy + aimRay.dy * along, oz = aimRay.oz + aimRay.dz * along;
+      return course.hit(ox, oy, oz, aimRay.dx, aimRay.dy, aimRay.dz, HOOK_RANGE + 10, aimHit)
+        && Math.hypot(aimHit.x - c.x, aimHit.y - c.y, aimHit.z - c.z) <= HOOK_RANGE;
+    };
+    // The hook's button (the mouse's left button in combat, a pad's RT, the touch chip): pressed, it throws the hook
+    // at the cloud under the crosshair, or out to its full reach on a miss; let go, a biting hook lets go and reels in.
+    // Every press during a run is the hook's, so the empty-handed Ooga never swings at the air.
+    const hookAction = (down) => {
+      if (!playing()) return false;
+      if (phase !== "ready" && phase !== "running") return true;
+      if (!down) {
+        hookDown = false;
+        if (hookHeld && hookAt === BIT) letGo();
+        return true;
+      }
+      hookDown = true;
+      if (!hookHeld || hookAt !== HAND) return true;
+      const c = chest();
+      Object.assign(hookTip, c);
+      if (aim()) {
+        hookCloud = aimHit.cloud;
+        hookBite.x = aimHit.x - hookCloud.x; hookBite.y = hookCloud.top - aimHit.y; hookBite.z = aimHit.z - hookCloud.z;
+      } else {
+        hookCloud = null;
+        const along = Math.max(0, (c.x - aimRay.ox) * aimRay.dx + (c.y - aimRay.oy) * aimRay.dy + (c.z - aimRay.oz) * aimRay.dz) + HOOK_RANGE;
+        hookEnd.x = aimRay.ox + aimRay.dx * along; hookEnd.y = aimRay.oy + aimRay.dy * along; hookEnd.z = aimRay.oz + aimRay.dz * along;
+      }
+      hookAt = OUT; audio.hookThrow();
+      return true;
+    };
+    const letGo = () => { hookAt = REEL; hookCloud = null; audio.hookRelease(); };
+    // Moves the hook's head `step` metres toward a point; true once it is there.
+    const hookToward = (x, y, z, step) => {
+      const dx = x - hookTip.x, dy = y - hookTip.y, dz = z - hookTip.z, d = Math.hypot(dx, dy, dz);
+      if (d <= step) { hookTip.x = x; hookTip.y = y; hookTip.z = z; return true; }
+      hookTip.x += dx / d * step; hookTip.y += dy / d * step; hookTip.z += dz / d * step;
+      return false;
+    };
+    // Before the crew moves: the hook flies, bites, pulls the Ooga toward its bite while the button is held, and
+    // reels back once it lets go, the Ooga keeping its speed and the crew's air drag easing it.
+    const updateHook = (dt) => {
+      if (hookAt === HAND) return;
+      if (hookAt === REEL) {
+        const c = chest();
+        if (hookToward(c.x, c.y, c.z, HOOK_REEL * dt)) hookAt = HAND;
+        return;
+      }
+      if (hookCloud && !hookCloud.active) { letGo(); return; }
+      if (hookAt === OUT) {
+        if (!hookCloud) {
+          if (hookToward(hookEnd.x, hookEnd.y, hookEnd.z, HOOK_FLY * dt)) {
+            // A miss: the hook is gone.
+            hookHeld = false; hookAt = HAND; audio.hookLost(); hud.toast("Hook lost");
+          }
+          return;
+        }
+        if (!hookToward(hookCloud.x + hookBite.x, hookCloud.top - hookBite.y, hookCloud.z + hookBite.z, HOOK_FLY * dt)) return;
+        hookAt = BIT; hookPull = 0; audio.hookHit();
+        // Let go before it bit: it lets go at once.
+        if (!hookDown) { letGo(); return; }
+        actor.jumps = 1;
+      }
+      hookTip.x = hookCloud.x + hookBite.x; hookTip.y = hookCloud.top - hookBite.y; hookTip.z = hookCloud.z + hookBite.z;
+      // Pulled to stand just over the cloud's top at the bite, slowing over the last metres.
+      const p = actor.root.position, feet = p.y - actor.baseY;
+      const dx = hookTip.x - p.x, dy = hookCloud.top + 0.8 - feet, dz = hookTip.z - p.z, d = Math.hypot(dx, dy, dz);
+      hookPull += dt;
+      if (d < HOOK_ARRIVE || hookPull > HOOK_PULL_SECONDS) { letGo(); return; }
+      const speed = Math.min(HOOK_PULL, d * 5) / d;
+      if (actor.hop < 0.001) { crew.elevate(0); p.y += LAUNCH_CLEARANCE; actor.hop += LAUNCH_CLEARANCE; }
+      actor.leap.vx = dx * speed; actor.leap.vz = dz * speed;
+      actor.hopV = actor.hop <= LAUNCH_CLEARANCE ? Math.max(dy * speed, 4) : dy * speed;
+      actor.leap.land = 0; actor.leap.thrown = actor.leap.rageThrown = false;
+    };
+    // After the crew moves: the rope from the chest to the hook's head, and the head pointing along it.
+    const placeHook = () => {
+      const out = hookHeld && hookAt !== HAND;
+      rope.visible = hookNode.visible = out;
+      if (!out) return;
+      const c = chest(), dx = hookTip.x - c.x, dy = hookTip.y - c.y, dz = hookTip.z - c.z;
+      const length = Math.hypot(dx, dy, dz), yaw = Math.atan2(dx, dz), pitch = -Math.atan2(dy, Math.hypot(dx, dz));
+      rope.position.x = c.x; rope.position.y = c.y; rope.position.z = c.z;
+      rope.rotation.x = hookNode.rotation.x = pitch; rope.rotation.y = hookNode.rotation.y = yaw;
+      rope.scale.z = Math.max(0.01, length);
+      hookNode.position.x = hookTip.x; hookNode.position.y = hookTip.y; hookNode.position.z = hookTip.z;
+    };
+    // A hook held saves a fall while any cloud stands in its reach, since its pull outruns gravity.
+    const hookReach = () => {
+      if (!hookHeld) return false;
+      if (hookAt === BIT) return true;
+      const c = chest();
+      for (const cloud of course.clouds) {
+        if (cloud.active && Math.hypot(cloud.x - c.x, cloud.top - c.y, cloud.z - c.z) <= HOOK_RANGE + Math.min(cloud.rx, cloud.rz)) return true;
+      }
+      return false;
+    };
     // The sky feather, on a Space press with both jumps spent and no worn pack (the crew's `spentJump`): a gust
     // throws the Ooga up, keeping its speed across.
     const updraft = (cave) => {
@@ -713,8 +829,8 @@
     };
     // X-ray (plan 3.3): for the nearest clouds in reach, their solid time read from the schedule itself, a ring
     // emptying over 20 s with whole seconds in it (red and pulsing while it warns), a gold ∞ diamond on one that
-    // never fades, a gold ring for one an anchor holds, a dashed ring and the time until it is back for one gone, and
-    // in haze a dashed outline round one past where the fog begins. A label that would overlap another is left out.
+    // never fades, a dashed ring and the time until it is back for one gone, and in haze a dashed outline round one
+    // past where the fog begins. A label that would overlap another is left out.
     const drawXray = (c2) => {
       const p = actor.root.position, haze = level.sky?.fog, radius = haze ? XRAY_HAZE_RADIUS : XRAY_RADIUS, size = ctx.renderer.size;
       const cap = coarse || size.width < 600 ? 5 : 8, clouds = course.clouds;
@@ -736,9 +852,9 @@
       c2.textAlign = "center"; c2.textBaseline = "middle"; c2.lineJoin = "round";
       const pulse = 0.55 + 0.45 * Math.sin(displayTime * 12);
       for (let n = 0; n < count; n++) {
-        const c = clouds[nearIndex[n]], s = course.solidLeft(c), held = course.anchoredFor(c);
+        const c = clouds[nearIndex[n]], s = course.solidLeft(c);
         const warning = c.phase === BL.cloudHopperCourse.WARNING || c.phase === BL.cloudHopperCourse.FADING;
-        const color = s === Infinity || held > 0 ? "#ffd54a" : s <= 0 ? "#8aa0b8" : warning ? "#ff5a45" : s < 8 ? "#ffb23e" : "#5fe08a";
+        const color = s === Infinity ? "#ffd54a" : s <= 0 ? "#8aa0b8" : warning ? "#ff5a45" : s < 8 ? "#ffb23e" : "#5fe08a";
         if (haze && nearDistance[n] > haze[0] + 20) { c2.strokeStyle = color; c2.lineWidth = 2; outline(c2, c, HAZE_DASH); }
         const q = ctx.renderer.project(c.x, c.top + 1.2, c.z, screen);
         if (!q || q.x < 0 || q.x > size.width || q.y < 0 || q.y > size.height) continue;
@@ -759,7 +875,7 @@
         if (s > 0) { c2.beginPath(); c2.arc(x, y, 13, -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, s / 20)); c2.strokeStyle = color; c2.stroke(); }
         else { c2.setLineDash(RING_DASH); c2.beginPath(); c2.arc(x, y, 13, 0, TAU); c2.strokeStyle = color; c2.lineWidth = 2; c2.stroke(); c2.setLineDash(NO_DASH); }
         c2.globalAlpha = 1;
-        c2.font = "bold 11px ui-monospace, monospace"; c2.fillStyle = s <= 0 ? "#b9c6d6" : held > 0 ? "#ffe27a" : "#ffffff";
+        c2.font = "bold 11px ui-monospace, monospace"; c2.fillStyle = s <= 0 ? "#b9c6d6" : "#ffffff";
         c2.fillText(s <= 0 ? BACK[Math.min(99, Math.ceil(-s))] : s > 99 ? "99+" : SECONDS[Math.ceil(s)], x, y + 0.5);
       }
       c2.restore();
@@ -768,8 +884,16 @@
       ghost.drawName(c2);
       if (phase === "running") {
         if (xrayUntil > seconds) drawXray(c2);
-        // The cloud an anchor holds wears a gold rim.
-        if (anchored) { c2.save(); c2.strokeStyle = "#ffd54a"; c2.lineWidth = 3; outline(c2, anchored, NO_DASH); c2.restore(); }
+      }
+      // A hook in hand rings the cloud in reach under the crosshair in gold where it would bite.
+      if (hookHeld && hookAt === HAND && (phase === "ready" || phase === "running") && aim()) {
+        const q = ctx.renderer.project(aimHit.x, aimHit.y, aimHit.z, screen);
+        if (q) {
+          c2.save(); c2.lineWidth = 3;
+          c2.strokeStyle = "rgba(20, 14, 8, 0.85)"; c2.beginPath(); c2.arc(q.x, q.y, 11, 0, TAU); c2.stroke();
+          c2.strokeStyle = "#ffd54a"; c2.lineWidth = 2; c2.stroke();
+          c2.restore();
+        }
       }
       if (phase !== "lifting" && phase !== "ready" && phase !== "running") return;
       // Keep the finish readable from the clouds, anchored to the live pile
@@ -802,7 +926,7 @@
     };
     const liveGeometry = (set) => {
       ghost.liveGeometry(set);
-      for (const part of tether.children) set.add(part.geometry);
+      set.add(rope.geometry); set.add(hookNode.geometry);
       set.add(leaves[0].geometry);
       for (const surface of boostNodes) if (surface) set.add(surface.geometry);
       for (const marker of bounceNodes) if (marker) for (const part of marker.children) set.add(part.geometry);
@@ -837,7 +961,7 @@
       }
       return count;
     };
-    return { platform, cabinet, action, launch, near, exit, cancel, preUpdate, postUpdate, onJump, updraft, fallView, supportAt, dispose, liveGeometry, pickupLightsWanted, pickupLights, drawOverlay,
+    return { platform, cabinet, action, launch, near, exit, cancel, preUpdate, postUpdate, onJump, updraft, hookAction, fallView, supportAt, dispose, liveGeometry, pickupLightsWanted, pickupLights, drawOverlay,
       get active() { return active(); }, get playing() { return playing(); }, get held() { return held(); },
       get actor() { return actor; }, get phase() { return phase; }, get time() { return seconds; },
       get bestGhost() { return session ? played().best : null; },
@@ -845,7 +969,7 @@
       // The level's fixed sky, which the hub samples instead of its clock while a run plays, and its lightning now.
       get sky() { return level.sky; }, get flash() { return playing() ? scenery.flash : 0; },
       // The power-ups held now, for debugging.
-      get powers() { return { xray: Math.max(0, xrayUntil - seconds), feather, anchorHeld, anchored: anchored ? anchored.index : -1 }; },
+      get powers() { return { xray: Math.max(0, xrayUntil - seconds), feather, hook: hookHeld ? HOOK_NAMES[hookAt] : "" }; },
       get bound() { return Math.hypot(start.x, start.z) + 80; } };
   };
   BL.cloudHopper = { create, LIFT_SECONDS };

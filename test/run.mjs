@@ -4697,7 +4697,8 @@ const cloudHopperFailureChecks = async engine => {
     setJetpackOwnership(cave, owned) { cave.jetpackOwned = owned; if (!owned) cave.jet = null; },
     wearJetpack(cave) { cave.jet = pack(); }, removeJetpack(cave) { cave.jet = null; },
     cutJet(cave) { cuts++; cave.jet.thrust = cave.jet.spending = false; cave.jet.power = cave.jet.puff = 0; cave.jet.flame.visible = false; } };
-  const pilot = { player: actor, orbit: { yaw: 0 }, controls: { reset() { inputResets++; } }, showAct: noop, freeCursor: noop,
+  const pilot = { player: actor, orbit: { yaw: 0 }, controls: { reset() { inputResets++; } }, showAct: noop, freeCursor: noop, focusAim: noop,
+    modeAction(action) { if (action === "mode-toggle") actor.weapon.aiming = !actor.weapon.aiming; },
     tiltView(pitch) { this.orbit.pitch = this.orbit.tPitch = pitch; },
     framePoint(point, screenY, mix, overview) {
       viewFrames++;
@@ -4719,9 +4720,9 @@ const cloudHopperFailureChecks = async engine => {
     cloudHopperSky: { create: () => ({ build: () => 0, update: noop, clear: noop, dispose: noop, flash: 0 }) },
     cloudHopperModels: { cloud(radius) { platformRadius ||= radius; return S.createNode(); }, cloudMesh: () => null, boostSurface: () => S.createNode(), updateBoostSurface: noop,
       bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
-      tether: () => S.createNode(), leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
+      rope: () => null, hookHead: () => null, leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
     cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song: noop, jump: noop, fade: noop, warn: noop, jet: noop,
-      power: noop, xrayEnding: noop, updraft: noop, anchor: noop, creak: noop, thunder: noop, rain: noop,
+      power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop,
       stage(name) { audioStage = name; }, tick() { audioTicks++; },
       level(value, seconds = 0.12) { audioLevel = value; audioFade = seconds; },
       stop() { audioStage = ""; audioLevel = 0; audioStops++; }, dispose() { audioDisposed = true; } }) },

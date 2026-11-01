@@ -954,17 +954,17 @@
       // Rain: streaks fixed in the world and wrapped into a box round the eye, so turning never drags them along,
       // slanted by the wind and falling fast; as many as the quality tier carries. One within NEAR of the eye is left
       // out, or it would cross the view as a bar.
-      const N = renderer.quality === "high" ? 240 : renderer.quality === "low" ? 80 : 160, BOX = 44, TALL = 30, NEAR = 3;
+      const N = renderer.quality === "high" ? 360 : renderer.quality === "low" ? 120 : 240, BOX = 44, TALL = 30, NEAR = 3, WIDE = 1.1;
       const drops = batch(BL.weather.rainDrop(), N), d = drops.instanceData, sx = new Float32Array(N), sy = new Float32Array(N), sz = new Float32Array(N);
       for (let i = 0; i < N; i++) { sx[i] = rand() * BOX; sy[i] = rand() * TALL; sz[i] = rand() * BOX; }
-      const windX = route.sideX * 0.22, windZ = route.sideZ * 0.22, l = Math.hypot(windX, 1, windZ), len = 1.7;
+      const windX = route.sideX * 0.22, windZ = route.sideZ * 0.22, l = Math.hypot(windX, 1, windZ), len = 1.15;
       addChild(scenery, drops);
       movers.push((time, dt, camera) => {
         const p = camera.position;
         for (let i = 0; i < N; i++) {
           const fall = (sy[i] + time * 26) % TALL, x = p.x - BOX / 2 + ((sx[i] + fall * windX - p.x) % BOX + BOX) % BOX;
           const z = p.z - BOX / 2 + ((sz[i] + fall * windZ - p.z) % BOX + BOX) % BOX, k = (x - p.x) ** 2 + (z - p.z) ** 2 < NEAR * NEAR ? 0 : 1;
-          write(d, i * 20, 3 * k, 0, 0, windX / l * len * k, 1 / l * len * k, windZ / l * len * k, 0, 0, 3 * k, x, p.y + TALL / 2 - fall, z);
+          write(d, i * 20, WIDE * k, 0, 0, windX / l * len * k, 1 / l * len * k, windZ / l * len * k, 0, 0, WIDE * k, x, p.y + TALL / 2 - fall, z);
         }
         drops.instanceVersion++;
       });

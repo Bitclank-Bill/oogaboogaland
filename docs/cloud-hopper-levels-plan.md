@@ -175,12 +175,12 @@ The cost of the fourth level:
 
 - **Length**: L4 is 2.26× today's route, about 4.5 minutes, so a late disqualification
   hurts more.
-- **Scope**: rain, haze and the Anchor power-up.
+- **Scope**: rain, haze and the grappling hook (built in place of the planned Anchor, 3.2).
 - **Cloud count**: about 120 clouds, so `MAX_CLOUDS` goes from 128 to 160.
 
 L4 is the **last milestone**, with a go/no-go after L1–L3 have been play-tested. If you
 choose three levels, L3 keeps its movement challenge and gets light haze in its distance
-only (`fogNear` 180 m), and the Anchor power-up is dropped.
+only (`fogNear` 180 m), and L4's own power-up is dropped.
 
 ### 2.3 Level comparison
 
@@ -204,7 +204,7 @@ play-testing within the stated bounds.
 | Warning, then fade | none, then 1 s | 3.0 s, then 1 s | 2.5 s, then 1 s | 2.0 s, then 1 s | 2.0 s, then 1 s |
 | Hidden | 1.2–3.2 s | 1.5–3 s | 1.5–3.5 s | 2–4 s | 2–4 s |
 | Boost / bounce | 22% / ~16% | 20% / ≤1 cloud | 22% / 16% | 18% / 18% | 18% / 16% |
-| Power-ups | jetpack 1–2 | jetpack 2 | jetpack 1–2, X-ray 2 | jetpack 1–2, X-ray 2, Updraft 1–2 | jetpack 2, X-ray 3, Updraft 1, Anchor 2 |
+| Power-ups | jetpack 1–2 | jetpack 2 | jetpack 1–2, X-ray 2 | jetpack 1–2, X-ray 2, Updraft 1–2 | jetpack 2, X-ray 3, Updraft 1, Hook 2 |
 | Hazards | — | — | — | crumble clouds, forks | crumble clouds, forks, haze, rain |
 | Visibility (fog) | 900–2000 m | clear | clear | clear night | haze 70–260 m |
 | Expected time (H) | ~90–130 s | ~60–90 s | ~110–140 s | ~170–210 s | ~240–300 s |
@@ -315,7 +315,7 @@ Tradeoffs:
 
 - **Pure function of race time.** Each cloud's state (warning, fade, hidden, appear, the
   height of its top, its position) depends only on the seed, level, race time, the time a
-  crumble cloud was touched, and any anchor hold. Everything is evaluated in closed form
+  crumble cloud was touched. Everything is evaluated in closed form
   each frame, so it is identical at 30, 60 or 144 Hz and through a 5 s frame. A frame
   longer than the warning still reaches the right state; only the visual pulse is missed.
 - **Variable spans in O(1).** Each cloud keeps a fixed slot length T. The solid span,
@@ -324,8 +324,6 @@ Tradeoffs:
   between disappearances range from about 0.5 T to 1.7 T.
 - **Waiting before departure** does not start the schedule, as today.
 - **Hidden tabs** freeze the schedule and motion through `raceNow()`, as today.
-- **Anchor holds** stay closed form (`tEff = t` before the hold, `holdFrom` during it,
-  `t − holdSeconds` after). A cloud has at most one hold, and a later anchor extends it.
 - **Crumble countdowns** store `touchedAt` in race time on the cloud record, which is
   allocated once.
 
@@ -363,26 +361,27 @@ the `movePass` guards. Decision 3 in section 7.
 |---|---|---|
 | X-ray vision | **Yes, from L2** | It reads the real schedule and makes timing a skill. It matters most in L4's haze, but no route needs it |
 | Emergency updraft | **Yes, from L3** | A rescue that fits L3's deliberate hazards. It uses Space, which would otherwise do nothing |
-| Cloud anchor | **Yes, L4 only** | It lets you stop and scout in haze. It applies itself on landing, so it needs no key or targeting |
+| Cloud anchor | Built, then replaced | It held a cloud still on landing. In play it made little sense as a power-up, so L4 has the grappling hook instead (3.2) |
+| Grappling hook | **Yes, L4 only** | The maintainer's design: click a cloud to swing to it through the haze. Its button is the left click the game's combat already has free |
 | Air dash | No | It needs a new key, touch button and gamepad mapping. It adds a horizontal impulse that undoes L3's precise movement, and it overlaps with the jetpack |
 | Wind shield | No | No wind is proposed. Wind would be a physics change, to suggest separately |
 
 *Built in milestones 9, 10 and 12, as below. The pickups come from their own seeded stream, after everything else
 in the course, so they move nothing already there; a level's layout says how many of each. Crumble clouds and forks
-(milestone 11) are not built, so Updraft and Anchor are placed by stretch of the course instead of before them.*
+(milestone 11) are not built, so Updraft and the hook are placed by stretch of the course instead of before them.*
 
 ### 3.2 How each works
 
-| | X-ray | Updraft | Anchor |
+| | X-ray | Updraft | Grappling hook |
 |---|---|---|---|
 | First level | L2 (then L3, L4) | L3 (then L4) | L4 |
-| Where it is | a pickup on a cloud, about 0.4 of the way down; it falls with an O cloud like a jetpack | a pickup on L or O clouds before a crumble or fork stretch | a pickup on L clouds before a long stretch of haze |
-| Activation | on pickup | Space in the air when the air jump is spent and no fuelled pack is worn | on pickup it is held; it applies to the next cloud you land on (not the launch cloud) |
-| Effect | 12 s (15 s in L4): the remaining solid time of nearby clouds, read from the real schedule | sets vertical speed to +13 m/s (about 8.6 m of lift), keeping horizontal speed | that cloud stops fading and drifting for 12 s; if it was warning or fading, it goes back to solid at once |
+| Where it is | a pickup on a cloud, about 0.4 of the way down; it falls with an O cloud like a jetpack | a pickup on L or O clouds before a crumble or fork stretch | a pickup on a plain main landing in the course's first half |
+| Activation | on pickup | Space in the air when the air jump is spent and no fuelled pack is worn | held on pickup; the left button in combat (a pad's RT, the HOOK chip on touch) throws it along the crosshair |
+| Effect | 12 s (15 s in L4): the remaining solid time of nearby clouds, read from the real schedule | sets vertical speed to +13 m/s (about 8.6 m of lift), keeping horizontal speed | it bites the first cloud within 40 m and pulls the Ooga toward its top at up to 18 m/s while the button is held; let go, it reels back and the Ooga flies on; a miss loses it |
 | Stacking | another pickup refreshes it to full; the time does not add up | one held at a time; a second pickup stays in place, like a full tank's jetpack | one held at a time; a second stays in place |
-| Visual | thin cyan edges on screen; per-cloud gauges (3.3); its HUD icon blinks for the last 2 s | a leaf spiral from the fx pool under the Ooga; HUD icon while held | a vine and stone tether hangs from the cloud, with a gold rim on the overlay; HUD icon while held, ring while active |
-| Audio | shimmer up, then shimmer down 2 s before the end | wind whoosh | stone thunk and vine creak, then a creak 2 s before the end |
-| Interactions | shows anchored clouds as held, crumble countdowns, and hidden clouds' time until they return | counts as an extra jump in `canRecover` (still conservative), and its pickup counts as a rescue like a jetpack's | moves the schedule by the hold (2.7); X-ray and the fade cue read the moved schedule; no effect on pickups already falling |
+| Visual | thin cyan edges on screen; per-cloud gauges (3.3); its HUD icon blinks for the last 2 s | a leaf spiral from the fx pool under the Ooga; HUD icon while held | a bone hook on a vine rope from the Ooga's chest; a gold ring under the crosshair on a cloud in reach; HUD chip while held |
+| Audio | shimmer up, then shimmer down 2 s before the end | wind whoosh | a whoosh out, a thunk and creak as it bites, a zip as it reels in, a falling whoosh when lost |
+| Interactions | shows crumble countdowns and hidden clouds' time until they return | counts as an extra jump in `canRecover` (still conservative), and its pickup counts as a rescue like a jetpack's | touches no schedule; while held, any cloud in its reach saves a fall in `canRecover`'s place, since its pull outruns gravity |
 
 - **Controls.** No new key. The HUD shows at most three small icons under the timer (jet
   fuel, X-ray ring, held item), and only while they apply.
@@ -442,7 +441,7 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
 - **L3 Aurora Heights.** Clear moonlit night. A few large aurora curtains (emissive glass
   ribbons, cached, gently waving) and silent lightning far off on the horizon.
 - **L4 Thunderhead.** *Built in milestone 12, with the chosen look B: 18:36 greyed by the sky's `storm` (0.86) once as
-  it is sampled, haze 50–200 m on the clouds and the sea, rain, forked lightning 60–110 m off with the sky's flash
+  it is sampled, haze 40–160 m on the clouds and, in the haze's own grey, the sea, rain, forked lightning 60–110 m off with the sky's flash
   and thunder by distance, and dark scud clouds with rain shafts drifting well below the lanes. Measured in one
   page against the same view without it, the storm costs nothing at 1920x1080 on High.* (The plan had: storm haze
   with `fogNear` 70 m and `fogFar` 260 m.)
@@ -611,7 +610,7 @@ it touches.
 | 9 | X-ray (*built*) | `cloud-hopper-course.js`, `cloud-hopper.js`, `cloud-hopper-models.js`, `cloud-hopper-audio.js`, `cloud-hopper-hud.js` |
 | 10 | Updraft (*built*) | the same, plus a crew hook for a Space press with no other use (`spentJump`) |
 | 11 | L3 hazards: crumble clouds and forks | `cloud-hopper-course.js`, `cloud-hopper-models.js`, `cloud-hopper.js` |
-| 12 | L4: haze, rain, lightning, Anchor (*built*) | `scene-hub.js`, `weather.js` (expose rain and bolt builders), `cloud-hopper-sky.js`, power-up files |
+| 12 | L4: haze, rain, lightning, Anchor, then the grappling hook (*built*) | `scene-hub.js`, `weather.js` (expose rain and bolt builders), `cloud-hopper-sky.js`, power-up files |
 | 13 | Docs | `AGENTS.md` (Cloud Hopper row, the `highscore-rules.js` row, testing table), README controls, `docs/highscores.md` |
 
 Milestones 2–3 could ship alone, ahead of the levels, but only by retiring or resetting
@@ -628,7 +627,7 @@ today's board at the same time (decision 7).
 | 5 | Permanent clouds unmarked without X-ray | **Yes** |
 | 6 | Unlocks per browser or per account | **Per browser**, like Rally's progress |
 | 7 | Ship the disappearance fix before the levels | **No**: ship them together, so the legacy board retires once |
-| 8 | Power-up set | **X-ray (L2), Updraft (L3), Anchor (L4)**; no air dash or wind shield |
+| 8 | Power-up set | **X-ray (L2), Updraft (L3), Anchor (L4)**; no air dash or wind shield. The Anchor was later replaced by the maintainer's grappling hook |
 | 9 | Updraft activation | **Space when the air jump is spent**, not automatic |
 | 10 | Crumble clouds as L3's hazard | **Yes** |
 | 11 | Level names and expected times | As in 2.3; to be confirmed after a play-test measures today's times |
@@ -646,10 +645,10 @@ in milestone 8 and left it.
 | L1 Floating Isles | **B**: 08:15 morning, floating grassy islets with trees under soft painted cumulus |
 | L2 Amber Spires | **A**: 17:30 golden hour, towering cumulus stacks far around the island, light painted clouds |
 | L3 Aurora Heights | **A**: 00:30 moonlit night, stars, green aurora curtains |
-| L4 Thunderhead | **B**: dark storm, haze 50–200 m that also hazes out the sea, rain, nearer lightning |
+| L4 Thunderhead | **B**: dark storm, haze 40–160 m that also hazes out the sea, thin rain, nearer lightning |
 | X-ray | **A**: ring gauge emptying over 20 s with seconds inside; a gold ∞ diamond on permanent clouds |
 | Warning | **A**: the cloud thins in a dithered pulse that quickens as its time runs out |
-| Pickups | **B set**: stone goggles (X-ray), sky feather (Updraft), bone anchor (Anchor) |
+| Pickups | **B set**: stone goggles (X-ray), sky feather (Updraft), bone anchor (Anchor), now a grappling hook on vine coils |
 | Level select | **B, refined**: picture cards with the number in the picture's corner and the name on its own row |
 
 The storm's haze needed one renderer change: the sea, drawn in the sky pass, now follows the
@@ -711,8 +710,8 @@ Checked in Node, in the global tier:
 - **A16.** X-ray reads the same time left as the schedule (equal to within float
   precision). It draws at most 8 labels (5 on phones) and allocates nothing per frame.
 - **A17.** Updraft takes one Space press only when no air jump and no fuelled worn pack
-  remain, and `canRecover` treats it conservatively. Anchor holds exactly one cloud, and
-  the schedule picks up again afterwards with a full warning.
+  remain, and `canRecover` treats it conservatively. The grappling hook moves no schedule: a
+  cloud it bites keeps fading on time, and the hook lets go when it does.
 - **A18.** In L4 no cloud within reach is more than 30% fogged on any tier or renderer.
   Rain is a fixed-capacity batch (none on Canvas 2D), and the pile marker stays visible.
 - **A19.** Frame rate holds on the existing performance floor, with L4's 120 clouds and

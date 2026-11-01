@@ -14,10 +14,31 @@
     return M.characterGeometry(geometry);
   });
   // Power-up pickups (plan 3, the chosen B set), each round its own middle at pickup size: stone goggles with glowing
-  // lenses (X-ray), a sky feather in a wind ring (Updraft), and a bone anchor with a vine loop (Anchor). A modest
+  // lenses (X-ray), a sky feather in a wind ring (Updraft), and a grappling hook on a coil of vine rope. A modest
   // fill keeps them readable at night and in the storm, as the jetpack's.
-  const POWERS = ["xray", "updraft", "anchor"];
-  const sphere = (r, n = 8) => Array.from({ length: n + 1 }, (_, k) => [r * Math.sin(k / n * Math.PI), -r * Math.cos(k / n * Math.PI)]);
+  const POWERS = ["xray", "updraft", "hook"];
+  // The grappling hook, flying shank first along +z: a bone shank, the rope's eye behind it, and three iron prongs
+  // curling forward and back at its head, lashed on with vine.
+  const hookHead = M.cached(() => {
+    const parts = [M.turnedX(M.lathe({ profile: [[0.045, -0.4], [0.06, -0.3], [0.05, 0.05], [0.075, 0.12], [0, 0.2]], segments: 8, color: "#efe6cf" }), Math.PI / 2),
+      M.moved(M.turnedX(M.torus(0.07, 0.02, "#6b4a2b", 0, 10, 5), Math.PI / 2), 0, 0, -0.46)];
+    for (let k = 0; k < 3; k++) {
+      const prong = M.tube({ path: (t) => { const a = t * 2.3; return { x: 0.18 - 0.18 * Math.cos(a), y: 0, z: 0.1 + 0.18 * Math.sin(a) }; },
+        radius: (t) => 0.036 - 0.022 * t, rings: 10, segments: 6, colorFn: () => "#9a8f80" });
+      parts.push(M.turnedZ(prong, k * Math.PI * 2 / 3));
+    }
+    for (let k = 0; k < 3; k++) parts.push(M.box({ w: 0.15, h: 0.15, d: 0.035, color: "#4f8a35", offset: { z: -0.22 + k * 0.07 } }));
+    const geometry = M.merge(...parts);
+    for (const face of geometry.faces) face.emissive = Math.max(face.emissive || 0, 0.22);
+    geometry.castShadow = false;
+    return geometry;
+  });
+  // The hook's rope, one unit down +z, its length the node's z scale.
+  const rope = M.cached(() => {
+    const geometry = M.box({ w: 0.08, h: 0.08, d: 1, color: "#8a7040", emissive: 0.35, offset: { z: 0.5 } });
+    geometry.castShadow = false;
+    return geometry;
+  });
   const facing = (geo) => M.turnedX(geo, Math.PI / 2);
   const powerBody = M.variants((i) => {
     let geometry;
@@ -36,17 +57,15 @@
       }
       geometry = M.turnedZ(M.merge(...parts), 0.25);
     } else {
-      const bone = "#efe6cf", knob = (x, y) => M.moved(M.lathe({ profile: sphere(0.055, 6), segments: 8, color: bone }), x, y, 0);
-      const fluke = M.tube({ path: (t) => ({ x: Math.cos(Math.PI * (1 + t)) * 0.27, y: -0.33 + Math.sin(Math.PI * (1 + t)) * 0.2, z: 0 }), radius: () => 0.04, rings: 10, segments: 6, colorFn: () => bone });
-      geometry = M.merge(M.box({ w: 0.075, h: 0.72, d: 0.075, color: bone }), M.box({ w: 0.42, h: 0.06, d: 0.06, color: bone, offset: { y: 0.24 } }),
-        knob(-0.22, 0.24), knob(0.22, 0.24), M.moved(facing(M.torus(0.085, 0.022, "#8a6a40", 0, 12, 5)), 0, 0.42, 0),
-        fluke, knob(-0.27, -0.33), knob(0.27, -0.33));
+      // The hook standing prongs up on two coils of its rope.
+      geometry = M.merge(M.moved(M.turnedX(M.merge(hookHead()), -Math.PI / 2), 0, 0.12, 0),
+        M.moved(M.torus(0.3, 0.04, "#8a7040", 0, 18, 6), 0, -0.3, 0), M.moved(M.torus(0.26, 0.04, "#7a6236", 0, 18, 6), 0.03, -0.24, 0.02));
     }
     for (const face of geometry.faces) face.emissive = Math.max(face.emissive || 0, 0.22);
     geometry.castShadow = false;
     return M.characterGeometry(geometry);
   });
-  // Each pickup's glow in its own tint: the jetpack's blue, X-ray's cyan, the feather's mint, the anchor's gold.
+  // Each pickup's glow in its own tint: the jetpack's blue, X-ray's cyan, the feather's mint, the hook's gold.
   const AURAS = [["220,246,255", "142,216,255", "108,190,255"], ["205,255,255", "90,232,255", "40,200,255"],
     ["228,255,238", "150,240,192", "100,220,160"], ["255,246,214", "255,214,120", "240,180,60"]];
   const pickupAura = M.variants((tint) => {
@@ -98,20 +117,6 @@
     node.aura.position.z = z - dz * back;
     node.aura.rotation.y = Math.atan2(dx, dz);
     node.aura.rotation.x = -Math.atan2(dy, Math.hypot(dx, dz));
-  };
-  // The anchor holding a cloud: the bone anchor hanging on a leafy vine from under it, the vine's top at the origin.
-  const vine = M.cached(() => {
-    const parts = [M.box({ w: 0.07, h: 2.4, d: 0.07, color: "#4f8a35", offset: { y: -1.2 } })];
-    for (let k = 0; k < 5; k++) parts.push(M.moved(M.turnedZ(M.box({ w: 0.2, h: 0.03, d: 0.1, color: "#6cc24f" }), k % 2 ? 0.5 : -0.5), k % 2 ? 0.1 : -0.1, -0.3 - k * 0.42, 0));
-    const geometry = M.merge(...parts);
-    geometry.castShadow = false;
-    return geometry;
-  });
-  const tether = () => {
-    const node = createNode({ sightHidden: true, visible: false });
-    addChild(node, createNode({ geometry: vine(), sightHidden: true }),
-      createNode({ geometry: powerBody(2), position: { x: 0, y: -2.85, z: 0 }, scale: { x: 1.7, y: 1.7, z: 1.7 }, sightHidden: true }));
-    return node;
   };
   // A leaf for the sky feather's gust.
   const leaf = M.cached(() => {
@@ -409,5 +414,5 @@
     return { picture, dispose };
   };
   BL.cloudHopperModels = { cloud, cloudMesh, boostSurface, updateBoostSurface, bounceMarker, updateBounceMarker, pickup, jetpackPickup: () => pickup("jetpack"),
-    updateJetpackPickup, tether, leaf, cabinet, updateCabinet, createGuidePictures };
+    updateJetpackPickup, hookHead, rope, leaf, cabinet, updateCabinet, createGuidePictures };
 })();

@@ -1493,6 +1493,7 @@ uniform float uClouds;
 uniform vec4 uSea;
 uniform vec2 uSeaEye;
 uniform vec2 uSeaFog;
+uniform vec3 uSeaFogColor;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 float hash(vec2 p) {
@@ -1639,11 +1640,13 @@ void main() {
     // farther out as the eye climbs, retaining visible water below a high dive.
     float lift = max(0.0, uSea.z - uSea.y - 120.0);
     float haze = smoothstep(160.0 + lift * 1.2, 900.0 + lift * 2.5, t);
-    // A scene that asks for it (seaFog) hazes the sea with its own fog too, so the water reads as far as the clouds do.
-    if (uSeaFog.y > uSeaFog.x) haze = max(haze, smoothstep(uSeaFog.x, uSeaFog.y, t));
+    // A scene that asks for it (seaFog) hazes the sea into its own fog's colour at its own distances, so anything
+    // the fog swallows vanishes into the water behind it rather than standing out against the sky's colour there;
+    // its fog is the horizon's colour, so the horizon stays seamless.
+    if (uSeaFog.y > uSeaFog.x) col = mix(uSeaFogColor, water, 1.0 - smoothstep(uSeaFog.x, uSeaFog.y, t));
     // At sea level the distance haze may not finish before the ray cutoff;
     // fade water out there too so the horizon stays continuous at every height.
-    col = mix(col, water, (1.0 - haze) * smoothstep(0.0005, 0.01, -d.y));
+    else col = mix(col, water, (1.0 - haze) * smoothstep(0.0005, 0.01, -d.y));
   }
   // Painted cumulus on a plane over the world, drifting with time: lit toward the sun, grey underneath,
   // taking the horizon's colour at dusk and dimming to the night sky. They thin out toward the horizon.
@@ -1943,7 +1946,7 @@ void main() {
         foliageShadow: compile(FOLIAGE_SHADOW_VS, FOLIAGE_SHADOW_FS, MESH_UNIFORMS),
         shadow: compile(ORDINARY_SHADOW_VS, SHADOW_FS, ["uRigCount", "uRigPass", "uRigMatrices", "uRigVisibility", "uLightViewProj", "uClipMinY", "uClipMaxY", "uObjectClip"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth", "uClipMaxY", "uObjectClip"]),
-        sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uMoonSunDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye", "uSeaFog"]),
+        sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uMoonSunDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop", "uClouds", "uSea", "uSeaEye", "uSeaFog", "uSeaFogColor"]),
         blur: compile(QUAD_VS, BLUR_FS, ["uTex", "uDir"]),
         composite: compile(QUAD_VS, COMPOSITE_FS, ["uScene", "uBloom", "uBloomWide", "uBloomStrength", "uDepth", "uShaft", "uShaftColor"])
       };
@@ -4262,6 +4265,7 @@ void main() {
         gl.uniform4f(pg.sky.u.uSea, sea === null ? 0 : 1, sea === null ? 0 : sea, camera.position.y, 0);
         gl.uniform2f(pg.sky.u.uSeaEye, camera.position.x, camera.position.z);
         gl.uniform2f(pg.sky.u.uSeaFog, opts.seaFog && fog ? fogNear : FOG_OFF, opts.seaFog && fog ? fogFar : FOG_OFF + 1);
+        gl.uniform3fv(pg.sky.u.uSeaFogColor, opts.seaFog && fog ? fog : NO_FOG);
       }
       // Set the light back far enough to bracket the shadowed volume.
       const lightDist = shadowExtent * 1.8, lightDepth = shadowExtent * 1.5;
