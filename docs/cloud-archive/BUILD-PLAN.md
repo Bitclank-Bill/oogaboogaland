@@ -37,24 +37,31 @@ The rules live in `scripts/cloud-archive-lib.mjs` (pure functions, checked in th
 npm run archive -- --rev <full official rock SHA>
 ```
 
+Add `--pull-refs <file>` (saved `git ls-remote https://github.com/OogaBoogaX/oogaboogaland 'refs/pull/*/head'` output)
+to regenerate against exactly that PR-ref snapshot.
+
 - **Which history.** One explicit revision, given as a full SHA, never whichever HEAD is checked out. The script reads
   the official branch's tip with `git ls-remote https://github.com/OogaBoogaX/oogaboogaland refs/heads/rock` (no refs
   are written). It refuses a revision that isn't on that branch, a revision or tip missing from the clone, and a
   shallow clone. The snapshot records its `provenance` (repository, branch, revision, official tip, and the rules
   below), and every commit link points at `OogaBoogaX/oogaboogaland`, where that revision lives. The current snapshot
   is generated from `rock` at `37d9f3947bbff844f792595471e3eb99ab13e7f9`.
-- **Authors** are as git recorded them, which is self-reported:
-  - **Linked accounts:** a commit belongs to a GitHub account only when its author address is a GitHub noreply address
-    (`<id>+<login>@users.noreply.github.com`), which GitHub issues per account, keyed by that account number. The
-    older unnumbered form (`<login>@users.noreply.github.com`) joins a numbered account only through a reviewed alias
-    (`login` + `noreplyId` in the mapping). Without one, while the same login also appears numbered, it is kept apart
-    as "unconfirmed" (perhaps that account, perhaps an earlier holder of the login) and not counted as an account.
-  - **Unlinked authors:** every other author is kept as its own identity per exact address and labelled by its git
-    name, marked `*` on the page. It is never matched to an account by name, so two people sharing a name stay two,
-    and an account's own login is never renamed.
+- **Author identities** are as git recorded them: self-reported, historical identities, not verified current account
+  ownership. Every count is of identities, never of unique people or bots.
+  - **Accounts:** a numbered GitHub noreply address (`<id>+<login>@users.noreply.github.com`) is one identity per
+    account number, labelled by the newest login it was recorded under, so a renamed account shows its later login.
+  - **Unnumbered noreply addresses:** the older form (`<login>@users.noreply.github.com`) joins a numbered identity only
+    through a reviewed alias (`login` + `noreplyId` in the mapping). Without one, while the same login also appears
+    numbered, it stays a separate identity of the same kind (account, automation, agent or organisation), marked
+    `uncertain` and labelled "<login> (unnumbered address, unconfirmed)". It may be that account, or an earlier
+    holder of the login.
+  - **Unlinked authors:** every other author is its own identity per exact address, labelled by the newest git name
+    recorded with it and shown as "<name> (git name)". It is never matched to an account by name, so two people
+    sharing a name stay two.
   - **No addresses:** no address, and no hash of a personal address, is written out. Every exported title and label
-    (git names and the mapping's labels alike) is scrubbed of anything shaped like an address, and no two exported
-    labels are the same.
+    (git names and the mapping's labels alike) has any run of non-space text with something on both sides of an
+    "@" replaced. That catches Unicode, local-domain and bracketed-IP addresses a narrow pattern misses, and leaves
+    "@mentions" alone. No two exported labels are the same.
 - **Kinds.** A `[bot]` login (GitHub reserves that suffix for apps) is automation. AI agents and organisations are only
   what `scripts/cloud-archive-identities.json` names after review, by login or by the SHA-256 of a service address;
   today that is Claude Code's and Codex's commit identities. Display names alone never decide a kind. Automation,
@@ -65,7 +72,13 @@ npm run archive -- --rev <full official rock SHA>
   can share a head. So the page says "PR-head match", and a head several PRs share is credited to none (on today's
   `rock`, PRs #40 and #65 share one merged head). Subjects such as `Merge pull request #n from owner/branch` or a
   `(#n)` suffix prove nothing on their own. PR authorship is not shown: neither a branch's owner nor the merged
-  commit's author is taken as a PR's author.
+  commit's author is taken as a PR's author. Links name the matched PR number apart from the merge message's own
+  words.
+- **The PR-ref snapshot.** Matches depend on the PR refs as they were read, not only on `--rev`: PRs open and heads
+  move. The snapshot records when and from where they were read, how many there were and a deterministic SHA-256
+  digest of the `<n> <sha>` lines. `prHeadMatches` counts distinct PR numbers, and `prHeadMatchRows` counts merge commits
+  with a match (one head can be merged more than once). The current snapshot: 324 refs read 2026-11-01 02:29 UTC,
+  digest `9734213d…a763a1`, giving 257 PR numbers over 261 merges, plus 1 shared-head merge credited to none.
 - **Why not the API.** Verified account links for private addresses, PR authors and signature badges need the GitHub
   API. This build container has no API access to the official repository, so the archive makes the narrower,
   checkable claims above. The page says so in every day's note.
@@ -170,7 +183,7 @@ untouched.
 
 ## Open questions for the maintainer
 
-1. Unlinked authors are shown by their git name, marked `*`. Should they instead appear without a name ("an unlinked
+1. Unlinked authors are shown by their newest git name, marked "(git name)". Should they instead appear without a name ("an unlinked
    author"), given AGENTS.md's privacy section? Their names are already public in the repository's history.
 2. If the GitHub API becomes available to whoever regenerates the snapshot, should unlinked authors be linked to
    accounts through it, and PR authors shown? Today neither is claimed.

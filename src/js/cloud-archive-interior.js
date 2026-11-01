@@ -55,7 +55,18 @@
     return { commits: day.commits.length, prs, automation, agents, organisations, authors, shelf: L.shelve(day.commits.length) };
   };
   const STATS = DATA.days.map(dayStats);
-  const label = (p) => DATA.people[p].kind === "unlinked" ? `${DATA.people[p].label}*` : DATA.people[p].label;
+  // When, and against how many PR refs, the matches were read: they depend on that snapshot as well as on the revision.
+  const REFS = DATA.provenance.pullRefs;
+  const PULL_REFS = `${REFS.fetchedAt ? REFS.fetchedAt.slice(0, 16).replace("T", " ") + " UTC" : "from a saved list"} (${REFS.count} refs, digest ${REFS.digest.slice(0, 12)})`;
+  // An unlinked identity is a name as written in git, not a GitHub account, and says so. (An uncertain one's label
+  // already says it is unconfirmed.)
+  const label = (p) => DATA.people[p].kind === "unlinked" ? `${DATA.people[p].label} (git name)` : DATA.people[p].label;
+  // Text drawn as large as fits `width`, from `size` down to 14px.
+  const fitText = (g, text, x, y, width, size, weight = 500) => {
+    let px = size;
+    do g.font = `${weight} ${px}px ${FONT}`; while (g.measureText(text).width > width && --px > 14);
+    g.fillText(text, x, y);
+  };
   const longDate = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
   const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
   const others = (s) => `${s.automation ? ` · ${s.automation} by automation` : ""}${s.agents ? ` · ${s.agents} by AI agents` : ""}${s.organisations ? ` · ${s.organisations} by organisations` : ""}`;
@@ -66,9 +77,9 @@
     g.fillStyle = "#e8b04a"; g.fillRect(0, PLAQUE_H - 6, PLAQUE_W, 6);
     g.fillStyle = "#ffffff"; g.font = `700 52px ${FONT}`; g.textAlign = "center"; g.textBaseline = "alphabetic";
     g.fillText(DATA.days[i].date, PLAQUE_W / 2, 62);
-    g.fillStyle = "#c9ccd3"; g.font = `500 ${s.shelf.overflow ? 21 : 26}px ${FONT}`;
-    const line = `${plural(s.commits, "commit")} · ${plural(s.prs, "PR")} · ${plural(s.authors.length, "author")}`;
-    g.fillText(s.shelf.overflow ? `${line} · ${s.shelf.overflow} in the binder` : line, PLAQUE_W / 2, 104);
+    g.fillStyle = "#c9ccd3";
+    const line = `${plural(s.commits, "commit")} · ${plural(s.prs, "PR-head match", "PR-head matches")} · ${plural(s.authors.length, "author identity", "author identities")}`;
+    fitText(g, s.shelf.overflow ? `${line} · ${s.shelf.overflow} in the binder` : line, PLAQUE_W / 2, 104, PLAQUE_W - 24, 26);
     return canvas;
   };
   // The day's board: date, counts, authors (with their shelf colour) and the commits, as many as the page holds; the
@@ -79,7 +90,7 @@
     g.fillStyle = "#1d1f24"; g.font = `700 34px ${FONT}`; g.textAlign = "left"; g.textBaseline = "alphabetic";
     g.fillText(longDate(day.date), 36, 56);
     g.fillStyle = "#5b606b"; g.font = `500 19px ${FONT}`;
-    g.fillText(`${plural(s.commits, "commit")} · ${plural(s.prs, "PR-head match", "PR-head matches")} · ${plural(s.authors.length, "author")}${others(s)}`, 36, 86);
+    fitText(g, `${plural(s.commits, "commit")} · ${plural(s.prs, "PR-head match", "PR-head matches")} · ${plural(s.authors.length, "author identity", "author identities")}${others(s)}`, 36, 86, BOARD_W - 72, 19);
     let x = 36, y = 124;
     g.font = `600 18px ${FONT}`;
     for (const [p, n] of s.authors) {
@@ -101,6 +112,7 @@
         break;
       }
       g.fillStyle = kind === "automation" || kind === "agent" ? "#7a828c" : c[3] ? "#a8741a" : "#1d1f24";
+      // "#n" before a commit is its PR-head match; the board's note says what that means.
       const head = `${c[0].slice(0, 7)}  ${c[3] ? `#${c[3]} ` : ""}`, who = label(c[1]);
       g.font = `600 17px ui-monospace, Menlo, Consolas, monospace`; g.fillText(head, 36, y);
       const hw = g.measureText(head).width;
@@ -279,7 +291,8 @@
     const dayLinks = (i) => {
       const day = DATA.days[i], last = day.commits[day.commits.length - 1][0];
       const links = [{ href: `${REPO_URL}/commits/${last}`, label: `History from this day's last commit, ${last.slice(0, 7)} (new tab)` }];
-      for (const c of day.commits) if (c[3] && links.length < 5) links.push({ href: `${REPO_URL}/pull/${c[3]}`, label: `PR #${c[3]}: ${c[2]} (new tab)` });
+      // The PR number is the PR-head match; the words after it are the merge commit's own message, not the PR's title.
+      for (const c of day.commits) if (c[3] && links.length < 5) links.push({ href: `${REPO_URL}/pull/${c[3]}`, label: `PR #${c[3]} (PR-head match) · merge message: “${c[2]}” (new tab)` });
       return links;
     };
     const board = {
@@ -290,8 +303,9 @@
         const s = STATS[dayIndex], who = s.authors.map(([p, n]) => `${label(p)} (${n})`).join(", ");
         const shelf = s.shelf.overflow ? ` ${s.shelf.books} stand as books; the other ${s.shelf.overflow} are in the overflow binder.` : "";
         return `${plural(s.commits, "commit")}, ${plural(s.prs, "PR-head match", "PR-head matches")}${who ? `, by ${who}` : ""}${others(s).replace(/ · /g, "; ")}.${shelf} `
-          + `Authors are as git recorded them; * marks a git name not linked to a GitHub account. A PR number appears where a merge brought in the exact head GitHub publishes for that one PR (refs/pull); that matches its head, it does not prove GitHub marked it merged, and a head several PRs share is credited to none. `
-          + `From ${DATA.repo} ${DATA.provenance.branch} at ${DATA.rev.slice(0, 7)}, days in UTC.`;
+          + `Author identities are as git recorded them: self-reported and historical, not proof of who owns an account today. An account is shown by the newest login its numbered GitHub address was used under; "(git name)" marks a name written in git that is not linked to any GitHub account, shown as most recently written. They count identities, not people. `
+          + `A PR number appears where a merge brought in the exact head GitHub publishes for that one PR: a PR-head match, which does not prove GitHub marked it merged; a head several PRs share is credited to none. `
+          + `From ${DATA.repo} ${DATA.provenance.branch} at ${DATA.rev.slice(0, 7)}, PR refs read ${PULL_REFS}, days in UTC.`;
       },
       get links() { return dayLinks(dayIndex); },
       get version() { return boardVersion; },
