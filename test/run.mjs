@@ -23988,15 +23988,29 @@ const genesisAudioProof = async () => {
   audio.setEra(6); audio.setEra(5); audio.setEra(7); tickFn();
   const rapid = audio.stats.active === 2 && audio.era === 7;
   const cued = ["splash", "modem", "board", "step", "stamp", "link", "broken"].every((name) => audio.cue(name)) && !audio.cue("nope");
+  // The Music switch: off schedules no more theme steps while cues still sound; the page-wide mute gates the output
+  // whatever the switch says, and on again picks the themes back up.
+  const S = context.window.BL.sound, gate = S.output(ctx);
+  audio.setMusic(false);
+  let t2 = ctx.currentTime;
+  const before = audio.stats.scheduled;
+  for (let i = 0; i < 40; i++) { ctx.currentTime = (t2 += 0.025); tickFn(); }
+  const musicOff = !audio.music && audio.stats.scheduled === before && audio.cue("stamp");
+  S.setMuted(true); const mutedOff = gate.gain.last === 0;
+  audio.setMusic(true);
+  for (let i = 0; i < 40; i++) { ctx.currentTime = (t2 += 0.025); tickFn(); }
+  const musicOn = audio.music && audio.stats.scheduled > before, mutedOn = S.muted && gate.gain.last === 0;
+  S.setMuted(false); const unmuted = gate.gain.last === 1;
+  const musicSwitch = musicOff && mutedOff && musicOn && mutedOn && unmuted;
   audio.setCalm(true); audio.setEngine(false); audio.setVolume(0.5);
   const noAllocation = nodes === built;
   audio.dispose(); audio.setThrottle(1, true); audio.setEra(1);
   const closed = ctx.state === "closed" && intervals.size === 0 && !audio.ready && !audio.cue("splash") && audio.context === null;
-  return { windowed, onTime, once, skipped, bounded, themes, calmEras, crossfade, engine, beforeActivation, woke, scheduledOnce, fading, settled, rapid, cued, noAllocation, closed };
+  return { windowed, onTime, once, skipped, bounded, themes, calmEras, crossfade, engine, beforeActivation, woke, scheduledOnce, fading, settled, rapid, cued, musicSwitch, noAllocation, closed };
 };
 const unitChecks = async () => {
   const genesisAudio = await genesisAudioProof();
-  record("Genesis audio: lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
+  record("Genesis audio: lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, the Music switch stops only the themes (cues still sound) while the page-wide mute still silences everything, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
   const previewRange=await studioPreviewRangeProof();

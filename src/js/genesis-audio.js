@@ -198,7 +198,9 @@
     const times = new Float64Array(PLAN_SLOTS), steps = new Int16Array(PLAN_SLOTS);
     const eng = { freq: 0, level: 0, cutoff: 0, water: 0, putt: 0, puttRate: 0 }, applied = { t: -1, b: false };
     const engine = { osc: null, sub: null, filter: null, gain: null, lfo: null, lfoGain: null, water: null, waterFilter: null };
-    let noiseVoice = null, cueNext = 0, paused = false;
+    // `musicOn` is the visitor's Music switch (the scene remembers it): off silences and stops the themes alone, never
+    // the cues, the engine or the page-wide mute, which still gates everything (sound.js).
+    let noiseVoice = null, cueNext = 0, paused = false, musicOn = true;
     // Every node `build` starts (oscillators, noise loops), stopped and disconnected by `dispose`. Fixed length.
     const sources = [];
     const stats = { ready: false, era: 0, active: 0, scheduled: 0, contexts: 0, sources: 0 };
@@ -214,7 +216,7 @@
       };
       const osc = (type, freq, to) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq; o.connect(to); o.start(); sources.push(o); return o; };
       master = gain(MASTER * volume, out);
-      musicBus = gain(paused ? 0 : 1, master);
+      musicBus = gain(paused || !musicOn ? 0 : 1, master);
       engineBus = gain(paused ? 0 : calm ? CALM_ENGINE : 1, master);
       sfxBus = gain(SFX, master);
       const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * NOISE_SECONDS), ctx.sampleRate);
@@ -342,7 +344,7 @@
     const tick = () => {
       // Nothing to schedule while the context is suspended (its clock stands still) or the voyage is paused; on
       // carrying on, `plan` skips the steps that fell in the gap rather than playing them late.
-      if (!ready || paused || ctx.state !== "running") return;
+      if (!ready || paused || !musicOn || ctx.state !== "running") return;
       const now = ctx.currentTime;
       let active = 0;
       for (let i = 0; i < decks.length; i++) {
@@ -421,9 +423,19 @@
       paused = !!on;
       if (!ready) return;
       const now = ctx.currentTime;
-      musicBus.gain.setTargetAtTime(paused ? 0 : 1, now, 0.12);
+      musicBus.gain.setTargetAtTime(paused || !musicOn ? 0 : 1, now, 0.12);
       engineBus.gain.setTargetAtTime(paused ? 0 : calm ? CALM_ENGINE : 1, now, 0.12);
       if (paused) for (let i = 0; i < decks.length; i++) if (decks[i].active) release(decks[i], now);
+    };
+
+    // The Music switch: off fades the themes out and stops scheduling them; on fades the current era back in from the
+    // next step. Cues, the engine and the volume are untouched.
+    const setMusic = (on) => {
+      musicOn = !!on;
+      if (!ready) return;
+      const now = ctx.currentTime;
+      musicBus.gain.setTargetAtTime(paused || !musicOn ? 0 : 1, now, 0.12);
+      if (!musicOn) for (let i = 0; i < decks.length; i++) if (decks[i].active) release(decks[i], now);
     };
 
     // --- Cues ---
@@ -543,8 +555,9 @@
       for (const k in engine) engine[k] = null;
     };
     return {
-      wake, setEra, setThrottle, cue, dispose, setEngine, setCalm, setVolume, setPaused, tick, stats,
+      wake, setEra, setThrottle, cue, dispose, setEngine, setCalm, setVolume, setPaused, setMusic, tick, stats,
       get paused() { return paused; },
+      get music() { return musicOn; },
       get ready() { return ready; },
       get era() { return era; },
       get context() { return ctx; },

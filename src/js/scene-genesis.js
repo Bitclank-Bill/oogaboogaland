@@ -104,7 +104,13 @@
   let demo = null, built = null, board = null, audio = null;
   const targets = [];
   // `paused` is the visitor's own pause (P); `reading` a panel open; Calm holds decorative motion.
-  const view = { calm: false, captions: true, voice: false, readingPaused: false, reading: false, paused: false };
+  const view = { calm: false, captions: true, voice: false, readingPaused: false, reading: false, paused: false, music: true };
+  // The Music switch, remembered in this browser (localStorage, guarded as sound.js's mute is). Off silences the
+  // eras' themes only: exhibit cues, Calm and voice are untouched, and the page-wide mute (the speaker, or M) still
+  // silences everything.
+  const MUSIC_KEY = "ooga-genesis-music";
+  const readMusic = () => { try { return localStorage.getItem(MUSIC_KEY) !== "off"; } catch (_) { return true; } };
+  const writeMusic = (on) => { try { localStorage.setItem(MUSIC_KEY, on ? "on" : "off"); } catch (_) {} };
   let lastEra = -2;
   let sceneTime = 0, captionKey = "", lastStamps = 0, lastPhase = "", lastTiles = -1, lastBroken = false;
   const el = {};
@@ -941,13 +947,14 @@
   // the music holds only for the visitor's own pause (P or the Pause button), never for a panel or workbench being
   // read; the boat's engine is gone, so it stays silent; Calm softens the rest. The entrance hall plays Era 0's theme.
   // Era 1's coupler and Era 4's DIAL make their own tones, so the scene never cues "modem".
-  const sounds = { paused: null, engine: null, calm: null };
+  const sounds = { paused: null, engine: null, calm: null, music: null };
   const syncAudio = () => {
     // No boat any more: the engine stays silent. Music holds only for the visitor's own pause.
     const paused = view.paused && !(view.reading && view.readingPaused), engine = false;
     if (paused !== sounds.paused) { sounds.paused = paused; audio.setPaused(paused); }
     if (engine !== sounds.engine) { sounds.engine = engine; audio.setEngine(engine); }
     if (view.calm !== sounds.calm) { sounds.calm = view.calm; audio.setCalm(view.calm); }
+    if (view.music !== sounds.music) { sounds.music = view.music; audio.setMusic(view.music); }
   };
   const speech = typeof window.speechSynthesis !== "undefined" ? window.speechSynthesis : null;
   const stopVoice = () => { if (speech) speech.cancel(); };
@@ -971,6 +978,7 @@
     el.pause.textContent = view.paused ? "Carry on" : "Pause";
     press(el.pause, view.paused);
     press(el.cc, view.captions); press(el.voice, view.voice); press(el.calm, view.calm);
+    el.music.textContent = view.music ? "Music: On" : "Music: Off"; press(el.music, view.music);
     el.voice.hidden = !speech;
     el.caption.hidden = !view.captions || !el.caption.textContent;
   };
@@ -996,6 +1004,7 @@
     view[key] = !view[key];
     if (key === "voice" && !view.voice) stopVoice();
     if (key === "captions") paintChain();
+    if (key === "music") writeMusic(view.music);
     showControls();
   };
   const leave = () => go("hub");
@@ -1139,10 +1148,11 @@
     demo = G.createStampDemo();
     board = makeBoard();
     audio = BL.genesisAudio.create();
-    sounds.paused = sounds.engine = sounds.calm = null;
+    sounds.paused = sounds.engine = sounds.calm = sounds.music = null;
     view.reading = view.readingPaused = false; view.paused = false; lastEra = -2;
     bench.open = false; bench.entry = bench.term = bench.board = null; bench.era = -1; bench.id = null; bench.framing = false; bench.opens = bench.runs = 0;
     view.calm = PREFERS_CALM.matches;
+    view.music = readMusic();
     sceneTime = 0; captionKey = ""; lastStamps = 0; lastPhase = ""; lastTiles = -1; lastBroken = false;
     renderOpts.lightCount = Math.min(LIGHTS.length, BL.glRenderer.POINT_LIGHT_CAPACITY);
     orderLights(ENTRY.x, ENTRY.z);
@@ -1234,10 +1244,11 @@
       else if (action === "genesis-cc") toggle("captions");
       else if (action === "genesis-voice") toggle("voice");
       else if (action === "genesis-calm") toggle("calm");
+      else if (action === "genesis-music") toggle("music");
       else if (action === "reset-view" && !bench.open) pilot.resetCamera();
       else if (action === "leave") leave();
     });
-    for (const id of ["caption", "pause", "info", "cc", "voice", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
+    for (const id of ["caption", "pause", "info", "cc", "voice", "calm", "music", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
     el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space by an exhibit (or a tap) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
