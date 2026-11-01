@@ -23424,8 +23424,8 @@ const genesisSightlinesProof = async () => {
 const genesisBenchProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-bench", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
-  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, B = BLc.genesisBench, props = [];
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-bench", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, B = BLc.genesisBench, C = BLc.genesisCatalogue, TD = BLc.genesisTimelineData, props = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true });
     const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (x) => x,
@@ -23461,14 +23461,36 @@ const genesisBenchProof = async () => {
   };
   for (const [ndc, frac, aspect] of [[{ x: -0.38, y: -0.05 }, 0.6, 1.68], [{ x: 0, y: 0.5 }, 0.38, 0.46]]) for (const size of [0.8, 2.5, 12]) for (const toward of [{ x: 1, z: 0 }, { x: -0.3, z: 0.9 }]) {
     const c = { x: -12, y: 1.5, z: -300 }, o = { eye: {}, target: {} };
-    B.frame({ c, size, toward, ndc, frac, fov: 62 * Math.PI / 180, aspect, fill: 0.62, pitch: 0.2 }, o);
+    W.frame({ c, size, toward, ndc, frac, fov: 62 * Math.PI / 180, aspect, fill: 0.62, pitch: 0.2 }, o);
     const [px, py] = project(o, c, 62 * Math.PI / 180, aspect);
     if (Math.abs(px - ndc.x) > 1e-3 || Math.abs(py - ndc.y) > 1e-3) framed = false;
     maxDist = Math.max(maxDist, o.dist);
   }
-  const ordered = B.order([{ def: { year: 1981 }, era: 2, order: 0 }, { def: { year: "1980s" }, era: 2, order: 1 }, { def: { year: 1980 }, era: 2, order: 2 }]).map((e) => e.def.year).join() === "1980,1980s,1981";
-  return { exhibits: props.length, terminals, panels, hashcash, merkle, framed, withinReach: maxDist <= B.MAX_DIST, ordered, bad: bad.slice(0, 8) };
+  const ordered = C.order([{ def: { year: 1981 }, era: 2, order: 0 }, { def: { year: "1980s" }, era: 2, order: 1 }, { def: { year: 1980 }, era: 2, order: 2 }]).map((e) => e.def.year).join() === "1980,1980s,1981";
+  // The catalogue (OVERHAUL-CONTRACT.md §1): one entry per exhibit with a stable id, in date order; trail steps only for
+  // citations, influence and the paper; each bibliography slot names its citation stop; the research timeline ships
+  // READY records only and every exhibit it names exists.
+  const items = props.map((p) => ({ id: p.def.id, era: p.era, order: p.order, def: p.def }));
+  // Fingerprints and Time's two citations stand at its lectern (the scene's ROOM_LINKS), so the catalogue lists them too.
+  items.push({ id: "era3-room-haber1991", era: 3, order: 900, def: { id: "era3-room-haber1991", year: 1991, title: "Timestamp a page", connection: "citation", ref: "[3]", sourceKeys: ["haber1991"] } },
+    { id: "era3-room-bayer1993", era: 3, order: 901, def: { id: "era3-room-bayer1993", year: 1993, title: "One tree, many pages", connection: "citation", ref: "[4]", sourceKeys: ["bayer1993"] } });
+  const cat = C.create({ items, eras: W.ERAS, connections: EX.CONNECTIONS, sourceOf: BLc.genesisProps.sourceOf, records: TD.records });
+  const E = cat.entries, ids = new Set(E.map((e) => e.id));
+  const catalogue = { entries: E.length, unique: ids.size === items.length, dated: E.every((e, i) => i === 0 || E[i - 1].yearKey <= e.yearKey),
+    steps: E.filter((e) => e.trail).every((e, i, a) => e.step === i + 1 && ["citation", "influence", "anchor"].includes(e.connection)) && E.filter((e) => !e.trail).every((e) => e.step === 0),
+    listed: E.filter((e) => e.connection === "bibliography").every((e) => cat.get(e.listedAs) && cat.get(e.listedAs).connection === "citation" && cat.get(e.listedAs).ref === e.ref),
+    wraps: cat.next(E[E.length - 1].id).id === E[0].id && cat.prev(E[0].id).id === E[E.length - 1].id,
+    ready: TD.records.length === 49 && TD.held === 15 && TD.records.every((r) => !r.exhibit || ids.has(r.exhibit)),
+    sourced: E.every((e) => e.sources.length && e.sources.every((s) => /^https:\/\//.test(s.href))) };
+  let refuses = false;
+  try { C.create({ items: [items[0], items[0]], eras: W.ERAS, connections: EX.CONNECTIONS, sourceOf: () => null }); } catch (_) { refuses = true; }
+  catalogue.refusesTwice = refuses;
+  return { exhibits: props.length, terminals, panels, hashcash, merkle, framed, withinReach: maxDist <= W.MAX_DIST, ordered, catalogue, bad: bad.slice(0, 8) };
 };
+// genesis-workbench:begin (the workbench builder's genesisWorkbenchProof; OVERHAUL-CONTRACT.md)
+// genesis-workbench:end
+// genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
+// genesis-timeline:end
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
@@ -23835,7 +23857,7 @@ const unitChecks = async () => {
   const genesisSightlines = await genesisSightlinesProof();
   record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
   const genesisBenchCheck = await genesisBenchProof();
-  record("Genesis museum workbench: every exhibit opens something it can show; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20, JSON.stringify(genesisBenchCheck));
+  record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
   const genesisExhibits = await genesisExhibitsProof();
   record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none; Era 2: Merkle [7]; Era 3: the press demonstrates [3] and [4]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]; Era 5: Hashcash 2002 [6], bit gold influence; Era 6: the paper as anchor, its payments demonstration and its eight-slot reference list as bibliography entries mapping one to one onto the citation stops; Era 7: none) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && genesisExhibits.bibliography && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();

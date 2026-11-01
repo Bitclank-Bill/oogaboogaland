@@ -15,7 +15,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const G = BL.genesisVoyage, M = BL.models, GP = BL.genesisProps, GW = BL.genesisWorld, GN = BL.genesisBench;
+  const G = BL.genesisVoyage, M = BL.models, GP = BL.genesisProps, GW = BL.genesisWorld;
   const { createNode, addChild, removeChild, createCamera } = BL.scene;
   const { clamp } = BL.math;
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
@@ -257,45 +257,7 @@
   const buildLegend = () => {
     const W = 4096, H = Math.round(W * LEGEND.h / LEGEND.w), canvas = document.createElement("canvas"), g = canvas.getContext("2d");
     canvas.width = W; canvas.height = H;
-    g.fillStyle = "#f7f4ec"; g.fillRect(0, 0, W, H);
-    const Y0 = 1955, Y1 = 2010, ax0 = 150, ax1 = 3620, axisY = Math.round(H * 0.56), X = (y) => ax0 + (y - Y0) / (Y1 - Y0) * (ax1 - ax0);
-    // Era bands and their names along the foot.
-    const bands = ["#efe7d6", "#f3ece0"];
-    GW.ERAS.forEach((e, i) => {
-      const y0 = firstYear(e.years), y1 = i < GW.ERAS.length - 1 ? firstYear(GW.ERAS[i + 1].years) : 2010;
-      g.fillStyle = bands[i % 2]; g.fillRect(X(y0), 150, X(y1) - X(y0), H - 230);
-      g.fillStyle = "#8a8172"; g.font = "bold 30px system-ui, sans-serif"; g.textAlign = "left"; g.textBaseline = "alphabetic";
-      g.fillText(`ERA ${e.n}`, X(y0) + 10, H - 98);
-      g.font = "24px system-ui, sans-serif"; g.fillText(e.name, X(y0) + 10, H - 66, X(y1) - X(y0) - 16);
-    });
-    g.fillStyle = "#1c1a17"; g.font = "bold 74px Georgia, serif"; g.textAlign = "left";
-    g.fillText("The Genesis timeline", 150, 100);
-    g.font = "34px system-ui, sans-serif"; g.fillStyle = "#4a453e";
-    g.fillText("Each line marks a date, not an influence.   Gold: cited in the Bitcoin whitepaper   ·   gold ring: documented influence   ·   grey: context   ·   tap for the menu", 1060, 96);
-    g.strokeStyle = "#1c1a17"; g.lineWidth = 12; g.beginPath(); g.moveTo(ax0, axisY); g.lineTo(ax1, axisY); g.stroke();
-    // Decade ticks.
-    g.font = "26px system-ui, sans-serif"; g.fillStyle = "#6f6a62"; g.textAlign = "center"; g.lineWidth = 3;
-    for (let y = 1960; y <= 2000; y += 10) { g.beginPath(); g.moveTo(X(y), axisY - 14); g.lineTo(X(y), axisY + 14); g.stroke(); g.fillText(String(y), X(y), axisY + 46); }
-    // The exhibits: one line each off the axis, alternately above and below, in four tiers, labels left of the line.
-    const items = benchList().filter((e) => e.def.connection !== "bibliography" && !/-panel$/.test(e.prop.id) && e.era < 6);
-    const tier = [0, 0];
-    items.forEach((e, i) => {
-      const up = i % 2 === 0, t = tier[up ? 0 : 1]++ % 5, x = X(GN.yearKey(e.def.year)), y = axisY + (up ? -1 : 1) * (90 + t * 78);
-      const c = e.def.connection, cited = c === "citation", infl = c === "influence", gold = cited || infl;
-      g.strokeStyle = gold ? "#b98512" : "#8f897e"; g.lineWidth = gold ? 6 : 3;
-      g.beginPath(); g.moveTo(x, axisY); g.lineTo(x - 40, y); g.lineTo(x - 330, y); g.stroke();
-      g.fillStyle = gold ? "#8a5d00" : "#4a453e"; g.font = `${gold ? "bold " : ""}25px system-ui, sans-serif`; g.textAlign = "left";
-      g.fillText(`${e.def.year}  ${e.def.title}${cited && e.def.ref ? ` ${e.def.ref}` : ""}`, x - 330, y - 9, 300);
-      g.beginPath(); g.arc(x, axisY, gold ? 13 : 9, 0, 7);
-      if (cited) { g.fillStyle = "#d9a11a"; g.fill(); } else if (infl) { g.fillStyle = "#f7f4ec"; g.fill(); g.lineWidth = 6; g.strokeStyle = "#d9a11a"; g.stroke(); } else { g.fillStyle = "#9a948a"; g.fill(); }
-    });
-    // The paper and the first block, kept apart.
-    g.fillStyle = "#d9a11a"; g.beginPath(); g.arc(3770, axisY, 92, 0, 7); g.fill();
-    g.fillStyle = "#1c1a17"; g.font = "bold 40px Georgia, serif"; g.textAlign = "center"; g.fillText("31 OCT", 3770, axisY - 6); g.fillText("2008", 3770, axisY + 40);
-    g.font = "bold 30px system-ui, sans-serif"; g.fillText("The whitepaper (Era 6)", 3770, axisY - 120);
-    g.fillStyle = "#3a352f"; g.beginPath(); g.arc(3770, axisY + 250, 46, 0, 7); g.fill();
-    g.fillStyle = "#f7f4ec"; g.font = "bold 24px system-ui, sans-serif"; g.fillText("JAN", 3770, axisY + 246); g.fillText("2009", 3770, axisY + 272);
-    g.fillStyle = "#3a352f"; g.font = "26px system-ui, sans-serif"; g.fillText("The first block, a later step (Era 7)", 3770, axisY + 336);
+    const count = BL.genesisTimeline.paint(g, W, H, catalogue, host.records);
     const image = new Image();
     image.src = canvas.toDataURL("image/png");
     const face = { verts: [-LEGEND.w / 2, -LEGEND.h / 2, 0.03, LEGEND.w / 2, -LEGEND.h / 2, 0.03, LEGEND.w / 2, LEGEND.h / 2, 0.03, -LEGEND.w / 2, LEGEND.h / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
@@ -303,7 +265,7 @@
     const node = place(createNode({ position: { x: LEGEND.x, y: ISLAND_TOP + LEGEND.y, z: LEGEND.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
     addChild(node, createNode({ geometry: M.bevelBox({ w: LEGEND.w + 0.4, h: LEGEND.h + 0.4, d: 0.16, color: "#d9d4c8", bevel: 0.05, offset: { z: -0.08 } }) }), createNode({ geometry: face }));
     built.legend = place(createNode({ geometry: pickBox(LEGEND.w, LEGEND.h, 0.4), position: { x: LEGEND.x + 0.2, y: ISLAND_TOP + LEGEND.y, z: LEGEND.z }, rotation: { x: 0, y: Math.PI / 2, z: 0 } }));
-    built.legendItems = items.length;
+    built.legendItems = count;
   };
   // === Walking and the workbench ===================================================================================
   // The pilot and crew are made once per visit; the visitor's Ooga walks the whole visit.
@@ -605,8 +567,8 @@
       const def = EX && EX.eras[e.n], mine = built.exhibitProps.filter((x) => x.era === e.n).sort((a, b) => EX.yearKey(a.def.year) - EX.yearKey(b.def.year) || a.order - b.order);
       const board = textBoard({ kicker: `ERA ${e.n} · ${e.years.toUpperCase()}`, title: e.name, width: 3.4,
         body: [def && def.overview ? def.overview.summary : mine.length ? "Walk the banks: every exhibit here shows its year." : "This cave's exhibits are still being built."],
-        list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  ★ step ${x.step}` : ""}`, gold: !!x.step })),
-          ...(mine.some((x) => x.step) ? [{ text: "★ Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
+        list: mine.length ? [...mine.map((x) => ({ text: `${x.def.year} · ${x.def.title}${x.step ? `  \u2605 step ${x.step}` : ""}`, gold: !!x.step })),
+          ...(mine.some((x) => x.step) ? [{ text: "\u2605 Steps toward Bitcoin: follow the gold path", gold: true }] : [])] : [] });
       const ry = spot.ry, lift = ISLAND_TOP + 0.9 + board.height / 2;
       // Its post stands behind the board (genesis-world.js overviewSpot), never through its face.
       solid(spot.post.w, 0.9 + board.height / 2, spot.post.w, "#3b2a1a", spot.post.x, ISLAND_TOP + (0.9 + board.height / 2) / 2, spot.post.z);
@@ -679,152 +641,116 @@
       onUse: () => ({ terminal: GP.stampTerminal(book) }) });
   };
 
-  // --- The exhibit workbench (genesis-bench.js) ---------------------------------------------------------------------
-  // One broad window for every exhibit: the stage on its left is clear, and the camera frames the exhibit's own model
-  // in it, so a command's result shows on the model itself, live; the command line, Run, Reset and the exhibit's own
-  // commands sit under the stage, and its story, how to use it and its sources on the right. Opening it holds the
-  // visitor's Ooga, the crew and the desk's show; the exhibit's era keeps running so its model answers. Previous and
-  // Next go through every exhibit in date order; Close (or Escape) puts the camera back where it was.
-  const bench = { open: false, entry: null, term: null, board: null, list: [], index: -1, lines: [], era: -1,
-    focus: { x: 0, z: 0 }, view: { eye: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 }, dist: 0 }, eased: false,
+  // --- The host: the one interface the workbench and the timeline menu use (OVERHAUL-CONTRACT.md, v1) --------------
+  // The catalogue lists every exhibit once in date order; the workbench (genesis-workbench.js) shows one through a
+  // clear stage on the exhibit's own world model, which the camera frames from the stage's place on screen; the menu
+  // (genesis-timeline.js) opens one. While either is open the visitor's Ooga, the crew and the desk's show are held,
+  // and only the open exhibit's era keeps running, so its model answers its commands.
+  const bench = { open: false, entry: null, prop: null, term: null, board: null, era: -1, id: null,
+    focus: { x: 0, z: 0 }, view: { eye: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 }, dist: 0 }, eased: false, framing: false,
     saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, near: 0, up: null, orthoMix: 0, orthoHeight: 0 }, opens: 0, runs: 0 };
-  const MAX_OUT = 120, PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
+  const PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
   const frameIn = { c: { x: 0, y: 0, z: 0 }, size: 1, toward: { x: 0, z: 1 }, ndc: { x: 0, y: 0 }, frac: 0.6, fov: 62, aspect: 1.6, fill: 0.62, pitch: 0.2 };
-  // Every exhibit a workbench shows, in date order: the era files' props and the room's own (the PC, the drives, the
-  // book). The overview boards stay panels.
-  const benchList = () => {
-    const list = built.exhibitProps.filter((e) => !e.room && e.prop).map((e) => ({ def: e.def, era: e.era, order: e.order, prop: props.get(e.prop.id) || e.prop }));
-    for (const id of ["pc", "drives", "book"]) { const p = props.get(id); list.push({ def: p, era: p.era, order: 1000 + list.length, prop: p }); }
-    return GN.order(list);
+  let catalogue = null, workbench = null, timeline = null;
+  // The exhibits the catalogue lists: every era file's props, Fingerprints and Time's two citations (its lectern) and
+  // the scene's own PC, drives and book. The overview boards and the legend itself are not exhibits.
+  const buildCatalogue = () => {
+    const items = built.exhibitProps.map((e) => ({ id: e.prop.id, era: e.era, order: e.order, def: e.room ? { ...e.def, sourceKeys: e.def.id.endsWith("haber1991") ? ["haber1991"] : ["bayer1993"] } : e.def }));
+    for (const id of ["pc", "drives", "book"]) { const p = props.get(id); items.push({ id, era: p.era, order: 1000 + items.length, def: p }); }
+    catalogue = BL.genesisCatalogue.create({ items, eras: GW.ERAS, connections: BL.genesisExhibits.CONNECTIONS, sourceOf: GP.sourceOf, records: (BL.genesisTimelineData && BL.genesisTimelineData.records) || [] });
   };
-  const isBenchProp = (prop) => !/-overview$/.test(prop.id) && prop.id !== "legend";
+  const propOf = (id) => props.get(id) || (built.exhibitProps.find((e) => e.prop.id === id) || {}).prop || null;
   // Where the camera stands to show an exhibit's model in the stage: its tap box is its model's box.
-  const frameBench = () => {
-    const e = bench.entry, id = e.prop.id, node = built.propNodes[id] || built[id], pick = e.def.pick || PICK_SIZES[id] || { w: 1, h: 1.4, d: 1 };
-    const c = frameIn.c, at = e.prop.at;
+  const frameBench = (rect) => {
+    const id = bench.id, at = bench.prop.at, room = /^era3-room-/.test(id);
+    const node = room ? built.lectern : built.propNodes[id] || built[id], pick = room ? { w: 0.7, h: 1.1, d: 0.5 } : bench.entry && (propOf(id).pick || PICK_SIZES[id]) || { w: 1, h: 1.4, d: 1 };
+    const c = frameIn.c;
     c.x = node ? node.position.x : at.x; c.y = node ? node.position.y : (at.y || 0) + pick.h / 2; c.z = node ? node.position.z : at.z;
     frameIn.size = Math.max(pick.w, pick.h, pick.d, 0.8);
     frameIn.toward.x = at.x - c.x; frameIn.toward.z = at.z - c.z;
-    if (Math.hypot(frameIn.toward.x, frameIn.toward.z) < 0.3) { frameIn.toward.x = GW.LANE_X - c.x; frameIn.toward.z = 0.0001; }
-    const cr = overlayCanvas.getBoundingClientRect(), sr = el.benchStage.getBoundingClientRect();
-    frameIn.ndc.x = ((sr.left + sr.width / 2) - cr.left) / cr.width * 2 - 1;
-    frameIn.ndc.y = 1 - ((sr.top + sr.height / 2) - cr.top) / cr.height * 2;
-    frameIn.frac = Math.max(0.15, sr.height / cr.height);
+    if (Math.hypot(frameIn.toward.x, frameIn.toward.z) < 0.3) { frameIn.toward.x = 0.0001; frameIn.toward.z = 1; }
+    const cr = overlayCanvas.getBoundingClientRect();
+    frameIn.ndc.x = ((rect.left + rect.width / 2) - cr.left) / cr.width * 2 - 1;
+    frameIn.ndc.y = 1 - ((rect.top + rect.height / 2) - cr.top) / cr.height * 2;
+    frameIn.frac = Math.max(0.15, rect.height / cr.height);
     frameIn.aspect = cr.width / cr.height; frameIn.fov = bench.saved.fov || camera.fov;
-    GN.frame(frameIn, bench.view);
+    GW.frame(frameIn, bench.view);
     bench.focus.x = c.x; bench.focus.z = c.z;
   };
-  const write = (node, tag, text, cls) => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; node.append(n); return n; };
-  const fillInfo = (e) => {
-    const info = el.benchInfo, t = bench.term;
-    info.replaceChildren();
-    let more = [];
-    if (t) { try { more = t.run("MORE").lines || []; } catch (_) { more = []; } }
-    const sections = GN.sections({ banner: t ? t.banner : [], more, howTo: e.def.howTo || [], hint: e.def.hint || "", pages: bench.board ? bench.board.pages : null });
-    for (const sec of sections) {
-      write(info, "h3", sec.title);
-      const box = sec.title === "How it connects" ? write(info, "div", "", "bench-connects") : info;
-      for (const line of sec.lines) write(box, "p", line);
-    }
-    const keys = [...new Set([...(e.def.sourceKeys || []), ...((bench.board && bench.board.sources) || [])])];
-    if (keys.length) {
-      write(info, "h3", "Sources");
-      const ul = write(info, "ul", "");
-      for (const k of keys) {
-        const src = GP.sourceOf(k), li = document.createElement("li");
-        if (src && src.href) { const a = document.createElement("a"); a.href = src.href; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = src.label || src.href; li.append(a); }
-        else li.textContent = k;
-        ul.append(li);
+  const host = {
+    get catalogue() { return catalogue; },
+    get records() { return (BL.genesisTimelineData && BL.genesisTimelineData.records) || []; },
+    view: { get calm() { return view.calm; }, get paused() { return view.paused; } },
+    open(id, from = "walk") {
+      const entry = catalogue && catalogue.get(id), prop = entry && propOf(id);
+      if (!entry || !prop) return false;
+      audio.wake();
+      if (timeline && timeline.isOpen) timeline.close();
+      if (!bench.open) {
+        const s2 = bench.saved, cp = camera.position, ct = camera.target;
+        s2.x = cp.x; s2.y = cp.y; s2.z = cp.z; s2.tx = ct.x; s2.ty = ct.y; s2.tz = ct.z;
+        s2.fov = camera.fov; s2.near = camera.near; s2.up = camera.up || null; s2.orthoMix = camera.orthoMix || 0; s2.orthoHeight = camera.orthoHeight || 0;
+        camera.up = null; camera.orthoMix = camera.orthoHeight = 0;
+        pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
       }
-    }
-    info.scrollTop = 0;
+      bench.open = true; bench.id = id; bench.entry = entry; bench.prop = prop; bench.era = entry.era; bench.framing = false; bench.eased = false;
+      bench.from = from; bench.opens++;
+      if (!workbench.show(id)) { host.close(); return false; }
+      return true;
+    },
+    session(id) {
+      if (!bench.open || id !== bench.id) return null;
+      const r = /^era3-room-/.test(id) ? { board: G.FINGERPRINTS } : props.use(bench.prop, propState) || {};
+      bench.term = r.terminal || null; bench.board = r.board || null;
+      return { entry: bench.entry, terminal: bench.term, board: bench.board ? { room: bench.board.room, pages: bench.board.pages, sources: bench.board.sources || [] } : null, caption: !bench.term && !bench.board && r.caption ? r.caption : null };
+    },
+    run(id, line) {
+      if (!bench.open || id !== bench.id || !bench.term || !String(line).trim()) return null;
+      audio.wake();
+      let out;
+      try { out = bench.term.run(line) || { lines: [] }; } catch (err) { out = { lines: [`That command did not run: ${err.message}`] }; }
+      if (out.entry) { audio.cue("stamp"); hud.toast(`Page ${out.entry.page} stamped: ${out.entry.code}`); }
+      if (!/^\s*(HELP|MORE)\s*$/i.test(line)) bench.runs++;
+      return out;
+    },
+    stage(rect) {
+      if (!bench.open) return;
+      if (!rect || !rect.width || !rect.height) { bench.framing = false; return; }
+      frameBench(rect); bench.framing = true;
+    },
+    // Close: the camera goes back exactly where it was and the walk resumes. With `there`, the Ooga is put at the
+    // exhibit's walk-up spot instead (Take me there), and the pilot frames it there.
+    close({ there = false } = {}) {
+      if (!bench.open) return;
+      const at = there && bench.prop ? bench.prop.at : null, focus = bench.focus;
+      bench.open = false; bench.entry = bench.prop = bench.term = bench.board = null; bench.era = -1; bench.id = null; bench.framing = false;
+      workbench.hide();
+      const s2 = bench.saved;
+      camera.position.x = s2.x; camera.position.y = s2.y; camera.position.z = s2.z; camera.target.x = s2.tx; camera.target.y = s2.ty; camera.target.z = s2.tz;
+      camera.fov = s2.fov; camera.near = s2.near; camera.up = s2.up; camera.orthoMix = s2.orthoMix; camera.orthoHeight = s2.orthoHeight;
+      pilot.setActive(true);
+      if (overlayCanvas.focus) overlayCanvas.focus({ preventScroll: true });
+      if (at && avatar) {
+        walkPose.position.x = at.x; walkPose.position.z = at.z; walkPose.position.y = footing.supportAt(at.x, at.z);
+        walkPose.yaw = Math.atan2(focus.x - at.x, focus.z - at.z) - Math.PI;
+        pilot.navigate(walkPose);
+      }
+    },
+    menuClosed() { if (!bench.open) { view.reading = false; pilot.setActive(true); } },
+    sourceOf: (key) => GP.sourceOf(key),
+    cue: (name) => audio.cue(name),
+    toast: (text) => hud.toast(text)
   };
-  const fillActions = () => {
-    el.benchActions.replaceChildren();
-    if (!bench.term) return;
-    let help = [];
-    try { help = bench.term.run("HELP").lines || []; } catch (_) { help = []; }
-    for (const a of GN.actionsFrom(help)) {
-      const b = document.createElement("button");
-      b.type = "button"; b.textContent = a.arg ? `${a.cmd} …` : a.cmd; b.dataset.cmd = a.cmd; b.dataset.arg = a.arg ? "1" : "";
-      b.title = a.arg ? `Type ${a.cmd} and what goes after it` : `Run ${a.cmd}`;
-      el.benchActions.append(b);
-    }
-  };
-  const showBench = (i) => {
-    const n = bench.list.length;
-    bench.index = (i + n) % n;
-    const e = bench.list[bench.index], era = GW.ERAS[e.era], c = e.def.connection && BL.genesisExhibits.CONNECTIONS[e.def.connection];
-    bench.entry = e; bench.lines.length = 0; bench.era = e.era;
-    const r = props.use(e.prop, propState) || {};
-    bench.term = r.terminal || null; bench.board = r.board || null;
-    el.benchKicker.textContent = `Era ${era.n} · ${era.name} · ${e.def.year}${c ? ` · ${c.label}${e.def.ref ? ` ${e.def.ref}` : ""}` : ""}`;
-    el.benchTitle.textContent = e.def.title;
-    el.benchPos.textContent = `${bench.index + 1} of ${n}`;
-    el.benchForm.hidden = !bench.term; el.benchOutput.hidden = !bench.term; el.benchPanelNote.hidden = !!bench.term;
-    el.benchPrompt.textContent = bench.term ? bench.term.prompt : ">";
-    el.benchOutput.textContent = bench.term ? "Type a command, or use a button. Watch the model above." : "";
-    el.benchInput.value = "";
-    if (r.caption) { el.benchPanelNote.hidden = false; el.benchPanelNote.textContent = r.caption; }
-    else el.benchPanelNote.textContent = "This exhibit is a panel: read it on the right. Its model is live above.";
-    fillActions(); fillInfo(e);
-    el.bench.hidden = false;
-    document.body.classList.add("genesis-bench-open");
-    bench.eased = false;
-    frameBench();
-    if (bench.term && !COARSE) el.benchInput.focus(); else el.bench.querySelector(".bench-close").focus();
-    bench.opens++;
-  };
-  const openBench = (prop) => {
+  const openMenu = (focusId) => {
+    if (bench.open) host.close();
     audio.wake();
-    const list = benchList(), i = list.findIndex((e) => e.prop.id === prop.id);
-    if (i < 0) return false;
-    if (!bench.open) {
-      const s2 = bench.saved, cp = camera.position, ct = camera.target;
-      s2.x = cp.x; s2.y = cp.y; s2.z = cp.z; s2.tx = ct.x; s2.ty = ct.y; s2.tz = ct.z;
-      s2.fov = camera.fov; s2.near = camera.near; s2.up = camera.up || null; s2.orthoMix = camera.orthoMix || 0; s2.orthoHeight = camera.orthoHeight || 0;
-      camera.up = null; camera.orthoMix = camera.orthoHeight = 0;
-      pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
-    }
-    bench.open = true; bench.list = list;
-    showBench(i);
-    return true;
-  };
-  const runBench = (line) => {
-    if (!bench.term || !String(line).trim()) return null;
-    audio.wake();
-    let out;
-    try { out = bench.term.run(line) || { lines: [] }; } catch (err) { out = { lines: [`That command did not run: ${err.message}`] }; }
-    if (out.cls) bench.lines.length = 0;
-    else bench.lines.push(`${bench.term.prompt} ${GP.clean(line)}`, ...(out.lines || []));
-    if (bench.lines.length > MAX_OUT) bench.lines.splice(0, bench.lines.length - MAX_OUT);
-    el.benchOutput.textContent = bench.lines.join("\n");
-    el.benchOutput.scrollTop = el.benchOutput.scrollHeight;
-    if (out.entry) { audio.cue("stamp"); hud.toast(`Page ${out.entry.page} stamped: ${out.entry.code}`); }
-    bench.runs++;
-    return out;
-  };
-  // Close: the camera goes back exactly where it was and the walk resumes. With `there`, the Ooga is put at the
-  // exhibit's walk-up spot instead (Take me there), and the pilot frames it there.
-  const closeBench = (there = false) => {
-    if (!bench.open) return;
-    const at = there && bench.entry ? bench.entry.prop.at : null;
-    bench.open = false; bench.entry = bench.term = bench.board = null; bench.era = -1;
-    el.bench.hidden = true;
-    document.body.classList.remove("genesis-bench-open");
-    if (document.activeElement && el.bench.contains(document.activeElement)) document.activeElement.blur();
-    const s2 = bench.saved;
-    camera.position.x = s2.x; camera.position.y = s2.y; camera.position.z = s2.z; camera.target.x = s2.tx; camera.target.y = s2.ty; camera.target.z = s2.tz;
-    camera.fov = s2.fov; camera.near = s2.near; camera.up = s2.up; camera.orthoMix = s2.orthoMix; camera.orthoHeight = s2.orthoHeight;
-    pilot.setActive(true);
-    if (at && avatar) {
-      walkPose.position.x = at.x; walkPose.position.z = at.z; walkPose.position.y = footing.supportAt(at.x, at.z);
-      walkPose.yaw = Math.atan2(GW.LANE_X - at.x, 0.0001) - Math.PI;
-      pilot.navigate(walkPose);
-    }
+    view.reading = true; view.readingPaused = false;
+    pilot.setActive(false);
+    timeline.open(focusId);
   };
   // Each frame while open: the camera eases (or, in Calm, cuts) to frame the model in the stage.
   const updateBench = (dt) => {
+    if (!bench.framing) return;
     const v = bench.view, c = camera.position, t = camera.target, k = view.calm || !bench.eased ? 1 : Math.min(1, dt * 6);
     bench.eased = true;
     c.x += (v.eye.x - c.x) * k; c.y += (v.eye.y - c.y) * k; c.z += (v.eye.z - c.z) * k;
@@ -833,43 +759,11 @@
   const openProp = (prop) => {
     audio.wake();
     if (prop.id === "legend") { openMenu(); return; }
-    if (isBenchProp(prop) && openBench(prop)) return;
+    if (catalogue && catalogue.get(prop.id) && host.open(prop.id, "walk")) return;
     const r = props.use(prop, propState);
     if (r.board) openPanel(makeBoard(r.board));
     else if (r.caption) { captionKey = ""; setCaption(`prop-${prop.id}`, r.caption); }
   };
-
-  // --- The timeline menu ------------------------------------------------------------------------------------------
-  // Every exhibit by era and date, each a button opening its workbench, and how it connects (gold only for a
-  // whitepaper citation, documented influence or the paper itself). Filters: all, the Steps toward Bitcoin, context.
-  let menuFilter = "all";
-  const fillMenu = () => {
-    const listEl = el.menuList, list = benchList();
-    listEl.replaceChildren();
-    let era = -1;
-    for (const e of list) {
-      const c = e.def.connection || "context", trail = !!(BL.genesisExhibits.CONNECTIONS[c] && BL.genesisExhibits.CONNECTIONS[c].trail);
-      if (menuFilter === "trail" && !trail) continue;
-      if (menuFilter === "context" && trail) continue;
-      if (e.era !== era) { era = e.era; write(listEl, "h3", `Era ${era} · ${GW.ERAS[era].name} · ${GW.ERAS[era].years}`); }
-      const b = document.createElement("button");
-      b.type = "button"; b.dataset.exhibit = e.prop.id;
-      write(b, "span", String(e.def.year), "menu-year");
-      write(b, "span", e.def.title, "menu-title");
-      const label = BL.genesisExhibits.CONNECTIONS[c] ? BL.genesisExhibits.CONNECTIONS[c].label : "Context";
-      write(b, "span", `${trail ? "● " : ""}${label}${e.def.ref ? ` ${e.def.ref}` : ""}`, `menu-tag tag-${c}`);
-      listEl.append(b);
-    }
-  };
-  const openMenu = () => {
-    if (bench.open) closeBench();
-    audio.wake();
-    fillMenu();
-    if (!el.menu.open) el.menu.showModal();
-    view.reading = true; view.readingPaused = false;
-    pilot.setActive(false);
-  };
-  const menuClosed = () => { if (!bench.open) { view.reading = false; pilot.setActive(true); } };
 
   // --- Walking ------------------------------------------------------------------------------------------------------
   // The visitor arrives on foot by the statue, facing into the museum, and walks as their own Ooga throughout.
@@ -956,9 +850,9 @@
     const b = {
       // The title is lettered from the sign alphabet (letters, digits, space and / : ! ? + - .); anything else is
       // turned into a dash or dropped.
-      title: ex.room.replace(/[·–—]/g, "-").replace(/[^A-Za-z0-9 /:!?+\-.]/g, ""), help: "Arrows page · Escape closes and the walk carries on", canvas, count: ex.pages.length, index: 0,
+      title: ex.room.replace(/[·\u2013\u2014]/g, "-").replace(/[^A-Za-z0-9 /:!?+\-.]/g, ""), help: "Arrows page · Escape closes and the walk carries on", canvas, count: ex.pages.length, index: 0,
       caption: ex.pages[0].caption, note: ex.pages[0].text.join(" "), version: 0, wide: true,
-      links: ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} ↗` })),
+      links: ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} \u2197` })),
       go(i) {
         b.index = i; b.caption = ex.pages[i].caption; b.note = ex.pages[i].text.join(" ");
         paintPage(canvas, ex.pages[i]); b.version++;
@@ -1119,7 +1013,7 @@
   const update = (dt) => {
     sceneTime += dt;
     // A panel's dialog closing (its button, Escape or a press outside) hands the walk back as it was.
-    if (view.reading && !hud.el.board.open && !el.menu.open) {
+    if (view.reading && !hud.el.board.open && !(timeline && timeline.isOpen)) {
       view.reading = false;
       if (view.readingPaused) setPaused(false);
       if (!bench.open) pilot.setActive(true);
@@ -1158,7 +1052,7 @@
     // The era files build first, so the hall's boulders, the legend and the shared signage know them.
     buildCavern(); buildFloor(); buildDesk();
     registerProps();
-    buildExhibits();
+    buildExhibits(); buildCatalogue();
     buildCaves(); buildLegend(); buildEraFrames(); buildTrail();
     registerOverviews();
     // The visit's footing: the fixed ledges and banks, plus whatever this visit's exhibits put in the way.
@@ -1169,7 +1063,7 @@
     audio = BL.genesisAudio.create();
     sounds.paused = sounds.engine = sounds.calm = null;
     view.reading = view.readingPaused = false; view.paused = false; lastEra = -2;
-    bench.open = false; bench.entry = bench.term = bench.board = null; bench.era = -1; bench.opens = bench.runs = 0; menuFilter = "all";
+    bench.open = false; bench.entry = bench.term = bench.board = null; bench.era = -1; bench.id = null; bench.framing = false; bench.opens = bench.runs = 0;
     view.calm = PREFERS_CALM.matches;
     sceneTime = 0; captionKey = ""; lastStamps = 0; lastPhase = ""; lastTiles = -1; lastBroken = false;
     renderOpts.lightCount = LIGHTS.length;
@@ -1263,37 +1157,10 @@
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
     el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space by an exhibit (or a tap) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
-    // The workbench: its buttons, its command line (typing stays in it) and Escape to close.
-    for (const id of ["", "Kicker", "Title", "Pos", "Stage", "Form", "Input", "Prompt", "Actions", "Output", "Info", "PanelNote"]) el[`bench${id}`] = document.getElementById(`genesis-bench${id ? "-" + id.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()).replace(/^-/, "") : ""}`);
-    el.benchForm.addEventListener("submit", (e) => { e.preventDefault(); runBench(el.benchInput.value); el.benchInput.value = ""; }, { signal: ctx.signal });
-    el.bench.addEventListener("click", (e) => {
-      const b = e.target.closest("button");
-      if (!b || !bench.open) return;
-      if (b.dataset.bench === "close") closeBench();
-      else if (b.dataset.bench === "go") closeBench(true);
-      else if (b.dataset.bench === "prev") showBench(bench.index - 1);
-      else if (b.dataset.bench === "next") showBench(bench.index + 1);
-      else if (b.dataset.bench === "reset") runBench("RESET");
-      else if (b.dataset.cmd) {
-        if (b.dataset.arg) { el.benchInput.value = `${b.dataset.cmd} `; el.benchInput.focus(); }
-        else runBench(b.dataset.cmd);
-      }
-    }, { signal: ctx.signal });
-    el.bench.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeBench(); }
-      else if (e.target !== el.benchInput && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); showBench(bench.index + (e.key === "ArrowRight" ? 1 : -1)); }
-    }, { signal: ctx.signal });
-    window.addEventListener("resize", () => { if (bench.open) { bench.eased = false; frameBench(); } }, { signal: ctx.signal });
-    // The timeline menu.
-    el.menu = document.getElementById("genesis-menu"); el.menuList = document.getElementById("genesis-menu-list");
-    el.menu.addEventListener("close", menuClosed, { signal: ctx.signal });
-    el.menu.querySelector("[data-menu-close]").addEventListener("click", () => el.menu.close(), { signal: ctx.signal });
-    el.menu.addEventListener("click", (e) => {
-      const b = e.target.closest("button");
-      if (!b) return;
-      if (b.dataset.filter) { menuFilter = b.dataset.filter; for (const f of el.menu.querySelectorAll("[data-filter]")) f.setAttribute("aria-pressed", String(f === b)); fillMenu(); }
-      else if (b.dataset.exhibit) { const prop = props.get(b.dataset.exhibit); el.menu.close(); view.reading = false; if (prop) openBench(prop); }
-    }, { signal: ctx.signal });
+    // The workbench and the timeline menu (their own modules, on the host).
+    workbench = BL.genesisWorkbench.create(host, document.getElementById("genesis-bench"));
+    timeline = BL.genesisTimeline.create(host, document.getElementById("genesis-menu"));
+    window.addEventListener("resize", () => { if (bench.open) { bench.eased = false; workbench.resize(); } }, { signal: ctx.signal });
     window.addEventListener("pointerdown", audio.wake, { signal: ctx.signal });
     window.addEventListener("keydown", audio.wake, { signal: ctx.signal });
     setCaption("arrive-museum", "The Genesis museum: the ideas that came before Bitcoin, in date order down the hall. The white timeline on your left lists every invention (or press G). Walk up to any exhibit and press Space, or tap it, to open its workbench.");
@@ -1302,7 +1169,9 @@
     hud.setStats(game.state);
     arrive();
     Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, view, built, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
-      openProp, pause, bench, openBench, closeBench, showBench, runBench, benchList, openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
+      openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; },
+      openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
+      runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
   };
   const onDonation = (donation, counted = null) => {
     game.recordDonation(donation, counted && counted.exact);
@@ -1313,8 +1182,10 @@
   };
   const leaveScene = () => {
     stopVoice();
-    closeBench();
-    if (el.menu.open) el.menu.close();
+    host.close();
+    if (workbench) workbench.dispose();
+    if (timeline) timeline.dispose();
+    workbench = timeline = catalogue = null;
     if (view.reading) hud.closeBoard();
     disposeExhibits();
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.
@@ -1347,7 +1218,7 @@
     const all = (n) => { nodes++; for (const c of n.children) all(c); };
     all(root);
     const p = avatar ? avatar.root.position : ENTRY;
-    return { allNodes: nodes, targets: input.targetCount, era: GW.eraAt(p.x, p.z), bench: bench.open ? bench.entry.prop.id : null, opens: bench.opens, runs: bench.runs,
+    return { allNodes: nodes, targets: input.targetCount, era: GW.eraAt(p.x, p.z), bench: bench.open ? bench.id : null, opens: bench.opens, runs: bench.runs,
       demo: demo.phase, paused: view.paused, reading: view.reading,
       walking: walk.on, falls: walk.falls, uses: propState.uses, fx: fx.stats ? fx.stats() : null, crew: people ? people.stats() : null };
   };

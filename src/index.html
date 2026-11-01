@@ -852,6 +852,7 @@
         </div>
         <p class="genesis-help" id="genesis-help"></p>
       </div>
+      <!-- genesis-workbench:begin (owned by the workbench builder; OVERHAUL-CONTRACT.md) -->
       <section class="genesis-bench" id="genesis-bench" role="dialog" aria-modal="true" aria-labelledby="genesis-bench-title" hidden>
         <header class="bench-head">
           <div class="bench-titles">
@@ -884,6 +885,8 @@
           <aside class="bench-info" id="genesis-bench-info" aria-label="About this invention"></aside>
         </div>
       </section>
+      <!-- genesis-workbench:end -->
+      <!-- genesis-timeline:begin (owned by the timeline builder; OVERHAUL-CONTRACT.md) -->
       <dialog class="modal genesis-menu" id="genesis-menu" aria-labelledby="genesis-menu-title">
         <div class="panel-head">
           <h2><span data-sign id="genesis-menu-title">The museum timeline</span></h2>
@@ -898,6 +901,7 @@
         <div class="menu-list" id="genesis-menu-list"></div>
         <p class="help">Choose an invention to open its workbench · Escape closes</p>
       </dialog>
+      <!-- genesis-timeline:end -->
     </div>
     <div class="race" id="drop" data-scene="drop" hidden>
       <section class="garage" id="drop-board" aria-label="Drop board">
@@ -2035,7 +2039,11 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/genesis-world.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-boat.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-exhibits.js" data-defer="genesis-scene"></script>
+  <script src="js/genesis-timeline-data.js" data-defer="genesis-scene"></script>
+  <script src="js/genesis-catalogue.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-bench.js" data-defer="genesis-scene"></script>
+  <script src="js/genesis-workbench.js" data-defer="genesis-scene"></script>
+  <script src="js/genesis-timeline.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-era-0.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-era-1.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-era-2.js" data-defer="genesis-scene"></script>

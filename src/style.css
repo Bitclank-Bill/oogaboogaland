@@ -10158,6 +10158,7 @@ body[data-active-scene="genesis"] .magazine-hud {
   .genesis-help { display: none; }
 }
 
+/* genesis-workbench:begin (owned by the workbench builder; OVERHAUL-CONTRACT.md) */
 /* The Genesis museum's exhibit workbench: a clear stage on the left through which the exhibit's own model shows live
    (the camera frames it there), the command line under it, and the story on the right. */
 body.genesis-bench-open .genesis-bar, body.genesis-bench-open .genesis-chain { display: none; }
@@ -10173,11 +10174,11 @@ body.genesis-bench-open .genesis-bar, body.genesis-bench-open .genesis-chain { d
 .bench-head h2 { margin: 2px 0 0; font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
 .bench-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .bench-pos { min-width: 5.5em; text-align: center; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.genesis-bench button, .genesis-menu .menu-filters button {
+.genesis-bench button {
   min-height: 36px; padding: 0 12px; cursor: pointer; border: 2px solid var(--wood-edge); border-radius: 6px;
   background: linear-gradient(var(--plank), var(--wood)); color: var(--paper); font-size: 13px;
 }
-.genesis-bench button:focus-visible, .genesis-menu button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.genesis-bench button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .bench-close { background: linear-gradient(#6b2a22, #4a1d17) !important; }
 .bench-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 8px; }
 .bench-left { min-height: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -10216,8 +10217,15 @@ body.genesis-bench-open .genesis-bar, body.genesis-bench-open .genesis-chain { d
   .bench-head h2 { font-size: 17px; }
 }
 
+/* genesis-workbench:end */
+/* genesis-timeline:begin (owned by the timeline builder; OVERHAUL-CONTRACT.md) */
 /* The museum's timeline menu: every exhibit by date and by how it connects. */
 .genesis-menu { width: min(760px, calc(100vw - 24px)); pointer-events: auto; }
+.genesis-menu .menu-filters button {
+  min-height: 36px; padding: 0 12px; cursor: pointer; border: 2px solid var(--wood-edge); border-radius: 6px;
+  background: linear-gradient(var(--plank), var(--wood)); color: var(--paper); font-size: 13px;
+}
+.genesis-menu button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .menu-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0; font-size: 12px; }
 .key-cited { color: #ffcf5a; } .key-influence { color: #ffcf5a; } .key-context { color: #b9b4aa; } .key-note { color: var(--muted); }
 .menu-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
@@ -10232,5 +10240,6 @@ body.genesis-bench-open .genesis-bar, body.genesis-bench-open .genesis-chain { d
 .menu-list .menu-year { min-width: 4.6em; font-variant-numeric: tabular-nums; color: var(--muted); }
 .menu-list .menu-title { flex: 1; overflow-wrap: anywhere; }
 .menu-list .menu-tag { font-size: 11px; white-space: nowrap; }
-.menu-list .tag-cited, .menu-list .tag-influence, .menu-list .tag-anchor { color: #ffcf5a; }
+.menu-list .tag-citation, .menu-list .tag-influence, .menu-list .tag-anchor { color: #ffcf5a; }
 .menu-list .tag-context, .menu-list .tag-demonstration, .menu-list .tag-bibliography { color: #b9b4aa; }
+/* genesis-timeline:end */

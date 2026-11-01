@@ -19,14 +19,14 @@
   // `theme` colours a cave's rock, its banks and its lamps. `boat` is one of BOATS. Era 3 holds Fingerprints and Time,
   // moved out of the old cavern by ROOM_SHIFT onto its left bank.
   const ERAS = [
-    { n: 0, id: "machines", name: "Machines That Count", years: "1956–1969", boat: "skiff", theme: { rock: "#4a4d4f", bank: "#6d6f6a", lamp: [1.15, 1.1, 0.95] } },
-    { n: 1, id: "keys", name: "Networks and Keys", years: "1970–1979", boat: "runabout", theme: { rock: "#5a4430", bank: "#8a6a44", lamp: [1.3, 0.9, 0.5] } },
-    { n: 2, id: "blind-money", name: "Trees and Blind Money", years: "1980–1989", boat: "runabout", theme: { rock: "#33284a", bank: "#4b3d68", lamp: [1.2, 0.55, 1.15] } },
-    { n: 3, id: "timestamps", name: "Cypherpunks and Timestamps", years: "1990–1995", boat: "watercraft", room: "fingerprints", theme: { rock: "#24403f", bank: "#4a4038", lamp: [1.35, 1.05, 0.7] } },
-    { n: 4, id: "work", name: "Work and Scarcity", years: "1996–1999", boat: "rib", theme: { rock: "#25344d", bank: "#3f5272", lamp: [0.7, 0.9, 1.35] } },
-    { n: 5, id: "peers", name: "Peers and Reusable Work", years: "2000–2007", boat: "rib", theme: { rock: "#4f5459", bank: "#7c838a", lamp: [1.05, 1.1, 1.2] } },
+    { n: 0, id: "machines", name: "Machines That Count", years: "1956\u20131969", boat: "skiff", theme: { rock: "#4a4d4f", bank: "#6d6f6a", lamp: [1.15, 1.1, 0.95] } },
+    { n: 1, id: "keys", name: "Networks and Keys", years: "1970\u20131979", boat: "runabout", theme: { rock: "#5a4430", bank: "#8a6a44", lamp: [1.3, 0.9, 0.5] } },
+    { n: 2, id: "blind-money", name: "Trees and Blind Money", years: "1980\u20131989", boat: "runabout", theme: { rock: "#33284a", bank: "#4b3d68", lamp: [1.2, 0.55, 1.15] } },
+    { n: 3, id: "timestamps", name: "Cypherpunks and Timestamps", years: "1990\u20131995", boat: "watercraft", room: "fingerprints", theme: { rock: "#24403f", bank: "#4a4038", lamp: [1.35, 1.05, 0.7] } },
+    { n: 4, id: "work", name: "Work and Scarcity", years: "1996\u20131999", boat: "rib", theme: { rock: "#25344d", bank: "#3f5272", lamp: [0.7, 0.9, 1.35] } },
+    { n: 5, id: "peers", name: "Peers and Reusable Work", years: "2000\u20132007", boat: "rib", theme: { rock: "#4f5459", bank: "#7c838a", lamp: [1.05, 1.1, 1.2] } },
     { n: 6, id: "whitepaper", name: "The Whitepaper", years: "31 October 2008", boat: "rib", theme: { rock: "#5c4a2c", bank: "#9a8456", lamp: [1.35, 1.15, 0.7] } },
-    { n: 7, id: "genesis", name: "Genesis", years: "3–12 January 2009", boat: "rib", optional: true, theme: { rock: "#2a2522", bank: "#46403a", lamp: [1.4, 0.75, 0.3] } }
+    { n: 7, id: "genesis", name: "Genesis", years: "3\u201312 January 2009", boat: "rib", optional: true, theme: { rock: "#2a2522", bank: "#46403a", lamp: [1.4, 0.75, 0.3] } }
   ];
   // Boats per type: top speed and turn.
   const BOATS = {
@@ -205,5 +205,35 @@
     for (let i = 0; i < ERAS.length; i++) if (z <= ERAS[i].z1 && z >= ERAS[i].z0) return CAVE.height - 0.6;
     return TUNNEL_HEIGHT - 0.4;
   };
-  BL.genesisWorld = { BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  // view: { c: {x,y,z} the model's centre, size (its largest extent), toward: {x,z} the direction to stand back in,
+  // ndc: {x,y}, frac (the stage's height as a share of the screen), fov (vertical, radians, as scene.js cameras keep
+  // it), aspect, fill, pitch }. The camera stays within MAX_DIST of the model, so it never backs through a wall.
+  // The workbench's framing (moved here from genesis-bench.js at the overhaul's interface freeze): where the camera
+  // stands so a model's centre lands in the middle of the workbench's clear stage.
+  const MAX_DIST = 14;
+  const frame = (v, out) => {
+    const tanV = Math.tan(v.fov / 2), tanH = tanV * v.aspect, fill = v.fill || 0.6, pitch = v.pitch === undefined ? 0.2 : v.pitch;
+    const dist = Math.max(2.2, Math.min(MAX_DIST, v.size / (fill * v.frac * 2 * tanV)));
+    const tl = Math.hypot(v.toward.x, v.toward.z) || 1, tx = v.toward.x / tl, tz = v.toward.z / tl;
+    const ex = v.c.x + tx * dist * Math.cos(pitch), ey = v.c.y + dist * Math.sin(pitch), ez = v.c.z + tz * dist * Math.cos(pitch);
+    // The camera's right and up (looking from the eye at the centre); shifting the target the other way moves the
+    // model to the stage's place on screen.
+    out.eye.x = ex; out.eye.y = ey; out.eye.z = ez;
+    out.target.x = v.c.x; out.target.y = v.c.y; out.target.z = v.c.z;
+    // Shift the target until the model's centre projects onto the stage's centre (a few passes; each is exact for
+    // small turns, so the error shrinks fast). Right = forward x world up; up = right x forward.
+    for (let pass = 0; pass < 6; pass++) {
+      const fx = out.target.x - ex, fy = out.target.y - ey, fz = out.target.z - ez, fl = Math.hypot(fx, fy, fz), nx = fx / fl, ny = fy / fl, nz = fz / fl;
+      const rl = Math.hypot(nz, nx) || 1, rx = -nz / rl, rz = nx / rl;
+      const ux = -rz * ny, uy = rz * nx - rx * nz, uz = rx * ny;
+      const dx = v.c.x - ex, dy = v.c.y - ey, dz = v.c.z - ez, depth = dx * nx + dy * ny + dz * nz;
+      const px = (dx * rx + dz * rz) / depth / tanH, py = (dx * ux + dy * uy + dz * uz) / depth / tanV;
+      const ex2 = v.ndc.x - px, ey2 = v.ndc.y - py;
+      if (Math.abs(ex2) < 1e-4 && Math.abs(ey2) < 1e-4) break;
+      out.target.x -= rx * ex2 * tanH * fl + ux * ey2 * tanV * fl; out.target.y -= uy * ey2 * tanV * fl; out.target.z -= rz * ex2 * tanH * fl + uz * ey2 * tanV * fl;
+    }
+    out.dist = dist;
+    return out;
+  };
+  BL.genesisWorld = { frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();

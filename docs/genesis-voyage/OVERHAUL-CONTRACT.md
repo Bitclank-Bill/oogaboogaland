@@ -111,7 +111,7 @@ camera frames the model inside that region, so a command that changes the model 
 ## 5. Who owns which files
 
 **The workbench tab (new):**
-- `src/js/genesis-workbench.js` provides `BL.genesisWorkbench.create(host, root) → { show(id), hide(), get open(), resize(), dispose() }`.
+- `src/js/genesis-workbench.js` provides `BL.genesisWorkbench.create(host, root) → { show(id), hide(), get isOpen(), resize(), dispose() }`.
 - `genesis-bench.js`'s `sections` and `actionsFrom` (the right column and the buttons). `frame` moves to
   `genesis-world.js` and `order` to the catalogue, both the integrator's.
 - Inside the shared files, only between its markers:
@@ -121,7 +121,7 @@ camera frames the model inside that region, so a command that changes the model 
 
 **The timeline-menu tab (new):**
 - `src/js/genesis-timeline.js` provides
-  `BL.genesisTimeline = { paint(ctx, w, h, catalogue, records), create(host, root) → { open(focusId), close(), get open(), dispose() } }`.
+  `BL.genesisTimeline = { paint(ctx, w, h, catalogue, records), create(host, root) → { open(focusId), close(), get isOpen(), dispose() } }`.
 - Inside the shared files, only between its markers:
   - `<!-- genesis-timeline:begin/end -->` in `src/index.html`;
   - `/* genesis-timeline:begin/end */` in `src/style.css`;
