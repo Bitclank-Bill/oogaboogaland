@@ -51,7 +51,11 @@
     "E5-WIKI": { label: "Wikimedia Meta: a community draft of Wikipedia's first press release (January 2002; a draft, not the final release)",
       href: "https://meta.wikimedia.org/wiki/Wikipedia%27s_first_press_release--draft_for_comment", kind: "context", verified: true },
     "E5-WIKI-CA": { label: "Wikimedia Canada: Wikipedia turns 25 (a secondary source)",
-      href: "https://www.wikimedia.ca/en/wikipedia-turns-25/", kind: "context", verified: false }
+      href: "https://www.wikimedia.ca/en/wikipedia-turns-25/", kind: "context", verified: false },
+    // The research dossier itself: it registers no display specification, so the CRT and flat-panel comparison is
+    // schematic (exhibit notes: docs/genesis-voyage/exhibits/era-5.md, its HOLD list).
+    "E5-DOSSIER": { label: "Era 5 research dossier (gv/research): no display dimensions verified, so the comparison is schematic",
+      href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/research/docs/genesis-voyage/eras/era-5-peers-and-reusable-work.md", kind: "context", verified: true }
   };
   const reply = (...lines) => ({ lines });
   const clean = (text) => String(text).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 64).trim();
@@ -97,6 +101,7 @@
     wiki: { revs: [], at: 0 },
     player: { loaded: new Uint8Array(6), used: 0, cursor: 0 },
     route: { at: 0, hops: 0, target: 23, solved: false },
+    patch: null, pocket: null,
     n: null
   });
   const RING0 = [1, 4, 9, 12];
@@ -377,6 +382,16 @@
     "Bit gold (December 2005, qualified): chained costly strings and an ownership registry; units are unequal and the registry's design stays open."
   ];
   const PEERS_TEXT = "Chord (2001) finds the peer that holds a key; BitTorrent's 2003 paper shares file pieces. Neither is a money ledger, and Bitcoin does not use Chord.";
+  // --- The period-gear cluster's two games ------------------------------------------------------------------------
+  // Each is its own module's terminal over this visit's state, wrapped so the cluster's model follows every command.
+  // Their story is the era's own: the BitTorrent lectern and the RPOW desk, pointed to rather than retold.
+  const PATCH_STORY = [PEERS_TEXT,
+    "The paper's story is on the BitTorrent lectern by the piece mosaic; reusable tokens, and who you must trust for them, are at the RPOW desk."];
+  const patchShow = () => { const p = S.patch, t = S.n.patchTiles; for (let peer = 0; peer < 3; peer++) for (let i = 0; i < 9; i++) t[peer * 9 + i].visible = p.holds(peer, i); };
+  const pocketShow = () => { const u = S.pocket.used(), b = S.n.pocketBar; for (let i = 0; i < b.length; i++) b[i].visible = i < u; };
+  const watched = (term, show) => ({ banner: term.banner, prompt: term.prompt, run(line) { const r = term.run(line); show(); return r; } });
+  const patchTerm = () => watched(BL.genesisEra5Patchwork.terminal(S.patch, PATCH_STORY), patchShow);
+  const pocketTerm = () => watched(BL.genesisEra5Mixtape.terminal(S.pocket, ["Context: the silent pocket disk player further up this side (announced 23 October 2001); this toy makes no claim about that product."]), pocketShow);
   BL.genesisExhibits.register(5, {
     sources,
     overview: {
@@ -384,7 +399,7 @@
       sourceKeys: ["E5-CHORD", "E5-BT", "E5-HC", "E5-RPOW", "E5-BG", "E5-ATTR"],
       pages: [
         { caption: "Explore", title: "A workshop of competing ideas", text: [
-          "Left side: four idea benches. Each lectern has the paper's story; each toy beside it lets you try the idea. Right side: a peer-sharing bench and period gear.",
+          "Left side: four idea benches. Each lectern has the paper's story; each toy beside it lets you try the idea. Right side: a peer-sharing bench and period gear, with a small cluster of modern museum toys by the far shelf.",
           PEERS_TEXT, "Every toy has HELP, a hint and How to use steps, and RESET starts it again."] },
         { caption: "How to read it", title: "Citation, influence, context", text: [
           "Whitepaper citation: the 2002 Hashcash paper is the whitepaper's reference [6]. Documented influence: bit gold, named in Satoshi's retrospective 20 July 2010 post.",
@@ -400,7 +415,8 @@
       S.wiki.revs.push(ARTICLE);
       const { era, top, solid, sign, obstacle, prop } = kit;
       const N = S.n = { pillars: [], caps: [], slot: new Float32Array(32), keyMark: null, meter: [], stampTile: null, cabGreen: null, cabRed: null, cabBusy: null,
-        bars: [], tiles: [], wide: [], tight: [], lines: [], cap: [], sats: [], satR: 0, satX: 0, satZ: 0, satY: 0, beacon: null, ringX: 0, ringZ: 0 };
+        bars: [], tiles: [], wide: [], tight: [], lines: [], cap: [], sats: [], satR: 0, satX: 0, satZ: 0, satY: 0, beacon: null, ringX: 0, ringZ: 0,
+        patchTiles: [], pocketBar: [] };
       const Z = (u) => era.z1 - u; // u: metres downstream from the way in
       // 2000s workshop palette: brushed silver, graphite, translucent sea-glass and powder blue, citrus accents.
       const C = { silver: "#b9c0c6", graphite: "#3a3f45", glass: "#7fc9c4", powder: "#9cb8d8", citrus: "#d9e36a", bench: "#6a6f74", mat: "#2f3a44", gold: "#e8c35a", ivory: "#e9e6dc" };
@@ -586,6 +602,82 @@
         for (let i = 0; i < 3; i++) solid(0.5, 0.7, 0.4, [C.gold, C.powder, "#e98d6a"][i], bx + 2.8, top + 0.35, z - 1 + i, 0.2);
         obstacle(bx + 2.5, bx + 3.1, z - 1.3, z + 1.3);
         toy("e5-mosaic", 2003, "2003: the year of the BitTorrent paper this toy illustrates; an original museum model", "Piece mosaic", ["E5-BT"], bx, z, 4.2, 2.6, mosaicTerm);
+      }
+
+      // === Period-gear cluster (upgrade): three stations on one mat at u 60 on the right side, x 13 to 33, between
+      // the BitTorrent bench and the far shelf, clear of the right loft (x 37 and beyond) and the gold walk. A packet
+      // puzzle that leans on the BitTorrent lectern and the RPOW desk for its story, a schematic CRT and flat-panel
+      // comparison, and a pattern player toy. The two games are modules of their own (genesis-era-5-patchwork.js,
+      // genesis-era-5-mixtape.js); until a page loads them, their stations say so on a board.
+      {
+        const z = Z(60), xs = [16, 23, 30];
+        solid(20, 0.02, 4.4, C.mat, 23, top + 0.01, z + 0.6);
+        sign("PERIOD GEAR · 2000s", "modern museum toys and a schematic comparison", 23, top + 3.1, z - 1.2, 0, 0.42);
+        const missing = (what) => ({ board: { room: "Not loaded yet", sources: ["E5-DOSSIER"], pages: [{ caption: "Coming soon", title: `${what} is not on this page yet`,
+          text: ["This station's game is its own module, and this page has not loaded it yet.", "Everything else in the cave works as before."] }] } });
+        // 1. Peer Patchwork: three peers' 3x3 boards on a table, each tile lit while that peer holds the piece.
+        {
+          const x = xs[0], PW = BL.genesisEra5Patchwork, ART = ["#5ec8ff", "#ffd23a", "#5ec8ff", "#46ffd2", "#ffb02e", "#46ffd2", "#6fae3a", "#3a6e24", "#6fae3a"];
+          if (PW) { S.patch = PW.puzzle(); S.patch.deal(2003); }
+          solid(3.2, 0.08, 1.4, C.graphite, x, top + 0.86, z);
+          solid(2.9, 0.82, 1.1, C.bench, x, top + 0.41, z);
+          for (let peer = 0; peer < 3; peer++) for (let i = 0; i < 9; i++) {
+            const tx = x - 1.05 + peer * 1.05 + (i % 3 - 1) * 0.26, tz = z - 0.26 + Math.floor(i / 3) * 0.26;
+            const t = solid(0.22, 0.03, 0.22, ART[i], tx, top + 0.92, tz, 0.5); t.visible = !!(S.patch && S.patch.holds(peer, i)); N.patchTiles.push(t);
+          }
+          obstacle(x - 1.6, x + 1.6, z - 0.7, z + 0.7);
+          sign("PEER PATCHWORK", "share pieces so all three finish", x, top + 1.9, z + 0.2, 0, 0.3);
+          prop({ id: "e5-patchwork", year: 2003, connection: "context", date: "2003: the year of the BitTorrent paper that inspired this original puzzle; a modern museum homage, not historical software",
+            title: "Peer Patchwork puzzle", label: "PEER PATCHWORK · 2003-INSPIRED HOMAGE", sourceKeys: ["E5-BT"],
+            at: { x, y: top, z: z + 1.5 }, reach: 1.9, pick: { w: 3.2, h: 1.4, d: 1.6, x, z },
+            onUse: () => !S.patch ? missing("Peer Patchwork") : ({ terminal: patchTerm() }) });
+        }
+        // 2. CRT beside flat panel, schematic: a deep box with its glass, and a thin panel on a stand, on one plinth.
+        {
+          const x = xs[1];
+          solid(3, 0.7, 1.6, C.silver, x, top + 0.35, z);
+          const cx = x - 0.75, fx = x + 0.75;
+          solid(0.95, 0.78, 0.9, "#c9c4b6", cx, top + 1.09, z - 0.05);
+          solid(0.8, 0.62, 0.02, "#1d3a46", cx, top + 1.11, z + 0.41, 0.35);
+          solid(0.6, 0.5, 0.25, "#b7b2a4", cx, top + 1.05, z - 0.6);
+          solid(1.0, 0.64, 0.06, C.graphite, fx, top + 1.42, z + 0.2);
+          solid(0.92, 0.56, 0.02, "#1d3a46", fx, top + 1.42, z + 0.24, 0.35);
+          solid(0.08, 0.36, 0.06, C.graphite, fx, top + 0.92, z + 0.15);
+          solid(0.5, 0.03, 0.3, C.graphite, fx, top + 0.715, z + 0.15);
+          // Depth guides on the plinth: one bar as deep as each model, drawn to the same schematic scale.
+          solid(0.06, 0.02, 1.15, C.citrus, cx + 0.55, top + 0.71, z - 0.15, 0.6);
+          solid(0.06, 0.02, 0.3, C.citrus, fx + 0.55, top + 0.71, z + 0.15, 0.6);
+          obstacle(x - 1.55, x + 1.55, z - 0.85, z + 0.85);
+          sign("CRT AND FLAT PANEL", "schematic: no product or measurement", x, top + 2.4, z + 0.3, 0, 0.3);
+          prop({ id: "e5-displays", year: "2000s", connection: "context", date: "2000-2007: the period illustrated; a schematic comparison, with no product, measurement or introduction date claimed",
+            title: "CRT and flat panel compared", label: "CRT AND FLAT PANEL · 2000s (SCHEMATIC)", sourceKeys: ["E5-DOSSIER"],
+            at: { x, y: top, z: z + 1.65 }, reach: 1.9, pick: { w: 3, h: 1.9, d: 1.6, x, z },
+            onUse: () => ({ board: { room: "CRT and flat panel - schematic", sources: ["E5-DOSSIER"], pages: [
+              { caption: "In short", title: "Two ways to show a picture", text: ["On the left, a deep box with glass at its front stands for a tube display; on the right, a thin panel on a stand stands for a flat one.",
+                "The yellow bars on the plinth show each model's depth at the same schematic scale."] },
+              { caption: "Why schematic", title: "Numbers kept on HOLD", text: ["This museum has not verified any particular display's dimensions, weight or screen size, so none are given.",
+                "The models are original shapes, not any product, and the picture does not claim when either kind was introduced."] },
+              { caption: "Context", title: "Period gear, not a Bitcoin step", text: ["Displays changed how these years looked; they are context for the era, not something the whitepaper cites or drew on."] }
+            ] } }) });
+        }
+        // 3. Pattern Pocket: an enlarged generic slab on a pedestal, a square button grid, and a storage bar that fills
+        // as the playlist does.
+        {
+          const x = xs[2], MX = BL.genesisEra5Mixtape;
+          if (MX) S.pocket = MX.player();
+          solid(0.9, 0.9, 0.7, C.bench, x, top + 0.45, z);
+          solid(0.62, 1.1, 0.14, C.powder, x, top + 1.45, z);
+          solid(0.5, 0.42, 0.02, "#13181d", x, top + 1.72, z + 0.08, 0.3);
+          for (let i = 0; i < 4; i++) solid(0.12, 0.12, 0.03, C.silver, x - 0.09 + (i % 2) * 0.18, top + 1.22 - Math.floor(i / 2) * 0.17, z + 0.08);
+          solid(0.4, 0.07, 0.03, C.citrus, x, top + 0.98, z + 0.08, 0.4);
+          for (let i = 0; i < 10; i++) { const c = solid(0.035, 0.05, 0.01, C.glass, x - 0.2 + i * 0.045, top + 1.55, z + 0.095, 0.9); c.visible = false; N.pocketBar.push(c); }
+          obstacle(x - 0.5, x + 0.5, z - 0.4, z + 0.4);
+          sign("PATTERN POCKET", "make a playlist that fits", x, top + 2.4, z + 0.2, 0, 0.3);
+          prop({ id: "e5-pocket", year: "2000s", connection: "context", date: "2000-2007: the period illustrated; a modern museum homage with original patterns, not any product or historical software",
+            title: "Pattern Pocket player toy", label: "PATTERN POCKET · 2000s HOMAGE", sourceKeys: ["E5-GEAR"],
+            at: { x, y: top, z: z + 1.25 }, reach: 1.9, pick: { w: 1, h: 2.2, d: 0.8, x, z },
+            onUse: () => !S.pocket ? missing("Pattern Pocket") : ({ terminal: pocketTerm() }) });
+        }
       }
 
       // === The lofts: alcoves high on the back walls, reached with the jetpack ===================================
