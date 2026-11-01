@@ -656,7 +656,7 @@
     if (terminal.lines.length > MAX_SCREEN) terminal.lines.splice(0, terminal.lines.length - MAX_SCREEN);
     el.termScreen.textContent = terminal.lines.join("\n");
     el.termScreen.scrollTop = el.termScreen.scrollHeight;
-    if (out.entry) { audio.stamp(); hud.toast(`Page ${out.entry.page} stamped: ${out.entry.code}`); }
+    if (out.entry) { audio.cue("stamp"); hud.toast(`Page ${out.entry.page} stamped: ${out.entry.code}`); }
     return out;
   };
   const terminalClosed = () => {
@@ -742,7 +742,7 @@
     if (footing.fallen(feet)) {
       const dock = footing.dockOf(walk.area);
       walk.falls++;
-      audio.splash();
+      audio.cue("splash");
       walkPose.position.x = dock.x; walkPose.position.z = dock.z;
       walkPose.position.y = footing.supportAt(dock.x, dock.z);
       walkPose.yaw = dock.facing - Math.PI;
@@ -823,29 +823,17 @@
   const openInfo = () => openPanel(board);
 
   // --- Sound and voice --------------------------------------------------------------------------------------------
-  // Short synthesized cues through the page's environment mute (M), made only after a gesture and closed on leave.
-  const createAudio = () => {
-    let context = null, out = null;
-    const wake = () => {
-      if (context || typeof AudioContext === "undefined") return;
-      context = new AudioContext(); out = BL.sound.output(context);
-    };
-    const tone = (freq, length, type, gain, slide = 0) => {
-      if (!context || context.state !== "running" || BL.sound.muted) return;
-      const t = context.currentTime, o = context.createOscillator(), g = context.createGain();
-      o.type = type; o.frequency.setValueAtTime(freq, t);
-      if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + length);
-      g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + length);
-      o.connect(g); g.connect(out); o.start(t); o.stop(t + length + 0.02);
-    };
-    return {
-      wake,
-      stamp: () => { tone(140, 0.18, "square", 0.08, 0.5); tone(70, 0.25, "sine", 0.14, 0.7); },
-      link: () => tone(880, 0.35, "triangle", 0.05, 1.5),
-      broken: () => { tone(220, 0.6, "sawtooth", 0.04, 0.6); tone(233, 0.6, "sawtooth", 0.04, 0.6); },
-      splash: () => { tone(320, 0.45, "triangle", 0.07, 0.3); tone(90, 0.5, "sine", 0.12, 0.6); },
-      dispose: () => { if (context) context.close().catch(() => {}); context = out = null; }
-    };
+  // The voyage's music, engine and cues (genesis-audio.js): one context, built only from a gesture and through the
+  // page's environment mute (M), closed on leave. `syncAudio` passes the visit's state on once a frame, only when it
+  // changes: the music holds only for the visitor's own pause (P or the Pause button), never for a panel or a
+  // terminal they are reading; the engine is silent ashore and while reading; Calm softens both. The harbour plays
+  // Era 0's theme. Era 1's coupler and Era 4's DIAL make their own tones, so the scene never cues "modem".
+  const sounds = { paused: null, engine: null, calm: null };
+  const syncAudio = () => {
+    const reading = view.reading || !!terminal, paused = view.paused && !(view.reading && view.readingPaused), engine = !walk.on && !reading;
+    if (paused !== sounds.paused) { sounds.paused = paused; audio.setPaused(paused); }
+    if (engine !== sounds.engine) { sounds.engine = engine; audio.setEngine(engine); }
+    if (view.calm !== sounds.calm) { sounds.calm = view.calm; audio.setCalm(view.calm); }
   };
   const speech = typeof window.speechSynthesis !== "undefined" ? window.speechSynthesis : null;
   const stopVoice = () => { if (speech) speech.cancel(); };
@@ -961,10 +949,10 @@
   // --- Frame ----------------------------------------------------------------------------------------------------
   const stepDemo = (dt) => {
     if (!view.paused && !view.reading) demo.update(dt);
-    if (demo.stamps !== lastStamps) { lastStamps = demo.stamps; audio.stamp(); }
+    if (demo.stamps !== lastStamps) { lastStamps = demo.stamps; audio.cue("stamp"); }
     if (demo.tiles !== lastTiles || demo.broken !== lastBroken) {
-      if (demo.tiles > lastTiles && demo.tiles > 0) audio.link();
-      if (demo.broken && !lastBroken) audio.broken();
+      if (demo.tiles > lastTiles && demo.tiles > 0) audio.cue("link");
+      if (demo.broken && !lastBroken) audio.cue("broken");
       lastTiles = demo.tiles; lastBroken = demo.broken;
       for (let i = 0; i < built.tiles.length; i++) {
         const shown = i < demo.tiles, bad = demo.broken && i >= G.TAMPER_AT;
@@ -1055,10 +1043,11 @@
     const era = GW.eraAt(boat.x, boat.z), kind = era < 0 ? "skiff" : GW.ERAS[era].boat;
     if (driver.state.kind !== kind || !built.boats[kind].visible) {
       for (const name in built.boats) built.boats[name].visible = name === kind;
-      if (lastEra !== -2) { splashT = 0.7; audio.splash(); }
+      if (lastEra !== -2) { splashT = 0.7; audio.cue("splash"); }
       driver.state.kind = kind;
     }
     if (era !== lastEra) {
+      audio.setEra(Math.max(0, era));
       if (era >= 0 && !walk.on) {
         const e = GW.ERAS[era], boatName = GW.BOATS[e.boat].name;
         setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}). Your boat is now a ${boatName}.${e.room ? " Dock at the ramp to see Fingerprints and Time." : exhibitCount(era) ? ` ${exhibitCount(era)} exhibit${exhibitCount(era) === 1 ? "" : "s"} on the banks${built.trail.some((x) => x.era === era) ? "; the gold path marks the Steps toward Bitcoin" : ""}. Jump out (Space) to explore.` : " Its exhibits are still being built; jump out (Space) to walk the cave."}`);
@@ -1090,6 +1079,7 @@
       // Shift (or Boost) hurries the Tour along.
       const axes = controls.read(), hurry = axes.sprint > 0 || view.boost ? GB.BOOST : 1;
       if (moving) ride.update(dt * hurry);
+      audio.setThrottle(moving && ride.state === "sailing" ? 0.5 : 0, false);
       course.sample(ride.d, boat);
       if (ride.state !== before) {
         if (ride.state === "station") {
@@ -1108,6 +1098,7 @@
       driver.input.steer = moving ? -axes.x : 0;
       driver.input.boost = moving && (axes.sprint > 0 || view.boost);
       if (moving) driver.update(dt);
+      audio.setThrottle(moving ? Math.min(1, Math.abs(driver.state.speed) / GW.BOATS[driver.state.kind].top) : 0, driver.input.boost);
       boat.x = driver.state.x; boat.z = driver.state.z; boat.heading = driver.state.heading;
       if (driver.state.dock !== lastDock) {
         if (driver.state.dock === ROOM_ERA) { demo.reset(); lastPhase = ""; lastTiles = -1; setCaption("arrive"); }
@@ -1115,6 +1106,7 @@
       }
     }
     updateEra(dt);
+    syncAudio();
     renderOpts.shadowCenter.x = boat.x; renderOpts.shadowCenter.z = boat.z;
     stepDemo(dt);
     updateExhibits(dt, sceneTime);
@@ -1153,7 +1145,8 @@
     driver = GB.create(GW, GW.HARBOUR.start);
     demo = G.createStampDemo();
     board = makeBoard();
-    audio = createAudio();
+    audio = BL.genesisAudio.create();
+    sounds.paused = sounds.engine = sounds.calm = null;
     view.yaw = view.pitch = view.look = 0; view.reading = view.readingPaused = false; view.fixed = false;
     view.paused = false; view.mode = "drive"; view.boost = false; chase.ready = false; lastEra = lastDock = -2; splashT = 0;
     view.calm = PREFERS_CALM.matches;
@@ -1269,7 +1262,7 @@
     hud.setStats(game.state);
     Object.assign(scene, { root, camera, input, debug: { get ride() { return ride; }, get demo() { return demo; }, view, built, board, sail, skip, openInfo, toggle, jumpTo,
       walk, boat, footing, props, pilot, get avatar() { return avatar; }, get terminal() { return terminal; }, jumpOut, reboard, toggleWalk, openProp, runTerminal,
-      get driver() { return driver; }, pause, boost, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; } } });
+      get driver() { return driver; }, pause, boost, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
   };
   const onDonation = (donation, counted = null) => {
     game.recordDonation(donation, counted && counted.exact);

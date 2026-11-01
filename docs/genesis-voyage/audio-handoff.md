@@ -135,6 +135,25 @@ Press **Wake**, then try the eight eras, the throttle and boost, Calm, Pause, Mu
 New instance. Please judge each theme's character for its years, the balance against the engine and the cues, and
 whether anything is tiring over a long visit.
 
+## Wired (Claude Code, integrator, on `gv/integration-1`)
+
+Merged from `fa79636` with an ordinary merge (both conflicts kept both sides), then wired into `scene-genesis.js`
+by the recipe above, with the integrator's decisions:
+
+- **The old scene audio is gone:** `createAudio` and its tones are removed. Every cue (stamp, link, broken, splash)
+  now plays through `audio.cue`, so nothing sounds twice.
+- **The harbour** plays Era 0's theme (`setEra(Math.max(0, era))`).
+- **Reading:** the music keeps playing while a panel or a terminal is open, and the engine is silent then. It's
+  silent ashore too.
+- **Pause:** only the visitor's own pause (P or the Pause button) pauses the music. A panel opened while paused
+  leaves it paused, and closing that panel keeps the visitor's pause.
+- **Calm:** passed on whenever it changes.
+- **How the state reaches the module:** `syncAudio` passes on pause, engine and Calm once a frame, only when they
+  change. The throttle is set once a frame in the drive and Tour branches.
+- **Unchanged:** the gesture wake, the page-wide mute and disposal on leave.
+- **No `cue("modem")`:** Era 1's coupler and Era 4's DIAL make their own tones.
+- **Debug only:** the scene's debug handle exposes `audio` and `sounds` for the browser probe.
+
 ## Limitations
 
 - **Not listened to:** the music, the balance, the volume and the comfort are unjudged.
