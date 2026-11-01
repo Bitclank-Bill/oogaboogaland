@@ -8,7 +8,11 @@
 // here), the eight-slot reference shelf (one slot per numbered reference, each a pointer to the cave that tells that
 // work's story; the slots are not trail stops, so the trail keeps one stop per paper) with optional upper shelves for
 // flyers, and an original unbranded 2008 laptop at a reference desk (a sorting game). Right bank: two conflicting
-// payments (a simplified teaching model of what a signature alone cannot decide) and the unopened January door.
+// payments (a simplified teaching model of what a signature alone cannot decide), the reading corner (three context
+// stations whose commands change their own models: the "assemble the argument" teaching game, the paper's document
+// layout and a 2008-style reading workstation; docs/genesis-voyage/exhibits/era-6.md) and the unopened January door.
+// `BL.genesisEra6` exposes the corner's pure rules and the paper's section data; genesis-era-6-argument.js plays the
+// same game on the retro screen interface.
 //
 // No sound, no toasts and nothing that moves by itself: the laptop's cursor is the only blink, and it holds still
 // while a panel or terminal is open or Calm is on. Nothing typed leaves the page.
@@ -26,7 +30,10 @@
     "E6-GEAR": { label: "14 October 2008: a manufacturer's announcement of a 13-inch aluminium laptop (2 GB memory, 160 GB drive, 1280 x 800 screen)",
       href: "https://www.apple.com/newsroom/2008/10/14New-MacBook-Family-Redefines-Notebook-Design/", kind: "context", verified: true },
     "E6-DOSSIER": { label: "Genesis Voyage Era 6 research dossier: corrections (eight numbered references; demonstrations are not security proofs)",
-      href: DOSSIER, kind: "context", verified: true }
+      href: DOSSIER, kind: "context", verified: true },
+    // The reading corner's notes: what was checked against the paper's pages, and that its games are modern homages.
+    "E6-CLUSTER": { label: "Era 6 exhibit notes: the reading corner (argument game, document layout, workstation), original museum designs and how their section data was checked",
+      href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/upgrade-era-6/docs/genesis-voyage/exhibits/era-6.md", kind: "context", verified: true }
   };
   const MODEL = "SIMPLIFIED TEACHING MODEL: not a wallet, not a consensus implementation and not a security proof. No real funds.";
   const clean = (text) => String(text).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 48).trim();
@@ -173,7 +180,80 @@
     { id: "RPOW", name: "RPOW", cited: 0 },
     { id: "BITGOLD", name: "bit gold", cited: 0, note: "\"Not listed\" means absent from the whitepaper's bibliography. Era 5 explains bit gold's documented link through Satoshi's retrospective 20 July 2010 post." }
   ];
+  // --- The reading-corner cluster: the paper's own sections ----------------------------------------------------------
+  // Section titles, the page each starts on and the reference numbers each cites are the paper's own, read off the
+  // nine pages the site already ships (`whitepaper-pages-data.js`, rasterised from bitcoin.org/bitcoin.pdf); `role`
+  // and `says` are the museum's plain labels and summaries, never quotations. Section 11 runs from page 6 to page 8.
+  const SECTIONS = [
+    { n: 1, title: "Introduction", page: 1, refs: [], role: "PROBLEM", says: "Online payments rely on trusted middlemen; the paper proposes a peer-to-peer timestamp server instead." },
+    { n: 2, title: "Transactions", page: 2, refs: [1], role: "OWNERSHIP", says: "A coin passes from owner to owner by digital signatures, but a signature alone cannot show it was not spent twice." },
+    { n: 3, title: "Timestamp Server", page: 2, refs: [2, 3, 4, 5], role: "ORDER", says: "Hash a block of items and publish the hash; each stamp includes the one before, so they form a chain." },
+    { n: 4, title: "Proof-of-Work", page: 3, refs: [6], role: "COST", says: "Making a block takes computing work, so changing an old one means redoing its work and the work of every block after it." },
+    { n: 5, title: "Network", page: 3, refs: [], role: "PROCESS", says: "The steps the computers follow: share payments, gather them into blocks, and keep extending the longest chain." },
+    { n: 6, title: "Incentive", page: 4, refs: [], role: "ECONOMICS", says: "New coins and fees reward the computers doing the work, so playing by the rules pays better than cheating." },
+    { n: 7, title: "Reclaiming Disk Space", page: 4, refs: [7, 2, 5], role: "EFFICIENCY", says: "Payments in a block are hashed into a Merkle tree, so old spent ones can be dropped without breaking the block." },
+    { n: 8, title: "Simplified Payment Verification", page: 5, refs: [], role: "EFFICIENCY", says: "A user can check a payment with only the block headers and one branch of the tree, if honest computers run the network." },
+    { n: 9, title: "Combining and Splitting Value", page: 5, refs: [], role: "FORMAT", says: "A payment can take several inputs and give at most two outputs: one to pay, one as change." },
+    { n: 10, title: "Privacy", page: 6, refs: [], role: "PRIVACY", says: "Payments are public, but the keys need not name anyone; a new key for each payment helps." },
+    { n: 11, title: "Calculations", page: 6, refs: [8], role: "ANALYSIS", says: "The chance that an attacker catches up falls away quickly as more blocks are added, worked out as a gambler's ruin." },
+    { n: 12, title: "Conclusion", page: 8, refs: [], role: "SUMMARY", says: "Signatures give ownership; a proof-of-work chain stops double-spending; the network needs little structure." },
+    { n: 13, title: "References", page: 9, refs: [1, 2, 3, 4, 5, 6, 7, 8], role: "SOURCES", says: "The eight numbered works the paper cites, shelved in this gallery." }
+  ];
+  const PAGES = 9;
+  const sectionNamed = (word) => { const w = String(word || "").toUpperCase(); return w === "REFS" || w === "R" ? 12 : /^(1[0-2]|[1-9])$/.test(w) ? +w - 1 : -1; };
+  const refList = (refs) => refs.length ? refs.map((r) => `[${r}]`).join(" ") : "none";
+  const onPage = (p) => SECTIONS.filter((s) => s.page === p || (s.n === 11 && p >= 6 && p <= 8));
+  // The argument game's six cards, in the paper's own section order (the answer: card k belongs in slot k). `tag` is
+  // the card's four-letter name (the screen's box fits four letters), `line` its museum summary.
+  const ARG = [
+    { tag: "SIGN", sec: 2, line: "A coin passes on when its owner signs it over." },
+    { tag: "TIME", sec: 3, line: "Stamp each batch in order, each stamp holding the last." },
+    { tag: "WORK", sec: 4, line: "Make each stamp cost work, so rewriting is expensive." },
+    { tag: "NODE", sec: 5, line: "Many computers keep extending the longest chain." },
+    { tag: "COIN", sec: 6, line: "Reward that work with new coins and fees." },
+    { tag: "ODDS", sec: 11, line: "Show how fast an attacker's chance of catching up falls." }
+  ];
+  // The game's rules, pure and allocation-free after creation, shared by the terminal and the screen game
+  // (genesis-era-6-argument.js): `deal(seed)` shuffles the tray (mulberry32), `place`, `lift`, `check`.
+  const createArgument = () => {
+    const S = { seed: 1, solved: false, checks: 0, hints: 0, held: -1 };
+    const slot = new Int8Array(6), where = new Int8Array(6), tray = new Uint8Array(6), mark = new Uint8Array(6), rng = new Uint32Array(1);
+    const next = () => { rng[0] += 0x6d2b79f5; let t = rng[0]; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const deal = (seed) => {
+      S.seed = seed >>> 0; rng[0] = S.seed;
+      for (let i = 0; i < 6; i++) tray[i] = i;
+      for (let i = 5; i > 0; i--) { const j = Math.floor(next() * (i + 1)), t = tray[i]; tray[i] = tray[j]; tray[j] = t; }
+      slot.fill(-1); where.fill(-1); mark.fill(0); S.solved = false; S.checks = 0; S.hints = 0; S.held = -1;
+    };
+    const lift = (card) => { if (where[card] >= 0) { slot[where[card]] = -1; where[card] = -1; } mark.fill(0); S.solved = false; };
+    // Puts `card` in slot `s`, sending whatever was there back to the tray; returns the displaced card or -1.
+    const place = (card, s) => {
+      lift(card);
+      const was = slot[s];
+      if (was >= 0) where[was] = -1;
+      slot[s] = card; where[card] = s;
+      return was;
+    };
+    const placed = () => { let n = 0; for (let i = 0; i < 6; i++) if (slot[i] >= 0) n++; return n; };
+    // Marks each filled slot right (1) or wrong (2); returns how many are right.
+    const check = () => {
+      let right = 0;
+      for (let s = 0; s < 6; s++) { mark[s] = slot[s] < 0 ? 0 : slot[s] === s ? 1 : 2; if (mark[s] === 1) right++; }
+      S.checks++; S.solved = right === 6;
+      return right;
+    };
+    deal(1);
+    return { S, slot, where, tray, mark, deal, lift, place, placed, check };
+  };
+  // The paper's own arithmetic in section 7: an 80-byte header every 10 minutes, a year at a time.
+  const HEADER_BYTES = 80, HEADERS_A_YEAR = 6 * 24 * 365, MEMORY_2008 = 2e9;
+  const headerBytes = (years) => HEADER_BYTES * HEADERS_A_YEAR * years;
+  const commas = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  BL.genesisEra6 = { SECTIONS, PAGES, ARG, createArgument, headerBytes, MEMORY_2008 };
+
   let desk = null, cursor = null, blink = 0;
+  // The cluster's per-visit state and model nodes (`build` sets them, `dispose` drops them).
+  let arg = null, lay = null, ws = null, argNodes = null, layNodes = null, wsNodes = null;
   const filed = () => desk.filed.reduce((n, f) => n + (f ? 1 : 0), 0);
   const laptopTerminal = () => ({
     banner: ["REFERENCE DESK / an original, unbranded 2008-style laptop. Not the author's computer.",
@@ -211,6 +291,156 @@
     }
   });
 
+  // --- The cluster's terminals: each command changes its own model on the stage ------------------------------------
+  const ORIGINAL = "Original museum design made in 2026, not period software or a historical object.";
+  const argCard = (word) => ARG.findIndex((c) => c.tag === String(word || "").toUpperCase());
+  const argTerminal = () => ({
+    banner: ["ASSEMBLE THE ARGUMENT: a modern museum teaching game. It is not Bitcoin's protocol: nothing here signs, hashes, mines or checks a payment.",
+      ...howTo(["Type CARDS to read the six cards.", "Lay a card in a slot: PLACE SIGN 1 (slots 1 to 6, left to right).",
+        "With all six down, type CHECK: green slots are right, red ones need moving.", "DEAL 7 shuffles the tray with seed 7; RESET clears the table."]),
+      "IN SHORT: the paper builds its case step by step, from who owns a coin to how unlikely a rewrite becomes. Lay the six steps in the paper's own order. [E6-WP]"],
+    prompt: "ARGUMENT>",
+    run(line) {
+      const parts = clean(line).toUpperCase().split(/\s+/), cmd = parts[0];
+      if (cmd === "RESET") { arg.deal(1); syncArg(); return reply("Table cleared; the tray is dealt as at the start."); }
+      if (cmd === "CARDS") return reply(...ARG.map((c, k) => `${c.tag}: ${c.line}${arg.mark[arg.where[k]] === 1 ? ` (section ${c.sec}, ${SECTIONS[c.sec - 1].title})` : ""}${arg.where[k] >= 0 ? ` [slot ${arg.where[k] + 1}]` : ""}`));
+      if (cmd === "DEAL") {
+        if (parts[1] !== undefined && !/^\d{1,6}$/.test(parts[1])) return reply("DEAL, or DEAL with a seed from 0 to 999999.");
+        arg.deal(parts[1] === undefined ? arg.S.seed + 1 : +parts[1]); syncArg();
+        return reply(`Tray shuffled with seed ${arg.S.seed}; the slots are empty. The same seed always deals the same tray.`);
+      }
+      if (cmd === "PLACE") {
+        const c = argCard(parts[1]), s = Number(parts[2]) - 1;
+        if (c < 0 || !/^[1-6]$/.test(parts[2] || "") || parts.length > 3) return reply("PLACE <card> <slot>, e.g. PLACE SIGN 1. CARDS lists the cards.");
+        const was = arg.place(c, s); syncArg();
+        return reply(`${ARG[c].tag} lies in slot ${s + 1}.${was >= 0 ? ` ${ARG[was].tag} goes back to the tray.` : ""} ${arg.placed()}/6 down.`, arg.placed() === 6 ? "All six are down: type CHECK." : "");
+      }
+      if (cmd === "LIFT") {
+        const c = argCard(parts[1]);
+        if (c < 0) return reply("LIFT <card>, e.g. LIFT WORK.");
+        arg.lift(c); syncArg();
+        return reply(`${ARG[c].tag} is back in the tray. ${arg.placed()}/6 down.`);
+      }
+      if (cmd === "CHECK") {
+        if (arg.placed() < 6) return reply(`Lay all six first: ${arg.placed()}/6 down.`);
+        const right = arg.check(); syncArg();
+        return reply(right === 6 ? "All six in the paper's order: sections 2, 3, 4, 5, 6 and 11. Solved!" : `${right}/6 in place. Red slots need another card; CARDS shows what is fixed.`,
+          right === 6 ? "Sections 7 to 10 handle storage, light checking, payment shapes and privacy; the layout toy beside this table shows them." : "");
+      }
+      if (cmd === "HINT") {
+        const k = Math.min(arg.S.hints++, 5);
+        return reply(`Slot ${k + 1} is the card that says: "${ARG[k].line}"`, "That line is the museum's summary, not a quotation.");
+      }
+      if (cmd === "MORE") return reply("THE DEEPER STORY: an argument laid out in order is easier to check. The paper starts from ownership by signatures, adds a time order, makes that order costly to rewrite, says who keeps it and why, then estimates an attacker's chances. [E6-WP]",
+        "STILL UNSOLVED: putting the steps in order shows how the paper argues, not that the system would work in practice. That waited for the software of January 2009 and years of use.",
+        `MUSEUM NOTE: ${ORIGINAL} The cards' words are the museum's summaries.`);
+      if (cmd === "SOURCES") return reply(...["E6-WP", "E6-CLUSTER"].map((k) => `[${k}] ${sources[k].label} ${sources[k].href}`));
+      return reply("Commands: CARDS | PLACE <card> <slot> | LIFT <card> | CHECK | HINT | DEAL <seed>");
+    }
+  });
+  const layTerminal = () => ({
+    banner: ["DOCUMENT LAYOUT: the paper's nine pages laid flat, with a tab for each of its twelve sections and one for its references. An original museum model; the paper itself is in SOURCES.",
+      ...howTo(["Type SHOW 4 to lift section 4's tab and read what it is for.", "Type COMPARE 3 7 to set two sections side by side: their jobs, pages and the references each cites.",
+        "Type PAGE 2 to see which sections share a page, or PAPER for the paper's own link.", "RESET lowers every tab."]),
+      "IN SHORT: the paper is nine pages long and each section does one job. Lift a tab to see its job. [E6-WP]"],
+    prompt: "LAYOUT>",
+    run(line) {
+      const parts = clean(line).toUpperCase().split(/\s+/), cmd = parts[0];
+      const tell = (s) => `Section ${s.n === 13 ? "list" : s.n}, ${s.title} (page ${s.n === 11 ? "6 to 8" : s.page}). Job: ${s.role}. ${s.says} Cites: ${refList(s.refs)}.`;
+      if (cmd === "RESET") { lay.a = lay.b = -1; lay.page = 0; syncLay(); return reply("Every tab lowered."); }
+      if (cmd === "SHOW") {
+        const i = sectionNamed(parts[1]);
+        if (i < 0 || parts.length > 2) return reply("SHOW 1 to 12, or SHOW REFS.");
+        lay.a = i; lay.b = -1; lay.page = 0; syncLay();
+        return reply(tell(SECTIONS[i]));
+      }
+      if (cmd === "COMPARE") {
+        const i = sectionNamed(parts[1]), j = sectionNamed(parts[2]);
+        if (i < 0 || j < 0 || i === j || parts.length > 3) return reply("COMPARE two different sections, e.g. COMPARE 3 7.");
+        lay.a = i; lay.b = j; lay.page = 0; syncLay();
+        const A = SECTIONS[i], B = SECTIONS[j], shared = A.refs.filter((r) => B.refs.includes(r));
+        return reply(`GOLD: ${tell(A)}`, `TEAL: ${tell(B)}`,
+          `${A.role === B.role ? `Same job (${A.role}), different parts of it.` : `Different jobs: ${A.role} and ${B.role}.`} Shared references: ${refList(shared)}.`);
+      }
+      if (cmd === "PAGE") {
+        if (!/^[1-9]$/.test(parts[1] || "")) return reply("PAGE 1 to 9.");
+        const p = +parts[1];
+        lay.a = lay.b = -1; lay.page = p; syncLay();
+        return reply(`Page ${p}: ${onPage(p).map((s) => s.n === 13 ? s.title : `${s.n} ${s.title}${s.n === 11 && p > 6 ? " (continued)" : ""}`).join("; ")}.`);
+      }
+      if (cmd === "ROLES") return reply(...["PROBLEM", "OWNERSHIP", "ORDER", "COST", "PROCESS", "ECONOMICS", "EFFICIENCY", "FORMAT", "PRIVACY", "ANALYSIS", "SUMMARY", "SOURCES"]
+        .map((r) => `${r}: ${SECTIONS.filter((s) => s.role === r).map((s) => s.n === 13 ? "references" : s.n).join(", ")}`), "The jobs are the museum's labels; the titles and page numbers are the paper's own.");
+      if (cmd === "PAPER") return reply(`The paper itself: ${sources["E6-WP"].href} (PDF). Page numbers here are its own: 1 to 8 for the text, 9 for the references.`,
+        "The PDF prints no day of publication; the announcement of 31 October 2008 dates it. [E6-ANN]");
+      if (cmd === "MORE") return reply("THE DEEPER STORY: the citations bunch up. Section 2 cites [1]; section 3 cites [2] to [5]; section 4 cites [6]; section 7 cites [7], [2] and [5]; section 11 cites [8]. The other sections cite nothing. [E6-WP]",
+        "STILL UNSOLVED: a layout shows how the paper argues, not whether its assumptions held. Whether enough honest computers would run it was a question for after January 2009.",
+        `MUSEUM NOTE: ${ORIGINAL}`);
+      if (cmd === "SOURCES") return reply(...["E6-WP", "E6-ANN", "E6-CLUSTER"].map((k) => `[${k}] ${sources[k].label} ${sources[k].href}`));
+      return reply("Commands: SHOW <section> | COMPARE <a> <b> | PAGE <1..9> | ROLES | PAPER");
+    }
+  });
+  const wsTerminal = () => ({
+    banner: ["READING WORKSTATION: an original, unbranded 2008-style desk display, keyboard and lamp for reading the paper. Context only: nothing here was introduced on 31 October 2008.",
+      ...howTo(["Type PAGE 1 to 9 to scroll the display; the lit square shows the page.", "Type STORAGE 10 to redo the paper's own section 7 sum for ten years of block headers, shown on the bar.",
+        "LAMP switches the desk lamp; RESET puts the desk back."]),
+      "IN SHORT: in 2008 the paper could be read on an ordinary home computer. Its section 7 reasons from the 2 GB of memory computers were commonly sold with in 2008. [E6-WP]"],
+    prompt: "DESK>",
+    run(line) {
+      const parts = clean(line).toUpperCase().split(/\s+/), cmd = parts[0];
+      if (cmd === "RESET") { ws.page = 1; ws.years = 0; ws.lamp = true; syncWs(); return reply("Page 1, the bar empty, the lamp on."); }
+      if (cmd === "PAGE") {
+        if (!/^[1-9]$/.test(parts[1] || "")) return reply("PAGE 1 to 9.");
+        ws.page = +parts[1]; syncWs();
+        return reply(`Page ${ws.page} of ${PAGES} on the display: ${onPage(ws.page).map((s) => s.title).join(", ")}.`);
+      }
+      if (cmd === "STORAGE") {
+        if (!/^\d{1,3}$/.test(parts[1] || "") || +parts[1] < 1 || +parts[1] > 100) return reply("STORAGE 1 to 100 (years).");
+        ws.years = +parts[1]; syncWs();
+        const b = headerBytes(ws.years);
+        return reply(`${ws.years} year${ws.years === 1 ? "" : "s"} of headers: 80 bytes x 6 an hour x 24 x 365${ws.years === 1 ? "" : ` x ${ws.years}`} = ${commas(b)} bytes, about ${(b / 1e6).toFixed(1)} MB.`,
+          `That is ${(100 * b / MEMORY_2008).toFixed(2)}% of 2 GB, the bar's full width. The paper's own sum, redone with its decimal rounding. [E6-WP]`);
+      }
+      if (cmd === "LAMP") { ws.lamp = !ws.lamp; syncWs(); return reply(ws.lamp ? "Lamp on." : "Lamp off: the display alone lights the desk."); }
+      if (cmd === "MORE") return reply("THE DEEPER STORY: the desk shows reading conditions, not a particular machine. One dated example of the period, a laptop announced on 14 October 2008, is at the reference desk across this gallery. [E6-GEAR]",
+        "STILL UNSOLVED: the paper's sum counts block headers only, at one block every ten minutes. How much room full blocks and real use would take was left open.",
+        `MUSEUM NOTE: ${ORIGINAL}`);
+      if (cmd === "SOURCES") return reply(...["E6-WP", "E6-GEAR", "E6-CLUSTER"].map((k) => `[${k}] ${sources[k].label} ${sources[k].href}`));
+      return reply("Commands: PAGE <1..9> | STORAGE <years> | LAMP");
+    }
+  });
+  // Each model's nodes follow its state: called after every command and on RESET, never per frame.
+  const syncArg = () => {
+    if (!argNodes) return;
+    const N = argNodes;
+    for (let k = 0; k < 6; k++) {
+      const s = arg.where[k], p = N.cards[k].position;
+      if (s >= 0) { p.x = N.slotX[s]; p.z = N.slotZ; } else { let t = 0; while (arg.tray[t] !== k) t++; p.x = N.slotX[t]; p.z = N.trayZ; }
+    }
+    for (let s = 0; s < 6; s++) { N.green[s].visible = arg.mark[s] === 1; N.red[s].visible = arg.mark[s] === 2; }
+    N.win.visible = arg.S.solved;
+  };
+  const syncLay = () => {
+    if (!layNodes) return;
+    const N = layNodes;
+    for (let i = 0; i < SECTIONS.length; i++) {
+      const up = i === lay.a || i === lay.b, p = N.tabs[i].position;
+      p.y = N.tabY[i] + (up ? 0.12 : 0); p.z = N.tabZ + (up ? 0.12 : 0);
+    }
+    const put = (marker, i, page) => {
+      marker.visible = i >= 0 || page > 0;
+      marker.position.x = N.pageX[marker.visible ? (i >= 0 ? SECTIONS[i].page : page) - 1 : 0];
+    };
+    put(N.gold, lay.a, lay.page); put(N.teal, lay.b, 0);
+  };
+  const syncWs = () => {
+    if (!wsNodes) return;
+    const N = wsNodes;
+    for (let p = 0; p < PAGES; p++) N.lit[p].visible = p === ws.page - 1;
+    const f = Math.min(1, headerBytes(ws.years) / MEMORY_2008);
+    N.fill.visible = f > 0; N.fill.scale.x = Math.max(0.001, f); N.fill.position.x = N.barX0 + N.barW * f / 2;
+    N.glow.visible = ws.lamp;
+  };
+
   const overview = {
     summary: "A paper can describe a machine before it runs. On 31 October 2008 Satoshi Nakamoto announced a paper about electronic cash. Read the proposal, check its eight references, and keep its date apart from the software that came in January 2009.",
     sourceKeys: ["E6-ANN", "E6-WP", "E6-REL", "E6-GEAR"],
@@ -230,6 +460,7 @@
       const { era, top, solid, sign, obstacle, prop } = kit;
       pay = { signed: { BO: false, CY: false }, order: "" };
       desk = { filed: new Uint8Array(CARDS.length), zoom: 1 };
+      arg = createArgument(); lay = { a: -1, b: -1, page: 0 }; ws = { page: 1, years: 0, lamp: true };
       blink = 0;
       const L = kit.channel.x0, R = kit.channel.x1, at = (u) => era.z1 - u;
 
@@ -325,6 +556,80 @@
         prop({ id: "e6-january", year: 2009, connection: "context", date: "8 January 2009, 19:27:40 UTC: the release announcement, a future date seen from this cave",
           title: "The January door", label: "JANUARY DOOR · 8 JANUARY 2009", sourceKeys: ["E6-REL", "E6-WP"],
           at: { x, y: top, z: z + 1.6 }, reach: 2, pick: { w: 2.6, h: 3.4, d: 0.6, x, z }, onUse: () => JANUARY }); }
+
+      // --- The reading corner: three compact stations on the right side between the payments table and the January
+      // door (u 33 to 49), each 3.5 m wide at most, clear of the walk, the dock plot and the lamps. No lights: lit
+      // parts are emissive. Each faces the way in, its walk-up point 2 m in front.
+      const cx = R + 8.4;
+      // Assemble the argument: a table with six slots along its front edge and the dealt tray behind them; a green or
+      // red lamp over each slot after CHECK and a gold lamp when solved.
+      { const z = at(33), inks = ["#c8583a", "#4a7ab0", "#d9953a", "#6fae3a", "#9a6ad0", "#2fb8a0"];
+        solid(3.4, 0.9, 1.6, "#5e4a33", cx, top + 0.45, z);
+        solid(3.2, 0.03, 0.5, "#3a2e22", cx, top + 0.915, z - 0.35);
+        const slotX = [], green = [], red = [], cards = [];
+        for (let s = 0; s < 6; s++) {
+          const x = cx - 1.35 + s * 0.54;
+          slotX.push(x);
+          solid(0.46, 0.02, 0.36, "#d8ccb0", x, top + 0.91, z + 0.35);
+          green.push(solid(0.12, 0.06, 0.06, "#7dff8a", x, top + 0.95, z + 0.7, 0.9));
+          red.push(solid(0.12, 0.06, 0.06, "#ff6a5a", x, top + 0.95, z + 0.7, 0.9));
+        }
+        for (let k = 0; k < 6; k++) cards.push(solid(0.4, 0.04, 0.3, inks[k], slotX[k], top + 0.95, z - 0.35, 0.15));
+        const win = solid(0.5, 0.12, 0.12, "#ffd23a", cx, top + 1.4, z - 0.7, 1);
+        argNodes = { cards, green, red, win, slotX, slotZ: z + 0.35, trayZ: z - 0.35 };
+        syncArg();
+        obstacle(cx - 1.8, cx + 1.8, z - 0.9, z + 0.9);
+        sign("ASSEMBLE THE ARGUMENT · 2008 PAPER", "a teaching game, not the protocol · SIGN red, TIME blue, WORK gold, NODE green, COIN violet, ODDS teal", cx, top + 2.6, z + 0.2, 0, 0.42);
+        prop({ id: "e6-argument", year: 2008, connection: "context", date: "2008: the paper whose section order the cards follow; the game is a modern museum homage",
+          title: "Assemble the argument", label: "ASSEMBLE THE ARGUMENT · 2008 PAPER", hint: "Type PLACE SIGN 1 to start; CHECK when all six cards are down",
+          sourceKeys: ["E6-WP", "E6-CLUSTER"], at: { x: cx, y: top, z: z + 2 }, reach: 2.2, pick: { w: 3.4, h: 1.6, d: 1.6, x: cx, z }, onUse: () => ({ terminal: argTerminal() }) }); }
+      // The document layout: the nine pages standing in a row on a low frame, a tab on each section's first page;
+      // SHOW lifts a tab and a gold bar marks its page, COMPARE adds a teal one.
+      { const z = at(41), pageW = 0.34, gap = 0.035, y0 = top + 1.75, pageX = [];
+        solid(3.5, 0.3, 0.7, "#4b3a26", cx, top + 0.15, z);
+        for (const dx of [-1.65, 1.65]) solid(0.12, 2.3, 0.12, "#4b3a26", cx + dx, top + 1.15, z - 0.2);
+        solid(3.42, 1, 0.05, "#2b221d", cx, y0, z - 0.2);
+        for (let p = 0; p < PAGES; p++) { const x = cx - 4 * (pageW + gap) + p * (pageW + gap); pageX.push(x); solid(pageW, 0.46, 0.02, "#f6f0de", x, y0, z - 0.165, 0.2); }
+        const tabs = [], tabY = [], inks = ["#d9953a", "#c8583a", "#4a7ab0", "#d9953a", "#6fae3a", "#9a6ad0", "#2fb8a0", "#2fb8a0", "#8e8e96", "#5a2f6b", "#c8583a", "#efe6d2", "#f2c14e"];
+        SECTIONS.forEach((s, i) => {
+          const k = SECTIONS.filter((t) => t.page === s.page && t.n < s.n).length, y = y0 + 0.17 - k * 0.12;
+          tabY.push(y); tabs.push(solid(0.28, 0.08, 0.04, inks[i], pageX[s.page - 1], y, z - 0.14, 0.2));
+        });
+        const gold = solid(pageW + 0.04, 0.05, 0.05, "#ffd23a", pageX[0], y0 - 0.32, z - 0.13, 0.9);
+        const teal = solid(pageW + 0.04, 0.05, 0.05, "#46ffd2", pageX[0], y0 - 0.39, z - 0.13, 0.9);
+        layNodes = { tabs, tabY, tabZ: z - 0.14, gold, teal, pageX };
+        syncLay();
+        obstacle(cx - 1.8, cx + 1.8, z - 0.4, z + 0.4);
+        sign("DOCUMENT LAYOUT · 2008 PAPER", "nine pages, twelve sections and the references · an original model, the paper in SOURCES", cx, top + 2.85, z - 0.1, 0, 0.42);
+        prop({ id: "e6-layout", year: 2008, connection: "context", date: "2008: the paper's own nine-page layout; an original museum model",
+          title: "Document layout", label: "DOCUMENT LAYOUT · 2008 PAPER", hint: "Type SHOW 4, or COMPARE 3 7, to lift tabs and compare sections",
+          sourceKeys: ["E6-WP", "E6-ANN", "E6-CLUSTER"], at: { x: cx, y: top, z: z + 1.8 }, reach: 2.2, pick: { w: 3.5, h: 2.4, d: 0.8, x: cx, z }, onUse: () => ({ terminal: layTerminal() }) }); }
+      // The reading workstation: a desk with an original flat display (a page strip of nine squares, one lit, and a
+      // storage bar), a keyboard, papers and a lamp whose glow LAMP switches.
+      { const z = at(49), dx = cx - 0.3, barW = 1.1, barX0 = dx - barW / 2, lit = [];
+        solid(3.2, 0.78, 1.2, "#6b5538", cx, top + 0.39, z);
+        solid(0.24, 0.32, 0.18, "#2a2b2e", dx, top + 0.94, z - 0.3);
+        solid(1.5, 0.95, 0.07, "#2a2b2e", dx, top + 1.55, z - 0.32);
+        solid(1.36, 0.8, 0.02, "#13202c", dx, top + 1.55, z - 0.28, 0.25);
+        for (let p = 0; p < PAGES; p++) {
+          const x = dx - 0.56 + p * 0.14;
+          solid(0.1, 0.13, 0.01, "#3c5568", x, top + 1.78, z - 0.265, 0.2);
+          lit.push(solid(0.1, 0.13, 0.012, "#e8f2fa", x, top + 1.78, z - 0.262, 0.9));
+        }
+        solid(barW + 0.04, 0.09, 0.01, "#3c5568", dx, top + 1.36, z - 0.266, 0.2);
+        const fill = solid(barW, 0.06, 0.012, "#ffb02e", dx, top + 1.36, z - 0.262, 0.9);
+        solid(1.1, 0.04, 0.36, "#3a3b3f", dx, top + 0.8, z + 0.15);
+        solid(0.42, 0.03, 0.3, "#f3ecd8", cx + 0.95, top + 0.8, z + 0.1); solid(0.42, 0.03, 0.3, "#f6f0de", cx + 0.97, top + 0.83, z + 0.08);
+        solid(0.08, 0.7, 0.08, "#2b221d", cx + 1.3, top + 1.13, z - 0.35);
+        solid(0.3, 0.12, 0.2, "#2b221d", cx + 1.15, top + 1.5, z - 0.3);
+        const glow = solid(0.24, 0.03, 0.14, "#fff2c8", cx + 1.15, top + 1.43, z - 0.3, 1);
+        wsNodes = { lit, fill, glow, barX0, barW };
+        syncWs();
+        obstacle(cx - 1.6, cx + 1.6, z - 0.6, z + 0.6);
+        sign("READING WORKSTATION · 2008 STYLE", "an original, unbranded desk for reading the paper · context, nothing introduced on 31 October 2008", cx, top + 2.5, z + 0.1, 0, 0.42);
+        prop({ id: "e6-workstation", year: 2008, connection: "context", date: "2008: the period illustrated; an original, unbranded design, not equipment introduced on 31 October 2008",
+          title: "Reading workstation", label: "READING WORKSTATION · 2008 STYLE", hint: "Type PAGE 3 or STORAGE 10; LAMP switches the desk lamp",
+          sourceKeys: ["E6-WP", "E6-GEAR", "E6-CLUSTER"], at: { x: cx, y: top, z: z + 1.8 }, reach: 2.2, pick: { w: 3.2, h: 2, d: 1.2, x: cx, z }, onUse: () => ({ terminal: wsTerminal() }) }); }
     },
     // The laptop's cursor blinks; it stays lit while reading or under Calm. Allocation-free.
     update(dt, elapsed, state) {
@@ -333,6 +638,6 @@
       blink += dt;
       cursor.visible = (blink % 1.1) < 0.6;
     },
-    dispose() { pay = desk = cursor = null; }
+    dispose() { pay = desk = cursor = null; arg = lay = ws = argNodes = layNodes = wsNodes = null; }
   });
 })();
