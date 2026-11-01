@@ -48,13 +48,17 @@
       href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/era-3-exhibits/docs/genesis-voyage/exhibits/era-3.md", kind: "context", verified: true }
   };
   const sourceOf = (key) => sources[key] || GP.sourceOf(key);
+  // Every prompt opens with a short "How to use" (its exhibit's `howTo` steps), then its label.
+  const howTo = (ex) => ["HOW TO USE", ...ex.howTo.map((step, i) => `${i + 1}. ${step}`), ""];
   const sourceLines = (keys) => keys.map((k) => `[${k}] ${sourceOf(k).label} (${sourceOf(k).kind}) ${sourceOf(k).href}`);
 
   // --- The exhibits' words ------------------------------------------------------------------------------------------
   // `label` (its sign; it names its year), `dated` (what the date marks), `kid` (the short explanation), `deeper`
   // (MORE at its prompt), `sourceKeys`, and `pager` (the pager's message when the visitor comes near).
   const EXHIBITS = {
-    newspaper: { title: "The Daily Ooga press", year: 1991, label: "THE DAILY OOGA PRESS · 1991",
+    newspaper: { title: "Daily Ooga press: change a page", year: 1991,
+      howTo: ["Type SHOW to see Tock's five pages and their fingerprints.", "Type EDIT 2 and some new words to change page 2.",
+        "Watch every later link, and this morning's printed fingerprint, turn red.", "Type UNDO 2, or RESET, to put it back."], label: "THE DAILY OOGA PRESS · 1991",
       dated: "1991: Haber and Stornetta's journal paper is published (manuscript received 19 August 1990, revised 26 October 1990). March 1992: Bayer, Haber and Stornetta's manuscript; 1993: their book chapter.",
       kid: "Tock's five pages are linked: each fingerprint is made from its page and the fingerprint before it. This morning's paper printed the last one. Change any page and its fingerprint changes, so every link after it fails, and the printed fingerprint no longer matches. Put the page back and everything matches again.",
       deeper: [
@@ -65,7 +69,9 @@
         `${NOTE} the fingerprints here are the desk's toy (FNV-1a, eight hex digits), not a secure hash; two pages could share one by accident. The pages and the rule are the same as Tock's desk, so both show the same chain.`],
       sourceKeys: ["E3-HS", "E3-BHS", "E3-BHS-PUB", "whitepaper", "E3-ORIGINAL"],
       pager: "PRESS: CHANGE A PAGE" },
-    keys: { title: "Padlock post", year: 1991, label: "PADLOCK POST · 1991",
+    keys: { title: "Padlock post: lock and sign a note", year: 1991,
+      howTo: ["Type LOCK and a short note, like LOCK meet at the dock.", "Type PEEK to see what a snoop sees, then OPEN.",
+        "Type SIGN two bananas, then CHANGE, then CHECK.", "RESET starts again."], label: "PADLOCK POST · 1991",
       dated: "1991: the year PGP's author says he published it electronically for free (his essay is dated June 1991 and was updated in 1999). This station is a teaching model, not PGP.",
       kid: "Bea hands out open padlocks to anyone: her public key. Snap one shut on your note and only Bea's own key, her private key, opens it. It works the other way too: Bea seals a note with her private key, and anyone can check the seal with her public one. That check is a signature.",
       deeper: [
@@ -74,7 +80,9 @@
         `${NOTE} Bitcoin uses signatures, not secret messages: the whitepaper defines a coin as a chain of digital signatures. [whitepaper]`],
       sourceKeys: ["E3-PGP", "whitepaper", "E3-ORIGINAL"],
       pager: "PADLOCK POST: LOCK A NOTE" },
-    bbs: { title: "Dial-up corner", year: 1990, label: "DIAL-UP CORNER · 1990–1995",
+    bbs: { title: "Dial-up corner: call the pretend BBS", year: 1990,
+      howTo: ["Type DIAL to call the pretend bulletin board.", "Type READ, then POST and a short message.",
+        "Type DIR A: to look inside the floppy, then TYPE A:LETTER.TXT.", "RESET hangs up and clears your posts."], label: "DIAL-UP CORNER · 1990–1995",
       dated: "1990–1995: period style. A generic, unbranded terminal and modem; no model, date or specification is claimed.",
       kid: "Before most homes had the web, people dialled other computers with a modem to read and leave messages. Read the museum notes, look inside the floppy disk in drive A:, and dial a pretend bulletin board (a BBS) to leave a message. Nothing you type leaves this page.",
       deeper: [
@@ -82,14 +90,17 @@
         `${NOTE} the terminal and its screens are invented for the voyage and copy no real system. The office PC by Tock's desk is the period's computer; this corner is about dialling out. [E3-ORIGINAL]`],
       sourceKeys: ["E3-GEAR", "E3-ORIGINAL"],
       pager: "DIAL-UP: TRY THE PRETEND BBS" },
-    pager: { title: "Pocket pager", year: 1990, label: "POCKET PAGER · 1990–1995",
+    pager: { title: "Pocket pager: read your messages", year: 1990,
+      howTo: ["Walk near the exhibits in this cave: the pager lights up.", "Come back here and type READ to see your messages.", "Type CLEAR to empty it."], label: "POCKET PAGER · 1990–1995",
       dated: "1990–1995: period style. No model, date or specification is claimed.",
       kid: "A pager was a pocket gadget that beeped and showed a short message. This one lights up when you walk near an exhibit in this cave. Read your messages here.",
       deeper: [
         `${NOTE} this pager is an original toy. Its messages come from this cave's exhibits, not from any network, and they last only for this visit. The dossier has not cleared pager models, dates or numbers, so none are given. [E3-GEAR, E3-ORIGINAL]`],
       sourceKeys: ["E3-GEAR", "E3-ORIGINAL"],
       pager: "PAGER: READ ME HERE" },
-    rally: { title: "Tick-Tock Rally", year: 1990, label: "TICK-TOCK RALLY · 1990–1995",
+    rally: { title: "Tick-Tock Rally: play a paddle game", year: 1990,
+      howTo: ["Type S to serve the ball.", "Type L or R to move the paddle for one tick, or W to wait.",
+        "Type several at once, like LLW, to play faster.", "RESET starts a new game."], label: "TICK-TOCK RALLY · 1990–1995",
       dated: "1990–1995: an arcade cabinet in a period style, with an original game made for the voyage.",
       kid: "Keep the ball in play with your paddle. Here you play a tick at a time: each L, R or W you type moves the game on a quarter of a second. Every return scores one; hit the clock at the top for a stamp worth five. Three balls, then see your score.",
       deeper: [
@@ -178,7 +189,7 @@
     const help = ["SHOW            the pages, their fingerprints and links", "EDIT 2 <words>  change page 2 (any page 1 to 5)", "DESK            make the same change Tock's desk shows",
       "UNDO 2          put page 2 back", "RESET           put every page back", "MORE            the deeper story", "SOURCES         where this comes from"];
     return {
-      get banner() { return [ex.label, ex.dated, "", ex.kid, "", ...status(), "", "Type HELP for the commands. RESET puts everything back.", ""]; },
+      get banner() { return [...howTo(ex), ex.label, ex.dated, "", ex.kid, "", ...status(), "", "Type HELP for the commands. RESET puts everything back.", ""]; },
       prompt: "PRESS>",
       run: (line) => {
         const input = GP.clean(line), space = input.indexOf(" "), cmd = (space < 0 ? input : input.slice(0, space)).toUpperCase(), arg = space < 0 ? "" : input.slice(space + 1).trim();
@@ -235,7 +246,7 @@
       "SIGN <note>    Bea seals a note with her private key", "CHECK          anyone checks the seal with her public key", "CHANGE         someone changes the sealed note", "RESET          start again", "MORE · SOURCES"];
     const nums = (list) => { const out = []; for (let i = 0; i < list.length; i += 8) out.push(list.slice(i, i + 8).map((c) => String(c).padStart(4, "0")).join(" ")); return out; };
     return {
-      get banner() { return [ex.label, ex.dated, "", ex.kid, "", "A teaching model with tiny numbers. Not real encryption.", "Type HELP for the commands. RESET starts again.", ""]; },
+      get banner() { return [...howTo(ex), ex.label, ex.dated, "", ex.kid, "", "A teaching model with tiny numbers. Not real encryption.", "Type HELP for the commands. RESET starts again.", ""]; },
       prompt: "POST>",
       run: (line) => {
         const input = GP.clean(line), space = input.indexOf(" "), cmd = (space < 0 ? input : input.slice(0, space)).toUpperCase(), arg = space < 0 ? "" : input.slice(space + 1);
@@ -314,7 +325,7 @@
       return null;
     };
     d.terminal = {
-      get banner() { return [ex.label, ex.dated, "", ex.kid, "", "Type HELP for the commands. RESET clears your posts.", ""]; },
+      get banner() { return [...howTo(ex), ex.label, ex.dated, "", ex.kid, "", "Type HELP for the commands. RESET clears your posts.", ""]; },
       prompt: "TERM>",
       run: (line) => d.run(line) || { lines: ["Unknown command. Type HELP."] }
     };
@@ -426,7 +437,7 @@
       return out;
     };
     return {
-      get banner() { return [ex.label, ex.dated, "", ex.kid, "", ...list(), "", "READ shows them again. CLEAR (or RESET) empties the pager. MORE · SOURCES", ""]; },
+      get banner() { return [...howTo(ex), ex.label, ex.dated, "", ex.kid, "", ...list(), "", "READ shows them again. CLEAR (or RESET) empties the pager. MORE · SOURCES", ""]; },
       prompt: "PAGER>",
       run: (line) => {
         const cmd = GP.clean(line).toUpperCase();
@@ -459,7 +470,7 @@
     };
     const help = ["S             serve (or play again)", "L R W         one tick left, right or wait; up to 8 a line, e.g. LLW", "A D .         the same as L R W", "RESET         start over · MORE · SOURCES"];
     return {
-      get banner() { return [ex.label, ex.dated, "", ex.kid, "", ...field(), "", "Type HELP for the commands. RESET starts over.", ""]; },
+      get banner() { return [...howTo(ex), ex.label, ex.dated, "", ex.kid, "", ...field(), "", "Type HELP for the commands. RESET starts over.", ""]; },
       prompt: "RALLY>",
       run: (line) => {
         const cmd = GP.clean(line).toUpperCase().replace(/\s+/g, "");
@@ -491,9 +502,9 @@
   const LAYOUT = {
     newspaper: { x: ROW, z: E.z - 1, hx: 0.6, hz: 1.3, front: 1.4, h: 3.1 },
     keys: { x: ROW, z: E.z + 10, hx: 0.55, hz: 0.65, front: 1.3, h: 1.5 },
-    pager: { x: ROW, z: E.z - 11, hx: 0.4, hz: 0.5, front: 1.1, h: 2 },
+    pager: { x: ROW, z: E.z - 11, hx: 0.4, hz: 0.5, front: 1.1, h: 2.1 },
     rally: { x: BACK, z: E.z + 4, hx: 0.75, hz: 0.55, front: 1.5, h: 2.25 },
-    bbs: { x: BACK, z: E.z + 13, hx: 0.45, hz: 0.75, front: 1.2, h: 1.3 }
+    bbs: { x: BACK, z: E.z + 13, hx: 0.5, hz: 0.95, front: 1.25, h: 1.4 }
   };
   // The pager's spots: every exhibit here, the shared overview board and the desk (as scene-genesis.js places them).
   const OVERVIEW_AT = GW.bankToWorld(GW.bankFrame(ERA, -1), 7, 6, { x: 0, z: 0 });
@@ -539,9 +550,22 @@
     const rally = createRally(), demo = createRally();
     // `notify` is the hook the notes ask for (a toast); without it the pager's display board and prompt hold its messages.
     v = { notify: notify || null, paper, keys, bbs, pager, triggers, rally, demo, slot: { index: 0, time: 0, text: "" }, showPlayer: 0, screenT: 0, rallyAt: -1, rallyMine: false, rallyScore: -1, paperShown: -1, keysShown: -1,
+      modemLamp: null, bbsCtx: null, bbsSurface: null, bbsOnline: -1,
       tiles: [], links: [], printedOk: null, printedBad: null, shackleOpen: null, shackleShut: null, pagerLamp: null, rallyCtx: null, rallySurface: null, pagerCtx: null, pagerSurface: null };
     const visit = v;
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 }, visible }));
+    // Small parts merged into one mesh in world coordinates: [w, h, d, color, x, y, z, emissive, turn about x, turn
+    // about z]. Only
+    // trim, keys, art and lamps go here; anything a walker could bump into is a `solid` inside an obstacle.
+    const detail = (parts) => {
+      if (!M.merge) return null;
+      return place(createNode({ geometry: M.merge(...parts.map(([w, h, d, color, x, y, z, emissive = 0, rx = 0, rz = 0]) => {
+        const b = M.box({ w, h, d, color, emissive });
+        if (rx) M.turnedX(b, rx);
+        if (rz) M.turnedZ(b, rz);
+        return M.moved(b, x, y, z);
+      })), position: { x: 0, y: 0, z: 0 } }));
+    };
     // An exhibit's footprint, its sign and its prop: the tap box over the model, the use point in front of it.
     const exhibit = (key, def) => {
       const a = L[key];
@@ -586,30 +610,70 @@
     exhibit("keys", { id: "e3-padlock", year: 1991, connection: "context", title: ex.keys.title, label: ex.keys.label, sourceKeys: ex.keys.sourceKeys,
       date: "1991: when PGP's author says he published it (essay June 1991, updated 1999); the padlock is a teaching model", onUse: () => ({ terminal: padlock }) });
 
-    // The dial-up corner: a desk with an amber terminal, a modem and a floppy box, all invented and unbranded.
-    const B = L.bbs;
-    solid(0.8, 0.75, 1.4, "#6b4a2b", B.x, top + 0.375, B.z);
-    solid(0.45, 0.42, 0.5, "#d8cfb4", B.x - 0.1, top + 0.96, B.z);
-    solid(0.02, 0.3, 0.38, "#ffb347", B.x + 0.13, top + 0.97, B.z, 1.1);
-    solid(0.2, 0.03, 0.6, "#cfc6aa", B.x + 0.28, top + 0.765, B.z);
-    solid(0.2, 0.07, 0.3, "#cfc6aa", B.x - 0.05, top + 0.785, B.z + 0.5);
-    solid(0.02, 0.015, 0.06, "#ff5a4a", B.x + 0.06, top + 0.8, B.z + 0.45, 1);
-    solid(0.12, 0.1, 0.12, "#1d3c8a", B.x + 0.15, top + 0.8, B.z - 0.55);
-    sign(ex.bbs.label, "notes · floppy A: · pretend BBS", B.x, top + 2, B.z, yaw, 0.45);
+    // The dial-up corner, in the style of the early 1990s (invented, unbranded): a grey laminate desk, a mini-tower
+    // standing beside a big rounded CRT whose screen shows the pretend board's menu, a keyboard and a mouse on a pad, an
+    // external modem with its row of lamps, and a fan of 3.5-inch disks. Its lit lamp flickers while the call is up.
+    const B = L.bbs, T = top + 0.76;
+    solid(0.9, 0.04, 1.8, "#b9b4a6", B.x, top + 0.74, B.z);
+    solid(0.8, 0.7, 0.45, "#8f8a7e", B.x - 0.02, top + 0.35, B.z - 0.6);
+    solid(0.06, 0.7, 0.06, "#55524b", B.x + 0.38, top + 0.35, B.z + 0.84);
+    solid(0.06, 0.7, 0.06, "#55524b", B.x - 0.38, top + 0.35, B.z + 0.84);
+    solid(0.44, 0.52, 0.22, "#d9d3c4", B.x - 0.1, T + 0.26, B.z + 0.62);
+    solid(0.46, 0.4, 0.5, "#cdc6b5", B.x - 0.14, T + 0.22, B.z - 0.05);
+    solid(0.3, 0.3, 0.42, "#c4bdac", B.x - 0.3, T + 0.26, B.z - 0.05);
+    solid(0.16, 0.05, 0.26, "#2a2a2e", B.x - 0.2, T + 0.025, B.z - 0.62);
+    detail([
+      [0.03, 0.04, 0.16, "#3a3a3e", B.x + 0.13, T + 0.46, B.z + 0.62], [0.03, 0.03, 0.12, "#2a2a2e", B.x + 0.13, T + 0.38, B.z + 0.62],
+      [0.02, 0.02, 0.03, "#5aff9a", B.x + 0.125, T + 0.12, B.z + 0.68, 1.2], [0.02, 0.02, 0.03, "#ffb347", B.x + 0.125, T + 0.12, B.z + 0.61, 1],
+      [0.03, 0.05, 0.05, "#b8b1a1", B.x + 0.125, T + 0.2, B.z + 0.53],
+      [0.06, 0.34, 0.06, "#d4cdbc", B.x + 0.09, T + 0.22, B.z - 0.28], [0.06, 0.34, 0.06, "#d4cdbc", B.x + 0.09, T + 0.22, B.z + 0.18],
+      [0.06, 0.06, 0.52, "#d4cdbc", B.x + 0.09, T + 0.41, B.z - 0.05], [0.06, 0.06, 0.52, "#d4cdbc", B.x + 0.09, T + 0.03, B.z - 0.05],
+      [0.2, 0.03, 0.62, "#e2dccd", B.x + 0.3, T + 0.015, B.z - 0.05],
+      ...[0, 1, 2, 3].map((r) => [0.035, 0.012, 0.56, r === 3 ? "#bdb6a6" : "#cfc8b8", B.x + 0.23 + r * 0.04, T + 0.036, B.z - 0.05]),
+      [0.2, 0.004, 0.22, "#2b7f8a", B.x + 0.3, T + 0.002, B.z + 0.42], [0.09, 0.03, 0.06, "#e2dccd", B.x + 0.3, T + 0.02, B.z + 0.42],
+      ...[0, 1, 2, 3, 4].map((i) => [0.02, 0.012, 0.012, i % 2 ? "#ff5a4a" : "#5aff9a", B.x - 0.11, T + 0.03, B.z - 0.72 + i * 0.04, 0.5]),
+      ...[["#1d3c8a", 0], ["#b3202a", 0.12], ["#1c1c1c", 0.24]].map(([c, dz]) => [0.09, 0.006, 0.09, c, B.x + 0.28, T + 0.004 + dz * 0.05, B.z + 0.7 - dz]),
+      [0.03, 0.004, 0.05, "#c9ced4", B.x + 0.28, T + 0.008, B.z + 0.7]
+    ]);
+    v.modemLamp = node(M.box({ w: 0.02, h: 0.014, d: 0.014, color: "#5aff9a", emissive: 1.4 }), B.x - 0.11, T + 0.032, B.z - 0.52);
+    if (screens) {
+      const c = document.createElement("canvas"); c.width = 160; c.height = 120;
+      const g = c.getContext("2d");
+      g.fillStyle = "#0a1a8a"; g.fillRect(0, 0, 160, 120);
+      g.fillStyle = "#5ff"; g.font = "bold 11px monospace"; g.textBaseline = "top"; g.fillText("THE OOGA BOARD", 22, 8);
+      g.fillStyle = "#ff5"; g.font = "10px monospace";
+      ["[R] READ MESSAGES", "[P] POST A MESSAGE", "[F] FLOPPY FILES", "[G] GOODBYE"].forEach((line, i) => g.fillText(line, 14, 32 + i * 16));
+      g.fillStyle = "#fff"; g.fillText("CHOICE? _", 14, 100);
+      const geo = screenGeometry(c, 0.38, 0.29);
+      v.bbsCtx = g; v.bbsSurface = geo.imageSurface;
+      const n = place(createNode({ position: { x: B.x + 0.105, y: T + 0.22, z: B.z - 0.05 }, rotation: { x: 0, y: yaw, z: 0 } }));
+      addChild(n, createNode({ geometry: geo }));
+    }
+    sign(ex.bbs.label, "notes · floppy A: · pretend BBS", B.x, top + 2.25, B.z, yaw, 0.45);
     exhibit("bbs", { id: "e3-bbs", year: 1990, connection: "context", title: ex.bbs.title, label: ex.bbs.label, sourceKeys: ex.bbs.sourceKeys,
       date: "1990–1995 period style; no model, date or specification claimed", onUse: () => ({ terminal: bbs.terminal }) });
 
-    // The pocket pager on a plinth, with its messages on a display board behind it.
-    const P = L.pager;
-    solid(0.7, 1, 0.7, "#5a524a", P.x, top + 0.5, P.z);
-    solid(0.18, 0.08, 0.3, "#1c1c1c", P.x + 0.05, top + 1.04, P.z);
-    v.pagerLamp = node(M.box({ w: 0.2, h: 0.01, d: 0.09, color: "#9dff7a", emissive: 1 }), P.x + 0.05, top + 1.085, P.z);
-    solid(0.08, 0.6, 0.08, "#3b2a1a", P.x - 0.3, top + 1.3, P.z);
+    // The pocket pager: a plinth with a big museum replica of a clip-on pager standing on it (a black, rounded slab with
+    // a one-line green screen, three buttons and a belt clip), a life-size one on a felt pad, and its messages on a
+    // display board behind. Invented and unbranded.
+    const P = L.pager, PT = top + 0.9;
+    solid(0.7, 0.9, 0.7, "#4d4a56", P.x, top + 0.45, P.z);
+    solid(0.12, 0.34, 0.5, "#1b1b20", P.x + 0.1, PT + 0.2, P.z);
+    detail([
+      [0.12, 0.04, 0.46, "#2a2a31", P.x + 0.1, PT + 0.39, P.z], [0.12, 0.3, 0.04, "#2a2a31", P.x + 0.1, PT + 0.2, P.z + 0.25], [0.12, 0.3, 0.04, "#2a2a31", P.x + 0.1, PT + 0.2, P.z - 0.25],
+      [0.02, 0.1, 0.32, "#0f1a0c", P.x + 0.165, PT + 0.27, P.z + 0.03],
+      ...[-0.12, 0, 0.12].map((dz) => [0.03, 0.05, 0.07, "#6b6b78", P.x + 0.17, PT + 0.1, P.z + dz]),
+      [0.04, 0.24, 0.16, "#3a3a44", P.x + 0.02, PT + 0.22, P.z],
+      [0.3, 0.01, 0.3, "#5a1f2e", P.x + 0.12, PT + 0.005, P.z - 0.3 + 0.55],
+      [0.05, 0.016, 0.08, "#1b1b20", P.x + 0.12, PT + 0.018, P.z + 0.25], [0.004, 0.006, 0.05, "#9dff7a", P.x + 0.145, PT + 0.028, P.z + 0.25, 0.8]
+    ]);
+    v.pagerLamp = node(M.box({ w: 0.012, h: 0.07, d: 0.28, color: "#9dff7a", emissive: 1 }), P.x + 0.17, PT + 0.27, P.z + 0.03);
+    solid(0.08, 0.6, 0.08, "#3b2a1a", P.x - 0.3, top + 1.2, P.z);
     if (screens) {
       const c = document.createElement("canvas"); c.width = 192; c.height = 64;
       const geo = screenGeometry(c, 0.96, 0.32);
       v.pagerCtx = c.getContext("2d"); v.pagerSurface = geo.imageSurface;
-      const n = place(createNode({ position: { x: P.x - 0.3, y: top + 1.75, z: P.z }, rotation: { x: 0, y: yaw, z: 0 } }));
+      const n = place(createNode({ position: { x: P.x - 0.3, y: top + 1.7, z: P.z }, rotation: { x: 0, y: yaw, z: 0 } }));
       addChild(n, createNode({ geometry: geo }));
       paintPager();
     }
@@ -618,13 +682,24 @@
     exhibit("pager", { id: "e3-pager", year: 1990, connection: "context", title: ex.pager.title, label: ex.pager.label, sourceKeys: ex.pager.sourceKeys,
       date: "1990–1995 period style; no model, date or specification claimed", onUse: () => ({ terminal: pagerTerm }) });
 
-    // Tick-Tock Rally: an invented cabinet; its screen plays a demo, or the visitor's game for a while after a move.
+    // Tick-Tock Rally: an invented upright cabinet of the period, its sides painted with original zigzag art and edged
+    // in glowing trim, a lit marquee with speaker grilles under it, a coin door with two lit slots, and a stick and three
+    // buttons on its panel. Its screen plays a demo, or the visitor's game for a while after a move.
     const C = L.rally;
     solid(1, 1.9, 1.1, "#3a2a5c", C.x, top + 0.95, C.z);
     solid(0.5, 0.35, 1.1, "#2a1f44", C.x + 0.5, top + 1.05, C.z);
     solid(0.08, 0.3, 0.9, "#ffcf7a", C.x + 0.44, top + 2.05, C.z, 1.2);
-    solid(0.12, 0.12, 0.12, "#ff5a4a", C.x + 0.6, top + 1.26, C.z + 0.25, 0.8);
-    solid(0.12, 0.12, 0.12, "#5aff9a", C.x + 0.6, top + 1.26, C.z - 0.25, 0.8);
+    detail([
+      ...[1, -1].flatMap((sd) => [
+        [0.9, 0.04, 0.012, "#2ee6d6", C.x, top + 1.9, C.z + sd * 0.556, 1], [0.04, 1.86, 0.012, "#2ee6d6", C.x + 0.48, top + 0.95, C.z + sd * 0.556, 1],
+        ...[0, 1, 2, 3].map((i) => [0.5, 0.06, 0.012, i % 2 ? "#ff4fd8" : "#ffd25f", C.x - 0.1, top + 0.45 + i * 0.32, C.z + sd * 0.556, 0.4, 0, 0.5]),
+        [0.18, 0.18, 0.012, "#2ee6d6", C.x - 0.25, top + 1.62, C.z + sd * 0.556, 0.5]]),
+      [0.012, 0.12, 0.3, "#16121f", C.x + 0.505, top + 1.82, C.z + 0.28], [0.012, 0.12, 0.3, "#16121f", C.x + 0.505, top + 1.82, C.z - 0.28],
+      [0.012, 0.42, 0.5, "#1c1628", C.x + 0.505, top + 0.42, C.z], [0.014, 0.08, 0.03, "#ff8c3a", C.x + 0.512, top + 0.52, C.z + 0.1, 1.2], [0.014, 0.08, 0.03, "#ff8c3a", C.x + 0.512, top + 0.52, C.z - 0.1, 1.2],
+      [0.04, 0.16, 0.04, "#1a1a1a", C.x + 0.58, top + 1.3, C.z + 0.22], [0.08, 0.08, 0.08, "#d82a2a", C.x + 0.58, top + 1.4, C.z + 0.22, 0.4],
+      ...[0, 1, 2].map((i) => [0.07, 0.03, 0.07, ["#ffd25f", "#2ee6d6", "#ff4fd8"][i], C.x + 0.62, top + 1.24, C.z - 0.05 - i * 0.12, 0.8]),
+      [0.012, 0.06, 1.1, "#16121f", C.x + 0.505, top + 0.04, C.z]
+    ]);
     if (screens) {
       const c = document.createElement("canvas"); c.width = 160; c.height = 120;
       const geo = screenGeometry(c, 0.8, 0.6);
@@ -636,6 +711,101 @@
     const rallyTerm = rallyTerminal(rally, () => { visit.showPlayer = 30; });
     exhibit("rally", { id: "e3-rally", year: 1990, connection: "context", title: ex.rally.title, label: ex.rally.label, sourceKeys: ex.rally.sourceKeys,
       date: "1990–1995 period style; the game is original to the voyage", onUse: () => ({ terminal: rallyTerm }) });
+    decorate(kit, detail);
+  };
+
+  // --- Set dressing ---------------------------------------------------------------------------------------------------
+  // The cave's back wall, dressed as a room of the early 1990s: a games nook, a tall shelf, an office corner, a lounge,
+  // a water cooler and a pinboard, crates with a portable stereo, a floor lamp and plants; above them, original
+  // posters, a band of geometric wall art up to about 7.5 m and two glowing tubes in teal and magenta. All invented and
+  // unbranded, saying nothing and claiming nothing: no words, dates or devices that stand for real products. Each
+  // group stands on one obstacle, at least 2.5 m from the next and from the exhibits, behind the exhibits (x -33 to
+  // -28.4), so the stream, its walk and the views from it to the exhibits' signs and the overview board stay open.
+  // Nothing in it moves, so Calm has nothing to hold.
+  const WALL = -33.94;
+  const decorate = (kit, detail) => {
+    const { top, solid, obstacle } = kit, y = (h) => top + h;
+    const group = (z0, z1, x1, solids) => { obstacle(-33, x1, z0, z1); for (const b of solids) solid(...b); };
+    // Games nook: a low cabinet with a big CRT television and a grey games console (no maker, no name), two pads and a
+    // magenta beanbag on a teal rug.
+    group(-343, -336.5, -28.4, [[0.8, 0.55, 1.6, "#5b3a2a", -32.4, y(0.275), -340], [0.7, 0.62, 0.8, "#2b2b30", -32.4, y(0.86), -340.25],
+      [0.3, 0.07, 0.4, "#9a9aa2", -32.2, y(0.585), -339.5], [1.1, 0.5, 1.1, "#c2185b", -29.2, y(0.25), -339.6]]);
+    detail([[0.02, 0.44, 0.58, "#22357a", -32.04, y(0.88), -340.25, 0.7], [0.02, 0.06, 0.58, "#3a3a40", -32.04, y(0.61), -340.25],
+      [0.04, 0.012, 0.18, "#4a4a52", -32.2, y(0.625), -339.5], ...[["#d82a2a", -0.08], ["#2a6bd8", 0], ["#2ad86b", 0.08]].map(([c, dz]) => [0.03, 0.012, 0.03, c, -32.1, y(0.625), -339.4 + dz, 0.5]),
+      [0.12, 0.03, 0.2, "#7d7d86", -29.6, y(0.515), -339.9], [0.12, 0.03, 0.2, "#7d7d86", -29.4, y(0.515), -339.2],
+      [3.6, 0.01, 4.2, "#1f8c8c", -30.6, y(0.005), -339.8], [3.2, 0.012, 0.2, "#ffd25f", -30.6, y(0.008), -338.1], [3.2, 0.012, 0.2, "#ffd25f", -30.6, y(0.008), -341.5]]);
+    // A tall shelf, 4.6 m: boxes of 3.5-inch disks, ring binders, a stack of plain jewel cases, a portable stereo and a
+    // plant, with a rolling ladder leaning on it.
+    group(-334, -329, -31.4, [[0.1, 4.6, 4.4, "#6b4a2b", -32.9, y(2.3), -331.5], [0.8, 4.6, 0.08, "#6b4a2b", -32.5, y(2.3), -333.66], [0.8, 4.6, 0.08, "#6b4a2b", -32.5, y(2.3), -329.34],
+      ...[0.05, 1.05, 2.05, 3.05, 4.05].map((h) => [0.8, 0.06, 4.3, "#7d573a", -32.5, y(h), -331.5])]);
+    const shelf = [];
+    const inks = ["#d82a2a", "#2a6bd8", "#ffd25f", "#2ad86b", "#ff4fd8", "#1c1c1c"];
+    for (let row = 0; row < 4; row++) for (let i = 0; i < 9; i++) {
+      const h = row + 0.08, kind = (i + row * 2) % 4, z = -333.3 + i * 0.47;
+      if (kind === 0) shelf.push([0.4, 0.22, 0.32, inks[(i + row) % 6], -32.55, y(h + 0.11), z]);
+      else if (kind === 1) for (let k = 0; k < 4; k++) shelf.push([0.36, 0.42, 0.06, inks[(k + i) % 6], -32.55, y(h + 0.21), z - 0.12 + k * 0.08]);
+      else if (kind === 2) shelf.push([0.3, 0.3, 0.3, "#d9d3c4", -32.55, y(h + 0.15), z]);
+      else shelf.push([0.22, 0.04, 0.3, "#c9ced4", -32.55, y(h + 0.02), z], [0.22, 0.04, 0.3, "#9fd6ea", -32.55, y(h + 0.06), z]);
+    }
+    shelf.push([0.3, 0.32, 0.9, "#b8bcc2", -32.5, y(4.24), -332.2], [0.02, 0.24, 0.24, "#2a2a2e", -32.34, y(4.24), -332.5], [0.02, 0.24, 0.24, "#2a2a2e", -32.34, y(4.24), -331.9],
+      [0.02, 0.08, 0.2, "#1c1c1c", -32.34, y(4.3), -332.2], [0.04, 0.04, 0.6, "#8a8f96", -32.5, y(4.43), -332.2],
+      [0.3, 0.3, 0.3, "#b5651d", -32.5, y(4.23), -330.6], [0.5, 0.5, 0.5, "#2f8a4f", -32.5, y(4.6), -330.6],
+      [0.06, 4.2, 0.06, "#8a6440", -31.7, y(2.1), -332.6, 0, 0, 0.12], [0.06, 4.2, 0.06, "#8a6440", -31.7, y(2.1), -332.0, 0, 0, 0.12],
+      ...[0.6, 1.4, 2.2, 3, 3.8].map((h) => [0.05, 0.05, 0.6, "#8a6440", -31.62 - h * 0.06, y(h), -332.3]));
+    detail(shelf);
+    // The office corner: a grey desk with a drawer pedestal, an office chair, a filing cabinet, a hinged desk lamp, a
+    // corded telephone and an answering machine, and a wall clock above.
+    group(-326.5, -319, -30.9, [[1, 0.06, 2.2, "#c9c2b0", -32.3, y(0.75), -322.8], [0.9, 0.72, 0.5, "#9c968a", -32.3, y(0.36), -321.9],
+      [0.06, 0.72, 0.06, "#55524b", -31.85, y(0.36), -323.8], [0.06, 0.72, 0.06, "#55524b", -32.75, y(0.36), -323.8],
+      [0.6, 1.3, 0.5, "#8d8f94", -32.6, y(0.65), -325.6], [0.5, 0.08, 0.5, "#2f4b7c", -31.3, y(0.5), -322.8], [0.08, 0.6, 0.5, "#2f4b7c", -31.05, y(0.9), -322.8],
+      [0.06, 0.46, 0.06, "#2a2a2e", -31.3, y(0.23), -322.8]]);
+    detail([...[0.3, 0.65, 1].map((h) => [0.02, 0.04, 0.2, "#c9ced4", -32.29, y(h), -325.6]),
+      [0.18, 0.03, 0.18, "#2a2a2e", -32.6, y(0.795), -323.6], [0.03, 0.4, 0.03, "#2a2a2e", -32.55, y(0.99), -323.55, 0, 0.3], [0.03, 0.3, 0.03, "#2a2a2e", -32.45, y(1.25), -323.4, 0, -0.8],
+      [0.2, 0.12, 0.22, "#c2185b", -32.35, y(1.22), -323.25], [0.12, 0.02, 0.14, "#fff2c4", -32.35, y(1.155), -323.25, 1.3],
+      [0.2, 0.06, 0.24, "#e2dccd", -32.4, y(0.81), -322.2], [0.06, 0.05, 0.22, "#e2dccd", -32.4, y(0.865), -322.2], [0.02, 0.02, 0.2, "#8a857a", -32.32, y(0.79), -322.0],
+      [0.18, 0.05, 0.26, "#1c1c1c", -32.45, y(0.805), -321.7], [0.01, 0.02, 0.06, "#ff3b30", -32.36, y(0.82), -321.62, 1.2],
+      [0.04, 0.5, 0.5, "#f2efe6", WALL, y(2.3), -322.8], [0.03, 0.04, 0.18, "#1c1c1c", WALL + 0.03, y(2.36), -322.8], [0.03, 0.14, 0.04, "#1c1c1c", WALL + 0.03, y(2.26), -322.76]]);
+    // The lounge: a teal sofa, a black coffee table with a pile of blank magazines, and a lamp of slow, warm blobs on a
+    // side table (still: it never moves).
+    group(-316.5, -310.5, -30.1, [[0.9, 0.42, 2.4, "#3f7f7a", -32.4, y(0.21), -313.5], [0.25, 0.5, 2.4, "#356b67", -32.85, y(0.67), -313.5],
+      [0.9, 0.3, 0.2, "#356b67", -32.4, y(0.57), -314.6], [0.9, 0.3, 0.2, "#356b67", -32.4, y(0.57), -312.4],
+      [0.6, 0.4, 1.2, "#202024", -30.6, y(0.2), -313.5], [0.4, 0.5, 0.4, "#5b3a2a", -32.6, y(0.25), -315.8]]);
+    detail([[0.24, 0.02, 0.32, "#ffd25f", -30.6, y(0.41), -313.7], [0.22, 0.02, 0.3, "#2ee6d6", -30.62, y(0.43), -313.6], [0.2, 0.02, 0.28, "#ff4fd8", -30.58, y(0.45), -313.4],
+      [0.1, 0.06, 0.1, "#c9ced4", -32.6, y(0.53), -315.8], [0.08, 0.32, 0.08, "#ff4fd8", -32.6, y(0.72), -315.8, 0.7], [0.05, 0.08, 0.05, "#ffd25f", -32.6, y(0.68), -315.8, 1],
+      [0.05, 0.06, 0.05, "#ffd25f", -32.6, y(0.8), -315.8, 1], [0.1, 0.06, 0.1, "#c9ced4", -32.6, y(0.91), -315.8]]);
+    // A water cooler and a potted plant, with a pinboard of blank notes on the wall between them.
+    group(-307.5, -301.5, -31.9, [[0.4, 1.2, 0.4, "#e8e6df", -32.6, y(0.6), -306.6], [0.5, 0.5, 0.5, "#b5651d", -32.5, y(0.25), -302.4]]);
+    detail([[0.3, 0.4, 0.3, "#7fc8ff", -32.6, y(1.4), -306.6, 0.3], [0.02, 0.06, 0.04, "#3a6bd8", -32.39, y(0.9), -306.6],
+      [0.5, 0.6, 0.5, "#2f8a4f", -32.5, y(0.8), -302.4], [0.3, 0.5, 0.3, "#3fa862", -32.45, y(1.25), -302.3],
+      [0.04, 1.1, 1.8, "#a0703f", WALL, y(1.8), -304.5], [0.05, 1.0, 1.7, "#c89a63", WALL + 0.01, y(1.8), -304.5],
+      ...[[-0.5, 0.25, "#fff59d"], [0, 0.3, "#ffffff"], [0.5, 0.2, "#ffcce8"], [-0.3, -0.25, "#b3f0ff"], [0.35, -0.2, "#fff59d"]].map(([dz, dy, c]) => [0.02, 0.24, 0.3, c, WALL + 0.04, y(1.8 + dy), -304.5 + dz])]);
+    // Crates with a portable stereo on top and a skateboard leaning on the wall.
+    group(-298.5, -292.5, -31.6, [[0.6, 0.6, 0.6, "#8a6440", -32.5, y(0.3), -296.2], [0.6, 0.6, 0.6, "#7a5534", -32.5, y(0.9), -296.2], [0.6, 0.6, 0.6, "#8a6440", -32.5, y(0.3), -295.4]]);
+    detail([[0.24, 0.3, 0.62, "#2a2a2e", -32.5, y(1.35), -296.2], [0.02, 0.2, 0.2, "#5a5a62", -32.37, y(1.33), -296.42], [0.02, 0.2, 0.2, "#5a5a62", -32.37, y(1.33), -295.98],
+      [0.02, 0.06, 0.12, "#9fd6ea", -32.37, y(1.42), -296.2, 0.4], [0.04, 0.04, 0.5, "#8a8f96", -32.5, y(1.53), -296.2],
+      [0.06, 0.04, 0.9, "#ff4fd8", -33.6, y(0.5), -294.2, 0, 1.2], [0.08, 0.06, 0.06, "#ffd25f", -33.55, y(0.12), -293.9], [0.08, 0.06, 0.06, "#ffd25f", -33.7, y(0.86), -294.5]]);
+    // A floor lamp with a warm shade and a tall plant by the way in.
+    group(-289.5, -285, -31.8, [[0.08, 1.8, 0.08, "#2a2a2e", -32.4, y(0.9), -287], [0.4, 0.06, 0.4, "#2a2a2e", -32.4, y(0.03), -287], [0.45, 0.45, 0.45, "#2f6b4f", -32.4, y(0.22), -288.8]]);
+    detail([[0.36, 0.3, 0.36, "#ffcf7a", -32.4, y(1.95), -287, 1.2], [0.5, 0.9, 0.5, "#2f8a4f", -32.4, y(0.9), -288.8], [0.3, 0.7, 0.3, "#3fa862", -32.35, y(1.5), -288.7]]);
+    // On the wall: six original posters (shapes and colour only), a band of geometric art from 4.3 m to 7.5 m, and two
+    // glowing tubes along it.
+    const art = [];
+    const poster = (z, base, shapes) => { art.push([0.03, 1.6, 1.15, "#f2efe6", WALL, y(2.6), z], [0.035, 1.5, 1.05, base, WALL + 0.005, y(2.6), z]); for (const [w, h, dy, dz, c, e = 0, rx = 0] of shapes) art.push([0.04, h, w, c, WALL + 0.01, y(2.6 + dy), z + dz, e, rx]); };
+    poster(-337.2, "#1a1446", [[0.9, 0.3, -0.3, 0, "#ff4fd8"], [0.9, 0.2, -0.05, 0, "#ff8c3a"], [0.9, 0.15, 0.13, 0, "#ffd25f"], [0.4, 0.4, 0.4, 0, "#ffd25f", 0.5]]);
+    poster(-327.5, "#2ee6d6", [[0.8, 0.08, 0.3, 0, "#1c1c1c", 0, 0.6], [0.8, 0.08, -0.1, 0, "#ff4fd8", 0, -0.6], [0.12, 0.12, 0.45, 0.3, "#ffd25f"], [0.12, 0.12, -0.45, -0.3, "#1c1c1c"]]);
+    poster(-317.8, "#0b0a12", [[0.5, 0.5, 0.1, 0, "#ff8c3a"], [0.8, 0.04, 0.1, 0, "#ffd25f", 0.5], [0.05, 0.05, 0.6, -0.4, "#ffffff", 1], [0.05, 0.05, -0.5, 0.35, "#ffffff", 1], [0.05, 0.05, 0.45, 0.4, "#ffffff", 1]]);
+    poster(-309.5, "#ffd25f", [[0.3, 0.3, 0.35, -0.25, "#2a6bd8"], [0.3, 0.3, -0.1, 0.2, "#d82a2a"], [0.3, 0.3, -0.5, -0.2, "#2ad86b"], [0.9, 0.06, 0.05, 0, "#1c1c1c", 0, 0.35]]);
+    poster(-299.5, "#ff4fd8", [[0.7, 0.7, 0, 0, "#1a1446"], [0.4, 0.4, 0, 0, "#2ee6d6"], [0.15, 0.15, 0, 0, "#ffd25f"]]);
+    poster(-290.5, "#1f8c8c", [[0.9, 0.1, 0.45, 0, "#ffd25f"], [0.9, 0.1, 0.15, 0, "#ff4fd8"], [0.9, 0.1, -0.15, 0, "#ffd25f"], [0.9, 0.1, -0.45, 0, "#ff4fd8"]]);
+    const bandZ0 = -343, bandZ1 = -285, cols = ["#1a1446", "#2ee6d6", "#ff4fd8", "#ffd25f", "#2a6bd8"];
+    art.push([0.03, 3.2, bandZ1 - bandZ0, "#14111f", WALL, y(5.9), (bandZ0 + bandZ1) / 2]);
+    for (let i = 0, z = bandZ0 + 1.5; z < bandZ1 - 1; i++, z += 2.9) {
+      art.push([0.04, 0.12, 1.6, cols[(i + 1) % 5], WALL + 0.01, y(5.9 + ((i % 3) - 1) * 0.6), z, 0.3, i % 2 ? 0.7 : -0.7]);
+      art.push([0.04, 0.5, 0.5, cols[(i + 3) % 5], WALL + 0.01, y(i % 2 ? 6.9 : 4.9), z + 1.1, 0.2, 0.785]);
+      for (let k = 0; k < 3; k++) art.push([0.04, 0.12, 0.12, cols[(i + k) % 5], WALL + 0.01, y(5 + k * 0.9), z - 0.9 + k * 0.4, 0.4]);
+    }
+    art.push([0.05, 0.07, bandZ1 - bandZ0, "#2ee6d6", WALL + 0.02, y(4.25), (bandZ0 + bandZ1) / 2, 1.4], [0.05, 0.07, bandZ1 - bandZ0, "#ff4fd8", WALL + 0.02, y(7.55), (bandZ0 + bandZ1) / 2, 1.4]);
+    detail(art);
   };
 
   // Per frame while the visitor is in this cave, allocation-free: the pager (held while a panel or prompt is open, when
@@ -657,6 +827,8 @@
       v.printedOk.visible = r.matches; v.printedBad.visible = !r.matches;
     }
     if (v.keys.version !== v.keysShown) { v.keysShown = v.keys.version; v.shackleShut.visible = !!v.keys.locked; v.shackleOpen.visible = !v.keys.locked; }
+    // The modem's lamp flickers while the pretend call is up (steady in Calm), and is dark while it is down.
+    if (v.modemLamp) v.modemLamp.glow = !v.bbs.online ? 0.15 : calm ? 1.4 : 0.6 + (Math.floor(elapsed * 7) % 3 === 0 ? 0.9 : 0);
     v.pagerLamp.glow = v.pager.unread ? (calm ? 1.3 : 1 + (Math.floor(elapsed * 3) & 1) * 0.6) : 0.4;
     const d = v.demo;
     if (!calm) {
