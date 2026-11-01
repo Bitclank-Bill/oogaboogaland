@@ -27,6 +27,28 @@ stream, sailing, boarding or transport UI.
     about 160 m away.
   - The timeline menu (G), the white screen and the workbench's Previous/Next with "Take me there" are the shortcuts.
 
+## The atrium's centrepiece (`gv/ovh-atrium`, `genesis-atrium.js`)
+
+An original artwork of the Steps toward Bitcoin in the middle of the atrium, laid out from the catalogue's READY trail
+data alone.
+- **The spiral:** ten plinths in date order, clockwise and inward like the galleries, rising a little each step.
+  - **Marks:** a gold cube with its reference for a whitepaper citation, a gold ring for documented influence.
+  - **Each plinth's sign** gives the step, year, title and class.
+  - **The floor line:** a gold line joins them in order. It shows date order only, never that one led to the next.
+- **The middle:** a dais holds the paper (step 11, the whitepaper itself, announced 31 October 2008). Beside it is the
+  genesis block's record, marked "after the paper": context, not a step.
+- **The floor map:** a ring of eight floor markers names each era and its years and points at its gallery's arch.
+- **Use:** Space by a step, or a tap on it, opens that exhibit's workbench (`host.open`).
+- **Rules kept:**
+  - the view from the arrival to the white screen stays clear, and there's room to walk between every plinth;
+  - a single bead of light runs along the line, held in Calm and under pause;
+  - it adds one point light;
+  - `update` allocates nothing.
+- **Unit check:** `genesisAtriumProof`.
+
+The game console (`genesis-cartridge.js`) and how an era asks for it are in OVERHAUL-CONTRACT.md, Addendum A, and
+covered by `genesisCartridgeProof`.
+
 ## How the era files were kept
 
 - **No coordinates rewritten:** each era's file builds exactly as before, in its old cave's coordinates. Every node

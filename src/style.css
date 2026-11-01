@@ -10243,3 +10243,28 @@ body.genesis-bench-open .genesis-bar, body.genesis-bench-open .genesis-chain { d
 .menu-list .tag-citation, .menu-list .tag-influence, .menu-list .tag-anchor { color: #ffcf5a; }
 .menu-list .tag-context, .menu-list .tag-demonstration, .menu-list .tag-bibliography { color: #b9b4aa; }
 /* genesis-timeline:end */
+
+/* The Genesis museum's cartridge console (genesis-cartridge.js): a pixel screen, its buttons and its pad. */
+body.genesis-cart-open .genesis-bar { display: none; }
+.genesis-cart {
+  position: fixed; left: 50%; top: calc(64px + var(--safe-top)); transform: translateX(-50%); z-index: 6;
+  width: min(760px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  background: rgba(12, 11, 10, 0.94); border: 2px solid var(--wood-edge); border-radius: 10px; color: var(--fg); pointer-events: auto;
+}
+.genesis-cart[hidden] { display: none; }
+.cart-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; }
+.cart-kicker { margin: 0; color: var(--accent-text); font-size: 11px; letter-spacing: 0.06em; }
+.cart-head h2 { margin: 2px 0 0; font-size: 20px; }
+.cart-bar { display: flex; gap: 6px; }
+.genesis-cart button {
+  min-height: 36px; padding: 0 12px; cursor: pointer; border: 2px solid var(--wood-edge); border-radius: 6px;
+  background: linear-gradient(var(--plank), var(--wood)); color: var(--paper); font-size: 13px;
+}
+.genesis-cart button:focus-visible, .cart-screen:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.cart-close { background: linear-gradient(#6b2a22, #4a1d17) !important; }
+.cart-screen { align-self: center; height: min(calc(100vh - 300px), 58vh); width: auto; max-width: 100%; image-rendering: pixelated; background: #07080d; border-radius: 6px; touch-action: none; }
+.cart-status { margin: 0; min-height: 1.3em; font-family: var(--mono); font-size: 13px; color: #7dff9e; }
+.cart-pad { display: flex; gap: 8px; justify-content: center; }
+.cart-pad button { min-width: 52px; min-height: 48px; font-size: 18px; touch-action: none; }
+.cart-note { margin: 0; color: var(--muted); font-size: 12px; }
+@media (max-width: 760px) { .genesis-cart { top: calc(56px + var(--safe-top)); padding: 8px; } .cart-note { display: none; } }

@@ -23508,6 +23508,9 @@ const genesisHoldsProof = async () => {
   want({ paused: false, bench: true, menu: false }, { time: true, exhibit: true, ambient: false, walk: false, era: false });
   // The timeline menu holds the walk, the ambient show, era changes and exhibits.
   want({ paused: false, bench: false, menu: true }, { time: true, exhibit: false, ambient: false, walk: false, era: false });
+  // The cartridge console holds the scene as the menu does (its own game runs apart from the scene's holds).
+  want({ paused: false, bench: false, menu: false, console: true }, { time: true, exhibit: false, ambient: false, walk: false, era: false });
+  want({ paused: true, bench: false, menu: false, console: true }, { time: false, exhibit: false, ambient: false, walk: false, era: false });
   // Wiring: each part of the scene's update() runs only under its hold.
   const src = await readFile(join(root, "src/js/scene-genesis.js"), "utf8"), a = src.indexOf("  const update = (dt) => {"), body = src.slice(a, src.indexOf("\n  };\n", a));
   const gated = { "sceneTime += dt": "h.time", "updateEra()": "h.era", "updateExhibits(dt, sceneTime)": "h.exhibit", "stepDemo(dt)": "h.ambient", "updateWalk(dt, sceneTime)": "h.walk" };
@@ -23517,6 +23520,106 @@ const genesisHoldsProof = async () => {
     if (lines.length !== 1 || open < 0 || before.slice(open).split("\n").length > 3) bad.push(`update(): ${call} is not gated on ${flag}`);
   }
   if (!/holdsFor\(holdState, HOLD\)/.test(body) || !/fx\.update\(h\.ambient \? dt : 0/.test(body)) bad.push("update(): holds not read, or particles not held");
+  return { bad };
+};
+// The atrium's centrepiece (genesis-atrium.js), laid out from the catalogue: the trail's steps in date order (citations
+// and documented influence only), the paper in the middle, the genesis block beside it as context; nothing in the view
+// from the arrival to the white screen, nothing on a pillar or the screen, room to walk between steps, and a floor
+// marker for each era pointing at its own gallery.
+const genesisAtriumProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
+  W.ERAS.forEach((e, n) => {
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+    const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: (o = {}) => Object.assign(node(), o), addChild: (p, ...c) => c[0], place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle() {}, notify() {}, prop: (d) => { items.push({ id: d.id, era: n, order: items.length, def: d }); return d; } };
+    if (EX.eras[n]) EX.eras[n].build(kit);
+  });
+  items.push({ id: "era3-room-haber1991", era: 3, order: 900, def: { year: 1991, title: "Timestamp a page", connection: "citation", ref: "[3]", sourceKeys: ["haber1991"] } },
+    { id: "era3-room-bayer1993", era: 3, order: 901, def: { year: 1993, title: "One tree, many pages", connection: "citation", ref: "[4]", sourceKeys: ["bayer1993"] } });
+  const cat = BLc.genesisCatalogue.create({ items, eras: W.ERAS, connections: EX.CONNECTIONS, sourceOf: BLc.genesisProps.sourceOf, records: BLc.genesisTimelineData.records });
+  const L = BLc.genesisAtrium.layout({ entries: cat.entries, museum: M, eras: W.ERAS }), bad = [];
+  const trail = cat.filter("trail");
+  if (L.steps.length !== trail.length - 1) bad.push(`steps ${L.steps.length}, trail less the paper ${trail.length - 1}`);
+  L.steps.forEach((s, i) => { if (s.step !== i + 1) bad.push(`${s.id} is step ${s.step} at place ${i + 1}`); if (s.kind !== "citation" && s.kind !== "influence") bad.push(`${s.id} is ${s.kind}`); });
+  if (!L.paper || cat.get(L.paper.id).connection !== "anchor" || L.paper.step !== trail.length) bad.push("the paper is not the last step in the middle");
+  if (!L.genesis || cat.get(L.genesis.id).connection !== "context" || cat.get(L.genesis.id).trail) bad.push("the genesis block is not beside it as context");
+  const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
+  const pillars = []; for (const x of [-26, 26]) for (const z of [-52, -18, 18, 52]) pillars.push({ x0: x - 1.5, x1: x + 1.5, z0: z - 1.5, z1: z + 1.5 });
+  const screen = { x0: -12, x1: 12, z0: 47.6, z1: 48.2 };
+  for (const o of L.obstacles) {
+    if (overlap(o, L.clear)) bad.push("a plinth stands in the view from the arrival to the white screen");
+    if (pillars.some((q) => overlap(o, q)) || overlap(o, screen)) bad.push("a plinth stands on a pillar or the screen");
+    if (o.x0 < M.atrium.x0 + 2 || o.x1 > M.atrium.x1 - 2 || o.z0 < M.atrium.z0 + 2 || o.z1 > M.atrium.z1 - 2) bad.push("a plinth is outside the atrium");
+  }
+  // Room to walk: a body (0.3 m) fits between any two plinths with a step to spare.
+  let gap = Infinity;
+  for (let i = 0; i < L.obstacles.length; i++) for (let k = i + 1; k < L.obstacles.length; k++) {
+    const a = L.obstacles[i], b = L.obstacles[k], dx = Math.max(0, b.x0 - a.x1, a.x0 - b.x1), dz = Math.max(0, b.z0 - a.z1, a.z0 - b.z1);
+    gap = Math.min(gap, Math.hypot(dx, dz));
+  }
+  if (gap < 1.2) bad.push(`plinths only ${gap.toFixed(2)} m apart`);
+  // Every step's walk-up point is clear of every plinth.
+  for (const s of [...L.steps, L.paper, L.genesis]) if (L.obstacles.some((o) => s.at.x > o.x0 - 0.3 && s.at.x < o.x1 + 0.3 && s.at.z > o.z0 - 0.3 && s.at.z < o.z1 + 0.3)) bad.push(`${s.id}'s walk-up point is blocked`);
+  // The floor map: one marker per era, pointing at its own gallery's opening.
+  const pointing = L.markers.length === 8 && L.markers.every((m) => { const r = M.rects[m.era], cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2; return (Math.sin(m.a) * cx - Math.cos(m.a) * cz) > 0.9 * Math.hypot(cx, cz); });
+  return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, bad: bad.slice(0, 8) };
+};
+// The cartridge console (genesis-cartridge.js) with one dummy game: the registry's rules, a run started, steered,
+// paused, interrupted and closed through the console's own keys, and the game stopped on close.
+const genesisCartridgeProof = async () => {
+  const context = { window: {}, AbortController };
+  context.window.BL = {};
+  // An era file registers a cartridge the agreed way, before the host loads.
+  const calls = [];
+  context.window.BL.genesisCartridges = { list: [] };
+  context.window.BL.genesisCartridges.list.push({ id: "dummy-test", era: 2, title: "Dummy", label: "A modern original game in the spirit of the 1980s", make: (host) => {
+    const g = { playing: false, status: { score: 0 }, ticks: 0, acts: 0, start(seed) { calls.push(["start", seed > 0]); g.playing = true; }, act() { g.acts++; },
+      stop() { calls.push(["stop"]); g.playing = false; }, update(dt) { g.ticks++; if (g.acts >= 3) { g.playing = false; host.onEnd(42); } }, draw() {}, host };
+    return g;
+  } });
+  runInNewContext(await readFile(join(root, "src/js/genesis-cartridge.js"), "utf8"), context);
+  const C = context.window.BL.genesisCartridge, bad = [];
+  const refuses = (c) => !!C.validate(c, [c]);
+  if (C.checkAll() !== 1) bad.push("the registered cartridge was not kept");
+  if (!refuses({ id: "x-1", era: 2, title: "X", label: "An 80s game", make: () => ({}) })) bad.push("a label without 'modern original' was accepted");
+  if (!refuses({ id: "Bad Id", era: 2, title: "X", label: "modern original", make: () => ({}) })) bad.push("a bad id was accepted");
+  if (!refuses({ id: "x-2", era: 9, title: "X", label: "modern original", make: () => ({}) })) bad.push("era 9 was accepted");
+  if (!C.validate({ id: "dummy-test", era: 2, title: "D", label: "modern original", make: () => ({}) }, [C.registry.list[0], { id: "dummy-test" }])) bad.push("a repeated id was accepted");
+  let closed = 0;
+  const con = C.create({ root: null, onClose: () => closed++ });
+  if (con.open("no-such-game")) bad.push("an unknown cartridge opened");
+  if (!con.open("dummy-test", { still: true }) || !con.isOpen) bad.push("the dummy did not open");
+  const game = con.game;
+  if (!game.host.still) bad.push("Calm did not reach the game (host.still)");
+  con.update(0.1);
+  if (game.ticks !== 1 || game.playing) bad.push("the attract screen did not update, or the game started by itself");
+  con.key("down", "Space", false); con.key("up", "Space", false);
+  if (!game.playing || calls[0][0] !== "start") bad.push("Space did not start a run");
+  con.key("down", "ArrowRight", false); con.update(0.25);
+  if (con.aim.hold !== 1 || !(con.aim.x > 0.5) || con.aim.steps !== 1 || !con.held.right) bad.push("holding right did not steer");
+  con.key("down", "ArrowRight", true);
+  if (con.aim.steps !== 1) bad.push("a key repeat counted a step");
+  con.key("down", "KeyP", false);
+  const before = game.ticks; con.update(0.1); con.update(0.1);
+  if (!con.paused || game.ticks !== before || con.held.right) bad.push("P did not pause, or held buttons survived it");
+  con.key("down", "KeyP", false); con.update(0.1);
+  if (con.paused || game.ticks !== before + 1) bad.push("P did not carry on");
+  con.key("down", "ArrowLeft", false); con.interrupted();
+  if (!con.paused || con.held.left || con.aim.hold !== 0) bad.push("an interruption did not clear held input and pause");
+  con.key("down", "KeyP", false);
+  if (con.key("down", "KeyQ", false)) bad.push("a key the console does not use was taken");
+  for (let i = 0; i < 3; i++) { con.key("down", "Space", false); con.key("up", "Space", false); }
+  con.update(0.1);
+  if (game.playing) bad.push("the dummy did not end after three acts");
+  con.key("down", "Escape", false);
+  if (con.isOpen || closed !== 1) bad.push("Escape did not close and hand the view back");
+  // Closing mid-run stops the game.
+  con.open("dummy-test"); const g2 = con.game; con.key("down", "Enter", false); con.close();
+  if (g2.playing || calls[calls.length - 1][0] !== "stop") bad.push("closing mid-run did not stop the game");
+  con.dispose();
   return { bad };
 };
 const genesisMuseumProof = async () => {
@@ -23927,6 +24030,10 @@ const unitChecks = async () => {
   record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
   const genesisHolds = await genesisHoldsProof();
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
+  const genesisAtrium = await genesisAtriumProof();
+  record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
+  const genesisCartridge = await genesisCartridgeProof();
+  record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisMuseum = await genesisMuseumProof();
   record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles land inside its own gallery", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
   const genesisExhibits = await genesisExhibitsProof();

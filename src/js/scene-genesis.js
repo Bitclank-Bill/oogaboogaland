@@ -43,7 +43,7 @@
   // Lamps: the atrium's, the desk's and the newspaper's in Fingerprints and Time, then three in each gallery in its
   // era's colour. Each frame the nearest come first (the tiers keep the first ones).
   const CAVE_LAMPS = [[-14, 0.3], [22, 0.5], [-8, 0.78]];
-  const LIGHTS = [[0, 9, 40, 30, 1.2, 1.05, 0.85], [0, 9, -40, 30, 1.2, 1.05, 0.85], [-30, 9, 0, 30, 1.1, 1, 0.85], [30, 9, 0, 30, 1.1, 1, 0.85], [0, 7, 66, 16, 1.25, 0.95, 0.6],
+  const LIGHTS = [[0, 6.5, 0, 16, 1.3, 1.1, 0.75], [0, 9, 40, 30, 1.2, 1.05, 0.85], [0, 9, -40, 30, 1.2, 1.05, 0.85], [-30, 9, 0, 30, 1.1, 1, 0.85], [30, 9, 0, 30, 1.1, 1, 0.85], [0, 7, 66, 16, 1.25, 0.95, 0.6],
     ...[[-6.5 + SX, 3.4, -25 + SZ, 12, 1.35, 1.05, 0.7], [-9 + SX, 3.2, -31.5 + SZ, 7, 1, 0.9, 0.7]].map((l) => { const q = mu(ROOM_ERA, l[0], l[2]); return [q.x, l[1], q.z, ...l.slice(3)]; }),
     ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => { const q = mu(e.n, x, e.z1 - f * GW.CAVE.len); return [q.x, 9, q.z, 34, ...e.theme.lamp]; }))];
 
@@ -667,7 +667,7 @@
     saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, near: 0, up: null, orthoMix: 0, orthoHeight: 0 }, opens: 0, runs: 0 };
   const PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
   const frameIn = { c: { x: 0, y: 0, z: 0 }, size: 1, toward: { x: 0, z: 1 }, ndc: { x: 0, y: 0 }, frac: 0.6, fov: 62, aspect: 1.6, fill: 0.62, pitch: 0.2 };
-  let catalogue = null, workbench = null, timeline = null;
+  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null;
   // The exhibits the catalogue lists: every era file's props, Fingerprints and Time's two citations (its lectern) and
   // the scene's own PC, drives and book. The overview boards and the legend itself are not exhibits.
   const buildCatalogue = () => {
@@ -704,6 +704,11 @@
       if (!entry || !prop) return false;
       audio.wake();
       if (timeline && timeline.isOpen) timeline.close();
+      // A cabinet or board whose use returns { cartridge } opens the console instead (genesis-cartridge.js); browsing
+      // onto one from the workbench shows its note rather than leaving the workbench.
+      const used = /^era3-room-/.test(id) ? { board: G.FINGERPRINTS } : props.use(prop, propState) || {};
+      if (used.cartridge && from !== "browse") { if (bench.open) host.close(); return openConsole(used.cartridge); }
+      bench.pending = used;
       if (!bench.open) {
         const s2 = bench.saved, cp = camera.position, ct = camera.target;
         s2.x = cp.x; s2.y = cp.y; s2.z = cp.z; s2.tx = ct.x; s2.ty = ct.y; s2.tz = ct.z;
@@ -720,7 +725,9 @@
     },
     session(id) {
       if (!bench.open || id !== bench.id) return null;
-      const r = /^era3-room-/.test(id) ? { board: G.FINGERPRINTS } : props.use(bench.prop, propState) || {};
+      const r = bench.pending || (/^era3-room-/.test(id) ? { board: G.FINGERPRINTS } : props.use(bench.prop, propState) || {});
+      bench.pending = null;
+      if (r.cartridge) { const c = BL.genesisCartridge && BL.genesisCartridge.find(r.cartridge); r.caption = `${c ? `${c.title}: ${c.label}` : "A console game"}. Close the workbench and press Space by the cabinet to play.`; }
       bench.term = r.terminal || null; bench.board = r.board || null;
       return { entry: bench.entry, terminal: bench.term, board: bench.board ? { room: bench.board.room, pages: bench.board.pages, sources: bench.board.sources || [] } : null, caption: !bench.term && !bench.board && r.caption ? r.caption : null };
     },
@@ -762,6 +769,33 @@
     cue: (name) => audio.cue(name),
     toast: (text) => hud.toast(text)
   };
+  // The cartridge console (genesis-cartridge.js): it holds the scene as the workbench and menu do; closing it hands
+  // the walk back where it was (the camera never moved).
+  const openConsole = (id) => {
+    if (!cart || !BL.genesisCartridge.find(id)) { hud.toast("That console game is not installed yet"); return false; }
+    audio.wake();
+    pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
+    if (!cart.open(id, { still: view.calm })) { pilot.setActive(true); return false; }
+    return true;
+  };
+  const consoleClosed = () => {
+    if (!bench.open && !(timeline && timeline.isOpen)) pilot.setActive(true);
+    if (overlayCanvas.focus) overlayCanvas.focus({ preventScroll: true });
+  };
+  // The atrium's centrepiece (genesis-atrium.js): the Steps toward Bitcoin as a spiral of plinths and a floor map of
+  // the galleries, drawn from this visit's catalogue. Each step and the paper are props: Space by one, or a tap,
+  // opens its exhibit's workbench.
+  const buildAtrium = () => {
+    const A = BL.genesisAtrium, L = A.layout({ entries: catalogue.entries, museum: MU, eras: GW.ERAS });
+    atrium = A.build({ M, createNode, addChild, place, label: BL.factoryModels.label, top: ISLAND_TOP, layout: L, eraColor: (n) => GW.ERAS[n].theme.bank });
+    for (const o of L.obstacles) built.obstacles.push(o);
+    built.atriumProps = atrium.picks.map((p) => {
+      const e = catalogue.get(p.id), prop = props.register({ id: `atrium-${p.id}`, era: e.era, year: e.year, title: e.title, label: `${e.title} (${e.year})`, sourceKeys: e.sources.map((x) => x.key),
+        at: { x: p.at.x, y: ISLAND_TOP, z: p.at.z }, reach: 2.4, hint: e.trail ? `step ${e.step}, ${e.title} (${e.year})` : `${e.title} (${e.year}), after the paper`, opens: p.id, onUse: () => ({ caption: e.title }) });
+      return { prop, node: p.node };
+    });
+    built.atriumLayout = L;
+  };
   const openMenu = (focusId) => {
     if (bench.open) host.close();
     audio.wake();
@@ -780,8 +814,10 @@
   const openProp = (prop) => {
     audio.wake();
     if (prop.id === "legend") { openMenu(); return; }
+    if (prop.opens) { host.open(prop.opens, "walk"); return; }
     if (catalogue && catalogue.get(prop.id) && host.open(prop.id, "walk")) return;
     const r = props.use(prop, propState);
+    if (r.cartridge) { openConsole(r.cartridge); return; }
     if (r.board) openPanel(makeBoard(r.board));
     else if (r.caption) { captionKey = ""; setCaption(`prop-${prop.id}`, r.caption); }
   };
@@ -968,7 +1004,7 @@
   // its own: Escape (the pilot first, then leave), 0, I, C, T, P and G. A workbench or the menu takes every key while
   // open (its input keeps typing out of the walk); Escape closes it.
   const onKey = (e) => {
-    if (bench.open || view.reading || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (bench.open || view.reading || (cart && cart.isOpen) || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "Escape") { if (!pilot.escape()) leave(); }
     else if (k === "0") pilot.resetCamera();
@@ -1042,9 +1078,9 @@
   // What runs this frame (genesis-world.js holdsFor): an explicit pause holds everything, the scene's clock included,
   // so nothing jumps on resume; the timeline menu and the workbench hold the walk, the crew, the desk's show, era
   // changes and captions, and only an open, unpaused workbench keeps its own exhibit's era running.
-  const HOLD = { time: true, exhibit: true, ambient: true, walk: true, era: true }, holdState = { paused: false, bench: false, menu: false };
+  const HOLD = { time: true, exhibit: true, ambient: true, walk: true, era: true }, holdState = { paused: false, bench: false, menu: false, console: false };
   const update = (dt) => {
-    holdState.paused = view.paused; holdState.bench = bench.open; holdState.menu = !!(timeline && timeline.isOpen);
+    holdState.paused = view.paused; holdState.bench = bench.open; holdState.menu = !!(timeline && timeline.isOpen); holdState.console = !!(cart && cart.isOpen);
     const h = GW.holdsFor(holdState, HOLD);
     if (h.time) sceneTime += dt;
     // A panel's dialog closing (its button, Escape or a press outside) hands the walk back as it was.
@@ -1064,7 +1100,10 @@
       stepDemo(dt);
       built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
       built.pcScreen.glow = 1 + (view.calm ? 0 : (Math.floor(sceneTime * 2) & 1) * 0.2);
+      if (atrium) atrium.update(dt, sceneTime, view.calm);
     }
+    // The cartridge console's game runs while it is open and the visitor has not paused.
+    if (cart && cart.isOpen && !view.paused) cart.update(dt);
     if (h.walk) updateWalk(dt, sceneTime);
     const p = avatar ? avatar.root.position : ENTRY;
     renderOpts.shadowCenter.x = bench.open ? bench.focus.x : p.x; renderOpts.shadowCenter.z = bench.open ? bench.focus.z : p.z;
@@ -1090,7 +1129,7 @@
     // The era files build first, so the galleries' boulders, the legend and the shared signage know them.
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
-    buildExhibits(); buildCatalogue();
+    buildExhibits(); buildCatalogue(); buildAtrium();
     buildGalleries(); buildLegend(); buildEraFrames(); buildTrail();
     registerOverviews();
     // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
@@ -1116,6 +1155,7 @@
     target(built.guide.parts.torso, { kind: "guide" });
     target(built.guide.parts.head, { kind: "guide" });
     target(built.legend, { kind: "legend", priority: 1 });
+    for (const a of built.atriumProps) target(a.node, { kind: "prop", prop: a.prop, priority: 1 });
     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const o of built.overviews) target(o.pick, { kind: "prop", prop: props.get(`era${o.era}-overview`), priority: 1 });
@@ -1204,6 +1244,8 @@
     // The workbench and the timeline menu (their own modules, on the host).
     workbench = BL.genesisWorkbench.create(host, document.getElementById("genesis-bench"));
     timeline = BL.genesisTimeline.create(host, document.getElementById("genesis-menu"));
+    BL.genesisCartridge.checkAll();
+    cart = BL.genesisCartridge.create({ root: document.getElementById("genesis-cart"), onClose: consoleClosed });
     window.addEventListener("resize", () => { if (bench.open) { bench.eased = false; workbench.resize(); } }, { signal: ctx.signal });
     window.addEventListener("pointerdown", audio.wake, { signal: ctx.signal });
     window.addEventListener("keydown", audio.wake, { signal: ctx.signal });
@@ -1213,7 +1255,7 @@
     hud.setStats(game.state);
     arrive();
     Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, view, built, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
-      openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; },
+      openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
   };
@@ -1227,9 +1269,10 @@
   const leaveScene = () => {
     stopVoice();
     host.close();
+    if (cart) cart.dispose();
     if (workbench) workbench.dispose();
     if (timeline) timeline.dispose();
-    workbench = timeline = catalogue = null;
+    workbench = timeline = catalogue = cart = atrium = null;
     if (view.reading) hud.closeBoard();
     disposeExhibits();
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.

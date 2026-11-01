@@ -231,15 +231,16 @@
   })();
 
   // --- What holds while the museum's dialogs or the visitor's pause are up (OVERHAUL-CONTRACT.md §4) --------------
-  // `holdsFor({ paused, bench, menu }, out)` writes which parts of a frame run: `time` (the scene's clock, which era
+  // `holdsFor({ paused, bench, menu, console }, out)` writes which parts of a frame run: `time` (the scene's clock, which era
   // files and animations read), `exhibit` (an era file's update: only the workbench's exhibit while it is open,
   // the visitor's gallery otherwise), `ambient` (the desk's show, glows and particles), `walk` (the pilot, the crew
   // and the room's presence), `era` (music and caption changes on crossing into a gallery). An explicit pause holds
   // all of them, the open exhibit included (its commands still answer; its model catches up on resume). The
-  // workbench and the timeline menu hold everything but, for the workbench, its own exhibit. Allocation-free.
+  // workbench, the timeline menu and the cartridge console (genesis-cartridge.js) hold everything but, for the
+  // workbench, its own exhibit. Allocation-free.
   const holdsFor = (state, out) => {
-    const run = !state.paused, quiet = run && !state.bench && !state.menu;
-    out.time = run; out.exhibit = run && !state.menu; out.ambient = quiet; out.walk = quiet; out.era = quiet;
+    const run = !state.paused, quiet = run && !state.bench && !state.menu && !state.console;
+    out.time = run; out.exhibit = run && !state.menu && !state.console; out.ambient = quiet; out.walk = quiet; out.era = quiet;
     return out;
   };
 

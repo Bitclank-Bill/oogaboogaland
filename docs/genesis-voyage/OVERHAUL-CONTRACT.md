@@ -167,3 +167,87 @@ host = { catalogue, records, view: { calm, paused },
   exactly, typing that moves nothing, and the stacked narrow layout.
 - **Builders:** branch from that commit (`gv/ovh-workbench`, `gv/ovh-timeline`). Edit only your files and marker
   blocks, and report a branch and SHA.
+
+## Addendum A: the game console (cartridges), v1
+
+This is the contract an era file follows when it merges a playable game. The integrator built it in
+`src/js/genesis-cartridge.js` and owns that file.
+
+### 1. Register a cartridge (in your era file, at load)
+
+```js
+(BL.genesisCartridges = BL.genesisCartridges || { list: [] }).list.push({
+  id: "e2-my-game",   // stable: lower-case letters, digits and -; never renamed
+  era: 2,             // 0..7
+  title: "My Game",
+  label: "A modern original game in the spirit of 1980s home consoles",
+  make: (host) => game,
+});
+```
+
+- **`label`** is the sign and the console's kicker. It **must** say the game is a modern original in the spirit of
+  its era (the words "modern" and "original" are checked), so nobody reads it as a game from that decade.
+- **Not an exhibit:** a cartridge never gets a timeline record, a date on the timeline or a trail connection.
+- **Checked every visit:** `checkAll()` throws on a bad id, era, label or `make`, or on a repeated id.
+
+### 2. The game: retro-games.js's factory interface
+
+`make(host)` returns `{ start(seed), act(), stop(), update(dt), draw(ctx), playing, status }`. `help` and `coach`
+are optional.
+- **Allocation:** `update` and `draw` allocate nothing. Play runs on a fixed step, and a seed replays a run.
+- **The kit:** a game may read `BL.retroGames.kit`, read-only. It lives in the deferred `arcade` group, so load it
+  with `BL.deferred.load("arcade")` before you need it on a hosted page; the portable page carries it inline.
+- **The host** the console passes is the carnival scene's:
+
+  ```
+  host = { best, aim: { x, hold, steps, y, stepsY }, still, onEnd(score), over(), popup(text, big),
+           cue(name, gain), shake(k), crack(big), flop(), held: { left, right, up, down, act } }
+  ```
+
+  - `aim` works as retro-games.js describes. The console's keys and touch pad write it.
+  - `still` is the visitor's Calm, read when the console opens. Hold decorative motion while it's true.
+  - `cue(name)` plays a short synthesized blip through the page-wide mute. There's no music, by Billy's call.
+  - `held` (new) is the buttons as held right now, for games that read buttons rather than `aim`.
+- **Screen:** 160 × 120 by default, the retro games' size. A cartridge may declare `screen: { w, h }` instead.
+
+### 3. How an exhibit asks for it
+
+A cabinet's or board's prop `onUse` returns **`{ cartridge: "<id>" }`**.
+- **Opening:** Space by the prop, or a tap on it, opens the console on that cartridge.
+- **From the menu:** choosing the prop opens the console too.
+- **Browsing:** reaching the prop with Previous/Next in the workbench shows a note ("press Space by the cabinet to
+  play") instead of leaving the workbench.
+
+### 4. The console's behaviour
+
+- **Holds:** the console holds the scene exactly as the workbench and menu do (genesis-world.js
+  `holdsFor({ console })`). The walk, the crew, the desk's show, era changes and captions all wait. The visitor's
+  explicit pause also stops the console's game.
+- **Keys** (on the console's own panel, never on `document` or `window`):
+  - arrows or W A S D steer;
+  - Space or Enter starts a run, then acts;
+  - **P** pauses and carries on, letting go of every held button;
+  - **M** toggles the page-wide environment mute (sound.js);
+  - **Escape** closes.
+  - Repeats don't count as steps, and keys the console doesn't use pass through untouched.
+- **Touch:** ◀ ▲ ▼ ▶ and A on a pad, each pointer independent; a tap on the screen starts or acts. Pause, Sound and
+  Close are buttons.
+- **Interruption:** while open, the tab being hidden or the window losing focus lets go of every held button and
+  pauses a running game. Those two listeners are added on open and removed on close.
+- **Close** (Escape or Close) stops a running game, closes the console's audio context, hides the panel and hands the
+  walk back where it was (the camera never moves). Focus returns to the scene's canvas.
+
+### 5. FUD Patrol, later, through an adapter
+
+The repaired package's core (`createGame`, `draw`, 480 × 270) isn't imported yet, because its maker is finishing four
+repairs. When it lands, a small era-2 wrapper will register it like this:
+- `screen: { w: 480, h: 270 }`;
+- `start(seed)` calls `game.start({ seed })`;
+- `update(dt)` turns `host.held` into `game.setInput("left" | "right" | "jump" | "shoot", down, "console")`, then
+  calls `game.update(dt)`;
+- `draw(ctx)` calls the package's `draw(ctx, game.state)`;
+- `act()` calls `nextStage()` on a cleared stage;
+- `stop()` calls `game.dispose()`;
+- its sound events become `host.cue(name)`, with no music.
+
+The console needs no change for it.
