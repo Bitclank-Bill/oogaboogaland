@@ -348,7 +348,8 @@
   // Each era's file builds its cave's exhibits through a kit; usable ones become props like the room's, with a pick box
   // that taps select. Built once a visit, before the footing, so their obstacles count.
   const buildExhibits = () => {
-    const EX = BL.genesisExhibits, label = BL.factoryModels.label;
+    // Every sign geometry an era makes is noted, so its nodes can step out of the workbench's picture (host.open).
+    const EX = BL.genesisExhibits, signGeos = new Set(), label = (...a) => { const l = BL.factoryModels.label(...a); signGeos.add(l.face); signGeos.add(l.back); return l; };
     built.propNodes = {}; built.exhibitProps = []; built.trail = [];
     exhibitEra = -1;
     if (!EX) return;
@@ -363,6 +364,7 @@
         sign: (title, sub, x, y, z, yaw = 0, height = 0.6) => {
           const l = label(title, sub, { height, style: "plain" }), node = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } }));
           addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
+          (built.signNodes = built.signNodes || []).push(node);
           return node;
         },
         obstacle: (x0, x1, z0, z1) => { built.oldObstacles.push({ era: n, x0, x1, z0, z1 }); },
@@ -399,6 +401,8 @@
       };
       def.build(kit);
     });
+    const signs = built.signNodes = built.signNodes || [], walk = (node) => { if (node.geometry && signGeos.has(node.geometry)) signs.push(node); for (const c of node.children) walk(c); };
+    walk(root);
     // Fingerprints and Time's own exhibits are trail stops too, linked rather than duplicated: the lectern's panel
     // tells both papers' story (genesis-voyage.js FINGERPRINTS).
     for (const link of ROOM_LINKS) built.exhibitProps.push({ era: ROOM_ERA, def: link, prop: { id: link.id, at: muAt(ROOM_ERA, link.at) }, order: built.exhibitProps.length, step: 0, room: true });
@@ -572,6 +576,7 @@
       for (const [bw, bh, bx, by] of [[w, t, 0, h / 2], [w, t, 0, -h / 2], [t, h, w / 2, 0], [t, h, -w / 2, 0]]) addChild(n, createNode({ geometry: M.box({ w: bw, h: bh, d: 0.1, color: glow, emissive: 1.1 }), position: { x: bx, y: by, z: -0.02 } }));
     }
     addChild(n, createNode({ geometry: sign.back }), createNode({ geometry: sign.face }));
+    (built.signNodes = built.signNodes || []).push(n);
     return n;
   };
   // A prop's place on its bank: which side and its (u, v) in genesis-world.js's bank frame.
@@ -724,8 +729,13 @@
         s2.fov = camera.fov; s2.near = camera.near; s2.up = camera.up || null; s2.orthoMix = camera.orthoMix || 0; s2.orthoHeight = camera.orthoHeight || 0;
         camera.up = null; camera.orthoMix = camera.orthoHeight = 0;
         pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
-        // The visitor's Ooga steps out of the picture, so it never stands between the camera and the model.
+        // The visitor's Ooga steps out of the picture, so it never stands between the camera and the model, and so do
+        // the exhibits' floating name signs (Billy's play: they hung in front of the model; the workbench's own
+        // title names it). Both come back on close.
         if (avatar) { bench.avatarShown = avatar.root.visible; avatar.root.visible = false; }
+        const signs = built.signNodes || [], seen = bench.signsShown = bench.signsShown || [];
+        seen.length = signs.length;
+        for (let i = 0; i < signs.length; i++) { seen[i] = signs[i].visible; signs[i].visible = false; }
       }
       bench.open = true; bench.id = id; bench.entry = entry; bench.prop = prop; bench.era = entry.era; bench.framing = false; bench.eased = false;
       bench.from = from; bench.opens++;
@@ -765,6 +775,8 @@
       camera.position.x = s2.x; camera.position.y = s2.y; camera.position.z = s2.z; camera.target.x = s2.tx; camera.target.y = s2.ty; camera.target.z = s2.tz;
       camera.fov = s2.fov; camera.near = s2.near; camera.up = s2.up; camera.orthoMix = s2.orthoMix; camera.orthoHeight = s2.orthoHeight;
       if (avatar) avatar.root.visible = bench.avatarShown !== false;
+      const signs = built.signNodes || [], seen = bench.signsShown || [];
+      for (let i = 0; i < signs.length && i < seen.length; i++) signs[i].visible = seen[i];
       pilot.setActive(true);
       if (overlayCanvas.focus) overlayCanvas.focus({ preventScroll: true });
       if (at && avatar) {
