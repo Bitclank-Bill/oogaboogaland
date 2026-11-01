@@ -213,10 +213,14 @@ are optional.
 ### 3. How an exhibit asks for it
 
 A cabinet's or board's prop `onUse` returns **`{ cartridge: "<id>" }`**.
-- **Opening:** Space by the prop, or a tap on it, opens the console on that cartridge.
-- **From the menu:** choosing the prop opens the console too.
-- **Browsing:** reaching the prop with Previous/Next in the workbench shows a note ("press Space by the cabinet to
-  play") instead of leaving the workbench.
+- **Opening:** Space by the prop, or a tap on it, opens the console on that cartridge. The console loads the
+  `arcade` group first (`BL.deferred.load("arcade")`) when `BL.retroGames` isn't there yet.
+- **An exhibit that also has a terminal** returns both, `{ terminal, cartridge }` (gv/integration-3: the eras'
+  nine playables, wired by `genesis-era-cartridges.js` so no era file changes). Walking up plays it on the console;
+  choosing it from the menu, or reaching it with Previous/Next in the workbench, opens its terminal, which keeps
+  working and whose banner says it also plays on the console.
+- **A cartridge-only prop** (no terminal or board): choosing it from the menu opens the console too, and browsing
+  onto it with Previous/Next shows its note instead of leaving the workbench.
 
 ### 4. The console's behaviour
 
@@ -234,8 +238,10 @@ A cabinet's or board's prop `onUse` returns **`{ cartridge: "<id>" }`**.
   Close are buttons.
 - **Interruption:** while open, the tab being hidden or the window losing focus lets go of every held button and
   pauses a running game. Those two listeners are added on open and removed on close.
-- **Close** (Escape or Close) stops a running game, closes the console's audio context, hides the panel and hands the
-  walk back where it was (the camera never moves). Focus returns to the scene's canvas.
+- **Close** (Escape or Close) lets the game clean up once (`stop()`), whatever its state, and is safe to call
+  twice. It closes the console's audio context, hides the panel and hands the walk back where it was (the camera
+  never moves). Focus returns to the scene's canvas.
+- **Sound** wakes on every console gesture: a key, a tap on the screen and each touch button.
 
 ### 5. FUD Patrol, later, through an adapter
 

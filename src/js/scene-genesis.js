@@ -384,8 +384,10 @@
             if (r.terminal) { const t = r.terminal; return { ...r, terminal: { banner: [`HOW IT CONNECTS: ${how[0]}`, how[1], "", ...t.banner], prompt: t.prompt, run: (line) => t.run(line) } }; }
             return { ...r, board: { ...r.board, pages: [...r.board.pages, { caption: "How it connects", title: c.label, text: how }] } };
           } : d.onUse;
+          // An era's playable also names its cartridge (genesis-era-cartridges.js), its terminal kept.
+          const useWith = BL.genesisEraCartridges ? BL.genesisEraCartridges.withCartridge(d.id, onUse) : onUse;
           // Registered where it stands in the museum; its tap box goes in the gallery's frame, in the era's coordinates.
-          const prop = props.register({ ...d, era: n, onUse, at: muAt(n, d.at) });
+          const prop = props.register({ ...d, era: n, onUse: useWith, at: muAt(n, d.at) });
           entry.prop = prop;
           built.exhibitProps.push(entry);
           const pick = d.pick || { w: 1, h: 1.4, d: 1 };
@@ -713,7 +715,8 @@
       // A cabinet or board whose use returns { cartridge } opens the console instead (genesis-cartridge.js); browsing
       // onto one from the workbench shows its note rather than leaving the workbench.
       const used = /^era3-room-/.test(id) ? { board: G.FINGERPRINTS } : props.use(prop, propState) || {};
-      if (used.cartridge && from !== "browse") { if (bench.open) host.close(); return openConsole(used.cartridge); }
+      // Walking up to it (Space or a tap) plays it on the console; the menu and Previous/Next show its terminal.
+      if (used.cartridge && (from === "walk" || !used.terminal && !used.board) && from !== "browse") { if (bench.open) host.close(); return openConsole(used.cartridge); }
       bench.pending = used;
       if (!bench.open) {
         const s2 = bench.saved, cp = camera.position, ct = camera.target;
@@ -779,6 +782,11 @@
   // the walk back where it was (the camera never moved).
   const openConsole = (id) => {
     if (!cart || !BL.genesisCartridge.find(id)) { hud.toast("That console game is not installed yet"); return false; }
+    // The eras' games draw with the arcade's kit (retro-games.js, the deferred "arcade" group on a hosted page).
+    if (!BL.retroGames && BL.deferred && BL.deferred.load) {
+      BL.deferred.load("arcade").then(() => { if (cart && !cart.isOpen) openConsole(id); }).catch(() => hud.toast("The console could not load its games"));
+      return true;
+    }
     audio.wake();
     pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
     if (!cart.open(id, { still: view.calm })) { pilot.setActive(true); return false; }

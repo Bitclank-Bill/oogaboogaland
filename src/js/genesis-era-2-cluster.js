@@ -163,7 +163,7 @@
   const SOURCE = ["E2-UPGRADE"];
   const EXHIBITS = {
     four: { id: "e2-four", year: "1980s", connection: "context", title: "Four in a row table: drop counters, get four in a line",
-      label: "FOUR IN A ROW · 1980s STYLE", sub: "a modern museum homage · made 2026",
+      label: "FOUR IN A ROW · 1980s GALLERY", sub: "a modern original museum game, not from the 1980s",
       date: "1980s style: a modern museum homage made in 2026; when such games were first played is on HOLD and not claimed" },
     crt: { id: "e2-crt", year: "1980s", connection: "context", title: "Colour screen toy: mix red, green and blue light",
       label: "COLOUR SCREEN · 1980s STYLE", sub: "a simplified model · made 2026",

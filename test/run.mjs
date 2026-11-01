@@ -25250,6 +25250,59 @@ const genesisAtriumProof = async () => {
 };
 // The cartridge console (genesis-cartridge.js) with one dummy game: the registry's rules, a run started, steered,
 // paused, interrupted and closed through the console's own keys, and the game stopped on close.
+// rule (gv/integration-3, request 4d): every era's playable is a console cartridge, labelled modern and original,
+// that starts, runs and draws on the console with the arcade's real kit, and its exhibit's onUse carries the cartridge
+// while its terminal keeps working.
+const genesisEraCartridgeProof = async () => {
+  const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : k === "measureText" ? () => ({ width: 0 }) : () => ({ addColorStop() {}, data: new Uint8ClampedArray(4) })), set: (t, k, v) => { t[k] = v; return true; } });
+  const document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
+  const context = { window: { BL: { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } } }, document, crypto: webcrypto, console, AbortController };
+  context.window.document = document;
+  for (const f of ["math", "retro-games", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES, "genesis-cartridge", "genesis-era-cartridges"])
+    runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, C = BLc.genesisCartridge, EC = BLc.genesisEraCartridges, props = {}, bad = [];
+  W.ERAS.forEach((e, n) => {
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true, glow: 1 });
+    const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle: () => {}, notify: () => {}, prop: (d) => { props[d.id] = d; return { ...d, era: n }; } };
+    if (EX.eras[n]) EX.eras[n].build(kit);
+  });
+  const WANT = ["e0-nim", "e1-paddle", "e2-four", "e3-rally", "e4-strategy", "e5-patchwork", "e5-pocket", "e6-argument", "e7-sync"];
+  if (EC.ids.join() !== WANT.join()) bad.push(`cartridges ${EC.ids}`);
+  if (C.checkAll() !== WANT.length) bad.push("the registry does not hold exactly the nine era cartridges");
+  const con = C.create({ root: null });
+  for (const id of WANT) {
+    const c = C.find(id), p = props[id];
+    if (!c) { bad.push(`${id} not registered`); continue; }
+    if (!/modern/i.test(c.label) || !/original/i.test(c.label) || /\b(19|20)\d\d style\b|made 2026/i.test(c.label)) bad.push(`${id}: label "${c.label}"`);
+    if (!p) { bad.push(`${id}: no exhibit built`); continue; }
+    if (c.era !== +id[1]) bad.push(`${id}: era ${c.era}`);
+    // The cabinet's own sign says the same (Era 2's read "1980s style, made 2026").
+    const four = BLc.genesisEra2Cluster.EXHIBITS.four;
+    if (id === "e2-four" && (!/modern original/i.test(four.sub) || /STYLE/.test(four.label) || /made 2026/.test(four.sub))) bad.push(`e2-four's sign "${four.label} / ${four.sub}"`);
+    // The console makes and starts it, and it runs and draws.
+    try {
+      if (!con.open(id) || !con.game) { bad.push(`${id}: the console did not open it`); continue; }
+      con.key("down", "Enter", false); con.key("up", "Enter", false);
+      for (let i = 0; i < 120; i++) { if (i % 10 === 0) { con.key("down", "Space", false); con.key("up", "Space", false); } con.update(1 / 60); }
+      con.game.draw(ctx2d);
+      con.close();
+      if (con.isOpen) bad.push(`${id}: did not close`);
+    } catch (err) { bad.push(`${id}: ${err.message}`); }
+    // The exhibit: its onUse carries the cartridge, and its terminal still answers with the console note on top.
+    const raw = p.onUse({}) || {}, used = EC.withCartridge(id, p.onUse)({}) || {};
+    if (used.cartridge !== id) bad.push(`${id}: onUse does not carry its cartridge`);
+    if (raw.terminal) {
+      if (!used.terminal || used.terminal.banner[0] !== EC.NOTE || used.terminal.banner.length !== raw.terminal.banner.length + 1) bad.push(`${id}: the terminal banner lost its note or lines`);
+      const help = used.terminal && used.terminal.run("HELP");
+      if (!help || !(help.lines || []).length) bad.push(`${id}: its terminal no longer answers HELP`);
+    }
+  }
+  con.dispose();
+  const other = Object.keys(props).find((id) => !WANT.includes(id));
+  if (EC.withCartridge(other, props[other].onUse) !== props[other].onUse) bad.push(`${other}: an exhibit without a cartridge changed`);
+  return { bad };
+};
 const genesisCartridgeProof = async () => {
   const context = { window: {}, AbortController };
   context.window.BL = {};
@@ -25780,6 +25833,8 @@ const unitChecks = async () => {
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
+  const genesisEraCartridges = await genesisEraCartridgeProof();
+  record("Genesis era cartridges (rule, gv/integration-3 4d): the nine era playables are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisMuseum = await genesisMuseumProof();
   record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles (its upgrade cluster included) land inside its own gallery, and Era 2's FUD Patrol floor is a reserved plot there", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
