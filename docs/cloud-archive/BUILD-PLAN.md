@@ -3,7 +3,7 @@
 A hidden white archive above the island. Jetpack up to one marked cloud and shoot it, and a beanstalk grows from the
 meadow to it. Climb the stalk and you come out through the cloud floor into a bright, empty white space. Shelves run
 off toward the horizon, one for each day of Ooga Booga Land's history. Each book is a commit. Tap a shelf, or face it
-and press Space, to read that day: its commits, its verified merged PRs and their authors as git recorded them, with
+and press Space, to read that day: its commits, their PR-head matches and their authors as git recorded them, with
 links to GitHub.
 
 Branch: `feature/cloud-archive`, cut from the official `OogaBoogaX/oogaboogaland` `rock` (37d9f39, 2026-10-31). It stays
@@ -45,20 +45,27 @@ npm run archive -- --rev <full official rock SHA>
   is generated from `rock` at `37d9f3947bbff844f792595471e3eb99ab13e7f9`.
 - **Authors** are as git recorded them, which is self-reported:
   - **Linked accounts:** a commit belongs to a GitHub account only when its author address is a GitHub noreply address
-    (`<id>+<login>@users.noreply.github.com`), which GitHub issues per account.
+    (`<id>+<login>@users.noreply.github.com`), which GitHub issues per account, keyed by that account number. The
+    older unnumbered form (`<login>@users.noreply.github.com`) joins a numbered account only through a reviewed alias
+    (`login` + `noreplyId` in the mapping). Without one, while the same login also appears numbered, it is kept apart
+    as "unconfirmed" (perhaps that account, perhaps an earlier holder of the login) and not counted as an account.
   - **Unlinked authors:** every other author is kept as its own identity per exact address and labelled by its git
     name, marked `*` on the page. It is never matched to an account by name, so two people sharing a name stay two,
     and an account's own login is never renamed.
-  - **No addresses:** no address, and no hash of a personal address, is written out. Anything shaped like an address
-    in a commit title is replaced.
+  - **No addresses:** no address, and no hash of a personal address, is written out. Every exported title and label
+    (git names and the mapping's labels alike) is scrubbed of anything shaped like an address, and no two exported
+    labels are the same.
 - **Kinds.** A `[bot]` login (GitHub reserves that suffix for apps) is automation. AI agents and organisations are only
   what `scripts/cloud-archive-identities.json` names after review, by login or by the SHA-256 of a service address;
   today that is Claude Code's and Codex's commit identities. Display names alone never decide a kind. Automation,
   agents and organisations are counted apart from authors.
-- **Pull requests.** A merged PR counts only when a merge commit's second parent is the head GitHub publishes for it,
-  `refs/pull/<n>/head`, read with `git ls-remote`. Subjects such as `Merge pull request #n from owner/branch` or a
-  `(#n)` suffix prove nothing on their own, and PR authorship is not shown. Neither a branch's owner nor the merged
-  commit's author is taken as the PR's author.
+- **Pull requests: PR-head matches, not "merged PRs".** A merge commit shows PR #n when its second parent is the head
+  GitHub publishes for exactly that one PR, `refs/pull/<n>/head`, read with `git ls-remote`. That proves the merge
+  brought in PR n's head commit. It does not prove GitHub marked PR n merged: open, closed-unmerged or duplicate PRs
+  can share a head. So the page says "PR-head match", and a head several PRs share is credited to none (on today's
+  `rock`, PRs #40 and #65 share one merged head). Subjects such as `Merge pull request #n from owner/branch` or a
+  `(#n)` suffix prove nothing on their own. PR authorship is not shown: neither a branch's owner nor the merged
+  commit's author is taken as a PR's author.
 - **Why not the API.** Verified account links for private addresses, PR authors and signature badges need the GitHub
   API. This build container has no API access to the official repository, so the archive makes the narrower,
   checkable claims above. The page says so in every day's note.
@@ -84,7 +91,7 @@ npm run archive -- --rev <full official rock SHA>
    and footsteps all come from the pilot and the crew, as in the Sphere.
 4. Tapping a shelf, or facing one on the floor and pressing Space (READ), opens the day's board. Space and READ do
    one thing at a time, whichever of a faced shelf and a free chair is nearer. The board shows the date, the commit,
-   verified PR and author counts, the authors and the commits, and the arrow keys page through the days without
+   PR-head match and author counts, the authors and the commits, and the arrow keys page through the days without
    moving the Ooga. Its links open the day's history from its last commit, and its PRs, on GitHub.
 5. Going home is always deliberate: climb all the way down the stalk, press Space (ISLAND) at its foot after having
    been up, or use Leave or Escape. Falling into the shaft only leaves the Ooga at its foot, with a hint. The same Ooga

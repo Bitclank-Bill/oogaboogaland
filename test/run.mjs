@@ -22858,7 +22858,12 @@ const cloudArchiveProof = async () => {
     commit(15, "Cy", "cy@example.org", "Merge branch 'rock' into topic", [sha(16), sha(70)])
   ], heads);
   r.fakeMerge = who(merges, 10).pr === 0 && who(merges, 12).pr === 0;
-  r.realMerge = who(merges, 13).pr === 8 && who(merges, 13).label === "bo" && who(merges, 13).title === "Real title" && who(merges, 15).pr === 7 && merges.counts.pulls === 2;
+  // A merge whose second parent is one PR's published head is a PR-head match for it (nothing more is claimed).
+  r.headMatch = who(merges, 13).pr === 8 && who(merges, 13).label === "bo" && who(merges, 13).title === "Real title" && who(merges, 15).pr === 7 && merges.counts.prHeadMatches === 2 && merges.counts.sharedHeadMerges === 0;
+  // A head several PRs share (open, closed or duplicate PRs can) credits none of them, whichever number is lowest.
+  const shared = build([commit(40, "Eve", "eve@example.org", "Merge pull request #65 from eve/x", [sha(41), sha(400)], "Shared head")], new Map([[40, sha(400)], [65, sha(400)], [66, sha(401)]]));
+  const sharedRow = shared.days[0].commits[0];
+  r.sharedHead = sharedRow[3] === 0 && (sharedRow[4] & L.FLAG.sharedHead) !== 0 && shared.counts.prHeadMatches === 0 && shared.counts.sharedHeadMerges === 1 && sharedRow[2] === "Merge pull request #65 from eve/x";
   r.noBranchOwner = !merges.people.some((p) => p.label === "mallory");
   // Unknowns stay unknown: a private address is an unlinked author under its git name, never an account or an agent by
   // name; only the reviewed mapping and a [bot] login change a kind.
@@ -22867,7 +22872,21 @@ const cloudArchiveProof = async () => {
     commit(22, "Helper", "agent@example.com", "z"), commit(23, "OrgName", "77+orgname@users.noreply.github.com", "w")
   ], new Map(), [{ emailSha256: L.emailHash("agent@example.com"), kind: "agent", label: "Helper (AI agent)" }, { login: "orgname", kind: "organisation", label: "OrgName" }]);
   r.unknown = who(kinds, 20).kind === "unlinked" && who(kinds, 20).label === "Claude" && who(kinds, 21).kind === "automation" && who(kinds, 22).kind === "agent" && who(kinds, 23).kind === "organisation";
-  r.noAddress = !/@/.test(JSON.stringify(build([commit(30, "Di", "di@example.org", "Reach me at di@example.org")]))) && !/@/.test(JSON.stringify(merges));
+  // No address anywhere in the output: not in titles, not in an author's display name, not in a reviewed label.
+  const addressed = build([commit(30, "Di", "di@example.org", "Reach me at di@example.org"), commit(31, "contact@example.com", "contact@example.com", "x"),
+    commit(32, "Svc", "svc@example.net", "y"), commit(33, "contact@example.com", "other@example.com", "z")], new Map(), [{ emailSha256: L.emailHash("svc@example.net"), kind: "agent", label: "Svc <svc@example.net>" }]);
+  const addressedText = JSON.stringify(addressed) + JSON.stringify(merges);
+  r.noAddress = !/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(addressedText) && who(addressed, 31).index !== who(addressed, 33).index;
+  // Every exported label is distinct, even when a git name reads like a numbered label.
+  const labels = build([commit(34, "sam", "a@example.org", "a"), commit(35, "sam", "b@example.org", "b"), commit(36, "sam (1)", "c@example.org", "c")]).people.map((p) => p.label.toLowerCase());
+  r.uniqueLabels = new Set(labels).size === labels.length && new Set(addressed.people.map((p) => p.label)).size === addressed.people.length;
+  // The two noreply forms of one login are not merged on a guess: the unnumbered one is unconfirmed and not an
+  // account, with its own label; a reviewed alias joins them.
+  const mixedCommits = [commit(37, "Alice", "alice@users.noreply.github.com", "old"), commit(38, "Alice", "123+alice@users.noreply.github.com", "new")];
+  const mixed = build(mixedCommits), joined = build(mixedCommits, new Map(), [{ login: "alice", noreplyId: 123 }]);
+  r.mixedNoreply = who(mixed, 37).index !== who(mixed, 38).index && mixed.counts.account === 1 && mixed.counts.unconfirmed === 1 && who(mixed, 37).label !== who(mixed, 38).label
+    && who(joined, 37).index === who(joined, 38).index && joined.counts.account === 1 && joined.counts.unconfirmed === 0
+    && build([mixedCommits[0]]).counts.account === 1;
   // Shelves: a day over capacity keeps capacity - 1 books and one overflow binder; nothing is dropped.
   const cap = L.SHELF.capacity, over = L.shelve(cap + 57), full = L.shelve(cap);
   r.overflow = full.books === cap && full.overflow === 0 && over.books === cap - 1 && over.books + over.overflow === cap + 57;
@@ -22912,7 +22931,7 @@ const cloudArchiveProof = async () => {
 };
 const unitChecks = async () => {
   const archive = await cloudArchiveProof();
-  record("cloud archive history: shared display names stay separate people, merge-looking subjects and branch owners prove no PR, unknown and unreviewed identities stay unlinked, no address is published, an over-full day overflows without dropping commits, and the generator shelves only an explicit revision of the official branch", Object.values(archive).every(Boolean), JSON.stringify(archive));
+  record("cloud archive history: shared display names stay separate people, merge-looking subjects and branch owners prove no PR, a PR is only ever a PR-head match and a shared head credits none, the two noreply forms join only by reviewed alias, unknown and unreviewed identities stay unlinked, no address appears anywhere in the output and labels are distinct, an over-full day overflows without dropping commits, and the generator shelves only an explicit revision of the official branch", Object.values(archive).every(Boolean), JSON.stringify(archive));
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
   const previewRange=await studioPreviewRangeProof();

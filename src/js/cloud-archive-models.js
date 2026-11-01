@@ -1,6 +1,6 @@
 // The Cloud Archive's room: a white floor without edges, the shaft the beanstalk comes up through, and one dark rack a
 // day down a long aisle, each holding a book per commit (cloud-archive-data.js), coloured by who made it: grey for
-// automation, slate for a reviewed AI agent, gold for a verified merged PR. A day with more commits than a rack holds
+// automation, slate for a reviewed AI agent, gold for a PR-head match. A day with more commits than a rack holds
 // (`shelve`, the generator's own rule) keeps capacity - 1 books and one overflow binder standing for the rest, which
 // the plaque and the day's board count. Every rack is one merged mesh, books and all; nothing here is per book.
 // `LAYOUT` is the walking plan the interior reads; `build` makes the nodes. Geometry is cached under the

@@ -3,22 +3,28 @@
 //
 // - Every book is a commit reachable from one explicit revision of the official `rock`, checked to be on it.
 // - A commit is shown under its author as git recorded it (self-reported). It is linked to a GitHub account only when
-//   its author address is a GitHub noreply address (`<id>+<login>@users.noreply.github.com`, or `<login>@…`), which
-//   GitHub issues per account; such identities are keyed by that account. Any other author is "unlinked": kept as its
-//   own identity per exact address (never shown), labelled by its git name, and never matched to an account by name.
+//   its author address is a GitHub noreply address, which GitHub issues per account, keyed by the account's number
+//   (`<id>+<login>@users.noreply.github.com`). The older form without a number (`<login>@…`) is keyed by its login;
+//   it joins a numbered identity only through a reviewed alias, and while the same login also appears numbered without
+//   one it is "unconfirmed": kept apart, labelled so, and not counted as an account. Any other author is "unlinked":
+//   its own identity per exact address (never shown), labelled by its git name, never matched to an account by name.
 // - A `[bot]` login (a GitHub App's reserved suffix) is automation. AI agents and organisations are only what the
 //   reviewed mapping (scripts/cloud-archive-identities.json) names, by login or by the SHA-256 of an exact address.
-// - A merged pull request is counted only when a merge commit's second parent is the head GitHub publishes for it
-//   (`refs/pull/<n>/head`). Subjects ("Merge pull request #n from owner/branch", "… (#n)") prove nothing, and neither a
-//   branch's owner nor a merged commit's author is taken as the PR's author: PR authorship is not shown.
+// - Pull requests: a merge commit is a "PR-head match" for PR n when its second parent is the head GitHub publishes
+//   for n (`refs/pull/<n>/head`). That shows the merge brought in PR n's head commit; it does not prove GitHub marked
+//   n merged, so the archive says "PR-head match", never "merged PR". A head several PRs share credits none of them.
+//   Subjects ("Merge pull request #n from owner/branch", "… (#n)") prove nothing, and neither a branch's owner nor a
+//   merged commit's author is taken as a PR's author: PR authorship is not shown.
+// - No address leaves: every exported label and title is scrubbed of anything shaped like one.
 // - Days are UTC, by committer date. A shelf holds SHELF.capacity books; a busier day keeps capacity - 1 books and puts
 //   the rest in one overflow binder, so every commit is still counted and none is silently dropped.
 import { createHash } from "node:crypto";
 
 export const OFFICIAL = { repo: "OogaBoogaX/oogaboogaland", url: "https://github.com/OogaBoogaX/oogaboogaland", branch: "rock" };
 export const SHELF = { levels: 4, perLevel: 48, get capacity() { return this.levels * this.perLevel; } };
-export const KINDS = ["account", "unlinked", "automation", "agent", "organisation"];
-export const FLAG = { merge: 2 };
+export const KINDS = ["account", "unconfirmed", "unlinked", "automation", "agent", "organisation"];
+// flags: 2 a merge commit; 4 a merge whose second parent is a head several PRs share (credited to none).
+export const FLAG = { merge: 2, sharedHead: 4 };
 export const SEP = "\x1f", END = "\x1e";
 export const LOG_FORMAT = `%H${SEP}%ct${SEP}%an${SEP}%ae${SEP}%P${SEP}%s${SEP}%b${END}`;
 const NOREPLY = /^(?:(\d+)\+)?([A-Za-z0-9-]+(?:\[bot\])?)@users\.noreply\.github\.com$/i;
@@ -54,31 +60,43 @@ export const checkRevision = ({ rev, officialTip, isAncestor }) => {
   if (!isAncestor(rev, officialTip)) return `${rev} is not on ${OFFICIAL.repo} ${OFFICIAL.branch} (tip ${officialTip})`;
   return null;
 };
-// Who a commit is, as far as the evidence goes: { key, label, kind }. The key never leaves the generator.
+// Who a commit is, as far as the evidence goes: { key, label, kind, login, legacy }. The key never leaves the generator.
+// A reviewed entry with `kind` sets a kind and label; one with `login` and `noreplyId` says the older, unnumbered
+// noreply address of that login is that numbered account.
 export const identityOf = (commit, identities = []) => {
   const m = NOREPLY.exec(commit.email.trim());
-  const reviewed = identities.find((e) => m && e.login && e.login.toLowerCase() === m[2].toLowerCase()
-    || e.emailSha256 && e.emailSha256 === emailHash(commit.email));
+  const login = m ? m[2] : null, lower = login && login.toLowerCase();
+  const reviewed = identities.find((e) => e.kind && (m && e.login && e.login.toLowerCase() === lower || e.emailSha256 && e.emailSha256 === emailHash(commit.email)));
   if (m) {
-    const login = m[2], key = m[1] ? `id:${m[1]}` : `login:${login.toLowerCase()}`;
-    if (reviewed) return { key, label: reviewed.label || login, kind: reviewed.kind };
-    return { key, label: login, kind: /\[bot\]$/i.test(login) ? "automation" : "account" };
+    const alias = !m[1] && identities.find((e) => e.noreplyId && e.login && e.login.toLowerCase() === lower);
+    const id = m[1] || (alias ? String(alias.noreplyId) : null), key = id ? `id:${id}` : `legacy:${lower}`;
+    if (reviewed) return { key, label: reviewed.label || login, kind: reviewed.kind, login, legacy: !id };
+    return { key, label: login, kind: /\[bot\]$/i.test(login) ? "automation" : "account", login, legacy: !id };
   }
   const key = `email:${emailHash(commit.email)}`;
-  if (reviewed) return { key, label: reviewed.label, kind: reviewed.kind };
-  return { key, label: commit.name.trim() || "unknown", kind: "unlinked" };
+  if (reviewed) return { key, label: reviewed.label, kind: reviewed.kind, login: null, legacy: false };
+  return { key, label: commit.name.trim() || "unknown", kind: "unlinked", login: null, legacy: false };
 };
-// Published heads by commit: the lowest PR number for a head two PRs share.
+// Published heads by commit: every PR number whose head it is.
 export const pullsByHead = (pullHeads) => {
   const out = new Map();
-  for (const [number, head] of pullHeads) if (!out.has(head) || out.get(head) > number) out.set(head, number);
+  for (const [number, head] of pullHeads) {
+    if (!out.has(head)) out.set(head, []);
+    out.get(head).push(number);
+  }
+  for (const list of out.values()) list.sort((a, b) => a - b);
   return out;
 };
-// A merge commit's PR, only when its second parent is that PR's published head.
-export const verifiedPull = (commit, byHead) => commit.parents.length > 1 && byHead.get(commit.parents[1]) || 0;
+// A merge commit's PR-head match: { pr, shared }. pr is n only when the merge's second parent is the head of exactly
+// one PR, n; a head several PRs share gives pr 0 and shared true.
+export const pullMatch = (commit, byHead) => {
+  const list = commit.parents.length > 1 ? byHead.get(commit.parents[1]) : null;
+  if (!list) return { pr: 0, shared: false };
+  return list.length === 1 ? { pr: list[0], shared: false } : { pr: 0, shared: true };
+};
 export const shelve = (count, capacity = SHELF.capacity) => count <= capacity ? { books: count, overflow: 0 } : { books: capacity - 1, overflow: count - (capacity - 1) };
-// No address reaches the page: anything shaped like one in a title is replaced. A PR's title is the merge message's
-// first line that is not a trailer (`Co-Authored-By: …`), else the subject.
+// No address reaches the page: anything shaped like one, in a title or a label, is replaced. A PR-head match's title is
+// the merge message's first line that is not a trailer (`Co-Authored-By: …`), else the subject.
 const ADDRESS = /<?[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}>?/g, TRAILER = /^[A-Za-z][A-Za-z-]*: /;
 export const scrub = (text) => text.replace(ADDRESS, "[address removed]");
 const pullTitle = (c) => c.body.split("\n").map((l) => l.trim()).find((l) => l && !TRAILER.test(l)) || c.subject;
@@ -92,33 +110,47 @@ export const buildArchive = ({ commits, pullHeads = new Map(), identities = [], 
     if (!index.has(id.key)) { index.set(id.key, ids.length); ids.push(id); }
     return index.get(id.key);
   };
-  const byHead = pullsByHead(pullHeads), days = new Map(), pulls = new Set();
+  const byHead = pullsByHead(pullHeads), days = new Map(), matched = new Set();
+  let sharedHeads = 0;
   for (const c of [...commits].sort((a, b) => a.time - b.time || (a.sha < b.sha ? -1 : 1))) {
-    const pr = verifiedPull(c, byHead);
-    if (pr) pulls.add(pr);
+    const { pr, shared } = pullMatch(c, byHead);
+    if (pr) matched.add(pr);
+    if (shared) sharedHeads++;
     const title = scrub(pr ? pullTitle(c) : c.subject);
     const day = utcDay(c.time);
     if (!days.has(day)) days.set(day, []);
-    days.get(day).push([c.sha, person(identityOf(c, identities)), title.trim(), pr, c.parents.length > 1 ? FLAG.merge : 0]);
+    days.get(day).push([c.sha, person(identityOf(c, identities)), title.trim(), pr, (c.parents.length > 1 ? FLAG.merge : 0) | (shared ? FLAG.sharedHead : 0)]);
   }
-  // Labels once every identity is known: an account or automation keeps its login (unique on GitHub); any other
-  // identity whose label another also uses is numbered in order of appearance. Two identities are never merged.
-  const uses = new Map(), nth = new Map();
-  for (const id of ids) uses.set(id.label.toLowerCase(), (uses.get(id.label.toLowerCase()) || 0) + 1);
-  const people = ids.map((id) => {
-    const k = id.label.toLowerCase();
-    if (id.kind === "account" || id.kind === "automation" || uses.get(k) < 2) return { label: id.label, kind: id.kind };
-    nth.set(k, (nth.get(k) || 0) + 1);
-    return { label: `${id.label} (${nth.get(k)})`, kind: id.kind };
+  // An unnumbered noreply login that also appears numbered, with no reviewed alias, is unconfirmed: it may be that
+  // account, or an earlier holder of the login. It is kept apart and not counted as an account.
+  const numbered = new Set(ids.filter((id) => id.login && !id.legacy).map((id) => id.login.toLowerCase()));
+  for (const id of ids) if (id.legacy && id.kind === "account" && numbered.has(id.login.toLowerCase())) { id.kind = "unconfirmed"; id.label = `${id.login} (unconfirmed)`; }
+  // Labels once every identity is known, scrubbed first. A label one identity alone uses stands as it is; so does an
+  // account's or automation login's when no other account or automation uses it. Any other identity sharing a label is
+  // numbered in order of appearance. Two identities are never merged, and no two exported labels are the same.
+  const base = ids.map((id) => scrub(id.label)), uses = new Map(), loginUses = new Map(), nth = new Map();
+  ids.forEach((id, i) => {
+    const k = base[i].toLowerCase();
+    uses.set(k, (uses.get(k) || 0) + 1);
+    if (id.kind === "account" || id.kind === "automation") loginUses.set(k, (loginUses.get(k) || 0) + 1);
   });
-  const counts = { commits: commits.length, pulls: pulls.size };
+  const taken = new Set();
+  const people = ids.map((id, i) => {
+    const k = base[i].toLowerCase(), plain = uses.get(k) < 2 || (id.kind === "account" || id.kind === "automation") && loginUses.get(k) === 1;
+    let label = base[i];
+    // Numbered when shared, and numbered on past any label already given (a git name may itself read "sam (1)").
+    if (!plain || taken.has(label.toLowerCase())) do { nth.set(k, (nth.get(k) || 0) + 1); label = `${base[i]} (${nth.get(k)})`; } while (taken.has(label.toLowerCase()));
+    taken.add(label.toLowerCase());
+    return { label, kind: id.kind };
+  });
+  const counts = { commits: commits.length, prHeadMatches: matched.size, sharedHeadMerges: sharedHeads };
   for (const kind of KINDS) counts[kind] = people.filter((p) => p.kind === kind).length;
   return {
     provenance: {
       repo, branch: OFFICIAL.branch, rev, officialTip,
       days: "UTC, by committer date",
-      authors: "as recorded in git (self-reported); linked to a GitHub account only through a GitHub noreply address; others unlinked, one identity per exact address, never matched by name",
-      pulls: "counted only when a merge commit's second parent is the PR's published head (refs/pull/<n>/head); PR authors are not shown",
+      authors: "as recorded in git (self-reported); linked to a GitHub account only through a GitHub noreply address, keyed by its account number; an unnumbered noreply login joins a numbered one only by reviewed alias, else stays apart as unconfirmed when both appear; others unlinked, one identity per exact address, never matched by name; every label scrubbed of addresses",
+      pulls: "PR-head matches: a merge commit whose second parent is the head GitHub publishes for exactly one PR (refs/pull/<n>/head). This shows the merge brought in that PR's head, not that GitHub marked the PR merged; a head several PRs share credits none; PR authors are not shown",
       kinds: "automation: a [bot] noreply login; agent and organisation: the reviewed mapping only"
     },
     repo, rev, commits: commits.length, counts, shelf: { capacity: SHELF.capacity },

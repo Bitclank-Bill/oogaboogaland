@@ -2,7 +2,7 @@
 // the foot of a shaft under the cloud floor and climbs the stalk on the crew's own ladder (W/S, A/D, Space jumps off)
 // up into a white room without walls, where one dark rack a day of the game's history stands down a long aisle, a
 // book a commit (cloud-archive-models.js, cloud-archive-data.js). Space (or the READ button) facing a shelf, a tap
-// on a rack or its plaque opens that day's board: its commits, verified merged PRs and their authors as git recorded
+// on a rack or its plaque opens that day's board: its commits, PR-head matches and their authors as git recorded
 // them, with links out to GitHub; the arrows page through the days. At the far end, two armchairs (Space or SIT) face
 // a small TV showing the pictures the island took on the way up.
 //
@@ -39,7 +39,7 @@
   const ARRIVAL_PITCH = -0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
   // Authors are identities as git recorded them (linked accounts and unlinked git names); automation, agents and
   // organisations are counted apart and never as people.
-  const AUTHOR = { account: true, unlinked: true };
+  const AUTHOR = { account: true, unconfirmed: true, unlinked: true };
   const dayStats = (day) => {
     let prs = 0, automation = 0, agents = 0, organisations = 0;
     const by = new Map();
@@ -79,7 +79,7 @@
     g.fillStyle = "#1d1f24"; g.font = `700 34px ${FONT}`; g.textAlign = "left"; g.textBaseline = "alphabetic";
     g.fillText(longDate(day.date), 36, 56);
     g.fillStyle = "#5b606b"; g.font = `500 19px ${FONT}`;
-    g.fillText(`${plural(s.commits, "commit")} · ${plural(s.prs, "verified merged PR")} · ${plural(s.authors.length, "author")}${others(s)}`, 36, 86);
+    g.fillText(`${plural(s.commits, "commit")} · ${plural(s.prs, "PR-head match", "PR-head matches")} · ${plural(s.authors.length, "author")}${others(s)}`, 36, 86);
     let x = 36, y = 124;
     g.font = `600 18px ${FONT}`;
     for (const [p, n] of s.authors) {
@@ -275,7 +275,7 @@
       boardVersion++;
     };
     // GitHub's history from the day's last commit back: exact, where a date filter would be read in the viewer's time
-    // zone. Then the day's verified PRs.
+    // zone. Then the day's PR-head matches.
     const dayLinks = (i) => {
       const day = DATA.days[i], last = day.commits[day.commits.length - 1][0];
       const links = [{ href: `${REPO_URL}/commits/${last}`, label: `History from this day's last commit, ${last.slice(0, 7)} (new tab)` }];
@@ -289,8 +289,8 @@
       get note() {
         const s = STATS[dayIndex], who = s.authors.map(([p, n]) => `${label(p)} (${n})`).join(", ");
         const shelf = s.shelf.overflow ? ` ${s.shelf.books} stand as books; the other ${s.shelf.overflow} are in the overflow binder.` : "";
-        return `${plural(s.commits, "commit")}, ${plural(s.prs, "verified merged PR")}${who ? `, by ${who}` : ""}${others(s).replace(/ · /g, "; ")}.${shelf} `
-          + `Authors are as git recorded them; * marks a git name not linked to a GitHub account. A PR counts only when GitHub's published PR head was merged. `
+        return `${plural(s.commits, "commit")}, ${plural(s.prs, "PR-head match", "PR-head matches")}${who ? `, by ${who}` : ""}${others(s).replace(/ · /g, "; ")}.${shelf} `
+          + `Authors are as git recorded them; * marks a git name not linked to a GitHub account. A PR number appears where a merge brought in the exact head GitHub publishes for that one PR (refs/pull); that matches its head, it does not prove GitHub marked it merged, and a head several PRs share is credited to none. `
           + `From ${DATA.repo} ${DATA.provenance.branch} at ${DATA.rev.slice(0, 7)}, days in UTC.`;
       },
       get links() { return dayLinks(dayIndex); },
