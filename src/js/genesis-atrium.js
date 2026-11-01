@@ -19,9 +19,24 @@
   const BL = window.BL = window.BL || {};
   // The spiral: from the south-west (where Era 0's gallery begins), clockwise seen from above (north is -z), inward
   // from R0 to R1 and rising from H0 to H1; the paper's dais in the middle; the map's markers on a ring at MAP_R.
-  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2, STATUE_BASE = 5.6;
+  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2, CAIRN_BASE = 3.2;
   // The view from the arrival to the white timeline screen (scene-genesis.js ENTRY and LEGEND) stays clear.
   const CLEAR = { x0: -13, x1: 13, z0: 47, z1: 66 };
+  // The cairn's tiers, bottom to top, shared by its mesh and its footing: the plinth, eight stones (each narrower, a
+  // little off centre and turned) and the gold block. `half` is the square a body can stand on inside each (inscribed
+  // in the turned stone), `rise` the height of its top above the floor.
+  const CAIRN_STONES = 8, CAIRN_H = 0.55, CAIRN_PLINTH = 0.75, GOLD_BLOCK = 0.7;
+  const cairnTiers = (base) => {
+    const tiers = [{ kind: "plinth", w: base, d: base, h: CAIRN_PLINTH, dx: 0, turn: 0, half: base / 2, rise: CAIRN_PLINTH }];
+    let y = CAIRN_PLINTH;
+    for (let i = 0; i < CAIRN_STONES; i++) {
+      const w = 2.3 - i * 0.16, d = w * 0.82, h = CAIRN_H - i * 0.012, turn = (i % 2 ? 1 : -1) * (0.12 + 0.04 * i), dx = (i % 3 - 1) * 0.06;
+      tiers.push({ kind: "stone", era: i, w, d, h, dx, turn, y, half: Math.min(w, d) / 2 * 0.9, rise: y + h });
+      y += h;
+    }
+    tiers.push({ kind: "gold", w: GOLD_BLOCK, d: GOLD_BLOCK, h: GOLD_BLOCK, dx: 0, turn: 0.4, y, half: GOLD_BLOCK / 2 * 0.9, rise: y + GOLD_BLOCK });
+    return tiers;
+  };
   const bearingPoint = (r, a, out) => { out.x = r * Math.sin(a); out.z = -r * Math.cos(a); return out; };
   const layout = ({ entries, museum, eras }) => {
     const trail = entries.filter((e) => e.trail && e.connection !== "anchor");
@@ -43,9 +58,19 @@
     const paperStop = paper ? { id: paper.id, step: paper.step, year: paper.year, kind: "anchor", title: paper.title, era: paper.era, x: 0, z: 0, h: 0.4, ry: Math.PI, at: { x: 0, z: DAIS / 2 + 1.4 } } : null;
     const genesis = genesisEntry ? { id: genesisEntry.id, year: genesisEntry.year, title: genesisEntry.title, era: genesisEntry.era, kind: "context", x: 4.2, z: 0.6, h: 0.9, ry: Math.PI, at: { x: 4.2, z: 2.3 } } : null;
     if (genesis) obstacles.push({ x0: genesis.x - 0.55, x1: genesis.x + 0.55, z0: genesis.z - 0.55, z1: genesis.z + 0.55 });
-    // The Satoshi statue behind the dais, facing the paper's way (+z) over it, inside the spiral's innermost turn.
-    const statue = { x: 0, z: -6.2, base: STATUE_BASE };
-    obstacles.push({ x0: statue.x - STATUE_BASE / 2 - 0.1, x1: statue.x + STATUE_BASE / 2 + 0.1, z0: statue.z - STATUE_BASE / 2 - 0.1, z1: statue.z + STATUE_BASE / 2 + 0.1 });
+    // The cairn behind the dais, its plaque facing the paper's way (+z), inside the spiral's innermost turn.
+    // Each tier is a surface to stand on and an obstacle up to its top: from the floor the plinth is a jump, the stones
+    // above it are steps, and the gold block on top (the head, `cairn.head`) is a jump again. Landing from above works
+    // anywhere, since an obstacle with a top no longer stops feet that are within a step of it.
+    const cairn = { x: 0, z: -5.4, base: CAIRN_BASE, tiers: cairnTiers(CAIRN_BASE) }, areas = [];
+    for (const t of cairn.tiers) {
+      const x = cairn.x + t.dx, box = { x0: x - t.half, x1: x + t.half, z0: cairn.z - t.half, z1: cairn.z + t.half };
+      areas.push({ id: `cairn-${t.kind}${t.era === undefined ? "" : t.era}`, ...box, rise: t.rise });
+      // `above`: a tier standing on the one below, not on the floor.
+      obstacles.push({ ...(t.kind === "plinth" ? { x0: box.x0 - 0.1, x1: box.x1 + 0.1, z0: box.z0 - 0.1, z1: box.z1 + 0.1 } : box), rise: t.rise, above: t.kind !== "plinth" });
+    }
+    const top = cairn.tiers[cairn.tiers.length - 1];
+    cairn.head = { x0: cairn.x - top.half, x1: cairn.x + top.half, z0: cairn.z - top.half, z1: cairn.z + top.half, rise: top.rise };
     // The floor map: one marker per era, on the ring, pointing at the middle of its gallery's opening.
     const markers = eras.map((e) => {
       const r = museum.rects[e.n], A = museum.atrium;
@@ -53,7 +78,7 @@
       const a = Math.atan2(ox, -oz), p = bearingPoint(MAP_R, a, { x: 0, z: 0 });
       return { era: e.n, name: e.name, years: e.years, x: p.x, z: p.z, toward: { x: ox, z: oz }, a, ry: a + Math.PI };
     });
-    return { steps, paper: paperStop, genesis, statue, markers, path, obstacles, clear: CLEAR, radius: { inner: R1, outer: R0, map: MAP_R } };
+    return { steps, paper: paperStop, genesis, cairn, areas, markers, path, obstacles, clear: CLEAR, radius: { inner: R1, outer: R0, map: MAP_R } };
   };
 
   const GOLD = "#e8c35a", GOLD_DK = "#9a7418", STONE = "#6a645a", STONE_LT = "#8a8378";
@@ -95,13 +120,10 @@
       sign(`${L.genesis.year} · AFTER THE PAPER`, `${L.genesis.title} · context, not a step`, L.genesis.x, top + L.genesis.h + 1.3, L.genesis.z, Math.PI, "plain", 0.38);
       picks.push({ id: L.genesis.id, at: L.genesis.at, node: place(createNode({ geometry: pickBox(1, L.genesis.h + 1, 1), position: { x: L.genesis.x, y: top + (L.genesis.h + 1) / 2, z: L.genesis.z } })) });
     }
-    // The Satoshi statue: an original monument after the real Satoshi statues, about 8.5 m tall with its pedestal.
-    // From Lugano's: a hooded figure sitting cross-legged over a laptop, on a rust-brown steel block, built of thin
-    // slats front to back, each following the body's outline where it cuts, so from the side it is one smooth
-    // contoured figure and head-on it dissolves into lines; here the slats are polished gold. From Budapest's: the
-    // gold mirror face in the hood (a reflector: visitors see themselves). One merged mesh plus the mirror quad, built
-    // once a visit; no light and nothing per frame.
-    const statuePlates = L.statue ? statueParts(M, L.statue, top, sign, place, createNode) : 0;
+    // The cairn: the museum's tribute, an Ooga stone pile. Eight rough stones stacked and each turned a little, one for
+    // each gallery from the bottom up and banded in its era's colour, with a gold block on top for the first block, on
+    // a stone plinth whose plaque is a plain text tribute. One merged mesh; no light and nothing per frame.
+    if (L.cairn) cairnParts(M, L.cairn, top, sign, place, createNode, eraColor);
     // The floor map: for each era a chevron on the floor pointing at its gallery and a low sign facing the middle.
     for (const m of L.markers) {
       const c = eraColor(m.era);
@@ -121,112 +143,28 @@
       bead.position.x = a.x + (b.x - a.x) * f; bead.position.z = a.z + (b.z - a.z) * f;
       if (cube) cube.rotation.y += dt * 0.6;
     };
-    return { picks, update, statuePlates, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
+    return { picks, update, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
   };
-  // The seated figure as smooth solids in its own frame (metres before STATUE_K; y up from the pedestal's top, +z the
-  // way it faces): ellipsoids [cx, cy, cz, rx, ry, rz] and capsules [ax, ay, az, bx, by, bz, r], less the face's
-  // hollow in the hood. The laptop is apart, in steel. `statueInside(x, y, z)` is 1 inside the figure, 2 inside the
-  // laptop, 0 outside; the slats are its sections, scanned once a visit.
-  const STATUE_K = 1.2, SLAT_STEP = 0.12, SLAT = 0.06, ROW = 0.07, DEPTH = 0.04;
-  const ELLIPSOIDS = [
-    [0, 0.95, -0.4, 1.2, 0.6, 0.95], // the seat and hips
-    [0, 2.1, -0.5, 1.08, 1.05, 0.7], // the small of the back
-    [0, 3.15, -0.2, 1.38, 0.5, 0.78], // the shoulders, rounded forward
-    [0, 2.95, -0.62, 0.95, 0.75, 0.55], // the hunched upper back
-    [0, 4.0, 0.42, 0.68, 0.78, 0.8], // the hood, bowed over the laptop
-    [0, 3.7, -0.15, 0.8, 0.6, 0.62], // the hood's drape down the back
-    [0, 4.62, 0.2, 0.44, 0.3, 0.55], // the hood's peak
-    [-0.46, 1.72, 1.22, 0.24, 0.1, 0.3], [0.46, 1.72, 1.22, 0.24, 0.1, 0.3], // the hands on the keys
-    [-0.55, 0.26, 1.5, 0.22, 0.2, 0.42] // a foot tucked out in front
-  ];
-  const CAPSULES = [
-    [0, 1.2, -0.45, 0, 2.9, -0.15, 0.95], // the body, leaning in
-    [0, 3.15, 0.0, 0, 3.75, 0.3, 0.42], // the neck inside the hood
-    [-1.22, 3.1, -0.1, -1.15, 2.1, 0.45, 0.32], [1.22, 3.1, -0.1, 1.15, 2.1, 0.45, 0.32], // the upper arms
-    [-1.15, 2.1, 0.45, -0.5, 1.75, 1.15, 0.26], [1.15, 2.1, 0.45, 0.5, 1.75, 1.15, 0.26], // the forearms down to the keys
-    [-0.55, 0.62, -0.2, -1.78, 0.62, 0.72, 0.43], [0.55, 0.62, -0.2, 1.78, 0.62, 0.72, 0.43], // the thighs out to the knees
-    [-1.78, 0.48, 0.72, 0.4, 0.33, 1.28, 0.34], [1.78, 0.52, 0.72, -0.4, 0.4, 1.12, 0.33] // the shins crossing in front
-  ];
-  const FACE_HOLLOW = [0, 3.92, 1.15, 0.42, 0.55, 0.42];
-  const inEllipsoid = (e, x, y, z) => { const a = (x - e[0]) / e[3], b = (y - e[1]) / e[4], c = (z - e[2]) / e[5]; return a * a + b * b + c * c <= 1; };
-  const inCapsule = (c, x, y, z) => {
-    const dx = c[3] - c[0], dy = c[4] - c[1], dz = c[5] - c[2], px = x - c[0], py = y - c[1], pz = z - c[2];
-    const t = Math.max(0, Math.min(1, (px * dx + py * dy + pz * dz) / (dx * dx + dy * dy + dz * dz)));
-    const qx = px - dx * t, qy = py - dy * t, qz = pz - dz * t;
-    return qx * qx + qy * qy + qz * qz <= c[6] * c[6];
-  };
-  // Each solid's box, for culling: [x0, x1, y0, y1].
-  const boundsOf = (list, cap) => list.map((p) => cap
-    ? [Math.min(p[0], p[3]) - p[6], Math.max(p[0], p[3]) + p[6], Math.min(p[1], p[4]) - p[6], Math.max(p[1], p[4]) + p[6]]
-    : [p[0] - p[3], p[0] + p[3], p[1] - p[4], p[1] + p[4]]);
-  const E_BOX = boundsOf(ELLIPSOIDS, false), C_BOX = boundsOf(CAPSULES, true);
-  const inside = (es, cs, x, y, z) => {
-    if (Math.abs(x) <= 0.95) {
-      if (y >= 1.5 && y <= 1.62 && z >= 0.55 && z <= 1.9) return 2;
-      if (y > 1.6 && y <= 3.0) { const zs = 1.9 + (y - 1.6) * 0.18; if (z >= zs - 0.1 && z <= zs) return 2; }
-    }
-    if (inEllipsoid(FACE_HOLLOW, x, y, z)) return 0;
-    for (const e of es) if (inEllipsoid(e, x, y, z)) return 1;
-    for (const c of cs) if (inCapsule(c, x, y, z)) return 1;
-    return 0;
-  };
-  // The slat plates, in the figure's own units: { x, y0, y1, z0, z1, kind, i }. For each plane across x the section is
-  // scanned in rows, each row's runs along z a plate, a run repeating the row below extending that plate. Pure and
-  // computed once a page (the shape never changes), against only the solids each plane and row can meet.
-  let PLATES = null;
-  const statuePlates = () => {
-    if (PLATES) return PLATES;
-    PLATES = [];
-    const open = [], es = [], cs = [];
-    const emit = (o) => PLATES.push(o);
-    for (let i = 0, n = Math.round(4.6 / SLAT_STEP); i <= n; i++) {
-      const x = -2.3 + i * SLAT_STEP;
-      const ex = ELLIPSOIDS.filter((_, j) => x >= E_BOX[j][0] && x <= E_BOX[j][1]), exb = E_BOX.filter((bx) => x >= bx[0] && x <= bx[1]);
-      const cx = CAPSULES.filter((_, j) => x >= C_BOX[j][0] && x <= C_BOX[j][1]), cxb = C_BOX.filter((bx) => x >= bx[0] && x <= bx[1]);
-      open.length = 0;
-      for (let y = ROW / 2; y < 5.6; y += ROW) {
-        es.length = cs.length = 0;
-        for (let j = 0; j < ex.length; j++) if (y >= exb[j][2] && y <= exb[j][3]) es.push(ex[j]);
-        for (let j = 0; j < cx.length; j++) if (y >= cxb[j][2] && y <= cxb[j][3]) cs.push(cx[j]);
-        const runs = [];
-        if (es.length || cs.length || Math.abs(x) <= 0.95) {
-          let start = 0, kind = 0;
-          for (let z = -1.6; z <= 2.3; z += DEPTH) {
-            const v = inside(es, cs, x, y, z);
-            if (v !== kind) { if (kind) runs.push([start, z, kind]); start = z; kind = v; }
-          }
-          if (kind) runs.push([start, 2.3, kind]);
-        }
-        for (let j = open.length - 1; j >= 0; j--) {
-          const o = open[j], same = runs.findIndex((r) => r[2] === o.kind && Math.abs(r[0] - o.z0) < 1e-6 && Math.abs(r[1] - o.z1) < 1e-6);
-          if (same >= 0) { o.y1 = y + ROW / 2; runs.splice(same, 1); } else { emit(o); open.splice(j, 1); }
-        }
-        for (const r of runs) open.push({ x, i, z0: r[0], z1: r[1], kind: r[2], y0: y - ROW / 2, y1: y + ROW / 2 });
+  const cairnParts = (M, S, top, sign, place, createNode, eraColor) => {
+    const parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
+    for (const t of S.tiers) {
+      if (t.kind === "plinth") {
+        // The plinth: dressed stone with a cap.
+        parts.push(at(M.bevelBox({ w: t.w, h: t.h - 0.15, d: t.d, color: "#5a554c", bevel: 0.08 }), 0, (t.h - 0.15) / 2, 0));
+        parts.push(at(M.box({ w: t.w + 0.2, h: 0.15, d: t.d + 0.2, color: "#7a746a" }), 0, t.h - 0.075, 0));
+      } else if (t.kind === "stone") {
+        // A rough stone with its era's band round its middle.
+        const stone = M.bevelBox({ w: t.w, h: t.h, d: t.d, color: t.era % 2 ? "#8a8378" : "#757066", bevel: 0.12 });
+        const band = M.box({ w: t.w + 0.04, h: 0.09, d: t.d + 0.04, color: eraColor(t.era), emissive: 0.15 });
+        parts.push(at(M.turnedY(stone, t.turn), t.dx, t.y + t.h / 2, 0), at(M.turnedY(band, t.turn), t.dx, t.y + t.h / 2, 0));
+      } else {
+        // The gold block: the first block, on top.
+        parts.push(at(M.turnedY(M.bevelBox({ w: t.w, h: t.h, d: t.d, color: GOLD, emissive: 0.35, bevel: 0.06 }), t.turn), 0, t.y + t.h / 2, 0));
       }
-      for (const o of open) emit(o);
     }
-    return PLATES;
-  };
-  const statueParts = (M, S, top, sign, place, createNode) => {
-    const parts = [], k = STATUE_K, P = 2.0, at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
-    const b = (w, h, d, color, x, y, z, emissive = 0) => parts.push(at(M.box({ w, h, d, color, emissive }), x, y, z));
-    // The pedestal: a rust-brown weathering-steel block, its lip darker.
-    b(S.base, P - 0.1, S.base, "#7a3b1c", 0, (P - 0.1) / 2, 0);
-    b(S.base + 0.1, 0.1, S.base + 0.1, "#5e2c14", 0, P - 0.05, 0);
-    // The slats: thin polished plates, two golds in turn, the laptop's in steel.
-    const GOLDS = ["#e3b341", "#c8952a"];
-    for (const o of statuePlates()) {
-      const steel = o.kind === 2, h = (o.y1 - o.y0) * k, d = (o.z1 - o.z0) * k;
-      b(SLAT * k, h, d, steel ? "#c4cbd0" : GOLDS[o.i % 2], o.x * k, P + o.y0 * k + h / 2, (o.z0 + o.z1) / 2 * k - 0.35, steel ? 0.05 : 0.18);
-    }
-    // The mirror face in the hood's hollow, gold-tinted, facing out.
-    const fw = 0.78 * k, fh = 1.0 * k;
-    const face = { verts: [-fw / 2, 0, 0, fw / 2, 0, 0, fw / 2, fh, 0, -fw / 2, fh, 0], faces: [{ i: [0, 1, 2, 3], color: [222, 186, 96], emissive: 0 }], lines: [], castShadow: false, reflector: true };
-    place(createNode({ geometry: face, position: { x: S.x, y: top + P + 3.88 * k, z: S.z + 0.62 * k - 0.35 } }));
     place(createNode({ geometry: M.merge(...parts) }));
-    sign("SATOSHI NAKAMOTO", "an original Ooga statue after the Satoshi statues in Lugano and Budapest · look into the face: we are all Satoshi", S.x, top + 1.0, S.z + S.base / 2 + 0.25, Math.PI, "gold", 0.5);
-    return parts.length;
+    sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · a stone for each gallery, the gold block for the first", S.x, top + S.tiers[0].h + 0.1, S.z + S.base / 2 + 0.3, Math.PI, "gold", 0.45);
   };
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
-  BL.genesisAtrium = { layout, build, CLEAR, statuePlates };
+  BL.genesisAtrium = { layout, build, CLEAR, cairnTiers };
 })();

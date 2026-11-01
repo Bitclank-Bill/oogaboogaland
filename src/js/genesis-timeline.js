@@ -111,21 +111,30 @@
     g.fillStyle = "#3a352f"; g.font = "40px system-ui, sans-serif"; g.fillText("The first block, after the paper", px, axisY + 420, 520);
     return drawn;
   };
+  // The menu's sections: one per era, in era order, each holding its entries in the catalogue's date order. (Listed by
+  // date alone, an entry dated before its own era, such as a paper Era 6 cites, would break into another era's run and
+  // repeat that era's heading.) Pure, so Node can check it; no entry's data changes.
+  const grouped = (entries) => {
+    const out = [];
+    for (const e of entries) { let g = out.find((x) => x.era === e.era); if (!g) { g = { era: e.era, name: e.eraName, years: e.eraYears, entries: [] }; out.push(g); } g.entries.push(e); }
+    return out.sort((a, b) => a.era - b.era);
+  };
   const create = (host, root) => {
     const ac = new AbortController(), signal = ac.signal, list = root.querySelector("#genesis-menu-list");
     let filter = "all";
     const write = (node, tag, text, cls) => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; node.append(n); return n; };
     const fill = () => {
       list.replaceChildren();
-      let era = -1;
-      for (const e of host.catalogue.filter(filter)) {
-        if (e.era !== era) { era = e.era; write(list, "h3", `Era ${era} · ${e.eraName} · ${e.eraYears}`); }
-        const b = document.createElement("button");
-        b.type = "button"; b.dataset.exhibit = e.id;
-        write(b, "span", String(e.year), "menu-year");
-        write(b, "span", e.title, "menu-title");
-        write(b, "span", `${e.trail ? "● " : ""}${e.connectionLabel}${e.ref ? ` ${e.ref}` : ""}`, `menu-tag tag-${e.connection}`);
-        list.append(b);
+      for (const g of grouped(host.catalogue.filter(filter))) {
+        write(list, "h3", `Era ${g.era} · ${g.name} · ${g.years}`);
+        for (const e of g.entries) {
+          const b = document.createElement("button");
+          b.type = "button"; b.dataset.exhibit = e.id;
+          write(b, "span", String(e.year), "menu-year");
+          write(b, "span", e.title, "menu-title");
+          write(b, "span", `${e.trail ? "● " : ""}${e.connectionLabel}${e.ref ? ` ${e.ref}` : ""}`, `menu-tag tag-${e.connection}`);
+          list.append(b);
+        }
       }
     };
     root.addEventListener("close", () => host.menuClosed(), { signal });
@@ -148,5 +157,5 @@
       dispose: () => { if (root.open) root.close(); ac.abort(); }
     };
   };
-  BL.genesisTimeline = { paint, create, layoutLabels, labelled, SHORT, MARK_GAP, MARK_R, RING };
+  BL.genesisTimeline = { paint, create, grouped, layoutLabels, labelled, SHORT, MARK_GAP, MARK_R, RING };
 })();

@@ -21,7 +21,8 @@
   // --- Footing ------------------------------------------------------------------------------------------------------
   // `areas`: { id, x0, x1, z0, z1, top, dock: { x, z, facing } } flat ledges, or with `ramp: { from, to, axis }` a
   // slope whose top runs from `from` (at x0 or z0) to `to` (at x1 or z1) along `axis` ("x" or "z"); a ramp with
-  // `boards: true` is a boarding ramp. `obstacles`: { x0, x1, z0, z1 } boxes a body may not walk into.
+  // `boards: true` is a boarding ramp. `obstacles`: { x0, x1, z0, z1 } boxes a body may not walk into; one with a `top`
+  // stops a body only while its feet are more than a step below that top (so it can be landed on and walked over).
   const WATER = -1.2, STEP = 0.6;
   const createFooting = ({ areas, obstacles = [], water = WATER }) => {
     const topOf = (a, x, z) => {
@@ -45,9 +46,11 @@
     // How far (x, z) with radius r sits inside an obstacle (0 when clear).
     const depth = (o, x, z, r) => Math.max(0, Math.min(x - (o.x0 - r), (o.x1 + r) - x, z - (o.z0 - r), (o.z1 + r) - z));
     // A step may go anywhere, even off a ledge into the water, but never further into an obstacle than it already is.
-    const walkable = (ax, az, bx, bz, r = 0.3) => {
+    // `feet` is the body's foot height, for obstacles with a top.
+    const walkable = (ax, az, bx, bz, r = 0.3, feet = -Infinity) => {
       for (let i = 0; i < obstacles.length; i++) {
         const o = obstacles[i];
+        if (o.top !== undefined && feet + STEP >= o.top) continue;
         if (depth(o, bx, bz, r) > depth(o, ax, az, r) + 1e-6) return false;
       }
       return true;
