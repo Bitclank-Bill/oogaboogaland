@@ -2,7 +2,8 @@
 // genesis-exhibits.js for the kit and the rules). Facts from docs/genesis-voyage/eras/era-0-machines-that-count.md
 // (branch gv/research): Feller's probability shelf (whitepaper citation [8], the cited 1957 edition) and ARPANET's
 // interrupted first login (context, 29 October 1969). Extra stations are original museum toys, not historical
-// software emulations. Commands change fixed scene nodes; there is no frame callback, timer, network or audio.
+// software emulations. Commands change fixed scene nodes; there is no frame callback, timer, network or audio. The
+// counting cluster (buildCluster) takes its toys' rules from genesis-era-0-nim.js, -crt.js and -pointer.js.
 // The older drive plinth still stands in Era 3; its removal is an integrator task, outside this file's ownership.
 (() => {
   "use strict";
@@ -16,7 +17,10 @@
     e0Cards: { label: "IBM: RAMAC and the punched-card storage it replaced",
       href: "https://www.ibm.com/history/ramac", kind: "context", verified: true },
     e0Card2019: { label: "Micron: c200 1 TB microSD announcement, 25 February 2019",
-      href: "https://investors.micron.com/news/press-release/2019/Micron-Unveils-Worlds-First-1TB-microSD-Card-to-Meet-Consumer-Demand-for-Mobile-Storage-02-25-2019/default.aspx", kind: "context", verified: true }
+      href: "https://investors.micron.com/news/press-release/2019/Micron-Unveils-Worlds-First-1TB-microSD-Card-to-Meet-Consumer-Demand-for-Mobile-Storage-02-25-2019/default.aspx", kind: "context", verified: true },
+    // The counting cluster's three toys are the museum's own work; their provenance and HOLD list is the exhibit doc.
+    e0Toys: { label: "Ooga Booga Land: Era 0 exhibit notes (modern toys, rules and the claims on hold)",
+      href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/upgrade-era-0/docs/genesis-voyage/exhibits/era-0.md", kind: "context", verified: true }
   };
   // Parsing and response arrays allocate only on deliberate use, never in the scene's frame loop. A bad command
   // returns help without changing state; commands accept bounded decimal integers, not arbitrary expressions.
@@ -144,12 +148,88 @@
         { caption: "Outside this era", title: "25 February 2019: announcement", text: ["Micron announced its c200 one-terabyte microSD card in 2019. That is a modern comparison, not an object from 1956-1969.", "The original blank card model is enlarged for visibility. No exact capacity ratio or physical scale comparison is claimed."] }
       ] } }) });
   };
+  // The counting cluster (docs/genesis-voyage/exhibits/era-0.md): Nim, a scan-line CRT and a pointer station in one
+  // row on the left bank, between the disk cabinet and the punched-card desk. All three are modern explanatory toys:
+  // their histories are on HOLD, so no date is shown; `year` 1956 and the label name the gallery's span only. Their
+  // rules live in genesis-era-0-nim.js, -crt.js and -pointer.js (BL.genesisEra0Games), one core per toy shared by
+  // today's terminal and a console game; until those scripts load, each station says so instead of opening.
+  // Records: 65 (Nim 18, CRT 30, pointer 16, cluster sign 1). No colour here is one the shared proof looks up.
+  const buildCluster = (kit) => {
+    const { era, top, solid, sign, obstacle, prop } = kit, games = window.BL.genesisEra0Games || {}, cz = era.z1 - 48;
+    const DATE = "No historical date: a modern explanatory toy shown in the 1956-1969 gallery";
+    const waiting = { caption: "This station's program has not loaded yet. Its script tag is an integration request in the Era 0 notes." };
+    const toy = (id, title, label, hint, x, w, d, h, open) => {
+      obstacle(x - w / 2, x + w / 2, cz - d / 2, cz + d / 2);
+      prop({ id, year: 1956, date: DATE, connection: "context", title, label, hint, sourceKeys: ["e0Toys"],
+        at: { x, y: top, z: cz + d / 2 + 0.8 }, reach: 1.8, pick: { w, h, d: d + 0.4, x, z: cz }, onUse: () => open ? { terminal: open } : waiting });
+    };
+    sign("COUNTING CLUSTER", "Modern museum toys / no historical dates claimed", -15.5, top + 4.4, cz + 1.4, 0, 0.6);
+    // Nim: a low table, three heaps of bone counters (3, 5, 7) running across it, one heap a row.
+    const nx = -22, counters = [];
+    solid(3, 0.8, 1.7, "#5b4632", nx, top + 0.4, cz);
+    solid(2.8, 0.04, 1.5, "#2f5a3c", nx, top + 0.82, cz);
+    const heaps = games.nim ? games.nim.START : [3, 5, 7];
+    heaps.forEach((n, h) => { const row = []; for (let k = 0; k < n; k++) row.push(solid(0.22, 0.09, 0.22, "#e8dcc0", nx - 1.05 + k * 0.33, top + 0.885, cz - 0.5 + h * 0.5)); counters.push(row); });
+    sign("NIM · MODERN TOY", "Generic rules / museum homage, not historical software", nx, top + 2.4, cz + 1.1, 0, 0.5);
+    let nimTerm = null;
+    if (games.nim) {
+      const game = games.nim.create();
+      const show = (g) => { for (let h = 0; h < counters.length; h++) for (let k = 0; k < counters[h].length; k++) counters[h][k].visible = k < g.heaps[h]; };
+      nimTerm = games.nim.terminal(game, show);
+    }
+    toy("e0-nim", "Nim board - modern toy", "NIM · MODERN TOY · 1956-1969 GALLERY", "Type TAKE C 2, then HINT", nx, 3.1, 1.8, 1.2, nimTerm);
+    // CRT: a cabinet whose face holds twelve scan lines; each line is a dim strip with the picture's runs on it.
+    const tx = -15.5, face = cz + 0.53, px = 0.1, rowH = 0.1, y0 = top + 2.15, x0 = tx - 0.8;
+    solid(2.2, 0.9, 1.1, "#3f413e", tx, top + 0.45, cz);
+    solid(2, 1.7, 1, "#5a5c58", tx, top + 1.75, cz);
+    solid(1.8, 1.4, 0.02, "#050806", tx, top + 1.6, face - 0.005);
+    const crtLines = [], crtRuns = [];
+    const crtRows = games.crt ? games.crt.LINES : 12;
+    for (let r = 0; r < crtRows; r++) crtLines.push(solid(1.6, rowH * 0.7, 0.02, "#0f1a12", tx, y0 - r * rowH, face + 0.01, 1));
+    if (games.crt) for (const s of games.crt.segments()) crtRuns.push({ s, node: solid(s.len * px, rowH * 0.7, 0.02, s.tone === 2 ? "#b8ffcc" : "#5fc47a", x0 + (s.x0 + s.len / 2) * px, y0 - s.row * rowH, face + 0.025, 1) });
+    sign("SCAN LINES · MODERN TOY", "Brightness and contrast / no period display claimed", tx, top + 3.4, cz + 1.1, 0, 0.5);
+    let crtTerm = null;
+    if (games.crt) {
+      const crt = games.crt.create();
+      // A line's strip shows the background tone; each run its own. A tone at zero is switched off, not just dark.
+      const show = (c) => {
+        for (let r = 0; r < crtLines.length; r++) { crtLines[r].glow = c.glow[0] * 2.5; crtLines[r].visible = c.shown(r) && c.glow[0] > 0; }
+        for (const run of crtRuns) { run.node.glow = c.glow[run.s.tone] * 2.5; run.node.visible = c.shown(run.s.row) && c.glow[run.s.tone] > 0; }
+      };
+      show(crt);
+      crtTerm = games.crt.terminal(crt, show);
+    }
+    toy("e0-crt", "Scan-line CRT - modern toy", "SCAN LINES · MODERN TOY · 1956-1969 GALLERY", "Type BRIGHT 4, then CONTRAST 0", tx, 2.2, 1.1, 2.6, crtTerm);
+    // Pointer: a desk with a generic pointing box and a keyboard slab, and an upright board of nine targets with a
+    // cursor marker in front of them.
+    const qx = -9, board = cz - 0.35, cell = 0.36, gy = top + 2.15, targets = [];
+    solid(2.6, 0.9, 1.3, "#6b5a44", qx, top + 0.45, cz);
+    solid(1.3, 0.05, 0.4, "#2b2b2b", qx - 0.4, top + 0.93, cz + 0.25);
+    solid(0.22, 0.09, 0.3, "#c9c2ae", qx + 0.75, top + 0.95, cz + 0.25);
+    solid(0.04, 0.02, 0.5, "#1e1e1e", qx + 0.75, top + 0.91, cz - 0.15);
+    solid(1.3, 1.3, 0.08, "#1d2228", qx, top + 1.85, board);
+    for (let i = 0; i < 9; i++) targets.push(solid(0.28, 0.28, 0.03, "#e0b84a", qx + (i % 3 - 1) * cell, gy - Math.floor(i / 3) * cell, board + 0.05, 1));
+    const cursor = solid(0.1, 0.1, 0.03, "#f4f4f4", qx, gy - cell, board + 0.08, 1.2);
+    sign("POINT OR TYPE · MODERN TOY", "Pointer versus typed command / generic device", qx, top + 3.2, cz + 1.1, 0, 0.5);
+    let pointTerm = null;
+    if (games.pointer) {
+      const pb = games.pointer.create();
+      const show = (b) => {
+        const lit = b.target();
+        for (let i = 0; i < targets.length; i++) targets[i].glow = i === lit ? 1.6 : 0.12;
+        cursor.position.x = qx + (b.state.cx - 1) * cell; cursor.position.y = gy - b.state.cy * cell;
+      };
+      show(pb);
+      pointTerm = games.pointer.terminal(pb, show);
+    }
+    toy("e0-pointer", "Point or type - modern toy", "POINT OR TYPE · MODERN TOY · 1956-1969 GALLERY", "Type MOVE 1 0, then CLICK", qx, 2.7, 1.4, 2.6, pointTerm);
+  };
   window.BL.genesisExhibits.register(0, {
     sources,
     overview: { summary: "Storing information once filled cabinets bigger than you. People learned to keep records on spinning disks, connect distant computers and reason about uncertain races with probability. Background, not Bitcoin prototypes.",
       sourceKeys: ["e0Storage", "e0Feller", "e0Arpanet", "whitepaper"], pages: [
         { caption: "Explore", title: "Store, count and connect", text: ["1956: a disk-storage system reaches selected records. 1957: the edition of Feller cited later by Bitcoin. 1969: an ARPANET host-message attempt.", "The gold path and its STEP post mark the whitepaper connection. The other machines explain the period; they were not Bitcoin prototypes."] },
-        { caption: "Play", title: "Five things to try", text: ["Seek a record, punch a short message, change the odds of a race, retry a network login, and inspect a clearly labelled 2019 comparison.", "The controls and codes are invented for this museum. Dates identify historical events or the period illustrated, not the invention of these games."] }
+        { caption: "Play", title: "Eight things to try", text: ["Seek a record, punch a short message, change the odds of a race, retry a network login, and inspect a clearly labelled 2019 comparison.", "In the counting cluster, play Nim against a bounded computer, turn a scan-line screen's brightness and contrast, and choose targets by pointing or by typing.", "The controls and codes are invented for this museum. Dates identify historical events or the period illustrated, not the invention of these games; the cluster's three toys carry no historical date."] }
       ] },
     build(kit) {
       const { era, top, solid, sign, obstacle, prop } = kit;
@@ -195,6 +275,7 @@
             "This is context for the voyage: the ARPANET is not in the Bitcoin whitepaper's references."] }
         ] } }) });
       buildToys(kit);
+      buildCluster(kit);
     }
   });
 })();
