@@ -23529,7 +23529,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -23547,7 +23547,7 @@ const genesisAtriumProof = async () => {
   if (!L.paper || cat.get(L.paper.id).connection !== "anchor" || L.paper.step !== trail.length) bad.push("the paper is not the last step in the middle");
   if (!L.genesis || cat.get(L.genesis.id).connection !== "context" || cat.get(L.genesis.id).trail) bad.push("the genesis block is not beside it as context");
   const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
-  const pillars = []; for (const x of [-26, 26]) for (const z of [-52, -18, 18, 52]) pillars.push({ x0: x - 1.5, x1: x + 1.5, z0: z - 1.5, z1: z + 1.5 });
+  const pillars = M.PILLARS.map((p) => ({ x0: p.x - p.r, x1: p.x + p.r, z0: p.z - p.r, z1: p.z + p.r }));
   const screen = { x0: -12, x1: 12, z0: 47.6, z1: 48.2 };
   for (const o of L.obstacles) {
     if (overlap(o, L.clear)) bad.push("a plinth stands in the view from the arrival to the white screen");
@@ -23565,7 +23565,40 @@ const genesisAtriumProof = async () => {
   for (const s of [...L.steps, L.paper, L.genesis]) if (L.obstacles.some((o) => s.at.x > o.x0 - 0.3 && s.at.x < o.x1 + 0.3 && s.at.z > o.z0 - 0.3 && s.at.z < o.z1 + 0.3)) bad.push(`${s.id}'s walk-up point is blocked`);
   // The floor map: one marker per era, pointing at its own gallery's opening.
   const pointing = L.markers.length === 8 && L.markers.every((m) => { const r = M.rects[m.era], cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2; return (Math.sin(m.a) * cx - Math.cos(m.a) * cz) > 0.9 * Math.hypot(cx, cz); });
-  return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, bad: bad.slice(0, 8) };
+  // The courtyard round it (genesis-courtyard.js): navigation, laid from the real layout.
+  const C = BLc.genesisCourtyard, Y = C.layout({ museum: M, eras: W.ERAS, entries: cat.entries, lane: W.LANE_X }), cb = [];
+  // A path reaches each gallery's real opening, on the line of its central walk, and none crosses the centrepiece,
+  // a pillar, the white screen, the map board or the statue.
+  const doors = W.ERAS.map((e) => M.toMuseum(e.n, W.LANE_X, e.z1 - M.OPEN, {}));
+  doors.forEach((d, n) => { if (!Y.paths.some((q) => q.kind === "radial" && q.era === n && Math.hypot(q.x1 - d.x, q.z1 - d.z) < 1e-6)) cb.push(`no path reaches era ${n}'s opening`); });
+  const blockers = [...L.obstacles, ...pillars, screen, { x0: Y.map.x - Y.map.w / 2, x1: Y.map.x + Y.map.w / 2, z0: Y.map.z - 0.3, z1: Y.map.z + 0.3 }, { x0: -1.4, x1: 1.4, z0: 69.5, z1: 70.5 }];
+  for (const q of Y.paths) for (let k = 0; k <= 40; k++) {
+    const x = q.x0 + (q.x1 - q.x0) * k / 40, z = q.z0 + (q.z1 - q.z0) * k / 40;
+    if (blockers.some((o) => x > o.x0 - 0.3 && x < o.x1 + 0.3 && z > o.z0 - 0.3 && z < o.z1 + 0.3)) { cb.push(`a ${q.kind} path${q.era !== undefined ? ` (era ${q.era})` : ""} runs into something at ${x.toFixed(1)},${z.toFixed(1)}`); break; }
+  }
+  // The loop meets the galleries' paths clockwise in date order (west going north, north going east, east going
+  // south, south going west).
+  const perim = (j) => { const Lp = Y.loop, w = Lp.x1 - Lp.x0, h = Lp.z1 - Lp.z0; return j.x <= Lp.x0 + 1e-6 ? Lp.z1 - j.z : j.z <= Lp.z0 + 1e-6 ? h + (j.x - Lp.x0) : j.x >= Lp.x1 - 1e-6 ? h + w + (j.z - Lp.z0) : 2 * h + w + (Lp.x1 - j.x); };
+  const order = Y.junctions.map(perim), clockwise = order.every((v, i) => i === 0 || v > order[i - 1]);
+  // Signs: one per gallery, carved only in letters the island's signs have, naming its era, years and two of its
+  // own exhibits; none on a path.
+  const glyphs = /^[A-Za-z0-9 /!?+\-.]*$/;
+  Y.signs.forEach((sg) => {
+    if (!sg.lines.every((t) => t && glyphs.test(t))) cb.push(`era ${sg.era}'s sign has a letter the signs cannot carve`);
+    if (!sg.lines[0].startsWith(`ERA ${sg.era} `) || sg.exhibits.length !== 2 || !sg.exhibits.every((id) => cat.get(id).era === sg.era)) cb.push(`era ${sg.era}'s sign does not name its era and two of its exhibits`);
+    if (Y.paths.some((q) => C.segDist(sg.x, sg.z, q) < q.w / 2 + 0.5)) cb.push(`era ${sg.era}'s sign stands on a path`);
+  });
+  // Plants: none in the view to the white screen or on a path; only flowers near a sign; nothing in the centrepiece.
+  for (const pl of Y.plants) {
+    if (C.inView(pl.x, pl.z, 1)) cb.push("a plant stands in the view to the white screen");
+    if (Y.paths.some((q) => C.segDist(pl.x, pl.z, q) < q.w / 2 + 1)) cb.push("a plant stands on a path");
+    if (pl.kind !== "flower" && Y.signs.some((sg) => Math.hypot(pl.x - sg.x, pl.z - sg.z) < 6)) cb.push(`a ${pl.kind} stands tall beside a sign`);
+    if (Math.hypot(pl.x, pl.z) < Y.ring.r + 4) cb.push("a plant stands in the centrepiece");
+  }
+  // The courtyard's own things keep out of the view to the white screen.
+  if (Y.obstacles.some((o) => C.inView((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2))) cb.push("something of the courtyard stands in the view to the white screen");
+  const courtyard = { paths: Y.paths.length, signs: Y.signs.length, plants: Y.plants.length, benches: Y.benches.length, clockwise, bad: cb.slice(0, 8) };
+  return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, courtyard, bad: bad.slice(0, 8) };
 };
 // The cartridge console (genesis-cartridge.js) with one dummy game: the registry's rules, a run started, steered,
 // paused, interrupted and closed through the console's own keys, and the game stopped on close.
@@ -24046,6 +24079,7 @@ const unitChecks = async () => {
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisAtrium = await genesisAtriumProof();
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
+  record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisMuseum = await genesisMuseumProof();

@@ -227,7 +227,9 @@
     const inside = (x, z, pad = 0) => within(atrium, x, z, pad) || rects.some((r) => within(r, x, z, pad));
     // The outer bounds, for the roof.
     const bounds = { x0: Math.min(...rects.map((r) => r.x0)), x1: Math.max(...rects.map((r) => r.x1)), z0: Math.min(...rects.map((r) => r.z0)), z1: Math.max(...rects.map((r) => r.z1)) };
-    return { OPEN, PART, AX, AZ, HEIGHT, bays, rects, atrium, bounds, toMuseum, fromMuseum, boxToMuseum, bayAt, eraNear, inside, rotate };
+    // The atrium's eight round pillars, clear of the courtyard's paths and signs (genesis-courtyard.js).
+    const PILLARS = []; for (const x of [-33, 33]) for (const z of [-48, -8, 8, 48]) PILLARS.push({ x, z, r: 1.5 });
+    return { PILLARS, OPEN, PART, AX, AZ, HEIGHT, bays, rects, atrium, bounds, toMuseum, fromMuseum, boxToMuseum, bayAt, eraNear, inside, rotate };
   })();
 
   // --- What holds while the museum's dialogs or the visitor's pause are up (OVERHAUL-CONTRACT.md §4) --------------

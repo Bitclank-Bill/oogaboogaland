@@ -198,14 +198,10 @@
   const buildMuseum = () => {
     const A = MU.atrium, B = MU.bounds;
     solid(A.x1 - A.x0, 1.15, A.z1 - A.z0, "#57524a", 0, ISLAND_TOP - 0.575, 0);
-    const lines = [];
-    for (const [w, d, x, z] of [[A.x1 - A.x0 - 24, 0.12, 0, A.z0 + 12], [A.x1 - A.x0 - 24, 0.12, 0, A.z1 - 12], [0.12, A.z1 - A.z0 - 24, A.x0 + 12, 0], [0.12, A.z1 - A.z0 - 24, A.x1 - 12, 0]])
-      lines.push(M.moved(M.box({ w, h: 0.02, d, color: "#e8c35a", emissive: 0.6 }), x, ISLAND_TOP + 0.01, z));
-    place(createNode({ geometry: M.merge(...lines), sightHidden: true }));
     for (const w of WALLS) solid(w.x1 - w.x0, ROOF, w.z1 - w.z0, "#3a3530", (w.x0 + w.x1) / 2, ROOF / 2, (w.z0 + w.z1) / 2);
     solid(B.x1 - B.x0 + 4, 1, B.z1 - B.z0 + 4, "#2a2622", (B.x0 + B.x1) / 2, ROOF + 0.5, (B.z0 + B.z1) / 2);
     const pillars = [];
-    for (const x of [-26, 26]) for (const z of [-52, -18, 18, 52]) {
+    for (const { x, z } of MU.PILLARS) {
       pillars.push(M.moved(M.box({ w: 2.2, h: ROOF, d: 2.2, color: "#4a453e" }), x, ROOF / 2, z));
       pillars.push(M.moved(M.box({ w: 3, h: 0.6, d: 3, color: "#5d5850" }), x, ISLAND_TOP + 0.3, z));
       built.obstacles.push({ x0: x - 1.5, x1: x + 1.5, z0: z - 1.5, z1: z + 1.5 });
@@ -802,6 +798,16 @@
     });
     built.atriumLayout = L;
   };
+  // The courtyard (genesis-courtyard.js): the atrium dressed as an Ooga crossroads, grass and sand paths to every
+  // gallery and a clockwise loop, wooden signs, benches, plants and the "You are here" board. Built once a visit, no
+  // lights and nothing per frame; its obstacles join the footing.
+  const buildCourtyard = () => {
+    const C = BL.genesisCourtyard, L = C.layout({ museum: MU, eras: GW.ERAS, entries: catalogue.entries, lane: GW.LANE_X });
+    C.build({ M, createNode, addChild, place, top: ISLAND_TOP, layout: L, hub: BL.hubModels, dressing: BL.dressing, atrium: MU.atrium,
+      paintMap: (g, w, h) => C.paintMap(g, w, h, { museum: MU, eras: GW.ERAS, layout: L, atriumLayout: built.atriumLayout }) });
+    for (const o of L.obstacles) built.obstacles.push(o);
+    built.courtyard = L;
+  };
   const openMenu = (focusId) => {
     if (bench.open) host.close();
     audio.wake();
@@ -1138,7 +1144,7 @@
     // The era files build first, so the galleries' boulders, the legend and the shared signage know them.
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
-    buildExhibits(); buildCatalogue(); buildAtrium();
+    buildExhibits(); buildCatalogue(); buildAtrium(); buildCourtyard();
     buildGalleries(); buildLegend(); buildEraFrames(); buildTrail();
     registerOverviews();
     // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
