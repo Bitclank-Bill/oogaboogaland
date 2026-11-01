@@ -22917,7 +22917,7 @@ const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
   for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
-  const BLc = context.window.BL, W = BLc.genesisWorld, P = BLc.genesisProps, EX = BLc.genesisExhibits, bad = [], built = [];
+  const BLc = context.window.BL, W = BLc.genesisWorld, P = BLc.genesisProps, EX = BLc.genesisExhibits, bad = [], built = [], walls = [];
   const registered = W.ERAS.every((e, n) => !!EX.eras[n]);
   let count = 0;
   W.ERAS.forEach((e, n) => {
@@ -22935,7 +22935,7 @@ const genesisExhibitsProof = async () => {
         return node();
       },
       sign: (t, sub, x, y, z) => { if (!inCave(x, z)) bad.push(`era ${n}: sign "${t}" outside its cave`); return node(); },
-      obstacle: (x0, x1, z0, z1) => { if (!inCave(x0, z0) || !inCave(x1, z1) || !clearOfStream(x0, x1)) bad.push(`era ${n}: an obstacle outside its cave or in the stream`); clash(x0, x1, z0, z1, "an obstacle"); },
+      obstacle: (x0, x1, z0, z1) => { if (!inCave(x0, z0) || !inCave(x1, z1) || !clearOfStream(x0, x1)) bad.push(`era ${n}: an obstacle outside its cave or in the stream`); clash(x0, x1, z0, z1, "an obstacle"); walls.push({ era: n, x0, x1, z0, z1 }); },
       prop: (d) => {
         count++;
         const problem = EX.checkProp(n, d);
@@ -22954,6 +22954,16 @@ const genesisExhibitsProof = async () => {
       } };
     def.build(kit);
   });
+  // Regression: the overview board's walk-up point stood on the edge of its own walk box, so an Ooga walking there
+  // stopped outside its reach. Every era's overview spot is on its bank, within reach of where a body can stand, and
+  // clear (by a body's radius) of the board's boxes and every exhibit's.
+  for (const e of W.ERAS) {
+    const o = W.overviewSpot(e.n), r = 0.3, at = o.at, bank = e.banks[0];
+    const blocked = (b) => at.x > b.x0 - r && at.x < b.x1 + r && at.z > b.z0 - r && at.z < b.z1 + r;
+    if (at.x < bank.x0 + 1 || at.x > bank.x1 - W.BANK.FRONT || at.z > e.z1 || at.z < e.z0) bad.push(`era ${e.n}: overview use point off its bank`);
+    if (o.boxes.some(blocked) || walls.filter((w) => w.era === e.n).some(blocked)) bad.push(`era ${e.n}: overview use point is blocked`);
+    if (Math.hypot(at.x - o.x, at.z - o.z) > 2.4) bad.push(`era ${e.n}: overview use point beyond its reach of the board`);
+  }
   const trail = EX.trailOf(built);
   const ordered = trail.every((x, i) => x.step === i + 1 && (i === 0 || trail[i - 1].def.year <= x.def.year)) && built.every((x) => !!x.step === !!(x.def.connection && EX.CONNECTIONS[x.def.connection].trail));
   const refuses = !!EX.checkProp(3, { id: "a", connection: "context", ref: "[3]" }) && !!EX.checkProp(3, { id: "b", connection: "citation" }) && !!EX.checkProp(3, { id: "c", connection: "anchor" })

@@ -146,11 +146,21 @@
     return out;
   };
 
+  // An era's overview board on its left bank's gateway (scene-genesis.js builds it): where it stands, its turn
+  // (between the stream and the way in), the boxes walkers meet along its line (its lower edge is at head height),
+  // and where a visitor uses it, 1.5 m in front of its face, clear of those boxes.
+  const overviewSpot = (n) => {
+    const f = bankFrame(n, -1), ry = Math.PI / 2 - 0.55, p = bankToWorld(f, 7, 6, { x: 0, z: 0 });
+    const fx = Math.sin(ry), fz = Math.cos(ry), ax = Math.cos(ry), az = -Math.sin(ry);
+    const boxes = [-1.2, 0, 1.2].map((k) => ({ x0: p.x + ax * k - 0.45, x1: p.x + ax * k + 0.45, z0: p.z + az * k - 0.45, z1: p.z + az * k + 0.45 }));
+    return { x: p.x, z: p.z, ry, boxes, at: { x: p.x + fx * 1.5, z: p.z + fz * 1.5 } };
+  };
+
   // How high an Ooga may fly at (x, z): the harbour's roof, a cave's, or a tunnel's.
   const ceilingAt = (x, z) => {
     if (z > MOUTH_Z) return 6.6;
     for (let i = 0; i < ERAS.length; i++) if (z <= ERAS[i].z1 && z >= ERAS[i].z0) return CAVE.height - 0.6;
     return TUNNEL_HEIGHT - 0.4;
   };
-  BL.genesisWorld = { LAMPS, BANK, bankFrame, bankToWorld, reservedZones, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  BL.genesisWorld = { LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();
