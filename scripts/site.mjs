@@ -44,6 +44,14 @@ for (const source of mediaContext.BL.studioMedia.sources) for (const path of [so
 for (const file of mediaFiles) copyFileSync(join(root, "src/media", file), join(out, "media", file));
 
 let shell = readFileSync(join(root, "oogaboogaland.html"), "utf8");
+// Search crawlers need fetchable favicon URLs. Reuse the portable page's exact PNG bytes at stable paths.
+const icons = /<link rel="icon" type="image\/png" sizes="(32|64)x\1" href="data:image\/png;base64,([^"]+)">/g;
+if ([...shell.matchAll(icons)].length !== 2) throw new Error("oogaboogaland.html: expected 32px and 64px PNG favicons");
+shell = shell.replace(icons, (_, size, data) => {
+  const file = `favicon-${size}.png`;
+  writeFileSync(join(out, file), Buffer.from(data, "base64"));
+  return `<link rel="icon" type="image/png" sizes="${size}x${size}" href="/${file}">`;
+});
 if (process.argv.includes("--worker-page")) {
   const tag = '<html lang="en">';
   if (!shell.includes(tag)) throw new Error("oogaboogaland.html: expected <html lang=\"en\">");
