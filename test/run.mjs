@@ -24193,8 +24193,11 @@ scene("dsb",{label:"SVRN checkpoint",query:"&view=svrn-door&weather=storm&time=1
   const routes=await b.evaluate('(()=>{const D=__ooga.dsb,M=D.svrnMenu,p=document.querySelector(".svrn-menu");let okay=true;for(const page of BL.svrnData.pages){p.querySelector(`[data-route="${page.id}"]`).click();okay&&=M.stats.route===page.id&&Array.from(p.querySelectorAll("a")).every(a=>new URL(a.href).origin===BL.svrnData.origin&&a.target==="_blank"&&a.rel==="noopener noreferrer");}return {okay,forms:p.querySelectorAll("form,input,iframe").length};})()');
   record("SVRN browser: all sixteen catalog routes use safe official links with no transaction/account forms",routes.okay&&routes.forms===0,JSON.stringify(routes));
   await b.key("Escape");await step();
+  // Advancing the scene does not flush the browser's focus fixup after closing a native dialog.
+  // A Space sent to its formerly focused button is correctly consumed as UI input, not a seat action.
+  const menuClosed = await untilPage(b, '!B.dsb.svrnMenu.isOpen && !document.activeElement.closest(".svrn-menu")');
   await b.evaluate('(()=>{const B=__ooga,R=B.dsb.interiors.active.room,s=R.seats[0];B.pilot.navigate({position:{...s.walkAt,y:0},yaw:s.viewYaw,pitch:.12,dist:3});return s.walkAt;})()');await step();await b.key(" ");await step();
-  record("SVRN browser: shared seat interaction locks the lounge pose",await b.evaluate('__ooga.dsb.avatar.camp.seat===__ooga.dsb.interiors.active.room.seats[0]'));
+  record("SVRN browser: shared seat interaction locks the lounge pose",menuClosed && await b.evaluate('__ooga.dsb.avatar.camp.seat===__ooga.dsb.interiors.active.room.seats[0]'),JSON.stringify({menuClosed}));
   await b.key(" ");await step();record("SVRN browser: shared stand interaction restores the floor",await b.evaluate('!__ooga.dsb.avatar.camp.seat&&Math.abs(__ooga.dsb.avatar.root.position.y-__ooga.dsb.avatar.baseY)<.01'));
   const snapshot=()=>b.evaluate('(()=>{const I=__ooga.dsb.interiors,R=I.active.room;let nodes=0;const visit=n=>{nodes++;n.children.forEach(visit);};visit(R.root);return {nodes,rooms:I.rooms.size,targets:BL.scenes.dsb.input.targetCount,contexts:I.audio.stats.contexts,panels:document.querySelectorAll(".svrn-menu").length};})()');
   const base=await snapshot();let roundtrip=true;
