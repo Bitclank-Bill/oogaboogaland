@@ -278,6 +278,47 @@ const genesisEra3Proof = async () => {
   record("Genesis Voyage Era 3: it registers through the kit with no signage of its own; every exhibit is dated, sourced, explained and resettable at its prompt and adds no trail stop; the press breaks the desk's own links after a changed page and only those; the toy padlock opens what it locks and a changed note fails its seal; the dial-up corner caps its board; the pager pages once per approach and never while reading; the rally plays the same at any frame rate and a tick at a time at its prompt; everything keeps the reserved plots, the stream's walk and each other clear", Object.values(genesisEra3).every(Boolean), JSON.stringify(genesisEra3));
 ```
 
+## Upgrade cluster (branch `gv/upgrade-era-3`, from `gv/overhaul` cb2b0b9)
+
+One compact cluster inside the current gallery. It adds no new exhibit id: the shared Era 3 proof in `test/run.mjs`
+fixes the gallery at five, so each piece extends the exhibit it stands beside. No trail step, demonstration link or
+Fingerprints and Time piece is touched.
+
+- **Tick-Tock Rally, live** (`src/js/genesis-era-3-rally.js`, `BL.genesisEra3Rally.make(host)`):
+  - It follows the retro games' factory interface: `kind`, `name`, `help`, `coach`, `stars`, `tickets`, `status`,
+    `playing`, `seed`, `start`, `act`, `stop`, `update` and `draw`, with `aims: true` and `roundLabel`.
+  - It plays the cabinet's own rules (`BL.genesisEra3.createRally`), so the live game, the prompt's tick-at-a-time game
+    and the cabinet's demo can't drift apart.
+  - Play: held keys or a drag move the paddle; `act` serves. A return, a stamp and a miss each cue. The end calls
+    `over` once and then `onEnd(score)` after a short beat. The attract shows the demo and best, and holds still in
+    Calm (`host.still`).
+  - It is labelled a modern museum homage.
+  - The prompt version still works, with whole-word commands that become workbench buttons: SERVE, LEFT, RIGHT and
+    WAIT (S, L, R, W and strings like LLRW still work).
+- **The CRT test screen** (on the dial-up corner):
+  - A smaller CRT on a rolling cart beside the desk, inside the corner's own footprint, shows one original procedural
+    picture (sky bands, a sun, hills, a palm and a stamp on a post) on four sample grids: 20×15, 40×30, 80×60 and
+    160×120.
+  - The **CRT** button steps to the next grid and **CRT n** picks one. The prompt prints the picture in text at the
+    coarse grids, and the screen repaints only when the grid changes.
+  - **All four grids are labelled illustrative settings, not any real display's specification.** The research behind
+    this museum verifies no display specification for 1990–1995, so none is shown. A candidate such as a named
+    graphics standard's resolution stays off display until a primary source (a manufacturer's manual or
+    specification) is registered in the dossier.
+- **Page a friend** (on the pager):
+  - The **HELLO**, **MEET**, **LATE** and **THANKS** buttons page Bea, an invented Ooga.
+  - Her reply arrives at once: it shows on the pager's display board, unread, so the pager's lamp lights (steady in
+    Calm).
+  - **READ** and **CLEAR** stay. Pages share the pager's ring of six, and nothing leaves the page.
+- **Buttons:** the dial-up corner's HELP now yields all eight workbench buttons (DIAL, CRT, NOTES, DIR, TYPE, READ,
+  POST, HANGUP), and TYPE A: takes a file name.
+- **Records:** Era 3 builds 106 scene records at cb2b0b9 and 111 now (5 solids, one merged detail mesh), plus 2 for
+  the CRT's screen in the browser. That's about 7 new records, well under the ~150 budget. Counted with a stub kit:
+  each node, each solid, and three for each sign.
+
+Checks: `node test/genesis-era-3-upgrade.mjs` (its own file), the unit tier and the build. The integration requests
+are in the review bundle's START-HERE.md.
+
 ## Checks and evidence
 
 Results, exact commands and browser evidence for this adaptation are in the review bundle's `START-HERE.md`, and are

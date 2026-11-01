@@ -81,30 +81,33 @@
       sourceKeys: ["E3-PGP", "whitepaper", "E3-ORIGINAL"],
       pager: "PADLOCK POST: LOCK A NOTE" },
     bbs: { title: "Dial-up corner: call the pretend BBS", year: 1990,
-      howTo: ["Type DIAL to call the pretend bulletin board.", "Type READ, then POST and a short message.",
-        "Type DIR A: to look inside the floppy, then TYPE A:LETTER.TXT.", "RESET hangs up and clears your posts."], label: "DIAL-UP CORNER · 1990–1995",
+      howTo: ["Press DIAL to call the pretend bulletin board, then READ, or POST and a short message.",
+        "Press CRT to show the test picture on the cart's screen at the next sample grid: fewer squares, bigger blocks.",
+        "Type DIR A: to look inside the floppy, then TYPE A:LETTER.TXT.", "RESET hangs up, clears your posts and puts the test screen back."], label: "DIAL-UP CORNER · 1990–1995",
       dated: "1990–1995: period style. A generic, unbranded terminal and modem; no model, date or specification is claimed.",
       kid: "Before most homes had the web, people dialled other computers with a modem to read and leave messages. Read the museum notes, look inside the floppy disk in drive A:, and dial a pretend bulletin board (a BBS) to leave a message. Nothing you type leaves this page.",
       deeper: [
         `${NOTE} a BBS was a computer people dialled into with a modem to read and post messages. The dossier treats BBSs, modems and floppies as context and has not cleared model numbers, capacities or prices, so none are given. The board is pretend, and its posts last only for this visit. [E3-GEAR]`,
-        `${NOTE} the terminal and its screens are invented for the voyage and copy no real system. The office PC by Tock's desk is the period's computer; this corner is about dialling out. [E3-ORIGINAL]`],
+        `${NOTE} the terminal and its screens are invented for the voyage and copy no real system. The office PC by Tock's desk is the period's computer; this corner is about dialling out. [E3-ORIGINAL]`,
+        `${NOTE} the test screen on the cart draws one original picture on four sample grids, 20 by 15 up to 160 by 120 squares. They are illustrative settings chosen for the lesson, not the specification of any real monitor or graphics card: this museum's research has verified no display specification for these years, so none is shown. [E3-ORIGINAL, E3-GEAR]`],
       sourceKeys: ["E3-GEAR", "E3-ORIGINAL"],
       pager: "DIAL-UP: TRY THE PRETEND BBS" },
-    pager: { title: "Pocket pager: read your messages", year: 1990,
-      howTo: ["Walk near the exhibits in this cave: the pager lights up.", "Come back here and type READ to see your messages.", "Type CLEAR to empty it."], label: "POCKET PAGER · 1990–1995",
+    pager: { title: "Pocket pager: page a friend", year: 1990,
+      howTo: ["Press HELLO, MEET, LATE or THANKS to page Bea: her reply shows on the pager's screen at once.",
+        "Walk near the exhibits in this cave and the pager lights up with a message from each.", "Press READ to see every message, newest first, and CLEAR to empty the pager."], label: "POCKET PAGER · 1990–1995",
       dated: "1990–1995: period style. No model, date or specification is claimed.",
-      kid: "A pager was a pocket gadget that beeped and showed a short message. This one lights up when you walk near an exhibit in this cave. Read your messages here.",
+      kid: "A pager was a pocket gadget that beeped and showed a short message. Send Bea a quick page with one button and watch her answer appear, or walk near an exhibit in this cave and see what it pages you.",
       deeper: [
-        `${NOTE} this pager is an original toy. Its messages come from this cave's exhibits, not from any network, and they last only for this visit. The dossier has not cleared pager models, dates or numbers, so none are given. [E3-GEAR, E3-ORIGINAL]`],
+        `${NOTE} this pager is an original toy. Its messages come from this cave's exhibits and from Bea, an invented Ooga, not from any network, and they last only for this visit. The dossier has not cleared pager models, dates or numbers, so none are given. [E3-GEAR, E3-ORIGINAL]`],
       sourceKeys: ["E3-GEAR", "E3-ORIGINAL"],
       pager: "PAGER: READ ME HERE" },
     rally: { title: "Tick-Tock Rally: play a paddle game", year: 1990,
-      howTo: ["Type S to serve the ball.", "Type L or R to move the paddle for one tick, or W to wait.",
-        "Type several at once, like LLW, to play faster.", "RESET starts a new game."], label: "TICK-TOCK RALLY · 1990–1995",
+      howTo: ["Press SERVE to serve the ball.", "Press LEFT or RIGHT to move the paddle for one tick, or WAIT to let the ball fly.",
+        "Or type several at once, like LLRW (L, R and W are one tick each), to play faster.", "RESET starts a new game."], label: "TICK-TOCK RALLY · 1990–1995",
       dated: "1990–1995: an arcade cabinet in a period style, with an original game made for the voyage.",
-      kid: "Keep the ball in play with your paddle. Here you play a tick at a time: each L, R or W you type moves the game on a quarter of a second. Every return scores one; hit the clock at the top for a stamp worth five. Three balls, then see your score.",
+      kid: "Keep the ball in play with your paddle. Here you play a tick at a time: each LEFT, RIGHT or WAIT moves the game on a quarter of a second. Every return scores one; hit the clock at the top for a stamp worth five. Three balls, then see your score.",
       deeper: [
-        `${NOTE} Tick-Tock Rally is original to the voyage: no copied game, program, name, artwork or sound. Paddle-and-ball games are a genre; this one is ours. Its screen plays a demo by itself between visitors. [E3-ORIGINAL]`,
+        `${NOTE} Tick-Tock Rally is a modern museum homage, original to the voyage, not historical software: no copied game, program, name, artwork or sound. Paddle-and-ball games are a genre; this one is ours. Its screen plays a demo by itself between visitors, and a live version for the museum's game console uses the same rules. [E3-ORIGINAL]`,
         `${NOTE} the cabinet is context for the period's gear, with no model or date claimed. [E3-GEAR]`],
       sourceKeys: ["E3-ORIGINAL", "E3-GEAR"],
       pager: "ARCADE: RALLY IS ON" },
@@ -282,13 +285,61 @@
     { name: "CHAIN", ext: "TXT", text: ["Tock's pages and their linked fingerprints (the desk's toy hash):", ...G.chain(false).map((c, i) => `${i + 1}. ${c}  ${G.PAGES[i]}`)] },
     { name: "PADLOCK", ext: "TXT", text: [`Bea's toy public padlock: n = ${TOY.n}, e = ${TOY.e}. Use it at the padlock post.`] }
   ];
+  // --- The test screen: one original picture on sample grids ---------------------------------------------------------
+  // The picture is a function of (u, v) in [0, 1) giving one of CRT_INKS: a night sky in bands, a low sun, two hills, a
+  // palm and a little stamp on a post. Each sample grid (GRIDS) takes one sample at each square's middle, so a coarse
+  // grid shows big blocks. The grids are illustrative settings for the lesson, not any real display's specification.
+  const CRT_INKS = ["#0b1030", "#1c2a6b", "#4a3f8f", "#ff8c3a", "#ffd25f", "#2f8a4f", "#1d5e35", "#5b3a2a", "#e9e1cc", "#ff4fd8"];
+  const GRIDS = [[20, 15], [40, 30], [80, 60], [160, 120]];
+  const crtPixel = (u, v) => {
+    const sun = Math.hypot(u - 0.68, (v - 0.5) * 0.75) < 0.12, hill1 = v > 0.62 + 0.08 * Math.sin(u * 5.5), hill2 = v > 0.74 + 0.05 * Math.cos(u * 8 + 1);
+    const trunk = u > 0.22 && u < 0.25 && v > 0.36 && v < 0.7, crown = Math.hypot(u - 0.235, (v - 0.34) * 1.6) < 0.08 && v < 0.4;
+    const post = u > 0.84 && u < 0.86 && v > 0.62 && v < 0.82, stamp = u > 0.8 && u < 0.9 && v > 0.55 && v < 0.62;
+    if (stamp) return 9;
+    if (post) return 8;
+    if (crown) return 5;
+    if (trunk) return 7;
+    if (hill2) return 6;
+    if (hill1) return 5;
+    if (sun) return Math.hypot(u - 0.68, (v - 0.5) * 0.75) < 0.07 ? 4 : 3;
+    return v < 0.25 ? 0 : v < 0.45 ? 1 : 2;
+  };
+  const ASCII = " .:-+*o=#@";
+  // The test screen's state: which grid (0 to 3), changed by CRT (the next) or CRT n (n from 1 to 4).
+  const createCrt = () => {
+    const c = { level: 1, version: 0 };
+    c.set = (n) => { c.level = Math.max(0, Math.min(GRIDS.length - 1, n)); c.version++; return c.level; };
+    c.next = () => c.set((c.level + 1) % GRIDS.length);
+    c.reset = () => c.set(1);
+    // The picture in text at this grid, at most 40 columns and 15 rows (a coarse grid prints whole).
+    c.text = () => {
+      const [gw, gh] = GRIDS[c.level], cols = Math.min(40, gw), rows = Math.min(15, gh), out = [];
+      for (let r = 0; r < rows; r++) {
+        let line = "";
+        for (let k = 0; k < cols; k++) {
+          const u = (Math.floor(k * gw / cols) + 0.5) / gw, v2 = (Math.floor(r * gh / rows) + 0.5) / gh;
+          line += ASCII[crtPixel(u, v2)];
+        }
+        out.push(line);
+      }
+      return out;
+    };
+    c.describe = () => {
+      const [gw, gh] = GRIDS[c.level];
+      return [`Test screen: the picture on a ${gw} by ${gh} sample grid, ${(gw * gh).toLocaleString("en-US")} squares (setting ${c.level + 1} of ${GRIDS.length}).`,
+        c.level === 0 ? "So few squares that every one is a big block: you can count them." : c.level === GRIDS.length - 1 ? "So many squares that the edges look almost smooth from a few steps back." : "More squares, smaller blocks: the sun and the palm get rounder.",
+        "Illustrative setting for the lesson, not any real monitor's specification."];
+    };
+    return c;
+  };
+
   const SEEDED = [{ from: "TOCK", text: "Stamped five pages today. Links all hold." }, { from: "BEA", text: "Padlocks free at the post. Bring a note." }, { from: "SYSOP", text: "Pretend board. Posts vanish when you leave." }];
   const createBbs = () => {
     const floppy = floppyFiles(), ex = EXHIBITS.bbs;
-    const d = { floppy, posts: [], online: false, sent: 0, version: 0 };
+    const d = { floppy, posts: [], online: false, sent: 0, version: 0, crt: createCrt() };
     const sizeOf = (f) => f.text.reduce((n, line) => n + line.length + 2, 0);
     const pad = (s, n) => (s + " ".repeat(n)).slice(0, n);
-    const findA = (arg) => { const w = arg.toUpperCase().replace(/^A:\\?/, ""); return floppy.find((f) => `${f.name}.${f.ext}` === w || f.name === w) || null; };
+    const findA = (arg) => { const w = arg.toUpperCase().replace(/^A:\\?\s*/, ""); return floppy.find((f) => `${f.name}.${f.ext}` === w || f.name === w) || null; };
     d.post = (text) => {
       const t = GP.clean(text);
       if (!t) return { error: "Write your message after POST." };
@@ -296,10 +347,10 @@
       d.posts.push({ from: "YOU", text: t }); d.sent++; d.version++;
       return { ok: true };
     };
-    d.reset = () => { d.posts.length = 0; d.online = false; d.version++; };
+    d.reset = () => { d.posts.length = 0; d.online = false; d.version++; d.crt.reset(); };
     const board = () => ["--- THE OOGA BOARD (pretend) ---", ...SEEDED.concat(d.posts).map((p, i) => `${String(i + 1).padStart(2)}. ${pad(p.from, 6)} ${p.text}`), "POST <message> leaves one. HANGUP ends the call."];
-    const help = ["NOTES         museum notes about this cave", "DIR A:        the floppy disk in drive A:", "TYPE A:<file> show a file on the floppy", "DIAL          call the pretend bulletin board",
-      "READ · POST <message> · HANGUP   on the board", "RESET         hang up and clear your posts", "MORE · SOURCES"];
+    const help = ["DIAL          call the pretend bulletin board", "CRT           the test screen's next sample grid (CRT 1 to CRT 4 picks one)", "NOTES         museum notes about this cave", "DIR A:        the floppy disk in drive A:", "TYPE A: <file> show a file on the floppy",
+      "READ | POST <message> | HANGUP   on the board", "RESET         hang up and clear your posts", "MORE · SOURCES"];
     d.run = (line) => {
       const input = GP.clean(line), space = input.indexOf(" "), cmd = (space < 0 ? input : input.slice(0, space)).toUpperCase(), arg = space < 0 ? "" : input.slice(space + 1).trim();
       if (!cmd) return { lines: [] };
@@ -320,6 +371,12 @@
         if (!d.online) return { lines: ["Not connected. Type DIAL first."] };
         const r = d.post(arg);
         return { lines: r.error ? [r.error] : ["Message saved on the pretend board (this visit only).", ...board()] };
+      }
+      if (cmd === "CRT") {
+        const n = /^\d$/.test(arg) ? +arg - 1 : -1;
+        if (arg && !(n >= 0 && n < GRIDS.length)) return { lines: [`Pick a sample grid from 1 to ${GRIDS.length}, or press CRT for the next.`] };
+        if (n >= 0) d.crt.set(n); else d.crt.next();
+        return { lines: [...d.crt.describe(), "", ...d.crt.text()], crt: d.crt.level };
       }
       if (cmd === "HANGUP") { const was = d.online; d.online = false; return { lines: [was ? "NO CARRIER" : "Not connected."] }; }
       return null;
@@ -426,8 +483,9 @@
     return g;
   };
 
-  // The pager's own prompt: its messages, newest first, and CLEAR.
-  const pagerTerminal = (pager, triggers) => {
+  // The pager's own prompt: one-button pages to Bea (her reply arrives at once, unread, so the pager's lamp lights), its
+  // messages newest first, and CLEAR. `now()` is the visit's clock, for the messages' times.
+  const pagerTerminal = (pager, triggers, now = () => 0) => {
     const ex = EXHIBITS.pager, slot = { index: 0, time: 0, text: "" };
     const list = () => {
       pager.read();
@@ -442,7 +500,15 @@
       run: (line) => {
         const cmd = GP.clean(line).toUpperCase();
         if (!cmd) return { lines: [] };
-        if (cmd === "READ" || cmd === "HELP") return { lines: cmd === "HELP" ? ["READ · CLEAR (or RESET) · MORE · SOURCES"] : list() };
+        if (cmd === "HELP") return { lines: ["HELLO         page Bea: hello from the cave", "MEET          page Bea: meet at the press", "LATE          page Bea: running late",
+          "THANKS        page Bea: thanks", "READ          your messages, newest first", "CLEAR         empty the pager", "MORE · SOURCES"] };
+        const send = SENDS.findIndex(([word]) => word === cmd);
+        if (send >= 0) {
+          const base = PAGE_SPOTS.length + send * 2, t = now();
+          pager.receive(base, t); pager.read(); pager.receive(base + 1, t);
+          return { lines: [`Sent: ${PAGER_TEXTS[base]}`, `Bea answers: ${PAGER_TEXTS[base + 1]}`, "It is on the pager's screen now. READ shows them all."], sent: SENDS[send][0] };
+        }
+        if (cmd === "READ") return { lines: list() };
         if (cmd === "CLEAR" || cmd === "RESET") { pager.clear(); triggers.reset(); return { lines: ["The pager is empty. Every exhibit will page you again when you walk near it."], reset: true }; }
         if (cmd === "MORE") return { lines: ex.deeper };
         if (cmd === "SOURCES") return { lines: sourceLines(ex.sourceKeys) };
@@ -468,11 +534,14 @@
       rows.push(`+${"-".repeat(COLS)}+`, `SCORE ${g.score}   BALLS ${g.balls}   BEST ${g.best}   ${g.state === "serve" ? "Type S to serve." : g.state === "over" ? "Game over. S plays again." : ""}`);
       return rows;
     };
-    const help = ["S             serve (or play again)", "L R W         one tick left, right or wait; up to 8 a line, e.g. LLW", "A D .         the same as L R W", "RESET         start over · MORE · SOURCES"];
+    const help = ["SERVE         serve the ball (or play again)", "LEFT          move the paddle left for one tick", "RIGHT         move the paddle right for one tick",
+      "WAIT          let the ball fly for one tick", "S L R W       the same, one letter each; up to 8 a line, e.g. LLRW (A D . work too)", "RESET         start over · MORE · SOURCES"];
     return {
       get banner() { return [...howTo(ex), ex.label, ex.dated, "", ex.kid, "", ...field(), "", "Type HELP for the commands. RESET starts over.", ""]; },
       prompt: "RALLY>",
-      run: (line) => {
+      run
+    };
+    function run(line) {
         const cmd = GP.clean(line).toUpperCase().replace(/\s+/g, "");
         if (!cmd) return { lines: [] };
         if (cmd === "HELP") return { lines: help };
@@ -481,6 +550,8 @@
         onPlay();
         if (cmd === "RESET") { g.reset(); return { lines: ["A fresh game.", ...field()], reset: true }; }
         if (cmd === "S" || cmd === "SERVE") { g.serve(); g.advance(TICK); return { lines: field() }; }
+        const word = cmd === "LEFT" ? "L" : cmd === "RIGHT" ? "R" : cmd === "WAIT" ? "W" : cmd;
+        if (word !== cmd) return run(word);
         if (!/^[LRWAD.]+$/.test(cmd)) return { lines: ["Unknown command. Type HELP."] };
         for (let i = 0; i < Math.min(MAX_TICKS, cmd.length); i++) {
           const k = cmd[i];
@@ -489,8 +560,7 @@
         }
         g.input.left = g.input.right = false;
         return { lines: field() };
-      }
-    };
+    }
   };
 
   // --- Where everything stands --------------------------------------------------------------------------------------
@@ -504,13 +574,17 @@
     keys: { x: ROW, z: E.z + 10, hx: 0.55, hz: 0.65, front: 1.3, h: 1.5 },
     pager: { x: ROW, z: E.z - 11, hx: 0.4, hz: 0.5, front: 1.1, h: 2.1 },
     rally: { x: BACK, z: E.z + 4, hx: 0.75, hz: 0.55, front: 1.5, h: 2.25 },
-    bbs: { x: BACK, z: E.z + 13, hx: 0.5, hz: 0.95, front: 1.25, h: 1.4 }
+    bbs: { x: BACK, z: E.z + 13, hx: 0.5, hz: 1.75, front: 1.25, h: 1.4 }
   };
   // The pager's spots: every exhibit here, the shared overview board and the desk (as scene-genesis.js places them).
   const OVERVIEW_AT = GW.bankToWorld(GW.bankFrame(ERA, -1), 7, 6, { x: 0, z: 0 });
   const PAGE_SPOTS = [{ id: "overview", ...OVERVIEW_AT }, { id: "desk", x: -7.2 + GW.ROOM_SHIFT.x, z: -25.2 + GW.ROOM_SHIFT.z },
     ...["newspaper", "keys", "bbs", "pager", "rally"].map((id) => ({ id, x: LAYOUT[id].x, z: LAYOUT[id].z }))];
-  const PAGER_TEXTS = PAGE_SPOTS.map((s) => EXHIBITS[s.id].pager), PAGER_TOASTS = PAGER_TEXTS.map((t) => `Pager · ${t}`);
+  // Pages the visitor can send Bea with one button, and her answers (an invented Ooga; nothing leaves the page). Their
+  // texts follow the exhibits' in the pager's fixed list, so the ring still stores only indices.
+  const SENDS = [["HELLO", "YOU: HELLO FROM THE CAVE", "BEA: HELLO! SEE THE PRESS?"], ["MEET", "YOU: MEET AT THE PRESS", "BEA: OK, AT THE PRESS"],
+    ["LATE", "YOU: RUNNING LATE", "BEA: NO RUSH, TAKE CARE"], ["THANKS", "YOU: THANKS, BEA", "BEA: ANY TIME!"]];
+  const PAGER_TEXTS = [...PAGE_SPOTS.map((s) => EXHIBITS[s.id].pager), ...SENDS.flatMap(([, sent, reply]) => [sent, reply])], PAGER_TOASTS = PAGER_TEXTS.map((t) => `Pager · ${t}`);
 
   // --- The visit ----------------------------------------------------------------------------------------------------
   // `v` holds this visit's state and nodes: set by `build`, dropped by `dispose`.
@@ -534,6 +608,15 @@
     g.fillStyle = "#ffffff"; g.fillRect(X + s.x * FW - 2, Y + s.y / R.h * FH - 2, 4, 4);
     v.rallySurface.version++;
   };
+  // The test screen at its grid: each square one sample of the picture, then the grid's label. Only when it changes.
+  const GRID_LABELS = GRIDS.map(([w, h]) => `${w} x ${h} · ILLUSTRATIVE`);
+  const paintCrt = () => {
+    const g = v.crtCtx, [gw, gh] = GRIDS[v.bbs.crt.level], sw = 160 / gw, sh = 108 / gh;
+    for (let r = 0; r < gh; r++) for (let k = 0; k < gw; k++) { g.fillStyle = CRT_INKS[crtPixel((k + 0.5) / gw, (r + 0.5) / gh)]; g.fillRect(k * sw, r * sh, sw + 0.5, sh + 0.5); }
+    g.fillStyle = "#000000"; g.fillRect(0, 108, 160, 12);
+    g.fillStyle = "#e9e1cc"; g.font = "9px monospace"; g.textBaseline = "top"; g.fillText(GRID_LABELS[v.bbs.crt.level], 4, 110);
+    v.crtSurface.version++;
+  };
   const paintPager = () => {
     const g = v.pagerCtx, slot = v.slot;
     g.fillStyle = "#1d2b16"; g.fillRect(0, 0, 192, 64);
@@ -550,7 +633,7 @@
     const rally = createRally(), demo = createRally();
     // `notify` is the hook the notes ask for (a toast); without it the pager's display board and prompt hold its messages.
     v = { notify: notify || null, paper, keys, bbs, pager, triggers, rally, demo, slot: { index: 0, time: 0, text: "" }, showPlayer: 0, screenT: 0, rallyAt: -1, rallyMine: false, rallyScore: -1, paperShown: -1, keysShown: -1,
-      modemLamp: null, bbsCtx: null, bbsSurface: null, bbsOnline: -1,
+      modemLamp: null, bbsCtx: null, bbsSurface: null, bbsOnline: -1, crtCtx: null, crtSurface: null, crtShown: -1, pagerShown: -1, now: 0,
       tiles: [], links: [], printedOk: null, printedBad: null, shackleOpen: null, shackleShut: null, pagerLamp: null, rallyCtx: null, rallySurface: null, pagerCtx: null, pagerSurface: null };
     const visit = v;
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 }, visible }));
@@ -636,6 +719,23 @@
       [0.03, 0.004, 0.05, "#c9ced4", B.x + 0.28, T + 0.008, B.z + 0.7]
     ]);
     v.modemLamp = node(M.box({ w: 0.02, h: 0.014, d: 0.014, color: "#5aff9a", emissive: 1.4 }), B.x - 0.11, T + 0.032, B.z - 0.52);
+    // The test screen: a smaller CRT on a rolling cart beside the desk, its screen the picture on the chosen sample grid,
+    // with a card saying the settings are illustrative.
+    const CZ = B.z + 1.35, CT = top + 0.72;
+    solid(0.6, 0.04, 0.66, "#3a3a42", B.x, CT, CZ);
+    solid(0.5, 0.04, 0.56, "#3a3a42", B.x, top + 0.18, CZ);
+    solid(0.42, 0.4, 0.46, "#d6d0bf", B.x - 0.03, CT + 0.22, CZ);
+    solid(0.24, 0.3, 0.34, "#c9c2b0", B.x - 0.2, CT + 0.2, CZ);
+    detail([...[[-0.26, -0.29], [0.26, -0.29], [-0.26, 0.29], [0.26, 0.29]].flatMap(([dx, dz]) => [[0.04, 0.54, 0.04, "#55555e", B.x + dx, top + 0.45, CZ + dz], [0.06, 0.06, 0.06, "#1c1c1c", B.x + dx, top + 0.04, CZ + dz]]),
+      [0.03, 0.05, 0.36, "#c9c2b0", B.x + 0.185, CT + 0.03, CZ], [0.012, 0.03, 0.03, "#5aff9a", B.x + 0.195, CT + 0.04, CZ + 0.15, 1],
+      [0.03, 0.08, 0.44, "#f2efe6", B.x + 0.31, CT + 0.04, CZ], [0.035, 0.02, 0.36, "#1c1c1c", B.x + 0.31, CT + 0.05, CZ]]);
+    if (screens) {
+      const c = document.createElement("canvas"); c.width = 160; c.height = 120;
+      const geo = screenGeometry(c, 0.34, 0.26);
+      v.crtCtx = c.getContext("2d"); v.crtSurface = geo.imageSurface;
+      const n = place(createNode({ position: { x: B.x + 0.185, y: CT + 0.24, z: CZ }, rotation: { x: 0, y: yaw, z: 0 } }));
+      addChild(n, createNode({ geometry: geo }));
+    }
     if (screens) {
       const c = document.createElement("canvas"); c.width = 160; c.height = 120;
       const g = c.getContext("2d");
@@ -678,7 +778,7 @@
       paintPager();
     }
     sign(ex.pager.label, "your messages", P.x - 0.3, top + 2.3, P.z, yaw, 0.4);
-    const pagerTerm = pagerTerminal(pager, triggers);
+    const pagerTerm = pagerTerminal(pager, triggers, () => visit.now);
     exhibit("pager", { id: "e3-pager", year: 1990, connection: "context", title: ex.pager.title, label: ex.pager.label, sourceKeys: ex.pager.sourceKeys,
       date: "1990–1995 period style; no model, date or specification claimed", onUse: () => ({ terminal: pagerTerm }) });
 
@@ -815,7 +915,11 @@
   const update = (dt, elapsed, state) => {
     const calm = !!state.calm;
     const fired = v.triggers.update(state.x, state.z, !!state.reading);
-    if (fired >= 0) { v.pager.receive(fired, elapsed); if (v.pagerCtx) paintPager(); if (v.notify) v.notify(PAGER_TOASTS[fired]); }
+    v.now = elapsed;
+    if (fired >= 0) { v.pager.receive(fired, elapsed); if (v.notify) v.notify(PAGER_TOASTS[fired]); }
+    // The pager's screen and the test screen repaint only when what they show changes (a page sent or arrived, a grid).
+    if (v.pager.version !== v.pagerShown) { v.pagerShown = v.pager.version; if (v.pagerCtx) paintPager(); }
+    if (v.bbs.crt.version !== v.crtShown) { v.crtShown = v.bbs.crt.version; if (v.crtCtx) paintCrt(); }
     if (v.paper.version !== v.paperShown) {
       v.paperShown = v.paper.version;
       const r = v.paper.result;
@@ -849,7 +953,7 @@
   BL.genesisExhibits.register(ERA, { sources, overview, build, update, dispose });
   // The pure rules, for Node checks, and the office PC's hand-on (hook request 2 in the notes): its prompt may pass a
   // line it doesn't know here, to the visit's dial-up corner; null when this answers nothing.
-  BL.genesisEra3 = { ERA, NOTE, EXHIBITS, HOLD, TOY, RALLY, MAX_POSTS, MAX_NOTE, TICK, MAX_TICKS, LAYOUT, PAGE_SPOTS, PAGER_TEXTS, sources, overview, link,
+  BL.genesisEra3 = { GRIDS, CRT_INKS, crtPixel, createCrt, SENDS, ERA, NOTE, EXHIBITS, HOLD, TOY, RALLY, MAX_POSTS, MAX_NOTE, TICK, MAX_TICKS, LAYOUT, PAGE_SPOTS, PAGER_TEXTS, sources, overview, link,
     createNewspaper, newspaperTerminal, createKeyStation, keyTerminal, createBbs, createPager, createTriggers, createRally, pagerTerminal, rallyTerminal,
-    pcRun: (line) => v && !/^\s*(HELP|MORE|SOURCES|RESET)\b/i.test(line) ? v.bbs.run(line) : null, get visit() { return v; } };
+    pcRun: (line) => v && !/^\s*(HELP|MORE|SOURCES|RESET|CRT)\b/i.test(line) ? v.bbs.run(line) : null, get visit() { return v; } };
 })();
