@@ -1666,6 +1666,13 @@ void main() {
     moonBright *= 1.0 - cover;
     stars *= 1.0 - cover;
   }
+  // A sea fogged into its haze (seaFog) carries that haze up over the horizon, so the sky meets the sea in the
+  // fog's own colour with no line between them, clouds and all.
+  if (uSeaFog.y > uSeaFog.x && d.y > -0.0005) {
+    float veil = 1.0 - smoothstep(0.0, 0.32, d.y);
+    col = mix(col, uSeaFogColor, veil);
+    sun *= 1.0 - veil; moon *= 1.0 - veil; moonBright *= 1.0 - veil; stars *= 1.0 - veil;
+  }
   oColor = vec4(col + (sun + moon + stars) * skyMask, 1.0);
   oBright = vec4((uSun * sunDisc * 0.6 + moonBright + stars * 0.35) * skyMask, 1.0);
 }`;
