@@ -5,7 +5,7 @@
 // moves, on the scenery's own clock.
 // - `islets` (Floating Isles): voxel isles with grass, flowers, palms, trees and a hut on top and sandstone strata,
 //   drips and hanging vines under them; two shapes pour a waterfall off the rim into mist, smaller isles hang off
-//   some on rope bridges, two Ooga balloons drift by, gulls wheel and a rainbow stands opposite the sun.
+//   some on rope bridges, two Ooga balloons drift by, gulls wheel and a double rainbow stands opposite the sun.
 // - `spires` (Amber Spires): towering cumulus coloured for the low sun (gold where faces turn to it, lavender where
 //   they turn away, cream on the tops, glowing a little), all at one scale, young ones nearer off to the sides of the
 //   course and some of the far ones growing from the Play press, long cloud banks along the horizon, sky lanterns
@@ -252,23 +252,26 @@
     g.castShadow = false;
     return g;
   });
-  // A rainbow: seven bands round a unit arc. Its local x runs down from the crown to the feet, so the beam's fade,
-  // full at the crown, dissolves the feet; y runs across it.
-  // How far behind the island's middle the rainbow stands (m), and its radius.
-  const RAINBOW = { behind: 220, size: 430 };
-  const rainbow = M.cached(() => {
-    const g = M.geometry(), BANDS = ["#ff4d4d", "#ff9b3d", "#ffe34f", "#62e06c", "#4cb2ff", "#5d6cff", "#a66cff"], SEGS = 64, W = 0.016;
-    for (let b = 0; b < BANDS.length; b++) {
-      const color = hexToRgb(BANDS[b]), r0 = 1 - (b + 1) * W, r1 = 1 - b * W, ids = [];
+  // A double rainbow: seven bands round a unit arc. Its local x runs down from the crown to the feet, so the beam's
+  // fade, full at the crown, dissolves the feet; y runs across it. The bright one stands nearer the island and the
+  // greater one beyond it is fainter with its colours turned round, red inside, as a real double rainbow's are.
+  // How far behind the island's middle each stands (m), and its radius.
+  const RAINBOW = { behind: 220, size: 430 }, INNER_RAINBOW = { behind: 90, size: 250 };
+  const BANDS = ["#ff4d4d", "#ff9b3d", "#ffe34f", "#62e06c", "#4cb2ff", "#5d6cff", "#a66cff"];
+  const bow = (bands, glass) => {
+    const g = M.geometry(), SEGS = 64, W = 0.016;
+    for (let b = 0; b < bands.length; b++) {
+      const color = hexToRgb(bands[b]), r0 = 1 - (b + 1) * W, r1 = 1 - b * W, ids = [];
       for (let s = 0; s <= SEGS; s++) {
         const a = s / SEGS * Math.PI;
         ids.push([M.pushVert(g, 1 - r0 * Math.sin(a), r0 * Math.cos(a), 0), M.pushVert(g, 1 - r1 * Math.sin(a), r1 * Math.cos(a), 0)]);
       }
       for (let s = 0; s < SEGS; s++) M.face(g, [ids[s][0], ids[s][1], ids[s + 1][1], ids[s + 1][0]], color, { emissive: 1 });
     }
-    g.glass = 0.34; g.lightBeam = 1.4; g.castShadow = false;
+    g.glass = glass; g.lightBeam = 1.4; g.castShadow = false;
     return g;
-  });
+  };
+  const rainbow = M.cached(() => bow(BANDS, 0.34)), outerRainbow = M.cached(() => bow([...BANDS].reverse(), 0.24));
 
   // ---- Sunset cumulus --------------------------------------------------------------------------------------------
   // Fills a grid from ellipsoid lobes ([x, y, z, rx, ry, rz] in cells), chips cells at the skin and cuts a flat
@@ -750,11 +753,13 @@
           holder.rotation.y = ph + time * 0.04; holder.rotation.z = Math.sin(time * 0.5 + ph) * 0.03;
         });
       }
-      // The rainbow, centred over the island beyond it as the course sees it, facing the course.
-      const a = Math.atan2(-route.nz, -route.nx), r = RAINBOW.behind, size = RAINBOW.size;
-      const arc = node(rainbow(), route.finish.x + Math.cos(a) * r, seaY + size, route.finish.z + Math.sin(a) * r, size);
-      arc.rotation.z = -Math.PI / 2; arc.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
-      reached(arc.position.x, seaY + size, arc.position.z, size);
+      // The double rainbow, centred over the island beyond it as the course sees it, facing the course.
+      const a = Math.atan2(-route.nz, -route.nx);
+      for (const [geometry, { behind: r, size }] of [[outerRainbow(), RAINBOW], [rainbow(), INNER_RAINBOW]]) {
+        const arc = node(geometry, route.finish.x + Math.cos(a) * r, seaY + size, route.finish.z + Math.sin(a) * r, size);
+        arc.rotation.z = -Math.PI / 2; arc.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a));
+        reached(arc.position.x, seaY + size, arc.position.z, size);
+      }
       if (lite) return;
       // Gulls wheeling beside the route.
       for (const [t, across, seed] of [[0.35, -60, 3], [0.75, 55, 11]]) {
