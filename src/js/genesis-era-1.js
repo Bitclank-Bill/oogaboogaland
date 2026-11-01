@@ -65,7 +65,8 @@
     const show = (f) => f.replace(/ /g, "_");
     const fresh = () => { s.route = 0; s.frags = []; s.have = []; s.order = []; s.missing = -1; s.pinged = [false, false, false]; };
     return {
-      banner: ["GATEWAY PUZZLE · a simplified illustration of the 1974 gateway idea", "Send a message from HOST A to HOST B across two networks.", "Type HELP for the commands.", ""],
+      banner: ["HOW TO USE", "  1. Type MAP and press Enter to see the networks.", "  2. Type PING G1 and PING G2 to find the gateway that works.", "  3. Type ROUTE and that gateway, then SEND.", "  4. RESEND the missing number, then ASSEMBLE.", "",
+        "GATEWAY PUZZLE · a simplified illustration of the 1974 gateway idea", "Send a message from HOST A to HOST B across two networks.", "Type HELP for the commands.", ""],
       prompt: "HOST A>",
       run: (line) => {
         const [cmd, arg] = words(line), r = GW_ROUNDS[s.round];
@@ -125,7 +126,8 @@
   const DH_P = 23, DH_G = 5, BO_SECRETS = [6, 15, 9, 13];
   const createDh = () => ({ a: 0, A: 0, b: 0, B: 0, round: 0, sent: false, key: 0, anim: -1 });
   const dhTerminal = (s) => ({
-    banner: ["PUBLIC-KEY WORKBENCH · a simplified toy model with tiny numbers. NOT secure.", `Public numbers everyone can see: p = ${DH_P}, g = ${DH_G}. You and Bo each keep one secret.`, "Eve (an invented listener) hears everything on the wire. Type HELP.", ""],
+    banner: ["HOW TO USE", "  1. Type PICK and a secret number from 1 to 21, e.g. PICK 4.", "  2. Type SEND to swap public numbers with Bo.", "  3. Type SHARE: you and Bo get the same key.", "  4. Type TRY to watch Eve search for it.", "",
+      "PUBLIC-KEY WORKBENCH · a simplified toy model with tiny numbers. NOT secure.", `Public numbers everyone can see: p = ${DH_P}, g = ${DH_G}. You and Bo each keep one secret.`, "Eve (an invented listener) hears everything on the wire. Type HELP.", ""],
     prompt: "YOU>",
     run: (line) => {
       const [cmd, arg] = words(line);
@@ -170,7 +172,8 @@
     return n >= 2 && n <= 32 ? n : 0;
   };
   const rsaTerminal = (s) => ({
-    banner: ["CHECKABLE SIGNATURE DESK · a simplified toy model with tiny numbers. NOT secure.", `Public check numbers: n = ${RSA_N}, e = ${RSA_E}. The signing number stays secret in the desk.`, "Messages are a number 2 to 32, or a letter (A = 1 ... Z = 26). Type HELP.", ""],
+    banner: ["HOW TO USE", "  1. Type SIGN 5 (or SIGN and a letter).", "  2. Type VERIFY, the signature it gave you, then 5.", "  3. VERIFY again with a different message: it fails.", "  4. Type DOUBLE to see what a signature cannot stop.", "",
+      "CHECKABLE SIGNATURE DESK · a simplified toy model with tiny numbers. NOT secure.", `Public check numbers: n = ${RSA_N}, e = ${RSA_E}. The signing number stays secret in the desk.`, "Messages are a number 2 to 32, or a letter (A = 1 ... Z = 26). Type HELP.", ""],
     prompt: "DESK>",
     run: (line) => {
       const [cmd, rest] = words(line);
@@ -205,7 +208,8 @@
   const createPanel = () => ({ sw: 0, addr: 0, mem: new Uint8Array(256), dirty: true, won: false });
   const bin = (v) => (v | 256).toString(2).slice(1);
   const panelTerminal = (s) => ({
-    banner: ["FRONT PANEL · an original panel inspired by early microcomputers. Not an emulator.", "Set eight switches, then DEPOSIT the byte at the address. Challenge: spell OOGA at addresses 0 to 3.", "Type HELP.", ""],
+    banner: ["HOW TO USE", "  1. Type CODES to see the switch patterns for O, G and A.", "  2. Type SET and a pattern, e.g. SET 01001111.", "  3. Type DEPOSIT to store it; the address steps on.", "  4. Store O, O, G, A in turn, then type RUN.", "",
+      "FRONT PANEL · an original panel inspired by early microcomputers. Not an emulator.", "Set eight switches, then DEPOSIT the byte at the address. Challenge: spell OOGA at addresses 0 to 3.", "Type HELP.", ""],
     prompt: "PANEL>",
     run: (line) => {
       const [cmd, arg] = words(line);
@@ -287,7 +291,8 @@
       return t;
     };
     return {
-      banner: ["ACOUSTIC COUPLER DEMO · the idea: a phone handset rests in two cups, and data travels as sound.", "The pitches and speed here are invented for listening; no real model's speed or tones are claimed.", "Type HELP.", ""],
+      banner: ["HOW TO USE", "  1. Type SEND and a short word, e.g. SEND HI.", "  2. Listen and watch the lamps: a low pitch is 0, a high pitch is 1.", "  3. Type STOP to hush it, or BITS HI to see the bits in silence.", "",
+        "ACOUSTIC COUPLER DEMO · the idea: a phone handset rests in two cups, and data travels as sound.", "The pitches and speed here are invented for listening; no real model's speed or tones are claimed.", "Type HELP.", ""],
       prompt: "COUPLER>",
       run: (line) => {
         const [cmd, arg] = words(line);
@@ -326,6 +331,11 @@
   const CONTEXT_NOTE = "Context exhibit: not a Bitcoin whitepaper citation.";
   const PANELS = {
     gateway: { room: "Networks meet at a gateway - 1974", sources: ["e1CerfKahn", "e1Rfc675"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. The teleprinter beside this board runs the Gateway puzzle.",
+        "2. Walk up to it and press Space (USE on a touch screen).",
+        "3. Type MAP to begin. HELP lists every command.",
+        "4. Page on here with the arrows to read about the 1974 paper."] },
       { caption: "In short", title: "Different networks, one message", text: [
         "May 1974: Vinton Cerf and Robert Kahn publish a design for communication between \"different packet switching networks\".",
         "December 1974: RFC 675, by Cerf, Yogen Dalal and Carl Sunshine, specifies an Internet Transmission Control Program."] },
@@ -337,6 +347,11 @@
         "Reliable delivery also does not decide which of two competing digital payments is valid.", CONTEXT_NOTE] }
     ] },
     merkle: { room: "Merkle puzzles - proposed 1974 - published 1978", sources: ["e1MerkleHistory", "e1Merkle", "whitepaper"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. Walk up to the postbox stand by the wall of boxes.",
+        "2. Press Space to open one box and solve its small puzzle.",
+        "3. Press Space again to try another box.",
+        "4. Page on here to read about Merkle's idea."] },
       { caption: "In short", title: "A secret over an open line", text: [
         "Ralph Merkle's own history dates his puzzle proposal to autumn 1974. The journal article appeared in April 1978.",
         "It showed how two people could \"select a key over open communications channels\", while a listener had much more work to do than they did."] },
@@ -348,6 +363,11 @@
         "A work gap is not mining, and not a payment system.", CONTEXT_NOTE] }
     ] },
     dh: { room: "Public-key workbench - November 1976", sources: ["e1DH"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. Walk up to the chalkboard at the long table.",
+        "2. Press Space and type PICK and a number from 1 to 21.",
+        "3. Then type SEND, then SHARE, and watch the lamps match.",
+        "4. Page on here to read about the 1976 paper."] },
       { caption: "In short", title: "New Directions in Cryptography", text: [
         "November 1976: Whitfield Diffie and Martin Hellman's paper is published. It records that the manuscript was received on 3 June 1976, and that parts were presented in 1975 and June 1976.",
         "It explored public-key systems, signatures, and ways to \"minimize the need for secure key distribution channels\"."] },
@@ -359,6 +379,11 @@
         "Bitcoin uses digital signatures, but that does not mean it uses this key exchange.", CONTEXT_NOTE] }
     ] },
     rsa: { room: "Checkable signatures - 1977 manuscript - 1978 journal", sources: ["e1RSA", "e1RSASni", "whitepaper"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. Walk up to the typewriter at the desk.",
+        "2. Press Space and type SIGN 5.",
+        "3. Check it with VERIFY, then try a changed message.",
+        "4. Page on here to read about the paper."] },
       { caption: "In short", title: "Anyone can check", text: [
         "Rivest, Shamir and Adleman's paper records the manuscript received on 4 April 1977 and revised on 1 September 1977. The journal published it in February 1978.",
         "It gave a concrete method for public-key encryption and digital signatures: \"Anyone can verify this signature\"."] },
@@ -369,6 +394,11 @@
         "The Bitcoin whitepaper of 2008 proposed a solution to that double-spending problem; nothing in this cave does.", CONTEXT_NOTE] }
     ] },
     floppy: { room: "8-inch floppy - IBM drives sold 1971", sources: ["e1FloppyIbm", "e1FloppyChm"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. Walk up to the button console in front of the drive.",
+        "2. Press Space once to take the disk out of its sleeve.",
+        "3. Press Space three more times: insert it, load it, eject it.",
+        "4. Page on here to read about the first floppy drives."] },
       { caption: "In short", title: "A disk that loads a machine", text: [
         "1971: IBM begins selling floppy disk drives. The disk was 8 inches across.",
         "The Computer History Museum describes the original as a read-only disk holding about 80 KB, used to load a machine's microcode."] },
@@ -380,6 +410,11 @@
         "Context exhibit: period technology, not a step toward Bitcoin."] }
     ] },
     panel: { room: "Front panel - January 1975", sources: ["e1Altair"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. Walk up to the binder stand in front of the panel.",
+        "2. Press Space and type CODES to see the patterns.",
+        "3. SET a pattern, then DEPOSIT it. Watch the levers and lights.",
+        "4. Spell OOGA, then type RUN."] },
       { caption: "In short", title: "Switches and lights", text: [
         "January 1975: the Altair 8800 is introduced on a magazine cover. The Computer History Museum records a basic 256 bytes of memory, expandable to 64 KB.",
         "Owners entered programs a byte at a time on front-panel switches and read the result in lights."] },
@@ -391,6 +426,11 @@
         "Context exhibit: period technology, not a step toward Bitcoin."] }
     ] },
     coupler: { room: "Acoustic coupler - 1970s demonstration", sources: ["e1Dossier"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. Walk up to the open terminal case in front of the desk.",
+        "2. Press Space and type SEND HI.",
+        "3. Listen, and watch the lamps and bars follow the bits.",
+        "4. Type STOP to hush it."] },
       { caption: "In short", title: "Data as sound", text: [
         "An acoustic coupler let a terminal use an ordinary telephone: the handset sat in two cups, one speaking tones into it, one listening.",
         "Here each 0 and 1 becomes one of two original synthesized pitches, slowed down so you can hear every bit."] },
@@ -401,6 +441,10 @@
         "Context exhibit: period technology, not a step toward Bitcoin."] }
     ] },
     timeline: { room: "Timeline - 1970 to 1979", sources: ["e1FloppyIbm", "e1CerfKahn", "e1MerkleHistory", "e1Rfc675", "e1Altair", "e1DH", "e1RSA", "e1RSASni", "e1Merkle"], pages: [
+      { caption: "How to use", title: "How to use", text: [
+        "1. Read the plaques left to right, top row first.",
+        "2. Gold plaques are ideas; plain plaques are period technology.",
+        "3. Page on here for what each date marks."] },
       { caption: "1971-1974", title: "Dates and what they mark", text: [
         "1971: IBM begins selling floppy drives.",
         "May 1974: Cerf and Kahn's paper is published.",
@@ -444,7 +488,7 @@
       const { era, top, M, createNode, addChild, place, solid, sign, obstacle, prop, label } = kit;
       const Z1 = era.z1;
       closeAudio();
-      S = { gw: createGateway(), dh: createDh(), rsa: createRsa(), panel: createPanel(), coupler: createCoupler(), floppy: { step: 0, spin: 0 }, post: { opened: -1 }, n: {} };
+      S = { gw: createGateway(), dh: createDh(), rsa: createRsa(), panel: createPanel(), coupler: createCoupler(), floppy: { step: 0, spin: 0 }, post: { opened: -1 }, rackStep: -1, n: {} };
       S.gwTerm = gatewayTerminal(S.gw); S.dhTerm = dhTerminal(S.dh); S.rsaTerm = rsaTerminal(S.rsa);
       S.panelTerm = panelTerminal(S.panel); S.couplerTerm = couplerTerminal(S.coupler);
       const N = S.n;
@@ -461,8 +505,87 @@
         return node;
       };
       const posts = (x, z, h, half) => { block(0.12, h, 0.12, "#2a2622", x - half, top + h / 2, z); block(0.12, h, 0.12, "#2a2622", x + half, top + h / 2, z); };
-      // A console the visitor walks up to: a lectern behind the prop's spot.
-      const lectern = (x, z, color = "#4a3a2a") => { block(0.9, 1.0, 0.5, color, x, top + 0.5, z - 0.9); solid(0.8, 0.5, 0.06, "#38ff7a", x, top + 1.15, z - 0.75, 0.9); };
+      // A reading stand for a panel, behind the prop's spot: paper on wood, no screen.
+      const lectern = (x, z, color = "#6b4a22") => {
+        block(0.7, 1.0, 0.45, color, x, top + 0.5, z - 0.9);
+        solid(0.82, 0.06, 0.6, "#d9822b", x, top + 1.03, z - 0.88);
+        solid(0.72, 0.03, 0.5, "#f1e8d2", x, top + 1.075, z - 0.86);
+      };
+      // --- The era's devices: original, unbranded 1970s-style models, each a different kind of machine, so none looks
+      // like another cave's computer. Each stands behind its prop's spot (z - 0.95), where the visitor walks up.
+      const keyCream = M.box({ w: 0.06, h: 0.03, d: 0.05, color: "#efe8d6" }), keyDark = M.box({ w: 0.05, h: 0.03, d: 0.04, color: "#2b2b2b" });
+      // A teleprinter on its pedestal: keyboard well, platen and paper rising out of it.
+      const teleprinter = (x, z) => {
+        const zz = z - 0.95;
+        block(0.95, 0.72, 0.6, "#dcd2b8", x, top + 0.36, zz);
+        solid(0.95, 0.06, 0.06, "#c8601e", x, top + 0.74, zz + 0.31);
+        solid(0.95, 0.28, 0.62, "#e8dfc6", x, top + 0.86, zz);
+        solid(0.8, 0.04, 0.26, "#3a3632", x, top + 1.02, zz + 0.16);
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 9; c++) at(keyCream, x - 0.32 + c * 0.08, top + 1.055, zz + 0.08 + r * 0.075);
+        solid(0.7, 0.14, 0.14, "#2a2826", x, top + 1.07, zz - 0.18);
+        solid(0.62, 0.6, 0.02, "#f7f3ea", x, top + 1.42, zz - 0.2);
+        for (let i = 0; i < 5; i++) solid(0.42 - (i % 2) * 0.14, 0.012, 0.024, "#4a4a4a", x - 0.05, top + 1.24 + i * 0.08, zz - 0.18);
+      };
+      // An electric typewriter on a metal typing table.
+      const typewriter = (x, z) => {
+        const zz = z - 0.95;
+        block(0.9, 0.66, 0.55, "#8a8f94", x, top + 0.33, zz);
+        solid(0.94, 0.04, 0.6, "#b9b2a0", x, top + 0.68, zz);
+        solid(0.62, 0.2, 0.44, "#4f8a8b", x, top + 0.8, zz);
+        solid(0.72, 0.08, 0.1, "#2f3a3a", x, top + 0.94, zz - 0.14);
+        solid(0.1, 0.04, 0.04, "#c9c3b4", x - 0.4, top + 0.98, zz - 0.14);
+        solid(0.5, 0.36, 0.015, "#f7f3ea", x, top + 1.15, zz - 0.17);
+        for (let r = 0; r < 4; r++) for (let c = 0; c < 8; c++) at(keyDark, x - 0.25 + c * 0.068 + r * 0.017, top + 0.92 - r * 0.02, zz + 0.04 + r * 0.05);
+      };
+      // A chalkboard on an easel, with the table's toy numbers chalked on it.
+      const chalkboard = (x, z) => {
+        const zz = z - 0.95;
+        block(0.08, 1.7, 0.08, "#7a5232", x - 0.58, top + 0.85, zz); block(0.08, 1.7, 0.08, "#7a5232", x + 0.58, top + 0.85, zz);
+        obstacle(x - 0.62, x + 0.62, zz - 0.1, zz + 0.16);
+        solid(1.24, 0.86, 0.05, "#7a5232", x, top + 1.3, zz + 0.02);
+        solid(1.12, 0.76, 0.03, "#2f4a3a", x, top + 1.3, zz + 0.05);
+        solid(1.12, 0.05, 0.12, "#7a5232", x, top + 0.88, zz + 0.08);
+        solid(0.09, 0.02, 0.02, "#f4f1e6", x - 0.3, top + 0.915, zz + 0.1);
+        sign("p = 23 · g = 5", "toy numbers", x, top + 1.32, zz + 0.08, 0, 0.3);
+      };
+      // An operator's console of big square push buttons, for the floppy drive.
+      const opConsole = (x, z) => {
+        const zz = z - 0.95;
+        block(0.8, 0.9, 0.5, "#5a3d26", x, top + 0.45, zz);
+        solid(0.84, 0.24, 0.44, "#e4dcc4", x, top + 1.02, zz);
+        const colors = ["#d9562b", "#e8b13a", "#5d9a4a", "#e9e2cf"];
+        for (let i = 0; i < 4; i++) solid(0.14, 0.05, 0.14, colors[i], x - 0.27 + i * 0.18, top + 1.165, zz + 0.04, 0.4);
+        solid(0.62, 0.05, 0.03, "#20201e", x, top + 1.08, zz + 0.23);
+      };
+      // A walnut stand with the panel's ring binder open on it.
+      const manualStand = (x, z) => {
+        const zz = z - 0.95;
+        block(0.6, 0.95, 0.4, "#6b4a2b", x, top + 0.475, zz);
+        solid(0.72, 0.04, 0.46, "#c8692a", x, top + 0.97, zz);
+        solid(0.33, 0.02, 0.42, "#f7f3ea", x - 0.17, top + 1.0, zz); solid(0.33, 0.02, 0.42, "#f7f3ea", x + 0.17, top + 1.0, zz);
+        for (let i = 0; i < 4; i++) { solid(0.24, 0.006, 0.016, "#3a3a3a", x - 0.17, top + 1.013, zz - 0.12 + i * 0.08); solid(0.24, 0.006, 0.016, "#3a3a3a", x + 0.17, top + 1.013, zz - 0.12 + i * 0.08); }
+        for (let i = 0; i < 3; i++) solid(0.03, 0.03, 0.03, "#b8b8b8", x, top + 1.01, zz - 0.12 + i * 0.12);
+      };
+      // A portable printing terminal in an open carrying case, on a folding table.
+      const portable = (x, z) => {
+        const zz = z - 0.95;
+        block(0.9, 0.7, 0.55, "#8a6a44", x, top + 0.35, zz);
+        solid(0.78, 0.14, 0.46, "#4a3020", x, top + 0.77, zz);
+        solid(0.78, 0.42, 0.05, "#4a3020", x, top + 1.05, zz - 0.24);
+        solid(0.7, 0.34, 0.02, "#c4b79a", x, top + 1.05, zz - 0.21);
+        solid(0.62, 0.03, 0.2, "#e6dcc4", x, top + 0.855, zz + 0.08);
+        for (let r = 0; r < 3; r++) for (let c = 0; c < 8; c++) at(keyDark, x - 0.25 + c * 0.07, top + 0.875, zz + 0.02 + r * 0.055);
+        solid(0.42, 0.02, 0.12, "#f7f3ea", x, top + 0.86, zz - 0.11);
+        solid(0.05, 0.03, 0.03, "#ff4c4c", x + 0.3, top + 0.86, zz - 0.11, 1.2);
+      };
+      // A wooden postbox stand with a brass slot, for the Puzzle Post.
+      const postStand = (x, z) => {
+        const zz = z - 0.95;
+        block(0.62, 1.05, 0.5, "#8a3a2a", x, top + 0.525, zz);
+        solid(0.68, 0.08, 0.56, "#5a2a1e", x, top + 1.09, zz);
+        solid(0.34, 0.05, 0.02, "#d9b44a", x, top + 0.86, zz + 0.26, 0.3);
+        solid(0.4, 0.26, 0.02, "#e8dcc0", x, top + 0.55, zz + 0.26);
+      };
       const PICK = { w: 1.4, h: 1.8, d: 2.4 };
       // A usable exhibit at (x, z); `on` is the model a tap should select ({ w, h, d, x, z }), else its lectern.
       const station = (def) => prop({ reach: 1.7, connection: "context", ...def, pick: def.on || { ...PICK, x: def.x, z: def.z - 0.6 }, at: { x: def.x, y: top, z: def.z } });
@@ -478,11 +601,27 @@
       {
         const zc = Z1 - 24, ax = -27, bx = -10, gx = -18.5;
         solid(20, 0.04, 9, "#5b4630", -18.5, top + 0.02, zc);
-        for (const [x, name] of [[ax, "HOST A · NET A"], [bx, "HOST B"]]) {
-          block(1.6, 0.9, 1.1, "#cfc6aa", x, top + 0.45, zc);
-          block(1.3, 0.8, 0.9, "#d8cfb4", x, top + 1.3, zc);
-          solid(1.0, 0.55, 0.04, "#38ff7a", x, top + 1.32, zc + 0.46, 1.0);
-          sign(name, "an illustration, not historical machines", x, top + 2.4, zc + 0.5, 0, 0.35);
+        // Each host is a pair of tall cabinets: a reel-to-reel tape drive, and a processor with rows of lamps and rocker
+        // switches, in its own colour (an illustration, not historical machines).
+        N.reels = []; N.rackLights = [];
+        const reelGeo = M.box({ w: 0.36, h: 0.36, d: 0.03, color: "#2a2a2a" }), reelHub = M.box({ w: 0.12, h: 0.12, d: 0.04, color: "#c9c3b4" });
+        const rackLit = M.box({ w: 0.05, h: 0.05, d: 0.03, color: "#ffcf5a", emissive: 1.5 }), rocker = M.box({ w: 0.06, h: 0.1, d: 0.04, color: "#f2ede0" }), vent = M.box({ w: 0.9, h: 0.02, d: 0.025, color: "#8f8670" });
+        for (const [x, name, body] of [[ax, "HOST A · NET A", "#c8621e"], [bx, "HOST B", "#6b7a3a"]]) {
+          const L = x - 0.65, Rx = x + 0.65, fz = zc + 0.39;
+          block(1.25, 1.9, 0.75, "#e6dcc4", L, top + 0.95, zc); block(1.25, 1.9, 0.75, "#e6dcc4", Rx, top + 0.95, zc);
+          solid(1.27, 0.14, 0.77, body, L, top + 1.83, zc); solid(1.27, 0.14, 0.77, body, Rx, top + 1.83, zc);
+          solid(1.0, 0.82, 0.02, "#1c1a18", L, top + 1.35, fz);
+          for (const ry of [1.55, 1.15]) {
+            const reel = place(createNode({ position: { x: L, y: top + ry, z: fz + 0.02 } }));
+            addChild(reel, createNode({ geometry: reelGeo }), createNode({ geometry: reelGeo, rotation: { x: 0, y: 0, z: 0.785 } }), createNode({ geometry: reelHub }));
+            N.reels.push(reel);
+          }
+          solid(1.0, 0.5, 0.02, body, Rx, top + 1.4, fz);
+          for (let i = 0; i < 12; i++) N.rackLights.push(at(rackLit, Rx - 0.42 + (i % 6) * 0.17, top + 1.52 - Math.floor(i / 6) * 0.14, fz + 0.02));
+          for (let i = 0; i < 8; i++) at(rocker, Rx - 0.42 + i * 0.12, top + 1.22, fz + 0.02);
+          solid(1.0, 0.5, 0.02, "#c9c0a6", Rx, top + 0.6, fz);
+          for (let i = 0; i < 5; i++) at(vent, Rx, top + 0.42 + i * 0.09, fz + 0.01);
+          sign(name, "an illustration, not historical machines", x, top + 2.45, zc + 0.5, 0, 0.35);
         }
         N.gwLamps = [];
         for (const [g, dz] of [[1, 2.6], [2, -2.6]]) {
@@ -496,18 +635,18 @@
           solid(gx - 1 - ax, 0.06, 0.12, "#222222", (ax + gx - 1) / 2, top + 0.06, z);
           solid(bx - gx - 1, 0.06, 0.12, "#222222", (bx + gx + 1) / 2, top + 0.06, z);
         }
-        solid(0.12, 0.06, 5.2, "#222222", ax + 0.9, top + 0.06, zc); solid(0.12, 0.06, 5.2, "#222222", bx - 0.9, top + 0.06, zc);
-        N.hostLamp = at(M.box({ w: 0.25, h: 0.25, d: 0.25, color: "#f2c14e", emissive: 1.6 }), bx, top + 1.95, zc, false);
+        solid(0.12, 0.06, 5.2, "#222222", ax + 1.4, top + 0.06, zc); solid(0.12, 0.06, 5.2, "#222222", bx - 1.4, top + 0.06, zc);
+        N.hostLamp = at(M.box({ w: 0.25, h: 0.25, d: 0.25, color: "#f2c14e", emissive: 1.6 }), bx, top + 2.08, zc, false);
         const cube = M.box({ w: 0.32, h: 0.32, d: 0.32, color: "#4fb6ff", emissive: 0.6 });
         N.packets = [];
         for (let i = 0; i < MAX_FRAGS; i++) N.packets.push(at(cube, ax, top + 0.5, zc, false));
-        N.gw = { ax: ax + 0.9, bx: bx - 0.9, gx, zc, y: top + 0.35 };
+        N.gw = { ax: ax + 1.4, bx: bx - 1.4, gx, zc, y: top + 0.35 };
         goldSign("NETWORKS MEET · MAY AND DEC 1974", "context · not a Bitcoin whitepaper citation", gx, top + 4.4, zc + 0.3, 0.7);
-        lectern(-11.5, zc + 5.2);
-        station({ id: "e1-gateway-puzzle", year: 1974, date: "an illustration of the May 1974 paper and the December 1974 RFC 675", title: "Gateway puzzle", label: "GATEWAY PUZZLE · 1974", sourceKeys: ["e1CerfKahn", "e1Rfc675"], x: -11.5, z: zc + 6.1, on: { w: 18, h: 3.4, d: 7, x: gx, z: zc },
+        teleprinter(-11.5, zc + 6.1);
+        station({ id: "e1-gateway-puzzle", hint: "Type MAP, then PING G1 and PING G2", year: 1974, date: "an illustration of the May 1974 paper and the December 1974 RFC 675", title: "Gateway puzzle", label: "GATEWAY PUZZLE · 1974", sourceKeys: ["e1CerfKahn", "e1Rfc675"], x: -11.5, z: zc + 6.1, on: { w: 18, h: 3.4, d: 7, x: gx, z: zc },
           onUse: () => ({ terminal: S.gwTerm }) });
         lectern(-23.5, zc + 5.2, "#6b4a22");
-        station({ id: "e1-gateway", year: 1974, date: "May 1974 journal paper; December 1974 RFC 675 specification", title: "Networks meet at a gateway", label: "GATEWAY · MAY AND DEC 1974", sourceKeys: PANELS.gateway.sources, x: -23.5, z: zc + 6.1, onUse: board("gateway") });
+        station({ id: "e1-gateway", hint: "Read how the 1974 networks met", year: 1974, date: "May 1974 journal paper; December 1974 RFC 675 specification", title: "Networks meet at a gateway", label: "GATEWAY · MAY AND DEC 1974", sourceKeys: PANELS.gateway.sources, x: -23.5, z: zc + 6.1, onUse: board("gateway") });
       }
 
       // --- Merkle's puzzles (left bank) ----------------------------------------------------------------------------
@@ -519,17 +658,17 @@
         for (let r = 0; r < 6; r++) for (let c = 0; c < 8; c++) N.postBoxes.push(at(shut, x - 2.1 + c * 0.6, top + 0.45 + r * 0.5, zc + 0.3));
         N.postOpen = at(M.box({ w: 0.5, h: 0.32, d: 0.12, color: "#f2c14e", emissive: 1.2 }), x, top + 1, zc + 0.36, false);
         goldSign("MERKLE'S PUZZLES · 1974 PROPOSAL · 1978 ARTICLE", "context · not the 1980 Merkle paper Bitcoin cites", x, top + 4.1, zc + 0.3, 0.6);
-        lectern(-22, zc + 2.2);
-        station({ id: "e1-puzzle-post", year: 1974, date: "a toy model of the puzzles Merkle proposed in autumn 1974", on: { w: 5.2, h: 3.4, d: 1, x, z: zc }, title: "Puzzle Post toy", label: "PUZZLE POST · 1974", sourceKeys: ["e1MerkleHistory", "e1Merkle"], x: -22, z: zc + 3.1,
+        postStand(-22, zc + 3.1);
+        station({ id: "e1-puzzle-post", hint: "Press Space to open a box", year: 1974, date: "a toy model of the puzzles Merkle proposed in autumn 1974", on: { w: 5.2, h: 3.4, d: 1, x, z: zc }, title: "Puzzle Post toy", label: "PUZZLE POST · 1974", sourceKeys: ["e1MerkleHistory", "e1Merkle"], x: -22, z: zc + 3.1,
           onUse: () => {
             const p = S.post, i = (p.opened + 17) % 48;
             p.opened = i;
             const b = N.postBoxes[i].position;
             N.postOpen.position.x = b.x; N.postOpen.position.y = b.y; N.postOpen.visible = true;
-            return { caption: `You picked box ${i + 1} of 48 and solved its small puzzle quickly. A listener does not know which box you chose and would have to search many. A toy model of the work gap, not a secure method.` };
+            return { caption: `You picked box ${i + 1} of 48 and solved its small puzzle quickly. A listener does not know which box you chose and would have to search many. A toy model of the work gap, not a secure method. Press Space again to try another box.` };
           } });
         lectern(-14, zc + 2.2, "#6b4a22");
-        station({ id: "e1-merkle", year: 1974, date: "autumn 1974 proposal (the author's account); April 1978 journal article", title: "Merkle puzzles", label: "MERKLE PUZZLES · 1974 / 1978", sourceKeys: PANELS.merkle.sources, x: -14, z: zc + 3.1, onUse: board("merkle") });
+        station({ id: "e1-merkle", hint: "Read about the puzzle idea", year: 1974, date: "autumn 1974 proposal (the author's account); April 1978 journal article", title: "Merkle puzzles", label: "MERKLE PUZZLES · 1974 / 1978", sourceKeys: PANELS.merkle.sources, x: -14, z: zc + 3.1, onUse: board("merkle") });
       }
 
       // --- Public-key workbench (left bank) ------------------------------------------------------------------------
@@ -554,10 +693,10 @@
           N.dhLamps.push([at(geo, x - 1.7, top + 0.98, zc, false), at(geo, x + 1.7, top + 0.98, zc, false)]);
         }
         goldSign("PUBLIC-KEY WORKBENCH · NOV 1976", "teaching table · a simplified toy model, not secure · context", x, top + 3.7, zc + 0.3, 0.6);
-        lectern(x, zc + 2.4);
-        station({ id: "e1-dh-table", year: 1976, date: "a simplified toy model of the idea in the November 1976 paper", on: { w: 5, h: 3, d: 3.6, x, z: zc - 0.4 }, title: "Public-key workbench", label: "KEY EXCHANGE TABLE · 1976", sourceKeys: ["e1DH"], x, z: zc + 3.3, onUse: () => ({ terminal: S.dhTerm }) });
+        chalkboard(x, zc + 3.3);
+        station({ id: "e1-dh-table", hint: "Type PICK 4, then SEND, then SHARE", year: 1976, date: "a simplified toy model of the idea in the November 1976 paper", on: { w: 5, h: 3, d: 3.6, x, z: zc - 0.4 }, title: "Public-key workbench", label: "KEY EXCHANGE TABLE · 1976", sourceKeys: ["e1DH"], x, z: zc + 3.3, onUse: () => ({ terminal: S.dhTerm }) });
         lectern(-23.5, zc + 2.4, "#6b4a22");
-        station({ id: "e1-dh", year: 1976, date: "November 1976 journal issue; manuscript received 3 June 1976", title: "New Directions in Cryptography", label: "DIFFIE AND HELLMAN · NOV 1976", sourceKeys: PANELS.dh.sources, x: -23.5, z: zc + 3.3, onUse: board("dh") });
+        station({ id: "e1-dh", hint: "Read about public keys", year: 1976, date: "November 1976 journal issue; manuscript received 3 June 1976", title: "New Directions in Cryptography", label: "DIFFIE AND HELLMAN · NOV 1976", sourceKeys: PANELS.dh.sources, x: -23.5, z: zc + 3.3, onUse: board("dh") });
       }
 
       // --- Checkable signatures (left bank) ------------------------------------------------------------------------
@@ -570,16 +709,19 @@
         N.verdict = [at(M.box({ w: 0.26, h: 0.26, d: 0.26, color: "#4cff7a", emissive: 1.4 }), x - 1.0, top + 1.05, zc - 0.4, false),
           at(M.box({ w: 0.26, h: 0.26, d: 0.26, color: "#ff4c4c", emissive: 1.4 }), x - 1.0, top + 1.05, zc - 0.4, false)];
         goldSign("CHECKABLE SIGNATURES · 1977 MANUSCRIPT · FEB 1978 JOURNAL", "toy numbers · context · a Bitcoin signature does not mean RSA", x, top + 2.6, zc + 0.3, 0.55);
-        lectern(x, zc + 2.2);
-        station({ id: "e1-rsa-desk", year: 1977, date: "a toy model of the method in the paper received 4 April 1977", on: { w: 2.8, h: 1.8, d: 1.4, x, z: zc }, title: "Toy signature desk", label: "SIGNATURE DESK · 1977", sourceKeys: ["e1RSA", "e1RSASni"], x, z: zc + 3.1, onUse: () => ({ terminal: S.rsaTerm }) });
+        typewriter(x, zc + 3.1);
+        station({ id: "e1-rsa-desk", hint: "Type SIGN 5, then VERIFY it", year: 1977, date: "a toy model of the method in the paper received 4 April 1977", on: { w: 2.8, h: 1.8, d: 1.4, x, z: zc }, title: "Toy signature desk", label: "SIGNATURE DESK · 1977", sourceKeys: ["e1RSA", "e1RSASni"], x, z: zc + 3.1, onUse: () => ({ terminal: S.rsaTerm }) });
         lectern(-23, zc + 2.2, "#6b4a22");
-        station({ id: "e1-rsa", year: 1977, date: "manuscript received 4 April 1977, revised 1 September 1977; journal February 1978", title: "RSA signatures", label: "RSA · 1977 MANUSCRIPT · 1978 JOURNAL", sourceKeys: PANELS.rsa.sources, x: -23, z: zc + 3.1, onUse: board("rsa") });
+        station({ id: "e1-rsa", hint: "Read about checkable signatures", year: 1977, date: "manuscript received 4 April 1977, revised 1 September 1977; journal February 1978", title: "RSA signatures", label: "RSA · 1977 MANUSCRIPT · 1978 JOURNAL", sourceKeys: PANELS.rsa.sources, x: -23, z: zc + 3.1, onUse: board("rsa") });
       }
 
       // --- 8-inch floppy (right bank) ------------------------------------------------------------------------------
       {
         const zc = Z1 - 17, dx = 27, sx = 22.5;
-        block(1.8, 1.2, 1.0, "#d4ccb4", dx, top + 0.6, zc);
+        block(1.8, 1.2, 1.0, "#e8e0c8", dx, top + 0.6, zc);
+        solid(1.82, 0.16, 1.02, "#5a3820", dx, top + 0.08, zc);
+        solid(0.12, 1.22, 1.02, "#8a5a32", dx - 0.86, top + 0.6, zc); solid(0.12, 1.22, 1.02, "#8a5a32", dx + 0.86, top + 0.6, zc);
+        for (let i = 0; i < 4; i++) solid(1.3, 0.025, 0.02, "#a89f88", dx, top + 0.3 + i * 0.08, zc + 0.51);
         solid(0.7, 0.05, 0.05, "#1a1a1a", dx, top + 0.92, zc + 0.51);
         N.door = at(M.box({ w: 0.7, h: 0.1, d: 0.08, color: "#8a8270" }), dx, top + 1.05, zc + 0.53);
         N.diskLamp = at(M.box({ w: 0.08, h: 0.08, d: 0.04, color: "#ff4c4c", emissive: 1.6 }), dx + 0.7, top + 1.05, zc + 0.52, false);
@@ -592,22 +734,24 @@
         N.floppy = { sleeve: [sx, top + 1.05, zc + 0.06], out: [sx, top + 1.6, zc + 0.3], slot: [dx, top + 0.92, zc + 0.75], inside: [dx, top + 0.92, zc + 0.2], pos: [sx, top + 1.05, zc + 0.06] };
         // The original loading animation: three instruction cards that light in turn.
         solid(1.4, 0.8, 0.06, "#101418", dx, top + 1.7, zc - 0.3);
-        const card = M.box({ w: 0.36, h: 0.5, d: 0.04, color: "#7affb0", emissive: 1.1 });
+        const card = M.box({ w: 0.36, h: 0.5, d: 0.04, color: "#ffb347", emissive: 1.1 });
         N.cards = [at(card, dx - 0.45, top + 1.7, zc - 0.25, false), at(card, dx, top + 1.7, zc - 0.25, false), at(card, dx + 0.45, top + 1.7, zc - 0.25, false)];
         sign("8-INCH FLOPPY · IBM DRIVES SOLD 1971", "period technology · context · enlarged, unbranded model", 25, top + 3.0, zc + 0.3, 0, 0.5);
-        lectern(24.6, zc + 2.4);
-        station({ id: "e1-floppy-toy", year: 1971, date: "1971: IBM begins selling floppy drives", on: { w: 6, h: 2.2, d: 1.4, x: 24.8, z: zc }, title: "Handle the 8-inch floppy", label: "FLOPPY · 1971", sourceKeys: ["e1FloppyIbm", "e1FloppyChm"], x: 24.6, z: zc + 3.3,
+        opConsole(24.6, zc + 3.3);
+        station({ id: "e1-floppy-toy", hint: "Press Space four times: out, in, load, eject", year: 1971, date: "1971: IBM begins selling floppy drives", on: { w: 6, h: 2.2, d: 1.4, x: 24.8, z: zc }, title: "Handle the 8-inch floppy", label: "FLOPPY · 1971", sourceKeys: ["e1FloppyIbm", "e1FloppyChm"], x: 24.6, z: zc + 3.3,
           onUse: () => { const f = S.floppy, c = FLOPPY_STEPS[f.step]; f.step = (f.step + 1) % FLOPPY_STEPS.length; return { caption: c }; } });
         lectern(30, zc + 2.4, "#6b4a22");
-        station({ id: "e1-floppy", year: 1971, date: "1971: IBM begins selling floppy drives", title: "The 8-inch floppy", label: "8-INCH FLOPPY · 1971", sourceKeys: PANELS.floppy.sources, x: 30, z: zc + 3.3, onUse: board("floppy") });
+        station({ id: "e1-floppy", hint: "Read how to handle the floppy", year: 1971, date: "1971: IBM begins selling floppy drives", title: "The 8-inch floppy", label: "8-INCH FLOPPY · 1971", sourceKeys: PANELS.floppy.sources, x: 30, z: zc + 3.3, onUse: board("floppy") });
       }
 
       // --- Front panel and its 256-byte tray (right bank) ----------------------------------------------------------
       {
         const zc = Z1 - 31, x = 25;
-        block(3.0, 0.75, 1.4, "#5a4a3a", x, top + 0.375, zc);
-        solid(2.6, 0.7, 1.2, "#2f4a6a", x, top + 1.1, zc);
-        solid(2.5, 0.6, 0.02, "#d9d4c4", x, top + 1.1, zc + 0.61);
+        block(3.0, 0.75, 1.4, "#6b4a2b", x, top + 0.375, zc);
+        solid(2.6, 0.7, 1.2, "#c8692a", x, top + 1.1, zc);
+        solid(0.12, 0.74, 1.24, "#5a3a20", x - 1.36, top + 1.1, zc); solid(0.12, 0.74, 1.24, "#5a3a20", x + 1.36, top + 1.1, zc);
+        solid(2.5, 0.6, 0.02, "#efe6cf", x, top + 1.1, zc + 0.61);
+        solid(2.5, 0.08, 0.03, "#1e1c1a", x, top + 0.88, zc + 0.62);
         const lever = M.box({ w: 0.06, h: 0.2, d: 0.06, color: "#e0e0e0", offset: { y: 0.1 } }), off = M.box({ w: 0.08, h: 0.08, d: 0.04, color: "#4a1a1a" });
         const red = lit("#ff4c4c");
         N.levers = []; N.dataOn = []; N.addrOn = [];
@@ -626,34 +770,167 @@
         N.wonLamp = at(M.box({ w: 2.2, h: 0.1, d: 0.06, color: "#58e07a", emissive: 1.4 }), x, top + 2.65, zc - 0.3, false);
         sign("FRONT PANEL · JAN 1975", "an original panel inspired by early microcomputers · context", x, top + 5.3, zc - 0.2, 0, 0.5);
         sign("256 BYTES · ONE LIGHT EACH", "lights up as you DEPOSIT", x, top + 2.4, zc - 0.25, 0, 0.3);
-        lectern(x, zc + 2.4);
-        station({ id: "e1-panel-toy", year: 1975, date: "inspired by the Altair 8800, introduced January 1975", on: { w: 3, h: 4.6, d: 1.6, x, z: zc }, title: "Front panel console", label: "FRONT PANEL · 1975", sourceKeys: ["e1Altair"], x, z: zc + 3.3, onUse: () => ({ terminal: S.panelTerm }) });
+        manualStand(x, zc + 3.3);
+        station({ id: "e1-panel-toy", hint: "Type CODES, then SET and DEPOSIT to spell OOGA", year: 1975, date: "inspired by the Altair 8800, introduced January 1975", on: { w: 3, h: 4.6, d: 1.6, x, z: zc }, title: "Front panel console", label: "FRONT PANEL · 1975", sourceKeys: ["e1Altair"], x, z: zc + 3.3, onUse: () => ({ terminal: S.panelTerm }) });
         lectern(30.5, zc + 2.4, "#6b4a22");
-        station({ id: "e1-panel", year: 1975, date: "January 1975: the Altair 8800's magazine-cover introduction", title: "Switches and lights", label: "MICROCOMPUTERS · JAN 1975", sourceKeys: PANELS.panel.sources, x: 30.5, z: zc + 3.3, onUse: board("panel") });
+        station({ id: "e1-panel", hint: "Read about switches and lights", year: 1975, date: "January 1975: the Altair 8800's magazine-cover introduction", title: "Switches and lights", label: "MICROCOMPUTERS · JAN 1975", sourceKeys: PANELS.panel.sources, x: 30.5, z: zc + 3.3, onUse: board("panel") });
       }
 
       // --- Acoustic coupler (right bank) ---------------------------------------------------------------------------
       {
         const zc = Z1 - 45, x = 25;
         block(2.4, 0.75, 1.1, "#6a5440", x, top + 0.375, zc);
-        solid(1.0, 0.28, 0.5, "#c8c0a8", x, top + 0.89, zc);
+        solid(1.0, 0.28, 0.5, "#b08a5a", x, top + 0.89, zc);
         solid(0.3, 0.16, 0.3, "#222222", x - 0.3, top + 1.1, zc); solid(0.3, 0.16, 0.3, "#222222", x + 0.3, top + 1.1, zc);
         N.handset = place(createNode({ position: { x, y: top + 1.25, z: zc } }));
         addChild(N.handset, createNode({ geometry: M.box({ w: 0.95, h: 0.1, d: 0.14, color: "#3a3a3a" }) }),
           createNode({ geometry: M.box({ w: 0.24, h: 0.14, d: 0.2, color: "#333333" }), position: { x: -0.3, y: -0.04, z: 0 } }),
           createNode({ geometry: M.box({ w: 0.24, h: 0.14, d: 0.2, color: "#333333" }), position: { x: 0.3, y: -0.04, z: 0 } }));
         N.handsetY = top + 1.25;
-        solid(0.5, 0.22, 0.45, "#4a4a4a", x + 0.85, top + 0.86, zc + 0.1);
-        solid(0.6, 0.3, 0.04, "#101418", x - 0.85, top + 0.95, zc - 0.3);
+        solid(0.5, 0.2, 0.45, "#7d8a3a", x + 0.85, top + 0.85, zc + 0.1);
+        solid(0.42, 0.06, 0.12, "#6a7630", x + 0.85, top + 0.98, zc - 0.05);
+        solid(0.24, 0.03, 0.24, "#e8e2cc", x + 0.85, top + 0.965, zc + 0.16);
+        solid(0.08, 0.035, 0.08, "#7d8a3a", x + 0.85, top + 0.975, zc + 0.16);
+        solid(0.5, 0.04, 0.4, "#f7f3ea", x - 0.85, top + 0.77, zc - 0.05);
+        solid(0.5, 0.25, 0.02, "#f7f3ea", x - 0.85, top + 0.88, zc - 0.25);
         N.bitLamps = [at(lit("#4fb6ff"), x - 0.2, top + 0.9, zc + 0.26, false), at(lit("#ffb23f"), x + 0.2, top + 0.9, zc + 0.26, false)];
-        const bar = M.box({ w: 0.1, h: 0.5, d: 0.06, color: "#7affb0", emissive: 1.0, offset: { y: 0.25 } });
+        const bar = M.box({ w: 0.1, h: 0.5, d: 0.06, color: "#ffb347", emissive: 1.0, offset: { y: 0.25 } });
         N.bars = [];
         for (let i = 0; i < 8; i++) { const b = at(bar, x - 0.42 + i * 0.12, top + 1.5, zc - 0.1); b.scale.y = 0.1; N.bars.push(b); }
         sign("ACOUSTIC COUPLER · 1970s", "a demonstration · original tones · model and speed not yet verified", x, top + 2.8, zc + 0.3, 0, 0.5);
-        lectern(x, zc + 2.4);
-        station({ id: "e1-coupler-toy", year: "1970s", date: "1970s demonstration; model, date and speed not yet verified", on: { w: 2.4, h: 2, d: 1.2, x, z: zc }, title: "Acoustic coupler demo", label: "COUPLER DEMO · 1970s", sourceKeys: ["e1Dossier"], x, z: zc + 3.3, onUse: () => ({ terminal: S.couplerTerm }) });
+        portable(x, zc + 3.3);
+        station({ id: "e1-coupler-toy", hint: "Type SEND HI and listen", year: "1970s", date: "1970s demonstration; model, date and speed not yet verified", on: { w: 2.4, h: 2, d: 1.2, x, z: zc }, title: "Acoustic coupler demo", label: "COUPLER DEMO · 1970s", sourceKeys: ["e1Dossier"], x, z: zc + 3.3, onUse: () => ({ terminal: S.couplerTerm }) });
         lectern(30, zc + 2.4, "#6b4a22");
-        station({ id: "e1-coupler", year: "1970s", date: "1970s demonstration; model, date and speed not yet verified", title: "Data as sound", label: "ACOUSTIC COUPLER · 1970s", sourceKeys: PANELS.coupler.sources, x: 30, z: zc + 3.3, onUse: board("coupler") });
+        station({ id: "e1-coupler", hint: "Read how data became sound", year: "1970s", date: "1970s demonstration; model, date and speed not yet verified", title: "Data as sound", label: "ACOUSTIC COUPLER · 1970s", sourceKeys: PANELS.coupler.sources, x: 30, z: zc + 3.3, onUse: board("coupler") });
+      }
+
+
+      // --- Era decor: 1970s set dressing, original and unbranded, making no claims ----------------------------------
+      // Wood panelling and supergraphic stripes on both back walls, original poster art, sunburst emblems up high,
+      // a lounge on each bank (shag rug, modular sofa, armchair, coffee table, arc lamp, plants) under amber globe
+      // pendants, and an office corner (desk, chair, desk calculator, filing cabinet, bookshelf of binders). All of it
+      // stands well back from the waterside walk (x <= -16 and x >= 22), out of the reserved plots and below 8 m;
+      // only low furniture stands between the walk and the exhibits, so the signs and the overview stay in sight.
+      {
+        const WALL = { L: -33.86, R: 41.86 };
+        const wallX = (side) => side < 0 ? WALL.L : WALL.R;
+        const face = (side, layer) => wallX(side) - side * (0.13 + layer * 0.012);
+        const art = (side, u, y, w, h, color, layer, em = 0) => solid(0.02, h, w, color, face(side, layer), y, Z1 - u, em);
+        const batten = M.box({ w: 0.04, h: 2.4, d: 0.07, color: "#4e321c" });
+        for (const side of [-1, 1]) {
+          const wx = wallX(side);
+          // Panelling to head height, then three supergraphic bands.
+          solid(0.1, 2.4, 56, "#6e4a2a", wx - side * 0.04, top + 1.2, Z1 - 40);
+          for (let u = 12.7; u < 68; u += 1.4) at(batten, wx - side * 0.1, top + 1.2, Z1 - u);
+          solid(0.06, 0.5, 56, "#8a4a1f", wx - side * 0.04, top + 3.0, Z1 - 40);
+          solid(0.06, 0.5, 56, "#d9641e", wx - side * 0.04, top + 3.55, Z1 - 40);
+          solid(0.06, 0.5, 56, "#e9a23b", wx - side * 0.04, top + 4.1, Z1 - 40);
+          // Sunburst emblems high on the wall: a disc of two squares and eight rays, turned in the wall's plane.
+          const ray = M.box({ w: 0.02, h: 0.1, d: 2.6, color: "#f2c14e" }), disc = M.box({ w: 0.03, h: 0.9, d: 0.9, color: "#e9a23b", emissive: 0.3 });
+          for (const u of side < 0 ? [26, 54] : [30, 58]) {
+            const z = Z1 - u, y = top + 6.4, x = face(side, 0);
+            for (let k = 0; k < 8; k++) place(createNode({ geometry: ray, position: { x, y, z }, rotation: { x: k * Math.PI / 8, y: 0, z: 0 } }));
+            place(createNode({ geometry: disc, position: { x: face(side, 1), y, z } }));
+            place(createNode({ geometry: disc, position: { x: face(side, 1), y, z }, rotation: { x: Math.PI / 4, y: 0, z: 0 } }));
+          }
+        }
+        // Posters: a dark frame and original art in stacked shapes (no words, no claims).
+        const poster = (side, u, style) => {
+          const y = top + 1.95;
+          art(side, u, y, 1.5, 1.9, "#2a2018", 0);
+          if (style === 0) { // sunset over hills
+            art(side, u, y, 1.34, 1.74, "#f4e2bc", 1);
+            const bands = ["#e9a23b", "#d9641e", "#a8401c", "#5a2a14"];
+            for (let i = 0; i < 4; i++) art(side, u, y - 0.15 - i * 0.18, 1.34, 0.18, bands[i], 2);
+            for (let i = 0; i < 3; i++) art(side, u, y + 0.05 + i * 0.12, 0.7 - i * 0.2, 0.12, "#f2c14e", 2);
+          } else if (style === 1) { // mountains
+            art(side, u, y, 1.34, 1.74, "#9cc3c7", 1);
+            art(side, u, y + 0.65, 1.34, 0.3, "#e9a23b", 2);
+            for (let i = 0; i < 5; i++) art(side, u, y - 0.6 + i * 0.22, 1.2 - i * 0.24, 0.22, i < 4 ? "#4f6a3a" : "#f4f1e6", 2);
+          } else if (style === 2) { // nested squares
+            const c = ["#5a2a14", "#d9641e", "#e9a23b", "#f4e2bc", "#4f8a8b"];
+            for (let i = 0; i < 5; i++) art(side, u, y, 1.34 - i * 0.26, 1.34 - i * 0.26, c[i], 1 + i);
+          } else { // rising steps
+            art(side, u, y, 1.34, 1.74, "#f4e2bc", 1);
+            const c = ["#8a4a1f", "#d9641e", "#e9a23b", "#4f8a8b", "#6b7a3a"];
+            for (let i = 0; i < 5; i++) solid(0.02, 0.3 + i * 0.25, 0.22, c[i], face(side, 2), y - 0.72 + (0.3 + i * 0.25) / 2, Z1 - u - side * (-0.5 + i * 0.25));
+          }
+        };
+        [[18, 0], [31, 1], [44, 2], [63, 3]].forEach(([u, st]) => poster(-1, u, st));
+        [[20, 2], [33, 0], [47, 3], [63, 1]].forEach(([u, st]) => poster(1, u, st));
+        // Furniture.
+        const rug = (x, u, w, d, colors) => { for (let i = 0; i < colors.length; i++) solid(w / colors.length, 0.02, d, colors[i], x - w / 2 + (i + 0.5) * w / colors.length, top + 0.015, Z1 - u); };
+        const sofa = (x, u, facing, color, len) => {
+          const z = Z1 - u;
+          block(0.95, 0.42, len, color, x, top + 0.21, z);
+          block(0.28, 0.5, len, color, x - facing * 0.34, top + 0.66, z);
+          block(0.95, 0.3, 0.22, color, x, top + 0.57, z - len / 2 + 0.11); block(0.95, 0.3, 0.22, color, x, top + 0.57, z + len / 2 - 0.11);
+          for (let c = 0; c < Math.round(len / 0.8); c++) solid(0.6, 0.08, len / Math.round(len / 0.8) - 0.06, color, x + facing * 0.08, top + 0.46, z - len / 2 + (c + 0.5) * len / Math.round(len / 0.8));
+        };
+        const coffeeTable = (x, u) => {
+          const z = Z1 - u;
+          block(1.2, 0.34, 1.6, "#5a3a20", x, top + 0.17, z);
+          solid(1.3, 0.04, 1.7, "#7a5232", x, top + 0.36, z);
+          solid(0.3, 0.02, 0.4, "#d9641e", x - 0.2, top + 0.39, z + 0.3); solid(0.28, 0.02, 0.38, "#4f8a8b", x - 0.18, top + 0.41, z + 0.32);
+          solid(0.2, 0.18, 0.2, "#e8dcc0", x + 0.3, top + 0.47, z - 0.4); solid(0.12, 0.2, 0.12, "#4f6a3a", x + 0.3, top + 0.66, z - 0.4);
+        };
+        const arcLamp = (x, u, dir) => {
+          const z = Z1 - u;
+          block(0.4, 0.1, 0.4, "#c9c3b4", x, top + 0.05, z);
+          solid(0.05, 2.0, 0.05, "#c9c3b4", x, top + 1.1, z);
+          solid(1.2, 0.05, 0.05, "#c9c3b4", x + dir * 0.6, top + 2.1, z);
+          solid(0.5, 0.26, 0.5, "#d9641e", x + dir * 1.2, top + 1.95, z);
+          solid(0.36, 0.03, 0.36, "#ffd27a", x + dir * 1.2, top + 1.81, z, 1.3);
+        };
+        const plant = (x, u) => {
+          const z = Z1 - u;
+          block(0.42, 0.42, 0.42, "#c8692a", x, top + 0.21, z);
+          const leaf = M.box({ w: 0.5, h: 0.08, d: 0.16, color: "#4f6a3a" });
+          for (let i = 0; i < 6; i++) place(createNode({ geometry: leaf, position: { x, y: top + 0.55 + i * 0.12, z }, rotation: { x: 0, y: i * 1.05, z: 0.35 } }));
+        };
+        const globe = M.box({ w: 0.5, h: 0.5, d: 0.5, color: "#ffb347", emissive: 1.3 });
+        const pendant = (x, u, drop) => {
+          const z = Z1 - u, y = top + 7.95 - drop - 0.3;
+          solid(0.03, drop, 0.03, "#222222", x, top + 7.95 - drop / 2, z);
+          at(globe, x, y, z);
+          place(createNode({ geometry: globe, position: { x, y, z }, rotation: { x: 0, y: Math.PI / 4, z: 0 } }));
+        };
+        const binderColors = ["#d9641e", "#e9a23b", "#4f8a8b", "#6b7a3a", "#8a4a1f"].map((color) => M.box({ w: 0.28, h: 0.36, d: 0.07, color }));
+        const bookshelf = (side, u) => {
+          const x = wallX(side) - side * 0.32, z = Z1 - u;
+          block(0.42, 2.2, 2.4, "#6e4a2a", x, top + 1.1, z);
+          for (let r = 0; r < 4; r++) {
+            solid(0.44, 0.04, 2.4, "#4e321c", x, top + 0.4 + r * 0.5, z);
+            for (let i = 0; i < 24; i++) at(binderColors[(i * 3 + r) % 5], x - side * 0.08, top + 0.62 + r * 0.5, z - 1.1 + i * 0.09 + (i > 11 ? 0.1 : 0));
+          }
+        };
+        const office = (x, u, side) => {
+          const z = Z1 - u;
+          block(0.8, 0.74, 1.6, "#6b4a2b", x, top + 0.37, z);
+          solid(0.84, 0.04, 1.64, "#8a6a44", x, top + 0.76, z);
+          solid(0.22, 0.05, 0.3, "#d8cfb4", x, top + 0.8, z + 0.4); solid(0.16, 0.02, 0.06, "#ff4c4c", x, top + 0.83, z + 0.32, 1.2);
+          solid(0.3, 0.06, 0.4, "#c9c3b4", x, top + 0.81, z - 0.4);
+          block(0.5, 0.45, 0.5, "#d9641e", x + side * 0.75, top + 0.225, z); block(0.1, 0.5, 0.5, "#d9641e", x + side * 0.98, top + 0.7, z);
+        };
+        const filing = (x, u) => {
+          const z = Z1 - u;
+          block(0.6, 1.3, 0.5, "#7b8a3c", x, top + 0.65, z);
+          for (let i = 0; i < 4; i++) solid(0.62, 0.02, 0.52, "#5a6630", x, top + 0.3 + i * 0.3, z);
+        };
+        // Left bank: a lounge between the key table and the signature desk, an office corner by the back wall.
+        rug(-21, 54, 8, 4.4, ["#8a4a1f", "#d9641e", "#e9a23b", "#d9641e", "#8a4a1f"]);
+        sofa(-25, 54, 1, "#c99a2e", 2.6); sofa(-16.9, 54, -1, "#a0462a", 1.0); coffeeTable(-21, 54);
+        arcLamp(-26.2, 51.6, 1); plant(-26.2, 56.6);
+        pendant(-21, 53, 2.2); pendant(-21, 55.4, 2.6);
+        bookshelf(-1, 27); bookshelf(-1, 41.5);
+        office(-29.5, 41.5, 1); filing(-31.6, 38.8); plant(-31.6, 44.3);
+        // Right bank: a lounge between the coupler and the timeline, an office corner by the back wall.
+        rug(27, 52, 8, 4.4, ["#4f6a3a", "#e9a23b", "#c8692a", "#e9a23b", "#4f6a3a"]);
+        sofa(31.2, 52, -1, "#7b8a3c", 2.6); sofa(22.9, 52, 1, "#d9641e", 1.0); coffeeTable(27, 52);
+        arcLamp(32.4, 49.6, -1); plant(32.4, 54.6);
+        pendant(27, 51, 2.2); pendant(27, 53.4, 2.6);
+        bookshelf(1, 23.5);
+        office(36, 23.5, -1); filing(38.6, 20.8); plant(38.6, 26.2);
       }
 
       // --- Timeline wall (right bank) ------------------------------------------------------------------------------
@@ -667,7 +944,7 @@
           if (idea) goldSign(when, what, px, py, pz, 0.36); else sign(when, what, px, py, pz, 0, 0.36);
         });
         sign("TIMELINE · 1970–1979", "gold: ideas · plain: period technology · all context", x, top + 3.3, zc + 0.25, 0, 0.45);
-        station({ id: "e1-timeline", year: 1970, date: "the decade 1970 to 1979, each plaque with what its date marks", on: { w: 11, h: 2.8, d: 0.6, x, z: zc }, title: "Timeline of the decade", label: "TIMELINE · 1970–1979", sourceKeys: PANELS.timeline.sources, x, z: zc + 1.6, onUse: board("timeline") });
+        station({ id: "e1-timeline", hint: "Read what each date marks", year: 1970, date: "the decade 1970 to 1979, each plaque with what its date marks", on: { w: 11, h: 2.8, d: 0.6, x, z: zc }, title: "Timeline of the decade", label: "TIMELINE · 1970–1979", sourceKeys: PANELS.timeline.sources, x, z: zc + 1.6, onUse: board("timeline") });
       }
 
     },
@@ -701,6 +978,13 @@
           else { const t = (u - 0.5) * 2; c.position.x = G.gx + (G.bx - G.gx) * t; c.position.z = G.zc + dz * (1 - t); c.position.y = G.y; }
         }
         if (gw.anim > 1) { gw.anim = -1; for (let i = 0; i < MAX_FRAGS; i++) N.packets[i].visible = false; }
+      }
+      // The hosts' racks work while packets are on their way (after SEND or RESEND): reels turn and the lamp rows chase,
+      // stepped a few times a second. Idle, and under Calm, they stand still.
+      if (!calm && gw.anim >= 0) {
+        for (let i = 0; i < N.reels.length; i++) N.reels[i].rotation.z += dt * (i & 1 ? -1.2 : 1.6);
+        const step = Math.floor(elapsed * 3);
+        if (step !== S.rackStep) { S.rackStep = step; for (let i = 0; i < N.rackLights.length; i++) N.rackLights[i].visible = ((i * 7 + step * 3) % 5) < 2; }
       }
       // Key exchange: the two public numbers cross the wire, then the matching lamps.
       const dh = S.dh;
