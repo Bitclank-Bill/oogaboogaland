@@ -18866,7 +18866,33 @@ scene("hub", { label: "guide", query: "character=portlandhodl&jetpack=1", steps:
 // Native pointer-lock assertions need sole focus; another browser lane can
 // steal capture and spend this long scenario's deadline waiting for it back.
 scene("hub", { label: "birds-eye combat", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", exclusive: true, steps: [hubBirdsEye] });
-scene("hub", { label: "birds-eye combat projection and targets", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeProjection, gameCombat(hubBirdsEyeTargets), hubCombatReplay] });
+const hubPlayersAim = { name: "players camera targeting", why: "regression: the Players crosshair left orbit and shoulder views at their old pitch, missing a player despite turning toward their bearing", run: async (b) => {
+  const rows = await b.evaluate(`(() => {
+    const B = __ooga, P = B.pilot, a = P.player || B.cavemen.get("portlandhodl"), rows = [];
+    a.override = "chilling"; B.refreshStates(); P.possess(a);
+    // Clear the inherited shoulder stop through the public view controls before choosing carry orbit.
+    P.enterClose(); P.exitClose(false);
+    if (a.weapon.aiming) P.modeAction("mode-toggle");
+    P.navigate({ position: { x: 0, y: 0, z: 10 }, yaw: 0, pitch: 0.5, dist: 8 }); B.advance(1, 1 / 60);
+    const target = { x: a.root.position.x + 15, y: a.root.position.y + 1, z: a.root.position.z + 10 };
+    for (const mode of ["orbit", "shoulder", "first-person"]) {
+      if (mode === "shoulder") P.modeAction("mode-toggle");
+      if (mode === "first-person") P.enterClose(true);
+      B.advance(1, 1 / 60);
+      const before = { ...a.root.position }, accepted = BL.pilot.turnToward(target.x, target.y, target.z);
+      B.advance(2, 1 / 60);
+      const C = B.camera, dx = target.x - C.position.x, dy = target.y - C.position.y, dz = target.z - C.position.z;
+      const fx = C.target.x - C.position.x, fy = C.target.y - C.position.y, fz = C.target.z - C.position.z;
+      rows.push({ mode, actual: P.view, accepted,
+        alignment: (dx * fx + dy * fy + dz * fz) / Math.hypot(dx, dy, dz) / Math.hypot(fx, fy, fz),
+        moved: Math.hypot(a.root.position.x - before.x, a.root.position.y - before.y, a.root.position.z - before.z) });
+    }
+    return rows;
+  })()`);
+  record("players camera targeting: orbit, shoulder and first person face the selected point within half a degree without translating the Ooga",
+    rows.every(row => row.accepted && row.mode === row.actual && row.alignment > Math.cos(Math.PI / 360) && row.moved < 1e-6), JSON.stringify(rows));
+} };
+scene("hub", { label: "birds-eye combat projection and targets", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeProjection, gameCombat(hubBirdsEyeTargets), hubCombatReplay, hubPlayersAim] });
 scene("hub", { label: "birds-eye lower floors", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeFloors] });
 scene("hub", { label: "mirror", query: "status=chillin", steps: [hubJumbotron, hubMirrorMedium, hubMirror] });
 scene("hub", { label: "matrix", steps: [hubMatrix] });

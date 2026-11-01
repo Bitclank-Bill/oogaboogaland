@@ -3848,7 +3848,7 @@
       syncWeaponHud(); syncModeHud();
     };
     // Turn the view toward a world point (the live players tab: a player, or the door on the way to them). The view
-    // eases round to face it at its usual pace and, in first person, tips up or down to it; nothing moves, though in
+    // eases round to face it at its usual pace and tips up or down to it; nothing moves, though in
     // first person and the aiming views the Ooga turns on the spot with the view, as it always does there. A point
     // seen from overhead turns the map until it lies ahead. Refused while something else holds the camera (a tour, a
     // menu) or the Ooga lies down; true when the view turns. Input during the turn takes over at once.
@@ -3875,14 +3875,23 @@
       if (horizontal < 1e-3) return false;
       let yaw = Math.atan2(-dx, -dz);
       if (shoulder) {
-        const side = shoulderSide * cave.traits.height;
+        const h = cave.traits.height, side = shoulderSide * h;
         if (Math.abs(side) < horizontal) yaw += Math.asin(side / horizontal);
-      }
-      orbit.tYaw = orbit.yaw + Math.atan2(Math.sin(yaw - orbit.yaw), Math.cos(yaw - orbit.yaw));
-      if (closeWanted) {
-        const range = close && !cave ? close.pitch : TRAILING_PITCH;
+        const forward = Math.sqrt(Math.max(0, horizontal * horizontal - side * side));
+        const height = from.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift - y;
+        // The shoulder boom lifts and changes length with pitch. Solve from that eye, as a cursor aim does.
+        let low = TRAILING_PITCH[0], high = TRAILING_PITCH[1];
+        for (let i = 0; i < 32; i++) {
+          const pitch = (low + high) * 0.5, boom = shoulderBoomPitch(pitch), distance = shoulderDistance(cave, pitch) * h;
+          const look = Math.atan2(height + shoulderLift(pitch) * h + Math.sin(boom) * distance, forward + Math.cos(boom) * distance);
+          if (pitch < look) low = pitch; else high = pitch;
+        }
+        orbit.tPitch = (low + high) * 0.5;
+      } else {
+        const range = closeWanted && close && !cave ? close.pitch : TRAILING_PITCH;
         orbit.tPitch = clamp(Math.atan2(from.y - y, horizontal), range[0], range[1]);
       }
+      orbit.tYaw = orbit.yaw + Math.atan2(Math.sin(yaw - orbit.yaw), Math.cos(yaw - orbit.yaw));
       turning = aiming;
       return true;
     };

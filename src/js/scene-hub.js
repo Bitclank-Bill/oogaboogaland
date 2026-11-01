@@ -12676,6 +12676,7 @@
     beasts.clear();
     magazine = magazineState = weather = footsteps = mempoolIsland = timechainIsland = clankers = clankerPlay = null;
     hubScene.input = hubScene.debug = null;
+    doorIsland = doorZones = null;
     island = chalkboardDressing = chalkboardClearance = null;
     guideSegmentClear.boxGrid = POOL_SEAMS[0].boxGrid = POOL_SEAMS[1].boxGrid = null;
     return { targets: count };
