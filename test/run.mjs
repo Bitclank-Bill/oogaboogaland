@@ -23548,7 +23548,93 @@ const genesisPropsProof = async () => {
   const sources = keys.every(k => /^https:\/\//.test(P.sourceOf(k).href)) && P.driveRatio() > 100000 && P.DRIVES.old.year === 1956;
   return { landed, tooFar, ground, water, blocked, docks, ramp, listed, sourced, hashed, refused, linked, full, caught, unlabelled, near, used, sources };
 };
+// Rule: the Genesis Voyage's era music, through genesis-audio.js itself: the lookahead plan puts every step on its
+// time once (swing on odd steps, skipped never late after a stall, bounded by the buffer), each era has a theme whose
+// patterns fit its loop, buses crossfade to the era alone, the engine follows throttle and boost, and an instance makes
+// no context before an activated wake, builds no node after it while it plays, crossfades two decks and closes.
+const genesisAudioProof = async () => {
+  const contexts = [], intervals = new Map();
+  let nodes = 0, nextTimer = 1;
+  const param = () => ({ value: 0, last: 0, setTargetAtTime(v) { this.last = v; }, setValueAtTime(v) { this.last = v; },
+    linearRampToValueAtTime(v) { this.last = v; }, exponentialRampToValueAtTime(v) { this.last = v; }, cancelScheduledValues() {} });
+  const node = () => { nodes++; return { gain: param(), frequency: param(), detune: param(), Q: param(), connected: 0, started: 0, connect() { this.connected++; }, disconnect() { this.connected = 0; }, start() { this.started++; } }; };
+  class AudioContext {
+    constructor() { this.state = "running"; this.currentTime = 0; this.sampleRate = 100; this.destination = {}; this.events = new Map(); contexts.push(this); }
+    createGain() { return node(); } createOscillator() { return node(); } createBufferSource() { return node(); } createBiquadFilter() { return node(); }
+    createBuffer() { return { getChannelData: () => new Float32Array(200) }; }
+    addEventListener(k, fn) { this.events.set(k, fn); } removeEventListener(k) { this.events.delete(k); }
+    resume() { this.state = "running"; return Promise.resolve(); }
+    close() { this.state = "closed"; this.events.get("statechange")?.(); return Promise.resolve(); }
+  }
+  const activation = { hasBeenActive: false };
+  const context = { window: { addEventListener() {} }, AudioContext, navigator: { userActivation: activation }, localStorage: { getItem: () => "on", setItem() {} },
+    setInterval: (fn) => { const id = nextTimer++; intervals.set(id, fn); return id; }, clearInterval: (id) => intervals.delete(id), Promise };
+  for (const file of ["sound", "genesis-audio"]) runInNewContext(await readFile(join(root, `src/js/${file}.js`), "utf8"), context);
+  const A = context.window.BL.genesisAudio;
+
+  // The plan: 10 s of 25 ms ticks at 120 bpm (0.125 s a step) with 40% swing.
+  const step = 0.125, swing = 0.4, ahead = A.LOOKAHEAD, times = new Float64Array(16), steps = new Int16Array(16), cursor = { time: 0, step: 0 }, seen = [];
+  let windowed = true;
+  for (let now = 0; now < 10; now += 0.025) {
+    const n = A.plan(cursor, now, ahead, step, swing, 64, times, steps);
+    for (let i = 0; i < n; i++) { seen.push([times[i], steps[i]]); if (times[i] - (steps[i] & 1 ? swing * step : 0) < now - 1e-9 || times[i] - (steps[i] & 1 ? swing * step : 0) >= now + ahead) windowed = false; }
+  }
+  const onTime = seen.every(([t, s], k) => s === k % 64 && Math.abs(t - (k * step + (k & 1 ? swing * step : 0))) < 1e-9);
+  const once = seen.length === Math.ceil((10 - 0.025 + ahead) / step) && new Set(seen.map(([t]) => t.toFixed(6))).size === seen.length;
+  // A stalled timer: 3 s later, the missed steps are skipped and the cursor keeps step and time in lockstep.
+  const stallAt = 13, n = A.plan(cursor, stallAt, ahead, step, 0, 64, times, steps);
+  const skipped = n > 0 && times[0] >= stallAt && times[0] < stallAt + step && steps[0] === Math.round(times[0] / step) % 64;
+  // A full buffer stops the plan; the next call carries on with the next step and nothing in between is lost.
+  const small = new Float64Array(4), smallSteps = new Int16Array(4), c2 = { time: 0, step: 0 };
+  const first = A.plan(c2, 0, 1, step, 0, 64, small, smallSteps), firstLast = smallSteps[3], second = A.plan(c2, 0, 1, step, 0, 64, small, smallSteps);
+  const bounded = first === 4 && second === 4 && smallSteps[0] === firstLast + 1;
+
+  // Themes: one per era, every pattern fits the 64-step loop, notes are audible, no two leads alike.
+  const themes = A.COMPILED.length === A.ERAS && A.THEMES.length === A.ERAS && A.COMPILED.every((th) => {
+    const fits = (len, div) => len > 0 && (len * div) <= th.steps && th.steps % (len * div) === 0;
+    const audible = (f) => Array.from(f).every((v) => v === A.REST || v === A.HOLD || (v > 30 && v < 5000));
+    return th.bpm >= 60 && th.bpm <= 160 && th.bars * 16 === th.steps && fits(th.lead.f.length, th.lead.div) && fits(th.bass.f.length, th.bass.div)
+      && (!th.arp || fits(th.arp.length, th.arp.div)) && (!th.kick.length || 64 % th.kick.length === 0) && (!th.noise.length || 64 % th.noise.length === 0)
+      && audible(th.lead.f) && audible(th.bass.f) && (!th.arp || audible(th.arp.f)) && Array.from(th.chords).every((f) => f > 30 && f < 2000);
+  }) && new Set(A.COMPILED.map((th) => Array.from(th.lead.f).join())).size === A.ERAS;
+  const calmEras = [6, 7].every((e) => !A.COMPILED[e].kick.length && !A.COMPILED[e].noise.length && A.COMPILED[e].bpm < 80);
+
+  // Crossfade targets: the era alone, lower when calm.
+  const out = new Float32Array(A.ERAS);
+  A.busTargets(3, false, out); const loud = out[3];
+  const solo = Array.from(out).every((v, i) => i === 3 ? v > 0 : v === 0);
+  A.busTargets(3, true, out); const crossfade = solo && out[3] > 0 && out[3] < loud;
+
+  // Engine: pitch and level rise with throttle, boost raises both, the rowboat has no motor.
+  const e0 = {}, e1 = {}, e2 = {}, row = {};
+  A.engineTarget(A.ENGINES[2], 0, false, e0); A.engineTarget(A.ENGINES[2], 1, false, e1); A.engineTarget(A.ENGINES[2], 1, true, e2); A.engineTarget(A.ENGINES[0], 1, true, row);
+  const engine = e1.freq > e0.freq && e1.level > e0.level && e2.freq > e1.freq && e2.level > e1.level && row.level === 0 && row.water > 0;
+
+  // An instance: silent until an activated wake, then fixed nodes however long it plays.
+  const audio = A.create();
+  audio.setEra(2); audio.setThrottle(0.5, false); const cuedEarly = audio.cue("splash");
+  audio.wake(); const beforeActivation = contexts.length === 0 && !cuedEarly && !audio.ready;
+  activation.hasBeenActive = true; audio.wake();
+  const ctx = contexts[0], built = nodes, tickFn = intervals.values().next().value;
+  const woke = contexts.length === 1 && audio.ready && intervals.size === 1 && audio.era === 2;
+  for (let t = 0; t <= 4; t += 0.025) { ctx.currentTime = t; tickFn(); audio.setThrottle((t % 1), t > 2); }
+  const played = audio.stats.scheduled, expected = Math.ceil((4 + A.LOOKAHEAD - 0.05) / A.COMPILED[2].stepSeconds);
+  const scheduledOnce = Math.abs(played - expected) <= 1;
+  audio.setEra(5); tickFn(); const fading = audio.stats.active === 2 && audio.buses[5] > 0 && audio.buses[2] === 0;
+  for (let t = 4; t <= 4 + A.FADE + 1; t += 0.025) { ctx.currentTime = t; tickFn(); }
+  const settled = audio.stats.active === 1;
+  audio.setEra(6); audio.setEra(5); audio.setEra(7); tickFn();
+  const rapid = audio.stats.active === 2 && audio.era === 7;
+  const cued = ["splash", "modem", "board", "step", "stamp", "link", "broken"].every((name) => audio.cue(name)) && !audio.cue("nope");
+  audio.setCalm(true); audio.setEngine(false); audio.setVolume(0.5);
+  const noAllocation = nodes === built;
+  audio.dispose(); audio.setThrottle(1, true); audio.setEra(1);
+  const closed = ctx.state === "closed" && intervals.size === 0 && !audio.ready && !audio.cue("splash") && audio.context === null;
+  return { windowed, onTime, once, skipped, bounded, themes, calmEras, crossfade, engine, beforeActivation, woke, scheduledOnce, fading, settled, rapid, cued, noAllocation, closed };
+};
 const unitChecks = async () => {
+  const genesisAudio = await genesisAudioProof();
+  record("Genesis audio: lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
   const previewRange=await studioPreviewRangeProof();
