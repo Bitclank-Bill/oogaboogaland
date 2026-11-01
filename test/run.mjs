@@ -23494,6 +23494,8 @@ const genesisBenchProof = async () => {
     listed: E.filter((e) => e.connection === "bibliography").every((e) => cat.get(e.listedAs) && cat.get(e.listedAs).connection === "citation" && cat.get(e.listedAs).ref === e.ref),
     wraps: cat.next(E[E.length - 1].id).id === E[0].id && cat.prev(E[0].id).id === E[E.length - 1].id,
     ready: TD.records.length === 49 && TD.held === 15 && TD.records.every((r) => !r.exhibit || ids.has(r.exhibit)),
+    // Wi-Fi's 1997 standard is told by Era 4's wireless station; Deep Blue's match is not mapped to the strategy homage.
+    mapped: TD.records.find((r) => r.id === "tl-4-wifi").exhibit === "e4-wireless" && TD.records.find((r) => r.id === "tl-4-deep-blue").exhibit === null,
     sourced: E.every((e) => e.sources.length && e.sources.every((s) => /^https:\/\//.test(s.href))) };
   let refuses = false;
   try { C.create({ items: [items[0], items[0]], eras: W.ERAS, connections: EX.CONNECTIONS, sourceOf: () => null }); } catch (_) { refuses = true; }

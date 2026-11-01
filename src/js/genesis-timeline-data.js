@@ -1153,7 +1153,7 @@
 "milestone":false,
 "renderAs":"bead",
 "confidence":"high",
-"exhibit":null
+"exhibit":"e4-wireless"
 },
 {
 "id":"tl-4-v90",
