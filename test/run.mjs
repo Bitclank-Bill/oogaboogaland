@@ -23416,6 +23416,59 @@ const genesisSightlinesProof = async () => {
   });
   return { clear: blocked.length === 0, sightlines, signsOk, regression, blocked };
 };
+// Rule: the Genesis museum's workbench (genesis-bench.js), against the real exhibits. Every exhibit of every era opens
+// something the workbench can show; for every terminal, the right column repeats no line and its How to use carries the
+// banner's own steps, and the buttons come from its own HELP (Hashcash: SEARCH, STATUS, VERIFY, and TARGET to fill the
+// input; the Merkle table: SHOW, CHANGE); the framing puts a model's centre on the stage's centre within MAX_DIST in
+// either screen layout; and the date order puts a decade just after its first year.
+const genesisBenchProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-bench", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, B = BLc.genesisBench, props = [];
+  W.ERAS.forEach((e, n) => {
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true });
+    const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle: () => {}, notify: () => {}, prop: (d) => { props.push({ era: n, def: d, order: props.length }); return { ...d, era: n }; } };
+    if (EX.eras[n]) EX.eras[n].build(kit);
+  });
+  const bad = [];
+  let terminals = 0, panels = 0, actionsOf = {};
+  for (const p of props) {
+    const r = p.def.onUse({}) || {};
+    if (r.terminal) {
+      terminals++;
+      const t = r.terminal, help = t.run("HELP").lines || [], more = t.run("MORE").lines || [];
+      const secs = B.sections({ banner: t.banner, more, howTo: p.def.howTo || [], hint: p.def.hint || "" });
+      const all = secs.flatMap((s) => s.lines);
+      if (new Set(all).size !== all.length) bad.push(`${p.def.id}: a line repeats across the right column`);
+      if (!secs.length) bad.push(`${p.def.id}: nothing for the right column`);
+      actionsOf[p.def.id] = B.actionsFrom(help);
+      if (actionsOf[p.def.id].length > B.MAX_ACTIONS) bad.push(`${p.def.id}: too many buttons`);
+    } else if (r.board) { panels++; if (!B.sections({ pages: r.board.pages }).length) bad.push(`${p.def.id}: an empty panel`); }
+    else if (!r.caption) bad.push(`${p.def.id}: opens nothing the workbench can show`);
+  }
+  const cmds = (id) => (actionsOf[id] || []).map((a) => a.cmd + (a.arg ? "…" : "")).join(" ");
+  const hashcash = /SEARCH/.test(cmds("e4-hashcash")) && /STATUS/.test(cmds("e4-hashcash")) && /VERIFY/.test(cmds("e4-hashcash")) && /TARGET…/.test(cmds("e4-hashcash"));
+  const merkle = /SHOW/.test(cmds("e2-merkle")) && /CHANGE…/.test(cmds("e2-merkle"));
+  // Framing: the model's centre lands on the stage's centre, in the wide layout (left column) and the stacked one (top).
+  let framed = true, maxDist = 0;
+  const project = (o, c, fov, aspect) => {
+    const f = [o.target.x - o.eye.x, o.target.y - o.eye.y, o.target.z - o.eye.z], fl = Math.hypot(...f), n = f.map((v) => v / fl);
+    const rl = Math.hypot(n[2], n[0]), r = [-n[2] / rl, 0, n[0] / rl], u = [r[1] * n[2] - r[2] * n[1], r[2] * n[0] - r[0] * n[2], r[0] * n[1] - r[1] * n[0]];
+    const d = [c.x - o.eye.x, c.y - o.eye.y, c.z - o.eye.z], z = d[0] * n[0] + d[1] * n[1] + d[2] * n[2], tv = Math.tan(fov / 2);
+    return [(d[0] * r[0] + d[2] * r[2]) / z / (tv * aspect), (d[0] * u[0] + d[1] * u[1] + d[2] * u[2]) / z / tv];
+  };
+  for (const [ndc, frac, aspect] of [[{ x: -0.38, y: -0.05 }, 0.6, 1.68], [{ x: 0, y: 0.5 }, 0.38, 0.46]]) for (const size of [0.8, 2.5, 12]) for (const toward of [{ x: 1, z: 0 }, { x: -0.3, z: 0.9 }]) {
+    const c = { x: -12, y: 1.5, z: -300 }, o = { eye: {}, target: {} };
+    B.frame({ c, size, toward, ndc, frac, fov: 62 * Math.PI / 180, aspect, fill: 0.62, pitch: 0.2 }, o);
+    const [px, py] = project(o, c, 62 * Math.PI / 180, aspect);
+    if (Math.abs(px - ndc.x) > 1e-3 || Math.abs(py - ndc.y) > 1e-3) framed = false;
+    maxDist = Math.max(maxDist, o.dist);
+  }
+  const ordered = B.order([{ def: { year: 1981 }, era: 2, order: 0 }, { def: { year: "1980s" }, era: 2, order: 1 }, { def: { year: 1980 }, era: 2, order: 2 }]).map((e) => e.def.year).join() === "1980,1980s,1981";
+  return { exhibits: props.length, terminals, panels, hashcash, merkle, framed, withinReach: maxDist <= B.MAX_DIST, ordered, bad: bad.slice(0, 8) };
+};
 const genesisExhibitsProof = async () => {
   const context = { window: {} };
   context.window.BL = context.window.BL || {};
@@ -23781,6 +23834,8 @@ const unitChecks = async () => {
   record("Genesis Voyage boarding: from either bank of every cave at the water's edge, or the water beside it, the boat is within Space's reach wherever it lies across the stream; far up a bank it is not, and calling brings it to that bank's edge level with the Ooga inside its cave; a called boat sails there without touching a wall, through the harbour's mouth too; Space at the water's edge or on the dock calls it", Object.entries(genesisBoarding).every(([k, v]) => k === "reach" || v === true), JSON.stringify(genesisBoarding));
   const genesisSightlines = await genesisSightlinesProof();
   record("Genesis Voyage sightlines: from the boat's lanes at a seated and a chase eye, no lamp, pylon, board post or exhibit solid stands between the stream and any cave's overview board or its era sign on the far back wall, which hangs over the way out large enough to read; the old post through the board's face is caught", genesisSightlines.clear && genesisSightlines.signsOk && genesisSightlines.regression, JSON.stringify(genesisSightlines));
+  const genesisBenchCheck = await genesisBenchProof();
+  record("Genesis museum workbench: every exhibit opens something it can show; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20, JSON.stringify(genesisBenchCheck));
   const genesisExhibits = await genesisExhibitsProof();
   record("Genesis Voyage exhibits: every era registers once; every usable exhibit shows its year, cites sources that resolve to https links and opens something; everything stands in its own cave, on a bank, clear of the stream and the reserved plots and within the height limit; connections are valid, each built era carries its dossier's trail entries (Era 0: Feller [8]; Era 1: none; Era 2: Merkle [7]; Era 3: the press demonstrates [3] and [4]; Era 4: Hashcash influence, b-money [1], Secure Names [5], TIMESEC [2]; Era 5: Hashcash 2002 [6], bit gold influence; Era 6: the paper as anchor, its payments demonstration and its eight-slot reference list as bibliography entries mapping one to one onto the citation stops; Era 7: none) with the rest context and no era-owned overview, and the Steps toward Bitcoin run in date order; Era 0's SEEK, PUNCH/FLIP, ODDS/STEP and LOGIN/RETRY keep their rules, refuse bad input, reset, and share nothing across visits", genesisExhibits.registered && genesisExhibits.ordered && genesisExhibits.refuses && genesisExhibits.decades && genesisExhibits.bibliography && Object.values(genesisExhibits.era0Commands).every(Boolean) && genesisExhibits.bad.length === 0, JSON.stringify(genesisExhibits));
   const genesisWater = await genesisWaterProof();

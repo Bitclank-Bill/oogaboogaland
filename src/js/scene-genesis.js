@@ -1189,7 +1189,13 @@
     // Walking: the pilot and crew for the visitor's Ooga (as the arcade's are).
     const viewFov = camera.fov;
     const clampTarget = (p) => { p.x = clamp(p.x, GW.SEA.x0, GW.SEA.x1); p.y = clamp(p.y, 0.3, GW.CAVE.height - 1); p.z = clamp(p.z, GW.SEA.z0, 8.5); };
-    const clampCamera = (p) => { p.x = clamp(p.x, GW.SEA.x0 + 0.3, GW.SEA.x1 - 0.3); p.y = clamp(p.y, 0.4, GW.ceilingAt(p.x, p.z)); p.z = clamp(p.z, GW.SEA.z0, 8.8); };
+    // The camera keeps inside the walls: the hall's, the corridor's and the entrance hall's (which is narrower).
+    const clampCamera = (p) => {
+      p.x = clamp(p.x, GW.SEA.x0 + 0.3, GW.SEA.x1 - 0.3); p.z = clamp(p.z, GW.SEA.z0, 8.6);
+      if (p.z > GW.MOUTH_Z - 0.6) p.x = clamp(p.x, GW.HARBOUR.x0 - 0.5, GW.HARBOUR.x1 + 0.5);
+      else if (p.z > GW.ERAS[0].z1) p.x = clamp(p.x, CHANNEL.x0 + 0.2, CHANNEL.x1 - 0.2);
+      p.y = clamp(p.y, 0.4, GW.ceilingAt(p.x, p.z));
+    };
     pilot = BL.pilot.create({
       renderer: ctx.renderer, canvas: ctx.canvas, camera, hud, presets: WALK_PRESETS, landing: "dock", pitch: [-0.2, 1.2], dist: [2.5, 12],
       follow: { y: 0.9, min: 2.5, max: 6, pitch: [0.2, 0.8] }, fly: { speed: 6, perDist: 0.3, climb: 4, yMax: 22 }, clampTarget, clampCamera,

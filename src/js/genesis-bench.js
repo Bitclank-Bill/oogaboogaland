@@ -41,8 +41,8 @@
   const sections = ({ banner = [], more = [], howTo = [], hint = "", pages = null }) => {
     const seen = new Set(), out = [];
     const add = (title, lines) => {
-      const kept = clean(lines).filter((l) => !seen.has(l));
-      for (const l of kept) seen.add(l);
+      const kept = [];
+      for (const l of clean(lines)) if (!seen.has(l)) { seen.add(l); kept.push(l); }
       if (kept.length) out.push({ title, lines: kept });
     };
     const b = clean(banner), connects = [], short = [], steps = [];
