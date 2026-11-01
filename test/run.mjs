@@ -23779,6 +23779,36 @@ const genesisCairnProof = async () => {
   if (C.tiers[0].rise <= GP.STEP) bad.push("the plinth is a step from the floor, not a jump");
   return { bad, head: C.head };
 };
+// rule (Billy's Block Frenzy entrance): the cairn's secret counts only a body settled on its head (inside its top,
+// feet on it, supported, barely moving vertically, no jetpack thrust): flying past or hovering over it, rising or
+// falling through it, or standing on the stone below never does. Block Frenzy's exit goes back to the museum only
+// when the cairn's entrance left its explicit return, and keeps its arcade and island exits otherwise.
+const genesisSecretProof = async () => {
+  const context = { window: { BL: {} } };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-atrium"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, A = BLc.genesisAtrium, W = BLc.genesisWorld, bad = [];
+  const L = A.layout({ entries: [], museum: W.MUSEUM, eras: W.ERAS }), h = L.cairn.head, top = W.BANK_TOP, feet = top + h.rise;
+  const cx = (h.x0 + h.x1) / 2, cz = (h.z0 + h.z1) / 2, on = (x, z, f, hop, v, thrust) => A.onHead(h, top, x, z, f, hop, v, thrust);
+  if (!on(cx, cz, feet, 0, 0, false)) bad.push("standing settled on the head does not count");
+  if (on(cx, cz, feet + 1.5, 1.5, 0, false)) bad.push("hovering over the head counts");
+  if (on(cx, cz, feet + 0.05, 0.05, -3, false)) bad.push("falling past the head counts");
+  if (on(cx, cz, feet, 0, 2.5, false)) bad.push("jumping off the head counts");
+  if (on(cx, cz, feet, 0, 0, true)) bad.push("hovering on jetpack thrust counts");
+  if (on(h.x1 + 0.3, cz, feet, 0, 0, false) || on(h.x1 - 0.01, cz, feet, 0, 0, false)) bad.push("standing beside or on the very edge of the head counts");
+  const below = L.cairn.tiers[L.cairn.tiers.length - 2];
+  if (on(cx, cz, top + below.rise, 0, 0, false)) bad.push("standing on the stone under the head counts");
+  // Block Frenzy's exit: read from scene-block.js as written.
+  const block = await readFile(join(root, "src/js/scene-block.js"), "utf8");
+  const m = block.match(/home = (ctx\.from === "arcade"[^;]*);/);
+  const homeOf = m && new Function("ctx", "world", `return ${m[1]};`);
+  if (!homeOf) bad.push("Block Frenzy's exit is not found");
+  else {
+    if (homeOf({ from: "arcade" }, {}) !== "arcade" || homeOf({ from: "hub" }, {}) !== "hub" || homeOf({ from: null }, {}) !== "hub") bad.push("the arcade or island exits changed");
+    if (homeOf({ from: "genesis" }, { genesisBlock: { name: "x" } }) !== "genesis") bad.push("the cairn's entrance does not return to the museum");
+    if (homeOf({ from: "genesis" }, {}) !== "hub") bad.push("an entry from the museum without the cairn's return goes back to it");
+  }
+  return { bad };
+};
 // rule (gv/ovh-polish, the gallery walls): each era's board quotes only verified headlines (publication, date, headline
 // and an https source each), its posters and art are museum originals in styles that exist, and the board hangs inside
 // its own gallery, against the back wall, facing into the room; every board paints with a recording canvas.
@@ -26191,6 +26221,8 @@ const unitChecks = async () => {
   const genesisTimelineLayout = await genesisTimelineLayoutProof();
   const genesisWalls = await genesisWallsProof();
   const genesisCairn = await genesisCairnProof();
+  const genesisSecret = await genesisSecretProof();
+  record("Genesis cairn secret (rule): only a body settled on the cairn's head counts (not hovering, falling, jumping, under thrust, beside, at the edge or on the stone below); Block Frenzy returns to the museum only with the cairn's explicit return and keeps its arcade and island exits otherwise", !genesisSecret.bad.length, JSON.stringify(genesisSecret));
   record("Genesis monument (rule, review of gv/ovh-polish): the atrium's monument is the museum's own cairn with no borrowed sculpture features or light; the floor stops a body at its plinth, its stones climb a step at a time, its head is a jump, and coming down from above lands on the head", !genesisCairn.bad.length, JSON.stringify(genesisCairn));
   record("Genesis gallery walls (rule): each era's board quotes only verified headlines with publication, date and source, labels its posters and art as museum originals in styles that exist, and hangs inside its gallery on the back wall facing in", !genesisWalls.bad.length, JSON.stringify(genesisWalls));
   record("Genesis white screen and menu (regression, reviews of 20eec91 and d59b831; the menu shows each era once, Era 6's bibliography under Era 6, and 1997's ring and dot are painted apart): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));

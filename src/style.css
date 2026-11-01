@@ -10248,6 +10248,17 @@ body.genesis-bench-open .genesis-bar, body.genesis-bench-open .genesis-chain { d
 .menu-list .tag-context, .menu-list .tag-demonstration, .menu-list .tag-bibliography { color: #d2cbbd; }
 /* genesis-timeline:end */
 
+/* The cairn's secret (scene-genesis.js): the offer to play Block Frenzy, Play or Stay. */
+.genesis-secret { width: min(380px, calc(100vw - 24px)); pointer-events: auto; }
+.genesis-secret .secret-text { margin: 8px 0 4px; font-size: 15px; color: #f5efe3; }
+.genesis-secret .secret-note { margin: 0 0 12px; font-size: 13px; color: #d9cdb6; }
+.genesis-secret .secret-actions { display: flex; gap: 10px; }
+.genesis-secret .secret-actions button {
+  flex: 1; min-height: 40px; cursor: pointer; border: 2px solid var(--wood-edge); border-radius: 6px;
+  background: linear-gradient(var(--plank), var(--wood)); color: var(--paper); font-size: 15px;
+}
+.genesis-secret .secret-actions button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
 /* The Genesis museum's cartridge console (genesis-cartridge.js): a pixel screen, its buttons and its pad. */
 body.genesis-cart-open .genesis-bar { display: none; }
 .genesis-cart {

@@ -299,6 +299,9 @@
   const groundFor = (x, z, feet) => footing.supportAt(x, z, feet);
   const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3), y);
   const useNear = (x, z, reach, feet = feetOf()) => {
+    // Settled on the cairn's head, the act opens the secret's offer (never while airborne: `secret.here` needs the
+    // feet supported on the head).
+    if (secret.here && !secret.open) { openSecret(); return true; }
     const prop = props.near(x, z, feet, Math.max(0, reach - 1.4));
     if (!prop) return false;
     openProp(prop);
@@ -881,6 +884,57 @@
     else if (r.caption) { captionKey = ""; setCaption(`prop-${prop.id}`, r.caption); }
   };
 
+  // --- The cairn's secret: a modern bonus game, outside the museum's history -----------------------------------
+  // Standing settled on the cairn's head (genesisAtrium.onHead) shows the hint; the act opens an offer, Play or Stay,
+  // and nothing launches by itself. Play opens Block Frenzy (scene-block.js, its own full game) with an explicit
+  // return here (`world.genesisBlock`: the Ooga, the head, the view), which scene-block.js reads for its exit. A switch
+  // that is refused, or a preparation that fails (the director fades back and calls `stay`), leaves the visitor on
+  // the head to try again. No era, date, citation or claim about who made it.
+  const SECRET = { id: "secret" }, secret = { here: false, open: false, el: null };
+  const settledOnHead = (d) => !!(atrium && built.atriumLayout && BL.genesisAtrium.onHead(built.atriumLayout.cairn.head, ISLAND_TOP,
+    d.root.position.x, d.root.position.z, d.root.position.y - d.baseY, d.hop, d.hopV, !!(d.jet && d.jet.power > 0)));
+  const secretNote = (text) => { const n = secret.el && secret.el.querySelector("[data-secret-note]"); if (n) n.textContent = text; };
+  const openSecret = () => {
+    if (!secret.el || secret.open || bench.open || view.reading || (cart && cart.isOpen)) return;
+    audio.wake();
+    secret.open = true; view.reading = true; view.readingPaused = false;
+    pilot.setActive(false); hud.hideHint();
+    secretNote("A modern bonus game for the museum's visitors: not part of the museum's history.");
+    secret.el.showModal();
+    const play = secret.el.querySelector("[data-secret=play]");
+    if (play) play.focus();
+  };
+  // The dialog's own close (Stay, Escape or Play's hand-off) hands the walk back as it was.
+  const secretClosed = () => {
+    if (!secret.open) return;
+    secret.open = false;
+    if (!bench.open && !(timeline && timeline.isOpen)) { view.reading = false; if (pilot) pilot.setActive(true); }
+    walk.prop = null;
+    if (overlayCanvas && overlayCanvas.focus) overlayCanvas.focus({ preventScroll: true });
+  };
+  const playSecret = () => {
+    if (!avatar || !built.atriumLayout) return;
+    const h = built.atriumLayout.cairn.head;
+    world.genesisBlock = { name: playerName, x: (h.x0 + h.x1) / 2, z: (h.z0 + h.z1) / 2, yaw: avatar.root.rotation.y, view: pilot.mode, pitch: pilot.viewPitch };
+    world.pilot = playerName; arrivedPilot = playerName;
+    let started = false;
+    try { started = !!(BL.scenes.block && go("block")); } catch (_) { started = false; }
+    if (!started) {
+      world.genesisBlock = null;
+      secretNote("Block Frenzy could not start just now. Try Play again, or Stay.");
+      return;
+    }
+    // The switch has begun: close the offer without handing the walk back during the fade.
+    secret.open = false; secret.el.close();
+  };
+  // The director's word that the switch was abandoned (Block Frenzy's preparation failed): stay on the head, walking.
+  const staySecret = () => {
+    world.genesisBlock = null;
+    view.reading = false; walk.prop = null;
+    if (pilot) pilot.setActive(true);
+    if (hud) hud.toast("Block Frenzy could not start · stand on the head and try again");
+  };
+
   // --- Walking ------------------------------------------------------------------------------------------------------
   // The visitor arrives on foot by the statue, facing into the museum, and walks as their own Ooga throughout.
   const arrive = (x = ENTRY.x, z = ENTRY.z, facing = ENTRY.facing) => {
@@ -922,6 +976,12 @@
       walkPose.position.x = ENTRY.x; walkPose.position.z = ENTRY.z; walkPose.position.y = footing.supportAt(ENTRY.x, ENTRY.z);
       walkPose.yaw = ENTRY.facing - Math.PI;
       pilot.navigate(walkPose);
+      return;
+    }
+    // The cairn's secret, while settled on its head; leaving the head hides it.
+    secret.here = settledOnHead(driven);
+    if (secret.here) {
+      if (walk.prop !== SECRET) { walk.prop = SECRET; hud.hint(`Secret found · Play Block Frenzy · ${COARSE ? "tap PLAY" : "press Space"}`, 600000); hud.setAct("PLAY"); }
       return;
     }
     // The prompt: the exhibit in reach, by its own hint (genesis-exhibits.js), else its title and year.
@@ -1142,7 +1202,7 @@
   // changes and captions, and only an open, unpaused workbench keeps its own exhibit's era running.
   const HOLD = { time: true, exhibit: true, ambient: true, walk: true, era: true }, holdState = { paused: false, bench: false, menu: false, console: false };
   const update = (dt) => {
-    holdState.paused = view.paused; holdState.bench = bench.open; holdState.menu = !!(timeline && timeline.isOpen); holdState.console = !!(cart && cart.isOpen);
+    holdState.paused = view.paused; holdState.bench = bench.open; holdState.menu = !!(timeline && timeline.isOpen) || secret.open; holdState.console = !!(cart && cart.isOpen);
     const h = GW.holdsFor(holdState, HOLD);
     if (h.time) sceneTime += dt;
     // A panel's dialog closing (its button, Escape or a press outside) hands the walk back as it was.
@@ -1251,7 +1311,7 @@
     world.pilot = null;
     const asked = ctx.from === null ? new URLSearchParams(location.search).get("character")?.trim().toLowerCase() : null;
     const named = asked ? BL.contributors.roster.find((c) => c.name.toLowerCase() === asked) : null;
-    const wanted = named ? named.name : arrivedPilot;
+    const wanted = named ? named.name : ctx.from === "block" && world.genesisBlock ? world.genesisBlock.name : arrivedPilot;
     const wantedEntry = wanted && BL.contributors.roster.find((c) => c.name === wanted);
     playerName = wantedEntry && mayPick(wantedEntry) ? wanted : BL.contributors.activeRoster.find(mayPick)?.name || null;
     if (playerName) {
@@ -1317,8 +1377,19 @@
     paintChain();
     showControls();
     hud.setStats(game.state);
-    arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, view, built, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
+    // The secret's offer.
+    secret.el = document.getElementById("genesis-secret"); secret.here = false; secret.open = false;
+    if (secret.el) {
+      secret.el.addEventListener("close", secretClosed, { signal: ctx.signal });
+      secret.el.addEventListener("click", (e) => { const b = e.target.closest("[data-secret]"); if (!b) return; if (b.dataset.secret === "play") playSecret(); else secret.el.close(); }, { signal: ctx.signal });
+    }
+    // Back from Block Frenzy through the cairn: the same Ooga on the head, the view it had.
+    const back = ctx.from === "block" && world.genesisBlock;
+    world.genesisBlock = null;
+    if (back && avatar && back.name === playerName && arrive(back.x, back.z, back.yaw)) {
+      if (back.view === "first-person") pilot.enterClose(false, true);
+    } else arrive();
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, view, built, secret, openSecret, playSecret, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
@@ -1333,6 +1404,8 @@
   const leaveScene = () => {
     stopVoice();
     host.close();
+    if (secret.el && secret.el.open) { secret.open = false; secret.el.close(); }
+    secret.el = null; secret.here = secret.open = false;
     if (cart) cart.dispose();
     if (workbench) workbench.dispose();
     if (timeline) timeline.dispose();
@@ -1375,7 +1448,7 @@
   };
   const scene = BL.deferred.scene("genesis", {
     id: "genesis", wip: true, renderOpts, root: null, camera: null, input: null, debug: null,
-    enter, update, overlay, onDonation, onKey, onLootCleared: () => {}, leave: leaveScene, stats,
+    enter, update, overlay, onDonation, onKey, onLootCleared: () => {}, leave: leaveScene, stats, stay: () => staySecret(),
     voiceZone: "genesis.voyage",
     liveGeometry: (set) => {
       if (built && built.guide) set.add(built.guide.headOpen).add(built.guide.headClosed);

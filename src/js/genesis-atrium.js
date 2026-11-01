@@ -166,5 +166,12 @@
     sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · a stone for each gallery, the gold block for the first", S.x, top + S.tiers[0].h + 0.1, S.z + S.base / 2 + 0.3, Math.PI, "gold", 0.45);
   };
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
-  BL.genesisAtrium = { layout, build, CLEAR, cairnTiers };
+  // Whether a body stands settled on the cairn's head (layout().cairn.head): inside its top, a little in from the
+  // edge, its feet on the top and supported there (no height above the ground, almost no vertical speed, no jetpack
+  // thrust). Flying past, hovering over it or looking at it never counts. Pure, so Node checks it.
+  const HEAD_INSET = 0.04, HEAD_FEET = 0.08, HEAD_VSPEED = 0.6;
+  const onHead = (head, top, x, z, feet, hop = 0, hopV = 0, thrust = false) => !!head
+    && x >= head.x0 + HEAD_INSET && x <= head.x1 - HEAD_INSET && z >= head.z0 + HEAD_INSET && z <= head.z1 - HEAD_INSET
+    && Math.abs(feet - (top + head.rise)) <= HEAD_FEET && hop <= 0.02 && Math.abs(hopV) < HEAD_VSPEED && !thrust;
+  BL.genesisAtrium = { layout, build, CLEAR, cairnTiers, onHead };
 })();

@@ -2009,7 +2009,9 @@
 
   const enter = (ctx) => {
     ({ renderer, game, world, go } = ctx);
-    home = ctx.from === "arcade" ? "arcade" : "hub";
+    // Started from the Genesis museum's cairn (its explicit return, `world.genesisBlock`), the exit goes back there;
+    // from the arcade, back to it; otherwise to the island.
+    home = ctx.from === "arcade" ? "arcade" : ctx.from === "genesis" && world.genesisBlock ? "genesis" : "hub";
     hudMod.leaveTo("block", home);
     camera = createCamera({ fov: 58, near: 0.3, far: 400 });
     audio = BL.blockAudio.create();

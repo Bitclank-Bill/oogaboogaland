@@ -2512,7 +2512,7 @@
   // A game's exits say where they go: back to the arcade when one of its cabinets started it, else the island. A
   // header button names the place in its span (a phone shows only "Back"); a card's button says it all.
   const leaveTo = (scene, home) => {
-    const place = home === "arcade" ? "arcade" : "the island";
+    const place = home === "arcade" ? "arcade" : home === "genesis" ? "the museum" : "the island";
     for (const b of document.querySelectorAll(`[data-scene="${scene}"] [data-action="leave"]`)) {
       const span = b.querySelector("span");
       if (span) span.textContent = ` to ${place}`;
