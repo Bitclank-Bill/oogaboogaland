@@ -98,6 +98,15 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
 
 ### Phase 3 · content and polish
 
+- **The lounge (done, v1).** Two leather armchairs and a small TV at the aisle's far end. Space beside a chair sits in
+  it, looking at the screen. The TV shuffles island-cam pictures (the banana pit, the Factory, the Arcade, the Lab,
+  the north gate and the beanstalk), drawn by the hub once each while the view moves in on the climb
+  (`world.archiveViews`). Tapping the TV opens them as a board. Next: a live feed. Under the hub's `keep` policy the
+  island stays in memory, so it could be re-rendered every few seconds from the archive.
+- **View assist.** The hub draws a hidden character's silhouette and nearby outlines when scenery covers it (the
+  visibility stack: `object-guides.js`, `sight-guides.js`, `camera-cover.js`). Bring a scene-agnostic form of it to
+  the archive (racks, the shaft) and to Block Frenzy.
+
 - Milestone plinths for the days scenes opened (the Arcade, the Factory, the Sphere, ₿IFRÖST, the ghost hunt) as
   hand-written entries checked against the history.
 - An ambient hum and page-turn sounds that follow the page-wide mute.

@@ -5797,6 +5797,7 @@
       // Up the beanstalk: the Ooga climbing goes with the visitor (world.pilot), as through a cave.
       if (entering) return;
       world.pilot = pilot.player ? pilot.player.traits.name : null;
+      archiveEntry.climb();
       enterScene(archiveEntry.view, "cloudarchive");
     }
     else enterCave(action.slot);
@@ -8953,7 +8954,8 @@
   const createArchiveEntry = () => {
     if (!BL.scenes.cloudarchive || archiveEntry) return;
     const start = root.children.length;
-    archiveEntry = BL.cloudArchiveEntry.create({ root, island, world, free, nearPath, addTarget, removeTarget, hud });
+    archiveEntry = BL.cloudArchiveEntry.create({ root, island, world, free, nearPath, addTarget, removeTarget, hud, canvas: glCanvas,
+      renderView: (view) => renderer.render(root, view, RENDER_OPTS) });
     cloudRememberNodes(start);
   };
   const ghostHub = () => ({

@@ -25,7 +25,10 @@
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 0.2
   };
   // How long the Ooga must stand at the shaft's foot after climbing down before the island takes it back.
-  const ARRIVAL_PITCH = -0.55, EXIT_HOLD = 0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
+  // The TV changes channel every CHANNEL_SECONDS, through STATIC_SECONDS of snow. A chair is sat in from within
+  // SIT_REACH of its edge, facing it; the sitter sits SEAT_Y up and stands up SEAT_BACK behind it.
+  const CHANNEL_SECONDS = 9, STATIC_SECONDS = 0.25, TV_W = 480, TV_H = 360, SIT_REACH = 0.5, SIT_FACING = Math.cos(0.8), SEAT_Y = 0.5, SEAT_BACK = 1.1;
+  const ARRIVAL_PITCH = -0.35, EXIT_HOLD = 0.35, BOARD_W = 960, BOARD_H = 600, PLAQUE_W = 512, PLAQUE_H = 128;
   const dayStats = (day) => {
     let prs = 0, bots = 0;
     const by = new Map();
@@ -113,7 +116,9 @@
     const walkable = (ax, az, bx, bz, y, height, actor) => {
       const r = actor && actor.bodyRadius || 0.35;
       if (y < -1.8) return L.inShaft(bx, bz, r * 0.6);
-      return bx > B.x0 && bx < B.x1 && bz > B.z0 && bz < B.z1 && clearOfRacks(bx, bz, r);
+      if (!(bx > B.x0 && bx < B.x1 && bz > B.z0 && bz < B.z1 && clearOfRacks(bx, bz, r))) return false;
+      for (const o of L.solids) if (Math.hypot(bx - o.x, bz - o.z) < o.r + r) return false;
+      return true;
     };
     const groundAt = (x, z) => L.inShaft(x, z) ? -S.depth : 0;
     const roof = () => 40;
@@ -159,6 +164,72 @@
     });
     target(built.root.children[1], { kind: "stalk" }, 1.2);
 
+    // The TV: the island's pictures from the climb (`world.archiveViews`), one at a time, changing channel through a
+    // moment of snow; with none (a page that opened here), a test card. Painted only when the channel changes.
+    const views = world.archiveViews && world.archiveViews.length ? world.archiveViews : [];
+    const tvCanvas = document.createElement("canvas");
+    tvCanvas.width = TV_W; tvCanvas.height = TV_H;
+    const tvGeometry = CM.plaque(tvCanvas, L.TV.screenW, L.TV.screenH);
+    built.screen.geometry = tvGeometry;
+    const tv = { channel: 0, wait: CHANNEL_SECONDS, snow: 0, version: 0 };
+    let snowSeed = 1;
+    const paintTv = () => {
+      const g = tvCanvas.getContext("2d");
+      if (tv.snow > 0) {
+        const image = g.createImageData(TV_W / 4, TV_H / 4), d = image.data;
+        for (let i = 0; i < d.length; i += 4) { snowSeed = (Math.imul(snowSeed, 1103515245) + 12345) | 0; d[i] = d[i + 1] = d[i + 2] = (snowSeed >>> 24); d[i + 3] = 255; }
+        g.imageSmoothingEnabled = false;
+        g.putImageData(image, 0, 0);
+        g.drawImage(tvCanvas, 0, 0, TV_W / 4, TV_H / 4, 0, 0, TV_W, TV_H);
+      } else if (views.length) {
+        const v = views[tv.channel];
+        g.drawImage(v.canvas, 0, 0, TV_W, TV_H);
+        g.fillStyle = "rgba(0,0,0,0.12)";
+        for (let y = 0; y < TV_H; y += 3) g.fillRect(0, y, TV_W, 1);
+        g.fillStyle = "rgba(0,0,0,0.55)"; g.fillRect(0, TV_H - 44, TV_W, 44);
+        g.fillStyle = "#ffffff"; g.font = `700 22px ${FONT}`; g.textAlign = "left"; g.textBaseline = "middle";
+        g.fillText(`ISLAND CAM · ${v.label.toUpperCase()}`, 14, TV_H - 22);
+        g.fillStyle = "#e8b04a"; g.textAlign = "right"; g.fillText(`${tv.channel + 1}/${views.length}`, TV_W - 14, TV_H - 22);
+      } else {
+        const bars = ["#c0c0c0", "#c0c000", "#00c0c0", "#00c000", "#c000c0", "#c00000", "#0000c0"];
+        bars.forEach((c, i) => { g.fillStyle = c; g.fillRect(i * TV_W / 7, 0, TV_W / 7 + 1, TV_H); });
+        g.fillStyle = "rgba(0,0,0,0.7)"; g.fillRect(0, TV_H / 2 - 40, TV_W, 80);
+        g.fillStyle = "#ffffff"; g.font = `700 26px ${FONT}`; g.textAlign = "center"; g.textBaseline = "middle";
+        g.fillText("NO SIGNAL", TV_W / 2, TV_H / 2 - 12);
+        g.font = `500 16px ${FONT}`; g.fillText("Climb the beanstalk from the island to tune in", TV_W / 2, TV_H / 2 + 18);
+      }
+      tvGeometry.imageSurface.version++;
+      tv.version++;
+    };
+    paintTv();
+    const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const tune = (channel) => {
+      if (!views.length) return;
+      tv.channel = (channel + views.length) % views.length;
+      tv.wait = CHANNEL_SECONDS;
+      tv.snow = REDUCED.matches ? 0 : STATIC_SECONDS;
+      paintTv();
+    };
+    const updateTv = (dt) => {
+      if (!views.length) return;
+      if (tv.snow > 0 && (tv.snow -= dt) <= 0) { tv.snow = 0; paintTv(); }
+      if ((tv.wait -= dt) <= 0) tune(tv.channel + 1);
+    };
+    const tvBoard = {
+      title: "Island cam", help: "The island as it looked on your way up. Arrow keys change channel.", wide: true,
+      get canvas() { return views.length ? views[tv.channel].canvas : tvCanvas; }, get count() { return Math.max(1, views.length); }, get index() { return views.length ? tv.channel : 0; },
+      get caption() { return views.length ? views[tv.channel].label : "No signal"; },
+      get note() { return views.length ? "Pictures taken as you climbed the beanstalk. A live feed is planned." : "No pictures yet: climb the beanstalk from the island and the TV tunes in to it."; },
+      get version() { return tv.version; },
+      go: (i) => tune(i)
+    };
+    target(built.tv, { kind: "tv" }, 0.6);
+    target(built.screen, { kind: "tv" }, 0.4);
+    // The two armchairs, each a seat facing the TV; standing up leaves it behind the chair.
+    const seats = L.CHAIRS.map((c) => ({ kind: "chair", x: c.x, y: SEAT_Y, z: c.z, floor: 0, ry: c.ry, sitter: null,
+      walkAt: { x: c.x - Math.sin(c.ry) * SEAT_BACK, z: c.z - Math.cos(c.ry) * SEAT_BACK } }));
+    built.chairs.forEach((node, i) => target(node, { kind: "chair", index: i }, 0.7));
+
     // The board: one page a day, painted when shown.
     const boardCanvas = document.createElement("canvas");
     boardCanvas.width = BOARD_W; boardCanvas.height = BOARD_H;
@@ -199,12 +270,41 @@
     }
     if (!playerName) playerName = contributors.activeRoster.find(mayPick)?.name || null;
     world.pilot = null;
+    // A free chair within reach, the view facing it, the Ooga on the floor.
+    const nearChair = () => {
+      if (!avatar || avatar.camp.seat || avatar.hop > 0 || avatar.root.position.y - avatar.baseY > 0.1) return null;
+      const p = avatar.root.position, c = camera.position, t = camera.target, fx = t.x - c.x, fz = t.z - c.z, f = Math.hypot(fx, fz) || 1;
+      let near = null, best = 0.5 + avatar.bodyRadius + SIT_REACH;
+      for (const s of seats) {
+        const dx = s.x - p.x, dz = s.z - p.z, d = Math.hypot(dx, dz);
+        if (!s.sitter && d < best && (dx * fx + dz * fz) / (d * f) > SIT_FACING) { near = s; best = d; }
+      }
+      return near;
+    };
+    // Into the chair, the view turned to the TV.
+    const sit = (seat) => {
+      if (!people.sitPlayer(seat)) return false;
+      // Watching: through the sitter's own eyes, turned to the screen (from behind, the sitter's head hides it). The
+      // pilot enters first person along the view on screen, so the eye is first aimed at the TV from the seat.
+      const eye = avatar.root.position.y + avatar.headOffset, tx = L.TV.x, ty = L.TV.table + L.TV.h / 2, tz = L.TV.z + L.TV.d / 2;
+      const dx = tx - seat.x, dy = ty - eye, dz = tz - seat.z;
+      if (pilot.mode !== "first-person") {
+        camera.position.x = seat.x; camera.position.y = eye; camera.position.z = seat.z;
+        camera.target.x = tx; camera.target.y = ty; camera.target.z = tz;
+        pilot.enterClose();
+      } else {
+        const o = pilot.orbit;
+        o.yaw = o.tYaw = Math.atan2(-dx, -dz);
+        o.pitch = o.tPitch = Math.atan2(-dy, Math.hypot(dx, dz));
+      }
+      return true;
+    };
     const playerWorld = { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } };
     let people = null, avatar = null;
     const NO_ACTORS = [];
     if (playerName) {
       const sharedCtx = { root, input, hud, game, world: playerWorld, playerName, fx, viewYaw: 0, outsideActors: () => NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT,
-        groundAt, walkable, ladders: [L.LADDER], useNear: () => false, jetpackAllowed: () => false };
+        groundAt, walkable, ladders: [L.LADDER], useNear: () => { const chair = nearChair(); return !!chair && sit(chair); }, jetpackAllowed: () => false };
       people = sharedCtx.crew = BL.crew.create(sharedCtx);
       pilot.bind(sharedCtx);
       avatar = people.cavemen.get(playerName);
@@ -225,7 +325,7 @@
 
     // Up and back down: `climbed` once the Ooga has stood on the floor; after that, standing at the shaft's foot a
     // moment takes it home.
-    let climbed = false, atFoot = 0, leaving = false, hintStage = null;
+    let climbed = false, atFoot = 0, leaving = false, hintStage = null, actNear = null;
     const handOff = () => {
       if (leaving) return;
       world.pilot = avatar ? avatar.traits.name : null;
@@ -246,6 +346,8 @@
     const tipFor = (hit) => {
       const o = hit.owner;
       if (o.kind === "rack") { const s = STATS[o.index]; return `${DATA.days[o.index].date} · ${plural(s.commits, "commit")} · tap to read the day`; }
+      if (o.kind === "tv") return views.length ? `Island cam · ${views[tv.channel].label} · tap to watch` : "A little TV · no signal yet";
+      if (o.kind === "chair") return COARSE ? "Leather armchair · tap SIT beside it" : "Leather armchair · Space beside it sits";
       if (o.kind === "stalk") return COARSE ? "Beanstalk · climb down it to go home" : "Beanstalk · walk into the shaft and climb down (S) to go home";
       return "";
     };
@@ -256,6 +358,11 @@
         if (!hit) return;
         const o = hit.owner;
         if (o.kind === "rack") openDay(o.index);
+        else if (o.kind === "tv") { tv.version++; hud.openBoard(tvBoard); }
+        else if (o.kind === "chair") {
+          const seat = seats[o.index];
+          if (seat.sitter || nearChair() !== seat || !sit(seat)) hud.toast(COARSE ? "Walk up to a free chair, then tap SIT" : "Walk up to a free chair and press Space to sit");
+        }
         else if (o.kind === "stalk") hud.toast("Climb down the beanstalk to go back to the island");
       },
       ...pilot.hooks
@@ -271,7 +378,7 @@
     const hint = (stage) => {
       if (stage === hintStage) return;
       hintStage = stage;
-      if (stage === "climb") hud.hint(COARSE ? "Push the stick forward to climb the beanstalk" : "W climbs the beanstalk · S climbs down · Space lets go", 6000);
+      if (stage === "climb") hud.hint(COARSE ? "Walk into the beanstalk and push the stick forward to climb" : "Walk into the beanstalk and hold W to climb · S climbs down", 9000);
       else if (stage === "floor") hud.hint(COARSE ? "Walk the aisle · tap a shelf to read its day" : "W A S D walk the aisle · click a shelf to read its day · climb down the stalk to leave", 6000);
     };
     hint("climb");
@@ -284,11 +391,23 @@
       footsteps.update(people && people.player);
       if (avatar && !leaving) {
         const feet = avatar.root.position.y - avatar.baseY, onLadder = !!(avatar.ladder && avatar.ladder.plane);
+        // On the stalk a first-person eye is pressed to the shaft's wall: step back to the trailing view for the climb.
+        if (onLadder && pilot.mode === "first-person") pilot.exitClose(false);
         if (!climbed && feet > -0.05 && !onLadder) { climbed = true; hint("floor"); }
         if (climbed && feet < -S.depth + 0.05 && !onLadder) {
           if ((atFoot += dt) > EXIT_HOLD) handOff();
         } else atFoot = 0;
       }
+      if (avatar && climbed) {
+        const near = avatar.camp.seat ? "stand" : nearChair() ? "sit" : null;
+        if (near !== actNear) {
+          actNear = near;
+          if (near === "sit") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
+          else if (near === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
+          else pilot.showAct();
+        }
+      }
+      updateTv(dt);
       stepTweens(dt);
       fx.update(dt, elapsed);
     };
@@ -311,7 +430,7 @@
     shell.input = input;
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      cloudArchive: { layout: L, built, board, openDay, get avatar() { return avatar; }, get climbed() { return climbed; }, exit: handOff }
+      cloudArchive: { layout: L, built, board, openDay, tv, tvBoard, seats, views, get avatar() { return avatar; }, get climbed() { return climbed; }, exit: handOff }
     };
 
     const leave = () => {
@@ -323,6 +442,7 @@
       window.removeEventListener("keydown", armsKeys, true);
       BL.net.setBody(null);
       for (const plaque of plaques) { renderer.releaseGeometry(plaque.geometry); plaque.geometry = null; }
+      renderer.releaseGeometry(tvGeometry); built.screen.geometry = null;
       footsteps.dispose();
       if (people) people.dispose();
       fx.dispose();
