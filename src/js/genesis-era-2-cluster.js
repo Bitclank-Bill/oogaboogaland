@@ -219,6 +219,9 @@
       solid(0.02, 0.25, 0.02, "#c8c0b0", x - 0.2, Y + 1.28, z - 0.3);
       solid(0.02, 0.25, 0.02, "#c8c0b0", x - 0.2, Y + 1.28, z);
       parts.screen = { M, box, px };
+      // Every palette colour's square is built here, at build time, so a knob turned later swaps geometry and never
+      // makes it (update allocates nothing).
+      for (let k = 0; k < parts.colours.length; k++) colourGeo(parts, k);
       sign(EXHIBITS.crt.label, EXHIBITS.crt.sub, x + 0.45, Y + 1.7, z, FACE_X, 0.38);
     }
     // The cassette player: a dark portable player standing up on a plinth, facing out, its window showing the cassette:
@@ -255,14 +258,14 @@
     sync(visit, 0, true);
     return visit;
   };
-  // A square's geometry for a palette index, built the first time that colour is needed (at most 125, kept a visit).
+  // A square's geometry for a palette index (125 of them, all built at build time and kept for the visit).
   const colourGeo = (parts, k) => {
     if (parts.colours[k]) return parts.colours[k];
     const r = (k / 25) | 0, g = ((k / 5) | 0) % 5, b = k % 5, hex = (v) => Math.round(v * 255 / LEVELS).toString(16).padStart(2, "0");
     const S = parts.screen;
     return (parts.colours[k] = S.M.box({ w: 0.01, h: S.px * 0.9, d: S.px * 0.9, color: `#${hex(r)}${hex(g)}${hex(b)}`, emissive: k ? 1.1 : 0 }));
   };
-  // Poses the cluster from its state each frame: allocation-free except a colour's first geometry when a knob turns.
+  // Poses the cluster from its state each frame, allocation-free (every colour's geometry exists from build).
   const sync = (visit, dt, calm) => {
     const { live, parts } = visit, g = live.game, sc = live.screen, t = live.tape;
     if (parts.gameShown !== g.version) {

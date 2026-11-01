@@ -23908,6 +23908,22 @@ const genesisEra1UpgradeSuite = async () => {
   return { code: process.exitCode || 0, lines };
 };
 
+// Regression (review of bc2a526): Era 2's colour screen built a palette colour's geometry the first time a knob
+// asked for it, inside update(). Every colour is built at build time, so driving every setting makes none.
+const genesisEra2PaletteProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-era-2-four", "genesis-era-2-cluster"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const C = context.window.BL.genesisEra2Cluster;
+  let boxes = 0;
+  const node = (o = {}) => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true, ...o });
+  const kit = { top: 0.5, M: { box: () => { boxes++; return { verts: [], faces: [] }; } }, createNode: node, addChild: (p, c) => c, place: (n) => n, solid: () => node(), sign: () => node(), obstacle() {}, prop() {} };
+  const visit = C.build(kit), built = boxes, crt = visit.live.terminals.crt;
+  for (const ch of ["R", "G", "B"]) for (let v = 0; v <= 4; v++) { crt.run(`${ch} ${v}`); C.update(visit, 1 / 60, { calm: false }); }
+  for (let r = 0; r <= 4; r++) for (let g = 0; g <= 4; g++) for (let b = 0; b <= 4; b++) { crt.run(`R ${r}`); crt.run(`G ${g}`); crt.run(`B ${b}`); C.update(visit, 1 / 60, { calm: true }); }
+  crt.run("RESET"); C.update(visit, 1 / 60, { calm: false });
+  return { built, after: boxes - built, colours: visit.parts.colours.filter(Boolean).length };
+};
 // Era 2's upgrade suite, folded in from test/genesis-era-2-upgrade.mjs (gv/upgrade-era-2) so test/ keeps its two
 // files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
 const genesisEra2UpgradeSuite = async () => {
@@ -25684,6 +25700,8 @@ const unitChecks = async () => {
   record("Genesis Era 0 upgrade suite (folded from its branch): every one of its own checks passes", era0Suite.code === 0 && !era0Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era0Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const era1Suite = await genesisEra1UpgradeSuite();
   record("Genesis Era 1 upgrade suite (folded from its branch): every one of its own checks passes", era1Suite.code === 0 && !era1Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era1Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
+  const era2Palette = await genesisEra2PaletteProof();
+  record("Genesis Era 2 colour screen: every palette colour's geometry is built at build time, and driving every red, green and blue setting through its terminal and update() creates none", era2Palette.after === 0 && era2Palette.colours === 125, JSON.stringify(era2Palette));
   const era2Suite = await genesisEra2UpgradeSuite();
   record("Genesis Era 2 upgrade suite (folded from its branch): every one of its own checks passes", era2Suite.code === 0 && !era2Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era2Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const era3Suite = await genesisEra3UpgradeSuite();
