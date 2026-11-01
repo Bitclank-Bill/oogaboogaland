@@ -4,7 +4,8 @@
 // book a commit (cloud-archive-models.js, cloud-archive-data.js). Space (or the READ button) facing a shelf, a tap
 // on a rack or its plaque opens that day's board: its commits, PR-head matches and their authors as git recorded
 // them, with links out to GitHub; the arrows page through the days. At the far end, two armchairs (Space or SIT) face
-// a small TV playing the island's live feeds and the pictures from the climb, on shuffle (cloud-archive-tv.js).
+// a small TV playing the island's live feeds (all but GitHub, which is the sign's) and pictures of its places, on
+// shuffle (cloud-archive-tv.js).
 // Over the aisle hangs the island's own Oogatron (jumbotron.js), live as the hub's and two-sided, gliding along the
 // aisle to stay near the walker: a tap on its screen, or Space (READ) looking along the aisle at it, opens the same
 // close-up; its sides page it. On a page's first climb the floor is bare but for the sign and the lounge: Space (LOAD)
@@ -287,12 +288,12 @@
     const openSign = () => hud.openBoard(signBoard);
     const signUnsub = BL.oogatronLive.subscribe((event) => { if (event.type === "stats") { sign.refreshData(event.stats); signBack.refreshData(event.stats); } });
 
-    // The TV (cloud-archive-tv.js): the island's live feeds, a channel for each page of the hanging Oogatron (read
-    // through its own paused reader), and the pictures from the climb (`world.archiveViews`), on shuffle. Its canvas is
-    // the screen's picture; the screen's surface is bumped whenever the TV repaints.
+    // The TV (cloud-archive-tv.js): the island's live feeds other than GitHub (the sign's) and the pictures of its
+    // places from the climb (`world.archiveViews`), on shuffle. Its canvas is the screen's picture; the screen's surface
+    // is bumped whenever the TV repaints.
     const views = world.archiveViews ? world.archiveViews.filter((v) => v.ready) : [];
     const boardDialog = document.getElementById("board-modal");
-    const tv = BL.cloudArchiveTv.create({ views, reader: sign.createReader({ paused: true, screen: { name: "recent", params: undefined } }), font: FONT,
+    const tv = BL.cloudArchiveTv.create({ views, world, font: FONT,
       reduced: () => REDUCED.matches, boardOpen: () => !!(boardDialog && boardDialog.open) });
     const tvGeometry = CM.plaque(tv.canvas, L.TV.screenW, L.TV.screenH);
     built.screen.geometry = tvGeometry;

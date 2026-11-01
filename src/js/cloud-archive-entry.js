@@ -39,20 +39,15 @@
   // Where the foot goes: the first meadow spot clear of paths and anything already placed, from a fixed list, so the
   // stalk stands in the same place on every visit.
   const SPOTS = [[-9, 5], [-7, -8], [9, 8], [-11, 2], [6, -9]];
-  // What the archive's TV shows: the island seen from a few of its places, drawn once each on the way up (one a frame
-  // while the view moves in, through the hub's `renderView`, which draws as the hub's other snapshots do: no cutaway,
-  // the visitor's own Ooga hidden) and handed over as `world.archiveViews`. The banana pit first; then whichever of
-  // these mouths and the north gate the island has, and the stalk: at most MAX_VIEWS pictures of VIEW_W x VIEW_H, in
-  // canvases made once a page and reused by every climb (the archive is not open while they are redrawn).
-  const MOUTH_VIEWS = [["c2", "Lightning Factory"], ["c3", "Ooga Arcade"], ["c11", "EntropyLab"]];
-  const VIEW_W = 480, VIEW_H = 360, MAX_VIEWS = 6, pool = [];
+  // What the archive's TV shows of the island: every landmark of Tess's island tour (hub-guide.js `STOPS`, the official
+  // list of the island's places, each with the view it is shown from), then the beanstalk, drawn once each on the way
+  // up (one a frame while the view moves in, through the hub's `renderView`, which draws as the hub's other snapshots
+  // do: no cutaway, the visitor's own Ooga hidden) and handed over as `world.archiveViews`: at most MAX_VIEWS pictures
+  // of VIEW_W x VIEW_H, in canvases made once a page and reused by every climb (the archive is not open while they are
+  // redrawn).
+  const VIEW_W = 480, VIEW_H = 360, MAX_VIEWS = 12, pool = [];
   const shotList = (island, foot) => {
-    const list = [{ label: "Banana pit", from: [0, 5.5, 9.5], at: [0, 0.6, 0] }];
-    for (const [id, label] of MOUTH_VIEWS) {
-      const m = island.mouths.find((mouth) => mouth.id === id);
-      if (m) list.push({ label, from: [m.x + Math.sin(m.ry) * 11, m.floorY + 4.5, m.z + Math.cos(m.ry) * 11], at: [m.x, m.floorY + 2, m.z] });
-    }
-    if (island.gate) list.push({ label: "North gate", from: [island.gate.x, 6, island.gate.z + 14], at: [island.gate.x, 3, island.gate.z] });
+    const list = BL.hubGuide.STOPS.map((stop) => ({ label: stop.title, from: stop.eye, at: stop.look }));
     list.push({ label: "The beanstalk", from: [foot.x + 9, foot.y + 4, foot.z + 9], at: [foot.x, foot.y + 9, foot.z] });
     return list.slice(0, MAX_VIEWS);
   };
@@ -134,6 +129,9 @@
         cloud.scale.x = cloud.scale.y = cloud.scale.z = s;
         rim.scale.x = rim.scale.z = clamp(1 + pulse * 2 + flash * 0.4, 0.5, 2);
       },
+      // The island is handing over: any picture the move in had no frame left for is drawn now, so the TV gets every
+      // place (on a slow device the move in can end before one a frame has covered them).
+      finishShots: () => { while (!disposed && shots && next < shots.length) takeShot(); },
       liveGeometry: (set) => { set.add(stalk()).add(halo()); },
       dispose: () => {
         if (disposed) return;

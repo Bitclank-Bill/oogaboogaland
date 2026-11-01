@@ -171,12 +171,16 @@ cloud over the west meadow), or `?wip=cloudarchive` to land straight in the arch
   up as they lock, with a thunk. It follows the page's sound rules (pooled voices built once, opened only after a
   gesture, page mute, closed on leave); no recording ships. Under reduced motion the racks appear in place. Later
   visits in the same page find them loaded.
-- **The live TV (done, v2).** The lounge TV plays the island's live feeds on shuffle (a fresh order each round), with
-  the island-cam pictures from the climb. Each page of the Oogatron is its own channel (GitHub), plus the chain
-  (height, price, fees, backlog, hashrate, difficulty), the totems' latest merges, who is working, chilling or asleep
-  (and online, where the island's server runs), and the banana tips. Live channels repaint every second. Tapping the
-  TV opens its board, which pages through every channel. It reads only the feeds the page already runs, so it never
-  makes a request of its own; a feed that is off says it is waiting.
+- **The live TV (done, v3).** The big sign is GitHub's; the lounge TV plays the rest of Ooga Booga Land's live feeds
+  on shuffle (a fresh order each round): the chain (height, price, hashrate, difficulty, block pace, last block), the
+  mempool as its socket streams it (backlog, arrivals, fees, blocks found; a new block cuts to it), the Mempool
+  island's weather (the storm step from arrivals, the lake from the backlog), the totems' latest merges, who is
+  working, chilling or asleep and who is online outside or inside, the bananas (the island's pile, the tips, the
+  latest tip, the top tipper) and the arcade's records. Between them, pictures of every place on Tess's official
+  island tour (the whitepaper, the pile, the jumbotron and totems, the Timechain Sphere, B.C.A., EntropyLab, ₿IFRÖST,
+  the Lightning Factory, the Ooga Arcade, the Mempool island) and the beanstalk, drawn by the island as you climb.
+  Live channels repaint every second; tapping the TV opens its board, which pages every channel. It never makes a
+  request of its own (the arcade records are watched as any scene watches them); a feed that is off says so.
 - **Sitting from anywhere in the lounge (fixed).** Before, you had to stand right behind a chair; between the two the
   choice flickered. Now anywhere in the lounge offers SIT and picks the chair for you (the one you face, else the one
   already offered while both are about as near, else the nearer; the middle goes to the left), and a tap on either

@@ -11122,7 +11122,7 @@
     stopLazyBedding();
     // A kept island ends its hunt and its game as a full leave does, and lowers the ring at once.
     if (ghostEntry) { ghostEntry.dispose(); ghostEntry = null; }
-    if (archiveEntry) { archiveEntry.dispose(); archiveEntry = null; }
+    if (archiveEntry) { archiveEntry.finishShots(); archiveEntry.dispose(); archiveEntry = null; }
     if (ghosts) { ghosts.dispose(); ghosts = null; }
     ghostSeal = null;
     setGameMode(false);
