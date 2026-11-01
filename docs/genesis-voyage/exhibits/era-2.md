@@ -451,6 +451,21 @@ Facts still open:
    the curve picture's mathematics are in the dossier.
 
 
+## Integration (Claude Code, integrator, on `gv/integration-1`)
+
+Merged from `1c830b5` (reviewed by Astra) with an ordinary merge, after the candidate checkpoint. Era 2's own file
+is unchanged. On the shared side:
+
+- **Its proof is kept as written:** `genesisEra2Proof`, from "Unit proof", is in `test/run.mjs` with its record line.
+  Merkle [7] is also in the shared proof's required trail table.
+- **1. Done:** a connected exhibit's terminal now opens with the same words as a board's last page:
+  `HOW IT CONNECTS: <connection> <ref>. <date>.`, then its trail step, then its own banner (`scene-genesis.js`, `kit.prop`).
+- **2. Done:** `BL.genesisExhibits.yearKey` sorts a decade such as "1980s" just after its first year (1980.5), on
+  the trail and on every overview board. A unit check covers it.
+- **3. Done:** `update` and `active` receive `state.calm` (see EXHIBIT-CONTRACT.md, "Calm, and leaving or entering
+  your cave").
+- **4. Still open:** a kit helper for merged static geometry.
+
 ---
 *Prepared with AI assistance (Claude, by Anthropic) for Bitcoin-Bill. Not reviewed or endorsed by the Ooga Booga Land
 maintainers.*
