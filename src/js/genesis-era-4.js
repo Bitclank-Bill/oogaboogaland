@@ -20,7 +20,20 @@
     "E4-TIMESEC-CAT": { label: "May 1999 proceedings publication month: TIMESEC catalogue",
       href: "https://nakamotoinstitute.org/library/secure-timestamping-service/", kind: "whitepaper citation", verified: true },
     "E4-MODEM": { label: "1 September 1998: ITU-T V.90 approval and signalling ceilings",
-      href: "https://www.itu.int/rec/T-REC-V.90-199809-I/en", kind: "context", verified: true }
+      href: "https://www.itu.int/rec/T-REC-V.90-199809-I/en", kind: "context", verified: true },
+    // The upgrade cluster's sources, from the READY research records tl-4-deep-blue and tl-4-wifi
+    // (genesis-timeline-data.js). `verified: false`: the research read them; this build could not reach those hosts.
+    "E4-CHESS": { label: "IBM, Deep Blue (history page): the May 1997 rematch",
+      href: "https://ibm.com/history/deep-blue", kind: "context", verified: false },
+    "E4-CHESS-CHM": { label: "Computer History Museum catalogue 102695065: the final game, 11 May 1997",
+      href: "https://www.computerhistory.org/collections/catalog/102695065", kind: "context", verified: false },
+    "E4-WIFI": { label: "IEEE Standards, 802.11-1997: approved 26 June 1997, published 18 November 1997",
+      href: "https://standards.ieee.org/ieee/802.11/1163", kind: "context", verified: false },
+    "E4-WIFI-PAR": { label: "IEEE 802.11 working group, 802.11b PAR (1998): the 1997 standard's 1 and 2 Mbit/s rates",
+      href: "https://grouper.ieee.org/groups/802/11/Documents/DocumentArchives/1998_docs/Feb98/80062W%20PAR%20dot11b.PDF", kind: "context", verified: false },
+    // The museum's own note on the information screen and the board: original designs, no historical system claimed.
+    "E4-ORIGINAL": { label: "Era 4 exhibit notes: the strategy board, information screen and packet toy are original museum designs",
+      href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/upgrade-era-4/docs/genesis-voyage/exhibits/era-4.md", kind: "context", verified: true }
   };
   const overview = [
     "1996–1999: computers could pay for stamps with work; proposals asked how people could share balances. [E4-HC, E4-BM]",
@@ -43,7 +56,17 @@
       "Their design retains a third party while reducing trust in it. Bitcoin later cites it as [2]. The PDF title uses singular Requirement; the catalogue uses Requirements."],
     MODEM: ["1 September 1998 · V.90 recommendation approved [E4-MODEM]",
       "The recommendation specifies ceilings of 56,000 bit/s downstream and 33,600 bit/s upstream. These are signalling ceilings, not promised downloads.",
-      "The museum modem makes original synthesized tones. It never calls anyone or connects to a network."]
+      "The museum modem makes original synthesized tones. It never calls anyone or connects to a network."],
+    // The upgrade cluster (genesis-era-4-strategy.js, -teletext.js, -wireless.js), in the READY records' own words.
+    CHESS: ["May 1997 · a chess machine wins its rematch [E4-CHESS, E4-CHESS-CHM]",
+      "A computer beat the world chess champion: Deep Blue won the rematch 3.5-2.5 at the Equitable Center, New York. The final game is dated 11 May 1997 by a museum catalogue; IBM's page gives the month.",
+      "This board is not chess and copies no program. Context only: any likeness between searching moves and proof-of-work is an analogy, not an influence on Bitcoin."],
+    SCREEN: ["1996-1999 · the gallery's years; an original museum screen [E4-ORIGINAL]",
+      "Numbered text pages chosen with a remote, in a broadcast-text style made for this gallery. Its record pages repeat the museum's READY research records.",
+      "It names no real service, system, country or years: that label is on HOLD until a source is verified."],
+    WIFI: ["26 June 1997 · IEEE Std 802.11 approved; published 18 November 1997 [E4-WIFI, E4-WIFI-PAR]",
+      "Engineers agreed rules so computers could network by radio instead of cables. The first standard defined basic rates of 1 and 2 Mbit/s.",
+      "Context only: wireless networking is not an asserted influence on Bitcoin. No later brand names or logos are used here."]
   };
   const reply = (...lines) => ({ lines });
   // Every station opens with a short HOW TO USE: a terminal's first lines, a panel's first page.
@@ -64,7 +87,17 @@
     return (h ^ (h >>> 16)) >>> 0;
   };
   const PER_FRAME = 64, TOTAL = 32768;
-  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null, decor = null;
+  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null, decor = null, cluster = null;
+  // The upgrade cluster's games live in their own files (BL.genesisEra4Games); each stand opens its game's terminal,
+  // with its rules core made once a visit, or says the module is not on the page yet.
+  const games = () => BL.genesisEra4Games || {};
+  const core = (name) => {
+    const g = games()[name];
+    if (!g || !cluster) return null;
+    if (!cluster[name]) cluster[name] = name === "teletext" ? g.create((BL.genesisTimelineData && BL.genesisTimelineData.records) || []) : g.create();
+    return cluster[name];
+  };
+  const missing = { caption: "This exhibit's game module is not loaded on this page yet." };
   const status = () => reply(`Message: ${work.message}; target: ${work.bits} leading zero bits.`,
     `Attempts this visit: ${work.total}/${TOTAL}; this search: ${work.attempts}.`,
     work.running ? "Searching. Use STATUS in a moment, or STOP." : work.nonce >= 0 ? `Stamp nonce ${work.nonce}; digest ${work.hash.toString(16).padStart(8, "0")}. Use VERIFY, then MESSAGE changed.` : "No stamp. SEARCH starts; TARGET 4..12 adjusts difficulty.");
@@ -335,6 +368,48 @@
           "Use N, S, E and W to reach the + exit.", "Type LOOK to redraw the map, or RESET to start again."])() }), "pocket",
         { hint: "Type E, then steer with N S E W", connection: "context", date: "1999: the period illustrated; an original maze" });
 
+      // --- The upgrade cluster: three compact stands on the right bank, between the CD-ROM archive and the games
+      // corner (old x 24.6 to 36.4, z era.z - 0.8 to + 2.7 with their walk-up spots), clear of the lamp at x 22, the
+      // walkways and the other stations. Each opens its own game's terminal; their console forms are `make(host)`.
+      cluster = { strategy: null, teletext: null, wireless: null, leds: [], mask: -1 };
+      const stand = (id, x, year, title, sub, keys, use, link, model) => {
+        const z = era.z + 1;
+        solid(2.6, 0.8, 1.4, "#4f4a5c", x, y(0.4), z);
+        model(x, z);
+        obstacle(x - 1.4, x + 1.4, z - 0.8, z + 1);
+        sign(title, sub, x, y(2.7), z + 0.1, 0, 0.32);
+        prop({ id, year, ...link, title, label: title.includes(String(year)) ? title : `${title} / ${year}`, sourceKeys: keys, at: { x, y: top, z: z + 1.9 }, reach: 1.9, pick: { w: 2.6, h: 2.2, d: 1.4, x, z }, onUse: use });
+      };
+      stand("e4-strategy", 26, 1997, "STRATEGY BOARD / MAY 1997", "modern museum homage - reach the goal", ["E4-CHESS", "E4-CHESS-CHM", "E4-ORIGINAL"],
+        () => { const c = core("strategy"); return c ? { terminal: games().strategy.terminal(c, history.CHESS) } : missing; },
+        { hint: "Type LOOK, then MOVE A N", connection: "context", date: "May 1997: a chess machine wins its rematch; this board is a modern museum homage" },
+        (x, z) => {
+          boxes([[1.6, 0.06, 1.2, "#2a3446", x, y(0.83), z], [0.22, 0.02, 0.22, "#ffb02e", x - 0.6, y(0.87), z - 0.42, 0.4],
+            [0.2, 0.2, 0.2, "#5a5a62", x - 0.15, y(0.96), z - 0.42], [0.2, 0.2, 0.2, "#5a5a62", x + 0.3, y(0.96), z - 0.05], [0.2, 0.2, 0.2, "#5a5a62", x - 0.3, y(0.96), z + 0.15],
+            [0.14, 0.22, 0.14, "#46ffd2", x - 0.6, y(0.97), z + 0.42], [0.14, 0.22, 0.14, "#5ec8ff", x + 0.6, y(0.97), z + 0.42], [0.16, 0.3, 0.16, "#e0452b", x, y(1.01), z]]);
+        });
+      stand("e4-teletext", 30.5, 1996, "INFORMATION SCREEN / 1996-1999", "original pages - type 100", ["E4-ORIGINAL"],
+        () => { const c = core("teletext"); return c ? { terminal: games().teletext.terminal(c) } : missing; },
+        { hint: "Type 100, then a page number", connection: "context", date: "1996-1999: the gallery's years; an original museum screen, no historical system claimed" },
+        (x, z) => {
+          boxes([[1.1, 0.85, 0.8, "#2b2b30", x, y(1.23), z - 0.05], [0.8, 0.6, 0.4, "#24242a", x, y(1.2), z - 0.6], [0.9, 0.62, 0.02, "#08140f", x, y(1.25), z + 0.36, 0.3],
+            [0.8, 0.05, 0.01, "#c8ff5a", x, y(1.5), z + 0.375, 0.7], ...[0, 1, 2].map((k) => [0.6 - k * 0.12, 0.035, 0.01, "#efe6d2", x - 0.1 - k * 0.06, y(1.38 - k * 0.1), z + 0.375, 0.6]),
+            ...["#e0452b", "#6fae3a", "#ffd23a", "#5ec8ff"].map((c, k) => [0.16, 0.05, 0.01, c, x - 0.3 + k * 0.2, y(1.03), z + 0.375, 0.6]),
+            [0.14, 0.04, 0.4, "#1d1d22", x + 0.85, y(0.82), z + 0.4], [0.06, 0.012, 0.06, "#e0452b", x + 0.85, y(0.845), z + 0.3, 0.4]]);
+        });
+      stand("e4-wireless", 35, 1997, "PACKETS BY RADIO / 26 JUN 1997", "IEEE 802.11 approved - a toy, not the protocol", ["E4-WIFI", "E4-WIFI-PAR", "E4-ORIGINAL"],
+        () => { const c = core("wireless"); return c ? { terminal: games().wireless.terminal(c, history.WIFI) } : missing; },
+        { hint: "Type MAP, then SEND A E", connection: "context", date: "26 June 1997: IEEE Std 802.11 approved (published 18 November 1997); the toy is an original model" },
+        (x, z) => {
+          // The five boxes in the toy's own layout (genesis-era-4-wireless.js STATIONS), each with an antenna and a lamp
+          // that shows whether it is switched on.
+          for (const [bx, bz] of [[10, 45], [42, 22], [44, 72], [80, 45], [118, 52]]) {
+            const px = x - 1 + (bx - 10) / 108 * 2, pz = z - 0.45 + (bz - 22) / 50 * 0.9;
+            boxes([[0.2, 0.1, 0.16, "#cfc6ae", px, y(0.85), pz], [0.02, 0.3, 0.02, "#2a2a2a", px + 0.07, y(1.05), pz - 0.05]]);
+            cluster.leds.push(solid(0.04, 0.03, 0.02, "#7dff8a", px - 0.05, y(0.88), pz + 0.085, 0.8));
+          }
+        });
+
       // --- Era decor: late-1990s set dressing, original and unbranded, making no claims ------------------------------
       // Against the two cave walls, behind every station (left x -34 to -29.4, right 36.4 to 42), so the stream,
       // the waterside walk, the stations' paths and the views to the far wall and the overview board stay open. No
@@ -417,6 +492,16 @@
         const line = decor.modem[1], up = !!(desktop && desktop.connected);
         if (line && typeof line === "object" && decor.line !== up) { decor.line = up; line.glow = up ? 2.4 : 1; }
       }
+      // The packet toy's lamps show which boxes are switched on (a state, not an animation).
+      const radio = cluster && cluster.wireless;
+      if (radio) {
+        let mask = 0;
+        for (let i = 0; i < radio.on.length; i++) mask |= radio.on[i] << i;
+        if (mask !== cluster.mask) {
+          cluster.mask = mask;
+          for (let i = 0; i < cluster.leds.length; i++) { const n = cluster.leds[i]; if (n && typeof n === "object") n.glow = radio.on[i] ? 1 : 0.1; }
+        }
+      }
       if (!work || !work.running) return;
       for (let i = 0; i < PER_FRAME && work.total < TOTAL; i++) {
         const nonce = work.attempts++, h = stampHash(work.boundSeed, nonce);
@@ -431,7 +516,7 @@
         for (const v of synth.voices) { v.osc.stop(); v.osc.disconnect(); v.gain.disconnect(); }
         synth.context.close().catch(() => {}); synth = null;
       }
-      work = desktop = maze = discs = balances = decor = null;
+      work = desktop = maze = discs = balances = decor = cluster = null;
     }
   });
 })();
