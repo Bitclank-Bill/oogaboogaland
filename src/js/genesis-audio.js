@@ -9,7 +9,13 @@
 // its own bus, ramped to `busTargets`: the era's level, lower in calm mode, nothing for any other era.
 //
 // Every motif below was written for this module as note numbers. None quotes or approximates a real song.
-// Mute follows the page-wide BL.sound gate through `BL.sound.output`.
+// Every sound goes through the page-wide mute (`BL.sound.output`); without it nothing is built.
+//
+// Lifecycle (docs/genesis-voyage/audio-handoff.md): `wake` builds the context only once the browser has counted a
+// real user gesture (`navigator.userActivation.hasBeenActive`, as footsteps.js does; the scene calls it from its
+// pointer and key handlers) and later resumes a suspended one; `setPaused` holds the
+// music and engine; `dispose` stops and disconnects every source, closes the context and may be called twice; a
+// later `wake` from a gesture builds fresh audio on the same instance.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -192,26 +198,29 @@
     const times = new Float64Array(PLAN_SLOTS), steps = new Int16Array(PLAN_SLOTS);
     const eng = { freq: 0, level: 0, cutoff: 0, water: 0, putt: 0, puttRate: 0 }, applied = { t: -1, b: false };
     const engine = { osc: null, sub: null, filter: null, gain: null, lfo: null, lfoGain: null, water: null, waterFilter: null };
-    let noiseVoice = null, cueNext = 0;
-    const stats = { ready: false, era: 0, active: 0, scheduled: 0, contexts: 0 };
+    let noiseVoice = null, cueNext = 0, paused = false;
+    // Every node `build` starts (oscillators, noise loops), stopped and disconnected by `dispose`. Fixed length.
+    const sources = [];
+    const stats = { ready: false, era: 0, active: 0, scheduled: 0, contexts: 0, sources: 0 };
 
     const build = () => {
       ctx = new AudioContext();
       stats.contexts++;
-      const out = BL.sound && BL.sound.output ? BL.sound.output(ctx) : ctx.destination;
+      current = 0; cueNext = 0;
+      const out = BL.sound.output(ctx);
       const gain = (value, to) => { const g = ctx.createGain(); g.gain.value = value; if (to) g.connect(to); return g; };
       const filter = (type, freq, q, to) => {
         const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; f.connect(to); return f;
       };
-      const osc = (type, freq, to) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq; o.connect(to); o.start(); return o; };
+      const osc = (type, freq, to) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq; o.connect(to); o.start(); sources.push(o); return o; };
       master = gain(MASTER * volume, out);
-      musicBus = gain(1, master);
-      engineBus = gain(calm ? CALM_ENGINE : 1, master);
+      musicBus = gain(paused ? 0 : 1, master);
+      engineBus = gain(paused ? 0 : calm ? CALM_ENGINE : 1, master);
       sfxBus = gain(SFX, master);
       const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * NOISE_SECONDS), ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-      const noise = (to) => { const s = ctx.createBufferSource(); s.buffer = buffer; s.loop = true; s.connect(to); s.start(); return s; };
+      const noise = (to) => { const s = ctx.createBufferSource(); s.buffer = buffer; s.loop = true; s.connect(to); s.start(); sources.push(s); return s; };
       const voice = (to) => { const g = gain(0, to); return { osc: osc("sine", 220, g), gain: g, inst: null }; };
       for (let d = 0; d < 2; d++) {
         const bus = gain(0, musicBus), drums = gain(calm ? CALM_DRUMS : 1, bus);
@@ -243,6 +252,7 @@
       const ng = gain(0, sfxBus), nf = filter("bandpass", 1200, 0.5, ng);
       noiseVoice = { src: noise(nf), filter: nf, gain: ng, until: 0 };
       ready = stats.ready = true;
+      stats.sources = sources.length;
       const now = ctx.currentTime;
       startDeck(decks[0], era, now + 0.05);
       current = 0;
@@ -330,7 +340,9 @@
       stats.scheduled++;
     };
     const tick = () => {
-      if (!ready) return;
+      // Nothing to schedule while the context is suspended (its clock stands still) or the voyage is paused; on
+      // carrying on, `plan` skips the steps that fell in the gap rather than playing them late.
+      if (!ready || paused || ctx.state !== "running") return;
       const now = ctx.currentTime;
       let active = 0;
       for (let i = 0; i < decks.length; i++) {
@@ -396,12 +408,22 @@
       if (!ready) return;
       const now = ctx.currentTime;
       for (let i = 0; i < decks.length; i++) decks[i].drums.gain.setTargetAtTime(calm ? CALM_DRUMS : 1, now, 0.3);
-      engineBus.gain.setTargetAtTime(calm ? CALM_ENGINE : 1, now, 0.3);
+      engineBus.gain.setTargetAtTime(paused ? 0 : calm ? CALM_ENGINE : 1, now, 0.3);
       applyBuses(now, 0.3);
     };
     const setVolume = (v) => {
       volume = clamp(+v || 0, 0, 1);
       if (ready) master.gain.setTargetAtTime(MASTER * volume, ctx.currentTime, 0.05);
+    };
+    // Pause (the voyage's P, or a held ride): the music and the engine fade out and the sequencer stops scheduling;
+    // cues still sound. Carrying on fades them back in at the current era, from the next step.
+    const setPaused = (on) => {
+      paused = !!on;
+      if (!ready) return;
+      const now = ctx.currentTime;
+      musicBus.gain.setTargetAtTime(paused ? 0 : 1, now, 0.12);
+      engineBus.gain.setTargetAtTime(paused ? 0 : calm ? CALM_ENGINE : 1, now, 0.12);
+      if (paused) for (let i = 0; i < decks.length; i++) if (decks[i].active) release(decks[i], now);
     };
 
     // --- Cues ---
@@ -495,17 +517,25 @@
       return true;
     };
 
-    // Only from a gesture the browser has already counted; later gestures resume a context it suspended.
+    // Builds only once the browser has counted a real user gesture (call it from the gesture's own handler), and
+    // only with the page-wide mute to route through; later calls resume a context the browser suspended. Calling it
+    // again while ready, or with no gesture, does nothing else.
     const wake = () => {
-      if (ready) { if (ctx.state === "suspended") ctx.resume().catch(() => {}); return; }
-      if (typeof AudioContext === "undefined") return;
-      if (typeof navigator !== "undefined" && navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
+      if (ready) { if (ctx.state === "suspended") ctx.resume().catch(() => {}); return false; }
+      if (typeof AudioContext === "undefined" || !BL.sound || !BL.sound.output) return false;
+      if (typeof navigator !== "undefined" && navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
       build();
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      return true;
     };
+    // Safe to call twice, or before any wake. Stops and disconnects every source, lets go of the buses, closes the
+    // context (which also releases the page-wide mute's subscription for it, sound.js) and forgets every node.
     const dispose = () => {
       if (timer) clearInterval(timer);
       timer = 0;
+      for (let i = 0; i < sources.length; i++) { const s = sources[i]; try { s.stop(); } catch (_) {} s.disconnect(); }
+      sources.length = 0;
+      if (master) master.disconnect();
       if (ctx) { const c = ctx; ctx = null; if (c.state !== "closed") Promise.resolve(c.close()).catch(() => {}); }
       ready = stats.ready = false;
       master = musicBus = engineBus = sfxBus = noiseVoice = null;
@@ -513,7 +543,8 @@
       for (const k in engine) engine[k] = null;
     };
     return {
-      wake, setEra, setThrottle, cue, dispose, setEngine, setCalm, setVolume, tick, stats,
+      wake, setEra, setThrottle, cue, dispose, setEngine, setCalm, setVolume, setPaused, tick, stats,
+      get paused() { return paused; },
       get ready() { return ready; },
       get era() { return era; },
       get context() { return ctx; },
