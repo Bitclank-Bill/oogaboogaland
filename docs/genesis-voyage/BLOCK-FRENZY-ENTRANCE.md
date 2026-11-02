@@ -57,7 +57,8 @@ and makes no claim about who made it.
 
 ## Limitations
 
-- **Climbing the cairn** on foot (jump, steps, jump) is checked in Node against the footing, not in the browser.
+- **Reaching the head:** it takes the jetpack. At about 12 m it's out of reach on foot; the landing is checked in
+  Node against the footing.
 - **The view's return:** only orbit and first person are restored; shoulder comes back as orbit.
 - **Loading:** Block Frenzy loads with the page, as on 5a9c71d, so "failed to load" is covered as a failed switch or
   preparation.
