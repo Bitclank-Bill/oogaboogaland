@@ -16575,7 +16575,7 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     && traffic.clear.every(row => !row.waited && row.moved), JSON.stringify(traffic));
 } }] });
 // #392: walking each bridge reports the crossing the room and the page fade voices by.
-const hubVoiceCrossings = { name: "voice crossings", why: "rule: on each bridge a player hears the island fade into the land ahead by how far along they stand, and back again walking home", run: async (b) => {
+const hubVoiceCrossings = { name: "voice crossings", why: "rule: on each bridge and down each slope between levels a player hears the two places fade into each other by how far along they stand, and back again", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, D = BL.scenes.hub.debug, net = BL.net.state, T = D.timechainIsland, M = __ooga.poolIsland, F = D.bifrost;
     B.pilot.possess(B.cavemen.get("portlandhodl"));
@@ -16609,6 +16609,27 @@ const hubVoiceCrossings = { name: "voice crossings", why: "rule: on each bridge 
     && !row.land.to && row.land.zone === land && row.back.to === "outside" && Math.abs(row.back.t - 0.25) <= 0.05 && row.back.zone === land
     && row.backHeld.to === land && Math.abs(row.backHeld.t - 0.75) <= 0.05 && row.backHeld.zone === "outside" && !row.away.to && row.away.zone === "outside");
   record("voice crossings: each bridge reports its land and how far along, the island's zone held to its far end, and walking back from the land the island ahead", ok, JSON.stringify(r));
+  // Levels: down HQ's entrance ramp, its basement's ramp and the rainforest's descent, by height, only where each slope is.
+  const lv = await b.evaluate(`(() => {
+    const B = __ooga, D = BL.scenes.hub.debug, H = D.island.headquarters, M = __ooga.poolIsland, L = BL.poolLayout, net = BL.net.state;
+    const at = (x, y, z) => { B.pilot.navigate({ position: { x, y, z }, yaw: 0, pitch: 0.4, dist: 6 }); B.advance(0.6, 1 / 60); return { to: net.blendTo, t: +net.blendT.toFixed(2), zone: net.zone }; };
+    const near = (samples, y) => samples.reduce((best, p) => Math.abs(p.y - y) < Math.abs(best.y - y) ? p : best);
+    const world = (lx, ly, lz) => [M.worldX(lx, lz), M.place.y + ly, M.worldZ(lx, lz)], down = L.rampPoint(50), room = H.basement.rooms[0];
+    const entrance = near(H.ramps[0].samples, H.floor / 2), stair = near(H.basement.ramps[0].samples, (H.floor + H.basement.floor) / 2);
+    return {
+      entrance: at(entrance.x, entrance.y, entrance.z), floor: at(H.room.x, H.floor, H.room.z), stair: at(stair.x, stair.y, stair.z),
+      basement: at(room.x, H.basement.floor, room.z), backUp: at(H.room.x, H.floor, H.room.z),
+      descent: at(...world(down.x, down.y, down.z)), chamber: at(...world(9, L.FLOOR, 0)), court: at(...world(0, 0, 20)), lake: at(...world(2, -2.5, 2)),
+      depth: (-0.75 - down.y) / (-0.75 - L.FLOOR) };
+  })()`);
+  // Halfway down an entrance ramp from either side: the island's zone crossing to HQ, or HQ's crossing back up.
+  const intoHq = lv.entrance.zone === "outside" && lv.entrance.to === "hq" ? lv.entrance.t : lv.entrance.zone === "hq" && lv.entrance.to === "outside" ? 1 - lv.entrance.t : NaN;
+  record("voice crossings: down HQ's entrance ramps, its basement's and the rainforest's descent a player hears both levels by height, each level alone on it, never the lake over the chamber",
+    Math.abs(intoHq - 0.5) <= 0.05 && !lv.floor.to && lv.floor.zone === "hq" && lv.stair.to === "hq-basement" && Math.abs(lv.stair.t - 0.5) <= 0.05 && lv.stair.zone === "hq"
+      && lv.basement.to === "hq-basement" && lv.basement.t === 1 && lv.basement.zone === "hq" && !lv.backUp.to
+      && lv.descent.to === "rainforest-under" && Math.abs(lv.descent.t - lv.depth) <= 0.05 && lv.descent.zone === "rainforest"
+      && lv.chamber.to === "rainforest-under" && lv.chamber.t === 1 && !lv.court.to && lv.court.zone === "rainforest" && !lv.lake.to,
+    JSON.stringify(lv));
 } };
 scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubVoiceCrossings] });
 scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
@@ -23001,10 +23022,27 @@ const integrationChecks = async BL => {
   record("integration jetpacks: an Ooga's pose carries its jetpack only when it changes and never for a gorilla; remotes read it at join and from every snapshot, where none listed or a bad value means none, and a body change clears it",
     jetOn&&jetQuiet&&jetChanged&&jetOff&&gorillaBare&&joinJet&&streamed&&absent&&invalid&&bodyCleared,
     JSON.stringify({jetOn,jetQuiet,jetChanged,jetOff,gorillaBare,joinJet,streamed,absent,invalid,bodyCleared}));
+  // Weapons ride the pose the same way as `w`; shots and strikes go to the room as their own small messages.
+  const sentOf=t=>g.sent.filter(m=>m.t===t),armedBefore=poses().length;
+  g.net.setBody("NickDaGreek");g.advance(101);g.net.sendPose(8,3,4,.5,null,0,2|4|12<<3);
+  const armed=poses().length===armedBefore+1&&poses().at(-1).w===(2|4|12<<3);
+  g.advance(101);g.net.sendPose(8,3,4,.5,null,0,1);const swapped=poses().length===armedBefore+2&&poses().at(-1).w===1;
+  const shotSent=g.net.sendShot(1,2,3,4,5,6)&&sentOf("shot").at(-1)?.a?.join()==="1,2,3,4,5,6",swingSent=g.net.sendSwing()&&sentOf("swing").length===1;
+  g.net.setBody(gorilla);const gorillaQuiet=!g.net.sendShot(1,2,3,4,5,6)&&!g.net.sendSwing()&&sentOf("swing").length===1;
+  const shotsHeard=[],swingsHeard=[],unshot=g.net.subscribeShots((id,a)=>shotsHeard.push([id,...a])),unswing=g.net.subscribeSwings(id=>swingsHeard.push(id));
+  gm({t:"shot",id:73,a:[1,2,3,4,5,6]});gm({t:"shot",id:73,a:[1,2,"3",4,5,6]});gm({t:"swing",id:73});
+  const heardShot=shotsHeard.length===1&&shotsHeard[0].join()==="73,1,2,3,4,5,6"&&swingsHeard.join()==="73";
+  unshot();unswing();gm({t:"swing",id:73});const unsubscribed=swingsHeard.length===1;
+  gm({t:"body",id:73,name:"YellowBrokeIt"});gm({t:"state",ps:[73,0,9,0,0],ws:[73,1]});const streamedWeapon=flyer?.weapon===1;
+  gm({t:"state",ps:[73,0,9,0,0]});const weaponAbsent=flyer?.weapon===0;
+  record("integration weapons: an Ooga's pose carries its weapon on a change; its own shots and strikes are sent while a gorilla's are not; others' are heard until unsubscribed, and their weapon comes from each snapshot",
+    armed&&swapped&&shotSent&&swingSent&&gorillaQuiet&&heardShot&&unsubscribed&&streamedWeapon&&weaponAbsent,
+    JSON.stringify({armed,swapped,shotSent,swingSent,gorillaQuiet,heardShot,unsubscribed,streamedWeapon,weaponAbsent}));
   g.net.dispose();
   const oldNet=BL.net,sceneRoot=BL.scene.createNode(),records=new Map(),cavemen=new Map();
-  const crew={cavemen,player:null,refreshStates(){}};
-  BL.net={remotes:records};
+  const replayed=[],crew={cavemen,player:null,refreshStates(){},showShot:(...a)=>replayed.push(a)};
+  let shotHeard=null,swingHeard=null;
+  BL.net={remotes:records,subscribeShots:fn=>(shotHeard=fn,()=>{shotHeard=null;}),subscribeSwings:fn=>(swingHeard=fn,()=>{swingHeard=null;})};
   const pool=BL.remotePlayers.create({root:sceneRoot,crew,visible:r=>r.zone==="dsb-outside"});
   records.set(72,{id:72,login:"peer",display:"Peer",body:"w-s-bitcoin",zone:"outside",x:1,y:0,z:2,yaw:0});pool.update(.1);
   record("integration remotes: hub actors stay out of DSB",pool.stats().remotePlayers===0&&sceneRoot.children.every(n=>!n.visible));
@@ -23018,6 +23056,23 @@ const integrationChecks = async BL => {
   records.get(72).jet=0;pool.update(.1);const off=!!pack&&!pack.visible&&!flame.visible&&jetNodes().length===1;
   record("integration remotes: another player's jetpack shows while they wear it, with its flame while it burns, and goes when they take it off, on one reused node",
     burning&&worn&&off,JSON.stringify({burning,worn,off}));
+  // Their weapons: the one in hand, the gun's bananas by count and the arm raised to aim; their shots replay through
+  // the crew with no hits and their strike swings the arm and settles.
+  const remoteRig=sceneRoot.children[0],nodes=[];
+  (function walk(n){nodes.push(n);for(const c of n.children)walk(c);})(remoteRig);
+  const isRound=c=>Object.hasOwn(c,"ammoPopAt"),gunNode=nodes.find(n=>n.children.some(isRound));
+  const clubGeometry=BL.models.caveman(BL.contributors.traitsFor("w-s-bitcoin")).parts.club.geometry;
+  const armR=nodes.find(n=>n.children.some(c=>c.geometry===clubGeometry)),clubNode=armR&&armR.children.find(c=>c.geometry===clubGeometry);
+  records.get(72).weapon=2|4|12<<3;pool.update(.1);
+  const bananas=gunNode?gunNode.children.filter(c=>isRound(c)&&c.visible).length:-1;
+  const aimed=!!gunNode&&gunNode.visible&&bananas===3&&!!clubNode&&!clubNode.visible&&Math.abs(armR.rotation.x+Math.PI/2)<1e-9;
+  const clubBack=()=>!!gunNode&&!gunNode.visible&&!!clubNode&&clubNode.visible;
+  records.get(72).weapon=1;pool.update(.1);let primary=clubBack();records.get(72).weapon=0;pool.update(.1);primary=primary&&clubBack();
+  if(shotHeard)shotHeard(72,[1,2,3,4,5,6]);const replay=replayed.length===1&&replayed[0].join()===",1,2,3,4,5,6";
+  if(swingHeard)swingHeard(72);pool.update(.1);const swung=!!armR&&armR.rotation.x<-1;
+  pool.update(.4);const settled=!!armR&&Math.abs(armR.rotation.x+.2)<1e-9;
+  record("integration remotes: another player's gun shows aimed with a banana for each three rounds, the club comes back when it is put away, their shots replay through the crew and their strike swings the arm and settles",
+    aimed&&primary&&replay&&swung&&settled,JSON.stringify({aimed,bananas,primary,replay,swung,settled}));
   records.get(72).zone="dsb-studio";pool.update(.1);
   record("integration remotes: a venue actor leaves the exterior immediately",pool.stats().remotePlayers===0);
   records.get(72).zone="dsb-outside";crew.player={traits:{name:"w-s-bitcoin"}};pool.update(.1);
