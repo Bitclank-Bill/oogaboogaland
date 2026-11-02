@@ -58,7 +58,9 @@
 // own volumes; the room gets it in BLEND.STEPS steps, at most BLEND_MS apart, and every remote record carries the
 // other players' steps (`blendTo`, `blendK`), reset by their next zone. A zone change into the group being crossed into
 // keeps the voices this page hears, since it already plays them.
-// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// `subscribePresence` hears `fn(rec, true)` for a player who joins the room while this page is in it, never for those
+// already there on this page's (re)join, and `fn(rec, false)` when one leaves (players.js names the joins, #430).
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
 // setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
@@ -102,6 +104,7 @@
   const studioSubscribers = new Set();
   const studioEmit = message => { for (const fn of studioSubscribers) fn(message); };
   const chatSubscribers = new Set();
+  const presenceSubscribers = new Set();
   const remotes = new Map();
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
@@ -330,11 +333,16 @@
       if (restoredPose) poseAt = performance.now();
       else { poseAt = 0; px = NaN; gKnown = poseHasG = false; }
     } else if (msg.t === "join") {
+      const fresh = !!msg.p && !remotes.has(msg.p.id);
       upsert(msg.p);
       setRoom("live");
+      const rec = fresh && remotes.get(msg.p.id);
+      if (rec) for (const fn of presenceSubscribers) fn(rec, true);
     } else if (msg.t === "leave") {
+      const rec = remotes.get(msg.id);
       remotes.delete(msg.id);
       setRoom("live");
+      if (rec) for (const fn of presenceSubscribers) fn(rec, false);
     } else if (msg.t === "body") {
       const rec = remotes.get(msg.id);
       if (rec) {
@@ -824,6 +832,10 @@
     doorSubscribers.add(fn);
     return () => doorSubscribers.delete(fn);
   };
+  const subscribePresence = (fn) => {
+    presenceSubscribers.add(fn);
+    return () => presenceSubscribers.delete(fn);
+  };
 
   const subscribeStudio = fn => { studioSubscribers.add(fn); return () => studioSubscribers.delete(fn); };
   const studioCommand = (action, fields = {}) => {
@@ -842,10 +854,11 @@
     moveSubscribers.clear();
     studioSubscribers.clear();
     chatSubscribers.clear();
+    presenceSubscribers.clear();
     doorSubscribers.clear();
     ghostHeard = ghostStateHeard = null; // HALLOWEEN
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
