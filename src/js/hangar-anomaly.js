@@ -120,8 +120,9 @@
       const rate = t < M.tries[0] ? M.arcs[0] : t < M.cut ? M.arcs[1] : 0;
       if (rate && (arcAt -= dt) <= 0) { arcAt = (0.5 + Math.random()) / rate; strike(); }
       if (t >= M.cut + 0.3 && t - dt < M.cut + 0.3) for (const e of exits) fx.puff(e.x, e.y, e.z + 0.3, 0, 0.5, 0.4, 1.2);
-      // Kortik's Sis, at the first try.
+      // Kortik's Sis, at the first try, and told once the engines have died.
       if (!spooked && t >= M.tries[0]) { spooked = true; sis.spook(engines.x, engines.z); }
+      if (t >= M.cut && t - dt < M.cut) sis.settle();
     };
 
     const begin = (k) => {
