@@ -6,17 +6,25 @@
 // Every page in the voice group then counts distinct supporters, never taps: three taps from one person are one Ooga.
 // Three or more within WINDOW_MS make a crowd, announced in neutral words ("5 Oogas thumped", naming nobody supported)
 // on a banner and as one local notice on the chat board (`BL.chat.support`, never a chat line: never sent, stored or
-// in the history), after which the notice rests COOLDOWN_MS for the whole group on this page, whoever speaks next.
+// in the history), after which the notice rests COOLDOWN_MS on this page, whoever speaks next and in whichever group.
+// Supporters belong to one voice membership: the zone group and, in the Ember Den, the table (`voiceTogether` in
+// worker/src/protocol.js), while the room is live and voice is on. Any change of it (another group or table, leaving or
+// rejoining voice, a disconnect) starts the count over and clears the banner, the chat board's notice
+// (`BL.chat.clearSupport`), the support marks and the bodies' mallets, taps and beats; the cooldown stands, so a switch
+// cannot bring the notice back early.
 // A thump shows on the thumper's body (`BL.remotePlayers.thumped`: a one-off arm, or a fallback mallet where the body
 // cannot safely move) and as a support mark pulsing beside their name in the roster and the players tab.
 // Sound is one synthesized thump, never a recording: a sine thud falling 120 to 48 Hz over 35 ms with a 110 ms decay,
 // a 30 ms low-passed noise puff and a 12 ms 1.6 kHz wood knock, slightly detuned each time and panned by where the
 // thumper stands on screen. A crowd sounds only as its real thumps do. VOICES pooled voices, built once, sound at most
 // at a time, at most RATE_MAX start in any second, quietly and lower still under speech; a thump that cannot sound now
-// is dropped, never queued. Nothing plays, shows or counts while the tab is hidden, the room is not live or the zone
-// is changing. Reaction sounds On/Off (`ooga-thump-sound`) silences every thump, own or heard; the bodies, marks and
-// notices stay. It is not the microphone's mute, voice's volume or the page mute (`BL.sound`), which still silences
-// everything through `output`. A player muted for this visitor (`BL.voice.muteLocal`) is neither heard nor shown.
+// is dropped, never queued. A context the browser suspended resumes only inside a Thump press or Reaction sounds On, a
+// real gesture (`navigator.userActivation.isActive`), never from a relayed thump; the thump that woke it and every one
+// missed while it slept stay silent, never replayed, and a refused resume leaves thumps silent until the next gesture.
+// Nothing plays, shows or counts while the tab is hidden, the room is not live or the zone is changing.
+// Reaction sounds On/Off (`ooga-thump-sound`) silences every thump, own or heard; the bodies, marks and notices stay.
+// It is not the microphone's mute, voice's volume or the page mute (`BL.sound`), which still silences everything
+// through `output`. A player muted for this visitor (`BL.voice.muteLocal`) is neither heard nor shown.
 // Calm (prefers-reduced-motion) holds the banner and marks still and shows the mallet rather than moving a body.
 // No frame work and no idle timers: everything happens on a press or a relayed thump. Exports press, heard,
 // toggleSound, setSound, soundOn, stats and, for the unit tier, createLedger and createMixer.
@@ -29,7 +37,7 @@
   // Distinct supporters within WINDOW_MS make a crowd at CROWD; the notice then rests COOLDOWN_MS. At most
   // SUPPORTERS_MAX are held: the room's 32 and this page.
   const WINDOW_MS = 2000, CROWD = 3, COOLDOWN_MS = 12000, SUPPORTERS_MAX = 33;
-  // A zone change into another voice group drops thumps for SETTLE_MS while voice settles there.
+  // A move into another voice group or table drops thumps for SETTLE_MS while voice settles there.
   const SETTLE_MS = 1500;
   // Sound: VOICES at once, each busy VOICE_S; at most RATE_MAX started in any RATE_S; LEVEL, DUCK of it under speech.
   const VOICES = 4, VOICE_S = 0.16, RATE_MAX = 6, RATE_S = 1, LEVEL = 0.22, DUCK = 0.5;
@@ -55,7 +63,7 @@
         quietUntil = now + cooldownMs;
         return { count, crowd: true };
       },
-      // Another voice group: its supporters start over, and the cooldown stands.
+      // Another voice membership: its supporters start over, and the cooldown stands.
       reset() { seen.clear(); },
       get size() { return seen.size; },
       get quietUntil() { return quietUntil; },
@@ -129,11 +137,18 @@
   let soundOn = true;
   try { soundOn = localStorage.getItem(SOUND_KEY) !== "off"; } catch { /* storage off: on for this page */ }
   const ledger = createLedger(), bucket = { tokens: SEND_BURST, at: -Infinity };
-  const stats = { sent: 0, heard: 0, shown: 0, dropped: 0, sounded: 0, silenced: 0, crowds: 0, crowd: 0 };
-  let context = null, mixer = null, group = null, settleUntil = 0, crowdPulse = null;
+  const stats = { sent: 0, heard: 0, shown: 0, dropped: 0, sounded: 0, silenced: 0, crowds: 0, crowd: 0, resumes: 0, resumeFailed: 0, resets: 0 };
+  let context = null, mixer = null, place = null, inVoice = false, settleUntil = 0, crowdPulse = null;
   let shownHidden = null, shownSound = null;
 
   const groupOf = (zone) => { const dot = zone.indexOf("."); return dot < 0 ? zone : zone.slice(0, dot); };
+  // Where voice joins this page: the zone group, and in the Ember Den the table (the floor when none), as the room's
+  // `voiceTogether` decides; "" while the room is not live.
+  const placeOf = () => {
+    if (net.state.room !== "live") return "";
+    const group = groupOf(net.state.zone);
+    return group === "ember-den" ? `${group}:${net.state.pokerVoice ?? "floor"}` : group;
+  };
   const participant = () => net.state.room === "live" && !!net.state.me && voice.stats.enabled;
   const quiet = (now) => document.hidden || !participant() || net.state.zone === "none" || now < settleUntil;
   const speech = () => {
@@ -147,6 +162,16 @@
     context = new window.AudioContext();
     mixer = createMixer(context, BL.sound.output(context));
     return mixer;
+  };
+  // Inside a Thump press or Reaction sounds On, while the browser counts it a gesture: make the context, or ask a
+  // suspended (or interrupted) one to run again. Nothing is played on its answer: what this press and anything before
+  // it could not sound stays unsounded, and a refusal only waits for the next gesture.
+  const wake = () => {
+    if (!soundOn || navigator.userActivation && !navigator.userActivation.isActive) return;
+    if (!audio() || context.state === "running") return;
+    const asked = context;
+    stats.resumes++;
+    asked.resume().catch(() => { if (context === asked) stats.resumeFailed++; });
   };
   const closeAudio = () => {
     if (!context) return;
@@ -171,6 +196,16 @@
     return soundOn;
   };
 
+  // A new voice membership: none of the last one's supporters, banner, chat notice, marks or reactions carry over.
+  const clearShown = () => {
+    stats.resets++;
+    ledger.reset();
+    if (crowdPulse) { crowdPulse.cancel(); crowdPulse = null; }
+    crowd.hidden = true;
+    BL.chat.clearSupport();
+    BL.hud.clearSupport();
+    if (BL.remotePlayers) BL.remotePlayers.clearThumps();
+  };
   const announce = (count) => {
     stats.crowds++;
     stats.crowd = count;
@@ -208,6 +243,7 @@
     const now = performance.now();
     if (quiet(now) || !take(now) || !net.sendThump()) return false;
     stats.sent++;
+    wake();
     effect(0, { login: net.state.me.login, body: net.state.body }, now);
     return true;
   };
@@ -219,14 +255,13 @@
     effect(id, rec, now);
   };
 
-  // Another voice group, or none: its supporters start over and thumps settle.
+  // Another voice membership: another group or table, or none, settles; leaving or rejoining voice starts over too.
   const follow = () => {
-    const now = performance.now(), live = net.state.room === "live", next = live ? groupOf(net.state.zone) : "";
-    if (next !== group) {
-      group = next;
-      ledger.reset();
-      settleUntil = now + SETTLE_MS;
-    }
+    const next = placeOf(), joined = voice.stats.enabled;
+    if (next === place && joined === inVoice) { render(); return; }
+    if (next !== place) settleUntil = performance.now() + SETTLE_MS;
+    place = next; inVoice = joined;
+    clearShown();
     render();
   };
   net.subscribe(follow);
@@ -234,12 +269,14 @@
   net.subscribeThump(heard);
   voice.subscribe(() => {
     if (!voice.stats.enabled && !voice.stats.joining) closeAudio();
-    render();
+    follow();
   });
   render();
 
   BL.thump = {
-    press, heard, setSound, toggleSound: () => setSound(!soundOn), createLedger, createMixer,
+    press, heard, setSound, createLedger, createMixer,
+    // The Reaction sounds button's click: turned On, it is also the gesture that may wake the sound.
+    toggleSound: () => { if (setSound(!soundOn)) wake(); return soundOn; },
     get soundOn() { return soundOn; },
     get stats() { return { ...stats, supporters: ledger.size, playing: mixer ? mixer.playing : 0, audio: mixer ? { ...mixer.counts } : null }; },
   };

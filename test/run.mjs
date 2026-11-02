@@ -21569,7 +21569,7 @@ const thumpChecks = async BL => {
   const source = await readFile(join(root, "src/js/thump.js"), "utf8");
   // Fake Web Audio: a node per create call, every AudioParam event kept with its time.
   const fakeAudio = () => {
-    const events = [], made = { nodes: 0, contexts: 0 };
+    const events = [], made = { nodes: 0, contexts: 0, list: [], resumes: 0 };
     const param = (name) => {
       const p = { value: 0 };
       for (const k of ["setValueAtTime", "linearRampToValueAtTime", "exponentialRampToValueAtTime", "setTargetAtTime"]) p[k] = (v, t) => { events.push({ name, k, v, t }); return p; };
@@ -21577,7 +21577,7 @@ const thumpChecks = async BL => {
       return p;
     };
     class Context {
-      constructor() { made.contexts++; this.state = "running"; this.currentTime = 0; this.sampleRate = 8000; this.destination = {}; }
+      constructor() { made.contexts++; made.list.push(this); this.state = "running"; this.currentTime = 0; this.sampleRate = 8000; this.destination = {}; this.refuse = false; }
       node(extra) { made.nodes++; return { connect: (n) => n, start() {}, ...extra }; }
       createGain() { return this.node({ gain: param("gain") }); }
       createOscillator() { return this.node({ frequency: param("frequency") }); }
@@ -21586,6 +21586,8 @@ const thumpChecks = async BL => {
       createBufferSource() { return this.node({}); }
       createBuffer(c, n) { const data = new Float32Array(n); return { getChannelData: () => data }; }
       close() { this.state = "closed"; return Promise.resolve(); }
+      // A browser may refuse; either way the answer comes later than the gesture that asked.
+      resume() { made.resumes++; if (this.refuse) return Promise.reject(new Error("not allowed")); return Promise.resolve().then(() => { if (this.state !== "closed") this.state = "running"; }); }
     }
     return { Context, events, made };
   };
@@ -21631,25 +21633,26 @@ const thumpChecks = async BL => {
 
   // The page module, on a small DOM, with every collaborator recording what it was asked to do.
   const page = (stored = null) => {
-    const audio = fakeAudio(), storage = new Map(stored ? [["ooga-thump-sound", stored]] : []), calls = { thumped: [], support: [], pulse: [], chat: [], animate: 0 }, sent = [];
+    const audio = fakeAudio(), storage = new Map(stored ? [["ooga-thump-sound", stored]] : []), calls = { thumped: [], support: [], pulse: [], chat: [], animate: 0, cancel: 0, clearedMarks: 0, clearedBodies: 0, chatClears: 0 }, sent = [];
     const el = () => ({ hidden: true, textContent: "", title: "", attrs: {}, prepend() {}, setAttribute(k, v) { this.attrs[k] = v; },
-      animate() { calls.animate++; return { cancel() {}, set onfinish(fn) { this.done = fn; } }; } });
+      animate() { calls.animate++; return { cancel() { calls.cancel++; }, set onfinish(fn) { this.done = fn; } }; } });
     const nodes = { "account-thump": el(), "account-thump-sound": el(), "thump-crowd": el(), "thump-crowd-text": el() };
-    const remotes = new Map([[2, { id: 2, login: "bea", body: "Bea" }], [3, { id: 3, login: "cal", body: "gorilla:Cal" }], [4, { id: 4, login: "dee", body: "Dee" }], [5, { id: 5, login: "muted", body: "Mu" }]]);
+    const remotes = new Map([[2, { id: 2, login: "bea", body: "Bea" }], [3, { id: 3, login: "cal", body: "gorilla:Cal" }], [4, { id: 4, login: "dee", body: "Dee" }], [5, { id: 5, login: "muted", body: "Mu" }], [6, { id: 6, login: "eve", body: "Eve" }]]);
     let roster = null, account = null, heard = null, voiceFn = null;
-    const net = { state: { room: "live", me: { login: "me" }, selfId: 1, body: "Me", zone: "outside" }, remotes,
+    const net = { state: { room: "live", me: { login: "me" }, selfId: 1, body: "Me", zone: "outside", pokerVoice: null }, remotes,
       subscribe: fn => { account = fn; }, subscribeRoster: fn => { roster = fn; }, subscribeThump: fn => { heard = fn; }, sendThump: () => { sent.push('{"t":"thump"}'); return net.state.room === "live"; } };
     const voice = { stats: { enabled: true, joining: false, speaking: false }, speaking: () => false, mutedLocally: login => login === "muted", subscribe: fn => { voiceFn = fn; } };
     let clock = 10000;
-    const window = { BL: { net, voice, hud: { malletIcon: { cloneNode: () => ({}) }, showSupport: (login) => { calls.support.push(login); return true; } }, players: { pulse: id => calls.pulse.push(id) },
-      chat: { support: text => calls.chat.push(text) }, remotePlayers: { thumped: id => { calls.thumped.push(id); return 0; } }, sound: { output: c => c.destination } },
+    const window = { BL: { net, voice, hud: { malletIcon: { cloneNode: () => ({}) }, showSupport: (login) => { calls.support.push(login); return true; }, clearSupport: () => { calls.clearedMarks++; } }, players: { pulse: id => calls.pulse.push(id) },
+      chat: { support: text => calls.chat.push(text), clearSupport: () => { calls.chatClears++; } }, remotePlayers: { thumped: id => { calls.thumped.push(id); return 0; }, clearThumps: () => { calls.clearedBodies++; } }, sound: { output: c => c.destination } },
       AudioContext: audio.Context, matchMedia: () => ({ matches: false }) };
-    const context = { window, document: { hidden: false, getElementById: id => nodes[id] || null }, navigator: { userActivation: { hasBeenActive: true } },
+    const context = { window, document: { hidden: false, getElementById: id => nodes[id] || null }, navigator: { userActivation: { hasBeenActive: true, isActive: true } },
       localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) }, performance: { now: () => clock }, Float64Array, Map, Math, JSON, Promise };
     runInNewContext(source, context);
     account(); roster();
     clock += 2000; // past the first zone's settling
-    return { T: window.BL.thump, net, voice, nodes, calls, sent, audio, storage, context, heard: id => heard(id), roster: () => roster(), tick: ms => { clock += ms; }, voiceChanged: () => voiceFn() };
+    return { T: window.BL.thump, net, voice, nodes, calls, sent, audio, storage, context, heard: id => heard(id), roster: () => roster(), tick: ms => { clock += ms; }, voiceChanged: () => voiceFn(),
+      gesture: on => { context.navigator.userActivation.isActive = on; } };
   };
   // Every variant with Reaction sounds On, so the Off run below is measured against real sound.
   const on = page();
@@ -21683,6 +21686,155 @@ const thumpChecks = async BL => {
   record("ooga thump gates: a locally muted player is neither heard nor shown; nothing plays or shows while hidden, disconnected, nowhere or settling into another voice group (a place inside one group does not settle); out of voice the button goes and pressing sends nothing",
     gate.calls.thumped.join() === "3,4" && gate.calls.support.join() === "cal,dee" && !offline && !pressedOutOfVoice && buttonHidden && gate.sent.length === 0,
     JSON.stringify({ thumped: gate.calls.thumped, sent: gate.sent, stats: gate.T.stats }));
+  // A suspended context: relayed thumps never wake it, only a Thump press or Reaction sounds On inside a real gesture
+  // does, and nothing missed while it slept (nor the press that woke it) is sounded afterwards.
+  const settle = () => new Promise(done => setImmediate(done));
+  const sus = page();
+  sus.heard(2);
+  const susCtx = sus.audio.made.list[0], playedBefore = sus.T.stats.audio.played;
+  susCtx.state = "suspended";
+  sus.tick(600); sus.heard(3); sus.heard(4);
+  const networkResumes = sus.audio.made.resumes;
+  sus.gesture(false); const scripted = sus.T.press(); const scriptedResumes = sus.audio.made.resumes; sus.gesture(true);
+  sus.tick(600); sus.T.press();
+  const pressResumes = sus.audio.made.resumes, playedAtPress = sus.T.stats.audio.played;
+  await settle();
+  const runningAfter = susCtx.state, playedAfterResume = sus.T.stats.audio.played;
+  sus.tick(600); sus.heard(6);
+  const playedNext = sus.T.stats.audio.played, pansAfter = sus.audio.events.filter(e => e.name === "pan").length;
+  // Refused, and the Reaction sounds button as the gesture: no throw, nothing sounds, the next gesture asks again.
+  susCtx.state = "suspended"; susCtx.refuse = true;
+  sus.T.toggleSound(); const offAsks = sus.audio.made.resumes; sus.T.toggleSound();
+  await settle();
+  sus.tick(600); sus.heard(2);
+  const refused = { asks: sus.audio.made.resumes - offAsks, failed: sus.T.stats.resumeFailed, played: sus.T.stats.audio.played, state: susCtx.state };
+  susCtx.refuse = false; sus.tick(600); sus.T.press(); await settle(); sus.tick(600); sus.heard(3);
+  record("regression: ooga thump suspended sound: a relayed thump never resumes a suspended context, a Thump press or Reaction sounds On inside a real gesture does, nothing missed while suspended (nor the waking press) is played later, and a refused resume stays silent until the next gesture",
+    playedBefore === 1 && networkResumes === 0 && scripted && scriptedResumes === 0 && pressResumes === 1 && playedAtPress === 1 && runningAfter === "running" && playedAfterResume === 1
+      && playedNext === 2 && pansAfter === 2 && offAsks === pressResumes && refused.asks === 1 && refused.failed === 1 && refused.played === 2 && refused.state === "suspended"
+      && sus.T.stats.audio.played === 3 && sus.audio.made.contexts === 1,
+    JSON.stringify({ playedBefore, networkResumes, scriptedResumes, pressResumes, playedAtPress, runningAfter, playedAfterResume, playedNext, pansAfter, refused, stats: sus.T.stats }));
+  // Voice membership: leaving and rejoining voice, another poker table, a disconnect each start the count over and clear
+  // what the last membership showed, while the crowd's cooldown stands through every reset.
+  const mem = page();
+  mem.net.state.zone = "ember-den"; mem.roster(); mem.tick(2000);
+  mem.heard(2); mem.heard(3);
+  mem.voice.stats.enabled = false; mem.voiceChanged(); mem.voice.stats.enabled = true; mem.voiceChanged();
+  mem.heard(4);
+  const rejoined = { supporters: mem.T.stats.supporters, chat: mem.calls.chat.length };
+  mem.heard(2);
+  mem.net.state.pokerVoice = 3; mem.roster(); const tableSettles = !mem.T.press(); mem.tick(1600);
+  mem.heard(3);
+  const tabled = { supporters: mem.T.stats.supporters, chat: mem.calls.chat.length };
+  mem.heard(4); mem.heard(6);
+  const crowdAt = mem.T.stats.crowds, bannerUp = !mem.nodes["thump-crowd"].hidden;
+  const before = { marks: mem.calls.clearedMarks, bodies: mem.calls.clearedBodies, cancel: mem.calls.cancel };
+  mem.net.state.room = "connecting"; mem.roster(); mem.net.state.room = "live"; mem.roster(); mem.tick(1600);
+  const cleared = { hidden: mem.nodes["thump-crowd"].hidden, cancel: mem.calls.cancel - before.cancel, marks: mem.calls.clearedMarks - before.marks, bodies: mem.calls.clearedBodies - before.bodies, supporters: mem.T.stats.supporters };
+  mem.net.state.pokerVoice = null; mem.roster(); mem.tick(1600);
+  mem.heard(2); mem.heard(3); mem.heard(4);
+  const cooling = mem.T.stats.crowds;
+  mem.tick(12000); mem.heard(2); mem.heard(3); mem.heard(4);
+  record("regression: ooga thump voice membership: supporters never combine across a voice leave and rejoin, another poker table or a disconnect; each clears the banner, support marks and mallets, a table change settles, and the crowd's cooldown survives every reset",
+    rejoined.supporters === 1 && rejoined.chat === 0 && tableSettles && tabled.supporters === 1 && tabled.chat === 0 && crowdAt === 1 && bannerUp
+      && cleared.hidden && cleared.cancel === 1 && cleared.marks === 2 && cleared.bodies === 2 && cleared.supporters === 0 && cooling === 1 && mem.T.stats.crowds === 2,
+    JSON.stringify({ rejoined, tableSettles, tabled, crowdAt, cleared, cooling, stats: mem.T.stats }));
+  // Reaction sounds Off across a table change: the current table's supporters still make the banner and notice, silently.
+  const quietTable = page();
+  quietTable.T.setSound(false);
+  quietTable.net.state.zone = "ember-den"; quietTable.roster(); quietTable.tick(2000);
+  quietTable.heard(2);
+  quietTable.net.state.pokerVoice = 0; quietTable.roster(); quietTable.tick(1600);
+  quietTable.heard(3); quietTable.heard(4);
+  const beforeOwn = quietTable.calls.chat.length;
+  quietTable.T.press();
+  record("regression: ooga thump Reaction sounds Off in a new membership: no context and no sound, while the current table's own supporters alone make the banner and chat notice",
+    beforeOwn === 0 && quietTable.calls.chat.join() === "3 Oogas thumped" && !quietTable.nodes["thump-crowd"].hidden && quietTable.audio.made.contexts === 0
+      && quietTable.audio.events.length === 0 && quietTable.T.stats.sounded === 0 && quietTable.calls.support.join() === "bea,cal,dee,me",
+    JSON.stringify({ beforeOwn, chat: quietTable.calls.chat, stats: quietTable.T.stats }));
+  // The chat board's notice, on the real chat.js: a membership change takes it away and only it; ordinary lines stay,
+  // a later line or redraw does not bring it back, and a notice of the new group shows again.
+  const chatNotice = async () => {
+    const ids = new Map();
+    const make = (fragment = false) => ({ fragment, children: [], parentNode: null, dataset: {}, style: { setProperty() {}, removeProperty() {} }, handlers: {}, hidden: false, disabled: false,
+      value: "", textContent: "", className: "", title: "", scrollTop: 0, scrollHeight: 0, clientHeight: 0,
+      addEventListener(type, fn) { this.handlers[type] = fn; }, removeEventListener() {}, setAttribute() {}, focus() {}, closest() { return null; },
+      getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
+      append(...nodes) { for (const n of nodes) { if (n.fragment) { for (const c of [...n.children]) this.append(c); continue; } if (n.parentNode) n.remove(); n.parentNode = this; this.children.push(n); } },
+      prepend(n) { if (n.parentNode) n.remove(); n.parentNode = this; this.children.unshift(n); },
+      after(n) { const p = this.parentNode; if (n.parentNode) n.remove(); n.parentNode = p; p.children.splice(p.children.indexOf(this) + 1, 0, n); },
+      remove() { const p = this.parentNode; if (!p) return; p.children.splice(p.children.indexOf(this), 1); this.parentNode = null; },
+      replaceChildren(...nodes) { for (const c of this.children) c.parentNode = null; this.children = []; this.append(...nodes); },
+      get firstElementChild() { return this.children[0] || null; }, get childElementCount() { return this.children.length; } });
+    let visible = true;
+    const document = { activeElement: null, handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; },
+      getElementById(id) { if (!ids.has(id)) ids.set(id, make()); return ids.get(id); }, createElement: () => make(), createDocumentFragment: () => make(true) };
+    const window = { BL: { sheet: { visible: () => visible, tabFor: () => null }, hud: { malletIcon: { cloneNode: () => make() } },
+      net: { CHAT_MAX: 160, CHAT_KEEP: 100, subscribe() {}, subscribeChat() {}, sendChat: () => true }, donations: { sanitize: text => String(text || "") } },
+      crypto: { randomUUID: () => "id" }, matchMedia: () => ({ matches: false }), setTimeout: () => 1, clearTimeout() {} };
+    runInNewContext(await readFile(join(root, "src/js/chat.js"), "utf8"), { window, document, MutationObserver: class { observe() {} }, Intl });
+    const C = window.BL.chat, line = (id, text) => ({ id, login: "bea", name: "Bea", text });
+    C.account({ backend: true, me: { id: 1, login: "me" }, room: "live" });
+    document.handlers.sheetchange();
+    C.heard([line(1, "hello"), line(2, "yes")], true);
+    C.support("3 Oogas thumped");
+    const shown = C.stats.support, rows = C.stats.rows;
+    const explicit = typeof C.clearSupport === "function";
+    if (explicit) C.clearSupport();
+    const cleared = { support: C.stats.support, rows: C.stats.rows, lines: C.stats.lines };
+    C.heard([line(3, "next")], false);
+    visible = false; document.handlers.sheetchange(); C.support("4 Oogas thumped"); if (explicit) C.clearSupport();
+    visible = true; document.handlers.sheetchange();
+    const later = { support: C.stats.support, rows: C.stats.rows, lines: C.stats.lines };
+    C.support("5 Oogas thumped");
+    return { shown, rows, explicit, cleared, later, again: C.stats.support };
+  };
+  const chatResult = await chatNotice();
+  // The page module asks for it on every membership change.
+  const asks = page(); asks.T.press(); asks.heard(2); asks.heard(3);
+  const askedBefore = asks.calls.chatClears; asks.net.state.pokerVoice = 1; asks.net.state.zone = "ember-den"; asks.roster();
+  record("regression: ooga thump chat notice: a voice membership change clears the last group's \"N Oogas thumped\" notice on the board (shown or still to be drawn) through chat.clearSupport, never an ordinary line, while the next group's notice shows again",
+    chatResult.shown === "3 Oogas thumped" && chatResult.rows === 2 && chatResult.explicit && chatResult.cleared.support === "" && chatResult.cleared.rows === 2 && chatResult.cleared.lines === 2
+      && chatResult.later.support === "" && chatResult.later.rows === 3 && chatResult.later.lines === 3 && chatResult.again === "5 Oogas thumped"
+      && asks.calls.chat.join() === "3 Oogas thumped" && asks.calls.chatClears > askedBefore && asks.T.stats.crowds === 1,
+    JSON.stringify({ chatResult, chatClears: asks.calls.chatClears }));
+  // Reactions already running, on the real crew, remote pool and gorilla rig: a membership change ends the visitor's
+  // own club tap and a beat a thump started, restoring the stand pose, and leaves movement and an unrelated beat alone.
+  const noop = () => {}, oldNet = BL.net, records = new Map(), sceneRoot = BL.scene.createNode();
+  BL.net = { remotes: records };
+  const crew = BL.crew.create({ root: BL.scene.createNode(), world: { level: 0 }, playerName: "YellowBrokeIt", input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
+    game: { state: { assignments: {}, inventory: [] } }, viewYaw: 0, groundAt: () => 0, walkable: () => true, fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
+  const own = crew.cavemen.get("YellowBrokeIt");
+  crew.control(own); crew.steer(0, 0);
+  for (let i = 0; i < 30; i++) crew.update(1 / 60, i / 60);
+  const rigs = [];
+  const remotes = BL.remotePlayers.create({ root: sceneRoot, crew, visible: r => r.zone === "outside",
+    createGorilla: (name, rec) => { const rig = BL.agent.create({ managed: true, groundAt: () => rec.y, x: rec.x, z: rec.z, heading: rec.yaw }); rigs.push(rig); return rig; }, hideGorilla: noop });
+  const peer = (id, x) => ({ id, login: "g" + id, display: "G" + id, body: "gorilla:w-s-bitcoin", bodyKind: "gorilla", bodyName: "w-s-bitcoin", zone: "outside", x, y: 0, z: 2, yaw: 0, g: new Float64Array(6) });
+  records.set(72, peer(72, 1)); records.set(73, { ...peer(73, 4), body: "gorilla:rules-without-rulers", bodyName: "rules-without-rulers" });
+  remotes.update(0.1);
+  const [ownedRig, otherRig] = rigs;
+  const tapped = BL.remotePlayers.thumped(0) === 0, tapping = own.thumpT > 0;
+  const beat = BL.remotePlayers.thumped(72) !== null && ownedRig.beating, unrelated = otherRig.beat() && otherRig.beating;
+  for (let i = 0; i < 6; i++) { crew.update(1 / 60, 1 + i / 60); remotes.update(1 / 60); }
+  // A second thump while the reaction's beat runs cannot start another, and must not give the running one away.
+  const again = BL.remotePlayers.thumped(72) !== null && ownedRig.beating;
+  const midTap = own.parts.armR.rotation.x, at = { x: own.root.position.x, z: own.root.position.z }, club = own.parts.club.parent === own.parts.armR;
+  BL.remotePlayers.clearThumps();
+  crew.update(1 / 60, 2); remotes.update(1 / 60);
+  const after = { thumpT: own.thumpT, arm: own.parts.armR.rotation.x, moved: Math.hypot(own.root.position.x - at.x, own.root.position.z - at.z), club: own.parts.club.parent === own.parts.armR,
+    controlled: crew.player === own, ownedBeat: ownedRig.beating, otherBeat: otherRig.beating };
+  for (let i = 0; i < 40; i++) remotes.update(1 / 60);
+  const settled = ownedRig.debug.gait;
+  // Once a thump's beat has ended, a beat begun by anything else is not the thump's to stop.
+  BL.remotePlayers.thumped(72); for (let i = 0; i < 120; i++) remotes.update(1 / 60);
+  const laterBeat = ownedRig.beat() && ownedRig.beating; BL.remotePlayers.clearThumps(); remotes.update(1 / 60);
+  const laterKept = ownedRig.beating;
+  remotes.dispose(); crew.dispose(); BL.net = oldNet;
+  record("regression: ooga thump running reactions: a membership change ends the visitor's own club tap (arm back to the stand pose, Ooga, club and control unchanged) and a chest beat a thump started, even after a second thump arrived during it, never a beat begun by anything else",
+    tapped && tapping && beat && unrelated && again && Math.abs(midTap + 0.2) > 0.05 && club && after.thumpT === 0 && Math.abs(after.arm + 0.2) < 1e-9 && after.moved < 1e-9 && after.club && after.controlled
+      && !after.ownedBeat && after.otherBeat && settled !== "beat" && laterBeat && laterKept,
+    JSON.stringify({ tapped, tapping, beat, unrelated, again, midTap, club, after, settled, laterBeat, laterKept }));
   // The wire: `{"t":"thump"}` while live, and only known players' relayed thumps reach the module.
   const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }));
   const early = f.net.sendThump(), got = [];
@@ -21693,11 +21845,19 @@ const thumpChecks = async BL => {
   const live = f.net.sendThump();
   message({ t: "thump", id: 2 }); message({ t: "thump", id: 99 }); message({ t: "thump", id: "2" }); message({ t: "thump" });
   const frames = f.sent.filter(m => m.t === "thump");
+  // The table is thump.js's membership signal: held in state and told to the roster's subscribers, no message added.
+  let rosterHeard = 0;
+  f.net.subscribeRoster(() => rosterHeard++);
+  f.net.setZone("ember-den"); const atZone = rosterHeard; f.net.setPokerVoice(4);
+  const table = { state: f.net.state.pokerVoice, told: rosterHeard - atZone };
+  f.net.setZone("outside");
+  const tableKinds = [...new Set(f.sent.map(m => m.t))].filter(t => t === "poker-voice" || t === "zone" || t === "thump").sort().join();
   ws.readyState = 3;
   const closed = f.net.sendThump();
   f.net.dispose();
-  record("ooga thump wire: the page sends {\"t\":\"thump\"} alone and only while the room is live; only a known remote player's relayed thump is heard",
-    !early && live && !closed && frames.length === 1 && Object.keys(frames[0]).join() === "t" && got.join() === "2", JSON.stringify({ early, live, closed, frames, got }));
+  record("ooga thump wire: the page sends {\"t\":\"thump\"} alone and only while the room is live; only a known remote player's relayed thump is heard; the poker table it hears in is held in state.pokerVoice and told to roster subscribers",
+    !early && live && !closed && frames.length === 1 && Object.keys(frames[0]).join() === "t" && got.join() === "2"
+      && table.state === 4 && table.told === 1 && f.net.state.pokerVoice === null && tableKinds === "poker-voice,thump,zone", JSON.stringify({ early, live, closed, frames, got, table, tableKinds }));
 };
 const chatAccountChecks = async BL => {
   const requests = [], player = { id: 71, login: "Tester", display: "Tester" };

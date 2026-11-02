@@ -202,6 +202,15 @@
     const pulse = mark.pulse = mark.animate(CALM.matches ? SUPPORT_STILL : SUPPORT_PULSE, { duration: SUPPORT_MS, easing: "ease-out" });
     pulse.onfinish = () => { if (mark.pulse === pulse) { mark.pulse = null; mark.hidden = true; } };
   };
+  // Every support mark still pulsing goes at once (thump.js, when the visitor's voice group changes).
+  const clearSupport = () => {
+    for (const mark of document.querySelectorAll(".roster-thump")) {
+      if (!mark.pulse) continue;
+      mark.pulse.cancel();
+      mark.pulse = null;
+      mark.hidden = true;
+    }
+  };
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -2549,5 +2558,5 @@
       else b.textContent = `Back to ${place}`;
     }
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, showSupport, supportMark, pulseSupport, malletIcon, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, showSupport, supportMark, pulseSupport, clearSupport, malletIcon, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

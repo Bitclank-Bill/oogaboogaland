@@ -16,7 +16,10 @@
 // remote Ooga taps its club once (`BL.crew.thumpArm`), a remote gorilla beats its chest when its rig allows, the
 // visitor's own Ooga taps through `crew.thump`; any other body (moving, seated, climbing, carried, holding a tool, a
 // driven gorilla, or under Calm) gets a small mallet over its head for a moment instead. Only arms move; nothing
-// physical changes. It answers a stereo pan from where that body was last drawn, 0 when it was not.
+// physical changes. It answers a stereo pan from where that body was last drawn, 0 when it was not. `clearThumps` ends
+// every mallet and tap at once when the visitor's voice group changes: the visitor's own club tap (`crew.cancelThump`)
+// and a chest beat only while a thump started it (`beatOwned`), through the rig's own interrupt (`motion.workExit`).
+// A beat begun by anything else is left alone.
 // One pool per scene visit: `create` in enter, `dispose` in leave, before the crew's.
 (() => {
   "use strict";
@@ -118,9 +121,9 @@
       // the overlay's exact visibility test instead of requiring an entry in that static registry.
       cave.root.sightHidden = true;
       addChild(root, cave.root);
-      const motion = gorilla ? { walkPhase: NaN, walkGait: "knuckle", climb: 0, climbStride: 0, climbDirection: 0, climbSide: 0, swim: 0, lab: false, labRunIn: false, office: false, officeRise: 0 } : null;
+      const motion = gorilla ? { walkPhase: NaN, walkGait: "knuckle", climb: 0, climbStride: 0, climbDirection: 0, climbSide: 0, swim: 0, lab: false, labRunIn: false, office: false, officeRise: 0, workExit: false } : null;
       const entry = { id: rec.id, body: rec.body, name, gorilla, cave, motion, baseY: gorilla ? 0 : cave.root.position.y, x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, phase: 0, hidden: null, hiddenOverride: null, label: "", labelW: 0,
-        still: false, thumpT: 0, icon: 0, screenX: NaN };
+        still: false, thumpT: 0, icon: 0, screenX: NaN, beatOwned: false };
       bodies.set(rec.id, entry);
       hideLocal(entry);
       return entry;
@@ -178,6 +181,9 @@
       const speed = sleeping ? 0 : g ? g[1] : Math.hypot(entry.dx, entry.dz) / Math.max(dt, 1e-3);
       const lounge = sleeping ? g[3] < -0.5 ? "left" : g[3] > 0.5 ? "right" : "back" : "";
       entry.cave.poseManaged(dt, entry.x, entry.y, entry.z, entry.yaw, speed, !!(flags & 1), !!(flags & 2), lounge, motion);
+      // A thump's beat is the thump's only while it lasts; the interrupt is asked for one pose.
+      motion.workExit = false;
+      if (entry.beatOwned && !entry.cave.beating) entry.beatOwned = false;
     };
 
     // The visitor's own body's fallback mallet, and the overlay last drawn on, for a thump's pan.
@@ -342,6 +348,8 @@
       if (!calm && entry.gorilla) {
         const g = rec.g;
         tapped = !(g && (g[0] & BEAT_BLOCKED || g[5] > 0)) && entry.cave.beat();
+        // Only a beat this thump started becomes the thump's; one that could not start leaves ownership as it was.
+        if (tapped) entry.beatOwned = true;
       } else if (!calm && entry.still && entry.cave.parts.club.visible) {
         entry.thumpT = BL.crew.THUMP_TIME;
         tapped = true;
@@ -349,6 +357,16 @@
       if (!tapped) entry.icon = ICON_TIME;
       const w = overlay ? overlay.clientWidth : 0;
       return w > 0 && Number.isFinite(entry.screenX) ? Math.max(-1, Math.min(1, entry.screenX / w * 2 - 1)) : 0;
+    };
+
+    // The visitor's voice group changed (thump.js): every mallet and club tap from the one before goes now.
+    const clearThumps = () => {
+      selfIcon = 0;
+      if (crew) crew.cancelThump();
+      for (const entry of bodies.values()) {
+        entry.icon = entry.thumpT = 0;
+        if (entry.beatOwned) { entry.beatOwned = false; entry.motion.workExit = true; }
+      }
     };
 
     const liveGeometry = (set) => {
@@ -377,10 +395,11 @@
       return false;
     };
 
-    const pool = { update, actors, drawNames, liveGeometry, stats, setUnderlying, thumped, dispose };
+    const pool = { update, actors, drawNames, liveGeometry, stats, setUnderlying, thumped, clearThumps, dispose };
     return pool;
   };
   const thumped = (id) => activePool ? activePool.thumped(id) : null;
+  const clearThumps = () => { if (activePool) activePool.clearThumps(); };
 
-  BL.remotePlayers = { create, thumped, onIsland, sameZone, MAX, BODY_HEIGHT };
+  BL.remotePlayers = { create, thumped, clearThumps, onIsland, sameZone, MAX, BODY_HEIGHT };
 })();

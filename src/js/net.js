@@ -47,7 +47,8 @@
 // room's own doors, which nobody reserves. `subscribeDoor` hears all of it, and `{ t: "door", op: "lost" }` when the
 // socket goes. Without the feature these send nothing and return false, and the sphere crosses on this page alone.
 // `recheck` looks at /api/me again after a look that went unanswered (the keypad's Retry), bounded as the first.
-// `setPokerVoice(table)` scopes Ember Den voice to one table, or the floor when null, without moving the body.
+// `setPokerVoice(table)` scopes Ember Den voice to one table, or the floor when null, without moving the body; `state.pokerVoice`
+// holds it and the roster subscribers hear the change.
 // Where players stand, for the live players tab (players.js): a remote's `poseZone` is the zone its position was reported
 // in, so a player who changed zone has none there until they move (the room re-sends the last pose it holds, from the
 // zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
@@ -105,7 +106,7 @@
   const offline = new URLSearchParams(location.search);
   const state = { backend: false, me: null, donations: false, tess: false, highscores: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
-    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false,
+    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" } };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
   let npcFrame = null, inHub = false, hubSent = null;
@@ -523,7 +524,7 @@
     if (name === zone) return;
     const moved = !sameGroup(name, zone);
     zone = state.zone = name;
-    pokerVoice = null;
+    pokerVoice = state.pokerVoice = null;
     poseAt = 0; px = NaN;
     if (moved) BL.voice.setPeers([]);
     sendZone();
@@ -532,9 +533,10 @@
   // Voice changes without moving or hiding anybody on the shared floor.
   const setPokerVoice = table => {
     if (zone !== "ember-den" || table !== null && (!Number.isInteger(table) || table < 0 || table >= 10) || pokerVoice === table) return;
-    pokerVoice = table;
+    pokerVoice = state.pokerVoice = table;
     BL.voice.setPeers([]);
     sendPokerVoice();
+    rosterChanged();
   };
 
   // The hub says when it shows the island; a hidden tab stops counting until it is looked at again.

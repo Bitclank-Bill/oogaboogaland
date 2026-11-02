@@ -1935,6 +1935,13 @@
       cave.thumpT = THUMP_TIME;
       return true;
     };
+    // The visitor's voice group changed (thump.js, through remotePlayers.clearThumps): a tap still running ends now and
+    // the stand pose has the arm back on the next frame. Only the tap's own timer changes, never movement or a tool.
+    const cancelThump = (cave = player) => {
+      if (!cave || cave.thumpT <= 0) return false;
+      cave.thumpT = 0;
+      return true;
+    };
     // An Ooga with its own melee weapon swaps hands now and then: the rifle rides
     // its back while the melee weapon is out, and comes back for the shooting.
     // Driven, it spins on demand instead, for one burst at a time.
@@ -6522,7 +6529,7 @@
       get weaponsEnabled() { return weaponsEnabled; },
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, refreshRosterRow, updateFan, rush, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawDrops,
       throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
-      actorClear, builtInJetpack, toggleTint, twirl, thump, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, builtInJetpack, toggleTint, twirl, thump, cancelThump, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;

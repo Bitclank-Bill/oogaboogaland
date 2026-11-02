@@ -12,7 +12,8 @@
 // (controls.js, director.js). On a phone the sheet rises above the keyboard while the input has focus.
 // An Ooga thump crowd (thump.js) shows here as one notice row of this page's own (`support`): a pixel mallet and its words,
 // after the newest line when it came. It is never a line: never sent, kept, counted in the history or announced twice.
-// Exports account (fed `BL.net.state`), heard (fed the room's lines), support and stats.
+// `clearSupport` takes the notice away (another voice group, thump.js) and leaves every line.
+// Exports account (fed `BL.net.state`), heard (fed the room's lines), support, clearSupport and stats.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -308,7 +309,13 @@
     if (follow) log.scrollTop = log.scrollHeight;
   };
 
+  // The visitor's voice group changed: the last group's notice goes; the lines and the crowd's cooldown are not ours.
+  const clearSupport = () => {
+    supportAfter = -1;
+    if (supportRow) supportRow.remove();
+  };
+
   net.subscribe(account);
   net.subscribeChat(heard);
-  BL.chat = { account, heard, support, get stats() { return { lines: lines.length, rows: log.childElementCount - (supportRow && supportRow.parentNode === log ? 1 : 0), support: supportRow && supportRow.parentNode === log ? supportText.textContent : "", showing, drawn, live }; } };
+  BL.chat = { account, heard, support, clearSupport, get stats() { return { lines: lines.length, rows: log.childElementCount - (supportRow && supportRow.parentNode === log ? 1 : 0), support: supportRow && supportRow.parentNode === log ? supportText.textContent : "", showing, drawn, live }; } };
 })();
