@@ -739,7 +739,7 @@
     }
   };
   // The lamps' life: the floor lamps breathing and one now and then stuttering, as dim as an anomaly has the hall's
-  // lights (`dim`); the runway's rabbit.
+  // lights (`dim`); the runway's rabbit, or the one an anomaly runs the wrong way (its `rabbit`, where its front is).
   const lampLife = (s, dt, elapsed, dim) => {
     if ((s.lampWait -= dt) <= 0) {
       s.lampWait = LAMP_STUTTER[0] + Math.random() * (LAMP_STUTTER[1] - LAMP_STUTTER[0]);
@@ -754,7 +754,7 @@
       s.rabbitWait = RABBIT[0] + Math.random() * (RABBIT[1] - RABBIT[0]);
       s.rabbitAt = elapsed;
     }
-    const front = LAYOUT.runway.z0 - (elapsed - s.rabbitAt) * RABBIT_SPEED;
+    const back = s.anomaly.rabbit, front = back !== null ? back : LAYOUT.runway.z0 - (elapsed - s.rabbitAt) * RABBIT_SPEED;
     for (let i = 0; i < s.markers.length; i++) {
       const d = (s.markers[i].position.z - front) / RABBIT_WIDTH;
       s.markers[i].glow = 1 + RABBIT_GLOW * Math.exp(-d * d);
@@ -1227,7 +1227,7 @@
     // The Jet acting up on its own now and then (`hangar-anomaly.js`): not on a test page unless `anomaly=` asks, which
     // under debug also sets the wait between them, s.
     const every = DEBUG ? Number(params.get("anomaly")) : NaN;
-    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null });
+    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
     for (const n of scene.terminals.nodes) {
@@ -1565,6 +1565,7 @@
     if (scene) {
       scene.gate.phase.liveGeometry(set); scene.launch.phase.liveGeometry(set);
       scene.sis.liveGeometry(set);
+      scene.anomaly.liveGeometry(set);
       scene.terminals.liveGeometry(set);
       scene.guide.liveGeometry(set);
       for (const a of scene.crew) a.liveGeometry(set);
