@@ -41,7 +41,8 @@
 // storming off she only jumps or yells at her brother, and the static fire still has her first. When lightning runs
 // over the Jet and cracks (`zap`), she is zapped if she stands near it: stiff and shaking, sparks off her, then dazed,
 // sooted and smoking. In the dark (`dark`) her eyes glow. When the Jet bounces to a beat (`groove`), she finds herself
-// bobbing along to it, catches herself, and goes red: "I DID NOT JUST DO THAT."
+// bobbing along to it, catches herself, and goes red: "I DID NOT JUST DO THAT." When it shifts in its bay, she jumps
+// and yells at it where she stands: "HEY! STAY WHERE I PUT YOU!"
 //
 // She walks a grid of her part of the hall built once a visit from the hangar's own checks (`HM.clearAt`,
 // `HM.supportAt`, `HM.walkable`), each cell with a place on the floor and one up the Jet's stair or along its gangway
@@ -106,14 +107,14 @@
     blame: ["THAT WASN'T MY FAULT!", "WHO TOUCHED MY ENGINES?!", "I TOLD YOU THAT ENGINE WASN'T READY!", "NOBODY SAW THAT. NOBODY!"],
     spook: ["WHO THE #@$% IS STARTING MY ENGINES?!", "WHAT THE #@$% WAS THAT?!"],
     hide: ["...is it gone?"], charge: ["OH, YOU WANT SOME OF THIS?!"], charged: ["Yeah. That's what I thought."], booth: ["I DIDN'T TOUCH ANYTHING!"],
-    brother: ["KORTIK! WAS THAT YOU?!"], prod: ["THIS THING IS POSSESSED!"], nope: ["...nope."], zapped: ["...ow."], groove: ["I DID NOT JUST DO THAT."],
+    brother: ["KORTIK! WAS THAT YOU?!"], prod: ["THIS THING IS POSSESSED!"], nope: ["...nope."], zapped: ["...ow."], groove: ["I DID NOT JUST DO THAT."], stay: ["HEY! STAY WHERE I PUT YOU!"],
     tess: ["TESS! BUZZ OFF!", "NOT NOW, TESS!", "GET OUT OF MY FACE, YOU FLYING TOASTER!", "I CAN'T SEE THE #@$%ING JET!", "I'M FIXING IT! LEAVE ME BE!"]
   };
   // How she says each (a style of `hangarAudio.voice`); how often a line about the Jet or Lightning comes out a rare
   // one instead, and a yell a scream.
   const STYLE = { jet: "yell", lightning: "yell", hammer: "yell", rage: "scream", charge: "scream", caught: "yell", mutter: "mutter", hope: "soft", rare: "yell", panic: "scream", blame: "yell",
     poke: "yell", rampage: "scream", smash: "yell", shove: "yell", chase: "scream", meltdown: "scream", sulk: "yell", fixed: "mutter", hush: "scream", quarrel: "scream", tess: "yell", spook: "scream",
-    hide: "soft", charge: "scream", charged: "mutter", booth: "yell", brother: "scream", prod: "yell", nope: "soft", zapped: "mutter", groove: "yell" };
+    hide: "soft", charge: "scream", charged: "mutter", booth: "yell", brother: "scream", prod: "yell", nope: "soft", zapped: "mutter", groove: "yell", stay: "scream" };
   const RARE = 0.08, SCREAM = 0.2;
   // The static fire: where she runs to, the nearer of them (beside the booth and by the far wall's crates, both where
   // the test's show view keeps her in frame lying down); how far off she may stay put and cower; how near the blast
@@ -168,8 +169,9 @@
   ));
 
   // `fx` for her lines and sparks, `audio` for her voice, her boots and her hammer's clang, `fire` the static fire test
-  // she freaks out at, `jet` the Jet's node, which her rampage rocks, and `toast` for what the visitor should know.
-  const create = ({ fx, audio, fire, jet, toast, blocks = null }) => {
+  // she freaks out at, `jet` the Jet's node, which her rampage rocks, `toast` for what the visitor should know, `blocks`
+  // the circles she walks round, and `avoid(x, z, feet, height, radius)`, where she must not step into now.
+  const create = ({ fx, audio, fire, jet, toast, blocks = null, avoid = null }) => {
     const S = HM.LAYOUT.sis, k = SM.rig(), P = k.parts, H = k.heads, rand = BL.math.mulberry32(0x5153), B = HM.blast(), SPARK = B.spark, IRON = B.iron;
     // The Jet's paint flying off it: its white and its livery's blue.
     const CHIPS = [BL.models.particleGeometry("#eeeae2", 0.1, 0), BL.models.particleGeometry("#2a4fb8", 0.1, 0)];
@@ -385,6 +387,8 @@
       }
       return null;
     };
+    // Whether a step to (nx, nz) would take her in where she must keep out of now (`avoid`), from outside it.
+    const keptAway = (nx, nz) => !!avoid && avoid(nx, nz, feet, HEIGHT, RADIUS) && !avoid(p.x, p.z, feet, HEIGHT, RADIUS);
     // The visitor's spot moved to just short of their Ooga, if she can get there, or null.
     const visit = (driven) => {
       const q = driven.root.position, d = Math.hypot(q.x - p.x, q.z - p.z);
@@ -567,7 +571,7 @@
     // and backing off start where she stands, as fits; the rest walk her to a place first (`scareSpot`, of the kind
     // "scare") and play out there; hiding and charging wait there for the engines to go quiet (`settle`). It ends her
     // quiet moment. Not while the static fire has her.
-    let spookAt = 0, spookSaid = false, scare = null, lastScare = null, settled = false, settledAt = 0, peekAt = 0, peekT = 0, kortikIn = 0, engX = 0, engZ = 0, slowLook = null;
+    let spookAt = 0, spookSaid = false, spookPool = "spook", scare = null, lastScare = null, settled = false, settledAt = 0, peekAt = 0, peekT = 0, kortikIn = 0, engX = 0, engZ = 0, slowLook = null;
     const scareSpot = { name: "scare", x: 0, z: 0, kind: "scare", lx: 0, ly: 3, lz: 0, cell: -1, dur: 0, paceYaw: 0 };
     // The stacked crates on her ground, to hide behind; where she stands beside the booth's console, and what she slaps.
     const STACKS = HM.LAYOUT.crates.filter(([x, z, , n]) => n === 2 && x > X0 && x < X1 && z > Z0 && z < Z1);
@@ -625,9 +629,12 @@
         fitLen = fitT = kortikIn + 2.4;
         return true;
       }
-      if (kind === "jump" || kind === "nope") {
-        fit(kind === "jump" ? 8 : 9);
-        fitLen = fitT = kind === "jump" ? SPOOK.jump + SPOOK.least : SPOOK.freeze + SPOOK.turn + 1.4;
+      // A jump where she stands, and her line at the Jet once she lands: the ordinary one, or, asked (`stay`), at it for
+      // shifting in its bay.
+      if (kind === "jump" || kind === "stay" || kind === "nope") {
+        spookPool = kind === "stay" ? "stay" : "spook";
+        fit(kind === "nope" ? 9 : 8);
+        fitLen = fitT = kind === "nope" ? SPOOK.freeze + SPOOK.turn + 1.4 : SPOOK.jump + SPOOK.least;
         return true;
       }
       const goal = scareGoal(kind);
@@ -841,7 +848,7 @@
             want.armLx = -2.9; want.armLz = 0.9; want.foreLx = -0.3; want.foreLz = 0;
             want.armRx = -2.7; want.armRz = -0.6; want.foreRx = -0.4; want.lean = -0.15;
           } else {
-            if (!spookSaid) { spookSaid = true; sayFrom("spook", SPOOK.least); fitT = Math.max(fitT, talk + 0.4); }
+            if (!spookSaid) { spookSaid = true; sayFrom(spookPool, SPOOK.least); fitT = Math.max(fitT, talk + 0.4); }
             want.armLx = -2.5 + Math.sin(clock * 16) * 0.3; want.armLz = 0.35; want.foreLx = -0.8; want.foreLz = 0;
             want.armRx = -2.2; want.foreRx = -1.2; want.lean = 0.08;
           }
@@ -896,7 +903,7 @@
         // Zapped on the way somewhere or at a reaction's place: on with her routine instead.
         if (fitT <= 0 && fitKind === 10 && (doing === "scare" || spot === scareSpot)) goTo(nextSpot(seen));
         // A reaction played where she stood, over: on with what she was doing, or, backing off, away from the engines.
-        if (fitT <= 0 && (scare === "jump" || scare === "brother" || scare === "nope")) {
+        if (fitT <= 0 && (scare === "jump" || scare === "stay" || scare === "brother" || scare === "nope")) {
           const away = scare === "nope";
           scare = null;
           if (away) { goTo(awaySpot()); if (doing === "walk") speed = WALK; }
@@ -932,6 +939,9 @@
           blocked += dt;
           glareAt = block;
           if (blocked > BLOCKED) goTo(nextSpot(null));
+        } else if (keptAway(nx, nz)) {
+          blocked += dt;
+          if (blocked > BLOCKED) goTo(nextSpot(null));
         } else {
           stepping = along(dt);
           if (arrived) { arrive(); stepping = false; }
@@ -966,7 +976,7 @@
         paceA += paceDir * speed * dt;
         if (Math.abs(paceA) > half) { paceA = Math.sign(paceA) * half; paceDir = -paceDir; maybeSay("mutter", 0.35); }
         const nx = paceX + hx * paceA, nz = paceZ + hz * paceA;
-        if (HM.walkable(p.x, p.z, nx, nz, feet, RADIUS)) { p.x = nx; p.z = nz; feet = HM.supportAt(p.x, p.z, feet); stepping = true; } else paceDir = -paceDir;
+        if (HM.walkable(p.x, p.z, nx, nz, feet, RADIUS) && !keptAway(nx, nz)) { p.x = nx; p.z = nz; feet = HM.supportAt(p.x, p.z, feet); stepping = true; } else paceDir = -paceDir;
         wantYaw = Math.atan2(hx * paceDir, hz * paceDir);
         want.headX = 0.3; want.armLx = 0; want.armLz = 0.18; want.foreLx = -0.35; want.foreLz = 0;
         if (t > spot.dur) goTo(nextSpot(driven));
