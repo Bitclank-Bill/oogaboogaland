@@ -814,9 +814,10 @@
   const buildAtrium = () => {
     const A = BL.genesisAtrium, L = A.layout({ entries: catalogue.entries, museum: MU, eras: GW.ERAS });
     atrium = A.build({ M, createNode, addChild, place, label: BL.factoryModels.label, top: ISLAND_TOP, layout: L, eraColor: (n) => GW.ERAS[n].theme.bank });
-    // An obstacle with a rise stops a body only below its top; the cairn's tiers are also surfaces to stand on.
+    // An obstacle with a rise stops a body only below its top; the statue's steps, shoulders and head are also
+    // surfaces to stand on.
     for (const o of L.obstacles) built.obstacles.push(o.rise === undefined ? o : { ...o, top: ISLAND_TOP + o.rise });
-    built.areas = L.areas.map((a) => ({ ...a, top: ISLAND_TOP + a.rise, dock: { x: L.cairn.x, z: L.cairn.z + L.cairn.base / 2 + 1.2, facing: Math.PI } }));
+    built.areas = L.areas.map((a) => ({ ...a, top: ISLAND_TOP + a.rise, dock: { x: L.monument.x, z: L.monument.z + L.monument.base / 2 + 1.2, facing: Math.PI } }));
     built.atriumProps = atrium.picks.map((p) => {
       const e = catalogue.get(p.id), prop = props.register({ id: `atrium-${p.id}`, era: e.era, year: e.year, title: e.title, label: `${e.title} (${e.year})`, sourceKeys: e.sources.map((x) => x.key),
         at: { x: p.at.x, y: ISLAND_TOP, z: p.at.z }, reach: 2.4, hint: e.trail ? `step ${e.step}, ${e.title} (${e.year})` : `${e.title} (${e.year}), after the paper`, opens: p.id, onUse: () => ({ caption: e.title }) });

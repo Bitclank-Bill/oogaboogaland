@@ -23517,31 +23517,30 @@ const genesisBenchProof = async () => {
 // genesis-workbench:end
 // genesis-timeline:begin (the timeline builder's genesisTimelineProof; OVERHAUL-CONTRACT.md)
 // genesis-timeline:end
-// rule (review of gv/ovh-polish, the monument): the atrium's monument is the museum's own cairn (no slatted
-// figure, mirror face or reference to other sculptures), with no light; its tiers are surfaces to stand on and
-// obstacles only below their tops: the floor stops a body at the plinth, the stones climb a step at a time, the head
-// (the gold block) is a jump, and a body coming down from above lands on the head.
+// rule (review of gv/ovh-polish, the monument; Billy's option C): the atrium's monument is an original Satoshi statue
+// (a robed figure holding the whitepaper, no slatted dissolve, mirror face, hood, laptop or reference to other
+// sculptures), with no light; its plinth's steps climb a step at a time, its robe is in the way, and its shoulders and
+// head are surfaces a body coming down from above lands on, which no step from below reaches.
 const genesisCairnProof = async () => {
   const context = { window: { BL: {} } };
   for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-catalogue", "genesis-atrium"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, A = BLc.genesisAtrium, GP = BLc.genesisProps, bad = [];
   const src = await readFile(join(root, "src/js/genesis-atrium.js"), "utf8");
-  if (/reflector|lugano|budapest|all satoshi|slat|hood/i.test(src)) bad.push("the atrium still carries the old statue's features");
-  const L = A.layout({ entries: [], museum: W.MUSEUM, eras: W.ERAS }), C = L.cairn, top = W.BANK_TOP;
-  if (!C || !C.head || C.head.x1 - C.head.x0 < 0.5) bad.push("the cairn has no head to stand on");
+  if (/reflector|lugano|budapest|all satoshi|slat|hood|laptop/i.test(src)) bad.push("the atrium carries a borrowed statue's features");
+  const L = A.layout({ entries: [], museum: W.MUSEUM, eras: W.ERAS }), S = L.monument, top = W.BANK_TOP;
+  if (!S || !S.head || S.head.x1 - S.head.x0 < 0.8 || S.head.rise < 10) bad.push("the statue has no large head to stand on");
+  const part = (id) => S.parts.find((p) => p.id === id);
   const footing = GP.createFooting({ areas: [{ id: "floor", x0: -40, x1: 40, z0: -40, z1: 40, top, dock: { x: 0, z: 10, facing: 0 } }, ...L.areas.map((a) => ({ ...a, top: top + a.rise, dock: { x: 0, z: 0, facing: 0 } }))],
     obstacles: L.obstacles.filter((o) => o.rise !== undefined).map((o) => ({ ...o, top: top + o.rise })) });
-  const hx = (C.head.x0 + C.head.x1) / 2, hz = (C.head.z0 + C.head.z1) / 2, headTop = top + C.head.rise;
-  if (footing.walkable(C.x, C.z + C.base, C.x, C.z + C.base / 2 - 0.1, 0.3, top)) bad.push("the floor walks straight into the plinth");
+  const hx = (S.head.x0 + S.head.x1) / 2, hz = (S.head.z0 + S.head.z1) / 2, headTop = top + S.head.rise, steps = ["step-0", "step-1", "step-2"].map(part);
+  let feet = top;
+  for (const st of steps) { if (top + st.rise - feet > GP.STEP) bad.push(`${st.id} is not a step`); feet = top + st.rise; }
+  const robe = part("robe"), front = S.z + robe.hz + 0.6;
+  if (footing.walkable(S.x, front, S.x, S.z + robe.hz - 0.1, 0.3, feet)) bad.push("the plinth's top walks into the robe");
+  if (part("shoulders").rise - steps[2].rise <= GP.STEP || S.head.rise - part("shoulders").rise <= GP.STEP) bad.push("the shoulders or head can be stepped onto");
   if (Math.abs(footing.supportAt(hx, hz, headTop + 3) - headTop) > 1e-6) bad.push("coming down from above does not land on the head");
   if (!footing.walkable(hx + 3, hz, hx, hz, 0.3, headTop + 0.1)) bad.push("a body above the head cannot move over it");
-  for (let i = 1; i < C.tiers.length; i++) {
-    const rise = C.tiers[i].rise - C.tiers[i - 1].rise, kind = C.tiers[i].kind;
-    if (kind === "stone" && i > 1 && rise > GP.STEP) bad.push(`stone ${i} is not a step from the one below`);
-    if (kind === "gold" && rise <= GP.STEP) bad.push("the head is a step, not a jump");
-  }
-  if (C.tiers[0].rise <= GP.STEP) bad.push("the plinth is a step from the floor, not a jump");
-  return { bad, head: C.head };
+  return { bad, head: S.head };
 };
 // rule (gv/ovh-polish, the gallery walls): each era's board quotes only verified headlines (publication, date, headline
 // and an https source each), its posters and art are museum originals in styles that exist, and the board hangs inside
@@ -25333,7 +25332,8 @@ const genesisAtriumProof = async () => {
   }
   // Room to walk: a body (0.3 m) fits between any two plinths with a step to spare.
   let gap = Infinity;
-  // Room to walk at floor level: a tier standing on another (the cairn's stones) is not in the way on the floor.
+  // Room to walk at floor level: a part standing on another (the statue's upper steps and figure) is not in the way on
+  // the floor.
   const floor = L.obstacles.filter((o) => !o.above);
   for (let i = 0; i < floor.length; i++) for (let k = i + 1; k < floor.length; k++) {
     const a = floor[i], b = floor[k], dx = Math.max(0, b.x0 - a.x1, a.x0 - b.x1), dz = Math.max(0, b.z0 - a.z1, a.z0 - b.z1);
@@ -25968,7 +25968,7 @@ const unitChecks = async () => {
   const genesisTimelineLayout = await genesisTimelineLayoutProof();
   const genesisWalls = await genesisWallsProof();
   const genesisCairn = await genesisCairnProof();
-  record("Genesis monument (rule, review of gv/ovh-polish): the atrium's monument is the museum's own cairn with no borrowed sculpture features or light; the floor stops a body at its plinth, its stones climb a step at a time, its head is a jump, and coming down from above lands on the head", !genesisCairn.bad.length, JSON.stringify(genesisCairn));
+  record("Genesis monument (rule, review of gv/ovh-polish; option C): the atrium's monument is an original Satoshi statue with no borrowed sculpture features or light; its plinth's steps climb a step at a time, its robe is in the way, its shoulders and head are out of a step's reach and coming down from above lands on the head", !genesisCairn.bad.length, JSON.stringify(genesisCairn));
   record("Genesis gallery walls (rule): each era's board quotes only verified headlines with publication, date and source, labels its posters and art as museum originals in styles that exist, and hangs inside its gallery on the back wall facing in", !genesisWalls.bad.length, JSON.stringify(genesisWalls));
   record("Genesis white screen and menu (regression, reviews of 20eec91 and d59b831; the menu shows each era once, Era 6's bibliography under Era 6, and 1997's ring and dot are painted apart): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));
   record("Genesis era cartridges (rule, gv/integration-3 4d): the nine era playables are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));

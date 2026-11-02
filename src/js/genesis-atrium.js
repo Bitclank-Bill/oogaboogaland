@@ -19,23 +19,27 @@
   const BL = window.BL = window.BL || {};
   // The spiral: from the south-west (where Era 0's gallery begins), clockwise seen from above (north is -z), inward
   // from R0 to R1 and rising from H0 to H1; the paper's dais in the middle; the map's markers on a ring at MAP_R.
-  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2, CAIRN_BASE = 3.2;
+  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2;
   // The view from the arrival to the white timeline screen (scene-genesis.js ENTRY and LEGEND) stays clear.
   const CLEAR = { x0: -13, x1: 13, z0: 47, z1: 66 };
-  // The cairn's tiers, bottom to top, shared by its mesh and its footing: the plinth, eight stones (each narrower, a
-  // little off centre and turned) and the gold block. `half` is the square a body can stand on inside each (inscribed
-  // in the turned stone), `rise` the height of its top above the floor.
-  const CAIRN_STONES = 8, CAIRN_H = 0.55, CAIRN_PLINTH = 0.75, GOLD_BLOCK = 0.7;
-  const cairnTiers = (base) => {
-    const tiers = [{ kind: "plinth", w: base, d: base, h: CAIRN_PLINTH, dx: 0, turn: 0, half: base / 2, rise: CAIRN_PLINTH }];
-    let y = CAIRN_PLINTH;
-    for (let i = 0; i < CAIRN_STONES; i++) {
-      const w = 2.3 - i * 0.16, d = w * 0.82, h = CAIRN_H - i * 0.012, turn = (i % 2 ? 1 : -1) * (0.12 + 0.04 * i), dx = (i % 3 - 1) * 0.06;
-      tiers.push({ kind: "stone", era: i, w, d, h, dx, turn, y, half: Math.min(w, d) / 2 * 0.9, rise: y + h });
-      y += h;
-    }
-    tiers.push({ kind: "gold", w: GOLD_BLOCK, d: GOLD_BLOCK, h: GOLD_BLOCK, dx: 0, turn: 0.4, y, half: GOLD_BLOCK / 2 * 0.9, rise: y + GOLD_BLOCK });
-    return tiers;
+  // The Satoshi statue's parts as a body meets them, in metres from its centre (+z the way it faces), shared by its
+  // mesh and its footing: the plinth's three steps (each a step up), the robe (in the way up to the shoulders), the
+  // shoulders and the head (surfaces to land on), and the whitepaper held out in front. `hx`, `hz` half extents, `dz`
+  // an offset forward, `rise` the top above the floor; `stand` a surface, `block` an obstacle up to `rise`, `above`
+  // standing on another part rather than the floor.
+  const STATUE_K = 1.15, STATUE_PLINTH = 1.5;
+  const FIGURE = { hem: [2.6, 2.0, 1.2], lower: [2.4, 1.8, 2.0], mid: [2.2, 1.6, 2.0], chest: [2.4, 1.5, 1.6], shoulders: [3.0, 1.6, 0.6], neck: [0.8, 0.8, 0.4], head: [1.3, 1.3, 1.4] };
+  const statueParts = () => {
+    const k = STATUE_K, P = STATUE_PLINTH, parts = [], ys = {};
+    let y = 0;
+    for (const key of ["hem", "lower", "mid", "chest", "shoulders", "neck", "head"]) { ys[key] = y; y += FIGURE[key][2]; }
+    const top = (key) => P + (ys[key] + FIGURE[key][2]) * k, half = (key, i) => FIGURE[key][i] / 2 * k;
+    [[2.8, 0.5], [2.4, 1.0], [2.0, P]].forEach(([h, rise], i) => parts.push({ id: `step-${i}`, hx: h, hz: h, dz: 0, rise, stand: true, block: true, above: i > 0 }));
+    parts.push({ id: "robe", hx: half("hem", 0), hz: half("hem", 1), dz: 0, rise: top("shoulders"), stand: false, block: true, above: true });
+    parts.push({ id: "shoulders", hx: half("shoulders", 0), hz: half("shoulders", 1), dz: 0, rise: top("shoulders"), stand: true, block: false, above: true });
+    parts.push({ id: "head", hx: half("head", 0), hz: half("head", 1), dz: 0, rise: top("head"), stand: true, block: true, above: true });
+    parts.push({ id: "paper", hx: 0.95 * k, hz: 0.35 * k, dz: (FIGURE.chest[1] / 2 + 0.45) * k, rise: P + (ys.chest + 0.9) * k, stand: false, block: true, above: true });
+    return { parts, ys, k, P };
   };
   const bearingPoint = (r, a, out) => { out.x = r * Math.sin(a); out.z = -r * Math.cos(a); return out; };
   const layout = ({ entries, museum, eras }) => {
@@ -58,19 +62,17 @@
     const paperStop = paper ? { id: paper.id, step: paper.step, year: paper.year, kind: "anchor", title: paper.title, era: paper.era, x: 0, z: 0, h: 0.4, ry: Math.PI, at: { x: 0, z: DAIS / 2 + 1.4 } } : null;
     const genesis = genesisEntry ? { id: genesisEntry.id, year: genesisEntry.year, title: genesisEntry.title, era: genesisEntry.era, kind: "context", x: 4.2, z: 0.6, h: 0.9, ry: Math.PI, at: { x: 4.2, z: 2.3 } } : null;
     if (genesis) obstacles.push({ x0: genesis.x - 0.55, x1: genesis.x + 0.55, z0: genesis.z - 0.55, z1: genesis.z + 0.55 });
-    // The cairn behind the dais, its plaque facing the paper's way (+z), inside the spiral's innermost turn.
-    // Each tier is a surface to stand on and an obstacle up to its top: from the floor the plinth is a jump, the stones
-    // above it are steps, and the gold block on top (the head, `cairn.head`) is a jump again. Landing from above works
-    // anywhere, since an obstacle with a top no longer stops feet that are within a step of it.
-    const cairn = { x: 0, z: -5.4, base: CAIRN_BASE, tiers: cairnTiers(CAIRN_BASE) }, areas = [];
-    for (const t of cairn.tiers) {
-      const x = cairn.x + t.dx, box = { x0: x - t.half, x1: x + t.half, z0: cairn.z - t.half, z1: cairn.z + t.half };
-      areas.push({ id: `cairn-${t.kind}${t.era === undefined ? "" : t.era}`, ...box, rise: t.rise });
-      // `above`: a tier standing on the one below, not on the floor.
-      obstacles.push({ ...(t.kind === "plinth" ? { x0: box.x0 - 0.1, x1: box.x1 + 0.1, z0: box.z0 - 0.1, z1: box.z1 + 0.1 } : box), rise: t.rise, above: t.kind !== "plinth" });
+    // The Satoshi statue behind the dais, facing the paper's way (+z), inside the spiral's innermost turn: its plinth's
+    // steps walk up from the floor, its robe is in the way, and its shoulders and head (`monument.head`) are surfaces
+    // a jetpack lands on, since an obstacle with a top no longer stops feet that are within a step of it.
+    const S = statueParts(), monument = { x: 0, z: -5.8, base: 5.6, parts: S.parts }, areas = [];
+    for (const t of S.parts) {
+      const box = { x0: monument.x - t.hx, x1: monument.x + t.hx, z0: monument.z + t.dz - t.hz, z1: monument.z + t.dz + t.hz };
+      if (t.stand) areas.push({ id: `statue-${t.id}`, ...box, rise: t.rise });
+      if (t.block) obstacles.push({ ...box, rise: t.rise, above: t.above });
     }
-    const top = cairn.tiers[cairn.tiers.length - 1];
-    cairn.head = { x0: cairn.x - top.half, x1: cairn.x + top.half, z0: cairn.z - top.half, z1: cairn.z + top.half, rise: top.rise };
+    const head = S.parts.find((t) => t.id === "head");
+    monument.head = { x0: monument.x - head.hx, x1: monument.x + head.hx, z0: monument.z - head.hz, z1: monument.z + head.hz, rise: head.rise };
     // The floor map: one marker per era, on the ring, pointing at the middle of its gallery's opening.
     const markers = eras.map((e) => {
       const r = museum.rects[e.n], A = museum.atrium;
@@ -78,7 +80,7 @@
       const a = Math.atan2(ox, -oz), p = bearingPoint(MAP_R, a, { x: 0, z: 0 });
       return { era: e.n, name: e.name, years: e.years, x: p.x, z: p.z, toward: { x: ox, z: oz }, a, ry: a + Math.PI };
     });
-    return { steps, paper: paperStop, genesis, cairn, areas, markers, path, obstacles, clear: CLEAR, radius: { inner: R1, outer: R0, map: MAP_R } };
+    return { steps, paper: paperStop, genesis, monument, areas, markers, path, obstacles, clear: CLEAR, radius: { inner: R1, outer: R0, map: MAP_R } };
   };
 
   const GOLD = "#e8c35a", GOLD_DK = "#9a7418", STONE = "#6a645a", STONE_LT = "#8a8378";
@@ -120,10 +122,10 @@
       sign(`${L.genesis.year} · AFTER THE PAPER`, `${L.genesis.title} · context, not a step`, L.genesis.x, top + L.genesis.h + 1.3, L.genesis.z, Math.PI, "plain", 0.38);
       picks.push({ id: L.genesis.id, at: L.genesis.at, node: place(createNode({ geometry: pickBox(1, L.genesis.h + 1, 1), position: { x: L.genesis.x, y: top + (L.genesis.h + 1) / 2, z: L.genesis.z } })) });
     }
-    // The cairn: the museum's tribute, an Ooga stone pile. Eight rough stones stacked and each turned a little, one for
-    // each gallery from the bottom up and banded in its era's colour, with a gold block on top for the first block, on
-    // a stone plinth whose plaque is a plain text tribute. One merged mesh; no light and nothing per frame.
-    if (L.cairn) cairnParts(M, L.cairn, top, sign, place, createNode, eraColor);
+    // The Satoshi statue: an original Ooga figure, not a likeness and after no other sculpture. A tall robed figure in
+    // chunky sandstone with gold trim, faceless, holding the whitepaper open at its chest, on a stepped plinth whose
+    // plaque is a plain text tribute. About 12 m. One merged mesh; no light and nothing per frame.
+    if (L.monument) monumentParts(M, L.monument, top, sign, place, createNode);
     // The floor map: for each era a chevron on the floor pointing at its gallery and a low sign facing the middle.
     for (const m of L.markers) {
       const c = eraColor(m.era);
@@ -145,26 +147,39 @@
     };
     return { picks, update, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
   };
-  const cairnParts = (M, S, top, sign, place, createNode, eraColor) => {
-    const parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
-    for (const t of S.tiers) {
-      if (t.kind === "plinth") {
-        // The plinth: dressed stone with a cap.
-        parts.push(at(M.bevelBox({ w: t.w, h: t.h - 0.15, d: t.d, color: "#5a554c", bevel: 0.08 }), 0, (t.h - 0.15) / 2, 0));
-        parts.push(at(M.box({ w: t.w + 0.2, h: 0.15, d: t.d + 0.2, color: "#7a746a" }), 0, t.h - 0.075, 0));
-      } else if (t.kind === "stone") {
-        // A rough stone with its era's band round its middle.
-        const stone = M.bevelBox({ w: t.w, h: t.h, d: t.d, color: t.era % 2 ? "#8a8378" : "#757066", bevel: 0.12 });
-        const band = M.box({ w: t.w + 0.04, h: 0.09, d: t.d + 0.04, color: eraColor(t.era), emissive: 0.15 });
-        parts.push(at(M.turnedY(stone, t.turn), t.dx, t.y + t.h / 2, 0), at(M.turnedY(band, t.turn), t.dx, t.y + t.h / 2, 0));
-      } else {
-        // The gold block: the first block, on top.
-        parts.push(at(M.turnedY(M.bevelBox({ w: t.w, h: t.h, d: t.d, color: GOLD, emissive: 0.35, bevel: 0.06 }), t.turn), 0, t.y + t.h / 2, 0));
-      }
+  const STONE_A = "#cdb88f", STONE_B = "#bba67c", STONE_D = "#9c875f";
+  const monumentParts = (M, S, top, sign, place, createNode) => {
+    const { ys, k, P } = statueParts(), parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
+    const block = (w, h, d, color, x, y, z, bevel = 0.08, emissive = 0) => parts.push(at(M.bevelBox({ w, h, d, color, bevel, emissive }), x, y, z));
+    // The plinth: three dressed steps and a gold band.
+    [[5.6, 0.5], [4.8, 1.0], [4.0, P]].forEach(([w, rise], i) => block(w, 0.5, w, i % 2 ? STONE_D : "#8a7a5a", 0, rise - 0.25, 0, 0.06));
+    parts.push(at(M.box({ w: 4.04, h: 0.08, d: 4.04, color: GOLD, emissive: 0.3 }), 0, P - 0.12, 0));
+    const F = FIGURE, Y = (key) => P + ys[key] * k, H = (key) => F[key][2] * k;
+    // The robe, widening to its hem in tiers, with blocky folds down its front and a gold belt.
+    for (const key of ["hem", "lower", "mid", "chest", "shoulders"]) block(F[key][0] * k, H(key), F[key][1] * k, key === "lower" || key === "chest" ? STONE_B : STONE_A, 0, Y(key) + H(key) / 2, 0, 0.1);
+    for (const fx of [-0.7, -0.25, 0.25, 0.7]) block(0.16 * k, (F.hem[2] + F.lower[2]) * k * 0.92, 0.12 * k, STONE_D, fx * k, Y("hem") + (F.hem[2] + F.lower[2]) * k * 0.46, F.hem[1] / 2 * k + 0.02, 0.03);
+    parts.push(at(M.box({ w: F.mid[0] * k + 0.06, h: 0.22 * k, d: F.mid[1] * k + 0.06, color: GOLD, emissive: 0.25 }), 0, Y("mid") + H("mid") * 0.85, 0));
+    // Arms: sleeves down the sides, forearms forward to the hands holding the whitepaper open at the chest.
+    for (const sx of [-1, 1]) {
+      block(0.62 * k, 2.2 * k, 0.8 * k, STONE_A, sx * 1.42 * k, Y("chest") + H("chest") - 0.9 * k, 0.05 * k, 0.1);
+      block(0.55 * k, 0.55 * k, 1.1 * k, STONE_B, sx * 1.05 * k, Y("chest") + 0.35 * k, (F.chest[1] / 2 + 0.2) * k, 0.08);
+      block(0.42 * k, 0.5 * k, 0.4 * k, STONE_D, sx * 0.86 * k, Y("chest") + 0.55 * k, (F.chest[1] / 2 + 0.55) * k, 0.06);
     }
+    // The whitepaper: two pages tipped back, ruled with lines of text, a gold title bar.
+    const py = Y("chest") + 0.55 * k, pz = (F.chest[1] / 2 + 0.62) * k;
+    for (const sx of [-1, 1]) {
+      const page = [M.box({ w: 0.86 * k, h: 1.15 * k, d: 0.06, color: "#f4efe2", emissive: 0.12 })];
+      for (let r = 0; r < 9; r++) page.push(M.moved(M.box({ w: (r % 3 === 2 ? 0.45 : 0.68) * k, h: 0.035 * k, d: 0.02, color: "#5d564c" }), -0.04 * k, (0.28 - r * 0.085) * k, 0.04));
+      if (sx < 0) page.push(M.moved(M.box({ w: 0.7 * k, h: 0.09 * k, d: 0.02, color: GOLD, emissive: 0.3 }), 0, 0.45 * k, 0.04));
+      parts.push(at(M.turnedY(M.turnedX(M.merge(...page), -0.35), -sx * 0.18), sx * 0.45 * k, py + 0.5 * k, pz));
+    }
+    // The neck and the head: faceless dressed stone under a squared crown.
+    block(F.neck[0] * k, H("neck"), F.neck[1] * k, STONE_B, 0, Y("neck") + H("neck") / 2, 0, 0.05);
+    block(F.head[0] * k, H("head") * 0.86, F.head[1] * k, STONE_A, 0, Y("head") + H("head") * 0.43, 0, 0.18);
+    block(F.head[0] * k * 0.9, H("head") * 0.14, F.head[1] * k * 0.9, STONE_B, 0, Y("head") + H("head") * 0.93, 0, 0.06);
     place(createNode({ geometry: M.merge(...parts) }));
-    sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · a stone for each gallery, the gold block for the first", S.x, top + S.tiers[0].h + 0.1, S.z + S.base / 2 + 0.3, Math.PI, "gold", 0.45);
+    sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · an original Ooga statue, not a likeness", S.x, top + 1.25, S.z + 2.4 + 0.25, Math.PI, "gold", 0.5);
   };
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
-  BL.genesisAtrium = { layout, build, CLEAR, cairnTiers };
+  BL.genesisAtrium = { layout, build, CLEAR, statueParts };
 })();
