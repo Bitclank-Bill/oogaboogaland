@@ -23,7 +23,7 @@
   // plays a level that carries it.
   const ITEMS = {
     bounce: ["bounce", "Bounce clouds", "Touch any part of a purple cloud to bounce high into the air. Steer toward your next landing while airborne."],
-    tornado: ["tornado", "Tornadoes", "Watch for a white cap gathering high in the storm with lightning round it: a tornado comes down there as you near it. It whirls the clouds near it round and up, and drags you in too. Steer out before it pulls you into its core, or it sweeps you up and the run is over."],
+    tornado: ["tornado", "Tornadoes", "Watch for a white cap gathering high in the storm with lightning round it: a tornado comes down there as you near it, thin at first and growing wider and stronger. It whirls the clouds near it and drags you in too. Pass through it quickly, and a pink cloud's boost helps, or it sweeps you up and the run is over."],
     xray: ["xray", "X-ray goggles", "Take the stone goggles to see how long each nearby cloud has before it fades, for 30 seconds. A gold ∞ marks a cloud that never fades, a red ring one that is about to, and a dashed ring counts down until a cloud comes back."],
     updraft: ["updraft", "Sky feather", "Carry one feather at a time. Once both your jumps are spent and you wear no fuelled jetpack, Space lets it go: a gust throws you about eight metres up."],
     hook: ["hook", "Grappling hook", "Aim at a cloud and click to throw: hold to be reeled toward it, let go to fly on as the hook comes back. A cloud in reach shows a gold ring. Miss, and the hook is gone. On a pad it is RT; on a touch screen, hold the HOOK button."]

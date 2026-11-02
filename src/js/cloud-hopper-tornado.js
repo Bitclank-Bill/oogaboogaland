@@ -6,7 +6,7 @@
 // (`FADE`), and the next spot starts to brew. Lightning strikes round it from when it starts to brew
 // until it ropes out, a second sign of where it is. While it is down it writes the course's `whirl`, which
 // turns the clouds near it round its axis, and `strength` says how hard it holds; the controller carries the Ooga round
-// it and, once drawn into its core, up it to spin round over its top, holding it down meanwhile (`hold`). It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
+// it and, once it has been wholly inside the funnel a moment, up it to spin round over its top, holding it down meanwhile (`hold`). It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
 // to deep blue at its curling tail, each slab turning and swaying at its own speed (one instanced draw for each band
 // of colour), with streaks of spray whipped round it. Nothing allocates a frame.
 (() => {

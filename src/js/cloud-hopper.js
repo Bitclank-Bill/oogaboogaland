@@ -23,14 +23,16 @@
   const HAND = 0, OUT = 1, BIT = 2, REEL = 3, HOOK_NAMES = ["hand", "out", "bit", "reel"];
   // A tornado (Thunderhead's) takes an Ooga within `WHIRL_TAKE` of its side and lets it go past `WHIRL_LET_GO`: it is
   // drawn in toward it, carried round and lifted, harder the nearer it is (`WHIRL_PULL`, `WHIRL_SPIN` and `WHIRL_LIFT`
-  // m/s at its side), on in through its wall. One drawn right into its core (within `SWEPT_CORE` of its radius there,
-  // and never less than `SWEPT_CORE_MIN` m) is swept up: whirled up the core for `SWEPT_CLIMB` s, where it is kept
+  // m/s at its side), on in through its wall, its grip on the Ooga's flight taking hold over time (`WHIRL_GRIP` a second
+  // at its side at full strength, besides the air's own drag), so speed brought in (a boost cloud's) carries a rider on
+  // through a young one. One wholly inside the funnel `SWEPT_DWELL` s on end is swept up (one through it quicker is still
+  // whirled, and may yet steer out): drawn in to its axis over `SWEPT_DRAW` s and whirled up the core for `SWEPT_CLIMB` s, where it is kept
   // spinning round inside the funnel near its top (`SWEPT_SINK` m under it, `SWEPT_RING` m round its axis, `SWEPT_SPIN`
   // rad/s) until a replay or exit; `SWEPT_HOLD` s after it gets there the run is lost. The view draws back `SWEPT_OUT` m outside the
   // funnel's side and rises after the Ooga, `SWEPT_BEHIND` m under it and never nearer the top than `SWEPT_UNDER` m
   // under it, turning up to follow it. Its roar is heard within `WHIRL_HEARD` of its axis.
-  const WHIRL_TAKE = 18, WHIRL_LET_GO = 22, WHIRL_PULL = 7, WHIRL_SPIN = 12, WHIRL_LIFT = 5, WHIRL_HEARD = 110;
-  const SWEPT_CORE = 0.35, SWEPT_CORE_MIN = 1.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
+  const WHIRL_TAKE = 18, WHIRL_LET_GO = 22, WHIRL_PULL = 7, WHIRL_SPIN = 12, WHIRL_LIFT = 5, WHIRL_GRIP = 10, WHIRL_HEARD = 110;
+  const SWEPT_DWELL = 0.15, SWEPT_DRAW = 0.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
   const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
   const SWEPT_OUT = 12, SWEPT_BEHIND = 6, SWEPT_UNDER = 4;
   let guideSeen = false, itemsSeen = null;
@@ -185,12 +187,13 @@
     const tornado = BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer,
       onDrop: (x, y, z) => { if (actor) audio.tornadoForm(Math.hypot(x - actor.root.position.x, y - actor.root.position.y, z - actor.root.position.z)); },
       onStrike: (distance) => audio.thunder(distance) });
-    let whirled = false;
+    // How long the Ooga has been wholly inside a tornado's funnel on end (s).
+    let whirled = false, engulfed = 0;
     // Swept up inside one: how long since (-1 not), the angle round its axis, the height it was taken at, the side of
     // it the view drew back to and how far the view tilts up behind the DQ card, and the view: where it watches from,
     // what it eases toward looking at and what it looks at (with what the pilot had, given back after), and its axis
     // at the view's height; and its axis where the outline test samples it.
-    let swept = -1, sweptAngle = 0, sweptFrom = 0, sweptSide = 0, sweptTilt = 0;
+    let swept = -1, sweptAngle = 0, sweptFrom = 0, sweptR = 1, sweptSide = 0, sweptTilt = 0;
     const sweptEye = { x: 0, y: 0, z: 0 }, sweptAim = { x: 0, y: 0, z: 0 }, sweptLook = { x: 0, y: 0, z: 0 };
     const sweptAxis = { x: 0, z: 0 }, insideAxis = { x: 0, z: 0 };
     const sweptCamPos = { x: 0, y: 0, z: 0 }, sweptCamTarget = { x: 0, y: 0, z: 0 }, sweptOrigin = { x: 0, y: 0, z: 0 };
@@ -845,31 +848,37 @@
     };
     // A tornado down near the Ooga takes it: lifted off whatever it stands on, drawn in, round and up, harder the nearer
     // it comes, all of it easing as the tornado dies, until it does or the Ooga steers out past `WHIRL_LET_GO`; it
-    // keeps the speed it has when let go. A hook biting a cloud holds it out of the whirl, and a run is never lost
-    // while it is whirled, at its wall or through it, unless it is drawn right into its core (`sweep`).
+    // keeps the speed it has when let go. Its grip eases the Ooga's flight toward the whirl's, so speed brought in
+    // carries on a while. A hook biting a cloud holds it out of the whirl, and a run is never lost while it is whirled,
+    // at its wall or through it, unless it is wholly inside the funnel `SWEPT_DWELL` s on end (`sweep`).
     const whirlOoga = () => {
       if (swept >= 0) return;
-      if (!tornado.down || hookAt === BIT || phase !== "running") { whirled = false; return; }
+      if (!tornado.down || hookAt === BIT || phase !== "running") { whirled = false; engulfed = 0; return; }
       const p = actor.root.position, feet = p.y - actor.baseY;
       tornado.axisAt(feet, whirlAxis);
       const dx = p.x - whirlAxis.x, dz = p.z - whirlAxis.z, r = Math.max(0.1, Math.hypot(dx, dz)), side = tornado.radiusAt(feet);
-      if (feet > tornado.top - 4 || feet < tornado.bottom || side <= 0 || r > side + (whirled ? WHIRL_LET_GO : WHIRL_TAKE)) { whirled = false; return; }
+      if (feet > tornado.top - 4 || feet < tornado.bottom || side <= 0 || r > side + (whirled ? WHIRL_LET_GO : WHIRL_TAKE)) { whirled = false; engulfed = 0; return; }
       const s = tornado.strength;
-      if (r < Math.max(SWEPT_CORE_MIN, side * SWEPT_CORE) && s > 0.6) { sweep(dx, dz); return; }
+      engulfed = r + (actor.bodyRadius || 0.3) < side ? engulfed + stepTime : 0;
+      if (engulfed >= SWEPT_DWELL) { engulfed = 0; sweep(dx, dz, r); return; }
       whirled = true;
       // Inside its wall the pull grows a little more toward the core while the spin holds at its wall's.
       const k = Math.max(0, 1 - (r - side) / WHIRL_TAKE), pull = WHIRL_PULL * s * Math.min(1.25, k) ** 2, spin = WHIRL_SPIN * s * (0.35 + 0.65 * Math.min(1, k));
       if (actor.hop < 0.001) { crew.elevate(0); p.y += LAUNCH_CLEARANCE; actor.hop += LAUNCH_CLEARANCE; }
-      actor.leap.vx = -dz / r * spin - dx / r * pull + tornado.vx * s;
-      actor.leap.vz = dx / r * spin - dz / r * pull + tornado.vz * s;
+      // Its grip, harder the nearer and stronger it is, eases the flight toward the whirl's. The crew's air drag eases it
+      // toward rest afterwards, so the grip aims past the whirl's by as much and the two settle on it together.
+      const grip = Math.max(0.05, WHIRL_GRIP * s * Math.min(1, k) ** 2), drag = BL.pilot.WALK.ledgeDrag;
+      const hold = 1 - Math.exp(-grip * stepTime), aim = (grip + drag) / grip;
+      actor.leap.vx += ((-dz / r * spin - dx / r * pull + tornado.vx * s) * aim - actor.leap.vx) * hold;
+      actor.leap.vz += ((dx / r * spin - dz / r * pull + tornado.vz * s) * aim - actor.leap.vz) * hold;
       actor.hopV = Math.max(actor.hopV, WHIRL_LIFT * s * k);
       actor.jumps = 1; actor.leap.land = 0; actor.leap.thrown = actor.leap.rageThrown = false;
     };
-    // Drawn into its core: the controls let go, a hook out lets go too, and the view starts from where it stood and
-    // draws back on its own side of the funnel.
-    const sweep = (dx, dz) => {
+    // Engulfed: the controls let go, a hook out lets go too, and the view starts from where it stood and draws back on
+    // its own side of the funnel. `r` is how far the Ooga stood from the axis, from where it is drawn in.
+    const sweep = (dx, dz, r) => {
       const p = actor.root.position;
-      swept = 0; sweptAngle = Math.atan2(dz, dx); sweptFrom = p.y - actor.baseY; sweptTilt = 0; whirled = true;
+      swept = 0; sweptAngle = Math.atan2(dz, dx); sweptFrom = p.y - actor.baseY; sweptR = r; sweptTilt = 0; whirled = true;
       sweptSide = Math.atan2(camera.position.z - whirlAxis.z, camera.position.x - whirlAxis.x);
       if (hookHeld && hookAt !== HAND) letGo();
       hookDown = false;
@@ -887,7 +896,9 @@
       actor.hop = 10; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0;
       const u = Math.min(1, swept / SWEPT_CLIMB), out = Math.max(0, Math.min(1, (u - 0.7) / 0.3)), ring = out * out * (3 - 2 * out);
       const feet = sweptFrom + (top - SWEPT_SINK - sweptFrom) * u * u * (3 - 2 * u) + Math.sin(swept * 2.2) * 0.4 * ring;
-      const radius = 1 + (SWEPT_RING - 1) * ring, spin = 12 + (SWEPT_SPIN - 12) * ring;
+      // Drawn in from where it was engulfed to a metre off the axis, turning no faster there than the whirl carried it.
+      const drawn = Math.min(1, swept / SWEPT_DRAW), base = sweptR + (1 - sweptR) * drawn * drawn * (3 - 2 * drawn);
+      const radius = base + (SWEPT_RING - base) * ring, spin = (12 + (SWEPT_SPIN - 12) * ring) * Math.min(1, 1 / base);
       tornado.axisAt(feet, whirlAxis);
       sweptAngle += dt * spin;
       p.x = whirlAxis.x + Math.cos(sweptAngle) * radius; p.y = feet + actor.baseY; p.z = whirlAxis.z + Math.sin(sweptAngle) * radius;
