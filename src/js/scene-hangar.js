@@ -1227,7 +1227,7 @@
     // The Jet acting up on its own now and then (`hangar-anomaly.js`): not on a test page unless `anomaly=` asks, which
     // under debug also sets the wait between them, s.
     const every = DEBUG ? Number(params.get("anomaly")) : NaN;
-    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: LAYOUT.jet, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null });
+    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
     for (const n of scene.terminals.nodes) {

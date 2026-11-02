@@ -10,6 +10,10 @@
 // through the static fire's own (`fire.engines`), its sound is `hangarAudio.misfire`, and the scene dims its lights by
 // `dim`.
 //
+// The phantom revs (`phantom`): no lights, no arcs, only the two engines revving by turns, back and forth as if they
+// were talking, each throat glowing as it revs and the Jet rocking toward it on its gear and shuddering, then still.
+// Their sound is `hangarAudio.revs`, each engine on its own side.
+//
 // `create` builds the arcs once a visit; `update` runs the wait and the anomaly, allocating nothing a frame.
 (() => {
   "use strict";
@@ -26,7 +30,17 @@
   // further as each try pulls (`dip`), coming back over `back` once it is cut; and how many arcs a second crackle before
   // the tries and through them.
   const MISFIRE = { tries: [2.6, 5.4, 8.4], spin: 1.3, sputter: 0.7, embers: 0.6, heat: [0.4, 0.6, 0.85], burp: 1.2, burpLen: 0.25, thrust: 0.3, cut: 10.6, end: 14, dim: 0.6, fade: 1.5, dip: 0.15, back: 0.6, arcs: [1.2, 3] };
-  const LENGTH = { misfire: MISFIRE.end };
+  // The phantom revs, s from their start: the script, each rev [start, engine (0 the left, 1 the right), length, how
+  // hard], the two answering each other faster and harder until the right has the last word but one; the end. How hot a
+  // throat glows at a full rev, how far the Jet leans toward the engine revving, radians, and how hard it shudders.
+  const REVS = {
+    script: [[0.5, 0, 1.2, 0.5], [2, 1, 1.3, 0.55], [3.6, 0, 0.8, 0.6], [4.4, 0, 0.8, 0.7], [5.5, 1, 0.8, 0.65], [6.3, 1, 0.8, 0.75],
+      [7.1, 1, 1, 0.85], [8.4, 0, 1.5, 0.9], [10.2, 1, 1.8, 1], [12.3, 0, 0.6, 0.4]],
+    end: 13.6, heat: 0.55, lean: 0.003, shudder: 0.0015
+  };
+  // How much of a rev it takes to spool up to its peak (the sound's `REV_UP`).
+  const SPOOL = 0.45;
+  const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end };
   // The arcs: how many at once and how long each lasts, s; where they strike round a nozzle, from how far inside its rim
   // to how far out of it, and from how far into it to how far out behind its exit, m; their light, and the hot throats'.
   const ARCS = 4, ARC_LIFE = 0.1, ARC_R = [0.6, 1.15], ARC_Z = [-0.4, 0.5], ARC_LIGHT = [0.5, 0.95, 1.8], HEAT_LIGHT = [1.4, 0.5, 0.18];
@@ -48,14 +62,15 @@
   }));
 
   // `root`: the scene's root; `fire`: the static fire test (`hangar-fire.js`), whose engines it drives and whose run
-  // holds it off; `sis`: Kortik's Sis; `fx`: the scene's particles; `audio`: the hangar's sound; `jet`: where the Jet
-  // stands, { x, z }; `auto`: whether they come by themselves (off on a test page, where only `debug.play` starts one);
-  // `gap`, a fixed wait between them instead of GAP's, s.
+  // holds it off; `sis`: Kortik's Sis; `fx`: the scene's particles; `audio`: the hangar's sound; `jet`: the Jet's node,
+  // which the revs rock and put back at rest; `auto`: whether they come by themselves (off on a test page, where only
+  // `debug.play` starts one); `gap`, a fixed wait between them instead of GAP's, s.
   const create = ({ root, fire, sis, fx, audio, jet, auto = true, gap = null }) => {
-    const SPARK = HM.blast().spark, BLUE = BL.models.particleGeometry("#a8ecff", 0.05, 1);
-    const exits = JM.EXHAUST.map((e) => ({ x: jet.x + e.x, y: e.y, z: jet.z + e.z, r: e.r }));
-    // Where Kortik's Sis turns to: between the engines.
-    const engines = { x: jet.x, z: exits[0].z };
+    const SPARK = HM.blast().spark, BLUE = BL.models.particleGeometry("#a8ecff", 0.05, 1), J = jet.position;
+    const exits = JM.EXHAUST.map((e) => ({ x: J.x + e.x, y: e.y, z: J.z + e.z, r: e.r }));
+    // Where Kortik's Sis turns to: between the engines. How the Jet stands at rest. Each throat's glow, in the nozzles'
+    // order, for `fire.engines` and the lights.
+    const engines = { x: J.x, z: exits[0].z }, REST_X = jet.rotation.x, REST_Z = jet.rotation.z, glow = new Float32Array(exits.length);
     const arcs = Array.from({ length: ARCS }, (_, i) => ({ node: createNode({ geometry: bolts()[i % 3], visible: false, sightHidden: true }), life: 0 }));
     addChild(root, ...arcs.map((a) => a.node));
     // The kinds in their turn: a bag shuffled in place each time it runs out.
@@ -113,6 +128,7 @@
         BL.gamepad.rumble(0.2, 0.4, 160);
       }
       heat = h;
+      glow.fill(h);
       fire.engines(thrust, h);
       // The lights: dimming over the first seconds and wavering slowly, dipping as each try pulls, back once it is cut.
       dim = t < M.cut ? 1 - (1 - M.dim) * ease(t / M.fade) - M.dip * pull + 0.03 * Math.sin(t * 8.2) * ease(t / M.fade) : M.dim + (1 - M.dim) * ease((t - M.cut) / M.back);
@@ -125,13 +141,37 @@
       if (t >= M.cut && t - dt < M.cut) sis.settle();
     };
 
+    // A frame of the phantom revs.
+    const phantom = (dt) => {
+      const R = REVS;
+      // How hard each engine revs now: spooling up to its rev's peak over `SPOOL` of it, running down over the rest.
+      glow.fill(0);
+      for (let i = 0; i < R.script.length; i++) {
+        const r = R.script[i], u = (t - r[0]) / r[2];
+        if (u > 0 && u < 1) glow[r[1]] = Math.max(glow[r[1]], r[3] * (u < SPOOL ? ease(u / SPOOL) : 1 - ease((u - SPOOL) / (1 - SPOOL))));
+      }
+      const left = glow[0], right = glow[1];
+      jet.rotation.z = REST_Z + R.lean * (left - right) + R.shudder * (left + right) * Math.sin(t * 43);
+      jet.rotation.x = REST_X + R.shudder * 0.6 * (left + right) * Math.cos(t * 37);
+      for (let i = 0; i < glow.length; i++) glow[i] *= R.heat;
+      heat = Math.max(glow[0], glow[1]);
+      fire.engines(0, 1, glow);
+      // Kortik's Sis, at the first rev, and told once the last has died.
+      if (!spooked && t >= R.script[0][0]) { spooked = true; sis.spook(engines.x, engines.z); }
+      const quiet = R.script[R.script.length - 1][0] + R.script[R.script.length - 1][2];
+      if (t >= quiet && t - dt < quiet) sis.settle();
+    };
+
     const begin = (k) => {
       kind = k; t = 0; arcAt = 0; spooked = false;
       if (k === "misfire") audio.misfire(MISFIRE);
+      else if (k === "phantom") audio.revs(REVS.script);
     };
-    // Over, or cut short: the engines cold, the lights full, the arcs gone, and the wait for the next.
+    // Over, or cut short: the engines cold, the Jet at rest, the lights full, the arcs gone, and the wait for the next.
     const end = () => {
       kind = null; dim = 1; heat = 0;
+      glow.fill(0);
+      jet.rotation.x = REST_X; jet.rotation.z = REST_Z;
       fire.engines(0, 0);
       for (const a of arcs) { a.life = 0; a.node.visible = false; }
       wait = pause();
@@ -145,10 +185,11 @@
       }
       t += dt;
       if (kind === "misfire") misfire(dt);
+      else if (kind === "phantom") phantom(dt);
       if (t >= LENGTH[kind]) end();
     };
 
-    // Its lights into the scene's array from `slot`: the throats' glow while they are hot and an arc's flash while one
+    // Its lights into the scene's array from `slot`: each throat's glow while it is hot and an arc's flash while one
     // strikes; how many it wrote.
     const put = (Lt, slot, x, y, z, radius, rgb, k) => {
       const w = slot * 8;
@@ -157,7 +198,7 @@
     };
     const lights = (Lt, slot) => {
       let n = 0;
-      if (heat > 0.02) for (const e of exits) put(Lt, slot + n++, e.x, e.y, e.z + 1.2, 8, HEAT_LIGHT, heat);
+      for (let i = 0; i < exits.length; i++) if (glow[i] > 0.02) put(Lt, slot + n++, exits[i].x, exits[i].y, exits[i].z + 1.2, 8, HEAT_LIGHT, glow[i]);
       let lit = null;
       for (const a of arcs) if (a.life > 0) { lit = a; break; }
       if (lit) { const p = lit.node.position; put(Lt, slot + n++, p.x, p.y, p.z, 6, ARC_LIGHT, lit.life / ARC_LIFE); }
@@ -174,5 +215,5 @@
     return { update, lights, dispose, debug, get playing() { return !!kind; }, get dim() { return dim; } };
   };
 
-  BL.hangarAnomaly = { create, MISFIRE };
+  BL.hangarAnomaly = { create, MISFIRE, REVS };
 })();
