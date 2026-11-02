@@ -6325,7 +6325,8 @@
     // walks an awakened gorilla back to bed from where it stands.
     const SLEEP_POSES = ["left", "right", "back"], SLEEP_REACH = 1.1, SLEEP_ARRIVE = 0.3, SLEEP_STALL = 25, SLEEP_MARK = 1.9, DAY_MS = 86400000;
     // Only current sleepers take part in the daily deal. Keep occupied beds stable
-    // across activity changes and midnight; workers, chillers and away owners take none.
+    // across activity changes and midnight. A driven gorilla keeps its existing bed
+    // until release, even if its owner wakes; only sleepers get new reservations.
     // The authored 20 beds remain the capacity: excess sleepers stay hidden until a
     // bed is released, rather than overlapping another sleeper or inventing new ground.
     let bedDay = -1;
@@ -6343,7 +6344,7 @@
       bedDay = day; bedUsed.fill(0); bedOf.fill(-1);
       for (let i = 0; i < list.length; i++) {
         const slot = list[i].sleep.slot;
-        if (bedSleeping[i] && slot >= 0) { bedOf[i] = slot; bedUsed[slot] = 1; }
+        if (slot >= 0) { bedOf[i] = slot; bedUsed[slot] = 1; }
       }
       for (let i = 0; i < list.length; i++) {
         if (!bedSleeping[i] || bedOf[i] >= 0) continue;
@@ -6358,7 +6359,7 @@
       }
     };
     const bedTaken = (slot, but) => {
-      for (const other of list) if (other !== but && sleeps(other.owner) && other.sleep.slot === slot) return true;
+      for (const other of list) if (other !== but && other.sleep.slot === slot) return true;
       return false;
     };
     const releaseBed = (e) => {

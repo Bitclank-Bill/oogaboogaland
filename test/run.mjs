@@ -10024,6 +10024,39 @@ const hubFall = { name: "hub fall", why: "rule: abyss falls return players and N
       && landed(row.reference) && row.landing.frames <= 8 && landed(row.landing)),
     JSON.stringify({ ...r, respawns }));
 } };
+// The chalkboard writes only for an Ooga standing at it (#391): a tap from afar or with no Ooga is refused with a
+// reason, Space and a tap work at the board, and moving the Ooga off closes it.
+const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga standing at the chalkboard may write on it; a tap from across the island opened it", run: async (b) => {
+  // Stands the Ooga `along` metres out in front of the board and a little to its left, facing it, and gives back
+  // a point on the board's right half on screen, clear of the Ooga.
+  const stand = (along) => b.evaluate(`(() => {
+    const B = __ooga, a = B.cavemen.get("portlandhodl"), c = BL.scenes.hub.debug.chalkboardAt;
+    if (B.crew.player !== a) B.pilot.possess(a);
+    const x = c.x + c.frontX * ${along} - c.rightX * 0.6, z = c.z + c.frontZ * ${along} - c.rightZ * 0.6;
+    B.pilot.navigate({ position: { x, y: B.island.surfaceAt(x, z), z }, yaw: Math.atan2(c.frontX, c.frontZ), pitch: 0.15, dist: 4 });
+    B.advance(0.5, 1 / 60);
+    return B.project(c.x + c.rightX * 0.45, c.y + 1.25, c.z + c.rightZ * 0.45, {});
+  })()`);
+  const look = () => b.evaluate(`(() => ({ open: document.getElementById("chalk-modal").open, toast: document.getElementById("toast").textContent, act: document.getElementById("act").textContent.trim() }))()`);
+  const tapAt = async (point) => { await b.click(point.x, point.y); await b.sleep(50); return look(); };
+  const farTap = await tapAt(await stand(5));
+  await stand(1.3);
+  const nearAct = await look();
+  await b.key(" ");
+  const spaced = await look();
+  // Carried off while writing: the board closes on the next frame.
+  await stand(5);
+  const carried = await look();
+  const nearTap = await tapAt(await stand(1.3));
+  await b.evaluate(`document.getElementById("chalk-close").click()`);
+  const point = await stand(5);
+  await b.evaluate(`(() => { __ooga.pilot.release(true); __ooga.advance(0.3, 1 / 60); })()`);
+  const loose = await tapAt(point);
+  record("chalkboard reach: a tap from afar or with no Ooga is refused with why, while at the board Space and a tap open it and being moved off closes it",
+    !farTap.open && farTap.toast === "Walk up to the chalkboard to write on it." && nearAct.act === "WRITE" && spaced.open && !carried.open
+      && nearTap.open && !loose.open && loose.toast.startsWith("Only an Ooga can write."),
+    JSON.stringify({ farTap, nearAct, spaced, carried, nearTap, loose }));
+} };
 // A remote player stands near the pile as the room would place them: the roster's shortest and tallest Oogas, then a
 // gorilla. portlandhodl, the widest Ooga, drops onto each, rides the short one as it walks and rises as a jetpack
 // would, walks off it, then walks and jumps at the tall one, which no jump clears. The spot has nothing else to stand
@@ -10921,6 +10954,19 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     const occupied = many.filter(e => e.sleep.slot >= 0), waiting = many.filter(e => e.sleep.slot < 0);
     const capped = occupied.length === 20 && new Set(occupied.map(e => e.sleep.slot)).size === 20
       && waiting.length === 2 && waiting.every(e => !visible(e));
+    // Space wakes a driven gorilla without releasing its bed. Its owner can
+    // wake and sleep again while it is driven; overflow must not take that bed.
+    const driven = occupied[0], drivenSlot = driven.sleep.slot;
+    const drove = C.possess(driven) && C.wake();
+    driven.owner.override = "chilling"; B.crew.refreshStates(true);
+    C.update(1 / 30); C.update(1 / 30);
+    const heldWhileDriven = drove && driven.controlled && driven.sleep.slot === drivenSlot
+      && waiting.every(e => e.sleep.slot < 0 && !visible(e));
+    driven.owner.override = "sleeping"; B.crew.refreshStates(true); C.release();
+    C.update(1 / 30);
+    const reserved = many.filter(e => e.sleep.slot >= 0);
+    const uniqueAfterRelease = driven.sleep.slot === drivenSlot && reserved.length === 20
+      && new Set(reserved.map(e => e.sleep.slot)).size === 20;
     const waking = occupied[0], held = occupied.slice(1).map(e => [e, e.sleep.slot]);
     waking.owner.override = "chilling"; B.crew.refreshStates(true);
     C.update(1 / 30); C.update(1 / 30);
@@ -10936,10 +10982,10 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     const restoredSlots = sleepers.map(e => e.sleep.slot);
     H.setGameMode(false);
     const stableExit = normal() && sleepers.every((e, i) => e.sleep.slot === restoredSlots[i]);
-    return { lateSleepers, stable, capped, reused, hidden, restored, stableExit,
+    return { lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit,
       population: [worker, chiller, away, ...sleepers].map(e => ({ state: e.owner.state, mode: e.mode, active: e.active, visible: e.root.visible, bed: e.sleep.slot })) };
   })()`);
-  record("gorilla population: late-roster sleepers get exclusive beds; working, chilling and away owners get none; overflow waits at the 20-bed cap and reuses released beds", r.lateSleepers && r.stable && r.capped && r.reused, JSON.stringify(r));
+  record("gorilla population: late-roster sleepers get exclusive beds; working, chilling and away owners get none; overflow waits at the 20-bed cap, respects driven reservations and reuses released beds", r.lateSleepers && r.stable && r.capped && r.reused && r.heldWhileDriven && r.uniqueAfterRelease, JSON.stringify(r));
   record("gorilla population: island game mode hides companions and its exit immediately restores current working, chilling and sleeping gorillas; repeated exit keeps their beds", r.hidden && r.restored && r.stableExit, JSON.stringify(r));
 } };
 const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visits retain harmless weapons and both look modes while damage, health simulation, rage and grabs stay off, and ending a game clears its transient combat state", run: async b => {
@@ -14458,6 +14504,89 @@ const arcadeWalking ={ name: "arcade walking", why: "rule: W A S D walk the visi
   const ooga = await walkKeys(b, "portlandhodl", 0, -1, [0, 2.2], 0.5);
   record("arcade walking: W A S D walk the visitor's Ooga away, left, back and right on screen on the hall floor from two camera angles", allWalk(ooga), JSON.stringify(ooga));
 } };
+// Rule (#420): in Ooga Arcade a walking jump carries on as on the island; 2 takes the AK-47 in the hall; and from the
+// ghost arena the hall's games take no hover or tap through the rock and its speakers' lines do not show, while in the
+// hall a game in sight still shows its tooltip and a speaker close by its line.
+const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcade stopped dead in the air, the AK-47 could not be taken outside the arena, and from the arena the hall's games took hovers and taps and its speakers' lines showed through the rock", run: async (b) => {
+  // A clear 13 m run on the hall floor along the camera's forward, the run-up and the jump at walking speed, with no
+  // station near enough to take Space.
+  const start = await b.evaluate(`(() => {
+    const B = __ooga, A = B.arcade, a = B.cavemen.get("portlandhodl");
+    if (B.crew.player !== a) B.pilot.possess(a);
+    a.weapon.equipped = a.weapon.primaryEquipped = false;
+    for (let x = -14; x <= 14; x += 2) for (let z = 4; z >= -2; z -= 2) for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+      B.pilot.navigate({ position: { x, y: 0, z }, yaw, pitch: 0.2, dist: 4 }); B.advance(0.1, 1 / 60);
+      const c = B.camera, p = a.root.position, fx = c.target.x - c.position.x, fz = c.target.z - c.position.z, l = Math.hypot(fx, fz);
+      let clear = true;
+      for (let s = 0; s < 13 && clear; s += 0.25) {
+        const ax = p.x + fx / l * s, az = p.z + fz / l * s, bx = p.x + fx / l * (s + 0.25), bz = p.z + fz / l * (s + 0.25);
+        clear = A.walkable(ax, az, bx, bz, 0, a.bodyHeight, a) && !A.nearStation(bx, bz, 2.6);
+      }
+      if (clear) return { x: p.x, z: p.z };
+    }
+    return null;
+  })()`);
+  if (!start) throw new Error("arcade hall: no clear run on the hall floor");
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w", code: "KeyW" });
+  const walk = await b.evaluate(`(() => { const B = __ooga, p = B.pilot.player.root.position; B.advance(0.2, 1 / 60); const x = p.x, z = p.z; B.advance(0.2, 1 / 60); return Math.hypot(p.x - x, p.z - z) / 0.2; })()`);
+  await b.key(" ");
+  const air = await b.evaluate(`(() => {
+    const B = __ooga, a = B.pilot.player, p = a.root.position, x = p.x, z = p.z;
+    let t = 0, up = false, peak = 0;
+    for (let i = 0; i < 180; i++) { B.advance(1 / 60, 1 / 60); t += 1 / 60; peak = Math.max(peak, a.hop); if (a.hop > 0.05) up = true; else if (up) break; }
+    return { t: +t.toFixed(3), peak: +peak.toFixed(2), speed: +(Math.hypot(p.x - x, p.z - z) / t).toFixed(2) };
+  })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
+  record("arcade hall: a walking jump on the hall floor clears the step height and carries on at walking speed until it lands",
+    air.peak > 0.6 && air.speed > walk * 0.85, JSON.stringify({ start, walk: +walk.toFixed(2), air }));
+  await b.key("2");
+  const ak = await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; B.advance(0.3, 1 / 60); const hud = document.querySelector(".weapon-hud"); return { equipped: a.weapon.equipped, gun: a.parts.gun.visible, hud: !!hud && getComputedStyle(hud).display !== "none" }; })()`);
+  record("arcade hall: 2 puts the AK-47 in the Ooga's hands in the hall, with the weapon HUD showing", ak.equipped && ak.gun && ak.hud, JSON.stringify(ak));
+  // From the arena, facing the hall: a pixel the input picks a hall game at takes neither a hover nor a tap, and a line
+  // said over the stage does not show.
+  const HALL_KINDS = '["cabinet","machine","snack","prizes","wheel","ride","sign","changer","muncher","door","fame","disco"]';
+  // The first pixel, scanning the screen, the input picks a target at whose kind `wanted` names.
+  const findPick = (wanted) => `(() => {
+    const B = __ooga, wanted = ${wanted};
+    for (let y = 8; y < innerHeight; y += 6) for (let x = 8; x < innerWidth; x += 6) {
+      const hit = B.input.pick(x, y);
+      if (hit && wanted.includes(hit.owner.kind)) return { x, y, kind: hit.owner.kind };
+    }
+    return null;
+  })()`;
+  const inArena = await b.evaluate(`(() => {
+    const B = __ooga, H = BL.arcadeModels.HAUNT, S = BL.arcadeModels.STAGE;
+    B.pilot.navigate({ position: { x: H.arena.x - 16, y: H.y, z: H.arena.z }, yaw: Math.PI / 2, pitch: 0.05, dist: 4 }); B.advance(0.5, 1 / 60);
+    return { armed: BL.scenes.arcade.debug.arena.armed, hidden: B.arcade.pointHidden(S.x, 2.2, S.z) };
+  })()`);
+  const through = await b.evaluate(findPick(HALL_KINDS));
+  let hovered = null, tapped = null;
+  if (through) {
+    await b.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: through.x, y: through.y });
+    hovered = await b.evaluate(`(() => { __ooga.advance(0.2, 1 / 60); return document.getElementById("tooltip").hidden; })()`);
+    await b.click(through.x, through.y);
+    tapped = await b.evaluate(`(() => { const B = __ooga; B.advance(0.5, 1 / 60); return { scene: B.scene, moving: !!B.transitioning }; })()`);
+  }
+  record("arcade hall: from the ghost arena a hall game under the pointer takes no tooltip and no tap through the rock, and a line said over the stage does not show",
+    inArena.armed && inArena.hidden === true && !!through && hovered === true && tapped.scene === "arcade" && !tapped.moving,
+    JSON.stringify({ inArena, through, hovered, tapped }));
+  // Back in the hall facing the stage: a cabinet in sight shows its tooltip, and a line over the stage shows.
+  const inHall = await b.evaluate(`(() => {
+    const B = __ooga, S = BL.arcadeModels.STAGE;
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 4 }, yaw: 0, pitch: 0.12, dist: 5 }); B.advance(0.5, 1 / 60);
+    return { armed: BL.scenes.arcade.debug.arena.armed, hidden: B.arcade.pointHidden(S.x, 2.2, S.z) };
+  })()`);
+  const cabinet = await b.evaluate(findPick('["cabinet"]'));
+  let shown = null;
+  if (cabinet) {
+    await b.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: cabinet.x, y: cabinet.y });
+    shown = await b.evaluate(`(() => { __ooga.advance(0.2, 1 / 60); const t = document.getElementById("tooltip"); return t.hidden ? null : document.getElementById("tooltip-text").textContent; })()`);
+    await b.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 2, y: 2 });
+  }
+  await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; B.crew.selectWeapon(0, a); B.advance(0.2, 1 / 60); })()`);
+  record("arcade hall: back in the hall a cabinet in sight shows its tooltip and a line over the stage shows again",
+    !inHall.armed && inHall.hidden === false && !!cabinet && typeof shown === "string" && shown.includes("to play"), JSON.stringify({ inHall, cabinet, shown }));
+} };
 const arcadePlay = { name: "arcade play", why: "rule: a cabinet starts its game, the game's exit comes back to that cabinet as the same Ooga, and Escape leaves for the island", run: async (b) => {
   await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), s = window.BL.arcadeModels.CABINETS[0].play; if (B.crew.player !== a) B.pilot.possess(a); a.root.position.x = s.x; a.root.position.z = s.z; B.advance(0.2, 1 / 60); })()`);
   await b.key(" ");
@@ -16317,7 +16446,7 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     traffic.rows.every(row => row.waiting >= 1.1 && row.drift < 1e-6 && row.retained && row.released && row.raised > 0.5 && row.walked > 2 && !row.replans && !row.resets)
     && traffic.clear.every(row => !row.waited && row.moved), JSON.stringify(traffic));
 } }] });
-scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking] });
+scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach] });
 scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, e = C.list[0], owner = e.owner, m = B.headquarters.entropyLab.mouth;
@@ -19404,7 +19533,7 @@ scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [b
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
-scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadePlay, trip("arcade")] });
+scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadePlay, trip("arcade")] });
 scene("skee", { steps: [carnivalPlay("skee", 0.5), trip("skee")] });
 scene("hoops", { steps: [carnivalPlay("hoops", 0.2), trip("hoops")] });
 scene("shy", { steps: [carnivalPlay("shy", 0.7), trip("shy")] });
