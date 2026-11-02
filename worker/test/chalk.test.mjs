@@ -10,7 +10,7 @@ import { getPlayer } from "../src/db.js";
 import { sfuClient } from "../src/sfu.js";
 import * as studio from "../src/studio-policy.js";
 
-const { CHALK, CHALK_BURST, CHALK_FEATURE, CHALK_IDLE_MS } = protocol;
+const { CHALK, CHALK_BURST, CHALK_FEATURE, CHALK_IDLE_MS, CHALK_TELL_MS } = protocol;
 
 const host = () => {
   const accepted = [], saved = new Map(), clock = { at: 1e12 };
@@ -120,10 +120,18 @@ test("room: the board lets go when its writer walks off, changes body or zone, l
   send(r, b, { t: "chalk", k: "line", m: "c", p: [5, 5, 6, 6] });
   assert.equal(heard(a, "chalk-lock").at(-1).id, 2);
   assert.deepEqual(heard(a, "chalk").at(-1), { t: "chalk", k: "line", m: "c", p: [5, 5, 6, 6], id: 2 });
-  // A burst past the rate is not applied: the writer gets the room's board instead.
-  const before = r.chalk.points;
+  // A burst past the rate is dropped unanswered; the writer's next edit gets the room's board back instead of being
+  // applied; and no stream of edits gets more than one board every CHALK_TELL_MS.
+  const boards = (ws) => heard(ws, "chalk-board").length, before = r.chalk.points, told = boards(b);
   for (let i = 0; i < CHALK_BURST + 5; i++) send(r, b, { t: "chalk", k: "more", p: [7, i] });
-  assert.ok(r.chalk.points < before + CHALK_BURST + 5 && heard(b, "chalk-board").at(-1).editor === 2);
+  assert.ok(r.chalk.points < before + CHALK_BURST + 5 && boards(b) === told, "the burst's tail is dropped, with no board sent");
+  h.clock.at += 1000;
+  const points = r.chalk.points;
+  send(r, b, { t: "chalk", k: "more", p: [8, 8] });
+  assert.ok(boards(b) === told + 1 && heard(b, "chalk-board").at(-1).editor === 2 && r.chalk.points === points, "the next edit gets the board instead");
+  const aTold = boards(a);
+  for (let i = 0; i < 40; i++) { h.clock.at += 100; send(r, a, { t: "chalk", k: "back" }); }
+  assert.equal(boards(a) - aTold, 4000 / CHALK_TELL_MS, "four seconds of edits from a page without the board get a board every CHALK_TELL_MS");
   r.webSocketClose(b);
   await h.settle();
   assert.equal(heard(a, "chalk-lock").at(-1).id, 0, "leaving the island");

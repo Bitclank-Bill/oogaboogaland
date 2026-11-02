@@ -122,13 +122,16 @@ export const GHOST_BURST = 24;
 // Ooga stands at the board in the island's `outside` zone (chalk-board.js `near`, against the last pose it sent);
 // moving off, changing zone or body, or leaving lets it go. A holder silent for CHALK_IDLE_MS can be taken over by the
 // next Ooga to ask, so nobody holds it for good, with no timer. Edits arrive batched (a line's points, typed
-// characters) at most CHALK_HZ a second; an edit that does not apply, or one over the rate, sends the holder the
-// board as the room has it instead. The board goes to storage at most every CHALK_SAVE_MS while someone writes, at
+// characters) at most CHALK_HZ a second. An edit over the rate is dropped unanswered; one that does not apply, or one
+// from a holder whose earlier edits were dropped, sends the holder the board as the room has it instead (CHALK_TELL_MS). The board goes to storage at most every CHALK_SAVE_MS while someone writes, at
 // once on a wipe, and when the holder lets go, never for each point.
 export const CHALK_HZ = 30;
 export const CHALK_BURST = 30;
 export const CHALK_IDLE_MS = 60000;
 export const CHALK_SAVE_MS = 5000;
+// A board sent back to correct a page (an edit that did not apply, or one from a page without the board) reaches that
+// page at most once every CHALK_TELL_MS, so no stream of edit frames makes the room send a full board for each.
+export const CHALK_TELL_MS = 2000;
 export const CHALK = globalThis.BL.chalkBoard;
 export const CHALK_FEATURE = CHALK.FEATURE;
 // A follower's batch: up to GHOST_BATCH targets, each a ghost id (0 the boss) and its summed damage, as one report.

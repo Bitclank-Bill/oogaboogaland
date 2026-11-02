@@ -26,7 +26,7 @@ import {
   NPC_FRAME_MAX, NPC_HZ, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
   DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST,
   GHOST_MAGIC, GHOST_FRAME_MAX, GHOST_FRAME_HZ, GHOST_FRAME_BURST, inGhostArena, ghostCandidate,
-  CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_FEATURE,
+  CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
@@ -819,16 +819,22 @@ export class Room extends DurableObject {
       this.chalkGrant(p, now);
       return;
     }
+    // An edit over the rate is dropped unanswered, and a holder's page is then behind the room: its next edit gets the
+    // board back instead of being applied.
+    if (!paced) {
+      if (holding) p.chalkBehind = true;
+      return;
+    }
     // An edit from a page that does not hold the board: the room slept and forgot the holder, or the page lost it and
     // has not heard yet. A free board goes back to an Ooga still standing at it; otherwise the page gets the board
     // as it is and who holds it.
     if (!holding) {
-      if (refusal || taken) return this.send(p.ws, { t: "chalk-board", marks: this.chalk.marks, editor: editor && other ? editor.id : 0 });
+      if (refusal || taken) return this.chalkTell(p, editor && other ? editor.id : 0, now);
       this.chalkGrant(p, now);
     } else if (refusal) return this.chalkLetGo(p);
     const held = this.chalkEditor;
     held.at = now;
-    if (!paced || C.apply(this.chalk, msg, held.session)) return this.chalkResync(p);
+    if (p.chalkBehind || C.apply(this.chalk, msg, held.session)) return this.chalkResync(p, now);
     this.broadcast({ ...msg, id: p.id }, p.ws);
     this.chalkDirty = true;
     if (msg.k === "wipe") this.chalkSave();
@@ -841,10 +847,19 @@ export class Room extends DurableObject {
     this.broadcast({ t: "chalk-lock", id: p.id });
   }
 
-  // The holder's page and the room disagree: the room's board wins, and the holder starts a fresh line.
-  chalkResync(p) {
-    this.send(p.ws, { t: "chalk-board", marks: this.chalk.marks, editor: p.id });
-    this.chalkEditor.session = CHALK.session(this.chalk);
+  // The board as the room has it, to one page, at most once every CHALK_TELL_MS; whether it went.
+  chalkTell(p, editor, now) {
+    if (now - (p.chalkToldAt || 0) < CHALK_TELL_MS) return false;
+    p.chalkToldAt = now;
+    this.send(p.ws, { t: "chalk-board", marks: this.chalk.marks, editor });
+    return true;
+  }
+
+  // The holder's page and the room disagree: the room's board wins, and the holder starts a fresh line. Until it can
+  // be told, the holder stays behind and its edits are not applied.
+  chalkResync(p, now) {
+    p.chalkBehind = !this.chalkTell(p, p.id, now);
+    if (!p.chalkBehind) this.chalkEditor.session = CHALK.session(this.chalk);
   }
 
   chalkLetGo(p) {
