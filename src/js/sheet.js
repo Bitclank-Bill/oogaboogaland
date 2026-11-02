@@ -4,6 +4,8 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const KEY = "oogaboogaland.sheet.v1", NAMES = ["bananas", "roster", "players", "loot", "chat"], DOCKS = ["left", "right", "bottom"], TAB_EDGE = 41;
+  // A touch drawer's sticks ride this far above it (--drawer-lift), and need this much of the screen left over it.
+  const STICK_CLEAR = 51, STICK_ROOM = 320;
   const visible = (panel) => {
     const owner = panel.closest(".sheet");
     return !!owner && !panel.hidden && !owner.hidden && owner.dataset.open === "true" && !!owner.getClientRects().length;
@@ -16,7 +18,7 @@
     const root = document.getElementById("sheet"), parent = root.parentElement;
     const content = root.querySelector(".sheet-content"), nav = root.querySelector(".sheet-panels"), footer = root.querySelector(".sheet-foot");
     const panels = [...content.children], templates = [...nav.children].map((tab) => tab.cloneNode(true));
-    const windows = [], listeners = [], bottom = window.matchMedia("(width < 1140px)");
+    const windows = [], listeners = [], bottom = window.matchMedia("(width < 1140px)"), coarse = window.matchMedia("(pointer: coarse)");
     let serial = 0, gesture = null, mergeTarget = null, suppressClick = false, hidden = false, folded = false, disposed = false, lootCount = 0, saveTimer = 0;
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(KEY)); } catch { /* Storage may be unavailable. */ }
@@ -34,7 +36,7 @@
       window.clearTimeout(saveTimer); saveTimer = 0;
       if (disposed) return;
       try {
-        localStorage.setItem(KEY, JSON.stringify({ open: main.open, tab: main.tab,
+        localStorage.setItem(KEY, JSON.stringify({ open: main.open, tab: main.tab, drawer: 2,
           height: savedHeight, rect: main.rect, dock: main.dock, windows: windows.filter((w) => w !== main).map((w) => ({ open: w.open, tab: w.tab, rect: w.rect, dock: w.dock })) }));
       } catch { /* Storage may be unavailable. */ }
     };
@@ -45,7 +47,10 @@
       const v = window.visualViewport;
       return { x: v?.offsetLeft || 0, y: v?.offsetTop || 0, width: v?.width || window.innerWidth, height: v?.height || window.innerHeight };
     };
+    // A phone's panels stay a full-width drawer at the foot of the screen: only their height moves.
+    const pinned = () => coarse.matches && bottom.matches;
     const nearestDock = (r) => {
+      if (pinned()) return "bottom";
       const b = viewport(), left = Math.abs(r.x - b.x), right = Math.abs(b.x + b.width - r.x - r.width);
       const bottom = Math.abs(b.y + b.height - r.y - r.height);
       return bottom < left && bottom < right ? "bottom" : left < right ? "left" : "right";
@@ -58,21 +63,28 @@
         for (const name of ["left", "top", "width", "height"]) w.node.style.removeProperty(name);
         w.node.dataset.sized = "false";
         w.node.dataset.dock = bottom.matches ? "bottom" : "right";
+        if (w.node === root) { root.dataset.sticks = "true"; parent.style.removeProperty("--drawer-lift"); }
         return;
       }
       const b = viewport(), preferred = w.rect, r = w.bounds || (w.bounds = { ...preferred });
-      if (!w.dock) w.dock = nearestDock(preferred);
+      if (!w.dock || pinned()) w.dock = nearestDock(preferred);
       const atBottom = w.dock === "bottom", width = Math.max(1, b.width - (atBottom ? 0 : TAB_EDGE)), height = Math.max(1, b.height - (atBottom ? TAB_EDGE : 0));
       // Fitting a keyboard-reduced viewport must not overwrite the saved size.
       // Minimum sizes belong to explicit resizing, not closing a short default drawer.
-      r.width = Math.min(width, Math.max(1, preferred.width));
+      r.width = pinned() ? width : Math.min(width, Math.max(1, preferred.width));
       r.height = Math.min(height, Math.max(1, preferred.height));
-      r.x = w.dock === "left" ? b.x : w.dock === "right" ? b.x + b.width - r.width : Math.max(b.x, Math.min(b.x + b.width - r.width, preferred.x));
+      r.x = w.dock === "left" || pinned() ? b.x : w.dock === "right" ? b.x + b.width - r.width : Math.max(b.x, Math.min(b.x + b.width - r.width, preferred.x));
       r.y = atBottom ? b.y + b.height - r.height : Math.max(b.y, Math.min(b.y + b.height - r.height, preferred.y));
       w.node.dataset.sized = "true"; w.node.dataset.dock = w.dock;
       w.node.style.left = `${r.x}px`; w.node.style.top = `${r.y}px`;
       w.node.style.width = `${r.width}px`; w.node.style.height = `${r.height}px`;
       w.node.style.setProperty("--sheet-tab-step", `${Math.min(atBottom ? 72 : 64, (atBottom ? r.width : r.height - 7) / Math.max(1, w.tabCount || NAMES.length))}px`);
+      if (w.node === root) {
+        const lift = atBottom && r.height <= b.height - STICK_ROOM;
+        root.dataset.sticks = String(lift);
+        if (lift) parent.style.setProperty("--drawer-lift", `${r.height + STICK_CLEAR}px`);
+        else parent.style.removeProperty("--drawer-lift");
+      }
     };
     const placeFooter = () => {
       const owner = isOpen(main) ? main : [...windows].reverse().find(isOpen) || main;
@@ -101,7 +113,9 @@
     else root.style.removeProperty("--sheet-height");
     root.dataset.paired = "false";
     root.dataset.open = String(saved?.open === true);
-    const main = makeWindow(root, NAMES.includes(saved?.tab) ? saved.tab : "roster", readRect(saved?.rect), saved?.dock);
+    // A phone's closed drawer used to save its size as if the visitor had chosen it; those saves count for nothing.
+    const staleDrawer = coarse.matches && saved?.dock === "bottom" && saved?.drawer !== 2;
+    const main = makeWindow(root, NAMES.includes(saved?.tab) ? saved.tab : "roster", staleDrawer ? null : readRect(saved?.rect), staleDrawer ? null : saved?.dock);
     const addWindow = (tab, rect, dock, open = true) => {
       const node = document.createElement("aside"), body = document.createElement("div"), holder = document.createElement("div");
       const tabs = document.createElement("nav");
@@ -164,7 +178,9 @@
     };
     const close = (w) => {
       if (w.node.contains(document.activeElement)) document.activeElement.blur();
-      measure(w); w.open = false;
+      // A phone's untouched drawer stays untouched, so the sticks keep riding above it.
+      if (!coarse.matches || w.node.dataset.dock !== "bottom") measure(w);
+      w.open = false;
       refresh(); save();
     };
     const remove = (w) => {
@@ -252,7 +268,7 @@
     };
     on(window, "pointermove", (e) => {
       const g = gesture;
-      if (!g || e.pointerId !== g.id) return;
+      if (!g || e.pointerId !== g.id || g.tab && pinned()) return;
       const dx = e.clientX - g.x, dy = e.clientY - g.y;
       if (!g.moved && dx * dx + dy * dy < 36) return;
       e.preventDefault(); e.stopPropagation();

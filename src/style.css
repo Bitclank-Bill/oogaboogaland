@@ -59,6 +59,12 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* An installed web app on iOS can lay out smaller than the screen under height: 100%; 100vh fills it. */
+@media (display-mode: standalone) {
+  html,
+  body { height: 100vh; }
+}
+
 button,
 input,
 select {
@@ -728,25 +734,44 @@ body[data-active-scene="arcade"] .magazine-hud {
 .sheet[data-dock="bottom"][data-open="true"]:not([hidden])~.joysticks,
 .sheet[data-dock="bottom"][data-open="true"]:not([hidden])~.bottom-hud>.act { display: none; }
 
-/* On a phone the untouched drawer sits above the sticks and drops Feed the Ooga Boogas, so the
-   roster of who's talking stays up while the visitor keeps walking. A resized drawer still covers
-   the sticks, and they step aside as before. */
+/* On a phone the drawer stays at the foot of the screen and pushes the sticks and the act button up
+   over its tabs, dropping Feed the Ooga Boogas, so the roster of who's talking stays up while the
+   visitor keeps walking. sheet.js writes a resized drawer's --drawer-lift, and takes data-sticks away
+   from one too tall to leave them room: they step aside as before, as they do for the chat's keyboard. */
 @media (pointer: coarse) {
-  .sheet[data-dock="bottom"][data-sized="false"] {
-    --sheet-stick-clear: calc(max(48px, var(--stick-inset) - var(--home-chrome)) + var(--stick-size) + 12px + var(--safe-bottom));
-    bottom: max(var(--chat-keyboard, 0px), var(--sheet-stick-clear));
-    height: min(36vh, calc(100% - var(--sheet-stick-clear) - 86px - var(--safe-top)));
-    max-height: calc(100% - var(--sheet-stick-clear) - 86px - var(--safe-top));
+  :root {
+    --drawer-height: min(24vh, calc(100dvh - var(--stick-size) - 51px - 86px - var(--safe-top)));
+    --drawer-lift: calc(var(--drawer-height) + 51px);
   }
 
-  .sheet[data-dock="bottom"][data-sized="false"][data-open="false"] {
-    transform: translateY(calc(100% + var(--sheet-stick-clear)));
-  }
+  .sheet[data-dock="bottom"][data-sized="false"] { height: var(--drawer-height); }
 
   .sheet[data-dock="bottom"] .sheet-foot > .feed-open { display: none; }
 
-  .sheet[data-dock="bottom"][data-sized="false"][data-open="true"]:not([hidden])~.joysticks,
-  .sheet[data-dock="bottom"][data-sized="false"][data-open="true"]:not([hidden])~.bottom-hud>.act { display: block; }
+  /* The drawer's foot stays short: its last row sits just over the home indicator. */
+  .sheet[data-dock="bottom"] .sheet-body { padding-bottom: 0; }
+  .sheet[data-dock="bottom"] .sheet-foot {
+    gap: 0 12px;
+    padding: 2px 14px max(2px, calc(var(--safe-bottom) - 20px));
+  }
+  .sheet[data-dock="bottom"] .foot-button { min-height: 30px; }
+  .sheet[data-dock="bottom"] .sheet-foot .link { min-height: 26px; }
+
+  .sheet[data-dock="bottom"][data-sticks="true"][data-open="true"]:not([hidden])~.joysticks,
+  .sheet[data-dock="bottom"][data-sticks="true"][data-open="true"]:not([hidden])~.bottom-hud>.act { display: block; }
+
+  .sheet[data-dock="bottom"][data-sticks="true"][data-open="true"]:not([hidden])~.joysticks .joystick { bottom: var(--drawer-lift); }
+  .sheet[data-dock="bottom"][data-sticks="true"][data-open="true"]:not([hidden])~.bottom-hud>.act {
+    bottom: calc(var(--drawer-lift) + var(--act-inset) - var(--stick-inset));
+  }
+
+  .sheet[data-dock="bottom"][data-sticks="true"][data-open="true"][style*="--chat-keyboard"]:not([hidden])~.joysticks,
+  .sheet[data-dock="bottom"][data-sticks="true"][data-open="true"][style*="--chat-keyboard"]:not([hidden])~.bottom-hud>.act { display: none; }
+}
+
+/* Past 720px the act button stands in the bottom stack, so the stack rides up instead. */
+@media (pointer: coarse) and (min-width: 721px) {
+  .sheet[data-dock="bottom"][data-sticks="true"][data-open="true"]:not([hidden])~.bottom-hud { bottom: var(--drawer-lift); }
 }
 
 .sheet[data-dock="bottom"] .sheet-toggle {
@@ -788,6 +813,13 @@ body[data-active-scene="arcade"] .magazine-hud {
 .sheet[data-sized="true"][data-dock="bottom"] .sheet-toggle {
   left: calc(var(--sheet-tab-index, 0) * var(--sheet-tab-step, 72px));
   width: min(64px, var(--sheet-tab-step, 72px));
+}
+/* A phone's closed tabs lie along the foot of the screen, clear of its rounded corner. */
+@media (pointer: coarse) {
+  .sheet[data-dock="bottom"] .sheet-toggle { left: calc(16px + var(--safe-left) + var(--sheet-tab-index, 0) * 72px); }
+  .sheet[data-sized="true"][data-dock="bottom"] .sheet-toggle {
+    left: calc(16px + var(--safe-left) + var(--sheet-tab-index, 0) * var(--sheet-tab-step, 72px));
+  }
 }
 .sheet[data-sized="true"] .sheet-toggle svg { max-height: 100%; }
 .sheet.sheet-moving { transition: none; }
