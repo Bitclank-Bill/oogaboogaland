@@ -299,7 +299,7 @@
   const groundFor = (x, z, feet) => footing.supportAt(x, z, feet);
   const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3), y);
   const useNear = (x, z, reach, feet = feetOf()) => {
-    // Settled on the cairn's head, the act opens the secret's offer (never while airborne: `secret.here` needs the
+    // Settled on the statue's head, the act opens the secret's offer (never while airborne: `secret.here` needs the
     // feet supported on the head).
     if (secret.here && !secret.open) { openSecret(); return true; }
     const prop = props.near(x, z, feet, Math.max(0, reach - 1.4));
@@ -817,9 +817,10 @@
   const buildAtrium = () => {
     const A = BL.genesisAtrium, L = A.layout({ entries: catalogue.entries, museum: MU, eras: GW.ERAS });
     atrium = A.build({ M, createNode, addChild, place, label: BL.factoryModels.label, top: ISLAND_TOP, layout: L, eraColor: (n) => GW.ERAS[n].theme.bank });
-    // An obstacle with a rise stops a body only below its top; the cairn's tiers are also surfaces to stand on.
+    // An obstacle with a rise stops a body only below its top; the statue's steps, shoulders and head are also
+    // surfaces to stand on.
     for (const o of L.obstacles) built.obstacles.push(o.rise === undefined ? o : { ...o, top: ISLAND_TOP + o.rise });
-    built.areas = L.areas.map((a) => ({ ...a, top: ISLAND_TOP + a.rise, dock: { x: L.cairn.x, z: L.cairn.z + L.cairn.base / 2 + 1.2, facing: Math.PI } }));
+    built.areas = L.areas.map((a) => ({ ...a, top: ISLAND_TOP + a.rise, dock: { x: L.monument.x, z: L.monument.z + L.monument.base / 2 + 1.2, facing: Math.PI } }));
     built.atriumProps = atrium.picks.map((p) => {
       const e = catalogue.get(p.id), prop = props.register({ id: `atrium-${p.id}`, era: e.era, year: e.year, title: e.title, label: `${e.title} (${e.year})`, sourceKeys: e.sources.map((x) => x.key),
         at: { x: p.at.x, y: ISLAND_TOP, z: p.at.z }, reach: 2.4, hint: e.trail ? `step ${e.step}, ${e.title} (${e.year})` : `${e.title} (${e.year}), after the paper`, opens: p.id, onUse: () => ({ caption: e.title }) });
@@ -886,14 +887,14 @@
     else if (r.caption) { captionKey = ""; setCaption(`prop-${prop.id}`, r.caption); }
   };
 
-  // --- The cairn's secret: a modern bonus game, outside the museum's history -----------------------------------
-  // Standing settled on the cairn's head (genesisAtrium.onHead) shows the hint; the act opens an offer, Play or Stay,
+  // --- The statue's secret: a modern bonus game, outside the museum's history -----------------------------------
+  // Standing settled on the statue's head (genesisAtrium.onHead) shows the hint; the act opens an offer, Play or Stay,
   // and nothing launches by itself. Play opens Block Frenzy (scene-block.js, its own full game) with an explicit
   // return here (`world.genesisBlock`: the Ooga, the head, the view), which scene-block.js reads for its exit. A switch
   // that is refused, or a preparation that fails (the director fades back and calls `stay`), leaves the visitor on
   // the head to try again. No era, date, citation or claim about who made it.
   const SECRET = { id: "secret" }, secret = { here: false, open: false, el: null };
-  const settledOnHead = (d) => !!(atrium && built.atriumLayout && BL.genesisAtrium.onHead(built.atriumLayout.cairn.head, ISLAND_TOP,
+  const settledOnHead = (d) => !!(atrium && built.atriumLayout && BL.genesisAtrium.onHead(built.atriumLayout.monument.head, ISLAND_TOP,
     d.root.position.x, d.root.position.z, d.root.position.y - d.baseY, d.hop, d.hopV, !!(d.jet && d.jet.power > 0)));
   const secretNote = (text) => { const n = secret.el && secret.el.querySelector("[data-secret-note]"); if (n) n.textContent = text; };
   const openSecret = () => {
@@ -916,7 +917,7 @@
   };
   const playSecret = () => {
     if (!avatar || !built.atriumLayout) return;
-    const h = built.atriumLayout.cairn.head;
+    const h = built.atriumLayout.monument.head;
     world.genesisBlock = { name: playerName, x: (h.x0 + h.x1) / 2, z: (h.z0 + h.z1) / 2, yaw: avatar.root.rotation.y, view: pilot.mode, pitch: pilot.viewPitch };
     world.pilot = playerName; arrivedPilot = playerName;
     let started = false;
@@ -980,7 +981,7 @@
       pilot.navigate(walkPose);
       return;
     }
-    // The cairn's secret, while settled on its head; leaving the head hides it.
+    // The statue's secret, while settled on its head; leaving the head hides it.
     secret.here = settledOnHead(driven);
     if (secret.here) {
       if (walk.prop !== SECRET) { walk.prop = SECRET; hud.hint(`Secret found · Play Block Frenzy · ${COARSE ? "tap PLAY" : "press Space"}`, 600000); hud.setAct("PLAY"); }
@@ -1416,7 +1417,7 @@
       secret.el.addEventListener("close", secretClosed, { signal: ctx.signal });
       secret.el.addEventListener("click", (e) => { const b = e.target.closest("[data-secret]"); if (!b) return; if (b.dataset.secret === "play") playSecret(); else secret.el.close(); }, { signal: ctx.signal });
     }
-    // Back from Block Frenzy through the cairn: the same Ooga on the head, the view it had.
+    // Back from Block Frenzy through the statue: the same Ooga on the head, the view it had.
     const back = ctx.from === "block" && world.genesisBlock;
     world.genesisBlock = null;
     if (back && avatar && back.name === playerName && arrive(back.x, back.z, back.yaw)) {

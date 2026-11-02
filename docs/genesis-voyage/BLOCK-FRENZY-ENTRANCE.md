@@ -1,4 +1,4 @@
-# The cairn's secret: a proposed alternate entrance to Block Frenzy
+# The statue's secret: a proposed alternate entrance to Block Frenzy
 
 Prepared with AI assistance (Claude Code). It's a proposal on the fork (`gv/ovh-block-frenzy`), behind the Genesis WIP
 flag. It hasn't been reviewed or approved.
@@ -16,13 +16,11 @@ and makes no claim about who made it.
 
 ## The entrance
 
-1. **The head:** the cairn's gold block, `genesisAtrium.layout().cairn.head`. Normal movement reaches it:
-   - the plinth is a jump from the floor;
-   - the stones are steps;
-   - the head is a jump from the top stone;
-   - a jetpack can land on it.
-
-   The footing's obstacles may carry a `top`, which is what makes this work.
+1. **The head:** the Satoshi statue's head, `genesisAtrium.layout().monument.head`.
+   - The statue is an original, about 12 m tall, chosen by Billy as option C. It replaced the cairn.
+   - The plinth's steps walk up to its feet, and its robe is in the way.
+   - The shoulders and the head are surfaces a jetpack lands on. Genesis's Oogas always wear one.
+   - The footing's obstacles may carry a `top`, which is what makes landing work.
 2. **The hint:** shown only while `genesisAtrium.onHead` holds:
    - inside the head's bounds, a little in from the edge;
    - feet on its top and supported (`hop` 0, small vertical speed);
@@ -49,7 +47,7 @@ and makes no claim about who made it.
   - Only a body settled on the head counts: not hovering, falling, jumping, under thrust, beside it, at the edge or on
     the stone below.
   - The arcade and island exits are unchanged, and the museum return needs the marker.
-  - The cairn climbs and lands as described.
+  - The statue's steps, robe, shoulders and head behave as described.
 - **One short browser probe:**
   - discovery after a real fall onto the head (debug placement 1.5 m above it);
   - Space opens the offer and holds the walk;

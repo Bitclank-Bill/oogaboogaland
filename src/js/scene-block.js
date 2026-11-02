@@ -2009,7 +2009,7 @@
 
   const enter = (ctx) => {
     ({ renderer, game, world, go } = ctx);
-    // Started from the Genesis museum's cairn (its explicit return, `world.genesisBlock`), the exit goes back there;
+    // Started from the Genesis museum's statue (its explicit return, `world.genesisBlock`), the exit goes back there;
     // from the arcade, back to it; otherwise to the island.
     home = ctx.from === "arcade" ? "arcade" : ctx.from === "genesis" && world.genesisBlock ? "genesis" : "hub";
     hudMod.leaveTo("block", home);

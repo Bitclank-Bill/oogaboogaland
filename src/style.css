@@ -10248,7 +10248,7 @@ body.genesis-bench-open .genesis-bar, body.genesis-bench-open .genesis-chain { d
 .menu-list .tag-context, .menu-list .tag-demonstration, .menu-list .tag-bibliography { color: #d2cbbd; }
 /* genesis-timeline:end */
 
-/* The cairn's secret (scene-genesis.js): the offer to play Block Frenzy, Play or Stay. */
+/* The statue's secret (scene-genesis.js): the offer to play Block Frenzy, Play or Stay. */
 .genesis-secret { width: min(380px, calc(100vw - 24px)); pointer-events: auto; }
 .genesis-secret .secret-text { margin: 8px 0 4px; font-size: 15px; color: #f5efe3; }
 .genesis-secret .secret-note { margin: 0 0 12px; font-size: 13px; color: #d9cdb6; }
