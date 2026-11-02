@@ -19,22 +19,24 @@
   const BL = window.BL = window.BL || {};
   // The spiral: from the south-west (where Era 0's gallery begins), clockwise seen from above (north is -z), inward
   // from R0 to R1 and rising from H0 to H1; the paper's dais in the middle; the map's markers on a ring at MAP_R.
-  const R0 = 15, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 21, PLINTH = 1.3, DAIS = 3.2;
+  const R0 = 13, R1 = 7, H0 = 0.5, H1 = 1.7, START = -2.25, SWEEP = 5.0, MAP_R = 16, PLINTH = 1.3, DAIS = 3.2;
   // The view from the arrival to the white timeline screen (scene-genesis.js ENTRY and LEGEND) stays clear.
-  const CLEAR = { x0: -13, x1: 13, z0: 47, z1: 66 };
+  // (from the atrium's south wall, as scene-genesis.js places them: the screen 26 m in, the arrival 12 m in).
+  const clearOf = (A) => ({ x0: -10, x1: 10, z0: A.z1 - 27, z1: A.z1 - 9 });
+  const CLEAR = clearOf({ z1: 57 });
   // The Satoshi statue's parts as a body meets them, in metres from its centre (+z the way it faces), shared by its
   // mesh and its footing: the plinth's three steps (each a step up), the robe (in the way up to the shoulders), the
   // shoulders and the head (surfaces to land on), and the whitepaper held out in front. `hx`, `hz` half extents, `dz`
   // an offset forward, `rise` the top above the floor; `stand` a surface, `block` an obstacle up to `rise`, `above`
   // standing on another part rather than the floor.
-  const STATUE_K = 1.15, STATUE_PLINTH = 1.5;
+  const STATUE_K = 1.0, STATUE_PLINTH = 1.5;
   const FIGURE = { hem: [2.6, 2.0, 1.2], lower: [2.4, 1.8, 2.0], mid: [2.2, 1.6, 2.0], chest: [2.4, 1.5, 1.6], shoulders: [3.0, 1.6, 0.6], neck: [0.8, 0.8, 0.4], head: [1.3, 1.3, 1.4] };
   const statueParts = () => {
     const k = STATUE_K, P = STATUE_PLINTH, parts = [], ys = {};
     let y = 0;
     for (const key of ["hem", "lower", "mid", "chest", "shoulders", "neck", "head"]) { ys[key] = y; y += FIGURE[key][2]; }
     const top = (key) => P + (ys[key] + FIGURE[key][2]) * k, half = (key, i) => FIGURE[key][i] / 2 * k;
-    [[2.8, 0.5], [2.4, 1.0], [2.0, P]].forEach(([h, rise], i) => parts.push({ id: `step-${i}`, hx: h, hz: h, dz: 0, rise, stand: true, block: true, above: i > 0 }));
+    [[2.4, 0.5], [2.05, 1.0], [1.7, P]].forEach(([h, rise], i) => parts.push({ id: `step-${i}`, hx: h, hz: h, dz: 0, rise, stand: true, block: true, above: i > 0 }));
     parts.push({ id: "robe", hx: half("hem", 0), hz: half("hem", 1), dz: 0, rise: top("shoulders"), stand: false, block: true, above: true });
     parts.push({ id: "shoulders", hx: half("shoulders", 0), hz: half("shoulders", 1), dz: 0, rise: top("shoulders"), stand: true, block: false, above: true });
     parts.push({ id: "head", hx: half("head", 0), hz: half("head", 1), dz: 0, rise: top("head"), stand: true, block: true, above: true });
@@ -65,7 +67,7 @@
     // The Satoshi statue behind the dais, facing the paper's way (+z), inside the spiral's innermost turn: its plinth's
     // steps walk up from the floor, its robe is in the way, and its shoulders and head (`monument.head`) are surfaces
     // a jetpack lands on, since an obstacle with a top no longer stops feet that are within a step of it.
-    const S = statueParts(), monument = { x: 0, z: -5.8, base: 5.6, parts: S.parts }, areas = [];
+    const S = statueParts(), monument = { x: 0, z: -5.6, base: 4.8, parts: S.parts }, areas = [];
     for (const t of S.parts) {
       const box = { x0: monument.x - t.hx, x1: monument.x + t.hx, z0: monument.z + t.dz - t.hz, z1: monument.z + t.dz + t.hz };
       if (t.stand) areas.push({ id: `statue-${t.id}`, ...box, rise: t.rise });
@@ -80,7 +82,7 @@
       const a = Math.atan2(ox, -oz), p = bearingPoint(MAP_R, a, { x: 0, z: 0 });
       return { era: e.n, name: e.name, years: e.years, x: p.x, z: p.z, toward: { x: ox, z: oz }, a, ry: a + Math.PI };
     });
-    return { steps, paper: paperStop, genesis, monument, areas, markers, path, obstacles, clear: CLEAR, radius: { inner: R1, outer: R0, map: MAP_R } };
+    return { steps, paper: paperStop, genesis, monument, areas, markers, path, obstacles, clear: clearOf(museum.atrium), radius: { inner: R1, outer: R0, map: MAP_R } };
   };
 
   const GOLD = "#e8c35a", GOLD_DK = "#9a7418", STONE = "#6a645a", STONE_LT = "#8a8378";
@@ -152,8 +154,8 @@
     const { ys, k, P } = statueParts(), parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
     const block = (w, h, d, color, x, y, z, bevel = 0.08, emissive = 0) => parts.push(at(M.bevelBox({ w, h, d, color, bevel, emissive }), x, y, z));
     // The plinth: three dressed steps and a gold band.
-    [[5.6, 0.5], [4.8, 1.0], [4.0, P]].forEach(([w, rise], i) => block(w, 0.5, w, i % 2 ? STONE_D : "#8a7a5a", 0, rise - 0.25, 0, 0.06));
-    parts.push(at(M.box({ w: 4.04, h: 0.08, d: 4.04, color: GOLD, emissive: 0.3 }), 0, P - 0.12, 0));
+    [[4.8, 0.5], [4.1, 1.0], [3.4, P]].forEach(([w, rise], i) => block(w, 0.5, w, i % 2 ? STONE_D : "#8a7a5a", 0, rise - 0.25, 0, 0.06));
+    parts.push(at(M.box({ w: 3.44, h: 0.08, d: 3.44, color: GOLD, emissive: 0.3 }), 0, P - 0.12, 0));
     const F = FIGURE, Y = (key) => P + ys[key] * k, H = (key) => F[key][2] * k;
     // The robe, widening to its hem in tiers, with blocky folds down its front and a gold belt.
     for (const key of ["hem", "lower", "mid", "chest", "shoulders"]) block(F[key][0] * k, H(key), F[key][1] * k, key === "lower" || key === "chest" ? STONE_B : STONE_A, 0, Y(key) + H(key) / 2, 0, 0.1);
@@ -178,7 +180,7 @@
     block(F.head[0] * k, H("head") * 0.86, F.head[1] * k, STONE_A, 0, Y("head") + H("head") * 0.43, 0, 0.18);
     block(F.head[0] * k * 0.9, H("head") * 0.14, F.head[1] * k * 0.9, STONE_B, 0, Y("head") + H("head") * 0.93, 0, 0.06);
     place(createNode({ geometry: M.merge(...parts) }));
-    sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · an original Ooga statue, not a likeness", S.x, top + 1.25, S.z + 2.4 + 0.25, Math.PI, "gold", 0.5);
+    sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · an original Ooga statue, not a likeness", S.x, top + 1.25, S.z + 2.05 + 0.25, Math.PI, "gold", 0.5);
   };
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
   BL.genesisAtrium = { layout, build, CLEAR, statueParts };

@@ -181,7 +181,9 @@
   // turns a box. `bayAt(x, z)` is the era whose gallery holds a point (-1 in the atrium or outside). Pure, so Node can
   // check that the galleries never overlap and every era's exhibits stand inside its own.
   const MUSEUM = (() => {
-    const OPEN = 8, PART = 1, AX = 48, AZ = 78, HEIGHT = 24;
+    // SCALE: each era's gallery is its old cave at 70% (exhibits, spacing and heights alike), so the hall is about half
+    // the floor it was; the atrium is sized to the galleries round it.
+    const OPEN = 8, PART = 1, HEIGHT = 16, SCALE = 0.7, MARGIN = 3;
     const SPEC = [[-27, 27, 63], [-34, 42, 71], [-34, 10, 72], [-34, 10, 72], [-34, 42, 64], [-34, 42, 72], [-22, 20, 63], [-14, 26, 57]];
     // The four walls' galleries in order along each wall, the wall's line, the turn that sends old -z outward and the
     // direction old +x runs along it: west (south to north), north (west to east), east (north to south), south
@@ -189,21 +191,24 @@
     const WALLS = [{ eras: [0, 1], rot: Math.PI / 2 }, { eras: [2, 3], rot: 0 }, { eras: [4, 5], rot: -Math.PI / 2 }, { eras: [6, 7], rot: Math.PI }];
     const bays = [];
     const rotate = (rot, x, z, out) => { const c = Math.round(Math.cos(rot)), s = Math.round(Math.sin(rot)); out.x = x * c + z * s; out.z = -x * s + z * c; return out; };
+    // The atrium's half-extents: each wall long enough for its galleries side by side, with a margin.
+    const wallLength = (wall) => wall.eras.reduce((t, n) => t + (SPEC[n][1] - SPEC[n][0]) * SCALE, 0) + PART * (wall.eras.length - 1);
+    const AZ = Math.ceil(Math.max(wallLength(WALLS[0]), wallLength(WALLS[2])) / 2 + MARGIN), AX = Math.ceil(Math.max(wallLength(WALLS[1]), wallLength(WALLS[3])) / 2 + MARGIN);
     for (const wall of WALLS) {
-      const widths = wall.eras.map((n) => SPEC[n][1] - SPEC[n][0]), total = widths.reduce((a, b) => a + b, 0) + PART * (wall.eras.length - 1);
+      const widths = wall.eras.map((n) => (SPEC[n][1] - SPEC[n][0]) * SCALE), total = widths.reduce((a, b) => a + b, 0) + PART * (wall.eras.length - 1);
       let along = -total / 2;
       wall.eras.forEach((n, k) => {
         const [x0, x1, depth] = SPEC[n], e = ERAS[n], b = { n, x0, x1, depth, rot: wall.rot, tx: 0, tz: 0 };
         // Old (x0, z1 - OPEN), the near corner of the gallery's opening, lands `along` the wall from its middle.
-        const r = rotate(wall.rot, x0, e.z1 - OPEN, { x: 0, z: 0 }), side = rotate(wall.rot, 1, 0, { x: 0, z: 0 }), out = rotate(wall.rot, 0, -1, { x: 0, z: 0 });
+        const r = rotate(wall.rot, x0 * SCALE, (e.z1 - OPEN) * SCALE, { x: 0, z: 0 }), side = rotate(wall.rot, 1, 0, { x: 0, z: 0 }), out = rotate(wall.rot, 0, -1, { x: 0, z: 0 });
         const wx = out.x * AX + side.x * along, wz = out.z * AZ + side.z * along;
         b.tx = wx - r.x; b.tz = wz - r.z;
         bays[n] = b;
         along += widths[k] + PART;
       });
     }
-    const toMuseum = (n, x, z, out) => { const b = bays[n]; rotate(b.rot, x, z, out); out.x += b.tx; out.z += b.tz; return out; };
-    const fromMuseum = (n, x, z, out) => { const b = bays[n]; return rotate(-b.rot, x - b.tx, z - b.tz, out); };
+    const toMuseum = (n, x, z, out) => { const b = bays[n]; rotate(b.rot, x * SCALE, z * SCALE, out); out.x += b.tx; out.z += b.tz; return out; };
+    const fromMuseum = (n, x, z, out) => { const b = bays[n]; rotate(-b.rot, x - b.tx, z - b.tz, out); out.x /= SCALE; out.z /= SCALE; return out; };
     const A = { x: 0, z: 0 }, B = { x: 0, z: 0 };
     const boxToMuseum = (n, box, out = {}) => {
       toMuseum(n, box.x0, box.z0, A); toMuseum(n, box.x1, box.z1, B);
@@ -231,8 +236,8 @@
     // The outer bounds, for the roof.
     const bounds = { x0: Math.min(...rects.map((r) => r.x0)), x1: Math.max(...rects.map((r) => r.x1)), z0: Math.min(...rects.map((r) => r.z0)), z1: Math.max(...rects.map((r) => r.z1)) };
     // The atrium's eight round pillars, clear of the courtyard's paths and signs (genesis-courtyard.js).
-    const PILLARS = []; for (const x of [-33, 33]) for (const z of [-48, -8, 8, 48]) PILLARS.push({ x, z, r: 1.5 });
-    return { PILLARS, OPEN, PART, AX, AZ, HEIGHT, bays, rects, atrium, bounds, toMuseum, fromMuseum, boxToMuseum, bayAt, eraNear, inside, rotate };
+    const PILLARS = []; for (const x of [-0.69 * AX, 0.69 * AX]) for (const z of [-0.62 * AZ, -0.1 * AZ, 0.1 * AZ, 0.62 * AZ]) PILLARS.push({ x, z, r: 1.2 });
+    return { PILLARS, OPEN, PART, AX, AZ, HEIGHT, SCALE, bays, rects, atrium, bounds, toMuseum, fromMuseum, boxToMuseum, bayAt, eraNear, inside, rotate };
   })();
 
   // --- What holds while the museum's dialogs or the visitor's pause are up (OVERHAUL-CONTRACT.md §4) --------------

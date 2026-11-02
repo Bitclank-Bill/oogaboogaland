@@ -35,7 +35,9 @@
   // The museum (genesis-world.js MUSEUM): an atrium in the middle and the eras' galleries round it. Each era is built
   // in its old cave's coordinates inside its gallery's frame node; `mu(n, x, z)` is a point of era n's old world in the
   // museum, `muBox` a box.
-  const MU = GW.MUSEUM, ROOF = MU.HEIGHT;
+  const MU = GW.MUSEUM, ROOF = MU.HEIGHT, AT = MU.atrium;
+  // The atrium's south: the arrival, the portal statue and the white timeline screen, placed from its south wall.
+  const SOUTH = AT.z1, PORTAL_Z = SOUTH - 7;
   const DESK_AT = MU.toMuseum(ROOM_ERA, DESK.x, DESK.z, { x: 0, z: 0 });
   const mu = (n, x, z, out = { x: 0, z: 0 }) => MU.toMuseum(n, x, z, out);
   const muBox = (n, b) => ({ ...b, ...MU.boxToMuseum(n, b) });
@@ -43,16 +45,16 @@
   // Lamps: the atrium's, the desk's and the newspaper's in Fingerprints and Time, then three in each gallery in its
   // era's colour. Each frame the nearest come first (the tiers keep the first ones).
   const CAVE_LAMPS = [[-14, 0.3], [22, 0.5], [-8, 0.78]];
-  const LIGHTS = [[0, 6.5, 0, 16, 1.3, 1.1, 0.75], [0, 9, 40, 30, 1.2, 1.05, 0.85], [0, 9, -40, 30, 1.2, 1.05, 0.85], [-30, 9, 0, 30, 1.1, 1, 0.85], [30, 9, 0, 30, 1.1, 1, 0.85], [0, 7, 66, 16, 1.25, 0.95, 0.6],
+  const LIGHTS = [[0, 6.5, 0, 16, 1.3, 1.1, 0.75], [0, 8, 0.5 * AT.z1, 24, 1.2, 1.05, 0.85], [0, 8, 0.5 * AT.z0, 24, 1.2, 1.05, 0.85], [0.6 * AT.x0, 8, 0, 24, 1.1, 1, 0.85], [0.6 * AT.x1, 8, 0, 24, 1.1, 1, 0.85], [0, 6, SOUTH - 10, 14, 1.25, 0.95, 0.6],
     ...[[-6.5 + SX, 3.4, -25 + SZ, 12, 1.35, 1.05, 0.7], [-9 + SX, 3.2, -31.5 + SZ, 7, 1, 0.9, 0.7]].map((l) => { const q = mu(ROOM_ERA, l[0], l[2]); return [q.x, l[1], q.z, ...l.slice(3)]; }),
-    ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => { const q = mu(e.n, x, e.z1 - f * GW.CAVE.len); return [q.x, 9, q.z, 34, ...e.theme.lamp]; }))];
+    ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => { const q = mu(e.n, x, e.z1 - f * GW.CAVE.len); return [q.x, 6.5, q.z, 24, ...e.theme.lamp]; }))];
 
   // --- Walking: where an Ooga may stand ----------------------------------------------------------------------------
   // One floor at bank height: the atrium and every gallery, walled round. Fingerprints and Time's ledge (Era 3), its
   // desk and the newspaper stand in the way, and so do the statue and the walls.
   const { CHANNEL } = GW;
   // Where the visitor arrives: in the atrium's south, by the statue, facing north across it (a fall comes back here).
-  const ENTRY = { x: 0, z: 64, facing: Math.PI };
+  const ENTRY = { x: 0, z: SOUTH - 12, facing: Math.PI };
   // The walls (one height, ROOF): each gallery's back and sides (half a partition each, so neighbours meet without
   // overlapping), and the atrium's sides between the galleries' openings.
   const WALLS = (() => {
@@ -94,7 +96,7 @@
     const dock = { x: ENTRY.x, z: ENTRY.z, facing: ENTRY.facing };
     FOOTING.areas.push({ id: "atrium", ...MU.atrium, top: ISLAND_TOP, dock }, ...MU.rects.map((r) => ({ id: `gallery-${r.n}`, x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, top: ISLAND_TOP, dock })));
     // The statue in the atrium, and the walls.
-    FOOTING.obstacles.push({ x0: -1.4, x1: 1.4, z0: 69.5, z1: 70.5 }, ...WALLS);
+    FOOTING.obstacles.push({ x0: -1.4, x1: 1.4, z0: PORTAL_Z - 0.5, z1: PORTAL_Z + 0.5 }, ...WALLS);
   }
   // The first props, on the room's ledge (in Era 3's old world): the office PC, the hard-drive plinth and Tock's book.
   const PROPS = { pc: { x: -9.6 + SX, y: 0.545, z: -20.6 + SZ }, drives: { x: -9.8 + SX, y: 0.545, z: -32.4 + SZ }, book: { x: -5.8 + SX, y: 0.545, z: -23.6 + SZ } };
@@ -105,12 +107,8 @@
   const targets = [];
   // `paused` is the visitor's own pause (P); `reading` a panel open; Calm holds decorative motion.
   const view = { calm: false, captions: true, voice: false, readingPaused: false, reading: false, paused: false, music: true };
-  // The Music switch, remembered in this browser (localStorage, guarded as sound.js's mute is). Off silences the
-  // eras' themes only: exhibit cues, Calm and voice are untouched, and the page-wide mute (the speaker, or M) still
-  // silences everything.
-  const MUSIC_KEY = "ooga-genesis-music";
-  const readMusic = () => { try { return localStorage.getItem(MUSIC_KEY) !== "off"; } catch (_) { return true; } };
-  const writeMusic = (on) => { try { localStorage.setItem(MUSIC_KEY, on ? "on" : "off"); } catch (_) {} };
+  // Genesis Hall is quiet (Billy's refinement): no era music and no automatic cues. Only what a visitor sets going
+  // makes a sound (an exhibit's own tones, the console's games, the Ooga's footsteps); `view.music` stays off.
   let lastEra = -2;
   let sceneTime = 0, captionKey = "", lastStamps = 0, lastPhase = "", lastTiles = -1, lastBroken = false;
   const el = {};
@@ -125,12 +123,12 @@
   const solid = (w, h, d, color, x, y, z, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } }));
   const buildCavern = () => {
     // The statue the visitor came through, in the atrium's south, with lanterns either side.
-    const statue = place(createNode({ position: { x: 0, y: ISLAND_TOP, z: 70 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
+    const statue = place(createNode({ position: { x: 0, y: ISLAND_TOP, z: PORTAL_Z }, rotation: { x: 0, y: Math.PI, z: 0 } }));
     addChild(statue, createNode({ geometry: M.bevelBox({ w: 2.2, h: 3.1, d: 0.4, color: "#ece6d6" }), position: { x: 0, y: 1.9, z: 0 } }));
     addChild(statue, createNode({ geometry: M.box({ w: 1.5, h: 2.3, d: 0.06, color: "#9ad8ff", emissive: 0.9 }), position: { x: 0, y: 1.75, z: -0.23 } }));
     addChild(statue, createNode({ geometry: M.box({ w: 2.8, h: 0.35, d: 0.9, color: "#8a8174" }), position: { x: 0, y: 0.17, z: 0 } }));
     built.portal = statue.children[1];
-    for (const [x, z] of [[-3, 70.5], [3, 70.5], [-6, 72], [6, 72]]) {
+    for (const [x, z] of [[-3, PORTAL_Z + 0.5], [3, PORTAL_Z + 0.5], [-6, PORTAL_Z + 2], [6, PORTAL_Z + 2]]) {
       solid(0.14, 2.4, 0.14, "#3b2a1a", x, ISLAND_TOP + 1.2, z);
       solid(0.36, 0.36, 0.36, "#ffcf7a", x, ISLAND_TOP + 2.55, z, 1.4);
     }
@@ -266,7 +264,7 @@
   // grey context; the paper (31 October 2008) and the first block (January 2009) stand apart at the right. A tap on it,
   // or Space beside it, opens the menu (the timeline as buttons, openMenu).
   // The white screen stands in the atrium ahead of the arrival, facing it (south): 24 m wide.
-  const LEGEND = { x: 0, y: 4.4, z: 48, w: 24, h: 8, ry: 0, at: { x: 0, z: 51 } };
+  const LEGEND = { x: 0, y: 3.6, z: SOUTH - 26, w: 18, h: 6, ry: 0, at: { x: 0, z: SOUTH - 23.5 } };
   const buildLegend = () => {
     const W = 4096, H = Math.round(W * LEGEND.h / LEGEND.w), canvas = document.createElement("canvas"), g = canvas.getContext("2d");
     canvas.width = W; canvas.height = H;
@@ -755,7 +753,7 @@
       audio.wake();
       let out;
       try { out = bench.term.run(line) || { lines: [] }; } catch (err) { out = { lines: [`That command did not run: ${err.message}`] }; }
-      if (out.entry) { audio.cue("stamp"); hud.toast(`Page ${out.entry.page} stamped: ${out.entry.code}`); }
+      if (out.entry) hud.toast(`Page ${out.entry.page} stamped: ${out.entry.code}`);
       if (!/^\s*(HELP|MORE)\s*$/i.test(line)) bench.runs++;
       return out;
     },
@@ -787,7 +785,8 @@
     },
     menuClosed() { if (!bench.open) { view.reading = false; pilot.setActive(true); } },
     sourceOf: (key) => GP.sourceOf(key),
-    cue: (name) => audio.cue(name),
+    // The hall makes no interface sounds (the host contract keeps the call).
+    cue: () => {},
     toast: (text) => hud.toast(text)
   };
   // The cartridge console (genesis-cartridge.js): it holds the scene as the workbench and menu do; closing it hands
@@ -1062,7 +1061,6 @@
     el.pause.textContent = view.paused ? "Carry on" : "Pause";
     press(el.pause, view.paused);
     press(el.cc, view.captions); press(el.voice, view.voice); press(el.calm, view.calm);
-    el.music.textContent = view.music ? "Music: On" : "Music: Off"; press(el.music, view.music);
     el.voice.hidden = !speech;
     el.caption.hidden = !view.captions || !el.caption.textContent;
   };
@@ -1088,7 +1086,6 @@
     view[key] = !view[key];
     if (key === "voice" && !view.voice) stopVoice();
     if (key === "captions") paintChain();
-    if (key === "music") writeMusic(view.music);
     showControls();
   };
   const leave = () => go("hub");
@@ -1119,10 +1116,8 @@
   };
   const stepDemo = (dt) => {
     if (!view.paused && !view.reading) demo.update(dt);
-    if (demo.stamps !== lastStamps) { lastStamps = demo.stamps; audio.cue("stamp"); }
+    if (demo.stamps !== lastStamps) lastStamps = demo.stamps;
     if (demo.tiles !== lastTiles || demo.broken !== lastBroken) {
-      if (demo.tiles > lastTiles && demo.tiles > 0) audio.cue("link");
-      if (demo.broken && !lastBroken) audio.cue("broken");
       lastTiles = demo.tiles; lastBroken = demo.broken;
       for (let i = 0; i < built.tiles.length; i++) {
         const shown = i < demo.tiles, bad = demo.broken && i >= G.TAMPER_AT;
@@ -1218,7 +1213,8 @@
     camera = createCamera({ fov: 62, near: 0.15, far: 240 });
     built = { obstacles: [], oldObstacles: [] };
     // Each era's gallery frame: its old cave turned and moved round the atrium (genesis-world.js MUSEUM).
-    built.frames = MU.bays.map((b) => place(createNode({ position: { x: b.tx, y: 0, z: b.tz }, rotation: { x: 0, y: b.rot, z: 0 } })));
+    // Each gallery's frame scales its era's old cave to MUSEUM.SCALE, the old floor (bank height) kept at the museum's.
+    built.frames = MU.bays.map((b) => place(createNode({ position: { x: b.tx, y: ISLAND_TOP * (1 - MU.SCALE), z: b.tz }, rotation: { x: 0, y: b.rot, z: 0 }, scale: { x: MU.SCALE, y: MU.SCALE, z: MU.SCALE } })));
     // The era files build first, so the galleries' boulders, the legend and the shared signage know them.
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
@@ -1236,7 +1232,7 @@
     view.reading = view.readingPaused = false; view.paused = false; lastEra = -2;
     bench.open = false; bench.entry = bench.term = bench.board = null; bench.era = -1; bench.id = null; bench.framing = false; bench.opens = bench.runs = 0;
     view.calm = PREFERS_CALM.matches;
-    view.music = readMusic();
+    view.music = false;
     sceneTime = 0; captionKey = ""; lastStamps = 0; lastPhase = ""; lastTiles = -1; lastBroken = false;
     renderOpts.lightCount = Math.min(LIGHTS.length, BL.glRenderer.POINT_LIGHT_CAPACITY);
     orderLights(ENTRY.x, ENTRY.z);
@@ -1331,11 +1327,10 @@
       else if (action === "genesis-cc") toggle("captions");
       else if (action === "genesis-voice") toggle("voice");
       else if (action === "genesis-calm") toggle("calm");
-      else if (action === "genesis-music") toggle("music");
       else if (action === "reset-view" && !bench.open) pilot.resetCamera();
       else if (action === "leave") leave();
     });
-    for (const id of ["caption", "pause", "info", "cc", "voice", "calm", "music", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
+    for (const id of ["caption", "pause", "info", "cc", "voice", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
     el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space by an exhibit (or a tap) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
