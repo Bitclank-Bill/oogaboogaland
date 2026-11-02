@@ -54,6 +54,20 @@ No Chrome binary is available here. Live authenticated two-client behaviour, phy
 touch/IME entry, screen-reader behaviour and deployment remain unverified. No live chat
 message, hosted database write, deployment or official-branch push was performed.
 
+### Re-checked after integrating current rock (9b326b41)
+
+Conflicts were documentation and state-shape only (AGENTS.md module table, net.js
+state initializer); the policy, capability gate and Worker are unchanged.
+
+- Build and node --check on every changed JavaScript file: passed.
+- Global unit tier: 353/353 passed, including the chat wire, retry/rollback-welcome,
+  client and account checks.
+- Chat/protocol Worker tests: 43/43. Full Worker suite with generated fixtures and
+  lockfile dependencies: 171/171. A local wrangler --dry-run bundle includes the policy.
+- The hub's "ooga chat" browser check could not run here: headless Chromium first
+  refused to start as root, then the hub page missed its readiness deadline under
+  software WebGL. The runner printed STOP; it needs a maintainer machine.
+
 ## Rollout
 
 Deploy/review the Worker and matching page together. New page + old Worker fails closed
@@ -61,4 +75,5 @@ for extended outgoing text; it does not send text that an old Worker could strip
 rollback requires normal reconnect, which re-establishes the capability from welcome.
 Do not remove the gate based only on frontend rollout. No migration is required.
 
-Developed with AI assistance (OpenAI Codex).
+Developed with AI assistance (OpenAI Codex); integration with current rock prepared with
+AI assistance (Claude Code).
