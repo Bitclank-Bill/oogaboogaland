@@ -39,6 +39,9 @@
   const TAIL = 2.5;
   // A mirror waits this long past its fuse's end for its owner's blast before it goes off by itself.
   const LATE = 1.5;
+  // Other players' mirrors take at most MIRROR_CAP of the pool, so the most this page's own visitor can have out at once
+  // (one every COOLDOWN for FUSE seconds) always has room, however many play nearby; mirrors past it are not drawn.
+  const MIRROR_CAP = BOMB_CAP - Math.ceil(FUSE / COOLDOWN);
   // Drawn this much larger than the models, so they read across a lane; a name shows over a device nearer the
   // driven Ooga than NAME_NEAR, and one is picked up from PICK_REACH.
   const SCALE = 1.6, NAME_NEAR = 4, PICK_REACH = 2.5;
@@ -509,13 +512,18 @@
       for (let i = 0; i < BOMB_CAP; i++) if (state[i] !== FREE && owner[i] === id && uid[i] === u) return i;
       return -1;
     };
+    const mirrors = () => {
+      let n = 0;
+      for (let i = 0; i < BOMB_CAP; i++) if (state[i] !== FREE && owner[i]) n++;
+      return n;
+    };
     // Another player's device as the room has it, [id, u, look, state, x, y, z, vx, vy, vz, at, end], made or moved
     // here in the visitor's space; one thrown is flown on by its age.
     const mirror = (w) => {
       const [id, u, look, s, x, y, z, wx, wy, wz, at, end] = w;
       if (!Number.isSafeInteger(id) || !Number.isInteger(look) || look < 0 || look >= LOOKS.length || ![x, y, z, wx, wy, wz, at, end].every(Number.isFinite)) return;
       let i = mirrorOf(id, u);
-      if (i < 0) { i = spawn(x, y, z, look); if (i < 0) return; }
+      if (i < 0) { if (mirrors() >= MIRROR_CAP || (i = spawn(x, y, z, look)) < 0) return; }
       owner[i] = id; uid[i] = u; lookOf[i] = look; space[i] = here; carriers[i] = null;
       const t = now();
       timer[i] = Math.min(FUSE, (end - t) / 1000); late[i] = LATE;
@@ -743,5 +751,5 @@
     };
     return { update, releasePose, drawOverlay, flashLight, get flashing() { return flash.t > 0; }, take, refusal, throwCarried, setDown, tap, where, held, lookAt, secondsLeft, heard, stats, dispose, debug };
   };
-  BL.walletBombs = { create, BOMB_CAP, SCORCH_CAP, FUSE, CHAIN_RADIUS, BASE_RADIUS, BASE_POWER, POWER_CAP, SCALE, LOOKS, geometryOf, snitchPhotoGeometry, passpoorScreenGeometry, passpoorBalanceGeometry, jadedTrackingGeometry, jadedEyesGeometry, blastOf, chainFrom };
+  BL.walletBombs = { create, BOMB_CAP, MIRROR_CAP, SCORCH_CAP, FUSE, CHAIN_RADIUS, BASE_RADIUS, BASE_POWER, POWER_CAP, SCALE, LOOKS, geometryOf, snitchPhotoGeometry, passpoorScreenGeometry, passpoorBalanceGeometry, jadedTrackingGeometry, jadedEyesGeometry, blastOf, chainFrom };
 })();

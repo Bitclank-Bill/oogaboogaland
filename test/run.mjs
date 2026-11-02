@@ -21742,8 +21742,11 @@ const walletShareChecks = BL => {
   shared.heard({t:"wallet",k:"blast",id:72,u:[7]});
   const chained=!theirs(7)&&!mine().some(d=>d.uid===second)&&sent.at(-1).k==="blast"&&sent.at(-1).u.includes(second);
   go(25);const lapsed=!S.list().some(d=>d.owner===72);
-  record("Wallets shared: a page sends its own devices' events and draws another player's carried over their head, flown on by its age and never picked up here; their blast chains into this page's own, reported as its blast, and theirs go off by themselves once past their end",
-    own&&overHead&&aged&&untouchable&&chained&&lapsed,JSON.stringify({own,overHead,held,aged,flown,untouchable,chained,lapsed,sent:sent.slice(-3)}));
+  // A crowd's devices never take the slots this page's own need: they fill MIRROR_CAP at most, and a take still works.
+  for(let k=0;k<W.BOMB_CAP;k++)shared.heard({t:"wallet",k:"down",w:[80+k%3,100+k,0,"d",k,0,9,0,0,0,clock,clock+15000]});
+  const crowd=S.list().filter(d=>d.owner).length;S.cool();const kept=crowd===W.MIRROR_CAP&&shared.take(1)>=0;
+  record("Wallets shared: a page sends its own devices' events and draws another player's carried over their head, flown on by its age and never picked up here; their blast chains into this page's own, reported as its blast, theirs go off by themselves once past their end, and a crowd's never fill the slots this page's own need",
+    own&&overHead&&aged&&untouchable&&chained&&lapsed&&kept,JSON.stringify({own,overHead,held,aged,flown,untouchable,chained,lapsed,crowd,kept,sent:sent.slice(-3)}));
   shared.dispose();
 };
 // Rule: Free Hardware Wallets at VAC 2 keeps its address, room, fuse, chain, spaces and pools bounded, and its machine says nothing.
