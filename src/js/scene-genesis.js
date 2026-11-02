@@ -1530,7 +1530,7 @@
     if (back && avatar && back.name === playerName && arrive(back.x, back.z, back.yaw)) {
       if (back.view === "first-person") pilot.enterClose(false, true);
     } else arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, view, built, wallPieceAt, secret, openSecret, playSecret, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, view, built, wallPieceAt, secret, openSecret, playSecret, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
