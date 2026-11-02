@@ -4,13 +4,13 @@
 // one). The page's script policy gains 'self' for that file, as src/index.html already allows; the portable page
 // (oogaboogaland.html) keeps every module inline, so file:// and a single download still work. `transform(src, text)`
 // may rewrite a module's text as it enters its bundle: `--image-assets` writes the DSB rooms' pictures out of the dsb
-// bundle that way (`externalizePictures`).
+// bundle that way (`externalizePictures`), and `inline` names modules left in the page whose text it rewrites in place.
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const hash = (text, encoding) => createHash("sha256").update(text, "utf8").digest(encoding);
-export function externalizeModules(html, out, deferred, block, terrainWorker = null, transform = (src, text) => text) {
+export function externalizeModules(html, out, deferred, block, terrainWorker = null, transform = (src, text) => text, inline = []) {
   const script = html.match(/<script>([\s\S]*?)<\/script>/);
   if (!script) throw new Error("distribution: no inline script");
   const oldPolicy = `script-src 'sha256-${hash(script[1], "base64")}'`;
@@ -38,17 +38,56 @@ export function externalizeModules(html, out, deferred, block, terrainWorker = n
     writeFileSync(join(out, "js", name), bundle);
     named[group] = `/js/${name}`;
   }
+  // A module that stays in the page's own script (`inline`) goes through `transform` where it stands.
+  for (const src of inline) {
+    const text = block(src);
+    if (body.split(text).length !== 2) throw new Error(`distribution: ${src} is not in the page exactly once`);
+    body = body.split(text).join(transform(src, text));
+  }
   const worker = terrainWorker ? `window.BL.terrainWorker = ${JSON.stringify(terrainWorker)};\n` : "";
   const updated = `\nwindow.BL = window.BL || {};\nwindow.BL.deferredScripts = ${JSON.stringify(named)};\n${worker}${body.replace(/^\n/, "")}`;
   return html.replace(script[0], () => `<script>${updated}</script>`)
     .replace(oldPolicy, `script-src 'self' 'sha256-${hash(updated, "base64")}'`);
 }
 
-// The DSB rooms' pictures (article thumbnails, product covers, profile previews) are data URIs in these modules, which
-// travel in the deferred dsb bundle; the menus set each as an image's src either way, under `img-src 'self' data:`.
-// Each becomes art/<module>-<sha256>.<ext> holding the same bytes, so entering DSB fetches the code alone and a picture
-// only when a menu shows it.
-export const PICTURE_MODULES = ["js/without-rulers-data.js", "js/stackchain-art.js", "js/proof-of-ink-data.js", "js/meme-factory-data.js"];
+// Hosted pages only, after the steps above: the page's one inline script leaves for js/main-<hash>.js in the same
+// place, and its stylesheet for css/style-<hash>.css, so a browser keeps both across reloads, routes and tabs and V8
+// can cache the script's compiled code; every route page names the same files. Each module in `data` (the jumbotron's
+// snapshot, rebaked by every deploy) leaves the main script for js/<module>-<hash>.js, loaded just before it, so a
+// deploy that changes only that data keeps the code's file. Such a module must read nothing at load but window.BL.
+// The policies keep 'self' and the data-early hashes and drop the two blocks' hashes.
+export function externalizePage(html, out, block, data = []) {
+  const script = html.match(/<script>([\s\S]*?)<\/script>/), style = html.match(/<style>([\s\S]*?)<\/style>/);
+  if (!script || !style) throw new Error("distribution: expected one inline script and one inline style");
+  const scriptHash = ` 'sha256-${hash(script[1], "base64")}'`, stylePolicy = `style-src 'sha256-${hash(style[1], "base64")}'`;
+  if (html.split(scriptHash).length !== 2 || !html.includes(`script-src 'self'${scriptHash}`) || html.split(stylePolicy).length !== 2) throw new Error("distribution: page hashes not found");
+  const write = (dir, name, text) => {
+    mkdirSync(join(out, dir), { recursive: true });
+    const file = `${name}-${hash(text, "hex").slice(0, 16)}.${dir}`;
+    writeFileSync(join(out, dir, file), text);
+    return `/${dir}/${file}`;
+  };
+  let body = script[1];
+  const tags = data.map((src) => {
+    const text = block(src);
+    if (body.split(text).length !== 2) throw new Error(`distribution: ${src} is not in the page exactly once`);
+    body = body.split(text).join("");
+    return `<script src="${write("js", basename(src, ".js"), `${text}\n`)}"></script>`;
+  });
+  tags.push(`<script src="${write("js", "main", body)}"></script>`);
+  const sheet = write("css", "style", style[1]);
+  return html.replace(script[0], () => tags.join("\n"))
+    .replace(style[0], () => `<link rel="stylesheet" href="${sheet}">`)
+    .replace(scriptHash, "").replace(stylePolicy, "style-src 'self'");
+}
+
+// The DSB rooms' pictures (article thumbnails, product covers, profile previews), the whitepaper poster and Cloud
+// Hopper's title and result art are data URIs in these modules; the DSB ones and the poster travel in deferred
+// bundles (dsb, whitepaper), Cloud Hopper's in the page's own script. Each picture is set as an image's src either way,
+// under `img-src 'self' data:`. Each becomes art/<module>-<sha256>.<ext> holding the same bytes, so a bundle or the
+// page carries only the address, and the picture is fetched only when a menu, the monolith or a title card shows it.
+export const PICTURE_MODULES = ["js/without-rulers-data.js", "js/stackchain-art.js", "js/proof-of-ink-data.js", "js/meme-factory-data.js",
+  "js/whitepaper-poster-data.js", "js/cloud-hopper-art.js"];
 export function externalizePictures(src, text, out) {
   mkdirSync(join(out, "art"), { recursive: true });
   let count = 0;

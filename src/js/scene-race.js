@@ -67,6 +67,7 @@
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, hud, rhud, hooks, input, fx, controls, track, racers, items, audio, weather, agent;
   let phase = "garage", countdown = 0, accumulator = 0, sceneTime = 0, finishedAt = 0;
   let stateTimer = 0, hintTimer = 0, unsubscribeAccount = null;
+  let scoreTicket = null, unwatchScores = null;
   // revAt is the countdown time the throttle was first held through; -1 while it is off.
   let revAt = -1, crowdSwell = 0, driftTaught = 0;
   const cam = { yaw: 0, offset: 0, dist: CHASE.dist, shake: 0, lookBack: false, x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, warm: false, garageYaw: 0, garageLift: 0 };
@@ -195,6 +196,7 @@
     if (phase !== "garage") racers.draw();
     applyOwn();
     phase = "garage";
+    hud.setPanelsHidden(false);
     fx.clearParticles();
     cup.active = false;
     cup.done = false;
@@ -208,10 +210,12 @@
   };
   const startRace = () => {
     if (!racers.racers.length) return;
+    scoreTicket = BL.highscores?.begin("race") || null;
     window.clearTimeout(hintTimer);
     hud.hideHint();
     placeRacers();
     phase = "countdown";
+    hud.setPanelsHidden(true);
     countdown = COUNTDOWN;
     accumulator = 0;
     finishedAt = 0;
@@ -313,10 +317,16 @@
   const finishRace = () => {
     if (!racers.player) return;
     phase = "finished";
+    hud.setPanelsHidden(false);
     const p = racers.player;
     // The lap delta reads the record before it is written.
     lapBefore = game.state.race.best[bestKey()] ? game.state.race.best[bestKey()].lap : 0;
     recordImproved = p.finished && game.recordRace(bestKey(), Math.round(p.bestLap * 1000), Math.round(p.finishTime * 1000), medalNow(p).medal);
+    if (p.finished) {
+      BL.highscores?.submit(scoreTicket, `race-1-${bestKey()}-lap`, Math.round(p.bestLap * 1000));
+      BL.highscores?.submit(scoreTicket, `race-1-${bestKey()}-race`, Math.round(p.finishTime * 1000));
+    }
+    scoreTicket = null;
     if (cup.active) {
       for (const r of racers.racers) cup.points[r.index] += CUP_POINTS[Math.min(CUP_POINTS.length, r.rank) - 1];
       if (cup.round === raceTrack.TRACKS.length - 1) {
@@ -736,7 +746,6 @@
     }
     if (e.key === "e" || e.key === "E" || e.key === "Shift") useItem();
     if (e.key === "0") cam.offset = 0;
-    if (e.key === "m" || e.key === "M") toggleMute();
     if (e.key === "Enter" && phase === "garage") startRace();
     if (e.key === "Enter" && phase === "finished" && !rhud.el.next.hidden) nextRace();
     if (e.key === "b" || e.key === "B") {
@@ -763,6 +772,7 @@
     fx = fxMod.create({ root, renderer, camera, hud, overlay: ctx.overlay, tickerAt: TICKER_AT });
     rhud = raceHud.create({
       tracks: raceTrack.TRACKS, mounts: racersMod.MOUNTS, roster: contributors.activeRoster, best: () => game.state.race.best, mirror: () => selection.mirror,
+      highscores: () => BL.highscores?.get("race")?.highscores || null,
       onPick: (kind, key) => {
         selection[kind] = key;
         if (kind === "track") {
@@ -782,6 +792,7 @@
     rhud.el.mirror.hidden = !mirrorOpen();
     rhud.el.mirror.setAttribute("aria-pressed", String(selection.mirror));
     rhud.buildGarage((name) => contributors.stateFor(contributors.activeRoster.find((c) => c.name === name)));
+    unwatchScores = BL.highscores?.watch("race", () => rhud.refreshTracks()) || null;
     buildTrack(selection.track);
     agent = raceScene.agent = BL.agent.create({ groundAt: agentGround, form: "code" });
     addChild(root, agent.root);
@@ -856,7 +867,6 @@
     for (const cave of contributors.activeRoster) hud.setRosterRow(cave.name, contributors.stateFor(cave), contributors.ageLabel(cave));
     if (lootEnabled) renderLocker();
     hud.setStats(game.state);
-    hud.el.sheet.dataset.open = "false";
     rhud.el.joyLook.hidden = true;
     rhud.el.help.textContent = COARSE ? "Drag to look round the garage · left stick steers · hold Drift · tap Throw" : "Drag to look round the garage · W A S D or arrows drive · hold Space to drift, tap to hop · E throws · Q looks back · Escape pauses";
     phase = "garage";
@@ -917,6 +927,7 @@
     });
   };
   const leave = () => {
+    unwatchScores?.(); unwatchScores = null; scoreTicket = null;
     window.clearInterval(stateTimer);
     window.clearTimeout(hintTimer);
     window.removeEventListener("blur", onBlur);

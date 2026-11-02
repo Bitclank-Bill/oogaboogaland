@@ -105,6 +105,7 @@
   // The pull altitude and the sink at touchdown, for the bonuses they earn.
   let pullAlt = 0, landSink = 0, life = null;
   let stateTimer = 0, hintTimer = 0;
+  let scoreTicket = null, unwatchScores = null;
   const placed = [];
   const clouds = [];
   const rings = [];
@@ -285,6 +286,7 @@
 
   const toBoard = () => {
     phase = "board";
+    hud.setPanelsHidden(false);
     dhud.lockDiver(ownDiver());
     parkPlane();
     if (diver) {
@@ -318,6 +320,8 @@
     layCourse(game.recordJump());
     toBoard();
     phase = "climb";
+    hud.setPanelsHidden(true);
+    scoreTicket = BL.highscores?.begin("drop") || null;
     dhud.show("flight");
     dhud.setRings(0, RING_COUNT);
     dhud.setChute("pack");
@@ -375,6 +379,7 @@
   const finish = (landing, dist) => {
     if (!diver) return;
     phase = "results";
+    hud.setPanelsHidden(false);
     const p = diver.state.p, pileDist = Math.hypot(p.x, p.z), near = Math.min(dist, pileDist);
     const accuracy = landing === "lost" || crashed(landing) ? 0 : Math.round(SCORE.land * clamp(1 - near / SCORE.landRadius, 0, 1));
     const stood = landing === "stand" ? SCORE.stand : landing === "stumble" ? SCORE.stumble : 0;
@@ -384,6 +389,8 @@
     score += accuracy + stood + soft + low + banana;
     const medal = dhud.medalFor(score);
     const improved = game.recordDrop({ score, rings: ringsHit, ringTotal: RING_COUNT, landing });
+    if (score > 0 && (landing === "stand" || landing === "stumble")) BL.highscores?.submit(scoreTicket, "drop-1", score);
+    scoreTicket = null;
     result = { landing, dist, accuracy, soft: stood + soft, low, banana, score, medal, improved };
     const rows = [["Rings", `${ringsHit} of ${RING_COUNT} · ${score - accuracy - stood - soft - low - banana}`], ["Landing", landing === "lost" ? landingLabel.lost : `${landingLabel[landing]} · ${near.toFixed(1)} from the ${pileDist < dist ? "pile" : "target"} · ${accuracy}`]];
     if (landing !== "lost") rows.push(["Touchdown", `${stood}${soft ? ` · soft ${soft}` : ""}`]);
@@ -802,7 +809,6 @@
     }
     if (e.key === "Enter" && (phase === "board" || phase === "results")) startFlight();
     if (e.key === "0") cam.offset = cam.tilt = 0;
-    if (e.key === "m" || e.key === "M") toggleMute();
     if (e.key === "b" || e.key === "B") {
       world.level = Math.min(pileMod.MAX_BANANAS, world.level + testBananas);
       hud.toast(`+${testBananas} test bananas`);
@@ -920,9 +926,11 @@
     agent.pace(agentX, agentZ, 1.5);
     place(agent.root);
     setVec(targetNode.position, landingSpot.x, landingSpot.y + 0.02, landingSpot.z);
-    dhud = dropHud.create({ roster: contributors.activeRoster, best: () => game.state.drop.best, onPick: pickDiver });
+    dhud = dropHud.create({ roster: contributors.activeRoster, best: () => game.state.drop.best, onPick: pickDiver,
+      sharedBest: () => BL.highscores?.best("drop", "drop-1") ?? null });
     dhud.selection.racer = selection.racer;
     dhud.buildBoard((name) => contributors.stateFor(contributors.activeRoster.find((c) => c.name === name)));
+    unwatchScores = BL.highscores?.watch("drop", () => dhud.refreshBest()) || null;
     controls = controlsMod.create({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: ctx.canvas, onAction: act });
     dropScene.agentControls = controls;
     audio = BL.dropAudio.create();
@@ -976,7 +984,6 @@
     for (const c of contributors.activeRoster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
     if (lootEnabled) renderLocker();
     hud.setStats(game.state);
-    hud.el.sheet.dataset.open = "false";
     dhud.el.help.textContent = COARSE ? "Left stick pitches and rolls · right stick turns · the button jumps, pulls and flares" : "W S pitch · A D roll · Q E turn · Space jumps, pulls the chute · S flares · drag to look";
     toBoard();
     stateTimer = window.setInterval(() => {
@@ -1071,6 +1078,7 @@
     });
   };
   const leave = () => {
+    unwatchScores?.(); unwatchScores = null; scoreTicket = null;
     window.clearInterval(stateTimer);
     window.clearTimeout(hintTimer);
     window.removeEventListener("pointerdown", onGesture);

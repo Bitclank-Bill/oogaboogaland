@@ -119,6 +119,7 @@
   const REEL = { x0: 0, y0: 0, z0: 0, x1: 0, y1: 0, z1: 0 };
   let orbited = false, spaceCalled = false, stagesDropped = 0, chuteCalled = false, warnAt = 0, flipAt = 0, leanHinted = false, result = null, failure = null, score = 0;
   let stateTimer = 0, hintTimer = 0;
+  let scoreTicket = null, unwatchScores = null;
   const placed = [];
   const debris = [];
   const fireballs = [];
@@ -519,6 +520,7 @@
 
   const toBuild = () => {
     phase = "build";
+    hud.setPanelsHidden(false);
     rhud.lockPilot(!!ownPilot());
     flight = null;
     release = null;
@@ -550,9 +552,11 @@
     }
     game.setOrbitBuild(stack);
     if (phase === "results") toBuild();
+    scoreTicket = BL.highscores?.begin("orbit") || null;
     flight = rocketMod.create({ stack, groundAt, onDrop });
     flight.reset(spot.x, spot.padY, spot.z);
     phase = "count";
+    hud.setPanelsHidden(true);
     phaseT = 0;
     countShown = 0;
     gauge = 0;
@@ -836,6 +840,7 @@
   const finish = () => {
     const s = flight.state;
     phase = "results";
+    hud.setPanelsHidden(false);
     const place = failure ? null : where();
     const dist = Math.hypot(s.p.x - spot.x, s.p.z - spot.z);
     let landScore = 0;
@@ -862,6 +867,8 @@
     const medal = rhud.medalFor(score);
     const landing = failure || place;
     const improved = game.recordOrbit({ score, orbit: orbited, landing, parts: stack.length });
+    BL.highscores?.submit(scoreTicket, "orbit-1", score);
+    scoreTicket = null;
     result = { score, medal, improved, landing, orbit: orbited, failure, dist, peakHeat: s.peakHeat, maxAlt: s.maxAlt };
     const rows = [
       ["Clamps", release ? `${release.toUpperCase()}${release === "perfect" ? ` · ${SCORE.perfect}` : release === "good" ? ` · ${SCORE.good}` : ""}` : "held"],
@@ -1857,7 +1864,6 @@
       cam.buildPitch = 0.18;
       cam.buildZoom = 1;
     }
-    if (e.key === "m" || e.key === "M") toggleMute();
     if ((e.key === "g" || e.key === "G") && !e.repeat) {
       selection.assist = !selection.assist;
       hud.toast(selection.assist ? "Autopilot leans the climb (A D still steer)" : "Flying the climb by hand: follow the yellow line");
@@ -1939,12 +1945,14 @@
     selected = -1;
     rhud = rocketHud.create({
       best: () => game.state.orbit.best, onAdd: addPart, onMove: movePart, onRemove: removePart, onSelect: selectPart, onPreset: usePreset, onPilot: cyclePilot,
+      sharedBest: () => BL.highscores?.best("orbit", "orbit-1") ?? null,
       onInsert: insertPart, onMoveTo: movePartTo, slots: rocketSlots
     });
     rhud.buildPalette();
     rhud.buildMission();
     rhud.setPilot(selection.pilot);
     rhud.refreshBest();
+    unwatchScores = BL.highscores?.watch("orbit", () => rhud.refreshBest()) || null;
     controls = controlsMod.create({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: ctx.canvas, onAction: act });
     orbitScene.agentControls = controls;
     audio = rocketAudio.create();
@@ -2007,7 +2015,6 @@
     for (const c of contributors.roster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
     if (lootEnabled) renderLocker();
     hud.setStats(game.state);
-    hud.el.sheet.dataset.open = "false";
     rhud.el.help.textContent = COARSE
       ? "The button does each step · left stick steers"
       : "Space does each step · G autopilot · V spacewalk\nW S push · A D steer";
@@ -2094,6 +2101,7 @@
     });
   };
   const leave = () => {
+    unwatchScores?.(); unwatchScores = null; scoreTicket = null;
     window.clearInterval(stateTimer);
     window.clearTimeout(hintTimer);
     window.removeEventListener("pointerdown", onGesture);

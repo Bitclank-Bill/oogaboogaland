@@ -76,7 +76,6 @@
     $("message-stack").append(box);
     box.classList.add("show");
   };
-  const SHEET_STATE_KEY = "oogaboogaland.sheet.v1";
   const BOARD_STATE_KEY = "oogaboogaland.oogatron.windows.v1";
   const MAX_FLOATING_BOARDS = 12;
   const readBoardState = () => {
@@ -112,15 +111,6 @@
       return { windows, lastUsed: Number.isInteger(state.lastUsed) ? state.lastUsed : -1,
         lastWidth: Number.isFinite(state.lastWidth) && state.lastWidth > 0 ? state.lastWidth : 440 };
     } catch { return null; }
-  };
-  const readSheetState = () => {
-    try {
-      const state = JSON.parse(localStorage.getItem(SHEET_STATE_KEY));
-      return state && typeof state.open === "boolean" && ["bananas", "roster", "loot", "chat"].includes(state.tab) ? state : null;
-    } catch { return null; }
-  };
-  const writeSheetState = (open, tab, height) => {
-    try { localStorage.setItem(SHEET_STATE_KEY, JSON.stringify({ open, tab, height })); } catch { /* Storage may be unavailable. */ }
   };
   // Sign headings: one pixel path per element, scaled by that element's CSS height.
   const SIGN_NS = "http://www.w3.org/2000/svg";
@@ -229,8 +219,8 @@
     for (const child of source.children) if (child.visible && !child.portraitHidden) addChild(copy, copyPortraitNode(child, portraitRoot, portraitGeometry));
     return copy;
   };
-  const renderFaceIcon = (canvas, cave, gorilla = null, px = ICON_PX) => {
-    const renderer = iconRendererMod.createRenderer(canvas, { width: px, height: px, transparent: true });
+  const renderFaceIcon = (canvas, cave, gorilla = null, px = ICON_PX, unlit = false) => {
+    const renderer = iconRendererMod.createRenderer(canvas, { width: px, height: px, transparent: true, unlit });
     const source = gorilla ? gorilla.parts.head : cave.parts.head, geometry = gorilla ? source.geometry : cave.portraitHead;
     const root = createNode(), head = copyPortraitNode(source, source, geometry);
     const bounds = boundsOf(geometry), fit = (!gorilla && cave.traits.gasMask ? 0.68 : 0.78) / Math.max(bounds.radius, 0.05);
@@ -251,7 +241,7 @@
     renderer.dispose();
   };
   // An Ooga standing square to the view, whole, as it stands posed now: its built parts copied (hidden ones left out)
-  // and turned to face the camera, `w` by `h` pixels. A podium's portraits (HALLOWEEN: the ghost hunt's winners).
+  // and turned to face the camera, `w` by `h` pixels. A podium's portraits (HALLOWEEN: the arcade's ghost hunt's winners).
   const renderBodyIcon = (canvas, cave, w, h) => {
     const renderer = iconRendererMod.createRenderer(canvas, { width: w, height: h, transparent: true });
     const root = createNode(), body = copyPortraitNode(cave.root, null, null), tall = cave.bodyHeight;
@@ -270,7 +260,7 @@
   // The sheet belongs to the page. Reuse attached rows across visits; only current roster names stay in this map.
   const rosterNodes = new Map();
   let rosterAway = null, donorRows = null, donationRows = null;
-  const create = ({ roster, catalog, tierColors, renderIcon, lootEnabled = false, healthEnabled = false, signal = null }) => {
+  const create = ({ roster, catalog, tierColors, renderIcon, lootEnabled = false, healthEnabled = false, signal = null, escapeHeld = null }) => {
     const lifetime = signal ? null : new AbortController();
     signal = signal || lifetime.signal;
     const el = {
@@ -287,7 +277,6 @@
       bananaBtcPrice: $("banana-btc-price"), bananaExchange: $("banana-exchange"),
       donorUnits: [...document.querySelectorAll("[data-donor-unit]")],
       lootTab: $("loot-tab"),
-      lootCount: $("loot-count"),
       worldLootHint: $("world-loot-hint"),
       subtitle: $("subtitle"),
       topbar: document.querySelector(".topbar"), brand: document.querySelector(".brand"),
@@ -299,8 +288,10 @@
       boardDots: $("board-dots"), boardPrev: $("board-prev"), boardNext: $("board-next"), boardHelp: $("board-help"),
       boardHead: $("board-head"), boardPause: $("board-pause"), boardResize: $("board-resize"),
       act: $("act"),
+      wpNav: $("wp-nav"), wpNavHelp: $("wp-nav-help"),
       mode: $("mode-hud"),
       modeDestination: $("destination-hud"),
+      modeDestinationLabel: $("destination-hud-label"),
       modeFree: $("freeroam-icon"),
       modeFace: $("mode-face-icon"),
       modeHealth: $("mode-health"),
@@ -343,12 +334,6 @@
       tooltipHealthFill: $("tooltip-health-fill"),
       hint: $("hint"),
       sheet: $("sheet"),
-      sheetToggle: $("sheet-toggle"),
-      sheetBananas: $("sheet-bananas"),
-      sheetResize: $("sheet-resize"),
-      sheetPanels: document.querySelector(".sheet-panels"),
-      tabs: [...document.querySelectorAll("[data-tab]")],
-      panels: [...document.querySelectorAll("[data-panel]")],
       presets: [...document.querySelectorAll("[data-preset]")],
       inventory: $("inventory"),
       inventoryEmpty: $("inventory-empty"),
@@ -375,34 +360,7 @@
     favicon.src = document.querySelector('link[rel="icon"][sizes="64x64"]').href;
     el.lootTab.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
-    const savedSheet = readSheetState();
-    let sheetHeight = Number.isFinite(savedSheet?.height) && savedSheet.height >= 1 && savedSheet.height <= 10000 ? savedSheet.height : null;
-    if (sheetHeight === null) el.sheet.style.removeProperty("--sheet-height");
-    else el.sheet.style.setProperty("--sheet-height", `${sheetHeight}px`);
-    // Ooga Chat has a tab only where a backend answered (chat.js), which the director learns before any scene.
-    const sheetTab = savedSheet && (savedSheet.tab !== "loot" || lootEnabled) && (savedSheet.tab !== "chat" || BL.net.state.backend) ? savedSheet.tab : "roster";
-    // Dock below three times the 380px panel width; show two panels when two widths fit.
-    const bottomSheet = window.matchMedia("(width < 1140px)"), pairedSheet = window.matchMedia("(min-width: 760px)");
-    const showSheetPanels = (name) => {
-      const paired = bottomSheet.matches && pairedSheet.matches && (name === "bananas" || name === "roster");
-      el.sheet.dataset.dock = bottomSheet.matches ? "bottom" : "side";
-      el.sheet.dataset.paired = String(paired);
-      let moveFocus = false;
-      for (const panel of el.panels) {
-        const hidden = panel.dataset.panel !== name && !(paired && (panel.dataset.panel === "bananas" || panel.dataset.panel === "roster"));
-        if (hidden && panel.contains(document.activeElement)) moveFocus = true;
-        panel.hidden = hidden;
-      }
-      for (const tab of el.tabs) tab.setAttribute("aria-controls", paired && (tab.dataset.tab === "bananas" || tab.dataset.tab === "roster")
-        ? "bananas-panel roster-panel" : `${tab.dataset.tab}-panel`);
-      if (moveFocus) el.tabs.find((tab) => tab.dataset.tab === name)?.focus({ preventScroll: true });
-    };
-    for (const tab of el.tabs) {
-      tab.setAttribute("aria-selected", String(tab.dataset.tab === sheetTab));
-      tab.tabIndex = tab.dataset.tab === sheetTab ? 0 : -1;
-    }
-    showSheetPanels(sheetTab);
-    el.sheet.dataset.open = String(!!savedSheet?.open);
+    const sheet = BL.sheet.create({ lootEnabled, signal });
     el.primary.hidden = true;
     el.gorillaSmash.hidden = true;
     el.mode.hidden = true;
@@ -418,21 +376,31 @@
       target.addEventListener(type, fn, typeof opts === "boolean" ? { capture: opts, signal } : { ...opts, signal });
       listeners.push(() => target.removeEventListener(type, fn, opts));
     };
-    // Fit the HUB controls between the title and clock when their actual visible widths allow it.
+    // Fit each environment's controls between the title and clock when their actual visible widths allow it.
     // Observers only schedule a pass after layout or equipment changes; ammo and animation never poll it.
-    if (document.body.dataset.activeScene === "hub") {
+    const bannerScene = document.body.dataset.activeScene;
+    {
+      const presets = el.topbar.querySelector(`.presets[data-scene="${bannerScene}"]`);
       let bannerFrame = 0;
       const bannerStyle = (node, property, value) => {
         if (node.style.getPropertyValue(property) !== value) node.style.setProperty(property, value);
       };
       const fitBanner = () => {
         bannerFrame = 0;
-        if (document.body.dataset.activeScene !== "hub") return;
+        if (document.body.dataset.activeScene !== bannerScene) return;
         const brand = el.brand.getBoundingClientRect(), clock = el.clock.getBoundingClientRect(), block = el.block.getBoundingClientRect();
         const topbar = getComputedStyle(el.topbar), row = getComputedStyle(el.equipmentRow);
         const fontSize = parseFloat(getComputedStyle(el.clock).fontSize) || 22;
         const scale = Math.max(0.7, Math.min(0.85, 0.7 + (fontSize - 13) / 60));
-        const leftEdge = brand.right + 12, available = Math.min(clock.left, block.left) - 12 - leftEdge;
+        const leftEdge = brand.right + 12, available = Math.min(clock.left, block.width ? block.left : clock.left) - 12 - leftEdge;
+        let presetWidth = 0, presetCount = 0;
+        if (presets && !presets.hidden && getComputedStyle(presets).display !== "none") {
+          for (const button of presets.children) {
+            if (button.hidden || getComputedStyle(button).display === "none") continue;
+            presetWidth += button.offsetWidth; presetCount++;
+          }
+          presetWidth += Math.max(0, presetCount - 1) * (parseFloat(getComputedStyle(presets).columnGap) || 0);
+        }
         let compactWidth = 0, count = 0, expanded = false;
         for (const button of el.equipmentRow.children) {
           if (button.hidden || getComputedStyle(button).display === "none") continue;
@@ -441,8 +409,9 @@
           count++;
         }
         compactWidth += Math.max(0, count - 1) * (parseFloat(row.columnGap) || 0);
-        const banner = (compactWidth + (expanded ? 140 : 0)) * scale <= available ? "full"
-          : compactWidth * scale <= available ? "compact" : "below";
+        const presetSpace = presetWidth + (presetCount && count ? 12 : 0);
+        const banner = (compactWidth + (expanded ? 140 : 0)) * scale + presetSpace <= available ? "full"
+          : compactWidth * scale + presetSpace <= available ? "compact" : "below";
         const paddingLeft = parseFloat(topbar.paddingLeft) || 0, paddingRight = parseFloat(topbar.paddingRight) || 0;
         const topEdge = Math.min(brand.top, clock.top, block.top), bottomEdge = Math.max(brand.bottom, clock.bottom, block.bottom);
         const top = banner === "below" ? bottomEdge + 12 : (topEdge + bottomEdge - 52 * scale) / 2;
@@ -451,7 +420,18 @@
         bannerStyle(el.equipment, "--hub-equipment-left", `${banner === "below" ? paddingLeft : leftEdge}px`);
         bannerStyle(el.equipment, "--hub-equipment-top", `${top}px`);
         bannerStyle(el.equipment, "--hub-equipment-width", `${Math.max(0, window.innerWidth - paddingLeft - paddingRight) / scale}px`);
-        const bottom = `${top + el.equipmentRow.offsetHeight * scale + 8}px`;
+        const equipmentHeight = count ? el.equipmentRow.offsetHeight * scale : 0;
+        let controlsBottom = top + equipmentHeight;
+        if (presets && presetCount) {
+          const presetTop = banner === "below" ? top + equipmentHeight + (count ? 8 : 0) : (topEdge + bottomEdge - 28) / 2;
+          const equipmentWidth = (compactWidth + (banner === "full" && expanded ? 140 : 0)) * scale;
+          const presetLeft = banner === "below" ? paddingLeft : leftEdge + equipmentWidth + (count ? 12 : 0);
+          bannerStyle(presets, "--banner-presets-top", `${presetTop}px`);
+          bannerStyle(presets, "--banner-presets-left", `${presetLeft}px`);
+          bannerStyle(presets, "--banner-presets-width", `${Math.max(0, window.innerWidth - presetLeft - paddingRight)}px`);
+          controlsBottom = Math.max(controlsBottom, presetTop + presets.offsetHeight);
+        }
+        const bottom = `${Math.max(bottomEdge, controlsBottom) + 8}px`;
         bannerStyle(el.messageStack, "--hub-equipment-bottom", bottom);
         bannerStyle(el.micNote, "--hub-equipment-bottom", bottom);
       };
@@ -460,6 +440,10 @@
       };
       const bannerResize = new ResizeObserver(scheduleBanner), bannerEquipment = new MutationObserver(scheduleBanner);
       for (const node of [el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
+      if (presets) {
+        bannerResize.observe(presets);
+        bannerEquipment.observe(presets, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ["hidden", "disabled"] });
+      }
       for (const button of el.equipmentRow.children) bannerEquipment.observe(button, {
         attributes: true, attributeFilter: button === el.weapon ? ["hidden", "data-equipped"] : ["hidden"]
       });
@@ -468,6 +452,7 @@
         bannerResize.disconnect();
         bannerEquipment.disconnect();
         window.cancelAnimationFrame(bannerFrame);
+        if (presets) for (const property of ["--banner-presets-top", "--banner-presets-left", "--banner-presets-width"]) presets.style.removeProperty(property);
         delete el.equipment.dataset.banner;
         for (const property of ["--hub-equipment-scale", "--hub-equipment-left", "--hub-equipment-top", "--hub-equipment-width"]) el.equipment.style.removeProperty(property);
         el.messageStack.style.removeProperty("--hub-equipment-bottom");
@@ -509,26 +494,35 @@
       const contributor = orderedRoster[rosterIndex];
       let nodes = rosterNodes.get(contributor.name);
       if (!nodes) {
-        const li = document.createElement("li"), presence = document.createElement("span"), name = document.createElement("span");
+        const li = document.createElement("li"), presence = document.createElement("span"), name = document.createElement("button");
         li.dataset.name = contributor.name;
         presence.className = "roster-presence"; presence.setAttribute("role", "img");
-        name.className = "roster-name";
-        const marks = document.createElement("span"), host = document.createElement("span"), voice = document.createElement("button");
-        marks.className = "roster-marks"; host.className = "roster-host";
+        // The name, with the host's dot right of it, opens a signed-in player's row onto where they are.
+        const label = document.createElement("span"), host = document.createElement("span");
+        name.className = "roster-name"; name.type = "button"; label.className = "roster-label";
+        host.className = "roster-host";
         host.setAttribute("role", "img"); host.setAttribute("aria-label", "Host: runs the Oogas for everyone");
         host.title = "Host: runs the Oogas for everyone";
+        name.append(label, host);
+        const marks = document.createElement("span"), voice = document.createElement("button");
+        marks.className = "roster-marks";
         voice.className = "roster-voice"; voice.type = "button"; voice.append(voiceIcon.cloneNode(true));
-        marks.append(host, voice);
+        marks.append(voice);
         const age = document.createElement("span"), state = document.createElement("span");
         age.className = "roster-age"; age.append(""); state.className = "roster-state"; state.append("");
-        li.append(presence, name, marks, age, state);
-        nodes = { li, presence, name, host, voice, age, state };
+        const where = document.createElement("div"), whereLabel = document.createElement("span"), whereValue = document.createElement("span");
+        where.className = "roster-where"; whereLabel.className = "roster-where-label"; whereLabel.textContent = "Land";
+        whereValue.className = "roster-where-value";
+        where.append(whereLabel, whereValue);
+        li.append(presence, name, marks, age, state, where);
+        nodes = { li, presence, name, label, host, voice, age, state, where, whereValue };
         rosterNodes.set(contributor.name, nodes);
       }
-      const { li, presence, name, host, voice, age, state } = nodes;
-      if (name.textContent !== contributor.display) name.textContent = contributor.display;
+      const { li, presence, name, label, host, voice, age, state, where, whereValue } = nodes;
+      if (label.textContent !== contributor.display) label.textContent = contributor.display;
       presence.dataset.online = "false"; presence.setAttribute("aria-label", "Offline"); presence.title = "Offline";
-      host.hidden = voice.hidden = true; voice.disabled = false;
+      host.hidden = voice.hidden = where.hidden = true; voice.disabled = false;
+      name.disabled = true; name.removeAttribute("aria-expanded"); whereValue.textContent = "";
       voice.dataset.voice = voice.dataset.login = ""; voice.dataset.self = "false";
       const activity = BL.contributors.contributionStateFor(contributor), ageText = BL.contributors.contributionAgeLabel(contributor);
       if (age.firstChild.data !== ageText) age.firstChild.data = ageText;
@@ -537,11 +531,18 @@
       li.hidden = activity === "away";
       if (activity === "away") { if (!awayRow.parentElement) el.roster.append(awayRow); awayCount++; }
       el.roster.append(li);
-      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false, sceneOnline: false, remoteOnline: false, netOnline: false, nextOnline: false, placedStamp: stampOf(contributor), host, voice, look: "", login: "", hostOn: false, blocked: false, self: false, nextLook: "", nextLogin: "", nextHost: false, nextSelf: false });
+      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false, sceneOnline: false, remoteOnline: false, netOnline: false, nextOnline: false, placedStamp: stampOf(contributor), host, voice, look: "", login: "", hostOn: false, blocked: false, self: false, nextLook: "", nextLogin: "", nextHost: false, nextSelf: false, name, where, whereValue, zone: "", nextZone: "", open: false });
     }
     if (!awayRow.parentElement) el.roster.append(awayRow);
     updateAwayButton();
     on(el.roster, "click", (e) => {
+      const who = e.target.closest(".roster-name");
+      if (who) {
+        who.blur();
+        const row = !who.disabled && rosterRows.get(who.parentElement.dataset.name);
+        if (row) openWhere(row, !row.open);
+        return;
+      }
       const button = e.target.closest(".roster-voice");
       if (!button || button.disabled) return;
       button.blur();
@@ -618,6 +619,16 @@
       }
       if (moved) placeRosterRow(row);
     };
+    // Contribution data and its age stay live even in rooms with only one local Ooga.
+    // Preserve the scene's presence flags when refreshing activity across the whole panel.
+    const refreshRosterActivity = () => {
+      if (document.hidden) return;
+      for (const row of rosterRows.values()) setRosterRow(row.contributor.name, null, null, row.sceneOnline, row.remoteOnline);
+    };
+    listeners.push(BL.contributors.subscribe(refreshRosterActivity));
+    const rosterTimer = window.setInterval(refreshRosterActivity, 60000);
+    listeners.push(() => window.clearInterval(rosterTimer));
+    on(document, "visibilitychange", refreshRosterActivity);
     // The page-level pass marks rows online from the room and moves only those that changed.
     liveRows = rosterRows;
     liveOnline = (row) => {
@@ -626,7 +637,7 @@
     showVoices();
     // Value the donated sats at the current price; donor rankings retain their receipt prices.
     const showBananaRate = () => {
-      if (document.hidden || el.sheet.hidden || el.bananaPanel.hidden || el.sheet.dataset.open !== "true") return;
+      if (document.hidden || !BL.sheet.visible(el.bananaPanel)) return;
       const rate = currentDonationRate(), total = donationValueText();
       const tone = !rate ? "wait" : rate.stale ? "stale" : rate.live ? "live" : "idle";
       const label = tone === "live" ? "LIVE BTCUSD" : tone === "stale" ? "STALE BTCUSD" : "BTCUSD";
@@ -640,7 +651,7 @@
     };
     let stopBananaRate = null, pileValueVisible = false;
     const watchBananaRate = () => {
-      const visible = !document.hidden && (pileValueVisible || !el.sheet.hidden && !el.bananaPanel.hidden && el.sheet.dataset.open === "true");
+      const visible = !document.hidden && (pileValueVisible || BL.sheet.visible(el.bananaPanel));
       if (visible && !stopBananaRate) stopBananaRate = BL.donationRate.watch(showBananaRate);
       else if (!visible && stopBananaRate) { stopBananaRate(); stopBananaRate = null; }
       if (visible) showBananaRate();
@@ -654,6 +665,7 @@
     bananaRateObserver.observe(el.bananaPanel, { attributes: true, attributeFilter: ["hidden"] });
     bananaRateObserver.observe(el.sheet, { attributes: true, attributeFilter: ["data-open", "hidden"] });
     on(document, "visibilitychange", watchBananaRate);
+    on(document, "sheetchange", watchBananaRate);
     listeners.push(() => {
       bananaRateObserver.disconnect();
       if (stopBananaRate) stopBananaRate();
@@ -785,12 +797,18 @@
     };
     let actionHandler = null;
     const DETACHED_NAMES = { pile: "Pile", lab: "Lab", mirror: "Mirror", underground: "HQ", basement: "Basement", mempool: "Mempool", factory: "LN Factory", arcade: "Ooga Arcade", bca: "B.C.A.", gate: "North gate", bifrost: "₿IFRÖST", timechain: "TC Sphere" };
+    let destinationLabels = DETACHED_NAMES;
     let destinationNames = [];
     let destinationIndex = -1;
     let detachedPreset = "pile", detachedNameShown = false, detachedSelectionShown = false, areaLabel = "";
-    const setDestinations = (names) => {
-      destinationNames = names.filter(name => DETACHED_NAMES[name]);
+    el.modeDestination.disabled = false;
+    el.modeDestination.title = "Map · cycle destinations";
+    el.modeDestinationLabel.textContent = "Map. Cycle destinations";
+    const setDestinations = (names, labels = DETACHED_NAMES) => {
+      destinationLabels = labels;
+      destinationNames = names.filter(name => destinationLabels[name]);
       destinationIndex = destinationNames.indexOf(detachedPreset);
+      if (!destinationLabels[detachedPreset] && destinationNames.length) detachedPreset = destinationNames[0];
       el.modeDestination.hidden = !modeVisible || !destinationNames.length;
     };
     const cycleDestinations = () => {
@@ -799,12 +817,20 @@
       // Only a successful navigation updates the displayed destination.
       destinationIndex = (destinationIndex + 1) % destinationNames.length;
       actionHandler("mode-preset", destinationNames[destinationIndex]);
+      showDestinationLabel(el.modeDestinationName.textContent);
     };
     let destinationAnchored = false, destinationX = 0, destinationY = 0, destinationZ = 0;
-    const showAreaLabel = () => {
-      if (el.modeDestinationName.textContent !== areaLabel) el.modeDestinationName.textContent = areaLabel;
-      el.modeDestinationName.classList.toggle("show", !!areaLabel);
+    let destinationLabelTimer = 0;
+    const showDestinationLabel = text => {
+      if (el.modeDestinationName.textContent !== text) el.modeDestinationName.textContent = text;
+      window.clearTimeout(destinationLabelTimer);
+      el.modeDestinationName.classList.toggle("show", !!text);
+      destinationLabelTimer = text ? window.setTimeout(() => {
+        destinationLabelTimer = 0;
+        el.modeDestinationName.classList.remove("show");
+      }, 3000) : 0;
     };
+    const showAreaLabel = () => showDestinationLabel(areaLabel);
     const fadeDetachedName = (force = false) => {
       // Looking or zooming at an arrival does not leave that place.
       // Scenes with an anchor expire it from actual travel instead.
@@ -816,25 +842,25 @@
       showAreaLabel();
     };
     const setAreaLabel = (name, position = null) => {
+      const changed = areaLabel !== name;
       areaLabel = name;
       if (destinationAnchored && position
         && (position.x - destinationX) ** 2 + (position.y - destinationY) ** 2 + (position.z - destinationZ) ** 2 > 2.25) fadeDetachedName(true);
-      if (!detachedNameShown) showAreaLabel();
+      if (!detachedNameShown && changed) showAreaLabel();
     };
     const setDetachedView = (name, announce = false, position = null) => {
-      if (!DETACHED_NAMES[name]) return;
+      if (!destinationLabels[name]) return;
       detachedPreset = name;
       destinationIndex = destinationNames.indexOf(name);
       destinationAnchored = !!position;
       if (position) { destinationX = position.x; destinationY = position.y; destinationZ = position.z; }
       detachedSelectionShown = true;
       if (!announce) return;
-      el.modeDestinationName.textContent = DETACHED_NAMES[name];
       detachedNameShown = true;
-      el.modeDestinationName.classList.add("show");
+      showDestinationLabel(destinationLabels[name]);
     };
     let gorillaEntry = null, gorillaView = "orbit", gorillaCombat = false, gorillaCombatEnabled = true;
-    let modeName = "", modeGeometry = null, modeSelected = false, modeCombat = false, modeView = "detached", modeHealth = -1, modeHealthMax = 0, modeGorilla = false;
+    let modeName = "", modeGeometry = null, modeSelected = false, modeCombat = false, modeView = "", modeHealth = -1, modeHealthMax = 0, modeGorilla = false;
     let modeCave = null, modeVisible = true, retakePortraitActor = null, retakeGeometry = null, retakePortraitGeometry = null, retakeHealth = -1, retakeHealthMax = 0;
     const retake = { actor: null, gorilla: false };
     const syncRetakeActor = () => {
@@ -884,7 +910,7 @@
       if (!visible) fadeDetachedName(true);
       const identityChanged = selected !== modeSelected || selected && name !== modeName || !!gorilla !== modeGorilla;
       const stateChanged = combat !== modeCombat || view !== modeView || combatEnabled !== modeCombatEnabled;
-      const showMode = visible && selected;
+      const showMode = visible && (selected || !retake.actor);
       if (el.mode.hidden === showMode) el.mode.hidden = !showMode;
       const showDestinations = visible && destinationNames.length > 0;
       if (el.modeDestination.hidden === showDestinations) el.modeDestination.hidden = !showDestinations;
@@ -927,8 +953,8 @@
           ? `${shown}'s gorilla; ${view} view; ${look}. Press to switch ${change}; hold to detach`
           : selected
           ? `${shown}; ${view} view; ${look}. Press to switch ${change}; hold to detach`
-          : `${DETACHED_NAMES[detachedPreset]} detached view. Press to cycle destinations`);
-        el.mode.title = gorilla ? `${shown}'s gorilla · ${view} · ${look} · hold to detach` : selected ? `${shown} · ${view} · ${look} · hold to detach` : `${DETACHED_NAMES[detachedPreset]} · detached`;
+          : "Choose an Ooga. Open the Oogas panel");
+        el.mode.title = gorilla ? `${shown}'s gorilla · ${view} · ${look} · hold to detach` : selected ? `${shown} · ${view} · ${look} · hold to detach` : "Choose an Ooga";
       }
     };
     setDetachedView(detachedPreset);
@@ -1120,7 +1146,7 @@
       if (owned !== jetpackShown) {
         jetpackShown = owned;
       }
-      if (el.jetpack.hidden !== (!owned || !!gorillaEntry)) el.jetpack.hidden = !owned || !!gorillaEntry;
+      if (el.jetpack.hidden !== (!owned || blocked || !!gorillaEntry)) el.jetpack.hidden = !owned || blocked || !!gorillaEntry;
       if (equipped !== jetpackEquipped || blocked !== jetpackBlocked) {
         jetpackEquipped = equipped;
         jetpackBlocked = blocked;
@@ -1152,7 +1178,7 @@
       el.gorillaSmash.hidden = !entry || !combatEnabled;
       el.primary.hidden = !primaryShown || !!entry;
       el.weapon.hidden = !weaponShown || !!entry;
-      el.jetpack.hidden = !jetpackShown || !!entry;
+      el.jetpack.hidden = !jetpackShown || jetpackBlocked || !!entry;
       refreshWeaponSummary();
       setMode(null);
     };
@@ -1786,14 +1812,12 @@
       mainBoard.update(elapsed);
       if (!panelsHidden) for (let i = 0; i < floatingBoards.length; i++) floatingBoards[i].update(elapsed);
     };
-    // A hunt borrows the play area without changing the visitor's saved panel choices.
+    // Active gameplay borrows the play area without changing the visitor's saved panel choices.
     const setPanelsHidden = (on) => {
       on = !!on;
       if (on === panelsHidden) return;
-      finishSheetResize();
-      if (on && el.sheet.contains(document.activeElement)) document.activeElement.blur();
       panelsHidden = on;
-      el.sheet.hidden = on;
+      sheet.setHidden(on);
       for (const popup of floatingBoards) popup.setHidden(on);
     };
     const openRecipe = () => {
@@ -1882,6 +1906,13 @@
     on(window, "blur", () => finishPrimary(true));
     on(document, "visibilitychange", () => { if (document.hidden) finishPrimary(true); });
     on(el.primary, "contextmenu", (e) => e.preventDefault());
+    const pressMode = () => {
+      if (modeSelected) { if (actionHandler) actionHandler("mode-toggle"); }
+      else {
+        document.body.dataset.bannerOogas = "true";
+        sheet.selectTab("roster");
+      }
+    };
     const MODE_HOLD_MS = 650;
     let modePointer = -1, modeHoldTimer = 0, modeLong = false;
     const clearModeHold = () => {
@@ -1911,7 +1942,7 @@
       modePointer = -1;
       if (el.mode.hasPointerCapture(e.pointerId)) el.mode.releasePointerCapture(e.pointerId);
       clearModeHold();
-      if (!cancel && !modeLong && modeSelected && actionHandler) actionHandler("mode-toggle");
+      if (!cancel && !modeLong) pressMode();
       modeLong = false;
       el.mode.blur();
     };
@@ -1930,6 +1961,7 @@
       else if (b.dataset.action === "recipe-copy") copyRecipe(b);
       else if (b.dataset.action === "intro-go") b.closest("[data-intro]").hidden = true;
       else if (b === el.modeDestination) cycleDestinations();
+      else if (b === el.mode) pressMode();
       else if (b.dataset.action === "account-login") BL.net.login();
       else if (b.dataset.action === "account-logout") BL.net.logout();
       else if (b.dataset.action === "account-rejoin") BL.net.rejoin();
@@ -2091,11 +2123,14 @@
         if (!el.hint.classList.contains("show")) el.hint.hidden = true;
       }, MESSAGE_FADE_MS);
     };
-    const selectedSheetTab = () => el.tabs.find((tab) => tab.getAttribute("aria-selected") === "true")?.dataset.tab || "roster";
-    const setSheetOpen = (open) => {
-      el.sheet.dataset.open = String(open);
-      writeSheetState(open, selectedSheetTab(), sheetHeight);
+    // Reading the whitepaper's poster: the line that says how to step through it, or, on a touch screen, the one
+    // button that does.
+    const whitepaperNav = (on, text) => {
+      el.wpNav.hidden = !on;
+      if (on) el.wpNavHelp.textContent = text;
     };
+    const selectTab = (name) => sheet.selectTab(name);
+    const foldPanels = () => sheet.fold();
     // Registered before actor controls: a popup or the sheet takes one Escape
     // before cursor capture or possession can change. Dialogs keep their own
     // nested Escape actions (for example a board's filter menu).
@@ -2104,7 +2139,7 @@
       if (e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); return; }
       // Chat owns IME state and first returns focus from its editor to its tab.
       if (e.target.id === "chat-input" || e.target.id === "chat-display") return;
-      if (document.querySelector("dialog:modal") || e.target.closest && e.target.closest("dialog[open]")) return;
+      if (document.querySelector("dialog:modal") || e.target.closest && e.target.closest('dialog[open], [role="dialog"][aria-modal="true"]')) return;
       let closed = false;
       if (!panelsHidden && floatingBoards.length) {
         floatingBoards[floatingBoards.length - 1].escape();
@@ -2118,117 +2153,11 @@
           break;
         }
       }
-      if (!closed && el.sheet.dataset.open === "true" && el.sheet.getClientRects().length) {
-        if (el.sheet.contains(document.activeElement)) document.activeElement.blur();
-        setSheetOpen(false);
-        closed = true;
-      }
+      // A scene-owned screen (the Factory kiosk) keeps Escape while its controls
+      // have focus. Focusing a panel still lets the visitor close that panel.
+      if (!closed && !(escapeHeld?.() && !e.target.closest?.(".sheet"))) closed = sheet.escape();
       if (closed) { e.preventDefault(); e.stopImmediatePropagation(); }
     }, true);
-    const selectTab = (name) => {
-      for (const t of el.tabs) {
-        t.setAttribute("aria-selected", String(t.dataset.tab === name));
-        t.tabIndex = t.dataset.tab === name ? 0 : -1;
-      }
-      showSheetPanels(name);
-      setSheetOpen(true);
-    };
-    // A pull tab opens its own panel, and folds the sheet when that panel is already showing.
-    const pull = (name) => {
-      const showing = el.sheet.dataset.open === "true" && el.tabs.some((t) => t.dataset.tab === name && t.getAttribute("aria-selected") === "true");
-      if (showing) setSheetOpen(false);
-      else selectTab(name);
-    };
-    for (const tab of el.tabs) on(tab, "click", () => pull(tab.dataset.tab));
-    on(el.sheetPanels, "keydown", (e) => {
-      let step = 0;
-      if (e.key === "ArrowDown" || e.key === "ArrowRight") step = 1;
-      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") step = -1;
-      else if (e.key !== "Home" && e.key !== "End") return;
-      e.preventDefault(); e.stopPropagation();
-      const tabs = el.tabs.filter((tab) => !tab.hidden), index = tabs.indexOf(document.activeElement);
-      const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (index + step + tabs.length) % tabs.length;
-      selectTab(tabs[next].dataset.tab);
-      tabs[next].focus({ preventScroll: true });
-    });
-    let sheetPointer = -1, sheetStartY = 0, sheetStartHeight = 0, sheetDirection = 1;
-    const sheetLimits = () => {
-      const safe = getComputedStyle(document.documentElement);
-      const safeTop = parseFloat(safe.getPropertyValue("--safe-top")) || 0;
-      const safeBottom = parseFloat(safe.getPropertyValue("--safe-bottom")) || 0;
-      const viewport = parseFloat(el.sheet.style.getPropertyValue("--chat-viewport")) || window.innerHeight;
-      const max = Math.max(1, bottomSheet.matches ? viewport - 74 - safeTop : window.innerHeight - 90 - safeTop - safeBottom);
-      return { min: Math.min(240, max), max };
-    };
-    const showSheetHeight = () => {
-      const limits = sheetLimits();
-      const height = el.sheet.getBoundingClientRect().height;
-      el.sheetPanels.setAttribute("aria-orientation", bottomSheet.matches ? "horizontal" : "vertical");
-      el.sheetResize.setAttribute("aria-valuemin", String(Math.round(limits.min)));
-      el.sheetResize.setAttribute("aria-valuemax", String(Math.round(limits.max)));
-      if (height > 0) el.sheetResize.setAttribute("aria-valuenow", String(Math.round(height)));
-    };
-    const resizeSheet = (height) => {
-      const limits = sheetLimits();
-      sheetHeight = Math.round(Math.min(limits.max, Math.max(limits.min, height)));
-      el.sheet.style.setProperty("--sheet-height", `${sheetHeight}px`);
-      showSheetHeight();
-    };
-    const finishSheetResize = () => {
-      const pointer = sheetPointer;
-      sheetPointer = -1;
-      if (pointer >= 0 && el.sheetResize.hasPointerCapture(pointer)) el.sheetResize.releasePointerCapture(pointer);
-      if (pointer >= 0) writeSheetState(el.sheet.dataset.open === "true", selectedSheetTab(), sheetHeight);
-    };
-    on(el.sheetResize, "pointerdown", (e) => {
-      if (sheetPointer >= 0 || e.button !== 0 || !e.isPrimary) return;
-      e.preventDefault(); e.stopPropagation();
-      sheetPointer = e.pointerId; sheetStartY = e.clientY;
-      sheetStartHeight = el.sheet.getBoundingClientRect().height;
-      sheetDirection = bottomSheet.matches ? -1 : 1;
-      el.sheetResize.focus({ preventScroll: true });
-      if (e.isTrusted) el.sheetResize.setPointerCapture(e.pointerId);
-    });
-    on(el.sheetResize, "pointermove", (e) => {
-      if (e.pointerId !== sheetPointer) return;
-      e.preventDefault(); e.stopPropagation();
-      resizeSheet(sheetStartHeight + (e.clientY - sheetStartY) * sheetDirection);
-    });
-    const endSheetResize = (e) => {
-      if (e.pointerId !== sheetPointer) return;
-      e.preventDefault(); e.stopPropagation();
-      finishSheetResize();
-    };
-    on(el.sheetResize, "pointerup", endSheetResize);
-    on(el.sheetResize, "pointercancel", endSheetResize);
-    on(el.sheetResize, "lostpointercapture", endSheetResize);
-    on(window, "blur", finishSheetResize);
-    const layoutSheet = () => {
-      finishSheetResize();
-      showSheetPanels(selectedSheetTab());
-      showSheetHeight();
-    };
-    on(bottomSheet, "change", layoutSheet);
-    on(pairedSheet, "change", layoutSheet);
-    on(window, "resize", () => { finishSheetResize(); showSheetHeight(); });
-    on(el.sheetResize, "keydown", (e) => {
-      if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
-      e.preventDefault(); e.stopPropagation();
-      const limits = sheetLimits();
-      resizeSheet(e.key === "Home" ? limits.min : e.key === "End" ? limits.max
-        : el.sheet.getBoundingClientRect().height + (e.key === "ArrowUp" ? 32 : -32));
-      writeSheetState(el.sheet.dataset.open === "true", selectedSheetTab(), sheetHeight);
-    });
-    on(el.sheetResize, "dblclick", () => {
-      sheetHeight = null;
-      el.sheet.style.removeProperty("--sheet-height");
-      writeSheetState(el.sheet.dataset.open === "true", selectedSheetTab(), sheetHeight);
-      showSheetHeight();
-    });
-    const sheetObserver = new ResizeObserver(showSheetHeight);
-    sheetObserver.observe(el.sheet);
-    listeners.push(() => sheetObserver.disconnect());
-    showSheetHeight();
     let presetHandler = null;
     for (const b of el.presets) if (!b.closest(".hub-presets")) b.title = "Camera viewpoint · releases character control";
     for (const b of el.presets) on(b, "click", () => {
@@ -2271,8 +2200,7 @@
     const renderInventory = (entries, assignedTo, wornBy = () => null) => {
       el.inventory.replaceChildren();
       el.inventoryEmpty.hidden = entries.length > 0;
-      el.lootCount.hidden = entries.length === 0;
-      el.lootCount.textContent = String(entries.length);
+      sheet.setLootCount(entries.length);
       for (const group of groupEntries(entries)) {
         const { item } = group;
         const worn = group.entries.map((e) => ({ entry: e, name: assignedTo(e.id) })).filter((w) => w.name);
@@ -2349,8 +2277,8 @@
     };
     // End this visit; the attached sheet rows belong to the page.
     const dispose = () => {
-      finishSheetResize();
-      el.sheet.hidden = false;
+      delete document.body.dataset.bannerOogas;
+      sheet.dispose();
       finishPrimary(true);
       window.clearTimeout(toastTimer);
       window.clearTimeout(toastHideTimer);
@@ -2368,6 +2296,7 @@
       el.toast.hidden = true;
       el.hint.classList.remove("show");
       el.hint.hidden = true;
+      el.wpNav.hidden = true;
       tooltip.hide();
       clearModeHold();
       modePointer = -1;
@@ -2390,17 +2319,20 @@
       mainBoard.dispose();
       el.board.classList.remove("board-floating");
       el.board.removeAttribute("style");
+      window.clearTimeout(destinationLabelTimer);
+      el.modeDestinationName.classList.remove("show");
     };
+    setMode(null);
     return {
       // Engines keep this facade while a retained scene takes a fresh visit signal and sheet state.
       renew(signal) {
-        const next = create({ roster, catalog, tierColors, renderIcon, lootEnabled, healthEnabled, signal });
+        const next = create({ roster, catalog, tierColors, renderIcon, lootEnabled, healthEnabled, signal, escapeHeld });
         next.tooltip.setVisibility(this.tooltip.visibility);
         next.onAction(actionHandler); next.onPreset(presetHandler); next.onAssign(assignHandler); next.onUnassign(unassignHandler);
         Object.defineProperties(this, Object.getOwnPropertyDescriptors(next));
         return this;
       },
-      el, openFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setPanelsHidden, setRosterRow, setStats, setAct, setMode, setDestinations, setOwnOoga, get retakeActor() { return retake.actor ? retake : null; }, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, setPileValueVisible, onAssign, onUnassign, renderInventory, dispose };
+      el, openFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setPanelsHidden, foldPanels, setRosterRow, setStats, setAct, setMode, setDestinations, setOwnOoga, get retakeActor() { return retake.actor ? retake : null; }, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, whitepaperNav, letterSign, selectTab, onPreset, setPileValueVisible, onAssign, onUnassign, renderInventory, dispose };
   };
   // The account line in the sheet's foot is page-level: shown only when a backend answered, and
   // the director hands every change of `BL.net.state` here, whichever scene is active.
@@ -2434,7 +2366,7 @@
     const voice = BL.voice.stats, voiceButton = $("account-voice");
     const voiceHidden = room !== "live";
     if (voiceHidden !== accountVoiceHidden) { accountVoiceHidden = voiceHidden; voiceButton.hidden = voiceHidden; }
-    const voiceWords = voice.joining ? "Joining voice" : voice.error && !voice.enabled ? `Voice: ${voice.error}` : !voice.enabled ? "Join voice" : voice.muted ? "Unmute" : "Mute";
+    const voiceWords = voice.joining ? "Joining voice" : (voice.error || voice.micError) && !voice.enabled ? `Voice: ${voice.error || voice.micError}` : !voice.enabled ? "Join voice" : voice.muted ? "Unmute" : "Mute";
     if (voiceWords !== accountVoiceWords) { accountVoiceWords = voiceWords; voiceButton.textContent = voiceWords; }
     const pressed = String(voice.enabled && !voice.muted);
     if (pressed !== accountVoicePressed) { accountVoicePressed = pressed; voiceButton.setAttribute("aria-pressed", pressed); }
@@ -2444,12 +2376,14 @@
   // The microphone's note (#181), page-level as the account line is: muted in voice, it stays until unmuted;
   // alone in voice (nobody here to hear, so the microphone is held off), it says so until someone comes;
   // unmuting, or someone coming, says "Mic on" for MIC_ON_MS, then it goes. A mute outranks alone.
-  // `keyed` is whether M unmutes in the active scene.
+  // `keyed` is whether the page reserves M for voice mute outside editable fields.
   const MIC_ON_MS = 1500, MIC_COARSE = window.matchMedia("(pointer: coarse)").matches;
   let micShown = "", micTimer = 0;
   const showMic = (voice, keyed) => {
-    const muted = voice.muted && (voice.enabled || voice.joining), alone = !muted && voice.enabled && voice.alone;
-    const shown = muted ? keyed && !MIC_COARSE ? "Mic muted \u00b7 M to unmute" : "Mic muted \u00b7 Unmute in the panel" : alone ? "Alone \u00b7 mic off" : voice.enabled ? "Mic on" : "";
+    // Listen-only visitors (never opted in to speak) see no microphone status at all.
+    const speaker = !!voice.micWanted;
+    const muted = speaker && voice.muted && (voice.publishing || voice.joining), alone = !muted && speaker && voice.alone;
+    const shown = muted ? keyed && !MIC_COARSE ? "Mic muted \u00b7 M to unmute" : "Mic muted \u00b7 Unmute in the panel" : alone ? "Alone \u00b7 mic off" : speaker && voice.publishing ? "Mic on" : "";
     if (shown === micShown) return;
     const note = $("mic-note"), was = micShown;
     micShown = shown;
@@ -2466,9 +2400,22 @@
   // room and voice change here; only marks that changed are touched, and rows never move for them.
   let liveRows = null, liveOnline = null, liveSignedIn = false;
   const VOICE_WORDS = { on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
+  // A voice mark's tooltip and label, shared with the live players tab: the visitor's own mark works their microphone,
+  // anyone else's mutes them for this visitor (`login` empty when there is nobody to mute).
+  const voiceWords = (look, self, blocked, login) => !look ? "" : self ? look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute"
+    : `${VOICE_WORDS[look]}${blocked ? ". Muted for you: click to unmute" : login ? ". Click to mute for you" : ""}`;
   const voiceRowOf = (login, body) => {
     const character = BL.net.characterOf(login);
     return character && liveRows.get(character.handle) || body && liveRows.get(BL.net.bodyName(body)) || null;
+  };
+  // The land a signed-in player's zone stands in (docs/auth-and-presence.md, Zones), for their row's drop-down.
+  const landOf = (zone) => BL.zoneMap.landOf(zone);
+  // A row opens onto the land below its name, and closes when its player is no longer in the room.
+  const openWhere = (row, open) => {
+    row.open = open;
+    row.where.hidden = !open;
+    if (row.zone) row.name.setAttribute("aria-expanded", String(open));
+    else row.name.removeAttribute("aria-expanded");
   };
   const paintMarks = (row) => {
     const blocked = !!row.nextLogin && BL.voice.mutedLocally(row.nextLogin);
@@ -2484,14 +2431,19 @@
       button.dataset.self = String(row.self);
       button.disabled = !row.login && !row.self;
       button.setAttribute("aria-pressed", String(blocked));
-      const words = !row.look ? "" : row.self ? row.look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute"
-        : `${VOICE_WORDS[row.look]}${blocked ? ". Muted for you: click to unmute" : row.login ? ". Click to mute for you" : ""}`;
+      const words = voiceWords(row.look, row.self, blocked, row.login);
       button.title = words;
       button.setAttribute("aria-label", words);
     }
     if (row.hostOn !== row.nextHost) {
       row.hostOn = row.nextHost;
       row.host.hidden = !row.hostOn;
+    }
+    if (row.zone !== row.nextZone) {
+      row.zone = row.nextZone;
+      row.name.disabled = !row.zone;
+      row.whereValue.textContent = row.zone ? landOf(row.zone) : "";
+      openWhere(row, row.open && !!row.zone);
     }
   };
   // A signed-in player is online on their own Ooga's row and on the row of the actor's Ooga.
@@ -2503,7 +2455,7 @@
   const showVoices = () => {
     if (!liveRows) return;
     for (const row of liveRows.values()) {
-      row.nextLook = row.nextLogin = "";
+      row.nextLook = row.nextLogin = row.nextZone = "";
       row.nextHost = row.nextOnline = row.nextSelf = false;
     }
     const net = BL.net.state, voice = BL.voice.stats;
@@ -2514,6 +2466,7 @@
       for (const rec of BL.net.remotes.values()) markOnline(rec.login, rec.body);
       const self = voiceRowOf(net.me.login, net.body);
       if (self) {
+        self.nextZone = net.zone;
         if (voice.enabled) {
           self.nextLook = voice.muted ? "muted" : voice.speaking ? "speaking" : "on";
           self.nextSelf = true;
@@ -2523,6 +2476,7 @@
       for (const rec of BL.net.remotes.values()) {
         const row = voiceRowOf(rec.login, rec.body);
         if (!row) continue;
+        row.nextZone = rec.zone;
         if (rec.voice) {
           row.nextLook = rec.muted ? "muted" : BL.voice.speaking(rec.id) ? "speaking" : "on";
           row.nextLogin = rec.login;
@@ -2556,5 +2510,5 @@
       else b.textContent = `Back to ${place}`;
     }
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

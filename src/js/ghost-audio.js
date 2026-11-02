@@ -1,22 +1,24 @@
 // HALLOWEEN: the ghost hunt's sound, ported from OBL-Audio-lab's sfx.js and wave.js. Synthesized cues on a pool of
 // voices built once (an oscillator with its filter, gain and a wobble, and a filtered slice of one looping noise), so a
 // cue only schedules automation, as the island's other sound does; and the lab's recordings (ghost-audio-data.js)
-// decoded once into buffers, one source a play, with the hunt's playlist (the lab's boss music and four tracks, each
+// decoded once into buffers, one source a play, with the hunt's playlist (the lab's boss music and five tracks, each
 // its own deferred `halloween-track-<key>` group fetched as it comes up) decoded a track at a time. One AudioContext, opened only after a gesture
 // the browser has activated; the page-wide mute (`oogaboogaland.audio`);
-// suspended while the tab is hidden; `dispose` closes it.
+// keeps playing while the tab is hidden; `dispose` closes it.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const MASTER = 0.35, LEVEL = 0.5, VOICES = 16, STORAGE_KEY = "oogaboogaland.audio", MUSIC_KEY = "ooga-ghost-music";
+  const MASTER = 0.35, LEVEL = 0.5, VOICES = 16, MUSIC_KEY = "ooga-ghost-music";
   // The hunt's playlist: each track's title, who made it and its key; its bytes come in its own deferred group,
-  // `halloween-track-<key>`, fetched only as it comes up. Played in a shuffled order from a hunt's start.
+  // `halloween-track-<key>`, fetched only as it comes up (each key listed in deferred.js's `PRESENT` too, or its fetch
+  // throws). Played in a shuffled order from a hunt's start.
   const TRACKS = [
     { key: "boss", title: "The Boss", by: "OBL Audio Lab" },
     { key: "colt", title: "Instagram", by: "Colt Fingaz" },
     { key: "martial", title: "Martial Arts Action", by: "Luis Humanoide" },
     { key: "nightmare", title: "Nightmare Pulse", by: "Pixabay" },
-    { key: "synthed", title: "Synthed Halloween", by: "LunarBoomMusic" }
+    { key: "synthed", title: "Synthed Halloween", by: "LunarBoomMusic" },
+    { key: "nr", title: "NR", by: "OBL Audio Lab" }
   ];
   const bytesOf = (k) => BL.ghostMusic && BL.ghostMusic[TRACKS[k].key];
   // Asks for a track's group; a failed fetch is forgotten, so the next ask tries again.
@@ -26,7 +28,8 @@
     if (loading) loading.catch(() => {});
     return loading;
   };
-  const CLIPS = ["wave", "kaboom", "screech", "freeze", "apples", "double", "banana", "ooga", "landing", "network", "fiatRush", "tessZap", "tessScream", "monkeyGet", "choir", "gameOver"];
+  const CLIPS = ["wave", "kaboom", "screech", "freeze", "apples", "double", "banana", "ooga", "landing", "network", "fiatRush", "tessZap", "tessScream", "monkeyGet", "choir", "gameOver1", "gameOver2", "gameOver3", "gameOver4", "gameOverLast"];
+  const DOWN_CLIPS = ["gameOver1", "gameOver2", "gameOver3", "gameOver4"];
 
   const decode = (ctx, base64) => {
     const raw = atob(base64), bytes = new Uint8Array(raw.length);
@@ -46,11 +49,7 @@
     } catch {
       musicOn = true;
     }
-    try {
-      muted = localStorage.getItem(STORAGE_KEY) === "off";
-    } catch {
-      muted = false;
-    }
+    muted = BL.sound.muted;
 
     const open = () => {
       if (ctx) return true;
@@ -84,7 +83,7 @@
     };
     const live = () => {
       if (!ctx && !open()) return false;
-      if (ctx.state === "suspended" && !document.hidden) ctx.resume().catch(() => {});
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
       return true;
     };
     const voice = () => {
@@ -172,8 +171,9 @@
       },
       // An elixir taken from a totem: a choir (`choir`, see ghost-audio-data.js).
       elixir: () => clip("choir", 1.3),
-      // A player goes down: "Game over, man!" (`gameOver`, see ghost-audio-data.js).
-      down: () => clip("gameOver", 1.6),
+      // A player goes down: one of four lines from "Game over, man!" at random, or with nobody left standing
+      // (`last`) the one for the end (`gameOver1` to `gameOver4`, `gameOverLast`, see ghost-audio-data.js).
+      down: (last) => clip(last ? "gameOverLast" : DOWN_CLIPS[Math.random() * DOWN_CLIPS.length | 0], 1.6),
       // An elixir spent bringing someone back: the same choir, a fifth louder.
       revived: () => clip("choir", 1.3 * 1.2),
       // A skeleton lunges and bites: breath rushing up as it rises, then its teeth snapping shut twice, bright clacks of
@@ -496,15 +496,18 @@
       else if (musicWanted && !muted && live()) startMusic();
       return musicOn;
     };
-    /** Once a frame: rests the context while the tab is hidden. */
+    /** Wake a context the browser suspended; the playlist keeps playing across tab changes. */
     const update = () => {
-      if (!ctx) return;
-      if (document.hidden && ctx.state === "running") ctx.suspend().catch(() => {});
-      else if (!document.hidden && ctx.state === "suspended") ctx.resume().catch(() => {});
+      if (ctx && !document.hidden && ctx.state === "suspended") ctx.resume().catch(() => {});
     };
-    // The director stops the frame loop the moment the tab hides, so the context rests on the event itself, not a frame.
     document.addEventListener("visibilitychange", update);
+    const offSound = BL.sound.subscribe(on => {
+      muted = on;
+      if (master) master.gain.setTargetAtTime(on ? 0 : MASTER, ctx.currentTime, 0.015);
+      if (!on && musicWanted) startMusic();
+    });
     const dispose = () => {
+      offSound();
       document.removeEventListener("visibilitychange", update);
       setMusic(false);
       if (ctx) ctx.close().catch(() => {});

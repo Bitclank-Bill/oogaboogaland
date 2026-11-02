@@ -6,7 +6,7 @@
 // vast hall's air breathing; and, louder as the visitor nears each, the launch tunnel's neon buzzing all round them
 // inside it, and the shimmer of each shield, the launch shield's at the tunnel's end and the door's. `listen` says
 // where the visitor hears from and which way the view faces, and `update(dt)` levels the bed from there ten times a
-// second. It honours the page-wide mute (`oogaboogaland.audio`) and the tab's visibility, and `dispose` closes it.
+// second. It honours the page-wide mute (`oogaboogaland.audio`), keeps sounding in the background, and `dispose` closes it.
 //
 // Over the bed, the engine static fire test (`test(AT)`, its whole sequence scheduled at the press on voices built
 // with the bed, so nothing starts or allocates while it plays): the booth's two-tone siren from the press to the blast;
@@ -42,7 +42,7 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { clamp } = BL.math;
-  const NOISE_SECONDS = 2, MASTER = 0.5, STORAGE_KEY = "oogaboogaland.audio", VOLUME_KEY = "ooga-hangar-volume", PAN = 0.75;
+  const NOISE_SECONDS = 2, MASTER = 0.5, VOLUME_KEY = "ooga-hangar-volume", PAN = 0.75;
   // How loud each part of the bed sits: the hum, the drone and the air everywhere, more air inside the tunnel, the
   // neon at its loudest inside it, and each shield close to; and at how many metres each of those last falls to half.
   const LEVEL = { mains: 0.05, drone: 0.08, air: 0.045, tunnelAir: 0.035, neon: 0.05, launch: 0.11, door: 0.06 };
@@ -93,13 +93,11 @@
   // show's projector and its picture, and the forklift, { x, y, z } each.
   const create = (spots) => {
     let ctx = null, master = null, mix = null, muffle = null, buffer = null, ready = false, muted = false, disposed = false, since = 0, volume = 1;
+    muted = BL.sound.muted;
     try {
-      muted = localStorage.getItem(STORAGE_KEY) === "off";
       const saved = localStorage.getItem(VOLUME_KEY), v = Number(saved);
       if (saved !== null && v >= 0 && v <= 1) volume = v;
-    } catch {
-      muted = false;
-    }
+    } catch {}
     const bed = {}, test = {}, sis = {}, proj = {}, fork = {};
     // Whether the projector runs, so a context opened mid-show starts it running, and the same for the forklift.
     let projOn = false, liftOn = false, liftReady = 0, liftDrive = 0, liftPump = 0;
@@ -720,7 +718,7 @@
     const activate = () => {
       if (disposed) return;
       if (ready) {
-        if (ctx.state === "suspended" && !document.hidden) ctx.resume().catch(() => {});
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
         return;
       }
       if (muted || typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
@@ -728,11 +726,9 @@
     };
     window.addEventListener("pointerdown", activate, true);
     window.addEventListener("keydown", activate, true);
-    // A hidden tab stops the bed; showing it again picks it up.
+    // Keep the bed playing in the background; returning can wake a context the browser suspended.
     const onVisibility = () => {
-      if (!ready) return;
-      if (document.hidden) ctx.suspend().catch(() => {});
-      else ctx.resume().catch(() => {});
+      if (ready && !document.hidden && ctx.state === "suspended") ctx.resume().catch(() => {});
     };
     document.addEventListener("visibilitychange", onVisibility);
 
@@ -815,14 +811,12 @@
 
     const setMuted = (value) => {
       muted = !!value;
-      try {
-        localStorage.setItem(STORAGE_KEY, muted ? "off" : "on");
-      } catch {
-      }
+      BL.sound.setMuted(muted);
       if (ready) master.gain.setTargetAtTime(muted ? 0 : MASTER * volume, ctx.currentTime, 0.05);
       else if (!muted) activate();
       return muted;
     };
+    const offSound = BL.sound.subscribe(setMuted);
     // A hammer blow on the Jet at (x, y, z), each a little different, quieter with distance, `loud` times as loud.
     const clang = (x, y, z, loud = 1) => {
       if (!ready || muted) return;
@@ -1086,6 +1080,7 @@
     };
 
     const dispose = () => {
+      offSound();
       disposed = true;
       window.removeEventListener("pointerdown", activate, true);
       window.removeEventListener("keydown", activate, true);

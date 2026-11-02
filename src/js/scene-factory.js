@@ -77,6 +77,7 @@
   // How far in from the door's middle an arrival stands, and a crossing's scratch.
   const HANGAR_IN = -((HANGAR_ARRIVAL.position.x - HANGAR_WAY.x) * HANGAR_WAY.ox + (HANGAR_ARRIVAL.position.z - HANGAR_WAY.z) * HANGAR_WAY.oz), ARRIVE = { x: 0, z: 0, yaw: 0 };
   // `entrance` is the balcony's view across the core; the rest frame one station each.
+  const VIEW_NAMES = { entrance: "Overview", core: "Core", lines: "Lines", lineA: "Channel A", lineB: "Channel B", lineC: "Channel C", lineD: "Channel D", forge: "Forge", switchboard: "Switchboard", kortik: "Kortik", rebalancer: "Rebalancer", treasury: "Treasury", cooker: "Cooker", lookout: "Lookout", study: "Study", hangar: "Hangar", galleries: "Galleries" };
   const PRESETS = {
     entrance: view(0, 9, -6, 0, 0, 33),
     core: view(0, 8, -4, 0.35, 0.12, 15),
@@ -722,7 +723,7 @@
   };
 
   // ---- the kiosk, while a visitor works it ------------------------------------------------------------------------
-  // The view glides in square to the kiosk's glass and holds there, the visitor's Ooga and the side sheet out of the
+  // The view glides in square to the kiosk's glass and holds there, the visitor's Ooga out of the
   // way, while the kiosk's flow is laid over the glass and takes the taps and keys; leaving, it glides back and hands
   // the controls back. A paid tip waits on the screen for the visitor to watch it: the view then glides round to the
   // show, the cooker takes the tip on the way, and the view comes back once the bananas are out or the visitor moves.
@@ -760,16 +761,12 @@
     b.ease = ease;
     readPose(b.from);
   };
-  // The visitor's Ooga and the side sheet step out of the screen's way, and back.
+  // The visitor's Ooga steps out of the kiosk screen's way, and back.
   const boothAside = (s, aside) => {
     const b = s.booth;
     if (b.hidden === aside) return;
     b.hidden = aside;
     if (avatar) avatar.root.visible = !aside;
-    if (aside) {
-      b.sheet = hud.el.sheet.dataset.open;
-      hud.el.sheet.dataset.open = "false";
-    } else hud.el.sheet.dataset.open = b.sheet;
   };
   // The Ooga's controls (the act button, the aim's reticle and the equipment by the title) stay hidden while the kiosk
   // has the view, and come back as they were.
@@ -1339,7 +1336,7 @@
       // The kiosk while a visitor works it: the glide, its poses (from, to, and the walking view to come back to), the
       // visitor's paid tip held for the show, the states of the sheet and the Ooga's controls while put away, and the
       // flow, which enter makes.
-      booth: { mode: 0, t: 0, ease: EASE, after: 0, clock: 0, near: false, hidden: false, sheet: "", act: true, reticle: true, equipment: false, held: 0, heldSats: 0, from: pose(), to: pose(), home: pose(), flow: null }
+      booth: { mode: 0, t: 0, ease: EASE, after: 0, clock: 0, near: false, hidden: false, act: true, reticle: true, equipment: false, held: 0, heldSats: 0, from: pose(), to: pose(), home: pose(), flow: null }
     };
     const hall = FM.hall(), cond = FM.conduits();
     s.ceiling = createNode({ geometry: hall.ceiling });
@@ -1804,9 +1801,8 @@
     ({ renderer, game, world, go, agentPlay } = ctx);
     camera = createCamera({ fov: 55, near: 0.3, far: 150 });
     root = createNode();
-    hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
+    hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled, escapeHeld: () => !!scene.booth.mode });
     hud.setAreaLabel("LF");
-    if (window.matchMedia("(max-width: 720px), (max-height: 500px)").matches) hud.el.sheet.dataset.open = "false";
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     const clampTarget = (p) => {
@@ -1878,15 +1874,23 @@
         else onDoubleTap(hit, p);
       }
     });
-    hud.onPreset((name) => {
+    hud.setDestinations(Object.keys(VIEW_NAMES), VIEW_NAMES);
+    hud.setAreaLabel("Lightning Factory");
+    hud.el.modeDestination.title = "Lightning Factory · cycle stations";
+    hud.el.modeDestinationLabel.textContent = "Lightning Factory views. Press to cycle stations";
+    const presetView = (name) => {
+      if (leaving || !VIEW_NAMES[name]) return;
       endBooth(scene);
       pilot.goPreset(name);
-    });
-    hud.onAction((action) => {
+      hud.setDetachedView(name, true);
+    };
+    hud.onPreset(presetView);
+    hud.onAction((action, value) => {
       if (action === "reset") { game.resetAll(); location.reload(); }
       else if (action === "leave") leaveCave();
       else if (action === "factory-mute") hud.toast(audio.setMuted(!audio.muted) ? "Sound off" : "Sound on");
       else if (action === "reset-view") pilot.resetCamera();
+      else if (action === "mode-preset") presetView(value);
       else if (action === "act") { if (!greeter || !greeter.act()) pilot.action(); }
       else if (action.startsWith("mode-")) pilot.modeAction(action);
       else if (action.startsWith("weapon-") || action === "magazine-swap") pilot.weaponAction(action);
@@ -1963,7 +1967,7 @@
     }
     unsubscribeAccount = BL.net.subscribe(accountChanged);
     // Other signed-in players in the hall, as the Oogas they drive.
-    remotes = BL.remotePlayers.create({ root, crew: people });
+    remotes = BL.remotePlayers.create({ root, crew: people, fx });
     // The driven Ooga's own footsteps, heard by this page alone (footsteps.js).
     footsteps = BL.footsteps.create();
     // The hall's own sound: its machines at work and every event where it happens (factory-audio.js).

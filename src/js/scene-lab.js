@@ -18,6 +18,7 @@
   const WALL = ROOM_HALF - 0.6;
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
   const yawParam = parseFloat(params.get("yaw"));
+  const VIEW_NAMES = { pile: "Pile", racks: "Racks", bunks: "Bunks", bench: "Bench" };
   const PRESETS = {
     pile: { yaw: Number.isFinite(yawParam) ? yawParam : -0.45, pitch: 0.3, dist: 9, target: { x: 0, y: 1.2, z: 0 } },
     racks: { yaw: 0.05, pitch: 0.22, dist: 7.5, target: { x: 0, y: 1.6, z: -6 } },
@@ -411,7 +412,7 @@
     shared.outsideActorHeight = BL.remotePlayers.BODY_HEIGHT;
     crew = shared.crew = crewMod.create(shared);
     // Other signed-in players in the lab, as the Oogas they drive (the crew's own copy steps away meanwhile).
-    remotes = BL.remotePlayers.create({ root, crew });
+    remotes = BL.remotePlayers.create({ root, crew, fx });
     // The driven Ooga's own footsteps, heard by this page alone (footsteps.js).
     footsteps = BL.footsteps.create();
     mark("cavemen");
@@ -456,15 +457,21 @@
       for (const card of eq.cards) addProp(card, { kind: "card", node: card }, { radius: 0.25 });
       addProp(eq.abacus.node.children[0], { kind: "abacus", node: eq.abacus.node.children[0] });
     }
-    hud.onPreset(pilot.goPreset);
+    hud.setDestinations(Object.keys(VIEW_NAMES), VIEW_NAMES);
+    hud.setAreaLabel("EntropyLab");
+    hud.el.modeDestination.title = "EntropyLab · cycle stations";
+    hud.el.modeDestinationLabel.textContent = "EntropyLab views. Press to cycle stations";
+    const presetView = (name) => {
+      if (!VIEW_NAMES[name]) return;
+      pilot.goPreset(name);
+      hud.setDetachedView(name, true);
+    };
+    hud.onPreset(presetView);
     hud.onAction((action, value) => {
       if (action === "clear-loot") clearLoot();
       else if (action === "reset") resetDemo();
       else if (action === "act") pilot.action();
-      else if (action === "mode-preset") {
-        hud.setDetachedView(value, true);
-        pilot.goPreset(value === "pile" ? "pile" : value === "lab" ? "racks" : value === "mirror" ? "bunks" : "bench");
-      }
+      else if (action === "mode-preset") presetView(value);
       else if (action.startsWith("mode-")) pilot.modeAction(action);
       else if (action.startsWith("weapon-") || action === "magazine-swap") pilot.weaponAction(action);
       else if (action === "reset-view") pilot.resetCamera();
@@ -501,7 +508,6 @@
     }
     hud.setStats(game.state);
     pile.syncPile(true);
-    if (window.matchMedia("(max-width: 720px), (max-height: 500px)").matches) hud.el.sheet.dataset.open = "false";
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Drag to look · pinch to zoom · sticks to fly" : "Drag to orbit · scroll to zoom · WASD to fly"), 1200);
     // The lab has no Agent until Shift+A calls one in, so a lab visit holds no
     // Agent geometry of its own.

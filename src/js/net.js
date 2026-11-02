@@ -14,11 +14,11 @@
 //
 // Who drives which Ooga, on the page served by the Worker (`mayDrive`; the room enforces the same
 // ownership through its own copy of the cast): a signed-in contributor drives only their own Ooga, and
-// nobody else drives it while they are here. Signed-out visitors can drive available bundled Oogas
-// locally, including working ones; temporary contributors must sign in. Ownership keys on the GitHub login
+// nobody else drives it while they are here. Signed-out visitors drive only their remembered
+// character or their default local Ooga. Ownership keys on the GitHub login
 // alone (`github`, else the handle). A claim the room refuses, or an owner arriving, lands as `released`.
 // A body is its Ooga's canonical handle, or `gorilla:<handle>` for that Ooga's companion. Signed-in
-// visitors drive only their own gorilla; signed-out pages can still play companions locally.
+// visitors drive only their own gorilla; signed-out pages use only their assigned companion locally.
 // The NPC host: the room elects one page showing the island (`setHub`, which also counts a hidden tab
 // out) to run the Oogas for everyone. `state.hostId` names it; the host sends its binary pose frames with
 // `sendNpc`, and every other page reads the latest one from `npcFrame` (with `state.npcVersion` counting).
@@ -28,14 +28,14 @@
 // The room's clock: `serverNow()` estimates it from the timestamps on `welcome` and `state`, keeping the
 // sample that arrived fastest (the least delayed), and `state.loopEpoch` is when the pile's shared
 // sound loop started, so every page can play the same moment of it.
-// The roster's marks (who is in voice, muted, the host) follow `subscribeRoster`, which also fires on a
-// body or voice change; `subscribe` stays for the account and the room. `setMuted` tells the room this
+// The roster's marks (who is in voice, muted, the host, where) follow `subscribeRoster`, which also fires on a
+// body, voice or zone change; `subscribe` stays for the account and the room. `setMuted` tells the room this
 // page muted its microphone, and `state.body` is the actor this page reports driving.
 // `setHealth` reports the driven actor's health (on a change, at most HP_MS apart), which other pages draw over
 // it; remote records carry `hp` and `ko`.
 // Gorilla poses optionally add `g`: flags (air, biped, climb, run, lab, office, sleep), speed, climb stride,
 // climb direction, climb side and swim. Each remote reuses its six values; ordinary poses keep their format.
-// Ooga Chat: `sendChat` sends a line (sanitized as donation messages are, CHAT_MAX characters at most) while the
+// Ooga Chat: `sendChat` sends a line (validated by chat-policy.js, CHAT_MAX UTF-16 units at most) while the
 // room is live; `subscribeChat` hears the room's lines as `fn(lines, joined, receipt)`: one new line, or on every
 // (re)join the lines the room still holds, which chat.js merges; a rejection keeps the draft. The room names each line's
 // speaker; the page keeps nothing (chat.js shows them).
@@ -48,12 +48,31 @@
 // socket goes. Without the feature these send nothing and return false, and the sphere crosses on this page alone.
 // `recheck` looks at /api/me again after a look that went unanswered (the keypad's Retry), bounded as the first.
 // `setPokerVoice(table)` scopes Ember Den voice to one table, or the floor when null, without moving the body.
-// Exports start, recheck, subscribe, subscribeRoster, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost and subscribeGhost (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// Where players stand, for the live players tab (players.js): a remote's `poseZone` is the zone its position was reported
+// in, so a player who changed zone has none there until they move (the room re-sends the last pose it holds, from the
+// zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
+// position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
+// snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
+  const LOGIN_COOKIE = "ooga-last-github";
+  const validLogin = login => typeof login === "string" && /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i.test(login) && !login.includes("--");
+  const rememberedLogin = () => {
+    try {
+      const value = document.cookie?.split(";").map(part => part.trim()).find(part => part.startsWith(LOGIN_COOKIE + "="))?.slice(LOGIN_COOKIE.length + 1);
+      return validLogin(value) ? value.toLowerCase() : null;
+    } catch { return null; }
+  };
+  const rememberLogin = login => {
+    if (!validLogin(login)) return;
+    try { document.cookie = `${LOGIN_COOKIE}=${login.toLowerCase()}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`; }
+    catch { /* A denied cookie leaves this visit's authenticated account usable. */ }
+  };
+  let localCharacter = null;
   const POSE_MS = 1000 / 10;
   // Health in steps of the smallest hit, a few reports a second at most; the room's own bounds for poses.
   const HP_MS = 250, HP_STEP = 4, BOUND_XZ = 160, BOUND_Y_MIN = -130, BOUND_Y_MAX = 100;
@@ -61,7 +80,7 @@
   const HIDDEN_PAUSE_MS = 5 * 60000;
   const BACKOFF_MS = 500, BACKOFF_MAX_MS = 15000;
   // The room's own limits (worker/src/protocol.js): characters in a line, lines it holds.
-  const CHAT_MAX = 160, CHAT_KEEP = 100;
+  const CHAT_MAX = BL.chatPolicy.MAX, CHAT_KEEP = 100;
   const GORILLA_PREFIX = "gorilla:";
   const bodyKind = (name) => name ? name.startsWith(GORILLA_PREFIX) ? "gorilla" : "ooga" : null;
   const bodyName = (name) => name && name.startsWith(GORILLA_PREFIX) ? name.slice(GORILLA_PREFIX.length) : name;
@@ -74,16 +93,20 @@
   const subscribers = new Set();
   const doorSubscribers = new Set();
   const rosterSubscribers = new Set();
+  const moveSubscribers = new Set();
+  const studioSubscribers = new Set();
+  const studioEmit = message => { for (const fn of studioSubscribers) fn(message); };
   const chatSubscribers = new Set();
   const remotes = new Map();
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
   const offline = new URLSearchParams(location.search);
-  const state = { backend: false, me: null, donations: false, tess: false, logoutEpoch: 0, started: false,
+  const state = { backend: false, me: null, donations: false, tess: false, highscores: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
-    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false };
+    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
+    self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
-  let npcFrame = null, inHub = false, hubSent = null;
+  let npcFrame = null, inHub = false, hubSent = null, visibleSent = null;
   let zone = "outside", body = null, muted = false, hpSent = 100, koSent = false, hpAt = 0, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
   const gSent = new Float64Array(6);
   let gKnown = false, poseHasG = false;
@@ -102,6 +125,9 @@
   const rosterChanged = () => {
     for (const fn of rosterSubscribers) fn();
   };
+  const moved = () => {
+    for (const fn of moveSubscribers) fn();
+  };
   const emit = () => {
     for (const fn of subscribers) fn(state);
     rosterChanged();
@@ -115,6 +141,8 @@
 
   const setRoom = (room) => {
     state.room = room;
+    if (room !== "live") state.chatUnicode = false;
+    if (room !== "live") { state.studio = null; state.connectionToken = ""; studioEmit({t:"studio-state",state:null}); }
     state.online = room === "live" ? remotes.size + 1 : 0;
     emit();
   };
@@ -134,6 +162,13 @@
     hubSent = on;
     send(on ? '{"t":"hub","on":true}' : '{"t":"hub","on":false}');
   };
+  // HALLOWEEN: whether this tab is visible, so the room hosts the ghost arena's hunt only on a page that runs frames.
+  const sendVisible = () => {
+    const on = !document.hidden;
+    if (on === visibleSent || !ws || ws.readyState !== WebSocket.OPEN) return;
+    visibleSent = on;
+    send(on ? '{"t":"visible","on":true}' : '{"t":"visible","on":false}');
+  };
 
   const readGorillaPose = (rec, values, offset = 0) => {
     if (rec.bodyKind !== "gorilla" || !Array.isArray(values) || values.length < offset + 6) return;
@@ -152,7 +187,7 @@
 
   const upsert = (p) => {
     if (!p || !Number.isSafeInteger(p.id) || p.id === state.selfId) return;
-    const rec = remotes.get(p.id) || { id: p.id, login: "", display: "", body: null, bodyKind: null, bodyName: null, zone: "outside", voice: false, muted: false, hp: 100, ko: false, x: 0, y: 0, z: 0, yaw: 0, g: null, gData: null };
+    const rec = remotes.get(p.id) || { id: p.id, login: "", display: "", body: null, bodyKind: null, bodyName: null, zone: "outside", voice: false, muted: false, hp: 100, ko: false, x: 0, y: 0, z: 0, yaw: 0, poseZone: null, g: null, gData: null };
     rec.login = String(p.login);
     rec.display = String(p.display || p.login);
     rec.body = typeof p.body === "string" ? p.body : null;
@@ -166,12 +201,15 @@
     rec.ko = p.ko === true;
     rec.muted = p.muted === true;
     rec.x = +p.x || 0; rec.y = +p.y || 0; rec.z = +p.z || 0; rec.yaw = +p.yaw || 0;
+    // A pose the room holds for someone driving is where they stand now; for anyone else it may be from a zone they
+    // have since left, so it is not taken (`poseZone`).
+    rec.poseZone = typeof p.x === "number" && rec.body ? rec.zone : null;
     remotes.set(p.id, rec);
   };
 
   // Only the fields chat.js shows; the room already sanitized the text and named the speaker.
-  const chatLine = (m) => m && Number.isSafeInteger(m.id) && typeof m.login === "string" && typeof m.text === "string"
-    ? { id: m.id, at: Number.isFinite(m.at) ? m.at : 0, login: m.login, name: typeof m.name === "string" && m.name ? m.name : m.login, text: m.text.slice(0, CHAT_MAX) }
+  const chatLine = (m) => m && Number.isSafeInteger(m.id) && typeof m.login === "string" && typeof m.text === "string" && !BL.chatPolicy.error(m.text)
+    ? { id: m.id, at: Number.isFinite(m.at) ? m.at : 0, login: m.login, name: typeof m.name === "string" && m.name ? m.name : m.login, text: BL.chatPolicy.text(m.text) }
     : null;
   const chatHeard = (lines, replace, receipt = null) => {
     for (const fn of chatSubscribers) fn(lines, replace, receipt);
@@ -186,6 +224,7 @@
 
   const onMessage = (e) => {
     if (e.data instanceof ArrayBuffer) {
+      if (e.data.byteLength >= 4 && new DataView(e.data).getUint32(0, true) === GHOST_MAGIC) { ghostFrame(e.data); return; } // HALLOWEEN
       npcFrame = e.data;
       state.npcVersion++;
       return;
@@ -197,12 +236,27 @@
     } catch {
       return;
     }
-    if (msg.t === "state") {
+    if (msg.t === "studio-mic-revoked") {
+      BL.voice.dropMic();
+    } else if (msg.t === "studio-state") {
+      const previous = state.studio, incoming = msg.state;
+      if (previous && incoming && (incoming.epoch < previous.epoch || (incoming.epoch === previous.epoch && incoming.revision < previous.revision))) return;
+      state.studio = incoming;
+      studioEmit(msg);
+    } else if (msg.t === "studio-result") {
+      studioEmit(msg);
+    } else if (msg.t === "state") {
       clockSample(msg.now);
       const ps = msg.ps;
+      let changed = false;
       for (let i = 0; i + 4 < ps.length; i += 5) {
         const rec = remotes.get(ps[i]);
         if (!rec) continue;
+        // Every snapshot repeats everyone's last pose; only a new one says where a player stands in their zone now.
+        if (typeof ps[i + 1] === "number" && (ps[i + 1] !== rec.x || ps[i + 2] !== rec.y || ps[i + 3] !== rec.z || ps[i + 4] !== rec.yaw)) {
+          rec.poseZone = rec.zone;
+          changed = true;
+        }
         rec.x = ps[i + 1]; rec.y = ps[i + 2]; rec.z = ps[i + 3]; rec.yaw = ps[i + 4];
       }
       const gs = msg.gs;
@@ -210,6 +264,7 @@
         const rec = remotes.get(gs[i]);
         if (rec) readGorillaPose(rec, gs, i + 1);
       }
+      if (changed) moved();
     } else if (msg.t === "welcome") {
       retry = 0;
       clockKnown = false;
@@ -217,8 +272,12 @@
       state.loopEpoch = typeof msg.loopEpoch === "number" ? msg.loopEpoch : 0;
       state.hostId = Number.isSafeInteger(msg.host) ? msg.host : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
+      state.ghostHostId = Number.isSafeInteger(msg.ghostHost) ? msg.ghostHost : 0;
+      state.ghostFollowers = Number.isSafeInteger(msg.ghostFollowers) ? msg.ghostFollowers : 0;
       state.selfId = msg.you.id;
+      state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
+      state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
       remotes.clear();
       for (const p of msg.players) upsert(p);
       setRoom("live");
@@ -239,8 +298,9 @@
       if (muted) sendMute();
       // A fresh room record starts at full health; the next report sends ours if it differs.
       hpSent = 100; koSent = false; hpAt = 0;
-      hubSent = null;
+      hubSent = visibleSent = null;
       sendHub();
+      sendVisible();
       BL.voice.restart();
       if (restoredPose) poseAt = performance.now();
       else { poseAt = 0; px = NaN; gKnown = poseHasG = false; }
@@ -275,10 +335,14 @@
     } else if (msg.t === "zone") {
       const rec = remotes.get(msg.id);
       if (rec && typeof msg.name === "string") rec.zone = msg.name;
+      rosterChanged();
     } else if (msg.t === "host") {
       state.hostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
       emit();
+    } else if (msg.t === "ghost-host") {
+      state.ghostHostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
+      state.ghostFollowers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
     } else if (msg.t === "chat") {
       const line = chatLine(msg);
       if (line) chatHeard([line], false);
@@ -304,7 +368,7 @@
     } else if (msg.t === "transit-end") {
       if (chatIdValid(msg.cycle)) doorHeard({ t: "transit-end", cycle: msg.cycle });
     } else if (msg.t === "voice") {
-      if (Array.isArray(msg.peers)) BL.voice.setPeers(msg.peers, Array.isArray(msg.gens) ? msg.gens : null);
+      if (Array.isArray(msg.peers)) BL.voice.setPeers(msg.peers, Array.isArray(msg.gens) ? msg.gens : null, state.zone === "dsb-studio" ? msg.listeners : undefined);
     } else if (msg.t === "ghost") {
       if (ghostHeard) ghostHeard(msg); // HALLOWEEN
     } else if (msg.t === "release") {
@@ -330,6 +394,8 @@
     remotes.clear();
     state.hostId = 0;
     state.followers = 0;
+    state.ghostHostId = 0;
+    state.ghostFollowers = 0;
     // Any request for the doorway went with the socket.
     if (state.doorway) doorHeard({ t: "door", op: "lost" });
     state.doorway = false;
@@ -375,8 +441,13 @@
       state.me = accept(data.player);
       state.donations = data.donations === true;
       state.tess = data.tess === true;
+      state.highscores = data.highscores === true;
       state.resolved = data.player === null || !!state.me;
-      if (state.me) BL.contributors.addTemporary(data.character, state.me.login);
+      if (state.me) {
+        BL.contributors.addTemporary(data.character, state.me.login);
+        rememberLogin(state.me.login);
+        localCharacter = ownCharacter();
+      }
     } catch {
       return false;
     } finally {
@@ -470,6 +541,7 @@
     poseAt = 0; px = NaN;
     if (moved) BL.voice.setPeers([]);
     sendZone();
+    rosterChanged();
   };
   // Voice changes without moving or hiding anybody on the shared floor.
   const setPokerVoice = table => {
@@ -487,6 +559,7 @@
   // Hidden long enough, the tab leaves the room; shown again, it rejoins as a fresh connection.
   const onVisibility = () => {
     sendHub();
+    sendVisible();
     window.clearTimeout(hiddenTimer);
     hiddenTimer = 0;
     if (document.hidden) {
@@ -504,14 +577,39 @@
   };
   document.addEventListener("visibilitychange", onVisibility);
 
-  // HALLOWEEN: the ghost hunt's word to the room's host (ghost-sync.js): a start or a hit, relayed to the host alone.
-  let ghostHeard = null;
+  // HALLOWEEN: the ghost hunt's word to its host (ghost-sync.js): a start or a hit, relayed to the arcade's ghost
+  // arena's host (`ghostHostId`) alone, from a page in the arena.
+  let ghostHeard = null, ghostStateHeard = null;
+  const GHOST_MAGIC = 0x54534847, GHOST_ZONES = ["arcade.arena", "arcade-hunt"];
+  const inGhostArena = () => GHOST_ZONES.includes(state.zone);
   const sendGhost = (msg) => {
-    if (state.room === "live" && state.hostId && state.hostId !== state.selfId) send(JSON.stringify(msg));
+    if (state.room === "live" && inGhostArena() && state.ghostHostId && state.ghostHostId !== state.selfId) send(JSON.stringify(msg));
   };
   const subscribeGhost = (fn) => {
     ghostHeard = fn;
     return () => { if (ghostHeard === fn) ghostHeard = null; };
+  };
+  // The arena host's hunt state, a snapshot as JSON behind GHOST_MAGIC, sent only while someone in the arena follows;
+  // a follower hears each one as it arrives (`subscribeGhostState`).
+  let encoder = null, decoder = null;
+  const sendGhostState = (snap) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN || state.ghostHostId !== state.selfId || !state.ghostFollowers || !inGhostArena()) return;
+    if (!encoder) encoder = new TextEncoder();
+    const body = encoder.encode(JSON.stringify(snap)), frame = new Uint8Array(body.length + 4);
+    new DataView(frame.buffer).setUint32(0, GHOST_MAGIC, true);
+    frame.set(body, 4);
+    ws.send(frame);
+  };
+  const ghostFrame = (data) => {
+    if (!ghostStateHeard) return;
+    let snap = null;
+    if (!decoder) decoder = new TextDecoder();
+    try { snap = JSON.parse(decoder.decode(new Uint8Array(data, 4))); } catch { return; }
+    if (snap && typeof snap === "object" && !Array.isArray(snap)) ghostStateHeard(snap);
+  };
+  const subscribeGhostState = (fn) => {
+    ghostStateHeard = fn;
+    return () => { if (ghostStateHeard === fn) ghostStateHeard = null; };
   };
 
   // The host's frame of Oogas, sent as bytes (a typed array view is sent as just its own bytes).
@@ -553,9 +651,11 @@
     sendMute();
   };
 
-  // One line of Ooga Chat; false when it was not sent (not live, empty, or too long once sanitized).
+  // One line of Ooga Chat; false when it was not sent (not live, invalid, overlong or unsupported by an older server).
   const sendChat = (text, clientId) => {
-    const line = BL.donations.sanitize(text, Infinity);
+    if (BL.chatPolicy.error(text)) return false;
+    const line = BL.chatPolicy.text(text);
+    if (!state.chatUnicode && !BL.chatPolicy.legacy(line)) return false;
     if (state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN || !line || line.length > CHAT_MAX) return false;
     if (clientId !== undefined && !chatIdValid(clientId)) return false;
     send(JSON.stringify({ t: "chat", text: line, ...(clientId === undefined ? {} : { clientId }) }));
@@ -570,6 +670,8 @@
       for (let i = 0; i < 6; i++) if (!Number.isFinite(g[i])) { valid = false; break; }
       if (valid) poseHasG = true;
     }
+    const self = state.self;
+    self.x = x; self.y = y; self.z = z; self.zone = zone;
     if (now - poseAt < POSE_MS) return;
     // The room drops a pose outside its bounds, which would freeze this Ooga on other pages: hold it at the edge.
     x = Math.max(-BOUND_XZ, Math.min(BOUND_XZ, x));
@@ -592,6 +694,7 @@
       extra = `,"g":[${g[0]},${g[1].toFixed(3)},${g[2].toFixed(3)},${g[3].toFixed(3)},${g[4].toFixed(3)},${g[5].toFixed(3)}]`;
     }
     if (state.room === "live") send(`{"t":"pose","x":${x.toFixed(3)},"y":${y.toFixed(3)},"z":${z.toFixed(3)},"yaw":${yaw.toFixed(3)}${extra}}`);
+    moved();
   };
 
   // The doorway: each sends only to a live room that knows it, and says whether it did.
@@ -615,21 +718,39 @@
     return character && loginOf(character) === String(login).toLowerCase() ? character : null;
   };
   const ownCharacter = () => state.me && characterOf(state.me.login);
-  // The signed-in visitor's own Ooga when it is among `list` (anything with a `name`, a game's cast or a
-  // roster), else null: the games hold a signed-in contributor to it, as `mayDrive` does on the island.
-  const ownAmong = (list) => {
+  // A local control preference only: never used by room, microphone or sign-in checks.
+  const preferredCharacter = () => ownCharacter() || localCharacter;
+  const prepareLocalCharacter = () => {
     const own = ownCharacter();
+    if (own) return localCharacter = own;
+    const login = rememberedLogin(), known = login && characterOf(login);
+    localCharacter = known;
+    if (!known || mayDrive(known.handle)) {
+      // An unbundled remembered login gets its own likeness, unless that name is already another Ooga's.
+      const entry = !known && login && BL.contributors.addLocal(login) || BL.contributors.addLocal("Ooga");
+      localCharacter = { handle: entry.name, display: entry.display };
+    }
+    return localCharacter;
+  };
+  // The assigned Ooga among a game's cast or roster. This locks local game pickers too;
+  // it does not authenticate the visitor or grant a shared body.
+  const ownAmong = (list) => {
+    const own = preferredCharacter();
     return own && list.some((entry) => entry.name === own.handle) ? own.handle : null;
   };
 
   /** null when this visitor may drive the Ooga named `name`; otherwise the words that say why not. */
   const mayDrive = (name) => {
-    if (!state.backend) return null;
     const owner = BL.characters.get(name);
     if (state.me) return owner && ownCharacter() === owner ? null : "Drive your own Ooga";
-    if (!owner || owner.handle.toLowerCase() !== String(name).toLowerCase()) return null;
+    // Explicit debug fixtures prepare no local identity and keep their chosen cast: any bundled Ooga, locally.
+    // Normal arrivals always prepare one.
+    if (!localCharacter) {
+      if (!state.backend || !owner) return null;
+      if (owner.temporary) return "Sign in to drive your Ooga";
+    } else if (String(owner ? owner.handle : name).toLowerCase() !== localCharacter.handle.toLowerCase()) return "Drive your own Ooga";
+    if (!owner) return null;
     const who = owner.display || owner.handle;
-    if (owner.temporary) return "Sign in to drive your Ooga";
     const ownerLogin = loginOf(owner), wanted = owner.handle.toLowerCase();
     for (const rec of remotes.values()) {
       if (rec.login.toLowerCase() === ownerLogin) return `${who} is here and drives this Ooga`;
@@ -639,16 +760,15 @@
   };
 
   const mayDriveGorilla = (name) => {
-    if (!state.backend) return null;
+    if (mayDrive(name)) return "Drive your own gorilla";
     const owner = BL.characters.get(name);
-    if (state.me) return owner && ownCharacter() === owner ? null : "Drive your own gorilla";
-    if (!owner) return null;
+    if (state.me || !owner) return null;
     const who = owner.display || owner.handle, ownerLogin = loginOf(owner), wanted = gorillaBody(owner.handle).toLowerCase();
     for (const rec of remotes.values()) {
       if (rec.login.toLowerCase() === ownerLogin) return `${who} is here and drives this gorilla`;
       if (rec.body && rec.body.toLowerCase() === wanted) return `Someone is already driving ${who}'s gorilla`;
     }
-    return owner.temporary ? "Sign in to drive your gorilla" : null;
+    return null;
   };
 
   const subscribe = (fn) => {
@@ -659,6 +779,10 @@
     rosterSubscribers.add(fn);
     return () => rosterSubscribers.delete(fn);
   };
+  const subscribeMoves = (fn) => {
+    moveSubscribers.add(fn);
+    return () => moveSubscribers.delete(fn);
+  };
   const subscribeChat = (fn) => {
     chatSubscribers.add(fn);
     return () => chatSubscribers.delete(fn);
@@ -668,6 +792,13 @@
     return () => doorSubscribers.delete(fn);
   };
 
+  const subscribeStudio = fn => { studioSubscribers.add(fn); return () => studioSubscribers.delete(fn); };
+  const studioCommand = (action, fields = {}) => {
+    if (state.room !== "live") return false;
+    send(JSON.stringify({...fields, t:"studio", action}));
+    return true;
+  };
+
   const dispose = () => {
     document.removeEventListener("visibilitychange", onVisibility);
     stopped = true;
@@ -675,11 +806,13 @@
     window.clearTimeout(hiddenTimer);
     subscribers.clear();
     rosterSubscribers.clear();
+    moveSubscribers.clear();
+    studioSubscribers.clear();
     chatSubscribers.clear();
     doorSubscribers.clear();
-    ghostHeard = null; // HALLOWEEN
+    ghostHeard = ghostStateHeard = null; // HALLOWEEN
     close("off");
   };
 
-  BL.net = { start, recheck, subscribe, subscribeRoster, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

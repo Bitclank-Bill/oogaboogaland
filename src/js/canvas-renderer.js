@@ -5,6 +5,34 @@
   const { updateWorld, traverseVisible, matrixModeOf, hiddenFromCamera, hiddenFromCutaway } = BL.scene;
   const DEFAULT_SKY = [0.5, 0.52, 0.58];
   const DEFAULT_GROUND = [0.22, 0.2, 0.19];
+  // Approximate near-side outlines, north up and east right, matching SKY_FS.
+  // USGS feature centers: https://planetarynames.wr.usgs.gov/
+  // NASA visual reference: https://science.nasa.gov/resource/colorful-moon/
+  const MOON_BASINS = [
+    -0.72, 0.25, 0.19, 0.38, // Oceanus Procellarum's joined western lobes
+    -0.59, 0.53, 0.19, 0.23,
+    -0.62, -0.08, 0.20, 0.15,
+    -0.211, 0.570, 0.30, 0.25, // Imbrium
+    -0.32, 0.12, 0.27, 0.16, // Insularum
+    -0.36, -0.15, 0.17, 0.12, // Cognitum
+    0.280, 0.458, 0.18, 0.18, // Serenitatis
+    0.507, 0.145, 0.21, 0.22, // Tranquillitatis
+    0.824, 0.279, 0.085, 0.145, // Crisium
+    0.798, -0.136, 0.12, 0.23, // Fecunditatis
+    0.548, -0.262, 0.085, 0.095, // Nectaris
+    -0.278, -0.352, 0.21, 0.20, // Nubium
+    -0.567, -0.414, 0.095, 0.11, // Humorum
+    0.069, 0.228, 0.075, 0.065, // Vaporum
+    -0.38, 0.79, 0.20, 0.035, // Frigoris' narrow northern band
+    -0.05, 0.855, 0.24, 0.035,
+    0.28, 0.815, 0.18, 0.032
+  ];
+  const MOON_CRATERS = [
+    -0.14, -0.695, 0.025, // Tycho
+    -0.323, 0.167, 0.027, // Copernicus
+    -0.61, 0.14, 0.012, // Kepler
+    -0.65, 0.43, 0.012 // Aristarchus
+  ];
   const CUBE_VIEWS = new Float32Array([1, 0, 0, 0, -1, 0, -1, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0, 0, 0, -1, 0, 0, 1, 0, -1, 0, 0, 0, -1, 0, -1, 0]);
   const ENVIRONMENT_SIZE = 64, ENVIRONMENT_GRID = 4;
   const DEFAULT_MATRIX_APERTURE = new Float32Array([2.5, 3, 0.5, 0]);
@@ -396,7 +424,7 @@
     let waterTime = 0;
     const waterWave = new Float64Array(3), waterBodyPoint = new Float64Array(3);
     let pointLights = null, pointLightCount = 0;
-    let spotLight = null;
+    let spotLight = null, blacklight = null;
     const spotEnergy = (x, y, z, nx, ny, nz) => {
       if (!spotLight || spotLight[3] <= 0) return 0;
       const dx = x - spotLight[0], dy = y - spotLight[1], dz = z - spotLight[2], dist = Math.hypot(dx, dy, dz);
@@ -920,6 +948,23 @@
               let red = lerp(lerp(cr * (k + pointR + (beam ? beam * spotLight[8] : 0)), 214, tip * 0.88), fogRgb[0], fog);
               let green = lerp(lerp(cg * (k + pointG + (beam ? beam * spotLight[9] : 0)), 255, tip * 0.88), fogRgb[1], fog);
               let blue = lerp(lerp(cb * (k + pointB + (beam ? beam * spotLight[10] : 0)), 227, tip * 0.88), fogRgb[2], fog);
+              if (blacklight && blacklight[3] > 0) {
+                const pale = smooth((Math.min(cr, cg, cb) / 255 - 0.55) / 0.39);
+                const bright = smooth(((cr * 0.2126 + cg * 0.7152 + cb * 0.0722) / 255 - 0.55) / 0.35);
+                const fluorescence = node.geometry.glass || node.geometry.glassOpacity ? 0 : Math.max(pale, bright * 0.35) * blacklight[3] * (1 - Math.min(1, emissive)) * (1 - fog);
+                const shade = node.geometry.glass || node.geometry.glassOpacity ? 1 : lerp(0.3 + Math.max(pale, bright * 0.35) * 0.7, 1, Math.min(1, emissive));
+                const visibility = 1 - 0.3 * smooth((Math.hypot(centerX - blacklight[0], centerY - blacklight[1], centerZ - blacklight[2]) - 4) / 10);
+                // Canvas has no bloom pass, but keeps the same pale pigments and Ooga-centred darkness.
+                red = lerp(fogRgb[0], red * shade + lerp(cr, 40.8, pale * 0.95) * fluorescence, visibility);
+                green = lerp(fogRgb[1], green * shade + lerp(cg, 255, pale * 0.95) * fluorescence, visibility);
+                blue = lerp(fogRgb[2], blue * shade + lerp(cb, 102, pale * 0.95) * fluorescence, visibility);
+                if (node.geometry.imageSurface?.canvas) {
+                  rec.canvasR *= visibility; rec.canvasG *= visibility; rec.canvasB *= visibility;
+                  rec.canvasAddR = lerp(fogRgb[0], rec.canvasAddR, visibility);
+                  rec.canvasAddG = lerp(fogRgb[1], rec.canvasAddG, visibility);
+                  rec.canvasAddB = lerp(fogRgb[2], rec.canvasAddB, visibility);
+                }
+              }
               if (face.lake) {
                 // Match the WebGL waterfall palette and rectangular cells, including displaced wave lighting.
                 const flow = node.geometry.lakeFlow, curve = node.geometry.lakeFlowCurve;
@@ -1478,7 +1523,8 @@
             const position = (row % sequence + sequence) % sequence;
             if (position >= train) continue;
             const cx = (col + 0.5) * 0.12, cy = -travel - (row + 0.5) * 0.13;
-            if (Math.abs(Math.hypot(cx - x, cy - y) - radius) > WIDTH * 2) continue;
+            const distance = Math.hypot(cx - x, cy - y);
+            if (Math.abs(distance - radius) > WIDTH * 2) continue;
             const glyph = (Math.abs(col * 73 + row * 151) + mutation) & 7, mask = MATRIX_MASKS[glyph];
             const glow = matrixStreams[stream + 5] * (0.48 + (position + 1) / train * 0.52);
             const gain = Math.max(0, Math.min(15, Math.round((0.78 + glow * 0.37 - 0.88) / 0.25 * 15)));
@@ -1487,7 +1533,8 @@
             for (let bit = 0; bit < 24; bit++) {
               if (!((mask >> bit) & 1)) continue;
               const px = cx + ((bit & 3) - 1.5) * 0.021, py = cy + (2.5 - (bit >> 2)) * 0.021;
-              const crest = (Math.hypot(px - x, py - y) - radius) / WIDTH;
+              const distance = Math.hypot(px - x, py - y);
+              const crest = (distance - radius) / WIDTH;
               if (Math.abs(crest) > 2) continue;
               ctx.globalAlpha = bright * bright * (3 - 2 * bright) * Math.exp(-crest * crest) * 0.82;
               ripplePixel(px, py);
@@ -1831,7 +1878,9 @@
     };
     const drawImageSurface = (node) => {
       const surface = node.geometry.imageSurface, asset = surface.asset, image = asset.load();
-      if (!image.complete || !image.naturalWidth) return;
+      const dynamic = surface.dynamic === true;
+      if (dynamic ? image.readyState < 2 || image.seeking || !image.videoWidth || !image.videoHeight : !image.complete || !image.naturalWidth) return;
+      const imageWidth = dynamic ? image.videoWidth : asset.width, imageHeight = dynamic ? image.videoHeight : asset.height;
       mat4.multiply(imageView, view, node.world);
       const rect = surface.rect, z = node.geometry.verts[2], m = imageView;
       // Front-on screens are exactly affine; oblique screens use at most
@@ -1843,16 +1892,16 @@
         imageVertices[at] = m[0] * px + m[4] * py + m[8] * z + m[12];
         imageVertices[at + 1] = m[1] * px + m[5] * py + m[9] * z + m[13];
         imageVertices[at + 2] = m[2] * px + m[6] * py + m[10] * z + m[14];
-        imageVertices[at + 3] = asset.width * x / columns;
-        imageVertices[at + 4] = asset.height * y / rows;
+        imageVertices[at + 3] = imageWidth * x / columns;
+        imageVertices[at + 4] = imageHeight * y / rows;
       }
       ctx.save(); ctx.clip();
       if (!oblique && imageVertices[2] < -near && imageVertices[7] < -near && imageVertices[12] < -near && imageVertices[17] < -near) {
         const scale = lastF / projectedDepth(-imageVertices[2]), x = width / 2 + imageVertices[0] * scale, y = height / 2 - imageVertices[1] * scale;
-        ctx.transform((imageVertices[5] - imageVertices[0]) * scale / asset.width,
-          -(imageVertices[6] - imageVertices[1]) * scale / asset.width,
-          (imageVertices[10] - imageVertices[0]) * scale / asset.height,
-          -(imageVertices[11] - imageVertices[1]) * scale / asset.height, x, y);
+        ctx.transform((imageVertices[5] - imageVertices[0]) * scale / imageWidth,
+          -(imageVertices[6] - imageVertices[1]) * scale / imageWidth,
+          (imageVertices[10] - imageVertices[0]) * scale / imageHeight,
+          -(imageVertices[11] - imageVertices[1]) * scale / imageHeight, x, y);
         ctx.drawImage(image, 0, 0);
         ctx.restore();
         return;
@@ -1890,6 +1939,7 @@
       }
       const { light = DEFAULT_LIGHT, directStrength: strength = 1, ambientFloor: ambient = 0.3, diffuseFloor: diffuse = 0, clear = null, sky = DEFAULT_SKY, ground = DEFAULT_GROUND, horizon = null, zenith = null, fog = null, fogNear: near0 = 0, fogFar: far0 = 0, matrix = null } = opts;
       spotLight = opts.spotLight || null;
+      blacklight = opts.blacklight || null;
       matrixActive = matrix ? matrix.active : 0;
       matrixRadius = matrix ? matrix.radius : 0;
       matrixTime = matrix ? matrix.time : 0;
@@ -2016,14 +2066,68 @@
               const k = -facing;
               ctx.save();
               ctx.translate(cx, cy);
-              ctx.rotate(Math.atan2(-sy, sx));
-              ctx.globalAlpha = 0.3 + 0.7 * (opts.stars || 0);
-              ctx.fillStyle = "#d1dff6";
+              // Clip the moon's lower limb at the physical horizon, independent
+              // of the lowered haze gradient and of camera pitch or roll.
+              const horizonSlope = Math.hypot(view[4], view[5]);
+              const horizonDistance = view[4] * (cx - width * 0.5) - view[5] * (cy - height * 0.5) - view[6] * lastF;
+              if (horizonSlope > 1e-8 && horizonDistance < radius * horizonSlope) {
+                const horizonAngle = Math.atan2(-view[5], view[4]);
+                ctx.rotate(horizonAngle);
+                ctx.beginPath();
+                ctx.rect(-horizonDistance / horizonSlope, -radius * 2, radius * 4, radius * 4);
+                ctx.clip();
+                ctx.rotate(-horizonAngle);
+              }
+              const phaseAngle = Math.atan2(-sy, sx);
+              ctx.rotate(phaseAngle);
+              const moonNight = opts.stars || 0, moonAlpha = 0.3 + 0.7 * moonNight;
+              // Faint earthshine keeps the shadowed hemisphere visible at night.
+              if (moonNight > 0) {
+                ctx.globalAlpha = moonNight * moonAlpha;
+                ctx.fillStyle = "#202227";
+                ctx.beginPath();
+                ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              ctx.globalAlpha = moonAlpha;
+              ctx.fillStyle = "#d4d2cc";
               ctx.beginPath();
               ctx.arc(0, 0, radius, -Math.PI / 2, Math.PI / 2);
               ctx.ellipse(0, 0, Math.max(0.001, Math.abs(k) * radius), radius, 0, Math.PI / 2, k >= 0 ? Math.PI * 1.5 : -Math.PI / 2, k < 0);
               ctx.closePath();
               ctx.fill();
+              // Keep surface markings fixed to the moon's projected north,
+              // rather than turning them with the phase or the camera.
+              ctx.clip();
+              const pole = Math.abs(moon.y) > 0.98;
+              const northX = -moon.x * (pole ? moon.z : moon.y);
+              const northY = (pole ? 0 : 1) - moon.y * (pole ? moon.z : moon.y);
+              const northZ = (pole ? 1 : 0) - moon.z * (pole ? moon.z : moon.y);
+              const northScreenX = view[0] * northX + view[4] * northY + view[8] * northZ;
+              const northScreenY = view[1] * northX + view[5] * northY + view[9] * northZ;
+              ctx.rotate(Math.atan2(northScreenX, northScreenY) - phaseAngle);
+              ctx.scale(radius, radius);
+              ctx.globalAlpha = moonAlpha * 0.34;
+              ctx.fillStyle = "#666568";
+              ctx.beginPath();
+              for (let i = 0; i < MOON_BASINS.length; i += 4) {
+                const x = MOON_BASINS[i], y = -MOON_BASINS[i + 1], rx = MOON_BASINS[i + 2], ry = MOON_BASINS[i + 3];
+                ctx.moveTo(x + rx, y);
+                ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+              }
+              ctx.fill();
+              ctx.globalAlpha = moonAlpha * 0.2;
+              ctx.fillStyle = "#dedbd4";
+              ctx.strokeStyle = "#f0ece6";
+              ctx.lineWidth = 0.006;
+              ctx.beginPath();
+              for (let i = 0; i < MOON_CRATERS.length; i += 3) {
+                const x = MOON_CRATERS[i], y = -MOON_CRATERS[i + 1], r = MOON_CRATERS[i + 2];
+                ctx.moveTo(x + r, y);
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+              }
+              ctx.fill();
+              ctx.stroke();
               ctx.restore();
             }
           }

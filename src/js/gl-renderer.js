@@ -434,6 +434,8 @@ uniform vec4 uSpotLight[3];
 ${VIEW_DIRECTION_GLSL}
 uniform vec3 uFog;
 uniform vec2 uFogRange;
+// xyz follows the played character; w enables the room's fluorescence and visibility falloff.
+uniform vec4 uBlacklight;
 uniform vec4 uMatrixParams;
 uniform vec3 uMatrixOrigin;
 uniform float uMatrixGlyph;
@@ -1029,6 +1031,18 @@ void main() {
   else if (nl > 12.0 && nl < 20.0) col = lavaShade(surfaceBright);
   else if (nl > 6.0 && nl < 12.0) col = waterShade(col, n, surfaceBright);
 #endif
+  // Pale pigments fluoresce independently of the dim violet illumination. Keep their
+  // hue, with a green fluorescence for whites; dark materials and transparent glass stay dark.
+  if (uBlacklight.w > 0.0 && uGlass >= 1.0 && uGlassOpacity <= 0.0) {
+    float pale = smoothstep(0.55, 0.94, min(base.r, min(base.g, base.b)));
+    float bright = smoothstep(0.55, 0.9, dot(base, vec3(0.2126, 0.7152, 0.0722)));
+    float response = max(pale, bright * 0.35);
+    col *= mix(0.3 + response * 0.7, 1.0, emissive);
+    vec3 fluorescence = mix(base, vec3(0.16, 1.0, 0.4), pale * 0.95)
+      * response * uBlacklight.w * (1.0 - emissive);
+    col += fluorescence;
+    surfaceBright += fluorescence * 0.65;
+  }
   vec3 normalColor = clamp(mix(col, uFog, fog), 0.0, 1.0);
   vec3 normalBright = clamp((col * (emissive * 0.9 + vParams.y * 0.5 + tip * 0.85) + surfaceBright) * (1.0 - fog), 0.0, 1.0);
   float glassAlpha = uGlass < 1.0 ? clamp(uGlass + pow(1.0 - abs(dot(n, normalize(uEye - vWorld))), 2.0) * 0.55, 0.0, 1.0) : 1.0;
@@ -1044,6 +1058,12 @@ void main() {
     float glint = pow(max(dot(reflect(-uLightDir, n), view), 0.0), 36.0);
     normalColor = mix(normalColor, vec3(0.88, 1.0, 0.98), grazing * 0.7 + glint * 0.35);
     glassAlpha = mix(uGlassOpacity, 0.72, grazing) + glint * 0.12;
+  }
+  if (uBlacklight.w > 0.0) {
+    // Fade around the Ooga, never the orbit camera; dim bloom as well as the surface.
+    float visibility = 1.0 - 0.3 * smoothstep(4.0, 14.0, distance(vWorld, uBlacklight.xyz));
+    normalColor = mix(uFog, normalColor, visibility);
+    normalBright *= visibility;
   }
   oColor = vec4(mix(normalColor, matrixColorResult, front), glassAlpha);
   oBright = vec4(mix(normalBright, matrixBrightResult, front), glassAlpha);
@@ -1095,7 +1115,7 @@ void main() {
   const ORDINARY_MESH_FS = derive(MESH_FS, ["flat in vec4 vVoxel;", "uniform vec4 uVoxel;"], [/\bvVoxel\b/g, "uVoxel"]);
   // The camera's depth pre-pass: the mesh shader's cuts and nothing else, the rest compiled away.
   const DEPTH_MESH_FS = ORDINARY_MESH_FS.slice(0, ORDINARY_MESH_FS.indexOf("void main() {")) + "void main() {\n  if (clipped()) discard;\n}";
-  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
+  const MESH_UNIFORMS = ["uRigCount", "uRigPass", "uRigMatrices", "uRigParams", "uRigVoxels", "uRigVisibility", "uViewProj", "uLightViewProj", "uEye", "uViewDirection", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uSpotLight", "uFog", "uFogRange", "uBlacklight", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixPermanentPlane", "uMatrixPermanentAperture", "uMatrixLivingGlobal", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uObjectClip", "uObjectSlab", "uObjectSlab2", "uProjective", "uMatrixGlyphOpacity", "uGlassOpacity", "uVoxel", "uWindTime", "uSway", "uSwing", "uGlass", "uLightBeam", "uLakeWaveCount", "uLakeWaves", "uLakeSurface", "uLakeSuction", "uLakeFlowEnabled", "uLakeFlowU", "uLakeFlowV", "uLakeCharge", "uLakeChargeRise", "uLakeChargeCenter", "uLakeOcclude", "uLakeWaveEnd", "uLakeBodyShape", "uLakeBodyBend", "uDSBSurface", "uDSBDepth", "uDSBEnvironment", "uCanvasSurface", "uCanvasImage", "uCanvasRect", "uCanvasCurve", "uCanvasBackground", "uCanvasScale", "uCanvasAtlas", "uCanvasAtlasMin", "uCanvasAtlasMax"];
   const ORDINARY_SHADOW_VS = derive(SHADOW_VS, [RIG_GLSL, ""], ["rigMatrix(mat4(aM0, aM1, aM2, aM3))", "mat4(aM0, aM1, aM2, aM3)"],
     ["layout(location=6) in vec4 aM3;\n\n", "layout(location=6) in vec4 aM3;\n"]);
   const LINE_VS = `#version 300 es
@@ -1493,23 +1513,81 @@ float fbm(vec2 p) {
   }
   return v;
 }
+float moonCrater(vec2 p, vec2 centre, float radius) {
+  float r = length(p - centre) / radius;
+  return 0.12 * (smoothstep(0.7, 0.9, r) - smoothstep(0.9, 1.1, r))
+    + 0.06 * (1.0 - smoothstep(0.25, 0.8, r));
+}
+float moonBasin(vec2 p, vec4 bounds) {
+  return length((p - bounds.xy) / bounds.zw);
+}
+float moonAlbedo(vec2 p) {
+  // Approximate near-side outlines, north up and lunar east right. Positions
+  // follow the USGS mare catalog; shapes follow NASA's LRO near-side image:
+  // https://science.nasa.gov/resource/lunar-near-side/
+  // Keep these bounds in sync with Canvas MOON_BASINS.
+  float grain = fbm(p * 8.0 + vec2(21.7, 8.3));
+  float basin = moonBasin(p, vec4(-0.72, 0.25, 0.19, 0.38)); // Procellarum's western expanse
+  basin = min(basin, moonBasin(p, vec4(-0.59, 0.53, 0.19, 0.23)));
+  basin = min(basin, moonBasin(p, vec4(-0.62, -0.08, 0.20, 0.15)));
+  basin = min(basin, moonBasin(p, vec4(-0.211, 0.570, 0.30, 0.25))); // Imbrium
+  basin = min(basin, moonBasin(p, vec4(-0.32, 0.12, 0.27, 0.16))); // Insularum
+  basin = min(basin, moonBasin(p, vec4(-0.36, -0.15, 0.17, 0.12))); // Cognitum
+  basin = min(basin, moonBasin(p, vec4(0.280, 0.458, 0.18, 0.18))); // Serenitatis
+  basin = min(basin, moonBasin(p, vec4(0.507, 0.145, 0.21, 0.22))); // Tranquillitatis
+  basin = min(basin, moonBasin(p, vec4(0.824, 0.279, 0.085, 0.145))); // Isolated Crisium
+  basin = min(basin, moonBasin(p, vec4(0.798, -0.136, 0.12, 0.23))); // Fecunditatis
+  basin = min(basin, moonBasin(p, vec4(0.548, -0.262, 0.085, 0.095))); // Nectaris
+  basin = min(basin, moonBasin(p, vec4(-0.278, -0.352, 0.21, 0.20))); // Nubium
+  basin = min(basin, moonBasin(p, vec4(-0.567, -0.414, 0.095, 0.11))); // Humorum
+  basin = min(basin, moonBasin(p, vec4(0.069, 0.228, 0.075, 0.065))); // Vaporum
+  basin = min(basin, moonBasin(p, vec4(-0.38, 0.79, 0.20, 0.035))); // Frigoris' broken northern band
+  basin = min(basin, moonBasin(p, vec4(-0.05, 0.855, 0.24, 0.035)));
+  basin = min(basin, moonBasin(p, vec4(0.28, 0.815, 0.18, 0.032)));
+  float plains = 1.0 - smoothstep(0.82, 1.02, basin + (grain - 0.5) * 0.22);
+  float albedo = mix(0.92, 0.53, plains) + (grain - 0.5) * 0.10;
+  albedo += moonCrater(p, vec2(-0.14, -0.695), 0.025); // Tycho
+  albedo += moonCrater(p, vec2(-0.323, 0.167), 0.027); // Copernicus
+  albedo += moonCrater(p, vec2(-0.61, 0.14), 0.012); // Kepler
+  albedo += moonCrater(p, vec2(-0.65, 0.43), 0.012); // Aristarchus
+  return clamp(albedo, 0.4, 1.0);
+}
 void main() {
   vec4 far = uInvViewProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
   vec3 d = normalize(far.xyz / far.w);
   float hazeY = d.y + uHazeDrop;
+  // Altitude lowers the haze bank, not the celestial horizon. Sea-facing rays
+  // must contain no direct sun, moon or stars, including their bloom source.
+  float skyMask = smoothstep(0.0, 0.005, d.y);
   vec3 col = mix(uHorizon, uZenith, smoothstep(-0.02, 0.5, hazeY));
   col = mix(col, uHorizon * 0.55, smoothstep(0.0, 0.5, -hazeY));
   float sd = max(dot(d, uSunDir), 0.0);
   float sunDisc = pow(sd, 600.0) * (1.0 - uStars);
   vec3 sun = uSun * (sunDisc + pow(sd, 6.0) * 0.18 * (1.0 - uStars));
   float moonDot = dot(d, uMoonDir);
-  float moonDisc = smoothstep(0.9985, 0.999, moonDot) * mix(0.3, 1.0, uStars) * smoothstep(-0.02, 0.005, d.y);
-  vec3 moonOffset = (d - uMoonDir * moonDot) / sqrt(0.003);
-  vec3 moonNormal = moonOffset - uMoonDir * sqrt(max(0.0, 1.0 - dot(moonOffset, moonOffset)));
-  float moonLit = smoothstep(-0.025, 0.025, dot(moonNormal, uMoonSunDir));
-  vec3 moon = vec3(0.82, 0.88, 1.0) * moonDisc * moonLit;
+  float moonEdge = max(fwidth(moonDot), 0.000005);
+  float moonDisc = smoothstep(0.9985 - moonEdge, 0.9985 + moonEdge, moonDot);
+  vec3 moon = vec3(0.0), moonBright = vec3(0.0);
+  if (moonDisc > 0.0 && skyMask > 0.0) {
+    float moonOpacity = moonDisc * mix(0.3, 1.0, uStars);
+    vec3 moonOffset = (d - uMoonDir * moonDot) / sqrt(0.003);
+    float moonDepth = sqrt(max(0.0, 1.0 - dot(moonOffset, moonOffset)));
+    vec3 moonNormal = moonOffset - uMoonDir * moonDepth;
+    vec3 moonUp = abs(uMoonDir.y) < 0.98 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+    vec3 moonRight = normalize(cross(uMoonDir, moonUp));
+    moonUp = cross(moonRight, uMoonDir);
+    float albedo = moonAlbedo(vec2(dot(moonOffset, moonRight), dot(moonOffset, moonUp)));
+    float moonLight = dot(moonNormal, uMoonSunDir);
+    float moonLit = smoothstep(-0.015, 0.015, moonLight);
+    vec3 moonDay = vec3(0.8, 0.79, 0.76) * albedo * (0.18 + 0.82 * sqrt(max(0.0, moonLight)));
+    vec3 earthshine = vec3(0.1, 0.11, 0.14) * albedo * (0.85 + 0.15 * moonDepth);
+    vec3 moonSurface = mix(mix(col, earthshine, uStars), moonDay, moonLit);
+    // Keep the shadowed terrain visible and the lit terrain clear of bloom.
+    moon = (moonSurface - col) * moonOpacity;
+    moonBright = moonDay * moonLit * moonOpacity * 0.06;
+  }
   vec3 stars = vec3(0.0);
-  if (uStars > 0.002) {
+  if (uStars > 0.002 && skyMask > 0.0) {
     vec3 starD = normalize(uStarMatrix * d);
     vec3 a = abs(starD);
     vec2 f;
@@ -1526,10 +1604,11 @@ void main() {
       float r = 0.12 + h2 * 0.18;
       float pt = 1.0 - smoothstep(0.0, r, length(fract(f) - 0.5));
       float twinkle = 0.75 + 0.25 * sin(uTime * (2.0 + h3 * 3.0) + h3 * 6.28);
-      float s = pt * (0.5 + 0.5 * h2) * twinkle * uStars * smoothstep(-0.05, 0.15, hazeY);
+      float s = pt * (0.5 + 0.5 * h2) * twinkle * uStars * smoothstep(0.0, 0.15, d.y);
       stars = mix(vec3(1.0), vec3(0.75, 0.85, 1.0), h3) * s;
     }
   }
+  stars *= 1.0 - moonDisc;
   // The sea far below the island: the view ray meets a level plane, waves from two drifting noise fields bend
   // its normal, the sky reflects by Fresnel, the sun glints, crests foam, and it hazes into the horizon.
   if (uSea.x > 0.0 && d.y < -0.0005) {
@@ -1550,10 +1629,14 @@ void main() {
     water *= mix(vec3(1.0), uHorizon * 1.35, 0.4);
     water += uSun * pow(max(dot(r, uSunDir), 0.0), 220.0) * 3.0 * day;
     water += vec3(0.85, 0.95, 1.0) * smoothstep(0.66, 0.74, h0) * 0.22 * day;
-    // Haze by distance, pushed out by however far the eye climbs past island heights, so a dive from altitude
-    // still sees blue sea below instead of a sheet of horizon colour; at island heights nothing changes.
+    // Match the sky at this viewing angle, including its altitude-shifted haze.
+    // A fixed uHorizon here left an orange/blue seam at dusk. Keep distant haze
+    // farther out as the eye climbs, retaining visible water below a high dive.
     float lift = max(0.0, uSea.z - uSea.y - 120.0);
-    col = mix(water, uHorizon, smoothstep(160.0 + lift * 1.2, 900.0 + lift * 2.5, t));
+    float haze = smoothstep(160.0 + lift * 1.2, 900.0 + lift * 2.5, t);
+    // At sea level the distance haze may not finish before the ray cutoff;
+    // fade water out there too so the horizon stays continuous at every height.
+    col = mix(col, water, (1.0 - haze) * smoothstep(0.0005, 0.01, -d.y));
   }
   // Painted cumulus on a plane over the world, drifting with time: lit toward the sun, grey underneath,
   // taking the horizon's colour at dusk and dimming to the night sky. They thin out toward the horizon.
@@ -1570,10 +1653,11 @@ void main() {
     col = mix(col, cloudCol, cover * 0.92);
     sun *= 1.0 - cover * 0.85;
     moon *= 1.0 - cover;
+    moonBright *= 1.0 - cover;
     stars *= 1.0 - cover;
   }
-  oColor = vec4(col + sun + moon + stars, 1.0);
-  oBright = vec4(uSun * sunDisc * 0.6 + moon * 0.5 + stars * 0.35, 1.0);
+  oColor = vec4(col + (sun + moon + stars) * skyMask, 1.0);
+  oBright = vec4((uSun * sunDisc * 0.6 + moonBright + stars * 0.35) * skyMask, 1.0);
 }`;
   const BLUR_FS = `#version 300 es
 precision highp float;
@@ -2250,6 +2334,7 @@ void main() {
       }
       gl.deleteBuffer(rec.ibo);
       if (rec.imageTexture) { gl.deleteTexture(rec.imageTexture); imageTextures--; rec.imageTexture = null; }
+      rec.imageElement = null; rec.imageBlocked = null;
       if (rec.rippleBodyTexture) { gl.deleteTexture(rec.rippleBodyTexture); rippleBodyTextures--; rec.rippleBodyTexture = null; }
       rec.rippleBodyState = null;
       rec.nodes.length = 0;
@@ -3211,7 +3296,7 @@ void main() {
       lost = true;
       destroyInstanceStream();
       imageTextures = rippleBodyTextures = 0;
-      for (const rec of records.values()) { rec.imageTexture = rec.rippleBodyTexture = rec.rippleBodyState = null; }
+      for (const rec of records.values()) { rec.imageTexture = rec.rippleBodyTexture = rec.rippleBodyState = null; rec.imageElement = null; }
       forgetMirror();
     };
     const onRestored = () => {
@@ -3318,24 +3403,61 @@ void main() {
     };
     const drawImageSurface = (rec, count, cameraPass, resume) => {
       const surface = rec.geometry.imageSurface, image = surface.asset.load(), p = programs.image;
+      const dynamic = surface.dynamic === true;
+      let ready = dynamic ? image.readyState >= 2 && !image.seeking && image.videoWidth > 0 && image.videoHeight > 0
+        && image.videoWidth <= 1280 && image.videoHeight <= 720 : image.complete && image.naturalWidth;
+      const source = dynamic ? image.currentSrc || image.src : "";
+      if (dynamic && rec.imageBlocked && (rec.imageBlocked !== image || rec.imageBlockedSource !== source)) {
+        rec.imageBlocked = null; rec.imageBlockedSource = ""; surface.mediaErrorCode = "";
+      }
+      if (dynamic && rec.imageBlocked) ready = false;
       gl.activeTexture(gl.TEXTURE6);
-      if (!rec.imageTexture && image.complete && image.naturalWidth) {
-        rec.imageTexture = gl.createTexture();
-        imageTextures++;
-        gl.bindTexture(gl.TEXTURE_2D, rec.imageTexture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-        // Mipmapped, so lettering seen from across a hall stays legible instead of sparkling.
-        gl.generateMipmap(gl.TEXTURE_2D);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      } else gl.bindTexture(gl.TEXTURE_2D, rec.imageTexture || res.matrixTexture);
+      try {
+        if (!rec.imageTexture && ready) {
+          rec.imageTexture = gl.createTexture();
+          imageTextures++;
+          gl.bindTexture(gl.TEXTURE_2D, rec.imageTexture);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+          if (dynamic) {
+            rec.imageElement = image;
+            rec.imageTime = image.currentTime;
+            rec.imageSource = image.currentSrc;
+            rec.imageWidth = image.videoWidth; rec.imageHeight = image.videoHeight;
+          } else {
+            // Mipmapped, so lettering seen from across a hall stays legible instead of sparkling.
+            gl.generateMipmap(gl.TEXTURE_2D);
+          }
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, dynamic ? gl.LINEAR : gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        } else {
+          gl.bindTexture(gl.TEXTURE_2D, rec.imageTexture || res.matrixTexture);
+          if (dynamic && ready && rec.imageTexture && (rec.imageElement !== image || rec.imageTime !== image.currentTime || rec.imageSource !== image.currentSrc
+              || rec.imageWidth !== image.videoWidth || rec.imageHeight !== image.videoHeight)) {
+            if (rec.imageWidth !== image.videoWidth || rec.imageHeight !== image.videoHeight)
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+            else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, image);
+            rec.imageElement = image;
+            rec.imageTime = image.currentTime;
+            rec.imageSource = image.currentSrc;
+            rec.imageWidth = image.videoWidth; rec.imageHeight = image.videoHeight;
+          }
+        }
+      } catch (error) {
+        // Opaque file previews and media without CORS may play natively but cannot enter WebGL.
+        // Keep the accessible player usable, and do not repeat the same forbidden upload each frame.
+        if (!dynamic || error.name !== "SecurityError") throw error;
+        if (rec.imageTexture) { gl.deleteTexture(rec.imageTexture); imageTextures--; rec.imageTexture = null; }
+        rec.imageElement = null; rec.imageBlocked = image; rec.imageBlockedSource = source;
+        surface.mediaErrorCode = "video-security"; ready = false;
+        gl.bindTexture(gl.TEXTURE_2D, res.matrixTexture);
+      }
       gl.useProgram(p.prog);
       gl.uniformMatrix4fv(p.u.uViewProj, false, cameraPass ? viewProj : mirrorViewProj);
       gl.uniform4fv(p.u.uRect, surface.rect);
       gl.uniform1i(p.u.uImage, 6);
-      gl.uniform1i(p.u.uReady, rec.imageTexture ? 1 : 0);
+      gl.uniform1i(p.u.uReady, rec.imageTexture && (!dynamic || ready) ? 1 : 0);
       gl.uniform1i(p.u.uCutout, surface.cutout ? 1 : 0);
       gl.uniform1i(p.u.uSoft, surface.soft ? 1 : 0);
       gl.uniform1i(p.u.uBlend, blendPass ? 1 : 0);
@@ -3671,7 +3793,7 @@ void main() {
       gl.depthMask(true);
       gl.depthFunc(gl.LESS);
     };
-    const renderMirrorCapture = (clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, lightCount, skyOn, fog, fogNear, fogFar, matrix, spotLight, environmentFace = -1, target = mirror) => {
+    const renderMirrorCapture = (clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, lightCount, skyOn, fog, fogNear, fogFar, matrix, spotLight, blacklight, environmentFace = -1, target = mirror) => {
       const cube = environmentFace >= 0;
       if (target !== mirror) ensureReflectorTarget(target);
       else if (!cube) ensureMirrorTarget();
@@ -3715,6 +3837,7 @@ void main() {
       gl.uniform4fv(pg.mesh.u.uSpotLight, spotLight);
       gl.uniform3fv(pg.mesh.u.uFog, fog);
       gl.uniform2f(pg.mesh.u.uFogRange, fogNear, fogFar);
+      gl.uniform4f(pg.mesh.u.uBlacklight, blacklight ? blacklight[0] : 0, blacklight ? blacklight[1] : 0, blacklight ? blacklight[2] : 0, blacklight ? blacklight[3] : 0);
       // The mirror closes before the retreat reaches the pile; its reflection must still show the same partially
       // transformed world as the main view.
       gl.uniform4f(pg.mesh.u.uMatrixParams, matrix ? matrix.active : 0, matrix ? matrix.radius : 0, matrix ? matrix.time : 0, matrix ? matrix.density : 0);
@@ -4088,6 +4211,7 @@ void main() {
         fog = null,
         fogNear = 0,
         fogFar = 0,
+        blacklight = null,
         matrix = null,
         clouds = 0,
         sea = null
@@ -4252,14 +4376,14 @@ void main() {
           else if (mirror.occluded && mirror.captureValid) skipMirrorPass("occluded");
           // Skipped frames reuse the last reflection, including when the pane is only a few pixels across.
           else if (mirror.captureValid && mirror.frame++ % mirror.cadence) skipMirrorPass("cadence");
-          else renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight);
+          else renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, blacklight);
         }
         if (mirror.shards && environmentCaptureVisible() && ensureShardProgram()) {
           ensureEnvironment(clear);
           if (environment.valid !== 63 || environment.frame++ % settings.environmentCadence === 0) {
             const face = environment.next;
             prepareEnvironmentCamera(camera, face);
-            renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, face);
+            renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, blacklight, face);
             environment.next = (face + 1) % 6;
           }
         }
@@ -4292,7 +4416,7 @@ void main() {
           const i = pass ? turn : best;
           if (i < 0) continue;
           const node = reflectorNodes[i], t = reflectorTargets.get(node.geometry);
-          if (prepareMirrorCamera(camera, node, t)) renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, -1, t);
+          if (prepareMirrorCamera(camera, node, t)) renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, blacklight, -1, t);
         }
       }
       const viewActor = opts.beforeView?.();
@@ -4357,6 +4481,7 @@ void main() {
         gl.uniform4fv(mp.u.uSpotLight, spotLight);
         gl.uniform3fv(mp.u.uFog, fogColor);
         gl.uniform2f(mp.u.uFogRange, fogA, fogB);
+        gl.uniform4f(mp.u.uBlacklight, blacklight ? blacklight[0] : 0, blacklight ? blacklight[1] : 0, blacklight ? blacklight[2] : 0, blacklight ? blacklight[3] : 0);
         // With no matrix running these resolve to the same constants — its readers stay unreachable behind
         // uMatrixParams.x 0 and uMatrixPermanentCave 0 — so only the wave's arrivals move them again.
         if (matrix || !mp.matrixNone) {

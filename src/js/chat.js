@@ -21,7 +21,7 @@
   const ROOM_WORDS = { off: "Not connected.", connecting: "Joining the island…", paused: "Paused while the tab was hidden.", replaced: "Open in another tab.", full: "The island is full.", revoked: "Your account access was revoked. Sign in again if access is restored." };
   const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
   const $ = (id) => document.getElementById(id);
-  const sheet = $("sheet"), tab = $("chat-tab"), panel = $("chat-panel"), log = $("chat-log");
+  const sheet = $("sheet"), panel = $("chat-panel"), log = $("chat-log");
   const status = $("chat-status"), statusText = $("chat-status-text");
   const form = $("chat-form"), input = $("chat-input"), left = $("chat-left"), sendButton = $("chat-send");
   const announcement = $("chat-announcement"), roomChip = $("chat-room");
@@ -118,34 +118,36 @@
   };
 
   const updateShowing = () => {
-    showing = !sheet.hidden && !tab.hidden && !panel.hidden && sheet.dataset.open === "true";
+    showing = BL.sheet.visible(panel);
     if (showing && !drawn) redraw();
   };
   const watch = new MutationObserver(updateShowing);
   watch.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
-  watch.observe(tab, { attributes: true, attributeFilter: ["hidden"] });
   watch.observe(sheet, { attributes: true, attributeFilter: ["data-open", "hidden"] });
 
-  // What is left of a line once sanitized as the room will.
+  // Validate exactly as the room will; only surrounding whitespace is trimmed.
   const update = () => {
-    const length = BL.donations.sanitize(input.value, Infinity).length;
-    const unsupported = /[^\w .,!'?@#:-]/.test(input.value);
-    const feedback = unsupported ? "Use letters A–Z, a–z, digits, spaces and _ . , ! ? ' @ # : - only. Remove unsupported characters before sending." : notice;
+    const policy = BL.chatPolicy, length = policy.text(input.value).length, problem = policy.error(input.value);
+    const unsupported = !problem && !net.state.chatUnicode && !policy.legacy(policy.text(input.value));
+    const feedback = problem === "controls" ? "Remove control characters, line breaks or directional formatting before sending."
+      : problem === "unicode" ? "This draft contains incomplete Unicode. Edit it before sending."
+      : problem === "length" ? "Message is over 160 UTF-16 units. Shorten it before sending."
+      : unsupported ? "This server does not yet support extended chat text. Keep the draft and reconnect after the server update."
+      : notice;
     left.textContent = String(CHAT_MAX - length);
     left.dataset.over = String(length > CHAT_MAX);
-    sendButton.disabled = !live || !!(pending && pending.awaiting) || !length || length > CHAT_MAX || unsupported;
+    sendButton.disabled = !live || !!(pending && pending.awaiting) || !!problem || unsupported;
     status.hidden = live && !feedback;
     if (live) statusText.textContent = feedback;
     announce(statusText.textContent);
   };
-  const account = ({ backend, me: player, room, logoutEpoch: epoch = logoutEpoch }) => {
+  const account = ({ me: player, room, logoutEpoch: epoch = logoutEpoch }) => {
     if (epoch !== logoutEpoch) {
       logoutEpoch = epoch;
       stopWaiting(); pending = null; notice = ""; revision++; input.value = "";
       lines.length = 0; log.replaceChildren(); drawn = true;
       announce("Signed out. Local chat and draft cleared.");
     }
-    tab.hidden = !backend;
     if (identity) {
       identity.hidden = !player;
       accountLogin.textContent = player ? "@" + player.login : "";
@@ -172,7 +174,7 @@
   const submit = () => {
     if (composing || sendButton.disabled) return;
     const draft = input.value;
-    const text = BL.donations.sanitize(draft, Infinity);
+    const text = BL.chatPolicy.text(draft);
     if (!pending || pending.text !== text) pending = { clientId: window.crypto.randomUUID(), text };
     pending.draft = draft;
     pending.revision = revision;
@@ -205,7 +207,7 @@
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      tab.focus({ preventScroll: true });
+      BL.sheet.tabFor(panel)?.focus({ preventScroll: true });
     } else if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229 && !composing) {
       e.preventDefault();
       submit();
@@ -229,20 +231,30 @@
     displayInput.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.isComposing || e.keyCode === 229 || displayComposing) return;
-      if (e.key === "Escape") { e.preventDefault(); tab.focus({ preventScroll: true }); }
+      if (e.key === "Escape") { e.preventDefault(); BL.sheet.tabFor(panel)?.focus({ preventScroll: true }); }
     });
   }
   // Choosing the tab with a mouse puts the cursor in the input; on a touch screen that would raise the keyboard
   // over the log, so there the input waits for a tap. Heard after hud.js's own click on the tab.
-  sheet.addEventListener("click", (e) => {
-    if (!e.target.closest || !e.target.closest("#chat-tab")) return;
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest || !e.target.closest(".sheet [data-tab='chat']")) return;
     updateShowing();
     if (showing && live && fine.matches) input.focus({ preventScroll: true });
   });
   // The phone's keyboard covers the drawer's foot: lift the sheet by what it hides while the input has focus.
+  let keyboardSheet = null;
+  const clearFit = () => {
+    if (!keyboardSheet) return;
+    keyboardSheet.style.removeProperty("--chat-keyboard");
+    keyboardSheet.style.removeProperty("--chat-viewport");
+    keyboardSheet = null;
+  };
   const fit = () => {
-    sheet.style.setProperty("--chat-keyboard", `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`);
-    sheet.style.setProperty("--chat-viewport", `${Math.floor(viewport.height)}px`);
+    const owner = panel.closest(".sheet");
+    if (keyboardSheet !== owner) { clearFit(); keyboardSheet = owner; }
+    if (!owner) return;
+    owner.style.setProperty("--chat-keyboard", `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`);
+    owner.style.setProperty("--chat-viewport", `${Math.floor(viewport.height)}px`);
     // A short landscape viewport scrolls the panel rather than hiding the focused editor.
     const field = document.activeElement;
     if (field === input || field === displayInput) field.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -258,8 +270,11 @@
     if (!viewport) return;
     viewport.removeEventListener("resize", fit);
     viewport.removeEventListener("scroll", fit);
-    sheet.style.removeProperty("--chat-keyboard");
-    sheet.style.removeProperty("--chat-viewport");
+    clearFit();
+  });
+  document.addEventListener("sheetchange", () => {
+    updateShowing();
+    if (viewport && (document.activeElement === input || document.activeElement === displayInput)) fit();
   });
 
   net.subscribe(account);

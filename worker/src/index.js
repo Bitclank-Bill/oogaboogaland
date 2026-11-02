@@ -8,6 +8,7 @@ import { handleApi } from "./api.js";
 import { handleAuth } from "./auth.js";
 import { purgeExpiredSessions } from "./db.js";
 import { handleDonations } from "./donations.js";
+import { handleHighscores } from "./highscores.js";
 import { allowed, fromSite, getSessionFromRequest, text } from "./http.js";
 import { handlePoker } from "./poker.js";
 import { handleTess, pruneTess } from "./tess.js";
@@ -42,6 +43,7 @@ const handleVoice = async (request, env, url) => {
   if (!(await allowed(env.VOICE_LIMITER, String(found.player.id)))) return text("Too many voice requests", 429);
   const op = url.pathname.slice("/api/voice/".length);
   const headers = new Headers({ "content-type": "application/json", "x-player-id": String(found.player.id) });
+  headers.set("x-room-token", request.headers.get("x-room-token") || "");
   return env.ROOM.getByName(ROOM_NAME).fetch(new Request(new URL(`/voice/${op}`, url), { method: "POST", headers, body: request.body }));
 };
 
@@ -53,6 +55,7 @@ export default {
     if (url.pathname.startsWith("/api/totems/")) return handleTotems(request, url, env);
     if (url.pathname.startsWith("/api/voice/")) return handleVoice(request, env, url);
     if (url.pathname === "/api/tess") return handleTess(request, env);
+    if (url.pathname.startsWith("/api/highscores/")) return handleHighscores(request, env);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, url);
     if (url.pathname === "/room") return handleRoom(request, env);
     if (url.pathname.startsWith("/donations/")) return handleDonations(request, env, url);

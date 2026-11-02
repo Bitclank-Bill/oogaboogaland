@@ -13,13 +13,13 @@ The two share code and nothing else: each has its own D1 database, room, OAuth A
 
 | Thing | Name | Set where |
 |---|---|---|
-| D1 database | `oogaboogaland-staging`, `oogaboogaland-production` | `d1_databases` (`database_id`), migrations in `worker/migrations` |
-| Rate limiters | `AUTH_LIMITER` 10 sign-ins a minute per IP; `ROOM_LIMITER` 20 room connections and `VOICE_LIMITER` 120 voice calls a minute per player; `TESS_LIMITER` 5 questions to Tess a minute per IP | `ratelimits` (staging namespaces 2001–2005, production 1001–1005) |
+| D1 database | `oogaboogaland-staging`, `oogaboogaland-production`; accounts, Tess and shared game high scores | `d1_databases` (`database_id`), migrations in `worker/migrations` |
+| Rate limiters | `AUTH_LIMITER` 10 sign-ins a minute per IP; `ROOM_LIMITER` 20 room connections and `VOICE_LIMITER` 120 voice calls a minute per player; `TESS_LIMITER` 5 questions to Tess a minute per IP; `HIGHSCORE_LIMITER` 120 public score reads per IP or submissions per account per minute, on separate keys | `ratelimits` (staging namespaces 2001–2006, production 1001–1006) |
 | Durable Object | `Room`, one named `island` | `durable_objects`, `migrations` |
 | Cron | daily 04:00 UTC, purges expired sessions and Tess's questions not asked for 90 days | `triggers` |
 | Service binding | `DONATIONS` → `bananapayserver-staging`'s `PageApi` on staging, `bananapayserver-production`'s on production | `services`, with `/donations/*` in `run_worker_first`. The bound Worker must exist before a deploy carries the binding |
-| Vars | `SITE_ORIGIN`, `GITHUB_CLIENT_ID`, `REALTIME_APP_ID`; optionally `TESS_DAILY_CENTS` (Tess's daily cap, 50 when unset) | `vars` |
-| Worker secrets | `GITHUB_CLIENT_SECRET`, `REALTIME_SECRET`; optionally `ANTHROPIC_API_KEY` for Tess's answers, and `GITHUB_TOKEN`, a fine-grained token with no repository permissions (public read only) that lifts the totems' GitHub scans from 60 requests an hour per Cloudflare address to 5,000 for the token. Give each Worker its own token: staging runs on `workers.dev`, where the Cache API stores nothing and `/api/totems` has no limiter, so every staging request is an authorized GitHub call and a token shared with production could be drained through staging. Fine-grained tokens expire (the default is 30 days): set a reminder, or the longest expiry GitHub allows. An expired or revoked token answers 401 and the scan carries on unauthenticated, so the totems keep working on the shared 60 an hour until the secret is replaced | `wrangler secret put` |
+| Vars | `SITE_ORIGIN`, `GITHUB_CLIENT_ID`, `REALTIME_APP_ID`; optionally `TESS_DAILY_CENTS` (Tess's daily cap, 50 when unset) and `STUDIO_HOST_IDS`, the comma-separated numeric GitHub ids that may host DSB Studio (unset, empty or malformed: nobody; see `docs/dsb-studio-session.md`) | `vars` |
+| Worker secrets | `GITHUB_CLIENT_SECRET`, `REALTIME_SECRET`; optionally `ANTHROPIC_API_KEY` for Tess's answers, and `GITHUB_TOKEN`, a fine-grained token with no repository permissions (public read only) that lifts the totems' GitHub scans from 60 requests an hour per Cloudflare address to 5,000 for the token. Give each Worker its own token: `/api/totems` has no limiter, and the Cache API keeps a scan for six minutes only in the data centre that ran it (on `workers.dev` as on the custom domain), so a token shared with production would also pay for staging's scans from every data centre that serves it. Fine-grained tokens expire (the default is 30 days): set a reminder, or the longest expiry GitHub allows. An expired or revoked token answers 401 and the scan carries on unauthenticated, so the totems keep working on the shared 60 an hour until the secret is replaced | `wrangler secret put` |
 | Realtime SFU app | `oogaboogaland-staging`, `oogaboogaland-production` | Realtime → Serverless SFU |
 | GitHub OAuth App | one per Worker, no scopes | the OogaBoogaX org's Developer settings |
 | GitHub repo secret | `CLOUDFLARE_API_TOKEN` | OogaBoogaX repo Settings → Secrets and variables → Actions |
@@ -65,6 +65,12 @@ npm run dev                             # http://localhost:8787, with the stagin
 ```
 
 The local OAuth App has homepage `http://localhost:8787` and callback `http://localhost:8787/auth/callback`. `npm run dev` builds `_site/` and passes `--local-upstream localhost:8787`, so the Origin check sees the local address. Local D1 and the room live in `.wrangler/` and never touch staging.
+
+Shared game records use this same database through `0003_highscores.sql`: one JSON high-score
+row per game, public reads and signed-in submissions. No additional D1 resource is required.
+Apply local migrations before previewing the boards; the staging and production workflows
+apply them before deploy as usual. See [Shared game high scores](highscores.md) for the game
+inventory, duplicate machine IDs, identity lifecycle and rollout checks.
 
 To show production donation totals and the leaderboard with the local page, sign in to
 Wrangler and run this from the repository root:

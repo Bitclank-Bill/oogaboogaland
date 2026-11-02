@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src https://stream.noderunnersradio.com; connect-src 'self' https: wss:; worker-src 'self'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' https://stream.noderunnersradio.com; connect-src 'self' https: wss:; worker-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -156,6 +156,8 @@
       <div class="brand">
         <h1><a class="home-link" href="./" title="Back to the island"><span data-sign>Ooga Booga Land</span></a></h1>
         <p data-scene="hub" id="subtitle">an island of caves</p>
+        <p data-scene="dsb" hidden>DSB LAND</p>
+        <p data-scene="poker" hidden>EMBER DEN</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
         <p data-scene="factory" hidden>Lightning Factory</p>
         <p data-scene="hangar" hidden>Lightning Jet Hangar</p>
@@ -288,6 +290,8 @@
         <button type="button" data-preset="skee">Thro</button>
         <button type="button" data-preset="shy">Coconuts</button>
         <button type="button" data-action="arcade-mute">Sound</button>
+        <!-- HALLOWEEN: out of the ghost hunt under way, back to the arena's hallway (scene-arcade.js shows it while hunting). -->
+        <button type="button" class="leave" data-action="ghost-exit" id="ghost-exit" hidden>Exit<span> hunt</span></button>
         <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Race" data-scene="race" hidden>
@@ -295,10 +299,14 @@
         <button type="button" data-action="mute" id="race-mute" aria-label="Mute sound" aria-pressed="false">Sound</button>
         <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
       </nav>
-      <nav class="presets" aria-label="DSB Land" data-scene="dsb" hidden>
-        <button type="button" data-action="dsb-lookout" title="Camera viewpoint · releases character control">Island overview</button>
-        <button type="button" data-action="dsb-mute" id="dsb-mute" aria-pressed="false">Mute</button>
-      </nav>
+      <button type="button" class="mode-hud environment-sound" id="environment-sound"
+        aria-label="Mute environment sounds" title="Mute environment sounds · M" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M3 9h4l5-4v14l-5-4H3z"/>
+          <path class="sound-waves" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>
+          <path class="sound-muted" d="m16 9 6 6m0-6-6 6"/>
+        </svg>
+      </button>
       <nav class="presets" aria-label="Timechain Sphere room" data-scene="timechain" hidden>
         <span class="sphere-mode" id="sphere-mode" role="status"></span>
         <button type="button" class="leave" data-action="leave">Leave<span> room</span></button>
@@ -352,6 +360,19 @@
           </svg>
           </span>
         </button>
+        <button type="button" class="sheet-toggle sheet-toggle-players" role="tab" data-tab="players"
+          aria-selected="false" id="players-tab" aria-controls="players-panel" aria-label="Players online" hidden>
+          <span class="sheet-tab-face">
+          <svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+            <path fill="#2b1b10" d="M5 0h3v1H5zM4 4h5v3H4z" />
+            <path fill="#c98a5b" d="M5 1h3v2H5zM1 3h3v2H1z" />
+            <path fill="#2b1b10" d="M1 2h3v1H1z" />
+            <path fill="#141414" d="M5 1h1v1H5zM7 1h1v1H7zM1 3h1v1H1zM3 3h1v1H3z" />
+            <path fill="#4a2c14" d="M0 6h5v3H0z" />
+            <path fill="#22c55e" d="M8 7h1v2H8z" />
+          </svg>
+          </span>
+        </button>
         <button type="button" class="sheet-toggle sheet-toggle-loot" role="tab" data-tab="loot"
           aria-selected="false" id="loot-tab" aria-controls="loot-panel" aria-label="Swag locker" hidden>
           <span class="sheet-tab-face">
@@ -383,7 +404,20 @@
         </header>
         <ul id="roster" class="roster slab" aria-label="Ooga Boogas"></ul>
         <p class="help roster-hint" data-scene="hub"><span id="world-loot-hint" hidden>Something is hidden out there.</span></p>
-        <button type="button" class="feed-open" data-action="feed"><span data-sign>Feed the Ooga Boogas</span></button>
+      </section>
+      <section class="panel" data-panel="players" id="players-panel" role="tabpanel" aria-labelledby="players-tab" hidden>
+        <header class="panel-title">
+          <h2><span data-sign>Players online</span></h2>
+          <span class="panel-chip" id="players-count" data-tone="idle">Offline</span>
+        </header>
+        <div class="players-hearing" id="players-hearing" hidden>
+          <label class="players-hearing-label" for="players-hearing-range">Hearing range</label>
+          <input type="range" id="players-hearing-range" min="5" max="65" step="5" value="65" aria-describedby="players-hearing-help" aria-valuetext="No limit">
+          <output class="players-hearing-value" id="players-hearing-value" for="players-hearing-range">No limit</output>
+          <span class="players-hearing-help" id="players-hearing-help">Far voices fade, for you alone</span>
+        </div>
+        <div class="players slab" id="players-list"></div>
+        <p class="help players-status" id="players-status" hidden></p>
       </section>
       <section class="panel" data-panel="bananas" id="bananas-panel" role="tabpanel" aria-labelledby="sheet-bananas" hidden>
         <header class="panel-title">
@@ -437,7 +471,6 @@
           </section>
           <p class="banana-board-note" id="banana-board-note">Demo donations saved in this browser.</p>
         </div>
-        <button type="button" class="feed-open" data-action="feed"><span data-sign>Feed the Ooga Boogas</span></button>
       </section>
       <section class="panel" data-panel="loot" id="loot-panel" role="tabpanel" aria-labelledby="loot-tab" hidden>
         <header class="panel-title">
@@ -478,6 +511,7 @@
       </section>
       </div>
       <footer class="sheet-foot">
+        <button type="button" class="feed-open" data-action="feed"><span data-sign>Feed the Ooga Boogas</span></button>
         <span class="account" id="account" hidden>
           <span class="account-who">
             <span class="account-name" id="account-name" hidden></span>
@@ -496,11 +530,20 @@
           <button type="button" class="link" data-action="reset">Reset demo</button>
         </span>
       </footer>
-      <div class="sheet-resize" id="sheet-resize" role="separator" tabindex="0" aria-label="Resize panel height"
-        aria-orientation="horizontal" aria-valuemin="240" aria-valuemax="1000" aria-valuenow="520"
-        title="Drag to resize · Up grows · Down shrinks · double-click to reset"></div>
       </div>
     </aside>
+
+    <template id="sheet-chrome">
+      <button type="button" class="sheet-drag" aria-label="Move panel" title="Drag top edge to move · arrow keys move · double-click to reset"></button>
+      <button type="button" class="sheet-edge sheet-edge-n" data-edge="n" aria-label="Resize panel from top" title="Drag to change height · arrow keys resize"></button>
+      <button type="button" class="sheet-edge sheet-edge-s" data-edge="s" aria-label="Resize panel from bottom" title="Drag to change height · arrow keys resize"></button>
+      <button type="button" class="sheet-edge sheet-edge-w" data-edge="w" aria-label="Resize panel from left" title="Drag to change width · arrow keys resize"></button>
+      <button type="button" class="sheet-edge sheet-edge-e" data-edge="e" aria-label="Resize panel from right" title="Drag to change width · arrow keys resize"></button>
+      <button type="button" class="sheet-corner sheet-corner-nw" data-corner="nw" aria-label="Resize panel from top left" title="Drag to resize · arrow keys resize"></button>
+      <button type="button" class="sheet-corner sheet-corner-ne" data-corner="ne" aria-label="Resize panel from top right" title="Drag to resize · arrow keys resize"></button>
+      <button type="button" class="sheet-corner sheet-corner-sw" data-corner="sw" aria-label="Resize panel from bottom left" title="Drag to resize · arrow keys resize"></button>
+      <button type="button" class="sheet-corner sheet-corner-se" data-corner="se" aria-label="Resize panel from bottom right" title="Drag to resize · arrow keys resize"></button>
+    </template>
 
     <div id="weapon-reticle" class="weapon-reticle" aria-hidden="true" hidden>
       <svg viewBox="-1 -1 2 2" focusable="false">
@@ -514,6 +557,30 @@
       <button type="button" class="mode-hud" id="destination-hud" data-action="mode-preset" data-selected="false"
         aria-labelledby="detached-destination-name destination-hud-label" title="Map · cycle destinations" hidden>
         <img class="freeroam-icon" id="freeroam-icon" alt="" aria-hidden="true">
+        <svg class="dsb-island-icon" viewBox="0 0 64 48" aria-hidden="true">
+          <path fill="#195c78" d="m3 30 9-8 30-6 18 12-5 11-23 7-24-6z"/>
+          <path fill="#d8bd7b" d="m7 28 12-10 7-12 13 4 7 11 11 7-6 8-21 7-20-7z"/>
+          <path fill="#7c8b54" d="m11 27 11-8 6-11 10 4 6 11 9 5-5 6-18 6-17-6z"/>
+          <path fill="#b1b38b" d="m18 22 10-14 10 4 3 8-11-3z"/>
+          <path fill="#f4eed6" d="M20 8h13v3H20zM21 11h3v10h-3zM29 11h3v10h-3zM35 23h8v8h-8zM44 27h7v7h-7zM29 29h7v7h-7z"/>
+          <path fill="#4388b7" d="M35 21h8v3h-8zM44 25h7v3h-7zM29 27h7v3h-7zM38 27h2v4h-2zM46 30h2v4h-2zM31 32h2v4h-2z"/>
+          <path fill="#526b3c" d="m15 23-3 8h6zm6 4-3 8h6z"/>
+          <path fill="#69b6c5" d="m8 39 22 6 22-7v2l-22 7-22-6z"/>
+        </svg>
+        <svg class="ember-den-icon" viewBox="0 0 64 48" aria-hidden="true">
+          <g transform="translate(32 24) scale(1.28 1.24) translate(-32 -24)">
+            <path fill="#594331" d="M16 5h32l10 7 5 12-5 12-10 7H16L6 36 1 24l5-12z"/>
+            <path fill="#d3c5a5" d="M17 7h30l9 6 5 11-5 11-9 6H17l-9-6-5-11 5-11z"/>
+            <path fill="#9b8256" d="M18 11h28l8 5 4 8-4 8-8 5H18l-8-5-4-8 4-8z"/>
+            <path fill="#317459" d="M19 13h26l7 4 3 7-3 7-7 4H19l-7-4-3-7 3-7z"/>
+          </g>
+          <g transform="translate(-1 .5)">
+            <path fill="#245749" d="M15 19h35v12H15z"/>
+            <path fill="#f4eed6" d="M14 18h6v11h-6zM22 18h6v11h-6zM30 18h6v11h-6zM38 18h6v11h-6zM46 18h6v11h-6z"/>
+            <path fill="#b94f36" d="m17 21 2 3-2 3-2-3zm24 0 2 3-2 3-2-3z"/>
+            <path fill="#28342c" d="m25 21 2 3-1 1h-2l-1-1zm-1 4h2v2h-2zm9-4 2 3-1 1h-2l-1-1zm-1 4h2v2h-2zm17-4 2 3-1 1h-2l-1-1zm-1 4h2v2h-2z"/>
+          </g>
+        </svg>
         <span class="detached-destination-name" id="detached-destination-name" aria-live="polite"></span>
         <span id="destination-hud-label" hidden>Map. Cycle destinations</span>
       </button>
@@ -524,6 +591,13 @@
       </button>
       <button type="button" class="mode-hud" id="mode-hud" data-action="mode-toggle" data-selected="false" data-shooter="false"
         aria-label="Character controls" title="Character controls" hidden>
+        <svg class="mode-roster-icon" viewBox="0 0 7 9" shape-rendering="crispEdges" aria-hidden="true">
+          <path fill="#2b1b10" d="M1 0h5v1H1zM0 1h7v2H0zM0 3h1v2H0zM6 3h1v2H6z" />
+          <path fill="#c98a5b" d="M1 3h5v3H1zM2 6h3v1H2z" />
+          <path fill="#141414" d="M2 3h1v1H2zM4 3h1v1H4z" />
+          <path fill="#4a2c14" d="M1 6h1v1H1zM5 6h1v1H5zM1 7h5v1H1zM2 8h3v1H2z" />
+          <path fill="#f2efe4" d="M1 8h1v1H1zM5 8h1v1H5z" />
+        </svg>
         <canvas class="mode-face-icon" id="mode-face-icon" width="48" height="48" aria-hidden="true" hidden></canvas>
         <span class="mode-health" id="mode-health" role="progressbar" aria-label="Health" aria-valuemin="0" aria-valuemax="25" aria-valuenow="25" hidden><span id="mode-health-fill"></span></span>
       </button>
@@ -592,7 +666,7 @@
                 <path fill="#789a3b" d="M1 0h1v2H1z" />
               </g>
             </defs>
-            <g transform="translate(16 16) scale(-1 1) rotate(-40) translate(-15.5 -12)">
+            <g transform="translate(16 16) scale(-1 1) rotate(-48) translate(-15.5 -12)">
               <path fill="#a76f3b" d="M1 8h4V7h3v3H5v1H1zM18 6h6v4h-6zM10 11h3v5h-3z" />
               <path fill="#ca9657" d="M2 8h3v1H2zM5 7h3v1H5zM18 6h6v1h-6z" />
               <path fill="#81898b" d="M8 6h10v5H8z" />
@@ -1514,7 +1588,13 @@
       <section class="race-results game-intro" data-intro="poker" hidden aria-label="Welcome to The Ember Den">
         <p class="game-intro-kicker">The underground banana club</p>
         <h2 class="game-intro-title"><span data-sign>The Ember Den</span></h2>
-        <svg class="game-intro-coin" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path fill="#d9b545" d="M8 1h4v5h-1v3H9v2H6v2H2v-2h3V9h2V6h1z"/><path fill="#73874d" d="M8 0h2v2H8z"/></svg>
+        <svg class="game-intro-coin" id="poker-intro-banana" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+          <g transform="translate(.5 0)">
+            <path fill="#211b14" d="M0 0h1v5H0zM2 0h1v2H2zM3 2h1v2H3zM4 4h1v1H4zM1 5h1v2H1zM5 5h1v1H5zM6 6h1v1H6zM2 7h2v1H2zM7 7h1v1H7zM4 8h4v1H4z" />
+            <path fill="#ffd84a" d="M1 2h2v2H1zM1 4h3v1H1zM2 5h3v1H2zM2 6h4v1H2zM4 7h3v1H4z" />
+            <path fill="#789a3b" d="M1 0h1v2H1z" />
+          </g>
+        </svg>
         <p class="game-intro-goal">Pull up a stone seat. The gorillas will deal.</p>
         <ul class="game-rules">
           <li><b>Ten tables</b><small>Nine player seats at every table.</small></li>
@@ -1631,6 +1711,13 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
         <output class="toast" id="toast" hidden></output>
         <div class="hint" id="hint" hidden></div>
       </div>
+      <!-- Reading the whitepaper's poster (scene-hub.js shows it): the help line, or, on a touch screen, its buttons. -->
+      <div class="wp-nav" id="wp-nav" hidden>
+        <span class="wp-nav-help" id="wp-nav-help"></span>
+        <button type="button" class="wp-nav-step" data-action="wp-next" aria-label="Next page">&#9660;</button>
+        <button type="button" class="wp-nav-step" data-action="wp-prev" aria-label="Previous page">&#9650;</button>
+        <button type="button" class="wp-nav-step" data-action="wp-close" aria-label="Close the whitepaper">&#10005;</button>
+      </div>
     </div>
     <output class="mic-note" id="mic-note" data-muted="false" hidden></output>
     <!-- HALLOWEEN: the ghost hunt's HUD (ghost-hud.js shows and hides it; no data-scene, or every arrival would show it). -->
@@ -1738,6 +1825,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
     <div class="big-results"></div>
     <footer>Curated from the official homepage · checked 4 October 2026. The headquarters is in-world satire; market screens are decorative.</footer>
   </section>
+  <script src="js/sound.js"></script>
   <script src="js/math.js"></script>
   <script src="js/daylight.js"></script>
   <script src="js/scene.js"></script>
@@ -1759,6 +1847,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/lab-wallpaper-data.js" data-defer="lab-wallpaper"></script>
   <script src="js/hub-models.js"></script>
   <script src="js/dressing.js"></script>
+  <script src="js/hub-hammock.js"></script>
   <script src="js/dressing-mediterranean.js"></script>
   <script src="js/chalkboard.js"></script>
   <script src="js/lifehash.js"></script>
@@ -1793,11 +1882,19 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/pilot.js"></script>
   <script src="js/rocket-parts.js"></script>
   <script src="js/mine-rigs.js"></script>
+  <script src="js/highscore-rules.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/sheet.js"></script>
+  <script src="js/zone-map.js"></script>
   <script src="js/hud.js"></script>
+  <script src="js/chat-policy.js"></script>
   <script src="js/net.js"></script>
+  <script src="js/highscores.js"></script>
   <script src="js/voice.js"></script>
+  <script src="js/studio-catalogue.js"></script>
+  <script src="js/studio-session.js"></script>
   <script src="js/chat.js"></script>
+  <script src="js/players.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/camera-cover.js"></script>
   <script src="js/crew.js"></script>
@@ -1839,6 +1936,18 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/clankers.js"></script>
   <script src="js/clanker-play.js"></script>
   <script src="js/bca-models.js"></script>
+  <script src="js/whitepaper-poster-data.js" data-defer="whitepaper"></script>
+  <script src="js/whitepaper-pages-data.js" data-defer="whitepaper"></script>
+  <script src="js/arcade-models.js"></script>
+  <script src="js/cloud-hopper-course.js"></script>
+  <script src="js/cloud-hopper-models.js"></script>
+  <script src="js/cloud-hopper-art.js"></script>
+  <script src="js/cloud-hopper-hud.js"></script>
+  <script src="js/cloud-hopper-island.js"></script>
+  <script src="js/cloud-hopper-ghost.js"></script>
+  <script src="js/cloud-hopper-music.js"></script>
+  <script src="js/cloud-hopper-audio.js"></script>
+  <script src="js/cloud-hopper.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
   <script src="js/factory-feed.js"></script>
@@ -1871,7 +1980,6 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/hangar-guide.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-audio.js" data-defer="hangar-scene"></script>
   <script src="js/scene-hangar.js" data-defer="hangar-scene"></script>
-  <script src="js/arcade-models.js"></script>
   <script src="js/arcade-scene-models.js" data-defer="arcade"></script>
   <script src="js/arcade-games.js" data-defer="arcade"></script>
   <script src="js/retro-games.js" data-defer="arcade"></script>
@@ -1953,6 +2061,15 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/svrn-models.js" data-defer="dsb"></script>
   <script src="js/svrn-room.js" data-defer="dsb"></script>
   <script src="js/svrn-menu.js" data-defer="dsb"></script>
+  <script src="js/rescue-dogs.js" data-defer="dsb"></script>
+  <script src="js/rescue-models.js" data-defer="dsb"></script>
+  <script src="js/rescue-room.js" data-defer="dsb"></script>
+  <script src="js/rescue-menu.js" data-defer="dsb"></script>
+  <script src="js/rescue-dsb.js" data-defer="dsb"></script>
+  <script src="js/wallet-bombs.js" data-defer="dsb"></script>
+  <script src="js/wallets-models.js" data-defer="dsb"></script>
+  <script src="js/wallets-room.js" data-defer="dsb"></script>
+  <script src="js/wallets-menu.js" data-defer="dsb"></script>
   <script src="js/dsb-interiors.js" data-defer="dsb"></script>
   <script src="js/dsb-radio.js" data-defer="dsb"></script>
   <script src="js/dsb-noderunner.js" data-defer="dsb"></script>
@@ -1999,6 +2116,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/ghost-track-martial.js" data-defer="halloween-track-martial"></script>
   <script src="js/ghost-track-nightmare.js" data-defer="halloween-track-nightmare"></script>
   <script src="js/ghost-track-synthed.js" data-defer="halloween-track-synthed"></script>
+  <script src="js/ghost-track-nr.js" data-defer="halloween-track-nr"></script>
   <script src="js/director.js"></script>
 </body>
 
