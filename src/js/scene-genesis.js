@@ -28,9 +28,10 @@
   const TILE_COLORS = (codes) => codes.map((c) => "#" + c.slice(0, 6));
 
   // Underground: a dim cave light, lamps doing the work; the shadow box follows the visitor.
-  const renderOpts = { clear: [0.04, 0.05, 0.06], sky: [0.34, 0.37, 0.42], ground: [0.16, 0.15, 0.13],
-    direct: [0.72, 0.7, 0.66], directStrength: 0.3, ambientFloor: 0.52, sun: { x: 0.25, y: 1, z: 0.35 },
-    shadowCenter: { x: 0, y: 0, z: 0 }, shadowExtent: 34, bloomStrength: 0.35,
+  // Indoors and inviting: a warm, low ambient so the lamps model the rooms, warm light from above, a little more glow.
+  const renderOpts = { clear: [0.05, 0.04, 0.035], sky: [0.42, 0.36, 0.3], ground: [0.2, 0.16, 0.12],
+    direct: [0.86, 0.76, 0.62], directStrength: 0.34, ambientFloor: 0.4, sun: { x: 0.25, y: 1, z: 0.35 },
+    shadowCenter: { x: 0, y: 0, z: 0 }, shadowExtent: 34, bloomStrength: 0.5,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0 };
   // The museum (genesis-world.js MUSEUM): an atrium in the middle and the eras' galleries round it. Each era is built
   // in its old cave's coordinates inside its gallery's frame node; `mu(n, x, z)` is a point of era n's old world in the
@@ -44,10 +45,16 @@
   const muAt = (n, at) => { const p = mu(n, at.x, at.z); return { ...at, x: p.x, z: p.z }; };
   // Lamps: the atrium's, the desk's and the newspaper's in Fingerprints and Time, then three in each gallery in its
   // era's colour. Each frame the nearest come first (the tiers keep the first ones).
-  const CAVE_LAMPS = [[-14, 0.3], [22, 0.5], [-8, 0.78]];
+  // Each gallery's pendant lamps (genesis-decor.js), in its old coordinates, light it in its era's lamp colour.
+  const galleryRect = (n) => { const b = MU.bays[n], e = GW.ERAS[n]; return { x0: b.x0, x1: b.x1, z0: e.z1 - b.depth, z1: e.z1 - MU.OPEN }; };
   const LIGHTS = [[0, 6.5, 0, 16, 1.3, 1.1, 0.75], [0, 8, 0.5 * AT.z1, 24, 1.2, 1.05, 0.85], [0, 8, 0.5 * AT.z0, 24, 1.2, 1.05, 0.85], [0.6 * AT.x0, 8, 0, 24, 1.1, 1, 0.85], [0.6 * AT.x1, 8, 0, 24, 1.1, 1, 0.85], [0, 6, SOUTH - 10, 14, 1.25, 0.95, 0.6],
     ...[[-6.5 + SX, 3.4, -25 + SZ, 12, 1.35, 1.05, 0.7], [-9 + SX, 3.2, -31.5 + SZ, 7, 1, 0.9, 0.7]].map((l) => { const q = mu(ROOM_ERA, l[0], l[2]); return [q.x, l[1], q.z, ...l.slice(3)]; }),
-    ...GW.ERAS.flatMap((e) => CAVE_LAMPS.map(([x, f]) => { const q = mu(e.n, x, e.z1 - f * GW.CAVE.len); return [q.x, 6.5, q.z, 24, ...e.theme.lamp]; }))];
+    // The statue in its warm light.
+    [0, 7.5, -2.2, 13, 1.4, 1.15, 0.8],
+    ...GW.ERAS.flatMap((e) => BL.genesisDecor.pendantSpots(galleryRect(e.n)).map(([x, z]) => {
+      const q = mu(e.n, x, z), c = BL.genesisDecor.rgb(BL.genesisDecor.STYLES[e.n].lamp);
+      return [q.x, ISLAND_TOP + ROOF * BL.genesisDecor.PENDANT_Y * MU.SCALE, q.z, 13, c[0] / 200, c[1] / 200, c[2] / 200];
+    }))];
 
   // --- Walking: where an Ooga may stand ----------------------------------------------------------------------------
   // One floor at bank height: the atrium and every gallery, walled round. Fingerprints and Time's ledge (Era 3), its
@@ -214,16 +221,20 @@
     built.caves = [];
     GW.ERAS.forEach((e, i) => inFrame(i, () => {
       const t = e.theme, b = MU.bays[i], z0 = e.z1 - b.depth, z1 = e.z1 - MU.OPEN, len = z1 - z0, mid = (z0 + z1) / 2, w = b.x1 - b.x0, cx = (b.x0 + b.x1) / 2;
-      const clutter = (x, z, r) => {
-        const hit = (q) => x + r > q.x0 && x - r < q.x1 && z + r > q.z0 && z - r < q.z1;
-        return GW.reservedZones(i).some(hit) || built.oldObstacles.some((o) => o.era === i && hit(o));
-      };
-      solid(w, 1.15, len, t.bank, cx, ISLAND_TOP - 0.575, mid);
+      solid(w, 1.15, len, t.bank, cx, ISLAND_TOP - 0.576, mid);
+      // The era's floor, walls and lamps (genesis-decor.js).
+      const D = BL.genesisDecor, rect = { x0: b.x0, x1: b.x1, z0, z1 };
+      place(createNode({ geometry: D.floorGeometry(i, rect, ISLAND_TOP + 0.001), sightHidden: true }));
+      const fin = D.wallParts(M, i, [{ x0: b.x0 + 0.1, z0: z1, x1: b.x0 + 0.1, z1: z0, nx: 1, nz: 0 }, { x0: b.x1 - 0.1, z0: z0, x1: b.x1 - 0.1, z1: z1, nx: -1, nz: 0 }, { x0: b.x0, z0: z0 + 0.1, x1: b.x1, z1: z0 + 0.1, nx: 0, nz: 1 }], ISLAND_TOP);
+      place(createNode({ geometry: M.merge(...fin.parts) }));
+      if (fin.glow.length) place(createNode({ geometry: M.merge(...fin.glow), sightHidden: true }));
+      const pend = D.pendants(M, i, rect, ISLAND_TOP, H);
+      place(createNode({ geometry: M.merge(...pend.cords), sightHidden: true }));
+      place(createNode({ geometry: M.merge(...pend.bulbs), sightHidden: true }));
       // The era's own rock on its walls, just inside the museum's (so its colour shows), and its roof.
       for (const x of [b.x0 + 0.05, b.x1 - 0.05]) solid(0.1, H, len, t.rock, x, H / 2, mid);
       solid(w, H, 0.1, t.rock, cx, H / 2, z0 + 0.05);
       solid(w, 0.4, len, t.rock, cx, H - 0.2, mid);
-      place(createNode({ geometry: M.moved(M.box({ w: CHANNEL.x1 - CHANNEL.x0, h: 0.02, d: len, color: "#5d5850" }), GW.LANE_X, ISLAND_TOP + 0.005, mid), sightHidden: true }));
       // The arch over the opening: two piers and a lintel in the era's rock, its lamp colour along the lintel, and the
       // era's sign in its own signage over the way in, facing the atrium.
       const glow = glowHex(t.lamp), archY = 12;
@@ -233,28 +244,7 @@
       built.oldObstacles.push({ era: i, x0: b.x0, x1: b.x0 + 3, z0: z1 - 1, z1: z1 + 1 }, { era: i, x0: b.x1 - 3, x1: b.x1, z0: z1 - 1, z1: z1 + 1 });
       const sign = eraSign(e);
       hangSign(sign, GW.LANE_X, archY + 1 + sign.height / 2, z1 + 1.1, 0, sign.frame);
-      const rand = BL.math.mulberry32(31 + i);
-      for (let k = 0; k < 10; k++) {
-        const h = 2 + rand() * 6;
-        solid(1.5 + rand() * 3, h, 1.5 + rand() * 3, t.rock, b.x0 + 2 + rand() * (w - 4), H - h / 2, z1 - 3 - rand() * (len - 6));
-      }
-      for (let k = 0; k < 10; k++) {
-        const left = rand() < 0.5, x = left ? b.x0 + 2 + rand() * (CHANNEL.x0 - b.x0 - 6) : CHANNEL.x1 + 4 + rand() * (b.x1 - CHANNEL.x1 - 6);
-        const sz = 0.8 + rand() * 2.2, z = z1 - 4 - rand() * (len - 8), r = sz * 0.7 + 0.5;
-        if (x < b.x0 + 1 || x > b.x1 - 1 || Math.abs(x - (x < GW.LANE_X ? CHANNEL.x0 : CHANNEL.x1)) < GW.BANK.FRONT + r || clutter(x, z, r)) continue;
-        solid(sz * 1.3, sz, sz, t.rock, x, ISLAND_TOP + sz / 2, z);
-        built.oldObstacles.push({ era: i, x0: x - sz * 0.65, x1: x + sz * 0.65, z0: z - sz / 2, z1: z + sz / 2 });
-      }
-      for (let k = 0; k < 10; k++) {
-        const left = k % 2 === 0, z = z1 - 4 - (k >> 1) * (len - 8) / 4, y = 3 + rand() * (H - 8);
-        solid(0.12, 0.4 + rand() * 0.6, 3 + rand() * 6, glow, left ? b.x0 + 0.16 : b.x1 - 0.16, y, z, 1.3);
-      }
-      for (const l of GW.lampPosts(i)) {
-        if (l.z < z0 + 1 || l.x < b.x0 + 1 || l.x > b.x1 - 1) continue;
-        solid(0.3, 8.6, 0.3, "#3b2a1a", l.x, ISLAND_TOP + 4.3, l.z);
-        solid(0.9, 0.9, 0.9, "#ffcf7a", l.x, ISLAND_TOP + 8.9, l.z, 1.5);
-        built.oldObstacles.push({ era: i, x0: l.x - 0.3, x1: l.x + 0.3, z0: l.z - 0.3, z1: l.z + 0.3 });
-      }
+      // (The old cave's hanging rocks, boulders, glowing seams and lamp posts are gone: the era's own dressing replaces them.)
       built.caves.push(e);
     }));
   };
@@ -823,6 +813,8 @@
       return { prop, node: p.node };
     });
     built.atriumLayout = L;
+    // The plaza under the spiral: warm flagstones in rings with a gold inlay (genesis-decor.js).
+    place(createNode({ geometry: BL.genesisDecor.plazaGeometry(15, ISLAND_TOP + 0.002), sightHidden: true }));
   };
   // The gallery walls (genesis-walls.js): one exhibition board high on each era's back wall, above its exhibits, with
   // that era's verified headlines and the museum's original posters and art. One picture a board, painted once a
