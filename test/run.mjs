@@ -23957,7 +23957,7 @@ const genesisEra0UpgradeSuite = async () => {
       solid: (w, h, d, color, x, y, z, emissive = 0) => { const n = { kind: "solid", w, h, d, color, emissive, position: { x, y, z }, visible: true, glow: 1 }; records.push(n); return n; },
       obstacle: (x0, x1, z0, z1) => obstacles.push({ x0, x1, z0, z1, after: order.length }),
       prop: (d) => { props[d.id] = d; order.push({ id: d.id, at: records.length }); return d; } };
-    BL.genesisExhibits.eras[0].build(kit);
+    BL.genesisExhibits.eras[0].build(BL.genesisWorld.packedKit(kit, 0, BL.genesisExhibits.eras[0].build));
     const term = (id) => { const r = props[id].onUse({}); return r.terminal ? (line) => r.terminal.run(line).lines.join(" | ") : null; };
     return { W, kit, records, obstacles, props, order, term };
   };
@@ -24179,8 +24179,9 @@ const genesisEra1UpgradeSuite = async () => {
       solid: (w, h, d, c, x, y, z) => { records++; solids.push({ w, h, d, x, y, z }); return node({ position: { x, y, z } }); },
       sign: () => { records += 3; return node(); }, obstacle: (x0, x1, z0, z1) => { obstacles.push({ x0, x1, z0, z1 }); },
       prop: (d) => { records++; props[d.id] = d; return d; } };
-    E1.build(kit);
-    return { nodes, solids, obstacles, props, records };
+    const packed = W.packedKit(kit, 1, E1.build);
+    E1.build(packed);
+    return { nodes, solids, obstacles, props, records, shift: packed.shift };
   };
   const B = build();
   const snap = () => JSON.stringify(B.nodes.map((n) => [n.position.x, n.position.y, n.position.z, n.rotation.x, n.scale.y, n.visible]));
@@ -24202,11 +24203,13 @@ const genesisEra1UpgradeSuite = async () => {
 
   // --- Placement --------------------------------------------------------------------------------------------------
   const MU = W.MUSEUM, bay = MU.bays[1], uOf = (z) => era.z1 - z;
-  const cluster = (x, z) => x > 21 && x < 34.5 && uOf(z) > 47.5 && uOf(z) < 57;
+  // The living room as authored (x 21 to 34.5, 47.5 to 57 m in), where the museum's packing moved it.
+  const room = B.shift(27.75, era.z1 - 52.25), rx = room.x - 27.75, ru = era.z1 - 52.25 - room.z;
+  const cluster = (x, z) => x - rx > 21 && x - rx < 34.5 && uOf(z) - ru > 47.5 && uOf(z) - ru < 57;
   const inGallery = (x, z) => x >= bay.x0 && x <= bay.x1 && uOf(z) >= MU.OPEN && uOf(z) <= bay.depth;
   const newSolids = B.solids.filter((s) => cluster(s.x, s.z));
-  record("everything in the living room stands inside Era 1's gallery, back from the walk (x >= 21) and below 8 m",
-    newSolids.length > 0 && newSolids.every((s) => inGallery(s.x, s.z) && s.x - s.w / 2 >= 21 && s.y + s.h / 2 <= top + W.BANK.MAX_H));
+  record("everything in the living room stands inside Era 1's gallery, off the walk (the old stream and 1.5 m beside it) and below 8 m",
+    newSolids.length > 0 && newSolids.every((s) => inGallery(s.x, s.z) && s.x - s.w / 2 >= W.CHANNEL.x1 + 1.5 && s.y + s.h / 2 <= top + W.BANK.MAX_H));
   const reachable = NEW_IDS.every((id) => { const a = B.props[id].at; return !B.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3) && inGallery(a.x, a.z); });
   record("each new exhibit's walk-up point is in the gallery and clear of every obstacle", reachable);
   const all = Object.values(B.props), far = NEW_IDS.every((id) => all.every((d) => d.id === id || Math.hypot(d.at.x - B.props[id].at.x, d.at.z - B.props[id].at.z) >= 2));
@@ -24714,12 +24717,14 @@ const genesisEra4UpgradeSuite = async () => {
   const build = (BLx) => {
     const W2 = BLx.genesisWorld, e = W2.ERAS[4], out = { solids: [], signs: [], obstacles: [], props: [] };
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], glow: 1 });
-    BLx.genesisExhibits.eras[4].build({ era: e, top: W2.BANK_TOP, channel: W2.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o), addChild: () => {}, place: (n) => n,
+    const packed = W2.packedKit({ era: e, top: W2.BANK_TOP, channel: W2.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o), addChild: () => {}, place: (n) => n,
       label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
       solid: (w, h, d, c, x, y, z) => { const n = node(); out.solids.push({ w, h, d, x, y, z, n }); return n; },
       sign: (t, sub, x, y, z) => { out.signs.push({ t, sub, x, z }); return node(); },
       obstacle: (x0, x1, z0, z1) => out.obstacles.push({ x0, x1, z0, z1 }),
-      prop: (d) => { out.props.push(d); return { ...d, era: 4 }; } });
+      prop: (d) => { out.props.push(d); return { ...d, era: 4 }; } }, 4, BLx.genesisExhibits.eras[4].build);
+    BLx.genesisExhibits.eras[4].build(packed);
+    out.shift = packed.shift;
     return out;
   };
   const built = build(BL), era = W.ERAS[4], NEW = ["e4-strategy", "e4-teletext", "e4-wireless"];
@@ -24748,8 +24753,9 @@ const genesisEra4UpgradeSuite = async () => {
   // it adds at most about 150 scene records.
   {
     const bad = [], r = W.MUSEUM.rects[4], inGallery = (x, z) => { const p = W.MUSEUM.toMuseum(4, x, z, {}); return p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1; };
-    const zone = { x0: 24.5, x1: 36.5, z0: era.z - 1, z1: era.z + 3.2 }, inZone = (x, z) => x >= zone.x0 && x <= zone.x1 && z >= zone.z0 && z <= zone.z1;
-    const mine = built.obstacles.filter((o) => inZone((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)), others = built.obstacles.filter((o) => !mine.includes(o));
+    // The three stands as authored (x 26, 30.5 and 35 by the middle of the cave), where the museum's packing moved each.
+    const spots = [26, 30.5, 35].map((x) => built.shift(x, era.z + 0.1)), near = (x, z) => spots.some((p) => Math.abs(x - p.x) <= 2 && z >= p.z - 1.1 && z <= p.z + 3.1);
+    const inZone = near, mine = built.obstacles.filter((o) => inZone((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)), others = built.obstacles.filter((o) => !mine.includes(o));
     if (mine.length !== 3) bad.push(`${mine.length} cluster obstacles`);
     for (const o of mine) {
       if (others.some((q) => o.x0 < q.x1 && o.x1 > q.x0 && o.z0 < q.z1 && o.z1 > q.z0)) bad.push("overlaps another obstacle");
@@ -24912,7 +24918,7 @@ const genesisEra4UpgradeSuite = async () => {
     const radio = byId["e4-wireless"].onUse({}).terminal;
     radio.run("OFF C");
     EX.eras[4].update(1 / 60, 0, { calm: false, reading: true });
-    const lamps = built.solids.filter((s) => s.n.glow !== 1 && s.z > era.z && s.x > 33);
+    const at = built.shift(35, era.z + 0.1), lamps = built.solids.filter((s) => s.n.glow !== 1 && s.z > at.z - 0.1 && s.x > at.x - 2);
     if (lamps.length !== 1 || !(lamps[0].n.glow < 0.5)) bad.push(`lamps ${lamps.length}`);
     record("playthrough: the packet console sends its ten packets to one over() and one onEnd; the stand's lamp shows a switched-off box", !bad.length, bad.join("; "));
   }
@@ -25193,19 +25199,22 @@ const genesisEra6UpgradeSuite = async () => {
   const BL = context.window.BL, W = BL.genesisWorld, EX = BL.genesisExhibits, P = BL.genesisProps, E6 = BL.genesisEra6;
 
   // Build Era 6 with a recording kit: every node keeps its position, scale and visibility so commands can be read back.
-  const build = () => {
+  // Packed (as the museum stands it) for placement; as authored for the exhibits' own moves, which write their own
+  // coordinates, as under the scene's cluster node.
+  const build = (pack = false) => {
     const rec = { solid: 0, sign: 0, obstacle: 0, prop: 0 }, props = {}, places = [], obstacles = [], solids = [];
     const node = (x = 0, y = 0, z = 0) => ({ position: { x, y, z }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true });
-    EX.eras[6].build({
+    const raw = {
       era: W.ERAS[6], top: W.BANK_TOP, channel: W.CHANNEL, M: {}, createNode: () => node(), addChild() {}, place: (n) => n, label: () => ({}), notify() {},
       solid: (w, h, d, c, x, y, z) => { rec.solid++; const n = node(x, y, z); solids.push({ w, h, d, x, y, z, n }); return n; },
       sign: (t, sub, x, y, z) => { rec.sign++; places.push({ what: `sign ${t}`, x, z }); return node(x, y, z); },
       obstacle: (x0, x1, z0, z1) => { rec.obstacle++; obstacles.push({ x0, x1, z0, z1 }); },
       prop: (d) => { rec.prop++; props[d.id] = d; return d; }
-    });
-    return { rec, props, places, obstacles, solids };
+    }, packed = BL.genesisWorld.packedKit(raw, 6, EX.eras[6].build);
+    EX.eras[6].build(pack ? packed : raw);
+    return { rec, props, places, obstacles, solids, shift: packed.shift };
   };
-  const A = build();
+  const P6 = build(true), A = build();
   const total = A.rec.solid + A.rec.sign + A.rec.obstacle + A.rec.prop;
   const BASE = 196, NEW = ["e6-argument", "e6-layout", "e6-workstation"];
   const KEPT = ["e6-announce", "e6-paper", ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `e6-ref-${n}`), "e6-not-listed", "e6-laptop", "e6-payments", "e6-january"];
@@ -25223,11 +25232,11 @@ const genesisEra6UpgradeSuite = async () => {
   // the earlier exhibits' obstacles; the new ones are the last three obstacles built.
   const M = W.MUSEUM, r = M.rects[6], reserved = W.reservedZones(6);
   const inGallery = (x, z) => { const p = M.toMuseum(6, x, z, {}); return p.x >= r.x0 - 0.05 && p.x <= r.x1 + 0.05 && p.z >= r.z0 - 0.05 && p.z <= r.z1 + 0.05; };
-  const fresh = A.obstacles.slice(-3), older = A.obstacles.slice(0, -3);
+  const fresh = P6.obstacles.slice(-3), older = P6.obstacles.slice(0, -3);
   const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
   check("rule: the cluster stands inside its gallery, off the walk and the reserved plots, and clear of every earlier exhibit",
     fresh.every((o) => inGallery(o.x0, o.z0) && inGallery(o.x1, o.z1) && o.x0 >= W.CHANNEL.x1 + 1.5 && !reserved.some((z) => overlap(o, z)) && !older.some((b) => overlap(o, b)))
-    && NEW.every((id) => { const a = A.props[id].at; return inGallery(a.x, a.z) && !A.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3); }),
+    && NEW.every((id) => { const a = P6.props[id].at; return inGallery(a.x, a.z) && !P6.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3); }),
     JSON.stringify(fresh));
   check("rule: nothing new is taller than the 8 m limit", A.solids.every((s) => s.y + s.h / 2 <= W.BANK_TOP + W.BANK.MAX_H));
 
@@ -25399,7 +25408,7 @@ const genesisEra7UpgradeSuite = async () => {
       sign: (t, sub, x, y, z) => { records += 3; inBay(x, z, `sign ${t}`); return node(); },
       obstacle: (x0, x1, z0, z1) => { inBay(x0, z0, "an obstacle"); inBay(x1, z1, "an obstacle"); clash(x0, x1, z0, z1, "an obstacle"); },
       prop: (d) => { const p = EX.checkProp(7, d); if (p) bad.push(p); inBay(d.at.x, d.at.z, d.id); clash(d.at.x - 0.3, d.at.x + 0.3, d.at.z - 0.3, d.at.z + 0.3, `${d.id}'s use point`); props[d.id] = d; return d; } };
-    EX.eras[7].build(kit);
+    EX.eras[7].build(W.packedKit(kit, 7, EX.eras[7].build));
     return { props, bad, records: () => records, kit };
   };
 
@@ -25571,7 +25580,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25643,7 +25652,64 @@ const genesisAtriumProof = async () => {
   // The courtyard's own things keep out of the view to the white screen.
   if (Y.obstacles.some((o) => C.inView((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2))) cb.push("something of the courtyard stands in the view to the white screen");
   const courtyard = { paths: Y.paths.length, signs: Y.signs.length, plants: Y.plants.length, benches: Y.benches.length, clockwise, bad: cb.slice(0, 8) };
-  return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, courtyard, bad: bad.slice(0, 8) };
+  // The moving walkways: every belt on open floor (clear of the courtyard's and the atrium's things, the pillars and the
+  // white screen; a gallery's inside its gallery and clear of its packed exhibits), and a walker riding them goes round
+  // the loop clockwise through all four sides and back, and down a gallery and out again.
+  const WW = BLc.genesisWalkways, WL = WW.layout({ museum: M, loop: C.LOOP, eras: W.ERAS, lane: W.LANE_X }), wb = [];
+  const eraBoxes = W.ERAS.map((e, n) => {
+    const out = [], node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+    const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: (o = {}) => Object.assign(node(), o), addChild: (q, ...c) => c[0], place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {}, prop: (d) => d,
+      solid: (w, h, d, c, x, y, z) => { out.push(M.boxToMuseum(n, { x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 })); return node(); },
+      sign: () => node(), obstacle: (x0, x1, z0, z1) => { out.push(M.boxToMuseum(n, { x0, x1, z0, z1 })); } };
+    EX.eras[n].build(W.packedKit(kit, n, EX.eras[n].build));
+    return out;
+  });
+  for (const b of WL.belts) for (let k = 0; k <= 60; k++) for (const side of [-0.5, 0, 0.5]) {
+    const t = b.len * k / 60, x = b.x0 + b.dx * t - b.dz * side * b.w, z = b.z0 + b.dz * t + b.dx * side * b.w;
+    const hit = (o) => x > o.x0 - 0.1 && x < o.x1 + 0.1 && z > o.z0 - 0.1 && z < o.z1 + 0.1;
+    if (b.kind === "loop" ? blockers.some(hit) : eraBoxes[b.era].some(hit)) { wb.push(`a ${b.kind} belt${b.era >= 0 ? ` (era ${b.era})` : ""} runs into something at ${x.toFixed(1)},${z.toFixed(1)}`); break; }
+    if (b.kind !== "loop") { const r = M.rects[b.era]; if (x < r.x0 + 0.2 || x > r.x1 - 0.2 || z < r.z0 + 0.2 || z > r.z1 - 0.2) { wb.push(`era ${b.era}'s ${b.kind} belt leaves its gallery`); break; } }
+  }
+  const ride = (x, z, seconds) => {
+    const seen = [], v = { x: 0, z: 0 };
+    for (let t = 0; t < seconds; t += 0.05) {
+      const s = WW.beltAt(WL.belts, x, z);
+      if (!s) break;
+      if (seen[seen.length - 1] !== s) seen.push(s);
+      v.x = s.dx * s.speed; v.z = s.dz * s.speed; x += v.x * 0.05; z += v.z * 0.05;
+    }
+    return { seen, x, z };
+  };
+  const loopBelts = WL.belts.filter((b) => b.kind === "loop"), perimeter = loopBelts.reduce((t, b) => t + b.len, 0);
+  const round = ride(loopBelts[0].x0, loopBelts[0].z0 - 0.5, perimeter / WW.SPEED + 1);
+  if (round.seen.length < 5 || [0, 1, 2, 3].some((k) => round.seen[k] !== loopBelts[k]) || round.seen[4] !== loopBelts[0]) wb.push("a rider does not go round the loop clockwise and back");
+  const inBelt = WL.belts.find((b) => b.kind === "in" && b.era === 4), down = ride(inBelt.x0 + inBelt.dx * 0.2, inBelt.z0 + inBelt.dz * 0.2, inBelt.len / WW.SPEED + 2);
+  if (down.seen.length !== 1 || Math.hypot(down.x - inBelt.x1, down.z - inBelt.z1) > 0.3) wb.push("a rider is not carried down a gallery's belt to its end");
+  // Each era's vignette stage stands inside its gallery, clear of its exhibits and of the walkway belts.
+  const V = BLc.genesisVignettes;
+  W.ERAS.forEach((e) => {
+    const at = V.spot({ ...M, LANE_X: W.LANE_X }, e), box = M.boxToMuseum(e.n, { x0: at.x - V.R, x1: at.x + V.R, z0: at.z - V.R, z1: at.z + V.R + 0.5 }), r = M.rects[e.n];
+    const hit = (o) => box.x0 < o.x1 && box.x1 > o.x0 && box.z0 < o.z1 && box.z1 > o.z0;
+    if (box.x0 < r.x0 || box.x1 > r.x1 || box.z0 < r.z0 || box.z1 > r.z1) wb.push(`era ${e.n}'s vignette stands outside its gallery`);
+    if (eraBoxes[e.n].some(hit)) wb.push(`era ${e.n}'s vignette stands in an exhibit`);
+    for (const b of WL.belts) if (b.era === e.n) for (const t of [0, b.len]) { const x = b.x0 + b.dx * t, z = b.z0 + b.dz * t; if (x > box.x0 - 0.3 && x < box.x1 + 0.3 && z > box.z0 - 0.3 && z < box.z1 + 0.3) wb.push(`era ${e.n}'s vignette stands on its walkway`); }
+  });
+  // Each gallery's period pieces stand inside it, clear of its exhibits, reserved plots, vignette and belts.
+  const EI = BLc.genesisEraItems, itemCounts = W.ERAS.map((e) => {
+    const vat = V.spot({ ...M, LANE_X: W.LANE_X }, e), stage = M.boxToMuseum(e.n, { x0: vat.x - V.R, x1: vat.x + V.R, z0: vat.z - V.R, z1: vat.z + V.R + 0.5 });
+    const keep = eraBoxes[e.n].concat(W.reservedZones(e.n).map((z) => M.boxToMuseum(e.n, z)), [stage]), over = (a, o, m) => a.x0 < o.x1 + m && a.x1 > o.x0 - m && a.z0 < o.z1 + m && a.z1 > o.z0 - m;
+    const list = EI.layout(M, e, W.LANE_X, (x0, x1, z0, z1) => { const a = M.boxToMuseum(e.n, { x0, x1, z0, z1 }); return !keep.some((o) => over(a, o, 0.3)); });
+    for (const q of list) {
+      const h = Math.max(q.item.w, q.item.d) / 2, a = M.boxToMuseum(e.n, { x0: q.x - h, x1: q.x + h, z0: q.z - h, z1: q.z + h }), r = M.rects[e.n];
+      if (a.x0 < r.x0 || a.x1 > r.x1 || a.z0 < r.z0 || a.z1 > r.z1) wb.push(`era ${e.n}'s ${q.item.name} stands outside its gallery`);
+      if (keep.some((o) => over(a, o, 0))) wb.push(`era ${e.n}'s ${q.item.name} stands in something`);
+      for (const b of WL.belts) if (b.era === e.n) for (let t = 0; t <= b.len; t += 0.5) { const x = b.x0 + b.dx * t, z = b.z0 + b.dz * t; if (x > a.x0 - b.w / 2 && x < a.x1 + b.w / 2 && z > a.z0 - b.w / 2 && z < a.z1 + b.w / 2) { wb.push(`era ${e.n}'s ${q.item.name} stands on a walkway`); break; } }
+    }
+    return list.length;
+  });
+  const walkways = { belts: WL.belts.length, perimeter: +perimeter.toFixed(1), items: itemCounts, bad: wb.slice(0, 8) };
+  return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, courtyard, walkways, bad: bad.slice(0, 8) };
 };
 // The cartridge console (genesis-cartridge.js) with one dummy game: the registry's rules, a run started, steered,
 // paused, interrupted and closed through the console's own keys, and the game stopped on close.
@@ -25813,12 +25879,20 @@ const genesisMuseumProof = async () => {
       sign: (t, sub, x, y, z) => { inBay(x, z, `sign "${t}"`); return node(); },
       obstacle: (x0, x1, z0, z1) => { inBay(x0, z0, "an obstacle"); inBay(x1, z1, "an obstacle"); },
       prop: (d) => { inBay(d.at.x, d.at.z, d.id); return { ...d, era: n }; } };
-    if (EX.eras[n]) EX.eras[n].build(kit);
+    if (EX.eras[n]) EX.eras[n].build(W.packedKit(kit, n, EX.eras[n].build));
   });
   // Era 2's FUD Patrol floor is a reserved plot of its gallery, inside it and so clear of the atrium's courtyard.
   const fud = context.window.BL.genesisEra2 && context.window.BL.genesisEra2.FUD_PATROL_ZONE, fz = W.reservedZones(2).find((r) => r.why === "FUD Patrol");
   const fm = fud && M.boxToMuseum(2, fud), r2 = M.rects[2];
   if (!fud || !fz || fm.x0 < r2.x0 || fm.x1 > r2.x1 || fm.z0 < r2.z0 || fm.z1 > r2.z1) bad.push("Era 2's FUD Patrol floor is not a reserved plot inside its gallery");
+  // Each gallery's size is its era repacked (packEra, with 2 m beside and 3 m behind, the walk kept inside, and at least
+  // 28 m wide in its own coordinates for its wall of headlines): the table in genesis-world.js never drifts from what
+  // the exhibits need.
+  for (let n = 0; n < 8; n++) {
+    const e = W.ERAS[n], { items, fixed, walls } = W.eraItems(EX.eras[n].build, n, W.BANK_TOP, W.CHANNEL), p = W.packEra(items, { laneX: W.LANE_X, anchorZ: e.z1 - M.OPEN, fixed, walls });
+    const x1 = Math.max(p.box.x1 + 2, W.LANE_X + 3), want = [Math.min(p.box.x0 - 2, W.LANE_X - 3, x1 - 28), x1, e.z1 - (p.box.z0 - 3)], b = M.bays[n];
+    if ([b.x0, b.x1, b.depth].some((v, k) => Math.abs(v - want[k]) > 0.06)) bad.push(`gallery ${n} is ${[b.x0, b.x1, b.depth]} but its packed exhibits need ${want.map((v) => v.toFixed(1))}`);
+  }
   return { galleries: M.rects.length, clockwise, roundTrip, pieces, atrium: [M.atrium.x1 - M.atrium.x0, M.atrium.z1 - M.atrium.z0], bad: bad.slice(0, 8) };
 };
 const genesisExhibitsProof = async () => {
@@ -26228,6 +26302,7 @@ const unitChecks = async () => {
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisAtrium = await genesisAtriumProof();
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
+  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, and every gallery has period pieces on open floor", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
   const genesisEraCartridges = await genesisEraCartridgeProof();

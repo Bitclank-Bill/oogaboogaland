@@ -48,8 +48,9 @@
 // land on the model itself; without them it stands on the prop's `at`.
 //
 // Plots (checked by the unit tier with genesis-world.js `reservedZones`): nothing in a cave's gateway (its first
-// 10 m, the pylons and overview board), the dock and its boarding ramps by the middle of the cave, the lamp posts or,
-// in Era 3, Fingerprints and Time's room; nothing taller than 8 m; the stream and 1.5 m beside it stay clear.
+// 10 m, the pylons and overview board) or, in Era 3, Fingerprints and Time's room; nothing taller than 8 m; the old
+// stream's line and 1.5 m beside it stay clear (the gallery's walk). The museum packs each era's pieces closer
+// together (genesis-world.js packEra), keeping all of these.
 //
 // Rules (docs/genesis-voyage/BUILD-PLAN.md): words come from the era's dossier (docs/genesis-voyage/eras/, branch
 // gv/research) and only from entries marked ready; dates say what they mark; context is labelled context; original,
