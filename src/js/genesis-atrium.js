@@ -124,9 +124,9 @@
       sign(`${L.genesis.year} · AFTER THE PAPER`, `${L.genesis.title} · context, not a step`, L.genesis.x, top + L.genesis.h + 1.3, L.genesis.z, Math.PI, "plain", 0.38);
       picks.push({ id: L.genesis.id, at: L.genesis.at, node: place(createNode({ geometry: pickBox(1, L.genesis.h + 1, 1), position: { x: L.genesis.x, y: top + (L.genesis.h + 1) / 2, z: L.genesis.z } })) });
     }
-    // The Satoshi statue: an original Ooga figure, not a likeness and after no other sculpture. A tall robed figure in
-    // chunky sandstone with gold trim, faceless, holding the whitepaper open at its chest, on a stepped plinth whose
-    // plaque is a plain text tribute. About 12 m. One merged mesh; no light and nothing per frame.
+    // The Satoshi statue: an original Ooga figure, not a likeness and after no other sculpture. A tall robed figure,
+    // chunky and cast in gold on black granite, faceless, holding the whitepaper open at its chest, on a stepped plinth
+    // whose plaque is a plain text tribute. About 12 m. One merged mesh; no light and nothing per frame.
     if (L.monument) monumentParts(M, L.monument, top, sign, place, createNode);
     // The floor map: for each era a chevron on the floor pointing at its gallery and a low sign facing the middle.
     for (const m of L.markers) {
@@ -149,18 +149,20 @@
     };
     return { picks, update, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
   };
-  const STONE_A = "#cdb88f", STONE_B = "#bba67c", STONE_D = "#9c875f";
+  // Cast in gold on a black granite plinth: three golds for the robe's tiers and folds, a faint glow so the metal
+  // catches the hall's light from every side.
+  const STONE_A = "#e3b545", STONE_B = "#cf9f32", STONE_D = "#a77d1e", GLEAM = 0.18, GRANITE = "#2b2724", GRANITE_LT = "#3b3530";
   const monumentParts = (M, S, top, sign, place, createNode) => {
     const { ys, k, P } = statueParts(), parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
-    const block = (w, h, d, color, x, y, z, bevel = 0.08, emissive = 0) => parts.push(at(M.bevelBox({ w, h, d, color, bevel, emissive }), x, y, z));
+    const block = (w, h, d, color, x, y, z, bevel = 0.08, emissive = color === GRANITE || color === GRANITE_LT ? 0 : GLEAM) => parts.push(at(M.bevelBox({ w, h, d, color, bevel, emissive }), x, y, z));
     // The plinth: three dressed steps and a gold band.
-    [[4.8, 0.5], [4.1, 1.0], [3.4, P]].forEach(([w, rise], i) => block(w, 0.5, w, i % 2 ? STONE_D : "#8a7a5a", 0, rise - 0.25, 0, 0.06));
-    parts.push(at(M.box({ w: 3.44, h: 0.08, d: 3.44, color: GOLD, emissive: 0.3 }), 0, P - 0.12, 0));
+    [[4.8, 0.5], [4.1, 1.0], [3.4, P]].forEach(([w, rise], i) => block(w, 0.5, w, i % 2 ? GRANITE_LT : GRANITE, 0, rise - 0.25, 0, 0.06));
+    parts.push(at(M.box({ w: 3.44, h: 0.08, d: 3.44, color: GOLD, emissive: 0.5 }), 0, P - 0.12, 0));
     const F = FIGURE, Y = (key) => P + ys[key] * k, H = (key) => F[key][2] * k;
     // The robe, widening to its hem in tiers, with blocky folds down its front and a gold belt.
     for (const key of ["hem", "lower", "mid", "chest", "shoulders"]) block(F[key][0] * k, H(key), F[key][1] * k, key === "lower" || key === "chest" ? STONE_B : STONE_A, 0, Y(key) + H(key) / 2, 0, 0.1);
     for (const fx of [-0.7, -0.25, 0.25, 0.7]) block(0.16 * k, (F.hem[2] + F.lower[2]) * k * 0.92, 0.12 * k, STONE_D, fx * k, Y("hem") + (F.hem[2] + F.lower[2]) * k * 0.46, F.hem[1] / 2 * k + 0.02, 0.03);
-    parts.push(at(M.box({ w: F.mid[0] * k + 0.06, h: 0.22 * k, d: F.mid[1] * k + 0.06, color: GOLD, emissive: 0.25 }), 0, Y("mid") + H("mid") * 0.85, 0));
+    parts.push(at(M.box({ w: F.mid[0] * k + 0.06, h: 0.22 * k, d: F.mid[1] * k + 0.06, color: "#ffe08a", emissive: 0.6 }), 0, Y("mid") + H("mid") * 0.85, 0));
     // Arms: sleeves down the sides, forearms forward to the hands holding the whitepaper open at the chest.
     for (const sx of [-1, 1]) {
       block(0.62 * k, 2.2 * k, 0.8 * k, STONE_A, sx * 1.42 * k, Y("chest") + H("chest") - 0.9 * k, 0.05 * k, 0.1);

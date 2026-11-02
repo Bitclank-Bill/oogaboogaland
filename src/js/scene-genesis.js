@@ -216,6 +216,19 @@
   // Each era's gallery, in its frame and its old coordinates: its floor in the era's colour, a gold walk down the
   // middle where the stream ran, an arch over its opening with the era's sign, hanging rocks and boulders (kept off
   // the exhibits), glowing seams on its walls and its lamp posts.
+  // A photograph's meshes, shared by every frame that hangs it: the frame, the picture and its caption.
+  const photoGeos = new Map();
+  const photoGeometry = (n, k) => {
+    let g = photoGeos.get(n * 8 + k);
+    if (g) return g;
+    const PH = BL.genesisPhotos, pic = PH.picture(n, k), w = PH.PW, h = PH.PH;
+    const face = { verts: [-w / 2, -h / 2, 0.05, w / 2, -h / 2, 0.05, w / 2, h / 2, 0.05, -w / 2, h / 2, 0.05], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+    face.imageSurface = { asset: pic.asset, rect: [-w / 2, -h / 2, w, h] };
+    const l = BL.factoryModels.label(pic.caption, "museum illustration, not a photograph", { height: 0.36, style: "plain" });
+    g = { face, frame: M.box({ w: w + 0.18, h: h + 0.18, d: 0.06, color: "#2a2018" }), back: l.back, label: l.face };
+    photoGeos.set(n * 8 + k, g);
+    return g;
+  };
   const buildGalleries = () => {
     const H = ROOF;
     built.caves = [];
@@ -228,6 +241,12 @@
       const fin = D.wallParts(M, i, [{ x0: b.x0 + 0.1, z0: z1, x1: b.x0 + 0.1, z1: z0, nx: 1, nz: 0 }, { x0: b.x1 - 0.1, z0: z0, x1: b.x1 - 0.1, z1: z1, nx: -1, nz: 0 }, { x0: b.x0, z0: z0 + 0.1, x1: b.x1, z1: z0 + 0.1, nx: 0, nz: 1 }], ISLAND_TOP);
       place(createNode({ geometry: M.merge(...fin.parts) }));
       if (fin.glow.length) place(createNode({ geometry: M.merge(...fin.glow), sightHidden: true }));
+      // Period photographs between the motifs (genesis-photos.js): museum illustrations, each captioned as one.
+      const PH = BL.genesisPhotos;
+      for (const sp of PH.spots(b, z0, z1)) {
+        const pic = photoGeometry(i, sp.k), node = place(createNode({ position: { x: sp.x, y: ISLAND_TOP + PH.AT_Y, z: sp.z }, rotation: { x: 0, y: sp.ry, z: 0 }, sightHidden: true }));
+        addChild(node, createNode({ geometry: pic.frame }), createNode({ geometry: pic.face }), createNode({ geometry: pic.back, position: { x: 0, y: -PH.PH / 2 - 0.32, z: 0.02 } }), createNode({ geometry: pic.label, position: { x: 0, y: -PH.PH / 2 - 0.32, z: 0.02 } }));
+      }
       const pend = D.pendants(M, i, rect, ISLAND_TOP, H);
       place(createNode({ geometry: M.merge(...pend.cords), sightHidden: true }));
       place(createNode({ geometry: M.merge(...pend.bulbs), sightHidden: true }));
@@ -685,7 +704,11 @@
     const EI = BL.genesisEraItems;
     for (const e of GW.ERAS) inFrame(e.n, () => {
       const boxes = (built.packedBoxes && built.packedBoxes[e.n] || []).concat(GW.reservedZones(e.n), [built.vignettes[e.n].v.obstacle]);
-      const list = EI.layout(MU, e, GW.LANE_X, (x0, x1, z0, z1) => !boxes.some((o) => x0 < o.x1 + 0.3 && x1 > o.x0 - 0.3 && z0 < o.z1 + 0.3 && z1 > o.z0 - 0.3));
+      const free = (x0, x1, z0, z1) => !boxes.some((o) => x0 < o.x1 + 0.3 && x1 > o.x0 - 0.3 && z0 < o.z1 + 0.3 && z1 > o.z0 - 0.3);
+      const list = EI.layout(MU, e, GW.LANE_X, free);
+      // Board games and furniture on the floor left open, clear of the wall pieces too.
+      for (const q of list) { const h = Math.max(q.item.w, q.item.d) / 2; boxes.push({ x0: q.x - h, x1: q.x + h, z0: q.z - h, z1: q.z + h }); }
+      list.push(...EI.floorLayout(MU, e, GW.LANE_X, free));
       const geo = EI.build(M, list, ISLAND_TOP);
       if (geo) place(createNode({ geometry: geo, sightHidden: true }));
       for (const q of list) { const hw = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.d : q.item.w) / 2, hd = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.w : q.item.d) / 2; built.oldObstacles.push({ era: e.n, x0: q.x - hw, x1: q.x + hw, z0: q.z - hd, z1: q.z + hd }); }
@@ -741,7 +764,7 @@
     saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, near: 0, up: null, orthoMix: 0, orthoHeight: 0 }, opens: 0, runs: 0 };
   const PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
   const frameIn = { c: { x: 0, y: 0, z: 0 }, size: 1, toward: { x: 0, z: 1 }, ndc: { x: 0, y: 0 }, frac: 0.6, fov: 62, aspect: 1.6, fill: 0.62, pitch: 0.2 };
-  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null;
+  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null, docents = null;
   const RIDE = { x: 0, z: 0, kind: "", era: -1 };
   // The exhibits the catalogue lists: every era file's props, Fingerprints and Time's two citations (its lectern) and
   // the scene's own PC, drives and book. The overview boards and the legend itself are not exhibits.
@@ -1274,6 +1297,7 @@
       if (atrium) atrium.update(dt, sceneTime, view.calm);
       if (walkways) walkways.update(dt, view.calm);
       if (built.vignettes) updateVignettes(dt);
+      if (docents) docents.update(dt, avatar ? avatar.root.position.x : null, avatar ? avatar.root.position.z : 0);
     }
     // The cartridge console's game runs while it is open and the visitor has not paused.
     if (cart && cart.isOpen && !view.paused) cart.update(dt);
@@ -1383,6 +1407,8 @@
       avatar.root.visible = false;
     }
     pilot.setActive(false);
+    // The docents (genesis-docents.js): the island's apes in the museum's uniform.
+    docents = BL.genesisDocents.create({ eras: GW.ERAS, museum: MU, lane: GW.LANE_X, entry: ENTRY, root, footing, fx, addChild, createNode });
     remotes = BL.remotePlayers.create({ root, crew: people, fx });
     footsteps = BL.footsteps.create();
     walk.on = false; walk.prop = null; walk.falls = 0; walk.rides = 0;
@@ -1451,7 +1477,7 @@
     if (cart) cart.dispose();
     if (workbench) workbench.dispose();
     if (timeline) timeline.dispose();
-    workbench = timeline = catalogue = cart = atrium = walkways = null;
+    workbench = timeline = catalogue = cart = atrium = walkways = docents = null;
     if (view.reading) hud.closeBoard();
     disposeExhibits();
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.
@@ -1462,6 +1488,7 @@
     remotes.dispose();
     footsteps.dispose();
     if (people) people.dispose();
+    if (docents) docents.dispose();
     fx.dispose();
     pilot.dispose();
     for (const node of targets) input.remove(node);
@@ -1496,6 +1523,7 @@
       if (built && built.guide) set.add(built.guide.headOpen).add(built.guide.headClosed);
       if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
       if (remotes) remotes.liveGeometry(set);
+      if (docents) docents.liveGeometry(set);
     },
     get inMotion() { return !!demo && walk.on; }
   });

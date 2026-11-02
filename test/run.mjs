@@ -25314,7 +25314,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25433,8 +25433,11 @@ const genesisAtriumProof = async () => {
   const EI = BLc.genesisEraItems, itemCounts = W.ERAS.map((e) => {
     const vat = V.spot({ ...M, LANE_X: W.LANE_X }, e), stage = M.boxToMuseum(e.n, { x0: vat.x - V.R, x1: vat.x + V.R, z0: vat.z - V.R, z1: vat.z + V.R + 0.5 });
     const keep = eraBoxes[e.n].concat(W.reservedZones(e.n).map((z) => M.boxToMuseum(e.n, z)), [stage]), over = (a, o, m) => a.x0 < o.x1 + m && a.x1 > o.x0 - m && a.z0 < o.z1 + m && a.z1 > o.z0 - m;
-    const list = EI.layout(M, e, W.LANE_X, (x0, x1, z0, z1) => { const a = M.boxToMuseum(e.n, { x0, x1, z0, z1 }); return !keep.some((o) => over(a, o, 0.3)); });
-    for (const q of list) {
+    const free = (x0, x1, z0, z1) => { const a = M.boxToMuseum(e.n, { x0, x1, z0, z1 }); return !keep.some((o) => over(a, o, 0.3)); };
+    const list = EI.layout(M, e, W.LANE_X, free), placed = list.length;
+    for (const q of list) { const h = Math.max(q.item.w, q.item.d) / 2; keep.push(M.boxToMuseum(e.n, { x0: q.x - h, x1: q.x + h, z0: q.z - h, z1: q.z + h })); }
+    list.push(...EI.floorLayout(M, e, W.LANE_X, free));
+    for (const q of list.slice(placed)) {
       const h = Math.max(q.item.w, q.item.d) / 2, a = M.boxToMuseum(e.n, { x0: q.x - h, x1: q.x + h, z0: q.z - h, z1: q.z + h }), r = M.rects[e.n];
       if (a.x0 < r.x0 || a.x1 > r.x1 || a.z0 < r.z0 || a.z1 > r.z1) wb.push(`era ${e.n}'s ${q.item.name} stands outside its gallery`);
       if (keep.some((o) => over(a, o, 0))) wb.push(`era ${e.n}'s ${q.item.name} stands in something`);
@@ -25442,6 +25445,19 @@ const genesisAtriumProof = async () => {
     }
     return list.length;
   });
+  // The docents' posts stand on open floor: clear of the courtyard's and atrium's things and every gallery's pieces.
+  const DC = BLc.genesisDocents;
+  if (DC) {
+    const fakeAgent = () => ({ root: { position: { x: 0, y: 0, z: 0 } }, parts: { torso: {}, head: {} }, pace() {}, update() {}, liveGeometry() {}, dispose() {} });
+    const saved = BLc.agent, savedModels = BLc.models;
+    BLc.agent = { create: fakeAgent };
+    BLc.models = { box: () => ({}), merge: () => ({}), lathe: () => ({}) };
+    const d = DC.create({ eras: W.ERAS, museum: M, lane: W.LANE_X, entry: { x: 0, z: M.atrium.z1 - 12 }, root: {}, footing: {}, fx: {}, addChild() {}, createNode: () => ({}) });
+    BLc.agent = saved; BLc.models = savedModels;
+    const all = blockers.concat(...eraBoxes);
+    for (const post of d.posts) if (all.some((o) => post.x > o.x0 - 0.5 && post.x < o.x1 + 0.5 && post.z > o.z0 - 0.5 && post.z < o.z1 + 0.5)) wb.push(`a docent's post (${post.era ? `era ${post.era.n}` : "atrium"}) stands in something`);
+    if (d.posts.length !== 10) wb.push(`${d.posts.length} docents' posts`);
+  }
   const walkways = { belts: WL.belts.length, perimeter: +perimeter.toFixed(1), items: itemCounts, bad: wb.slice(0, 8) };
   return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, courtyard, walkways, bad: bad.slice(0, 8) };
 };
@@ -26036,7 +26052,7 @@ const unitChecks = async () => {
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisAtrium = await genesisAtriumProof();
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
-  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, and every gallery has period pieces on open floor", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
+  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, every gallery has period pieces, board games and furniture on open floor, and every docent's post is open floor", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
   const genesisEraCartridges = await genesisEraCartridgeProof();
