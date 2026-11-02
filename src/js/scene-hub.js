@@ -9835,11 +9835,11 @@
   // Its body is the cylinder their pages see (the rig's posed envelope): their bodies hold it off and their tops hold
   // it up on that one footprint. NPC gorillas still run under players.
   const clankerPlayers = (entry) => entry && entry.controlled && remotes && !cloudPlaying() ? remotes.actors() : null;
-  const clankerPlayersClear = (entry, x, y, z, toX, toY, toZ) => {
+  const clankerPlayersClear = (entry, x, y, z, toX, toY, toZ, carrier = null) => {
     const bodies = clankerPlayers(entry);
     if (bodies) for (let i = 0; i < bodies.length; i++) {
       const body = bodies[i];
-      if (body.player && !cylinderSegmentClear(x, y, z, toX, toY, toZ, entry.gorilla.bodyRadius, entry.gorilla.bodyHeight,
+      if (body.player && body !== carrier && !cylinderSegmentClear(x, y, z, toX, toY, toZ, entry.gorilla.bodyRadius, entry.gorilla.bodyHeight,
         body.x, body.z, body.y, body.y + body.height, body.radius)) return false;
     }
     return true;
@@ -9866,11 +9866,11 @@
       const body = bodies[i], reach = entry.gorilla.bodyRadius + body.radius;
       if (!body.player || Math.abs(body.y - body.dy + body.height - p.y) > 1e-4
         || (p.x - body.x + body.dx) ** 2 + (p.z - body.z + body.dz) ** 2 >= reach * reach - 1e-8) continue;
-      // The same proof as any of its moves, less the player it stands on.
+      // The same proof as any of its moves, less the player it stands on; every other player still holds it off.
       const steps = Math.max(1, Math.ceil(Math.hypot(body.dx, body.dy, body.dz) / 0.125));
       const dx = body.dx / steps, dy = body.dy / steps, dz = body.dz / steps;
       for (let n = 0; n < steps; n++) {
-        if (!clankerClear(p.x, p.y, p.z, p.x + dx, p.y + dy, p.z + dz, entry.radius, entry.height, entry, null, entry.heading, entry.heading, false)) break;
+        if (!clankerClear(p.x, p.y, p.z, p.x + dx, p.y + dy, p.z + dz, entry.radius, entry.height, entry, null, entry.heading, entry.heading, body)) break;
         p.x += dx; p.y += dy; p.z += dz;
       }
       clankerOnPlayer = true;
@@ -9879,7 +9879,7 @@
     if (riding) clankers.supportRemoved();
   };
   const clankerClear = (x, y, z, toX, toY, toZ, radius, height, entry = null, ignore = null,
-    fromHeading = entry ? entry.heading : 0, toHeading = fromHeading, players = true) => {
+    fromHeading = entry ? entry.heading : 0, toHeading = fromHeading, carrier = null) => {
     if (entry) entry.walkPoseChecked = false;
     const previousEntry = clankerPassingEntry;
     // A lab crowd overlap must not trap an airborne gorilla at its current XZ.
@@ -9897,7 +9897,7 @@
           && !clankerPeersClear(entry, x, y, z, toX, toY, toZ, fromHeading, toHeading)) return false;
       }
       return clankerRigClear(x, y, z, toX, toY, toZ, radius, height, entry, ignore, fromHeading, toHeading)
-        && (!players || clankerPlayersClear(entry, x, y, z, toX, toY, toZ));
+        && clankerPlayersClear(entry, x, y, z, toX, toY, toZ, carrier);
     } finally {
       clankerPassingEntry = previousEntry;
     }
