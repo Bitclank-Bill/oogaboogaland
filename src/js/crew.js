@@ -2823,23 +2823,35 @@
       cave.act.kind = cave === player ? "player" : "idle";
       cave.act.until = elapsed + 0.35;
     };
-    const standPlayer = (cave = player) => {
+    const standPlayer = (cave = player, animate = false) => {
       if (!cave || !cave.camp.seat) return false;
       const seat = cave.camp.seat;
+      const moving = cave === player && Math.hypot(steer.x, steer.z) > 0.05 && !cave.weapon.aiming;
+      if (animate && seat.exit) {
+        if (moving) seat.exit.target.ry = Math.atan2(steer.x, steer.z);
+        return true;
+      }
       let exitZ = seat.walkAt.z, clear = false;
       for (let i = 0; i < 3; i++) {
         exitZ = seat.walkAt.z + (i === 1 ? 0.65 : i === 2 ? -0.65 : 0);
         if (walkable(seat.walkAt.x, exitZ, seat.walkAt.x, exitZ, seat.floor, cave.bodyHeight, cave)) { clear = true; break; }
       }
       if (!clear) return false;
-      seat.sitter = null;
-      cave.camp.seat = null;
-      cave.root.quaternion = null;
-      cave.root.rotation.x = cave.root.rotation.z = 0;
-      standPose(cave);
-      setVec(cave.root.position, seat.walkAt.x, seat.floor + cave.baseY, exitZ);
-      cave.hop = cave.hopV = 0;
-      return true;
+      const finish = () => {
+        if (cave.camp.seat !== seat || !walkable(seat.walkAt.x, exitZ, seat.walkAt.x, exitZ, seat.floor, cave.bodyHeight, cave)) return false;
+        seat.sitter = null;
+        seat.entry = seat.exit = null;
+        cave.camp.seat = null;
+        cave.root.quaternion = null;
+        cave.root.rotation.x = cave.root.rotation.z = 0;
+        standPose(cave);
+        setVec(cave.root.position, seat.walkAt.x, seat.floor + cave.baseY, exitZ);
+        cave.hop = cave.hopV = 0;
+        return true;
+      };
+      // Normal input may animate a seat's exit. Forced scene/actor cleanup stays immediate.
+      return animate && seat.leave ? seat.leave(cave, { x: seat.walkAt.x, y: seat.floor + cave.baseY, z: exitZ,
+        ry: moving ? Math.atan2(steer.x, steer.z) : cave.root.rotation.y }, finish) : finish();
     };
     const sitPlayer = (seat) => {
       const cave = player;
@@ -3091,7 +3103,7 @@
         }
       }
       if (c.seat) {
-        if (cave === player && !c.seat.lockMovement && Math.hypot(steer.x, steer.z) > 0.05 && standPlayer(cave)) return false;
+        if (cave === player && !c.seat.lockMovement && Math.hypot(steer.x, steer.z) > 0.05 && standPlayer(cave, true) && !c.seat) return false;
         standPose(cave);
         parts.legR.rotation.x = parts.legL.rotation.x = -Math.PI / 2;
         parts.armR.rotation.x = parts.armL.rotation.x = -0.75;
@@ -5837,7 +5849,7 @@
       if (!player || player.grabbedBy || player.health.stunned) return false;
       if (player.camp.burning) return dropRoll();
       // A seat may take the act itself (`seat.act`, true when it did), as the forklift's starts it; else it stands up.
-      if (player.camp.seat) return player.camp.seat.act && player.camp.seat.act() || standPlayer();
+      if (player.camp.seat) return player.camp.seat.act && player.camp.seat.act() || standPlayer(player, true);
       if (player.bedTravel.manual) return wakePlayer();
       if (weaponsEnabled && !player.weapon.reloading && !player.weapon.swapTime && !player.weapon.reloadHandoff && player.weapon.equipped && reloadMissing(player) > 0 && nearReload(player)) {
         if (!startReload(player)) hud.hint("No bananas in the pile");
