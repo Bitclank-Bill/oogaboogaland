@@ -10,9 +10,9 @@
 //   they turn away, cream on the tops, glowing a little), all at one scale, young ones nearer off to the sides of the
 //   course and some of the far ones growing from the Play press, long cloud banks along the horizon, sky lanterns
 //   rising past the course and geese flying a V.
-// - `aurora` (Aurora Heights): the aurora as pixel art draws it, bright green bands curving across the sky toward the
-//   island with rays hanging from them through teal and blue to violet, stepped at every edge, rippling and swaying
-//   like waves; shooting stars; dark
+// - `aurora` (Aurora Heights): the aurora as a real one stands, in pixel art: long curtains far off in the sky toward
+//   the island, kept where they stand however far a rider falls, a bright green lower edge with rays rising from it
+//   into faint violet and red, shimmering, slowly folding and now and then breaking up; shooting stars; dark
 //   isles growing glowing crystals; and great crystals turning in the air.
 // - `storm` (Thunderhead): rain round the eye, lightning striking the sea with the sky's flash and the strike's
 //   distance for its thunder, and storm-dark isles far out to either side whose lighthouses sweep their beams round,
@@ -419,29 +419,34 @@
   });
 
   // ---- The aurora and the night --------------------------------------------------------------------------------
-  // One ray: a pixel column of the aurora hanging from the ribbon's band, a vertical sheet with its local x running
-  // down it from 0 (the band's top edge) to 1 and z across it, in hard bands of colour as pixel art draws it
-  // (`RAY_ROWS` where each band starts): a lime edge over the bright green band, then teal, cyan, blue and violet
-  // down to its tip, which the beam fades out down x. The outer ribbons (0) and the inner ones, brighter (1).
-  const RAY_INKS = [
-    ["#c4ff86", "#6cf064", "#2fd884", "#1cbfa8", "#2098cc", "#3570dc", "#5a50d6", "#7440c4"],
-    ["#e2ff9a", "#86ff6c", "#3ef08a", "#22d8b0", "#25b6dc", "#3f88ee", "#6a5ee6", "#8648d6"]];
-  const RAY_ROWS = [0, 0.035, 0.14, 0.27, 0.4, 0.54, 0.68, 0.84, 1];
-  const RAY_GLASS = [0.42, 0.5];
-  const ray = M.variants((kind) => {
-    const g = M.geometry(), inks = RAY_INKS[kind].map(hexToRgb), ids = [];
-    // Each band in two, its lower half a step toward the next band's ink, for a finer grain.
-    for (let r = 0; r < RAY_ROWS.length; r++) {
-      ids.push([M.pushVert(g, RAY_ROWS[r], 0, -0.5), M.pushVert(g, RAY_ROWS[r], 0, 0.5)]);
-      if (r < inks.length) { const m = (RAY_ROWS[r] + RAY_ROWS[r + 1]) / 2; ids.push([M.pushVert(g, m, 0, -0.5), M.pushVert(g, m, 0, 0.5)]); }
+  // One ray of a curtain: a pixel column standing on the curtain's lower edge, a vertical sheet with its local x
+  // running up it from 0 (the edge) to 1 and z across it, in hard bands of colour as pixel art draws it (`RAY_ROWS`
+  // where each band starts), coloured as a real aurora is: brightest and sharpest at its lower edge, then green
+  // fading through teal as it rises into the faint violet and red of its top, which the beam fades out up x. It shows
+  // through any haze, as something a hundred kilometres up does.
+  const RAY_INKS = ["#e8ffc8", "#9dff8c", "#55f07a", "#2fd370", "#24ae7a", "#3b8790", "#6c5c9c", "#a4467e"];
+  const RAY_ROWS = [0, 0.02, 0.08, 0.2, 0.36, 0.52, 0.68, 0.84, 1];
+  // Under a curtain's lower edge, its local x running down from it: a thin pink fringe, then a soft green glow on the
+  // sky fading down.
+  const SKIRT_INKS = ["#ff74b8", "#62e08c", "#45c27a", "#2e9c6c"];
+  const SKIRT_ROWS = [0, 0.12, 0.35, 0.68, 1];
+  const column = (inks, rows, glass, beam) => {
+    const g = M.geometry(), rgb = inks.map(hexToRgb), ids = [];
+    // Each band in two, its upper half a step toward the next band's ink, for a finer grain.
+    for (let r = 0; r < rows.length; r++) {
+      ids.push([M.pushVert(g, rows[r], 0, -0.5), M.pushVert(g, rows[r], 0, 0.5)]);
+      if (r < rgb.length) { const m = (rows[r] + rows[r + 1]) / 2; ids.push([M.pushVert(g, m, 0, -0.5), M.pushVert(g, m, 0, 0.5)]); }
     }
-    for (let r = 0; r < inks.length * 2; r++) {
-      const ink = r % 2 ? mix(inks[r >> 1], inks[Math.min(inks.length - 1, (r >> 1) + 1)], 0.5) : inks[r >> 1];
+    for (let r = 0; r < rgb.length * 2; r++) {
+      const ink = r % 2 ? mix(rgb[r >> 1], rgb[Math.min(rgb.length - 1, (r >> 1) + 1)], 0.5) : rgb[r >> 1];
       M.face(g, [ids[r][0], ids[r][1], ids[r + 1][1], ids[r + 1][0]], ink, { emissive: 1 });
     }
-    g.glass = RAY_GLASS[kind]; g.lightBeam = 2; g.castShadow = false;
+    // Two-sided, as Canvas 2D would otherwise drop whichever face a column turns from the eye.
+    g.glass = glass; g.lightBeam = beam; g.castShadow = false; g.fogPierce = 1; g.twoSided = true;
     return g;
-  });
+  };
+  const ray = M.cached(() => column(RAY_INKS, RAY_ROWS, 0.5, 1.35));
+  const skirt = M.cached(() => column(SKIRT_INKS, SKIRT_ROWS, 0.3, 1));
   // A crystal shard from the origin, `len` along its axis leaned `tilt` from upright toward the bearing `lean`: a six-
   // sided prism to a point, its facets alternately light and dark and glowing brighter toward the tip, in `inks`
   // [deep, body, light, tip].
@@ -950,118 +955,94 @@
           halo.rotation.y = Math.atan2(dx, dz); halo.rotation.x = -Math.atan2(dy, Math.hypot(dx, dz));
         });
       }
-      // The aurora, drawn as pixel art draws it: bright green bands curving across the sky, rays hanging from them
-      // through teal and blue to violet and fading to ragged tips. Each band arcs from high beside the start down
-      // along the course toward the island, closing in on it (`RIBBONS`: an inner pair and an outer pair, wider),
-      // winding from side to side and rising and dipping as it goes, so it curls; and a pair overhead winds back and
-      // forth across the course all the way down, its heights over the course beneath it (`above`), rising and
-      // dipping less and its rays hanging short of the course, the two side by side at one height and in step (one
-      // `wave`), so they never cross. Every band reaches on behind the starting cloud at its height there, a side band
-      // drawing in toward the course, so it hangs in the view back. A ribbon is pixel columns laid edge
-      // to edge along its band, so it turns unbroken through its bends; each hangs its own length, the band's edge
-      // stepping by `STEP` and each tip by the column's width (`px`) so they are staircases, and each glows its own
-      // brightness, flickering, so the rays are streaked. Every column is fill, so the quality tiers draw fewer (Canvas 2D the
-      // outer pair alone).
-      const RIBBONS = [
-        { kind: 1, from: -230, to: -110, high: 110, low: -60, hang: 150, wind: 70, px: 4 },
-        { kind: 1, from: 240, to: 120, high: 120, low: -55, hang: 160, wind: 75, px: 4 },
-        { kind: 0, from: -430, to: -220, high: 170, low: -20, hang: 200, wind: 100, px: 5 },
-        { kind: 0, from: 440, to: 230, high: 180, low: -15, hang: 210, wind: 100, px: 5 },
-        { kind: 1, from: -55, to: -55, high: 120, low: 105, hang: 60, wind: 18, px: 4, above: true, wave: 1.3 },
-        { kind: 1, from: 55, to: 55, high: 120, low: 105, hang: 60, wind: 18, px: 4, above: true, wave: 1.3 }];
-      // The band's edge steps by `STEP` metres, finer than a column is wide, so it climbs and falls in small stairs.
-      const STEP = 2;
-      // From well behind the starting cloud (t 1.5) out over the island (t -0.1). A band is laid out from a little
-      // behind the start (START, t 1.08) to BEYOND, its heights over the start's (an overhead band's over the course
-      // beneath it); past START it keeps its height there, and a side band draws in toward the course by DRAW of its
-      // distance from it for each length of the course it goes on.
-      const BEHIND = 1.5, START = 1.08, BEYOND = -0.1, DRAW = 1.7;
-      const length = (route.length - SHORE) * (BEHIND - BEYOND), base = routeY(1), curtains = [];
-      // Now and then a ribbon sweeps away from one end to the other in SWEEP seconds, stays gone a while and sweeps
-      // back in from one end, each on its own cycle, so some leave while others return; none leaves before a few
-      // seconds of the run have passed. EDGE is the soft front's share of the ribbon.
-      const SWEEP = 2, EDGE = 0.08;
-      const layers = [0, 1].filter((kind) => !lite || kind === 0).map((kind) => {
-        const mine = RIBBONS.filter((r) => r.kind === kind);
-        const counts = mine.map((r) => Math.max(12, Math.round(length / r.px * (lite ? 0.08 : tier)))), total = counts.reduce((a, b) => a + b, 0);
-        const sheet = batch(ray(kind), total);
-        const layer = { node: sheet, data: sheet.instanceData, wide: new Float32Array(total), beat: new Float32Array(total), base: RAY_GLASS[kind] };
-        for (let i = 0; i < total; i++) { layer.wide[i] = 0.7 + rand() * 0.8; layer.beat[i] = rand() * TAU; }
-        let first = 0;
-        mine.forEach((r, n) => {
-          const phase = rand() * TAU, cycle = 24 + rand() * 14, gone = 3 + rand() * 4, shown = cycle - 2 * SWEEP - gone;
-          const curtain = { layer, first, rays: counts[n], from: r.from, to: r.to, high: r.high, low: r.low, h: r.hang * (0.9 + rand() * 0.2), wind: r.wind,
-            phase, wave: r.wave ?? phase, px: length / counts[n], above: !!r.above,
-            cycle, gone, shown, order: curtains.length, lag: shown - Math.min(shown, 6 + 4 * curtains.length) };
-          first += counts[n];
-          curtains.push(curtain);
-        });
-        addChild(scenery, sheet);
-        return layer;
-      });
-      // Where a ribbon's band runs at s along it (0 behind the start, 1 over the island) at `time`, into P: high beside
-      // the start, down toward the island, winding and rising and dipping as it goes. It drifts slowly, as a real aurora
-      // does: gentle ripples run along it toward the island and back, and the whole ribbon sways from side to side and
-      // back over half a minute or so.
+      // The aurora as a real one stands: long curtains far off in the sky toward the island, straight but for their
+      // folds, so perspective bends each into an arc settling toward the horizon at its ends, and each kept where it
+      // stands round the eye, as something a hundred kilometres up stays put however far a rider falls (`CURTAINS`: how
+      // far ahead of the eye, how high over it its lower edge runs, how tall its rays stand, how far it runs either
+      // side of where it is centred, `side` of the course, its columns' width and how bright it burns; a negative
+      // `ahead` is behind the eye). The far ones toward the island stand their lower edge `sea` metres over the sea
+      // instead, so from high on the course they hang low over the sea behind the island and rise into the sky as a
+      // rider comes down to it; their edges rise and dip `wave` metres, the others' a quarter of their height over the
+      // eye. Toward the island: two far ones over the sea, a long low arc and a shorter one off to one side; overhead,
+      // three high off to either side, their rays drawing together toward the top of the sky; and behind, two more. A
+      // lower edge never comes down under the sea's own height. Each is pixel columns standing edge to edge on its
+      // lower edge, each its own height, so the rays are streaked and their tips step as staircases, and under each a
+      // skirt of pink fringe and green glow. Canvas 2D gets the two farthest toward the island, coarser and without
+      // their skirts.
+      const CURTAINS = [
+        { ahead: 2600, sea: 30, wave: 40, rise: 560, run: 3600, side: 0, px: 22, bright: 0.75 },
+        { ahead: 1500, sea: 80, wave: 40, rise: 420, run: 2600, side: 250, px: 16, bright: 0.85 },
+        { ahead: 800, over: 40, rise: 300, run: 1100, side: 500, px: 11, bright: 0.95 },
+        { ahead: 420, over: 180, rise: 240, run: 900, side: -350, px: 9, bright: 1 },
+        { ahead: 240, over: 300, rise: 260, run: 1200, side: 150, px: 10, bright: 1 },
+        { ahead: -260, over: 280, rise: 240, run: 1000, side: -300, px: 10, bright: 0.95 },
+        { ahead: -900, over: 60, rise: 320, run: 1600, side: 100, px: 13, bright: 0.85 },
+        { ahead: -1800, over: -20, rise: 420, run: 2600, side: -300, px: 18, bright: 0.7 }];
+      // How it moves, as a real aurora does: its folds drift along it and change over a minute or two (FOLD, a share
+      // of its distance), its rays shimmer and their pleats run along it a few degrees a second, a wave of brightness
+      // runs along it every RIPPLE seconds, and every so often it breaks up (BREAKUP): brightening fast, its folds and
+      // rays quickening and its pink fringe glowing, then easing back.
+      const FOLD = 0.14, RIPPLE = [16, 24], BREAKUP = { first: 40, every: 125, rise: 2, fade: 6, last: 20 };
+      const shown = CURTAINS.filter((c, n) => !lite || n < 2).map((c) => ({ ...c, rays: Math.max(24, Math.round(2 * c.run / c.px * (lite ? 0.25 : tier))) }));
+      const total = shown.reduce((sum, c) => sum + c.rays, 0), rays = batch(ray(), total), rd = rays.instanceData;
+      const skirts = lite ? null : batch(skirt(), total), kd = skirts ? skirts.instanceData : null;
+      const wide = new Float32Array(total), beat = new Float32Array(total);
+      for (let i = 0; i < total; i++) { wide[i] = rand(); beat[i] = rand() * TAU; }
+      let first = 0;
+      for (const c of shown) {
+        c.first = first; first += c.rays; c.phase = rand() * TAU;
+        c.ripple = RIPPLE[0] + rand() * (RIPPLE[1] - RIPPLE[0]); c.offset = rand() * c.ripple;
+        reached(route.start.x, route.start.y, route.start.z, route.length + Math.hypot(c.ahead * (1 + FOLD), c.run + Math.abs(c.side)) + Math.abs(c.over ?? 0) * 1.4 + c.rise);
+      }
+      addChild(scenery, rays);
+      if (skirts) addChild(scenery, skirts);
+      const fx = Math.cos(route.ahead), fz = Math.sin(route.ahead), sx = route.sideX, sz = route.sideZ;
+      // Its clocks: the folds' and the rays', each quickening through a breakup.
+      let folds = 0, pleats = 0;
+      // Where a curtain's lower edge runs at s along it (0 to 1, side to side), round the eye at e, into P: folding
+      // toward and away from the eye and rising and dipping a little as it goes.
       const P = { x: 0, y: 0, z: 0 };
-      const point = (c, q, time) => {
-        const t = BEHIND + (BEYOND - BEHIND) * q, s = (START - t) / (START - BEYOND), ph = c.wave;
-        const lane = s < 0 && !c.above ? c.from * (1 + s * DRAW) : c.from + (c.to - c.from) * s;
-        const across = lane + c.wind * (Math.sin(TAU * 1.5 * s + 0.06 * time + ph) + 0.3 * Math.sin(TAU * 3.1 * s - 0.09 * time + 2 * ph)
-          + 0.2 * Math.sin(TAU * 2.6 * s - 0.25 * time + 3 * ph) + 0.08 * Math.sin(TAU * 4.3 * s + 0.35 * time + ph)
-          + 0.18 * Math.sin(0.16 * time + ph) * Math.sin(Math.PI * s + 0.3 * Math.sin(0.11 * time)));
-        const p = at(t, across);
-        P.x = p.x; P.y = (c.above ? routeY(Math.min(t, START)) : base) + c.high + (c.low - c.high) * Math.max(0, s) + (c.above ? 0.4 : 1) * (22 * Math.sin(TAU * 2.2 * s + 0.1 * time + 2 * ph)
-          + 5 * Math.sin(TAU * 3.4 * s - 0.3 * time + ph) + 3 * Math.sin(0.2 * time + 2 * ph)); P.z = p.z;
+      const edge = (c, s, e) => {
+        const along = c.side + (2 * s - 1) * c.run;
+        const fold = c.ahead * FOLD * (0.6 * Math.sin(TAU * 1.2 * s + 0.11 * folds + c.phase) + 0.4 * Math.sin(TAU * 2.7 * s - 0.17 * folds + 2 * c.phase));
+        P.x = e.x + sx * along + fx * (c.ahead + fold); P.z = e.z + sz * along + fz * (c.ahead + fold);
+        P.y = Math.max(seaY + 8, (c.sea === undefined ? e.y + c.over : seaY + c.sea)
+          + (c.wave ?? Math.abs(c.over) * 0.25) * (Math.sin(TAU * 1.3 * s + 0.06 * folds + c.phase) + 0.4 * Math.sin(TAU * 3.1 * s - 0.1 * folds + 2 * c.phase)));
       };
-      for (const c of curtains) for (const q of [0, 0.5, 1]) { point(c, q, 0); reached(P.x, P.y, P.z, c.wind * 2.2); }
-      movers.push((time) => {
-        for (let n = 0; n < curtains.length; n++) {
-          const c = curtains[n], { data, wide, beat: phase } = c.layer, px = c.px;
-          // Where its cycle stands: shown, sweeping away (1), gone (2) or sweeping back (3), `u` how far a sweep has
-          // come and `back` whether it runs from the island's end; a cycle's way out and way back each pick an end.
-          const at = time + c.lag, round = Math.floor(at / c.cycle), local = at - round * c.cycle - c.shown;
-          let mode = 0, u = 0, back = 0;
-          if (local >= 0) {
-            if (local < SWEEP) { mode = 1; u = local / SWEEP; back = (round + c.order) & 1; }
-            else if (local < SWEEP + c.gone) mode = 2;
-            else { mode = 3; u = (local - SWEEP - c.gone) / SWEEP; back = ((round >> 1) + c.order) & 1; }
-          }
-          if (mode === 2) {
-            for (let i = 0; i < c.rays; i++) write(data, (c.first + i) * 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-            continue;
-          }
-          // Each column spans the band from one point on its line to the next, so it runs on unbroken through its turns,
-          // and hangs from it its own length.
-          point(c, 0, time);
+      movers.push((time, dt, camera) => {
+        // A breakup's strength now: none before the first, then up fast and easing back after each.
+        const since = time - BREAKUP.first, into = since - Math.floor(since / BREAKUP.every) * BREAKUP.every;
+        const flare = since < 0 || into > BREAKUP.last ? 0 : into < BREAKUP.rise ? into / BREAKUP.rise : Math.exp(-(into - BREAKUP.rise) / BREAKUP.fade);
+        folds += dt * (1 + 3 * flare); pleats += dt * (1 + 2 * flare);
+        const e = camera.position;
+        for (let n = 0; n < shown.length; n++) {
+          const c = shown[n], px = c.px, step = px * 0.5, wave = ((time + c.offset) / c.ripple) % 1 * 1.6 - 0.3;
+          // Each column spans the edge from one point on it to the next, so it runs on unbroken through its folds.
+          edge(c, 0, e);
           let lx = P.x, ly = P.y, lz = P.z;
           for (let i = 0; i < c.rays; i++) {
-            const s = (i + 0.5) / c.rays, j = c.first + i;
-            point(c, (i + 1) / c.rays, time);
-            // A sweep's soft front: the columns it has passed are gone (on the way out) or back (on the way back).
-            let k = 1;
-            if (mode) {
-              const a = Math.max(0, Math.min(1, ((back ? 1 - s : s) - u * (1 + EDGE) + EDGE) / EDGE));
-              k = mode === 1 ? a : 1 - a; k = k * k * (3 - 2 * k);
-              if (k <= 0) { write(data, j * 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); lx = P.x; ly = P.y; lz = P.z; continue; }
+            const s = (i + 0.5) / c.rays, j = c.first + i, o = j * 20;
+            edge(c, (i + 1) / c.rays, e);
+            // Bright stretches and faint ones along it, changing slowly, and its ends fading out.
+            const taper = Math.sqrt(Math.min(1, s * 8, (1 - s) * 8)) * (0.3 + 0.7 * (0.5 + 0.5 * Math.sin(TAU * 1.4 * s + 0.05 * folds + 3 * c.phase))
+              * (0.6 + 0.4 * Math.sin(TAU * 3.3 * s - 0.07 * folds + c.phase)));
+            // Pleats of bright and dim rays running along it, two ways at once, so it shimmers.
+            const pleat = 0.5 + 0.5 * Math.sin(TAU * 17 * s - 2.2 * pleats + c.phase) * Math.sin(TAU * 6.5 * s + 0.9 * pleats + 2 * c.phase);
+            const h = px * Math.max(1, Math.round(c.rise * Math.sqrt(taper) * (0.45 + 0.25 * Math.sin(TAU * 4.3 * s + 0.35 * pleats + c.phase) + 0.15 * pleat + 0.15 * wide[j])
+              * (1 + 0.3 * flare) / px));
+            const y = e.y + step * Math.round(((ly + P.y) / 2 - e.y) / step), dx = P.x - lx, dz = P.z - lz, l = Math.hypot(dx, dz) || 1;
+            const cx = (lx + P.x) / 2, cz = (lz + P.z) / 2, ripple = 0.6 * Math.exp(-(((s - wave) / 0.06) ** 2));
+            write(rd, o, 0, h, 0, -dz / l, 0, dx / l, dx, 0, dz, cx, y, cz);
+            rd[o + 16] = c.bright * taper * ((0.25 + 0.65 * pleat * pleat + 0.1 * Math.sin(7 * time + beat[j])) * (1 + 0.8 * flare) + ripple);
+            if (kd) {
+              write(kd, o, 0, -px * 5, 0, -dz / l, 0, dx / l, dx, 0, dz, cx, y, cz);
+              kd[o + 16] = c.bright * taper * (0.3 + 0.9 * flare + 0.4 * ripple);
             }
-            // Rays come in streaks several columns wide, bright and dim, long and short, drifting along the band.
-            const taper = Math.sqrt(Math.min(1, s * 14, (1 - s) * 5)), w = wide[j] - 1.1;
-            const streak = 0.5 + 0.28 * Math.sin(TAU * 6.3 * s + 0.15 * time + c.phase) + 0.16 * Math.sin(TAU * 17 * s - 0.2 * time + 3 * c.phase)
-              + 0.1 * Math.sin(TAU * 41 * s + 0.3 * time + 5 * c.phase);
-            const h = px * Math.max(1, Math.round(c.h * taper * k * (0.5 + 0.22 * Math.sin(TAU * 3.7 * s + 0.12 * time + c.phase) + 0.12 * Math.sin(TAU * 11 * s - 0.18 * time + 2 * c.phase) + 0.15 * w) / px));
-            const top = STEP * Math.round((ly + P.y) / 2 / STEP);
-            const dx = P.x - lx, dz = P.z - lz, l = Math.hypot(dx, dz) || 1;
-            write(data, j * 20, 0, -h * 1.25, 0, -dz / l, 0, dx / l, dx, 0, dz, (lx + P.x) / 2, top, (lz + P.z) / 2);
-            data[j * 20 + 16] = k * (0.35 + 0.75 * streak + 0.25 * w) * (0.92 + 0.08 * Math.sin(0.5 * time + phase[j]));
             lx = P.x; ly = P.y; lz = P.z;
           }
         }
-        for (let n = 0; n < layers.length; n++) {
-          const layer = layers[n];
-          layer.node.instanceVersion++;
-          layer.node.geometry.glass = layer.base * (0.88 + 0.12 * Math.sin(time * 0.25 + n));
-        }
+        rays.instanceVersion++;
+        if (skirts) skirts.instanceVersion++;
       });
       if (lite) return;
       // Shooting stars: up to three at once, each a streak across the sky beyond the course for under a second.

@@ -10060,7 +10060,7 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
   top: calc(72px + var(--safe-top));
   right: auto;
   width: min(760px, calc(100vw - 32px - var(--safe-left) - var(--safe-right)));
-  max-height: calc(62dvh - 80px - var(--safe-top));
+  max-height: calc(66dvh - 80px - var(--safe-top));
   padding: 12px 16px;
   transform: translateX(-50%);
   animation: none;
@@ -10068,7 +10068,9 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 .cloud-hopper-panel.cloud-hopper-dq[open] { display: flex; flex-direction: column; }
 .cloud-hopper-panel.cloud-hopper-dq::backdrop { background: transparent; }
 .cloud-hopper-dq > :not(.game-intro-glow) { flex-shrink: 0; }
-.cloud-hopper-dq .cloud-hopper-scores { flex-shrink: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* Only a window too short for its board (a phone on its side) scrolls it, under a thin bar in the card's colours. */
+.cloud-hopper-dq .cloud-hopper-scores { flex-shrink: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(245, 197, 66, 0.45) transparent; }
+.cloud-hopper-dq .cloud-hopper-scores-title { margin: 8px 0 6px; }
 .cloud-hopper-panel.cloud-hopper-dq .game-intro-title { margin: 4px 0 8px; font-size: 28px; }
 .cloud-hopper-panel.cloud-hopper-dq .actions { margin-top: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .cloud-hopper-panel.cloud-hopper-dq.cloud-hopper-picking .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -10079,7 +10081,7 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
   .cloud-hopper-panel.cloud-hopper-dq .actions button, .cloud-hopper-panel.cloud-hopper-intro .actions button { padding: 0 4px; letter-spacing: 0.02em; }
 }
 .cloud-hopper-result-art { display: block; width: min(100%, 320px); height: min(18dvh, 150px); margin: 4px auto 6px; object-fit: contain; }
-.cloud-hopper-dq .cloud-hopper-result-art { width: min(100%, 280px); height: min(12dvh, 120px); }
+.cloud-hopper-dq .cloud-hopper-result-art { width: min(100%, 260px); height: min(10dvh, 104px); }
 .cloud-hopper-result-art[hidden] { display: none; }
 .cloud-hopper-intro-art { display: block; width: min(100%, 420px); height: min(30dvh, 230px); margin: 10px auto; object-fit: contain; }
 .cloud-hopper-guide-art { display: flex; align-items: center; justify-content: center; height: min(28dvh, 220px); margin: 4px auto 12px; }
@@ -10123,9 +10125,8 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 /* A line that wraps splits evenly, never leaving one word on its own. */
 .cloud-hopper-panel .game-intro-who { color: var(--paper); line-height: 1.5; text-wrap: balance; }
 .cloud-hopper-panel .game-intro-goal { text-wrap: balance; }
-/* The intro's three buttons share one row; Leaderboard stays pressed in while its board shows. */
-.cloud-hopper-panel.cloud-hopper-intro .actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.cloud-hopper-panel .actions button[aria-pressed="true"] { background: linear-gradient(var(--accent), #b8741f); box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.3); }
+/* The intro's two buttons share one row. */
+.cloud-hopper-panel.cloud-hopper-intro .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cloud-hopper-panel .cloud-hopper-time { margin: 14px 0; color: #f5c542; font-size: 42px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5); }
 .cloud-hopper-scores-title { margin: 14px 0 8px; color: var(--accent-text); font-size: 12px; }
 .cloud-hopper-scores .race-podium { margin: 0; text-align: left; font-size: 12px; }
@@ -10133,13 +10134,41 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 .cloud-hopper-score-rank { color: var(--accent-text); font-weight: 700; }
 .cloud-hopper-scores .race-podium li.you { background: rgba(245, 197, 66, 0.08); }
 .cloud-hopper-scores .race-podium strong { white-space: nowrap; }
-.cloud-hopper-scores-empty { margin: 0; padding: 16px 10px; border: 2px solid var(--stone-dk); border-radius: 9px 7px 10px 8px; background: var(--tablet); box-shadow: var(--tablet-shadow); color: var(--muted); font-size: 11px; line-height: 1.5; }
+.cloud-hopper-scores .race-podium span:not(.cloud-hopper-score-rank) { overflow-wrap: anywhere; }
+/* A place no one has taken yet stays on the board, empty. */
+.cloud-hopper-scores .race-podium li.empty { color: var(--muted); }
+/* The ten places stand in two columns of five, so a board fits its card without scrolling. */
+/* Each place carries its own side padding, so a highlighted one reaches the board's edges and fills its half, a
+   thin line between the halves; the board's rounded corners clip it. */
+.cloud-hopper-scores .race-podium { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); grid-auto-flow: column; padding: 0; overflow: hidden; }
+.cloud-hopper-scores .race-podium li:nth-child(5) { border-bottom: 0; box-shadow: none; }
+.cloud-hopper-scores .race-podium li { padding: 4px 12px; }
+.cloud-hopper-scores .race-podium li:nth-child(n + 6) { border-left: 1px solid rgba(0, 0, 0, 0.35); }
+/* The DQ card, kept clear of the falling Ooga below, sets its places a little closer and leaves the empty ones to
+   say no one has a time yet. */
+.cloud-hopper-dq .cloud-hopper-scores .race-podium li { padding: 3px 12px; }
+.cloud-hopper-dq .cloud-hopper-scores-empty { display: none; }
+.cloud-hopper-scores-empty { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .cloud-hopper-panel .actions { margin-top: 16px; }
 @media (max-width: 600px) {
   .cloud-hopper-hud { top: calc(118px + var(--safe-top)); width: min(300px, calc(100vw - 24px)); padding: 9px 12px; }
   .cloud-hopper-time { font-size: 26px; }
   .cloud-hopper-panel { padding: 16px 12px; }
   .cloud-hopper-panel.cloud-hopper-dq { padding: 12px; }
+}
+/* A shorter window leaves the DQ card its level's name for a heading and a smaller picture, and the intro wider,
+   lower pictures, so each card's board still fits without scrolling. */
+@media (max-height: 760px) {
+  .cloud-hopper-intro .cloud-hopper-level-art { aspect-ratio: 2 / 1; }
+  .cloud-hopper-intro .cloud-hopper-levels { margin: 6px 0 8px; }
+  .cloud-hopper-intro .cloud-hopper-scores-title { margin: 8px 0 6px; }
+  .cloud-hopper-panel.cloud-hopper-intro .game-intro-title { margin: 4px 0 8px; }
+}
+@media (max-height: 720px) {
+  .cloud-hopper-dq .game-intro-kicker, .cloud-hopper-dq .game-intro-title { display: none; }
+  .cloud-hopper-panel.cloud-hopper-dq { padding: 10px 14px; }
+  .cloud-hopper-dq .cloud-hopper-result-art { height: min(8dvh, 104px); margin: 2px auto 4px; }
+  .cloud-hopper-panel.cloud-hopper-dq .actions { margin-top: 6px; }
 }
 @media (max-height: 600px) {
   .cloud-hopper-panel.cloud-hopper-dq { padding: 8px 12px; }
