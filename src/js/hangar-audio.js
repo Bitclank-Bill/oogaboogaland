@@ -19,7 +19,8 @@
 // The engines acting up on their own (`hangar-anomaly.js`) play on the same voices: `misfire(M)` schedules a failed
 // start at once, an electrical hum rising, three tries at turning the engines over, each whining higher and dying in a
 // sputter, the last coughing a short burst, then a dead stop and the metal ticking as it cools; `revs(R)` the two
-// engines revving by turns, each with a voice of its own on its own side, as if they were talking.
+// engines revving by turns, each with a voice of its own on its own side, as if they were talking; `zap(Z, from, to)`
+// lightning running over the Jet, a sizzle crackling from nose to tail over the hum, then a crack and silence.
 //
 // Kortik's Sis has a voice of her own (`voice`): a buzz and a breath through three formants, a syllable for each run
 // of vowels in her line with the formants of its vowel, pauses at its punctuation, a stressed last syllable before a
@@ -45,7 +46,7 @@
 
   // How loud the test's voices peak: the siren, the whine and its whoosh, the whoomph, the roar's body, crackle and
   // rumble, a clank, the alarm, the boom's sweep, its rumble and its crack, the ringing, and the anomalies' hum.
-  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08, rev: 0.22 };
+  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08, rev: 0.22, sizzle: 0.12 };
   // How far the blast muffles the presser's hearing, Hz.
   const MUFFLED = 320, CLEAR = 20000;
   // Kortik's Sis's ways of saying a line: her pitch, Hz; a syllable's length and the gap after it, s; how loud; how far
@@ -311,6 +312,10 @@
       test.humGain = gain(0, test.enginePan);
       test.hum = osc("sawtooth", 100, filter("bandpass", 380, 2.5, test.humGain));
       test.humFizz = hissOf(filter("bandpass", 3600, 5, gain(0.35, test.humGain)));
+      // The anomalies' lightning: a sizzle, high noise through a band, panned to wherever it runs over the Jet.
+      test.sizzlePan = panner();
+      test.sizzleGain = gain(0, test.sizzlePan);
+      test.sizzle = hissOf(filter("bandpass", 4500, 1.5, test.sizzleGain));
       // Each engine's own rev, on its own side, a jet spooling up and back: its roar, the noise through a band that
       // opens as it spools, driven a little into the clip for grit; a rumble under it; the turbine's whine high over it;
       // and a little of the exhaust's crackle.
@@ -554,6 +559,39 @@
         v.whine2.frequency.setValueAtTime(1050, at(s)); v.whine2.frequency.exponentialRampToValueAtTime(whine * 1.5, at(up)); v.whine2.frequency.exponentialRampToValueAtTime(900, at(end));
         v.level.gain.setValueAtTime(0, at(s)); v.level.gain.linearRampToValueAtTime(loud, at(s + 0.15)); v.level.gain.setValueAtTime(loud, at(up)); v.level.gain.linearRampToValueAtTime(0, at(end));
       }
+      return true;
+    };
+
+    // Lightning through the Jet from now, on its times `Z` (s from its start: its crawl from `from` to `to`, { x, y, z },
+    // nose to tail, and the crack): the hum rising; the sizzle crackling, panned along the Jet as the lightning runs from
+    // end to end; then the crack with a thump under it, and silence.
+    const zap = (Z, from, to) => {
+      if (!ready || muted) return false;
+      const t0 = ctx.currentTime + 0.02, at = (s) => t0 + s, T = test;
+      const clear = (param, value) => { param.cancelScheduledValues(t0); param.setValueAtTime(value, t0); };
+      for (const g of [T.humGain, T.sizzleGain, T.crackGain, T.boomNoiseGain]) clear(g.gain, 0);
+      place(from.x, from.y, from.z, 1);
+      clear(T.sizzlePan.pan, AT.pan); clear(T.boomFilter.frequency, 900);
+      T.humGain.gain.linearRampToValueAtTime(TEST.hum, at(Z.fade));
+      for (let s = 0.05; s < Z.crack; s += 0.04 + Math.random() * 0.06) {
+        const k = Math.min(1, s / Z.fade) * (Math.random() < 0.3 ? 0.25 : 0.6 + Math.random() * 0.4);
+        T.sizzleGain.gain.setValueAtTime(TEST.sizzle * k, at(s));
+      }
+      for (let n = 0; n <= 8; n++) {
+        const u = n / 8;
+        place(from.x + (to.x - from.x) * u, from.y + (to.y - from.y) * u, from.z + (to.z - from.z) * u, 1);
+        T.sizzlePan.pan.linearRampToValueAtTime(AT.pan, at(Z.start + Z.crawl * u));
+      }
+      T.humGain.gain.setValueAtTime(TEST.hum, at(Z.crack));
+      T.humGain.gain.linearRampToValueAtTime(0, at(Z.crack + 0.05));
+      T.sizzleGain.gain.setValueAtTime(TEST.sizzle, at(Z.crack));
+      T.sizzleGain.gain.exponentialRampToValueAtTime(0.001, at(Z.crack + 0.35));
+      T.crackGain.gain.setValueAtTime(TEST.crack * 0.8, at(Z.crack));
+      T.crackGain.gain.exponentialRampToValueAtTime(0.001, at(Z.crack + 0.18));
+      T.boomFilter.frequency.setValueAtTime(700, at(Z.crack));
+      T.boomFilter.frequency.exponentialRampToValueAtTime(60, at(Z.crack + 1.2));
+      T.boomNoiseGain.gain.setValueAtTime(TEST.boomNoise * 0.4, at(Z.crack));
+      T.boomNoiseGain.gain.exponentialRampToValueAtTime(0.001, at(Z.crack + 1.4));
       return true;
     };
 
@@ -941,7 +979,7 @@
     };
 
     return {
-      listen, update, setMuted, setVolume, test: play, misfire, revs, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
+      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
       get muted() { return muted; },
       get volume() { return volume; },
       get ready() { return ready; },
