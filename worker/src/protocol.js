@@ -13,6 +13,12 @@ import "../../src/js/voice-blend.js";
 //                 { t: "mute", on }              this page muted its own microphone, for everyone's roster
 //                 { t: "hp", v, ko }             the driven body's health (normalized 0-100) and knockout flag
 //                 pose.g                         optional gorilla locomotion: [flags, speed, stride, climb, side, swim]
+//                 pose.j                         optional jetpack, for drawing only: 1 while an Ooga wears one, plus its
+//                                                flame's power (0-3) times 2; absent is none
+//                 pose.w                         optional weapons, for drawing only: the one in an Ooga's hand (1 its
+//                                                primary, 2 the gun), 4 while aiming, plus the gun's rounds (0-31) times 8
+//                 { t: "shot", a }               a banana the driven Ooga fired: [from x, y, z, to x, y, z]
+//                 { t: "swing" }                 the driven Ooga's melee strike
 //                 { t: "chat", text, clientId? }            a line for Ooga Chat (see Chat below)
 //                 { t: "studio", action, playback?, commandId?, ... }  a DSB Studio seat or host command; transport
 //                                checks `playback` against the state's playbackRevision
@@ -22,8 +28,12 @@ import "../../src/js/voice-blend.js";
 //                 binary                         the NPC host's frame of every Ooga's pose, relayed as is; or,
 //                                                led by GHOST_MAGIC, the ghost arena host's hunt state
 // Room → client:  welcome { you, players, tickHz, now, loopEpoch, connectionToken }, join { p }, leave { id, reason },
-//                 body { id, name }, state { now, ps: [id, x, y, z, yaw, ...], gs? }, kick { reason },
+//                 body { id, name }, state { now, ps: [id, x, y, z, yaw, ...], gs?, js? }, kick { reason },
 //                 state.gs                       gorilla locomotion in [id, ...g] runs; welcome/join carry g too
+//                 state.js                       [id, j] pairs for every player with a jetpack; anyone else in ps has
+//                                                none; welcome/join carry j too
+//                 state.ws                       [id, w] pairs for every player holding a weapon, the same way
+//                 shot { id, a }, swing { id }   another player's shot or strike, to the players in their zone
 //                 release { name, reason }   the Ooga this socket claimed is not, or no longer, its to drive
 //                 host { id, followers }     who runs the NPCs now (0 for nobody) and how many pages follow
 //                                            them (a host with none sends nothing); binary NPC frames from them
@@ -115,6 +125,13 @@ export const DOOR_BURST = 6;
 // HALLOWEEN: the arcade's ghost hunt's reports to its host: a follower's hits, every target's summed damage a tenth of a second
 // at a time in one `hits` report (up to 60 a target), so any mix of rifle and monkey fire stays at ten reports a second;
 // the rest of the budget is for a start or pause.
+// A driven Ooga's own shots and strikes, relayed for drawing only (nothing is hit and nothing is kept): a burst is
+// three bananas 0.09 s apart, every 0.44 s at most, and a shot never flies past SHOT_RANGE.
+export const SHOT_HZ = 12;
+export const SHOT_BURST = 6;
+export const SHOT_RANGE = 120;
+export const SWING_HZ = 4;
+export const SWING_BURST = 4;
 export const GHOST_HZ = 20;
 export const GHOST_BURST = 24;
 // A follower's batch: up to GHOST_BATCH targets, each a ghost id (0 the boss) and its summed damage, as one report.
@@ -173,6 +190,14 @@ export const parseClientMessage = (text) => {
       pose.g = [g[0], round(Math.max(-20, Math.min(20, g[1]))), round(Math.max(-1e6, Math.min(1e6, g[2]))),
         round(Math.max(-1, Math.min(1, g[3]))), round(Math.max(-1, Math.min(1, g[4]))), round(Math.max(0, Math.min(1, g[5])))];
     }
+    if (msg.j !== undefined) {
+      if (!Number.isInteger(msg.j) || msg.j < 0 || msg.j > 7) return null;
+      if (msg.j) pose.j = msg.j;
+    }
+    if (msg.w !== undefined) {
+      if (!Number.isInteger(msg.w) || msg.w < 0 || msg.w > 255) return null;
+      if (msg.w) pose.w = msg.w;
+    }
     return pose;
   }
   if (msg.t === "body") {
@@ -210,6 +235,16 @@ export const parseClientMessage = (text) => {
     if (msg.k === "hits") return ghostHits(msg.h);
     return msg.k === "hit" && ghostHit(msg.g, msg.d) ? { t: "ghost", k: "hit", g: msg.g, d: msg.d } : null;
   }
+  if (msg.t === "shot") {
+    const a = msg.a;
+    if (!Array.isArray(a) || a.length !== 6 || !a.every(finite)) return null;
+    for (let i = 0; i < 6; i += 3) {
+      if (Math.abs(a[i]) > BOUND_XZ || Math.abs(a[i + 2]) > BOUND_XZ || a[i + 1] < BOUND_Y_MIN || a[i + 1] > BOUND_Y_MAX) return null;
+    }
+    if (Math.hypot(a[3] - a[0], a[4] - a[1], a[5] - a[2]) > SHOT_RANGE) return null;
+    return { t: "shot", a: a.map(round) };
+  }
+  if (msg.t === "swing") return { t: "swing" };
   if (msg.t === "poker-voice") return msg.table === null || Number.isInteger(msg.table) && msg.table >= 0 && msg.table < 10 ? { t: "poker-voice", table: msg.table } : null;
   return null;
 };
