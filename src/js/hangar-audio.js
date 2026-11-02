@@ -16,6 +16,10 @@
 // until they come to, a ringing in their ears over it. Everything passes a limiter, so the roar is loud and never
 // clips. `setVolume` sets the hangar's level (localStorage `ooga-hangar-volume`, 0..1).
 //
+// The engines acting up on their own (`hangar-anomaly.js`) play on the same voices: `misfire(M)` schedules a failed
+// start at once, an electrical hum rising, three tries at turning the engines over, each whining higher and dying in a
+// sputter, the last coughing a short burst, then a dead stop and the metal ticking as it cools.
+//
 // Kortik's Sis has a voice of her own (`voice`): a buzz and a breath through three formants, a syllable for each run
 // of vowels in her line with the formants of its vowel, pauses at its punctuation, a stressed last syllable before a
 // "!" or a "?", and the censor's bleep over each grawlix; muttered, yelled, screamed or whispered, each line at its own
@@ -39,8 +43,8 @@
   const REF = { neon: 5, launch: 9, door: 5 };
 
   // How loud the test's voices peak: the siren, the whine and its whoosh, the whoomph, the roar's body, crackle and
-  // rumble, a clank, the alarm, the boom's sweep, its rumble and its crack, and the ringing.
-  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05 };
+  // rumble, a clank, the alarm, the boom's sweep, its rumble and its crack, the ringing, and the anomalies' hum.
+  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08 };
   // How far the blast muffles the presser's hearing, Hz.
   const MUFFLED = 320, CLEAR = 20000;
   // Kortik's Sis's ways of saying a line: her pitch, Hz; a syllable's length and the gap after it, s; how loud; how far
@@ -300,6 +304,10 @@
       test.clank = hissOf(test.clankFilter);
       test.pingGain = gain(0, test.enginePan);
       test.ping = osc("triangle", 1700, test.pingGain);
+      // The anomalies' electrical hum at the engines: a mains buzz through a narrow band, and its fizz.
+      test.humGain = gain(0, test.enginePan);
+      test.hum = osc("sawtooth", 100, filter("bandpass", 380, 2.5, test.humGain));
+      test.humFizz = hissOf(filter("bandpass", 3600, 5, gain(0.35, test.humGain)));
       // The blast: a falling sweep, its noise's rumble closing down, and the crack on top.
       test.boomGain = gain(0, mix);
       test.boom = osc("sine", 95, test.boomGain);
@@ -448,6 +456,64 @@
       T.ringGain.gain.setValueAtTime(0, at(AT.boom + 0.1));
       T.ringGain.gain.linearRampToValueAtTime(TEST.ring, at(AT.boom + 0.4));
       T.ringGain.gain.linearRampToValueAtTime(0, at(AT.result + 0.8));
+      return true;
+    };
+    // A failed start from now, on its times `M` (seconds from its start, as `hangar-anomaly.js` runs it): the hum rising
+    // to the first try and wavering on; at each try the starter's relay, the whine and its whoosh climbing, higher and
+    // louder each try, then coughing, dropping out and catching as they fall away; the last try's burst (`burp`) a
+    // whoomph with the roar and the rumble for a moment; at the cut the hum dead with a thunk; then the metal ticking as
+    // it cools.
+    const TICKS = [[0.9, 2500], [1.5, 1900], [2.2, 2900], [2.9, 2200]];
+    const misfire = (M) => {
+      if (!ready || muted) return false;
+      const t0 = ctx.currentTime + 0.02, at = (s) => t0 + s, T = test, top = M.heat[M.heat.length - 1];
+      const clear = (param, value) => { param.cancelScheduledValues(t0); param.setValueAtTime(value, t0); };
+      for (const g of [T.humGain, T.whineGain, T.whooshGain, T.whoomphGain, T.roarGain, T.rumbleGain, T.clankGain, T.pingGain]) clear(g.gain, 0);
+      clear(T.whine.frequency, 140); clear(T.whine2.frequency, 210); clear(T.whineFilter.frequency, 300); clear(T.whooshFilter.frequency, 300);
+      clear(T.roarFilter.frequency, 900); clear(T.clankFilter.frequency, 900); clear(T.ping.frequency, 1700);
+      T.humGain.gain.linearRampToValueAtTime(TEST.hum, at(M.tries[0]));
+      for (let s = M.tries[0] + 0.3; s < M.cut - 0.1; s += 0.3 + Math.random() * 0.25) T.humGain.gain.linearRampToValueAtTime(TEST.hum * (0.7 + Math.random() * 0.6), at(s));
+      for (let i = 0; i < M.tries.length; i++) {
+        const s0 = M.tries[i], k = M.heat[i] / top, peak = s0 + M.spin, done = peak + M.sputter;
+        const whine = TEST.whine * (0.45 + 0.55 * k), whoosh = TEST.whoosh * (0.4 + 0.6 * k), high = 500 + 1600 * k;
+        T.clankFilter.frequency.setValueAtTime(700 + 300 * i, at(s0));
+        T.clankGain.gain.setValueAtTime(TEST.clank * 0.35, at(s0));
+        T.clankGain.gain.exponentialRampToValueAtTime(0.001, at(s0 + 0.14));
+        T.whine.frequency.setValueAtTime(140, at(s0)); T.whine.frequency.exponentialRampToValueAtTime(high, at(peak));
+        T.whine2.frequency.setValueAtTime(210, at(s0)); T.whine2.frequency.exponentialRampToValueAtTime(high * 1.5, at(peak));
+        T.whineFilter.frequency.setValueAtTime(300, at(s0)); T.whineFilter.frequency.exponentialRampToValueAtTime(700 + 2000 * k, at(peak));
+        T.whooshFilter.frequency.setValueAtTime(300, at(s0)); T.whooshFilter.frequency.exponentialRampToValueAtTime(600 + 2200 * k, at(peak));
+        T.whineGain.gain.setValueAtTime(0, at(s0)); T.whineGain.gain.linearRampToValueAtTime(whine, at(peak));
+        T.whooshGain.gain.setValueAtTime(0, at(s0)); T.whooshGain.gain.linearRampToValueAtTime(whoosh, at(peak));
+        for (let s = peak; s < done - 0.06; s += 0.07 + Math.random() * 0.07) {
+          const k2 = (Math.random() < 0.55 ? 1 : 0.12) * (1 - (s - peak) / M.sputter);
+          T.whineGain.gain.setValueAtTime(whine * k2, at(s));
+          T.whooshGain.gain.setValueAtTime(whoosh * k2, at(s));
+        }
+        T.whine.frequency.exponentialRampToValueAtTime(110, at(done));
+        T.whine2.frequency.exponentialRampToValueAtTime(165, at(done));
+        T.whineGain.gain.linearRampToValueAtTime(0, at(done));
+        T.whooshGain.gain.linearRampToValueAtTime(0, at(done));
+      }
+      const b = M.tries[M.tries.length - 1] + M.burp;
+      T.whoomphGain.gain.setValueAtTime(TEST.whoomph * 0.35, at(b));
+      T.whoomphGain.gain.exponentialRampToValueAtTime(0.001, at(b + 0.7));
+      T.roarGain.gain.setValueAtTime(0, at(b));
+      T.roarGain.gain.linearRampToValueAtTime(TEST.roar * 0.3, at(b + 0.04));
+      T.roarGain.gain.linearRampToValueAtTime(0, at(b + M.burpLen + 0.15));
+      T.rumbleGain.gain.setValueAtTime(0, at(b));
+      T.rumbleGain.gain.linearRampToValueAtTime(TEST.rumble * 0.4, at(b + 0.05));
+      T.rumbleGain.gain.linearRampToValueAtTime(0, at(b + M.burpLen + 0.4));
+      T.humGain.gain.linearRampToValueAtTime(TEST.hum, at(M.cut));
+      T.humGain.gain.linearRampToValueAtTime(0, at(M.cut + 0.08));
+      T.clankFilter.frequency.setValueAtTime(420, at(M.cut));
+      T.clankGain.gain.setValueAtTime(TEST.clank * 0.55, at(M.cut));
+      T.clankGain.gain.exponentialRampToValueAtTime(0.001, at(M.cut + 0.3));
+      for (const [s, f] of TICKS) {
+        T.ping.frequency.setValueAtTime(f, at(M.cut + s));
+        T.pingGain.gain.setValueAtTime(TEST.clank * 0.07, at(M.cut + s));
+        T.pingGain.gain.exponentialRampToValueAtTime(0.001, at(M.cut + s + 0.25));
+      }
       return true;
     };
 
@@ -827,7 +893,7 @@
     };
 
     return {
-      listen, update, setMuted, setVolume, test: play, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
+      listen, update, setMuted, setVolume, test: play, misfire, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
       get muted() { return muted; },
       get volume() { return volume; },
       get ready() { return ready; },
