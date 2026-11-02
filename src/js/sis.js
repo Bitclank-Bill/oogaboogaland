@@ -32,6 +32,10 @@
 // they roar, cries "THAT ENGINE ISN'T—" as they falter, and the blast knocks her flat on her back, sooted and smoking.
 // She comes to with the presser, gets up blaming everyone else, and goes to hammer the engine.
 //
+// When the Jet acts up on its own (`spook`, from `hangar-anomaly.js`) she jumps out of her skin, wherever she is and
+// whatever she is doing, turns on the engines red-faced, screams at them and shakes her fist, then goes back to what
+// she was doing.
+//
 // She walks a grid of her part of the hall built once a visit from the hangar's own checks (`HM.clearAt`,
 // `HM.supportAt`, `HM.walkable`), each cell with a place on the floor and one up the Jet's stair or along its gangway
 // where those stand over it, kept off the runway, out of the static fire booth's box and clear of the crew's posts; a
@@ -93,12 +97,13 @@
     fixed: ["There. Fixed it."],
     panic: ["WHO PRESSED THAT?!", "THAT ENGINE ISN'T—"],
     blame: ["THAT WASN'T MY FAULT!", "WHO TOUCHED MY ENGINES?!", "I TOLD YOU THAT ENGINE WASN'T READY!", "NOBODY SAW THAT. NOBODY!"],
+    spook: ["WHO THE #@$% IS STARTING MY ENGINES?!"],
     tess: ["TESS! BUZZ OFF!", "NOT NOW, TESS!", "GET OUT OF MY FACE, YOU FLYING TOASTER!", "I CAN'T SEE THE #@$%ING JET!", "I'M FIXING IT! LEAVE ME BE!"]
   };
   // How she says each (a style of `hangarAudio.voice`); how often a line about the Jet or Lightning comes out a rare
   // one instead, and a yell a scream.
   const STYLE = { jet: "yell", lightning: "yell", hammer: "yell", rage: "scream", charge: "scream", caught: "yell", mutter: "mutter", hope: "soft", rare: "yell", panic: "scream", blame: "yell",
-    poke: "yell", rampage: "scream", smash: "yell", shove: "yell", chase: "scream", meltdown: "scream", sulk: "yell", fixed: "mutter", hush: "scream", quarrel: "scream", tess: "yell" };
+    poke: "yell", rampage: "scream", smash: "yell", shove: "yell", chase: "scream", meltdown: "scream", sulk: "yell", fixed: "mutter", hush: "scream", quarrel: "scream", tess: "yell", spook: "scream" };
   const RARE = 0.08, SCREAM = 0.2;
   // The static fire: where she runs to, the nearer of them (beside the booth and by the far wall's crates, both where
   // the test's show view keeps her in frame lying down); how far off she may stay put and cower; how near the blast
@@ -126,6 +131,9 @@
   // whisper, the warning light, the scream, the hunt for the hammer, the hammer picked up; and how many blows put the
   // light out. The light's blink, s each way.
   const QUARREL = { first: [35, 60], every: [80, 150], answer: 0.4, shout: 2.6 };
+  // The Jet acting up on its own: how long her jump takes and how high it goes, m, and the least she stays turned on it,
+  // s, after it.
+  const SPOOK = { jump: 0.45, hop: 0.38, least: 2.4 };
   const HUSH = { chance: 0.15, every: 150, down: 0.7, whisper: 1.3, light: 4.4, scream: 5, hunt: 6.9, grab: 7.5, blows: 3, blink: 0.18 };
   // The tally at her feet while she smashes: its font, its pips' size and gap, px.
   const TALLY_FONT = "bold 10px ui-monospace, monospace", PIP = 9, PIP_GAP = 4;
@@ -406,7 +414,8 @@
     };
     // ---- poking her ----
     // Her anger (0 to POKE.rage) and how long before it cools a level; where the last poke came from and when; the fit
-    // she is in (1 to 4 by her anger, 5 shoved off while she smashes, 6 her meltdown's tantrum) and its time left;
+    // she is in (1 to 4 by her anger, 5 shoved off while she smashes, 6 her meltdown's tantrum, 7 shouting back at
+    // Kortik, 8 spooked by the Jet) and its time left;
     // whether she is smashing the Jet, the quick pokes' tally that stops her, the blows left at her spot and the pokes
     // there, and since when; when she may go off again; whether she is storming off to sulk; a chase's time left and its
     // line said; whether the visitor's Ooga stands near enough to poke her; and how hard the Jet is rocking.
@@ -526,6 +535,18 @@
       fit(7);
       say(RIVALRY[quarrel][1], STYLE.quarrel, QUARREL.shout);
       fitLen = fitT = Math.max(QUARREL.shout, talk + 0.4);
+    };
+    // The Jet acting up on its own: she jumps out of her skin, turned on the engines at (x, z), and screams at them once
+    // she lands. Whatever she was doing goes on after, but her quiet moment, which it ends. Not while the static fire has
+    // her.
+    let spookAt = 0, spookSaid = false;
+    const spook = (x, z) => {
+      if (panicking) return false;
+      if (doing === "hush") { endHush(); doing = "glare"; t = 0; spot.dur = pick(TIMES.glare[0], TIMES.glare[1]); }
+      pokeX = x; pokeZ = z; spookAt = clock; spookSaid = false;
+      fit(8);
+      fitLen = fitT = SPOOK.jump + SPOOK.least;
+      return true;
     };
     // The quiet moment: when the next may come, whether debugging has asked for one, the blows at the light so far,
     // and the beats said.
@@ -682,6 +703,20 @@
           want.lean = 0.12; want.headX = -0.15;
           want.armLx = -2.1; want.armLz = 0.55; want.foreLx = -1.5; want.foreLz = -0.7;
           want.armRx = -2.1; want.armRz = -0.55; want.foreRx = -1.5; want.foreRz = 0.7;
+        } else if (fitKind === 8) {
+          // Spooked by the Jet: a jump with her arms flung up, then turned on the engines, red, screaming at them with the
+          // hammer up and her fist shaking.
+          const a = clock - spookAt;
+          if (a < SPOOK.jump) {
+            hop = Math.sin(a / SPOOK.jump * Math.PI) * SPOOK.hop;
+            face = H.open;
+            want.armLx = -2.9; want.armLz = 0.9; want.foreLx = -0.3; want.foreLz = 0;
+            want.armRx = -2.7; want.armRz = -0.6; want.foreRx = -0.4; want.lean = -0.15;
+          } else {
+            if (!spookSaid) { spookSaid = true; sayFrom("spook", SPOOK.least); fitT = Math.max(fitT, talk + 0.4); }
+            want.armLx = -2.5 + Math.sin(clock * 16) * 0.3; want.armLz = 0.35; want.foreLx = -0.8; want.foreLz = 0;
+            want.armRx = -2.2; want.foreRx = -1.2; want.lean = 0.08;
+          }
         } else {
           want.crouch = Math.max(0, Math.sin(clock * 14)) * 0.08;
           want.armLx = -2.6 + Math.sin(clock * 17) * 0.4; want.armLz = 0.4; want.foreLx = -0.8; want.foreLz = 0;
@@ -996,6 +1031,7 @@
       hush: (name = "wingtip") => { const s = spots.find((q) => q.name === name && q.kind === "fix"); if (s) { forceHush = true; goTo(s); } return !!s; },
       get fit() { return fitT > 0 ? fitKind : 0; },
       quarrel: () => { if (free()) hearKortik(); return answerIn > 0; },
+      spook: () => spook(HM.LAYOUT.jet.x, HM.LAYOUT.jet.z),
       get anger() { return anger; }, get rampaging() { return rampage; }, get pips() { return pips; }, get storming() { return storming; }, get near() { return near; },
       get doing() { return doing; }, get panicking() { return panicking; }, get down() { return down; }, get spot() { return spot && spot.name; }, get spots() { return spots.map((s) => s.name); }, get path() { return pathN; },
       get position() { return { x: p.x, y: feet, z: p.z }; }, open: () => { let n = 0; for (let i = 0; i < M; i++) n += open[i]; return n; }
@@ -1008,7 +1044,7 @@
       tess = at;
     };
     // How cross she is, 0 to 4 by her anger, 5 while she smashes: the terminals' mood page shows it.
-    return { node, props, body: P.torso, actor, update, liveGeometry, poke, useNear, actLabel, overlay, distract, debug, get near() { return near; }, get rampaging() { return rampage; }, get mood() { return rampage ? 5 : Math.min(4, anger); } };
+    return { node, props, body: P.torso, actor, update, liveGeometry, poke, spook, useNear, actLabel, overlay, distract, debug, get near() { return near; }, get rampaging() { return rampage; }, get mood() { return rampage ? 5 : Math.min(4, anger); } };
   };
 
   BL.sis = { create };
