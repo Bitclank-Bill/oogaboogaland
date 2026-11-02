@@ -18,7 +18,8 @@
 //
 // The engines acting up on their own (`hangar-anomaly.js`) play on the same voices: `misfire(M)` schedules a failed
 // start at once, an electrical hum rising, three tries at turning the engines over, each whining higher and dying in a
-// sputter, the last coughing a short burst, then a dead stop and the metal ticking as it cools.
+// sputter, the last coughing a short burst, then a dead stop and the metal ticking as it cools; `revs(R)` the two
+// engines revving by turns, each with a voice of its own on its own side, as if they were talking.
 //
 // Kortik's Sis has a voice of her own (`voice`): a buzz and a breath through three formants, a syllable for each run
 // of vowels in her line with the formants of its vowel, pauses at its punctuation, a stressed last syllable before a
@@ -44,7 +45,7 @@
 
   // How loud the test's voices peak: the siren, the whine and its whoosh, the whoomph, the roar's body, crackle and
   // rumble, a clank, the alarm, the boom's sweep, its rumble and its crack, the ringing, and the anomalies' hum.
-  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08 };
+  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08, rev: 0.22 };
   // How far the blast muffles the presser's hearing, Hz.
   const MUFFLED = 320, CLEAR = 20000;
   // Kortik's Sis's ways of saying a line: her pitch, Hz; a syllable's length and the gap after it, s; how loud; how far
@@ -60,6 +61,8 @@
     kortik: { f0: 120, len: 0.12, gap: 0.035, level: 0.5, end: 1.12, buzz: 1, breath: 0.1, shake: 0, least: 0.12, formant: 0.82, tone: 700 }
   };
   const SIS_REF = 9, BOOT_REF = 5, BLEEP = 0.3;
+  // How much farther apart than they stand the two engines' revs are panned, so each is heard on its own side.
+  const REV_SPREAD = 2.5;
   // The forklift's button: how loud its click, its thunk and the denied buzz are, and the buzz's two pulses, [from, for,
   // Hz], the second lower, as a machine says no.
   const FORK = { click: 0.3, thunk: 0.5, buzz: 0.16 }, DENIED = [[0.06, 0.17, 150], [0.29, 0.24, 132]];
@@ -81,8 +84,8 @@
   const FORMANTS = { 65: [850, 1220], 69: [610, 2330], 73: [430, 2480], 79: [590, 920], 85: [760, 1400], 89: [310, 2790] }, SCHWA = [640, 1500], F3 = 2900;
 
   // `spots`: the door's shield and the launch shield, { x, y, z } each, the tunnel's axis { y, z0, z1 }, the test's
-  // booth and the middle of the Jet's engines, the film show's projector and its picture, and the forklift, { x, y, z }
-  // each.
+  // booth and the middle of the Jet's engines (with `gap`, how far each stands to its side), the film show's projector
+  // and its picture, and the forklift, { x, y, z } each.
   const create = (spots) => {
     let ctx = null, master = null, mix = null, muffle = null, buffer = null, ready = false, muted = false, disposed = false, since = 0, volume = 1;
     try {
@@ -308,6 +311,21 @@
       test.humGain = gain(0, test.enginePan);
       test.hum = osc("sawtooth", 100, filter("bandpass", 380, 2.5, test.humGain));
       test.humFizz = hissOf(filter("bandpass", 3600, 5, gain(0.35, test.humGain)));
+      // Each engine's own rev, on its own side, a jet spooling up and back: its roar, the noise through a band that
+      // opens as it spools, driven a little into the clip for grit; a rumble under it; the turbine's whine high over it;
+      // and a little of the exhaust's crackle.
+      test.revs = [0, 1].map(() => {
+        const pan = panner(), level = gain(0, pan), grit = ctx.createWaveShaper();
+        grit.curve = curve;
+        grit.connect(level);
+        const roarBand = filter("lowpass", 220, 0.8, grit);
+        return {
+          pan, level, roarBand, roar: hissOf(roarBand),
+          rumble: osc("sawtooth", 38, filter("lowpass", 110, 0.7, gain(0.9, level))),
+          whine: osc("sine", 700, gain(0.12, level)), whine2: osc("sine", 1050, gain(0.05, level)),
+          crackle: hissOf(filter("highpass", 1200, 0.7, gain(0.25, level)), crackle)
+        };
+      });
       // The blast: a falling sweep, its noise's rumble closing down, and the crack on top.
       test.boomGain = gain(0, mix);
       test.boom = osc("sine", 95, test.boomGain);
@@ -516,6 +534,28 @@
       }
       return true;
     };
+    // Phantom revs from now, on their script `R` (each [start, engine, length, how hard], s, the engine 0 the left and
+    // 1 the right, 0..1): each rev on its engine's own voice, spooling up over `REV_UP` of it, the roar's band opening,
+    // the rumble deepening and the whine climbing, harder revs higher and louder, and running back down.
+    const REV_UP = 0.45;
+    const revs = (R) => {
+      if (!ready || muted) return false;
+      const t0 = ctx.currentTime + 0.02, at = (s) => t0 + s;
+      for (const v of test.revs) {
+        for (const param of [v.level.gain, v.roarBand.frequency, v.rumble.frequency, v.whine.frequency, v.whine2.frequency]) param.cancelScheduledValues(t0);
+        v.level.gain.setValueAtTime(0, t0); v.roarBand.frequency.setValueAtTime(220, t0); v.rumble.frequency.setValueAtTime(38, t0);
+        v.whine.frequency.setValueAtTime(700, t0); v.whine2.frequency.setValueAtTime(1050, t0);
+      }
+      for (const [s, i, len, hard] of R) {
+        const v = test.revs[i], up = s + len * REV_UP, end = s + len, loud = TEST.rev * (0.5 + 0.5 * hard), whine = 700 + 2800 * hard;
+        v.roarBand.frequency.setValueAtTime(220, at(s)); v.roarBand.frequency.exponentialRampToValueAtTime(220 + 2400 * hard, at(up)); v.roarBand.frequency.exponentialRampToValueAtTime(200, at(end));
+        v.rumble.frequency.setValueAtTime(38, at(s)); v.rumble.frequency.exponentialRampToValueAtTime(38 + 45 * hard, at(up)); v.rumble.frequency.exponentialRampToValueAtTime(36, at(end));
+        v.whine.frequency.setValueAtTime(700, at(s)); v.whine.frequency.exponentialRampToValueAtTime(whine, at(up)); v.whine.frequency.exponentialRampToValueAtTime(600, at(end));
+        v.whine2.frequency.setValueAtTime(1050, at(s)); v.whine2.frequency.exponentialRampToValueAtTime(whine * 1.5, at(up)); v.whine2.frequency.exponentialRampToValueAtTime(900, at(end));
+        v.level.gain.setValueAtTime(0, at(s)); v.level.gain.linearRampToValueAtTime(loud, at(s + 0.15)); v.level.gain.setValueAtTime(loud, at(up)); v.level.gain.linearRampToValueAtTime(0, at(end));
+      }
+      return true;
+    };
 
     // Only from a gesture the browser has already counted, so nothing warns in the console; a gesture also wakes a
     // context the browser started suspended.
@@ -575,8 +615,16 @@
       set(bed.door.pan.pan, AT.pan, now);
       place(spots.booth.x, spots.booth.y, spots.booth.z, 1);
       set(test.boothPan.pan, AT.pan, now);
-      place(spots.engines.x, spots.engines.y, spots.engines.z, 1);
+      const E = spots.engines;
+      place(E.x, E.y, E.z, 1);
       set(test.enginePan.pan, AT.pan * 0.6, now);
+      // Each engine's rev from where it stands, the two pushed farther apart than they are.
+      place(E.x - E.gap, E.y, E.z, 1);
+      const left = AT.pan;
+      place(E.x + E.gap, E.y, E.z, 1);
+      const right = AT.pan, mid = (left + right) / 2;
+      set(test.revs[0].pan.pan, clamp(mid + (left - mid) * REV_SPREAD, -1, 1), now);
+      set(test.revs[1].pan.pan, clamp(mid + (right - mid) * REV_SPREAD, -1, 1), now);
       if (sisVoice.until > now) placeSis(now, false);
       const Pj = spots.projector, Sc = spots.screen;
       place(Pj.x, Pj.y, Pj.z, FILM_REF.projector);
@@ -893,7 +941,7 @@
     };
 
     return {
-      listen, update, setMuted, setVolume, test: play, misfire, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
+      listen, update, setMuted, setVolume, test: play, misfire, revs, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
       get muted() { return muted; },
       get volume() { return volume; },
       get ready() { return ready; },

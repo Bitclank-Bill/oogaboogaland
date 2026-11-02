@@ -1208,7 +1208,7 @@
     hireCrew(scene);
     const F = LAYOUT.fireTest, exits = JM.EXHAUST;
     audio = BL.hangarAudio.create({ door: { x: DOOR.x, y: DOOR.y + 2, z: DOOR.z }, launch: { x: 0, y: TUN.y, z: TUN.z1 }, tunnel: { y: TUN.y, z0: TUN.z0, z1: TUN.z1 },
-      booth: { x: F.x, y: 2, z: F.z }, engines: { x: LAYOUT.jet.x, y: exits[0].y, z: LAYOUT.jet.z + exits[0].z + 2 }, projector: HM.projector().lens, screen: HM.filmScreen().picture,
+      booth: { x: F.x, y: 2, z: F.z }, engines: { x: LAYOUT.jet.x, y: exits[0].y, z: LAYOUT.jet.z + exits[0].z + 2, gap: Math.abs(exits[0].x) }, projector: HM.projector().lens, screen: HM.filmScreen().picture,
       forklift: { x: LAYOUT.forklift.x, y: 1.6, z: LAYOUT.forklift.z } });
     // The engine static fire test's booth beside the runway (`hangar-fire.js`), and its settings: the Sound
     // button opens the hangar's sound panel, its level and the pad's vibration.
