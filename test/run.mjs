@@ -23691,7 +23691,7 @@ const genesisEra0UpgradeSuite = async () => {
       solid: (w, h, d, color, x, y, z, emissive = 0) => { const n = { kind: "solid", w, h, d, color, emissive, position: { x, y, z }, visible: true, glow: 1 }; records.push(n); return n; },
       obstacle: (x0, x1, z0, z1) => obstacles.push({ x0, x1, z0, z1, after: order.length }),
       prop: (d) => { props[d.id] = d; order.push({ id: d.id, at: records.length }); return d; } };
-    BL.genesisExhibits.eras[0].build(kit);
+    BL.genesisExhibits.eras[0].build(BL.genesisWorld.packedKit(kit, 0, BL.genesisExhibits.eras[0].build));
     const term = (id) => { const r = props[id].onUse({}); return r.terminal ? (line) => r.terminal.run(line).lines.join(" | ") : null; };
     return { W, kit, records, obstacles, props, order, term };
   };
@@ -23913,8 +23913,9 @@ const genesisEra1UpgradeSuite = async () => {
       solid: (w, h, d, c, x, y, z) => { records++; solids.push({ w, h, d, x, y, z }); return node({ position: { x, y, z } }); },
       sign: () => { records += 3; return node(); }, obstacle: (x0, x1, z0, z1) => { obstacles.push({ x0, x1, z0, z1 }); },
       prop: (d) => { records++; props[d.id] = d; return d; } };
-    E1.build(kit);
-    return { nodes, solids, obstacles, props, records };
+    const packed = W.packedKit(kit, 1, E1.build);
+    E1.build(packed);
+    return { nodes, solids, obstacles, props, records, shift: packed.shift };
   };
   const B = build();
   const snap = () => JSON.stringify(B.nodes.map((n) => [n.position.x, n.position.y, n.position.z, n.rotation.x, n.scale.y, n.visible]));
@@ -23936,11 +23937,13 @@ const genesisEra1UpgradeSuite = async () => {
 
   // --- Placement --------------------------------------------------------------------------------------------------
   const MU = W.MUSEUM, bay = MU.bays[1], uOf = (z) => era.z1 - z;
-  const cluster = (x, z) => x > 21 && x < 34.5 && uOf(z) > 47.5 && uOf(z) < 57;
+  // The living room as authored (x 21 to 34.5, 47.5 to 57 m in), where the museum's packing moved it.
+  const room = B.shift(27.75, era.z1 - 52.25), rx = room.x - 27.75, ru = era.z1 - 52.25 - room.z;
+  const cluster = (x, z) => x - rx > 21 && x - rx < 34.5 && uOf(z) - ru > 47.5 && uOf(z) - ru < 57;
   const inGallery = (x, z) => x >= bay.x0 && x <= bay.x1 && uOf(z) >= MU.OPEN && uOf(z) <= bay.depth;
   const newSolids = B.solids.filter((s) => cluster(s.x, s.z));
-  record("everything in the living room stands inside Era 1's gallery, back from the walk (x >= 21) and below 8 m",
-    newSolids.length > 0 && newSolids.every((s) => inGallery(s.x, s.z) && s.x - s.w / 2 >= 21 && s.y + s.h / 2 <= top + W.BANK.MAX_H));
+  record("everything in the living room stands inside Era 1's gallery, off the walk (the old stream and 1.5 m beside it) and below 8 m",
+    newSolids.length > 0 && newSolids.every((s) => inGallery(s.x, s.z) && s.x - s.w / 2 >= W.CHANNEL.x1 + 1.5 && s.y + s.h / 2 <= top + W.BANK.MAX_H));
   const reachable = NEW_IDS.every((id) => { const a = B.props[id].at; return !B.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3) && inGallery(a.x, a.z); });
   record("each new exhibit's walk-up point is in the gallery and clear of every obstacle", reachable);
   const all = Object.values(B.props), far = NEW_IDS.every((id) => all.every((d) => d.id === id || Math.hypot(d.at.x - B.props[id].at.x, d.at.z - B.props[id].at.z) >= 2));
@@ -24448,12 +24451,14 @@ const genesisEra4UpgradeSuite = async () => {
   const build = (BLx) => {
     const W2 = BLx.genesisWorld, e = W2.ERAS[4], out = { solids: [], signs: [], obstacles: [], props: [] };
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], glow: 1 });
-    BLx.genesisExhibits.eras[4].build({ era: e, top: W2.BANK_TOP, channel: W2.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o), addChild: () => {}, place: (n) => n,
+    const packed = W2.packedKit({ era: e, top: W2.BANK_TOP, channel: W2.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign(node(), o), addChild: () => {}, place: (n) => n,
       label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
       solid: (w, h, d, c, x, y, z) => { const n = node(); out.solids.push({ w, h, d, x, y, z, n }); return n; },
       sign: (t, sub, x, y, z) => { out.signs.push({ t, sub, x, z }); return node(); },
       obstacle: (x0, x1, z0, z1) => out.obstacles.push({ x0, x1, z0, z1 }),
-      prop: (d) => { out.props.push(d); return { ...d, era: 4 }; } });
+      prop: (d) => { out.props.push(d); return { ...d, era: 4 }; } }, 4, BLx.genesisExhibits.eras[4].build);
+    BLx.genesisExhibits.eras[4].build(packed);
+    out.shift = packed.shift;
     return out;
   };
   const built = build(BL), era = W.ERAS[4], NEW = ["e4-strategy", "e4-teletext", "e4-wireless"];
@@ -24482,8 +24487,9 @@ const genesisEra4UpgradeSuite = async () => {
   // it adds at most about 150 scene records.
   {
     const bad = [], r = W.MUSEUM.rects[4], inGallery = (x, z) => { const p = W.MUSEUM.toMuseum(4, x, z, {}); return p.x >= r.x0 && p.x <= r.x1 && p.z >= r.z0 && p.z <= r.z1; };
-    const zone = { x0: 24.5, x1: 36.5, z0: era.z - 1, z1: era.z + 3.2 }, inZone = (x, z) => x >= zone.x0 && x <= zone.x1 && z >= zone.z0 && z <= zone.z1;
-    const mine = built.obstacles.filter((o) => inZone((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)), others = built.obstacles.filter((o) => !mine.includes(o));
+    // The three stands as authored (x 26, 30.5 and 35 by the middle of the cave), where the museum's packing moved each.
+    const spots = [26, 30.5, 35].map((x) => built.shift(x, era.z + 0.1)), near = (x, z) => spots.some((p) => Math.abs(x - p.x) <= 2 && z >= p.z - 1.1 && z <= p.z + 3.1);
+    const inZone = near, mine = built.obstacles.filter((o) => inZone((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2)), others = built.obstacles.filter((o) => !mine.includes(o));
     if (mine.length !== 3) bad.push(`${mine.length} cluster obstacles`);
     for (const o of mine) {
       if (others.some((q) => o.x0 < q.x1 && o.x1 > q.x0 && o.z0 < q.z1 && o.z1 > q.z0)) bad.push("overlaps another obstacle");
@@ -24646,7 +24652,7 @@ const genesisEra4UpgradeSuite = async () => {
     const radio = byId["e4-wireless"].onUse({}).terminal;
     radio.run("OFF C");
     EX.eras[4].update(1 / 60, 0, { calm: false, reading: true });
-    const lamps = built.solids.filter((s) => s.n.glow !== 1 && s.z > era.z && s.x > 33);
+    const at = built.shift(35, era.z + 0.1), lamps = built.solids.filter((s) => s.n.glow !== 1 && s.z > at.z - 0.1 && s.x > at.x - 2);
     if (lamps.length !== 1 || !(lamps[0].n.glow < 0.5)) bad.push(`lamps ${lamps.length}`);
     record("playthrough: the packet console sends its ten packets to one over() and one onEnd; the stand's lamp shows a switched-off box", !bad.length, bad.join("; "));
   }
@@ -24927,19 +24933,22 @@ const genesisEra6UpgradeSuite = async () => {
   const BL = context.window.BL, W = BL.genesisWorld, EX = BL.genesisExhibits, P = BL.genesisProps, E6 = BL.genesisEra6;
 
   // Build Era 6 with a recording kit: every node keeps its position, scale and visibility so commands can be read back.
-  const build = () => {
+  // Packed (as the museum stands it) for placement; as authored for the exhibits' own moves, which write their own
+  // coordinates, as under the scene's cluster node.
+  const build = (pack = false) => {
     const rec = { solid: 0, sign: 0, obstacle: 0, prop: 0 }, props = {}, places = [], obstacles = [], solids = [];
     const node = (x = 0, y = 0, z = 0) => ({ position: { x, y, z }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true });
-    EX.eras[6].build({
+    const raw = {
       era: W.ERAS[6], top: W.BANK_TOP, channel: W.CHANNEL, M: {}, createNode: () => node(), addChild() {}, place: (n) => n, label: () => ({}), notify() {},
       solid: (w, h, d, c, x, y, z) => { rec.solid++; const n = node(x, y, z); solids.push({ w, h, d, x, y, z, n }); return n; },
       sign: (t, sub, x, y, z) => { rec.sign++; places.push({ what: `sign ${t}`, x, z }); return node(x, y, z); },
       obstacle: (x0, x1, z0, z1) => { rec.obstacle++; obstacles.push({ x0, x1, z0, z1 }); },
       prop: (d) => { rec.prop++; props[d.id] = d; return d; }
-    });
-    return { rec, props, places, obstacles, solids };
+    }, packed = BL.genesisWorld.packedKit(raw, 6, EX.eras[6].build);
+    EX.eras[6].build(pack ? packed : raw);
+    return { rec, props, places, obstacles, solids, shift: packed.shift };
   };
-  const A = build();
+  const P6 = build(true), A = build();
   const total = A.rec.solid + A.rec.sign + A.rec.obstacle + A.rec.prop;
   const BASE = 196, NEW = ["e6-argument", "e6-layout", "e6-workstation"];
   const KEPT = ["e6-announce", "e6-paper", ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `e6-ref-${n}`), "e6-not-listed", "e6-laptop", "e6-payments", "e6-january"];
@@ -24957,11 +24966,11 @@ const genesisEra6UpgradeSuite = async () => {
   // the earlier exhibits' obstacles; the new ones are the last three obstacles built.
   const M = W.MUSEUM, r = M.rects[6], reserved = W.reservedZones(6);
   const inGallery = (x, z) => { const p = M.toMuseum(6, x, z, {}); return p.x >= r.x0 - 0.05 && p.x <= r.x1 + 0.05 && p.z >= r.z0 - 0.05 && p.z <= r.z1 + 0.05; };
-  const fresh = A.obstacles.slice(-3), older = A.obstacles.slice(0, -3);
+  const fresh = P6.obstacles.slice(-3), older = P6.obstacles.slice(0, -3);
   const overlap = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0;
   check("rule: the cluster stands inside its gallery, off the walk and the reserved plots, and clear of every earlier exhibit",
     fresh.every((o) => inGallery(o.x0, o.z0) && inGallery(o.x1, o.z1) && o.x0 >= W.CHANNEL.x1 + 1.5 && !reserved.some((z) => overlap(o, z)) && !older.some((b) => overlap(o, b)))
-    && NEW.every((id) => { const a = A.props[id].at; return inGallery(a.x, a.z) && !A.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3); }),
+    && NEW.every((id) => { const a = P6.props[id].at; return inGallery(a.x, a.z) && !P6.obstacles.some((o) => a.x > o.x0 - 0.3 && a.x < o.x1 + 0.3 && a.z > o.z0 - 0.3 && a.z < o.z1 + 0.3); }),
     JSON.stringify(fresh));
   check("rule: nothing new is taller than the 8 m limit", A.solids.every((s) => s.y + s.h / 2 <= W.BANK_TOP + W.BANK.MAX_H));
 
@@ -25133,7 +25142,7 @@ const genesisEra7UpgradeSuite = async () => {
       sign: (t, sub, x, y, z) => { records += 3; inBay(x, z, `sign ${t}`); return node(); },
       obstacle: (x0, x1, z0, z1) => { inBay(x0, z0, "an obstacle"); inBay(x1, z1, "an obstacle"); clash(x0, x1, z0, z1, "an obstacle"); },
       prop: (d) => { const p = EX.checkProp(7, d); if (p) bad.push(p); inBay(d.at.x, d.at.z, d.id); clash(d.at.x - 0.3, d.at.x + 0.3, d.at.z - 0.3, d.at.z + 0.3, `${d.id}'s use point`); props[d.id] = d; return d; } };
-    EX.eras[7].build(kit);
+    EX.eras[7].build(W.packedKit(kit, 7, EX.eras[7].build));
     return { props, bad, records: () => records, kit };
   };
 
@@ -25547,12 +25556,20 @@ const genesisMuseumProof = async () => {
       sign: (t, sub, x, y, z) => { inBay(x, z, `sign "${t}"`); return node(); },
       obstacle: (x0, x1, z0, z1) => { inBay(x0, z0, "an obstacle"); inBay(x1, z1, "an obstacle"); },
       prop: (d) => { inBay(d.at.x, d.at.z, d.id); return { ...d, era: n }; } };
-    if (EX.eras[n]) EX.eras[n].build(kit);
+    if (EX.eras[n]) EX.eras[n].build(W.packedKit(kit, n, EX.eras[n].build));
   });
   // Era 2's FUD Patrol floor is a reserved plot of its gallery, inside it and so clear of the atrium's courtyard.
   const fud = context.window.BL.genesisEra2 && context.window.BL.genesisEra2.FUD_PATROL_ZONE, fz = W.reservedZones(2).find((r) => r.why === "FUD Patrol");
   const fm = fud && M.boxToMuseum(2, fud), r2 = M.rects[2];
   if (!fud || !fz || fm.x0 < r2.x0 || fm.x1 > r2.x1 || fm.z0 < r2.z0 || fm.z1 > r2.z1) bad.push("Era 2's FUD Patrol floor is not a reserved plot inside its gallery");
+  // Each gallery's size is its era repacked (packEra, with 2 m beside and 3 m behind, the walk kept inside, and at least
+  // 28 m wide in its own coordinates for its wall of headlines): the table in genesis-world.js never drifts from what
+  // the exhibits need.
+  for (let n = 0; n < 8; n++) {
+    const e = W.ERAS[n], { items, fixed, walls } = W.eraItems(EX.eras[n].build, n, W.BANK_TOP, W.CHANNEL), p = W.packEra(items, { laneX: W.LANE_X, anchorZ: e.z1 - M.OPEN, fixed, walls });
+    const x1 = Math.max(p.box.x1 + 2, W.LANE_X + 3), want = [Math.min(p.box.x0 - 2, W.LANE_X - 3, x1 - 28), x1, e.z1 - (p.box.z0 - 3)], b = M.bays[n];
+    if ([b.x0, b.x1, b.depth].some((v, k) => Math.abs(v - want[k]) > 0.06)) bad.push(`gallery ${n} is ${[b.x0, b.x1, b.depth]} but its packed exhibits need ${want.map((v) => v.toFixed(1))}`);
+  }
   return { galleries: M.rects.length, clockwise, roundTrip, pieces, atrium: [M.atrium.x1 - M.atrium.x0, M.atrium.z1 - M.atrium.z0], bad: bad.slice(0, 8) };
 };
 const genesisExhibitsProof = async () => {

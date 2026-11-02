@@ -335,6 +335,32 @@
   // --- Era exhibits (genesis-exhibits.js, one genesis-era-<n>.js per cave) ---------------------------------------------
   // Each era's file builds its cave's exhibits through a kit; usable ones become props like the room's, with a pick box
   // that taps select. Built once a visit, before the footing, so their obstacles count.
+  // Moves a frame's children from `first` on under one node per cluster of packEra's, each at its cluster's offset.
+  // A child no kit call noted (a merged mesh at the origin, a holder node) goes with the cluster nearest its middle.
+  const packFrame = (frame, first, pk, owner) => {
+    const kids = frame.children.splice(first), holders = [];
+    for (let g = 0; g < pk.groups; g++) holders.push(place(createNode({ position: { x: pk.dx[g], y: 0, z: pk.dz[g] } })));
+    const mid = { x: 0, z: 0 }, near = (node) => {
+      if (node.position.x || node.position.z) { mid.x = node.position.x; mid.z = node.position.z; return true; }
+      if (node.geometry && node.geometry.verts && node.geometry.verts.length) { const b = BL.scene.boundsOf(node.geometry); mid.x = b.center[0]; mid.z = b.center[2]; return true; }
+      for (const c of node.children) if (near(c)) { mid.x += node.position.x; mid.z += node.position.z; return true; }
+      return false;
+    };
+    for (const kid of kids) {
+      kid.parent = null;
+      let g = owner.has(kid) ? owner.get(kid) : -1;
+      if (g < 0 && near(kid)) {
+        let best = Infinity;
+        for (let i = 0; i < pk.group.length; i++) {
+          const it = pk.items ? pk.items[i] : null;
+          if (!it) break;
+          const ex = Math.max(it.x0 - mid.x, 0, mid.x - it.x1), ez = Math.max(it.z0 - mid.z, 0, mid.z - it.z1), d = ex * ex + ez * ez;
+          if (d < best) { best = d; g = pk.group[i]; }
+        }
+      }
+      addChild(g < 0 ? frame : holders[g], kid);
+    }
+  };
   const buildExhibits = () => {
     // Every sign geometry an era makes is noted, so its nodes can step out of the workbench's picture (host.open).
     const EX = BL.genesisExhibits, signGeos = new Set(), label = (...a) => { const l = BL.factoryModels.label(...a); signGeos.add(l.face); signGeos.add(l.back); return l; };
@@ -345,18 +371,31 @@
       const def = EX.eras[n];
       if (!def) return;
       const era = GW.ERAS[n];
+      // The era's pieces packed closer together (genesis-world.js packEra): a dry run notes each piece, its clusters
+      // are moved in toward the walk and the opening, and the real build counts the same calls, so each piece knows
+      // its cluster. Afterwards each of the frame's new children moves under its cluster's node, keeping its own
+      // coordinates (the exhibits' animations write them), and obstacles and props' spots shift with it.
+      const { items, fixed, walls } = GW.eraItems(def.build, n, ISLAND_TOP, CHANNEL), pk = GW.packEra(items, { laneX: GW.LANE_X, anchorZ: era.z1 - MU.OPEN, fixed, walls });
+      const frame = built.frames[n], first = frame.children.length, owner = new Map();
+      let item = fixed;
+      const shift = (g, x, z) => ({ x: x + pk.dx[g], z: z + pk.dz[g] });
+      const note = (node) => { const g = pk.group[item++]; owner.set(node, g); return node; };
+      const kitPlace = (node) => { place(node); if (node.position && (node.position.x || node.position.z)) note(node); return node; };
+      const kitSolid = (...a) => note(solid(...a));
       const kit = {
-        era, top: ISLAND_TOP, channel: CHANNEL, M, createNode, addChild, place, solid, label,
+        era, top: ISLAND_TOP, channel: CHANNEL, M, createNode, addChild, place: kitPlace, solid: kitSolid, label,
         // A short notice from an exhibit's update (a toast once the HUD is up; the kit is built before it).
         notify: (text) => { if (hud) hud.toast(text); },
         sign: (title, sub, x, y, z, yaw = 0, height = 0.6) => {
           const l = label(title, sub, { height, style: "plain" }), node = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } }));
           addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
           (built.signNodes = built.signNodes || []).push(node);
-          return node;
+          return note(node);
         },
-        obstacle: (x0, x1, z0, z1) => { built.oldObstacles.push({ era: n, x0, x1, z0, z1 }); },
-        prop: (d) => {
+        obstacle: (x0, x1, z0, z1) => { const g = pk.group[item++]; built.oldObstacles.push({ era: n, x0: x0 + pk.dx[g], x1: x1 + pk.dx[g], z0: z0 + pk.dz[g], z1: z1 + pk.dz[g] }); },
+        prop: (d0) => {
+          // Its spot moves with its cluster; its pick box goes under the cluster's node in its own coordinates.
+          const g = d0.at ? pk.group[item++] : -1, d = g < 0 ? d0 : { ...d0, at: { ...d0.at, ...shift(g, d0.at.x, d0.at.z) } };
           const problem = EX.checkProp(n, d);
           if (problem) throw new Error(`genesis exhibits: era ${n}: ${problem}`);
           // A board's last page says how the exhibit connects, with its trail step (numbered once every era is built).
@@ -381,13 +420,16 @@
           entry.prop = prop;
           built.exhibitProps.push(entry);
           const pick = d.pick || { w: 1, h: 1.4, d: 1 };
-          const node = place(createNode({ geometry: pickBox(pick.w, pick.h, pick.d), position: { x: pick.x !== undefined ? pick.x : d.at.x, y: (d.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : d.at.z } }));
+          const node = place(createNode({ geometry: pickBox(pick.w, pick.h, pick.d), position: { x: pick.x !== undefined ? pick.x : d0.at.x, y: (d.at.y || 0) + pick.h / 2, z: pick.z !== undefined ? pick.z : d0.at.z } }));
+          if (g >= 0) owner.set(node, g);
           node.museumFrame = n;
           built.propNodes[prop.id] = node;
           return { ...d, era: n };
         }
       };
       def.build(kit);
+      if (item !== pk.group.length) throw new Error(`genesis exhibits: era ${n}: its build made ${item} pieces, its dry run ${pk.group.length}`);
+      packFrame(frame, first, pk, owner);
     });
     const signs = built.signNodes = built.signNodes || [], walk = (node) => { if (node.geometry && signGeos.has(node.geometry)) signs.push(node); for (const c of node.children) walk(c); };
     walk(root);
@@ -682,7 +724,8 @@
     const id = bench.id, at = bench.prop.at, room = /^era3-room-/.test(id);
     const node = room ? built.lectern : built.propNodes[id] || built[id], pick = room ? { w: 0.7, h: 1.1, d: 0.5 } : bench.entry && (propOf(id).pick || PICK_SIZES[id]) || { w: 1, h: 1.4, d: 1 };
     const c = frameIn.c;
-    if (node && node.museumFrame !== undefined) { mu(node.museumFrame, node.position.x, node.position.z, c); c.y = node.position.y; }
+    // A pick box in a gallery stands under its cluster's node (packFrame), which adds its offset.
+    if (node && node.museumFrame !== undefined) { const h = node.parent !== built.frames[node.museumFrame] ? node.parent.position : null; mu(node.museumFrame, node.position.x + (h ? h.x : 0), node.position.z + (h ? h.z : 0), c); c.y = node.position.y; }
     else if (node) { c.x = node.position.x; c.y = node.position.y; c.z = node.position.z; }
     else { c.x = at.x; c.y = (at.y || 0) + pick.h / 2; c.z = at.z; }
     frameIn.size = Math.max(pick.w, pick.h, pick.d, 0.8);

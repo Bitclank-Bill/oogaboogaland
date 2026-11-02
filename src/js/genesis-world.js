@@ -147,10 +147,8 @@
       const f = bankFrame(n, side), xa = f.edge, xb = f.edge + f.side * f.width;
       const x0 = Math.min(xa, xb), x1 = Math.max(xa, xb);
       out.push({ x0, x1, z0: e.z1 - BANK.GATE, z1: e.z1, why: "gateway" });
-      const near = f.edge + f.side * 6;
-      out.push({ x0: Math.min(xa, near), x1: Math.max(xa, near), z0: e.z - 4, z1: e.z + 4, why: "dock" });
     }
-    for (const l of lampPosts(n)) out.push({ x0: l.x - 0.8, x1: l.x + 0.8, z0: l.z - 0.8, z1: l.z + 0.8, why: "lamp" });
+    // The museum has no stream, so no docks or lamp posts by it (the voyage's plots for them are gone with them).
     if (e.room) out.push({ x0: -12 + ROOM_SHIFT.x - 1.5, x1: CHANNEL.x0, z0: -34 + ROOM_SHIFT.z - 1.5, z1: -19 + ROOM_SHIFT.z + 1.5, why: "Fingerprints and Time" });
     // Era 2 keeps a floor clear for the FUD Patrol cabinet (genesis-era-2.js FUD_PATROL_ZONE, in its own coordinates).
     const E2 = n === 2 && BL.genesisEra2 && BL.genesisEra2.FUD_PATROL_ZONE;
@@ -170,6 +168,120 @@
       post: { x: p.x - fx * 0.4, z: p.z - fz * 0.4, w: 0.3 } };
   };
 
+  // --- Packing an era's exhibits closer together (Billy: smaller rooms, larger exhibits) ------------------------------
+  // `packEra(items, { laneX, anchorZ })`: items are boxes { x0, x1, z0, z1 } in the era's old coordinates, in build
+  // order (every solid, sign, placed node, obstacle and walk-up spot). Boxes within GAP of each other are one group (an
+  // exhibit with its sign and its spot). Each group keeps its own shape and moves, whole, toward the old stream's line
+  // (laneX) and the gallery's opening (anchorZ) by PACK, then groups that overlap (with MARGIN between them) or sit in
+  // the walk down the middle (AISLE wide) are pushed apart, and nothing passes the opening. Pure and deterministic, so
+  // the scene and the Node checks pack the same. Returns { group (item -> group), dx, dz (per group), box (packed) }.
+  // The aisle is the old stream and 1.5 m either side, the walk every era's own checks keep clear.
+  const PACK = { s: 0.45, gap: 1.2, margin: 1.6, aisle: CHANNEL.x1 - CHANNEL.x0 + 3, wallRun: 12, rounds: 120 };
+  // An era's footprint for packEra: its build run once against a stand-in kit that draws nothing, noting a box for
+  // each piece in call order (a solid or obstacle as itself, a sign, a placed node or a prop's spot as a small box).
+  // The scene's kit counts the same calls in the same order, so item i of the real build is item i here. Pure.
+  const recordEra = (build, era, n, top, channel) => {
+    const items = [], box = (x, z, w, d) => items.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 });
+    const node = (o = {}) => Object.assign({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, glow: 1 }, o, { children: [] });
+    build({ era, top, channel, M: { box: () => ({}) }, addChild: () => {}, label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
+      createNode: node, place: (nd) => { if (nd.position && (nd.position.x || nd.position.z)) box(nd.position.x, nd.position.z, 0.5, 0.5); return nd; },
+      solid: (w, h, d, c, x, y, z) => { box(x, z, w, d); return node(); }, sign: (t, s, x, y, z) => { box(x, z, 1, 0.2); return node(); },
+      obstacle: (x0, x1, z0, z1) => { items.push({ x0, x1, z0, z1 }); }, prop: (d) => { if (d.at) box(d.at.x, d.at.z, 0.4, 0.4); return { ...d, era: n }; } });
+    return items;
+  };
+  // Everything packEra weighs for era n: its reserved plots (the gateway, the room the scene builds itself and the
+  // rest), pinned where they are, then the era's own pieces.
+  const eraItems = (build, n, top, channel) => {
+    const plots = reservedZones(n);
+    return { items: plots.map((r) => ({ x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1 })).concat(recordEra(build, ERAS[n], n, top, channel)), fixed: plots.length, walls: [CAVE.x0, CAVE.x1] };
+  };
+  // A kit that hands era n's build its packed places: each call's coordinates moved by its cluster's offset, as the
+  // scene's clusters stand. For checks that read where an era's pieces end up; the scene itself moves whole nodes.
+  const packedKit = (kit, n, build) => {
+    const { items, fixed, walls } = eraItems(build, n, kit.top, kit.channel), pk = packEra(items, { laneX: LANE_X, anchorZ: ERAS[n].z1 - MUSEUM.OPEN, fixed, walls });
+    let i = fixed;
+    // shift(x, z): where an authored point of this era stands once packed (with the piece nearest it).
+    const shift = (x, z) => {
+      let best = Infinity, g = -1;
+      for (let k = fixed; k < items.length; k++) { const it = items[k], ex = Math.max(it.x0 - x, 0, x - it.x1), ez = Math.max(it.z0 - z, 0, z - it.z1), d = ex * ex + ez * ez; if (d < best) { best = d; g = pk.group[k]; } }
+      return g < 0 ? { x, z } : { x: x + pk.dx[g], z: z + pk.dz[g] };
+    };
+    const off = () => { const g = pk.group[i++]; return { dx: pk.dx[g], dz: pk.dz[g] }; };
+    return { ...kit, shift,
+      place: (nd) => { if (nd.position && (nd.position.x || nd.position.z)) { const o = off(); nd.position.x += o.dx; nd.position.z += o.dz; } return kit.place(nd); },
+      solid: (w, h, d, c, x, y, z, ...rest) => { const o = off(); return kit.solid(w, h, d, c, x + o.dx, y, z + o.dz, ...rest); },
+      sign: (t, sub, x, y, z, ...rest) => { const o = off(); return kit.sign(t, sub, x + o.dx, y, z + o.dz, ...rest); },
+      obstacle: (x0, x1, z0, z1) => { const o = off(); return kit.obstacle(x0 + o.dx, x1 + o.dx, z0 + o.dz, z1 + o.dz); },
+      prop: (d) => {
+        if (!d.at) return kit.prop(d);
+        const o = off(), pick = d.pick && (d.pick.x !== undefined || d.pick.z !== undefined) ? { ...d.pick, ...(d.pick.x !== undefined ? { x: d.pick.x + o.dx } : {}), ...(d.pick.z !== undefined ? { z: d.pick.z + o.dz } : {}) } : d.pick;
+        return kit.prop({ ...d, at: { ...d.at, x: d.at.x + o.dx, z: d.at.z + o.dz }, ...(pick ? { pick } : {}) });
+      } };
+  };
+  const packEra = (items, { laneX, anchorZ, fixed = 0, walls = null }) => {
+    const n = items.length, par = new Int32Array(n);
+    for (let i = 0; i < n; i++) par[i] = i;
+    const find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    const G = PACK.gap;
+    // Pinned plots stay clusters of their own: a piece beside one still moves.
+    for (let i = fixed; i < n; i++) { const a = items[i]; for (let j = i + 1; j < n; j++) { const b = items[j]; if (a.x0 - G < b.x1 && b.x0 - G < a.x1 && a.z0 - G < b.z1 && b.z0 - G < a.z1) { const ra = find(i), rb = find(j); if (ra !== rb) par[ra] = rb; } } }
+    const index = new Map(), groups = [], group = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      const r = find(i); let g = index.get(r);
+      if (g === undefined) { g = groups.length; index.set(r, g); groups.push({ x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity }); }
+      const b = groups[g], it = items[i]; group[i] = g;
+      b.x0 = Math.min(b.x0, it.x0); b.x1 = Math.max(b.x1, it.x1); b.z0 = Math.min(b.z0, it.z0); b.z1 = Math.max(b.z1, it.z1);
+    }
+    // The first `fixed` items stand where they are (the reserved plots).
+    const m = groups.length, dx = new Float64Array(m), dz = new Float64Array(m), pinned = new Uint8Array(m);
+    for (let i = 0; i < fixed; i++) pinned[group[i]] = 1;
+    // A long run along one of the old cave's side walls (`walls`: its x0, x1) is dressing for a wall: it waits, and
+    // then lines the packed room's wall on its side (wall: -1 left, 1 right).
+    const wall = new Int8Array(m);
+    if (walls) for (let g = 0; g < m; g++) { const b = groups[g]; if (!pinned[g] && b.z1 - b.z0 >= PACK.wallRun) wall[g] = b.x0 <= walls[0] + 2.5 ? -1 : b.x1 >= walls[1] - 2.5 ? 1 : 0; }
+    for (let g = 0; g < m; g++) {
+      if (pinned[g] || wall[g]) continue;
+      const b = groups[g], cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
+      dx[g] = (laneX + (cx - laneX) * PACK.s) - cx; dz[g] = (anchorZ + (cz - anchorZ) * PACK.s) - cz;
+    }
+    const M = PACK.margin, half = PACK.aisle / 2;
+    for (let round = 0; round < PACK.rounds; round++) {
+      let moved = false;
+      for (let g = 0; g < m; g++) {
+        if (wall[g]) continue;
+        const a = groups[g];
+        // Out of the aisle, to the side its centre is on, and never past the opening.
+        const ax0 = a.x0 + dx[g], ax1 = a.x1 + dx[g];
+        if (!pinned[g] && ax0 < laneX + half && ax1 > laneX - half) { dx[g] += (ax0 + ax1) / 2 >= laneX ? laneX + half - ax0 : laneX - half - ax1; moved = true; }
+        if (!pinned[g] && a.z1 + dz[g] > anchorZ) { dz[g] = anchorZ - a.z1; moved = true; }
+        for (let h = g + 1; h < m; h++) {
+          if (wall[h]) continue;
+          const b = groups[h];
+          const px = Math.min(a.x1 + dx[g], b.x1 + dx[h]) - Math.max(a.x0 + dx[g], b.x0 + dx[h]) + M;
+          const pz = Math.min(a.z1 + dz[g], b.z1 + dz[h]) - Math.max(a.z0 + dz[g], b.z0 + dz[h]) + M;
+          if (px <= 0 || pz <= 0 || (pinned[g] && pinned[h])) continue;
+          moved = true;
+          // Apart along the shallower axis, half each, or all of it by the one that isn't pinned.
+          const kg = pinned[g] ? 0 : pinned[h] ? 1 : 0.5, kh = 1 - kg;
+          if (px < pz) { const s = (a.x0 + a.x1) / 2 + dx[g] < (b.x0 + b.x1) / 2 + dx[h] ? -1 : 1; dx[g] += s * px * kg; dx[h] -= s * px * kh; }
+          else { const s = (a.z0 + a.z1) / 2 + dz[g] < (b.z0 + b.z1) / 2 + dz[h] ? -1 : 1; dz[g] += s * pz * kg; dz[h] -= s * pz * kh; }
+        }
+      }
+      if (!moved) break;
+    }
+    const box = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+    // The pieces' own extent, packed (the pinned plots left out: they only stand in the way), then the wall runs
+    // set against it, never past the opening.
+    for (let i = fixed; i < n; i++) if (!wall[group[i]]) { const b = items[i], g = group[i]; box.x0 = Math.min(box.x0, b.x0 + dx[g]); box.x1 = Math.max(box.x1, b.x1 + dx[g]); box.z0 = Math.min(box.z0, b.z0 + dz[g]); box.z1 = Math.max(box.z1, b.z1 + dz[g]); }
+    const inner = { x0: box.x0, x1: box.x1 };
+    for (let g = 0; g < m; g++) if (wall[g]) {
+      const b = groups[g];
+      dx[g] = wall[g] < 0 ? Math.max(0, inner.x0 - M - b.x1) : Math.min(0, inner.x1 + M - b.x0); dz[g] = Math.min(0, anchorZ - b.z1);
+      box.x0 = Math.min(box.x0, b.x0 + dx[g]); box.x1 = Math.max(box.x1, b.x1 + dx[g]); box.z0 = Math.min(box.z0, b.z0 + dz[g]); box.z1 = Math.max(box.z1, b.z1 + dz[g]);
+    }
+    return { group, dx, dz, box, groups: m, items };
+  };
+
   // --- The museum (the overhaul: one cave, no stream) ----------------------------------------------------------------
   // One large cave: an open atrium in the middle and the eight eras round it in date order, clockwise from the
   // south-west (Era 0) to the south (Era 7), each in a gallery opening off the atrium. Each era keeps the layout its
@@ -181,10 +293,13 @@
   // turns a box. `bayAt(x, z)` is the era whose gallery holds a point (-1 in the atrium or outside). Pure, so Node can
   // check that the galleries never overlap and every era's exhibits stand inside its own.
   const MUSEUM = (() => {
-    // SCALE: each era's gallery is its old cave at 70% (exhibits, spacing and heights alike), so the hall is about half
-    // the floor it was; the atrium is sized to the galleries round it.
-    const OPEN = 8, PART = 1, HEIGHT = 16, SCALE = 0.7, MARGIN = 3;
-    const SPEC = [[-27, 27, 63], [-34, 42, 71], [-34, 10, 72], [-34, 10, 72], [-34, 42, 64], [-34, 42, 72], [-22, 20, 63], [-14, 26, 57]];
+    // Each era's exhibits are packed closer together (packEra, in the scene) and drawn at full size (SCALE), so the
+    // rooms are small and the exhibits large; the atrium is sized to the galleries round it.
+    const OPEN = 8, PART = 1, HEIGHT = 16, SCALE = 0.8, MARGIN = 3;
+    // Each gallery's old x range and depth, fitted to its era's exhibits once packed (packEra; the old stream's line kept
+    // inside, for the arch's sign and the courtyard's path; 28 m wide at least, for the headlines' board). A Node check
+    // repacks every era and fails if this drifts.
+    const SPEC = [[-14.4, 20.1, 35.4], [-30.4, 26.1, 71], [-21.2, 6.8, 73], [-21.3, 6.8, 41.4], [-17.4, 27.1, 35.7], [-19.3, 32.9, 41.2], [-14.6, 14.5, 47.6], [-19.9, 30.4, 35.6]];
     // The four walls' galleries in order along each wall, the wall's line, the turn that sends old -z outward and the
     // direction old +x runs along it: west (south to north), north (west to east), east (north to south), south
     // (east to west).
@@ -322,5 +437,5 @@
     out.dist = dist;
     return out;
   };
-  BL.genesisWorld = { holdsFor, MUSEUM, frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  BL.genesisWorld = { packEra, recordEra, eraItems, packedKit, PACK, holdsFor, MUSEUM, frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();
