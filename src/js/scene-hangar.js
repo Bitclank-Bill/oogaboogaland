@@ -174,6 +174,13 @@
   // On the Worker's page the island's driving rules hold in here too, and the Ooga driven is reported to the room every
   // frame, so signed-in players in the hangar hear each other and those in the hall (voice needs a driven Ooga).
   const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name);
+  // Whether an Ooga stands on the Jet: the one driven here, or another player's.
+  const jetRidden = () => {
+    const a = scene.anomaly, d = people && people.player, others = remotes ? remotes.actors() : NO_ACTORS;
+    if (d && a.standsOn(d.root.position.x, d.root.position.y - d.baseY, d.root.position.z)) return true;
+    for (let i = 0; i < others.length; i++) if (a.standsOn(others[i].x, others[i].y, others[i].z)) return true;
+    return false;
+  };
   const accountChanged = () => {
     if (!avatar) return;
     const released = BL.net.state.released;
@@ -1226,9 +1233,9 @@
     input.add(scene.sis.body, { kind: "sis", preset: null }, { radius: 1.2 });
     targets.push(scene.sis.body);
     // The Jet acting up on its own now and then (`hangar-anomaly.js`): not on a test page unless `anomaly=` asks, which
-    // under debug also sets the wait between them, s.
+    // under debug also sets the wait between them, s. It asks whether any Ooga stands on the Jet (`jetRidden`).
     const every = DEBUG ? Number(params.get("anomaly")) : NaN;
-    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null });
+    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden() });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
     for (const n of scene.terminals.nodes) {

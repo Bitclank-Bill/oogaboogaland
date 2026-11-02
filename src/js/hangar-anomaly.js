@@ -24,6 +24,12 @@
 // back on one by one. Its sound is `hangarAudio.blackout`, the hall's electrical hum following its power
 // (`hangarAudio.power`).
 //
+// The lowrider (`lowrider`): a bass groove, and the Jet bouncing to it, its nose lifting on each beat about its main
+// gear, which stays on the floor, and dropping back with a bounce, harder and softer by turns, then settling. Kortik's
+// Sis bobs along before she catches herself (`sis.groove`). Its sound is `hangarAudio.lowrider`. It only starts with
+// nobody standing on the Jet (`riders`), and stops at once, the Jet at rest, if someone gets on or a frame runs too
+// long to trust (`HITCH`); what anyone walks on never moves.
+//
 // `create` builds the arcs once a visit; `update` runs the wait and the anomaly, allocating nothing a frame.
 (() => {
   "use strict";
@@ -61,7 +67,14 @@
   // dark the lights go and the hall's own light; the nozzles glowing in the dark like eyes from `wake` after the kill,
   // how bright and how they breathe, and their blink at `blink` for `blinkLen`; the banks coming back on, and the end.
   const BLACKOUT = { flicker: [0.05, 0.12], low: 0.3, kill: 0.2, dark: 0.03, ambient: 0.15, wake: 0.6, eyes: 0.35, breathe: 0.08, blink: 4.2, blinkLen: 0.18, banks: [6.8, 7.4, 8, 8.6], end: 10 };
-  const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end, lightning: ZAP.end, blackout: BLACKOUT.end };
+  // The lowrider, s from its start: its first beat, the beat, how many; how far the nose lifts at the hardest, radians,
+  // about the main gear (`gear`, m along the Jet from its middle); the end; and how hard each beat is, n from 0,
+  // easing in and out over the first and last two, every other one softer.
+  const LOWRIDER = { start: 0.4, beat: 0.6, beats: 14, pitch: 0.035, gear: 1.5, end: 10, hard: (n) => Math.min(1, (n + 1) / 2, (LOWRIDER.beats - n) / 2) * (n % 2 ? 0.65 : 1) };
+  const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end, lightning: ZAP.end, blackout: BLACKOUT.end, lowrider: LOWRIDER.end };
+  // The longest frame a moving Jet trusts, s; and how near the Jet's top an Ooga's feet must be, and how far off the
+  // floor, to stand on it, m.
+  const HITCH = 0.1, ON_JET = [0.4, 0.4];
   // How much of the lights' dimming the hall's own light takes, but in the blackout.
   const AMBIENT = 0.5;
   // The arcs: how many at once and how long each lasts, s; where they strike round a nozzle, from how far inside its rim
@@ -87,13 +100,14 @@
   // `root`: the scene's root; `fire`: the static fire test (`hangar-fire.js`), whose engines it drives and whose run
   // holds it off; `sis`: Kortik's Sis; `fx`: the scene's particles; `audio`: the hangar's sound; `jet`: the Jet's node,
   // which the revs rock and put back at rest; `stage`, the stage it shows; `auto`: whether they come by themselves (off
-  // on a test page, where only `debug.play` starts one); `gap`, a fixed wait between them instead of GAP's, s.
-  const create = ({ root, fire, sis, fx, audio, jet, stage, auto = true, gap = null }) => {
+  // on a test page, where only `debug.play` starts one); `gap`, a fixed wait between them instead of GAP's, s; `riders()`,
+  // whether any Ooga stands on the Jet (`standsOn` says for one).
+  const create = ({ root, fire, sis, fx, audio, jet, stage, auto = true, gap = null, riders = () => false }) => {
     const SPARK = HM.blast().spark, BLUE = BL.models.particleGeometry("#a8ecff", 0.05, 1), J = jet.position;
     const exits = JM.EXHAUST.map((e) => ({ x: J.x + e.x, y: e.y, z: J.z + e.z, r: e.r }));
     // Where Kortik's Sis turns to: between the engines. How the Jet stands at rest. Each throat's glow, in the nozzles'
     // order, for `fire.engines` and the lights.
-    const engines = { x: J.x, z: exits[0].z }, REST_X = jet.rotation.x, REST_Z = jet.rotation.z, glow = new Float32Array(exits.length);
+    const engines = { x: J.x, z: exits[0].z }, REST_X = jet.rotation.x, REST_Z = jet.rotation.z, REST_Y = jet.position.y, glow = new Float32Array(exits.length);
     // The Jet's plain and lit meshes; its cells seen from above, where the lightning runs over it, from nose to tail; and
     // the runway the marker lamps light along.
     const plain = jet.geometry, lit = JM.jet(stage, true), C = JM.columns(stage), nose = J.z + C.k0 * C.U, tail = J.z + (C.k0 + C.nk) * C.U, RUNWAY = HM.LAYOUT.runway;
@@ -273,6 +287,33 @@
       if (t >= B.banks[0] && t - dt < B.banks[0]) sis.settle();
     };
 
+    // Whether an Ooga with its feet at `feet` stands on the Jet's top at (x, z).
+    const standsOn = (x, feet, z) => {
+      const i = Math.floor((x - J.x) / C.U) - C.i0, k = Math.floor((z - J.z) / C.U) - C.k0;
+      return feet > ON_JET[1] && i >= 0 && k >= 0 && i < C.ni && k < C.nk && C.top[i * C.nk + k] > 0 && Math.abs(C.top[i * C.nk + k] - feet) < ON_JET[0];
+    };
+    // A frame of the lowrider: stopped at once, at rest, with someone on the Jet or a frame too long to trust.
+    const lowrider = (dt) => {
+      const L = LOWRIDER;
+      if (riders() || dt > HITCH) { end(); return; }
+      const u = t - L.start, n = Math.floor(u / L.beat);
+      let k = 0;
+      if (u >= 0 && n < L.beats) {
+        const v = (u - n * L.beat) / L.beat;
+        k = L.hard(n) * (v < 0.2 ? ease(v / 0.2) : v < 0.5 ? 1 - ease((v - 0.2) / 0.3) : v < 0.75 ? 0.25 * Math.sin((v - 0.5) / 0.25 * Math.PI) : 0);
+      }
+      // The nose up about the main gear, the Jet raised as much there so that gear stays on the floor.
+      const pitch = L.pitch * k;
+      jet.rotation.x = REST_X + pitch;
+      J.y = REST_Y + L.gear * Math.sin(pitch);
+      // Each stomp in the pad, as hard as the beat.
+      if (u >= 0 && n < L.beats && u - dt < n * L.beat) BL.gamepad.rumble(0.55 * L.hard(n), 0.3 * L.hard(n), 140);
+      // Kortik's Sis, at the first beat, and told once the last is done.
+      if (!spooked && t >= L.start) { spooked = true; if (!sis.groove(L.beat)) sis.spook(engines.x, engines.z); }
+      const last = L.beats * L.beat;
+      if (u >= last && u - dt < last) sis.settle();
+    };
+
     const begin = (k) => {
       kind = k; t = 0; arcAt = 0; spooked = false;
       if (k === "misfire") audio.misfire(MISFIRE);
@@ -282,13 +323,14 @@
         jet.glow = ZAP.glow[0];
         audio.zap(ZAP, { x: J.x, y: 5, z: nose }, { x: J.x, y: 5, z: tail });
       } else if (k === "blackout") audio.blackout(BLACKOUT);
+      else if (k === "lowrider") audio.lowrider(LOWRIDER);
     };
     // Over, or cut short: the engines cold, the Jet at rest, the lights full, the arcs gone, and the wait for the next.
     const end = () => {
       if (kind === "blackout") { sis.dark(0); audio.power(1); }
       kind = null; dim = 1; ambient = 1; heat = 0;
       glow.fill(0);
-      jet.rotation.x = REST_X; jet.rotation.z = REST_Z;
+      jet.rotation.x = REST_X; jet.rotation.z = REST_Z; J.y = REST_Y;
       jet.geometry = plain; jet.glow = 1; rabbit = null; flash = 0;
       fire.engines(0, 0);
       for (const a of arcs) { a.life = 0; a.node.visible = false; }
@@ -298,16 +340,22 @@
     const update = (dt) => {
       for (const a of arcs) if (a.life > 0 && (a.life -= dt) <= 0) a.node.visible = false;
       if (!kind) {
-        if (auto && (wait -= dt) <= 0 && !held()) begin(next());
+        if (auto && (wait -= dt) <= 0 && !held()) {
+          // The lowrider only with nobody on the Jet: the next in the bag instead, or the failed start.
+          let k = next();
+          if (k === "lowrider" && riders()) k = next();
+          begin(k === "lowrider" && riders() ? "misfire" : k);
+        }
         return;
       }
       t += dt;
       if (kind === "misfire") misfire(dt);
       else if (kind === "phantom") phantom(dt);
       else if (kind === "lightning") lightning(dt);
-      else blackout(dt);
+      else if (kind === "blackout") blackout(dt);
+      else lowrider(dt);
       if (kind !== "blackout") ambient = 1 - (1 - dim) * AMBIENT;
-      if (t >= LENGTH[kind]) end();
+      if (kind && t >= LENGTH[kind]) end();
     };
 
     // Its lights into the scene's array from `slot`: each throat's glow while it is hot, an arc's flash while one
@@ -337,8 +385,8 @@
     const dispose = () => { if (kind) end(); };
     // The Jet's lit mesh, kept on the GPU off the graph, so the lightning swaps it in without a hitch.
     const liveGeometry = (set) => { set.add(lit); };
-    return { update, lights, liveGeometry, dispose, debug, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; } };
+    return { update, lights, liveGeometry, dispose, debug, standsOn, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; } };
   };
 
-  BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP, BLACKOUT };
+  BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP, BLACKOUT, LOWRIDER };
 })();
