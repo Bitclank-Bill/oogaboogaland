@@ -2099,7 +2099,7 @@
         hasSlot: false, slotIndex: -1, slotX: 0, slotY: 0, slotZ: 0, goalX: 0, goalY: 0, goalZ: 0,
         random: mulberry32(fnv1a(`clanker/${owner.id || owner.traits.name || i}`)),
         // Its bed while its Ooga sleeps: see `updateSleep`.
-        sleep: { stage: "", slot: -1, leg: 0, count: 0, path: new Float64Array(SLEEP_POINTS * 2), mark: 0, pose: "", stall: 0, near: Infinity },
+        sleep: { stage: "", slot: -1, home: -1, leg: 0, count: 0, path: new Float64Array(SLEEP_POINTS * 2), mark: 0, pose: "", stall: 0, near: Infinity },
         // Its desk or wait spot in B.C.A. and where it is in the routine: see `workOffice`.
         office: { stage: "", desk: -1, wait: -1, time: 0, count: 0, index: 0, path: new Float64Array(OFFICE_POINTS * 2), seed,
           cycle: 0, work: "", left: 0, stroke: 0, turn: 0, held: 0 },
@@ -6426,7 +6426,8 @@
         if (e.lounge) { leaveLounge(e); e.lounge = ""; e.loungeDepart = false; e.recover = Math.max(e.recover, 0.65); }
         e.mode = "sleeping"; e.phase = "sleep"; e.route = ""; e.exitFootprint = true;
         s.count = site.path(s.slot, s.path);
-        s.leg = s.stage === "return" ? Math.min(s.count - 1, s.leg + 1) : sleepLegFrom(e);
+        // A newly dealt bed has a different path; the old return leg belongs only to its old bed.
+        s.leg = s.stage === "return" && s.home === s.slot ? Math.min(s.count - 1, s.leg + 1) : sleepLegFrom(e);
         s.stage = "go"; s.stall = 0; s.near = Infinity;
       }
       if (s.stage === "go") {
@@ -6488,7 +6489,7 @@
       const s = e.sleep, p = e.root.position;
       if (s.stage !== "return") {
         // The path home is stored separately; a waking gorilla no longer owns a bed.
-        s.slot = -1; bedDay = -1;
+        s.home = s.slot; s.slot = -1; bedDay = -1;
         e.gorilla.chest.scale.y = 1;
         if (e.lounge) { e.lounge = ""; e.loungeDepart = false; e.recover = Math.max(e.recover, 1.2); }
         e.footprintMode = "walk";
