@@ -6203,7 +6203,7 @@ const ghostEntryChecks = async () => {
       return portable ? null : new Promise((resolve, reject) => pending.push({ resolve, reject }));
     } };
     const entry = BL.ghostEntry.create({ root: rootNode, camera: { position: { x: 0, y: 10, z: 20 }, target: { x: 0, y: 0, z: 0 } },
-      island: { surfaceAt: () => 0 }, npcSync, addTarget: (node, owner) => targets.set(node, owner), removeTarget: node => targets.delete(node),
+      heraldAt: () => ({ x: 0, y: 0, z: 0 }), npcSync, addTarget: (node, owner) => targets.set(node, owner), removeTarget: node => targets.delete(node),
       hud: { toast: text => state.notices.push(text) }, fx: { spawnParticle() {} }, attach: () => {
         state.made++;
         sync = BL.ghostSync.create({ npcSync, write: () => null, onSnapshot: snap => state.snapshots.push(snap), onMessage: msg => state.heard.push(msg) });
@@ -8110,9 +8110,9 @@ if (!ONLY || onlyMatches(signedInArrival.name)) tasks.push({ name: "hub signed-i
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
   try {
     // Sign-in returns to the bare page; a `view=` and a saved login view must not put the owner back below.
-    for (const mode of ["working", "chilling", "sleeping", "away"]) await fold(`http://127.0.0.1:${server.address().port}/?debug=1&view=basement&mempool=0&chain=0&oogatron=0&totems=0&halloween=0&hour=12&day=80`,
+    for (const mode of ["working", "chilling", "sleeping", "away"]) await fold(`http://127.0.0.1:${server.address().port}/?debug=1&view=basement&mempool=0&chain=0&oogatron=0&totems=0&hour=12&day=80`,
       [[signedInArrival.name, signedInArrival.run]], { initScript: `(${signedInArrivalWire.toString()})(${JSON.stringify(mode)})` });
-    await fold(`http://127.0.0.1:${server.address().port}/sphere-3?debug=1&mempool=0&chain=0&oogatron=0&totems=0&halloween=0&hour=12&day=80`,
+    await fold(`http://127.0.0.1:${server.address().port}/sphere-3?debug=1&mempool=0&chain=0&oogatron=0&totems=0&hour=12&day=80`,
       [[signedInRouted.name, signedInRouted.run]], { initScript: `(${signedInArrivalWire.toString()})("sleeping", false)` });
   } finally { await new Promise(resolve => server.close(resolve)); }
 } });
@@ -9065,7 +9065,10 @@ const hubChat = { name: "ooga chat", why: "regression: Chat releases pre-focus m
     input.dispatchEvent(new Event("input"));
     out.over = [send.disabled, $("chat-left").textContent];
     input.value = "hello 🍌"; input.dispatchEvent(new Event("input"));
-    out.policy = send.disabled && $("chat-status-text").textContent.includes("unsupported");
+    out.policy = send.disabled && $("chat-status-text").textContent.includes("server");
+    BL.net.state.chatUnicode = true; input.dispatchEvent(new Event("input"));
+    out.policy &&= !send.disabled;
+    BL.net.state.chatUnicode = false;
     input.value = "  hello b  ";
     input.dispatchEvent(new Event("input"));
     out.ready = [send.disabled, $("chat-left").textContent];
@@ -10829,181 +10832,6 @@ const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visit
   })()`);
   record("hub game-only combat: HUB weapons fire, swing, swap magazines and reload without damage; regeneration, knockouts, dropped gear, rage and grabbing stay off, X keeps both look modes, and game exit restores health and releases held Oogas", Object.values(r).every(Boolean), JSON.stringify(r));
 } };
-const hubGhostEntry = (melee) => ({ name: `ghost entry ${melee ? "melee" : "shooting"}`, why: "regression: only a HUB rifle shot wakes the herald, and its lobby must release mouse-look until it closes", run: async b => {
-  const loaded = await untilPage(b, "BL.scenes.hub.debug.halloween?.herald.geometry", 15000);
-  const lazy = await b.evaluate("BL.scenes.hub.debug.halloween?.loaded === false");
-  record("ghost entry: the deferred herald loads", loaded && lazy, JSON.stringify({ loaded, lazy }));
-  if (!loaded) return;
-  if (!melee) await b.key("x");
-  const panels = await b.evaluate(`(() => {
-    const H = BL.scenes.hub.debug, touch = matchMedia('(pointer: coarse)').matches;
-    H.hud.selectTab("roster");
-    H.useProp(H.props.find(p => p.prop === "jumbotron"));
-    if (touch) { H.hud.closeBoard(); BL.sheet.tabFor(document.getElementById("roster-panel")).click(); }
-    return { touch, open: H.hud.el.sheet.dataset.open, boards: document.querySelectorAll('.board-floating[open]').length };
-  })()`);
-  const entry = await b.evaluate(`(() => {
-    // The herald drifts on the room clock, which \`advance\` does not step, and is a picture turned to the camera: hold the
-    // clock, and shoot from between it and the camera, along the view, once the camera has followed, or the aim point
-    // goes stale by however long the steps take and a shot across the picture can slip past its edge.
-    const net = BL.net, serverNow = net.serverNow, held = serverNow();
-    net.serverNow = () => held;
-    try {
-    const B = __ooga, H = BL.scenes.hub.debug, G = H.halloween, a = B.crew.player, p = G.herald.position, cam = BL.scenes.hub.camera;
-    const vx = cam.position.x - cam.target.x, vz = cam.position.z - cam.target.z, gap = ${melee ? 0.9 : 2.5} / Math.hypot(vx, vz);
-    const x = p.x + vx * gap, z = p.z + vz * gap, yaw = Math.atan2(p.x - x, p.z - z);
-    B.crew.relocatePlayer({ x, y: H.island.surfaceAt(x, z), z }, yaw);
-    B.crew.configureWeapon(a, ${melee ? 1 : 2}, 30);
-    B.advance(0.5, 1 / 60);
-    BL.scene.updateWorld(BL.scenes.hub.root);
-    const center = BL.scene.boundsOf(G.herald.geometry).center, point = new Float64Array(3);
-    BL.math.mat4.transformPoint(point, G.herald.world, center[0], center[1], center[2]);
-    const health = a.health.value, before = a.weapon.shotsFired;
-    const accepted = ${melee ? "B.crew.swingWeapon(a)" : "B.crew.fireWeapon(a, { x: point[0], y: point[1], z: point[2] })"};
-    B.advance(0.4, 1 / 60);
-    return { accepted, state: G.state, combat: B.crew.combatEnabled, game: H.gameMode, health: a.health.value === health,
-      shots: a.weapon.shotsFired - before, shown: !document.getElementById("ghost-lobby").hidden,
-      aiming: B.pilot.aiming, reticle: document.getElementById("weapon-reticle").hidden,
-      labelsHidden: getComputedStyle(document.getElementById("tooltip")).visibility === "hidden",
-      panelsHidden: H.hud.el.sheet.hidden && Array.from(document.querySelectorAll('.board-floating[open]')).every(e => e.hidden) };
-    } finally { net.serverNow = serverNow; }
-  })()`);
-  record(`ghost entry: ${melee ? "a club leaves the herald idle" : "an AK burst opens the lobby without readying automatically"} and HUB damage stays off`, entry.accepted && entry.state === (melee ? "IDLE" : "GATHER") && entry.shown === !melee && entry.health && !entry.game && !entry.combat && (melee ? entry.shots === 0 : entry.shots > 0 && entry.shots <= 3), JSON.stringify(entry));
-  if (melee || !entry.shown) return;
-  const released = await untilPage(b, '!document.pointerLockElement && !document.body.classList.contains("aim-cursor-focused") && document.getElementById("weapon-reticle").hidden');
-  record("ghost lobby: the menu releases mouse-look and hides world names, the sheet and Oogatron windows without changing carry/combat mode", released && entry.labelsHidden && entry.panelsHidden && entry.aiming === !melee, JSON.stringify(entry));
-  const button = await b.evaluate(`(() => { const r = document.getElementById("ghost-lobby-${melee ? "decline" : "ready"}").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
-  if (panels.touch) {
-    await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [button] });
-    await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  } else await b.click(button.x, button.y);
-  const closed = await untilPage(b, 'document.getElementById("ghost-lobby").hidden');
-  record("ghost lobby: world-name visibility is restored after closing", await b.evaluate('getComputedStyle(document.getElementById("tooltip")).visibility !== "hidden"'));
-  const resumed = await b.evaluate(`({ aiming: __ooga.pilot.aiming, focus: document.body.classList.contains("aim-cursor-focused") || document.pointerLockElement === document.getElementById("scene"), reticle: !document.getElementById("weapon-reticle").hidden, combat: __ooga.crew.combatEnabled, game: BL.scenes.hub.debug.gameMode })`);
-  record("ghost lobby: Ready starts the hunt and restores crosshair control", closed && resumed.aiming && (panels.touch ? !resumed.focus : resumed.focus) && resumed.reticle && resumed.combat && resumed.game, JSON.stringify(resumed));
-  if (melee || !resumed.game) return;
-  await b.key("x");
-  const locked = await b.evaluate(`(() => {
-    const P = __ooga.pilot, a = __ooga.crew.player, keyboard = P.aiming;
-    P.modeAction("mode-toggle");
-    const portrait = P.aiming;
-    P.release();
-    const retaken = P.possess(a) && P.aiming;
-    P.setMenuOpen(true);
-    const menu = a.weapon.aiming && document.getElementById("weapon-reticle").hidden;
-    P.setMenuOpen(false);
-    return { keyboard, portrait, retaken, menu, resumed: P.aiming && !document.getElementById("weapon-reticle").hidden };
-  })()`);
-  record("ghost hunt: X and portrait keep combat mode, retaking an Ooga restores combat, and menus can still free the cursor", Object.values(locked).every(Boolean), JSON.stringify(locked));
-  const hunt = await b.evaluate(`(() => {
-    // Only the explicit hunt stepper advances time; CPU load must not age
-    // combat or revive timers while the animation fixtures are evaluated.
-    const net = BL.net, serverNow = net.serverNow, held = serverNow();
-    net.serverNow = () => held;
-    try {
-    const B = __ooga, H = BL.scenes.hub.debug, G = H.halloween, C = BL.ghostSim.CONFIG, a = B.crew.player;
-    const cards = BL.ghostSim.introPages(1, false);
-    G.simulate((G.lapMs + C.NIGHT_MS + C.COUNTDOWN_MS + cards * BL.ghostSim.introMs(cards)) / 1000 + 0.5);
-    // The hunt clock and the hub's ring animation have separate debug steppers. The ring rises with the walls, so it
-    // needs no time for round 1's cards; the hunt keeps running on the real clock meanwhile, so keep this short.
-    B.advance((G.lapMs + C.NIGHT_MS + C.COUNTDOWN_MS) / 1000 + 2, 1 / 60);
-    const position = { ...a.root.position, y: a.root.position.y - a.baseY }, heading = a.root.rotation.y;
-    const crossRing = () => {
-      B.crew.relocatePlayer({ x: 17, y: H.island.surfaceAt(17, 0), z: 0 }, Math.PI / 2);
-      for (let i = 0; i < 60; i++) { B.crew.steer(1, 0); B.crew.update(1 / 60); }
-      const x = a.root.position.x;
-      B.crew.steer(0, 0); B.crew.relocatePlayer(position, heading);
-      return x;
-    };
-    const ringHeld = crossRing();
-    const active = G.state, ghosts = G.sim.ghosts.filter(g => g.on && !g.dying).length, unlimited = a.weapon.unlimited;
-    const shots = a.weapon.shotsFired, ammo = a.weapon.ammo;
-    const fired = B.crew.fireWeapon(a, { x: a.root.position.x, y: 30, z: a.root.position.z }, 1);
-    B.advance(0.3, 1 / 60);
-    const shooting = fired && a.weapon.shotsFired > shots && a.weapon.ammo === ammo;
-    const sealed = G.walls.length > 0 && G.walls.every(w => {
-      const s = w.stop;
-      return w.node.visible && w.sealed && G.seal(s.cx + s.nx, s.cz + s.nz, s.cx - s.nx, s.cz - s.nz, s.base + 1);
-    });
-    const map = document.getElementById("ghost-minimap"), rect = map.getBoundingClientRect();
-    const minimap = !map.hidden && rect.width > 0 && rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight
-      && map.getContext("2d").getImageData(0, 0, map.width, map.height).data.some((v, i) => i % 4 === 3 && v > 0);
-    const key = code => document.getElementById("scene").dispatchEvent(new KeyboardEvent("keydown", { key: code.slice(3).toUpperCase(), code, shiftKey: true, bubbles: true }));
-    key("KeyY");
-    const runner = G.sim.brutes.find(b => b.on && !b.kind), running = [];
-    if (runner) {
-      const rig = G.rigs[G.sim.brutes.indexOf(runner)], S = G.sim.state, BP = BL.ghostSim.BRUTE_PHASE;
-      const advance = G.sim.advance, savedNow = S.now, epoch = S.epoch;
-      let elapsed = 0;
-      // Exercise the real hunt renderer with host ticks and follower snapshots
-      // arriving slower than render frames. Combat simulation is held only here.
-      G.sim.advance = () => false;
-      const frame = dt => { G.simulate(dt, dt); elapsed += dt * 1000; };
-      try {
-        for (const fps of [30, 60, 120]) for (const interval of [50, 250]) for (const slow of [false, true]) {
-          const dt = 1 / fps, speed = C.BRUTE.speed * (slow ? C.ICE_SLOW : 1), start = S.now;
-          runner.id++; runner.phase = BP.CHASE; runner.phaseAt = start; runner.struckAt = 0;
-          runner.x = -12; runner.z = 0; runner.y = 0; runner.heading = Math.PI / 2;
-          frame(dt);
-          let frames = 0, idle = 0, error = 0, armMin = Infinity, armMax = -Infinity, legMin = Infinity, legMax = -Infinity;
-          for (let n = 1; n <= fps; n++) {
-            const tick = Math.floor((n * 1000 / fps + 1e-6) / interval) * interval;
-            S.now = start + tick; runner.x = -12 + speed * tick / 1000;
-            frame(dt);
-            if (!tick) continue;
-            frames++; if (rig.debug.gait === "idle") idle++;
-            error = Math.max(error, Math.abs(rig.debug.speed - speed));
-            armMin = Math.min(armMin, rig.parts.armR.rotation.x); armMax = Math.max(armMax, rig.parts.armR.rotation.x);
-            legMin = Math.min(legMin, rig.parts.legR.rotation.x); legMax = Math.max(legMax, rig.parts.legR.rotation.x);
-          }
-          running.push({ fps, interval, slow, frames, idle, error, arms: armMax - armMin, legs: legMax - legMin });
-        }
-        const states = [];
-        for (const phase of [BP.FALL, BP.LEAP, BP.RECOVER, BP.SHAKE]) {
-          runner.phase = phase; frame(1 / 60);
-          states.push(rig.debug.speed === 0 && rig.debug.airborne === (phase === BP.FALL || phase === BP.LEAP));
-        }
-        runner.phase = BP.CHASE; runner.struckAt = 1; frame(1 / 60);
-        states.push(rig.debug.speed === 0);
-        runner.struckAt = 0; S.paused = 1; frame(1 / 60);
-        states.push(rig.debug.speed === 0);
-        S.paused = 0; S.now += C.TICK_MS; frame(1 / 60);
-        states.push(rig.debug.speed === 0);
-        running.push({ states });
-      } finally {
-        G.sim.advance = advance; runner.on = false; S.paused = 0;
-        S.now = savedNow; S.epoch = epoch + elapsed;
-      }
-    }
-    key("KeyH"); G.simulate((C.BONES.beamMs + C.BONES.fallMs) / 1000 + 0.2);
-    const bones = G.sim.brutes.find(b => b.on && b.kind === 1), hit = {};
-    BL.scene.updateWorld(BL.scenes.hub.root);
-    // A lunging skeleton moves ahead of its simulation origin. Aim through
-    // its visible pose with the carry-view weapon query, not down at that origin.
-    const sx = bones ? Math.sin(bones.heading) : 0, sz = bones ? Math.cos(bones.heading) : 0;
-    const skeleton = !!bones && BL.scenes.hub.input.weaponTargets.verticalRay(hit,
-      bones.x + sx * 3, H.island.surfaceAt(bones.x, bones.z) + 0.8, bones.z + sz * 3, -sx, -sz, 6, null, null,
-      owner => owner.kind === "halloween" && owner.role === "brute" && G.sim.brutes[owner.slot] === bones);
-    if (bones) G.sim.hit(bones.id, 100, 1);
-    key("KeyE");
-    const me = G.sim.playerById(1), bot = G.sim.playerById(BL.ghostSim.REVIVE_BOT), down = !!bot && bot.seg === 0 && me.elixir === 1;
-    G.simulate(C.ELIXIR.reviveMs / 1000 + 0.2);
-    const revived = down && bot.seg > 0 && me.elixir === 0 && G.sim.state.reviveOf === bot.id;
-    const reviveState = { down, state: G.state, player: { seg: me.seg, elixir: me.elixir, here: me.here, frozenUntil: me.frozenUntil, target: me.reviveTarget, since: me.reviveSince }, bot: bot && { seg: bot.seg, on: bot.on, here: bot.here }, now: G.sim.state.now };
-    G.end(); G.simulate(C.DAWN_MS / 1000 + 0.1); B.advance(1 / 60, 1 / 60);
-    const ringReleased = crossRing();
-    B.pilot.modeAction("mode-toggle");
-    return { active, ghosts, unlimited, shooting, sealed, minimap, skeleton, revived, reviveState, running, ringHeld, ringReleased,
-      panels: { hidden: H.hud.el.sheet.hidden, open: H.hud.el.sheet.dataset.open, boards: document.querySelectorAll('.board-floating[open]:not([hidden])').length },
-      cleared: map.hidden && document.getElementById("ghost-hud").hidden && G.walls.every(w => !w.sealed),
-      restored: !H.gameMode && !B.crew.combatEnabled && !a.weapon.unlimited && !B.crew.damage(a, 100) && B.crew.weaponsEnabled && !a.weapon.aiming };
-    } finally { net.serverNow = serverNow; }
-  })()`);
-  record("ghost hunt: Ready progresses to an active round with ghosts and unlimited shooting; dawn restores harmless HUB weapons and carry switching", hunt.active === "ACTIVE" && hunt.ghosts > 0 && hunt.unlimited && hunt.shooting && hunt.restored, JSON.stringify(hunt));
-  record("ghost hunt: gorillas keep running between host ticks and follower snapshots at 30/60/120 fps, slow with ice, and stop for attacks, stuns and pauses", hunt.running.length === 13 && hunt.running.every(r => r.states ? r.states.every(Boolean) : r.frames > 0 && r.idle === 0 && r.error < 1e-6 && r.arms > 0.3 && r.legs > 0.3), JSON.stringify(hunt.running));
-  record("ghost hunt: the ring holds and releases the player, walls seal the exits, the minimap fits and paints, a skeleton is shootable, and an elixir revives a fallen hunter", hunt.ringHeld > 17 && hunt.ringHeld <= 18.5 && hunt.ringReleased > 19 && hunt.sealed && hunt.minimap && hunt.skeleton && hunt.revived, JSON.stringify(hunt));
-  record("ghost hunt: teardown clears hunt UI and restores open or closed panel choices", hunt.cleared && !hunt.panels.hidden && hunt.panels.open === panels.open && hunt.panels.boards === panels.boards, JSON.stringify({ before: panels, after: hunt.panels, cleared: hunt.cleared }));
-} });
 const hubMelee = { name: "hub melee", why: "rule: focused quick taps recover their strike power over time, changing weapons cannot bypass recovery, and a charged strike doubles damage", run: async (b) => {
   await tapKey(b, "1");
   // The preceding AK check deliberately leaves carry mode. These contacts
@@ -19411,8 +19239,6 @@ scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="
   if (process.env.POKER_SHOTS) await b.screenshot(join(process.env.POKER_SHOTS, "poker-phone.png"));
 } }] });
 scene("hub", { label: "weapons", query: "character=portlandhodl&weapon=2&mag=1&ammo=6&jetpack=1&gorillarage=1", steps: [hubCombatGate, ...[hubAk, hubMelee, hubJetpack].map(gameCombat)] });
-for (const melee of [false, true]) scene("hub", { label: `ghost entry ${melee ? "melee" : "shooting"}`, query: "halloween=1&character=portlandhodl&weapon=2&ammo=30", exclusive: true, steps: [hubGhostEntry(melee)] });
-scene("hub", { label: "ghost entry touch", opts: PHONE_SIZE, query: "halloween=1&character=portlandhodl&weapon=2&ammo=30", exclusive: true, steps: [hubGhostEntry(false)] });
 // Her greeting comes once a page, to a fresh landing nothing has moved, so the guide has its own page.
 scene("hub", { label: "guide", query: "character=portlandhodl&jetpack=1", steps: [hubGuide, hubAsk] });
 // Native pointer-lock assertions need sole focus; another browser lane can
@@ -22103,7 +21929,7 @@ const netFixture=(BL,response,step=200,cookie="")=>{
   class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"?JSON.parse(v):v);}close(){this.readyState=3;}}
   const voice={setPeers:()=>{},restart:()=>{},stop:()=>{}};
   const location={protocol:"https:",host:"fixture.invalid",pathname:"/",search:"",assign:url=>navigations.push(url)},pilot={saveLoginView(){savedViews++;}};
-  const context={window:{BL:{characters:BL.characters,contributors:BL.contributors,donations:BL.donations,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
+  const context={window:{BL:{characters:BL.characters,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
   runInNewContext(source,context);
   return {net:context.window.BL.net,document:context.document,voice,sockets,sent,events,location,navigations,advance(ms){tick+=ms;},get calls(){return calls;},get savedViews(){return savedViews;}};
 };
@@ -22261,7 +22087,8 @@ const chatClientChecks = async () => {
   const sheet = document.getElementById("sheet"), panel = document.getElementById("chat-panel"), tab = document.getElementById("chat-tab");
   sheet.dataset.open = "false"; panel.hidden = true; panel.dataset.panel = tab.dataset.tab = "chat"; panel.owner = tab.owner = sheet;
   const sheetApi = { visible(panel) { const owner = panel.closest(".sheet"); return !!owner && !panel.hidden && !owner.hidden && owner.dataset.open === "true"; }, tabFor: () => tab };
-  const sent = [], window = { BL: { sheet: sheetApi, net: { CHAT_MAX: 160, CHAT_KEEP: 100, subscribe() {}, subscribeChat() {}, sendChat(text, clientId) { sent.push({ text, clientId }); return true; } }, donations: { sanitize: (text, max) => String(text || "").replace(/[^\w .,!?'@#:-]/g, "").trim().slice(0, max) } }, crypto: { randomUUID: () => "id-" + ++uuid }, matchMedia: () => ({ matches: true }), setTimeout(fn) { timers.set(++timerId, fn); return timerId; }, clearTimeout(id) { timers.delete(id); } };
+  const sent = [], window = { BL: { sheet: sheetApi, net: { state: { chatUnicode: true }, CHAT_MAX: 160, CHAT_KEEP: 100, subscribe() {}, subscribeChat() {}, sendChat(text, clientId) { sent.push({ text, clientId }); return true; } }, donations: { sanitize: (text, max) => String(text || "").replace(/[^\w .,!?'@#:-]/g, "").trim().slice(0, max) } }, crypto: { randomUUID: () => "id-" + ++uuid }, matchMedia: () => ({ matches: true }), setTimeout(fn) { timers.set(++timerId, fn); return timerId; }, clearTimeout(id) { timers.delete(id); } };
+  runInNewContext(await readFile(join(root, "src/js/chat-policy.js"), "utf8"), { window });
   runInNewContext(await readFile(join(root, "src/js/chat.js"), "utf8"), { window, document, MutationObserver: class { observe() {} }, Intl });
   const C = window.BL.chat, input = nodes.get("chat-input"), send = nodes.get("chat-send"), status = nodes.get("chat-status-text"), edit = text => { input.value = text; input.handlers.input(); }, submit = () => nodes.get("chat-form").handlers.submit({ preventDefault() {} }), receipt = id => C.heard([], false, { clientId: id, accepted: true });
   C.account({ backend: true, me: { id: 1, login: "Tester" }, room: "live" });
@@ -22270,10 +22097,14 @@ const chatClientChecks = async () => {
   const uncertain = !send.disabled && status.textContent.includes("uncertain"); submit(); const stable = sent.at(-1)?.clientId === first;
   edit("other"); edit("hello"); receipt(first); const revision = input.value === "hello";
   edit("new"); submit(); const second = sent.at(-1)?.clientId; receipt(first); const late = send.disabled && input.value === "new"; receipt(second);
-  edit("unsupported 🍌"); const policy = send.disabled && status.textContent.includes("unsupported");
+  const examples = ["it’s working", "hello & welcome", "https://oogabooga.land", "café", "hello 🍌", "a+b=a", "👩‍👩‍👧‍👦", "✈️", "e\u0301"];
+  const unicode = examples.every(text => { edit(text); return !send.disabled; });
+  edit("bad\u0000"); const policy = send.disabled && status.textContent.includes("control");
+  window.BL.net.state.chatUnicode = false; edit("hello 🍌"); const gated = send.disabled && status.textContent.includes("server");
+  window.BL.net.state.chatUnicode = true; edit("hello 🍌"); const restored = !send.disabled;
   C.heard([{ id: 1, login: "tester", name: "Display", text: "hello" }], true);
   C.account({ backend: true, me: null, room: "off", logoutEpoch: 1 }); receipt(second);
-  record("ooga chat client: lost receipts time out to a stable retry; edited identical drafts and newer sends survive old receipts; explicit logout clears local text and unsupported characters are explained", waiting && uncertain && stable && revision && late && policy && input.value === "" && C.stats.lines === 0 && timers.size === 0, JSON.stringify({ waiting, uncertain, stable, revision, late, policy, lines: C.stats.lines, timers: timers.size }));
+  record("ooga chat client: lost receipts time out to a stable retry; edited identical drafts and newer sends survive old receipts; explicit logout clears local text; Unicode, invalid controls and old-server gating use the shared policy", waiting && uncertain && stable && revision && late && policy && unicode && gated && restored && input.value === "" && C.stats.lines === 0 && timers.size === 0, JSON.stringify({ waiting, uncertain, stable, revision, late, policy, lines: C.stats.lines, timers: timers.size }));
 };
 const chatAccountChecks = async BL => {
   const requests = [], player = { id: 71, login: "Tester", display: "Tester" };
@@ -22309,6 +22140,8 @@ const chatNetChecks = async BL => {
   const before=f.net.sendChat("too early");
   await f.net.start();const ws=f.sockets[0],message=v=>ws.onmessage({data:JSON.stringify(v)});
   message({t:"welcome",you:{id:71},players:[],now:Date.now()});
+  const oldServer = !f.net.sendChat("hello 🍌") && f.net.sendChat("legacy hello");
+  message({t:"welcome",you:{id:71},players:[],now:Date.now(),features:["chat-unicode-v1"]});
   const history=[];for(let i=0;i<130;i++)history.push({id:i+1,at:i,login:"peer",name:"Peer",text:"line "+i,extra:"dropped"});
   history.push({id:"bad",login:"peer",text:"no id"});
   message({t:"chat-history",messages:history});
@@ -22317,18 +22150,20 @@ const chatNetChecks = async BL => {
   const sends=[f.net.sendChat("  hi <b>there</b>  "),f.net.sendChat("   "),f.net.sendChat("🍌🍌"),f.net.sendChat("a".repeat(f.net.CHAT_MAX)),f.net.sendChat("a".repeat(f.net.CHAT_MAX+1))];
   message({t:"chat-rejected",clientId:"retry-1",reason:"rate"});
   const chats=f.sent.filter(m=>m.t==="chat");
-  record("ooga chat wire: lines only while live, sanitized as donations are and CHAT_MAX at most; history replaces with the last CHAT_KEEP well-formed lines; a malformed line is dropped",
-    f.net.CHAT_MAX===160&&f.net.CHAT_KEEP===100&&before===false&&sends.join()==="true,false,false,true,false"&&chats.length===2&&chats[0].text==="hi bthereb"&&Object.keys(chats[0]).join()==="t,text"&&chats[1].text.length===160
-    &&receipts.length===1&&!receipts[0].accepted&&receipts[0].clientId==="retry-1"&&heard.length===2&&heard[0].replace&&heard[0].ids.length===99&&heard[0].ids[0]===32&&heard[0].ids.at(-1)===130&&heard[0].keys.every(k=>k==="id,at,login,name,text")
-    &&!heard[1].replace&&heard[1].ids.join()==="500",JSON.stringify({before,sends,chats:chats.map(m=>m.text.length),heard:heard.map(h=>({n:h.ids.length,first:h.ids[0],last:h.ids.at(-1),replace:h.replace}))}));
+  record("ooga chat wire: lines only while live, lossless Unicode only with server capability and CHAT_MAX at most; history replaces with the last CHAT_KEEP well-formed lines; a malformed line is dropped",
+    f.net.CHAT_MAX===160&&f.net.CHAT_KEEP===100&&before===false&&oldServer&&sends.join()==="true,false,true,true,false"&&chats.length===4&&chats[1].text==="hi <b>there</b>"&&Object.keys(chats[1]).join()==="t,text"&&chats[3].text.length===160
+    &&receipts.length===1&&!receipts[0].accepted&&receipts[0].clientId==="retry-1"&&heard.length===1&&heard[0].replace&&heard[0].ids.length===99&&heard[0].ids[0]===32&&heard[0].ids.at(-1)===130&&heard[0].keys.every(k=>k==="id,at,login,name,text")
+    , JSON.stringify({before,sends,chats:chats.map(m=>m.text.length),heard:heard.map(h=>({n:h.ids.length,first:h.ids[0],last:h.ids.at(-1),replace:h.replace}))}));
   const retries = [f.net.sendChat("same", "retry-1"), f.net.sendChat("same", "retry-1"), f.net.sendChat("same", "bad:id")];
   message({t:"chat-ack",clientId:"retry-1"});
   message({t:"chat-ack",clientId:42});
   message({t:"chat-rejected"});
   const retryFrames = f.sent.filter(m=>m.clientId==="retry-1");
+  message({t:"welcome",you:{id:71},players:[],now:Date.now()});
+  const rolledBack = !f.net.state.chatUnicode && !f.net.sendChat("café");
   ws.readyState = 3;
   record("ooga chat wire: stable retry ids are sent unchanged and receipts preserve their correlation; invalid ids and closed sockets cannot send",
-    retries.join()==="true,true,false"&&retryFrames.length===2&&retryFrames.every(m=>m.text==="same")&&receipts.length===2&&receipts[1].accepted&&receipts[1].clientId==="retry-1"&&!f.net.sendChat("closed", "retry-1"),JSON.stringify({retries,retryFrames,receipts}));
+    rolledBack&&retries.join()==="true,true,false"&&retryFrames.length===2&&retryFrames.every(m=>m.text==="same")&&receipts.length===2&&receipts[1].accepted&&receipts[1].clientId==="retry-1"&&!f.net.sendChat("closed", "retry-1"),JSON.stringify({retries,retryFrames,receipts}));
   f.net.dispose();
 };
 const integrationChecks = async BL => {
