@@ -18,6 +18,7 @@
 // out and the runway's marker lamps running the wrong way (`rabbit`), its gold trim and canopy lighting up as they go
 // (the Jet's lit mesh, `jetModels.jet(stage, true)`, swapped in for it); then one crack and a flash, and it's over,
 // Kortik's Sis zapped if she stands near it (`sis.zap`). Its sound is `hangarAudio.zap`.
+
 //
 // `create` builds the arcs once a visit; `update` runs the wait and the anomaly, allocating nothing a frame.
 (() => {
@@ -53,6 +54,8 @@
   // plain mesh's glass to full); and the crack's flash, how long it lasts and its light.
   const ZAP = { start: 0.6, crawl: 4, crack: 5.6, end: 7.2, arcs: 16, life: 0.14, size: 1.7, spread: 1.6, dim: 0.5, fade: 0.8, back: 0.6, rabbit: [0.5, 45], glow: [0.22, 1], flash: 0.25, light: [2.4, 2.8, 3.6] };
   const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end, lightning: ZAP.end };
+  // How much of the lights' dimming the hall's own light takes.
+  const AMBIENT = 0.5;
   // The arcs: how many at once and how long each lasts, s; where they strike round a nozzle, from how far inside its rim
   // to how far out of it, and from how far into it to how far out behind its exit, m; their light, and the hot throats'.
   const FLANK = 7, ARCS = 8, ARC_LIFE = 0.1, ARC_R = [0.6, 1.15], ARC_Z = [-0.4, 0.5], ARC_LIGHT = [0.5, 0.95, 1.8], HEAT_LIGHT = [1.4, 0.5, 0.18];
@@ -100,9 +103,9 @@
     };
     const pause = () => gap !== null ? gap : GAP[0] + Math.random() * (GAP[1] - GAP[0]);
     // The wait for the next; the one playing and how far in; how far the lights are dimmed (1 full) and how hot the
-    // throats are; when the next arc strikes; whether Kortik's Sis has jumped yet; where the marker lamps' wrong-way pulse
+    // throats are, and the hall's own light; when the next arc strikes; whether Kortik's Sis has jumped yet; where the marker lamps' wrong-way pulse
     // is (null while they run their own way); and the crack's flash.
-    let wait = pause(), kind = null, t = 0, dim = 1, heat = 0, arcAt = 0, spooked = false, rabbit = null, flash = 0;
+    let wait = pause(), kind = null, t = 0, dim = 1, ambient = 1, heat = 0, arcAt = 0, spooked = false, rabbit = null, flash = 0;
     // The static fire test running, or not long done.
     const held = () => fire.t >= 0 && fire.t < fire.AT.result + AFTER_FIRE;
 
@@ -251,7 +254,7 @@
     };
     // Over, or cut short: the engines cold, the Jet at rest, the lights full, the arcs gone, and the wait for the next.
     const end = () => {
-      kind = null; dim = 1; heat = 0;
+      kind = null; dim = 1; ambient = 1; heat = 0;
       glow.fill(0);
       jet.rotation.x = REST_X; jet.rotation.z = REST_Z;
       jet.geometry = plain; jet.glow = 1; rabbit = null; flash = 0;
@@ -269,7 +272,8 @@
       t += dt;
       if (kind === "misfire") misfire(dt);
       else if (kind === "phantom") phantom(dt);
-      else if (kind === "lightning") lightning(dt);
+      else lightning(dt);
+      ambient = 1 - (1 - dim) * AMBIENT;
       if (t >= LENGTH[kind]) end();
     };
 
@@ -300,7 +304,7 @@
     const dispose = () => { if (kind) end(); };
     // The Jet's lit mesh, kept on the GPU off the graph, so the lightning swaps it in without a hitch.
     const liveGeometry = (set) => { set.add(lit); };
-    return { update, lights, liveGeometry, dispose, debug, get playing() { return !!kind; }, get dim() { return dim; }, get rabbit() { return rabbit; } };
+    return { update, lights, liveGeometry, dispose, debug, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; } };
   };
 
   BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP };

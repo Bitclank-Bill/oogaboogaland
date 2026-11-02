@@ -68,8 +68,8 @@
     shadowCenter: { x: 2.5, y: 6, z: -2 }, shadowExtent: 42,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 1
   };
-  // The hall's own light at full, and how much of an anomaly's dimming it takes.
-  const SKY = RENDER_OPTS.sky.slice(), GROUND = RENDER_OPTS.ground.slice(), AMBIENT_DIM = 0.5;
+  // The hall's own light at full, which an anomaly dims (its `ambient`).
+  const SKY = RENDER_OPTS.sky.slice(), GROUND = RENDER_OPTS.ground.slice(), DIRECT = RENDER_OPTS.directStrength, FLOOR = RENDER_OPTS.ambientFloor;
   // The space past the shield, from ₿IFRÖST's dome (`bifrostModels.sky`): its stars, the twinkling ones in their halos,
   // the galaxy's band and its shooting stars on a dome tipped so its zenith looks back down the tunnel and turned so
   // the band crosses the tunnel's end; and its ringed giant and its red world, turning with their moons going round,
@@ -738,8 +738,8 @@
       }
     }
   };
-  // The lamps' life: the floor lamps breathing and one now and then stuttering, as dim as an anomaly has the hall's
-  // lights (`dim`); the runway's rabbit, or the one an anomaly runs the wrong way (its `rabbit`, where its front is).
+  // The lamps' life: the floor lamps breathing and one now and then stuttering; the runway's rabbit, or the one an
+  // anomaly runs the wrong way (its `rabbit`, where its front is); all as dim as an anomaly has the hall's lights (`dim`).
   const lampLife = (s, dt, elapsed, dim) => {
     if ((s.lampWait -= dt) <= 0) {
       s.lampWait = LAMP_STUTTER[0] + Math.random() * (LAMP_STUTTER[1] - LAMP_STUTTER[0]);
@@ -757,7 +757,7 @@
     const back = s.anomaly.rabbit, front = back !== null ? back : LAYOUT.runway.z0 - (elapsed - s.rabbitAt) * RABBIT_SPEED;
     for (let i = 0; i < s.markers.length; i++) {
       const d = (s.markers[i].position.z - front) / RABBIT_WIDTH;
-      s.markers[i].glow = 1 + RABBIT_GLOW * Math.exp(-d * d);
+      s.markers[i].glow = (1 + RABBIT_GLOW * Math.exp(-d * d)) * dim;
     }
   };
   // Space's life: stars twinkle a group at a time with their halos, the planets and their rings spin, moons go round
@@ -793,7 +793,7 @@
   // The hangar for a visit: the hall and everything standing in it from the cached builds, the signs, the boards, the
   // Jet at its dock, the door back to the hall with its shield, the launch shield and space past it.
   const build = () => {
-    const L = LAYOUT, s = { crew: [], dimmed: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), dressed = HM.dressing(), fixtures = HM.fixtures(), frames = HM.boardFrames();
+    const L = LAYOUT, s = { crew: [], dimmed: 1, ambient: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), dressed = HM.dressing(), fixtures = HM.fixtures(), frames = HM.boardFrames();
     // The lanterns' and the fixtures' glass, which an anomaly dims with the hall's lights.
     s.glass = [createNode({ geometry: dressed.glass, sightHidden: true }), createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true })];
     addChild(root, createNode({ geometry: shell.rock }), createNode({ geometry: shell.vault }), createNode({ geometry: shell.backing }),
@@ -990,6 +990,7 @@
   const lightUp = () => {
     HM.fixedLights().forEach((l, i) => lamp(i, ...l));
     for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i]; RENDER_OPTS.ground[i] = GROUND[i]; }
+    RENDER_OPTS.directStrength = DIRECT; RENDER_OPTS.ambientFloor = FLOOR;
     RENDER_OPTS.lightCount = Math.min(BL.glRenderer.POINT_LIGHT_CAPACITY, FIXED + lanternPool().length / 4);
   };
   let poolScore = null;
@@ -1443,16 +1444,17 @@
     const who = drivenHere ? drivenHere.root.position : pilot.orbit.target;
     const want = clamp((DOOR_FAR - Math.max(0, Math.hypot(who.x - DOOR.x, who.y - DOOR.y - 1, who.z - DOOR.z) - 2)) / (DOOR_FAR - DOOR_NEAR), 0, 1);
     s.gate.near += (want * want - s.gate.near) * Math.min(1, dt * DOOR_EASE);
-    s.doorGlow.glow = 1 + DOOR_BRIGHTEN * s.gate.near;
-    const Lt = RENDER_OPTS.lights, dim = s.anomaly.dim, power = (1 + DOOR_POWER * s.gate.near) * dim;
+    const Lt = RENDER_OPTS.lights, dim = s.anomaly.dim, amb = s.anomaly.ambient, power = (1 + DOOR_POWER * s.gate.near) * dim;
+    s.doorGlow.glow = (1 + DOOR_BRIGHTEN * s.gate.near) * dim;
     Lt[3] = DOOR_LIGHT[3] + DOOR_REACH * s.gate.near; Lt[4] = DOOR_LIGHT[4] * power; Lt[5] = DOOR_LIGHT[5] * power; Lt[6] = DOOR_LIGHT[6] * power;
-    // The hall's lights as dim as an anomaly has them: the other fixed ones (the door's above, the tunnel mouth's with
-    // the neon), the hall's own light, half as much, and the lanterns' and fixtures' glass.
-    if (dim !== s.dimmed) {
-      s.dimmed = dim;
-      const F = HM.fixedLights(), amb = 1 - (1 - dim) * AMBIENT_DIM;
+    // The hall's lights as dim as an anomaly has them: the door's above, the other fixed ones (the tunnel mouth's goes
+    // with the neon), the hall's own light as its `ambient` says, and the lanterns' and fixtures' glass.
+    if (dim !== s.dimmed || amb !== s.ambient) {
+      s.dimmed = dim; s.ambient = amb;
+      const F = HM.fixedLights();
       for (let i = 1; i < FIXED; i++) if (i !== MOUTH_SLOT) { const l = F[i], o = i * 8; Lt[o + 4] = l[4] * dim; Lt[o + 5] = l[5] * dim; Lt[o + 6] = l[6] * dim; }
       for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i] * amb; RENDER_OPTS.ground[i] = GROUND[i] * amb; }
+      RENDER_OPTS.directStrength = DIRECT * amb; RENDER_OPTS.ambientFloor = FLOOR * amb;
       for (const g of s.glass) g.glow = dim;
     }
     hum(s.gate, OPENING, dt, elapsed, 0.12 * (1 - 0.65 * s.gate.near));
@@ -1467,8 +1469,10 @@
         hud.toast("Launch shield · sealed. The runway opens when Jet v2 is ready.");
       } else if (z > TUN.holdShort + SHIELD_REARM) s.launch.armed = true;
     }
-    // The fire test's lights, an anomaly's, the film's, the forklift's beacon's and Tess's own, then the lanterns'.
+    // The fire test's lights (the booth's as dim as an anomaly has the hall's), an anomaly's, the film's, the forklift's
+    // beacon's and Tess's own, then the lanterns'.
     const fired = FIXED + s.fire.lights(RENDER_OPTS.lights, FIXED), odd = fired + s.anomaly.lights(RENDER_OPTS.lights, fired);
+    for (let i = FIXED; i < fired; i++) { const o = i * 8; Lt[o + 4] *= dim; Lt[o + 5] *= dim; Lt[o + 6] *= dim; }
     const shown = odd + s.terminals.lights(RENDER_OPTS.lights, odd);
     const beamed = shown + beaconLight(s.forklift, RENDER_OPTS.lights, shown);
     s.guide.light(RENDER_OPTS.lights, beamed * 8);
