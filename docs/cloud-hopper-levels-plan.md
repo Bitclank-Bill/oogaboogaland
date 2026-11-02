@@ -474,7 +474,7 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
 - **Music.** *Built.* Each level has its own score in `cloud-hopper-music.js`, written for
   its sky: Coconut Breeze (L1, bright tropical pluck-pop), Golden Hour Groove (L2, upbeat
   sunset disco-synthwave), Cloudbreak Sprint (L3, the original trance score) and Thunderhead Run
-  (L4, dark driving trance, later 150 BPM hard techno with a driven kick). All four keep the old score's rules: one transport through the
+  (L4, dark driving trance, later 150 BPM hard techno with a driven kick, then 122 BPM dark deep house). All four keep the old score's rules: one transport through the
   dock, ascent, race, results and replays, with only the drums following the race and
   entering and leaving on bar lines. Choosing another level card starts its song on the
   playing song's next beat and crossfades the two over 2.5 s. The dock plays the level last
