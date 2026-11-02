@@ -18,7 +18,11 @@
 // out and the runway's marker lamps running the wrong way (`rabbit`), its gold trim and canopy lighting up as they go
 // (the Jet's lit mesh, `jetModels.jet(stage, true)`, swapped in for it); then one crack and a flash, and it's over,
 // Kortik's Sis zapped if she stands near it (`sis.zap`). Its sound is `hangarAudio.zap`.
-
+//
+// The blackout (`blackout`): a flicker and every light dies, the hall's own light nearly gone; only the two nozzles glow
+// in the dark like eyes, breathing, and blink once; Kortik's Sis's eyes glow too (`sis.dark`); then the banks clunk
+// back on one by one. Its sound is `hangarAudio.blackout`, the hall's electrical hum following its power
+// (`hangarAudio.power`).
 //
 // `create` builds the arcs once a visit; `update` runs the wait and the anomaly, allocating nothing a frame.
 (() => {
@@ -53,8 +57,12 @@
   // lamps' pulse runs the wrong way, m/s, from `rabbit[0]`; how bright the gold trim burns (the lit mesh's glow, from the
   // plain mesh's glass to full); and the crack's flash, how long it lasts and its light.
   const ZAP = { start: 0.6, crawl: 4, crack: 5.6, end: 7.2, arcs: 16, life: 0.14, size: 1.7, spread: 1.6, dim: 0.5, fade: 0.8, back: 0.6, rabbit: [0.5, 45], glow: [0.22, 1], flash: 0.25, light: [2.4, 2.8, 3.6] };
-  const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end, lightning: ZAP.end };
-  // How much of the lights' dimming the hall's own light takes.
+  // The blackout, s from its start: one flicker (`flicker`, [from, to], down to `low`), the power killed at `kill`; how
+  // dark the lights go and the hall's own light; the nozzles glowing in the dark like eyes from `wake` after the kill,
+  // how bright and how they breathe, and their blink at `blink` for `blinkLen`; the banks coming back on, and the end.
+  const BLACKOUT = { flicker: [0.05, 0.12], low: 0.3, kill: 0.2, dark: 0.03, ambient: 0.15, wake: 0.6, eyes: 0.35, breathe: 0.08, blink: 4.2, blinkLen: 0.18, banks: [6.8, 7.4, 8, 8.6], end: 10 };
+  const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end, lightning: ZAP.end, blackout: BLACKOUT.end };
+  // How much of the lights' dimming the hall's own light takes, but in the blackout.
   const AMBIENT = 0.5;
   // The arcs: how many at once and how long each lasts, s; where they strike round a nozzle, from how far inside its rim
   // to how far out of it, and from how far into it to how far out behind its exit, m; their light, and the hot throats'.
@@ -242,6 +250,29 @@
       if (!spooked && t >= Z.start / 2) { spooked = true; sis.spook(J.x, (nose + tail) / 2); }
     };
 
+    // A frame of the blackout.
+    const blackout = (dt) => {
+      const B = BLACKOUT;
+      let on = 0;
+      for (let i = 0; i < B.banks.length; i++) if (t >= B.banks[i]) on++;
+      const k = on / B.banks.length;
+      // The lights: a flicker, dead, then back a bank at a time; the hall's own light with them; the hall's hum with the
+      // power, and Kortik's Sis's eyes in the dark.
+      dim = t < B.kill ? (t >= B.flicker[0] && t < B.flicker[1] ? B.low : 1) : B.dark + (1 - B.dark) * k;
+      ambient = t < B.kill ? 1 : B.ambient + (1 - B.ambient) * k;
+      if (t >= B.kill && t - dt < B.kill) audio.power(0);
+      for (let i = 0; i < B.banks.length; i++) if (t >= B.banks[i] && t - dt < B.banks[i]) audio.power((i + 1) / B.banks.length);
+      sis.dark((1 - dim) / (1 - B.dark));
+      // The nozzles in the dark, like eyes: waking, breathing, blinking once, gone as the first bank comes on.
+      const awake = t < B.kill + B.wake || on > 0 || t >= B.blink && t < B.blink + B.blinkLen ? 0 : B.eyes * ease((t - B.kill - B.wake) / 0.8) * (1 + B.breathe * Math.sin(t * 2));
+      glow.fill(awake);
+      heat = awake;
+      fire.engines(0, 1, glow);
+      // Kortik's Sis, as it goes dark, and told once the lights come back.
+      if (!spooked && t >= B.kill) { spooked = true; sis.spook(engines.x, engines.z); }
+      if (t >= B.banks[0] && t - dt < B.banks[0]) sis.settle();
+    };
+
     const begin = (k) => {
       kind = k; t = 0; arcAt = 0; spooked = false;
       if (k === "misfire") audio.misfire(MISFIRE);
@@ -250,10 +281,11 @@
         jet.geometry = lit;
         jet.glow = ZAP.glow[0];
         audio.zap(ZAP, { x: J.x, y: 5, z: nose }, { x: J.x, y: 5, z: tail });
-      }
+      } else if (k === "blackout") audio.blackout(BLACKOUT);
     };
     // Over, or cut short: the engines cold, the Jet at rest, the lights full, the arcs gone, and the wait for the next.
     const end = () => {
+      if (kind === "blackout") { sis.dark(0); audio.power(1); }
       kind = null; dim = 1; ambient = 1; heat = 0;
       glow.fill(0);
       jet.rotation.x = REST_X; jet.rotation.z = REST_Z;
@@ -272,8 +304,9 @@
       t += dt;
       if (kind === "misfire") misfire(dt);
       else if (kind === "phantom") phantom(dt);
-      else lightning(dt);
-      ambient = 1 - (1 - dim) * AMBIENT;
+      else if (kind === "lightning") lightning(dt);
+      else blackout(dt);
+      if (kind !== "blackout") ambient = 1 - (1 - dim) * AMBIENT;
       if (t >= LENGTH[kind]) end();
     };
 
@@ -307,5 +340,5 @@
     return { update, lights, liveGeometry, dispose, debug, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; } };
   };
 
-  BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP };
+  BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP, BLACKOUT };
 })();
