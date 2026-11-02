@@ -30,6 +30,15 @@
 // nobody standing on the Jet (`riders`), and stops at once, the Jet at rest, if someone gets on or a frame runs too
 // long to trust (`HITCH`); what anyone walks on never moves.
 //
+// The hangar shuffle (`shuffle`): the brakes letting go with a clunk and the Jet shifting in its bay, a lurch toward
+// its nose and back, a sway from wing to wing pivoting on the trestle under the wing that stays down, and a last lurch,
+// its gear creaking and its engines giving short bursts; then it settles exactly on its marks. It never goes more than
+// SHUFFLE's `along` and `roll`, so it stays in its bay, clear of the gangway, with its booth cables riding along. It
+// starts only with everyone clear of where it may reach (`near`, `blocked`: any body within `SAFE.margin` of the Jet's
+// cells grown by the motion, at that body's height, or of its nozzles) and stops at once at its rest pose, failing
+// closed, if anyone comes that near, or a frame runs too long to trust; meanwhile the hangar's own walkers keep out of
+// that reach (`keepsOut`). Kortik's Sis yells at it to stay put. Its sound is `hangarAudio.shuffle`.
+//
 // `create` builds the arcs once a visit; `update` runs the wait and the anomaly, allocating nothing a frame.
 (() => {
   "use strict";
@@ -71,7 +80,19 @@
   // about the main gear (`gear`, m along the Jet from its middle); the end; and how hard each beat is, n from 0,
   // easing in and out over the first and last two, every other one softer.
   const LOWRIDER = { start: 0.4, beat: 0.6, beats: 14, pitch: 0.035, gear: 1.5, end: 10, hard: (n) => Math.min(1, (n + 1) / 2, (LOWRIDER.beats - n) / 2) * (n % 2 ? 0.65 : 1) };
-  const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end, lightning: ZAP.end, blackout: BLACKOUT.end, lowrider: LOWRIDER.end };
+  // The hangar shuffle, s from its start: the brakes letting go; its keyframes, each [s, along (m, toward the nose
+  // less), roll (radians, the right wing up more)], eased between: a lurch forward and back, a sway from wing to wing and
+  // a last lurch, settling on its marks; the tyre scrubs and the gear's creaks, s; the engines' bursts, [s, how hard];
+  // the end; and the top of the trestles' pads, m, where it pivots. At most `along` m and `roll` radians.
+  const SHUFFLE = {
+    brake: 0.4, keys: [[0, 0, 0], [0.4, 0, 0], [0.75, -0.2, 0], [1.3, 0.08, 0], [1.9, -0.04, 0], [2.4, 0, 0], [3, 0, 0.0105], [3.7, 0, -0.0105], [4.4, 0, 0.008],
+      [5.1, 0, -0.008], [5.8, 0, 0.005], [6.5, 0, -0.004], [7.1, 0, 0], [7.8, -0.12, 0.004], [8.4, 0.06, -0.003], [9.2, 0, 0], [10.5, 0, 0]],
+    scrubs: [0.4, 1.3, 1.9, 7.8, 8.4], creaks: [3, 3.7, 4.4, 5.1, 5.8, 6.5], bursts: [[0.75, 0.6], [3, 0.4], [4.4, 0.35], [7.8, 0.7]], end: 11, pad: 3.35, along: 0.2, roll: 0.0105
+  };
+  // How near anything may come to where the shuffling Jet may reach, m; how far it may reach along, to the side and up,
+  // m; and how far its nozzles stand out behind its cells.
+  const SAFE = { margin: 1, along: 0.25, side: 0.06, up: 0.12, nozzle: 1.5 };
+  const LENGTH = { misfire: MISFIRE.end, phantom: REVS.end, lightning: ZAP.end, blackout: BLACKOUT.end, lowrider: LOWRIDER.end, shuffle: SHUFFLE.end };
   // The longest frame a moving Jet trusts, s; and how near the Jet's top an Ooga's feet must be, and how far off the
   // floor, to stand on it, m.
   const HITCH = 0.1, ON_JET = [0.4, 0.4];
@@ -101,16 +122,19 @@
   // holds it off; `sis`: Kortik's Sis; `fx`: the scene's particles; `audio`: the hangar's sound; `jet`: the Jet's node,
   // which the revs rock and put back at rest; `stage`, the stage it shows; `auto`: whether they come by themselves (off
   // on a test page, where only `debug.play` starts one); `gap`, a fixed wait between them instead of GAP's, s; `riders()`,
-  // whether any Ooga stands on the Jet (`standsOn` says for one).
-  const create = ({ root, fire, sis, fx, audio, jet, stage, auto = true, gap = null, riders = () => false }) => {
+  // whether any Ooga stands on the Jet (`standsOn` says for one); `near(test)`, whether `test(x, z, feet, height,
+  // radius)` holds for anything that walks the hall.
+  const create = ({ root, fire, sis, fx, audio, jet, stage, auto = true, gap = null, riders = () => false, near = () => false }) => {
     const SPARK = HM.blast().spark, BLUE = BL.models.particleGeometry("#a8ecff", 0.05, 1), J = jet.position;
     const exits = JM.EXHAUST.map((e) => ({ x: J.x + e.x, y: e.y, z: J.z + e.z, r: e.r }));
     // Where Kortik's Sis turns to: between the engines. How the Jet stands at rest. Each throat's glow, in the nozzles'
     // order, for `fire.engines` and the lights.
-    const engines = { x: J.x, z: exits[0].z }, REST_X = jet.rotation.x, REST_Z = jet.rotation.z, REST_Y = jet.position.y, glow = new Float32Array(exits.length);
+    const engines = { x: J.x, z: exits[0].z }, REST_X = jet.rotation.x, REST_Z = jet.rotation.z, REST_Y = jet.position.y, REST_PX = jet.position.x, REST_PZ = jet.position.z, glow = new Float32Array(exits.length);
     // The Jet's plain and lit meshes; its cells seen from above, where the lightning runs over it, from nose to tail; and
     // the runway the marker lamps light along.
     const plain = jet.geometry, lit = JM.jet(stage, true), C = JM.columns(stage), nose = J.z + C.k0 * C.U, tail = J.z + (C.k0 + C.nk) * C.U, RUNWAY = HM.LAYOUT.runway;
+    // Where the trestles stand across the Jet, m from its middle.
+    const PAD_X = Math.abs(HM.LAYOUT.trestles[0][0] - J.x);
     const arcs = Array.from({ length: ARCS }, (_, i) => ({ node: createNode({ geometry: bolts()[i % 3], visible: false, sightHidden: true }), life: 0, len: ARC_LIFE }));
     addChild(root, ...arcs.map((a) => a.node));
     // The kinds in their turn: a bag shuffled in place each time it runs out.
@@ -314,6 +338,50 @@
       if (u >= last && u - dt < last) sis.settle();
     };
 
+    // Whether a body at (x, z), its feet at `feet`, `height` tall and `radius` round, comes within SAFE.margin of anywhere
+    // the shuffling Jet may reach: any of its cells at the body's height, grown by the motion, or its nozzles.
+    const blocked = (x, z, feet, height, radius) => {
+      const lx = x - REST_PX, lz = z - REST_PZ, r = radius + SAFE.margin, top = feet + height;
+      const i0 = Math.max(0, Math.floor((lx - r - SAFE.side) / C.U) - C.i0), i1 = Math.min(C.ni - 1, Math.floor((lx + r + SAFE.side) / C.U) - C.i0);
+      const k0 = Math.max(0, Math.floor((lz - r - SAFE.along) / C.U) - C.k0), k1 = Math.min(C.nk - 1, Math.floor((lz + r + SAFE.along) / C.U) - C.k0);
+      for (let i = i0; i <= i1; i++) for (let k = k0; k <= k1; k++) {
+        const c = i * C.nk + k, hi = C.top[c];
+        if (hi <= 0 || C.bottom[c] - SAFE.up >= top || hi + SAFE.up <= feet) continue;
+        const x0 = (i + C.i0) * C.U - SAFE.side, x1 = x0 + C.U + 2 * SAFE.side, z0 = (k + C.k0) * C.U - SAFE.along, z1 = z0 + C.U + 2 * SAFE.along;
+        if (Math.hypot(Math.max(x0 - lx, 0, lx - x1), Math.max(z0 - lz, 0, lz - z1)) < r) return true;
+      }
+      for (let n = 0; n < exits.length; n++) {
+        const e = exits[n], g = e.r + SAFE.side;
+        if (e.y - e.r - SAFE.up >= top || e.y + e.r + SAFE.up <= feet) continue;
+        if (Math.hypot(Math.max(e.x - g - x, 0, x - e.x - g), Math.max(e.z - SAFE.nozzle - SAFE.along - z, 0, z - e.z - SAFE.along)) < r) return true;
+      }
+      return false;
+    };
+    // A frame of the hangar shuffle: stopped at once, at rest, with anyone near or a frame too long to trust.
+    const shuffle = (dt) => {
+      const S = SHUFFLE;
+      if (dt > HITCH || near(blocked)) { end(); return; }
+      // The pose between its keyframes: along the Jet, and rolled about the pad under the wing that stays down.
+      let i = 1;
+      while (i < S.keys.length - 1 && t > S.keys[i][0]) i++;
+      const a = S.keys[i - 1], b = S.keys[i], u = ease((t - a[0]) / (b[0] - a[0])), along = a[1] + (b[1] - a[1]) * u, roll = a[2] + (b[2] - a[2]) * u;
+      const px = roll > 0 ? -PAD_X : PAD_X, cos = Math.cos(roll), sin = Math.sin(roll);
+      J.x = REST_PX + px - (px * cos - S.pad * sin); J.y = REST_Y + S.pad - (px * sin + S.pad * cos); J.z = REST_PZ + along;
+      jet.rotation.z = REST_Z + roll;
+      // The engines' bursts: both throats flaring a moment, a puff of smoke from each.
+      let h = 0;
+      for (let n = 0; n < S.bursts.length; n++) {
+        const d = t - S.bursts[n][0];
+        if (d >= 0 && d < 0.3) h = Math.max(h, S.bursts[n][1] * 0.6 * (1 - d / 0.3));
+        if (d >= 0 && d - dt < 0) for (const e of exits) fx.puff(e.x, e.y, e.z + 0.4, 0, 0.3, 0.6, 1.1);
+      }
+      heat = h;
+      glow.fill(h);
+      fire.engines(0, 1, glow);
+      // Kortik's Sis, at it for shifting, where she stands.
+      if (!spooked && t >= S.brake) { spooked = true; sis.spook(engines.x, engines.z, "stay"); }
+    };
+
     const begin = (k) => {
       kind = k; t = 0; arcAt = 0; spooked = false;
       if (k === "misfire") audio.misfire(MISFIRE);
@@ -324,27 +392,33 @@
         audio.zap(ZAP, { x: J.x, y: 5, z: nose }, { x: J.x, y: 5, z: tail });
       } else if (k === "blackout") audio.blackout(BLACKOUT);
       else if (k === "lowrider") audio.lowrider(LOWRIDER);
+      else if (k === "shuffle") audio.shuffle(SHUFFLE);
     };
     // Over, or cut short: the engines cold, the Jet at rest, the lights full, the arcs gone, and the wait for the next.
     const end = () => {
       if (kind === "blackout") { sis.dark(0); audio.power(1); }
       kind = null; dim = 1; ambient = 1; heat = 0;
       glow.fill(0);
-      jet.rotation.x = REST_X; jet.rotation.z = REST_Z; J.y = REST_Y;
+      jet.rotation.x = REST_X; jet.rotation.z = REST_Z; J.x = REST_PX; J.y = REST_Y; J.z = REST_PZ;
       jet.geometry = plain; jet.glow = 1; rabbit = null; flash = 0;
       fire.engines(0, 0);
       for (const a of arcs) { a.life = 0; a.node.visible = false; }
       wait = pause();
     };
+    const unfit = (k) => k === "lowrider" && riders() || k === "shuffle" && near(blocked);
+    // Whether a walker of the hangar's own, `height` tall and `radius` round at (x, z) with its feet at `feet`, must keep
+    // out of there: within the shuffling Jet's reach while it shuffles.
+    const keepsOut = (x, z, feet, height, radius) => kind === "shuffle" && blocked(x, z, feet, height, radius);
     // Once a frame, before the static fire test's own.
     const update = (dt) => {
       for (const a of arcs) if (a.life > 0 && (a.life -= dt) <= 0) a.node.visible = false;
       if (!kind) {
         if (auto && (wait -= dt) <= 0 && !held()) {
-          // The lowrider only with nobody on the Jet: the next in the bag instead, or the failed start.
+          // The lowrider only with nobody on the Jet, the shuffle only with everyone clear of it: the next in the bag
+          // instead, or the failed start.
           let k = next();
-          if (k === "lowrider" && riders()) k = next();
-          begin(k === "lowrider" && riders() ? "misfire" : k);
+          if (unfit(k)) k = next();
+          begin(unfit(k) ? "misfire" : k);
         }
         return;
       }
@@ -353,7 +427,8 @@
       else if (kind === "phantom") phantom(dt);
       else if (kind === "lightning") lightning(dt);
       else if (kind === "blackout") blackout(dt);
-      else lowrider(dt);
+      else if (kind === "lowrider") lowrider(dt);
+      else shuffle(dt);
       if (kind !== "blackout") ambient = 1 - (1 - dim) * AMBIENT;
       if (kind && t >= LENGTH[kind]) end();
     };
@@ -385,8 +460,8 @@
     const dispose = () => { if (kind) end(); };
     // The Jet's lit mesh, kept on the GPU off the graph, so the lightning swaps it in without a hitch.
     const liveGeometry = (set) => { set.add(lit); };
-    return { update, lights, liveGeometry, dispose, debug, standsOn, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; } };
+    return { update, lights, liveGeometry, dispose, debug, standsOn, keepsOut, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; } };
   };
 
-  BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP, BLACKOUT, LOWRIDER };
+  BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP, BLACKOUT, LOWRIDER, SHUFFLE };
 })();

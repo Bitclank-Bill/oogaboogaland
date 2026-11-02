@@ -181,6 +181,26 @@
     for (let i = 0; i < others.length; i++) if (a.standsOn(others[i].x, others[i].y, others[i].z)) return true;
     return false;
   };
+  // Whether `test(x, z, feet, height, radius)` holds for anything that walks the hall: the Ooga driven here, the other
+  // players' Oogas where they are shown and where the room last put them (a late update counts at once), Kortik's Sis,
+  // the crew and the forklift. The room's records are walked with one callback made once, `nearTest` and `nearHit` its state.
+  const BODY = { height: BL.remotePlayers.BODY_HEIGHT, radius: 0.4 };
+  let nearTest = null, nearHit = false;
+  const roomBody = (rec) => {
+    if (!nearHit && rec.body && rec.zone === hangarScene.voiceZone && nearTest(rec.x, rec.z, rec.y, BODY.height, BODY.radius)) nearHit = true;
+  };
+  const nearJet = (test) => {
+    const d = people && people.player, others = remotes ? remotes.actors() : NO_ACTORS, sis = scene.sis.actor;
+    if (d && test(d.root.position.x, d.root.position.z, d.root.position.y - d.baseY, BODY.height, d.bodyRadius || BODY.radius)) return true;
+    for (let i = 0; i < others.length; i++) { const o = others[i]; if (test(o.x, o.z, o.y, o.height, o.radius)) return true; }
+    if (test(sis.x, sis.z, sis.y, sis.height, sis.radius)) return true;
+    for (let i = 0; i < scene.crewActors.length; i++) { const c = scene.crewActors[i]; if (test(c.x, c.z, c.y, c.height, c.radius)) return true; }
+    for (let i = 0; i < scene.forklift.blocks.length; i++) { const b = scene.forklift.blocks[i]; if (test(b.x, b.z, 0, BLOCKS.height, b.radius)) return true; }
+    nearTest = test; nearHit = false;
+    BL.net.remotes.forEach(roomBody);
+    nearTest = null;
+    return nearHit;
+  };
   const accountChanged = () => {
     if (!avatar) return;
     const released = BL.net.state.released;
@@ -936,7 +956,7 @@
     s.crewActors = [];
     for (const [x, y, z, radius, heading] of LAYOUT.crew) {
       const walkable = (fx, fz, nx, nz) => Math.hypot(nx - x, nz - z) < radius + 0.4 && HM.supportAt(nx, nz, y) === y && HM.clearAt(nx, nz, y, CREW_BODY, fx, fz)
-        && clearOfOoga(fx, fz, nx, nz, y);
+        && clearOfOoga(fx, fz, nx, nz, y) && !(scene.anomaly.keepsOut(nx, nz, y, CREW_HEIGHT, CREW_BODY) && !scene.anomaly.keepsOut(fx, fz, y, CREW_HEIGHT, CREW_BODY));
       const agent = BL.agent.create({ groundAt: () => y, walkable, form: "ape", x, z, heading, scale: 0.86 });
       addChild(agent.parts.head, createNode({ position: { x: 0, y: 0.6, z: 0.05 }, geometry: hat }));
       addChild(agent.parts.torso, createNode({ geometry: vest }));
@@ -1228,14 +1248,16 @@
     targets.push(scene.fire.body);
     soundPanel = openSoundPanel();
     // Kortik's Sis, the hangar's chief engineer (`sis.js`).
-    scene.sis = BL.sis.create({ fx, audio, fire: scene.fire, jet: scene.jet, toast: hud.toast, blocks: () => scene.forklift.blocks });
+    scene.sis = BL.sis.create({ fx, audio, fire: scene.fire, jet: scene.jet, toast: hud.toast, blocks: () => scene.forklift.blocks,
+      avoid: (x, z, feet, height, radius) => !!scene.anomaly && scene.anomaly.keepsOut(x, z, feet, height, radius) });
     addChild(root, scene.sis.node, scene.sis.props);
     input.add(scene.sis.body, { kind: "sis", preset: null }, { radius: 1.2 });
     targets.push(scene.sis.body);
     // The Jet acting up on its own now and then (`hangar-anomaly.js`): not on a test page unless `anomaly=` asks, which
-    // under debug also sets the wait between them, s. It asks whether any Ooga stands on the Jet (`jetRidden`).
+    // under debug also sets the wait between them, s. It asks whether any Ooga stands on the Jet (`jetRidden`), and
+    // whether anything that walks the hall comes near it (`nearJet`).
     const every = DEBUG ? Number(params.get("anomaly")) : NaN;
-    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden() });
+    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden(), near: (test) => nearJet(test) });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
     for (const n of scene.terminals.nodes) {
