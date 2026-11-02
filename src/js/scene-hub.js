@@ -1950,7 +1950,7 @@
     hammockClaims.length = 0;
     hammock = null;
   };
-  const HAMMOCK_FULL = { kind: "hammock-full" };
+  const HAMMOCK_FULL = { kind: "hammock-full" }, HAMMOCK_FROM = { x: 0, z: 0 };
   // Space beside the hammock: into the free seat nearest, with a push to the swing.
   const restInHammock = (seat) => {
     if (!hammock.enter(pilot.player, seat, crew.sitPlayer)) hud.toast("No room to get into the hammock from here");
@@ -5898,7 +5898,8 @@
     }
     if (player && hammock && player.hop < 0.03 && player.hopV <= 0
       && hammock.reachable(x, player.root.position.y - player.baseY, z, Math.min(reach, 1.25))) {
-      return hammock.free({ x, z }) || HAMMOCK_FULL;
+      HAMMOCK_FROM.x = x; HAMMOCK_FROM.z = z;
+      return hammock.free(HAMMOCK_FROM) || HAMMOCK_FULL;
     }
     if (arcadeMouth && actionWithinReach(x, y, z, arcadeMouth.x, arcadeMouth.y, arcadeMouth.z, MOUTH_REACH)) return arcadeMouth;
     if (player && timechainIsland.gate && timechainIsland.gate.nearKeypad(x, y, z)) return timechainIsland.gate.action;

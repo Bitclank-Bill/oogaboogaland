@@ -14,7 +14,7 @@
   const BED_LEN = 2.5, BED_W = 0.95, END_Y = 0.86, BED_SAG = 0.2, CRADLE = 0.07, TRUNK_CLEAR = 0.6;
   // The one resting place is centred on the cloth; the crew seat contract owns occupancy and standing up.
   const SEAT_AT = [0], SEAT_LIFT = 0.04, SLOTS = SEAT_AT.length;
-  const ENTRY_SECONDS = 0.9, ENTRY_PARTS = ["legL", "legR", "armL", "armR", "head"];
+  const ENTRY_SECONDS = 0.9, ENTRY_PARTS = ["legL", "legR", "armL", "armR", "head"], AXES = ["x", "y", "z"];
   // Where an Ooga stands up: STAND past the bed's swing (`envelope`'s `across`), room for the widest Ooga.
   const STAND = 0.6;
   // The swing: the bed's angle about the virtual swing axis is `amp` sin(OMEGA t), `amp` easing toward REST (or REST_HELD with
@@ -301,7 +301,7 @@
         r.position.x = transition.position.x + (r.position.x - transition.position.x) * blend;
         r.position.y = transition.position.y + (r.position.y - transition.position.y) * blend + Math.sin(Math.PI * t) * 0.25;
         r.position.z = transition.position.z + (r.position.z - transition.position.z) * blend;
-        for (const key of ENTRY_PARTS) for (const axis of ["x", "y", "z"]) {
+        for (const key of ENTRY_PARTS) for (const axis of AXES) {
           const from = transition.parts[key][axis], to = parts[key].rotation[axis];
           parts[key].rotation[axis] = from + (to - from) * blend;
         }
