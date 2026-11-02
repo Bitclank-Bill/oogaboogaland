@@ -127,7 +127,9 @@
     // The Satoshi statue: an original Ooga figure, not a likeness and after no other sculpture. A tall robed figure,
     // chunky and cast in gold on black granite, faceless, holding the whitepaper open at its chest, on a stepped plinth
     // whose plaque is a plain text tribute. About 12 m. One merged mesh; no light and nothing per frame.
-    if (L.monument) monumentParts(M, L.monument, top, sign, place, createNode);
+    // A debug page may preview the statue's other designs (statue=bust or statue=cloak); the figure is the default.
+    const style = typeof location !== "undefined" && /[?&]debug=1/.test(location.search) ? (location.search.match(/[?&]statue=(bust|cloak)/) || [])[1] : null;
+    if (L.monument) (style ? (M2, S, t, sg, pl, cn) => bustParts(M2, S, t, sg, pl, cn, style === "cloak") : monumentParts)(M, L.monument, top, sign, place, createNode);
     // The floor map: for each era a chevron on the floor pointing at its gallery and a low sign facing the middle.
     for (const m of L.markers) {
       const c = eraColor(m.era);
@@ -151,7 +153,7 @@
   };
   // Cast in gold on a black granite plinth: three golds for the robe's tiers and folds, a faint glow so the metal
   // catches the hall's light from every side.
-  const STONE_A = "#e3b545", STONE_B = "#cf9f32", STONE_D = "#a77d1e", GLEAM = 0.18, GRANITE = "#2b2724", GRANITE_LT = "#3b3530";
+  const STONE_A = "#f0c75a", STONE_B = "#c8932a", STONE_D = "#7d5a12", STONE_X = "#4f3a0c", GLEAM = 0.05, GRANITE = "#2b2724", GRANITE_LT = "#3b3530";
   const monumentParts = (M, S, top, sign, place, createNode) => {
     const { ys, k, P } = statueParts(), parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
     const block = (w, h, d, color, x, y, z, bevel = 0.08, emissive = color === GRANITE || color === GRANITE_LT ? 0 : GLEAM) => parts.push(at(M.bevelBox({ w, h, d, color, bevel, emissive }), x, y, z));
@@ -160,12 +162,23 @@
     parts.push(at(M.box({ w: 3.44, h: 0.08, d: 3.44, color: GOLD, emissive: 0.5 }), 0, P - 0.12, 0));
     const F = FIGURE, Y = (key) => P + ys[key] * k, H = (key) => F[key][2] * k;
     // The robe, widening to its hem in tiers, with blocky folds down its front and a gold belt.
-    for (const key of ["hem", "lower", "mid", "chest", "shoulders"]) block(F[key][0] * k, H(key), F[key][1] * k, key === "lower" || key === "chest" ? STONE_B : STONE_A, 0, Y(key) + H(key) / 2, 0, 0.1);
-    for (const fx of [-0.7, -0.25, 0.25, 0.7]) block(0.16 * k, (F.hem[2] + F.lower[2]) * k * 0.92, 0.12 * k, STONE_D, fx * k, Y("hem") + (F.hem[2] + F.lower[2]) * k * 0.46, F.hem[1] / 2 * k + 0.02, 0.03);
+    // Each tier a little short of the next, so a dark groove (the core behind) shows between them; the waist drawn
+    // narrower than its footing, under a sash, so the figure reads as robed rather than as a column.
+    const tierW = { hem: 1, lower: 0.97, mid: 0.82, chest: 0.95, shoulders: 1 };
+    for (const key of ["hem", "lower", "mid", "chest", "shoulders"]) {
+      const gap = key === "shoulders" ? 0 : 0.09 * k;
+      block(F[key][0] * k * tierW[key], H(key) - gap, F[key][1] * k * tierW[key], key === "lower" || key === "chest" ? STONE_B : STONE_A, 0, Y(key) + (H(key) - gap) / 2, 0, 0.12);
+      block(F[key][0] * k * tierW[key] * 0.86, H(key), F[key][1] * k * tierW[key] * 0.86, STONE_X, 0, Y(key) + H(key) / 2, 0, 0.02);
+    }
+    // Deep folds down the skirt, front, back and sides, in the darkest gold.
+    const skirt = (F.hem[2] + F.lower[2]) * k * 0.92, sy = Y("hem") + skirt / 2;
+    for (const fx of [-0.85, -0.42, 0, 0.42, 0.85]) for (const sz of [-1, 1]) block(0.2 * k, skirt, 0.2 * k, STONE_D, fx * k, sy, sz * (F.hem[1] / 2 * k + 0.04), 0.05);
+    for (const fz of [-0.5, 0, 0.5]) for (const sx of [-1, 1]) block(0.2 * k, skirt, 0.2 * k, STONE_D, sx * (F.hem[0] / 2 * k + 0.04), sy, fz * k, 0.05);
     parts.push(at(M.box({ w: F.mid[0] * k + 0.06, h: 0.22 * k, d: F.mid[1] * k + 0.06, color: "#ffe08a", emissive: 0.6 }), 0, Y("mid") + H("mid") * 0.85, 0));
     // Arms: sleeves down the sides, forearms forward to the hands holding the whitepaper open at the chest.
     for (const sx of [-1, 1]) {
-      block(0.62 * k, 2.2 * k, 0.8 * k, STONE_A, sx * 1.42 * k, Y("chest") + H("chest") - 0.9 * k, 0.05 * k, 0.1);
+      block(0.62 * k, 2.2 * k, 0.8 * k, STONE_A, sx * 1.42 * k, Y("chest") + H("chest") - 0.9 * k, 0.05 * k, 0.12);
+      block(0.66 * k, 0.22 * k, 0.86 * k, STONE_D, sx * 1.42 * k, Y("chest") + H("chest") - 1.95 * k, 0.05 * k, 0.04);
       block(0.55 * k, 0.55 * k, 1.1 * k, STONE_B, sx * 1.05 * k, Y("chest") + 0.35 * k, (F.chest[1] / 2 + 0.2) * k, 0.08);
       block(0.42 * k, 0.5 * k, 0.4 * k, STONE_D, sx * 0.86 * k, Y("chest") + 0.55 * k, (F.chest[1] / 2 + 0.55) * k, 0.06);
     }
@@ -179,10 +192,63 @@
     }
     // The neck and the head: faceless dressed stone under a squared crown.
     block(F.neck[0] * k, H("neck"), F.neck[1] * k, STONE_B, 0, Y("neck") + H("neck") / 2, 0, 0.05);
-    block(F.head[0] * k, H("head") * 0.86, F.head[1] * k, STONE_A, 0, Y("head") + H("head") * 0.43, 0, 0.18);
-    block(F.head[0] * k * 0.9, H("head") * 0.14, F.head[1] * k * 0.9, STONE_B, 0, Y("head") + H("head") * 0.93, 0, 0.06);
+    // The head as the island's Oogas carve one: a heavy brow over a smooth face, a short nose, a cap of hair and a
+    // squared crown, every part its own gold so the shapes read from across the atrium. No likeness.
+    block(F.head[0] * k * 0.92, H("head") * 0.8, F.head[1] * k * 0.9, STONE_A, 0, Y("head") + H("head") * 0.4, 0, 0.18);
+    block(F.head[0] * k, H("head") * 0.3, F.head[1] * k, STONE_D, 0, Y("head") + H("head") * 0.8, -0.04 * k, 0.1);
+    block(F.head[0] * k * 0.96, 0.16 * k, 0.24 * k, STONE_X, 0, Y("head") + H("head") * 0.6, F.head[1] / 2 * k * 0.9 + 0.04, 0.05);
+    block(0.22 * k, 0.3 * k, 0.18 * k, STONE_B, 0, Y("head") + H("head") * 0.42, F.head[1] / 2 * k * 0.9 + 0.06, 0.05);
+    block(F.head[0] * k * 0.9, H("head") * 0.12, F.head[1] * k * 0.9, STONE_B, 0, Y("head") + H("head") * 0.94, 0, 0.06);
     place(createNode({ geometry: M.merge(...parts) }));
     sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · an original Ooga statue, not a likeness", S.x, top + 1.25, S.z + 2.05 + 0.25, Math.PI, "gold", 0.5);
+  };
+  // The bust, a design under consideration: a large polished-gold bust on a pale stone plinth, a coin with the
+  // Bitcoin sign on its chest, a smooth faceless head with an Ooga's heavy brow, and a high open collar (or, with
+  // `cloak`, a shaggy fur cloak clasped with a bone). Original: no hood, no mirror face, after no other sculpture.
+  const bustParts = (M, S, top, sign, place, createNode, cloak) => {
+    const parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
+    const block = (w, h, d, color, x, y, z, bevel = 0.1, emissive = 0.05) => parts.push(at(M.bevelBox({ w, h, d, color, bevel, emissive }), x, y, z));
+    const MARBLE = "#e9e4da", MARBLE_D = "#cfc8ba", G1 = "#f3cd62", G2 = "#d29f33", G3 = "#9a6f17", G4 = "#5a420e";
+    // The plinth: a pale stone pedestal with a moulded foot and cap.
+    block(4.8, 0.5, 4.8, MARBLE_D, 0, 0.25, 0, 0.06, 0);
+    block(4.1, 3.2, 4.1, MARBLE, 0, 2.1, 0, 0.08, 0);
+    block(4.5, 0.35, 4.5, MARBLE_D, 0, 3.87, 0, 0.06, 0);
+    const B = 4.05;
+    // The bust: a broad chest rounding into the shoulders, the arms cut off at the upper arm as busts are.
+    block(4.4, 1.6, 2.5, G2, 0, B + 0.8, 0, 0.3);
+    block(4.9, 1.3, 2.3, G1, 0, B + 2.1, 0, 0.45);
+    block(3.6, 0.5, 2.0, G1, 0, B + 2.95, 0, 0.3);
+    for (const sx of [-1, 1]) block(0.9, 2.2, 2.2, G2, sx * 2.25, B + 1.4, 0, 0.35);
+    // Folds of cloth down the chest and across the back.
+    for (const fx of [-1.4, -0.7, 0.7, 1.4]) block(0.16, 1.9, 0.14, G3, fx, B + 1.2, 1.27, 0.04);
+    for (const fx of [-1.2, 0, 1.2]) block(0.16, 2.0, 0.14, G3, fx, B + 1.3, -1.27, 0.04);
+    // The neck, and the collar standing open round it.
+    block(1.0, 1.0, 1.0, G2, 0, B + 3.6, 0, 0.12);
+    if (!cloak) for (const sx of [-1, 1]) parts.push(at(M.turnedY(M.bevelBox({ w: 0.16, h: 1.2, d: 1.5, color: G1, bevel: 0.05, emissive: 0.05 }), sx * 0.35), sx * 0.85, B + 3.55, 0.15));
+    // The head: smooth and faceless under the Ooga brow, a short nose, a cap of hair and a squared crown.
+    const HY = B + 4.1;
+    block(1.6, 1.9, 1.7, G1, 0, HY + 0.95, 0, 0.3);
+    block(1.66, 0.6, 1.72, G3, 0, HY + 1.75, -0.06, 0.2);
+    block(1.5, 0.2, 0.3, G4, 0, HY + 1.3, 0.86, 0.06);
+    block(0.26, 0.38, 0.22, G2, 0, HY + 0.95, 0.9, 0.06);
+    block(1.4, 0.2, 1.5, G2, 0, HY + 2.1, 0, 0.08);
+    // The coin on the chest: a raised disc with a rim, and the Bitcoin sign in relief (a B with its two strokes).
+    const cx = 1.05, cy = B + 1.9, cz = 1.27;
+    parts.push(at(M.turnedX(M.lathe({ profile: [[0, 0], [0.62, 0], [0.62, 0.1], [0.5, 0.12], [0, 0.12]], segments: 24, color: G2, emissive: 0.08 }), Math.PI / 2), cx, cy, cz));
+    const glyph = (w, h, x, y) => parts.push(at(M.box({ w, h, d: 0.06, color: G1, emissive: 0.15 }), cx + x, cy + y, cz + 0.14));
+    glyph(0.09, 0.62, -0.14, 0); glyph(0.26, 0.08, -0.02, 0.27); glyph(0.26, 0.08, -0.02, 0); glyph(0.3, 0.08, 0, -0.27);
+    glyph(0.08, 0.22, 0.13, 0.14); glyph(0.08, 0.22, 0.16, -0.14); glyph(0.05, 0.16, -0.06, 0.38); glyph(0.05, 0.16, 0.05, 0.38); glyph(0.05, 0.16, -0.06, -0.38); glyph(0.05, 0.16, 0.05, -0.38);
+    // The cloak: shaggy fur over the shoulders and down the back, in strips of uneven length, clasped with a bone.
+    if (cloak) {
+      const FUR = ["#6b4a2e", "#7d5836", "#5a3d25"];
+      for (let i = 0; i < 11; i++) { const x = -2.6 + i * 0.52, len = 1.6 + ((i * 37) % 5) * 0.18; block(0.5, len, 0.5, FUR[i % 3], x, B + 3.0 - len / 2, -1.05, 0.12, 0); }
+      for (const sx of [-1, 1]) for (let i = 0; i < 4; i++) { const len = 1.2 + ((i * 53) % 4) * 0.2; block(0.55, len, 0.55, FUR[(i + 1) % 3], sx * (2.45 - i * 0.05), B + 3.0 - len / 2, 0.65 - i * 0.55, 0.12, 0); }
+      block(4.7, 0.5, 2.0, FUR[0], 0, B + 3.05, -0.3, 0.2, 0);
+      for (const sx of [-1, 1]) block(1.2, 0.45, 0.6, FUR[1], sx * 0.9, B + 3.1, 0.95, 0.15, 0);
+      parts.push(at(M.turnedZ(M.lathe({ profile: [[0, -0.35], [0.1, -0.35], [0.07, 0], [0.1, 0.35], [0, 0.35]], segments: 8, color: "#efe6cc" }), Math.PI / 2), 0, B + 3.05, 1.3));
+    }
+    place(createNode({ geometry: M.merge(...parts) }));
+    sign("SATOSHI NAKAMOTO", "author of the Bitcoin whitepaper, 31 October 2008 · the first block, 3 January 2009 · an original Ooga statue, not a likeness", S.x, top + 1.25, S.z + 2.45 + 0.25, Math.PI, "gold", 0.5);
   };
   const pickBox = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
   BL.genesisAtrium = { layout, build, CLEAR, statueParts };
