@@ -62,6 +62,7 @@ A signed-in visitor holds one WebSocket to `/room` for the page life. The Worker
 | client → room | `{ t: "visible", on }` | HALLOWEEN: this tab is visible, sent on joining and on every change: only a visible page in the ghost arena can host its hunt, so a hidden host hands it on |
 | client → room | `{ t: "mute", on }` | this page muted or unmuted its own microphone, for everyone's roster |
 | client → room | `{ t: "hp", v, ko }` | the driven body's health normalized to 0-100, in steps of 4, and knockout flag; only on a change, 4 a second at most |
+| client → room | `{ t: "wallet", k, u, ... }` | one of the driven Ooga's DSB wallets taken, set down, picked up, thrown or blown (see DSB Land's free hardware wallets) |
 | client → room | `{ t: "chat", text }` | an Ooga Chat line (see Ooga Chat); the room names the speaker |
 | client → room | `{ t: "ghost", k, g?, d? }` | HALLOWEEN: the arcade's ghost hunt's `start`, `ready` (in its lobby), `leave` (Exit hunt) or `pause`, or `hits` `h` (a follower's tenth of a second of hits as one report: up to 16 pairs of ghost id, 0 the boss, up to 65535, and its summed damage, 1–60; an older page's lone `hit` `g`, `d` is still read); relayed to the ghost arena's host alone, from a page in the arena with a body that is not the host, 20 a second with a burst of 24; nothing is kept |
 | client → room | binary led by `GHST` | HALLOWEEN: the ghost arena host's hunt state (`net.sendGhostState`), JSON after the four bytes, up to 64 KB and 5 a second, only while someone in the arena follows; relayed unchanged to every other page in the arena, the last kept for the next to walk in |
@@ -69,6 +70,7 @@ A signed-in visitor holds one WebSocket to `/room` for the page life. The Worker
 | client → room | `"ping"` every 10 s | answered `"pong"` without waking the room |
 | room → client | `welcome { you, players, tickHz, now, loopEpoch, host, followers }` | on connect: everyone else, their last pose, whether each is in voice (`voice`) and muted (`muted`), and their health (`hp`, `ko`) |
 | room → client | `chat-history { messages }` | right after `welcome`: the chat lines the room still holds, oldest first, at most 100 |
+| room → client | `wallet { k, w }`, `wallet { k: "blast", id, u }`, `wallets { list }` | another player's wallet event, to their zone alone; on entering a DSB zone, the live wallets there |
 | room → client | `chat { id, at, login, name, text }` | a chat line, to everyone (the speaker too) |
 | room → client | `join { p }`, `leave { id, reason }`, `body { id, name }` | the roster changing |
 | room → client | `state { now, ps, gs? }` | at most 15 a second while poses arrive, none while nothing changes: `ps` is flat `id, x, y, z, yaw` runs; optional `gs` is `id, ...g` runs |
@@ -190,6 +192,16 @@ One conversation for every signed-in player on the island, in the sheet's last t
 The same-account immediate-reconnect regression failed before the account bucket change and passes after it. Mocked Room tests cover socket replacement, natural refill, capacity refusal, opportunistic cleanup, wake/reset and accepted-id retry acknowledgement. The page's deterministic chat checks cover drafts and receipts; these do not prove real OAuth or device behavior.
 
 On 2026-10-08, a read-only staging check returned HTTP 200 for `/` and `/api/me`, with `player: null`; the served page contained neither the chat tab marker nor `chat-ack`, so it does not validate this PR's chat implementation. No deployment or sign-in was performed. Real GitHub sign-in/callback, authenticated room reconnection and tab takeover still require the PR on staging and an existing authorized test account. Two-account delivery and scroll/focus behavior need a second consenting test participant in a controlled session; do not send test chat into an occupied public room. A physical iOS/Android phone is needed for software-keyboard opening/closing, visual viewport and safe-area behavior, touch focus, rotation and background/resume. Desktop phone emulation cannot close that gap. The focused local Google Chrome suite uses canned identities and transport, not real OAuth or other players. Actual screen-reader announcement/focus acceptance still needs a user with their screen reader; DOM assertions do not prove what it speaks.
+
+## DSB Land's free hardware wallets
+
+The vending machine's exploding parody wallets (`src/js/wallet-bombs.js`, `worker/src/room.js`, the `WALLET_*` rules in `worker/src/protocol.js`) are shared between signed-in players in the same zone. Signed out, each page has its own, as before.
+
+- **Each page runs its own.** The page sends what happens to its own visitor's devices: `take` (with its look), `down` where it lands, `up`, `throw` from where and how fast, and `blast` (the devices that went off together). Every event carries the owner's seconds left, which the room turns into an end time on its own clock, so every page counts the fuse down together. Nothing is hit or kept; drawing only.
+- **Others' are mirrors.** Another player's device is drawn from those events: carried over their head, set down, or flying on from the throw by its age, with its name and seconds as one's own. A mirror cannot be picked up. A blast heard from its owner sets it off with the flash, fireball, scorch and knock-back of one's own, and it chains into the devices on this page, which then report their own blast. A mirror whose blast never comes (its owner left, or their tab stopped) goes off 1.5 s past its end; one carried by nobody in sight just goes.
+- **The room.** It relays each event at once to the pages in the zone where the device is (its carrier's zone while carried), never back to the sender, from an Ooga in a DSB zone only, 8 a second with a burst of 8. It keeps each player's live devices, 8 at most and each a little past its end, and hands those in a zone to a page walking into it. A carried device walking into another zone is announced there. These live in memory only: a room that sleeps forgets them, and they end within 21 s anyway.
+- **Mixed versions.** An older Worker ignores the messages and pages keep their own devices. An older page ignores what it is sent.
+- **Cost.** A few small frames per device: taking, setting down or throwing it, and its blast, to the players in one zone; nothing each frame. Untested: two signed-in players on staging, phones, and Durable Object usage.
 
 ## Banning
 
