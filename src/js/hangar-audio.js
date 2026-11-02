@@ -20,7 +20,9 @@
 // start at once, an electrical hum rising, three tries at turning the engines over, each whining higher and dying in a
 // sputter, the last coughing a short burst, then a dead stop and the metal ticking as it cools; `revs(R)` the two
 // engines revving by turns, each with a voice of its own on its own side, as if they were talking; `zap(Z, from, to)`
-// lightning running over the Jet, a sizzle crackling from nose to tail over the hum, then a crack and silence.
+// lightning running over the Jet, a sizzle crackling from nose to tail over the hum, then a crack and silence; and
+// `blackout(B)` the power dying with a clunk, a low hum in the dark, and the banks clunking back on, the mains hum
+// coming back with them as `power(k)` says (0 off, 1 on).
 //
 // Kortik's Sis has a voice of her own (`voice`): a buzz and a breath through three formants, a syllable for each run
 // of vowels in her line with the formants of its vowel, pauses at its punctuation, a stressed last syllable before a
@@ -101,6 +103,8 @@
     let projOn = false, liftOn = false, liftReady = 0, liftDrive = 0, liftPump = 0;
     // Her voice while she talks: where she stands (her node's position, read live), until when, and its least level.
     const sisVoice = { pos: null, until: 0, least: 0 };
+    // How much of the hall's electrical hum (the mains and the neon) has power, 0 to 1.
+    let power = 1;
     // Where the visitor hears from and the way the view faces on the ground, and where the last spot was placed.
     const ear = { x: 0, y: 0, z: 0, fx: 0, fz: -1 }, AT = { level: 0, pan: 0 };
 
@@ -595,6 +599,36 @@
       return true;
     };
 
+    // A blackout from now, on its times `B` (s from its start: the power killed at `kill`, the banks coming back on at
+    // `banks`, the end): a heavy relay's clunk as it dies; a low hum in the dark, wavering; a clunk as each bank comes
+    // back, the hum gone with the first. The mains and the neon follow `power`, which the anomaly sets.
+    const blackout = (B) => {
+      if (!ready || muted) return false;
+      const t0 = ctx.currentTime + 0.02, at = (s) => t0 + s, T = test, first = B.banks[0];
+      const clear = (param, value) => { param.cancelScheduledValues(t0); param.setValueAtTime(value, t0); };
+      for (const g of [T.humGain, T.clankGain]) clear(g.gain, 0);
+      clear(T.clankFilter.frequency, 300); clear(T.hum.frequency, 100);
+      T.clankGain.gain.setValueAtTime(TEST.clank * 0.7, at(B.kill));
+      T.clankGain.gain.exponentialRampToValueAtTime(0.001, at(B.kill + 0.35));
+      T.hum.frequency.setValueAtTime(55, at(B.kill));
+      T.humGain.gain.setValueAtTime(0, at(B.kill + 0.3));
+      T.humGain.gain.linearRampToValueAtTime(TEST.hum * 0.7, at(B.kill + 1.2));
+      for (let s = B.kill + 1.5; s < first - 0.2; s += 0.5 + Math.random() * 0.4) T.humGain.gain.linearRampToValueAtTime(TEST.hum * (0.5 + Math.random() * 0.4), at(s));
+      T.humGain.gain.linearRampToValueAtTime(0, at(first));
+      B.banks.forEach((s, i) => {
+        T.clankFilter.frequency.setValueAtTime(330 + i * 70, at(s));
+        T.clankGain.gain.setValueAtTime(TEST.clank * 0.5, at(s));
+        T.clankGain.gain.exponentialRampToValueAtTime(0.001, at(s + 0.25));
+      });
+      T.hum.frequency.setValueAtTime(100, at(B.end));
+      return true;
+    };
+    // How much of the hall's electrical hum has power: the mains at once, the neon with the bed's next levelling.
+    const setPower = (k) => {
+      power = k;
+      if (ready && !muted) bed.mainsGain.gain.setTargetAtTime(LEVEL.mains * k, ctx.currentTime, 0.03);
+    };
+
     // Only from a gesture the browser has already counted, so nothing warns in the console; a gesture also wakes a
     // context the browser started suspended.
     const activate = () => {
@@ -639,11 +673,11 @@
       if (since < 0.1 || muted) return;
       since = 0;
       const now = ctx.currentTime, T = spots.tunnel, L = spots.launch, D = spots.door;
-      set(bed.mainsGain.gain, LEVEL.mains, now);
+      set(bed.mainsGain.gain, LEVEL.mains * power, now);
       set(bed.droneGain.gain, LEVEL.drone, now);
       set(bed.airGain.gain, LEVEL.air + LEVEL.tunnelAir * clamp((T.z0 - ear.z) / 6, 0, 1), now);
       place(0, T.y, clamp(ear.z, T.z1, T.z0), REF.neon);
-      set(bed.neonGain.gain, LEVEL.neon * AT.level, now);
+      set(bed.neonGain.gain, LEVEL.neon * AT.level * power, now);
       set(bed.neonPan.pan, AT.pan * 0.4, now);
       place(L.x, L.y, L.z, REF.launch);
       set(bed.launch.gain.gain, LEVEL.launch * AT.level, now);
@@ -979,7 +1013,7 @@
     };
 
     return {
-      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
+      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, blackout, power: setPower, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
       get muted() { return muted; },
       get volume() { return volume; },
       get ready() { return ready; },
