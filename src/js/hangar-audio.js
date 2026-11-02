@@ -23,7 +23,8 @@
 // lightning running over the Jet, a sizzle crackling from nose to tail over the hum, then a crack and silence; and
 // `blackout(B)` the power dying with a clunk, a low hum in the dark, and the banks clunking back on, the mains hum
 // coming back with them as `power(k)` says (0 off, 1 on); and `lowrider(L)` the deep bass thump the Jet bounces to, on
-// every beat, as heavy as a stomp on the floor.
+// every beat, as heavy as a stomp on the floor; and `shuffle(S)` the Jet shifting in its bay, its brakes letting go,
+// its tyres scrubbing, its gear creaking and its engines' short bursts.
 //
 // Kortik's Sis has a voice of her own (`voice`): a buzz and a breath through three formants, a syllable for each run
 // of vowels in her line with the formants of its vowel, pauses at its punctuation, a stressed last syllable before a
@@ -664,6 +665,38 @@
       }
       return true;
     };
+    // The Jet shuffling in its bay from now, on its times `S` (s from its start): the brakes letting go with a clunk at
+    // `brake`; a tyre scrub at each of `scrubs`; a creak of loaded metal at each of `creaks`, the clank's ring gliding up;
+    // and the engines' short bursts, `bursts` [s, how hard], a whoomph and a cough of roar.
+    const shuffle = (S) => {
+      if (!ready || muted) return false;
+      const t0 = ctx.currentTime + 0.02, at = (s) => t0 + s, T = test;
+      const clear = (param, value) => { param.cancelScheduledValues(t0); param.setValueAtTime(value, t0); };
+      for (const g of [T.clankGain, T.whooshGain, T.whoomphGain, T.roarGain]) clear(g.gain, 0);
+      clear(T.clankFilter.frequency, 380); clear(T.whooshFilter.frequency, 700); clear(T.roarFilter.frequency, 900);
+      T.clankGain.gain.setValueAtTime(TEST.clank * 0.6, at(S.brake));
+      T.clankGain.gain.exponentialRampToValueAtTime(0.001, at(S.brake + 0.3));
+      for (const s of S.scrubs) {
+        T.whooshGain.gain.setValueAtTime(0, at(s));
+        T.whooshGain.gain.linearRampToValueAtTime(TEST.whoosh * 0.9, at(s + 0.04));
+        T.whooshGain.gain.exponentialRampToValueAtTime(0.001, at(s + 0.32));
+      }
+      for (const s of S.creaks) {
+        T.clankFilter.frequency.setValueAtTime(560 + Math.random() * 120, at(s));
+        T.clankFilter.frequency.linearRampToValueAtTime(820 + Math.random() * 160, at(s + 0.4));
+        T.clankGain.gain.setValueAtTime(0, at(s));
+        T.clankGain.gain.linearRampToValueAtTime(TEST.clank * 0.25, at(s + 0.08));
+        T.clankGain.gain.exponentialRampToValueAtTime(0.001, at(s + 0.45));
+      }
+      for (const [s, k] of S.bursts) {
+        T.whoomphGain.gain.setValueAtTime(TEST.whoomph * 0.25 * k, at(s));
+        T.whoomphGain.gain.exponentialRampToValueAtTime(0.001, at(s + 0.5));
+        T.roarGain.gain.setValueAtTime(0, at(s));
+        T.roarGain.gain.linearRampToValueAtTime(TEST.roar * 0.22 * k, at(s + 0.04));
+        T.roarGain.gain.linearRampToValueAtTime(0, at(s + 0.3));
+      }
+      return true;
+    };
     // How much of the hall's electrical hum has power: the mains at once, the neon with the bed's next levelling.
     const setPower = (k) => {
       power = k;
@@ -1054,7 +1087,7 @@
     };
 
     return {
-      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, blackout, lowrider, power: setPower, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
+      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, blackout, lowrider, shuffle, power: setPower, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
       get muted() { return muted; },
       get volume() { return volume; },
       get ready() { return ready; },
