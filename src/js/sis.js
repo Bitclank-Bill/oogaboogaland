@@ -40,7 +40,8 @@
 // turns her head very slowly and walks off the other way. Then she goes back to her own routine. Smashing the Jet or
 // storming off she only jumps or yells at her brother, and the static fire still has her first. When lightning runs
 // over the Jet and cracks (`zap`), she is zapped if she stands near it: stiff and shaking, sparks off her, then dazed,
-// sooted and smoking. In the dark (`dark`) her eyes glow.
+// sooted and smoking. In the dark (`dark`) her eyes glow. When the Jet bounces to a beat (`groove`), she finds herself
+// bobbing along to it, catches herself, and goes red: "I DID NOT JUST DO THAT."
 //
 // She walks a grid of her part of the hall built once a visit from the hangar's own checks (`HM.clearAt`,
 // `HM.supportAt`, `HM.walkable`), each cell with a place on the floor and one up the Jet's stair or along its gangway
@@ -105,14 +106,14 @@
     blame: ["THAT WASN'T MY FAULT!", "WHO TOUCHED MY ENGINES?!", "I TOLD YOU THAT ENGINE WASN'T READY!", "NOBODY SAW THAT. NOBODY!"],
     spook: ["WHO THE #@$% IS STARTING MY ENGINES?!", "WHAT THE #@$% WAS THAT?!"],
     hide: ["...is it gone?"], charge: ["OH, YOU WANT SOME OF THIS?!"], charged: ["Yeah. That's what I thought."], booth: ["I DIDN'T TOUCH ANYTHING!"],
-    brother: ["KORTIK! WAS THAT YOU?!"], prod: ["THIS THING IS POSSESSED!"], nope: ["...nope."], zapped: ["...ow."],
+    brother: ["KORTIK! WAS THAT YOU?!"], prod: ["THIS THING IS POSSESSED!"], nope: ["...nope."], zapped: ["...ow."], groove: ["I DID NOT JUST DO THAT."],
     tess: ["TESS! BUZZ OFF!", "NOT NOW, TESS!", "GET OUT OF MY FACE, YOU FLYING TOASTER!", "I CAN'T SEE THE #@$%ING JET!", "I'M FIXING IT! LEAVE ME BE!"]
   };
   // How she says each (a style of `hangarAudio.voice`); how often a line about the Jet or Lightning comes out a rare
   // one instead, and a yell a scream.
   const STYLE = { jet: "yell", lightning: "yell", hammer: "yell", rage: "scream", charge: "scream", caught: "yell", mutter: "mutter", hope: "soft", rare: "yell", panic: "scream", blame: "yell",
     poke: "yell", rampage: "scream", smash: "yell", shove: "yell", chase: "scream", meltdown: "scream", sulk: "yell", fixed: "mutter", hush: "scream", quarrel: "scream", tess: "yell", spook: "scream",
-    hide: "soft", charge: "scream", charged: "mutter", booth: "yell", brother: "scream", prod: "yell", nope: "soft", zapped: "mutter" };
+    hide: "soft", charge: "scream", charged: "mutter", booth: "yell", brother: "scream", prod: "yell", nope: "soft", zapped: "mutter", groove: "yell" };
   const RARE = 0.08, SCREAM = 0.2;
   // The static fire: where she runs to, the nearer of them (beside the booth and by the far wall's crates, both where
   // the test's show view keeps her in frame lying down); how far off she may stay put and cower; how near the blast
@@ -155,6 +156,8 @@
   const ZAP = { reach: 5, shock: 1.1, len: 3.4 };
   // How much brighter her eyes glow in the dark, at its darkest.
   const EYES = 3;
+  // The Jet bouncing to a beat: how long she bobs along before she catches herself, s, and how deep each bob is, m.
+  const GROOVE = { bob: 3, deep: 0.09 };
   const HUSH = { chance: 0.15, every: 150, down: 0.7, whisper: 1.3, light: 4.4, scream: 5, hunt: 6.9, grab: 7.5, blows: 3, blink: 0.18 };
   // The tally at her feet while she smashes: its font, its pips' size and gap, px.
   const TALLY_FONT = "bold 10px ui-monospace, monospace", PIP = 9, PIP_GAP = 4;
@@ -438,7 +441,7 @@
     // ---- poking her ----
     // Her anger (0 to POKE.rage) and how long before it cools a level; where the last poke came from and when; the fit
     // she is in (1 to 4 by her anger, 5 shoved off while she smashes, 6 her meltdown's tantrum, 7 shouting back at
-    // Kortik, 8 spooked by the Jet, 9 backing off from it, 10 zapped by it) and its time left;
+    // Kortik, 8 spooked by the Jet, 9 backing off from it, 10 zapped by it, 11 bobbing to its beat) and its time left;
     // whether she is smashing the Jet, the quick pokes' tally that stops her, the blows left at her spot and the pokes
     // there, and since when; when she may go off again; whether she is storming off to sulk; a chase's time left and its
     // line said; whether the visitor's Ooga stands near enough to poke her; and how hard the Jet is rocking.
@@ -640,6 +643,17 @@
     const settle = () => { settled = true; settledAt = clock; };
     // The hall's lights out by `k` (0 lit, 1 dark): her eyes glowing in it.
     const dark = (k) => { P.head.glow = 1 + EYES * k; };
+    // The Jet bouncing to a beat `beat` seconds long: bobbing along where she stands, then caught. Whether she did, not
+    // while she smashes, storms off or the static fire has her.
+    let grooveBeat = 0.6;
+    const groove = (beat) => {
+      if (panicking || rampage || storming) return false;
+      if (doing === "hush") { endHush(); doing = "glare"; t = 0; spot.dur = pick(TIMES.glare[0], TIMES.glare[1]); }
+      grooveBeat = beat; spookAt = clock; spookSaid = false; scare = null;
+      fit(11);
+      fitLen = fitT = GROOVE.bob + 2.4;
+      return true;
+    };
     // Lightning cracking over the Jet, along x = `x` from `z0` to `z1`: zapped if she stands within ZAP.reach of it,
     // whatever reaction she was in; whether she was. Not while the static fire has her.
     let zapAt = 0, zapSpark = 0;
@@ -841,6 +855,20 @@
           want.armLx = 0.25; want.armLz = 0.3; want.foreLx = -0.15; want.foreLz = 0;
           slowLook = a < SPOOK.freeze ? 0 : Math.max(-1.3, Math.min(1.3, d));
           if (a > SPOOK.freeze + SPOOK.turn && !spookSaid) { spookSaid = true; sayFrom("nope", 1.6); }
+        } else if (fitKind === 11) {
+          // Bobbing to the beat, her head nodding and her free arm swinging, wherever she was looking; then frozen, red,
+          // caught at it.
+          const a = clock - spookAt, beat = Math.sin(a / grooveBeat * TAU);
+          wantYaw = yaw;
+          if (a < GROOVE.bob) {
+            face = H.open;
+            want.crouch = GROOVE.deep * (0.5 + 0.5 * beat); want.headX = 0.15 + 0.15 * beat; want.sway = 0.05 * Math.sin(a / grooveBeat * Math.PI);
+            want.armLx = -0.6 - 0.4 * beat; want.armLz = 0.4; want.foreLx = -1; want.foreLz = 0;
+          } else {
+            face = H.redOpen;
+            want.armLx = 0.1; want.armLz = 0.2; want.foreLx = -0.1; want.foreLz = 0; want.armRx = -0.3; want.lean = -0.05;
+            if (!spookSaid) { spookSaid = true; sayFrom("groove", 2.2); fitT = Math.max(fitT, talk + 0.5); }
+          }
         } else if (fitKind === 10) {
           // Zapped: stiff, arms out, shaking, sparks crackling off her; then dazed, sooted and smoking, muttering.
           const a = clock - zapAt;
@@ -1271,7 +1299,7 @@
       tess = at;
     };
     // How cross she is, 0 to 4 by her anger, 5 while she smashes: the terminals' mood page shows it.
-    return { node, props, body: P.torso, actor, update, liveGeometry, poke, spook, settle, zap, dark, useNear, actLabel, overlay, distract, debug, get near() { return near; }, get rampaging() { return rampage; }, get mood() { return rampage ? 5 : Math.min(4, anger); } };
+    return { node, props, body: P.torso, actor, update, liveGeometry, poke, spook, settle, zap, dark, groove, useNear, actLabel, overlay, distract, debug, get near() { return near; }, get rampaging() { return rampage; }, get mood() { return rampage ? 5 : Math.min(4, anger); } };
   };
 
   BL.sis = { create };
