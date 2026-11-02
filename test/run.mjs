@@ -9882,10 +9882,6 @@ const hubFall = { name: "hub fall", why: "rule: abyss falls return players and N
       && landed(row.reference) && row.landing.frames <= 8 && landed(row.landing)),
     JSON.stringify({ ...r, respawns }));
 } };
-// A remote player stands near the pile as the room would place them: the roster's shortest and tallest Oogas, then a
-// gorilla. portlandhodl, the widest Ooga, drops onto each, rides the short one as it walks and rises as a jetpack
-// would, walks off it, then walks and jumps at the tall one, which no jump clears. The spot has nothing else to stand
-// on near it: a tree's crown is a landing surface, and a rider lifted within a step of one steps onto it.
 // The chalkboard writes only for an Ooga standing at it (#391): a tap from afar or with no Ooga is refused with a
 // reason, Space and a tap work at the board, and moving the Ooga off closes it.
 const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga standing at the chalkboard may write on it; a tap from across the island opened it", run: async (b) => {
@@ -9919,6 +9915,10 @@ const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga 
       && nearTap.open && !loose.open && loose.toast.startsWith("Only an Ooga can write."),
     JSON.stringify({ farTap, nearAct, spaced, carried, nearTap, loose }));
 } };
+// A remote player stands near the pile as the room would place them: the roster's shortest and tallest Oogas, then a
+// gorilla. portlandhodl, the widest Ooga, drops onto each, rides the short one as it walks and rises as a jetpack
+// would, walks off it, then walks and jumps at the tall one, which no jump clears. The spot has nothing else to stand
+// on near it: a tree's crown is a landing surface, and a rider lifted within a step of one steps onto it.
 const hubPlayerStacking = { name: "players stand on players", why: "regression: landing on another player from above sank into their body; their head holds the lander, carries it as they walk or fly and lets go when they leave, and a jump into them is held off as a walk is", run: async (b) => {
   const SHORT = "NickDaGreek", TALL = "rules-without-rulers";
   const drops = await b.evaluate(`(() => {
