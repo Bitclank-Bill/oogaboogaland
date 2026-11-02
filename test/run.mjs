@@ -4891,23 +4891,25 @@ const cloudHopperFailureChecks = async engine => {
     sweptClear, offshoreFootprints, balancedRegions };
   record("Cloud Hopper drift: balanced seeded fields keep their full sideways lanes separated and offshore, swing smoothly and preserve waits, departure and falling pickups",
     Object.values(motionRows).every(Boolean), JSON.stringify({ ...motionRows, minimumCloudGap, regionCounts }));
-  // Every course mixes permanent and ordinary clouds, in its level's blend, and starts and ends on permanent landings.
-  // Every loss of support follows its full warning and fade; whenever a cloud starts warning while a run may
-  // be on it, a steady cloud is in reach; linked ordinary clouds' first warnings stay apart; nothing warns
+  // Every course mixes permanent and ordinary clouds, its white clouds in its level's blend and every boost and bounce
+  // cloud ordinary, and starts and ends on permanent landings. Every loss of support follows its full warning and
+  // fade; whenever a white cloud starts warning while a run may be on it, a steady cloud is in reach (a touch
+  // launches a rider off a boost or bounce cloud, so none stands on one); linked ordinary clouds' first warnings stay apart; nothing warns
   // before the first warning time; and stepping at any frame rate, or in one long frame, agrees.
   const { PERMANENT, ORDINARY, WARNING, TIMING } = BL.cloudHopperCourse;
-  let mixed = true, firmEnds = true, warned = true, escaped = true, staggered = true, blended = true, losses = 0, earliest = Infinity;
+  let mixed = true, whiteOnly = true, bounceFromTwo = true, firmEnds = true, warned = true, escaped = true, staggered = true, blended = true, losses = 0, earliest = Infinity;
   for (let seed = 1; seed <= 4; seed++) {
     const course = BL.cloudHopperCourse.create({ ...motionOptions, seed }), clouds = course.clouds, main = clouds.filter(c => c.main);
     const lives = new Set(clouds.map(c => c.life));
     mixed &&= lives.has(PERMANENT) && lives.has(ORDINARY) && lives.size === 2;
+    whiteOnly &&= clouds.every(c => c.kind === "normal" || c.life === ORDINARY);
     firmEnds &&= [0, 1, main.length - 2, main.length - 1].every(k => main[k].life === PERMANENT);
     for (const c of clouds) {
       if (c.life === PERMANENT) continue;
       earliest = Math.min(earliest, course.windowAt(c, 0));
       for (let slot = 0; course.windowAt(c, slot) <= course.presence(c); slot++) {
         const at = course.windowAt(c, slot);
-        if (at + TIMING.warn + TIMING.fade >= c.arrival * TIMING.presence[0]) escaped &&= course.escapes(c.index, at);
+        if (c.kind === "normal" && at + TIMING.warn + TIMING.fade >= c.arrival * TIMING.presence[0]) escaped &&= course.escapes(c.index, at);
       }
       if (c.life === ORDINARY) for (const d of clouds) {
         if (d === c || d.life !== ORDINARY || !course.linked(c.index, d.index) && !course.linked(d.index, c.index)) continue;
@@ -4938,9 +4940,12 @@ const cloudHopperFailureChecks = async engine => {
     levelRoutes &&= Math.abs(radius - Math.hypot(last.baseX, last.baseZ) - spec[level.id - 1]) < 0.5
       && course.clouds.length <= BL.cloudHopperCourse.MAX_CLOUDS;
     firmEnds &&= [0, 1, main.length - 2, main.length - 1].every(k => main[k].life === PERMANENT);
-    blended &&= Math.abs(course.clouds.filter(c => c.life === PERMANENT).length / course.clouds.length - course.timing.permanent) <= 0.05;
+    const ends = [0, 1, main.length - 2, main.length - 1].map(k => main[k]), white = course.clouds.filter(c => c.kind === "normal" && !ends.includes(c));
+    whiteOnly &&= course.clouds.every(c => c.kind === "normal" || c.life === ORDINARY);
+    bounceFromTwo &&= course.clouds.some(c => c.kind === "bounce") === level.id > 1;
+    blended &&= Math.abs(white.filter(c => c.life === PERMANENT).length / white.length - course.timing.permanent) <= 0.05;
     for (const c of course.clouds) {
-      if (c.life === PERMANENT) continue;
+      if (c.life === PERMANENT || c.kind !== "normal") continue;
       for (let slot = 0; course.windowAt(c, slot) <= course.presence(c); slot++) {
         const at = course.windowAt(c, slot);
         if (at + course.timing.warn + course.timing.fade >= c.arrival * course.timing.presence[0]) escaped &&= course.escapes(c.index, at);
@@ -4955,8 +4960,8 @@ const cloudHopperFailureChecks = async engine => {
   };
   const slow = stepped(1 / 30, 1200), fast = stepped(1 / 144, 5760), once = stepped(40, 1);
   const frameFree = [fast, once].every(other => other.every((row, i) => row.every((value, j) => Math.abs(value - slow[i][j]) < 1e-6)));
-  const lifeRows = { mixed, firmEnds, warned: warned && losses > 0, escaped, staggered, blended, frameFree, firstWarn: earliest >= TIMING.firstWarn, levelRoutes };
-  record("Cloud Hopper lifetimes and levels: permanent and ordinary clouds in each level's blend; every loss of support follows its full warning, a warning cloud always has a steady one in reach, linked clouds warn apart, any frame rate agrees, and each level's route is the spec's",
+  const lifeRows = { mixed, whiteOnly, bounceFromTwo, firmEnds, warned: warned && losses > 0, escaped, staggered, blended, frameFree, firstWarn: earliest >= TIMING.firstWarn, levelRoutes };
+  record("Cloud Hopper lifetimes and levels: permanent and ordinary clouds in each level's blend, only white clouds never fading, bounce clouds from Level 2; every loss of support follows its full warning, a warning white cloud always has a steady one in reach, linked clouds warn apart, any frame rate agrees, and each level's route is the spec's",
     Object.values(lifeRows).every(Boolean), JSON.stringify({ ...lifeRows, losses, earliest }));
   // Isolate the launch platform as a recovery target. The same fuel can lift
   // a slow fall back to it but is spent braking a faster fall; one air jump
@@ -4998,8 +5003,9 @@ const cloudHopperFailureChecks = async engine => {
     stripCourse = BL.cloudHopperCourse.create({ ...specialOptions, seed });
     strip = stripCourse.clouds.find(c => c.kind === "boost" && Number.isFinite(c.firstGoneAt));
   }
-  const bounce = hopper.course.clouds.find(c => c.kind === "bounce");
+  // Level 1 has no bounce clouds, so another of its boost clouds stands in for one.
   const boost = hopper.course.clouds.find(c => c.kind === "boost");
+  const bounce = Object.assign(hopper.course.clouds.findLast(c => c.kind === "boost" && c !== boost), { kind: "bounce", boostX: 0, boostZ: 0 });
   let contacts = stripCourse.contactAt(strip.x, strip.z, strip.top) === strip
     && !stripCourse.contactAt(strip.x, strip.z, strip.top + 0.2)
     && stripCourse.contactAt(strip.x + strip.cosYaw * strip.rx * 0.75, strip.z - strip.sinYaw * strip.rx * 0.75, strip.top) === strip

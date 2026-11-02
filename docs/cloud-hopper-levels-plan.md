@@ -213,10 +213,12 @@ play-testing within the stated bounds.
 Notes on the table:
 
 - **Since built (November 2026):** the long-lived class is gone. Every cloud is permanent or ordinary, and each
-  level's timing (`cloud-hopper-levels.js`) sets its blend and clocks: permanent 80%, 70%, 60% and 50% (L1–L4);
+  level's timing (`cloud-hopper-levels.js`) sets its blend and clocks: permanent 80%, 70%, 60% and 50% of its white
+  clouds (L1–L4), every boost and bounce cloud ordinary, since never fading is for white clouds alone;
   ordinary clouds solid a median 22.5, 20, 17.5 and 15 s between disappearances; warning then fade 3 + 1,
-  2.5 + 0.875, 2 + 0.75 and 1.5 + 0.625 s; hidden 1.5–3, 2–3.5, 2.5–4 and 3–4.5 s. The rows below are the
-  original plan.
+  2.5 + 0.875, 2 + 0.75 and 1.5 + 0.625 s; hidden 1.5–3, 2–3.5, 2.5–4 and 3–4.5 s. Bounce clouds come in at
+  Level 2, with their own guide card the first time a session plays a level that has them; Level 1 has none.
+  The rows below are the original plan.
 - **Classes**: P permanent, L long-lived, O ordinary, C crumble (see 2.4).
 - **Alternatives** include fork detour chains in L3 and L4.
 - **Camera far** is `max(900, hypot(startRadius, startHeight) + 150)`, set on entering
@@ -453,7 +455,9 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
   stepped slabs, white to deep blue) lowers through the course and drifts across it, swirling the clouds near it and
   carrying the Ooga round its outside until it ropes out. Later it brewed over seeded spots until the rider came near,
   came down from 75 m over the clouds there, and grew strong enough to draw clouds and Ooga in, round and up; an Ooga
-  drawn into the funnel is spun up its wall and thrown out of the top, a DQ with its own card.* (The plan had: storm haze
+  drawn into the funnel is spun up its wall and thrown out of the top, a DQ with its own card. Since then it comes down
+  sooner, once the rider is within 100 m, as a thin, weak rope under its cap that grows wide and strong over 20 s and
+  stays down 32 s, and a guide card introduces it the first time a session plays the level.* (The plan had: storm haze
   with `fogNear` 70 m and `fogFar` 260 m.)
   - Within 70 m nothing is fogged. At 120 m (about four hops) a cloud is 26% fogged, so
     nearby landings and their warnings stay clear. Beyond 260 m clouds are hidden, which is

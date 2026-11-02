@@ -14,8 +14,9 @@
   const PERMANENT = 0, ORDINARY = 1;
   // The phases a disappearance passes through. A warning keeps full support; the fade still holds a rider, sinking.
   const SOLID = 0, WARNING = 1, FADING = 2, HIDDEN = 3, APPEARING = 4;
-  // The course's timing. `permanent` is the share of a course's clouds that never fade, the rest ordinary (a cloud
-  // that cannot be made ordinary fairly stays permanent, the next ones making up for it); `ordinary` its clouds'
+  // The course's timing. `permanent` is the share of a course's white clouds that never fade, the rest ordinary (a
+  // cloud that cannot be made ordinary fairly stays permanent, the next ones making up for it), while every boost
+  // and bounce cloud is ordinary, never fading being for white clouds alone; `ordinary` its clouds'
   // slots in seconds (one disappearance each, log-uniform per cloud); `warn` and `fade` the warning and the sinking
   // fade, and `hidden` how long a cloud is gone before it comes back (s); `gap` is the least solid time between two of one
   // cloud's disappearances; `stagger` keeps reachable ordinary clouds' first two warnings apart; `spine` is the
@@ -189,8 +190,9 @@
     // recorded course's landings, pickups, drift or disappearance clocks.
     const specialRand = mulberry32(seed ^ 0x7b1d943f), eligible = [];
     let boosts = 0, bounces = 0, lastBounceY = Infinity;
+    // The second landing is never special, since a run's first two landings never fade.
     for (const cloud of clouds) {
-      if (cloud.y >= landings[0].y || cloud.y <= landings[count - 3].y
+      if (cloud.y >= landings[0].y || cloud.y <= landings[count - 3].y || cloud === landings[1]
         || pickups.some(pickup => pickup.cloud === cloud)) continue;
       eligible.push(cloud);
       const choice = specialRand();
@@ -267,8 +269,9 @@
       cloud.t0 = timing.firstWarn - gapHalf + cloud.clock * cloud.slotSeconds + shift;
       cloud.firstGoneAt = windowAt(cloud, 0) + GONE;
     };
-    // Every cloud starts permanent, and the settling below makes the course's share ordinary from its own stream, so
-    // a seed's landings, specials and pickups stay where they were. A run starts and ends on clouds that never fade.
+    // Every cloud starts permanent, and the settling below makes the course's share of its white clouds and every
+    // boost and bounce cloud ordinary from its own stream, so a seed's landings, specials and pickups stay where they
+    // were. A run starts and ends on clouds that never fade.
     const lifeRand = mulberry32(seed ^ 0x2545f491), fixed = new Uint8Array(clouds.length);
     for (const k of [0, 1, count - 2, count - 1]) fixed[landings[k].index] = 1;
     for (const cloud of clouds) {
@@ -378,26 +381,34 @@
       return false;
     };
     // Settle from the bottom up, each cloud by its own clock alone, so every cloud one can escape to is settled
-    // before it. While the ordinary clouds so far fall short of the course's share (a seeded chance either way, so
-    // they fall unevenly), a cloud is made ordinary if one of PLACES places along its slot keeps its every warning
-    // fair, its linked ordinary clouds' first warnings apart and, for a main landing, a permanent cloud or the coast
-    // within `spine` hops; otherwise it stays permanent, and the next ones make up for it. Nothing settled changes.
-    const wanted = (1 - timing.permanent) * n, open = n - fixed.reduce((a, b) => a + b, 0);
+    // before it. While the white clouds made ordinary so far fall short of the course's share of them (a seeded
+    // chance either way, so they fall unevenly), a white cloud is made ordinary if one of PLACES places along its
+    // slot keeps its every warning fair, its linked ordinary clouds' first warnings apart and, for a main landing, a
+    // permanent cloud or the coast within `spine` hops; otherwise it stays permanent, and the next ones make up for
+    // it. Every boost and bounce cloud is made ordinary, since only a white cloud may never fade; a touch launches a
+    // rider off one, so no rider stands on it as it warns and it keeps only its linked ordinary clouds' warnings
+    // apart. One no place keeps so turns white and stays permanent. Nothing settled changes.
+    const open = clouds.filter((cloud, i) => !fixed[i] && cloud.kind === "normal").length, wanted = (1 - timing.permanent) * open;
     let ordinary = 0, seen = 0;
     for (let i = n - 1; i >= 0; i--) {
-      const cloud = clouds[i];
+      const cloud = clouds[i], special = cloud.kind !== "normal";
       if (fixed[i]) continue;
-      seen++;
-      if (lifeRand() >= clamp(wanted * seen / open - ordinary + 0.5, 0, 1)) continue;
+      if (!special) {
+        seen++;
+        if (lifeRand() >= clamp(wanted * seen / open - ordinary + 0.5, 0, 1)) continue;
+      }
       cloud.life = ORDINARY;
       let done = false;
       for (let attempt = 0, shift = 0; attempt < PLACES && !done; attempt++) {
         schedule(cloud, shift);
-        done = settled(i) && !crowded(i) && (!cloud.main || spineFrom(i));
+        done = special ? !crowded(i) : settled(i) && !crowded(i) && (!cloud.main || spineFrom(i));
         shift += cloud.slotSeconds / PLACES;
       }
-      if (done) ordinary++;
-      else { cloud.life = PERMANENT; schedule(cloud); }
+      if (done) { if (!special) ordinary++; }
+      else {
+        cloud.life = PERMANENT; schedule(cloud);
+        if (special) { cloud.kind = "normal"; cloud.boostX = cloud.boostZ = 0; }
+      }
     }
     for (const cloud of clouds) {
       const offset = offsetAt(cloud, 0, wobbleAt(cloud, 0));

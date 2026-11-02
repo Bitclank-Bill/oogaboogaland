@@ -333,6 +333,8 @@
           updateBounceMarker(marker, { x: 0, z: 0, top: 0, rx: 2.7, rz: 1.9, yaw: 0, seed: 0, active: true, opacity: 1 }, 0.6);
           addChild(root, marker);
         }
+      } else if (kind === "tornado") {
+        addChild(root, BL.cloudHopperTornado.still());
       } else if (kind === "jetpack") {
         addChild(root, cloud(0.48, 0.32, 0.22), createNode({ geometry: BL.hubModels.jetpack(), position: { x: 0, y: 0.18, z: 0 } }));
       } else if (POWERS.includes(kind)) {

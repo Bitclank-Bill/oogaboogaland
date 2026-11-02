@@ -18,10 +18,11 @@
   const level = (id, name, sky, slope, layout, timing) => Object.freeze({ id, name, sky: sky && Object.freeze(sky), courseVersion: 1, board: `cloud-hopper-l${id}`,
     route: BASE_ROUTE * GROWTH ** (id - 1), slope, layout: Object.freeze({ sides: 0.55, sideMax: 64, ...layout }), timing: Object.freeze(timing) });
   const LEVELS = Object.freeze([
-    // Wider, calmer clouds closer together in drop, gentle turns, most that never fade, longer warnings.
+    // Wider, calmer clouds closer together in drop, gentle turns, most that never fade, longer warnings, and no
+    // bounce clouds yet: Level 2 brings them in.
     level(1, "Floating Isles", { hour: 8.25, clouds: 0.36, scenery: "islets" }, 0.5,
       { step: 12, main: [3.1, 1, 2.2, 0.8], side: [3.2, 0.8, 2.4, 0.6], turn: 25, sway: 5, lane: [3, 2], speed: [0.6, 0.4],
-        boost: 0.2, bounce: 0.06, bounceMax: 1, twoPacks: 1 },
+        boost: 0.2, bounce: 0, bounceMax: 0, twoPacks: 1 },
       { permanent: 0.8, ordinary: [19.8, 47.4], warn: 3, fade: 1, hidden: [1.5, 3], spine: 1, pace: 3, airJump: false }),
     // The course's own timing (cloud-hopper-course.js's TIMING).
     level(2, "Amber Spires", { hour: 17.45, clouds: 0.42, scenery: "spires" }, 0.47, { step: 11.4, xray: 2 }, {}),

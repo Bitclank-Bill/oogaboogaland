@@ -9,12 +9,12 @@
   const BOOST_SPEED = 28, BOOST_RISE = 4, BOUNCE_RISE = 12, LAUNCH_CLEARANCE = 0.04;
   const RECOVERY_GRACE_SECONDS = 0.75, DOCK_MUSIC_LEVEL = 0.28, WARNING_THIN = 0.32, TAU = Math.PI * 2;
   // Power-ups (plan 3): X-ray's seconds and how far it reads clouds (further in a hazy level), and the sky feather's lift.
-  // A guide card introduces each the first time a browser session plays a level that has it.
+  // A guide card introduces each, bounce clouds and tornadoes the first time a browser session plays a level that has it.
   const XRAY_SECONDS = 30, XRAY_RADIUS = 60, XRAY_HAZE_RADIUS = 120, UPDRAFT_RISE = 13;
   // The grappling hook: how far it reaches from the Ooga's chest, how fast it flies out and reels back, how fast it
   // pulls, how near the bite it lets go by itself, and the longest pull.
   const HOOK_RANGE = 40, HOOK_FLY = 90, HOOK_REEL = 70, HOOK_PULL = 18, HOOK_ARRIVE = 1, HOOK_PULL_SECONDS = 4;
-  const POWERS = ["xray", "updraft", "hook"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
+  const INTRODUCED = ["bounce", "tornado", "xray", "updraft", "hook"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
   // Each pickup's light under it, by kind, in the tint of its glow.
   const PICKUP_LIGHT = { jetpack: [0.55, 0.65, 0.75], xray: [0.35, 0.78, 0.88], updraft: [0.45, 0.8, 0.6], hook: [0.88, 0.72, 0.4] };
   const PICKUP_TOAST = { xray: "X-ray goggles · every nearby cloud's time", updraft: "Sky feather · Space once both jumps are spent",
@@ -43,7 +43,7 @@
   const seenItems = () => {
     if (!itemsSeen) {
       itemsSeen = new Set();
-      try { for (const kind of (sessionStorage.getItem(ITEMS_KEY) || "").split(",")) if (POWERS.includes(kind)) itemsSeen.add(kind); }
+      try { for (const kind of (sessionStorage.getItem(ITEMS_KEY) || "").split(",")) if (INTRODUCED.includes(kind)) itemsSeen.add(kind); }
       catch (_) { /* The page-session set still works without storage. */ }
     }
     return itemsSeen;
@@ -293,12 +293,16 @@
       // The run is played in combat; control back at the top takes mouse-look again (natively inside a gesture).
       if (next === "ready") pilot.focusAim(typeof navigator !== "undefined" && !!navigator.userActivation?.isActive);
     };
-    // The power-ups this level carries that this browser session has not been shown yet.
-    const newItems = () => POWERS.filter((kind) => level.layout[kind] > 0 && !seenItems().has(kind));
+    // Whether this run carries each: bounce clouds by its course's own clouds, tornadoes by its level's sky and a
+    // power-up by its level's count.
+    const carries = (kind) => kind === "bounce" ? course.clouds.some(c => c.kind === "bounce")
+      : kind === "tornado" ? !!level.sky?.tornado : level.layout[kind] > 0;
+    // What this run carries that this browser session has not been shown yet.
+    const newItems = () => INTRODUCED.filter((kind) => carries(kind) && !seenItems().has(kind));
     const finishGuide = () => {
       if (phase !== "briefing") return;
       guideSeen = true;
-      for (const kind of POWERS) if (level.layout[kind] > 0) seenItems().add(kind);
+      for (const kind of INTRODUCED) if (carries(kind)) seenItems().add(kind);
       try { sessionStorage.setItem(GUIDE_KEY, "1"); sessionStorage.setItem(ITEMS_KEY, [...seenItems()].join(",")); }
       catch (_) { /* Keep completion for this page session. */ }
       // A key held while reading must not move the rider off the start cloud.

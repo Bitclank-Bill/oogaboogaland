@@ -1,8 +1,9 @@
 // Cloud Hopper's tornadoes, on Thunderhead (its sky's `tornado`). Each run has its spots down the course, seeded with
 // it (`SPOTS`). Over the next spot the storm turns, a cap gathering (`FORM` seconds) and brewing there, so a rider
-// sees from afar where it will come down; once the rider comes near it (`TRIGGER`), or passes it, a funnel lowers from
-// it through the course (`DROP`), roams about the course there while it lives (`LIVE`), then ropes out and draws back
-// up into the sky (`FADE`), and the next spot starts to brew. Lightning strikes round it from when it starts to brew
+// sees from afar where it will come down; once the rider comes within `TRIGGER` of it, or passes it, a funnel lowers
+// from it through the course (`DROP`), thin and weak at first and growing wider and stronger the longer it is down
+// (`GROW`), roams about the course there while it lives (`LIVE`), then ropes out and draws back up into the sky
+// (`FADE`), and the next spot starts to brew. Lightning strikes round it from when it starts to brew
 // until it ropes out, a second sign of where it is. While it is down it writes the course's `whirl`, which
 // turns the clouds near it round its axis, and `strength` says how hard it holds; the controller carries the Ooga round
 // it and, once drawn into its core, up it to spin round over its top, holding it down meanwhile (`hold`). It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
@@ -15,11 +16,15 @@
   const M = BL.models, { mulberry32 } = BL.math;
   const TAU = Math.PI * 2, GOLDEN = 2.399963;
   // Phase lengths (s): the sky turning, the funnel lowering, the funnel down, and roping out.
-  const FORM = 4.5, DROP = 2.5, LIVE = 11, FADE = 3;
+  const FORM = 4.5, DROP = 2.5, LIVE = 32, FADE = 3;
   // Its spots: over the main landing a rider at the expected pace reaches at each of these shares of the way down, this
   // far off to one side of it (m), drifting back across the course this fast (m/s). A rider within `TRIGGER` of the
   // spot across the course, or `PASS` nearer the finish than it, brings it down.
-  const SPOTS = [0.22, 0.5, 0.78], SIDE = [10, 22], DRIFT = [1.4, 2.4], TRIGGER = 40, PASS = 8;
+  const SPOTS = [0.22, 0.5, 0.78], SIDE = [10, 22], DRIFT = [1.4, 2.4], TRIGGER = 100, PASS = 8;
+  // It comes down young: its funnel under the cap `THIN` of its full girth and its hold `WEAK` of its full, both growing
+  // to full over its first `GROW` seconds down. Under the cap it blends from the cap's size to the funnel's over `TAPER`
+  // of its length, the cap keeping its size throughout.
+  const THIN = 0.3, WEAK = 0.35, GROW = 20, TAPER = 0.12;
   // Once down it roams: its heading wanders at ROAM (m/s), and a pull back toward the landing it brewed over (HOME,
   // per s) keeps it on the course there.
   const ROAM = 4, HOME = 0.12;
@@ -62,6 +67,20 @@
   });
   // A streak of spray whipped round the funnel, one unit long along x.
   const streak = M.cached(() => M.noShadow(M.box({ w: 1, h: 0.06, d: 0.06, color: "#d7e3ef", emissive: 0.35 })));
+  // A still of the funnel for its guide card (cloud-hopper-models.js), each slab a node of its own since the icon
+  // renderer draws no instanced batches: `STILL` [share of its length, slabs], so it fits a wide card, its top at the
+  // origin and its tail curling back from +x as it does from its drift.
+  const STILL = [0.4, 36];
+  const still = () => {
+    const root = createNode(), length = LENGTH * STILL[0], thick = length / STILL[1];
+    for (let i = 0; i < STILL[1]; i++) {
+      const u = (i + 0.5) / STILL[1], s = shape(u) * TOP_R / R0, sway = 0.3 + 1.4 * u, a = i * 1.7;
+      addChild(root, createNode({ geometry: slab(bandOf(u)),
+        position: { x: -CURL * u ** 2.4 + Math.cos(a) * sway, y: -u * length, z: -CURL * 0.5 * u ** 3 + Math.sin(a) * sway },
+        rotation: { x: 0, y: i * 0.9, z: 0 }, scale: { x: s, y: thick, z: s } }));
+    }
+    return root;
+  };
 
   // `root` is the run's own node; `onDrop(x, y, z)` hears each tornado begin to come down and `onStrike(distance)`
   // each strike of its lightning, for their sound.
@@ -86,10 +105,12 @@
     for (let i = 0; i < seeds.length; i++) seeds[i] = keep();
     // The run's spots and how many have brewed, and the tornado now: its state and age in it, its axis and drift (and
     // the drift's direction, which its tail curls back from), its top, the height it formed at (the course's), the
-    // lightning flickering in its cap, and how far it has come down, how thin it has roped and how hard it holds.
+    // lightning flickering in its cap, and how far it has come down, how thin it has roped and how hard it holds; how
+    // long it has been down (`matured`, which stops as it ropes out) and so how wide its funnel is and its full hold now.
     const spots = [];
     let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0;
     let ax = 0, az = 0, vx = 0, vz = 0, dirX = 1, dirZ = 0, top = 0, band = 0, flashAt = -1, flashNext = 0, strength = 0, reveal = 0, rope = 1, grow = 0;
+    let matured = 0, girth = THIN, power = WEAK;
     // Where it roams round (`home`), its heading to start from and its wander's own clock and phases; and its
     // lightning: the next strike, the last and how bright that one's flash is where the eye stands.
     let homeX = 0, homeZ = 0, heading = 0, wander = 0, w1 = 0, w2 = 0, strikeNext = 0, strikeAt = -1, strikeLevel = 0;
@@ -104,13 +125,15 @@
       out.x = ax - dirX * back + dirZ * round; out.z = az - dirZ * back - dirX * round;
       return out;
     };
+    // Its radius a fraction `u` of the way down: the cap at its size, the funnel under it at its girth now.
+    const widthAt = (u) => shape(u) * TOP_R * rope * (u <= BREW ? 1 : girth + (1 - girth) * Math.max(0, 1 - (u - BREW) / TAPER));
     // Where its axis stands at height y, and its radius there (0 where it has not come down).
     const axisAt = (y, out) => axisOf(fractionAt(y), out);
-    const radiusAt = (y) => { const u = fractionAt(y); return u <= reveal && y <= top ? shape(u) * TOP_R * rope : 0; };
+    const radiusAt = (y) => { const u = fractionAt(y); return u <= reveal && y <= top ? widthAt(u) : 0; };
     const hide = () => { for (let i = 0; i < parts.length; i++) parts[i].visible = false; };
     const begin = (x, y, z, dx, dz, speed, cx, cz) => {
       ax = x; az = z; dirX = dx; dirZ = dz; vx = dx * speed; vz = dz * speed;
-      top = y + TOP; band = y; state = FORMING; age = 0; flashNext = clock + 1;
+      top = y + TOP; band = y; state = FORMING; age = 0; flashNext = clock + 1; matured = 0;
       homeX = cx; homeZ = cz; heading = Math.atan2(dx, dz); wander = 0; w1 = rand() * TAU; w2 = rand() * TAU; strikeNext = clock + 0.4;
     };
     // A strike round it: one or two bolts from just over its cap down past the course, each its own way round.
@@ -152,6 +175,9 @@
       if (kept && state === FADING) { state = DOWN; age = 0; }
       if (state === DOWN && age >= LIVE && !kept) { state = FADING; age -= LIVE; }
       if (state === FADING && age >= FADE) { state = IDLE; whirl.strength = strength = 0; hide(); return; }
+      if (state === DOWN) matured = Math.min(GROW, matured + dt);
+      const young = ease(matured / GROW);
+      girth = THIN + (1 - THIN) * young; power = WEAK + (1 - WEAK) * young;
       if (state !== FORMING) {
         // Roaming: its heading wanders, pulled back toward home, and its tail curls back from where it heads.
         wander += dt;
@@ -165,11 +191,11 @@
       if (strikeAt >= 0 && clock - strikeAt > 0.22) for (let i = 0; i < bolts.length; i++) bolts[i].visible = false;
       const band0 = TOP / LENGTH;
       if (state === FORMING) { grow = ease(age / FORM); reveal = BREW * grow; rope = 1; strength = 0; }
-      else if (state === DROPPING) { grow = 1; reveal = BREW + (1 - BREW) * ease(age / DROP); rope = 1; strength = ease((reveal - band0 + 0.1) / 0.25); }
-      else if (state === DOWN) { grow = 1; reveal = 1; rope = 1; strength = 1; }
-      else { const k = 1 - ease(age / FADE); grow = k; reveal = k; rope = 0.35 + 0.65 * k; strength = k; }
+      else if (state === DROPPING) { grow = 1; reveal = BREW + (1 - BREW) * ease(age / DROP); rope = 1; strength = power * ease((reveal - band0 + 0.1) / 0.25); }
+      else if (state === DOWN) { grow = 1; reveal = 1; rope = 1; strength = power; }
+      else { const k = 1 - ease(age / FADE); grow = k; reveal = k; rope = 0.35 + 0.65 * k; strength = power * k; }
       axisOf(band0, CENTRE);
-      whirl.x = CENTRE.x; whirl.z = CENTRE.z; whirl.strength = strength; whirl.core = Math.max(1, shape(band0) * TOP_R * rope);
+      whirl.x = CENTRE.x; whirl.z = CENTRE.z; whirl.strength = strength; whirl.core = Math.max(1, widthAt(band0));
       whirl.reach = whirl.core + REACH; whirl.speed = SPEED; whirl.draw = DRAW; whirl.rise = RISE;
       draw(eye);
     };
@@ -182,14 +208,14 @@
       // carried round it) cuts away the slabs round its own height, so it never looks out through solid tornado.
       const eyeU = fractionAt(eye.y);
       axisOf(eyeU, CENTRE);
-      const eyeR = Math.hypot(eye.x - CENTRE.x, eye.z - CENTRE.z), cut = eye.y <= top && eyeU <= reveal ? shape(eyeU) * TOP_R * rope + 3 - eyeR : -1;
+      const eyeR = Math.hypot(eye.x - CENTRE.x, eye.z - CENTRE.z), cut = eye.y <= top && eyeU <= reveal ? widthAt(eyeU) + 3 - eyeR : -1;
       for (let i = 0; i < LAYERS; i++) {
         const u = (i + 0.5) / LAYERS, d = batches[bandAt[i]].instanceData, o = slotAt[i] * 20;
         const show = Math.max(0, Math.min(1, (reveal - u) / 0.04)) * (state === FORMING ? grow : 1) * (cut > 0 && Math.abs(u - eyeU) < 0.11 ? 0 : 1);
         if (!show) { for (let k = 0; k < 11; k++) d[o + k] = 0; continue; }
         axisOf(u, CENTRE);
         const sway = (0.3 + 1.4 * u) * rope, a = i * 1.7 + clock * (0.8 + 1.6 * u);
-        const s = shape(u) * TOP_R * rope / R0 * show, turn = i * 0.9 + clock * (0.5 + 2 * u), c = Math.cos(turn) * s, n = Math.sin(turn) * s;
+        const s = widthAt(u) / R0 * show, turn = i * 0.9 + clock * (0.5 + 2 * u), c = Math.cos(turn) * s, n = Math.sin(turn) * s;
         d[o] = c; d[o + 1] = 0; d[o + 2] = -n;
         d[o + 4] = 0; d[o + 5] = thick * show; d[o + 6] = 0;
         d[o + 8] = n; d[o + 9] = 0; d[o + 10] = c;
@@ -204,7 +230,7 @@
         const show = Math.max(0, Math.min(1, (reveal - u) / 0.08));
         if (!show) { for (let k = 0; k < 11; k++) sd[o + k] = 0; continue; }
         axisOf(u, CENTRE);
-        const a = i * GOLDEN + clock * (1.2 + 2.6 * u), r = shape(u) * TOP_R * rope * (1.12 + 0.3 * h1) + 1, ca = Math.cos(a), sa = Math.sin(a);
+        const a = i * GOLDEN + clock * (1.2 + 2.6 * u), r = widthAt(u) * (1.12 + 0.3 * h1) + 1, ca = Math.cos(a), sa = Math.sin(a);
         const len = (1.5 + 2.5 * h2) * show, tilt = 0.25, k = len / Math.hypot(1, tilt);
         sd[o] = -sa * k; sd[o + 1] = tilt * k; sd[o + 2] = ca * k;
         sd[o + 4] = 0; sd[o + 5] = show; sd[o + 6] = 0;
@@ -240,5 +266,5 @@
       // Its lightning's flash where the eye stands, 0 to 1, for the sky.
       get flash() { return strikeAt < 0 ? 0 : Math.max(0, 1 - (clock - strikeAt) / 0.3) * strikeLevel; } };
   };
-  BL.cloudHopperTornado = { create, FORM, DROP, LIVE, FADE, SPOTS, TRIGGER };
+  BL.cloudHopperTornado = { create, still, FORM, DROP, LIVE, FADE, SPOTS, TRIGGER };
 })();

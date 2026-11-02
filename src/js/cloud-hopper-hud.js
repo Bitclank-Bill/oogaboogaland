@@ -14,14 +14,16 @@
     swept: ["Disqualified", "Swept up into the tornado and caught spinning inside it!"]
   };
   const GUIDE = [
-    ["normal", "Drifting clouds", "WASD or arrows move, Shift runs and Space jumps. Leave the starting cloud to start the clock. A cloud shimmers and whistles before it fades, so jump for one that isn't shimmering; some clouds never fade at all."],
+    ["normal", "Drifting clouds", "WASD or arrows move, Shift runs and Space jumps. Leave the starting cloud to start the clock. A cloud shimmers and whistles before it fades, so jump for one that isn't shimmering; some white clouds never fade at all."],
     ["boost", "Boost clouds", "Touch any part of a pink cloud, even its sides or underside, to launch toward the island. The white arrows point the way."],
-    ["bounce", "Bounce clouds", "Touch any part of a purple cloud to bounce high into the air. Steer toward your next landing while airborne."],
     ["jetpack", "Jetpacks", "Collect a pack, then use J to equip or stow it. Hold Space for lift. Extra packs refill fuel; it never regenerates, and an empty pack disappears."],
     ["finish", "Banana pile", "Land on the banana pile to stop the clock. Your fastest finish becomes a ghost you can race next time."]
   ];
-  // The power-ups, each introduced the first time a session plays a level that carries it.
+  // Bounce clouds (from Level 2), Thunderhead's tornadoes and the power-ups, each introduced the first time a session
+  // plays a level that carries it.
   const ITEMS = {
+    bounce: ["bounce", "Bounce clouds", "Touch any part of a purple cloud to bounce high into the air. Steer toward your next landing while airborne."],
+    tornado: ["tornado", "Tornadoes", "Watch for a white cap gathering high in the storm with lightning round it: a tornado comes down there as you near it. It whirls the clouds near it round and up, and drags you in too. Steer out before it pulls you into its core, or it sweeps you up and the run is over."],
     xray: ["xray", "X-ray goggles", "Take the stone goggles to see how long each nearby cloud has before it fades, for 30 seconds. A gold ∞ marks a cloud that never fades, a red ring one that is about to, and a dashed ring counts down until a cloud comes back."],
     updraft: ["updraft", "Sky feather", "Carry one feather at a time. Once both your jumps are spent and you wear no fuelled jetpack, Space lets it go: a gust throws you about eight metres up."],
     hook: ["hook", "Grappling hook", "Aim at a cloud and click to throw: hold to be reeled toward it, let go to fly on as the hook comes back. A cloud in reach shows a gold ring. Miss, and the hook is gone. On a pad it is RT; on a touch screen, hold the HOOK button."]
@@ -426,7 +428,7 @@
       guidePictures?.dispose(); guidePictures = null;
       hud.remove(); panel.remove();
     };
-    // The guide's next cards: the cloud guide unless `cloud` is false, then each power-up named in `items`.
+    // The guide's next cards: the cloud guide unless `cloud` is false, then each new thing named in `items`.
     const setGuide = (cloud, items) => {
       guide = cloud ? GUIDE.concat(items.map(kind => ITEMS[kind])) : items.map(kind => ITEMS[kind]);
     };
