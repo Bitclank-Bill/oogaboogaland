@@ -5,7 +5,7 @@
 // up into the sky (`FADE`), and the next spot starts to brew. Lightning strikes round it from when it starts to brew
 // until it ropes out, a second sign of where it is. While it is down it writes the course's `whirl`, which
 // turns the clouds near it round its axis, and `strength` says how hard it holds; the controller carries the Ooga round
-// it and, once drawn into its core, up it and out of its top. It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
+// it and, once drawn into its core, up it to spin round over its top, holding it down meanwhile (`hold`). It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
 // to deep blue at its curling tail, each slab turning and swaying at its own speed (one instanced draw for each band
 // of colour), with streaks of spray whipped round it. Nothing allocates a frame.
 (() => {
@@ -93,6 +93,8 @@
     // Where it roams round (`home`), its heading to start from and its wander's own clock and phases; and its
     // lightning: the next strike, the last and how bright that one's flash is where the eye stands.
     let homeX = 0, homeZ = 0, heading = 0, wander = 0, w1 = 0, w2 = 0, strikeNext = 0, strikeAt = -1, strikeLevel = 0;
+    // Held down (`hold`) while it keeps an Ooga spinning at its top: it never ropes out until let go.
+    let kept = false;
     const range = (pair) => pair[0] + (pair[1] - pair[0]) * rand();
     const CENTRE = { x: 0, z: 0 };
     // The axis at height fraction `u`: its tail curls back and round from the drift.
@@ -147,7 +149,8 @@
         }
       } else age += dt;
       if (state === DROPPING && age >= DROP) { state = DOWN; age -= DROP; }
-      if (state === DOWN && age >= LIVE) { state = FADING; age -= LIVE; }
+      if (kept && state === FADING) { state = DOWN; age = 0; }
+      if (state === DOWN && age >= LIVE && !kept) { state = FADING; age -= LIVE; }
       if (state === FADING && age >= FADE) { state = IDLE; whirl.strength = strength = 0; hide(); return; }
       if (state !== FORMING) {
         // Roaming: its heading wanders, pulled back toward home, and its tail curls back from where it heads.
@@ -213,7 +216,7 @@
     // A run begins: `seed` its course's, from which its spots are laid on `course` toward `finish`; `clear` ends any
     // tornado at once and brews no more.
     const start = (seed, course, finish) => {
-      rand = mulberry32(seed ^ 0x51ed270b); spots.length = made = 0; state = IDLE; age = 0; strength = 0; hide();
+      rand = mulberry32(seed ^ 0x51ed270b); spots.length = made = 0; state = IDLE; age = 0; strength = 0; kept = false; hide();
       let last = 0;
       for (const c of course.clouds) if (c.main) last = Math.max(last, c.arrival);
       for (const share of SPOTS) {
@@ -224,12 +227,13 @@
         spots.push({ x: best.x + sx * off, y: best.top, z: best.z + sz * off, sx, sz, cx: best.x, cz: best.z });
       }
     };
-    const clear = (whirl = null) => { state = IDLE; made = spots.length; strength = 0; strikeAt = -1; if (whirl) whirl.strength = 0; hide(); };
+    const clear = (whirl = null) => { state = IDLE; made = spots.length; strength = 0; strikeAt = -1; kept = false; if (whirl) whirl.strength = 0; hide(); };
+    const hold = (on) => { kept = on; };
     // Brings one down now at (x, z) over the height y, setting off along (dx, dz), for a debug page and the cards.
     const spawn = (x, y, z, dx, dz) => { const d = Math.hypot(dx, dz) || 1; begin(x, y, z, dx / d, dz / d, 1.8, x, z); state = DROPPING; };
     const dispose = () => { for (let i = 0; i < parts.length; i++) removeChild(root, parts[i]); };
     const liveGeometry = (set) => { for (let b = 0; b < BANDS.length; b++) set.add(slab(b)); set.add(streak()); for (const b of bolts) set.add(b.geometry); };
-    return { start, update, clear, spawn, axisAt, radiusAt, dispose, liveGeometry,
+    return { start, update, clear, hold, spawn, axisAt, radiusAt, dispose, liveGeometry,
       get active() { return state !== IDLE; }, get down() { return strength > 0; }, get strength() { return strength; },
       get forming() { return state === FORMING ? ease(age / FORM) : 0; }, get top() { return top; }, get bottom() { return top - LENGTH; },
       get vx() { return vx; }, get vz() { return vz; }, get state() { return state; },

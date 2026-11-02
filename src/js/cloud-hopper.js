@@ -24,13 +24,15 @@
   // A tornado (Thunderhead's) takes an Ooga within `WHIRL_TAKE` of its side and lets it go past `WHIRL_LET_GO`: it is
   // drawn in toward it, carried round and lifted, harder the nearer it is (`WHIRL_PULL`, `WHIRL_SPIN` and `WHIRL_LIFT`
   // m/s at its side), on in through its wall. One drawn right into its core (within `SWEPT_CORE` of its radius there,
-  // and never less than `SWEPT_CORE_MIN` m) is swept up: whirled up the core for `SWEPT_CLIMB` s, burst out of the top
-  // spinning in a widening spiral for `SWEPT_BURST` s and thrown; `SWEPT_FLING` s later the run is lost. The view draws
-  // back `SWEPT_OUT` m outside the funnel's side and rises after the Ooga, `SWEPT_BEHIND` m under it and never nearer
-  // the top than `SWEPT_UNDER` m under it, turning up to follow it. Its roar is heard within `WHIRL_HEARD` of its axis.
+  // and never less than `SWEPT_CORE_MIN` m) is swept up: whirled up the core for `SWEPT_CLIMB` s, where it is kept
+  // spinning round inside the funnel near its top (`SWEPT_SINK` m under it, `SWEPT_RING` m round its axis, `SWEPT_SPIN`
+  // rad/s) until a replay or exit; `SWEPT_HOLD` s after it gets there the run is lost. The view draws back `SWEPT_OUT` m outside the
+  // funnel's side and rises after the Ooga, `SWEPT_BEHIND` m under it and never nearer the top than `SWEPT_UNDER` m
+  // under it, turning up to follow it. Its roar is heard within `WHIRL_HEARD` of its axis.
   const WHIRL_TAKE = 18, WHIRL_LET_GO = 22, WHIRL_PULL = 7, WHIRL_SPIN = 12, WHIRL_LIFT = 5, WHIRL_HEARD = 110;
-  const SWEPT_CORE = 0.35, SWEPT_CORE_MIN = 1.5, SWEPT_CLIMB = 2.4, SWEPT_BURST = 0.8, SWEPT_FLING = 1.6;
-  const SWEPT_OUT = 18, SWEPT_BEHIND = 6, SWEPT_UNDER = 4;
+  const SWEPT_CORE = 0.35, SWEPT_CORE_MIN = 1.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
+  const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
+  const SWEPT_OUT = 12, SWEPT_BEHIND = 6, SWEPT_UNDER = 4;
   let guideSeen = false, itemsSeen = null;
   const hasSeenGuide = () => {
     if (!guideSeen) {
@@ -185,10 +187,11 @@
       onStrike: (distance) => audio.thunder(distance) });
     let whirled = false;
     // Swept up inside one: how long since (-1 not), the angle round its axis, the height it was taken at, the side of
-    // it the view drew back to, its throw out of the top, and the view: where it watches from, what it eases toward
-    // looking at and what it looks at (with what the pilot had, given back after), and its axis at the top.
-    let swept = -1, sweptAngle = 0, sweptFrom = 0, sweptSide = 0;
-    const sweptVel = { x: 0, y: 0, z: 0 }, sweptEye = { x: 0, y: 0, z: 0 }, sweptAim = { x: 0, y: 0, z: 0 }, sweptLook = { x: 0, y: 0, z: 0 };
+    // it the view drew back to and how far the view tilts up behind the DQ card, and the view: where it watches from,
+    // what it eases toward looking at and what it looks at (with what the pilot had, given back after), and its axis
+    // at the view's height; and its axis where the outline test samples it.
+    let swept = -1, sweptAngle = 0, sweptFrom = 0, sweptSide = 0, sweptTilt = 0;
+    const sweptEye = { x: 0, y: 0, z: 0 }, sweptAim = { x: 0, y: 0, z: 0 }, sweptLook = { x: 0, y: 0, z: 0 };
     const sweptAxis = { x: 0, z: 0 }, insideAxis = { x: 0, z: 0 };
     const sweptCamPos = { x: 0, y: 0, z: 0 }, sweptCamTarget = { x: 0, y: 0, z: 0 }, sweptOrigin = { x: 0, y: 0, z: 0 };
     const whirlAxis = { x: 0, z: 0 };
@@ -463,7 +466,7 @@
     };
     const near = (x, y, z) => !active() && Math.abs(y - 1.1 - platform.position.y) < 0.45
       && Math.hypot(x - platform.position.x, z - platform.position.z) < RADIUS - 0.4;
-    // `how` a run is lost: "water" (into the sea, or out of reach of every cloud) or "tornado" (swept up and thrown).
+    // `how` a run is lost: "water" (into the sea, or out of reach of every cloud) or "tornado" (swept up its core).
     const finish = (won, how = "water") => {
       seconds = (raceNow() - startedAt) / 1000;
       if (won) {
@@ -489,9 +492,8 @@
           if (scores.length > SCORE_LIMIT) scores.length = SCORE_LIMIT;
         }
       }
-      // Thrown out of a tornado's top, the Ooga is gone; the view stays on the storm.
-      if (!won && how === "tornado") actor.root.visible = false;
-      else if (!won) {
+      // Into the water the view holds and watches the fall; a tornado keeps the Ooga spinning at its top instead.
+      else if (how !== "tornado") {
         const p = actor.root.position, gravity = BL.pilot.WALK.gravity;
         Object.assign(fallOrigin, p); Object.assign(fallEye, camera.position); Object.assign(fallTarget, camera.target);
         fallSavedUp = camera.up; fallOrthoHeight = camera.orthoHeight || 0;
@@ -674,6 +676,8 @@
       audio.jump();
     };
     const postUpdate = () => {
+      // Swept up by a tornado, the Ooga spins round over its top behind the DQ card too, until a replay or exit.
+      if (swept >= 0) { sweepStep(); return; }
       if (phase !== "ready" && phase !== "running") return;
       const p = actor.root.position, feet = p.y - actor.baseY;
       if (phase === "ready" && (actor.hop > 0.02 || actor.hopV > 0.02 || Math.abs(feet - platform.position.y) > 0.08
@@ -681,7 +685,6 @@
         startedAt = raceNow(); courseDrift = course.start(); ghost.begin(actor, runnerName); setPhase("running");
       }
       if (phase === "running") {
-        if (swept >= 0) { sweepStep(); return; }
         seconds = (raceNow() - startedAt) / 1000; overlay.update(seconds);
         if (feet <= ctx.seaY) { finish(false); return; }
         if (actor.hop === 0 && actor.hopV <= 0) {
@@ -862,47 +865,49 @@
     // draws back on its own side of the funnel.
     const sweep = (dx, dz) => {
       const p = actor.root.position;
-      swept = 0; sweptAngle = Math.atan2(dz, dx); sweptFrom = p.y - actor.baseY; whirled = true;
+      swept = 0; sweptAngle = Math.atan2(dz, dx); sweptFrom = p.y - actor.baseY; sweptTilt = 0; whirled = true;
       sweptSide = Math.atan2(camera.position.z - whirlAxis.z, camera.position.x - whirlAxis.x);
       if (hookHeld && hookAt !== HAND) letGo();
       hookDown = false;
       pilot.setActive(false); pilot.controls.reset();
       Object.assign(sweptCamPos, camera.position); Object.assign(sweptCamTarget, camera.target); Object.assign(sweptOrigin, actor.root.position);
       Object.assign(sweptEye, camera.position); Object.assign(sweptLook, p); Object.assign(sweptAim, p);
+      tornado.hold(true);
       audio.tornadoForm(0);
     };
-    // Each frame swept up, after the crew moved (its moves are overwritten): whirled up the core, ever faster and
-    // spinning, hidden in the funnel; burst out of the top spinning in a widening spiral; then thrown off along it,
-    // tumbling, and the run lost once the throw has carried it off.
+    // Each frame swept up, after the crew moved (its moves are overwritten), on behind the DQ card: whirled up the core,
+    // spinning, and widening near the top to circle round inside it, where it is kept spinning and tumbling, bobbing.
     const sweepStep = () => {
       const dt = stepTime, p = actor.root.position, top = tornado.top;
       swept += dt;
       actor.hop = 10; actor.hopV = 0; actor.leap.vx = actor.leap.vz = 0;
-      if (swept < SWEPT_CLIMB + SWEPT_BURST) {
-        let feet, radius, spin;
-        if (swept < SWEPT_CLIMB) { const u = swept / SWEPT_CLIMB; feet = sweptFrom + (top - 2 - sweptFrom) * u * u * (3 - 2 * u); radius = 1; spin = 10 + 4 * u; }
-        else { const u = (swept - SWEPT_CLIMB) / SWEPT_BURST; feet = top - 2 + 12 * u; radius = 1 + 5 * u * u; spin = 14 - 8 * u; }
-        tornado.axisAt(Math.min(feet, top), whirlAxis);
-        sweptAngle += dt * spin;
-        p.x = whirlAxis.x + Math.cos(sweptAngle) * radius; p.y = feet + actor.baseY; p.z = whirlAxis.z + Math.sin(sweptAngle) * radius;
-        actor.root.rotation.y += dt * 20; actor.root.rotation.x = Math.sin(swept * 5) * 0.6; actor.root.rotation.z = Math.sin(swept * 9) * 0.5;
-        // The throw, along the spiral and up.
-        sweptVel.x = -Math.sin(sweptAngle) * spin * radius * 0.6; sweptVel.z = Math.cos(sweptAngle) * spin * radius * 0.6; sweptVel.y = 22;
-      } else {
-        sweptVel.y -= BL.pilot.WALK.gravity * dt;
-        p.x += sweptVel.x * dt; p.y += sweptVel.y * dt; p.z += sweptVel.z * dt;
-        actor.root.rotation.y += dt * 18; actor.root.rotation.x += dt * 7;
-      }
+      const u = Math.min(1, swept / SWEPT_CLIMB), out = Math.max(0, Math.min(1, (u - 0.7) / 0.3)), ring = out * out * (3 - 2 * out);
+      const feet = sweptFrom + (top - SWEPT_SINK - sweptFrom) * u * u * (3 - 2 * u) + Math.sin(swept * 2.2) * 0.4 * ring;
+      const radius = 1 + (SWEPT_RING - 1) * ring, spin = 12 + (SWEPT_SPIN - 12) * ring;
+      tornado.axisAt(feet, whirlAxis);
+      sweptAngle += dt * spin;
+      p.x = whirlAxis.x + Math.cos(sweptAngle) * radius; p.y = feet + actor.baseY; p.z = whirlAxis.z + Math.sin(sweptAngle) * radius;
+      actor.root.rotation.y += dt * (20 - 6 * ring); actor.root.rotation.x = Math.sin(swept * 5) * 0.6; actor.root.rotation.z = Math.sin(swept * 9) * 0.5;
       // The view draws back out of the funnel on its own side and rises after the Ooga, never up to the top, so it
-      // turns up to follow it up the core and out of the top.
-      const eyeY = Math.min(p.y - actor.baseY - SWEPT_BEHIND, top - SWEPT_UNDER), out = tornado.radiusAt(eyeY) + SWEPT_OUT, k = Math.min(1, dt * 4);
+      // turns up to follow it up the core; once it circles the view holds on the middle of its ring.
+      const eyeY = Math.min(feet - SWEPT_BEHIND, top - SWEPT_UNDER), away = tornado.radiusAt(eyeY) + SWEPT_OUT, k = Math.min(1, dt * 4);
       tornado.axisAt(eyeY, sweptAxis);
-      sweptEye.x += (sweptAxis.x + Math.cos(sweptSide) * out - sweptEye.x) * k;
+      sweptEye.x += (sweptAxis.x + Math.cos(sweptSide) * away - sweptEye.x) * k;
       sweptEye.y += (eyeY - sweptEye.y) * k;
-      sweptEye.z += (sweptAxis.z + Math.sin(sweptSide) * out - sweptEye.z) * k;
-      // Aimed a little over it, so it rides low in the frame, clear of the clock.
-      sweptAim.x = p.x; sweptAim.y = p.y + 3; sweptAim.z = p.z;
-      if (swept >= SWEPT_CLIMB + SWEPT_BURST + SWEPT_FLING) finish(false, "tornado");
+      sweptEye.z += (sweptAxis.z + Math.sin(sweptSide) * away - sweptEye.z) * k;
+      // Aimed a little over it, so it rides low in the frame, clear of the clock; behind the DQ card, which covers the
+      // middle of the screen, tilted up further so it rides at 75% of the screen's height, as the fall into the water does.
+      const tilt = Math.atan(0.5 * Math.tan(camera.fov * 0.5)), mix = sweptTilt / tilt;
+      sweptTilt += ((phase === "running" ? 0 : tilt) - sweptTilt) * Math.min(1, dt * 3);
+      const ax = p.x + (whirlAxis.x - p.x) * ring, az = p.z + (whirlAxis.z - p.z) * ring, reach = Math.hypot(ax - sweptEye.x, az - sweptEye.z);
+      const ay = (p.y + 3) * (1 - mix) + (feet + actor.bodyHeight * 0.5) * mix;
+      // Never so high that the frame's top edge looks over the funnel's near rim: the view sees tornado, not past it.
+      tornado.axisAt(top, sweptAxis);
+      const rim = Math.max(1, Math.hypot(sweptAxis.x - sweptEye.x, sweptAxis.z - sweptEye.z) - tornado.radiusAt(top) * 1.15);
+      const pitch = Math.min(Math.atan2(ay - sweptEye.y, reach) + sweptTilt, Math.atan2(top - sweptEye.y, rim) - camera.fov * 0.5);
+      sweptAim.x = ax; sweptAim.z = az;
+      sweptAim.y = sweptEye.y + reach * Math.tan(pitch);
+      if (phase === "running" && swept >= SWEPT_CLIMB + SWEPT_HOLD) finish(false, "tornado");
     };
     // Whether a tornado's funnel holds the Ooga or stands between it and the eye, where the hub shows its outline
     // through it: points from the Ooga's middle back along the sight line, short of the eye, tested against the funnel.
@@ -912,7 +917,8 @@
       for (let i = 0; i <= 12; i++) {
         const t = i / 12 * 0.9, x = p.x + (e.x - p.x) * t, y = mid + (e.y - mid) * t, z = p.z + (e.z - p.z) * t;
         tornado.axisAt(y, insideAxis);
-        if (Math.hypot(x - insideAxis.x, z - insideAxis.z) < tornado.radiusAt(y)) return true;
+        // Its slabs' ragged rims reach a little past its radius.
+        if (Math.hypot(x - insideAxis.x, z - insideAxis.z) < tornado.radiusAt(y) * 1.15) return true;
       }
       return false;
     };
@@ -920,6 +926,7 @@
     const endSweep = () => {
       if (swept < 0) return;
       actor.root.visible = true; actor.root.rotation.x = actor.root.rotation.z = 0;
+      tornado.hold(false);
       Object.assign(camera.position, sweptCamPos); Object.assign(camera.target, sweptCamTarget);
       BL.math.mat4.identity(fallViewShift);
       fallViewShift[12] = actor.root.position.x - sweptOrigin.x;

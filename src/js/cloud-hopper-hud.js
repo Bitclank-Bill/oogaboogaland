@@ -11,7 +11,7 @@
     won: ["Banana pile reached!", "A clean landing and a time to beat."],
     dq: ["Disqualified", "Splash! No cloud was within reach."],
     // A run lost to a tornado says so, under its own picture.
-    swept: ["Disqualified", "Swept up and thrown out of the tornado!"]
+    swept: ["Disqualified", "Swept up into the tornado and caught spinning inside it!"]
   };
   const GUIDE = [
     ["normal", "Drifting clouds", "WASD or arrows move, Shift runs and Space jumps. Leave the starting cloud to start the clock. A cloud shimmers and whistles before it fades, so jump for one that isn't shimmering; some clouds never fade at all."],
