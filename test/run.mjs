@@ -16851,7 +16851,26 @@ const hangarFire = { name: "hangar static fire", why: "playthrough: the static f
 scene("factory", { query: "character=portlandhodl", steps: [factoryWalking, factoryGreeter, factoryLadders, factoryRailingJump, factoryWeapons, factoryForward, factoryForge, factoryShields, factoryKortik, trip("factory")] });
 scene("factory", { label: "cooker", query: "character=portlandhodl", steps: [donation("factory", { stat: "cooker.out", seconds: 14, where: "the cooker sends its bananas up through the ceiling tube" }), donationDetails, factoryCooker, trip("factory")] });
 scene("factory", { label: "entrance", url: hubPage(src, "character=portlandhodl"), steps: [factoryFloor, factoryEntrance] });
-scene("hangar", { query: "character=portlandhodl", steps: [hangarWalking, hangarDoor, hangarFire, trip("hangar")] });
+const hangarMisfire = { name: "hangar misfire", why: "rule: the Jet's failed start plays without touching the visitor's controls, spooks Kortik's Sis, refuses the static fire's button meanwhile and leaves the engines cold, the Jet at rest and the lights full", run: async (b) => {
+  const r = await b.evaluate(`(() => {
+    const B = window.__ooga, a = B.cavemen.get("portlandhodl"), A = B.hangar.anomaly, F = B.hangar.fire, S = B.hangar.sis, J = B.hangar.scene.jet.position, L = B.hangar.layout.jet;
+    if (B.crew.player !== a) B.pilot.possess(a);
+    B.pilot.navigate({ position: { x: -1.5, y: 0, z: 2 }, yaw: 0, pitch: 0.3, dist: 6 });
+    B.advance(0.5, 1 / 60);
+    const key = (down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "w", code: "KeyW", bubbles: true }));
+    let spooked = false, hottest = 0, darkest = 1;
+    const run = (seconds) => { for (let i = 0; i < Math.round(seconds * 60); i++) { B.advance(1 / 60, 1 / 60); spooked = spooked || S.fit === 8; hottest = Math.max(hottest, A.heat); darkest = Math.min(darkest, A.dim); } };
+    const walked = () => { const p = B.pilot.player.root.position, x = p.x, z = p.z; key(true); run(0.5); key(false); run(0.2); return +Math.hypot(p.x - x, p.z - z).toFixed(2); };
+    const played = A.play("misfire");
+    run(4);
+    const free = walked(), pressed = F.press(), refused = F.t < 0;
+    run(BL.hangarAnomaly.MISFIRE.end - 4.2);
+    return { played, free, pressed, refused, spooked, hottest: +hottest.toFixed(2), darkest: +darkest.toFixed(2), kind: A.kind, heat: A.heat, dim: A.dim, rest: J.x === L.x && J.y === 0 && J.z === L.z, booth: F.phase };
+  })()`);
+  record("hangar misfire: the failed start dims the lights and heats the throats while the visitor's W still walks, Kortik's Sis jumps, the static fire's button only buzzes, and at its end the engines are cold, the Jet at rest and the lights full",
+    r.played && r.free > 1 && r.pressed && r.refused && r.spooked && r.hottest > 0.5 && r.darkest < 0.7 && r.kind === null && r.heat === 0 && r.dim === 1 && r.rest && r.booth === "ready", JSON.stringify(r));
+} };
+scene("hangar", { query: "character=portlandhodl", steps: [hangarWalking, hangarDoor, hangarFire, hangarMisfire, trip("hangar")] });
 scene("factory", { label: "canvas2d", query: "canvas2d=1&character=portlandhodl", steps: [factoryCanvas, factoryGreeter] });
 scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [bifrostEntrance, bifrostWalking, bifrostExit, trip("bifrost")] });
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });

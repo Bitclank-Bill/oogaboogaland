@@ -68,6 +68,8 @@
     shadowCenter: { x: 2.5, y: 6, z: -2 }, shadowExtent: 42,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 1
   };
+  // The hall's own light at full, and how much of an anomaly's dimming it takes.
+  const SKY = RENDER_OPTS.sky.slice(), GROUND = RENDER_OPTS.ground.slice(), AMBIENT_DIM = 0.5;
   // The space past the shield, from ₿IFRÖST's dome (`bifrostModels.sky`): its stars, the twinkling ones in their halos,
   // the galaxy's band and its shooting stars on a dome tipped so its zenith looks back down the tunnel and turned so
   // the band crosses the tunnel's end; and its ringed giant and its red world, turning with their moons going round,
@@ -85,7 +87,7 @@
   // The tunnel's neon burns past full (`NEON_GLOW`), each frame's strip shimmering at its own pace, and every
   // `NEON_STUTTER` seconds one stutters, dipping twice as a tired tube does; the light at the tunnel's mouth follows
   // its first strip (`MOUTH_LIGHT`).
-  const NEON_GLOW = 1.7, NEON_STUTTER = [2.5, 7], MOUTH_LIGHT = HM.TINTS.mouth;
+  const NEON_GLOW = 1.7, NEON_STUTTER = [2.5, 7], MOUTH_LIGHT = HM.TINTS.mouth, MOUTH_SLOT = 6;
   // The floor lamps breathe a little, each at its own pace, and every `LAMP_STUTTER` seconds one stutters, failing four
   // times in half a second (`LAMP_FAILS`, from and to, s, at `LAMP_DIM` of its light); and every `RABBIT` seconds a
   // pulse runs down the runway's marker lamps toward the launch tunnel at `RABBIT_SPEED` m/s, each brightening by up to
@@ -641,8 +643,8 @@
     });
     addChild(root, space);
   };
-  // The neon's flicker, and the mouth's light with it.
-  const neonLife = (s, dt, elapsed) => {
+  // The neon's flicker, and the mouth's light with it, as dim as an anomaly has the hall's lights (`dim`).
+  const neonLife = (s, dt, elapsed, dim) => {
     s.stutterWait -= dt;
     if (s.stutterWait <= 0) {
       s.stutterWait = NEON_STUTTER[0] + Math.random() * (NEON_STUTTER[1] - NEON_STUTTER[0]);
@@ -653,9 +655,9 @@
     for (let i = 0; i < s.neon.length; i++) {
       let k = NEON_GLOW * (0.93 + 0.05 * Math.sin(elapsed * (7.3 + i * 1.7) + i * 2.3) + 0.03 * Math.sin(elapsed * (19.1 + i * 3.1) + i));
       if (i === s.stutter && (since < 0.06 || since > 0.14 && since < 0.21)) k *= 0.22;
-      s.neon[i].glow = k;
+      s.neon[i].glow = k * dim;
     }
-    const f = s.neon[0].glow / NEON_GLOW, o = 6 * 8, Lt = RENDER_OPTS.lights;
+    const f = s.neon[0].glow / NEON_GLOW, o = MOUTH_SLOT * 8, Lt = RENDER_OPTS.lights;
     Lt[o + 4] = MOUTH_LIGHT[0] * f; Lt[o + 5] = MOUTH_LIGHT[1] * f; Lt[o + 6] = MOUTH_LIGHT[2] * f;
   };
   // The boards' Jets: resting at their spots, then now and then waking (engines lit, a shudder), leaving their board each
@@ -736,8 +738,9 @@
       }
     }
   };
-  // The lamps' life: the floor lamps breathing and one now and then stuttering; the runway's rabbit.
-  const lampLife = (s, dt, elapsed) => {
+  // The lamps' life: the floor lamps breathing and one now and then stuttering, as dim as an anomaly has the hall's
+  // lights (`dim`); the runway's rabbit.
+  const lampLife = (s, dt, elapsed, dim) => {
     if ((s.lampWait -= dt) <= 0) {
       s.lampWait = LAMP_STUTTER[0] + Math.random() * (LAMP_STUTTER[1] - LAMP_STUTTER[0]);
       s.lampOut = Math.floor(Math.random() * s.lamps.length);
@@ -746,7 +749,7 @@
     const since = elapsed - s.lampAt;
     let out = false;
     for (let i = 0; i < LAMP_FAILS.length; i += 2) if (since >= LAMP_FAILS[i] && since < LAMP_FAILS[i + 1]) out = true;
-    for (let i = 0; i < s.lamps.length; i++) s.lamps[i].glow = out && i === s.lampOut ? LAMP_DIM : 1 + 0.04 * Math.sin(elapsed * (2.1 + i * 0.37) + i * 1.9);
+    for (let i = 0; i < s.lamps.length; i++) s.lamps[i].glow = (out && i === s.lampOut ? LAMP_DIM : 1 + 0.04 * Math.sin(elapsed * (2.1 + i * 0.37) + i * 1.9)) * dim;
     if ((s.rabbitWait -= dt) <= 0) {
       s.rabbitWait = RABBIT[0] + Math.random() * (RABBIT[1] - RABBIT[0]);
       s.rabbitAt = elapsed;
@@ -790,13 +793,15 @@
   // The hangar for a visit: the hall and everything standing in it from the cached builds, the signs, the boards, the
   // Jet at its dock, the door back to the hall with its shield, the launch shield and space past it.
   const build = () => {
-    const L = LAYOUT, s = { crew: [] }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), dressed = HM.dressing(), fixtures = HM.fixtures(), frames = HM.boardFrames();
+    const L = LAYOUT, s = { crew: [], dimmed: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), dressed = HM.dressing(), fixtures = HM.fixtures(), frames = HM.boardFrames();
+    // The lanterns' and the fixtures' glass, which an anomaly dims with the hall's lights.
+    s.glass = [createNode({ geometry: dressed.glass, sightHidden: true }), createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true })];
     addChild(root, createNode({ geometry: shell.rock }), createNode({ geometry: shell.vault }), createNode({ geometry: shell.backing }),
       createNode({ geometry: HM.landing() }), createNode({ geometry: runway.flat }),
       createNode({ geometry: tunnel.stone }),
       createNode({ geometry: HM.catwalks() }), createNode({ geometry: dressed.iron }), createNode({ geometry: dressed.banners }),
-      createNode({ geometry: dressed.frame }), createNode({ geometry: dressed.glass, sightHidden: true }), createNode({ geometry: fixtures.glow, sightHidden: true }),
-      createNode({ geometry: fixtures.frame }), createNode({ geometry: fixtures.glass, sightHidden: true }), createNode({ geometry: HM.dock() }));
+      createNode({ geometry: dressed.frame }), s.glass[0], s.glass[1],
+      createNode({ geometry: fixtures.frame }), s.glass[2], createNode({ geometry: HM.dock() }));
     s.mouth = createNode({ geometry: tunnel.iron });
     // The tunnel's neon, a strip on every frame, each flickering on its own (`neonLife`).
     s.neon = tunnel.neonZ.map((z) => createNode({ position: { x: 0, y: 0, z }, geometry: tunnel.neon, sightHidden: true }));
@@ -984,11 +989,13 @@
   };
   const lightUp = () => {
     HM.fixedLights().forEach((l, i) => lamp(i, ...l));
+    for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i]; RENDER_OPTS.ground[i] = GROUND[i]; }
     RENDER_OPTS.lightCount = Math.min(BL.glRenderer.POINT_LIGHT_CAPACITY, FIXED + lanternPool().length / 4);
   };
   let poolScore = null;
-  // The shared slots go to the lanterns nearest the view, nearest first, by repeated minimum: no sort, no list.
-  const glowNear = (elapsed, from) => {
+  // The shared slots go to the lanterns nearest the view, nearest first, by repeated minimum: no sort, no list; as dim
+  // as an anomaly has the hall's lights (`dim`).
+  const glowNear = (elapsed, from, dim) => {
     const P = lanternPool(), n = P.length / 4, t = pilot.orbit.target, Lt = RENDER_OPTS.lights;
     if (!poolScore) poolScore = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -999,7 +1006,7 @@
       let best = 0, bestD = Infinity;
       for (let i = 0; i < n; i++) if (poolScore[i] < bestD) { bestD = poolScore[i]; best = i; }
       poolScore[best] = Infinity;
-      const k = 0.9 + Math.sin(elapsed * 9.3 + best * 1.7) * 0.06 + Math.sin(elapsed * 23.7 + best * 5.3) * 0.04, w = slot * 8;
+      const k = (0.9 + Math.sin(elapsed * 9.3 + best * 1.7) * 0.06 + Math.sin(elapsed * 23.7 + best * 5.3) * 0.04) * dim, w = slot * 8;
       Lt[w] = P[best * 4]; Lt[w + 1] = P[best * 4 + 1]; Lt[w + 2] = P[best * 4 + 2]; Lt[w + 3] = P[best * 4 + 3];
       Lt[w + 4] = LANTERN_GLOW[0] * k; Lt[w + 5] = LANTERN_GLOW[1] * k; Lt[w + 6] = LANTERN_GLOW[2] * k; Lt[w + 7] = 0;
     }
@@ -1208,7 +1215,7 @@
     scene.fire = BL.hangarFire.create({ root, jet: scene.jet, nozzles: scene.jet.children[0] || null, fx, audio, hold: (on) => {
       pilot.setActive(!on);
       pilot.setExternalControl(on);
-    }, toast: hud.toast });
+    }, toast: hud.toast, busy: () => !!scene.anomaly && scene.anomaly.playing });
     input.add(scene.fire.body, { kind: "firetest", preset: null }, { radius: 1.6 });
     targets.push(scene.fire.body);
     soundPanel = openSoundPanel();
@@ -1217,6 +1224,10 @@
     addChild(root, scene.sis.node, scene.sis.props);
     input.add(scene.sis.body, { kind: "sis", preset: null }, { radius: 1.2 });
     targets.push(scene.sis.body);
+    // The Jet acting up on its own now and then (`hangar-anomaly.js`): not on a test page unless `anomaly=` asks, which
+    // under debug also sets the wait between them, s.
+    const every = DEBUG ? Number(params.get("anomaly")) : NaN;
+    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: LAYOUT.jet, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
     for (const n of scene.terminals.nodes) {
@@ -1298,7 +1309,7 @@
     hangarScene.input = input;
     hangarScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get guide() { return scene && scene.guide; } }
+      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get guide() { return scene && scene.guide; } }
     };
   };
   const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
@@ -1385,7 +1396,9 @@
     if (people) people.update(dt, elapsed);
     // The Ooga driven here never rests inside a crate or a chest (`hangarModels.pushOut`).
     if (drivenHere && !drivenHere.camp.seat) HM.pushOut(drivenHere.root.position, drivenHere.root.position.y - drivenHere.baseY, drivenHere.bodyRadius || 0.35);
-    // The static fire test, after the crew has moved, so a presser it knocks down lies where the crew left them.
+    // The Jet acting up on its own, driving the engines before the static fire test burns them; then the test, after
+    // the crew has moved, so a presser it knocks down lies where the crew left them.
+    s.anomaly.update(dt);
     s.fire.update(dt, drivenHere);
     pressLife(s.forklift, dt);
     powerLife(s.forklift, dt);
@@ -1431,8 +1444,17 @@
     const want = clamp((DOOR_FAR - Math.max(0, Math.hypot(who.x - DOOR.x, who.y - DOOR.y - 1, who.z - DOOR.z) - 2)) / (DOOR_FAR - DOOR_NEAR), 0, 1);
     s.gate.near += (want * want - s.gate.near) * Math.min(1, dt * DOOR_EASE);
     s.doorGlow.glow = 1 + DOOR_BRIGHTEN * s.gate.near;
-    const Lt = RENDER_OPTS.lights, power = 1 + DOOR_POWER * s.gate.near;
+    const Lt = RENDER_OPTS.lights, dim = s.anomaly.dim, power = (1 + DOOR_POWER * s.gate.near) * dim;
     Lt[3] = DOOR_LIGHT[3] + DOOR_REACH * s.gate.near; Lt[4] = DOOR_LIGHT[4] * power; Lt[5] = DOOR_LIGHT[5] * power; Lt[6] = DOOR_LIGHT[6] * power;
+    // The hall's lights as dim as an anomaly has them: the other fixed ones (the door's above, the tunnel mouth's with
+    // the neon), the hall's own light, half as much, and the lanterns' and fixtures' glass.
+    if (dim !== s.dimmed) {
+      s.dimmed = dim;
+      const F = HM.fixedLights(), amb = 1 - (1 - dim) * AMBIENT_DIM;
+      for (let i = 1; i < FIXED; i++) if (i !== MOUTH_SLOT) { const l = F[i], o = i * 8; Lt[o + 4] = l[4] * dim; Lt[o + 5] = l[5] * dim; Lt[o + 6] = l[6] * dim; }
+      for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i] * amb; RENDER_OPTS.ground[i] = GROUND[i] * amb; }
+      for (const g of s.glass) g.glow = dim;
+    }
     hum(s.gate, OPENING, dt, elapsed, 0.12 * (1 - 0.65 * s.gate.near));
     hum(s.launch, LAUNCH, dt, elapsed, 0.18);
     // Walked up to the hold-short bar, the launch shield ripples where they stand and says, once an approach, that it is
@@ -1445,14 +1467,15 @@
         hud.toast("Launch shield · sealed. The runway opens when Jet v2 is ready.");
       } else if (z > TUN.holdShort + SHIELD_REARM) s.launch.armed = true;
     }
-    // The fire test's lights, the film's, the forklift's beacon's and Tess's own, then the lanterns'.
-    const fired = FIXED + s.fire.lights(RENDER_OPTS.lights, FIXED), shown = fired + s.terminals.lights(RENDER_OPTS.lights, fired);
+    // The fire test's lights, an anomaly's, the film's, the forklift's beacon's and Tess's own, then the lanterns'.
+    const fired = FIXED + s.fire.lights(RENDER_OPTS.lights, FIXED), odd = fired + s.anomaly.lights(RENDER_OPTS.lights, fired);
+    const shown = odd + s.terminals.lights(RENDER_OPTS.lights, odd);
     const beamed = shown + beaconLight(s.forklift, RENDER_OPTS.lights, shown);
     s.guide.light(RENDER_OPTS.lights, beamed * 8);
-    glowNear(elapsed, beamed + 1);
+    glowNear(elapsed, beamed + 1, dim);
     heavens(s, dt, elapsed);
-    neonLife(s, dt, elapsed);
-    lampLife(s, dt, elapsed);
+    neonLife(s, dt, elapsed, dim);
+    lampLife(s, dt, elapsed, dim);
     boardJets(s, dt);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     for (let i = 0; i < s.crew.length; i++) {
@@ -1513,6 +1536,7 @@
     scene.gate.phase.dispose();
     scene.launch.phase.dispose();
     if (scene.window) scene.window.dispose();
+    scene.anomaly.dispose();
     scene.fire.dispose();
     scene.guide.dispose();
     soundPanel.dispose();
