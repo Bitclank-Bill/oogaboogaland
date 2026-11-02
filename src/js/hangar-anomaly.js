@@ -24,8 +24,8 @@
 // back on one by one. Its sound is `hangarAudio.blackout`, the hall's electrical hum following its power
 // (`hangarAudio.power`).
 //
-// The lowrider (`lowrider`): a bass groove, and the Jet bouncing to it, its nose lifting on each beat about its main
-// gear, which stays on the floor, and dropping back with a bounce, harder and softer by turns, then settling. Kortik's
+// The lowrider (`lowrider`): the Jet bouncing to a beat, its nose lifting on each about its main gear, which stays on the
+// floor, and its nose gear banging back down with a bounce, harder and softer by turns, then settling. Kortik's
 // Sis bobs along before she catches herself (`sis.groove`). Its sound is `hangarAudio.lowrider`. It only starts with
 // nobody standing on the Jet (`riders`), and stops at once, the Jet at rest, if someone gets on or a frame runs too
 // long to trust (`HITCH`); what anyone walks on never moves.
@@ -76,10 +76,11 @@
   // dark the lights go and the hall's own light; the nozzles glowing in the dark like eyes from `wake` after the kill,
   // how bright and how they breathe, and their blink at `blink` for `blinkLen`; the banks coming back on, and the end.
   const BLACKOUT = { flicker: [0.05, 0.12], low: 0.3, kill: 0.2, dark: 0.03, ambient: 0.15, wake: 0.6, eyes: 0.35, breathe: 0.08, blink: 4.2, blinkLen: 0.18, banks: [6.8, 7.4, 8, 8.6], end: 10 };
-  // The lowrider, s from its start: its first beat, the beat, how many; how far the nose lifts at the hardest, radians,
-  // about the main gear (`gear`, m along the Jet from its middle); the end; and how hard each beat is, n from 0,
-  // easing in and out over the first and last two, every other one softer.
-  const LOWRIDER = { start: 0.4, beat: 0.6, beats: 14, pitch: 0.035, gear: 1.5, end: 10, hard: (n) => Math.min(1, (n + 1) / 2, (LOWRIDER.beats - n) / 2) * (n % 2 ? 0.65 : 1) };
+  // The lowrider, s from its start: its first beat, the beat, how many, and how far into a beat the nose gear comes back
+  // down (`slam`); how far the nose lifts at the hardest, radians, about the main gear (`gear`, m along the Jet from its
+  // middle); the end; and how hard each beat is, n from 0, easing in and out over the first and last two, every other
+  // one softer.
+  const LOWRIDER = { start: 0.4, beat: 0.6, beats: 14, slam: 0.5, pitch: 0.035, gear: 1.5, end: 10, hard: (n) => Math.min(1, (n + 1) / 2, (LOWRIDER.beats - n) / 2) * (n % 2 ? 0.65 : 1) };
   // The hangar shuffle, s from its start: the brakes letting go; its keyframes, each [s, along (m, toward the nose
   // less), roll (radians, the right wing up more)], eased between: a lurch forward and back, a sway from wing to wing and
   // a last lurch, settling on its marks; the tyre scrubs and the gear's creaks, s; the engines' bursts, [s, how hard];
@@ -330,8 +331,9 @@
       const pitch = L.pitch * k;
       jet.rotation.x = REST_X + pitch;
       J.y = REST_Y + L.gear * Math.sin(pitch);
-      // Each stomp in the pad, as hard as the beat.
-      if (u >= 0 && n < L.beats && u - dt < n * L.beat) BL.gamepad.rumble(0.55 * L.hard(n), 0.3 * L.hard(n), 140);
+      // Each bang in the pad, as hard as the beat, as the nose gear comes down.
+      const hit = (n + L.slam) * L.beat;
+      if (u >= 0 && n < L.beats && u >= hit && u - dt < hit) BL.gamepad.rumble(0.55 * L.hard(n), 0.3 * L.hard(n), 140);
       // Kortik's Sis, at the first beat, and told once the last is done.
       if (!spooked && t >= L.start) { spooked = true; if (!sis.groove(L.beat)) sis.spook(engines.x, engines.z); }
       const last = L.beats * L.beat;
