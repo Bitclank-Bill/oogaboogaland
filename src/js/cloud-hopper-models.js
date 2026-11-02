@@ -97,11 +97,10 @@
     addChild(node, node.body, node.aura, node.pool);
     return node;
   };
-  const updateJetpackPickup = (node, camera, time) => {
-    const pulse = 0.92 + Math.sin(time * 2.4) * 0.08;
+  // `haze` is the level's fog [near, far] when it has one, which the glow fades into with distance as the body does,
+  // since a blended picture takes no fog of its own.
+  const updateJetpackPickup = (node, camera, time, haze = null) => {
     node.body.rotation.y = time;
-    // Only the surrounding light breathes; the metal's fill stays steady.
-    node.aura.smokeOpacity = 0.22 * pulse; node.pool.smokeOpacity = 0.3 * pulse;
     const bounds = node.bodyBounds, center = bounds.center, c = Math.cos(time), s = Math.sin(time);
     const x = c * center[0] + s * center[2], y = center[1], z = c * center[2] - s * center[0];
     let dx = camera.position.x - node.position.x - x * node.scale.x;
@@ -109,6 +108,10 @@
     let dz = camera.position.z - node.position.z - z * node.scale.z;
     let distance = Math.hypot(dx, dy, dz);
     if (distance < 1e-6) { dx = dy = 0; dz = distance = 1; }
+    // Only the surrounding light breathes; the metal's fill stays steady.
+    const t = haze ? Math.max(0, Math.min(1, (distance - haze[0]) / (haze[1] - haze[0]))) : 0;
+    const glow = (0.92 + Math.sin(time * 2.4) * 0.08) * (1 - t * t * (3 - 2 * t));
+    node.aura.smokeOpacity = 0.22 * glow; node.pool.smokeOpacity = 0.3 * glow;
     // Put the whole billboard behind the rotating pack's bounds. A plane
     // through the tanks depth-clips into a pale band across their faces.
     const back = (bounds.radius + 0.08) / distance;

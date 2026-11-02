@@ -434,7 +434,7 @@
       for (const p of course.pickups) {
         const node = BL.cloudHopperModels.pickup(p.kind);
         node.position.x = p.x; node.position.y = p.y; node.position.z = p.z;
-        BL.cloudHopperModels.updateJetpackPickup(node, camera, displayTime + p.index * 2);
+        BL.cloudHopperModels.updateJetpackPickup(node, camera, displayTime + p.index * 2, level.sky?.fog);
         pickupNodes.push(node); addChild(routeRoot, node);
       }
       routeRoot.visible = true;
@@ -614,7 +614,7 @@
         const pickup = course.pickups[i], node = pickupNodes[i];
         node.visible = pickup.active && pickup.y > ctx.seaY;
         node.position.x = pickup.x; node.position.y = pickup.y; node.position.z = pickup.z;
-        if (node.visible) BL.cloudHopperModels.updateJetpackPickup(node, camera, displayTime + i * 2);
+        if (node.visible) BL.cloudHopperModels.updateJetpackPickup(node, camera, displayTime + i * 2, level.sky?.fog);
       }
       if (hookHeld && (phase === "ready" || phase === "running")) updateHook(dt);
       whirlOoga();

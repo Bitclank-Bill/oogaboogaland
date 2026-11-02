@@ -15,8 +15,8 @@
 //   like waves; shooting stars; dark
 //   isles growing glowing crystals; and great crystals turning in the air.
 // - `storm` (Thunderhead): rain round the eye, lightning striking the sea with the sky's flash and the strike's
-//   distance for its thunder, and storm-dark isles far out to either side whose lighthouses sweep their beams through
-//   the haze. `grade` greys the hub's sampled sky for it and `flash` lifts it for a frame of lightning.
+//   distance for its thunder, and storm-dark isles far out to either side whose lighthouses sweep their beams round,
+//   only their light glowing faintly through the haze from far off. `grade` greys the hub's sampled sky for it and `flash` lifts it for a frame of lightning.
 // The moving parts are instanced batches written in place (one draw each) and a few node transforms; nothing
 // allocates a frame. The Canvas 2D renderer gets the still scenery and a thinner aurora, without the flocks,
 // lanterns or shooting stars.
@@ -497,6 +497,21 @@
     g.imageSurface = { asset: { width: 128, height: 128, load: () => image }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "add", bright: 0.25 };
     return g;
   });
+  // A lighthouse's warm light far off in the haze, turned to the eye every frame: it falls away smoothly to nothing
+  // well inside its square, so no edge of the picture shows even when a beam flares it.
+  const hazeLight = M.cached(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 128;
+    const paint = canvas.getContext("2d"), gradient = paint.createRadialGradient(64, 64, 0, 64, 64, 54);
+    for (const [at, alpha] of [[0, 0.6], [0.2, 0.42], [0.45, 0.17], [0.7, 0.05], [1, 0]]) gradient.addColorStop(at, `rgba(255,226,160,${alpha})`);
+    paint.fillStyle = gradient; paint.beginPath(); paint.arc(64, 64, 54, 0, TAU); paint.fill();
+    const image = new Image();
+    image.src = canvas.toDataURL("image/png");
+    const g = M.panel({ tilesX: 1, tilesY: 1, color: "#000000" });
+    g.castShadow = false; g.cutawayPreserve = true;
+    g.imageSurface = { asset: { width: 128, height: 128, load: () => image }, rect: [-0.5, -0.5, 1, 1], cutout: true, soft: true, blend: "add", bright: 0.25 };
+    return g;
+  });
   // Glowing mushrooms, three to a clump: pale stems under caps glowing cyan (0) or pink (1), darker underneath.
   const MUSHROOM_INKS = [["#5ff5ff", "#2aa8c0"], ["#ff7ad9", "#c04a9a"]];
   const mushrooms = M.variants((v) => {
@@ -591,8 +606,7 @@
     return g;
   });
   // A lighthouse in metres up from its foot: a stone plinth, a tapering tower banded white and Bitcoin orange, the
-  // gallery's deck and rail, the lantern's mullions and a dark cap. Its lamp is a mesh of its own (`lamp`) that
-  // shines through the haze while the tower greys into it; `LAMP_Y` is its middle.
+  // gallery's deck and rail, the lantern's glowing lamp, its mullions and a dark cap. `LAMP_Y` is the lamp's middle.
   const LAMP_Y = 12.6, TOWER_BANDS = 6, TOWER_INKS = ["#f2eee4", "#f7931a"], IRON = "#2b2a30";
   const lighthouse = M.cached(() => {
     const profile = [];
@@ -603,7 +617,8 @@
       M.lathe({ profile: [[1.05, 11.6], [1.75, 11.6], [1.75, 11.85], [0, 11.85]], segments: 12, color: IRON }),
       M.lathe({ profile: [[1.7, 12.5], [1.7, 12.62]], segments: 12, color: IRON }),
       M.lathe({ profile: [[1.0, 13.4], [1.05, 13.55], [0.85, 14.0], [0.45, 14.4], [0.12, 14.65], [0, 14.7]], segments: 12, color: "#3b2a2a" }),
-      M.lathe({ profile: [[0, 14.7], [0.16, 14.8], [0.16, 15.1], [0, 15.2]], segments: 6, color: IRON })
+      M.lathe({ profile: [[0, 14.7], [0.16, 14.8], [0.16, 15.1], [0, 15.2]], segments: 6, color: IRON }),
+      M.lathe({ profile: [[0.82, 11.85], [0.82, 13.4], [0, 13.4]], segments: 8, color: "#fff1c2", emissive: 1 })
     ];
     for (let k = 0; k < 8; k++) {
       const a = k / 8 * TAU, b = a + TAU / 16;
@@ -614,13 +629,8 @@
     g.castShadow = false;
     return g;
   });
-  const lamp = M.cached(() => {
-    const g = M.lathe({ profile: [[0.82, 11.85], [0.82, 13.4], [0, 13.4]], segments: 8, color: "#fff1c2", emissive: 1 });
-    g.castShadow = false; g.fogPierce = 0.85;
-    return g;
-  });
   // A lighthouse's beam along +x from the lamp (0) to its end (1), widening as it goes, in rings so Canvas 2D fades
-  // it too; it shows through most of the haze.
+  // it too.
   const beam = M.cached(() => {
     const g = M.geometry(), ink = hexToRgb("#fff3cf"), lit = { emissive: 1 }, RINGS = 8, SIDES = 8, rings = [];
     for (let k = 0; k <= RINGS; k++) {
@@ -629,7 +639,7 @@
       rings.push(ring);
     }
     for (let k = 0; k < RINGS; k++) for (let s = 0; s < SIDES; s++) M.face(g, [rings[k][s], rings[k + 1][s], rings[k + 1][(s + 1) % SIDES], rings[k][(s + 1) % SIDES]], ink, lit);
-    g.glass = 0.3; g.lightBeam = 1; g.castShadow = false; g.fogPierce = 0.75;
+    g.glass = 0.3; g.lightBeam = 1; g.castShadow = false;
     return g;
   });
 
@@ -1093,16 +1103,17 @@
 
     const storm = (level, course, rand) => {
       // Lighthouse isles: storm-dark isles well out to either side of the course at about its height, each with a
-      // lighthouse whose lamp and two sweeping beams show through the haze, so they stand far off as landmarks rather
-      // than anywhere to land. A keeper's hut and bushes stand on the rest of each isle's spots.
-      const ISLES = 8, ACROSS = [90, 35], TOWER = 0.75, BEAM = [55, 8], TURN = 0.8;
+      // lighthouse sweeping two beams round, landmarks far off rather than anywhere to land. A keeper's hut and bushes
+      // stand on the rest of each isle's spots. The haze takes them as it takes everything; past its start a
+      // lighthouse is only its light, diffused: a soft glow over the lamp that comes up as the haze takes the tower,
+      // swells as a beam sweeps toward the eye and dies away by `GONE` metres off.
+      const ISLES = 8, ACROSS = [90, 35], TOWER = 0.75, BEAM = [55, 8], TURN = 0.8, GONE = 420, AHEAD = 3, [near, far] = level.sky.fog;
       for (let k = 0; k < ISLES; k++) {
         const t = (k + 0.5) / ISLES, side = k % 2 ? 1 : -1, v = (k * 3 + 1) % 4, shape = isle(8 + v), s = 1.3 + rand() * 0.4;
         const p = place(course, t, side * (ACROSS[0] + rand() * ACROSS[1]), shape.radius * s);
         if (!p) continue;
-        const y = routeY(t) - 4 + rand() * 10, base = standIsle(shape, p.x, y, p.z, s, rand() * TAU), [spot, ...rest] = shape.spots;
+        const y = routeY(t) - 4 + rand() * 10, spin = rand() * TAU, base = standIsle(shape, p.x, y, p.z, s, spin), [spot, ...rest] = shape.spots;
         const tower = node(lighthouse(), spot.x, spot.y, spot.z, TOWER, base);
-        node(lamp(), 0, 0, 0, 1, tower);
         const turn = node(null, 0, LAMP_Y, 0, 1, tower), phase = rand() * TAU;
         for (const yaw of [0, Math.PI]) {
           const shine = node(beam(), 0, 0, 0, 1, turn);
@@ -1112,7 +1123,23 @@
           node(n ? BL.hubModels.bush((k + n) % 3) : hut(), stand.x, stand.y, stand.z, n ? 0.5 : 0.8, base).rotation.y = rand() * TAU;
         });
         reached(p.x, y, p.z, BEAM[0] * TOWER * s);
-        movers.push((time) => { turn.rotation.y = phase + time * TURN; });
+        const c = Math.cos(spin), n = Math.sin(spin), hx = p.x + (spot.x * c + spot.z * n) * s, hz = p.z + (-spot.x * n + spot.z * c) * s;
+        const hy = y + (spot.y + LAMP_Y * TOWER) * s, halo = node(hazeLight(), hx, hy, hz);
+        movers.push((time, dt, camera) => {
+          const yaw = phase + time * TURN, turned = spin + yaw;
+          turn.rotation.y = yaw;
+          const dx = camera.position.x - hx, dy = camera.position.y - hy, dz = camera.position.z - hz, flat = Math.hypot(dx, dz) || 1;
+          const d = Math.hypot(flat, dy), light = smooth(near, far, d) * (1 - smooth(far, GONE, d));
+          halo.visible = light > 0;
+          if (!halo.visible) return;
+          // A beam's axis is the node's +x turned by `turned`; how squarely one points at the eye flares the glow.
+          const sweep = Math.abs(Math.cos(turned) * dx - Math.sin(turned) * dz) / flat;
+          halo.smokeOpacity = light * (0.12 + 0.5 * sweep ** 12);
+          halo.scale.x = halo.scale.y = halo.scale.z = 12 + d * 0.06;
+          // Stood a little toward the eye, so the tower never blocks the glow behind it and shows as a silhouette.
+          halo.position.x = hx + dx / d * AHEAD * s; halo.position.y = hy + dy / d * AHEAD * s; halo.position.z = hz + dz / d * AHEAD * s;
+          halo.rotation.y = Math.atan2(dx, dz); halo.rotation.x = -Math.atan2(dy, flat);
+        });
       }
       // Lightning: every 4 to 10 s a strike 60 to 110 m off from the eye, inside the haze's reach and mostly ahead,
       // from the storm just over the eye down past the course (no lower than the sea), one or two bolts with it, and
