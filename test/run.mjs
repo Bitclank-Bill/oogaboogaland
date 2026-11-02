@@ -10005,6 +10005,41 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
   })()`));
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
   await b.evaluate(`(() => { __ooga.clankerPlay.release(); BL.net.remotes.delete(window.__stack.id); delete window.__stack; __ooga.advance(0.3, 1 / 60); })()`);
+  // Climbing, too: the gorilla climbs the cliff beside mouth c1 and crests onto its roof; with a player standing just
+  // past the crest it holds on the wall below them, and finishes the climb once they leave.
+  const climb = await b.evaluate(`(() => {
+    const B = __ooga, C = B.clankers, net = BL.net, a = B.cavemen.get("portlandhodl"), e = C.list.find(x => x.owner === a), p = e.root.position;
+    const m = B.mouths.find(m => m.id === "c1"), sx = Math.sin(m.ry), sz = Math.cos(m.ry), side = 3.4, id = 390391, heading = m.ry + Math.PI;
+    const px = m.x - sx * 1.05 + sz * side, pz = m.z - sz * 1.05 - sx * side, py = B.island.surfaceAt(px, pz);
+    const x = m.x + sx * 3 + sz * side, z = m.z + sz * 3 - sx * side, y = B.island.surfaceAt(x, z);
+    const up = () => C.control({ x: -sx, z: -sz, heading, climbAxis: 1 });
+    const run = (player, frames) => {
+      B.pilot.release(true); C.release(); net.remotes.delete(id);
+      Object.assign(p, { x, y, z });
+      Object.assign(e, { active: true, controlled: false, recover: 0, lounge: "", loungeDepart: false, parked: false, biped: false, heading, speed: 0, pound: 0, beat: 0, stand: 0 });
+      Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
+      Object.assign(e.climb, { active: false, free: false, mountPending: false, handoffDirection: 0, openingStagePending: false, retry: 0,
+        searchPending: false, searchDeferred: false, claimPending: false, crestPending: false });
+      e.jump.active = e.fire.burning = e.fire.rolling = false; e.root.visible = true;
+      Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
+      e.gorilla.poseManaged(2, x, y, z, heading, 0, false, false, "", e.motion);
+      BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.props.sync(); C.possess(e); B.advance(0.5, 1 / 60);
+      if (player) net.remotes.set(id, { id, login: "stack-peer", display: "Stack peer", body: "${TALL}", bodyKind: "ooga", bodyName: "${TALL}", zone: "outside", x: px, y: py, z: pz, yaw: 0 });
+      let top = -Infinity, nearest = Infinity, radius = 0;
+      for (let i = 0; i < frames; i++) {
+        up(); B.advance(1 / 60, 1 / 60); top = Math.max(top, p.y);
+        const distance = Math.hypot(p.x - px, p.z - pz);
+        if (Math.abs(p.y - py) < 2.5 && distance < nearest) { nearest = distance; radius = e.gorilla.bodyRadius; }
+      }
+      return { top, nearest, radius };
+    };
+    const out = { roof: py, free: run(false, 420), held: run(true, 420) };
+    net.remotes.delete(id);
+    for (let i = 0; i < 300; i++) { up(); B.advance(1 / 60, 1 / 60); }
+    out.resumed = p.y;
+    C.release(); B.advance(0.3, 1 / 60);
+    return out;
+  })()`);
   const [short, tall, gorilla] = drops;
   record("players stand on players: a drop onto another player rests on their head at their own height, short or tall, and on a gorilla's back, then falls to the ground when they leave",
     drops.length === 3 && drops.every(row => row.shown === 1 && row.off < 0.2 && Math.abs(row.left) < 1e-3)
@@ -10026,6 +10061,10 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
       && ["walked", "up", "down"].every(k => Math.abs(driven[k].feet - driven.landed.feet) < 0.03 && Math.abs(driven[k].off - driven.landed.off) < 0.05)
       && Math.abs(driven.left) < 0.02,
     JSON.stringify(driven));
+  record("players stand on players: the visitor's gorilla climbing a cliff holds on the wall below a player at its crest, their centre outside its body, and finishes the climb once they leave",
+    climb.free.top >= climb.roof - 0.05 && climb.held.top < climb.roof - 0.3 && climb.held.nearest >= climb.held.radius
+      && climb.resumed >= climb.roof - 0.05,
+    JSON.stringify(climb));
   record("players stand on players: the visitor's gorilla walking into a player is held off, their centre outside its body",
     driven.possessed && driven.approach.nearest < driven.approach.start - 0.3 && driven.approach.nearest >= driven.approach.radius,
     JSON.stringify(driven.approach));
