@@ -9879,7 +9879,106 @@ const hubFall = { name: "hub fall", why: "rule: abyss falls return players and N
       && landed(row.reference) && row.landing.frames <= 8 && landed(row.landing)),
     JSON.stringify({ ...r, respawns }));
 } };
-const hubCloudCamera = { name: "cloud hopper fixed camera", why: "regression: scenery, rock and downhill movement changed the racing camera's angle and distance", run: async (b) => {
+// A remote player stands near the pile as the room would place them: the roster's shortest and tallest Oogas, then a
+// gorilla. portlandhodl, the widest Ooga, drops onto each, rides the short one as it walks and rises as a jetpack
+// would, walks off it, then walks and jumps at the tall one, which no jump clears. The spot has nothing else to stand
+// on near it: a tree's crown is a landing surface, and a rider lifted within a step of one steps onto it.
+const hubPlayerStacking = { name: "players stand on players", why: "regression: landing on another player from above sank into their body; their head holds the lander, carries it as they walk or fly and lets go when they leave, and a jump into them is held off as a walk is", run: async (b) => {
+  const SHORT = "NickDaGreek", TALL = "rules-without-rulers";
+  const drops = await b.evaluate(`(() => {
+    const B = __ooga, a = B.cavemen.get("portlandhodl"), net = BL.net, p = a.root.position;
+    if (B.crew.player !== a) B.pilot.possess(a);
+    B.advance(0.3, 1 / 60);
+    // Clear 5 m round, which every move below stays inside, and 9.5 m up, over the rider's head at the top of the rise.
+    const solids = B.headquarters.solids.props, reach = 5, ceiling = 9.5;
+    let ang = 0, x = 0, z = 0, found = false;
+    for (let ring = 0; ring < 10 && !found; ring++) for (let k = 0; k < 24 && !found; k++) {
+      const r = B.altar.platformRadius + reach + 1.5 + ring * 2;
+      ang = k * Math.PI / 12; x = Math.sin(ang) * r; z = Math.cos(ang) * r;
+      const ground = B.island.surfaceAt(x, z), prop = solids.supportAt(x, z, ceiling, 0, reach);
+      found = (prop === null || prop === -Infinity) && B.island.clearAt(x, ground + 0.05, z, reach, ceiling - ground)
+        && Array.from({ length: 8 }, (_, i) => i * Math.PI / 4).every(t => B.island.onLand(x + Math.sin(t) * reach, z + Math.cos(t) * reach));
+    }
+    if (!found) throw new Error("players stand on players: no spot near the pile is clear of scenery");
+    const S = window.__stack ={ x, z, ang, ground: B.island.surfaceAt(x, z), zone: net.state.body ? net.state.zone : "outside", id: 390390 };
+    S.put = (name, kind) => net.remotes.set(S.id, { id: S.id, login: "stack-peer", display: "Stack peer", body: kind === "gorilla" ? "gorilla:" + name : name,
+      bodyKind: kind, bodyName: name, zone: S.zone, x, y: S.ground, z, yaw: 0 });
+    S.feet = () => p.y - a.baseY;
+    S.off = () => { const q = net.remotes.get(S.id); return Math.hypot(p.x - q.x, p.z - q.z); };
+    // Facing out from the pile, so W walks away from its platform.
+    S.drop = (y) => B.pilot.navigate({ position: { x: x + 0.15, y, z }, yaw: ang + Math.PI, pitch: 0.4, dist: 10 });
+    const heightOf = name => BL.crew.bodyHeightOf(BL.models.caveman(BL.contributors.traitsFor(name)));
+    const rows = [];
+    for (const [name, kind] of [["${SHORT}", "ooga"], ["${TALL}", "ooga"], ["${SHORT}", "gorilla"]]) {
+      S.put(name, kind); B.advance(0.5, 1 / 60);
+      const shown = BL.scenes.hub.stats().remotePlayers;
+      S.drop(S.ground + 4);
+      let low = Infinity, high = -Infinity;
+      for (let i = 0; i < 150; i++) { B.advance(1 / 60, 1 / 60); if (i >= 120) { low = Math.min(low, S.feet()); high = Math.max(high, S.feet()); } }
+      const row = { name, kind, shown, height: kind === "ooga" ? heightOf(name) : null, feet: S.feet() - S.ground, still: high - low, off: S.off() };
+      // The room drops a player who disconnects: nothing holds the lander up after.
+      net.remotes.delete(S.id); B.advance(1, 1 / 60);
+      row.left = S.feet() - B.island.surfaceAt(p.x, p.z);
+      rows.push(row);
+    }
+    return rows;
+  })()`);
+  const ride = await b.evaluate(`(() => {
+    const B = __ooga, S = window.__stack, rec = (S.put("${SHORT}", "ooga"), BL.net.remotes.get(S.id));
+    B.advance(0.5, 1 / 60); S.drop(S.ground + 3); B.advance(2, 1 / 60);
+    // Room poses move the record in place; the pool eases the body after them.
+    const sample = () => ({ feet: S.feet() - rec.y, off: S.off() }), start = sample();
+    for (let i = 0; i < 60; i++) { rec.x += 2 / 60; B.advance(1 / 60, 1 / 60); }
+    B.advance(0.5, 1 / 60); const walked = sample();
+    for (let i = 0; i < 90; i++) { rec.y += 3 / 90; B.advance(1 / 60, 1 / 60); }
+    B.advance(0.5, 1 / 60); const up = sample();
+    for (let i = 0; i < 90; i++) { rec.y -= 3 / 90; B.advance(1 / 60, 1 / 60); }
+    B.advance(0.5, 1 / 60); const down = sample();
+    return { start, walked, up, down };
+  })()`);
+  // A step off the head, then let go of W and fall.
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w", code: "KeyW" });
+  await b.evaluate(`__ooga.advance(0.2, 1 / 60)`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
+  const walkOff = await b.evaluate(`(() => {
+    const B = __ooga, S = window.__stack, p = B.crew.player.root.position;
+    B.advance(1, 1 / 60);
+    return { feet: S.feet() - B.island.surfaceAt(p.x, p.z), off: S.off() };
+  })()`);
+  await b.evaluate(`(() => { const B = __ooga, S = window.__stack; BL.net.remotes.delete(S.id); S.put("${TALL}", "ooga"); B.advance(0.5, 1 / 60); })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w", code: "KeyW" });
+  const approach = await b.evaluate(`(() => {
+    const B = __ooga, S = window.__stack, a = B.crew.player;
+    const fromX = S.x + Math.sin(S.ang) * 3, fromZ = S.z + Math.cos(S.ang) * 3;
+    const run = (jump) => {
+      B.pilot.navigate({ position: { x: fromX, y: B.island.surfaceAt(fromX, fromZ), z: fromZ }, yaw: S.ang, pitch: 0.4, dist: 10 });
+      const accepted = jump ? B.crew.jumpPlayer() : true;
+      let nearest = Infinity, peak = 0;
+      for (let i = 0; i < 90; i++) { B.advance(1 / 60, 1 / 60); nearest = Math.min(nearest, S.off()); peak = Math.max(peak, S.feet() - S.ground); }
+      return { accepted, nearest, peak };
+    };
+    return { walk: run(false), jump: run(true) };
+  })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
+  await b.evaluate(`(() => { BL.net.remotes.delete(window.__stack.id); delete window.__stack; __ooga.advance(0.3, 1 / 60); })()`);
+  const [short, tall, gorilla] = drops;
+  record("players stand on players: a drop onto another player rests on their head at their own height, short or tall, and on a gorilla's back, then falls to the ground when they leave",
+    drops.length === 3 && drops.every(row => row.shown === 1 && row.off < 0.2 && Math.abs(row.left) < 1e-3)
+      && tall.height - short.height > 0.5
+      && [short, tall].every(row => Math.abs(row.feet - row.height) < 0.02 && row.still < 1e-4)
+      // A gorilla's envelope follows its idle pose, so its back may breathe a little under the rider.
+      && gorilla.feet > 0.5 && gorilla.still < 0.05,
+    JSON.stringify(drops));
+  const kept = s => Math.abs(s.feet - ride.start.feet) < 0.03 && Math.abs(s.off - ride.start.off) < 0.05;
+  record("players stand on players: standing on a player who walks, rises 3 m and comes down keeps the rider on their head, and walking off lands beside them",
+    Math.abs(ride.start.feet - short.height) < 0.02 && kept(ride.walked) && kept(ride.up) && kept(ride.down)
+      && Math.abs(walkOff.feet) < 1e-3 && walkOff.off >= approach.walk.nearest - 0.02,
+    JSON.stringify({ ride, walkOff }));
+  record("players stand on players: a jump at a player too tall to clear is held off as far as a walk at them is",
+    approach.walk.nearest < 2 && approach.jump.accepted && approach.jump.peak > 0.5 && approach.jump.nearest >= approach.walk.nearest - 0.02,
+    JSON.stringify(approach));
+} };
+const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: scenery, rock and downhill movement changed the racing camera's angle and distance", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.cloudHopper, S = BL.scene, solids = B.headquarters.solids.props;
     const actor = B.cavemen.get("portlandhodl"), rows = [], movementRows = [], rockRows = [], nodes = [];
@@ -16197,6 +16296,7 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     traffic.rows.every(row => row.waiting >= 1.1 && row.drift < 1e-6 && row.retained && row.released && row.raised > 0.5 && row.walked > 2 && !row.replans && !row.resets)
     && traffic.clear.every(row => !row.waited && row.moved), JSON.stringify(traffic));
 } }] });
+scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking] });
 scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, e = C.list[0], owner = e.owner, m = B.headquarters.entropyLab.mouth;
