@@ -5620,6 +5620,7 @@
         if (o.prop === "totem") return totemTip(o.totem);
         return PROP_TIPS[o.prop] || "";
       case "piece":
+        if (o.piece === "chalkboard" && chalkboard.writer) return `Chalkboard · ${chalkboard.writer} is writing`;
         if (o.piece === "chalkboard") return COARSE ? "Chalkboard · walk up and tap to write or erase" : "Chalkboard · walk up and press Space to write or erase";
         return PIECES[o.piece] ? PIECES[o.piece][0] : "";
       default:
@@ -8778,7 +8779,8 @@
     stepTweens(dt);
     if (hammock) hammock.syncRopes(RENDER_OPTS.windTime, renderer.kind === "webgl2");
     // Keep the exact camera and controlled actor pose until the board closes; losing the Ooga, or its being moved
-    // away from the board, closes it.
+    // away from the board, closes it, or stops waiting for the room to hand it over.
+    if (chalkboard.waiting && chalkboardRefusal()) chalkboard.close();
     if (chalkboard.openNow) { if (chalkboardRefusal()) chalkboard.close(); }
     else if (clankerPlay.active) clankerPlay.update(dt);
     else if (!cloudHopper.fallView()) pilot.update(dt);
@@ -11543,7 +11545,8 @@
     chalkboard = BL.chalkboard.create({
       renderer,
       onOpen: () => { pilot.setActive(false); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
-      onClose: () => { pilot.setActive(true); pilot.controls.reset(); input.reset(); }
+      onClose: () => { pilot.setActive(true); pilot.controls.reset(); input.reset(); },
+      onRefused: (text) => hud.toast(text)
     });
     yield* pause(slice);
     terrainRampRoof = BL.terrainCutaway.createRampRoof(island.cutawaySource, island.geometry, renderer.releaseGeometry);

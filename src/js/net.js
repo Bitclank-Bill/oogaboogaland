@@ -35,6 +35,12 @@
 // it; remote records carry `hp` and `ko`.
 // Gorilla poses optionally add `g`: flags (air, biped, climb, run, lab, office, sleep), speed, climb stride,
 // climb direction, climb side and swim. Each remote reuses its six values; ordinary poses keep their format.
+// The EntropyLab chalkboard (chalk-board.js): a room whose `features` hold its FEATURE sends the board after
+// `welcome`, and `state.chalk` keeps it as `{ board, editor, session }` from then on, current in every scene, from
+// the holder's edits; null leaves the page its own board. `takeChalk` asks to hold it (the room answers with
+// `chalk-lock`, or a refusal), `chalkEdit` applies one of the holder's own edits and queues it, `flushChalk` sends
+// the queue and `dropChalk` lets go. `subscribeChalk` hears `fn(kind, detail)`: "board" (a new board, or none),
+// "lock" (who holds it changed), "op" (another's edit, already applied) and "refused" ({ why, name }).
 // Ooga Chat: `sendChat` sends a line (validated by chat-policy.js, CHAT_MAX UTF-16 units at most) while the
 // room is live; `subscribeChat` hears the room's lines as `fn(lines, joined, receipt)`: one new line, or on every
 // (re)join the lines the room still holds, which chat.js merges; a rejection keeps the draft. The room names each line's
@@ -53,8 +59,8 @@
 // zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
 // position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
 // snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
-// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -97,6 +103,9 @@
   const studioSubscribers = new Set();
   const studioEmit = message => { for (const fn of studioSubscribers) fn(message); };
   const chatSubscribers = new Set();
+  // The shared chalkboard's listeners, and the page's own edits waiting to go (merged into frames of a few points).
+  const chalkSubscribers = new Set(), chalkOut = [];
+  const chalkEmit = (kind, detail) => { for (const fn of chalkSubscribers) fn(kind, detail); };
   const remotes = new Map();
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
@@ -104,7 +113,7 @@
   const state = { backend: false, me: null, donations: false, tess: false, highscores: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
-    self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false };
+    self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, chalk: null };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
   let npcFrame = null, inHub = false, hubSent = null, visibleSent = null;
   let zone = "outside", body = null, muted = false, hpSent = 100, koSent = false, hpAt = 0, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
@@ -278,6 +287,8 @@
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
       state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
+      // A room that keeps the chalkboard sends it next (chalk-board); an older one leaves the page its own board.
+      if (state.chalk && !(Array.isArray(msg.features) && msg.features.includes(BL.chalkBoard.FEATURE))) { state.chalk = null; chalkEmit("board"); }
       remotes.clear();
       for (const p of msg.players) upsert(p);
       setRoom("live");
@@ -349,6 +360,24 @@
     } else if (msg.t === "chat-ack" || msg.t === "chat-rejected") {
       if (chatIdValid(msg.clientId))
         chatHeard([], false, { clientId: msg.clientId, accepted: msg.t === "chat-ack", conflict: msg.reason === "conflict" });
+    } else if (msg.t === "chalk-board") {
+      const marks = BL.chalkBoard.restore(msg.marks);
+      if (!marks) return;
+      const board = BL.chalkBoard.board(marks);
+      chalkOut.length = 0;
+      state.chalk = { board, editor: Number.isSafeInteger(msg.editor) ? msg.editor : 0, session: BL.chalkBoard.session(board) };
+      chalkEmit("board");
+    } else if (msg.t === "chalk-lock") {
+      const c = state.chalk;
+      if (!c) return;
+      c.editor = Number.isSafeInteger(msg.id) ? msg.id : 0;
+      c.session = BL.chalkBoard.session(c.board);
+      chalkEmit("lock");
+    } else if (msg.t === "chalk") {
+      const c = state.chalk, op = BL.chalkBoard.parse(msg);
+      if (c && op && msg.id === c.editor && msg.id !== state.selfId && !BL.chalkBoard.apply(c.board, op, c.session)) chalkEmit("op", op);
+    } else if (msg.t === "chalk-refused") {
+      chalkEmit("refused", { why: String(msg.why), name: typeof msg.name === "string" ? msg.name : "" });
     } else if (msg.t === "chat-history") {
       if (!Array.isArray(msg.messages)) return;
       const lines = [];
@@ -398,6 +427,10 @@
     state.ghostFollowers = 0;
     // Any request for the doorway went with the socket.
     if (state.doorway) doorHeard({ t: "door", op: "lost" });
+    // So did the chalkboard: the board is kept to show until the room sends it again, but nobody here holds it.
+    chalkOut.length = 0;
+    if (state.chalk && (room === "connecting" || room === "paused")) { state.chalk.editor = 0; chalkEmit("lock"); }
+    else if (state.chalk) { state.chalk = null; chalkEmit("board"); }
     state.doorway = false;
     npcFrame = null;
     hubSent = null;
@@ -787,6 +820,42 @@
     chatSubscribers.add(fn);
     return () => chatSubscribers.delete(fn);
   };
+  // The shared chalkboard (chalk-board.js): ask for it, let it go, and edit it while holding it. An edit applies to
+  // the page's copy at once and waits in `chalkOut`, merged with the next of its kind, until `flushChalk` or an edit
+  // of another kind sends it, so a line's points go a few to a frame. Each says whether it was sent, or why not.
+  const takeChalk = () => {
+    if (!state.chalk || state.room !== "live") return false;
+    send(`{"t":"chalk","k":"take"}`);
+    return true;
+  };
+  const flushChalk = () => {
+    for (const op of chalkOut) send(JSON.stringify({ t: "chalk", ...op }));
+    chalkOut.length = 0;
+  };
+  const dropChalk = () => {
+    const c = state.chalk;
+    if (!c || c.editor !== state.selfId) return;
+    flushChalk();
+    if (state.room === "live") send(`{"t":"chalk","k":"drop"}`);
+    c.editor = 0;
+    c.session = BL.chalkBoard.session(c.board);
+  };
+  const chalkEdit = (op) => {
+    const c = state.chalk, C = BL.chalkBoard;
+    if (!c || c.editor !== state.selfId || state.room !== "live") return "away";
+    const error = C.apply(c.board, op, c.session);
+    if (error) return error;
+    const last = chalkOut[chalkOut.length - 1];
+    if (op.k === "more" && last && last.k === "more" && last.p.length + op.p.length <= C.CHUNK * 2) last.p.push(...op.p);
+    else if (op.k === "type" && last && last.k === "type" && last.c.length + op.c.length <= C.TYPE_CHUNK) last.c.push(...op.c);
+    else chalkOut.push(op.k === "more" ? { k: "more", p: op.p.slice() } : op.k === "type" ? { k: "type", c: op.c.slice() } : op);
+    if (op.k !== "more" && op.k !== "type") flushChalk();
+    return null;
+  };
+  const subscribeChalk = (fn) => {
+    chalkSubscribers.add(fn);
+    return () => chalkSubscribers.delete(fn);
+  };
   const subscribeDoor = (fn) => {
     doorSubscribers.add(fn);
     return () => doorSubscribers.delete(fn);
@@ -809,10 +878,11 @@
     moveSubscribers.clear();
     studioSubscribers.clear();
     chatSubscribers.clear();
+    chalkSubscribers.clear();
     doorSubscribers.clear();
     ghostHeard = ghostStateHeard = null; // HALLOWEEN
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

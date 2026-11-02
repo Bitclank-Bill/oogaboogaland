@@ -1,5 +1,6 @@
 import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy.js";
 import "../../src/js/chat-policy.js";
+import "../../src/js/chalk-board.js";
 // The room's wire format and the limits it enforces, as pure functions the tests can reach.
 //
 // Client → room:  { t: "pose", x, y, z, yaw }   the driven body's feet and heading, at most MOVE_HZ
@@ -17,6 +18,8 @@ import "../../src/js/chat-policy.js";
 //                                (`parseStudioCommand` in studio-policy.js; see docs/dsb-studio-session.md)
 //                 { t: "ghost", k, g?, d?, h? }  HALLOWEEN: the ghost hunt's `start`, `ready`, `pause` or `leave`, or `hits` h, for its
 //                                host, from a page in the arcade's ghost arena
+//                 { t: "chalk", k, ... }        the EntropyLab chalkboard: `take` or `drop` the board, or an edit by
+//                                                whoever holds it (chalk-board.js; see CHALK_HZ below)
 //                 binary                         the NPC host's frame of every Ooga's pose, relayed as is; or,
 //                                                led by GHOST_MAGIC, the ghost arena host's hunt state
 // Room → client:  welcome { you, players, tickHz, now, loopEpoch, connectionToken }, join { p }, leave { id, reason },
@@ -38,6 +41,10 @@ import "../../src/js/chat-policy.js";
 //                 chat-ack { clientId }     the sender's line was accepted, including a recognized retry
 //                 chat-rejected { clientId?, reason }  refused; rate retries keep the same id
 //                 chat-history { messages }  after welcome: the lines the room still holds, oldest first
+//                 chalk-board { marks, editor }  after welcome: the chalkboard as the room holds it, and who holds it
+//                 chalk-lock { id }          who holds the chalkboard now (0 for nobody), to everyone
+//                 chalk { id, k, ... }       the holder's edit, to everyone else; chalk-refused { why, name? } to a
+//                                            page whose take was refused (`away`, `busy` with the holder's name)
 //                 ghost { k, g, d, from }    HALLOWEEN: a follower's start or hit, relayed to its hunt's host alone
 //                 ghost-host { id, followers }  who runs the ghost arena's hunt (0 for nobody) and how many pages in
 //                                            the arena follow it; welcome carries ghostHost and ghostFollowers; binary
@@ -111,6 +118,19 @@ export const DOOR_BURST = 6;
 // the rest of the budget is for a start or pause.
 export const GHOST_HZ = 20;
 export const GHOST_BURST = 24;
+// Chalkboard: the EntropyLab board on the island, kept for good. One page at a time holds it, and only while its
+// Ooga stands at the board in the island's `outside` zone (chalk-board.js `near`, against the last pose it sent);
+// moving off, changing zone or body, or leaving lets it go. A holder silent for CHALK_IDLE_MS can be taken over by the
+// next Ooga to ask, so nobody holds it for good, with no timer. Edits arrive batched (a line's points, typed
+// characters) at most CHALK_HZ a second; an edit that does not apply, or one over the rate, sends the holder the
+// board as the room has it instead. The board goes to storage at most every CHALK_SAVE_MS while someone writes, at
+// once on a wipe, and when the holder lets go, never for each point.
+export const CHALK_HZ = 30;
+export const CHALK_BURST = 30;
+export const CHALK_IDLE_MS = 60000;
+export const CHALK_SAVE_MS = 5000;
+export const CHALK = globalThis.BL.chalkBoard;
+export const CHALK_FEATURE = CHALK.FEATURE;
 // A follower's batch: up to GHOST_BATCH targets, each a ghost id (0 the boss) and its summed damage, as one report.
 export const GHOST_BATCH = 16;
 // The arcade's ghost arena runs its own hunt: its pages (zone `arcade.arena`, or `arcade-hunt` while a hunt keeps its
@@ -185,6 +205,11 @@ export const parseClientMessage = (text) => {
     if (msg.clientId === undefined) return { t: "chat", text: line };
     return typeof msg.clientId === "string" && msg.clientId.length > 0 && msg.clientId.length <= 64 && !/[^\w-]/.test(msg.clientId)
       ? { t: "chat", text: line, clientId: msg.clientId } : null;
+  }
+  if (msg.t === "chalk") {
+    if (msg.k === "take" || msg.k === "drop") return { t: "chalk", k: msg.k };
+    const op = CHALK.parse(msg);
+    return op ? { t: "chalk", ...op } : null;
   }
   if (msg.t === "door") {
     if (msg.op === "ask") return (msg.dir === "in" || msg.dir === "out") && Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9
