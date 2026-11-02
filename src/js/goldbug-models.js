@@ -1,5 +1,5 @@
-// The Goldbug: an original cartoon caveman who trusts nothing but gold, in a tweed waistcoat with a pocket watch and
-// pockets bulging with coins. He stands for an argument, not a person: no real name, likeness or line. He is built on
+// The Goldbug: an original cartoon caveman who trusts nothing but gold, in a navy suit and gold tie, with a pocket watch
+// and pockets bulging with coins, his Ooga face, hair and bare feet his own. He stands for an argument, not a person: no real name, likeness or line. He is built on
 // the shared caveman rig (models.caveman with dress hooks, as src/characters/ are), so any scene can borrow him: `create`
 // returns fresh nodes over shared geometry, and the poses below drive only his own limbs and allocate nothing.
 (() => {
@@ -10,7 +10,7 @@
   const { fnv1a, mulberry32 } = BL.math;
   // "~" never appears in a GitHub handle, so this key can't meet a contributor's in the caveman cache.
   const NAME = "~goldbug", HEIGHT = 0.98;
-  const TWEED = "#7a6142", TWEED_DK = "#5b4630", TWEED_LT = "#93805a", SHIRT = "#e9e0c8";
+  const NAVY = "#1f2d52", NAVY_DK = "#162039", NAVY_LT = "#2d3f6e", SHIRT = "#eeeae0";
   const GOLD = "#d9a92e", GOLD_LT = "#f4d26a", GOLD_DK = "#9a6e14";
   // The melt's colourway: every colour of his palette mapped by its brightness onto a gold ramp.
   const GOLD_RAMP = [[110, 72, 12], [214, 160, 42], [255, 222, 120]];
@@ -19,38 +19,65 @@
     const a = GOLD_RAMP[i], b = GOLD_RAMP[i + 1];
     return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)];
   };
+  const goldHex = (hex) => {
+    const n = parseInt(hex.slice(1), 16), g = goldOf([n >> 16 & 255, n >> 8 & 255, n & 255]);
+    return "#" + ((1 << 24) | (g[0] << 16) | (g[1] << 8) | g[2]).toString(16).slice(1);
+  };
+  // A suit part outside the voxel bakes: built twice, as worn and in gold, so the melt turns it with the rest of him.
+  // The node carries both; `swapGold` trades them as it trades the voxel twins.
+  const suitNode = (build) => {
+    const plain = build((hex) => hex), gold = build(goldHex);
+    BL.models.characterGeometry(gold);
+    return createNode({ geometry: plain, plainGeometry: plain, goldTwin: gold });
+  };
   const dress = {
     torso(k, v) {
-      // A tweed waistcoat over the chest, a shirt placket down the front and three gold buttons beside it.
-      const tweed = k.color(TWEED), dark = k.color(TWEED_DK), light = k.color(TWEED_LT), shirt = k.color(SHIRT), button = k.color(GOLD);
-      for (let x = 1; x <= 7; x++) for (let y = 3; y <= 7; y++) for (let z = 1; z <= 4; z++) {
-        const check = (x + y) % 3 === 0 ? dark : (x * 7 + y * 3 + z) % 5 === 0 ? light : tweed;
-        v.set(x, y, z, check);
-      }
-      v.fill(4, 4, 4, 7, 4, 4, shirt);
-      for (const y of [4, 5, 6]) v.set(3, y, 4, button);
-      k.loin = [dark, tweed];
+      // A navy jacket over chest and hips, lapels either side of a white collar, and a gold tie down the front.
+      const navy = k.color(NAVY), dark = k.color(NAVY_DK), lapel = k.color(NAVY_LT), shirt = k.color(SHIRT), tie = k.color(GOLD), knot = k.color(GOLD_DK);
+      v.fill(0, 8, 0, 2, 0, 5, navy);
+      v.fill(1, 7, 3, 7, 1, 4, navy);
+      v.fill(1, 7, 3, 3, 1, 4, dark);
+      for (const y of [5, 6, 7]) { v.set(3, y, 4, lapel); v.set(5, y, 4, lapel); }
+      v.set(4, 7, 4, shirt); v.set(3, 7, 4, shirt); v.set(5, 7, 4, shirt);
+      v.set(4, 6, 4, knot);
+      v.fill(4, 4, 3, 5, 4, 4, tie);
+      k.loin = [navy, dark];
+    },
+    gear(k) {
+      const u = k.u;
+      // Navy sleeves from the shoulder to a white cuff (arm-local: the shoulder at 0, the hand from -9u down), and navy
+      // trouser legs to the ankle (leg-local: the foot below -3u); the hands and bare feet stay his.
+      for (const side of ["armR", "armL"]) addChild(k.parts[side], suitNode((c) => merge(
+        box({ w: 5.3 * u, h: 3.3 * u, d: 5.3 * u, color: c(NAVY), offset: { x: 0, y: -1.5 * u, z: 0 } }),
+        box({ w: 3.5 * u, h: 6.2 * u, d: 3.5 * u, color: c(NAVY), offset: { x: 0, y: -6.1 * u, z: 0 } }),
+        box({ w: 3.7 * u, h: 0.7 * u, d: 3.7 * u, color: c(SHIRT), offset: { x: 0, y: -8.9 * u, z: 0 } }))));
+      for (const side of ["legR", "legL"]) addChild(k.parts[side], suitNode((c) =>
+        box({ w: 4.4 * u, h: 3.2 * u, d: 4.4 * u, color: c(NAVY_DK), offset: { x: 0, y: -1.4 * u, z: -0.5 * u } })));
     },
     extras(k) {
       const u = k.u;
-      // Torso-local: the chest's front face is 2u out, the hips' 3u. Bulging hip pockets, each with a coin's edge showing, and a watch on a chain at the waistcoat.
-      const pocket = (side) => merge(
-        bevelBox({ w: 2.6 * u, h: 2.2 * u, d: 1.2 * u, color: TWEED_DK, offset: { x: side * 3 * u, y: 1.5 * u, z: 3.1 * u } }),
-        box({ w: 1.3 * u, h: 0.5 * u, d: 0.35 * u, color: GOLD_LT, emissive: 0.15, offset: { x: side * 3 * u, y: 2.7 * u, z: 3.1 * u } })
+      // Torso-local: the chest's front face is 2u out, the hips' 3u. Bulging hip pockets, each with a coin's edge
+      // showing, and a watch on a chain at the jacket.
+      const pocket = (c, side) => merge(
+        bevelBox({ w: 2.6 * u, h: 2.2 * u, d: 1.2 * u, color: c(NAVY_DK), offset: { x: side * 3 * u, y: 1.5 * u, z: 3.1 * u } }),
+        box({ w: 1.3 * u, h: 0.5 * u, d: 0.35 * u, color: c(GOLD_LT), emissive: 0.15, offset: { x: side * 3 * u, y: 2.7 * u, z: 3.1 * u } })
       );
-      const watch = lathe({ profile: [[0, -0.18 * u], [0.75 * u, -0.18 * u], [0.75 * u, 0.18 * u], [0, 0.18 * u]], segments: 10, color: GOLD, emissive: 0.1 });
-      // A lathe turns about y; lay the watch's face forward by swapping its y and z.
-      const v = watch.verts;
-      for (let i = 0; i < v.length; i += 3) { const y = v[i + 1]; v[i] += -1.9 * u; v[i + 1] = v[i + 2] + 4.4 * u; v[i + 2] = y + 2.2 * u; }
-      const chain = tube({ rings: 8, segments: 4, radius: () => 0.12 * u, colorFn: () => GOLD_LT,
+      const watch = () => {
+        const geo = lathe({ profile: [[0, -0.18 * u], [0.75 * u, -0.18 * u], [0.75 * u, 0.18 * u], [0, 0.18 * u]], segments: 10, color: GOLD, emissive: 0.1 });
+        // A lathe turns about y; lay the watch's face forward by swapping its y and z.
+        const v = geo.verts;
+        for (let i = 0; i < v.length; i += 3) { const y = v[i + 1]; v[i] += -1.9 * u; v[i + 1] = v[i + 2] + 4.4 * u; v[i + 2] = y + 2.2 * u; }
+        return geo;
+      };
+      const chain = () => tube({ rings: 8, segments: 4, radius: () => 0.12 * u, colorFn: () => GOLD_LT,
         path: (t) => ({ x: (-1.9 + t * 1.6) * u, y: (4.4 + Math.sin(t * Math.PI) * -0.9 + t * 1.2) * u, z: 2.2 * u }) });
-      addChild(k.parts.torso, createNode({ geometry: merge(pocket(-1), pocket(1), watch, chain) }));
+      addChild(k.parts.torso, suitNode((c) => merge(pocket(c, -1), pocket(c, 1), watch(), chain())));
     },
     tint(k, palette) { return palette.map(goldOf); }
   };
   const traits = () => ({
     name: NAME, display: "the Goldbug", slim: false, wideEyes: true, eyeColor: GOLD_LT,
-    skin: "#d0a074", hair: "#9b948a", fur: TWEED_DK, height: HEIGHT, belly: 1.22,
+    skin: "#d0a074", hair: "#9b948a", fur: NAVY_DK, height: HEIGHT, belly: 1.22,
     rand: mulberry32(fnv1a(NAME + "/body")), dress
   });
   // A coin lies flat as it lands; the puddle is a low gold disc. Both cached per scene scope.
@@ -59,6 +86,8 @@
   const ARM_REST = -0.2;
   const create = () => {
     const rig = BL.models.caveman(traits());
+    // He carries gold, not weapons: the rig's club and rifle stay put away.
+    rig.parts.club.visible = rig.parts.gun.visible = false;
     return { root: rig.root, parts: rig.parts, tint: rig.tint, baseY: rig.root.position.y, height: HEIGHT, golden: false };
   };
   // Every pose writes the same limbs, so switching between them leaves nothing from the last.
@@ -103,9 +132,11 @@
     p.head.rotation.x = 0.3 * k;
     return k;
   };
-  // The gold colourway on or off; each voxel part is paired with its twin both ways, as crew.js's swapTint.
+  // The gold colourway on or off; each voxel part is paired with its twin both ways, as crew.js's swapTint, and each
+  // suit part with its own gold twin.
   const swapGold = (node, tint) => {
-    const twin = node.geometry && tint.get(node.geometry);
+    let twin = node.geometry && tint.get(node.geometry);
+    if (!twin && node.goldTwin) twin = node.geometry === node.goldTwin ? node.plainGeometry : node.goldTwin;
     if (twin) node.geometry = twin;
     for (let i = 0; i < node.children.length; i++) swapGold(node.children[i], tint);
   };

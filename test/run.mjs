@@ -14708,12 +14708,12 @@ const goldbugChecks = BL => {
   const run = (calm, busyAt = Infinity, feet = 0) => {
     const root = S.createNode(), mirrorNode = S.createNode({ position: { x: 0, y: 1.5, z: 0.5 } });
     S.addChild(root, mirrorNode);
-    const tally = { puffs: 0, pulses: 0, rustles: 0, maxCoins: 0, phases: new Set(), frames: 0 };
+    const tally = { puffs: 0, pulses: 0, rustles: 0, maxCoins: 0, phases: new Set(), frames: 0, lines: [] };
     const bushes = [[-2, 8], [2, 8], [2, 12], [-2, 12]].map(([x, z]) => ({ x, z, footprint: 0.7, node: S.createNode({ position: { x, y: 0, z } }) }));
     let busy = false;
     const egg = G.create({
       root, bushes, memory: {}, groundAt: () => 0, calm: () => calm, busy: () => busy, random: () => 0.5,
-      fx: { puff: () => { tally.puffs++; } },
+      fx: { puff: () => { tally.puffs++; }, sayAt: (x, y, z, text) => { tally.lines.push(text); } },
       mirror: { mouth: { x: 0, z: 0, ry: 0 }, node: mirrorNode, ripples: { pulse: () => { tally.pulses++; return true; } } },
       rustle: () => { tally.rustles++; }
     });
@@ -14733,7 +14733,8 @@ const goldbugChecks = BL => {
     }
     const rig = egg.debug.rig, ended = !egg.active && root.children.length === before;
     const result = { fired, ended, phases: [...tally.phases].join(","), puffs: tally.puffs, pulses: tally.pulses, rustles: tally.rustles,
-      coins: egg.debug.coins, maxCoins: tally.maxCoins, aborted: egg.debug.aborted, golden: rig && rig.golden, seconds: +(tally.frames / 60).toFixed(2), builtDetached };
+      coins: egg.debug.coins, maxCoins: tally.maxCoins, aborted: egg.debug.aborted, golden: rig && rig.golden, seconds: +(tally.frames / 60).toFixed(2), builtDetached,
+      lines: tally.lines.join("|"), unarmed: !egg.debug.armed, heard: { ...egg.debug.heard } };
     // A kept hub's suspend ends a show and keeps the nodes, which play again; a full leave lets them go.
     egg.debug.fire(false); egg.update(1 / 60, point, feet);
     egg.suspend();
@@ -14743,16 +14744,28 @@ const goldbugChecks = BL => {
     return result;
   };
   const full = run(false), calm = run(true), cut = run(false, 90), flown = run(false, Infinity, 3), hopped = run(false, Infinity, G.FEET_REACH - 0.05);
+  // His suit's parts (sleeves, trousers, pockets) turn gold with his voxels and back again.
+  const suit = (() => {
+    const M = BL.goldbugModels, g = M.create(), parts = [];
+    const visit = (n) => { if (n.goldTwin) parts.push(n); n.children.forEach(visit); };
+    visit(g.root);
+    M.setGolden(g, true); const gold = parts.every((n) => n.geometry === n.goldTwin);
+    M.setGolden(g, false); const back = parts.every((n) => n.geometry === n.plainGeometry);
+    return { parts: parts.length, gold, back };
+  })();
   const show = {
+    suit: suit.parts === 5 && suit.gold && suit.back,
     builtOnce: full.builtDetached && full.suspendKeeps && full.disposed,
     feetOnGround: !flown.fired && hopped.fired,
     full: full.fired && full.ended && /run/.test(full.phases) && /look/.test(full.phases) && /melt/.test(full.phases) && /puddle/.test(full.phases)
-      && full.pulses === 1 && full.rustles === 1 && full.puffs > 10 && full.coins.spawned > 0 && full.maxCoins <= G.COINS.capacity && !full.golden && full.seconds < 15,
+      && full.pulses === 1 && full.rustles === 1 && full.lines === "Wait, I'm..." && full.unarmed && full.puffs > 10
+      && full.heard.womp === 1 && full.heard.squeak === 0 && full.heard.rustle === 1 && full.heard.sizzle === 1 && full.heard.clink > 0 && full.heard.clink <= full.coins.spawned && full.coins.spawned > 0 && full.maxCoins <= G.COINS.capacity && !full.golden && full.seconds < 15,
     calm: calm.fired && calm.ended && !/melt|run|puddle/.test(calm.phases) && /walk/.test(calm.phases) && /fade/.test(calm.phases)
-      && calm.puffs === 0 && calm.pulses === 0 && calm.coins.spawned === 0 && calm.seconds < 4,
+      && calm.puffs === 0 && calm.pulses === 0 && calm.lines === "" && calm.coins.spawned === 0
+      && calm.heard.squeak === 1 && calm.heard.womp === 0 && calm.heard.rustle === 1 && calm.heard.sizzle === 0 && calm.heard.clink === 0 && calm.seconds < 4,
     busyCuts: cut.fired && cut.ended && cut.aborted === 1 && cut.seconds < 1.6
   };
-  record("goldbug show: the loop calls him, walked with feet on the ground, never flown over; he runs, double-takes, ripples the glass once and melts to nothing within the pools; Calm only walks and fades; an island event ends him at once; his nodes are built once a visit and kept through a suspend", Object.values(show).every(Boolean), JSON.stringify({ show, full, calm, cut, flown: flown.fired, hopped: hopped.fired }));
+  record("goldbug show: the loop calls him, walked with feet on the ground, never flown over; he runs unarmed in his suit (which turns gold with him), rustling out and clinking coins, starts his one line at the glass to a sad womp, double-takes, ripples the glass once and melts to nothing within the pools, sizzling; Calm only walks and fades; an island event ends him at once; his nodes are built once a visit and kept through a suspend", Object.values(show).every(Boolean), JSON.stringify({ show, suit, full, calm, cut, flown: flown.fired, hopped: hopped.fired }));
 
   // The current island's bushes round the mirror cave's mouth (c1), as the hub's seeded scatter places them: the
   // meadow's four in front of it, a fifth meadow bush further out, and cliff bushes on ledges (y above 0), plus one

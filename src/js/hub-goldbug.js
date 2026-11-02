@@ -16,6 +16,10 @@
   // The run's two turns, in the mirror mouth's frame (+z out of the cave): a point on the path out front, then the
   // spot just before the glass, which stands half a metre in from the mouth.
   const APPROACH_Z = 4.2, STAND_Z = 1.5;
+  // His one line, as he meets his reflection: cut off before he can say what he is.
+  const LINE = "Wait, I'm...", LINE_S = 2.2;
+  // The sad womp's notes as [start s, pitch Hz, length s] (about B-flat3, A3, then a held A-flat3), and its level.
+  const WOMP = [[0, 233, 0.35], [0.37, 220, 0.35], [0.74, 208, 0.6]], WOMP_PEAK = 0.2;
   // A bush counts only for feet on the ground in it: a jetpack or a jump over the bushes is no walk through them.
   const FEET_REACH = 0.5;
   // The mirror's four: the walk-through meadow bushes nearest the mouth on its open side, within `reach`, in order
@@ -75,8 +79,9 @@
   };
 
   // Fixed-capacity coins: `spawn` refuses once every coin is in the air or on the ground, so the pool never grows;
-  // a coin falls, bounces once, lies flat and shrinks away over its last half second, then goes back to the pool.
-  const coinPool = ({ parent, geometry, capacity = COINS.capacity, life = COINS.life, gravity = COINS.gravity }) => {
+  // a coin falls, bounces once (`onLand`, for its clink), lies flat and shrinks away over its last half second, then
+  // goes back to the pool.
+  const coinPool = ({ parent, geometry, capacity = COINS.capacity, life = COINS.life, gravity = COINS.gravity, onLand = null }) => {
     const coins = [];
     for (let i = 0; i < capacity; i++) {
       const node = createNode({ geometry, visible: false, sightHidden: true });
@@ -114,7 +119,7 @@
           n.rotation.x += 14 * dt; n.rotation.y += 5 * dt;
           if (n.position.y <= c.floor) {
             n.position.y = c.floor;
-            if (!c.bounced && c.vy < -1) { c.bounced = true; c.vy *= -0.35; c.vx *= 0.5; c.vz *= 0.5; }
+            if (!c.bounced && c.vy < -1) { c.bounced = true; c.vy *= -0.35; c.vx *= 0.5; c.vz *= 0.5; if (onLand) onLand(); }
             else { c.vx = c.vy = c.vz = 0; n.rotation.x = 0; }
           }
         }
@@ -155,27 +160,98 @@
     let group = createNode({ sightHidden: true }), rig = GM.create(), attached = false;
     let puddle = createNode({ geometry: GM.puddleGeometry(), visible: false, sightHidden: true });
     addChild(group, rig.root, puddle);
-    let coins = coinPool({ parent: group, geometry: GM.coinGeometry() });
+    let coins = coinPool({ parent: group, geometry: GM.coinGeometry(), onLand: () => clink() });
     let phase = IDLE, t = 0, travelled = 0, total = 0, stride = 0, coinAt = 0, steamAt = 0, coinSide = 1, calmShow = false, from = 0, shows = 0, aborted = 0;
-    let audio = null, voice = null, voiceGain = null;
+    // His sounds, on one context made at his first show after a gesture and closed with the visit: every voice is built
+    // once and a cue only schedules its envelope. A squeak (a triangle's pitch swoop, Calm's one call), the sad womp at
+    // the glass (below), a rustle (band-passed noise in
+    // three crackles), coin clinks (a short high triangle ping, at most one every CLINK_GAP s) and a sizzle under the
+    // melt (high-passed noise). `heard` counts the cues asked for, sounded or not (no context, or the page muted).
+    const CLINK_GAP = 0.07;
+    let audio = null, voice = null, voiceGain = null, womper = null, wompGain = null, rustleGain = null, sizzleGain = null, clinkVoice = null, clinkGain = null, clinkAt = -Infinity;
+    const heard = { squeak: 0, womp: 0, rustle: 0, clink: 0, sizzle: 0 };
     const audioOn = () => {
       if (audio) return audio;
       if (typeof AudioContext === "undefined" || navigator.userActivation && !navigator.userActivation.hasBeenActive) return null;
-      const ctx = new AudioContext();
-      // One retained voice; the squeak only schedules its pitch and envelope.
+      const ctx = new AudioContext(), out = BL.sound.output(ctx);
+      const gainOf = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(out); return g; };
       voice = ctx.createOscillator(); voice.type = "triangle"; voice.frequency.value = 600;
-      voiceGain = ctx.createGain(); voiceGain.gain.value = 0;
-      voice.connect(voiceGain); voiceGain.connect(BL.sound.output(ctx)); voice.start();
+      voiceGain = gainOf(); voice.connect(voiceGain); voice.start();
+      // The womp's brassy voice: a sine with its second and third harmonics at 0.4 and 0.2.
+      womper = ctx.createOscillator(); womper.setPeriodicWave(ctx.createPeriodicWave(new Float32Array([0, 0, 0, 0]), new Float32Array([0, 1, 0.4, 0.2])));
+      womper.frequency.value = WOMP[0][1];
+      wompGain = gainOf(); womper.connect(wompGain); womper.start();
+      clinkVoice = ctx.createOscillator(); clinkVoice.type = "triangle"; clinkVoice.frequency.value = 2900;
+      clinkGain = gainOf(); clinkVoice.connect(clinkGain); clinkVoice.start();
+      const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), data = noise.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const noisy = (type, frequency, q, gain) => {
+        const src = ctx.createBufferSource(), filter = ctx.createBiquadFilter();
+        src.buffer = noise; src.loop = true;
+        filter.type = type; filter.frequency.value = frequency; filter.Q.value = q;
+        src.connect(filter); filter.connect(gain); src.start();
+      };
+      noisy("bandpass", 2200, 0.9, rustleGain = gainOf());
+      noisy("highpass", 5200, 0.7, sizzleGain = gainOf());
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
       return audio = ctx;
     };
     const squeak = () => {
-      if (!audio || BL.sound.muted) return;
+      heard.squeak++;
+      if (!audio) return;
       const t0 = audio.currentTime, f = voice.frequency, g = voiceGain.gain;
       f.cancelScheduledValues(t0); f.setValueAtTime(460, t0);
       f.exponentialRampToValueAtTime(1250, t0 + 0.09); f.exponentialRampToValueAtTime(780, t0 + 0.26);
       g.cancelScheduledValues(t0); g.setValueAtTime(0, t0); g.linearRampToValueAtTime(0.2, t0 + 0.02);
       g.setValueAtTime(0.2, t0 + 0.17); g.exponentialRampToValueAtTime(0.001, t0 + 0.32); g.setValueAtTime(0, t0 + 0.34);
+    };
+    // The sad womp at the glass, from the sad-womp proposal's generator (Billy's submission, docs/proposals/sad-womp on
+    // the fork: original synthesis, no samples): three falling brassy notes, each drooping 6% over its length, rising in
+    // 20 ms and decaying as e^(-1.5 t), here with a 30 ms release so a note never ends in a click.
+    const wompSound = () => {
+      heard.womp++;
+      if (!audio) return;
+      const t0 = audio.currentTime, f = womper.frequency, g = wompGain.gain;
+      f.cancelScheduledValues(t0); g.cancelScheduledValues(t0); g.setValueAtTime(0, t0);
+      for (const [at, hz, length] of WOMP) {
+        const a = t0 + at, end = a + length;
+        f.setValueAtTime(hz, a); f.linearRampToValueAtTime(hz * 0.94, end);
+        g.setValueAtTime(0, a); g.linearRampToValueAtTime(WOMP_PEAK, a + 0.02);
+        g.exponentialRampToValueAtTime(WOMP_PEAK * Math.exp(-1.5 * length), end - 0.03); g.linearRampToValueAtTime(0, end);
+      }
+    };
+    const rustleSound = () => {
+      heard.rustle++;
+      if (!audio) return;
+      const t0 = audio.currentTime, g = rustleGain.gain;
+      g.cancelScheduledValues(t0); g.setValueAtTime(0, t0);
+      for (let i = 0; i < 3; i++) {
+        const at = t0 + i * 0.09;
+        g.setValueAtTime(0, at); g.linearRampToValueAtTime(0.09 - i * 0.02, at + 0.012); g.exponentialRampToValueAtTime(0.001, at + 0.08);
+      }
+      g.setValueAtTime(0, t0 + 0.3);
+    };
+    const clink = () => {
+      if (state.clock - clinkAt < CLINK_GAP) return;
+      clinkAt = state.clock; heard.clink++;
+      if (!audio) return;
+      const t0 = audio.currentTime, f = clinkVoice.frequency, g = clinkGain.gain, pitch = 2500 + Math.random() * 900;
+      f.cancelScheduledValues(t0); f.setValueAtTime(pitch, t0); f.exponentialRampToValueAtTime(pitch * 0.92, t0 + 0.12);
+      g.cancelScheduledValues(t0); g.setValueAtTime(0, t0); g.linearRampToValueAtTime(0.06, t0 + 0.003);
+      g.exponentialRampToValueAtTime(0.001, t0 + 0.14); g.setValueAtTime(0, t0 + 0.15);
+    };
+    const sizzle = (seconds) => {
+      heard.sizzle++;
+      if (!audio) return;
+      const t0 = audio.currentTime, g = sizzleGain.gain;
+      g.cancelScheduledValues(t0); g.setValueAtTime(0, t0); g.linearRampToValueAtTime(0.035, t0 + 0.15);
+      g.setValueAtTime(0.035, t0 + seconds * 0.6); g.exponentialRampToValueAtTime(0.001, t0 + seconds); g.setValueAtTime(0, t0 + seconds + 0.02);
+    };
+    // A show cut short stops its sound at once.
+    const hush = () => {
+      if (!audio) return;
+      const t0 = audio.currentTime;
+      for (const g of [voiceGain, wompGain, rustleGain, sizzleGain, clinkGain]) { g.gain.cancelScheduledValues(t0); g.gain.setValueAtTime(0, t0); }
     };
     const place = (x, z, ground, lift) => {
       rig.root.position.x = x; rig.root.position.z = z;
@@ -193,6 +269,7 @@
     const finish = () => {
       phase = IDLE;
       if (!attached) return;
+      hush();
       coins.clear();
       GM.setGolden(rig, false);
       GM.stand(rig);
@@ -218,6 +295,7 @@
       place(b.x, b.z, groundAt(b.x, b.z), -0.8);
       rustle(b, calmShow);
       audioOn();
+      rustleSound();
       if (calmShow) squeak();
       phase = POP; t = 0; shows++;
     };
@@ -252,17 +330,18 @@
           GM.stand(rig);
           if (phase === WALK) { phase = FADE; t = 0; break; }
           rig.root.rotation.y = Math.atan2(-fx0, -fz0);
+          fx.sayAt(p.x, p.y - rig.baseY + 1.45 * rig.height, p.z, LINE, LINE_S);
+          wompSound();
           phase = LOOK; t = 0;
           break;
         }
         case LOOK: {
           GM.doubleTake(rig, Math.min(1, t / SHOW.look));
           if (t - dt < SHOW.look * 0.36 && t >= SHOW.look * 0.36) {
-            squeak();
             mat4.transformPoint(local, inverse, p.x - fx0 * 0.9, p.y - rig.baseY + 1.1 * rig.height, p.z - fz0 * 0.9);
             mirror.ripples.pulse(local[0], local[1]);
           }
-          if (t >= SHOW.look) { GM.stand(rig); GM.setGolden(rig, true); phase = MELT; t = 0; }
+          if (t >= SHOW.look) { GM.stand(rig); GM.setGolden(rig, true); sizzle(SHOW.melt + 1); phase = MELT; t = 0; }
           break;
         }
         case MELT: {
@@ -321,7 +400,7 @@
     // A kept hub's suspend: the show ends and the sound closes; the nodes stay built for the next visit.
     const suspend = () => {
       finish();
-      if (audio) { audio.close().catch(() => {}); audio = voice = voiceGain = null; }
+      if (audio) { audio.close().catch(() => {}); audio = voice = voiceGain = womper = wompGain = rustleGain = sizzleGain = clinkVoice = clinkGain = null; }
     };
     const dispose = () => {
       suspend();
@@ -338,6 +417,8 @@
         get shows() { return shows; },
         get aborted() { return aborted; },
         get built() { return !!rig; },
+        heard,
+        get armed() { return !!rig && (rig.parts.club.visible || rig.parts.gun.visible); },
         get coins() { return coins ? { live: coins.live, capacity: coins.capacity, spawned: coins.spawned, refused: coins.refused } : null; },
         get attached() { return attached; },
         get rig() { return rig ? { x: rig.root.position.x, y: rig.root.position.y, z: rig.root.position.z, visible: rig.root.visible, golden: rig.golden } : null; },
