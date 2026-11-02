@@ -118,7 +118,7 @@
       if (on === allAway || disposed) return;
       allAway = on;
       if (on) return;
-      // The hunt has restored the owners first. Reconcile hidden companions now,
+      // An island event has released the population. Reconcile hidden companions now,
       // including sleepers, rather than waiting for another simulation frame.
       if (ctx.sleep) bedsToday();
       for (const e of list) if (!e.active && !e.remoteControlled) updateEntry(e, 0);
