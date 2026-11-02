@@ -41,6 +41,8 @@
 // `chalk-lock`, or a refusal), `chalkEdit` applies one of the holder's own edits and queues it, `flushChalk` sends
 // the queue and `dropChalk` lets go. `subscribeChalk` hears `fn(kind, detail)`: "board" (a new board, or none),
 // "lock" (who holds it changed), "op" (another's edit, already applied) and "refused" ({ why, name }).
+// DSB Land's wallets: `sendWallet` sends one of the visitor's own devices' events (protocol.js WALLET_CAP) and
+// `subscribeWallets` hears others' `wallet` and `wallets` messages as they come.
 // An Ooga's pose may add `j`, its jetpack for other pages to draw (`crew.jetFlags`: 1 while worn, plus the flame's
 // power times 2), sent on a change; remote records carry it as `jet`, 0 for none. It may add `w`, its weapons
 // (`crew.weaponFlags`: the one in hand, aiming, the gun's rounds), the same way; remote records carry it as `weapon`.
@@ -72,8 +74,8 @@
 // keeps the voices this page hears, since it already plays them.
 // `subscribePresence` hears `fn(rec, true)` for a player who joins the room while this page is in it, never for those
 // already there on this page's (re)join, and `fn(rec, false)` when one leaves (players.js names the joins, #430).
-// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -119,6 +121,7 @@
   // The shared chalkboard's listeners, and the page's own edits waiting to go (merged into frames of a few points).
   const chalkSubscribers = new Set(), chalkOut = [];
   const chalkEmit = (kind, detail) => { for (const fn of chalkSubscribers) fn(kind, detail); };
+  const walletSubscribers = new Set();
   const shotSubscribers = new Set(), swingSubscribers = new Set();
   const presenceSubscribers = new Set();
   const remotes = new Map();
@@ -447,6 +450,8 @@
       if (c && op && msg.id === c.editor && msg.id !== state.selfId && !BL.chalkBoard.apply(c.board, op, c.session)) chalkEmit("op", op);
     } else if (msg.t === "chalk-refused") {
       chalkEmit("refused", { why: String(msg.why), name: typeof msg.name === "string" ? msg.name : "" });
+    } else if (msg.t === "wallet" || msg.t === "wallets") {
+      for (const fn of walletSubscribers) fn(msg);
     } else if (msg.t === "chat-history") {
       if (!Array.isArray(msg.messages)) return;
       const lines = [];
@@ -946,6 +951,18 @@
     chalkSubscribers.add(fn);
     return () => chalkSubscribers.delete(fn);
   };
+  // DSB Land's free hardware wallets (wallet-bombs.js): one of the visitor's own devices' events, for the pages in
+  // the same zone, sent only for an Ooga in a live room; and what the room passes on from others, each message as it
+  // came (wallet-bombs.js `heard` checks it).
+  const sendWallet = (msg) => {
+    if (state.room !== "live" || !body || state.bodyKind === "gorilla") return false;
+    send(JSON.stringify({ t: "wallet", ...msg }));
+    return true;
+  };
+  const subscribeWallets = (fn) => {
+    walletSubscribers.add(fn);
+    return () => walletSubscribers.delete(fn);
+  };
   const subscribeShots = (fn) => {
     shotSubscribers.add(fn);
     return () => shotSubscribers.delete(fn);
@@ -981,6 +998,7 @@
     studioSubscribers.clear();
     chatSubscribers.clear();
     chalkSubscribers.clear();
+    walletSubscribers.clear();
     shotSubscribers.clear(); swingSubscribers.clear();
     presenceSubscribers.clear();
     doorSubscribers.clear();
@@ -988,5 +1006,5 @@
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

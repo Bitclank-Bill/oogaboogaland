@@ -64,6 +64,7 @@ A signed-in visitor holds one WebSocket to `/room` for the page life. The Worker
 | client → room | `{ t: "mute", on }` | this page muted or unmuted its own microphone, for everyone's roster |
 | client → room | `{ t: "hp", v, ko }` | the driven body's health normalized to 0-100, in steps of 4, and knockout flag; only on a change, 4 a second at most |
 | client → room | `{ t: "chalk", k, ... }` | the EntropyLab chalkboard: `take` or `drop` it, or an edit while holding it (see The EntropyLab chalkboard) |
+| client → room | `{ t: "wallet", k, u, ... }` | one of the driven Ooga's DSB wallets taken, set down, picked up, thrown or blown (see DSB Land's free hardware wallets) |
 | client → room | `{ t: "shot", a }` | one banana the driven Ooga fired, `a` its muzzle and landing point as six numbers, for drawing only (see Weapons below) |
 | client → room | `{ t: "swing" }` | the driven Ooga swung its club or bashed with its gun, for drawing only |
 | client → room | `{ t: "chat", text }` | an Ooga Chat line (see Ooga Chat); the room names the speaker |
@@ -75,6 +76,7 @@ A signed-in visitor holds one WebSocket to `/room` for the page life. The Worker
 | room → client | `chat-history { messages }` | right after `welcome`: the chat lines the room still holds, oldest first, at most 100 |
 | room → client | `chalk-board { marks, editor }` | right after `chat-history`: the chalkboard as the room holds it and who holds it (0 for nobody); also to a holder whose edit did not apply |
 | room → client | `chalk-lock { id }`, `chalk { id, k, ... }`, `chalk-refused { why, name? }` | who holds the chalkboard now, to everyone; the holder's edit, to everyone else; a refused take (`away`, `busy` with the holder's name, `wait`) |
+| room → client | `wallet { k, w }`, `wallet { k: "blast", id, u }`, `wallets { list }` | another player's wallet event, to their zone alone; on entering a DSB zone, the live wallets there |
 | room → client | `chat { id, at, login, name, text }` | a chat line, to everyone (the speaker too) |
 | room → client | `join { p }`, `leave { id, reason }`, `body { id, name }` | the roster changing |
 | room → client | `state { now, ps, gs?, js?, ws? }` | at most 15 a second while poses arrive, none while nothing changes: `ps` is flat `id, x, y, z, yaw` runs; optional `gs` is `id, ...g` runs; optional `js` is `id, j` pairs for every player wearing a jetpack, so anyone else in `ps` has none; optional `ws` is `id, w` pairs for every player holding a weapon, likewise |
@@ -217,6 +219,16 @@ The chalkboard by the lab's mouth is one board for every signed-in player (`src/
 - **Storage.** The room keeps the board in its storage (`chalk`): at most one write every 5 s while someone writes (a short timer after an edit, which also keeps the room awake until the last edit is stored), one at once on a wipe, and one when the holder lets go. Never a write for each point. A full board measures about 125 KB as JSON. A new or redeployed room starts with what it stored, or the original message.
 - **Mixed versions.** The room advertises `chalk-v1` in `welcome.features`. A page on an older room, or an older page, keeps its own board, as before.
 - **Cost.** One `chalk-board` to each page as it joins (a few KB, up to the full board), and the holder's edits to every page, about ten small frames a second while someone draws, none otherwise. Pages repaint the board's texture at most ten times a second while edits arrive, as they did while drawing locally. Untested: real two-account play on staging, phones, and Durable Object storage and request usage, which need a deploy.
+
+## DSB Land's free hardware wallets
+
+The vending machine's exploding parody wallets (`src/js/wallet-bombs.js`, `worker/src/room.js`, the `WALLET_*` rules in `worker/src/protocol.js`) are shared between signed-in players in the same zone. Signed out, each page has its own, as before.
+
+- **Each page runs its own.** The page sends what happens to its own visitor's devices: `take` (with its look), `down` where it lands, `up`, `throw` from where and how fast, and `blast` (the devices that went off together). Every event carries the owner's seconds left, which the room turns into an end time on its own clock, so every page counts the fuse down together. Nothing is hit or kept; drawing only.
+- **Others' are mirrors.** Another player's device is drawn from those events: carried over their head, set down, or flying on from the throw by its age, with its name and seconds as one's own. A mirror cannot be picked up. Mirrors take at most 9 of the page's 16 device slots (`MIRROR_CAP`), so the 7 the visitor's own can need at once (one every 3 s for a 21 s fuse) are always free, however many play nearby; a mirror past that is not drawn. A blast heard from its owner sets it off with the flash, fireball, scorch and knock-back of one's own, and it chains into the devices on this page, which then report their own blast. A mirror whose blast never comes (its owner left, or their tab stopped) goes off 1.5 s past its end; one carried by nobody in sight just goes.
+- **The room.** It relays each event at once to the pages in the zone where the device is (its carrier's zone while carried), never back to the sender, from an Ooga in a DSB zone only, 8 a second with a burst of 8. It keeps each player's live devices, 8 at most and each a little past its end, and hands those in a zone to a page walking into it. A carried device walking into another zone is announced there. These live in memory only: a room that sleeps forgets them, and they end within 21 s anyway.
+- **Mixed versions.** An older Worker ignores the messages and pages keep their own devices. An older page ignores what it is sent.
+- **Cost.** A few small frames per device: taking, setting down or throwing it, and its blast, to the players in one zone; nothing each frame. Untested: two signed-in players on staging, phones, and Durable Object usage.
 
 ## Banning
 
