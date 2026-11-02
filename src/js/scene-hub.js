@@ -4356,6 +4356,8 @@
       const b = actorBounds(other);
       if (b[4] > floor && b[4] <= y + rise + 1e-7 && bodyOverlaps(other, b, x, z, PLAYER_RADIUS)) floor = b[4];
     }
+    // Other players' heads hold the driven Ooga as the crew's do.
+    if (crew && !passTraffic) floor = Math.max(floor, crew.outsideSupportAt(actor, x, z, y, rise));
     return floor;
   };
   const propCeilingAt = (x, z, y, radius, actor) => {
@@ -4993,8 +4995,9 @@
       && matrixGateSegmentClear(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7)
       && mirrorActorSegmentClear(x, feet, z, toX, toFeet, toZ, height - 1e-7, cave);
   };
+  // A passenger rides an upright crew Ooga, or another player (`riding.outside`, whose move the remote pool reports).
   const carryCharacter = (cave, dx, dy, dz) => {
-    if (!standingPassenger(cave) || !cave.riding.support || !uprightCharacter(cave.riding.support)) return;
+    if (!standingPassenger(cave) || !cave.riding.outside && (!cave.riding.support || !uprightCharacter(cave.riding.support))) return;
     const distance = Math.hypot(dx, dy, dz);
     if (distance < 1e-9) return;
     const p = cave.root.position, steps = Math.max(1, Math.ceil(distance / 0.125));
