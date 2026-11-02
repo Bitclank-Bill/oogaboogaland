@@ -100,7 +100,7 @@
   const PROPS = { pc: { x: -9.6 + SX, y: 0.545, z: -20.6 + SZ }, drives: { x: -9.8 + SX, y: 0.545, z: -32.4 + SZ }, book: { x: -5.8 + SX, y: 0.545, z: -23.6 + SZ } };
   const WALK_PRESETS = { dock: { yaw: 0, pitch: 0.3, dist: 6, target: { x: ENTRY.x, y: 1, z: ENTRY.z } } };
 
-  let root = null, camera = null, input = null, hud = null, game = null, world = null, go = null, overlayCanvas = null;
+  let root = null, camera = null, input = null, hud = null, game = null, world = null, go = null, overlayCanvas = null, renderer = null;
   let demo = null, built = null, board = null, audio = null;
   const targets = [];
   // `paused` is the visitor's own pause (P); `reading` a panel open; Calm holds decorative motion.
@@ -842,7 +842,9 @@
       face.imageSurface = { asset: { width: PX, height: PY, load: () => image }, rect: [-w / 2, -h / 2, w, h] };
       const node = place(createNode({ position: { x: at.x, y: ISLAND_TOP + B.y, z: at.z }, rotation: { x: 0, y: at.ry, z: 0 }, sightHidden: true }));
       addChild(node, createNode({ geometry: M.box({ w: w + 0.3, h: h + 0.3, d: 0.08, color: "#2a2018" }) }), createNode({ geometry: face }));
-      built.wallBoards.push({ era: r.n, x: at.x, z: at.z, ry: at.ry, w, pieces });
+      // The board's pick box, so a tap opens its pieces up close (wallView).
+      const pick = place(createNode({ geometry: pickBox(w, h, 0.3), position: { x: at.x, y: ISLAND_TOP + B.y, z: at.z }, rotation: { x: 0, y: at.ry, z: 0 } }));
+      built.wallBoards.push({ era: r.n, x: at.x, y: ISLAND_TOP + B.y, z: at.z, ry: at.ry, w, h, px: PX, py: PY, pieces, pick });
     }
   };
   // The courtyard (genesis-courtyard.js): the atrium dressed as an Ooga crossroads, grass and sand paths to every
@@ -977,6 +979,34 @@
     paintPage(canvas, ex.pages[0]);
     return b;
   };
+  // A gallery wall's pieces up close, in the board dialog: one page a piece, from the one a tap pointed at, each
+  // redrawn large (genesisWalls.paintPiece), with its caption and, for a clipping, where its wording was checked.
+  const wallView = (wb, start = 0) => {
+    const GWL = BL.genesisWalls, canvas = document.createElement("canvas"), n = wb.era;
+    const b = {
+      title: `ERA ${n} - ON THE PAGES AND THE WALLS`, help: "Arrows page · Escape closes and the walk carries on", canvas, count: wb.pieces, index: 0, start,
+      caption: "", note: "", version: 0, wide: false, links: [],
+      go(i) {
+        const info = GWL.pieceInfo(n, i);
+        b.index = i; b.caption = info.line1; b.note = info.type === "clip" ? `“${info.head}” · ${info.line2}` : info.line2;
+        b.links = info.src ? [{ href: info.src, label: "Where this headline was checked ↗" }] : [];
+        GWL.paintPiece(canvas, n, i); b.version++;
+      }
+    };
+    return b;
+  };
+  // Which of a board's pieces a tap at screen point (px, py) points at: the one whose centre projects nearest it.
+  const wallPieceAt = (wb, px, py) => {
+    const L = BL.genesisWalls.slots(wb.era, wb.px, wb.py), c = Math.cos(wb.ry), s2 = Math.sin(wb.ry), out = { x: 0, y: 0 };
+    let best = 0, dist = Infinity;
+    L.pieces.forEach((p, i) => {
+      const lx = ((p.x + p.w / 2) / wb.px - 0.5) * wb.w, ly = (0.5 - (L.top + L.ph / 2) / wb.py) * wb.h;
+      if (!renderer.project(wb.x + lx * c, wb.y + ly, wb.z - lx * s2, out)) return;
+      const d = (out.x - px) ** 2 + (out.y - py) ** 2;
+      if (d < dist) { dist = d; best = i; }
+    });
+    return best;
+  };
   // Opening a panel holds the walk until it closes.
   const setPaused = (on) => {
     view.paused = !!on;
@@ -988,7 +1018,7 @@
     view.reading = true;
     if (pilot) pilot.setActive(false);
     stopVoice();
-    panel.go(0);
+    panel.go(panel.start || 0);
     hud.openBoard(panel);
     showControls();
   };
@@ -1178,7 +1208,7 @@
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   // --- Visit ----------------------------------------------------------------------------------------------------
-  const tooltipFor = (hit) => !hit || bench.open ? "" : hit.owner.kind === "legend" ? "The Genesis timeline · tap for the museum's menu" : hit.owner.kind === "exhibit" ? "Fingerprints and Time (1991) · tap to read" : hit.owner.kind === "prop" ? `${hit.owner.prop.title} (${hit.owner.prop.year}) · tap to open its workbench` : hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : "";
+  const tooltipFor = (hit) => !hit || bench.open ? "" : hit.owner.kind === "legend" ? "The Genesis timeline · tap for the museum's menu" : hit.owner.kind === "exhibit" ? "Fingerprints and Time (1991) · tap to read" : hit.owner.kind === "prop" ? `${hit.owner.prop.title} (${hit.owner.prop.year}) · tap to open its workbench` : hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : hit.owner.kind === "wall" ? "The era's press, posters and art · tap to see them up close" : "";
   const enter = (ctx) => {
     ({ game, world, go } = ctx);
     overlayCanvas = ctx.overlay;
@@ -1211,6 +1241,7 @@
     orderLights(ENTRY.x, ENTRY.z);
     hud = BL.hud.create({ signal: ctx.signal, roster: BL.contributors.activeRoster, catalog: M.SWAG, tierColors: M.TIER_COLORS, renderIcon: BL.hud.renderIcon, lootEnabled: false });
     const hooks = {};
+    renderer = ctx.renderer;
     input = BL.interact.create({ canvas: ctx.canvas, renderer: ctx.renderer, camera, hooks });
     const target = (node, owner) => { input.add(node, owner); targets.push(node); };
     target(built.lectern, { kind: "exhibit", priority: 1 });
@@ -1222,6 +1253,7 @@
     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const o of built.overviews) target(o.pick, { kind: "prop", prop: props.get(`era${o.era}-overview`), priority: 1 });
+    for (const wb of built.wallBoards || []) target(wb.pick, { kind: "wall", board: wb, priority: 1 });
     // Walking: the pilot and crew for the visitor's Ooga (as the arcade's are).
     const viewFov = camera.fov;
     // The camera and its target keep inside the museum: the atrium or a gallery, under the roof. A point outside
@@ -1277,12 +1309,13 @@
     Object.assign(hooks, {
       onHover: (hit, p) => { const t = tooltipFor(hit); if (t) hud.tooltip.show(t, p.x, p.y); else hud.tooltip.hide(); },
       onHoverMove: (hit, p) => { const t = tooltipFor(hit); if (t) hud.tooltip.show(t, p.x, p.y); else hud.tooltip.hide(); },
-      onTap: (hit) => {
+      onTap: (hit, p) => {
         audio.wake();
         if (bench.open || view.reading) return;
         if (hit && hit.owner.kind === "exhibit") openInfo();
         else if (hit && hit.owner.kind === "legend") openMenu();
         else if (hit && hit.owner.kind === "prop") openProp(hit.owner.prop);
+        else if (hit && hit.owner.kind === "wall") openPanel(wallView(hit.owner.board, wallPieceAt(hit.owner.board, p.x, p.y)));
       },
       hoverIgnore: () => bench.open ? null : pilot.hooks.hoverIgnore(),
       onOrbit: (dx, dy) => { if (!bench.open) pilot.hooks.onOrbit(dx, dy); },
@@ -1318,7 +1351,7 @@
     showControls();
     hud.setStats(game.state);
     arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, view, built, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
@@ -1359,7 +1392,7 @@
     el.caption.textContent = ""; el.chain.replaceChildren();
     for (const key of Object.keys(el)) el[key] = null;
     view.reading = false;
-    demo = board = audio = built = input = hud = game = world = go = overlayCanvas = null;
+    demo = board = audio = built = input = hud = game = world = go = overlayCanvas = renderer = null;
     pilot = people = avatar = fx = footsteps = remotes = footing = props = playerName = arrivedPilot = null;
     scene.input = scene.debug = null;
     return { targets: count };
