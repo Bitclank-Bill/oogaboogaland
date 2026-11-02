@@ -10888,7 +10888,16 @@
   // frame becoming 19 ms; 30 Hz spent about 19 ms on every other frame.
   const SIGHT_RECOMPUTE_HZ = 15;
   const overlay = (dt) => {
-    if (cloudPlaying()) { fx.drawOverlay(dt, cloudHopper.drawOverlay); return; }
+    if (cloudPlaying()) {
+      fx.drawOverlay(dt, cloudHopper.drawOverlay);
+      // An Ooga inside a tornado, or behind it, shows its outline through the funnel, keyed dark so it reads on the
+      // white, unless the view is its own eyes.
+      if (crew.player && cloudHopper.hiddenByTornado && (cloudHopper.swept >= 0 || pilot.closeMix < 1)) {
+        cameraCover.state.opacity = 0.9;
+        cameraCover.draw(camera, crew.player.root, false, true, cameraRockAt, cameraRockMaterialAt, null, dt, 1, null, null, true);
+      }
+      return;
+    }
     if (poolBlockHovered) showPoolBlockTooltip();
     else if (pileHovered) showPileTooltip();
     // World-anchored sleeping marks share the guide visibility cadence; their particles still move every frame.

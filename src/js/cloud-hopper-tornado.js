@@ -5,7 +5,7 @@
 // up into the sky (`FADE`), and the next spot starts to brew. Lightning strikes round it from when it starts to brew
 // until it ropes out, a second sign of where it is. While it is down it writes the course's `whirl`, which
 // turns the clouds near it round its axis, and `strength` says how hard it holds; the controller carries the Ooga round
-// its outside. It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
+// it and, once drawn into its core, up it and out of its top. It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
 // to deep blue at its curling tail, each slab turning and swaying at its own speed (one instanced draw for each band
 // of colour), with streaks of spray whipped round it. Nothing allocates a frame.
 (() => {
@@ -28,7 +28,7 @@
   const STRIKE = [0.9, 2.2], STRIKE_OFF = [6, 26], HEARD = 200;
   // The funnel: its top this far over the course at its spot, how far it reaches down, its cap's radius, how
   // far its tail curls back from its drift (m), and how many slabs it stacks.
-  const TOP = 75, LENGTH = 150, TOP_R = 16, CURL = 12, LAYERS = 80;
+  const TOP = 120, LENGTH = 195, TOP_R = 19, CURL = 12, LAYERS = 104;
   // How much of it the brewing cap shows, as a share of its length, and how brightly it glows while it brews (and,
   // a little, once down), so it stands out against the storm's grey.
   const BREW = 0.14, BREW_GLOW = 1.2, DOWN_GLOW = 0.4;

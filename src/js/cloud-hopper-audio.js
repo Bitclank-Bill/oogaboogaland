@@ -8,8 +8,10 @@
   // tornado's roar (`ROAR` at its loudest).
   const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.011, ROAR = 0.3;
   const BACKGROUND_AHEAD = 2, BACKGROUND_MS = 250;
+  // The jetpack's level under thrust, and its roar's and hiss's frequencies at rest and under thrust (Hz).
+  const JET = 0.16, JET_ROAR = [380, 1100], JET_HISS = [1800, 3200];
   const create = () => {
-    let ctx = null, master = null, musicGain = null, jetGain = null, jetTone = null, jetWhine = null, jetFilter = null, music = null;
+    let ctx = null, master = null, musicGain = null, jetGain = null, jetFilter = null, jetHiss = null, music = null;
     let armed = false, disposed = false, resuming = false, jetOn = false, muted = BL.sound.muted, nextJump = 0;
     let musicStage = "", musicSong = 0, backgroundTimer = 0, rainGain = null, rainOn = false, nextTone = 0, nextAir = 0, nextThunder = 0;
     let roarGain = null, roarHowl = null, roarLevel = 0;
@@ -61,9 +63,8 @@
       if (jetGain) {
         jetGain.gain.cancelScheduledValues(now);
         jetGain.gain.setValueAtTime(0, now);
-        jetTone.frequency.cancelScheduledValues(now); jetTone.frequency.setValueAtTime(54, now);
-        jetWhine.frequency.cancelScheduledValues(now); jetWhine.frequency.setValueAtTime(220, now);
-        jetFilter.frequency.cancelScheduledValues(now); jetFilter.frequency.setValueAtTime(700, now);
+        jetFilter.frequency.cancelScheduledValues(now); jetFilter.frequency.setValueAtTime(JET_ROAR[0], now);
+        jetHiss.frequency.cancelScheduledValues(now); jetHiss.frequency.setValueAtTime(JET_HISS[0], now);
       }
       // The score retains its timeline through results and skips unheard notes
       // when a muted or suspended context becomes audible again.
@@ -162,25 +163,20 @@
       waver.type = "sine"; waver.frequency.value = 0.35;
       waver.connect(gain(140, roarHowl.frequency)); waver.start();
       jetGain = gain(0, master);
-      // Soft exhaust, a warm motor body and a faint turbine whistle. A small
-      // retained flutter keeps the air alive without a harsh sawtooth buzz.
-      const jetAir = gain(0.66, jetGain), flutter = ctx.createOscillator();
-      jetFilter = filter("lowpass", 700, 0.55, jetAir);
-      noise.connect(filter("highpass", 100, 0.7, jetFilter));
-      flutter.type = "sine"; flutter.frequency.value = 32;
-      flutter.connect(gain(0.045, jetAir.gain)); flutter.start();
-      jetTone = ctx.createOscillator();
-      jetTone.type = "triangle"; jetTone.frequency.value = 54;
-      jetTone.connect(filter("lowpass", 240, 0.7, gain(0.22, jetGain)));
-      jetWhine = ctx.createOscillator();
-      jetWhine.type = "sine"; jetWhine.frequency.value = 220;
-      jetWhine.connect(gain(0.045, jetGain));
+      // A jetpack's thrust, all of it from the noise and no tones, so it never hums like a motor: a deep rushing roar,
+      // breathing gently with a slow drift of the same noise so it is never quite static, and a thin hiss over it.
+      const roar = gain(0.8, jetGain);
+      jetFilter = filter("lowpass", JET_ROAR[0], 0.5, roar);
+      noise.connect(filter("highpass", 70, 0.6, jetFilter));
+      noise.connect(filter("lowpass", 10, 0.5, gain(6, roar.gain)));
+      jetHiss = filter("bandpass", JET_HISS[0], 0.8, gain(0.16, jetGain));
+      noise.connect(jetHiss);
       musicGain = gain(0, master);
       musicFrom = 0; musicAt = ctx.currentTime; musicUntil = musicAt + musicFade;
       applyLevel();
       music = BL.cloudHopperMusic.create(ctx, musicGain, noise);
       music.song(musicSong); music.stage(musicStage);
-      jetTone.start(); jetWhine.start(); noise.start();
+      noise.start();
       ctx.addEventListener("statechange", stateChanged);
     };
     // Dock entry and Start/Replay arm audio after the page's first gesture;
@@ -363,19 +359,17 @@
       if (on === jetOn) return;
       jetOn = on;
       if (!ctx) return;
-      const now = ctx.currentTime, level = jetGain.gain, body = jetTone.frequency, turbine = jetWhine.frequency, air = jetFilter.frequency;
-      const volume = level.value, bodyHz = body.value, turbineHz = turbine.value, airHz = air.value;
-      // Retain the current spool on quick taps; normal release winds down
-      // briefly and reaches exact silence. Quiet/results bypass this tail.
+      const now = ctx.currentTime, level = jetGain.gain, air = jetFilter.frequency, hiss = jetHiss.frequency;
+      const volume = level.value, airHz = air.value, hissHz = hiss.value;
+      // Retain the current spool on quick taps: thrust opens the roar and lifts the hiss in a quick whoosh, and a
+      // release closes them as it fades to exact silence. Quiet/results bypass this tail.
       level.cancelScheduledValues(now); level.setValueAtTime(volume, now);
-      level.setTargetAtTime(on ? 0.27 : 0, now, on ? 0.035 : 0.045);
-      if (!on) level.setValueAtTime(0, now + 0.22);
-      body.cancelScheduledValues(now); body.setValueAtTime(bodyHz, now);
-      body.exponentialRampToValueAtTime(on ? 82 : 48, now + 0.18);
-      turbine.cancelScheduledValues(now); turbine.setValueAtTime(turbineHz, now);
-      turbine.exponentialRampToValueAtTime(on ? 390 : 180, now + 0.2);
+      level.setTargetAtTime(on ? JET : 0, now, on ? 0.03 : 0.06);
+      if (!on) level.setValueAtTime(0, now + 0.3);
       air.cancelScheduledValues(now); air.setValueAtTime(airHz, now);
-      air.exponentialRampToValueAtTime(on ? 1650 : 600, now + 0.18);
+      air.exponentialRampToValueAtTime(on ? JET_ROAR[1] : JET_ROAR[0], now + (on ? 0.15 : 0.25));
+      hiss.cancelScheduledValues(now); hiss.setValueAtTime(hissHz, now);
+      hiss.exponentialRampToValueAtTime(on ? JET_HISS[1] : JET_HISS[0], now + (on ? 0.15 : 0.25));
     };
     const gate = () => {
       if (muted) quiet();
@@ -405,7 +399,7 @@
         ctx.removeEventListener("statechange", stateChanged);
         ctx.close().catch(() => {});
       }
-      ctx = master = musicGain = jetGain = jetTone = jetWhine = jetFilter = music = null;
+      ctx = master = musicGain = jetGain = jetFilter = jetHiss = music = null;
       jumps.length = clouds.length = warnings.length = tones.length = airs.length = thunders.length = 0;
       rainGain = roarGain = roarHowl = null;
     };
