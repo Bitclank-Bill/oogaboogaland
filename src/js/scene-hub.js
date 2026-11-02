@@ -11834,7 +11834,9 @@
     shared.bedPlan = function* (cave, bed, toBed) {
       const p = cave.root.position, home = cave.slot || WALK_IN, from = { x: p.x, y: planFeet(cave), z: p.z };
       const entry = forestNavigation.entry, outside = forestNavigation.contains(p.x, p.z);
-      if (!bed?.outdoor && !outside) return yield* sleepNavigation.plan(from.x, from.y, from.z, bed, toBed, home.x, home.z, !toBed && cave.state === "chilling");
+      // A sleeper can wake before reaching the bridge. Its former outdoor bed
+      // must not send a mainland return through the forest's attachment search.
+      if (!outside && (!bed?.outdoor || !toBed)) return yield* sleepNavigation.plan(from.x, from.y, from.z, bed, toBed, home.x, home.z, !toBed && cave.state === "chilling");
       if (toBed && bed.outdoor) {
         const approach = outside ? [from] : from.y < -0.1
           ? yield* sleepNavigation.plan(from.x, from.y, from.z, null, false, entry.x, entry.z)
