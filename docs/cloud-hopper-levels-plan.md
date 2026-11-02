@@ -456,8 +456,9 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
   carrying the Ooga round its outside until it ropes out. Later it brewed over seeded spots until the rider came near,
   came down from 75 m over the clouds there, and grew strong enough to draw clouds and Ooga in, round and up; an Ooga
   drawn into the funnel is spun up its wall and thrown out of the top, a DQ with its own card. Since then it comes down
-  sooner, once the rider is within 100 m, as a thin, weak rope under its cap that grows wide and strong over 20 s and
-  stays down 32 s, and a guide card introduces it the first time a session plays the level.* (The plan had: storm haze
+  sooner, once the rider is within 130 m, and slowly, over 20 s, a thin, weak rope under its cap as its tip reaches the
+  course that is wide and strong by the time its tip reaches the bottom, then stays down 32 s; its spots fall anywhere
+  within 10% of 22%, 50% and 78% of the way down and 8–36 m off to the side; and a guide card introduces it the first time a session plays the level.* (The plan had: storm haze
   with `fogNear` 70 m and `fogFar` 260 m.)
   - Within 70 m nothing is fogged. At 120 m (about four hops) a cloud is 26% fogged, so
     nearby landings and their warnings stay clear. Beyond 260 m clouds are hidden, which is

@@ -218,9 +218,10 @@
     };
     const advance = () => { if (nextOpen()) onNext?.(); };
     const choose = () => pick(true);
+    // Escape backs out of the opening menu (as Not now does) and the briefing; the other cards stay up for their buttons.
     const cancel = (e) => {
       e.preventDefault(); e.stopPropagation();
-      if (phase === "briefing") onExit?.();
+      if (phase === "briefing" || phase === "intro") onExit?.();
     };
     const clearActivation = () => { spaceTarget = null; };
     const panelKey = (e) => {
@@ -254,7 +255,7 @@
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        if (e.type === "keydown" && phase === "briefing") onExit?.();
+        if (e.type === "keydown" && (phase === "briefing" || phase === "intro")) onExit?.();
         else if (e.type === "keydown" && picking) pick(false);
         return;
       }
