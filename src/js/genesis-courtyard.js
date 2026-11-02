@@ -20,15 +20,18 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const RING_R = 25, RING_W = 3, RADIAL_W = 3.4, LOOP_W = 3;
-  const LOOP = { x0: -41, x1: 41, z0: -71, z1: 74.5 };
-  const MAP = { x: 15.6, z: 55, w: 4.6, h: 3.2, y: 2.6 };
-  // The view from the arrival (scene-genesis.js ENTRY, 0, 64) to the white screen (24 m wide at z 48), with a margin.
-  const VIEW = { x: 0, z: 64, half: 13, screenZ: 48 };
+  // Everything is placed from the atrium's walls (genesis-world.js MUSEUM, sized to its galleries), as
+  // scene-genesis.js places the arrival (12 m in from the south wall) and the white screen (26 m in, 18 m wide).
+  const A0 = BL.genesisWorld.MUSEUM.atrium, SOUTH = A0.z1;
+  const RING_R = 19, RING_W = 3, RADIAL_W = 3.2, LOOP_W = 3;
+  const LOOP = { x0: A0.x0 + 7, x1: A0.x1 - 7, z0: A0.z0 + 7, z1: SOUTH - 3.5 };
+  const MAP = { x: 11.5, z: SOUTH - 21, w: 4.6, h: 3.2, y: 2.6 };
+  // The view from the arrival to the white screen, with a margin.
+  const VIEW = { x: 0, z: SOUTH - 12, half: 10, screenZ: SOUTH - 26 };
   const inView = (x, z, pad = 0) => z <= VIEW.z + pad && z >= VIEW.screenZ - pad && Math.abs(x) <= VIEW.half * (VIEW.z - z) / (VIEW.z - VIEW.screenZ) + pad;
   const CLEAR = VIEW;
   // The south galleries' paths go round the white screen and this board, by a waypoint out to each side.
-  const SOUTH_BEND = { x: 24, z: 36 };
+  const SOUTH_BEND = { x: 0.5 * A0.x1, z: SOUTH - 42 };
   // The sign letters the island's carved signs have (hub-models.js SIGN_GLYPHS): anything else is dropped or mapped.
   const GLYPHS = new Set("EntrOopygqjBLabdcefhikl msuvwxzACDFHMPRSTWXGIJKNQUVYZ/0123456789!?+-.".split(""));
   const signText = (s) => String(s).replace(/[–—]/g, "-").replace(/[·:,;()'’"]/g, " ").split("").filter((c) => GLYPHS.has(c)).join("").replace(/\s+/g, " ").trim();
@@ -85,7 +88,8 @@
       obstacles.push({ x0: sg.x - 0.35, x1: sg.x + 0.35, z0: sg.z - 0.35, z1: sg.z + 0.35 });
     });
     // Benches along the loop's inner edge, a quarter turn at a time (the kit's), facing the middle.
-    for (const [x, z, turns] of [[0, L.z0 + 3.2, 0], [L.x1 - 3.2, -40, 3], [L.x1 - 3.2, 30, 3], [L.x0 + 3.2, -40, 1], [L.x0 + 3.2, 30, 1], [-28, L.z1 - 3.2, 2], [28, L.z1 - 3.2, 2]]) {
+    const bz0 = -0.51 * A0.z1, bz1 = 0.38 * A0.z1, bx = 0.58 * A0.x1;
+    for (const [x, z, turns] of [[0, L.z0 + 3.2, 0], [L.x1 - 3.2, bz0, 3], [L.x1 - 3.2, bz1, 3], [L.x0 + 3.2, bz0, 1], [L.x0 + 3.2, bz1, 1], [-bx, L.z1 - 3.2, 2], [bx, L.z1 - 3.2, 2]]) {
       benches.push({ x, z, turns });
       obstacles.push((turns & 1) ? { x0: x - 0.4, x1: x + 0.4, z0: z - 0.9, z1: z + 0.9 } : { x0: x - 0.9, x1: x + 0.9, z0: z - 0.4, z1: z + 0.4 });
     }
@@ -98,7 +102,7 @@
     for (let gx = L.x0 + 6; gx <= L.x1 - 6; gx += 7) for (let gz = L.z0 + 6; gz <= L.z1 - 6; gz += 7) {
       const x = gx + (rand() - 0.5) * 4, z = gz + (rand() - 0.5) * 4, roll = rand();
       if (Math.hypot(x, z) < RING_R + 6) continue;
-      if (inView(x, z, 3) || (Math.abs(x) < 9 && z > 60)) continue;
+      if (inView(x, z, 3) || (Math.abs(x) < 9 && z > SOUTH - 18)) continue;
       if (Math.abs(x - MAP.x) < MAP.w / 2 + 3 && Math.abs(z - MAP.z) < 4) continue;
       if (museum.PILLARS.some((p) => Math.hypot(x - p.x, z - p.z) < 4)) continue;
       if (x < L.x0 + 4 || x > L.x1 - 4 || z < L.z0 + 4 || z > L.z1 - 4) continue;
@@ -212,7 +216,7 @@
     }
     g.fillStyle = "#ffffff"; g.fillRect(X(-1), Y(-1), 2 * k, 2 * k);
     // The white timeline screen and this board, with "You are here".
-    g.fillStyle = "#ffffff"; g.fillRect(X(-12), Y(47.6), 24 * k, Math.max(4, 0.6 * k));
+    g.fillStyle = "#ffffff"; g.fillRect(X(-9), Y(VIEW.screenZ - 0.4), 18 * k, Math.max(4, 0.6 * k));
     g.fillStyle = "#c0392b"; g.beginPath(); g.arc(X(Lo.map.x), Y(Lo.map.z + 2), 12, 0, 7); g.fill();
     g.fillStyle = "#3a2a1a"; g.font = "bold 26px system-ui, sans-serif"; g.textAlign = "left";
     g.fillText("You are here", X(Lo.map.x) + 18, Y(Lo.map.z + 2) + 9);
