@@ -51,6 +51,45 @@
      I("desk with tower", 1.3, 0.7, [[1.3, 0.74, 0.7, "#6d5a45", 0, 0.37, 0], [0.22, 0.48, 0.48, "#2c2e33", -0.45, 0.24, 0], [0.56, 0.36, 0.04, "#2c2e33", 0.1, 1.0, -0.15], [0.5, 0.3, 0.01, "#9cff9c", 0.1, 1.0, -0.12, 1.3]]),
      I("mug and notebook stool", 0.6, 0.6, [[0.4, 0.6, 0.4, "#7a5534", 0, 0.3, 0], [0.24, 0.03, 0.3, "#f1ede2", -0.05, 0.615, 0], [0.09, 0.11, 0.09, "#c8463c", 0.12, 0.655, 0.08]])]
   ];
+  // Board games and furniture for the open floor between the exhibits: a game laid out on a table with stools round
+  // it, or a sitting corner of the era. Generic games only (chess, draughts, dice, cards, a tile game, a trading game
+  // of our own), never a published game's board, name or art.
+  const table = (top, legs, extra) => [[1.2, 0.06, 1.2, top, 0, 0.74, 0], ...[[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]].map(([x, z]) => [0.07, 0.72, 0.07, legs, x, 0.36, z]),
+    ...[[0, -0.95], [0, 0.95], [-0.95, 0], [0.95, 0]].map(([x, z]) => [0.36, 0.46, 0.36, legs, x, 0.23, z]), ...extra];
+  const checker = (a, b, n, size, y) => { const out = [], c = size / n; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) out.push([c, 0.012, c, (i + j) % 2 ? a : b, (i - n / 2 + 0.5) * c, y, (j - n / 2 + 0.5) * c]); return out; };
+  const pieces = (colors, y, spots) => spots.map(([x, z], k) => [0.06, 0.06, 0.06, colors[k % colors.length], x, y, z]);
+  const FLOOR_ITEMS = [
+    [I("chess table", 2.2, 2.2, table("#6d4c2e", "#3b2a1a", [...checker("#2b2421", "#efe6cc", 8, 0.64, 0.776), ...pieces(["#efe6cc", "#2b2421"], 0.81, [[-0.28, -0.28], [-0.12, -0.28], [0.2, 0.28], [0.04, 0.2], [-0.2, 0.12]])])),
+     I("wing chair and lamp", 1.6, 1.4, [[0.9, 0.45, 0.85, "#6e2a2a", -0.3, 0.225, 0], [0.9, 0.7, 0.18, "#6e2a2a", -0.3, 0.8, -0.34], [0.16, 0.6, 0.85, "#5a2222", -0.7, 0.55, 0], [0.16, 0.6, 0.85, "#5a2222", 0.1, 0.55, 0], [0.04, 1.5, 0.04, "#3a3d42", 0.6, 0.75, -0.2], [0.36, 0.3, 0.36, "#efe0b0", 0.6, 1.55, -0.2, 0.9]])],
+    [I("backgammon table", 2.2, 2.2, table("#7a4a24", "#4c2e16", [[0.7, 0.012, 0.5, "#c8a46a", 0, 0.776, 0], ...[-0.27, -0.16, -0.05, 0.06, 0.17, 0.28].map((x, k) => [0.07, 0.014, 0.2, k % 2 ? "#8e3b2f" : "#efe6cc", x, 0.784, -0.13]), ...pieces(["#2b2421", "#efe6cc"], 0.8, [[-0.25, 0.15], [-0.15, 0.15], [0.2, -0.15], [0.26, 0.12]])])),
+     I("conversation pit", 2.2, 1.8, [[2.0, 0.4, 0.7, "#c8762f", 0, 0.2, -0.5], [0.7, 0.4, 1.4, "#c8762f", -0.65, 0.2, 0.2], [0.8, 0.35, 0.6, "#5a3a22", 0.4, 0.175, 0.35], [0.3, 0.06, 0.3, "#ffd23f", 0.4, 0.38, 0.35, 0.4]])],
+    [I("dice and dragons table", 2.2, 2.2, table("#3a2e5a", "#211a36", [[0.9, 0.012, 0.6, "#c9b98a", 0, 0.776, 0], [0.3, 0.2, 0.02, "#7a2f2f", -0.3, 0.88, -0.25], ...pieces(["#ff4f4f", "#4fd1ff", "#5cff7a", "#ffd23f"], 0.8, [[0.1, 0.1], [0.2, -0.05], [0.28, 0.12], [-0.1, 0.18]])])),
+     I("bean bags and console", 2.0, 1.6, [[0.7, 0.4, 0.6, "#ff4fa3", -0.55, 0.2, 0.2], [0.7, 0.4, 0.6, "#4fd1ff", 0.55, 0.2, 0.2], [0.8, 0.5, 0.4, "#2c2a30", 0, 0.25, -0.5], [0.6, 0.4, 0.04, "#3d8bff", 0, 0.7, -0.5, 1.1]])],
+    [I("trading game table", 2.2, 2.2, table("#2f5a5a", "#1e3a3a", [[0.9, 0.012, 0.9, "#e8e0c4", 0, 0.776, 0], ...[[-0.38, 0], [0.38, 0], [0, -0.38], [0, 0.38]].map(([x, z], k) => [x ? 0.12 : 0.76, 0.014, x ? 0.76 : 0.12, ["#c8463c", "#3d6bff", "#5cff7a", "#ffd23f"][k], x, 0.784, z]), [0.3, 0.06, 0.2, "#f7931a", 0.1, 0.81, 0.05]])),
+     I("swivel chair desk", 1.6, 1.4, [[1.4, 0.74, 0.7, "#8a7356", 0, 0.37, -0.25], [0.5, 0.06, 0.5, "#3a3d42", 0, 0.5, 0.45], [0.06, 0.45, 0.06, "#3a3d42", 0, 0.25, 0.45], [0.5, 0.5, 0.08, "#3a3d42", 0, 0.8, 0.68]])],
+    [I("card game table", 2.2, 2.2, table("#2e5d3f", "#1d3a28", [...[[-0.3, 0], [0.3, 0], [0, -0.3], [0, 0.3], [0.05, 0.05]].map(([x, z], k) => [0.12, 0.012, 0.17, k === 4 ? "#c8463c" : "#f4efe2", x, 0.78 + k * 0.004, z]), [0.2, 0.05, 0.2, "#e8c35a", -0.25, 0.8, -0.25]])),
+     I("futon and lamp", 2.0, 1.2, [[1.8, 0.35, 0.8, "#4d5868", 0, 0.175, 0], [1.8, 0.5, 0.15, "#3a4452", 0, 0.6, -0.33], [0.3, 1.3, 0.3, "#efe0b0", 0.8, 0.65, -0.3, 0.7]])],
+    [I("tile game table", 2.2, 2.2, table("#c8ccd2", "#8a929c", [...[[-0.2, -0.2], [0, -0.2], [0.2, -0.2], [-0.1, 0], [0.1, 0], [0, 0.2]].map(([x, z]) => [0.16, 0.05, 0.11, "#f4efe2", x, 0.795, z]), [0.4, 0.02, 0.3, "#29abe2", -0.3, 0.78, 0.3, 0.3]])),
+     I("couch and game pads", 2.0, 1.4, [[1.8, 0.4, 0.8, "#3a3f44", 0, 0.2, 0], [1.8, 0.45, 0.2, "#2c3035", 0, 0.62, -0.3], [0.16, 0.05, 0.1, "#1e1e22", -0.3, 0.43, 0.1], [0.16, 0.05, 0.1, "#1e1e22", 0.3, 0.43, 0.1]])],
+    [I("go table", 2.2, 2.2, table("#a8743f", "#6a4828", [[0.66, 0.02, 0.66, "#d9b56a", 0, 0.78, 0], ...pieces(["#1b1b1b", "#f4f4f0"], 0.8, [[-0.2, -0.1], [-0.1, -0.1], [0, 0], [0.1, 0.05], [0.2, -0.2], [-0.15, 0.2], [0.05, 0.22]])])),
+     I("reading chairs", 2.0, 1.4, [[0.8, 0.45, 0.8, "#6e2a2a", -0.55, 0.225, 0], [0.8, 0.45, 0.8, "#6e2a2a", 0.55, 0.225, 0], [0.8, 0.5, 0.15, "#5a2222", -0.55, 0.7, -0.32], [0.8, 0.5, 0.15, "#5a2222", 0.55, 0.7, -0.32], [0.4, 0.5, 0.4, "#3e2a18", 0, 0.25, 0.1], [0.24, 0.04, 0.3, "#f4efe2", 0, 0.52, 0.1]])],
+    [I("chess clock table", 2.2, 2.2, table("#2c2a28", "#1d1b19", [...checker("#1b1b1b", "#f7931a", 8, 0.64, 0.776), [0.24, 0.12, 0.08, "#3a3d42", 0.45, 0.83, 0], [0.06, 0.03, 0.02, "#ffb04a", 0.42, 0.85, 0.045, 1.4]])),
+     I("blanket and laptop corner", 1.8, 1.4, [[1.6, 0.4, 0.8, "#5a4632", 0, 0.2, 0], [1.6, 0.1, 0.8, "#c8463c", 0, 0.45, 0], [0.36, 0.02, 0.26, "#3a3d42", 0.2, 0.51, 0.05], [0.36, 0.22, 0.02, "#3a3d42", 0.2, 0.62, -0.08], [0.32, 0.18, 0.01, "#9cff9c", 0.2, 0.62, -0.07, 1.2]])]
+  ];
+  // The open floor: a grid over the gallery, kept off the walk and 1 m clear of everything else, up to FLOOR_CAP.
+  const FLOOR_CAP = 8, GRID = 3.2;
+  const floorLayout = (museum, era, lane, free) => {
+    const b = museum.bays[era.n], items = FLOOR_ITEMS[era.n], out = [];
+    let k = 0;
+    for (let u = FRONT; u <= b.depth - BACK_GAP - 1 && out.length < FLOOR_CAP; u += GRID) for (let x = b.x0 + 2.4; x <= b.x1 - 2.4 && out.length < FLOOR_CAP; x += GRID) {
+      if (Math.abs(x - lane) < 6.8) continue;
+      const it = items[k % items.length], z = era.z1 - u, half = Math.max(it.w, it.d) / 2 + 0.9;
+      if (!free(x - half, x + half, z - half, z + half)) continue;
+      out.push({ x, z, ry: x < lane ? Math.PI / 2 : -Math.PI / 2, item: it });
+      k++;
+    }
+    return out;
+  };
   // Where an era's pieces stand (its own coordinates): along its gallery's side walls, INSET in from each, every STEP
   // metres from FRONT in from the gallery's opening to BACK_GAP short of its back, skipping any spot `free` refuses.
   // Each piece faces the walk. Returns [{ x, z, ry, item }].
@@ -77,5 +116,5 @@
     }
     return parts.length ? M.merge(...parts) : null;
   };
-  BL.genesisEraItems = { ERA_ITEMS, layout, build, INSET, STEP };
+  BL.genesisEraItems = { ERA_ITEMS, FLOOR_ITEMS, layout, floorLayout, build, INSET, STEP, FLOOR_CAP };
 })();
