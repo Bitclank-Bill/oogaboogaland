@@ -6,6 +6,7 @@ import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy
 //                 { t: "zone", name }            where that body is (see Zones below)
 //                 { t: "poker-voice", table }   0-9 while watching a table, null for the Ember Den floor
 //                 { t: "hub", on }               this page shows the island and is visible (host candidates)
+//                 { t: "visible", on }           HALLOWEEN: this page is visible (the ghost arena's host candidates)
 //                 { t: "mute", on }              this page muted its own microphone, for everyone's roster
 //                 { t: "hp", v, ko }             the driven body's health (normalized 0-100) and knockout flag
 //                 pose.g                         optional gorilla locomotion: [flags, speed, stride, climb, side, swim]
@@ -113,9 +114,11 @@ export const GHOST_BATCH = 16;
 // The arcade's ghost arena runs its own hunt: its pages (zone `arcade.arena`, or `arcade-hunt` while a hunt keeps its
 // voice to itself) elect a ghost host of their own, follower reports from the arena go to it, and it sends the hunt's
 // state as a binary frame led by GHOST_MAGIC ("GHST"), up to GHOST_FRAME_MAX bytes and GHOST_FRAME_HZ a second, which
-// the room hands to every other page in the arena and keeps for the next to walk in.
+// the room hands to every other page in the arena and keeps for the next to walk in. Only a visible page may host
+// (`ghostCandidate`): a hidden one runs no frames, so it would send nothing while every follower's hunt froze.
 export const GHOST_ARENA_ZONES = ["arcade.arena", "arcade-hunt"];
 export const inGhostArena = (p) => GHOST_ARENA_ZONES.includes(p.zone);
+export const ghostCandidate = (p) => p.visible && inGhostArena(p);
 export const GHOST_MAGIC = 0x54534847;
 export const GHOST_FRAME_MAX = 65536;
 export const GHOST_FRAME_HZ = 5;
@@ -170,6 +173,7 @@ export const parseClientMessage = (text) => {
     return typeof msg.name === "string" && BODY_NAME.test(msg.name) ? { t: "body", name: msg.name } : null;
   }
   if (msg.t === "hub") return typeof msg.on === "boolean" ? { t: "hub", on: msg.on } : null;
+  if (msg.t === "visible") return typeof msg.on === "boolean" ? { t: "visible", on: msg.on } : null;
   if (msg.t === "mute") return typeof msg.on === "boolean" ? { t: "mute", on: msg.on } : null;
   if (msg.t === "hp") return finite(msg.v) && typeof msg.ko === "boolean" ? { t: "hp", v: Math.max(0, Math.min(100, Math.round(msg.v))), ko: msg.ko } : null;
   if (msg.t === "zone") return typeof msg.name === "string" && ZONE_NAME.test(msg.name) ? { t: "zone", name: msg.name } : null;
@@ -309,7 +313,7 @@ export const voicePeers = (players, studio = null) => {
 // scene and visible); otherwise it goes to the page longest in the room among those that do. So a page that
 // hides and comes back returns as a follower and catches up from the host's frames, never taking hosting
 // back with its own stale state. 0 when no page qualifies. `on` says who qualifies (the arena's ghost hunt elects
-// its own host among the pages in its arena, `inGhostArena`).
+// its own host among the visible pages in its arena, `ghostCandidate`).
 const showsIsland = (p) => p.inHub;
 export const electHost = (players, incumbent = 0, on = showsIsland) => {
   let best = null;

@@ -129,3 +129,37 @@ test("the ghost arena elects its own host; its state frames reach the arena alon
   await h.room.webSocketMessage(b, big);
   assert.equal(c.bins.length, 1, "a frame over the cap is dropped");
 });
+
+test("a hidden page hands the arena's hosting on, and comes back a follower", async () => {
+  const h = harness();
+  const a = await h.join(1, "a"), b = await h.join(2, "b");
+  for (const [ws, name] of [[a, "a"], [b, "b"]]) { await h.send(ws, { t: "body", name }); await h.send(ws, { t: "zone", name: "arcade.arena" }); }
+  assert.equal(h.room.ghostHostId, 1);
+  await h.send(a, { t: "visible", on: false });
+  assert.equal(h.room.ghostHostId, 2, "the visible page takes the hunt over");
+  assert.ok(b.sent.some((m) => m.t === "ghost-host" && m.id === 2 && m.followers === 1), "and every page hears it");
+  await h.send(a, { t: "visible", on: true });
+  assert.equal(h.room.ghostHostId, 2, "shown again, the first page follows");
+  await h.send(b, { t: "visible", on: false });
+  await h.send(a, { t: "visible", on: false });
+  assert.equal(h.room.ghostHostId, 0, "with every arena page hidden, nobody hosts");
+  assert.equal(protocol.parseClientMessage('{"t":"visible","on":"yes"}'), null, "a visibility report must be a flag");
+});
+
+test("the arena's kept frame is dropped once nobody follows, so the next page in is not handed a stale hunt", async () => {
+  const h = harness();
+  const a = await h.join(1, "a"), b = await h.join(2, "b"), c = await h.join(3, "c");
+  for (const [ws, name] of [[a, "a"], [b, "b"], [c, "c"]]) await h.send(ws, { t: "body", name });
+  await h.send(a, { t: "zone", name: "arcade-hunt" });
+  await h.send(b, { t: "zone", name: "arcade-hunt" });
+  const frame = new ArrayBuffer(16);
+  new DataView(frame).setUint32(0, protocol.GHOST_MAGIC, true);
+  await h.room.webSocketMessage(a, frame);
+  assert.equal(b.bins.length, 1);
+  await h.send(b, { t: "zone", name: "arcade.hall" });
+  assert.equal(h.room.lastGhost, null, "the last follower leaving drops the kept frame");
+  await h.room.webSocketMessage(a, frame);
+  assert.equal(h.room.lastGhost, null, "nor is one kept while nobody follows");
+  await h.send(c, { t: "zone", name: "arcade.arena" });
+  assert.equal(c.bins.length, 0, "the next page in waits for the host's own frame");
+});

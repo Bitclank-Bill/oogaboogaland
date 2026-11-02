@@ -106,7 +106,7 @@
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
     self: { x: NaN, y: NaN, z: NaN, zone: "" } };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
-  let npcFrame = null, inHub = false, hubSent = null;
+  let npcFrame = null, inHub = false, hubSent = null, visibleSent = null;
   let zone = "outside", body = null, muted = false, hpSent = 100, koSent = false, hpAt = 0, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
   const gSent = new Float64Array(6);
   let gKnown = false, poseHasG = false;
@@ -160,6 +160,13 @@
     if (on === hubSent || !ws || ws.readyState !== WebSocket.OPEN) return;
     hubSent = on;
     send(on ? '{"t":"hub","on":true}' : '{"t":"hub","on":false}');
+  };
+  // HALLOWEEN: whether this tab is visible, so the room hosts the ghost arena's hunt only on a page that runs frames.
+  const sendVisible = () => {
+    const on = !document.hidden;
+    if (on === visibleSent || !ws || ws.readyState !== WebSocket.OPEN) return;
+    visibleSent = on;
+    send(on ? '{"t":"visible","on":true}' : '{"t":"visible","on":false}');
   };
 
   const readGorillaPose = (rec, values, offset = 0) => {
@@ -289,8 +296,9 @@
       if (muted) sendMute();
       // A fresh room record starts at full health; the next report sends ours if it differs.
       hpSent = 100; koSent = false; hpAt = 0;
-      hubSent = null;
+      hubSent = visibleSent = null;
       sendHub();
+      sendVisible();
       BL.voice.restart();
       if (restoredPose) poseAt = performance.now();
       else { poseAt = 0; px = NaN; gKnown = poseHasG = false; }
@@ -549,6 +557,7 @@
   // Hidden long enough, the tab leaves the room; shown again, it rejoins as a fresh connection.
   const onVisibility = () => {
     sendHub();
+    sendVisible();
     window.clearTimeout(hiddenTimer);
     hiddenTimer = 0;
     if (document.hidden) {

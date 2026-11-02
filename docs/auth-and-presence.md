@@ -59,6 +59,7 @@ A signed-in visitor holds one WebSocket to `/room` for the page life. The Worker
 | client → room | `{ t: "pose", x, y, z, yaw, g? }` | the body's feet and heading, at most 10 a second from the page, 20 allowed; optional bounded gorilla locomotion below |
 | client → room | `{ t: "zone", name }` | where that body is (see Zones below): voice is shared within its group, players are shown within the same zone |
 | client → room | `{ t: "hub", on }` | this page shows the island in a visible tab: it can host the NPCs and receives their frames |
+| client → room | `{ t: "visible", on }` | HALLOWEEN: this tab is visible, sent on joining and on every change: only a visible page in the ghost arena can host its hunt, so a hidden host hands it on |
 | client → room | `{ t: "mute", on }` | this page muted or unmuted its own microphone, for everyone's roster |
 | client → room | `{ t: "hp", v, ko }` | the driven body's health normalized to 0-100, in steps of 4, and knockout flag; only on a change, 4 a second at most |
 | client → room | `{ t: "chat", text }` | an Ooga Chat line (see Ooga Chat); the room names the speaker |
@@ -76,7 +77,7 @@ A signed-in visitor holds one WebSocket to `/room` for the page life. The Worker
 | room → client | `vstate { id, voice, muted }` | a player's microphone went live or off, or they muted or unmuted it; sent only on a change |
 | room → client | `hp { id, v, ko }` | a player's driven Ooga's health changed (a new body starts at 100) |
 | room → client | `ghost { k, g, d, from }` | HALLOWEEN: to the ghost arena's host only, a follower's ghost hunt report, `from` the room id of the page that sent it |
-| room → client | `ghost-host { id, followers }` | HALLOWEEN: who hosts the ghost arena's hunt (elected among the pages in zone `arcade.arena` or `arcade-hunt` by the NPC host's rule; 0 for nobody) and how many pages there follow it; `welcome` carries `ghostHost` and `ghostFollowers` |
+| room → client | `ghost-host { id, followers }` | HALLOWEEN: who hosts the ghost arena's hunt (elected among the visible pages in zone `arcade.arena` or `arcade-hunt` by the NPC host's rule; 0 for nobody) and how many pages there follow it, the room's kept frame dropped with a change of host or when none follow; `welcome` carries `ghostHost` and `ghostFollowers` |
 | room → client | `release { name, reason }` | a claim refused (`not-yours`) or a legacy claim freed on owner arrival (`owner-here`) |
 | room → client | `kick { reason }`, then close 4000 | `replaced` (a newer tab), `stale` (90 s silent, swept once a minute), `full` (32 players), `revoked` (account access removed) |
 
