@@ -36,7 +36,11 @@
 // Gorilla poses optionally add `g`: flags (air, biped, climb, run, lab, office, sleep), speed, climb stride,
 // climb direction, climb side and swim. Each remote reuses its six values; ordinary poses keep their format.
 // An Ooga's pose may add `j`, its jetpack for other pages to draw (`crew.jetFlags`: 1 while worn, plus the flame's
-// power times 2), sent on a change; remote records carry it as `jet`, 0 for none.
+// power times 2), sent on a change; remote records carry it as `jet`, 0 for none. It may add `w`, its weapons
+// (`crew.weaponFlags`: the one in hand, aiming, the gun's rounds), the same way; remote records carry it as `weapon`.
+// `sendShot` and `sendSwing` report the visitor's own Ooga firing a banana (from and to) and striking, which the
+// room relays to players in the same zone; `subscribeShots` hears theirs as `fn(id, a)` and `subscribeSwings` as
+// `fn(id)`, for drawing only.
 // Ooga Chat: `sendChat` sends a line (sanitized as donation messages are, CHAT_MAX characters at most) while the
 // room is live; `subscribeChat` hears the room's lines as `fn(lines, joined, receipt)`: one new line, or on every
 // (re)join the lines the room still holds, which chat.js merges; a rejection keeps the draft. The room names each line's
@@ -55,8 +59,8 @@
 // zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
 // position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
 // snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
-// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost and subscribeGhost (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeShots, subscribeSwings, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost and subscribeGhost (HALLOWEEN), npcFrame, sendPose, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -99,6 +103,7 @@
   const studioSubscribers = new Set();
   const studioEmit = message => { for (const fn of studioSubscribers) fn(message); };
   const chatSubscribers = new Set();
+  const shotSubscribers = new Set(), swingSubscribers = new Set();
   const remotes = new Map();
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
@@ -111,7 +116,7 @@
   let npcFrame = null, inHub = false, hubSent = null;
   let zone = "outside", body = null, muted = false, hpSent = 100, koSent = false, hpAt = 0, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
   const gSent = new Float64Array(6);
-  let gKnown = false, poseHasG = false, jetSent = 0;
+  let gKnown = false, poseHasG = false, jetSent = 0, weaponSent = 0;
   let clockOffset = 0, clockKnown = false;
   let pokerVoice = null;
   // A server timestamp minus the arrival time is the true offset less the trip; the largest such
@@ -181,7 +186,7 @@
 
   const upsert = (p) => {
     if (!p || !Number.isSafeInteger(p.id) || p.id === state.selfId) return;
-    const rec = remotes.get(p.id) || { id: p.id, login: "", display: "", body: null, bodyKind: null, bodyName: null, zone: "outside", voice: false, muted: false, hp: 100, ko: false, x: 0, y: 0, z: 0, yaw: 0, poseZone: null, g: null, gData: null, jet: 0 };
+    const rec = remotes.get(p.id) || { id: p.id, login: "", display: "", body: null, bodyKind: null, bodyName: null, zone: "outside", voice: false, muted: false, hp: 100, ko: false, x: 0, y: 0, z: 0, yaw: 0, poseZone: null, g: null, gData: null, jet: 0, weapon: 0 };
     rec.login = String(p.login);
     rec.display = String(p.display || p.login);
     rec.body = typeof p.body === "string" ? p.body : null;
@@ -190,6 +195,7 @@
     rec.g = null;
     if (Array.isArray(p.g) && p.g.length === 6) readGorillaPose(rec, p.g);
     rec.jet = Number.isInteger(p.j) && p.j > 0 && p.j <= 7 ? p.j : 0;
+    rec.weapon = Number.isInteger(p.w) && p.w > 0 && p.w <= 255 ? p.w : 0;
     rec.zone = typeof p.zone === "string" ? p.zone : "outside";
     rec.voice = p.voice === true;
     rec.hp = Number.isFinite(p.hp) ? p.hp : 100;
@@ -252,8 +258,8 @@
           changed = true;
         }
         rec.x = ps[i + 1]; rec.y = ps[i + 2]; rec.z = ps[i + 3]; rec.yaw = ps[i + 4];
-        // `js` lists every jetpack; anyone in the snapshot without one has none.
-        rec.jet = 0;
+        // `js` lists every jetpack and `ws` every weapon; anyone in the snapshot left out has none.
+        rec.jet = rec.weapon = 0;
       }
       const gs = msg.gs;
       if (Array.isArray(gs)) for (let i = 0; i + 6 < gs.length; i += 7) {
@@ -264,6 +270,11 @@
       if (Array.isArray(js)) for (let i = 0; i + 1 < js.length; i += 2) {
         const rec = remotes.get(js[i]), j = js[i + 1];
         if (rec && Number.isInteger(j) && j > 0 && j <= 7) rec.jet = j;
+      }
+      const ws = msg.ws;
+      if (Array.isArray(ws)) for (let i = 0; i + 1 < ws.length; i += 2) {
+        const rec = remotes.get(ws[i]), w = ws[i + 1];
+        if (rec && Number.isInteger(w) && w > 0 && w <= 255) rec.weapon = w;
       }
       if (changed) moved();
     } else if (msg.t === "welcome") {
@@ -289,7 +300,7 @@
       const restoredPose = body && Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz) && Number.isFinite(pyaw);
       if (restoredPose) {
         const extra = state.bodyKind === "gorilla" && poseHasG ? `,"g":[${gSent[0]},${gSent[1].toFixed(3)},${gSent[2].toFixed(3)},${gSent[3].toFixed(3)},${gSent[4].toFixed(3)},${gSent[5].toFixed(3)}]`
-          : jetSent ? `,"j":${jetSent}` : "";
+          : (jetSent ? `,"j":${jetSent}` : "") + (weaponSent ? `,"w":${weaponSent}` : "");
         send(`{"t":"pose","x":${px.toFixed(3)},"y":${py.toFixed(3)},"z":${pz.toFixed(3)},"yaw":${pyaw.toFixed(3)}${extra}}`);
       }
       sendZone();
@@ -315,7 +326,7 @@
         rec.bodyKind = bodyKind(rec.body);
         rec.bodyName = bodyName(rec.body);
         rec.g = null;
-        rec.jet = 0;
+        rec.jet = rec.weapon = 0;
         rec.hp = 100;
         rec.ko = false;
       }
@@ -339,6 +350,12 @@
       state.hostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
       emit();
+    } else if (msg.t === "shot") {
+      const a = msg.a;
+      if (Number.isSafeInteger(msg.id) && Array.isArray(a) && a.length === 6 && a.every(Number.isFinite))
+        for (const fn of shotSubscribers) fn(msg.id, a);
+    } else if (msg.t === "swing") {
+      if (Number.isSafeInteger(msg.id)) for (const fn of swingSubscribers) fn(msg.id);
     } else if (msg.t === "chat") {
       const line = chatLine(msg);
       if (line) chatHeard([line], false);
@@ -592,7 +609,7 @@
     state.bodyName = bodyName(name);
     poseAt = 0; px = NaN;
     gKnown = poseHasG = false;
-    jetSent = 0;
+    jetSent = weaponSent = 0;
     sendBody();
     // The room starts another actor at full health.
     hpSent = 100; koSent = false; hpAt = 0;
@@ -629,8 +646,8 @@
     return true;
   };
 
-  // Throttled to POSE_MS and skipped while nothing moved; a changed gorilla pose or jetpack also earns a report.
-  const sendPose = (x, y, z, yaw, g = null, jet = 0) => {
+  // Throttled to POSE_MS and skipped while nothing moved; a changed gorilla pose, jetpack or weapon also earns a report.
+  const sendPose = (x, y, z, yaw, g = null, jet = 0, weapon = 0) => {
     const now = performance.now();
     if (state.bodyKind === "gorilla" && g && g.length === 6) {
       let valid = true;
@@ -647,7 +664,8 @@
     if (state.bodyKind !== "gorilla") g = null;
     if (g) for (let i = 0; i < 6; i++) if (!Number.isFinite(g[i])) { g = null; break; }
     if (state.bodyKind === "gorilla" || !Number.isInteger(jet) || jet < 0 || jet > 7) jet = 0;
-    let changed = !!g && !gKnown || jet !== jetSent;
+    if (state.bodyKind === "gorilla" || !Number.isInteger(weapon) || weapon < 0 || weapon > 255) weapon = 0;
+    let changed = !!g && !gKnown || jet !== jetSent || weapon !== weaponSent;
     if (g && !changed) for (let i = 0; i < 6; i++) if (g[i] !== gSent[i]) { changed = true; break; }
     // Even when the complete pose is unchanged, remember that its cached locomotion is valid for reconnect.
     if (g) poseHasG = true;
@@ -661,10 +679,24 @@
       gKnown = true;
       extra = `,"g":[${g[0]},${g[1].toFixed(3)},${g[2].toFixed(3)},${g[3].toFixed(3)},${g[4].toFixed(3)},${g[5].toFixed(3)}]`;
     }
-    jetSent = jet;
+    jetSent = jet; weaponSent = weapon;
     if (jet) extra += `,"j":${jet}`;
+    if (weapon) extra += `,"w":${weapon}`;
     if (state.room === "live") send(`{"t":"pose","x":${x.toFixed(3)},"y":${y.toFixed(3)},"z":${z.toFixed(3)},"yaw":${yaw.toFixed(3)}${extra}}`);
     moved();
+  };
+  // The driven Ooga's own banana leaving its muzzle and its strike: only an Ooga's, only to a live room, which
+  // relays them to the zone for drawing; whether each was sent.
+  const sendShot = (fx, fy, fz, tx, ty, tz) => {
+    if (state.room !== "live" || !body || state.bodyKind === "gorilla"
+      || !Number.isFinite(fx + fy + fz + tx + ty + tz)) return false;
+    send(`{"t":"shot","a":[${fx.toFixed(2)},${fy.toFixed(2)},${fz.toFixed(2)},${tx.toFixed(2)},${ty.toFixed(2)},${tz.toFixed(2)}]}`);
+    return true;
+  };
+  const sendSwing = () => {
+    if (state.room !== "live" || !body || state.bodyKind === "gorilla") return false;
+    send(`{"t":"swing"}`);
+    return true;
   };
 
   // The doorway: each sends only to a live room that knows it, and says whether it did.
@@ -757,6 +789,14 @@
     chatSubscribers.add(fn);
     return () => chatSubscribers.delete(fn);
   };
+  const subscribeShots = (fn) => {
+    shotSubscribers.add(fn);
+    return () => shotSubscribers.delete(fn);
+  };
+  const subscribeSwings = (fn) => {
+    swingSubscribers.add(fn);
+    return () => swingSubscribers.delete(fn);
+  };
   const subscribeDoor = (fn) => {
     doorSubscribers.add(fn);
     return () => doorSubscribers.delete(fn);
@@ -779,10 +819,11 @@
     moveSubscribers.clear();
     studioSubscribers.clear();
     chatSubscribers.clear();
+    shotSubscribers.clear(); swingSubscribers.clear();
     doorSubscribers.clear();
     ghostHeard = null; // HALLOWEEN
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeShots, subscribeSwings, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendPose, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
