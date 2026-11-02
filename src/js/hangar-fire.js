@@ -85,8 +85,10 @@
     addChild(group, body, createNode({ geometry: P.details, depthBias: FRONT }), button, guard, createNode({ position: at(F.hinge), geometry: P.hinge }),
       ...globes, ...bars, strobe, ...lamps, ...leds, ...strips, ...Object.values(screens), ...timers, ...scopes,
       ...F.pictures.map(([key, x, y, z]) => createNode({ position: { x, y, z }, geometry: HM.firePicture(key), sightHidden: true, depthBias: FRONT })));
-    const cables = createNode({ geometry: HM.fireCables() });
+    // Its cables: the runs along the floor to their ports, and the droops up to their plugs, which ride with the Jet.
+    const cables = createNode({ geometry: HM.fireCables().floor }), droops = createNode({ geometry: HM.fireCables().droop });
     addChild(root, group, cables);
+    addChild(jet, droops);
     const booth = { x: L.x, y: 2.5, z: L.z };
 
     // ---- the plumes, one at each nozzle's exit, blowing along +z ----
