@@ -6110,6 +6110,25 @@ const gameRulesChecks = async () => {
     lost.advance(2.5);
     const waits = lost.bot.holding;
     lost.advance(7.5);
+    {
+      // Gorilla Jungle's trees: an Ooga coming down onto a canopy lands on its leaves' top, while one walking under it
+      // still stands on the ground; both measured through the sim's own ticks.
+      const jungle = S.create({ team: "blue", seed: 7, prep: 0, map: "jungle" });
+      for (const a of jungle.actors) if (a.id) a.bot = false;
+      Object.assign(jungle.weather, { target: 0, strength: 0, left: 1e9 });
+      const tree = S.ARENA.decor.find((d) => d.kind === "canopy" && !d.middle), j = jungle.actors[0];
+      for (const a of jungle.actors) if (a.id) { a.x = 20; a.z = a.team === "blue" ? 34 : -34; }
+      Object.assign(j, { x: tree.x + 0.9, z: tree.z + 0.4, y: tree.y + S.LEAF_TOP + 3, vx: 0, vz: 0, vy: 0, grounded: false });
+      for (let i = 0; i < 360; i++) S.tick(jungle, S.CONFIG.STEP, still);
+      const landed = { y: +j.y.toFixed(2), grounded: j.grounded, top: +(tree.y + S.LEAF_TOP).toFixed(2) };
+      Object.assign(j, { x: tree.x + 1.6, z: tree.z + 0.4, y: 0, vx: 0, vz: 0, vy: 0 });
+      for (let i = 0; i < 60; i++) S.tick(jungle, S.CONFIG.STEP, still);
+      const under = +j.y.toFixed(2);
+      // One way: the leaves' top is no ceiling and no wall for one rising through it or flying beside it.
+      const open = !S.solidAt(tree.x + 0.9, tree.y + S.LEAF_TOP - 0.1, tree.z + 0.4) && !S.solidAt(tree.x + 0.9, tree.y + S.LEAF_TOP + 0.5, tree.z + 0.4);
+      record("block frenzy jungle: an Ooga coming down on a tree lands on its leaves' top, one under the leaves stands on the ground, and the top stops nobody rising through it",
+        landed.grounded && Math.abs(landed.y - landed.top) < 0.05 && under < 0.05 && open, JSON.stringify({ landed, under, open, tree: { x: tree.x, z: tree.z, y: tree.y, r: tree.r } }));
+    }
     record("block frenzy expert: after losing a crate target, wait three seconds, set it down and rescue the dropped home block",
       lost.lifted && waits && !lost.bot.holding && lost.r.flags.blue.state === "home",
       JSON.stringify({ lifted: lost.lifted, waits, holding: lost.bot.holding, flag: lost.r.flags.blue.state }));
@@ -8350,33 +8369,73 @@ const dropSteer = (canopy) => `(() => { const B = window.__ooga, D = B.drop; ${E
   out.none = +out.none.toFixed(1);
   return out; })()`;
 const blockState = `({ phase: window.__ooga.block.phase, card: !document.querySelector('[data-intro="block"]').hidden, board: !document.getElementById("block-board").hidden })`;
-const blockStart = { name: "block start", why: "rule: Space only closes the title card, Enter starts the round, and Escape frees the mouse, then goes back to the sides with nothing saved", run: async (b) => {
+const blockStart = { name: "block start", why: "rule: Space only closes the title card, Enter starts the round, Escape steps back as on the island (the mouse, a pause the round waits in, then the sides with nothing saved), and nothing acts while paused", run: async (b) => {
   const fresh = await b.evaluate(blockState);
   await b.key(" ");
   const closed = await b.evaluate(blockState);
   await b.key("Enter");
   const play = await b.evaluate(blockState);
-  // The round locks the mouse, so the first Escape lets it go and the second goes back to the sides.
+  // The round locks the mouse, so the first Escape lets it go (a headless page may never lock it) and the next pauses.
   await b.key("Escape");
-  const freed = await b.evaluate(`({ ...${blockState}, locked: !!document.pointerLockElement })`);
-  if (freed.phase === "play") await b.key("Escape");
-  const back = await b.evaluate(`({ ...${blockState}, games: window.__ooga.game.state.block.games })`);
-  record("block start: Space closes the title card on the sides, Enter plays, Escape frees the mouse then returns to the sides unsaved", fresh.card && fresh.phase === "board" && !closed.card && closed.phase === "board" && play.phase === "play" && !freed.locked && back.phase === "board" && back.board && back.games === 0, JSON.stringify({ fresh, closed, play, freed, back }));
+  const freed = await b.evaluate(`({ ...${blockState}, locked: !!document.pointerLockElement, paused: window.__ooga.block.paused })`);
+  if (!freed.paused) await b.key("Escape");
+  // Held: the fortifying clock stands still however long the frames run.
+  const held = await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, before = s.prep; B.advance(1, 1 / 60); return { ...${blockState}, paused: B.block.paused, still: s.prep === before }; })()`);
+  // The real buttons while held: the touch Throw!, the tool bar's Crate, Throw and Ride, and B. Nothing fires, places,
+  // passes or rides; after P the same buttons act. `stage` puts the visitor's Ooga where each can act: a carried block
+  // in hand, then up on its own tower by the zipline.
+  const actions = `(() => {
+    const B = window.__ooga, S = window.BL.blockSim, s = B.block.sim, a = s.actors[0], tools = (k) => document.querySelector('#block-tools [data-tool="' + k + '"]');
+    const press = (k) => { const t = tools(k); t.disabled = false; t.click(); };
+    const shots = () => s.shots.filter((x) => x.live).length;
+    s.prep = 0; a.cooldown = 0; a.crates = 3; a.splat = a.trapped = 0;
+    for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 34 : -34; }
+    B.block.chooseTool("paint");
+    Object.assign(a, { x: -14, y: 0, z: s.team === "blue" ? 6 : -6, vx: 0, vy: 0, vz: 0, grounded: true, holding: false, riding: false });
+    const fired = shots(); document.getElementById("block-paint").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+    window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    const crates = a.crates; press("crate");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", code: "KeyB", bubbles: true })); window.dispatchEvent(new KeyboardEvent("keyup", { key: "b", code: "KeyB", bubbles: true }));
+    const f = s.flags[s.rival]; f.state = "carried"; f.carrier = 0; a.carrying = s.rival; press("pass");
+    const passed = f.state !== "carried";
+    if (!passed) { f.state = "home"; f.carrier = null; a.carrying = null; }
+    const z = S.ARENA.zips[a.team]; Object.assign(a, { x: z.ax, z: z.az, y: S.CONFIG.TOWER_TOP, vy: 0, grounded: true }); press("zip");
+    const rode = !!a.riding;
+    return { paused: B.block.paused, fired: shots() > fired, placed: a.crates < crates, passed, rode };
+  })()`;
+  const heldActions = await b.evaluate(actions);
+  await b.key("p");
+  // The round's own clock (`time`), since the held actions above ended the fortifying.
+  const resumed = await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, before = s.time; B.advance(0.5, 1 / 60); return { paused: B.block.paused, ran: s.time > before }; })()`);
+  const liveActions = await b.evaluate(actions);
+  await b.evaluate(`(() => { const a = window.__ooga.block.sim.actors[0]; a.riding = false; a.zipT = 0; a.y = 0; a.x = -14; a.z = 6; })()`);
+  // Back to the sides one step at a time: the tower's scope may have left the view in first person.
+  for (let i = 0; i < 4 && (await b.evaluate(`window.__ooga.block.phase`)) === "play"; i++) await b.key("Escape");
+  const back = await b.evaluate(`({ ...${blockState}, paused: window.__ooga.block.paused, games: window.__ooga.game.state.block.games })`);
+  record("block start: Space closes the title card on the sides, Enter plays, Escape frees the mouse, then pauses (P plays on), then returns to the sides unsaved",
+    fresh.card && fresh.phase === "board" && !closed.card && closed.phase === "board" && play.phase === "play" && !freed.locked
+      && held.phase === "play" && held.paused && held.still && !resumed.paused && resumed.ran && back.phase === "board" && back.board && !back.paused && back.games === 0,
+    JSON.stringify({ fresh, closed, play, freed, held, resumed, back }));
+  record("block pause: while paused the touch Throw!, the tool bar's Crate, Throw and Ride, and B do nothing; after P each acts",
+    heldActions.paused && !heldActions.fired && !heldActions.placed && !heldActions.passed && !heldActions.rode
+      && !liveActions.paused && liveActions.fired && liveActions.placed && liveActions.passed && liveActions.rode,
+    JSON.stringify({ heldActions, liveActions }));
 } };
-// W A S D measured on screen: each key moves the Ooga its way relative to where the camera looks.
-// Steering measured on screen: W and S run the Ooga forward and back along where the camera looks, and A and D turn
-// it, the chase camera following round, A to the left on screen and D to the right.
-const blockWalk = { name: "block walk", why: "rule: W and S run the visitor's Ooga their way on screen, and A and D turn it and the camera their way", run: async (b) => {
+// Steering measured on screen, as on the island: W A S D move the Ooga forward, back, left and right of where the
+// camera looks, and Q and E turn it, the chase camera following round, Q to the left on screen and E to the right.
+const blockWalk = { name: "block walk", why: "rule: W A S D move the visitor's Ooga their way on screen, and Q and E turn it and the camera their way", run: async (b) => {
   await b.key("Enter");
   const rows = {};
-  for (const k of "wsad") {
+  for (const k of "wsadqe") {
     await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, a = s.actors[0]; s.prep = 0; Object.assign(s.weather, { target: 0, strength: 0, left: 1e9 }); a.x = -14; a.z = 2; a.vx = a.vz = 0; for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 30 : -30; } B.advance(0.6, 1 / 60); const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); window.__walk = { fx: vx / l, fz: vz / l, x0: a.x, z0: a.z }; })()`);
     await holdKey(b, k, 0.5);
-    rows[k] = await b.evaluate(`(() => { const q = window.__walk, a = window.__ooga.block.sim.actors[0], c = window.__ooga.camera, dx = a.x - q.x0, dz = a.z - q.z0, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); return { fwd: +(dx * q.fx + dz * q.fz).toFixed(2), turn: +((vx / l) * -q.fz + (vz / l) * q.fx).toFixed(2) }; })()`);
+    rows[k] = await b.evaluate(`(() => { const q = window.__walk, a = window.__ooga.block.sim.actors[0], c = window.__ooga.camera, dx = a.x - q.x0, dz = a.z - q.z0, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); return { fwd: +(dx * q.fx + dz * q.fz).toFixed(2), side: +(dx * -q.fz + dz * q.fx).toFixed(2), turn: +((vx / l) * -q.fz + (vz / l) * q.fx).toFixed(2) }; })()`);
   }
-  // The camera's new forward measured against the old right: negative is a turn to the left on screen.
-  const ok = rows.w.fwd > 1 && rows.s.fwd < -1 && rows.a.turn < -0.3 && rows.d.turn > 0.3;
-  record("block walk: W and S run the Ooga forward and back on screen, A turns it and the camera left and D right", ok, JSON.stringify(rows));
+  // Movement along the old forward and right, and the camera's new forward against the old right: negative is to
+  // the left on screen. A and D step without turning the view; Q and E turn it.
+  const ok = rows.w.fwd > 1 && rows.s.fwd < -1 && rows.a.side < -1 && rows.d.side > 1 && Math.abs(rows.a.turn) < 0.1 && Math.abs(rows.d.turn) < 0.1
+    && rows.q.turn < -0.3 && rows.e.turn > 0.3;
+  record("block walk: W and S run the Ooga forward and back on screen, A and D step it left and right, Q turns it and the camera left and E right", ok, JSON.stringify(rows));
 } };
 const blockQuiz = { name: "block quiz", why: "rule: a quiz trap holds the visitor until a right answer, a wrong one locks the answers, and a right one frees them", run: async (b) => {
   const r = await b.evaluate(`(() => { const B = window.__ooga, D = B.block, s = D.sim, a = s.actors[0], t = s.traps[2];

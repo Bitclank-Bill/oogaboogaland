@@ -74,7 +74,7 @@
     net: { speed: 15, lift: 3, gravity: 9, life: 1.4, r: 0.75, blast: 0, cool: 0.8, max: 3 },
     crate: { speed: 12, lift: 2.5, gravity: 14, life: 2.5, r: 0.9, blast: 0, cool: 0.6, max: 0 },
     // The sniper rifle: it stays in the sniper towers, so it fires only from a tower's platform; fast, flat and long.
-    sniper: { speed: 60, lift: 0, gravity: 0.6, life: 0.85, r: 0.35, blast: 0, cool: 1.1, max: 0 },
+    sniper: { speed: 60, lift: 0, gravity: 0.6, life: 0.85, r: 0.35, blast: 0, cool: 0.35, max: 0 },
     // The Golden Dual AKs: one in each hand, full auto, both firing every round (two balls `GOLD_SIDE` either side of
     // the Ooga), never empty. There are `GOLD_GUNS` pairs a round: mining a block wins a pair while any are left, and
     // a wallet bomb stuck on whoever holds them takes them when it goes off.
@@ -96,6 +96,12 @@
   const W = 22, L = 37;
   // A box from its centre and size, for the posts and the crates.
   const at = (x, z, w, d, top, bottom = 0) => [x - w / 2, x + w / 2, z - d / 2, z + d / 2, top, bottom];
+  // The standable top of a canopy of radius r on a trunk `y` high: a ledge (one way, like a cloud platform: it holds
+  // whoever comes down on it and lets anyone rise through it from below), its top level with the leaves' crown
+  // (`y` + LEAF_TOP), LEAF_SPAN times the radius across. A ledge is no block: it stops nothing sideways or overhead,
+  // nothing draws it (the leaves are the decor's), and only `groundAt` reads it.
+  const LEAF_TOP = 1.45, LEAF_FLOOR = 0.25, LEAF_SPAN = 1.3;
+  const leafTop = (x, z, y, r) => at(x, z, r * LEAF_SPAN, r * LEAF_SPAN, y + LEAF_TOP, y + LEAF_TOP - LEAF_FLOOR);
   // Red's half is blue's turned half round: every box, and every spot, mirrored through the centre.
   const turned = (b) => [-b[1], -b[0], -b[3], -b[2], b[4], b[5]];
   const flip = (list) => list.map(([x, z]) => [-x, -z]);
@@ -236,8 +242,10 @@
     const half = [], nets = [], decor = [], steps = [];
     // The forts, as Fort Chaos has them, with a crate in the alley behind.
     half.push([-8, 8, 32, 33, 2.4, 0], [-8, -7, 23, 32, 2.4, 0], [7, 8, 23, 32, 2.4, 0], [-8, -2.6, 23, 24, 2.4, 0], [2.6, 8, 23, 24, 2.4, 0], at(0, 34.6, 2, 1.2, 1.1));
-    // A tree: a trunk to stand under, solid to its top, and leaves above it (decor, not a block, so nothing hides in them).
-    const tree = (x, z, top = 6, w = 0.9) => { half.push(at(x, z, w, w, top)); decor.push({ kind: "canopy", x, z, y: top, r: 1.6 + w }); };
+    // A tree: a trunk to stand under, solid to its top, and leaves above it (decor, so nothing hides in them), with a
+    // ledge at the leaves' top (`leafTop`) to land and stand on.
+    const ledges = [];
+    const tree = (x, z, top = 6, w = 0.9) => { half.push(at(x, z, w, w, top)); ledges.push(leafTop(x, z, top, 1.6 + w)); decor.push({ kind: "canopy", x, z, y: top, r: 1.6 + w }); };
     // The tree forts: trees at four corners, a floor at 3 m, rails round it with a gap over the net and one where the
     // rope bridge comes in.
     for (const s of [-1, 1]) {
@@ -254,7 +262,8 @@
     // The rope bridge between the pair, with a rope on each side.
     half.push([-8.5, 8.5, 12, 13.2, 3, 2.85], [-8.5, 8.5, 11.9, 12, 3.7, 3], [-8.5, 8.5, 13.2, 13.3, 3.7, 3]);
     // More trees, bushes for low cover before the gate, and rocks at the side.
-    tree(-4.5, 8.5); tree(5, 17); tree(-18, 20, 6.5); tree(14, 4.5, 5.5); tree(-13, 21, 5.5);
+    // The two before the sniper tower stand low (3.5 m), their leaves under the scope's line over the field.
+    tree(-4.5, 8.5); tree(5, 17); tree(-18, 20, 3.5); tree(14, 4.5, 5.5); tree(-13, 21, 3.5);
     half.push(at(-5, 19.5, 3, 1.2, 1.1), at(5, 19.5, 3, 1.2, 1.1), [-20, -18, 5, 8, 1.6, 0]);
     // The giant tree in the middle and its ring platform, put in once: its rails leave a gap north and south for the nets.
     const middle = [at(0, 0, 1.6, 1.6, 7.5), [-3.5, 3.5, -3.5, 3.5, 3.6, 3.3]];
@@ -271,6 +280,7 @@
     for (const d of decor) { allDecor.push(d); if (!d.middle) allDecor.push({ ...d, x: -d.x, z: -d.z }); }
     return {
       id: "jungle", name: "Gorilla Jungle", BLOCKS, steps: stepSet, decor: allDecor,
+      ledges: [...ledges, ...ledges.map(turned), leafTop(0, 0, 7.5, 4.2)],
       nets: [...nets, ...nets.map(turnNet), ...midNets],
       guard: { blue: { x: 0, z: 17.2 }, red: { x: 0, z: -17.2 } },
       traps: [[-12, 4], [12, -4], [12, 19], [-12, -19], [-5, 13], [5, -13], [-15, 6], [15, -6]],
@@ -411,7 +421,7 @@
     for (const t of TEAMS) { const z = A.zips[t]; z.len = Math.hypot(z.bx - z.ax, z.by - z.ay, z.bz - z.az); }
   }
   // The map being stepped: every world query below reads it (`use` sets it from the sim, as it does the crates).
-  let ARENA = ARENAS.fort, BLOCKS = ARENA.BLOCKS;
+  let ARENA = ARENAS.fort, BLOCKS = ARENA.BLOCKS, LEDGES = ARENA.ledges || [];
   const MAPS = Object.keys(ARENAS);
   // The power-ups: lightning boots (a burst of speed), the halving (your side's splats last half as long), cold
   // storage (your block can't be lifted off its stand) and laser eyes (one long beam from the eyes, `BEAM_S`).
@@ -446,7 +456,7 @@
   // Point the world queries at sim's map and crates.
   const use = (sim) => {
     CRATES = sim.crates;
-    if (ARENA.id !== sim.map) { ARENA = ARENAS[sim.map]; BLOCKS = ARENA.BLOCKS; }
+    if (ARENA.id !== sim.map) { ARENA = ARENAS[sim.map]; BLOCKS = ARENA.BLOCKS; LEDGES = ARENA.ledges || []; }
   };
   const crateBox = (c) => { CB[0] = c.x - CONFIG.CRATE_HALF; CB[1] = c.x + CONFIG.CRATE_HALF; CB[2] = c.z - CONFIG.CRATE_HALF; CB[3] = c.z + CONFIG.CRATE_HALF; CB[4] = c.y + CONFIG.CRATE_H; CB[5] = c.y; return CB; };
   const boxCount = () => BLOCKS.length + CRATES.length;
@@ -489,6 +499,12 @@
     let g = 0;
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
+      if (b[4] > y + 0.05 || b[4] <= g || x < b[0] - r || x > b[1] + r || z < b[2] - r || z > b[3] + r) continue;
+      g = b[4];
+    }
+    // Ledges hold only what is already at or over their top.
+    for (let i = 0; i < LEDGES.length; i++) {
+      const b = LEDGES[i];
       if (b[4] > y + 0.05 || b[4] <= g || x < b[0] - r || x > b[1] + r || z < b[2] - r || z > b[3] + r) continue;
       g = b[4];
     }
@@ -2279,7 +2295,7 @@
       tick(sim, CONFIG.STEP, input);
     }
   };
-  BL.blockSim = { hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt };
+  BL.blockSim = { LEAF_TOP, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

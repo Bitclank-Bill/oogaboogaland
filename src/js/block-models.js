@@ -200,7 +200,7 @@
         continue;
       }
       if (haunted && hauntedBlock(parts, b, w, d, h, x, y, z, bottom)) continue;
-      if (jungle && w <= 1.7 && d <= 1.7 && h >= 5) {
+      if (jungle && w <= 1.7 && d <= 1.7 && h >= 3) {
         // A tree trunk: bark with paler rings and a vine.
         parts.push(bevelBox({ w, h, d, color: "#5a3e26", offset: { x, y, z } }));
         for (let k = 1; k < h; k += 1.3) parts.push(box({ w: w + 0.04, h: 0.08, d: d + 0.04, color: "#6e4e30", offset: { x, y: k, z } }));

@@ -6,12 +6,13 @@
 // Phases `board` (choose a side), `play` and `results`. The rules run in `blockSim.step` on a fixed step; this file
 // draws them: the arena and stands built once a visit, the four Oogas posed from the sim each frame, the two blocks on
 // their stands, at a carrier's back or lying where they fell, pooled crates, throws and splats, the weather (a wind
-// sign, rain and lightning in a storm), and a chase camera behind the visitor's Ooga that the mouse drag, Q E or the
-// look stick turns. W A S D run toward where the camera looks, Shift sprints, Space jumps and jumps again in the air,
-// a left click or Enter throws the chosen tool (1 paint, 2 grenade, 3 rocket, 4 net; R, a right click or the wheel
-// step through them), B drops a crate, F lifts, stacks and sets crates, G drops the
-// block, C crouches while held, V switches between the chase camera and first person (a click there locks the mouse
-// for aiming; Escape lets it go). On touch the act button jumps, `#block-paint` throws and the tool bar picks. A round
+// sign, rain and lightning in a storm), and a chase camera behind the visitor's Ooga that a captured mouse, Q E, the
+// arrows or the look stick turns. The keys follow the island's: W A S D move from where the Ooga faces, Shift
+// sprints, Space jumps (again in the air) or uses what stands beside it (a zipline, catapult or wallet machine), a
+// left click or Enter throws the chosen tool (1 to 7 pick one, G steps through them), X or a click captures the
+// mouse, a right click aims (the scope on a tower), Tab or T throws what is in hand, B drops a crate, F lifts, stacks and sets crates, K
+// drops the block, C crouches while held, V switches views, P pauses, and Escape steps back one thing at a time
+// (the mouse, the view, a pause, the board, the Arcade). On touch the act button jumps, `#block-paint` throws and the tool bar picks. A round
 // opens with the sim's fortifying time. The intro card, the board (side and Ooga), the tool bar, the quiz card and the
 // results are in `src/index.html` under `#block`.
 //
@@ -95,6 +96,10 @@
 
   let home = "hub";
   let renderer, game, world, go, root, camera, hud, hooks, input, fx, controls, clock;
+  let paused = false;
+  // A round that is running and not held: every action that changes the round asks this first, whichever key, button,
+  // touch or debug call reaches it, so nothing acts while paused. Resume, Board and Sound stay open while paused.
+  const inRound = () => phase === "play" && !paused;
   let sim = null, phase = "board", sceneTime = 0, stateTimer = 0, hintTimer = 0, lineN = 0, result = null;
   let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, walletNodes = null, vendNodes = null, zipNear = false, trampNodes = null, trampSeen = false, powerNodes = null;
   let mapRoot = null, fireNode = null, dancers = null, burnSeen = false, peelNodes = null, catapults = null, catNear = false;
@@ -110,7 +115,11 @@
     else if (ev.type === "block") live.block = ev.height;
   };
   // The sniper scope: its zoom step (`ZOOMS`, degrees of view), and the tool and view to go back to off the tower.
-  const ZOOMS = [34, 20, 11];
+  const ZOOMS = [34, 20, 11, 6];
+  // Holding the right button aims, as the island's precision aim: the view narrows to AIM_FOV degrees (turning slows
+  // with it) until the button comes up.
+  const AIM_FOV = 36;
+  let aiming = false;
   const scope = { zoom: 0, tool: "paint", first: false, island: false };
   // The quiz: the deck of question indices still to ask this visit, the one on the card and where its right answer sits.
   const quiz = { open: false, deck: [], index: -1, right: -1, locked: false, lockTimer: 0, asked: 0, solved: 0 };
@@ -118,7 +127,7 @@
   // `face` is where the visitor's Ooga faces and aims; `yaw` is the camera's, which follows it round.
   // `lift` is how far the chase camera has risen over something behind the Ooga, `dist` how far back it sits, `close`
   // when it is so near that the Ooga would fill the view.
-  const cam = { yaw: Math.PI, face: Math.PI, pitch: 0.28, warm: false, first: false, lift: 0, dist: 6.8, close: false, island: false, orbit: Math.PI, shuffle: false, zoom: 1, islandZoom: 1, zoomGesture: -1 };
+  const cam = { yaw: Math.PI, face: Math.PI, pitch: 0.28, warm: false, first: false, lift: 0, dist: 6.8, close: false, island: false, orbit: Math.PI, zoom: 1, islandZoom: 1, zoomGesture: -1 };
   // Two-finger swipe (or the wheel) zooms the camera in and out, as on the island: the chase camera from close over
   // the shoulder to far back (all the way in, a fresh swipe steps into first person, and out of it again), the Island
   // view from near to high overhead.
@@ -126,9 +135,9 @@
   // The Island view, as Ooga Booga Land plays: the camera high and back, W A S D running the way the screen faces,
   // the Ooga turning to run, Q E or the arrow keys swinging the camera round, and a click throwing at the pointer.
   const ISLAND = { dist: 11, pitch: 0.72, height: 1.2 };
-  // The visitor's view and side-step choice, kept between visits.
+  // The visitor's view, kept between visits.
   const VIEW_KEY = "blockfrenzy-view";
-  // Arrow keys held, read apart from A and D so side-step mode can turn on the arrows while A and D step.
+  // Arrow keys held, read apart from A and D so the arrows turn while A and D step sideways.
   const arrows = { left: 0, right: 0 };
   const pointer = { x: 0, y: 0, seen: false };
   const EYE = { x: 0, y: 0, z: 0 };
@@ -329,7 +338,24 @@
   };
   const onAnswer = (e) => { const k = Number(e.currentTarget.dataset.answer); e.currentTarget.blur(); answer(k); };
 
+  // P, or Escape once the mouse is free and the view is back on the chase camera, holds the round: nothing moves until
+  // P or a click on the view. Escape while held gives the round up for the board, as Escape in play always did.
+  const setPaused = (on) => {
+    if (phase !== "play" || paused === on) return;
+    paused = on;
+    // Nothing held carries across a pause either way: the trigger, aim, a jump or crouch, and every key, stick and pad
+    // input the shared controls hold.
+    trigger = aiming = false;
+    move.jump = move.crouch = 0;
+    controls.reset();
+    if (on) {
+      closeWalletMenu();
+      if (locked()) document.exitPointerLock();
+      center(COARSE ? "PAUSED · Sides for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
+    } else el.center.hidden = true;
+  };
   const showBoard = () => {
+    paused = aiming = false;
     closeQuiz();
     closeWalletMenu();
     phase = "board";
@@ -347,6 +373,7 @@
   };
   const start = () => {
     audio.unlock();
+    paused = false;
     if (!actors || !actors[0].cave) return;
     sim.team = selection.team;
     sim.rival = SIM.other(selection.team);
@@ -613,7 +640,7 @@
         if (e.actor >= 0) say(e.actor, LINES.splat, 1.2);
       } else if (e.type === "pickup") {
         fx.burst(e.x, 1.2, e.z, 14, ORANGE_BITS, 2);
-        if (me) { center("GOT THE BLOCK!", 1100); notice(SIM.ARENA.goals ? "Run it to the glowing ring at the foot of your house's front steps (or down to your block's spot in your cellar)" : COARSE ? "Run it home · Drop hands it off" : "Run it home to your stand · G drops it", 4000); }
+        if (me) { center("GOT THE BLOCK!", 1100); notice(SIM.ARENA.goals ? "Run it to the glowing ring at the foot of your house's front steps (or down to your block's spot in your cellar)" : COARSE ? "Run it home · Drop hands it off" : "Run it home to your stand · K drops it", 4000); }
         // The block's side is the event's team; whose side picked it up is the carrier's.
         else if (sim.actors[e.actor].team === sim.team) notice("Teammate has the block! Cover them!", 2500);
         else { notice("They took your block! Paint the carrier!", 2500); say(1, LINES.lost); }
@@ -658,14 +685,14 @@
           scope.tool = tool === "sniper" ? "paint" : tool; scope.first = cam.first; scope.zoom = 0;
           if (sim.actors[0].carrying) {
             // Up their tower with a block: the way home is the zipline, so the rifle waits on 5.
-            notice(COARSE ? "Zip rides their line straight into our fort!" : "E rides their zipline straight home! (5 for the sniper rifle)", 3600);
+            notice(COARSE ? "Zip rides their line straight into our fort!" : "Space by the cable rides their zipline straight home! (5 for the sniper rifle)", 3600);
             updateTools();
           } else {
             chooseTool("sniper");
             scope.island = cam.island;
             if (!cam.first) setMode("first", true);
             center("SNIPER RIFLE!", 1000);
-            notice(COARSE ? "Drag to aim · Paint! fires · tap View to look round" : "Click fires · wheel, two-finger swipe or + − zooms · R puts it down · E rides the zipline", 4200);
+            notice(COARSE ? "Drag to aim · Paint! fires · tap View to look round" : "Click fires · right click, wheel, two-finger swipe or + − zooms · G puts it down · Space by the cable rides the zipline", 4200);
           }
         }
       } else if (e.type === "unrifle") {
@@ -828,9 +855,14 @@
   };
 
   // Space and the act button start a round from the board or the results; in play they fall through to the jump.
+  // Space (or the touch act button) uses what stands beside the Ooga, as on the island: a wallet machine, a catapult or
+  // a tower's zipline; anywhere else it jumps. On the board and the results it starts a round.
   const act = () => {
     if (phase === "board" || phase === "results") { start(); return true; }
-    return false;
+    if (phase !== "play" || paused || quiz.open || wmenu.open) return false;
+    const a = sim.actors[0];
+    if (!SIM.nearVend(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearZip(sim, a)) return false;
+    return zipNow();
   };
   // Paint along the camera's look, lobbed a little higher when the camera looks up.
   // In first person the ball goes where the eye looks, less the lob the throw adds.
@@ -951,7 +983,7 @@
     wmenu.root = root; wmenu.picks = picks; wmenu.take = take;
   };
   const openWalletMenu = () => {
-    if (wmenu.open || phase !== "play" || !SIM.nearVend(sim, sim.actors[0])) return false;
+    if (wmenu.open || !inRound() || !SIM.nearVend(sim, sim.actors[0])) return false;
     if (!wmenu.root) buildWalletMenu();
     if (locked()) document.exitPointerLock();
     trigger = false;
@@ -965,12 +997,13 @@
   };
   // Lob the device over your head toward the crosshair.
   const throwWallet = () => {
-    if (phase !== "play" || sim.actors[0].wallet < 0) return false;
+    if (!inRound() || sim.actors[0].wallet < 0) return false;
     const a = sim.actors[0], q = aimPoint(), dx = q.x - a.x, dz = q.z - a.z;
     const flat = Math.hypot(dx, dz) || 1;
     return SIM.throwWallet(sim, 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - a.y - 1.9, flat) + 0.12, -0.3, 0.9));
   };
   const paint = () => {
+    if (!inRound()) return false;
     if (sim.actors[0].wallet >= 0) return throwWallet();
     // Laser eyes ready: whatever is in hand, the click lets them loose.
     { const me = sim.actors[0]; if (me.laser > 0 && me.beam <= 0 && !me.holding) return SIM.fire(sim, 0, cam.face, 0, "paint"); }
@@ -1005,8 +1038,7 @@
     tool = k;
     updateTools();
   };
-  // The next tool along (or back), skipping any that are empty, then Lift for the crates; a right click or R steps
-  // through them.
+  // The next tool along (or back), skipping any that are empty, then Lift for the crates; G steps through them.
   const ORDER = ["paint", "ak", "grenade", "rocket", "net", "gold", "sniper", "grab"];
   const cycleTool = (dir = 1) => {
     const a = sim.actors[0];
@@ -1021,14 +1053,18 @@
     else if (ORDER[i] === "ak") notice("Ooga AK · hold to fire on full auto", 900);
     else notice(`${ORDER[i][0].toUpperCase()}${ORDER[i].slice(1)}${ORDER[i] === "paint" || ORDER[i] === "sniper" ? "" : ` · ${a[ORDER[i]]} left`}`, 900);
   };
+  // Right click aims, as on the island: up a tower it steps the scope in (round to its widest); in the Island view it
+  // returns to the chase camera; otherwise holding it narrows the view to aim. G and the number keys switch weapons.
   const onRightDown = (e) => {
-    if (e.button !== 2 || phase !== "play") return;
+    if (e.button !== 2 || phase !== "play" || paused) return;
     e.preventDefault();
-    cycleTool(1);
+    if (scoped()) zoomScope(scope.zoom >= ZOOMS.length - 1 ? -(ZOOMS.length - 1) : 1);
+    else if (cam.island) setMode("chase");
+    else aiming = true;
   };
   const noMenu = (e) => { if (phase === "play") e.preventDefault(); };
   const buildCrate = () => {
-    if (phase !== "play") return false;
+    if (!inRound()) return false;
     if (SIM.build(sim, 0, cam.face)) {
       const n = sim.actors[0].crates;
       notice(`Crate down! ${n ? `${n} left` : "That was your last · your stand or a cache gives you more"}`, 1200);
@@ -1058,8 +1094,9 @@
     if (e.key === "ArrowLeft") arrows.left = down;
     else if (e.key === "ArrowRight") arrows.right = down;
   };
-  const onArrowBlur = () => { arrows.left = arrows.right = 0; };
-  const saveView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ mode: cam.island ? "island" : cam.first ? "first" : "chase", shuffle: cam.shuffle, zoom: cam.zoom, islandZoom: cam.islandZoom })); } catch { /* kept this visit */ } };
+  // Losing focus lets go of every key this scene reads itself (the shared controls clear their own).
+  const onArrowBlur = () => { arrows.left = arrows.right = 0; move.crouch = 0; };
+  const saveView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ mode: cam.island ? "island" : cam.first ? "first" : "chase", zoom: cam.zoom, islandZoom: cam.islandZoom })); } catch { /* kept this visit */ } };
   // Three views, V going round them: the chase camera, first person, and the Island view.
   const setMode = (mode, quiet = false) => {
     const wasIsland = cam.island;
@@ -1077,15 +1114,15 @@
     if (quiet) return;
     notice(cam.first ? (COARSE ? "First person · drag to aim" : "First person · move the mouse to aim · V for the Island view")
       : cam.island ? (COARSE ? "Island view · the stick runs where the screen faces" : "Island view · W A S D run where the screen faces · Q E or ← → turn the camera · click throws at the pointer · V for the chase camera")
-      : (COARSE ? "Chase camera" : `Chase camera · move the mouse to turn · V for first person${cam.shuffle ? "" : " · X to side-step with A D"}`), 3200);
+      : (COARSE ? "Chase camera" : "Chase camera · W A S D move · X or a click captures the mouse to turn · V for first person"), 3200);
   };
   const setView = (first) => setMode(first ? "first" : "chase");
   const cycleView = () => setMode(cam.island ? "chase" : cam.first ? "island" : "first");
-  // Side-step: A and D step sideways while the Ooga keeps facing ahead; the mouse and the arrow keys turn.
-  const setShuffle = (on) => {
-    cam.shuffle = on;
-    saveView();
-    notice(on ? "Side-step ON · A D step sideways, facing ahead · mouse or ← → turns · X turns it off" : "Side-step OFF · A D turn again", 2600);
+  // X captures the mouse for turning and aiming, or lets it go: the island's carry/combat switch.
+  const toggleMouseLook = () => {
+    if (locked()) { document.exitPointerLock(); return; }
+    if (cam.island) { notice("The Island view keeps the pointer · V for the chase camera", 1400); return; }
+    lockMouse();
   };
   // Mouse look, as a shooter has it: the first click on the view locks the mouse (and throws), then moving the mouse
   // or touchpad turns the view in either camera, the world swinging round the Ooga, which turns with it to face the
@@ -1108,6 +1145,7 @@
   };
   const onLockedDown = (e) => {
     audio.unlock();
+    if (phase === "play" && paused && e.button === 0) { setPaused(false); return; }
     if (phase !== "play" || e.button !== 0 || quiz.open) return;
     trigger = true;
     paint();
@@ -1115,11 +1153,15 @@
   };
   // The trigger is held from the press until the button comes up anywhere; with the AK it fires on full auto.
   let trigger = false;
-  const onTriggerUp = (e) => { if (e.button === 0 || e.type === "pointerup" || e.type === "pointercancel" || e.type === "blur") trigger = false; };
-  // Tab passes in play, wherever the focus is: caught first, before the page's own key routing (which leaves Tab on a
-  // focused button to the browser) and before the browser moves the focus.
+  const onTriggerUp = (e) => {
+    if (e.button === 0 || e.type === "pointerup" || e.type === "pointercancel" || e.type === "blur") trigger = false;
+    if (e.button === 2 || e.type === "pointercancel" || e.type === "blur") aiming = false;
+  };
+  // In a round Tab (or T, or the Pass button) throws what is in hand, wherever the focus is: caught first, before the
+  // page's own key routing (which leaves Tab on a focused button to the browser) and before the browser moves the focus.
+  // A game choice: on the island the first Tab frees a captured mouse; here Escape or X does.
   const onTabKey = (e) => {
-    if (e.key !== "Tab" || phase !== "play" || quiz.open) return;
+    if (e.key !== "Tab" || phase !== "play" || quiz.open || paused) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -1129,7 +1171,7 @@
   // Caught first, as Tab is: a menu control left focused (the Ooga picker, a button) would otherwise take the key, and
   // only a text field keeps it.
   const onBuildKey = (e) => {
-    if ((e.key !== "b" && e.key !== "B" && e.code !== "KeyB") || phase !== "play" || quiz.open || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ((e.key !== "b" && e.key !== "B" && e.code !== "KeyB") || !inRound() || quiz.open || e.metaKey || e.ctrlKey || e.altKey) return;
     const t = e.target;
     if (t && (t.isContentEditable || (t.closest && t.closest("input, textarea")))) return;
     e.preventDefault();
@@ -1149,24 +1191,25 @@
   const onCrouchKey = (e) => { if (e.key === "c" || e.key === "C") move.crouch = e.type === "keydown" ? 1 : 0; };
   // Pick up the crate in front, or set the held one down (stacking it on a crate there).
   const grabCrate = () => {
-    if (phase !== "play") return false;
+    if (!inRound()) return false;
     if (SIM.grab(sim, 0, cam.face)) return true;
     const a = sim.actors[0];
     notice(a.holding ? "No room to set it there (stacks go three high)" : a.carrying ? "Hands full with the block" : "No crate in reach · face one and press F", 1200);
     return false;
   };
-  // Throw whatever is in hand: a held crate toward the crosshair, or the carried block straight ahead for a teammate
-  // to catch.
+  // Throw whatever is in hand: a wallet bomb or a held crate toward the crosshair, or the carried block straight ahead
+  // for a teammate to catch.
   const passBlock = () => {
-    if (phase !== "play") return false;
+    if (!inRound()) return false;
+    if (sim.actors[0].wallet >= 0) return throwWallet();
     if (sim.actors[0].holding) return paint();
     if (SIM.pass(sim, 0, cam.face)) return true;
-    notice("Nothing to throw · pick up a block, or a crate with F", 1100);
+    notice("Nothing to throw · pick up a block, a crate with F, or a wallet bomb", 1100);
     return false;
   };
   // Ride your tower's zipline down into the rival fort, from the platform by its gap.
   const zipNow = () => {
-    if (phase !== "play") return false;
+    if (!inRound()) return false;
     if (openWalletMenu()) return true;
     if (SIM.launch(sim, 0)) return true;
     if (SIM.zip(sim, 0, cam.face)) return true;
@@ -1178,7 +1221,7 @@
   // Piggyback: H climbs on the nearest teammate's back (H again, or Space, gets down); J calls a bot teammate to
   // climb on yours.
   const piggyback = () => {
-    if (phase !== "play") return false;
+    if (!inRound()) return false;
     const me = sim.actors[0];
     if (me.ride) { move.jump = 1; return true; }
     if (SIM.hopOn(sim, 0)) return true;
@@ -1186,22 +1229,21 @@
     return false;
   };
   const callRider = () => {
-    if (phase !== "play") return false;
+    if (!inRound()) return false;
     if (SIM.callRide(sim, 0)) { notice("Calling a teammate to climb on your back…", 1600); return true; }
     return false;
   };
   const dropBlock = () => {
-    if (phase !== "play") return false;
+    if (!inRound()) return false;
     if (SIM.drop(sim, 0)) return true;
-    // No block in hand: G sets a held wallet down, ticking.
+    // No block in hand: K sets a held wallet down, ticking.
     if (SIM.dropWallet(sim, 0)) { notice(`Wallet set down · it goes off in ${C.WALLET_FUSE} s · get clear!`, 1800); return true; }
     notice("Nothing to drop", 900);
     return false;
   };
 
-  // Steering, as Mario 64 has it: A and D (the stick's sideways push, and Q E) turn the Ooga, W and S run it forward
-  // and back along where it faces, and the chase camera swings round behind it by itself (`updateCamera`), so the
-  // world turns, not the Ooga on screen. A locked mouse turns it too.
+  // Steering, as the island has it: W A S D (and the move stick) run the Ooga forward, back and sideways from where it
+  // faces; a captured mouse, Q E, the arrows and the look stick turn it, the chase camera swinging round behind.
   const TURN = 2.7;
   const readInput = (dt) => {
     const a = controls.read(), turnKeys = arrows.left - arrows.right;
@@ -1216,8 +1258,7 @@
       if (l > 1) { mx /= l; mz /= l; }
       move.x = mx; move.z = mz;
       if (l > 0.15) cam.face = Math.atan2(mx, mz);
-    } else if (cam.shuffle) {
-      // Side-step: A and D (not the arrows) step sideways, facing ahead; the mouse, Q E and the arrows turn.
+    } else {
       cam.face = wrap(cam.face + (a.yaw + turnKeys) * TURN * dt);
       const side = clamp(a.x + turnKeys, -1, 1), f = clamp(a.y, -1, 1);
       const fx2 = Math.sin(cam.face), fz = Math.cos(cam.face), rx = -Math.cos(cam.face), rz = Math.sin(cam.face);
@@ -1225,11 +1266,6 @@
       const l = Math.hypot(mx, mz);
       if (l > 1) { mx /= l; mz /= l; }
       move.x = mx; move.z = mz;
-    } else {
-      cam.face = wrap(cam.face + (a.yaw - a.x) * TURN * dt);
-      const fx2 = Math.sin(cam.face), fz = Math.cos(cam.face), f = clamp(a.y, -1, 1);
-      move.x = fx2 * f;
-      move.z = fz * f;
     }
     move.sprint = a.sprint;
     move.face = cam.face;
@@ -1547,7 +1583,7 @@
     if (onPad !== catNear) {
       catNear = onPad;
       updateTools();
-      if (onPad) notice(`${COARSE ? "Ride" : "E"} fires the catapult · parachute into their fort`, 2400);
+      if (onPad) notice(`${COARSE ? "Ride" : "Space"} fires the catapult · parachute into their fort`, 2400);
     }
     // The zipline button wakes as the visitor reaches the cable, with a word the first time.
     const near = phase === "play" && !!SIM.nearZip(sim, sim.actors[0]);
@@ -1556,7 +1592,7 @@
       updateTools();
       if (near) {
         const home = SIM.nearZip(sim, sim.actors[0]) !== sim.team;
-        notice(`${COARSE ? "Zip" : "E"} rides the zipline ${home ? "home to our fort" : "into their fort"}`, 2200);
+        notice(`${COARSE ? "Zip" : "Space"} rides the zipline ${home ? "home to our fort" : "into their fort"}`, 2200);
       }
     }
   };
@@ -1569,7 +1605,7 @@
     // Holding one a while: a reminder of how to be rid of it.
     if (me.wallet >= 0 && phase === "play") {
       if (!walletHeld) walletHeld = elapsed;
-      else if (elapsed - walletHeld > 12) { walletHeld = elapsed; notice(COARSE ? "Still holding a wallet · Paint! throws it · Drop sets it down" : "Still holding a wallet · click or Y throws it · G sets it down", 2600); }
+      else if (elapsed - walletHeld > 12) { walletHeld = elapsed; notice(COARSE ? "Still holding a wallet · Paint! throws it · Drop sets it down" : "Still holding a wallet · click, Tab or Y throws it · K sets it down", 2600); }
     } else walletHeld = 0;
     for (let i = 0; i < walletNodes.length; i++) {
       const w = sim.wallets[i], n = walletNodes[i];
@@ -1627,7 +1663,7 @@
       setVec(camera.target, x + Math.sin(cam.yaw) * c * 10, eye + Math.sin(up) * 10, z + Math.cos(cam.yaw) * c * 10);
       // The sniper's scope narrows the view; the gun in hand sits low and right of the eye.
       const scopedNow = tool === "sniper" && me.sniper > 0;
-      camera.fov = damp(camera.fov, (scopedNow ? ZOOMS[scope.zoom] : 58) * Math.PI / 180, 10, dt);
+      camera.fov = damp(camera.fov, (scopedNow ? ZOOMS[scope.zoom] : aiming ? AIM_FOV : 58) * Math.PI / 180, 10, dt);
       const g = GUN_OF[tool], showGun = g >= 0 && !scopedNow && !me.carrying && !me.holding && !me.riding && !me.climbing && me.splat <= 0 && me.trapped <= 0;
       fpGun.visible = showGun;
       if (showGun) {
@@ -1649,9 +1685,10 @@
       setVec(RENDER_OPTS.shadowCenter, x, 0, z);
       return;
     }
-    camera.fov = damp(camera.fov, 58 * Math.PI / 180, 10, dt);
+    camera.fov = damp(camera.fov, (aiming && !cam.island ? AIM_FOV : 58) * Math.PI / 180, 10, dt);
     if (fpGun) fpGun.visible = fpGunL.visible = false;
-    // The eye comes in front of any wall between it and the Ooga, so a fort's back wall never fills the view. Backed up
+    // The eye comes in front of any wall or leaves between it and the Ooga, so neither a fort's back wall nor a tree fills
+    // the view. Backed up
     // against something, the camera rises over it to look down from above, and eases back once the way is clear.
     const by = y + (cam.island ? ISLAND.height : CAM.height), pitch = cam.island ? ISLAND.pitch : cam.pitch, far = cam.island ? ISLAND.dist * cam.islandZoom : CAM.dist * cam.zoom;
     let dist = clearBehind(x, by, z, pitch), lift = 0;
@@ -1683,11 +1720,25 @@
   };
   // How far back along `pitch` (and the camera's yaw) the eye can sit from (x, y, z) before a wall: the direction goes
   // in EYE.
+  // Leaves block the view as walls do, so the camera comes in front of a canopy (or over or under it) too. The map's
+  // canopies, listed once a map.
+  let leavesOf = null, leaves = [];
+  const leafAt = (px, py, pz) => {
+    if (leavesOf !== SIM.ARENA) { leavesOf = SIM.ARENA; leaves = (SIM.ARENA.decor || []).filter((d) => d.kind === "canopy"); }
+    for (let i = 0; i < leaves.length; i++) {
+      const c = leaves[i], dx = px - c.x, dz = pz - c.z, r = c.r * 1.25;
+      if (dx * dx + dz * dz < r * r && py > c.y - 0.3 && py < c.y + SIM.LEAF_TOP) return true;
+    }
+    return false;
+  };
   const clearBehind = (x, y, z, pitch) => {
     const c = Math.cos(pitch);
     EYE.x = -Math.sin(cam.yaw) * c; EYE.z = -Math.cos(cam.yaw) * c; EYE.y = Math.sin(pitch);
     const far = cam.island ? ISLAND.dist * cam.islandZoom : CAM.dist * cam.zoom;
-    for (let d = 0.5; d <= far; d += 0.25) if (SIM.solidAt(x + EYE.x * d, y + EYE.y * d, z + EYE.z * d)) return Math.max(0.6, d - 0.4);
+    for (let d = 0.5; d <= far; d += 0.25) {
+      const px = x + EYE.x * d, py = y + EYE.y * d, pz = z + EYE.z * d;
+      if (SIM.solidAt(px, py, pz) || leafAt(px, py, pz)) return Math.max(0.6, d - 0.4);
+    }
     return far;
   };
   // The board shows the whole fort from above its gate, slowly turning.
@@ -1730,7 +1781,8 @@
     sceneTime = elapsed;
     daylight.sample(clock.read(), RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
     RENDER_OPTS.time = elapsed;
-    if (phase === "play") {
+    if (phase === "play" && paused) controls.read();
+    else if (phase === "play") {
       readInput(dt);
       // Choosing a wallet: the Ooga stands still; walking off (or being knocked away) from the machine closes the panel.
       if (wmenu.open) {
@@ -1791,16 +1843,21 @@
   };
   const onKey = (e) => {
     audio.unlock();
+    // Escape steps back one thing at a time, as on the island: the captured mouse, then the view, then a pause, then
+    // the board, then the Arcade.
     if (e.key === "Escape") {
       if (phase === "play" && locked()) document.exitPointerLock();
-      else if (phase === "play" && (cam.first || cam.island)) setMode("chase");
+      else if (phase === "play" && !paused && (cam.first || cam.island)) setMode("chase");
+      else if (phase === "play" && !paused && !quiz.open) setPaused(true);
       else if (phase === "play" || phase === "results") showBoard();
       else go(home);
       return;
     }
     if (e.key === "Enter" && phase !== "play") start();
-    else if (e.key === "Enter" && !e.repeat && !quiz.open) paint();
+    else if (e.key === "Enter" && !e.repeat && !quiz.open && !paused) paint();
     if (phase !== "play" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "p" || e.key === "P") { if (!quiz.open) setPaused(!paused); return; }
+    if (paused) return;
     if (quiz.open) {
       if (e.key >= "1" && e.key <= "4") answer(Number(e.key) - 1);
       return;
@@ -1810,14 +1867,13 @@
     if (e.key === "y" || e.key === "Y") throwWallet();
     if (e.key === "h" || e.key === "H") piggyback();
     if (e.key === "j" || e.key === "J") callRider();
-    if (e.key === "r" || e.key === "R") cycleTool(1);
+    if (e.key === "g" || e.key === "G") cycleTool(1);
     if (e.key === "f" || e.key === "F") grabCrate();
-    if (e.key === "g" || e.key === "G") dropBlock();
-    if (e.key === "e" || e.key === "E") zipNow();
+    if (e.key === "k" || e.key === "K") dropBlock();
     if ((e.key === "+" || e.key === "=") && scoped()) zoomScope(1);
     if ((e.key === "-" || e.key === "_") && scoped()) zoomScope(-1);
     if (e.key === "v" || e.key === "V") cycleView();
-    if (e.key === "x" || e.key === "X") setShuffle(!cam.shuffle);
+    if (e.key === "x" || e.key === "X") toggleMouseLook();
     if (e.key === "0") cam.pitch = 0.28;
   };
   const chooseTarget = (n) => {
@@ -2048,7 +2104,7 @@
     el.toolBar = document.getElementById("block-tools");
     el.passBtn = document.querySelector('#block-tools [data-tool="pass"]');
     el.tools = [...el.toolBar.querySelectorAll("[data-tool]")];
-    el.onTool = (e) => { const k = e.currentTarget.dataset.tool; e.currentTarget.blur(); if (k === "crate") buildCrate(); else if (k === "grab") grabCrate(); else if (k === "pass") passBlock(); else if (k === "zip") zipNow(); else chooseTool(k); };
+    el.onTool = (e) => { const k = e.currentTarget.dataset.tool; e.currentTarget.blur(); if (!inRound()) return; if (k === "crate") buildCrate(); else if (k === "grab") grabCrate(); else if (k === "pass") passBlock(); else if (k === "zip") zipNow(); else chooseTool(k); };
     for (const b of el.tools) b.addEventListener("click", el.onTool);
     el.stamina = document.getElementById("block-stamina");
     el.fuel = document.getElementById("block-fuel");
@@ -2078,11 +2134,11 @@
     window.addEventListener("keydown", onArrow);
     window.addEventListener("keyup", onArrow);
     window.addEventListener("blur", onArrowBlur);
-    // The view and side-step picked last time.
+    // The view picked last time.
     try {
       const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "null");
       if (v) {
-        cam.shuffle = !!v.shuffle; cam.island = v.mode === "island"; cam.first = v.mode === "first";
+        cam.island = v.mode === "island"; cam.first = v.mode === "first";
         if (v.zoom > 0) cam.zoom = clamp(v.zoom, ZOOM.chase[0], ZOOM.chase[1]);
         if (v.islandZoom > 0) cam.islandZoom = clamp(v.islandZoom, ZOOM.island[0], ZOOM.island[1]);
       }
@@ -2094,7 +2150,7 @@
     window.addEventListener("keydown", onBuildKey, true);
     window.addEventListener("keydown", onTabKey, true);
     window.addEventListener("keyup", onCrouchKey);
-    el.onPaint = (e) => { e.preventDefault(); if (phase === "play") { trigger = true; paint(); } };
+    el.onPaint = (e) => { e.preventDefault(); if (inRound()) { trigger = true; paint(); } };
     window.addEventListener("mouseup", onTriggerUp);
     window.addEventListener("pointerup", onTriggerUp);
     window.addEventListener("pointercancel", onTriggerUp);
@@ -2162,7 +2218,8 @@
     }
     el.oogaPick.value = actors[0].name || "";
     el.oogaPick.disabled = !!BL.net.ownAmong(contributors.activeRoster);
-    controls = controlsMod.create({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, onAction: act, pressActions: true });
+    // X is the mouse-look switch here, never a descent.
+    controls = controlsMod.create({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, onAction: act, pressActions: true, canDescend: () => false });
     blockScene.agentControls = controls;
     Object.assign(hooks, {
       onHover: (hit, p) => {
@@ -2175,13 +2232,13 @@
       onOrbit: (dx, dy) => {
         // On the board a drag turns the Ooga on show.
         if (phase === "board") { preview.spin = wrap(preview.spin + dx * 8e-3); return; }
-        if (phase !== "play") return;
+        if (!inRound()) return;
         cam.face = wrap(cam.face - dx * 5e-3);
         cam.pitch = clamp(cam.pitch + dy * 3.5e-3, CAM.pitch[0], CAM.pitch[1]);
       },
       // The wheel or a two-finger swipe zooms the sniper's scope, and otherwise the camera.
       onZoom: (k, gesture) => {
-        if (phase !== "play" || k === 1) return;
+        if (!inRound() || k === 1) return;
         if (scoped()) { if (gesture !== cam.zoomGesture) { cam.zoomGesture = gesture; zoomScope(k > 1 ? -1 : 1); } return; }
         if (cam.island) { cam.islandZoom = clamp(cam.islandZoom * k, ZOOM.island[0], ZOOM.island[1]); saveView(); return; }
         if (cam.first) {
@@ -2201,7 +2258,7 @@
       if (action === "block-start" || action === "block-again") start();
       else if (action === "block-board") showBoard();
       else if (action === "block-drop") dropBlock();
-      else if (action === "block-view") cycleView();
+      else if (action === "block-view") { if (!paused) cycleView(); }
       else if (action === "block-sound") {
         audio.unlock();
         audio.setMuted(!audio.muted);
@@ -2214,7 +2271,10 @@
     hud.setStats(game.state);
     hud.el.sheet.dataset.open = "false";
     el.help = document.getElementById("block-help");
-    el.help.textContent = COARSE ? "Left stick runs · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person" : "W S run · A D turn · Shift sprints · Space jumps, twice to climb · click fires · R or right click switches weapon · V changes view (chase, first person, Island) · two-finger swipe or the wheel zooms · X side-step (A D step sideways) · 5 sniper (from a tower) · 6 Golden Dual AKs (hold to fire) · 7 AK (hold to fire) · hold Space in the air for the jetpack · mash Space to escape a gorilla · H piggyback on a teammate, J call one onto your back · E at a FREE WALLETS machine opens it: pick your wallet bomb and Take, click or Y throws it: it sticks to a rival, who won't know, and goes off 5 s later · W into a ladder climbs · E zipline or catapult · Tab throws what you hold · F lifts crates · B new crate · C crouch";
+    el.controlsList = document.getElementById("block-controls-list");
+    // The board keeps one short line; the whole list waits behind "All controls", so it never crowds the choices.
+    el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Sides" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
+    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Sides for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 7 pick a weapon, G steps through them · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
     showBoard();
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);
@@ -2224,6 +2284,7 @@
         hud, camera, controls, cavemen: null, crates: null,
         block: {
           get phase() { return phase; },
+          get paused() { return paused; },
           get sim() { return sim; },
           // Plays a live feed message as if it had arrived: { type: "fees", nextFee } or { type: "block", height }.
           feed: onFeed,

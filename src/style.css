@@ -10626,3 +10626,22 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 body.cloud-hopper-active #destination-hud,
 body.cloud-hopper-active #own-ooga-hud,
 body.cloud-hopper-active #mode-hud { display: none; }
+
+/* Block Frenzy's board: one short line of keys, the full list folded under "All controls" and scrolled within a
+   bounded height, so the choices above stay in view. */
+#block-board .block-help-wrap {
+  min-width: 0;
+}
+
+#block-board .block-controls summary {
+  cursor: pointer;
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+#block-board .block-controls[open] .help {
+  max-height: 22vh;
+  overflow-y: auto;
+  margin-top: 4px;
+}

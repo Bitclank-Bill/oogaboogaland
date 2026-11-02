@@ -11,14 +11,10 @@
   const VOICES = 12;
   const NOISE_SECONDS = 2;
   const MASTER = 0.5;
-  const STORAGE_KEY = "oogaboogaland.audio";
   const NOTE = (semis) => 220 * Math.pow(2, semis / 12);
   const create = () => {
-    let ctx = null, master = null, ready = false, muted = false;
-    try {
-      muted = localStorage.getItem(STORAGE_KEY) === "off";
-    } catch {
-    }
+    // The page-wide environment mute (sound.js), shared with the banner speaker and M.
+    let ctx = null, master = null, ready = false, muted = BL.sound.muted;
     const voices = [];
     let voiceNext = 0;
     const layers = { wind: null, windFilter: null, rain: null, jet: null, zip: null, zipFilter: null, splat: null, splatFilter: null, boom: null, boomFilter: null };
@@ -160,13 +156,24 @@
       power: () => chord([0, 7, 12, 19, 24], 0.04, "square", 0.04, 0.16),
       slip: (k = 1) => { blip("sine", 1200, 180, 0.005, 0.05, 0.6, 0.22 * k); blip("triangle", 300, 600, 0.005, 0.05, 0.15, 0.1 * k, 0.45); },
       burn: (k = 1) => { burst("splat", "splatFilter", 0.5 * k, 0.005, 0.6, 4000, 1500); blip("square", 880, 1320, 0.005, 0.08, 0.1, 0.16 * k); },
-      // A gorilla: a low growling roar as it grabs, a grunt each struggle, a yelp when it's painted.
-      roar: (k = 1) => { blip("sawtooth", 140, 70, 0.04, 0.35, 0.4, 0.26 * k); blip("sawtooth", 95, 55, 0.05, 0.3, 0.4, 0.2 * k, 0.05); boomNoise(0.4 * k, 0.8); },
-      grunt: (k = 1) => blip("sawtooth", 180, 110, 0.01, 0.05, 0.1, 0.14 * k),
-      yelp: (k = 1) => blip("square", 500, 220, 0.005, 0.06, 0.2, 0.16 * k),
+      // A gorilla, silly rather than scary: as it grabs, three quick "hoo" hoots climbing to a "HAH!", and two soft chest
+      // thumps; a short "hm" each struggle; an "ook!" when it's painted. Soft triangles and sines (no sawtooth), six
+      // voices at most for the grab.
+      roar: (k = 1) => {
+        for (let i = 0; i < 3; i++) blip("triangle", 210 + i * 45, 250 + i * 55, 0.02, 0.06, 0.08, 0.12 * k, i * 0.16);
+        blip("triangle", 420, 300, 0.01, 0.1, 0.18, 0.15 * k, 0.5);
+        blip("sine", 90, 60, 0.005, 0.03, 0.12, 0.22 * k, 0.72); blip("sine", 90, 60, 0.005, 0.03, 0.12, 0.22 * k, 0.86);
+      },
+      grunt: (k = 1) => blip("triangle", 170, 140, 0.01, 0.05, 0.08, 0.12 * k),
+      yelp: (k = 1) => blip("triangle", 520, 780, 0.005, 0.05, 0.12, 0.14 * k),
       free: () => chord([0, 7, 12], 0.05, "triangle", 0.05, 0.18),
-      // Laser eyes: a rising whine, then a buzzing hold for the beam's three seconds.
-      laser: (k = 1) => { blip("sawtooth", 300, 1600, 0.02, 0.15, 0.1, 0.12 * k); for (let i = 0; i < 6; i++) blip("square", 220 + (i % 2) * 30, 220 + (i % 2) * 30, 0.01, 0.42, 0.06, 0.07 * k, 0.2 + i * 0.47); },
+      // Laser eyes, the Ooga way: a soft "ooo-GA!" (a low hoot sliding up, then down), then silly boings, up and down
+      // by turns, through the beam's three seconds. Seven voices at most, as before, so other cues are not cut off.
+      laser: (k = 1) => {
+        blip("triangle", 170, 250, 0.02, 0.12, 0.06, 0.13 * k);
+        blip("triangle", 300, 160, 0.01, 0.1, 0.14, 0.13 * k, 0.2);
+        for (let i = 0; i < 5; i++) blip("sine", i % 2 ? 520 : 300, i % 2 ? 300 : 520, 0.01, 0.1, 0.12, 0.06 * k, 0.55 + i * 0.5);
+      },
       // A ghost: a wavering whoo, falling; a pop when it's painted away.
       boo: (k = 1) => { for (let i = 0; i < 3; i++) blip("sine", 620 - i * 60, 240, 0.08, 0.25, 0.4, 0.14 * k, i * 0.12); },
       ghostPop: (k = 1) => { blip("triangle", 900, 1800, 0.005, 0.04, 0.15, 0.14 * k); splatNoise(0.3 * k, 0.2); },
@@ -195,12 +202,11 @@
     const setMuted = (on) => {
       muted = !!on;
       if (master) master.gain.setTargetAtTime(muted ? 0 : MASTER, ctx.currentTime, 0.05);
-      try {
-        localStorage.setItem(STORAGE_KEY, muted ? "off" : "on");
-      } catch {
-      }
+      BL.sound.setMuted(muted);
     };
+    const offSound = BL.sound.subscribe(setMuted);
     const dispose = () => {
+      offSound();
       if (!ctx) return;
       quiet();
       ctx.close();

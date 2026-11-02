@@ -27,7 +27,7 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
 ## Rules
 
 - **Blocks.** Touch the rivals' block, on its stand or wherever it lies, to carry it. A carrier who is splatted,
-  trapped or drops it (`G`) leaves it where they stood, and it stays there, as long as it takes: the carrier's
+  trapped or drops it (`K`) leaves it where they stood, and it stays there, as long as it takes: the carrier's
   teammates can grab it and run on, and its own side must pick it up and carry it all the way back to its stand.
   A carrier can't pick the same block up again until they have left its circle.
 - **Scoring.** Their block onto your stand while your own block is home. Reaching your stand while yours is away
@@ -48,6 +48,10 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   score, a carrier drops the block, and nobody can paint you. Answer a Bitcoin question to break out; a wrong answer
   locks the card for 2.5 s and brings another question; the bubble wears off by itself after 25 s. Bots "think" for a
   seeded 3.5 to 8 s.
+- **Trees (Gorilla Jungle).** Every canopy has a one-way ledge at its leaves' top: fly or jump up through the leaves
+  from below, and come down on top to stand there. The leaves themselves stay decor, so nobody hides inside them, and
+  the chase camera comes in front of (or over) leaves as it does walls. The two trees before each sniper tower stand
+  low (3.5 m), so the scope sees over them.
 - **Weather.** A seeded run of clear, windy and stormy spells. The wind gusts and wanders, pushes Oogas (hard in the
   air, a little on the ground) and bends throws; storms darken the light and bring rain and lightning.
 - **Movement.** Jump, and jump again in the air: a double jump reaches 2.55 m and clears the forts' 2.4 m walls, the
@@ -59,10 +63,10 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
 - **Sniper towers.** One beside each end on every map: four posts, an open platform 6.4 m up (`TOWER_TOP`) with a
   parapet, and a ladder up its inward side (a climb zone, not a block). Standing on either tower's platform hands you
   the sniper rifle off its rack; stepping off puts it back. The rifle fires only from a platform: fast, flat and long
-  (60 m/s, 1.1 s between shots, no ammunition). Up the tower the view drops into first person through a scope with
-  three zoom steps (34°, 20° and 11° of view; wheel, two-finger swipe or `+` `−`), and leaving the tower restores the
+  (60 m/s, semi-automatic: a shot a click, 0.35 s apart, no ammunition). Up the tower the view drops into first person
+  through a scope with four zoom steps (34°, 20°, 11° and 6° of view; right click, wheel, two-finger swipe or `+` `−`), and leaving the tower restores the
   tool and view you had. The results card names the round's longest sniper hit.
-- **Ziplines.** Each tower's cable leaves from the platform's ladder side and runs down into the other end. `E` (or the
+- **Ziplines.** Each tower's cable leaves from the platform's ladder side and runs down into the other end. `Space` (or the
   Zip button) by the cable rides it at 15 m/s, hands on the cable; at its end, or on a jump, you let go and fall. From
   your own tower it is a raid into their fort; with their block in hand, their tower's line takes you home. Closed
   while fortifying and while holding a crate. A carrier who climbs their tower keeps the rifle on `5` and is told the
@@ -73,8 +77,8 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
 
 ## Held weapons
 
-Keys `1` to `7` pick paint, grenade, rocket, net, sniper rifle, Golden Dual AKs and Ooga AK; `R`, right click or the
-wheel cycles through the ones you can use.
+Keys `1` to `7` pick paint, grenade, rocket, net, sniper rifle, Golden Dual AKs and Ooga AK; `G` cycles through the
+ones you can use.
 
 - **Ooga AK** (`7`). The island's rifle: a tap fires one round, a held trigger fires on full auto every 0.09 s, from a
   30-round magazine that reloads itself in 1.4 s when it runs dry.
@@ -96,26 +100,36 @@ float and anything whose top an Ooga reaches is somewhere to stand.
 
 ## Controls
 
+The keys follow the island's (README, Controls) through the shared `controls.js`, and the sound follows the
+page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy needs keep letters the island leaves free.
+
 | Desktop | Action |
 |---|---|
-| W / S | Run forward and back along where the Ooga faces |
-| A / D, Q / E | Turn; the chase camera swings round behind by itself (no mouse needed) |
-| Click the view, then move the mouse | Locks the mouse; moving it turns and aims. Escape lets go |
+| W A S D | Move forward, back, left and right of where the Ooga faces (as on the island) |
+| Q / E, ← / → | Turn; the chase camera swings round behind |
+| X, or a click on the view | Capture the mouse to turn and aim (the island's combat look); X again or Escape lets go |
 | Left click or Enter | Throw the chosen tool at the crosshair (the crate, when holding one) |
-| R, right click, wheel, 1 to 7 | Switch weapon: paint, grenade, rocket, net, sniper rifle (on a tower), Golden Dual AKs (once won), Ooga AK |
-| Space, Space again in the air | Jump, double jump |
+| 1 to 7, G | Pick a weapon (paint, grenade, rocket, net, sniper rifle on a tower, Golden Dual AKs once won, Ooga AK); G steps through the ones you can use |
+| Right click | Aim, as the island's precision aim: held, the view narrows; up a tower it steps the sniper scope in (four steps); in the Island view it returns to the chase camera |
+| Space, Space again in the air | Jump, double jump; held in the air, the jetpack |
+| Space beside a zipline, catapult or FREE WALLETS machine | Use it (as Space uses what is beside you on the island) |
 | Shift (held) | Sprint |
-| Tab or T | Pass the block |
+| Tab or T | Throw what is in hand: the block to a teammate, a held crate, or a wallet bomb (which can take a rival's Golden Dual AKs) |
+| K | Drop the block (or set a held wallet down) |
 | B | Place a new crate from your stock |
 | F | Lift the crate in front, or set the held one down (stacking it) |
-| G | Drop the block |
 | C (held) | Crouch |
-| E | Ride the zipline from a tower's platform |
-| + / −, wheel | Zoom the sniper scope |
-| V | Chase camera or first person |
+| + / −, wheel | Zoom the sniper scope; elsewhere the wheel zooms the camera |
+| V | Chase camera, first person or the Island view |
+| P | Pause, or play on. While paused nothing acts (keys, the tool bar, touch Throw!, the act button); only play on, Sides (the board) and Sound respond, and no held key, stick or trigger carries through |
+| Escape | One step back at a time: the captured mouse, then the view, then a pause, then the board (the round is given up), then the Arcade |
+| Tab outside a round | The page's own: moves the focus. In a round Tab throws (a game choice; Escape or X frees the mouse) |
 
-Touch: the left stick runs and turns, the right stick turns, Jump and Throw! buttons, a tool bar, and a View button.
-A gamepad drives the sticks and A jumps, through the shared controls.
+R has nothing to do here: the Ooga AK reloads itself when its magazine runs dry, and no other tool reloads.
+
+Touch: the left stick moves, the right stick turns, Jump and Throw! buttons, a tool bar (its Ride button uses a
+zipline, catapult or wallet machine) and a View button; Sides goes back to the board. A gamepad drives the sticks and
+A jumps, through the shared controls.
 
 ## Characters
 
