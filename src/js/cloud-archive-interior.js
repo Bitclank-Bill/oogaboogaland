@@ -28,6 +28,12 @@
   const NO_JETPACK = { owned: false, equipped: false, fuel: 1, blocked: false };
   const REPO_URL = `https://github.com/${DATA.repo}`;
   const FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif';
+  // What keeps the director's full rate while the window is unfocused (director.js `frameInterval`): only what moves
+  // by itself. The racks rolling in on LOAD, the hanging Oogatron gliding to its place, the TV's snow between
+  // channels, a scene tween (the turn into a chair) and live particles. An idle visit (standing, reading, watching
+  // the TV hold a channel) moves nothing without input, so it may be throttled. Reduced motion places the racks and
+  // the sign at once, so neither counts there.
+  const inMotion = (m) => m.train || m.glide || m.snow || m.tweens > 0 || m.fx;
   // White everywhere: the clear colour, sky and ground light all near white, a soft key light and little bloom.
   const RENDER_OPTS = {
     clear: [0.95, 0.955, 0.965], sky: [0.98, 0.98, 1], ground: [0.86, 0.87, 0.9], horizon: [0.95, 0.955, 0.965], zenith: [0.97, 0.975, 0.985],
@@ -263,7 +269,7 @@
     addChild(root, sign.node); addChild(root, signBack.node);
     target(sign.node, { kind: "sign", back: false, pickRay: (ray) => sign.pickRay(ray) }, 1.6);
     target(signBack.node, { kind: "sign", back: true, pickRay: (ray) => signBack.pickRay(ray) }, 1.6);
-    let signZ = NaN;
+    let signZ = NaN, signGliding = false;
     const placeSign = (z) => {
       if (z === signZ) return;
       signZ = z;
@@ -276,6 +282,7 @@
     const updateSign = (dt) => {
       const z = avatar ? avatar.root.position.z : camera.target.z, goal = signGoal(z);
       placeSign(REDUCED.matches || Number.isNaN(signZ) ? goal : Math.abs(goal - signZ) < 0.001 ? goal : signZ + (goal - signZ) * Math.min(1, dt * SIGN_GLIDE));
+      signGliding = signZ !== goal;
       if (signBack.index !== sign.index) signBack.goToView(sign.index);
     };
     // The Oogatron's floating board, as the hub's; `createReader` decides where a new window starts (the sign's own
@@ -683,7 +690,13 @@
       traverseVisible(root, () => visible++);
       return { visibleNodes: visible, tweens: tweenCount(), targets: input.targetCount, ...fx.stats() };
     };
-    return { update, overlay, onKey, onDonation, stay, leave, liveGeometry, stats, renderOpts: RENDER_OPTS };
+    // The live motion state, filled in place when the director asks (once a frame, while unfocused).
+    const motion = { train: false, glide: false, snow: false, tweens: 0, fx: false };
+    return { update, overlay, onKey, onDonation, stay, leave, liveGeometry, stats, renderOpts: RENDER_OPTS,
+      get inMotion() {
+        motion.train = train.t >= 0; motion.glide = signGliding; motion.snow = tv.tv.snow > 0; motion.tweens = tweenCount(); motion.fx = fx.inMotion;
+        return inMotion(motion);
+      } };
   };
-  BL.cloudArchiveInterior = { create };
+  BL.cloudArchiveInterior = { create, inMotion };
 })();

@@ -324,7 +324,7 @@ New event geometry and pickup nodes must stay capped and take part in `liveGeome
 | `scene-hangar.js`, `hangar-*`, `jet-*`, `forklift-models.js`, `sis-models.js`, `sis.js` | `hangar` (and `factory` for its door, landing and walkway) |
 | `tess.js` | `factory` and `hub`, where she flies |
 | `scene-timechain.js`, `timechain-interior.js`, `timechain-room-models.js`, `timechain-charts.js`, `timechain-blocks.js`, `timechain-beer.js`, `timechain-data.js`, `timechain-rooms.js` | `timechain` (and `hub`, whose doorway enters it) |
-| `scene-cloudarchive.js`, `cloud-archive-*` | `hub` (its cloud and beanstalk show only under `?wip=cloudarchive`); the archive has no suite scene yet (Phase 4 of its plan) |
+| `scene-cloudarchive.js`, `cloud-archive-*` | `hub` (its cloud and beanstalk show only under `?wip=cloudarchive&scene=hub`, where the climb starts; plain `?wip=cloudarchive` lands straight in the archive); the archive has no suite scene yet (Phase 4 of its plan) |
 | `scene-bifrost.js`, `bifrost-*`, and the arch's or the islet's wiring in `scene-hub.js` | `bifrost` (and `hub`, since every hub page builds the arch and the islet) |
 | `scene-arcade.js`, `arcade-*`, `ghost-*` (HALLOWEEN) | `arcade` (and `hub` for its mouth); `arcade-games.js`, `arcade-models.js` and `arcade-scene-models.js` also `skee`, `hoops`, `shy`, `claw`, `hockey`, `billiards`, `darts`, `pinball`, `ride`; both model modules also the retro scenes |
 | `scene-carnival.js`, `carnival-audio.js` | `skee`, `hoops`, `shy`, `claw`, `hockey`, `billiards`, `darts`, `pinball`, `ride`, `invaders`, `snake`, `pong`, `stampede`, `flap`, `breaker`, `dash`, `stacker` |

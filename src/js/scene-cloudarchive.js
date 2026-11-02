@@ -12,7 +12,10 @@
     voiceZone: "none",
     root: null, camera: null, input: null, debug: null,
     get renderOpts() { return impl.renderOpts; },
-    get inMotion() { return !!impl; },
+    // The interior's own motion (cloud-archive-interior.js), as the Timechain scene forwards its rooms': an idle visit
+    // lets the director throttle unfocused frames; LOAD's racks, the sign's glide, the TV's snow, tweens and particles
+    // keep full rate.
+    get inMotion() { return !!impl && impl.inMotion; },
     prepare() {
       const loading = BL.deferred.load("cloudarchive");
       return loading ? loading.then(() => null) : null;

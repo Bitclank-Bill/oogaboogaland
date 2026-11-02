@@ -23828,9 +23828,39 @@ const npcActivityRefreshProof = (BL) => {
   }
 };
 
+// The Cloud Archive scene's motion, through the real scene shell and the real interior module: the director keeps
+// full rate unfocused only while `inMotion` holds. An idle visit must let it throttle; LOAD's racks, the sign's glide,
+// the TV's snow, a tween and live particles must not. (The interior's `create` needs WebGL and the crew, so the visit
+// here is the interior's own exported rule over a visit's motion state; the scene is the shell as shipped.)
+const cloudArchiveMotionProof = (sceneSource = readFileSync(join(root, "src/js/scene-cloudarchive.js"), "utf8")) => {
+  const media = { matches: false };
+  // The real modules the interior reads at load (as the history proof loads them), the committed snapshot and layout.
+  const context = { window: { matchMedia: () => media }, document: { createElement: () => ({ getContext: () => null }) } };
+  for (const name of ["math", "scene", "models", "cloud-archive-data"]) runInNewContext(readFileSync(join(root, `src/js/${name}.js`), "utf8"), context);
+  Object.assign(context.window.BL, { glRenderer: { POINT_LIGHT_CAPACITY: 8 }, cloudArchiveEntry: { stalkGeometry: () => ({ verts: [], faces: [], lines: [] }) }, deferred: { load: () => null } });
+  for (const name of ["cloud-archive-models", "cloud-archive-interior"]) runInNewContext(readFileSync(join(root, `src/js/${name}.js`), "utf8"), context);
+  runInNewContext(sceneSource, context);
+  const B = context.window.BL, rule = B.cloudArchiveInterior.inMotion, scene = B.scenes.cloudarchive;
+  const state = { train: false, glide: false, snow: false, tweens: 0, fx: false };
+  B.cloudArchiveInterior.create = () => ({ get inMotion() { return rule(state); }, leave: () => ({}) });
+  const r = { before: scene.inMotion === false };
+  scene.enter({});
+  r.idleThrottles = scene.inMotion === false;
+  for (const [key, on] of [["train", true], ["glide", true], ["snow", true], ["tweens", 1], ["fx", true]]) {
+    const off = state[key]; state[key] = on;
+    r[`${key}KeepsRate`] = scene.inMotion === true;
+    state[key] = off;
+  }
+  r.idleAgain = scene.inMotion === false;
+  scene.leave();
+  r.afterLeave = scene.inMotion === false;
+  return r;
+};
 const unitChecks = async () => {
   const archive = await cloudArchiveProof();
   const tv = cloudArchiveTvProof();
+  const motion = cloudArchiveMotionProof();
+  record("cloud archive motion: the scene reports motion only while something moves by itself (LOAD's racks, the sign's glide, the TV's snow, a tween, particles), so an idle visit lets the director throttle unfocused frames", Object.values(motion).every(Boolean), JSON.stringify(motion));
   record("cloud archive tv: records read by the game's own score type (one a cabinet, Cloud Hopper one a player), the guide's channel selection and rotation (off under reduced motion, held while read, skipping channels with nothing to show, a block cutting in only when free), stale and unavailable feeds said so, a channel rebuilt only when its stamp moves, and every subscription and record watch released", Object.values(tv).every(Boolean), JSON.stringify(tv));
   record("cloud archive history: shared display names stay separate people, merge-looking subjects and branch owners prove no PR, a PR is only ever a PR-head match and a shared head credits none, unique PR matches are counted apart from merge rows against a recorded PR-ref snapshot, the two noreply forms join only by reviewed alias for every kind, renamed identities show their newest name, authors come from GitHub's records when supplied (login or a neutral label, never a git name, and a missing record refused), unknown and unreviewed identities stay unlinked, no address of any shape appears anywhere in the output and labels are distinct, an over-full day overflows without dropping commits, and the generator shelves only an explicit revision of the official branch", Object.values(archive).every(Boolean), JSON.stringify(archive));
   const artifact = artifactUnitProof();
