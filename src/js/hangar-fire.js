@@ -294,7 +294,8 @@
     };
 
     // The plumes at `thrust` (0 out, 1 full), the throats at `heat` (0 cold, 1 blue-white), each throat's times its own
-    // in `each` when given, the heat's rings with them, and the Jet shuddering on its gear.
+    // in `each` when given, the heat's rings with them, and the Jet shuddering on its gear (`shook` while it does).
+    let shook = false;
     const burn = (thrust, heat, each) => {
       for (let i = 0; i < plumes.length; i++) {
         const p = plumes[i], h = each ? heat * each[i] : heat, lit = thrust > 0.02, flick = 1 + Math.sin(clock * 31 + p.x) * 0.05 + Math.sin(clock * 57) * 0.03;
@@ -319,8 +320,15 @@
           h.scale.x = h.scale.y = 0.95 + u * 0.5 + Math.sin(clock * 17 + i) * 0.04;
         }
       }
-      jet.position.x = jetX + (thrust > 0 ? (Math.random() - 0.5) * 0.024 * thrust : 0);
-      jet.position.y = jetY + (thrust > 0 ? (Math.random() - 0.5) * 0.016 * thrust : 0);
+      // The shudder only while they burn, settled back once, so the Jet is left to whatever else moves it between.
+      if (thrust > 0) {
+        jet.position.x = jetX + (Math.random() - 0.5) * 0.024 * thrust;
+        jet.position.y = jetY + (Math.random() - 0.5) * 0.016 * thrust;
+        shook = true;
+      } else if (shook) {
+        jet.position.x = jetX; jet.position.y = jetY;
+        shook = false;
+      }
     };
     // How hard the plumes burn now: lighting up under fire, and in the malfunction coughing out and catching again on a
     // fixed pattern, ragged.
