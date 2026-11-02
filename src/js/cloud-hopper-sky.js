@@ -15,8 +15,8 @@
 //   like waves; shooting stars; dark
 //   isles growing glowing crystals; and great crystals turning in the air.
 // - `storm` (Thunderhead): rain round the eye, lightning striking the sea with the sky's flash and the strike's
-//   distance for its thunder, and dark scud clouds well below the lanes drifting across on the wind, rain shafts
-//   hanging from them. `grade` greys the hub's sampled sky for it and `flash` lifts it for a frame of lightning.
+//   distance for its thunder, and storm-dark isles far out to either side whose lighthouses sweep their beams through
+//   the haze. `grade` greys the hub's sampled sky for it and `flash` lifts it for a frame of lightning.
 // The moving parts are instanced batches written in place (one draw each) and a few node transforms; nothing
 // allocates a frame. The Canvas 2D renderer gets the still scenery and a thinner aurora, without the flocks,
 // lanterns or shooting stars.
@@ -60,27 +60,29 @@
   // ---- Floating isles, by day and (Aurora Heights) by night -------------------------------------------------------
   // On the island's grid mesher, half a metre a cell: a domed grass top with flowers and a boulder or two, a band of
   // soil, then sandstone strata tapering to a ragged keel with drips under it, and vines and roots hanging off the
-  // rim. Variants 0 and 2 by day carry a stream from a pool to the rim and a waterfall off it. By night the rock is
-  // slate, the grass dark moss, the flowers glowing crystals a few cells tall. A variant returns its mesh with where
+  // rim. Variants 0 and 2 by day carry a stream from a pool to the rim and a waterfall off it. By night (4-7) the rock
+  // is slate, the grass dark moss, the flowers glowing crystals a few cells tall; in a storm (8-11) the rock is wet
+  // grey and the grass dark under heather and pebbles. A variant returns its mesh with where
   // things stand on it: `spots` for trees, its `rim` radius every 1/32 turn, how far it reaches (`radius`), its `fall`
   // and the mist under it.
   const CELL = 0.5;
   const INKS = {
     day: ["#62bb3e", "#7ad04c", "#4e9e32", "#7a5232", "#5e3d24", "#c9a06a", "#ad8156", "#958270", "#a8a296", "#3f7a2c", "#5d9436", "#6b4a2e", "#ffd84a", "#ff8cc0", "#ffffff", "#c58bff", "#3f9ee6"],
-    night: ["#2f5a4a", "#3a6b55", "#26483c", "#3a3040", "#2c2533", "#4a4658", "#3c3a4a", "#565068", "#454055", "#2e8a6c", "#3cc49a", "#3a2e3a", "#5ff5ff", "#c77dff", "#7dffb0", "#ff7ad9", "#3f9ee6"]
+    night: ["#2f5a4a", "#3a6b55", "#26483c", "#3a3040", "#2c2533", "#4a4658", "#3c3a4a", "#565068", "#454055", "#2e8a6c", "#3cc49a", "#3a2e3a", "#5ff5ff", "#c77dff", "#7dffb0", "#ff7ad9", "#3f9ee6"],
+    storm: ["#465f3c", "#526d44", "#3a5233", "#4a3b30", "#3a2e26", "#5d5c63", "#4f4e56", "#686670", "#57555e", "#2f4a2c", "#3d5a36", "#3a2e26", "#8a6f9a", "#a08bb0", "#c9c4b8", "#7d6a8e", "#3f6e96"]
   };
   // Palette slots: 1-3 grass, 4-5 soil, 6-9 strata, 10-12 vines and roots, 13-16 flowers (crystals at night), 17 water.
   const GRASS = 1, SOIL = 4, STRATA = 6, HANG = 10, BLOOM = 13, WATER = 17;
   // A fall is the Mempool rainforest's: thick strands in its lake's moving water, each its own length (FALL_LENGTHS).
   const FALL = hexToRgb(BL.poolModels.WATER[1]), FALL_HEIGHT = 20, FALL_LENGTHS = [0.71, 0.91, 0.82, 1, 0.88, 0.63, 0.77], RIM_STEPS = 32;
   const isle = M.variants((i) => {
-    const v = i % 4, night = i >= 4, palette = INKS[night ? "night" : "day"].map(hexToRgb), rand = mulberry32(911 + v * 37);
+    const v = i % 4, night = i >= 4 && i < 8, palette = INKS[i >= 8 ? "storm" : night ? "night" : "day"].map(hexToRgb), rand = mulberry32(911 + v * 37);
     const R = 9 + v * 1.6 + rand() * 1.5, depth = R * (1.35 + rand() * 0.35), p1 = rand() * TAU, p2 = rand() * TAU, p3 = rand() * TAU;
     const S = Math.ceil(R * 1.3) * 2 + 6, top = Math.ceil(depth * 1.25) + 10, H = top + 8, c = S / 2;
     const grid = BL.terrain.makeGrid(S, H, S), surface = new Int16Array(S * S).fill(-1), bottom = new Int16Array(S * S), stream = new Uint8Array(S * S);
     const rimAt = (a) => R * (1 + 0.16 * Math.sin(3 * a + p1) + 0.09 * Math.sin(5 * a + p2) + 0.05 * Math.sin(9 * a + p3));
     const qAt = (x, z) => { const dx = x + 0.5 - c, dz = z + 0.5 - c; return Math.hypot(dx, dz) / rimAt(Math.atan2(dz, dx)); };
-    const falls = !night && (v === 0 || v === 2), fa = rand() * TAU, fx = Math.cos(fa), fz = Math.sin(fa);
+    const falls = i < 4 && (v === 0 || v === 2), fa = rand() * TAU, fx = Math.cos(fa), fz = Math.sin(fa);
     for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
       const q = qAt(x, z);
       if (q > 1) continue;
@@ -588,23 +590,46 @@
     g.castShadow = false; g.fogPierce = 0.8;
     return g;
   });
-  // Scud: the island's cloud in a storm's dark slate, unlit by any glow, for the cartoon cumulus shading to grey.
-  const SLATE = hexToRgb("#4c5462");
-  const scud = M.variants((i) => {
-    const g = M.merge(BL.hubModels.cloud(i));
-    for (const f of g.faces) { f.color = mix(f.color, SLATE, 0.8); f.emissive = 0; }
-    g.castShadow = false; g.cutawayPreserve = true;
+  // A lighthouse in metres up from its foot: a stone plinth, a tapering tower banded white and Bitcoin orange, the
+  // gallery's deck and rail, the lantern's mullions and a dark cap. Its lamp is a mesh of its own (`lamp`) that
+  // shines through the haze while the tower greys into it; `LAMP_Y` is its middle.
+  const LAMP_Y = 12.6, TOWER_BANDS = 6, TOWER_INKS = ["#f2eee4", "#f7931a"], IRON = "#2b2a30";
+  const lighthouse = M.cached(() => {
+    const profile = [];
+    for (let b = 0; b <= TOWER_BANDS; b++) profile.push([1.55 - 0.5 * b / TOWER_BANDS, 0.8 + 10.8 * b / TOWER_BANDS]);
+    const parts = [
+      M.lathe({ profile: [[2.3, -1.2], [2.3, 0.5], [1.95, 0.8], [0, 0.8]], segments: 12, color: "#5a5860" }),
+      M.lathe({ profile, segments: 12, color: (t) => TOWER_INKS[Math.round(t * TOWER_BANDS) % 2] }),
+      M.lathe({ profile: [[1.05, 11.6], [1.75, 11.6], [1.75, 11.85], [0, 11.85]], segments: 12, color: IRON }),
+      M.lathe({ profile: [[1.7, 12.5], [1.7, 12.62]], segments: 12, color: IRON }),
+      M.lathe({ profile: [[1.0, 13.4], [1.05, 13.55], [0.85, 14.0], [0.45, 14.4], [0.12, 14.65], [0, 14.7]], segments: 12, color: "#3b2a2a" }),
+      M.lathe({ profile: [[0, 14.7], [0.16, 14.8], [0.16, 15.1], [0, 15.2]], segments: 6, color: IRON })
+    ];
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * TAU, b = a + TAU / 16;
+      parts.push(M.box({ w: 0.08, h: 0.7, d: 0.08, color: IRON, offset: { x: Math.cos(a) * 1.68, y: 12.2, z: Math.sin(a) * 1.68 } }));
+      parts.push(M.box({ w: 0.1, h: 1.55, d: 0.1, color: IRON, offset: { x: Math.cos(b) * 0.9, y: 12.62, z: Math.sin(b) * 0.9 } }));
+    }
+    const g = M.merge(...parts);
+    g.castShadow = false;
     return g;
   });
-  // A rain shaft: two crossed sheets hanging from a scud cloud, the local x down from its base (0) to its foot (1),
-  // which the beam fades.
-  const shaft = M.cached(() => {
-    const g = M.geometry(), ink = hexToRgb("#8d99ab");
-    for (const plane of [0, 1]) {
-      const at = (x, u) => M.pushVert(g, x, plane ? u : 0, plane ? 0 : u);
-      M.face(g, [at(0, -0.5), at(0, 0.5), at(1, 0.5), at(1, -0.5)], ink, { emissive: 0.15 });
+  const lamp = M.cached(() => {
+    const g = M.lathe({ profile: [[0.82, 11.85], [0.82, 13.4], [0, 13.4]], segments: 8, color: "#fff1c2", emissive: 1 });
+    g.castShadow = false; g.fogPierce = 0.85;
+    return g;
+  });
+  // A lighthouse's beam along +x from the lamp (0) to its end (1), widening as it goes, in rings so Canvas 2D fades
+  // it too; it shows through most of the haze.
+  const beam = M.cached(() => {
+    const g = M.geometry(), ink = hexToRgb("#fff3cf"), lit = { emissive: 1 }, RINGS = 8, SIDES = 8, rings = [];
+    for (let k = 0; k <= RINGS; k++) {
+      const x = k / RINGS, r = 0.03 + 0.47 * x, ring = [];
+      for (let s = 0; s < SIDES; s++) ring.push(M.pushVert(g, x, Math.cos(s / SIDES * TAU) * r, Math.sin(s / SIDES * TAU) * r));
+      rings.push(ring);
     }
-    g.glass = 0.24; g.lightBeam = 1; g.castShadow = false;
+    for (let k = 0; k < RINGS; k++) for (let s = 0; s < SIDES; s++) M.face(g, [rings[k][s], rings[k + 1][s], rings[k + 1][(s + 1) % SIDES], rings[k][(s + 1) % SIDES]], ink, lit);
+    g.glass = 0.3; g.lightBeam = 1; g.castShadow = false; g.fogPierce = 0.75;
     return g;
   });
 
@@ -1067,25 +1092,27 @@
     };
 
     const storm = (level, course, rand) => {
-      // Scud: dark rags of cloud well below the lanes, drifting across the course on the wind and wrapping round,
-      // so they never come near a landing; a rain shaft hangs under every other one.
-      const SCUD = 14, WRAP = 170;
-      for (let k = 0; k < SCUD; k++) {
-        const t = 0.15 + 0.85 * (k + rand()) / SCUD, along = SHORE + (route.length - SHORE) * t;
-        const y = Math.max(seaY + 20, routeY(t) - 32 - rand() * 28), width = 14 + rand() * 12, speed = (2.5 + rand() * 3) * (k % 2 ? 1 : -1);
-        const geometry = scud(k % 3), b = BL.scene.boundsOf(geometry), s = width / (b.max[0] - b.min[0]);
-        const n = createNode({ geometry, scale: { x: s, y: s * 0.55, z: s * 0.8 }, rotation: { x: 0, y: rand() * TAU, z: 0 }, matrixCloud: true, sightHidden: true });
-        addChild(scenery, n);
-        const rain = k % 2 ? null : node(shaft(), 0, 0, 0);
-        if (rain) { rain.rotation.z = -Math.PI / 2; rain.scale.x = 60 + rand() * 40; rain.scale.y = rain.scale.z = width * 0.7; }
-        const across0 = (rand() * 2 - 1) * WRAP, bottom = y + b.min[1] * s * 0.55;
-        reached(route.finish.x + route.nx * along, y, route.finish.z + route.nz * along, WRAP);
-        movers.push((time) => {
-          const across = ((across0 + speed * time + WRAP) % (2 * WRAP) + 2 * WRAP) % (2 * WRAP) - WRAP;
-          n.position.x = route.finish.x + route.nx * along + route.sideX * across; n.position.y = y;
-          n.position.z = route.finish.z + route.nz * along + route.sideZ * across;
-          if (rain) { rain.position.x = n.position.x; rain.position.y = bottom + 1; rain.position.z = n.position.z; }
+      // Lighthouse isles: storm-dark isles well out to either side of the course at about its height, each with a
+      // lighthouse whose lamp and two sweeping beams show through the haze, so they stand far off as landmarks rather
+      // than anywhere to land. A keeper's hut and bushes stand on the rest of each isle's spots.
+      const ISLES = 8, ACROSS = [90, 35], TOWER = 0.75, BEAM = [55, 8], TURN = 0.8;
+      for (let k = 0; k < ISLES; k++) {
+        const t = (k + 0.5) / ISLES, side = k % 2 ? 1 : -1, v = (k * 3 + 1) % 4, shape = isle(8 + v), s = 1.3 + rand() * 0.4;
+        const p = place(course, t, side * (ACROSS[0] + rand() * ACROSS[1]), shape.radius * s);
+        if (!p) continue;
+        const y = routeY(t) - 4 + rand() * 10, base = standIsle(shape, p.x, y, p.z, s, rand() * TAU), [spot, ...rest] = shape.spots;
+        const tower = node(lighthouse(), spot.x, spot.y, spot.z, TOWER, base);
+        node(lamp(), 0, 0, 0, 1, tower);
+        const turn = node(null, 0, LAMP_Y, 0, 1, tower), phase = rand() * TAU;
+        for (const yaw of [0, Math.PI]) {
+          const shine = node(beam(), 0, 0, 0, 1, turn);
+          shine.rotation.y = yaw; shine.scale.x = BEAM[0]; shine.scale.y = shine.scale.z = BEAM[1];
+        }
+        rest.forEach((stand, n) => {
+          node(n ? BL.hubModels.bush((k + n) % 3) : hut(), stand.x, stand.y, stand.z, n ? 0.5 : 0.8, base).rotation.y = rand() * TAU;
         });
+        reached(p.x, y, p.z, BEAM[0] * TOWER * s);
+        movers.push((time) => { turn.rotation.y = phase + time * TURN; });
       }
       // Lightning: every 4 to 10 s a strike 60 to 110 m off from the eye, inside the haze's reach and mostly ahead,
       // from the storm just over the eye down past the course (no lower than the sea), one or two bolts with it, and

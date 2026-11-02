@@ -447,7 +447,7 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
   ribbons, cached, gently waving) and silent lightning far off on the horizon.
 - **L4 Thunderhead.** *Built in milestone 12, with the chosen look B: 18:36 greyed by the sky's `storm` (0.86) once as
   it is sampled, haze 40–160 m on the clouds and, in the haze's own grey, the sea, rain, forked lightning 60–110 m off with the sky's flash
-  and thunder by distance, and dark scud clouds with rain shafts drifting well below the lanes. Measured in one
+  and thunder by distance, and dark scud clouds with rain shafts drifting well below the lanes (since removed: they looked like landings). Measured in one
   page against the same view without it, the storm costs nothing at 1920x1080 on High. Tornadoes came after
   (cloud-hopper-tornado.js): a spot in the storm turns, a giant voxel tornado after the maintainer's reference (stacked
   stepped slabs, white to deep blue) lowers through the course and drifts across it, swirling the clouds near it and
