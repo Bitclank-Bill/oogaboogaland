@@ -8651,7 +8651,10 @@
       rec.time = Math.min(THROW_SWING_TIME + THROW_SETTLE_TIME, rec.time + dt);
       rec.entry.motion.throwProgress = Math.min(1, rec.time / THROW_SWING_TIME);
     }
-    if (!cloudPlaying()) clankers.update(dt);
+    if (!cloudPlaying()) {
+      rideClankerPlayer();
+      clankers.update(dt);
+    }
     for (let i = 0; gameMode && i < clankerCaptures.length; i++) {
       const rec = clankerCaptures[i], entry = rec.entry, cave = rec.cave;
       if (!cave) continue;
@@ -9110,20 +9113,48 @@
   // keypad, queue and the walk back out (3.8 m past the waiting spot) with a metre to spare, since the room hands its
   // doorway only to players in the Sphere's zone.
   const SPHERE_PORCH = BL.timechainModels.SPOTS.WAIT.z + 5;
-  const onBridge = (x, feet, z) => {
+  // Voice across a bridge (#392, voice-blend.js): on one, `out.to` is the far land's zone and `out.t` how far along the
+  // span counted the island's a body stands, 0 at the island's end and 1 where the far land's zone begins.
+  const BRIDGE_AT = { to: "", t: 0 };
+  // Where the rainforest's ground begins on the vine bridge's centreline, found once for each Mempool island built.
+  let poolFarFor = null, poolFar = 0;
+  const poolBridgeFar = () => {
+    if (poolFarFor === mempoolIsland) return poolFar;
+    const M = mempoolIsland, p = M.place, s = poolModels.SITE;
+    let lo = p.bridgeLocalZ + s.deckStart, hi = p.bridgeLocalZ + s.span;
+    for (let i = 0; i < 24; i++) {
+      const mid = (lo + hi) / 2;
+      if (M.overAt(M.worldX(0, mid), M.worldZ(0, mid))) lo = mid; else hi = mid;
+    }
+    poolFarFor = M; poolFar = hi;
+    return hi;
+  };
+  const onBridge = (x, feet, z, out = BRIDGE_AT) => {
     if (timechainIsland) {
       const p = timechainIsland.place, s = BL.timechainModels.SITE, dx = x - p.x, dz = z - p.z;
       const across = dx * timechainIsland.cos - dz * timechainIsland.sin, along = dx * timechainIsland.sin + dz * timechainIsland.cos;
-      if (Math.abs(across) <= s.width / 2 && along > SPHERE_PORCH && along <= p.bridgeZ + s.span + 0.5) return true;
+      const near = p.bridgeZ + s.span + 0.5;
+      if (Math.abs(across) <= s.width / 2 && along > SPHERE_PORCH && along <= near) {
+        out.to = "sphere"; out.t = (near - along) / (near - SPHERE_PORCH);
+        return true;
+      }
     }
     if (mempoolIsland && !mempoolIsland.overAt(x, z) && !mempoolIsland.coveredAt(x, feet + 0.5, z)) {
       const p = mempoolIsland.place, s = poolModels.SITE, dx = x - p.x, dz = z - p.z;
       const across = dx * mempoolIsland.cos - dz * mempoolIsland.sin, along = dx * mempoolIsland.sin + dz * mempoolIsland.cos;
-      if (Math.abs(across) < s.width / 2 && along >= p.bridgeLocalZ + s.deckStart && along <= p.bridgeLocalZ + s.span) return true;
+      const near = p.bridgeLocalZ + s.span;
+      if (Math.abs(across) < s.width / 2 && along >= p.bridgeLocalZ + s.deckStart && along <= near) {
+        const far = poolBridgeFar();
+        out.to = "rainforest"; out.t = Math.min(1, Math.max(0, (near - along) / (near - far)));
+        return true;
+      }
     }
     if (bifrostIsle) {
       const site = bifrostIsle.site, w = site.walk, ground = site.groundAt(x, z), along = (x - w.x) * w.sr + (z - w.z) * w.cr;
-      if (ground > -Infinity && feet > ground - 3 && along >= w.from && along <= w.to) return true;
+      if (ground > -Infinity && feet > ground - 3 && along >= w.from && along <= w.to) {
+        out.to = "bifrost"; out.t = (w.to - along) / (w.to - w.from);
+        return true;
+      }
     }
     return false;
   };
@@ -9212,17 +9243,28 @@
   let zoneHeld = null, zoneHeldFor = 0;
   // Both body kinds share position, health and zone transport. Gorilla locomotion
   // reuses six numbers so climbing, swimming and running survive the handoff.
+  // The crossing the driven body is on (#392), against the zone reported for it: from the island across a bridge, back
+  // from the far land onto it, or just off its far end before the new zone has held (all the way across).
+  const shareBlend = (driven, gorilla, zone) => {
+    const p = driven.root.position, feet = p.y - (gorilla ? 0 : driven.baseY), reported = BL.net.state.zone, at = BRIDGE_AT;
+    if ((gorilla || !playerCaveIndex) && onBridge(p.x, feet, p.z, at)) {
+      if (reported === "outside") return BL.net.setBlend(at.to, at.t);
+      if (reported === at.to) return BL.net.setBlend("outside", 1 - at.t);
+    } else if (zone !== reported && BL.voiceBlend.adjacent(reported, zone)) return BL.net.setBlend(zone, 1);
+    BL.net.setBlend(null, 0);
+  };
   const shareDrivenActor = (dt) => {
-    if (cloudHopper?.active) return;
+    if (cloudHopper?.active) { BL.net.setBlend(null, 0); return; }
     const gorilla = clankerPlay && clankerPlay.player, driven = gorilla || crew.player;
     BL.net.setBody(gorilla ? gorilla.netBody : driven ? driven.traits.name : null);
-    if (!driven) return;
+    if (!driven) { BL.net.setBlend(null, 0); return; }
     const zone = zoneOf(driven, !!gorilla);
     if (zone === BL.net.state.zone) zoneHeld = null;
     else if (zone !== zoneHeld) {
       zoneHeld = zone;
       zoneHeldFor = 0;
     } else if ((zoneHeldFor += dt) >= ZONE_HOLD) BL.net.setZone(zone);
+    shareBlend(driven, !!gorilla, zone);
     const p = driven.root.position;
     if (gorilla) {
       const g = gorilla.netMotion, m = gorilla.motion, d = gorilla.drive;
@@ -9640,7 +9682,8 @@
     return clankerCenterClear(entry, x, y, z, toX, toY, toZ, true)
       && island.clearAt(toX, to, toZ, radius, 0.12)
       && island.voxelSegmentClearAt(x, from, z, toX, to, toZ, radius, 0.12)
-      && solids.segmentClear(x, from, z, toX, to, toZ, radius, 0.12, null, radius, 0.12, true, false, false, entry.rage.active);
+      && solids.segmentClear(x, from, z, toX, to, toZ, radius, 0.12, null, radius, 0.12, true, false, false, entry.rage.active)
+      && clankerPlayersClear(entry, x, y, z, toX, toY, toZ);
   };
   const clankerPlatformEntryAt = (x, y, z, out) => {
     const hq = island.headquarters, radius = Math.hypot(x, z), angle = Math.atan2(x, -z);
@@ -9765,8 +9808,55 @@
       CLANKER_REST_FOOTING, clankerWalkSolidAt, clankerWalkTransitionClear,
       island.hullClearAt, entry, 2, 0, true, clankerPointFootingAt);
   };
+  // Other players are solid to the gorilla the visitor drives, as they are to a driven Ooga (`crew.outsideSupportAt`).
+  // Its body is the cylinder their pages see (the rig's posed envelope): their bodies hold it off and their tops hold
+  // it up on that one footprint. NPC gorillas still run under players.
+  const clankerPlayers = (entry) => entry && entry.controlled && remotes && !cloudPlaying() ? remotes.actors() : null;
+  const clankerPlayersClear = (entry, x, y, z, toX, toY, toZ, carrier = null) => {
+    const bodies = clankerPlayers(entry);
+    if (bodies) for (let i = 0; i < bodies.length; i++) {
+      const body = bodies[i];
+      if (body.player && body !== carrier && !cylinderSegmentClear(x, y, z, toX, toY, toZ, entry.gorilla.bodyRadius, entry.gorilla.bodyHeight,
+        body.x, body.z, body.y, body.y + body.height, body.radius)) return false;
+    }
+    return true;
+  };
+  const clankerPlayersSupportAt = (entry, x, z, y, step) => {
+    const bodies = clankerPlayers(entry);
+    let floor = ABYSS_FLOOR;
+    if (bodies) for (let i = 0; i < bodies.length; i++) {
+      const body = bodies[i], top = body.y + body.height, reach = entry.gorilla.bodyRadius + body.radius;
+      if (body.player && top > floor && top <= y + step + 1e-7 && (x - body.x) ** 2 + (z - body.z) ** 2 < reach * reach - 1e-8) floor = top;
+    }
+    return floor;
+  };
+  // Standing on a player's head, the driven gorilla rides the move the remote pool last made them (`dx`, `dz`, and
+  // `dy` for their top), as a driven Ooga does. Once nobody holds it up its footing is gone, and it falls.
+  let clankerOnPlayer = false;
+  const rideClankerPlayer = () => {
+    const entry = clankerPlay && clankerPlay.active ? clankerPlay.player : null, riding = clankerOnPlayer;
+    clankerOnPlayer = false;
+    const bodies = clankerPlayers(entry);
+    if (!bodies || !entry.active || entry.climb.active || entry.jump.active || entry.drive.airborne) return;
+    const p = entry.root.position;
+    for (let i = 0; i < bodies.length; i++) {
+      const body = bodies[i], reach = entry.gorilla.bodyRadius + body.radius;
+      if (!body.player || Math.abs(body.y - body.dy + body.height - p.y) > 1e-4
+        || (p.x - body.x + body.dx) ** 2 + (p.z - body.z + body.dz) ** 2 >= reach * reach - 1e-8) continue;
+      // The same proof as any of its moves, less the player it stands on; every other player still holds it off.
+      const steps = Math.max(1, Math.ceil(Math.hypot(body.dx, body.dy, body.dz) / 0.125));
+      const dx = body.dx / steps, dy = body.dy / steps, dz = body.dz / steps;
+      for (let n = 0; n < steps; n++) {
+        if (!clankerClear(p.x, p.y, p.z, p.x + dx, p.y + dy, p.z + dz, entry.radius, entry.height, entry, null, entry.heading, entry.heading, body)) break;
+        p.x += dx; p.y += dy; p.z += dz;
+      }
+      clankerOnPlayer = true;
+      return;
+    }
+    if (riding) clankers.supportRemoved();
+  };
   const clankerClear = (x, y, z, toX, toY, toZ, radius, height, entry = null, ignore = null,
-    fromHeading = entry ? entry.heading : 0, toHeading = fromHeading) => {
+    fromHeading = entry ? entry.heading : 0, toHeading = fromHeading, carrier = null) => {
     if (entry) entry.walkPoseChecked = false;
     const previousEntry = clankerPassingEntry;
     // A lab crowd overlap must not trap an airborne gorilla at its current XZ.
@@ -9783,7 +9873,8 @@
         if (!verticalLabJump && !entry.planningLabTraffic && !entry.planningRoam && (entry.motion.lab || !entry.controlled)
           && !clankerPeersClear(entry, x, y, z, toX, toY, toZ, fromHeading, toHeading)) return false;
       }
-      return clankerRigClear(x, y, z, toX, toY, toZ, radius, height, entry, ignore, fromHeading, toHeading);
+      return clankerRigClear(x, y, z, toX, toY, toZ, radius, height, entry, ignore, fromHeading, toHeading)
+        && clankerPlayersClear(entry, x, y, z, toX, toY, toZ, carrier);
     } finally {
       clankerPassingEntry = previousEntry;
     }
@@ -9992,7 +10083,7 @@
   };
   const CLANKER_RECTANGLE = { halfForward: 0, halfSide: 0, centerForward: 0 };
   const CLANKER_TERRAIN_RAMP = { groundX: 0, groundZ: 0, uneven: 0 };
-  const clankerSupportAt = (entry, x, z, y, step, heading = entry.heading, props = true) => {
+  const clankerSceneSupportAt = (entry, x, z, y, step, heading = entry.heading, props = true) => {
     // Tree tops are landing surfaces for the driven gorilla, not floors for a roaming one (as for Oogas).
     const accept = entry.controlled ? null : npcTreeSupportAllowed;
     const padSupportAt = entry.rage.active ? clankerRagePadSupportAt : clankerPadSupportAt;
@@ -10060,6 +10151,11 @@
       }
     }
     return floor;
+  };
+  // The scene's support, and other players' tops for the gorilla the visitor drives.
+  const clankerSupportAt = (entry, x, z, y, step, heading = entry.heading, props = true) => {
+    const floor = clankerSceneSupportAt(entry, x, z, y, step, heading, props);
+    return props ? Math.max(floor, clankerPlayersSupportAt(entry, x, z, y, step)) : floor;
   };
   const clankerPadSupportAt = (x, z, y, step, props, skipRageProps = false) => {
     const floor = island.supportAt(x, z, y, Math.min(step, STEP_MAX), ABYSS_FLOOR);
@@ -11318,7 +11414,7 @@
     if (factoryMouth?.hall) factoryMouth.hall.suspend();
     if (factoryMouth?.roofWindow) factoryMouth.roofWindow.suspend();
     hud.dispose();
-    BL.net.setBody(null); BL.net.setHub(false); zoneHeld = null;
+    BL.net.setBody(null); BL.net.setBlend(null, 0); BL.net.setHub(false); zoneHeld = null;
     CLANKER_REST_SLOPE.supportEntry = RAGE_WARP_MOTION.supportEntry = null;
     sleepSightSince = Infinity; sleepSightMode = null; sleepSightGorilla = false; sleepSightFrame++;
     CLANKER_HIT.node = CLANKER_HIT.owner = POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
@@ -12181,7 +12277,7 @@
         solids.supportAt(x, z, y, 0.02, 0, null, null, false, null, !!entry?.rage?.active)),
       isGrass: island.isGrassAt, restSurfaceClear: clankerRestSurfaceClear, onLand: island.onLand,
       roamRadius: island.radius, meadowRadius: island.meadowRadius,
-      clear: clankerClear, tallObstacleAhead: clankerTallObstacleAhead,
+      clear: clankerClear, playersClear: clankerPlayersClear, tallObstacleAhead: clankerTallObstacleAhead,
       onPound: poundClankerEquipment,
       fireContact: clankerFireContact, fireReachable: shared.fireReachable, fireClear: clankerFireClear,
       canSmash: canClankerSmash, supportAt: clankerSupportAt, terrainSupportAt: clankerTerrainSupportAt,
@@ -12421,6 +12517,7 @@
         get gameMode() { return gameMode; },
         selectDebugGorilla,
         get timechainIsland() { return timechainIsland; },
+        poolBridgeFar,
         get factory() { return factoryMouth && factoryMouth.hall ? factoryMouth.hall.debug : null; },
         get bifrost() { return bifrostIsle; },
         get footsteps() { return footsteps; },
@@ -12600,7 +12697,7 @@
     islandGuide.dispose();
     islandGuide = null;
     // GAME MODE ends with the visit; the island comes back built afresh.
-    gameMode = gameCombatOnly = false;
+    gameMode = gameCombatOnly = clankerOnPlayer = false;
     for (const node of ringPanels) { node.mirrorRipples.dispose(); if (node.mirrorBody) node.mirrorBody.dispose(); }
     gameRing = null;
     gameRingK = gameRingWait = ringLanterns.length = ringPanels.length = ringPulseWait = 0;
@@ -12676,6 +12773,7 @@
     }
     clankerEquipment.length = 0;
     BL.net.setBody(null);
+    BL.net.setBlend(null, 0);
     zoneHeld = null;
     BL.net.setHub(false);
     npcSync.dispose();
