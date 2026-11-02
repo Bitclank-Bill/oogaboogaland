@@ -40,7 +40,7 @@
 // turns her head very slowly and walks off the other way. Then she goes back to her own routine. Smashing the Jet or
 // storming off she only jumps or yells at her brother, and the static fire still has her first. When lightning runs
 // over the Jet and cracks (`zap`), she is zapped if she stands near it: stiff and shaking, sparks off her, then dazed,
-// sooted and smoking.
+// sooted and smoking. In the dark (`dark`) her eyes glow.
 //
 // She walks a grid of her part of the hall built once a visit from the hangar's own checks (`HM.clearAt`,
 // `HM.supportAt`, `HM.walkable`), each cell with a place on the floor and one up the Jet's stair or along its gangway
@@ -153,6 +153,8 @@
   // Lightning through the Jet: how near its length she must stand to be zapped, m; how long she shakes, and how long
   // the whole of it lasts, s.
   const ZAP = { reach: 5, shock: 1.1, len: 3.4 };
+  // How much brighter her eyes glow in the dark, at its darkest.
+  const EYES = 3;
   const HUSH = { chance: 0.15, every: 150, down: 0.7, whisper: 1.3, light: 4.4, scream: 5, hunt: 6.9, grab: 7.5, blows: 3, blink: 0.18 };
   // The tally at her feet while she smashes: its font, its pips' size and gap, px.
   const TALLY_FONT = "bold 10px ui-monospace, monospace", PIP = 9, PIP_GAP = 4;
@@ -636,6 +638,8 @@
     };
     // The engines gone quiet.
     const settle = () => { settled = true; settledAt = clock; };
+    // The hall's lights out by `k` (0 lit, 1 dark): her eyes glowing in it.
+    const dark = (k) => { P.head.glow = 1 + EYES * k; };
     // Lightning cracking over the Jet, along x = `x` from `z0` to `z1`: zapped if she stands within ZAP.reach of it,
     // whatever reaction she was in; whether she was. Not while the static fire has her.
     let zapAt = 0, zapSpark = 0;
@@ -1267,7 +1271,7 @@
       tess = at;
     };
     // How cross she is, 0 to 4 by her anger, 5 while she smashes: the terminals' mood page shows it.
-    return { node, props, body: P.torso, actor, update, liveGeometry, poke, spook, settle, zap, useNear, actLabel, overlay, distract, debug, get near() { return near; }, get rampaging() { return rampage; }, get mood() { return rampage ? 5 : Math.min(4, anger); } };
+    return { node, props, body: P.torso, actor, update, liveGeometry, poke, spook, settle, zap, dark, useNear, actLabel, overlay, distract, debug, get near() { return near; }, get rampaging() { return rampage; }, get mood() { return rampage ? 5 : Math.min(4, anger); } };
   };
 
   BL.sis = { create };
