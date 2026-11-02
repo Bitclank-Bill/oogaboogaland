@@ -59,8 +59,9 @@
 
   // `root`: the scene's root; `jet`: the Jet's node and `nozzles` its nozzles' (sooted by the blast, or null); `fx`: the
   // scene's particles; `audio`: the hangar's sound; `hold(on)`: the controls taken from the presser and the view from
-  // the pilot, and given back; `toast(text)` for the result.
-  const create = ({ root, jet, nozzles, fx, audio, hold, toast }) => {
+  // the pilot, and given back; `toast(text)` for the result; `busy()`, whether something else has the engines now, so
+  // the button only buzzes no.
+  const create = ({ root, jet, nozzles, fx, audio, hold, toast, busy = null }) => {
     const L = HM.LAYOUT.fireTest, F = HM.FIRE, P = HM.fireStation(), E = HM.exhaust(), B = HM.blast(), c = Math.cos(L.turn), s = Math.sin(L.turn);
     const at = (p, dy = 0) => ({ x: p[0], y: p[1] + dy, z: p[2] });
     const hidden = (geometry, options) => createNode({ geometry, sightHidden: true, visible: false, ...options });
@@ -127,8 +128,9 @@
       g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
     }
 
-    // `t` is the time since the press, -1 while the booth stands ready; `clock` times the blinking and flicker.
-    let t = -1, clock = 0, phase = "ready", shown = "ready", timerShown = -1, near = false, boomed = false, spark = 0, dust = 0, rumbleAt = 0, rumbling = false;
+    // `t` is the time since the press, -1 while the booth stands ready; `clock` times the blinking and flicker. Between
+    // tests the engines burn as `engines` last asked (`idleThrust`, `idleHeat`), cold unless something drives them.
+    let t = -1, clock = 0, phase = "ready", shown = "ready", timerShown = -1, near = false, boomed = false, spark = 0, dust = 0, rumbleAt = 0, rumbling = false, idleThrust = 0, idleHeat = 0;
     // The presser while the blast has them: who, which way they faced; whether the test holds the controls and the view;
     // the view's glide and its shake.
     let presser = null, heading = 0, holding = false, quake = 0, glide = 0, from = false;
@@ -142,8 +144,13 @@
     const POSE = quat.create(), BIRDS = quat.create(), TILT = quat.fromAxisAngle(quat.create(), 1, 0, 0, Math.PI / 2), SPIN = quat.create();
     const SHAKE = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, on: false };
     const ready = () => t < 0;
+    // The press, or while something else has the engines (`busy`) the denied buzz and nothing more.
     const press = () => {
       if (t >= 0) return false;
+      if (busy && busy()) {
+        audio.denied(booth.x, booth.y, booth.z);
+        return true;
+      }
       t = 0;
       boomed = false;
       audio.test(AT);
@@ -392,8 +399,10 @@
         timerShown = left;
       }
 
-      // The engines: the throats glowing through the spool-up, the plumes, dust blown aft, sparks spat in the malfunction.
-      const thrust = thrustAt(), heat = phase === "spool" ? (t - AT.spool) / (AT.fire - AT.spool) * 0.8 : thrust > 0 ? 0.8 + thrust * 0.2 : 0;
+      // The engines: the throats glowing through the spool-up, the plumes, dust blown aft, sparks spat in the malfunction;
+      // between tests as `engines` drives them.
+      const thrust = running ? thrustAt() : idleThrust;
+      const heat = !running ? idleHeat : phase === "spool" ? (t - AT.spool) / (AT.fire - AT.spool) * 0.8 : thrust > 0 ? 0.8 + thrust * 0.2 : 0;
       burn(thrust, heat);
       if (thrust > 0.3 && (dust -= dt) <= 0) {
         dust = 0.05;
@@ -535,6 +544,9 @@
       g.globalAlpha = 1;
     };
 
+    // The engines between tests, from the next frame: `thrust` and `heat` as `burn` takes them, the plumes lit, the Jet
+    // shuddering and the throats glowing as they say. The test's own run overrides them.
+    const engines = (thrust, heat) => { idleThrust = thrust; idleHeat = heat; };
     // Leaving mid-test: the presser stands with their controls back, the pad stops, the Jet settles; the nodes go with
     // the scene's root.
     const dispose = () => {
@@ -548,7 +560,7 @@
     };
 
     return {
-      group, body, cables, press, update, useNear, actLabel, view, unshake, lights, overlay, dispose, AT, blast: blastAt,
+      group, body, cables, press, update, useNear, actLabel, view, unshake, lights, overlay, engines, dispose, AT, blast: blastAt,
       get phase() { return phase; }, get t() { return t; }, get near() { return near; }, get ready() { return ready(); }, get out() { return !!presser; }
     };
   };
