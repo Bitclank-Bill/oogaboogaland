@@ -22,8 +22,8 @@
 // engines revving by turns, each with a voice of its own on its own side, as if they were talking; `zap(Z, from, to)`
 // lightning running over the Jet, a sizzle crackling from nose to tail over the hum, then a crack and silence; and
 // `blackout(B)` the power dying with a clunk, a low hum in the dark, and the banks clunking back on, the mains hum
-// coming back with them as `power(k)` says (0 off, 1 on); and `lowrider(L)` the deep bass thump the Jet bounces to, on
-// every beat, as heavy as a stomp on the floor; and `shuffle(S)` the Jet shifting in its bay, its brakes letting go,
+// coming back with them as `power(k)` says (0 off, 1 on); and `lowrider(L)` a sledgehammer's deep, heavy thud each
+// time the bouncing Jet's nose gear comes down; and `shuffle(S)` the Jet shifting in its bay, its brakes letting go,
 // its tyres scrubbing, its gear creaking and its engines' short bursts.
 //
 // Kortik's Sis has a voice of her own (`voice`): a buzz and a breath through three formants, a syllable for each run
@@ -50,7 +50,7 @@
 
   // How loud the test's voices peak: the siren, the whine and its whoosh, the whoomph, the roar's body, crackle and
   // rumble, a clank, the alarm, the boom's sweep, its rumble and its crack, the ringing, and the anomalies' hum.
-  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08, rev: 0.22, sizzle: 0.12, thump: 0.9 };
+  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08, rev: 0.22, sizzle: 0.12, thump: 0.9, bang: 0.8 };
   // How far the blast muffles the presser's hearing, Hz.
   const MUFFLED = 320, CLEAR = 20000;
   // Kortik's Sis's ways of saying a line: her pitch, Hz; a syllable's length and the gap after it, s; how loud; how far
@@ -89,8 +89,8 @@
   const FORMANTS = { 65: [850, 1220], 69: [610, 2330], 73: [430, 2480], 79: [590, 920], 85: [760, 1400], 89: [310, 2790] }, SCHWA = [640, 1500], F3 = 2900;
 
   // `spots`: the door's shield and the launch shield, { x, y, z } each, the tunnel's axis { y, z0, z1 }, the test's
-  // booth and the middle of the Jet's engines (with `gap`, how far each stands to its side), the film show's projector
-  // and its picture, and the forklift, { x, y, z } each.
+  // booth and the middle of the Jet's engines (with `gap`, how far each stands to its side), its nose gear, the film
+  // show's projector and its picture, and the forklift, { x, y, z } each.
   const create = (spots) => {
     let ctx = null, master = null, mix = null, muffle = null, buffer = null, ready = false, muted = false, disposed = false, since = 0, volume = 1;
     try {
@@ -318,9 +318,16 @@
       test.humGain = gain(0, test.enginePan);
       test.hum = osc("sawtooth", 100, filter("bandpass", 380, 2.5, test.humGain));
       test.humFizz = hissOf(filter("bandpass", 3600, 5, gain(0.35, test.humGain)));
-      // The lowrider's thump, everywhere, a heavy stomp on the floor: a sine dropping to a deep note and its octave, with
-      // the impact's thud (low noise closing down fast) on top, all driven hard into the clip so its harmonics carry the
-      // low end even on small speakers, through a lowpass that keeps it round.
+      // The lowrider's bang where the nose gear comes down, a sledgehammer's thud: the hit, a burst of low noise closing
+      // down fast, and a dull knock, panned to the gear; and, everywhere, the deep body under it, a sine dropping to a low
+      // note and its octave driven hard into the clip so its harmonics carry the low end even on small speakers, through
+      // a lowpass that keeps it round.
+      test.bangPan = panner();
+      test.bangHitGain = gain(0, test.bangPan);
+      test.bangHitBand = filter("lowpass", 900, 0.8, test.bangHitGain);
+      test.bangHit = hissOf(test.bangHitBand);
+      test.bangKnockGain = gain(0, test.bangPan);
+      test.bangKnock = osc("triangle", 170, filter("lowpass", 500, 0.7, test.bangKnockGain));
       test.thumpGain = gain(0, mix);
       const thumpClip = ctx.createWaveShaper();
       thumpClip.curve = curve;
@@ -328,9 +335,6 @@
       const thumpDrive = gain(4, thumpClip);
       test.thump = osc("sine", 110, thumpDrive);
       test.thump2 = osc("sine", 220, gain(0.35, thumpDrive));
-      test.thudGain = gain(0, thumpDrive);
-      test.thudBand = filter("lowpass", 500, 0.9, test.thudGain);
-      test.thud = hissOf(test.thudBand);
       // The anomalies' lightning: a sizzle, high noise through a band, panned to wherever it runs over the Jet.
       test.sizzlePan = panner();
       test.sizzleGain = gain(0, test.sizzlePan);
@@ -638,30 +642,38 @@
       T.hum.frequency.setValueAtTime(100, at(B.end));
       return true;
     };
-    // The lowrider from now, on its times `L` (s from its start: the first beat, the beat, how many, how hard each, 0..1):
-    // a heavy stomp on each beat: the impact's thud (`thud` loud, closing from `close[0]` to `close[1]` Hz over
-    // `thudLen` s) over a deep note whose pitch drops from `from` to `to` Hz over `drop` s, swelling in over `attack`
-    // and ringing out over `ring`.
-    const THUMP = { from: 130, to: 50, drop: 0.07, attack: 0.004, ring: 0.45, thud: 1.2, close: [500, 120], thudLen: 0.14 };
+    // The lowrider from now, on its times `L` (s from its start: the first beat, the beat, how many, how hard each, 0..1,
+    // and how far into a beat the nose gear comes down, `slam`): as the gear hits on each beat, a sledgehammer's thud
+    // (`BANG`): the hit (`hit` loud, its band closing from `close[0]` to `close[1]` Hz over `hitLen` s), a dull knock
+    // (`knock` loud, falling from `knockHz[0]` to `knockHz[1]` Hz over `knockLen` s, a little out of tune each time, by up
+    // to `detune`), and the deep body under it, dropping from `from` to `to` Hz over `drop` s, `body[0]` loud and gone by
+    // `body[1]` s.
+    const BANG = { hit: 1.2, close: [900, 110], hitLen: 0.13, knock: 0.6, knockHz: [170, 105], knockLen: 0.16, detune: 0.05, from: 95, to: 42, drop: 0.045, body: [1.1, 0.4] };
     const lowrider = (L) => {
       if (!ready || muted) return false;
       const t0 = ctx.currentTime + 0.02, at = (s) => t0 + s, T = test;
       const clear = (param, value) => { param.cancelScheduledValues(t0); param.setValueAtTime(value, t0); };
-      clear(T.thumpGain.gain, 0); clear(T.thudGain.gain, 0); clear(T.thump.frequency, THUMP.from); clear(T.thump2.frequency, THUMP.from * 2); clear(T.thudBand.frequency, THUMP.close[0]);
+      clear(T.thumpGain.gain, 0); clear(T.bangHitGain.gain, 0); clear(T.bangKnockGain.gain, 0);
+      clear(T.thump.frequency, BANG.from); clear(T.thump2.frequency, BANG.from * 2); clear(T.bangHitBand.frequency, BANG.close[0]); clear(T.bangKnock.frequency, BANG.knockHz[0]);
       for (let n = 0; n < L.beats; n++) {
-        const s = L.start + n * L.beat, loud = TEST.thump * L.hard(n);
-        T.thump.frequency.setValueAtTime(THUMP.from, at(s));
-        T.thump.frequency.exponentialRampToValueAtTime(THUMP.to, at(s + THUMP.drop));
-        T.thump2.frequency.setValueAtTime(THUMP.from * 2, at(s));
-        T.thump2.frequency.exponentialRampToValueAtTime(THUMP.to * 2, at(s + THUMP.drop));
+        const s = L.start + (n + L.slam) * L.beat, k = L.hard(n), tune = 1 + (Math.random() - 0.5) * BANG.detune;
+        T.bangHitBand.frequency.setValueAtTime(BANG.close[0], at(s));
+        T.bangHitBand.frequency.exponentialRampToValueAtTime(BANG.close[1], at(s + BANG.hitLen));
+        T.bangHitGain.gain.setValueAtTime(0, at(s));
+        T.bangHitGain.gain.linearRampToValueAtTime(TEST.bang * BANG.hit * k, at(s + 0.002));
+        T.bangHitGain.gain.exponentialRampToValueAtTime(0.001, at(s + BANG.hitLen + 0.05));
+        T.bangKnock.frequency.setValueAtTime(BANG.knockHz[0] * tune, at(s));
+        T.bangKnock.frequency.exponentialRampToValueAtTime(BANG.knockHz[1] * tune, at(s + BANG.knockLen));
+        T.bangKnockGain.gain.setValueAtTime(0, at(s));
+        T.bangKnockGain.gain.linearRampToValueAtTime(TEST.bang * BANG.knock * k, at(s + 0.003));
+        T.bangKnockGain.gain.exponentialRampToValueAtTime(0.001, at(s + BANG.knockLen));
+        T.thump.frequency.setValueAtTime(BANG.from, at(s));
+        T.thump.frequency.exponentialRampToValueAtTime(BANG.to, at(s + BANG.drop));
+        T.thump2.frequency.setValueAtTime(BANG.from * 2, at(s));
+        T.thump2.frequency.exponentialRampToValueAtTime(BANG.to * 2, at(s + BANG.drop));
         T.thumpGain.gain.setValueAtTime(0, at(s));
-        T.thumpGain.gain.linearRampToValueAtTime(loud, at(s + THUMP.attack));
-        T.thumpGain.gain.exponentialRampToValueAtTime(0.001, at(s + THUMP.ring));
-        T.thudBand.frequency.setValueAtTime(THUMP.close[0], at(s));
-        T.thudBand.frequency.exponentialRampToValueAtTime(THUMP.close[1], at(s + THUMP.thudLen));
-        T.thudGain.gain.setValueAtTime(0, at(s));
-        T.thudGain.gain.linearRampToValueAtTime(THUMP.thud, at(s + 0.002));
-        T.thudGain.gain.exponentialRampToValueAtTime(0.001, at(s + THUMP.thudLen));
+        T.thumpGain.gain.linearRampToValueAtTime(TEST.thump * BANG.body[0] * k, at(s + 0.003));
+        T.thumpGain.gain.exponentialRampToValueAtTime(0.001, at(s + BANG.body[1]));
       }
       return true;
     };
@@ -764,6 +776,8 @@
       const E = spots.engines;
       place(E.x, E.y, E.z, 1);
       set(test.enginePan.pan, AT.pan * 0.6, now);
+      place(spots.gear.x, spots.gear.y, spots.gear.z, 1);
+      set(test.bangPan.pan, AT.pan, now);
       // Each engine's rev from where it stands, the two pushed farther apart than they are.
       place(E.x - E.gap, E.y, E.z, 1);
       const left = AT.pan;
