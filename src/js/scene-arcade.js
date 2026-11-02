@@ -1112,7 +1112,12 @@
     armed = on;
     document.body.classList.toggle("arena-armed", on);
     const w = avatar.weapon;
-    if (on) { rifleWas = w.unlimited; w.unlimited = true; w.secondaryOwned = true; avatar.parts.gun.visible = true; }
+    if (on) {
+      rifleWas = w.unlimited; w.unlimited = true; w.secondaryOwned = true; avatar.parts.gun.visible = true;
+      // The rifle in hand, not just carried, so a shot can wake the herald (a carried rifle never fires).
+      pilot.weaponMode(2);
+      hud.hint(COARSE ? "Rifle out · tap the ghost or shoot it to start the hunt" : "Rifle out · X to aim, then shoot the ghost (or click it) to start the hunt", 6000);
+    }
     else {
       if (pilot.aiming) pilot.modeAction("mode-toggle");
       people.selectWeapon(0, avatar);
