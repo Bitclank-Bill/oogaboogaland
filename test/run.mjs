@@ -7517,7 +7517,7 @@ const hubWorkingArrival = { name: "hub working arrival", why: "regression: worki
   record("working arrival: every Ooga starts upright beside the pile with no HQ or basement bed held", state.rows.length > 0 && state.rows.every(c => c.state === "working" && c.visible && c.surface === 0 && Math.abs(c.feet - c.surface) < 1e-6 && !c.bed && !c.quaternion && c.radius <= 11)
     && state.gap >= -1e-6 && !state.occupiedBeds, JSON.stringify(state));
 } };
-const hubLiveWake = { name: "hub live wake", why: "regression: live activity must clear HQ and basement mattresses before reuse, complete both exit walks, and return rainforest sleepers to the main level", run: async b => {
+const hubLiveWake = { name: "hub live wake", why: "regression: live activity must clear HQ and basement mattresses before reuse, complete both indoor exit walks, and start rainforest wake trips in place", run: async b => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, scene = BL.scenes.hub, now = Date.now(), day = 86400000, mattresses = B.headquarters.mattresses;
     // The baked roster ages with the clock, so the sleepers are made here. Sani is the Sphere's resident, hidden in its
@@ -7548,9 +7548,10 @@ const hubLiveWake = { name: "hub live wake", why: "regression: live activity mus
       const p = c.root.position, bed = beds[i], indoor = i < 2, feet = p.y - c.baseY;
       return { name: c.traits.name, state: c.state, mode: c.bedTravel.mode,
         clear: c.root.visible && !c.root.quaternion && !c.bedroll && bed.sleeper !== c,
-        // A chilling Ooga may settle into a fire-pit seat, a little below the meadow; the HQ lies metres under it.
+        // Outdoor wakes begin at their own floor instead of settling at a distant fire or pile.
         placed: indoor ? Math.hypot(p.x - bed.walkAt.x, p.z - bed.walkAt.z) < 1e-6 && Math.abs(feet - bed.walkAt.y) < 1e-6
-          : !c.bedTravel.mode && B.island.onLand(p.x, p.z) && feet > B.island.surfaceAt(p.x, p.z) - 0.5 };
+          : Math.hypot(p.x - bed.x, p.z - bed.z) < 1e-6
+            && Math.abs(feet - B.headquarters.solids.supportAt(bed.x, bed.z, bed.y, bed.y, c)) < 1e-6 };
     });
     // The next sleeper settles into a vacated bed while its waker still stands at the bed's side: the waker's walking
     // body must stay off that mattress, then and for as long as it is still on the bed's floor.
@@ -7594,12 +7595,121 @@ const hubLiveWake = { name: "hub live wake", why: "regression: live activity mus
       feet: c.root.position.y - c.baseY, surface: B.island.surfaceAt(c.root.position.x, c.root.position.z) }));
     return { started, arrived, heldUnderground, reuse, radius, frames, reused: beds.slice(0, 2).map(bed => bed.sleeper?.traits.name || null) };
   })()`);
-  record("live wake: working and chilling Oogas exit HQ and basement without bed overlap, while rainforest sleepers return to the main level",
+  record("live wake: working and chilling Oogas exit HQ and basement without bed overlap, while rainforest sleepers start walking in place",
     state.started?.every((row, i) => row.clear && row.placed && row.state === (i & 1 ? "chilling" : "working")
-      && (i < 2 ? row.mode === "waiting" || row.mode === "walk" : !row.mode))
+      && (row.mode === "waiting" || row.mode === "walk"))
     && state.arrived?.every((row, i) => !row.mode && row.state === (i ? "chilling" : "working") && row.feet >= -1e-6 && row.surface >= -1e-6)
     && state.heldUnderground && state.reuse.bed >= 0 && state.reuse.mode === "rest" && state.reuse.samples > 0 && state.reuse.clearance >= state.radius - 1e-6,
     JSON.stringify(state));
+} };
+const outdoorTravelProof = () => {
+const B=__ooga,ctx=__outdoorTravelContext,crew=B.crew,P=B.poolIsland,scene=BL.scenes.hub;
+B.pilot.release(true); B.clankerPlay.release();
+for(const e of B.clankers.list){e.active=false;e.root.visible=false;}
+for(const c of crew.list){c.override='away';c.contributor.lastCommitAt=c.contributor.lastContributionAt=Date.now();}
+crew.refreshStates(true);
+while(ctx.moreOutdoorBedrolls());
+const beds=ctx.outdoorBedrolls, nav=B.headquarters.outdoorNavigation;
+const finish=plan=>{for(;;){const step=plan.next();if(step.done)return step.value;}};
+const routes=beds.map((bed,index)=>({index,out:!!finish(nav.plan(nav.entry,bed)),back:!!finish(nav.plan(bed,nav.entry))}));
+const fixtures=[beds.find(b=>b.y>P.place.y+4),beds.find(b=>P.localX(b.x,b.z)>20&&b.y===P.place.y+1),
+  beds.find(b=>P.localX(b.x,b.z)<-19&&b.y===P.place.y+1),beds.find(b=>b.y<P.place.y)];
+if(fixtures.some(b=>!b))return {routes,missingFixtures:true};
+const actor=B.cavemen.get('hotpixelgroup')||crew.list[0],entry=B.headquarters.outdoorNavigation.entry,rows=[];
+let time=scene.elapsed;
+for(let sample=0;sample<fixtures.length;sample++){
+ const index=beds.indexOf(fixtures[sample]);
+ actor.override='away';crew.refreshStates();
+ for(const bed of ctx.bedrolls)bed.sleeper={};
+ for(const bed of beds)bed.sleeper={};
+ const bed=beds[index];bed.sleeper=null;
+ actor.override='chilling';crew.refreshStates();
+ Object.assign(actor.root.position,{x:entry.x,y:entry.y+actor.baseY,z:entry.z});
+ actor.hop=actor.hopV=0;actor.walk=null;actor.camp.seat=null;actor.avoidance.tx=NaN;
+ actor.progress.resets=0;
+ const from={...actor.root.position};
+ actor.override='sleeping';crew.refreshStates();
+ const start={mode:actor.bedTravel.mode,displacement:Math.hypot(actor.root.position.x-from.x,actor.root.position.z-from.z),bed:beds.indexOf(actor.bedroll)};
+ let frames=0,maxStep=0;
+ while(actor.bedTravel.mode!=='rest'&&frames++<9000){
+  const p=actor.root.position,x=p.x,z=p.z;
+  crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
+  maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
+ }
+ const sleep={mode:actor.bedTravel.mode,frames,maxStep,resets:actor.progress.resets,position:{...actor.root.position},index:actor.bedTravel.index,count:actor.bedTravel.route?.length};
+ if(sleep.mode!=='rest'){rows.push({index,start,sleep});continue;}
+ const wakeFrom={...actor.root.position};actor.override=sample===3?'chilling':'working';crew.refreshStates();
+ const wakeStart={mode:actor.bedTravel.mode,distance:Math.hypot(actor.root.position.x-wakeFrom.x,actor.root.position.z-wakeFrom.z)};
+ frames=0;maxStep=0;
+ while(actor.bedTravel.mode&&frames++<9000){
+  const p=actor.root.position,x=p.x,z=p.z;
+  crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
+  maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
+ }
+ rows.push({index,start,sleep,wakeStart,wake:{mode:actor.bedTravel.mode,frames,maxStep,resets:actor.progress.resets,position:{...actor.root.position},state:actor.state,home:Math.hypot(actor.root.position.x,actor.root.position.z)<20}});
+}
+// Reassignment to a vacant HQ mattress must leave the old forest bed on foot too.
+actor.override='away';crew.refreshStates();
+for(const bed of ctx.bedrolls)bed.sleeper={};
+for(const bed of beds)bed.sleeper={};
+const previous=fixtures[0],indoor=ctx.bedrolls[0];previous.sleeper=null;
+actor.override='sleeping';crew.refreshStates(true);
+const before={...actor.root.position};indoor.sleeper=null;actor.progress.resets=0;
+crew.update(1.1,time+=1.1);
+const migration={started:actor.bedroll===indoor&&actor.bedTravel.mode!=='rest',
+  displacement:Math.hypot(actor.root.position.x-before.x,actor.root.position.z-before.z)};
+let frames=0,maxStep=0;
+while(actor.bedTravel.mode!=='rest'&&frames++<9000){
+ const p=actor.root.position,x=p.x,z=p.z,walking=actor.bedTravel.mode==='walk';
+ crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
+ if(walking)maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
+}
+Object.assign(migration,{arrived:actor.bedroll===indoor&&actor.bedTravel.mode==='rest',frames,maxStep,resets:actor.progress.resets});
+// A live activity update can cancel an outdoor trip before it reaches the bridge,
+// including while the sleeper is still leaving the HQ or basement.
+const turns=[],origins=[{x:-8,y:B.island.surfaceAt(-8,0),z:0},
+ ctx.bedrolls.find(b=>b.walkAt.y<0&&b.walkAt.y>-8)?.walkAt,
+ ctx.bedrolls.find(b=>b.walkAt.y<-8)?.walkAt];
+if(origins.some(p=>!p))return {routes,rows,migration,missingOrigins:true};
+for(const origin of origins)for(const state of ['working','chilling']){
+ actor.override='away';crew.refreshStates();
+ for(const bed of ctx.bedrolls)bed.sleeper={};
+ for(const bed of beds)bed.sleeper={};
+ const bed=fixtures[0];bed.sleeper=null;
+ actor.override='chilling';crew.refreshStates();
+ Object.assign(actor.root.position,{x:origin.x,y:origin.y+actor.baseY,z:origin.z});
+ actor.hop=actor.hopV=0;actor.walk=null;actor.camp.seat=null;actor.avoidance.tx=NaN;actor.progress.resets=0;
+ actor.override='sleeping';crew.refreshStates();
+ const outbound=actor.bedroll===bed&&actor.bedTravel.toBed&&actor.bedTravel.mode==='waiting';
+ const before={...actor.root.position};actor.override=state;crew.refreshStates();
+ const displacement=Math.hypot(actor.root.position.x-before.x,actor.root.position.y-before.y,actor.root.position.z-before.z);
+ const planned=!!finish(ctx.bedPlan(actor,bed,false));
+ let frames=0,maxStep=0;
+ while(actor.bedTravel.mode&&frames++<4500){
+  const p=actor.root.position,x=p.x,z=p.z;
+  crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
+  maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
+ }
+ turns.push({origin,state,outbound,displacement,planned,frames,maxStep,resets:actor.progress.resets,
+  arrived:!actor.bedTravel.mode&&actor.state===state&&!actor.bedroll&&actor.root.position.y-actor.baseY>=-1e-6});
+}
+return {routes,rows,migration,turns};
+};
+const hubOutdoorTravel = { name: "hub outdoor travel", why: "regression: overflow Oogas teleported to and from rainforest beds instead of walking the bridge, ridge and chamber", run: async b => {
+  const state = await b.evaluate(`(${outdoorTravelProof.toString()})()`);
+  record("outdoor bed routes: every actual forest and chamber anchor has a supported clear route in both directions",
+    state.routes?.length > 0 && state.routes.every(row => row.out && row.back), JSON.stringify(state.routes));
+  record("outdoor bed travel: ridge, eastern shoulder, western nest and chamber sleepers walk both ways and into a newly vacant HQ bed without relocation",
+    state.rows?.length === 4 && state.rows.every(row => row.start.displacement < 1e-6 && row.start.mode === "waiting"
+      && row.sleep.mode === "rest" && row.sleep.maxStep <= 2 / 30 + 1e-6 && row.sleep.resets === 0
+      && row.wakeStart.mode === "waiting" && row.wakeStart.distance < 1e-6
+      && !row.wake.mode && row.wake.home && row.wake.maxStep <= 2 / 30 + 1e-6 && row.wake.resets === 0)
+      && state.migration?.started && state.migration.displacement < 1e-6 && state.migration.arrived
+      && state.migration.maxStep <= 2 / 30 + 1e-6 && state.migration.resets === 0,
+    JSON.stringify({ rows: state.rows, migration: state.migration, missingFixtures: state.missingFixtures }));
+  record("outdoor bed travel: waking before the bridge returns from meadow, HQ and basement without waiting forever or relocating",
+    state.turns?.length===6&&state.turns.every(row=>row.outbound&&row.displacement<1e-6&&row.planned&&row.arrived
+      &&row.maxStep<=2/30+1e-6&&row.resets===0),JSON.stringify({turns:state.turns,missingOrigins:state.missingOrigins}));
 } };
 // Away and back twice. The director's ?debug=1 leave contract throws inside advance on a broken leave,
 // and the second visit may hold no more GPU records, nodes, input targets or DOM than the first.
@@ -9881,6 +9991,39 @@ const hubFall = { name: "hub fall", why: "rule: abyss falls return players and N
     && respawns.pending.length === 2 && respawns.pending.every(row => row.stable && row.poolUnchanged && row.gap >= -1e-7
       && landed(row.reference) && row.landing.frames <= 8 && landed(row.landing)),
     JSON.stringify({ ...r, respawns }));
+} };
+// The chalkboard writes only for an Ooga standing at it (#391): a tap from afar or with no Ooga is refused with a
+// reason, Space and a tap work at the board, and moving the Ooga off closes it.
+const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga standing at the chalkboard may write on it; a tap from across the island opened it", run: async (b) => {
+  // Stands the Ooga `along` metres out in front of the board and a little to its left, facing it, and gives back
+  // a point on the board's right half on screen, clear of the Ooga.
+  const stand = (along) => b.evaluate(`(() => {
+    const B = __ooga, a = B.cavemen.get("portlandhodl"), c = BL.scenes.hub.debug.chalkboardAt;
+    if (B.crew.player !== a) B.pilot.possess(a);
+    const x = c.x + c.frontX * ${along} - c.rightX * 0.6, z = c.z + c.frontZ * ${along} - c.rightZ * 0.6;
+    B.pilot.navigate({ position: { x, y: B.island.surfaceAt(x, z), z }, yaw: Math.atan2(c.frontX, c.frontZ), pitch: 0.15, dist: 4 });
+    B.advance(0.5, 1 / 60);
+    return B.project(c.x + c.rightX * 0.45, c.y + 1.25, c.z + c.rightZ * 0.45, {});
+  })()`);
+  const look = () => b.evaluate(`(() => ({ open: document.getElementById("chalk-modal").open, toast: document.getElementById("toast").textContent, act: document.getElementById("act").textContent.trim() }))()`);
+  const tapAt = async (point) => { await b.click(point.x, point.y); await b.sleep(50); return look(); };
+  const farTap = await tapAt(await stand(5));
+  await stand(1.3);
+  const nearAct = await look();
+  await b.key(" ");
+  const spaced = await look();
+  // Carried off while writing: the board closes on the next frame.
+  await stand(5);
+  const carried = await look();
+  const nearTap = await tapAt(await stand(1.3));
+  await b.evaluate(`document.getElementById("chalk-close").click()`);
+  const point = await stand(5);
+  await b.evaluate(`(() => { __ooga.pilot.release(true); __ooga.advance(0.3, 1 / 60); })()`);
+  const loose = await tapAt(point);
+  record("chalkboard reach: a tap from afar or with no Ooga is refused with why, while at the board Space and a tap open it and being moved off closes it",
+    !farTap.open && farTap.toast === "Walk up to the chalkboard to write on it." && nearAct.act === "WRITE" && spaced.open && !carried.open
+      && nearTap.open && !loose.open && loose.toast.startsWith("Only an Ooga can write."),
+    JSON.stringify({ farTap, nearAct, spaced, carried, nearTap, loose }));
 } };
 // A remote player stands near the pile as the room would place them: the roster's shortest and tallest Oogas, then a
 // gorilla. portlandhodl, the widest Ooga, drops onto each, rides the short one as it walks and rises as a jetpack
@@ -14656,6 +14799,7 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
       && animation.host.ooga >= 58 && animation.host.gorilla >= 58 && animation.network && animation.controlled >= 58, JSON.stringify(animation));
 } };
 scene("hub", { label: "distant effects", query: "pos=0", steps: [hubDistantEffects] });
+scene("hub", { label: "outdoor travel", opts: { initScript: `window.BL={};let outdoorCrew;Object.defineProperty(BL,"crew",{configurable:true,get:()=>outdoorCrew,set:value=>{outdoorCrew=value;const create=value.create;value.create=ctx=>{window.__outdoorTravelContext=ctx;return create(ctx);};}});` }, steps: [hubOutdoorTravel] });
 scene("hub", { opts: !ONLY || onlyMatches(hubArrival.name) ? { initScript: `(${hubSleepWire.toString()})()` } : {}, steps: [hubArrival, { name: `work movement lab lanes ${1 / RATES[0]}Hz`, why: "regression: work walkers left their facing-right side of the lab lane", open: "on about 4 boots in 30 the lane targets sit on the centre or far side; unfixed", run: labLanes }, donation("hub"), hubWalking, hudVisit, hubKeptDelivery, hubMapNavigation, hubRainforestSteps, hubRoutes, hubFall, hubGrounding, hubCloudCamera, hubCloudFraming, hubKeypadRedirect, trip("hub"), factoryActivityRouting, hubLiveWake] });
 // The same ownership contract exercises complete destruction on memory-limited devices.
 // A released hub's return enters in slices (`enterSteps`), one at boot or with no slicing in one go (`enter`): the same
@@ -16207,7 +16351,7 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     traffic.rows.every(row => row.waiting >= 1.1 && row.drift < 1e-6 && row.retained && row.released && row.raised > 0.5 && row.walked > 2 && !row.replans && !row.resets)
     && traffic.clear.every(row => !row.waited && row.moved), JSON.stringify(traffic));
 } }] });
-scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking] });
+scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach] });
 scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, e = C.list[0], owner = e.owner, m = B.headquarters.entropyLab.mouth;
