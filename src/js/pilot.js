@@ -247,6 +247,7 @@
     let groundView = 0, groundTarget = 0, groundX = 0, groundZ = 0, groundZone = 0, groundValid = false, groundLift = 0, groundEasing = false;
     let freeFeetY = 0, freeFloorY = 0, freeFallV = 0, freeLeapX = 0, freeLeapZ = 0, freeFallValid = false, freeFalling = false;
     let sleepingView = false, trailingPitchChosen = false;
+    let restOrbitCave = null, restOrbitYaw = 0, restOrbitPitch = 0;
     let lyingView = 0, lyingCave = null, lyingYaw = 0, lyingPitch = 0;
     const sleepForward = new Float64Array(3), sleepUp = new Float64Array(3);
     const sleepCameraUp = { x: 0, y: 1, z: 0 };
@@ -269,8 +270,9 @@
       dollyVelocity.z = eyeVelocity.z - (following ? anchorVelocity.z : 0);
       dollyTime = eyeMotionValid ? 0 : DOLLY_HANDOFF;
     };
+    const restingView = (cave) => !!cave && (crew.sleeping || cave.camp.seat?.lying);
     const headAnchor = (cave, out) => {
-      const p = crew.sleeping && cave.root.quaternion ? cave.sleepHead : cave.root.position;
+      const p = restingView(cave) && cave.root.quaternion ? cave.sleepHead : cave.root.position;
       out.x = p.x; out.z = p.z;
       out.y = p.y + (p === cave.sleepHead ? 0 : -cave.baseY + cave.headOffset * close.eyeRatio + cave.viewLift);
     };
@@ -400,7 +402,7 @@
     };
     let lockPending = false, lockCancelled = false, aimLocked = false, softAimFocused = false, externalControl = false, externalCombat = null, menuOpen = false, unlockedAt = -Infinity;
     let savedPitch = 0, savedDist = 0, savedNear = camera.near, sightClear = null, cursorClear = null, aimSurface = null;
-    const weaponViewReady = (cave) => active && !!cave && !cave.health.stunned && !crew.sleeping && (closeWanted || (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode);
+    const weaponViewReady = (cave) => active && !!cave && !cave.health.stunned && !restingView(cave) && (closeWanted || (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode);
     const shoulderBoomPitch = (pitch) => Math.max(pitch, Math.min(0, pitch + SHOULDER_LEVEL));
     // Level and downward aim lift the eye so the head sits below the
     // crosshair and the band beside it stays clear. Looking up sinks the body
@@ -425,7 +427,7 @@
       return weaponViewReady(cave) && (closeWanted || shoulderView);
     };
     const lyingType = (cave) => cave && (closeWanted || closeMix > 0) && cave.root.quaternion
-      ? crew.sleeping ? 1 : cave.camp.rolling ? 2 : 0 : 0;
+      ? restingView(cave) ? 1 : cave.camp.rolling ? 2 : 0 : 0;
     const posedHeadFrame = (cave) => {
       updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
       const head = cave.parts.head, bounds = boundsOf(head.geometry), m = head.world;
@@ -445,6 +447,7 @@
       lyingYaw = lyingPitch = 0;
       if (!type) return 0;
       posedHeadFrame(cave);
+      if (cave.camp.seat?.lying) return type;
       let fx = camera.target.x - camera.position.x, fy = camera.target.y - camera.position.y, fz = camera.target.z - camera.position.z;
       const length = Math.hypot(fx, fy, fz) || 1;
       fx /= length; fy /= length; fz /= length;
@@ -1781,7 +1784,7 @@
       orbit.yaw = orbit.tYaw = Math.atan2(-dx, -dz);
       orbit.pitch = orbit.tPitch = Math.atan2(-dy, Math.hypot(dx, dz));
       closeCameraActive = true;
-      sleepingView = !!(cave && crew.sleeping && cave.root.quaternion);
+      sleepingView = !!(cave && restingView(cave) && cave.root.quaternion);
       if (!sleepingView) {
         viewRotation(headRotation, dx, dy, dz, 0, 1, 0, orbit.yaw);
         inverseRotation[0] = -headRotation[0]; inverseRotation[1] = -headRotation[1]; inverseRotation[2] = -headRotation[2]; inverseRotation[3] = headRotation[3];
@@ -1809,6 +1812,9 @@
       shoulderView = false;
       closeExitScale = 1;
       const cave = player();
+      if (cave?.camp.seat?.lying && closeMix === 0) {
+        restOrbitCave = cave; restOrbitYaw = orbit.yaw; restOrbitPitch = orbit.pitch;
+      }
       if (combat && weaponViewReady(cave)) {
         if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
         cave.weapon.aiming = true;
@@ -1893,6 +1899,16 @@
       closeCave = null;
       resetFreeFall();
       orbit.tDist = clamp(cave ? close.trailingDist : close.orbitDist, DIST_MIN, DIST_MAX);
+      if (cave?.camp.seat?.lying) {
+        // A reclining head's ray and roll belong only to first person. Let the normal
+        // close-view blend return to a world-up orbit instead of holding that head basis.
+        headOrbit = exitAngleHold = shoulderView = false;
+        quat.fromEuler(entryRoll, 0, 0, 0);
+        orbit.yaw = orbit.tYaw = restOrbitCave === cave ? restOrbitYaw : cave.root.rotation.y + Math.PI;
+        orbit.pitch = orbit.tPitch = restOrbitCave === cave ? restOrbitPitch : carryView.pitch;
+        headAnchor(cave, followTarget);
+        orbit.tx = followTarget.x; orbit.ty = followTarget.y; orbit.tz = followTarget.z;
+      }
       if (cave && crew.sleeping) crew.look(0, 0, 0);
     };
     const syncJetpackHud = () => {
@@ -2266,7 +2282,7 @@
         unlockAim();
         updateCenteredCarry(cave, 0);
       } else {
-        if (crew.sleeping && closeWanted) faceWith(cave);
+        if (restingView(cave) && closeWanted) faceWith(cave);
         update(0);
       }
       if (incoming.active && incoming.focused && armed()) focusAim(true);
@@ -2305,7 +2321,7 @@
       unlockAim();
       eyeMotionValid = false;
       dollyTime = DOLLY_HANDOFF;
-      if (crew.sleeping && closeWanted) {
+      if (restingView(cave) && closeWanted) {
         const dx = camera.target.x - camera.position.x, dy = camera.target.y - camera.position.y, dz = camera.target.z - camera.position.z;
         rememberSleepView();
         // Close-view input was head-relative; free navigation resumes from that world direction, easing roll upright.
@@ -2573,7 +2589,7 @@
       closeCameraActive = !!cave && closeWanted && !aimView();
       aimMix = 1;
       if (cave) {
-        const p = crew.sleeping && cave.root.quaternion ? cave.sleepHead : cave.root.position;
+        const p = restingView(cave) && cave.root.quaternion ? cave.sleepHead : cave.root.position;
         followTarget.x = orbit.tx = p.x; followTarget.z = orbit.tz = p.z;
         followTarget.y = orbit.ty = p === cave.sleepHead ? p.y : p.y - cave.baseY + follow.y + cave.viewLift;
         orbit.target = followTarget;
@@ -2996,7 +3012,8 @@
       if (centeredCarry && cave && !closeWanted && !shoulderView) { updateCenteredCarry(cave, dt); return; }
       endCenteredCarry();
       camera.orthoMix = 0;
-      const sleeping = !!(cave && crew.sleeping && cave.root.quaternion);
+      if (!cave?.camp.seat?.lying) restOrbitCave = null;
+      const sleeping = !!(cave && restingView(cave) && cave.root.quaternion);
       const rolling = !!(cave && cave.camp.rolling && cave.root.quaternion);
       const lying = syncLyingView(cave);
       if (sleepingView && !sleeping && cave && closeWanted && closeMix > 0) {
@@ -3870,7 +3887,8 @@
       const aiming = aimView(), shoulder = aiming && !closeWanted;
       // A view held on a clicked point lets go of it first, as a look does, or it would keep facing that point.
       if (aiming) releaseCursorAim();
-      const from = closeWanted ? camera.position : shoulder ? cave.root.position : camera.target;
+      const orbitFollow = cave && follow && !aiming && !closeWanted;
+      const from = closeWanted ? camera.position : shoulder || orbitFollow ? cave.root.position : camera.target;
       const dx = x - from.x, dz = z - from.z, horizontal = Math.hypot(dx, dz);
       if (horizontal < 1e-3) return false;
       let yaw = Math.atan2(-dx, -dz);
@@ -3887,6 +3905,42 @@
           if (pitch < look) low = pitch; else high = pitch;
         }
         orbit.tPitch = (low + high) * 0.5;
+      } else if (orbitFollow) {
+        endCenteredCarry();
+        // Centre the selected point on a ray passing above the whole head (including hats), rather than through
+        // the follow anchor in the torso. Solve only on the click; ordinary camera damping owns the transition.
+        // The eight world bounds corners also cover wide heads when looking uphill or downhill at close zoom.
+        updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+        mat4.identity(headInverse);
+        headBounds[0] = headBounds[1] = headBounds[2] = Infinity;
+        headBounds[3] = headBounds[4] = headBounds[5] = -Infinity;
+        includeHeadPart(cave.parts.head);
+        const base = from.y - cave.baseY + follow.y + cave.viewLift;
+        const top = Number.isFinite(headBounds[4]) ? headBounds[4] : from.y + cave.bodyHeight;
+        const distance = orbit.tDist, sx = dx / horizontal, sz = dz / horizontal;
+        const aspect = renderer.size.width / Math.max(1, renderer.size.height);
+        const fov = clamp(2 * Math.atan(Math.tan(MIN_HFOV / 2) / aspect), BASE_FOV, MAX_FOV);
+        const gap = 0.08 * Math.tan(fov * 0.5);
+        let low = base, high = Math.max(base, top, y) + horizontal + distance + 1;
+        for (let i = 0; i < 32; i++) {
+          const anchor = (low + high) * 0.5, pitch = Math.atan2(anchor - y, horizontal);
+          const cp = Math.cos(pitch), sp = Math.sin(pitch);
+          let clear = true;
+          for (let corner = 0; corner < 8; corner++) {
+            const along = (headBounds[corner & 1 ? 3 : 0] - from.x) * sx
+              + (headBounds[corner & 4 ? 5 : 2] - from.z) * sz;
+            const height = headBounds[corner & 2 ? 4 : 1] - anchor;
+            const depth = distance + along * cp - height * sp;
+            if (depth <= camera.near || (along * sp + height * cp) / depth > -gap) { clear = false; break; }
+          }
+          if (clear) high = anchor; else low = anchor;
+        }
+        frameLiftWanted = high - base;
+        orbit.tPitch = clamp(Math.atan2(high - y, horizontal), TRAILING_PITCH[0], TRAILING_PITCH[1]);
+        stopCarryExit();
+        headOrbit = exitAngleHold = false;
+        trailingPitchChosen = true;
+        zoomTilt = false; zoomPitchVelocity = 0;
       } else {
         const range = closeWanted && close && !cave ? close.pitch : TRAILING_PITCH;
         orbit.tPitch = clamp(Math.atan2(from.y - y, horizontal), range[0], range[1]);
