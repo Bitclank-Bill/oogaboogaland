@@ -1,61 +1,49 @@
-// The hammock on the path before Ooga Arcade: a woven vine bed for three Oogas, slung from a ridgeline tied round the
-// two meadow palms that flank the arcade's path. The meadow palms are planted afresh each visit from the pile's size,
-// so `plan` is a rule, not a place: given the two trunks it ties the ridgeline TIE up each (above every walker's head
-// where it crosses the path) and hangs the bed from it at the first spot along it, nearest the middle, where the bed,
-// its swing and the three places to stand up are clear of the path and anything claimed, on level ground; null when
-// there is none, and the island has no hammock that visit.
-// `create` builds it into the hub's graph: the ridgeline a static node whose collision shell (`collisionGeometry`) is
-// the bed's whole swing seen from above, up to the swung bed's top, so walkers go round, an Ooga that comes down on it
-// stands at the bed and the ropes above it and the ridgeline collide with nothing, and the bed a node swinging
-// about the ridgeline, a bounded pendulum costing one sine a frame. Its three `seats` are the crew's (`sitPlayer`,
-// `standPlayer`), placed and posed here every frame as the forklift places its driver. Nothing is networked beyond
-// the driven Ooga's ordinary pose: a resting Ooga reports its seat's still point (`restPoint`), never its swing, so
-// the room hears nothing while it rests; another page knows a resting Ooga by where it is (`restingAt`: over a seat,
-// above the ground) and poses it in its own bed (`poseRemote`). Two pages can take one seat in the same instant; the
-// lower room id keeps it and the other moves along or stands (`settle`).
+// One face-up resting place in a grass patch beside Ooga Arcade. Both palms and the entire
+// suspension span stay off paths. Two angled ropes join the trunks directly to the swinging
+// bed ends; the axis used to calculate sway is virtual, with no ridgeline or hanging cords.
+// Occupancy uses the existing crew seat and remote pose contracts. The seat advertises
+// `lying` so the pilot uses the bed's bounded, head-relative first-person view.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { hexToRgb } = BL.math;
-  // Metres. The ridgeline ties TIE up each trunk and sags RIDGE_SAG at its middle; over the path it must leave
-  // HEADROOM. The bed is BED_LEN along the ridgeline and BED_W across, its ends END_Y over the ground and its middle
+  // Metres. TIE is the height of the fixed trunk attachments. The virtual swing axis lies
+  // just below them. The bed is BED_LEN along that axis and BED_W across, its ends END_Y above ground and its middle
   // BED_SAG lower, cradled CRADLE across; the trunks stand at least TRUNK_CLEAR from its ends.
-  const TIE = 3.05, RIDGE_SAG = 0.12, HEADROOM = 2.6, SPAN_MIN = 4.5, SPAN_MAX = 10;
+  const TIE = 3.05, RIDGE_SAG = 0.12, SPAN_MIN = 4.5, SPAN_MAX = 10;
   const BED_LEN = 2.5, BED_W = 0.95, END_Y = 0.86, BED_SAG = 0.2, CRADLE = 0.07, TRUNK_CLEAR = 0.6;
-  // Seats along the bed from its middle, each SEAT_LIFT over the cloth so the seat is the surface the crew sits on.
-  const SEAT_AT = [-0.8, 0, 0.8], SEAT_LIFT = 0.04, SLOTS = SEAT_AT.length;
+  // The one resting place is centred on the cloth; the crew seat contract owns occupancy and standing up.
+  const SEAT_AT = [0], SEAT_LIFT = 0.04, SLOTS = SEAT_AT.length;
+  const ENTRY_SECONDS = 0.9, ENTRY_PARTS = ["legL", "legR", "armL", "armR", "head"];
   // Where an Ooga stands up: STAND past the bed's swing (`envelope`'s `across`), room for the widest Ooga.
   const STAND = 0.6;
-  // The swing: the bed's angle about the ridgeline is `amp` sin(OMEGA t), `amp` easing toward REST (or REST_HELD with
+  // The swing: the bed's angle about the virtual swing axis is `amp` sin(OMEGA t), `amp` easing toward REST (or REST_HELD with
   // anyone in it) at DECAY a second and never past SWAY_MAX; a sitter's landing and a shaken palm add KICK.
   const OMEGA = 2.1, REST = 0.012, REST_HELD = 0.035, DECAY = 0.35, KICK = 0.06, SWAY_MAX = 0.11;
-  // The cloth's grid, and the radii of the parts drawn round it: the spreaders (whose knuckles stand SPREADER_KNUCKLE
-  // proud), the edge cords, the cords to each ring, the drop line and the knot where it ties on.
-  const BED_NX = 14, BED_NZ = 4, SPREADER_R = 0.035, SPREADER_KNUCKLE = 1.14, EDGE_R = 0.016, CORD_R = 0.011, DROP_R = 0.022, KNOT_R = 0.05;
+  // The cloth grid and radii of its spreaders, edge cords and suspension rings.
+  const BED_NX = 14, BED_NZ = 4, SPREADER_R = 0.035, SPREADER_KNUCKLE = 1.14, EDGE_R = 0.016, CORD_R = 0.011, DROP_R = 0.022;
   const CORD_Z = [-BED_W / 2 - 0.06, -BED_W / 4, BED_W / 4, BED_W / 2 + 0.06];
-  // The suspension past each end of the bed: the ring RING_OUT out, the drop line DROP_OUT.
-  const RING_OUT = 0.28, DROP_OUT = 0.32;
+  // The suspension ring beyond each end of the bed.
+  const RING_OUT = 0.28;
   // A resting Ooga as another page sends it: within REST_NEAR of a seat across, its feet REST_LOW to REST_HIGH over
   // the ground. No walker reaches a seat's place across (the bed's shell is in the way), and REST_HIGH stays under the
   // shell's top (the swung bed's highest point), so one standing on the bed or flying over is not resting.
   const REST_NEAR = 0.4, REST_LOW = 0.05, REST_HIGH = 0.9;
-  // A sitter leans back LEAN into the cloth.
-  const LEAN = -0.16;
   const ROPE = "#c9a36a", CORD = "#7a5a32";
   const WEAVE = ["#b48a52", "#9c7443", "#b48a52", "#c25d3a", "#d7a95a", "#c25d3a"].map(hexToRgb), WEAVE_UNDER = hexToRgb("#6e5233");
 
-  // The ridgeline's height t of the way from a to b.
+  // The virtual sway axis height at t between the tree attachments.
   const ridgeY = (p, t) => p.ay + (p.by - p.ay) * t - Math.sin(Math.PI * t) * RIDGE_SAG;
   // The cloth's height under the pivot at x along the bed and z across it, before any swing.
   const clothY = (p, x, z) => p.endY - Math.sin(Math.PI * (x / BED_LEN + 0.5)) * BED_SAG - Math.cos(Math.PI * z / BED_W) * CRADLE;
 
-  // How far the bed reaches as it swings, in the pivot's frame (x along the ridgeline, y up from it, z across): every
+  // How far the bed reaches as it swings, in the pivot's frame (x along the virtual swing axis, y up from it, z across): every
   // point `bedGeometry` draws through, with the thickness of the part there, turned through +-SWAY_MAX about the
-  // ridgeline. Seen from above it is an octagon: the `body` (the cloth, its edge cords and the spreaders) `half` along
-  // and `across` either side, and past it the `tip` (each ring, drop line and knot, hanging near the middle), the cords
+  // virtual axis. Seen from above it is an octagon: the `body` (the cloth, its edge cords and the spreaders) `half` along
+  // and `across` either side, and past it the `tip` (each suspension ring), the cords
   // between the two inside the outline; `lo` and `hi` under and over the pivot, `top` the body's highest. The
   // collision shell is this octagon from `lo` to `top`: the suspension above `top` hangs inside the outline, where no
-  // walker reaches, and a shell up to `hi` would be a floor at the ridgeline for an Ooga coming down on it. `plan`
+  // walker reaches, and a shell up to `hi` would be a floor at the virtual swing axis for an Ooga coming down on it. `plan`
   // keeps the ground under the octagon clear.
   const envelope = (p) => {
     const body = { half: 0, across: 0 }, tip = { half: 0, across: 0 }, e = { body, tip, lo: Infinity, hi: -Infinity, top: -Infinity };
@@ -81,12 +69,13 @@
     }
     for (const z of [-BED_W / 2, BED_W / 2]) for (let i = 0; i <= BED_NX; i += 2) { const x = (i / BED_NX - 0.5) * BED_LEN; at(body, x, clothY(p, x, z) + 0.012, z, EDGE_R); }
     for (const end of [-1, 1]) {
-      const x = end * BED_LEN / 2, top = ridgeY(p, p.t + end * (BED_LEN / 2 + DROP_OUT) / p.span) - p.y;
+      const x = end * BED_LEN / 2;
       for (const z of [-1, 1]) at(body, x, p.endY + 0.02, z * (BED_W / 2 + 0.1), SPREADER_R * SPREADER_KNUCKLE);
       for (const z of CORD_Z) at(body, x, p.endY + 0.03, z, CORD_R);
-      at(tip, x + end * RING_OUT, p.endY + 0.42, 0, DROP_R);
-      at(tip, x + end * DROP_OUT, top - 0.06, 0, KNOT_R);
-      at(tip, x + end * DROP_OUT, top + 0.05, 0, KNOT_R);
+      // The fan follows the tree direction. Bound its possible height and sideways
+      // travel without raising the walkable top of the cloth's collision shell.
+      for (const y of [p.endY + 0.03, p.endY + 1.6]) for (const z of [-0.3, 0.3])
+        at(tip, x + end * RING_OUT, y, z, DROP_R);
     }
     // Its bounds, and its corners round from the tip's on +x in the order the shell's faces wind.
     e.half = tip.half; e.across = body.across;
@@ -115,15 +104,15 @@
 
   // `a` and `b` are the trunks at the tie, { x, z, ground } with the ground at each foot; `clear(x, z, r)` says a
   // spot r across is off the path and unclaimed, `surfaceAt(x, z)` the island's ground. A plan, or null.
-  const plan = ({ a, b, clear, surfaceAt }) => {
+  const plan = ({ a, b, clear, surfaceAt, pathClear = clear }) => {
     const dx = b.x - a.x, dz = b.z - a.z, span = Math.hypot(dx, dz);
     if (span < SPAN_MIN || span > SPAN_MAX) return null;
     const ux = dx / span, uz = dz / span, nx = -uz, nz = ux;
     const p = { ax: a.x, az: a.z, ay: a.ground + TIE, bx: b.x, bz: b.z, by: b.ground + TIE, span, ux, uz, nx, nz };
-    // Headroom wherever the ridgeline passes over the path.
+    // Both trees and every point between them must belong to the same level grass patch.
     for (let k = 0; k <= 40; k++) {
       const t = k / 40, x = a.x + dx * t, z = a.z + dz * t;
-      if (!clear(x, z, 0.6) && ridgeY(p, t) - surfaceAt(x, z) < HEADROOM) return null;
+      if (!pathClear(x, z, 0.35) || Math.abs(surfaceAt(x, z) - a.ground) > 0.2) return null;
     }
     const t0 = (BED_LEN / 2 + TRUNK_CLEAR) / span;
     // The bed hung t of the way along: its pivot, ground, ends and swing.
@@ -169,7 +158,7 @@
     if (!side) return null;
     p.side = side;
     p.yaw = Math.atan2(-uz, ux);
-    p.seatRy = Math.atan2(nx * side, nz * side);
+    p.seatRy = p.yaw + Math.PI / 2;
     p.seats = SEAT_AT.map((at) => {
       const wx = p.x + ux * at + nx * side * out, wz = p.z + uz * at + nz * side * out;
       return { at, y: clothY(p, at, 0) + SEAT_LIFT, walkAt: { x: wx, z: wz }, floor: surfaceAt(wx, wz) };
@@ -177,9 +166,9 @@
     return p;
   };
 
-  // The bed in the pivot's frame (+x along the ridgeline, +z across to the seats' side when `side` is 1, y up from the
-  // ridgeline): woven cloth cradled between two bamboo spreaders, cords from each spreader's ends to a ring and a drop
-  // line from the ring up to where the ridgeline passes, and a cord along each edge.
+  // The bed in the pivot's frame (+x along the virtual swing axis, +z across to the seats' side when `side` is 1, y up from the
+  // virtual axis): woven cloth cradled between bamboo spreaders, with cords gathering at
+  // each suspension ring and a cord along each edge.
   const bedGeometry = (p) => {
     const M = BL.models, J = BL.hubModels, NX = BED_NX, NZ = BED_NZ, cloth = M.geometry(), v = cloth.verts, ids = [];
     for (let i = 0; i <= NX; i++) for (let j = 0; j <= NZ; j++) {
@@ -199,12 +188,6 @@
       round.push(J.bamboo(x, y, -BED_W / 2 - 0.1, x, y, BED_W / 2 + 0.1, SPREADER_R, "#cdb06a"));
     }
     return J.withJungle(M.shaded(round, [cloth]), (g) => {
-      for (const e of ends) {
-        const x = e * BED_LEN / 2, top = ridgeY(p, p.t + e * (BED_LEN / 2 + DROP_OUT) / p.span) - p.y, ring = [x + e * RING_OUT, p.endY + 0.42, 0];
-        for (const z of CORD_Z) J.liana(g, [[x, p.endY + 0.03, z], ring], CORD_R, CORD_R, ROPE);
-        J.liana(g, [ring, [x + e * DROP_OUT, top - 0.02, 0]], DROP_R, 0.018, ROPE);
-        J.liana(g, [[x + e * DROP_OUT, top - 0.06, 0], [x + e * DROP_OUT, top + 0.05, 0]], KNOT_R, KNOT_R, CORD);
-      }
       for (const z of [-BED_W / 2, BED_W / 2]) {
         const edge = [];
         for (let i = 0; i <= NX; i += 2) { const x = (i / NX - 0.5) * BED_LEN; edge.push([x, clothY(p, x, z) + 0.012, z]); }
@@ -213,19 +196,13 @@
     });
   };
 
-  // The ridgeline about its own middle, lashed round both trunks, with a few leaves where it ties on.
-  const ridgeGeometry = (p, ra, rb, rand) => {
-    const M = BL.models, J = BL.hubModels, mx = (p.ax + p.bx) / 2, my = (p.ay + p.by) / 2, mz = (p.az + p.bz) / 2;
-    const ax = p.ax - mx, ay = p.ay - my, az = p.az - mz, bx = p.bx - mx, by = p.by - my, bz = p.bz - mz;
-    const geo = J.withJungle(M.shaded([J.lashing(ax, ay, az, 0, 1, 0, ra), J.lashing(bx, by, bz, 0, 1, 0, rb)]), (g) => {
-      // From each trunk's face, not its middle.
-      J.liana(g, J.sagPoints(ax + p.ux * ra, ay, az + p.uz * ra, bx - p.ux * rb, by, bz - p.uz * rb, RIDGE_SAG, 16), 0.03, 0.03, ROPE);
-      J.sprig(g, ax, ay + 0.06, az, -p.ux, 0.5, -p.uz, 3, 0.3, rand);
-      J.sprig(g, bx, by + 0.06, bz, p.ux, 0.5, p.uz, 3, 0.3, rand);
-    });
-    // Its collision is the bed's whole swing (`envelope`), a closed octagonal prism turned with the ridgeline from under
+  // Invisible collision shell around the swinging cloth; the lashings belong to the palms.
+  const ridgeGeometry = (p) => {
+    const M = BL.models, mx = (p.ax + p.bx) / 2, my = (p.ay + p.by) / 2, mz = (p.az + p.bz) / 2;
+    const geo = M.geometry();
+    // Its collision is the bed's whole swing (`envelope`), a closed octagonal prism turned with the virtual swing axis from under
     // the bed to the swung bed's top: walkers go round the bed and stand clear of it, one coming down on it stands at
-    // the bed, and the ropes above it and the ridgeline itself, overhead between the trunks and the bed, block nothing.
+    // the bed, and the ropes above it and the virtual swing axis itself, overhead between the trunks and the bed, block nothing.
     const { outline } = p.envelope, n = outline.length, lo = p.y + p.envelope.lo - my, hi = p.y + p.envelope.top - my;
     const cx = p.x - mx, cz = p.z - mz, shell = M.geometry();
     for (const y of [lo, hi]) for (const [along, side] of outline)
@@ -237,17 +214,59 @@
   };
 
   // The hammock in `root` from a plan: `ra`, `rb` the trunks' radii at the tie, `seed` its leaves'.
-  const create = ({ plan: p, root, solids, ra, rb, seed }) => {
+  const create = ({ plan: p, root, solids, ra, rb, seed, anchors = null }) => {
     const { createNode, addChild, removeChild } = BL.scene;
-    const ridge = ridgeGeometry(p, ra, rb, BL.math.mulberry32(seed));
+    const ridge = ridgeGeometry(p);
     const ridgeNode = createNode({ geometry: ridge.geo, position: { x: ridge.x, y: ridge.y, z: ridge.z }, sightHidden: true });
     // Its +z is the plan's `n`; the seats face +z when `side` is 1 and -z when it is -1, and the swing turns by `side`.
     const bedNode = createNode({ geometry: bedGeometry(p), position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.yaw, z: 0 }, sightHidden: true });
     addChild(root, ridgeNode); addChild(root, bedNode);
     solids.add(ridgeNode);
-    const seats = p.seats.map((s, index) => ({ kind: "hammock", index, x: 0, y: 0, z: 0, ry: p.seatRy, floor: s.floor, walkAt: { x: s.walkAt.x, z: s.walkAt.z }, sitter: null, remote: 0, restX: 0, restY: 0, restZ: 0 }));
+    const { quat, mat4 } = BL.math;
+    const ropeGeometry = BL.hubModels.withJungle(BL.models.geometry(), (g) => BL.hubModels.liana(g, [[0, 0, 0], [0, 1, 0]], 0.03, 0.03, ROPE));
+    const fanGeometry = BL.hubModels.withJungle(BL.models.geometry(), (g) => BL.hubModels.liana(g, [[0, 0, 0], [0, 1, 0]], CORD_R, CORD_R, ROPE));
+    const ropes = [-1, 1].map((end, index) => {
+      const radius = end < 0 ? ra : rb;
+      const node = createNode({ geometry: ropeGeometry, quaternion: quat.create(), sightHidden: true,
+        position: { x: (end < 0 ? p.ax : p.bx) - end * p.ux * radius, y: end < 0 ? p.ay : p.by, z: (end < 0 ? p.az : p.bz) - end * p.uz * radius } });
+      addChild(root, node);
+      const anchor = anchors?.[index], tree = anchor?.node;
+      const tie = tree ? BL.dressing.palmTrunk(anchor.variant, TIE) : null;
+      const local = new Float64Array(3);
+      let wrap;
+      if (tree) {
+        // Author the wrap in the palm's own mesh coordinates. Sharing its origin,
+        // local heights and sway strength makes the GPU bend both meshes identically.
+        const geometry = BL.hubModels.lashing(0, TIE, 0, 0, 1, 0, radius);
+        for (let i = 0; i < geometry.verts.length; i += 3) geometry.verts[i] += BL.dressing.palmTrunk(anchor.variant, geometry.verts[i + 1]).x;
+        geometry.sway = tree.geometry.sway;
+        wrap = createNode({ geometry, sightHidden: true });
+        addChild(tree, wrap);
+        const ry = tree.rotation.y, dx = -end * p.ux * radius, dz = -end * p.uz * radius;
+        local[0] = tie.x + Math.cos(ry) * dx - Math.sin(ry) * dz;
+        local[1] = TIE;
+        local[2] = Math.sin(ry) * dx + Math.cos(ry) * dz;
+      } else {
+        // Standalone geometry checks can create a hammock without scene-owned palms.
+        const x = end < 0 ? p.ax : p.bx, y = end < 0 ? p.ay : p.by, z = end < 0 ? p.az : p.bz;
+        wrap = createNode({ geometry: BL.hubModels.lashing(0, 0, 0, 0, 1, 0, radius), position: { x, y, z }, sightHidden: true });
+        addChild(root, wrap);
+      }
+      const fan = CORD_Z.map((z) => {
+        const cord = createNode({ geometry: fanGeometry, quaternion: quat.create(), sightHidden: true,
+          position: { x: end * BED_LEN / 2, y: p.endY + 0.03, z } });
+        addChild(bedNode, cord);
+        return cord;
+      });
+      return { node, end, tree, wrap, local, fan, ring: new Float64Array(3) };
+    });
+    const endpoint = new Float64Array(3), poseOffset = new Float64Array(3), anchorLocal = new Float64Array(3), bedInverse = mat4.create();
+    const bedRotation = quat.create(), restRotation = quat.create(), bodyRotation = quat.create();
+    // A bed sleeper lies on their back. Turn their long axis along the hammock's +x.
+    quat.fromEuler(restRotation, -Math.PI / 2, -Math.PI / 2, 0);
+    const seats = p.seats.map((s, index) => ({ kind: "hammock", lying: true, index, x: 0, y: 0, z: 0, ry: p.seatRy, floor: s.floor, walkAt: { x: s.walkAt.x, z: s.walkAt.z }, sitter: null, remote: 0, restX: 0, restY: 0, restZ: 0 }));
     let amp = REST, angle = 0;
-    // A seat's place for an angle of swing: the bed turns about the ridgeline (+x in its frame), so a point `drop`
+    // A seat's place for an angle of swing: the bed turns about the virtual swing axis (+x in its frame), so a point `drop`
     // under it moves `drop` sin(angle) across and rises by drop (1 - cos(angle)).
     const place = (seat, a) => {
       const s = p.seats[seat.index], drop = -s.y, across = -Math.sin(a) * drop * p.side, down = Math.cos(a) * drop;
@@ -256,23 +275,144 @@
       seat.y = p.y - down;
     };
     for (const seat of seats) { place(seat, 0); seat.restX = seat.x; seat.restY = seat.y; seat.restZ = seat.z; }
-    // The crew's seated pose finished for the hammock: on the seat as it swings, leaning back, tipped with the bed.
-    const posed = (cave, seat) => {
-      const r = cave.root;
-      r.position.x = seat.x; r.position.y = seat.y + cave.traits.height * 0.08; r.position.z = seat.z;
+    // Reuse the bed's face-up orientation, with straight legs and arms at the sides.
+    // Shift the root along the cloth so the torso, head and feet share its length.
+    const posed = (cave, seat, entry = null) => {
+      const r = cave.root, parts = cave.parts;
+      r.quaternion = cave.sleepRotation || (cave.hammockRotation ||= quat.create());
+      quat.copy(r.quaternion, bodyRotation);
       r.rotation.y = seat.ry;
-      r.rotation.x = LEAN + angle;
+      const height = cave.traits.height;
+      quat.rotateVec(poseOffset, bedRotation, -height * 0.28, height * 0.18, 0);
+      r.position.x = seat.x + poseOffset[0]; r.position.y = seat.y + poseOffset[1]; r.position.z = seat.z + poseOffset[2];
+      parts.legL.rotation.x = parts.legR.rotation.x = 0;
+      parts.armL.rotation.x = parts.armR.rotation.x = 0;
+      parts.head.rotation.x = parts.head.rotation.y = 0;
+      parts.head.quaternion = null;
+      blendPose(cave, entry, bodyRotation);
+      updateHead(cave);
     };
-    const update = (dt, time, still) => {
+    const blendPose = (cave, transition, targetRotation) => {
+      const r = cave.root, parts = cave.parts;
+      if (transition) {
+        const t = Math.min(1, transition.time / ENTRY_SECONDS), blend = t * t * (3 - 2 * t);
+        quat.copy(r.quaternion, transition.rotation);
+        quat.slerpTo(r.quaternion, targetRotation, blend);
+        r.position.x = transition.position.x + (r.position.x - transition.position.x) * blend;
+        r.position.y = transition.position.y + (r.position.y - transition.position.y) * blend + Math.sin(Math.PI * t) * 0.25;
+        r.position.z = transition.position.z + (r.position.z - transition.position.z) * blend;
+        for (const key of ENTRY_PARTS) for (const axis of ["x", "y", "z"]) {
+          const from = transition.parts[key][axis], to = parts[key].rotation[axis];
+          parts[key].rotation[axis] = from + (to - from) * blend;
+        }
+      }
+    };
+    const updateHead = (cave) => {
+      const r = cave.root, parts = cave.parts, height = cave.traits.height;
+      const head = parts.head.position;
+      quat.rotateVec(poseOffset, r.quaternion, head.x, head.y + height * 3.5 / 16, head.z);
+      if (cave.sleepHead) { cave.sleepHead.x = r.position.x + poseOffset[0]; cave.sleepHead.y = r.position.y + poseOffset[1]; cave.sleepHead.z = r.position.z + poseOffset[2]; }
+    };
+    // Reserve through the crew's normal guarded seat contract, then animate from the
+    // exact standing pose. The reservation is immediate; the visible body never snaps.
+    const enter = (cave, seat, occupy) => {
+      if (!cave || !seats.includes(seat) || seat.sitter || seat.remote) return false;
+      const entry = capturePose(cave);
+      if (!occupy(seat)) return false;
+      seat.entry = entry;
+      posed(cave, seat, entry);
+      kick();
+      return true;
+    };
+    const capturePose = (cave) => {
+      const r = cave.root, rotation = quat.create();
+      if (r.quaternion) quat.copy(rotation, r.quaternion);
+      else quat.fromEuler(rotation, r.rotation.x, r.rotation.y, r.rotation.z);
+      const transition = { cave, time: 0, position: { ...r.position }, rotation, parts: {} };
+      for (const key of ENTRY_PARTS) transition.parts[key] = { ...cave.parts[key].rotation };
+      return transition;
+    };
+    const uprightRotation = quat.create();
+    for (const seat of seats) seat.leave = (cave, target, finish) => {
+      if (seat.sitter !== cave || cave.camp.seat !== seat) return false;
+      if (seat.exit) return true;
+      seat.exit = { ...capturePose(cave), target, finish };
+      seat.entry = null;
+      return true;
+    };
+    const poseExit = (cave, seat) => {
+      const exit = seat.exit, r = cave.root, parts = cave.parts;
+      r.quaternion = cave.sleepRotation || (cave.hammockRotation ||= quat.create());
+      r.rotation.y = exit.target.ry;
+      quat.fromEuler(uprightRotation, 0, exit.target.ry, 0);
+      r.position.x = exit.target.x; r.position.y = exit.target.y; r.position.z = exit.target.z;
+      parts.legL.rotation.x = parts.legR.rotation.x = 0;
+      parts.legL.rotation.z = parts.legR.rotation.z = 0;
+      parts.armL.rotation.x = parts.armR.rotation.x = -0.2;
+      parts.head.rotation.x = parts.head.rotation.y = 0;
+      parts.head.quaternion = null;
+      blendPose(cave, exit, uprightRotation);
+      updateHead(cave);
+    };
+    const aimCord = (node, x, y, z) => {
+      const dx = x - node.position.x, dy = y - node.position.y, dz = z - node.position.z;
+      const length = Math.hypot(dx, dy, dz), q = node.quaternion;
+      q[0] = dz; q[1] = 0; q[2] = -dx; q[3] = length + dy;
+      quat.normalize(q); node.scale.y = length;
+    };
+    // The hub defers this until its prop-shake tweens have applied for the frame.
+    const syncRopes = (windTime, windEnabled = true) => {
+      BL.scene.updateWorld(bedNode, root.world);
+      mat4.invert(bedInverse, bedNode.world);
+      for (const rope of ropes) {
+        if (rope.tree) {
+          const tree = rope.tree, local = rope.local;
+          BL.scene.updateWorld(tree, tree.parent?.world);
+          mat4.transformPoint(endpoint, tree.world, local[0], local[1], local[2]);
+          // Match gl-renderer's world-space wind deformation, using the same frame clock.
+          const phase = windTime * 1.9 + tree.world[12] * 0.37 + tree.world[14] * 0.29;
+          const sway = windEnabled ? (Math.sin(phase) + 0.35 * Math.sin(phase * 2.3 + 1.7)) * (tree.geometry.sway || 0) * TIE * TIE : 0;
+          rope.node.position.x = endpoint[0] + 0.8 * sway;
+          rope.node.position.y = endpoint[1];
+          rope.node.position.z = endpoint[2] + 0.6 * sway;
+        }
+        // Extend the spreader-to-tree line through the gathering ring. This keeps
+        // the end fan's centerline collinear with the suspension, including sideways sway.
+        const origin = rope.node.position, ring = rope.ring, x = rope.end * BED_LEN / 2, y = p.endY + 0.03;
+        mat4.transformPoint(anchorLocal, bedInverse, origin.x, origin.y, origin.z);
+        const t = Math.min(1, RING_OUT / Math.max(0.01, rope.end * (anchorLocal[0] - x)));
+        ring[0] = x + (anchorLocal[0] - x) * t;
+        ring[1] = y + (anchorLocal[1] - y) * t;
+        ring[2] = anchorLocal[2] * t;
+        for (const cord of rope.fan) aimCord(cord, ring[0], ring[1], ring[2]);
+        mat4.transformPoint(endpoint, bedNode.world, ring[0], ring[1], ring[2]);
+        aimCord(rope.node, endpoint[0], endpoint[1], endpoint[2]);
+      }
+    };
+    const update = (dt, time, still, windTime = 0, windEnabled = true) => {
       let held = false;
       for (const seat of seats) if (seat.sitter || seat.remote) held = true;
       const rest = held ? REST_HELD : REST;
       amp += (rest - amp) * Math.min(1, DECAY * dt);
       if (!still) angle = amp * Math.sin(OMEGA * time);
       bedNode.rotation.x = angle * p.side;
+      quat.fromEuler(bedRotation, bedNode.rotation.x, p.yaw, 0);
+      quat.multiply(bodyRotation, bedRotation, restRotation);
+      if (windTime !== null) syncRopes(windTime, windEnabled);
       for (const seat of seats) {
         place(seat, angle);
-        if (seat.sitter && seat.sitter.camp.seat === seat) posed(seat.sitter, seat);
+        if (seat.entry && (seat.entry.cave !== seat.sitter || seat.entry.cave.camp.seat !== seat)) seat.entry = null;
+        if (seat.exit && (seat.exit.cave !== seat.sitter || seat.exit.cave.camp.seat !== seat)) seat.exit = null;
+        if (seat.sitter && seat.sitter.camp.seat === seat && seat.exit) {
+          seat.exit.time += dt;
+          poseExit(seat.sitter, seat);
+          // Keep occupancy and camera ownership until the exact landing is safe.
+          if (seat.exit.time >= ENTRY_SECONDS) seat.exit.finish();
+        } else if (seat.sitter && seat.sitter.camp.seat === seat) {
+          if (seat.entry) seat.entry.time += dt;
+          posed(seat.sitter, seat, seat.entry);
+          if (seat.entry?.time >= ENTRY_SECONDS) seat.entry = null;
+        }
       }
     };
     const kick = () => { amp = Math.min(SWAY_MAX, amp + KICK); };
@@ -316,16 +456,21 @@
       }
       return best;
     };
-    // A body standing at (x, z) reaches the hammock within `reach` of a seat's place to stand or of the seat.
+    // Reach the whole cloth from either side or end, including while standing on its shell.
     const near = (x, z, reach) => {
-      for (const seat of seats) if (Math.hypot(x - seat.walkAt.x, z - seat.walkAt.z) < reach || Math.hypot(x - seat.restX, z - seat.restZ) < reach) return true;
-      return false;
+      const dx = x - p.x, dz = z - p.z, along = dx * p.ux + dz * p.uz, across = dx * p.nx + dz * p.nz;
+      p.envelope.nearest(along, across, endpoint);
+      return Math.hypot(along - endpoint[0], across - endpoint[1]) < reach;
     };
+    const reachable = (x, feet, z, reach) => near(x, z, reach)
+      && (Math.abs(feet - p.ground) < 0.15 || Math.abs(feet - (p.y + p.envelope.top)) < 0.15);
     // Other pages' Oogas this bed has tipped back (`cave.hammockRest`), to set upright when they leave it or the bed
     // comes down; one whose body the remote pool has since dropped (off the graph) gives up its place.
     const tipped = [];
     const upright = (cave) => {
       cave.root.rotation.x = 0;
+      cave.root.quaternion = null;
+      cave.parts.head.quaternion = null;
       cave.hammockRest = false;
       tipped.splice(tipped.indexOf(cave), 1);
     };
@@ -348,13 +493,15 @@
       return true;
     };
     const dispose = () => {
-      for (const seat of seats) seat.sitter = null;
+      for (const seat of seats) { seat.sitter = null; seat.entry = seat.exit = null; }
       while (tipped.length) upright(tipped[0]);
       solids.remove(ridgeNode);
       removeChild(root, ridgeNode); removeChild(root, bedNode);
+      for (const rope of ropes) { removeChild(root, rope.node); removeChild(rope.wrap.parent, rope.wrap); }
     };
-    return { plan: p, seats, ridgeNode, bedNode, update, kick, restingAt, settle, free, near, poseRemote, dispose, get angle() { return angle; }, get amp() { return amp; } };
+    update(0, 0, false);
+    return { plan: p, seats, ridgeNode, bedNode, ropes, update, syncRopes, kick, enter, restingAt, settle, free, near, reachable, poseRemote, dispose, get angle() { return angle; }, get amp() { return amp; } };
   };
 
-  BL.hubHammock = { SLOTS, TIE, HEADROOM, SPAN_MIN, SPAN_MAX, SWAY_MAX, STAND, plan, create, ridgeY };
+  BL.hubHammock = { SLOTS, TIE, SPAN_MIN, SPAN_MAX, SWAY_MAX, STAND, plan, create, ridgeY };
 })();

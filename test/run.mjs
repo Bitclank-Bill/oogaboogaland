@@ -5591,137 +5591,64 @@ const environmentSoundChecks = async () => {
     startsMuted && opened && quiet && countsQuiet && released && reused && blockedStorage && newMuted && crossTab && output.gain.calls === closedCalls,
     JSON.stringify({ startsMuted, opened, quiet, countsQuiet, released, reused, blockedStorage, newMuted, crossTab }));
 };
-// The hammock's rules on a straight path along x (|z| under 0.8): where it hangs, when it refuses, who keeps a seat.
+// Single occupancy and direct suspension: exercise the real geometry and seat contracts.
 const hammockChecks = async () => {
-  const node = (o = {}) => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, ...o, children: [] });
-  const part = () => ({ verts: [], faces: [], lines: [] }), added = [];
-  const context = { window: { BL: { scene: { createNode: node, addChild: (r, n) => r.children.push(n), removeChild: (r, n) => r.children.splice(r.children.indexOf(n), 1) },
-    models: { geometry: part, shaded: part },
-    hubModels: { withJungle: (body, grow) => (grow(body), body), bamboo: part, lashing: part, liana: () => {}, sprig: () => {}, sagPoints: () => [] } } } };
-  runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
-  runInNewContext(await readFile(new URL("../src/js/hub-hammock.js", import.meta.url), "utf8"), context);
-  const H = context.window.BL.hubHammock, flat = () => 0;
-  const onPath = (x, z, r) => Math.abs(z) < 0.8 + r;
-  const plan = (a, b, { clear = (x, z, r) => !onPath(x, z, r), surfaceAt = flat } = {}) => H.plan({ a: { ...a, ground: surfaceAt(a.x, a.z) }, b: { ...b, ground: surfaceAt(b.x, b.z) }, clear, surfaceAt });
-  const a = { x: 0.4, z: -4.6 }, b = { x: -0.6, z: 4.3 }, fit = plan(a, b);
-  // The ridgeline's lowest over the path, the bed's swing and every place to stand up, measured from the plan.
-  let headroom = Infinity;
-  for (let k = 0; k <= 100; k++) { const t = k / 100, z = fit.az + (fit.bz - fit.az) * t; if (onPath(0, z, 0)) headroom = Math.min(headroom, H.ridgeY(fit, t)); }
-  const standClear = fit.seats.every((s) => !onPath(s.walkAt.x, s.walkAt.z, 0.3) && Math.hypot(s.walkAt.x - fit.x, s.walkAt.z - fit.z) > 1);
-  const short = plan({ x: 0, z: -2 }, { x: 0, z: 2 }), long = plan({ x: 0, z: -6 }, { x: 0, z: 6 });
-  const hill = plan(a, b, { surfaceAt: (x, z) => onPath(x, z, 0) ? 0.6 : 0 });
-  const crowded = plan(a, b, { clear: (x, z, r) => !onPath(x, z, r) && !(Math.abs(z) > 1.9 && Math.abs(z) < 3.4 && Math.abs(x) < 1.5) });
-  // The seats' side: the one whose places to stand are clear (the first tried faces west here).
-  const eastOnly = plan(a, b, { clear: (x, z, r) => !onPath(x, z, r) && !(x < -0.9 && Math.abs(z) < 5) });
-  const sideHeld = fit.seats.every((s) => s.walkAt.x < -0.9) && eastOnly && eastOnly.seats.every((s) => s.walkAt.x > 0.9);
-  // Built (with stub geometry): seats, swing, rest, tie-break.
-  const root = node(), solids = { add: (n) => added.push(n), remove: (n) => added.splice(added.indexOf(n), 1) };
-  const ham = H.create({ plan: fit, root, solids, ra: 0.15, rb: 0.15, seed: 1 });
-  let peak = 0, time = 0;
-  for (let i = 0; i < 2000; i++) { if (i % 40 === 0) ham.kick(); time += i % 3 ? 1 / 60 : 1 / 7; ham.update(i % 3 ? 1 / 60 : 1 / 7, time, false); peak = Math.max(peak, Math.abs(ham.angle)); }
-  const held = ham.angle; ham.update(1 / 60, time + 0.4, true);
-  const still = ham.angle === held;
-  const seat = ham.seats[1], feet = seat.restY + 0.1 - 0.35;
-  const rests = ham.restingAt(seat.restX, feet, seat.restZ) === 1 && ham.restingAt(seat.restX, fit.ground, seat.restZ) === -1
-    && ham.restingAt(seat.restX, fit.ground + 1.4, seat.restZ) === -1 && ham.restingAt(seat.walkAt.x, feet, seat.walkAt.z) === -1;
-  // Local seat 1 against remotes resting there: a higher id yields to this page, a lower id keeps it and this page moves along, or up when full.
-  const cave = { camp: { seat }, traits: { height: 1.2 }, root: node() };
-  seat.sitter = cave;
-  const rec = (id, k, body = "Ooga") => ({ id, body, bodyKind: body.startsWith("gorilla:") ? "gorilla" : "ooga", x: ham.seats[k].restX, y: feet, z: ham.seats[k].restZ });
-  const moves = [];
-  const move = (c, from, to) => { moves.push(["move", from.index, to.index]); from.sitter = null; to.sitter = c; c.camp.seat = to; return true; };
-  const stand = () => (moves.push(["stand"]), true);
-  const shown = () => true;
-  ham.settle([rec(900, 1)], 500, shown, move, stand);
-  const higherYields = moves.length === 0 && seat.remote === 900;
-  ham.settle([rec(100, 1), rec(901, 0, "gorilla:Ape")], 500, shown, move, stand);
-  const lowerKeeps = moves.length === 1 && moves[0][1] === 1 && cave.camp.seat !== seat && ham.seats[0].remote === 0;
-  const now = cave.camp.seat.index, others = [0, 1, 2].filter((k) => k !== now);
-  ham.settle([rec(100, others[0]), rec(101, others[1]), rec(99, now)], 500, shown, move, stand);
-  const fullStands = moves.length === 2 && moves[1][0] === "stand";
-  ham.settle([], 500, shown, move, stand);
-  const gone = ham.seats.every((s) => !s.remote);
-  const signedOut = (ham.settle([rec(1, now)], 0, shown, move, stand), moves.length === 2);
-  // The room's remotes as net.js keeps them, a Map, settled every frame without an iterator (regression: the hub
-  // passed `remotes.values()`, a fresh iterator each frame): any iterator throws here, the lower id still keeps the seat.
-  const room = new (class extends Map { [Symbol.iterator]() { throw new Error("iterator"); } values() { throw new Error("values"); } keys() { throw new Error("keys"); } entries() { throw new Error("entries"); } })();
-  room.set(102, rec(102, 2)); room.set(98, rec(98, 2)); room.set(7, rec(7, 0, "gorilla:Ape"));
-  let mapped;
-  try { ham.settle(room, 0, shown, move, stand); mapped = ham.seats[2].remote === 98 && ham.seats[0].remote === 0 && moves.length === 2; } catch (error) { mapped = error.message; }
-  // Other pages' Oogas tipped back in the bed: one whose body the pool dropped gives up its place, and the bed coming
-  // down (an anchor palm taken by the ring path) sets the rest upright with their marks cleared.
-  const remote = (k) => {
-    const body = { root: node({ parent: root }), traits: { height: 1.2 }, parts: { legL: node(), legR: node(), armL: node(), armR: node() } };
-    Object.assign(body.root.position, { x: ham.seats[k].restX, z: ham.seats[k].restZ });
-    return body;
-  };
-  const gone1 = remote(0), kept = remote(2);
-  const tipped = ham.poseRemote(gone1, feet) && ham.poseRemote(kept, feet) && gone1.root.rotation.x < 0 && kept.hammockRest;
-  gone1.root.parent = null;
-  ham.poseRemote(remote(1), feet);
-  const pruned = gone1.root.rotation.x === 0 && !gone1.hammockRest && kept.hammockRest;
-  ham.dispose();
-  const disposed = !root.children.length && !added.length && ham.seats.every((s) => !s.sitter) && tipped && pruned && kept.root.rotation.x === 0 && !kept.hammockRest;
-  // The bed as drawn, on the real builders, swung through its whole range: every vertex up to the shell's top inside the
-  // ridgeline's collision shell, and the suspension above it inside the shell's outline, where no walker reaches (to a
-  // micrometre, for rounding where it touches); the shell off the path, and the places to stand outside it.
-  // Flat ground, trunks eight metres apart.
   const real = { window: {}, document: { createElement: () => ({ getContext: () => null }) }, performance, console };
-  for (const name of ["math", "scene", "models", "hub-models", "solid-props", "hub-hammock"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), real);
-  const R = real.window.BL, swing = (hammock) => {
-    const p = hammock.plan, ridgeNode = hammock.ridgeNode, shell = ridgeNode.geometry.collisionGeometry, o = ridgeNode.position;
-    const corners = [];
-    for (let i = 0; i < shell.verts.length; i += 3) corners.push([shell.verts[i] + o.x, shell.verts[i + 1] + o.y, shell.verts[i + 2] + o.z]);
-    const mid = [0, 1, 2].map((k) => corners.reduce((sum, c) => sum + c[k], 0) / corners.length);
-    // Each face's plane (Newell's normal), turned to face away from the shell's middle.
-    const planes = shell.faces.map(({ i }) => {
-      const n = [0, 0, 0], q = i.map((k) => corners[k]);
-      q.forEach((a, k) => { const b = q[(k + 1) % q.length]; n[0] += (a[1] - b[1]) * (a[2] + b[2]); n[1] += (a[2] - b[2]) * (a[0] + b[0]); n[2] += (a[0] - b[0]) * (a[1] + b[1]); });
-      const len = Math.hypot(...n), u = n.map((c) => c / len), d = u[0] * q[0][0] + u[1] * q[0][1] + u[2] * q[0][2];
-      return u[0] * mid[0] + u[1] * mid[1] + u[2] * mid[2] > d ? [-u[0], -u[1], -u[2], -d] : [...u, d];
-    });
-    // How far outside the shell a point lies by its farthest face (negative inside); the shell is convex.
-    const outside = (x, y, z) => Math.max(...planes.map(([a, b, c, d]) => a * x + b * y + c * z - d));
-    const top = Math.max(...corners.map((c) => c[1]));
-    const bed = hammock.bedNode, verts = bed.geometry.verts, at = [0, 0, 0], world = R.scene.createNode();
-    R.scene.addChild(world, bed);
-    let worst = -Infinity;
-    for (let k = -20; k <= 20; k++) {
-      bed.rotation.x = R.hubHammock.SWAY_MAX * k / 20 * p.side;
-      R.scene.updateWorld(world);
-      for (let i = 0; i < verts.length; i += 3) { R.math.mat4.transformPoint(at, bed.world, verts[i], verts[i + 1], verts[i + 2]); worst = Math.max(worst, outside(at[0], Math.min(at[1], top), at[2])); }
+  for (const name of ["math", "scene", "models", "hub-models", "solid-props", "hub-hammock"])
+    runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), real);
+  const R = real.window.BL, H = R.hubHammock, flat = () => 0, clear = (x, z, r) => z > 1 + r;
+  const plan = (a, b, fits = clear) => H.plan({ a: { ...a, ground: 0 }, b: { ...b, ground: 0 }, clear: fits, surfaceAt: flat });
+  const fit = plan({ x: -3, z: 4 }, { x: 3, z: 4 });
+  record("hub hammock: both anchors and the full suspension span stay in one grass patch; short, long and obstructed pairs are refused",
+    !!fit && fit.seats.length === 1 && !plan({ x: 0, z: -4 }, { x: 0, z: 4 })
+      && !plan({ x: -1, z: 4 }, { x: 1, z: 4 }) && !plan({ x: -6, z: 4 }, { x: 6, z: 4 })
+      && !plan({ x: -3, z: 4 }, { x: 3, z: 4 }, () => false));
+  const root = R.scene.createNode(), props = R.solidProps.create();
+  const ham = H.create({ plan: fit, root, solids: props, ra: 0.15, rb: 0.15, seed: 1 }), seat = ham.seats[0];
+  const at = new Float64Array(3), target = new Float64Array(3);
+  let peak = 0, ropeError = 0, outside = 0;
+  for (let i = 0; i < 300; i++) {
+    ham.kick(); ham.update(1 / 60, i / 60, false); R.scene.updateWorld(root);
+    peak = Math.max(peak, Math.abs(ham.angle));
+    for (const rope of ham.ropes) {
+      R.math.mat4.transformPoint(at, rope.node.world, 0, 1, 0);
+      R.math.mat4.transformPoint(target, ham.bedNode.world, ...rope.ring);
+      ropeError = Math.max(ropeError, Math.hypot(...at.map((v, k) => v - target[k])));
     }
-    const stands = Math.min(...hammock.seats.map((s) => outside(s.walkAt.x, mid[1], s.walkAt.z)));
-    return { worst, corners, stands };
-  };
-  const open8 = R.hubHammock.plan({ a: { x: 0, z: -4, ground: 0 }, b: { x: 0, z: 4, ground: 0 }, clear: () => true, surfaceAt: flat });
-  const swung8 = swing(R.hubHammock.create({ plan: open8, root: R.scene.createNode(), solids: { add: () => {}, remove: () => {} }, ra: 0.15, rb: 0.15, seed: 1 }));
-  const fitR = R.hubHammock.plan({ a: { ...a, ground: 0 }, b: { ...b, ground: 0 }, clear: (x, z, r) => !onPath(x, z, r), surfaceAt: flat });
-  const swungFit = swing(R.hubHammock.create({ plan: fitR, root: R.scene.createNode(), solids: { add: () => {}, remove: () => {} }, ra: 0.15, rb: 0.15, seed: 1 }));
-  const enveloped = swung8.worst <= 1e-6 && swungFit.worst <= 1e-6 && swung8.stands > 0.3 && swungFit.stands > 0.3 && swungFit.corners.every(([x, , z]) => !onPath(x, z, 0));
-  // Coming down on it (a fall or the jetpack), through the props' real footing: anywhere over the hammock the floor is
-  // the bed's swung top, about a metre up where the spreaders swing, never an invisible one at the ridgeline, and an
-  // Ooga stood there is not resting in a seat; under the bed the shell still meets a walker. Regression: the shell ran
-  // up to the knots, a 3 m floor over the whole bed.
-  const props = R.solidProps.create(), hungRoot = R.scene.createNode();
-  const hung = R.hubHammock.create({ plan: open8, root: hungRoot, solids: props, ra: 0.15, rb: 0.15, seed: 1 });
-  R.scene.updateWorld(hungRoot); props.sync();
-  const { half: hh, across: ha } = open8.envelope;
-  let highest = -Infinity, perched = false;
-  for (let i = -10; i <= 10; i++) for (let j = -6; j <= 6; j++) {
-    const along = hh * i / 10, side = ha * j / 6, x = open8.x + open8.ux * along + open8.nx * side, z = open8.z + open8.uz * along + open8.nz * side;
-    const floor = props.supportAt(x, z, open8.y + 3, 0, 0.3);
-    if (!Number.isFinite(floor)) continue;
-    highest = Math.max(highest, floor);
-    if (hung.restingAt(x, floor, z) >= 0) perched = true;
+    const v = ham.bedNode.geometry.verts;
+    for (let k = 0; k < v.length; k += 3) {
+      R.math.mat4.transformPoint(at, ham.bedNode.world, v[k], v[k + 1], v[k + 2]);
+      const dx = at[0] - fit.x, dz = at[2] - fit.z, along = dx * fit.ux + dz * fit.uz, side = dx * fit.nx + dz * fit.nz;
+      fit.envelope.nearest(along, side, target);
+      outside = Math.max(outside, Math.hypot(along - target[0], side - target[1]));
+    }
   }
-  const underBed = props.ceilingAt(open8.x, open8.z, open8.ground, 0.3) - open8.ground;
-  const footing = { top: highest - open8.ground, belowRidge: open8.y - highest, perched, underBed };
-  const landing = footing.top > 0.5 && footing.top <= 1.1 && footing.belowRidge > 1.5 && !perched && underBed < 0.7;
-  record("hub hammock: ties high enough to clear the path, hangs the bed and its places to stand off it, refuses spans, low headroom and crowded ground, swings bounded, knows a resting Ooga by place and height, and the lower room id keeps a seat; regression: the bed coming down left other pages' Oogas tipped back; regression: the swung bed reached past its collision shell; regression: settling the room's remotes made an iterator every frame; regression: the shell's top was an invisible floor at the ridgeline",
-    !!fit && headroom >= H.HEADROOM && standClear && enveloped && mapped === true && landing && fit.seats.length === H.SLOTS && !short && !long && !hill && !crowded && sideHeld
-      && peak <= H.SWAY_MAX + 1e-9 && peak > 0.02 && still && rests && higherYields && lowerKeeps && fullStands && gone && signedOut && disposed,
-    JSON.stringify({ fit: !!fit, headroom, standClear, enveloped, mapped, footing, worst8: swung8.worst, worstFit: swungFit.worst, stands8: swung8.stands, standsFit: swungFit.stands, short: !!short, long: !!long, hill: !!hill, crowded: !!crowded, sideHeld, peak, still, rests, higherYields, lowerKeeps, fullStands, gone, signedOut, disposed, moves }));
+  props.sync();
+  const floor = props.supportAt(fit.x, fit.z, 4, 0, 0.3);
+  record("hub hammock: direct ropes remain joined at both ends through bounded sway, the cloth stays within its shell, and there is no floor at tree-tie height",
+    ham.ropes.length === 2 && ropeError < 1e-5 && outside < 1e-6 && peak <= H.SWAY_MAX && floor > 0.5 && floor < 1.1,
+    JSON.stringify({ ropeError, outside, peak, floor }));
+  const feet = seat.restY + 0.1 - 0.35;
+  const rec = (id, bodyKind = "ooga") => ({ id, body: "resting", bodyKind, x: seat.restX, y: feet, z: seat.restZ });
+  let stood = 0;
+  const local = { camp: { seat } }; seat.sitter = local;
+  const stand = () => { stood++; seat.sitter = null; local.camp.seat = null; return true; };
+  const room = new (class extends Map { [Symbol.iterator]() { throw Error("iterator"); } values() { throw Error("values"); } })();
+  room.set(900, rec(900)); ham.settle(room, 500, () => true, () => { throw Error("second seat"); }, stand);
+  const higherYields = stood === 0 && ham.free({ x: 0, z: 0 }) === null;
+  room.set(100, rec(100)); ham.settle(room, 500, () => true, () => { throw Error("second seat"); }, stand);
+  const lowerWins = stood === 1 && seat.remote === 100 && ham.free({ x: 0, z: 0 }) === null;
+  ham.settle([], 500, () => true, () => {}, stand);
+  record("hub hammock: exactly one occupant, lower-id conflicts stand up, and disconnect releases occupancy without iterating the remote Map",
+    H.SLOTS === 1 && higherYields && lowerWins && ham.free({ x: 0, z: 0 }) === seat);
+  const remote = () => ({ root: R.scene.createNode({ position: { x: seat.restX, y: 0, z: seat.restZ }, parent: root }), traits: { height: 1.2 },
+    parts: Object.fromEntries(["head", "legL", "legR", "armL", "armR"].map(key => [key, R.scene.createNode()])) });
+  const a = remote(), b = remote();
+  ham.poseRemote(a, feet); a.root.parent = null; ham.poseRemote(b, feet);
+  const pruned = !a.hammockRest && !a.root.quaternion;
+  ham.dispose();
+  record("hub hammock: dropped and disposed remote resting poses become upright and every hammock node is removed",
+    pruned && !b.hammockRest && !b.root.quaternion && root.children.length === 0);
 };
 const weatherStepChecks = async () => {
   const context = { window: { BL: { math: null, models: { cached: (f) => f, noShadow: (g) => g, box: () => ({}), merge: () => ({}), polyline: () => ({}), particleGeometry: () => ({}) }, scene: {} } } };
@@ -7688,107 +7615,236 @@ const trip = (id) => ({ name: `${id} round trip`, why: "contract: a scene left a
   const donated = await b.evaluate(`(() => { const B = window.__ooga, g = B.game.state, before = { donations: g.donations, sats: g.totalSats, bananas: g.bananas }; window.BL.scenes[B.scene].onDonation({ id: "trip-${id}", sats: 2100, handle: "tester", message: "ooga", at: Date.now() }, { exact: 1.25, rounded: 1 }); B.advance(1, 1 / 30); return { scene: B.scene, donations: g.donations - before.donations, sats: g.totalSats - before.sats, bananas: g.bananas - before.bananas }; })()`);
   record(`${id} round trip: leaving and entering twice keeps the leave contract and holds nothing the first visit did not, and a donation mid-visit is taken`, grew.length === 0 && beds.every(state => !state.failures.length) && donated.scene === id && donated.donations === 1 && donated.sats === 2100 && donated.bananas === 1.25, JSON.stringify({ grew, beds, donated, first: laps[0], second: laps[1] }));
 } });
-// The arcade hammock, played: Space from beside it through the real keyboard, other pages' Oogas in the other seats,
-// a seat taken twice, the pile's ring taking a palm, and the island left with an Ooga resting.
-const hubHammock = { name: "hub hammock", why: "rule: three Oogas rest in the arcade hammock on separate seats, the path stays clear, a seat is never held twice across pages, and an Ooga is never left in a hammock that is gone", run: async (b) => {
+// A focused local playthrough: entering, bounded resting view, standing and removal.
+const hubHammock = { name: "hub hammock", why: "rule: one face-up Ooga rests off the path, with bed head-turn limits and complete stand-up cleanup", run: async (b) => {
   const setup = await b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.cavemen.get("portlandhodl"), I = B.island;
+    const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.cavemen.get("portlandhodl");
     if (!H) return { hammock: false };
-    if (B.crew.player !== a) B.pilot.possess(a);
-    const P = H.plan, arcade = I.mouths.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id);
-    // The arcade's spoke: the path whose end is nearest its mouth; each anchor's side of it.
-    let spoke = null, best = Infinity;
-    for (const line of I.path.centerlines) { const e = line[line.length - 1], d = Math.hypot(e.x - arcade.x, e.z - arcade.z); if (d < best) { best = d; spoke = line; } }
-    const sideOf = (x, z) => { let d = Infinity, side = 0; for (let i = 0; i + 1 < spoke.length; i++) { const p = spoke[i], q = spoke[i + 1], dx = q.x - p.x, dz = q.z - p.z, t = Math.max(0, Math.min(1, ((x - p.x) * dx + (z - p.z) * dz) / (dx * dx + dz * dz))), e = Math.hypot(p.x + dx * t - x, p.z + dz * t - z); if (e < d) { d = e; side = Math.sign(dx * (z - p.z) - dz * (x - p.x)); } } return side; };
-    const flank = H.anchors.length === 2 && H.anchors.every(o => o.prop === "palm" && B.props.includes(o)) && sideOf(H.anchors[0].x, H.anchors[0].z) * sideOf(H.anchors[1].x, H.anchors[1].z) < 0;
-    let headroom = Infinity, crossings = 0;
-    for (let k = 0; k <= 80; k++) { const t = k / 80, x = P.ax + (P.bx - P.ax) * t, z = P.az + (P.bz - P.az) * t; if (I.isPath(x, z)) { crossings++; headroom = Math.min(headroom, BL.hubHammock.ridgeY(P, t) - I.surfaceAt(x, z)); } }
-    // Nothing of the bed or its places to stand on the path: the seats, the shell's corners and every place to stand.
-    const shell = H.ridgeNode.geometry.collisionGeometry.verts, offPath = [];
-    for (let i = 0; i < shell.length; i += 3) offPath.push(!I.isPath(shell[i] + H.ridgeNode.position.x, shell[i + 2] + H.ridgeNode.position.z));
-    for (const s of H.seats) offPath.push(!I.isPath(s.restX, s.restZ), !I.isPath(s.walkAt.x, s.walkAt.z));
-    const s = H.seats[0];
-    B.pilot.navigate({ position: { x: s.walkAt.x, y: s.floor, z: s.walkAt.z }, yaw: s.ry, pitch: 0.4, dist: 6 });
-    B.advance(0.5, 1 / 60);
-    return { hammock: true, flank, crossings, headroom, offPath: offPath.every(Boolean), act: document.getElementById("act").textContent };
+    B.pilot.possess(a); const s = H.seats[0], p = H.plan;
+    B.pilot.navigate({ position: { x: s.walkAt.x, y: s.floor, z: s.walkAt.z }, yaw: s.ry, pitch: 0.5, dist: 6 }); B.advance(0.5, 1 / 60);
+    let crossings = 0;
+    for (let i = 0; i <= 100; i++) { const t = i / 100; if (B.island.isPath(p.ax + (p.bx - p.ax) * t, p.az + (p.bz - p.az) * t)) crossings++; }
+    return { hammock: true, crossings, seats: H.seats.length, act: document.getElementById("act").textContent };
   })()`);
-  if (!setup.hammock) { record("hub hammock: this visit's meadow palms hang the arcade hammock", false, JSON.stringify(setup)); return; }
-  record("hub hammock: hung from the two palms either side of the arcade's path, its ridgeline over the path above HEADROOM, and its bed, seats and places to stand all off the path",
-    setup.flank && setup.crossings > 0 && setup.headroom >= 2.6 && setup.offPath, JSON.stringify(setup));
+  record("hub hammock: both palms share a grass patch with no path crossing and one REST place", setup.hammock && setup.crossings === 0 && setup.seats === 1 && setup.act === "REST", JSON.stringify(setup));
+  if (!setup.hammock) return;
   await b.key(" ");
   const rest = await b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.crew.player, seat = a.camp.seat, sent = [], net = BL.net, send = net.sendPose;
-    net.sendPose = (...args) => { sent.push(args); return send(...args); };
-    let peak = 0, follows = true;
-    try {
-      for (let i = 0; i < 240; i++) {
-        B.advance(1 / 60, 1 / 60);
-        peak = Math.max(peak, Math.abs(H.angle));
-        if (seat && (Math.abs(a.root.position.x - seat.x) > 1e-9 || Math.abs(a.root.position.z - seat.z) > 1e-9)) follows = false;
-      }
-    } finally { net.sendPose = send; }
-    // What the room hears while it rests: the seat's still point every time.
-    const still = sent.length > 0 && sent.every(([x, y, z]) => x === seat.restX && z === seat.restZ && Math.abs(y - (seat.restY + a.traits.height * 0.08 - a.baseY)) < 1e-9);
-    return { kind: seat && seat.kind, index: seat && seat.index, nearest: seat === H.seats[0], act: document.getElementById("act").textContent, peak, follows, still, sends: sent.length, swung: peak > 0.02 };
+    const B = __ooga, a = B.crew.player, H = BL.scenes.hub.debug.hammock;
+    B.advance(1.1, 1 / 60); const face = [0, 0, 0]; BL.math.quat.rotateVec(face, a.root.quaternion, 0, 0, 1);
+    const result = { resting: !!a.camp.seat?.lying, faceY: face[1], free: !!H.free(a.root.position), act: document.getElementById("act").textContent };
+    B.pilot.enterClose(); B.advance(1.5, 1 / 60); return result;
   })()`);
-  record("hub hammock: Space beside it sits the driven Ooga in the nearest seat, which swings within SWAY_MAX carrying it, offers STAND UP! and tells the room only the seat's still point",
-    rest.kind === "hammock" && rest.nearest && rest.act === "STAND UP!" && rest.swung && rest.peak <= 0.11 && rest.follows && rest.still, JSON.stringify(rest));
-  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w", code: "KeyW" });
-  await b.evaluate(`__ooga.advance(0.1, 1 / 60)`);
-  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
+  record("hub hammock: Space lies face-up, reserves the only place and offers STAND UP", rest.resting && rest.faceY > 0.98 && !rest.free && rest.act === "STAND UP!", JSON.stringify(rest));
+  const look = await b.evaluate(`(() => {
+    const B = __ooga, a = B.crew.player, C = B.camera;
+    const read = () => { const f = [C.target.x - C.position.x, C.target.y - C.position.y, C.target.z - C.position.z], len = Math.hypot(...f); for(let i=0;i<3;i++)f[i]/=len;
+      const q = a.root.quaternion, inv = [-q[0], -q[1], -q[2], q[3]], local = [0,0,0]; BL.math.quat.rotateVec(local,inv,...f);
+      return { yaw: Math.atan2(local[0],local[2]), pitch: Math.atan2(-local[1],Math.hypot(local[0],local[2])), up:f[1] }; };
+    const initial=read(); B.pilot.hooks.onOrbit(100000,100000); B.advance(0.2,1/60);const first=read();
+    B.pilot.hooks.onOrbit(-200000,-200000); B.advance(0.2,1/60);const second=read();
+    return {initial,first,second,view:B.pilot.view};
+  })()`);
+  record("hub hammock: first person starts looking up and uses the bed limits of 80 degrees sideways and 70 degrees vertically", look.view === "first-person" && look.initial.up > 0.98 && [look.first,look.second].every(v => Math.abs(v.yaw) <= 80*Math.PI/180+0.001 && Math.abs(v.pitch) <= 70*Math.PI/180+0.001), JSON.stringify(look));
+  await b.key(" ");
   const stood = await b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.crew.player, p = a.root.position, feet = p.y - a.baseY, solids = B.headquarters.solids.props;
-    B.advance(0.2, 1 / 60);
-    const s = H.seats[0];
-    return { seated: !!a.camp.seat, free: H.seats.every(q => !q.sitter), upright: a.root.rotation.x === 0, near: Math.hypot(p.x - s.walkAt.x, p.z - s.walkAt.z) < 1.2,
-      grounded: Math.abs(feet - B.island.surfaceAt(p.x, p.z)) < 0.1, clear: solids.clearAt(p.x, feet + 0.025, p.z, a.bodyRadius, a.bodyHeight - 0.025) };
+    const B=__ooga,a=B.crew.player,H=BL.scenes.hub.debug.hammock;B.advance(1,1/60);
+    const yaw=B.pilot.orbit.tYaw;B.pilot.hooks.onOrbit(300,0);B.advance(.2,1/60);
+    return {seat:!!a.camp.seat,rotation:!!a.root.quaternion,free:!!H.free(a.root.position),feet:a.root.position.y-a.baseY,turn:Math.abs(B.pilot.orbit.tYaw-yaw),view:B.pilot.view};
   })()`);
-  record("hub hammock: moving stands the Ooga up beside the hammock, upright, on the ground and clear of its shell", !stood.seated && stood.free && stood.upright && stood.near && stood.grounded && stood.clear, JSON.stringify(stood));
-  // Other pages: two remotes resting in seats 1 and 2 as the room would send them (feet over the seat's still point).
-  const shared = await b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub.debug.hammock, net = BL.net, a = B.crew.player, saved = [...net.remotes.entries()], self = net.state.selfId;
-    const feet = (name, seat) => { const c = B.cavemen.get(name) || a; return seat.restY + c.traits.height * 0.08 - c.baseY; };
-    const rec = (id, name, k) => ({ id, login: "rest-" + id, display: "Rest " + id, body: name, bodyKind: "ooga", bodyName: name, zone: net.state.zone, x: H.seats[k].restX, y: feet(name, H.seats[k]), z: H.seats[k].restZ, yaw: H.seats[k].ry });
-    const out = {};
-    try {
-      net.state.selfId = 500;
-      net.remotes.clear();
-      net.remotes.set(900, rec(900, "MrHodlX", 1)); net.remotes.set(901, rec(901, "hotpixelgroup", 2));
-      B.advance(0.5, 1 / 60);
-      out.remoteSeats = [H.seats[1].remote, H.seats[2].remote];
-      // Their copies sit in this page's bed: on the seat as it swings, leaning back into it.
-      out.posed = [1, 2].map(k => BL.scenes.hub.root.children.filter(n => Math.abs(n.position.x - H.seats[k].x) < 1e-6 && Math.abs(n.position.z - H.seats[k].z) < 1e-6 && n.rotation.x < -0.05 && n.rotation.y === H.seats[k].ry).length);
-      const s = H.seats[0];
-      B.pilot.navigate({ position: { x: s.walkAt.x, y: s.floor, z: s.walkAt.z }, yaw: s.ry, pitch: 0.4, dist: 6 }); B.advance(0.4, 1 / 60);
-      out.offered = document.getElementById("act").textContent;
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" })); window.dispatchEvent(new KeyboardEvent("keyup", { key: " ", code: "Space" }));
-      B.advance(0.3, 1 / 60);
-      out.mine = a.camp.seat && a.camp.seat.index;
-      out.three = H.seats.every(q => q.sitter || q.remote);
-      // A lower id resting in this page's seat keeps it, and this page, with the bed full, stands.
-      net.remotes.set(100, rec(100, "w-s-bitcoin", 0)); B.advance(0.3, 1 / 60);
-      out.yielded = !a.camp.seat && H.seats[0].remote === 100;
-      // Full: Space beside it offers FULL and seats nobody.
-      B.pilot.navigate({ position: { x: s.walkAt.x, y: s.floor, z: s.walkAt.z }, yaw: s.ry, pitch: 0.4, dist: 6 }); B.advance(0.4, 1 / 60);
-      out.full = document.getElementById("act").textContent;
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" })); window.dispatchEvent(new KeyboardEvent("keyup", { key: " ", code: "Space" }));
-      B.advance(0.2, 1 / 60);
-      out.fullRefused = !a.camp.seat;
-      // A page that disconnects gives its seat back.
-      net.remotes.delete(900); B.advance(0.3, 1 / 60);
-      out.freed = !H.seats[1].remote && H.seats[2].remote === 901;
-    } finally {
-      net.remotes.clear(); for (const [id, r] of saved) net.remotes.set(id, r); net.state.selfId = self;
-      B.advance(0.2, 1 / 60);
+  record("hub hammock: standing clears the lying pose and occupancy and restores ordinary first-person turning", !stood.seat && !stood.rotation && stood.free && Math.abs(stood.feet)<0.1 && stood.turn>0.5, JSON.stringify(stood));
+  const moved = await b.evaluate(`(() => { const B=__ooga,H=BL.scenes.hub.debug.hammock,s=H.seats[0];B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry,pitch:.4,dist:6});B.advance(.4,1/60);return B.crew.sitPlayer(s); })()`);
+  await b.send("Input.dispatchKeyEvent", {type:"keyDown",key:"w",text:"w",code:"KeyW"});
+  await b.evaluate('__ooga.advance(1.1,1/60)');
+  await b.send("Input.dispatchKeyEvent", {type:"keyUp",key:"w",code:"KeyW"});
+  const walking=await b.evaluate('({seat:!!__ooga.crew.player.camp.seat,q:!!__ooga.crew.player.root.quaternion})');
+  record("hub hammock: movement also stands the occupant up",moved&&!walking.seat&&!walking.q,JSON.stringify(walking));
+} };
+const hubHammockEntry = { name: "hub hammock entry", why: "regression: Space must reach the cloth from beside or above and ease into rest without snapping", run: async (b) => {
+  const result = await b.evaluate(`(() => {
+    const B=__ooga,H=BL.scenes.hub.debug.hammock,s=H.seats[0],p=H.plan,a=B.cavemen.get("portlandhodl"),q=BL.math.quat;
+    B.pilot.possess(a);if(B.crew.sleeping)B.crew.wakePlayer();if(a.camp.seat)B.crew.standPlayer();
+    B.pilot.exitClose(false);B.advance(1.5,1/60);
+    const key=(type,key=" ",code="Space",repeat=false,target=window)=>target.dispatchEvent(new KeyboardEvent(type,{key,code,repeat,bubbles:true,cancelable:true}));
+    const space=()=>{key("keydown");key("keyup");};
+    const snap=()=>{const f=[0,0,1];if(a.root.quaternion)q.rotateVec(f,a.root.quaternion,0,0,1);return {x:a.root.position.x,y:a.root.position.y,z:a.root.position.z,face:f[1]};};
+    const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+    const rows=[];
+    for(const spot of [
+      {name:"opposite side",x:p.x-p.nx*(p.envelope.across+0.7)*p.side,z:p.z-p.nz*(p.envelope.across+0.7)*p.side,y:p.ground},
+      {name:"cloth end",x:p.x+p.ux*(p.envelope.half+0.6),z:p.z+p.uz*(p.envelope.half+0.6),y:p.ground},
+      {name:"on top",x:p.x,z:p.z,y:p.y+p.envelope.top}
+    ]) {
+      B.pilot.navigate({position:spot,yaw:s.ry+0.7,pitch:.5,dist:6});B.advance(.3,1/60);
+      const before=snap(),feet=before.y-a.baseY,act=document.getElementById("act").textContent;
+      space();const immediate=snap(),reserved=s.sitter===a&&!H.free(before);
+      key("keydown"," ","Space",true);key("keyup");const held=a.camp.seat===s;
+      B.advance(.3,1/60);const middle=snap(),animating=!!s.entry;
+      B.advance(.8,1/60);const end=snap(),finished=!s.entry&&a.camp.seat===s;
+      rows.push({name:spot.name,act,feet,reserved,held,snap:dist(before,immediate),middleMove:dist(before,middle),middleFace:middle.face,face:end.face,animating,finished});
+      space();B.advance(1.1,1/60);
     }
-    out.cleared = H.seats.every(q => !q.remote);
-    return out;
+    B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry,pitch:.5,dist:6});B.advance(.3,1/60);
+    const input=document.createElement("input");document.body.append(input);input.focus();key("keydown"," ","Space",false,input);key("keyup"," ","Space",false,input);
+    const typing=!a.camp.seat;input.blur();input.remove();
+    space();B.advance(.2,1/60);space();B.advance(1.1,1/60);
+    const cancelled=!a.camp.seat&&!a.root.quaternion&&!s.entry&&H.free(a.root.position)===s;
+    space();B.advance(.2,1/60);key("keydown","w","KeyW");B.advance(1.1,1/60);key("keyup","w","KeyW");
+    const moved=!a.camp.seat&&!a.root.quaternion&&!s.entry&&H.free(a.root.position)===s;
+    return {rows,typing,cancelled,moved};
   })()`);
-  record("hub hammock: other pages' resting Oogas hold their seats, Space takes the free one, a lower room id on this page's seat moves it on, a full hammock offers FULL and seats nobody, and a page that leaves frees its seat",
-    shared.remoteSeats[0] === 900 && shared.remoteSeats[1] === 901 && shared.posed.every(n => n === 1) && shared.offered === "REST" && shared.mine === 0 && shared.three && shared.yielded && shared.full === "FULL" && shared.fullRefused && shared.freed && shared.cleared, JSON.stringify(shared));
+  record("hub hammock entry: beside either edge and standing on top offer REST and smoothly reach face-up rest while reserving one place",
+    result.rows.every(r=>r.act==="REST"&&r.reserved&&r.held&&r.snap<1e-5&&r.middleMove>.05&&r.middleFace>.05&&r.middleFace<.95&&r.face>.98&&r.animating&&r.finished),JSON.stringify(result.rows));
+  record("hub hammock entry: typing does not enter; repeated Space and movement interrupt entry with no lingering pose or reservation",
+    result.typing&&result.cancelled&&result.moved,JSON.stringify(result));
+} };
+const hubHammockGetUp = { name: "hub hammock get up", why: "regression: Space and movement must animate standing up, retaining occupancy through a continuous body and camera transition", run: async (b) => {
+  const result=await b.evaluate(`(() => {
+    const B=__ooga,H=BL.scenes.hub.debug.hammock,s=H.seats[0],a=B.cavemen.get("portlandhodl"),Q=BL.math.quat;
+    B.pilot.possess(a);if(B.crew.sleeping)B.crew.wakePlayer();if(a.camp.seat)B.crew.standPlayer();
+    const key=(type,key=" ",code="Space")=>window.dispatchEvent(new KeyboardEvent(type,{key,code,bubbles:true,cancelable:true}));
+    const space=()=>{key("keydown");key("keyup");};
+    const snapshot=()=>{const face=[0,0,1],rotation=Q.create();if(a.root.quaternion)Q.copy(rotation,a.root.quaternion);else Q.fromEuler(rotation,0,a.root.rotation.y,0);Q.rotateVec(face,rotation,0,0,1);
+      const C=B.camera,f=[C.target.x-C.position.x,C.target.y-C.position.y,C.target.z-C.position.z],n=Math.hypot(...f);return {position:{...a.root.position},face:face[1],rotation:[...rotation],eye:{...C.position},forward:f.map(v=>v/n)};};
+    const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z),rows=[];
+    for(const mode of ["space","movement","first person"]){
+      B.pilot.exitClose(false);B.advance(1.2,1/60);B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry+.4,pitch:.5,dist:6});B.advance(.3,1/60);
+      space();B.advance(1.1,1/60);if(mode==="first person"){B.pilot.enterClose();B.advance(1.4,1/60);B.pilot.hooks.onOrbit(120,-60);B.advance(.2,1/60);}
+      const before=snapshot();if(mode==="movement")key("keydown","w","KeyW");else space();
+      const immediate=snapshot();let previous=immediate,maxBodyStep=0,maxEyeStep=0,maxBodyTurn=0,maxViewTurn=0,middle=null,repeated=false;
+      for(let i=0;i<72;i++){
+        B.advance(1/60,1/60);const now=snapshot();maxBodyStep=Math.max(maxBodyStep,distance(now.position,previous.position));maxEyeStep=Math.max(maxEyeStep,distance(now.eye,previous.eye));
+        maxBodyTurn=Math.max(maxBodyTurn,2*Math.acos(Math.min(1,Math.abs(now.rotation.reduce((n,v,k)=>n+v*previous.rotation[k],0)))));
+        maxViewTurn=Math.max(maxViewTurn,Math.acos(Math.min(1,Math.max(-1,now.forward.reduce((n,v,k)=>n+v*previous.forward[k],0)))));previous=now;
+        if(i===18){middle={face:now.face,moved:distance(now.position,before.position),reserved:s.sitter===a&&!H.free(now.position),exiting:!!s.exit};const exit=s.exit;space();repeated=s.exit===exit&&!!exit;}
+      }
+      if(mode==="movement")key("keyup","w","KeyW");
+      const end=snapshot(),free=!a.camp.seat&&!a.root.quaternion&&!s.entry&&!s.exit&&H.free(a.root.position)===s;
+      const yaw=B.pilot.orbit.tYaw;B.pilot.hooks.onOrbit(300,0);B.advance(.2,1/60);
+      rows.push({mode,initialJump:distance(before.position,immediate.position),middle,repeated,free,face:end.face,maxBodyStep,maxEyeStep,maxBodyTurn,maxViewTurn,normalTurn:Math.abs(B.pilot.orbit.tYaw-yaw)});
+    }
+    return rows;
+  })()`);
+  record("hub hammock get up: Space, held movement and first person animate through an intermediate upright pose without a body or camera snap",
+    result.every(r=>r.initialJump<1e-5&&r.middle.exiting&&r.middle.reserved&&r.middle.moved>.05&&r.middle.face>.05&&r.middle.face<.95&&r.maxBodyStep<.15&&r.maxEyeStep<.3&&r.maxBodyTurn<.15&&r.maxViewTurn<.3),JSON.stringify(result));
+  record("hub hammock get up: repeated Space preserves progress, occupancy releases at the landing and normal turning resumes",
+    result.every(r=>r.repeated&&r.free&&Math.abs(r.face)<.01&&r.normalTurn>.5),JSON.stringify(result));
+} };
+const hubHammockRopes = { name: "hub hammock ropes", why: "regression: tree wraps and suspension starts must follow both palm transforms and renderer wind sway", run: async (b) => {
+  const result=await b.evaluate(`(() => {
+    const B=__ooga,H=BL.scenes.hub.debug.hammock,M=BL.math.mat4,point=[0,0,0],tip=[0,0,0],center=[0,0,0],saved=H.anchors.map(a=>({...a.node.rotation}));
+    let gap=0,wrapMatrixError=0,minRadius=Infinity,maxRadius=0,travel=0,first=null,wraps=true;
+    for(let i=0;i<=48;i++){
+      const time=i*Math.PI/8;
+      for(let k=0;k<2;k++){const r=H.anchors[k].node.rotation;r.x=saved[k].x+Math.cos(i*Math.PI/12+k)*.05;r.z=saved[k].z+Math.sin(i*Math.PI/12+k)*.05;}
+      H.update(0,time,false,time,true);BL.scene.updateWorld(BL.scenes.hub.root);
+      for(const rope of H.ropes){
+        const tree=rope.tree,w=tree.world,verts=tree.geometry.verts;
+        wraps=wraps&&rope.wrap.parent===tree&&rope.wrap.geometry.sway===tree.geometry.sway;
+        for(let j=0;j<16;j++)wrapMatrixError=Math.max(wrapMatrixError,Math.abs(w[j]-rope.wrap.world[j]));
+        // Independently interpolate the actual mesh's two eight-vertex trunk rings.
+        let cx=0,cz=0;
+        for(let segment=0;segment<10;segment++){
+          const base=segment*48,low=verts[base+1],high=verts[base+25];if(3.05<low||3.05>high)continue;
+          const t=(3.05-low)/(high-low);
+          for(let j=0;j<8;j++){cx+=(verts[base+j*3]*(1-t)+verts[base+24+j*3]*t)/8;cz+=(verts[base+j*3+2]*(1-t)+verts[base+24+j*3+2]*t)/8;}break;
+        }
+        M.transformPoint(center,w,cx,3.05,cz);
+        const phase=time*1.9+w[12]*.37+w[14]*.29,wind=(Math.sin(phase)+.35*Math.sin(phase*2.3+1.7))*tree.geometry.sway*3.05**2;
+        center[0]+=.8*wind;center[2]+=.6*wind;
+        const origin=rope.node.position,radius=Math.hypot(origin.x-center[0],origin.y-center[1],origin.z-center[2]);minRadius=Math.min(minRadius,radius);maxRadius=Math.max(maxRadius,radius);
+        M.transformPoint(point,rope.node.world,0,1,0);M.transformPoint(tip,H.bedNode.world,...rope.ring);gap=Math.max(gap,Math.hypot(...point.map((v,k)=>v-tip[k])));
+        if(rope.end<0){if(!first)first={...origin};travel=Math.max(travel,Math.hypot(origin.x-first.x,origin.y-first.y,origin.z-first.z));}
+      }
+    }
+    for(let k=0;k<2;k++)Object.assign(H.anchors[k].node.rotation,saved[k]);B.advance(.1,1/60);
+    let liveGap=0;
+    BL.scenes.hub.debug.useProp(H.anchors[0]);
+    for(let i=0;i<15;i++){
+      B.advance(.05,1/60);
+      for(const rope of H.ropes){const tree=rope.tree,w=tree.world,L=rope.local;
+        M.transformPoint(point,w,L[0],L[1],L[2]);
+        const phase=B.renderOpts.windTime*1.9+w[12]*.37+w[14]*.29,wind=(Math.sin(phase)+.35*Math.sin(phase*2.3+1.7))*tree.geometry.sway*L[1]**2;
+        point[0]+=.8*wind;point[2]+=.6*wind;
+        liveGap=Math.max(liveGap,Math.hypot(rope.node.position.x-point[0],rope.node.position.y-point[1],rope.node.position.z-point[2]));
+      }
+    }
+    const clock=Number.isFinite(B.renderOpts.windTime),nodeCount=H.ropes.length;
+    return {gap,liveGap,wrapMatrixError,minRadius,maxRadius,travel,wraps,clock,nodeCount};
+  })()`);
+  record("hub hammock ropes: both wraps share their palm transforms and wind, suspension starts remain on the trunk surface across 49 sway/shake phases",
+    result.wraps&&result.wrapMatrixError<1e-6&&result.minRadius>.12&&result.maxRadius<.2&&result.travel>.05&&result.clock,JSON.stringify(result));
+  record("hub hammock ropes: direct suspension lines stay attached to both moving cloth ends without added nodes per frame",
+    result.nodeCount===2&&result.gap<1e-5&&result.liveGap<1e-5,JSON.stringify(result));
+} };
+const hubHammockEnds = { name: "hub hammock ends", why: "regression: both gathering fans must continue the suspension direction through sway with and without an occupant", run: async (b) => {
+  const result=await b.evaluate(`(() => {
+    const B=__ooga,H=BL.scenes.hub.debug.hammock,M=BL.math.mat4,Q=BL.math.quat,s=H.seats[0],a=B.cavemen.get("portlandhodl"),ring=[0,0,0],spreader=[0,0,0],tip=[0,0,0],face=[0,0,0];
+    B.pilot.possess(a);if(B.crew.sleeping)B.crew.wakePlayer();if(a.camp.seat)B.crew.standPlayer();
+    const saved=H.anchors.map(o=>({...o.node.rotation}));let angle=0,gap=0,inside=true,faceY=1;const rises=[[],[]],states=[];
+    for(const occupied of [false,true]){
+      if(occupied){B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry,pitch:.4,dist:6});B.advance(.3,1/60);if(!B.crew.sitPlayer(s))throw Error("Cannot enter test hammock");}
+      for(let i=0;i<32;i++){
+        for(let k=0;k<2;k++)H.anchors[k].node.rotation.z=saved[k].z+Math.sin(i*Math.PI/8+k)*.05;
+        H.kick();H.update(1/60,i*Math.PI/8,false,i*.47,true);BL.scene.updateWorld(BL.scenes.hub.root);
+        for(let k=0;k<2;k++){
+          const rope=H.ropes[k],A=rope.node.position;
+          M.transformPoint(ring,H.bedNode.world,...rope.ring);M.transformPoint(spreader,H.bedNode.world,rope.end*1.25,H.plan.endY+.03,0);
+          const u=[ring[0]-spreader[0],ring[1]-spreader[1],ring[2]-spreader[2]],v=[A.x-ring[0],A.y-ring[1],A.z-ring[2]],dot=u.reduce((n,x,j)=>n+x*v[j],0)/(Math.hypot(...u)*Math.hypot(...v));
+          angle=Math.max(angle,Math.acos(Math.min(1,Math.max(-1,dot))));rises[k].push(rope.ring[1]-(H.plan.endY+.03));
+          for(const cord of rope.fan){M.transformPoint(tip,cord.world,0,1,0);gap=Math.max(gap,Math.hypot(...tip.map((v,j)=>v-ring[j])));}
+          const e=H.plan.envelope;inside=inside&&Math.abs(rope.ring[0])<=e.half&&Math.abs(rope.ring[2])<.3&&rope.ring[1]>=H.plan.endY&&rope.ring[1]<=H.plan.endY+1.6;
+        }
+        if(occupied){Q.rotateVec(face,a.root.quaternion,0,0,1);faceY=Math.min(faceY,face[1]);}
+      }
+      states.push({occupied,seated:!!a.camp.seat,free:!!H.free(a.root.position)});
+    }
+    B.crew.standPlayer();for(let k=0;k<2;k++)Object.assign(H.anchors[k].node.rotation,saved[k]);B.advance(.2,1/60);
+    return {angleDegrees:angle*180/Math.PI,gap,inside,faceY,states,riseRanges:rises.map(r=>[Math.min(...r),Math.max(...r)]),anchors:H.anchors.map(o=>({x:o.x,z:o.z}))};
+  })()`);
+  record("hub hammock ends: near and far fan centerlines match their suspension slopes through 64 empty/occupied sway samples, with every cord joined at its gathering ring",
+    result.angleDegrees<.001&&result.gap<1e-5&&result.riseRanges.every(r=>r[1]-r[0]>.01),JSON.stringify(result));
+  record("hub hammock ends: the moving tips remain within the planned bounds, the sole occupant stays face-up, and approved tree positions are preserved",
+    result.inside&&result.faceY>.98&&!result.states[0].seated&&result.states[0].free&&result.states[1].seated&&!result.states[1].free&&Math.abs(result.anchors[0].x-5.983774480265777)<1e-6&&result.anchors[1].x===13.5&&result.anchors[1].z===4.75,JSON.stringify(result));
+} };
+const hubHammockCamera = { name: "hub hammock camera", why: "regression: scrolling out of a reclining first-person view kept its rolled head basis in orbit", run: async (b) => {
+  await b.evaluate(`(() => {
+    const B=__ooga,a=B.cavemen.get("portlandhodl"),H=BL.scenes.hub.debug.hammock,s=H.seats[0];
+    B.pilot.possess(a); if(B.crew.sleeping)B.crew.wakePlayer(); if(a.camp.seat)B.crew.standPlayer();
+    B.pilot.exitClose(false);B.advance(1.5,1/60);
+    B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:H.plan.yaw+Math.PI,pitch:.5,dist:6});B.advance(.5,1/60);
+    B.crew.sitPlayer(s);B.advance(.5,1/60);
+  })()`);
+  const rows=[];
+  for(let lap=0;lap<3;lap++) {
+    await b.evaluate('__ooga.pilot.enterClose();__ooga.advance(1.5,1/60)');
+    // Exercise the real wheel handler, including looking sideways before leaving on later laps.
+    if(lap)await b.evaluate('__ooga.pilot.hooks.onOrbit(180,-100);__ooga.advance(.2,1/60)');
+    await b.send("Input.dispatchMouseEvent",{type:"mouseWheel",x:700,y:450,deltaX:0,deltaY:500});
+    await b.evaluate('__ooga.advance(2,1/60)');
+    const orbit=await b.evaluate(`(() => {const B=__ooga,C=B.camera,p=C.position,t=C.target,u=C.up||{x:0,y:1,z:0},f=[t.x-p.x,t.y-p.y,t.z-p.z],n=Math.hypot(...f);for(let i=0;i<3;i++)f[i]/=n;
+      const r=[f[1]*u.z-f[2]*u.y,f[2]*u.x-f[0]*u.z,f[0]*u.y-f[1]*u.x],a=B.crew.player;
+      return {view:B.pilot.view,horizon:Math.abs(r[1]/Math.hypot(...r)),upY:u.y,forwardY:f[1],lying:!!a.camp.seat?.lying,body:!!a.root.quaternion};})()`);
+    // A fresh inward wheel gesture traverses orbit distance back to first person.
+    for(let i=0;i<18;i++){
+      if(await b.evaluate('__ooga.pilot.view==="first-person"'))break;
+      await b.send("Input.dispatchMouseEvent",{type:"mouseWheel",x:700,y:450,deltaX:0,deltaY:-250});
+      await b.evaluate('__ooga.advance(.1,1/60)');
+    }
+    await b.evaluate('__ooga.advance(1.5,1/60)');
+    const back=await b.evaluate(`(()=>{const B=__ooga,C=B.camera;return {view:B.pilot.view,up:(C.target.y-C.position.y)/Math.hypot(C.target.x-C.position.x,C.target.y-C.position.y,C.target.z-C.position.z),lying:!!B.crew.player.camp.seat?.lying};})()`);
+    rows.push({orbit,back});
+  }
+  record("hub hammock camera: three wheel-out and wheel-in cycles restore an upright orbit horizon and upward first person while keeping the reclining body",
+    rows.every(r=>r.orbit.view==="orbit"&&r.orbit.horizon<.001&&r.orbit.upY>0&&r.orbit.forwardY<-.1&&r.orbit.lying&&r.orbit.body&&r.back.view==="first-person"&&r.back.up>.98&&r.back.lying),JSON.stringify(rows));
+  await b.key(" ");await b.evaluate('__ooga.advance(1,1/60)');
+  const stood=await b.evaluate(`(()=>{const B=__ooga,a=B.crew.player,y=B.pilot.orbit.tYaw;B.pilot.hooks.onOrbit(300,0);B.advance(.2,1/60);return {seat:!!a.camp.seat,body:!!a.root.quaternion,turn:Math.abs(B.pilot.orbit.tYaw-y)};})()`);
+  record("hub hammock camera: standing after repeated zoom cycles releases the resting pose and head-turn limits",!stood.seat&&!stood.body&&stood.turn>.5,JSON.stringify(stood));
+} };
+const hubHammockRemoval = { name: "hub hammock removal", why: "regression: removing a support palm must vacate the hammock and restore its occupant", run: async (b) => {
   // The pile's ring path grows over a palm: the hammock comes down with its sitter stood up first.
   const grown = await b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.crew.player, solids = B.headquarters.solids.props, s = H.seats[1];
+    const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.crew.player, solids = B.headquarters.solids.props, s = H.seats[0];
     B.pilot.navigate({ position: { x: s.walkAt.x, y: s.floor, z: s.walkAt.z }, yaw: s.ry, pitch: 0.4, dist: 6 }); B.advance(0.4, 1 / 60);
     const sat = B.crew.sitPlayer(s), ridge = H.ridgeNode, level = B.level;
     const reach = Math.min(...H.anchors.map(o => Math.hypot(o.x, o.z)));
@@ -7796,7 +7852,7 @@ const hubHammock = { name: "hub hammock", why: "rule: three Oogas rest in the ar
     while (BL.scenes.hub.debug.hammock && bananas < 1e7) { bananas *= 4; B.setPileLevel(bananas); B.advance(0.2, 1 / 60); }
     const gone = !BL.scenes.hub.debug.hammock, p = a.root.position, feet = p.y - a.baseY;
     B.advance(0.5, 1 / 60);
-    return { sat, gone, reach, bananas, seated: !!a.camp.seat, upright: a.root.rotation.x === 0, ridgeOff: !ridge.parent, grounded: Math.abs(a.root.position.y - a.baseY - B.island.surfaceAt(a.root.position.x, a.root.position.z)) < 0.15 };
+    return { sat, gone, reach, bananas, seated: !!a.camp.seat, upright: !a.root.quaternion && a.root.rotation.x === 0, ridgeOff: !ridge.parent, grounded: Math.abs(a.root.position.y - a.baseY - B.island.surfaceAt(a.root.position.x, a.root.position.z)) < 0.15 };
   })()`);
   record("hub hammock: when the pile's ring path takes an anchor palm the hammock comes down, its Ooga stood up and back on the ground",
     grown.sat && grown.gone && !grown.seated && grown.upright && grown.ridgeOff && grown.grounded, JSON.stringify(grown));
@@ -7807,18 +7863,21 @@ const hubHammockExit = { name: "hub hammock exit", why: "rule: an Ooga resting i
     const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.cavemen.get("portlandhodl");
     if (!H) return { hammock: false };
     if (B.crew.player !== a) B.pilot.possess(a);
-    const s = H.seats[2];
+    const s = H.seats[0];
     B.pilot.navigate({ position: { x: s.walkAt.x, y: s.floor, z: s.walkAt.z }, yaw: s.ry, pitch: 0.4, dist: 6 }); B.advance(0.4, 1 / 60);
+    window.__hammockDeparture = a;
     return { hammock: true, sat: B.crew.sitPlayer(s) };
   })()`);
   await tourGo(b, "lab");
+  const departed = await b.evaluate(`(() => { const a = window.__hammockDeparture; delete window.__hammockDeparture;
+    return { seated: !!a.camp.seat, upright: !a.root.quaternion && a.root.rotation.x === 0 && a.root.rotation.z === 0 }; })()`);
   await tourGo(b, "hub");
   const back = await b.evaluate(`(() => {
     const B = __ooga, H = BL.scenes.hub.debug.hammock, a = B.cavemen.get("portlandhodl");
-    return { hammock: !!H, empty: !!H && H.seats.every(q => !q.sitter && !q.remote), seated: !!(a && a.camp.seat), upright: !a || a.root.rotation.x === 0,
+    return { hammock: !!H, empty: !!H && H.seats.every(q => !q.sitter && !q.remote), seated: !!(a && a.camp.seat), restored: !a || !a.root.quaternion || a.state === "sleeping" && a.bedTravel.mode === "rest",
       hung: !!H && H.ridgeNode.parent === BL.scenes.hub.root && H.bedNode.parent === BL.scenes.hub.root };
   })()`);
-  record("hub hammock exit: an Ooga resting when the island is left comes back standing, and the hammock hangs again empty", before.hammock && before.sat && back.hammock && back.empty && !back.seated && back.upright && back.hung, JSON.stringify({ before, back }));
+  record("hub hammock exit: the departing occupant becomes upright and unseated; the rebuilt island has an empty hammock and only normal bed poses", before.hammock && before.sat && back.hammock && back.empty && !back.seated && back.restored && back.hung && !departed.seated && departed.upright, JSON.stringify({ before, departed, back }));
 } };
 // Keep the real sheet controls working while their rows survive a scene's lifetime.
 const hudVisit = { name: "hub HUD lifetime", why: "regression: scene visits recreated roster SVGs and donor rows; their handlers must end on leave while the attached rows keep their identity", run: async (b) => {
@@ -14807,7 +14866,7 @@ scene("hub", { label: "entry spinner", query: "hubcache=keep", steps: [{ name: "
       && (row.label.startsWith("instant") ? row.fade === 0 && row.black === 0 && row.clears > 0 : row.fade === 1 && row.black === row.frames && row.clears === 0)), JSON.stringify(rows));
 } }] });
 scene("hub", { query: "ooga=portlandhodl:clank:lab,obl,lf&ooga=w-s-bitcoin:clank:lab,obl,lf&ooga=bc1gui:clank:lab,obl,lf&ooga=DrNeski:clank:lab,obl,lf&ooga=2140data:clank:lab,obl,lf", steps: [{ name: "work movement cave trips", why: "regression: cave traffic aimed through obstacles, started backwards detours and got trapped behind players by short lane hints", run: workCaveTrips }] });
-scene("hub", { label: "hammock", query: "solo=1&character=portlandhodl&pos=0", steps: [hubHammock] });
+scene("hub", { label: "hammock", query: "solo=1&character=portlandhodl&pos=0", steps: [hubHammockEntry, hubHammockGetUp, hubHammockRopes, hubHammockEnds, hubHammock, hubHammockCamera, hubHammockRemoval] });
 scene("hub", { label: "hammock exit", query: "solo=1&character=portlandhodl&pos=0&hubcache=release", steps: [hubHammockExit, trip("hub")] });
 scene("hub", { label: "room sign", query: "pos=0", steps: [{ name: "room sign copies hash", why: "rule: tapping a room sign swings it and copies its displayed eight-character code with visible confirmation", run: async (b) => {
   const point = await b.evaluate(`(() => { const B = __ooga, sign = B.headquarters.roomSigns[0], n = sign.node; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (value) => { window.__roomHash = value; return Promise.resolve(); } } }); window.__roomSignBefore = sign.hits; B.pilot.release(true); B.pilot.navigate({ position: { x: n.position.x, y: n.position.y, z: n.position.z }, target: { x: n.position.x, y: n.position.y - 0.2, z: n.position.z }, yaw: n.rotation.y, pitch: 0, dist: 4 }); B.advance(0.6, 1 / 60); return B.project(n.position.x, n.position.y - 0.2, n.position.z, {}); })()`);

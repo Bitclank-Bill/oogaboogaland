@@ -1736,11 +1736,11 @@
       for (let i = 0; i < 4; i++) if (Math.abs(island.surfaceAt(x + Math.cos(i * 1.571) * 0.6, z + Math.sin(i * 1.571) * 0.6) - y) > 0.26) return false;
       return true;
     };
-    const plant = (x, z) => {
+    const plant = (x, z, yaw = null) => {
       if (!stands(x, z)) return null;
       const y = island.surfaceAt(x, z);
       const variant = n++ % 3;
-      const node = createNode({ geometry: BL.dressing.palm(variant), position: { x, y, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, sightHidden: true });
+      const node = createNode({ geometry: BL.dressing.palm(variant), position: { x, y, z }, rotation: { x: 0, y: yaw ?? rand() * Math.PI * 2, z: 0 }, sightHidden: true });
       addChild(root, node);
       placed.push(node);
       const owner = addProp("palm", node, x, z, 1.6);
@@ -1822,7 +1822,7 @@
       owner.x = x; owner.z = z;
       reservation.x = x; reservation.z = z;
     }
-    plantHammock(offRuns);
+    plantHammock(offRuns, { plant, fits: meadowFits, stands, variant: () => n % 3 });
     // Along the cliff tops, where they break the skyline.
     const cliffTop = (x, z) => island.surfaceAt(x, z) > 2.5 && !nearMouth(x, z, 5);
     for (let deg = 11, placedTop = 0; deg < 360 && placedTop < 16; deg += 34) {
@@ -1850,14 +1850,12 @@
     }
     if (removed && clankers) clankers.supportRemoved();
   };
-  // The hammock (hub-hammock.js), slung between the two meadow palms that flank the path before Ooga Arcade when this
-  // visit planted such a pair: one each side of the arcade's spoke, within ARCADE_PALM_REACH of its line and between
-  // ARCADE_PALM_ALONG of the way out from the plaza and the arcade's apron. Of the pairs whose plan fits, the one whose
-  // middle is nearest the arcade. Its claims keep the scenery planted after it off the bed and the places to stand.
-  const ARCADE_PALM_REACH = 6, ARCADE_PALM_ALONG = 0.15;
+  // One resting hammock beside Ooga Arcade. Prefer existing palms in one patch; a sparse
+  // meadow may receive one companion palm only after its full span and rest/exit area fit.
+  const ARCADE_PALM_REACH = 8, ARCADE_PALM_ALONG = 0.15;
   let hammock = null;
   const hammockClaims = [];
-  const plantHammock = (offRuns) => {
+  const plantHammock = (offRuns, planting) => {
     if (!arcadeMouth) return;
     const H = BL.hubHammock, lines = island.path.centerlines;
     let spoke = null, best = Infinity;
@@ -1878,28 +1876,55 @@
       }
       if (distance < ARCADE_PALM_REACH && along > ARCADE_PALM_ALONG && side) sides.push({ owner, side });
     }
-    // A trunk where the ridgeline ties round it: its middle at TIE over its foot, turned by the palm's yaw.
+    // A trunk at the rope attachment: its middle at TIE over its foot, turned by the palm's yaw.
     const tie = (owner) => {
       const node = owner.node, trunk = BL.dressing.palmTrunk(owner.variant, H.TIE), ry = node.rotation.y;
       return { x: node.position.x + Math.cos(ry) * trunk.x, z: node.position.z - Math.sin(ry) * trunk.x, ground: node.position.y, r: trunk.r };
     };
     let chosen = null, nearest = Infinity;
-    for (const a of sides) for (const b of sides) {
-      if (a.side !== 1 || b.side !== -1) continue;
+    const consider = (a, b, extra = false) => {
       const ta = tie(a.owner), tb = tie(b.owner), mid = Math.hypot((ta.x + tb.x) / 2 - arcadeMouth.x, (ta.z + tb.z) / 2 - arcadeMouth.z);
-      if (mid >= nearest) continue;
-      const skip = [meadowPalms.find((entry) => entry.owner === a.owner).reservation, meadowPalms.find((entry) => entry.owner === b.owner).reservation];
+      if (mid >= nearest) return;
+      const skipA = meadowPalms.find((entry) => entry.owner === a.owner)?.reservation;
+      const skipB = meadowPalms.find((entry) => entry.owner === b.owner)?.reservation;
+      const pathClear = (x, z, r) => !nearPath(x, z, r) && entranceClear(x, z, r) && !island.overlapsStairs(x, z, r);
       const clear = (x, z, r) => {
-        if (nearPath(x, z, r) || !entranceClear(x, z, r) || island.overlapsStairs(x, z, r) || nearMouth(x, z, 4) || !offRuns(x, z)) return false;
-        for (const c of claimed) if (c !== skip[0] && c !== skip[1] && Math.hypot(c.x - x, c.z - z) < c.r + r) return false;
+        if (!pathClear(x, z, r) || nearMouth(x, z, 4) || !offRuns(x, z)) return false;
+        for (const c of claimed) if (c !== skipA && c !== skipB && Math.hypot(c.x - x, c.z - z) < c.r + r) return false;
         return true;
       };
-      const plan = H.plan({ a: ta, b: tb, clear, surfaceAt: island.surfaceAt });
-      if (plan) { chosen = { plan, a, b, ta, tb }; nearest = mid; }
+      const plan = H.plan({ a: ta, b: tb, clear, surfaceAt: island.surfaceAt, pathClear });
+      if (plan) { chosen = { plan, a, b, ta, tb, extra }; nearest = mid; }
+    };
+    for (let i = 0; i < sides.length; i++) for (let j = i + 1; j < sides.length; j++) {
+      if (sides[i].side === sides[j].side) consider(sides[i], sides[j]);
+    }
+    // If the sparse meadow has no pair, plant one companion palm in the same clear grass
+    // patch. The full span must fit before it becomes a prop, collision or reservation.
+    if (!chosen) for (const a of sides) for (const radius of [5, 5.75, 6.5]) for (let k = 0; k < 24; k++) {
+      const x = a.owner.x + Math.cos(k * Math.PI / 12) * radius, z = a.owner.z + Math.sin(k * Math.PI / 12) * radius;
+      if (!planting.fits(x, z)) continue;
+      const owner = { x, z, variant: planting.variant(), node: { position: { x, y: island.surfaceAt(x, z), z }, rotation: { y: 0 } } };
+      consider(a, { owner }, true);
     }
     if (!chosen) return;
+    // Keep the near palm; move its companion toward the Arcade, beside the berry bush.
+    // This authored spot uses actual trunk, path and stair clearance instead of the
+    // random meadow planting's broad exclusion around the clankers' bed approach.
+    const companionX = 13.5, companionZ = 4.75;
+    if (chosen.extra && planting.stands(companionX, companionZ)
+      && entranceClear(companionX, companionZ, 1.2) && offRuns(companionX, companionZ) && !nearMouth(companionX, companionZ, 6)) {
+      const x = companionX, z = companionZ;
+      const owner = { x, z, variant: planting.variant(), node: { position: { x, y: island.surfaceAt(x, z), z }, rotation: { y: 0 } } };
+      consider(chosen.a, { owner }, true);
+    }
+    if (chosen.extra) {
+      const entry = planting.plant(chosen.b.owner.x, chosen.b.owner.z, 0);
+      if (!entry) return;
+      meadowPalms.push(entry); chosen.b.owner = entry.owner;
+    }
     const { plan } = chosen;
-    hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock") });
+    hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock"), anchors: [chosen.a.owner, chosen.b.owner] });
     hammock.anchors = [chosen.a.owner, chosen.b.owner];
     // Three circles along the bed's swing (its `envelope`), each covering a third of its length and its whole width.
     const { half, across } = plan.envelope, cover = Math.hypot(half / 3, across);
@@ -1913,7 +1938,9 @@
       if (!cave || cave.camp.seat !== seat || crew.standPlayer(cave)) continue;
       seat.sitter = null;
       cave.camp.seat = null;
-      cave.root.rotation.x = 0;
+      cave.root.quaternion = null;
+      cave.root.rotation.x = cave.root.rotation.z = 0;
+      crew.recoverDragged(cave);
     }
   };
   // The hammock comes down with either palm (the pile's ring path can take one mid-visit), or with the visit.
@@ -1927,8 +1954,7 @@
   const HAMMOCK_FULL = { kind: "hammock-full" };
   // Space beside the hammock: into the free seat nearest, with a push to the swing.
   const restInHammock = (seat) => {
-    if (crew.sitPlayer(seat)) hammock.kick();
-    else hud.toast("No room to get into the hammock from here");
+    if (!hammock.enter(pilot.player, seat, crew.sitPlayer)) hud.toast("No room to get into the hammock from here");
   };
   // Another page's Ooga took this visitor's seat first (the lower room id keeps it): along to a free seat, or up.
   const moveHammockSeat = (cave, from, to) => {
@@ -5871,7 +5897,8 @@
       }
       if (nearest) return nearest;
     }
-    if (player && hammock && player.hop < 0.03 && player.hopV <= 0 && Math.abs(y - 1.1 - hammock.plan.ground) < 0.5 && hammock.near(x, z, Math.min(reach, 1.5))) {
+    if (player && hammock && player.hop < 0.03 && player.hopV <= 0
+      && hammock.reachable(x, player.root.position.y - player.baseY, z, Math.min(reach, 1.25))) {
       return hammock.free({ x, z }) || HAMMOCK_FULL;
     }
     if (arcadeMouth && actionWithinReach(x, y, z, arcadeMouth.x, arcadeMouth.y, arcadeMouth.z, MOUTH_REACH)) return arcadeMouth;
@@ -5882,9 +5909,9 @@
     if (action === cloudHopper?.action) cloudHopper.launch();
     else if (action === WAKE_ACTION) crew.wakePlayer();
     else if (action === ROLL_ACTION) crew.dropRoll();
-    else if (action === STAND_ACTION) crew.standPlayer();
+    else if (action === STAND_ACTION) crew.standPlayer(pilot.player, true);
     else if (action.kind === "bench") crew.sitPlayer(action);
-    else if (action === HAMMOCK_FULL) hud.toast("The hammock is full: three Oogas at most");
+    else if (action === HAMMOCK_FULL) hud.toast("The hammock is occupied: one Ooga at a time");
     else if (action.kind === "hammock") restInHammock(action);
     else if (action.sleep) crew.sleepPlayer(action);
     else if (action === timechainIsland.gate.action) timechainIsland.gate.engage();
@@ -6467,7 +6494,7 @@
         hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
         hud.setAct("SIT");
       } else if (action === HAMMOCK_FULL) {
-        hud.hint("The hammock is full: three Oogas at most");
+        hud.hint("The hammock is occupied: one Ooga at a time");
         hud.setAct("FULL");
       } else if (action.kind === "hammock") {
         hud.hint(COARSE ? "Tap REST to lie back in the hammock" : "Press Space to rest in the hammock");
@@ -6914,7 +6941,10 @@
   const cameraSegmentClear = (x, y, z, toX, toY, toZ) => cameraClearAt(toX, toY, toZ) && island.voxelSegmentClearAt(x, y - CAMERA_RADIUS, z, toX, toY - CAMERA_RADIUS, toZ, CAMERA_RADIUS, CAMERA_RADIUS * 2) && entranceSegmentClear(x, y, z, toX, toY, toZ) && bedSegmentClear(x, y - CAMERA_RADIUS, z, toX, toY - CAMERA_RADIUS, toZ, CAMERA_RADIUS, CAMERA_RADIUS * 2);
   const sleepEyeFloorAt = (player) => player.bedroll.y + (player.bedroll.sleep?.pillowTop || 0) + CAMERA_RADIUS;
   const cameraHeadAt = (out, player) => {
-    if (crew.sleeping) {
+    if (player.camp.seat?.lying) {
+      const head = player.sleepHead;
+      setVec(out, head.x, head.y, head.z);
+    } else if (crew.sleeping) {
       const head = player.sleepHead;
       // A resting head replaces the upright boom anchor.
       // Keep the eye volume above the actual pillow while the face rolls toward the sheet.
@@ -8671,8 +8701,10 @@
     cloudHopper.postUpdate();
     if (hammock) {
       hammock.settle(BL.net.remotes, BL.net.state.selfId, remoteShown, moveHammockSeat, leaveFullHammock);
-      hammock.update(dt, elapsed, gameMode);
-    }
+      // Sample once so the CPU suspension ends and GPU palm/wrap sway share a clock.
+      if (!gameMode) RENDER_OPTS.windTime = performance.now() * 0.001 % 3600;
+      hammock.update(dt, elapsed, gameMode, null);
+    } else if (!gameMode) RENDER_OPTS.windTime = NaN;
     for (let i = 0; i < crew.list.length; i++) {
       const cave = crew.list[i];
       if (cave.root.visible) floatPose(cave, cave.root.position.y - cave.baseY, cave.bodyHeight, cave.phase, elapsed);
@@ -8741,6 +8773,7 @@
     crates.update(dt, elapsed);
     fx.update(dt);
     stepTweens(dt);
+    if (hammock) hammock.syncRopes(RENDER_OPTS.windTime, renderer.kind === "webgl2");
     if (chalkboard.openNow) { /* Keep the exact camera and controlled actor pose until the board closes. */ }
     else if (clankerPlay.active) clankerPlay.update(dt);
     else if (!cloudHopper.fallView()) pilot.update(dt);
