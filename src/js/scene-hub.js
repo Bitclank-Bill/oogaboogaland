@@ -6075,7 +6075,7 @@
     const m = factoryMouth.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), G = BL.factoryWindow.GLIDE, player = pilot.player;
     const pitch = clamp(c.pitch, FOLLOW.pitch[0], FOLLOW.pitch[1]), along = BL.factoryModels.SHIELD_Z + Math.max(c.past, FOLLOW.min * Math.cos(pitch) + 0.4);
     const across = clamp(c.across, -1.2, 1.2), x = m.x + sr * along + cr * across, z = m.z + cr * along - sr * across;
-    pilot.navigate({ position: { x, y: m.floorY, z }, yaw: m.ry + Math.PI, pitch, dist: FOLLOW.min });
+    pilot.navigate({ position: { x, y: m.floorY, z }, yaw: m.ry + Math.PI, pitch, dist: FOLLOW.min, framed: true });
     const p = player.root.position;
     Object.assign(factoryWalk, { phase: FACTORY_WALK_OUT, cave: player, t: 0, x: p.x, z: p.z, seen: true, through: false, still: 1, hold: G.still });
   };
@@ -11376,8 +11376,11 @@
       if (!contributors.debugState && !contributors.debugRoster && crew.stateOf(cave) !== "working") {
         cave.override = "working"; crew.refreshStates(true);
       }
-      pilot.possess(cave);
-      if (ctx.from === "factory") crew.selectWeapon(cave.weapon.selectedSlot, cave);
+      // Back as it left the last scene: its view, combat and weapon (pilot.js `arrive`); out of the Sphere's doorway,
+      // which keeps its own exit view. With nothing carried, back from the Factory armed, as before.
+      const carried = ctx.from !== "timechain" && pilot.arrive(cave);
+      if (ctx.from === "timechain") pilot.possess(cave);
+      if (!carried && ctx.from === "factory") crew.selectWeapon(cave.weapon.selectedSlot, cave);
     }
     ownOogaClaimed = !!world.pilotDetached || !!(returningCharacter && BL.net.state.me) || !BL.net.state.me && ctx.from !== null; world.pilotDetached = false;
     claimOwnOoga();
@@ -11541,7 +11544,7 @@
       wpContextOn = true;
     }
     presets = { pile: PILE_VIEW, gate: GATE_VIEW };
-    pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, enterFreeView: enterFreeCameraView, coarse: COARSE, onFreeAction: freeAction, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
+    pilot = pilotMod.create({ carry: true, renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, enterFreeView: enterFreeCameraView, coarse: COARSE, onFreeAction: freeAction, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
     chalkboard = BL.chalkboard.create({
       renderer,
       onOpen: () => { pilot.setActive(false); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
@@ -11916,18 +11919,42 @@
       const p = cave.root.position, feet = p.y - cave.baseY;
       return Math.abs(bedSupportAt(p.x, p.z, feet, 1e-4, 0) - feet) < 1e-4 ? island.supportAt(p.x, p.z, feet, STEP_MAX, -120, sleepNavigation.radius) : feet;
     };
-    shared.bedRoute = (cave, bed, toBed) => {
-      const home = cave.slot || WALK_IN;
-      return sleepNavigation.route(cave.root.position.x, planFeet(cave), cave.root.position.z, bed, toBed, home.x, home.z, !toBed && cave.state === "chilling");
+    const forestNavigation = headquarters.outdoorNavigation = BL.headquartersSleep.outdoorNavigation({ pool: mempoolIsland, island, props: solids });
+    shared.bedPlan = function* (cave, bed, toBed) {
+      const p = cave.root.position, home = cave.slot || WALK_IN, from = { x: p.x, y: planFeet(cave), z: p.z };
+      const entry = forestNavigation.entry, outside = forestNavigation.contains(p.x, p.z);
+      // A sleeper can wake before reaching the bridge. Its former outdoor bed
+      // must not send a mainland return through the forest's attachment search.
+      if (!outside && (!bed?.outdoor || !toBed)) return yield* sleepNavigation.plan(from.x, from.y, from.z, bed, toBed, home.x, home.z, !toBed && cave.state === "chilling");
+      if (toBed && bed.outdoor) {
+        const approach = outside ? [from] : from.y < -0.1
+          ? yield* sleepNavigation.plan(from.x, from.y, from.z, null, false, entry.x, entry.z)
+          : shared.npcPaths.route(from, entry);
+        if (!approach) return null;
+        const forest = yield* forestNavigation.plan(outside ? from : entry, bed);
+        return forest ? approach.concat(forest.slice(1)) : null;
+      }
+      const forest = yield* forestNavigation.plan(from, entry);
+      if (!forest) return null;
+      if (toBed) {
+        const inside = yield* sleepNavigation.plan(entry.x, entry.y, entry.z, bed, true, home.x, home.z);
+        return inside ? forest.concat(inside.slice(1)) : null;
+      }
+      // Positive forest elevations are not the home meadow. Retain the bridge
+      // walk until its foot before handing a worker back to ordinary routing.
+      const result = cave.state === "chilling" ? forest : forest.concat(shared.npcPaths.route(entry, { x: home.x, y: island.surfaceAt(home.x, home.z), z: home.z }).slice(1));
+      result.surfaceStart = forest.length - 1;
+      return result;
     };
-    shared.bedPlan = (cave, bed, toBed) => {
-      const home = cave.slot || WALK_IN;
-      return sleepNavigation.plan(cave.root.position.x, planFeet(cave), cave.root.position.z, bed, toBed, home.x, home.z, !toBed && cave.state === "chilling");
+    shared.bedRoute = (cave, bed, toBed) => {
+      const plan = shared.bedPlan(cave, bed, toBed);
+      for (;;) { const step = plan.next(); if (step.done) return step.value; }
     };
     shared.bedRouteClear = (cave, to) => {
       const p = cave.root.position;
       sleepRouteFrom.x = p.x; sleepRouteFrom.y = p.y - cave.baseY; sleepRouteFrom.z = p.z;
-      return sleepNavigation.clearSegment(sleepRouteFrom, to, false, 0.3);
+      return forestNavigation.contains(p.x, p.z) || forestNavigation.contains(to.x, to.z)
+        ? forestNavigation.clearSegment(sleepRouteFrom, to) : sleepNavigation.clearSegment(sleepRouteFrom, to, false, 0.3);
     };
     shared.workSites = caves.slots.filter(workCave).map((slot) => {
       const mouth = island.mouths.find((entry) => entry.id === slot.id), sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
@@ -12324,8 +12351,8 @@
         cave.override = "working";
         crew.refreshStates(true);
       }
-      pilot.possess(cave);
-      if (returningCharacter && ctx.from === "factory") crew.selectWeapon(cave.weapon.selectedSlot, cave);
+      const carried = returningCharacter && ctx.from !== "timechain" ? pilot.arrive(cave) : pilot.possess(cave) && false;
+      if (!carried && returningCharacter && ctx.from === "factory") crew.selectWeapon(cave.weapon.selectedSlot, cave);
       if (initialCharacter) crew.configureWeapon(cave, preloadedWeapon, preloadedAmmo);
     }
     ownOogaClaimed = !!world.pilotDetached || !!(returningCharacter && BL.net.state.me) || !BL.net.state.me && ctx.from !== null;

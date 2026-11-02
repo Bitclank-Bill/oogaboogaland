@@ -59,7 +59,9 @@
 // zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
 // position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
 // snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
-// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
+// `subscribePresence` hears `fn(rec, true)` for a player who joins the room while this page is in it, never for those
+// already there on this page's (re)join, and `fn(rec, false)` when one leaves (players.js names the joins, #430).
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
 // setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
@@ -106,6 +108,7 @@
   // The shared chalkboard's listeners, and the page's own edits waiting to go (merged into frames of a few points).
   const chalkSubscribers = new Set(), chalkOut = [];
   const chalkEmit = (kind, detail) => { for (const fn of chalkSubscribers) fn(kind, detail); };
+  const presenceSubscribers = new Set();
   const remotes = new Map();
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
@@ -316,11 +319,16 @@
       if (restoredPose) poseAt = performance.now();
       else { poseAt = 0; px = NaN; gKnown = poseHasG = false; }
     } else if (msg.t === "join") {
+      const fresh = !!msg.p && !remotes.has(msg.p.id);
       upsert(msg.p);
       setRoom("live");
+      const rec = fresh && remotes.get(msg.p.id);
+      if (rec) for (const fn of presenceSubscribers) fn(rec, true);
     } else if (msg.t === "leave") {
+      const rec = remotes.get(msg.id);
       remotes.delete(msg.id);
       setRoom("live");
+      if (rec) for (const fn of presenceSubscribers) fn(rec, false);
     } else if (msg.t === "body") {
       const rec = remotes.get(msg.id);
       if (rec) {
@@ -860,6 +868,10 @@
     doorSubscribers.add(fn);
     return () => doorSubscribers.delete(fn);
   };
+  const subscribePresence = (fn) => {
+    presenceSubscribers.add(fn);
+    return () => presenceSubscribers.delete(fn);
+  };
 
   const subscribeStudio = fn => { studioSubscribers.add(fn); return () => studioSubscribers.delete(fn); };
   const studioCommand = (action, fields = {}) => {
@@ -879,10 +891,11 @@
     studioSubscribers.clear();
     chatSubscribers.clear();
     chalkSubscribers.clear();
+    presenceSubscribers.clear();
     doorSubscribers.clear();
     ghostHeard = ghostStateHeard = null; // HALLOWEEN
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
