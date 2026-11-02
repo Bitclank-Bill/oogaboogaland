@@ -23832,6 +23832,19 @@ const genesisWallsProof = async () => {
   }
   const ctx = new Proxy({ measureText: (t) => ({ width: String(t).length * 10 }) }, { get: (t, k) => (k in t ? t[k] : (k === "createLinearGradient" || k === "createRadialGradient") ? () => ({ addColorStop() {} }) : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
   for (let n = 0; n < L.ERAS.length; n++) { const k = L.paintBoard(ctx, 2048, 637, n, { name: W.ERAS[n].name, years: W.ERAS[n].years }); if (k !== 2 + L.ERAS[n].clippings.length) bad.push(`era ${n}: painted ${k} pieces`); }
+  // Up close (a tap on a board): every piece has its slot on the board, a caption, a source for each clipping, and a
+  // close-up canvas large enough to read.
+  for (let n = 0; n < L.ERAS.length; n++) {
+    const S = L.slots(n, 2048, 637);
+    S.pieces.forEach((p, i) => {
+      if (p.x < 0 || p.x + p.w > 2048 || (i && p.x <= S.pieces[i - 1].x + S.pieces[i - 1].w)) bad.push(`era ${n}: piece ${i} is off its board or overlaps`);
+      const info = L.pieceInfo(n, i);
+      if (!info.line1 || !info.line2 || (info.type === "clip") !== /^https:\/\//.test(info.src)) bad.push(`era ${n}: piece ${i}'s caption or source`);
+      const canvas = { width: 0, height: 0, getContext: () => ctx };
+      L.paintPiece(canvas, n, i);
+      if (!(canvas.width > 900 && canvas.height > 1200)) bad.push(`era ${n}: piece ${i}'s close-up is ${canvas.width}x${canvas.height}`);
+    });
+  }
   return { bad };
 };
 // Regression (review of gv/ovh-polish 20eec91): the white screen's painter skipped any label it found no row for, so

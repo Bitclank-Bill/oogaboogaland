@@ -218,37 +218,68 @@
 
   // A board: a dark backing, a header, and the era's pieces left to right (poster, clippings and art alternate),
   // each in a frame with its caption under it.
-  const paintBoard = (g, W, H, n, info) => {
+  // A board's pieces, left to right (poster, clippings and art alternate), and where each stands on a W x H board:
+  // `x`, `w` in pixels, all at the same `top` and height `ph`. Pure, so the scene can find the piece a tap points at.
+  const piecesOf = (n) => {
     const d = ERAS[n], pieces = [];
     pieces.push({ type: "poster", d: d.poster, aspect: 2 / 3 });
     if (d.clippings[0]) pieces.push({ type: "clip", d: d.clippings[0], aspect: 0.82 });
     pieces.push({ type: "art", d: d.art, aspect: 1 });
     if (d.clippings[1]) pieces.push({ type: "clip", d: d.clippings[1], aspect: 0.82 });
+    return pieces;
+  };
+  const slots = (n, W, H) => {
+    const pieces = piecesOf(n), top = 74, capH = 64, ph = H - top - capH - 14, widths = pieces.map((p) => Math.round(ph * p.aspect));
+    const gap = Math.max(40, (W - widths.reduce((a, b) => a + b, 0)) / (pieces.length + 1));
+    let x = gap;
+    return { top, ph, pieces: pieces.map((p, i) => { const s = { ...p, x, w: widths[i] }; x += widths[i] + gap; return s; }) };
+  };
+  // One piece drawn into (x, y, w, h), clipped to it.
+  const drawPiece = (g, x, y, w, h, n, i, p) => {
+    g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+    if (p.type === "clip") clipping(g, x, y, w, h, p.d, 31 * n + i);
+    else if (p.type === "poster") POSTERS[p.d.style](g, x, y, w, h, p.d, 17 * n + i);
+    else ART[p.d.style](g, x, y, w, h, 13 * n + i);
+    g.restore();
+  };
+  // What a piece is and where it comes from: its caption's two lines, and for a clipping the page its wording was
+  // checked against.
+  const pieceInfo = (n, i) => {
+    const p = piecesOf(n)[i];
+    return p.type === "clip"
+      ? { type: p.type, line1: `${p.d.paper} · ${p.d.date}`, line2: "headline as published, typeset for the museum", head: p.d.head, src: p.d.src }
+      : { type: p.type, line1: "MUSEUM ORIGINAL", line2: p.d.note, head: p.type === "poster" ? p.d.title : "", src: "" };
+  };
+  // A piece up close (the board dialog): redrawn at `k` times its size on the board, so its type stays sharp.
+  const BASE_PH = 485;
+  const paintPiece = (canvas, n, i, k = 2.6) => {
+    const p = piecesOf(n)[i], w = Math.round(BASE_PH * p.aspect), pad = 18;
+    canvas.width = Math.round((w + pad * 2) * k); canvas.height = Math.round((BASE_PH + pad * 2) * k);
+    const g = canvas.getContext("2d");
+    g.setTransform(k, 0, 0, k, 0, 0);
+    g.fillStyle = "#0d0b09"; g.fillRect(0, 0, w + pad * 2, BASE_PH + pad * 2);
+    g.fillStyle = p.type === "clip" ? "#6b5a44" : "#b58a3a"; g.fillRect(pad - 8, pad - 8, w + 16, BASE_PH + 16);
+    drawPiece(g, pad, pad, w, BASE_PH, n, i, p);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    return p.type;
+  };
+  const paintBoard = (g, W, H, n, info) => {
+    const L = slots(n, W, H);
     g.fillStyle = "#1f1a15"; g.fillRect(0, 0, W, H);
     g.fillStyle = "#3a2f24"; g.fillRect(0, 0, W, 6); g.fillRect(0, H - 6, W, 6);
     g.fillStyle = "#e9d9b0"; g.textAlign = "left"; g.textBaseline = "alphabetic"; g.font = `bold 30px ${SANS}`;
     g.fillText(`ERA ${n} · ${String(info.name).toUpperCase()} · ON THE PAGES AND THE WALLS OF ${String(info.years).replace(/-/g, "–").toUpperCase()}`, 34, 46, W - 68);
-    const top = 74, capH = 64, ph = H - top - capH - 14, widths = pieces.map((p) => Math.round(ph * p.aspect));
-    const gap = Math.max(40, (W - widths.reduce((a, b) => a + b, 0)) / (pieces.length + 1));
-    let x = gap;
-    pieces.forEach((p, i) => {
-      const w = widths[i], y = top;
+    L.pieces.forEach((p, i) => {
+      const { x, w } = p, y = L.top, ph = L.ph;
       g.fillStyle = "#0d0b09"; g.fillRect(x - 14, y - 14, w + 28, ph + 28);
       g.fillStyle = p.type === "clip" ? "#6b5a44" : "#b58a3a"; g.fillRect(x - 8, y - 8, w + 16, ph + 16);
-      g.save(); g.beginPath(); g.rect(x, y, w, ph); g.clip();
-      if (p.type === "clip") clipping(g, x, y, w, ph, p.d, 31 * n + i);
-      else if (p.type === "poster") POSTERS[p.d.style](g, x, y, w, ph, p.d, 17 * n + i);
-      else ART[p.d.style](g, x, y, w, ph, 13 * n + i);
-      g.restore();
+      drawPiece(g, x, y, w, ph, n, i, p);
       // The caption: what it is and where it comes from.
+      const info2 = pieceInfo(n, i);
       g.textAlign = "center"; g.fillStyle = "#e9d9b0"; g.font = `bold 19px ${SANS}`;
-      const line1 = p.type === "clip" ? `${p.d.paper} · ${p.d.date}` : "MUSEUM ORIGINAL";
-      const line2 = p.type === "clip" ? "headline as published, typeset for the museum" : p.d.note;
-      g.fillText(line1, x + w / 2, y + ph + 34, w + 60); g.font = `16px ${SANS}`; g.fillStyle = "#bfae88"; g.fillText(line2, x + w / 2, y + ph + 56, w + 60);
-      x += w + gap;
+      g.fillText(info2.line1, x + w / 2, y + ph + 34, w + 60); g.font = `16px ${SANS}`; g.fillStyle = "#bfae88"; g.fillText(info2.line2, x + w / 2, y + ph + 56, w + 60);
     });
-    return pieces.length;
+    return L.pieces.length;
   };
-
-  BL.genesisWalls = { ERAS, BOARD, layout, paintBoard };
+  BL.genesisWalls = { ERAS, BOARD, layout, paintBoard, piecesOf, slots, pieceInfo, paintPiece };
 })();
