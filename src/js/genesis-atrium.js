@@ -204,7 +204,7 @@
   };
   // The bust, a design under consideration: a large polished-gold bust on a pale stone plinth, a coin with the
   // Bitcoin sign on its chest, a smooth faceless head with an Ooga's heavy brow, and a high open collar (or, with
-  // `cloak`, a shaggy fur cloak clasped with a bone). Original: no hood, no mirror face, after no other sculpture.
+  // `cloak`, a shaggy fur cloak clasped with a bone). Original and after no other sculpture: a bare head, a plain gold face.
   const bustParts = (M, S, top, sign, place, createNode, cloak) => {
     const parts = [], at = (g, x, y, z) => M.moved(g, S.x + x, top + y, S.z + z);
     const block = (w, h, d, color, x, y, z, bevel = 0.1, emissive = 0.05) => parts.push(at(M.bevelBox({ w, h, d, color, bevel, emissive }), x, y, z));
