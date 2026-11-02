@@ -275,7 +275,7 @@
   };
   // === Walking and the workbench ===================================================================================
   // The pilot and crew are made once per visit; the visitor's Ooga walks the whole visit.
-  const walk = { on: false, prop: null, falls: 0, saved: { fov: 0, near: 0 } };
+  const walk = { on: false, prop: null, falls: 0, rides: 0, saved: { fov: 0, near: 0 } };
   const walkPose = { position: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0.2, dist: 4.5 };
   let pilot = null, people = null, avatar = null, fx = null, footsteps = null, remotes = null, footing = null, props = null;
   let playerName = null, arrivedPilot = null;
@@ -361,6 +361,7 @@
       addChild(g < 0 ? frame : holders[g], kid);
     }
   };
+  const SIGN_GROW = 1.4;
   const buildExhibits = () => {
     // Every sign geometry an era makes is noted, so its nodes can step out of the workbench's picture (host.open).
     const EX = BL.genesisExhibits, signGeos = new Set(), label = (...a) => { const l = BL.factoryModels.label(...a); signGeos.add(l.face); signGeos.add(l.back); return l; };
@@ -376,6 +377,7 @@
       // its cluster. Afterwards each of the frame's new children moves under its cluster's node, keeping its own
       // coordinates (the exhibits' animations write them), and obstacles and props' spots shift with it.
       const { items, fixed, walls } = GW.eraItems(def.build, n, ISLAND_TOP, CHANNEL), pk = GW.packEra(items, { laneX: GW.LANE_X, anchorZ: era.z1 - MU.OPEN, fixed, walls });
+      (built.packedBoxes = built.packedBoxes || [])[n] = items.slice(fixed).map((it, k) => { const g = pk.group[k + fixed]; return { x0: it.x0 + pk.dx[g], x1: it.x1 + pk.dx[g], z0: it.z0 + pk.dz[g], z1: it.z1 + pk.dz[g] }; });
       const frame = built.frames[n], first = frame.children.length, owner = new Map();
       let item = fixed;
       const shift = (g, x, z) => ({ x: x + pk.dx[g], z: z + pk.dz[g] });
@@ -387,7 +389,8 @@
         // A short notice from an exhibit's update (a toast once the HUD is up; the kit is built before it).
         notify: (text) => { if (hud) hud.toast(text); },
         sign: (title, sub, x, y, z, yaw = 0, height = 0.6) => {
-          const l = label(title, sub, { height, style: "plain" }), node = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } }));
+          // Drawn 1.4 times the era's asked size, so a label reads from the walk (it grows upward from where it stood).
+          const l = label(title, sub, { height: height * SIGN_GROW, style: "plain" }), node = place(createNode({ position: { x, y: y + height * (SIGN_GROW - 1) / 2, z }, rotation: { x: 0, y: yaw, z: 0 } }));
           addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
           (built.signNodes = built.signNodes || []).push(node);
           return note(node);
@@ -665,6 +668,34 @@
       parts.length = 0;
     });
   };
+  // Each era's "now showing" vignette at the end of its walk (genesis-vignettes.js), in its gallery's frame.
+  const buildVignettes = () => {
+    const V = BL.genesisVignettes, p = { x: 0, z: 0 };
+    built.vignettes = GW.ERAS.map((e) => inFrame(e.n, () => {
+      const at = V.spot({ ...MU, LANE_X: GW.LANE_X }, e), v = V.build({ M, createNode, addChild, label: BL.factoryModels.label, n: e.n, at, top: ISLAND_TOP, theme: glowHex(e.theme.lamp) });
+      place(v.root);
+      built.oldObstacles.push({ era: e.n, ...v.obstacle });
+      mu(e.n, at.x, at.z, p);
+      return { v, x: p.x, z: p.z };
+    }));
+  };
+  // Each gallery's period pieces along its side walls (genesis-era-items.js): clear of its packed exhibits, its
+  // reserved plots and its vignette; one merged mesh a gallery, each piece in the walkers' way.
+  const buildEraItems = () => {
+    const EI = BL.genesisEraItems;
+    for (const e of GW.ERAS) inFrame(e.n, () => {
+      const boxes = (built.packedBoxes && built.packedBoxes[e.n] || []).concat(GW.reservedZones(e.n), [built.vignettes[e.n].v.obstacle]);
+      const list = EI.layout(MU, e, GW.LANE_X, (x0, x1, z0, z1) => !boxes.some((o) => x0 < o.x1 + 0.3 && x1 > o.x0 - 0.3 && z0 < o.z1 + 0.3 && z1 > o.z0 - 0.3));
+      const geo = EI.build(M, list, ISLAND_TOP);
+      if (geo) place(createNode({ geometry: geo, sightHidden: true }));
+      for (const q of list) { const hw = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.d : q.item.w) / 2, hd = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.w : q.item.d) / 2; built.oldObstacles.push({ era: e.n, x0: q.x - hw, x1: q.x + hw, z0: q.z - hd, z1: q.z + hd }); }
+      built.eraItems = (built.eraItems || 0) + list.length;
+    });
+  };
+  const updateVignettes = (dt) => {
+    const q = avatar ? avatar.root.position : camera.target, near2 = BL.genesisVignettes.NEAR ** 2;
+    for (const s of built.vignettes) s.v.update(dt, (q.x - s.x) ** 2 + (q.z - s.z) ** 2 < near2, view.calm);
+  };
   // Each overview board as a prop: Space beside it, or a tap, opens the era's panel.
   const registerOverviews = () => {
     const EX = BL.genesisExhibits;
@@ -710,7 +741,8 @@
     saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, near: 0, up: null, orthoMix: 0, orthoHeight: 0 }, opens: 0, runs: 0 };
   const PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
   const frameIn = { c: { x: 0, y: 0, z: 0 }, size: 1, toward: { x: 0, z: 1 }, ndc: { x: 0, y: 0 }, frac: 0.6, fov: 62, aspect: 1.6, fill: 0.62, pitch: 0.2 };
-  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null;
+  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null;
+  const RIDE = { x: 0, z: 0, kind: "", era: -1 };
   // The exhibits the catalogue lists: every era file's props, Fingerprints and Time's two citations (its lectern) and
   // the scene's own PC, drives and book. The overview boards and the legend itself are not exhibits.
   const buildCatalogue = () => {
@@ -887,10 +919,17 @@
   // lights and nothing per frame; its obstacles join the footing.
   const buildCourtyard = () => {
     const C = BL.genesisCourtyard, L = C.layout({ museum: MU, eras: GW.ERAS, entries: catalogue.entries, lane: GW.LANE_X });
-    C.build({ M, createNode, addChild, place, top: ISLAND_TOP, layout: L, hub: BL.hubModels, dressing: BL.dressing, atrium: MU.atrium,
+    // The lawn's tufts (WebGL only), clear of the atrium's own things and the pillars.
+    const lawn = renderer && renderer.kind === "canvas2d" ? null : { centre: 15.5,
+      clear: (x, z) => !built.obstacles.some((o) => x > o.x0 - 0.4 && x < o.x1 + 0.4 && z > o.z0 - 0.4 && z < o.z1 + 0.4) && !MU.PILLARS.some((q) => Math.hypot(x - q.x, z - q.z) < q.r + 0.5) };
+    C.build({ M, createNode, addChild, place, top: ISLAND_TOP, layout: L, hub: BL.hubModels, dressing: BL.dressing, atrium: MU.atrium, lawn,
       paintMap: (g, w, h) => C.paintMap(g, w, h, { museum: MU, eras: GW.ERAS, layout: L, atriumLayout: built.atriumLayout }) });
     for (const o of L.obstacles) built.obstacles.push(o);
     built.courtyard = L;
+    // The moving walkways: round the loop and down each gallery's walk (genesis-walkways.js).
+    const WW = BL.genesisWalkways;
+    built.walkways = WW.layout({ museum: MU, loop: C.LOOP, eras: GW.ERAS, lane: GW.LANE_X });
+    walkways = WW.build({ M, createNode, place, top: ISLAND_TOP, layout: built.walkways });
   };
   const openMenu = (focusId) => {
     if (bench.open) host.close();
@@ -942,6 +981,15 @@
   const updateWalk = (dt, elapsed) => {
     pilot.readInput(dt);
     people.update(dt, elapsed);
+    // A walker standing on a moving walkway is carried along it (never into anything: the footing decides).
+    const rider = people.player;
+    if (rider && walkways) {
+      const q = rider.root.position, feet = q.y - rider.baseY;
+      if (feet - footing.supportAt(q.x, q.z, feet + 0.3) < 0.08 && walkways.carry(q.x, q.z, RIDE)) {
+        const nx = q.x + RIDE.x * dt, nz = q.z + RIDE.z * dt;
+        if (footing.walkable(q.x, q.z, nx, nz, Math.min(rider.bodyRadius || 0.3, 0.3), feet)) { q.x = nx; q.z = nz; walk.rides += dt; }
+      }
+    }
     pilot.update(dt);
     const driven = people.player;
     BL.net.setBody(driven ? driven.traits.name : null);
@@ -1224,6 +1272,8 @@
       built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
       built.pcScreen.glow = 1 + (view.calm ? 0 : (Math.floor(sceneTime * 2) & 1) * 0.2);
       if (atrium) atrium.update(dt, sceneTime, view.calm);
+      if (walkways) walkways.update(dt, view.calm);
+      if (built.vignettes) updateVignettes(dt);
     }
     // The cartridge console's game runs while it is open and the visitor has not paused.
     if (cart && cart.isOpen && !view.paused) cart.update(dt);
@@ -1247,6 +1297,7 @@
     root = createNode();
     camera = createCamera({ fov: 62, near: 0.15, far: 240 });
     built = { obstacles: [], oldObstacles: [] };
+    renderer = ctx.renderer;
     // Each era's gallery frame: its old cave turned and moved round the atrium (genesis-world.js MUSEUM).
     // Each gallery's frame scales its era's old cave to MUSEUM.SCALE, the old floor (bank height) kept at the museum's.
     built.frames = MU.bays.map((b) => place(createNode({ position: { x: b.tx, y: ISLAND_TOP * (1 - MU.SCALE), z: b.tz }, rotation: { x: 0, y: b.rot, z: 0 }, scale: { x: MU.SCALE, y: MU.SCALE, z: MU.SCALE } })));
@@ -1254,7 +1305,7 @@
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
     buildExhibits(); buildCatalogue(); buildAtrium(); buildCourtyard(); buildWalls();
-    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail();
+    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail(); buildVignettes(); buildEraItems();
     registerOverviews();
     // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
     // its old world, turned into the museum's).
@@ -1334,7 +1385,7 @@
     pilot.setActive(false);
     remotes = BL.remotePlayers.create({ root, crew: people, fx });
     footsteps = BL.footsteps.create();
-    walk.on = false; walk.prop = null; walk.falls = 0;
+    walk.on = false; walk.prop = null; walk.falls = 0; walk.rides = 0;
     propState.uses = 0; propState.last = "";
     // Taps open what they hit (a workbench straight away: no need to walk up); while a workbench is open the clear
     // stage passes no taps or drags to the hall behind it.
@@ -1400,7 +1451,7 @@
     if (cart) cart.dispose();
     if (workbench) workbench.dispose();
     if (timeline) timeline.dispose();
-    workbench = timeline = catalogue = cart = atrium = null;
+    workbench = timeline = catalogue = cart = atrium = walkways = null;
     if (view.reading) hud.closeBoard();
     disposeExhibits();
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.
@@ -1435,7 +1486,7 @@
     const p = avatar ? avatar.root.position : ENTRY;
     return { allNodes: nodes, targets: input.targetCount, era: MU.eraNear(p.x, p.z), bench: bench.open ? bench.id : null, opens: bench.opens, runs: bench.runs,
       demo: demo.phase, paused: view.paused, reading: view.reading,
-      walking: walk.on, falls: walk.falls, uses: propState.uses, fx: fx.stats ? fx.stats() : null, crew: people ? people.stats() : null };
+      walking: walk.on, falls: walk.falls, rides: +walk.rides.toFixed(2), chevrons: walkways ? walkways.chevrons : 0, uses: propState.uses, fx: fx.stats ? fx.stats() : null, crew: people ? people.stats() : null };
   };
   const scene = BL.deferred.scene("genesis", {
     id: "genesis", wip: true, renderOpts, root: null, camera: null, input: null, debug: null,

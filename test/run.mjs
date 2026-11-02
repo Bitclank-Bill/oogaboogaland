@@ -25314,7 +25314,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25386,7 +25386,64 @@ const genesisAtriumProof = async () => {
   // The courtyard's own things keep out of the view to the white screen.
   if (Y.obstacles.some((o) => C.inView((o.x0 + o.x1) / 2, (o.z0 + o.z1) / 2))) cb.push("something of the courtyard stands in the view to the white screen");
   const courtyard = { paths: Y.paths.length, signs: Y.signs.length, plants: Y.plants.length, benches: Y.benches.length, clockwise, bad: cb.slice(0, 8) };
-  return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, courtyard, bad: bad.slice(0, 8) };
+  // The moving walkways: every belt on open floor (clear of the courtyard's and the atrium's things, the pillars and the
+  // white screen; a gallery's inside its gallery and clear of its packed exhibits), and a walker riding them goes round
+  // the loop clockwise through all four sides and back, and down a gallery and out again.
+  const WW = BLc.genesisWalkways, WL = WW.layout({ museum: M, loop: C.LOOP, eras: W.ERAS, lane: W.LANE_X }), wb = [];
+  const eraBoxes = W.ERAS.map((e, n) => {
+    const out = [], node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+    const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: (o = {}) => Object.assign(node(), o), addChild: (q, ...c) => c[0], place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {}, prop: (d) => d,
+      solid: (w, h, d, c, x, y, z) => { out.push(M.boxToMuseum(n, { x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 })); return node(); },
+      sign: () => node(), obstacle: (x0, x1, z0, z1) => { out.push(M.boxToMuseum(n, { x0, x1, z0, z1 })); } };
+    EX.eras[n].build(W.packedKit(kit, n, EX.eras[n].build));
+    return out;
+  });
+  for (const b of WL.belts) for (let k = 0; k <= 60; k++) for (const side of [-0.5, 0, 0.5]) {
+    const t = b.len * k / 60, x = b.x0 + b.dx * t - b.dz * side * b.w, z = b.z0 + b.dz * t + b.dx * side * b.w;
+    const hit = (o) => x > o.x0 - 0.1 && x < o.x1 + 0.1 && z > o.z0 - 0.1 && z < o.z1 + 0.1;
+    if (b.kind === "loop" ? blockers.some(hit) : eraBoxes[b.era].some(hit)) { wb.push(`a ${b.kind} belt${b.era >= 0 ? ` (era ${b.era})` : ""} runs into something at ${x.toFixed(1)},${z.toFixed(1)}`); break; }
+    if (b.kind !== "loop") { const r = M.rects[b.era]; if (x < r.x0 + 0.2 || x > r.x1 - 0.2 || z < r.z0 + 0.2 || z > r.z1 - 0.2) { wb.push(`era ${b.era}'s ${b.kind} belt leaves its gallery`); break; } }
+  }
+  const ride = (x, z, seconds) => {
+    const seen = [], v = { x: 0, z: 0 };
+    for (let t = 0; t < seconds; t += 0.05) {
+      const s = WW.beltAt(WL.belts, x, z);
+      if (!s) break;
+      if (seen[seen.length - 1] !== s) seen.push(s);
+      v.x = s.dx * s.speed; v.z = s.dz * s.speed; x += v.x * 0.05; z += v.z * 0.05;
+    }
+    return { seen, x, z };
+  };
+  const loopBelts = WL.belts.filter((b) => b.kind === "loop"), perimeter = loopBelts.reduce((t, b) => t + b.len, 0);
+  const round = ride(loopBelts[0].x0, loopBelts[0].z0 - 0.5, perimeter / WW.SPEED + 1);
+  if (round.seen.length < 5 || [0, 1, 2, 3].some((k) => round.seen[k] !== loopBelts[k]) || round.seen[4] !== loopBelts[0]) wb.push("a rider does not go round the loop clockwise and back");
+  const inBelt = WL.belts.find((b) => b.kind === "in" && b.era === 4), down = ride(inBelt.x0 + inBelt.dx * 0.2, inBelt.z0 + inBelt.dz * 0.2, inBelt.len / WW.SPEED + 2);
+  if (down.seen.length !== 1 || Math.hypot(down.x - inBelt.x1, down.z - inBelt.z1) > 0.3) wb.push("a rider is not carried down a gallery's belt to its end");
+  // Each era's vignette stage stands inside its gallery, clear of its exhibits and of the walkway belts.
+  const V = BLc.genesisVignettes;
+  W.ERAS.forEach((e) => {
+    const at = V.spot({ ...M, LANE_X: W.LANE_X }, e), box = M.boxToMuseum(e.n, { x0: at.x - V.R, x1: at.x + V.R, z0: at.z - V.R, z1: at.z + V.R + 0.5 }), r = M.rects[e.n];
+    const hit = (o) => box.x0 < o.x1 && box.x1 > o.x0 && box.z0 < o.z1 && box.z1 > o.z0;
+    if (box.x0 < r.x0 || box.x1 > r.x1 || box.z0 < r.z0 || box.z1 > r.z1) wb.push(`era ${e.n}'s vignette stands outside its gallery`);
+    if (eraBoxes[e.n].some(hit)) wb.push(`era ${e.n}'s vignette stands in an exhibit`);
+    for (const b of WL.belts) if (b.era === e.n) for (const t of [0, b.len]) { const x = b.x0 + b.dx * t, z = b.z0 + b.dz * t; if (x > box.x0 - 0.3 && x < box.x1 + 0.3 && z > box.z0 - 0.3 && z < box.z1 + 0.3) wb.push(`era ${e.n}'s vignette stands on its walkway`); }
+  });
+  // Each gallery's period pieces stand inside it, clear of its exhibits, reserved plots, vignette and belts.
+  const EI = BLc.genesisEraItems, itemCounts = W.ERAS.map((e) => {
+    const vat = V.spot({ ...M, LANE_X: W.LANE_X }, e), stage = M.boxToMuseum(e.n, { x0: vat.x - V.R, x1: vat.x + V.R, z0: vat.z - V.R, z1: vat.z + V.R + 0.5 });
+    const keep = eraBoxes[e.n].concat(W.reservedZones(e.n).map((z) => M.boxToMuseum(e.n, z)), [stage]), over = (a, o, m) => a.x0 < o.x1 + m && a.x1 > o.x0 - m && a.z0 < o.z1 + m && a.z1 > o.z0 - m;
+    const list = EI.layout(M, e, W.LANE_X, (x0, x1, z0, z1) => { const a = M.boxToMuseum(e.n, { x0, x1, z0, z1 }); return !keep.some((o) => over(a, o, 0.3)); });
+    for (const q of list) {
+      const h = Math.max(q.item.w, q.item.d) / 2, a = M.boxToMuseum(e.n, { x0: q.x - h, x1: q.x + h, z0: q.z - h, z1: q.z + h }), r = M.rects[e.n];
+      if (a.x0 < r.x0 || a.x1 > r.x1 || a.z0 < r.z0 || a.z1 > r.z1) wb.push(`era ${e.n}'s ${q.item.name} stands outside its gallery`);
+      if (keep.some((o) => over(a, o, 0))) wb.push(`era ${e.n}'s ${q.item.name} stands in something`);
+      for (const b of WL.belts) if (b.era === e.n) for (let t = 0; t <= b.len; t += 0.5) { const x = b.x0 + b.dx * t, z = b.z0 + b.dz * t; if (x > a.x0 - b.w / 2 && x < a.x1 + b.w / 2 && z > a.z0 - b.w / 2 && z < a.z1 + b.w / 2) { wb.push(`era ${e.n}'s ${q.item.name} stands on a walkway`); break; } }
+    }
+    return list.length;
+  });
+  const walkways = { belts: WL.belts.length, perimeter: +perimeter.toFixed(1), items: itemCounts, bad: wb.slice(0, 8) };
+  return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, courtyard, walkways, bad: bad.slice(0, 8) };
 };
 // The cartridge console (genesis-cartridge.js) with one dummy game: the registry's rules, a run started, steered,
 // paused, interrupted and closed through the console's own keys, and the game stopped on close.
@@ -25979,6 +26036,7 @@ const unitChecks = async () => {
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisAtrium = await genesisAtriumProof();
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
+  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, and every gallery has period pieces on open floor", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
   const genesisEraCartridges = await genesisEraCartridgeProof();

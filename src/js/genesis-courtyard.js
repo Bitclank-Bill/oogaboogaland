@@ -119,26 +119,66 @@
     return { paths, junctions, signs, plants, benches, map: MAP, obstacles, loop: L, ring: { r: RING_R, w: RING_W }, view: VIEW };
   };
 
-  const GRASS = "#6f8f3c", SAND = "#b8955a", SAND_DK = "#9a7a46", WOOD = "#7a5534", WOOD_DK = "#4c331d";
-  const build = ({ M, createNode, addChild, place, top, layout: Lo, hub, dressing, paintMap, atrium }) => {
+  // The lawn under it all: 2 m squares in a mottle of greens, light and dark in drifts (a seeded value noise), so the
+  // grass reads as grass from the arrival and from above. One top-face mesh, no two faces in one plane.
+  const LAWN = ["#5f8434", "#6a8f3a", "#76993f", "#82a347", "#6d8a35", "#7b9a3c"].map((h) => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; });
+  const hash = (i, j) => { let h = Math.imul(i, 374761393) ^ Math.imul(j, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const noise = (x, z) => {
+    const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j, sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+    const a = hash(i, j), b = hash(i + 1, j), c = hash(i, j + 1), d = hash(i + 1, j + 1);
+    return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
+  };
+  const mottled = (A, top) => {
+    const verts = [], faces = [], T = 2, y = top + 0.006;
+    for (let x = A.x0; x < A.x1 - 1e-6; x += T) for (let z = A.z0; z < A.z1 - 1e-6; z += T) {
+      const x1 = Math.min(A.x1, x + T), z1 = Math.min(A.z1, z + T);
+      const v = noise(x / 9, z / 9) * 0.7 + hash(Math.round(x * 3), Math.round(z * 7)) * 0.3, c = LAWN[Math.min(LAWN.length - 1, Math.floor(v * LAWN.length))];
+      const i = verts.length / 3;
+      verts.push(x, y, z, x, y, z1, x1, y, z1, x1, y, z);
+      faces.push({ i: [i, i + 1, i + 2, i + 3], color: c, emissive: 0 });
+    }
+    return { verts, faces, lines: [], castShadow: false };
+  };
+  // Grass tufts (the island's own, hub-models.js grassTuft) over the lawn as one instanced batch: in drifts where the
+  // mottle is lush, never on a path, a walkway, a bench, a sign, a plant or the centrepiece. WebGL only (the island's
+  // lawn is too). Seeded, so every visit lays the same.
+  const TUFT_CAP = 2600;
+  const tufts = ({ A, Lo, clear, centre }) => {
+    const data = new Float32Array(TUFT_CAP * 20), seed = { a: 2009 };
+    const rand = () => { let t = (seed.a = (seed.a + 0x6d2b79f5) | 0); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    let n = 0;
+    for (let tries = 0; n < TUFT_CAP && tries < TUFT_CAP * 4; tries++) {
+      const x = A.x0 + 0.5 + rand() * (A.x1 - A.x0 - 1), z = A.z0 + 0.5 + rand() * (A.z1 - A.z0 - 1);
+      if (noise(x / 9, z / 9) < 0.35 + rand() * 0.25) continue;
+      if (Math.hypot(x, z) < centre || Lo.paths.some((q) => segDist(x, z, q) < q.w / 2 + 0.35)) continue;
+      if (Lo.obstacles.some((o) => x > o.x0 - 0.4 && x < o.x1 + 0.4 && z > o.z0 - 0.4 && z < o.z1 + 0.4) || Lo.plants.some((p) => Math.hypot(x - p.x, z - p.z) < 0.7)) continue;
+      if (!clear(x, z)) continue;
+      const yaw = rand() * Math.PI * 2, s = 0.8 + rand() * 0.6, c = Math.cos(yaw) * s, sn = Math.sin(yaw) * s, o = n++ * 20;
+      data[o] = c; data[o + 2] = -sn; data[o + 5] = s; data[o + 8] = sn; data[o + 10] = c;
+      data[o + 12] = x; data[o + 13] = top0 + 0.006; data[o + 14] = z; data[o + 15] = 1;
+    }
+    return { data, count: n };
+  };
+  let top0 = 0;
+  const SAND = "#b8955a", SAND_DK = "#9a7a46", WOOD = "#7a5534", WOOD_DK = "#4c331d";
+  const build = ({ M, createNode, addChild, place, top, layout: Lo, hub, dressing, paintMap, atrium, lawn = null }) => {
     // The ground: one grass sheet over the atrium, then the sand paths over it (one merged mesh, no shadows).
-    const ground = [M.box({ w: atrium.x1 - atrium.x0, h: 0.01, d: atrium.z1 - atrium.z0, color: GRASS, offset: { x: 0, y: top + 0.005, z: 0 } })];
+    const ground = [mottled(atrium, top)];
     for (const s of Lo.paths) {
       const len = Math.hypot(s.x1 - s.x0, s.z1 - s.z0) + (s.kind === "radial" ? 0 : s.w), yaw = Math.atan2(s.x1 - s.x0, s.z1 - s.z0);
       // The loop sits a few millimetres over the other paths, so where they cross no two faces share a plane.
       ground.push(M.moved(M.turnedY(M.box({ w: s.w, h: 0.012, d: len, color: s.kind === "loop" ? SAND_DK : SAND }), yaw), (s.x0 + s.x1) / 2, top + (s.kind === "loop" ? 0.021 : 0.016), (s.z0 + s.z1) / 2));
     }
-    // Small earth-coloured chevrons on the loop, pointing clockwise (the date order), every 20 m.
-    for (const s of Lo.paths) if (s.kind === "loop") {
-      const len = Math.hypot(s.x1 - s.x0, s.z1 - s.z0), ux = (s.x1 - s.x0) / len, uz = (s.z1 - s.z0) / len, a = Math.atan2(ux, uz);
-      for (let d = 10; d < len - 5; d += 20) for (const k of [-1, 1]) {
-        const cx = s.x0 + ux * d, cz = s.z0 + uz * d;
-        ground.push(M.moved(M.turnedY(M.box({ w: 0.18, h: 0.01, d: 1.1, color: "#6e5432" }), a + k * 0.6), cx - ux * 0.3 + uz * k * 0.32, top + 0.032, cz - uz * 0.3 - ux * k * 0.32));
-      }
-    }
+    // (The loop's moving walkway, genesis-walkways.js, shows its clockwise way with its own chevrons.)
     const groundGeo = M.merge(...ground);
     groundGeo.castShadow = false;
     place(createNode({ geometry: groundGeo, sightHidden: true }));
+    if (lawn && hub.lawnTuft) {
+      top0 = top;
+      const t = tufts({ A: atrium, Lo, clear: lawn.clear, centre: lawn.centre });
+      place(createNode({ geometry: hub.lawnTuft(), screenCull: true, sightHidden: true, instanceData: t.data, instanceCount: t.count, instanceVersion: 1, fixedInstanceCapacity: true }));
+      Lo.tufts = t.count;
+    }
     // The signs: a post, an arrow on top pointing at the gallery, and the carved boards back to back (one merged mesh).
     const timber = [];
     const board = (text, scale, y, flip) => {
@@ -223,5 +263,5 @@
     g.font = "22px system-ui, sans-serif"; g.textAlign = "left"; g.fillStyle = "#5a4630";
     g.fillText("N ↑ · gold dots: whitepaper citations · gold rings: documented influence · white: the paper", pad, H - 24);
   };
-  BL.genesisCourtyard = { layout, build, paintMap, signText, shortTitle, inView, segDist, LOOP, MAP, VIEW };
+  BL.genesisCourtyard = { layout, build, tufts, noise, TUFT_CAP, paintMap, signText, shortTitle, inView, segDist, LOOP, MAP, VIEW };
 })();
