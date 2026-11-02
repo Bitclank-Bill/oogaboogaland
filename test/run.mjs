@@ -10059,9 +10059,10 @@ const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga 
 } };
 // A remote player stands near the pile as the room would place them: the roster's shortest and tallest Oogas, then a
 // gorilla. portlandhodl, the widest Ooga, drops onto each, rides the short one as it walks and rises as a jetpack
-// would, walks off it, then walks and jumps at the tall one, which no jump clears. The spot has nothing else to stand
-// on near it: a tree's crown is a landing surface, and a rider lifted within a step of one steps onto it.
-const hubPlayerStacking = { name: "players stand on players", why: "regression: landing on another player from above sank into their body; their head holds the lander, carries it as they walk or fly and lets go when they leave, and a jump into them is held off as a walk is", run: async (b) => {
+// would, walks off it, then walks and jumps at the tall one, which no jump clears. Its gorilla, driven, then does the
+// same. The spot has nothing else to stand on near it: a tree's crown is a landing surface, and a rider lifted within
+// a step of one steps onto it.
+const hubPlayerStacking = { name: "players stand on players", why: "regression: landing on another player from above sank into their body, and a driven gorilla passed straight through them; their head holds the lander, Ooga or gorilla, carries it as they walk or fly and lets go when they leave, and a jump or fall into them is held off as a walk is", run: async (b) => {
   const SHORT = "NickDaGreek", TALL = "rules-without-rulers";
   const drops = await b.evaluate(`(() => {
     const B = __ooga, a = B.cavemen.get("portlandhodl"), net = BL.net, p = a.root.position;
@@ -10138,7 +10139,85 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
     return { walk: run(false), jump: run(true) };
   })()`);
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
-  await b.evaluate(`(() => { BL.net.remotes.delete(window.__stack.id); delete window.__stack; __ooga.advance(0.3, 1 / 60); })()`);
+  // The visitor's gorilla gets the same: it lands on the short Ooga's head, rides them, falls when they leave, and
+  // walking into the tall one with W is held off.
+  const driven = await b.evaluate(`(() => {
+    const B = __ooga, S = window.__stack, net = BL.net, G = B.clankerPlay, C = B.clankers, a = B.cavemen.get("portlandhodl");
+    const e = C.list.find(entry => entry.owner === a), p = e.root.position;
+    B.pilot.release(true);
+    e.active = e.root.visible = true; G.possess(e); if (C.sleeping(e)) C.wake();
+    if (G.player !== e) return { possessed: false };
+    const out = { possessed: true, radius: e.gorilla.bodyRadius, height: BL.crew.bodyHeightOf(BL.models.caveman(BL.contributors.traitsFor("${SHORT}"))) };
+    net.remotes.delete(S.id); S.put("${SHORT}", "ooga"); B.advance(0.5, 1 / 60);
+    const rec = net.remotes.get(S.id), sample = () => ({ feet: p.y - rec.y, off: Math.hypot(p.x - rec.x, p.z - rec.z) });
+    C.respawn(e, S.x + 0.2, S.ground + 4, S.z); C.supportRemoved(); B.advance(2.5, 1 / 60);
+    out.landed = sample();
+    for (let i = 0; i < 60; i++) { rec.x += 2 / 60; B.advance(1 / 60, 1 / 60); }
+    B.advance(0.5, 1 / 60); out.walked = sample();
+    for (let i = 0; i < 90; i++) { rec.y += 3 / 90; B.advance(1 / 60, 1 / 60); }
+    B.advance(0.5, 1 / 60); out.up = sample();
+    for (let i = 0; i < 90; i++) { rec.y -= 3 / 90; B.advance(1 / 60, 1 / 60); }
+    B.advance(0.5, 1 / 60); out.down = sample();
+    net.remotes.delete(S.id); B.advance(1.5, 1 / 60);
+    out.left = p.y - B.island.surfaceAt(p.x, p.z);
+    // 3 m out from the tall Ooga, facing them, for W below. A walking gorilla's posed envelope reaches further
+    // than a standing one's, so it stops further out than its standing radius.
+    S.put("${TALL}", "ooga"); B.advance(0.5, 1 / 60);
+    const fx = S.x + Math.sin(S.ang) * 3, fz = S.z + Math.cos(S.ang) * 3;
+    C.respawn(e, fx, B.island.surfaceAt(fx, fz), fz);
+    B.pilot.orbit.yaw = B.pilot.orbit.tYaw = S.ang;
+    B.advance(0.5, 1 / 60);
+    out.approach = { start: Math.hypot(p.x - S.x, p.z - S.z) };
+    return out;
+  })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w", code: "KeyW" });
+  if (driven.possessed) Object.assign(driven.approach, await b.evaluate(`(() => {
+    const B = __ooga, S = window.__stack, e = B.clankerPlay.player, p = e.root.position;
+    let nearest = Infinity, radius = 0;
+    for (let i = 0; i < 90; i++) {
+      B.advance(1 / 60, 1 / 60);
+      const distance = Math.hypot(p.x - S.x, p.z - S.z);
+      if (distance < nearest) { nearest = distance; radius = e.gorilla.bodyRadius; }
+    }
+    return { nearest, radius };
+  })()`));
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
+  await b.evaluate(`(() => { __ooga.clankerPlay.release(); BL.net.remotes.delete(window.__stack.id); delete window.__stack; __ooga.advance(0.3, 1 / 60); })()`);
+  // Climbing, too: the gorilla climbs the cliff beside mouth c1 and crests onto its roof; with a player standing just
+  // past the crest it holds on the wall below them, and finishes the climb once they leave.
+  const climb = await b.evaluate(`(() => {
+    const B = __ooga, C = B.clankers, net = BL.net, a = B.cavemen.get("portlandhodl"), e = C.list.find(x => x.owner === a), p = e.root.position;
+    const m = B.mouths.find(m => m.id === "c1"), sx = Math.sin(m.ry), sz = Math.cos(m.ry), side = 3.4, id = 390391, heading = m.ry + Math.PI;
+    const px = m.x - sx * 1.05 + sz * side, pz = m.z - sz * 1.05 - sx * side, py = B.island.surfaceAt(px, pz);
+    const x = m.x + sx * 3 + sz * side, z = m.z + sz * 3 - sx * side, y = B.island.surfaceAt(x, z);
+    const up = () => C.control({ x: -sx, z: -sz, heading, climbAxis: 1 });
+    const run = (player, frames) => {
+      B.pilot.release(true); C.release(); net.remotes.delete(id);
+      Object.assign(p, { x, y, z });
+      Object.assign(e, { active: true, controlled: false, recover: 0, lounge: "", loungeDepart: false, parked: false, biped: false, heading, speed: 0, pound: 0, beat: 0, stand: 0 });
+      Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
+      Object.assign(e.climb, { active: false, free: false, mountPending: false, handoffDirection: 0, openingStagePending: false, retry: 0,
+        searchPending: false, searchDeferred: false, claimPending: false, crestPending: false });
+      e.jump.active = e.fire.burning = e.fire.rolling = false; e.root.visible = true;
+      Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
+      e.gorilla.poseManaged(2, x, y, z, heading, 0, false, false, "", e.motion);
+      BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.props.sync(); C.possess(e); B.advance(0.5, 1 / 60);
+      if (player) net.remotes.set(id, { id, login: "stack-peer", display: "Stack peer", body: "${TALL}", bodyKind: "ooga", bodyName: "${TALL}", zone: "outside", x: px, y: py, z: pz, yaw: 0 });
+      let top = -Infinity, nearest = Infinity, radius = 0;
+      for (let i = 0; i < frames; i++) {
+        up(); B.advance(1 / 60, 1 / 60); top = Math.max(top, p.y);
+        const distance = Math.hypot(p.x - px, p.z - pz);
+        if (Math.abs(p.y - py) < 2.5 && distance < nearest) { nearest = distance; radius = e.gorilla.bodyRadius; }
+      }
+      return { top, nearest, radius };
+    };
+    const out = { roof: py, free: run(false, 420), held: run(true, 420) };
+    net.remotes.delete(id);
+    for (let i = 0; i < 300; i++) { up(); B.advance(1 / 60, 1 / 60); }
+    out.resumed = p.y;
+    C.release(); B.advance(0.3, 1 / 60);
+    return out;
+  })()`);
   const [short, tall, gorilla] = drops;
   record("players stand on players: a drop onto another player rests on their head at their own height, short or tall, and on a gorilla's back, then falls to the ground when they leave",
     drops.length === 3 && drops.every(row => row.shown === 1 && row.off < 0.2 && Math.abs(row.left) < 1e-3)
@@ -10155,6 +10234,18 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
   record("players stand on players: a jump at a player too tall to clear is held off as far as a walk at them is",
     approach.walk.nearest < 2 && approach.jump.accepted && approach.jump.peak > 0.5 && approach.jump.nearest >= approach.walk.nearest - 0.02,
     JSON.stringify(approach));
+  record("players stand on players: the visitor's gorilla lands on a player's head at their height, rides them as they walk, rise 3 m and come down, and falls to the ground when they leave",
+    driven.possessed && Math.abs(driven.landed.feet - driven.height) < 0.03 && driven.landed.off < 0.25
+      && ["walked", "up", "down"].every(k => Math.abs(driven[k].feet - driven.landed.feet) < 0.03 && Math.abs(driven[k].off - driven.landed.off) < 0.05)
+      && Math.abs(driven.left) < 0.02,
+    JSON.stringify(driven));
+  record("players stand on players: the visitor's gorilla climbing a cliff holds on the wall below a player at its crest, their centre outside its body, and finishes the climb once they leave",
+    climb.free.top >= climb.roof - 0.05 && climb.held.top < climb.roof - 0.3 && climb.held.nearest >= climb.held.radius
+      && climb.resumed >= climb.roof - 0.05,
+    JSON.stringify(climb));
+  record("players stand on players: the visitor's gorilla walking into a player is held off, their centre outside its body",
+    driven.possessed && driven.approach.nearest < driven.approach.start - 0.3 && driven.approach.nearest >= driven.approach.radius,
+    JSON.stringify(driven.approach));
 } };
 const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: scenery, rock and downhill movement changed the racing camera's angle and distance", run: async (b) => {
   const r = await b.evaluate(`(() => {
@@ -21426,7 +21517,7 @@ const voiceAloneChecks = async () => {
   class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
   class Audio {constructor(){this.muted=false;}pause(){}play(){return Promise.resolve();}}
   const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push({op,mic:track.enabled});return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map((id,i)=>({id,mid:String(i+1)}))}:{sessionDescription:{}}};};
-  const context={window:{BL:{net:{state:{connectionToken:"synthetic"},setMuted:on=>netMuted.push(on),remotes:new Map()}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},localStorage:{getItem:()=>null,setItem(){}},navigator:{mediaDevices:{getUserMedia:async()=>stream}},RTCPeerConnection:Pc,Audio,MediaStream:class{},fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math};
+  const context={window:{BL:{net:{state:{connectionToken:"synthetic"},setMuted:on=>netMuted.push(on),remotes:new Map()}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{createElement:()=>({})},localStorage:{getItem:()=>null,setItem(){}},navigator:{mediaDevices:{getUserMedia:async()=>stream}},RTCPeerConnection:Pc,Audio,MediaStream:class{},fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math};
   runInNewContext(source,context);
   const V=context.window.BL.voice,settle=()=>new Promise(r=>setTimeout(r,0)),read=()=>({alone:V.stats.alone,muted:V.stats.muted,mic:track.enabled});
   V.subscribe(st=>emits.push(st.alone));
@@ -21447,45 +21538,84 @@ const voiceAloneChecks = async () => {
     is(rows.mutedAlone,true,true,false)&&is(rows.mutedWithOther,false,true,false)&&is(rows.unmutedAlone,true,false,false)&&is(rows.twoOthers,false,false,true)&&
     rows.netMuted==="false,true,false"&&rows.emitted&&!rows.stopped.alone&&!rows.stopped.muted,JSON.stringify(rows));
 };
-// #380: a visitor's hearing range only changes how loud this page plays the voices it receives. voice.js runs in the same
-// fixture with remotes placed round the visitor, and its own 150 ms meter read (captured from setInterval) is stepped by hand.
+// #380: a visitor's hearing range only changes how loud this page plays the voices it receives. voice.js runs with remotes placed
+// round the visitor, a fake Worker, peer connection and AudioContext, and its own 150 ms meter read (captured from setInterval)
+// stepped by hand: once as a browser that honours an element's volume, and once as iOS, which keeps every element at 1, where
+// each voice must play through a gain instead and sound the same as the first at every step.
 const voiceHearingChecks = async () => {
-  const source=readFileSync(join(root,"src/js/voice.js"),"utf8"),ops=[],netMuted=[],timers=new Map(),els=[];let timerId=0;
-  const track={enabled:true,stop(){}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
-  class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
-  // A real element throws on a volume outside 0..1 or not a number, so this one does too.
-  class Audio {constructor(){this.muted=false;this.level=1;els.push(this);}get volume(){return this.level;}set volume(v){if(!(v>=0&&v<=1))throw new TypeError(`volume ${v}`);this.level=v;}pause(){}play(){return Promise.resolve();}}
-  const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op);return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map(id=>({id,mid:String(id)}))}:{sessionDescription:{}}};};
+  const source=readFileSync(join(root,"src/js/voice.js"),"utf8"),settle=()=>new Promise(r=>setTimeout(r,0));
   const remote=(login,zone,x,z,placed=true)=>({login,zone,poseZone:placed?zone:null,x,y:0,z});
-  const remotes=new Map([[2,remote("near","factory",3,0)],[3,remote("mid","factory",0,15)],[4,remote("hall","factory.hall",1,0)],[5,remote("new","factory",2,0,false)]]);
-  const state={connectionToken:"synthetic",zone:"factory",self:{x:0,y:0,z:0,zone:"factory"}},store=new Map();
-  const load=()=>{const context={window:{BL:{net:{state,setMuted:on=>netMuted.push(on),remotes}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id)},localStorage:{getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v))},navigator:{mediaDevices:{getUserMedia:async()=>stream}},RTCPeerConnection:Pc,Audio,MediaStream:class{},fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math,Number,String};
-    runInNewContext(source,context);return context.window.BL.voice;};
-  const V=load(),settle=()=>new Promise(r=>setTimeout(r,0)),tick=(n=1)=>{for(let i=0;i<n;i++)for(const fn of timers.values())fn();};
-  const volumes=()=>els.map(el=>+el.volume.toFixed(3)).join(",");
-  const rows={};
-  await V.enable();await settle();V.setPeers([2,3,4,5],[1,1,1,1]);await settle();
-  tick(3);rows.noLimit=volumes();rows.radius0=V.stats.radius;
-  const sent=ops.length,muteCalls=netMuted.length;
-  V.setRadius(20);tick();rows.firstRead=volumes();tick(10);rows.settled=volumes();await settle();
-  rows.stored=store.get("oogaboogaland.voice-radius");rows.mic=track.enabled;rows.quiet=ops.length===sent&&netMuted.length===muteCalls;
-  // A voice pulled once the range is set starts at its own level, never at full first.
-  remotes.set(6,remote("far","factory",0,40));V.setPeers([2,3,4,5,6],[1,1,1,1,1]);await settle();rows.joinedFar=els.length===5?+els[4].volume.toFixed(3):-1;
-  V.setReceiveLevel(0.5);rows.level=volumes();V.setReceiveLevel(1);
-  V.muteLocal("mid",true);tick();rows.localMute=els[1].muted&&!els[0].muted;V.muteLocal("mid",false);rows.unmuted=!els[1].muted;
-  remotes.get(5).poseZone="factory";tick(10);rows.placed=+els[3].volume.toFixed(3);
-  state.self.zone="factory.hall";tick(10);rows.unplacedSelf=volumes();state.self.zone="factory";
-  V.setRadius(65);tick(10);rows.back=volumes();rows.radius65=V.stats.radius;
-  const F=V.falloff;let step=0,rising=false;for(let d=0;d<=25;d+=0.01){const a=F(d,20),b=F(d+0.01,20);step=Math.max(step,Math.abs(b-a));if(b>a+1e-12)rising=true;}
+  const rig=(ios,webAudio=true,saved=null)=>{
+    const ops=[],netMuted=[],timers=new Map(),els=[],pulled=[],gains=[],ctxs=[],handlers=new Map(),store=new Map();let timerId=0,onTrack=null;
+    if(saved!==null)store.set("oogaboogaland.voice-radius",saved);
+    const remotes=new Map([[2,remote("near","factory",3,0)],[3,remote("mid","factory",0,15)],[4,remote("hall","factory.hall",1,0)],[5,remote("new","factory",2,0,false)]]);
+    const state={connectionToken:"synthetic",zone:"factory",self:{x:0,y:0,z:0,zone:"factory"}};
+    const track={enabled:true,stop(){}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
+    class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(k,fn){if(k==="track")onTrack=fn;}removeEventListener(){}getTransceivers(){return [];}close(){}}
+    // A real element throws on a volume outside 0..1 or not a number, and iOS's also ignores any it is given.
+    const volume=o=>Object.defineProperty(o,"volume",{get(){return o.level;},set(v){if(!(v>=0&&v<=1))throw new TypeError(`volume ${v}`);if(!ios)o.level=v;}});
+    class Audio {constructor(){this.muted=false;this.level=1;this.srcObject=null;volume(this);els.push(this);}pause(){}play(){return Promise.resolve();}}
+    class MediaStream {constructor(tracks){this.tracks=tracks;}getTracks(){return this.tracks;}}
+    class Node {constructor(kind,id){this.kind=kind;this.id=id;this.out=new Set();}connect(n){this.out.add(n);if(n.kind==="gain")n.id=this.id;return n;}disconnect(){this.out.clear();}}
+    class Ctx {constructor(){this.state="running";this.currentTime=0;this.destination=new Node("output");this.on=new Map();ctxs.push(this);}
+      addEventListener(k,fn){this.on.set(k,fn);}set(next){this.state=next;const fn=this.on.get("statechange");if(fn)fn();}
+      resume(){this.set("running");return Promise.resolve();}close(){this.set("closed");return Promise.resolve();}
+      createMediaStreamSource(st){return new Node("source",st.getTracks()[0].id);}
+      createAnalyser(){const n=new Node("analyser");n.getFloatTimeDomainData=a=>a.fill(0.1);return n;}
+      createGain(){const n=new Node("gain");n.gain={value:1,setTargetAtTime(v){this.value=v;}};gains.push(n);return n;}}
+    const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op);if(op==="pull")pulled.push(...body.ids);return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map(id=>({id,mid:String(id)}))}:{sessionDescription:{}}};};
+    const probe={level:1};volume(probe);
+    const win={BL:{net:{state,setMuted:on=>netMuted.push(on),remotes}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),addEventListener:(k,fn)=>handlers.set(k,fn)};
+    const context={window:win,document:{createElement:()=>probe},localStorage:{getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v))},navigator:{mediaDevices:{getUserMedia:async()=>stream}},RTCPeerConnection:Pc,Audio,MediaStream,fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math,Number,String};
+    if(webAudio)win.AudioContext=context.AudioContext=Ctx;
+    runInNewContext(source,context);
+    const V=win.BL.voice,elOf=id=>els[pulled.lastIndexOf(id)],gainOf=id=>gains.filter(g=>g.id===id&&g.out.size).at(-1);
+    // What a voice sounds at: its element's volume unless muted, or on iOS its live gain's level (the element must stay muted).
+    const audible=id=>ios?(gainOf(id)?gainOf(id).gain.value:0):(elOf(id).muted?0:elOf(id).volume);
+    return {V,ops,netMuted,timers,els,gains,ctxs,handlers,store,remotes,state,track,
+      land:ids=>{for(const id of ids)onTrack({transceiver:{mid:String(id)},track:{id,stop(){}}});},
+      tick:(n=1)=>{for(let i=0;i<n;i++)for(const fn of timers.values())fn();},
+      levels:ids=>ids.map(id=>+audible(id).toFixed(3)).join(",")};
+  };
+  const play=async r=>{
+    const {V}=r,rows={},ids=[2,3,4,5],all=[2,3,4,5,6];
+    await V.enable();await settle();V.setPeers(ids,[1,1,1,1]);await settle();r.land(ids);
+    r.tick(3);rows.noLimit=r.levels(ids);rows.radius0=V.stats.radius;rows.speaking=V.speaking(2);
+    const sent=r.ops.length,muteCalls=r.netMuted.length;
+    V.setRadius(20);r.tick();rows.firstRead=r.levels(ids);r.tick(10);rows.settled=r.levels(ids);await settle();
+    rows.stored=r.store.get("oogaboogaland.voice-radius");rows.mic=r.track.enabled;rows.quiet=r.ops.length===sent&&r.netMuted.length===muteCalls;
+    // A voice pulled once the range is set starts at its own level, never at full first.
+    r.remotes.set(6,remote("far","factory",0,40));V.setPeers(all,[1,1,1,1,1]);await settle();r.land([6]);rows.joinedFar=r.levels([6]);
+    V.setReceiveLevel(0.5);rows.level=r.levels(all);V.setReceiveLevel(1);
+    V.muteLocal("mid",true);r.tick();rows.localMute=r.levels(all);V.muteLocal("mid",false);rows.unmuted=r.levels(all);
+    r.remotes.get(5).poseZone="factory";r.tick(10);rows.placed=r.levels([5]);
+    r.state.self.zone="factory.hall";r.tick(10);rows.unplacedSelf=r.levels(all);r.state.self.zone="factory";
+    V.setRadius(65);r.tick(10);rows.back=r.levels(all);rows.radius65=V.stats.radius;
+    rows.fades=V.fades;rows.playback=V.inspect().playback;
+    return rows;
+  };
+  const shared=rows=>rows.noLimit==="1,1,1,1"&&rows.radius0===0&&rows.speaking&&rows.firstRead==="1,0.85,0.85,0.85"&&rows.settled==="1,0.5,0,0"&&rows.stored==="20"&&rows.mic&&rows.quiet&&
+    rows.joinedFar==="0"&&rows.level==="0.5,0.25,0,0,0"&&rows.localMute==="1,0,0,0,0"&&rows.unmuted==="1,0.5,0,0,0"&&rows.placed==="1"&&rows.unplacedSelf==="1,1,1,1,1"&&rows.back==="1,1,1,1,1"&&rows.radius65===0&&rows.fades;
+  const desk=rig(false),rows=await play(desk);
+  rows.noGains=desk.gains.length===0&&desk.handlers.size===0;
+  const F=desk.V.falloff;let step=0,rising=false;for(let d=0;d<=25;d+=0.01){const a=F(d,20),b=F(d+0.01,20);step=Math.max(step,Math.abs(b-a));if(b>a+1e-12)rising=true;}
   rows.curve={full:F(10,20),half:F(15,20),edge:F(20,20),past:F(30,20),step:+step.toFixed(4),rising,noLimit:F(1e6,0),unknown:F(NaN,20)};
-  V.setRadius(20);
-  const checked=["abc","-3","999","2","20"].map(v=>{store.set("oogaboogaland.voice-radius",v);return load().stats.radius;}).join(",");
-  V.stop();rows.timersAfterStop=timers.size;rows.checked=checked;
+  rows.checked=["abc","-3","999","2","20"].map(v=>rig(false,true,v).V.stats.radius).join(",");
+  desk.V.stop();rows.timersAfterStop=desk.timers.size;
   record("voice hearing range: voices fade smoothly with distance in the visitor's own place, others past it go quiet, a voice joining starts at its own level, no limit is the old full volume, a local mute and the receive level still hold, and neither the microphone nor the room hears of it",
-    rows.noLimit==="1,1,1,1"&&rows.radius0===0&&rows.firstRead==="1,0.85,0.85,0.85"&&rows.settled==="1,0.5,0,0"&&rows.stored==="20"&&rows.mic&&rows.quiet&&rows.joinedFar===0&&
-    rows.level==="0.5,0.25,0,0,0"&&rows.localMute&&rows.unmuted&&rows.placed===1&&rows.unplacedSelf==="1,1,1,1,1"&&rows.back==="1,1,1,1,1"&&rows.radius65===0&&
+    shared(rows)&&rows.playback==="element"&&rows.noGains&&
     rows.curve.full===1&&rows.curve.half===0.5&&rows.curve.edge===0&&rows.curve.past===0&&rows.curve.step<0.005&&!rows.curve.rising&&rows.curve.noLimit===1&&rows.curve.unknown===0&&
     rows.checked==="0,0,0,5,20"&&rows.timersAfterStop===0,JSON.stringify(rows));
+  const ios=rig(true),io=await play(ios),ctx=ios.ctxs[0],live=()=>ios.gains.filter(g=>g.out.size);
+  io.elementsMuted=ios.els.every(el=>el.muted);io.toOutput=live().length===5&&live().every(g=>g.out.size===1&&g.out.has(ctx.destination));
+  ctx.set("interrupted");io.asleep=ios.V.stats.blocked;
+  ios.handlers.get("pointerup")({isTrusted:false});io.untrusted=ctx.state==="interrupted";
+  ios.handlers.get("pointerup")({isTrusted:true});await settle();io.woken=ctx.state==="running"&&!ios.V.stats.blocked;
+  const before=ios.gains.slice();await ios.V.restart();await settle();io.restartReleased=before.every(g=>!g.out.size)&&ctx.state==="running";
+  ios.V.stop();io.stopped=ios.gains.every(g=>!g.out.size)&&ctx.state==="closed"&&ios.timers.size===0&&ios.els.every(el=>el.muted);
+  const bare=rig(true,false).V;io.noWebAudio=!bare.fades&&bare.inspect().playback==="element";
+  record("voice hearing range on iOS and iPadOS: where an element's volume is ignored each voice plays through a gain that sounds as the desktop does at every step, its element stays muted, the gain goes straight to the output, a suspended context blocks the voices until a trusted tap wakes it, and a restart or stop lets go of every node",
+    shared(io)&&io.playback==="gain"&&io.elementsMuted&&io.toOutput&&io.asleep&&io.untrusted&&io.woken&&io.restartReleased&&io.stopped&&io.noWebAudio,JSON.stringify(io));
 };
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
@@ -23689,7 +23819,7 @@ const studioVoiceLifecycleProof = async () => {
     class Sound {constructor(){this.pending=[];elements.push(this);}play(){return new Promise((resolve,reject)=>this.pending.push({resolve,reject}));}pause(){this.pauses=(this.pauses||0)+1;}}
     const makeStream=()=>{const track={enabled:true,stops:0,stop(){this.stops++;}},stream={track,getTracks:()=>[track],getAudioTracks:()=>[track]};streams.push(stream);return stream;};
     const win={BL:{net:{state:{connectionToken:"synthetic"},remotes:new Map(),setMuted:on=>calls.push({op:"mute",on})}},setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id)};
-    const context={window:win,localStorage:{getItem:()=>null,setItem(){}},AbortController,RTCPeerConnection:Peer,Audio:Sound,MediaStream:class {constructor(tracks){this.tracks=tracks;}getTracks(){return this.tracks;}},navigator:{mediaDevices:{enumerateDevices:async()=>[{kind:"audioinput",deviceId:"synthetic-mic",label:"Synthetic mic"},{kind:"videoinput",deviceId:"camera",label:"Camera"}],getUserMedia:constraints=>{gum++;calls.push({op:"capture",constraints});return permission||Promise.resolve(makeStream());}}},
+    const context={window:win,document:{createElement:()=>({})},localStorage:{getItem:()=>null,setItem(){}},AbortController,RTCPeerConnection:Peer,Audio:Sound,MediaStream:class {constructor(tracks){this.tracks=tracks;}getTracks(){return this.tracks;}},navigator:{mediaDevices:{enumerateDevices:async()=>[{kind:"audioinput",deviceId:"synthetic-mic",label:"Synthetic mic"},{kind:"videoinput",deviceId:"camera",label:"Camera"}],getUserMedia:constraints=>{gum++;calls.push({op:"capture",constraints});return permission||Promise.resolve(makeStream());}}},
       fetch:async(url,options)=>{const op=url.split("/").at(-1);calls.push({op,body:JSON.parse(options.body)});if(deferred?.op===op)return deferred.promise;if(op==="publish"&&publishResponse)return publishResponse;if(op==="pull")return {ok:true,json:async()=>({tracks:JSON.parse(options.body).ids.map(id=>({id,mid:String(id)}))})};return {ok:true,json:async()=>({sessionDescription:{type:"answer",sdp:"synthetic"}})};}};
     runInNewContext(source,context);
     return {defer(op){let finish;const promise=new Promise(resolve=>{finish=resolve;});deferred={op,promise};return data=>{deferred=null;finish({ok:true,json:async()=>data});};},voice:win.BL.voice,calls,streams,peers,elements,timers,get gum(){return gum;},makeStream,denyPermission(){permission=Promise.reject(Object.assign(Error("denied"),{name:"NotAllowedError"}));},deferPermission(){permission=new Promise(resolve=>{this.resolvePermission=resolve;});},deferPublish(){publishResponse=new Promise(resolve=>{this.resolvePublish=()=>resolve({ok:true,json:async()=>({sessionDescription:{type:"answer",sdp:"synthetic"}})});});}};
