@@ -584,33 +584,10 @@ body[data-active-scene="hub"] .home-link {
   }
 }
 
-/* Games keep their panels folded away until the banner's Ooga button opens the roster.
-   Ooga Arcade stays empty-handed, so its weapon slots remain hidden. */
-body[data-active-scene="race"] .sheet,
-body[data-active-scene="drop"] .sheet,
-body[data-active-scene="orbit"] .sheet,
-body[data-active-scene="mine"] .sheet,
-body[data-active-scene="skee"] .sheet,
-body[data-active-scene="hoops"] .sheet,
-body[data-active-scene="shy"] .sheet,
-body[data-active-scene="claw"] .sheet,
-body[data-active-scene="hockey"] .sheet,
-body[data-active-scene="billiards"] .sheet,
-body[data-active-scene="darts"] .sheet,
-body[data-active-scene="pinball"] .sheet,
-body[data-active-scene="ride"] .sheet,
-body[data-active-scene="invaders"] .sheet,
-body[data-active-scene="snake"] .sheet,
-body[data-active-scene="pong"] .sheet,
-body[data-active-scene="stampede"] .sheet,
-body[data-active-scene="flap"] .sheet,
-body[data-active-scene="breaker"] .sheet,
-body[data-active-scene="dash"] .sheet,
-body[data-active-scene="stacker"] .sheet,
-body[data-active-scene="arcade"] .sheet,
-body[data-active-scene="arcade"] .primary-hud,
-body[data-active-scene="arcade"] .weapon-hud,
-body[data-active-scene="arcade"] .magazine-hud {
+/* The Arcade venue stays empty-handed but for its ghost arena; gameplay hides panels through the HUD. */
+body[data-active-scene="arcade"]:not(.arena-armed) .primary-hud,
+body[data-active-scene="arcade"]:not(.arena-armed) .weapon-hud,
+body[data-active-scene="arcade"]:not(.arena-armed) .magazine-hud {
   display: none;
 }
 
@@ -1924,10 +1901,64 @@ body[data-active-scene="arcade"] .magazine-hud {
   display: none;
 }
 
+/* A player whose voice the visitor's hearing range has faded out. */
+.players-distance[data-far="true"] {
+  opacity: 0.45;
+}
+
+/* The hearing range (#380): its label, the slider and the range in metres on one line, a short note under them. */
+.players-hearing {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(8ch, auto);
+  align-items: center;
+  column-gap: 8px;
+}
+
+.players-hearing[hidden] {
+  display: none;
+}
+
+.players-hearing-label {
+  color: rgba(243, 239, 228, 0.72);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.players-hearing input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.players-hearing-value {
+  justify-self: end;
+  color: var(--paper);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.players-hearing-help {
+  grid-column: 1 / -1;
+  color: rgba(243, 239, 228, 0.62);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
 @media (pointer: coarse) {
   .players-look {
     padding: 8px;
     margin: -8px;
+  }
+
+  .players-hearing input[type="range"] {
+    height: 32px;
   }
 }
 
@@ -9390,7 +9421,6 @@ body[data-active-scene="stacker"] .joysticks {
 }
 
 /* Ember Den: a walkable room, a readable lobby, and a focused table. */
-body[data-active-scene="poker"] .sheet { display: none; }
 
 #poker {
   --pk-accent: #dfbe77; --pk-bright: #f4dda2; --pk-ink: #213023;
@@ -10121,7 +10151,6 @@ body[data-active-scene="arcade"] #destination-hud:not([hidden]) { display: flex;
 /* Keep a character control in every banner, including detached views and game scenes. */
 .mode-roster-icon { width: 34px; height: 44px; }
 #mode-hud[data-selected="true"] .mode-roster-icon { display: none; }
-body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 
 /* Cloud Hopper keeps the route visible beneath a small clock; its title and results share the arcade's wood and stone. */
 .cloud-hopper-hud {
