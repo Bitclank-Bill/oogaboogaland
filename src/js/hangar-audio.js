@@ -22,7 +22,8 @@
 // engines revving by turns, each with a voice of its own on its own side, as if they were talking; `zap(Z, from, to)`
 // lightning running over the Jet, a sizzle crackling from nose to tail over the hum, then a crack and silence; and
 // `blackout(B)` the power dying with a clunk, a low hum in the dark, and the banks clunking back on, the mains hum
-// coming back with them as `power(k)` says (0 off, 1 on).
+// coming back with them as `power(k)` says (0 off, 1 on); and `lowrider(L)` the deep bass thump the Jet bounces to, on
+// every beat, as heavy as a stomp on the floor.
 //
 // Kortik's Sis has a voice of her own (`voice`): a buzz and a breath through three formants, a syllable for each run
 // of vowels in her line with the formants of its vowel, pauses at its punctuation, a stressed last syllable before a
@@ -48,7 +49,7 @@
 
   // How loud the test's voices peak: the siren, the whine and its whoosh, the whoomph, the roar's body, crackle and
   // rumble, a clank, the alarm, the boom's sweep, its rumble and its crack, the ringing, and the anomalies' hum.
-  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08, rev: 0.22, sizzle: 0.12 };
+  const TEST = { siren: 0.2, whine: 0.2, whoosh: 0.16, whoomph: 0.8, roar: 0.9, crackle: 0.4, rumble: 0.6, clank: 0.5, alarm: 0.09, boom: 1, boomNoise: 0.9, crack: 0.7, ring: 0.05, hum: 0.08, rev: 0.22, sizzle: 0.12, thump: 0.9 };
   // How far the blast muffles the presser's hearing, Hz.
   const MUFFLED = 320, CLEAR = 20000;
   // Kortik's Sis's ways of saying a line: her pitch, Hz; a syllable's length and the gap after it, s; how loud; how far
@@ -316,6 +317,19 @@
       test.humGain = gain(0, test.enginePan);
       test.hum = osc("sawtooth", 100, filter("bandpass", 380, 2.5, test.humGain));
       test.humFizz = hissOf(filter("bandpass", 3600, 5, gain(0.35, test.humGain)));
+      // The lowrider's thump, everywhere, a heavy stomp on the floor: a sine dropping to a deep note and its octave, with
+      // the impact's thud (low noise closing down fast) on top, all driven hard into the clip so its harmonics carry the
+      // low end even on small speakers, through a lowpass that keeps it round.
+      test.thumpGain = gain(0, mix);
+      const thumpClip = ctx.createWaveShaper();
+      thumpClip.curve = curve;
+      thumpClip.connect(filter("lowpass", 600, 0.7, test.thumpGain));
+      const thumpDrive = gain(4, thumpClip);
+      test.thump = osc("sine", 110, thumpDrive);
+      test.thump2 = osc("sine", 220, gain(0.35, thumpDrive));
+      test.thudGain = gain(0, thumpDrive);
+      test.thudBand = filter("lowpass", 500, 0.9, test.thudGain);
+      test.thud = hissOf(test.thudBand);
       // The anomalies' lightning: a sizzle, high noise through a band, panned to wherever it runs over the Jet.
       test.sizzlePan = panner();
       test.sizzleGain = gain(0, test.sizzlePan);
@@ -621,6 +635,33 @@
         T.clankGain.gain.exponentialRampToValueAtTime(0.001, at(s + 0.25));
       });
       T.hum.frequency.setValueAtTime(100, at(B.end));
+      return true;
+    };
+    // The lowrider from now, on its times `L` (s from its start: the first beat, the beat, how many, how hard each, 0..1):
+    // a heavy stomp on each beat: the impact's thud (`thud` loud, closing from `close[0]` to `close[1]` Hz over
+    // `thudLen` s) over a deep note whose pitch drops from `from` to `to` Hz over `drop` s, swelling in over `attack`
+    // and ringing out over `ring`.
+    const THUMP = { from: 130, to: 50, drop: 0.07, attack: 0.004, ring: 0.45, thud: 1.2, close: [500, 120], thudLen: 0.14 };
+    const lowrider = (L) => {
+      if (!ready || muted) return false;
+      const t0 = ctx.currentTime + 0.02, at = (s) => t0 + s, T = test;
+      const clear = (param, value) => { param.cancelScheduledValues(t0); param.setValueAtTime(value, t0); };
+      clear(T.thumpGain.gain, 0); clear(T.thudGain.gain, 0); clear(T.thump.frequency, THUMP.from); clear(T.thump2.frequency, THUMP.from * 2); clear(T.thudBand.frequency, THUMP.close[0]);
+      for (let n = 0; n < L.beats; n++) {
+        const s = L.start + n * L.beat, loud = TEST.thump * L.hard(n);
+        T.thump.frequency.setValueAtTime(THUMP.from, at(s));
+        T.thump.frequency.exponentialRampToValueAtTime(THUMP.to, at(s + THUMP.drop));
+        T.thump2.frequency.setValueAtTime(THUMP.from * 2, at(s));
+        T.thump2.frequency.exponentialRampToValueAtTime(THUMP.to * 2, at(s + THUMP.drop));
+        T.thumpGain.gain.setValueAtTime(0, at(s));
+        T.thumpGain.gain.linearRampToValueAtTime(loud, at(s + THUMP.attack));
+        T.thumpGain.gain.exponentialRampToValueAtTime(0.001, at(s + THUMP.ring));
+        T.thudBand.frequency.setValueAtTime(THUMP.close[0], at(s));
+        T.thudBand.frequency.exponentialRampToValueAtTime(THUMP.close[1], at(s + THUMP.thudLen));
+        T.thudGain.gain.setValueAtTime(0, at(s));
+        T.thudGain.gain.linearRampToValueAtTime(THUMP.thud, at(s + 0.002));
+        T.thudGain.gain.exponentialRampToValueAtTime(0.001, at(s + THUMP.thudLen));
+      }
       return true;
     };
     // How much of the hall's electrical hum has power: the mains at once, the neon with the bed's next levelling.
@@ -1013,7 +1054,7 @@
     };
 
     return {
-      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, blackout, power: setPower, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
+      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, blackout, lowrider, power: setPower, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, dispose,
       get muted() { return muted; },
       get volume() { return volume; },
       get ready() { return ready; },
