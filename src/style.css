@@ -607,10 +607,9 @@ body[data-active-scene="flap"] .sheet,
 body[data-active-scene="breaker"] .sheet,
 body[data-active-scene="dash"] .sheet,
 body[data-active-scene="stacker"] .sheet,
-body[data-active-scene="arcade"] .sheet,
-body[data-active-scene="arcade"] .primary-hud,
-body[data-active-scene="arcade"] .weapon-hud,
-body[data-active-scene="arcade"] .magazine-hud {
+body[data-active-scene="arcade"]:not(.arena-armed) .primary-hud,
+body[data-active-scene="arcade"]:not(.arena-armed) .weapon-hud,
+body[data-active-scene="arcade"]:not(.arena-armed) .magazine-hud {
   display: none;
 }
 

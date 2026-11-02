@@ -54,7 +54,7 @@
 // position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
 // snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
 // Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost and subscribeGhost (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -103,7 +103,7 @@
   const offline = new URLSearchParams(location.search);
   const state = { backend: false, me: null, donations: false, tess: false, highscores: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
-    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false,
+    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
     self: { x: NaN, y: NaN, z: NaN, zone: "" } };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
   let npcFrame = null, inHub = false, hubSent = null;
@@ -216,6 +216,7 @@
 
   const onMessage = (e) => {
     if (e.data instanceof ArrayBuffer) {
+      if (e.data.byteLength >= 4 && new DataView(e.data).getUint32(0, true) === GHOST_MAGIC) { ghostFrame(e.data); return; } // HALLOWEEN
       npcFrame = e.data;
       state.npcVersion++;
       return;
@@ -263,6 +264,8 @@
       state.loopEpoch = typeof msg.loopEpoch === "number" ? msg.loopEpoch : 0;
       state.hostId = Number.isSafeInteger(msg.host) ? msg.host : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
+      state.ghostHostId = Number.isSafeInteger(msg.ghostHost) ? msg.ghostHost : 0;
+      state.ghostFollowers = Number.isSafeInteger(msg.ghostFollowers) ? msg.ghostFollowers : 0;
       state.selfId = msg.you.id;
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
@@ -327,6 +330,9 @@
       state.hostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
       state.followers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
       emit();
+    } else if (msg.t === "ghost-host") {
+      state.ghostHostId = Number.isSafeInteger(msg.id) ? msg.id : 0;
+      state.ghostFollowers = Number.isSafeInteger(msg.followers) ? msg.followers : 0;
     } else if (msg.t === "chat") {
       const line = chatLine(msg);
       if (line) chatHeard([line], false);
@@ -378,6 +384,8 @@
     remotes.clear();
     state.hostId = 0;
     state.followers = 0;
+    state.ghostHostId = 0;
+    state.ghostFollowers = 0;
     // Any request for the doorway went with the socket.
     if (state.doorway) doorHeard({ t: "door", op: "lost" });
     state.doorway = false;
@@ -558,14 +566,39 @@
   };
   document.addEventListener("visibilitychange", onVisibility);
 
-  // HALLOWEEN: the ghost hunt's word to the room's host (ghost-sync.js): a start or a hit, relayed to the host alone.
-  let ghostHeard = null;
+  // HALLOWEEN: the ghost hunt's word to its host (ghost-sync.js): a start or a hit, relayed to the arcade's ghost
+  // arena's host (`ghostHostId`) alone, from a page in the arena.
+  let ghostHeard = null, ghostStateHeard = null;
+  const GHOST_MAGIC = 0x54534847, GHOST_ZONES = ["arcade.arena", "arcade-hunt"];
+  const inGhostArena = () => GHOST_ZONES.includes(state.zone);
   const sendGhost = (msg) => {
-    if (state.room === "live" && state.hostId && state.hostId !== state.selfId) send(JSON.stringify(msg));
+    if (state.room === "live" && inGhostArena() && state.ghostHostId && state.ghostHostId !== state.selfId) send(JSON.stringify(msg));
   };
   const subscribeGhost = (fn) => {
     ghostHeard = fn;
     return () => { if (ghostHeard === fn) ghostHeard = null; };
+  };
+  // The arena host's hunt state, a snapshot as JSON behind GHOST_MAGIC, sent only while someone in the arena follows;
+  // a follower hears each one as it arrives (`subscribeGhostState`).
+  let encoder = null, decoder = null;
+  const sendGhostState = (snap) => {
+    if (!ws || ws.readyState !== WebSocket.OPEN || state.ghostHostId !== state.selfId || !state.ghostFollowers || !inGhostArena()) return;
+    if (!encoder) encoder = new TextEncoder();
+    const body = encoder.encode(JSON.stringify(snap)), frame = new Uint8Array(body.length + 4);
+    new DataView(frame.buffer).setUint32(0, GHOST_MAGIC, true);
+    frame.set(body, 4);
+    ws.send(frame);
+  };
+  const ghostFrame = (data) => {
+    if (!ghostStateHeard) return;
+    let snap = null;
+    if (!decoder) decoder = new TextDecoder();
+    try { snap = JSON.parse(decoder.decode(new Uint8Array(data, 4))); } catch { return; }
+    if (snap && typeof snap === "object" && !Array.isArray(snap)) ghostStateHeard(snap);
+  };
+  const subscribeGhostState = (fn) => {
+    ghostStateHeard = fn;
+    return () => { if (ghostStateHeard === fn) ghostStateHeard = null; };
   };
 
   // The host's frame of Oogas, sent as bytes (a typed array view is sent as just its own bytes).
@@ -764,9 +797,9 @@
     studioSubscribers.clear();
     chatSubscribers.clear();
     doorSubscribers.clear();
-    ghostHeard = null; // HALLOWEEN
+    ghostHeard = ghostStateHeard = null; // HALLOWEEN
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
