@@ -78,10 +78,8 @@
   const NOSE_GEAR = -9.3;
   const SKY = RENDER_OPTS.sky.slice(), GROUND = RENDER_OPTS.ground.slice(), DIRECT = RENDER_OPTS.directStrength, FLOOR = RENDER_OPTS.ambientFloor;
   const HAZE = RENDER_OPTS.fog.slice();
-  // The Jet's key light, the scene's spot (`lightUp`): hung from the gantry over the Jet's left flank and aimed down at
-  // it, a cone of cool white on the Jet and the floor round it, as far as `reach` m, full inside `inner` radians of its
-  // axis and gone by `outer`; an anomaly dims it with the hall's lights.
-  const KEY = { at: [LAYOUT.jet.x - 9, 14.2, LAYOUT.jet.z], aim: [LAYOUT.jet.x, 2, LAYOUT.jet.z], reach: 45, outer: 0.96, inner: 0.61, color: [10, 10.5, 11.4] };
+  // The Jet's key light, the scene's spot (`lightUp`, `HM.KEY`); an anomaly dims it with the hall's lights.
+  const KEY = HM.KEY;
   // The space past the shield, from ₿IFRÖST's dome (`bifrostModels.sky`): its stars, the twinkling ones in their halos,
   // the galaxy's band and its shooting stars on a dome tipped so its zenith looks back down the tunnel and turned so
   // the band crosses the tunnel's end; and its ringed giant and its red world, turning with their moons going round,

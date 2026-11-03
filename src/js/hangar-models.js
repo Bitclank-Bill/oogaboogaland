@@ -1540,6 +1540,10 @@
   // bakes them all.
   const TINTS = { door: math.hexToRgb("#5fe3ff").map((k) => k / 255), mouth: [0.36, 0.66, 1.2], launch: [0.45, 0.72, 1] };
   const LANTERN_GLOW = [1.3, 0.8, 0.36];
+  // The Jet's key light, the scene's spot: hung from the gantry over the Jet's left flank and aimed down at it, a cone of
+  // cool white on the Jet and the floor round it, as far as `reach` m, full inside `inner` radians of its axis and gone
+  // by `outer`.
+  const KEY = { at: [LAYOUT.jet.x - 9, 14.2, LAYOUT.jet.z], aim: [LAYOUT.jet.x, 2, LAYOUT.jet.z], reach: 45, outer: 0.96, inner: 0.61, color: [10, 10.5, 11.4] };
   const fixedLights = cached(() => {
     const L = LAYOUT, B = L.boards, D = L.door, T = L.tunnel;
     return [
@@ -1887,7 +1891,7 @@
 
   BL.hangarModels = {
     LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, runway, marker, floorLamp, tunnel, catwalks, dressing, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
-    fixedLights, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
+    fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
       ...[-1.3, -0.4, 0.5, 1.4].map((x, i) => box({ w: 0.14, h: 0.18, d: 0.05, color: "#ffc86a", emissive: 1, offset: { x, y: 2.6 + (i % 2) * 0.7, z: -3.18 } }))
