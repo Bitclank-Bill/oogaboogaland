@@ -103,7 +103,7 @@
     const dock = { x: ENTRY.x, z: ENTRY.z, facing: ENTRY.facing };
     FOOTING.areas.push({ id: "atrium", ...MU.atrium, top: ISLAND_TOP, dock }, ...MU.rects.map((r) => ({ id: `gallery-${r.n}`, x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, top: ISLAND_TOP, dock })));
     // The statue in the atrium, and the walls.
-    FOOTING.obstacles.push({ x0: -1.4, x1: 1.4, z0: PORTAL_Z - 0.5, z1: PORTAL_Z + 0.5 }, ...WALLS);
+    FOOTING.obstacles.push(...WALLS);
   }
   // The first props, on the room's ledge (in Era 3's old world): the office PC, the hard-drive plinth and Tock's book.
   const PROPS = { pc: { x: -9.6 + SX, y: 0.545, z: -20.6 + SZ }, drives: { x: -9.8 + SX, y: 0.545, z: -32.4 + SZ }, book: { x: -5.8 + SX, y: 0.545, z: -23.6 + SZ } };
@@ -130,11 +130,8 @@
   const solid = (w, h, d, color, x, y, z, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } }));
   const buildCavern = () => {
     // The statue the visitor came through, in the atrium's south, with lanterns either side.
-    const statue = place(createNode({ position: { x: 0, y: ISLAND_TOP, z: PORTAL_Z }, rotation: { x: 0, y: Math.PI, z: 0 } }));
-    addChild(statue, createNode({ geometry: M.bevelBox({ w: 2.2, h: 3.1, d: 0.4, color: "#ece6d6" }), position: { x: 0, y: 1.9, z: 0 } }));
-    addChild(statue, createNode({ geometry: M.box({ w: 1.5, h: 2.3, d: 0.06, color: "#9ad8ff", emissive: 0.9 }), position: { x: 0, y: 1.75, z: -0.23 } }));
-    addChild(statue, createNode({ geometry: M.box({ w: 2.8, h: 0.35, d: 0.9, color: "#8a8174" }), position: { x: 0, y: 0.17, z: 0 } }));
-    built.portal = statue.children[1];
+    // (The portal the visitor came through now stands on the dais by the statue, the whitepaper scrolling in it:
+    // buildPaperPortal.)
     for (const [x, z] of [[-3, PORTAL_Z + 0.5], [3, PORTAL_Z + 0.5], [-6, PORTAL_Z + 2], [6, PORTAL_Z + 2]]) {
       solid(0.14, 2.4, 0.14, "#3b2a1a", x, ISLAND_TOP + 1.2, z);
       solid(0.36, 0.36, 0.36, "#ffcf7a", x, ISLAND_TOP + 2.55, z, 1.4);
@@ -298,7 +295,8 @@
       solid(w - 6, 0.25, 0.2, glow, cx, archY - 0.15, z1 + 1.05, 1.2);
       built.oldObstacles.push({ era: i, x0: b.x0, x1: b.x0 + 3, z0: z1 - 1, z1: z1 + 1 }, { era: i, x0: b.x1 - 3, x1: b.x1, z0: z1 - 1, z1: z1 + 1 });
       const sign = eraSign(e);
-      hangSign(sign, GW.LANE_X, archY + 1 + sign.height / 2, z1 + 1.1, 0, sign.frame);
+      // Hung just under the arch's lintel, low enough to read from the courtyard (it stood over the lintel before).
+      hangSign(sign, GW.LANE_X, archY - 1.4 - sign.height / 2, z1 + 1.1, 0, sign.frame);
       // (The old cave's hanging rocks, boulders, glowing seams and lamp posts are gone: the era's own dressing replaces them.)
       built.caves.push(e);
     }));
@@ -310,6 +308,57 @@
   // or Space beside it, opens the menu (the timeline as buttons, openMenu).
   // The white screen stands in the atrium ahead of the arrival, facing it (south): 24 m wide.
   const LEGEND = { x: 0, y: 3.6, z: SOUTH - 26, w: 18, h: 6, ry: 0, at: { x: 0, z: SOUTH - 23.5 } };
+  // The portal on the dais before the Satoshi bust: its stone frame and pale glow, and in it the Bitcoin whitepaper's
+  // nine pages as one strip (whitepaper-pages-data.js, the island monolith's), a window on the strip that turns a page
+  // every PAGE_S seconds by itself, and with PageUp / PageDown while the visitor stands at it. Space or a tap opens the
+  // paper's exhibit as before. The strip loads with the "whitepaper" group (inline on the portable page).
+  let glCanvas = null;
+  const WPP = { page: 0, t: 0, scroll: 0, PAGE_S: 7, face: null, w: 1.6, h: 0 };
+  const buildPaperPortal = () => {
+    const portal = place(createNode({ position: { x: 0, y: ISLAND_TOP + 0.4, z: 0 } }));
+    addChild(portal, createNode({ geometry: M.bevelBox({ w: 2.3, h: 3.2, d: 0.4, color: "#ece6d6" }), position: { x: 0, y: 1.6, z: -0.05 } }));
+    const glow = createNode({ geometry: M.box({ w: 2.0, h: 2.85, d: 0.04, color: "#9ad8ff", emissive: 0.9 }), position: { x: 0, y: 1.6, z: 0.16 } });
+    addChild(portal, glow);
+    built.portal = glow;
+    const show = () => {
+      const data = BL.whitepaperPages;
+      if (!data || !data.strip || !built) return;
+      const w = WPP.w, h = w * data.page / data.width, image = new Image(), asset = { width: data.width, height: data.height, load: () => image };
+      // A GPU that cannot hold the whole strip gets a scaled copy, as the island's does.
+      const gl = renderer && renderer.kind === "webgl2" && glCanvas ? glCanvas.getContext("webgl2") : null;
+      const limit = gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : data.height;
+      if (data.height > limit || data.width > limit) {
+        const src = new Image();
+        src.onload = () => { const k = Math.min(limit / data.width, limit / data.height), c = document.createElement("canvas"); c.width = Math.max(1, Math.floor(data.width * k)); c.height = Math.max(1, Math.floor(data.height * k)); c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); asset.width = c.width; asset.height = c.height; image.src = c.toDataURL("image/png"); };
+        src.src = data.strip;
+      } else image.src = data.strip;
+      const face = { verts: [-w / 2, -h / 2, 0.03, w / 2, -h / 2, 0.03, w / 2, h / 2, 0.03, -w / 2, h / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+      face.imageSurface = { asset, rect: [-w / 2, 0, w, 0] };
+      WPP.face = face; WPP.h = h;
+      addChild(portal, createNode({ geometry: face, position: { x: 0, y: 1.6, z: 0.17 } }));
+      paperRect();
+    };
+    if (BL.whitepaperPages) show();
+    else if (BL.deferred) BL.deferred.load("whitepaper").then(show).catch(() => {});
+  };
+  // The strip laid across the face, scrolled so `WPP.scroll` (strip pixels from its top) is at the face's top.
+  const paperRect = () => {
+    const data = BL.whitepaperPages, f = WPP.face;
+    if (!f || !data) return;
+    const k = WPP.h / data.page, rect = f.imageSurface.rect;
+    rect[1] = WPP.h / 2 + WPP.scroll * k - data.height * k;
+    rect[3] = data.height * k;
+  };
+  const updatePaper = (dt) => {
+    const data = BL.whitepaperPages;
+    if (!WPP.face || !data) return;
+    WPP.t += dt;
+    if (WPP.t >= WPP.PAGE_S) { WPP.t = 0; WPP.page = (WPP.page + 1) % data.count; }
+    const target = WPP.page * (data.page + data.gap);
+    WPP.scroll += (target - WPP.scroll) * Math.min(1, dt * (view.calm ? 20 : 4));
+    paperRect();
+  };
+  const turnPaper = (dir) => { const data = BL.whitepaperPages; if (!data) return; WPP.page = (WPP.page + dir + data.count) % data.count; WPP.t = 0; };
   const buildLegend = () => {
     const W = 4096, H = Math.round(W * LEGEND.h / LEGEND.w), canvas = document.createElement("canvas"), g = canvas.getContext("2d");
     canvas.width = W; canvas.height = H;
@@ -325,6 +374,8 @@
     for (const dx of [-LEGEND.w / 2 + 1, LEGEND.w / 2 - 1]) solid(0.3, LEGEND.y - LEGEND.h / 2 + 0.2, 0.3, "#3b2a1a", LEGEND.x + dx, ISLAND_TOP + (LEGEND.y - LEGEND.h / 2 + 0.2) / 2, LEGEND.z - 0.15);
     built.obstacles.push({ x0: LEGEND.x - LEGEND.w / 2, x1: LEGEND.x + LEGEND.w / 2, z0: LEGEND.z - 0.4, z1: LEGEND.z + 0.2 });
     addChild(node, createNode({ geometry: M.bevelBox({ w: LEGEND.w + 0.4, h: LEGEND.h + 0.4, d: 0.16, color: "#d9d4c8", bevel: 0.05, offset: { z: -0.08 } }) }), createNode({ geometry: face }));
+    // The same picture on its back, so it reads from both sides.
+    addChild(node, createNode({ geometry: face, position: { x: 0, y: 0, z: -0.19 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
     built.legend = place(createNode({ geometry: pickBox(LEGEND.w, LEGEND.h, 0.4), position: { x: LEGEND.x, y: ISLAND_TOP + LEGEND.y, z: LEGEND.z + 0.2 }, rotation: { x: 0, y: LEGEND.ry, z: 0 } }));
     built.legendItems = count;
   };
@@ -842,16 +893,24 @@
         return { board: { room: "Game records", pages, sources: [] } };
       } });
   };
-  // The mining corner by the arrival (genesis-mining.js): the story's epilogue, after January 2009.
-  const MINING = { x: ENTRY.x + 8.5, z: ENTRY.z - 6.5, ry: 0 };
-  const buildMining = () => {
-    const MN = BL.genesisMining, term = MN.terminal();
-    built.mining = MN.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: MINING });
+  // Round the statue (genesis-atrium.js `centre`): the miners and ASIC explainer (genesis-mining.js), the toy node
+  // network (genesis-nodes.js) and the map of Ooga Booga Land (genesis-minimap.js), then the light round the bust.
+  const buildCentre = () => {
+    const C = built.atriumLayout.centre, MN = BL.genesisMining, NO = BL.genesisNodes, MP = BL.genesisMinimap, term = MN.terminal();
+    built.mining = MN.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: C.mining });
     const words = BL.factoryModels.label("AFTER GENESIS", "how mining grew: CPUs, GPUs, ASICs · Space here", { height: 0.6, style: "gold" });
     addChild(built.mining.root, createNode({ geometry: words.back, position: { x: 0, y: 2.9, z: 0.1 } }), createNode({ geometry: words.face, position: { x: 0, y: 2.9, z: 0.1 } }));
-    built.obstacles.push({ x0: MINING.x - 1.7, x1: MINING.x + 1.7, z0: MINING.z - 0.6, z1: MINING.z + 0.6 });
     props.register({ id: "mining", era: 7, year: 2009, title: "After Genesis: how mining grew", label: "AFTER GENESIS · MINING SINCE 2009", sourceKeys: [], hint: "how Bitcoin mining grew after 2009",
-      at: { x: MINING.x, y: ISLAND_TOP, z: MINING.z + 1.5 }, reach: 2.6, onUse: () => ({ terminal: term, board: { room: "After Genesis: how mining grew", pages: MN.PAGES, sources: [] } }) });
+      at: { x: C.mining.at.x, y: ISLAND_TOP, z: C.mining.at.z }, reach: 2.6, onUse: () => ({ terminal: term, board: { room: "After Genesis: how mining grew", pages: MN.PAGES, sources: [] } }) });
+    built.nodes = NO.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: C.nodes });
+    props.register({ id: "nodes", era: 7, year: 2009, title: "A toy node network", label: "NODES · THE NETWORK SINCE 2009", sourceKeys: [], hint: "watch blocks spread through a toy network of nodes",
+      at: { x: C.nodes.at.x, y: ISLAND_TOP, z: C.nodes.at.z }, reach: 2.6, onUse: () => ({ terminal: built.nodes.terminal, board: { room: "A toy node network", pages: NO.PAGES, sources: [] } }) });
+    built.minimap = MP.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: C.map });
+    props.register({ id: "minimap", era: 7, year: 2026, title: "A map of Ooga Booga Land", label: "OOGA BOOGA LAND · THE MAP, 2026", sourceKeys: [], hint: "a map of Ooga Booga Land",
+      at: { x: C.map.at.x, y: ISLAND_TOP, z: C.map.at.z }, reach: 2.4, onUse: () => ({ board: { room: "Ooga Booga Land", pages: MP.pages(), sources: [] } }) });
+    for (const k of ["mining", "nodes", "map"]) built.obstacles.push(C[k].box);
+    const S = built.atriumLayout.monument;
+    built.satoshiFx = BL.genesisSatoshiFx.build({ M, createNode, addChild, place, label: BL.factoryModels.label, top: ISLAND_TOP, at: S });
   };
   const updateVignettes = (dt) => {
     const q = avatar ? avatar.root.position : camera.target, near2 = BL.genesisVignettes.NEAR ** 2;
@@ -1417,6 +1476,7 @@
     else if (k === "t") toggle("voice");
     else if (k === "p") { e.preventDefault(); pause(); }
     else if (k === "g") { e.preventDefault(); openMenu(); }
+    else if ((k === "PageUp" || k === "PageDown") && avatar && Math.hypot(avatar.root.position.x, avatar.root.position.z) < 6) { e.preventDefault(); turnPaper(k === "PageDown" ? 1 : -1); }
   };
 
   // --- Frame ----------------------------------------------------------------------------------------------------
@@ -1508,7 +1568,10 @@
       if (docents) docents.update(dt, avatar ? avatar.root.position.x : null, avatar ? avatar.root.position.z : 0);
       if (built.fans && !view.calm) for (const f of built.fans) f.rotation.y += dt * 1.2;
       if (built.mining) built.mining.update(dt, view.calm);
+      if (built.nodes) built.nodes.update(dt, view.calm);
+      if (built.satoshiFx) built.satoshiFx.update(dt, view.calm);
       if (guide) guide.update(dt, sceneTime);
+      updatePaper(dt);
       if (ambience) { const q = avatar ? avatar.root.position : camera.target; ambience.update(dt, MU.bayAt(q.x, q.z), view.calm); }
     }
     // The cartridge console's game runs while it is open and the visitor has not paused.
@@ -1533,7 +1596,7 @@
     root = createNode();
     camera = createCamera({ fov: 62, near: 0.15, far: 240 });
     built = { obstacles: [], oldObstacles: [] };
-    renderer = ctx.renderer;
+    renderer = ctx.renderer; glCanvas = ctx.canvas;
     // Each era's gallery frame: its old cave turned and moved round the atrium (genesis-world.js MUSEUM).
     // Each gallery's frame scales its era's old cave to MUSEUM.SCALE, the old floor (bank height) kept at the museum's.
     built.frames = MU.bays.map((b) => place(createNode({ position: { x: b.tx, y: ISLAND_TOP * (1 - MU.SCALE), z: b.tz }, rotation: { x: 0, y: b.rot, z: 0 }, scale: { x: MU.SCALE, y: MU.SCALE, z: MU.SCALE } })));
@@ -1541,7 +1604,7 @@
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
     buildExhibits(); buildCatalogue(); buildAtrium(); buildCourtyard(); buildWalls();
-    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail(); buildVignettes(); buildEraItems(); buildRecords(); buildMining();
+    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail(); buildVignettes(); buildEraItems(); buildRecords(); buildCentre(); buildPaperPortal();
     registerOverviews();
     // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
     // its old world, turned into the museum's).
@@ -1629,7 +1692,7 @@
     const S0 = built.atriumLayout.monument;
     guide = BL.genesisGuide.create({ parent: root, input, fx, camera, pilot, visitor: () => people && people.player, world, hud, coarse: COARSE, landing: true,
       quality: () => renderer.quality, busy: () => bench.open || view.reading || !!(cart && cart.isOpen), targets: {} },
-      { museum: MU, eras: GW.ERAS, lane: GW.LANE_X, statue: { x: S0.x, z: S0.z }, mining: MINING });
+      { museum: MU, eras: GW.ERAS, lane: GW.LANE_X, statue: { x: S0.x, z: S0.z }, mining: built.atriumLayout.centre.mining });
     remotes = BL.remotePlayers.create({ root, crew: people, fx });
     footsteps = BL.footsteps.create();
     walk.on = false; walk.prop = null; walk.falls = 0; walk.rides = 0;
