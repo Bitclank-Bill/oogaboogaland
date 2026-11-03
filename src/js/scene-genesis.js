@@ -687,6 +687,14 @@
       parts.length = 0;
     });
   };
+  // A game cabinet: a timber body, a lit screen in the era's colour, a control panel and a marquee, facing +z.
+  const cabinetGeometry = (glow) => M.merge(
+    M.box({ w: 1.1, h: 1.9, d: 0.9, color: "#3b2a1a", offset: { x: 0, y: 0.95, z: 0 } }),
+    M.box({ w: 0.86, h: 0.66, d: 0.04, color: glow, emissive: 1.1, offset: { x: 0, y: 1.38, z: 0.46 } }),
+    M.box({ w: 1.1, h: 0.12, d: 0.42, color: "#2a2018", offset: { x: 0, y: 1.0, z: 0.56 } }),
+    M.box({ w: 0.14, h: 0.05, d: 0.14, color: "#e0452b", emissive: 0.8, offset: { x: -0.25, y: 1.08, z: 0.6 } }),
+    M.box({ w: 0.14, h: 0.05, d: 0.14, color: "#ffd23a", emissive: 0.8, offset: { x: 0.2, y: 1.08, z: 0.6 } }),
+    M.box({ w: 1.16, h: 0.3, d: 0.5, color: glow, emissive: 0.7, offset: { x: 0, y: 1.98, z: 0.2 } }));
   // Each era's "now showing" vignette at the end of its walk (genesis-vignettes.js), in its gallery's frame.
   const buildVignettes = () => {
     const V = BL.genesisVignettes, p = { x: 0, z: 0 };
@@ -694,6 +702,15 @@
       const at = V.spot({ ...MU, LANE_X: GW.LANE_X }, e), v = V.build({ M, createNode, addChild, label: BL.factoryModels.label, n: e.n, at, top: ISLAND_TOP, theme: glowHex(e.theme.lamp) });
       place(v.root);
       built.oldObstacles.push({ era: e.n, ...v.obstacle });
+      // A game cabinet beside the stage where the era has one (genesis-games-plus.js): Space at it plays on the console.
+      const game = BL.genesisGamesPlus && BL.genesisGamesPlus.GAMES.find((g) => g.era === e.n);
+      if (game) {
+        const cx = at.x - 4.3, cz = at.z;
+        place(createNode({ geometry: cabinetGeometry(glowHex(e.theme.lamp)), position: { x: cx, y: ISLAND_TOP, z: cz } }));
+        built.oldObstacles.push({ era: e.n, x0: cx - 0.6, x1: cx + 0.6, z0: cz - 0.5, z1: cz + 0.5 });
+        props.register({ id: game.id, era: e.n, year: game.year, title: `${game.title}: play the cabinet`, label: `${game.title.toUpperCase()} · A MODERN MUSEUM GAME`, sourceKeys: [],
+          hint: `play ${game.title} on the console`, at: muAt(e.n, { x: cx, y: ISLAND_TOP, z: cz + 1.3 }), reach: 2.2, onUse: () => ({ cartridge: game.id }) });
+      }
       mu(e.n, at.x, at.z, p);
       return { v, x: p.x, z: p.z };
     }));
