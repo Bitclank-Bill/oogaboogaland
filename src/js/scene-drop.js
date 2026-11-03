@@ -1136,7 +1136,8 @@
       H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"), H.row([], "Look around", "Drag")];
     if (!touch && !COARSE) rows.push(H.row(BL.controls.keysFor("pitchDown", "pitchUp"), "Pitch"));
     if (phase === "board" || phase === "results") rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("start"), "Start flight", touch ? "Fly! button" : ""));
-    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), phase === "board" ? "Leave" : "Return to the board", touch ? "Back button" : ""));
+    if (touch) rows.push(H.row([], "Return to the board", "Board button"));
+    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), touch ? "Leave Ooga Drop" : phase === "board" ? "Leave" : "Return to the board", touch ? "Back button" : ""));
     return { title: "Ooga Drop", rows };
   };
   BL.scenes.drop = dropScene;

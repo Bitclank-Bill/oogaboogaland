@@ -1599,7 +1599,7 @@
         if (!e.repeat) weaponAction("weapon-bash");
         return;
       }
-      if (birdsEye() && key === "n") {
+      if (birdsEye() && BL.controls.matches(e, "north")) {
         e.preventDefault(); e.stopImmediatePropagation();
         if (e.repeat) return;
         resumePose();
@@ -4045,9 +4045,11 @@
       if (cave) {
         if (!touch) rows.push(H.row(["shiftleft"], "Run"));
         rows.push(H.row(touch ? [] : [" "], hud.el.act.textContent.trim() || "Jump / use nearby object", touch ? "Action button" : ""));
-        add("view", "Switch camera mode", "View button");
+        if (!firstOnly && !ctx.combatOnly?.() && weaponViewReady(cave)) add("view", "Toggle combat mouse-look", "View button");
+        if (!touch && armed() && shoulderView && !closeWanted) rows.push(H.row(["shiftright"], "Tap to swap shoulder · hold with A/D to peek"));
+        if (!touch && birdsEye()) add("north", "Face north", "");
         if (crew.weaponsEnabled && !cave.grabbedBy && !crew.sleeping && (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode && (cave.weapon.primaryOwned || cave.weapon.secondaryOwned)) {
-          if (touch || shortcuts.includes("weapon")) add("weapon", "Select owned weapon", "Weapon buttons");
+          if (touch || shortcuts.includes("weapon")) rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("weapon").filter(key => key === "1" ? cave.weapon.primaryOwned : cave.weapon.secondaryOwned), "Select owned weapon", touch ? "Weapon buttons" : ""));
           if (touch || shortcuts.includes("attack")) add("attack", "Attack", "Attack button");
           if (!touch && shortcuts.includes("swapWeapon")) add("swapWeapon", "Swap weapon", "Weapon buttons");
           if (cave.weapon.equipped) {

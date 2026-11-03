@@ -988,7 +988,7 @@
         H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"), H.row([], "Look around", "Drag"));
     }
     if (phase === "garage" || phase === "finished" && !rhud.el.next.hidden) rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("start"), phase === "garage" ? "Start race" : "Next race", touch ? "Race button" : ""));
-    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), phase === "racing" || phase === "paused" ? "Pause / resume" : "Back", touch ? "Back button" : ""));
+    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), touch ? "Leave the race" : phase === "racing" || phase === "paused" ? "Pause / resume" : "Back", touch ? "Back button" : ""));
     return { title: "Ooga Rally", rows };
   };
   BL.scenes.race = raceScene;

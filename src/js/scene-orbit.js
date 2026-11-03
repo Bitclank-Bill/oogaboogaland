@@ -2163,7 +2163,8 @@
     }
     if (phase === "build" || phase === "results") rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("start"), "Launch", touch ? "Launch button" : ""));
     if (!touch) rows.push(H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"));
-    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), phase === "build" ? "Leave" : "Return to builder", touch ? "Back button" : ""));
+    if (touch) rows.push(H.row([], "Return to builder", "Build button"));
+    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), touch ? "Leave Ooga Orbit" : phase === "build" ? "Leave" : "Return to builder", touch ? "Back button" : ""));
     return { title: "Ooga Orbit", rows };
   };
   BL.scenes.orbit = orbitScene;

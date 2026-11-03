@@ -2375,7 +2375,8 @@
         rows.push(H.row(touch ? [] : [" "], "Work on the object beside you", touch ? "WORK button" : ""));
         if (!touch) rows.push(H.row(["shift", "s"], "Sell sats"));
       }
-      rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), "Close selection / pause / leave", touch ? "Back button" : ""));
+      if (!touch) rows.push(H.row(BL.controls.shortcutKeys("resetView"), "Reset to den overview"));
+      rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), touch ? "Leave Ooga Mine" : "Close selection / pause / leave", touch ? "Back button" : ""));
       return { title: "Ooga Mine", rows };
     },
     controlsHelpHold() { pilot.controls.reset(); },

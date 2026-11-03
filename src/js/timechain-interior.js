@@ -695,7 +695,17 @@
     reader.start();
     holdings.start();
 
-    shell.controlsHelp = touch => { const help = pilot.controlsHelp(touch); help.title = "Timechain Sphere · " + help.title; return help; };
+    shell.controlsHelp = touch => {
+      const help = pilot.controlsHelp(touch);
+      // The room intercepts these bindings before the pilot, including R/F in
+      // free-camera mode. Keep its reference under the same input policy.
+      help.rows = help.rows.flatMap(row => {
+        const keys = row.keys.filter(key => !WEAPON_KEYS.has(key));
+        return row.keys.length && !keys.length ? [] : [{ ...row, keys }];
+      });
+      help.title = "Timechain Sphere · " + help.title;
+      return help;
+    };
     shell.controlsHelpHold = on => { pilot.controls.reset(); pilot.setMenuOpen(on, false); };
     shell.root = root;
     shell.camera = camera;

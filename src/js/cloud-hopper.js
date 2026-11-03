@@ -1218,11 +1218,13 @@
       if (hookDown) hookAction(false);
     };
     const controlsHelp = touch => {
+      if (held()) return { title: "Cloud Hopper · " + (phase === "lifting" ? "Riding the lift" : "Waiting"), rows: [BL.controlsHelp.row(touch ? [] : BL.controls.shortcutKeys("escape"), "Exit Cloud Hopper", touch ? "Exit button" : "")] };
       const H = BL.controlsHelp, rows = [touch ? H.row([], "Move", "Left stick") : H.movement("Move")];
       if (!touch) rows.push(H.row(["shiftleft"], "Run"));
       rows.push(H.row(touch ? [] : [" "], "Jump / use a sky feather", touch ? "Jump button" : ""));
       if ((pilot.player?.jetpackOwned || pilot.player?.jet)) rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("jetpack"), "Wear / remove collected jetpack; hold jump to climb", touch ? "Jetpack button" : ""));
       if (hookHeld) rows.push(H.row([], "Aim at a cloud and hold to reel in; release to fly on", touch ? "Hook button" : "Left mouse"));
+      if (!touch && !held()) rows.push(H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"));
       rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), "Exit Cloud Hopper", touch ? "Exit button" : ""));
       return { title: "Cloud Hopper", rows };
     };

@@ -13794,19 +13794,33 @@ const PHONE_GO = `(() => { const g = document.querySelector('[data-intro]:not([h
 const PHONE_SIZE = { w: 390, h: 844, mobile: true };
 const phone = (id, { card = null, play = null, required, sheet = false }) => ({ name: `${id} phone`, why: "rule: every scene is readable and playable on a phone, nothing clipped and every control under a thumb", run: async (b) => {
   const seen = {};
+  const invoker = await b.evaluate(`(() => {
+    const existing=document.querySelector("dialog[open]"), button=document.getElementById("controls-help-button"), r=button.getBoundingClientRect();
+    window.__controlsExistingDialog = existing;
+    return {existing:!!existing,x:r.x+r.width/2,y:r.y+r.height/2};
+  })()`);
+  // A real touch keeps pointer focus on the canvas after closing. HTMLElement.click()
+  // has keyboard-style detail=0 and had left the invoker focused, so the next
+  // Factory Space press reopened help instead of reaching the guide.
+  if (invoker.existing) await b.evaluate('document.getElementById("controls-help-button").click()');
+  else {
+    await b.send("Input.dispatchTouchEvent", {type:"touchStart",touchPoints:[{x:invoker.x,y:invoker.y}]});
+    await b.send("Input.dispatchTouchEvent", {type:"touchEnd",touchPoints:[]});
+  }
   const reference = await b.evaluate(`(() => {
-    const existing=document.querySelector("dialog[open]");
-    const button=document.getElementById("controls-help-button");
-    button.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,pointerType:"touch"})); button.click();
+    const existing=window.__controlsExistingDialog;
     const d=document.getElementById("controls-help"), r=d.getBoundingClientRect();
-    return {existing:existing?.id,preserved:existing?.open,open:d.open,rows:d.querySelectorAll(".controls-row").length,touch:!d.querySelector("kbd"),fits:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,overflow:d.scrollWidth>d.clientWidth,text:d.textContent};
+    delete window.__controlsExistingDialog;
+    return {existing:!!existing,preserved:!!existing&&existing.open&&document.querySelector("dialog[open]")===existing,open:d.open,rows:d.querySelectorAll(".controls-row").length,touch:!d.querySelector("kbd"),fits:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,overflow:d.scrollWidth>d.clientWidth,text:d.textContent};
   })()`);
   if (process.env.CONTROLS_SCREENSHOTS && id === "hub") await b.screenshot(join(root,"untracked","controls-phone.png"));
-  await b.evaluate('document.getElementById("controls-help-close").click()');
+  reference.returned = await b.evaluate('document.getElementById("controls-help-close").click(); document.activeElement === document.getElementById("scene")');
   // Wallets can boot directly into its native picker. The reference must respect
   // that modal's inert background; ordinary scene visits exercise the open panel.
   if (reference.existing) record(`${id} phone: controls reference preserves the existing modal without opening a second`, reference.preserved&&!reference.open, JSON.stringify(reference));
-  else record(`${id} phone: controls reference fits, uses touch controls and excludes removed equipment`, reference.open&&reference.rows>1&&reference.touch&&reference.fits&&!reference.overflow&&(id!=="timechain"||!/weapon|rifle|jetpack/i.test(reference.text)), JSON.stringify(reference));
+  else record(`${id} phone: controls reference fits, uses touch controls and excludes removed equipment`, reference.open&&reference.rows>1&&reference.touch&&reference.fits&&!reference.overflow&&reference.returned&&(id!=="timechain"||!/weapon|rifle|jetpack/i.test(reference.text)), JSON.stringify(reference));
+  if (["race", "drop", "orbit", "mine"].includes(id)) record(`${id} phone: Back help describes leaving separately from in-game navigation or pause`, /Leave (the race|Ooga Drop|Ooga Orbit|Ooga Mine)/.test(reference.text) && (id!=="drop"||reference.text.includes("Board button")) && (id!=="orbit"||reference.text.includes("Build button")), reference.text);
+  if (["skee", "snake", "stacker"].includes(id)) record(`${id} phone: help does not invent a touch Pause button`, !reference.text.includes("Pause button"), reference.text);
   if (card) {
     seen.card = { touch: await b.evaluate(PHONE_COARSE), bad: await b.evaluate(PHONE([`${card} .game-intro-go`, `${card} .game-intro-go + button`])) };
     const go = await b.evaluate(PHONE_GO);
@@ -16631,6 +16645,25 @@ const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out 
   await holdKey(b, "w", 2.5);
   const shut = await b.evaluate(`(() => { const B = __ooga, L = B.timechain.layout, p = B.pilot.player.root.position; return { z: p.z, door: L.doorZ, scene: B.scene, open: B.timechain.doors.open }; })()`);
   record("timechain room: walking into the closed doors does nothing", shut.scene === "timechain" && shut.z < shut.door - 0.3 && shut.open === 0, JSON.stringify(shut));
+  // regression: the room intercepts R/F even after releasing the Ooga; generic
+  // free-camera help previously advertised those unavailable pitch controls.
+  await b.evaluate('__ooga.pilot.modeAction("mode-release"); document.getElementById("scene").focus()');
+  const pitch = [];
+  for (const key of ["r", "f"]) {
+    await b.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: "Key" + key.toUpperCase() });
+    pitch.push(await b.evaluate('__ooga.pilot.controls.read().pitch'));
+    await b.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: "Key" + key.toUpperCase() });
+  }
+  const reference = await b.evaluate(`(() => {
+    const button = document.getElementById("controls-help-button");
+    button.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" })); button.click();
+    const dialog = document.getElementById("controls-help"), keys = [...dialog.querySelectorAll("kbd")].map(k => k.dataset.key);
+    const result = { open: dialog.open, free: !__ooga.pilot.player, keys, text: dialog.textContent };
+    document.getElementById("controls-help-close").click();
+    __ooga.pilot.possess(__ooga.cavemen.get("portlandhodl")); __ooga.pilot.enterClose();
+    return result;
+  })()`);
+  record("timechain room: free-camera reference omits intercepted R/F while retaining available movement controls", pitch.every(n => n === 0) && reference.open && reference.free && !reference.keys.some(k => ["r", "f"].includes(k)) && reference.keys.includes("w") && !reference.text.includes("Tilt the view"), JSON.stringify({ pitch, reference }));
 } };
 const timechainSizes = { name: "timechain sizes", why: "rule: rooms 4–6 and 7–9 are the same design at 1.5× and 2×, with the doorway, arrival and Exit button at human size and a table for 8 and 12, each its own address", run: async (b) => {
   const rows = [], bounds = [];
@@ -20413,8 +20446,32 @@ const controlsHelpCheck = { name: "controls reference", why: "regression: help m
     return {touch,keyboard,blur};
   })()`);
   record("controls reference: touch and keyboard switch on a hybrid device and blur clears highlights", hybrid.touch&&hybrid.keyboard&&hybrid.blur, JSON.stringify(hybrid));
+  const gorilla = await b.evaluate(`(() => {
+    const B=__ooga, g=B.clankers.list.find(e=>e.active&&e.root.visible&&!B.clankers.sleeping(e));
+    if (!g||!B.clankerPlay.possess(g,true)) return {possessed:false};
+    BL.scenes.hub.debug.setGameMode(true);
+    const P=B.clankerPlay, read=touch=>{const h=BL.scenes.hub.controlsHelp(touch);return {keys:h.rows.flatMap(r=>r.keys),text:h.rows.map(r=>r.text+" "+r.gesture).join(" | ")};};
+    if(P.combat)P.action("mode-toggle");
+    const orbit=read(false);P.action("mode-toggle");B.advance(.5,1/60);
+    const combat=read(false),touch=read(true);BL.scenes.hub.debug.setGameMode(true,true);const locked=read(false);
+    BL.scenes.hub.debug.setGameMode(false);P.release();
+    return {possessed:true,orbit,combat,touch,locked};
+  })()`);
+  record("controls reference: gorilla turning, pitch and reset follow its mode, with hold-G throw instructions only on keyboard", gorilla.possessed&&["q","e","r","f","0"].every(k=>gorilla.orbit.keys.includes(k))&&!gorilla.combat.keys.includes("r")&&!gorilla.combat.keys.includes("f")&&gorilla.combat.text.includes("release to drop")&&gorilla.combat.text.includes("charge and release")&&!/grab|throw/i.test(gorilla.touch.text)&&!gorilla.locked.keys.includes("x"), JSON.stringify(gorilla));
 } };
 scene("hub", { label: "controls reference", query: "solo=1&character=portlandhodl&pos=0", steps: [controlsHelpCheck] });
+scene("hangar", { label: "controls reference forklift", query: "character=portlandhodl", steps: [{ name: "controls reference forklift", why: "regression: seated forklift help used walking and running labels while omitting forks, horn and touch cab controls", run: async b => {
+  const r=await b.evaluate(`(() => {
+    const B=__ooga, P=B.pilot, f=B.hangar.scene.forklift, a=B.cavemen.get("portlandhodl");P.possess(a);
+    const seated=B.crew.sitPlayer(f.seat);f.on=true;f.startT=-1;
+    const help=touch=>BL.scenes.hangar.controlsHelp(touch), keyboard=help(false),touch=help(true);
+    f.on=false;const off=help(false);
+    B.crew.standPlayer();
+    return {seated,keyboard,touch,off};
+  })()`);
+  const keys=h=>h.rows.flatMap(r=>r.keys), text=h=>h.rows.map(r=>r.text+" "+r.gesture).join(" | ");
+  record("controls reference forklift: running cab shows drive, forks and horn, powered-off cab omits them, and touch names real cab targets", r.seated&&["w","a","s","d","r","f","h"].every(k=>keys(r.keyboard).includes(k))&&!keys(r.keyboard).includes("shiftleft")&&!/Walk|Run/.test(text(r.keyboard))&&["Tap fork stick","Tap steering wheel","Tap ignition key"].every(s=>text(r.touch).includes(s))&&!keys(r.off).some(k=>["w","r","f","h"].includes(k)),JSON.stringify(r));
+} }] });
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence, hubMuteKey, hubChat] });
 scene("hub", { label: "join alerts", query: "pos=0", steps: [hubJoinAlerts] });
 scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
