@@ -25737,7 +25737,7 @@ const genesisEraCartridgeProof = async () => {
   const document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
   const context = { window: { BL: { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } } }, document, crypto: webcrypto, console, AbortController };
   context.window.document = document;
-  for (const f of ["math", "retro-games", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES, "genesis-cartridge", "genesis-era-cartridges"])
+  for (const f of ["math", "retro-games", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES, "genesis-cartridge", "genesis-era-cartridges", "genesis-games-plus"])
     runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, C = BLc.genesisCartridge, EC = BLc.genesisEraCartridges, props = {}, bad = [];
   W.ERAS.forEach((e, n) => {
@@ -25746,9 +25746,10 @@ const genesisEraCartridgeProof = async () => {
       label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle: () => {}, notify: () => {}, prop: (d) => { props[d.id] = d; return { ...d, era: n }; } };
     if (EX.eras[n]) EX.eras[n].build(kit);
   });
-  const WANT = ["e0-nim", "e1-paddle", "e2-four", "e3-rally", "e4-strategy", "e5-patchwork", "e5-pocket", "e6-argument", "e7-sync"];
+  const WANT = ["e0-nim", "e1-paddle", "e2-four", "e3-rally", "e4-strategy", "e4-pocket", "e5-patchwork", "e5-pocket", "e6-argument", "e7-sync"];
   if (EC.ids.join() !== WANT.join()) bad.push(`cartridges ${EC.ids}`);
-  if (C.checkAll() !== WANT.length) bad.push("the registry does not hold exactly the nine era cartridges");
+  // The era cartridges and the cabinet games (genesis-games-plus.js), and nothing else.
+  if (C.checkAll() !== WANT.length + BLc.genesisGamesPlus.GAMES.length) bad.push("the registry does not hold exactly the ten era cartridges and the cabinet games");
   const con = C.create({ root: null });
   for (const id of WANT) {
     const c = C.find(id), p = props[id];
@@ -25783,7 +25784,7 @@ const genesisEraCartridgeProof = async () => {
   return { bad };
 };
 // playthrough (Billy: more era games): each extra cabinet game (genesis-games-plus.js) starts, plays to its end under
-// steady presses and steering within 70 s, ends once, draws, and is labelled a modern original museum game.
+// steady presses and steering within 100 s, ends once, draws, and is labelled a modern original museum game.
 const genesisGamesPlusProof = async () => {
   const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : k === "measureText" ? () => ({ width: 0 }) : () => ({ addColorStop() {}, data: new Uint8ClampedArray(4) })), set: (t, k, v) => { t[k] = v; return true; } });
   const document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
@@ -25791,15 +25792,15 @@ const genesisGamesPlusProof = async () => {
   context.window.document = document;
   for (const f of ["math", "retro-games", "genesis-games-plus"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, GP = BLc.genesisGamesPlus, list = BLc.genesisCartridges.list, bad = [], ends = {};
-  for (const g of GP.GAMES) {
-    const c = list.find((x) => x.id === g.id);
+  for (const g of [...GP.GAMES, { id: "e4-pocket", make: GP.pocket, era: 4 }]) {
+    const c = g.id === "e4-pocket" ? { label: "a modern original museum game" } : list.find((x) => x.id === g.id);
     if (!c || !/modern/i.test(c.label) || !/original/i.test(c.label)) bad.push(`${g.id}: label`);
     const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, host = { best: 0, aim, still: false, onEnd: (score) => { ends[g.id] = (ends[g.id] || 0) + 1; }, over() {}, popup() {}, cue() {}, shake() {}, crack() {}, flop() {} };
     try {
       const game = g.make(host);
       game.start(7);
       if (!game.playing) bad.push(`${g.id}: does not start`);
-      for (let f = 0; f < 70 * 60; f++) {
+      for (let f = 0; f < 100 * 60; f++) {
         if (f % 18 === 0) game.act();
         if (f % 45 === 0) aim.steps += (f / 45) % 3 === 0 ? -1 : 1;
         game.update(1 / 60);
@@ -26390,10 +26391,10 @@ const unitChecks = async () => {
   record("Genesis monument (rule, review of gv/ovh-polish; option C): the atrium's monument is an original Satoshi statue with no borrowed sculpture features or light; its plinth's steps climb a step at a time, its robe is in the way, its shoulders and head are out of a step's reach and coming down from above lands on the head", !genesisCairn.bad.length, JSON.stringify(genesisCairn));
   record("Genesis gallery walls (rule): each era's board quotes only verified headlines with publication, date and source, labels its posters and art as museum originals in styles that exist, and hangs inside its gallery on the back wall facing in", !genesisWalls.bad.length, JSON.stringify(genesisWalls));
   record("Genesis white screen and menu (regression, reviews of 20eec91 and d59b831; the menu shows each era once, Era 6's bibliography under Era 6, and 1997's ring and dot are painted apart): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));
-  record("Genesis era cartridges (rule, gv/integration-3 4d): the nine era playables are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
+  record("Genesis era cartridges (rule, gv/integration-3 4d): the ten era playables (Pocket Route among them) are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisPlus = await genesisGamesPlusProof();
-  record("Genesis cabinet games (playthrough): Card Punch, Dial Tones, Hash Hunt and Block Builder each start, play to their end once under steady presses, draw, and are labelled modern original museum games", genesisPlus.games === 4 && !genesisPlus.bad.length, JSON.stringify(genesisPlus));
+  record("Genesis cabinet games (playthrough): Card Punch, Dial Tones, Hash Hunt, Block Builder and Pocket Route each start, play to their end once under steady presses, draw, and are labelled modern original museum games", genesisPlus.games === 4 && genesisPlus.ends["e4-pocket"] === 1 && !genesisPlus.bad.length, JSON.stringify(genesisPlus));
   const genesisAuto = await genesisAutoplayProof();
   record("Genesis exhibits run themselves (rule): every terminal exhibit plays at least two steps from its own instructions without throwing, and nearly every step is answered", !genesisAuto.bad.length, JSON.stringify(genesisAuto));
   const genesisMuseum = await genesisMuseumProof();

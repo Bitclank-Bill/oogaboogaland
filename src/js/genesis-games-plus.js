@@ -271,6 +271,96 @@
     };
   };
 
+  // --- POCKET ROUTE (Era 4's handheld maze, on the big screen) -------------------------------------------------------
+  // The exhibit's own maze first, then bigger ones carved from the run's seed; arrows or W A S D move a square at a
+  // time, on a green handheld screen. Five mazes against a 90 s clock.
+  const FIRST = ["#########", "#...#...#", "###.#.#.#", "#...#.#.#", "#.###.#.#", "#.....#.#", "#########"];
+  const pocket = (host) => {
+    const B = base(host, "Mazes"), { K, out, J, status, rng, aim } = B, { W, INK, TEXT, text, centre, number } = K;
+    const MAXW = 21, MAXH = 15, LEVELS = 5, TIME = 90, LCD = "#a8c45a", LCD_DK = "#2f4a1c", LCD_MID = "#6f8f3a";
+    const grid = new Uint8Array(MAXW * MAXH), stack = new Int16Array(MAXW * MAXH * 2);
+    const S = { phase: "idle", w: 9, h: 7, x: 1, y: 1, ex: 7, ey: 5, level: 0, moves: 0, time: TIME, steps: 0, stepsY: 0, end: 0, ended: 0, seed: 1, cell: 12, ox: 0, oy: 0, win: 0 };
+    const finish = ender(B, S);
+    // Carves a maze w x h (odd) by a seeded depth-first walk from (1, 1); the exit is the far corner.
+    const carve = (w, h) => {
+      grid.fill(1);
+      let sp = 0;
+      grid[1 * MAXW + 1] = 0; stack[sp++] = 1; stack[sp++] = 1;
+      while (sp > 0) {
+        const cx = stack[sp - 2], cy = stack[sp - 1];
+        let opts = 0, pick = -1;
+        for (let d = 0; d < 4; d++) {
+          const nx = cx + (d === 0 ? 2 : d === 1 ? -2 : 0), ny = cy + (d === 2 ? 2 : d === 3 ? -2 : 0);
+          if (nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1 && grid[ny * MAXW + nx]) { opts++; if (rng.int(opts) === 0) pick = d; }
+        }
+        if (pick < 0) { sp -= 2; continue; }
+        const nx = cx + (pick === 0 ? 2 : pick === 1 ? -2 : 0), ny = cy + (pick === 2 ? 2 : pick === 3 ? -2 : 0);
+        grid[((cy + ny) >> 1) * MAXW + ((cx + nx) >> 1)] = 0; grid[ny * MAXW + nx] = 0;
+        stack[sp++] = nx; stack[sp++] = ny;
+      }
+    };
+    const load = (level) => {
+      S.level = level;
+      if (level === 0) { S.w = 9; S.h = 7; grid.fill(1); for (let y = 0; y < 7; y++) for (let x = 0; x < 9; x++) grid[y * MAXW + x] = FIRST[y][x] === "#" ? 1 : 0; S.ex = 7; S.ey = 5; }
+      else { S.w = Math.min(MAXW, 9 + level * 3) | 1; S.h = Math.min(MAXH, 7 + level * 2) | 1; carve(S.w, S.h); S.ex = S.w - 2; S.ey = S.h - 2; }
+      S.x = 1; S.y = 1;
+      S.cell = Math.max(5, Math.min(Math.floor(150 / S.w), Math.floor(84 / S.h)));
+      S.ox = (W - S.w * S.cell) >> 1; S.oy = 18 + ((86 - S.h * S.cell) >> 1);
+      status.round = level + 1;
+    };
+    const move = (dx, dy) => {
+      const nx = S.x + dx, ny = S.y + dy;
+      if (grid[ny * MAXW + nx]) { out.cue("bump", 0.25); return; }
+      S.x = nx; S.y = ny; S.moves++; out.cue("tap", 0.2);
+      if (S.x === S.ex && S.y === S.ey) {
+        status.score += 200 + Math.ceil(S.time);
+        J.shake(1.2); out.cue("win", 0.4);
+        if (S.level + 1 >= LEVELS) { S.win = 1; finish(true); } else load(S.level + 1);
+      }
+    };
+    const step = (dt) => {
+      if (S.phase === "play") { S.time -= dt; if (S.time <= 0) { S.time = 0; finish(S.level >= 2); } }
+      tickEnd(B, S, dt);
+    };
+    const run = K.stepper(step);
+    const reset = () => { S.moves = 0; S.time = TIME; S.end = 0; S.ended = 0; S.win = 0; S.steps = aim.steps; S.stepsY = aim.stepsY; status.score = 0; status.verb = ""; load(0); J.reset(); };
+    reset();
+    return {
+      kind: "pocket", name: "Pocket Route", aims: true, status, roundLabel: "Maze",
+      help: "You are the @. The arrows or W A S D move a square at a time; reach the + exit. Five mazes, each bigger, before the clock runs out.",
+      coach: ["Arrows or W A S D move, reach the +", "Swipe to move, reach the +"], stars: [600, 1000, 1400], tickets: (s) => Math.floor(s / 200),
+      get playing() { return S.phase === "play"; },
+      start: (seed) => { S.seed = Number.isInteger(seed) ? seed >>> 0 : 1; rng.seed(S.seed); reset(); S.phase = "play"; },
+      stop: () => { S.phase = "idle"; reset(); },
+      act: () => {},
+      update: (dt) => {
+        J.update(dt);
+        if (S.phase === "play") {
+          while (aim.steps !== S.steps) { const d = aim.steps > S.steps ? 1 : -1; S.steps += d; move(d, 0); if (S.phase !== "play") { S.steps = aim.steps; break; } }
+          while (aim.stepsY !== S.stepsY) { const d = aim.stepsY > S.stepsY ? 1 : -1; S.stepsY += d; move(0, d); if (S.phase !== "play") { S.stepsY = aim.stepsY; break; } }
+        } else { S.steps = aim.steps; S.stepsY = aim.stepsY; }
+        if (S.phase !== "idle") run(dt);
+      },
+      draw: (ctx) => {
+        ctx.fillStyle = "#1c2412"; ctx.fillRect(0, 0, W, 120);
+        ctx.fillStyle = LCD; ctx.fillRect(4, 14, W - 8, 92);
+        J.begin(ctx);
+        const c = S.cell;
+        for (let y = 0; y < S.h; y++) for (let x = 0; x < S.w; x++) if (grid[y * MAXW + x]) { ctx.fillStyle = LCD_DK; ctx.fillRect(S.ox + x * c, S.oy + y * c, c, c); }
+        ctx.fillStyle = LCD_MID; ctx.fillRect(S.ox + S.ex * c + 1, S.oy + S.ey * c + 1, c - 2, c - 2);
+        ctx.fillStyle = LCD_DK; ctx.fillRect(S.ox + S.ex * c + (c >> 1) - 1, S.oy + S.ey * c + 2, 2, c - 4); ctx.fillRect(S.ox + S.ex * c + 2, S.oy + S.ey * c + (c >> 1) - 1, c - 4, 2);
+        ctx.fillStyle = "#14200c"; ctx.fillRect(S.ox + S.x * c + 1, S.oy + S.y * c + 1, c - 2, c - 2);
+        ctx.fillStyle = LCD; ctx.fillRect(S.ox + S.x * c + (c >> 1) - 1, S.oy + S.y * c + (c >> 1) - 1, 2, 2);
+        J.end(ctx);
+        text(ctx, "POCKET ROUTE", 4, 3, TEXT.lime);
+        number(ctx, host.best || 0, W - 4, 3, TEXT.gold, 1, 2, 3);
+        text(ctx, "MAZE", 4, 109, TEXT.stone); number(ctx, S.level + 1, 30, 109, TEXT.lime);
+        text(ctx, "TIME", 104, 109, TEXT.stone); number(ctx, Math.ceil(S.time), 156, 109, TEXT.sky, 1, 2);
+        if (S.phase === "idle") centre(ctx, "PRESS START", 60, TEXT.night);
+        else if (S.phase === "end") centre(ctx, status.verb, 60, TEXT.night);
+      }
+    };
+  };
   // The cabinets: which game, in which gallery, and its sign.
   const GAMES = [
     { id: "g0-punch", era: 0, year: 1960, title: "Card Punch", span: "1956–1969", make: punch },
@@ -281,5 +371,5 @@
   const registry = BL.genesisCartridges = BL.genesisCartridges || { list: [] };
   for (const g of GAMES) registry.list.push({ id: g.id, era: g.era, title: g.title, make: g.make,
     label: `A modern original museum game in the spirit of the ${g.span} gallery, not a game from those years` });
-  BL.genesisGamesPlus = { GAMES, punch, dial, hash, builder, fnv };
+  BL.genesisGamesPlus = { GAMES, punch, dial, hash, builder, pocket, fnv };
 })();
