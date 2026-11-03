@@ -563,7 +563,7 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
 - In `highscore-rules.js`, add `cloud-hopper-l1` to `cloud-hopper-l4`, each
   `{ scoreType: "ooga", direction: "asc", unit: "milliseconds", max: 3600000 }` with one
   machine of the same name.
-- Migration `0004_cloud_hopper_levels.sql` inserts their four rows.
+- Migration `0005_cloud_hopper_levels.sql` inserts their four rows.
 - The existing triggers, the 1,024 cap, the SQL comparison, the rate limits, the API shape
   and the client's `accept`/`publish` all work unchanged, because all of them work per row
   and per `score_type = 'ooga'`.
@@ -629,7 +629,7 @@ it touches.
 | 4 | Level data module and course scaled by level | new `cloud-hopper-levels.js` (pure data, loadable in Node, loaded before the course), `cloud-hopper-course.js`, `cloud-hopper.js`, `src/index.html` (script tag), `scene-hub.js` (bound, camera far) |
 | 5 | Unlocks, level selector, result actions | `game.js`, `cloud-hopper-hud.js`, `cloud-hopper.js`, `src/style.css` |
 | 6 | Sessions and ghosts per level | `cloud-hopper.js`, `cloud-hopper-ghost.js`, `cloud-hopper-hud.js` |
-| 7 | Shared boards per level, legacy board retired | `highscore-rules.js`, `worker/migrations/0004_cloud_hopper_levels.sql`, `worker/test/highscores.test.mjs`, `docs/highscores.md`, `cloud-hopper-hud.js` |
+| 7 | Shared boards per level, legacy board retired | `highscore-rules.js`, `worker/migrations/0005_cloud_hopper_levels.sql`, `worker/test/highscores.test.mjs`, `docs/highscores.md`, `cloud-hopper-hud.js` |
 | 8 | Environments for L1–L3 | `scene-hub.js` (presets), new `cloud-hopper-sky.js` (decor), `cloud-hopper-models.js` (night variants, previews) |
 | 9 | X-ray (*built*) | `cloud-hopper-course.js`, `cloud-hopper.js`, `cloud-hopper-models.js`, `cloud-hopper-audio.js`, `cloud-hopper-hud.js` |
 | 10 | Updraft (*built*) | the same, plus a crew hook for a Space press with no other use (`spentJump`) |

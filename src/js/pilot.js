@@ -33,6 +33,8 @@
   const RIGHT_DOUBLE_TIME = 350, RIGHT_TAP_TRAVEL = 8;
   const LOGIN_VIEW_KEY = "ooga-login-view", LOGIN_VIEW_AGE = 10 * 60 * 1000;
   let saveActiveLoginView = null;
+  // The live pilot's turn toward a point (see `turnToward`), for the live players tab, which outlives every scene.
+  let turnActive = null;
   const readLoginView = ctx => {
     try {
       const saved = window.sessionStorage.getItem(LOGIN_VIEW_KEY);
@@ -217,6 +219,12 @@
     const cancel = () => { active = false; restoreHead(); };
     return { capture, begin, restore, apply, cancel, takeHead, get active() { return active; } };
   };
+  // The visitor's own control, carried from one scene's pilot to the next (#421): which Ooga, the view, combat, the look
+  // as an angle from the Ooga's heading, the pitch, zoom and overhead height, the shoulder side and the weapon in hand
+  // (0 none, 1 primary, 2 rifle) and its rounds. A pilot made with `carry` keeps it current while it drives an Ooga, so a
+  // change in any such scene is what the next one gets; `arrive` reads it. Scenes that restrict the view or the
+  // weapons (the games, the poker room, the Timechain rooms) carry nothing, so passing through them changes nothing.
+  let carried = null;
   const create = (ctx) => {
     const { renderer, canvas, camera, hud, presets, dist: [DIST_MIN, DIST_MAX], follow, fly, clampTarget, clampCamera, coarse, close = null, ceilingAt = null, mayPossess = null } = ctx;
     // A scene that is first person only (`close.only`): once the eye is entered, no
@@ -246,6 +254,7 @@
     let groundView = 0, groundTarget = 0, groundX = 0, groundZ = 0, groundZone = 0, groundValid = false, groundLift = 0, groundEasing = false;
     let freeFeetY = 0, freeFloorY = 0, freeFallV = 0, freeLeapX = 0, freeLeapZ = 0, freeFallValid = false, freeFalling = false;
     let sleepingView = false, trailingPitchChosen = false;
+    let restOrbitCave = null, restOrbitYaw = 0, restOrbitPitch = 0;
     let lyingView = 0, lyingCave = null, lyingYaw = 0, lyingPitch = 0;
     const sleepForward = new Float64Array(3), sleepUp = new Float64Array(3);
     const sleepCameraUp = { x: 0, y: 1, z: 0 };
@@ -268,8 +277,9 @@
       dollyVelocity.z = eyeVelocity.z - (following ? anchorVelocity.z : 0);
       dollyTime = eyeMotionValid ? 0 : DOLLY_HANDOFF;
     };
+    const restingView = (cave) => !!cave && (crew.sleeping || cave.camp.seat?.lying);
     const headAnchor = (cave, out) => {
-      const p = crew.sleeping && cave.root.quaternion ? cave.sleepHead : cave.root.position;
+      const p = restingView(cave) && cave.root.quaternion ? cave.sleepHead : cave.root.position;
       out.x = p.x; out.z = p.z;
       out.y = p.y + (p === cave.sleepHead ? 0 : -cave.baseY + cave.headOffset * close.eyeRatio + cave.viewLift);
     };
@@ -291,7 +301,7 @@
       syncOwnOoga();
     };
     const player = () => crew ? crew.player : null;
-    const controlTransition = {};
+    const controlTransition = {}, arrivalTransition = {}, arrivalKeep = { relYaw: 0, pitch: 0, distance: 0 };
     let resumeSleepOverhead = false;
     // Carry still owns an orbit. Combat's overhead pointer stays on the upper
     // centreline: vertical input sets its reach, horizontal input turns the view.
@@ -399,7 +409,7 @@
     };
     let lockPending = false, lockCancelled = false, aimLocked = false, softAimFocused = false, externalControl = false, externalCombat = null, menuOpen = false, unlockedAt = -Infinity;
     let savedPitch = 0, savedDist = 0, savedNear = camera.near, sightClear = null, cursorClear = null, aimSurface = null;
-    const weaponViewReady = (cave) => active && !!cave && !cave.health.stunned && !crew.sleeping && (closeWanted || (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode);
+    const weaponViewReady = (cave) => active && !!cave && !cave.health.stunned && !restingView(cave) && (closeWanted || (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode);
     const shoulderBoomPitch = (pitch) => Math.max(pitch, Math.min(0, pitch + SHOULDER_LEVEL));
     // Level and downward aim lift the eye so the head sits below the
     // crosshair and the band beside it stays clear. Looking up sinks the body
@@ -427,7 +437,7 @@
       return weaponViewReady(cave) && (closeWanted || shoulderView);
     };
     const lyingType = (cave) => cave && (closeWanted || closeMix > 0) && cave.root.quaternion
-      ? crew.sleeping ? 1 : cave.camp.rolling ? 2 : 0 : 0;
+      ? restingView(cave) ? 1 : cave.camp.rolling ? 2 : 0 : 0;
     const posedHeadFrame = (cave) => {
       updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
       const head = cave.parts.head, bounds = boundsOf(head.geometry), m = head.world;
@@ -447,6 +457,7 @@
       lyingYaw = lyingPitch = 0;
       if (!type) return 0;
       posedHeadFrame(cave);
+      if (cave.camp.seat?.lying) return type;
       let fx = camera.target.x - camera.position.x, fy = camera.target.y - camera.position.y, fz = camera.target.z - camera.position.z;
       const length = Math.hypot(fx, fy, fz) || 1;
       fx /= length; fy /= length; fz /= length;
@@ -1404,6 +1415,10 @@
         moveLyingView(-e.movementX * sensitivity, e.movementY * sensitivity);
         return;
       }
+      if (turning) {
+        if (!e.movementX && !e.movementY) return;
+        stopTurn();
+      }
       orbit.yaw = orbit.tYaw -= e.movementX * sensitivity;
       orbit.pitch = orbit.tPitch = clamp(orbit.tPitch + e.movementY * sensitivity, TRAILING_PITCH[0], TRAILING_PITCH[1]);
     };
@@ -1783,7 +1798,7 @@
       orbit.yaw = orbit.tYaw = Math.atan2(-dx, -dz);
       orbit.pitch = orbit.tPitch = Math.atan2(-dy, Math.hypot(dx, dz));
       closeCameraActive = true;
-      sleepingView = !!(cave && crew.sleeping && cave.root.quaternion);
+      sleepingView = !!(cave && restingView(cave) && cave.root.quaternion);
       if (!sleepingView) {
         viewRotation(headRotation, dx, dy, dz, 0, 1, 0, orbit.yaw);
         inverseRotation[0] = -headRotation[0]; inverseRotation[1] = -headRotation[1]; inverseRotation[2] = -headRotation[2]; inverseRotation[3] = headRotation[3];
@@ -1811,6 +1826,9 @@
       shoulderView = false;
       closeExitScale = 1;
       const cave = player();
+      if (cave?.camp.seat?.lying && closeMix === 0) {
+        restOrbitCave = cave; restOrbitYaw = orbit.yaw; restOrbitPitch = orbit.pitch;
+      }
       if (combat && weaponViewReady(cave)) {
         if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
         cave.weapon.aiming = true;
@@ -1895,6 +1913,16 @@
       closeCave = null;
       resetFreeFall();
       orbit.tDist = clamp(cave ? close.trailingDist : close.orbitDist, DIST_MIN, DIST_MAX);
+      if (cave?.camp.seat?.lying) {
+        // A reclining head's ray and roll belong only to first person. Let the normal
+        // close-view blend return to a world-up orbit instead of holding that head basis.
+        headOrbit = exitAngleHold = shoulderView = false;
+        quat.fromEuler(entryRoll, 0, 0, 0);
+        orbit.yaw = orbit.tYaw = restOrbitCave === cave ? restOrbitYaw : cave.root.rotation.y + Math.PI;
+        orbit.pitch = orbit.tPitch = restOrbitCave === cave ? restOrbitPitch : carryView.pitch;
+        headAnchor(cave, followTarget);
+        orbit.tx = followTarget.x; orbit.ty = followTarget.y; orbit.tz = followTarget.z;
+      }
       if (cave && crew.sleeping) crew.look(0, 0, 0);
     };
     const syncJetpackHud = () => {
@@ -2268,7 +2296,7 @@
         unlockAim();
         updateCenteredCarry(cave, 0);
       } else {
-        if (crew.sleeping && closeWanted) faceWith(cave);
+        if (restingView(cave) && closeWanted) faceWith(cave);
         update(0);
       }
       if (incoming.active && incoming.focused && armed()) focusAim(true);
@@ -2294,6 +2322,42 @@
       viewRotation(releaseRotation, camera.target.x - camera.position.x, camera.target.y - camera.position.y, camera.target.z - camera.position.z, up ? up.x : 0, up ? up.y : 1, up ? up.z : 0, orbit.yaw);
       releaseMix = 1;
     };
+    // `carried` from the Ooga driven now, written in place every frame and on letting go, so it is current however a scene
+    // tears down: the look relative to its heading, so it means the same in another scene; the overhead height over its
+    // feet. As `captureControl` reads it, without the camera pose.
+    const remember = (cave) => {
+      if (!ctx.carry) return;
+      const c = carried || (carried = {}), w = cave.weapon, overhead = birdsEye(), feet = cave.root.position.y - cave.baseY;
+      c.name = cave.traits.name; c.view = resumeSleepOverhead ? "birds-eye" : viewMode(); c.combat = !!w.aiming;
+      c.relYaw = (overhead ? overheadYaw : orbit.yaw) - cave.root.rotation.y;
+      c.pitch = overhead ? Math.PI / 2 : orbit.pitch; c.distance = overhead ? overheadHeight - cave.baseY : orbit.dist;
+      c.height = overhead ? overheadHeight - feet : camera.position.y - feet; c.side = shoulderSideTarget < 0 ? -1 : 1;
+      c.held = w.equipped ? 2 : w.primaryEquipped ? 1 : 0; c.ammo = w.ammo;
+    };
+    // The next `navigate`, in this same tick, keeps this look, pitch and zoom from the Ooga's new heading.
+    let arriving = null;
+    // A scene's arrival with the visitor's own Ooga: possessed with the view and combat it last had where they carry, its
+    // weapon back in hand where this scene allows (the primary when the rifle is not), and the next `navigate` keeping the
+    // look, pitch and zoom. Nothing blends in from the old scene's camera, whose coordinates mean nothing here. Whether a
+    // carried state was applied; without one it is an ordinary possess.
+    const arrive = (cave) => {
+      const c = ctx.carry && !loginView && carried && carried.name === cave.traits.name ? carried : null;
+      if (!c) { possess(cave); return false; }
+      const t = captureControl(arrivalTransition), feet = cave.root.position.y - cave.baseY, held = c.held, ammo = c.ammo;
+      t.active = true; t.view = c.view; t.combat = c.combat; t.yaw = cave.root.rotation.y + c.relYaw; t.pitch = c.pitch;
+      t.distance = c.distance; t.height = c.view === "birds-eye" ? feet + c.height : c.height; t.side = c.side; t.focused = false;
+      // Letting go of an Ooga already driven rewrites `carried`: the look the navigate keeps is copied first.
+      arrivalKeep.relYaw = c.relYaw; arrivalKeep.pitch = c.pitch; arrivalKeep.distance = c.distance;
+      if (!possess(cave, t)) return false;
+      handoff.cancel();
+      // The weapon and rounds it left with: once let go of, the Ooga works as the crew's again through the fade, and its
+      // work can take up the rifle or fire it.
+      const w = cave.weapon, now = w.equipped ? 2 : w.primaryEquipped ? 1 : 0, slot = held === 2 && w.secondaryOwned ? 2 : held && w.primaryOwned ? 1 : 0;
+      if (Number.isFinite(ammo)) w.ammo = ammo;
+      if (crew.weaponsEnabled && slot !== now && (slot || !w.aiming)) crew.selectWeapon(slot, cave);
+      arriving = arrivalKeep;
+      return true;
+    };
     const release = (quiet = false) => {
       if (firstOnly && player() && !disposed) return;
       handoff.cancel();
@@ -2301,13 +2365,14 @@
       endCenteredCarry();
       const cave = player();
       if (!cave) return;
+      remember(cave);
       cave.weapon.aiming = false;
       resumeSleepOverhead = false;
       shoulderView = false;
       unlockAim();
       eyeMotionValid = false;
       dollyTime = DOLLY_HANDOFF;
-      if (crew.sleeping && closeWanted) {
+      if (restingView(cave) && closeWanted) {
         const dx = camera.target.x - camera.position.x, dy = camera.target.y - camera.position.y, dz = camera.target.z - camera.position.z;
         rememberSleepView();
         // Close-view input was head-relative; free navigation resumes from that world direction, easing roll upright.
@@ -2378,6 +2443,13 @@
     // Shoulder is a stop for the whole gesture, including momentum. Input's
     // wheel/pinch id is authoritative; callers without one use a quiet gap or reversal.
     const ZOOM_PAUSE = 220;
+    // A turn toward a point still easing in an aiming view, whose input otherwise writes the angles directly.
+    let turning = false;
+    const stopTurn = () => {
+      if (!turning) return;
+      turning = false;
+      orbit.tYaw = orbit.yaw; orbit.tPitch = orbit.pitch;
+    };
     let trailingViewInput = false, trailingZoomInput = false, zoomGesture = null, zoomAt = -Infinity, zoomDirection = 0, zoomStopped = false;
     const zoomPitch = (cave, fromDistance) => {
       if (!weaponViewReady(cave)) return;
@@ -2413,6 +2485,10 @@
         }
         if (aimView()) {
           if (dx || dy) releaseCursorAim();
+          if (turning) {
+            if (!dx && !dy) return;
+            stopTurn();
+          }
           orbit.yaw = orbit.tYaw -= dx * 0.0025;
           orbit.pitch = orbit.tPitch = clamp(orbit.tPitch + dy * 0.0025, TRAILING_PITCH[0], TRAILING_PITCH[1]);
           return;
@@ -2566,7 +2642,7 @@
       closeCameraActive = !!cave && closeWanted && !aimView();
       aimMix = 1;
       if (cave) {
-        const p = crew.sleeping && cave.root.quaternion ? cave.sleepHead : cave.root.position;
+        const p = restingView(cave) && cave.root.quaternion ? cave.sleepHead : cave.root.position;
         followTarget.x = orbit.tx = p.x; followTarget.z = orbit.tz = p.z;
         followTarget.y = orbit.ty = p === cave.sleepHead ? p.y : p.y - cave.baseY + follow.y + cave.viewLift;
         orbit.target = followTarget;
@@ -2660,7 +2736,14 @@
         const turn = clamp(a.yaw + a.orbitYaw, -1, 1);
         if (a.x || a.y || a.up || turn || a.pitch) releaseCursorAim();
         if (lying) moveLyingView(turn * YAW_RATE * dt, a.pitch * PITCH_RATE * dt);
-        else {
+        else if (turning && !turn && !a.pitch) {
+          orbit.yaw = damp(orbit.yaw, orbit.tYaw, 14, dt);
+          orbit.pitch = damp(orbit.pitch, orbit.tPitch, 14, dt);
+          if (Math.abs(orbit.tYaw - orbit.yaw) < 1e-3 && Math.abs(orbit.tPitch - orbit.pitch) < 1e-3) {
+            orbit.yaw = orbit.tYaw; orbit.pitch = orbit.tPitch; turning = false;
+          }
+        } else {
+          stopTurn();
           orbit.yaw = orbit.tYaw += turn * YAW_RATE * dt;
           orbit.pitch = orbit.tPitch = clamp(orbit.tPitch + a.pitch * PITCH_RATE * dt, TRAILING_PITCH[0], TRAILING_PITCH[1]);
         }
@@ -2985,7 +3068,8 @@
       if (centeredCarry && cave && !closeWanted && !shoulderView) { updateCenteredCarry(cave, dt); return; }
       endCenteredCarry();
       camera.orthoMix = 0;
-      const sleeping = !!(cave && crew.sleeping && cave.root.quaternion);
+      if (!cave?.camp.seat?.lying) restOrbitCave = null;
+      const sleeping = !!(cave && restingView(cave) && cave.root.quaternion);
       const rolling = !!(cave && cave.camp.rolling && cave.root.quaternion);
       const lying = syncLyingView(cave);
       if (sleepingView && !sleeping && cave && closeWanted && closeMix > 0) {
@@ -3327,6 +3411,8 @@
       syncHeadVisibility(cave);
     };
     const update = (dt) => {
+      arriving = null;
+      if (ctx.carry && player()) remember(player());
       if (externalControl) return;
       const blending = handoff.active;
       if (blending) { handoff.restore(); solvingHandoff = true; }
@@ -3517,6 +3603,12 @@
       zoomPitchVelocity = 0;
       camera.up = null;
       const cave = player(), position = destination.position;
+      // An arrival keeps the carried look as an angle from the heading this scene gives, and the carried pitch and zoom; a
+      // scripted crossing that carries its own camera through a shield says `framed` and keeps its framing.
+      const keep = cave && !destination.framed ? arriving : null;
+      arriving = null;
+      const yaw = keep ? destination.yaw + Math.PI + keep.relYaw : destination.yaw, pitch = keep ? clamp(keep.pitch, TRAILING_PITCH[0], TRAILING_PITCH[1]) : destination.pitch;
+      const dist = keep ? clamp(keep.distance, DIST_MIN, DIST_MAX) : destination.dist;
       resetGroundView();
       freeStrafe = freeForward = freeClimb = 0;
       overheadToShoulder = false;
@@ -3526,9 +3618,9 @@
       closeVelocity = 0;
       closeExitScale = 1;
       closeCave = closeWanted ? cave : null;
-      orbit.yaw = orbit.tYaw = freeMoveYaw = destination.yaw;
-      orbit.pitch = orbit.tPitch = destination.pitch;
-      orbit.dist = orbit.tDist = destination.dist;
+      orbit.yaw = orbit.tYaw = freeMoveYaw = yaw;
+      orbit.pitch = orbit.tPitch = pitch;
+      orbit.dist = orbit.tDist = dist;
       if (cave) {
         crew.relocatePlayer(position, destination.yaw + Math.PI);
         if (birdsEye()) {
@@ -3731,8 +3823,11 @@
       reticle.hidden = menuOpen || !value || !armed();
     };
     const dispose = (keep = false) => {
+      if (player()) remember(player());
       handoff.cancel();
       if (saveActiveLoginView === saveLoginView) saveActiveLoginView = null;
+      if (turnActive === turnToward) turnActive = null;
+      turning = false;
       if (unsubscribeOwnOoga) unsubscribeOwnOoga();
       unsubscribeOwnOoga = null;
       ownAccount = ownCrew = ownOoga = null;
@@ -3796,6 +3891,7 @@
       ownAccount = ownCrew = null;
       unsubscribeOwnOoga = BL.net.subscribe(syncOwnOoga);
       saveActiveLoginView = saveLoginView;
+      turnActive = turnToward;
     };
     // The first claim can precede the first frame. Give it the landing eye,
     // or the detached eye saved before OAuth navigated away from this route.
@@ -3833,6 +3929,91 @@
       }
       syncWeaponHud(); syncModeHud();
     };
+    // Turn the view toward a world point (the live players tab: a player, or the door on the way to them). The view
+    // eases round to face it at its usual pace and tips up or down to it; nothing moves, though in
+    // first person and the aiming views the Ooga turns on the spot with the view, as it always does there. A point
+    // seen from overhead turns the map until it lies ahead. Refused while something else holds the camera (a tour, a
+    // menu) or the Ooga lies down; true when the view turns. Input during the turn takes over at once.
+    const turnToward = (x, y, z) => {
+      if (disposed || !active || externalControl || menuOpen) return false;
+      const cave = player();
+      if (syncLyingView(cave)) return false;
+      resumePose();
+      if (birdsEye()) {
+        const p = cave.root.position, dx = x - p.x, dz = z - p.z;
+        if (dx * dx + dz * dz < 1e-6) return false;
+        const yaw = Math.atan2(-dx, -dz);
+        overheadNorthUp = false;
+        overheadTargetYaw = overheadYaw + Math.atan2(Math.sin(yaw - overheadYaw), Math.cos(yaw - overheadYaw));
+        return true;
+      }
+      // First person turns about the eye, the shoulder view about the body it looks past, any other view about what
+      // it looks at, so the point lands in the middle of the picture.
+      const aiming = aimView(), shoulder = aiming && !closeWanted;
+      // A view held on a clicked point lets go of it first, as a look does, or it would keep facing that point.
+      if (aiming) releaseCursorAim();
+      const orbitFollow = cave && follow && !aiming && !closeWanted;
+      const from = closeWanted ? camera.position : shoulder || orbitFollow ? cave.root.position : camera.target;
+      const dx = x - from.x, dz = z - from.z, horizontal = Math.hypot(dx, dz);
+      if (horizontal < 1e-3) return false;
+      let yaw = Math.atan2(-dx, -dz);
+      if (shoulder) {
+        const h = cave.traits.height, side = shoulderSide * h;
+        if (Math.abs(side) < horizontal) yaw += Math.asin(side / horizontal);
+        const forward = Math.sqrt(Math.max(0, horizontal * horizontal - side * side));
+        const height = from.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift - y;
+        // The shoulder boom lifts and changes length with pitch. Solve from that eye, as a cursor aim does.
+        let low = TRAILING_PITCH[0], high = TRAILING_PITCH[1];
+        for (let i = 0; i < 32; i++) {
+          const pitch = (low + high) * 0.5, boom = shoulderBoomPitch(pitch), distance = shoulderDistance(cave, pitch) * h;
+          const look = Math.atan2(height + shoulderLift(pitch) * h + Math.sin(boom) * distance, forward + Math.cos(boom) * distance);
+          if (pitch < look) low = pitch; else high = pitch;
+        }
+        orbit.tPitch = (low + high) * 0.5;
+      } else if (orbitFollow) {
+        endCenteredCarry();
+        // Centre the selected point on a ray passing above the whole head (including hats), rather than through
+        // the follow anchor in the torso. Solve only on the click; ordinary camera damping owns the transition.
+        // The eight world bounds corners also cover wide heads when looking uphill or downhill at close zoom.
+        updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+        mat4.identity(headInverse);
+        headBounds[0] = headBounds[1] = headBounds[2] = Infinity;
+        headBounds[3] = headBounds[4] = headBounds[5] = -Infinity;
+        includeHeadPart(cave.parts.head);
+        const base = from.y - cave.baseY + follow.y + cave.viewLift;
+        const top = Number.isFinite(headBounds[4]) ? headBounds[4] : from.y + cave.bodyHeight;
+        const distance = orbit.tDist, sx = dx / horizontal, sz = dz / horizontal;
+        const aspect = renderer.size.width / Math.max(1, renderer.size.height);
+        const fov = clamp(2 * Math.atan(Math.tan(MIN_HFOV / 2) / aspect), BASE_FOV, MAX_FOV);
+        const gap = 0.08 * Math.tan(fov * 0.5);
+        let low = base, high = Math.max(base, top, y) + horizontal + distance + 1;
+        for (let i = 0; i < 32; i++) {
+          const anchor = (low + high) * 0.5, pitch = Math.atan2(anchor - y, horizontal);
+          const cp = Math.cos(pitch), sp = Math.sin(pitch);
+          let clear = true;
+          for (let corner = 0; corner < 8; corner++) {
+            const along = (headBounds[corner & 1 ? 3 : 0] - from.x) * sx
+              + (headBounds[corner & 4 ? 5 : 2] - from.z) * sz;
+            const height = headBounds[corner & 2 ? 4 : 1] - anchor;
+            const depth = distance + along * cp - height * sp;
+            if (depth <= camera.near || (along * sp + height * cp) / depth > -gap) { clear = false; break; }
+          }
+          if (clear) high = anchor; else low = anchor;
+        }
+        frameLiftWanted = high - base;
+        orbit.tPitch = clamp(Math.atan2(high - y, horizontal), TRAILING_PITCH[0], TRAILING_PITCH[1]);
+        stopCarryExit();
+        headOrbit = exitAngleHold = false;
+        trailingPitchChosen = true;
+        zoomTilt = false; zoomPitchVelocity = 0;
+      } else {
+        const range = closeWanted && close && !cave ? close.pitch : TRAILING_PITCH;
+        orbit.tPitch = clamp(Math.atan2(from.y - y, horizontal), range[0], range[1]);
+      }
+      orbit.tYaw = orbit.yaw + Math.atan2(Math.sin(yaw - orbit.yaw), Math.cos(yaw - orbit.yaw));
+      turning = aiming;
+      return true;
+    };
     const saveLoginView = () => {
       try {
         window.sessionStorage.removeItem(LOGIN_VIEW_KEY);
@@ -3848,7 +4029,8 @@
       } catch (_) { return false; }
     };
     saveActiveLoginView = saveLoginView;
-    return { orbit, hooks, controls, cursor: carryCursor, cameraHandoff: handoff, captureControl, capturePose, restorePose, focusAim, setMenuOpen, setExternalControl,
+    turnActive = turnToward;
+    return { orbit, hooks, controls, cursor: carryCursor, cameraHandoff: handoff, captureControl, capturePose, arrive, restorePose, focusAim, setMenuOpen, setExternalControl,
       // The first person's field of view at this canvas's shape (unaimed), for a view held from outside to match it.
       eyeFov: () => Math.min(MAX_FOV, Math.max(BASE_FOV, 2 * Math.atan(Math.tan(MIN_HFOV / 2) / (renderer.size.width / Math.max(1, renderer.size.height))))),
       loginViewRestored: !!loginView, loginContext: loginView?.context || null, get poseHeld() { return !!restoredPose; }, get aiming() { return armed(); },
@@ -3859,7 +4041,7 @@
       get shoulderEntryMix() { return aimMix; },
       // The view being kept: "first-person", "shoulder", "birds-eye", "orbit", or "detached" with nobody driven.
       get view() { return viewMode(); },
-      bind, setActive, refreshCombat, readInput, update, syncHeadVisibility, goPreset, resetCamera, freeCursor, navigate, travelRefusal, travel, transformView, tiltView, framePoint, releaseFrame, pickCarryTarget, enterClose, exitClose, possess, release, escape, action, modeAction, weaponAction, weaponMode, showAct, suspend, resume, dispose, get player() {
+      bind, setActive, refreshCombat, readInput, update, syncHeadVisibility, turnToward, goPreset, resetCamera, freeCursor, navigate, travelRefusal, travel, transformView, tiltView, framePoint, releaseFrame, pickCarryTarget, enterClose, exitClose, possess, release, escape, action, modeAction, weaponAction, weaponMode, showAct, suspend, resume, dispose, get player() {
       return player();
     }, get assistedTarget() {
       if (birdsEye() && assistedTargetActive) return assistedTargetHit;
@@ -3890,5 +4072,6 @@
       return viewPitch;
     } };
   };
-  BL.pilot = { create, WALK, combatEntryView, saveLoginView: () => saveActiveLoginView ? saveActiveLoginView() : false };
+  BL.pilot = { get carried() { return carried; }, create, WALK, combatEntryView, saveLoginView: () => saveActiveLoginView ? saveActiveLoginView() : false,
+    turnToward: (x, y, z) => turnActive ? turnActive(x, y, z) : false };
 })();

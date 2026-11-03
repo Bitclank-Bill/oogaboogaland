@@ -290,6 +290,8 @@
         <button type="button" data-preset="skee">Thro</button>
         <button type="button" data-preset="shy">Coconuts</button>
         <button type="button" data-action="arcade-mute">Sound</button>
+        <!-- HALLOWEEN: out of the ghost hunt under way, back to the arena's hallway (scene-arcade.js shows it while hunting). -->
+        <button type="button" class="leave" data-action="ghost-exit" id="ghost-exit" hidden>Exit<span> hunt</span></button>
         <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Race" data-scene="race" hidden>
@@ -358,6 +360,19 @@
           </svg>
           </span>
         </button>
+        <button type="button" class="sheet-toggle sheet-toggle-players" role="tab" data-tab="players"
+          aria-selected="false" id="players-tab" aria-controls="players-panel" aria-label="Players online" hidden>
+          <span class="sheet-tab-face">
+          <svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+            <path fill="#2b1b10" d="M5 0h3v1H5zM4 4h5v3H4z" />
+            <path fill="#c98a5b" d="M5 1h3v2H5zM1 3h3v2H1z" />
+            <path fill="#2b1b10" d="M1 2h3v1H1z" />
+            <path fill="#141414" d="M5 1h1v1H5zM7 1h1v1H7zM1 3h1v1H1zM3 3h1v1H3z" />
+            <path fill="#4a2c14" d="M0 6h5v3H0z" />
+            <path fill="#22c55e" d="M8 7h1v2H8z" />
+          </svg><span class="tab-count" hidden></span>
+          </span>
+        </button>
         <button type="button" class="sheet-toggle sheet-toggle-loot" role="tab" data-tab="loot"
           aria-selected="false" id="loot-tab" aria-controls="loot-panel" aria-label="Swag locker" hidden>
           <span class="sheet-tab-face">
@@ -376,7 +391,7 @@
             <path fill="#2b1b10" d="M0 0h9v7H5v1H4v1H1V7H0z" />
             <path fill="#f3efe4" d="M1 1h7v5H4v1H3v1H2V6H1z" />
             <path fill="#5c4425" d="M2 3h1v1H2zM4 3h1v1H4zM6 3h1v1H6z" />
-          </svg>
+          </svg><span class="tab-count" hidden></span>
           </span>
         </button>
       </nav>
@@ -389,6 +404,21 @@
         </header>
         <ul id="roster" class="roster slab" aria-label="Ooga Boogas"></ul>
         <p class="help roster-hint" data-scene="hub"><span id="world-loot-hint" hidden>Something is hidden out there.</span></p>
+      </section>
+      <section class="panel" data-panel="players" id="players-panel" role="tabpanel" aria-labelledby="players-tab" hidden>
+        <header class="panel-title">
+          <h2><span data-sign>Players online</span></h2>
+          <span class="panel-chip" id="players-count" data-tone="idle">Offline</span>
+        </header>
+        <div class="players-hearing" id="players-hearing" hidden>
+          <label class="players-hearing-label" for="players-hearing-range">Hearing range</label>
+          <input type="range" id="players-hearing-range" min="5" max="65" step="5" value="65" aria-describedby="players-hearing-help" aria-valuetext="No limit">
+          <output class="players-hearing-value" id="players-hearing-value" for="players-hearing-range">No limit</output>
+          <span class="players-hearing-help" id="players-hearing-help">Far voices fade, for you alone</span>
+        </div>
+        <label class="players-speak" id="players-speak" hidden><input type="checkbox" id="players-speak-input"> Read joins aloud</label>
+        <div class="players slab" id="players-list"></div>
+        <p class="help players-status" id="players-status" hidden></p>
       </section>
       <section class="panel" data-panel="bananas" id="bananas-panel" role="tabpanel" aria-labelledby="sheet-bananas" hidden>
         <header class="panel-title">
@@ -1818,6 +1848,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/lab-wallpaper-data.js" data-defer="lab-wallpaper"></script>
   <script src="js/hub-models.js"></script>
   <script src="js/dressing.js"></script>
+  <script src="js/hub-hammock.js"></script>
   <script src="js/dressing-mediterranean.js"></script>
   <script src="js/chalkboard.js"></script>
   <script src="js/lifehash.js"></script>
@@ -1855,13 +1886,17 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/highscore-rules.js"></script>
   <script src="js/game.js"></script>
   <script src="js/sheet.js"></script>
+  <script src="js/zone-map.js"></script>
   <script src="js/hud.js"></script>
+  <script src="js/chat-policy.js"></script>
+  <script src="js/voice-blend.js"></script>
   <script src="js/net.js"></script>
   <script src="js/highscores.js"></script>
   <script src="js/voice.js"></script>
   <script src="js/studio-catalogue.js"></script>
   <script src="js/studio-session.js"></script>
   <script src="js/chat.js"></script>
+  <script src="js/players.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/camera-cover.js"></script>
   <script src="js/crew.js"></script>
@@ -1946,6 +1981,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/hangar-terminals.js" data-defer="hangar-scene"></script>
   <script src="js/sis-models.js" data-defer="hangar-scene"></script>
   <script src="js/sis.js" data-defer="hangar-scene"></script>
+  <script src="js/hangar-anomaly.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-window.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-guide.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-audio.js" data-defer="hangar-scene"></script>

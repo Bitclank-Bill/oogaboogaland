@@ -302,7 +302,7 @@
     BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
     if (drivenHere) {
       const p = drivenHere.root.position;
-      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y);
+      BL.net.sendPose(p.x, p.y - drivenHere.baseY, p.z, drivenHere.root.rotation.y, null, 0, BL.crew.weaponFlags(drivenHere));
       BL.net.setHealth(drivenHere.health.value, drivenHere.health.stunned);
     }
     remotes.update(dt);
@@ -508,7 +508,6 @@
     }
     hud.setStats(game.state);
     pile.syncPile(true);
-    if (window.matchMedia("(max-width: 720px), (max-height: 500px)").matches) hud.foldPanels();
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Drag to look · pinch to zoom · sticks to fly" : "Drag to orbit · scroll to zoom · WASD to fly"), 1200);
     // The lab has no Agent until Shift+A calls one in, so a lab visit holds no
     // Agent geometry of its own.

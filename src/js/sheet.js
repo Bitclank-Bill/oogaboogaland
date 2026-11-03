@@ -3,24 +3,53 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const KEY = "oogaboogaland.sheet.v1", NAMES = ["bananas", "roster", "loot", "chat"], DOCKS = ["left", "right", "bottom"], TAB_EDGE = 41;
+  const KEY = "oogaboogaland.sheet.v1", NAMES = ["bananas", "roster", "players", "loot", "chat"], DOCKS = ["left", "right", "bottom"], TAB_EDGE = 41;
   const visible = (panel) => {
     const owner = panel.closest(".sheet");
     return !!owner && !panel.hidden && !owner.hidden && owner.dataset.open === "true" && !!owner.getClientRects().length;
   };
   const tabFor = (panel) => panel.closest(".sheet")?.querySelector(`[data-tab="${panel.dataset.panel}"]`);
+  // Unread counts on the players and chat tabs (#430) belong to the page, not to one scene's sheet: players.js and
+  // chat.js keep them, and whichever sheet is up paints them beside the locker's count.
+  const badges = { players: 0, chat: 0 };
+  let paintBadges = null;
+  const setBadge = (name, count) => {
+    if (badges[name] === count) return;
+    badges[name] = count;
+    if (paintBadges) paintBadges();
+  };
+  // Calls `fn` when the visitor shows they are looking at `panel`: a click or a keyboard press on its tab in any
+  // window, the tab taking focus while the panel shows, or a press, a scroll or focus inside the shown panel. A panel
+  // put back on screen by a scene change, a fold or a layout restore is not looked at.
+  const watchViews = (panel, fn) => {
+    const name = panel.dataset.panel, onTab = (e) => e.target.closest?.(`.sheet [data-tab="${name}"]`);
+    document.addEventListener("click", (e) => { if (onTab(e)) fn(); });
+    document.addEventListener("focusin", (e) => { if (onTab(e) && visible(panel)) fn(); });
+    for (const type of ["pointerdown", "focusin", "wheel", "touchstart"])
+      panel.addEventListener(type, () => { if (visible(panel)) fn(); }, { passive: true });
+  };
+  // Whether the visitor is in `panel` now, so a new arrival there needs no count: the page has focus and so does the panel.
+  const attending = (panel) => visible(panel) && document.hasFocus() && panel.contains(document.activeElement);
   const readRect = (rect) => rect && [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)
     && Math.abs(rect.x) <= 100000 && Math.abs(rect.y) <= 100000 && rect.width > 0 && rect.width <= 10000
     && rect.height > 0 && rect.height <= 10000 ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+  // Scene HUDs come and go, but the latest choice belongs to this page even when
+  // storage is blocked. Only explicit panel changes update it; game hiding does not.
+  let shared = null;
   const create = ({ lootEnabled, signal }) => {
     const root = document.getElementById("sheet"), parent = root.parentElement;
     const content = root.querySelector(".sheet-content"), nav = root.querySelector(".sheet-panels"), footer = root.querySelector(".sheet-foot");
     const panels = [...content.children], templates = [...nav.children].map((tab) => tab.cloneNode(true));
     const windows = [], listeners = [], bottom = window.matchMedia("(width < 1140px)");
     let serial = 0, gesture = null, mergeTarget = null, suppressClick = false, hidden = false, folded = false, disposed = false, lootCount = 0, saveTimer = 0;
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(KEY)); } catch { /* Storage may be unavailable. */ }
-    const available = (name) => NAMES.includes(name) && (name !== "loot" || lootEnabled) && (name !== "chat" || BL.net.state.backend);
+    if (!shared) {
+      try { shared = JSON.parse(localStorage.getItem(KEY)); } catch { /* Storage may be unavailable. */ }
+    }
+    const saved = shared;
+    folded = saved?.folded === true;
+    // The live players tab is for signed-in visitors only (players.js).
+    const available = (name) => NAMES.includes(name) && (name !== "loot" || lootEnabled) && (name !== "chat" || BL.net.state.backend)
+      && (name !== "players" || !!BL.net.state.me);
     const isOpen = (w) => !folded && w.open && available(w.tab);
     const ownerOf = (name) => windows.find((w) => w.tab === name && (w.open || w.rect));
     const notify = () => document.dispatchEvent(new Event("sheetchange"));
@@ -31,10 +60,9 @@
     const save = () => {
       window.clearTimeout(saveTimer); saveTimer = 0;
       if (disposed) return;
-      try {
-        localStorage.setItem(KEY, JSON.stringify({ open: main.open, tab: main.tab,
-          height: savedHeight, rect: main.rect, dock: main.dock, windows: windows.filter((w) => w !== main).map((w) => ({ open: w.open, tab: w.tab, rect: w.rect, dock: w.dock })) }));
-      } catch { /* Storage may be unavailable. */ }
+      shared = { open: main.open, tab: main.tab, folded,
+        height: savedHeight, rect: main.rect, dock: main.dock, windows: windows.filter((w) => w !== main).map((w) => ({ open: w.open, tab: w.tab, rect: w.rect, dock: w.dock })) };
+      try { localStorage.setItem(KEY, JSON.stringify(shared)); } catch { /* Storage may be unavailable. */ }
     };
     const scheduleSave = () => {
       if (!disposed && !saveTimer) saveTimer = window.setTimeout(save, 100);
@@ -50,7 +78,7 @@
     };
     const fit = (w) => {
       w.node.dataset.open = String(isOpen(w));
-      // Only the untouched launcher and temporary scene fold use the default edge.
+      // Only the untouched launcher and a folded panel use the default edge.
       // Keep the open rectangle; CSS slides the whole panel and rail to its edge.
       if (!w.rect || w.node === root && folded) {
         for (const name of ["left", "top", "width", "height"]) w.node.style.removeProperty(name);
@@ -122,12 +150,17 @@
       // Keep those saved panels so a temporary absence never deletes a layout.
       if (rect && NAMES.includes(entry.tab) && !ownerOf(entry.tab)) addWindow(entry.tab, rect, entry.dock, entry.open !== false);
     }
-    const showLootCount = () => {
-      for (const w of windows) {
-        const badge = w.nav.querySelector(".tab-count");
-        badge.hidden = lootCount === 0; badge.textContent = String(lootCount);
+    // Each counted tab's badge, in every window; a tab's name reads its count too, as the badge itself is not read.
+    const showCounts = () => {
+      for (const w of windows) for (const badge of w.nav.querySelectorAll(".tab-count")) {
+        const tab = badge.closest("[data-tab]"), name = tab.dataset.tab, count = name === "loot" ? lootCount : badges[name] || 0;
+        const text = count > 99 ? "99+" : String(count), label = tab.dataset.label || (tab.dataset.label = tab.getAttribute("aria-label"));
+        if (badge.hidden !== !count) badge.hidden = !count;
+        if (badge.textContent !== text) badge.textContent = text;
+        if (name !== "loot") tab.setAttribute("aria-label", count ? `${label}, ${text} new` : label);
       }
     };
+    paintBadges = showCounts;
     const refresh = () => {
       for (const panel of panels) {
         // Retain the selected content during the closing slide. The closed body
@@ -143,7 +176,9 @@
         for (const tab of w.tabs) {
           const name = tab.dataset.tab, selected = open && name === w.tab;
           const owner = ownerOf(name);
-          tab.hidden = !available(name) || !folded && !!owner && owner !== w;
+          // The main rail launches unowned tabs; detached rails keep only their own.
+          // A temporary fold gathers every available tab back onto the main rail.
+          tab.hidden = !available(name) || !folded && (owner ? owner !== w : w !== main);
           tab.setAttribute("aria-selected", String(selected)); tab.tabIndex = selected || !open && !tab.hidden && !index ? 0 : -1;
           tab.setAttribute("aria-controls", `${name}-panel`);
           tab.title = selected ? w === main ? "Click to close · drag to move" : "Click to close · drag to move or drop onto another panel to merge"
@@ -157,7 +192,7 @@
         w.body.inert = !open || w.node.hidden;
         w.body.setAttribute("aria-hidden", String(w.body.inert));
       }
-      placeFooter(); showLootCount();
+      placeFooter(); showCounts();
       notify();
     };
     const close = (w) => {
@@ -332,19 +367,20 @@
     on(window, "resize", layout); on(bottom, "change", layout);
     if (window.visualViewport) { on(window.visualViewport, "resize", layout); on(window.visualViewport, "scroll", layout); }
     on(window, "pagehide", () => { finish(); save(); });
-    let backend = BL.net.state.backend;
+    let backend = BL.net.state.backend, signedIn = !!BL.net.state.me;
     const unsubscribe = BL.net.subscribe(() => {
-      if (backend === BL.net.state.backend) return;
+      if (backend === BL.net.state.backend && signedIn === !!BL.net.state.me) return;
       backend = BL.net.state.backend;
+      signedIn = !!BL.net.state.me;
       finish();
       refresh(); save();
     });
     refresh();
     for (let i = 0; i < windows.length; i++) windows[i].node.style.zIndex = String(13 + i);
     return {
-      setLootCount(count) { lootCount = count; showLootCount(); },
+      setLootCount(count) { lootCount = count; showCounts(); },
       selectTab(name) { select(ownerOf(name) || main, name); },
-      fold() { finish(); folded = true; if (document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); },
+      fold() { finish(); folded = true; if (document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); save(); },
       escape() {
         const w = [...windows].reverse().find((w) => !w.node.hidden && w.node.dataset.open === "true" && w.node.getClientRects().length);
         if (!w) return false;
@@ -353,6 +389,7 @@
       setHidden(on) { finish(); hidden = !!on; if (hidden && document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); },
       dispose() {
         finish(); save(); disposed = true; observe.disconnect(); unsubscribe();
+        if (paintBadges === showCounts) paintBadges = null;
         for (const off of listeners) off();
         listeners.length = 0;
         for (const panel of panels) { content.append(panel); panel.hidden = panel.dataset.panel !== main.tab; }
@@ -366,5 +403,5 @@
       }
     };
   };
-  BL.sheet = { create, visible, tabFor };
+  BL.sheet = { create, visible, tabFor, setBadge, watchViews, attending };
 })();
