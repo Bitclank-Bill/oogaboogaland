@@ -459,7 +459,7 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
   sooner, once the rider is within 220 m, and slowly, over 20 s, a thin, weak rope under its cap as its tip reaches the
   course that is wide and strong by the time its tip reaches the bottom, then stays down until the rider is past it;
   there is one for each of its spots, any of them up at once, each cap brewing from the run's start 75 m over the
-  clouds, where a rider coming down sees it; its spots fall anywhere within 10% of 22%, 50% and 78% of the way down and
+  clouds, where a rider coming down sees it come out of the haze within 260 m; its spots fall anywhere within 10% of 22%, 50% and 78% of the way down and
   8–36 m off to the side, one too near the rider moving on ahead; and a guide card introduces it the first time a
   session plays the level.* (The plan had: storm haze
   with `fogNear` 70 m and `fogFar` 260 m.)

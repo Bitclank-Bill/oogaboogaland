@@ -42,6 +42,10 @@
   // How much of it the brewing cap shows, as a share of its length, and how brightly it glows while it brews (and,
   // a little, once down), so it stands out against the storm's grey.
   const BREW = 0.14, BREW_GLOW = 1.2, DOWN_GLOW = 0.4;
+  // It shows through the haze only near the eye: within `SEEN[0]` (m, across) it takes `PIERCE` of the haze off itself,
+  // easing to none by `SEEN[1]`, past which the haze hides it as it does a cloud and it is not drawn, so the tornadoes
+  // further down the course come out of the storm only as the rider nears them.
+  const PIERCE = 0.75, SEEN = [200, 260];
   // Its hold on the clouds (the course's `whirl`): how far it reaches past its own side, the speed at its side, and
   // how fast it draws a cloud in toward it and lifts it (m/s).
   const REACH = 22, SPEED = 10, DRAW = 3, RISE = 2.5;
@@ -68,7 +72,7 @@
       if (r <= edge) v.set(x, 0, z, r > edge - 1.3 || rand() < 0.25 ? 1 : 0);
     }
     const g = M.voxelGeometry(v, { unit: 1, palette: BANDS[b].tones, origin: { x: 0, y: -0.5, z: 0 }, emissive: { 0: 0.24, 1: 0.3 } });
-    g.castShadow = false; g.fogPierce = 0.75;
+    g.castShadow = false; g.fogPierce = PIERCE;
     return g;
   });
   // A streak of spray whipped round the funnel, one unit long along x.
@@ -120,7 +124,7 @@
     const away = (px, pz) => Math.hypot(goalX - px, goalZ - pz);
     let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0;
     let ax = 0, az = 0, vx = 0, vz = 0, dirX = 1, dirZ = 0, top = 0, band = 0, flashAt = -1, flashNext = 0, strength = 0, reveal = 0, rope = 1, grow = 0;
-    let girth = THIN, power = WEAK;
+    let girth = THIN, power = WEAK, seen = 1;
     // Where it roams round (`home`), its heading to start from and its wander's own clock and phases; and its
     // lightning: the next strike, the last and how bright that one's flash is where the eye stands.
     let homeX = 0, homeZ = 0, heading = 0, wander = 0, w1 = 0, w2 = 0, strikeNext = 0, strikeAt = -1, strikeLevel = 0;
@@ -152,7 +156,7 @@
       const foot = band - 55, h = top + 6 - foot;
       for (let i = 0; i < bolts.length; i++) {
         const b = bolts[i], a = Math.random() * TAU, r = STRIKE_OFF[0] + Math.random() * (STRIKE_OFF[1] - STRIKE_OFF[0]);
-        b.visible = i === 0 || Math.random() < 0.4;
+        b.visible = seen > 0 && (i === 0 || Math.random() < 0.4);
         b.position.x = ax + Math.cos(a) * r; b.position.y = foot; b.position.z = az + Math.sin(a) * r;
         b.scale.x = b.scale.z = h * 1.3; b.scale.y = h; b.rotation.y = Math.random() * TAU;
       }
@@ -225,6 +229,8 @@
       draw(eye);
     };
     const draw = (eye) => {
+      // How much it shows through the haze from the eye.
+      seen = 1 - ease((Math.hypot(ax - eye.x, az - eye.z) - SEEN[0]) / (SEEN[1] - SEEN[0]));
       // Lightning flickers in the cap now and then while it gathers and while it is down.
       if (clock >= flashNext && state !== FADING) { flashAt = clock; flashNext = clock + 0.8 + rand() * 1.6; }
       const flash = flashAt < 0 ? 0 : Math.max(0, 1 - (clock - flashAt) / 0.18), thick = LENGTH / LAYERS;
@@ -247,7 +253,7 @@
         d[o + 12] = CENTRE.x + Math.cos(a) * sway; d[o + 13] = top - u * LENGTH; d[o + 14] = CENTRE.z + Math.sin(a) * sway; d[o + 15] = 1;
         d[o + 16] = 1 + (state === FORMING ? BREW_GLOW * grow : DOWN_GLOW * rope) + (u < 0.16 ? flash * 2.5 : 0);
       }
-      for (let b = 0; b < batches.length; b++) { batches[b].instanceVersion++; batches[b].visible = true; }
+      for (let b = 0; b < batches.length; b++) { batches[b].instanceVersion++; batches[b].visible = seen > 0; batches[b].geometry.fogPierce = PIERCE * seen; }
       // Spray whipped round just off its side, only where it has come down.
       const sd = spray.instanceData;
       for (let i = 0, o = 0; i < STREAKS; i++, o += 20) {
@@ -262,7 +268,7 @@
         sd[o + 8] = ca * show; sd[o + 9] = 0; sd[o + 10] = sa * show;
         sd[o + 12] = CENTRE.x + ca * r; sd[o + 13] = top - u * LENGTH + Math.sin(clock * 1.7 + i) * 0.6; sd[o + 14] = CENTRE.z + sa * r; sd[o + 15] = 1;
       }
-      spray.instanceVersion++; spray.visible = STREAKS > 0;
+      spray.instanceVersion++; spray.visible = STREAKS > 0 && seen > 0;
     };
     // A run begins: `seed` its course's, from which its spots are laid on `course` toward `finish`; `clear` ends any
     // tornado at once and brews no more.
