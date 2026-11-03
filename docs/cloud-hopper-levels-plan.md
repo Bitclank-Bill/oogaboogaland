@@ -480,9 +480,10 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
 - **No physics changes.** No slippery surfaces. *Since built:* L3 has two gusts of wind a run
   (`cloud-hopper-gust.js`, its layout's `gusts`), each at a seeded share of the way down, one in
   each half, from a seeded side straight across the course: a 2.5 s warning (an edge band with
-  chevrons on the side it comes from, a rising whoosh, faint streaks), then 3 s of wind pushing
-  an airborne rider across at up to 9 m/s² and sliding a planted one at up to 2.4 m/s, so standing
-  still carries a rider off its cloud while walking against it holds. It has its own guide card.
+  chevrons on the side it comes from, a rising whoosh, faint streaks, the wind rising to 30% of
+  its push), then 3 s of wind pushing an airborne rider across at up to 22 m/s² and sliding a
+  planted one at up to 6 m/s, so standing still carries a rider off its cloud while walking
+  against it holds. It has its own guide card.
 - **Music.** *Built.* Each level has its own score in `cloud-hopper-music.js`, written for
   its sky: Coconut Breeze (L1, bright tropical pluck-pop), Golden Hour Groove (L2, upbeat
   sunset disco-synthwave), Cloudbreak Sprint (L3, the original trance score) and Thunderhead Run

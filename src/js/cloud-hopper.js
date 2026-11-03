@@ -33,11 +33,11 @@
   // rad/s) until a replay or exit; `SWEPT_HOLD` s after it gets there the run is lost. The view draws back `SWEPT_OUT` m outside the
   // funnel's side and rises after the Ooga, `SWEPT_BEHIND` m under it and never nearer the top than `SWEPT_UNDER` m
   // under it, turning up to follow it. Its roar is heard within `WHIRL_HEARD` of its axis.
-  // A gust (Aurora Heights') pushes an airborne Ooga across the course at up to GUST_PUSH m/s², a drift of about 6 m/s
-  // against the air's own drag, which steering can lean into. One standing on a cloud slides with it more gently, easing
-  // toward GUST_SLIDE m/s at GUST_GRIP a second, enough to carry one that just stands there off the cloud's edge but not
-  // one walking against it.
-  const GUST_PUSH = 9, GUST_SLIDE = 2.4, GUST_GRIP = 3;
+  // A gust (Aurora Heights') pushes an airborne Ooga across the course at up to GUST_PUSH m/s², a drift of about 15 m/s
+  // against the air's own drag, faster than steering can lean into it. One standing on a cloud slides with it more
+  // gently, easing toward GUST_SLIDE m/s at GUST_GRIP a second, enough to carry one that just stands there off the
+  // cloud's edge but not one walking against it (7.75 m/s).
+  const GUST_PUSH = 22, GUST_SLIDE = 6, GUST_GRIP = 3;
   const WHIRL_TAKE = 18, WHIRL_LET_GO = 22, WHIRL_PULL = 7, WHIRL_SPIN = 12, WHIRL_LIFT = 5, WHIRL_GRIP = 10, WHIRL_HEARD = 110;
   const SWEPT_DWELL = 0.15, SWEPT_DRAW = 0.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
   const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
