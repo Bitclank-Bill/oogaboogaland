@@ -28,3 +28,5 @@ jobs:
         run: npm run test:unit
       - name: Check shared Cloud Hopper replay publication and playback
         run: node --test worker/test/cloud-hopper-replays.test.mjs worker/test/highscores.test.mjs
+      - name: Check shared chalkboard persistence and protocol
+        run: node --test worker/test/chalk.test.mjs worker/test/protocol.test.mjs
