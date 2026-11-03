@@ -110,6 +110,7 @@
   const chatIdValid = (id) => typeof id === "string" && id.length > 0 && id.length <= 64 && !/[^\w-]/.test(id);
   const DOOR_NAME = /^[a-z0-9-]{1,24}$/;
   const subscribers = new Set();
+  const highscoreSubscribers = new Set();
   const doorSubscribers = new Set();
   const rosterSubscribers = new Set();
   const moveSubscribers = new Set();
@@ -125,7 +126,7 @@
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
   const offline = new URLSearchParams(location.search);
-  const state = { backend: false, me: null, donations: false, tess: false, highscores: false, logoutEpoch: 0, started: false,
+  const state = { backend: false, me: null, donations: false, tess: false, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, blendTo: null, blendT: 0 };
@@ -284,7 +285,9 @@
     } catch {
       return;
     }
-    if (msg.t === "studio-mic-revoked") {
+    if (msg.t === "highscore") {
+      if (state.room === "live") for (const fn of highscoreSubscribers) fn(msg.board);
+    } else if (msg.t === "studio-mic-revoked") {
       BL.voice.dropMic();
     } else if (msg.t === "studio-state") {
       const previous = state.studio, incoming = msg.state;
@@ -527,6 +530,7 @@
       state.donations = data.donations === true;
       state.tess = data.tess === true;
       state.highscores = data.highscores === true;
+      state.highscoreSnapshots = data.highscoreSnapshots === true;
       state.resolved = data.player === null || !!state.me;
       if (state.me) {
         BL.contributors.addTemporary(data.character, state.me.login);
@@ -933,6 +937,7 @@
     return () => presenceSubscribers.delete(fn);
   };
 
+  const subscribeHighscores = fn => { highscoreSubscribers.add(fn); return () => highscoreSubscribers.delete(fn); };
   const subscribeStudio = fn => { studioSubscribers.add(fn); return () => studioSubscribers.delete(fn); };
   const studioCommand = (action, fields = {}) => {
     if (state.room !== "live") return false;
@@ -946,6 +951,7 @@
     window.clearTimeout(retryTimer);
     window.clearTimeout(hiddenTimer);
     subscribers.clear();
+    highscoreSubscribers.clear();
     rosterSubscribers.clear();
     moveSubscribers.clear();
     studioSubscribers.clear();
@@ -958,5 +964,5 @@
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePrivate, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePrivate, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
