@@ -79,9 +79,10 @@ import "../../src/js/voice-blend.js";
 // Private (#188): two players agree to talk (an invite, then its accept) and the room relays each `data` frame from
 // one to the other while both still hold the conversation, answering `ok` once it went. A frame is base64 the room
 // cannot read, sealed and opened with a one-time pad the two swapped outside Ooga (src/js/one-time-pad.js); it is
-// never kept, stored or logged. One conversation at a time, PM_INVITES invites out at most, a block lasts the
-// socket's life (PM_BLOCKS ids), and the conversation ends when either page leaves. A pm frame may run to
-// CHAT_FRAME_MAX as a chat frame does, with PM_DATA_MAX characters of frame.
+// never kept, stored or logged. One conversation at a time and PM_INVITES invites out at most. Blocks (PM_BLOCKS ids)
+// and the rate limits stay with the account across its reconnects while the room is awake, as chat's do. The
+// conversation ends when either page leaves. A pm frame may run to CHAT_FRAME_MAX as a chat frame does, with
+// PM_DATA_MAX characters of frame.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -133,14 +134,16 @@ export const CHAT_FRAME_MAX = 1024;
 // Private conversations (see Private above).
 export const PM_FEATURE = "pm-v1";
 export const PM_PREFIX = '{"t":"pm",';
-// The page's largest frame: a 25-byte header, a 480-byte line and a 32-byte tag, 537 bytes, is 716 base64 characters.
-export const PM_DATA_MAX = 720;
+// The page's largest frame: a 29-byte header, a 480-byte line and a 32-byte tag, 541 bytes, is 724 base64 characters.
+export const PM_DATA_MAX = 724;
 export const PM_HZ = 2;
 export const PM_BURST = 6;
 export const PM_INVITE_HZ = 0.2;
 export const PM_INVITE_BURST = 3;
 export const PM_INVITES = 4;
 export const PM_BLOCKS = 32;
+// Accounts whose blocks and rate limits the room keeps across their reconnects while it is awake, as chat's buckets.
+export const PM_ACCOUNT_KEEP = MAX_PLAYERS * 2;
 const PM_OPS = ["invite", "accept", "decline", "block", "end"];
 const PM_DATA = /^[A-Za-z0-9+/]+={0,2}$/;
 // The Sphere's one exterior doorway is a short, server-leased FIFO. Room door transits are independent

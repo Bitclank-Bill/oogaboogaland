@@ -110,7 +110,7 @@ test("room: an invite and its accept open one conversation, whose frames reach t
   assert.equal(last(a).reason, "closed", "an ended conversation passes nothing");
 });
 
-test("room: a decline and a block answer the inviter, a block refuses them for the socket's life, and a leave ends it all", async () => {
+test("room: a decline and a block answer the inviter, a block refuses them both ways, and a leave ends it all", async () => {
   const h = harness();
   const a = await h.join(1, "a"), b = await h.join(2, "b"), c = await h.join(3, "c");
   h.send(c, { t: "pm", op: "invite", to: 1 });
@@ -138,4 +138,20 @@ test("room: a decline and a block answer the inviter, a block refuses them for t
   h.leave(b);
   assert.deepEqual(last(a), { t: "pm", op: "closed", from: 2, reason: "left" });
   assert.equal(h.room.players.get(1).pm.open, 0);
+});
+
+test("room: a block and a spent invite rate stay with the account across its reconnects while the room is awake", async () => {
+  const h = harness();
+  const a = await h.join(1, "a"); await h.join(2, "b"); const c = await h.join(3, "c");
+  h.send(a, { t: "pm", op: "block", to: 3 });
+  const a2 = await h.join(1, "a");
+  assert.equal(a.closed?.reason, "replaced", "the older socket is replaced");
+  h.send(c, { t: "pm", op: "invite", to: 1 });
+  assert.equal(last(c).reason, "unavailable", "the block outlived the reconnect");
+  // Three invites spend the burst; a reconnect does not refill it.
+  for (let i = 0; i < 3; i++) h.send(a2, { t: "pm", op: "invite", to: 2 });
+  await h.join(1, "a");
+  const a3 = h.room.players.get(1).ws;
+  h.send(a3, { t: "pm", op: "invite", to: 2 });
+  assert.equal(last(a3).reason, "rate", "the rate outlived the reconnect");
 });

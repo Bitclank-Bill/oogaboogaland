@@ -2,37 +2,48 @@
 // file two people swap outside Ooga, how a message is sealed and opened with it, and this device's record of how much
 // of it is used. private-chat.js shows a conversation; the room only relays sealed frames (docs/auth-and-presence.md).
 // The pad file: "OOGAPAD1", a 16-byte pad id, the two GitHub logins it was made for (lower case, the first is sender
-// 0), then the material: CHECK bytes that only feed the fingerprint, and two equal halves, one for each sender, so the
-// two directions never share a byte. Nothing here certifies that a file's bytes are random; `make` fills them from
-// crypto.getRandomValues.
-// A frame: version, type, pad id, direction (the sender's half), offset into that half (u32) and text length (u16),
-// then the text XORed with fresh pad bytes and an HMAC-SHA256 tag over all of it. The tag's key is the KEY bytes at
-// the offset and the text's pad follows them, so every frame uses KEY + length bytes nobody used before, and the
-// next offset in that half starts after them. HMAC with a fresh random key per message stops anyone without the pad
-// from altering a frame or making one up; the pad alone would only hide it. Lengths and timing still show.
-// The record (`ledger`): per pad and sender, where this device sends next and how far it has read the other half,
-// kept in localStorage and changed under a Web Lock so two tabs never take the same bytes. A range is written as used
-// before it is sealed, so a crash, a refused send or a retry never seals new text with it: a retry resends the same
-// frame while nothing was sealed after it, and otherwise seals the same text on fresh bytes. A record that cannot be read or written stops the pad. The pad itself is never stored.
-// A conversation (`session`) starts with a hello from each side carrying how far it has read the other's half; a side
-// whose own record is behind that, or whose partner sends from a range already read, has used the pad before on
-// another device or a restored profile, and the pad must be replaced. Exports PAD (sizes), make, parse, roleOf,
-// fingerprint, seal, open, ledger, session.
+// 0), then the material in two equal halves, one for each sender, so the two directions never share a byte. Each half
+// is a key region of KEY-byte slots (KEY_SHARE of it) and a stream region, so no byte is ever both a tag's key and
+// pad for text: knowing a line's text tells nobody a key. Nothing here certifies that a file's bytes are random; `make`
+// fills them from crypto.getRandomValues. The fingerprint and the digest the two sides compare are SHA-256 of the
+// whole file, so a copy cut short or changed anywhere shows.
+// A frame: version, type, pad id, direction (the sender's half), key slot (u32), stream offset (u32) and body length
+// (u16), then the body and an HMAC-SHA256 tag over all of it keyed by that slot's KEY bytes, each slot used once. A
+// text's body is its UTF-8 XORed with the stream bytes at the offset, each used once; a hello's or an ack's body is
+// plain and uses no stream at all. The tag stops anyone without the pad from altering a frame or making one up; the
+// pad hides the text. Lengths and timing still show.
+// The record (`ledger`): per pad and sender, the next slot and stream offset this device sends from, how far it has
+// read the other half, and a stop, kept in localStorage and changed under a Web Lock so two tabs never take the same
+// bytes. Slot and bytes are written as used before anything is sealed with them, so a crash, a refused send or a retry
+// never seals new text on them: a retry resends the same frame while nothing was sealed after it, and otherwise seals
+// the same text on fresh bytes. A record that cannot be read or written stops the pad; one that is missing is a new pad
+// only when the visitor says so (`start({ fresh })`), because a browser that lost its storage would otherwise use the
+// pad again from the start. The pad itself is never stored.
+// A conversation (`session`): each side sends a hello with a fresh random nonce and the file's digest, and answers the
+// other's hello with an ack carrying that nonce and how far it has read the sender's half, by its record. A side is
+// ready only on an ack to its own nonce, so no recorded ack can be replayed, and only if the other side has read no
+// further than this device had sent before its hello: otherwise this device's record is behind (the pad was used
+// before, on another device or a restored profile), the stop is recorded and the pad never starts here again. A
+// different file stops at the digest. Frames the session has already read past are dropped, never shown. `close`
+// ends a session before its pad is zeroed; nothing in flight seals or reads after it. Exports PAD (sizes), TYPE,
+// make, parse, roleOf, digest, fingerprint, seal, open, ledger, session.
 (() => {
   "use strict";
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
   const MAGIC = [79, 79, 71, 65, 80, 65, 68, 49];
-  const ID = 16, CHECK = 32, KEY = 32, TAG = 32, HEAD = 25, VERSION = 1;
+  const ID = 16, KEY = 32, TAG = 32, HEAD = 29, VERSION = 1, NONCE = 16, DIGEST = 16;
   // The whole material: enough for a few dozen lines each way, and no more than a phone reads into memory with ease.
   const MIN = 4096, MAX = 64 * 1024 * 1024;
-  const TYPE = { hello: 1, text: 2 };
+  // A key slot per frame and the text's own bytes: about two in five of a half for keys suits lines of 50 bytes or so.
+  const KEY_SHARE = 0.4;
+  const TYPE = { hello: 1, ack: 2, text: 3 };
   // A line is chat-policy's 160 UTF-16 units at most: 480 bytes of UTF-8 (a pair of units is 4 bytes, one unit 3 at most).
-  const TEXT_BYTES = 480, HELLO_BYTES = 4;
+  const TEXT_BYTES = 480, HELLO_BODY = NONCE + DIGEST, ACK_BODY = NONCE + DIGEST + 8;
   const SIZES = [256 * 1024, 1024 * 1024, 16 * 1024 * 1024];
   const LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/;
   const STORE = "oogaboogaland.pad.";
-  const RECENT = 32, OUTBOX = 32;
+  const OUTBOX = 32;
   const fail = (code) => Object.assign(new Error(code), { code });
   const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   const encoder = new TextEncoder(), decoder = new TextDecoder("utf-8", { fatal: true });
@@ -53,10 +64,10 @@
     const head = MAGIC.length + ID + 2 + names[0].length + names[1].length;
     const out = new Uint8Array(head + size);
     out.set(MAGIC, 0);
-    // getRandomValues fills 65536 bytes a call at most.
-    for (let i = MAGIC.length; i < MAGIC.length + ID; i += 65536) random(out.subarray(i, Math.min(MAGIC.length + ID, i + 65536)));
+    random(out.subarray(MAGIC.length, MAGIC.length + ID));
     let at = MAGIC.length + ID;
     for (const name of names) { out[at++] = name.length; out.set(name, at); at += name.length; }
+    // getRandomValues fills 65536 bytes a call at most.
     for (let i = head; i < out.length; i += 65536) random(out.subarray(i, Math.min(out.length, i + 65536)));
     return out;
   };
@@ -80,10 +91,13 @@
     const size = bytes.length - at;
     if (size < MIN) throw fail("short");
     if (size > MAX) throw fail("size");
-    const half = (size - CHECK) >> 1, start = at + CHECK;
+    const half = size >> 1, keys = Math.floor(half * KEY_SHARE / KEY) * KEY;
+    const halves = [0, 1].map((k) => {
+      const start = at + k * half;
+      return { keys: bytes.subarray(start, start + keys), stream: bytes.subarray(start + keys, start + half), slots: keys / KEY };
+    });
     const id = bytes.subarray(MAGIC.length, MAGIC.length + ID);
-    return { id, idHex: hex(id), logins, head: bytes.subarray(0, at), check: bytes.subarray(at, start),
-      halves: [bytes.subarray(start, start + half), bytes.subarray(start + half, start + 2 * half)] };
+    return { bytes, id, idHex: hex(id), logins, halves };
   };
 
   /** Which half `me` sends from, talking to `peer`: 0 or 1; `not-you` or `not-peer` when the pad was made for others. */
@@ -94,58 +108,63 @@
     return pad.logins[0] === a ? 0 : 1;
   };
 
+  /** SHA-256 of the whole file: its first DIGEST bytes go in each hello and ack, and `fingerprint` shows it. */
+  const digest = async (subtle, pad) => new Uint8Array(await subtle.digest("SHA-256", pad.bytes));
   /** What two people compare outside Ooga to know they hold the same file: 20 hex digits in groups of four. */
-  const fingerprint = async (subtle, pad) => {
-    const joined = new Uint8Array(pad.head.length + pad.check.length);
-    joined.set(pad.head, 0); joined.set(pad.check, pad.head.length);
-    const digits = hex(new Uint8Array(await subtle.digest("SHA-256", joined)).subarray(0, 10));
-    return digits.match(/.{4}/g).join(" ");
-  };
+  const fingerprint = (sum) => hex(sum.subarray(0, 10)).match(/.{4}/g).join(" ");
 
   const tagOf = async (subtle, key, data) => {
     const k = await subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     return new Uint8Array(await subtle.sign("HMAC", k, data));
   };
 
-  /** A sealed frame of `type` carrying `plain`, sent from half `role` at `offset`, which the caller has recorded as used. */
-  const seal = async (subtle, pad, role, offset, type, plain) => {
-    const half = pad.halves[role], len = plain.length;
+  /** A sealed frame of `type` from half `role`, keyed by `slot` and, for text, padded from `offset`: slot and bytes the
+   * caller has recorded as used. A text's body is XORed before the first await, a control body is copied as is. */
+  const seal = async (subtle, pad, role, slot, offset, type, body) => {
+    const half = pad.halves[role], len = body.length, text = type === TYPE.text;
     if (len > TEXT_BYTES) throw fail("long");
-    if (!Number.isInteger(offset) || offset < 0 || offset + KEY + len > half.length) throw fail("exhausted");
+    if (!Number.isInteger(slot) || slot < 0 || slot >= half.slots) throw fail("exhausted");
+    if (!Number.isInteger(offset) || offset < 0 || text && offset + len > half.stream.length) throw fail("exhausted");
     const frame = new Uint8Array(HEAD + len + TAG), view = new DataView(frame.buffer);
     frame[0] = VERSION; frame[1] = type; frame.set(pad.id, 2); frame[18] = role;
-    view.setUint32(19, offset); view.setUint16(23, len);
-    const stream = half.subarray(offset + KEY, offset + KEY + len);
-    for (let i = 0; i < len; i++) frame[HEAD + i] = plain[i] ^ stream[i];
-    frame.set(await tagOf(subtle, half.subarray(offset, offset + KEY), frame.subarray(0, HEAD + len)), HEAD + len);
+    view.setUint32(19, slot); view.setUint32(23, offset); view.setUint16(27, len);
+    if (text) for (let i = 0; i < len; i++) frame[HEAD + i] = body[i] ^ half.stream[offset + i];
+    else frame.set(body, HEAD);
+    frame.set(await tagOf(subtle, half.keys.subarray(slot * KEY, slot * KEY + KEY), frame.subarray(0, HEAD + len)), HEAD + len);
     return frame;
   };
 
-  /** A frame from the other side opened, `{ ok: true, type, offset, next, plain, tag }`, or `{ ok: false, error }`:
-   * malformed, version, pad (another pad), direction (not the other side's half), range or auth (the tag fails). */
+  /** A frame from the other side opened, `{ ok: true, type, slot, offset, end, body }`, or `{ ok: false, error }`:
+   * malformed, version, pad (another pad), direction (not the other side's half), range or auth (the tag fails).
+   * Nothing is read from the stream before the tag checks out. */
   const open = async (subtle, pad, role, frame) => {
     if (!(frame instanceof Uint8Array) || frame.length < HEAD + TAG) return { ok: false, error: "malformed" };
     const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
-    const len = view.getUint16(23), offset = view.getUint32(19), dir = frame[18], type = frame[1];
-    if (frame.length !== HEAD + len + TAG || len > TEXT_BYTES || type !== TYPE.hello && type !== TYPE.text) return { ok: false, error: "malformed" };
+    const type = frame[1], dir = frame[18], slot = view.getUint32(19), offset = view.getUint32(23), len = view.getUint16(27);
+    const text = type === TYPE.text;
+    if (frame.length !== HEAD + len + TAG || len > TEXT_BYTES || !text && type !== TYPE.hello && type !== TYPE.ack
+      || type === TYPE.hello && len !== HELLO_BODY || type === TYPE.ack && len !== ACK_BODY) return { ok: false, error: "malformed" };
     if (frame[0] !== VERSION) return { ok: false, error: "version" };
     if (!same(frame.subarray(2, 18), pad.id)) return { ok: false, error: "pad" };
     if (dir !== 1 - role) return { ok: false, error: "direction" };
     const half = pad.halves[dir];
-    if (offset + KEY + len > half.length) return { ok: false, error: "range" };
-    const tag = frame.subarray(HEAD + len);
-    if (!same(await tagOf(subtle, half.subarray(offset, offset + KEY), frame.subarray(0, HEAD + len)), tag)) return { ok: false, error: "auth" };
-    const plain = new Uint8Array(len), stream = half.subarray(offset + KEY, offset + KEY + len);
-    for (let i = 0; i < len; i++) plain[i] = frame[HEAD + i] ^ stream[i];
-    return { ok: true, type, offset, next: offset + KEY + len, plain, tag: hex(tag) };
+    if (slot >= half.slots || text && offset + len > half.stream.length) return { ok: false, error: "range" };
+    const key = half.keys.subarray(slot * KEY, slot * KEY + KEY);
+    if (!same(await tagOf(subtle, key, frame.subarray(0, HEAD + len)), frame.subarray(HEAD + len))) return { ok: false, error: "auth" };
+    const body = frame.slice(HEAD, HEAD + len);
+    if (text) for (let i = 0; i < len; i++) body[i] ^= half.stream[offset + i];
+    return { ok: true, type, slot, offset, end: text ? offset + len : 0, body };
   };
 
   /** This device's record for one pad and sender. `store` is { get(key), set(key, value) } over localStorage, which may
-   * throw; `lock(name, fn)` runs fn alone across tabs (navigator.locks). Every method is async and throws an error
-   * with `code` storage (unwritable), record (unreadable) or exhausted. */
+   * throw; `lock(name, fn)` runs fn alone across tabs (navigator.locks). Every method is async and throws an error with
+   * `code`: storage (unwritable), record (unreadable), unrecorded (no record and not said to be new), exhausted, or the
+   * stop recorded earlier. */
   const ledger = (store, lock, pad, role) => {
-    const key = STORE + pad.idHex + "." + role, size = pad.halves[role].length, other = pad.halves[1 - role].length;
-    const valid = (r) => r && r.v === 1 && Number.isSafeInteger(r.send) && r.send >= 0 && r.send <= size && Number.isSafeInteger(r.recv) && r.recv >= 0 && r.recv <= other;
+    const key = STORE + pad.idHex + "." + role, mine = pad.halves[role], theirs = pad.halves[1 - role];
+    const int = (v, max) => Number.isSafeInteger(v) && v >= 0 && v <= max;
+    const valid = (r) => r && r.v === 1 && int(r.sk, mine.slots) && int(r.send, mine.stream.length) && int(r.rk, theirs.slots)
+      && int(r.recv, theirs.stream.length) && typeof r.stop === "string";
     const read = () => {
       let text;
       try { text = store.get(key); } catch { throw fail("storage"); }
@@ -156,72 +175,110 @@
       return r;
     };
     const write = (r) => {
-      const text = JSON.stringify({ v: 1, send: r.send, recv: r.recv });
+      const text = JSON.stringify({ v: 1, sk: r.sk, send: r.send, rk: r.rk, recv: r.recv, stop: r.stop });
       try { store.set(key, text); } catch { throw fail("storage"); }
       // Read it back: a storage that drops writes must stop the pad, not let it reuse bytes after a reload.
       let back;
       try { back = store.get(key); } catch { throw fail("storage"); }
       if (back !== text) throw fail("storage");
     };
+    const current = () => {
+      const r = read();
+      if (!r) throw fail("record");
+      if (r.stop) throw fail(r.stop);
+      return r;
+    };
+    const copy = (r) => ({ sk: r.sk, send: r.send, rk: r.rk, recv: r.recv });
     return {
-      size, other,
-      // The record, made on the first use of this pad as this sender.
-      start: () => lock(key, () => { const r = read() || { v: 1, send: 0, recv: 0 }; write(r); return { send: r.send, recv: r.recv }; }),
-      // `need` bytes of this side's half, written as used before anyone seals with them; the offset they start at.
-      reserve: (need) => lock(key, () => {
-        const r = read();
-        if (!r) throw fail("record");
-        if (r.send + need > size) throw fail("exhausted");
-        const offset = r.send;
-        r.send += need;
+      slots: mine.slots, size: mine.stream.length,
+      // The record, made on the first use of this pad as this sender only when `fresh` says the file was never used.
+      start: (fresh) => lock(key, () => {
+        let r = read();
+        if (!r) {
+          if (!fresh) throw fail("unrecorded");
+          r = { v: 1, sk: 0, send: 0, rk: 0, recv: 0, stop: "" };
+        }
+        if (r.stop) throw fail(r.stop);
         write(r);
-        return offset;
+        return copy(r);
+      }),
+      // A key slot, and for text `len` stream bytes, written as used before anyone seals with them.
+      reserve: (text, len) => lock(key, () => {
+        const r = current();
+        if (r.sk >= mine.slots || text && r.send + len > mine.stream.length) throw fail("exhausted");
+        const slot = r.sk, offset = r.send;
+        r.sk += 1;
+        if (text) r.send += len;
+        write(r);
+        return { slot, offset, sk: r.sk, send: r.send };
       }),
       // How far the other side's half has been read, which only grows.
-      received: (next) => lock(key, () => {
-        const r = read();
-        if (!r) throw fail("record");
-        if (next > r.recv) { r.recv = next; write(r); }
-        return r.recv;
+      received: (slot, end) => lock(key, () => {
+        const r = current();
+        if (slot + 1 > r.rk || end > r.recv) { r.rk = Math.max(r.rk, slot + 1); r.recv = Math.max(r.recv, end); write(r); }
+        return copy(r);
       }),
-      peek: () => lock(key, () => { const r = read(); return r ? { send: r.send, recv: r.recv } : null; }),
+      // A stop kept with the record, so this pad never starts on this device again.
+      stop: (code) => lock(key, () => { const r = read() || { v: 1, sk: 0, send: 0, rk: 0, recv: 0, stop: "" }; r.stop = code; write(r); }),
+      peek: () => lock(key, () => { const r = read(); return r ? { ...copy(r), stop: r.stop } : null; }),
     };
   };
 
-  /** One conversation on one pad: `send(frame, n)` hands a sealed frame to the room with a number to match its answer.
-   * `start()` checks the record and says hello; `say(text)` seals a line; `heard(frame)` opens one from the other side,
-   * one at a time in arrival order, and answers what it was: { kind: "hello" | "text" | "duplicate" | "dropped" |
-   * "stopped", text?, error? }. A stop (`stopped`: behind-here, behind-there, or a record code) ends the pad here. */
-  const session = ({ subtle, pad, role, ledger: book, send }) => {
-    const s = { ready: false, stopped: "", recv: 0, send: 0, sent: 0, size: book.size, remaining: book.size, outbox: new Map() };
-    const recent = [];
-    let queue = Promise.resolve(), serial = 0;
-    const stop = (code) => { if (!s.stopped) s.stopped = code; return { kind: "stopped", error: s.stopped }; };
-    const guarded = async (fn) => { try { return await fn(); } catch (e) { return stop(e && e.code || "error"); } };
-    const transmit = async (type, plain) => {
-      const offset = await book.reserve(KEY + plain.length);
-      s.send = offset + KEY + plain.length;
-      s.remaining = book.size - s.send;
-      const frame = await seal(subtle, pad, role, offset, type, plain), n = ++serial;
+  /** One conversation on one pad: `send(frame, n)` hands a sealed frame to the room with a number to match its answer;
+   * `sum` is the file's `digest`; `random(view)` fills a nonce. `start({ fresh })` checks the record and says hello;
+   * `say(text)` seals a line once ready; `heard(frame)` opens one from the other side, one at a time in arrival order,
+   * and answers what it was: { kind: "hello" | "ready" | "text" | "duplicate" | "dropped" | "closed" | "stopped",
+   * text?, error? }. A stop (`stopped`: behind-here, mismatch, or a record code) ends the pad here. */
+  const session = ({ subtle, pad, role, ledger: book, sum, random, send }) => {
+    const s = { ready: false, stopped: "", closed: false, sent: 0, size: book.size, remaining: book.size, slotsLeft: book.slots,
+      outbox: new Map() };
+    const mark = sum.subarray(0, DIGEST), nonce = new Uint8Array(NONCE);
+    let queue = Promise.resolve(), serial = 0, rk = 0, recv = 0, before = null;
+    const stop = async (code, keep) => {
+      if (!s.stopped) s.stopped = code;
+      if (keep) try { await book.stop(code); } catch { /* The stop holds for this session either way. */ }
+      return { kind: "stopped", error: s.stopped };
+    };
+    const guarded = async (fn) => {
+      try { return await fn(); } catch (e) { return e && e.code === "closed" ? { kind: "closed" } : stop(e && e.code || "error"); }
+    };
+    const open_ = () => { if (s.closed) throw fail("closed"); };
+    const transmit = async (type, body) => {
+      open_();
+      const r = await book.reserve(type === TYPE.text, body.length);
+      open_();
+      s.remaining = book.size - r.send; s.slotsLeft = book.slots - r.sk;
+      // `seal` XORs before its first await, and `close` comes before the pad is zeroed: no frame is sealed on zeros.
+      const frame = await seal(subtle, pad, role, r.slot, r.offset, type, body);
+      open_();
+      const n = ++serial;
       // Kept until the room answers ok, for a retry; the oldest unanswered go past OUTBOX.
-      s.outbox.set(n, { frame, type, plain });
+      s.outbox.set(n, { frame, type, body });
       if (s.outbox.size > OUTBOX) s.outbox.delete(s.outbox.keys().next().value);
       send(frame, n);
       return n;
     };
     const run = (fn) => (queue = queue.then(fn, fn));
     return Object.assign(s, {
-      start: () => run(() => guarded(async () => {
-        const r = await book.start();
-        s.recv = r.recv; s.send = r.send; s.remaining = book.size - r.send;
-        const hello = new Uint8Array(HELLO_BYTES);
-        new DataView(hello.buffer).setUint32(0, s.recv);
+      // `{ kind: "started" }`, `{ kind: "unrecorded" }` when this device has no record of the pad and was not told it is
+      // new (nothing is spent; start again with fresh), or stopped.
+      start: ({ fresh = false } = {}) => run(() => guarded(async () => {
+        let r;
+        try { r = await book.start(fresh); } catch (e) { if (e && e.code === "unrecorded") return { kind: "unrecorded" }; throw e; }
+        open_();
+        before = { sk: r.sk, send: r.send };
+        rk = r.rk; recv = r.recv;
+        s.remaining = book.size - r.send; s.slotsLeft = book.slots - r.sk;
+        random(nonce);
+        const hello = new Uint8Array(HELLO_BODY);
+        hello.set(nonce, 0); hello.set(mark, NONCE);
         await transmit(TYPE.hello, hello);
         return { kind: "started" };
       })),
-      // `{ kind: "sent", n }`, or `{ kind: "refused", error: "long" | "empty" }` for a line that cannot go, or stopped.
+      // `{ kind: "sent", n }`, or `{ kind: "refused", error: "long" | "empty" | "not-ready" }` for a line that cannot go.
       say: (text) => run(() => guarded(async () => {
         if (s.stopped) return { kind: "stopped", error: s.stopped };
+        if (!s.ready) return { kind: "refused", error: "not-ready" };
         const bytes = encoder.encode(text);
         if (!bytes.length) return { kind: "refused", error: "empty" };
         if (bytes.length > TEXT_BYTES) return { kind: "refused", error: "long" };
@@ -229,43 +286,59 @@
       })),
       // A send the room refused or never answered, again: `{ kind: "sent", n }` with the number it now goes under, or
       // `{ kind: "gone" }`. While it is the newest frame sealed it goes again unchanged, so a copy that did arrive is a
-      // repeat. Once a later frame has been sealed, that one may already have taken the other side past these bytes,
-      // which would read as a pad used before; the same text is sealed again on fresh bytes instead. A pad never
-      // carries new text on bytes it used, and the same text on two sets of bytes tells the room nothing.
+      // repeat. Once a later frame has been sealed, that one may already have taken the other side past it, so the same
+      // body is sealed again on a fresh slot and fresh bytes. Nothing new is ever sealed on a slot or bytes already
+      // used, and the same text on two sets of bytes tells the room nothing.
       retry: (n) => run(() => guarded(async () => {
         const entry = s.outbox.get(n);
-        if (!entry || s.stopped) return { kind: "gone" };
+        if (!entry || s.stopped || s.closed) return { kind: "gone" };
         if (n === serial) { send(entry.frame, n); return { kind: "sent", n }; }
         s.outbox.delete(n);
-        return { kind: "sent", n: await transmit(entry.type, entry.plain) };
+        return { kind: "sent", n: await transmit(entry.type, entry.body) };
       })),
-      delivered: (n) => { s.outbox.delete(n); s.sent++; },
+      delivered: (n) => { if (s.outbox.delete(n)) s.sent++; },
       heard: (frame) => run(() => guarded(async () => {
         if (s.stopped) return { kind: "stopped", error: s.stopped };
+        open_();
+        if (!before) return { kind: "dropped", error: "not-started" };
         const got = await open(subtle, pad, role, frame);
+        open_();
         if (!got.ok) return { kind: "dropped", error: got.error };
-        if (got.offset < s.recv) {
-          for (const r of recent) if (r.offset === got.offset && r.tag === got.tag) return { kind: "duplicate" };
-          // Genuine bytes from a range already read: the other side has used this pad before.
-          return stop("behind-there");
-        }
-        s.recv = await book.received(got.next);
-        recent.push({ offset: got.offset, tag: got.tag });
-        if (recent.length > RECENT) recent.shift();
+        const body = got.body, view = new DataView(body.buffer, body.byteOffset, body.byteLength);
         if (got.type === TYPE.hello) {
-          if (got.plain.length !== HELLO_BYTES) return { kind: "dropped", error: "malformed" };
-          // The other side has read further into this side's half than this device ever sent: its record is behind.
-          if (new DataView(got.plain.buffer).getUint32(0) > s.send) return stop("behind-here");
-          s.ready = true;
+          if (!same(body.subarray(NONCE, NONCE + DIGEST), mark)) return stop("mismatch");
+          // Answered even from a slot already read: a side whose record is behind learns it from this ack. A hello the
+          // room plays again only spends a slot here; nothing it carries is taken as fresh.
+          if (got.slot >= rk) { const r = await book.received(got.slot, recv); rk = r.rk; recv = r.recv; open_(); }
+          const ack = new Uint8Array(ACK_BODY), out = new DataView(ack.buffer);
+          ack.set(body.subarray(0, NONCE), 0); ack.set(mark, NONCE);
+          out.setUint32(NONCE + DIGEST, rk); out.setUint32(NONCE + DIGEST + 4, recv);
+          await transmit(TYPE.ack, ack);
           return { kind: "hello" };
         }
+        if (got.slot < rk || got.type === TYPE.text && got.offset < recv) return { kind: "duplicate" };
+        if (got.type === TYPE.ack) {
+          // Only an answer to this session's own hello counts; any other was recorded earlier and proves nothing now.
+          if (!same(body.subarray(0, NONCE), nonce)) return { kind: "duplicate" };
+          if (!same(body.subarray(NONCE, NONCE + DIGEST), mark)) return stop("mismatch");
+          const r = await book.received(got.slot, recv); rk = r.rk; recv = r.recv;
+          open_();
+          // Having read this side's hello, the other side should stand exactly one slot past where this device stood.
+          if (view.getUint32(NONCE + DIGEST) > before.sk + 1 || view.getUint32(NONCE + DIGEST + 4) > before.send) return stop("behind-here", true);
+          s.ready = true;
+          return { kind: "ready" };
+        }
+        const r = await book.received(got.slot, got.end); rk = r.rk; recv = r.recv;
+        open_();
         let text;
-        try { text = decoder.decode(got.plain); } catch { return { kind: "dropped", error: "malformed" }; }
+        try { text = decoder.decode(body); } catch { return { kind: "dropped", error: "malformed" }; }
         return { kind: "text", text };
       })),
+      // Ends the session: nothing waiting or in flight seals, sends or reads after this, so the pad may be zeroed.
+      close: () => { s.closed = true; s.ready = false; },
     });
   };
 
-  const PAD = Object.freeze({ MIN, MAX, KEY, TAG, HEAD, TEXT_BYTES, SIZES, STORE });
-  BL.oneTimePad = Object.freeze({ PAD, TYPE, make, parse, roleOf, fingerprint, seal, open, ledger, session });
+  const PAD = Object.freeze({ MIN, MAX, KEY, TAG, HEAD, TEXT_BYTES, SIZES, STORE, KEY_SHARE });
+  BL.oneTimePad = Object.freeze({ PAD, TYPE, make, parse, roleOf, digest, fingerprint, seal, open, ledger, session });
 })();

@@ -20,7 +20,8 @@
 // ring of the last CHAT_KEEP in memory alone, which a joiner gets after `welcome`. No durable chat storage: a room
 // that hibernates, restarts or is redeployed wakes with an empty ring, and the lines are gone.
 // Private conversations (#188): who invited whom, who talks to whom and whom each blocked live in the attachments
-// (`pm`), so a woken room keeps them; the frames pass straight through and are never kept.
+// (`pm`), so a woken room keeps them, and each account's blocks and rate limits outlive its reconnects while the room is
+// awake (`pmAccounts`); the frames pass straight through and are never kept.
 
 import { DurableObject } from "cloudflare:workers";
 import {
@@ -29,7 +30,7 @@ import {
   DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST,
   GHOST_MAGIC, GHOST_FRAME_MAX, GHOST_FRAME_HZ, GHOST_FRAME_BURST, inGhostArena, ghostCandidate,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
-  PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_INVITES, PM_BLOCKS,
+  PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
   BLEND, BLEND_HZ,
 } from "./protocol.js";
@@ -62,6 +63,7 @@ export class Room extends DurableObject {
     this.chatId = 0;
     this.chatAccepted = new Map();
     this.chatBuckets = new Map();
+    this.pmAccounts = new Map();
     this.doorQueue = [];
     this.doorActive = null;
     this.doorPasses = new Map();
@@ -314,6 +316,8 @@ export class Room extends DurableObject {
 
     const spawn = spawnPoint(this.spawnSlot++);
     const p = this.record(server, { ...who, connectionToken: crypto.randomUUID(), body: null, x: spawn.x, y: 0, z: spawn.z, yaw: spawn.yaw });
+    const kept = this.pmAccounts.get(p.id);
+    if (kept) p.pm.blocked = kept.blocked.slice();
     server.serializeAttachment(this.attachment(p));
     // An owner arriving takes either body back from whoever holds it.
     const own = ownedBody(CAST, p.login, p.contributor);
@@ -594,10 +598,10 @@ export class Room extends DurableObject {
   privateMessage(p, msg) {
     const now = p.seenAt, q = this.players.get(msg.to), to = msg.to;
     const tell = (x, m) => this.send(x.ws, { t: "pm", ...m });
+    const account = this.pmAccount(p);
     if (msg.op === "data") {
       if (!q || p.pm.open !== q.id || q.pm.open !== p.id) return tell(p, { op: "refused", to, n: msg.n, reason: "closed" });
-      if (!p.pmBucket) p.pmBucket = { tokens: PM_BURST, at: now };
-      if (!takeToken(p.pmBucket, PM_HZ, now, PM_BURST)) return tell(p, { op: "refused", to, n: msg.n, reason: "rate" });
+      if (!takeToken(account.data, PM_HZ, now, PM_BURST)) return tell(p, { op: "refused", to, n: msg.n, reason: "rate" });
       tell(q, { op: "data", from: p.id, d: msg.d });
       return tell(p, { op: "ok", to, n: msg.n });
     }
@@ -605,8 +609,7 @@ export class Room extends DurableObject {
       if (!q || q === p) return tell(p, { op: "refused", to, reason: "offline" });
       if (q.pm.blocked.includes(p.id) || p.pm.blocked.includes(q.id)) return tell(p, { op: "refused", to, reason: "unavailable" });
       if (p.pm.open || q.pm.open) return tell(p, { op: "refused", to, reason: "busy" });
-      if (!p.pmInviteBucket) p.pmInviteBucket = { tokens: PM_INVITE_BURST, at: now };
-      if (!takeToken(p.pmInviteBucket, PM_INVITE_HZ, now, PM_INVITE_BURST)) return tell(p, { op: "refused", to, reason: "rate" });
+      if (!takeToken(account.invite, PM_INVITE_HZ, now, PM_INVITE_BURST)) return tell(p, { op: "refused", to, reason: "rate" });
       // Two who invited each other are talking.
       if (q.pm.inv.includes(p.id)) return this.privateOpen(p, q);
       p.pm.inv = [...p.pm.inv.filter((id) => id !== q.id), q.id].slice(-PM_INVITES);
@@ -629,6 +632,7 @@ export class Room extends DurableObject {
         if (p.pm.open === to) this.privateClose(p, "ended");
         p.pm.inv = p.pm.inv.filter((id) => id !== to);
         p.pm.blocked = [...p.pm.blocked.filter((id) => id !== to), to].slice(-PM_BLOCKS);
+        account.blocked = p.pm.blocked.slice();
         this.saveAttachment(p);
       }
       return;
@@ -640,6 +644,18 @@ export class Room extends DurableObject {
       this.saveAttachment(p);
       if (q) tell(q, { op: "withdrawn", from: p.id });
     }
+  }
+
+  // An account's blocks and rate limits, kept across its reconnects while the room is awake. At PM_ACCOUNT_KEEP the
+  // oldest account no longer here makes room; a woken room starts afresh, with each socket's blocks in its attachment.
+  pmAccount(p) {
+    let a = this.pmAccounts.get(p.id);
+    if (!a) {
+      if (this.pmAccounts.size >= PM_ACCOUNT_KEEP) for (const id of this.pmAccounts.keys()) if (!this.players.has(id)) { this.pmAccounts.delete(id); break; }
+      a = { blocked: p.pm.blocked.slice(), data: { tokens: PM_BURST, at: p.seenAt }, invite: { tokens: PM_INVITE_BURST, at: p.seenAt } };
+      this.pmAccounts.set(p.id, a);
+    }
+    return a;
   }
 
   privateOpen(a, b) {

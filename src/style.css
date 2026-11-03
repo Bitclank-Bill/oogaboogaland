@@ -1421,6 +1421,8 @@ body[data-active-scene="hub"] .home-link {
 .pm-log .chat-row[data-own="true"] { border-left-color: rgba(122, 168, 232, 0.8); background: linear-gradient(90deg, rgba(90, 140, 220, 0.1), transparent 60%); }
 .pm-log .chat-row[data-own="true"] .chat-name { color: #cfe0ff; }
 .pm-log .chat-row[data-note="true"] .chat-text { color: rgba(243, 239, 228, 0.62); font-size: 10.5px; }
+/* The page's own notes carry no name, so a display name can never pass for one. */
+.pm-note-tag { color: rgba(243, 239, 228, 0.5); font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; }
 .pm-state { color: rgba(243, 239, 228, 0.5); font-size: 9px; white-space: nowrap; }
 .pm-state[data-failed="true"] { color: #ffb4a6; }
 .pm-retry { min-height: 22px; margin-left: 6px; padding: 0 6px; font-size: 8.5px; }

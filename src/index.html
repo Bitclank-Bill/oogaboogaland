@@ -512,12 +512,16 @@
               <button type="button" class="pm-button" id="pm-make">Make a pad</button>
             </span>
           </div>
-          <p class="pm-print" id="pm-print-line" title="The same digits on both sides mean the same pad file. Compare them outside Ooga." hidden>Check with <span id="pm-print-peer"></span>: <code id="pm-print"></code></p>
+          <div class="pm-actions" id="pm-confirm" hidden>
+            <button type="button" class="pm-button" id="pm-fresh">It's new: use it</button>
+            <button type="button" class="pm-button pm-quiet" id="pm-other">Choose another file</button>
+          </div>
+          <p class="pm-print" id="pm-print-line" title="A digest of the whole pad file: the same digits on both sides mean the same file. Compare them outside Ooga." hidden>Check with <span id="pm-print-peer"></span>: <code id="pm-print"></code></p>
           <ol class="chat-log slab pm-log" id="pm-log" role="log" aria-live="polite" aria-label="Private conversation" tabindex="0"></ol>
           <p class="help pm-budget" id="pm-budget"></p>
           <form class="chat-form pm-form" id="pm-form" autocomplete="off">
             <span class="chat-field">
-              <input type="text" id="pm-input" aria-label="Say something privately" aria-describedby="pm-left pm-budget" maxlength="320" enterkeyhint="send" spellcheck="true" disabled>
+              <input type="text" id="pm-input" aria-label="Say something privately" aria-describedby="pm-left pm-budget" maxlength="320" enterkeyhint="send" spellcheck="false" autocorrect="off" autocapitalize="sentences" disabled>
               <span class="chat-left" id="pm-left" title="Characters left">160</span>
             </span>
             <button type="submit" class="chat-send" id="pm-send" disabled>Send</button>
