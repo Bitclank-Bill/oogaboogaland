@@ -1,0 +1,356 @@
+// Private conversations (#188) in Ooga Chat's panel: one person at a time, asked from the Players tab, sealed with a
+// one-time pad the two swapped outside Ooga (one-time-pad.js) and passed on by the room, which cannot read it
+// (docs/auth-and-presence.md). A switch at the panel's head turns between the island's chat and the private one, which
+// has its own tint and lock; it shows only while there is an invite or a conversation.
+// The steps: an invite, its accept, then each side loads the pad file (or makes one here, downloads it and sends a
+// copy outside Ooga) and says hello; once the other's hello checks out the line opens. A frame that arrives before
+// this side's pad is loaded waits (QUEUE at most). Nothing private is kept: the pad lives in memory until the
+// conversation ends, when its bytes are zeroed, and the lines go with it. Only the pad's record of use stays in
+// localStorage (one-time-pad.js). The conversation ends when either side ends it, leaves the island or loses the room;
+// starting again with the same pad carries on where it stopped.
+// What it protects and what it does not: the room and the network see who talks to whom, when and how long each line
+// is, never what it says, provided this page and the pad file are trustworthy. A compromised device, a page served
+// with other code, or the other person copying the conversation are outside it; the same file used on two devices or
+// a restored browser profile can be caught only when the other side's record is ahead.
+// Exports available, invite and stats.
+(() => {
+  "use strict";
+  const BL = window.BL = window.BL || {};
+  const net = BL.net, P = BL.oneTimePad, policy = BL.chatPolicy;
+  const subtle = window.crypto && window.crypto.subtle;
+  const KEEP = 100, QUEUE = 16, INVITES = 8;
+  // What a typical line costs, to say roughly how many are left: the 32-byte key and about 60 bytes of text.
+  const LINE_BYTES = 92;
+  const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+  const $ = (id) => document.getElementById(id);
+  const panel = $("chat-panel"), switcher = $("pm-switch"), switchName = $("pm-switch-name"), count = $("pm-count");
+  const title = $("pm-title"), note = $("pm-note"), answer = $("pm-answer"), padRow = $("pm-pad"), file = $("pm-file");
+  const size = $("pm-size"), make = $("pm-make"), printLine = $("pm-print-line"), printPeer = $("pm-print-peer"), print = $("pm-print");
+  const log = $("pm-log"), budget = $("pm-budget"), form = $("pm-form"), input = $("pm-input"), left = $("pm-left"), sendButton = $("pm-send"), end = $("pm-end");
+  const views = [...switcher.querySelectorAll("[data-pm-view]")];
+  const store = { get: (key) => window.localStorage.getItem(key), set: (key, value) => window.localStorage.setItem(key, value) };
+  const lock = (name, fn) => navigator.locks ? navigator.locks.request(name, { mode: "exclusive" }, fn)
+    : Promise.reject(Object.assign(new Error("locks"), { code: "locks" }));
+  const c = { phase: "idle", peer: 0, login: "", name: "", invites: [], bytes: null, pad: null, session: null, print: "", queue: [],
+    lines: [], unseen: 0, view: "island", notice: "", stopped: "", busy: false, generation: 0, lastSend: { n: 0, ok: true }, revision: 0 };
+  // The log is drawn again only when its lines change, never on an account or roster update.
+  let drawn = -1;
+
+  const who = (id) => {
+    const rec = net.remotes.get(id);
+    return { login: rec ? rec.login : "", name: rec ? rec.display || rec.login : "someone" };
+  };
+  const me = () => net.state.me ? net.state.me.login : "";
+  const available = () => !!(net.state.privateChat && net.state.me && subtle && P);
+  const viewing = () => c.view === "private" && BL.sheet.visible(panel);
+  const b64 = (bytes) => window.btoa(String.fromCharCode.apply(null, bytes));
+  const unb64 = (text) => {
+    try { const raw = window.atob(text), out = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; } catch { return null; }
+  };
+  const kb = (bytes) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.floor(bytes / 1024)} KB`;
+
+  const padWords = (code, pad) => {
+    const peer = c.name;
+    if (code === "magic") return "That isn't an Ooga pad file.";
+    if (code === "short") return "That pad file is cut short.";
+    if (code === "size") return "That pad file is too big: 64 MB at most.";
+    if (code === "login" || code === "same") return "That pad file's names can't be read.";
+    if (code === "not-you") return `That pad is for ${pad.logins.join(" and ")}, not you.`;
+    if (code === "not-peer") return `That pad is for you and ${pad.logins.find((l) => l !== me().toLowerCase())}, not ${peer}.`;
+    if (code === "storage") return "This browser can't save how much of the pad is used, so the pad can't be used here.";
+    if (code === "locks") return "This browser can't keep the pad's record safe between tabs, so the pad can't be used here.";
+    if (code === "record") return "This device's record of the pad can't be read. Make a new pad together.";
+    if (code === "exhausted") return "The pad is used up. Make a new one together.";
+    if (code === "behind-here") return `This device's record of the pad is behind ${peer}'s: the pad was used before, on another device or a restored browser. Make a new pad together.`;
+    if (code === "behind-there") return `${peer}'s record of the pad is behind: their side used it before. Make a new pad together.`;
+    return "Something went wrong with the pad. Make a new one to be safe.";
+  };
+  const REFUSED = { offline: "isn't on the island now.", unavailable: "can't take private conversations from you.", busy: "is in another private conversation.",
+    rate: "can't be asked again yet. Wait a moment.", withdrawn: "took the invite back.", closed: "isn't in this conversation any more." };
+
+  const nudge = (text) => {
+    if (viewing()) return;
+    c.unseen++;
+    BL.hud.toast(text);
+  };
+  const wipe = () => {
+    if (c.bytes) c.bytes.fill(0);
+    c.bytes = c.pad = c.session = null;
+    c.print = "";
+  };
+  const reset = (notice) => {
+    c.generation++;
+    wipe();
+    c.queue.length = 0;
+    c.phase = "idle"; c.peer = 0; c.login = ""; c.name = ""; c.lines.length = 0; c.stopped = ""; c.busy = false; c.revision++;
+    c.notice = notice || "";
+    input.value = "";
+  };
+  const begin = (phase, peer) => {
+    if (c.peer !== peer || c.phase === "idle") { reset(); c.peer = peer; }
+    const p = who(peer);
+    c.phase = phase; c.login = p.login; c.name = p.name; c.notice = "";
+  };
+  const stop = (code) => {
+    c.stopped = padWords(code, c.pad);
+    wipe();
+    c.queue.length = 0;
+    render();
+  };
+  const add = (line) => {
+    c.lines.push(line);
+    if (c.lines.length > KEEP) c.lines.shift();
+    c.revision++;
+  };
+  const mark = (n, state) => {
+    const line = c.lines.find((l) => l.n === n);
+    if (line) { line.state = state; c.revision++; render(); }
+  };
+
+  const take = (frame) => {
+    const gen = c.generation;
+    c.session.heard(frame).then((r) => {
+      if (gen !== c.generation) return;
+      if (r.kind === "text") {
+        add(policy.error(r.text) ? { note: "A message arrived that can't be shown here.", at: Date.now() } : { own: false, text: policy.text(r.text), at: Date.now() });
+        nudge(`${c.name} wrote to you privately.`);
+      } else if (r.kind === "dropped") {
+        add({ note: r.error === "pad" ? `${c.name} is using a different pad file.` : "A message failed its check and was dropped. Nothing of it is shown.", at: Date.now() });
+      } else if (r.kind === "stopped") return stop(r.error);
+      render();
+    });
+  };
+
+  const loadPad = async (bytes) => {
+    const gen = c.generation;
+    let pad = null, role;
+    try {
+      pad = P.parse(bytes);
+      role = P.roleOf(pad, me(), c.login);
+    } catch (e) {
+      bytes.fill(0);
+      c.stopped = padWords(e.code, pad);
+      return render();
+    }
+    const fp = await P.fingerprint(subtle, pad);
+    if (gen !== c.generation || c.phase !== "open") { bytes.fill(0); return; }
+    wipe();
+    c.stopped = "";
+    c.bytes = bytes; c.pad = pad; c.print = fp;
+    const peer = c.peer;
+    c.session = P.session({ subtle, pad, role, ledger: P.ledger(store, lock, pad, role),
+      send: (frame, n) => { c.lastSend = { n, ok: net.sendPrivate("data", peer, b64(frame), n) }; } });
+    render();
+    const r = await c.session.start();
+    if (gen !== c.generation) return;
+    if (r.kind === "stopped") return stop(r.error);
+    for (const frame of c.queue.splice(0)) take(frame);
+    render();
+  };
+
+  const heard = (msg) => {
+    if (msg.op === "lost") {
+      if (c.phase !== "idle") reset("The connection to the island dropped, which ended the private conversation. Start it again: your pad carries on where it stopped.");
+      c.invites.length = 0;
+      return render();
+    }
+    if (!available()) return;
+    const from = Number.isSafeInteger(msg.from) ? msg.from : 0;
+    if (msg.op === "invite" && from) {
+      if (!c.invites.includes(from)) c.invites.push(from);
+      if (c.invites.length > INVITES) c.invites.shift();
+      nudge(`${who(from).name} asks for a private conversation. Open Ooga Chat to answer.`);
+    } else if (msg.op === "inviting" && (c.phase === "idle" || c.phase === "inviting")) {
+      begin("inviting", msg.to);
+    } else if (msg.op === "open" && Number.isSafeInteger(msg.with)) {
+      begin("open", msg.with);
+      c.invites = c.invites.filter((id) => id !== msg.with);
+      nudge(`Your private conversation with ${c.name} is open.`);
+    } else if (msg.op === "declined" && c.phase === "inviting" && from === c.peer) {
+      reset(`${c.name} said no.`);
+    } else if (msg.op === "withdrawn") {
+      c.invites = c.invites.filter((id) => id !== from);
+    } else if (msg.op === "closed" && c.phase === "open" && from === c.peer) {
+      const name = c.name;
+      reset(msg.reason === "left" ? `${name} left the island, which ended the private conversation.` : `${name} ended the private conversation.`);
+      nudge(c.notice);
+    } else if (msg.op === "data" && c.phase === "open" && from === c.peer && typeof msg.d === "string") {
+      const frame = unb64(msg.d);
+      if (!frame) return;
+      if (c.session) take(frame);
+      else if (c.queue.length < QUEUE) c.queue.push(frame);
+      return;
+    } else if (msg.op === "ok" && c.session && Number.isSafeInteger(msg.n)) {
+      c.session.delivered(msg.n);
+      mark(msg.n, "sent");
+      return;
+    } else if (msg.op === "refused") {
+      if (Number.isSafeInteger(msg.n)) return mark(msg.n, "failed");
+      const name = who(msg.to).name;
+      if (c.phase === "inviting" && msg.to === c.peer) reset(`${name} ${REFUSED[msg.reason] || "can't be asked now."}`);
+      else {
+        c.invites = c.invites.filter((id) => id !== msg.to);
+        c.notice = `${name} ${REFUSED[msg.reason] || "can't be asked now."}`;
+      }
+    } else return;
+    render();
+  };
+
+  const setView = (view) => {
+    c.view = view;
+    // A notice left from an ended conversation is read once the visitor turns back to the island.
+    if (view === "island" && c.phase === "idle") c.notice = "";
+    if (view === "private") panel.dataset.view = "private";
+    else delete panel.dataset.view;
+    if (view === "private") c.unseen = 0;
+    render();
+  };
+  const showPrivate = () => {
+    setView("private");
+    if (!BL.sheet.visible(panel)) { const tab = BL.sheet.tabFor(panel); if (tab) tab.click(); }
+  };
+
+  const row = (line) => {
+    const li = document.createElement("li"), name = document.createElement("span"), time = document.createElement("span"), text = document.createElement("p");
+    li.className = "chat-row"; name.className = "chat-name"; time.className = "chat-time"; text.className = "chat-text";
+    time.textContent = TIME.format(line.at);
+    if (line.note) {
+      li.dataset.note = "true";
+      name.textContent = "Ooga";
+      text.textContent = line.note;
+    } else {
+      li.dataset.own = String(line.own);
+      name.textContent = line.own ? "You" : c.name;
+      text.textContent = line.text;
+    }
+    li.append(name, document.createElement("span"), time, text);
+    if (line.own) {
+      const state = document.createElement("span");
+      state.className = "pm-state";
+      state.dataset.failed = String(line.state === "failed");
+      state.textContent = line.state === "sent" ? "Sent" : line.state === "failed" ? "Not sent" : "Sending…";
+      if (line.state === "failed") {
+        const retry = document.createElement("button");
+        retry.type = "button"; retry.className = "pm-button pm-quiet pm-retry"; retry.dataset.n = String(line.n); retry.textContent = "Retry";
+        state.append(retry);
+      }
+      li.children[1].replaceWith(state);
+    }
+    return li;
+  };
+
+  const render = () => {
+    const on = available() && (c.phase !== "idle" || c.invites.length > 0 || !!c.notice);
+    switcher.hidden = !on;
+    if (!on && c.view === "private") { c.view = "island"; delete panel.dataset.view; }
+    for (const b of views) b.setAttribute("aria-pressed", String(b.dataset.pmView === c.view));
+    if (viewing()) c.unseen = 0;
+    count.hidden = !c.unseen; count.textContent = c.unseen ? String(c.unseen) : "";
+    switchName.textContent = c.phase === "idle" ? "Private" : `Private · ${c.name}`;
+    const invite = c.phase === "idle" && c.invites.length ? c.invites[0] : 0;
+    title.textContent = c.phase === "idle" ? invite ? `Invite from ${who(invite).name}` : "Private" : `Private with ${c.name}`;
+    const ready = !!(c.session && c.session.ready && !c.stopped);
+    let words = c.notice;
+    if (c.stopped) words = c.stopped;
+    else if (invite) words = `${who(invite).name} asks for a private conversation. Accept if you hold a pad file with them, or will make one and send it to them outside Ooga.`;
+    else if (c.phase === "inviting") words = `Waiting for ${c.name} to answer…`;
+    else if (c.phase === "open" && !c.session) words = `Load the pad file you and ${c.name} both hold, or make one and send it to them outside Ooga, the way you would hand over a key: in person, or over a channel you trust. Ooga never sends or keeps the pad.`;
+    else if (c.phase === "open" && !ready) words = `Waiting for ${c.name} to load the same pad…`;
+    else if (ready) words = "Sealed with your pad: the island passes it on but can't read it. Who you talk to, when, and how long each line is still show.";
+    if (note.textContent !== words) note.textContent = words;
+    answer.hidden = !invite;
+    padRow.hidden = !(c.phase === "open" && (!c.session || c.stopped));
+    printLine.hidden = !c.print;
+    printPeer.textContent = c.name; print.textContent = c.print;
+    log.hidden = c.phase !== "open";
+    if (drawn !== c.revision) { drawn = c.revision; log.replaceChildren(...c.lines.map(row)); }
+    budget.textContent = c.session && !c.stopped ? `${kb(c.session.remaining)} of ${kb(c.session.size)} left to send: about ${Math.floor(c.session.remaining / LINE_BYTES)} lines.` : "";
+    form.hidden = c.phase !== "open";
+    input.disabled = !ready || c.busy;
+    sendButton.disabled = input.disabled || !!policy.error(input.value);
+    end.hidden = c.phase === "idle";
+    end.textContent = c.phase === "inviting" ? "Cancel" : "End";
+    const used = policy.text(input.value).length;
+    left.textContent = String(policy.MAX - used); left.dataset.over = String(used > policy.MAX);
+  };
+
+  const invite = (id) => {
+    if (!available()) return false;
+    if (c.phase !== "idle") { showPrivate(); BL.hud.toast("End your private conversation first."); return false; }
+    // Someone who already asked is answered.
+    if (c.invites.includes(id)) { net.sendPrivate("accept", id); c.invites = c.invites.filter((i) => i !== id); showPrivate(); return true; }
+    if (!net.sendPrivate("invite", id)) return false;
+    begin("inviting", id);
+    showPrivate();
+    return true;
+  };
+
+  for (const b of views) b.addEventListener("click", (e) => { setView(b.dataset.pmView); if (e.detail) b.blur(); });
+  answer.addEventListener("click", (e) => {
+    const button = e.target.closest("button"), id = c.invites[0];
+    if (!button || !id) return;
+    if (e.detail) button.blur();
+    c.invites.shift();
+    if (button.id === "pm-accept") net.sendPrivate("accept", id);
+    else net.sendPrivate(button.id === "pm-block" ? "block" : "decline", id);
+    c.notice = "";
+    render();
+  });
+  end.addEventListener("click", (e) => {
+    if (e.detail) end.blur();
+    if (c.phase !== "idle") net.sendPrivate("end", c.peer);
+    reset(c.phase === "inviting" ? "" : `You ended the private conversation with ${c.name}.`);
+    render();
+  });
+  file.addEventListener("change", () => {
+    const chosen = file.files && file.files[0];
+    file.value = "";
+    if (!chosen || c.phase !== "open") return;
+    if (chosen.size > P.PAD.MAX + 128) { c.stopped = padWords("size"); return render(); }
+    chosen.arrayBuffer().then((buffer) => loadPad(new Uint8Array(buffer)), () => { c.stopped = "That file couldn't be read."; render(); });
+  });
+  make.addEventListener("click", (e) => {
+    if (e.detail) make.blur();
+    if (c.phase !== "open") return;
+    const bytes = P.make(me(), c.login, Number(size.value), (view) => window.crypto.getRandomValues(view));
+    // A copy to download and send outside Ooga; the page keeps its own in memory for this conversation.
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" })), a = document.createElement("a");
+    a.href = url; a.download = `ooga-pad-${me().toLowerCase()}-${c.login.toLowerCase()}.oogapad`;
+    document.body.append(a); a.click(); a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    add({ note: `A new pad was saved to your downloads. Send that file to ${c.name} outside Ooga and keep no other copies. Until they load it, nothing can be said.`, at: Date.now() });
+    loadPad(bytes);
+  });
+  input.addEventListener("input", render);
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape" && !e.isComposing) input.blur(); });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!c.session || !c.session.ready || c.busy || policy.error(input.value)) return;
+    const gen = c.generation, text = policy.text(input.value);
+    c.busy = true; render();
+    const r = await c.session.say(text);
+    if (gen !== c.generation) return;
+    c.busy = false;
+    if (r.kind === "sent") {
+      add({ own: true, text, at: Date.now(), n: r.n, state: c.lastSend.n === r.n && !c.lastSend.ok ? "failed" : "sending" });
+      input.value = "";
+    } else if (r.kind === "stopped") return stop(r.error);
+    render();
+    input.focus({ preventScroll: true });
+  });
+  log.addEventListener("click", (e) => {
+    const retry = e.target.closest(".pm-retry");
+    if (!retry || !c.session) return;
+    const n = Number(retry.dataset.n);
+    if (c.session.retry(n)) mark(n, c.lastSend.n === n && !c.lastSend.ok ? "failed" : "sending");
+  });
+
+  net.subscribePrivate(heard);
+  net.subscribe(() => render());
+  render();
+
+  BL.privateChat = { available, invite,
+    stats: () => ({ phase: c.phase, peer: c.peer, view: c.view, invites: c.invites.slice(), ready: !!(c.session && c.session.ready), stopped: c.stopped,
+      notice: c.notice, lines: c.lines.map((l) => l.note ? { note: l.note } : { own: l.own, text: l.text, state: l.state }), queued: c.queue.length, unseen: c.unseen,
+      padLoaded: !!c.pad, remaining: c.session ? c.session.remaining : 0 }) };
+})();

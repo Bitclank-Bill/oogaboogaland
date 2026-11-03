@@ -19995,7 +19995,80 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
       && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "", JSON.stringify({ box, spoken, out }));
 } };
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence, hubMuteKey, hubChat] });
+// Private conversations (#188) on a signed-in page: the room is a stand-in, and the other person, Anna, is the real
+// sealing code on the same pad, so what the page sends is read as Anna's page would read it.
+const hubPrivateChat = { name: "private chat", why: "rule: two players who hold the same pad talk privately from the Players tab while the room carries only sealed frames; a pad for someone else is refused by name, the talk carries on across a scene trip, and a pad made here downloads for the two of them", run: async (b) => {
+  await openWithSheetState(b, hubPage(src, "pos=0"), { open: true, tab: "players" });
+  await b.evaluate(`(async () => {
+    const W = window.__pm = { fetch: window.fetch, WebSocket: window.WebSocket, sockets: [], out: [], wire: [], heard: [], downloads: [] };
+    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }) : W.fetch(url, options);
+    window.WebSocket = class { static OPEN = 1; constructor() { this.readyState = 1; W.sockets.push(this); } send(text) { W.out.push(text); } close() { this.readyState = 3; } };
+    BL.net.state.started = true; BL.net.state.resolved = false;
+    await BL.net.recheck();
+    W.room = (m) => W.sockets.at(-1).onmessage({ data: JSON.stringify(m) });
+    W.room({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["chat-unicode-v1", "pm-v1"], players: [{ id: 2, login: "anna", display: "Anna", zone: "outside" }] });
+    const P = BL.oneTimePad, random = (v) => crypto.getRandomValues(v), mem = new Map();
+    W.file = P.make("anna", "tester", 16384, random);
+    W.wrong = P.make("anna", "cy", 16384, random);
+    const pad = P.parse(W.file.slice()), b64 = (u) => btoa(String.fromCharCode(...u)), unb64 = (t) => Uint8Array.from(atob(t), (ch) => ch.charCodeAt(0));
+    W.anna = P.session({ subtle: crypto.subtle, pad, role: 0, ledger: P.ledger({ get: (k) => mem.has(k) ? mem.get(k) : null, set: (k, v) => mem.set(k, v) }, (n, fn) => Promise.resolve().then(fn), pad, 0),
+      send: (frame) => W.room({ t: "pm", op: "data", from: 2, d: b64(frame) }) });
+    // What the page sent, read as the room would: frames go to Anna, and the room answers each one ok.
+    W.flush = async () => {
+      const sent = [];
+      for (const text of W.out.splice(0)) {
+        const m = JSON.parse(text);
+        if (m.t !== "pm") continue;
+        W.wire.push(text); sent.push(m.op === "data" ? { op: m.op, to: m.to } : m);
+        if (m.op === "data") { W.heard.push(await W.anna.heard(unb64(m.d))); W.room({ t: "pm", op: "ok", to: 2, n: m.n }); }
+      }
+      return sent;
+    };
+    W.load = (bytes) => { const dt = new DataTransfer(); dt.items.add(new File([bytes], "pad.oogapad")); const input = document.getElementById("pm-file"); input.files = dt.files; input.dispatchEvent(new Event("change")); };
+    W.wait = async (test) => { for (let i = 0; i < 150 && !test(); i++) await new Promise((r) => setTimeout(r, 20)); return !!test(); };
+    W.lock = () => document.querySelector('#players-panel li[data-id="2"] .players-private');
+    W.view = () => { const s = BL.privateChat.stats(), panel = document.getElementById("chat-panel");
+      return { phase: s.phase, ready: s.ready, padLoaded: s.padLoaded, queued: s.queued, lines: s.lines, note: document.getElementById("pm-note").textContent, shown: BL.sheet.visible(panel), privateView: panel.dataset.view === "private",
+        input: !document.getElementById("pm-input").disabled, switcher: !document.getElementById("pm-switch").hidden }; };
+    W.say = (text) => { const input = document.getElementById("pm-input"); input.value = text; input.dispatchEvent(new Event("input")); document.getElementById("pm-form").requestSubmit(); };
+  })()`);
+  const asked = await b.evaluate(`(async () => { const W = __pm; await W.wait(() => W.lock() && !W.lock().hidden); const offered = !!W.lock() && !W.lock().hidden; W.lock().click();
+    const sent = await W.flush(); W.room({ t: "pm", op: "inviting", to: 2 }); const waiting = W.view();
+    W.room({ t: "pm", op: "open", with: 2 }); await W.anna.start(); const open = W.view();
+    W.load(W.wrong); await W.wait(() => W.view().note.includes("not you")); const wrong = W.view();
+    W.load(W.file); await W.wait(() => W.view().ready); await W.flush();
+    return { offered, sent, waiting, open, wrong, ready: W.view(), annaHeard: W.heard.map((r) => r.kind) }; })()`);
+  record("private chat: the lock on another player's row asks them, the Ooga Chat panel turns to the private view, and once open, a pad made for someone else is refused by name while the right one opens the line after both hellos",
+    asked.offered && asked.sent.length === 1 && asked.sent[0].op === "invite" && asked.sent[0].to === 2 && asked.waiting.phase === "inviting" && asked.waiting.shown && asked.waiting.privateView && asked.waiting.switcher
+      && asked.open.phase === "open" && asked.open.queued === 1 && !asked.open.input && asked.wrong.note === "That pad is for anna and cy, not you." && !asked.wrong.padLoaded
+      && asked.ready.ready && asked.ready.input && asked.annaHeard.join() === "hello", JSON.stringify(asked));
+  const talk = await b.evaluate(`(async () => { const W = __pm; W.say("hi anna, ünïcode 🦍"); await W.wait(() => W.view().lines.length === 1); await W.flush(); await W.wait(() => W.view().lines[0].state === "sent");
+    await W.anna.say("hello tester"); await W.wait(() => W.view().lines.length === 2);
+    const records = Object.keys(localStorage).filter((k) => k.startsWith("oogaboogaland.pad.")).map((k) => localStorage.getItem(k));
+    return { view: W.view(), anna: W.heard.at(-1), wire: W.wire.join("\\n"), records }; })()`);
+  record("private chat: a line reaches Anna intact while the room carries only a sealed frame of it, Anna's answer shows, and the page keeps only how much of the pad is used",
+    talk.anna.kind === "text" && talk.anna.text === "hi anna, ünïcode 🦍" && !talk.wire.includes("hi anna") && !talk.wire.includes("ünïcode") && talk.view.lines.map((l) => l.text).join() === "hi anna, ünïcode 🦍,hello tester"
+      && talk.view.lines[0].own && talk.view.lines[0].state === "sent" && !talk.view.lines[1].own && talk.records.length === 1 && /^\{"v":1,"send":\d+,"recv":\d+\}$/.test(talk.records[0]), JSON.stringify(talk));
+  await tourGo(b, "lab");
+  await tourGo(b, "hub");
+  const after = await b.evaluate(`(async () => { const W = __pm; const kept = W.view(); await W.anna.say("still here"); await W.wait(() => W.view().lines.length === 3);
+    document.getElementById("pm-end").click(); const ended = await W.flush(); const view = W.view();
+    // A second conversation, with a pad made here: one download for the two of them, and this page loads its own copy.
+    const click = HTMLAnchorElement.prototype.click, made = URL.createObjectURL;
+    HTMLAnchorElement.prototype.click = function () { W.downloads.push({ name: this.download }); };
+    URL.createObjectURL = (blob) => { W.blob = blob; return made.call(URL, blob); };
+    W.room({ t: "pm", op: "open", with: 2 }); document.getElementById("pm-size").value = "262144"; document.getElementById("pm-make").click();
+    await W.wait(() => W.view().padLoaded); HTMLAnchorElement.prototype.click = click; URL.createObjectURL = made;
+    const pad = BL.oneTimePad.parse(new Uint8Array(await W.blob.arrayBuffer()));
+    return { kept, lines: W.view().lines.length, ended, view, made: W.view(), downloads: W.downloads, logins: pad.logins, half: pad.halves[0].length }; })()`);
+  await b.evaluate(`(() => { const W = __pm; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
+  record("private chat: the conversation carries on across a trip to another scene, End tells the room and clears it, and a pad made here downloads once for the two of them and loads on this page",
+    after.kept.phase === "open" && after.kept.ready && after.kept.lines.length === 2 && after.ended.length === 1 && after.ended[0].op === "end" && after.view.phase === "idle" && after.view.lines.length === 0
+      && after.downloads.length === 1 && after.downloads[0].name === "ooga-pad-tester-anna.oogapad" && after.logins.join() === "tester,anna" && after.half === (262144 - 32) / 2 && after.made.padLoaded,
+    JSON.stringify(after));
+} };
 scene("hub", { label: "join alerts", query: "pos=0", steps: [hubJoinAlerts] });
+scene("hub", { label: "private chat", query: "pos=0", steps: [hubPrivateChat] });
 scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
 scene("hub", { label: "canvas2d", query: "canvas2d=1", steps: [hubMatrix, canvasTour] });
 scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required: ["#joy-move", "#joy-look", "#sheet-toggle", "#sheet-bananas"], sheet: true })] });
@@ -22807,6 +22880,97 @@ const rememberedCharacterChecks = async BL => {
   record("arrival identity: malformed or denied cookies fall back safely and cannot break sign-in", bad && blocked && denied.net.ownCharacter()?.handle === "NickDaGreek");
   for (const f of [fresh, signed, returning, unknown, forged, invalid, denied]) f.net.dispose();
 };
+// Private conversations' pads (#188), as one-time-pad.js keeps them: run in Node over a store and lock that behave
+// as localStorage and Web Locks do, with two sides talking through an array that stands for the room.
+const privatePadChecks = async () => {
+  const context = { TextEncoder, TextDecoder, DataView, Uint8Array, JSON, Error, Promise, Object, Array, String, Number, Math, Map };
+  runInNewContext(await readFile(join(root, "src/js/one-time-pad.js"), "utf8"), context);
+  const P = context.BL.oneTimePad, subtle = webcrypto.subtle, random = (v) => webcrypto.getRandomValues(v);
+  const memory = () => { const m = new Map(); return { m, get: (k) => m.has(k) ? m.get(k) : null, set: (k, v) => m.set(k, v) }; };
+  // A lock that runs one holder at a time per name, as navigator.locks does across tabs.
+  const locks = () => { const held = new Map(); return (name, fn) => { const run = (held.get(name) || Promise.resolve()).then(fn); held.set(name, run.catch(() => {})); return run; }; };
+  const code = (fn) => { try { fn(); return "none"; } catch (e) { return e.code; } };
+  const file = P.make("Anna", "bob", 8192, random), padA = P.parse(file), padB = P.parse(file.slice());
+  const side = (pad, role, store = memory(), lock = locks(), wire = []) => {
+    const s = P.session({ subtle, pad, role, ledger: P.ledger(store, lock, pad, role), send: (frame, n) => wire.push({ frame, n }) });
+    return Object.assign(s, { wire, store, lock });
+  };
+  const pair = () => { const a = side(padA, 0), b = side(padB, 1); return { a, b }; };
+  const deliver = async (from, to) => { const out = []; for (const { frame } of from.wire.splice(0)) out.push(await to.heard(frame)); return out; };
+
+  const halves = padA.halves[0].byteOffset + padA.halves[0].length <= padA.halves[1].byteOffset && padA.check.byteOffset + 32 <= padA.halves[0].byteOffset;
+  const bad = (edit) => { const f = file.slice(); edit(f); return code(() => P.parse(f)); };
+  const files = { magic: bad((f) => { f[0] = 0; }), login: bad((f) => { f[25] = 33; }), short: code(() => P.parse(file.subarray(0, 600))), same: code(() => P.make("a", "A", 8192, random)),
+    size: code(() => P.make("a", "b", P.PAD.MAX + 1, random)), roles: [P.roleOf(padA, "ANNA", "Bob"), P.roleOf(padA, "bob", "anna"), code(() => P.roleOf(padA, "cy", "anna")), code(() => P.roleOf(padA, "anna", "cy"))] };
+  record("private pads: a pad file names its two people and splits into one half per sender after a check that only names it; a damaged or foreign file, a pad for others and the wrong partner are refused by name",
+    halves && files.magic === "magic" && files.login === "login" && files.short === "short" && files.same === "same" && files.size === "size" && files.roles.join() === "0,1,not-you,not-peer", JSON.stringify(files));
+
+  const { a, b } = pair();
+  await a.start(); await b.start();
+  const hellos = [...await deliver(a, b), ...await deliver(b, a)].map((r) => r.kind);
+  const first = await a.say("héllo 🦍"), plain = new TextEncoder().encode("héllo 🦍"), frame = a.wire[0].frame;
+  const hidden = !Buffer.from(frame).includes(Buffer.from(plain));
+  const heard = await deliver(a, b);
+  const prints = [await P.fingerprint(subtle, padA), await P.fingerprint(subtle, padB)];
+  record("private pads: two who load the same pad greet each other, a line arrives intact and unreadable on the wire, and both sides show the same fingerprint",
+    hellos.join() === "hello,hello" && a.ready && b.ready && first.kind === "sent" && hidden && heard[0].kind === "text" && heard[0].text === "héllo 🦍" && prints[0] === prints[1] && /^[0-9a-f]{4}( [0-9a-f]{4}){4}$/.test(prints[0]),
+    JSON.stringify({ hellos, first, heard, prints }));
+
+  // Two lines sealed at once, a send the room refused, its exact retry, a reflected frame, and tampering.
+  const [one, two] = await Promise.all([a.say("one"), a.say("two")]);
+  const sealed = a.wire.splice(0), offsets = sealed.map(({ frame }) => new DataView(frame.buffer).getUint32(19));
+  const lost = await a.say("lost"); a.wire.length = 0;
+  const after = await a.say("after"); const late = a.wire.splice(0);
+  const order = [];
+  for (const { frame } of [...sealed, ...late]) order.push(await b.heard(frame));
+  const resent = a.retry(after.n) && a.wire.at(-1).frame, again = await b.heard(resent);
+  const flip = (i) => { const f = resent.slice(); f[i] ^= 1; return f; };
+  const tampered = [await b.heard(flip(30)), await b.heard(flip(22)), await b.heard(flip(2)), await b.heard(resent.subarray(0, 40))].map((r) => r.error);
+  const reflected = (await a.heard(resent)).error;
+  const other = P.parse(P.make("anna", "bob", 8192, random)), stranger = side(other, 0);
+  await stranger.start(); const foreign = (await b.heard(stranger.wire[0].frame)).error;
+  record("private pads: lines sealed at once take separate bytes, a refused send's bytes stay used, an exact retry is known as a repeat, and a changed, cut, reflected or foreign frame is dropped unread",
+    one.n !== two.n && offsets[1] - offsets[0] === 32 + 3 && lost.kind === "sent" && order.map((r) => r.text || r.kind).join() === "one,two,after" && resent === late[0].frame && again.kind === "duplicate"
+      && tampered.join() === "auth,auth,pad,malformed" && reflected === "direction" && foreign === "pad", JSON.stringify({ offsets, order, tampered, reflected, foreign }));
+
+  // Two tabs on one record: reservations under the lock never overlap.
+  const store = memory(), lock = locks(), tabs = [P.ledger(store, lock, padA, 0), P.ledger(store, lock, padA, 0)];
+  await tabs[0].start();
+  const taken = await Promise.all(Array.from({ length: 12 }, (_, i) => tabs[i % 2].reserve(40)));
+  const disjoint = new Set(taken).size === 12 && taken.slice().sort((x, y) => x - y).every((v, i) => v === i * 40);
+  // A reload: a fresh session over the same record carries on past every byte used, and a hello reports how far it read.
+  const reload = side(padA, 0, a.store, a.lock, []);
+  await reload.start();
+  const resumed = new DataView(reload.wire[0].frame.buffer).getUint32(19) === a.send;
+  record("private pads: two tabs never take the same bytes, and a reload carries on past every byte this device used",
+    disjoint && resumed && (await b.heard(reload.wire[0].frame)).kind === "hello", JSON.stringify({ taken, resumed }));
+
+  // Records lost or unusable. A side whose record was cleared learns it from its partner's hello before it says a
+  // word; a partner restored from an older copy sends from bytes already read, which the other side refuses to show.
+  const h = pair();
+  await h.a.start(); await h.b.start(); await deliver(h.a, h.b); await deliver(h.b, h.a);
+  const older = new Map(h.b.store.m);
+  await h.a.say("x"); await deliver(h.a, h.b);
+  await h.b.say("reply"); await deliver(h.b, h.a);
+  const cleared = side(padA, 0); await cleared.start();
+  const resumedB = side(padB, 1, h.b.store, h.b.lock); await resumedB.start();
+  const behindHere = await cleared.heard(resumedB.wire[0].frame);
+  const restored = memory(); for (const [k, v] of older) restored.set(k, v);
+  const old = side(padB, 1, restored); await old.start();
+  const behindThere = await h.a.heard(old.wire[0].frame);
+  const refusing = { get: () => null, set: () => { throw new Error("quota"); } }, dropping = { get: () => null, set: () => {} };
+  const unwritable = await side(padA, 0, refusing).start(), dropped = await side(padA, 0, dropping).start();
+  const corrupt = memory(); corrupt.set(P.PAD.STORE + padA.idHex + ".0", "{\"v\":1,\"send\":-4}");
+  const unreadable = await side(padA, 0, corrupt).start();
+  const small = P.parse(P.make("anna", "bob", 4096, random)), tiny = side(small, 0);
+  await tiny.start();
+  let spent = null;
+  for (let i = 0; i < 200 && !spent; i++) { const r = await tiny.say("x".repeat(100)); if (r.kind === "stopped") spent = r.error; }
+  record("private pads: a device whose record is behind its partner's, or a partner sending from bytes already read, stops the pad; so does a record that can't be written, kept or read, and a pad used up",
+    behindHere.kind === "stopped" && behindHere.error === "behind-here" && cleared.stopped === "behind-here" && behindThere.error === "behind-there" && unwritable.error === "storage" && dropped.error === "storage"
+      && unreadable.error === "record" && spent === "exhausted" && tiny.stopped === "exhausted",
+    JSON.stringify({ behindHere, behindThere, unwritable, dropped, unreadable, spent }));
+};
 // Ooga Chat's wire on the page: what it sends, and the lines it hands on (chat.js keeps and shows them).
 // Execute the real chat controller with a small DOM and a controllable acknowledgement clock.
 const chatClientChecks = async () => {
@@ -24502,7 +24666,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     }
     renderer.dispose();I.dispose();W.dispose();document.createElement=oldCreate;console.log("Exported "+rows.length+" actual Canvas water review views to "+out);return;
   }
-  if(ARGS.includes("chat-unit")){await chatNetChecks(BL);await chatClientChecks();await chatAccountChecks(BL);return;}
+  if(ARGS.includes("chat-unit")){await chatNetChecks(BL);await chatClientChecks();await privatePadChecks();await chatAccountChecks(BL);return;}
   if(ARGS.includes("integration-unit")){await reviewCaptureChecks();await integrationChecks(BL);return;}
   if(ARGS.includes("svrn-unit")){svrnChecks(BL);menuShellChecks(BL);return;}
   if(ARGS.includes("vacancy-unit")){await vacancyChecks(BL);return;}
@@ -24554,6 +24718,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   if(ARGS.includes("dsb-menus-unit")){stackchainChecks(BL);memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
   await chatNetChecks(BL);
   await chatClientChecks();
+  await privatePadChecks();
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);
   await playersTabChecks(BL);

@@ -19,6 +19,8 @@
 // Chat: each line is named from the session, rate limited per account across awake-room reconnects, sent to every socket and kept in a
 // ring of the last CHAT_KEEP in memory alone, which a joiner gets after `welcome`. No durable chat storage: a room
 // that hibernates, restarts or is redeployed wakes with an empty ring, and the lines are gone.
+// Private conversations (#188): who invited whom, who talks to whom and whom each blocked live in the attachments
+// (`pm`), so a woken room keeps them; the frames pass straight through and are never kept.
 
 import { DurableObject } from "cloudflare:workers";
 import {
@@ -27,6 +29,7 @@ import {
   DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST,
   GHOST_MAGIC, GHOST_FRAME_MAX, GHOST_FRAME_HZ, GHOST_FRAME_BURST, inGhostArena, ghostCandidate,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
+  PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_INVITES, PM_BLOCKS,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
   BLEND, BLEND_HZ,
 } from "./protocol.js";
@@ -99,6 +102,14 @@ export class Room extends DurableObject {
     // Old guest sockets can survive a deployment in hibernated attachments.
     // Use the ordinary departure path so peers drop their presence and voice.
     for (const p of this.players.values()) if (!ownedBody(CAST, p.login, p.contributor)) this.evict(p, "revoked");
+    // A conversation stands only while both ends are here and hold each other; an invite only to someone here.
+    for (const p of this.players.values()) {
+      const pm = p.pm && typeof p.pm === "object" ? p.pm : {};
+      const here = (id) => Number.isSafeInteger(id) && id !== p.id && this.players.has(id);
+      p.pm = { inv: Array.isArray(pm.inv) ? pm.inv.filter(here).slice(-PM_INVITES) : [], open: here(pm.open) ? pm.open : 0,
+        blocked: Array.isArray(pm.blocked) ? pm.blocked.filter((id) => Number.isSafeInteger(id)).slice(-PM_BLOCKS) : [] };
+    }
+    for (const p of this.players.values()) if (p.pm.open && this.players.get(p.pm.open).pm.open !== p.id) p.pm.open = 0;
     this.restoreDoor();
     this.hostId = electHost(this.players.values());
     this.followers = npcFollowers(this.players.values(), this.hostId);
@@ -107,7 +118,7 @@ export class Room extends DurableObject {
   }
 
   record(ws, a) {
-    return { ws, voice: { pub: null, sub: null, track: null, gen: 0, mids: {}, pubMid: null }, muted: false, hp: 100, ko: false, g: null, j: 0, w: 0, sent: null, zone: OUTSIDE, pokerVoice: null, inHub: false, visible: true, joinedAt: Date.now(), door: null, passes: [], blendTo: null, blendK: 0, ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, blendBucket: { tokens: BLEND_HZ, at: Date.now() }, doorBucket: { tokens: DOOR_BURST, at: Date.now() }, ghostBucket: { tokens: GHOST_BURST, at: Date.now() }, ghostFrameBucket: { tokens: GHOST_FRAME_BURST, at: Date.now() }, chatBucket: this.chatBucketFor(a.id, Date.now()), seenAt: Date.now() };
+    return { ws, voice: { pub: null, sub: null, track: null, gen: 0, mids: {}, pubMid: null }, muted: false, hp: 100, ko: false, g: null, j: 0, w: 0, sent: null, zone: OUTSIDE, pokerVoice: null, inHub: false, visible: true, joinedAt: Date.now(), door: null, passes: [], blendTo: null, blendK: 0, pm: { inv: [], open: 0, blocked: [] }, ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, blendBucket: { tokens: BLEND_HZ, at: Date.now() }, doorBucket: { tokens: DOOR_BURST, at: Date.now() }, ghostBucket: { tokens: GHOST_BURST, at: Date.now() }, ghostFrameBucket: { tokens: GHOST_FRAME_BURST, at: Date.now() }, chatBucket: this.chatBucketFor(a.id, Date.now()), seenAt: Date.now() };
   }
 
   // Retain account debt across socket records, only while awake. Reclaim fully replenished
@@ -125,7 +136,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, voice: p.voice, muted: p.muted, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, blendTo: p.blendTo, blendK: p.blendK };
+    return { id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, voice: p.voice, muted: p.muted, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm };
   }
 
   view(p) {
@@ -311,7 +322,7 @@ export class Room extends DurableObject {
 
     const others = [];
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, features: ["door", CHAT_FEATURE] });
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, features: ["door", CHAT_FEATURE, PM_FEATURE] });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
     this.send(server, { t: "chat-history", messages: this.chat.list() });
     this.broadcast({ t: "join", p: this.view(p) }, server);
@@ -419,6 +430,9 @@ export class Room extends DurableObject {
     } else if (msg.t === "chat") {
       // Nothing in the attachment changes.
       return this.say(p, msg.text, msg.clientId);
+    } else if (msg.t === "pm") {
+      // Saves each attachment it changes itself.
+      return this.privateMessage(p, msg);
     } else if (msg.t === "door") {
       return this.doorMessage(p, msg);
     } else if (msg.t === "wallet") {
@@ -481,6 +495,7 @@ export class Room extends DurableObject {
     this.clearPasses(p);
     this.leaveStudio(p);
     this.background(this.clearVoice(p));
+    this.privateLeave(p);
     this.players.delete(p.id);
     this.broadcast({ t: "leave", id: p.id, reason });
     this.electHost();
@@ -573,6 +588,95 @@ export class Room extends DurableObject {
     this.broadcast({ t: "chat", ...line });
     if (key) this.send(p.ws, { t: "chat-ack", clientId });
   }
+
+  // A private conversation (#188): invites, the conversation itself, and its sealed frames relayed as they come. The
+  // room never reads a frame; it checks only that both ends still hold the conversation and the sender's rate.
+  privateMessage(p, msg) {
+    const now = p.seenAt, q = this.players.get(msg.to), to = msg.to;
+    const tell = (x, m) => this.send(x.ws, { t: "pm", ...m });
+    if (msg.op === "data") {
+      if (!q || p.pm.open !== q.id || q.pm.open !== p.id) return tell(p, { op: "refused", to, n: msg.n, reason: "closed" });
+      if (!p.pmBucket) p.pmBucket = { tokens: PM_BURST, at: now };
+      if (!takeToken(p.pmBucket, PM_HZ, now, PM_BURST)) return tell(p, { op: "refused", to, n: msg.n, reason: "rate" });
+      tell(q, { op: "data", from: p.id, d: msg.d });
+      return tell(p, { op: "ok", to, n: msg.n });
+    }
+    if (msg.op === "invite") {
+      if (!q || q === p) return tell(p, { op: "refused", to, reason: "offline" });
+      if (q.pm.blocked.includes(p.id) || p.pm.blocked.includes(q.id)) return tell(p, { op: "refused", to, reason: "unavailable" });
+      if (p.pm.open || q.pm.open) return tell(p, { op: "refused", to, reason: "busy" });
+      if (!p.pmInviteBucket) p.pmInviteBucket = { tokens: PM_INVITE_BURST, at: now };
+      if (!takeToken(p.pmInviteBucket, PM_INVITE_HZ, now, PM_INVITE_BURST)) return tell(p, { op: "refused", to, reason: "rate" });
+      // Two who invited each other are talking.
+      if (q.pm.inv.includes(p.id)) return this.privateOpen(p, q);
+      p.pm.inv = [...p.pm.inv.filter((id) => id !== q.id), q.id].slice(-PM_INVITES);
+      this.saveAttachment(p);
+      tell(q, { op: "invite", from: p.id });
+      return tell(p, { op: "inviting", to });
+    }
+    if (msg.op === "accept") {
+      if (!q || !q.pm.inv.includes(p.id)) return tell(p, { op: "refused", to, reason: "withdrawn" });
+      if (p.pm.open || q.pm.open) return tell(p, { op: "refused", to, reason: "busy" });
+      return this.privateOpen(q, p);
+    }
+    if (msg.op === "decline" || msg.op === "block") {
+      if (q && q.pm.inv.includes(p.id)) {
+        q.pm.inv = q.pm.inv.filter((id) => id !== p.id);
+        this.saveAttachment(q);
+        tell(q, { op: "declined", from: p.id });
+      }
+      if (msg.op === "block") {
+        if (p.pm.open === to) this.privateClose(p, "ended");
+        p.pm.inv = p.pm.inv.filter((id) => id !== to);
+        p.pm.blocked = [...p.pm.blocked.filter((id) => id !== to), to].slice(-PM_BLOCKS);
+        this.saveAttachment(p);
+      }
+      return;
+    }
+    // end: the conversation, or an invite not yet answered.
+    if (p.pm.open === to) return this.privateClose(p, "ended");
+    if (p.pm.inv.includes(to)) {
+      p.pm.inv = p.pm.inv.filter((id) => id !== to);
+      this.saveAttachment(p);
+      if (q) tell(q, { op: "withdrawn", from: p.id });
+    }
+  }
+
+  privateOpen(a, b) {
+    a.pm.inv = a.pm.inv.filter((id) => id !== b.id);
+    b.pm.inv = b.pm.inv.filter((id) => id !== a.id);
+    a.pm.open = b.id; b.pm.open = a.id;
+    this.saveAttachment(a); this.saveAttachment(b);
+    this.send(a.ws, { t: "pm", op: "open", with: b.id });
+    this.send(b.ws, { t: "pm", op: "open", with: a.id });
+  }
+
+  // Ends `p`'s conversation at both ends.
+  privateClose(p, reason) {
+    const q = this.players.get(p.pm.open);
+    if (q && q.pm.open === p.id) {
+      q.pm.open = 0;
+      this.saveAttachment(q);
+      this.send(q.ws, { t: "pm", op: "closed", from: p.id, reason });
+    }
+    this.send(p.ws, { t: "pm", op: "closed", from: p.pm.open, reason });
+    p.pm.open = 0;
+    this.saveAttachment(p);
+  }
+
+  // A player leaving ends their conversation and every invite to or from them.
+  privateLeave(p) {
+    for (const q of this.players.values()) {
+      if (q === p) continue;
+      let changed = false;
+      if (q.pm.open === p.id) { q.pm.open = 0; changed = true; this.send(q.ws, { t: "pm", op: "closed", from: p.id, reason: "left" }); }
+      if (q.pm.inv.includes(p.id)) { q.pm.inv = q.pm.inv.filter((id) => id !== p.id); changed = true; this.send(q.ws, { t: "pm", op: "declined", from: p.id }); }
+      if (p.pm.inv.includes(q.id)) this.send(q.ws, { t: "pm", op: "withdrawn", from: p.id });
+      if (changed) this.saveAttachment(q);
+    }
+  }
+
+  saveAttachment(p) { p.ws.serializeAttachment(this.attachment(p)); }
 
   // Also after any page's `hub` flag changes: the host sends frames only while someone follows.
   electHost() {

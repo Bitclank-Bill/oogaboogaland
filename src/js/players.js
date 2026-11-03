@@ -49,6 +49,13 @@
   crosshairPath.setAttribute("fill", "currentColor");
   crosshairPath.setAttribute("d", "M3 1h3v1H3zM3 7h3v1H3zM1 3h1v3H1zM7 3h1v3H7zM2 2h1v1H2zM6 2h1v1H6zM2 6h1v1H2zM6 6h1v1H6zM4 0h1v3H4zM4 6h1v3H4zM0 4h3v1H0zM6 4h3v1H6zM4 4h1v1H4z");
   crosshair.append(crosshairPath);
+  const lockIcon = document.createElementNS(SVG, "svg");
+  lockIcon.setAttribute("viewBox", "0 0 7 8");
+  lockIcon.setAttribute("aria-hidden", "true");
+  const lockPath = document.createElementNS(SVG, "path");
+  lockPath.setAttribute("fill", "currentColor");
+  lockPath.setAttribute("d", "M2 0h3v1H2zM1 1h1v2H1zM5 1h1v2H5zM0 3h7v5H0z");
+  lockIcon.append(lockPath);
 
   const rows = new Map(), groups = new Map(), order = [], door = { x: 0, y: 0, z: 0 };
   let serial = 0, pass = 0, showing = false, stale = true, doors = null, shownZone = "", shownRadius = -1, shownHearing = null;
@@ -56,6 +63,7 @@
     const li = document.createElement("li"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
     const voice = document.createElement("button"), look = document.createElement("button"), distance = document.createElement("span");
+    const priv = document.createElement("button");
     const note = document.createElement("span"), id = `players-name-${++serial}`;
     presence.className = "roster-presence"; presence.dataset.online = "true"; presence.setAttribute("role", "img");
     presence.setAttribute("aria-label", "Online"); presence.title = "Online";
@@ -65,13 +73,15 @@
     name.append(label, host);
     marks.className = "roster-marks";
     voice.className = "roster-voice"; voice.type = "button"; voice.hidden = true; voice.append(BL.hud.voiceIcon.cloneNode(true));
-    marks.append(voice);
+    // A private conversation (#188), offered where the room relays them; never on the visitor's own row.
+    priv.className = "players-private"; priv.type = "button"; priv.hidden = true; priv.append(lockIcon.cloneNode(true));
+    marks.append(voice, priv);
     look.className = "players-look"; look.type = "button"; look.setAttribute("aria-describedby", id); look.append(crosshair.cloneNode(true));
     distance.className = "players-distance"; distance.append("");
     note.className = "players-note"; note.textContent = ", last known location"; note.hidden = true;
     distance.append(note);
     li.append(presence, name, marks, look, distance);
-    return { li, label, host, voice, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
+    return { li, label, host, voice, priv, privName: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
       aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false, far: false };
   };
   const selfRow = makeRow();
@@ -109,6 +119,12 @@
       if (!rec) continue;
       const look = rec.voice ? rec.muted ? "muted" : BL.voice.speaking(rec.id) ? "speaking" : "on" : "";
       paintMark(row, look, rec.voice ? rec.login : "", false, rec.id === s.hostId);
+      const name = BL.privateChat && BL.privateChat.available() ? rec.display : "";
+      if (row.privName !== name) {
+        row.privName = name; row.priv.hidden = !name;
+        const words = `Ask ${name} for a private conversation`;
+        row.priv.title = words; row.priv.setAttribute("aria-label", words);
+      }
     }
   };
   const paintMark = (row, look, login, self, host) => {
@@ -239,6 +255,12 @@
     if (step && doors && doors(s.zone, step, door, placed ? me.x : NaN, placed ? me.z : NaN)) BL.pilot.turnToward(door.x, door.y, door.z);
   };
   list.addEventListener("click", (e) => {
+    const priv = e.target.closest(".players-private");
+    if (priv) {
+      priv.blur();
+      BL.privateChat.invite(Number(priv.closest("li").dataset.id));
+      return;
+    }
     const voice = e.target.closest(".roster-voice");
     if (voice) {
       voice.blur();

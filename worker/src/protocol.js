@@ -20,6 +20,8 @@ import "../../src/js/voice-blend.js";
 //                 { t: "shot", a }               a banana the driven Ooga fired: [from x, y, z, to x, y, z]
 //                 { t: "swing" }                 the driven Ooga's melee strike
 //                 { t: "chat", text, clientId? }            a line for Ooga Chat (see Chat below)
+//                 { t: "pm", op, to, d?, n? }   a private conversation with player `to` (see Private below): `invite`,
+//                                               `accept`, `decline`, `block`, `end`, or `data` with a sealed frame `d`
 //                 { t: "studio", action, playback?, commandId?, ... }  a DSB Studio seat or host command; transport
 //                                checks `playback` against the state's playbackRevision
 //                                (`parseStudioCommand` in studio-policy.js; see docs/dsb-studio-session.md)
@@ -53,6 +55,9 @@ import "../../src/js/voice-blend.js";
 //                 chat-ack { clientId }     the sender's line was accepted, including a recognized retry
 //                 chat-rejected { clientId?, reason }  refused; rate retries keep the same id
 //                 chat-history { messages }  after welcome: the lines the room still holds, oldest first
+//                 pm { op, ... }            a private conversation: invite { from }, inviting { to }, open { with },
+//                                            declined { from }, withdrawn { from }, closed { from, reason },
+//                                            data { from, d }, and to its sender ok { n, to } or refused { to, n?, reason }
 //                 wallet { k, w }            another player's wallet event, to their zone: `w` is the wallet as
 //                                            [id, u, look, state, x, y, z, vx, vy, vz, at, end], state "c" carried,
 //                                            "d" set down or "f" thrown, at and end on the room's clock;
@@ -71,6 +76,12 @@ import "../../src/js/voice-blend.js";
 // that joins. A line is CHAT_MAX UTF-16 units at most under the shared chat policy. A chat frame gets its own size
 // limit: one that starts with CHAT_PREFIX, as the page sends it, may run to CHAT_FRAME_MAX and is ignored past
 // it, so a long line is dropped rather than closing the socket; every other frame keeps MESSAGE_MAX.
+// Private (#188): two players agree to talk (an invite, then its accept) and the room relays each `data` frame from
+// one to the other while both still hold the conversation, answering `ok` once it went. A frame is base64 the room
+// cannot read, sealed and opened with a one-time pad the two swapped outside Ooga (src/js/one-time-pad.js); it is
+// never kept, stored or logged. One conversation at a time, PM_INVITES invites out at most, a block lasts the
+// socket's life (PM_BLOCKS ids), and the conversation ends when either page leaves. A pm frame may run to
+// CHAT_FRAME_MAX as a chat frame does, with PM_DATA_MAX characters of frame.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -119,6 +130,19 @@ export const CHAT_BUCKET_KEEP = MAX_PLAYERS * 2;
 // for a page that sends it raw (every character escaped as \uXXXX is six).
 export const CHAT_PREFIX = '{"t":"chat",';
 export const CHAT_FRAME_MAX = 1024;
+// Private conversations (see Private above).
+export const PM_FEATURE = "pm-v1";
+export const PM_PREFIX = '{"t":"pm",';
+// The page's largest frame: a 25-byte header, a 480-byte line and a 32-byte tag, 537 bytes, is 716 base64 characters.
+export const PM_DATA_MAX = 720;
+export const PM_HZ = 2;
+export const PM_BURST = 6;
+export const PM_INVITE_HZ = 0.2;
+export const PM_INVITE_BURST = 3;
+export const PM_INVITES = 4;
+export const PM_BLOCKS = 32;
+const PM_OPS = ["invite", "accept", "decline", "block", "end"];
+const PM_DATA = /^[A-Za-z0-9+/]+={0,2}$/;
 // The Sphere's one exterior doorway is a short, server-leased FIFO. Room door transits are independent
 // announcements inside exactly one numbered room. Alarms, rather than timers, expire both while idle.
 export const DOOR_ZONE = "sphere";
@@ -183,7 +207,7 @@ const round = (v) => Math.round(v * 1000) / 1000;
 export const parseClientMessage = (text) => {
   if (typeof text !== "string") return false;
   if (text.length > MESSAGE_MAX) {
-    if (!text.startsWith(CHAT_PREFIX)) return false;
+    if (!text.startsWith(CHAT_PREFIX) && !text.startsWith(PM_PREFIX)) return false;
     if (text.length > CHAT_FRAME_MAX) return null;
   }
   let msg;
@@ -193,8 +217,8 @@ export const parseClientMessage = (text) => {
     return false;
   }
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return false;
-  // Only chat earns the longer frame: a repeated key could make a chat-prefixed frame parse as anything.
-  if (text.length > MESSAGE_MAX && msg.t !== "chat") return false;
+  // Only chat and private frames earn the longer frame: a repeated key could make a prefixed frame parse as anything.
+  if (text.length > MESSAGE_MAX && msg.t !== "chat" && msg.t !== "pm") return false;
   if (msg.t === "studio") return parseStudioCommand(msg);
   if (msg.t === "pose") {
     const { x, y, z, yaw } = msg;
@@ -279,6 +303,16 @@ export const parseClientMessage = (text) => {
     return { t: "shot", a: a.map(round) };
   }
   if (msg.t === "swing") return { t: "swing" };
+  if (msg.t === "pm") {
+    const { op, to } = msg;
+    if (!Number.isSafeInteger(to) || to <= 0) return null;
+    if (op === "data") {
+      const { d, n } = msg;
+      return typeof d === "string" && d.length <= PM_DATA_MAX && d.length % 4 === 0 && PM_DATA.test(d) && Number.isSafeInteger(n) && n > 0
+        ? { t: "pm", op, to, d, n } : null;
+    }
+    return PM_OPS.includes(op) ? { t: "pm", op, to } : null;
+  }
   if (msg.t === "poker-voice") return msg.table === null || Number.isInteger(msg.table) && msg.table >= 0 && msg.table < 10 ? { t: "poker-voice", table: msg.table } : null;
   return null;
 };

@@ -47,6 +47,10 @@
 // room is live; `subscribeChat` hears the room's lines as `fn(lines, joined, receipt)`: one new line, or on every
 // (re)join the lines the room still holds, which chat.js merges; a rejection keeps the draft. The room names each line's
 // speaker; the page keeps nothing (chat.js shows them).
+// Private conversations (#188): `sendPrivate(op, to, d, n)` hands the room an invite, accept, decline, block or end
+// for player `to`, or a sealed frame `d` (base64) numbered `n`, while the room is live and says it relays them
+// (`state.privateChat`); `subscribePrivate` hears the room's `pm` messages as they come, and `{ op: "lost" }` when
+// the room stops being live, which ends any conversation (private-chat.js keeps it).
 // The Timechain Sphere's doorway (docs/timechain-sphere/doorway-contract.md): a room that knows it says so in `welcome`
 // (`features` holds "door", `state.doorway`). `askDoor(dir, room)` asks for the shared doorway after a crossing is
 // prepared, at most one request at a time; the room answers `wait` or `grant { cycle, exp }`, the page starts its
@@ -68,8 +72,8 @@
 // keeps the voices this page hears, since it already plays them.
 // `subscribePresence` hears `fn(rec, true)` for a player who joins the room while this page is in it, never for those
 // already there on this page's (re)join, and `fn(rec, false)` when one leaves (players.js names the joins, #430).
-// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePrivate, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -112,6 +116,8 @@
   const studioSubscribers = new Set();
   const studioEmit = message => { for (const fn of studioSubscribers) fn(message); };
   const chatSubscribers = new Set();
+  const privateSubscribers = new Set();
+  const privateHeard = (msg) => { for (const fn of privateSubscribers) fn(msg); };
   const walletSubscribers = new Set();
   const shotSubscribers = new Set(), swingSubscribers = new Set();
   const presenceSubscribers = new Set();
@@ -122,7 +128,7 @@
   const state = { backend: false, me: null, donations: false, tess: false, highscores: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
-    self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, blendTo: null, blendT: 0 };
+    self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, blendTo: null, blendT: 0 };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
   let npcFrame = null, inHub = false, hubSent = null, visibleSent = null;
   let zone = "outside", body = null, muted = false, hpSent = 100, koSent = false, hpAt = 0, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
@@ -158,8 +164,10 @@
   };
 
   const setRoom = (room) => {
+    const lost = state.room === "live" && room !== "live";
     state.room = room;
-    if (room !== "live") state.chatUnicode = false;
+    if (room !== "live") state.chatUnicode = state.privateChat = false;
+    if (lost) privateHeard({ op: "lost" });
     if (room !== "live") { state.studio = null; state.connectionToken = ""; studioEmit({t:"studio-state",state:null}); }
     state.online = room === "live" ? remotes.size + 1 : 0;
     emit();
@@ -330,6 +338,7 @@
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
       state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
+      state.privateChat = Array.isArray(msg.features) && msg.features.includes("pm-v1");
       remotes.clear();
       for (const p of msg.players) upsert(p);
       setRoom("live");
@@ -421,6 +430,8 @@
     } else if (msg.t === "chat-ack" || msg.t === "chat-rejected") {
       if (chatIdValid(msg.clientId))
         chatHeard([], false, { clientId: msg.clientId, accepted: msg.t === "chat-ack", conflict: msg.reason === "conflict" });
+    } else if (msg.t === "pm") {
+      if (typeof msg.op === "string" && msg.op !== "lost") privateHeard(msg);
     } else if (msg.t === "wallet" || msg.t === "wallets") {
       for (const fn of walletSubscribers) fn(msg);
     } else if (msg.t === "chat-history") {
@@ -729,6 +740,17 @@
   };
 
   // One line of Ooga Chat; false when it was not sent (not live, invalid, overlong or unsupported by an older server).
+  const PRIVATE_OPS = ["invite", "accept", "decline", "block", "end", "data"];
+  const sendPrivate = (op, to, d, n) => {
+    if (!state.privateChat || state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    if (!PRIVATE_OPS.includes(op) || !Number.isSafeInteger(to) || to <= 0) return false;
+    send(JSON.stringify(op === "data" ? { t: "pm", op, to, d, n } : { t: "pm", op, to }));
+    return true;
+  };
+  const subscribePrivate = (fn) => {
+    privateSubscribers.add(fn);
+    return () => privateSubscribers.delete(fn);
+  };
   const sendChat = (text, clientId) => {
     if (BL.chatPolicy.error(text)) return false;
     const line = BL.chatPolicy.text(text);
@@ -936,5 +958,5 @@
     close("off");
   };
 
-  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribePrivate, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendPrivate, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
