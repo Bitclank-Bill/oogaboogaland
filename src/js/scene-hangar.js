@@ -67,7 +67,7 @@
     direct: [0.7, 0.52, 0.36], directStrength: 0.36, ambientFloor: 0.4, light: { x: 0.25, y: 0.9, z: 0.35 },
     horizon: [0.07, 0.06, 0.18], zenith: [0.006, 0.008, 0.03], sun: [0.05, 0.05, 0.08], stars: 1,
     moon: { x: 0.2, y: 0.13, z: -0.97 }, starMatrix: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-    shadowCenter: { x: 2.5, y: 6, z: -2 }, shadowExtent: 42,
+    shadowCenter: { x: 2.5, y: 6, z: -2 }, shadowExtent: 42, spotLight: new Float32Array(12),
     fog: [0.045, 0.06, 0.095], fogNear: 14, fogFar: 120,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 1
   };
@@ -76,6 +76,10 @@
   const NOSE_GEAR = -9.3;
   const SKY = RENDER_OPTS.sky.slice(), GROUND = RENDER_OPTS.ground.slice(), DIRECT = RENDER_OPTS.directStrength, FLOOR = RENDER_OPTS.ambientFloor;
   const HAZE = RENDER_OPTS.fog.slice();
+  // The Jet's key light, the scene's spot (`lightUp`): hung from the gantry over the Jet's left flank and aimed down at
+  // it, a cone of cool white on the Jet and the floor round it, as far as `reach` m, full inside `inner` radians of its
+  // axis and gone by `outer`; an anomaly dims it with the hall's lights.
+  const KEY = { at: [LAYOUT.jet.x - 9, 14.2, LAYOUT.jet.z], aim: [LAYOUT.jet.x, 2, LAYOUT.jet.z], reach: 45, outer: 0.96, inner: 0.61, color: [10, 10.5, 11.4] };
   // The space past the shield, from ₿IFRÖST's dome (`bifrostModels.sky`): its stars, the twinkling ones in their halos,
   // the galaxy's band and its shooting stars on a dome tipped so its zenith looks back down the tunnel and turned so
   // the band crosses the tunnel's end; and its ringed giant and its red world, turning with their moons going round,
@@ -1027,6 +1031,9 @@
   };
   const lightUp = () => {
     HM.fixedLights().forEach((l, i) => lamp(i, ...l));
+    const spot = RENDER_OPTS.spotLight, [x, y, z] = KEY.at, dx = KEY.aim[0] - x, dy = KEY.aim[1] - y, dz = KEY.aim[2] - z, d = Math.hypot(dx, dy, dz);
+    spot[0] = x; spot[1] = y; spot[2] = z; spot[3] = KEY.reach; spot[4] = dx / d; spot[5] = dy / d; spot[6] = dz / d;
+    spot[7] = Math.cos(KEY.outer); spot[8] = KEY.color[0]; spot[9] = KEY.color[1]; spot[10] = KEY.color[2]; spot[11] = Math.cos(KEY.inner);
     for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i]; RENDER_OPTS.ground[i] = GROUND[i]; RENDER_OPTS.fog[i] = HAZE[i]; }
     RENDER_OPTS.directStrength = DIRECT; RENDER_OPTS.ambientFloor = FLOOR;
     RENDER_OPTS.lightCount = Math.min(BL.glRenderer.POINT_LIGHT_CAPACITY, FIXED + lanternPool().length / 4);
@@ -1505,6 +1512,7 @@
       s.dimmed = dim; s.ambient = amb;
       const F = HM.fixedLights();
       for (let i = 1; i < FIXED; i++) if (i !== MOUTH_SLOT) { const l = F[i], o = i * 8; Lt[o + 4] = l[4] * dim; Lt[o + 5] = l[5] * dim; Lt[o + 6] = l[6] * dim; }
+      for (let i = 0; i < 3; i++) RENDER_OPTS.spotLight[8 + i] = KEY.color[i] * dim;
       for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i] * amb; RENDER_OPTS.ground[i] = GROUND[i] * amb; RENDER_OPTS.fog[i] = HAZE[i] * amb; }
       RENDER_OPTS.directStrength = DIRECT * amb; RENDER_OPTS.ambientFloor = FLOOR * amb;
       for (const g of s.glass) g.glow = dim;
