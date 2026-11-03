@@ -81,11 +81,68 @@
     // A cable tray along the top and a power strip.
     parts.push(M.box({ w: 3.0, h: 0.1, d: 0.3, color: "#2b2e33", offset: { x: 0, y: 2.3, z: -0.2 } }), M.box({ w: 2.6, h: 0.06, d: 0.1, color: "#e0452b", emissive: 0.4, offset: { x: 0, y: 0.12, z: 0.42 } }));
     addChild(root, createNode({ geometry: M.merge(...parts) }));
+    // "Inside an ASIC": a screen on posts over the rack, a picture of what one chip does, repainted ten times a second
+    // (a canvas-backed surface, its version bumped).
+    const CW = 480, CH = 270, screen = document.createElement("canvas");
+    screen.width = CW; screen.height = CH;
+    const sw = 3.0, sh = sw * CH / CW;
+    const face = { verts: [-sw / 2, -sh / 2, 0.03, sw / 2, -sh / 2, 0.03, sw / 2, sh / 2, 0.03, -sw / 2, sh / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+    face.imageSurface = { canvas: screen, version: 1, rect: [-sw / 2, -sh / 2, sw, sh] };
+    const panel = createNode({ position: { x: 0, y: 3.85, z: 0.2 } });
+    addChild(panel, createNode({ geometry: M.box({ w: sw + 0.2, h: sh + 0.2, d: 0.08, color: "#1b1d22" }) }), createNode({ geometry: face }));
+    addChild(root, panel);
+    addChild(root, createNode({ geometry: M.merge(M.box({ w: 0.08, h: 1.6, d: 0.08, color: "#5a5f66", offset: { x: -1.4, y: 3.1, z: 0.2 } }), M.box({ w: 0.08, h: 1.6, d: 0.08, color: "#5a5f66", offset: { x: 1.4, y: 3.1, z: 0.2 } })) }));
+    const asic = { t: 0, tries: 0, nonce: 0, found: 0, flash: 0, paintIn: 0, hash: 0 };
+    const HEX = "0123456789abcdef";
+    const paintAsic = () => {
+      const g = screen.getContext("2d");
+      g.fillStyle = "#07110b"; g.fillRect(0, 0, CW, CH);
+      g.fillStyle = "#7dff9e"; g.font = "bold 18px monospace"; g.textAlign = "left"; g.textBaseline = "top";
+      g.fillText("INSIDE AN ASIC: ONE JOB, BILLIONS OF TIMES", 14, 10);
+      // The block header going in, its nonce counting.
+      g.font = "13px monospace"; g.fillStyle = "#cfe8d6";
+      g.fillText("BLOCK HEADER", 14, 44);
+      g.fillStyle = "#1c3a26"; g.fillRect(14, 62, 150, 70);
+      g.fillStyle = "#9cff9c"; g.fillText("version  prev hash", 20, 68); g.fillText("merkle   time  bits", 20, 86);
+      g.fillStyle = "#ffd23a"; g.fillText(`nonce ${asic.nonce >>> 0}`, 20, 108);
+      // The two SHA-256 passes as a pipeline of rounds, a pulse running through them.
+      const k = (asic.t * 3) % 1;
+      for (let pass = 0; pass < 2; pass++) {
+        const x0 = 190 + pass * 120;
+        g.fillStyle = "#cfe8d6"; g.fillText(`SHA-256 #${pass + 1}`, x0, 44);
+        for (let r = 0; r < 8; r++) { g.fillStyle = Math.floor(k * 8) === r ? "#7dff9e" : "#1c3a26"; g.fillRect(x0 + (r % 4) * 24, 64 + Math.floor(r / 4) * 26, 20, 20); }
+        g.fillStyle = "#6a8f74"; g.fillText("64 rounds", x0, 120);
+      }
+      // The result against the target.
+      const h = asic.hash >>> 0;
+      let hs = ""; for (let i = 7; i >= 0; i--) hs += HEX[(h >>> (i * 4)) & 15];
+      g.fillStyle = "#cfe8d6"; g.fillText("RESULT", 14, 150);
+      g.font = "bold 20px monospace"; g.fillStyle = asic.flash > 0 ? "#ffd23a" : "#9cff9c"; g.fillText(`${hs}…`, 14, 168);
+      g.font = "13px monospace"; g.fillStyle = "#cfe8d6"; g.fillText("TARGET  0000…  (must be smaller)", 14, 198);
+      g.fillStyle = asic.flash > 0 ? "#ffd23a" : "#ff6a5a"; g.font = "bold 16px monospace";
+      g.fillText(asic.flash > 0 ? "FOUND ONE!  The block can be sent out." : "too big: try the next nonce", 14, 222);
+      // The cores, all doing the same at once, and the count.
+      g.font = "13px monospace"; g.fillStyle = "#cfe8d6"; g.fillText("CORES", 330, 150);
+      for (let c = 0; c < 24; c++) { g.fillStyle = ((c * 7 + Math.floor(asic.t * 20)) % 5) ? "#2f6b3e" : "#7dff9e"; g.fillRect(330 + (c % 8) * 17, 168 + Math.floor(c / 8) * 17, 13, 13); }
+      g.fillStyle = "#9cff9c"; g.fillText(`tries shown: ${asic.tries.toLocaleString()}`, 330, 222);
+      g.fillStyle = "#6a8f74"; g.fillText(`blocks found here: ${asic.found}`, 330, 240);
+      g.fillText("A real chip makes trillions of tries a second.", 14, 248);
+      face.imageSurface.version++;
+    };
+    paintAsic();
     const st = { t: 0 };
     const update = (dt, calm) => {
       st.t += dt;
       if (!calm) for (let i = 0; i < fans.length; i++) fans[i].rotation.z += dt * (14 + (i % 3) * 3);
       for (let i = 0; i < lights.length; i++) lights[i].glow = ((Math.floor(st.t * 5) + i * 7) % 11) < 2 ? 0.3 : 1.4;
+      // The ASIC's screen: tries tick on, a fingerprint each, a find now and then (a toy pace, said on the screen).
+      asic.t += dt; asic.flash = Math.max(0, asic.flash - dt);
+      if (!calm || asic.paintIn <= 0) {
+        const n = 37 + Math.floor(Math.random() * 20);
+        asic.tries += n; asic.nonce += n; asic.hash = fnv("ooga block", asic.nonce);
+        if (asic.flash <= 0 && Math.random() < dt * 0.12) { asic.flash = 2.2; asic.found++; asic.hash = asic.hash >>> 16; }
+      }
+      if ((asic.paintIn -= dt) <= 0) { asic.paintIn = 0.1; paintAsic(); }
     };
     return { root, update, footprint: { w: 3.4, d: 1.2 } };
   };

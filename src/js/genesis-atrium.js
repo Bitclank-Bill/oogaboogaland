@@ -77,7 +77,15 @@
       const a = Math.atan2(ox, -oz), p = bearingPoint(MAP_R, a, { x: 0, z: 0 });
       return { era: e.n, name: e.name, years: e.years, x: p.x, z: p.z, toward: { x: ox, z: oz }, a, ry: a + Math.PI };
     });
-    return { steps, paper: paperStop, genesis, monument, areas, markers, path, obstacles, clear: clearOf(museum.atrium), radius: { inner: R1, outer: R0, map: MAP_R } };
+    // Round the statue, the exhibits after Genesis: the miners to its west facing in, the toy node network to its east
+    // facing in, and the map of Ooga Booga Land in front, left of the dais. Each with its box on the floor (`box`) and
+    // where a visitor stands to use it (`at`).
+    const centre = {};
+    for (const [id, x, z, ry, w, d] of [["mining", -5.6, -4.5, Math.PI / 2, 3.4, 1.2], ["nodes", 5.0, -5.0, -Math.PI / 2, 2.7, 1.8], ["map", -4.5, 2.5, 0, 2.6, 1.6]]) {
+      const turned = Math.abs(Math.sin(ry)) > 0.5, hx = (turned ? d : w) / 2, hz = (turned ? w : d) / 2, f = d / 2 + 1;
+      centre[id] = { x, z, ry, box: { x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz }, at: { x: x + Math.sin(ry) * f, z: z + Math.cos(ry) * f } };
+    }
+    return { steps, paper: paperStop, genesis, monument, centre, areas, markers, path, obstacles, clear: clearOf(museum.atrium), radius: { inner: R1, outer: R0, map: MAP_R } };
   };
 
   const GOLD = "#e8c35a", GOLD_DK = "#9a7418", STONE = "#6a645a", STONE_LT = "#8a8378";
@@ -88,14 +96,14 @@
       addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
       return node;
     };
-    // The plinths: a stone column in the step's era colour, its mark on top, its sign facing out.
+    // The plinths: a stone column in the step's era colour, its mark on top (no sign: the statue stands clear; Space
+    // or a tap on a plinth opens its exhibit).
     for (const s of L.steps) {
       solids.push(M.moved(M.box({ w: PLINTH, h: s.h, d: PLINTH, color: eraColor(s.era) }), s.x, top + s.h / 2, s.z));
       solids.push(M.moved(M.box({ w: PLINTH + 0.2, h: 0.12, d: PLINTH + 0.2, color: STONE_LT }), s.x, top + s.h + 0.06, s.z));
       const y = top + s.h + 0.12;
       if (s.kind === "citation") solids.push(M.moved(M.box({ w: 0.55, h: 0.55, d: 0.55, color: GOLD, emissive: 0.5 }), s.x, y + 0.3, s.z));
       else solids.push(M.moved(M.turnedX(M.torus(0.32, 0.07, GOLD, 0.5), Math.PI / 2), s.x, y + 0.42, s.z));
-      sign(`STEP ${s.step} · ${s.year}`, `${s.title}${s.ref ? ` ${s.ref}` : ""} · ${s.kind === "citation" ? "whitepaper citation" : "documented influence"}`, s.x, y + 1.15, s.z, s.ry, "gold", 0.42);
       picks.push({ id: s.id, at: s.at, node: place(createNode({ geometry: pickBox(PLINTH, s.h + 1.4, PLINTH), position: { x: s.x, y: top + (s.h + 1.4) / 2, z: s.z } })) });
     }
     // The gold line on the floor through the steps in date order, ending at the dais.
@@ -103,12 +111,10 @@
       const a = L.path[i], b = L.path[i + 1], len = Math.hypot(b.x - a.x, b.z - a.z), yaw = Math.atan2(b.x - a.x, b.z - a.z);
       lines.push(M.moved(M.turnedY(M.box({ w: 0.18, h: 0.02, d: len, color: GOLD, emissive: 0.7 }), yaw), (a.x + b.x) / 2, top + 0.012, (a.z + b.z) / 2));
     }
-    // The dais and the paper: a low round stone, a white slab with a gold edge, its sign.
+    // The dais and the paper: a low round stone, a white slab with a gold edge.
     solids.push(M.moved(M.box({ w: DAIS, h: 0.4, d: DAIS, color: STONE }), 0, top + 0.2, 0));
     if (L.paper) {
-      solids.push(M.moved(M.box({ w: 1.5, h: 2.1, d: 0.18, color: "#f5f0e2", emissive: 0.15 }), 0, top + 0.4 + 1.05, 0));
-      solids.push(M.moved(M.box({ w: 1.62, h: 2.22, d: 0.12, color: GOLD_DK }), 0, top + 0.4 + 1.05, -0.06));
-      sign(`STEP ${L.paper.step} · ${L.paper.year}`, `${L.paper.title} · the whitepaper itself · announced 31 October 2008`, 0, top + 3.1, 0.2, Math.PI, "gold", 0.5);
+      // The paper itself stands here as the portal's scrolling pages (scene-genesis.js buildPaperPortal).
       picks.push({ id: L.paper.id, at: L.paper.at, node: place(createNode({ geometry: pickBox(1.6, 2.6, 0.6), position: { x: 0, y: top + 1.7, z: 0 } })) });
     }
     // The genesis block's record beside it: a dark cube, after the paper (context, not a step).
@@ -116,16 +122,14 @@
     if (L.genesis) {
       solids.push(M.moved(M.box({ w: 0.9, h: L.genesis.h, d: 0.9, color: "#2a2522" }), L.genesis.x, top + L.genesis.h / 2, L.genesis.z));
       cube = place(createNode({ geometry: M.box({ w: 0.5, h: 0.5, d: 0.5, color: "#ff9a3a", emissive: 0.9 }), position: { x: L.genesis.x, y: top + L.genesis.h + 0.45, z: L.genesis.z } }));
-      sign(`${L.genesis.year} · AFTER THE PAPER`, `${L.genesis.title} · context, not a step`, L.genesis.x, top + L.genesis.h + 1.3, L.genesis.z, Math.PI, "plain", 0.38);
       picks.push({ id: L.genesis.id, at: L.genesis.at, node: place(createNode({ geometry: pickBox(1, L.genesis.h + 1, 1), position: { x: L.genesis.x, y: top + (L.genesis.h + 1) / 2, z: L.genesis.z } })) });
     }
     // The Satoshi statue (bustParts), behind the dais.
     if (L.monument) bustParts(M, L.monument, top, sign, place, createNode);
-    // The floor map: for each era a chevron on the floor pointing at its gallery and a low sign facing the middle.
+    // The floor map: for each era a chevron on the floor pointing at its gallery (the courtyard's wooden signs name them).
     for (const m of L.markers) {
       const c = eraColor(m.era);
       for (const s of [-1, 1]) lines.push(M.moved(M.turnedY(M.box({ w: 0.22, h: 0.025, d: 1.6, color: c, emissive: 0.8 }), m.a + s * 0.55), m.x + Math.sin(m.a) * 0.6 - s * Math.cos(m.a) * 0.45, top + 0.014, m.z - Math.cos(m.a) * 0.6 - s * Math.sin(m.a) * 0.45));
-      sign(`ERA ${m.era} · ${m.name.toUpperCase()}`, `${m.years} · its gallery is this way`, m.x - Math.sin(m.a) * 0.9, top + 0.95, m.z + Math.cos(m.a) * 0.9, m.ry, "plain", 0.42);
     }
     place(createNode({ geometry: M.merge(...solids) }));
     place(createNode({ geometry: M.merge(...lines), sightHidden: true }));

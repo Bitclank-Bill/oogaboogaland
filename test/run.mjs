@@ -25314,7 +25314,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-mining", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-mining", "genesis-nodes", "genesis-minimap", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25458,14 +25458,24 @@ const genesisAtriumProof = async () => {
     for (const post of d.posts) if (all.some((o) => post.x > o.x0 - 0.5 && post.x < o.x1 + 0.5 && post.z > o.z0 - 0.5 && post.z < o.z1 + 0.5)) wb.push(`a docent's post (${post.era ? `era ${post.era.n}` : "atrium"}) stands in something`);
     if (d.posts.length !== 10) wb.push(`${d.posts.length} docents' posts`);
   }
-  // The mining corner by the arrival (scene-genesis.js MINING: 8.5 m right of the arrival, 6.5 m in) stands clear of
-  // the courtyard's things, its paths and belts and the view to the white screen, and its toy miner finds a block.
-  const entry = { x: 0, z: M.atrium.z1 - 12 }, mine = { x0: entry.x + 8.5 - 1.7, x1: entry.x + 8.5 + 1.7, z0: entry.z - 6.5 - 0.6, z1: entry.z - 6.5 + 0.6 };
-  if (blockers.some((o) => mine.x0 < o.x1 && mine.x1 > o.x0 && mine.z0 < o.z1 && mine.z1 > o.z0)) wb.push("the mining corner stands in something");
-  if (Y.paths.some((q) => [[mine.x0, mine.z0], [mine.x1, mine.z0], [mine.x0, mine.z1], [mine.x1, mine.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2))) wb.push("the mining corner stands on a path");
-  if (C.inView((mine.x0 + mine.x1) / 2, (mine.z0 + mine.z1) / 2, 1) || C.inView(mine.x0, mine.z0, 0.5)) wb.push("the mining corner stands in the view to the white screen");
+  // The exhibits round the statue (genesis-atrium.js `centre`: miners, nodes, the map) stand clear of the courtyard's
+  // things and each other, off its paths and the view to the white screen, with open floor to stand at; the toy miner
+  // finds a block and the toy network spreads one.
+  const cen = Object.entries(L.centre || {});
+  if (cen.length !== 3) wb.push(`${cen.length} exhibits round the statue`);
+  for (const [id, c] of cen) {
+    const mine = c.box, hit = (o) => mine.x0 < o.x1 && mine.x1 > o.x0 && mine.z0 < o.z1 && mine.z1 > o.z0;
+    if (blockers.some(hit) || cen.some(([k, o]) => k !== id && hit(o.box))) wb.push(`the ${id} exhibit stands in something`);
+    if (blockers.some((o) => c.at.x > o.x0 - 0.3 && c.at.x < o.x1 + 0.3 && c.at.z > o.z0 - 0.3 && c.at.z < o.z1 + 0.3)) wb.push(`the ${id} exhibit's front is blocked`);
+    if (Y.paths.some((q) => [[mine.x0, mine.z0], [mine.x1, mine.z0], [mine.x0, mine.z1], [mine.x1, mine.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2))) wb.push(`the ${id} exhibit stands on a path`);
+    if (C.inView((mine.x0 + mine.x1) / 2, (mine.z0 + mine.z1) / 2, 1) || C.inView(mine.x0, mine.z0, 0.5)) wb.push(`the ${id} exhibit stands in the view to the white screen`);
+  }
   const mt = BLc.genesisMining.terminal(), mined = mt.run("MINE").lines.join(" ");
   if (!/Found it after/.test(mined)) wb.push(`the toy miner found nothing: ${mined}`);
+  const SQ = BLc.genesisSatoshiFx;
+  if (!SQ || SQ.QUOTES.length < 5 || SQ.QUOTES.some(([q, src]) => !/^\u201c.+\u201d$/.test(q) || !/(19|20)\d\d/.test(src))) wb.push("a quote round the statue lacks its quotation marks or a dated source");
+  const NT = BLc.genesisNodes && BLc.genesisNodes.terminal({ send: () => 2, mine: () => 4, reset() {}, height: 2, holding: 1 });
+  if (!NT || !/found block 2/.test(NT.run("MINE").lines.join(" ")) || !/1 of 7/.test(NT.run("STATUS").lines.join(" "))) wb.push("the toy network's terminal does not report its blocks");
   const walkways = { belts: WL.belts.length, perimeter: +perimeter.toFixed(1), items: itemCounts, bad: wb.slice(0, 8) };
   return { steps: L.steps.length, paper: L.paper && L.paper.id, genesis: L.genesis && L.genesis.id, gap: +gap.toFixed(2), pointing, courtyard, walkways, bad: bad.slice(0, 8) };
 };
@@ -26136,7 +26146,7 @@ const unitChecks = async () => {
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisAtrium = await genesisAtriumProof();
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk between plinths and to every walk-up point; a floor marker per era pointing at its gallery", !genesisAtrium.bad.length && genesisAtrium.pointing, JSON.stringify(genesisAtrium));
-  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, every gallery has period pieces, board games and furniture on open floor, every docent's post is open floor, and the mining corner stands clear of paths and the view", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
+  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, every gallery has period pieces, board games and furniture on open floor, every docent's post is open floor, and the miners, nodes and map round the statue stand clear of paths, each other and the view", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
   const genesisEraCartridges = await genesisEraCartridgeProof();
