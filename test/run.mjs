@@ -25930,6 +25930,20 @@ const genesisAutoplayProof = async () => {
   if (refused > steps * 0.08) bad.push(`${refused} of ${steps} steps turned away`);
   return { terminals, steps, refused, bad: bad.slice(0, 8) };
 };
+// rule (Billy: a guide like Tess walks you through it): the museum's tour has a stop for the statue, one for each era
+// in date order and the mining corner, every line a stop names exists, and each suggested question is answered.
+const genesisGuideProof = async () => {
+  const context = { window: { BL: {} } };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-guide"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, GG = BLc.genesisGuide, bad = [];
+  const G = GG.make({ museum: W.MUSEUM, eras: W.ERAS, lane: W.LANE_X, statue: { x: 0, z: -5.6 }, mining: { x: 8.5, z: 30 } });
+  if (G.stops.length !== W.ERAS.length + 2) bad.push(`${G.stops.length} stops`);
+  if (G.stops[0].id !== "statue" || G.stops[G.stops.length - 1].id !== "mining" || W.ERAS.some((e, n) => G.stops[n + 1].id !== `era${n}`)) bad.push("stops out of order");
+  for (const st of G.stops) for (const id of st.lines) if (!G.lines[id]) bad.push(`${st.id} names a missing line ${id}`);
+  for (const q of G.suggestions) { const a = G.answer(q); if (!a || !(a.lines.length || a.tour)) bad.push(`no answer to "${q}"`); else for (const id of a.lines) if (!G.lines[id]) bad.push(`answer names a missing line ${id}`); }
+  if (!G.answer("give me the tour").tour) bad.push("asking for the tour does not start it");
+  return { stops: G.stops.length, bad };
+};
 const genesisMuseumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
@@ -26402,6 +26416,8 @@ const unitChecks = async () => {
   record("Genesis white screen and menu (regression, reviews of 20eec91 and d59b831; the menu shows each era once, Era 6's bibliography under Era 6, and 1997's ring and dot are painted apart): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));
   record("Genesis era cartridges (rule, gv/integration-3 4d): the ten era playables (Pocket Route among them) are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
+  const genesisGuideR = await genesisGuideProof();
+  record("Genesis guide (rule): Tess's museum tour stops at the statue, each era in date order and the mining corner, every line exists and each suggested question is answered", !genesisGuideR.bad.length, JSON.stringify(genesisGuideR));
   const genesisPlus = await genesisGamesPlusProof();
   record("Genesis cabinet games (playthrough): every cabinet game (one in each gallery), both board-table games and Pocket Route each start, play to their end once under steady presses, draw, and are labelled modern original museum games", genesisPlus.games === 8 && genesisPlus.ends["e4-pocket"] === 1 && genesisPlus.ends["b-gomoku"] === 1 && genesisPlus.ends["b-dots"] === 1 && !genesisPlus.bad.length, JSON.stringify(genesisPlus));
   const genesisAuto = await genesisAutoplayProof();

@@ -902,7 +902,7 @@
     saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, near: 0, up: null, orthoMix: 0, orthoHeight: 0 }, opens: 0, runs: 0 };
   const PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
   const frameIn = { c: { x: 0, y: 0, z: 0 }, size: 1, toward: { x: 0, z: 1 }, ndc: { x: 0, y: 0 }, frac: 0.6, fov: 62, aspect: 1.6, fill: 0.62, pitch: 0.2 };
-  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null, docents = null, autoplay = null, ambience = null;
+  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null, docents = null, autoplay = null, ambience = null, guide = null;
   const AUTO_STATE = { uses: 0, last: "" };
   const RIDE = { x: 0, z: 0, kind: "", era: -1 };
   // The exhibits the catalogue lists: every era file's props, Fingerprints and Time's two citations (its lectern) and
@@ -1410,7 +1410,7 @@
   const onKey = (e) => {
     if (bench.open || view.reading || (cart && cart.isOpen) || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (k === "Escape") { if (!pilot.escape()) leave(); }
+    if (k === "Escape") { if (guide && guide.escape()) { e.preventDefault(); return; } if (!pilot.escape()) leave(); }
     else if (k === "0") pilot.resetCamera();
     else if (k === "i") openInfo();
     else if (k === "c") toggle("captions");
@@ -1508,6 +1508,7 @@
       if (docents) docents.update(dt, avatar ? avatar.root.position.x : null, avatar ? avatar.root.position.z : 0);
       if (built.fans && !view.calm) for (const f of built.fans) f.rotation.y += dt * 1.2;
       if (built.mining) built.mining.update(dt, view.calm);
+      if (guide) guide.update(dt, sceneTime);
       if (ambience) { const q = avatar ? avatar.root.position : camera.target; ambience.update(dt, MU.bayAt(q.x, q.z), view.calm); }
     }
     // The cartridge console's game runs while it is open and the visitor has not paused.
@@ -1620,9 +1621,15 @@
     pilot.setActive(false);
     // The docents (genesis-docents.js): the island's apes in the museum's uniform.
     // Each gallery's docent knows its steps toward Bitcoin (the trail, in order) and its cabinet game.
-    const guide = GW.ERAS.map((e) => ({ steps: built.trail.filter((x) => x.era === e.n).sort((a, b) => a.step - b.step).map((x) => x.def.title),
+    const docentGuide = GW.ERAS.map((e) => ({ steps: built.trail.filter((x) => x.era === e.n).sort((a, b) => a.step - b.step).map((x) => x.def.title),
       game: (BL.genesisGamesPlus && (BL.genesisGamesPlus.GAMES.find((g) => g.era === e.n) || {}).title) || null }));
-    docents = BL.genesisDocents.create({ eras: GW.ERAS, museum: MU, lane: GW.LANE_X, entry: ENTRY, root, footing, fx, addChild, createNode, guide });
+    docents = BL.genesisDocents.create({ eras: GW.ERAS, museum: MU, lane: GW.LANE_X, entry: ENTRY, root, footing, fx, addChild, createNode, guide: docentGuide });
+    // Tess, Ooga Booga Land's guide (genesis-guide.js on hub-guide.js): she greets a visitor once a page and walks the
+    // road to Bitcoin gallery by gallery; a tap on her brings the tour at any time.
+    const S0 = built.atriumLayout.monument;
+    guide = BL.genesisGuide.create({ parent: root, input, fx, camera, pilot, visitor: () => people && people.player, world, hud, coarse: COARSE, landing: true,
+      quality: () => renderer.quality, busy: () => bench.open || view.reading || !!(cart && cart.isOpen), targets: {} },
+      { museum: MU, eras: GW.ERAS, lane: GW.LANE_X, statue: { x: S0.x, z: S0.z }, mining: MINING });
     remotes = BL.remotePlayers.create({ root, crew: people, fx });
     footsteps = BL.footsteps.create();
     walk.on = false; walk.prop = null; walk.falls = 0; walk.rides = 0;
@@ -1635,6 +1642,8 @@
       onTap: (hit, p) => {
         audio.wake();
         if (bench.open || view.reading) return;
+        if (hit && hit.owner.kind === "tess" && guide) { guide.tap(); return; }
+        if (guide && guide.holding) return;
         if (hit && hit.owner.kind === "exhibit") openInfo();
         else if (hit && hit.owner.kind === "legend") openMenu();
         else if (hit && hit.owner.kind === "prop") openProp(hit.owner.prop);
@@ -1694,7 +1703,7 @@
     if (back && avatar && back.name === playerName && arrive(back.x, back.z, back.yaw)) {
       if (back.view === "first-person") pilot.enterClose(false, true);
     } else arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, view, built, wallPieceAt, secret, openSecret, playSecret, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, secret, openSecret, playSecret, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
@@ -1707,6 +1716,7 @@
     hud.setStats(game.state);
   };
   const leaveScene = () => {
+    if (guide) guide.dispose();
     if (autoplay) autoplay.stop();
     if (ambience) ambience.dispose();
     stopVoice();
@@ -1716,7 +1726,7 @@
     if (cart) cart.dispose();
     if (workbench) workbench.dispose();
     if (timeline) timeline.dispose();
-    workbench = timeline = catalogue = cart = atrium = walkways = docents = autoplay = ambience = null;
+    workbench = timeline = catalogue = cart = atrium = walkways = docents = autoplay = ambience = guide = null;
     if (view.reading) hud.closeBoard();
     disposeExhibits();
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.
@@ -1763,6 +1773,7 @@
       if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
       if (remotes) remotes.liveGeometry(set);
       if (docents) docents.liveGeometry(set);
+      if (guide) guide.liveGeometry(set);
     },
     get inMotion() { return !!demo && walk.on; }
   });
