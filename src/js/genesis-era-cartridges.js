@@ -15,6 +15,7 @@
     { id: "e2-four", era: 2, title: "Four in a Row", span: "1980s", make: (host) => BL.genesisEra2Four.make(host) },
     { id: "e3-rally", era: 3, title: "Tick-Tock Rally", span: "1990–1995", make: (host) => BL.genesisEra3Rally.make(host) },
     { id: "e4-strategy", era: 4, title: "Strategy Board", span: "1996–1999", make: (host) => BL.genesisEra4Games.strategy.make(host) },
+    { id: "e4-pocket", era: 4, title: "Pocket Route", span: "1996–1999", make: (host) => BL.genesisGamesPlus.pocket(host) },
     { id: "e5-patchwork", era: 5, title: "Peer Patchwork", span: "2000–2007", make: (host) => BL.genesisEra5Patchwork.make(host) },
     { id: "e5-pocket", era: 5, title: "Pattern Pocket", span: "2000–2007", make: (host) => BL.genesisEra5Mixtape.make(host) },
     { id: "e6-argument", era: 6, title: "Assemble the Argument", span: "2008", make: (host) => BL.genesisEra6Games.argument(host) },

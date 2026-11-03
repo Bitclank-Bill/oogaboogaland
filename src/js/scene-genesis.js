@@ -781,7 +781,7 @@
     saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, near: 0, up: null, orthoMix: 0, orthoHeight: 0 }, opens: 0, runs: 0 };
   const PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
   const frameIn = { c: { x: 0, y: 0, z: 0 }, size: 1, toward: { x: 0, z: 1 }, ndc: { x: 0, y: 0 }, frac: 0.6, fov: 62, aspect: 1.6, fill: 0.62, pitch: 0.2 };
-  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null, docents = null, autoplay = null;
+  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null, docents = null, autoplay = null, ambience = null;
   const AUTO_STATE = { uses: 0, last: "" };
   const RIDE = { x: 0, z: 0, kind: "", era: -1 };
   // The exhibits the catalogue lists: every era file's props, Fingerprints and Time's two citations (its lectern) and
@@ -1327,6 +1327,7 @@
       if (walkways) walkways.update(dt, view.calm);
       if (built.vignettes) updateVignettes(dt);
       if (docents) docents.update(dt, avatar ? avatar.root.position.x : null, avatar ? avatar.root.position.z : 0);
+      if (ambience) { const q = avatar ? avatar.root.position : camera.target; ambience.update(dt, MU.bayAt(q.x, q.z), view.calm); }
     }
     // The cartridge console's game runs while it is open and the visitor has not paused.
     if (cart && cart.isOpen && !view.paused) cart.update(dt);
@@ -1477,6 +1478,9 @@
     // The exhibit the visitor stands at runs itself (genesis-autoplay.js), its steps in the panel.
     for (const id of ["auto", "auto-title", "auto-screen", "auto-step", "auto-try"]) el[id] = document.getElementById(`genesis-${id}`);
     el["auto-try"].textContent = COARSE ? "OPEN: try it yourself" : "Space: try it yourself";
+    // The hall's quiet ambience (genesis-ambience.js), started by the visitor's first key or tap.
+    ambience = BL.genesisAmbience.create();
+    for (const type of ["keydown", "pointerdown"]) window.addEventListener(type, () => { if (ambience) ambience.wake(); }, { signal: ctx.signal });
     autoplay = BL.genesisAutoplay.create({
       show: (title, lines, i, n) => { el.auto.hidden = false; el["auto-title"].textContent = title; el["auto-screen"].textContent = lines.join("\n"); el["auto-step"].textContent = n ? `step ${i} of ${n}` : ""; },
       hide: () => { el.auto.hidden = true; }
@@ -1509,12 +1513,13 @@
   };
   const leaveScene = () => {
     if (autoplay) autoplay.stop();
+    if (ambience) ambience.dispose();
     stopVoice();
     host.close();
     if (cart) cart.dispose();
     if (workbench) workbench.dispose();
     if (timeline) timeline.dispose();
-    workbench = timeline = catalogue = cart = atrium = walkways = docents = autoplay = null;
+    workbench = timeline = catalogue = cart = atrium = walkways = docents = autoplay = ambience = null;
     if (view.reading) hud.closeBoard();
     disposeExhibits();
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.
