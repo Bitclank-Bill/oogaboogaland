@@ -1017,10 +1017,10 @@
     s.statsFlag.visible = milestone;
   };
 
-  // Point lights, most important first so the lowest tier keeps them: the door's cyan, the landing, the Jet's two rims,
-  // the boards' blue, the tunnel mouth's and the launch shield's, and two warm ones over the crew's floor
-  // (`HM.fixedLights`); the lanterns on the crates share what is left, the nearest the view first, each reaching as far
-  // as `hangar-models.js` says and flickering like a flame, as the Factory shares its own.
+  // Point lights, most important first so the lowest tier keeps them: the door's cyan, the hall's cool fill, the Jet's
+  // two rims, the boards' blue, the tunnel mouth's and the launch shield's, and warm pools at the booth and over the
+  // crew's desks (`HM.fixedLights`); the lanterns on the crates share what is left, the nearest the view first, each
+  // reaching as far as `hangar-models.js` says and flickering like a flame, as the Factory shares its own.
   const LANTERN_GLOW = HM.LANTERN_GLOW, FIXED = 10;
   const lanternPool = models.cached(() => new Float32Array(HM.fixtures().lights));
   const lamp = (i, x, y, z, radius, r, g, b) => {

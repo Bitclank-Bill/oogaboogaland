@@ -1465,20 +1465,21 @@
   // ---- the hangar's light, and the hangar through the Factory's door ----------------------------------------------
 
   // The hangar's fixed point lights, most important first, [x, y, z, radius, r, g, b] each: the door's shield in the
-  // hall's cyan, the landing, two cool rims on the Jet (from over the runway behind its nose and from the right wall),
-  // the boards' blue, the tunnel's mouth (`TINTS.mouth`, which the scene flickers with the neon) and the launch shield
-  // (`TINTS.launch`), and two warm fills over the crew's floor. The scene lights them and the crates' lanterns after
-  // them; the window into the hangar bakes them all.
+  // hall's cyan, a cool fill high over the whole hall, two cool rims on the Jet (from over the runway behind its nose and
+  // from the right wall), the boards' blue, the tunnel's mouth (`TINTS.mouth`, which the scene flickers with the neon)
+  // and the launch shield (`TINTS.launch`), and warm work light where people work: a pool at the static fire booth and
+  // one over the crew's desks. The scene lights them and the crates' lanterns after them; the window into the hangar
+  // bakes them all.
   const TINTS = { door: math.hexToRgb("#5fe3ff").map((k) => k / 255), mouth: [0.36, 0.66, 1.2], launch: [0.45, 0.72, 1] };
   const LANTERN_GLOW = [1.3, 0.8, 0.36];
   const fixedLights = cached(() => {
     const L = LAYOUT, B = L.boards, D = L.door, T = L.tunnel;
     return [
-      [D.x, D.y + 2.2, D.z - 2, 8, ...TINTS.door], [0, L.landing.y + 3, L.landing.z - 3, 12, 1, 0.66, 0.3],
+      [D.x, D.y + 2.2, D.z - 2, 8, ...TINTS.door], [4, 16, -4, 46, 0.22, 0.3, 0.44],
       [L.jet.x - 11, 10, L.jet.z - 16, 20, 0.32, 0.5, 0.85], [HALL.x1 - 2, 10, L.jet.z + 4, 18, 0.28, 0.42, 0.78],
       [B.stats.x + 2.5, B.stats.y, B.stats.z, 9, 0.24, 0.42, 0.72], [B.timeline.x + 2.5, B.timeline.y, B.timeline.z, 10, 0.24, 0.42, 0.72],
       [0, T.y, HALL.back + 3, 16, ...TINTS.mouth], [0, T.y, T.z1 + 4, 14, ...TINTS.launch],
-      [-12, 6, 12, 16, 1, 0.66, 0.32], [-12, 6, -12, 16, 1, 0.66, 0.32]
+      [L.fireTest.x, 4.5, L.fireTest.z + 1.5, 9, 1, 0.62, 0.3], [-11.5, 7, -2, 22, 1, 0.66, 0.32]
     ];
   });
 
