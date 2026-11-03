@@ -20065,9 +20065,31 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
   record("private chat: a line the room refused shows Not sent with Retry, and Retry after a later line got through reaches Anna on fresh bytes without stopping the pad",
     retry.refused.state === "failed" && retry.button && retry.anna.map((r) => r.text || r.kind).join() === "and another,one more" && !retry.stopped && retry.ready
       && retry.lines.map((l) => l.text + ":" + l.state).join() === "and another:sent,one more:sent", JSON.stringify(retry));
+  // A second pad in the same conversation, as when the first runs out: its lines are numbered afresh, so the room's
+  // answers and Retry must reach only the new session's lines, and the old pad's unsent line can't be retried.
+  const second = await b.evaluate(`(async () => { const W = __pm, P = BL.oneTimePad, random = (v) => crypto.getRandomValues(v);
+    W.refuse = 1; W.say("lost with the old pad"); await W.wait(() => W.view().lines.length === 5); await W.flush(); await W.wait(() => W.view().lines[4].state === "failed");
+    // Anna's frames wait until this page has the new pad, then go straight through.
+    const file = P.make("anna", "tester", 16384, random), pad = P.parse(file.slice()), mem = new Map(), held = [];
+    let direct = false;
+    const b64 = (u) => btoa(String.fromCharCode(...u)), annaSend = (frame) => { const m = { t: "pm", op: "data", from: 2, d: b64(frame) }; if (direct) W.room(m); else held.push(m); };
+    W.anna = P.session({ subtle: crypto.subtle, pad, role: 0, sum: await P.digest(crypto.subtle, pad), random,
+      ledger: P.ledger({ get: (k) => mem.has(k) ? mem.get(k) : null, set: (k, v) => mem.set(k, v) }, (n, fn) => Promise.resolve().then(fn), pad, 0),
+      send: (frame) => annaSend(frame) });
+    await W.anna.start({ fresh: true });
+    W.load(file); await W.wait(() => W.view().unrecorded); document.getElementById("pm-fresh").click(); await W.wait(() => W.view().started);
+    direct = true; for (const m of held.splice(0)) W.room(m);
+    await W.flush(); await W.wait(() => W.view().ready); await W.flush();
+    W.say("on the new pad"); await W.wait(() => W.view().lines.length === 6); await W.flush();
+    await W.wait(() => W.view().lines[5]?.state === "sent", 2000);
+    const rows = [...document.querySelectorAll("#pm-log .chat-row")];
+    return { lines: W.view().lines.slice(4), retries: document.querySelectorAll("#pm-log .pm-retry").length, anna: W.heard.at(-1), ready: W.view().ready, rows: rows.length }; })()`);
+  record("private chat: a second pad in the same conversation numbers its lines afresh without touching the old pad's: its line shows Sent, and the old pad's unsent line can no longer be retried",
+    second.ready && second.anna?.text === "on the new pad" && second.lines[1]?.text === "on the new pad" && second.lines[1]?.state === "sent"
+      && second.lines[0]?.state === "failed" && second.retries === 0, JSON.stringify(second));
   await tourGo(b, "lab");
   await tourGo(b, "hub");
-  const after = await b.evaluate(`(async () => { const W = __pm; const kept = W.view(); await W.anna.say("still here"); await W.wait(() => W.view().lines.length === 5);
+  const after = await b.evaluate(`(async () => { const W = __pm; const kept = W.view(); await W.anna.say("still here"); await W.wait(() => W.view().lines.length === 7);
     document.getElementById("pm-end").click(); const ended = await W.flush(); const view = W.view();
     // A second conversation, with a pad made here: one download for the two of them, and this page loads its own copy.
     const click = HTMLAnchorElement.prototype.click, made = URL.createObjectURL;
@@ -20084,7 +20106,7 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
       note: !!noteRow && !noteRow.querySelector(".chat-name"), spellcheck: input.spellcheck }; })()`);
   await b.evaluate(`(() => { const W = __pm; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
   record("private chat: the conversation carries on across a trip to another scene and End tells the room and clears it; an invite accepted keeps the private view until it opens, and a pad made here downloads once for the two of them and loads on this page",
-    after.kept.phase === "open" && after.kept.ready && after.kept.lines.length === 4 && after.ended.length === 1 && after.ended[0].op === "end" && after.view.phase === "idle" && after.view.lines.length === 0
+    after.kept.phase === "open" && after.kept.ready && after.kept.lines.length === 6 && after.ended.length === 1 && after.ended[0].op === "end" && after.view.phase === "idle" && after.view.lines.length === 0
       && after.invited.privateView && after.accepting.phase === "accepting" && after.accepting.privateView && after.accepting.switcher && after.accepting.sent.length === 1 && after.accepting.sent[0].op === "accept"
       && after.downloads.length === 1 && after.downloads[0].name === "ooga-pad-tester-anna.oogapad" && after.logins.join() === "tester,anna" && after.bytes > 262144 && after.made.padLoaded && after.made.started
       && after.note && after.spellcheck === false,

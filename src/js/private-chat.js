@@ -34,7 +34,7 @@
   const lock = (name, fn) => navigator.locks ? navigator.locks.request(name, { mode: "exclusive" }, fn)
     : Promise.reject(Object.assign(new Error("locks"), { code: "locks" }));
   const c = { phase: "idle", peer: 0, login: "", name: "", invites: [], bytes: null, pad: null, session: null, started: false, unrecorded: false,
-    print: "", queue: [], lines: [], unseen: 0, view: "island", notice: "", stopped: "", busy: false, generation: 0, loads: 0,
+    print: "", queue: [], lines: [], unseen: 0, view: "island", notice: "", stopped: "", busy: false, generation: 0, loads: 0, sid: 0,
     lastSend: { n: 0, ok: true }, revision: 0 };
   // The log is drawn again only when its lines change, never on an account or roster update.
   let drawn = -1;
@@ -117,7 +117,8 @@
     c.revision++;
   };
   const mark = (n, state) => {
-    const line = c.lines.find((l) => l.n === n);
+    // Each pad's session numbers its frames from 1, so a number means something only with the session that sent it.
+    const line = c.lines.find((l) => l.n === n && l.sid === c.sid);
     if (line) { line.state = state; c.revision++; render(); }
   };
 
@@ -163,6 +164,9 @@
     wipe();
     c.stopped = "";
     c.bytes = bytes; c.pad = pad; c.print = P.fingerprint(sum);
+    // A new session: lines from the pad before can no longer be answered or retried, and any still waiting never went.
+    c.sid++;
+    for (const l of c.lines) if (l.own && l.state === "sending") { l.state = "failed"; c.revision++; }
     // Ask the browser to keep this site's storage, where the pad's record lives; it may say no.
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     const peer = c.peer;
@@ -257,7 +261,7 @@
       extra.className = "pm-state";
       extra.dataset.failed = String(line.state === "failed");
       extra.textContent = line.state === "sent" ? "Sent" : line.state === "failed" ? "Not sent" : "Sending…";
-      if (line.state === "failed") {
+      if (line.state === "failed" && line.sid === c.sid) {
         const retry = document.createElement("button");
         retry.type = "button"; retry.className = "pm-button pm-quiet pm-retry"; retry.dataset.n = String(line.n); retry.textContent = "Retry";
         extra.append(retry);
@@ -377,7 +381,7 @@
     if (gen !== c.generation) return;
     c.busy = false;
     if (r.kind === "sent") {
-      add({ own: true, text, at: Date.now(), n: r.n, state: c.lastSend.n === r.n && !c.lastSend.ok ? "failed" : "sending" });
+      add({ own: true, text, at: Date.now(), n: r.n, sid: c.sid, state: c.lastSend.n === r.n && !c.lastSend.ok ? "failed" : "sending" });
       input.value = "";
     } else if (r.kind === "stopped") return stop(r.error);
     render();
@@ -386,12 +390,14 @@
   log.addEventListener("click", (e) => {
     const retry = e.target.closest(".pm-retry");
     if (!retry || !c.session) return;
-    const n = Number(retry.dataset.n), gen = c.generation;
+    // Only a line of this pad's session: its number means nothing to any other.
+    const n = Number(retry.dataset.n), gen = c.generation, sid = c.sid;
+    if (!c.lines.some((l) => l.n === n && l.sid === sid)) return;
     retry.disabled = true;
     c.session.retry(n).then((r) => {
-      if (gen !== c.generation) return;
+      if (gen !== c.generation || sid !== c.sid) return;
       if (r.kind === "stopped") return stop(r.error);
-      const line = c.lines.find((l) => l.n === n);
+      const line = c.lines.find((l) => l.n === n && l.sid === sid);
       if (!line || r.kind !== "sent") return;
       // Sealed again on fresh bytes, it reaches the other side after the lines since: shown there too.
       if (r.n !== n) { c.lines.splice(c.lines.indexOf(line), 1); c.lines.push(line); line.at = Date.now(); line.n = r.n; }
