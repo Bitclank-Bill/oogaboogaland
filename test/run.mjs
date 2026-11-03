@@ -20057,13 +20057,17 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
     const click = HTMLAnchorElement.prototype.click, made = URL.createObjectURL;
     HTMLAnchorElement.prototype.click = function () { W.downloads.push({ name: this.download }); };
     URL.createObjectURL = (blob) => { W.blob = blob; return made.call(URL, blob); };
+    // This time Anna asks, and the private view holds while the accept is on its way.
+    W.room({ t: "pm", op: "invite", from: 2 }); document.querySelector('[data-pm-view="private"]').click(); const invited = W.view();
+    document.getElementById("pm-accept").click(); const accepting = { ...W.view(), sent: await W.flush() };
     W.room({ t: "pm", op: "open", with: 2 }); document.getElementById("pm-size").value = "262144"; document.getElementById("pm-make").click();
     await W.wait(() => W.view().padLoaded); HTMLAnchorElement.prototype.click = click; URL.createObjectURL = made;
     const pad = BL.oneTimePad.parse(new Uint8Array(await W.blob.arrayBuffer()));
-    return { kept, lines: W.view().lines.length, ended, view, made: W.view(), downloads: W.downloads, logins: pad.logins, half: pad.halves[0].length }; })()`);
+    return { kept, ended, view, invited, accepting, made: W.view(), downloads: W.downloads, logins: pad.logins, half: pad.halves[0].length }; })()`);
   await b.evaluate(`(() => { const W = __pm; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
-  record("private chat: the conversation carries on across a trip to another scene, End tells the room and clears it, and a pad made here downloads once for the two of them and loads on this page",
+  record("private chat: the conversation carries on across a trip to another scene and End tells the room and clears it; an invite accepted keeps the private view until it opens, and a pad made here downloads once for the two of them and loads on this page",
     after.kept.phase === "open" && after.kept.ready && after.kept.lines.length === 2 && after.ended.length === 1 && after.ended[0].op === "end" && after.view.phase === "idle" && after.view.lines.length === 0
+      && after.invited.privateView && after.accepting.phase === "accepting" && after.accepting.privateView && after.accepting.switcher && after.accepting.sent.length === 1 && after.accepting.sent[0].op === "accept"
       && after.downloads.length === 1 && after.downloads[0].name === "ooga-pad-tester-anna.oogapad" && after.logins.join() === "tester,anna" && after.half === (262144 - 32) / 2 && after.made.padLoaded,
     JSON.stringify(after));
 } };

@@ -1370,11 +1370,13 @@ body[data-active-scene="hub"] .home-link {
 .pm-switch .pm-count { position: static; margin: 0 0 0 2px; }
 .pm-lock { flex: none; width: 9px; height: 10px; }
 
-.pm { display: none; flex: 1 1 auto; flex-direction: column; gap: 8px; min-height: 0; }
+.pm { display: none; flex: 1 1 auto; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .pm [hidden] { display: none; }
 .panel[data-panel="chat"][data-view="private"] .pm { display: flex; }
 .panel[data-panel="chat"][data-view="private"] > :is(.chat-about, .chat-identity, .chat-log, .chat-status, .chat-form) { display: none; }
-.pm-title { display: flex; align-items: center; gap: 6px; margin: 0; color: #cfe0ff; font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.pm-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; }
+.pm-head .pm-end { min-height: 24px; }
+.pm-title { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; color: #cfe0ff; font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
 .pm .pm-note, .pm .pm-budget { flex: none; margin: 0; white-space: pre-line; }
 .pm .pm-note:empty, .pm .pm-budget:empty { display: none; }
 .pm-actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -1413,9 +1415,9 @@ body[data-active-scene="hub"] .home-link {
 }
 .pm-print { flex: none; margin: 0; color: rgba(243, 239, 228, 0.72); font-size: 10px; overflow-wrap: anywhere; }
 .pm-print[hidden] { display: none; }
-.pm-print code { color: #cfe0ff; font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }
-.pm-log { flex: 1 1 auto; min-height: 96px; overflow: auto; overscroll-behavior: contain; border-color: rgba(90, 140, 220, 0.55); }
-.pm-log:empty::before { content: "Only the two of you can read what is said here."; }
+.pm-print code { color: #cfe0ff; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; }
+.pm-log { flex: 1 1 auto; min-height: 44px; overflow: auto; overscroll-behavior: contain; border-color: rgba(90, 140, 220, 0.55); }
+.pm-log:empty::before { content: "Sealed with your pad: only the two of you can read what is said here. The island passes it on and sees who talks to whom, when, and how long each line is."; }
 .pm-log .chat-row[data-own="true"] { border-left-color: rgba(122, 168, 232, 0.8); background: linear-gradient(90deg, rgba(90, 140, 220, 0.1), transparent 60%); }
 .pm-log .chat-row[data-own="true"] .chat-name { color: #cfe0ff; }
 .pm-log .chat-row[data-note="true"] .chat-text { color: rgba(243, 239, 228, 0.62); font-size: 10.5px; }
@@ -1423,8 +1425,6 @@ body[data-active-scene="hub"] .home-link {
 .pm-state[data-failed="true"] { color: #ffb4a6; }
 .pm-retry { min-height: 22px; margin-left: 6px; padding: 0 6px; font-size: 8.5px; }
 .pm-form .chat-send { background: linear-gradient(#a9c6f2, #6f9be0); }
-.pm-end { align-self: flex-end; }
-.pm-end[hidden] { display: none; }
 
 @media (pointer: coarse) {
   .chat-send,

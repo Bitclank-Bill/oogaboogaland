@@ -187,7 +187,7 @@
     } else if (msg.op === "refused") {
       if (Number.isSafeInteger(msg.n)) return mark(msg.n, "failed");
       const name = who(msg.to).name;
-      if (c.phase === "inviting" && msg.to === c.peer) reset(`${name} ${REFUSED[msg.reason] || "can't be asked now."}`);
+      if ((c.phase === "inviting" || c.phase === "accepting") && msg.to === c.peer) reset(`${name} ${REFUSED[msg.reason] || "can't be asked now."}`);
       else {
         c.invites = c.invites.filter((id) => id !== msg.to);
         c.notice = `${name} ${REFUSED[msg.reason] || "can't be asked now."}`;
@@ -254,22 +254,23 @@
     if (c.stopped) words = c.stopped;
     else if (invite) words = `${who(invite).name} asks for a private conversation. Accept if you hold a pad file with them, or will make one and send it to them outside Ooga.`;
     else if (c.phase === "inviting") words = `Waiting for ${c.name} to answer…`;
+    else if (c.phase === "accepting") words = `Opening the conversation with ${c.name}…`;
     else if (c.phase === "open" && !c.session) words = `Load the pad file you and ${c.name} both hold, or make one and send it to them outside Ooga, the way you would hand over a key: in person, or over a channel you trust. Ooga never sends or keeps the pad.`;
     else if (c.phase === "open" && !ready) words = `Waiting for ${c.name} to load the same pad…`;
-    else if (ready) words = "Sealed with your pad: the island passes it on but can't read it. Who you talk to, when, and how long each line is still show.";
+    // Once the line is open, what it protects is said in the log's empty state and the budget line, to leave room for lines.
     if (note.textContent !== words) note.textContent = words;
     answer.hidden = !invite;
     padRow.hidden = !(c.phase === "open" && (!c.session || c.stopped));
     printLine.hidden = !c.print;
     printPeer.textContent = c.name; print.textContent = c.print;
-    log.hidden = c.phase !== "open";
+    log.hidden = c.phase !== "open" || !c.session;
     if (drawn !== c.revision) { drawn = c.revision; log.replaceChildren(...c.lines.map(row)); }
-    budget.textContent = c.session && !c.stopped ? `${kb(c.session.remaining)} of ${kb(c.session.size)} left to send: about ${Math.floor(c.session.remaining / LINE_BYTES)} lines.` : "";
-    form.hidden = c.phase !== "open";
+    budget.textContent = ready ? `Sealed · ${kb(c.session.remaining)} left to send · about ${BL.game.formatLarge(Math.floor(c.session.remaining / LINE_BYTES))} lines` : "";
+    form.hidden = c.phase !== "open" || !c.session;
     input.disabled = !ready || c.busy;
     sendButton.disabled = input.disabled || !!policy.error(input.value);
     end.hidden = c.phase === "idle";
-    end.textContent = c.phase === "inviting" ? "Cancel" : "End";
+    end.textContent = c.phase === "open" ? "End" : "Cancel";
     const used = policy.text(input.value).length;
     left.textContent = String(policy.MAX - used); left.dataset.over = String(used > policy.MAX);
   };
@@ -278,7 +279,13 @@
     if (!available()) return false;
     if (c.phase !== "idle") { showPrivate(); BL.hud.toast("End your private conversation first."); return false; }
     // Someone who already asked is answered.
-    if (c.invites.includes(id)) { net.sendPrivate("accept", id); c.invites = c.invites.filter((i) => i !== id); showPrivate(); return true; }
+    if (c.invites.includes(id)) {
+      c.invites = c.invites.filter((i) => i !== id);
+      if (!net.sendPrivate("accept", id)) return false;
+      begin("accepting", id);
+      showPrivate();
+      return true;
+    }
     if (!net.sendPrivate("invite", id)) return false;
     begin("inviting", id);
     showPrivate();
@@ -291,15 +298,16 @@
     if (!button || !id) return;
     if (e.detail) button.blur();
     c.invites.shift();
-    if (button.id === "pm-accept") net.sendPrivate("accept", id);
-    else net.sendPrivate(button.id === "pm-block" ? "block" : "decline", id);
     c.notice = "";
+    // Accepting holds the private view until the room opens the conversation.
+    if (button.id === "pm-accept") { if (net.sendPrivate("accept", id)) begin("accepting", id); }
+    else net.sendPrivate(button.id === "pm-block" ? "block" : "decline", id);
     render();
   });
   end.addEventListener("click", (e) => {
     if (e.detail) end.blur();
     if (c.phase !== "idle") net.sendPrivate("end", c.peer);
-    reset(c.phase === "inviting" ? "" : `You ended the private conversation with ${c.name}.`);
+    reset(c.phase === "open" ? `You ended the private conversation with ${c.name}.` : "");
     render();
   });
   file.addEventListener("change", () => {
