@@ -706,9 +706,8 @@ body[data-active-scene="hub"] .home-link {
 .sheet[data-dock="bottom"][data-open="true"]:not([hidden])~.joysticks,
 .sheet[data-dock="bottom"][data-open="true"]:not([hidden])~.bottom-hud>.act { display: none; }
 
-/* On a phone the drawer stays at the foot of the screen and pushes the sticks and the act button up
-   over its tabs, dropping Feed the Ooga Boogas, so the roster of who's talking stays up while the
-   visitor keeps walking. sheet.js writes a resized drawer's --drawer-height, and takes data-sticks away
+/* On a touch screen the drawer stays at the foot of the screen and pushes the sticks and the act button up
+   over its tabs, so the roster of who's talking stays up while the visitor keeps walking. sheet.js writes a resized drawer's --drawer-height, and takes data-sticks away
    from one too tall to leave them room: they step aside as before, as they do for the chat's keyboard. */
 @media (pointer: coarse) {
   :root {
@@ -720,8 +719,6 @@ body[data-active-scene="hub"] .home-link {
   .bottom-hud { --drawer-lift: calc(var(--drawer-height) + var(--drawer-clear)); }
 
   .sheet[data-dock="bottom"][data-sized="false"] { height: var(--drawer-height); }
-
-  .sheet[data-dock="bottom"] .sheet-foot > .feed-open { display: none; }
 
   /* The drawer's foot stays short: its last row sits just over the home indicator. */
   .sheet[data-dock="bottom"] .sheet-body { padding-bottom: 0; }
@@ -801,9 +798,11 @@ body[data-active-scene="hub"] .home-link {
 }
 .sheet[data-sized="true"] .sheet-toggle svg { max-height: 100%; }
 
-/* A phone's drawer keeps a small tab at the far right: up opens or lifts it, down closes it. */
+/* A phone's drawer drops Feed the Ooga Boogas and keeps a small tab at the far right: up opens or lifts it, down closes it. */
 .sheet-expand { display: none; }
 @media (pointer: coarse) and (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
+  .sheet[data-dock="bottom"] .sheet-foot > .feed-open { display: none; }
+
   .sheet[data-dock="bottom"] .sheet-expand {
     display: block;
     position: absolute;

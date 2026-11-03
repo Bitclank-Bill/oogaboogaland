@@ -253,7 +253,7 @@
     if (has(q, WORDS.tour)) return { lines: [], go: null, place: null, tour: true };
     const any = placeIn(q, false), place = placeIn(q, true), trip = any >= 0 ? any : last !== null && has(q, WORDS.there) ? last : -1;
     if (trip >= 0 && has(q, WORDS.trip)) return reply(STOPS[trip].lines, trip, trip);
-    if (has(q, WORDS.donate)) return reply([matchMedia("(pointer: coarse)").matches ? "donatePhone" : "donate", "donateKiosk"], null, STOPS.findIndex((stop) => stop.id === "factory"));
+    if (has(q, WORDS.donate)) return reply([matchMedia("(pointer: coarse) and (max-width: 720px), (pointer: coarse) and (max-height: 500px)").matches ? "donatePhone" : "donate", "donateKiosk"], null, STOPS.findIndex((stop) => stop.id === "factory"));
     if (place < 0 && has(q, WORDS.controls)) return reply(["controls", "controlsMore", "controlsPhone"]);
     if (has(q, WORDS.signIn)) return reply(["signIn", "signInPerks"]);
     if (place < 0 && has(q, WORDS.news)) return reply(["newsIntro", ...NEWS.slice(0, 3).map((n) => n.line)]);
