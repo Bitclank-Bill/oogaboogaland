@@ -711,7 +711,7 @@
         const cx = at.x - 4.3, cz = at.z;
         place(createNode({ geometry: cabinetGeometry(glowHex(e.theme.lamp)), position: { x: cx, y: ISLAND_TOP, z: cz } }));
         built.oldObstacles.push({ era: e.n, x0: cx - 0.6, x1: cx + 0.6, z0: cz - 0.5, z1: cz + 0.5 });
-        props.register({ id: game.id, era: e.n, year: game.year, title: `${game.title}: play the cabinet`, label: `${game.title.toUpperCase()} · A MODERN MUSEUM GAME`, sourceKeys: [],
+        props.register({ id: game.id, era: e.n, year: game.year, title: `${game.title}: play the cabinet`, label: `${game.title.toUpperCase()} · A MODERN GAME IN THE SPIRIT OF ${game.year}`, sourceKeys: [],
           hint: `play ${game.title} on the console`, at: muAt(e.n, { x: cx, y: ISLAND_TOP, z: cz + 1.3 }), reach: 2.2, onUse: () => ({ cartridge: game.id }) });
       }
       mu(e.n, at.x, at.z, p);
