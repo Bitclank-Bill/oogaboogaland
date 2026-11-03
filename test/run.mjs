@@ -20420,14 +20420,19 @@ const controlsHelpCheck = { name: "controls reference", why: "regression: help m
     document.getElementById("controls-help-button").click();
     const d = document.getElementById("controls-help"), w = d.querySelector('[data-key="w"]'), aKey = d.querySelector('[data-key="a"]'), s = d.querySelector('[data-key="s"]'), right = d.querySelector('[data-key="d"]');
     const bounds = d.getBoundingClientRect(), wr = w.getBoundingClientRect(), ar = aKey.getBoundingClientRect(), sr = s.getBoundingClientRect(), dr = right.getBoundingClientRect();
-    return { open: d.open, position: {...P.player.root.position}, layout: wr.top < ar.top && ar.left < sr.left && sr.left < dr.left && Math.abs(wr.left-sr.left)<1, fits: bounds.left>=0 && bounds.right<=innerWidth && bounds.top>=0 && bounds.bottom<=innerHeight };
+    const [up, left, down, arrowRight] = ["arrowup", "arrowleft", "arrowdown", "arrowright"].map(key => d.querySelector('[data-key="'+key+'"]').getBoundingClientRect());
+    return { open: d.open, position: {...P.player.root.position}, layout: wr.top < ar.top && ar.left < sr.left && sr.left < dr.left && Math.abs(wr.left-sr.left)<1 && up.top<left.top && left.left<down.left && down.left<arrowRight.left && Math.abs(up.left-down.left)<1, fits: bounds.left>=0 && bounds.right<=innerWidth && bounds.top>=0 && bounds.bottom<=innerHeight };
   })()`);
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", code: "KeyW" });
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA" });
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowUp", code: "ArrowUp" });
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowLeft", code: "ArrowLeft" });
   const pressed = await b.evaluate(`(() => { __ooga.advance(.4,1/60); return { keys:[...document.querySelectorAll('#controls-help kbd[data-pressed="true"]')].map(e=>e.dataset.key), position:{...__ooga.pilot.player.root.position} }; })()`);
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA" });
-  const released = await b.evaluate(`document.querySelector('#controls-help [data-key="a"]').dataset.pressed === "false" && document.querySelector('#controls-help [data-key="w"]').dataset.pressed === "true"`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowLeft", code: "ArrowLeft" });
+  const released = await b.evaluate(`document.querySelector('#controls-help [data-key="a"]').dataset.pressed === "false" && document.querySelector('#controls-help [data-key="w"]').dataset.pressed === "true" && document.querySelector('#controls-help [data-key="arrowleft"]').dataset.pressed === "false" && document.querySelector('#controls-help [data-key="arrowup"]').dataset.pressed === "true"`);
   if (process.env.CONTROLS_SCREENSHOTS) { mkdirSync(join(root,"untracked"),{recursive:true}); await b.screenshot(join(root,"untracked","controls-desktop.png")); }
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowUp", code: "ArrowUp" });
   await b.key("Escape");
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", code: "KeyW", autoRepeat: true });
   const closed = await b.evaluate(`(() => { __ooga.advance(.2,1/60); return { closed: !document.getElementById("controls-help").open, neutral: __ooga.controls.read().y===0, keys: document.querySelectorAll('#controls-help [data-pressed="true"]').length }; })()`);
@@ -20435,7 +20440,7 @@ const controlsHelpCheck = { name: "controls reference", why: "regression: help m
   const before = await b.evaluate('({...__ooga.pilot.player.root.position})');
   await holdKey(b,"w",.3);
   const after = await b.evaluate('({...__ooga.pilot.player.root.position})');
-  record("controls reference: spatial WASD lights independently without moving, closing releases it and fresh W walks", initial.open && initial.layout && initial.fits && pressed.keys.join(",")==="w,a" && released && Math.hypot(pressed.position.x-initial.position.x,pressed.position.z-initial.position.z)<.001 && closed.closed && closed.neutral && !closed.keys && Math.hypot(after.x-before.x,after.z-before.z)>.05, JSON.stringify({initial,pressed,released,closed,before,after}));
+  record("controls reference: spatial WASD lights independently without moving, closing releases it and fresh W walks", initial.open && initial.layout && initial.fits && pressed.keys.join(",")==="w,a,arrowup,arrowleft" && released && Math.hypot(pressed.position.x-initial.position.x,pressed.position.z-initial.position.z)<.001 && closed.closed && closed.neutral && !closed.keys && Math.hypot(after.x-before.x,after.z-before.z)>.05, JSON.stringify({initial,pressed,released,closed,before,after}));
   const hybrid = await b.evaluate(`(() => {
     const button=document.getElementById("controls-help-button"); button.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,pointerType:"touch"})); button.click();
     const d=document.getElementById("controls-help"), touch=d.textContent.includes("Touch") && !d.querySelector("kbd");

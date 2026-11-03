@@ -55,15 +55,18 @@
       for (const entry of rows) {
         const line = document.createElement("div"), keys = document.createElement("div"), text = document.createElement("span");
         line.className = "controls-row"; keys.className = "controls-keys"; text.textContent = entry.text;
-        const names = entry.keys || [];
-        if (names.includes("w") && names.includes("a") && names.includes("s") && names.includes("d")) {
-          const cluster = document.createElement("span"); cluster.className = "controls-wasd"; cluster.setAttribute("aria-label", "W A S D");
-          for (const name of ["w", "a", "s", "d"]) cluster.append(keycap(name));
+        const names = entry.keys || [], clustered = new Set();
+        for (const group of [["w", "a", "s", "d"], ["arrowup", "arrowleft", "arrowdown", "arrowright"]]) {
+          const arrows = group[0] === "arrowup";
+          if (!(arrows ? group.some(name => names.includes(name)) : group.every(name => names.includes(name)))) continue;
+          const cluster = document.createElement("span"); cluster.className = "controls-key-cluster";
+          cluster.setAttribute("aria-label", arrows ? "Arrow keys" : "W A S D");
+          for (const name of group) if (names.includes(name)) { cluster.append(keycap(name)); clustered.add(name); }
           keys.append(cluster);
         }
         const aliases = document.createElement("span"); aliases.className = "controls-aliases";
-        for (const name of names) if (!(keys.firstChild && ["w", "a", "s", "d"].includes(name))) aliases.append(keycap(name));
-        keys.append(aliases);
+        for (const name of names) if (!clustered.has(name)) aliases.append(keycap(name));
+        if (aliases.childElementCount) keys.append(aliases);
         if (entry.gesture) {
           const gesture = document.createElement("span"); gesture.className = "controls-gesture"; gesture.textContent = entry.gesture; keys.append(gesture);
         }
