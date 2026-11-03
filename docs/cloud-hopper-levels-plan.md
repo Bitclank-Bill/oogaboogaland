@@ -205,7 +205,7 @@ play-testing within the stated bounds.
 | Hidden | 1.2–3.2 s | 1.5–3 s | 1.5–3.5 s | 2–4 s | 2–4 s |
 | Boost / bounce | 22% / ~16% | 20% / ≤1 cloud | 22% / 16% | 18% / 18% | 18% / 16% |
 | Power-ups | jetpack 1–2 | jetpack 2 | jetpack 1–2, X-ray 2 | jetpack 1–2, X-ray 2, Updraft 1–2 | jetpack 2, X-ray 3, Updraft 1, Hook 2 |
-| Hazards | — | — | — | crumble clouds, forks | crumble clouds, forks, haze, rain |
+| Hazards | — | — | — | crumble clouds, forks, 2 gusts | crumble clouds, forks, haze, rain |
 | Visibility (fog) | 900–2000 m | clear | clear | clear night | haze 70–260 m |
 | Expected time (H) | ~90–130 s | ~60–90 s | ~110–140 s | ~170–210 s | ~240–300 s |
 | Camera far / world bound | 900 / 552 m | 900 / 462 m | 900 / 605 m | 940 / 808 m | 1240 / 1096 m |
@@ -477,8 +477,12 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
   more than 30% fogged. The banana pile marker on the overlay stays readable through the
   haze, so the direction is never lost. X-ray only adds outlines from 70 m to 120 m:
   nothing essential depends on it.
-- **No physics changes.** No slippery surfaces, wind or gusts. If wanted later, they would
-  be a separate proposal.
+- **No physics changes.** No slippery surfaces. *Since built:* L3 has two gusts of wind a run
+  (`cloud-hopper-gust.js`, its layout's `gusts`), each at a seeded share of the way down, one in
+  each half, from a seeded side straight across the course: a 2.5 s warning (an edge band with
+  chevrons on the side it comes from, a rising whoosh, faint streaks), then 3 s of wind pushing
+  an airborne rider across at up to 9 m/s² and sliding a planted one at up to 2.4 m/s, so standing
+  still carries a rider off its cloud while walking against it holds. It has its own guide card.
 - **Music.** *Built.* Each level has its own score in `cloud-hopper-music.js`, written for
   its sky: Coconut Breeze (L1, bright tropical pluck-pop), Golden Hour Groove (L2, upbeat
   sunset disco-synthwave), Cloudbreak Sprint (L3, the original trance score) and Thunderhead Run

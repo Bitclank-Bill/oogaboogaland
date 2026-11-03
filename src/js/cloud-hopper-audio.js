@@ -4,9 +4,9 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const MASTER = 0.45, CLOUD_VOICES = 6, CLOUD_NEAR = 4, CLOUD_FAR = 50, WARN_VOICES = 3, WARN_FAR = 40;
-  // Power-up and storm cues: pooled tones and filtered-noise voices, two thunder voices, the rain's bed and a
-  // tornado's roar (`ROAR` at its loudest).
-  const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.011, ROAR = 0.3;
+  // Power-up and storm cues: pooled tones and filtered-noise voices, two thunder voices, the rain's bed, a
+  // tornado's roar (`ROAR` at its loudest) and a gust's wind (`GUST`).
+  const TONE_VOICES = 4, AIR_VOICES = 3, THUNDER_VOICES = 2, SOUND_SPEED = 343, THUNDER_FAR = 260, RAIN = 0.011, ROAR = 0.3, GUST = 0.2;
   const BACKGROUND_AHEAD = 2, BACKGROUND_MS = 250;
   // The jetpack's level under thrust, and its roar's and hiss's frequencies at rest and under thrust (Hz).
   const JET = 0.16, JET_ROAR = [380, 1100], JET_HISS = [1800, 3200];
@@ -14,7 +14,7 @@
     let ctx = null, master = null, musicGain = null, jetGain = null, jetFilter = null, jetHiss = null, music = null;
     let armed = false, disposed = false, resuming = false, jetOn = false, muted = BL.sound.muted, nextJump = 0;
     let musicStage = "", musicSong = 0, backgroundTimer = 0, rainGain = null, rainOn = false, nextTone = 0, nextAir = 0, nextThunder = 0;
-    let roarGain = null, roarHowl = null, roarLevel = 0;
+    let roarGain = null, roarHowl = null, roarLevel = 0, gustGain = null, gustWhistle = null, gustLevel = 0;
     let musicLevel = 0, musicFrom = 0, musicAt = 0, musicUntil = 0, musicFade = 0.12;
     const jumps = [], clouds = [], warnings = [], tones = [], airs = [], thunders = [];
     const resultStage = value => value === "won" || value === "best" || value === "dq";
@@ -58,8 +58,9 @@
       }
       rainOn = false;
       if (rainGain) { rainGain.gain.cancelScheduledValues(now); rainGain.gain.setValueAtTime(0, now); }
-      roarLevel = 0;
+      roarLevel = gustLevel = 0;
       if (roarGain) { roarGain.gain.cancelScheduledValues(now); roarGain.gain.setValueAtTime(0, now); }
+      if (gustGain) { gustGain.gain.cancelScheduledValues(now); gustGain.gain.setValueAtTime(0, now); }
       if (jetGain) {
         jetGain.gain.cancelScheduledValues(now);
         jetGain.gain.setValueAtTime(0, now);
@@ -162,6 +163,14 @@
       const waver = ctx.createOscillator();
       waver.type = "sine"; waver.frequency.value = 0.35;
       waver.connect(gain(140, roarHowl.frequency)); waver.start();
+      // A gust: a broad rush of wind with a thin whistle over it that wavers and rises with its strength.
+      gustGain = gain(0, master);
+      noise.connect(filter("bandpass", 700, 0.5, gustGain));
+      gustWhistle = filter("bandpass", 1400, 6, gain(0.5, gustGain));
+      noise.connect(gustWhistle);
+      const flutter = ctx.createOscillator();
+      flutter.type = "sine"; flutter.frequency.value = 0.6;
+      flutter.connect(gain(260, gustWhistle.frequency)); flutter.start();
       jetGain = gain(0, master);
       // A jetpack's thrust, all of it from the noise and no tones, so it never hums like a motor: a deep rushing roar,
       // breathing gently with a slow drift of the same noise so it is never quite static, and a thin hiss over it.
@@ -340,6 +349,23 @@
       roarHowl.frequency.cancelScheduledValues(now); roarHowl.frequency.setValueAtTime(roarHowl.frequency.value, now);
       roarHowl.frequency.setTargetAtTime(420 + 520 * level, now, 0.5);
     };
+    // A gust's wind at `level` (0 to 1, its strength), followed each frame and changed only when it moves, and the
+    // whoosh rising through its warning (`WARN` seconds of cloud-hopper-gust.js).
+    const gust = (level) => {
+      if (!gustGain) return;
+      level = ready() ? Math.max(0, Math.min(1, level)) : 0;
+      if (Math.abs(level - gustLevel) < 0.02 && (level > 0 || gustLevel === 0)) return;
+      gustLevel = level;
+      const now = ctx.currentTime;
+      gustGain.gain.cancelScheduledValues(now); gustGain.gain.setValueAtTime(gustGain.gain.value, now);
+      gustGain.gain.setTargetAtTime(level * GUST, now, 0.15);
+      gustWhistle.frequency.cancelScheduledValues(now); gustWhistle.frequency.setValueAtTime(gustWhistle.frequency.value, now);
+      gustWhistle.frequency.setTargetAtTime(1100 + 900 * level, now, 0.3);
+    };
+    const gustWarn = () => {
+      if (!ready()) return;
+      airCue(240, 1500, BL.cloudHopperGust.WARN, 0.16, 0.9); airCue(900, 3200, BL.cloudHopperGust.WARN, 0.05, 4, 0.4);
+    };
     const tornadoForm = (distance) => {
       if (!ready()) return;
       const near = Math.max(0.2, Math.min(1, 1 - distance / 140));
@@ -401,10 +427,10 @@
       }
       ctx = master = musicGain = jetGain = jetFilter = jetHiss = music = null;
       jumps.length = clouds.length = warnings.length = tones.length = airs.length = thunders.length = 0;
-      rainGain = roarGain = roarHowl = null;
+      rainGain = roarGain = roarHowl = gustGain = gustWhistle = null;
     };
     return { unlock, stage, level, tick, song, jump, fade, warn, jet, power, xrayEnding, updraft, hookThrow, hookHit, hookRelease, hookLost, thunder, rain,
-      tornado, tornadoForm, stop, dispose };
+      tornado, tornadoForm, gust, gustWarn, stop, dispose };
   };
   BL.cloudHopperAudio = { create };
 })();

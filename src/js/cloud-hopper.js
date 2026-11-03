@@ -16,7 +16,7 @@
   // The grappling hook: how far it reaches from the Ooga's chest, how fast it flies out and reels back, how fast it
   // pulls, how near the bite it lets go by itself, and the longest pull.
   const HOOK_RANGE = 40, HOOK_FLY = 90, HOOK_REEL = 70, HOOK_PULL = 18, HOOK_ARRIVE = 1, HOOK_PULL_SECONDS = 4;
-  const INTRODUCED = ["bounce", "tornado", "xray", "updraft", "hook"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
+  const INTRODUCED = ["bounce", "gust", "tornado", "xray", "updraft", "hook"], GUIDE_KEY = "ooga-cloud-hopper-guide-v1", ITEMS_KEY = "ooga-cloud-hopper-items-v1";
   // Each pickup's light under it, by kind, in the tint of its glow.
   const PICKUP_LIGHT = { jetpack: [0.55, 0.65, 0.75], xray: [0.35, 0.78, 0.88], updraft: [0.45, 0.8, 0.6], hook: [0.88, 0.72, 0.4] };
   const PICKUP_TOAST = { xray: "X-ray goggles · every nearby cloud's time", updraft: "Sky feather · Space once both jumps are spent",
@@ -33,6 +33,11 @@
   // rad/s) until a replay or exit; `SWEPT_HOLD` s after it gets there the run is lost. The view draws back `SWEPT_OUT` m outside the
   // funnel's side and rises after the Ooga, `SWEPT_BEHIND` m under it and never nearer the top than `SWEPT_UNDER` m
   // under it, turning up to follow it. Its roar is heard within `WHIRL_HEARD` of its axis.
+  // A gust (Aurora Heights') pushes an airborne Ooga across the course at up to GUST_PUSH m/s², a drift of about 6 m/s
+  // against the air's own drag, which steering can lean into. One standing on a cloud slides with it more gently, easing
+  // toward GUST_SLIDE m/s at GUST_GRIP a second, enough to carry one that just stands there off the cloud's edge but not
+  // one walking against it.
+  const GUST_PUSH = 9, GUST_SLIDE = 2.4, GUST_GRIP = 3;
   const WHIRL_TAKE = 18, WHIRL_LET_GO = 22, WHIRL_PULL = 7, WHIRL_SPIN = 12, WHIRL_LIFT = 5, WHIRL_GRIP = 10, WHIRL_HEARD = 110;
   const SWEPT_DWELL = 0.15, SWEPT_DRAW = 0.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
   const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
@@ -192,6 +197,9 @@
       onDrop: (x, y, z) => { if (actor) audio.tornadoForm(Math.hypot(x - actor.root.position.x, y - actor.root.position.y, z - actor.root.position.z)); },
       onStrike: (distance) => audio.thunder(distance) }));
     const whirls = tornadoes.map(() => ({ x: 0, z: 0, strength: 0, reach: 1, core: 1, speed: 0, draw: 0, rise: 0 }));
+    // Aurora Heights' gusts of wind.
+    const gust = BL.cloudHopperGust.create({ root: routeRoot, renderer: ctx.renderer });
+    let slideX = 0, slideZ = 0;
     let tornado = tornadoes[0];
     // How long the Ooga has been wholly inside a tornado's funnel on end (s).
     let whirled = false, engulfed = 0;
@@ -277,7 +285,8 @@
       for (const node of pickupNodes) removeChild(routeRoot, node);
       cloudNodes.length = boostNodes.length = bounceNodes.length = pickupNodes.length = 0;
       launchContacts.fill(0); unrecoverableAt = -1;
-      scenery.clear(); for (const t of tornadoes) t.clear(); whirled = false; audio.tornado(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
+      scenery.clear(); for (const t of tornadoes) t.clear(); whirled = false; audio.tornado(0);
+      gust.clear(); slideX = slideZ = 0; overlay.setGust("calm", false); audio.gust(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
       xrayUntil = gustAt = -1; xrayWarned = feather = hookHeld = hookDown = false; hookAt = HAND; hookCloud = null;
       wearGoggles(false);
       rope.visible = hookNode.visible = false;
@@ -317,10 +326,10 @@
       // The run is played in combat; control back at the top takes mouse-look again (natively inside a gesture).
       if (next === "ready") pilot.focusAim(typeof navigator !== "undefined" && !!navigator.userActivation?.isActive);
     };
-    // Whether this run carries each: bounce clouds by its course's own clouds, tornadoes by its level's sky and a
-    // power-up by its level's count.
+    // Whether this run carries each: bounce clouds by its course's own clouds, tornadoes by its level's sky, and gusts
+    // and a power-up by its level's count.
     const carries = (kind) => kind === "bounce" ? course.clouds.some(c => c.kind === "bounce")
-      : kind === "tornado" ? !!level.sky?.tornado : level.layout[kind] > 0;
+      : kind === "tornado" ? !!level.sky?.tornado : kind === "gust" ? level.layout.gusts > 0 : level.layout[kind] > 0;
     // What this run carries that this browser session has not been shown yet.
     const newItems = () => INTRODUCED.filter((kind) => carries(kind) && !seenItems().has(kind));
     const finishGuide = () => {
@@ -444,6 +453,7 @@
       // Far starts keep the island in view, and the level's scenery too.
       const reach = scenery.build(level, course, start, liftGoal);
       if (level.sky?.tornado) for (let i = 0; i < tornadoes.length; i++) tornadoes[i].start(courseSeed, course, liftGoal, i);
+      gust.start(courseSeed, course, liftGoal, level.layout.gusts || 0);
       if (!farBefore) farBefore = camera.far;
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
       overlay.setGhost(record.best?.courseVersion === level.courseVersion ? record.best.duration : null);
@@ -547,6 +557,7 @@
       ghost.hide();
       // A tornado ends with the run and lets the clouds go, unless the run ended in it, when it goes on behind the card.
       if (how !== "tornado") { for (let i = 0; i < tornadoes.length; i++) tornadoes[i].clear(whirls[i]); course.whirl.strength = 0; audio.tornado(0); }
+      gust.clear(); slideX = slideZ = 0; overlay.setGust("calm", false); audio.gust(0);
       whirled = false;
       overlay.setDq(how);
       // A hook out comes home with the run's end.
@@ -629,6 +640,27 @@
         tornado.axisAt(feet, whirlAxis);
         const near = Math.max(0, 1 - Math.max(0, Math.hypot(p.x - whirlAxis.x, p.z - whirlAxis.z) - 6) / WHIRL_HEARD);
         audio.tornado(near * Math.max(tornado.strength, tornado.forming * 0.35));
+      }
+      // A gust: warned of at the screen's edge it comes from (by the view's right) with a rising whoosh, then pushing an
+      // airborne Ooga across the course and sliding one planted on a cloud, which leaves it at the slide's speed.
+      if (phase === "running" && level.layout.gusts) {
+        const was = gust.state;
+        gust.update(dt, p.x, p.z, camera.position, camera.target);
+        if (was === "calm" && gust.state === "warning") audio.gustWarn();
+        const push = swept < 0 ? gust.strength : 0;
+        if (riding) {
+          const k = 1 - Math.exp(-GUST_GRIP * dt);
+          slideX += (gust.pushX * GUST_SLIDE * push - slideX) * k; slideZ += (gust.pushZ * GUST_SLIDE * push - slideZ) * k;
+          p.x += slideX * dt; p.z += slideZ * dt;
+        } else {
+          if (actor.hop > 0) {
+            actor.leap.vx += slideX + gust.pushX * GUST_PUSH * push * dt; actor.leap.vz += slideZ + gust.pushZ * GUST_PUSH * push * dt;
+          }
+          slideX = slideZ = 0;
+        }
+        const fx = camera.target.x - camera.position.x, fz = camera.target.z - camera.position.z;
+        overlay.setGust(gust.state, gust.pushX * -fz + gust.pushZ * fx > 0);
+        audio.gust(gust.strength);
       }
       course.update(dt, phase === "running" ? (raceNow() - startedAt) / 1000 : undefined);
       // Lanes swing smoothly, so a planted rider rides the cloud's whole move however long the frame.
@@ -1124,7 +1156,7 @@
       c2.restore();
     };
     const dispose = () => {
-      cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose(); for (const t of tornadoes) t.dispose();
+      cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose(); for (const t of tornadoes) t.dispose(); gust.dispose();
       audio.dispose();
       document.removeEventListener("visibilitychange", onVisibility);
       removeChild(root, routeRoot); removeChild(root, platform);
@@ -1132,7 +1164,7 @@
     };
     const liveGeometry = (set) => {
       ghost.liveGeometry(set);
-      set.add(rope.geometry); set.add(hookNode.geometry); for (const t of tornadoes) t.liveGeometry(set);
+      set.add(rope.geometry); set.add(hookNode.geometry); for (const t of tornadoes) t.liveGeometry(set); gust.liveGeometry(set);
       set.add(leaves[0].geometry);
       for (const surface of boostNodes) if (surface) set.add(surface.geometry);
       for (const marker of bounceNodes) if (marker) for (const part of marker.children) set.add(part.geometry);
@@ -1183,6 +1215,8 @@
       get powers() { return { xray: Math.max(0, xrayUntil - seconds), feather, hook: hookHeld ? HOOK_NAMES[hookAt] : "" }; },
       // Thunderhead's tornado that matters now, all of them, and whether one has the Ooga, for debugging.
       get tornado() { return tornado; }, get tornadoes() { return tornadoes; }, get whirled() { return whirled; }, get swept() { return swept; }, get hiddenByTornado() { return hiddenByTornado(); },
+      // Aurora Heights' gust and how fast it slides a planted Ooga, for debugging.
+      get gust() { return gust; }, get slide() { return Math.hypot(slideX, slideZ); },
       get bound() { return Math.hypot(start.x, start.z) + 80; } };
   };
   BL.cloudHopper = { create, LIFT_SECONDS };

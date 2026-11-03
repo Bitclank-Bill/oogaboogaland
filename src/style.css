@@ -10036,6 +10036,39 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 .cloud-hopper-power.hook.thrown { border-bottom-color: #ffd54a; }
 .cloud-hopper-power.hook.thrown .cloud-hopper-power-readout { color: #fff0b8; }
 @keyframes cloud-hopper-blink { 50% { opacity: .25; } }
+/* A gust's cue: a pale band of wind down the edge of the screen it comes from, its chevrons pointing the way it
+   blows, pulsing while it warns and streaming while it blows. */
+.cloud-hopper-gust {
+  position: fixed;
+  z-index: 34;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(22vw, 170px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px;
+  pointer-events: none;
+  background: linear-gradient(to right, #c8ecff59, #c8ecff1f 55%, transparent);
+  color: #eaf8ff;
+  animation: cloud-hopper-gust-pulse .7s ease-in-out infinite alternate;
+}
+.cloud-hopper-gust[hidden] { display: none; }
+.cloud-hopper-gust[data-from="right"] { left: auto; right: 0; align-items: flex-end; background: linear-gradient(to left, #c8ecff59, #c8ecff1f 55%, transparent); }
+.cloud-hopper-gust-word { font-weight: 800; font-size: 15px; letter-spacing: .2em; text-shadow: 0 1px 3px #0009, 0 0 10px #8fdcff; }
+.cloud-hopper-gust-arrows { display: flex; gap: 4px; }
+.cloud-hopper-gust[data-from="right"] .cloud-hopper-gust-arrows { transform: scaleX(-1); }
+.cloud-hopper-gust-arrows i { width: 16px; height: 16px; border: solid #eaf8ff; border-width: 4px 4px 0 0; transform: rotate(45deg); filter: drop-shadow(0 0 4px #8fdcff); animation: cloud-hopper-gust-chevron 1.2s linear infinite; }
+.cloud-hopper-gust-arrows i:nth-child(2) { animation-delay: .2s; }
+.cloud-hopper-gust-arrows i:nth-child(3) { animation-delay: .4s; }
+.cloud-hopper-gust[data-state="blowing"] { animation: none; background: linear-gradient(to right, #c8ecff8c, #c8ecff33 55%, transparent); }
+.cloud-hopper-gust[data-state="blowing"][data-from="right"] { background: linear-gradient(to left, #c8ecff8c, #c8ecff33 55%, transparent); }
+.cloud-hopper-gust[data-state="blowing"] .cloud-hopper-gust-arrows i { animation-duration: .45s; }
+@keyframes cloud-hopper-gust-pulse { from { opacity: .45; } to { opacity: 1; } }
+@keyframes cloud-hopper-gust-chevron { 0% { opacity: .2; translate: -6px 0; } 40% { opacity: 1; } 100% { opacity: .2; translate: 6px 0; } }
 .cloud-hopper-help { margin: 5px 0 0; color: #d8e9f3; font-size: 11px; line-height: 1.5; }
 /* Under the clock, the lines fold up into it as the run starts, shrinking and fading until the card holds only the name
    and the clock; the next run opens them at once. */
@@ -10045,6 +10078,7 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
   transition: grid-template-rows .7s cubic-bezier(.4, 0, .2, 1) .35s, opacity .5s ease .35s, transform .7s cubic-bezier(.4, 0, .2, 1) .35s; }
 .cloud-hopper-running .cloud-hopper-time { margin-bottom: 0; transition: margin .7s cubic-bezier(.4, 0, .2, 1) .35s; }
 @media (prefers-reduced-motion: reduce) { .cloud-hopper-running .cloud-hopper-brief, .cloud-hopper-running .cloud-hopper-time { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .cloud-hopper-gust, .cloud-hopper-gust-arrows i { animation: none; } }
 .cloud-hopper-panel {
   position: fixed;
   inset: auto;

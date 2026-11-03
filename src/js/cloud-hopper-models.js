@@ -316,6 +316,29 @@
     const geometry = node.frames[Math.floor(time * BL.arcadeModels.FPS) % node.frames.length];
     if (node.screen.geometry !== geometry) node.screen.geometry = geometry;
   };
+  // The gust card's wind: strokes blowing across over a cloud, each a straight run [x0, x1] at [y, z] that ends in a
+  // curl of `r` turning up (1) or down (-1), drawn as short glowing bars.
+  const GUST_STROKES = [[-3.4, 1.2, 1.25, 0.7, 0.45, 1], [-2.8, 1.9, 0.55, -0.3, 0.38, -1], [-2.2, 0.6, 1.95, -0.8, 0.32, 1],
+    [-3.8, -2.6, 0.85, 1.1, 0, 0], [2.6, 3.6, 1.55, 0.1, 0, 0], [-1, 0.2, 2.45, 0.3, 0, 0]];
+  const gustStrokes = () => {
+    const parts = [], bar = (x0, y0, x1, y1, z) => {
+      const length = Math.hypot(x1 - x0, y1 - y0);
+      parts.push(M.moved(M.turnedZ(M.box({ w: length + 0.08, h: 0.09, d: 0.09, color: "#dff4ff", emissive: 0.7 }), Math.atan2(y1 - y0, x1 - x0)),
+        (x0 + x1) / 2, (y0 + y1) / 2, z));
+    };
+    for (const [x0, x1, y, z, r, turn] of GUST_STROKES) {
+      bar(x0, y, x1, y, z);
+      if (!r) continue;
+      // Round from the run's end about a centre r above (or below) it, three quarters of a turn, tightening.
+      let px = x1, py = y;
+      for (let k = 1; k <= 12; k++) {
+        const t = k / 12, angle = -Math.PI / 2 + t * Math.PI * 1.5, radius = r * (1 - 0.4 * t);
+        const x = x1 + Math.cos(angle) * radius, yy = y + turn * (r + Math.sin(angle) * radius);
+        bar(px, py, x, yy, z); px = x; py = yy;
+      }
+    }
+    return M.noShadow(M.merge(...parts));
+  };
   // The first-play cards use the same transparent model portraits as Ghost
   // Hunter. Build and draw each once when requested, without a second frame loop.
   const createGuidePictures = () => {
@@ -370,6 +393,8 @@
         }
       } else if (kind === "tornado") {
         addChild(root, BL.cloudHopperTornado.still());
+      } else if (kind === "gust") {
+        addChild(root, cloud(2.7, 1.9, 1.6), createNode({ geometry: gustStrokes() }));
       } else if (kind === "jetpack") {
         addChild(root, cloud(0.48, 0.32, 0.22), createNode({ geometry: BL.hubModels.jetpack(), position: { x: 0, y: 0.18, z: 0 } }));
       } else if (POWERS.includes(kind)) {

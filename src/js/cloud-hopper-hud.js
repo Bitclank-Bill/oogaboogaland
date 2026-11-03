@@ -22,10 +22,11 @@
     ["jetpack", "Jetpacks", "Press J to wear a jetpack, then hold Space to fly up. Fuel never refills, so grab another pack for more."],
     ["finish", "Banana pile", "Land on the banana pile to stop the clock. Your best run comes back as a ghost to race."]
   ];
-  // Bounce clouds (from Level 2), Thunderhead's tornadoes and the power-ups, each introduced the first time a session
-  // plays a level that carries it.
+  // Bounce clouds (from Level 2), Aurora Heights' gusts, Thunderhead's tornadoes and the power-ups, each introduced the
+  // first time a session plays a level that carries it.
   const ITEMS = {
     bounce: ["bounce", "Bounce clouds", "Touch a purple cloud anywhere to bounce high. Steer to your next cloud on the way down."],
+    gust: ["gust", "Gusts of wind", "Twice a run the wind blows across the course. Arrows at the screen's edge warn where it comes from. It pushes you sideways, so lean into it."],
     tornado: ["tornado", "Tornadoes", "A tornado comes down where a glowing cap gathers, and it grows stronger as it goes. Dash through it fast or it sweeps you away."],
     xray: ["xray", "X-ray goggles", "For 30 seconds, see how long each cloud has before it fades. A gold ∞ never fades."],
     updraft: ["updraft", "Sky feather", "Out of jumps? Press Space and the feather throws you high into the air."],
@@ -83,7 +84,7 @@
     play.dataset.role = next.dataset.role = "go"; select.dataset.role = "choose"; back.dataset.role = "back"; exit.dataset.role = "leave";
     // One picture card a level: its number in the picture's corner, its name alone on a row, then its route and
     // the player's best or what unlocks it. Pictures load the first time the cards show, and the player's own Ooga
-    // stands on each one's cloud (`setRunner`), painted once per Ooga.
+    // stands on the cloud of each level they have finished (`setRunner`), painted once per Ooga.
     const LEVELS = BL.cloudHopperLevels.LEVELS, levels = node("div", "cloud-hopper-levels"), cards = [], OOGA_W = 96, OOGA_H = 128;
     for (const level of LEVELS) {
       const card = node("button", "cloud-hopper-level"), frame = node("span", "cloud-hopper-level-frame");
@@ -143,6 +144,11 @@
       scoreRows.push({ row, run, time });
     }
     document.getElementById("jetpack-hud")?.after(xrayChip, featherChip, hookChip);
+    // A gust's cue at the edge of the screen it comes from, its arrows pointing the way it blows.
+    const gustCue = node("div", "cloud-hopper-gust"), gustArrows = node("div", "cloud-hopper-gust-arrows");
+    for (let i = 0; i < 3; i++) gustArrows.append(node("i", ""));
+    gustCue.append(node("span", "cloud-hopper-gust-word", "GUST"), gustArrows);
+    gustCue.setAttribute("aria-hidden", "true"); gustCue.hidden = true;
     // The lines under the clock (what to do, the ghost, the keys), folded up into the clock once the run starts.
     const brief = node("div", "cloud-hopper-brief"), briefLines = node("div");
     briefLines.append(title, ghost, help); brief.append(briefLines);
@@ -151,11 +157,11 @@
     actions.append(back, next, play, select, exit);
     panel.append(glow, kicker, panelTitle, goal, levels, introArt, guideArt, resultArt, panelHelp, resultTime, scoresPanel, actions);
     hud.hidden = panel.hidden = levels.hidden = next.hidden = select.hidden = true;
-    document.body.append(hud, panel);
+    document.body.append(hud, panel, gustCue);
     let phase = "", hundredths = -1, previousFocus = null, disposed = false, frameY = 0.4;
     // The guide's cards this time (`setGuide`): the cloud guide, then the items new to this session's level.
     let guideIndex = 0, guidePictures = null, spaceTarget = null, guide = GUIDE;
-    let shownXray = -2, shownFeather = false, shownHook = -2;
+    let shownXray = -2, shownFeather = false, shownHook = -2, shownGust = "calm", shownFrom = false;
     // The level choice: the one selected, the highest unlocked, the player's best per level (ms, 0 for none), and
     // whether the result card is showing the cards instead of the result (Level select).
     // `pickedFrom`: the level a result card's Level select opened on, which Back goes back to.
@@ -166,8 +172,9 @@
     const locked = () => selected > unlocked;
     const nextOpen = () => phase === "won" && !picking && selected < LEVELS.length && selected + 1 <= unlocked;
     const paintLevels = () => {
-      for (const { card, picture, note, level } of cards) {
+      for (const { card, picture, ooga, note, level } of cards) {
         const closed = level.id > unlocked, best = bests[level.id - 1] || 0;
+        ooga.hidden = !best;
         card.classList.toggle("selected", level.id === selected);
         card.classList.toggle("locked", closed);
         card.setAttribute("aria-pressed", level.id === selected ? "true" : "false");
@@ -480,7 +487,7 @@
       window.removeEventListener("resize", measureFraming);
       window.removeEventListener("resize", fitGuide);
       guidePictures?.dispose(); guidePictures = null;
-      hud.remove(); panel.remove(); xrayChip.remove(); featherChip.remove(); hookChip.remove();
+      hud.remove(); panel.remove(); xrayChip.remove(); featherChip.remove(); hookChip.remove(); gustCue.remove();
     };
     // The guide's next cards: the cloud guide unless `cloud` is false, then each new thing named in `items`.
     const setGuide = (cloud, items) => {
@@ -501,7 +508,15 @@
       hookReadout.textContent = hook > 0 ? "OUT" : "1";
       shownXray = xray; shownFeather = feather; shownHook = hook;
     };
-    return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, setDq, hide, dispose, get frameY() { return frameY; } };
+    // A gust's state ("calm", "warning" or "blowing") and whether it comes from the screen's left; the cue changes only
+    // when either does.
+    const setGust = (state, fromLeft) => {
+      if (disposed || state === shownGust && fromLeft === shownFrom) return;
+      gustCue.hidden = state === "calm";
+      gustCue.dataset.state = state; gustCue.dataset.from = fromLeft ? "left" : "right";
+      shownGust = state; shownFrom = fromLeft;
+    };
+    return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, setGust, setDq, hide, dispose, get frameY() { return frameY; } };
   };
   BL.cloudHopperHud = { create };
 })();
