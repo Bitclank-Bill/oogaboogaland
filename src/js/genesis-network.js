@@ -65,7 +65,7 @@
   // ---- The shrine's screen: a four-sided board hung high over the statue, turning slowly, each face a live reading
   // of the real network from the page's own chain feed (chain.js: mempool.space and the price socket), with how fresh
   // it is. Each face shows one page and they move round every CYCLE seconds, so every page passes every side.
-  const SCREEN = { w: 3.8, h: 2.14, y: 13.2, CYCLE: 9 };
+  const SCREEN = { w: 5.2, h: 2.92, y: 11.6, x: 0, z: -15, CYCLE: 9 };
   const HALVING = 210000;
   const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
   const SCREEN_PAGES = [
@@ -260,7 +260,7 @@
     };
     // The hanging screen over the statue: four canvas faces round a dark frame, cables up to the roof.
     const SW = 960, SH = 540, sw = SCREEN.w, sh = SCREEN.h;
-    const hang = place(createNode({ position: { x: statue.x, y: top + SCREEN.y, z: statue.z } }));
+    const hang = place(createNode({ position: { x: SCREEN.x, y: top + SCREEN.y, z: SCREEN.z } }));
     const cone = M.lathe({ profile: [[0, 0], [0.9, 0], [0.5, -0.5], [0, -0.7]], segments: 16, color: "#f7931a", emissive: 0.9 });
     addChild(hang, createNode({ geometry: M.merge(
       M.box({ w: sw + 0.3, h: sh + 0.3, d: sw + 0.3, color: "#101317" }),

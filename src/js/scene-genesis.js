@@ -483,6 +483,9 @@
     paper.target = Math.max(0, Math.min(data.count - 1, n)) * step;
   };
   const zoomPaper = (k) => { paper.zoom = Math.max(1, Math.min(3.2, paper.zoom * k)); };
+  // Z steps through closer views of the same page (the scrolling is the same at each), and back out.
+  const ZOOMS = [1, 1.5, 2.2, 3];
+  const stepZoom = () => { const i = ZOOMS.findIndex((z) => z > paper.zoom + 0.01); paper.zoom = i < 0 ? 1 : ZOOMS[i]; };
   const openPaper = () => {
     if (paper.open || bench.open) return;
     if (!WPP.face || !WPP.doc) { hud.toast("The whitepaper is still loading"); return; }
@@ -495,7 +498,7 @@
     if (avatar) { paper.avatarShown = avatar.root.visible; avatar.root.visible = false; }
     // The museum's own panel steps aside while the page is read; the reading line stays at the foot.
     const panel = document.getElementById("genesis"); if (panel) panel.style.visibility = "hidden";
-    hud.whitepaperNav(true, COARSE ? "" : "Wheel or arrows scroll · Space next page · F whole page · + − zoom · Esc to stop reading");
+    hud.whitepaperNav(true, COARSE ? "" : "Wheel or arrows scroll · Space next page · Z closer · F whole page · Esc to stop reading");
     showControls();
   };
   const closePaper = () => {
@@ -565,6 +568,9 @@
     else if (k === "Home") paper.target = 0;
     else if (k === "End") scrollPaper(1e9);
     else if (k === "f" || k === "F") paper.fill = !paper.fill;
+    else if (k === "z" || k === "Z") stepZoom();
+    else if ((k === "a" || k === "A") && paper.zoom > 1) paper.pan -= 0.12;
+    else if ((k === "d" || k === "D") && paper.zoom > 1) paper.pan += 0.12;
     else if (k === "+" || k === "=") zoomPaper(1.25);
     else if (k === "-" || k === "_") zoomPaper(0.8);
     else return;

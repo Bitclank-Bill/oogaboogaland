@@ -23,7 +23,7 @@
     // Stalactites, off the shrine and the cenote.
     for (let k = 0; k < 90; k++) {
       const x = A.x0 + 3 + hash(k, 1) * (A.x1 - A.x0 - 6), z = A.z0 + 3 + hash(k, 2) * (A.z1 - A.z0 - 6);
-      if (Math.hypot(x - KEEP.x, z - KEEP.z) < KEEP.r || Math.hypot(x - CENOTE.x, z - CENOTE.z) < 6) continue;
+      if (Math.hypot(x - KEEP.x, z - KEEP.z) < KEEP.r || Math.hypot(x, z + 15) < 5.5 || Math.hypot(x - CENOTE.x, z - CENOTE.z) < 6) continue;
       const len = 1 + hash(k, 3) * 2.2, r = 0.25 + hash(k, 4) * 0.35;
       rock.push(M.moved(M.lathe({ profile: [[0, -len], [r * 0.3, -len * 0.6], [r * 0.8, -len * 0.2], [r, 0], [0, 0]], segments: 7, color: ROCK[k % 4] }), x, roof - 0.4, z));
       if (k % 9 === 0) glow.push(M.moved(M.bevelBox({ w: 0.18, h: 0.5, d: 0.18, color: CRYSTAL[k % 4], emissive: 1.6, bevel: 0.05 }), x + r, roof - 0.7, z));
