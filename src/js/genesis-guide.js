@@ -3,7 +3,7 @@
 // browser has answered it (a tap on her brings it at any time). The tour walks the road to Bitcoin gallery by
 // gallery: the statue, then each era in order, what its years added (machines that count, packet networks and public
 // keys, Merkle trees and blind signatures, timestamps, proof of work, peer-to-peer and reusable work, the paper and
-// the first block), and the mining corner, the story's epilogue. Under her offer she answers a few questions about
+// the first block), and the Bitcoin network round the statue, the story's epilogue. Under her offer she answers a few questions about
 // the museum herself. Stops are laid from the museum's own layout (`make`), so they follow its galleries.
 (() => {
   "use strict";
@@ -32,8 +32,8 @@
     gamesRecords: "Your best scores go up on the Game Records board by the way in.",
     walkways: "Stand on a moving walkway and it carries you. Round the courtyard it runs through the eras in date order.",
     gold: "Follow the gold path in each gallery: those are the steps toward Bitcoin, numbered in date order.",
-    mining: "After Genesis: how mining grew, from ordinary computers in 2009 to chips built only for it.",
-    miningMore: "Watch the toy miner: finding the number takes many tries, checking it takes one. That's proof of work."
+    mining: "Round the statue, the Bitcoin network itself: node towers passing payments, and miners racing to find each block.",
+    miningMore: "Blue lights are payments, gold is a new block. Read the floor displays, and look up: that screen is the real network, live."
   };
   // What each era's gallery added to the road, two lines a gallery (`era` is genesis-world.js ERAS[n]).
   const ERA_LINES = [
@@ -76,7 +76,7 @@
       const ox = d.x - c.x, oz = d.z - c.z, l = Math.hypot(ox, oz) || 1;
       STOPS.push({ id: `era${n}`, title: `Era ${n}: ${e.name}`, eye: [d.x + ox / l * 9, 6, d.z + oz / l * 9], look: [c.x, 2.2, c.z], lines: [`era${n}a`, `era${n}b`] });
     });
-    STOPS.push({ id: "mining", title: "After Genesis: mining", eye: [mining.x - 3, 4, mining.z + 8], look: [mining.x, 1.3, mining.z], lines: ["mining", "miningMore"] });
+    STOPS.push({ id: "mining", title: "The Bitcoin network", eye: [mining.x + 4, 7, mining.z + 8], look: [mining.x, 2, mining.z - 6], lines: ["mining", "miningMore"] });
     const WORK = [
       { at: [statue.x - 4, 9, statue.z + 2], aim: [statue.x, 8, statue.z] },
       { at: [mining.x - 1.5, 3.4, mining.z + 2.2], aim: [mining.x, 1.3, mining.z] },
