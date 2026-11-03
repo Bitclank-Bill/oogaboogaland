@@ -383,7 +383,7 @@
       addChild(g < 0 ? frame : holders[g], kid);
     }
   };
-  const SIGN_GROW = 1.4;
+  const SIGN_GROW = GW.SIGN_GROW;
   const buildExhibits = () => {
     // Every sign geometry an era makes is noted, so its nodes can step out of the workbench's picture (host.open).
     const EX = BL.genesisExhibits, signGeos = new Set(), label = (...a) => { const l = BL.factoryModels.label(...a); signGeos.add(l.face); signGeos.add(l.back); return l; };
@@ -756,6 +756,17 @@
       const geo = EI.build(M, list, ISLAND_TOP);
       if (geo) place(createNode({ geometry: geo, sightHidden: true }));
       for (const q of list) { const hw = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.d : q.item.w) / 2, hd = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.w : q.item.d) / 2; built.oldObstacles.push({ era: e.n, x0: q.x - hw, x1: q.x + hw, z0: q.z - hd, z1: q.z + hd }); }
+      // The game tables seat a visitor against an Ooga: a grid board plays Five in a Row, any other Dots and Boxes
+      // (genesis-games-plus.js BOARDS), on the console. Used from the side nearer the walk.
+      const GPl = BL.genesisGamesPlus, year = +String(e.years).match(/\d{4}/)[0];
+      let tables = 0;
+      if (GPl && GPl.BOARDS) for (const q of list) {
+        if (!/table$/.test(q.item.name)) continue;
+        const grid = /chess|go table|tile/.test(q.item.name), game = GPl.BOARDS.find((g) => g.id === (grid ? "b-gomoku" : "b-dots"));
+        const side = q.x < GW.LANE_X ? 1 : -1, walk = { x: q.x + side * (q.item.w / 2 + 0.5), y: ISLAND_TOP, z: q.z };
+        props.register({ id: `table-${e.n}-${tables++}`, era: e.n, year, title: `${q.item.name[0].toUpperCase()}${q.item.name.slice(1)}: play ${game.title}`, label: `${game.title.toUpperCase()} TABLE · ${year}s GALLERY`,
+          sourceKeys: [], hint: `sit down and play ${game.title} against an Ooga`, at: muAt(e.n, walk), reach: 1.8, onUse: () => ({ cartridge: game.id }) });
+      }
       built.eraItems = (built.eraItems || 0) + list.length;
     });
   };
@@ -1523,7 +1534,10 @@
     }
     pilot.setActive(false);
     // The docents (genesis-docents.js): the island's apes in the museum's uniform.
-    docents = BL.genesisDocents.create({ eras: GW.ERAS, museum: MU, lane: GW.LANE_X, entry: ENTRY, root, footing, fx, addChild, createNode });
+    // Each gallery's docent knows its steps toward Bitcoin (the trail, in order) and its cabinet game.
+    const guide = GW.ERAS.map((e) => ({ steps: built.trail.filter((x) => x.era === e.n).sort((a, b) => a.step - b.step).map((x) => x.def.title),
+      game: (BL.genesisGamesPlus && (BL.genesisGamesPlus.GAMES.find((g) => g.era === e.n) || {}).title) || null }));
+    docents = BL.genesisDocents.create({ eras: GW.ERAS, museum: MU, lane: GW.LANE_X, entry: ENTRY, root, footing, fx, addChild, createNode, guide });
     remotes = BL.remotePlayers.create({ root, crew: people, fx });
     footsteps = BL.footsteps.create();
     walk.on = false; walk.prop = null; walk.falls = 0; walk.rides = 0;

@@ -25749,7 +25749,7 @@ const genesisEraCartridgeProof = async () => {
   const WANT = ["e0-nim", "e1-paddle", "e2-four", "e3-rally", "e4-strategy", "e4-pocket", "e5-patchwork", "e5-pocket", "e6-argument", "e7-sync"];
   if (EC.ids.join() !== WANT.join()) bad.push(`cartridges ${EC.ids}`);
   // The era cartridges and the cabinet games (genesis-games-plus.js), and nothing else.
-  if (C.checkAll() !== WANT.length + BLc.genesisGamesPlus.GAMES.length) bad.push("the registry does not hold exactly the ten era cartridges and the cabinet games");
+  if (C.checkAll() !== WANT.length + BLc.genesisGamesPlus.GAMES.length + BLc.genesisGamesPlus.BOARDS.length) bad.push("the registry does not hold exactly the ten era cartridges and the cabinet games");
   const con = C.create({ root: null });
   for (const id of WANT) {
     const c = C.find(id), p = props[id];
@@ -25792,7 +25792,7 @@ const genesisGamesPlusProof = async () => {
   context.window.document = document;
   for (const f of ["math", "retro-games", "genesis-games-plus"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, GP = BLc.genesisGamesPlus, list = BLc.genesisCartridges.list, bad = [], ends = {};
-  for (const g of [...GP.GAMES, { id: "e4-pocket", make: GP.pocket, era: 4 }]) {
+  for (const g of [...GP.GAMES, ...GP.BOARDS, { id: "e4-pocket", make: GP.pocket, era: 4 }]) {
     const c = g.id === "e4-pocket" ? { label: "a modern original museum game" } : list.find((x) => x.id === g.id);
     if (!c || !/modern/i.test(c.label) || !/original/i.test(c.label)) bad.push(`${g.id}: label`);
     const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, host = { best: 0, aim, still: false, onEnd: (score) => { ends[g.id] = (ends[g.id] || 0) + 1; }, over() {}, popup() {}, cue() {}, shake() {}, crack() {}, flop() {} };
@@ -25802,7 +25802,8 @@ const genesisGamesPlusProof = async () => {
       if (!game.playing) bad.push(`${g.id}: does not start`);
       for (let f = 0; f < 100 * 60; f++) {
         if (f % 18 === 0) game.act();
-        if (f % 45 === 0) aim.steps += (f / 45) % 3 === 0 ? -1 : 1;
+        // Sweep the board as a player does: across and back, a row further each pass, up again after a few rows.
+        if (f % 30 === 0) { const k = f / 30; aim.steps += Math.floor(k / 10) % 2 ? -1 : 1; if (k % 10 === 9) aim.stepsY += Math.floor(k / 90) % 2 ? -1 : 1; }
         game.update(1 / 60);
         if (f % 60 === 0) game.draw(ctx2d);
       }
@@ -26394,7 +26395,7 @@ const unitChecks = async () => {
   record("Genesis era cartridges (rule, gv/integration-3 4d): the ten era playables (Pocket Route among them) are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisPlus = await genesisGamesPlusProof();
-  record("Genesis cabinet games (playthrough): every cabinet game (one in each gallery) and Pocket Route each start, play to their end once under steady presses, draw, and are labelled modern original museum games", genesisPlus.games === 8 && genesisPlus.ends["e4-pocket"] === 1 && !genesisPlus.bad.length, JSON.stringify(genesisPlus));
+  record("Genesis cabinet games (playthrough): every cabinet game (one in each gallery), both board-table games and Pocket Route each start, play to their end once under steady presses, draw, and are labelled modern original museum games", genesisPlus.games === 8 && genesisPlus.ends["e4-pocket"] === 1 && genesisPlus.ends["b-gomoku"] === 1 && genesisPlus.ends["b-dots"] === 1 && !genesisPlus.bad.length, JSON.stringify(genesisPlus));
   const genesisAuto = await genesisAutoplayProof();
   record("Genesis exhibits run themselves (rule): every terminal exhibit plays at least two steps from its own instructions without throwing, and nearly every step is answered", !genesisAuto.bad.length, JSON.stringify(genesisAuto));
   const genesisMuseum = await genesisMuseumProof();

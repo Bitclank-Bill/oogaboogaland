@@ -180,12 +180,20 @@
   // An era's footprint for packEra: its build run once against a stand-in kit that draws nothing, noting a box for
   // each piece in call order (a solid or obstacle as itself, a sign, a placed node or a prop's spot as a small box).
   // The scene's kit counts the same calls in the same order, so item i of the real build is item i here. Pure.
+  // Signs are drawn SIGN_GROW times their asked size (scene-genesis.js), and their board is as wide as their words
+  // (factory-models.js label: bold 50 px titles, 37 px lines under, 56 px of margin, 124 px tall with a line under).
+  const SIGN_GROW = 1.4;
+  const signWidth = (title, sub, height) => {
+    const px = Math.max(...String(title).split("\n").map((l) => l.length * 29), sub ? String(sub).length * 19 : 0) + 56;
+    return px / (sub ? 124 : 80) * height * SIGN_GROW;
+  };
   const recordEra = (build, era, n, top, channel) => {
     const items = [], box = (x, z, w, d) => items.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 });
     const node = (o = {}) => Object.assign({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, glow: 1 }, o, { children: [] });
     build({ era, top, channel, M: { box: () => ({}) }, addChild: () => {}, label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
       createNode: node, place: (nd) => { if (nd.position && (nd.position.x || nd.position.z)) box(nd.position.x, nd.position.z, 0.5, 0.5); return nd; },
-      solid: (w, h, d, c, x, y, z) => { box(x, z, w, d); return node(); }, sign: (t, s, x, y, z) => { box(x, z, 1, 0.2); return node(); },
+      solid: (w, h, d, c, x, y, z) => { box(x, z, w, d); return node(); },
+      sign: (t, s, x, y, z, yaw = 0, height = 0.6) => { const w = signWidth(t, s, height); if (Math.abs(Math.sin(yaw)) > 0.7) box(x, z, 0.2, w); else box(x, z, w, 0.2); return node(); },
       obstacle: (x0, x1, z0, z1) => { items.push({ x0, x1, z0, z1 }); }, prop: (d) => { if (d.at) box(d.at.x, d.at.z, 0.4, 0.4); return { ...d, era: n }; } });
     return items;
   };
@@ -299,7 +307,7 @@
     // Each gallery's old x range and depth, fitted to its era's exhibits once packed (packEra; the old stream's line kept
     // inside, for the arch's sign and the courtyard's path; 28 m wide at least, for the headlines' board). A Node check
     // repacks every era and fails if this drifts.
-    const SPEC = [[-14.4, 20.1, 35.4], [-30.4, 26.1, 71], [-21.2, 6.8, 73], [-21.3, 6.8, 41.4], [-17.4, 27.1, 35.7], [-19.3, 32.9, 41.2], [-14.6, 14.5, 47.6], [-19.9, 30.4, 35.6]];
+    const SPEC = [[-21.9, 22.3, 35.5], [-30.6, 31.5, 71], [-21.2, 6.8, 73], [-21.3, 6.8, 41.4], [-18.5, 27.3, 35.7], [-19.8, 38.2, 40.3], [-16.3, 20.2, 43.3], [-19.9, 30.4, 35.6]];
     // The four walls' galleries in order along each wall, the wall's line, the turn that sends old -z outward and the
     // direction old +x runs along it: west (south to north), north (west to east), east (north to south), south
     // (east to west).
@@ -437,5 +445,5 @@
     out.dist = dist;
     return out;
   };
-  BL.genesisWorld = { packEra, recordEra, eraItems, packedKit, PACK, holdsFor, MUSEUM, frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
+  BL.genesisWorld = { SIGN_GROW, signWidth, packEra, recordEra, eraItems, packedKit, PACK, holdsFor, MUSEUM, frame, MAX_DIST, BOARD, canBoard, byWater, callSpot, sailToward, lampPosts, pylons, SIGN_H, LAMPS, BANK, bankFrame, bankToWorld, reservedZones, overviewSpot, ERAS, BOATS, HARBOUR, LAND, SEA, CAVE, CHANNEL, TUNNEL, TUNNEL_HEIGHT, BANK_TOP, ceilingAt, ROOM_SHIFT, ROOM_ERA, LANE_X, MOUTH_Z, END_Z, eraAt, collide, dockAt, tourCourse };
 })();
