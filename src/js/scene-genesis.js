@@ -216,6 +216,32 @@
   // Each era's gallery, in its frame and its old coordinates: its floor in the era's colour, a gold walk down the
   // middle where the stream ran, an arch over its opening with the era's sign, hanging rocks and boulders (kept off
   // the exhibits), glowing seams on its walls and its lamp posts.
+  // A small wall piece for era n, its k-th along the walls, facing +z from the wall: a clock, a pennant or a shelf.
+  const WALL_INKS = ["#c9c3b4", "#d18b2c", "#ff4fa3", "#2f7a7a", "#3d5f9a", "#4fa3ff", "#6e5a40", "#f7931a"];
+  const wallPiece = (n, k) => {
+    const ink = WALL_INKS[n], kind = (k + n) % 3, out = [];
+    if (kind === 0) {
+      out.push(M.turnedX(M.lathe({ profile: [[0, 0], [0.32, 0], [0.32, 0.08], [0, 0.08]], segments: 16, color: "#2b2421" }), Math.PI / 2));
+      out.push(M.moved(M.turnedX(M.lathe({ profile: [[0, 0], [0.27, 0], [0.27, 0.02], [0, 0.02]], segments: 16, color: "#f4efe2" }), Math.PI / 2), 0, 0, 0.08));
+      out.push(M.box({ w: 0.03, h: 0.2, d: 0.02, color: "#1b1b1b", offset: { x: 0, y: 0.08, z: 0.11 } }), M.box({ w: 0.15, h: 0.03, d: 0.02, color: "#1b1b1b", offset: { x: 0.06, y: 0, z: 0.11 } }));
+    } else if (kind === 1) {
+      out.push(M.box({ w: 0.9, h: 0.05, d: 0.05, color: "#3b2a1a", offset: { x: 0, y: 0.25, z: 0.04 } }));
+      out.push(M.box({ w: 0.8, h: 0.45, d: 0.02, color: ink, emissive: 0.15, offset: { x: 0, y: 0, z: 0.05 } }));
+      out.push(M.box({ w: 0.6, h: 0.06, d: 0.01, color: "#f4efe2", offset: { x: 0, y: 0.05, z: 0.065 } }));
+    } else {
+      out.push(M.box({ w: 1.0, h: 0.05, d: 0.25, color: "#5a3a22", offset: { x: 0, y: -0.2, z: 0.12 } }));
+      for (let j = 0; j < 5; j++) out.push(M.box({ w: 0.12, h: 0.28 + (j % 2) * 0.06, d: 0.18, color: j % 2 ? ink : "#efe6cc", offset: { x: -0.36 + j * 0.16, y: -0.03 + (j % 2) * 0.03, z: 0.12 } }));
+    }
+    return out;
+  };
+  // A ceiling fan: a down rod, a motor and four blades.
+  let fanGeo = null;
+  const fanGeometry = () => fanGeo || (fanGeo = (() => {
+    const g = M.merge(M.box({ w: 0.08, h: 4.0, d: 0.08, color: "#3a3d42", offset: { x: 0, y: 2.0, z: 0 } }), M.box({ w: 0.42, h: 0.28, d: 0.42, color: "#5a3a22", offset: { x: 0, y: -0.05, z: 0 } }),
+      ...[0, 1, 2, 3].map((k) => M.turnedY(M.box({ w: 1.3, h: 0.04, d: 0.3, color: "#8a5a2e", offset: { x: 0.85, y: -0.12, z: 0 } }), k * Math.PI / 2)));
+    g.castShadow = false;
+    return g;
+  })());
   // A photograph's meshes, shared by every frame that hangs it: the frame, the picture and its caption.
   const photoGeos = new Map();
   const photoGeometry = (n, k) => {
@@ -243,6 +269,16 @@
       if (fin.glow.length) place(createNode({ geometry: M.merge(...fin.glow), sightHidden: true }));
       // Period photographs between the motifs (genesis-photos.js): museum illustrations, each captioned as one.
       const PH = BL.genesisPhotos;
+      // A wall piece under each motif (a clock, a pennant, a shelf of the era's things), one merged mesh a gallery.
+      const decor = [];
+      for (const sp of PH.decorSpots(b, z0, z1)) for (const g of wallPiece(i, sp.k)) decor.push(M.moved(M.turnedY(g, sp.ry), sp.x, ISLAND_TOP + PH.DECOR_Y, sp.z));
+      if (decor.length) place(createNode({ geometry: M.merge(...decor), sightHidden: true }));
+      // Ceiling fans over the walk, turning slowly (still in Calm).
+      for (const u of [MU.OPEN + 6, MU.OPEN + (b.depth - MU.OPEN) * 0.6]) {
+        const f = place(createNode({ position: { x: GW.LANE_X, y: H - 4.2, z: e.z1 - u }, sightHidden: true }));
+        addChild(f, createNode({ geometry: fanGeometry() }));
+        (built.fans = built.fans || []).push(f);
+      }
       for (const sp of PH.spots(b, z0, z1)) {
         const pic = photoGeometry(i, sp.k), node = place(createNode({ position: { x: sp.x, y: ISLAND_TOP + PH.AT_Y, z: sp.z }, rotation: { x: 0, y: sp.ry, z: 0 }, sightHidden: true }));
         addChild(node, createNode({ geometry: pic.frame }), createNode({ geometry: pic.face }), createNode({ geometry: pic.back, position: { x: 0, y: -PH.PH / 2 - 0.32, z: 0.02 } }), createNode({ geometry: pic.label, position: { x: 0, y: -PH.PH / 2 - 0.32, z: 0.02 } }));
@@ -769,6 +805,28 @@
       }
       built.eraItems = (built.eraItems || 0) + list.length;
     });
+  };
+  // The game records board by the arrival: a tall framed board under GAME RECORDS; Space beside it (or a tap) opens
+  // the visitor's best on every museum game (genesis-cartridge.js bests), a page of them at a time.
+  const RECORDS = { x: ENTRY.x - 6, z: ENTRY.z - 2 };
+  const buildRecords = () => {
+    const words = BL.factoryModels.label("GAME RECORDS", "your best on every museum game · Space here", { height: 0.7, style: "gold" });
+    const node = place(createNode({ position: { x: RECORDS.x, y: ISLAND_TOP, z: RECORDS.z }, sightHidden: true }));
+    addChild(node, createNode({ geometry: M.merge(
+      M.box({ w: 2.6, h: 2.2, d: 0.14, color: "#1b1d24", offset: { x: 0, y: 2.3, z: 0 } }),
+      M.box({ w: 2.8, h: 0.12, d: 0.2, color: "#e8c35a", emissive: 0.5, offset: { x: 0, y: 3.46, z: 0 } }),
+      M.box({ w: 2.8, h: 0.12, d: 0.2, color: "#e8c35a", emissive: 0.5, offset: { x: 0, y: 1.14, z: 0 } }),
+      ...[0, 1, 2, 3, 4].map((k) => M.box({ w: 2.0 - (k % 2) * 0.5, h: 0.1, d: 0.02, color: k ? "#7dff9e" : "#ffd23a", emissive: 1.1, offset: { x: -0.1, y: 3.0 - k * 0.38, z: 0.08 } })),
+      M.box({ w: 0.14, h: 1.2, d: 0.14, color: "#3b2a1a", offset: { x: -1.0, y: 0.6, z: 0 } }), M.box({ w: 0.14, h: 1.2, d: 0.14, color: "#3b2a1a", offset: { x: 1.0, y: 0.6, z: 0 } })) }),
+      createNode({ geometry: words.back, position: { x: 0, y: 3.95, z: 0.05 } }), createNode({ geometry: words.face, position: { x: 0, y: 3.95, z: 0.05 } }));
+    built.obstacles.push({ x0: RECORDS.x - 1.4, x1: RECORDS.x + 1.4, z0: RECORDS.z - 0.2, z1: RECORDS.z + 0.2 });
+    props.register({ id: "records", era: 7, year: 2009, title: "Game records", label: "GAME RECORDS · 1956-2009", sourceKeys: [], hint: "see your best on every museum game",
+      at: { x: RECORDS.x, y: ISLAND_TOP, z: RECORDS.z + 1.4 }, reach: 2.4, onUse: () => {
+        const C = BL.genesisCartridge, best = C.bests(), list = C.registry.list.slice().sort((a, b) => a.era - b.era || a.title.localeCompare(b.title));
+        const lines = list.map((g) => `${g.title} (Era ${g.era}): ${best[g.id] ? best[g.id].toLocaleString() : "not played yet"}`), pages = [];
+        for (let i = 0; i < lines.length; i += 8) pages.push({ caption: "Game records", title: i ? "More games" : "Your best on every museum game", text: lines.slice(i, i + 8) });
+        return { board: { room: "Game records", pages, sources: [] } };
+      } });
   };
   const updateVignettes = (dt) => {
     const q = avatar ? avatar.root.position : camera.target, near2 = BL.genesisVignettes.NEAR ** 2;
@@ -1423,6 +1481,7 @@
       if (walkways) walkways.update(dt, view.calm);
       if (built.vignettes) updateVignettes(dt);
       if (docents) docents.update(dt, avatar ? avatar.root.position.x : null, avatar ? avatar.root.position.z : 0);
+      if (built.fans && !view.calm) for (const f of built.fans) f.rotation.y += dt * 1.2;
       if (ambience) { const q = avatar ? avatar.root.position : camera.target; ambience.update(dt, MU.bayAt(q.x, q.z), view.calm); }
     }
     // The cartridge console's game runs while it is open and the visitor has not paused.
@@ -1455,7 +1514,7 @@
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
     buildExhibits(); buildCatalogue(); buildAtrium(); buildCourtyard(); buildWalls();
-    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail(); buildVignettes(); buildEraItems();
+    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail(); buildVignettes(); buildEraItems(); buildRecords();
     registerOverviews();
     // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
     // its old world, turned into the museum's).
