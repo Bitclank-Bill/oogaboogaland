@@ -158,14 +158,18 @@
     block(pw + 0.3, 0.25, pw + 0.3, MARBLE_D, 0, P.top - 0.125, 0, 0.05, 0);
     // The bust: a chest broadening to rounded shoulders, cut off at the upper arm as busts are.
     const y0 = P.top, cz = 0;
-    block(C.hx * 2 - 0.4, 1.45, C.hz * 2 - 0.1, G2, 0, y0 + 0.725, cz, 0.3);
-    block(C.hx * 2, 1.35, C.hz * 2, G1, 0, y0 + 2.05, cz, 0.4);
+    block(C.hx * 2 - 0.4, 1.45, C.hz * 2 - 0.1, G2, 0, y0 + 0.725, cz, 0.5);
+    block(C.hx * 2, 1.35, C.hz * 2, G1, 0, y0 + 2.05, cz, 0.6);
+    // Rounding where the chest's two tiers meet, so the metal reads as one cast form.
+    block(C.hx * 2 - 0.2, 0.5, C.hz * 2 - 0.05, G1, 0, y0 + 1.4, cz, 0.24);
     for (const sx of [-1, 1]) {
-      block(1.5, 0.75, C.hz * 2 - 0.2, G1, sx * 1.25, C.top - 0.375, cz, 0.35);
+      block(1.5, 0.75, C.hz * 2 - 0.2, G1, sx * 1.25, C.top - 0.375, cz, 0.37);
       block(0.6, 2.0, C.hz * 2 - 0.3, G2, sx * (C.hx - 0.25), y0 + 1.6, cz, 0.3);
       block(0.06, 1.7, C.hz * 2 - 0.5, G4, sx * (C.hx + 0.03), y0 + 1.55, cz, 0.02, 0);
       // The polish: a light catching each shoulder's crest.
       parts.push(at(M.box({ w: 1.1, h: 0.05, d: 0.5, color: G0, emissive: 0.45 }), sx * 1.2, C.top + 0.005, cz + 0.2));
+      // The polish down the chest: a long light on each side of the front, as a lamp's reflection on bronze.
+      parts.push(at(M.box({ w: 0.12, h: 1.6, d: 0.03, color: G0, emissive: 0.35 }), sx * 1.75, y0 + 1.6, C.hz + 0.01));
     }
     block(1.6, 0.4, C.hz * 2 - 0.4, G1, 0, C.top - 0.2, cz, 0.15);
     // Folds of cloth falling down the chest and the back.
@@ -176,7 +180,7 @@
     const hb = C.top - 0.1 + B.neck, H = B.head;
     block(0.95, B.neck + 0.2, 0.95, G2, 0, C.top - 0.1 + (B.neck + 0.2) / 2, 0, 0.12);
     // The head: smooth and faceless under the brow, a short nose, a cap of hair, a squared crown; its top is BUST's.
-    block(H.hx * 2, H.h - 0.3, H.hz * 2, G1, 0, hb + (H.h - 0.3) / 2, 0, 0.3);
+    block(H.hx * 2, H.h - 0.3, H.hz * 2, G1, 0, hb + (H.h - 0.3) / 2, 0, 0.55);
     block(H.hx * 2 + 0.06, 0.6, H.hz * 2 + 0.04, G3, 0, hb + H.h - 0.55, -0.05, 0.2);
     block(H.hx * 2 - 0.1, 0.2, 0.3, G4, 0, hb + H.h * 0.62, H.hz + 0.03, 0.06);
     block(0.26, 0.38, 0.22, G2, 0, hb + H.h * 0.45, H.hz + 0.05, 0.06);

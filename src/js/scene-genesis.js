@@ -690,6 +690,23 @@
       parts.length = 0;
     });
   };
+  // A hanging banner: a gold rod and its cords, a cloth in the era's colour with a darker hem and two light stripes.
+  const bannerCache = new Map();
+  const bannerGeometry = (glow) => {
+    let g = bannerCache.get(glow);
+    if (!g) {
+      g = M.merge(
+        M.box({ w: 1.7, h: 0.08, d: 0.08, color: "#e8c35a", emissive: 0.4, offset: { x: 0, y: 9.4, z: 0 } }),
+        M.box({ w: 0.03, h: 2.6, d: 0.03, color: "#3b2a1a", offset: { x: -0.7, y: 10.7, z: 0 } }), M.box({ w: 0.03, h: 2.6, d: 0.03, color: "#3b2a1a", offset: { x: 0.7, y: 10.7, z: 0 } }),
+        M.box({ w: 1.5, h: 4.4, d: 0.04, color: "#2a2228", offset: { x: 0, y: 7.15, z: 0 } }),
+        M.box({ w: 1.5, h: 0.3, d: 0.05, color: glow, emissive: 0.6, offset: { x: 0, y: 5.1, z: 0.01 } }),
+        M.box({ w: 1.5, h: 0.08, d: 0.05, color: glow, emissive: 0.6, offset: { x: 0, y: 7.7, z: 0.01 } }),
+        M.box({ w: 0.2, h: 3.6, d: 0.05, color: glow, emissive: 0.35, offset: { x: 0, y: 7.0, z: 0.012 } }));
+      g.castShadow = false;
+      bannerCache.set(glow, g);
+    }
+    return g;
+  };
   // A game cabinet: a timber body, a lit screen in the era's colour, a control panel and a marquee, facing +z.
   const cabinetGeometry = (glow) => M.merge(
     M.box({ w: 1.1, h: 1.9, d: 0.9, color: "#3b2a1a", offset: { x: 0, y: 0.95, z: 0 } }),
@@ -713,6 +730,13 @@
         built.oldObstacles.push({ era: e.n, x0: cx - 0.6, x1: cx + 0.6, z0: cz - 0.5, z1: cz + 0.5 });
         props.register({ id: game.id, era: e.n, year: game.year, title: `${game.title}: play the cabinet`, label: `${game.title.toUpperCase()} · A MODERN GAME IN THE SPIRIT OF ${game.year}`, sourceKeys: [],
           hint: `play ${game.title} on the console`, at: muAt(e.n, { x: cx, y: ISLAND_TOP, z: cz + 1.3 }), reach: 2.2, onUse: () => ({ cartridge: game.id }) });
+      }
+      // Hanging banners over the walk, a pair by the way in and a pair halfway down: cloth in the era's colour on a
+      // gold rod, its years and name across the top, high over the moving walkways.
+      const glow = glowHex(e.theme.lamp), b = MU.bays[e.n], words = BL.factoryModels.label(e.years, e.name, { height: 0.5, style: "gold" });
+      for (const u of [MU.OPEN + 4, MU.OPEN + (b.depth - MU.OPEN) / 2]) for (const side of [-1, 1]) {
+        const bx = GW.LANE_X + side * 4, bz = e.z1 - u, node = place(createNode({ position: { x: bx, y: ISLAND_TOP, z: bz }, sightHidden: true }));
+        addChild(node, createNode({ geometry: bannerGeometry(glow) }), createNode({ geometry: words.back, position: { x: 0, y: 8.55, z: 0.05 } }), createNode({ geometry: words.face, position: { x: 0, y: 8.55, z: 0.05 } }));
       }
       mu(e.n, at.x, at.z, p);
       return { v, x: p.x, z: p.z };
@@ -1122,7 +1146,8 @@
       if (autoplay) {
         let r = null;
         if (near && near.id !== "legend" && !bench.open) { try { r = near.onUse(AUTO_STATE); } catch (err) { r = null; } }
-        if (r && r.terminal) autoplay.start(near, r.terminal, `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`);
+        // What the visitor is looking at, in one line: the exhibit's own note on what its date marks, else its label.
+        if (r && r.terminal) { el["auto-sub"].textContent = near.date || near.label || ""; autoplay.start(near, r.terminal, `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`); }
         else autoplay.stop();
       }
       if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
@@ -1536,13 +1561,13 @@
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
     // The exhibit the visitor stands at runs itself (genesis-autoplay.js), its steps in the panel.
-    for (const id of ["auto", "auto-title", "auto-screen", "auto-step", "auto-try"]) el[id] = document.getElementById(`genesis-${id}`);
+    for (const id of ["auto", "auto-title", "auto-sub", "auto-fill", "auto-screen", "auto-step", "auto-try"]) el[id] = document.getElementById(`genesis-${id}`);
     el["auto-try"].textContent = COARSE ? "OPEN: try it yourself" : "Space: try it yourself";
     // The hall's quiet ambience (genesis-ambience.js), started by the visitor's first key or tap.
     ambience = BL.genesisAmbience.create();
     for (const type of ["keydown", "pointerdown"]) window.addEventListener(type, () => { if (ambience) ambience.wake(); }, { signal: ctx.signal });
     autoplay = BL.genesisAutoplay.create({
-      show: (title, lines, i, n) => { el.auto.hidden = false; el["auto-title"].textContent = title; el["auto-screen"].textContent = lines.join("\n"); el["auto-step"].textContent = n ? `step ${i} of ${n}` : ""; },
+      show: (title, lines, i, n) => { el.auto.hidden = false; el["auto-title"].textContent = title; el["auto-screen"].textContent = lines.join("\n"); el["auto-step"].textContent = n ? `step ${i} of ${n}` : ""; el["auto-fill"].style.width = `${n ? Math.round(i / n * 100) : 0}%`; },
       hide: () => { el.auto.hidden = true; }
     });
     el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space by an exhibit (or a tap) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
