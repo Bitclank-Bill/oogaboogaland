@@ -1747,6 +1747,9 @@
       solid(x + 0.05, z - 0.04, ux, uz, -1, CRATE_TOPS[1]);
     }
     for (const [x, z] of L.floorLamps) around(x, z, 0.3, 0.3, 0.4);
+    // The ribs standing out of the side walls, plinths and all.
+    const S = L.shell, reach = S.face + S.rib + 0.2, half = S.ribW / 2 + 0.2;
+    for (const z of L.gantries) block(HALL.x0, HALL.x0 + reach, z - half, z + half, -1, HALL.h), block(HALL.x1 - reach, HALL.x1, z - half, z + half, -1, HALL.h);
     return { rects: new Float32Array(rects), boxes: new Float32Array(boxes), solids: new Float32Array(solids), jet: JM.columns() };
   });
   // How many of the Jet's columns a walker of `radius` at (x, z) with its feet at `feet` stands among: those reaching

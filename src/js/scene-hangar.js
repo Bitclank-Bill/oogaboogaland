@@ -22,13 +22,15 @@
   const FM = BL.factoryModels, HM = BL.hangarModels, JM = BL.jetModels;
   const { clamp } = math;
   const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible } = BL.scene;
-  const { LAYOUT } = HM, { HALL } = LAYOUT, DOOR = LAYOUT.door, TUN = LAYOUT.tunnel;
+  const { LAYOUT } = HM, { HALL } = LAYOUT, DOOR = LAYOUT.door, TUN = LAYOUT.tunnel, SHELL = LAYOUT.shell;
 
   const params = new URLSearchParams(location.search), DEBUG = params.has("debug");
   // The Jet's construction stage: the one it has reached, or under debug the one `jetstage=` asks for.
   const JET_STAGE = DEBUG && JM.STAGES[params.get("jetstage")] ? Number(params.get("jetstage")) : JM.STAGE;
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
   const PITCH = [-0.2, 1.3], DIST = [3, 30];
+  // How near the view comes to the walls' faces, m.
+  const WALL_GAP = 0.6;
   const FOLLOW = { y: 0.9, min: 3, max: 7, pitch: [0.25, 0.8] };
   const FLY = { speed: 6, perDist: 0.4, climb: 4, yMax: HALL.h - 3 };
   // The door's shield, as wide as its arch, in the hall's cyan; and the launch shield across the tunnel's end, in a
@@ -1188,20 +1190,19 @@
       p.x = clamp(p.x, HALL.x0 + 3, HALL.x1 - 3);
       p.z = Math.min(p.z, HALL.front - 2);
     };
-    // Inside the walls, which lean in as they rise; the door's passage lets the eye nearer the front, and the launch
-    // tunnel lets it on down the runway, inside its frames and short of the shield.
+    // Inside the walls, clear of the ribs that stand out of the side walls (`WALL_GAP`); the door's passage lets the eye
+    // nearer the front, and the launch tunnel lets it on down the runway, inside its frames and short of the shield.
     const clampCamera = (p) => {
       p.y = clamp(p.y, 0.6, HALL.h - 1.5);
       if (inDoorway(p)) { p.z = Math.min(p.z, DOOR.z + 3); return; }
-      const lean = p.y / HALL.h * 2.6;
-      if (p.z < HALL.back + 1.6 + lean) {
+      if (p.z < HALL.back + SHELL.face + WALL_GAP) {
         p.x = clamp(p.x, -TUN.r + 1.5, TUN.r - 1.5);
         p.y = Math.min(p.y, TUN.y + TUN.r - 1.8);
         p.z = Math.max(p.z, TUN.z1 + 1.5);
         return;
       }
-      p.x = clamp(p.x, HALL.x0 + 1.6 + lean, HALL.x1 - 1.6 - lean);
-      p.z = Math.min(p.z, HALL.front - 1.6 - lean);
+      p.x = clamp(p.x, HALL.x0 + SHELL.face + SHELL.rib + WALL_GAP, HALL.x1 - SHELL.face - SHELL.rib - WALL_GAP);
+      p.z = Math.min(p.z, HALL.front - SHELL.face - WALL_GAP);
     };
     pilot = pilotMod.create({
       // The visitor's view, combat and weapon come in from the last scene and go on to the next (pilot.js `carried`).
