@@ -122,7 +122,7 @@
       addChild(spin, n); pins.push(n);
     }
     addChild(root, spin);
-    const words = label("OOGA BOOGA LAND", "a scale model of the island · E here", { height: 0.24, style: "gold" });
+    const words = label("OOGA BOOGA LAND", "a scale model of the island · click here", { height: 0.24, style: "gold" });
     addChild(root, createNode({ geometry: words.back, position: { x: 0, y: T.h - 0.16, z: T.d / 2 + 0.06 } }), createNode({ geometry: words.face, position: { x: 0, y: T.h - 0.16, z: T.d / 2 + 0.06 } }));
     let t = 0;
     const update = (dt, calm) => {

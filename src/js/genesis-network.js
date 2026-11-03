@@ -27,11 +27,13 @@
       const a = (22.5 + 45 * k) * deg, r = R + 1.7, x = CENTRE.x + Math.sin(a) * r, z = CENTRE.z + Math.cos(a) * r;
       miners.push({ node: k, x, z, ry: a, box: { x0: x - 0.65, x1: x + 0.65, z0: z - 0.65, z1: z + 0.65 } });
     }
-    // The displays between the towers, flat on the floor, their tops toward the statue so a visitor reads them from
-    // outside the ring looking in; `at` is where one stands to read it.
+    // The displays between the towers, screens on posts facing out of the ring, so a visitor reads them from outside
+    // the ring looking in; `at` is where one stands to read it, and each post's base is in the walkers' way.
     ["send", "mine", "spread", "energy"].forEach((id, i) => {
       const a = (45 + 90 * i) * deg, x = CENTRE.x + Math.sin(a) * DISPLAY_R, z = CENTRE.z + Math.cos(a) * DISPLAY_R;
       const ar = DISPLAY_R + SHOW.d / 2 + 0.9;
+      const bx = CENTRE.x + Math.sin(a) * (DISPLAY_R - 0.2), bz = CENTRE.z + Math.cos(a) * (DISPLAY_R - 0.2);
+      boxes.push({ x0: bx - 0.45, x1: bx + 0.45, z0: bz - 0.45, z1: bz + 0.45 });
       displays.push({ id, x, z, ry: a + Math.PI, at: { x: CENTRE.x + Math.sin(a) * ar, z: CENTRE.z + Math.cos(a) * ar } });
     });
     for (const n of nodes) boxes.push(n.box);
@@ -194,16 +196,22 @@
       const w = SHOW.w, h = SHOW.d;
       const face = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.9 }], lines: [], castShadow: false };
       face.imageSurface = { canvas, version: 1, rect: [-w / 2, -h / 2, w, h] };
+      // A screen on a post, tipped back a little toward the statue, facing out of the ring (the frame's +z after its
+      // turn) at a visitor walking up, its lower edge at waist height so it reads at a glance and hides nothing.
       const frame = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.ry, z: 0 }, sightHidden: true });
+      const stand = createNode({ geometry: M.merge(
+        M.bevelBox({ w: 1.0, h: 0.12, d: 0.7, color: "#15181d", bevel: 0.04, offset: { x: 0, y: 0.06, z: -0.2 } }),
+        M.box({ w: 0.18, h: 1.3, d: 0.18, color: "#22262c", offset: { x: 0, y: 0.75, z: -0.32 } }),
+        M.box({ w: 0.9, h: 0.03, d: 0.03, color: "#ffd23a", emissive: 1.2, offset: { x: 0, y: 0.13, z: 0.16 } })) });
+      const panel = createNode({ position: { x: 0, y: 1.05 + h / 2, z: 0 }, rotation: { x: -0.32, y: 0, z: 0 } });
       const edge = createNode({ geometry: M.merge(
-        M.box({ w: w + 0.3, h: 0.05, d: h + 0.3, color: "#15181d", offset: { x: 0, y: 0.025, z: 0 } }),
-        M.box({ w: w + 0.3, h: 0.06, d: 0.06, color: "#ffd23a", emissive: 1.4, offset: { x: 0, y: 0.04, z: -(h + 0.3) / 2 } }),
-        M.box({ w: w + 0.3, h: 0.06, d: 0.06, color: "#ffd23a", emissive: 1.4, offset: { x: 0, y: 0.04, z: (h + 0.3) / 2 } }),
-        M.box({ w: 0.06, h: 0.06, d: h + 0.3, color: "#ffd23a", emissive: 1.4, offset: { x: -(w + 0.3) / 2, y: 0.04, z: 0 } }),
-        M.box({ w: 0.06, h: 0.06, d: h + 0.3, color: "#ffd23a", emissive: 1.4, offset: { x: (w + 0.3) / 2, y: 0.04, z: 0 } })) });
-      // The picture lies face up, its top toward the statue (the frame's -z after its turn).
-      const pic = createNode({ geometry: face, position: { x: 0, y: 0.055, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 } });
-      addChild(frame, edge, pic); addChild(root, frame);
+        M.box({ w: w + 0.3, h: h + 0.3, d: 0.08, color: "#15181d", offset: { x: 0, y: 0, z: -0.05 } }),
+        M.box({ w: w + 0.3, h: 0.06, d: 0.06, color: "#ffd23a", emissive: 1.4, offset: { x: 0, y: (h + 0.3) / 2, z: 0 } }),
+        M.box({ w: w + 0.3, h: 0.06, d: 0.06, color: "#ffd23a", emissive: 1.4, offset: { x: 0, y: -(h + 0.3) / 2, z: 0 } }),
+        M.box({ w: 0.06, h: h + 0.3, d: 0.06, color: "#ffd23a", emissive: 1.4, offset: { x: -(w + 0.3) / 2, y: 0, z: 0 } }),
+        M.box({ w: 0.06, h: h + 0.3, d: 0.06, color: "#ffd23a", emissive: 1.4, offset: { x: (w + 0.3) / 2, y: 0, z: 0 } })) });
+      const pic = createNode({ geometry: face, position: { x: 0, y: 0, z: 0.012 } });
+      addChild(panel, edge, pic); addChild(frame, stand, panel); addChild(root, frame);
       return { id: d.id, canvas, face, edge, key: "" };
     });
     const bar = (g, x, y, w, h, k, c) => { g.fillStyle = "#1d2630"; g.fillRect(x, y, w, h); g.fillStyle = c; g.fillRect(x, y, w * Math.max(0, Math.min(1, k)), h); };

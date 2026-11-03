@@ -51,7 +51,9 @@
   });
   const ROOM_ERA = ERAS.findIndex((e) => e.room);
   // The room was centred on z -26.5; it lands in the middle of Era 3's cave.
-  ROOM_SHIFT.z = ERAS[ROOM_ERA].z + 26.5;
+  // ...and 2.6 m toward the way in, so its far end (the newspaper, the drives) stands clear of the packed gallery's
+  // back wall.
+  ROOM_SHIFT.z = ERAS[ROOM_ERA].z + 26.5 + 2.6;
   ERAS[ROOM_ERA].dock = { x: CHANNEL.x0 + 1.4, z: -26.1 + ROOM_SHIFT.z, facing: -Math.PI / 2 };
 
   const HARBOUR = { x0: -11.2, x1: 9.2, z0: MOUTH_Z, z1: 8.8, mouth: { x0: 0.5, x1: 7 }, start: { x: 3.4, z: 2.6, heading: Math.PI } };

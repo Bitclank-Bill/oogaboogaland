@@ -46,7 +46,7 @@
     // The way back up: glowing vines down the west wall by the way in, and its sign.
     for (let k = 0; k < 7; k++) glow.push(M.box({ w: 0.08, h: C.h - 0.6, d: 0.08, color: k % 2 ? "#3e9030" : "#9cff3a", emissive: k % 2 ? 0.05 : 0.7, offset: { x: -C.w / 2 + 0.45, y: (C.h - 0.6) / 2, z: -21 + k * 0.33 } }));
     for (let y = 0.6; y < C.h - 1; y += 0.7) glow.push(M.box({ w: 0.1, h: 0.08, d: 2.2, color: "#7a5534", emissive: 0.08, offset: { x: -C.w / 2 + 0.5, y, z: -20 } }));
-    { const up = label("UP TO THE HALL", "E here to climb back up", { height: 0.5, style: "gold" }), sn = createNode({ position: { x: -C.w / 2 + 0.7, y: 3.2, z: -20 }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, sightHidden: true }); addChild(sn, createNode({ geometry: up.back, sightHidden: true }), createNode({ geometry: up.face, sightHidden: true })); addChild(root, sn); }
+    { const up = label("UP TO THE HALL", "click here to climb back up", { height: 0.5, style: "gold" }), sn = createNode({ position: { x: -C.w / 2 + 0.7, y: 3.2, z: -20 }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, sightHidden: true }); addChild(sn, createNode({ geometry: up.back, sightHidden: true }), createNode({ geometry: up.face, sightHidden: true })); addChild(root, sn); }
     // The holes.
     const holes = [], fountains = [];
     let volcano = null;
