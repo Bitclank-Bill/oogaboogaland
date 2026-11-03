@@ -13795,14 +13795,18 @@ const PHONE_SIZE = { w: 390, h: 844, mobile: true };
 const phone = (id, { card = null, play = null, required, sheet = false }) => ({ name: `${id} phone`, why: "rule: every scene is readable and playable on a phone, nothing clipped and every control under a thumb", run: async (b) => {
   const seen = {};
   const reference = await b.evaluate(`(() => {
+    const existing=document.querySelector("dialog[open]");
     const button=document.getElementById("controls-help-button");
     button.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,pointerType:"touch"})); button.click();
     const d=document.getElementById("controls-help"), r=d.getBoundingClientRect();
-    return {open:d.open,rows:d.querySelectorAll(".controls-row").length,touch:!d.querySelector("kbd"),fits:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,overflow:d.scrollWidth>d.clientWidth,text:d.textContent};
+    return {existing:existing?.id,preserved:existing?.open,open:d.open,rows:d.querySelectorAll(".controls-row").length,touch:!d.querySelector("kbd"),fits:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,overflow:d.scrollWidth>d.clientWidth,text:d.textContent};
   })()`);
   if (process.env.CONTROLS_SCREENSHOTS && id === "hub") await b.screenshot(join(root,"untracked","controls-phone.png"));
   await b.evaluate('document.getElementById("controls-help-close").click()');
-  record(`${id} phone: controls reference fits, uses touch controls and excludes removed equipment`, reference.open&&reference.rows>1&&reference.touch&&reference.fits&&!reference.overflow&&(id!=="timechain"||!/weapon|rifle|jetpack/i.test(reference.text)), JSON.stringify(reference));
+  // Wallets can boot directly into its native picker. The reference must respect
+  // that modal's inert background; ordinary scene visits exercise the open panel.
+  if (reference.existing) record(`${id} phone: controls reference preserves the existing modal without opening a second`, reference.preserved&&!reference.open, JSON.stringify(reference));
+  else record(`${id} phone: controls reference fits, uses touch controls and excludes removed equipment`, reference.open&&reference.rows>1&&reference.touch&&reference.fits&&!reference.overflow&&(id!=="timechain"||!/weapon|rifle|jetpack/i.test(reference.text)), JSON.stringify(reference));
   if (card) {
     seen.card = { touch: await b.evaluate(PHONE_COARSE), bad: await b.evaluate(PHONE([`${card} .game-intro-go`, `${card} .game-intro-go + button`])) };
     const go = await b.evaluate(PHONE_GO);
