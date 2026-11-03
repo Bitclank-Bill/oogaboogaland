@@ -153,6 +153,9 @@
   // high; `surround` frames an opening from `u0` to `u1` and `top` high, its reveal running back `deep` behind the face.
   const PANEL = { w: 4, h: 3, skirt: 1.2, gap: 0.08, d: 0.12, tones: ["#3e444e", "#393f48", "#434a54"], dark: "#2a2f37", seam: "#16191e" };
   const RIB = { color: "#4b525d", edge: "#6b7480" }, FLOOR_TONES = ["#3a3f47", "#363b43", "#3e434b"];
+  // The vault's ribs, how deep they hang under it; and its light slots, down the bays between them at `slots` across the
+  // hall, `w` wide, stopping `end` short of the ribs, lit cool white.
+  const VAULT = { rib: 1, slots: [-11, 0, 13], w: 0.5, end: 0.8, color: "#e4eefa" };
   // One box in a wall's frame: from `u` `w` along it, from `y` `h` up it, from `back` to `front` toward the hall.
   const wallBox = (axis, face, dir, u, w, y, h, back, front, color) => {
     const t = front - back, c = face + dir * (back + front) / 2, uc = u + w / 2, yc = y + h / 2;
@@ -189,10 +192,12 @@
 
   // The chamber: a floor of graphite tiles; walls of the kit's panels standing straight up, ribs out of the side walls
   // on the gantries' lines and a surround framing the launch tunnel's mouth in the back wall and round the door over
-  // the landing in the front, its reveal running back to the door's arch; a vault of slabs; and behind it all a dark
-  // backing, so the sky the launch tunnel lets in never shows between two faces.
+  // the landing in the front, its reveal running back to the door's arch; a vault of graphite panels with ribs across
+  // it on the gantries' lines, meeting the walls' ribs, and light slots down the bays between them (`slots`, a mesh of
+  // their own, so an anomaly dims them with the hall's lights); and behind it all a dark backing, so the sky the launch
+  // tunnel lets in never shows between two faces.
   const shell = cached(() => {
-    const { x0: X0, x1: X1, back: B, front: F, h: H } = HALL, S = LAYOUT.shell, d = LAYOUT.door, t = LAYOUT.tunnel, rand = mulberry32(5150), floor = [], walls = [], vault = [];
+    const { x0: X0, x1: X1, back: B, front: F, h: H } = HALL, S = LAYOUT.shell, d = LAYOUT.door, t = LAYOUT.tunnel, rand = mulberry32(5150), floor = [], walls = [], vault = [], slots = [];
     const mid = (X0 + X1) / 2, span = X1 - X0, top = H + 1;
     floor.push(box({ w: span, h: 0.2, d: F - B, color: PANEL.seam, offset: { x: mid, y: -0.16, z: (B + F) / 2 } }));
     for (let x = X0; x < X1; x += 4) for (let z = B; z < F; z += 4) {
@@ -216,7 +221,24 @@
     panels(walls, rand, "z", front, -1, X0, d.x + dw + 1, right, 0, top);
     panels(walls, rand, "z", front, -1, X0, d.x - dw - 1, d.x + dw + 1, dt + 1, top);
     surround(walls, "z", front, -1, d.x - dw, d.x + dw, dt, S.face + 0.5);
-    for (let x = X0; x < X1; x += 5) for (let z = B; z < F; z += 5) vault.push(box({ w: 5.4, h: 2, d: 5.4, color: STONE[Math.floor(rand() * 4)], offset: { x: x + 2.5, y: H + rand() * 1.2, z: z + 2.5 } }));
+    const V = VAULT;
+    vault.push(box({ w: right - left, h: 0.2, d: front - back, color: PANEL.seam, offset: { x: mid, y: H + 0.3, z: (back + front) / 2 } }));
+    for (let x = X0 + Math.floor((left - X0) / 4) * 4; x < right; x += 4) for (let z = B + Math.floor((back - B) / 4) * 4; z < front; z += 4) {
+      const x0 = Math.max(x, left), x1 = Math.min(x + 4, right), z0 = Math.max(z, back), z1 = Math.min(z + 4, front);
+      vault.push(box({ w: x1 - x0 - PANEL.gap, h: 0.2, d: z1 - z0 - PANEL.gap, color: PANEL.tones[Math.floor(rand() * PANEL.tones.length)], offset: { x: (x0 + x1) / 2, y: H + 0.1, z: (z0 + z1) / 2 } }));
+    }
+    for (const z of LAYOUT.gantries) {
+      vault.push(box({ w: right - left, h: V.rib, d: S.ribW, color: RIB.color, offset: { x: mid, y: H - V.rib / 2, z } }));
+      vault.push(box({ w: right - left, h: 0.04, d: S.ribW * 0.4, color: RIB.edge, offset: { x: mid, y: H - V.rib - 0.02, z } }));
+    }
+    const bays = [front, ...LAYOUT.gantries, back];
+    for (let i = 1; i < bays.length; i++) {
+      const z0 = bays[i] + S.ribW / 2 + V.end, z1 = bays[i - 1] - S.ribW / 2 - V.end, zc = (z0 + z1) / 2;
+      for (const x of V.slots) {
+        vault.push(box({ w: V.w + 0.3, h: 0.25, d: z1 - z0 + 0.3, color: PANEL.seam, offset: { x, y: H - 0.125, z: zc } }));
+        slots.push(box({ w: V.w, h: 0.05, d: z1 - z0, color: V.color, emissive: 1, offset: { x, y: H - 0.275, z: zc } }));
+      }
+    }
     const backing = [
       box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X0 - 1.2, y: H / 2, z: (B + F) / 2 } }),
       box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X1 + 1.2, y: H / 2, z: (B + F) / 2 } }),
@@ -227,7 +249,7 @@
     const bw = t.r + 0.6;
     backing.push(box({ w: -bw - X0 + 2, h: H + 4, d: 1, color: PANEL.seam, offset: { x: (X0 - 2 - bw) / 2, y: H / 2, z: B - 1.6 } }), box({ w: X1 + 2 - bw, h: H + 4, d: 1, color: PANEL.seam, offset: { x: (bw + X1 + 2) / 2, y: H / 2, z: B - 1.6 } }));
     backing.push(box({ w: 2 * bw, h: H + 4 - (t.y + bw), d: 1, color: PANEL.seam, offset: { y: (H + 4 + t.y + bw) / 2 - 2, z: B - 1.6 } }));
-    return { floor: merge(...floor), walls: noShadow(merge(...walls)), vault: merge(...vault), backing: merge(...backing) };
+    return { floor: merge(...floor), walls: noShadow(merge(...walls)), vault: noShadow(merge(...vault)), slots: noShadow(merge(...slots)), backing: merge(...backing) };
   });
 
   // The landing inside the door: timber planks on posts, railed down both sides and along its front but for its steps,
