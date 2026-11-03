@@ -284,8 +284,57 @@
     addChild(root, ballNode);
     const dotGeo = M.box({ w: 0.07, h: 0.03, d: 0.07, color: "#ffffff", emissive: 1.1 }), dots = [];
     for (let k = 0; k < 10; k++) { const d = createNode({ geometry: dotGeo, visible: false, sightHidden: true }); addChild(root, d); dots.push(d); }
+    // The marquesita stand by the way in: a wooden cart on two wheels under a striped awning, its hot iron press,
+    // jars of chocolate spread and cajeta, bananas, strawberries, a red-waxed cheese and rolled marquesitas standing
+    // in a cup, its sign and menu; beside it a rack of golf gear (visors, bags and putters) under its own sign. Each is
+    // its own node, so the scene can make them clickable; `shop` says where they stand in the museum's frame.
+    const SHOP = { stand: { x: -29.8, z: -23.6 }, rack: { x: -33.6, z: -24.6 } };
+    const cart = [], WOOD = "#8a5a34", WOOD_DK = "#5e3c22";
+    cart.push(M.bevelBox({ w: 2.2, h: 0.9, d: 0.9, color: WOOD, emissive: 0.05, bevel: 0.06, offset: { x: 0, y: 0.75, z: 0 } }),
+      M.box({ w: 2.3, h: 0.08, d: 1.0, color: WOOD_DK, emissive: 0.05, offset: { x: 0, y: 1.24, z: 0 } }),
+      ...[-1, 1].map((sx) => M.moved(M.turnedZ(M.lathe({ profile: [[0, -0.06], [0.42, -0.06], [0.42, 0.06], [0, 0.06]], segments: 12, color: WOOD_DK, emissive: 0.04 }), Math.PI / 2), sx * 0.8, 0.42, 0.48)),
+      ...[-1, 1].map((sx) => M.moved(M.turnedZ(M.lathe({ profile: [[0.06, -0.07], [0.12, -0.07], [0.12, 0.07], [0.06, 0.07]], segments: 10, color: "#ffd23a", emissive: 0.7 }), Math.PI / 2), sx * 0.8, 0.42, 0.49)),
+      ...[-1, 1].flatMap((sx) => [-1, 1].map((sz) => M.box({ w: 0.07, h: 1.5, d: 0.07, color: WOOD_DK, offset: { x: sx * 1.05, y: 2.0, z: sz * 0.4 } }))));
+    // The awning: stripes of pink and yellow, and a neon line along its front edge.
+    for (let k = 0; k < 8; k++) cart.push(M.moved(M.turnedX(M.box({ w: 0.3, h: 0.04, d: 1.3, color: k % 2 ? "#ffd23a" : "#ff4fd8", emissive: 0.25 }), -0.22), -1.05 + 0.3 * k, 2.8, 0.05));
+    cart.push(M.box({ w: 2.45, h: 0.05, d: 0.05, color: "#ff4fd8", emissive: 1.1, offset: { x: 0, y: 2.66, z: 0.68 } }));
+    for (let k = 0; k < 8; k++) cart.push(M.box({ w: 0.26, h: 0.14, d: 0.03, color: k % 2 ? "#ff4fd8" : "#ffd23a", emissive: 0.3, offset: { x: -1.05 + 0.3 * k, y: 2.57, z: 0.69 } }));
+    // The press, its two iron plates and handle; a marquesita on it, curling.
+    cart.push(M.box({ w: 0.6, h: 0.08, d: 0.5, color: "#2a2a2e", emissive: 0.05, offset: { x: -0.55, y: 1.32, z: 0 } }), M.moved(M.turnedX(M.box({ w: 0.6, h: 0.06, d: 0.5, color: "#34343a", emissive: 0.05 }), -0.7), -0.55, 1.55, -0.18),
+      M.box({ w: 0.5, h: 0.03, d: 0.4, color: "#e8b060", emissive: 0.15, offset: { x: -0.55, y: 1.37, z: 0.02 } }), M.box({ w: 0.05, h: 0.05, d: 0.5, color: "#ff7a1a", emissive: 1.2, offset: { x: -0.55, y: 1.29, z: 0.26 } }));
+    // The fillings: jars, bananas, strawberries, the cheese, and rolled marquesitas in a cup.
+    for (const [ink, x] of [["#4a2a18", -0.05], ["#c87830", 0.18], ["#d8c8a0", 0.41]]) cart.push(M.moved(M.lathe({ profile: [[0, 0], [0.08, 0], [0.08, 0.16], [0.06, 0.18], [0, 0.18]], segments: 10, color: ink, emissive: 0.08 }), x, 1.28, -0.2), M.moved(M.box({ w: 0.15, h: 0.03, d: 0.15, color: "#e8e0d0", emissive: 0.1 }), x, 1.47, -0.2));
+    for (let k = 0; k < 4; k++) cart.push(M.moved(M.turnedZ(M.bevelBox({ w: 0.24, h: 0.05, d: 0.06, color: "#f4d23a", emissive: 0.2, bevel: 0.02 }), 0.3 - k * 0.2), 0.75, 1.32 + k * 0.02, -0.25 + k * 0.05));
+    for (let k = 0; k < 6; k++) cart.push(M.bevelBox({ w: 0.07, h: 0.07, d: 0.07, color: "#e8302a", emissive: 0.25, bevel: 0.02, offset: { x: 0.55 + (k % 3) * 0.09, y: 1.32 + Math.floor(k / 3) * 0.06, z: 0.15 + (k % 2) * 0.05 } }));
+    cart.push(M.moved(M.lathe({ profile: [[0, 0], [0.11, 0], [0.13, 0.1], [0.08, 0.2], [0, 0.21]], segments: 10, color: "#d8282a", emissive: 0.15 }), 0.95, 1.28, 0.1));
+    cart.push(M.moved(M.lathe({ profile: [[0, 0], [0.1, 0], [0.12, 0.2], [0, 0.2]], segments: 10, color: "#3ad8ff", emissive: 0.5 }), 0.2, 1.28, 0.25));
+    for (let k = 0; k < 4; k++) cart.push(M.moved(M.turnedZ(M.lathe({ profile: [[0, 0], [0.035, 0], [0.035, 0.4], [0, 0.4]], segments: 8, color: "#e8b060", emissive: 0.15 }), (k - 1.5) * 0.12), 0.2 + (k - 1.5) * 0.03, 1.38, 0.25 + (k % 2) * 0.02));
+    // The sign over the awning and the menu on the cart's front.
+    cart.push(M.box({ w: 2.0, h: 0.5, d: 0.08, color: "#2a1a10", emissive: 0.05, offset: { x: 0, y: 3.2, z: 0.3 } }), M.box({ w: 2.06, h: 0.04, d: 0.04, color: "#ffd23a", emissive: 1.1, offset: { x: 0, y: 3.47, z: 0.35 } }), M.box({ w: 2.06, h: 0.04, d: 0.04, color: "#ffd23a", emissive: 1.1, offset: { x: 0, y: 2.93, z: 0.35 } }));
+    const standNode = createNode({ geometry: M.merge(...cart), position: { x: SHOP.stand.x, y: 0, z: SHOP.stand.z }, sightHidden: true });
+    addChild(root, standNode);
+    { const w = label("MARQUESITAS", "crispy rolled crepes · click to eat one", { height: 0.42, style: "gold" }), sn = createNode({ position: { x: SHOP.stand.x, y: 3.2, z: SHOP.stand.z + 0.36 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
+    { const w = label("CHOCOLATE · BANANA · STRAWBERRY", "cajeta · cheese · the works", { height: 0.3, style: "plain" }), sn = createNode({ position: { x: SHOP.stand.x, y: 0.85, z: SHOP.stand.z + 0.47 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
+    // The gear rack: a timber frame with visors hanging in the course's neon colours, two bags of putters on stands.
+    const rack = [];
+    rack.push(...[-1, 1].map((sx) => M.box({ w: 0.1, h: 2.0, d: 0.1, color: WOOD_DK, offset: { x: sx * 0.9, y: 1.0, z: 0 } })), M.box({ w: 1.9, h: 0.08, d: 0.08, color: WOOD, offset: { x: 0, y: 1.9, z: 0 } }), M.box({ w: 1.9, h: 0.06, d: 0.06, color: WOOD, offset: { x: 0, y: 1.35, z: 0 } }),
+      M.bevelBox({ w: 2.0, h: 0.1, d: 0.6, color: WOOD_DK, bevel: 0.03, offset: { x: 0, y: 0.05, z: 0 } }));
+    NEON.forEach((ink, k) => { const x = -0.7 + k * 0.35; rack.push(M.box({ w: 0.02, h: 0.15, d: 0.02, color: "#cfcfcf", offset: { x, y: 1.8, z: 0 } }), M.box({ w: 0.24, h: 0.06, d: 0.2, color: ink, emissive: 0.7, offset: { x, y: 1.68, z: 0.04 } }), M.box({ w: 0.24, h: 0.015, d: 0.14, color: ink, emissive: 0.7, offset: { x, y: 1.66, z: 0.17 } })); });
+    for (const sx of [-0.55, 0.55]) {
+      rack.push(M.moved(M.turnedX(M.lathe({ profile: [[0, 0], [0.12, 0], [0.13, 0.7], [0.11, 0.78], [0, 0.78]], segments: 12, color: sx < 0 ? "#2a6aff" : "#e8302a", emissive: 0.15 }), -0.15), sx, 0.1, 0.05));
+      for (let k = 0; k < 3; k++) rack.push(M.moved(M.turnedX(M.box({ w: 0.025, h: 0.5, d: 0.025, color: "#cfd4da", emissive: 0.2 }), -0.15), sx + (k - 1) * 0.05, 0.95, -0.07), M.moved(M.box({ w: 0.12, h: 0.05, d: 0.05, color: "#9aa0a8", emissive: 0.2 }), sx + (k - 1) * 0.05, 1.2, -0.11));
+      rack.push(M.moved(M.turnedX(M.box({ w: 0.27, h: 0.04, d: 0.27, color: "#ffd23a", emissive: 0.8 }), -0.15), sx, 0.5, 0.0));
+    }
+    const rackNode = createNode({ geometry: M.merge(...rack), position: { x: SHOP.rack.x, y: 0, z: SHOP.rack.z }, sightHidden: true });
+    addChild(root, rackNode);
+    { const w = label("GOLF GEAR", "click to try on a visor and bag", { height: 0.36, style: "gold" }), sn = createNode({ position: { x: SHOP.rack.x, y: 2.3, z: SHOP.rack.z + 0.06 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
+    const shop = {
+      stand: { node: standNode, x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z, at: { x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z + 1.5 } },
+      rack: { node: rackNode, x: C.x + SHOP.rack.x, z: C.z + SHOP.rack.z, at: { x: C.x + SHOP.rack.x, z: C.z + SHOP.rack.z + 1.2 } },
+      boxes: [{ x0: C.x + SHOP.stand.x - 1.25, x1: C.x + SHOP.stand.x + 1.25, z0: C.z + SHOP.stand.z - 0.55, z1: C.z + SHOP.stand.z + 0.6 }, { x0: C.x + SHOP.rack.x - 1.0, x1: C.x + SHOP.rack.x + 1.0, z0: C.z + SHOP.rack.z - 0.35, z1: C.z + SHOP.rack.z + 0.35 }]
+    };
     const columns = COLS.map(([x, z]) => ({ x0: C.x + x - 0.8, x1: C.x + x + 0.8, z0: C.z + z - 0.8, z1: C.z + z + 0.8 }));
-    return { root, holes, ballNode, dots, jets, smoke, airship, volcano, parrots, fish, confetti, columns };
+    return { root, holes, ballNode, dots, jets, smoke, airship, volcano, parrots, fish, confetti, columns, shop };
   };
   // The game, driven by the scene: `start(i)` at a tee, keys, update and the overlay.
   const controller = (B, host) => {

@@ -638,6 +638,55 @@
   const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3), y);
   // Space and E are the Ooga's (a jump, held to fly): on a keyboard a click opens things, and only a touch
   // screen's act button opens it through the crew.
+  // The marquesita stand and the golf gear rack in Glow Golf (genesis-golf.js `shop`): every marquesita eaten gives
+  // the visitor's Ooga a rounder belly (up to SHOP_MAX), and the rack puts a visor in one of the course's neon colours
+  // on its head and a bag of putters on its back, the next colour each click and then off. Kept on `world` by the
+  // Ooga's name for the page life, so the belly and the gear are there on the next visit; `undressOoga` puts the
+  // model back as it was when the visit ends.
+  const SHOP_MAX = 4, VISORS = ["#ff7a1a", "#ffd23a", "#9cff3a", "#ff4fd8", "#3ad8ff"];
+  const EAT_LINES = ["A chocolate and banana marquesita. Crunch!", "Strawberries and cajeta this time. Your Ooga's belly is rounding out.", "The works, with the cheese. That's a proper golfer's belly now.", "One more for the back nine. Belly at full size!"];
+  const shopState = () => (world.genesisShop = world.genesisShop || { belly: {}, gear: {} });
+  const gearGeos = new Map();
+  let torsoBase = null, visorNode = null, bagNode = null;
+  const gearGeo = (ink) => {
+    if (!gearGeos.has(ink)) {
+      const visor = M.merge(M.box({ w: 0.33, h: 0.05, d: 0.02, color: ink, emissive: 0.6, offset: { x: 0, y: 0, z: 0.14 } }), M.box({ w: 0.33, h: 0.05, d: 0.02, color: ink, emissive: 0.6, offset: { x: 0, y: 0, z: -0.14 } }),
+        M.box({ w: 0.02, h: 0.05, d: 0.28, color: ink, emissive: 0.6, offset: { x: 0.165, y: 0, z: 0 } }), M.box({ w: 0.02, h: 0.05, d: 0.28, color: ink, emissive: 0.6, offset: { x: -0.165, y: 0, z: 0 } }),
+        M.box({ w: 0.31, h: 0.016, d: 0.17, color: ink, emissive: 0.6, offset: { x: 0, y: -0.02, z: 0.23 } }), M.box({ w: 0.31, h: 0.006, d: 0.15, color: "#1a1a1a", offset: { x: 0, y: -0.03, z: 0.23 } }));
+      const bag = M.merge(M.lathe({ profile: [[0, 0], [0.07, 0], [0.075, 0.4], [0.06, 0.45], [0, 0.45]], segments: 10, color: ink, emissive: 0.25 }),
+        M.box({ w: 0.15, h: 0.03, d: 0.15, color: "#f4efe4", emissive: 0.2, offset: { x: 0, y: 0.2, z: 0 } }),
+        ...[-0.03, 0, 0.03].flatMap((x, k) => [M.box({ w: 0.012, h: 0.2, d: 0.012, color: "#cfd4da", emissive: 0.2, offset: { x, y: 0.55, z: k * 0.01 } }), M.box({ w: 0.05, h: 0.025, d: 0.025, color: "#9aa0a8", emissive: 0.2, offset: { x: x + 0.015, y: 0.66, z: k * 0.01 } })]));
+      gearGeos.set(ink, { visor, bag });
+    }
+    return gearGeos.get(ink);
+  };
+  const dressOoga = () => {
+    if (!avatar || !playerName) return;
+    const S = shopState(), n = S.belly[playerName] || 0, g = S.gear[playerName] || 0, P = avatar.parts, h = P.hat.scale.x;
+    if (!torsoBase) torsoBase = { x: P.torso.scale.x, z: P.torso.scale.z };
+    P.torso.scale.x = torsoBase.x * (1 + n * 0.06); P.torso.scale.z = torsoBase.z * (1 + n * 0.14);
+    if (!g) { if (visorNode) visorNode.visible = false; if (bagNode) bagNode.visible = false; return; }
+    const geo = gearGeo(VISORS[(g - 1) % VISORS.length]);
+    if (!visorNode) { visorNode = createNode({ position: { x: 0, y: P.hat.position.y - 0.06 * h, z: 0 }, scale: { x: h, y: h, z: h } }); addChild(P.head, visorNode); }
+    if (!bagNode) { bagNode = createNode({ position: { x: 0.06 * h, y: P.torso.position.y + 0.02 * h, z: 0 }, rotation: { x: -0.25, y: 0, z: -0.2 }, scale: { x: h, y: h, z: h } }); addChild(avatar.root, bagNode); }
+    bagNode.position.z = -(0.2 + n * 0.03) * h;
+    visorNode.geometry = geo.visor; bagNode.geometry = geo.bag; visorNode.visible = bagNode.visible = true;
+  };
+  const undressOoga = () => {
+    if (avatar && torsoBase) { avatar.parts.torso.scale.x = torsoBase.x; avatar.parts.torso.scale.z = torsoBase.z; }
+    for (const n of [visorNode, bagNode]) if (n && n.parent) removeChild(n.parent, n);
+    torsoBase = visorNode = bagNode = null;
+  };
+  const eatMarquesita = () => {
+    const S = shopState(), n = S.belly[playerName] || 0;
+    if (n >= SHOP_MAX) { hud.toast("The cook laughs: \"That belly's full, golfer. Go walk off a few holes!\""); return; }
+    S.belly[playerName] = n + 1; dressOoga(); hud.toast(EAT_LINES[n]);
+  };
+  const tryGear = () => {
+    const S = shopState(), g = ((S.gear[playerName] || 0) + 1) % (VISORS.length + 1);
+    S.gear[playerName] = g; dressOoga();
+    hud.toast(g ? "A golf visor and a bag of putters. Looking like a pro! (Click again for another colour.)" : "Gear back on the rack.");
+  };
   // A click on the floor by something without a model of its own to click (a golf tee, a beanbag, the cenote, a
   // board's spot) uses it, as a click on a model does: the ray meets the floor and the nearest prop there opens.
   const TAP_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
@@ -1191,6 +1240,11 @@
     // Glow Golf (genesis-golf.js): the cavern down the cenote, a prop at each tee and the ways down and up.
     built.golf = BL.genesisGolf.build({ M, createNode, addChild, place, top: ISLAND_TOP, label: BL.factoryModels.label });
     for (const b of built.golf.columns) built.obstacles.push(b);
+    { const SH = built.golf.shop;
+      for (const b of SH.boxes) built.obstacles.push(b);
+      props.register({ id: "marquesitas", era: 7, year: 2026, title: "The marquesita stand", label: "MARQUESITAS · GLOW GOLF, 2026", sourceKeys: [], hint: "eat a marquesita (crispy rolled crepe)", at: { x: SH.stand.at.x, y: ISLAND_TOP, z: SH.stand.at.z }, reach: 2, onUse: () => ({}) });
+      props.register({ id: "golf-gear", era: 7, year: 2026, title: "The golf gear rack", label: "GOLF GEAR · GLOW GOLF, 2026", sourceKeys: [], hint: "try on a golf visor and bag", at: { x: SH.rack.at.x, y: ISLAND_TOP, z: SH.rack.at.z }, reach: 1.8, onUse: () => ({}) });
+      built.propNodes.marquesitas = SH.stand.node; built.propNodes["golf-gear"] = SH.rack.node; }
     for (const h of built.golf.holes) {
       const c = h.c, i = c.i;
       props.register({ id: `golf-tee-${i}`, era: 7, year: 2026, title: `Glow Golf, hole ${i + 1}: ${c.hole.name}`, label: `GLOW GOLF HOLE ${i + 1} · PAR ${c.hole.par} · 2026`, sourceKeys: [], hint: `play hole ${i + 1}, ${c.hole.name} (par ${c.hole.par})`,
@@ -1500,6 +1554,8 @@
     if (prop.id.startsWith("bg-seat-") && people) { const seat = built.seats[+prop.id.slice(8)]; if (seat.sitter) people.standPlayer(); else if (!people.sitPlayer(seat)) hud.toast("Someone is sitting there"); return; }
     if (prop.id === "golf-up") { flipTo("hall"); return; }
     if (prop.id.startsWith("golf-tee-") && golf) { golf.start(+prop.id.slice(9)); return; }
+    if (prop.id === "marquesitas") { eatMarquesita(); return; }
+    if (prop.id === "golf-gear") { tryGear(); return; }
     const st = built.guideStations && built.guideStations[prop.id];
     if (st) { if (st.act) st.act(); else openGuideItem(st); return; }
     if (prop.opens) { host.open(prop.opens, "walk"); return; }
@@ -1969,6 +2025,7 @@
       people.selectWeapon(0, avatar);
       avatar.weapon.aiming = false;
       avatar.parts.gun.visible = false;
+      dressOoga();
       avatar.root.visible = false;
     }
     pilot.setActive(false);
@@ -2068,7 +2125,7 @@
     showControls();
     hud.setStats(game.state);
     arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper, openGuideItem,
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper, openGuideItem, shop: { eat: eatMarquesita, gear: tryGear },
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
@@ -2081,6 +2138,7 @@
     hud.setStats(game.state);
   };
   const leaveScene = () => {
+    undressOoga();
     closePaper();
     if (golf) { golf.dispose(); golf = null; }
     camera.up = null;
