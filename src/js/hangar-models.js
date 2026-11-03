@@ -19,7 +19,7 @@
   const BL = window.BL = window.BL || {};
   const { models, math } = BL;
   const FM = BL.factoryModels, JM = BL.jetModels;
-  const { cached, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, chain, lanternParts, deckParts, stairParts, turn, shaded, forwardLathe } = models;
+  const { cached, variants, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, chain, lanternParts, deckParts, stairParts, turn, shaded, forwardLathe } = models;
   const { mulberry32 } = math;
   const TAU = Math.PI * 2;
 
@@ -1565,13 +1565,15 @@
   // planet. Every face glows with the hangar's light at rest baked into its colour (`FM.bakeWindow` under `MOOD`, with
   // every fixed light, the crates' lanterns and a point light where the Jet's key hangs, `KEY_BAKE` of its colour and
   // reach), so the Factory's own light never touches it, and the hall's haze deepens down the runway as it does inside,
-  // and the walls stay dark so the hall's bloom picks out its lights.
+  // and the walls stay dark so the hall's bloom picks out its lights. `doorWindow(1)` is the same hall veiled, its haze
+  // much nearer and thicker and its light lower (`VEILED`), so the door gives only a glimpse of it.
   const MOOD = {
     sky: [0.54, 0.38, 0.26], ground: [0.24, 0.16, 0.1], floor: 0.4, sun: [0.25, 0.9, 0.35], direct: [0.7, 0.52, 0.36], strength: 0.36, fill: [0.05, 0.04, 0.11],
     fog: [0.045, 0.06, 0.095], near: 14, far: 120, eye: [0, 3.3, 27], dim: 0.55, knee: 0.08, cap: 0.22
   };
+  const VEILED = { ...MOOD, fog: [0.06, 0.078, 0.12], near: 6, far: 60, dim: 0.45 };
   const KEY_BAKE = { color: 0.66, reach: 0.75 };
-  const doorWindow = cached(() => {
+  const doorWindow = variants((veiled) => {
     const L = LAYOUT, { x0: X0, x1: X1 } = HALL, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.slots);
     // The gantries, as trusses: their chords and verticals.
@@ -1608,7 +1610,7 @@
     delete geo.voxel;
     const lit = [...fixedLights(), [...KEY.at, KEY.reach * KEY_BAKE.reach, ...KEY.color.map((k) => k * KEY_BAKE.color)]];
     for (let i = 0; i < fix.lights.length; i += 4) lit.push([fix.lights[i], fix.lights[i + 1], fix.lights[i + 2], fix.lights[i + 3], ...LANTERN_GLOW]);
-    return [FM.bakeWindow(geo, FM.windowLights(lit), [0, 0, 0], MOOD)];
+    return [FM.bakeWindow(geo, FM.windowLights(lit), [0, 0, 0], veiled ? VEILED : MOOD)];
   });
 
   // ---- the floor an Ooga walks ----------------------------------------------------------------------------------
