@@ -6900,13 +6900,22 @@ const cloudHopperRecordChecks = async () => {
 };
 const highscoreClientChecks = async () => {
   const sources = await Promise.all(["highscore-rules", "highscores"].map(name => readFile(join(root, `src/js/${name}.js`), "utf8")));
-  const flush = async () => { for (let i = 0; i < 30; i++) await new Promise(setImmediate); };
+  // WebCrypto finishes on the worker pool, not after a fixed number of event-loop turns.
+  // Drain its real promises before assertions inspect the requests they unlock.
+  const hashes = new Set(), testCrypto = { randomUUID: () => globalThis.crypto.randomUUID(), subtle: {
+    digest(...args) {
+      const pending = globalThis.crypto.subtle.digest(...args); hashes.add(pending);
+      pending.then(() => hashes.delete(pending), () => hashes.delete(pending));
+      return pending;
+    }
+  } };
+  const flush = async () => { for (let i = 0; i < 30; i++) { await Promise.allSettled([...hashes]); await new Promise(setImmediate); } };
   const fixture = (signed = false, enabled = true) => {
     const requests = [], timers = new Map(), events = new Map(), subscribers = new Set(), live = new Set(), toasts = [];
     let seq = 0, now = 1000;
     const state = { backend: enabled, highscores: enabled, highscoreSnapshots: true, resolved: true, logoutEpoch: 0, me: signed ? { id: 11, login: "score-one" } : null };
     const net = { state, subscribeHighscores(fn) { live.add(fn); return () => live.delete(fn); }, subscribe(fn) { subscribers.add(fn); return () => subscribers.delete(fn); } };
-    const context = { AbortController, TextEncoder, crypto: globalThis.crypto, Date: class extends Date { static now() { return now; } },
+    const context = { AbortController, TextEncoder, crypto: testCrypto, Date: class extends Date { static now() { return now; } },
       window: { BL: { net, hud: { toast: text => toasts.push(text) } },
         setTimeout(fn, ms) { timers.set(++seq, { fn, ms }); return seq; }, clearTimeout(id) { timers.delete(id); } },
       document: { hidden: false, addEventListener(type, fn) { events.set(type, fn); }, removeEventListener(type) { events.delete(type); } },
