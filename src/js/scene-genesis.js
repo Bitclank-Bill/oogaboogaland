@@ -342,7 +342,7 @@
   // Into era `to`'s cave, just inside its mouth, facing in (or back to the arrival in the atrium when `to` is -1).
   const travel = (to) => {
     if (!avatar) return;
-    if (to === "golf") { if (golf) golf.stop(); arrive(GOLF_IN.x, GOLF_IN.z, Math.PI / 2); hud.toast("Glow Golf: nine holes under the hall. Space at a tee to play."); return; }
+    if (to === "golf") { if (golf) golf.stop(); arrive(GOLF_IN.x, GOLF_IN.z, Math.PI / 2); hud.toast("Glow Golf: nine holes under the hall. E at a tee to play."); return; }
     if (to === "hall") { if (golf) golf.stop(); const C = BL.genesisCavern.CENOTE; arrive(C.x + 3.6, C.z + 3.6, Math.atan2(-1, -1)); return; }
     if (to < 0) { arrive(); return; }
     const e = GW.ERAS[to];
@@ -463,25 +463,42 @@
   // Reading the paper, as on the island's monolith: Space by the portal (or a tap on it) brings the view square onto
   // the page; the wheel, the arrows or a drag slide the real paper up and down, Space and PageDown glide a page, +
   // and - (or Shift and the wheel, or a pinch) zoom, a double tap zooms in and out, and Escape hands the view back.
-  const paper = { open: false, target: 0, zoom: 1, pan: 0, eased: false, saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0 } };
+  const paper = { open: false, target: 0, zoom: 1, pan: 0, eased: false, fill: true, saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0 } };
+  // As the island's monolith reads: a narrow field of view, and the page as wide as the window (`fill`, the camera on
+  // the face's top band so the text slides up through it) or, with F or a double tap, the whole page in the frame.
+  const READ_FOV = 0.55, READ_AIR = 1.06;
+  const PF = { dist: 0, y: 0, tall: 0 };
+  const paperFrame = () => {
+    const size = renderer && renderer.size, aspect = size ? size.width / Math.max(1, size.height) : 1.6, tan = Math.tan(READ_FOV / 2);
+    const fit = Math.max(WPP.h * READ_AIR / (2 * tan), WPP.w * READ_AIR / (2 * tan * aspect)), wide = WPP.w * 1.02 / (2 * tan * aspect), fill = paper.fill && 2 * wide * tan < WPP.h;
+    PF.dist = (fill ? wide : fit) / paper.zoom; PF.tall = 2 * PF.dist * tan;
+    PF.y = fill || paper.zoom > 1 ? PAPER_AT.y + WPP.h / 2 - Math.min(WPP.h, PF.tall) / 2 : PAPER_AT.y;
+    return PF;
+  };
   const PAPER_AT = { x: 0, y: ISLAND_TOP + 0.4 + 1.6, z: 0.2 };
-  const scrollPaper = (px) => { const data = WPP.doc; if (data) paper.target = Math.max(0, Math.min(data.height - data.page, paper.target + px)); };
+  const scrollPaper = (px) => { const data = WPP.doc; if (!data) return; const band = Math.min(1, paperFrame().tall / WPP.h) * data.page; paper.target = Math.max(0, Math.min(data.height - band, paper.target + px)); };
   const turnPaper = (dir) => {
     const data = WPP.doc; if (!data) return;
     const step = data.page + data.gap, n = Math.round(paper.target / step) + dir;
     paper.target = Math.max(0, Math.min(data.count - 1, n)) * step;
   };
   const zoomPaper = (k) => { paper.zoom = Math.max(1, Math.min(3.2, paper.zoom * k)); };
+  // Z steps through closer views of the same page (the scrolling is the same at each), and back out.
+  const ZOOMS = [1, 1.5, 2.2, 3];
+  const stepZoom = () => { const i = ZOOMS.findIndex((z) => z > paper.zoom + 0.01); paper.zoom = i < 0 ? 1 : ZOOMS[i]; };
   const openPaper = () => {
     if (paper.open || bench.open) return;
     if (!WPP.face || !WPP.doc) { hud.toast("The whitepaper is still loading"); return; }
     const s2 = paper.saved, cp = camera.position, ct = camera.target;
-    s2.x = cp.x; s2.y = cp.y; s2.z = cp.z; s2.tx = ct.x; s2.ty = ct.y; s2.tz = ct.z;
-    paper.open = true; paper.eased = false; paper.zoom = 1; paper.pan = 0;
+    s2.x = cp.x; s2.y = cp.y; s2.z = cp.z; s2.tx = ct.x; s2.ty = ct.y; s2.tz = ct.z; s2.fov = camera.fov;
+    camera.fov = READ_FOV;
+    paper.open = true; paper.eased = false; paper.zoom = 1; paper.pan = 0; paper.fill = true;
     if (autoplay) autoplay.stop();
     pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
     if (avatar) { paper.avatarShown = avatar.root.visible; avatar.root.visible = false; }
-    hud.whitepaperNav(true, COARSE ? "" : "Wheel or arrows scroll · Space next page · + − zoom · Esc to stop reading");
+    // The museum's own panel steps aside while the page is read; the reading line stays at the foot.
+    const panel = document.getElementById("genesis"); if (panel) panel.style.visibility = "hidden";
+    hud.whitepaperNav(true, COARSE ? "" : "Wheel or arrows scroll · Space next page · Z closer · F whole page · Esc to stop reading");
     showControls();
   };
   const closePaper = () => {
@@ -489,8 +506,10 @@
     paper.open = false;
     const s2 = paper.saved;
     camera.position.x = s2.x; camera.position.y = s2.y; camera.position.z = s2.z; camera.target.x = s2.tx; camera.target.y = s2.ty; camera.target.z = s2.tz;
+    if (s2.fov) camera.fov = s2.fov;
     if (avatar) avatar.root.visible = paper.avatarShown !== false;
     hud.whitepaperNav(false, "");
+    { const panel = document.getElementById("genesis"); if (panel) panel.style.visibility = ""; }
     pilot.setActive(true);
     showControls();
     if (WPP.essay >= 0) showPaperDoc();
@@ -532,10 +551,9 @@
   // The reading view: the camera square on the face, far enough back that the page's height fills the view, nearer
   // as it zooms. Eased in, then held.
   const updatePaperView = (dt) => {
-    const k = view.calm || !paper.eased ? Math.min(1, dt * 8) : Math.min(1, dt * 10), half = (WPP.h / 2) * 1.08;
-    const fov = camera.fov || 0.9, dist = half / Math.tan(fov / 2) / paper.zoom;
+    const k = view.calm || !paper.eased ? Math.min(1, dt * 8) : Math.min(1, dt * 10), F = paperFrame(), dist = F.dist;
     const lim = WPP.w / 2 * (1 - 1 / paper.zoom); paper.pan = Math.max(-lim, Math.min(lim, paper.pan));
-    const c = camera.position, t = camera.target, ex = PAPER_AT.x + paper.pan, ey = PAPER_AT.y, ez = PAPER_AT.z + dist;
+    const c = camera.position, t = camera.target, ex = PAPER_AT.x + paper.pan, ey = F.y, ez = PAPER_AT.z + dist;
     c.x += (ex - c.x) * k; c.y += (ey - c.y) * k; c.z += (ez - c.z) * k;
     t.x += (ex - t.x) * k; t.y += (ey - t.y) * k; t.z += (PAPER_AT.z - t.z) * k;
     paper.eased = true;
@@ -549,6 +567,10 @@
     else if (k === "PageUp" || k === "ArrowLeft") turnPaper(-1);
     else if (k === "Home") paper.target = 0;
     else if (k === "End") scrollPaper(1e9);
+    else if (k === "f" || k === "F") paper.fill = !paper.fill;
+    else if (k === "z" || k === "Z") stepZoom();
+    else if ((k === "a" || k === "A") && paper.zoom > 1) paper.pan -= 0.12;
+    else if ((k === "d" || k === "D") && paper.zoom > 1) paper.pan += 0.12;
     else if (k === "+" || k === "=") zoomPaper(1.25);
     else if (k === "-" || k === "_") zoomPaper(0.8);
     else return;
@@ -601,10 +623,13 @@
     return ACTORS;
   };
   const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3), y);
+  // Space is the Ooga's (a jump, held to fly): on a keyboard E opens what it stands by (useHere), and only a touch
+  // screen's act button opens it through the crew.
   const useNear = (x, z, reach, feet = feetOf()) => {
     // Settled on the statue's head, the act opens the secret's offer (never while airborne: `secret.here` needs the
     // feet supported on the head).
     if (secret.here && !secret.open) { openSecret(); return true; }
+    if (!COARSE) return false;
     const prop = props.near(x, z, feet, Math.max(0, reach - 1.4));
     if (!prop) return false;
     openProp(prop);
@@ -1101,7 +1126,7 @@
   // the visitor's best on every museum game (genesis-cartridge.js bests), a page of them at a time.
   const RECORDS = { x: ENTRY.x - 6, z: ENTRY.z - 2 };
   const buildRecords = () => {
-    const words = BL.factoryModels.label("GAME RECORDS", "your best on every museum game · Space here", { height: 0.7, style: "gold" });
+    const words = BL.factoryModels.label("GAME RECORDS", "your best on every museum game · E here", { height: 0.7, style: "gold" });
     const node = place(createNode({ position: { x: RECORDS.x, y: ISLAND_TOP, z: RECORDS.z }, sightHidden: true }));
     addChild(node, createNode({ geometry: M.merge(
       M.box({ w: 2.6, h: 2.2, d: 0.14, color: "#1b1d24", offset: { x: 0, y: 2.3, z: 0 } }),
@@ -1576,7 +1601,7 @@
         if (r && r.terminal) { el["auto-sub"].textContent = near.date || near.label || ""; autoplay.start(near, r.terminal, `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`); }
         else autoplay.stop();
       }
-      if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
+      if (near) { hud.hint(`${COARSE ? "USE" : "E"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
       else { hud.hideHint(); pilot.showAct(); }
     }
   };
@@ -1600,11 +1625,14 @@
     g.strokeStyle = "rgba(236,226,206,0.35)"; g.lineWidth = 3; g.strokeRect(10, 10, W - 20, H - 20);
     g.fillStyle = "#fbe3a4"; g.font = "bold 40px system-ui, sans-serif"; g.textBaseline = "top";
     g.fillText(page.title, 44, 38);
-    g.fillStyle = "#efe8da"; g.font = "25px system-ui, sans-serif";
+    // A page with a picture (`paint`) draws it on the right and keeps its text to the left.
+    const tw = page.paint ? W * 0.5 - 70 : W - 88;
+    if (page.paint) page.paint(g, W * 0.5, 30, W * 0.5 - 30, H - 60);
+    g.fillStyle = "#efe8da"; g.font = page.paint ? "21px system-ui, sans-serif" : "25px system-ui, sans-serif";
     let y = 104;
     for (const para of page.text) {
-      for (const line of wrap(g, para, W - 88)) { g.fillText(line, 44, y); y += 33; }
-      y += 14;
+      for (const line of wrap(g, para, tw)) { g.fillText(line, 44, y); y += page.paint ? 27 : 33; }
+      y += page.paint ? 8 : 14;
     }
   };
   // A panel of pages ({ room, pages, sources }): the exhibit's, or a prop's board.
@@ -1747,6 +1775,7 @@
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "Escape") { if (guide && guide.escape()) { e.preventDefault(); return; } if (!pilot.escape()) leave(); }
     else if (k === "0") pilot.resetCamera();
+    else if (k === "e" && avatar) { if (secret.here && !secret.open) { e.preventDefault(); openSecret(); return; } const q = avatar.root.position, prop = props.near(q.x, q.z, feetOf(), 1.0); if (prop) { e.preventDefault(); openProp(prop); } }
     else if (k === "i") openInfo();
     else if (k === "c") toggle("captions");
     else if (k === "t") toggle("voice");
@@ -1808,7 +1837,7 @@
     audio.setEra(Math.max(0, era));
     if (era >= 0 && lastEra !== -2) {
       const e = GW.ERAS[era], n = exhibitCount(era);
-      setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}).${e.room ? " Fingerprints and Time is on the left." : ""} ${n ? `${n} exhibits in this gallery; Space by one opens its workbench.` : "Its exhibits are still being built."}`);
+      setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}).${e.room ? " Fingerprints and Time is on the left." : ""} ${n ? `${n} exhibits in this gallery; E by one (or a click) opens its workbench.` : "Its exhibits are still being built."}`);
     }
     lastEra = era;
   };
@@ -2010,14 +2039,14 @@
       hoverIgnore: () => bench.open ? null : pilot.hooks.hoverIgnore(),
       onOrbit: (dx, dy) => {
         if (golf && golf.active) { golf.turn(dx); return; }
-        if (paper.open) { const data = WPP.doc, k = data ? data.page / Math.max(1, overlayCanvas.clientHeight) / paper.zoom * 1.1 : 1; scrollPaper(-dy * k); paper.pan -= dx * WPP.h / Math.max(1, overlayCanvas.clientHeight) / paper.zoom; return; }
+        if (paper.open) { const data = WPP.doc, tall = paperFrame().tall, H = Math.max(1, overlayCanvas.clientHeight), k = data ? tall / WPP.h * data.page / H : 1; scrollPaper(-dy * k); paper.pan -= dx * tall / H; return; }
         if (!bench.open) pilot.hooks.onOrbit(dx, dy);
       },
       onZoom: (factor, gesture, px, py, shift, delta) => {
         if (paper.open) { if (delta && !shift) scrollPaper(delta * 1.2); else zoomPaper(1 / factor); return; }
         if (!bench.open) pilot.hooks.onZoom(factor, gesture, px, py);
       },
-      onDoubleTap: (hit) => { if (paper.open) { paper.zoom = paper.zoom > 1.3 ? 1 : 1.8; return; } if (!bench.open) pilot.hooks.onDoubleTap(hit); }
+      onDoubleTap: (hit) => { if (paper.open) { paper.fill = !paper.fill; paper.zoom = 1; return; } if (!bench.open) pilot.hooks.onDoubleTap(hit); }
     });
     hud.onAction((action) => {
       audio.wake();
@@ -2038,7 +2067,7 @@
     el.help = document.getElementById("genesis-help");
     // The exhibit the visitor stands at runs itself (genesis-autoplay.js), its steps in the panel.
     for (const id of ["auto", "auto-title", "auto-sub", "auto-fill", "auto-screen", "auto-step", "auto-try"]) el[id] = document.getElementById(`genesis-${id}`);
-    el["auto-try"].textContent = COARSE ? "OPEN: try it yourself" : "Space: try it yourself";
+    el["auto-try"].textContent = COARSE ? "OPEN: try it yourself" : "E: try it yourself";
     // The hall's quiet ambience (genesis-ambience.js), started by the visitor's first key or tap.
     ambience = BL.genesisAmbience.create();
     for (const type of ["keydown", "pointerdown"]) window.addEventListener(type, () => { if (ambience) ambience.wake(); }, { signal: ctx.signal });
@@ -2046,7 +2075,7 @@
       show: (title, lines, i, n) => { el.auto.hidden = false; el["auto-title"].textContent = title; el["auto-screen"].textContent = lines.join("\n"); el["auto-step"].textContent = n ? `step ${i} of ${n}` : ""; el["auto-fill"].style.width = `${n ? Math.round(i / n * 100) : 0}%`; },
       hide: () => { el.auto.hidden = true; }
     });
-    el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space by an exhibit (or a tap) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
+    el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space jumps (hold to fly) · E by an exhibit (or a click) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
     // The workbench and the timeline menu (their own modules, on the host).
     workbench = BL.genesisWorkbench.create(host, document.getElementById("genesis-bench"));
     timeline = BL.genesisTimeline.create(host, document.getElementById("genesis-menu"));
@@ -2055,7 +2084,7 @@
     window.addEventListener("resize", () => { if (bench.open) { bench.eased = false; workbench.resize(); } }, { signal: ctx.signal });
     window.addEventListener("pointerdown", audio.wake, { signal: ctx.signal });
     window.addEventListener("keydown", audio.wake, { signal: ctx.signal });
-    setCaption("arrive-museum", "The Genesis museum: the ideas that came before Bitcoin, in galleries round this hall in date order, clockwise from your left. The white timeline ahead lists every invention (or press G). Walk up to any exhibit and press Space, or tap it, to open its workbench.");
+    setCaption("arrive-museum", "The Genesis museum: the ideas that came before Bitcoin, in galleries round this hall in date order, clockwise from your left. The white timeline ahead lists every invention (or press G). Walk up to any exhibit and press E, or click it, to open its workbench.");
     paintChain();
     showControls();
     hud.setStats(game.state);

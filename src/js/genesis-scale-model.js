@@ -8,7 +8,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const AT = { x: -12.6, z: 27, ry: 0.5 }, TABLE = { w: 2.8, d: 2.8, h: 0.9 }, UNIT = 0.034, LIFT = 0.55;
+  const AT = { x: -12.6, z: 27, ry: 0.5 }, TABLE = { w: 3.3, d: 3.3, h: 0.35 }, UNIT = 0.046, LIFT = 0.06;
   const layout = () => {
     const h = TABLE.w / 2 + 0.1;
     return { at: AT, box: { x0: AT.x - h, x1: AT.x + h, z0: AT.z - h, z1: AT.z + h }, use: { x: AT.x + Math.sin(AT.ry) * (h + 1.1), z: AT.z + Math.cos(AT.ry) * (h + 1.1) } };
@@ -19,10 +19,27 @@
     { name: "₿IFRÖST", clock: 12, r: 22, size: 3.5, line: "A gateway islet past the arch over the north pass: windows to other worlds." },
     { name: "Timechain Sphere", clock: 7.6, r: 22, size: 3, line: "A walk-in sphere off the southwest rim: nine rooms of live block and mining charts." }
   ];
+  // The model seen from above, for the board: each column's topmost voxel in its colour, north up.
+  let topMap = null;
+  const paintMap = (g, x0, y0, w, h) => {
+    if (!topMap) {
+      const tops = new Map();
+      for (const [k, c] of islandVox().map) { const [x, y, z] = k.split(",").map(Number), key = `${x},${z}`, t = tops.get(key); if (!t || y > t[0]) tops.set(key, [y, c]); }
+      topMap = [...tops].map(([k, v]) => { const [x, z] = k.split(",").map(Number); return [x, z, v[1], v[0]]; });
+    }
+    g.fillStyle = "#123a5c"; g.fillRect(x0, y0, w, h);
+    const span = 64, cell = Math.min(w, h) / span, cx = x0 + w / 2, cy = y0 + h / 2;
+    for (const [x, z, c, y] of topMap) { g.fillStyle = PALETTE[c]; g.globalAlpha = Math.min(1, 0.75 + y * 0.05); g.fillRect(cx + x * cell - cell / 2, cy + z * cell - cell / 2, cell + 0.5, cell + 0.5); }
+    g.globalAlpha = 1;
+    g.fillStyle = "#f6ecd2"; g.font = "bold 18px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    for (const p of AWAY) { const a = p.clock / 12 * Math.PI * 2; g.fillText(p.name, cx + Math.sin(a) * (p.r + p.size + 4) * cell, cy - Math.cos(a) * (p.r + p.size + 4) * cell); }
+    g.fillText("N", x0 + w - 20, y0 + 22);
+    g.textAlign = "left"; g.textBaseline = "top";
+  };
   const pages = () => {
     const caves = (BL.caves && BL.caves.slots || []).filter((c) => c.name && c.status !== "headquarters");
     return [
-      { caption: "Ooga Booga Land", title: "A floating island", text: ["A floating island whose cliff caves are projects. The banana pile in the middle feeds the Oogas; donated bananas land on it.", ...caves.map((c) => `${c.name}, ${Math.round(c.clock)} o'clock: ${c.title || (c.status === "mirror" ? "the cave behind the Matrix mirror" : "a cave in the cliffs")}`)] },
+      { caption: "Ooga Booga Land", title: "A floating island", paint: paintMap, text: ["A floating island whose cliff caves are projects. The banana pile in the middle feeds the Oogas; donated bananas land on it.", ...caves.map((c) => `${c.name}, ${Math.round(c.clock)} o'clock: ${c.title || (c.status === "mirror" ? "the cave behind the Matrix mirror" : "a cave in the cliffs")}`)] },
       { caption: "Ooga Booga Land", title: "Beyond the rim", text: AWAY.map((p) => `${p.name}: ${p.line}`) }
     ];
   };
@@ -92,7 +109,8 @@
       ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => M.box({ w: 0.12, h: T.h, d: 0.12, color: "#3b2a1a", offset: { x: a * (T.w / 2 - 0.15), y: T.h / 2, z: b * (T.d / 2 - 0.15) } })),
       M.box({ w: T.w - 0.2, h: 0.03, d: T.d - 0.2, color: "#2f86b8", emissive: 0.45, offset: { x: 0, y: T.h + 0.065, z: 0 } }),
       M.box({ w: 0.04, h: LIFT + 0.1, d: 0.04, color: "#cfe8ff", emissive: 0.2, offset: { x: 0, y: T.h + LIFT / 2 + 0.05, z: 0 } }),
-      M.box({ w: T.w - 0.1, h: 0.08, d: 0.06, color: "#ffd23a", emissive: 1, offset: { x: 0, y: T.h + 0.02, z: T.d / 2 } })) }));
+      M.box({ w: T.w - 0.1, h: 0.08, d: 0.06, color: "#ffd23a", emissive: 1, offset: { x: 0, y: T.h + 0.02, z: T.d / 2 } }),
+      M.box({ w: T.w, h: 0.26, d: 0.05, color: "#4c331d", offset: { x: 0, y: T.h - 0.16, z: T.d / 2 + 0.02 } })) }));
     if (!modelGeo) modelGeo = BL.models.voxelGeometry(islandVox(), { unit: UNIT, palette: PALETTE, emissive: { [P.banana]: 0.6, [P.screen]: 0.4, [P.water]: 0.5, [P.arch]: 0.9, [P.sphere]: 0.7 } });
     const spin = createNode({ position: { x: 0, y: T.h + LIFT + 20 * UNIT, z: 0 } });
     addChild(spin, createNode({ geometry: modelGeo }));
@@ -104,8 +122,8 @@
       addChild(spin, n); pins.push(n);
     }
     addChild(root, spin);
-    const words = label("OOGA BOOGA LAND", "a scale model of the island · Space here", { height: 0.42, style: "gold" });
-    addChild(root, createNode({ geometry: words.back, position: { x: 0, y: T.h - 0.28, z: T.d / 2 + 0.05 } }), createNode({ geometry: words.face, position: { x: 0, y: T.h - 0.28, z: T.d / 2 + 0.05 } }));
+    const words = label("OOGA BOOGA LAND", "a scale model of the island · E here", { height: 0.24, style: "gold" });
+    addChild(root, createNode({ geometry: words.back, position: { x: 0, y: T.h - 0.16, z: T.d / 2 + 0.06 } }), createNode({ geometry: words.face, position: { x: 0, y: T.h - 0.16, z: T.d / 2 + 0.06 } }));
     let t = 0;
     const update = (dt, calm) => {
       t += dt;
