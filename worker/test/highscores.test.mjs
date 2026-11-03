@@ -61,8 +61,8 @@ const scores = async (handler, env, game) => (await handler(read(game), env)).js
 test("every allowed game has a migrated row; excluded games and unknown machines cannot write", async (t) => {
   const { DB, handler, env } = await setup(t);
   const rows = DB.sql.prepare("SELECT game_id, score_type, direction, unit, rules_version FROM game_highscores").all();
-  assert.deepEqual(rows.map(row => row.game_id).sort(), Object.keys(RULES.games).sort());
-  for (const row of rows) {
+  assert.deepEqual(rows.filter(row => row.game_id !== "hockey").map(row => row.game_id).sort(), Object.keys(RULES.games).sort());
+  for (const row of rows.filter(row => row.game_id !== "hockey")) {
     const rule = RULES.get(row.game_id), response = await handler(read(row.game_id), env);
     assert.equal(row.score_type, rule.scoreType);
     assert.equal(row.direction, rule.direction);
@@ -71,7 +71,7 @@ test("every allowed game has a migrated row; excluded games and unknown machines
     assert.equal(response.status, 200);
     assert.deepEqual((await response.json()).highscores, {});
   }
-  for (const game of ["ghost", "poker", "dsb", "constructor", "unknown", "darts/extra"]) {
+  for (const game of ["hockey", "ghost", "poker", "dsb", "constructor", "unknown", "darts/extra"]) {
     assert.equal((await handler(read(game), env)).status, 404);
     assert.equal((await handler(write(game, "darts-1", 10), env)).status, 404);
   }
@@ -336,6 +336,7 @@ test("distinct Cloud Hopper finishes share a username, retries are idempotent an
   let board = await scores(handler, env, game);
   assert.deepEqual(board.runs.map(r => [r.username, r.score]), [["player-one", 29000], ["player-one", 30742], ["player-one", 31000]]);
   assert.equal(board.runs[0].achieved, board.achieved["player-one"]);
+  assert.equal(board.runs[0].id, await sha256Hex(JSON.stringify([game, 1, runId(2)])));
   await submit(2, 29000); await submit(2, 100); // A reused ID cannot change the accepted run or personal best.
   assert.deepEqual(await scores(handler, env, game), board);
   const other = await authenticated(DB, await player(DB, 2, "other"));
@@ -347,7 +348,7 @@ test("distinct Cloud Hopper finishes share a username, retries are idempotent an
   board = await scores(handler, env, game);
   assert.equal(board.runs.length, 10);
   assert.equal(board.runs.at(-1).score, 32009);
-  assert.ok(board.runs.every(r => Object.keys(r).sort().join() === "achieved,score,username"));
+  assert.ok(board.runs.every(r => Object.keys(r).sort().join() === "achieved,id,score,username"));
   assert.deepEqual((await scores(handler, env, "cloud-hopper-l2")).runs, []);
   await player(DB, 1, "renamed");
   board = await scores(handler, env, game);
@@ -394,7 +395,7 @@ test("run migration preserves the existing score, timestamp and replay pointer w
   assert.deepEqual(DB.sql.prepare("SELECT * FROM game_highscores WHERE game_id = ?").get(game), before);
   const response = await handler(read(game), { DB, CLOUD_HOPPER_REPLAYS: {} });
   const board = await response.json();
-  assert.deepEqual(board.runs, [{ username: "player-one", score: 29000, achieved: 1234 }]);
+  assert.deepEqual(board.runs.map(({ id, ...run }) => run), [{ username: "player-one", score: 29000, achieved: 1234 }]);
   assert.equal(board.replay.hash, "a".repeat(64));
 });
 
@@ -408,5 +409,14 @@ test("retained personal bests still fill the board after a player's faster run h
   assert.equal(DB.sql.prepare("SELECT count(*) n FROM cloud_hopper_runs WHERE player_id = 2").get().n, 0);
   await deletePlayer(DB, 1);
   const board = await scores(handler, env, game);
-  assert.deepEqual(board.runs, [{ username: "other", score: 50000, achieved: board.achieved.other }]);
+  assert.deepEqual(board.runs.map(({ id, ...run }) => run), [{ username: "other", score: 50000, achieved: board.achieved.other }]);
+});
+
+test("historical hockey records remain stored but cannot be read, updated or included in Arcade boards", async t => {
+  const { DB, handler, env } = await setup(t);
+  DB.sql.exec(`UPDATE game_highscores SET highscores='{"hockey-1":120}' WHERE game_id='hockey'`);
+  assert.equal((await handler(read("hockey"),env)).status,404);
+  assert.equal((await handler(write("hockey","hockey-1",7),env)).status,404);
+  const snapshot=await scores(handler,env,"arcade");assert.ok(snapshot.boards.every(board=>board.game!=="hockey"));
+  assert.equal(DB.sql.prepare("SELECT highscores FROM game_highscores WHERE game_id='hockey'").get().highscores,'{"hockey-1":120}');
 });
