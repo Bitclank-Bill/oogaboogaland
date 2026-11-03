@@ -36,6 +36,10 @@
         for (const child of node.children) visit(child, index);
       };
       visit(actor.root, -1);
+      // Appearance is model-local: staging adds the current cloud's height once.
+      // Motion samples below retain the actual world position, including departure lift.
+      const origin = out.nodes[0].pose;
+      origin[0] = origin[2] = 0; origin[1] = actor.baseY;
       out.parts = PARTS.map(key => indices.get(key === "root" ? actor.root : actor.parts[key]) ?? -1);
       const h = actor.traits.height;
       const jet = createNode({ geometry: BL.hubModels.jetpack(), visible: false,

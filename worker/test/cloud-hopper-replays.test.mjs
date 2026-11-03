@@ -194,7 +194,7 @@ test("client keeps the active ghost fixed while numeric boards and post-finish r
   assert.equal(fetches.length, 2); player.clear(); assert.ok(hiding >= 4); assert.equal(player.enabled, false);
 });
 
-test("the actual recorder snapshots custom appearance, thins long runs and rebuilds without looking up current traits", () => {
+test("the actual recorder snapshots appearance, stages on elevated clouds without doubling height, and preserves world-space playback", () => {
   const context = { window: { BL: { cloudHopperReplayCodec: codec } }, Float32Array };
   for (const name of ["math", "scene", "models", "cloud-hopper-ghost"])
     runInNewContext(readFileSync(new URL(`../../src/js/${name}.js`, import.meta.url), "utf8"), context);
@@ -204,7 +204,8 @@ test("the actual recorder snapshots custom appearance, thins long runs and rebui
   BL.contributors = { traitsFor: () => { throw Error("Must use recorded appearance"); } };
   let released = 0;
   const ghost = BL.cloudHopperGhost.create({ root, renderer: { releaseGeometry: () => released++ } });
-  const actor = { root: body, parts: { head }, traits: { name: "winner", height: 1 } };
+  const actor = { root: body, parts: { head }, traits: { name: "winner", height: 1 }, baseY: .75 };
+  Object.assign(body.position, { x: 40, y: 200.75, z: 60 });
   ghost.begin(actor);
   const original = head.geometry.verts[0]; head.geometry.verts[0] = 50;
   for (let i = 1; i <= 12050; i++) ghost.record(i * .05, actor);
@@ -214,8 +215,24 @@ test("the actual recorder snapshots custom appearance, thins long runs and rebui
   assert.equal(run.appearance.geometries[0].verts[0], original);
   const full = { ...run, version: 1, game: GAME, playerId: 1, courseVersion: 1, seed: 1, driftTime: 0 };
   assert.ok(codec.encode(full));
-  ghost.play(codec.decode(codec.encode(full))); assert.equal(root.children.length, 2);
-  ghost.update(100); ghost.clear(); assert.equal(root.children.length, 1); assert.ok(released > 0);
+  const decoded = codec.decode(codec.encode(full)), originalSamples = decoded.samples.slice();
+  ghost.play(decoded); assert.equal(root.children.length, 2);
+  const rig = root.children[1];
+  assert.deepEqual({ ...rig.position }, { x: 40, y: 200.75, z: 60 });
+  ghost.play(decoded, { x: 42, y: 200, z: 62 }, .5);
+  assert.deepEqual({ ...rig.position }, { x: 42, y: 200.75, z: 62 });
+  for (const time of [0, .125, .25]) {
+    ghost.update(time);
+    assert.equal(rig.position.y, 200.75); // No fall from a doubled platform elevation during the blend.
+  }
+  assert.deepEqual({ ...rig.position }, { x: 40, y: 200.75, z: 60 });
+  ghost.play(decoded, { x: 42, y: 350, z: 62 }, .5);
+  assert.equal(rig.position.y, 350.75); // The same recording stages relative to the supplied cloud.
+  ghost.play(decoded); ghost.update(100);
+  assert.deepEqual({ ...rig.position }, { x: 40, y: 200.75, z: 60 });
+  assert.deepEqual(decoded.samples, originalSamples);
+  assert.deepEqual({ ...body.position }, { x: 40, y: 200.75, z: 60 }); // Capture never relocates the live actor.
+  ghost.clear(); assert.equal(root.children.length, 1); assert.ok(released > 0);
 });
 
 test("late replay responses after level changes cannot resurrect the prior ghost", async () => {

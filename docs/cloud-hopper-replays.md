@@ -19,7 +19,9 @@ buffer when full while keeping the endpoints. Each pose has time plus 14 values 
 Metadata includes account ID, character key, recorded username, board, course version, duration, seed, departure
 drift and an appearance version. Appearance is the actual bounded node/geometry snapshot, including custom
 clothes, captured once at departure; playback does not look up today's character traits or execute dress code.
-Its node parents must precede children, geometry indices must exist, and all values must be finite. Limits are
+Its root appearance position uses the model's ground offset for pre-start staging, while motion samples retain
+world coordinates; cloud elevation is added only once. Its node parents must precede children, geometry indices
+must exist, and all values must be finite. Limits are
 256 nodes/geometries, 60,000 vertices/faces/lines, 4 MiB metadata and 12 MiB total binary. Duration is at most one
 hour. Sample times start at zero, strictly increase and end at the declared duration; count, quaternion, scale,
 visibility, version, board, identity and score are checked. Out-of-bounds appearance leaves replay unavailable
