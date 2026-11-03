@@ -13,6 +13,8 @@
   // and its cave seals, unless the page opts in: ?wip=<scene id> opens that game and lands in it, wip=1 opens
   // every one. No debug needed, so anyone can play a shared link. Its saves are left alone for the day it opens.
   const WIP = params.get("wip");
+  // Rally stays closed to visitors; its retained suite explicitly opts into the maintenance scene.
+  const RALLY_TEST = DEBUG && WIP === "race";
   for (const id of Object.keys(scenes)) if (scenes[id].wip && WIP !== "1" && WIP !== id) delete scenes[id];
   for (const slot of window.BL.caves.slots) if (slot.scene && !scenes[slot.scene]) Object.assign(slot, { scene: null, status: "dark" });
   // Loot crates, locker tab and worn swag; the suite turns them on with ?debug=1&loot=1
@@ -262,6 +264,7 @@
     } else t.redirect = answer || null;
   };
   const go = (id, place = null, instant = false) => {
+    if (id === "race" && !RALLY_TEST) { id = "arcade"; place = "rally-out-of-order"; }
     const next = scenes[id];
     if (!next) throw new Error(`Unknown scene "${id}"`);
     if (transition) return false;
@@ -420,7 +423,7 @@
   // visit) enters in slices instead: the departed scene is gone, nothing updates, draws or takes a key, and the screen
   // holds (black, or an instant crossing's last frame) until the last slice, when `done` carries the transition on.
   // A first slice that finishes the enter (a kept hub resuming) completes in the same frame, as `enter` would.
-  const swap = (next, place, done) => {
+  const swapScenes = (next, place, done) => {
     const leaving = active;
     wakeAudio();
     agentPlay.stop(true);
@@ -460,6 +463,10 @@
       done();
     }).catch(error => entryFailed(t, error));
     return false;
+  };
+  const swap = (next, place, done) => {
+    const hockey = !next.enterSteps && (active.id === "arcade" && next.id === "hockey" || active.id === "hockey" && next.id === "arcade");
+    return hockey ? window.BL.net.handoffBody(() => swapScenes(next, place, done)) : swapScenes(next, place, done);
   };
   // Where a settled transition lands: its own scene, or where its preparation redirected it.
   const landing = (t) => t.redirect ? { next: scenes[t.redirect.scene], place: t.redirect.place ?? null } : { next: t.next, place: t.place };
@@ -889,7 +896,7 @@
   // EntropyLab currently lives in its island cave; retain the isolated scene for debug checks only.
   const routed = router.current();
   const requestedScene = (routed && routed.scene) || params.get("scene") || (WIP !== "1" ? WIP : null);
-  const sceneId = requestedScene === "lab" && !DEBUG ? null : requestedScene;
+  const sceneId = requestedScene === "race" && !RALLY_TEST ? "arcade" : requestedScene === "lab" && !DEBUG ? null : requestedScene;
   // Building the first scene holds the main thread with nothing painted yet.
   // Run boot from a task after the first frame so the leaf curtain is on screen, not the previous page.
   let destroyed = false;

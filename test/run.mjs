@@ -3988,13 +3988,13 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
 const PERF = FULL || ARGS.includes("perf");
-const UNIT = !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record"].includes(ARGS[0]));
+const UNIT = !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade"].includes(ARGS[0]));
 const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 // What keeps the cruft out: every step says why it exists, or the run does not start.
 const WHY = /^(regression|playthrough|rule|contract): \S/;
@@ -4008,7 +4008,8 @@ const scene = (id, { query = "", steps, perf = false, opts = {}, label = "", url
     const t0 = Date.now();
     const media = httpMedia && !testOrigin ? await mediaSourceServer() : null;
     try {
-      const address = url || sceneUrl(id, query);
+      // Rally is retired from visitor entry, but its existing checks still exercise the preserved game.
+      const address = (url || sceneUrl(id, query)) + (id === "race" ? "&wip=race" : "");
       await fold(media ? `${media.origin}/src/index.html${new URL(address).search}` : address, chosen.map((s) => [s.name, s.run, s.open]), opts);
     } finally { if (media) await media.close(); }
     const took = (Date.now() - t0) / 1000;
@@ -4739,7 +4740,8 @@ const cloudHopperFailureChecks = async engine => {
     weapon: { primaryOwned: true, secondaryOwned: true, primaryEquipped: false, equipped: true } };
   S.addChild(rootNode, actor.root);
   const crew = { player: actor, clearProjectiles: noop, elevate: noop,
-    selectWeapon(slot, cave) { cave.weapon.primaryEquipped = slot === 1; cave.weapon.equipped = slot === 2; },
+    selectWeapon(slot, cave) { cave.weapon.primaryEquipped = slot === 1; cave.weapon.equipped = slot === 2;
+      cave.visibleWeapons = cave.weapon.primaryOwned || cave.weapon.secondaryOwned; },
     setJetpackOwnership(cave, owned) { cave.jetpackOwned = owned; if (!owned) cave.jet = null; },
     wearJetpack(cave) { cave.jet = pack(); }, removeJetpack(cave) { cave.jet = null; },
     cutJet(cave) { cuts++; cave.jet.thrust = cave.jet.spending = false; cave.jet.power = cave.jet.puff = 0; cave.jet.flame.visible = false; } };
@@ -4855,7 +4857,7 @@ const cloudHopperFailureChecks = async engine => {
   const beforeStartStops = audioStops;
   const opened = hopper.launch() && hopper.phase === "intro" && !active && !mode && !panelsHidden;
   const introMusic = audioStage === "intro" && audioLevel === 0.28 && audioStops === beforeStartStops;
-  callbacks.onStart(); const lifting = hopper.phase === "lifting" && mode && !actor.jetpackOwned && panelsHidden;
+  callbacks.onStart(); const lifting = hopper.phase === "lifting" && mode && !actor.jetpackOwned && panelsHidden && !actor.visibleWeapons;
   let musicPhases = introMusic && audioStage === "lifting" && audioLevel === 0.28 && audioStops === beforeStartStops;
   tick(BL.cloudHopper.LIFT_SECONDS);
   const briefing = hopper.phase === "briefing" && shown === "briefing" && hopper.held && !active && mode
@@ -6316,9 +6318,10 @@ const gameRulesChecks = async () => {
       && !game.recordArcade("darts", 200, "darts-3") && !game.recordArcade("darts", 200, "hoops-1");
     const reloaded = make(), distinct = reloaded.arcadeBest("darts-1") === 180 && reloaded.arcadeBest("darts-2") === 120;
     const saved = JSON.parse(store.get("oogaboogaland.v1"));
-    Object.assign(saved.arcade.machines, { "darts-1": 541, "darts-3": 100, "hoops-1": -1, "claw-1": "200" });
+    Object.assign(saved.arcade.machines, { "darts-1": 541, "darts-3": 100, "hoops-1": -1, "claw-1": "200", "hockey-1": 120 });
     store.set("oogaboogaland.v1", JSON.stringify(saved));
-    const checked = make(), clean = Object.keys(checked.state.arcade.machines).length === 1 && checked.arcadeBest("darts-2") === 120;
+    const checked = make(), clean = Object.keys(checked.state.arcade.machines).length === 1 && checked.arcadeBest("darts-2") === 120
+      && checked.arcadeBest("hockey-1") === 0 && !checked.recordArcade("hockey", 7, "hockey-1");
     record("arcade saves: duplicate machines keep separate bests through reload, never inherit an unattributed legacy aggregate, and reject malformed machine records",
       fresh && first && second && refused && distinct && clean && checked.state.arcade.tickets === 17,
       JSON.stringify({ fresh, first, second, refused, distinct, clean }));
@@ -6327,9 +6330,9 @@ const gameRulesChecks = async () => {
     // The jackpot wheel, from arcade-models.js and its scene half on the builders they load with: the house wins slowly, and every
     // wedge, from a turn at rest and one far round after many spins, stops under the clapper wherever in it the spin
     // aims, after its whole turns and less than one more.
-    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "arcade-models", "arcade-scene-models"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "arcade-scene-models"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     const A = BL.arcadeModels, L = A.LAYOUT;
-    const machines = { skee: L.skee, hoops: L.hoops, shy: [L.shy], claw: L.frames.claw, hockey: L.frames.hockey,
+    const machines = { skee: L.skee, hoops: L.hoops, shy: [L.shy], claw: L.frames.claw,
       billiards: L.frames.pool, darts: L.frames.darts, pinball: L.frames.pinball, ride: L.frames.ride };
     for (const cabinet of A.CABINETS) if (cabinet.retro >= 0) machines[A.RETRO[cabinet.retro].id] = [cabinet];
     const ids = Object.values(machines).flat().map(machine => machine.scoreId);
@@ -6338,8 +6341,8 @@ const gameRulesChecks = async () => {
       return rows.length === expected.length && rows.every(row => expected.includes(row.scoreId));
     });
     record("arcade scores: every carnival and retro machine carries its own permanent registered ID, including duplicates; excluded worlds have no score contract",
-      Object.keys(machines).length === 17 && ids.length === 29 && new Set(ids).size === 29 && registered
-        && ["ghost", "poker", "dsb"].every(id => BL.highscoreRules.get(id) === null), JSON.stringify({ registered, machines: ids }));
+      Object.keys(machines).length === 16 && ids.length === 26 && new Set(ids).size === 26 && registered
+        && L.frames.hockey.length === 3 && ["ghost", "poker", "dsb", "hockey"].every(id => BL.highscoreRules.get(id) === null), JSON.stringify({ registered, machines: ids }));
     const { WHEEL_VALUES: V, WHEEL_COST: cost, wheelAt, wheelStop } = BL.arcadeModels;
     const ev = V.reduce((s, v) => s + v, 0) / V.length, jackpot = Math.max(...V), missed = [];
     for (const from of [0, -0.3, -1234.567]) for (let k = 0; k < V.length; k++) for (const at of [0.2, 0.5, 0.8]) {
@@ -6846,9 +6849,25 @@ const cloudHopperRecordChecks = async () => {
       }
       H.setLevels({ selected: 3, unlocked: 2, bests: [0, 9500, 0, 0] }); H.show('intro');
       const locked = document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').disabled && text().includes('Loading global best');
-      H.setHighscores({ highscores: {}, achieved: {} }); const empty = text() === 'No times yet' && button.hidden;
+      H.setHighscores({ highscores: {}, achieved: {} }); const empty = text() === 'No times yet' && button.hidden
+        && !document.querySelector('.cloud-hopper-scores-empty');
       BL.net.state.me = { login: 'winner' }; H.setHighscores({ highscores: { winner: 19740 }, achieved: {} });
       const signed = text().includes('winner') && document.querySelector('.race-podium li').classList.contains('you');
+      H.setHighscores({ highscores: { winner: 18000 }, achieved: { winner: 3 }, runs: [
+        { username: 'winner', score: 18000, achieved: 3 }, { username: 'winner', score: 19740, achieved: 1 },
+        { username: 'other', score: 20000, achieved: 2 }] });
+      const rows = [...document.querySelectorAll('.race-podium li')];
+      const repeated = rows[0].textContent.includes('winner') && rows[1].textContent.includes('winner')
+        && rows[0].classList.contains('you') && rows[1].classList.contains('you') && text().includes('00:18.00');
+      H.setSubmissions([{ id: 'pending', username: 'winner', score: 17000, status: 'saving' }]);
+      const optimistic = rows[0].textContent.includes('saving...') && rows[0].textContent.includes('00:17.00')
+        && text().includes('00:18.00');
+      H.setSubmissions([{ id: 'pending', username: 'winner', score: 17000, status: 'failed' }]);
+      const failedUpload = !rows.some(row => row.textContent.includes('00:17.00'))
+        && document.querySelector('.cloud-hopper-uploads').textContent.includes('couldn’t be uploaded');
+      H.setLevels({ selected: 4, unlocked: 4, bests: [] });
+      const uploadIsolated = document.querySelector('.cloud-hopper-uploads').hidden;
+      H.setHighscores({ highscores: { winner: 18000 }, achieved: {} });
       H.setReplayState('off'); button.click();
       const off = !button.disabled && toggles === 1 && button.getAttribute('aria-pressed') === 'false'
         && button.nextElementSibling.classList.contains('cloud-hopper-record-time');
@@ -6859,7 +6878,7 @@ const cloudHopperRecordChecks = async () => {
       H.setLevels({ selected: 2, unlocked: 4, bests: [0, 26540, 0, 0] });
       H.setHighscores({ highscores: { 'long-player-name-with-thirty-nine-chars': 19740 }, achieved: {} });
       H.setHighscoreStatus('stale'); H.show('ready');
-      return { loading, unavailable, leader, refreshing, stale, running, isolated, locked, empty, signed, off, busy, on, retry, missing };
+      return { loading, unavailable, leader, refreshing, stale, running, isolated, locked, empty, signed, repeated, optimistic, failedUpload, uploadIsolated, off, busy, on, retry, missing };
     })()`);
     record("cloud hopper record: global leader/ties, four levels, guest/account reads, no local fallback, empty/error/stale states and disabled replay", Object.values(state).every(Boolean), JSON.stringify(state));
     for (const [w, h] of [[1440, 900], [390, 844], [844, 390], [320, 568]]) {
@@ -6890,13 +6909,22 @@ const cloudHopperRecordChecks = async () => {
 };
 const highscoreClientChecks = async () => {
   const sources = await Promise.all(["highscore-rules", "highscores"].map(name => readFile(join(root, `src/js/${name}.js`), "utf8")));
-  const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
+  // WebCrypto finishes on the worker pool, not after a fixed number of event-loop turns.
+  // Drain its real promises before assertions inspect the requests they unlock.
+  const hashes = new Set(), testCrypto = { randomUUID: () => globalThis.crypto.randomUUID(), subtle: {
+    digest(...args) {
+      const pending = globalThis.crypto.subtle.digest(...args); hashes.add(pending);
+      pending.then(() => hashes.delete(pending), () => hashes.delete(pending));
+      return pending;
+    }
+  } };
+  const flush = async () => { for (let i = 0; i < 30; i++) { await Promise.allSettled([...hashes]); await new Promise(setImmediate); } };
   const fixture = (signed = false, enabled = true) => {
     const requests = [], timers = new Map(), events = new Map(), subscribers = new Set(), live = new Set(), toasts = [];
     let seq = 0, now = 1000;
     const state = { backend: enabled, highscores: enabled, highscoreSnapshots: true, resolved: true, logoutEpoch: 0, me: signed ? { id: 11, login: "score-one" } : null };
     const net = { state, subscribeHighscores(fn) { live.add(fn); return () => live.delete(fn); }, subscribe(fn) { subscribers.add(fn); return () => subscribers.delete(fn); } };
-    const context = { AbortController, Date: class extends Date { static now() { return now; } },
+    const context = { AbortController, TextEncoder, crypto: testCrypto, Date: class extends Date { static now() { return now; } },
       window: { BL: { net, hud: { toast: text => toasts.push(text) } },
         setTimeout(fn, ms) { timers.set(++seq, { fn, ms }); return seq; }, clearTimeout(id) { timers.delete(id); } },
       document: { hidden: false, addEventListener(type, fn) { events.set(type, fn); }, removeEventListener(type) { events.delete(type); } },
@@ -6934,7 +6962,7 @@ const highscoreClientChecks = async () => {
     const ticket = f.scores.begin(game); f.reply(0, game); await flush();
     const pending = f.scores.submit(ticket, game, 1000, { duration: 1 }); await flush();
     const fallback = f.requests.length === 2 && f.requests[1].options.method === "POST"
-      && JSON.parse(f.requests[1].options.body).score === 1000;
+      && JSON.parse(f.requests[1].options.body).score === 1000 && JSON.parse(f.requests[1].options.body).runId === "test";
     f.reply(1, game, { "score-one": 1000 }, 1); const saved = await pending;
     f.scores.dispose();
     const other = fixture(true); let release;
@@ -6944,6 +6972,64 @@ const highscoreClientChecks = async () => {
     other.account({ id: 12, login: "other" }); release(null); const refused = !await changed;
     const noWrite = other.requests.every(r => r.options.method === "GET"); other.scores.dispose();
     record("highscores: replay upload failure preserves the numeric score, but account changes prevent any fallback write", fallback && saved && refused && noWrite);
+  }
+  {
+    const f = fixture(true), game = "cloud-hopper-l1", run = f.scores.begin(game);
+    f.reply(0, game); await flush();
+    const saving = f.scores.submit(run, game, 30742); await flush();
+    const first = JSON.parse(f.requests[1].options.body);
+    f.reply(1, game, {}, 0, 503); await flush();
+    const retry = JSON.parse(f.requests[2].options.body);
+    const rule = f.rules.get(game), runs = [
+      { username: "score-one", score: 29000, achieved: 2 }, { username: "score-one", score: 30742, achieved: 1 }];
+    const board = { game, version: 1, scoreType: rule.scoreType, direction: rule.direction, unit: rule.unit,
+      highscores: { "score-one": 29000 }, achieved: { "score-one": 2 }, revision: 3, runs };
+    f.requests[2].resolve({ ok: true, headers: { get: () => "application/json" }, json: async () => board });
+    const saved = await saving, accepted = f.scores.get(game).runs;
+    const next = f.scores.begin(game), again = f.scores.submit(next, game, 28000); await flush();
+    const distinct = JSON.parse(f.requests[3].options.body).runId !== first.runId;
+    f.requests[3].resolve({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ ...board, revision: 4,
+      runs: [{ username: "score-one", score: -1, achieved: 1 }] }) });
+    await again;
+    record("highscores: distinct runs retain duplicate usernames, retry one stable ID and reject malformed run lists",
+      saved && first.runId === retry.runId && distinct && accepted.length === 2 && f.scores.get(game).revision === 3);
+    f.scores.dispose();
+  }
+  {
+    const f = fixture(true), game = "cloud-hopper-l1", notices = [], boards = [];
+    const off = f.scores.watch(game, board => boards.push(board), null, rows => notices.push(rows.map(row => ({ ...row }))));
+    f.reply(0, game, { rival: 30000 }, 1); await flush();
+    const first = f.scores.begin(game), second = f.scores.begin(game);
+    const a = f.scores.submit(first, game, 20000), b = f.scores.submit(second, game, 20000);
+    const immediate = notices.at(-1).length === 2 && notices.at(-1).every(row => row.status === "saving")
+      && f.scores.get(game).highscores.rival === 30000;
+    await flush();
+    const bodies = f.requests.slice(1).map(req => JSON.parse(req.options.body));
+    const id = async body => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",
+      new TextEncoder().encode(JSON.stringify([game, 11, body.runId])))), n => n.toString(16).padStart(2, "0")).join("");
+    const ids = await Promise.all(bodies.map(id));
+    const rule = f.rules.get(game), board = { game, version: rule.version, scoreType: rule.scoreType, direction: rule.direction,
+      unit: rule.unit, revision: 3, highscores: { 'score-one': 20000, rival: 30000 }, achieved: { 'score-one': 10, rival: 1 },
+      runs: ids.map((id, i) => ({ id, username: 'score-one', score: 20000, achieved: 10 + i })) };
+    const respond = (index, data) => f.requests[index].resolve({ ok: true, headers: { get: () => "application/json" }, json: async () => data });
+    // A later write response can confirm both runs before the earlier POST returns.
+    respond(2, board); const savedB = await b;
+    const reconciled = notices.at(-1).length === 0 && f.scores.get(game).runs.length === 2;
+    respond(1, { ...board, revision: 2, runs: [board.runs[0]] }); const savedA = await a;
+    const ordered = f.scores.get(game).revision === 3 && f.scores.get(game).runs.length === 2;
+    const failedRun = f.scores.begin(game), failed = f.scores.submit(failedRun, game, 40000); await flush();
+    // Both bounded numeric attempts time out. The failed time remains a notice, outside the public board.
+    for (let i = 0; i < 2; i++) { const timer = [...f.timers.values()].find(timer => timer.ms === 6000); timer.fn(); await flush(); }
+    const rejected = !await failed && notices.at(-1)[0]?.status === "failed" && f.scores.get(game).runs.length === 2;
+    const old = f.scores.begin(game), stale = f.scores.submit(old, game, 10000); await flush();
+    const pendingIndex = f.requests.length - 1;
+    f.account({ id: 22, login: "other" });
+    const cleared = notices.at(-1).length === 0;
+    respond(pendingIndex, { ...board, revision: 4 }); const refused = !await stale;
+    off(); const before = notices.length; f.scores.dispose();
+    record("highscores: optimistic uploads are immediate, distinct tied runs reconcile out of order, timeouts stay local and account changes discard late writes",
+      immediate && savedA && savedB && reconciled && ordered && rejected && cleared && refused && notices.length === before,
+      JSON.stringify({ immediate, savedA, savedB, reconciled, ordered, rejected, cleared, refused }));
   }
   {
     // Regression: a failed refresh previously left an apparently current board, with no loading/error signal.
@@ -13838,10 +13924,11 @@ const phone = (id, { card = null, play = null, required, sheet = false }) => ({ 
     // transform itself to arrive at open (no offset left).
     await b.evaluate(`document.getElementById("sheet-toggle").click()`);
     for (let i = 0; i < 200 && !(await b.evaluate(`(() => { const s = document.getElementById("sheet"), t = getComputedStyle(s).transform; return s.dataset.open === "true" && (t === "none" || new DOMMatrix(t).m42 === 0); })()`)); i++) await b.sleep(50);
-    seen.sheet = await b.evaluate(PHONE(["#sheet-toggle", "#sheet-bananas", ".sheet .feed-open"]));
+    seen.sheet = await b.evaluate(PHONE(["#sheet-toggle", "#sheet-bananas", "#joy-move", "#joy-look"]));
+    seen.feedHidden = await b.evaluate(`getComputedStyle(document.querySelector(".sheet-foot > .feed-open")).display === "none"`);
   }
-  const ok = (!card || seen.card.touch.coarse && seen.card.touch.touchWording && seen.card.bad.length === 0 && seen.card.closed) && seen.play.length === 0 && (!sheet || seen.sheet.length === 0);
-  record(`${id} phone: ${card ? "the title card reads in touch words and its go button starts the game, then " : ""}nothing is clipped, wrapped by accident or off screen, and every control is under a thumb${sheet ? ", with the sheet open too" : ""}`, ok, JSON.stringify(seen));
+  const ok = (!card || seen.card.touch.coarse && seen.card.touch.touchWording && seen.card.bad.length === 0 && seen.card.closed) && seen.play.length === 0 && (!sheet || seen.sheet.length === 0 && seen.feedHidden);
+  record(`${id} phone: ${card ? "the title card reads in touch words and its go button starts the game, then " : ""}nothing is clipped, wrapped by accident or off screen, and every control is under a thumb${sheet ? ", with the sheet open and the sticks still free" : ""}`, ok, JSON.stringify(seen));
 } });
 
 // ---- The Lightning Factory ----
@@ -14995,10 +15082,10 @@ const arcadeWalking ={ name: "arcade walking", why: "rule: W A S D walk the visi
   const ooga = await walkKeys(b, "portlandhodl", 0, -1, [0, 2.2], 0.5);
   record("arcade walking: W A S D walk the visitor's Ooga away, left, back and right on screen on the hall floor from two camera angles", allWalk(ooga), JSON.stringify(ooga));
 } };
-// Rule (#420): in Ooga Arcade a walking jump carries on as on the island; 2 takes the AK-47 in the hall; and from the
+// In Ooga Arcade a walking jump carries on as on the island; the hall parks weapons; and from the
 // ghost arena the hall's games take no hover or tap through the rock and its speakers' lines do not show, while in the
 // hall a game in sight still shows its tooltip and a speaker close by its line.
-const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcade stopped dead in the air, the AK-47 could not be taken outside the arena, and from the arena the hall's games took hovers and taps and its speakers' lines showed through the rock", run: async (b) => {
+const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcade stopped dead in the air, ordinary weapons must be unavailable outside the arena, and from the arena the hall's games took hovers and taps and its speakers' lines showed through the rock", run: async (b) => {
   // A clear 13 m run on the hall floor along the camera's forward, the run-up and the jump at walking speed, with no
   // station near enough to take Space.
   const start = await b.evaluate(`(() => {
@@ -15032,7 +15119,7 @@ const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcad
     air.peak > 0.6 && air.speed > walk * 0.85, JSON.stringify({ start, walk: +walk.toFixed(2), air }));
   await b.key("2");
   const ak = await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; B.advance(0.3, 1 / 60); const hud = document.querySelector(".weapon-hud"); return { equipped: a.weapon.equipped, gun: a.parts.gun.visible, hud: !!hud && getComputedStyle(hud).display !== "none" }; })()`);
-  record("arcade hall: 2 puts the AK-47 in the Ooga's hands in the hall, with the weapon HUD showing", ak.equipped && ak.gun && ak.hud, JSON.stringify(ak));
+  record("arcade hall: 2 cannot equip or display the AK-47 outside the arena", !ak.equipped && !ak.gun, JSON.stringify(ak));
   // From the arena, facing the hall: a pixel the input picks a hall game at takes neither a hover nor a tap, and a line
   // said over the stage does not show.
   const HALL_KINDS = '["cabinet","machine","snack","prizes","wheel","ride","sign","changer","muncher","door","fame","disco"]';
@@ -15078,56 +15165,277 @@ const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcad
   record("arcade hall: back in the hall a cabinet in sight shows its tooltip and a line over the stage shows again",
     !inHall.armed && inHall.hidden === false && !!cabinet && typeof shown === "string" && shown.includes("to play"), JSON.stringify({ inHall, cabinet, shown }));
 } };
-// Rule (#421): the visitor's view, combat, weapon in hand, rounds and zoom go with the Ooga out of Ooga Arcade's door
-// and back in at its mouth, a change made on the island comes back in, and a key held at the door is not still held.
-const arcadeCarry = { name: "arcade carry", why: "regression: walking out of a scene and back in reset the view, combat and the weapon in hand, and refilled the rifle", run: async (b) => {
-  const state = `(() => {
-    const B = __ooga, a = B.pilot.player, w = a ? a.weapon : null, o = B.pilot.orbit, t = B.pilot.captureControl({});
-    const rel = a ? Math.atan2(Math.sin(o.yaw - a.root.rotation.y), Math.cos(o.yaw - a.root.rotation.y)) : null;
-    return { scene: B.scene, who: a ? a.traits.name : null, view: t.view, combat: !!(w && w.aiming), held: w ? (w.equipped ? 2 : w.primaryEquipped ? 1 : 0) : -1,
-      ammo: w ? w.ammo : -1, dist: +o.dist.toFixed(2), rel: rel === null ? null : +rel.toFixed(2) };
-  })()`;
-  const arrive = (scene) => b.evaluate(`(async () => { const B = __ooga, t0 = performance.now(); while ((B.transitioning || B.scene !== "${scene}") && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); return B.scene; })()`);
-  // In the hall: the rifle in hand, combat on and a few rounds fired.
-  await b.evaluate(`(() => { const B = __ooga, a = B.cavemen.get("portlandhodl"); if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: 0, y: 0, z: 2 }, yaw: Math.PI / 2, pitch: 0.3, dist: 6 }); B.advance(0.3, 1 / 60); })()`);
-  for (const k of ["2", "x"]) { await b.key(k); await b.evaluate("__ooga.advance(0.4, 1 / 60)"); }
-  for (let i = 0; i < 2; i++) { await b.key("v"); await b.evaluate("__ooga.advance(0.6, 1 / 60)"); }
-  const before = await b.evaluate(state);
-  // Out of the door holding W, onto the island.
-  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w", code: "KeyW" });
-  await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; a.root.position.x = 0; a.root.position.z = BL.arcadeModels.HALL.front + 1.3; B.advance(0.2, 1 / 60); })()`);
-  const out = await arrive("hub");
-  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
-  const island = await b.evaluate(state);
-  const still = await b.evaluate(`(() => { const B = __ooga, p = B.pilot.player.root.position, x = p.x, z = p.z, ammo = B.pilot.player.weapon.ammo; B.advance(1, 1 / 60); return { moved: +Math.hypot(p.x - x, p.z - z).toFixed(3), fired: ammo - B.pilot.player.weapon.ammo }; })()`);
-  // On the island: the club in hand and combat off, then back in at the mouth.
-  for (const k of ["1", "x"]) { await b.key(k); await b.evaluate("__ooga.advance(0.4, 1 / 60)"); }
-  const changed = await b.evaluate(state);
-  await b.evaluate(`(() => { const B = window.__ooga, slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
-  const kept = await b.evaluate(state);
-  await b.key(" ");
-  const back = await arrive("arcade");
-  const hall = await b.evaluate(state);
-  const same = (x, y) => x.who === y.who && x.view === y.view && x.combat === y.combat && x.held === y.held && x.ammo === y.ammo && Math.abs(x.dist - y.dist) < 0.05 && Math.abs(x.rel - y.rel) < 0.05;
-  record("arcade carry: out of the arcade's door the Ooga keeps its view, combat, rifle in hand, part-spent magazine, look and zoom, and the W held at the door is not still held",
-    out === "hub" && before.held === 2 && before.combat && before.ammo < 30 && same(before, island) && still.moved < 0.05 && still.fired === 0,
-    JSON.stringify({ out, before, island, still }));
-  record("arcade carry: the club and carry mode chosen on the island come back into the arcade, with the same rounds, look and zoom",
-    back === "arcade" && changed.held === 1 && !changed.combat && same(kept, hall), JSON.stringify({ back, changed, kept, hall }));
+const arcadeRemoteWeapons = { name: "arcade remote weapons", why: "regression: the remote unarmed pose showed visitors' clubs in the weapon-free Arcade", run: async (b) => {
+  const result = await b.evaluate(`(() => {
+    const B = __ooga, N = BL.net, H = BL.arcadeModels.HAUNT, A = H.arena;
+    const id = 99445, previous = N.remotes.get(id), build = BL.models.caveman, rows = [], outside = [];
+    const peer = { id, login: "peer", display: "Peer", body: "w-s-bitcoin", zone: "arcade.hall", x: 0, y: 0, z: 4, yaw: 0, weapon: 0, jet: 0 };
+    let cave = null, pool = null;
+    const read = () => ({ visible: cave.root.visible, club: cave.parts.club.visible, gun: cave.parts.gun.visible });
+    try {
+      BL.models.caveman = (...args) => { cave = build(...args); return cave; };
+      N.remotes.set(id, peer); B.advance(0.1, 1 / 60);
+      BL.models.caveman = build;
+      for (const [place, x, y, z, zone] of [
+        ["hall", 0, 0, 4, "arcade.hall"],
+        ["haunt", H.end - 4, H.y, A.z, "arcade.haunt"],
+        ["arena", A.x, H.y, A.z, "arcade.arena"],
+        ["below arena", A.x, H.y - 2, A.z, "arcade.arena"],
+        ["returned hall", 0, 0, 4, "arcade.hall"]
+      ]) {
+        Object.assign(peer, { x, y, z, zone });
+        for (const held of [0, 1, 2]) {
+          peer.weapon = held | 4 | 12 << 3; B.advance(0.6, 1 / 60);
+          rows.push({ place, held, ...read() });
+        }
+      }
+      N.remotes.delete(id); B.advance(0.1, 1 / 60);
+      const removed = !cave.root.parent;
+      // A new remote arriving after the first visitor left gets the same scene policy.
+      BL.models.caveman = (...args) => { cave = build(...args); return cave; };
+      N.remotes.set(id, peer); B.advance(0.1, 1 / 60);
+      BL.models.caveman = build;
+      const rejoined = read();
+      // The ordinary remote renderer still shows outside loadouts without Arcade's policy.
+      const root = BL.scene.createNode();
+      pool = BL.remotePlayers.create({ root, visible: rec => rec.id === id });
+      BL.models.caveman = (...args) => { cave = build(...args); return cave; };
+      pool.update(0.1); BL.models.caveman = build;
+      for (const held of [0, 1, 2]) { peer.weapon = held; pool.update(0.1); outside.push({ held, ...read() }); }
+      return { rows, removed, rejoined, outside };
+    } finally {
+      BL.models.caveman = build;
+      if (pool) pool.dispose();
+      N.remotes.delete(id); B.advance(0.1, 1 / 60);
+      if (previous) N.remotes.set(id, previous);
+    }
+  })()`);
+  record("arcade remote weapons: all remote held states hide clubs and hall rifles, preserve arena rifles, and hide them again on return and rejoin",
+    result.rows.length === 15 && result.rows.every(r => r.visible && !r.club && r.gun === (r.place === "arena" && r.held === 2)) && result.removed && result.rejoined.visible && !result.rejoined.club && !result.rejoined.gun, JSON.stringify(result));
+  record("arcade remote weapons: the shared renderer keeps outside clubs and rifles unchanged",
+    result.outside.length === 3 && result.outside.every(r => r.visible && r.club === (r.held !== 2) && r.gun === (r.held === 2)), JSON.stringify(result.outside));
 } };
-const arcadePlay = { name: "arcade play", why: "rule: a cabinet starts its game, the game's exit comes back to that cabinet as the same Ooga, and Escape leaves for the island", run: async (b) => {
-  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), s = window.BL.arcadeModels.CABINETS[0].play; if (B.crew.player !== a) B.pilot.possess(a); a.root.position.x = s.x; a.root.position.z = s.z; B.advance(0.2, 1 / 60); })()`);
-  await b.key(" ");
-  const played = await untilPage(b, 'B.scene === "race" && !B.transitioning', 15000);
-  const raced = await b.evaluate(`(() => { const go = document.querySelector('[data-intro="race"] [data-action="intro-go"]'); if (go && go.offsetParent) go.click(); const leave = document.querySelector('nav[data-scene="race"] .leave'), seen = { racer: window.__ooga.racers.player.name, exit: leave.textContent }; leave.click(); return seen; })()`);
-  await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 15000);
-  const back = await b.evaluate(`(() => { const B = window.__ooga, p = B.pilot.player, s = window.BL.arcadeModels.CABINETS[0].play; return { scene: B.scene, who: p && p.traits.name, off: p ? Math.hypot(p.root.position.x - s.x, p.root.position.z - s.z) : null }; })()`);
-  await b.key("Escape");
-  const detached = await b.evaluate(`({ scene: __ooga.scene, driving: !!__ooga.pilot.player })`);
-  await b.key("Escape");
-  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
-  const out = await b.evaluate(`(() => { const B = window.__ooga, p = B.pilot.player; return { scene: B.scene, who: p && p.traits.name }; })()`);
-  record("arcade play: Space at the Rally cabinet starts Ooga Rally with the same Ooga racing and its exit back to arcade, leaving the race returns that Ooga to the cabinet, and Escape detaches before returning to the island still detached", played && raced.racer === "portlandhodl" && raced.exit === "Back to arcade" && back.scene === "arcade" && back.who === "portlandhodl" && back.off < 0.5 && detached.scene === "arcade" && !detached.driving && out.scene === "hub" && !out.who, JSON.stringify({ played, raced, back, detached, out }));
+// #428: a hallway page receives the running hunt without becoming a hunter or borrowing arena ammunition.
+const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regression: a hallway-only spectator receiving a running hunt gained unlimited rifle ammunition despite never entering the arena", run: async (b) => {
+  await b.evaluate(`(async () => {
+    const B = __ooga, N = BL.net, H = BL.arcadeModels.HAUNT;
+    const W = window.__hallAmmo = { fetch: window.fetch, WebSocket: window.WebSocket, sockets: [] };
+    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "portlandhodl", display: "portlandhodl" } }) }) : W.fetch(url, options);
+    window.WebSocket = class { static OPEN = 1; constructor() { this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } };
+    N.state.started = true; N.state.resolved = false;
+    await N.recheck();
+    W.socket = W.sockets.at(-1);
+    W.socket.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, now: Date.now(), ghostHost: 2, ghostFollowers: 1, players: [] }) });
+    const a = B.cavemen.get("portlandhodl");
+    if (B.crew.player !== a) B.pilot.possess(a);
+    B.pilot.navigate({ position: { x: H.end - 4, y: H.y, z: (H.z0 + H.z1) / 2 }, yaw: -Math.PI / 2, pitch: 0.18, dist: 4 });
+    B.advance(0.5, 1 / 60);
+    a.weapon.unlimited = false; a.weapon.ammo = 7;
+    B.pilot.weaponMode(2);
+    W.read = () => { const w = B.pilot.player.weapon, A = BL.scenes.arcade.debug.arena; return { unlimited: w.unlimited, ammo: w.ammo, equipped: w.equipped, aiming: w.aiming, armed: A.armed, zone: A.zone }; };
+    W.before = W.read();
+    await BL.deferred.load("halloween");
+    const G = BL.ghostSim;
+    W.host = G.create({ seed: 17, spots: [], lapMs: 20000 });
+    W.host.start(N.serverNow(), 2);
+    W.send = (state) => {
+      W.host.jump(G.STATE[state]);
+      const bytes = new TextEncoder().encode(JSON.stringify(W.host.snapshot())), frame = new Uint8Array(bytes.length + 4);
+      new DataView(frame.buffer).setUint32(0, 0x54534847, true); frame.set(bytes, 4);
+      W.socket.onmessage({ data: frame.buffer });
+    };
+    W.send("LAP");
+  })()`);
+  await untilPage(b, 'B.halloween && !!B.halloween.sim', 15000);
+  const result = await b.evaluate(`(() => {
+    const B = __ooga, W = __hallAmmo, rows = [];
+    for (const state of ["LAP", "NIGHT", "COUNTDOWN", "ACTIVE", "BREAK", "BOSS", "VICTORY", "DEFEAT"]) {
+      W.send(state); B.advance(0.1, 1 / 60);
+      rows.push({ state, received: B.halloween.state, ...W.read() });
+    }
+    return { before: W.before, rows, role: B.halloween.role, hunter: !!B.halloween.sim.playerById(71)?.inGame };
+  })()`);
+  await b.key("v");
+  const after = await b.evaluate(`(() => { __ooga.advance(0.6, 1 / 60); const W = __hallAmmo, fired = W.read(); W.send("DAWN"); __ooga.advance(0.1, 1 / 60); return { fired, restored: W.read() }; })()`);
+  await b.evaluate(`(() => { const W = __hallAmmo; W.socket.close(); BL.net.state.room = "off"; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
+  const kept = result.rows.every(r => !r.armed && r.zone === "arcade.haunt" && r.received === r.state && !r.unlimited && r.ammo === result.before.ammo && r.equipped === result.before.equipped && r.aiming === result.before.aiming);
+  record("arcade hallway ammunition: a signed-in hallway-only spectator keeps weapon state through every hunt phase, rejects firing and keeps the same ammunition policy at dawn",
+    !result.before.armed && result.before.zone === "arcade.haunt" && result.role === "follow" && !result.hunter && kept && after.fired.ammo === result.before.ammo && !after.fired.equipped && !after.fired.unlimited && !after.restored.unlimited,
+    JSON.stringify({ ...result, ...after }));
+} };
+// Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
+const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
+  const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning`, 20000);
+  const leave = async () => {
+    await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; a.root.position.x = 0; a.root.position.z = BL.arcadeModels.HALL.front + 1.3; B.advance(0.2, 1 / 60); })()`);
+    return arrive("hub");
+  };
+  const read = `(() => {
+    const B = __ooga, a = B.pilot.player, w = a.weapon, t = B.pilot.captureControl({}), o = B.pilot.orbit;
+    const m = B.mouths?.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id), p = a.root.position;
+    return { who: a.traits.name, view: t.view, combat: w.aiming, focused: t.focused, held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0,
+      primary: w.primaryOwned, secondary: w.secondaryOwned, gun: a.parts.gun.visible, club: a.parts.club.visible,
+      ammo: w.ammo, spare: w.spareAmmo.slice(), unlimited: w.unlimited, dist: o.dist,
+      along: m ? (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry) : null,
+      across: m ? (p.x - m.x) * Math.cos(m.ry) - (p.z - m.z) * Math.sin(m.ry) : null,
+      feet: p.y - a.baseY, floor: m?.floorY };
+  })()`;
+  await leave();
+  const rows = [];
+  for (const mode of ["focused", "released", "carry"]) {
+    await b.evaluate(`(() => {
+      const B = __ooga, a = B.pilot.player, w = a.weapon;
+      B.pilot.weaponMode(2); w.ammo = 11; if (!w.spareAmmo.length) B.crew.collectMagazine(a); w.spareAmmo[0] = 4; w.unlimited = false; B.pilot.enterClose();
+      if (w.aiming !== ${mode !== 'carry'}) B.pilot.modeAction("mode-toggle");
+      const m = B.mouths.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id);
+      B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.3, dist: 6 });
+      ${mode === 'focused' ? 'B.pilot.focusAim();' : 'B.pilot.freeCursor();'}
+      B.advance(0.2, 1 / 60);
+    })()`);
+    const before = await b.evaluate(read);
+    await b.key(" "); await arrive("arcade");
+    const hall = await b.evaluate(read);
+    // All ordinary weapon routes meet the same ownership/action gate, including the touch HUD.
+    for (const key of ["1", "2", "g", "v", "r"]) await b.key(key);
+    await b.evaluate(`(() => { const B = __ooga; for (const action of ["weapon-primary", "weapon-secondary", "weapon-fire", "magazine-swap"]) B.pilot.weaponAction(action); B.advance(0.8, 1 / 60); })()`);
+    const blocked = await b.evaluate(read);
+    const mouse = await b.evaluate(`(() => { const B = __ooga, before = B.pilot.orbit.yaw; document.getElementById("scene").dispatchEvent(new MouseEvent("mousemove", { bubbles: true, movementX: 35, movementY: 0 })); B.advance(0.1, 1 / 60); return Math.abs(B.pilot.orbit.yaw - before); })()`);
+    let arena = null;
+    if (mode === "focused") arena = await b.evaluate(`(() => {
+      const B = __ooga, H = BL.arcadeModels.HAUNT;
+      B.pilot.navigate({ position: { x: H.arena.x - 16, y: H.y, z: H.arena.z }, yaw: Math.PI / 2, pitch: 0.1, dist: 4 });
+      B.advance(0.5, 1 / 60); B.pilot.weaponAction("magazine-swap"); B.advance(2, 1 / 60);
+      const w = B.pilot.player.weapon;
+      return { armed: BL.scenes.arcade.debug.arena.armed, equipped: w.equipped, unlimited: w.unlimited, ammo: w.ammo, spare: w.spareAmmo.slice() };
+    })()`);
+    await leave();
+    const outside = await b.evaluate(read);
+    rows.push({ mode, before, hall, blocked, mouse, arena, outside });
+  }
+  record("arcade carry: combat and released cursor intent survive both doorways, hall weapons cannot act, and the outside loadout and ammunition return inside the mainland overhang in every control mode",
+    rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.focused
+      && !r.hall.held && !r.hall.gun && !r.hall.club && !r.hall.primary && !r.hall.secondary
+      && !r.blocked.held && r.blocked.ammo === 11 && r.blocked.spare[0] === 4 && !r.blocked.unlimited
+      && (r.mode !== "focused" || r.mouse > 0.001) && (r.mode !== "released" || r.mouse < 0.001)
+      && (r.mode !== "focused" || r.arena.armed && r.arena.equipped && r.arena.unlimited && r.arena.ammo === 4 && r.arena.spare[0] === 11)
+      && r.outside.who === r.before.who && r.outside.held === r.before.held && r.outside.combat === r.before.combat
+      && r.outside.focused === r.before.focused && r.outside.ammo === 11 && r.outside.spare[0] === 4
+      && r.outside.primary === r.before.primary && r.outside.secondary === r.before.secondary && !r.outside.unlimited
+      && r.outside.along < 0 && r.outside.along > -3 && Math.abs(r.outside.across) < 0.5 && Math.abs(r.outside.feet - r.outside.floor) < 0.1), JSON.stringify(rows));
+  // Leave the shared scene session in the Arcade for the following playthrough.
+  await b.key(" "); await arrive("arcade");
+} };
+const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simulated visitors played machines and Clankers diverted or greeted when a live player stood in their path", run: async (b) => {
+  const r = await b.evaluate(`(() => {
+    const B = __ooga, A = B.arcade, a = B.pilot.player, rows = [];
+    for (const g of A.staff) {
+      const p = g.agent.root.position;
+      // Put the live player beside each worker while it completes part of its job.
+      a.root.position.x = p.x; a.root.position.z = p.z; a.root.position.y = p.y + a.baseY;
+      B.advance(0.5, 1 / 60);
+      rows.push({ role: g.role.id, phase: g.phase });
+    }
+    B.advance(15, 1 / 60);
+    B.pilot.navigate({ position: { x: 0, y: 0, z: 2 }, yaw: 0, pitch: 0.2, dist: 5 });
+    return { crowd: A.crowd.length, walkers: A.walkers.length, bots: A.bots.length, staff: A.staff.length,
+      playing: A.carnival.some(g => g.playing), rows, jobs: A.staff.map(g => ({ phase: g.phase, done: g.done, walked: g.walked })) };
+  })()`);
+  record("arcade maintenance: only the live player and maintenance Clankers remain, machines never start bot games, and nearby players cause no greetings or chats",
+    r.crowd === 0 && r.walkers === 0 && r.bots === 0 && r.staff === 6 && !r.playing
+    && r.rows.every(g => g.phase !== "greet" && g.phase !== "chat") && r.jobs.some(g => g.done > 0 || g.walked > 0), JSON.stringify(r));
+} };
+const arcadeStage = { name: "arcade stage approaches", why: "regression: oversized decorative root collision boxes blocked walking onto the central stage from its sides and back", run: async (b) => {
+  const r = await b.evaluate(`(() => {
+    const B = __ooga, A = B.arcade, S = BL.arcadeModels.STAGE, a = B.pilot.player, rows = [];
+    // Walk inward through both actual stage steps from all cardinal, diagonal and intervening directions.
+    for (let i = 0; i < 16; i++) {
+      const angle = i * Math.PI / 8, dx = Math.sin(angle), dz = Math.cos(angle);
+      // The two side cabinets reach the inner ring. Approach those sides just forward of their solid bodies.
+      const side = i === 4 || i === 12;
+      let x = S.x + dx * (S.r + 0.65), z = S.z + dz * (S.r + 0.65) + (side ? 1.7 : 0), y = 0, clear = true;
+      for (let j = 0; j < (side ? 32 : 24); j++) {
+        const nx = x - dx * 0.05, nz = z - dz * 0.05;
+        if (!A.walkable(x, z, nx, nz, y, a.bodyHeight, a)) { clear = false; break; }
+        x = nx; z = nz; y = A.supportAt(x, z, y);
+      }
+      rows.push({ angle, clear, y });
+    }
+    // Cabinet collision remains real: a clear play spot cannot walk straight through its cabinet.
+    const c = BL.arcadeModels.CABINETS[1], p = c.play;
+    const cabinet = A.walkable(p.x, p.z, c.x, c.z, S.high, a.bodyHeight, a);
+    return { rows, cabinet };
+  })()`);
+  record("arcade stage approaches: every side and diagonal can step continuously up both rings while cabinets still block bodies",
+    r.rows.every(x => x.clear && Math.abs(x.y - 0.36) < 0.001) && !r.cabinet, JSON.stringify(r));
+} };
+const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the front-left cabinet, returns the same unarmed Ooga safely, and Rally stays out of order", run: async (b) => {
+  const dir = join(root, "untracked", "cloud-hopper-arcade"); mkdirSync(dir, { recursive: true });
+  const layout = await b.evaluate(`(() => {
+    const B = __ooga, A = BL.arcadeModels, actor = B.cavemen.get('portlandhodl'), front = A.CABINETS[0], rally = A.CABINETS.find(c => A.GAMES[c.game]?.id === 'race');
+    const invaders = A.CABINETS.find(c => A.RETRO[c.retro]?.id === 'invaders');
+    const flame = A.lanterns().flames.find(f => f[0] > rally.x && f[0] < invaders.x && f[1] > A.MEZZ.y);
+    B.pilot.goPreset('cabinets'); B.advance(1, 1/60);
+    return { front: A.GAMES[front.game].id, rally: { x: rally.x, y: rally.y, z: rally.z, turn: rally.turn, service: rally.service },
+      invaders: { x: invaders.x, z: invaders.z }, flame: flame?.[0],
+      deck: B.arcade.supportAt(rally.play.x, rally.play.z, A.MEZZ.y),
+      walkable: B.arcade.walkable(rally.play.x, rally.play.z, rally.play.x, rally.play.z + 0.4, A.MEZZ.y, actor.bodyHeight, actor),
+      label: B.arcade.stations.find(st => st.kind === 'cabinet' && st.game === rally.game).label };
+  })()`);
+  await b.screenshot(join(dir, 'arcade-front.png'));
+  await b.evaluate(`__ooga.pilot.goPreset('race'); __ooga.advance(1,1/60)`);
+  await b.screenshot(join(dir, 'rally-repair-close.png'));
+  const blocked = await b.evaluate(`(() => { const B = __ooga; B.arcade.play(0); return B.scene === 'arcade' && !B.transitioning; })()`);
+  await b.evaluate(`(() => { const B = __ooga, a = B.cavemen.get('portlandhodl'), s = BL.arcadeModels.CABINETS[0].play;
+    if (B.crew.player !== a) B.pilot.possess(a);
+    // Prior steps may leave combat focus or a mezzanine view; enter from the cabinet's stage.
+    if (a.weapon.aiming) B.pilot.modeAction('mode-toggle');
+    B.pilot.freeCursor();
+    B.pilot.navigate({ position: { x: s.x, y: BL.arcadeModels.STAGE.high, z: s.z }, yaw: 0, pitch: 0.2, dist: 5 });
+    B.advance(0.2,1/60); })()`);
+  await b.key(' ');
+  const entered = await untilPage(b, `B.scene === 'hub' && !B.transitioning && BL.scenes.hub.debug.cloudHopper.phase === 'intro'`, 30000);
+  if (!entered) {
+    const state = await b.evaluate(`({ scene: __ooga.scene, transitioning: __ooga.transitioning, phase: BL.scenes.hub.debug?.cloudHopper?.phase, who: __ooga.pilot.player?.traits.name })`);
+    record('arcade play: Cloud Hopper launches unarmed, rises, preserves preview gear, returns safely twice and blocks Rally', false, JSON.stringify({ entered, state, layout })); return;
+  }
+  const before = await b.evaluate(`(() => { const B = __ooga, H = BL.scenes.hub.debug.cloudHopper, p = B.pilot.player;
+    const weapons = new Set([p.parts.club.geometry, p.parts.gun.geometry, ...p.parts.gun.children.map(n => n.geometry)]);
+    let armedPreview = false; const create = BL.iconRenderer.createRenderer;
+    BL.iconRenderer.createRenderer = (...args) => { const renderer = create(...args), render = renderer.render;
+      renderer.render = (root, camera) => { BL.scene.traverseVisible(root, node => { if (node.geometry && weapons.has(node.geometry)) armedPreview = true; }); return render(root,camera); }; return renderer; };
+    const canvas = document.createElement('canvas'), club = p.parts.club.visible, gun = p.parts.gun.visible;
+    p.parts.club.visible = p.parts.gun.visible = true;
+    BL.hud.renderBodyIcon(canvas,p,96,128,false); BL.iconRenderer.createRenderer = create;
+    const previewSafe = !armedPreview && p.parts.club.visible && p.parts.gun.visible;
+    p.parts.club.visible = club; p.parts.gun.visible = gun;
+    document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click();
+    return { who: p.traits.name, phase: H.phase, unarmed: !p.parts.club.visible && !p.parts.gun.visible,
+      previewSafe, y: H.platform.position.y, dockGone: !B.props.some(prop => prop.prop === 'dock') };
+  })()`);
+  await b.evaluate(`__ooga.advance(2,1/60)`);
+  const rising = await b.evaluate(`(() => { const H = BL.scenes.hub.debug.cloudHopper, p = __ooga.pilot.player;
+    return { phase: H.phase, y: H.platform.position.y, unarmed: !p.parts.club.visible && !p.parts.gun.visible }; })()`);
+  await b.screenshot(join(dir, 'ascent.png'));
+  await b.key('Escape');
+  const returned = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
+  const back = await b.evaluate(`(() => { const B=__ooga,p=B.pilot.player,s=BL.arcadeModels.CABINETS[0].play;
+    return { who:p?.traits.name, off:p?Math.hypot(p.root.position.x-s.x,p.root.position.z-s.z):999,
+      unarmed:!!p && !p.weapon.equipped && !p.weapon.primaryEquipped && !p.parts.club.visible && !p.parts.gun.visible,
+      parked:!!p && !p.weapon.primaryOwned && !p.weapon.secondaryOwned }; })()`);
+  // A second visit proves the kept/rebuilt hub can launch again; cancel from level select too.
+  await b.key(' '); const again = await untilPage(b, `B.scene === 'hub' && !B.transitioning && BL.scenes.hub.debug.cloudHopper.phase === 'intro'`, 30000);
+  await b.key('Escape'); const cancelled = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
+  await b.evaluate(`__ooga.go('race')`); const routed = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
+  const state = { layout, blocked, entered, before, rising, returned, back, again, cancelled, routed };
+  writeFileSync(join(dir,'journey.json'),JSON.stringify(state,null,2));
+  record('arcade play: Cloud Hopper launches unarmed, rises, preserves preview gear, returns safely twice and blocks Rally',
+    layout.front === 'cloud-hopper' && layout.rally.x < layout.flame && layout.flame < layout.invaders.x && layout.rally.z === layout.invaders.z
+    && layout.rally.y === 3.2 && layout.rally.turn === 0 && layout.rally.service
+    && layout.deck === 3.2 && layout.walkable && layout.label.includes('out of order') && blocked && entered && before.who === 'portlandhodl'
+    && before.phase === 'lifting' && before.unarmed && before.previewSafe && before.dockGone
+    && rising.phase === 'lifting' && rising.y > before.y && rising.unarmed && returned && back.who === 'portlandhodl'
+    && back.off < 0.5 && back.unarmed && back.parked && again && cancelled && routed, JSON.stringify(state));
+
 } };
 const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival machine opens its game, and leaving the game brings the same Ooga back to that machine", run: async (b) => {
   await b.evaluate(`(() => { const B = window.__ooga, st = B.arcade.stations.find((s) => s.kind === "machine" && s.game.kind === "skee"), p = B.pilot.player.root.position; p.x = st.play.x; p.z = st.play.z; B.advance(0.2, 1 / 60); })()`);
@@ -15143,6 +15451,114 @@ const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival 
 } };
 // A carnival game from its title card to its results: a press every `step` seconds (the hoop shot presses only
 // outside the green, so the first round is missed and ends on time), then the saved best and the tickets it paid.
+const hockeyHallSample = { name: "hockey hall sample", why: "rule: live table snapshots and two human avatars render in the hall within the existing bounded scene lifecycle", run: async b => {
+  const result=await b.evaluate(`(async()=>{
+    const B=BL,W=B.hockeyWire,A=B.scenes.arcade.debug.arcade,g=A.carnival.find(g=>g.kind==="hockey"),rows=[];
+    __ooga.pilot.navigate({position:{x:14,y:0,z:-2.2},yaw:-.6,pitch:.35,dist:4});
+    const collect=label=>new Promise(resolve=>{const values=[];let last=0,warm=20;const frame=t=>{if(last&&warm--<=0)values.push(t-last);last=t;if(values.length<120)requestAnimationFrame(frame);else{values.sort((a,b)=>a-b);rows.push({label,medianMs:values[60],p95Ms:values[114],maxMs:values[119],renderer:__ooga.renderer.kind,size:__ooga.renderer.size});resolve();}};requestAnimationFrame(frame);});
+    await collect("idle hall");
+    const host=B.arcadeGames.airHockey({node:B.scene.createNode(),aim:{x:0},best:0,onEnd:()=>{},burst:()=>{}});host.shared(true);host.multiplayer(true);host.start();
+    const names=B.contributors.activeRoster.map(r=>r.name).filter(n=>n!==B.net.state.body).slice(0,2);
+    for(let side=0;side<2;side++){const p=W.seat(0,side,0,{});B.net.remotes.set(901+side,{id:901+side,login:names[side],display:names[side],body:names[side],zone:W.ZONE,poseZone:W.ZONE,x:p.x,y:0,z:p.z,yaw:p.yaw,hp:100,ko:false,voice:false,muted:false,jet:0,weapon:0});}
+    let running=true,last=performance.now(),sent=last,frames=0,bytes=0;
+    const stream=t=>{if(!running)return;host.update(Math.min(.05,(t-last)/1000));last=t;if(t-sent>=100){sent=t;const a=host.capture();g.receive(a);frames++;bytes+=JSON.stringify(a).length;}requestAnimationFrame(stream);};requestAnimationFrame(stream);
+    await collect("one live table and two avatars");running=false;g.stop();host.stop();B.net.remotes.delete(901);B.net.remotes.delete(902);
+    return {rows,frames,bytes};
+  })()`);
+  record("hockey hall sample: snapshots reached the actual hall nodes while rendered frames and avatars remained bounded",result.frames>0&&result.rows.length===2&&result.rows.every(r=>Number.isFinite(r.p95Ms)),JSON.stringify(result));
+  console.log("HOCKEY_RENDER "+JSON.stringify(result));
+} };
+const hockeySharedVisit = { name: "hockey shared visit", why: "contract: lobby, opposite camera, keyboard input, ending and hall return preserve the claimed Ooga, audio preferences and subscriptions", run: async b => {
+  await b.evaluate(`(() => {
+    const N=BL.net, V=window.__hockeyVisit={listeners:new Set(),sent:[],releases:0,peerClears:0,side:1};
+    V.send=N.sendHockey;V.subscribe=N.subscribeHockey;V.peers=BL.voice.setPeers;
+    V.me=N.state.me;V.room=N.state.room;V.id=N.state.selfId;V.feature=N.state.hockey;
+    N.state.me={id:2,login:"portlandhodl",display:"portlandhodl"};N.state.selfId=2;N.state.hockey=true;N.state.room="live";
+    N.setBody("portlandhodl");V.off=N.subscribeRoster(()=>{if(!N.state.body)V.releases++;});
+    BL.voice.setPeers=(...args)=>{if(!args[0].length)V.peerClears++;return V.peers(...args);};
+    V.emit=m=>{for(const fn of V.listeners)fn(m);};
+    N.subscribeHockey=fn=>{V.listeners.add(fn);return()=>V.listeners.delete(fn);};
+    N.sendHockey=m=>{V.sent.push(m);if(m.k==="join")queueMicrotask(()=>V.emit({k:"table",i:0,s:"0123456789abcdef",ids:[1,2],ready:[false,false],phase:"lobby",q:-1}));if(m.k==="ready")queueMicrotask(()=>V.emit({k:"table",i:0,s:"0123456789abcdef",ids:[1,2],ready:[true,true],phase:"play",q:-1}));return true;};
+    V.muted=BL.sound.muted;BL.sound.setMuted(true);V.voiceMuted=BL.voice.stats.muted;V.radius=BL.voice.stats.radius;V.level=BL.voice.stats.receiveLevel;BL.voice.setMuted(true);BL.voice.setRadius(10);BL.voice.setReceiveLevel(.35);V.localMute=BL.voice.mutedLocally("hockey-fixture");BL.voice.muteLocal("hockey-fixture",true);
+    __ooga.go("hockey",0);
+  })()`);
+  await untilPage(b, 'B.scene === "hockey" && !B.transitioning && B.carnival?.side === 1', 20000);
+  const lobby=await b.evaluate(`({phase:__ooga.carnival.phase,shown:!document.getElementById("hockey-intro").hidden,text:document.querySelector("#hockey-intro .game-intro-kicker").textContent,body:BL.net.state.body,zone:BL.net.state.zone})`);
+  await b.key("Enter");
+  await untilPage(b, 'B.carnival?.phase === "count" || B.carnival?.phase === "play"', 5000);
+  await b.evaluate(`__ooga.advance(3.5,1/60)`);
+  await b.evaluate(`(() => {const canvas=document.querySelector("canvas"),rect=canvas.getBoundingClientRect(),p=__ooga.project(16.0,.825,-5.4,{});canvas.dispatchEvent(new PointerEvent("pointermove",{clientX:rect.left+p.x,clientY:rect.top+p.y,pointerType:"mouse",isPrimary:true,bubbles:true}));__ooga.advance(.2,1/60);})()`);
+  const play=await b.evaluate(`(() => { const V=__hockeyVisit,N=BL.net,C=BL.scenes.hockey.camera;const nodes=[];const walk=n=>{if(n.geometry===BL.arcadeModels.hockeyPieces().mallet)nodes.push(n);for(const child of n.children)walk(child);};walk(BL.scenes.hockey.root);const pixel=()=>{BL.scene.updateWorld(BL.scenes.hockey.root);const m=nodes[1].world;return __ooga.project(m[12],m[13],m[14],{}).x;};const before=pixel();const sim=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:{x:0},onEnd(){},burst(){}});sim.shared(true);sim.multiplayer(true);sim.start();const move=V.sent.filter(m=>m.k==="input").at(-1);sim.peerInput(move.x/1000,move.y/1000);sim.update(.1);const a=sim.capture();V.emit({k:"frame",i:0,s:"0123456789abcdef",q:1,a});__ooga.advance(.1,1/60);return {rightPixels:pixel()-before,phase:__ooga.carnival.phase,side:__ooga.carnival.side,overhead:C.position.x===C.target.x&&C.position.z===C.target.z&&C.position.y>C.target.y,upZ:C.up.z,controlsHidden:document.getElementById("carnival-act").hidden&&document.getElementById("carnival-meter").hidden,bestHidden:document.getElementById("carnival-best-box").hidden,inputs:V.sent.filter(m=>m.k==="input").map(m=>m.x),body:N.state.body,zone:N.state.zone,muted:BL.sound.muted,voice:BL.voice.stats.muted,radius:BL.voice.stats.radius,level:BL.voice.stats.receiveLevel,releases:V.releases,peerClears:V.peerClears};})()`);
+  await b.key("Escape");
+  await b.evaluate(`(() => {const a=[0,660,0,0,0,200,0,2000,1,7,-1,0,-1000,-1000,1,7,0,0];__hockeyVisit.emit({k:"frame",i:0,s:"0123456789abcdef",q:2,a});__ooga.advance(1.5,1/60);})()`);
+  const ending=await b.evaluate(`({phase:__ooga.carnival.phase,muted:BL.sound.muted,body:BL.net.state.body,zone:BL.net.state.zone})`);
+  const departed=await b.evaluate(`(() => {__hockeyVisit.emit({k:"table",i:0,s:"0123456789abcdef",phase:"closed"});return {phase:__ooga.carnival.phase,results:document.getElementById("carnival-results").hidden,pause:document.getElementById("carnival-pause").hidden};})()`);
+  await b.evaluate(`__ooga.go("arcade",0)`);await untilPage(b,'B.scene === "arcade" && !B.transitioning',20000);
+  await b.evaluate(`__ooga.go("hockey",0)`);await untilPage(b,'B.scene === "hockey" && !B.transitioning && B.carnival?.side === 1',20000);
+  await b.key("Enter");await untilPage(b,'B.carnival?.phase === "count"',5000);
+  const earlyEnd=await b.evaluate(`(() => {const a=[0,660,0,0,0,200,0,2000,0,7,-1,0,-1000,-1000,0,7,0,0];__hockeyVisit.emit({k:"frame",i:0,s:"0123456789abcdef",q:2,a});__ooga.advance(1.5,1/60);return __ooga.carnival.phase;})()`);
+  await b.evaluate(`__ooga.go("arcade",0)`);await untilPage(b,'B.scene === "arcade" && !B.transitioning',20000);
+  const back=await b.evaluate(`(() => {const V=__hockeyVisit,N=BL.net;const r={body:N.state.body,zone:N.state.zone,releases:V.releases,peerClears:V.peerClears,listeners:V.listeners.size,leave:V.sent.filter(m=>m.k==="leave").length,voice:BL.voice.stats.muted,radius:BL.voice.stats.radius,level:BL.voice.stats.receiveLevel,localMute:BL.voice.mutedLocally("hockey-fixture"),muted:BL.sound.muted};V.off();N.sendHockey=V.send;N.subscribeHockey=V.subscribe;BL.voice.setPeers=V.peers;BL.sound.setMuted(V.muted);BL.voice.setMuted(V.voiceMuted);BL.voice.setRadius(V.radius);BL.voice.setReceiveLevel(V.level);BL.voice.muteLocal("hockey-fixture",V.localMute);N.state.me=V.me;N.state.room=V.room;N.state.selfId=V.id;N.state.hockey=V.feature;return r;})()`);
+  record("hockey shared visit: the panel is a two-player lobby, overhead far-side camera and mouse send two-axis input without smash or meter",lobby.shown&&lobby.phase==="intro"&&lobby.text.includes("Both")&&play.side===1&&play.overhead&&play.upZ===1&&play.controlsHidden&&play.bestHidden&&play.inputs.some(x=>x>0)&&play.rightPixels>0,JSON.stringify({lobby,play}));
+  record("hockey shared visit: ending from the menu reaches results, the body and Arcade voice never drop, mute/radius/volume persist, server close preserves completed results and releases subscriptions",ending.phase==="results"&&back.body==="portlandhodl"&&back.zone==="arcade.hall"&&!back.releases&&!back.peerClears&&back.leave===1&&earlyEnd==="results"&&departed.phase==="results"&&!departed.results&&departed.pause&&back.listeners===1&&play.muted&&ending.muted&&back.muted&&play.voice&&back.voice&&back.localMute&&play.radius===10&&back.radius===10&&play.level===.35&&back.level===.35,JSON.stringify({play,ending,departed,earlyEnd,back}));
+} };
+const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics and shared session keep bounded frames, two human controls, interpolation, physical scale and cleanup", run: async b => {
+  const result = await b.evaluate(`(() => {
+    const B=BL, W=B.hockeyWire, node=B.scene.createNode(), aim={x:0,depth:.13/.96};
+    const game=B.arcadeGames.airHockey({node,aim,best:0,onEnd:()=>{},burst:()=>{}});
+    game.shared(true); game.multiplayer(true); game.start();
+    let invalid=0, frames=0, bytes=0, largest=0, positive=false, negative=false;
+    const began=performance.now();
+    for(let n=0;n<10800 && game.playing;n++) {
+      aim.x=Math.sin(n*.03); aim.depth=(Math.cos(n*.025)+1)/2; game.peerInput(Math.cos(n*.04),(Math.sin(n*.02)+1)/2); if(n%21===0)game.act(); game.update(1/60);
+      const a=game.capture(); if(!W.validFrame(a))invalid++;
+      positive ||= a[6]>200; negative ||= a[6]<-200;
+      if(n%6===0){const size=new TextEncoder().encode(JSON.stringify({t:"hockey",k:"frame",i:0,s:"0123456789abcdef",q:frames++,a})).length;bytes+=size;largest=Math.max(largest,size);}
+    }
+    const physicsMs=performance.now()-began;
+    const strike=speed=>{
+      const aim={x:0,depth:(.52-.07)/.96}, g=B.arcadeGames.airHockey({node:B.scene.createNode(),aim,best:0,onEnd(){},burst(){}});
+      g.shared(true);g.multiplayer(true);g.start();
+      for(let n=0;n<456;n++)g.update(1/240);
+      const before=g.capture()[17];let velocity=0;
+      for(let n=1;n<=180;n++){
+        aim.depth=Math.min(1,(.52+speed*n/240-.07)/.96);g.update(1/240);
+        const f=g.capture();if(f[17]!==before){velocity=Math.hypot(f[2],f[3]);break;}
+      }
+      g.stop();return velocity;
+    };
+    const slowStrike=strike(1.2),fastStrike=strike(3);
+
+    const cues=[], remoteNode=B.scene.createNode(), remote=B.arcadeGames.airHockey({node:remoteNode,aim:{x:0},best:0,onEnd:()=>{},burst:()=>{},cue:n=>cues.push(n)});
+    const a=[0,660,0,600,0,200,0,2000,0,0,-1,0,-1000,-1000,0,0,1,0];remote.receive(a);remote.follow(.1);
+    a[0]=400;remote.receive(a);remote.follow(.05);const halfway=remote.capture()[0];remote.follow(.05);const final=remote.capture()[0];
+    const quietLateJoin=cues.length===0; a[17]=1;a[9]=a[15]=1;a[13]=800;remote.receive(a,1);remote.follow(.1);remote.remoteAct();
+    const feedback=quietLateJoin&&cues.includes("clack")&&cues.includes("big")&&cues.includes("throw")&&remoteNode.children.some(n=>n.geometry===B.arcadeModels.clawMark()&&n.visible);
+    const cueCount=cues.length;remote.receive(a,1);const noReplay=cues.length===cueCount;
+    const geometry=[];const body=B.arcadeModels.airHockey().body;
+    const visit=n=>{if(n.geometry===body){const m=n.world;geometry.push({x:m[12],y:m[13],z:m[14],sx:Math.hypot(m[0],m[1],m[2]),sz:Math.hypot(m[8],m[9],m[10])});}for(const c of n.children)visit(c);};
+    B.scene.updateWorld(B.scenes.hockey.root);visit(B.scenes.hockey.root);
+    const mapped=geometry.every((g,i)=>Math.abs(g.x-W.TABLES[i][0])<.001&&Math.abs(g.z-W.TABLES[i][1])<.001&&Math.abs(g.sx-W.SCALE)<.001&&Math.abs(g.sz-W.SCALE)<.001);
+    const seats=[0,1].map(side=>W.seat(0,side,0,{}));
+    const net=B.net, original={send:net.sendHockey,subscribe:net.subscribeHockey,pose:net.sendPose,id:net.state.selfId,room:net.state.room};
+    const listeners=new Set(), sent=[], poses=[];net.subscribeHockey=fn=>{listeners.add(fn);return()=>listeners.delete(fn);};net.sendHockey=m=>{sent.push(m);return true;};net.sendPose=(...p)=>poses.push(p);net.state.selfId=2;net.state.room="live";
+    let starts=0,ends=0,closed=0,side=-1;const sim={shared(){},multiplayer(){},receive(){},peerInput(){},act(){},capture:()=>a};
+    const session=B.hockeySession.create({slot:0,play:sim,aim:{x:1,depth:.5},lobby(){},start(){starts++;},end(){ends++;},closed(){closed++;},sideChanged:s=>side=s});
+    session.tick(.1,false);const emit=m=>{for(const fn of listeners)fn(m);};
+    emit({k:"table",i:0,s:"0123456789abcdef",ids:[1,2],ready:[false,false],phase:"lobby",q:-1});session.ready();
+    emit({k:"table",i:0,s:"0123456789abcdef",ids:[1,2],ready:[true,true],phase:"play",q:-1});session.act();session.tick(.1,true);
+    emit({k:"frame",i:0,s:"0123456789abcdef",q:1,a});const done=a.slice();done[9]=done[15]=7;done[16]=0;emit({k:"frame",i:0,s:"0123456789abcdef",q:2,a:done});emit({k:"frame",i:0,s:"0123456789abcdef",q:1,a:done});session.dispose();
+    const lifecycle=starts===1&&ends===1&&side===1&&listeners.size===0&&sent.some(m=>m.k==="input"&&m.x===1000&&m.y===500)&&sent.at(-1).k==="leave";
+    net.sendHockey=original.send;net.subscribeHockey=original.subscribe;net.sendPose=original.pose;net.state.selfId=original.id;net.state.room=original.room;
+    game.stop();remote.stop();
+    return {slowStrike,fastStrike,feedback,noReplay,invalid,frames,bytes,largest,physicsMs,positive,negative,halfway,final,mapped,geometry,seats,lifecycle,closed,watchers:__ooga.carnival.watchers,zone:net.state.zone};
+  })()`);
+  record("hockey pilot: real two-human physics produces bounded compact frames and both directions of the far mallet", result.invalid===0&&result.frames>10&&result.largest<=256&&result.positive&&result.negative,JSON.stringify(result));
+  record("hockey pilot: faster pointer strokes transfer more speed to the puck without a smash",result.slowStrike>0&&result.fastStrike>result.slowStrike&&result.fastStrike<=7501,JSON.stringify({slow:result.slowStrike,fast:result.fastStrike}));
+  record("hockey pilot: spectators interpolate two frames without extrapolation; sessions deliver one start and finish and release subscriptions",result.halfway===200&&result.final===400&&result.lifecycle&&result.feedback&&result.noReplay,JSON.stringify(result));
+  record("hockey pilot: all three rendered table transforms match the enlarged hall contract, real seats straddle them, no roster audience and Arcade audio zone remains",result.mapped&&result.geometry.length===3&&result.seats[0].z>-4.75&&result.seats[1].z< -4.75&&result.watchers===0&&result.zone==="arcade.hall",JSON.stringify(result));
+  console.log("HOCKEY_MEASURE "+JSON.stringify(result));
+} };
 const carnivalPlay = (kind, step) => ({ name: `${kind} playthrough`, why: "playthrough: the carnival game runs from its title card through its rounds to results, and saves its best and the tickets it paid", run: async (b) => {
   const before = await b.evaluate("window.__ooga.game.state.arcade.tickets");
   await b.key("Enter");
@@ -15155,7 +15571,7 @@ const carnivalPlay = (kind, step) => ({ name: `${kind} playthrough`, why: "playt
   await b.evaluate("window.__ooga.advance(1.5, 1 / 60)");
   const r = await b.evaluate(`(() => { const B = window.__ooga, a = B.game.state.arcade; return { phase: B.carnival.phase, score: B.carnival.status.score, best: a["${kind}"], tickets: a.tickets, paid: B.carnival.tickets(B.carnival.status.score), shown: !document.getElementById("carnival-results").hidden }; })()`);
   // The run pays once: an end reported twice (a later substep of the same frame) once paid its tickets again.
-  record(`${kind} playthrough: the game reaches its results card, and its best and tickets are saved, paid once`, r.phase === "results" && r.shown && r.best === r.score && r.tickets === before + r.paid, JSON.stringify({ ...r, before }));
+  record(`${kind} playthrough: the game reaches its results card, and its applicable best and tickets are saved, paid once`, r.phase === "results" && r.shown && (kind === "hockey" ? r.best === 0 && r.score <= 7 : r.best === r.score) && r.tickets === before + r.paid, JSON.stringify({ ...r, before }));
 } });
 const factoryCanvas = { name: "factory canvas2d", why: "contract: the Canvas 2D fallback boots and draws the factory", run: async (b) => {
   const r = await b.evaluate(`(() => { const B = window.__ooga, c = document.getElementById("scene"), t = document.createElement("canvas"); t.width = t.height = 8; const x = t.getContext("2d", { willReadFrequently: true }); B.demoTip(4000); let flying = 0; for (let s = 0; s < 6 && !flying; s += 0.1) { B.advance(0.1, 0.1); const k = B.stats().cooker; flying = k.cubes + k.bananas; } x.drawImage(c, 0, 0, 8, 8); const d = x.getImageData(0, 0, 8, 8).data, seen = new Set(); for (let i = 0; i < d.length; i += 4) seen.add(d[i] + "," + d[i + 1] + "," + d[i + 2]); return { kind: B.renderer.kind, scene: B.scene, colours: seen.size, flying }; })()`);
@@ -20008,7 +20424,7 @@ scene("hub", { label: "mirror clanker", query: "solo=1&character=portlandhodl&st
 } }] });
 scene("hub", { perf: true, query: "bananas=1000", opts: { w: 1920, h: 1080, perf: true, motion: true }, steps: [{ name: "wall movement performance", why: "regression: frame rate fell moving behind cave walls during a donation", run: wallPerformance }] });
 scene("lab", { steps: [donation("lab"), labWalking, labKeys, trip("lab")] });
-scene("race", { label:"optional rig link fallback",url:hubPage(src),steps:[{name:"race optional rig link fallback",why:"regression: an optional uniform-limited rig must preserve WebGL and every original CPU driver",run:async b=>{
+scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub"),steps:[{name:"race optional rig link fallback",why:"regression: an optional uniform-limited rig must preserve WebGL and every original CPU driver",run:async b=>{
   await b.evaluate(`(()=>{
     const gl=document.getElementById("scene").getContext("webgl2"),create=gl.createProgram,parameter=gl.getProgramParameter,pending=new Set();
     window.__rigFault={gl,create,parameter,pending};
@@ -20137,12 +20553,18 @@ scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [b
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
-scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadePlay, trip("arcade")] });
+scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
+scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
+scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("skee", { steps: [carnivalPlay("skee", 0.5), trip("skee")] });
 scene("hoops", { steps: [carnivalPlay("hoops", 0.2), trip("hoops")] });
 scene("shy", { steps: [carnivalPlay("shy", 0.7), trip("shy")] });
 scene("claw", { steps: [carnivalPlay("claw", 0.6), trip("claw")] });
-scene("hockey", { steps: [carnivalPlay("hockey", 0.5), trip("hockey")] });
+scene("hockey", { steps: [hockeyPilot, carnivalPlay("hockey", 0.5), trip("hockey")] });
+scene("arcade", { query: "character=portlandhodl", steps: [hockeySharedVisit] });
+scene("arcade", {query:"character=portlandhodl",opts:{w:1440,h:900,perf:true},steps:[hockeyHallSample]});
+scene("arcade", {query:"character=portlandhodl",opts:{w:390,h:844,mobile:true,perf:true},steps:[hockeyHallSample]});
+scene("arcade", { query: "character=portlandhodl", opts: {w:390,h:844,mobile:true}, steps: [hockeySharedVisit] });
 scene("billiards", { steps: [carnivalPlay("billiards", 0.8), trip("billiards")] });
 scene("darts", { steps: [carnivalPlay("darts", 0.5), trip("darts")] });
 scene("pinball", { steps: [carnivalPlay("pinball", 0.5), trip("pinball")] });
@@ -20371,7 +20793,7 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     return out; })()`);
   record("join alerts: a join after arrival is named on screen as plain text and counted on the Players tab, though its panel shows; those already there, a repeat and a quick rejoin are not, and close joins share one message",
     arrived.players === "" && arrived.chat === "" && arrived.shown && !arrived.toast.includes("online") && joins.one.toast === "<b>Bea</b> is online" && joins.one.toastTags === 0
-      && joins.one.players === "1" && joins.one.label === "Players online, 1 new" && joins.again.players === "1" && joins.two.players === "2" && joins.two.toast === "<b>Bea</b> and Cy are online",
+      && joins.one.players === "1" && joins.one.label === "Online Oogas, 1 new" && joins.again.players === "1" && joins.two.players === "2" && joins.two.toast === "<b>Bea</b> and Cy are online",
     JSON.stringify({ arrived, joins }));
   const lines = await b.evaluate(`(() => { const W = __joins, out = {};
     W.line(11, "anna"); W.line(12, "Tester"); out.live = W.read();
@@ -20487,7 +20909,18 @@ scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence,
 scene("hub", { label: "join alerts", query: "pos=0", steps: [hubJoinAlerts] });
 scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });
 scene("hub", { label: "canvas2d", query: "canvas2d=1", steps: [hubMatrix, canvasTour] });
-scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required: ["#joy-move", "#joy-look", "#sheet-toggle", "#sheet-bananas"], sheet: true })] });
+scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required: ["#joy-move", "#joy-look", "#sheet-toggle", "#sheet-bananas"], sheet: true }), { name: "hub home screen", why: "rule: an iPhone home-screen web app is named OogaBoogaLand and carries its own icon", run: async (b) => {
+  const meta = await b.evaluate(`(() => {
+    const title = document.querySelector('meta[name="apple-mobile-web-app-title"]')?.content;
+    const capable = document.querySelector('meta[name="apple-mobile-web-app-capable"]')?.content;
+    const icon = document.querySelector('link[rel="apple-touch-icon"]')?.getAttribute("href");
+    const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]').content;
+    return { title, capable, icon, manifestLink: !!document.querySelector('link[rel="manifest"]'), manifestSrc: policy.includes("manifest-src 'self'") && !policy.includes("unsafe-") };
+  })()`);
+  const manifest = JSON.parse(readFileSync(join(root, "src/manifest.webmanifest"), "utf8"));
+  const staged = readFileSync(join(root, "scripts/site.mjs"), "utf8").includes('rel="manifest" href="manifest.webmanifest"');
+  record("hub home screen: the installed name is OogaBoogaLand, with a same-origin icon; the manifest link is added only for the hosted site", meta.title === "OogaBoogaLand" && meta.capable === "yes" && meta.icon === "apple-touch-icon.png" && !meta.manifestLink && meta.manifestSrc && manifest.short_name === "OogaBoogaLand" && manifest.display === "standalone" && staged, JSON.stringify({ meta, short: manifest.short_name, staged }));
+} }] });
 scene("lab", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("lab", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 scene("race", { query: "pos=0&rain=0&draw=0", opts: PHONE_SIZE, steps: [phone("race", { card: '[data-intro="race"]', play: "window.__ooga.race.startRace()", required: ["#joy-move", "#act", "#item-btn", "#race-garage-btn", ".leave"] })] });
 scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", ".leave"] })] });
@@ -20500,7 +20933,59 @@ scene("timechain", { url: roomPage(3), opts: PHONE_SIZE, steps: [phone("timechai
 // The keypad's controls are its physical keys: from the first person a phone shows, each is on screen with nothing of
 // the page's over it (the hint over the view takes no pointer, so it is checked as text, not as a control).
 const sphereKeypadPhone = phone("hub", { play: `(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.7", "13.8")} T.gate.engage(); B.advance(0.6, 1 / 60); })()`, required: [] });
-scene("hub", { label: "sphere keypad", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: PHONE_SIZE, steps: [{ ...sphereKeypadPhone, name: "sphere keypad phone", run: async (b) => {
+// A tap on the act button: the press acts, and its own click, however late or however the browser reports it, never acts again.
+const hubHammockTap = { name: "hub hammock tap", why: "rule: on a phone one tap on REST lies back and stays, one on STAND UP! gets up, and the button's label is never selected", run: async (b) => {
+  const tap = async (p) => {
+    const down = b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [p], timestamp: Date.now() / 1000 });
+    await b.sleep(60);
+    await Promise.all([down, b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [], timestamp: Date.now() / 1000 })]);
+  };
+  const state = `(() => { const B = __ooga, a = B.crew.player, s = a.camp.seat; return { seat: !!s, lying: !!s?.lying, exit: !!s?.exit, act: document.getElementById("act").textContent, heard: __actHeard }; })()`;
+  const at = await b.evaluate(`(() => {
+    const B = __ooga, H = BL.scenes.hub.debug.hammock, s = H.seats[0];
+    B.pilot.possess(B.cavemen.get("portlandhodl"));
+    B.pilot.navigate({ position: { x: s.walkAt.x, y: s.floor, z: s.walkAt.z }, yaw: s.ry, pitch: 0.5, dist: 6 }); B.advance(0.5, 1 / 60);
+    const e = document.getElementById("act"), r = e.getBoundingClientRect();
+    window.__actHeard = 0; e.addEventListener("click", () => __actHeard++);
+    return { act: e.textContent, x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  })()`);
+  await tap(at);
+  await b.evaluate(`__ooga.advance(1.5, 1 / 60)`);
+  const rest = await b.evaluate(state);
+  record("hub hammock tap: one tap on REST lies back and stays after the finger lifts, its own click reaching nothing on the button",
+    at.act === "REST" && rest.lying && !rest.exit && rest.act === "STAND UP!" && rest.heard === 0, JSON.stringify({ at, rest }));
+  await tap(at);
+  await b.evaluate(`__ooga.advance(2, 1 / 60)`);
+  const up = await b.evaluate(state);
+  // As a phone may send it: the press, a reset of held input (the page losing focus), the lift, then a click with no detail.
+  const late = await b.evaluate(`(() => {
+    const B = __ooga, e = document.getElementById("act"), o = { bubbles: true, pointerId: 41, pointerType: "touch", isPrimary: true };
+    e.dispatchEvent(new PointerEvent("pointerdown", o)); window.dispatchEvent(new Event("blur"));
+    e.dispatchEvent(new PointerEvent("pointerup", o)); e.dispatchEvent(new PointerEvent("pointerleave", o));
+    e.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })); B.advance(1.5, 1 / 60);
+    return ${state};
+  })()`);
+  // A click with no press before it, a keyboard's or an assistive tap, still acts.
+  const keyed = await b.evaluate(`(() => { document.getElementById("act").click(); __ooga.advance(2, 1 / 60); return ${state}; })()`);
+  record("hub hammock tap: one tap on STAND UP! gets up once; a press whose click comes late after a reset acts once; a click with no press still acts",
+    !up.seat && up.act === "REST" && late.lying && !late.exit && late.heard === 0 && !keyed.seat && keyed.heard === 1, JSON.stringify({ up, late, keyed }));
+  // A reset while the finger is still down, then a hold past the click grace before it lifts: the grace runs from the lift.
+  const held = await b.evaluate(`(async () => {
+    const B = __ooga, e = document.getElementById("act"), o = { bubbles: true, pointerId: 42, pointerType: "touch", isPrimary: true };
+    e.dispatchEvent(new PointerEvent("pointerdown", o)); window.dispatchEvent(new Event("blur"));
+    await new Promise((r) => setTimeout(r, 1300));
+    e.dispatchEvent(new PointerEvent("pointerup", o)); e.dispatchEvent(new PointerEvent("pointerleave", o));
+    e.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })); B.advance(1.5, 1 / 60);
+    return ${state};
+  })()`);
+  record("hub hammock tap: a press reset mid-hold and lifted after the click grace still owns its own click",
+    held.lying && !held.exit && held.heard === keyed.heard, JSON.stringify({ keyed, held }));
+  const label = await b.evaluate(`(() => { const e = document.getElementById("act"), s = getSelection(); s.selectAllChildren(e); const text = String(s); s.removeAllRanges();
+    return { text, name: e.textContent, focusable: e.tabIndex >= 0 && !e.disabled }; })()`);
+  record("hub hammock tap: selecting all leaves the act button's label out, which keeps its name and focus",
+    label.text === "" && label.name === held.act && label.focusable, JSON.stringify(label));
+} };
+scene("hub", { label: "sphere keypad", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: PHONE_SIZE, steps: [hubHammockTap, { ...sphereKeypadPhone, name: "sphere keypad phone", run: async (b) => {
   await sphereKeypadPhone.run(b);
   const keys = await b.evaluate(`(() => { const B = __ooga, T = BL.scenes.hub.debug.timechainIsland, out = {};
     return T.site.keys.map((k) => { const w = k.node.world; B.renderer.project(w[12], w[13], w[14], out); const hit = document.elementFromPoint(out.x, out.y);
@@ -23164,9 +23649,9 @@ const sheetRailChecks = async () => {
   const make = tab => ({ tab, rect: {}, open: false, tabs: names.map(name => ({ dataset: { tab: name }, setAttribute() {}, style: { setProperty() {} } })),
     node: { dataset: { dock: "right" } }, body: { setAttribute() {} }, nav: { setAttribute() {} } });
   const main = make("roster"), detached = make("players"), windows = [main, detached];
-  const context = { panels: [], windows, main, folded: false, hidden: false, signedIn: true,
+  const context = { panels: [], windows, main, folded: false, hidden: false, signedIn: true, phone: { matches: false },
     available: name => name !== "players" || context.signedIn, ownerOf: name => windows.find(w => w.tab === name),
-    isOpen: w => !context.folded && w.open, fit() {}, placeFooter() {}, showCounts() {}, notify() {} };
+    isOpen: w => !context.folded && w.open, fit() {}, placeFooter() {}, showCounts() {}, showExpand() {}, notify() {} };
   runInNewContext(refresh + ";this.refresh = refresh;", context);
   const read = () => windows.filter(w => !w.node.hidden).map(w => w.tabs.filter(t => !t.hidden).map(t => t.dataset.tab));
   context.refresh(); const closed = read();
@@ -27079,6 +27564,10 @@ const runTasks = async () => {
 };
 if (!PICKED.length && !PERF) console.log(`Global tier only. Name scenes to test them too: npm test -- ${SCENES.join(" ")} | full`);
 await runTasks();
+if (ARGS.includes("cloud-hopper-arcade")) {
+  await fold(sceneUrl("arcade", "character=portlandhodl&hubcache=keep"), [[arcadePlay.name, arcadePlay.run]]);
+  await dispose();
+}
 if (ARGS.includes("cloud-hopper-record")) { await highscoreClientChecks(); await cloudHopperRecordChecks(); }
 // The shim installs browser globals in this process, so it runs after the browser lanes finish with Chrome.
 if (UNIT || ARGS.includes("cloud-hopper-controller")) await unitChecks();
