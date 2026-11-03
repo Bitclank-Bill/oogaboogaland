@@ -4008,7 +4008,8 @@ const scene = (id, { query = "", steps, perf = false, opts = {}, label = "", url
     const t0 = Date.now();
     const media = httpMedia && !testOrigin ? await mediaSourceServer() : null;
     try {
-      const address = url || sceneUrl(id, query);
+      // Rally is retired from visitor entry, but its existing checks still exercise the preserved game.
+      const address = (url || sceneUrl(id, query)) + (id === "race" ? "&wip=race" : "");
       await fold(media ? `${media.origin}/src/index.html${new URL(address).search}` : address, chosen.map((s) => [s.name, s.run, s.open]), opts);
     } finally { if (media) await media.close(); }
     const took = (Date.now() - t0) / 1000;
@@ -20080,7 +20081,7 @@ scene("hub", { label: "mirror clanker", query: "solo=1&character=portlandhodl&st
 } }] });
 scene("hub", { perf: true, query: "bananas=1000", opts: { w: 1920, h: 1080, perf: true, motion: true }, steps: [{ name: "wall movement performance", why: "regression: frame rate fell moving behind cave walls during a donation", run: wallPerformance }] });
 scene("lab", { steps: [donation("lab"), labWalking, labKeys, trip("lab")] });
-scene("race", { label:"optional rig link fallback",url:hubPage(src),steps:[{name:"race optional rig link fallback",why:"regression: an optional uniform-limited rig must preserve WebGL and every original CPU driver",run:async b=>{
+scene("race", { label:"optional rig link fallback",url:hubPage(src, "scene=hub"),steps:[{name:"race optional rig link fallback",why:"regression: an optional uniform-limited rig must preserve WebGL and every original CPU driver",run:async b=>{
   await b.evaluate(`(()=>{
     const gl=document.getElementById("scene").getContext("webgl2"),create=gl.createProgram,parameter=gl.getProgramParameter,pending=new Set();
     window.__rigFault={gl,create,parameter,pending};
