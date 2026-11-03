@@ -382,6 +382,7 @@
     sim.skill = selection.skill;
     sim.bots = SIM.SKILLS[selection.skill];
     SIM.reset(sim, (Date.now() & 0x7fffffff) || 1);
+    strip.shown = false;
     paintTeams();
     for (const s of splats) s.visible = false;
     phase = "play";
@@ -462,12 +463,11 @@
     if (ms) noticeTimer = window.setTimeout(() => { el.notice.textContent = " "; }, ms);
   };
   const STATE_WORDS = { home: "home", carried: "taken", dropped: "dropped", flying: "in the air" };
-  let stripKey = "";
+  // What the strip last showed (`blockSim.stripChanged`): an unchanged frame returns before building or writing anything.
+  const strip = SIM.stripView();
   const updateStrip = () => {
+    if (!SIM.stripChanged(sim, strip)) return;
     const own = sim.flags[sim.team], theirs = sim.flags[sim.rival], me = sim.actors[0];
-    const key = `${sim.score.blue}${sim.score.red}${own.state}${theirs.state}${me.carrying}${me.holding}${me.splat > 0}${Math.ceil(sim.time)}`;
-    if (key === stripKey) return;
-    stripKey = key;
     el.scoreBlue.textContent = String(sim.score.blue);
     el.scoreRed.textContent = String(sim.score.red);
     el.own.textContent = STATE_WORDS[own.state];

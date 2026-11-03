@@ -2295,7 +2295,25 @@
       tick(sim, CONFIG.STEP, input);
     }
   };
-  BL.blockSim = { LEAF_TOP, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt };
+  // What the scene's play strip shows, kept as plain values in a `view` made once a visit (`stripView`): both scores,
+  // both blocks' states, whether the visitor's Ooga carries, holds or is splatted, the whole seconds of the round's
+  // clock the strip prints, and the whole seconds left on each power-up it lists. `stripChanged` reads them from the
+  // sim and returns true, keeping the new values, only when one differs from the last call, so the scene touches the
+  // strip only then; clearing `view.shown` makes the next call true (a new round, a new visit). Allocates nothing.
+  const stripView = () => ({ shown: false, blue: 0, red: 0, own: "", theirs: "", carrying: false, holding: false, splat: false, second: 0, boots: 0, laser: 0, monkeys: 0, halving: 0, cold: 0 });
+  const left = (s) => s > 0 ? Math.ceil(s) : 0;
+  const stripChanged = (sim, v) => {
+    const me = sim.actors[0], own = sim.flags[sim.team].state, theirs = sim.flags[sim.rival].state;
+    const blue = sim.score.blue, red = sim.score.red, carrying = !!me.carrying, holding = !!me.holding, splatted = me.splat > 0;
+    const second = Math.floor(sim.time), boots = left(me.boots), laser = left(me.laser), monkeys = left(me.monkeys);
+    const halving = left(sim.halving[sim.team]), cold = left(sim.cold[sim.team]);
+    if (v.shown && v.blue === blue && v.red === red && v.own === own && v.theirs === theirs && v.carrying === carrying && v.holding === holding
+      && v.splat === splatted && v.second === second && v.boots === boots && v.laser === laser && v.monkeys === monkeys && v.halving === halving && v.cold === cold) return false;
+    v.shown = true; v.blue = blue; v.red = red; v.own = own; v.theirs = theirs; v.carrying = carrying; v.holding = holding; v.splat = splatted;
+    v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
+    return true;
+  };
+  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

@@ -6284,6 +6284,44 @@ const gameRulesChecks = async () => {
     const round = (seed) => { const r = S.create({ team: "red", seed }); r.actors[0].bot = "auto"; for (let t = 0; t < 900 && !r.over; t += 1 / 30) S.step(r, 1 / 30, still), r.eventCount = 0; return JSON.stringify({ over: r.over, winner: r.winner, score: r.score, time: Math.round(r.time) }); };
     const a = round(3), b = round(3);
     record("block frenzy rounds: a seeded round replays exactly and reaches three captures", a === b && JSON.parse(a).over && Math.max(...Object.values(JSON.parse(a).score)) === S.CONFIG.CAPTURES, JSON.stringify({ a, b }));
+    {
+      // The play strip repaints only when something it shows moved (`stripChanged`, the scene's own test before it
+      // touches the DOM): never on an unchanged frame or inside a clock second, on every input it shows, and afresh for
+      // a new round or visit (`shown` cleared, as `start` does).
+      const sim = S.create({ seed: 5, prep: 0 }), me = sim.actors[0], view = S.stripView(), changed = () => S.stripChanged(sim, view);
+      const first = changed(), quiet = [changed(), changed(), changed()].every((c) => !c);
+      sim.time = 0.4; const subSecond = !changed(); sim.time = 1; const second = changed() && !changed();
+      const misses = [];
+      const each = (name, set, unset) => { set(); const on = changed(), held = !changed(); unset(); const off = changed(), after = !changed(); if (!(on && held && off && after)) misses.push(name); };
+      each("blue score", () => { sim.score.blue = 1; }, () => { sim.score.blue = 0; });
+      each("red score", () => { sim.score.red = 2; }, () => { sim.score.red = 0; });
+      each("own block", () => { sim.flags[sim.team].state = "carried"; }, () => { sim.flags[sim.team].state = "home"; });
+      each("their block", () => { sim.flags[sim.rival].state = "dropped"; }, () => { sim.flags[sim.rival].state = "home"; });
+      each("carrying", () => { me.carrying = sim.rival; }, () => { me.carrying = null; });
+      each("holding", () => { me.holding = true; }, () => { me.holding = false; });
+      each("splatted", () => { me.splat = 1; }, () => { me.splat = 0; });
+      for (const k of ["boots", "laser", "monkeys"]) each(k, () => { me[k] = 2.5; }, () => { me[k] = 0; });
+      for (const k of ["halving", "cold"]) each(k, () => { sim[k][sim.team] = 3; }, () => { sim[k][sim.team] = 0; });
+      me.boots = 2.5; changed(); me.boots = 2.1; const powerSecond = !changed(); me.boots = 1.9; const powerTick = changed(); me.boots = 0; changed();
+      // Their power-ups are not on the visitor's strip.
+      sim.halving[sim.rival] = 4; const rivalPower = !changed(); sim.halving[sim.rival] = 0;
+      // A round played through the sim's own steps: a repaint whenever what shows moved, and none otherwise.
+      const still = { x: 0, z: 0, sprint: 0, jump: 0 };
+      // Each frame a fresh view read from the sim must match the kept one, so a frame that repaints nothing missed nothing.
+      let frames = 0, paints = 0, missed = 0;
+      for (let t = 0; t < 40 && !sim.over; t += 1 / 60) {
+        S.step(sim, 1 / 60, still); frames++;
+        if (changed()) paints++;
+        const probe = S.stripView(); S.stripChanged(sim, probe);
+        if (JSON.stringify(probe) !== JSON.stringify(view)) missed++;
+      }
+      const wasShown = changed() === false;
+      view.shown = false; const fresh = changed() && !changed();
+      S.reset(sim, 9); view.shown = false; const newRound = changed() && view.blue === 0 && view.red === 0 && view.second === 0 && view.own === "home" && view.theirs === "home" && !changed();
+      record("block frenzy strip: an unchanged frame or one inside a clock second repaints nothing, each score, block state, carry, hold, splat and power-up second repaints once, and a new round or visit repaints afresh",
+        first && quiet && subSecond && second && !misses.length && powerSecond && powerTick && rivalPower && frames > 2000 && paints > 0 && paints < frames / 10 && missed === 0 && wasShown && fresh && newRound,
+        JSON.stringify({ first, quiet, subSecond, second, misses, powerSecond, powerTick, rivalPower, frames, paints, missed, wasShown, fresh, newRound }));
+    }
   }
   {
     const run = () => { const sim = M.create({ seed: 42 }); sim.place(R.GPU); return sim; };
