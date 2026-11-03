@@ -25594,6 +25594,37 @@ const genesisCartridgeProof = async () => {
   }
   return { bad };
 };
+// rule (Billy: exhibits run themselves): every terminal exhibit plays a demonstration of at least two steps from its
+// own banner and HELP, none throws, and the terminal answers nearly every step rather than turning it away.
+const genesisAutoplayProof = async () => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-bench", "genesis-autoplay", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, A = BLc.genesisAutoplay, bad = [];
+  let terminals = 0, steps = 0, refused = 0;
+  W.ERAS.forEach((e, n) => {
+    const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true, glow: 1 });
+    const props = [];
+    EX.eras[n].build({ era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({ verts: [], faces: [] }) }), createNode: (o = {}) => Object.assign(node(), o, { children: [] }), addChild: () => {}, place: (x) => x,
+      label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle: () => {}, notify: () => {}, prop: (d) => { props.push(d); return { ...d, era: n }; } });
+    for (const d of props) {
+      let r = null;
+      try { r = d.onUse({}); } catch (err) { r = null; }
+      if (!r || !r.terminal) continue;
+      terminals++;
+      const list = A.script(r.terminal, d.demo, d.id);
+      if (list.length < 2) bad.push(`${d.id} plays ${list.length} step(s)`);
+      for (const c of list) {
+        steps++;
+        try { const lines = r.terminal.run(c).lines || []; if (!lines.length || /^\s*(unknown command|not understood|unrecogni[sz]ed)/i.test(lines.join(" "))) refused++; }
+        catch (err) { bad.push(`${d.id} throws on ${c}: ${err.message}`); }
+      }
+    }
+  });
+  if (terminals < 50) bad.push(`only ${terminals} terminals found`);
+  if (refused > steps * 0.08) bad.push(`${refused} of ${steps} steps turned away`);
+  return { terminals, steps, refused, bad: bad.slice(0, 8) };
+};
 const genesisMuseumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
@@ -26064,6 +26095,8 @@ const unitChecks = async () => {
   record("Genesis white screen and menu (regression, reviews of 20eec91 and d59b831; the menu shows each era once, Era 6's bibliography under Era 6, and 1997's ring and dot are painted apart): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));
   record("Genesis era cartridges (rule, gv/integration-3 4d): the nine era playables are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
+  const genesisAuto = await genesisAutoplayProof();
+  record("Genesis exhibits run themselves (rule): every terminal exhibit plays at least two steps from its own instructions without throwing, and nearly every step is answered", !genesisAuto.bad.length, JSON.stringify(genesisAuto));
   const genesisMuseum = await genesisMuseumProof();
   record("Genesis museum layout: eight galleries open onto one atrium without overlapping it or each other, clockwise in date order; an era's old coordinates turn into the museum and back exactly; every era's exhibits, solids, signs and obstacles (its upgrade cluster included) land inside its own gallery, and Era 2's FUD Patrol floor is a reserved plot there", genesisMuseum.galleries === 8 && genesisMuseum.clockwise && genesisMuseum.roundTrip && genesisMuseum.pieces > 2000 && !genesisMuseum.bad.length, JSON.stringify(genesisMuseum));
   const genesisExhibits = await genesisExhibitsProof();

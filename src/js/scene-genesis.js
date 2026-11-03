@@ -764,7 +764,8 @@
     saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, fov: 0, near: 0, up: null, orthoMix: 0, orthoHeight: 0 }, opens: 0, runs: 0 };
   const PICK_SIZES = { pc: { w: 1.2, h: 1.4, d: 1.3 }, drives: { w: 1.1, h: 1.1, d: 1.1 }, book: { w: 0.7, h: 1.2, d: 0.8 } };
   const frameIn = { c: { x: 0, y: 0, z: 0 }, size: 1, toward: { x: 0, z: 1 }, ndc: { x: 0, y: 0 }, frac: 0.6, fov: 62, aspect: 1.6, fill: 0.62, pitch: 0.2 };
-  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null, docents = null;
+  let catalogue = null, workbench = null, timeline = null, cart = null, atrium = null, walkways = null, docents = null, autoplay = null;
+  const AUTO_STATE = { uses: 0, last: "" };
   const RIDE = { x: 0, z: 0, kind: "", era: -1 };
   // The exhibits the catalogue lists: every era file's props, Fingerprints and Time's two citations (its lectern) and
   // the scene's own PC, drives and book. The overview boards and the legend itself are not exhibits.
@@ -801,6 +802,9 @@
     open(id, from = "walk") {
       const entry = catalogue && catalogue.get(id), prop = entry && propOf(id);
       if (!entry || !prop) return false;
+      // The workbench takes over from the exhibit running itself; walking off it starts that again.
+      if (autoplay) autoplay.stop();
+      walk.prop = null;
       audio.wake();
       if (timeline && timeline.isOpen) timeline.close();
       // A cabinet or board whose use returns { cartridge } opens the console instead (genesis-cartridge.js); browsing
@@ -1022,6 +1026,7 @@
       BL.net.setHealth(driven.health.value, driven.health.stunned);
     }
     footsteps.update(driven);
+    if (autoplay && !bench.open) autoplay.update(dt);
     // Let go of (the room taking the Ooga back): take it up again where it stands.
     if (!driven) { if (avatar) arrive(avatar.root.position.x, avatar.root.position.z, avatar.root.rotation.y); return; }
     const p = driven.root.position, feet = p.y - driven.baseY;
@@ -1036,6 +1041,13 @@
     const near = props.near(p.x, p.z, feet);
     if (near !== walk.prop) {
       walk.prop = near;
+      // An exhibit with a terminal starts running itself; any other, or none, stops the one running.
+      if (autoplay) {
+        let r = null;
+        if (near && near.id !== "legend" && !bench.open) { try { r = near.onUse(AUTO_STATE); } catch (err) { r = null; } }
+        if (r && r.terminal) autoplay.start(near, r.terminal, `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`);
+        else autoplay.stop();
+      }
       if (near) { hud.hint(`${COARSE ? "USE" : "Space"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
       else { hud.hideHint(); pilot.showAct(); }
     }
@@ -1445,6 +1457,13 @@
     for (const id of ["caption", "pause", "info", "cc", "voice", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
     el.help = document.getElementById("genesis-help");
+    // The exhibit the visitor stands at runs itself (genesis-autoplay.js), its steps in the panel.
+    for (const id of ["auto", "auto-title", "auto-screen", "auto-step", "auto-try"]) el[id] = document.getElementById(`genesis-${id}`);
+    el["auto-try"].textContent = COARSE ? "OPEN: try it yourself" : "Space: try it yourself";
+    autoplay = BL.genesisAutoplay.create({
+      show: (title, lines, i, n) => { el.auto.hidden = false; el["auto-title"].textContent = title; el["auto-screen"].textContent = lines.join("\n"); el["auto-step"].textContent = n ? `step ${i} of ${n}` : ""; },
+      hide: () => { el.auto.hidden = true; }
+    });
     el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space by an exhibit (or a tap) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
     // The workbench and the timeline menu (their own modules, on the host).
     workbench = BL.genesisWorkbench.create(host, document.getElementById("genesis-bench"));
@@ -1472,12 +1491,13 @@
     hud.setStats(game.state);
   };
   const leaveScene = () => {
+    if (autoplay) autoplay.stop();
     stopVoice();
     host.close();
     if (cart) cart.dispose();
     if (workbench) workbench.dispose();
     if (timeline) timeline.dispose();
-    workbench = timeline = catalogue = cart = atrium = walkways = docents = null;
+    workbench = timeline = catalogue = cart = atrium = walkways = docents = autoplay = null;
     if (view.reading) hud.closeBoard();
     disposeExhibits();
     // The Ooga that came in (or the one walked here) goes back out to the island as itself.

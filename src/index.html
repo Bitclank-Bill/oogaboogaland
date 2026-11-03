@@ -843,6 +843,11 @@
         <h3 class="section-head">Fingerprint chain</h3>
         <ol id="genesis-chain"></ol>
       </section>
+      <section class="genesis-auto" id="genesis-auto" aria-label="The exhibit running itself" aria-live="polite" hidden>
+        <h3 class="section-head"><span class="genesis-auto-live">NOW RUNNING</span> <span id="genesis-auto-title"></span></h3>
+        <pre class="genesis-auto-screen" id="genesis-auto-screen"></pre>
+        <p class="genesis-auto-foot"><span id="genesis-auto-step"></span> · <span id="genesis-auto-try">Space: try it yourself</span></p>
+      </section>
       <div class="genesis-bar">
         <p class="genesis-caption" id="genesis-caption" aria-live="polite"></p>
         <div class="genesis-controls">
@@ -2086,6 +2091,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/genesis-era-items.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-docents.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-photos.js" data-defer="genesis-scene"></script>
+  <script src="js/genesis-autoplay.js" data-defer="genesis-scene"></script>
   <script src="js/genesis-cartridge.js" data-defer="genesis-scene"></script>
   <script src="js/scene-genesis.js" data-defer="genesis-scene"></script>
   <script src="js/mine-models.js"></script>
