@@ -10,6 +10,9 @@
 // A refusal or disconnect keeps the draft and id, unless the player edits it into a different message.
 // Escape leaves the input with the sheet open. Keys typed in the sheet never reach a scene
 // (controls.js, director.js). On a phone the sheet rises above the keyboard while the input has focus.
+// Unread lines (#430): a line from someone else that this page had not had, heard while the visitor is not in the
+// panel, counts on the tab until they look at it (`sheet.watchViews`). The first lines the room hands over on arrival
+// do not count; on a rejoin (a reconnect, a tab back from the background), only lines newer than any this page had.
 // Exports account (fed `BL.net.state`), heard (fed the room's lines) and stats.
 (() => {
   "use strict";
@@ -31,6 +34,8 @@
   const identity = $("chat-identity"), accountLogin = $("chat-account-login"), displayForm = $("chat-display-form"), displayInput = $("chat-display"), displaySave = $("chat-display-save"), displayStatus = $("chat-display-status");
   let identityId = "", identityDisplay = "", displaySaving = false, displayComposing = false;
   let showing = false, drawn = true, live = false, me = "", composing = false, pending = null, notice = "", revision = 0, logoutEpoch = 0, ackTimer = 0;
+  let unread = 0, newest = -1, synced = false;
+  const setUnread = (count) => { unread = count; BL.sheet.setBadge("chat", count); };
   const stopWaiting = () => { window.clearTimeout(ackTimer); ackTimer = 0; if (pending) pending.awaiting = false; };
 
   const row = (line) => {
@@ -95,11 +100,21 @@
       update();
       return;
     }
+    let fresh = 0;
     if (joined) {
       const seen = new Set(lines.map((line) => line.id));
-      for (const line of list) if (!seen.has(line.id)) lines.push(line);
+      for (const line of list) if (!seen.has(line.id)) {
+        lines.push(line);
+        if (synced && line.id > newest && line.login.toLowerCase() !== me) fresh++;
+      }
       lines.sort((a, b) => a.id - b.id);
-    } else for (const line of list) lines.push(line);
+      synced = true;
+    } else for (const line of list) {
+      lines.push(line);
+      if (line.id > newest && line.login.toLowerCase() !== me) fresh++;
+    }
+    for (const line of list) if (line.id > newest) newest = line.id;
+    if (fresh && !BL.sheet.attending(panel)) setUnread(unread + fresh);
     const over = Math.max(0, lines.length - CHAT_KEEP);
     if (over) lines.splice(0, over);
     if (!showing) {
@@ -125,14 +140,18 @@
   watch.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
   watch.observe(sheet, { attributes: true, attributeFilter: ["data-open", "hidden"] });
 
-  // What is left of a line once sanitized as the room will.
+  // Validate exactly as the room will; only surrounding whitespace is trimmed.
   const update = () => {
-    const length = BL.donations.sanitize(input.value, Infinity).length;
-    const unsupported = /[^\w .,!'?@#:-]/.test(input.value);
-    const feedback = unsupported ? "Use letters A–Z, a–z, digits, spaces and _ . , ! ? ' @ # : - only. Remove unsupported characters before sending." : notice;
+    const policy = BL.chatPolicy, length = policy.text(input.value).length, problem = policy.error(input.value);
+    const unsupported = !problem && !net.state.chatUnicode && !policy.legacy(policy.text(input.value));
+    const feedback = problem === "controls" ? "Remove control characters, line breaks or directional formatting before sending."
+      : problem === "unicode" ? "This draft contains incomplete Unicode. Edit it before sending."
+      : problem === "length" ? "Message is over 160 UTF-16 units. Shorten it before sending."
+      : unsupported ? "This server does not yet support extended chat text. Keep the draft and reconnect after the server update."
+      : notice;
     left.textContent = String(CHAT_MAX - length);
     left.dataset.over = String(length > CHAT_MAX);
-    sendButton.disabled = !live || !!(pending && pending.awaiting) || !length || length > CHAT_MAX || unsupported;
+    sendButton.disabled = !live || !!(pending && pending.awaiting) || !!problem || unsupported;
     status.hidden = live && !feedback;
     if (live) statusText.textContent = feedback;
     announce(statusText.textContent);
@@ -142,6 +161,7 @@
       logoutEpoch = epoch;
       stopWaiting(); pending = null; notice = ""; revision++; input.value = "";
       lines.length = 0; log.replaceChildren(); drawn = true;
+      newest = -1; synced = false; setUnread(0);
       announce("Signed out. Local chat and draft cleared.");
     }
     if (identity) {
@@ -170,7 +190,7 @@
   const submit = () => {
     if (composing || sendButton.disabled) return;
     const draft = input.value;
-    const text = BL.donations.sanitize(draft, Infinity);
+    const text = BL.chatPolicy.text(draft);
     if (!pending || pending.text !== text) pending = { clientId: window.crypto.randomUUID(), text };
     pending.draft = draft;
     pending.revision = revision;
@@ -273,7 +293,8 @@
     if (viewport && (document.activeElement === input || document.activeElement === displayInput)) fit();
   });
 
+  BL.sheet.watchViews(panel, () => { if (unread) setUnread(0); });
   net.subscribe(account);
   net.subscribeChat(heard);
-  BL.chat = { account, heard, get stats() { return { lines: lines.length, rows: log.childElementCount, showing, drawn, live }; } };
+  BL.chat = { account, heard, get stats() { return { lines: lines.length, rows: log.childElementCount, showing, drawn, live, unread }; } };
 })();

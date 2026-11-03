@@ -290,6 +290,8 @@
         <button type="button" data-preset="skee">Thro</button>
         <button type="button" data-preset="shy">Coconuts</button>
         <button type="button" data-action="arcade-mute">Sound</button>
+        <!-- HALLOWEEN: out of the ghost hunt under way, back to the arena's hallway (scene-arcade.js shows it while hunting). -->
+        <button type="button" class="leave" data-action="ghost-exit" id="ghost-exit" hidden>Exit<span> hunt</span></button>
         <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Race" data-scene="race" hidden>
@@ -375,7 +377,7 @@
             <path fill="#141414" d="M5 1h1v1H5zM7 1h1v1H7zM1 3h1v1H1zM3 3h1v1H3z" />
             <path fill="#4a2c14" d="M0 6h5v3H0z" />
             <path fill="#22c55e" d="M8 7h1v2H8z" />
-          </svg>
+          </svg><span class="tab-count" hidden></span>
           </span>
         </button>
         <button type="button" class="sheet-toggle sheet-toggle-loot" role="tab" data-tab="loot"
@@ -396,7 +398,7 @@
             <path fill="#2b1b10" d="M0 0h9v7H5v1H4v1H1V7H0z" />
             <path fill="#f3efe4" d="M1 1h7v5H4v1H3v1H2V6H1z" />
             <path fill="#5c4425" d="M2 3h1v1H2zM4 3h1v1H4zM6 3h1v1H6z" />
-          </svg>
+          </svg><span class="tab-count" hidden></span>
           </span>
         </button>
       </nav>
@@ -421,6 +423,7 @@
           <output class="players-hearing-value" id="players-hearing-value" for="players-hearing-range">No limit</output>
           <span class="players-hearing-help" id="players-hearing-help">Far voices fade, for you alone</span>
         </div>
+        <label class="players-speak" id="players-speak" hidden><input type="checkbox" id="players-speak-input"> Read joins aloud</label>
         <div class="players slab" id="players-list"></div>
         <p class="help players-status" id="players-status" hidden></p>
       </section>
@@ -2031,6 +2034,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/sheet.js"></script>
   <script src="js/zone-map.js"></script>
   <script src="js/hud.js"></script>
+  <script src="js/chat-policy.js"></script>
+  <script src="js/voice-blend.js"></script>
   <script src="js/net.js"></script>
   <script src="js/highscores.js"></script>
   <script src="js/voice.js"></script>
@@ -2118,6 +2123,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/hangar-terminals.js" data-defer="hangar-scene"></script>
   <script src="js/sis-models.js" data-defer="hangar-scene"></script>
   <script src="js/sis.js" data-defer="hangar-scene"></script>
+  <script src="js/hangar-anomaly.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-window.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-guide.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-audio.js" data-defer="hangar-scene"></script>

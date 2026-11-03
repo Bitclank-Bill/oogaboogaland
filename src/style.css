@@ -584,14 +584,10 @@ body[data-active-scene="hub"] .home-link {
   }
 }
 
-/* The Arcade venue stays empty-handed; gameplay hides panels through the HUD.
-   Block Frenzy draws its own HUD, so the panels, world block and banner stay out of it. */
-body[data-active-scene="block"] .sheet,
+/* Block Frenzy draws its own play HUD and Sound button, so the banner's block height and its character and sound
+   buttons stay out of it; its panels are hidden through the HUD (`setPanelsHidden`), as every game's are. */
 body[data-active-scene="block"] .world-block,
-body[data-active-scene="block"] .mode-hud,
-body[data-active-scene="arcade"] .primary-hud,
-body[data-active-scene="arcade"] .weapon-hud,
-body[data-active-scene="arcade"] .magazine-hud {
+body[data-active-scene="block"] .mode-hud {
   display: none;
 }
 
@@ -753,6 +749,8 @@ body[data-active-scene="arcade"] .magazine-hud {
   .sheet[data-open="true"]:is(:hover, .virtual-hover) { --sheet-tab-slide: 0px; --sheet-tab-opacity: 1; }
   .sheet-panels:hover,
   .sheet-panels:has(.virtual-hover, :focus-visible) { --sheet-tab-slide: 0px; --sheet-tab-opacity: 1; }
+  /* A players or chat tab with a new count stays out, so the count is seen while a panel is open (#430). */
+  .sheet[data-open="true"] :is(.sheet-toggle-players, .sheet-toggle-chat):has(.tab-count:not([hidden])) { --sheet-tab-slide: 0px; --sheet-tab-opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1921,6 +1919,33 @@ body[data-active-scene="arcade"] .magazine-hud {
 
 .players-hearing[hidden] {
   display: none;
+}
+
+/* Opt-in speech for joins (#430): a checkbox labelled as the hearing range is. */
+.players-speak {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  color: rgba(243, 239, 228, 0.72);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.players-speak[hidden] {
+  display: none;
+}
+
+.players-speak input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .players-hearing-label {

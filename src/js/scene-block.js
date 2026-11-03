@@ -2269,7 +2269,9 @@
       else if (action === "act") act();
     });
     hud.setStats(game.state);
-    hud.el.sheet.dataset.open = "false";
+    // The board has its own Ooga picker and the sheet's roster does not drive this scene, so the panels stay away for the
+    // whole visit, without touching the visitor's saved panel choices.
+    hud.setPanelsHidden(true);
     el.help = document.getElementById("block-help");
     el.controlsList = document.getElementById("block-controls-list");
     // The board keeps one short line; the whole list waits behind "All controls", so it never crowds the choices.
