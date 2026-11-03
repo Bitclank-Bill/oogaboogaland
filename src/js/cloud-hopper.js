@@ -4,7 +4,9 @@
   const BL = window.BL = window.BL || {};
   const { createNode, addChild, removeChild } = BL.scene;
   const RADIUS = 4.5, DEPTH = 2.5;
-  const LIFT_SECONDS = 6, LIFT_VIEW_SECONDS = 1.5, DOCK_LENGTH = 4;
+  // The ride up takes LIFT_SECONDS, turning the view to the island over its first LIFT_VIEW_SECONDS; at the top the
+  // ride's framing eases into the player's own view over SETTLE_SECONDS.
+  const LIFT_SECONDS = 6, LIFT_VIEW_SECONDS = 1.5, SETTLE_SECONDS = 1, DOCK_LENGTH = 4;
   const START_VIEW = { height: 6, distance: 18 };
   const BOOST_SPEED = 28, BOOST_RISE = 4, BOUNCE_RISE = 12, LAUNCH_CLEARANCE = 0.04;
   const RECOVERY_GRACE_SECONDS = 0.75, DOCK_MUSIC_LEVEL = 0.28, WARNING_THIN = 0.32, TAU = Math.PI * 2;
@@ -257,6 +259,13 @@
       const best = played().best;
       ghost.play(best?.courseVersion === level.courseVersion ? best : null, ghostStart, heading);
     };
+    // X-ray's goggles on the Ooga's face while they last, the face anchor shown as it was before once they come off.
+    let goggles = null, gogglesOn = null, faceShown = false;
+    const wearGoggles = (on) => {
+      if (on === !!goggles) return;
+      if (on) { gogglesOn = actor.parts.face; faceShown = gogglesOn.visible; goggles = BL.cloudHopperModels.wornGoggles(actor); addChild(gogglesOn, goggles); gogglesOn.visible = true; }
+      else { removeChild(gogglesOn, goggles); gogglesOn.visible = faceShown; goggles = gogglesOn = null; }
+    };
     const clearRoute = (keepMusic = false) => {
       ghost.hide();
       if (!keepMusic) { audio.stop(); dockMusicOn = false; }
@@ -270,6 +279,7 @@
       launchContacts.fill(0); unrecoverableAt = -1;
       scenery.clear(); for (const t of tornadoes) t.clear(); whirled = false; audio.tornado(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
       xrayUntil = gustAt = -1; xrayWarned = feather = hookHeld = hookDown = false; hookAt = HAND; hookCloud = null;
+      wearGoggles(false);
       rope.visible = hookNode.visible = false;
       for (const leaf of leaves) leaf.visible = false;
       overlay.setPowers(-1, false, -1);
@@ -280,6 +290,13 @@
       carry.x = p.x - nx * 1.25; carry.y = p.y; carry.z = p.z - nz * 1.25;
       ctx.move(carry, heading);
     };
+    // Control back at the top: the view framing the island eases into the one the player keeps (first person or the
+    // shoulder, its own boom and height) instead of jumping there.
+    // `holdView` takes the view as shown before control comes back (which already solves the player's own), and
+    // `settleView` eases from it.
+    const settlePose = {};
+    const holdView = () => { pilot.cameraHandoff.capture(settlePose); };
+    const settleView = () => { pilot.cameraHandoff.begin(settlePose, false, SETTLE_SECONDS); };
     const turnLiftView = (mix) => {
       const blend = mix === 1 ? 1 : (mix - liftViewMix) / Math.max(1e-9, 1 - liftViewMix);
       const closeView = pilot.view === "first-person" || pilot.view === "shoulder";
@@ -308,6 +325,7 @@
     const newItems = () => INTRODUCED.filter((kind) => carries(kind) && !seenItems().has(kind));
     const finishGuide = () => {
       if (phase !== "briefing") return;
+      holdView();
       guideSeen = true;
       for (const kind of INTRODUCED) if (carries(kind)) seenItems().add(kind);
       try { sessionStorage.setItem(GUIDE_KEY, "1"); sessionStorage.setItem(ITEMS_KEY, [...seenItems()].join(",")); }
@@ -317,6 +335,7 @@
       setPhase("ready");
       // Close views regain their active camera solver after the held tips.
       if (pilot.view === "first-person" || pilot.view === "shoulder") turnLiftView(1);
+      settleView();
       stageGhost();
     };
     const restoreEquipment = () => {
@@ -659,12 +678,14 @@
         audio.level(DOCK_MUSIC_LEVEL ** (1 - k));
         const view = Math.min(1, age / LIFT_VIEW_SECONDS);
         if (t === 1) {
+          holdView();
           pilot.controls.reset();
           const items = newItems();
           if (hasSeenGuide() && !items.length) { setPhase("ready"); stageGhost(); }
           else { overlay.setGuide(!hasSeenGuide(), items); setPhase("briefing"); pilot.freeCursor(); }
         }
         turnLiftView(view * view * (3 - 2 * view));
+        if (t === 1 && phase === "ready") settleView();
       }
     };
     const platformSupport = (x, z, y, rise, radius) => {
@@ -726,7 +747,7 @@
           pilot.showAct(); hud.toast(refill ? "Jetpack refilled" : "Jetpack collected · J to equip");
         } else {
           // Another X-ray goggles refresh it to full; a feather or a hook is taken only with none held.
-          if (pickup.kind === "xray") { xrayUntil = seconds + XRAY_SECONDS; xrayWarned = false; }
+          if (pickup.kind === "xray") { xrayUntil = seconds + XRAY_SECONDS; xrayWarned = false; wearGoggles(true); }
           else if (pickup.kind === "updraft") feather = true;
           else { hookHeld = true; hookAt = HAND; hookDown = false; }
           audio.power(pickup.kind); hud.toast(PICKUP_TOAST[pickup.kind]);
@@ -735,6 +756,7 @@
       }
       const xrayLeft = phase === "running" && xrayUntil > seconds ? xrayUntil - seconds : -1;
       if (!xrayWarned && xrayLeft >= 0 && xrayLeft <= 2) { audio.xrayEnding(); xrayWarned = true; }
+      if (xrayLeft < 0 && goggles) wearGoggles(false);
       overlay.setPowers(xrayLeft >= 0 ? Math.ceil(xrayLeft) : -1, feather, hookHeld ? hookAt === HAND ? 0 : 1 : -1);
       updateGust(); placeHook();
       if (actor.jetpackOwned && actor.jetFuel <= 0) {
@@ -758,10 +780,9 @@
         }
       } else unrecoverableAt = -1;
     };
-    // Which pickups the rider takes now: a jetpack unless the tank is full, X-ray always, a feather or a hook only
-    // with none held.
-    const wants = (kind) => kind === "jetpack" ? !actor.jetpackOwned || actor.jetFuel < 1
-      : kind === "updraft" ? !feather : kind === "hook" ? !hookHeld : true;
+    // Which pickups the rider takes now: a jetpack and X-ray always (a full tank or goggles worn just stay full), a
+    // feather or a hook only with none held.
+    const wants = (kind) => kind === "updraft" ? !feather : kind === "hook" ? !hookHeld : true;
     // The Ooga's chest, where the rope starts.
     const chest = () => {
       const p = actor.root.position;

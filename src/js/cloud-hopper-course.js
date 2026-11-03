@@ -9,6 +9,8 @@
   // A tornado's draw and lift ease back at these speeds once it lets a cloud go (m/s), and lift a cloud at most so far (m).
   const DRAW_BACK = 3, LIFT_BACK = 4, LIFT_MAX = 30;
   const CLOUD_GAP = 1.5;
+  // The most eligible clouds a course's start, finish and jetpacks ever keep from being special.
+  const SPECIAL_SPARE = 7;
   const GRAVITY = 9.8, PICKUP_LIFT = 0.7, PICKUP_RADIUS = 0.75, RUN_SPEED = 11.625, JUMP_SPEED = 4.8, SETTLE = 1.5, WOBBLE = 0.12;
   // Lifetime classes: a permanent cloud never fades; an ordinary one disappears once in each of its own slots.
   const PERMANENT = 0, ORDINARY = 1;
@@ -31,7 +33,8 @@
   // clearance), main and `side` cloud half-sizes [rx, rx range, rz, rz range], how far a `turn` aims across
   // and the most a landing `sway`s from the last, each cloud's swing `lane` and `speed` [least, range], side
   // clouds per main landing (`sides`, at most `sideMax`) and how far out they sit (`offset` [least, range]),
-  // the `boost` and `bounce` shares of eligible clouds (at most `bounceMax` bounces), the chance of a second
+  // the `boost` and `bounce` shares of the clouds a course chooses among, the same number on every course of a level (at
+  // most `bounceMax` bounces), the chance of a second
   // jetpack (`twoPacks`), and how many X-ray, Updraft and grappling hook pickups it carries (plan 3). These defaults
   // are the old course's.
   const LAYOUT = Object.freeze({ step: 11.5, main: Object.freeze([2.7, 0.9, 1.9, 0.7]), side: Object.freeze([2.8, 0.7, 2.1, 0.5]),
@@ -188,44 +191,38 @@
     }
     // Special surfaces have their own stream: adding them must not move a
     // recorded course's landings, pickups, drift or disappearance clocks.
+    // Every course of a level carries the same number of each: its `boost` and `bounce` shares (at most `bounceMax`
+    // bounces, and at least one of each it carries) of the clouds a course of its size always has to choose from (all
+    // but SPECIAL_SPARE, the most the start, the finish and the jetpacks ever keep), dealt at random among the eligible
+    // clouds, bounces no nearer each other in height than a hop and a half while the course allows.
     const specialRand = mulberry32(seed ^ 0x7b1d943f), eligible = [];
-    let boosts = 0, bounces = 0, lastBounceY = Infinity;
     // The second landing is never special, since a run's first two landings never fade.
     for (const cloud of clouds) {
       if (cloud.y >= landings[0].y || cloud.y <= landings[count - 3].y || cloud === landings[1]
         || pickups.some(pickup => pickup.cloud === cloud)) continue;
       eligible.push(cloud);
-      const choice = specialRand();
-      if (choice < layout.boost) { cloud.kind = "boost"; boosts++; }
-      else if (choice < layout.boost + layout.bounce && bounces < layout.bounceMax && lastBounceY - cloud.y > drop * step * 1.5) {
-        cloud.kind = "bounce"; bounces++; lastBounceY = cloud.y;
-      }
     }
-    // Even a short course introduces both surfaces, without stacking
-    // consecutive bounce landings or putting one under an early jetpack.
-    if (!boosts && eligible.length) {
-      const at = Math.floor(specialRand() * eligible.length);
-      for (let i = 0; i < eligible.length; i++) {
-        const cloud = eligible[(at + i) % eligible.length];
-        if (cloud.kind !== "normal") continue;
-        cloud.kind = "boost"; boosts++; break;
-      }
+    for (let i = eligible.length - 1; i > 0; i--) {
+      const j = Math.floor(specialRand() * (i + 1)), cloud = eligible[i];
+      eligible[i] = eligible[j]; eligible[j] = cloud;
     }
-    if (!bounces && layout.bounceMax > 0 && eligible.length) {
-      const at = Math.floor(specialRand() * eligible.length);
-      for (let i = 0; i < eligible.length; i++) {
-        const cloud = eligible[(at + i) % eligible.length];
-        if (cloud.kind === "boost" && boosts === 1) continue;
-        cloud.kind = "bounce"; break;
+    const pool = clouds.length - SPECIAL_SPARE, hop = drop * step * 1.5;
+    const dealt = { boost: layout.boost > 0 ? Math.max(1, Math.round(layout.boost * pool)) : 0,
+      bounce: layout.bounce > 0 && layout.bounceMax > 0 ? Math.min(layout.bounceMax, Math.max(1, Math.round(layout.bounce * pool))) : 0 };
+    const apart = (cloud) => { for (const other of eligible) if (other.kind === "bounce" && Math.abs(other.y - cloud.y) <= hop) return false; return true; };
+    // Make a white eligible cloud `kind` (those `may` allows), the bounce kept apart from the others on the first pass.
+    const deal = (kind, may) => {
+      for (let pass = 0; pass < 2; pass++) for (const cloud of eligible) {
+        if (cloud.kind !== "normal" || !may(cloud) || kind === "bounce" && !pass && !apart(cloud)) continue;
+        cloud.kind = kind;
+        if (kind === "boost") { cloud.boostX = -nx; cloud.boostZ = -nz; }
+        return true;
       }
-    }
-    for (const cloud of clouds) {
-      if (cloud.kind === "boost") {
-        // Launch toward the mainland independently of the cloud's orientation.
-        cloud.boostX = -nx;
-        cloud.boostZ = -nz;
-      }
-    }
+      return false;
+    };
+    for (let k = 0; k < dealt.boost; k++) deal("boost", () => true);
+    for (let k = 0; k < dealt.bounce; k++) deal("bounce", () => true);
+    // A boost cloud launches toward the mainland independently of its orientation (`deal` sets it).
     // ---- lifetimes --------------------------------------------------------------------------------------------
     // Every disappearance is a closed-form function of race time: a cloud's clock starts at t0 and is cut into
     // slots of slotSeconds, each holding one warning, fade, hidden span and return at a seeded place inside it,
@@ -390,6 +387,7 @@
     // apart. One no place keeps so turns white and stays permanent. Nothing settled changes.
     const open = clouds.filter((cloud, i) => !fixed[i] && cloud.kind === "normal").length, wanted = (1 - timing.permanent) * open;
     let ordinary = 0, seen = 0;
+    const turned = [];
     for (let i = n - 1; i >= 0; i--) {
       const cloud = clouds[i], special = cloud.kind !== "normal";
       if (fixed[i]) continue;
@@ -407,9 +405,12 @@
       if (done) { if (!special) ordinary++; }
       else {
         cloud.life = PERMANENT; schedule(cloud);
-        if (special) { cloud.kind = "normal"; cloud.boostX = cloud.boostZ = 0; }
+        if (special) { turned.push(cloud.kind); cloud.kind = "normal"; cloud.boostX = cloud.boostZ = 0; }
       }
     }
+    // Each special turned white is dealt again to an ordinary white cloud, whose clock already keeps every check a special
+    // needs, so the counts hold.
+    for (const kind of turned) deal(kind, (cloud) => cloud.life === ORDINARY);
     for (const cloud of clouds) {
       const offset = offsetAt(cloud, 0, wobbleAt(cloud, 0));
       cloud.x = cloud.previousX = cloud.baseX + cloud.moveX * offset;

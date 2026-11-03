@@ -385,7 +385,7 @@ in the course, so they move nothing already there; a level's layout says how man
 | Where it is | a pickup on a cloud, about 0.4 of the way down; it falls with an O cloud like a jetpack | a pickup on L or O clouds before a crumble or fork stretch | a pickup on a plain main landing in the course's first half |
 | Activation | on pickup | Space in the air when the air jump is spent and no fuelled pack is worn | held on pickup; the left button in combat (a pad's RT, the HOOK chip on touch) throws it along the crosshair |
 | Effect | 12 s (15 s in L4): the remaining solid time of nearby clouds, read from the real schedule | sets vertical speed to +13 m/s (about 8.6 m of lift), keeping horizontal speed | it bites the first cloud within 40 m and pulls the Ooga toward its top at up to 18 m/s while the button is held; let go, it reels back and the Ooga flies on; a miss loses it |
-| Stacking | another pickup refreshes it to full; the time does not add up | one held at a time; a second pickup stays in place, like a full tank's jetpack | one held at a time; a second stays in place |
+| Stacking | another pickup refreshes it to full; the time does not add up | one held at a time; a second pickup stays in place | one held at a time; a second stays in place |
 | Visual | thin cyan edges on screen; per-cloud gauges (3.3); its HUD icon blinks for the last 2 s | a leaf spiral from the fx pool under the Ooga; HUD icon while held | a bone hook on a vine rope from the Ooga's chest; a gold ring under the crosshair on a cloud in reach; HUD chip while held |
 | Audio | shimmer up, then shimmer down 2 s before the end | wind whoosh | a whoosh out, a thunk and creak as it bites, a zip as it reels in, a falling whoosh when lost |
 | Interactions | shows crumble countdowns and hidden clouds' time until they return | counts as an extra jump in `canRecover` (still conservative), and its pickup counts as a rescue like a jetpack's | touches no schedule; while held, any cloud in its reach saves a fall in `canRecover`'s place, since its pull outruns gravity |
@@ -484,8 +484,9 @@ milestone 8, L1 and L3 draw at the same rate and L2 faster (each spire one mesh 
   sunset disco-synthwave), Cloudbreak Sprint (L3, the original trance score) and Thunderhead Run
   (L4, dark driving trance, later 150 BPM hard techno with a driven kick, then 122 BPM dark deep house). All four keep the old score's rules: one transport through the
   dock, ascent, race, results and replays, with only the drums following the race and
-  entering and leaving on bar lines. Choosing another level card starts its song on the
-  playing song's next beat and crossfades the two over 2.5 s. The dock plays the level last
+  entering and leaving on bar lines. Choosing another level card fades the playing song out
+  over 2.4 s from its next beat and brings the new one in over 1.6 s once that fade is 85%
+  through. The dock plays the level last
   played (saved at each run's start as `game.state.cloudHopper.last`).
 - **Haze on the moon.** *Built.* Where low haze, daylight or cloud stands in front of the
   moon, its disc's edge and terminator soften and its markings flatten, rather than only
@@ -666,7 +667,7 @@ in milestone 8 and left it.
 | L4 Thunderhead | **B**: dark storm, haze 40–160 m that also hazes out the sea, thin rain, nearer lightning |
 | X-ray | **A**: ring gauge emptying over 20 s with seconds inside; a gold ∞ diamond on permanent clouds |
 | Warning | **A**: the cloud thins in a dithered pulse that quickens as its time runs out |
-| Pickups | **B set**: stone goggles (X-ray), sky feather (Updraft), bone anchor (Anchor), now a grappling hook on vine coils |
+| Pickups | **B set**: stone goggles (X-ray), sky feather (Updraft), bone anchor (Anchor), now a grappling hook on vine coils; the goggles later became carved stone goggles with glowing runes and scanning lenses (look C), worn over the Ooga's eyes while X-ray lasts |
 | Level select | **B, refined**: picture cards with the number in the picture's corner and the name on its own row |
 
 The storm's haze needed one renderer change: the sea, drawn in the sky pass, now follows the

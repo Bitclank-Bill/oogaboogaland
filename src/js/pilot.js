@@ -96,7 +96,7 @@
     const raw = {}, shown = {}, up = { x: 0, y: 1, z: 0 };
     const rotation = quat.create(), endpointRotation = quat.create();
     const forward = new Float64Array(3), top = new Float64Array(3);
-    let active = false, elapsed = 0, nativePosition = false;
+    let active = false, elapsed = 0, nativePosition = false, duration = CAMERA_HANDOFF_TIME;
     let sourceHead = null, sourceRoot = null, sourceHeadHidden = false;
     const restoreHead = () => {
       if (sourceHead) sourceHead.cameraHidden = sourceHeadHidden;
@@ -158,9 +158,10 @@
       const dx = pose.targetX - pose.eyeX, dy = pose.targetY - pose.eyeY, dz = pose.targetZ - pose.eyeZ;
       viewRotation(out, dx, dy, dz, pose.upX, pose.upY, pose.upZ, Math.atan2(-dx, -dz));
     };
-    const begin = (source, followPosition = false) => {
+    // `seconds`, for a scripted view settling back into the player's own, is how long the blend takes.
+    const begin = (source, followPosition = false, seconds = CAMERA_HANDOFF_TIME) => {
       cancel();
-      nativePosition = followPosition;
+      nativePosition = followPosition; duration = seconds;
       capturePose(raw);
       for (let i = 0; i < CAMERA_POSE_FIELDS.length; i++) {
         const key = CAMERA_POSE_FIELDS[i]; shown[key] = source[key];
@@ -184,10 +185,10 @@
       // Endpoint solvers retain their own camera history. Never feed the
       // displayed acquisition blend back into collision or orbit damping.
       capturePose(raw);
-      const before = ease(elapsed / CAMERA_HANDOFF_TIME);
-      elapsed = Math.min(CAMERA_HANDOFF_TIME, elapsed + Math.max(0, dt));
-      if (elapsed === CAMERA_HANDOFF_TIME) { active = false; checkHead(); return true; }
-      const amount = (ease(elapsed / CAMERA_HANDOFF_TIME) - before) / (1 - before);
+      const before = ease(elapsed / duration);
+      elapsed = Math.min(duration, elapsed + Math.max(0, dt));
+      if (elapsed === duration) { active = false; checkHead(); return true; }
+      const amount = (ease(elapsed / duration) - before) / (1 - before);
       if (amount > 0) {
         const fromLength = Math.hypot(shown.targetX - shown.eyeX, shown.targetY - shown.eyeY, shown.targetZ - shown.eyeZ);
         const toLength = Math.hypot(raw.targetX - raw.eyeX, raw.targetY - raw.eyeY, raw.targetZ - raw.eyeZ);

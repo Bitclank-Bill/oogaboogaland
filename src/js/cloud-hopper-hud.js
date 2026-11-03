@@ -2,12 +2,15 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
+  // The ride up already shows the race's start as it will stand at the top: the waiting clock and the ready lines,
+  // which stay as they are while the run's start folds them away.
+  const READY = ["Race to the banana pile", "Leave this cloud to start · J toggles a collected jetpack. Extra packs refill fuel."];
   const COPY = {
     intro: ["Race from the clouds to the banana pile", "Find your route. Race for the top of the leaderboard."],
-    lifting: ["Going up", "Your starting cloud is on its way."],
+    lifting: READY,
     briefing: ["Before you jump", "Meet the clouds and gear along the way."],
-    ready: ["Race to the banana pile", "Leave this cloud to start · J toggles a collected jetpack. Extra packs refill fuel."],
-    running: ["Reach the banana pile", "Space jumps / holds jetpack lift · release to fall · J toggles your jetpack"],
+    ready: READY,
+    running: READY,
     won: ["Banana pile reached!", "A clean landing and a time to beat."],
     dq: ["Disqualified", "Splash! No cloud was within reach."],
     // A run lost to a tornado says so, under its own picture.
@@ -38,11 +41,26 @@
     };
     const hud = node("section", "cloud-hopper-hud"), name = node("div", "cloud-hopper-name", "CLOUD HOPPER");
     const timer = node("output", "cloud-hopper-time", "00:00.00"), title = node("div", "cloud-hopper-status");
-    // The power-ups that apply now, under the clock: X-ray's seconds, a feather held, the hook held or thrown. On a
-    // touch screen the hook's chip is also its button, held to throw at the middle of the view and reel in.
-    const powers = node("div", "cloud-hopper-powers"), xrayChip = node("span", "cloud-hopper-power xray");
-    const featherChip = node("span", "cloud-hopper-power updraft", "FEATHER"), hookChip = node("button", "cloud-hopper-power hook", "HOOK");
-    hookChip.type = "button"; hookChip.tabIndex = -1;
+    // The power-ups that apply now, as buttons in the banner's equipment row beside the jetpack's, each its pixel icon
+    // and a readout: X-ray's goggles with its seconds, the feather held, the hook held or thrown. On a touch screen the
+    // hook's button is held to throw at the middle of the view and reel in.
+    const powerButton = (kind, label, icon) => {
+      const button = node("button", "jetpack-hud cloud-hopper-power " + kind), readout = node("span", "equipment-compact cloud-hopper-power-readout");
+      button.type = "button"; button.tabIndex = -1; button.dataset.equipped = "true"; button.hidden = true;
+      button.setAttribute("aria-label", label); button.title = label;
+      button.innerHTML = '<svg class="jetpack-icon" viewBox="0 0 12 14" shape-rendering="crispEdges" aria-hidden="true">' + icon + "</svg>";
+      button.append(readout);
+      return button;
+    };
+    const xrayChip = powerButton("xray", "X-ray goggles", '<path fill="#5a4a3a" d="M0 6h1v2H0zM11 6h1v2h-1z"/>'
+      + '<path fill="#8f8a82" d="M1 4h4v1H1zM7 4h4v1H7zM1 9h4v1H1zM7 9h4v1H7zM1 5h1v4H1zM4 5h1v4H4zM7 5h1v4H7zM10 5h1v4h-1zM5 5h2v1H5z"/>'
+      + '<path fill="#1d5f6a" d="M2 5h2v4H2zM8 5h2v4H8z"/><path fill="#7ffcff" d="M2 6h1v1H2zM8 6h1v1H8zM3 7h1v1H3zM9 7h1v1H9z"/>');
+    const featherChip = powerButton("updraft", "Sky feather", '<path fill="#e9e2cf" d="M2 12h1v1H2zM3 11h1v1H3zM4 10h1v1H4z"/>'
+      + '<path fill="#f6f4ee" d="M5 9h2v1H5zM5 8h3v1H5zM6 7h3v1H6zM6 6h4v1H6zM7 5h3v1H7zM7 4h4v1H7zM8 3h3v1H8z"/><path fill="#3fd0c6" d="M9 1h2v2H9zM10 3h1v1h-1z"/>');
+    const hookChip = powerButton("hook", "Grappling hook", '<path fill="#8a7040" d="M5 0h2v5H5z"/><path fill="#efe6cf" d="M5 5h2v5H5z"/>'
+      + '<path fill="#9a8f80" d="M1 7h1v4H1zM10 7h1v4h-1zM2 11h2v1H2zM8 11h2v1H8zM4 10h4v2H4z"/>');
+    const xrayReadout = xrayChip.lastChild, featherReadout = featherChip.lastChild, hookReadout = hookChip.lastChild;
+    featherReadout.textContent = "1";
     const hookDown = (e) => { e.preventDefault(); hookChip.setPointerCapture?.(e.pointerId); onHook?.(true); };
     const hookUp = (e) => { e.preventDefault(); onHook?.(false); };
     hookChip.addEventListener("pointerdown", hookDown);
@@ -60,6 +78,9 @@
     const scoresList = node("ol", "race-podium"), scoresEmpty = node("p", "cloud-hopper-scores-empty", "Finish a run to put your time on the board.");
     const actions = node("div", "actions"), back = node("button", "", "Back"), play = node("button", "game-intro-go"), exit = node("button", "");
     const next = node("button", "game-intro-go", "Next level"), select = node("button", "", "Level select");
+    // Each button is coloured by what it does (the stylesheet's `data-role`): go on, choose, step back, or leave; the
+    // exit button becomes Back while a result card picks a level.
+    play.dataset.role = next.dataset.role = "go"; select.dataset.role = "choose"; back.dataset.role = "back"; exit.dataset.role = "leave";
     // One picture card a level: its number in the picture's corner, its name alone on a row, then its route and
     // the player's best or what unlocks it. Pictures load the first time the cards show, and the player's own Ooga
     // stands on each one's cloud (`setRunner`), painted once per Ooga.
@@ -121,9 +142,11 @@
       scoresList.append(row);
       scoreRows.push({ row, run, time });
     }
-    powers.append(xrayChip, featherChip, hookChip);
-    powers.hidden = xrayChip.hidden = featherChip.hidden = hookChip.hidden = true;
-    hud.append(name, timer, powers, title, ghost, help);
+    document.getElementById("jetpack-hud")?.after(xrayChip, featherChip, hookChip);
+    // The lines under the clock (what to do, the ghost, the keys), folded up into the clock once the run starts.
+    const brief = node("div", "cloud-hopper-brief"), briefLines = node("div");
+    briefLines.append(title, ghost, help); brief.append(briefLines);
+    hud.append(name, timer, brief);
     scoresPanel.append(scoresTitle, scoresList, scoresEmpty);
     actions.append(back, next, play, select, exit);
     panel.append(glow, kicker, panelTitle, goal, levels, introArt, guideArt, resultArt, panelHelp, resultTime, scoresPanel, actions);
@@ -135,7 +158,8 @@
     let shownXray = -2, shownFeather = false, shownHook = -2;
     // The level choice: the one selected, the highest unlocked, the player's best per level (ms, 0 for none), and
     // whether the result card is showing the cards instead of the result (Level select).
-    let selected = 1, unlocked = 1, bests = [], picking = false;
+    // `pickedFrom`: the level a result card's Level select opened on, which Back goes back to.
+    let selected = 1, unlocked = 1, bests = [], picking = false, pickedFrom = 1;
     // The intro shows the selected level's board under the cards: the shared one when the page has it, else the bests
     // every player has set on this browser (`browser`, fastest first).
     let browser = [];
@@ -164,6 +188,8 @@
       if (disposed) return;
       ({ selected, unlocked, bests, browser } = state);
       paintLevels();
+      // The board under the cards follows the level chosen.
+      if (phase === "intro" || picking) showScores(localScores, localLatest);
     };
     // Measure on layout changes only. Leave room below the card for the
     // island's skyline, with the same horizontal centre as the timer.
@@ -303,7 +329,8 @@
     let sharedScores = null, localScores = [], localLatest = null;
     const showScores = (scores, latest) => {
       localScores = scores; localLatest = latest;
-      const onBrowser = !sharedScores && phase === "intro";
+      // Under the level cards (the intro, or a result card's Level select) the board is the chosen level's own.
+      const onBrowser = !sharedScores && (phase === "intro" || picking);
       if (sharedScores) scores = sharedScores;
       else if (onBrowser) scores = browser;
       scoresTitle.textContent = sharedScores ? `Level ${selected} · fastest times · all players`
@@ -334,17 +361,24 @@
     const pick = (on) => {
       picking = on;
       clearActivation();
+      // Back from choosing puts the played level back, its board and its song with it.
+      if (on) pickedFrom = selected;
+      else if (selected !== pickedFrom) onSelect?.(pickedFrom);
       panel.classList.toggle("cloud-hopper-picking", on);
       const ended = phase === "won" || phase === "dq";
+      // The level just played names the result; choosing another, the line says what the race is, as the intro's does.
+      goal.textContent = on ? COPY.intro[0] : `Level ${pickedFrom} · ${LEVELS[pickedFrom - 1].name}`;
+      goal.hidden = !ended;
       levels.hidden = !on && phase !== "intro";
       resultArt.hidden = on || !ended;
       resultTime.hidden = on || phase !== "won";
-      scoresPanel.hidden = on || !ended;
+      scoresPanel.hidden = !ended;
       select.hidden = on || !ended;
       next.hidden = !nextOpen();
       play.classList.toggle("game-intro-go", on || !nextOpen());
       play.disabled = false;
-      exit.textContent = on ? "Back" : "Return to dock";
+      exit.textContent = on ? "Back" : "Return to dock"; exit.dataset.role = on ? "back" : "leave";
+      showScores(localScores, localLatest);
       if (on) paintLevels();
       else {
         play.textContent = phase === "won" ? "Replay" : "Play again";
@@ -373,7 +407,7 @@
       title.textContent = copy[0];
       help.textContent = copy[1];
       hud.hidden = intro || briefing || ended;
-      timer.hidden = to === "lifting";
+      hud.classList.toggle("cloud-hopper-running", to === "running");
       if (briefing) {
         // The ascent frames for the ready HUD even while the guide covers it.
         // This synchronous measurement never paints the waiting race clock.
@@ -411,7 +445,7 @@
         resultTime.hidden = to !== "won";
         play.disabled = false;
         play.textContent = intro ? "Play" : to === "won" ? "Replay" : "Play again";
-        exit.textContent = briefing ? "Skip tips" : intro ? "Not now" : "Return to dock";
+        exit.textContent = briefing ? "Skip tips" : intro ? "Not now" : "Return to dock"; exit.dataset.role = "leave";
         next.hidden = !nextOpen();
         select.hidden = !ended;
         play.classList.toggle("game-intro-go", !nextOpen());
@@ -446,7 +480,7 @@
       window.removeEventListener("resize", measureFraming);
       window.removeEventListener("resize", fitGuide);
       guidePictures?.dispose(); guidePictures = null;
-      hud.remove(); panel.remove();
+      hud.remove(); panel.remove(); xrayChip.remove(); featherChip.remove(); hookChip.remove();
     };
     // The guide's next cards: the cloud guide unless `cloud` is false, then each new thing named in `items`.
     const setGuide = (cloud, items) => {
@@ -458,14 +492,14 @@
       if (disposed || xray === shownXray && feather === shownFeather && hook === shownHook) return;
       if (xray !== shownXray) {
         xrayChip.hidden = xray < 0;
-        if (xray >= 0) xrayChip.textContent = `X-RAY ${xray}`;
+        if (xray >= 0) { xrayReadout.textContent = String(xray); xrayChip.setAttribute("aria-label", `X-ray goggles · ${xray} s left`); }
         xrayChip.classList.toggle("ending", xray >= 0 && xray < 2);
       }
       featherChip.hidden = !feather;
       hookChip.hidden = hook < 0;
       hookChip.classList.toggle("thrown", hook > 0);
+      hookReadout.textContent = hook > 0 ? "OUT" : "1";
       shownXray = xray; shownFeather = feather; shownHook = hook;
-      powers.hidden = xray < 0 && !feather && hook < 0;
     };
     return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, setDq, hide, dispose, get frameY() { return frameY; } };
   };

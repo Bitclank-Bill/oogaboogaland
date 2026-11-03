@@ -4697,7 +4697,7 @@ const cloudHopperFailureChecks = async engine => {
     setJetpackOwnership(cave, owned) { cave.jetpackOwned = owned; if (!owned) cave.jet = null; },
     wearJetpack(cave) { cave.jet = pack(); }, removeJetpack(cave) { cave.jet = null; },
     cutJet(cave) { cuts++; cave.jet.thrust = cave.jet.spending = false; cave.jet.power = cave.jet.puff = 0; cave.jet.flame.visible = false; } };
-  const pilot = { player: actor, orbit: { yaw: 0 }, controls: { reset() { inputResets++; } }, showAct: noop, freeCursor: noop, focusAim: noop,
+  const pilot = { player: actor, orbit: { yaw: 0 }, controls: { reset() { inputResets++; } }, showAct: noop, freeCursor: noop, focusAim: noop, cameraHandoff: { capture: out => out, begin: noop },
     modeAction(action) { if (action === "mode-toggle") actor.weapon.aiming = !actor.weapon.aiming; },
     tiltView(pitch) { this.orbit.pitch = this.orbit.tPitch = pitch; },
     framePoint(point, screenY, mix, overview) {
@@ -4897,7 +4897,7 @@ const cloudHopperFailureChecks = async engine => {
   // launches a rider off a boost or bounce cloud, so none stands on one); linked ordinary clouds' first warnings stay apart; nothing warns
   // before the first warning time; and stepping at any frame rate, or in one long frame, agrees.
   const { PERMANENT, ORDINARY, WARNING, TIMING } = BL.cloudHopperCourse;
-  let mixed = true, whiteOnly = true, bounceFromTwo = true, firmEnds = true, warned = true, escaped = true, staggered = true, blended = true, losses = 0, earliest = Infinity;
+  let mixed = true, whiteOnly = true, bounceFromTwo = true, sameKinds = true, firmEnds = true, warned = true, escaped = true, staggered = true, blended = true, losses = 0, earliest = Infinity;
   for (let seed = 1; seed <= 4; seed++) {
     const course = BL.cloudHopperCourse.create({ ...motionOptions, seed }), clouds = course.clouds, main = clouds.filter(c => c.main);
     const lives = new Set(clouds.map(c => c.life));
@@ -4934,9 +4934,12 @@ const cloudHopperFailureChecks = async engine => {
   const { LEVELS } = BL.cloudHopperLevels, spec = [1, 1.42, 2.0164, 2.863288].map(k => 430.5 * 0.79 * k);
   let levelRoutes = LEVELS.length === 4;
   for (const level of LEVELS) {
-    const radius = 42 + level.route, course = BL.cloudHopperCourse.create({ start: { x: radius, y: 20 + level.slope * level.route, z: 0 },
-      finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed: level.id, layout: level.layout, timing: level.timing });
-    const main = course.clouds.filter(c => c.main), last = main[main.length - 1];
+    const radius = 42 + level.route, options = { start: { x: radius, y: 20 + level.slope * level.route, z: 0 },
+      finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed: level.id, layout: level.layout, timing: level.timing };
+    const course = BL.cloudHopperCourse.create(options), main = course.clouds.filter(c => c.main), last = main[main.length - 1];
+    // Every course of a level carries the same number of white, boost and bounce clouds, whatever its seed.
+    const kinds = (c) => ["normal", "boost", "bounce"].map(kind => c.clouds.filter(each => each.kind === kind).length).join("/");
+    sameKinds &&= kinds(course) === kinds(BL.cloudHopperCourse.create({ ...options, seed: level.id + 50 }));
     levelRoutes &&= Math.abs(radius - Math.hypot(last.baseX, last.baseZ) - spec[level.id - 1]) < 0.5
       && course.clouds.length <= BL.cloudHopperCourse.MAX_CLOUDS;
     firmEnds &&= [0, 1, main.length - 2, main.length - 1].every(k => main[k].life === PERMANENT);
@@ -4960,8 +4963,8 @@ const cloudHopperFailureChecks = async engine => {
   };
   const slow = stepped(1 / 30, 1200), fast = stepped(1 / 144, 5760), once = stepped(40, 1);
   const frameFree = [fast, once].every(other => other.every((row, i) => row.every((value, j) => Math.abs(value - slow[i][j]) < 1e-6)));
-  const lifeRows = { mixed, whiteOnly, bounceFromTwo, firmEnds, warned: warned && losses > 0, escaped, staggered, blended, frameFree, firstWarn: earliest >= TIMING.firstWarn, levelRoutes };
-  record("Cloud Hopper lifetimes and levels: permanent and ordinary clouds in each level's blend, only white clouds never fading, bounce clouds from Level 2; every loss of support follows its full warning, a warning white cloud always has a steady one in reach, linked clouds warn apart, any frame rate agrees, and each level's route is the spec's",
+  const lifeRows = { mixed, whiteOnly, bounceFromTwo, sameKinds, firmEnds, warned: warned && losses > 0, escaped, staggered, blended, frameFree, firstWarn: earliest >= TIMING.firstWarn, levelRoutes };
+  record("Cloud Hopper lifetimes and levels: permanent and ordinary clouds in each level's blend, only white clouds never fading, bounce clouds from Level 2, the same count of each kind on every course of a level; every loss of support follows its full warning, a warning white cloud always has a steady one in reach, linked clouds warn apart, any frame rate agrees, and each level's route is the spec's",
     Object.values(lifeRows).every(Boolean), JSON.stringify({ ...lifeRows, losses, earliest }));
   // Isolate the launch platform as a recovery target. The same fuel can lift
   // a slow fall back to it but is spent braking a faster fall; one air jump

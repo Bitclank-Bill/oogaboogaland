@@ -5,14 +5,17 @@
 //   Level 3 "Cloudbreak Sprint": 128 BPM progressive trance in B minor, the restrained motif under the aurora.
 //   Level 4 "Thunderhead Run": 122 BPM dark deep house in D minor, a round kick, offbeat bass and hats, minor stabs.
 // One transport spans the dock, ascent, races, results and replays; only the drums follow the race state, entering
-// and leaving on bar boundaries. Switching songs starts the new one on the old one's next beat and crossfades them.
+// and leaving on bar boundaries. Switching songs fades the old one out from its next beat and starts the new one near
+// the end of that fade, bringing it in.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const AHEAD = 0.12, MAX_AHEAD = 2, LEVEL = 0.6, CROSSFADE = 2.5, KICK_PITCH = [115, 47, 0.13];
+  // A switch fades the old song out over FADE_OUT seconds and starts the new one ENTER of the way through that fade,
+  // with the old one down to about a quarter, bringing it in over FADE_IN seconds.
+  const AHEAD = 0.12, MAX_AHEAD = 2, LEVEL = 0.6, FADE_OUT_S = 2.4, FADE_IN_S = 1.6, ENTER = 0.85, KICK_PITCH = [115, 47, 0.13];
   const HZ = new Float32Array(128), PITCH = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   for (let i = 0; i < HZ.length; i++) HZ[i] = 440 * Math.pow(2, (i - 69) / 12);
-  // Equal-power crossfade curves, made once.
+  // Equal-power fade curves, made once.
   const FADE_IN = new Float32Array(33), FADE_OUT = new Float32Array(33);
   for (let i = 0; i <= 32; i++) { FADE_IN[i] = Math.sin(i / 32 * Math.PI / 2); FADE_OUT[i] = Math.cos(i / 32 * Math.PI / 2); }
   // Decode a melody once: sixteen steps a bar, a dash sustaining the previous note and a dot resting.
@@ -367,11 +370,11 @@
     };
     // The next beat of this song at or after `time`.
     const nextBeat = (time) => origin + Math.max(0, Math.ceil((time - origin) / (step * 4))) * step * 4;
-    // A crossfade from `at`, replacing any fade still under way from wherever it has reached.
-    const fade = (curve, at) => {
+    // A fade from `at` over `seconds`, replacing any fade still under way from wherever it has reached.
+    const fade = (curve, at, seconds) => {
       const gain = fader.gain, reached = gain.value;
       gain.cancelScheduledValues(0); gain.setValueAtTime(reached, ctx.currentTime);
-      gain.setValueCurveAtTime(curve, at, CROSSFADE);
+      gain.setValueCurveAtTime(curve, at, seconds);
     };
     const play = (s, at) => {
       const i = s & 255, b = (s >> 4) & 31, harmony = b >> 1, beat = i & 15, bit = 1 << beat;
@@ -422,29 +425,32 @@
   // Players are made as needed, three at most: the one playing, and up to two still fading out after switches.
   const create = (ctx, output, noise) => {
     const players = [player(ctx, output, noise)], outgoing = [];
-    let current = 0, chosen = 0, mode = "";
+    // `entering`: when the song last switched to comes in.
+    let current = 0, chosen = 0, mode = "", entering = -1;
     players[0].load(SONGS[0]);
     const release = (now) => {
       while (outgoing.length && outgoing[0].end <= now) players[outgoing.shift().index].stop();
     };
-    // Play song `index` (a level's, 0-based). While a song plays, the new one starts on its next beat, both mixed
-    // together there, and the two crossfade over CROSSFADE seconds. Switching again mid-fade lets the older ones
-    // finish fading; only when every player is busy is the oldest stopped.
+    // Play song `index` (a level's, 0-based). While a song plays, it fades out from its next beat and the new one
+    // starts near the end of that fade, coming in as it goes. Switching again mid-fade lets the older ones finish
+    // fading; only when every player is busy is the oldest stopped.
     const song = (index) => {
       if (index === chosen) return;
       chosen = index;
       const playing = players[current];
       if (!playing.mode) { playing.load(SONGS[index]); return; }
       const now = ctx.currentTime;
+      // A song still waiting to come in is swapped for this one, in its place and with its fade.
+      if (now < entering) { playing.load(SONGS[index]); playing.startAt(entering, playing.mode); return; }
       release(now);
       let free = players.findIndex((p, i) => i !== current && !p.mode);
       if (free < 0 && players.length < 3) { players.push(player(ctx, output, noise)); free = players.length - 1; }
       if (free < 0) { free = outgoing.shift().index; players[free].stop(); }
-      const next = players[free], at = playing.nextBeat(now + 0.06);
-      next.load(SONGS[index]); next.startAt(at, playing.mode);
-      playing.fade(FADE_OUT, at); next.fade(FADE_IN, at);
-      outgoing.push({ index: current, end: at + CROSSFADE });
-      current = free;
+      const next = players[free], at = playing.nextBeat(now + 0.06), enter = at + FADE_OUT_S * ENTER;
+      next.load(SONGS[index]); next.startAt(enter, playing.mode);
+      playing.fade(FADE_OUT, at, FADE_OUT_S); next.fade(FADE_IN, enter, FADE_IN_S);
+      outgoing.push({ index: current, end: at + FADE_OUT_S });
+      current = free; entering = enter;
     };
     const stage = (next) => {
       if (next === "dock" || next === "intro" || next === "lifting" || next === "briefing" || next === "ready" || next === "won" || next === "best" || next === "dq") next = "bed";
@@ -460,7 +466,7 @@
       for (const fading of outgoing) players[fading.index].tick(ahead);
     };
     const quiet = () => { for (const p of players) p.quiet(); };
-    const stop = () => { outgoing.length = 0; for (const p of players) p.stop(); };
+    const stop = () => { outgoing.length = 0; entering = -1; for (const p of players) p.stop(); };
     return { stage, tick, quiet, stop, song, get chosen() { return chosen; }, get mode() { return mode; } };
   };
   BL.cloudHopperMusic = { create, SONGS };
