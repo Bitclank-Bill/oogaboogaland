@@ -3,7 +3,8 @@
 // (their exact bytes), /favicon.ico holds both unchanged in an ICO directory, and /apple-touch-icon.png (with its
 // -precomposed twin, which older iOS and many link previews ask for unlinked) is the 64px mark at exactly twice its
 // size, centred on the page's theme colour, since iOS lays a transparent icon on black and rounds its corners.
-import { writeFileSync } from "node:fs";
+// Keep an already staged touch icon unchanged, including the web app manifest's shared icon.
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 
@@ -98,9 +99,10 @@ export function stageIcons(html, out) {
     writeFileSync(join(out, `favicon-${size}.png`), bytes);
   }
   writeFileSync(join(out, "favicon.ico"), ico(found));
-  const touch = touchIcon(found.find((p) => p.size === 64).bytes, theme[1]);
+  const touchPath = join(out, "apple-touch-icon.png");
+  const touch = existsSync(touchPath) ? readFileSync(touchPath) : touchIcon(found.find((p) => p.size === 64).bytes, theme[1]);
   for (const file of ["apple-touch-icon.png", "apple-touch-icon-precomposed.png"]) writeFileSync(join(out, file), touch);
-  let touchLinked = false;
+  let touchLinked = /<link\b[^>]*\brel="apple-touch-icon"/.test(html);
   return html.replace(ICONS, (_, size) => {
     const link = `<link rel="icon" type="image/png" sizes="${size}x${size}" href="/favicon-${size}.png">`;
     if (touchLinked) return link;

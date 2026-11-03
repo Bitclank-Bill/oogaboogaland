@@ -1,4 +1,4 @@
-// The live players tab beside Ooga Boogas (#361), for signed-in visitors: every player in the island room, grouped by
+// The Online Oogas tab beside Contributing Oogas (#361), for signed-in visitors: every player in the island room, grouped by
 // the zone they are in (zone-map.js), the visitor's own group first with their own row at its head, then the other
 // groups by heading and everyone in a group by name. A row keeps the roster's marks (the online dot, the host's dot,
 // the voice mark, which mutes as it does there), a crosshair that turns the camera (`BL.pilot.turnToward`) and, for
@@ -14,12 +14,29 @@
 // Cost: rows are placed only when someone joins, leaves or changes zone, body or name, and only while the panel shows;
 // distances and crosshairs are rewritten as positions arrive (`subscribeMoves`, a few times a second at most), and only
 // what changed. No timers. Exports setDoors and stats.
+// While the visitor is in voice the tab also holds their hearing range (#380, `BL.voice.setRadius`): the slider's last
+// stop is no limit, and a distance at or past the range is dimmed, since that voice is faded out for them. A voice in
+// another place of the group, which shows no distance, is silenced by a range without a mark here. The slider is offered
+// wherever voice.js can fade a voice (`fades`): by its element's volume, or on iOS and iPadOS through a Web Audio gain.
+// Joins (#430, `net.subscribePresence`): a player who comes online while the visitor is in the room is named on screen
+// (`hud.toast`, read out by assistive technology) and counted on the tab until the visitor looks at it
+// (`sheet.watchViews`), unless they are in the panel as it happens. Those already there when the visitor (re)joins are
+// not named, nor is one who comes back within REJOIN_QUIET of leaving (a reconnect, a reload, a newer tab). Joins close
+// together share one message while it shows. With "Read joins aloud" ticked (this browser's choice, in localStorage) the names are
+// spoken too, one utterance at a time: names that arrive while one plays wait and are said together after it, and the
+// page-wide mute (`BL.sound`) silences it, leaving the message. Speech starts only from the box, a gesture.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const net = BL.net, Z = BL.zoneMap;
   const $ = (id) => document.getElementById(id);
   const sheet = $("sheet"), panel = $("players-panel"), list = $("players-list"), status = $("players-status"), count = $("players-count");
+  const hearing = $("players-hearing"), range = $("players-hearing-range"), rangeValue = $("players-hearing-value"), V = BL.voice;
+  const speak = $("players-speak"), speakBox = $("players-speak-input"), synth = window.speechSynthesis || null, toastBox = $("toast");
+  // The slider's stops run RADIUS_MIN..RADIUS_MAX metres, and one more stop past them is no limit.
+  const RANGE_STEP = Number(range.step);
+  range.min = String(V.RADIUS_MIN);
+  range.max = String(V.RADIUS_MAX + RANGE_STEP);
   const ROOM_WORDS = { off: "Not connected.", connecting: "Joining the island…", paused: "Paused while the tab was hidden.", replaced: "Open in another tab.", full: "The island is full.", revoked: "Your account access was revoked." };
   const LOOK = { player: "Look at player", known: "Look at last known position", door: "Look toward entrance", nowhere: "Location unavailable", route: "Route unavailable" };
   // A player is turned toward at about their middle; a door at the height the scene gives.
@@ -34,7 +51,7 @@
   crosshair.append(crosshairPath);
 
   const rows = new Map(), groups = new Map(), order = [], door = { x: 0, y: 0, z: 0 };
-  let serial = 0, pass = 0, showing = false, stale = true, doors = null, shownZone = "";
+  let serial = 0, pass = 0, showing = false, stale = true, doors = null, shownZone = "", shownRadius = -1, shownHearing = null;
   const makeRow = () => {
     const li = document.createElement("li"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
@@ -55,7 +72,7 @@
     distance.append(note);
     li.append(presence, name, marks, look, distance);
     return { li, label, host, voice, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
-      aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false };
+      aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false, far: false };
   };
   const selfRow = makeRow();
   selfRow.self = true;
@@ -111,8 +128,8 @@
   // Distances and crosshairs, from where everyone stands now.
   const measure = () => {
     if (!showing || stale) return;
-    const s = net.state, me = s.self, mine = s.zone, placed = me.zone === mine;
-    shownZone = mine;
+    const s = net.state, me = s.self, mine = s.zone, placed = me.zone === mine, radius = V.fades && V.stats.enabled ? V.stats.radius : 0;
+    shownZone = mine; shownRadius = radius;
     for (const row of rows.values()) {
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
@@ -140,7 +157,24 @@
         row.distance.title = lastKnown && metres >= 0 ? "Last known location" : "";
         row.note.hidden = !(lastKnown && metres >= 0);
       }
+      const far = radius > 0 && metres >= radius;
+      if (row.far !== far) { row.far = far; row.distance.dataset.far = String(far); }
     }
+  };
+
+  // The hearing range's slider, shown while the visitor is in voice; a new range redraws which distances are dimmed.
+  const paintHearing = () => {
+    if (!showing || stale) return;
+    const voice = V.stats, shown = V.fades && voice.enabled && net.state.room === "live";
+    if (shown !== shownHearing) { shownHearing = shown; hearing.hidden = !shown; }
+    if (!shown) {
+      if (shownRadius > 0) measure();
+      return;
+    }
+    const words = voice.radius ? `${voice.radius} m` : "No limit", value = String(voice.radius || V.RADIUS_MAX + RANGE_STEP);
+    if (rangeValue.textContent !== words) { rangeValue.textContent = words; range.setAttribute("aria-valuetext", words); }
+    if (range.value !== value && document.activeElement !== range) range.value = value;
+    if (voice.radius !== shownRadius) measure();
   };
 
   // Who is in the room and where: rows placed by group and name, groups by the visitor's own first, then heading.
@@ -152,6 +186,7 @@
     if (status.textContent !== words) status.textContent = words;
     status.hidden = !words;
     list.hidden = !live;
+    paintHearing();
     const chip = live ? `${s.online} online` : "Offline";
     if (count.textContent !== chip) count.textContent = chip;
     count.dataset.tone = live ? "live" : "idle";
@@ -230,14 +265,84 @@
   watch.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
   watch.observe(sheet, { attributes: true, attributeFilter: ["data-open", "hidden"] });
   document.addEventListener("sheetchange", updateShowing);
+  // The slider's last stop is past RADIUS_MAX, which setRadius takes as no limit. A pointer lets go of it once set, so M and
+  // the other keys reach the page again; from the keyboard it keeps the focus to step on.
+  range.addEventListener("input", () => V.setRadius(Number(range.value)));
+  range.addEventListener("pointerup", () => range.blur());
+  // Joins: named, counted until looked at, and spoken when asked.
+  const REJOIN_QUIET = 120000, TOAST_MS = 2800, SPEECH_STUCK_MS = 15000, NAMES_SHOWN = 3, SPEAK_KEY = "oogaboogaland.players.speak";
+  const leftAt = new Map(), shown = { names: [], extra: 0 }, said = { names: [], extra: 0 };
+  let unread = 0, shownAt = -Infinity, shownText = "", speaking = false, speakingAt = 0, speakOn = false;
+  const add = (list, name) => { if (list.names.length < NAMES_SHOWN) list.names.push(name); else list.extra++; };
+  const words = (list) => {
+    const all = list.extra ? [...list.names, `${list.extra} ${list.extra === 1 ? "other" : "others"}`] : list.names;
+    return all.length === 1 ? `${all[0]} is online` : `${all.slice(0, -1).join(", ")} and ${all[all.length - 1]} are online`;
+  };
+  const setUnread = (count) => { unread = count; BL.sheet.setBadge("players", count); };
+  const utter = (text) => {
+    const line = new SpeechSynthesisUtterance(text);
+    line.onend = line.onerror = sayNext;
+    speaking = true; speakingAt = performance.now();
+    synth.speak(line);
+  };
+  const sayNext = () => {
+    speaking = false;
+    if (!said.names.length) return;
+    const text = words(said);
+    said.names.length = 0; said.extra = 0;
+    if (speakOn && !BL.sound.muted) utter(text);
+  };
+  const say = (name) => {
+    if (!synth || !speakOn || BL.sound.muted) return;
+    add(said, name);
+    if (!speaking || performance.now() - speakingAt > SPEECH_STUCK_MS) sayNext();
+  };
+  const hush = () => {
+    said.names.length = 0; said.extra = 0;
+    if (synth && speaking) synth.cancel();
+    speaking = false;
+  };
+  net.subscribePresence((rec, joined) => {
+    const now = performance.now();
+    for (const [id, at] of leftAt) if (now - at > REJOIN_QUIET) leftAt.delete(id);
+    if (!joined) { leftAt.set(rec.id, now); return; }
+    if (leftAt.delete(rec.id)) return;
+    if (!BL.sheet.attending(panel)) setUnread(unread + 1);
+    // A join adds to the message only while it is still the one on screen.
+    if (now - shownAt > TOAST_MS || toastBox.hidden || toastBox.textContent !== shownText) { shown.names.length = 0; shown.extra = 0; }
+    add(shown, rec.display);
+    shownAt = now; shownText = words(shown);
+    BL.hud.toast(shownText);
+    say(rec.display);
+  });
+  BL.sheet.watchViews(panel, () => { if (unread) setUnread(0); });
+  net.subscribe(() => {
+    if (net.state.me || !unread && !leftAt.size) return;
+    setUnread(0); leftAt.clear(); hush();
+  });
+  if (synth) {
+    try { speakOn = localStorage.getItem(SPEAK_KEY) === "on"; } catch { /* Storage may be unavailable. */ }
+    speakBox.checked = speakOn;
+    speak.hidden = false;
+    speakBox.addEventListener("change", () => {
+      speakOn = speakBox.checked;
+      try { localStorage.setItem(SPEAK_KEY, speakOn ? "on" : "off"); } catch { /* Storage may be unavailable. */ }
+      hush();
+      // Said from the tick itself, the gesture a phone's browser needs before it speaks the joins that follow.
+      if (speakOn && !BL.sound.muted) utter("Joins will be read aloud");
+    });
+    speakBox.addEventListener("click", (e) => { if (e.detail) speakBox.blur(); });
+    BL.sound.subscribe((muted) => { if (muted) hush(); });
+  }
   net.subscribe(render);
   net.subscribeRoster(render);
   net.subscribeMoves(measure);
   BL.voice.subscribe(paintMarks);
+  BL.voice.subscribe(paintHearing);
   // The scene the visitor is in names its doors (`fn(from, step, out, nearX, nearZ)`, true with `out` written), or null.
   const setDoors = (fn) => {
     doors = fn;
     measure();
   };
-  BL.players = { setDoors, get stats() { return { showing, rows: rows.size, groups: groups.size }; } };
+  BL.players = { setDoors, get stats() { return { showing, rows: rows.size, groups: groups.size, unread, speakOn }; } };
 })();
