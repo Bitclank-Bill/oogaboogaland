@@ -16,7 +16,8 @@
   const ring = (cx, cz, r, gap) => { const out = []; for (let k = 0; k < 12; k++) { const a0 = k / 12 * Math.PI * 2, a1 = (k + 1) / 12 * Math.PI * 2, mid = (a0 + a1) / 2; if (Math.abs(Math.atan2(Math.sin(mid - gap), Math.cos(mid - gap))) < 0.5) continue; out.push([cx + Math.cos(a0) * r, cz + Math.sin(a0) * r, cx + Math.cos(a1) * r, cz + Math.sin(a1) * r]); } return out; };
   // Each hole in its own cell's frame: `edge` the green's outline, `tee`, `cup`, `par`, and its feature: `bumpers`
   // [x, z, r], `blocks` (rects), `segs` (loose walls [x0, z0, x1, z1]), `bar` (a turning bar: centre, length, turn
-  // speed), `via` (points round the hole's turn), `line` (putts [angle, power] that hole it, found once by searching
+  // speed), `water` (ponds: a ball in one goes back where it was struck from, a stroke added), `via` (points round the
+  // hole's turn), `line` (putts [angle, power] that hole it, found once by searching
   // shots and replayed by the suite, so a change that makes a hole unplayable is caught), and `prop`, the carving that stands
   // over it (the scene's to build).
   const HOLES = [
@@ -28,7 +29,7 @@
     { name: "The Pyramid", line: [[5.2534, 1], [1.7104, 0.95]], par: 3, edge: rect(-6, 6, -3, 3), tee: [-5, 0], cup: [5, 0], blocks: [rect(-1.8, 1.8, -1.8, 1.8)], prop: "pyramid" },
     { name: "Feathered Serpent", line: [[1.3963, 1], [2.8449, 0.875], [5.4105, 1], [3.7699, 0.9]], par: 3, edge: rect(-7, 7, -3.5, 3.5), tee: [-6, -2.3], cup: [-6, 2.3], blocks: [rect(-7, 5.2, -0.5, 0.5)], via: [[6, 0]], prop: "serpent" },
     { name: "The Sun Stone", line: [[2.2166, 0.975], [0.0698, 0.8]], par: 3, edge: rect(-6, 6, -2.5, 2.5), tee: [-5, 0], cup: [5, 0], bar: [0, 0, 3.8, 1.3], prop: "sun" },
-    { name: "Temple of the Block", line: [[1.4312, 1], [2.8274, 0.825]], par: 4, edge: rect(-7, 7, -4.5, 4.5), tee: [-6, 0], cup: [5.2, 0], bumpers: [[-3, -2, 0.5], [-3, 2, 0.5], [-0.5, 0, 0.6], [2, -2.4, 0.4], [2, 2.4, 0.4]], segs: ring(5.2, 0, 1.15, Math.PI), prop: "temple" }
+    { name: "Temple of the Block", line: [[1.4312, 1], [2.8274, 0.825]], par: 4, edge: rect(-7, 7, -4.5, 4.5), tee: [-6, 0], cup: [5.2, 0], bumpers: [[-3, -2, 0.5], [-3, 2, 0.5], [-0.5, 0, 0.6], [2, -2.4, 0.4], [2, 2.4, 0.4]], segs: ring(5.2, 0, 1.15, Math.PI), water: [rect(-6.9, -4.6, -4.4, -2.9)], prop: "temple" }
   ];
   // Hole i's cell: rows of three played in a snake (left to right, back, then again).
   const cellOf = (i) => { const row = Math.floor(i / 3), k = i % 3, col = row % 2 ? 2 - k : k; return { x: CELL_X[col], z: CELL_Z[row], flip: row % 2 === 1 }; };
@@ -43,11 +44,12 @@
     for (const s of h.segs || []) { const a = P(s[0], s[1]), b = P(s[2], s[3]); segs.push(a[0], a[1], b[0], b[1]); }
     const bumpers = new Float64Array((h.bumpers || []).flatMap(([x, z, r]) => [...P(x, z), r]));
     const bar = h.bar ? { x: P(h.bar[0], h.bar[1])[0], z: c.z + h.bar[1], len: h.bar[2], w: h.bar[3] * sx } : null;
+    const water = (h.water || []).map((r) => { const pts = r.map(([x, z]) => P(x, z)); return { x0: Math.min(...pts.map((q) => q[0])), x1: Math.max(...pts.map((q) => q[0])), z0: Math.min(...pts.map((q) => q[1])), z1: Math.max(...pts.map((q) => q[1])) }; });
     const tee = P(...h.tee), cup = P(...h.cup), via = (h.via || []).map(([x, z]) => { const q = P(x, z); return { x: q[0], z: q[1] }; });
-    return (compiled[i] = { i, hole: h, cell: c, edge, via, segs: new Float64Array(segs), bumpers, bar, tee: { x: tee[0], z: tee[1] }, cup: { x: cup[0], z: cup[1] } });
+    return (compiled[i] = { i, hole: h, cell: c, edge, via, water, segs: new Float64Array(segs), bumpers, bar, tee: { x: tee[0], z: tee[1] }, cup: { x: cup[0], z: cup[1] } });
   };
   const inside = (edge, x, z) => { let k = false; for (let a = 0, b = edge.length - 1; a < edge.length; b = a++) { const [xa, za] = edge[a], [xb, zb] = edge[b]; if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) k = !k; } return k; };
-  const createBall = () => ({ x: 0, z: 0, vx: 0, vz: 0, lastX: 0, lastZ: 0, moving: false, sunk: false, strokes: 0, bumps: 0 });
+  const createBall = () => ({ x: 0, z: 0, vx: 0, vz: 0, lastX: 0, lastZ: 0, moving: false, sunk: false, strokes: 0, bumps: 0, splashes: 0 });
   const placeAt = (ball, c) => { ball.x = ball.lastX = c.tee.x; ball.z = ball.lastZ = c.tee.z; ball.vx = ball.vz = 0; ball.moving = false; ball.sunk = false; ball.strokes = 0; };
   const putt = (ball, angle, power) => {
     if (ball.moving || ball.sunk) return false;
@@ -96,6 +98,8 @@
         if (Math.hypot(ball.vx, ball.vz) < SINK_SPEED) { ball.x = c.cup.x; ball.z = c.cup.z; ball.vx = ball.vz = 0; ball.moving = false; ball.sunk = true; return; }
         ball.vx -= cx * 6 * h; ball.vz -= cz * 6 * h;
       }
+      // In the water: back where it was struck from, and a stroke for the trouble.
+      for (const w of c.water) if (ball.x > w.x0 && ball.x < w.x1 && ball.z > w.z0 && ball.z < w.z1) { ball.x = ball.lastX; ball.z = ball.lastZ; ball.vx = ball.vz = 0; ball.moving = false; ball.strokes++; ball.splashes++; return; }
       // Never out of the green: a ball that slipped through goes back where it was struck from.
       if (!inside(c.edge, ball.x, ball.z)) { ball.x = ball.lastX; ball.z = ball.lastZ; ball.vx = ball.vz = 0; ball.moving = false; return; }
     }
