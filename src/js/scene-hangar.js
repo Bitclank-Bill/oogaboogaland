@@ -60,19 +60,22 @@
   const walk = { phase: 0, t: 0, x: 0, z: 0, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false };
   // The hall's own light, warm, and past the launch shield space, as ₿IFRÖST's night shows it: the sky pass paints its
   // deep gradient, its twinkling stars and a moon low in the tunnel's end; `sun` is the sun's colour, which the night
-  // hides.
+  // hides. A cool haze hangs in the hall, deepening down the runway, so the far end and the tunnel's frames sink back
+  // and the Jet stands out in front of them.
   const RENDER_OPTS = {
     clear: [0.01, 0.012, 0.035], sky: [0.54, 0.38, 0.26], ground: [0.24, 0.16, 0.1],
     direct: [0.7, 0.52, 0.36], directStrength: 0.36, ambientFloor: 0.4, light: { x: 0.25, y: 0.9, z: 0.35 },
     horizon: [0.07, 0.06, 0.18], zenith: [0.006, 0.008, 0.03], sun: [0.05, 0.05, 0.08], stars: 1,
     moon: { x: 0.2, y: 0.13, z: -0.97 }, starMatrix: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
     shadowCenter: { x: 2.5, y: 6, z: -2 }, shadowExtent: 42,
+    fog: [0.045, 0.06, 0.095], fogNear: 14, fogFar: 120,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 1
   };
-  // The hall's own light at full, which an anomaly dims (its `ambient`).
+  // The hall's own light at full, which an anomaly dims (its `ambient`), and its haze, which dims with it.
   // Where the Jet's nose gear stands along it, m from its middle, which the lowrider's bang comes from.
   const NOSE_GEAR = -9.3;
   const SKY = RENDER_OPTS.sky.slice(), GROUND = RENDER_OPTS.ground.slice(), DIRECT = RENDER_OPTS.directStrength, FLOOR = RENDER_OPTS.ambientFloor;
+  const HAZE = RENDER_OPTS.fog.slice();
   // The space past the shield, from ₿IFRÖST's dome (`bifrostModels.sky`): its stars, the twinkling ones in their halos,
   // the galaxy's band and its shooting stars on a dome tipped so its zenith looks back down the tunnel and turned so
   // the band crosses the tunnel's end; and its ringed giant and its red world, turning with their moons going round,
@@ -156,8 +159,8 @@
   const DRIVE_HINT = COARSE ? "Stick drives · tap the fork stick for the forks · tap the wheel to honk" : "W S drive · A D steer · R F forks · H horn · Space gets out";
   const POWER = { lit: [0.12, 1], dome: [0.2, 0.7], flash: 2.6, sharp: 8, rate: 9, turn: 9, needle: 2.4, speedo: 8, crank: 0.75, ready: 0.9, reach: 1.1, radius: 7, color: [1.6, 0.95, 0.22] };
   // How near the hold-short bar the launch shield answers whoever walks up to it, and how far back they must step before
-  // it answers again.
-  const SHIELD_NEAR = 0.6, SHIELD_REARM = 3;
+  // it answers again; and how much of the hall's haze its shimmer cuts through.
+  const SHIELD_NEAR = 0.6, SHIELD_REARM = 3, SHIELD_PIERCE = 0.7;
 
   let renderer, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null;
   let canvas = null, people = null, avatar = null, playerWorld = null, scene = null, leaving = false, dust = null, unsubscribeAccount = null, remotes = null, footsteps = null, node = null;
@@ -671,6 +674,9 @@
       }
       addChild(space, planet);
     });
+    // Space lies past the hall's haze: its pieces, shared with ₿IFRÖST's chamber, which has none, take none of it.
+    const clear = (node) => { if (node.geometry) node.geometry.fogPierce = 1; for (const child of node.children) clear(child); };
+    clear(space);
     addChild(root, space);
   };
   // The neon's flicker, and the mouth's light with it, as dim as an anomaly has the hall's lights (`dim`).
@@ -912,6 +918,8 @@
     const launch = createNode({ position: { x: 0, y: 0, z: TUN.z1 } });
     addChild(root, launch);
     s.launch = { hum: 0, armed: true, phase: BL.labPhase.create(launch, { x: 0, z: TUN.z1, ry: 0, floorY: 0, room: { w: 2 * TUN.r, h: LAUNCH.ceilingY, from: 0, to: 1 } }, LAUNCH, 0, LAUNCH_TINT) };
+    // The haze deepens down the runway, but the shield's shimmer still reads at the tunnel's end (`SHIELD_PIERCE`).
+    for (const node of launch.children) node.geometry.fogPierce = SHIELD_PIERCE;
     const target = (n, kind, preset, radius) => {
       input.add(n, { kind, preset }, { radius });
       targets.push(n);
@@ -1019,7 +1027,7 @@
   };
   const lightUp = () => {
     HM.fixedLights().forEach((l, i) => lamp(i, ...l));
-    for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i]; RENDER_OPTS.ground[i] = GROUND[i]; }
+    for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i]; RENDER_OPTS.ground[i] = GROUND[i]; RENDER_OPTS.fog[i] = HAZE[i]; }
     RENDER_OPTS.directStrength = DIRECT; RENDER_OPTS.ambientFloor = FLOOR;
     RENDER_OPTS.lightCount = Math.min(BL.glRenderer.POINT_LIGHT_CAPACITY, FIXED + lanternPool().length / 4);
   };
@@ -1497,7 +1505,7 @@
       s.dimmed = dim; s.ambient = amb;
       const F = HM.fixedLights();
       for (let i = 1; i < FIXED; i++) if (i !== MOUTH_SLOT) { const l = F[i], o = i * 8; Lt[o + 4] = l[4] * dim; Lt[o + 5] = l[5] * dim; Lt[o + 6] = l[6] * dim; }
-      for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i] * amb; RENDER_OPTS.ground[i] = GROUND[i] * amb; }
+      for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i] * amb; RENDER_OPTS.ground[i] = GROUND[i] * amb; RENDER_OPTS.fog[i] = HAZE[i] * amb; }
       RENDER_OPTS.directStrength = DIRECT * amb; RENDER_OPTS.ambientFloor = FLOOR * amb;
       for (const g of s.glass) g.glow = dim;
     }
