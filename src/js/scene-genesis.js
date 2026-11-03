@@ -839,6 +839,17 @@
         return { board: { room: "Game records", pages, sources: [] } };
       } });
   };
+  // The mining corner by the arrival (genesis-mining.js): the story's epilogue, after January 2009.
+  const MINING = { x: ENTRY.x + 8.5, z: ENTRY.z - 6.5, ry: 0 };
+  const buildMining = () => {
+    const MN = BL.genesisMining, term = MN.terminal();
+    built.mining = MN.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: MINING });
+    const words = BL.factoryModels.label("AFTER GENESIS", "how mining grew: CPUs, GPUs, ASICs · Space here", { height: 0.6, style: "gold" });
+    addChild(built.mining.root, createNode({ geometry: words.back, position: { x: 0, y: 2.9, z: 0.1 } }), createNode({ geometry: words.face, position: { x: 0, y: 2.9, z: 0.1 } }));
+    built.obstacles.push({ x0: MINING.x - 1.7, x1: MINING.x + 1.7, z0: MINING.z - 0.6, z1: MINING.z + 0.6 });
+    props.register({ id: "mining", era: 7, year: 2009, title: "After Genesis: how mining grew", label: "AFTER GENESIS · MINING SINCE 2009", sourceKeys: [], hint: "how Bitcoin mining grew after 2009",
+      at: { x: MINING.x, y: ISLAND_TOP, z: MINING.z + 1.5 }, reach: 2.6, onUse: () => ({ terminal: term, board: { room: "After Genesis: how mining grew", pages: MN.PAGES, sources: [] } }) });
+  };
   const updateVignettes = (dt) => {
     const q = avatar ? avatar.root.position : camera.target, near2 = BL.genesisVignettes.NEAR ** 2;
     for (const s of built.vignettes) s.v.update(dt, (q.x - s.x) ** 2 + (q.z - s.z) ** 2 < near2, view.calm);
@@ -1436,6 +1447,7 @@
       if (built.vignettes) updateVignettes(dt);
       if (docents) docents.update(dt, avatar ? avatar.root.position.x : null, avatar ? avatar.root.position.z : 0);
       if (built.fans && !view.calm) for (const f of built.fans) f.rotation.y += dt * 1.2;
+      if (built.mining) built.mining.update(dt, view.calm);
       if (ambience) { const q = avatar ? avatar.root.position : camera.target; ambience.update(dt, MU.bayAt(q.x, q.z), view.calm); }
     }
     // The cartridge console's game runs while it is open and the visitor has not paused.
@@ -1468,7 +1480,7 @@
     buildMuseum(); buildCavern(); buildDesk();
     registerProps();
     buildExhibits(); buildCatalogue(); buildAtrium(); buildCourtyard(); buildWalls();
-    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail(); buildVignettes(); buildEraItems(); buildRecords();
+    buildGalleries(); buildLegend(); buildEraFrames(); buildTrail(); buildVignettes(); buildEraItems(); buildRecords(); buildMining();
     registerOverviews();
     // The visit's footing: the floors and walls, plus whatever this visit's exhibits put in the way (each era's in
     // its old world, turned into the museum's).
