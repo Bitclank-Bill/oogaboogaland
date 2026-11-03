@@ -65,7 +65,7 @@
   // ---- The shrine's screen: a four-sided board hung high over the statue, turning slowly, each face a live reading
   // of the real network from the page's own chain feed (chain.js: mempool.space and the price socket), with how fresh
   // it is. Each face shows one page and they move round every CYCLE seconds, so every page passes every side.
-  const SCREEN = { w: 5.6, h: 3.15, y: 12.6, CYCLE: 9 };
+  const SCREEN = { w: 3.8, h: 2.14, y: 13.2, CYCLE: 9 };
   const HALVING = 210000;
   const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
   const SCREEN_PAGES = [

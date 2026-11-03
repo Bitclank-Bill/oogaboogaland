@@ -156,7 +156,7 @@
       const cube = createNode({ geometry: M.merge(...blocks) }), core = createNode({ geometry: coreGeo });
       const ring = createNode({ geometry: M.turnedX(M.torus(1.05, 0.04, e.accent === "#000000" ? "#e9eef5" : ink, 1.6), Math.PI / 2), position: { x: 0, y: -0.95, z: 0 } });
       addChild(holder, cube, core, ring);
-      const lab = label(e.title, "an essay · Space or tap to read", { height: 0.5, style: "gold" });
+      const lab = label(e.title, "an essay · E or click to read", { height: 0.5, style: "gold" });
       const tag = createNode({ position: { x: 0, y: -1.45, z: 0 }, rotation: { x: 0, y: c.a, z: 0 } });
       addChild(tag, createNode({ geometry: lab.back }), createNode({ geometry: lab.face }));
       addChild(holder, tag);
@@ -204,7 +204,7 @@
       addChild(n, createNode({ geometry: M.merge(...parts) }));
       const hit = createNode({ geometry: pick(s.w, 2.6, 1), position: { x: 0, y: 1.3, z: 0 } }); addChild(n, hit);
       targets.push({ node: hit, board: () => BOARDS.books(D) });
-      sign(n, "READING LIST", "Bitcoin Bill's books and further reading · Space here", 3.0, 0, 0.6);
+      sign(n, "READING LIST", "Bitcoin Bill's books and further reading · E here", 3.0, 0, 0.6);
       stations.push({ ...s, title: "The reading list", board: () => BOARDS.books(D) });
     }
     // ---- The video essays: a big screen running each essay's slide deck, a few seconds a slide.
@@ -217,7 +217,7 @@
       addChild(n, createNode({ geometry: videoScreen.face, position: { x: 0, y: 2.4, z: 0.04 } }));
       const hit = createNode({ geometry: pick(s.w, 3.5, 0.6), position: { x: 0, y: 2.4, z: 0 } }); addChild(n, hit);
       targets.push({ node: hit, board: () => BOARDS.videos(D) });
-      sign(n, "VIDEO ESSAYS", "the twelve essays as reels and slides · Space here", 4.75, 0, 0.6);
+      sign(n, "VIDEO ESSAYS", "the twelve essays as reels and slides · E here", 4.75, 0, 0.6);
       stations.push({ ...s, title: "The video essays", board: () => BOARDS.videos(D) });
     }
     // ---- This Week in Bitcoin: a kiosk with the live chain and the weekly news.
@@ -230,7 +230,7 @@
       addChild(n, createNode({ geometry: newsScreen.face, position: { x: 0, y: 2.4, z: 0.04 } }));
       const hit = createNode({ geometry: pick(s.w, 3.5, 0.6), position: { x: 0, y: 2.4, z: 0 } }); addChild(n, hit);
       targets.push({ node: hit, board: () => BOARDS.news(D) });
-      sign(n, "THIS WEEK IN BITCOIN", "the news every Sunday at bitcoinguide.app · Space here", 4.75, 0, 0.6);
+      sign(n, "THIS WEEK IN BITCOIN", "the news every Sunday at bitcoinguide.app · E here", 4.75, 0, 0.6);
       stations.push({ ...s, title: "This Week in Bitcoin", board: () => BOARDS.news(D) });
     }
     // ---- The dice tables: five dice each on green felt, a screen behind them. A die's faces: 1 up, 6 down, 2 east,
@@ -265,8 +265,8 @@
       for (let i = 0; i < 5; i++) { const d = createNode({ geometry: dieGeo, position: { x: -0.9 + i * 0.45, y: 1.13, z: 0.1 } }); addChild(n, d); dice.push({ n: d, v: 1 + i, t: 9, spin: [0, 0, 0], from: [0, 0, 0] }); }
       return { s, n, sc, dice, rolls: "", count: 0, t: 9, key: "" };
     };
-    const diceTable = table("dice", "#8b5cf6", "DICE ROLLS AND ENTROPY", "Space rolls five dice · tap the screen for the guide");
-    const passTable = table("passphrase", "#16a34a", "BIP39 PASSPHRASE", "Space rolls five dice for a word · tap the screen for the guide");
+    const diceTable = table("dice", "#8b5cf6", "DICE ROLLS AND ENTROPY", "E rolls five dice · click the screen for the guide");
+    const passTable = table("passphrase", "#16a34a", "BIP39 PASSPHRASE", "E rolls five dice for a word · click the screen for the guide");
     const roll = (T) => {
       if (T.t < ROLL_S) return;
       T.t = 0;
@@ -292,7 +292,7 @@
       D.paths.forEach((p, i) => { const l = label(`${p.number}. ${p.title.replace(/^The /, "")}`, "", { height: 0.32, style: "plain" }), y = 3.4 - i * 0.55, dir = i % 2 ? -1 : 1; addChild(n, createNode({ geometry: l.face, position: { x: dir * 1.15, y, z: 0.21 } }), createNode({ geometry: l.back, position: { x: dir * 1.15, y, z: 0.09 } })); });
       const logo = createNode({ geometry: M.merge(...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => M.bevelBox({ w: 0.28, h: 0.28, d: 0.28, color: "#f7931a", emissive: 0.9, bevel: 0.04, offset: { x: x * 0.15, y: y * 0.15, z: z * 0.15 } }))))), position: { x: 0, y: 4.65, z: 0 } });
       addChild(n, logo);
-      sign(n, "BITCOIN GUIDE", "start here · bitcoinguide.app · Space for the paths", 5.35, 0, 0.6);
+      sign(n, "BITCOIN GUIDE", "start here · bitcoinguide.app · E for the paths", 5.35, 0, 0.6);
       const hit = createNode({ geometry: pick(4.8, 2.6, 0.6), position: { x: 0, y: 2.9, z: 0 } }); addChild(n, hit);
       targets.push({ node: hit, board: () => BOARDS.paths(D) });
       stations.push({ ...s, title: "The Bitcoin Guide's learning paths", board: () => BOARDS.paths(D) });
@@ -324,7 +324,7 @@
     const paintDice = (g, W, H) => {
       const T = diceTable, rolls = T.count * 5, bits = rolls * Math.log2(6);
       frame(g, W, H, "#8b5cf6", "DICE ROLLS AND ENTROPY");
-      g.fillStyle = "#dfe7ee"; g.font = "24px sans-serif"; g.fillText("Each roll adds about 2.585 bits. A 24-word seed holds 256 bits:", 34, 86); g.fillText("about 99 to 100 rolls. Press Space to roll five dice.", 34, 116);
+      g.fillStyle = "#dfe7ee"; g.font = "24px sans-serif"; g.fillText("Each roll adds about 2.585 bits. A 24-word seed holds 256 bits:", 34, 86); g.fillText("about 99 to 100 rolls. Press E to roll five dice.", 34, 116);
       g.font = "bold 64px monospace"; g.fillStyle = "#ffffff"; g.fillText(T.last || "-----", 34, 160);
       g.font = "22px monospace"; g.fillStyle = "#b9a8ff";
       const r = T.rolls.trim(); for (let i = 0; i < 3; i++) g.fillText(r.slice(i * 48, i * 48 + 48), 34, 244 + i * 28);
@@ -335,7 +335,7 @@
     const paintPass = (g, W, H) => {
       const T = passTable, words = T.rolls ? T.rolls.split(" ").length : 0;
       frame(g, W, H, "#16a34a", "BIP39 PASSPHRASE");
-      g.fillStyle = "#dfe7ee"; g.font = "24px sans-serif"; g.fillText("Roll five dice: the five digits name one word in the EFF large", 34, 86); g.fillText("wordlist (7,776 words). Press Space to roll.", 34, 116);
+      g.fillStyle = "#dfe7ee"; g.font = "24px sans-serif"; g.fillText("Roll five dice: the five digits name one word in the EFF large", 34, 86); g.fillText("wordlist (7,776 words). Press E to roll.", 34, 116);
       g.font = "bold 64px monospace"; g.fillStyle = "#ffffff"; g.fillText(T.last || "-----", 34, 160);
       g.font = "26px monospace"; g.fillStyle = "#7dffb0"; g.fillText(T.rolls || "", 34, 250);
       g.font = "22px sans-serif"; g.fillStyle = "#dfe7ee"; g.fillText(`${words} word${words === 1 ? "" : "s"} · about ${(words * 12.9).toFixed(0)} bits · 5 to 7 words makes a strong passphrase`, 34, 320);
