@@ -78,12 +78,19 @@ test("thump boundaries: DSB Studio permissions hold; an audience reaches only th
 test("thumpPeers is exactly voicePeers both ways: whom the sender hears, and who would hear it speak", () => {
   let seed = 7;
   const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
-  const zones = ["outside", "lab", "factory", "factory.hall", "none", "ember-den", studio.STUDIO_ZONE];
-  for (let round = 0; round < 300; round++) {
+  // Crossings (BLEND, #392) included: a player part of the way along to an adjacent group.
+  const zones = ["outside", "lab", "factory", "factory.hall", "none", "ember-den", studio.STUDIO_ZONE, "rainforest", "hq", "hq-basement", "sphere"];
+  const toward = { outside: ["rainforest", "hq", "sphere"], rainforest: ["outside"], hq: ["outside", "hq-basement"], "hq-basement": ["hq"], sphere: ["outside"] };
+  const cross = (p) => {
+    const ways = toward[p.zone];
+    if (ways && rand() < 0.5) { p.blendTo = ways[Math.floor(rand() * ways.length)]; p.blendK = 1 + Math.floor(rand() * protocol.BLEND.STEPS); }
+    return p;
+  };
+  for (let round = 0; round < 600; round++) {
     const s = { ...studio.studioState(1000), hostId: 1 + Math.floor(rand() * 6), mode: ["presentation", "discussion", "qa"][Math.floor(rand() * 3)], invited: [2], restrictedIds: rand() < 0.3 ? [3] : [] };
     const players = Array.from({ length: 2 + Math.floor(rand() * 7) }, (_, i) => player(i + 1, zones[Math.floor(rand() * zones.length)],
       rand() < 0.2 ? { sub: null, pub: null, track: null } : rand() < 0.5 ? listening : talking,
-      { body: rand() < 0.2 ? null : `ooga-${i + 1}`, pokerVoice: rand() < 0.5 ? null : Math.floor(rand() * 2), studioSeat: rand() < 0.5 ? i : undefined }));
+      { body: rand() < 0.2 ? null : `ooga-${i + 1}`, pokerVoice: rand() < 0.5 ? null : Math.floor(rand() * 2), studioSeat: rand() < 0.5 ? i : undefined })).map(cross);
     const heard = voicePeers(players, s);
     for (const sender of players) {
       const live = players.map((p) => p === sender ? { ...p, voice: { ...p.voice, track: "mic" } } : p);
