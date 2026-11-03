@@ -14,6 +14,19 @@ test("poses inside the bounds are accepted, rounded and their yaw wrapped", () =
   }
   const g = parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 25, z: 0, yaw: 0, g: [127, 30, -2e6, 2, -2, 3] }));
   assert.deepEqual(g.g, [127, 20, -1e6, 1, -1, 1], "gorilla locomotion, including sleep, is bounded independently of position");
+  assert.equal(parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 25, z: 0, yaw: 0, j: 7 })).j, 7, "a worn jetpack at full thrust rides the pose");
+  assert.equal("j" in parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 25, z: 0, yaw: 0, j: 0 })), false, "no jetpack adds nothing");
+  assert.equal(parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 25, z: 0, yaw: 0, w: 255 })).w, 255, "the gun in hand, aimed, with every round, rides the pose");
+  assert.equal("w" in parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 25, z: 0, yaw: 0, w: 0 })), false, "empty hands add nothing");
+});
+
+test("a shot is six numbers inside the room's bounds and a shot's reach, rounded; a swing is just the strike", () => {
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: "shot", a: [1.23456, 2, 3, 30, 4, -5] })), { t: "shot", a: [1.235, 2, 3, 30, 4, -5] });
+  assert.deepEqual(parseClientMessage('{"t":"swing"}'), { t: "swing" });
+  for (const a of [null, [], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5, 6, 7], [1, 2, 3, 4, "5", 6], [BOUND_XZ + 1, 0, 0, 0, 0, 0],
+    [0, BOUND_Y_MAX + 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, -BOUND_XZ - 1], [-100, 0, 0, 100, 0, 0]]) {
+    assert.equal(parseClientMessage(JSON.stringify({ t: "shot", a })), null, JSON.stringify(a));
+  }
 });
 
 test("poses out of bounds or not numbers are ignored, not fatal", () => {
@@ -23,6 +36,12 @@ test("poses out of bounds or not numbers are ignored, not fatal", () => {
   for (const g of [null, {}, [], [4, 0, 0, 0, 0], [4, 0, 0, 0, 0, 0, 0], [128, 0, 0, 0, 0, 0], [-1, 0, 0, 0, 0, 0],
     [0.5, 0, 0, 0, 0, 0], [4, "1", 0, 0, 0, 0], [4, 0, null, 0, 0, 0]]) {
     assert.equal(parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 0, z: 0, yaw: 0, g })), null, JSON.stringify(g));
+  }
+  for (const j of [8, -1, 1.5, "1", null, true]) {
+    assert.equal(parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 0, z: 0, yaw: 0, j })), null, JSON.stringify(j));
+  }
+  for (const w of [256, -1, 2.5, "2", null, false]) {
+    assert.equal(parseClientMessage(JSON.stringify({ t: "pose", x: 0, y: 0, z: 0, yaw: 0, w })), null, JSON.stringify(w));
   }
 });
 
@@ -240,4 +259,17 @@ test("NPC followers: every other page showing the island, so a lone host sends n
   const two = [p(1, 10, true), p(2, 20, true), p(3, 30, false)];
   assert.equal(npcFollowers(two, electHost(two)), 1);
   assert.equal(npcFollowers(two, 0), 0, "no host, no followers");
+});
+
+test("a wallet event is a device number, its fuse and, where it lies or flies, a bounded place; anything else is ignored", () => {
+  const parse = (m) => parseClientMessage(JSON.stringify({ t: "wallet", ...m }));
+  assert.deepEqual(parse({ k: "take", u: 7, l: 2, f: 21 }), { t: "wallet", k: "take", u: 7, l: 2, f: 21 });
+  assert.deepEqual(parse({ k: "down", u: 7, f: 12.34567, x: 1.23456, y: 0, z: -3 }), { t: "wallet", k: "down", u: 7, f: 12.346, x: 1.235, y: 0, z: -3 });
+  assert.deepEqual(parse({ k: "throw", u: 7, f: 3, x: 1, y: 2, z: 3, vx: 3.2, vy: 2.6, vz: -1 }), { t: "wallet", k: "throw", u: 7, f: 3, x: 1, y: 2, z: 3, vx: 3.2, vy: 2.6, vz: -1 });
+  assert.deepEqual(parse({ k: "up", u: 7, f: 9 }), { t: "wallet", k: "up", u: 7, f: 9 });
+  assert.deepEqual(parse({ k: "blast", u: [7, 8] }), { t: "wallet", k: "blast", u: [7, 8] });
+  for (const bad of [{ k: "take", u: 0, l: 1, f: 21 }, { k: "take", u: 7, l: 16, f: 21 }, { k: "take", u: 7, l: 1, f: 61 }, { k: "up", u: 7 },
+    { k: "down", u: 7, f: 1, x: BOUND_XZ + 1, y: 0, z: 0 }, { k: "throw", u: 7, f: 1, x: 0, y: 0, z: 0, vx: 21, vy: 0, vz: 0 },
+    { k: "blast", u: [] }, { k: "blast", u: Array(17).fill(1) }, { k: "steal", u: 7, f: 1 }])
+    assert.equal(parse(bad), null, JSON.stringify(bad));
 });

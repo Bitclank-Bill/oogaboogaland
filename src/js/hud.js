@@ -241,7 +241,7 @@
     renderer.dispose();
   };
   // An Ooga standing square to the view, whole, as it stands posed now: its built parts copied (hidden ones left out)
-  // and turned to face the camera, `w` by `h` pixels. A podium's portraits (HALLOWEEN: the ghost hunt's winners).
+  // and turned to face the camera, `w` by `h` pixels. A podium's portraits (HALLOWEEN: the arcade's ghost hunt's winners).
   const renderBodyIcon = (canvas, cave, w, h) => {
     const renderer = iconRendererMod.createRenderer(canvas, { width: w, height: h, transparent: true });
     const root = createNode(), body = copyPortraitNode(cave.root, null, null), tall = cave.bodyHeight;
@@ -260,7 +260,7 @@
   // The sheet belongs to the page. Reuse attached rows across visits; only current roster names stay in this map.
   const rosterNodes = new Map();
   let rosterAway = null, donorRows = null, donationRows = null;
-  const create = ({ roster, catalog, tierColors, renderIcon, lootEnabled = false, healthEnabled = false, signal = null }) => {
+  const create = ({ roster, catalog, tierColors, renderIcon, lootEnabled = false, healthEnabled = false, signal = null, escapeHeld = null }) => {
     const lifetime = signal ? null : new AbortController();
     signal = signal || lifetime.signal;
     const el = {
@@ -1812,7 +1812,7 @@
       mainBoard.update(elapsed);
       if (!panelsHidden) for (let i = 0; i < floatingBoards.length; i++) floatingBoards[i].update(elapsed);
     };
-    // A hunt or kiosk borrows the play area without changing the visitor's saved panel choices.
+    // Active gameplay borrows the play area without changing the visitor's saved panel choices.
     const setPanelsHidden = (on) => {
       on = !!on;
       if (on === panelsHidden) return;
@@ -2153,7 +2153,9 @@
           break;
         }
       }
-      if (!closed) closed = sheet.escape();
+      // A scene-owned screen (the Factory kiosk) keeps Escape while its controls
+      // have focus. Focusing a panel still lets the visitor close that panel.
+      if (!closed && !(escapeHeld?.() && !e.target.closest?.(".sheet"))) closed = sheet.escape();
       if (closed) { e.preventDefault(); e.stopImmediatePropagation(); }
     }, true);
     let presetHandler = null;
@@ -2324,7 +2326,7 @@
     return {
       // Engines keep this facade while a retained scene takes a fresh visit signal and sheet state.
       renew(signal) {
-        const next = create({ roster, catalog, tierColors, renderIcon, lootEnabled, healthEnabled, signal });
+        const next = create({ roster, catalog, tierColors, renderIcon, lootEnabled, healthEnabled, signal, escapeHeld });
         next.tooltip.setVisibility(this.tooltip.visibility);
         next.onAction(actionHandler); next.onPreset(presetHandler); next.onAssign(assignHandler); next.onUnassign(unassignHandler);
         Object.defineProperties(this, Object.getOwnPropertyDescriptors(next));
@@ -2398,26 +2400,16 @@
   // room and voice change here; only marks that changed are touched, and rows never move for them.
   let liveRows = null, liveOnline = null, liveSignedIn = false;
   const VOICE_WORDS = { on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
+  // A voice mark's tooltip and label, shared with the live players tab: the visitor's own mark works their microphone,
+  // anyone else's mutes them for this visitor (`login` empty when there is nobody to mute).
+  const voiceWords = (look, self, blocked, login) => !look ? "" : self ? look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute"
+    : `${VOICE_WORDS[look]}${blocked ? ". Muted for you: click to unmute" : login ? ". Click to mute for you" : ""}`;
   const voiceRowOf = (login, body) => {
     const character = BL.net.characterOf(login);
     return character && liveRows.get(character.handle) || body && liveRows.get(BL.net.bodyName(body)) || null;
   };
   // The land a signed-in player's zone stands in (docs/auth-and-presence.md, Zones), for their row's drop-down.
-  const LANDS = { outside: "The island", sphere: "Timechain Sphere", rainforest: "Mempool Island", bifrost: "\u20bfIFR\u00d6ST", lab: "EntropyLab", bca: "B.C.A.", factory: "Lightning Factory", arcade: "Ooga Arcade", mirror: "The Mirror cave", hq: "HQ", "ember-den": "Ember Den", none: "Between lands", "scene-transition": "Between lands" };
-  const landOf = (zone) => {
-    if (zone === "factory.hangar") return "Lightning Jet Hangar";
-    if (zone === "bifrost.chamber") return "\u20bfIFR\u00d6ST chamber";
-    const dot = zone.indexOf("."), group = dot < 0 ? zone : zone.slice(0, dot);
-    if (LANDS[group]) return LANDS[group];
-    if (/^sphere-\d$/.test(zone)) return `Timechain Sphere \u00b7 Room ${zone.slice(7)}`;
-    if (zone.startsWith("dsb-")) return "DSB Land";
-    if (zone.startsWith("cave-")) return "A cave on the island";
-    if (zone.startsWith("scene-")) {
-      const route = BL.routes.list.find((r) => r.scene === zone.slice(6) && !r.place);
-      return route ? route.title : "A game";
-    }
-    return zone;
-  };
+  const landOf = (zone) => BL.zoneMap.landOf(zone);
   // A row opens onto the land below its name, and closes when its player is no longer in the room.
   const openWhere = (row, open) => {
     row.open = open;
@@ -2439,8 +2431,7 @@
       button.dataset.self = String(row.self);
       button.disabled = !row.login && !row.self;
       button.setAttribute("aria-pressed", String(blocked));
-      const words = !row.look ? "" : row.self ? row.look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute"
-        : `${VOICE_WORDS[row.look]}${blocked ? ". Muted for you: click to unmute" : row.login ? ". Click to mute for you" : ""}`;
+      const words = voiceWords(row.look, row.self, blocked, row.login);
       button.title = words;
       button.setAttribute("aria-label", words);
     }
@@ -2519,5 +2510,5 @@
       else b.textContent = `Back to ${place}`;
     }
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

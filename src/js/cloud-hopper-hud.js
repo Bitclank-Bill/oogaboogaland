@@ -20,7 +20,7 @@
     ["normal", "Drifting clouds", "WASD moves, Shift runs and Space jumps. The clock starts when you leave this cloud. A shimmering cloud is about to fade."],
     ["boost", "Boost clouds", "Touch a pink cloud anywhere to launch toward the island."],
     ["jetpack", "Jetpacks", "Press J to wear a jetpack, then hold Space to fly up. Fuel never refills, so grab another pack for more."],
-    ["finish", "Banana pile", "Land on the banana pile to stop the clock. Your best run comes back as a ghost to race."]
+    ["finish", "Banana pile", "Land on the banana pile to stop the clock. Toggle the global record ghost in the timer to compare runs. Clouds change each run; the ghost shows its original route."]
   ];
   // Bounce clouds (from Level 2), Aurora Heights' gusts, Thunderhead's tornadoes and the power-ups, each introduced the
   // first time a session plays a level that carries it.
@@ -33,7 +33,7 @@
     hook: ["hook", "Grappling hook", "Aim at a cloud and hold click (RT on a pad) to reel yourself in. Let go to fly on. Miss, and it's gone."]
   };
   const formatTime = (value) => `${String(Math.floor(value / 6000)).padStart(2, "0")}:${String(Math.floor(value / 100) % 60).padStart(2, "0")}.${String(value % 100).padStart(2, "0")}`;
-  const create = ({ onStart, onReplay, onExit, onGuideDone, onSelect, onNext, onHook, letterSign } = {}) => {
+  const create = ({ onStart, onReplay, onExit, onGuideDone, onSelect, onNext, onHook, onGhost, letterSign } = {}) => {
     const node = (tag, className, text = "") => {
       const el = document.createElement(tag);
       el.className = className;
@@ -67,7 +67,27 @@
     hookChip.addEventListener("pointerdown", hookDown);
     hookChip.addEventListener("pointerup", hookUp);
     hookChip.addEventListener("pointercancel", hookUp);
-    const ghost = node("p", "cloud-hopper-help", "Finish a run to set your ghost");
+    const record = node("p", "cloud-hopper-help cloud-hopper-record"), recordText = node("span", "cloud-hopper-record-text");
+    const recordGhost = node("button", "cloud-hopper-record-ghost");
+    recordGhost.type = "button"; recordGhost.disabled = true; recordGhost.hidden = true;
+    recordGhost.setAttribute("aria-pressed", "false");
+    recordGhost.setAttribute("aria-label", "Show global record ghost · winning replay unavailable");
+    recordGhost.title = "Winning replay unavailable";
+    recordGhost.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 22V10C3 4 6.5 1 12 1s9 3 9 9v12l-3-2.5-3 2.5-3-2.5-3 2.5-3-2.5Z"/>'
+      + '<ellipse cx="9" cy="10" rx="1.2" ry="1.9" fill="#17232e"/><ellipse cx="15" cy="10" rx="1.2" ry="1.9" fill="#17232e"/></svg>';
+    const recordTime = node("span", "cloud-hopper-record-time"), recordTail = node("span", "cloud-hopper-record-tail");
+    recordTail.append(recordGhost, recordTime);
+    record.setAttribute("role", "status"); record.append(recordText, recordTail);
+    const toggleGhost = event => { event.stopPropagation(); onGhost?.(); };
+    recordGhost.addEventListener("click", toggleGhost);
+    const setReplayState = state => {
+      recordGhost.disabled = state === "unavailable";
+      recordGhost.setAttribute("aria-pressed", String(state === "on" || state === "loading"));
+      recordGhost.setAttribute("aria-busy", String(state === "loading"));
+      recordGhost.title = state === "unavailable" ? "No winning replay yet" : state === "error" ? "Replay unavailable · retry"
+        : state === "loading" ? "Loading winning replay · click to cancel" : state === "on" ? "Hide global record ghost" : "Show global record ghost · historical route";
+      recordGhost.setAttribute("aria-label", recordGhost.title);
+    };
     const help = node("p", "cloud-hopper-help"), panel = node("dialog", "race-results game-intro cloud-hopper-panel");
     const glow = node("div", "game-intro-glow"), rays = node("div", "game-intro-rays");
     const kicker = node("p", "game-intro-kicker", "Ooga Arcade"), panelTitle = node("h2", "game-intro-title", "CLOUD HOPPER");
@@ -79,7 +99,6 @@
     const scoresList = node("ol", "race-podium"), scoresEmpty = node("p", "cloud-hopper-scores-empty", "Finish a run to put your time on the board.");
     const scoresStatus = node("p", "cloud-hopper-scores-status", "Loading shared times…");
     const personalBest = node("p", "cloud-hopper-personal-best");
-    const liveScores = node("aside", "cloud-hopper-live-scores");
     scoresStatus.setAttribute("role", "status");
     const actions = node("div", "actions"), back = node("button", "", "Back"), play = node("button", "game-intro-go"), exit = node("button", "");
     const next = node("button", "game-intro-go", "Next level"), select = node("button", "", "Level select");
@@ -155,13 +174,15 @@
     gustCue.setAttribute("aria-hidden", "true"); gustCue.hidden = true;
     // The lines under the clock (what to do, the ghost, the keys), folded up into the clock once the run starts.
     const brief = node("div", "cloud-hopper-brief"), briefLines = node("div");
-    briefLines.append(title, ghost, help); brief.append(briefLines);
-    hud.append(name, timer, brief);
+    const instructions = node("div", "cloud-hopper-brief"), instructionLines = node("div");
+    briefLines.append(title); brief.append(briefLines);
+    instructionLines.append(help); instructions.append(instructionLines);
+    hud.append(name, timer, brief, record, instructions);
     scoresPanel.append(scoresTitle, scoresStatus, scoresList, scoresEmpty, personalBest);
     actions.append(back, next, play, select, exit);
     panel.append(glow, kicker, panelTitle, goal, levels, introArt, guideArt, resultArt, panelHelp, resultTime, scoresPanel, actions);
-    hud.hidden = panel.hidden = levels.hidden = next.hidden = select.hidden = liveScores.hidden = true;
-    document.body.append(hud, panel, gustCue, liveScores);
+    hud.hidden = panel.hidden = levels.hidden = next.hidden = select.hidden = true;
+    document.body.append(hud, panel, gustCue);
     let phase = "", hundredths = -1, previousFocus = null, disposed = false, frameY = 0.4;
     // The guide's cards this time (`setGuide`): the cloud guide, then the items new to this session's level.
     let guideIndex = 0, guidePictures = null, spaceTarget = null, guide = GUIDE;
@@ -214,11 +235,6 @@
       const text = formatTime(value);
       timer.textContent = text;
       resultTime.textContent = text;
-    };
-    const setGhost = (time) => {
-      if (disposed) return;
-      ghost.textContent = Number.isFinite(time)
-        ? `Best ghost · ${formatTime(Math.max(0, Math.floor(time * 100)))} · original route` : "Finish a run to set your ghost";
     };
     const showGuide = () => {
       const [kind, name, text] = guide[guideIndex];
@@ -344,6 +360,14 @@
         : sharedStatus === "stale" ? "Shared times may be out of date · refresh unavailable"
         : sharedStatus === "unavailable" ? "Shared leaderboard unavailable"
         : "All players · fastest times";
+      const leader = sharedScores?.[0];
+      recordText.textContent = leader ? `Global best · ${leader.username}`
+        : sharedStatus === "ready" ? "No times yet" : sharedStatus === "unavailable" ? "Global best unavailable" : "Loading global best…";
+      recordTime.textContent = leader ? formatTime(Math.floor(leader.milliseconds / 10))
+        + (sharedStatus === "stale" ? " · may be out of date" : sharedStatus === "refreshing" ? " · updating" : "") : "";
+      recordText.title = recordText.textContent;
+      // Only the shared replay controller can enable this control; personal bests supply no ghost.
+      recordGhost.hidden = !leader;
       const best = bests[selected - 1] || 0;
       personalBest.textContent = `Your best on this browser · ${best ? formatTime(Math.floor(best / 10)) : "no finish yet"}`;
       // Browser/session bests never fill the shared board, even while offline. Keep the last good shared reply.
@@ -370,7 +394,7 @@
     const setHighscores = (board) => {
       if (disposed) return;
       sharedStatus = board ? "ready" : "loading";
-      sharedScores = board ? Object.entries(board.highscores).map(([username, score]) => ({ username, time: score / 1000, achieved: board.achieved?.[username] || 0 }))
+      sharedScores = board ? Object.entries(board.highscores).map(([username, score]) => ({ username, milliseconds: score, time: score / 1000, achieved: board.achieved?.[username] || 0 }))
         .sort((a, b) => a.time - b.time || a.achieved - b.achieved || a.username.localeCompare(b.username)).slice(0, scoreRows.length) : null;
       showScores(localScores, localLatest);
     };
@@ -415,10 +439,6 @@
       if (ended || to === "intro") showScores(scores, latest);
       if (phase === to) return;
       phase = to; picking = false;
-      // One retained board: outside the modal during play, back inside for selection/results.
-      liveScores.hidden = to !== "running";
-      if (to === "running") { liveScores.append(scoresPanel); scoresPanel.hidden = false; }
-      else panel.insertBefore(scoresPanel, actions);
       showScores(localScores, localLatest);
       clearActivation();
       panel.classList.remove("cloud-hopper-picking");
@@ -485,7 +505,7 @@
       } else closePanel();
       measureFraming();
     };
-    const hide = () => { phase = ""; hud.hidden = liveScores.hidden = true; closePanel(); };
+    const hide = () => { phase = ""; hud.hidden = true; closePanel(); };
     const dispose = () => {
       if (disposed) return;
       hide(); disposed = true;
@@ -494,6 +514,7 @@
       select.removeEventListener("click", choose);
       play.removeEventListener("click", start);
       exit.removeEventListener("click", leave);
+      recordGhost.removeEventListener("click", toggleGhost);
       panel.removeEventListener("cancel", cancel);
       panel.removeEventListener("keydown", panelKey);
       panel.removeEventListener("keyup", panelKey);
@@ -502,7 +523,7 @@
       window.removeEventListener("resize", measureFraming);
       window.removeEventListener("resize", fitGuide);
       guidePictures?.dispose(); guidePictures = null;
-      hud.remove(); panel.remove(); liveScores.remove(); xrayChip.remove(); featherChip.remove(); hookChip.remove(); gustCue.remove();
+      hud.remove(); panel.remove(); xrayChip.remove(); featherChip.remove(); hookChip.remove(); gustCue.remove();
     };
     // The guide's next cards: the cloud guide unless `cloud` is false, then each new thing named in `items`.
     const setGuide = (cloud, items) => {
@@ -531,7 +552,7 @@
       gustCue.dataset.state = state; gustCue.dataset.from = fromLeft ? "left" : "right";
       shownGust = state; shownFrom = fromLeft;
     };
-    return { show, update, setGhost, setHighscores, setHighscoreStatus, setLevels, setRunner, setGuide, setPowers, setGust, setDq, hide, dispose, get frameY() { return frameY; } };
+    return { show, update, setHighscores, setHighscoreStatus, setReplayState, setLevels, setRunner, setGuide, setPowers, setGust, setDq, hide, dispose, get frameY() { return frameY; } };
   };
   BL.cloudHopperHud = { create };
 })();

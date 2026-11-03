@@ -584,36 +584,6 @@ body[data-active-scene="hub"] .home-link {
   }
 }
 
-/* Games keep their panels folded away until the banner's Ooga button opens the roster.
-   Ooga Arcade stays empty-handed, so its weapon slots remain hidden. */
-body[data-active-scene="race"] .sheet,
-body[data-active-scene="drop"] .sheet,
-body[data-active-scene="orbit"] .sheet,
-body[data-active-scene="mine"] .sheet,
-body[data-active-scene="skee"] .sheet,
-body[data-active-scene="hoops"] .sheet,
-body[data-active-scene="shy"] .sheet,
-body[data-active-scene="claw"] .sheet,
-body[data-active-scene="hockey"] .sheet,
-body[data-active-scene="billiards"] .sheet,
-body[data-active-scene="darts"] .sheet,
-body[data-active-scene="pinball"] .sheet,
-body[data-active-scene="ride"] .sheet,
-body[data-active-scene="invaders"] .sheet,
-body[data-active-scene="snake"] .sheet,
-body[data-active-scene="pong"] .sheet,
-body[data-active-scene="stampede"] .sheet,
-body[data-active-scene="flap"] .sheet,
-body[data-active-scene="breaker"] .sheet,
-body[data-active-scene="dash"] .sheet,
-body[data-active-scene="stacker"] .sheet,
-body[data-active-scene="arcade"] .sheet,
-body[data-active-scene="arcade"] .primary-hud,
-body[data-active-scene="arcade"] .weapon-hud,
-body[data-active-scene="arcade"] .magazine-hud {
-  display: none;
-}
-
 .sheet-toggle {
   position: absolute;
   z-index: 0;
@@ -772,6 +742,8 @@ body[data-active-scene="arcade"] .magazine-hud {
   .sheet[data-open="true"]:is(:hover, .virtual-hover) { --sheet-tab-slide: 0px; --sheet-tab-opacity: 1; }
   .sheet-panels:hover,
   .sheet-panels:has(.virtual-hover, :focus-visible) { --sheet-tab-slide: 0px; --sheet-tab-opacity: 1; }
+  /* A players or chat tab with a new count stays out, so the count is seen while a panel is open (#430). */
+  .sheet[data-open="true"] :is(.sheet-toggle-players, .sheet-toggle-chat):has(.tab-count:not([hidden])) { --sheet-tab-slide: 0px; --sheet-tab-opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1804,6 +1776,211 @@ body[data-active-scene="arcade"] .magazine-hud {
   .roster-voice {
     padding: 6px;
     margin: -6px -3px;
+  }
+}
+
+/* The live players tab (players.js): a group a zone under its heading, and a row a player with the roster's marks,
+   the crosshair that turns the camera and, for players in the visitor's zone, how far away they stand. Each cell keeps
+   its column, so a hidden crosshair or an empty distance never moves the others. */
+.players {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 10px;
+}
+
+.players[hidden] {
+  display: none;
+}
+
+.players-rows {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) 14px 14px 6ch;
+  column-gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.players-rows li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-height: 22px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  font-size: 12px;
+}
+
+.players-rows li:first-child {
+  border-top: 0;
+  box-shadow: none;
+}
+
+.players-rows .roster-presence { grid-column: 1; }
+.players-rows .roster-marks { grid-column: 3; }
+
+.players-name {
+  display: inline-flex;
+  grid-column: 2;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--paper);
+}
+
+.players-look {
+  display: inline-flex;
+  grid-column: 4;
+  justify-self: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.players-look[hidden] {
+  display: none;
+}
+
+.players-look svg {
+  width: 12px;
+  height: 12px;
+  shape-rendering: crispEdges;
+}
+
+.players-look:not([aria-disabled="true"]):hover,
+.players-look:not([aria-disabled="true"]).virtual-hover {
+  color: var(--accent-text);
+}
+
+.players-look:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.players-look[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.players-distance {
+  grid-column: 5;
+  justify-self: end;
+  color: var(--paper);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A player who let go of their Ooga: where they last stood, in red, said in words too. */
+.players-distance[data-known="last"] {
+  color: var(--danger);
+}
+
+.players-note {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.players-note[hidden] {
+  display: none;
+}
+
+/* A player whose voice the visitor's hearing range has faded out. */
+.players-distance[data-far="true"] {
+  opacity: 0.45;
+}
+
+/* The hearing range (#380): its label, the slider and the range in metres on one line, a short note under them. */
+.players-hearing {
+  flex: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(8ch, auto);
+  align-items: center;
+  column-gap: 8px;
+}
+
+.players-hearing[hidden] {
+  display: none;
+}
+
+/* Opt-in speech for joins (#430): a checkbox labelled as the hearing range is. */
+.players-speak {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  color: rgba(243, 239, 228, 0.72);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.players-speak[hidden] {
+  display: none;
+}
+
+.players-speak input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.players-hearing-label {
+  color: rgba(243, 239, 228, 0.72);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.players-hearing input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.players-hearing-value {
+  justify-self: end;
+  color: var(--paper);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.players-hearing-help {
+  grid-column: 1 / -1;
+  color: rgba(243, 239, 228, 0.62);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+@media (pointer: coarse) {
+  .players-look {
+    padding: 8px;
+    margin: -8px;
+  }
+
+  .players-hearing input[type="range"] {
+    height: 32px;
   }
 }
 
@@ -9266,7 +9443,6 @@ body[data-active-scene="stacker"] .joysticks {
 }
 
 /* Ember Den: a walkable room, a readable lobby, and a focused table. */
-body[data-active-scene="poker"] .sheet { display: none; }
 
 #poker {
   --pk-accent: #dfbe77; --pk-bright: #f4dda2; --pk-ink: #213023;
@@ -9997,7 +10173,6 @@ body[data-active-scene="arcade"] #destination-hud:not([hidden]) { display: flex;
 /* Keep a character control in every banner, including detached views and game scenes. */
 .mode-roster-icon { width: 34px; height: 44px; }
 #mode-hud[data-selected="true"] .mode-roster-icon { display: none; }
-body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 
 /* Cloud Hopper keeps the route visible beneath a small clock; its title and results share the arcade's wood and stone. */
 .cloud-hopper-hud {
@@ -10020,6 +10195,18 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 .cloud-hopper-name { margin: 0; color: #afdff5; font-size: 11px; font-weight: 700; letter-spacing: .16em; }
 .cloud-hopper-time { display: block; margin: 5px 0; color: #fff; font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .cloud-hopper-time[hidden] { display: none; }
+.cloud-hopper-record { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 7px; }
+.cloud-hopper-record-text { min-width: 0; overflow-wrap: anywhere; }
+.cloud-hopper-record-tail { display: inline-flex; max-width: 100%; align-items: center; gap: 5px; }
+.cloud-hopper-record-time { font-variant-numeric: tabular-nums; }
+.cloud-hopper-record-ghost { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 26px;
+  width: 26px; min-width: 26px; height: 25px; min-height: 0; margin: 0; padding: 4px; border: 1px solid #6f899766;
+  border-radius: 6px; background: #0e2031; color: #7c94a5; box-shadow: none; cursor: default; }
+.cloud-hopper-record-ghost[hidden] { display: none; }
+.cloud-hopper-record-ghost svg { display: block; width: 14px; height: 14px; }
+.cloud-hopper-record-ghost:not(:disabled) { pointer-events: auto; cursor: pointer; }
+.cloud-hopper-record-ghost[aria-pressed="true"] { color: #ddfaff; border-color: #8aeaff; background: #24566f; }
+.cloud-hopper-record-ghost:focus-visible { outline: 2px solid #8aeaff; outline-offset: 2px; }
 .cloud-hopper-status { font-weight: 700; }
 /* Power-ups held, as buttons in the banner's equipment row beside the jetpack's, only while one applies, each edged
    in its own colour: X-ray's goggles with its seconds (blinking red its last two), the feather, the hook (brighter
@@ -10195,24 +10382,6 @@ body[data-banner-oogas="true"] .sheet:not([hidden]) { display: flex; }
 .cloud-hopper-scores-empty { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .cloud-hopper-scores-status, .cloud-hopper-personal-best { margin: 5px 0; color: var(--paper); font-size: 11px; line-height: 1.4; }
 .cloud-hopper-personal-best { color: var(--accent-text); }
-/* A read-only board beside the run. It cannot intercept aim, movement or touch controls. */
-.cloud-hopper-live-scores { position: fixed; z-index: 35; top: calc(150px + var(--safe-top)); right: calc(12px + var(--safe-right));
-  width: 300px; padding: 8px; border: 1px solid #abcfe45c; border-radius: 12px; background: #142b40e8;
-  color: #f6fbff; pointer-events: none; }
-.cloud-hopper-live-scores[hidden] { display: none; }
-.cloud-hopper-live-scores .cloud-hopper-scores-title { margin: 0 0 5px; color: #afdff5; }
-.cloud-hopper-live-scores .race-podium { font-size: 11px; grid-template-columns: 1fr; grid-template-rows: repeat(10, auto); }
-.cloud-hopper-live-scores .race-podium li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 5px; padding: 3px 5px; border-left: 0; }
-.cloud-hopper-live-scores .race-podium span:not(.cloud-hopper-score-rank) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 900px) {
-  .cloud-hopper-live-scores { top: calc(205px + var(--safe-top)); width: min(360px, calc(100vw - 24px - var(--safe-left) - var(--safe-right))); }
-  .cloud-hopper-live-scores .race-podium { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); }
-  .cloud-hopper-live-scores .race-podium li { padding: 2px 3px; gap: 3px; }
-}
-@media (max-height: 500px) and (min-width: 601px) {
-  .cloud-hopper-live-scores { top: calc(82px + var(--safe-top)); width: 300px; }
-  .cloud-hopper-hud.cloud-hopper-running { left: calc(12px + var(--safe-left)); transform: none; width: 220px; }
-}
 .cloud-hopper-panel .actions { margin-top: 16px; }
 /* The panel's buttons by what they do: banana gold goes on, leaf green chooses, light gray steps back, stone leaves. */
 .cloud-hopper-panel .actions button[data-role="go"] { background: linear-gradient(#ffe27a, #f0b62a); color: var(--ink); }

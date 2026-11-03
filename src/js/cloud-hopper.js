@@ -33,11 +33,11 @@
   // rad/s) until a replay or exit; `SWEPT_HOLD` s after it gets there the run is lost. The view draws back `SWEPT_OUT` m outside the
   // funnel's side and rises after the Ooga, `SWEPT_BEHIND` m under it and never nearer the top than `SWEPT_UNDER` m
   // under it, turning up to follow it. Its roar is heard within `WHIRL_HEARD` of its axis.
-  // A gust (Aurora Heights') pushes an airborne Ooga across the course at up to GUST_PUSH m/s², a drift of about 6 m/s
-  // against the air's own drag, which steering can lean into. One standing on a cloud slides with it more gently, easing
-  // toward GUST_SLIDE m/s at GUST_GRIP a second, enough to carry one that just stands there off the cloud's edge but not
-  // one walking against it.
-  const GUST_PUSH = 9, GUST_SLIDE = 2.4, GUST_GRIP = 3;
+  // A gust (Aurora Heights') pushes an airborne Ooga across the course at up to GUST_PUSH m/s², a drift of about 15 m/s
+  // against the air's own drag, faster than steering can lean into it. One standing on a cloud slides with it more
+  // gently, easing toward GUST_SLIDE m/s at GUST_GRIP a second, enough to carry one that just stands there off the
+  // cloud's edge but not one walking against it (7.75 m/s).
+  const GUST_PUSH = 22, GUST_SLIDE = 6, GUST_GRIP = 3;
   const WHIRL_TAKE = 18, WHIRL_LET_GO = 22, WHIRL_PULL = 7, WHIRL_SPIN = 12, WHIRL_LIFT = 5, WHIRL_GRIP = 10, WHIRL_HEARD = 110;
   const SWEPT_DWELL = 0.15, SWEPT_DRAW = 0.5, SWEPT_CLIMB = 2.4, SWEPT_HOLD = 1.2;
   const SWEPT_SINK = 10, SWEPT_RING = 6, SWEPT_SPIN = 2.6;
@@ -66,8 +66,8 @@
   // It starts and ends at full opacity, and support stays whole throughout.
   const thinning = (progress, seconds) => WARNING_THIN * (0.5 - 0.5 * Math.cos(Math.PI * 2 * seconds * progress * (2 + 2 * progress)));
   // Page-session results survive hub visits, but never mix different signed-in players.
-  // Each keeps per level its runs, ten best times, best ghost and last seed, and which level it played last; the
-  // four players who played longest ago go first, which bounds the ghosts a page holds.
+  // Each keeps per level its runs, ten best times and last seed, and which level it played last; the
+  // four players who played longest ago go first, which bounds the session scores a page holds.
   const sessions = new Map(), SCORE_LIMIT = 10, SESSION_PLAYERS = 4, LEVELS = BL.cloudHopperLevels.LEVELS;
   const create = (ctx) => {
     const { root, dock, crew, pilot, hud, camera, game } = ctx;
@@ -75,7 +75,7 @@
     const home = { x: dock.position.x + ux * (DOCK_LENGTH + RADIUS - 0.25), y: dock.position.y, z: dock.position.z + uz * (DOCK_LENGTH + RADIUS - 0.25) };
     const length = Math.hypot(home.x, home.z), nx = home.x / length, nz = home.z / length;
     const start = { x: 0, y: 0, z: 0 };
-    let level = LEVELS[0], player = "", farBefore = 0, watched = "";
+    let level = LEVELS[0], player = "", farBefore = 0, watched = "", boardStatus = "loading";
     const heading = Math.atan2(-nx, -nz), platform = createNode({ sightHidden: true });
     const cloud = BL.cloudHopperModels.cloud(RADIUS, RADIUS, DEPTH);
     const cabinet = BL.cloudHopperModels.cabinet();
@@ -186,8 +186,14 @@
     const held = () => phase === "intro" || phase === "lifting" || phase === "briefing" || phase === "won" || phase === "dq";
     const overlay = BL.cloudHopperHud.create({ onStart: () => beginRun(), onReplay: () => beginRun(), onExit: () => exit(),
       onGuideDone: () => finishGuide(), onSelect: (id) => selectLevel(id), onNext: () => nextLevel(), onHook: (down) => hookAction(down),
+      onGhost: () => replays?.toggle(),
       letterSign: hud.letterSign });
     const ghost = BL.cloudHopperGhost.create({ root, renderer: ctx.renderer });
+    let ghostRecording = null;
+    const replays = BL.cloudHopperReplays?.create({ onBoard: board => overlay.setHighscores(board),
+      onState: state => overlay.setReplayState?.(state),
+      onHide: () => { ghostRecording = null; ghost.hide(); },
+      onPlay: recording => { ghostRecording = recording; stageGhost(); } });
     const audio = BL.cloudHopperAudio.create();
     const scenery = BL.cloudHopperSky.create({ root, renderer: ctx.renderer, seaY: ctx.seaY, onStrike: (distance) => audio.thunder(distance) });
     // Thunderhead's tornadoes, one a spot and any of them up at once, each writing its own whirl; `tornado` is the one
@@ -263,9 +269,9 @@
     const stageGhost = () => {
       const p = platform.position, edge = RADIUS - 0.6;
       ghostStart.x = p.x - nx * edge; ghostStart.y = p.y; ghostStart.z = p.z - nz * edge;
-      // Only this player's best on this level and course version races alongside.
-      const best = played().best;
-      ghost.play(best?.courseVersion === level.courseVersion ? best : null, ghostStart, heading);
+      // The sole playback source is the opted-in shared winner, never this browser's personal best.
+      ghost.play(ghostRecording, phase === "running" ? null : ghostStart, heading);
+      if (phase === "running") ghost.update(seconds);
     };
     // X-ray's goggles on the Ooga's face while they last, the face anchor shown as it was before once they come off.
     let goggles = null, gogglesOn = null, faceShown = false;
@@ -317,6 +323,7 @@
     };
     const setPhase = (next) => {
       phase = next; age = 0;
+      hud.setPanelsHidden(next === "lifting" || next === "briefing" || next === "ready" || next === "running");
       cabinet.visible = next === "idle" || next === "intro";
       pilot.setActive(!held());
       overlay.show(next, seconds, session && played().scores, latest);
@@ -387,8 +394,12 @@
     const watchBoard = () => {
       unwatchScores?.();
       watched = level.board;
+      boardStatus = "loading";
       overlay.setHighscores(null);
-      unwatchScores = BL.highscores?.watch(level.board, overlay.setHighscores, overlay.setHighscoreStatus) || null;
+      ghost.clear();
+      replays?.select(level.board, level.courseVersion);
+      unwatchScores = BL.highscores?.watch(level.board, board => replays ? replays.update(board) : overlay.setHighscores(board),
+        status => { boardStatus = status; overlay.setHighscoreStatus(status); }) || null;
       if (!BL.highscores) overlay.setHighscoreStatus("unavailable");
     };
     // The next level rides up from beside the island to its own start, as a first run does.
@@ -408,7 +419,7 @@
       runnerName = login || cave.traits.name; player = login.toLowerCase();
       session = sessions.get(login);
       if (!session) {
-        session = { levels: LEVELS.map(() => ({ runs: 0, scores: [], best: null, lastSeed: null })), lastLevel: 0 };
+        session = { levels: LEVELS.map(() => ({ runs: 0, scores: [], lastSeed: null })), lastLevel: 0 };
         sessions.set(login, session);
         if (sessions.size > SESSION_PLAYERS) sessions.delete(sessions.keys().next().value);
       }
@@ -441,6 +452,9 @@
       seconds = startedAt = 0; latest = null; run = ++record.runs; session.lastLevel = level.id; showLevels();
       audio.song(level.id - 1); game.playCloudHopper(level.id);
       if (watched !== level.board) watchBoard();
+      ghost.clear();
+      replays?.start();
+      overlay.setHighscoreStatus(boardStatus);
       scoreTicket = BL.highscores?.begin(level.board) || null;
       // Each attempt gets fresh clouds; the ghost keeps its original route.
       courseSeed = BL.math.randomInt(4294967296);
@@ -455,7 +469,6 @@
       gust.start(courseSeed, course, liftGoal, level.layout.gusts || 0);
       if (!farBefore) farBefore = camera.far;
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
-      overlay.setGhost(record.best?.courseVersion === level.courseVersion ? record.best.duration : null);
       // A night sky's clouds, the launch cloud among them, take the night fill.
       const dark = !!level.sky?.night;
       cloud.geometry = BL.cloudHopperModels.cloudMesh(0, "normal", dark);
@@ -510,19 +523,16 @@
       seconds = (raceNow() - startedAt) / 1000;
       if (won) {
         const record = played();
-        if (!record.best || record.best.courseVersion !== level.courseVersion || seconds < record.best.duration) {
-          const recording = ghost.finish(seconds, actor);
-          if (recording) {
-            recording.seed = courseSeed; recording.driftTime = courseDrift;
-            recording.level = level.id; recording.courseVersion = level.courseVersion;
-            record.best = recording;
-          }
+        const recording = ghost.finish(seconds, actor);
+        if (recording) {
+          recording.seed = courseSeed; recording.driftTime = courseDrift;
+          recording.courseVersion = level.courseVersion;
         }
         // Saved in this browser, signed in or out, online or not: the player's best and the next level.
         const saved = game.recordCloudHopper(player, level.id, Math.round(seconds * 1000), LEVELS.length);
         latest = { time: seconds, run, username: runnerName, personalBest: saved.best, unlocked: saved.unlocked };
         showLevels();
-        BL.highscores?.submit(scoreTicket, level.board, Math.round(seconds * 1000));
+        BL.highscores?.submit(scoreTicket, level.board, Math.round(seconds * 1000), recording);
         const scores = record.scores;
         let at = 0;
         while (at < scores.length && scores[at].time <= seconds) at++;
@@ -555,6 +565,7 @@
       }
       ghost.hide();
       // A tornado ends with the run and lets the clouds go, unless the run ended in it, when it goes on behind the card.
+      replays?.end();
       if (how !== "tornado") { for (let i = 0; i < tornadoes.length; i++) tornadoes[i].clear(whirls[i]); course.whirl.strength = 0; audio.tornado(0); }
       gust.clear(); slideX = slideZ = 0; overlay.setGust("calm", false); audio.gust(0);
       whirled = false;
@@ -568,6 +579,7 @@
     // Exits and scene changes park at the dock before the hub can release its actor.
     const cancel = (keepMusic = false) => {
       unwatchScores?.(); unwatchScores = null; scoreTicket = null; watched = "";
+      replays?.clear();
       if (farBefore) { camera.far = farBefore; farBefore = 0; }
       if (!active()) {
         if (!keepMusic) { audio.stop(); dockMusicOn = false; }
@@ -579,6 +591,7 @@
       cabinet.visible = true;
       if (park) ctx.mode(false);
       clearRoute(keepMusic); phase = "idle";
+      hud.setPanelsHidden(false);
       ghost.clear();
       if (park) {
         Object.assign(platform.position, home);
@@ -755,7 +768,9 @@
       const p = actor.root.position, feet = p.y - actor.baseY;
       if (phase === "ready" && (actor.hop > 0.02 || actor.hopV > 0.02 || Math.abs(feet - platform.position.y) > 0.08
         || platformSupport(p.x, p.z, feet, 0.04, 0.3) === -Infinity)) {
-        startedAt = raceNow(); courseDrift = course.start(); ghost.begin(actor, runnerName); setPhase("running");
+        startedAt = raceNow(); courseDrift = course.start();
+        if (scoreTicket) ghost.begin(actor, runnerName);
+        setPhase("running");
       }
       if (phase === "running") {
         seconds = (raceNow() - startedAt) / 1000; overlay.update(seconds);
@@ -1201,7 +1216,6 @@
     return { platform, cabinet, action, launch, near, exit, cancel, preUpdate, postUpdate, onJump, updraft, hookAction, fallView, supportAt, dispose, liveGeometry, pickupLightsWanted, pickupLights, drawOverlay,
       get active() { return active(); }, get playing() { return playing(); }, get held() { return held(); },
       get actor() { return actor; }, get phase() { return phase; }, get time() { return seconds; },
-      get bestGhost() { return session ? played().best : null; },
       get course() { return course; }, get start() { return start; }, get level() { return level; },
       // The level's fixed sky, which the hub samples instead of its clock while a run plays, and its lightning now.
       get sky() { return level.sky; }, get flash() {

@@ -1,16 +1,17 @@
 // Cloud Hopper's wind gusts, on Aurora Heights (its layout's `gusts`). A run's gusts come at seeded shares of the way
 // down, one in each of as many even stretches, each from a seeded side across the course. As the rider reaches one it
 // warns (`WARN` seconds: a few faint streaks drifting across from the side it comes from, which the HUD's cue and a
-// rising whoosh share), then blows (`BLOW` seconds, easing in over `IN` and out over `OUT`) straight across the course,
-// its streaks racing past the eye; the controller pushes an airborne rider along `push` by `strength`. Nothing
-// allocates a frame.
+// rising whoosh share, the wind already rising to `LEAD` of its push), then blows (`BLOW` seconds, easing up to the
+// whole of it over `IN` and out over `OUT`) straight across the course, its streaks racing past the eye; the controller
+// pushes the rider along `push` by `strength`. Nothing allocates a frame.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { createNode, addChild, removeChild } = BL.scene;
   const M = BL.models, { mulberry32 } = BL.math;
-  // The warning and the blow (s), the blow easing in over IN and out over OUT.
-  const WARN = 2.5, BLOW = 3, IN = 0.5, OUT = 0.8;
+  // The warning and the blow (s): the wind rises to LEAD of its push through the warning, then the blow eases up to the
+  // whole of it over IN and out over OUT.
+  const WARN = 2.5, BLOW = 3, IN = 0.5, OUT = 0.8, LEAD = 0.3;
   // The streaks: how many at the top tier, in a box of these half-sizes [along, up, across] (m) centred AHEAD metres in
   // front of the eye, racing along the wind at SPEED while it blows (m/s) and drifting at a fraction of it as it warns,
   // none within NEAR (m) of the eye, where it would cross the view as a bar.
@@ -72,7 +73,8 @@
       if (state === WARNING && age >= WARN) { state = BLOWING; age -= WARN; }
       if (state === BLOWING && age >= BLOW) { state = CALM; age = 0; hide(); return; }
       warning = state === WARNING ? age / WARN : 0;
-      strength = state === BLOWING ? ease(age / IN) * (1 - ease((age - (BLOW - OUT)) / OUT)) : 0;
+      strength = state === WARNING ? LEAD * ease(warning)
+        : (LEAD + (1 - LEAD) * ease(age / IN)) * (1 - ease((age - (BLOW - OUT)) / OUT));
       const intensity = state === WARNING ? 0.2 + 0.3 * ease(warning) : 0.5 + 0.5 * strength;
       travel += dt * SPEED * intensity;
       draw(eye, look, intensity, Math.round(count * (state === WARNING ? 0.15 + 0.25 * warning : 0.4 + 0.6 * strength)));
