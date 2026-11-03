@@ -10444,7 +10444,7 @@ body[data-active-scene] #controls-help-button { display: flex; align-items: cent
 .controls-row { display: grid; grid-template-columns: 174px minmax(0, 1fr); align-items: center; gap: 12px; padding: 5px 0; border-top: 1px solid #f3efe424; font-size: 12px; line-height: 1.4; }
 .controls-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .controls-keys kbd, .controls-gesture { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: 2px 5px; border: 1px solid #f3efe465; border-bottom-width: 3px; border-radius: 4px; background: #24252a; color: #f3efe4; font: inherit; }
-.controls-keys kbd[data-pressed="true"] { background: #ffd84a; color: #171308; border-color: #ffd84a; outline: 2px solid #fff4b5; outline-offset: 1px; }
+.controls-keys kbd[data-pressed="true"] { background: #ffd84a; color: #171308; border-color: transparent; }
 .controls-key-cluster { display: grid; grid-template-columns: repeat(3, 24px); gap: 3px; }
 .controls-key-cluster :is([data-key="w"], [data-key="arrowup"]) { grid-area: 1 / 2; }
 .controls-key-cluster :is([data-key="a"], [data-key="arrowleft"]) { grid-area: 2 / 1; }
