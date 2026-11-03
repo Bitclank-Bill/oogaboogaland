@@ -51,6 +51,10 @@
      I("desk with tower", 1.3, 0.7, [[1.3, 0.74, 0.7, "#6d5a45", 0, 0.37, 0], [0.22, 0.48, 0.48, "#2c2e33", -0.45, 0.24, 0], [0.56, 0.36, 0.04, "#2c2e33", 0.1, 1.0, -0.15], [0.5, 0.3, 0.01, "#9cff9c", 0.1, 1.0, -0.12, 1.3]]),
      I("mug and notebook stool", 0.6, 0.6, [[0.4, 0.6, 0.4, "#7a5534", 0, 0.3, 0], [0.24, 0.03, 0.3, "#f1ede2", -0.05, 0.615, 0], [0.09, 0.11, 0.09, "#c8463c", 0.12, 0.655, 0.08]])]
   ];
+  // A potted plant and a floor lamp join every era's wall pieces, so the walls between the exhibits are lived in.
+  const PLANT = I("potted plant", 0.7, 0.7, [[0.5, 0.5, 0.5, "#8a5a2e", 0, 0.25, 0], [0.08, 0.6, 0.08, "#4c331d", 0, 0.8, 0], [0.7, 0.35, 0.7, "#3f7a2c", 0, 1.2, 0], [0.5, 0.3, 0.5, "#5c9a3a", 0.05, 1.45, 0.05]]);
+  const LAMP = (shade) => I("floor lamp", 0.5, 0.5, [[0.4, 0.05, 0.4, "#2b2421", 0, 0.025, 0], [0.05, 1.5, 0.05, "#3a3d42", 0, 0.8, 0], [0.45, 0.35, 0.45, shade, 0, 1.65, 0, 0.8]]);
+  ["#efe0b0", "#ff9a3c", "#ff8ae8", "#fff0c8", "#cfe8ff", "#e8f6ff", "#ffdca0", "#ffc27a"].forEach((shade, n) => ERA_ITEMS[n].push(PLANT, LAMP(shade)));
   // Board games and furniture for the open floor between the exhibits: a game laid out on a table with stools round
   // it, or a sitting corner of the era. Generic games only (chess, draughts, dice, cards, a tile game, a trading game
   // of our own), never a published game's board, name or art.

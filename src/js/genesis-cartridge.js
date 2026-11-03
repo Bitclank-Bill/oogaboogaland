@@ -92,7 +92,7 @@
     };
     const host = {
       best: 0, aim, held, still,
-      onEnd: (score) => { st.ended = true; st.lastScore = score | 0; if (score > st.best) st.best = score | 0; host.best = st.best; },
+      onEnd: (score) => { st.ended = true; st.lastScore = score | 0; if (score > st.best) st.best = score | 0; host.best = st.best; if (st.id) saveBest(st.id, st.best); },
       over: () => {}, popup: () => {}, cue, shake: () => {}, crack: () => {}, flop: () => {}
     };
     // --- The panel ------------------------------------------------------------------------------------------------
@@ -217,7 +217,7 @@
       st.entry = c; st.id = id; st.open = true; st.paused = false; st.ended = false; st.lastScore = 0;
       st.w = c.screen ? c.screen.w : SCREEN.w; st.h = c.screen ? c.screen.h : SCREEN.h;
       aim.x = aim.hold = aim.steps = aim.y = aim.stepsY = 0; clearHeld();
-      host.best = st.best = 0;
+      host.best = st.best = bestsMem[id] || 0;
       host.still = opts.still !== undefined ? !!opts.still : still;
       game = c.make(host);
       if (typeof window !== "undefined" && window.addEventListener) {
@@ -272,5 +272,21 @@
       dispose: () => { close(true); ac.abort(); if (el) el.replaceChildren(); el = ctx2d = null; }
     };
   };
-  BL.genesisCartridge = { create, validate, find, checkAll, KEYS, SCREEN, registry };
+  // The visitor's best score on each game, kept in this browser (`ooga-genesis-bests`: id → whole score), checked on
+  // read; storage that throws or is missing keeps them for the page only.
+  const BESTS_KEY = "ooga-genesis-bests", bestsMem = {};
+  const loadBests = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(BESTS_KEY) || "{}");
+      if (raw && typeof raw === "object") for (const k of Object.keys(raw)) if (/^[a-z0-9-]{1,40}$/.test(k) && Number.isInteger(raw[k]) && raw[k] >= 0 && raw[k] < 1e9) bestsMem[k] = raw[k];
+    } catch (err) { /* page-only bests */ }
+  };
+  const saveBest = (id, score) => {
+    if (!(score > (bestsMem[id] || 0))) return;
+    bestsMem[id] = score;
+    try { localStorage.setItem(BESTS_KEY, JSON.stringify(bestsMem)); } catch (err) { /* page-only bests */ }
+  };
+  if (typeof localStorage !== "undefined") loadBests();
+  const bests = () => ({ ...bestsMem });
+  BL.genesisCartridge = { create, validate, find, checkAll, KEYS, SCREEN, registry, bests, saveBest };
 })();

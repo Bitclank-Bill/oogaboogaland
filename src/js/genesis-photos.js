@@ -96,5 +96,16 @@
     }
     return out;
   };
-  BL.genesisPhotos = { LOOKS, SCENES, spots, picture, paint, AT_Y, PW, PH };
+  // Under each glowing motif (genesis-decor.js wallParts: every 7 m from 3.5 m along each wall): a small wall piece,
+  // centre DECOR_Y over the floor, clear of the wainscot below and the motif above.
+  const DECOR_Y = 3.4;
+  const decorSpots = (bay, z0, z1) => {
+    const out = [], len = z1 - z0, mid = (z0 + z1) / 2;
+    let k = 0;
+    for (const side of [-1, 1]) for (let a = -len / 2 + 3.5; a < len / 2 - 2; a += 7) {
+      out.push({ x: side < 0 ? bay.x0 + 0.2 : bay.x1 - 0.2, z: side < 0 ? mid - a : mid + a, ry: side < 0 ? Math.PI / 2 : -Math.PI / 2, k: k++ });
+    }
+    return out;
+  };
+  BL.genesisPhotos = { LOOKS, SCENES, spots, decorSpots, picture, paint, AT_Y, PW, PH, DECOR_Y };
 })();
