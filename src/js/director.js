@@ -259,6 +259,7 @@
     } else t.redirect = answer || null;
   };
   const go = (id, place = null, instant = false) => {
+    if (id === "race") { id = "arcade"; place = "rally-out-of-order"; }
     const next = scenes[id];
     if (!next) throw new Error(`Unknown scene "${id}"`);
     if (transition) return false;
@@ -884,7 +885,7 @@
   // EntropyLab currently lives in its island cave; retain the isolated scene for debug checks only.
   const routed = router.current();
   const requestedScene = (routed && routed.scene) || params.get("scene") || (WIP !== "1" ? WIP : null);
-  const sceneId = requestedScene === "lab" && !DEBUG ? null : requestedScene;
+  const sceneId = requestedScene === "race" ? "arcade" : requestedScene === "lab" && !DEBUG ? null : requestedScene;
   // Building the first scene holds the main thread with nothing painted yet.
   // Run boot from a task after the first frame so the leaf curtain is on screen, not the previous page.
   let destroyed = false;
