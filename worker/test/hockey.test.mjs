@@ -6,7 +6,10 @@ import * as protocol from "../src/protocol.js";
 import { sha256Hex } from "../src/crypto.js";
 import { getPlayer } from "../src/db.js";
 import * as studioPolicy from "../src/studio-policy.js";
-const harness = () => {
+const harness = t => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  let initialized;
+  const writes = [];
   const accepted = [];
   const socket = () => ({
     sent: [], bins: [], closed: null, store: null,
@@ -22,25 +25,28 @@ const harness = () => {
     .replace("export class Room", "class Room") + "\nglobalThis.Room = Room;";
   const context = {
     ...protocol, ...studioPolicy, sha256Hex, getPlayer, sfuClient: () => null,
-    CAST_ROWS: [{ handle: "a", github_login: "a" }, { handle: "b", github_login: "b" }, { handle: "c", github_login: "c" }],
+    CAST_ROWS: ["a","b","c","d",...Array.from({length:70},(_,i)=>"ooga"+i)].map(login=>({handle:login,github_login:login})),
     DurableObject: class { constructor(ctx, env) { this.ctx = ctx; this.env = env; } },
     WebSocketPair, Response, WebSocketRequestResponsePair: class {}, URL, crypto, Date, Map, Set, setTimeout, clearTimeout, console, ArrayBuffer, DataView,
   };
   runInNewContext(source, context);
   const stored = new Map();
   const ctx = {
-    setWebSocketAutoResponse() {}, blockConcurrencyWhile: (fn) => fn(), acceptWebSocket: (ws) => accepted.push(ws),
+    setWebSocketAutoResponse() {}, blockConcurrencyWhile: (fn) => (initialized = fn()), acceptWebSocket: (ws) => accepted.push(ws),
     getWebSockets: () => accepted.filter((ws) => !ws.closed), getWebSocketAutoResponseTimestamp: () => null,
-    storage: { get: async (key) => Array.isArray(key) ? new Map(key.filter((k) => stored.has(k)).map((k) => [k, stored.get(k)])) : stored.get(key), put: async (key, value) => stored.set(key, value), getAlarm: async () => null, setAlarm: async () => {} },
+    storage: { get: async (key) => structuredClone(Array.isArray(key) ? new Map(key.filter((k) => stored.has(k)).map((k) => [k, stored.get(k)])) : stored.get(key)), put: async (key, value) => { const copy=structuredClone(value); writes.push({key,value:copy}); stored.set(key,copy); }, getAlarm: async () => null, setAlarm: async () => {} },
   };
-  const room = new context.Room(ctx, {});
+  const h = { ctx, stored, writes, advance:ms=>t.mock.timers.tick(ms) };
+  h.room = new context.Room(ctx, {});
   const join = async (id, login) => {
+    await initialized;
     const before = accepted.length;
-    await room.fetch({ url: "https://island.invalid/room", headers: new Headers({ upgrade: "websocket", "x-player-id": String(id), "x-player-login": login, "x-player-contributor": "0" }) });
+    await h.room.fetch({ url: "https://island.invalid/room", headers: new Headers({ upgrade: "websocket", "x-player-id": String(id), "x-player-login": login, "x-player-contributor": "0" }) });
     return accepted[before];
   };
-  const send = (ws, msg) => room.webSocketMessage(ws, JSON.stringify(msg));
-  return { room, ctx, stored, join, send };
+  const send = (ws, msg) => h.room.webSocketMessage(ws, JSON.stringify(msg));
+  h.join=join;h.send=send;h.wake=async()=>{if(h.room.flushTimer)clearTimeout(h.room.flushTimer);h.room=new context.Room(ctx,{});await initialized;return h.room;};
+  return h;
 };
 const W = protocol.HOCKEY;
 const frame = () => [0,660,0,600,0,200,0,2000,0,0,179000,0,-1000,-1000,0,0,1,0];
@@ -64,8 +70,8 @@ test("hockey parser bounds every coordinate, action, sequence and payload", () =
   assert.equal(protocol.parseClientMessage(JSON.stringify({...base,padding:"x".repeat(256)})),false);
   assert.ok(Buffer.byteLength(JSON.stringify(base))<=protocol.MESSAGE_MAX);
 });
-test("two authenticated lobby seats require both ready; spectators cannot steal a started solo or human game", async () => {
-  const h=harness(), a=await seat(h,1,"a"), b=await seat(h,2,"b"), c=await seat(h,3,"c");
+test("two authenticated lobby seats require both ready; spectators cannot steal a started solo or human game", async t => {
+  const h=harness(t), a=await seat(h,1,"a"), b=await seat(h,2,"b"), c=await seat(h,3,"c");
   cmd(h,a,"join"); cmd(h,b,"join");
   const s=h.room.hockeyTables[0]; assert.deepEqual([...s.ids],[1,2]);
   cmd(h,b,"ready"); assert.equal(s.phase,"lobby"); cmd(h,a,"ready"); assert.equal(s.phase,"play");
@@ -73,17 +79,18 @@ test("two authenticated lobby seats require both ready; spectators cannot steal 
   cmd(h,c,"frame",{q:5,a:frame()}); assert.equal(s.q,-1);
   cmd(h,b,"frame",{q:6,a:frame()}); assert.equal(s.q,-1);
   cmd(h,a,"leave"); assert.equal(h.room.hockeyTables[0],null);
-  cmd(h,a,"join"); cmd(h,a,"ready"); cmd(h,b,"join"); assert.equal(messages(b.ws).at(-1).k,"busy");
+  h.advance(5100);cmd(h,a,"join"); cmd(h,a,"ready"); cmd(h,b,"join"); assert.equal(messages(b.ws).at(-1).k,"busy");
   assert.deepEqual([...h.room.hockeyTables[0].ids],[1,0]);
   a.p.hockeyBuckets.control={tokens:0,at:Date.now()};
   h.send(a.ws,{t:"hockey",k:"leave",i:0,s:h.room.hockeyTables[0].s});
   assert.equal(h.room.hockeyTables[0],null,"exit releases the seat even when join + ready exhausted controls");
   h.room.webSocketClose(a.ws); h.room.webSocketClose(b.ws); h.room.webSocketClose(c.ws);
 });
-test("host frames and guest inputs are sequenced, compact, zone-scoped, rate-bounded and replayed to late spectators", async () => {
-  const h=harness(), a=await seat(h,1,"a"), b=await seat(h,2,"b"), c=await seat(h,3,"c");
+test("host frames and guest inputs are sequenced, compact, zone-scoped, rate-bounded and replayed to late spectators", async t => {
+  const h=harness(t), a=await seat(h,1,"a"), b=await seat(h,2,"b"), c=await seat(h,3,"c");
   cmd(h,a,"join");cmd(h,b,"join");cmd(h,a,"ready");cmd(h,b,"ready");
   h.send(c.ws,{t:"zone",name:"outside"}); const before=messages(c.ws).length;
+  const writesBeforeFrames=h.writes.length;
   cmd(h,a,"frame",{q:0,a:frame()}); const s=h.room.hockeyTables[0];assert.equal(s.q,0);
   cmd(h,a,"frame",{q:0,a:frame()});assert.equal(s.q,0);
   const bad=frame();bad[8]=4;cmd(h,a,"frame",{q:1,a:bad});assert.equal(s.q,0);
@@ -91,26 +98,26 @@ test("host frames and guest inputs are sequenced, compact, zone-scoped, rate-bou
   const count=messages(a.ws).length;cmd(h,b,"input",{q:1,x:-1000,hit:2});assert.equal(messages(a.ws).length,count);
   for(let q=2;q<200;q++)cmd(h,a,"frame",{q,a:frame()});
   assert.ok(s.q<12,`burst stopped at ${s.q}`);assert.equal(messages(c.ws).length,before);
+  assert.equal(h.writes.length,writesBeforeFrames,"frames/inputs never write storage");
   h.send(c.ws,{t:"zone",name:W.ZONE});assert.equal(messages(c.ws).at(-1).q,s.q);
   assert.deepEqual(messages(c.ws).at(-1).a,frame());
-  const storedKeys=[...h.stored.keys()]; assert.ok(!storedKeys.some(k=>/hockey/i.test(k)),"no database writes for game frames");
   h.room.webSocketClose(a.ws);h.room.webSocketClose(b.ws);h.room.webSocketClose(c.ws);
 });
-test("seat release, expiry, body/zone changes, socket replacement and wake restore cannot resurrect an abandoned game",async()=>{
-  const h=harness(),a=await seat(h,1,"a"),b=await seat(h,2,"b");
+test("seat release, expiry, body/zone changes, socket replacement and wake restore cannot resurrect an abandoned game",async t=>{
+  const h=harness(t),a=await seat(h,1,"a"),b=await seat(h,2,"b");
   cmd(h,a,"join");cmd(h,b,"join");
-  const wake = new h.room.constructor(h.ctx, {});
+  const original=h.room.hockeyTables[0], wake = await h.wake();
   assert.deepEqual([...wake.hockeyTables[0].ids],[1,2]);
-  assert.notEqual(wake.hockeyTables[0],h.room.hockeyTables[0],"wake reconstructs from serialized socket attachments");
+  assert.notEqual(wake.hockeyTables[0],original,"wake reconstructs from serialized socket attachments");
   h.send(b.ws,{t:"zone",name:"outside"});assert.equal(h.room.hockeyTables[0],null);
-  cmd(h,a,"join");h.send(a.ws,{t:"body",name:null});assert.equal(h.room.hockeyTables[0],null);
-  h.send(a.ws,{t:"body",name:"a"});cmd(h,a,"join");h.room.hockeyTables[0].seen[0]=Date.now()-16000;protocol.hockey.sweep(h.room);assert.equal(h.room.hockeyTables[0],null);
-  cmd(h,a,"join");const replacement=await h.join(1,"a");assert.equal(h.room.hockeyTables[0],null);
+  h.advance(5100);cmd(h,a,"join");h.send(a.ws,{t:"body",name:null});assert.equal(h.room.hockeyTables[0],null);
+  h.send(a.ws,{t:"body",name:"a"});h.advance(5100);cmd(h,a,"join");h.room.hockeyTables[0].seen[0]=Date.now()-16000;protocol.hockey.sweep(h.room);assert.equal(h.room.hockeyTables[0],null);
+  h.advance(5100);cmd(h,a,"join");const replacement=await h.join(1,"a");assert.equal(h.room.hockeyTables[0],null);
   protocol.hockey.restore(h.room);assert.equal(h.room.hockeyTables[0],null);
   h.room.webSocketClose(replacement);h.room.webSocketClose(b.ws);
 });
-test("joining requires an owned Ooga near a table, and leaving hockey retains Arcade voice eligibility",async()=>{
-  const h=harness(),a=await seat(h,1,"a"),b=await seat(h,2,"b");
+test("joining requires an owned Ooga near a table, and leaving hockey retains Arcade voice eligibility",async t=>{
+  const h=harness(t),a=await seat(h,1,"a"),b=await seat(h,2,"b");
   h.send(a.ws,{t:"body",name:"b"});cmd(h,a,"join");assert.equal(h.room.hockeyTables[0],null);
   h.send(a.ws,{t:"body",name:"a"});a.p.x=0;cmd(h,a,"join");assert.equal(h.room.hockeyTables[0],null);
   a.p.x=16.3;cmd(h,a,"join");cmd(h,a,"ready");
@@ -120,8 +127,8 @@ test("joining requires an owned Ooga near a table, and leaving hockey retains Ar
   h.room.webSocketClose(a.ws);h.room.webSocketClose(b.ws);
 });
 
-test("serialized session-to-Room transport retries a dropped join, cancels before acknowledgement, relays input and closes both seats",async()=>{
-  const h=harness(), a=await seat(h,1,"a"), b=await seat(h,2,"b"), pending=[];
+test("serialized session-to-Room transport retries a dropped join, cancels before acknowledgement, relays input and closes both seats",async t=>{
+  const h=harness(t), a=await seat(h,1,"a"), b=await seat(h,2,"b"), pending=[];
   const clients=[];
   const connect=p=>{
     const listeners=new Set(), row={starts:0,ends:0,closed:0,inputs:[],frames:[],a:frame(),index:p.ws.sent.length};
@@ -136,7 +143,7 @@ test("serialized session-to-Room transport retries a dropped join, cancels befor
   let host=connect(a);host.session.tick(.1,false);host.session.dispose();pump();
   assert.equal(h.room.hockeyTables[0],null,"queued join followed by cancellation does not strand a lobby");
   a.p.hockeyBuckets.control={tokens:0,at:Date.now()};host=connect(a);host.session.tick(.1,false);pump();assert.equal(host.session.table,null);
-  a.p.hockeyBuckets.control.at-=1100;host.session.tick(1.1,false);pump();assert.ok(host.session.table,"unacknowledged join retries after the real room bucket refills");
+  h.advance(5100);host.session.tick(1.1,false);pump();assert.ok(host.session.table,"unacknowledged join retries after the real room bucket refills");
   const guest=connect(b);guest.session.tick(.1,false);pump();host.session.ready();guest.session.ready();pump();
   assert.equal(host.starts,1);assert.equal(guest.starts,1);
   guest.session.act();guest.session.tick(.1,true);pump();assert.deepEqual(host.inputs.at(-1),[1,true]);
@@ -145,5 +152,83 @@ test("serialized session-to-Room transport retries a dropped join, cancels befor
   // A delayed cancellation cannot cancel an active/finished session; it only covers an unacknowledged lobby join.
   h.send(b.ws,{t:"hockey",k:"cancel",i:0});assert.ok(h.room.hockeyTables[0]);
   host.session.dispose();pump();assert.equal(h.room.hockeyTables[0],null);assert.equal(guest.closed,1);guest.session.dispose();
+  h.room.webSocketClose(a.ws);h.room.webSocketClose(b.ws);
+});
+
+test("replays share one persistent budget across zone toggles, watch and repeated joins", async t=>{
+  const h=harness(t), players=[];
+  for(let i=0;i<3;i++){
+    const p=await seat(h,i+1,["a","b","c"][i]);players.push(p);
+    const at=W.seat(i,0,0,{});h.send(p.ws,{t:"pose",...at});
+    h.send(p.ws,{t:"hockey",k:"join",i});
+    if(i===2){assert.equal(h.room.hockeyTables[i],null,"third immediate admission exceeds room burst");h.advance(600);h.send(p.ws,{t:"hockey",k:"join",i});}
+    assert.ok(h.room.hockeyTables[i]);
+  }
+  const observer=await seat(h,4,"d");h.advance(4000);
+  const count=()=>[...players,observer].reduce((n,p)=>n+messages(p.ws).filter(m=>m.k==="table").length,0), before=count();
+  for(let i=0;i<100;i++){h.send(observer.ws,{t:"zone",name:"outside"});h.send(observer.ws,{t:"zone",name:W.ZONE});h.send(observer.ws,{t:"hockey",k:"watch",i:i%3});}
+  assert.equal(count()-before,3,"one account can replay only its three-payload burst");
+  for(let i=0;i<3;i++)for(let n=0;n<30;n++)h.send(players[i].ws,{t:"hockey",k:"join",i});
+  assert.ok(count()-before<=8,"all replay routes share the room eight-payload burst");
+  const debt=structuredClone(h.stored.get("hockeyLimitsV1"));assert.equal(debt.accounts.find(a=>a.id===4).replay.tokens,0);
+  await h.wake();const afterWake=count();
+  h.send(observer.ws,{t:"zone",name:"outside"});h.send(observer.ws,{t:"zone",name:W.ZONE});assert.equal(count(),afterWake);
+  observer.ws.close(1000);h.room.webSocketClose(observer.ws);
+  const next=await seat(h,4,"d");assert.equal(messages(next.ws).length,0,"new socket cannot reset replay debt");
+  for(const p of [...players,next]){p.ws.close(1000);h.room.webSocketClose(p.ws);}
+  await h.wake();const cold=await seat(h,4,"d");h.send(cold.ws,{t:"hockey",k:"watch",i:0});assert.equal(messages(cold.ws).length,0,"cold wake retains debt even without old sockets");
+  h.advance(1100);h.send(cold.ws,{t:"body",name:null});h.send(cold.ws,{t:"zone",name:"outside"});h.send(cold.ws,{t:"hockey",k:"watch",i:0});assert.equal(messages(cold.ws).length,0,"outside cannot replay");h.send(cold.ws,{t:"zone",name:W.ZONE});h.send(cold.ws,{t:"hockey",k:"watch",i:0});assert.equal(messages(cold.ws).at(-1).phase,"closed");h.room.webSocketClose(cold.ws);
+});
+
+test("admission cooldown survives reconnect/wake, readiness is idempotent, and first goals have a zero baseline",async t=>{
+  const h=harness(t),a=await seat(h,1,"a"),b=await seat(h,2,"b");cmd(h,a,"join");cmd(h,b,"join");
+  cmd(h,b,"ready");const count=messages(a.ws).length;
+  for(let i=0;i<50;i++)cmd(h,b,"ready");assert.equal(messages(a.ws).length,count,"repeated readiness emits no table broadcast");
+  cmd(h,a,"ready");const s=h.room.hockeyTables[0], win=frame();win[8]=7;
+  cmd(h,a,"frame",{q:0,a:win});assert.equal(s.q,-1);const early=frame();early[16]=0;cmd(h,a,"frame",{q:1,a:early});assert.equal(s.q,-1);
+  cmd(h,a,"frame",{q:2,a:frame()});assert.equal(s.q,2);
+  a.p.hockeyBuckets.control.tokens=0;cmd(h,a,"leave");assert.equal(h.room.hockeyTables[0],null);
+  a.ws.close(1000);h.room.webSocketClose(a.ws);await h.wake();const replacement=await seat(h,1,"a");
+  h.advance(600);h.send(replacement.ws,{t:"pose",...W.seat(1,0,0,{})});
+  cmd(h,replacement,"join",{i:1});assert.equal(h.room.hockeyTables[1],null,"same account cannot bypass cooldown by reconnecting at another table");
+  h.send(replacement.ws,{t:"pose",...W.seat(0,0,0,{})});
+  cmd(h,replacement,"join");assert.equal(h.room.hockeyTables[0],null,"same account cannot immediately recreate after reconnect");
+  h.advance(2100);cmd(h,replacement,"join");assert.equal(h.room.hockeyTables[0],null,"table cooldown outlasts account admission cooldown");
+  h.advance(3100);cmd(h,replacement,"join");assert.ok(h.room.hockeyTables[0]);
+  h.room.webSocketClose(replacement.ws);h.room.webSocketClose(b.ws);
+});
+
+test("ledger capacity never evicts retained debt, rejected writes fail closed and cleanup remains immediate",async t=>{
+  const h=harness(t),a=await seat(h,1,"a");cmd(h,a,"join");
+  const limits=h.room.hockeyLimits, expires=Date.now()+60000;
+  limits.accounts=Array.from({length:64},(_,i)=>({id:i+100,until:expires,nextSeat:expires,replay:{at:Date.now(),tokens:0,rate:1,burst:3}}));
+  const ids=limits.accounts.map(a=>a.id), before=messages(a.ws).length;h.send(a.ws,{t:"hockey",k:"watch",i:0});assert.deepEqual(limits.accounts.map(a=>a.id),ids);assert.equal(messages(a.ws).length,before);
+  h.advance(600);limits.accounts=[];h.ctx.storage.put=async()=>{throw new Error("storage unavailable");};
+  h.send(a.ws,{t:"hockey",k:"watch",i:0});await Promise.resolve();await Promise.resolve();assert.equal(h.room.hockeyLimitsFailed,true);
+  const failedAt=messages(a.ws).length;h.send(a.ws,{t:"zone",name:"outside"});h.send(a.ws,{t:"zone",name:W.ZONE});
+  assert.equal(h.room.hockeyTables[0],null,"cleanup never waits for admission/replay storage");
+  const closed=messages(a.ws).slice(failedAt).filter(m=>m.phase==="closed");assert.equal(closed.length,1);
+  h.advance(5100);cmd(h,a,"join");assert.equal(h.room.hockeyTables[0],null,"new admission remains closed after persistence failure");h.room.webSocketClose(a.ws);
+});
+
+test("hall replay retries wait for connectivity, restart after loss and retire unconfirmed stale cache",()=>{
+  const callbacks=new Set(),sent=[],stops=[0,0,0],games=stops.map((_,i)=>({stop(){stops[i]++;},receive(){}}));
+  const net={state:{room:"off"},hockeyTables:[{k:"table",i:0,s:"0123456789abcdef",phase:"play",q:1,a:frame()},null,null],subscribeHockey:fn=>{callbacks.add(fn);return()=>callbacks.delete(fn);},sendHockey:m=>sent.push(m)};
+  const BL={hockeyWire:W,net};runInNewContext(readFileSync(new URL("../../src/js/hockey-session.js",import.meta.url),"utf8"),{window:{BL},performance});
+  const watch=BL.hockeySession.watch(games);watch.update(60);assert.equal(sent.length,0);net.state.room="live";watch.update(.1);assert.equal(sent.length,1);
+  for(const fn of callbacks)fn({k:"table",i:0,s:"ffffffffffffffff",phase:"closed"});
+  const before=stops[0];watch.update(13);assert.equal(stops[0],before+1);watch.update(13);assert.equal(stops[0],before+1,"expiry clears stale presentation only once");
+  for(const fn of callbacks)fn({k:"lost"});watch.update(.1);assert.equal(sent.length,2,"reconnect starts a fresh bounded retry window");watch.dispose();assert.equal(callbacks.size,0);
+});
+
+
+test("surviving socket attachments require a committed admission proof for every seat",async t=>{
+  const h=harness(t),a=await seat(h,1,"a"),b=await seat(h,2,"b"), put=h.ctx.storage.put;
+  let drop=true;h.ctx.storage.put=async(key,value)=>{if(key!=="hockeyLimitsV1"||!drop)return put(key,value);};
+  cmd(h,a,"join");assert.ok(a.ws.store.hockey,"simulate attachment surviving a discarded ledger write");
+  await h.wake();assert.equal(h.room.hockeyTables[0],null);assert.equal(a.ws.store.hockey,null,"uncommitted first seat cannot restore");
+  drop=false;h.advance(5100);cmd(h,a,"join");assert.ok(h.room.hockeyTables[0]);await h.wake();assert.deepEqual([...h.room.hockeyTables[0].ids],[1,0],"committed first-seat proof restores");
+  drop=true;cmd(h,b,"join");assert.deepEqual(a.ws.store.hockey.ids,[1,2]);
+  await h.wake();assert.equal(h.room.hockeyTables[0],null,"uncommitted second seat invalidates the whole restored session");
   h.room.webSocketClose(a.ws);h.room.webSocketClose(b.ws);
 });

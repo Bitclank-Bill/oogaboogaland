@@ -1,13 +1,19 @@
 // Three bounded tables; the authenticated first seat simulates. No scores or currency are trusted here.
-// Hibernation attachments preserve sessions; no storage.put, interval, SFU or new service.
+// Hibernation attachments preserve sessions; separate bounded storage holds admission/replay debt.
 import "../../src/js/hockey-wire.js";
+import { hockeyLimits } from "./hockey-limits.js";
 const W = globalThis.BL.hockeyWire;
 export const hockey = {
+  loadLimits: hockeyLimits.load,
   restore(room) {
     room.hockeyTables = [null, null, null];
     for (const p of room.players.values()) {
       const s = p.hockey;
-      if (s && s.ids[0] === p.id && s.i >= 0 && s.i < 3) room.hockeyTables[s.i] = s;
+      if (s && s.ids[0] === p.id && s.i >= 0 && s.i < 3) {
+        const proof = room.hockeyLimits?.proofs[s.i];
+        if (proof && proof.s === s.s && proof.until > Date.now() && s.ids.every((id, side) => id === proof.ids[side] && (!id || room.players.get(id)?.connectionToken === proof.tokens[side]))) room.hockeyTables[s.i] = s;
+        else hockey.clear(room, s); // An attachment alone cannot prove that an admission write committed.
+      }
     }
     hockey.sweep(room);
   },
@@ -34,7 +40,8 @@ export const hockey = {
   },
   arrive(room, p) {
     hockey.sweep(room);
-    if (p.zone === W.ZONE) for (const s of room.hockeyTables) if (s) hockey.tell(room, s, p);
+    const count = room.hockeyTables.reduce((n, s) => n + !!s, 0);
+    if (p.zone === W.ZONE && hockeyLimits.replay(room, p, count)) for (const s of room.hockeyTables) if (s) hockey.tell(room, s, p);
   },
   message(room, p, m) {
     const now = Date.now();
@@ -50,19 +57,25 @@ export const hockey = {
     if (b.tokens < 1) return;
     b.tokens--;
     hockey.sweep(room);
-    if (!W.eligible(p)) return;
     let s = room.hockeyTables[m.i];
     if (m.k === "watch") {
+      if (p.zone !== W.ZONE || !hockeyLimits.replay(room, p, 1)) return;
       if (s) hockey.tell(room, s, p);
       else room.send(p.ws, { t: "hockey", k: "table", i: m.i, ids: [], phase: "closed", now });
       return;
     }
+    if (!W.eligible(p)) return;
     if (m.k === "join") {
       if (!W.near(p, m.i)) return;
-      for (const other of room.hockeyTables) if (other && other.ids.includes(p.id)) { hockey.tell(room, other, p); return; }
+      for (const other of room.hockeyTables) if (other && other.ids.includes(p.id)) { if (hockeyLimits.replay(room, p, 1)) hockey.tell(room, other, p); return; }
+      if (s && (s.phase !== "lobby" || s.ids[1])) { room.send(p.ws, { t: "hockey", k: "busy", i: m.i }); return; }
+      let sid = s?.s;
+      if (!sid) { const bytes = new Uint8Array(8); crypto.getRandomValues(bytes); sid = Array.from(bytes, n => n.toString(16).padStart(2, "0")).join(""); }
+      const ids = s ? [s.ids[0], p.id] : [p.id, 0];
+      const proof = { s: sid, ids, tokens: ids.map(id => id ? room.players.get(id).connectionToken : null), until: now + 480000 };
+      if (!hockeyLimits.admit(room, p, m.i, !s, proof)) return;
       if (!s) {
-        const bytes = new Uint8Array(8); crypto.getRandomValues(bytes);
-        s = { created: now, i: m.i, s: Array.from(bytes, n => n.toString(16).padStart(2, "0")).join(""), ids: [p.id, 0], ready: [false, false], seen: [now, now], phase: "lobby", q: -1, inputQ: -1, a: null };
+        s = { created: now, i: m.i, s: sid, ids: [p.id, 0], ready: [false, false], seen: [now, now], phase: "lobby", q: -1, inputQ: -1, a: null };
         room.hockeyTables[m.i] = s;
       } else if (s.phase === "lobby" && !s.ids[1]) { s.ids[1] = p.id; s.seen[1] = now; s.ready = [false, false]; }
       else { room.send(p.ws, { t: "hockey", k: "busy", i: m.i }); return; }
@@ -72,13 +85,15 @@ export const hockey = {
     if (!s || m.s !== s.s || side < 0 || !W.near(p, m.i)) return;
     s.seen[side] = now;
     if (m.k === "ready" && s.phase === "lobby") {
+      if (s.ready[side]) { hockey.save(room, s); return; }
       s.ready[side] = true;
       if (s.ready[0] && (!s.ids[1] || s.ready[1])) { s.phase = "play"; s.start = now; }
       hockey.save(room, s); hockey.tell(room, s); return;
     }
     if (m.k === "frame" && side === 0 && s.phase === "play" && m.q > s.q) {
       // Scores only advance one goal at a time; elapsed sand never increases. The host remains a trust boundary.
-      if (s.a && (m.a[8] < s.a[8] || m.a[9] < s.a[9] || m.a[8] + m.a[9] > s.a[8] + s.a[9] + 1 || m.a[10] > s.a[10])) return;
+      const before = s.a, goals = before ? before[8] + before[9] : 0;
+      if (m.a[8] + m.a[9] > goals + 1 || before && (m.a[8] < before[8] || m.a[9] < before[9] || m.a[10] > before[10]) || !before && !m.a[16]) return;
       s.q = m.q; s.a = m.a;
       if (!m.a[16]) s.phase = "done";
       hockey.save(room, s);

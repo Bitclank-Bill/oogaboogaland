@@ -67,20 +67,33 @@
   };
   // Hall observers subscribe once per scene visit and use the very same game nodes and table transform.
   const watch = games => {
-    const net = BL.net, seq = [-1, -1, -1], sessions = [null, null, null];
+    const net = BL.net, seq = [-1, -1, -1], sessions = [null, null, null], checked = [false, false, false];
+    let elapsed = 0, wait = 0, next = 0, expired = false;
     const receive = m => {
-      if (m.k === "lost") { for (const g of games) g.stop(); sessions.fill(null); seq.fill(-1); return; }
+      if (m.k === "lost") { for (const g of games) g.stop(); sessions.fill(null); seq.fill(-1); checked.fill(false); elapsed = wait = next = 0; expired = false; return; }
       if (!games[m.i]) return;
       const g = games[m.i];
       if (m.k === "table") {
-        if (m.phase === "closed") { if (!m.s || m.s === sessions[m.i]) { g.stop(); sessions[m.i] = null; seq[m.i] = -1; } return; }
+        if (m.phase === "closed") { if (!m.s || m.s === sessions[m.i]) { checked[m.i] = true; g.stop(); sessions[m.i] = null; seq[m.i] = -1; } return; }
+        checked[m.i] = true;
         if (sessions[m.i] !== m.s) { sessions[m.i] = m.s; seq[m.i] = -1; g.stop(); }
       }
-      if (m.s === sessions[m.i] && m.q > seq[m.i] && W.validFrame(m.a)) { seq[m.i] = m.q; g.receive(m.a); }
+      if (m.s === sessions[m.i] && m.q > seq[m.i] && W.validFrame(m.a)) { checked[m.i] = true; seq[m.i] = m.q; g.receive(m.a); }
     };
     const off = net.subscribeHockey(receive);
     for (const m of net.hockeyTables) if (m) receive(m);
-    return off;
+    checked.fill(false);
+    return { dispose: off, update(dt) {
+      // Bounded retries recover late snapshots denied by admission/replay budgets, using the scene clock.
+      if (net.state.room !== "live") return;
+      elapsed += dt; wait -= dt;
+      if (elapsed > 12) {
+        if (!expired) for (let i = 0; i < 3; i++) if (!checked[i] && games[i]) { games[i].stop(); sessions[i] = null; seq[i] = -1; }
+        expired = true; return;
+      }
+      if (wait > 0) return;
+      for (let n = 0; n < 3; n++) { const i = next++ % 3; if (!checked[i]) { net.sendHockey({ k: "watch", i }); wait = 1.1; break; } }
+    } };
   };
   BL.hockeySession = { create, watch };
 })();

@@ -2259,6 +2259,7 @@
       }
     }
     for (let i = 0; i < carnival.length; i++) carnival[i].update(dt);
+    if (unwatchHockey) unwatchHockey.update(dt);
     stationLife(dt, elapsed);
     // The wheel: a spin eases out on its cubic to the drawn wedge and shows its win; its result holds under the
     // clapper a while; else the face idles round, a push from the gamemaster easing back.
@@ -2348,7 +2349,7 @@
     CAND.fill(null);
     // A spin still turning has its win saved but not shown: left out here, it shows on the way back in (`enter`).
     lastTickets = shownTickets();
-    if (unwatchHockey) unwatchHockey();
+    if (unwatchHockey) unwatchHockey.dispose();
     unwatchHockey = null;
     audio.dispose();
     remotes.dispose();
