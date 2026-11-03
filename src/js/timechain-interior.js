@@ -676,12 +676,12 @@
     const drawExtra = (ctx2d, project) => { if (remotes) remotes.drawNames(ctx2d, project); };
     const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
     const onKey = (e) => {
-      if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !guide.stage) return pilot.resetCamera();
+      if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !guide.stage) return pilot.resetCamera();
       if (e.key.toLowerCase() === "x" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !guide.stage) {
         e.preventDefault();
         return pilot.modeAction("mode-toggle");
       }
-      if (e.key === "Escape") {
+      if (BL.controls.matches(e, "escape")) {
         if (!guide.stage && !pilot.escape()) walkOut();
         return true;
       }
@@ -695,6 +695,8 @@
     reader.start();
     holdings.start();
 
+    shell.controlsHelp = touch => { const help = pilot.controlsHelp(touch); help.title = "Timechain Sphere · " + help.title; return help; };
+    shell.controlsHelpHold = on => { pilot.controls.reset(); pilot.setMenuOpen(on, false); };
     shell.root = root;
     shell.camera = camera;
     shell.input = input;

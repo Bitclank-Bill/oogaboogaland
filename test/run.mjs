@@ -4891,6 +4891,14 @@ const cloudHopperFailureChecks = async engine => {
   tick(0.2);
   const backgroundResumed = Math.abs(hopper.time - beforeHidden.time - 0.2) < 1e-8
     && Math.abs(ghostTime - hopper.time) < 1e-8 && !sameCourseState(beforeHidden.course, courseState());
+  const beforeHelp = { time: hopper.time, course: courseState(), ghost: ghostTime };
+  hopper.controlsHelpHold(true); now += 30000;
+  context.document.hidden = true; for (const listener of visibilityListeners) listener();
+  now += 10000; hopper.controlsHelpHold(false); now += 5000;
+  context.document.hidden = false; for (const listener of visibilityListeners) listener();
+  tick(0);
+  record("Cloud Hopper controls reference: overlapping help and tab pauses keep the course, race clock and ghost together",
+    Math.abs(hopper.time-beforeHelp.time)<1e-8 && Math.abs(ghostTime-beforeHelp.ghost)<1e-8 && sameCourseState(beforeHelp.course,courseState()));
   const specialOptions = { start: { x: 420, y: 310, z: 0 }, finish: { x: 0, y: 2, z: 0 }, mainlandRadius: 30, seed: 7291 };
   const specialCourse = BL.cloudHopperCourse.create(specialOptions), sameCourse = BL.cloudHopperCourse.create(specialOptions);
   // Use an oblique course so lateral motion is relative to the route, not a
@@ -13786,6 +13794,15 @@ const PHONE_GO = `(() => { const g = document.querySelector('[data-intro]:not([h
 const PHONE_SIZE = { w: 390, h: 844, mobile: true };
 const phone = (id, { card = null, play = null, required, sheet = false }) => ({ name: `${id} phone`, why: "rule: every scene is readable and playable on a phone, nothing clipped and every control under a thumb", run: async (b) => {
   const seen = {};
+  const reference = await b.evaluate(`(() => {
+    const button=document.getElementById("controls-help-button");
+    button.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,pointerType:"touch"})); button.click();
+    const d=document.getElementById("controls-help"), r=d.getBoundingClientRect();
+    return {open:d.open,rows:d.querySelectorAll(".controls-row").length,touch:!d.querySelector("kbd"),fits:r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight,overflow:d.scrollWidth>d.clientWidth,text:d.textContent};
+  })()`);
+  if (process.env.CONTROLS_SCREENSHOTS && id === "hub") await b.screenshot(join(root,"untracked","controls-phone.png"));
+  await b.evaluate('document.getElementById("controls-help-close").click()');
+  record(`${id} phone: controls reference fits, uses touch controls and excludes removed equipment`, reference.open&&reference.rows>1&&reference.touch&&reference.fits&&!reference.overflow&&(id!=="timechain"||!/weapon|rifle|jetpack/i.test(reference.text)), JSON.stringify(reference));
   if (card) {
     seen.card = { touch: await b.evaluate(PHONE_COARSE), bad: await b.evaluate(PHONE([`${card} .game-intro-go`, `${card} .game-intro-go + button`])) };
     const go = await b.evaluate(PHONE_GO);
@@ -20359,6 +20376,41 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     box.shown && box.said === 0 && spoken.saved === "on" && spoken.said.join("|") === "Joins will be read aloud|Eve is online|Fay is online|Gus and Hal are online"
       && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "", JSON.stringify({ box, spoken, out }));
 } };
+const controlsHelpCheck = { name: "controls reference", why: "regression: help must isolate practice input, release held keys and return movement after closing, including on hybrid devices", run: async b => {
+  const initial = await b.evaluate(`(() => {
+    const B = __ooga, P = B.pilot, a = B.cavemen.get("portlandhodl");
+    P.possess(a); P.navigate({ position: { x: -5, y: B.island.surfaceAt(-5, 3), z: 3 }, yaw: 0, pitch: .4, dist: 10 }); B.advance(.3, 1/60);
+    document.getElementById("controls-help-button").click();
+    const d = document.getElementById("controls-help"), w = d.querySelector('[data-key="w"]'), aKey = d.querySelector('[data-key="a"]'), s = d.querySelector('[data-key="s"]'), right = d.querySelector('[data-key="d"]');
+    const bounds = d.getBoundingClientRect(), wr = w.getBoundingClientRect(), ar = aKey.getBoundingClientRect(), sr = s.getBoundingClientRect(), dr = right.getBoundingClientRect();
+    return { open: d.open, position: {...P.player.root.position}, layout: wr.top < ar.top && ar.left < sr.left && sr.left < dr.left && Math.abs(wr.left-sr.left)<1, fits: bounds.left>=0 && bounds.right<=innerWidth && bounds.top>=0 && bounds.bottom<=innerHeight };
+  })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", code: "KeyW" });
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "a", code: "KeyA" });
+  const pressed = await b.evaluate(`(() => { __ooga.advance(.4,1/60); return { keys:[...document.querySelectorAll('#controls-help kbd[data-pressed="true"]')].map(e=>e.dataset.key), position:{...__ooga.pilot.player.root.position} }; })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA" });
+  const released = await b.evaluate(`document.querySelector('#controls-help [data-key="a"]').dataset.pressed === "false" && document.querySelector('#controls-help [data-key="w"]').dataset.pressed === "true"`);
+  if (process.env.CONTROLS_SCREENSHOTS) { mkdirSync(join(root,"untracked"),{recursive:true}); await b.screenshot(join(root,"untracked","controls-desktop.png")); }
+  await b.key("Escape");
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", code: "KeyW", autoRepeat: true });
+  const closed = await b.evaluate(`(() => { __ooga.advance(.2,1/60); return { closed: !document.getElementById("controls-help").open, neutral: __ooga.controls.read().y===0, keys: document.querySelectorAll('#controls-help [data-pressed="true"]').length }; })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w", code: "KeyW" });
+  const before = await b.evaluate('({...__ooga.pilot.player.root.position})');
+  await holdKey(b,"w",.3);
+  const after = await b.evaluate('({...__ooga.pilot.player.root.position})');
+  record("controls reference: spatial WASD lights independently without moving, closing releases it and fresh W walks", initial.open && initial.layout && initial.fits && pressed.keys.join(",")==="w,a" && released && Math.hypot(pressed.position.x-initial.position.x,pressed.position.z-initial.position.z)<.001 && closed.closed && closed.neutral && !closed.keys && Math.hypot(after.x-before.x,after.z-before.z)>.05, JSON.stringify({initial,pressed,released,closed,before,after}));
+  const hybrid = await b.evaluate(`(() => {
+    const button=document.getElementById("controls-help-button"); button.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,pointerType:"touch"})); button.click();
+    const d=document.getElementById("controls-help"), touch=d.textContent.includes("Touch") && !d.querySelector("kbd");
+    d.dispatchEvent(new KeyboardEvent("keydown",{bubbles:true,key:"w",code:"KeyW"}));
+    const keyboard=!!d.querySelector('[data-key="w"][data-pressed="true"]');
+    window.dispatchEvent(new Event("blur")); const blur=!d.querySelector('[data-pressed="true"]');
+    d.dispatchEvent(new KeyboardEvent("keyup",{bubbles:true,key:"w",code:"KeyW"})); document.getElementById("controls-help-close").click();
+    return {touch,keyboard,blur};
+  })()`);
+  record("controls reference: touch and keyboard switch on a hybrid device and blur clears highlights", hybrid.touch&&hybrid.keyboard&&hybrid.blur, JSON.stringify(hybrid));
+} };
+scene("hub", { label: "controls reference", query: "solo=1&character=portlandhodl&pos=0", steps: [controlsHelpCheck] });
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence, hubMuteKey, hubChat] });
 scene("hub", { label: "join alerts", query: "pos=0", steps: [hubJoinAlerts] });
 scene("hub", { label: "clock and block height", query: "pos=0&time=0900", steps: [hubBlockHeight, hubDestinationNames] });

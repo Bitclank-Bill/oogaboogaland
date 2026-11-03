@@ -897,17 +897,17 @@
     // The visitor's Ooga carries its club and rifle through the whole arcade, as on the island (#420): X aims, 1 and 2
     // pick the club or the rifle, G swaps, V fires. Outside a hunt they meet nothing but the herald.
     if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if ((e.key === "x" || e.key === "X") && pilot.modeAction("mode-toggle")) return true;
-      if ((e.key === "1" || e.key === "2") && pilot.weaponMode(Number(e.key))) return true;
-      if (e.key === "g" || e.key === "G") { pilot.weaponAction("weapon-toggle"); return true; }
-      if (e.key === "v" || e.key === "V") { pilot.weaponAction("weapon-fire"); return true; }
+      if (BL.controls.matches(e, "view") && pilot.modeAction("mode-toggle")) return true;
+      if (BL.controls.matches(e, "weapon") && pilot.weaponMode(Number(e.key))) return true;
+      if (BL.controls.matches(e, "swapWeapon")) { pilot.weaponAction("weapon-toggle"); return true; }
+      if (BL.controls.matches(e, "attack")) { pilot.weaponAction("weapon-fire"); return true; }
     }
-    if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera();
-    if (e.key === "Escape" && !prizeUi.panel.hidden) {
+    if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera();
+    if (BL.controls.matches(e, "escape") && !prizeUi.panel.hidden) {
       closePrizes();
       return true;
     }
-    if (e.key === "Escape") {
+    if (BL.controls.matches(e, "escape")) {
       if (!pilot.escape()) leaveCave();
       return true;
     }
@@ -2377,5 +2377,7 @@
   });
   arcadeScene.prepare = () => { const loading = BL.deferred.load("arcade"); return loading ? loading.then(() => null) : null; };
   BL.scenes = BL.scenes || {};
+  arcadeScene.controlsHelp = touch => { const help = pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon"]); help.title = "Ooga Arcade · " + help.title; return help; };
+  arcadeScene.controlsHelpHold = on => { pilot.controls.reset(); pilot.setMenuOpen(on, false); };
   BL.scenes.arcade = arcadeScene;
 })();

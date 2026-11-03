@@ -284,12 +284,12 @@
     if (!leaving) { world.hangarCrossing = null; w.through = w.grab = false; }
   };
   const onKey = (e) => {
-    if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !leaving) return pilot.resetCamera();
+    if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !leaving) return pilot.resetCamera();
     if ((e.key === "h" || e.key === "H") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && scene && honk(scene.forklift, people && people.player, false)) return true;
-    if ((e.key === "x" || e.key === "X") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !leaving) {
+    if (BL.controls.matches(e, "view") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !leaving) {
       if (pilot.modeAction("mode-toggle")) { e.preventDefault(); return true; }
     }
-    if (e.key === "Escape") {
+    if (BL.controls.matches(e, "escape")) {
       if (scene && scene.guide.escape()) { e.preventDefault(); return true; }
       if (!pilot.escape()) leaveHangar();
       return true;
@@ -1632,6 +1632,8 @@
     // Voice zone: the Factory's group, which the hall shares (`factory.hall`).
     voiceZone: "factory.hangar",
     micKey: true,
+    controlsHelp: touch => { const help = pilot.controlsHelp(touch); help.title = "Lightning Jet Hangar · " + help.title; return help; },
+    controlsHelpHold: on => { pilot.controls.reset(); pilot.setMenuOpen(on, false); },
     id: "hangar", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     get inMotion() {

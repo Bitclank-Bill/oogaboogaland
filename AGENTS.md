@@ -46,6 +46,7 @@ Classic scripts, each an IIFE with `"use strict"`, sharing `window.BL`. A file e
 
 | File | Job |
 |---|---|
+| `controls-help.js` | Native controls dialog beside the speaker. Each scene supplies `controlsHelp(touch)` rows and optional `controlsHelpHold(on)` input cleanup. The pilot reads its live equipment; games reuse coaching copy. Movement bindings and discrete shortcuts come from `controls.js`, shared with handlers. The director holds local simulation and gamepad input while the dialog is open; network connections stay live. Keep key practice isolated, clear holds on close/blur/mode changes, and preserve focus return. |
 | `sound.js` | Page-wide environment mute (`oogaboogaland.audio`), shared by the banner speaker and, while voice is off, M in every scene. Audio modules subscribe and unsubscribe on disposal; short-lived effects use `output(context)`. While voice is enabled or joining, the director reserves M for microphone mute before scene handlers, except in input fields and editable content; `voice.setMuted` never acquires a microphone |
 | `qr.js` | QR code for the donation link |
 | `banana-icon.js` | The Bananas panel's nine-pixel banana as painted canvas pixels and solid sign geometry, shared by the Factory donation board and kiosk |

@@ -1594,7 +1594,7 @@
       // Otherwise R stays the free camera's pitch.
       const cave = player();
       const key = e.key.toLowerCase();
-      if (key === "f" && armed() && cave.weapon.equipped) {
+      if (BL.controls.matches(e, "bash") && armed() && cave.weapon.equipped) {
         e.preventDefault(); e.stopImmediatePropagation();
         if (!e.repeat) weaponAction("weapon-bash");
         return;
@@ -1610,7 +1610,7 @@
         overheadTargetYaw = overheadYaw + Math.atan2(Math.sin(-overheadYaw), Math.cos(-overheadYaw));
         return;
       }
-      if (e.key.toLowerCase() === "r" && !controls.rightShift && cave && cave.weapon.equipped) {
+      if (BL.controls.matches(e, "reload") && !controls.rightShift && cave && cave.weapon.equipped) {
         e.preventDefault(); e.stopImmediatePropagation();
         if (!e.repeat) weaponAction(ctx.reloadAnywhere ? "weapon-reload" : "magazine-swap");
         return;
@@ -4030,7 +4030,39 @@
     };
     saveActiveLoginView = saveLoginView;
     turnActive = turnToward;
-    return { orbit, hooks, controls, cursor: carryCursor, cameraHandoff: handoff, captureControl, capturePose, arrive, restorePose, focusAim, setMenuOpen, setExternalControl,
+    // Read only when help opens, using this pilot's real capabilities and HUD.
+    const controlsHelp = (touch, shortcuts = []) => {
+      const H = BL.controlsHelp, rows = [], cave = player();
+      const add = (action, text, gesture) => rows.push(H.row(touch ? [] : BL.controls.shortcutKeys(action), text, touch ? gesture : ""));
+      if (touch) {
+        rows.push(H.row([], cave ? "Walk" : "Move the free camera", "Left stick"), H.row([], "Look around", "Right stick / drag"), H.row([], "Change camera distance", "Pinch"));
+      } else {
+        rows.push(H.movement(cave ? "Walk" : "Move the free camera"));
+        rows.push(H.row(BL.controls.keysFor("yawLeft", "yawRight"), "Turn the view"));
+        if (!cave) rows.push(H.row(BL.controls.keysFor("pitchDown", "pitchUp"), "Tilt the view"), H.row(BL.controls.keysFor("up"), "Move up"), H.row(BL.controls.keysFor("down"), "Move down"));
+        rows.push(H.row([], "Look around · change camera distance", "Drag / scroll"));
+      }
+      if (cave) {
+        if (!touch) rows.push(H.row(["shiftleft"], "Run"));
+        rows.push(H.row(touch ? [] : [" "], hud.el.act.textContent.trim() || "Jump / use nearby object", touch ? "Action button" : ""));
+        add("view", "Switch camera mode", "View button");
+        if (crew.weaponsEnabled && !cave.grabbedBy && !crew.sleeping && (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode && (cave.weapon.primaryOwned || cave.weapon.secondaryOwned)) {
+          if (touch || shortcuts.includes("weapon")) add("weapon", "Select owned weapon", "Weapon buttons");
+          if (touch || shortcuts.includes("attack")) add("attack", "Attack", "Attack button");
+          if (!touch && shortcuts.includes("swapWeapon")) add("swapWeapon", "Swap weapon", "Weapon buttons");
+          if (cave.weapon.equipped) {
+            add("reload", ctx.reloadAnywhere ? "Reload" : "Swap magazine", "Magazine button");
+            if (armed()) add("bash", "Rifle bash", "Attack button");
+          }
+          if (!touch && armed()) rows.push(H.row([], "Attack / aim", "Left / right mouse"), H.row(["tab"], "Release the mouse cursor"));
+        }
+      } else rows.push(H.row([], "Take control of an Ooga", touch ? "Double-tap Ooga" : "Double-click Ooga"));
+      if (!touch) add("resetView", "Reset camera", "View button");
+      if (!touch) add("escape", cave ? "Release cursor / let go" : "Back", "Back button");
+      if (cave && shortcuts.includes("jetpack") && (cave.jetpackOwned || cave.jet) && !document.getElementById("jetpack-hud").hidden) add("jetpack", "Wear / remove jetpack · hold jump to climb", "Jetpack button");
+      return { title: cave ? "Controlling an Ooga" : "Free camera", rows };
+    };
+    return { orbit, hooks, controls, controlsHelp, cursor: carryCursor, cameraHandoff: handoff, captureControl, capturePose, arrive, restorePose, focusAim, setMenuOpen, setExternalControl,
       // The first person's field of view at this canvas's shape (unaimed), for a view held from outside to match it.
       eyeFov: () => Math.min(MAX_FOV, Math.max(BASE_FOV, 2 * Math.atan(Math.tan(MIN_HFOV / 2) / (renderer.size.width / Math.max(1, renderer.size.height))))),
       loginViewRestored: !!loginView, loginContext: loginView?.context || null, get poseHeld() { return !!restoredPose; }, get aiming() { return armed(); },

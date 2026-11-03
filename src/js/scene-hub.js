@@ -11330,14 +11330,14 @@
   };
   const onKey = (e) => {
     if (cloudHopper?.active) {
-      if (e.key === "Escape") { e.preventDefault(); if (!e.repeat) cloudHopper.exit(); }
-      else if (!cloudHopper.held && (e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
-      else if (!cloudHopper.held && e.key === "0" && !e.repeat) pilot.resetCamera();
+      if (BL.controls.matches(e, "escape")) { e.preventDefault(); if (!e.repeat) cloudHopper.exit(); }
+      else if (!cloudHopper.held && BL.controls.matches(e, "jetpack") && !e.repeat) toggleJetpack();
+      else if (!cloudHopper.held && BL.controls.matches(e, "resetView") && !e.repeat) pilot.resetCamera();
       return;
     }
     // Reading the poster: Space and the arrows step it, Escape hands the view back.
     if (wpRead) {
-      if (e.key === "Escape") { if (!e.repeat) wpReadEnd(); }
+      if (BL.controls.matches(e, "escape")) { if (!e.repeat) wpReadEnd(); }
       else if (!e.repeat && (e.key === " " || e.key === "Spacebar" || e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown")) wpStep(1);
       else if (!e.repeat && (e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "PageUp")) wpStep(-1);
       e.preventDefault();
@@ -11353,11 +11353,11 @@
       }
       return;
     }
-    if (e.key === "Escape" && islandGuide.escape()) { e.preventDefault(); return; }
+    if (BL.controls.matches(e, "escape") && islandGuide.escape()) { e.preventDefault(); return; }
     // While Tess's tour holds the view the island's keys wait, actor switches (T) among them; Enter and → are hers.
     if (islandGuide.holding) return;
-    if (e.key === "Escape" && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
-    if (e.key === "Escape") {
+    if (BL.controls.matches(e, "escape") && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
+    if (BL.controls.matches(e, "escape")) {
       if (!e.repeat) { if (clankerPlay.active) clankerPlay.escape(); else pilot.escape(); }
       e.preventDefault();
       return;
@@ -11365,12 +11365,12 @@
     if ((e.key === "t" || e.key === "T") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault(); cycleOwnActor(); return;
     }
-    if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault(); (clankerPlay.active ? clankerPlay : pilot).resetCamera(); return;
     }
     if (clankerPlay.active) return;
-    if ((e.key === "x" || e.key === "X") && !e.repeat && pilot.modeAction("mode-toggle")) return;
-    if ((e.key === "1" || e.key === "2") && pilot.weaponMode(Number(e.key))) return;
+    if (BL.controls.matches(e, "view") && !e.repeat && pilot.modeAction("mode-toggle")) return;
+    if (BL.controls.matches(e, "weapon") && pilot.weaponMode(Number(e.key))) return;
     if (e.key === "b" || e.key === "B") addTestBananas(testBananas);
     if (e.key === "l" || e.key === "L") demoTip(120000);
     if (e.key === "p" || e.key === "P") {
@@ -11378,12 +11378,12 @@
       pile.syncPile(true);
     }
     // J mirrors the carried jetpack button without changing its fuel.
-    if ((e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
+    if (BL.controls.matches(e, "jetpack") && !e.repeat) toggleJetpack();
     // N spins a driven Ooga's nunchaku, C changes the colourway of one built with two.
     if ((e.key === "n" || e.key === "N") && !e.repeat && crew.twirl()) return;
     if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
-    if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
-    if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");
+    if (BL.controls.matches(e, "swapWeapon")) pilot.weaponAction("weapon-toggle");
+    if (BL.controls.matches(e, "attack")) pilot.weaponAction("weapon-fire");
     const digit = parseInt(e.key, 10);
     if (digit >= 1 && digit <= 9) {
       const contributor = contributors.roster[digit - 1];
@@ -13018,5 +13018,7 @@
   };
   BL.scenes = BL.scenes || {};
   hubScene.buildSteps = prepareHubSteps;
+  hubScene.controlsHelp = touch => { if (cloudHopper?.active) return cloudHopper.controlsHelp(touch); if (clankerPlay?.active) return clankerPlay.controlsHelp(touch); const help = pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon", "jetpack"]); help.title = "Island · " + help.title; return help; };
+  hubScene.controlsHelpHold = on => { clankerPlay?.cancelInput(); if (on) clankerPlay?.freeCursor(); cloudHopper?.controlsHelpHold(on); pilot.controls.reset(); pilot.setMenuOpen(on, false); };
   BL.scenes.hub = hubScene;
 })();

@@ -1084,7 +1084,18 @@
       disposed = false;
       for (const [node, type, callback, options] of listeners) node.addEventListener(type, callback, options);
     };
-    return { possess, release, escape, respawn, travelRefusal, travel, freeCursor, resetCamera, captureControl, readInput, update, action, orbit: moveView, zoom, cancelInput, refreshCombat, resume, dispose,
+    const controlsHelp = touch => {
+      const H = BL.controlsHelp, rows = [touch ? H.row([], "Walk / climb", "Left stick") : H.movement("Walk / climb")];
+      rows.push(H.row(touch ? [] : [" "], clankers.sleeping(player) ? "Wake up" : "Jump / double jump", touch ? "Action button" : ""));
+      if (!touch) rows.push(H.row(["shiftleft"], "Run"), H.row(["x"], "Switch camera mode"), H.row(["c"], "Beat chest"));
+      rows.push(H.row([], "Look around / change distance", touch ? "Drag / pinch" : "Drag / scroll"));
+      if (clankers.combatEnabled && !clankers.sleeping(player)) {
+        rows.push(H.row(touch ? [] : ["1"], "Smash", touch ? "Smash button" : "Left mouse"), H.row(touch ? [] : ["g"], "Grab / throw", touch ? "Throw button" : ""));
+      }
+      if (!touch) rows.push(H.row(["escape"], "Release cursor / let go"));
+      return { title: "Island · Controlling a gorilla", rows };
+    };
+    return { controlsHelp, possess, release, escape, respawn, travelRefusal, travel, freeCursor, resetCamera, captureControl, readInput, update, action, orbit: moveView, zoom, cancelInput, refreshCombat, resume, dispose,
       get active() { return !!player; }, get player() { return player; }, get view() { return view; },
       get birdsEye() { return !!player && view === "birds-eye"; }, get birdsEyeMix() { return player ? camera.orthoMix || 0 : 0; },
       get firstPerson() { return !!player && view === "first-person"; },

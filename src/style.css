@@ -7397,7 +7397,7 @@ body[data-active-scene="poker"] .ember-den-icon {
 }
 body[data-active-scene="dsb"] :is(#freeroam-icon, #weapon-hud, #magazine-hud) { display: none !important; }
 body[data-active-scene] :is(.world-clock, .world-block) {
-  right: calc(var(--hub-banner-gutter) + var(--safe-right) + 48px);
+  right: calc(var(--hub-banner-gutter) + var(--safe-right) + 92px);
 }
 .environment-sound {
   position: absolute;
@@ -10432,3 +10432,24 @@ body[data-active-scene="arcade"] #destination-hud:not([hidden]) { display: flex;
 body.cloud-hopper-active #destination-hud,
 body.cloud-hopper-active #own-ooga-hud,
 body.cloud-hopper-active #mode-hud { display: none; }
+
+/* Controls reference: a quiet native modal, with real, independently lit keycaps. */
+body[data-active-scene] #controls-help-button { display: flex; align-items: center; justify-content: center; }
+.controls-help-button { position: absolute; top: calc(10px + var(--safe-top)); right: calc(var(--hub-banner-gutter) + var(--safe-right) + 44px); width: 36px; height: 36px; }
+.controls-help-button svg { width: 24px; height: 24px; }
+.controls-help { width: min(540px, calc(100vw - 24px)); max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); overflow-y: auto; overscroll-behavior: contain; }
+#controls-help-context { color: var(--gold, #ffd84a); font-size: 13px; }
+#controls-help-note { font-size: 12px; line-height: 1.5; opacity: .8; }
+.controls-list { margin-top: 16px; }
+.controls-row { display: grid; grid-template-columns: minmax(130px, 1fr) 1.2fr; align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid #f3efe424; font-size: 12px; line-height: 1.5; }
+.controls-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.controls-keys kbd, .controls-gesture { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; min-height: 30px; padding: 3px 7px; border: 1px solid #f3efe465; border-bottom-width: 3px; border-radius: 5px; background: #24252a; color: #f3efe4; font: inherit; }
+.controls-keys kbd[data-pressed="true"] { background: #ffd84a; color: #171308; border-color: #ffd84a; outline: 2px solid #fff4b5; outline-offset: 1px; }
+.controls-wasd { display: grid; grid-template-columns: repeat(3, 30px); gap: 5px; }
+.controls-wasd kbd:first-child { grid-column: 2; }
+.controls-wasd kbd:nth-child(2) { grid-column: 1; }
+.controls-aliases { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 420px) {
+  .controls-help { padding: 16px; }
+  .controls-row { grid-template-columns: minmax(110px, 1fr) 1.1fr; gap: 10px; }
+}

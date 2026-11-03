@@ -578,5 +578,7 @@
     }
   };
   BL.scenes = BL.scenes || {};
+  labScene.controlsHelp = touch => { const help = pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon"]); help.title = "Lab · " + help.title; return help; };
+  labScene.controlsHelpHold = on => { pilot.controls.reset(); pilot.setMenuOpen(on, false); };
   BL.scenes.lab = labScene;
 })();

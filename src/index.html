@@ -299,6 +299,13 @@
         <button type="button" data-action="mute" id="race-mute" aria-label="Mute sound" aria-pressed="false">Sound</button>
         <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
       </nav>
+      <button type="button" class="mode-hud controls-help-button" id="controls-help-button"
+        data-action="controls-help" aria-label="Controls" title="Controls" aria-haspopup="dialog" aria-controls="controls-help">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 6h10c2 0 3 2 4 6l1 5c.5 3-2 4-4 2l-3-3H9l-3 3c-2 2-4.5 1-4-2l1-5c1-4 2-6 4-6Z"/>
+          <path d="M6 9v5m-2.5-2.5h5M16 10h.01M19 13h.01"/>
+        </svg>
+      </button>
       <button type="button" class="mode-hud environment-sound" id="environment-sound"
         aria-label="Mute environment sounds" title="Mute environment sounds · M" aria-pressed="false">
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1625,6 +1632,16 @@
       <p class="help">Pay with Lightning or on-chain. Your bananas arrive from the Factory when the payment confirms.</p>
     </dialog>
     <div id="factory-donation-fields" hidden></div>
+    <!-- Continues Holo-Elfstone's native controls dialog from PR #57. -->
+    <dialog class="modal controls-help" id="controls-help" tabindex="-1" aria-labelledby="controls-help-title" aria-describedby="controls-help-note">
+      <div class="panel-head">
+        <h2 id="controls-help-title">Controls</h2>
+        <button type="button" class="modal-close" id="controls-help-close" aria-label="Close controls">&times;</button>
+      </div>
+      <p id="controls-help-context"></p>
+      <p id="controls-help-note">Try the keys here. Your character stays still while this panel is open.</p>
+      <div class="controls-list" id="controls-help-list"></div>
+    </dialog>
     <dialog class="modal" id="recipe" aria-label="Add an Ooga">
       <div class="panel-head">
         <h2><span data-sign>Add an Ooga</span></h2>
@@ -2125,6 +2142,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/ghost-track-nightmare.js" data-defer="halloween-track-nightmare"></script>
   <script src="js/ghost-track-synthed.js" data-defer="halloween-track-synthed"></script>
   <script src="js/ghost-track-nr.js" data-defer="halloween-track-nr"></script>
+  <script src="js/controls-help.js"></script>
   <script src="js/director.js"></script>
 </body>
 

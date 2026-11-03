@@ -1852,23 +1852,25 @@
     audio.unlock();
     quieted = false;
   };
+  const controlCopy = touch => touch ? "The button does each step · left stick steers"
+    : "Space does each step · G autopilot · V spacewalk\nW S push · A D steer";
   const onKey = (e) => {
-    if (e.key === "Escape") {
+    if (BL.controls.matches(e, "escape")) {
       if (phase === "build") go(home);
       else toBuild();
     }
-    if (e.key === "Enter" && (phase === "build" || phase === "results")) launch();
-    if (e.key === "0") {
+    if (BL.controls.matches(e, "start") && (phase === "build" || phase === "results")) launch();
+    if (BL.controls.matches(e, "resetView")) {
       cam.offset = cam.tilt = 0;
       cam.buildYaw = -0.64;
       cam.buildPitch = 0.18;
       cam.buildZoom = 1;
     }
-    if ((e.key === "g" || e.key === "G") && !e.repeat) {
+    if (BL.controls.matches(e, "autopilot") && !e.repeat) {
       selection.assist = !selection.assist;
       hud.toast(selection.assist ? "Autopilot leans the climb (A D still steer)" : "Flying the climb by hand: follow the yellow line");
     }
-    if ((e.key === "v" || e.key === "V") && !e.repeat) startEva();
+    if (BL.controls.matches(e, "spacewalk") && !e.repeat) startEva();
     if (e.key === "b" || e.key === "B") {
       world.level = Math.min(pileMod.MAX_BANANAS, world.level + testBananas);
       hud.toast(`+${testBananas} test bananas`);
@@ -2015,9 +2017,7 @@
     for (const c of contributors.roster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
     if (lootEnabled) renderLocker();
     hud.setStats(game.state);
-    rhud.el.help.textContent = COARSE
-      ? "The button does each step · left stick steers"
-      : "Space does each step · G autopilot · V spacewalk\nW S push · A D steer";
+    rhud.el.help.textContent = controlCopy(COARSE);
     document.getElementById("orbit-help").textContent = COARSE ? "Tap a part to add it · hold and drag it onto the rocket" : "Tap or drag a part onto the rocket · drag a row off to remove it";
     if (COARSE) rhud.el.evaBtn.querySelector("small").textContent = "the button";
     cam.buildYaw = -0.64;
@@ -2148,5 +2148,23 @@
     }
   });
   BL.scenes = BL.scenes || {};
+  orbitScene.controlsHelp = touch => {
+    const H = BL.controlsHelp, rows = [];
+    if (phase === "build") rows.push(H.row([], "Add a part · drag it onto the rocket or drag a row off to remove it", "Tap / drag"));
+    else if (touch) rows.push(...H.fromCopy(phase === "eva" ? "Left stick flies where you look · right stick down and up · drag to look · action button at the rock" : controlCopy(true), true));
+    else {
+      rows.push(H.movement(phase === "eva" ? "Fly where you look" : "Forward/back pushes · left/right steers"));
+      if (phase === "eva") rows.push(H.row(BL.controls.keysFor(...(COARSE ? ["pitchDown", "pitchUp"] : ["yawLeft", "yawRight"])), "Down / up"));
+      else {
+        rows.push(H.row(BL.controls.keysFor("yawLeft", "yawRight"), "Turn"), H.row(BL.controls.shortcutKeys("autopilot"), "Toggle climb autopilot"));
+        if (phase === "orbit") rows.push(H.row(BL.controls.shortcutKeys("spacewalk"), "Start spacewalk"));
+      }
+      rows.push(H.row([" "], phase === "eva" ? "Use space rock / return to pod" : "Next flight step / stage"));
+    }
+    if (phase === "build" || phase === "results") rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("start"), "Launch", touch ? "Launch button" : ""));
+    if (!touch) rows.push(H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"));
+    rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), phase === "build" ? "Leave" : "Return to builder", touch ? "Back button" : ""));
+    return { title: "Ooga Orbit", rows };
+  };
   BL.scenes.orbit = orbitScene;
 })();

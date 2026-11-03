@@ -1691,7 +1691,7 @@
   };
 
   const onKey = (e) => {
-    if (e.key === "Escape") {
+    if (BL.controls.matches(e, "escape")) {
       if (selection.type) {
         selection.type = "";
         mhud.showCard(null);
@@ -1700,12 +1700,12 @@
       return;
     }
     if (e.repeat) return;
-    if (e.key === "0") setOverview(true, "den");
-    else if ((e.key === "v" || e.key === "V") && phase === "run") setOverview(!overview);
+    if (BL.controls.matches(e, "resetView")) setOverview(true, "den");
+    else if (BL.controls.matches(e, "mineView") && phase === "run") setOverview(!overview);
     else if ((e.key === "s" || e.key === "S") && e.shiftKey && phase === "run") sellSats();
-    else if ((e.key === "c" || e.key === "C") && phase === "run") crackNearest();
-    else if ((e.key === "p" || e.key === "P") && phase === "run") pause(!s.paused);
-    else if (e.key === "Enter" && phase === "intro") start();
+    else if (BL.controls.matches(e, "crack") && phase === "run") crackNearest();
+    else if (BL.controls.matches(e, "pause") && phase === "run") pause(!s.paused);
+    else if (BL.controls.matches(e, "start") && phase === "intro") start();
   };
 
   // What the log says happened since the last frame, turned into sound and words. Only runs when the
@@ -2366,6 +2366,19 @@
   };
 
   const mineScene = BL.deferred.scene("mine", {
+    controlsHelp(touch) {
+      const H = BL.controlsHelp, rows = [];
+      if (phase === "intro") rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("start"), "Start mining", touch ? "Start button" : ""));
+      else {
+        rows.push(touch ? H.row([], "Walk", "Left stick") : H.movement("Walk"), H.row(touch ? [] : BL.controls.keysFor("yawLeft", "yawRight"), "Turn", touch ? "Drag" : "Mouse"));
+        for (const [action, text] of [["mineView", "Overview"], ["crack", "Crack nearby rock"], ["pause", "Pause / resume"]]) rows.push(H.row(touch ? [] : BL.controls.shortcutKeys(action), text, touch ? (action === "mineView" ? "View button" : action === "crack" ? "Crack rocks button" : "Pause button") : ""));
+        rows.push(H.row(touch ? [] : [" "], "Work on the object beside you", touch ? "WORK button" : ""));
+        if (!touch) rows.push(H.row(["shift", "s"], "Sell sats"));
+      }
+      rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("escape"), "Close selection / pause / leave", touch ? "Back button" : ""));
+      return { title: "Ooga Mine", rows };
+    },
+    controlsHelpHold() { pilot.controls.reset(); },
     id: "mine", enter, update, overlay, onDonation, onKey, onLootCleared: () => {}, renderOpts: RENDER_OPTS,
     leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
