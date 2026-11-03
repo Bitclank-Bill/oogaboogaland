@@ -1,14 +1,17 @@
-// Genesis museum: Glow Golf's course and its ball, pure and Node-loadable. Nine holes in a black-light Aztec cavern
+// Genesis museum: Glow Golf's course and its ball, pure and Node-loadable. Nine holes in a jungle cavern
 // under the hall (scene-genesis.js builds it far north of the galleries and takes the visitor there down the cenote),
 // three rows of three, played in a snake: each hole a walled green (a simple polygon the ball stays inside) with its
 // tee, its cup, its par, and what stands in the way: round bumpers, blocks, a ring round the cup with one gap, a bar
-// that turns. `compile(i)` lays a hole's walls out as segments in the cavern's frame once; `step(ball, c, t, dt)`
-// rolls the ball one step (friction, walls, bumpers, the turning bar, the cup), allocating nothing; `putt(ball,
+// that turns, grassy hills that roll the ball aside, hidden tunnels that swallow it and spit it out further on.
+// `compile(i)` lays a hole's walls out as segments in the cavern's frame once; `step(ball, c, t, dt)`
+// rolls the ball one step (friction, hills, walls, bumpers, the turning bar, tunnels, the cup), allocating nothing; `putt(ball,
 // angle, power)` strikes it. Lengths in metres, the cavern's frame: x east, z south, its centre the origin.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const BALL_R = 0.1, CUP_R = 0.2, MAX_SPEED = 8, DECEL = 1.5, DRAG = 0.35, WALL_E = 0.78, BUMP_E = 0.95, SINK_SPEED = 3.4;
+  // A rolling ball on a slope: gravity's pull along the ground, with the five sevenths a rolling sphere keeps.
+  const ROLL_G = 9.81 * 5 / 7, TUNNEL_R = 0.3, TUNNEL_T = 0.7, TUNNEL_SPEED = 2.6;
   const CELL_X = [-22, 0, 22], CELL_Z = [-14, 0, 14];
   // Where the cavern lies in the museum's frame (far north of every gallery), its size and its roof.
   const CAVERN = { x: 0, z: -178, w: 74, d: 52, h: 9 };
@@ -16,20 +19,22 @@
   const ring = (cx, cz, r, gap) => { const out = []; for (let k = 0; k < 12; k++) { const a0 = k / 12 * Math.PI * 2, a1 = (k + 1) / 12 * Math.PI * 2, mid = (a0 + a1) / 2; if (Math.abs(Math.atan2(Math.sin(mid - gap), Math.cos(mid - gap))) < 0.5) continue; out.push([cx + Math.cos(a0) * r, cz + Math.sin(a0) * r, cx + Math.cos(a1) * r, cz + Math.sin(a1) * r]); } return out; };
   // Each hole in its own cell's frame: `edge` the green's outline, `tee`, `cup`, `par`, and its feature: `bumpers`
   // [x, z, r], `blocks` (rects), `segs` (loose walls [x0, z0, x1, z1]), `bar` (a turning bar: centre, length, turn
-  // speed), `water` (ponds: a ball in one goes back where it was struck from, a stroke added), `via` (points round the
+  // speed), `hills` [x, z, r, H] (a smooth grassy mound H high and r across its foot, which the ball climbs and rolls
+  // off), `tunnels` [x, z, x2, z2, angle, face] (a mouth at x, z facing `face` that takes a ball rolling into it and lets it out of the
+  // far end at x2, z2 heading along angle, a little while later), `water` (ponds: a ball in one goes back where it was struck from, a stroke added), `via` (points round the
   // hole's turn), `line` (putts [angle, power] that hole it, found once by searching
   // shots and replayed by the suite, so a change that makes a hole unplayable is caught), and `prop`, the carving that stands
   // over it (the scene's to build).
   const HOLES = [
-    { name: "The Warm-Up", line: [[1.5533, 1]], par: 2, edge: rect(-6, 6, -1.2, 1.2), tee: [-5, 0], cup: [5, 0], prop: "torches" },
+    { name: "The Warm-Up", line: [[1.5708, 1]], par: 2, edge: rect(-6, 6, -1.6, 1.6), tee: [-5, 0], cup: [5, 0], hills: [[0, 0, 1.5, 0.3]], prop: "torches" },
     { name: "Jaguar's Turn", line: [[1.6755, 1], [0.0175, 0.95]], par: 2, edge: [[-7, -1.2], [3, -1.2], [3, -4.5], [5.4, -4.5], [5.4, 1.2], [-7, 1.2]], tee: [-6, 0], cup: [4.2, -3.6], prop: "jaguar" },
-    { name: "Cocoa Beans", line: [[1.5708, 1], [0.1222, 0.95]], par: 2, edge: rect(-6.5, 6.5, -1.6, 1.6), tee: [-5.5, 0], cup: [5.5, 0], bumpers: [[-2, -0.6, 0.45], [0.3, 0.7, 0.45], [2.6, -0.5, 0.4]], prop: "beans" },
-    { name: "The Long Way Round", line: [[3.543, 0.75], [4.9742, 1], [0, 0.7]], par: 3, edge: [[-6, -4], [6, -4], [6, 4], [3.6, 4], [3.6, -1.6], [-3.6, -1.6], [-3.6, 4], [-6, 4]], tee: [-4.8, 3], cup: [4.8, 3], via: [[-4.8, -2.8], [4.8, -2.8]], prop: "stela" },
+    { name: "Cocoa Beans", line: [[1.5708, 1], [0.1222, 0.95]], par: 2, edge: rect(-6.5, 6.5, -1.6, 1.6), tee: [-5.5, 0], cup: [5.5, 0], bumpers: [[-2, -0.6, 0.45], [0.3, 0.7, 0.45], [2.6, -0.5, 0.4]], hills: [[-3.6, 0.8, 0.7, 0.16], [1.4, -0.85, 0.7, 0.16]], prop: "beans" },
+    { name: "The Long Way Round", line: [[3.543, 0.75], [4.4157, 1], [0, 0.7]], par: 3, edge: [[-6, -4], [6, -4], [6, 4], [3.6, 4], [3.6, -1.6], [-3.6, -1.6], [-3.6, 4], [-6, 4]], tee: [-4.8, 3], cup: [4.8, 3], via: [[-4.8, -2.8], [4.8, -2.8]], hills: [[0, -2.8, 1.1, 0.2]], blocks: [rect(5.3, 6, -0.4, 0.5)], tunnels: [[-5.55, 0.6, 5.55, 0.75, 0, Math.PI / 2]], prop: "stela" },
     { name: "Mouth of the Stone Head", line: [[4.7124, 1], [3.543, 0.675]], par: 2, edge: rect(-7, 7, -2, 2), tee: [-6, 0], cup: [6, 0], blocks: [rect(-1.2, 1.2, -2, -0.42), rect(-1.2, 1.2, 0.42, 2)], prop: "head" },
-    { name: "The Pyramid", line: [[5.2534, 1], [1.7104, 0.95]], par: 3, edge: rect(-6, 6, -3, 3), tee: [-5, 0], cup: [5, 0], blocks: [rect(-1.8, 1.8, -1.8, 1.8)], prop: "pyramid" },
-    { name: "Feathered Serpent", line: [[1.3963, 1], [2.8449, 0.875], [5.4105, 1], [3.7699, 0.9]], par: 3, edge: rect(-7, 7, -3.5, 3.5), tee: [-6, -2.3], cup: [-6, 2.3], blocks: [rect(-7, 5.2, -0.5, 0.5)], via: [[6, 0]], prop: "serpent" },
-    { name: "The Sun Stone", line: [[2.2166, 0.975], [0.0698, 0.8]], par: 3, edge: rect(-6, 6, -2.5, 2.5), tee: [-5, 0], cup: [5, 0], bar: [0, 0, 3.8, 1.3], prop: "sun" },
-    { name: "Temple of the Block", line: [[1.4312, 1], [2.8274, 0.825]], par: 4, edge: rect(-7, 7, -4.5, 4.5), tee: [-6, 0], cup: [5.2, 0], bumpers: [[-3, -2, 0.5], [-3, 2, 0.5], [-0.5, 0, 0.6], [2, -2.4, 0.4], [2, 2.4, 0.4]], segs: ring(5.2, 0, 1.15, Math.PI), water: [rect(-6.9, -4.6, -4.4, -2.9)], prop: "temple" }
+    { name: "The Pyramid", line: [[4.6077, 0.775]], par: 3, edge: rect(-6, 6, -3, 3), tee: [-5, 0], cup: [5, 0], blocks: [rect(-1.8, 1.8, -1.8, 1.8)], tunnels: [[-2.15, 0, 2.3, 0, Math.PI / 2, -Math.PI / 2]], hills: [[-3.6, -1.8, 1.0, 0.2], [3.6, 1.8, 1.0, 0.2]], prop: "pyramid" },
+    { name: "Feathered Serpent", line: [[1.4486, 1], [2.8449, 0.875], [5.4105, 1], [3.6826, 0.925]], par: 3, edge: rect(-7, 7, -3.5, 3.5), tee: [-6, -2.3], cup: [-6, 2.3], blocks: [rect(-7, 5.2, -0.5, 0.5)], via: [[6, 0]], hills: [[-1, -2.1, 1.3, 0.24], [0.6, 2.1, 1.3, 0.24]], prop: "serpent" },
+    { name: "The Sun Stone", line: [[1.2741, 0.95], [0.0524, 0.65]], par: 3, edge: rect(-6, 6, -2.5, 2.5), tee: [-5, 0], cup: [5, 0], bar: [0, 0, 3.8, 1.3], hills: [[-3.6, 0, 1.2, 0.24]], prop: "sun" },
+    { name: "Temple of the Block", line: [[1.4312, 1], [2.8274, 0.825]], par: 4, edge: rect(-7, 7, -4.5, 4.5), tee: [-6, 0], cup: [5.2, 0], bumpers: [[-3, -2, 0.5], [-3, 2, 0.5], [-0.5, 0, 0.6], [2, -2.4, 0.4], [2, 2.4, 0.4]], segs: ring(5.2, 0, 1.15, Math.PI), water: [rect(-6.9, -4.6, -4.4, -2.9)], hills: [[-1.8, -3.3, 1.0, 0.2], [-1.8, 3.3, 1.0, 0.2]], prop: "temple" }
   ];
   // Hole i's cell: rows of three played in a snake (left to right, back, then again).
   const cellOf = (i) => { const row = Math.floor(i / 3), k = i % 3, col = row % 2 ? 2 - k : k; return { x: CELL_X[col], z: CELL_Z[row], flip: row % 2 === 1 }; };
@@ -45,12 +50,28 @@
     const bumpers = new Float64Array((h.bumpers || []).flatMap(([x, z, r]) => [...P(x, z), r]));
     const bar = h.bar ? { x: P(h.bar[0], h.bar[1])[0], z: c.z + h.bar[1], len: h.bar[2], w: h.bar[3] * sx } : null;
     const water = (h.water || []).map((r) => { const pts = r.map(([x, z]) => P(x, z)); return { x0: Math.min(...pts.map((q) => q[0])), x1: Math.max(...pts.map((q) => q[0])), z0: Math.min(...pts.map((q) => q[1])), z1: Math.max(...pts.map((q) => q[1])) }; });
+    const hills = new Float64Array((h.hills || []).flatMap(([x, z, r, H]) => [...P(x, z), r, H]));
+    const tunnels = (h.tunnels || []).map(([x, z, x2, z2, a, face]) => { const q = P(x, z), q2 = P(x2, z2); return { x: q[0], z: q[1], x2: q2[0], z2: q2[1], angle: a, face, dx: Math.sin(a) * sx, dz: Math.cos(a) }; });
     const tee = P(...h.tee), cup = P(...h.cup), via = (h.via || []).map(([x, z]) => { const q = P(x, z); return { x: q[0], z: q[1] }; });
-    return (compiled[i] = { i, hole: h, cell: c, edge, via, water, segs: new Float64Array(segs), bumpers, bar, tee: { x: tee[0], z: tee[1] }, cup: { x: cup[0], z: cup[1] } });
+    return (compiled[i] = { i, hole: h, cell: c, edge, via, water, hills, tunnels, segs: new Float64Array(segs), bumpers, bar, tee: { x: tee[0], z: tee[1] }, cup: { x: cup[0], z: cup[1] } });
   };
   const inside = (edge, x, z) => { let k = false; for (let a = 0, b = edge.length - 1; a < edge.length; b = a++) { const [xa, za] = edge[a], [xb, zb] = edge[b]; if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) k = !k; } return k; };
-  const createBall = () => ({ x: 0, z: 0, vx: 0, vz: 0, lastX: 0, lastZ: 0, moving: false, sunk: false, strokes: 0, bumps: 0, splashes: 0 });
-  const placeAt = (ball, c) => { ball.x = ball.lastX = c.tee.x; ball.z = ball.lastZ = c.tee.z; ball.vx = ball.vz = 0; ball.moving = false; ball.sunk = false; ball.strokes = 0; };
+  // The ground's height at x, z over a hole's hills, and its slope (written into `out`).
+  const heightAt = (c, x, z, out) => {
+    let y = 0, gx = 0, gz = 0;
+    const H = c.hills;
+    for (let i = 0; i < H.length; i += 4) {
+      const dx = x - H[i], dz = z - H[i + 1], r2 = H[i + 2] * H[i + 2], u = (dx * dx + dz * dz) / r2;
+      if (u >= 1) continue;
+      const w = 1 - u; y += H[i + 3] * w * w;
+      const k = -4 * H[i + 3] * w / r2; gx += k * dx; gz += k * dz;
+    }
+    if (out) { out.gx = gx; out.gz = gz; }
+    return y;
+  };
+  const SLOPE = { gx: 0, gz: 0 };
+  const createBall = () => ({ x: 0, z: 0, vx: 0, vz: 0, lastX: 0, lastZ: 0, moving: false, sunk: false, strokes: 0, bumps: 0, splashes: 0, hide: 0, tvx: 0, tvz: 0, tunnels: 0 });
+  const placeAt = (ball, c) => { ball.x = ball.lastX = c.tee.x; ball.z = ball.lastZ = c.tee.z; ball.vx = ball.vz = 0; ball.moving = false; ball.sunk = false; ball.strokes = 0; ball.hide = 0; };
   const putt = (ball, angle, power) => {
     if (ball.moving || ball.sunk) return false;
     const s = Math.max(0.05, Math.min(1, power)) * MAX_SPEED;
@@ -74,9 +95,14 @@
   const step = (ball, c, t, dt) => {
     if (!ball.moving) return;
     for (let left = dt; left > 1e-9; left -= SUB) {
-      const h = Math.min(SUB, left), sp = Math.hypot(ball.vx, ball.vz);
-      if (sp < 0.04) { ball.vx = ball.vz = 0; ball.moving = false; return; }
-      const k = Math.max(0, sp - (DECEL + DRAG * sp) * h) / sp;
+      const h = Math.min(SUB, left);
+      // In a tunnel: out of sight until it rolls out of the far end.
+      if (ball.hide > 0) { if ((ball.hide -= h) <= 0) { ball.hide = 0; ball.vx = ball.tvx; ball.vz = ball.tvz; } continue; }
+      if (c.hills.length) { heightAt(c, ball.x, ball.z, SLOPE); ball.vx -= ROLL_G * SLOPE.gx * h; ball.vz -= ROLL_G * SLOPE.gz * h; }
+      const sp = Math.hypot(ball.vx, ball.vz);
+      // At rest only where the ground is flat enough to hold it (on a slope it rolls on).
+      if (sp < 0.04 && (!c.hills.length || Math.hypot(SLOPE.gx, SLOPE.gz) * ROLL_G < DECEL)) { ball.vx = ball.vz = 0; ball.moving = false; return; }
+      const k = sp > 0 ? Math.max(0, sp - (DECEL + DRAG * sp) * h) / sp : 0;
       ball.vx *= k; ball.vz *= k;
       ball.x += ball.vx * h; ball.z += ball.vz * h;
       const s = c.segs;
@@ -98,6 +124,13 @@
         if (Math.hypot(ball.vx, ball.vz) < SINK_SPEED) { ball.x = c.cup.x; ball.z = c.cup.z; ball.vx = ball.vz = 0; ball.moving = false; ball.sunk = true; return; }
         ball.vx -= cx * 6 * h; ball.vz -= cz * 6 * h;
       }
+      // A tunnel's mouth swallows the ball; it comes out of the far end heading the tunnel's way.
+      for (const tn of c.tunnels) if (Math.hypot(ball.x - tn.x, ball.z - tn.z) < TUNNEL_R) {
+        const v = Math.max(TUNNEL_SPEED, Math.hypot(ball.vx, ball.vz) * 0.8);
+        ball.x = tn.x2; ball.z = tn.z2; ball.vx = ball.vz = 0; ball.tvx = tn.dx * v; ball.tvz = tn.dz * v; ball.hide = TUNNEL_T; ball.tunnels++;
+        break;
+      }
+      if (ball.hide > 0) continue;
       // In the water: back where it was struck from, and a stroke for the trouble.
       for (const w of c.water) if (ball.x > w.x0 && ball.x < w.x1 && ball.z > w.z0 && ball.z < w.z1) { ball.x = ball.lastX; ball.z = ball.lastZ; ball.vx = ball.vz = 0; ball.moving = false; ball.strokes++; ball.splashes++; return; }
       // Never out of the green: a ball that slipped through goes back where it was struck from.
@@ -105,5 +138,5 @@
     }
   };
   const totalPar = HOLES.reduce((a, h) => a + h.par, 0);
-  BL.genesisGolfCourse = { CAVERN, HOLES, CELL_X, CELL_Z, BALL_R, CUP_R, MAX_SPEED, compile, cellOf, createBall, placeAt, putt, step, inside, totalPar };
+  BL.genesisGolfCourse = { CAVERN, HOLES, CELL_X, CELL_Z, BALL_R, CUP_R, MAX_SPEED, TUNNEL_R, compile, heightAt, cellOf, createBall, placeAt, putt, step, inside, totalPar };
 })();

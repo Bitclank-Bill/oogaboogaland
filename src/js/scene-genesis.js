@@ -52,8 +52,8 @@
     // The statue in its warm light, and the Oogas' campfire behind it (genesis-campfire.js).
     [0, 7.5, -2.2, 13, 1.4, 1.15, 0.8],
     [BL.genesisCampfire.layout().fire.x, ISLAND_TOP + 1.8, BL.genesisCampfire.layout().fire.z, 10, 1.5, 0.8, 0.35],
-    // Glow Golf's black lights, one over each hole and two by the way in.
-    ...BL.genesisGolfCourse.HOLES.map((h, i) => { const c = BL.genesisGolfCourse.cellOf(i); const V = BL.genesisGolfCourse.CAVERN; return [V.x + c.x, ISLAND_TOP + 5, V.z + c.z, 14, 0.7, 0.3, 1.5]; }),
+    // Glow Golf's lamps, one over each hole: warm jungle light, every third one with a neon tint.
+    ...BL.genesisGolfCourse.HOLES.map((h, i) => { const c = BL.genesisGolfCourse.cellOf(i); const V = BL.genesisGolfCourse.CAVERN; return [V.x + c.x, ISLAND_TOP + 5.5, V.z + c.z, 15, ...(i % 3 === 1 ? [1.1, 0.75, 1.15] : [1.25, 1.1, 0.72])]; }),
     // Daylight down the cenote's shaft (genesis-cavern.js).
     [BL.genesisCavern.CENOTE.x, ISLAND_TOP + 3, BL.genesisCavern.CENOTE.z, 11, 0.95, 1.1, 1.3],
     ...GW.ERAS.flatMap((e) => BL.genesisDecor.pendantSpots(galleryRect(e.n)).map(([x, z]) => {
@@ -1063,10 +1063,10 @@
   // Each gallery's period pieces along its side walls (genesis-era-items.js): clear of its packed exhibits, its
   // reserved plots and its vignette; one merged mesh a gallery, each piece in the walkers' way.
   const lavaGeos = new Map();
-  // In Glow Golf's cavern the hall's warm light gives way to black light: dark, purple, the neon glowing.
+  // In Glow Golf's cavern the hall's warm light gives way to a jungle cave's: green and dim, the neon accents glowing.
   let golf = null;
   const BASE_LIGHT = { clear: renderOpts.clear.slice(), sky: renderOpts.sky.slice(), ground: renderOpts.ground.slice(), direct: renderOpts.direct.slice(), directStrength: renderOpts.directStrength, ambientFloor: renderOpts.ambientFloor, bloomStrength: renderOpts.bloomStrength };
-  const UV_LIGHT = { clear: [0.01, 0.0, 0.03], sky: [0.12, 0.05, 0.3], ground: [0.04, 0.02, 0.1], direct: [0.4, 0.25, 0.9], directStrength: 0.12, ambientFloor: 0.14, bloomStrength: 1.05 };
+  const UV_LIGHT = { clear: [0.02, 0.04, 0.02], sky: [0.42, 0.5, 0.36], ground: [0.15, 0.16, 0.09], direct: [0.95, 0.9, 0.7], directStrength: 0.3, ambientFloor: 0.3, bloomStrength: 0.6 };
   let lightIn = false;
   const updateGolfLight = () => {
     const q = avatar ? avatar.root.position : camera.target, now = inGolf(q.x, q.z);
@@ -1187,6 +1187,12 @@
     built.campfire = BL.genesisCampfire.build({ M, createNode, addChild, place, top: ISLAND_TOP });
     for (const b of BL.genesisCampfire.layout().boxes) built.obstacles.push(b);
     for (const b of BL.genesisLumber.layout().boxes) built.obstacles.push(b);
+    // The rock beanbags before the rock TV: E sits the Ooga down to watch, and E again stands it up.
+    built.seats = built.guideHall.layout.seats.map((q) => {
+      props.register({ id: `bg-seat-${q.i}`, era: 7, year: 2026, title: "A rock beanbag", label: "ROCK BEANBAG · 2026", sourceKeys: [], hint: "sit on the rock beanbag and watch the rock TV",
+        at: { x: q.at.x, y: ISLAND_TOP, z: q.at.z }, reach: 1.7, onUse: () => ({ caption: "A rock beanbag" }) });
+      return { x: q.x, y: ISLAND_TOP + 0.42, z: q.z, ry: q.ry, walkAt: { x: q.at.x, z: q.at.z }, floor: ISLAND_TOP, sitter: null };
+    });
     built.satoshiFx = BL.genesisSatoshiFx.build({ M, createNode, addChild, place, label: BL.factoryModels.label, top: ISLAND_TOP, at: S });
   };
   const updateVignettes = (dt) => {
@@ -1463,6 +1469,7 @@
     if (prop.id === "legend") { openMenu(); return; }
     if (prop.id === "whitepaper") { openPaper(); return; }
     if (prop.id === "golf-down") { flipTo("golf"); return; }
+    if (prop.id.startsWith("bg-seat-") && people) { const seat = built.seats[+prop.id.slice(8)]; if (seat.sitter) people.standPlayer(); else if (!people.sitPlayer(seat)) hud.toast("Someone is sitting there"); return; }
     if (prop.id === "golf-up") { flipTo("hall"); return; }
     if (prop.id.startsWith("golf-tee-") && golf) { golf.start(+prop.id.slice(9)); return; }
     const st = built.guideStations && built.guideStations[prop.id];

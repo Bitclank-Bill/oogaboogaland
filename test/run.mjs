@@ -25526,6 +25526,10 @@ const genesisAtriumProof = async () => {
     for (const [a, p] of c.hole.line) { GF.putt(b, a, p); for (let k = 0; k < 2400 && b.moving; k++) { GF.step(b, c, t, 1 / 120); t += 1 / 120; } if (b.sunk) break; }
     if (b.strokes > c.hole.par + 3) wb.push(`golf hole ${i + 1}'s line takes more than par and three`);
     if (!b.sunk) wb.push(`golf hole ${i + 1} (${c.hole.name}) is no longer holed by its line`);
+    // A hidden tunnel takes a ball rolled into its mouth and lets it out of its far end, out of sight a moment; a ball
+    // left on a hill's slope rolls off it.
+    for (const tn of c.tunnels) { const q = GF.createBall(); GF.placeAt(q, c); q.x = tn.x; q.z = tn.z; q.vx = 0.5; q.moving = true; let tt = 0, hid = false; for (let k = 0; k < 2400 && q.moving; k++) { GF.step(q, c, tt, 1 / 120); tt += 1 / 120; if (q.hide > 0) hid = true; } if (q.tunnels !== 1 || !hid || !GF.inside(c.edge, q.x, q.z)) wb.push(`golf hole ${i + 1}'s tunnel does not carry the ball through`); }
+    for (let j = 0; j < c.hills.length; j += 4) { const q = GF.createBall(); GF.placeAt(q, c); q.x = c.hills[j] + c.hills[j + 2] * 0.58; q.z = c.hills[j + 1]; q.moving = true; let tt = 0; for (let k = 0; k < 2400 && q.moving; k++) { GF.step(q, c, tt, 1 / 120); tt += 1 / 120; } if (Math.hypot(q.x - c.hills[j], q.z - c.hills[j + 1]) < c.hills[j + 2] * 0.5) wb.push(`golf hole ${i + 1}'s hill does not roll a ball off it`); }
     // A ball rolling into a pond comes back to where it was struck from, a stroke added.
     for (const w of c.water) { const q = GF.createBall(); GF.placeAt(q, c); q.x = w.x1 + 0.3; q.z = (w.z0 + w.z1) / 2; GF.putt(q, -Math.PI / 2, 0.3); const sx = q.lastX, sz = q.lastZ; let tt = 0; for (let k = 0; k < 600 && q.moving; k++) { GF.step(q, c, tt, 1 / 120); tt += 1 / 120; } if (q.splashes !== 1 || q.strokes !== 2 || q.x !== sx || q.z !== sz) wb.push(`golf hole ${i + 1}'s pond does not send a ball back with a stroke added`); }
   }
