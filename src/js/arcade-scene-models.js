@@ -1121,6 +1121,14 @@
     flat.push(bevelBox({ w: 0.9, h: 0.3, d: 1.2, color: S1, bevel: 0.05, offset: { y: 0.15, z: -0.3 } }), bevelBox({ w: 0.66, h: 0.26, d: 0.5, color: S1, bevel: 0.04, offset: { y: -0.12, z: 0.02 } }));
     return shaded(round, flat);
   });
+  // Where a gargoyle's eyes look out, in its own frame (the fronts of its glowing eyes, leant with its body as `perch`
+  // leans it), and the green laser the scene shines from each down onto the herald as it launches: a glowing rod a
+  // metre along +z from the origin, stretched and aimed by its node.
+  const GARGOYLE_EYES = [-1, 1].map((f) => {
+    const y = 0.765, z = 0.635 + 0.022, c = Math.cos(0.3), sn = Math.sin(0.3);
+    return [f * 0.075, y * c - z * sn + 0.3, y * sn + z * c - 0.12];
+  });
+  const gargoyleLaser = cached(() => unshadowed(box({ w: 0.035, h: 0.035, d: 1, color: HAUNT_GLOW, emissive: 1, offset: { z: 0.5 } })));
   // A white letter on a gargoyle's chest, in the signs' 3x5 alphabet, each block set on the curve of its breast and
   // belly as they lean with it; the gargoyles spell `GARGOYLE_WORDS` round the wall from the one over the mouth. The M
   // is the carved signs' five-wide one, centred as the others are, since a three-wide M reads as an H (#420).
@@ -2024,6 +2032,32 @@
   // A bone lying along x, `len` long: a shaft between two double knobs.
   const boneBar = (len, r) => merge(turnedZ(turn([[0, -len / 2], [r, -len / 2], [r, len / 2], [0, len / 2]], 8, BONE), Math.PI / 2),
     ...[-1, 1].flatMap((sx) => [-1, 1].map((sy) => moved(ball(r * 1.6, BONE, 6), sx * len / 2, sy * r, 0))));
+  // A single open service bay. Chunky coils, circuit blocks and cloth-covered wires suit the timber cabinet.
+  const rallyRepairBay = cached(() => {
+    const J = BL.hubModels, parts = [
+      box({ w: 0.98, h: 0.72, d: 0.05, color: "#201a15", offset: { y: 0.56, z: -0.33 } }),
+      bevelBox({ w: 0.7, h: 0.54, d: 0.04, color: "#335746", bevel: 0.015, offset: { y: 0.58, z: -0.27 } }),
+      box({ w: 0.99, h: 0.05, d: 0.72, color: TIMBER_DK, offset: { y: 0.14, z: 0 } }),
+      bevelBox({ w: 0.1, h: 0.08, d: 0.1, color: "#a38b60", bevel: 0.01, offset: { x: 0.38, y: 0.91, z: 0.35 } })
+    ];
+    for (const x of [-0.22, 0, 0.22]) {
+      parts.push(bevelBox({ w: 0.12, h: 0.13, d: 0.09, color: "#292c2b", bevel: 0.01, offset: { x, y: 0.65, z: -0.2 } }));
+      parts.push(along(turn([[0.045, 0], [0.045, 0.16], [0, 0.16]], 8, "#b88b55"), x, 0.4, -0.21, 0, 0, 1));
+      for (const y of [0.81, 0.34]) parts.push(along(turn([[0.018, 0], [0.018, 0.02], [0, 0.02]], 6, "#c4bca7"), x, y, -0.24, 0, 0, 1));
+    }
+    return J.withJungle(shaded([], parts), g => {
+      for (const [x, color] of [[-0.36, "#bd6543"], [0.35, "#d0ab59"]])
+        J.liana(g, [[x, 0.86, -0.18], [x * 0.7, 0.75, 0.08], [x, 0.4, 0.18], [x * 0.5, 0.27, -0.15]], 0.015, 0.015, color);
+    });
+  });
+  // A long silver shaft reaches the upper service screw; the ochre fluted handle runs along +z into the palm.
+  const repairDriver = cached(() => merge(
+    box({ w: 0.025, h: 0.009, d: 0.06, color: "#b7bec1", offset: { z: -0.15 } }),
+    along(turn([[0.008, 0], [0.008, 0.41], [0, 0.41]], 6, "#a5afb3"), 0, 0, -0.14, 0, 0, 1),
+    along(turn([[0.025, 0], [0.04, 0.025], [0.04, 0.17], [0.027, 0.2], [0, 0.2]], 8, "#cf903c"), 0, 0, 0.25, 0, 0, 1),
+    moved(turnedX(torus(0.041, 0.005, "#493325", 0, 8, 4), Math.PI / 2), 0, 0, 0.3),
+    moved(turnedX(torus(0.041, 0.005, "#493325", 0, 8, 4), Math.PI / 2), 0, 0, 0.39)
+  ));
   const BEST_Y = 23;
   const attractStart = variants((i) => {
     const game = GAMES[i], palette = PALETTES[game.id];
@@ -2032,7 +2066,8 @@
       centred(g, game.title, 1, 1);
       titleBones(g, BONE_INK[game.id]);
       rect(g, 33, 21, 5, 5, 4); rect(g, 34, 20, 3, 7, 4); at(g, 35, 22, 7);
-      if (lit) { centred(g, "PRESS", 10, 3); centred(g, "START", 18, 3); }
+      if (game.unavailable) { centred(g, "OUT OF", 10, 3); centred(g, "ORDER", 18, 3); }
+      else if (lit) { centred(g, "PRESS", 10, 3); centred(g, "START", 18, 3); }
       return bake(g, palette, PIXEL, 0.45);
     });
   });
@@ -4621,6 +4656,6 @@
   };
   Object.assign(BL.arcadeModels, {
     buildSteps,
-    haunt, steelDoor, gargoyle, gargoyleLetter, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
+    haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
   });
 })();

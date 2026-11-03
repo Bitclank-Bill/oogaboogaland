@@ -205,7 +205,7 @@
     }
   ];
   const MEADOW_INNER = 5, MEADOW_OUTER = MEADOW - 1.5, CLIFF_INNER = MEADOW + 1.5, CLIFF_OUTER = RADIUS - 1;
-  const DOCK_DEG = 75, LADDER_Z = -3.6, LADDER_LEAN = 0.65;
+  const LADDER_Z = -3.6, LADDER_LEAN = 0.65;
   // Two disjoint annuli keep sparse clouds around the horizon, passing below and above the bridges.
   // Nine clouds per ring leave room for the widest mesh; each ring keeps its angular spacing.
   const CLOUDS_PER_TRACK = 9;
@@ -259,7 +259,7 @@
   let oogatronUnsub, renderer, game, world, go, lootEnabled, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, npcSync;
   // GAME MODE (`setGameMode`): an island event holds the island still for play while it runs.
   let gameMode = false, gameCombatOnly = false;
-  let cloudHopper = null, cloudDock = null, cloudIsland = null, cloudPile = null, cloudPileSolids = null, cloudFinishFruit = null;
+  let cloudHopper = null, cloudIsland = null, cloudPile = null, cloudPileSolids = null, cloudFinishFruit = null;
   const cloudOffMap = [], cloudHidden = new Map(), CLOUD_NO_ACTORS = [];
   const cloudMoveMatrix = math.mat4.create();
   const cloudPlaying = () => !!cloudHopper?.playing;
@@ -309,6 +309,7 @@
     weather.hold(on);
     cloudFinishFruit.visible = on && pile.shown === 0;
     document.body.classList.toggle("cloud-hopper-active", on);
+    if (wpHolder) wpHolder.visible = !on;
     if (on) { cloudMask(); BL.net.setBody(null); BL.net.setZone("none"); }
     else {
       for (const [node, visible] of cloudHidden) node.visible = visible;
@@ -519,9 +520,10 @@
   // Tess, the island's guide, for the visit (`hub-guide.js`).
   let islandGuide = null;
   let reuseHub = false, heldHub = false, heldDebug = null;
-  let stateTimer = 0, hintTimer = 0, now = 0, hour = 12, unsubscribeActivity = null, unsubscribeAccount = null, ownOogaClaimed = false;
+  let stateTimer = 0, now = 0, hour = 12, unsubscribeActivity = null, unsubscribeAccount = null, ownOogaClaimed = false;
   // The daylight inputs as last sampled; sampledDay starts at a never-true 0 so the first frame always samples.
-  let sampledHour = 0, sampledDay = 0, sampledLatitude = NaN, sampledContinuousDay = 0, sampledUtcMs = 0;
+  // `sampledSky` is the Cloud Hopper level sky sampled instead of the clock, and `skyHour` the hour the sky shows.
+  let sampledHour = 0, sampledDay = 0, sampledLatitude = NaN, sampledContinuousDay = 0, sampledUtcMs = 0, sampledSky = null, skyHour = 12;
   // How far under the Mempool island's ground the view is, 0 to 1: its sun and its storm stay outside.
   let poolShade = 0, poolUnder = 0;
   // Wake before the bridge; a wider sleep radius keeps its effects steady near the boundary.
@@ -1089,7 +1091,7 @@
     // Moving pickup lights are rewritten after the cached mainland selection.
     const pickupReserved = Math.min(cloudHopper?.pickupLightsWanted() || 0, 2, tierLimit);
     const limit = tierLimit - pickupReserved;
-    const phaseNow = daylight.phaseAt(hour);
+    const phaseNow = daylight.phaseAt(skyHour);
     const lanternsOn = phaseNow === "dusk" || phaseNow === "night" || phaseNow === "midnight";
     const coilLamp = coilCharge && coilCharge.lamp, coilActive = !!coilLamp && coilCharge.level > 0.02;
     // The pits' lights follow their flames: the plaza lamp's gain and the HQ hearth's colour pulse with the flicker.
@@ -2940,12 +2942,8 @@
     cave.root.position.x = T.place.x; cave.root.position.z = T.place.z; cave.root.position.y = T.place.y + cave.baseY;
     return true;
   };
-  // Dock over the drop and ladder on the bluff
+  // The ladder on the bluff; the former Cloud Hopper dock is retired.
   const buildRim = () => {
-    const d = polar(DOCK_DEG, CLIFF_OUTER);
-    const dock = place(hubModels.dock(), d.x, d.z, Math.PI / 2 - DOCK_DEG * DEG, island.surfaceAt(d.x, d.z) + 0.05, "dock", 2.2);
-    cloudDock = dock;
-    claim(d.x, d.z, 2.5);
     let faceX = MEADOW - 1;
     while (island.surfaceAt(faceX + island.unit / 2, LADDER_Z) < 3) faceX += island.unit;
     const foot = faceX - LADDER_LEAN - 0.06;
@@ -3197,7 +3195,7 @@
     fx.burst(p.x, p.y + 0.7, p.z, 14, [SPARK, DUST], 2.2);
     fx.say(cave, "OOGA FLY!", 2);
     hud.toast("Jetpack!");
-    hud.hint(cave.jetRecovering ? "Fuel recovering · jump until the gauge is above 20%" : COARSE ? "Hold Blast off to climb · stick to fly" : "Hold Space to climb · WASD to fly", 5000);
+    if (cave.jetRecovering) hud.hint("Fuel recovering · wait until the gauge is above 20%", 5000);
     return true;
   };
   const grantJetpack = (cave, wear = false) => {
@@ -5876,7 +5874,6 @@
   const TAP_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
   const nearbyAction = (x, y, z, reach) => {
     if (cloudHopper?.active) return null;
-    if (cloudHopper?.near(x, y, z)) return cloudHopper.action;
     const player = pilot.player;
     if (player && player.camp.burning) return ROLL_ACTION;
     if (player && player.camp.seat) return STAND_ACTION;
@@ -6077,6 +6074,18 @@
     pilot.navigate({ position: { x, y: m.floorY, z }, yaw: m.ry + Math.PI, pitch, dist: FOLLOW.min, framed: true });
     const p = player.root.position;
     Object.assign(factoryWalk, { phase: FACTORY_WALK_OUT, cave: player, t: 0, x: p.x, z: p.z, seen: true, through: false, still: 1, hold: G.still });
+  };
+  // Step out into the mainland's Arcade overhang, independent of the carried camera/combat mode.
+  // This is a doorway arrival, not the map destination's exterior framing (which can be blocked).
+  const arriveFromArcade = () => {
+    const m = island.mouths.find((mouth) => mouth.id === arcadeMouth.slot.id);
+    pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 },
+      yaw: m.ry + Math.PI, pitch: 0.18, dist: FOLLOW.min });
+    cameraPreviousValid = cameraTerrainValid = cameraTerrainRecovering = cameraManualContact = false;
+    cameraTrailPlayer = null; cameraTrailCount = cameraTrailNext = 0;
+    caveEntryPlayer = null;
+    updatePlayerCave(pilot.player);
+    setCameraCave(playerCaveIndex);
   };
   // B.C.A.'s veil, in a banker's lamp amber, where the lab's stands, so the gorillas' suits show from where they cross.
   const BCA_TINT = [1, 0.78, 0.4], BCA_VEIL_Z = 0.5;
@@ -6296,7 +6305,6 @@
       if (!(hit && hit.owner.kind === "whitepaper" || wpFaceHit(p))) wpStop();
       return;
     }
-    if (hit?.owner.kind === "cloud-hopper") { cloudHopper.launch(); return; }
     if (factoryDeparting || bifrostDeparting || islandGuide.holding) return;
     if (gorillaBehindBillboard(hit, p)) return;
     if (debugMovementTap(hit, p)) return;
@@ -7552,6 +7560,8 @@
                sinkAfter: 300, sinkTime: 2.5, charHold: 8, charFade: 12,
                readFov: 0.55, readAir: 1.06, readZoomStep: 1.5, readZoomMax: 6, glide: 7 };
   let wpGroup = null, wpImage = null, wpSheet = null, wpBackSheet = null, wpReadingSheet = null, wpPoster = null, wpBolt = null, wpChar = null, wpBanner = null;
+  // The stone, its bolt and its char hang under one node, which Cloud Hopper hides while a run plays.
+  let wpHolder = null;
   let wpCharAge = 0;
   // This anniversary is October 31 and November 1, 2026, in the visitor's local calendar, not a yearly trigger.
   const WP_WEEKEND_START = new Date(2026, 9, 31).getTime(), WP_WEEKEND_END = new Date(2026, 10, 2).getTime();
@@ -7714,6 +7724,9 @@
     return banner;
   };
   const wpBuild = () => {
+    wpHolder = createNode({});
+    wpHolder.visible = !cloudPlaying();
+    addChild(root, wpHolder);
     // Follow the bookshelf's centreline into the cliff; the stone and its camera share the shelf's facing.
     const dx = -Math.sin(LIBRARY.ry), dz = -Math.cos(LIBRARY.ry);
     const x = LIBRARY.x + dx * WP.out, z = LIBRARY.z + dz * WP.out;
@@ -7768,7 +7781,7 @@
     wpBolt = createNode({ geometry: models.moved(models.merge(...segments), -bx, 0, -bz), position: { x, y: wpGround, z } });
     wpBolt.geometry.castShadow = false;
     wpBolt.visible = false;
-    addChild(root, wpBolt);
+    addChild(wpHolder, wpBolt);
     placed.push(wpBolt);
     // The char it leaves: the crest blackened cell by cell around the stone's foot, laid on the ground it finds there.
     const charVerts = [], charFaces = [], charRand = mulberry32(fnv1a("whitepaper-char")), step = 0.28, reach = 2.2;
@@ -7784,10 +7797,10 @@
     }
     wpChar = createNode({ geometry: { verts: charVerts, faces: charFaces, lines: [], castShadow: false }, position: { x, y: 0, z } });
     wpChar.visible = false;
-    addChild(root, wpChar);
+    addChild(wpHolder, wpChar);
     placed.push(wpChar);
     group.visible = false;
-    addChild(root, group);
+    addChild(wpHolder, group);
     placed.push(group);
     wpGroup = group;
     // Where the view stands once the stone is up: in front of the sheet's middle, the field of view left as it was.
@@ -8556,12 +8569,21 @@
     if (life) { life.gulls.update(elapsed); life.shore.update(elapsed); life.boats.update(elapsed); }
     now = elapsed;
     hour = clock.read();
+    // A Cloud Hopper run flies under its level's own fixed sky, sampled once as it begins; the clock's hour still
+    // turns the island's phases, so no phase toast comes of it, while the lamps light by the sky shown.
+    const fixedSky = cloudPlaying() ? cloudHopper.sky : null;
+    skyHour = fixedSky ? fixedSky.hour : hour;
     // The ephemeris turns the sun 0.0042 deg/s of island time (a 6e-4-hour budget is 2.16 s and misses no
     // pixel), so it resamples only when an input drifts; a fast debug clock misses the budget every frame,
     // a frozen one hits from the second frame on.
-    if (clock.dayOfYear !== sampledDay || islandLatitude !== sampledLatitude || Math.abs(hour - sampledHour) >= DAY_RESAMPLE_HOUR
+    if (fixedSky ? fixedSky !== sampledSky : sampledSky || clock.dayOfYear !== sampledDay || islandLatitude !== sampledLatitude || Math.abs(hour - sampledHour) >= DAY_RESAMPLE_HOUR
       || Math.abs(clock.continuousDay - sampledContinuousDay) >= DAY_RESAMPLE_DAY || Math.abs(clock.utcMs - sampledUtcMs) >= DAY_RESAMPLE_MS) {
-      daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay, clock.utcMs);
+      if (fixedSky) {
+        daylight.sample(skyHour, RENDER_OPTS, BL.cloudHopperSky.DAY);
+        // A storm level greys its sample once, before the stash keeps it.
+        if (fixedSky.storm) BL.cloudHopperSky.grade(RENDER_OPTS, fixedSky.storm);
+      } else daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay, clock.utcMs);
+      sampledSky = fixedSky;
       sampledHour = hour; sampledDay = clock.dayOfYear; sampledLatitude = islandLatitude; sampledContinuousDay = clock.continuousDay; sampledUtcMs = clock.utcMs;
       DAY_STASH.directStrength = RENDER_OPTS.directStrength; DAY_STASH.ambientFloor = RENDER_OPTS.ambientFloor;
       for (let i = 0; i < 3; i++) {
@@ -8585,11 +8607,15 @@
     const sheltered = !cloudPlaying() && mempoolIsland.coveredAt(camera.position.x, camera.position.y, camera.position.z) ? 1 : 0;
     poolShade += clamp(sheltered - poolShade, -dt * 1.6, dt * 1.6);
     poolUnder += clamp((cutawayPool === 2 ? 1 : 0) - poolUnder, -dt * 1.6, dt * 1.6);
+    // A storm level's haze takes in the sea too.
+    RENDER_OPTS.seaFog = !!fixedSky?.fog;
     if (cloudPlaying()) {
-      // Keep the destination clear across the whole Cloud Hopper course.
-      RENDER_OPTS.clouds = 0;
+      // Keep the destination clear across the whole Cloud Hopper course: only the level's own painted clouds, and
+      // its own haze where it has one (Thunderhead's), which its lightning lifts with the sky.
+      RENDER_OPTS.clouds = fixedSky ? fixedSky.clouds : 0;
       RENDER_OPTS.fog = RENDER_OPTS.horizon;
-      RENDER_OPTS.fogNear = 900; RENDER_OPTS.fogFar = 2000;
+      RENDER_OPTS.fogNear = fixedSky?.fog ? fixedSky.fog[0] : 900; RENDER_OPTS.fogFar = fixedSky?.fog ? fixedSky.fog[1] : 2000;
+      if (cloudHopper.flash > 0) BL.cloudHopperSky.flash(RENDER_OPTS, cloudHopper.flash);
     } else if (gameMode) RENDER_OPTS.clouds = 0;
     else weather.update(dt, RENDER_OPTS, poolShade);
     if (poolShade > 0) {
@@ -11167,7 +11193,16 @@
   // frame becoming 19 ms; 30 Hz spent about 19 ms on every other frame.
   const SIGHT_RECOMPUTE_HZ = 15;
   const overlay = (dt) => {
-    if (cloudPlaying()) { fx.drawOverlay(dt, cloudHopper.drawOverlay); return; }
+    if (cloudPlaying()) {
+      fx.drawOverlay(dt, cloudHopper.drawOverlay);
+      // An Ooga inside a tornado, or behind it, shows its outline through the funnel, keyed dark so it reads on the
+      // white, unless the view is its own eyes.
+      if (crew.player && cloudHopper.hiddenByTornado && (cloudHopper.swept >= 0 || pilot.closeMix < 1)) {
+        cameraCover.state.opacity = 0.9;
+        cameraCover.draw(camera, crew.player.root, false, true, cameraRockAt, cameraRockMaterialAt, null, dt, 1, null, null, true);
+      }
+      return;
+    }
     if (poolBlockHovered) showPoolBlockTooltip();
     else if (pileHovered) showPileTooltip();
     // World-anchored sleeping marks share the guide visibility cadence; their particles still move every frame.
@@ -11301,14 +11336,14 @@
   };
   const onKey = (e) => {
     if (cloudHopper?.active) {
-      if (e.key === "Escape") { e.preventDefault(); if (!e.repeat) cloudHopper.exit(); }
-      else if (!cloudHopper.held && (e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
-      else if (!cloudHopper.held && e.key === "0" && !e.repeat) pilot.resetCamera();
+      if (BL.controls.matches(e, "escape")) { e.preventDefault(); if (!e.repeat) cloudHopper.exit(); }
+      else if (!cloudHopper.held && BL.controls.matches(e, "jetpack") && !e.repeat) toggleJetpack();
+      else if (!cloudHopper.held && BL.controls.matches(e, "resetView") && !e.repeat) pilot.resetCamera();
       return;
     }
     // Reading the poster: Space and the arrows step it, Escape hands the view back.
     if (wpRead) {
-      if (e.key === "Escape") { if (!e.repeat) wpReadEnd(); }
+      if (BL.controls.matches(e, "escape")) { if (!e.repeat) wpReadEnd(); }
       else if (!e.repeat && (e.key === " " || e.key === "Spacebar" || e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown")) wpStep(1);
       else if (!e.repeat && (e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "PageUp")) wpStep(-1);
       e.preventDefault();
@@ -11324,24 +11359,24 @@
       }
       return;
     }
-    if (e.key === "Escape" && islandGuide.escape()) { e.preventDefault(); return; }
+    if (BL.controls.matches(e, "escape") && islandGuide.escape()) { e.preventDefault(); return; }
     // While Tess's tour holds the view the island's keys wait, actor switches (T) among them; Enter and → are hers.
     if (islandGuide.holding) return;
-    if (e.key === "Escape" && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
-    if (e.key === "Escape") {
+    if (BL.controls.matches(e, "escape") && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
+    if (BL.controls.matches(e, "escape")) {
       if (!e.repeat) { if (clankerPlay.active) clankerPlay.escape(); else pilot.escape(); }
       e.preventDefault();
       return;
     }
-    if ((e.key === "t" || e.key === "T") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (BL.controls.matches(e, "actor") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault(); cycleOwnActor(); return;
     }
-    if (e.key === "0" && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault(); (clankerPlay.active ? clankerPlay : pilot).resetCamera(); return;
     }
     if (clankerPlay.active) return;
-    if ((e.key === "x" || e.key === "X") && !e.repeat && pilot.modeAction("mode-toggle")) return;
-    if ((e.key === "1" || e.key === "2") && pilot.weaponMode(Number(e.key))) return;
+    if (BL.controls.matches(e, "view") && !e.repeat && pilot.modeAction("mode-toggle")) return;
+    if (BL.controls.matches(e, "weapon") && pilot.weaponMode(Number(e.key))) return;
     if (e.key === "b" || e.key === "B") addTestBananas(testBananas);
     if (e.key === "l" || e.key === "L") demoTip(120000);
     if (e.key === "p" || e.key === "P") {
@@ -11349,12 +11384,12 @@
       pile.syncPile(true);
     }
     // J mirrors the carried jetpack button without changing its fuel.
-    if ((e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
+    if (BL.controls.matches(e, "jetpack") && !e.repeat) toggleJetpack();
     // N spins a driven Ooga's nunchaku, C changes the colourway of one built with two.
-    if ((e.key === "n" || e.key === "N") && !e.repeat && crew.twirl()) return;
-    if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
-    if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
-    if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");
+    if (BL.controls.matches(e, "twirl") && !e.repeat && crew.twirl()) return;
+    if (BL.controls.matches(e, "tint") && !e.repeat && crew.toggleTint(crew.player)) return;
+    if (BL.controls.matches(e, "swapWeapon")) pilot.weaponAction("weapon-toggle");
+    if (BL.controls.matches(e, "attack")) pilot.weaponAction("weapon-fire");
     const digit = parseInt(e.key, 10);
     if (digit >= 1 && digit <= 9) {
       const contributor = contributors.roster[digit - 1];
@@ -11405,7 +11440,6 @@
     clearCutawayHidden();
     selectDebugGorilla(null);
     window.clearInterval(stateTimer); stateTimer = 0;
-    window.clearTimeout(hintTimer); hintTimer = 0;
     unsubscribeActivity(); unsubscribeActivity = null;
     unsubscribeAccount(); unsubscribeAccount = null;
     BL.players.setDoors(null);
@@ -11522,6 +11556,7 @@
     world.factoryCrossing = null;
     if (returningCharacter && sphereExit && pilot.player) timechainIsland.gate.arrive(sphereExit);
     else if (returningCharacter && factoryCrossing && pilot.player && factoryMouth) arriveFromFactory(factoryCrossing);
+    else if (returningCharacter && ctx.from === "arcade" && pilot.player && arcadeMouth) arriveFromArcade();
     else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
     else navigate(routedPlace || (ctx.from === "bifrost" ? "bifrost" : "pile"), false, false);
     if (donate) hud.openFeed();
@@ -11540,6 +11575,7 @@
       updatePositionDebug(true);
     }
     updatePoolEffectsActivity();
+    if (ctx.from === "arcade" && ctx.place === "cloud-hopper") cloudHopper.launch(true);
   };
   // Prepare only raw character rigs: the published crew, its stable roster order, input, health and NPC/remote
   // registration are still created together by enter. No partly populated actor registry reaches a live scene.
@@ -11672,7 +11708,7 @@
       wpContextOn = true;
     }
     presets = { pile: PILE_VIEW, gate: GATE_VIEW };
-    pilot = pilotMod.create({ carry: true, renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, enterFreeView: enterFreeCameraView, coarse: COARSE, onFreeAction: freeAction, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly, cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
+    pilot = pilotMod.create({ carry: true, renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, enterFreeView: enterFreeCameraView, coarse: COARSE, onFreeAction: freeAction, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly || !!cloudHopper?.playing, noOverhead: () => !!cloudHopper?.active, primaryAction: (down) => !!cloudHopper?.hookAction(down), cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
     chalkboard = BL.chalkboard.create({
       renderer,
       onOpen: () => { pilot.setActive(false); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
@@ -11864,6 +11900,8 @@
     shared.jetpackLiftOnly = cave => !!cloudHopper?.active && cave === cloudHopper.actor;
     shared.autoLedgeJump = cave => !(cloudHopper?.active && cave === cloudHopper.actor);
     shared.onJump = cave => cloudHopper?.onJump(cave);
+    // Space with both jumps spent: Cloud Hopper's sky feather, when one is held.
+    shared.spentJump = cave => !!cloudHopper?.updraft(cave);
     shared.npcPaused = cloudPlaying;
     shared.tickerVisible = donationTickerVisible;
     shared.abyssAt = (x, z, y, actor) => !cloudHopper?.active && abyssAt(x, z, y, actor);
@@ -12500,6 +12538,7 @@
     world.factoryCrossing = null;
     if (returningCharacter && sphereExit && pilot.player) timechainIsland.gate.arrive(sphereExit);
     else if (returningCharacter && factoryCrossing && pilot.player && factoryMouth) arriveFromFactory(factoryCrossing);
+    else if (returningCharacter && ctx.from === "arcade" && pilot.player && arcadeMouth) arriveFromArcade();
     else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
     else if (ctx.from === "bifrost" && !routedPlace) navigate("bifrost", false, false);
     else if (!signedInArrival && !pilot.loginViewRestored && !crew.sleeping && !initialGorilla && (routedPlace || preloadedView || initialCharacter || initialFirstPerson)) navigate(routedPlace || preloadedView || "pile", false, false);
@@ -12658,15 +12697,18 @@
       addChild(cloudFinishFruit, fruit);
     }
     addChild(root, cloudFinishFruit);
-    cloudHopper = BL.cloudHopper.create({ root, dock: cloudDock, crew, pilot, hud, renderer, camera, seaY: SEA_Y,
+    // The arcade cabinet hands the same Ooga to a launch cloud above its cave roof. No outdoor entrance or dock.
+    const mouth = island.mouths.find(mouth => mouth.id === arcadeMouth.slot.id);
+    const launchPoint = { x: mouth.x, y: island.surfaceAt(mouth.x, mouth.z) + 4, z: mouth.z };
+    cloudHopper = BL.cloudHopper.create({ root, dock: { position: launchPoint, rotation: { y: mouth.ry } }, launchPoint, arcade: true,
+      park: () => navigate("arcade", false, false), onExit: () => go("arcade", "cloud-hopper-return"),
+      crew, pilot, hud, renderer, camera, game, seaY: SEA_Y,
       move: cloudMove, mode: cloudMode, pileSurface: cloudPileSurface, mainlandRadius: island.radius,
       finish: () => ({ x: 0, y: ALTAR_HEIGHT + 2, z: 0 }),
       pileTop: () => pile.shown > 0 ? pile.core.position.y + pile.core.scale.y * pileTopY : ALTAR_HEIGHT + 0.23,
       refusal: () => gameMode ? "Finish the island event before playing Cloud Hopper"
         : wpTime >= 0 || wpRead || wpReturn >= 0 || islandGuide.holding || entering || factoryHeld || factoryDeparting || bifrostDeparting
           ? "Finish the current tour before playing Cloud Hopper" : clankerPlay.active ? "Choose an Ooga to play Cloud Hopper" : null });
-    addTarget(cloudHopper.cabinet, { kind: "cloud-hopper" });
-    solids.add(cloudHopper.cabinet);
     hubScene.debug.cloudHopper = cloudHopper;
     hubScene.debug.tess = islandGuide;
     // Tess wears every tier of her detail in her first frames, so each is on the GPU before she comes close: build
@@ -12682,9 +12724,7 @@
     yield* prepareCoveredView(ctx.overlay, slice);
     mark("covered-view");
     totemUnsub = BL.totemFeed.subscribe(onTotem);
-    hintTimer = window.setTimeout(() => {
-      if (!pilot.player && !clankerPlay.active && !matrixControl.promptAction) hud.hint(COARSE ? "Drag to look · pinch to eye level · sticks to fly · tap a cave" : "Drag to look · scroll to eye level · WASD to fly · tap a cave to enter");
-    }, 1200);
+    if (ctx.from === "arcade" && ctx.place === "cloud-hopper") cloudHopper.launch(true);
     if (DEBUG_GORILLA_MOVE) hud.toast("Gorilla movement debug · click a gorilla, then a destination");
   };
   const enter = (ctx) => { const steps = enterSteps(ctx); while (!steps.next().done); };
@@ -12714,7 +12754,7 @@
     cloudHopper?.dispose(); cloudIsland?.dispose();
     cloudPileSolids?.dispose();
     removeChild(root, cloudFinishFruit);
-    cloudHopper = cloudIsland = cloudDock = cloudPile = cloudPileSolids = cloudFinishFruit = null;
+    cloudHopper = cloudIsland = cloudPile = cloudPileSolids = cloudFinishFruit = null;
     cloudOffMap.length = 0; cloudHidden.clear();
     actorTransition.sourceRoot = actorTransition.sourceHead = null;
     factoryWalk.cave = null;
@@ -12782,7 +12822,6 @@
     cutawayPathBounds = null;
     cutawayTravelRamp = null; cutawayTravelChannel = -1; cutawayTravelStation = 0;
     CUTAWAY_PATH_STATE.lo.fill(0); CUTAWAY_PATH_STATE.hi.fill(0); CUTAWAY_PATH_STATE.mix.fill(0); CUTAWAY_PATH_STATE.windowMix.fill(0); CUTAWAY_PATH_STATE.active = 0; CUTAWAY_PATH_STATE.version++;
-    window.clearTimeout(hintTimer);
     if (positionDebug) {
       positionDebug.removeEventListener("click", copyPositionDebug);
       positionDebug.hidden = true;
@@ -12931,7 +12970,7 @@
     hubScene.islandGeometry(set);
   };
   const islandGeometry = (set) => {
-    if (cloudHopper) for (const geometry of cloudHopper.cabinet.frames) set.add(geometry);
+    if (cloudHopper?.cabinet.frames) for (const geometry of cloudHopper.cabinet.frames) set.add(geometry);
     cloudHopper?.liveGeometry(set);
     if (islandGuide) islandGuide.liveGeometry(set);
     mempoolIsland.water.liveGeometry(set);
@@ -12987,5 +13026,26 @@
   };
   BL.scenes = BL.scenes || {};
   hubScene.buildSteps = prepareHubSteps;
+  hubScene.controlsHelp = touch => {
+    const H = BL.controlsHelp;
+    if (cloudHopper?.active) return cloudHopper.controlsHelp(touch);
+    if (wpRead) {
+      const rows = touch ? [H.row([], "Change page", "Page buttons"), H.row([], "Pan the page", "Drag"), H.row([], "Zoom", "Pinch / two-finger drag / double-tap"), H.row([], "Stop reading", "Close button")]
+        : [H.row([" ", "arrowdown", "arrowright", "pagedown"], "Next page"), H.row(["arrowup", "arrowleft", "pageup"], "Previous page"), H.row([], "Pan / scroll the page", "Drag / scroll"), H.row(["shift"], "Zoom", "Shift + scroll / double-click"), H.row(BL.controls.shortcutKeys("escape"), "Stop reading")];
+      return { title: "Island · Reading the whitepaper", rows };
+    }
+    const gorilla = clankerPlay?.active, help = gorilla ? clankerPlay.controlsHelp(touch) : pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon", "jetpack"]);
+    if (!touch) {
+      const own = BL.net.ownCharacter(), cave = own && crew.cavemen.get(own.handle);
+      if (cave && (pilot.player !== cave || clankers.list.some(entry => entry.owner === cave && entry.active && entry.root.visible))) help.rows.push(H.row(BL.controls.shortcutKeys("actor"), "Switch between your Ooga and gorilla"));
+      const player = pilot.player;
+      if (!gorilla && player) {
+        if (!pilot.birdsEye && player.traits.nunchaku && player.state !== "sleeping" && !player.camp.burning && !player.camp.rolling) help.rows.push(H.row(BL.controls.shortcutKeys("twirl"), "Twirl nunchaku"));
+        if (player.tint) help.rows.push(H.row(BL.controls.shortcutKeys("tint"), "Change colourway"));
+      }
+    }
+    if (!gorilla) help.title = "Island · " + help.title; return help;
+  };
+  hubScene.controlsHelpHold = on => { clankerPlay?.cancelInput(); if (on) clankerPlay?.freeCursor(); cloudHopper?.controlsHelpHold(on); pilot.controls.reset(); pilot.setMenuOpen(on, false); };
   BL.scenes.hub = hubScene;
 })();

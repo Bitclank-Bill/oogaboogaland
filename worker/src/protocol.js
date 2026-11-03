@@ -1,3 +1,6 @@
+export { hockey } from "./hockey.js";
+import "../../src/js/hockey-wire.js";
+export const HOCKEY = globalThis.BL.hockeyWire;
 import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy.js";
 import "../../src/js/chat-policy.js";
 import "../../src/js/voice-blend.js";
@@ -186,9 +189,13 @@ export const GHOST_BATCH = 16;
 // voice to itself) elect a ghost host of their own, follower reports from the arena go to it, and it sends the hunt's
 // state as a binary frame led by GHOST_MAGIC ("GHST"), up to GHOST_FRAME_MAX bytes and GHOST_FRAME_HZ a second, which
 // the room hands to every other page in the arena and keeps for the next to walk in. Only a visible page may host
-// (`ghostCandidate`): a hidden one runs no frames, so it would send nothing while every follower's hunt froze.
+// (`ghostCandidate`): a hidden one runs no frames, so it would send nothing while every follower's hunt froze. The
+// arena's hallway (`arcade.haunt`) watches: its pages hear the frames and count as followers, so a spectator walked out
+// sees the hunt through the fence, but they neither host nor report to the host (`watchesGhost`).
 export const GHOST_ARENA_ZONES = ["arcade.arena", "arcade-hunt"];
+export const GHOST_WATCH_ZONES = [...GHOST_ARENA_ZONES, "arcade.haunt"];
 export const inGhostArena = (p) => GHOST_ARENA_ZONES.includes(p.zone);
+export const watchesGhost = (p) => GHOST_WATCH_ZONES.includes(p.zone);
 export const ghostCandidate = (p) => p.visible && inGhostArena(p);
 export const GHOST_MAGIC = 0x54534847;
 export const GHOST_FRAME_MAX = 65536;
@@ -222,6 +229,7 @@ export const parseClientMessage = (text) => {
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return false;
   // Only chat and private frames earn the longer frame: a repeated key could make a prefixed frame parse as anything.
   if (text.length > MESSAGE_MAX && msg.t !== "chat" && msg.t !== "pm") return false;
+  if (msg.t === "hockey") return HOCKEY.parse(msg);
   if (msg.t === "studio") return parseStudioCommand(msg);
   if (msg.t === "pose") {
     const { x, y, z, yaw } = msg;
