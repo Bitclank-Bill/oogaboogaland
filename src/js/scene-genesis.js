@@ -49,8 +49,11 @@
   const galleryRect = (n) => { const b = MU.bays[n], e = GW.ERAS[n]; return { x0: b.x0, x1: b.x1, z0: e.z1 - b.depth, z1: e.z1 - MU.OPEN }; };
   const LIGHTS = [[0, 6.5, 0, 16, 1.3, 1.1, 0.75], [0, 8, 0.5 * AT.z1, 24, 1.2, 1.05, 0.85], [0, 8, 0.5 * AT.z0, 24, 1.2, 1.05, 0.85], [0.6 * AT.x0, 8, 0, 24, 1.1, 1, 0.85], [0.6 * AT.x1, 8, 0, 24, 1.1, 1, 0.85], [0, 6, SOUTH - 10, 14, 1.25, 0.95, 0.6],
     ...[[-6.5 + SX, 3.4, -25 + SZ, 12, 1.35, 1.05, 0.7], [-9 + SX, 3.2, -31.5 + SZ, 7, 1, 0.9, 0.7]].map((l) => { const q = mu(ROOM_ERA, l[0], l[2]); return [q.x, l[1], q.z, ...l.slice(3)]; }),
-    // The statue in its warm light.
+    // The statue in its warm light, and the Oogas' campfire behind it (genesis-campfire.js).
     [0, 7.5, -2.2, 13, 1.4, 1.15, 0.8],
+    [BL.genesisCampfire.layout().fire.x, ISLAND_TOP + 1.8, BL.genesisCampfire.layout().fire.z, 10, 1.5, 0.8, 0.35],
+    // Daylight down the cenote's shaft (genesis-cavern.js).
+    [BL.genesisCavern.CENOTE.x, ISLAND_TOP + 3, BL.genesisCavern.CENOTE.z, 11, 0.95, 1.1, 1.3],
     ...GW.ERAS.flatMap((e) => BL.genesisDecor.pendantSpots(galleryRect(e.n)).map(([x, z]) => {
       const q = mu(e.n, x, z), c = BL.genesisDecor.rgb(BL.genesisDecor.STYLES[e.n].lamp);
       return [q.x, ISLAND_TOP + ROOF * BL.genesisDecor.PENDANT_Y * MU.SCALE, q.z, 13, c[0] / 200, c[1] / 200, c[2] / 200];
@@ -252,9 +255,86 @@
     photoGeos.set(n * 8 + k, g);
     return g;
   };
+  // The cave mouth over a gallery's way in, in its era's frame (+z toward the atrium): rough rock blocks across the
+  // gallery's front from wall to wall and floor to roof, leaving an arch CAVE_MOUTH wide and high over the walk, in
+  // three shades of the era's rock and placed by a hash so every cave is rough in its own way; the arch's edge glows
+  // in the era's lamp colour, and a torch stands either side.
+  const CAVE_MOUTH = { w: 10, h: 7.5 };
+  const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16), c = (v) => Math.max(0, Math.min(255, Math.round(v * k))); return `#${((c(n >> 16) << 16) | (c((n >> 8) & 255) << 8) | c(n & 255)).toString(16).padStart(6, "0")}`; };
+  const caveMouth = (i, b, z1, H) => {
+    const t = GW.ERAS[i].theme, cx = GW.LANE_X, rock = [], glow = [], tones = [shade(t.rock, 0.8), t.rock, shade(t.rock, 1.25)];
+    const hash = (a, c) => { const v = Math.sin(a * 12.9898 + c * 78.233 + i * 37.719) * 43758.5453; return v - Math.floor(v); };
+    const inside = (x, y) => ((x - cx) / (CAVE_MOUTH.w / 2)) ** 2 + (y / CAVE_MOUTH.h) ** 2 < 1;
+    for (let x = b.x0 + 0.9; x < b.x1; x += 1.8) for (let y = 0.9; y < H; y += 1.8) {
+      const jx = (hash(x, y) - 0.5) * 0.6, jy = (hash(y, x) - 0.5) * 0.6, size = 2 + hash(x + 1, y) * 0.8;
+      if (inside(x + jx, y + jy) || inside(x + jx + size * 0.35, y + jy) || inside(x + jx - size * 0.35, y + jy) || inside(x + jx, y + jy + size * 0.4)) continue;
+      rock.push(M.moved(M.bevelBox({ w: size, h: size, d: 1.2 + hash(x, y + 2) * 0.6, color: tones[Math.floor(hash(x + 3, y) * 3)], bevel: 0.25 }), x + jx, ISLAND_TOP + y + jy, z1 + 0.7));
+    }
+    // The arch's glowing rim: short bars round the opening's edge.
+    const ink = glowHex(t.lamp);
+    for (let a = 0.08; a < Math.PI; a += Math.PI / 22) {
+      const x = cx + Math.cos(a) * (CAVE_MOUTH.w / 2 + 0.15), y = Math.sin(a) * (CAVE_MOUTH.h + 0.15);
+      glow.push(M.moved(M.turnedZ(M.box({ w: 0.75, h: 0.12, d: 0.12, color: ink, emissive: 1.4 }), a + Math.PI / 2), x, ISLAND_TOP + y, z1 + 1.4));
+    }
+    const flames = [];
+    for (const s of [-1, 1]) {
+      const x = cx + s * (CAVE_MOUTH.w / 2 + 1.6);
+      rock.push(M.moved(M.box({ w: 0.22, h: 2.6, d: 0.22, color: "#4c331d" }), x, ISLAND_TOP + 1.3, z1 + 1.9), M.moved(M.box({ w: 0.5, h: 0.3, d: 0.5, color: "#3a2a1a" }), x, ISLAND_TOP + 2.65, z1 + 1.9));
+      flames.push({ x, y: 2.95, z: z1 + 1.9 });
+    }
+    return { rock: M.merge(...rock), glow: M.merge(...glow), flames };
+  };
+  let torchGeo = null;
+  const torchFlame = () => torchGeo || (torchGeo = M.merge(M.box({ w: 0.36, h: 0.5, d: 0.36, color: "#ff8a1f", emissive: 2 }), M.box({ w: 0.2, h: 0.4, d: 0.2, color: "#ffe08a", emissive: 2.4, offset: { x: 0, y: 0.18, z: 0 } })));
+  // The doorways between the eras, in a gallery's back wall: on the left the era before (or the hall from Era 0), on
+  // the right the next (or the hall after Genesis), each a small rock arch round a glowing veil in its destination's
+  // colour with its name over it. Walking into one goes there (updateDoors): a quick fade, and the Ooga stands
+  // inside the other era's cave mouth, facing in.
+  const eraDoors = (i, b, z0, t) => {
+    for (const [side, to] of [[-1, i - 1], [1, i + 1]]) {
+      const x = side < 0 ? b.x0 + 4 : b.x1 - 4, dest = to >= 0 && to < GW.ERAS.length ? GW.ERAS[to] : null;
+      const ink = dest ? glowHex(dest.theme.lamp) : "#ffd27a", rockInk = t.rock, parts = [];
+      for (const s of [-1, 1]) parts.push(M.moved(M.bevelBox({ w: 0.9, h: 4.6, d: 0.9, color: shade(rockInk, 0.85), bevel: 0.2 }), x + s * 1.9, ISLAND_TOP + 2.3, z0 + 0.5));
+      parts.push(M.moved(M.bevelBox({ w: 4.7, h: 0.9, d: 0.9, color: shade(rockInk, 1.15), bevel: 0.2 }), x, ISLAND_TOP + 4.95, z0 + 0.5));
+      place(createNode({ geometry: M.merge(...parts) }));
+      const veil = place(createNode({ geometry: M.box({ w: 2.9, h: 4.1, d: 0.06, color: ink, emissive: 1.1 }), position: { x, y: ISLAND_TOP + 2.1, z: z0 + 0.3 }, sightHidden: true }));
+      const name = dest ? `${side < 0 ? "\u2190 " : ""}ERA ${to}${side > 0 ? " \u2192" : ""}` : side < 0 ? "\u2190 THE HALL" : "THE HALL \u2192";
+      const sub = dest ? `${dest.name} · ${dest.years}` : "back to the atrium";
+      const l = BL.factoryModels.label(name, sub, { height: 0.55, style: "gold" }), sn = place(createNode({ position: { x, y: ISLAND_TOP + 5.9, z: z0 + 1.0 } }));
+      addChild(sn, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
+      built.doors.push({ era: i, to: dest ? to : -1, x, z: z0 + 1.2, veil, phase: built.doors.length });
+    }
+  };
+  // Walking into a doorway: the fade starts, and at its darkest the Ooga is moved (travel).
+  const door = { fade: 0, dir: 0, to: -2, pending: null };
+  const doorLocal = { x: 0, z: 0 }, doorAt = { x: 0, z: 0 }, doorAhead = { x: 0, z: 0 };
+  const updateDoors = (dt, t) => {
+    for (const d of built.doors) d.veil.glow = 0.8 + 0.4 * Math.sin(t * 2.2 + d.phase);
+    if (door.dir) {
+      door.fade = Math.max(0, Math.min(1, door.fade + door.dir * dt / 0.3));
+      if (door.dir > 0 && door.fade >= 1) { travel(door.to); door.dir = -1; }
+      else if (door.dir < 0 && door.fade <= 0) door.dir = 0;
+      return;
+    }
+    if (!avatar || bench.open || paper.open) return;
+    const p = avatar.root.position, n = MU.bayAt(p.x, p.z);
+    if (n < 0) return;
+    MU.fromMuseum(n, p.x, p.z, doorLocal);
+    for (const d of built.doors) if (d.era === n && Math.abs(doorLocal.x - d.x) < 1.5 && Math.abs(doorLocal.z - d.z) < 0.9) { door.to = d.to; door.dir = 1; audio.wake(); return; }
+  };
+  // Into era `to`'s cave, just inside its mouth, facing in (or back to the arrival in the atrium when `to` is -1).
+  const travel = (to) => {
+    if (!avatar) return;
+    if (to < 0) { arrive(); return; }
+    const e = GW.ERAS[to];
+    mu(to, GW.LANE_X, e.z1 - MU.OPEN - 4, doorAt); mu(to, GW.LANE_X, e.z1 - MU.OPEN - 8, doorAhead);
+    arrive(doorAt.x, doorAt.z, Math.atan2(doorAhead.x - doorAt.x, doorAhead.z - doorAt.z));
+    hud.toast(`Era ${to}: ${e.name} · ${e.years}`);
+  };
+  const drawDoorFade = (g) => { if (door.fade > 0) { g.fillStyle = `rgba(0,0,0,${door.fade.toFixed(3)})`; g.fillRect(0, 0, g.canvas.width, g.canvas.height); } };
   const buildGalleries = () => {
     const H = ROOF;
-    built.caves = [];
+    built.caves = []; built.doors = []; built.torches = [];
     GW.ERAS.forEach((e, i) => inFrame(i, () => {
       const t = e.theme, b = MU.bays[i], z0 = e.z1 - b.depth, z1 = e.z1 - MU.OPEN, len = z1 - z0, mid = (z0 + z1) / 2, w = b.x1 - b.x0, cx = (b.x0 + b.x1) / 2;
       solid(w, 1.15, len, t.bank, cx, ISLAND_TOP - 0.576, mid);
@@ -287,16 +367,18 @@
       for (const x of [b.x0 + 0.05, b.x1 - 0.05]) solid(0.1, H, len, t.rock, x, H / 2, mid);
       solid(w, H, 0.1, t.rock, cx, H / 2, z0 + 0.05);
       solid(w, 0.4, len, t.rock, cx, H - 0.2, mid);
-      // The arch over the opening: two piers and a lintel in the era's rock, its lamp colour along the lintel, and the
-      // era's sign in its own signage over the way in, facing the atrium.
-      const glow = glowHex(t.lamp), archY = 12;
-      for (const x of [b.x0 + 1.5, b.x1 - 1.5]) solid(3, archY, 2, t.rock, x, archY / 2, z1);
-      solid(w, H - archY, 2, t.rock, cx, archY + (H - archY) / 2, z1);
-      solid(w - 6, 0.25, 0.2, glow, cx, archY - 0.15, z1 + 1.05, 1.2);
-      built.oldObstacles.push({ era: i, x0: b.x0, x1: b.x0 + 3, z0: z1 - 1, z1: z1 + 1 }, { era: i, x0: b.x1 - 3, x1: b.x1, z0: z1 - 1, z1: z1 + 1 });
+      // The cave mouth: the gallery's front closed by a wall of rough rock in the era's colours, as the island's cave
+      // mouths are, with an arched opening over the walk, a torch either side and the era's sign over the way in, so
+      // from the atrium each era is a cave of its own (caveMouth). Inside, two doorways in the back wall lead on to
+      // the next era and back to the one before (eraDoors).
+      const mouth = caveMouth(i, b, z1, H);
+      place(createNode({ geometry: mouth.rock }));
+      place(createNode({ geometry: mouth.glow, sightHidden: true }));
+      built.torches.push(...mouth.flames.map((f) => place(createNode({ geometry: torchFlame(), position: { x: f.x, y: ISLAND_TOP + f.y, z: f.z }, sightHidden: true }))));
+      built.oldObstacles.push({ era: i, x0: b.x0, x1: GW.LANE_X - CAVE_MOUTH.w / 2, z0: z1, z1: z1 + 1.4 }, { era: i, x0: GW.LANE_X + CAVE_MOUTH.w / 2, x1: b.x1, z0: z1, z1: z1 + 1.4 });
       const sign = eraSign(e);
-      // Hung just under the arch's lintel, low enough to read from the courtyard (it stood over the lintel before).
-      hangSign(sign, GW.LANE_X, archY - 1.4 - sign.height / 2, z1 + 1.1, 0, sign.frame);
+      hangSign(sign, GW.LANE_X, CAVE_MOUTH.h + 0.9 + sign.height / 2, z1 + 1.8, 0, sign.frame);
+      eraDoors(i, b, z0, t);
       // (The old cave's hanging rocks, boulders, glowing seams and lamp posts are gone: the era's own dressing replaces them.)
       built.caves.push(e);
     }));
@@ -1025,6 +1107,19 @@
       props.register({ id, era: 7, year: 2026, title: st.title, label: `${st.title.toUpperCase()} · BITCOINGUIDE.APP, 2026`, sourceKeys: [], hint: st.hint,
         at: { x: st.at.x, y: ISLAND_TOP, z: st.at.z }, reach: st.reach, onUse: () => ({ caption: st.title }) });
     }
+    // The scale model of Ooga Booga Land (genesis-scale-model.js), by the arrival.
+    const SM = BL.genesisScaleModel, SL = SM.layout();
+    built.scaleModel = SM.build({ M, createNode, addChild, place, top: ISLAND_TOP, label: BL.factoryModels.label });
+    built.obstacles.push(SL.box);
+    props.register({ id: "scale-model", era: 7, year: 2026, title: "A scale model of Ooga Booga Land", label: "OOGA BOOGA LAND · A SCALE MODEL, 2026", sourceKeys: [], hint: "look round the scale model of Ooga Booga Land",
+      at: { x: SL.use.x, y: ISLAND_TOP, z: SL.use.z }, reach: 2.6, onUse: () => ({ board: { room: "Ooga Booga Land", pages: SM.pages(), sources: [] } }) });
+    // The cavern round it all (genesis-cavern.js): rough roof, stalactites, rock pillars, crystals, the cenote,
+    // the carved frieze and sun discs, and eagles under the roof.
+    built.cavern = BL.genesisCavern.build({ M, createNode, addChild, place, top: ISLAND_TOP, atrium: MU.atrium, roof: ROOF, pillars: MU.PILLARS, walls: WALLS });
+    for (const b of BL.genesisCavern.layout().boxes) built.obstacles.push(b);
+    built.campfire = BL.genesisCampfire.build({ M, createNode, addChild, place, top: ISLAND_TOP });
+    for (const b of BL.genesisCampfire.layout().boxes) built.obstacles.push(b);
+    for (const b of BL.genesisLumber.layout().boxes) built.obstacles.push(b);
     built.satoshiFx = BL.genesisSatoshiFx.build({ M, createNode, addChild, place, label: BL.factoryModels.label, top: ISLAND_TOP, at: S });
   };
   const updateVignettes = (dt) => {
@@ -1701,6 +1796,11 @@
       if (built.fans && !view.calm) for (const f of built.fans) f.rotation.y += dt * 1.2;
       if (built.network) built.network.update(dt, view.calm);
       if (built.lava && !view.calm) updateLava(sceneTime);
+      if (built.torches && !view.calm) for (let k = 0; k < built.torches.length; k++) { const f = built.torches[k]; f.glow = 1 + Math.sin(sceneTime * 9 + k * 1.7) * 0.25 + Math.sin(sceneTime * 23 + k) * 0.12; f.scale.y = 1 + Math.sin(sceneTime * 11 + k * 2.3) * 0.12; }
+      if (built.campfire) built.campfire.update(dt, sceneTime, view.calm);
+      if (built.scaleModel) built.scaleModel.update(dt, view.calm);
+      if (built.lumber) built.lumber.update(dt, view.calm);
+      if (built.cavern) built.cavern.update(dt, view.calm);
       if (built.guideHall) built.guideHall.update(dt, view.calm, avatar ? avatar.root.position : null);
       if (built.satoshiFx) built.satoshiFx.update(dt, view.calm);
       if (guide) guide.update(dt, sceneTime);
@@ -1710,6 +1810,7 @@
     // The cartridge console's game runs while it is open and the visitor has not paused.
     if (cart && cart.isOpen && !view.paused) cart.update(dt);
     if (h.walk) updateWalk(dt, sceneTime);
+    if (built.doors) updateDoors(dt, sceneTime);
     const p = avatar ? avatar.root.position : ENTRY;
     renderOpts.shadowCenter.x = bench.open ? bench.focus.x : p.x; renderOpts.shadowCenter.z = bench.open ? bench.focus.z : p.z;
     orderLights(renderOpts.shadowCenter.x, renderOpts.shadowCenter.z);
@@ -1717,11 +1818,11 @@
     fx.update(h.ambient ? dt : 0, sceneTime);
     hud.updateBoard(sceneTime);
   };
-  const drawExtra = (g, project) => remotes.drawNames(g, project);
+  const drawExtra = (g, project) => { remotes.drawNames(g, project); drawDoorFade(g); };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   // --- Visit ----------------------------------------------------------------------------------------------------
-  const tooltipFor = (hit) => !hit || bench.open ? "" : hit.owner.kind === "legend" ? "The Genesis timeline · tap for the museum's menu" : hit.owner.kind === "exhibit" ? "Fingerprints and Time (1991) · tap to read" : hit.owner.kind === "prop" ? `${hit.owner.prop.title} (${hit.owner.prop.year}) · tap to open its workbench` : hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : hit.owner.kind === "wall" ? "The era's press, posters and art · tap to see them up close" : "";
+  const tooltipFor = (hit) => !hit || bench.open ? "" : hit.owner.kind === "legend" ? "The Genesis timeline · tap for the museum's menu" : hit.owner.kind === "exhibit" ? "Fingerprints and Time (1991) · tap to read" : hit.owner.kind === "prop" ? `${hit.owner.prop.title} (${hit.owner.prop.year}) · tap to open its workbench` : hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : hit.owner.kind === "wall" ? "The era's press, posters and art · tap to see them up close" : hit.owner.kind === "bguide" ? (hit.owner.item.essay !== undefined ? "An essay from bitcoinguide.app · tap to read it" : "From bitcoinguide.app · tap to open") : "";
   const enter = (ctx) => {
     ({ game, world, go } = ctx);
     overlayCanvas = ctx.overlay;
@@ -1820,6 +1921,8 @@
     // Each gallery's docent knows its steps toward Bitcoin (the trail, in order) and its cabinet game.
     const docentGuide = GW.ERAS.map((e) => ({ steps: built.trail.filter((x) => x.era === e.n).sort((a, b) => a.step - b.step).map((x) => x.def.title),
       game: (BL.genesisGamesPlus && (BL.genesisGamesPlus.GAMES.find((g) => g.era === e.n) || {}).title) || null }));
+    // The gorillas' woodcutting camp beside the fire (genesis-lumber.js): chopping, splitting, feeding the fire.
+    built.lumber = BL.genesisLumber.build({ M, createNode, addChild, place, top: ISLAND_TOP, footing, fx, flare: built.campfire.flare });
     docents = BL.genesisDocents.create({ eras: GW.ERAS, museum: MU, lane: GW.LANE_X, entry: ENTRY, root, footing, fx, addChild, createNode, guide: docentGuide });
     // Tess, Ooga Booga Land's guide (genesis-guide.js on hub-guide.js): she greets a visitor once a page and walks the
     // road to Bitcoin gallery by gallery; a tap on her brings the tour at any time.
@@ -1924,6 +2027,7 @@
   };
   const leaveScene = () => {
     closePaper();
+    if (built && built.lumber) built.lumber.dispose();
     if (guide) guide.dispose();
     if (autoplay) autoplay.stop();
     if (ambience) ambience.dispose();
@@ -1982,6 +2086,7 @@
       if (remotes) remotes.liveGeometry(set);
       if (docents) docents.liveGeometry(set);
       if (guide) guide.liveGeometry(set);
+      if (built && built.lumber) built.lumber.liveGeometry(set);
     },
     get inMotion() { return !!demo && walk.on; }
   });
