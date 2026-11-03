@@ -5,10 +5,9 @@
 // on a dais in the middle; the genesis block's record stands beside it, marked as after the paper (context, not a
 // step). Gold cube: a whitepaper citation, with its reference; gold ring: documented influence; the white slab: the
 // paper. A gold line on the floor joins them in order (a date order only, never a claim that one led to the next).
-// Round it, a ring of eight floor markers names each era and its years and points at that era's gallery arch.
 //
 // `layout({ entries, museum, eras })` (pure, so Node can check it): { steps: [{ id, step, year, kind, title, ref,
-// x, z, h, at, ry }], paper, genesis, markers: [{ era, name, years, x, z, ry, toward }], path: [{ x, z }], obstacles,
+// x, z, h, at, ry }], paper, genesis, monument, path: [{ x, z }], obstacles,
 // clear }. `entries` is the catalogue's entries; `museum` genesis-world.js MUSEUM; `eras` its ERAS.
 // `build({ M, createNode, addChild, place, label, top, layout })` → { picks: [{ id, node, at }], update(dt, t, calm),
 // light }: the nodes go under the scene's root via `place`; `update` runs only while the scene runs its ambient show
@@ -50,7 +49,6 @@
       steps.push({ id: e.id, step: e.step, year: e.year, kind: e.connection, title: e.title, ref: e.ref, era: e.era,
         x: p.x, z: p.z, h: H0 + (H1 - H0) * k, ry: a + Math.PI, at: { x: out.x, z: out.z } });
       path.push({ x: p.x, z: p.z });
-      obstacles.push({ x0: p.x - PLINTH / 2 - 0.1, x1: p.x + PLINTH / 2 + 0.1, z0: p.z - PLINTH / 2 - 0.1, z1: p.z + PLINTH / 2 + 0.1 });
     });
     // The dais in the middle: the paper, and beside it the genesis block's record (context: after the paper).
     const daisAt = { x: 0, z: 0 };
@@ -58,7 +56,6 @@
     obstacles.push({ x0: -DAIS / 2, x1: DAIS / 2, z0: -DAIS / 2, z1: DAIS / 2 });
     const paperStop = paper ? { id: paper.id, step: paper.step, year: paper.year, kind: "anchor", title: paper.title, era: paper.era, x: 0, z: 0, h: 0.4, ry: Math.PI, at: { x: 0, z: DAIS / 2 + 1.4 } } : null;
     const genesis = genesisEntry ? { id: genesisEntry.id, year: genesisEntry.year, title: genesisEntry.title, era: genesisEntry.era, kind: "context", x: 4.2, z: 0.6, h: 0.9, ry: Math.PI, at: { x: 4.2, z: 2.3 } } : null;
-    if (genesis) obstacles.push({ x0: genesis.x - 0.55, x1: genesis.x + 0.55, z0: genesis.z - 0.55, z1: genesis.z + 0.55 });
     // The Satoshi statue behind the dais, facing the paper's way (+z), inside the spiral's innermost turn: its plinth's
     // steps walk up from the floor, its robe is in the way, and its shoulders and head (`monument.head`) are surfaces
     // a jetpack lands on, since an obstacle with a top no longer stops feet that are within a step of it.
@@ -70,22 +67,7 @@
     }
     const head = S.parts.find((t) => t.id === "head");
     monument.head = { x0: monument.x - head.hx, x1: monument.x + head.hx, z0: monument.z - head.hz, z1: monument.z + head.hz, rise: head.rise };
-    // The floor map: one marker per era, on the ring, pointing at the middle of its gallery's opening.
-    const markers = eras.map((e) => {
-      const r = museum.rects[e.n], A = museum.atrium;
-      const ox = Math.max(A.x0, Math.min(A.x1, (r.x0 + r.x1) / 2)), oz = Math.max(A.z0, Math.min(A.z1, (r.z0 + r.z1) / 2));
-      const a = Math.atan2(ox, -oz), p = bearingPoint(MAP_R, a, { x: 0, z: 0 });
-      return { era: e.n, name: e.name, years: e.years, x: p.x, z: p.z, toward: { x: ox, z: oz }, a, ry: a + Math.PI };
-    });
-    // Round the statue, the exhibits after Genesis: the miners to its west facing in, the toy node network to its east
-    // facing in, and the map of Ooga Booga Land in front, left of the dais. Each with its box on the floor (`box`) and
-    // where a visitor stands to use it (`at`).
-    const centre = {};
-    for (const [id, x, z, ry, w, d] of [["mining", -5.6, -4.5, Math.PI / 2, 3.4, 1.2], ["nodes", 5.0, -5.0, -Math.PI / 2, 2.7, 1.8], ["map", -4.5, 2.5, 0, 2.6, 1.6]]) {
-      const turned = Math.abs(Math.sin(ry)) > 0.5, hx = (turned ? d : w) / 2, hz = (turned ? w : d) / 2, f = d / 2 + 1;
-      centre[id] = { x, z, ry, box: { x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz }, at: { x: x + Math.sin(ry) * f, z: z + Math.cos(ry) * f } };
-    }
-    return { steps, paper: paperStop, genesis, monument, centre, areas, markers, path, obstacles, clear: clearOf(museum.atrium), radius: { inner: R1, outer: R0, map: MAP_R } };
+    return { steps, paper: paperStop, genesis, monument, areas, path, obstacles, clear: clearOf(museum.atrium), radius: { inner: R1, outer: R0, map: MAP_R } };
   };
 
   const GOLD = "#e8c35a", GOLD_DK = "#9a7418", STONE = "#6a645a", STONE_LT = "#8a8378";
@@ -96,54 +78,19 @@
       addChild(node, createNode({ geometry: l.back }), createNode({ geometry: l.face }));
       return node;
     };
-    // The plinths: a stone column in the step's era colour, its mark on top (no sign: the statue stands clear; Space
-    // or a tap on a plinth opens its exhibit).
-    for (const s of L.steps) {
-      solids.push(M.moved(M.box({ w: PLINTH, h: s.h, d: PLINTH, color: eraColor(s.era) }), s.x, top + s.h / 2, s.z));
-      solids.push(M.moved(M.box({ w: PLINTH + 0.2, h: 0.12, d: PLINTH + 0.2, color: STONE_LT }), s.x, top + s.h + 0.06, s.z));
-      const y = top + s.h + 0.12;
-      if (s.kind === "citation") solids.push(M.moved(M.box({ w: 0.55, h: 0.55, d: 0.55, color: GOLD, emissive: 0.5 }), s.x, y + 0.3, s.z));
-      else solids.push(M.moved(M.turnedX(M.torus(0.32, 0.07, GOLD, 0.5), Math.PI / 2), s.x, y + 0.42, s.z));
-      picks.push({ id: s.id, at: s.at, node: place(createNode({ geometry: pickBox(PLINTH, s.h + 1.4, PLINTH), position: { x: s.x, y: top + (s.h + 1.4) / 2, z: s.z } })) });
-    }
-    // The gold line on the floor through the steps in date order, ending at the dais.
-    for (let i = 0; i + 1 < L.path.length; i++) {
-      const a = L.path[i], b = L.path[i + 1], len = Math.hypot(b.x - a.x, b.z - a.z), yaw = Math.atan2(b.x - a.x, b.z - a.z);
-      lines.push(M.moved(M.turnedY(M.box({ w: 0.18, h: 0.02, d: len, color: GOLD, emissive: 0.7 }), yaw), (a.x + b.x) / 2, top + 0.012, (a.z + b.z) / 2));
-    }
+    // (The step plinths, their gold marks and the line joining them are gone: they stood in the way. The steps stay
+    // in the layout as data: the timeline and the galleries' gold paths show them.)
     // The dais and the paper: a low round stone, a white slab with a gold edge.
     solids.push(M.moved(M.box({ w: DAIS, h: 0.4, d: DAIS, color: STONE }), 0, top + 0.2, 0));
     if (L.paper) {
       // The paper itself stands here as the portal's scrolling pages (scene-genesis.js buildPaperPortal).
       picks.push({ id: L.paper.id, at: L.paper.at, node: place(createNode({ geometry: pickBox(1.6, 2.6, 0.6), position: { x: 0, y: top + 1.7, z: 0 } })) });
     }
-    // The genesis block's record beside it: a dark cube, after the paper (context, not a step).
-    let cube = null;
-    if (L.genesis) {
-      solids.push(M.moved(M.box({ w: 0.9, h: L.genesis.h, d: 0.9, color: "#2a2522" }), L.genesis.x, top + L.genesis.h / 2, L.genesis.z));
-      cube = place(createNode({ geometry: M.box({ w: 0.5, h: 0.5, d: 0.5, color: "#ff9a3a", emissive: 0.9 }), position: { x: L.genesis.x, y: top + L.genesis.h + 0.45, z: L.genesis.z } }));
-      picks.push({ id: L.genesis.id, at: L.genesis.at, node: place(createNode({ geometry: pickBox(1, L.genesis.h + 1, 1), position: { x: L.genesis.x, y: top + (L.genesis.h + 1) / 2, z: L.genesis.z } })) });
-    }
     // The Satoshi statue (bustParts), behind the dais.
     if (L.monument) bustParts(M, L.monument, top, sign, place, createNode);
-    // The floor map: for each era a chevron on the floor pointing at its gallery (the courtyard's wooden signs name them).
-    for (const m of L.markers) {
-      const c = eraColor(m.era);
-      for (const s of [-1, 1]) lines.push(M.moved(M.turnedY(M.box({ w: 0.22, h: 0.025, d: 1.6, color: c, emissive: 0.8 }), m.a + s * 0.55), m.x + Math.sin(m.a) * 0.6 - s * Math.cos(m.a) * 0.45, top + 0.014, m.z - Math.cos(m.a) * 0.6 - s * Math.sin(m.a) * 0.45));
-    }
     place(createNode({ geometry: M.merge(...solids) }));
     place(createNode({ geometry: M.merge(...lines), sightHidden: true }));
-    // A bead of light runs along the gold line from the first step to the paper (held still in Calm).
-    const bead = place(createNode({ geometry: M.box({ w: 0.22, h: 0.22, d: 0.22, color: "#fff2c4", emissive: 1.6 }), position: { x: L.path[0].x, y: top + 0.2, z: L.path[0].z } }));
-    const segs = L.path.length - 1, anim = { t: 0 };
-    const update = (dt, t, calm) => {
-      if (calm) { bead.visible = false; return; }
-      bead.visible = true;
-      anim.t = (anim.t + dt / 2.2) % (segs + 1);
-      const i = Math.min(segs - 1, Math.floor(anim.t)), f = Math.min(1, anim.t - i), a = L.path[i], b = L.path[i + 1];
-      bead.position.x = a.x + (b.x - a.x) * f; bead.position.z = a.z + (b.z - a.z) * f;
-      if (cube) cube.rotation.y += dt * 0.6;
-    };
+    const update = () => {};
     return { picks, update, light: [0, top + 6, 0, 16, 1.3, 1.1, 0.75] };
   };
   // The Satoshi statue: a large polished-gold bust on a pale stone pedestal, the Bitcoin sign on a coin on its chest,

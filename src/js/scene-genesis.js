@@ -309,17 +309,18 @@
   // The white screen stands in the atrium ahead of the arrival, facing it (south): 24 m wide.
   const LEGEND = { x: 0, y: 3.6, z: SOUTH - 26, w: 18, h: 6, ry: 0, at: { x: 0, z: SOUTH - 23.5 } };
   // The portal on the dais before the Satoshi bust: its stone frame and pale glow, and in it the Bitcoin whitepaper's
-  // nine pages as one strip (whitepaper-pages-data.js, the island monolith's), a window on the strip that turns a page
-  // every PAGE_S seconds by itself, and with PageUp / PageDown while the visitor stands at it. Space or a tap opens the
-  // paper's exhibit as before. The strip loads with the "whitepaper" group (inline on the portable page).
+  // nine pages as one strip (whitepaper-pages-data.js, the island monolith's), a window on the strip that holds still
+  // until someone reads it (openPaper, below). The strip loads with the "whitepaper" group (inline on the portable page).
   let glCanvas = null;
-  const WPP = { page: 0, t: 0, scroll: 0, PAGE_S: 7, face: null, w: 1.6, h: 0 };
+  // `doc` is the strip on the face: the whitepaper's (whitepaper-pages-data.js) or an essay's, laid out like it
+  // (paintEssay); `face` the node's geometry showing it.
+  const WPP = { scroll: 0, face: null, w: 1.6, h: 0, doc: null, paperFace: null, paperNode: null, essayFace: null, essayNode: null, essay: -1, portal: null, saved: 0 };
   const buildPaperPortal = () => {
     const portal = place(createNode({ position: { x: 0, y: ISLAND_TOP + 0.4, z: 0 } }));
     addChild(portal, createNode({ geometry: M.bevelBox({ w: 2.3, h: 3.2, d: 0.4, color: "#ece6d6" }), position: { x: 0, y: 1.6, z: -0.05 } }));
     const glow = createNode({ geometry: M.box({ w: 2.0, h: 2.85, d: 0.04, color: "#9ad8ff", emissive: 0.9 }), position: { x: 0, y: 1.6, z: 0.16 } });
     addChild(portal, glow);
-    built.portal = glow;
+    built.portal = glow; WPP.portal = portal;
     const show = () => {
       const data = BL.whitepaperPages;
       if (!data || !data.strip || !built) return;
@@ -334,8 +335,9 @@
       } else image.src = data.strip;
       const face = { verts: [-w / 2, -h / 2, 0.03, w / 2, -h / 2, 0.03, w / 2, h / 2, 0.03, -w / 2, h / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
       face.imageSurface = { asset, rect: [-w / 2, 0, w, 0] };
-      WPP.face = face; WPP.h = h;
-      addChild(portal, createNode({ geometry: face, position: { x: 0, y: 1.6, z: 0.17 } }));
+      WPP.face = WPP.paperFace = face; WPP.h = h; WPP.doc = data;
+      WPP.paperNode = createNode({ geometry: face, position: { x: 0, y: 1.6, z: 0.17 } });
+      addChild(portal, WPP.paperNode);
       paperRect();
     };
     if (BL.whitepaperPages) show();
@@ -343,22 +345,114 @@
   };
   // The strip laid across the face, scrolled so `WPP.scroll` (strip pixels from its top) is at the face's top.
   const paperRect = () => {
-    const data = BL.whitepaperPages, f = WPP.face;
+    const data = WPP.doc, f = WPP.face;
     if (!f || !data) return;
     const k = WPP.h / data.page, rect = f.imageSurface.rect;
     rect[1] = WPP.h / 2 + WPP.scroll * k - data.height * k;
     rect[3] = data.height * k;
   };
+  // The paper stays where the reader left it; it moves only while someone reads it (paper.target, strip pixels).
   const updatePaper = (dt) => {
-    const data = BL.whitepaperPages;
+    const data = WPP.doc;
     if (!WPP.face || !data) return;
-    WPP.t += dt;
-    if (WPP.t >= WPP.PAGE_S) { WPP.t = 0; WPP.page = (WPP.page + 1) % data.count; }
-    const target = WPP.page * (data.page + data.gap);
-    WPP.scroll += (target - WPP.scroll) * Math.min(1, dt * (view.calm ? 20 : 4));
+    if (Math.abs(paper.target - WPP.scroll) < 0.5) return;
+    WPP.scroll += (paper.target - WPP.scroll) * Math.min(1, dt * 10);
     paperRect();
   };
-  const turnPaper = (dir) => { const data = BL.whitepaperPages; if (!data) return; WPP.page = (WPP.page + dir + data.count) % data.count; WPP.t = 0; };
+  // Reading the paper, as on the island's monolith: Space by the portal (or a tap on it) brings the view square onto
+  // the page; the wheel, the arrows or a drag slide the real paper up and down, Space and PageDown glide a page, +
+  // and - (or Shift and the wheel, or a pinch) zoom, a double tap zooms in and out, and Escape hands the view back.
+  const paper = { open: false, target: 0, zoom: 1, pan: 0, eased: false, saved: { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0 } };
+  const PAPER_AT = { x: 0, y: ISLAND_TOP + 0.4 + 1.6, z: 0.2 };
+  const scrollPaper = (px) => { const data = WPP.doc; if (data) paper.target = Math.max(0, Math.min(data.height - data.page, paper.target + px)); };
+  const turnPaper = (dir) => {
+    const data = WPP.doc; if (!data) return;
+    const step = data.page + data.gap, n = Math.round(paper.target / step) + dir;
+    paper.target = Math.max(0, Math.min(data.count - 1, n)) * step;
+  };
+  const zoomPaper = (k) => { paper.zoom = Math.max(1, Math.min(3.2, paper.zoom * k)); };
+  const openPaper = () => {
+    if (paper.open || bench.open) return;
+    if (!WPP.face || !WPP.doc) { hud.toast("The whitepaper is still loading"); return; }
+    const s2 = paper.saved, cp = camera.position, ct = camera.target;
+    s2.x = cp.x; s2.y = cp.y; s2.z = cp.z; s2.tx = ct.x; s2.ty = ct.y; s2.tz = ct.z;
+    paper.open = true; paper.eased = false; paper.zoom = 1; paper.pan = 0;
+    if (autoplay) autoplay.stop();
+    pilot.setActive(false); hud.tooltip.hide(); hud.hideHint(); stopVoice();
+    if (avatar) { paper.avatarShown = avatar.root.visible; avatar.root.visible = false; }
+    hud.whitepaperNav(true, COARSE ? "" : "Wheel or arrows scroll · Space next page · + − zoom · Esc to stop reading");
+    showControls();
+  };
+  const closePaper = () => {
+    if (!paper.open) return;
+    paper.open = false;
+    const s2 = paper.saved;
+    camera.position.x = s2.x; camera.position.y = s2.y; camera.position.z = s2.z; camera.target.x = s2.tx; camera.target.y = s2.ty; camera.target.z = s2.tz;
+    if (avatar) avatar.root.visible = paper.avatarShown !== false;
+    hud.whitepaperNav(false, "");
+    pilot.setActive(true);
+    showControls();
+    if (WPP.essay >= 0) showPaperDoc();
+  };
+  // An essay from the Bitcoin Guide on the portal: painted once as a strip of pages like the whitepaper's
+  // (genesis-essay-strip in paintEssay), shown in place of the paper while it is read, the paper back after.
+  const showPaperDoc = () => {
+    WPP.essay = -1;
+    if (WPP.essayNode) WPP.essayNode.visible = false;
+    if (WPP.paperNode) WPP.paperNode.visible = true;
+    WPP.face = WPP.paperFace; WPP.doc = BL.whitepaperPages || null;
+    WPP.scroll = paper.target = WPP.saved; paperRect();
+  };
+  const openEssay = (i) => {
+    const e = BL.bitcoinGuideData && BL.bitcoinGuideData.essays[i];
+    if (!e || !WPP.portal || paper.open || bench.open) return;
+    const w = WPP.w, h = WPP.h || w * 1.294;
+    // A fresh face for each essay: the strip painted on a canvas, handed to the renderer as an image (its texture is
+    // made once per face, as the paper's is). The previous face is let go at the next housekeeping.
+    const canvas = WPP.essayCanvas || (WPP.essayCanvas = document.createElement("canvas"));
+    const gl = renderer && renderer.kind === "webgl2" && glCanvas ? glCanvas.getContext("webgl2") : null;
+    const limit = Math.min(16384, gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 8192);
+    const doc = BL.genesisEssayStrip.paint(canvas, e, h / w, limit), image = new Image();
+    image.src = canvas.toDataURL("image/jpeg", 0.9);
+    const face = { verts: [-w / 2, -h / 2, 0.03, w / 2, -h / 2, 0.03, w / 2, h / 2, 0.03, -w / 2, h / 2, 0.03], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+    face.imageSurface = { asset: { width: doc.width, height: doc.height, load: () => image }, rect: [-w / 2, 0, w, 0] };
+    face.imageSurface.doc = doc;
+    if (!WPP.essayNode) { WPP.essayNode = createNode({ geometry: face, position: { x: 0, y: 1.6, z: 0.172 } }); addChild(WPP.portal, WPP.essayNode); }
+    else WPP.essayNode.geometry = face;
+    WPP.essayFace = face;
+    if (WPP.essay < 0) WPP.saved = paper.target;
+    WPP.essay = i; WPP.h = h;
+    if (WPP.paperNode) WPP.paperNode.visible = false;
+    WPP.essayNode.visible = true;
+    WPP.face = WPP.essayFace; WPP.doc = WPP.essayFace.imageSurface.doc;
+    WPP.scroll = paper.target = 0; paperRect();
+    openPaper();
+  };
+  // The reading view: the camera square on the face, far enough back that the page's height fills the view, nearer
+  // as it zooms. Eased in, then held.
+  const updatePaperView = (dt) => {
+    const k = view.calm || !paper.eased ? Math.min(1, dt * 8) : Math.min(1, dt * 10), half = (WPP.h / 2) * 1.08;
+    const fov = camera.fov || 0.9, dist = half / Math.tan(fov / 2) / paper.zoom;
+    const lim = WPP.w / 2 * (1 - 1 / paper.zoom); paper.pan = Math.max(-lim, Math.min(lim, paper.pan));
+    const c = camera.position, t = camera.target, ex = PAPER_AT.x + paper.pan, ey = PAPER_AT.y, ez = PAPER_AT.z + dist;
+    c.x += (ex - c.x) * k; c.y += (ey - c.y) * k; c.z += (ez - c.z) * k;
+    t.x += (ex - t.x) * k; t.y += (ey - t.y) * k; t.z += (PAPER_AT.z - t.z) * k;
+    paper.eased = true;
+  };
+  const paperKey = (e) => {
+    const k = e.key;
+    if (k === "Escape") closePaper();
+    else if (k === "ArrowDown" || k === "s" || k === "S") scrollPaper(140);
+    else if (k === "ArrowUp" || k === "w" || k === "W") scrollPaper(-140);
+    else if (k === " " || k === "PageDown" || k === "ArrowRight") turnPaper(1);
+    else if (k === "PageUp" || k === "ArrowLeft") turnPaper(-1);
+    else if (k === "Home") paper.target = 0;
+    else if (k === "End") scrollPaper(1e9);
+    else if (k === "+" || k === "=") zoomPaper(1.25);
+    else if (k === "-" || k === "_") zoomPaper(0.8);
+    else return;
+    e.preventDefault();
+  };
   const buildLegend = () => {
     const W = 4096, H = Math.round(W * LEGEND.h / LEGEND.w), canvas = document.createElement("canvas"), g = canvas.getContext("2d");
     canvas.width = W; canvas.height = H;
@@ -842,7 +936,17 @@
   };
   // Each gallery's period pieces along its side walls (genesis-era-items.js): clear of its packed exhibits, its
   // reserved plots and its vignette; one merged mesh a gallery, each piece in the walkers' way.
+  const lavaGeos = new Map();
+  const updateLava = (t) => {
+    for (const b of built.lava) {
+      const k = 0.5 + 0.5 * Math.sin(t * b.speed * 2 + b.phase);
+      b.n.position.y = b.y0 + (b.y1 - b.y0) * k;
+      b.n.scale.y = 0.8 + 0.5 * Math.abs(Math.sin(t * b.speed * 3 + b.phase));
+      b.n.scale.x = b.n.scale.z = 1.1 - 0.3 * (b.n.scale.y - 0.8);
+    }
+  };
   const buildEraItems = () => {
+    built.lava = [];
     const EI = BL.genesisEraItems;
     for (const e of GW.ERAS) inFrame(e.n, () => {
       const boxes = (built.packedBoxes && built.packedBoxes[e.n] || []).concat(GW.reservedZones(e.n), [built.vignettes[e.n].v.obstacle]);
@@ -853,6 +957,13 @@
       list.push(...EI.floorLayout(MU, e, GW.LANE_X, free));
       const geo = EI.build(M, list, ISLAND_TOP);
       if (geo) place(createNode({ geometry: geo, sightHidden: true }));
+      // The lava lamps' wax: three glowing blobs in each glass, drifting up and down (updateLava).
+      for (const sp of EI.lavaSpots(list)) for (let k = 0; k < 3; k++) {
+        let g = lavaGeos.get(sp.wax);
+        if (!g) { g = M.bevelBox({ w: 0.11, h: 0.11, d: 0.11, color: sp.wax, emissive: 1.6, bevel: 0.04 }); lavaGeos.set(sp.wax, g); }
+        const n = place(createNode({ geometry: g, position: { x: sp.x, y: ISLAND_TOP + sp.y0, z: sp.z }, sightHidden: true }));
+        built.lava.push({ n, y0: ISLAND_TOP + sp.y0, y1: ISLAND_TOP + sp.y1, speed: 0.18 + k * 0.07 + (built.lava.length % 5) * 0.02, phase: k * 2.1 + built.lava.length });
+      }
       for (const q of list) { const hw = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.d : q.item.w) / 2, hd = (Math.abs(Math.sin(q.ry)) > 0.5 ? q.item.w : q.item.d) / 2; built.oldObstacles.push({ era: e.n, x0: q.x - hw, x1: q.x + hw, z0: q.z - hd, z1: q.z + hd }); }
       // The game tables seat a visitor against an Ooga: a grid board plays Five in a Row, any other Dots and Boxes
       // (genesis-games-plus.js BOARDS), on the console. Used from the side nearer the walk.
@@ -890,23 +1001,27 @@
         return { board: { room: "Game records", pages, sources: [] } };
       } });
   };
-  // Round the statue (genesis-atrium.js `centre`): the miners and ASIC explainer (genesis-mining.js), the toy node
-  // network (genesis-nodes.js) and the map of Ooga Booga Land (genesis-minimap.js), then the light round the bust.
+  // The shrine round the statue: the Bitcoin network life size (genesis-network.js: node towers in a ring with
+  // miners, glowing cables, big floor displays and the four-sided live screen hung overhead), and the light round the
+  // bust (genesis-satoshi-fx.js). Space at a floor display, or a tap, opens how it all works.
   const buildCentre = () => {
-    const C = built.atriumLayout.centre, MN = BL.genesisMining, NO = BL.genesisNodes, MP = BL.genesisMinimap, term = MN.terminal();
-    built.mining = MN.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: C.mining });
-    const words = BL.factoryModels.label("AFTER GENESIS", "how mining grew: CPUs, GPUs, ASICs · Space here", { height: 0.6, style: "gold" });
-    addChild(built.mining.root, createNode({ geometry: words.back, position: { x: 0, y: 2.9, z: 0.1 } }), createNode({ geometry: words.face, position: { x: 0, y: 2.9, z: 0.1 } }));
-    props.register({ id: "mining", era: 7, year: 2009, title: "After Genesis: how mining grew", label: "AFTER GENESIS · MINING SINCE 2009", sourceKeys: [], hint: "how Bitcoin mining grew after 2009",
-      at: { x: C.mining.at.x, y: ISLAND_TOP, z: C.mining.at.z }, reach: 2.6, onUse: () => ({ terminal: term, board: { room: "After Genesis: how mining grew", pages: MN.PAGES, sources: [] } }) });
-    built.nodes = NO.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: C.nodes });
-    props.register({ id: "nodes", era: 7, year: 2009, title: "A toy node network", label: "NODES · THE NETWORK SINCE 2009", sourceKeys: [], hint: "watch blocks spread through a toy network of nodes",
-      at: { x: C.nodes.at.x, y: ISLAND_TOP, z: C.nodes.at.z }, reach: 2.6, onUse: () => ({ terminal: built.nodes.terminal, board: { room: "A toy node network", pages: NO.PAGES, sources: [] } }) });
-    built.minimap = MP.build({ M, createNode, addChild, place, top: ISLAND_TOP, at: C.map });
-    props.register({ id: "minimap", era: 7, year: 2026, title: "A map of Ooga Booga Land", label: "OOGA BOOGA LAND · THE MAP, 2026", sourceKeys: [], hint: "a map of Ooga Booga Land",
-      at: { x: C.map.at.x, y: ISLAND_TOP, z: C.map.at.z }, reach: 2.4, onUse: () => ({ board: { room: "Ooga Booga Land", pages: MP.pages(), sources: [] } }) });
-    for (const k of ["mining", "nodes", "map"]) built.obstacles.push(C[k].box);
-    const S = built.atriumLayout.monument;
+    const NW = BL.genesisNetwork, S = built.atriumLayout.monument;
+    built.network = NW.build({ M, createNode, addChild, place, top: ISLAND_TOP, statue: S, roof: ISLAND_TOP + ROOF });
+    for (const b of built.network.layout.boxes) built.obstacles.push(b);
+    const board = { room: "How the Bitcoin network works", pages: [...NW.PAGES, ...NW.MINING_PAGES], sources: [], links: [NW.RESOURCES] };
+    for (const d of built.network.layout.displays) props.register({ id: `network-${d.id}`, era: 7, year: 2009, title: "How the Bitcoin network works", label: "THE BITCOIN NETWORK · SINCE 2009", sourceKeys: [], hint: "how the Bitcoin network works",
+      at: { x: d.at.x, y: ISLAND_TOP, z: d.at.z }, reach: 2.2, onUse: () => ({ board }) });
+    // The Bitcoin Guide hall round it (genesis-bitcoin-guide.js): Space at a station, or a tap on its parts, opens it.
+    const BG = BL.genesisBitcoinGuide;
+    built.guideHall = BG.build({ M, createNode, addChild, place, top: ISLAND_TOP, label: BL.factoryModels.label });
+    for (const b of built.guideHall.layout.boxes) built.obstacles.push(b);
+    built.guideStations = {};
+    for (const st of built.guideHall.stations) {
+      const id = `bg-${st.id}`;
+      built.guideStations[id] = st;
+      props.register({ id, era: 7, year: 2026, title: st.title, label: `${st.title.toUpperCase()} · BITCOINGUIDE.APP, 2026`, sourceKeys: [], hint: st.hint,
+        at: { x: st.at.x, y: ISLAND_TOP, z: st.at.z }, reach: st.reach, onUse: () => ({ caption: st.title }) });
+    }
     built.satoshiFx = BL.genesisSatoshiFx.build({ M, createNode, addChild, place, label: BL.factoryModels.label, top: ISLAND_TOP, at: S });
   };
   const updateVignettes = (dt) => {
@@ -1104,7 +1219,11 @@
     for (const o of L.obstacles) built.obstacles.push(o.rise === undefined ? o : { ...o, top: ISLAND_TOP + o.rise });
     built.areas = L.areas.map((a) => ({ ...a, top: ISLAND_TOP + a.rise, dock: { x: L.monument.x, z: L.monument.z + L.monument.base / 2 + 1.2, facing: Math.PI } }));
     built.atriumProps = atrium.picks.map((p) => {
-      const e = catalogue.get(p.id), prop = props.register({ id: `atrium-${p.id}`, era: e.era, year: e.year, title: e.title, label: `${e.title} (${e.year})`, sourceKeys: e.sources.map((x) => x.key),
+      const e = catalogue.get(p.id);
+      // The paper on the portal is read where it stands (openPaper), not opened on a workbench.
+      if (L.paper && p.id === L.paper.id) return { prop: props.register({ id: "whitepaper", era: e.era, year: e.year, title: e.title, label: `${e.title} (${e.year})`, sourceKeys: e.sources.map((x) => x.key),
+        at: { x: p.at.x, y: ISLAND_TOP, z: p.at.z }, reach: 2.6, hint: `read ${e.title} (${e.year})`, onUse: () => ({ caption: e.title }) }), node: p.node };
+      const prop = props.register({ id: `atrium-${p.id}`, era: e.era, year: e.year, title: e.title, label: `${e.title} (${e.year})`, sourceKeys: e.sources.map((x) => x.key),
         at: { x: p.at.x, y: ISLAND_TOP, z: p.at.z }, reach: 2.4, hint: e.trail ? `step ${e.step}, ${e.title} (${e.year})` : `${e.title} (${e.year}), after the paper`, opens: p.id, onUse: () => ({ caption: e.title }) });
       return { prop, node: p.node };
     });
@@ -1167,9 +1286,19 @@
     c.x += (v.eye.x - c.x) * k; c.y += (v.eye.y - c.y) * k; c.z += (v.eye.z - c.z) * k;
     t.x += (v.target.x - t.x) * k; t.y += (v.target.y - t.y) * k; t.z += (v.target.z - t.z) * k;
   };
+  // A Bitcoin Guide station or part: an essay reads on the portal, anything else opens its board in the panel.
+  const openGuideItem = (it) => {
+    audio.wake();
+    if (it.essay !== undefined) { openEssay(it.essay); return; }
+    const b = it.board();
+    openPanel(Object.assign(makeBoard({ room: b.room, pages: b.pages, sources: b.sources || [], links: b.links }), { start: b.start || 0 }));
+  };
   const openProp = (prop) => {
     audio.wake();
     if (prop.id === "legend") { openMenu(); return; }
+    if (prop.id === "whitepaper") { openPaper(); return; }
+    const st = built.guideStations && built.guideStations[prop.id];
+    if (st) { if (st.act) st.act(); else openGuideItem(st); return; }
     if (prop.opens) { host.open(prop.opens, "walk"); return; }
     if (catalogue && catalogue.get(prop.id) && host.open(prop.id, "walk")) return;
     const r = props.use(prop, propState);
@@ -1211,7 +1340,8 @@
         if (footing.walkable(q.x, q.z, nx, nz, Math.min(rider.bodyRadius || 0.3, 0.3), feet)) { q.x = nx; q.z = nz; walk.rides += dt; }
       }
     }
-    pilot.update(dt);
+    // While the paper is read its view holds the camera (updatePaperView); the pilot leaves it alone.
+    if (!paper.open) pilot.update(dt);
     const driven = people.player;
     BL.net.setBody(driven ? driven.traits.name : null);
     if (driven) {
@@ -1276,16 +1406,17 @@
   };
   // A panel of pages ({ room, pages, sources }): the exhibit's, or a prop's board.
   const makeBoard = (ex = G.FINGERPRINTS) => {
-    const canvas = document.createElement("canvas");
+    const canvas = document.createElement("canvas"), base = [...ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} ↗` })), ...(ex.links || [])];
     canvas.width = W; canvas.height = H;
     const b = {
       // The title is lettered from the sign alphabet (letters, digits, space and / : ! ? + - .); anything else is
       // turned into a dash or dropped.
       title: ex.room.replace(/[·–—]/g, "-").replace(/[^A-Za-z0-9 /:!?+\-.]/g, ""), help: "Arrows page · Escape closes and the walk carries on", canvas, count: ex.pages.length, index: 0,
       caption: ex.pages[0].caption, note: ex.pages[0].text.join(" "), version: 0, wide: true,
-      links: ex.sources.map((k) => ({ href: GP.sourceOf(k).href, label: `${GP.sourceOf(k).label} ↗` })),
+      links: base,
       go(i) {
         b.index = i; b.caption = ex.pages[i].caption; b.note = ex.pages[i].text.join(" ");
+        b.links = ex.pages[i].links ? [...base, ...ex.pages[i].links] : base;
         paintPage(canvas, ex.pages[i]); b.version++;
       }
     };
@@ -1366,7 +1497,7 @@
     captionKey = key;
     const text = custom || G.CAPTIONS[key] || "";
     el.caption.textContent = text;
-    el.caption.hidden = !view.captions || !text;
+    el.caption.hidden = !view.captions || !text || paper.open;
     say(text);
   };
   const press = (button, on) => button && button.setAttribute("aria-pressed", String(!!on));
@@ -1375,7 +1506,7 @@
     press(el.pause, view.paused);
     press(el.cc, view.captions); press(el.voice, view.voice); press(el.calm, view.calm);
     el.voice.hidden = !speech;
-    el.caption.hidden = !view.captions || !el.caption.textContent;
+    el.caption.hidden = !view.captions || !el.caption.textContent || paper.open;
   };
   const paintChain = () => {
     const codes = demo.broken ? built.codes.tampered : built.codes.honest;
@@ -1407,6 +1538,7 @@
   // its own: Escape (the pilot first, then leave), 0, I, C, T, P and G. A workbench or the menu takes every key while
   // open (its input keeps typing out of the walk); Escape closes it.
   const onKey = (e) => {
+    if (paper.open && !e.metaKey && !e.ctrlKey && !e.altKey) { paperKey(e); return; }
     if (bench.open || view.reading || (cart && cart.isOpen) || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "Escape") { if (guide && guide.escape()) { e.preventDefault(); return; } if (!pilot.escape()) leave(); }
@@ -1416,7 +1548,6 @@
     else if (k === "t") toggle("voice");
     else if (k === "p") { e.preventDefault(); pause(); }
     else if (k === "g") { e.preventDefault(); openMenu(); }
-    else if ((k === "PageUp" || k === "PageDown") && avatar && Math.hypot(avatar.root.position.x, avatar.root.position.z) < 6) { e.preventDefault(); turnPaper(k === "PageDown" ? 1 : -1); }
   };
 
   // --- Frame ----------------------------------------------------------------------------------------------------
@@ -1498,6 +1629,7 @@
     if (h.exhibit) updateExhibits(dt, sceneTime);
     // The workbench's camera keeps framing its model in the stage (not simulation: it settles on a resize too).
     if (bench.open) updateBench(dt);
+    if (paper.open) updatePaperView(dt);
     if (h.ambient) {
       stepDemo(dt);
       built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
@@ -1507,8 +1639,9 @@
       if (built.vignettes) updateVignettes(dt);
       if (docents) docents.update(dt, avatar ? avatar.root.position.x : null, avatar ? avatar.root.position.z : 0);
       if (built.fans && !view.calm) for (const f of built.fans) f.rotation.y += dt * 1.2;
-      if (built.mining) built.mining.update(dt, view.calm);
-      if (built.nodes) built.nodes.update(dt, view.calm);
+      if (built.network) built.network.update(dt, view.calm);
+      if (built.lava && !view.calm) updateLava(sceneTime);
+      if (built.guideHall) built.guideHall.update(dt, view.calm, avatar ? avatar.root.position : null);
       if (built.satoshiFx) built.satoshiFx.update(dt, view.calm);
       if (guide) guide.update(dt, sceneTime);
       updatePaper(dt);
@@ -1571,6 +1704,7 @@
     target(built.guide.parts.torso, { kind: "guide" });
     target(built.guide.parts.head, { kind: "guide" });
     target(built.legend, { kind: "legend", priority: 1 });
+    for (const t of built.guideHall.targets) target(t.node, { kind: "bguide", item: t, priority: 1 });
     for (const a of built.atriumProps) target(a.node, { kind: "prop", prop: a.prop, priority: 1 });
     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
@@ -1632,7 +1766,7 @@
     const S0 = built.atriumLayout.monument;
     guide = BL.genesisGuide.create({ parent: root, input, fx, camera, pilot, visitor: () => people && people.player, world, hud, coarse: COARSE, landing: true,
       quality: () => renderer.quality, busy: () => bench.open || view.reading || !!(cart && cart.isOpen), targets: {} },
-      { museum: MU, eras: GW.ERAS, lane: GW.LANE_X, statue: { x: S0.x, z: S0.z }, mining: built.atriumLayout.centre.mining });
+      { museum: MU, eras: GW.ERAS, lane: GW.LANE_X, statue: { x: S0.x, z: S0.z }, mining: { x: built.network.layout.centre.x, z: built.network.layout.centre.z + built.network.layout.radius } });
     remotes = BL.remotePlayers.create({ root, crew: people, fx });
     footsteps = BL.footsteps.create();
     walk.on = false; walk.prop = null; walk.falls = 0; walk.rides = 0;
@@ -1650,12 +1784,19 @@
         if (hit && hit.owner.kind === "exhibit") openInfo();
         else if (hit && hit.owner.kind === "legend") openMenu();
         else if (hit && hit.owner.kind === "prop") openProp(hit.owner.prop);
+        else if (hit && hit.owner.kind === "bguide") openGuideItem(hit.owner.item);
         else if (hit && hit.owner.kind === "wall") openPanel(wallView(hit.owner.board, wallPieceAt(hit.owner.board, p.x, p.y)));
       },
       hoverIgnore: () => bench.open ? null : pilot.hooks.hoverIgnore(),
-      onOrbit: (dx, dy) => { if (!bench.open) pilot.hooks.onOrbit(dx, dy); },
-      onZoom: (factor, gesture, px, py) => { if (!bench.open) pilot.hooks.onZoom(factor, gesture, px, py); },
-      onDoubleTap: (hit) => { if (!bench.open) pilot.hooks.onDoubleTap(hit); }
+      onOrbit: (dx, dy) => {
+        if (paper.open) { const data = WPP.doc, k = data ? data.page / Math.max(1, overlayCanvas.clientHeight) / paper.zoom * 1.1 : 1; scrollPaper(-dy * k); paper.pan -= dx * WPP.h / Math.max(1, overlayCanvas.clientHeight) / paper.zoom; return; }
+        if (!bench.open) pilot.hooks.onOrbit(dx, dy);
+      },
+      onZoom: (factor, gesture, px, py, shift, delta) => {
+        if (paper.open) { if (delta && !shift) scrollPaper(delta * 1.2); else zoomPaper(1 / factor); return; }
+        if (!bench.open) pilot.hooks.onZoom(factor, gesture, px, py);
+      },
+      onDoubleTap: (hit) => { if (paper.open) { paper.zoom = paper.zoom > 1.3 ? 1 : 1.8; return; } if (!bench.open) pilot.hooks.onDoubleTap(hit); }
     });
     hud.onAction((action) => {
       audio.wake();
@@ -1667,6 +1808,9 @@
       else if (action === "genesis-calm") toggle("calm");
       else if (action === "reset-view" && !bench.open) pilot.resetCamera();
       else if (action === "leave") leave();
+      else if (action === "wp-next" && paper.open) turnPaper(1);
+      else if (action === "wp-prev" && paper.open) turnPaper(-1);
+      else if (action === "wp-close") closePaper();
     });
     for (const id of ["caption", "pause", "info", "cc", "voice", "calm", "chain", "chainWrap"]) el[id] = document.getElementById(`genesis-${id === "chainWrap" ? "chain-wrap" : id}`);
     el.chain.replaceChildren(...G.PAGES.map(() => { const li = document.createElement("li"); li.hidden = true; return li; }));
@@ -1695,7 +1839,7 @@
     showControls();
     hud.setStats(game.state);
     arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; },
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper,
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
@@ -1708,6 +1852,7 @@
     hud.setStats(game.state);
   };
   const leaveScene = () => {
+    closePaper();
     if (guide) guide.dispose();
     if (autoplay) autoplay.stop();
     if (ambience) ambience.dispose();
