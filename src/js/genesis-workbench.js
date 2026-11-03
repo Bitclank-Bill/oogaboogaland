@@ -9,7 +9,8 @@
 // from `host.stage(rect)`), with the command line, Run, Reset and the exhibit's own commands under it. Right: how it
 // connects, in short, how to use, the deeper story and the sources (genesis-bench.js `sections`, no line repeated).
 // Previous and Next walk the catalogue's date order through `host.open(id, "browse")`. Close and Escape call
-// `host.close()`; Take me there calls `host.close({ there: true })`. No sound and no motion of its own.
+// `host.close()`; Take me there calls `host.close({ there: true })`. No sound and no motion of its own. A historical
+// system (anything but a modern museum game) is a display: no prompt; it runs its own demonstration a step at a time.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -20,7 +21,7 @@
     const el = { kicker: $("kicker"), title: $("title"), pos: $("pos"), stage: $("stage"), form: $("form"), input: $("input"), prompt: $("prompt"),
       actions: $("actions"), output: $("output"), info: $("info"), note: $("panel-note"), close: root.querySelector("[data-bench=close]") };
     const COARSE = matchMedia("(pointer: coarse)").matches;
-    let id = null, term = null, board = null, open = false;
+    let id = null, term = null, board = null, open = false, display = false, timer = 0, stepAt = 0, steps = [];
     const lines = [];
     const write = (node, tag, text, cls) => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; node.append(n); return n; };
     const report = () => host.stage(open ? el.stage.getBoundingClientRect() : null);
@@ -68,29 +69,45 @@
       el.output.scrollTop = el.output.scrollHeight;
       return out;
     };
+    // A display: the exhibit runs itself (genesis-autoplay.js's demonstration, through its own terminal) a step every
+    // STEP_MS, the replies in the output, and starts again after a pause. Only the museum's games take typing.
+    const STEP_MS = 2600, LOOP_MS = 6000;
+    const stopDisplay = () => { if (timer) clearTimeout(timer); timer = 0; };
+    const tick = () => {
+      timer = 0;
+      if (!open || !display) return;
+      if (stepAt < steps.length) { run(steps[stepAt++]); timer = setTimeout(tick, STEP_MS); return; }
+      run("RESET"); lines.length = 0; el.output.textContent = "Starting again…"; stepAt = 0;
+      timer = setTimeout(tick, LOOP_MS - STEP_MS);
+    };
     const show = (next) => {
       const s = host.session(next);
       if (!s) return false;
+      stopDisplay();
       const e = s.entry, n = host.catalogue.entries.length;
       id = next; term = s.terminal; board = s.board; lines.length = 0; open = true;
+      display = !!term && e.modern !== "game" && !!BL.genesisAutoplay;
       el.kicker.textContent = `Era ${e.era} · ${e.eraName} · ${e.year}${e.connection !== "context" ? ` · ${e.connectionLabel}${e.ref ? ` ${e.ref}` : ""}` : ""}`;
       el.title.textContent = e.title;
       el.pos.textContent = `${e.index + 1} of ${n}`;
-      el.form.hidden = !term; el.output.hidden = !term; el.note.hidden = !!term;
+      el.form.hidden = !term || display; el.output.hidden = !term; el.note.hidden = !!term && !display;
       el.prompt.textContent = term ? term.prompt : ">";
-      el.output.textContent = term ? "Type a command, or use a button. Watch the model above." : "";
+      el.output.textContent = !term ? "" : display ? "This exhibit runs itself: watch the model above, each step explained here." : "Type a command, or use a button. Watch the model above.";
       el.input.value = "";
-      el.note.textContent = s.caption || "This exhibit is a panel: read it on the right. Its model is live above.";
+      el.note.textContent = s.caption || (display ? "A working display of the idea: it runs on its own. Read the story on the right." : "This exhibit is a panel: read it on the right. Its model is live above.");
       if (s.caption) el.note.hidden = false;
       fillActions(); fillInfo(e);
+      el.actions.hidden = display;
+      if (display) { steps = BL.genesisAutoplay.script(term, null, id); stepAt = 0; timer = setTimeout(tick, 1200); }
       root.hidden = false;
       document.body.classList.add("genesis-bench-open");
       report();
-      if (term && !COARSE) el.input.focus(); else el.close.focus();
+      if (term && !display && !COARSE) el.input.focus(); else el.close.focus();
       return true;
     };
     const hide = () => {
       if (!open) return;
+      stopDisplay(); display = false;
       open = false; id = term = board = null;
       root.hidden = true;
       document.body.classList.remove("genesis-bench-open");
