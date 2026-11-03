@@ -25754,7 +25754,7 @@ const genesisAtriumProof = async () => {
   }
   for (const c of GL.cubes) if (Math.hypot(c.x, c.z) > Y.ring.r - Y.ring.w / 2 - 0.8 || NL.boxes.some((o) => c.x > o.x0 - 1 && c.x < o.x1 + 1 && c.z > o.z0 - 1 && c.z < o.z1 + 1)) wb.push(`essay cube ${c.k} is not on open floor inside the ring`);
   if (!GD || GD.essays.length !== 12 || GD.essays.some((e) => e.text.length < 10 || !e.accent) || GD.sections.length < 20) wb.push("the guide's essays or resources are missing");
-  const boards = [...GD.essays.map((e, i) => BG.BOARDS.essay(GD, i)), ...["library", "books", "videos", "news", "dice", "passphrase", "paths"].map((k) => BG.BOARDS[k](GD)), BG.BOARDS.guide(GD, "coldStorage"), BG.BOARDS.guide(GD, "airGapped")];
+  const boards = [...GD.essays.map((e, i) => BG.BOARDS.essay(GD, i)), ...["library", "books", "videos", "news", "dice", "passphrase", "paths", "live"].map((k) => BG.BOARDS[k](GD)), ...GD.sections.map((_, i) => BG.BOARDS.section(GD, i)), BG.BOARDS.guide(GD, "coldStorage"), BG.BOARDS.guide(GD, "airGapped")];
   for (const b of boards) if (!b.pages.length || b.pages.some((pg) => !pg.title || !pg.text.length || (pg.links || []).some((l) => !/^https:\/\//.test(l.href)))) wb.push(`the guide's board ${b.room} has an empty page or a link that is not https`);
   // The Oogas' campfire and its totem poles stand on open floor, clear of everything above and off the paths.
   const CF = BLc.genesisCampfire.layout();

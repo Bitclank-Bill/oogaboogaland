@@ -85,11 +85,13 @@
       addChild(sg, createNode({ geometry: lab.back, sightHidden: true }), createNode({ geometry: lab.face, sightHidden: true }));
       addChild(root, sg);
       const P = (x, z) => ({ x: cell.x + x * (cell.flip ? -1 : 1), z: cell.z + z });
-      const prop = (parts, x, z) => { const q = P(x, z); for (const g of parts) glow.push(M.moved(g, q.x, 0, q.z)); };
+      const prop = (parts, x, z, into = glow) => { const q = P(x, z); for (const g of parts) into.push(M.moved(g, q.x, 0, q.z)); };
+      let head = null;
       if (h.prop === "head") {
         // A giant Ooga's head over the tunnel, its face toward the tee: heavy brow, glowing eyes, a broad nose, a beard
         // round the open mouth (teeth over the gap the ball rolls through) and a bone through its hair.
         const f = cell.flip ? 1 : -1, SKIN = "#c98a5a", HAIR = "#3a2414", fx = (x) => x * -f;
+        const hp = [];
         prop([
           M.bevelBox({ w: 2.6, h: 3.0, d: 4.4, color: SKIN, emissive: 0.3, bevel: 0.45, offset: { x: 0, y: 2.2, z: 0 } }),
           M.bevelBox({ w: 2.9, h: 1.2, d: 4.7, color: HAIR, emissive: 0.15, bevel: 0.35, offset: { x: fx(-0.1), y: 3.9, z: 0 } }),
@@ -101,7 +103,10 @@
           ...[-0.3, -0.1, 0.1, 0.3].map((z) => M.box({ w: 0.12, h: 0.16, d: 0.14, color: "#fff7e0", emissive: 0.8, offset: { x: fx(1.62), y: 0.62, z } })),
           M.box({ w: 0.24, h: 0.24, d: 3.2, color: "#f4efe4", emissive: 0.7, offset: { x: 0, y: 4.55, z: 0 } }),
           ...[-1.65, 1.65].map((z) => M.bevelBox({ w: 0.42, h: 0.5, d: 0.42, color: "#f4efe4", emissive: 0.7, bevel: 0.12, offset: { x: 0, y: 4.55, z } }))
-        ], 0, 0);
+        ], 0, 0, hp);
+        // Its own node, so it steps aside while its hole is played and the tunnel can be seen.
+        head = createNode({ geometry: M.merge(...hp), sightHidden: true });
+        addChild(root, head);
       } else if (h.prop === "pyramid") {
         const steps = []; for (let k = 0; k < 4; k++) steps.push(M.box({ w: 3.4 - k * 0.8, h: 0.5, d: 3.4 - k * 0.8, color: NEON[k], emissive: 0.9, offset: { x: 0, y: 0.25 + k * 0.5, z: 0 } }));
         steps.push(M.box({ w: 0.6, h: 0.6, d: 0.6, color: "#ffffff", emissive: 1.6, offset: { x: 0, y: 2.3, z: 0 } }));
@@ -133,7 +138,7 @@
         bar = createNode({ geometry: M.merge(M.box({ w: c.bar.len, h: 0.26, d: 0.18, color: "#ff4fd8", emissive: 1.6, offset: { x: 0, y: 0.13, z: 0 } }), M.box({ w: 0.4, h: 0.5, d: 0.4, color: "#ffd23a", emissive: 1.6, offset: { x: 0, y: 0.25, z: 0 } })), position: { x: c.bar.x, y: 0, z: c.bar.z }, sightHidden: true });
         addChild(root, bar);
       }
-      holes.push({ c, bar });
+      holes.push({ c, bar, head });
     }
     addChild(root, createNode({ geometry: M.merge(...solid), sightHidden: true }), createNode({ geometry: M.merge(...glow), sightHidden: true }));
     // The fountains' jets, the volcano's smoke and the Oogas' bamboo airship drifting round under the roof.
@@ -160,7 +165,7 @@
   // The game, driven by the scene: `start(i)` at a tee, keys, update and the overlay.
   const controller = (B, host) => {
     const GC = G(), C = GC.CAVERN, ball = GC.createBall(), scores = new Int8Array(9);
-    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, t: 0, meter: 0, wait: 0, played: 0 };
+    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, t: 0, meter: 0, wait: 0, played: 0, via: 0, sink: -1 };
     const local = { x: 0, z: 0 };
     const world = (x, z, out) => { out.x = C.x + x; out.z = C.z + z; return out; };
     const at = { x: 0, z: 0 }, cam = { x: 0, z: 0 };
@@ -169,16 +174,45 @@
       world(ball.x - c * 0.95 + s * 0.15, ball.z + s * 0.95 + c * 0.15, at);
       host.standAt(at.x, at.z, st.aim);
     };
-    const toAim = () => { st.mode = "aim"; st.charging = false; st.power = 0; standBeside(); };
+    // Ready for the next stroke, aimed at the cup (or the hole's next turn, while it has one ahead).
+    const aimAhead = (c) => {
+      while (st.via < c.via.length && Math.hypot(ball.x - c.via[st.via].x, ball.z - c.via[st.via].z) < 1.8) st.via++;
+      const tgt = st.via < c.via.length ? c.via[st.via] : c.cup;
+      st.aim = Math.atan2(tgt.x - ball.x, tgt.z - ball.z);
+    };
+    const toAim = () => { st.mode = "aim"; st.charging = false; st.power = 0; if (st.hole >= 0) aimAhead(B.holes[st.hole].c); standBeside(); };
     const start = (i) => {
       const c = B.holes[i].c;
       st.hole = i; GC.placeAt(ball, c);
-      st.aim = Math.atan2(c.cup.x - c.tee.x, c.cup.z - c.tee.z);
-      if (c.via.length) st.aim = Math.atan2(c.via[0].x - c.tee.x, c.via[0].z - c.tee.z);
-      B.ballNode.visible = true; host.hold(true); toAim();
+      st.via = 0; st.sink = -1;
+      B.ballNode.visible = true; B.ballNode.scale.x = B.ballNode.scale.y = B.ballNode.scale.z = 1; host.hold(true); toAim();
       host.say(`Hole ${i + 1}: ${c.hole.name}. Par ${c.hole.par}.`);
     };
     const stop = () => { if (st.mode === "walk") return; st.mode = "walk"; for (const d of B.dots) d.visible = false; host.hold(false); };
+    const dispose = () => { stop(); sfx.close(); };
+    // The ball's sounds, made as they play: the putter's tock, and the cup's rattle and knock as the ball drops in. One
+    // context, made on the first stroke (a key press, so the browser allows it), on the page-wide mute, closed by stop.
+    const sfx = (() => {
+      let ctx = null, out = null;
+      const ready = () => {
+        if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; ctx = new AC(); out = BL.sound ? BL.sound.output(ctx) : ctx.destination; }
+        if (ctx.state === "suspended") ctx.resume();
+        return ctx;
+      };
+      const knock = (t, f, len, vol) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = "triangle"; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.6, t + len); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len); o.connect(g); g.connect(out); o.start(t); o.stop(t + len + 0.02); };
+      const rattle = (t, len, vol) => {
+        const n = Math.floor(ctx.sampleRate * len), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+        const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+        src.buffer = buf; bp.type = "bandpass"; bp.frequency.value = 2600; bp.Q.value = 4; g.gain.value = vol;
+        src.connect(bp); bp.connect(g); g.connect(out); src.start(t);
+      };
+      return {
+        putt: (p) => { if (!ready()) return; const t = ctx.currentTime; knock(t, 900, 0.08, 0.25 + p * 0.3); },
+        cup: () => { if (!ready()) return; const t = ctx.currentTime; rattle(t, 0.12, 0.5); knock(t + 0.05, 420, 0.12, 0.4); knock(t + 0.16, 300, 0.1, 0.3); knock(t + 0.24, 240, 0.08, 0.2); },
+        close: () => { if (ctx) { ctx.close(); ctx = null; out = null; } }
+      };
+    })();
     const key = (e) => {
       if (st.mode === "walk") return false;
       const k = e.key;
@@ -188,7 +222,7 @@
       else if (k === "ArrowRight" || k === "d" || k === "D") st.aim -= 0.06;
       else if (k === " " || k === "Enter") {
         if (!st.charging) { st.charging = true; st.meter = 0; }
-        else { st.charging = false; GC.putt(ball, st.aim, st.power); st.mode = "roll"; host.sound && host.sound("putt"); }
+        else { st.charging = false; GC.putt(ball, st.aim, st.power); st.mode = "roll"; sfx.putt(st.power); }
       } else return false;
       standBeside();
       return true;
@@ -196,7 +230,7 @@
     const turn = (dx) => { if (st.mode === "aim") { st.aim -= dx * 0.006; standBeside(); } };
     const update = (dt, camera) => {
       st.t += dt;
-      for (const h of B.holes) if (h.bar) h.bar.rotation.y = -st.t * h.c.bar.w;
+      for (let i = 0; i < B.holes.length; i++) { const h = B.holes[i]; if (h.bar) h.bar.rotation.y = -st.t * h.c.bar.w; if (h.head) h.head.visible = !(st.mode !== "walk" && st.hole === i); }
       for (const j of B.jets) { const hgt = 0.9 + 0.35 * Math.sin(st.t * 3 + j.k * 2); j.n.scale.y = hgt + (j.k === 1 ? 0.5 : 0); j.n.position.y = j.n.scale.y / 2; }
       for (const m of B.smoke) { const k = (st.t * 0.25 + m.k / B.smoke.length) % 1; m.n.position.y = 2.5 + k * 4; m.n.position.x = B.volcano.x + Math.sin(st.t * 0.5 + m.k) * k * 0.8; m.n.position.z = B.volcano.z + k * 0.6; const sc = 0.6 + k * 1.8; m.n.scale.x = m.n.scale.y = m.n.scale.z = sc; m.n.visible = k < 0.95; }
       { const a = st.t * 0.05, r = 17; B.airship.position.x = Math.sin(a) * r; B.airship.position.z = Math.cos(a) * r * 0.6; B.airship.position.y = 6.6 + Math.sin(st.t * 0.4) * 0.25; B.airship.rotation.y = Math.atan2(Math.cos(a) * r, -Math.sin(a) * r * 0.6) - Math.PI / 2; }
@@ -207,7 +241,7 @@
         GC.step(ball, c, st.t, dt);
         if (!ball.moving) {
           if (ball.sunk) {
-            scores[st.hole] = ball.strokes; st.mode = "done"; st.wait = 1.8; st.played++;
+            scores[st.hole] = ball.strokes; st.mode = "done"; st.wait = 1.8; st.played++; st.sink = 0; sfx.cup();
             const d = ball.strokes - c.hole.par;
             host.say(ball.strokes === 1 ? "HOLE IN ONE!" : d <= -2 ? "Eagle!" : d === -1 ? "Birdie!" : d === 0 ? "Par." : d === 1 ? "Bogey." : `${ball.strokes} strokes.`);
           } else if (ball.strokes >= c.hole.par + 4) { scores[st.hole] = ball.strokes + 1; st.mode = "done"; st.wait = 1.2; host.say("Picked up. On to the next!"); }
@@ -219,6 +253,8 @@
         else { const total = scores.reduce((a, b) => a + b, 0); host.say(`Round over: ${total} strokes, par ${GC.totalPar}.`); B.ballNode.visible = false; stop(); }
       }
       B.ballNode.position.x = ball.x; B.ballNode.position.z = ball.z; B.ballNode.position.y = 0.02;
+      // Sunk: the ball drops into the cup and is gone.
+      if (st.sink >= 0) { st.sink += dt; const k = Math.min(1, st.sink / 0.35); B.ballNode.position.y = 0.02 - k * 0.2; const sc = 1 - k * 0.6; B.ballNode.scale.x = B.ballNode.scale.y = B.ballNode.scale.z = sc; B.ballNode.visible = k < 1; }
       // The aiming dots, longer as the swing grows.
       const show = st.mode === "aim", len = 0.6 + (st.charging ? st.power : 0.3) * 3;
       for (let k = 0; k < B.dots.length; k++) { const d = B.dots[k], f = (k + 1) / B.dots.length * len; d.visible = show; d.position.x = ball.x + Math.sin(st.aim) * f; d.position.z = ball.z + Math.cos(st.aim) * f; d.position.y = 0.05; }
@@ -256,7 +292,7 @@
       g.restore();
       void tot; void local;
     };
-    return { start, stop, key, turn, update, overlay, get active() { return st.mode !== "walk"; }, get mode() { return st.mode; }, get hole() { return st.hole; }, ball, scores };
+    return { start, stop, dispose, key, turn, update, overlay, get active() { return st.mode !== "walk"; }, get mode() { return st.mode; }, get hole() { return st.hole; }, ball, scores };
   };
   BL.genesisGolf = { build, controller };
 })();

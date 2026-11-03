@@ -62,9 +62,9 @@
   ];
   const HEX = "0123456789abcdef";
 
-  // ---- The shrine's screen: a four-sided board hung high over the statue, turning slowly, each face a live reading
-  // of the real network from the page's own chain feed (chain.js: mempool.space and the price socket), with how fresh
-  // it is. Each face shows one page and they move round every CYCLE seconds, so every page passes every side.
+  // ---- The live readings of the real network from the page's own chain feed (chain.js: mempool.space and the price
+  // socket), each with how fresh it is, a page at a time: the Bitcoin Guide hall's live screen paints them
+  // (genesis-bitcoin-guide.js), PAGE_S seconds each.
   const SCREEN = { w: 5.2, h: 2.92, y: 11.6, x: 0, z: -15, CYCLE: 9 };
   const HALVING = 210000;
   const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
@@ -102,7 +102,7 @@
   };
   const keyScreen = (page) => { const c = BL.chain && BL.chain.snapshot, r = c ? page.read(c) : null; return `${page.id}|${r ? r.join("|") : "-"}|${c && c.live}`; };
 
-  const build = ({ M, createNode, addChild, place, top, statue, roof }) => {
+  const build = ({ M, createNode, addChild, place, top }) => {
     const L = layout();
     const root = place(createNode({ position: { x: 0, y: top, z: 0 } }));
     // ---- The towers: a dark case on a plinth, rows of blinking lights, a screen, the lamp on top and the chain's
@@ -192,7 +192,7 @@
     const displays = L.displays.map((d) => {
       const canvas = document.createElement("canvas"); canvas.width = DW; canvas.height = DH;
       const w = SHOW.w, h = SHOW.d;
-      const face = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+      const face = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.9 }], lines: [], castShadow: false };
       face.imageSurface = { canvas, version: 1, rect: [-w / 2, -h / 2, w, h] };
       const frame = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.ry, z: 0 }, sightHidden: true });
       const edge = createNode({ geometry: M.merge(
@@ -258,34 +258,6 @@
       if (k === d.key) return;
       d.key = k; PAINT[d.id](d.canvas.getContext("2d")); d.face.imageSurface.version++;
     };
-    // The hanging screen over the statue: four canvas faces round a dark frame, cables up to the roof.
-    const SW = 960, SH = 540, sw = SCREEN.w, sh = SCREEN.h;
-    const hang = place(createNode({ position: { x: SCREEN.x, y: top + SCREEN.y, z: SCREEN.z } }));
-    const cone = M.lathe({ profile: [[0, 0], [0.9, 0], [0.5, -0.5], [0, -0.7]], segments: 16, color: "#f7931a", emissive: 0.9 });
-    addChild(hang, createNode({ geometry: M.merge(
-      M.box({ w: sw + 0.3, h: sh + 0.3, d: sw + 0.3, color: "#101317" }),
-      M.box({ w: sw + 0.5, h: 0.12, d: sw + 0.5, color: "#ffd23a", emissive: 1.2, offset: { x: 0, y: sh / 2 + 0.2, z: 0 } }),
-      M.box({ w: sw + 0.5, h: 0.12, d: sw + 0.5, color: "#ffd23a", emissive: 1.2, offset: { x: 0, y: -sh / 2 - 0.2, z: 0 } }),
-      M.moved(cone, 0, -sh / 2 - 0.26, 0)) }));
-    const rise = Math.max(0.5, roof - top - SCREEN.y - sh / 2 - 0.3);
-    addChild(hang, createNode({ geometry: M.merge(...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => M.box({ w: 0.05, h: rise, d: 0.05, color: "#3a3f48", offset: { x: a * sw * 0.4, y: sh / 2 + 0.3 + rise / 2, z: b * sw * 0.4 } }))) }));
-    const faces = [0, 1, 2, 3].map((i) => {
-      const canvas = document.createElement("canvas"); canvas.width = SW; canvas.height = SH;
-      const face = { verts: [-sw / 2, -sh / 2, 0, sw / 2, -sh / 2, 0, sw / 2, sh / 2, 0, -sw / 2, sh / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
-      face.imageSurface = { canvas, version: 1, rect: [-sw / 2, -sh / 2, sw, sh] };
-      const a = i * Math.PI / 2;
-      addChild(hang, createNode({ geometry: face, position: { x: Math.sin(a) * (sw / 2 + 0.16), y: 0, z: Math.cos(a) * (sw / 2 + 0.16) }, rotation: { x: 0, y: a, z: 0 } }));
-      return { canvas, face, key: "" };
-    });
-    const screen = { cycle: 0, t: 0, next: 0, wait: 0 };
-    const paintFaces = (dt) => {
-      if ((screen.wait -= dt) > 0) return;
-      screen.wait = 0.25;
-      const i = screen.next; screen.next = (screen.next + 1) % 4;
-      const page = SCREEN_PAGES[(i + screen.cycle) % SCREEN_PAGES.length], f = faces[i], k = keyScreen(page);
-      if (k === f.key) return;
-      f.key = k; paintScreen(f.canvas.getContext("2d"), SW, SH, page); f.face.imageSurface.version++;
-    };
     const update = (dt, calm) => {
       const s = calm ? 0.35 : 1;
       st.t += dt;
@@ -338,11 +310,9 @@
       }
       for (const d of displays) d.edge.glow = 0.8 + Math.sin(st.t * 2 + d.id.length) * 0.3;
       paint(dt);
-      if (!calm) hang.rotation.y += dt * 0.06;
-      if ((screen.t += dt) >= SCREEN.CYCLE) { screen.t = 0; screen.cycle = (screen.cycle + 1) % SCREEN_PAGES.length; }
-      paintFaces(dt);
+
     };
     return { root, update, net, layout: L, displays };
   };
-  BL.genesisNetwork = { layout, build, PAGES, MINING_PAGES, RESOURCES, SCREEN_PAGES, SCREEN };
+  BL.genesisNetwork = { layout, build, PAGES, MINING_PAGES, RESOURCES, SCREEN_PAGES, SCREEN, paintScreen, keyScreen };
 })();
