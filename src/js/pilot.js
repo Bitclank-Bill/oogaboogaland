@@ -578,7 +578,7 @@
       if (externalControl && !disposed) return;
       carryCursor.endAim();
       if (disposed) retireAimLock();
-      if (!disposed && armed()) hud.hint(crew.weaponsEnabled ? "Click the island to hide the cursor and aim · 1 melee · 2 AK · scroll to change view" : "Click the island for mouse look · X for click-and-drag look · scroll to change view");
+      if (!disposed && armed()) hud.hint("Mouse capture unavailable");
     };
     const lockAim = () => {
       if (externalControl || menuOpen || coarse || disposed || !armed()) return;
@@ -2019,8 +2019,6 @@
         crew.toggleWeapon(cave);
         syncAim();
         if (armed() && cave.weapon.equipped) lockAim();
-        if (cave.weapon.equipped) hud.hint(armed() ? "Left-click bursts · F rifle strike · zoom: tap one shot, hold for auto · 1 melee · 2 AK · scroll to change view · Space reloads or jumps / jetpacks" : "AK equipped · X for combat · right-click or scroll to change view · 1 melee · Space reloads beside the pile or jumps / jetpacks");
-        else hud.hint(armed() ? "Hold left-click to raise the club · release to strike · allow 0.2s between swings for full power · 2 AK · scroll to change view · X to carry" : "Club equipped · X for combat · right-click or scroll to change view · 2 AK");
       } else if (action === "weapon-fire") {
         if (cave.weapon.primaryEquipped) crew.swingWeapon(cave, false, ads);
         else if (!(held ? crew.setWeaponTrigger(true, ads) : crew.fireWeapon(cave, null, ads ? 1 : undefined)) && cave.weapon.equipped && !cave.weapon.unlimited && !cave.weapon.ammo) hud.hint("Empty magazine · press Space within reach of the pile to reload");
@@ -2032,7 +2030,6 @@
         if (!crew.swapMagazine(cave) && !crew.hasMagazine(cave)) hud.hint("Find a spare magazine · Space reloads the AK and both spares beside the pile");
       } else return false;
       syncWeaponHud();
-      if (ctx.reloadAnywhere) hud.hint("1 melee · 2 AK · X carry / combat · right-click changes view / aims · F rifle strike · V fire · R reload · Space use / reload / jump");
       return true;
     };
     const weaponMode = (slot) => {
@@ -2046,8 +2043,6 @@
       syncAim();
       if (armed()) lockAim();
       syncWeaponHud();
-      hud.hint(armed() ? slot === 1 ? "Hold left-click to raise the club · release to strike · allow 0.2s between hits for full power · 2 AK · scroll to change view · X to carry" : "Left-click bursts · F rifle strike · zoom: tap one shot, hold for auto · 1 melee · scroll to change view · X to carry · Space reloads beside the pile" : "1 melee · 2 AK · X for combat · right-click or scroll to change view · Space reloads beside the pile or jumps / jetpacks");
-      if (ctx.reloadAnywhere) hud.hint("1 melee · 2 AK · X carry / combat · right-click changes view / aims · F rifle strike · V fire · R reload · Space use / reload / jump");
       return true;
     };
     // Wheel and right-click choose a camera while X owns carry/combat intent.
@@ -2146,7 +2141,7 @@
     const modeAction = (action) => {
       const cave = player();
       if (firstOnly && cave) {
-        hud.hint(coarse ? "First person only in here · stick walks, drag looks" : "First person only in here · W A S D walk, mouse looks");
+        hud.hint("First person only in here");
         return true;
       }
       if (action === "mode-retake") {
@@ -2306,10 +2301,7 @@
       syncWeaponHud();
       hud.tooltip.hide();
       fx.say(cave, crew.sleeping ? "zzz..." : "Ooga? Me?", 1.6);
-      if (crew.sleeping) hud.hint(coarse ? "Tap WAKE UP! to get up" : cave.bedroll.sleep ? "Space wakes up · WASD changes sleeping pose" : "Space wakes up · Escape leaves them sleeping");
-      else if (cave.jet && cave.jetRecovering) hud.hint("Jetpack recharges on the ground · restart above 20% fuel");
-      else if (cave.jet) hud.hint(coarse ? "Left stick flies · pinch in for first person · hold Blast off to climb" : "WASD flies · scroll in for first person · hold Space to climb · Escape to let go");
-      else hud.hint(coarse ? "Left stick walks · pinch in for first person · JUMP! jumps or uses a nearby control" : "WASD walks · right-click to aim · scroll to change view · Space to jump or use a nearby control");
+      if (cave.jet && cave.jetRecovering) hud.hint("Jetpack recharges on the ground · restart above 20% fuel");
       syncModeHud();
       handoff.begin(incoming);
       targetWait = assistedTargetWait = 0;
@@ -4045,18 +4037,19 @@
       if (cave) {
         if (!touch) rows.push(H.row(["shiftleft"], "Run"));
         rows.push(H.row(touch ? [] : [" "], hud.el.act.textContent.trim() || "Jump / use nearby object", touch ? "Action button" : ""));
-        if (!firstOnly && !ctx.combatOnly?.() && weaponViewReady(cave)) add("view", "Toggle combat mouse-look", "View button");
+        if (!firstOnly && !ctx.combatOnly?.() && weaponViewReady(cave)) add("view", "Toggle view control", "View button");
+        if (!touch && !firstOnly && weaponViewReady(cave)) rows.push(H.row([], armed() ? "Zoom / aim" : "Zoom / change view", armed() ? "Hold right mouse click" : "Right mouse click"));
         if (!touch && armed() && shoulderView && !closeWanted) rows.push(H.row(["shiftright"], "Tap to swap shoulder · hold with A/D to peek"));
         if (!touch && birdsEye()) add("north", "Face north", "");
         if (crew.weaponsEnabled && !cave.grabbedBy && !crew.sleeping && (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode && (cave.weapon.primaryOwned || cave.weapon.secondaryOwned)) {
           if (touch || shortcuts.includes("weapon")) rows.push(H.row(touch ? [] : BL.controls.shortcutKeys("weapon").filter(key => key === "1" ? cave.weapon.primaryOwned : cave.weapon.secondaryOwned), "Select owned weapon", touch ? "Weapon buttons" : ""));
-          if (touch || shortcuts.includes("attack")) add("attack", "Attack", "Attack button");
+          if (touch || shortcuts.includes("attack") || armed()) rows.push(H.row(touch || !shortcuts.includes("attack") ? [] : BL.controls.shortcutKeys("attack"), "Hit / shoot", touch ? "Attack button" : armed() ? "Left mouse click" : "Left click in view control"));
           if (!touch && shortcuts.includes("swapWeapon")) add("swapWeapon", "Swap weapon", "Weapon buttons");
           if (cave.weapon.equipped) {
             add("reload", ctx.reloadAnywhere ? "Reload" : "Swap magazine", "Magazine button");
             if (armed()) add("bash", "Rifle bash", "Attack button");
           }
-          if (!touch && armed()) rows.push(H.row([], "Attack / aim", "Left / right mouse"), H.row(["tab"], "Release the mouse cursor"));
+          if (!touch && armed()) rows.push(H.row(["tab"], "Release the mouse cursor"));
         }
       } else rows.push(H.row([], "Take control of an Ooga", touch ? "Double-tap Ooga" : "Double-click Ooga"));
       if (!touch) add("resetView", "Reset camera", "View button");

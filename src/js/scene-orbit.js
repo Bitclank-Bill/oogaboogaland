@@ -118,7 +118,7 @@
   // REEL holds where the sky hook reels the flight from (x0,y0,z0) and to (x1,y1,z1).
   const REEL = { x0: 0, y0: 0, z0: 0, x1: 0, y1: 0, z1: 0 };
   let orbited = false, spaceCalled = false, stagesDropped = 0, chuteCalled = false, warnAt = 0, flipAt = 0, leanHinted = false, result = null, failure = null, score = 0;
-  let stateTimer = 0, hintTimer = 0;
+  let stateTimer = 0;
   let scoreTicket = null, unwatchScores = null;
   const placed = [];
   const debris = [];
@@ -594,7 +594,6 @@
     hud.el.act.hidden = !COARSE;
     hud.setAct("Release!");
     hud.setSubtitle("Ooga Orbit · counting down");
-    window.clearTimeout(hintTimer);
     hud.hint("", 0);
     cam.warm = false;
     cam.offset = cam.tilt = 0;
@@ -2028,7 +2027,6 @@
       for (const c of contributors.roster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
       fx.trimPool();
     }, 6e4);
-    hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Stack a rocket, then Launch!" : "Stack a rocket, then Launch! (Enter)"), 1200);
     Object.assign(orbitScene, {
       root, camera, input,
       debug: {
@@ -2103,7 +2101,6 @@
   const leave = () => {
     unwatchScores?.(); unwatchScores = null; scoreTicket = null;
     window.clearInterval(stateTimer);
-    window.clearTimeout(hintTimer);
     window.removeEventListener("pointerdown", onGesture);
     window.removeEventListener("keydown", onGesture);
     audio.dispose();

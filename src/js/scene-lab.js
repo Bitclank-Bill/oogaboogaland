@@ -61,7 +61,7 @@
 
   // One visit's state: made in enter(), dropped in leave().
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, lab, hud, hooks, input, pilot, fx, pile, crew, crates, pulseNodes, agent, agentPlay;
-  let stateTimer = 0, hintTimer = 0, unsubscribeActivity = null, dust = null, remotes = null, footsteps = null;
+  let stateTimer = 0, unsubscribeActivity = null, dust = null, remotes = null, footsteps = null;
   const NO_ACTORS = [];
   const propTargets = [];
   const addProp = (node, owner, opts) => {
@@ -508,7 +508,6 @@
     }
     hud.setStats(game.state);
     pile.syncPile(true);
-    hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Drag to look · pinch to zoom · sticks to fly" : "Drag to orbit · scroll to zoom · WASD to fly"), 1200);
     // The lab has no Agent until Shift+A calls one in, so a lab visit holds no
     // Agent geometry of its own.
     Object.assign(labScene, { agentView: pilot.orbit, agentControls: pilot.controls, agentHandoff: () => pilot.release(true), summonAgent });
@@ -534,7 +533,6 @@
     window.clearInterval(stateTimer);
     unsubscribeActivity();
     unsubscribeActivity = null;
-    window.clearTimeout(hintTimer);
     crates.dispose();
     pile.dispose();
     remotes.dispose();

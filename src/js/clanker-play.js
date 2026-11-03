@@ -1092,7 +1092,7 @@
         if (!isCombat()) rows.push(H.row(BL.controls.keysFor("pitchDown", "pitchUp"), "Tilt the view"));
         if (view === "birds-eye") rows.push(H.row(BL.controls.shortcutKeys("north"), "Face north"));
         if (isCombat() && view === "shoulder") rows.push(H.row(["shiftright"], "Tap to swap shoulder · hold with A/D to peek"));
-        if (!combatOnly?.() && !clankers.sleeping(player)) rows.push(H.row(BL.controls.shortcutKeys("view"), "Toggle combat mouse-look"));
+        if (!combatOnly?.() && !clankers.sleeping(player)) rows.push(H.row(BL.controls.shortcutKeys("view"), "Toggle view control"));
         rows.push(H.row(BL.controls.shortcutKeys("chest"), "Beat chest"), H.row(BL.controls.shortcutKeys("resetView"), "Reset camera"));
       }
       rows.push(H.row([], "Look around / change distance", touch ? "Drag / pinch" : "Drag / scroll"));

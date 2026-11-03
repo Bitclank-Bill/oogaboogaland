@@ -1190,8 +1190,6 @@
     o.dist = o.tDist = THIRD.dist;
     o.pitch = o.tPitch = THIRD.pitch;
   };
-  const controlsToast = () => hud.toast(COARSE ? `You are ${BL.characters.displayOf(crew.crew[0].name)} · the stick walks, WORK works on what is next to you, View looks round the cave`
-    : `You are ${BL.characters.displayOf(crew.crew[0].name)} · W A S D walk, mouse or Q E turn, Space works on what is next to you, C cracks a rock, V looks round`);
   // The overview lets the camera off the Ooga to a chamber's preset (`view`, else the chamber he
   // stands in); the stick or a step brings it back behind him.
   const setOverview = (on, view) => {
@@ -1592,7 +1590,6 @@
     mhud.setSection("run");
     audio.activate();
     showAct(true);
-    controlsToast();
   };
 
   const onAction = (action) => {
@@ -2194,7 +2191,6 @@
     paidShown = Math.floor(s.minedSats / 1e6);
     halvingDim = 0;
     halvingShown = -1;
-    if (phase === "run") controlsToast();
     // Tapping an Ooga takes him over.
     for (const op of crew.crew) for (const key of ["torso", "head"]) target(op.cave.parts[key], { kind: "ooga", id: op.index });
 

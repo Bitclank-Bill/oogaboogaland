@@ -21185,8 +21185,6 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   const until = (cond, ms) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const t0 = performance.now(); const tick = () => { const ok = !!(${cond}); if (ok || performance.now() - t0 > ${ms}) resolve(ok); else requestAnimationFrame(tick); }; tick(); })`);
   const rendered = (frames, ms = 6000) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const start = B.renderedFrames; const t0 = performance.now(); const tick = () => { if (B.renderedFrames >= start + ${frames} || performance.now() - t0 > ${ms}) resolve(B.renderedFrames - start); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   const settled = (ms = 4000) => until("window.BL.scene.tweenCount() === 0", ms);
-  // Every scene writes its hint 1.2 s after entering; the first snapshot must already count that text node.
-  await until(`document.getElementById("hint").textContent`, 3000);
   // Later visits can expose a different attract frame or an Ooga that was behind scenery at baseline.
   // Upload only the retained hub's existing finite frames and character meshes, without building new models,
   // changing visibility or replacing any resource. Subsequent growth is still measured by the same bounds.

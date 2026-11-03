@@ -104,7 +104,7 @@
   let phase = "board", jumpOpenUntil = 0, callStage = 0, markNear = 0, accumulator = 0, sceneTime = 0, flightTime = 0, landedAt = 0, score = 0, ringsHit = 0, pulled = false, jumpOpen = false, result = null;
   // The pull altitude and the sink at touchdown, for the bonuses they earn.
   let pullAlt = 0, landSink = 0, life = null;
-  let stateTimer = 0, hintTimer = 0;
+  let stateTimer = 0;
   let scoreTicket = null, unwatchScores = null;
   const placed = [];
   const clouds = [];
@@ -329,7 +329,6 @@
     hud.el.act.hidden = !COARSE;
     hud.setAct("Jump!");
     hud.setSubtitle("Ooga Drop · climbing");
-    window.clearTimeout(hintTimer);
     hud.hint("", 0);
     dhud.notice(COARSE ? "hold Jump! to hurry the climb" : "hold Space to hurry the climb", 2600);
     fx.say(diver.cave, "Ooga fly!", 1.6);
@@ -991,10 +990,6 @@
       for (const c of contributors.activeRoster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
       fx.trimPool();
     }, 6e4);
-    hintTimer = window.setTimeout(() => {
-      const pick = ownDiver() ? "" : "Pick an Ooga, then ";
-      hud.hint(COARSE ? `${pick}Fly!` : `${pick}Fly! (Enter)`);
-    }, 1200);
     Object.assign(dropScene, {
       root, camera, input,
       debug: {
@@ -1081,7 +1076,6 @@
   const leave = () => {
     unwatchScores?.(); unwatchScores = null; scoreTicket = null;
     window.clearInterval(stateTimer);
-    window.clearTimeout(hintTimer);
     window.removeEventListener("pointerdown", onGesture);
     window.removeEventListener("keydown", onGesture);
     audio.dispose();

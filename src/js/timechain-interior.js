@@ -549,7 +549,7 @@
       if (mode.textContent !== text) mode.textContent = text;
     };
     showMode();
-    hud.hint(guide.stage ? `Entering ${room.name}` : COARSE ? "Stick walks · pinch changes view · EXIT by the doors leaves" : "W A S D walk · scroll changes view · X mouse-look · Space at Exit leaves", 5000);
+    if (guide.stage) hud.hint(`Entering ${room.name}`, 5000);
 
     // The guided walks, steered as a held stick would steer them; the view turns with the walk, its pitch easing to
     // `pitch` (level on the way out, so the island's view, hung level, lines up).
@@ -574,7 +574,6 @@
       guided = false;
       people.steer(0, 0, 0, 0, 0);
       pilot.setActive(true);
-      hud.hint(COARSE ? "Stick walks · pinch changes view · EXIT by the doors leaves" : "W A S D walk · scroll changes view · X mouse-look · Space at Exit leaves", 5000);
     };
     const runGuide = (dt) => {
       guide.t += dt;

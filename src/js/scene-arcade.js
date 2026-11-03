@@ -2069,7 +2069,6 @@
         people.selectWeapon(0, avatar);
         avatar.weapon.aiming = false;
       }
-      hud.hint(COARSE ? "Stick walks · PLAY at a game" : "W A S D walk · mouse or Q E turn · Space plays what is next to you", 6000);
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
     unsubscribeAccount = BL.net.subscribe(accountChanged);

@@ -66,7 +66,7 @@
   let home = "hub";
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, hud, rhud, hooks, input, fx, controls, track, racers, items, audio, weather, agent;
   let phase = "garage", countdown = 0, accumulator = 0, sceneTime = 0, finishedAt = 0;
-  let stateTimer = 0, hintTimer = 0, unsubscribeAccount = null;
+  let stateTimer = 0, unsubscribeAccount = null;
   let scoreTicket = null, unwatchScores = null;
   // revAt is the countdown time the throttle was first held through; -1 while it is off.
   let revAt = -1, crowdSwell = 0, driftTaught = 0;
@@ -211,7 +211,6 @@
   const startRace = () => {
     if (!racers.racers.length) return;
     scoreTicket = BL.highscores?.begin("race") || null;
-    window.clearTimeout(hintTimer);
     hud.hideHint();
     placeRacers();
     phase = "countdown";
@@ -877,10 +876,6 @@
       for (const cave of contributors.activeRoster) hud.setRosterRow(cave.name, contributors.stateFor(cave), contributors.ageLabel(cave));
       fx.trimPool();
     }, 6e4);
-    hintTimer = window.setTimeout(() => {
-      const pick = ownRacer() ? "a ride and a track" : "an Ooga, a ride and a track";
-      hud.hint(COARSE ? `Tap ${pick}, then Race!` : `Pick ${pick}, then Race! (Enter)`);
-    }, 1200);
     window.addEventListener("blur", onBlur, { signal: ctx.signal });
     unsubscribeAccount = BL.net.subscribe(accountChanged);
     Object.assign(raceScene, {
@@ -930,7 +925,6 @@
   const leave = () => {
     unwatchScores?.(); unwatchScores = null; scoreTicket = null;
     window.clearInterval(stateTimer);
-    window.clearTimeout(hintTimer);
     window.removeEventListener("blur", onBlur);
     unsubscribeAccount();
     unsubscribeAccount = null;
