@@ -187,46 +187,47 @@
     for (const u of [u0 - 0.02, u1 - 0.02]) parts.push(wallBox(axis, face, dir, u, 0.04, 0, top, 0.3, 0.34, RIB.edge));
   };
 
-  // The chamber: a floor of stone tiles, craggy walls of stacked blocks leaning in as they rise, a vault of slabs, and
-  // behind it all a dark backing, so the sky the launch tunnel lets in never shows between two blocks. The back wall
-  // leaves the tunnel's mouth open, the front the door's over the landing.
+  // The chamber: a floor of graphite tiles; walls of the kit's panels standing straight up, ribs out of the side walls
+  // on the gantries' lines and a surround framing the launch tunnel's mouth in the back wall and round the door over
+  // the landing in the front, its reveal running back to the door's arch; a vault of slabs; and behind it all a dark
+  // backing, so the sky the launch tunnel lets in never shows between two faces.
   const shell = cached(() => {
-    const { x0: X0, x1: X1, back: B, front: F, h: H } = HALL, d = LAYOUT.door, t = LAYOUT.tunnel, rand = mulberry32(5150), rock = [], vault = [];
-    const mid = (X0 + X1) / 2, span = X1 - X0;
+    const { x0: X0, x1: X1, back: B, front: F, h: H } = HALL, S = LAYOUT.shell, d = LAYOUT.door, t = LAYOUT.tunnel, rand = mulberry32(5150), floor = [], walls = [], vault = [];
+    const mid = (X0 + X1) / 2, span = X1 - X0, top = H + 1;
+    floor.push(box({ w: span, h: 0.2, d: F - B, color: PANEL.seam, offset: { x: mid, y: -0.16, z: (B + F) / 2 } }));
     for (let x = X0; x < X1; x += 4) for (let z = B; z < F; z += 4) {
-      rock.push(box({ w: 4, h: 0.4, d: 4, color: STONE[Math.floor(rand() * 4)], offset: { x: x + 2, y: -0.2 - rand() * 0.06, z: z + 2 } }));
+      const w = Math.min(4, X1 - x);
+      floor.push(box({ w: w - 0.06, h: 0.2, d: 3.94, color: FLOOR_TONES[Math.floor(rand() * 3)], offset: { x: x + w / 2, y: -0.11, z: z + 2 } }));
     }
-    // A wall of blocks from u0 to u1 along it, each set in by the lean and a little heave; `put` lays one.
-    const wall = (u0, u1, open, put) => {
-      for (let u = u0; u < u1; u += 2) for (let y = 0; y < H + 1; y += 2) {
-        if (open(u + 1, y + 1)) continue;
-        const depth = 0.4 + (y + 1) / H * 2.6 + rand() * 0.9;
-        put(u + 1, y + 1, depth, STONE[Math.floor(rand() * 4)]);
-      }
-    };
-    const block = (color, x, y, z) => rock.push(bevelBox({ w: 2.2, h: 2.2, d: 2.2, color, bevel: 0.18, offset: { x, y, z } }));
-    const none = () => false, octagon = (u, y) => Math.hypot(u, y - t.y) < t.r + 0.4;
-    wall(B, F, none, (u, y, depth, color) => block(color, X0 + depth - 1.1, y, u));
-    wall(B, F, none, (u, y, depth, color) => block(color, X1 - depth + 1.1, y, u));
-    wall(X0, X1, octagon, (u, y, depth, color) => block(color, u, y, B + depth - 1.1));
-    // The front wall leaves the door's opening, and under it the blocks of its lowest row, which would stand up over the
-    // landing across the doorway's foot (left out where they are laid, so the stones' draws stay as they were).
-    wall(X0, X1, (u, y) => Math.abs(u - d.x) < 4.3 && y > d.y - 0.5 && y < d.y + 7.8, (u, y, depth, color) => {
-      if (Math.abs(u - d.x) < 4.3 && y < d.y) return;
-      block(color, u, y, F - depth + 1.1);
-    });
+    const left = X0 + S.face, right = X1 - S.face, front = F - S.face, back = B + S.face;
+    panels(walls, rand, "x", left, 1, B, back - PANEL.d, front + PANEL.d, 0, top);
+    panels(walls, rand, "x", right, -1, B, back - PANEL.d, front + PANEL.d, 0, top);
+    for (const z of LAYOUT.gantries) rib(walls, left, 1, z, top), rib(walls, right, -1, z, top);
+    // The back wall round the tunnel's mouth, its surround's reveal running back to the tunnel's sleeve.
+    const mw = t.r + 0.4, mt = t.y + t.r;
+    panels(walls, rand, "z", back, 1, X0, left, -mw - 1, 0, top);
+    panels(walls, rand, "z", back, 1, X0, mw + 1, right, 0, top);
+    panels(walls, rand, "z", back, 1, X0, -mw - 1, mw + 1, mt + 1, top);
+    surround(walls, "z", back, 1, -mw, mw, mt, S.face);
+    // The front wall round the door, the landing standing in its surround and the surround's reveal running back to the
+    // door's arch.
+    const dw = LAYOUT.landing.w / 2 + 0.1, dt = 10;
+    panels(walls, rand, "z", front, -1, X0, left, d.x - dw - 1, 0, top);
+    panels(walls, rand, "z", front, -1, X0, d.x + dw + 1, right, 0, top);
+    panels(walls, rand, "z", front, -1, X0, d.x - dw - 1, d.x + dw + 1, dt + 1, top);
+    surround(walls, "z", front, -1, d.x - dw, d.x + dw, dt, S.face + 0.5);
     for (let x = X0; x < X1; x += 5) for (let z = B; z < F; z += 5) vault.push(box({ w: 5.4, h: 2, d: 5.4, color: STONE[Math.floor(rand() * 4)], offset: { x: x + 2.5, y: H + rand() * 1.2, z: z + 2.5 } }));
-    const back = [
-      box({ w: 1, h: H + 4, d: F - B + 4, color: STONE_DK, offset: { x: X0 - 1.2, y: H / 2, z: (B + F) / 2 } }),
-      box({ w: 1, h: H + 4, d: F - B + 4, color: STONE_DK, offset: { x: X1 + 1.2, y: H / 2, z: (B + F) / 2 } }),
-      box({ w: span + 4, h: H + 4, d: 1, color: STONE_DK, offset: { x: mid, y: H / 2, z: F + 1.6 } }),
-      box({ w: span + 4, h: 1, d: F - B + 4, color: STONE_DK, offset: { x: mid, y: H + 3, z: (B + F) / 2 } })
+    const backing = [
+      box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X0 - 1.2, y: H / 2, z: (B + F) / 2 } }),
+      box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X1 + 1.2, y: H / 2, z: (B + F) / 2 } }),
+      box({ w: span + 4, h: H + 4, d: 1, color: PANEL.seam, offset: { x: mid, y: H / 2, z: F + 1.6 } }),
+      box({ w: span + 4, h: 1, d: F - B + 4, color: PANEL.seam, offset: { x: mid, y: H + 3, z: (B + F) / 2 } })
     ];
     // The back wall's backing leaves the tunnel's mouth, in three slabs round it.
-    const mw = t.r + 0.6;
-    back.push(box({ w: -mw - X0 + 2, h: H + 4, d: 1, color: STONE_DK, offset: { x: (X0 - 2 - mw) / 2, y: H / 2, z: B - 1.6 } }), box({ w: X1 + 2 - mw, h: H + 4, d: 1, color: STONE_DK, offset: { x: (mw + X1 + 2) / 2, y: H / 2, z: B - 1.6 } }));
-    back.push(box({ w: 2 * mw, h: H + 4 - (t.y + mw), d: 1, color: STONE_DK, offset: { y: (H + 4 + t.y + mw) / 2 - 2, z: B - 1.6 } }));
-    return { rock: merge(...rock), vault: merge(...vault), backing: merge(...back) };
+    const bw = t.r + 0.6;
+    backing.push(box({ w: -bw - X0 + 2, h: H + 4, d: 1, color: PANEL.seam, offset: { x: (X0 - 2 - bw) / 2, y: H / 2, z: B - 1.6 } }), box({ w: X1 + 2 - bw, h: H + 4, d: 1, color: PANEL.seam, offset: { x: (bw + X1 + 2) / 2, y: H / 2, z: B - 1.6 } }));
+    backing.push(box({ w: 2 * bw, h: H + 4 - (t.y + bw), d: 1, color: PANEL.seam, offset: { y: (H + 4 + t.y + bw) / 2 - 2, z: B - 1.6 } }));
+    return { floor: merge(...floor), walls: noShadow(merge(...walls)), vault: merge(...vault), backing: merge(...backing) };
   });
 
   // The landing inside the door: timber planks on posts, railed down both sides and along its front but for its steps,

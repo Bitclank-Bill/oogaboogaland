@@ -836,7 +836,7 @@
     const L = LAYOUT, s = { crew: [], dimmed: 1, ambient: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), dressed = HM.dressing(), fixtures = HM.fixtures(), frames = HM.boardFrames();
     // The fixtures' glass, which an anomaly dims with the hall's lights.
     s.glass = [createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true })];
-    addChild(root, createNode({ geometry: shell.rock }), createNode({ geometry: shell.vault }), createNode({ geometry: shell.backing }),
+    addChild(root, createNode({ geometry: shell.floor }), createNode({ geometry: shell.walls }), createNode({ geometry: shell.vault }), createNode({ geometry: shell.backing }),
       createNode({ geometry: HM.landing() }), createNode({ geometry: runway.flat }),
       createNode({ geometry: tunnel.stone }),
       createNode({ geometry: HM.catwalks() }), createNode({ geometry: dressed.iron }), s.glass[0],
