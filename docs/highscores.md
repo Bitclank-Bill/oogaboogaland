@@ -105,6 +105,15 @@ localStorage scores are never uploaded after sign-in or assigned to a duplicate 
 whose identity was not stored. Fetches happen when boards are used and submissions happen
 at eligible completion, never in a per-frame loop.
 
+Cloud Hopper's timer shows the selected level's global leader, following the same time,
+achievement timestamp and username ordering as its shared top ten. Loading, unavailable,
+empty and stale replies are labeled; a failed refresh retains the last good shared result.
+Browser personal bests remain separately labeled in the selection/results panel. Only the
+selected board is watched, using the existing entry, run-start and tab-return refreshes.
+The score API carries no shared winning replay, so the timer's ghost button is disabled
+when a leader exists and absent on an empty board. It never uses a local personal ghost
+as that leader's replay. Existing personal session playback remains independent.
+
 Mine keeps its start-account eligibility across visits in the same page. Runs restored
 from localStorage after a reload remain local, since the page cannot establish who began
 them. Continuing an eligible run retains that account requirement and uses Mine's existing

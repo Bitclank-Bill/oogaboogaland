@@ -67,7 +67,15 @@
     hookChip.addEventListener("pointerdown", hookDown);
     hookChip.addEventListener("pointerup", hookUp);
     hookChip.addEventListener("pointercancel", hookUp);
-    const ghost = node("p", "cloud-hopper-help", "Finish a run to set your ghost");
+    const record = node("p", "cloud-hopper-help cloud-hopper-record"), recordText = node("span", "cloud-hopper-record-text");
+    const recordGhost = node("button", "cloud-hopper-record-ghost");
+    recordGhost.type = "button"; recordGhost.disabled = true; recordGhost.hidden = true;
+    recordGhost.setAttribute("aria-pressed", "false");
+    recordGhost.setAttribute("aria-label", "Show global record ghost · winning replay unavailable");
+    recordGhost.title = "Winning replay unavailable";
+    recordGhost.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 22V10C3 4 6.5 1 12 1s9 3 9 9v12l-3-2.5-3 2.5-3-2.5-3 2.5-3-2.5Z"/>'
+      + '<ellipse cx="9" cy="10" rx="1.2" ry="1.9" fill="#17232e"/><ellipse cx="15" cy="10" rx="1.2" ry="1.9" fill="#17232e"/></svg>';
+    record.setAttribute("role", "status"); record.append(recordText, recordGhost);
     const help = node("p", "cloud-hopper-help"), panel = node("dialog", "race-results game-intro cloud-hopper-panel");
     const glow = node("div", "game-intro-glow"), rays = node("div", "game-intro-rays");
     const kicker = node("p", "game-intro-kicker", "Ooga Arcade"), panelTitle = node("h2", "game-intro-title", "CLOUD HOPPER");
@@ -75,8 +83,11 @@
     const introArt = node("img", "cloud-hopper-intro-art"), guideArt = node("div", "cloud-hopper-guide-art");
     const resultArt = node("img", "cloud-hopper-result-art");
     const resultTime = node("p", "cloud-hopper-time"), scoresPanel = node("section", "cloud-hopper-scores");
-    const scoresTitle = node("h3", "cloud-hopper-scores-title", "Your best times · this session");
+    const scoresTitle = node("h3", "cloud-hopper-scores-title", "Shared top 10");
     const scoresList = node("ol", "race-podium"), scoresEmpty = node("p", "cloud-hopper-scores-empty", "Finish a run to put your time on the board.");
+    const scoresStatus = node("p", "cloud-hopper-scores-status", "Loading shared times…");
+    const personalBest = node("p", "cloud-hopper-personal-best");
+    scoresStatus.setAttribute("role", "status");
     const actions = node("div", "actions"), back = node("button", "", "Back"), play = node("button", "game-intro-go"), exit = node("button", "");
     const next = node("button", "game-intro-go", "Next level"), select = node("button", "", "Level select");
     // Each button is coloured by what it does (the stylesheet's `data-role`): go on, choose, step back, or leave; the
@@ -151,9 +162,11 @@
     gustCue.setAttribute("aria-hidden", "true"); gustCue.hidden = true;
     // The lines under the clock (what to do, the ghost, the keys), folded up into the clock once the run starts.
     const brief = node("div", "cloud-hopper-brief"), briefLines = node("div");
-    briefLines.append(title, ghost, help); brief.append(briefLines);
-    hud.append(name, timer, brief);
-    scoresPanel.append(scoresTitle, scoresList, scoresEmpty);
+    const instructions = node("div", "cloud-hopper-brief"), instructionLines = node("div");
+    briefLines.append(title); brief.append(briefLines);
+    instructionLines.append(help); instructions.append(instructionLines);
+    hud.append(name, timer, brief, record, instructions);
+    scoresPanel.append(scoresTitle, scoresStatus, scoresList, scoresEmpty, personalBest);
     actions.append(back, next, play, select, exit);
     panel.append(glow, kicker, panelTitle, goal, levels, introArt, guideArt, resultArt, panelHelp, resultTime, scoresPanel, actions);
     hud.hidden = panel.hidden = levels.hidden = next.hidden = select.hidden = true;
@@ -166,9 +179,6 @@
     // whether the result card is showing the cards instead of the result (Level select).
     // `pickedFrom`: the level a result card's Level select opened on, which Back goes back to.
     let selected = 1, unlocked = 1, bests = [], picking = false, pickedFrom = 1;
-    // The intro shows the selected level's board under the cards: the shared one when the page has it, else the bests
-    // every player has set on this browser (`browser`, fastest first).
-    let browser = [];
     const locked = () => selected > unlocked;
     const nextOpen = () => phase === "won" && !picking && selected < LEVELS.length && selected + 1 <= unlocked;
     const paintLevels = () => {
@@ -193,7 +203,8 @@
     };
     const setLevels = (state) => {
       if (disposed) return;
-      ({ selected, unlocked, bests, browser } = state);
+      if (selected !== state.selected) { sharedScores = null; sharedStatus = "loading"; }
+      ({ selected, unlocked, bests } = state);
       paintLevels();
       // The board under the cards follows the level chosen.
       if (phase === "intro" || picking) showScores(localScores, localLatest);
@@ -212,11 +223,6 @@
       const text = formatTime(value);
       timer.textContent = text;
       resultTime.textContent = text;
-    };
-    const setGhost = (time) => {
-      if (disposed) return;
-      ghost.textContent = Number.isFinite(time)
-        ? `Best ghost · ${formatTime(Math.max(0, Math.floor(time * 100)))} · original route` : "Finish a run to set your ghost";
     };
     const showGuide = () => {
       const [kind, name, text] = guide[guideIndex];
@@ -333,34 +339,49 @@
       if (previousFocus?.isConnected && typeof previousFocus.focus === "function") previousFocus.focus({ preventScroll: true });
       previousFocus = null;
     };
-    let sharedScores = null, localScores = [], localLatest = null;
+    let sharedScores = null, sharedStatus = "loading", localScores = [], localLatest = null;
     const showScores = (scores, latest) => {
       localScores = scores; localLatest = latest;
-      // Under the level cards (the intro, or a result card's Level select) the board is the chosen level's own.
-      const onBrowser = !sharedScores && (phase === "intro" || picking);
-      if (sharedScores) scores = sharedScores;
-      else if (onBrowser) scores = browser;
-      scoresTitle.textContent = sharedScores ? `Level ${selected} · fastest times · all players`
-        : onBrowser ? `Level ${selected} · best times on this browser` : `Level ${selected} · your best times this session`;
-      scoresEmpty.textContent = sharedScores ? "No shared times yet. Sign in with GitHub to set one."
-        : onBrowser ? "No finishes on this browser yet." : "Finish a run to put your time on the board.";
-      // All ten places always show, so a board not yet filled shows its empty ones.
+      scoresTitle.textContent = `Level ${selected} · ${LEVELS[selected - 1].name} · shared top 10`;
+      scoresStatus.textContent = sharedStatus === "loading" ? "Loading shared times…"
+        : sharedStatus === "refreshing" ? "Updating · showing last shared times"
+        : sharedStatus === "stale" ? "Shared times may be out of date · refresh unavailable"
+        : sharedStatus === "unavailable" ? "Shared leaderboard unavailable"
+        : "All players · fastest times";
+      const leader = sharedScores?.[0];
+      recordText.textContent = leader ? `Global best · ${leader.username} · ${formatTime(Math.floor(leader.milliseconds / 10))}`
+        + (sharedStatus === "stale" ? " · may be out of date" : sharedStatus === "refreshing" ? " · updating" : "")
+        : sharedStatus === "ready" ? "No times yet" : sharedStatus === "unavailable" ? "Global best unavailable" : "Loading global best…";
+      recordText.title = recordText.textContent;
+      // Shared scores carry no winning replay. Never enable this control using a personal/session ghost.
+      recordGhost.hidden = !leader;
+      const best = bests[selected - 1] || 0;
+      personalBest.textContent = `Your best on this browser · ${best ? formatTime(Math.floor(best / 10)) : "no finish yet"}`;
+      // Browser/session bests never fill the shared board, even while offline. Keep the last good shared reply.
+      scores = sharedScores || [];
       const count = Math.min(scoreRows.length, scores.length);
-      scoresEmpty.hidden = !!count;
+      scoresEmpty.textContent = "No shared times yet. Sign in with GitHub to set one.";
+      scoresEmpty.hidden = !!count || sharedStatus !== "ready";
       for (let i = 0; i < scoreRows.length; i++) {
         const { row, run, time } = scoreRows[i];
         row.classList.toggle("empty", i >= count);
         if (i >= count) { row.classList.remove("you"); run.textContent = time.textContent = "—"; continue; }
-        const record = scores[i], current = sharedScores ? record.username.toLowerCase() === BL.net.state.me?.login.toLowerCase()
-          : onBrowser ? record.you : latest?.run === record.run;
-        row.classList.toggle("you", current);
-        run.textContent = record.username || "Guest";
+        const record = scores[i];
+        row.classList.toggle("you", record.username.toLowerCase() === BL.net.state.me?.login.toLowerCase());
+        run.textContent = record.username;
+        run.title = record.username;
         time.textContent = formatTime(Math.max(0, Math.floor(record.time * 100)));
       }
     };
+    const setHighscoreStatus = (status) => {
+      if (disposed) return;
+      sharedStatus = status;
+      showScores(localScores, localLatest);
+    };
     const setHighscores = (board) => {
       if (disposed) return;
-      sharedScores = board ? Object.entries(board.highscores).map(([username, score]) => ({ username, time: score / 1000, achieved: board.achieved?.[username] || 0 }))
+      sharedStatus = board ? "ready" : "loading";
+      sharedScores = board ? Object.entries(board.highscores).map(([username, score]) => ({ username, milliseconds: score, time: score / 1000, achieved: board.achieved?.[username] || 0 }))
         .sort((a, b) => a.time - b.time || a.achieved - b.achieved || a.username.localeCompare(b.username)).slice(0, scoreRows.length) : null;
       showScores(localScores, localLatest);
     };
@@ -405,6 +426,7 @@
       if (ended || to === "intro") showScores(scores, latest);
       if (phase === to) return;
       phase = to; picking = false;
+      showScores(localScores, localLatest);
       clearActivation();
       panel.classList.remove("cloud-hopper-picking");
       const copy = to === "dq" && dqKind === "tornado" ? COPY.swept : COPY[to], intro = to === "intro", briefing = to === "briefing";
@@ -516,7 +538,7 @@
       gustCue.dataset.state = state; gustCue.dataset.from = fromLeft ? "left" : "right";
       shownGust = state; shownFrom = fromLeft;
     };
-    return { show, update, setGhost, setHighscores, setLevels, setRunner, setGuide, setPowers, setGust, setDq, hide, dispose, get frameY() { return frameY; } };
+    return { show, update, setHighscores, setHighscoreStatus, setLevels, setRunner, setGuide, setPowers, setGust, setDq, hide, dispose, get frameY() { return frameY; } };
   };
   BL.cloudHopperHud = { create };
 })();

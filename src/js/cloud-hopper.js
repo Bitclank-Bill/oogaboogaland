@@ -375,22 +375,21 @@
       for (let id = opened(); id > 1; id--) if (!game.cloudHopperBest(player, id)) return id;
       return game.cloudHopperBest(player, 1) ? opened() : 1;
     };
-    // The cards' state, and the selected level's bests set on this browser for the intro's Leaderboard.
+    // The selected level's personal best stays separate from its public shared board.
     const showLevels = () => overlay.setLevels({ selected: level.id, unlocked: opened(),
-      bests: LEVELS.map((each) => game.cloudHopperBest(player, each.id)),
-      browser: game.state.cloudHopper.players.filter((each) => each.best[level.id - 1] > 0)
-        .map((each) => ({ username: each.login || "Guest", time: each.best[level.id - 1] / 1000, you: each.login === player }))
-        .sort((a, b) => a.time - b.time) });
+      bests: LEVELS.map((each) => game.cloudHopperBest(player, each.id)) });
     // The cards choose on the intro and on the result card's Level select; the run places its own start.
     const selectLevel = (id) => {
       if (phase !== "intro" && phase !== "won" && phase !== "dq") return;
       level = LEVELS[id - 1]; showLevels(); watchBoard(); audio.song(level.id - 1);
     };
-    // Each level's shared board, watched while its card or results show; times never cross levels.
+    // Watch only the selected level, through its cards and active run; times never cross levels.
     const watchBoard = () => {
       unwatchScores?.();
       watched = level.board;
-      unwatchScores = BL.highscores?.watch(level.board, (board) => overlay.setHighscores(board)) || null;
+      overlay.setHighscores(null);
+      unwatchScores = BL.highscores?.watch(level.board, overlay.setHighscores, overlay.setHighscoreStatus) || null;
+      if (!BL.highscores) overlay.setHighscoreStatus("unavailable");
     };
     // The next level rides up from beside the island to its own start, as a first run does.
     const nextLevel = () => {
@@ -456,7 +455,6 @@
       gust.start(courseSeed, course, liftGoal, level.layout.gusts || 0);
       if (!farBefore) farBefore = camera.far;
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
-      overlay.setGhost(record.best?.courseVersion === level.courseVersion ? record.best.duration : null);
       // A night sky's clouds, the launch cloud among them, take the night fill.
       const dark = !!level.sky?.night;
       cloud.geometry = BL.cloudHopperModels.cloudMesh(0, "normal", dark);

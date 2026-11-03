@@ -6,9 +6,9 @@
   const BL = window.BL = window.BL || {};
   const rules = BL.highscoreRules, net = BL.net;
   const FRESH_MS = 30000, TIMEOUT_MS = 6000, MAX_WRITES = 4;
-  const entries = new Map(Object.keys(rules.games).map(id => [id, { data: null, at: 0, loading: null, refresh: false, listeners: new Set() }]));
+  const entries = new Map(Object.keys(rules.games).map(id => [id, { data: null, at: 0, loading: null, refresh: false, status: "loading", listeners: new Set(), statusListeners: new Set() }]));
   const tickets = new WeakMap(), requests = new Set();
-  let unsubscribe = null, stopped = false, generation = 0, writes = 0, accountId = null, logoutEpoch = -1, enabled = false;
+  let unsubscribe = null, stopped = false, generation = 0, writes = 0, accountId = null, logoutEpoch = -1, enabled = false, resolved = false;
   const available = () => !stopped && net.state.backend && net.state.highscores === true;
   const isObject = value => !!value && typeof value === "object" && !Array.isArray(value);
   const validLogin = value => /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i.test(value) && !value.includes("--");
@@ -29,14 +29,19 @@
     return { game: id, version: game.version, scoreType: game.scoreType, direction: game.direction, unit: game.unit,
       highscores, achieved, revision: data.revision };
   };
+  // Optional status subscribers keep loading/failure copy separate from existing score callbacks.
+  const statusOf = entry => !available() ? entry.data ? "stale" : net.state.resolved ? "unavailable" : "loading" : entry.status;
+  const notifyStatus = entry => { for (const fn of entry.statusListeners) fn(statusOf(entry)); };
   const publish = (id, data) => {
     const entry = entries.get(id);
     // A GET started before a submission must not erase that submission's newer reply.
     if (entry.data && data.revision < entry.data.revision) return;
     entry.at = Date.now();
-    if (entry.data && data.revision === entry.data.revision) return;
+    entry.status = "ready";
+    if (entry.data && data.revision === entry.data.revision) { notifyStatus(entry); return; }
     entry.data = data;
     for (const fn of entry.listeners) fn(data);
+    notifyStatus(entry);
   };
   const request = async (id, body = null) => {
     const controller = new AbortController();
@@ -62,19 +67,26 @@
     if (entry.loading) { entry.refresh ||= force; return; }
     if (!force && entry.at && Date.now() - entry.at < FRESH_MS) return;
     entry.at = Date.now(); // Failed reads are bounded too; entry/visibility changes can retry after this interval.
+    entry.status = entry.data ? "refreshing" : "loading";
     entry.loading = request(id).then(result => {
-      if (!stopped && result.data) publish(id, result.data);
+      if (stopped) return;
+      if (result.data) publish(id, result.data);
+      else { entry.status = entry.data ? "stale" : "unavailable"; notifyStatus(entry); }
     }).finally(() => {
       entry.loading = null;
       if (entry.refresh) { entry.refresh = false; if (entry.listeners.size) load(id, true); }
     });
+    notifyStatus(entry);
   };
   const onAccount = () => {
     const nextId = net.state.me?.id || null, nextEnabled = available(), nextEpoch = net.state.logoutEpoch;
-    if (nextId === accountId && nextEpoch === logoutEpoch && nextEnabled === enabled) return;
+    if (nextId === accountId && nextEpoch === logoutEpoch && nextEnabled === enabled && resolved === net.state.resolved) return;
     if (nextId !== accountId || nextEpoch !== logoutEpoch) generation++;
-    accountId = nextId; logoutEpoch = nextEpoch; enabled = nextEnabled;
-    for (const [id, entry] of entries) if (entry.listeners.size) load(id, true);
+    accountId = nextId; logoutEpoch = nextEpoch; enabled = nextEnabled; resolved = net.state.resolved;
+    for (const [id, entry] of entries) if (entry.listeners.size) {
+      notifyStatus(entry);
+      load(id, true);
+    }
   };
   const onVisibility = () => {
     if (!document.hidden) for (const [id, entry] of entries) if (entry.listeners.size) load(id);
@@ -85,14 +97,16 @@
     document.addEventListener("visibilitychange", onVisibility);
     onAccount();
   };
-  const watch = (id, fn) => {
+  const watch = (id, fn, onStatus) => {
     const entry = entries.get(id);
     if (!entry || stopped) return () => {};
     start();
     entry.listeners.add(fn);
+    if (onStatus) entry.statusListeners.add(onStatus);
     fn(entry.data);
+    onStatus?.(statusOf(entry));
     load(id);
-    return () => entry.listeners.delete(fn);
+    return () => { entry.listeners.delete(fn); if (onStatus) entry.statusListeners.delete(onStatus); };
   };
   const get = id => entries.get(id)?.data || null;
   // Zero means the shared board is loaded but this machine has no record. Null means use a labelled local best.
@@ -138,7 +152,7 @@
     unsubscribe = null;
     document.removeEventListener("visibilitychange", onVisibility);
     for (const controller of requests) controller.abort();
-    for (const entry of entries.values()) { entry.listeners.clear(); entry.data = null; }
+    for (const entry of entries.values()) { entry.listeners.clear(); entry.statusListeners.clear(); entry.data = null; }
   };
   BL.highscores = { watch, get, best, begin, submit, dispose };
 })();
