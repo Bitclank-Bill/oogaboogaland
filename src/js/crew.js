@@ -408,6 +408,24 @@
       }
     });
   };
+  // A jetpack on a caveman's back with its flame, hidden, as its only child: the crew's own, and another player's
+  // (remote-players.js). `lift` raises it with the caveman's view.
+  const jetpackNode = (root, height, lift, geometry, flameGeometry) => {
+    const node = createNode({ position: { x: 0, y: 0.06 * height + lift, z: -0.18 * height }, scale: { x: height, y: height, z: height }, geometry });
+    addChild(node, createNode({ geometry: flameGeometry, visible: false }));
+    addChild(root, node);
+    return node;
+  };
+  // What other pages need to draw a caveman's jetpack (`net.sendPose`'s `jet`): 1 while worn, plus its flame's power
+  // (0 to 3) times 2.
+  const jetFlags = (cave) => cave && cave.jet ? 1 | cave.jet.power << 1 : 0;
+  // What other pages need to draw a caveman's weapons (`net.sendPose`'s `weapon`): the one in hand (1 its primary,
+  // 2 the gun, 0 neither), 4 while aiming, and the gun's rounds (0 to 31) from bit 3.
+  const weaponFlags = (cave) => {
+    if (!cave || !cave.weapon) return 0;
+    const w = cave.weapon, rounds = w.unlimited ? AMMO_MAX : Math.max(0, Math.min(31, w.ammo | 0));
+    return (w.equipped ? 2 : w.primaryEquipped ? 1 : 0) | (w.aiming ? 4 : 0) | rounds << 3;
+  };
   // Cache the head's full pitch envelope once, attachments included; ceiling look-up must fit the movement body.
   const bodyHeightOf = (cave) => {
     BL.scene.updateWorld(cave.root);
@@ -1177,6 +1195,7 @@
     // The first waypoint of a route's tail that stays on the surface past every ramp, found once per route: a worker
     // walking out of bed hands over to ordinary work routing there. Never past the last leg, which ends any route.
     const surfaceTail = (route) => {
+      if (route.surfaceStart !== undefined) return route.surfaceStart;
       let i = route.length - 1;
       while (i > 0 && route[i - 1].y >= -1e-7) i--;
       return i;
@@ -1266,7 +1285,7 @@
       r.visible = true;
       if (!visible && !settle) setVec(r.position, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z, Infinity, Infinity, cave), walkIn.z);
       if (claimBedroll(cave)) {
-        if (settle || cave.bedroll.outdoor) {
+        if (settle) {
           // An existing sleeper is already in bed on entry. Reuse the final
           // lie-down pose without planning or animating a trip from the pile.
           cave.walk = null;
@@ -1369,7 +1388,7 @@
       if (ctx.bedRoute && cave.state === "sleeping") {
         // An overflow sleeper may have neither a bed nor a visible waiting spot.
         // Settle a newly active Ooga normally instead of routing from an absent bed.
-        if (!cave.bedroll || cave.bedroll.outdoor) {
+        if (!cave.bedroll) {
           standFromBed(cave); releaseBedroll(cave);
           cave.state = "away"; applyState(cave, state, true); return;
         }
@@ -1378,7 +1397,7 @@
         // The lying pose is centered over the mattress. Start the return at its
         // authored floor-side approach, clear of the next sleeper and the bed's collision shell.
         // An Ooga still on its way to bed turns back from where it stands.
-        if (lying) setVec(cave.root.position, bed.walkAt.x, cave.baseY + bed.walkAt.y, bed.walkAt.z);
+        if (lying) { const at = bed.walkAt || bed; setVec(cave.root.position, at.x, cave.baseY + at.y, at.z); }
         releaseBedroll(cave);
         cave.state = state;
         cave.parts.head.geometry = cave.headOpen;
@@ -1766,6 +1785,8 @@
       bullet.source = cave; bullet.feedback = false; bullet.visual = false;
       // The room's NPC host records each shot for the pages following it (npc-sync.js).
       if (ctx.onShot) ctx.onShot(cave, from, to);
+      // Other players see the visitor's own shots fly (remote-players.js replays them with no hits).
+      if (cave === player && BL.net) BL.net.sendShot(from.x, from.y, from.z, to.x, to.y, to.z);
     };
     // A shot replayed from the NPC host: the same flight, with no hits, no mirror crossing and no gorilla
     // impact (the host's events carry those).
@@ -1998,6 +2019,8 @@
         weaponOrigin(weaponStart, cave, true);
         hitMeleeTarget(cave);
       }
+      // A strike other players see; a held swing tells them when it is let go (releaseSwing).
+      if (!held && cave === player && BL.net) BL.net.sendSwing();
       return true;
     };
     const bashWeapon = (cave = player) => {
@@ -2035,6 +2058,7 @@
         weaponOrigin(weaponStart, cave, true);
         hitMeleeTarget(cave);
       }
+      if (!cancel && cave === player && BL.net) BL.net.sendSwing();
       return true;
     };
     // Thrusters built into a character sit wherever its own model puts them, so
@@ -4305,7 +4329,13 @@
       if (travel.mode === "rest" && cave.bedroll?.outdoor && cave !== player && (travel.retry -= dt) <= 0) {
         travel.retry = 1;
         const previous = cave.bedroll;
-        if (claimBedroll(cave) && cave.bedroll !== previous) { startSleep(cave, true); return; }
+        if (claimBedroll(cave) && cave.bedroll !== previous) {
+          const next = cave.bedroll;
+          // Stand up at the old outdoor bed before starting the walk to a
+          // newly vacant indoor one; the new mattress is not the current floor.
+          cave.bedroll = previous; standFromBed(cave); cave.bedroll = next;
+          startSleep(cave); return;
+        }
       }
       if (travel.mode === "landing") {
         runPlayer(cave, dt, false);
@@ -4325,7 +4355,7 @@
           travel.retry -= dt;
           if (travel.retry <= 0) {
             if (!cave.root.visible) startSleep(cave, true);
-            else if (claimBedroll(cave)) startSleep(cave, !!cave.bedroll.outdoor);
+            else if (claimBedroll(cave)) startSleep(cave);
             else travel.retry = 1;
           }
           return;
@@ -5626,12 +5656,8 @@
     };
     // ---------- the jetpack ----------
     const makeJetpack = (cave, geometry, flameGeometry) => {
-      const h = cave.traits.height;
-      const node = createNode({ position: { x: 0, y: 0.06 * h + cave.viewLift, z: -0.18 * h }, scale: { x: h, y: h, z: h }, geometry });
-      const flame = createNode({ geometry: flameGeometry, visible: false });
-      addChild(node, flame);
-      addChild(cave.root, node);
-      cave.jet = { node, flame, thrust: false, spending: false, power: 0, puff: 0 };
+      const node = jetpackNode(cave.root, cave.traits.height, cave.viewLift, geometry, flameGeometry);
+      cave.jet = { node, flame: node.children[0], thrust: false, spending: false, power: 0, puff: 0 };
       return node;
     };
     const builtInJetpack = (cave) => !!cave.parts.jetpack;
@@ -5999,7 +6025,8 @@
       }
       if (grounded(player)) player.jumps = 0;
       else player.jumps = Math.max(1, player.jumps);
-      if (player.jumps >= 2 && !inBananas(player)) return false;
+      // With both jumps spent the scene may still use the press (`spentJump`, Cloud Hopper's sky feather): true when it did.
+      if (player.jumps >= 2 && !inBananas(player)) return !!ctx.spentJump?.(player);
       // Takeoff clears step smoothing (elevatePlayer(0)) before testing headroom.
       elevatePlayer(0);
       player.jumps++;
@@ -6683,5 +6710,5 @@
       }
     };
   };
-  BL.crew = { create, bodyHeightOf, flyCompanion, COMPANION_FLIGHT, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, bodyHeightOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();
