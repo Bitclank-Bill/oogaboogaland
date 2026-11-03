@@ -25314,7 +25314,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-campfire", "genesis-scale-model", "genesis-lumber", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["math", "scene", "models", "caves", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-campfire", "genesis-scale-model", "genesis-lumber", "genesis-cavern", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25503,8 +25503,15 @@ const genesisAtriumProof = async () => {
     if ([...others, ...GL.boxes, ...CF.boxes].some((o) => b.x0 < o.x1 && b.x1 > o.x0 && b.z0 < o.z1 && b.z1 > o.z0)) wb.push("the woodcutting camp stands in something");
     if (Y.paths.some((q) => [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2))) wb.push("the woodcutting camp stands on a path");
   }
+  // The cenote's pool stands on open floor, off the paths and clear of everything else.
+  for (const b of BLc.genesisCavern.layout().boxes) {
+    if ([...others, ...GL.boxes, ...CF.boxes].some((o) => b.x0 < o.x1 && b.x1 > o.x0 && b.z0 < o.z1 && b.z1 > o.z0)) wb.push("the cenote stands in something");
+    if (Y.paths.some((q) => [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2))) wb.push("the cenote stands on a path");
+  }
   // The scale model of Ooga Booga Land stands on open floor by the arrival, off the paths and out of the view.
   const SMl = BLc.genesisScaleModel.layout(), sb = SMl.box;
+  // Regression: the small islands' tops were left uncoloured and the renderer threw on them. Every voxel has a colour.
+  { const vox = BLc.genesisScaleModel.islandVox(); for (const c of vox.map.values()) if (!(c >= 0 && c < BLc.genesisScaleModel.PALETTE.length)) { wb.push("a voxel of the scale model has no colour"); break; } }
   if ([...others, ...GL.boxes, ...CF.boxes].some((o) => sb.x0 < o.x1 && sb.x1 > o.x0 && sb.z0 < o.z1 && sb.z1 > o.z0)) wb.push("the scale model stands in something");
   if (Y.paths.some((q) => [[sb.x0, sb.z0], [sb.x1, sb.z0], [sb.x0, sb.z1], [sb.x1, sb.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2)) || C.inView(SMl.at.x, SMl.at.z, 1.5)) wb.push("the scale model stands on a path or in the view");
   const SQ = BLc.genesisSatoshiFx;

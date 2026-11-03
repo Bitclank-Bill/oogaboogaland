@@ -65,7 +65,22 @@
   // A potted plant and a floor lamp join every era's wall pieces, so the walls between the exhibits are lived in.
   const PLANT = I("potted plant", 0.7, 0.7, [[0.5, 0.5, 0.5, "#8a5a2e", 0, 0.25, 0], [0.08, 0.6, 0.08, "#4c331d", 0, 0.8, 0], [0.7, 0.35, 0.7, "#3f7a2c", 0, 1.2, 0], [0.5, 0.3, 0.5, "#5c9a3a", 0.05, 1.45, 0.05]]);
   const LAMP = (shade) => I("floor lamp", 0.5, 0.5, [[0.4, 0.05, 0.4, "#2b2421", 0, 0.025, 0], [0.05, 1.5, 0.05, "#3a3d42", 0, 0.8, 0], [0.45, 0.35, 0.45, shade, 0, 1.65, 0, 0.8]]);
-  ["#efe0b0", "#ff9a3c", "#ff8ae8", "#fff0c8", "#cfe8ff", "#e8f6ff", "#ffdca0", "#ffc27a"].forEach((shade, n) => ERA_ITEMS[n].push(PLANT, LAMP(shade)));
+  // The Oogas' own take on each era's technology, in stone, bone, hide and timber, with a fur rug and a torch in every
+  // gallery, so the caves stay the Oogas' caves round the real machines.
+  const STONE = "#8a847a", STONE_DK = "#6a655d", BONE = "#e8dcc0", HIDE = "#a8743f", WOOD = "#6b4528";
+  const FUR = I("fur rug", 1.6, 1.2, [[1.6, 0.03, 1.2, "#b08850", 0, 0.015, 0], ...[[-0.5, -0.3], [0.2, 0.25], [0.5, -0.35], [-0.2, 0.4]].map(([x, z]) => [0.22, 0.032, 0.16, "#5a3a22", x, 0.017, z])]);
+  const TORCH = I("standing torch", 0.5, 0.5, [[0.36, 0.2, 0.36, STONE_DK, 0, 0.1, 0], [0.1, 1.5, 0.1, WOOD, 0, 0.95, 0], [0.24, 0.16, 0.24, "#3a2a1a", 0, 1.74, 0], [0.2, 0.3, 0.2, "#ff8a1f", 0, 1.95, 0, 1.8], [0.1, 0.22, 0.1, "#ffe08a", 0, 2.08, 0, 2]]);
+  const CAVE = [
+    I("stone abacus", 1.0, 0.5, [[1.0, 0.9, 0.5, STONE, 0, 0.45, 0], [0.9, 0.06, 0.06, WOOD, 0, 1.2, 0], [0.9, 0.06, 0.06, WOOD, 0, 1.5, 0], [0.06, 0.4, 0.06, WOOD, -0.42, 1.35, 0], [0.06, 0.4, 0.06, WOOD, 0.42, 1.35, 0], ...[-0.3, -0.15, 0, 0.15, 0.3].map((x, k) => [0.1, 0.1, 0.1, k % 2 ? BONE : "#c8463c", x, k < 3 ? 1.2 : 1.5, 0])]),
+    I("rock telephone", 0.8, 0.6, [[0.8, 0.8, 0.6, STONE_DK, 0, 0.4, 0], [0.5, 0.2, 0.36, STONE, 0, 0.9, 0], [0.6, 0.12, 0.14, BONE, 0, 1.06, 0], [0.14, 0.14, 0.03, "#2c2a28", 0, 0.92, 0.19]]),
+    I("boulder boombox", 1.0, 0.5, [[1.0, 0.8, 0.5, WOOD, 0, 0.4, 0], [0.9, 0.42, 0.3, STONE, 0, 1.01, 0], [0.26, 0.26, 0.03, "#3a3530", -0.24, 1.01, 0.16], [0.26, 0.26, 0.03, "#3a3530", 0.24, 1.01, 0.16], [0.6, 0.06, 0.06, BONE, 0, 1.3, 0]]),
+    I("slate computer", 1.1, 0.6, [[1.1, 0.75, 0.6, WOOD, 0, 0.375, 0], [0.7, 0.5, 0.08, STONE_DK, 0, 1.05, -0.1], [0.58, 0.38, 0.02, "#7fd8a0", 0, 1.05, -0.05, 0.9], [0.6, 0.06, 0.24, STONE, 0, 0.8, 0.15]]),
+    I("bone disc rack", 0.6, 0.5, [[0.5, 1.5, 0.4, HIDE, 0, 0.75, 0], ...[0.35, 0.65, 0.95, 1.25].map((y) => [0.46, 0.05, 0.34, BONE, 0, y, 0.02])]),
+    I("log laptop desk", 1.2, 0.6, [[1.2, 0.3, 0.6, WOOD, 0, 0.6, 0], [0.3, 0.45, 0.3, WOOD, -0.4, 0.225, 0], [0.3, 0.45, 0.3, WOOD, 0.4, 0.225, 0], [0.42, 0.03, 0.3, STONE, 0, 0.77, 0.05], [0.42, 0.28, 0.03, STONE_DK, 0, 0.92, -0.1], [0.36, 0.22, 0.01, "#7fb8ff", 0, 0.92, -0.08, 1.1]]),
+    I("stone newspaper", 0.9, 0.5, [[0.9, 0.9, 0.5, STONE_DK, 0, 0.45, 0], [0.7, 0.5, 0.08, STONE, 0, 1.1, -0.1], [0.5, 0.06, 0.02, "#2c2a28", 0, 1.25, -0.05], [0.4, 0.04, 0.02, "#2c2a28", 0, 1.12, -0.05], [0.45, 0.04, 0.02, "#2c2a28", 0, 1.02, -0.05]]),
+    I("stone server", 0.8, 0.8, [[0.7, 1.7, 0.7, STONE_DK, 0, 0.85, 0], ...[0.4, 0.75, 1.1, 1.45].map((y) => [0.6, 0.2, 0.02, STONE, 0, y, 0.36]), ...[0.4, 0.75, 1.1, 1.45].map((y) => [0.05, 0.04, 0.02, "#5cff7a", 0.24, y, 0.38, 1.6]), [0.8, 0.1, 0.8, BONE, 0, 1.75, 0]])
+  ];
+  ["#efe0b0", "#ff9a3c", "#ff8ae8", "#fff0c8", "#cfe8ff", "#e8f6ff", "#ffdca0", "#ffc27a"].forEach((shade, n) => ERA_ITEMS[n].push(PLANT, LAMP(shade), CAVE[n], TORCH, FUR));
   // Board games and furniture for the open floor between the exhibits: a game laid out on a table with stools round
   // it, or a sitting corner of the era. Generic games only (chess, draughts, dice, cards, a tile game, a trading game
   // of our own), never a published game's board, name or art.

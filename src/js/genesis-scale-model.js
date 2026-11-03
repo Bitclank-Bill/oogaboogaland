@@ -31,31 +31,28 @@
   const PALETTE = ["#5c9a3a", "#6aa844", "#7d7a72", "#8f8b82", "#7a5a3a", "#d9c08a", "#2f7a2c", "#3f8f34", "#5a3a22", "#f2d43a", "#1b1d24", "#4fb8ff", "#14100c", "#8a5a2c", "#b98cff", "#f7931a", "#2a2d33", "#5e5850"];
   const islandVox = () => {
     const V = BL.models.makeVox(), R = 15;
-    const disc = (cx, cz, r, depth, top) => {
+    const disc = (cx, cz, r, depth, top, surface = () => P.grass) => {
       for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) for (let z = Math.floor(cz - r); z <= Math.ceil(cz + r); z++) {
         const d = Math.hypot(x - cx, z - cz);
         if (d > r) continue;
         const h = top(x, z, d), low = -Math.round((r - d) * depth + 1 + hash(x, z) * 1.5);
-        for (let y = low; y <= h; y++) V.set(x, y, z, y === h ? null : y < -2 ? P.under : (hash(x + y, z) < 0.5 ? P.rock : P.rock2));
+        for (let y = low; y <= h; y++) V.set(x, y, z, y === h ? surface(x, y, z) : y < -2 ? P.under : (hash(x + y, z) < 0.5 ? P.rock : P.rock2));
       }
     };
     // The main island: a meadow, hills round the rim, the plaza, paths and caves.
     const caves = (BL.caves && BL.caves.slots || []).filter((c) => c.name && c.status !== "headquarters").map((c) => c.clock / 12 * Math.PI * 2);
-    const caveAt = (a) => caves.some((c) => Math.abs(Math.atan2(Math.sin(a - c), Math.cos(a - c))) < 0.2);
-    disc(0, 0, R, 1.15, (x, z, d) => d < 11 ? 0 : Math.round(1 + (d - 11) * 0.9 + hash(x, z) * 1.4));
-    for (const [k, c] of V.map) if (c === null) {
-      const [x, y, z] = k.split(",").map(Number), d = Math.hypot(x, z), a = Math.atan2(x, -z);
+    disc(0, 0, R, 1.15, (x, z, d) => d < 11 ? 0 : Math.round(1 + (d - 11) * 0.9 + hash(x, z) * 1.4), (x, y, z) => {
+      const d = Math.hypot(x, z);
       let top = d < 3.6 ? P.sand : d < 11 ? (hash(x, z) < 0.5 ? P.grass : P.grass2) : (y > 2 ? P.rock2 : P.grass);
       if (d < 11 && d > 3.6) for (const ca of caves) { const dx = Math.sin(ca), dz = -Math.cos(ca), t = x * dx + z * dz, off = Math.abs(x * dz - z * dx); if (t > 3 && off < 0.8) top = P.dirt; }
-      V.set(x, y, z, top);
-    }
+      return top;
+    });
     // Cave mouths cut into the rim, dark inside.
     for (const ca of caves) for (let r = 11; r <= 15; r++) for (let w = -1; w <= 1; w++) {
       const x = Math.round(Math.sin(ca) * r + Math.cos(ca) * w), z = Math.round(-Math.cos(ca) * r + Math.sin(ca) * w);
       for (let y = 1; y <= 6; y++) V.del(x, y, z);
       V.set(x, 0, z, r > 12 ? P.mouth : P.dirt);
     }
-    void caveAt;
     // The banana pile and the jumbotron.
     for (let y = 1; y <= 3; y++) for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) if (Math.hypot(x, z) <= 2.4 - y * 0.55) V.set(x, y, z, P.banana);
     for (let x = -2; x <= 2; x++) for (let y = 3; y <= 5; y++) V.set(x, y, -5, P.screen);
@@ -118,5 +115,5 @@
     };
     return { root, update };
   };
-  BL.genesisScaleModel = { layout, build, pages, AWAY };
+  BL.genesisScaleModel = { layout, build, pages, AWAY, islandVox, PALETTE };
 })();

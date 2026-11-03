@@ -52,6 +52,8 @@
     // The statue in its warm light, and the Oogas' campfire behind it (genesis-campfire.js).
     [0, 7.5, -2.2, 13, 1.4, 1.15, 0.8],
     [BL.genesisCampfire.layout().fire.x, ISLAND_TOP + 1.8, BL.genesisCampfire.layout().fire.z, 10, 1.5, 0.8, 0.35],
+    // Daylight down the cenote's shaft (genesis-cavern.js).
+    [BL.genesisCavern.CENOTE.x, ISLAND_TOP + 3, BL.genesisCavern.CENOTE.z, 11, 0.95, 1.1, 1.3],
     ...GW.ERAS.flatMap((e) => BL.genesisDecor.pendantSpots(galleryRect(e.n)).map(([x, z]) => {
       const q = mu(e.n, x, z), c = BL.genesisDecor.rgb(BL.genesisDecor.STYLES[e.n].lamp);
       return [q.x, ISLAND_TOP + ROOF * BL.genesisDecor.PENDANT_Y * MU.SCALE, q.z, 13, c[0] / 200, c[1] / 200, c[2] / 200];
@@ -1108,6 +1110,10 @@
     built.obstacles.push(SL.box);
     props.register({ id: "scale-model", era: 7, year: 2026, title: "A scale model of Ooga Booga Land", label: "OOGA BOOGA LAND · A SCALE MODEL, 2026", sourceKeys: [], hint: "look round the scale model of Ooga Booga Land",
       at: { x: SL.use.x, y: ISLAND_TOP, z: SL.use.z }, reach: 2.6, onUse: () => ({ board: { room: "Ooga Booga Land", pages: SM.pages(), sources: [] } }) });
+    // The cavern round it all (genesis-cavern.js): rough roof, stalactites, rock pillars, crystals, the cenote,
+    // the carved frieze and sun discs, and eagles under the roof.
+    built.cavern = BL.genesisCavern.build({ M, createNode, addChild, place, top: ISLAND_TOP, atrium: MU.atrium, roof: ROOF, pillars: MU.PILLARS, walls: WALLS });
+    for (const b of BL.genesisCavern.layout().boxes) built.obstacles.push(b);
     built.campfire = BL.genesisCampfire.build({ M, createNode, addChild, place, top: ISLAND_TOP });
     for (const b of BL.genesisCampfire.layout().boxes) built.obstacles.push(b);
     for (const b of BL.genesisLumber.layout().boxes) built.obstacles.push(b);
@@ -1734,6 +1740,7 @@
       if (built.campfire) built.campfire.update(dt, sceneTime, view.calm);
       if (built.scaleModel) built.scaleModel.update(dt, view.calm);
       if (built.lumber) built.lumber.update(dt, view.calm);
+      if (built.cavern) built.cavern.update(dt, view.calm);
       if (built.guideHall) built.guideHall.update(dt, view.calm, avatar ? avatar.root.position : null);
       if (built.satoshiFx) built.satoshiFx.update(dt, view.calm);
       if (guide) guide.update(dt, sceneTime);
