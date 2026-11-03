@@ -3943,13 +3943,13 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "cloud-hopper-scores", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
 const PERF = FULL || ARGS.includes("perf");
-const UNIT = !(ARGS.length === 1 && ["perf", "poker-protocol"].includes(ARGS[0]));
+const UNIT = !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-scores"].includes(ARGS[0]));
 const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 // What keeps the cruft out: every step says why it exists, or the run does not start.
 const WHY = /^(regression|playthrough|rule|contract): \S/;
@@ -4740,7 +4740,7 @@ const cloudHopperFailureChecks = async engine => {
     }) },
     cloudHopperHud: { create(options) { callbacks = options; return {
       show(phase, time, scores, latest) { shown = phase; shownScores = scores; shownLatest = latest; },
-      update: noop, setGhost: noop, setLevels: noop, setRunner: noop, setGuide: noop, setPowers: noop, setGust: noop, setDq: noop, hide: noop, dispose: noop, frameY: 0.4
+      update: noop, setGhost: noop, setHighscores: noop, setHighscoreStatus: noop, setLevels: noop, setRunner: noop, setGuide: noop, setPowers: noop, setGust: noop, setDq: noop, hide: noop, dispose: noop, frameY: 0.4
     }; } } });
   const controllerSource = await readFile(join(root, "src/js/cloud-hopper.js"), "utf8");
   runInNewContext(controllerSource, context);
@@ -6670,6 +6670,75 @@ const ghostHuntChecks = async () => {
       JSON.stringify({ states: [...states], outcome, paused, still, heldOutcome, hatched, leftAtDefeat }));
   }
 };
+// Regression: the current-level top ten used to disappear when the modal closed at run start.
+// Exercise the real HUD and stylesheet in one lightweight browser, without booting WebGL or live services.
+const cloudHopperScoreChecks = async () => {
+  const dir = join(root, "untracked", "cloud-hopper-scores");
+  mkdirSync(dir, { recursive: true });
+  const page = join(dir, "fixture.html");
+  writeFileSync(page, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../../src/style.css">
+    <script src="../../src/js/cloud-hopper-levels.js"></script><script src="../../src/js/cloud-hopper-hud.js"></script>`);
+  const b = await launch();
+  try {
+    await b.open(pathToFileURL(page).href + "?debug=1&nosim=1&hour=12&day=80");
+    for (let i = 0; i < 40 && !await b.evaluate("!!window.BL?.cloudHopperHud"); i++) await b.sleep(25);
+    const state = await b.evaluate(`(() => {
+      BL.net = { state: { me: null } }; BL.cloudHopperArt = { levels: Array(4).fill("../../src/art/cloud-hopper-intro.webp") };
+      const H = window.scoreHud = BL.cloudHopperHud.create();
+      H.setLevels({ selected: 2, unlocked: 2, bests: [0, 9500, 0, 0] }); H.show("intro");
+      const text = () => document.querySelector('.cloud-hopper-scores').textContent;
+      const loading = text().includes('Loading shared times') && text().includes('Your best on this browser · 00:09.50');
+      H.setHighscoreStatus('unavailable');
+      const unavailable = text().includes('Shared leaderboard unavailable') && [...document.querySelectorAll('.race-podium li')].every(e => e.classList.contains('empty'));
+      const highscores = { bob: 15000, alice: 12000, carol: 12000, dave: 12000 };
+      for (let i = 0; i < 8; i++) highscores['player-' + i] = 20000 + i * 1000;
+      H.setHighscores({ highscores, achieved: { alice: 2, carol: 1, dave: 1 } });
+      H.show('running', 3);
+      const live = document.querySelector('.cloud-hopper-live-scores');
+      const rows = [...live.querySelectorAll('li')];
+      const running = !live.hidden && !document.querySelector('dialog').open && rows.length === 10;
+      const ordered = rows.slice(0, 4).map(e => e.children[1].textContent).join(',') === 'carol,dave,alice,bob';
+      const ranks = rows.map(e => e.firstChild.textContent).join(',') === '1,2,3,4,5,6,7,8,9,10';
+      H.setHighscoreStatus('stale');
+      const stale = text().includes('out of date') && rows[0].children[1].textContent === 'carol';
+      BL.net.state.me = { login: 'ALICE' }; H.setHighscoreStatus('ready');
+      const signed = rows[2].classList.contains('you');
+      H.setLevels({ selected: 3, unlocked: 2, bests: [0, 9500, 0, 0] }); H.show('intro');
+      const locked = text().includes('Aurora Heights') && text().includes('Loading shared times')
+        && document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').disabled && rows.every(e => e.classList.contains('empty'));
+      H.setHighscores({ highscores: {}, achieved: {} });
+      const empty = text().includes('No shared times yet') && !document.querySelector('.cloud-hopper-scores-empty').hidden;
+      H.setLevels({ selected: 4, unlocked: 4, bests: [0, 9500, 0, 0] });
+      H.setHighscores({ highscores, achieved: {} }); H.show('running', 5);
+      return { loading, unavailable, running, ordered, ranks, stale, signed, locked, empty };
+    })()`);
+    record("cloud hopper scores: active-play visibility, current-level isolation, guest/signed-in ranking, ties and truthful shared/local states",
+      Object.values(state).every(Boolean), JSON.stringify(state));
+    for (const [w, h] of [[1440, 900], [390, 844], [844, 390], [320, 568]]) {
+      await b.send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 900 });
+      const layout = await b.evaluate(`(() => {
+        const panel = document.querySelector('.cloud-hopper-live-scores'), r = panel.getBoundingClientRect();
+        const clock = document.querySelector('.cloud-hopper-hud').getBoundingClientRect();
+        const rows = [...panel.querySelectorAll('li')];
+        return { fits: r.x >= 0 && r.y >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+          readable: rows.every(e => { const t = e.lastChild.getBoundingClientRect(); return t.width > 0 && t.right <= r.right && t.bottom <= r.bottom; }),
+          clockClear: r.left >= clock.right || r.right <= clock.left || r.top >= clock.bottom || r.bottom <= clock.top,
+          noOverflow: panel.scrollWidth <= panel.clientWidth, passive: getComputedStyle(panel).pointerEvents === 'none' };
+      })()`);
+      record(`cloud hopper scores ${w}x${h}: all ten times fit, the clock stays clear and input passes through`, Object.values(layout).every(Boolean), JSON.stringify(layout));
+      await b.screenshot(join(dir, `running-${w}x${h}.png`));
+    }
+    const lifecycle = await b.evaluate(`(() => {
+      const H = window.scoreHud, live = document.querySelector('.cloud-hopper-live-scores');
+      H.show('won', 5); const result = live.hidden && document.querySelector('dialog').contains(document.querySelector('.cloud-hopper-scores'));
+      H.show('running', 0); H.hide(); const hidden = live.hidden; H.dispose(); H.dispose();
+      return { result, hidden, disposed: !document.querySelector('.cloud-hopper-live-scores, .cloud-hopper-panel, .cloud-hopper-hud') };
+    })()`);
+    record("cloud hopper scores: results regain the board and hide/dispose release gameplay UI", Object.values(lifecycle).every(Boolean), JSON.stringify(lifecycle));
+    record("cloud hopper scores: browser console stays clean", b.logs.length === 0, JSON.stringify(b.logs));
+  } finally { await b.close(); }
+};
 const highscoreClientChecks = async () => {
   const sources = await Promise.all(["highscore-rules", "highscores"].map(name => readFile(join(root, `src/js/${name}.js`), "utf8")));
   const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
@@ -6698,6 +6767,46 @@ const highscoreClientChecks = async () => {
         requests[index].resolve({ ok: status === 200, status, headers: { get: () => "application/json" }, json: async () => data });
       } };
   };
+  {
+    // Regression: a failed refresh previously left an apparently current board, with no loading/error signal.
+    const f = fixture(), states = [], changes = [];
+    const off = f.scores.watch("cloud-hopper-l2", data => changes.push(data), state => states.push(state));
+    const publicLevel = f.requests.length === 1 && f.requests[0].url.endsWith("/cloud-hopper-l2")
+      && f.requests[0].options.method === "GET" && states.at(-1) === "loading";
+    f.reply(0, "cloud-hopper-l2", { alice: 12000 }, 1); await flush();
+    const ready = states.at(-1) === "ready";
+    f.advance(); f.events.get("visibilitychange")();
+    const refreshing = states.at(-1) === "refreshing";
+    f.reply(1, "cloud-hopper-l2", {}, 1, 503); await flush();
+    const stale = states.at(-1) === "stale" && f.scores.get("cloud-hopper-l2").highscores.alice === 12000;
+    f.advance(); f.events.get("visibilitychange")();
+    f.reply(2, "cloud-hopper-l2", { alice: 12000 }, 1); await flush();
+    const recovered = states.at(-1) === "ready" && changes.length === 2;
+    off(); const count = states.length;
+    f.account({ id: 11, login: "alice" });
+    const detached = states.length === count && f.requests.length === 3;
+    f.scores.dispose();
+    record("highscores: guests load only their selected level, retain stale data after failure, recover on equal revision and detach status callbacks",
+      publicLevel && ready && refreshing && stale && recovered && detached, JSON.stringify({ states, publicLevel, ready, refreshing, stale, recovered, detached }));
+  }
+  {
+    const f = fixture(false, false), states = [];
+    f.state.resolved = false;
+    f.scores.watch("cloud-hopper-l1", () => {}, state => states.push(state));
+    const loading = states.at(-1) === "loading" && f.requests.length === 0;
+    f.state.resolved = true; f.account(null);
+    const offline = states.at(-1) === "unavailable" && f.requests.length === 0;
+    f.state.backend = true; f.state.highscores = true; f.account(null);
+    const connected = f.requests.length === 1 && states.at(-1) === "loading";
+    f.reply(0, "cloud-hopper-l1", {}, 0, 503); await flush();
+    const failed = states.at(-1) === "unavailable" && f.scores.get("cloud-hopper-l1") === null;
+    f.advance(); f.events.get("visibilitychange")();
+    f.reply(1, "cloud-hopper-l1"); await flush();
+    const empty = states.at(-1) === "ready" && Object.keys(f.scores.get("cloud-hopper-l1").highscores).length === 0;
+    f.scores.dispose();
+    record("highscores: unresolved, unavailable, failed and empty shared boards remain distinct and a matching backend enables public reads",
+      loading && offline && connected && failed && empty, JSON.stringify({ states, loading, offline, connected, failed, empty }));
+  }
   {
     const f = fixture(false, false), changes = [];
     const off = f.scores.watch("darts", value => changes.push(value));
@@ -25149,6 +25258,7 @@ const runTasks = async () => {
 };
 if (!PICKED.length && !PERF) console.log(`Global tier only. Name scenes to test them too: npm test -- ${SCENES.join(" ")} | full`);
 await runTasks();
+if (ARGS.includes("cloud-hopper-scores")) { await highscoreClientChecks(); await cloudHopperScoreChecks(); }
 // The shim installs browser globals in this process, so it runs after the browser lanes finish with Chrome.
 if (UNIT) await unitChecks();
 if (PROTOCOL) await pokerProtocolChecks();
