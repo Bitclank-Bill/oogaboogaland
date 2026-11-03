@@ -15,7 +15,10 @@
       wait -= dt; if (wait > 0) return;
       wait = 0.45 + Math.random() * 1.1;
       const [x,z,name,loud] = sources[Math.floor(Math.random() * sources.length)], dx = x-listener.x, dz = z-listener.z, d = Math.hypot(dx,dz);
-      const k = Math.max(0,1-d/16), fx = camera.target.x-camera.position.x, fz = camera.target.z-camera.position.z, fl = Math.hypot(fx,fz)||1;
+      const k = Math.max(0,1-d/16);
+      let fx = camera.target.x-camera.position.x, fz = camera.target.z-camera.position.z;
+      if (Math.hypot(fx,fz) < 0.001) { fx = camera.up?.x || 0; fz = camera.up?.z || -1; }
+      const fl = Math.hypot(fx,fz)||1;
       audio.cue(name,loud*k*k,d > 0.2 ? Math.max(-1,Math.min(1,(dx*-fz+dz*fx)/(fl*d)))*0.8 : 0);
     } };
   };

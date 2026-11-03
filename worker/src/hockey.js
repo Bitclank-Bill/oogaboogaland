@@ -11,14 +11,14 @@ export const hockey = {
       const s = p.hockey;
       if (s && s.ids[0] === p.id && s.i >= 0 && s.i < 3) {
         const proof = room.hockeyLimits?.proofs[s.i];
-        if (proof && proof.s === s.s && proof.until > Date.now() && s.ids.every((id, side) => id === proof.ids[side] && (!id || room.players.get(id)?.connectionToken === proof.tokens[side]))) room.hockeyTables[s.i] = s;
+        if (proof && proof.s === s.s && proof.v === 2 && s.ids.every((id, side) => id === proof.ids[side] && (!id || room.players.get(id)?.connectionToken === proof.tokens[side]))) room.hockeyTables[s.i] = s;
         else hockey.clear(room, s); // An attachment alone cannot prove that an admission write committed.
       }
     }
     hockey.sweep(room);
   },
   tell(room, s, to = null) {
-    const msg = { t: "hockey", k: "table", i: s.i, s: s.s, ids: s.ids, ready: s.ready, phase: s.phase, q: s.q, a: s.a, now: Date.now() };
+    const msg = { t: "hockey", k: "table", i: s.i, s: s.s, ids: s.ids, ready: s.ready, phase: s.phase, start: s.start || 0, q: s.q, a: s.a, now: Date.now() };
     if (to) room.send(to.ws, msg); else room.broadcastZone(W.ZONE, msg);
   },
   save(room, s) {
@@ -36,7 +36,7 @@ export const hockey = {
   },
   sweep(room) {
     const now = Date.now();
-    for (const s of room.hockeyTables || []) if (s && (now - (s.start || s.created) > 240000 || s.ids.some((id, side) => id && (!W.near(room.players.get(id), s.i) || now - s.seen[side] > W.IDLE_MS)))) hockey.clear(room, s);
+    for (const s of room.hockeyTables || []) if (s && ((s.phase !== "play" && now - (s.doneAt || s.created) > 240000) || s.ids.some((id, side) => id && (!W.near(room.players.get(id), s.i) || now - s.seen[side] > W.IDLE_MS)))) hockey.clear(room, s);
   },
   arrive(room, p) {
     hockey.sweep(room);
@@ -72,7 +72,7 @@ export const hockey = {
       let sid = s?.s;
       if (!sid) { const bytes = new Uint8Array(8); crypto.getRandomValues(bytes); sid = Array.from(bytes, n => n.toString(16).padStart(2, "0")).join(""); }
       const ids = s ? [s.ids[0], p.id] : [p.id, 0];
-      const proof = { s: sid, ids, tokens: ids.map(id => id ? room.players.get(id).connectionToken : null), until: now + 480000 };
+      const proof = { s: sid, ids, tokens: ids.map(id => id ? room.players.get(id).connectionToken : null), v: 2 };
       if (!hockeyLimits.admit(room, p, m.i, !s, proof)) return;
       if (!s) {
         s = { created: now, i: m.i, s: sid, ids: [p.id, 0], ready: [false, false], seen: [now, now], phase: "lobby", q: -1, inputQ: -1, a: null };
@@ -91,11 +91,11 @@ export const hockey = {
       hockey.save(room, s); hockey.tell(room, s); return;
     }
     if (m.k === "frame" && side === 0 && s.phase === "play" && m.q > s.q) {
-      // Scores only advance one goal at a time; elapsed sand never increases. The host remains a trust boundary.
+      // Untimed, first to seven, one point per goal. The host remains a physics trust boundary.
       const before = s.a, goals = before ? before[8] + before[9] : 0;
-      if (m.a[8] + m.a[9] > goals + 1 || before && (m.a[8] < before[8] || m.a[9] < before[9] || m.a[10] > before[10]) || !before && !m.a[16]) return;
+      if (m.a[10] !== -1 || m.a[16] !== (Math.max(m.a[8], m.a[9]) < 7 ? 1 : 0) || m.a[8] + m.a[9] > goals + 1 || before && (m.a[8] < before[8] || m.a[9] < before[9]) || !before && !m.a[16]) return;
       s.q = m.q; s.a = m.a;
-      if (!m.a[16]) s.phase = "done";
+      if (!m.a[16]) { s.phase = "done"; s.doneAt = now; }
       hockey.save(room, s);
       room.broadcastZone(W.ZONE, { t: "hockey", k: "frame", i: s.i, s: s.s, q: s.q, a: s.a, now });
       if (s.phase === "done") hockey.tell(room, s);
@@ -103,7 +103,7 @@ export const hockey = {
     }
     if (m.k === "input" && side === 1 && s.phase === "play" && m.q > s.inputQ) {
       s.inputQ = m.q;
-      room.send(room.players.get(s.ids[0]).ws, { t: "hockey", k: "input", i: s.i, s: s.s, q: m.q, x: m.x, hit: m.hit });
+      room.send(room.players.get(s.ids[0]).ws, { t: "hockey", k: "input", i: s.i, s: s.s, q: m.q, x: m.x, y: m.y });
     }
     hockey.save(room, s);
   }

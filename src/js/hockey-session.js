@@ -4,7 +4,7 @@
   const BL = window.BL, W = BL.hockeyWire;
   const create = ({ slot, play, aim, lobby, start, end, closed, sideChanged }) => {
     const net = BL.net;
-    let table = null, side = -1, lastQ = -1, q = 0, hit = 0, peerHit = 0, peerAt = 0, beat = 0, sent = 0, active = false, dead = false, joined = false, joinWait = 0, joinElapsed = 0;
+    let table = null, side = -1, lastQ = -1, q = 0, peerAt = 0, beat = 0, sent = 0, active = false, finished = false, dead = false, joined = false, joinWait = 0, joinElapsed = 0;
     const pose = { x: 0, y: 0, z: 0, yaw: 0 };
     const command = k => net.sendHockey({ k, i: slot, s: table?.s });
     const receive = m => {
@@ -14,7 +14,7 @@
       if (m.k === "busy") { dead = true; closed("This table is playing. Return to the Arcade to watch."); return; }
       if (m.k === "table") {
         if (m.phase === "closed") {
-          if (table && (!m.s || m.s === table.s)) { dead = true; active = false; closed("The table session ended. Return to the Arcade to join again."); }
+          if (table && (!m.s || m.s === table.s)) { dead = true; active = false; if (!finished) closed("A player left. The match ended for both players. Return to the Arcade to join again."); }
           return;
         }
         const nextSide = m.ids.indexOf(net.state.selfId);
@@ -22,16 +22,16 @@
         if (table && m.s !== table.s) return;
         table = m;
         if (side !== nextSide) { side = nextSide; sideChanged(side); }
-        if (m.phase === "lobby") lobby(m.ids[1] ? (m.ready[side] ? "Ready — waiting for the other player." : "Two players seated. Both press Face off to begin.") : "Waiting for another Ooga. Face off starts solo against the moving mallet.");
-        if (m.phase === "play" && !active) { active = true; play.multiplayer(!!m.ids[1]); start(); }
+        if (m.phase === "lobby") lobby(m.ids[1] ? (m.ready[side] ? "Ready — waiting for the other player." : "Two players seated. Both press Face off to begin.") : "Waiting for another Ooga. Face off starts solo against a Clanker.");
+        if (m.phase === "play" && !active) { active = true; play.shared(true); play.multiplayer(!!m.ids[1]); start(); }
         if (m.a && side === 1 && m.q > lastQ) { lastQ = m.q; play.receive(m.a, side); }
-        if (m.phase === "done" && side === 1 && active) { active = false; end(m.a[15]); }
+        if (m.phase === "done" && side === 1 && active) { active = false; finished = true; end(m.a[15]); }
       } else if (m.s === table?.s && m.k === "frame" && side === 1 && m.q > lastQ && W.validFrame(m.a)) {
         lastQ = m.q; play.receive(m.a, side);
-        if (!m.a[16] && active) { active = false; end(m.a[15]); }
+        if (!m.a[16] && active) { active = false; finished = true; end(m.a[15]); }
       } else if (m.s === table?.s && m.k === "input" && side === 0) {
         peerAt = performance.now();
-        play.peerInput(m.x / 1000, m.hit > peerHit); peerHit = Math.max(peerHit, m.hit);
+        play.peerInput(m.x / 1000, m.y / 1000);
       }
     };
     const off = net.subscribeHockey(receive);
@@ -44,7 +44,7 @@
       get side() { return side; }, get table() { return table; }, get dead() { return dead; },
       get follower() { return side === 1; }, get human() { return !!table?.ids[1]; },
       ready: () => { if (table && !dead) command("ready"); },
-      act: () => { if (!active || dead) return false; if (side === 1) { hit++; play.remoteAct?.(); return true; } play.act(); return true; },
+      act: () => { if (!active || dead) return false; if (table?.ids[1]) return false; play.act(); return true; },
       tick(dt, playing) {
         if (dead) return;
         reportPose();
@@ -55,13 +55,13 @@
         }
         beat += dt; sent += dt;
         if (table && beat >= 2) { beat = 0; command("beat"); }
-        if (side === 0 && peerAt && performance.now() - peerAt > 500) { play.peerInput(0, false); peerAt = 0; }
+        if (side === 0 && peerAt && performance.now() - peerAt > 500) { play.peerIdle(); peerAt = 0; }
         if (table && active && playing && sent >= (side === 1 ? 1 / W.INPUT_HZ : 1 / W.HZ)) {
           sent = 0;
-          net.sendHockey(side === 1 ? { k: "input", i: slot, s: table.s, q: q++, x: Math.round(aim.x * 1000), hit } : { k: "frame", i: slot, s: table.s, q: q++, a: play.capture() });
+          net.sendHockey(side === 1 ? { k: "input", i: slot, s: table.s, q: q++, x: Math.round(aim.x * 1000), y: Math.round(aim.depth * 1000) } : { k: "frame", i: slot, s: table.s, q: q++, a: play.capture() });
         }
       },
-      finish() { if (side === 0 && table && active) { net.sendHockey({ k: "frame", i: slot, s: table.s, q: q++, a: play.capture() }); active = false; } },
+      finish() { if (side === 0 && table && active) { net.sendHockey({ k: "frame", i: slot, s: table.s, q: q++, a: play.capture() }); active = false; finished = true; } },
       dispose() { if (!dead) { if (table) command("leave"); else if (joined) net.sendHockey({ k: "cancel", i: slot }); } dead = true; off(); }
     };
   };

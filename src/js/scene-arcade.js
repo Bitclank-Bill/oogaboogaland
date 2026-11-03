@@ -88,14 +88,14 @@
   let zoneNow = "arcade.hall", zoneHeld = 0, exitButton = null;
   let stations = null, blocks = null, carnival = null, staff = null, orders = 0, ticketBoard = null, prizeUi = null;
   let crowd = null, spin = null;
-  let unwatchHockey = null;
+  let unwatchHockey = null, hockeyPlayers = null;
   let audio = null, bots = null, walkers = null, motes = null, power = null, disco = null, fame = null, shelf = null, lit = null;
   let ambientT = 0, wheelTick = 0, cheerT = 0, powerT = 99;
   // Who walked in, kept across a game so they come back out as themselves, and the ticket balance at the last visit,
   // so the wheel knows when to celebrate.
   let lastPlayer = null, lastTickets = null, unsubscribeAccount = null, remotes = null, footsteps = null;
   const scoreSubscriptions = [];
-  const machineBest = (kind, id) => BL.highscores.best(kind, id) ?? game.arcadeBest(id);
+  const machineBest = (kind, id) => kind === "hockey" ? 0 : BL.highscores.best(kind, id) ?? game.arcadeBest(id);
   const refreshScores = (kind) => {
     for (const station of stations) if (station.kind === "machine" && station.game.kind === kind && !station.game.playing) station.game.stop();
     if (fame && FAME_GAMES.some((entry) => entry[1] === kind)) fame.children[2].geometry = AM.fameBoard(fameRows());
@@ -351,6 +351,7 @@
       addChild(holder, body, glow);
       if (parts.glass) addChild(holder, createNode({ geometry: parts.glass, sightHidden: true }));
       if (parts.lamp) addChild(holder, createNode({ geometry: parts.lamp }));
+      if (parts.scale) holder.scale.x = holder.scale.z = parts.scale;
       if (holder !== node) addChild(node, holder);
       if (parts.oche) addChild(node, createNode({ geometry: AM.dartOche() }));
       addChild(root, node);
@@ -393,11 +394,11 @@
     LAYOUT.skee.forEach((p, i) => machine(p, AM.skeeLane(), BL.arcadeGames.skeeball, "skee", [-0.62, 0.62, -6.5, -0.09], i, i === 1, [0.42, 0.72, -0.12]));
     machine(LAYOUT.shy, AM.coconutShy(), BL.arcadeGames.coconutShy, "shy", [-1.9, 1.9, -4.3, -0.35], 0, false);
     // The claws' blocks reach half-way to the posts either side of their bays, so the narrow gaps between the booths,
-    // their scoreboards and the posts are closed rather than squeezed into. The air hockey table's scoreboards stand on
-    // posts beyond its far end, wider than the table, and the pool tables' behind theirs: a block of their own.
+    // their scoreboards and the posts are closed rather than squeezed into. Pool scoreboards keep their own blocks;
+    // hockey scores float above players, leaving its former far-end board posts clear.
     F.claw.forEach((p, i) => machine(p, AM.clawBooth(i), BL.arcadeGames.clawGame, "claw", [-1.4, 1.4, -1.52, -0.28], i, i === 0));
     F.pinball.forEach((p, i) => { const t = AM.pinball(i); machine(p, { body: t.body, glow: t.lit, glass: t.glass, dz: -1.05 }, BL.arcadeGames.pinballGame, "pinball", [-0.43, 0.43, -1.84, -0.2], i, i === 0); });
-    F.hockey.forEach((p, i) => { const a = AM.airHockey(); machine(p, { body: a.body, glow: a.lit, dz: -1.75, turn: Math.PI / 2 }, BL.arcadeGames.airHockey, "hockey", [-0.65, 0.65, -2.95, -0.55], i, false); blocks.push(blockOf(p, -1.1, 1.15, -3.25, -3.06)); });
+    F.hockey.forEach((p, i) => { const a = AM.airHockey(); machine(p, { body: a.body, glow: a.lit, dz: -AM.HOCKEY.w * AM.HOCKEY.scale / 2 - 0.65, turn: Math.PI / 2, scale: AM.HOCKEY.scale }, BL.arcadeGames.airHockey, "hockey", [-0.65 * AM.HOCKEY.scale, 0.65 * AM.HOCKEY.scale, -0.65 - (AM.HOCKEY.w + 0.1) * AM.HOCKEY.scale, -0.65 + 0.1 * AM.HOCKEY.scale], i, false); });
     F.pool.forEach((p, i) => { const t = AM.poolTable(i); machine(p, { body: t.body, glow: t.glow, lamp: t.lamp, dz: -1.35 }, BL.arcadeGames.poolGame, "billiards", [-1.35, 1.35, -2.08, -0.62], i, false); blocks.push(blockOf(p, -1.03, 1.0, -2.35, -2.08)); });
     F.darts.forEach((p, i) => machine(p, { body: AM.dartBoard(), dz: -AM.DART.oche, dy: AM.DART.y, oche: true }, BL.arcadeGames.dartsGame, "darts", null, i, false));
     // Each board hangs at a walker's height on the back wall between two columns: in the way across its hide from the
@@ -2110,10 +2111,12 @@
     footsteps = BL.footsteps.create();
     hireCrew();
     hangFame();
-    for (const kind of BL.game.ARCADE_KINDS) scoreSubscriptions.push(BL.highscores.watch(kind, () => refreshScores(kind)));
+    for (const kind of BL.game.ARCADE_KINDS) if (kind !== "hockey") scoreSubscriptions.push(BL.highscores.watch(kind, () => refreshScores(kind)));
     showShelf();
     // The hall's sound, and from the island the room powers up.
-    unwatchHockey = BL.hockeySession.watch(carnival.filter(g => g.kind === "hockey"));
+    const hockeyGames = carnival.filter(g => g.kind === "hockey");
+    unwatchHockey = BL.hockeySession.watch(hockeyGames);
+    hockeyPlayers = BL.hockeyPlayers.create({ root, games: hockeyGames, body: id => id === BL.net.state.selfId ? people.player : remotes.body(id) });
     audio = BL.carnivalAudio.create();
     audio.room(true);
     powerT = from < 0 && !machineFrom && !retroFrom ? 0 : 99;
@@ -2260,6 +2263,7 @@
     }
     for (let i = 0; i < carnival.length; i++) carnival[i].update(dt);
     if (unwatchHockey) unwatchHockey.update(dt);
+    if (hockeyPlayers) hockeyPlayers.update(dt);
     stationLife(dt, elapsed);
     // The wheel: a spin eases out on its cubic to the drawn wedge and shows its win; its result holds under the
     // clapper a while; else the face idles round, a push from the gamemaster easing back.
@@ -2316,6 +2320,7 @@
   const TAP_SOUNDS = { door: "knock", changer: "coin", muncher: "spit", wheel: "click", disco: "ding", fame: "ding", off: "ding", sign: "grunt" };
   const drawExtra = (ctx2d, project) => {
     remotes.drawNames(ctx2d, project);
+    if (hockeyPlayers) hockeyPlayers.draw(ctx2d, project);
     if (ghosts) ghosts.drawOverlay(ctx2d, project);
   };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
@@ -2351,6 +2356,8 @@
     lastTickets = shownTickets();
     if (unwatchHockey) unwatchHockey.dispose();
     unwatchHockey = null;
+    if (hockeyPlayers) hockeyPlayers.dispose();
+    hockeyPlayers = null;
     audio.dispose();
     remotes.dispose();
     remotes = null;
@@ -2386,6 +2393,7 @@
     if (staff) for (const g of staff) g.agent.liveGeometry(set);
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
     if (remotes) remotes.liveGeometry(set);
+    if (hockeyPlayers) hockeyPlayers.liveGeometry(set);
     if (ghosts) { ghosts.liveGeometry(set); tess.liveGeometry(set); }
     else if (ghostEntry) ghostEntry.liveGeometry(set);
   };

@@ -49,7 +49,7 @@ const harness = t => {
   return h;
 };
 const W = protocol.HOCKEY;
-const frame = () => [0,660,0,600,0,200,0,2000,0,0,179000,0,-1000,-1000,0,0,1,0];
+const frame = () => [0,660,0,600,0,200,0,2000,0,0,-1,0,-1000,-1000,0,0,1,0];
 const messages = ws => ws.sent.filter(m => m.t === "hockey");
 const seat = async (h,id,login) => {
   const ws = await h.join(id,login), p = h.room.players.get(id);
@@ -69,6 +69,10 @@ test("hockey parser bounds every coordinate, action, sequence and payload", () =
   for (let i=0;i<18;i++) { const a=frame(); a[i]=1e9; assert.equal(protocol.parseClientMessage(JSON.stringify({...base,a})),null,`field ${i}`); }
   assert.equal(protocol.parseClientMessage(JSON.stringify({...base,padding:"x".repeat(256)})),false);
   assert.ok(Buffer.byteLength(JSON.stringify(base))<=protocol.MESSAGE_MAX);
+  const input={t:"hockey",k:"input",i:0,s:base.s,q:1,x:0,y:500};
+  assert.ok(protocol.parseClientMessage(JSON.stringify(input)));
+  for(const patch of [{x:1001},{y:-1},{y:1001},{y:.5},{y:null},{y:undefined,hit:1}]) assert.equal(protocol.parseClientMessage(JSON.stringify({...input,...patch})),null);
+  const bonus=frame();bonus[14]=10;assert.equal(protocol.parseClientMessage(JSON.stringify({...base,a:bonus})),null);
 });
 test("two authenticated lobby seats require both ready; spectators cannot steal a started solo or human game", async t => {
   const h=harness(t), a=await seat(h,1,"a"), b=await seat(h,2,"b"), c=await seat(h,3,"c");
@@ -93,9 +97,9 @@ test("host frames and guest inputs are sequenced, compact, zone-scoped, rate-bou
   const writesBeforeFrames=h.writes.length;
   cmd(h,a,"frame",{q:0,a:frame()}); const s=h.room.hockeyTables[0];assert.equal(s.q,0);
   cmd(h,a,"frame",{q:0,a:frame()});assert.equal(s.q,0);
-  const bad=frame();bad[8]=4;cmd(h,a,"frame",{q:1,a:bad});assert.equal(s.q,0);
-  cmd(h,b,"input",{q:1,x:1000,hit:1});assert.equal(messages(a.ws).at(-1).k,"input");
-  const count=messages(a.ws).length;cmd(h,b,"input",{q:1,x:-1000,hit:2});assert.equal(messages(a.ws).length,count);
+  const bad=frame();bad[8]=bad[14]=4;cmd(h,a,"frame",{q:1,a:bad});assert.equal(s.q,0);
+  cmd(h,b,"input",{q:1,x:1000,y:500});assert.equal(messages(a.ws).at(-1).k,"input");
+  const count=messages(a.ws).length;cmd(h,b,"input",{q:1,x:-1000,y:600});assert.equal(messages(a.ws).length,count);
   for(let q=2;q<200;q++)cmd(h,a,"frame",{q,a:frame()});
   assert.ok(s.q<12,`burst stopped at ${s.q}`);assert.equal(messages(c.ws).length,before);
   assert.equal(h.writes.length,writesBeforeFrames,"frames/inputs never write storage");
@@ -134,8 +138,8 @@ test("serialized session-to-Room transport retries a dropped join, cancels befor
     const listeners=new Set(), row={starts:0,ends:0,closed:0,inputs:[],frames:[],a:frame(),index:p.ws.sent.length};
     const net={state:{selfId:p.p.id,room:"live"},subscribeHockey:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},sendHockey:m=>{pending.push([p.ws,JSON.stringify({t:"hockey",...m})]);return true;},sendPose:(x,y,z,yaw)=>pending.push([p.ws,JSON.stringify({t:"pose",x,y,z,yaw})])};
     const BL={hockeyWire:W,net};runInNewContext(readFileSync(new URL("../../src/js/hockey-session.js",import.meta.url),"utf8"),{window:{BL},performance});
-    const play={multiplayer(){},capture:()=>row.a,receive:a=>row.frames.push([...a]),peerInput:(x,hit)=>row.inputs.push([x,hit]),act(){},remoteAct(){}};
-    row.session=BL.hockeySession.create({slot:0,play,aim:{x:1},lobby(){},sideChanged(){},start(){row.starts++;},end(){row.ends++;},closed(){row.closed++;}});
+    const play={shared(){},multiplayer(){},capture:()=>row.a,receive:a=>row.frames.push([...a]),peerInput:(x,y)=>row.inputs.push([x,y]),peerIdle(){},act(){},remoteAct(){}};
+    row.session=BL.hockeySession.create({slot:0,play,aim:{x:1,depth:.5},lobby(){},sideChanged(){},start(){row.starts++;},end(){row.ends++;},closed(){row.closed++;}});
     row.deliver=()=>{while(row.index<p.ws.sent.length){const m=JSON.parse(JSON.stringify(p.ws.sent[row.index++]));if(m.t==="hockey")for(const fn of listeners)fn(m);}};
     clients.push(row);return row;
   };
@@ -146,12 +150,20 @@ test("serialized session-to-Room transport retries a dropped join, cancels befor
   h.advance(5100);host.session.tick(1.1,false);pump();assert.ok(host.session.table,"unacknowledged join retries after the real room bucket refills");
   const guest=connect(b);guest.session.tick(.1,false);pump();host.session.ready();guest.session.ready();pump();
   assert.equal(host.starts,1);assert.equal(guest.starts,1);
-  guest.session.act();guest.session.tick(.1,true);pump();assert.deepEqual(host.inputs.at(-1),[1,true]);
+  guest.session.act();guest.session.tick(.1,true);pump();assert.deepEqual(host.inputs.at(-1),[1,.5]);
   host.session.tick(.1,true);pump();assert.equal(guest.frames.length,1);assert.deepEqual(guest.frames[0],host.a);
-  host.a=frame();host.a[16]=0;host.session.finish();pump();assert.equal(guest.ends,1);assert.equal(h.room.hockeyTables[0].phase,"done");
+  for(let goal=1;goal<=6;goal++){h.advance(100);host.a=frame();host.a[8]=host.a[14]=goal;host.session.tick(.1,true);pump();}
+  h.advance(100);host.a=frame();host.a[8]=host.a[14]=7;host.a[16]=0;host.session.finish();pump();assert.equal(guest.ends,1);assert.equal(h.room.hockeyTables[0].phase,"done");
   // A delayed cancellation cannot cancel an active/finished session; it only covers an unacknowledged lobby join.
   h.send(b.ws,{t:"hockey",k:"cancel",i:0});assert.ok(h.room.hockeyTables[0]);
-  host.session.dispose();pump();assert.equal(h.room.hockeyTables[0],null);assert.equal(guest.closed,1);guest.session.dispose();
+  host.session.dispose();pump();assert.equal(h.room.hockeyTables[0],null);assert.equal(guest.closed,0,"completed result stays visible when the winner leaves");guest.session.dispose();
+  h.advance(5100);const nextHost=connect(a), nextGuest=connect(b);
+  nextHost.session.tick(.1,false);pump();nextGuest.session.tick(.1,false);pump();
+  nextHost.session.ready();nextGuest.session.ready();pump();
+  assert.equal(nextHost.starts,1);assert.equal(nextGuest.starts,1);
+  nextGuest.session.dispose();pump();assert.equal(h.room.hockeyTables[0],null);
+  assert.equal(nextHost.closed,1,"either participant leaving before seven closes the other client's match");
+  assert.equal(nextHost.ends,0,"an exit is not a scored finish");nextHost.session.dispose();
   h.room.webSocketClose(a.ws);h.room.webSocketClose(b.ws);
 });
 
@@ -184,7 +196,7 @@ test("admission cooldown survives reconnect/wake, readiness is idempotent, and f
   const h=harness(t),a=await seat(h,1,"a"),b=await seat(h,2,"b");cmd(h,a,"join");cmd(h,b,"join");
   cmd(h,b,"ready");const count=messages(a.ws).length;
   for(let i=0;i<50;i++)cmd(h,b,"ready");assert.equal(messages(a.ws).length,count,"repeated readiness emits no table broadcast");
-  cmd(h,a,"ready");const s=h.room.hockeyTables[0], win=frame();win[8]=7;
+  cmd(h,a,"ready");const s=h.room.hockeyTables[0], win=frame();win[8]=win[14]=7;
   cmd(h,a,"frame",{q:0,a:win});assert.equal(s.q,-1);const early=frame();early[16]=0;cmd(h,a,"frame",{q:1,a:early});assert.equal(s.q,-1);
   cmd(h,a,"frame",{q:2,a:frame()});assert.equal(s.q,2);
   a.p.hockeyBuckets.control.tokens=0;cmd(h,a,"leave");assert.equal(h.room.hockeyTables[0],null);
@@ -231,4 +243,50 @@ test("surviving socket attachments require a committed admission proof for every
   drop=true;cmd(h,b,"join");assert.deepEqual(a.ws.store.hockey.ids,[1,2]);
   await h.wake();assert.equal(h.room.hockeyTables[0],null,"uncommitted second seat invalidates the whole restored session");
   h.room.webSocketClose(a.ws);h.room.webSocketClose(b.ws);
+});
+
+// Prepared for post-deployment validation; no simulation frames are persisted to extend a match.
+test("untimed shared matches survive ten minutes and hibernation, then either seat may end both", async t => {
+  const h=harness(t), a=await seat(h,1,"a"), b=await seat(h,2,"b");
+  assert.ok(a.ws.sent.find(m=>m.t==="welcome").features.includes(W.FEATURE));
+  for (const humans of [false,true]) {
+    h.advance(5100); cmd(h,a,"join"); if(humans)cmd(h,b,"join");
+    cmd(h,a,"ready"); if(humans)cmd(h,b,"ready");
+    const writes=h.writes.length, sid=h.room.hockeyTables[0].s;
+    for(let n=0;n<301;n++) { h.advance(2000);cmd(h,a,"beat");if(humans)cmd(h,b,"beat"); }
+    assert.equal(h.room.hockeyTables[0].s,sid);assert.equal(h.writes.length,writes);
+    await h.wake();assert.equal(h.room.hockeyTables[0].s,sid,"proof remains valid beyond the old eight-minute expiry");
+    cmd(h,a,"frame",{q:0,a:frame()});const bad=frame();bad[10]=1000;cmd(h,a,"frame",{q:1,a:bad});
+    assert.equal(h.room.hockeyTables[0].q,0,"a shared host cannot reintroduce a match clock");
+    const end=frame();end[16]=0;cmd(h,a,"frame",{q:2,a:end});assert.equal(h.room.hockeyTables[0].phase,"play","premature terminal frame rejected");
+    cmd(h,humans?b:a,"leave");assert.equal(h.room.hockeyTables[0],null);
+    assert.equal(messages(a.ws).at(-1).phase,"closed");assert.equal(messages(b.ws).at(-1).phase,"closed");
+  }
+  h.room.webSocketClose(a.ws);h.room.webSocketClose(b.ws);
+});
+
+test("shared hockey presentation derives one solo Clanker and head scores from table state, with complete cleanup", () => {
+  const root={children:[]}, rigs=[], tables=[null,null,null];
+  const node=()=>({visible:true,position:{x:0,y:0,z:0},rotation:{x:0,y:0,z:0},children:[],world:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]});
+  const addChild=(parent,...children)=>{for(const child of children){parent.children.push(child);child.parent=parent;}};
+  const removeChild=(parent,child)=>{parent.children.splice(parent.children.indexOf(child),1);child.parent=null;};
+  const cave=()=>{const r=node(),head=node();head.geometry={};addChild(r,head);return {root:r,parts:{head,armR:node()},headOpen:{},headClosed:{}};};
+  const humans=new Map([[1,cave()],[2,cave()]]);
+  let now=10000;
+  const BL={hockeyWire:W,net:{state:{me:{id:1},body:"a",selfId:1},hockeyTables:tables,serverNow:()=>now},
+    scene:{addChild,removeChild,createNode:opts=>Object.assign(node(),opts),boundsOf:()=>({min:[-.2,0,-.2],max:[.2,1,.2]})},
+    models:{caveman:cave},contributors:{traitsFor:()=>({})},crew:{bodyHeightOf:()=>2},arcadeModels:{staffHat:()=>({})},
+    agent:{create:()=>{const r=cave();r.poseManaged=(dt,x,y,z,yaw,speed)=>{Object.assign(r.root.position,{x,y,z});r.speed=speed;};r.dispose=()=>removeChild(root,r.root);r.liveGeometry=()=>{};rigs.push(r);return r;}}};
+  runInNewContext(readFileSync(new URL("../../src/js/hockey-players.js",import.meta.url),"utf8"),{window:{BL}});
+  const view=BL.hockeyPlayers.create({root,games:[{rivalU:0}],body:id=>humans.get(id)});
+  view.update(.1);assert.equal(rigs.length,0,"no session means no fake opponent");
+  tables[0]={s:"0123456789abcdef",ids:[1,0],phase:"lobby",start:now,a:null};view.update(.1);assert.equal(rigs.length,0);
+  tables[0].phase="play";view.update(.1);assert.equal(rigs.length,1);assert.ok(rigs[0].root.position.x<W.TABLES[0][0]);
+  now+=2400;view.update(.1);assert.equal(rigs[0].root.position.x,W.TABLES[0][0]);assert.equal(rigs[0].speed,0);
+  const a=frame();a[8]=a[14]=2;a[9]=a[15]=3;tables[0].a=a;
+  const scores=[],ctx={save(){},restore(){},strokeText(){},fillText:s=>scores.push(s)};view.draw(ctx,(x,y)=>({x,y}));assert.deepEqual(scores,["2","3"]);
+  tables[0].ids=[1,2];view.update(.1);assert.equal(root.children.length,0,"two humans never retain a Clanker");
+  tables[0].ids=[1,0];view.update(.1);assert.equal(rigs[1].root.position.x,W.TABLES[0][0],"late viewers use server start time rather than replaying the approach");
+  tables[0]=null;view.update(.1);assert.equal(root.children.length,0);
+  view.dispose();assert.equal(root.children.length,0);
 });

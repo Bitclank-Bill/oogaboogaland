@@ -343,7 +343,7 @@
       state.ghostFollowers = Number.isSafeInteger(msg.ghostFollowers) ? msg.ghostFollowers : 0;
       state.selfId = msg.you.id;
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
-      state.hockey = Array.isArray(msg.features) && msg.features.includes("hockey-v1");
+      state.hockey = Array.isArray(msg.features) && msg.features.includes("hockey-v2");
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
       state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
       remotes.clear();
