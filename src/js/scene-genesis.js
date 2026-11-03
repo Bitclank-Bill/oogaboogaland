@@ -342,7 +342,7 @@
   // Into era `to`'s cave, just inside its mouth, facing in (or back to the arrival in the atrium when `to` is -1).
   const travel = (to) => {
     if (!avatar) return;
-    if (to === "golf") { if (golf) golf.stop(); arrive(GOLF_IN.x, GOLF_IN.z, Math.PI / 2); hud.toast("Glow Golf: nine holes under the hall. E at a tee to play."); return; }
+    if (to === "golf") { if (golf) golf.stop(); arrive(GOLF_IN.x, GOLF_IN.z, Math.PI / 2); hud.toast("Glow Golf: walk to HOLE 1's stone tee (ahead and to the right) and click the tee to play. Climb the vines here to go back up."); return; }
     if (to === "hall") { if (golf) golf.stop(); const C = BL.genesisCavern.CENOTE; arrive(C.x + 3.6, C.z + 3.6, Math.atan2(-1, -1)); return; }
     if (to < 0) { arrive(); return; }
     const e = GW.ERAS[to];
@@ -607,7 +607,20 @@
   const mayPossess = (cave) => BL.net.mayDrive(cave.traits.name, BL.contributors.stateFor(cave.contributor) === "working");
   const mayPick = (c) => !BL.net.mayDrive(c.name, BL.contributors.stateFor(c) === "working");
   const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
-  const groundFor = (x, z, feet) => footing.supportAt(x, z, feet);
+  const POOL = BL.genesisCavern.CENOTE, POOL_DEEP = 0.85, POOL_RIM = 0.42;
+  const poolAt = (x, z) => Math.hypot(x - POOL.x, z - POOL.z);
+  const groundFor = (x, z, feet) => {
+    const d = poolAt(x, z);
+    if (d < POOL.r - 0.3) return ISLAND_TOP - POOL_DEEP;
+    if (d < POOL.r + 0.4) return ISLAND_TOP + POOL_RIM;
+    return footing.supportAt(x, z, feet);
+  };
+  // Waist deep in the cenote: a splash, and the Ooga goes down to Glow Golf.
+  const updateCenote = () => {
+    if (!avatar || door.dir || paper.open || bench.open) return;
+    const q = avatar.root.position;
+    if (poolAt(q.x, q.z) < POOL.r - 0.3 && feetOf() < ISLAND_TOP - POOL_DEEP * 0.5) { hud.toast("Splash! Down the cenote to Glow Golf"); flipTo("golf"); }
+  };
   // The roof over (x, z): a gallery's own (its frame drawn at MUSEUM.SCALE, its roof slab's underside) or the
   // museum's over the atrium, so a jetpack stops under it rather than flying through.
   const GALLERY_ROOF = ISLAND_TOP * (1 - MU.SCALE) + (ROOF - 0.4) * MU.SCALE;
@@ -623,8 +636,20 @@
     return ACTORS;
   };
   const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3), y);
-  // Space is the Ooga's (a jump, held to fly): on a keyboard E opens what it stands by (useHere), and only a touch
+  // Space and E are the Ooga's (a jump, held to fly): on a keyboard a click opens things, and only a touch
   // screen's act button opens it through the crew.
+  // A click on the floor by something without a model of its own to click (a golf tee, a beanbag, the cenote, a
+  // board's spot) uses it, as a click on a model does: the ray meets the floor and the nearest prop there opens.
+  const TAP_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+  const clickGround = (p) => {
+    if (!avatar || !renderer) return;
+    renderer.ray(p.x, p.y, camera, TAP_RAY);
+    if (TAP_RAY.dy > -1e-4) return;
+    const t = (ISLAND_TOP - TAP_RAY.oy) / TAP_RAY.dy, x = TAP_RAY.ox + TAP_RAY.dx * t, z = TAP_RAY.oz + TAP_RAY.dz * t, q = avatar.root.position;
+    if (Math.hypot(x - q.x, z - q.z) > 14) return;
+    const prop = props.near(x, z, ISLAND_TOP, 0.6);
+    if (prop) openProp(prop);
+  };
   const useNear = (x, z, reach, feet = feetOf()) => {
     if (!COARSE) return false;
     const prop = props.near(x, z, feet, Math.max(0, reach - 1.4));
@@ -1053,7 +1078,8 @@
       // gold rod, its years and name across the top, high over the moving walkways.
       const glow = glowHex(e.theme.lamp), b = MU.bays[e.n], words = BL.factoryModels.label(e.years, e.name, { height: 0.5, style: "gold" });
       for (const u of [MU.OPEN + 4, MU.OPEN + (b.depth - MU.OPEN) / 2]) for (const side of [-1, 1]) {
-        const bx = GW.LANE_X + side * 4, bz = e.z1 - u, node = place(createNode({ position: { x: bx, y: ISLAND_TOP, z: bz }, sightHidden: true }));
+        // Kept inside the gallery's side walls, its lettering's full width clear of them, in a narrow gallery too.
+        const keep = Math.max(0.85, words.width / 2) + 0.3, bx = Math.max(b.x0 + keep, Math.min(b.x1 - keep, GW.LANE_X + side * 4)), bz = e.z1 - u, node = place(createNode({ position: { x: bx, y: ISLAND_TOP, z: bz }, sightHidden: true }));
         addChild(node, createNode({ geometry: bannerGeometry(glow) }), createNode({ geometry: words.back, position: { x: 0, y: 8.55, z: 0.05 } }), createNode({ geometry: words.face, position: { x: 0, y: 8.55, z: 0.05 } }));
       }
       mu(e.n, at.x, at.z, p);
@@ -1123,7 +1149,7 @@
   // the visitor's best on every museum game (genesis-cartridge.js bests), a page of them at a time.
   const RECORDS = { x: ENTRY.x - 6, z: ENTRY.z - 2 };
   const buildRecords = () => {
-    const words = BL.factoryModels.label("GAME RECORDS", "your best on every museum game · E here", { height: 0.7, style: "gold" });
+    const words = BL.factoryModels.label("GAME RECORDS", "your best on every museum game · click here", { height: 0.7, style: "gold" });
     const node = place(createNode({ position: { x: RECORDS.x, y: ISLAND_TOP, z: RECORDS.z }, sightHidden: true }));
     addChild(node, createNode({ geometry: M.merge(
       M.box({ w: 2.6, h: 2.2, d: 0.14, color: "#1b1d24", offset: { x: 0, y: 2.3, z: 0 } }),
@@ -1170,7 +1196,7 @@
         at: { x: GC.x + c.tee.x, y: ISLAND_TOP, z: GC.z + c.tee.z }, reach: 1.8, onUse: () => ({ caption: c.hole.name }) });
     }
     { const C = BL.genesisCavern.CENOTE;
-      props.register({ id: "golf-down", era: 7, year: 2026, title: "Down the cenote: Glow Golf", label: "GLOW GOLF · DOWN THE CENOTE, 2026", sourceKeys: [], hint: "dive down the cenote to Glow Golf",
+      props.register({ id: "golf-down", era: 7, year: 2026, title: "Down the cenote: Glow Golf", label: "GLOW GOLF · DOWN THE CENOTE, 2026", sourceKeys: [], hint: "dive down the cenote to Glow Golf (or just jump in)",
         at: { x: C.x + 3.4, y: ISLAND_TOP, z: C.z + 3.4 }, reach: 2.2, onUse: () => ({ caption: "Glow Golf" }) });
       props.register({ id: "golf-up", era: 7, year: 2026, title: "Up to the Genesis Hall", label: "GLOW GOLF · BACK UP TO THE HALL, 2026", sourceKeys: [], hint: "climb back up to the hall",
         at: { x: GOLF_IN.x - 1.2, y: ISLAND_TOP, z: GOLF_IN.z }, reach: 2, onUse: () => ({ caption: "The hall" }) }); }
@@ -1183,7 +1209,8 @@
     // The cavern round it all (genesis-cavern.js): rough roof, stalactites, rock pillars, crystals, the cenote,
     // the carved frieze and sun discs, and eagles under the roof.
     built.cavern = BL.genesisCavern.build({ M, createNode, addChild, place, top: ISLAND_TOP, atrium: MU.atrium, roof: ROOF, pillars: MU.PILLARS, walls: WALLS });
-    for (const b of BL.genesisCavern.layout().boxes) built.obstacles.push(b);
+    // The cenote's pool is open to walk or jump into (no wall round it): its ring of stones stands a step up, the
+    // water inside is waist deep, and an Ooga in it goes down to Glow Golf (`updateCenote`).
     built.campfire = BL.genesisCampfire.build({ M, createNode, addChild, place, top: ISLAND_TOP });
     for (const b of BL.genesisCampfire.layout().boxes) built.obstacles.push(b);
     for (const b of BL.genesisLumber.layout().boxes) built.obstacles.push(b);
@@ -1548,7 +1575,7 @@
         if (r && r.terminal) { el["auto-sub"].textContent = near.date || near.label || ""; autoplay.start(near, r.terminal, `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`); }
         else autoplay.stop();
       }
-      if (near) { hud.hint(`${COARSE ? "USE" : "E"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
+      if (near) { hud.hint(`${COARSE ? "USE" : "CLICK"}: ${near.id === "legend" ? "open the museum's timeline" : near.hint || `${near.title} (${catalogue ? catalogue.shown(near.id, near.year) : near.year})`}`, 600000); hud.setAct(near.id === "legend" ? "TIMELINE" : "OPEN"); }
       else { hud.hideHint(); pilot.showAct(); }
     }
   };
@@ -1722,7 +1749,6 @@
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "Escape") { if (guide && guide.escape()) { e.preventDefault(); return; } if (!pilot.escape()) leave(); }
     else if (k === "0") pilot.resetCamera();
-    else if (k === "e" && avatar) { const q = avatar.root.position, prop = props.near(q.x, q.z, feetOf(), 1.0); if (prop) { e.preventDefault(); openProp(prop); } }
     else if (k === "i") openInfo();
     else if (k === "c") toggle("captions");
     else if (k === "t") toggle("voice");
@@ -1784,7 +1810,7 @@
     audio.setEra(Math.max(0, era));
     if (era >= 0 && lastEra !== -2) {
       const e = GW.ERAS[era], n = exhibitCount(era);
-      setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}).${e.room ? " Fingerprints and Time is on the left." : ""} ${n ? `${n} exhibits in this gallery; E by one (or a click) opens its workbench.` : "Its exhibits are still being built."}`);
+      setCaption(`era-${era}`, `Era ${e.n}: ${e.name} (${e.years}).${e.room ? " Fingerprints and Time is on the left." : ""} ${n ? `${n} exhibits in this gallery; click one to open its workbench.` : "Its exhibits are still being built."}`);
     }
     lastEra = era;
   };
@@ -1811,6 +1837,7 @@
     if (bench.open) updateBench(dt);
     if (paper.open) updatePaperView(dt);
     if (golf) { golf.update(dt, camera); updateGolfLight(); }
+    updateCenote();
     if (h.ambient) {
       stepDemo(dt);
       built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
@@ -1982,6 +2009,7 @@
         else if (hit && hit.owner.kind === "prop") openProp(hit.owner.prop);
         else if (hit && hit.owner.kind === "bguide") openGuideItem(hit.owner.item);
         else if (hit && hit.owner.kind === "wall") openPanel(wallView(hit.owner.board, wallPieceAt(hit.owner.board, p.x, p.y)));
+        else if (!hit || !hit.owner.kind) clickGround(p);
       },
       hoverIgnore: () => bench.open ? null : pilot.hooks.hoverIgnore(),
       onOrbit: (dx, dy) => {
@@ -2022,7 +2050,7 @@
       show: (title, lines, i, n) => { el.auto.hidden = false; el["auto-title"].textContent = title; el["auto-screen"].textContent = lines.join("\n"); el["auto-step"].textContent = n ? `step ${i} of ${n}` : ""; el["auto-fill"].style.width = `${n ? Math.round(i / n * 100) : 0}%`; },
       hide: () => { el.auto.hidden = true; }
     });
-    el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space jumps (hold to fly) · E by an exhibit (or a click) opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
+    el.help.textContent = COARSE ? "Stick walks · OPEN by an exhibit, or tap it · Timeline for every invention" : "W A S D walk · Space jumps (hold to fly) · a click on an exhibit opens its workbench · G or Timeline: every invention · P pause · I info · C captions · Calm · Esc leave";
     // The workbench and the timeline menu (their own modules, on the host).
     workbench = BL.genesisWorkbench.create(host, document.getElementById("genesis-bench"));
     timeline = BL.genesisTimeline.create(host, document.getElementById("genesis-menu"));

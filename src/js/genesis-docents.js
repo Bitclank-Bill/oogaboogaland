@@ -43,10 +43,10 @@
     "Every gallery is one era. Ride its walkway in, and the stage at the end has a show now and then.",
     "Press G, or tap the white screen, for every invention on one timeline.",
     "Follow the gold path: those are the steps toward Bitcoin, in date order.",
-    "E by any exhibit, or a click on it, opens its workbench. Try the machines, they really work!"
+    "A click on any exhibit opens its workbench. Try the machines, they really work!"
   ];
   const TIPS = [
-    "E by an exhibit, or a click on it, opens its workbench.",
+    "A click on an exhibit opens its workbench.",
     "The headlines on the back wall are real ones from these years.",
     "Wait by the stage at the end: the players come out now and then.",
     "Gold numbers on the floor are steps toward Bitcoin.",
