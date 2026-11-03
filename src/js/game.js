@@ -143,9 +143,10 @@
         && MINE_ENDINGS.includes(m.ending) && typeof m.won === "boolean" && Number.isFinite(m.score) && m.score >= 0 && m.score < 1e7) {
         state.mine.best = { sats: Math.floor(m.sats), seconds: Math.floor(m.seconds), ending: m.ending, won: m.won, score: Math.floor(m.score), continued: m.continued === true };
       }
-      const c = parsed.cloudHopper;
-      if (c && Number.isSafeInteger(c.unlocked) && c.unlocked >= 1 && c.unlocked <= CLOUD_LEVELS) state.cloudHopper.unlocked = c.unlocked;
-      if (c && Number.isSafeInteger(c.last) && c.last >= 1 && c.last <= CLOUD_LEVELS) state.cloudHopper.last = c.last;
+      const c = parsed.cloudHopper, playableLevels = BL.cloudHopperLevels.LEVELS.length;
+      // Keep future personal bests, but never select an unavailable level or its dock music.
+      if (c && Number.isSafeInteger(c.unlocked) && c.unlocked >= 1 && c.unlocked <= CLOUD_LEVELS) state.cloudHopper.unlocked = Math.min(c.unlocked, playableLevels);
+      if (c && Number.isSafeInteger(c.last) && c.last >= 1 && c.last <= CLOUD_LEVELS) state.cloudHopper.last = Math.min(c.last, playableLevels);
       if (c && Array.isArray(c.players)) for (const p of c.players.slice(0, CLOUD_PLAYERS)) {
         if (!p || !isString(p.login, 39) || !CLOUD_LOGIN.test(p.login) || !Array.isArray(p.best) || p.best.length > CLOUD_LEVELS
           || state.cloudHopper.players.some((q) => q.login === p.login)) continue;

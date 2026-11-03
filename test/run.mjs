@@ -4715,7 +4715,7 @@ const cloudHopperFailureChecks = async engine => {
   let ghostPosition = null, ghostHeading = 0, platformRadius = 0;
   let viewFrames = 0, islandFramed = false, frameReleased = false;
   let audioStage = "", audioTicks = 0, audioStops = 0, audioDisposed = false;
-  let audioLevel = 0, audioFade = 0, audioUnlocks = 0, inputResets = 0;
+  let audioLevel = 0, audioFade = 0, audioUnlocks = 0, inputResets = 0, audioSong = -1;
   const storage = new Map(), guideKey = "ooga-cloud-hopper-guide-v1", visibilityListeners = new Set();
   const noop = () => {};
   const context = { window: { BL: { pilot: { WALK: engine.pilot.WALK }, crew: engine.crew, net: { state: { me: { login: "record-holder" } } } } },
@@ -4768,7 +4768,7 @@ const cloudHopperFailureChecks = async engine => {
     cloudHopperModels: { cloud(radius) { platformRadius ||= radius; return S.createNode(); }, cloudMesh: () => null, boostSurface: () => S.createNode(), updateBoostSurface: noop,
       bounceMarker: () => S.createNode(), updateBounceMarker: noop, pickup: () => S.createNode(), updateJetpackPickup: noop,
       rope: () => null, hookHead: () => null, leaf: () => null, cabinet: () => S.createNode(), updateCabinet: noop },
-    cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song: noop, jump: noop, fade: noop, warn: noop, jet: noop,
+    cloudHopperAudio: { create: () => ({ unlock() { audioUnlocks++; }, song(index) { audioSong = index; }, jump: noop, fade: noop, warn: noop, jet: noop,
       power: noop, xrayEnding: noop, updraft: noop, hookThrow: noop, hookHit: noop, hookRelease: noop, hookLost: noop, thunder: noop, rain: noop, tornado: noop, tornadoForm: noop, gust: noop, gustWarn: noop,
       stage(name) { audioStage = name; }, tick() { audioTicks++; },
       level(value, seconds = 0.12) { audioLevel = value; audioFade = seconds; },
@@ -4821,6 +4821,31 @@ const cloudHopperFailureChecks = async engine => {
   const beforeDockOffTicks = audioTicks, beforeDockOffStops = audioStops;
   actor.root.position.x = dock.position.x; tick(0);
   const dockEdgeMusic = audioStage === "" && audioLevel === 0 && audioTicks === beforeDockOffTicks && audioStops === beforeDockOffStops + 1;
+  // Regression: saves accepted levels 5–8 although only four dock songs exist.
+  // Load real saves, then walk onto the dock through the controller's music path.
+  let savedCloud = null;
+  const saveContext = { window: {}, URLSearchParams, location: { search: "" },
+    localStorage: { getItem: () => JSON.stringify({ cloudHopper: savedCloud }) } };
+  for (const name of GAME_SOURCES)
+    runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), saveContext);
+  const savedLevels = [];
+  for (const [last, unlocked, expectedLast, expectedUnlocked] of [
+    [0, 1, 0, 1], [1, 1, 1, 1], [2, 2, 2, 2], [3, 3, 3, 3], [4, 4, 4, 4],
+    [5, 5, 4, 4], [6, 6, 4, 4], [7, 7, 4, 4], [8, 8, 4, 4],
+    [99, 40, 0, 1], [-1, -1, 0, 1], [1.5, 1.5, 0, 1], ["5", "5", 0, 1]
+  ]) {
+    savedCloud = { last, unlocked, players: [{ login: "record-holder", best: [60000, 61000, 62000, 63000, 64000] }] };
+    const loaded = saveContext.window.BL.game.create({ catalog: [] }).state.cloudHopper;
+    cloudSave.last = loaded.last; cloudSave.unlocked = loaded.unlocked;
+    actor.root.position.x = dock.position.x + 2; tick(0);
+    savedLevels.push({ last, loaded: loaded.last, unlocked: loaded.unlocked, song: audioSong,
+      valid: loaded.last === expectedLast && loaded.unlocked === expectedUnlocked && audioStage === "dock"
+        && audioSong === Math.max(1, expectedLast) - 1 && !!engine.cloudHopperMusic.SONGS[audioSong]
+        && JSON.stringify(loaded.players) === JSON.stringify(savedCloud.players) });
+    actor.root.position.x = dock.position.x; tick(0);
+  }
+  record("Cloud Hopper saves: unavailable levels clamp to the playable range before dock music, preserving personal bests", savedLevels.every(row => row.valid), JSON.stringify(savedLevels));
+  cloudSave.last = 1; cloudSave.unlocked = 2;
   Object.assign(actor.root.position, hopper.platform.position); actor.root.position.y += actor.baseY;
   tick(0);
   const waitingMusic = audioStage === "dock" && audioLevel === 0.28;
@@ -6191,7 +6216,7 @@ const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
 
 // The games' rules and saves in Node, under the same localStorage the page uses: the mine's seeded sim,
 // every game's stored best, the tickets a machine spends and the jackpot wheel's odds.
-const GAME_SOURCES = ["math", "donations", "rocket-parts", "mine-rigs", "mine-sim", "highscore-rules", "game"];
+const GAME_SOURCES = ["math", "donations", "rocket-parts", "mine-rigs", "mine-sim", "highscore-rules", "game", "cloud-hopper-levels"];
 const gameRulesChecks = async () => {
   const store = new Map();
   const context = { window: {}, URLSearchParams, location: { search: "" }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) } };
