@@ -31,7 +31,7 @@
     { id: "dice", x: -22.6, z: 30, ry: Math.PI / 2, w: 3.2, d: 1.8, reach: 2.6, hint: "roll the dice: entropy for a seed (tap the screen for the guide)" },
     { id: "passphrase", x: 22.6, z: 30, ry: -Math.PI / 2, w: 3.2, d: 1.8, reach: 2.6, hint: "roll five dice: a passphrase word (tap the screen for the guide)" },
     { id: "paths", x: 16, z: 33, ry: 0, w: 0.6, d: 0.6, reach: 2.4, hint: "start here: the Bitcoin Guide's learning paths" },
-    { id: "live", x: 14.5, z: 21, ry: 0, w: 5.2, d: 0.6, reach: 3.2, hint: "the Bitcoin network, live, and its tools" }
+    { id: "live", x: 14.5, z: 21, ry: 0, w: 4.6, d: 1.4, reach: 3.4, hint: "the Bitcoin network, live, and its tools" }
   ];
   const layout = () => {
     const stations = STATIONS.map((s) => {
@@ -40,7 +40,12 @@
     });
     const cubes = [];
     for (let k = 0; k < 12; k++) { const a = (k * 30 + 15) * Math.PI / 180; cubes.push({ k, a, x: Math.sin(a) * CUBE_R, z: Math.cos(a) * CUBE_R }); }
-    return { stations, cubes, boxes: stations.map((s) => s.box) };
+    // Rock beanbags in front of the rock TV, to sit on and watch it (`seat`: where an Ooga sits and the way it faces).
+    const tv = stations.find((s) => s.id === "live"), seats = [-1.9, 0, 1.9].map((dx, i) => {
+      const x = tv.x + dx, z = tv.z + 3.6 + (i === 1 ? 0.4 : 0);
+      return { i, x, z, ry: Math.PI + Math.atan2(-dx * 0.3, 3.6), box: { x0: x - 0.55, x1: x + 0.55, z0: z - 0.55, z1: z + 0.55 }, at: { x, z: z + 1.1 } };
+    });
+    return { stations, cubes, seats, boxes: [...stations.map((s) => s.box), ...seats.map((q) => q.box)] };
   };
 
   // ---- Boards: the site's content as pages ({ caption, title, text, links }) for the scene's panel.
@@ -354,17 +359,50 @@
     const liveFront = screen(960, 540, 4.8), liveBack = screen(960, 540, 4.8);
     {
       const s = station("live"), n = stand(s);
-      addChild(n, createNode({ geometry: M.merge(M.box({ w: s.w, h: 3.0, d: 0.3, color: "#101317", offset: { x: 0, y: 3.1, z: 0 } }),
-        ...[-s.w / 2 + 0.4, s.w / 2 - 0.4].map((x) => M.box({ w: 0.2, h: 1.6, d: 0.2, color: "#2a2d33", offset: { x, y: 0.8, z: 0 } })),
-        M.box({ w: s.w + 0.2, h: 0.1, d: 0.4, color: "#f7931a", emissive: 1.2, offset: { x: 0, y: 4.65, z: 0 } })) }));
-      addChild(n, createNode({ geometry: liveFront.face, position: { x: 0, y: 3.1, z: 0.16 } }), createNode({ geometry: liveBack.face, position: { x: 0, y: 3.1, z: -0.16 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
-      const hit = createNode({ geometry: pick(s.w, 3.0, 0.6), position: { x: 0, y: 3.1, z: 0 } }); addChild(n, hit);
+      // A rock TV: a chunky stone cabinet with a rounded glass, a big knob and a little one on its side, bone
+      // antennas, and stubby stone feet; the picture only on the front.
+      const STONE = "#7d7568", STONE_DK = "#5d564c", STONE_LT = "#9a9184";
+      addChild(n, createNode({ geometry: M.merge(
+        M.bevelBox({ w: s.w, h: 3.5, d: s.d, color: STONE, bevel: 0.45, offset: { x: 0, y: 2.65, z: 0 } }),
+        M.bevelBox({ w: 3.7, h: 2.5, d: 0.2, color: STONE_DK, bevel: 0.15, offset: { x: -0.35, y: 2.75, z: s.d / 2 } }),
+        ...[[-1.4, 0.45], [1.4, 0.45], [-1.4, -0.45], [1.4, -0.45]].map(([x, z]) => M.bevelBox({ w: 0.6, h: 0.9, d: 0.5, color: STONE_DK, bevel: 0.15, offset: { x, y: 0.45, z } })),
+        M.moved(M.turnedX(M.lathe({ profile: [[0, 0], [0.42, 0], [0.42, 0.18], [0.3, 0.26], [0, 0.26]], segments: 16, color: STONE_LT }), Math.PI / 2), 1.85, 3.15, s.d / 2),
+        M.box({ w: 0.08, h: 0.32, d: 0.06, color: "#3a332b", offset: { x: 1.85, y: 3.25, z: s.d / 2 + 0.27 } }),
+        M.moved(M.turnedX(M.lathe({ profile: [[0, 0], [0.22, 0], [0.22, 0.14], [0, 0.14]], segments: 12, color: STONE_LT }), Math.PI / 2), 1.85, 2.1, s.d / 2),
+        ...[-1, 1].map((k) => M.moved(M.turnedZ(M.box({ w: 0.09, h: 1.7, d: 0.09, color: "#efe6d0" }), k * 0.45), k * 0.55, 5.1, 0)),
+        ...[-1, 1].map((k) => M.bevelBox({ w: 0.24, h: 0.24, d: 0.24, color: "#efe6d0", bevel: 0.08, offset: { x: k * 0.95, y: 5.85, z: 0 } })),
+        M.bevelBox({ w: 1.0, h: 0.35, d: 0.6, color: STONE_DK, bevel: 0.12, offset: { x: 0, y: 4.5, z: 0 } })) }));
+      addChild(n, createNode({ geometry: liveFront.face, position: { x: -0.35, y: 2.75, z: s.d / 2 + 0.11 } }));
+      void liveBack;
+      // The rock beanbags: mossy boulders slumped soft, an Ooga-sized dip in each.
+      for (const q of L.seats) {
+        const b = createNode({ geometry: M.merge(M.lathe({ profile: [[0, 0], [0.62, 0], [0.7, 0.2], [0.6, 0.42], [0.3, 0.55], [0, 0.5]], segments: 12, color: ["#7a7568", "#6e6a5e", "#857d6e"][q.i] }), M.lathe({ profile: [[0, 0.5], [0.34, 0.53], [0.36, 0.56], [0, 0.56]], segments: 12, color: "#4f7a3a" })), position: { x: q.x, y: 0, z: q.z } });
+        addChild(root, b);
+      }
+      const hit = createNode({ geometry: pick(s.w, 3.5, s.d), position: { x: 0, y: 2.65, z: 0 } }); addChild(n, hit);
       targets.push({ node: hit, board: () => BOARDS.live(D) });
-      sign(n, "THE NETWORK, LIVE", "mempool.space, Timechain Calendar and more · E or click for the tools", 5.2, 0, 0.55);
+      sign(n, "THE ROCK TV", "the network live, and Glow Golf · E or click for the tools", 6.35, 0, 0.55);
       stations.push({ ...s, title: "The Bitcoin network, live", board: () => BOARDS.live(D) });
     }
     const live = { page: 0, t: 0, front: null, back: null };
-    const paintFront = (g, W, H) => BL.genesisNetwork.paintScreen(g, W, H, live.front), paintBack = (g, W, H) => BL.genesisNetwork.paintScreen(g, W, H, live.back);
+    const paintFront = (g, W, H) => BL.genesisNetwork.paintScreen(g, W, H, live.front);
+    // Glow Golf from above: the nine greens in the cavern, numbered, and the way down.
+    const paintGolf = (g, W, H) => {
+      const GC = BL.genesisGolfCourse;
+      g.fillStyle = "#0d1a10"; g.fillRect(0, 0, W, H);
+      g.strokeStyle = "#9cff3a"; g.lineWidth = 8; g.strokeRect(12, 12, W - 24, H - 24);
+      g.textAlign = "center"; g.textBaseline = "middle"; g.fillStyle = "#9cff3a"; g.font = "bold 44px sans-serif"; g.fillText("GLOW GOLF · DOWN THE CENOTE", W / 2, 62);
+      if (!GC) return;
+      const sx = (W - 120) / GC.CAVERN.w, sz = (H - 190) / GC.CAVERN.d, k = Math.min(sx, sz), ox = W / 2, oz = H / 2 + 40;
+      for (let i = 0; i < GC.HOLES.length; i++) {
+        const c = GC.compile(i);
+        g.beginPath(); c.edge.forEach(([x, z], j) => (j ? g.lineTo : g.moveTo).call(g, ox + x * k, oz + z * k)); g.closePath();
+        g.fillStyle = "#3f8f34"; g.fill(); g.strokeStyle = ["#ff7a1a", "#ffd23a", "#ff4fd8"][i % 3]; g.lineWidth = 4; g.stroke();
+        g.fillStyle = "#111"; g.beginPath(); g.arc(ox + c.cup.x * k, oz + c.cup.z * k, 5, 0, 7); g.fill();
+        g.fillStyle = "#ffffff"; g.font = "bold 26px sans-serif"; g.fillText(String(i + 1), ox + c.tee.x * k, oz + c.tee.z * k - 14);
+      }
+      g.font = "24px sans-serif"; g.fillStyle = "#dfe7ee"; g.fillText(`nine holes · par ${GC.totalPar} · step into the cenote to play`, W / 2, H - 46);
+    };
     // ---- The screens' pictures, painted when what they show changes.
     const vid = { essay: 0, slide: 0, t: 0 };
     const paintVideo = (g, W, H) => {
@@ -437,10 +475,10 @@
       if (vid.t > 3.2) { vid.t = 0; vid.slide++; if (vid.slide >= Math.max(1, D.essays[vid.essay].slides.length)) { vid.slide = 0; vid.essay = (vid.essay + 1) % D.essays.length; } }
       repaint(videoScreen, `${vid.essay}|${vid.slide}`, paintVideo);
       const NW = BL.genesisNetwork;
-      if ((live.t += dt) > 6) { live.t = 0; live.page = (live.page + 1) % NW.SCREEN_PAGES.length; }
-      live.front = NW.SCREEN_PAGES[live.page]; live.back = NW.SCREEN_PAGES[(live.page + 2) % NW.SCREEN_PAGES.length];
-      repaint(liveFront, NW.keyScreen(live.front), paintFront);
-      repaint(liveBack, NW.keyScreen(live.back), paintBack);
+      // The rock TV turns through the live readings and, every other turn, a look at Glow Golf down the cenote.
+      if ((live.t += dt) > 6) { live.t = 0; live.page = (live.page + 1) % (NW.SCREEN_PAGES.length * 2); }
+      if (live.page % 2) repaint(liveFront, "golf", paintGolf);
+      else { live.front = NW.SCREEN_PAGES[live.page / 2]; repaint(liveFront, NW.keyScreen(live.front), paintFront); }
       const c = BL.chain && BL.chain.snapshot;
       repaint(newsScreen, c ? `${c.height}|${c.fastestFee}|${Math.round(c.hashrate / 1e18)}|${Math.round(c.priceUsd)}|${c.live}` : "-", paintNews);
       repaint(diceTable.sc, `${diceTable.count}|${diceTable.last}|${diceTable.t >= ROLL_S}`, paintDice);
