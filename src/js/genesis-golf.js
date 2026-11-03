@@ -288,7 +288,7 @@
     // jars of chocolate spread and cajeta, bananas, strawberries, a red-waxed cheese and rolled marquesitas standing
     // in a cup, its sign and menu; beside it a rack of golf gear (visors, bags and putters) under its own sign. Each is
     // its own node, so the scene can make them clickable; `shop` says where they stand in the museum's frame.
-    const SHOP = { stand: { x: -29.8, z: -23.6 }, rack: { x: -33.6, z: -24.6 } };
+    const SHOP = { stand: { x: -29.8, z: -23.6 }, rack: { x: -33.6, z: -24.6 }, kiosk: { x: -36.0, z: -24.6 } };
     const cart = [], WOOD = "#8a5a34", WOOD_DK = "#5e3c22";
     cart.push(M.bevelBox({ w: 2.2, h: 0.9, d: 0.9, color: WOOD, emissive: 0.05, bevel: 0.06, offset: { x: 0, y: 0.75, z: 0 } }),
       M.box({ w: 2.3, h: 0.08, d: 1.0, color: WOOD_DK, emissive: 0.05, offset: { x: 0, y: 1.24, z: 0 } }),
@@ -328,10 +328,24 @@
     const rackNode = createNode({ geometry: M.merge(...rack), position: { x: SHOP.rack.x, y: 0, z: SHOP.rack.z }, sightHidden: true });
     addChild(root, rackNode);
     { const w = label("GOLF GEAR", "click to try on a visor and bag", { height: 0.36, style: "gold" }), sn = createNode({ position: { x: SHOP.rack.x, y: 2.3, z: SHOP.rack.z + 0.06 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
+    // The tsniper.app kiosk in the corner: a stone post with a screen in a green neon frame, a little flag on top, and
+    // its sign; a click opens its window with the link out to the app (Bitclank Bill's, for booking real tee times).
+    const kiosk = [
+      M.bevelBox({ w: 0.7, h: 1.1, d: 0.5, color: STONE[1], emissive: 0.04, bevel: 0.12, offset: { x: 0, y: 0.55, z: 0 } }),
+      M.moved(M.turnedX(M.box({ w: 0.9, h: 0.6, d: 0.08, color: "#10261a", emissive: 0.4 }), -0.35), 0, 1.35, 0.05),
+      ...[[0.9, 0.04, 0, 0.3], [0.9, 0.04, 0, -0.3], [0.04, 0.6, 0.45, 0], [0.04, 0.6, -0.45, 0]].map(([w, h, x, y]) => M.moved(M.turnedX(M.box({ w, h, d: 0.04, color: "#39ff7a", emissive: 1.1, offset: { x, y, z: 0.05 } }), -0.35), 0, 1.35, 0.05)),
+      ...[[0.36, 0.035, 0, 0], [0.035, 0.36, 0, 0]].map(([w, h]) => M.moved(M.turnedX(M.box({ w, h, d: 0.02, color: "#39ff7a", emissive: 1.2, offset: { x: 0, y: 0, z: 0.1 } }), -0.35), 0, 1.35, 0.05)),
+      M.moved(M.turnedX(M.lathe({ profile: [[0.12, -0.01], [0.15, -0.01], [0.15, 0.01], [0.12, 0.01]], segments: 16, color: "#39ff7a", emissive: 1.2 }), Math.PI / 2 - 0.35), 0, 1.35, 0.14),
+      M.box({ w: 0.03, h: 0.9, d: 0.03, color: "#e8e0d0", emissive: 0.2, offset: { x: 0.28, y: 2.05, z: -0.1 } }), M.box({ w: 0.3, h: 0.18, d: 0.02, color: "#ff4fd8", emissive: 0.9, offset: { x: 0.43, y: 2.4, z: -0.1 } })
+    ];
+    const kioskNode = createNode({ geometry: M.merge(...kiosk), position: { x: SHOP.kiosk.x, y: 0, z: SHOP.kiosk.z }, sightHidden: true });
+    addChild(root, kioskNode);
+    { const w = label("TSNIPER.APP", "book a real tee time · click", { height: 0.3, style: "gold" }), sn = createNode({ position: { x: SHOP.kiosk.x - 0.1, y: 2.75, z: SHOP.kiosk.z - 0.05 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
     const shop = {
+      kiosk: { node: kioskNode, x: C.x + SHOP.kiosk.x, z: C.z + SHOP.kiosk.z, at: { x: C.x + SHOP.kiosk.x + 0.3, z: C.z + SHOP.kiosk.z + 1.2 } },
       stand: { node: standNode, x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z, at: { x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z + 1.5 } },
       rack: { node: rackNode, x: C.x + SHOP.rack.x, z: C.z + SHOP.rack.z, at: { x: C.x + SHOP.rack.x, z: C.z + SHOP.rack.z + 1.2 } },
-      boxes: [{ x0: C.x + SHOP.stand.x - 1.25, x1: C.x + SHOP.stand.x + 1.25, z0: C.z + SHOP.stand.z - 0.55, z1: C.z + SHOP.stand.z + 0.6 }, { x0: C.x + SHOP.rack.x - 1.0, x1: C.x + SHOP.rack.x + 1.0, z0: C.z + SHOP.rack.z - 0.35, z1: C.z + SHOP.rack.z + 0.35 }]
+      boxes: [{ x0: C.x + SHOP.stand.x - 1.25, x1: C.x + SHOP.stand.x + 1.25, z0: C.z + SHOP.stand.z - 0.55, z1: C.z + SHOP.stand.z + 0.6 }, { x0: C.x + SHOP.rack.x - 1.0, x1: C.x + SHOP.rack.x + 1.0, z0: C.z + SHOP.rack.z - 0.35, z1: C.z + SHOP.rack.z + 0.35 }, { x0: C.x + SHOP.kiosk.x - 0.4, x1: C.x + SHOP.kiosk.x + 0.4, z0: C.z + SHOP.kiosk.z - 0.3, z1: C.z + SHOP.kiosk.z + 0.3 }]
     };
     const columns = COLS.map(([x, z]) => ({ x0: C.x + x - 0.8, x1: C.x + x + 0.8, z0: C.z + z - 0.8, z1: C.z + z + 0.8 }));
     return { root, holes, ballNode, dots, jets, smoke, airship, volcano, parrots, fish, confetti, columns, shop };
