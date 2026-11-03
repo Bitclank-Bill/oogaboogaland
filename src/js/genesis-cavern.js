@@ -78,6 +78,26 @@
     place(createNode({ geometry: M.merge(...rock), sightHidden: true }));
     const glowNode = place(createNode({ geometry: M.merge(...glow), sightHidden: true }));
     const shaftNode = place(createNode({ geometry: shaft, position: { x: C.x, y: top + 0.1, z: C.z }, sightHidden: true }));
+    // The cenote's water at work: drops falling from the stalactites round the shaft into the pool, a thin fall of
+    // water down one side of the shaft, ripples spreading where they land, and koi circling under the surface. Fixed
+    // pools of nodes, moved by the update.
+    const surf = top + 0.17, dropGeo = M.box({ w: 0.05, h: 0.16, d: 0.05, color: "#cfefff", emissive: 1.2 });
+    const ringGeo = M.lathe({ profile: [[0.16, 0], [0.22, 0], [0.22, 0.01], [0.16, 0.01]], segments: 18, color: "#bfefff", emissive: 1 });
+    const SPOTS = [0.6, 2.2, 3.7, 5.1].map((a, k) => ({ x: C.x + Math.sin(a) * (1.2 + k * 0.25), z: C.z + Math.cos(a) * (1.2 + k * 0.25), y0: roof - 1.6 - k * 0.3 }));
+    for (const q of SPOTS) rock.push(M.moved(M.lathe({ profile: [[0, -1.6], [0.1, -1.1], [0.3, -0.4], [0.4, 0], [0, 0]], segments: 7, color: ROCK[1] }), q.x, q.y0 + 1.5, q.z));
+    const drops = SPOTS.map((q, k) => { const n = place(createNode({ geometry: dropGeo, position: { x: q.x, y: q.y0, z: q.z }, sightHidden: true })); return { n, q, t: k * 0.7, wait: 0.4 + k * 0.5 }; });
+    const rings = [];
+    for (let k = 0; k < 6; k++) { const n = place(createNode({ geometry: ringGeo, position: { x: C.x, y: surf - 0.005, z: C.z }, visible: false, sightHidden: true })); rings.push({ n, life: 0 }); }
+    let ringNext = 0;
+    const ripple = (x, z) => { const r = rings[ringNext]; ringNext = (ringNext + 1) % rings.length; r.n.position.x = x; r.n.position.z = z; r.life = 1.2; r.n.visible = true; };
+    const FALL = { a: 4.2, r: 2.1 }, fx0 = C.x + Math.sin(FALL.a) * FALL.r, fz0 = C.z + Math.cos(FALL.a) * FALL.r, fallTop = roof - 1.0, fallH = fallTop - surf;
+    glow.push(M.moved(M.turnedY(M.box({ w: 0.5, h: fallH, d: 0.03, color: "#9fd8f0", emissive: 0.45 }), FALL.a), fx0, surf + fallH / 2, fz0));
+    const streakGeo = M.box({ w: 0.08, h: 0.7, d: 0.04, color: "#e8fbff", emissive: 1.3 }), streaks = [];
+    for (let k = 0; k < 10; k++) { const n = place(createNode({ geometry: streakGeo, position: { x: fx0 + Math.cos(FALL.a) * ((k % 5) - 2) * 0.09, y: surf, z: fz0 - Math.sin(FALL.a) * ((k % 5) - 2) * 0.09 }, rotation: { x: 0, y: FALL.a, z: 0 }, sightHidden: true })); streaks.push({ n, ph: k / 10 }); }
+    glow.push(M.moved(M.lathe({ profile: [[0, 0], [0.5, 0], [0.5, 0.02], [0, 0.02]], segments: 12, color: "#e8fbff", emissive: 0.8 }), fx0, surf - 0.01, fz0));
+    const KOI = ["#ff7a2a", "#f4efe4", "#ffcf3a", "#e8402a"].map((ink) => M.merge(M.bevelBox({ w: 0.12, h: 0.06, d: 0.34, color: ink, emissive: 0.3, bevel: 0.03 }), M.box({ w: 0.16, h: 0.02, d: 0.1, color: ink, emissive: 0.3, offset: { x: 0, y: 0, z: -0.22 } }), M.box({ w: 0.07, h: 0.04, d: 0.07, color: "#1a1a1a", offset: { x: 0, y: 0.02, z: 0.08 } })));
+    const koi = [];
+    for (let k = 0; k < 6; k++) koi.push({ n: place(createNode({ geometry: KOI[k % 4], position: { x: C.x, y: surf, z: C.z }, sightHidden: true })), r: 0.7 + (k % 3) * 0.55, sp: (0.3 + k * 0.05) * (k % 2 ? 1 : -1), ph: k * 1.3 });
     // The eagles: a body, white head, hooked yellow beak and tail, wings on nodes of their own to flap.
     const bodyGeo = M.merge(M.bevelBox({ w: 0.42, h: 0.36, d: 1.0, color: "#5a3a22", bevel: 0.1 }), M.bevelBox({ w: 0.34, h: 0.32, d: 0.34, color: "#f4efe4", bevel: 0.08, offset: { x: 0, y: 0.1, z: 0.62 } }), M.box({ w: 0.12, h: 0.12, d: 0.2, color: "#ffc23a", offset: { x: 0, y: 0.05, z: 0.86 } }), M.box({ w: 0.5, h: 0.08, d: 0.5, color: "#f4efe4", offset: { x: 0, y: 0, z: -0.68 } }));
     const wingGeo = (s) => M.merge(M.box({ w: 1.6, h: 0.06, d: 0.6, color: "#4a2e1a", offset: { x: s * 0.8, y: 0, z: 0 } }), M.box({ w: 0.7, h: 0.05, d: 0.4, color: "#2e1e12", offset: { x: s * 1.9, y: 0, z: -0.1 } }));
@@ -87,9 +107,18 @@
       addChild(n, L, R);
       eagles.push({ n, L, R, r: 15 + k * 3.2, y: 10.4 + (k % 3) * 0.8, speed: (0.09 + k * 0.015) * (k % 2 ? -1 : 1), a: k * 1.7, flap: k });
     }
-    let t = 0;
+    let t = 0, drips = 0;
     const update = (dt, calm) => {
       t += dt;
+      for (const d of drops) {
+        if (d.wait > 0) { d.wait -= dt; d.n.visible = false; continue; }
+        d.n.visible = true; d.t += dt; d.n.position.y = d.q.y0 - 4.9 * d.t * d.t;
+        if (d.n.position.y <= surf) { ripple(d.q.x, d.q.z); drips++; d.t = 0; d.n.position.y = d.q.y0; d.wait = 0.8 + ((drips * 7) % 11) * 0.25; }
+      }
+      for (const r of rings) { if (r.life <= 0) continue; r.life -= dt; const k = 1 - r.life / 1.2, sc = 1 + k * 5; r.n.scale.x = r.n.scale.z = sc; r.n.glow = 1 - k; if (r.life <= 0) r.n.visible = false; }
+      if (Math.floor(t * 3) !== Math.floor((t - dt) * 3)) ripple(fx0 + Math.sin(t * 7) * 0.2, fz0 + Math.cos(t * 5) * 0.2);
+      for (const sk of streaks) { const k = (t * 1.4 + sk.ph) % 1; sk.n.position.y = fallTop - 0.35 - k * (fallH - 0.35); }
+      for (const f of koi) { const a = t * f.sp + f.ph; f.n.position.x = C.x + Math.sin(a) * f.r; f.n.position.z = C.z + Math.cos(a) * f.r; f.n.rotation.y = a + (f.sp > 0 ? Math.PI / 2 : -Math.PI / 2) + Math.sin(t * 5 + f.ph) * 0.15; }
       glowNode.glow = 1 + Math.sin(t * 1.1) * 0.2;
       shaftNode.glow = 1 + Math.sin(t * 0.4) * 0.1;
       for (const e of eagles) {
@@ -101,7 +130,7 @@
         e.L.rotation.z = f; e.R.rotation.z = -f;
       }
     };
-    return { update, light: [C.x, top + 2.5, C.z, 10, 0.9, 1.1, 1.3] };
+    return { update, get drips() { return drips; }, light: [C.x, top + 2.5, C.z, 10, 0.9, 1.1, 1.3] };
   };
   BL.genesisCavern = { layout, build, CENOTE };
 })();

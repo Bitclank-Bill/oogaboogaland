@@ -1190,6 +1190,7 @@
     }
     // Glow Golf (genesis-golf.js): the cavern down the cenote, a prop at each tee and the ways down and up.
     built.golf = BL.genesisGolf.build({ M, createNode, addChild, place, top: ISLAND_TOP, label: BL.factoryModels.label });
+    for (const b of built.golf.columns) built.obstacles.push(b);
     for (const h of built.golf.holes) {
       const c = h.c, i = c.i;
       props.register({ id: `golf-tee-${i}`, era: 7, year: 2026, title: `Glow Golf, hole ${i + 1}: ${c.hole.name}`, label: `GLOW GOLF HOLE ${i + 1} · PAR ${c.hole.par} · 2026`, sourceKeys: [], hint: `play hole ${i + 1}, ${c.hole.name} (par ${c.hole.par})`,
@@ -1743,6 +1744,7 @@
   // its own: Escape (the pilot first, then leave), 0, I, C, T, P and G. A workbench or the menu takes every key while
   // open (its input keeps typing out of the walk); Escape closes it.
   const onKey = (e) => {
+    if (golf) golf.wake();
     if (paper.open && !e.metaKey && !e.ctrlKey && !e.altKey) { paperKey(e); return; }
     if (golf && golf.active && !e.metaKey && !e.ctrlKey && !e.altKey) { if (golf.key(e)) e.preventDefault(); return; }
     if (bench.open || view.reading || (cart && cart.isOpen) || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1979,7 +1981,9 @@
       top: ISLAND_TOP,
       standAt: (x, z, aim) => { if (!avatar) return; avatar.root.position.x = x; avatar.root.position.z = z; avatar.root.position.y = avatar.baseY + footing.supportAt(x, z); avatar.root.rotation.y = aim; },
       hold: (on) => { pilot.setActive(!on); if (on) { hud.tooltip.hide(); hud.hideHint(); } },
-      say: (text) => hud.toast(text)
+      say: (text) => hud.toast(text),
+      listener: () => avatar ? avatar.root.position : camera.target,
+      drips: () => built.cavern ? built.cavern.drips : 0
     });
     lightIn = true; updateGolfLight();
     built.lumber = BL.genesisLumber.build({ M, createNode, addChild, place, top: ISLAND_TOP, footing, fx, flare: built.campfire.flare });
@@ -2000,7 +2004,7 @@
       onHover: (hit, p) => { const t = tooltipFor(hit); if (t) hud.tooltip.show(t, p.x, p.y); else hud.tooltip.hide(); },
       onHoverMove: (hit, p) => { const t = tooltipFor(hit); if (t) hud.tooltip.show(t, p.x, p.y); else hud.tooltip.hide(); },
       onTap: (hit, p) => {
-        audio.wake();
+        audio.wake(); if (golf) golf.wake();
         if (bench.open || view.reading) return;
         if (hit && hit.owner.kind === "tess" && guide) { guide.tap(); return; }
         if (guide && guide.holding) return;

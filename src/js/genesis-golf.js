@@ -48,7 +48,7 @@
     for (let y = 0.6; y < C.h - 1; y += 0.7) glow.push(M.box({ w: 0.1, h: 0.08, d: 2.2, color: "#7a5534", emissive: 0.08, offset: { x: -C.w / 2 + 0.5, y, z: -20 } }));
     { const up = label("UP TO THE HALL", "click here to climb back up", { height: 0.5, style: "gold" }), sn = createNode({ position: { x: -C.w / 2 + 0.7, y: 3.2, z: -20 }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, sightHidden: true }); addChild(sn, createNode({ geometry: up.back, sightHidden: true }), createNode({ geometry: up.face, sightHidden: true })); addChild(root, sn); }
     // The holes.
-    const holes = [], fountains = [];
+    const holes = [], fountains = [], ponds = [];
     let volcano = null;
     for (let i = 0; i < 9; i++) {
       const c = G().compile(i), h = c.hole, cell = c.cell;
@@ -111,8 +111,29 @@
       // Ponds: glowing water ringed with stones, a fountain in the middle (its jets the update's).
       for (const w of c.water) {
         glow.push(M.box({ w: w.x1 - w.x0, h: 0.035, d: w.z1 - w.z0, color: "#2a8ab0", emissive: 0.35, offset: { x: (w.x0 + w.x1) / 2, y: 0.02, z: (w.z0 + w.z1) / 2 } }));
+        ponds.push(w);
+        // A creek under a bridge: reeds along its banks and lily pads on it, no stone ring and no fountain.
+        if (w.creek) {
+          for (let k = 0; k < 4; k++) { const x = w.x0 + 0.2 + hash(k, w.z0) * (w.x1 - w.x0 - 0.4), z = w.z0 + 0.15 + hash(w.z0, k) * (w.z1 - w.z0 - 0.3); glow.push(M.moved(M.lathe({ profile: [[0, 0], [0.16, 0], [0.16, 0.012], [0, 0.012]], segments: 8, color: "#3a8a30", emissive: 0.06 }), x, 0.04, z)); if (k === 1) glow.push(M.box({ w: 0.06, h: 0.05, d: 0.06, color: "#ff6ab4", emissive: 0.7, offset: { x, y: 0.07, z } })); }
+          for (const zz of [w.z0 + 0.06, w.z1 - 0.06]) for (let k = 0; k < 3; k++) glow.push(M.box({ w: 0.04, h: 0.35 + hash(k, zz) * 0.3, d: 0.04, color: LEAF[k % 4], emissive: 0.04, offset: { x: w.x0 + 0.15 + k * (w.x1 - w.x0 - 0.3) / 2, y: 0.2, z: zz } }));
+          continue;
+        }
         for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2, rx = (w.x1 - w.x0) / 2 + 0.15, rz = (w.z1 - w.z0) / 2 + 0.15; glow.push(M.bevelBox({ w: 0.35, h: 0.2, d: 0.35, color: STONE[k % 3], emissive: 0.04, bevel: 0.08, offset: { x: (w.x0 + w.x1) / 2 + Math.cos(a) * rx, y: 0.1, z: (w.z0 + w.z1) / 2 + Math.sin(a) * rz } })); }
         fountains.push({ x: (w.x0 + w.x1) / 2, z: (w.z0 + w.z1) / 2 });
+      }
+      // Bridges: an arched deck of planks over the creek, posts and a rope rail each side, a neon line along each rail.
+      for (const br of c.bridges) {
+        const L = br.x1 - br.x0, n = 9;
+        for (let k = 0; k < n; k++) {
+          const u0 = k / n, u1 = (k + 1) / n, y0 = br.H * Math.sin(Math.PI * u0), y1 = br.H * Math.sin(Math.PI * u1), x = br.x0 + L * (u0 + u1) / 2, y = (y0 + y1) / 2, tilt = Math.atan2(y1 - y0, L / n);
+          glow.push(M.moved(M.turnedZ(M.box({ w: L / n + 0.02, h: 0.05, d: br.hw * 2 + 0.1, color: LOG[k % 3], emissive: 0.05 }), tilt), x, 0.03 + y - 0.03, br.z));
+        }
+        for (const sz of [-1, 1]) {
+          for (let k = 0; k <= 4; k++) { const u = k / 4, x = br.x0 + L * u, y = br.H * Math.sin(Math.PI * u); glow.push(M.box({ w: 0.09, h: 0.42, d: 0.09, color: LOG[0], emissive: 0.04, offset: { x, y: y + 0.2, z: br.z + sz * (br.hw + 0.04) } })); }
+          for (let k = 0; k < 4; k++) { const u0 = k / 4, u1 = (k + 1) / 4, ya = br.H * Math.sin(Math.PI * u0), yb = br.H * Math.sin(Math.PI * u1), tilt = Math.atan2(yb - ya, L / 4);
+            glow.push(M.moved(M.turnedZ(M.box({ w: L / 4 + 0.04, h: 0.04, d: 0.04, color: "#b8945a", emissive: 0.05 }), tilt), br.x0 + L * (u0 + u1) / 2, (ya + yb) / 2 + 0.38, br.z + sz * (br.hw + 0.04)),
+              M.moved(M.turnedZ(M.box({ w: L / 4 + 0.04, h: 0.025, d: 0.025, color: trim, emissive: 0.85 }), tilt), br.x0 + L * (u0 + u1) / 2, (ya + yb) / 2 + 0.42, br.z + sz * (br.hw + 0.04))); }
+        }
       }
       // Cup, flag and tee.
       solid.push(M.moved(M.lathe({ profile: [[0, 0], [G().CUP_R, 0], [G().CUP_R, 0.01], [0, 0.01]], segments: 16, color: "#000000" }), c.cup.x, 0.032, c.cup.z));
@@ -201,7 +222,32 @@
     for (const x of [-C.w / 2 + 2.2, C.w / 2 - 2.2]) for (const z of [-13, 0, 13]) if (Math.hypot(x - IN.x, z - IN.z) > 6) palm(x, z, 5.2 + hash(x, z) * 1.6, 0.5 + hash(z, x) * 0.5);
     for (let k = 0; k < 60; k++) { const x = (hash(k, 3) - 0.5) * (C.w - 3), z = (hash(3, k) - 0.5) * (C.d - 3); if (!nearGreen(x, z, 1.2) && Math.hypot(x - IN.x, z - IN.z) > 3 && (Math.abs(x) > C.w / 2 - 6 || Math.abs(z) > C.d / 2 - 5 || hash(k, 9) < 0.35)) fern(x, z, 0.6 + hash(k, 5) * 0.5); }
     for (let k = 0; k < 40; k++) { const x = (hash(k, 11) - 0.5) * (C.w - 4), z = (hash(11, k) - 0.5) * (C.d - 4), L = 1.2 + hash(k, 13) * 2.4; jungle.push(M.box({ w: 0.06, h: L, d: 0.06, color: LEAF[k % 4], emissive: 0.03, offset: { x, y: C.h - L / 2, z } })); for (let q = 0; q < 3; q++) jungle.push(M.box({ w: 0.24, h: 0.03, d: 0.14, color: LEAF[(k + q) % 4], emissive: 0.03, offset: { x: x + (q % 2 ? 0.1 : -0.1), y: C.h - L * (q + 1) / 3.4, z } })); }
+    // Rock columns holding up the roof in the aisles, banded in neon as the hall's pillars are; glowing mushrooms in
+    // clumps at their feet and along the walls; lanterns on vines over the tees; patches of moss and dirt on the floor.
+    const COLS = [[-11, -7], [11, -7], [-11, 7], [11, 7], [-33, 7], [33, -7]];
+    COLS.forEach(([x, z], k) => {
+      for (let y = 0; y < C.h; y += 1.5) jungle.push(M.bevelBox({ w: 1.5 - (y % 3 ? 0.15 : 0), h: 1.55, d: 1.5 - (y % 3 ? 0 : 0.15), color: STONE[(k + Math.round(y / 1.5)) % 3], emissive: 0.03, bevel: 0.3, offset: { x, y: y + 0.75, z } }));
+      for (const y of [1.2, 3.6, 6.2]) glow.push(M.moved(M.lathe({ profile: [[0.82, 0], [0.86, 0], [0.86, 0.09], [0.82, 0.09]], segments: 10, color: NEON[(k + Math.round(y)) % 5], emissive: 1.0 }), x, y, z));
+      jungle.push(M.bevelBox({ w: 1.2, h: 0.25, d: 1.2, color: LEAF[k % 4], emissive: 0.04, bevel: 0.1, offset: { x, y: 4.6, z: z + 0.2 } }));
+    });
+    const MUSH = ["#ff7a1a", "#3ad8ff", "#ff4fd8", "#9cff3a"];
+    const mushroom = (x, z, sz, ink) => { jungle.push(M.box({ w: 0.07 * sz, h: 0.3 * sz, d: 0.07 * sz, color: "#e8dcc0", emissive: 0.15, offset: { x, y: 0.15 * sz, z } })); glow.push(M.moved(M.lathe({ profile: [[0, 0], [0.2 * sz, 0], [0.16 * sz, 0.08 * sz], [0, 0.11 * sz]], segments: 8, color: ink, emissive: 0.9 }), x, 0.28 * sz, z)); };
+    for (const [x, z] of COLS) for (let k = 0; k < 4; k++) mushroom(x + Math.cos(k * 1.7) * 1.1, z + Math.sin(k * 1.7) * 1.1, 0.8 + hash(x + k, z) * 0.8, MUSH[(k + Math.floor(hash(z, x) * 4)) % 4]);
+    for (let k = 0; k < 40; k++) { const x = (hash(k, 31) - 0.5) * (C.w - 3), z = (hash(31, k) - 0.5) * (C.d - 3); if (!nearGreen(x, z, 0.8) && Math.hypot(x - IN.x, z - IN.z) > 3) mushroom(x, z, 0.6 + hash(k, 33) * 0.9, MUSH[k % 4]); }
+    for (let k = 0; k < 70; k++) { const x = (hash(k, 41) - 0.5) * (C.w - 2), z = (hash(41, k) - 0.5) * (C.d - 2), r = 0.6 + hash(k, 43) * 1.6; if (!nearGreen(x, z, r)) solid.push(M.box({ w: r * 2, h: 0.02, d: r * 1.4, color: k % 3 ? "#3e5a2a" : "#4a3a26", offset: { x, y: 0.01, z } })); }
+    for (const h of holes) { const t = h.c.tee, side = h.c.cell.flip ? -1 : 1; jungle.push(M.box({ w: 0.04, h: C.h - 3.2, d: 0.04, color: LEAF[1], emissive: 0.03, offset: { x: t.x - side * 1.2, y: 3.2 + (C.h - 3.2) / 2, z: t.z + 1.2 } })); glow.push(M.box({ w: 0.3, h: 0.4, d: 0.3, color: "#ffb84a", emissive: 1.2, offset: { x: t.x - side * 1.2, y: 3.0, z: t.z + 1.2 } }), M.box({ w: 0.36, h: 0.06, d: 0.36, color: LOG[2], offset: { x: t.x - side * 1.2, y: 3.23, z: t.z + 1.2 } })); }
     addChild(root, createNode({ geometry: M.merge(...solid), sightHidden: true }), createNode({ geometry: M.merge(...glow), sightHidden: true }), createNode({ geometry: M.merge(...jungle), sightHidden: true }));
+    // Fish in every pond and creek: koi swimming slow loops just under the surface.
+    const KOI = ["#ff7a2a", "#f4efe4", "#ffcf3a", "#e8402a"];
+    const koiGeo = KOI.map((ink) => M.merge(M.bevelBox({ w: 0.08, h: 0.04, d: 0.22, color: ink, emissive: 0.25, bevel: 0.02 }), M.box({ w: 0.1, h: 0.015, d: 0.07, color: ink, emissive: 0.25, offset: { x: 0, y: 0, z: -0.14 } }), M.box({ w: 0.05, h: 0.03, d: 0.05, color: "#1a1a1a", offset: { x: 0, y: 0.01, z: 0.06 } })));
+    const fish = [];
+    for (const w of ponds) {
+      const n = w.creek ? 2 : 3;
+      for (let k = 0; k < n; k++) { const f = createNode({ geometry: koiGeo[(fish.length) % 4], position: { x: (w.x0 + w.x1) / 2, y: 0.045, z: (w.z0 + w.z1) / 2 }, sightHidden: true }); addChild(root, f); fish.push({ n: f, w, ph: hash(fish.length, 7) * 6.3, sp: (0.25 + hash(7, fish.length) * 0.3) * (k % 2 ? 1 : -1) }); }
+    }
+    // Confetti for a big moment: a fixed pool of bright bits thrown up round the cup (the update's).
+    const bitGeo = NEON.map((ink) => M.box({ w: 0.07, h: 0.07, d: 0.02, color: ink, emissive: 1.1 })), confetti = [];
+    for (let k = 0; k < 48; k++) { const b = createNode({ geometry: bitGeo[k % NEON.length], visible: false, sightHidden: true }); addChild(root, b); confetti.push({ n: b, vx: 0, vy: 0, vz: 0, life: 0 }); }
     // Parrots: a few flying circuits under the roof, wings flapping, and a few sat on palm tops, now and then bobbing.
     const parrotGeo = PARROTS.map(([body, wing, belly]) => ({
       body: M.merge(M.bevelBox({ w: 0.24, h: 0.26, d: 0.46, color: body, emissive: 0.08, bevel: 0.08, offset: { x: 0, y: 0, z: 0 } }), M.bevelBox({ w: 0.2, h: 0.2, d: 0.2, color: body, emissive: 0.08, bevel: 0.06, offset: { x: 0, y: 0.14, z: 0.26 } }),
@@ -238,12 +284,13 @@
     addChild(root, ballNode);
     const dotGeo = M.box({ w: 0.07, h: 0.03, d: 0.07, color: "#ffffff", emissive: 1.1 }), dots = [];
     for (let k = 0; k < 10; k++) { const d = createNode({ geometry: dotGeo, visible: false, sightHidden: true }); addChild(root, d); dots.push(d); }
-    return { root, holes, ballNode, dots, jets, smoke, airship, volcano, parrots };
+    const columns = COLS.map(([x, z]) => ({ x0: C.x + x - 0.8, x1: C.x + x + 0.8, z0: C.z + z - 0.8, z1: C.z + z + 0.8 }));
+    return { root, holes, ballNode, dots, jets, smoke, airship, volcano, parrots, fish, confetti, columns };
   };
   // The game, driven by the scene: `start(i)` at a tee, keys, update and the overlay.
   const controller = (B, host) => {
     const GC = G(), C = GC.CAVERN, ball = GC.createBall(), scores = new Int8Array(9);
-    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, t: 0, meter: 0, wait: 0, played: 0, via: 0, sink: -1 };
+    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, t: 0, meter: 0, wait: 0, played: 0, via: 0, sink: -1, splashes: 0, bumps: 0, bumpAt: 0, cheer: 0, cheerText: "", dripAt: 0 };
     const local = { x: 0, z: 0 };
     const world = (x, z, out) => { out.x = C.x + x; out.z = C.z + z; return out; };
     const at = { x: 0, z: 0 }, cam = { x: 0, z: 0 };
@@ -258,6 +305,13 @@
       const tgt = st.via < c.via.length ? c.via[st.via] : c.cup;
       st.aim = Math.atan2(tgt.x - ball.x, tgt.z - ball.z);
     };
+    // Confetti from the cup: bits of the fixed pool thrown up and out, falling back under gravity.
+    const celebrate = (x, z, n) => {
+      for (let k = 0; k < n && k < B.confetti.length; k++) {
+        const b = B.confetti[k], a = Math.random() * Math.PI * 2, sp = 1.2 + Math.random() * 2.4;
+        b.n.position.x = x; b.n.position.z = z; b.n.position.y = 0.2; b.vx = Math.cos(a) * sp; b.vz = Math.sin(a) * sp; b.vy = 3.5 + Math.random() * 3; b.life = 1.6 + Math.random() * 1.2; b.n.visible = true;
+      }
+    };
     const toAim = () => { st.mode = "aim"; st.charging = false; st.power = 0; if (st.hole >= 0) aimAhead(B.holes[st.hole].c); standBeside(); };
     const start = (i) => {
       const c = B.holes[i].c;
@@ -266,30 +320,66 @@
       B.ballNode.visible = true; B.ballNode.scale.x = B.ballNode.scale.y = B.ballNode.scale.z = 1; host.hold(true); toAim();
       host.say(`Hole ${i + 1}: ${c.hole.name}. Par ${c.hole.par}.`);
     };
-    const stop = () => { if (st.mode === "walk") return; st.mode = "walk"; for (const d of B.dots) d.visible = false; host.hold(false); };
+    const stop = () => { st.cheer = 0; if (st.mode === "walk") return; st.mode = "walk"; for (const d of B.dots) d.visible = false; host.hold(false); };
     const dispose = () => { stop(); sfx.close(); };
-    // The ball's sounds, made as they play: the putter's tock, and the cup's rattle and knock as the ball drops in. One
-    // context, made on the first stroke (a key press, so the browser allows it), on the page-wide mute, closed by stop.
+    const wake = () => sfx.wake();
+    // The cave's sounds, all synthesized here: one context (made from a gesture, `wake`), on the page-wide mute, and a
+    // cave's echo (a convolver on a decaying noise burst) under everything. The ball's tock, the cup's rattle, a wall's
+    // clack, a splash, the tunnel's thump, a fanfare for a birdie or better; drips plinking into the cenote while the
+    // Ooga is near it; and in the golf cavern a jungle groove (log drum, shaker and a marimba tune, written for this
+    // file, in A minor pentatonic) on a small lookahead sequencer. `close` stops it all.
     const sfx = (() => {
-      let ctx = null, out = null;
+      let ctx = null, out = null, dry = null, wet = null, music = null, timer = 0, next = 0, step = 0, noise = null;
       const ready = () => {
-        if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null; ctx = new AC(); out = BL.sound ? BL.sound.output(ctx) : ctx.destination; }
+        if (!ctx) {
+          const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+          if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return null;
+          ctx = new AC(); out = BL.sound ? BL.sound.output(ctx) : ctx.destination;
+          dry = ctx.createGain(); dry.gain.value = 0.8; dry.connect(out);
+          const ir = ctx.createBuffer(2, Math.floor(ctx.sampleRate * 2.6), ctx.sampleRate);
+          for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3); }
+          const verb = ctx.createConvolver(); verb.buffer = ir; wet = ctx.createGain(); wet.gain.value = 0.45; verb.connect(wet); wet.connect(out);
+          dry.verb = verb;
+          music = ctx.createGain(); music.gain.value = 0; music.connect(dry); music.connect(verb);
+          noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const nd = noise.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+        }
         if (ctx.state === "suspended") ctx.resume();
         return ctx;
       };
-      const knock = (t, f, len, vol) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = "triangle"; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.6, t + len); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len); o.connect(g); g.connect(out); o.start(t); o.stop(t + len + 0.02); };
-      const rattle = (t, len, vol) => {
-        const n = Math.floor(ctx.sampleRate * len), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
-        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
-        const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
-        src.buffer = buf; bp.type = "bandpass"; bp.frequency.value = 2600; bp.Q.value = 4; g.gain.value = vol;
-        src.connect(bp); bp.connect(g); g.connect(out); src.start(t);
+      const send = (node, echo = 0.6) => { node.connect(dry); if (echo) { const g = ctx.createGain(); g.gain.value = echo; node.connect(g); g.connect(dry.verb); } };
+      const tone = (t, f, len, vol, type = "triangle", to = 0.6, dest = null) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * to, t + len); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + len); o.connect(g); if (dest) g.connect(dest); else send(g); o.start(t); o.stop(t + len + 0.02); };
+      const hiss = (t, len, vol, f, q, dest = null) => { const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain(); src.buffer = noise; bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = q; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len); src.connect(bp); bp.connect(g); if (dest) g.connect(dest); else send(g); src.start(t, Math.random() * 0.5, len + 0.05); };
+      // The groove: 16 steps a bar, four bars; numbers are semitones over A3 in the pentatonic, "." a rest.
+      const TUNE = "0 . 3 5 . 7 . 5 3 . 0 . 10 . 7 . | 5 . 7 . 10 12 . 10 7 . 5 . 3 . . . | 0 . 3 5 . 7 . 12 10 . 7 . 5 . 3 . | 7 . 5 3 . 0 . 3 5 . . . 0 . . .".replace(/\|/g, "").trim().split(/\s+/);
+      const BASS = [0, -2, -4, -5], BPM = 100, SIX = 60 / BPM / 4;
+      const plan = () => {
+        if (!ctx || !music) return;
+        while (next < ctx.currentTime + 0.15) {
+          const t = Math.max(next, ctx.currentTime), k = step % 64, bar = Math.floor(k / 16), s16 = k % 16;
+          const n = TUNE[k]; if (n !== ".") tone(t, 220 * Math.pow(2, +n / 12), 0.32, 0.16, "triangle", 0.98, music);
+          if (s16 % 4 === 0) tone(t, 55 * Math.pow(2, BASS[bar] / 12), 0.28, 0.32, "sine", 0.7, music);
+          if (s16 === 6 || s16 === 14) tone(t, 180, 0.12, 0.18, "sine", 0.5, music);
+          if (s16 % 2 === 1) hiss(t, 0.05, s16 % 4 === 3 ? 0.07 : 0.035, 7000, 1.5, music);
+          step++; next += SIX;
+        }
       };
       return {
-        putt: (p) => { if (!ready()) return; const t = ctx.currentTime; knock(t, 900, 0.08, 0.25 + p * 0.3); },
-        tunnel: () => { if (!ready()) return; const t = ctx.currentTime; knock(t, 180, 0.3, 0.45); knock(t + 0.12, 140, 0.35, 0.35); rattle(t + 0.05, 0.4, 0.15); },
-        cup: () => { if (!ready()) return; const t = ctx.currentTime; rattle(t, 0.12, 0.5); knock(t + 0.05, 420, 0.12, 0.4); knock(t + 0.16, 300, 0.1, 0.3); knock(t + 0.24, 240, 0.08, 0.2); },
-        close: () => { if (ctx) { ctx.close(); ctx = null; out = null; } }
+        wake: () => ready(),
+        putt: (p) => { if (!ready()) return; const t = ctx.currentTime; tone(t, 900, 0.08, 0.25 + p * 0.3, "triangle", 0.6); },
+        bump: (v) => { if (!ctx) return; const t = ctx.currentTime; tone(t, 520 + Math.random() * 120, 0.05, Math.min(0.3, 0.05 + v * 0.05), "square", 0.5); },
+        cup: () => { if (!ready()) return; const t = ctx.currentTime; hiss(t, 0.12, 0.5, 2600, 4); tone(t + 0.05, 420, 0.12, 0.4); tone(t + 0.16, 300, 0.1, 0.3); tone(t + 0.24, 240, 0.08, 0.2); },
+        splash: () => { if (!ready()) return; const t = ctx.currentTime; hiss(t, 0.5, 0.5, 900, 0.7); hiss(t + 0.05, 0.3, 0.3, 2400, 1.2); tone(t + 0.02, 260, 0.2, 0.2, "sine", 0.4); },
+        tunnel: () => { if (!ready()) return; const t = ctx.currentTime; tone(t, 180, 0.3, 0.45); tone(t + 0.12, 140, 0.35, 0.35); hiss(t + 0.05, 0.4, 0.15, 400, 1); },
+        fanfare: (big) => { if (!ready()) return; const t = ctx.currentTime, notes = big ? [0, 4, 7, 12, 16, 19, 24] : [0, 4, 7, 12]; notes.forEach((n, i) => { tone(t + i * 0.09, 440 * Math.pow(2, n / 12), 0.5, 0.22, "square", 0.995); tone(t + i * 0.09, 880 * Math.pow(2, n / 12), 0.3, 0.06, "sine", 1); }); if (big) for (let i = 0; i < 10; i++) tone(t + 0.6 + i * 0.05, 1800 + Math.random() * 1600, 0.12, 0.08, "sine", 1.2); },
+        drip: (near) => { if (!ctx) return; const t = ctx.currentTime, f = 900 + Math.random() * 900; tone(t, f, 0.12, 0.18 * near, "sine", 1.9); tone(t + 0.01, f * 0.5, 0.2, 0.06 * near, "sine", 1.4); },
+        // The groove fades in while the Ooga is in the golf cavern and out when it leaves; the timer runs only then.
+        groove: (on) => {
+          if (!ctx || !music) return;
+          music.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.6);
+          if (on && !timer) { next = ctx.currentTime + 0.05; timer = setInterval(plan, 50); }
+          else if (!on && timer && music.gain.value < 0.01) { clearInterval(timer); timer = 0; }
+        },
+        close: () => { if (timer) { clearInterval(timer); timer = 0; } if (ctx) { ctx.close(); ctx = null; out = dry = wet = music = noise = null; } }
       };
     })();
     const key = (e) => {
@@ -309,6 +399,18 @@
     const turn = (dx) => { if (st.mode === "aim") { st.aim -= dx * 0.006; standBeside(); } };
     const update = (dt, camera) => {
       st.t += dt;
+      // The cave's ambience: the groove while the Ooga is in the golf cavern, drips while it is by the cenote.
+      const L = host.listener ? host.listener() : null;
+      if (L) {
+        sfx.groove(Math.abs(L.x - C.x) < C.w / 2 && Math.abs(L.z - C.z) < C.d / 2);
+        const CE = BL.genesisCavern && BL.genesisCavern.CENOTE, dc = CE ? Math.hypot(L.x - CE.x, L.z - CE.z) : 99;
+        // Each drop that lands in the pool (genesis-cavern.js counts them) plinks, louder the nearer the Ooga is.
+        const dn = host.drips ? host.drips() : 0;
+        if (dn !== st.dripAt) { st.dripAt = dn; if (dc < 16) sfx.drip(Math.min(1, 3 / Math.max(1, dc - 1))); }
+      }
+      for (const f of B.fish) { const w = f.w, a = st.t * f.sp + f.ph, rx = (w.x1 - w.x0) / 2 - 0.15, rz = (w.z1 - w.z0) / 2 - 0.1; f.n.position.x = (w.x0 + w.x1) / 2 + Math.cos(a) * rx * (0.5 + 0.4 * Math.sin(f.ph)); f.n.position.z = (w.z0 + w.z1) / 2 + Math.sin(a) * rz * 0.8; f.n.rotation.y = Math.atan2(-Math.sin(a) * rx * f.sp, Math.cos(a) * rz * f.sp) + Math.sin(st.t * 6 + f.ph) * 0.15; }
+      for (const b of B.confetti) { if (b.life <= 0) continue; b.life -= dt; b.vy -= 7 * dt; b.n.position.x += b.vx * dt; b.n.position.y = Math.max(0.03, b.n.position.y + b.vy * dt); b.n.position.z += b.vz * dt; b.n.rotation.x += dt * 9; b.n.rotation.y += dt * 7; if (b.n.position.y <= 0.03) { b.vx *= 0.9; b.vz *= 0.9; } if (b.life <= 0) b.n.visible = false; }
+      if (st.cheer > 0) st.cheer -= dt;
       for (let i = 0; i < B.holes.length; i++) { const h = B.holes[i]; if (h.bar) h.bar.rotation.y = -st.t * h.c.bar.w; if (h.head) h.head.visible = !(st.mode !== "walk" && st.hole === i); }
       for (const j of B.jets) { const hgt = 0.9 + 0.35 * Math.sin(st.t * 3 + j.k * 2); j.n.scale.y = hgt + (j.k === 1 ? 0.5 : 0); j.n.position.y = j.n.scale.y / 2; }
       for (const m of B.smoke) { const k = (st.t * 0.25 + m.k / B.smoke.length) % 1; m.n.position.y = 2.5 + k * 4; m.n.position.x = B.volcano.x + Math.sin(st.t * 0.5 + m.k) * k * 0.8; m.n.position.z = B.volcano.z + k * 0.6; const sc = 0.6 + k * 1.8; m.n.scale.x = m.n.scale.y = m.n.scale.z = sc; m.n.visible = k < 0.95; }
@@ -332,11 +434,15 @@
         const went = ball.tunnels;
         GC.step(ball, c, st.t, dt);
         if (ball.tunnels !== went) sfx.tunnel();
+        if (ball.splashes !== st.splashes) { st.splashes = ball.splashes; sfx.splash(); host.say("Splash! Back where you struck it, and a stroke added."); }
+        if (ball.bumps !== st.bumps) { st.bumps = ball.bumps; if (st.t - st.bumpAt > 0.08) { st.bumpAt = st.t; sfx.bump(Math.hypot(ball.vx, ball.vz)); } }
         if (!ball.moving) {
           if (ball.sunk) {
             scores[st.hole] = ball.strokes; st.mode = "done"; st.wait = 1.8; st.played++; st.sink = 0; sfx.cup();
-            const d = ball.strokes - c.hole.par;
-            host.say(ball.strokes === 1 ? "HOLE IN ONE!" : d <= -2 ? "Eagle!" : d === -1 ? "Birdie!" : d === 0 ? "Par." : d === 1 ? "Bogey." : `${ball.strokes} strokes.`);
+            const d = ball.strokes - c.hole.par, word = ball.strokes === 1 ? "HOLE IN ONE!" : d <= -2 ? "EAGLE!" : d === -1 ? "BIRDIE!" : d === 0 ? "Par." : d === 1 ? "Bogey." : `${ball.strokes} strokes.`;
+            host.say(word);
+            // A birdie or better: a fanfare, confetti from the cup and the word across the screen.
+            if (d < 0 || ball.strokes === 1) { const big = ball.strokes === 1 || d <= -2; sfx.fanfare(big); celebrate(c.cup.x, c.cup.z, big ? 48 : 24); st.cheer = big ? 3.2 : 2.2; st.cheerText = word; st.wait = big ? 3.4 : 2.4; }
           } else if (ball.strokes >= c.hole.par + 4) { scores[st.hole] = ball.strokes + 1; st.mode = "done"; st.wait = 1.2; host.say("Picked up. On to the next!"); }
           else toAim();
         }
@@ -374,6 +480,21 @@
         g.fillStyle = "#ffffff"; g.fillText(scores[i] ? String(scores[i]) : i === st.hole && st.mode !== "walk" ? String(ball.strokes) : "-", x, 136 * u);
         tot += scores[i];
       }
+      // The big moment's word across the screen, swelling in and fading.
+      if (st.cheer > 0) {
+        const k = Math.min(1, st.cheer / 0.6), sc = 1 + 0.25 * Math.sin(Math.min(1, (3.2 - st.cheer) * 3) * Math.PI / 2);
+        g.textAlign = "center"; g.textBaseline = "middle"; g.font = `bold ${Math.round(64 * u * sc)}px sans-serif`;
+        g.lineWidth = 8 * u; g.strokeStyle = `rgba(20,10,30,${0.85 * k})`; g.strokeText(st.cheerText, W / 2, H * 0.32);
+        const grd = g.createLinearGradient(W / 2 - 200 * u, 0, W / 2 + 200 * u, 0); grd.addColorStop(0, "#ffd23a"); grd.addColorStop(0.5, "#ff4fd8"); grd.addColorStop(1, "#3ad8ff");
+        g.globalAlpha = k; g.fillStyle = grd; g.fillText(st.cheerText, W / 2, H * 0.32); g.globalAlpha = 1; g.textAlign = "left"; g.textBaseline = "top";
+      }
+      // Walking the cavern: how to play, under the scorecard.
+      if (st.mode === "walk") {
+        g.fillStyle = "rgba(8,6,24,0.82)"; g.fillRect(W - 300 * u, 170 * u, 286 * u, 50 * u);
+        g.font = `${11 * u}px sans-serif`; g.fillStyle = "#e9eef5";
+        g.fillText("Click a stone tee to play its hole.", W - 290 * u, 178 * u);
+        g.fillText("A D aim · Space swings, Space again strikes.", W - 290 * u, 196 * u);
+      }
       if (st.mode === "aim") {
         const bw = 320 * u, bx = (W - bw) / 2, by = H - 190 * u;
         g.fillStyle = "rgba(8,6,24,0.8)"; g.fillRect(bx - 6 * u, by - 26 * u, bw + 12 * u, 50 * u);
@@ -386,7 +507,7 @@
       g.restore();
       void tot; void local;
     };
-    return { start, stop, dispose, key, turn, update, overlay, get active() { return st.mode !== "walk"; }, get mode() { return st.mode; }, get hole() { return st.hole; }, ball, scores };
+    return { start, stop, dispose, wake, key, turn, update, overlay, get active() { return st.mode !== "walk"; }, get mode() { return st.mode; }, get hole() { return st.hole; }, ball, scores };
   };
   BL.genesisGolf = { build, controller };
 })();

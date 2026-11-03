@@ -25314,7 +25314,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["math", "scene", "models", "caves", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-campfire", "genesis-scale-model", "genesis-lumber", "genesis-cavern", "genesis-golf-course", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["math", "scene", "models", "caves", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-campfire", "genesis-scale-model", "genesis-lumber", "genesis-cavern", "genesis-golf-course", "genesis-golf", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25533,6 +25533,15 @@ const genesisAtriumProof = async () => {
     // A ball rolling into a pond comes back to where it was struck from, a stroke added.
     for (const w of c.water) { const q = GF.createBall(); GF.placeAt(q, c); q.x = w.x1 + 0.3; q.z = (w.z0 + w.z1) / 2; GF.putt(q, -Math.PI / 2, 0.3); const sx = q.lastX, sz = q.lastZ; let tt = 0; for (let k = 0; k < 600 && q.moving; k++) { GF.step(q, c, tt, 1 / 120); tt += 1 / 120; } if (q.splashes !== 1 || q.strokes !== 2 || q.x !== sx || q.z !== sz) wb.push(`golf hole ${i + 1}'s pond does not send a ball back with a stroke added`); }
   }
+  // The cavern builds (genesis-golf.js, with a stand-in label), a fish in every pond and creek and the columns standing.
+  try {
+    const SC = BLc.scene, root0 = SC.createNode({}), lab = () => ({ face: BLc.models.box({ w: 1, h: 1, d: 0.01, color: "#ffffff" }), back: BLc.models.box({ w: 1, h: 1, d: 0.01, color: "#000000" }) });
+    const GB = BLc.genesisGolf.build({ M: BLc.models, createNode: SC.createNode, addChild: SC.addChild, place: (n) => { SC.addChild(root0, n); return n; }, top: 0.5, label: lab });
+    const ponds = GF.HOLES.reduce((a, h, i) => a + GF.compile(i).water.length, 0);
+    if (GB.fish.length < ponds * 2) wb.push("Glow Golf's ponds and creeks are missing their fish");
+    if (GB.columns.length !== 6) wb.push("Glow Golf's rock columns are missing");
+  } catch (e) { wb.push(`Glow Golf's cavern does not build: ${e.message}`); }
+
   const SQ = BLc.genesisSatoshiFx;
   if (!SQ || SQ.QUOTES.length < 5 || SQ.QUOTES.some(([q, src]) => !/^\u201c.+\u201d$/.test(q) || !/(19|20)\d\d/.test(src))) wb.push("a quote round the statue lacks its quotation marks or a dated source");
   const walkways = { belts: WL.belts.length, perimeter: +perimeter.toFixed(1), items: itemCounts, bad: wb.slice(0, 8) };

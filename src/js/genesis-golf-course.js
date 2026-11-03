@@ -20,15 +20,16 @@
   // Each hole in its own cell's frame: `edge` the green's outline, `tee`, `cup`, `par`, and its feature: `bumpers`
   // [x, z, r], `blocks` (rects), `segs` (loose walls [x0, z0, x1, z1]), `bar` (a turning bar: centre, length, turn
   // speed), `hills` [x, z, r, H] (a smooth grassy mound H high and r across its foot, which the ball climbs and rolls
-  // off), `tunnels` [x, z, x2, z2, angle, face] (a mouth at x, z facing `face` that takes a ball rolling into it and lets it out of the
+  // off), `bridges` [x0, x1, z, half-width, H] (an arched plank bridge along x over a creek: railed both sides, its deck
+  // rising H in the middle, the creek's water either side of it), `tunnels` [x, z, x2, z2, angle, face] (a mouth at x, z facing `face` that takes a ball rolling into it and lets it out of the
   // far end at x2, z2 heading along angle, a little while later), `water` (ponds: a ball in one goes back where it was struck from, a stroke added), `via` (points round the
   // hole's turn), `line` (putts [angle, power] that hole it, found once by searching
   // shots and replayed by the suite, so a change that makes a hole unplayable is caught), and `prop`, the carving that stands
   // over it (the scene's to build).
   const HOLES = [
     { name: "The Warm-Up", line: [[1.5708, 1]], par: 2, edge: rect(-6, 6, -1.6, 1.6), tee: [-5, 0], cup: [5, 0], hills: [[0, 0, 1.5, 0.3]], prop: "torches" },
-    { name: "Jaguar's Turn", line: [[1.6755, 1], [0.0175, 0.95]], par: 2, edge: [[-7, -1.2], [3, -1.2], [3, -4.5], [5.4, -4.5], [5.4, 1.2], [-7, 1.2]], tee: [-6, 0], cup: [4.2, -3.6], prop: "jaguar" },
-    { name: "Cocoa Beans", line: [[1.5708, 1], [0.1222, 0.95]], par: 2, edge: rect(-6.5, 6.5, -1.6, 1.6), tee: [-5.5, 0], cup: [5.5, 0], bumpers: [[-2, -0.6, 0.45], [0.3, 0.7, 0.45], [2.6, -0.5, 0.4]], hills: [[-3.6, 0.8, 0.7, 0.16], [1.4, -0.85, 0.7, 0.16]], prop: "beans" },
+    { name: "Jaguar's Turn", line: [[1.6406, 1], [0.0175, 0.925]], par: 2, edge: [[-7, -1.2], [3, -1.2], [3, -4.5], [5.4, -4.5], [5.4, 1.2], [-7, 1.2]], tee: [-6, 0], cup: [4.2, -3.6], bridges: [[-3.4, -1.4, 0, 0.5, 0.32]], prop: "jaguar" },
+    { name: "Cocoa Beans", line: [[1.5708, 0.95], [0.0524, 0.675]], par: 2, edge: rect(-6.5, 6.5, -1.6, 1.6), tee: [-5.5, 0], cup: [5.5, 0], bumpers: [[-2, -0.6, 0.45], [0.3, 0.7, 0.45], [2.6, -0.5, 0.4]], hills: [[-3.6, 0.8, 0.7, 0.16], [1.4, -0.85, 0.7, 0.16]], bridges: [[3.5, 4.9, 0, 0.55, 0.28]], prop: "beans" },
     { name: "The Long Way Round", line: [[3.543, 0.75], [4.4157, 1], [0, 0.7]], par: 3, edge: [[-6, -4], [6, -4], [6, 4], [3.6, 4], [3.6, -1.6], [-3.6, -1.6], [-3.6, 4], [-6, 4]], tee: [-4.8, 3], cup: [4.8, 3], via: [[-4.8, -2.8], [4.8, -2.8]], hills: [[0, -2.8, 1.1, 0.2]], blocks: [rect(5.3, 6, -0.4, 0.5)], tunnels: [[-5.55, 0.6, 5.55, 0.75, 0, Math.PI / 2]], prop: "stela" },
     { name: "Mouth of the Stone Head", line: [[4.7124, 1], [3.543, 0.675]], par: 2, edge: rect(-7, 7, -2, 2), tee: [-6, 0], cup: [6, 0], blocks: [rect(-1.2, 1.2, -2, -0.42), rect(-1.2, 1.2, 0.42, 2)], prop: "head" },
     { name: "The Pyramid", line: [[4.6077, 0.775]], par: 3, edge: rect(-6, 6, -3, 3), tee: [-5, 0], cup: [5, 0], blocks: [rect(-1.8, 1.8, -1.8, 1.8)], tunnels: [[-2.15, 0, 2.3, 0, Math.PI / 2, -Math.PI / 2]], hills: [[-3.6, -1.8, 1.0, 0.2], [3.6, 1.8, 1.0, 0.2]], prop: "pyramid" },
@@ -52,8 +53,22 @@
     const water = (h.water || []).map((r) => { const pts = r.map(([x, z]) => P(x, z)); return { x0: Math.min(...pts.map((q) => q[0])), x1: Math.max(...pts.map((q) => q[0])), z0: Math.min(...pts.map((q) => q[1])), z1: Math.max(...pts.map((q) => q[1])) }; });
     const hills = new Float64Array((h.hills || []).flatMap(([x, z, r, H]) => [...P(x, z), r, H]));
     const tunnels = (h.tunnels || []).map(([x, z, x2, z2, a, face]) => { const q = P(x, z), q2 = P(x2, z2); return { x: q[0], z: q[1], x2: q2[0], z2: q2[1], angle: a, face, dx: Math.sin(a) * sx, dz: Math.cos(a) }; });
+    // A bridge: its rails as walls, its creek as water either side, its arch as a height (in the cavern's frame).
+    const bridges = (h.bridges || []).map(([x0, x1, z, hw, H]) => {
+      const a = P(x0, z), b = P(x1, z), lo = Math.min(a[0], b[0]), hi = Math.max(a[0], b[0]), zc = a[1];
+      return { x0: lo, x1: hi, z: zc, hw, H };
+    });
+    // The creek runs across the green under the bridge, from rail to rail (measured at the bridge's middle).
+    for (const br of bridges) {
+      for (const sz of [-1, 1]) segs.push(br.x0 - 0.05, br.z + sz * br.hw, br.x1 + 0.05, br.z + sz * br.hw);
+      const xm = (br.x0 + br.x1) / 2;
+      let top = br.z, bot = br.z;
+      while (inside(edge, xm, top + 0.05)) top += 0.05;
+      while (inside(edge, xm, bot - 0.05)) bot -= 0.05;
+      water.push({ x0: br.x0, x1: br.x1, z0: bot, z1: br.z - br.hw - 0.02, creek: true }, { x0: br.x0, x1: br.x1, z0: br.z + br.hw + 0.02, z1: top, creek: true });
+    }
     const tee = P(...h.tee), cup = P(...h.cup), via = (h.via || []).map(([x, z]) => { const q = P(x, z); return { x: q[0], z: q[1] }; });
-    return (compiled[i] = { i, hole: h, cell: c, edge, via, water, hills, tunnels, segs: new Float64Array(segs), bumpers, bar, tee: { x: tee[0], z: tee[1] }, cup: { x: cup[0], z: cup[1] } });
+    return (compiled[i] = { i, hole: h, cell: c, edge, via, water, hills, tunnels, bridges, segs: new Float64Array(segs), bumpers, bar, tee: { x: tee[0], z: tee[1] }, cup: { x: cup[0], z: cup[1] } });
   };
   const inside = (edge, x, z) => { let k = false; for (let a = 0, b = edge.length - 1; a < edge.length; b = a++) { const [xa, za] = edge[a], [xb, zb] = edge[b]; if ((za > z) !== (zb > z) && x < (xb - xa) * (z - za) / (zb - za) + xa) k = !k; } return k; };
   // The ground's height at x, z over a hole's hills, and its slope (written into `out`).
@@ -65,6 +80,13 @@
       if (u >= 1) continue;
       const w = 1 - u; y += H[i + 3] * w * w;
       const k = -4 * H[i + 3] * w / r2; gx += k * dx; gz += k * dz;
+    }
+    const B = c.bridges;
+    for (let i = 0; i < B.length; i++) {
+      const b = B[i];
+      if (x <= b.x0 || x >= b.x1 || Math.abs(z - b.z) > b.hw) continue;
+      const L = b.x1 - b.x0, u = (x - b.x0) / L;
+      y += b.H * Math.sin(Math.PI * u); gx += b.H * Math.PI / L * Math.cos(Math.PI * u);
     }
     if (out) { out.gx = gx; out.gz = gz; }
     return y;
@@ -98,10 +120,11 @@
       const h = Math.min(SUB, left);
       // In a tunnel: out of sight until it rolls out of the far end.
       if (ball.hide > 0) { if ((ball.hide -= h) <= 0) { ball.hide = 0; ball.vx = ball.tvx; ball.vz = ball.tvz; } continue; }
-      if (c.hills.length) { heightAt(c, ball.x, ball.z, SLOPE); ball.vx -= ROLL_G * SLOPE.gx * h; ball.vz -= ROLL_G * SLOPE.gz * h; }
+      const sloped = c.hills.length || c.bridges.length;
+      if (sloped) { heightAt(c, ball.x, ball.z, SLOPE); ball.vx -= ROLL_G * SLOPE.gx * h; ball.vz -= ROLL_G * SLOPE.gz * h; }
       const sp = Math.hypot(ball.vx, ball.vz);
       // At rest only where the ground is flat enough to hold it (on a slope it rolls on).
-      if (sp < 0.04 && (!c.hills.length || Math.hypot(SLOPE.gx, SLOPE.gz) * ROLL_G < DECEL)) { ball.vx = ball.vz = 0; ball.moving = false; return; }
+      if (sp < 0.04 && (!sloped || Math.hypot(SLOPE.gx, SLOPE.gz) * ROLL_G < DECEL)) { ball.vx = ball.vz = 0; ball.moving = false; return; }
       const k = sp > 0 ? Math.max(0, sp - (DECEL + DRAG * sp) * h) / sp : 0;
       ball.vx *= k; ball.vz *= k;
       ball.x += ball.vx * h; ball.z += ball.vz * h;
