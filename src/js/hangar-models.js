@@ -50,6 +50,9 @@
     catwalkY: 7.5, catwalks: [[HALL.x0 + 3, HALL.x0 + 5.4, -15, 24], [HALL.x1 - 5.4, HALL.x1 - 3, -15, 24]],
     catwalkStairs: [[HALL.x0 + 4.2, 0, -26.5, HALL.x0 + 4.2, 7.5, -15, 2], [HALL.x1 - 4.2, 0, -26.5, HALL.x1 - 4.2, 7.5, -15, 2]],
     gantries: [22, 14, 6, -2, -10, -18, -26], gantryY: 15,
+    // The shell's walls: how far in from the hall's bounds their panels' faces stand, and the ribs out of the side
+    // walls on the gantries' lines, how far they stand out of the panels and how wide they are.
+    shell: { face: 1.3, rib: 1, ribW: 1.2 },
     // The Jet's dock right of the runway, nose to the tunnel: where `jet-models.js`'s jet stands on the floor, and the
     // striped bay round it, [x0, x1, z0, z1]. Its gangway along the left flank at the cockpit's sill, `w` wide at `x`
     // and `y` up, in three decks [z0, z1, posts]: one in front of the wing on braced posts, one bridging the wing, and
@@ -141,6 +144,48 @@
   const CRATE_TOPS = [0.8, 1.44];
 
   // ---- the hall -------------------------------------------------------------------------------------------------
+
+  // The hangar's own kit for its shell: graphite panels on a dark seam with a darker skirting along the floor, ribs
+  // standing out of the side walls, and surrounds framing the openings. `panels` lays a wall's run of them with their
+  // faces on the plane `face` across `axis` ("x" or "z"), the hall toward `dir` (1 or -1), from `u0` to `u1` along the
+  // wall and `y0` to `y1` up it, in columns `PANEL.w` wide on the grid from `grid` and rows `PANEL.h` high over a
+  // skirting `PANEL.skirt` high where the run starts at the floor; `rib` stands one out of a side wall at `z`, `h`
+  // high; `surround` frames an opening from `u0` to `u1` and `top` high, its reveal running back `deep` behind the face.
+  const PANEL = { w: 4, h: 3, skirt: 1.2, gap: 0.08, d: 0.12, tones: ["#3e444e", "#393f48", "#434a54"], dark: "#2a2f37", seam: "#16191e" };
+  const RIB = { color: "#4b525d", edge: "#6b7480" }, FLOOR_TONES = ["#3a3f47", "#363b43", "#3e434b"];
+  // One box in a wall's frame: from `u` `w` along it, from `y` `h` up it, from `back` to `front` toward the hall.
+  const wallBox = (axis, face, dir, u, w, y, h, back, front, color) => {
+    const t = front - back, c = face + dir * (back + front) / 2, uc = u + w / 2, yc = y + h / 2;
+    return box(axis === "x" ? { w: t, h, d: w, color, offset: { x: c, y: yc, z: uc } } : { w, h, d: t, color, offset: { x: uc, y: yc, z: c } });
+  };
+  const panels = (parts, rand, axis, face, dir, grid, u0, u1, y0, y1) => {
+    const P = PANEL;
+    parts.push(wallBox(axis, face, dir, u0, u1 - u0, y0, y1 - y0, -P.d - 0.1, -P.d, P.seam));
+    for (let g = grid + Math.floor((u0 - grid) / P.w) * P.w; g < u1; g += P.w) {
+      const a = Math.max(g, u0), w = Math.min(g + P.w, u1) - a;
+      if (w < 0.05) continue;
+      let y = y0;
+      if (y0 === 0) {
+        parts.push(wallBox(axis, face, dir, a + P.gap / 2, w - P.gap, 0, P.skirt - P.gap / 2, -P.d, 0.08, P.dark));
+        y = P.skirt;
+      }
+      for (; y < y1 - 0.05; y += P.h) {
+        const h = Math.min(P.h, y1 - y);
+        parts.push(wallBox(axis, face, dir, a + P.gap / 2, w - P.gap, y + P.gap / 2, h - P.gap, -P.d, 0, P.tones[Math.floor(rand() * P.tones.length)]));
+      }
+    }
+  };
+  const rib = (parts, face, dir, z, h) => {
+    const S = LAYOUT.shell, w = S.ribW;
+    parts.push(wallBox("x", face, dir, z - w / 2, w, 0, h, -PANEL.d, S.rib, RIB.color));
+    parts.push(wallBox("x", face, dir, z - w * 0.2, w * 0.4, 0, h, S.rib, S.rib + 0.04, RIB.edge));
+    parts.push(wallBox("x", face, dir, z - w / 2 - 0.2, w + 0.4, 0, 0.6, -PANEL.d, S.rib + 0.2, PANEL.dark));
+  };
+  const surround = (parts, axis, face, dir, u0, u1, top, deep) => {
+    for (const [a, w] of [[u0 - 1, 1], [u1, 1]]) parts.push(wallBox(axis, face, dir, a, w, 0, top + 1, -deep, 0.3, RIB.color));
+    parts.push(wallBox(axis, face, dir, u0 - 1, u1 - u0 + 2, top, 1, -deep, 0.3, RIB.color));
+    for (const u of [u0 - 0.02, u1 - 0.02]) parts.push(wallBox(axis, face, dir, u, 0.04, 0, top, 0.3, 0.34, RIB.edge));
+  };
 
   // The chamber: a floor of stone tiles, craggy walls of stacked blocks leaning in as they rise, a vault of slabs, and
   // behind it all a dark backing, so the sky the launch tunnel lets in never shows between two blocks. The back wall
