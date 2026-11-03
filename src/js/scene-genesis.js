@@ -52,6 +52,8 @@
     // The statue in its warm light, and the Oogas' campfire behind it (genesis-campfire.js).
     [0, 7.5, -2.2, 13, 1.4, 1.15, 0.8],
     [BL.genesisCampfire.layout().fire.x, ISLAND_TOP + 1.8, BL.genesisCampfire.layout().fire.z, 10, 1.5, 0.8, 0.35],
+    // Glow Golf's black lights, one over each hole and two by the way in.
+    ...BL.genesisGolfCourse.HOLES.map((h, i) => { const c = BL.genesisGolfCourse.cellOf(i); const V = BL.genesisGolfCourse.CAVERN; return [V.x + c.x, ISLAND_TOP + 5, V.z + c.z, 14, 0.7, 0.3, 1.5]; }),
     // Daylight down the cenote's shaft (genesis-cavern.js).
     [BL.genesisCavern.CENOTE.x, ISLAND_TOP + 3, BL.genesisCavern.CENOTE.z, 11, 0.95, 1.1, 1.3],
     ...GW.ERAS.flatMap((e) => BL.genesisDecor.pendantSpots(galleryRect(e.n)).map(([x, z]) => {
@@ -91,6 +93,9 @@
     side(A.x0, A.z0, A.z1, "z", -1); side(A.x1, A.z0, A.z1, "z", 1); side(A.z0, A.x0, A.x1, "x", -1); side(A.z1, A.x0, A.x1, "x", 1);
     return out;
   })();
+  const GC = BL.genesisGolfCourse.CAVERN, GOLF_BOX = { x0: GC.x - GC.w / 2 + 0.6, x1: GC.x + GC.w / 2 - 0.6, z0: GC.z - GC.d / 2 + 0.6, z1: GC.z + GC.d / 2 - 0.6 };
+  const GOLF_IN = { x: GC.x - GC.w / 2 + 3, z: GC.z - 20 };
+  const inGolf = (x, z) => x > GOLF_BOX.x0 - 1 && x < GOLF_BOX.x1 + 1 && z > GOLF_BOX.z0 - 1 && z < GOLF_BOX.z1 + 1;
   const FOOTING = {
     areas: [
       { id: "room", x0: -12, x1: -7.6, z0: -34, z1: -19, top: 0.545, dock: { x: -6, z: -26.6, facing: Math.PI / 2 } },
@@ -105,6 +110,8 @@
   {
     const dock = { x: ENTRY.x, z: ENTRY.z, facing: ENTRY.facing };
     FOOTING.areas.push({ id: "atrium", ...MU.atrium, top: ISLAND_TOP, dock }, ...MU.rects.map((r) => ({ id: `gallery-${r.n}`, x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1, top: ISLAND_TOP, dock })));
+    // Glow Golf's cavern under the hall (genesis-golf-course.js CAVERN), reached down the cenote.
+    FOOTING.areas.push({ id: "golf", ...GOLF_BOX, top: ISLAND_TOP, dock: { x: GOLF_IN.x, z: GOLF_IN.z, facing: Math.PI / 2 } });
     // The statue in the atrium, and the walls.
     FOOTING.obstacles.push(...WALLS);
   }
@@ -311,9 +318,12 @@
   const updateDoors = (dt, t) => {
     for (const d of built.doors) d.veil.glow = 0.8 + 0.4 * Math.sin(t * 2.2 + d.phase);
     if (door.dir) {
-      door.fade = Math.max(0, Math.min(1, door.fade + door.dir * dt / 0.3));
+      const flip = typeof door.to === "string";
+      door.fade = Math.max(0, Math.min(1, door.fade + door.dir * dt / (flip ? 0.7 : 0.3)));
+      // Down the cenote and back up, the view turns upside down as it fades, and right way up as it comes back.
+      if (flip) rollCamera(door.dir > 0 ? door.fade * Math.PI : Math.PI + (1 - door.fade) * Math.PI);
       if (door.dir > 0 && door.fade >= 1) { travel(door.to); door.dir = -1; }
-      else if (door.dir < 0 && door.fade <= 0) door.dir = 0;
+      else if (door.dir < 0 && door.fade <= 0) { door.dir = 0; if (flip) camera.up = null; }
       return;
     }
     if (!avatar || bench.open || paper.open) return;
@@ -322,9 +332,18 @@
     MU.fromMuseum(n, p.x, p.z, doorLocal);
     for (const d of built.doors) if (d.era === n && Math.abs(doorLocal.x - d.x) < 1.5 && Math.abs(doorLocal.z - d.z) < 0.9) { door.to = d.to; door.dir = 1; audio.wake(); return; }
   };
+  const rollUp = { x: 0, y: 1, z: 0 };
+  const rollCamera = (r) => {
+    const fx = camera.target.x - camera.position.x, fz = camera.target.z - camera.position.z, l = Math.hypot(fx, fz) || 1;
+    rollUp.x = -fz / l * Math.sin(r); rollUp.y = Math.cos(r); rollUp.z = fx / l * Math.sin(r);
+    camera.up = rollUp;
+  };
+  const flipTo = (where) => { if (door.dir) return; door.to = where; door.dir = 1; audio.wake(); };
   // Into era `to`'s cave, just inside its mouth, facing in (or back to the arrival in the atrium when `to` is -1).
   const travel = (to) => {
     if (!avatar) return;
+    if (to === "golf") { if (golf) golf.stop(); arrive(GOLF_IN.x, GOLF_IN.z, Math.PI / 2); hud.toast("Glow Golf: nine holes under the hall. Space at a tee to play."); return; }
+    if (to === "hall") { if (golf) golf.stop(); const C = BL.genesisCavern.CENOTE; arrive(C.x + 3.6, C.z + 3.6, Math.atan2(-1, -1)); return; }
     if (to < 0) { arrive(); return; }
     const e = GW.ERAS[to];
     mu(to, GW.LANE_X, e.z1 - MU.OPEN - 4, doorAt); mu(to, GW.LANE_X, e.z1 - MU.OPEN - 8, doorAhead);
@@ -570,7 +589,7 @@
   // The roof over (x, z): a gallery's own (its frame drawn at MUSEUM.SCALE, its roof slab's underside) or the
   // museum's over the atrium, so a jetpack stops under it rather than flying through.
   const GALLERY_ROOF = ISLAND_TOP * (1 - MU.SCALE) + (ROOF - 0.4) * MU.SCALE;
-  const ceilingFor = (x, z) => MU.bayAt(x, z) >= 0 ? GALLERY_ROOF : ROOF;
+  const ceilingFor = (x, z) => inGolf(x, z) ? ISLAND_TOP + GC.h - 0.5 : MU.bayAt(x, z) >= 0 ? GALLERY_ROOF : ROOF;
   // Who else the visitor's Ooga meets: the other players, and the docents (genesis-docents.js), in one list kept in
   // place (the crew reads it every frame).
   const ACTORS = [];
@@ -1022,6 +1041,20 @@
   // Each gallery's period pieces along its side walls (genesis-era-items.js): clear of its packed exhibits, its
   // reserved plots and its vignette; one merged mesh a gallery, each piece in the walkers' way.
   const lavaGeos = new Map();
+  // In Glow Golf's cavern the hall's warm light gives way to black light: dark, purple, the neon glowing.
+  let golf = null;
+  const BASE_LIGHT = { clear: renderOpts.clear.slice(), sky: renderOpts.sky.slice(), ground: renderOpts.ground.slice(), direct: renderOpts.direct.slice(), directStrength: renderOpts.directStrength, ambientFloor: renderOpts.ambientFloor, bloomStrength: renderOpts.bloomStrength };
+  const UV_LIGHT = { clear: [0.01, 0.0, 0.03], sky: [0.12, 0.05, 0.3], ground: [0.04, 0.02, 0.1], direct: [0.4, 0.25, 0.9], directStrength: 0.12, ambientFloor: 0.14, bloomStrength: 1.05 };
+  let lightIn = false;
+  const updateGolfLight = () => {
+    const q = avatar ? avatar.root.position : camera.target, now = inGolf(q.x, q.z);
+    if (now === lightIn) return;
+    lightIn = now;
+    const L = now ? UV_LIGHT : BASE_LIGHT;
+    for (const k of ["clear", "sky", "ground", "direct"]) for (let i = 0; i < 3; i++) renderOpts[k][i] = L[k][i];
+    renderOpts.directStrength = L.directStrength; renderOpts.ambientFloor = L.ambientFloor; renderOpts.bloomStrength = L.bloomStrength;
+    if (el.caption) showControls();
+  };
   const updateLava = (t) => {
     for (const b of built.lava) {
       const k = 0.5 + 0.5 * Math.sin(t * b.speed * 2 + b.phase);
@@ -1107,6 +1140,18 @@
       props.register({ id, era: 7, year: 2026, title: st.title, label: `${st.title.toUpperCase()} · BITCOINGUIDE.APP, 2026`, sourceKeys: [], hint: st.hint,
         at: { x: st.at.x, y: ISLAND_TOP, z: st.at.z }, reach: st.reach, onUse: () => ({ caption: st.title }) });
     }
+    // Glow Golf (genesis-golf.js): the cavern down the cenote, a prop at each tee and the ways down and up.
+    built.golf = BL.genesisGolf.build({ M, createNode, addChild, place, top: ISLAND_TOP, label: BL.factoryModels.label });
+    for (const h of built.golf.holes) {
+      const c = h.c, i = c.i;
+      props.register({ id: `golf-tee-${i}`, era: 7, year: 2026, title: `Glow Golf, hole ${i + 1}: ${c.hole.name}`, label: `GLOW GOLF HOLE ${i + 1} · PAR ${c.hole.par} · 2026`, sourceKeys: [], hint: `play hole ${i + 1}, ${c.hole.name} (par ${c.hole.par})`,
+        at: { x: GC.x + c.tee.x, y: ISLAND_TOP, z: GC.z + c.tee.z }, reach: 1.8, onUse: () => ({ caption: c.hole.name }) });
+    }
+    { const C = BL.genesisCavern.CENOTE;
+      props.register({ id: "golf-down", era: 7, year: 2026, title: "Down the cenote: Glow Golf", label: "GLOW GOLF · DOWN THE CENOTE, 2026", sourceKeys: [], hint: "dive down the cenote to Glow Golf",
+        at: { x: C.x + 3.4, y: ISLAND_TOP, z: C.z + 3.4 }, reach: 2.2, onUse: () => ({ caption: "Glow Golf" }) });
+      props.register({ id: "golf-up", era: 7, year: 2026, title: "Up to the Genesis Hall", label: "GLOW GOLF · BACK UP TO THE HALL, 2026", sourceKeys: [], hint: "climb back up to the hall",
+        at: { x: GOLF_IN.x - 1.2, y: ISLAND_TOP, z: GOLF_IN.z }, reach: 2, onUse: () => ({ caption: "The hall" }) }); }
     // The scale model of Ooga Booga Land (genesis-scale-model.js), by the arrival.
     const SM = BL.genesisScaleModel, SL = SM.layout();
     built.scaleModel = SM.build({ M, createNode, addChild, place, top: ISLAND_TOP, label: BL.factoryModels.label });
@@ -1395,6 +1440,9 @@
     audio.wake();
     if (prop.id === "legend") { openMenu(); return; }
     if (prop.id === "whitepaper") { openPaper(); return; }
+    if (prop.id === "golf-down") { flipTo("golf"); return; }
+    if (prop.id === "golf-up") { flipTo("hall"); return; }
+    if (prop.id.startsWith("golf-tee-") && golf) { golf.start(+prop.id.slice(9)); return; }
     const st = built.guideStations && built.guideStations[prop.id];
     if (st) { if (st.act) st.act(); else openGuideItem(st); return; }
     if (prop.opens) { host.open(prop.opens, "walk"); return; }
@@ -1490,7 +1538,7 @@
       }
     }
     // While the paper is read its view holds the camera (updatePaperView); the pilot leaves it alone.
-    if (!paper.open) pilot.update(dt);
+    if (!paper.open && !(golf && golf.active)) pilot.update(dt);
     const driven = people.player;
     BL.net.setBody(driven ? driven.traits.name : null);
     if (driven) {
@@ -1652,7 +1700,7 @@
     captionKey = key;
     const text = custom || G.CAPTIONS[key] || "";
     el.caption.textContent = text;
-    el.caption.hidden = !view.captions || !text || paper.open;
+    el.caption.hidden = !view.captions || !text || paper.open || lightIn;
     say(text);
   };
   const press = (button, on) => button && button.setAttribute("aria-pressed", String(!!on));
@@ -1661,7 +1709,7 @@
     press(el.pause, view.paused);
     press(el.cc, view.captions); press(el.voice, view.voice); press(el.calm, view.calm);
     el.voice.hidden = !speech;
-    el.caption.hidden = !view.captions || !el.caption.textContent || paper.open;
+    el.caption.hidden = !view.captions || !el.caption.textContent || paper.open || lightIn;
   };
   const paintChain = () => {
     const codes = demo.broken ? built.codes.tampered : built.codes.honest;
@@ -1694,6 +1742,7 @@
   // open (its input keeps typing out of the walk); Escape closes it.
   const onKey = (e) => {
     if (paper.open && !e.metaKey && !e.ctrlKey && !e.altKey) { paperKey(e); return; }
+    if (golf && golf.active && !e.metaKey && !e.ctrlKey && !e.altKey) { if (golf.key(e)) e.preventDefault(); return; }
     if (bench.open || view.reading || (cart && cart.isOpen) || e.metaKey || e.ctrlKey || e.altKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === "Escape") { if (guide && guide.escape()) { e.preventDefault(); return; } if (!pilot.escape()) leave(); }
@@ -1785,6 +1834,7 @@
     // The workbench's camera keeps framing its model in the stage (not simulation: it settles on a resize too).
     if (bench.open) updateBench(dt);
     if (paper.open) updatePaperView(dt);
+    if (golf) { golf.update(dt, camera); updateGolfLight(); }
     if (h.ambient) {
       stepDemo(dt);
       built.portal.glow = 1 + Math.sin(sceneTime * 1.3) * (view.calm ? 0 : 0.25);
@@ -1818,7 +1868,7 @@
     fx.update(h.ambient ? dt : 0, sceneTime);
     hud.updateBoard(sceneTime);
   };
-  const drawExtra = (g, project) => { remotes.drawNames(g, project); drawDoorFade(g); };
+  const drawExtra = (g, project) => { remotes.drawNames(g, project); if (golf && avatar && inGolf(avatar.root.position.x, avatar.root.position.z)) golf.overlay(g); drawDoorFade(g); };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   // --- Visit ----------------------------------------------------------------------------------------------------
@@ -1876,9 +1926,9 @@
     // The camera and its target keep inside the museum: the atrium or a gallery, under the roof. A point outside
     // goes to the nearest point of the room it is nearest.
     const keepInside = (p, pad) => {
-      if (MU.inside(p.x, p.z, -pad)) return;
+      if (MU.inside(p.x, p.z, -pad) || (p.x > GOLF_BOX.x0 + pad && p.x < GOLF_BOX.x1 - pad && p.z > GOLF_BOX.z0 + pad && p.z < GOLF_BOX.z1 - pad)) return;
       let bx = p.x, bz = p.z, best = Infinity;
-      for (const r of [MU.atrium, ...MU.rects]) {
+      for (const r of [MU.atrium, ...MU.rects, GOLF_BOX]) {
         const x = clamp(p.x, r.x0 + pad, r.x1 - pad), z = clamp(p.z, r.z0 + pad, r.z1 - pad), d = (x - p.x) ** 2 + (z - p.z) ** 2;
         if (d < best) { best = d; bx = x; bz = z; }
       }
@@ -1922,6 +1972,13 @@
     const docentGuide = GW.ERAS.map((e) => ({ steps: built.trail.filter((x) => x.era === e.n).sort((a, b) => a.step - b.step).map((x) => x.def.title),
       game: (BL.genesisGamesPlus && (BL.genesisGamesPlus.GAMES.find((g) => g.era === e.n) || {}).title) || null }));
     // The gorillas' woodcutting camp beside the fire (genesis-lumber.js): chopping, splitting, feeding the fire.
+    golf = BL.genesisGolf.controller(built.golf, {
+      top: ISLAND_TOP,
+      standAt: (x, z, aim) => { if (!avatar) return; avatar.root.position.x = x; avatar.root.position.z = z; avatar.root.position.y = avatar.baseY + footing.supportAt(x, z); avatar.root.rotation.y = aim; },
+      hold: (on) => { pilot.setActive(!on); if (on) { hud.tooltip.hide(); hud.hideHint(); } },
+      say: (text) => hud.toast(text)
+    });
+    lightIn = true; updateGolfLight();
     built.lumber = BL.genesisLumber.build({ M, createNode, addChild, place, top: ISLAND_TOP, footing, fx, flare: built.campfire.flare });
     docents = BL.genesisDocents.create({ eras: GW.ERAS, museum: MU, lane: GW.LANE_X, entry: ENTRY, root, footing, fx, addChild, createNode, guide: docentGuide });
     // Tess, Ooga Booga Land's guide (genesis-guide.js on hub-guide.js): she greets a visitor once a page and walks the
@@ -1952,6 +2009,7 @@
       },
       hoverIgnore: () => bench.open ? null : pilot.hooks.hoverIgnore(),
       onOrbit: (dx, dy) => {
+        if (golf && golf.active) { golf.turn(dx); return; }
         if (paper.open) { const data = WPP.doc, k = data ? data.page / Math.max(1, overlayCanvas.clientHeight) / paper.zoom * 1.1 : 1; scrollPaper(-dy * k); paper.pan -= dx * WPP.h / Math.max(1, overlayCanvas.clientHeight) / paper.zoom; return; }
         if (!bench.open) pilot.hooks.onOrbit(dx, dy);
       },
@@ -2027,6 +2085,8 @@
   };
   const leaveScene = () => {
     closePaper();
+    if (golf) { golf.stop(); golf = null; }
+    camera.up = null;
     if (built && built.lumber) built.lumber.dispose();
     if (guide) guide.dispose();
     if (autoplay) autoplay.stop();

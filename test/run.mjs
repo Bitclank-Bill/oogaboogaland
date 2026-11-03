@@ -25580,7 +25580,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["math", "scene", "models", "caves", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-campfire", "genesis-scale-model", "genesis-lumber", "genesis-cavern", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["math", "scene", "models", "caves", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-campfire", "genesis-scale-model", "genesis-lumber", "genesis-cavern", "genesis-golf-course", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25780,6 +25780,19 @@ const genesisAtriumProof = async () => {
   { const vox = BLc.genesisScaleModel.islandVox(); for (const c of vox.map.values()) if (!(c >= 0 && c < BLc.genesisScaleModel.PALETTE.length)) { wb.push("a voxel of the scale model has no colour"); break; } }
   if ([...others, ...GL.boxes, ...CF.boxes].some((o) => sb.x0 < o.x1 && sb.x1 > o.x0 && sb.z0 < o.z1 && sb.z1 > o.z0)) wb.push("the scale model stands in something");
   if (Y.paths.some((q) => [[sb.x0, sb.z0], [sb.x1, sb.z0], [sb.x0, sb.z1], [sb.x1, sb.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2)) || C.inView(SMl.at.x, SMl.at.z, 1.5)) wb.push("the scale model stands on a path or in the view");
+  // Glow Golf (genesis-golf-course.js): its cavern lies clear of the museum, every hole's tee and cup stand on its green,
+  // and every hole is still holed by its stored line of putts, within par and three.
+  const GF = BLc.genesisGolfCourse, CV = GF.CAVERN, cbox = { x0: CV.x - CV.w / 2, x1: CV.x + CV.w / 2, z0: CV.z - CV.d / 2, z1: CV.z + CV.d / 2 };
+  if ([M.atrium, ...M.rects].some((r) => cbox.x0 < r.x1 + 4 && cbox.x1 > r.x0 - 4 && cbox.z0 < r.z1 + 4 && cbox.z1 > r.z0 - 4)) wb.push("Glow Golf's cavern overlaps the museum");
+  for (let i = 0; i < GF.HOLES.length; i++) {
+    const c = GF.compile(i), b = GF.createBall();
+    if (!GF.inside(c.edge, c.tee.x, c.tee.z) || !GF.inside(c.edge, c.cup.x, c.cup.z)) { wb.push(`golf hole ${i + 1}'s tee or cup is off its green`); continue; }
+    GF.placeAt(b, c);
+    let t = 0;
+    for (const [a, p] of c.hole.line) { GF.putt(b, a, p); for (let k = 0; k < 2400 && b.moving; k++) { GF.step(b, c, t, 1 / 120); t += 1 / 120; } if (b.sunk) break; }
+    if (b.strokes > c.hole.par + 3) wb.push(`golf hole ${i + 1}'s line takes more than par and three`);
+    if (!b.sunk) wb.push(`golf hole ${i + 1} (${c.hole.name}) is no longer holed by its line`);
+  }
   const SQ = BLc.genesisSatoshiFx;
   if (!SQ || SQ.QUOTES.length < 5 || SQ.QUOTES.some(([q, src]) => !/^\u201c.+\u201d$/.test(q) || !/(19|20)\d\d/.test(src))) wb.push("a quote round the statue lacks its quotation marks or a dated source");
   const walkways = { belts: WL.belts.length, perimeter: +perimeter.toFixed(1), items: itemCounts, bad: wb.slice(0, 8) };
@@ -26452,7 +26465,7 @@ const unitChecks = async () => {
   record("Genesis museum holds: an explicit pause holds the clock, the open exhibit, the walk, the ambient show and era changes; the workbench keeps only its exhibit running; the timeline menu holds the walk, ambient activity, era music and captions; the scene's update() gates each part on these holds", !genesisHolds.bad.length, JSON.stringify(genesisHolds));
   const genesisAtrium = await genesisAtriumProof();
   record("Genesis atrium centrepiece: the trail's steps stand in date order (citations and documented influence only), the paper in the middle and the genesis block beside it as context; nothing in the view from the arrival to the white screen, on a pillar or the screen; room to walk round the statue and to the paper", !genesisAtrium.bad.length, JSON.stringify(genesisAtrium));
-  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, every gallery has period pieces, board games and furniture on open floor, every docent's post is open floor, and the network round the statue and the Bitcoin Guide hall's stations and essay cubes stand clear of paths, each other and the view, with every essay and board in place", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
+  record("Genesis moving walkways (rule): every belt lies on open floor (a gallery's inside its gallery, clear of its exhibits), riders go round the courtyard loop clockwise and down a gallery's belt to its end, each era's vignette stage stands in its gallery clear of exhibits and belts, every gallery has period pieces, board games and furniture on open floor, every docent's post is open floor, and the network round the statue and the Bitcoin Guide hall's stations and essay cubes stand clear of paths, each other and the view, with every essay and board in place, and Glow Golf's nine holes can all be played", genesisAtrium.walkways.belts === 20 && !genesisAtrium.walkways.bad.length && genesisAtrium.walkways.items.every((k) => k > 0) && genesisAtrium.walkways.items.reduce((a, b) => a + b, 0) >= 60, JSON.stringify(genesisAtrium.walkways));
   record("Genesis courtyard: a sand path reaches each gallery's real opening and none runs into the centrepiece, a pillar, the white screen, the map or the statue; the loop meets the galleries clockwise in date order; each era's wooden sign carves only the signs' letters and names its era, years and two of its own exhibits, off every path; plants keep out of the view to the screen, off the paths, low beside signs and out of the centrepiece", !genesisAtrium.courtyard.bad.length && genesisAtrium.courtyard.clockwise && genesisAtrium.courtyard.signs === 8, JSON.stringify(genesisAtrium.courtyard));
   const genesisCartridge = await genesisCartridgeProof();
   const genesisEraCartridges = await genesisEraCartridgeProof();
