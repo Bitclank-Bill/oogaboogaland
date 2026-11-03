@@ -1,11 +1,11 @@
-// Genesis museum: the Bitcoin Guide hall, bitcoinguide.app (Bitcoin Bill's site) walked through in the atrium round the
+// Genesis museum: the Bitcoin Guide hall, bitcoinguide.app (Bitclank Bill's site) walked through in the atrium round the
 // shrine, from its own content (genesis-guide-data.js, baked by scripts/bitcoin-guide-data.mjs):
 //   - the twelve essays as glowing cubes in their own colours, floating round the inside of the courtyard's ring path,
 //     each over a lit medallion: Space there, or a tap on the cube, opens the whole essay to read, with its PDF, its
 //     video reel and the site;
 //   - the resource library, a wall of coloured binders, one for each of the site's resource sections, and two for its
 //     guides (self-custody, the air-gapped laptop): a tap on a binder opens its section with every link;
-//   - the reading list, a bookshelf of Bitcoin Bill's books and the further reading;
+//   - the reading list, a bookshelf of Bitclank Bill's books and the further reading;
 //   - the video essays, a big screen running each essay's slide deck, its reels a tap away;
 //   - This Week in Bitcoin, a kiosk with the live chain and the site's weekly news;
 //   - the dice-roll and passphrase stations, where Space rolls real-looking dice and the screen keeps the tally and
@@ -25,12 +25,13 @@
   // (`ry`, its front's direction), the box it fills and where a visitor stands to use it.
   const STATIONS = [
     { id: "library", x: 24, z: -35.6, ry: 0, w: 10.6, d: 0.9, reach: 4.2, hint: "the resource library: every link from bitcoinguide.app" },
-    { id: "books", x: -11, z: -35.6, ry: 0, w: 8, d: 0.9, reach: 3.6, hint: "Bitcoin Bill's reading list" },
+    { id: "books", x: -11, z: -35.6, ry: 0, w: 8, d: 0.9, reach: 3.6, hint: "Bitclank Bill's reading list" },
     { id: "videos", x: -29.6, z: 0, ry: Math.PI / 2, w: 5.8, d: 0.8, reach: 3.2, hint: "the video essays" },
     { id: "news", x: 29.6, z: 0, ry: -Math.PI / 2, w: 5.8, d: 0.8, reach: 3.2, hint: "This Week in Bitcoin" },
     { id: "dice", x: -22.6, z: 30, ry: Math.PI / 2, w: 3.2, d: 1.8, reach: 2.6, hint: "roll the dice: entropy for a seed (tap the screen for the guide)" },
     { id: "passphrase", x: 22.6, z: 30, ry: -Math.PI / 2, w: 3.2, d: 1.8, reach: 2.6, hint: "roll five dice: a passphrase word (tap the screen for the guide)" },
-    { id: "paths", x: 16, z: 33, ry: 0, w: 0.6, d: 0.6, reach: 2.4, hint: "start here: the Bitcoin Guide's learning paths" }
+    { id: "paths", x: 16, z: 33, ry: 0, w: 0.6, d: 0.6, reach: 2.4, hint: "start here: the Bitcoin Guide's learning paths" },
+    { id: "live", x: 14.5, z: 21, ry: 0, w: 5.2, d: 0.6, reach: 3.2, hint: "the Bitcoin network, live, and its tools" }
   ];
   const layout = () => {
     const stations = STATIONS.map((s) => {
@@ -61,6 +62,43 @@
     flush();
     return pages;
   };
+  // Pictures for the board's pages (scene-genesis.js paintPage draws a page's `paint` on its right half): a card for
+  // a resource (its section's colour, a play mark for a video, its initials and where it lives), dice, word tiles.
+  const host = (url) => { const m = /^https?:\/\/(?:www\.)?([^/]+)/.exec(url || ""); return m ? m[1] : "bitcoinguide.app"; };
+  const isVideo = (url) => /youtu|\.mp4|vimeo|rumble/.test(url || "");
+  const roundRect = (g, x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  const cardPaint = (title, url, ink) => (g, x0, y0, w, h) => {
+    const pad = 24, cw = w - pad * 2, ch = Math.min(h - pad * 2, cw * 0.62), cx = x0 + pad, cy = y0 + 60;
+    const grd = g.createLinearGradient(cx, cy, cx + cw, cy + ch); grd.addColorStop(0, ink); grd.addColorStop(1, "#14110d");
+    roundRect(g, cx, cy, cw, ch, 18); g.fillStyle = grd; g.fill();
+    g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 3; g.stroke();
+    const words = String(title).replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean), init = (words[0] ? words[0][0] : "B") + (words[1] ? words[1][0] : "");
+    g.fillStyle = "rgba(255,255,255,0.92)"; g.font = `bold ${Math.round(ch * 0.36)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(init.toUpperCase(), cx + cw / 2, cy + ch * 0.45);
+    if (isVideo(url)) { g.beginPath(); g.arc(cx + cw - 46, cy + 46, 28, 0, 7); g.fillStyle = "rgba(0,0,0,0.55)"; g.fill(); g.beginPath(); g.moveTo(cx + cw - 54, cy + 32); g.lineTo(cx + cw - 54, cy + 60); g.lineTo(cx + cw - 30, cy + 46); g.closePath(); g.fillStyle = "#ffffff"; g.fill(); }
+    g.font = "20px sans-serif"; g.fillStyle = "#f6ecd2"; g.fillText(`${isVideo(url) ? "video · " : ""}${host(url)}`, cx + cw / 2, cy + ch - 24);
+    g.textAlign = "left"; g.textBaseline = "top";
+  };
+  const diceFace = (g, x, y, s, v) => {
+    roundRect(g, x, y, s, s, s * 0.18); g.fillStyle = "#f4efe4"; g.fill();
+    const P = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+    g.fillStyle = v === 1 ? "#c0392b" : "#1b1d22";
+    for (const [a, b] of P[v]) { g.beginPath(); g.arc(x + s / 2 + a * s * 0.26, y + s / 2 + b * s * 0.26, s * 0.09, 0, 7); g.fill(); }
+  };
+  const dicePaint = (vals) => (g, x0, y0, w) => { const s = Math.min(90, (w - 60) / vals.length - 12); vals.forEach((v, i) => diceFace(g, x0 + 30 + i * (s + 12), y0 + 80, s, v)); };
+  const wordsPaint = (pairs) => (g, x0, y0, w) => {
+    pairs.forEach(([n, word], i) => { const y = y0 + 70 + i * 74; roundRect(g, x0 + 30, y, w - 60, 60, 12); g.fillStyle = "#1f3a2a"; g.fill(); g.strokeStyle = "#16a34a"; g.lineWidth = 2; g.stroke();
+      g.fillStyle = "#7dffb0"; g.font = "bold 26px monospace"; g.fillText(n, x0 + 50, y + 16); g.fillStyle = "#f6ecd2"; g.font = "bold 28px sans-serif"; g.fillText(word, x0 + 190, y + 15); });
+  };
+  // A section of the resources page: an opening page with what it holds, then a page for each resource, its card on
+  // the right and one clear link to it under the window (the arrows go on to the next).
+  const NEXT = "Arrows: the next resource · the link opens in a new tab";
+  const sectionPages = (s) => [
+    { caption: "Resources", title: s.title, accent: s.color, note: `${s.links.length} resources · arrows to go through them`,
+      text: [s.subtitle || `${s.links.length} resources`, ...s.links.map((l, i) => `${i + 1}. ${l.title}`)].slice(0, 12), links: [link("/resources", "The resources page at bitcoinguide.app")], paint: cardPaint(s.title, "", s.color) },
+    ...s.links.map((l, i) => ({ caption: `${s.title} · ${i + 1} of ${s.links.length}`, title: l.title, accent: s.color, note: NEXT, text: [l.description || `One of the ${s.title} resources at bitcoinguide.app.`, s.noLinks ? "Read the notes on bitcoinguide.app before trusting a device with your keys." : ""].filter(Boolean),
+      links: s.noLinks || !l.url ? [link("/resources", "Read about it at bitcoinguide.app")] : [link(l.url, `Open: ${l.title.length > 56 ? `${l.title.slice(0, 54)}…` : l.title}`)], paint: cardPaint(l.title, l.url, s.color) }))
+  ];
   const sectionPage = (s) => ({ caption: "Resources", title: s.title, accent: s.color,
     text: [s.subtitle || `${s.links.length} resources`, ...s.links.map((l) => `${l.title}${l.description ? `: ${l.description}` : ""}`)].slice(0, 9),
     links: s.noLinks ? [link("/resources", "The resources page")] : [...s.links.map((l) => link(l.url, l.title.length > 60 ? `${l.title.slice(0, 58)}…` : l.title)), link("/resources", "The resources page")] });
@@ -80,12 +118,24 @@
   const stepText = (s) => [s.text, s.bold, s.code, s.link && s.link.label, s.after].filter(Boolean).join(" ").replace(/\s+([.,])/g, "$1");
   const BOARDS = {
     essay: (D, i) => ({ room: `${D.essays[i].title} - Bitcoin Guide`, pages: essayPages(D.essays[i]), sources: [] }),
-    library: (D) => ({ room: "Resource library - Bitcoin Guide", pages: D.sections.map(sectionPage), sources: [] }),
+    library: (D) => ({ room: "Resource library - Bitcoin Guide", sources: [], pages: [
+      { caption: "Resources", title: "The resource library", note: "Tap a binder to open its section", text: ["Everything to buy, store and understand Bitcoin, from bitcoinguide.app/resources: every binder on the shelf is one of its sections.", ...D.sections.map((x) => `${x.title} (${x.links.length})`)].slice(0, 14), links: [link("/resources", "The resources page at bitcoinguide.app")] },
+      ...D.sections.map(sectionPage)
+    ] }),
+    section: (D, i) => ({ room: `${D.sections[i].title} - Bitcoin Guide`, pages: sectionPages(D.sections[i]), sources: [] }),
+    live: (D) => {
+      const charts = D.sections.find((x) => /Charts/.test(x.title));
+      return { room: "The network, live - Bitcoin Guide", sources: [], pages: [
+        { caption: "Live", title: "The Bitcoin network, live", note: "The screen reads mempool.space · the links open the tools", text: ["The screen shows the real network as it is now: block height, hashrate, fees and the mempool, the difficulty epoch, the bitcoin mined so far and the price.", "Watch it live, block by block, with the tools below."],
+          links: [link("https://mempool.space", "mempool.space: blocks, fees and the mempool"), link("https://timechaincalendar.com/en", "Timechain Calendar"), link("https://bitcoin.clarkmoody.com/dashboard/", "Clark Moody's Bitcoin dashboard"), link("https://btcframe.com/dashboard/", "BTCFrame dashboard")], paint: cardPaint("Live", "https://mempool.space", "#f7931a") },
+        ...(charts ? sectionPages(charts) : [])
+      ] };
+    },
     guide: (D, id) => id === "airGapped"
       ? { room: "Air-gapped laptop guide - Bitcoin Guide", pages: guidePage("Build an air-gapped laptop", D.guides.airGapped || [], "/resources"), sources: [] }
       : { room: "Self-custody guide - Bitcoin Guide", pages: guidePage("Cold storage and self-custody", D.guides.coldStorage || [], "/resources"), sources: [] },
     books: (D) => ({ room: "Reading list - Bitcoin Guide", sources: [], pages: [
-      { caption: "Reading list", title: "Bitcoin Bill's reading list", text: D.readingList.map((b) => `${b.title}, ${b.author}`), links: [link("/literature", "The reading list at bitcoinguide.app")] },
+      { caption: "Reading list", title: "Bitclank Bill's reading list", text: D.readingList.map((b) => `${b.title}, ${b.author}`), links: [link("/literature#reading-list", "The reading list at bitcoinguide.app")] },
       ...D.further.map((f) => ({ caption: "Further reading", title: f.title, text: [f.author ? `by ${f.author}` : "Further reading", f.description].filter(Boolean),
         links: (f.links.length ? f.links : [{ label: f.title, url: f.url }]).filter((l) => l.url).map((l) => link(l.url, l.label || f.title)) }))
     ] }),
@@ -96,18 +146,18 @@
       const x = D.sections.find((s) => /X Accounts/.test(s.title));
       return { room: "This Week in Bitcoin - Bitcoin Guide", sources: [], pages: [
         { caption: "This Week in Bitcoin", title: "This Week in Bitcoin", text: ["Current events from X, hot topics and news, fresh every Sunday at bitcoinguide.app.", "The kiosk's screen shows the network live: block height, fees, hashrate and price, read from mempool.space."], links: [link("/this-week", "This week's news"), link("/faq", "Ask the AI FAQ")] },
-        ...(x ? [sectionPage(x)] : [])
+        ...(x ? sectionPages(x) : [])
       ] };
     },
     dice: (D) => ({ room: "Dice rolls and entropy - Bitcoin Guide", sources: [], pages: [
-      { caption: "Dice rolls", title: "Why dice?", text: ["A seed phrase is only as safe as the randomness behind it. Dice you roll yourself are randomness you can see and trust.", "Each roll of a six-sided die adds about 2.585 bits. A 24-word seed holds 256 bits: about 99 to 100 rolls.", "The station here rolls for fun and learning only. Never make a real seed from a website or a game."], links: [link("/dice-entropy", "The full guide at bitcoinguide.app")] },
-      { caption: "Dice rolls", title: "The steps", text: (D.dice.steps || []).map((s) => `${s.n}. ${stepText(s)}${s.sub ? ` ${s.sub.join(" ")}` : ""}`), links: [link("/dice-entropy", "Dice rolls & entropy"), link("https://iancoleman.io/bip39/", "iancoleman.io/bip39 (run it offline)")] },
-      { caption: "Dice rolls", title: "Notes", text: D.dice.notes || [], links: [link("/dice-entropy", "Dice rolls & entropy")] },
+      { caption: "Dice rolls", title: "Why dice?", paint: dicePaint([5, 2, 3, 1, 4, 6]), note: "Arrows page through the guide", text: ["A seed phrase is only as safe as the randomness behind it. Dice you roll yourself are randomness you can see and trust.", "Each roll of a six-sided die adds about 2.585 bits. A 24-word seed holds 256 bits: about 99 to 100 rolls.", "The station here rolls for fun and learning only. Never make a real seed from a website or a game."], links: [link("/dice-entropy", "The full guide at bitcoinguide.app")] },
+      { caption: "Dice rolls", title: "The steps", paint: dicePaint([1, 2, 3, 4, 5, 6]), note: "Arrows page through the guide", text: (D.dice.steps || []).map((s) => `${s.n}. ${stepText(s)}${s.sub ? ` ${s.sub.join(" ")}` : ""}`), links: [link("/dice-entropy", "Dice rolls & entropy"), link("https://iancoleman.io/bip39/", "iancoleman.io/bip39 (run it offline)")] },
+      { caption: "Dice rolls", title: "Notes", paint: dicePaint([6, 6, 6]), note: "Arrows page through the guide", text: D.dice.notes || [], links: [link("/dice-entropy", "Dice rolls & entropy at bitcoinguide.app"), link("https://github.com/iancoleman/bip39/releases", "Download the BIP39 tool to run offline")] },
       ...guidePage("The dice guide", D.guides.dice || [], "/dice-entropy")
     ] }),
     passphrase: (D) => ({ room: "BIP39 passphrase - Bitcoin Guide", sources: [], pages: [
-      { caption: "Passphrase", title: "A passphrase from dice", text: (D.passphrase.steps || []).map((s) => `${s.n}. ${stepText(s)}`), links: [link("/passphrase", "The passphrase guide"), link("https://www.eff.org/dice", "The EFF dice wordlists")] },
-      { caption: "Passphrase", title: "Notes", text: D.passphrase.notes || [], links: [link("/passphrase", "The passphrase guide")] }
+      { caption: "Passphrase", title: "A passphrase from dice", paint: wordsPaint([["42156", "stumper"], ["?????", "your next word"]]), note: "Arrows page through the guide", text: (D.passphrase.steps || []).map((s) => `${s.n}. ${stepText(s)}`), links: [link("/passphrase", "The passphrase guide"), link("https://www.eff.org/dice", "The EFF dice wordlists")] },
+      { caption: "Passphrase", title: "Notes", paint: wordsPaint([["5 words", "about 51 bits"], ["6 words", "about 62 bits"], ["7 words", "about 72 bits"]]), note: "Arrows page through the guide", text: D.passphrase.notes || [], links: [link("/passphrase", "The passphrase guide at bitcoinguide.app"), link("https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt", "The EFF large wordlist")] }
     ] }),
     paths: (D) => ({ room: "Learning paths - Bitcoin Guide", sources: [], pages: [
       { caption: "Bitcoin Guide", title: "A starting point for learning Bitcoin", text: ["Literature: twelve essays on the economics, philosophy and technology of sound money.", "Resources: everything to buy, store and understand Bitcoin.", "This Week: the news, every Sunday.", "Dice Rolls and Passphrase: make your own entropy, offline.", "Video Essays, and the AI FAQ."], links: [link("/", "bitcoinguide.app"), link("/literature", "Literature"), link("/resources", "Resources"), link("/this-week", "This Week"), link("/dice-entropy", "Dice rolls"), link("/passphrase", "Passphrase"), link("/video-essays", "Video essays"), link("/faq", "AI FAQ")] },
@@ -135,7 +185,7 @@
     const pick = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
     const screen = (W, H, w) => {
       const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
-      const h = w * H / W, face = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+      const h = w * H / W, face = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.9 }], lines: [], castShadow: false };
       face.imageSurface = { canvas, version: 1, rect: [-w / 2, -h / 2, w, h] };
       const s = { canvas, face, w, h, key: "" };
       screens.push(s);
@@ -179,7 +229,7 @@
       for (const y of [0.18, 1.5, 2.82]) parts.push(M.box({ w: s.w, h: 0.08, d: 0.9, color: "#6b4528", offset: { x: 0, y, z: 0 } }));
       for (const x of [-s.w / 2, s.w / 2]) parts.push(M.box({ w: 0.14, h: 3.3, d: 0.9, color: "#4c331d", offset: { x, y: 1.65, z: 0 } }));
       addChild(n, createNode({ geometry: M.merge(...parts) }));
-      const items = [...D.sections.map((sec, i) => ({ title: sec.title, color: sec.color, board: () => ({ ...BOARDS.library(D), start: i }) })),
+      const items = [...D.sections.map((sec, i) => ({ title: sec.title, color: sec.color, board: () => BOARDS.section(D, i) })),
         { title: "Self-custody guide", color: "#ffd23a", board: () => BOARDS.guide(D, "coldStorage") }, { title: "Air-gapped laptop", color: "#ffd23a", board: () => BOARDS.guide(D, "airGapped") }];
       items.forEach((it, i) => {
         const col = i % cols, row = Math.floor(i / cols), x = -s.w / 2 + 0.55 + col * ((s.w - 1.1) / (cols - 1)), y = row ? 0.22 + bh / 2 : 1.54 + bh / 2;
@@ -204,7 +254,7 @@
       addChild(n, createNode({ geometry: M.merge(...parts) }));
       const hit = createNode({ geometry: pick(s.w, 2.6, 1), position: { x: 0, y: 1.3, z: 0 } }); addChild(n, hit);
       targets.push({ node: hit, board: () => BOARDS.books(D) });
-      sign(n, "READING LIST", "Bitcoin Bill's books and further reading · E here", 3.0, 0, 0.6);
+      sign(n, "READING LIST", "Bitclank Bill's books and further reading · E here", 3.0, 0, 0.6);
       stations.push({ ...s, title: "The reading list", board: () => BOARDS.books(D) });
     }
     // ---- The video essays: a big screen running each essay's slide deck, a few seconds a slide.
@@ -299,6 +349,22 @@
       diceTable.logo = logo;
     }
 
+    // ---- The live screen near the arrival: two faces back to back on posts, each a page of the real network's live
+    // readings (genesis-network.js paintScreen), a new page every few seconds; E or a tap opens the tools.
+    const liveFront = screen(960, 540, 4.8), liveBack = screen(960, 540, 4.8);
+    {
+      const s = station("live"), n = stand(s);
+      addChild(n, createNode({ geometry: M.merge(M.box({ w: s.w, h: 3.0, d: 0.3, color: "#101317", offset: { x: 0, y: 3.1, z: 0 } }),
+        ...[-s.w / 2 + 0.4, s.w / 2 - 0.4].map((x) => M.box({ w: 0.2, h: 1.6, d: 0.2, color: "#2a2d33", offset: { x, y: 0.8, z: 0 } })),
+        M.box({ w: s.w + 0.2, h: 0.1, d: 0.4, color: "#f7931a", emissive: 1.2, offset: { x: 0, y: 4.65, z: 0 } })) }));
+      addChild(n, createNode({ geometry: liveFront.face, position: { x: 0, y: 3.1, z: 0.16 } }), createNode({ geometry: liveBack.face, position: { x: 0, y: 3.1, z: -0.16 }, rotation: { x: 0, y: Math.PI, z: 0 } }));
+      const hit = createNode({ geometry: pick(s.w, 3.0, 0.6), position: { x: 0, y: 3.1, z: 0 } }); addChild(n, hit);
+      targets.push({ node: hit, board: () => BOARDS.live(D) });
+      sign(n, "THE NETWORK, LIVE", "mempool.space, Timechain Calendar and more · E or click for the tools", 5.2, 0, 0.55);
+      stations.push({ ...s, title: "The Bitcoin network, live", board: () => BOARDS.live(D) });
+    }
+    const live = { page: 0, t: 0, front: null, back: null };
+    const paintFront = (g, W, H) => BL.genesisNetwork.paintScreen(g, W, H, live.front), paintBack = (g, W, H) => BL.genesisNetwork.paintScreen(g, W, H, live.back);
     // ---- The screens' pictures, painted when what they show changes.
     const vid = { essay: 0, slide: 0, t: 0 };
     const paintVideo = (g, W, H) => {
@@ -370,6 +436,11 @@
       vid.t += dt;
       if (vid.t > 3.2) { vid.t = 0; vid.slide++; if (vid.slide >= Math.max(1, D.essays[vid.essay].slides.length)) { vid.slide = 0; vid.essay = (vid.essay + 1) % D.essays.length; } }
       repaint(videoScreen, `${vid.essay}|${vid.slide}`, paintVideo);
+      const NW = BL.genesisNetwork;
+      if ((live.t += dt) > 6) { live.t = 0; live.page = (live.page + 1) % NW.SCREEN_PAGES.length; }
+      live.front = NW.SCREEN_PAGES[live.page]; live.back = NW.SCREEN_PAGES[(live.page + 2) % NW.SCREEN_PAGES.length];
+      repaint(liveFront, NW.keyScreen(live.front), paintFront);
+      repaint(liveBack, NW.keyScreen(live.back), paintBack);
       const c = BL.chain && BL.chain.snapshot;
       repaint(newsScreen, c ? `${c.height}|${c.fastestFee}|${Math.round(c.hashrate / 1e18)}|${Math.round(c.priceUsd)}|${c.live}` : "-", paintNews);
       repaint(diceTable.sc, `${diceTable.count}|${diceTable.last}|${diceTable.t >= ROLL_S}`, paintDice);

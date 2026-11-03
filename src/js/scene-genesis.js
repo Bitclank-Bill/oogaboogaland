@@ -1583,10 +1583,10 @@
       // The title is lettered from the sign alphabet (letters, digits, space and / : ! ? + - .); anything else is
       // turned into a dash or dropped.
       title: ex.room.replace(/[·–—]/g, "-").replace(/[^A-Za-z0-9 /:!?+\-.]/g, ""), help: "Arrows page · Escape closes and the walk carries on", canvas, count: ex.pages.length, index: 0,
-      caption: ex.pages[0].caption, note: ex.pages[0].text.join(" "), version: 0, wide: true,
+      caption: ex.pages[0].caption, note: ex.pages[0].note !== undefined ? ex.pages[0].note : ex.pages[0].text.join(" "), version: 0, wide: true,
       links: base,
       go(i) {
-        b.index = i; b.caption = ex.pages[i].caption; b.note = ex.pages[i].text.join(" ");
+        b.index = i; b.caption = ex.pages[i].caption; b.note = ex.pages[i].note !== undefined ? ex.pages[i].note : ex.pages[i].text.join(" ");
         b.links = ex.pages[i].links ? [...base, ...ex.pages[i].links] : base;
         paintPage(canvas, ex.pages[i]); b.version++;
       }
@@ -2029,7 +2029,7 @@
     showControls();
     hud.setStats(game.state);
     arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper,
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper, openGuideItem,
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
@@ -2043,7 +2043,7 @@
   };
   const leaveScene = () => {
     closePaper();
-    if (golf) { golf.stop(); golf = null; }
+    if (golf) { golf.dispose(); golf = null; }
     camera.up = null;
     if (built && built.lumber) built.lumber.dispose();
     if (guide) guide.dispose();
