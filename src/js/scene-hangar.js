@@ -90,10 +90,10 @@
   // back in.
   const JET_FLY = { first: [8, 14], every: [25, 45], wake: 1.1, go: 1.6, away: 5, back: 0.8, trail: 14, puff: 0.04, life: 0.6 };
   const JET_STYLE = { stats: { spot: 0, kind: "dash", ink: "#ffb02e" }, timeline: { spot: 0, kind: "loop", ink: "#5fe3ff" } };
-  // The tunnel's neon burns past full (`NEON_GLOW`), each frame's strip shimmering at its own pace, and every
+  // The tunnel's neon burns steadily (`NEON_GLOW`), each frame's strip shimmering a little at its own pace, and every
   // `NEON_STUTTER` seconds one stutters, dipping twice as a tired tube does; the light at the tunnel's mouth follows
-  // its first strip (`MOUTH_LIGHT`).
-  const NEON_GLOW = 1.7, NEON_STUTTER = [2.5, 7], MOUTH_LIGHT = HM.TINTS.mouth, MOUTH_SLOT = 6;
+  // its first strip (`MOUTH_LIGHT`), at `MOUTH_LEVEL` of the tint.
+  const NEON_GLOW = 0.8, NEON_STUTTER = [6, 14], MOUTH_LIGHT = HM.TINTS.mouth, MOUTH_LEVEL = 0.7, MOUTH_SLOT = 6;
   // The floor lamps breathe a little, each at its own pace, and every `LAMP_STUTTER` seconds one stutters, failing four
   // times in half a second (`LAMP_FAILS`, from and to, s, at `LAMP_DIM` of its light); and every `RABBIT` seconds a
   // pulse runs down the runway's marker lamps toward the launch tunnel at `RABBIT_SPEED` m/s, each brightening by up to
@@ -689,11 +689,11 @@
     }
     const since = elapsed - s.stutterAt;
     for (let i = 0; i < s.neon.length; i++) {
-      let k = NEON_GLOW * (0.93 + 0.05 * Math.sin(elapsed * (7.3 + i * 1.7) + i * 2.3) + 0.03 * Math.sin(elapsed * (19.1 + i * 3.1) + i));
+      let k = NEON_GLOW * (0.96 + 0.025 * Math.sin(elapsed * (7.3 + i * 1.7) + i * 2.3) + 0.015 * Math.sin(elapsed * (19.1 + i * 3.1) + i));
       if (i === s.stutter && (since < 0.06 || since > 0.14 && since < 0.21)) k *= 0.22;
       s.neon[i].glow = k * dim;
     }
-    const f = s.neon[0].glow / NEON_GLOW, o = MOUTH_SLOT * 8, Lt = RENDER_OPTS.lights;
+    const f = MOUTH_LEVEL * s.neon[0].glow / NEON_GLOW, o = MOUTH_SLOT * 8, Lt = RENDER_OPTS.lights;
     Lt[o + 4] = MOUTH_LIGHT[0] * f; Lt[o + 5] = MOUTH_LIGHT[1] * f; Lt[o + 6] = MOUTH_LIGHT[2] * f;
   };
   // The boards' Jets: resting at their spots, then now and then waking (engines lit, a shudder), leaving their board each
