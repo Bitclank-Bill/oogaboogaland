@@ -2036,6 +2036,29 @@ body[data-active-scene="hub"] .home-link {
   cursor: pointer;
 }
 
+/* A phone's short drawer keeps Read joins aloud on the title's line, left of the online count. */
+@media (pointer: coarse) and (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
+  .panel[data-panel="players"]:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    column-gap: 8px;
+    row-gap: 0;
+  }
+  .panel[data-panel="players"] > .panel-title { display: contents; }
+  .panel[data-panel="players"] .panel-title h2,
+  .panel[data-panel="players"] > .players-speak,
+  .panel[data-panel="players"] #players-count { grid-row: 1; align-self: center; }
+  .panel[data-panel="players"] > .players-speak { grid-column: 2; }
+  .panel[data-panel="players"] #players-count { grid-column: 3; }
+  .panel[data-panel="players"] > .players-hearing,
+  .panel[data-panel="players"] > .players,
+  .panel[data-panel="players"] > .players-status { grid-column: 1 / -1; margin-top: 10px; }
+  .panel[data-panel="players"] > .players-hearing { grid-row: 2; }
+  .panel[data-panel="players"] > .players { grid-row: 3; }
+  .panel[data-panel="players"] > .players-status { grid-row: 4; }
+}
+
 .players-hearing-label {
   color: rgba(243, 239, 228, 0.72);
   font-size: 9px;
