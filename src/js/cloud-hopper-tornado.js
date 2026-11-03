@@ -57,10 +57,11 @@
   const bandOf = (u) => { let b = 0; while (u >= BANDS[b].to) b++; return b; };
   // A slab: a voxel disc `R0` cells across its radius and one thick, its rim stepped and ragged, its tones speckled
   // and the lighter one round its rim; glowing a little and piercing most of the haze, so it reads in the storm from
-  // afar.
+  // afar. Each of a run's tornadoes (`which`) draws its own copies of these and the spray's streak: the renderer
+  // batches instances by geometry, so tornadoes sharing one would draw only one of them.
   const R0 = 8;
-  const slab = M.variants((b) => {
-    const v = M.makeVox(), rand = mulberry32(41 + b * 7);
+  const slab = M.variants((key) => {
+    const b = key % BANDS.length, v = M.makeVox(), rand = mulberry32(41 + b * 7);
     const p1 = rand() * TAU, p2 = rand() * TAU;
     for (let x = -R0 - 2; x <= R0 + 1; x++) for (let z = -R0 - 2; z <= R0 + 1; z++) {
       const a = Math.atan2(z + 0.5, x + 0.5), r = Math.hypot(x + 0.5, z + 0.5), edge = R0 + 0.8 * Math.sin(3 * a + p1) + 0.5 * Math.sin(5 * a + p2);
@@ -71,7 +72,7 @@
     return g;
   });
   // A streak of spray whipped round the funnel, one unit long along x.
-  const streak = M.cached(() => M.noShadow(M.box({ w: 1, h: 0.06, d: 0.06, color: "#d7e3ef", emissive: 0.35 })));
+  const streak = M.variants(() => M.noShadow(M.box({ w: 1, h: 0.06, d: 0.06, color: "#d7e3ef", emissive: 0.35 })));
   // A still of the funnel for its guide card (cloud-hopper-models.js), each slab a node of its own since the icon
   // renderer draws no instanced batches: `STILL` [share of its length, slabs], so it fits a wide card, its top at the
   // origin and its tail curling back from +x as it does from its drift.
@@ -89,7 +90,8 @@
 
   // `root` is the run's own node; `onDrop(x, y, z)` hears each tornado begin to come down and `onStrike(distance)`
   // each strike of its lightning, for their sound.
-  const create = ({ root, renderer, onDrop = null, onStrike = null }) => {
+  const create = ({ root, renderer, onDrop = null, onStrike = null, which = 0 }) => {
+    const own = which * BANDS.length;
     const lite = renderer?.kind === "canvas2d", tier = lite ? 0.25 : renderer?.quality === "low" ? 0.5 : renderer?.quality === "medium" ? 0.75 : 1;
     // One batch a band of colour, holding that band's slabs, and which batch and slot each slab writes.
     const counts = BANDS.map(() => 0), bandAt = new Uint8Array(LAYERS), slotAt = new Uint16Array(LAYERS);
@@ -97,9 +99,9 @@
     const batches = BANDS.map((band, b) => {
       const data = new Float32Array(counts[b] * 20);
       for (let o = 16; o < data.length; o += 20) data[o] = 1;
-      return createNode({ geometry: slab(b), instanceData: data, instanceCount: counts[b], instanceVersion: 0, fixedInstanceCapacity: true, sightHidden: true, visible: false });
+      return createNode({ geometry: slab(own + b), instanceData: data, instanceCount: counts[b], instanceVersion: 0, fixedInstanceCapacity: true, sightHidden: true, visible: false });
     });
-    const STREAKS = Math.round(90 * tier), spray = createNode({ geometry: streak(), instanceData: new Float32Array(STREAKS * 20), instanceCount: STREAKS,
+    const STREAKS = Math.round(90 * tier), spray = createNode({ geometry: streak(which), instanceData: new Float32Array(STREAKS * 20), instanceCount: STREAKS,
       instanceVersion: 0, fixedInstanceCapacity: true, sightHidden: true, visible: false });
     for (let o = 16; o < spray.instanceData.length; o += 20) spray.instanceData[o] = 1;
     // Its lightning's bolts, the storm's own shapes, shown a moment at each strike.
@@ -283,7 +285,7 @@
     // Brings one down now at (x, z) over the height y, setting off along (dx, dz), for a debug page and the cards.
     const spawn = (x, y, z, dx, dz) => { const d = Math.hypot(dx, dz) || 1; begin(x, y, z, dx / d, dz / d, 1.8, x, z); state = DROPPING; };
     const dispose = () => { for (let i = 0; i < parts.length; i++) removeChild(root, parts[i]); };
-    const liveGeometry = (set) => { for (let b = 0; b < BANDS.length; b++) set.add(slab(b)); set.add(streak()); for (const b of bolts) set.add(b.geometry); };
+    const liveGeometry = (set) => { for (let b = 0; b < BANDS.length; b++) set.add(slab(own + b)); set.add(streak(which)); for (const b of bolts) set.add(b.geometry); };
     return { start, update, clear, hold, spawn, axisAt, radiusAt, dispose, liveGeometry,
       get active() { return state !== IDLE; }, get down() { return strength > 0; }, get strength() { return strength; },
       get forming() { return state === FORMING ? ease(age / FORM) : 0; }, get top() { return top; }, get bottom() { return top - LENGTH; },

@@ -186,7 +186,7 @@
     // Thunderhead's tornadoes, one a spot and any of them up at once, each writing its own whirl; `tornado` is the one
     // that matters now (the one that has the Ooga, else the nearest down, else the nearest brewing), whose whirl the
     // course takes. And whether one has the Ooga (and the height it took it at).
-    const tornadoes = BL.cloudHopperTornado.SPOTS.map(() => BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer,
+    const tornadoes = BL.cloudHopperTornado.SPOTS.map((spot, which) => BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer, which,
       onDrop: (x, y, z) => { if (actor) audio.tornadoForm(Math.hypot(x - actor.root.position.x, y - actor.root.position.y, z - actor.root.position.z)); },
       onStrike: (distance) => audio.thunder(distance) }));
     const whirls = tornadoes.map(() => ({ x: 0, z: 0, strength: 0, reach: 1, core: 1, speed: 0, draw: 0, rise: 0 }));
