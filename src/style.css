@@ -10143,6 +10143,19 @@ body[data-active-scene="genesis"] .magazine-hud {
 .genesis-chain .section-head { margin: 0 0 4px; font-size: 11px; }
 .genesis-chain ol { margin: 0; padding-left: 1.4em; font-family: var(--mono); font-size: 13px; }
 .genesis-chain li.broken { color: var(--danger); text-decoration: line-through; }
+/* The exhibit running itself (genesis-autoplay.js): its steps and replies, top right, never in the way of a tap. */
+.genesis-auto {
+  position: fixed; right: calc(12px + var(--safe-right, 0px)); top: 96px; width: 400px; max-width: calc(100vw - 24px); padding: 8px 12px;
+  border-radius: var(--radius); background: rgba(8, 17, 11, 0.86); color: var(--fg); pointer-events: none;
+}
+.genesis-auto .section-head { margin: 0 0 6px; font-size: 11px; white-space: nowrap; }
+.genesis-auto-live { color: #7dff9e; }
+.genesis-auto-screen {
+  margin: 0; max-height: 240px; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere;
+  color: #7dff9e; font-family: var(--mono); font-size: 12px; line-height: 1.35;
+}
+.genesis-auto-foot { margin: 6px 0 0; font-size: 10px; opacity: 0.8; white-space: nowrap; }
+@media (max-width: 640px) { .genesis-auto { top: auto; bottom: 150px; right: 12px; } .genesis-auto-screen { max-height: 120px; } }
 .genesis-terminal { width: 640px; pointer-events: auto; }
 .genesis-screen {
   height: 300px; margin: 8px 0; padding: 10px 12px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere;
