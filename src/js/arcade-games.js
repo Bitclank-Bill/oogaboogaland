@@ -1112,6 +1112,51 @@
     // the Ooga's way (0 to 2), `streak` the player's goals in a row, `rally` the Ooga's hits since the coconut was last
     // put down.
     let phase = "idle", mineGoals = 0, theirGoals = 0, power = false, tried = false, by = 0, banked = false, round = 0, streak = 0, rally = 0;
+    // The first human retains the original fixed-step simulation. A second human replaces only the AI input.
+    const peer = { on: false, x: 0, smash: 0, power: false, tried: false, meter: -1, score: 0 };
+    let clacks = 0, remoteClacks = -1, remotePlaying = false, remoteSide = 0;
+    const clack = () => { clacks = (clacks + 1) & 65535; out.cue("clack"); };
+    const frame = new Array(18).fill(0), from = new Float64Array(8), target = new Float64Array(8);
+    let following = false, blend = 1;
+    const capture = () => {
+      frame[0] = Math.round(P.u * 1000); frame[1] = Math.round(P.v * 1000);
+      frame[2] = Math.round(P.du * 1000); frame[3] = Math.round(P.dv * 1000);
+      frame[4] = Math.round(M.u * 1000); frame[5] = Math.round(M.v * 1000);
+      frame[6] = Math.round(A.u * 1000); frame[7] = Math.round(A.v * 1000);
+      frame[8] = mineGoals; frame[9] = theirGoals; frame[10] = Math.round(Math.max(0, N.sand) * 1000);
+      frame[11] = Math.round(N.burn * 1000); frame[12] = Math.round(status.meter * 1000); frame[13] = Math.round(peer.meter * 1000);
+      frame[14] = status.score; frame[15] = peer.score; frame[16] = phase === "play" ? 1 : 0; frame[17] = clacks;
+      return frame;
+    };
+    const receive = (a, side = 0) => {
+      if (!BL.hockeyWire.validFrame(a)) return;
+      if (following) {
+        if (a[17] !== remoteClacks) clack();
+        if (a[11] > N.burn * 1000 + 100) out.cue("fire");
+        const scored = a[side ? 9 : 8] > (side ? theirGoals : mineGoals), conceded = a[side ? 8 : 9] > (side ? mineGoals : theirGoals);
+        if (scored || conceded) { out.cue(scored ? "big" : "buzzer"); out.popup(scored ? "OOGA GOAL!" : "Opponent scores", scored); }
+        if (!a[16] && remotePlaying) out.popup(a[side ? 9 : 8] > a[side ? 8 : 9] ? "You win!" : a[8] === a[9] ? "Draw!" : "Opponent wins", true);
+      }
+      remoteClacks = a[17]; remotePlaying = !!a[16]; remoteSide = side;
+      capture();
+      for (let i = 0; i < 8; i++) { from[i] = following ? frame[i] / 1000 : a[i] / 1000; target[i] = a[i] / 1000; }
+      following = true; blend = 0;
+      mineGoals = a[8]; theirGoals = a[9]; N.sand = a[10] / 1000; N.burn = a[11] / 1000;
+      board.show(mineGoals); them.show(theirGoals);
+      status.score = a[side ? 15 : 14]; status.left = a[side ? 8 : 9]; status.target = HOCKEY_CLOCK[Math.ceil(N.sand)];
+      status.meter = a[side ? 13 : 12] / 1000; status.window0 = 0.7; status.window1 = 0.93;
+      status.verb = a[16] ? "Smash!" : "";
+    };
+    const lerp = i => from[i] + (target[i] - from[i]) * blend;
+    const follow = dt => {
+      blend = Math.min(1, blend + dt * 10);
+      P.u = lerp(0); P.v = lerp(1); P.du = target[2]; P.dv = target[3];
+      M.u = lerp(4); M.v = lerp(5); A.u = lerp(6); A.v = lerp(7);
+      puck.ember = Math.min(1, N.burn * 1.5);
+      mark.visible = remotePlaying && status.meter >= 0;
+      if (mark.visible) { const v = remoteSide ? A.v : M.v; N.fu = P.u + (Math.abs(P.dv) > 0.15 ? P.du * (v - P.v) / P.dv : 0); fold(); mark.position.x = N.fu; mark.position.z = -NEAR - v; const hot = status.meter >= .7 && status.meter <= .93; mark.glow = hot ? 2.4 : 1.2; mark.highlight = hot ? 1 : 0; mark.scale.x = mark.scale.z = hot ? 1.2 : 1; }
+      place3();
+    };
     const put = (n, o) => { n.position.x = o.u; n.position.y = Y; n.position.z = -NEAR - o.v; };
     const reset = (towards) => { P.u = 0; P.v = towards > 0 ? L * 0.3 : L * 0.7; P.du = P.dv = 0; N.serve = 0.8; N.still = N.burn = 0; by = rally = 0; banked = tried = false; };
     const hit = (m) => {
@@ -1133,6 +1178,7 @@
     // The match over, at seven or (`sand` 1) when the sand runs out: ahead wins, level is a draw.
     const end = (sand) => {
       const won = mineGoals > theirGoals;
+      if (peer.on && theirGoals > mineGoals) peer.score += 20 + 5 * (theirGoals - mineGoals);
       if (won) status.score += 20 + 5 * (mineGoals - theirGoals);
       phase = "idle"; status.verb = ""; status.meter = -1; mark.visible = false;
       out.popup(HOCKEY_END[(sand > 0 ? 3 : 0) + (won ? 0 : mineGoals < theirGoals ? 1 : 2)], true);
@@ -1146,7 +1192,7 @@
         status.score += 10 + (N.burn > 0 ? 5 : 0) + (banked ? 5 : 0);
         board.show(mineGoals); flash.hit(k ? 2.6 : 1.8); out.popup(HOCKEY_GOAL[k], true); out.cue(k ? "fire" : "big"); out.shake(k ? 0.55 : 0.4);
         host.burst(0, Y + 0.2, -NEAR - L, k ? 28 : 18); out.crack(0, Y + 0.2, -NEAR - L, true);
-      } else { theirGoals++; streak = status.streak = 0; status.fire = false; them.show(theirGoals); out.popup("Whoa... Ooga score", false); out.cue("buzzer"); out.flop(); }
+      } else { if (peer.on) peer.score += 10 + (N.burn > 0 ? 5 : 0) + (banked ? 5 : 0); theirGoals++; streak = status.streak = 0; status.fire = false; them.show(theirGoals); out.popup("Whoa... Ooga score", false); out.cue("buzzer"); out.flop(); }
       status.left = theirGoals;
       if (mineGoals >= HOCKEY_TO || theirGoals >= HOCKEY_TO) { end(-1); return; }
       reset(player ? -1 : 1);
@@ -1171,6 +1217,7 @@
       // otherwise home, on the line the coconut is coming along (off the rails only if it reads them).
       // It sees the coconut every `react` seconds and plays on where it saw it heading, so a sharp turn (a hit, or a
       // rail it does not read) beats it for a moment.
+      if (!peer.on) {
       const lead = Math.max(-3, Math.min(3, mineGoals - theirGoals)), speed = S.speed + 0.12 * lead, home = L - 0.2, au = A.u, av = A.v;
       if ((SEEN.t -= h) <= 0) { SEEN.t = S.react; SEEN.u = P.u; SEEN.v = P.v; SEEN.du = P.du; SEEN.dv = P.dv; SEEN.age = 0; } else SEEN.age += h;
       N.fu = SEEN.u + SEEN.du * SEEN.age;
@@ -1199,18 +1246,27 @@
       A.u = Math.max(MR - W / 2, Math.min(W / 2 - MR, A.u));
       A.v = Math.max(L / 2 + MR, Math.min(L - MR, A.v));
       A.du = (A.u - au) / h; A.dv = (A.v - av) / h;
+      } else {
+        const au = A.u, av = A.v, across = -peer.x * (W / 2 - MR);
+        const loose = P.v > L / 2 && P.dv < 0.15 && sp2 < LOOSE_V * LOOSE_V;
+        const rest = loose ? Math.min(L - REST, Math.max(L / 2 + MR + LUNGE, P.v + 0.25)) : L - REST;
+        const want = peer.smash > 0 ? across + Math.max(-ASSIST, Math.min(ASSIST, P.u - across)) : across;
+        A.u += Math.max(-4 * h, Math.min(4 * h, want - A.u));
+        A.v += Math.max(-6 * h, Math.min(6 * h, (peer.smash > 0 ? rest - LUNGE : rest) - A.v));
+        A.du = (A.u - au) / h; A.dv = (A.v - av) / h;
+      }
       if (N.serve > 0) return;
       P.u += P.du * h; P.v += P.dv * h;
       const drag = Math.max(0, 1 - 0.25 * h);
       P.du *= drag; P.dv *= drag;
-      if (P.u < -EDGE || P.u > EDGE) { P.u = P.u < 0 ? -EDGE : EDGE; P.du = -P.du * 0.92; out.cue("clack"); if (by === 1) banked = true; }
-      if (P.v < PR) { if (Math.abs(P.u) < GOAL) { if (P.v < -0.03) { goal(false); return; } } else { P.v = PR; P.dv = -P.dv * 0.92; out.cue("clack"); } }
-      if (P.v > L - PR) { if (Math.abs(P.u) < GOAL) { if (P.v > L + 0.03) { goal(true); return; } } else { P.v = L - PR; P.dv = -P.dv * 0.92; out.cue("clack"); } }
+      if (P.u < -EDGE || P.u > EDGE) { P.u = P.u < 0 ? -EDGE : EDGE; P.du = -P.du * 0.92; clack(); if (by === 1 || peer.on && by === 2) banked = true; }
+      if (P.v < PR) { if (Math.abs(P.u) < GOAL) { if (P.v < -0.03) { goal(false); return; } } else { P.v = PR; P.dv = -P.dv * 0.92; clack(); } }
+      if (P.v > L - PR) { if (Math.abs(P.u) < GOAL) { if (P.v > L + 0.03) { goal(true); return; } } else { P.v = L - PR; P.dv = -P.dv * 0.92; clack(); } }
       // A lunge hits harder; one made in the green sets the coconut burning, fast.
       const lunge = N.smash > 0 && M.dv > 2;
-      M.mass = lunge ? 1.3 : 0.9; M.cap = lunge && power ? 7.5 : 6; A.mass = S.mass;
+      M.mass = lunge ? 1.3 : 0.9; M.cap = lunge && power ? 7.5 : 6; A.mass = peer.on ? (peer.smash > 0 && A.dv < -2 ? 1.3 : 0.9) : S.mass; A.cap = peer.on && peer.smash > 0 && peer.power ? 7.5 : 6;
       if (hit(M)) {
-        out.cue("clack"); by = 1; banked = false;
+        clack(); by = 1; banked = false;
         if (lunge && power) {
           power = false; N.burn = BURN; N.trailT = 0;
           const sp = Math.sqrt(P.du * P.du + P.dv * P.dv);
@@ -1218,7 +1274,9 @@
           out.cue("fire"); out.shake(0.3); flash.hit(1.5); out.popup("Power smash!", false);
         } else if (lunge) out.shake(0.15);
       }
-      if (hit(A)) { out.cue("clack"); if (by !== 2) rally++; N.rivalArm = 0.4; by = 2; banked = false; N.burn = 0; }
+      if (hit(A)) { clack(); if (by !== 2) rally++; N.rivalArm = 0.4; by = 2; banked = false; if (!peer.on) N.burn = 0;
+        if (peer.on && peer.smash > 0 && A.dv < -2 && peer.power) { peer.power = false; N.burn = BURN; N.trailT = 0; const speed = Math.hypot(P.du, P.dv); if (speed > 0 && speed < 5) { P.du *= 5 / speed; P.dv *= 5 / speed; } }
+      }
       // A coconut left sitting goes to the other side.
       if (moving) N.still = 0;
       else if ((N.still += h) > STILL) { const mineSide = P.v < L / 2; out.popup(mineSide ? "Too slow! Ooga's coconut" : "Your coconut!", false); out.cue("whirr"); reset(mineSide ? -1 : 1); }
@@ -1241,8 +1299,15 @@
       A.u += Math.max(-0.6 * dt, Math.min(0.6 * dt, P.u - A.u)); A.v = L - 0.2;
       place3();
     };
-    const tease = () => { I.boost = 1; I.dv = P.v < L / 2 ? Math.abs(I.dv) : -Math.abs(I.dv); out.cue("clack"); };
+    const tease = () => { I.boost = 1; I.dv = P.v < L / 2 ? Math.abs(I.dv) : -Math.abs(I.dv); clack(); };
     return {
+      capture, receive, follow, remoteAct: () => out.cue("throw"),
+      multiplayer: on => { peer.on = !!on; peer.x = peer.smash = peer.score = 0; peer.power = peer.tried = false; },
+      peerInput: (x, hit) => {
+        peer.x = Math.max(-1, Math.min(1, x));
+        if (hit && peer.on && phase === "play" && peer.smash <= 0) { peer.smash = SMASH; peer.power = peer.meter >= 0.7 && peer.meter <= 0.93; if (peer.meter >= 0) peer.tried = true; }
+      },
+      get following() { return following; },
       kind: "hockey", name: "Air Hockey", help: "Drag, arrows or A and D slide your mallet; Space or tap smashes, in the green for fire. First to seven before the sand runs out.",
       stars: [40, 90, 150], tickets: (score) => Math.floor(score / 5), status, aims: true, attract, tease,
       get playing() { return phase !== "idle"; },
@@ -1250,11 +1315,12 @@
       get rivalU() { return A.u; },
       get puckU() { return P.u / (W / 2); },
       start: () => {
+        following = false; peer.score = peer.smash = 0; peer.tried = peer.power = false;
         mineGoals = theirGoals = streak = round = 0; N.sand = HOCKEY_SAND; board.show(0); them.show(0);
         status.score = status.left = status.streak = 0; status.round = 1; status.target = HOCKEY_CLOCK[HOCKEY_SAND]; status.fire = false; status.verb = "Smash!"; status.meter = -1; status.window0 = 0.7; status.window1 = 0.93;
         M.u = 0; M.v = REST; A.u = 0; A.v = L - 0.2; N.smash = N.tipT = 0; N.sayT = 1.1; power = false; reset(1); N.serve = 1.9; phase = "play";
       },
-      stop: () => { phase = "idle"; status.verb = ""; status.meter = -1; status.target = 0; mark.visible = false; puck.ember = 0; reset(1); place3(); },
+      stop: () => { following = false; phase = "idle"; status.verb = ""; status.meter = -1; status.target = 0; mark.visible = false; puck.ember = 0; reset(1); place3(); },
       act: () => {
         if (phase !== "play" || N.smash > 0) return;
         // One try an approach: a smash while the meter runs spends it, in the green or not.
@@ -1263,7 +1329,9 @@
         out.cue("throw");
       },
       update: (dt) => {
+        if (following) { follow(dt); return; }
         flash.update(dt);
+        peer.smash = Math.max(0, peer.smash - dt); if (!peer.smash) peer.power = false;
         N.rivalArm = Math.max(0, N.rivalArm - dt);
         if (phase === "idle") return;
         N.smash = Math.max(0, N.smash - dt);
@@ -1271,8 +1339,8 @@
         N.burn = Math.max(0, N.burn - dt);
         puck.ember = Math.min(1, N.burn * 1.5);
         if (N.burn > 0 && (N.trailT -= dt) <= 0) { N.trailT = 0.06; host.burst(P.u, Y + 0.03, -NEAR - P.v, 2); }
-        if (N.sayT > 0 && (N.sayT -= dt) <= 0) { out.popup(HOCKEY_SAY[round][0], true); out.cue("round"); N.tipT = 1.1; }
-        if (N.tipT > 0 && (N.tipT -= dt) <= 0) out.popup(HOCKEY_SAY[round][1], false);
+        if (!peer.on && N.sayT > 0 && (N.sayT -= dt) <= 0) { out.popup(HOCKEY_SAY[round][0], true); out.cue("round"); N.tipT = 1.1; }
+        if (!peer.on && N.tipT > 0 && (N.tipT -= dt) <= 0) out.popup(HOCKEY_SAY[round][1], false);
         // The sand, shown by the second: a call with 30 and 10 seconds left and each of the last five, then the match
         // is over.
         const before = Math.ceil(N.sand);
@@ -1298,6 +1366,9 @@
           mark.visible = true; mark.position.x = N.fu; mark.position.z = -NEAR - M.v;
           mark.glow = hot ? 2.4 : 1.2; mark.highlight = hot ? 1 : 0; mark.scale.x = mark.scale.z = hot ? 1.2 : 1;
         } else { status.meter = -1; mark.visible = false; tried = false; }
+        const farGap = A.v - P.v - PR - MR, farReach = P.dv * APPROACH;
+        if (N.serve <= 0 && P.dv > 0.15 && farGap > 0 && farGap < farReach) peer.meter = peer.tried ? -1 : 1 - farGap / farReach;
+        else { peer.meter = -1; peer.tried = false; }
         place3();
       }
     };

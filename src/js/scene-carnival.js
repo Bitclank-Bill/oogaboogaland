@@ -172,6 +172,15 @@
   const coached = {};
   for (const id of Object.keys(KINDS)) coached[id] = false;
 
+  let hockeySession = null, hockeyRemotes = null, hockeyAmbience = null, hockeyLobby = null;
+  const HOCKEY_SEAT = { x: 0, y: 0, z: 0, yaw: 0 };
+  let hockeySide = 0;
+  const hockeyView = side => {
+    if (side === hockeySide) return;
+    const cx = BL.hockeyWire.TABLES[slot][0], cz = BL.hockeyWire.TABLES[slot][1];
+    for (const p of [EYE, LOOK, WIDE, ...VIEW]) { p.x = 2 * cx - p.x; p.z = 2 * cz - p.z; }
+    hockeySide = side;
+  };
   let renderer, game, world, go, root, camera, hud, hooks, input, fx, audio, kind = null, play = null, machine = null, slot = 0, rival = null, rider = null, retro = null;
   // The steering the games that aim read: `x` -1 to 1 across, from a drag or held arrow and A and D keys; for the retro
   // games also `hold` (-1, 0 or 1 while a key is held), `steps`, one more each press of right and one less each of
@@ -629,9 +638,9 @@
   };
   // Go: the game starts, the best to beat is the one saved, and a game's first run in the page visit coaches.
   const startPlay = () => {
-    setPhase("play"); play.start(); shown.verb = null;
+    setPhase("play"); if (!hockeySession?.follower) play.start(); shown.verb = null;
     if (retro) audio.music(kind);
-    scoreRun = BL.highscores.begin(kind);
+    scoreRun = hockeySession?.human ? null : BL.highscores.begin(kind);
     T.bestAt = game.arcadeBest(machine.scoreId);
     if (!coached[kind]) {
       coached[kind] = true;
@@ -643,6 +652,7 @@
   // One press at the game: whether it took it, by the cue it played or the action it moved on to.
   const press = () => {
     const cues = T.cues, verb = play.status.verb;
+    if (hockeySession) return hockeySession.act();
     play.act();
     return T.cues !== cues || play.status.verb !== verb;
   };
@@ -660,13 +670,15 @@
   // The run ends: its best and tickets are saved at once, so leaving in the beat before the card loses nothing.
   const finish = (score) => {
     // Once a run: an end reported again (a later substep of the same frame) must not pay or record twice.
-    if (phase !== "play") return;
+    if (phase !== "play" && !(hockeySession && (phase === "pause" || phase === "count"))) return;
+    el.pause.hidden = true;
     setPhase("done"); T.doneT = 0.9; finalScore = score; T.buffer = 0;
     coachOff();
-    T.better = game.recordArcade(kind, score, machine.scoreId) && score > 0;
-    BL.highscores.submit(scoreRun, machine.scoreId, score);
+    if (hockeySession) hockeySession.finish();
+    T.better = !hockeySession?.human && game.recordArcade(kind, score, machine.scoreId) && score > 0;
+    if (!hockeySession?.human) BL.highscores.submit(scoreRun, machine.scoreId, score);
     scoreRun = null;
-    T.won = play.tickets(score); T.total = game.addTickets(T.won);
+    T.won = hockeySession?.human ? 0 : play.tickets(score); T.total = game.addTickets(T.won);
     // A retro game stopped its tune when it decided the run (`over`); a run ended any other way stops it here.
     if (retro) audio.music(null);
   };
@@ -739,6 +751,7 @@
     else if (T.elapsed - T.verdictAt >= VERDICT_HOLD) again();
   };
   const again = () => {
+    if (hockeySession) { leave(); return; }
     play.stop();
     startCount(COUNT_AGAIN);
   };
@@ -829,7 +842,7 @@
     rival = null;
     const everyone = BL.contributors.activeRoster.map((c) => c.name);
     const names = everyone.length > 1 ? everyone.filter((n) => n !== visitor) : everyone, rivalName = K.rival ? names[(slot + 1) % names.length] : null;
-    if (K.rival) {
+    if (K.rival && kind !== "hockey") {
       const cave = models.caveman(BL.contributors.traitsFor(rivalName));
       if (cave.parts.gun) cave.parts.gun.visible = false;
       cave.root.rotation.y = machine.turn;
@@ -899,7 +912,7 @@
     // Oogas walk.
     const crowd = names.filter((n) => n !== rivalName && n !== visitor), list = K.crowd[slot] || K.crowd[0], hash = crowd.map((n) => BL.math.fnv1a(n + kind));
     const tall = K.tall ? K.tall[slot] || K.tall[0] : list;
-    for (let i = 0; i < list.length && i < crowd.length; i++) {
+    for (let i = 0; kind !== "hockey" && i < list.length && i < crowd.length; i++) {
       let pick = 0;
       for (let j = 1; j < hash.length; j++) if (hash[j] < hash[pick]) pick = j;
       hash[pick] = Infinity;
@@ -949,9 +962,22 @@
   // its own (`lamps`).
   const LAMPS = [[0, 2.6, -2.5], [0, 2.2, 0.6], [-1.6, 3, -3.5], [1.6, 3, -3.5]];
 
+  const joinHockey = () => {
+    if (hockeySession) return;
+    if (BL.net.state.hockey && BL.net.state.me) {
+      text(hockeyLobby, "Joining the table…");
+      hockeySession = BL.hockeySession.create({ slot, play, aim,
+        lobby: message => { text(hockeyLobby, message); introEl.hidden = false; },
+        sideChanged: side => { hockeyView(side); BL.hockeyWire.seat(slot, side, 0, HOCKEY_SEAT); },
+        start: () => { introEl.hidden = true; startCount(COUNT); },
+        end: score => finish(score),
+        closed: message => { play.stop(); el.pause.hidden = el.results.hidden = true; coachOff(); T.buffer = 0; scoreRun = null; setPhase("intro"); text(hockeyLobby, message); introEl.hidden = false; }
+      });
+    } else text(hockeyLobby, "Solo practice against the moving mallet");
+  };
   const enter = (ctx, id) => {
     ({ renderer, game, world, go } = ctx);
-    kind = id;
+    kind = id; hockeySide = 0;
     slot = Number.isInteger(ctx.place) && KINDS[id].spots[ctx.place] ? ctx.place : 0;
     aim.x = aim.hold = aim.steps = aim.y = aim.stepsY = 0; held.left = held.right = held.up = held.down = DRAG.down = false;
     canvasEl = ctx.canvas;
@@ -1022,7 +1048,7 @@
     text(el.newBest, "New local best!");
     refreshScores();
     unsubscribeScores = BL.highscores.watch(kind, refreshScores);
-    text(el.help, play.help);
+    text(el.help, kind === "hockey" && BL.net.state.me ? "Live matches continue while this menu is open. " + play.help : play.help);
     text(el.needLabel, KINDS[kind].need || "Need");
     text(el.roundLabel, play.roundLabel || "Round");
     text(el.coach, (play.coach || COACH[kind])[window.matchMedia("(pointer: coarse)").matches ? 1 : 0]);
@@ -1036,6 +1062,15 @@
     resetRun();
     introEl = document.querySelector(`[data-intro="${kind}"]`);
     setPhase("intro");
+    if (kind === "hockey") {
+      BL.net.setBody(world.pilot);
+      BL.hockeyWire.seat(slot, 0, 0, HOCKEY_SEAT);
+      BL.net.sendPose(HOCKEY_SEAT.x, 0, HOCKEY_SEAT.z, HOCKEY_SEAT.yaw);
+      hockeyAmbience = BL.arcadeAmbience.create(audio, HOCKEY_SEAT, camera);
+      hockeyRemotes = BL.remotePlayers.create({ root, fx, visible: rec => rec.zone === BL.hockeyWire.ZONE });
+      hockeyLobby = introEl.querySelector(".game-intro-kicker");
+      joinHockey();
+    }
     T.elapsed = 0;
     Object.assign(camera.position, WIDE);
     Object.assign(camera.target, LOOK);
@@ -1045,14 +1080,24 @@
     scene.input = input;
     // `crack` and `flop` stage a big moment or a miss at a point in the played machine's frame; `watchers` counts them
     // and `spots` lists where each stands in the hall, [x, z, facing] on a wide screen, then on a tall one.
-    scene.debug = { hud, carnival: { get kind() { return kind; }, get machineId() { return machine.scoreId; }, get phase() { return phase; }, get status() { return play.status; }, act, again, finish: (s) => { finish(s); }, tickets: (s) => play.tickets(s),
+    scene.debug = { hud, carnival: { get kind() { return kind; }, get machineId() { return machine.scoreId; }, get phase() { return phase; }, get status() { return play.status; }, get shared() { return hockeySession?.table || null; }, get side() { return hockeySide; }, get wire() { return kind === "hockey" ? play.capture() : null; }, act, again, finish: (s) => { finish(s); }, tickets: (s) => play.tickets(s),
       crack: (lx, ly, lz, big) => crack(machine, lx, ly, lz, big), flop, get watchers() { return watchers.length; }, get spots() { return watchers.map((w) => w.at); } } };
   };
 
   // Per frame, allocation-free: the flow, the game, the camera and the HUD.
   const update = (dt) => {
     T.elapsed += dt;
-    if (phase === "intro" && introEl.hidden) startCount(COUNT);
+    if (kind === "hockey" && phase === "intro") joinHockey();
+    if (phase === "intro" && introEl.hidden) {
+      if (hockeySession) { introEl.hidden = false; hockeySession.ready(); }
+      else if (kind === "hockey" && BL.net.state.me && BL.net.state.room !== "live") { introEl.hidden = false; text(hockeyLobby, "Connecting to the Arcade…"); }
+      else startCount(COUNT);
+    }
+    if (kind === "hockey") {
+      if (!hockeySession) BL.net.sendPose(HOCKEY_SEAT.x, 0, HOCKEY_SEAT.z, HOCKEY_SEAT.yaw);
+      hockeyRemotes.update(dt); hockeyAmbience.update(dt);
+      if (hockeySession) hockeySession.tick(dt, phase === "play" || phase === "pause");
+    }
     let dolly = 1;
     if (phase === "count") {
       T.countT -= dt;
@@ -1092,7 +1137,8 @@
     }
     T.slow = Math.max(0, T.slow - dt);
     T.big = Math.max(0, T.big - dt);
-    if (phase !== "pause") play.update(pace < 1 && !play.status.verb ? dt * pace : dt);
+    if (hockeySession?.follower) { if (play.following) play.follow(dt); }
+    else if (phase !== "pause" || hockeySession) play.update(pace < 1 && !play.status.verb ? dt * pace : dt);
     audio.tick();
     if (rival) {
       const P = rival.parts, u = play.rivalU;
@@ -1187,9 +1233,14 @@
     ctx.globalAlpha = 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-  const overlay = (dt) => fx.drawOverlay(dt, drawScreen);
+  const drawExtra = (ctx, project) => { drawScreen(ctx); if (hockeyRemotes) hockeyRemotes.drawNames(ctx, project); };
+  const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leaveScene = () => {
+    if (hockeySession) hockeySession.dispose();
+    if (hockeyRemotes) hockeyRemotes.dispose();
+    hockeySession = hockeyRemotes = hockeyAmbience = hockeyLobby = null;
+    if (kind === "hockey") BL.net.setBody(null);
     unsubscribeScores();
     unsubscribeScores = scoreRun = null;
     scoreMachines.length = 0;
@@ -1227,6 +1278,7 @@
   // cracks' milk, chips and leaves and the embers, whose particles are made only when a coconut first cracks or a
   // first score or win throws them.
   const liveGeometry = (set) => {
+    if (hockeyRemotes) hockeyRemotes.liveGeometry(set);
     for (let d = 0; d < 10; d++) set.add(AM.digit(d));
     set.add(AM.coconut(0)).add(AM.coconut(1)).add(AM.pinLight(0)).add(AM.pinLight(1));
     for (const list of [bits.milk, bits.chips, bits.leaves, SPARKS]) for (const g of list) set.add(g);
@@ -1248,7 +1300,7 @@
   BL.scenes = BL.scenes || {};
   for (const id of Object.keys(KINDS)) {
     SCENES[id] = BL.scenes[id] = {
-      id, prepare: () => { const loading = BL.deferred.load("arcade"); return loading ? loading.then(() => null) : null; }, enter: (ctx) => enter(ctx, id), update, overlay, onDonation, onKey, onLootCleared: () => {}, renderOpts: RENDER_OPTS,
+      id, voiceZone: id === "hockey" ? "arcade.hall" : undefined, prepare: () => { const loading = BL.deferred.load("arcade"); return loading ? loading.then(() => null) : null; }, enter: (ctx) => enter(ctx, id), update, overlay, onDonation, onKey, onLootCleared: () => {}, renderOpts: RENDER_OPTS,
       leave: leaveScene, stats, liveGeometry, root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
       get inMotion() { return phase === "play" || phase === "count"; }
     };

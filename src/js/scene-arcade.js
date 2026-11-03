@@ -88,6 +88,7 @@
   let zoneNow = "arcade.hall", zoneHeld = 0, exitButton = null;
   let stations = null, blocks = null, carnival = null, staff = null, orders = 0, ticketBoard = null, prizeUi = null;
   let crowd = null, spin = null;
+  let unwatchHockey = null;
   let audio = null, bots = null, walkers = null, motes = null, power = null, disco = null, fame = null, shelf = null, lit = null;
   let ambientT = 0, wheelTick = 0, cheerT = 0, powerT = 99;
   // Who walked in, kept across a game so they come back out as themselves, and the ticket balance at the last visit,
@@ -194,10 +195,8 @@
   // cheering the cabinets from the ring's front-left, off the doorway's view of their screens. [x, z, facing, pose];
   // seated ones sit on a stool of the table they face, the air hockey pair at the two ends of their table, along its
   // `turn`.
-  const H0 = LAYOUT.hockeys[0], H0X = Math.sin(H0.turn) * 1.45, H0Z = Math.cos(H0.turn) * 1.45;
   const CROWD = [
     [LAYOUT.skee[1].x, LAYOUT.skee[1].z, Math.PI, "skee"], [LAYOUT.hoops[1].x, LAYOUT.hoops[1].z, Math.PI / 2, "shoot"],
-    [H0.x + H0X, H0.z + H0Z, H0.turn + Math.PI, "hockey"], [H0.x - H0X, H0.z - H0Z, H0.turn, "hockey"],
     [LAYOUT.pinball[0][0], LAYOUT.pinball[0][1] + 1.05, Math.PI, "pinball"], [LAYOUT.claws[0][0], LAYOUT.claws[0][1] + 0.95, Math.PI, "claw"],
     [LAYOUT.tables[0][0], LAYOUT.tables[0][1] + 0.85, Math.PI, "sit"], [LAYOUT.tables[1][0], LAYOUT.tables[1][1] + 0.85, Math.PI, "sit"],
     [-16.6, 2.3, 0, "queue"], [STAGE.x - 3.4, STAGE.z + 3.8, 2.41, "cheer"]
@@ -398,7 +397,7 @@
     // posts beyond its far end, wider than the table, and the pool tables' behind theirs: a block of their own.
     F.claw.forEach((p, i) => machine(p, AM.clawBooth(i), BL.arcadeGames.clawGame, "claw", [-1.4, 1.4, -1.52, -0.28], i, i === 0));
     F.pinball.forEach((p, i) => { const t = AM.pinball(i); machine(p, { body: t.body, glow: t.lit, glass: t.glass, dz: -1.05 }, BL.arcadeGames.pinballGame, "pinball", [-0.43, 0.43, -1.84, -0.2], i, i === 0); });
-    F.hockey.forEach((p, i) => { const a = AM.airHockey(); machine(p, { body: a.body, glow: a.lit, dz: -1.75, turn: Math.PI / 2 }, BL.arcadeGames.airHockey, "hockey", [-0.65, 0.65, -2.95, -0.55], i, i === 0); blocks.push(blockOf(p, -1.1, 1.15, -3.25, -3.06)); });
+    F.hockey.forEach((p, i) => { const a = AM.airHockey(); machine(p, { body: a.body, glow: a.lit, dz: -1.75, turn: Math.PI / 2 }, BL.arcadeGames.airHockey, "hockey", [-0.65, 0.65, -2.95, -0.55], i, false); blocks.push(blockOf(p, -1.1, 1.15, -3.25, -3.06)); });
     F.pool.forEach((p, i) => { const t = AM.poolTable(i); machine(p, { body: t.body, glow: t.glow, lamp: t.lamp, dz: -1.35 }, BL.arcadeGames.poolGame, "billiards", [-1.35, 1.35, -2.08, -0.62], i, false); blocks.push(blockOf(p, -1.03, 1.0, -2.35, -2.08)); });
     F.darts.forEach((p, i) => machine(p, { body: AM.dartBoard(), dz: -AM.DART.oche, dy: AM.DART.y, oche: true }, BL.arcadeGames.dartsGame, "darts", null, i, false));
     // Each board hangs at a walker's height on the back wall between two columns: in the way across its hide from the
@@ -666,13 +665,7 @@
   };
   // The hall's chatter between the events, every second or so from somewhere: a machine at work, or an Ooga at the
   // tables, the snack bar or the shy grunting, laughing or cheering.
-  const AMBIENT = [
-    ...LAYOUT.changers.map((p) => [p.x, p.z, "coin", 0.6]), ...LAYOUT.hockeys.map((h) => [h.x, h.z, "clack", 0.7]), ...LAYOUT.pools.map((p) => [p.x, p.z, "clack", 0.5]),
-    ...LAYOUT.pinball.map(([x, z]) => [x, z, "flip", 0.7]), ...AM.CABINETS.filter((c) => c.game >= 0).map((c) => [c.x, c.z, "ding", 0.5]),
-    [LAYOUT.tables[0][0], LAYOUT.tables[0][1], "cheer", 0.35], [LAYOUT.claws[0][0], LAYOUT.claws[0][1], "whirr", 0.6],
-    [LAYOUT.tables[1][0], LAYOUT.tables[1][1], "laugh", 0.5], [LAYOUT.tables[0][0], LAYOUT.tables[0][1], "grunt", 0.5],
-    [LAYOUT.snack.x, LAYOUT.snack.z, "grunt", 0.45], [LAYOUT.shy.x, LAYOUT.shy.z, "laugh", 0.4]
-  ];
+  const AMBIENT = BL.arcadeAmbience.sources;
   const ambience = (dt) => {
     ambientT -= dt;
     if (ambientT > 0) return;
@@ -865,8 +858,8 @@
         if (playing) s.k = 0;
         else {
           s.k = Math.min(1, s.k + dt * 0.8);
-          g.attract(dt, s.k);
-          if ((s.next -= dt) <= 0) { s.next = 8 + Math.random() * 10; g.tease(); if (s.bot) s.bot.cool = Math.max(s.bot.cool, 2); }
+          if (!g.following) g.attract(dt, s.k);
+          if (!g.following && (s.next -= dt) <= 0) { s.next = 8 + Math.random() * 10; g.tease(); if (s.bot) s.bot.cool = Math.max(s.bot.cool, 2); }
         }
       } else if ((s.next -= dt) <= 0) { s.next = 4 + Math.random() * 5; s.flash = Math.max(s.flash, 0.3); }
       if (powerT < 4) continue;
@@ -2120,6 +2113,7 @@
     for (const kind of BL.game.ARCADE_KINDS) scoreSubscriptions.push(BL.highscores.watch(kind, () => refreshScores(kind)));
     showShelf();
     // The hall's sound, and from the island the room powers up.
+    unwatchHockey = BL.hockeySession.watch(carnival.filter(g => g.kind === "hockey"));
     audio = BL.carnivalAudio.create();
     audio.room(true);
     powerT = from < 0 && !machineFrom && !retroFrom ? 0 : 99;
@@ -2354,6 +2348,8 @@
     CAND.fill(null);
     // A spin still turning has its win saved but not shown: left out here, it shows on the way back in (`enter`).
     lastTickets = shownTickets();
+    if (unwatchHockey) unwatchHockey();
+    unwatchHockey = null;
     audio.dispose();
     remotes.dispose();
     remotes = null;
