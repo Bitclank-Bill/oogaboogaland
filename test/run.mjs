@@ -15072,6 +15072,56 @@ const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcad
   record("arcade hall: back in the hall a cabinet in sight shows its tooltip and a line over the stage shows again",
     !inHall.armed && inHall.hidden === false && !!cabinet && typeof shown === "string" && shown.includes("to play"), JSON.stringify({ inHall, cabinet, shown }));
 } };
+const arcadeRemoteWeapons = { name: "arcade remote weapons", why: "regression: the remote unarmed pose showed visitors' clubs in the weapon-free Arcade", run: async (b) => {
+  const result = await b.evaluate(`(() => {
+    const B = __ooga, N = BL.net, H = BL.arcadeModels.HAUNT, A = H.arena;
+    const id = 99445, previous = N.remotes.get(id), build = BL.models.caveman, rows = [], outside = [];
+    const peer = { id, login: "peer", display: "Peer", body: "w-s-bitcoin", zone: "arcade.hall", x: 0, y: 0, z: 4, yaw: 0, weapon: 0, jet: 0 };
+    let cave = null, pool = null;
+    const read = () => ({ visible: cave.root.visible, club: cave.parts.club.visible, gun: cave.parts.gun.visible });
+    try {
+      BL.models.caveman = (...args) => { cave = build(...args); return cave; };
+      N.remotes.set(id, peer); B.advance(0.1, 1 / 60);
+      BL.models.caveman = build;
+      for (const [place, x, y, z, zone] of [
+        ["hall", 0, 0, 4, "arcade.hall"],
+        ["haunt", H.end - 4, H.y, A.z, "arcade.haunt"],
+        ["arena", A.x, H.y, A.z, "arcade.arena"],
+        ["below arena", A.x, H.y - 2, A.z, "arcade.arena"],
+        ["returned hall", 0, 0, 4, "arcade.hall"]
+      ]) {
+        Object.assign(peer, { x, y, z, zone });
+        for (const held of [0, 1, 2]) {
+          peer.weapon = held | 4 | 12 << 3; B.advance(0.6, 1 / 60);
+          rows.push({ place, held, ...read() });
+        }
+      }
+      N.remotes.delete(id); B.advance(0.1, 1 / 60);
+      const removed = !cave.root.parent;
+      // A new remote arriving after the first visitor left gets the same scene policy.
+      BL.models.caveman = (...args) => { cave = build(...args); return cave; };
+      N.remotes.set(id, peer); B.advance(0.1, 1 / 60);
+      BL.models.caveman = build;
+      const rejoined = read();
+      // The ordinary remote renderer still shows outside loadouts without Arcade's policy.
+      const root = BL.scene.createNode();
+      pool = BL.remotePlayers.create({ root, visible: rec => rec.id === id });
+      BL.models.caveman = (...args) => { cave = build(...args); return cave; };
+      pool.update(0.1); BL.models.caveman = build;
+      for (const held of [0, 1, 2]) { peer.weapon = held; pool.update(0.1); outside.push({ held, ...read() }); }
+      return { rows, removed, rejoined, outside };
+    } finally {
+      BL.models.caveman = build;
+      if (pool) pool.dispose();
+      N.remotes.delete(id); B.advance(0.1, 1 / 60);
+      if (previous) N.remotes.set(id, previous);
+    }
+  })()`);
+  record("arcade remote weapons: all remote held states hide clubs and hall rifles, preserve arena rifles, and hide them again on return and rejoin",
+    result.rows.length === 15 && result.rows.every(r => r.visible && !r.club && r.gun === (r.place === "arena" && r.held === 2)) && result.removed && result.rejoined.visible && !result.rejoined.club && !result.rejoined.gun, JSON.stringify(result));
+  record("arcade remote weapons: the shared renderer keeps outside clubs and rifles unchanged",
+    result.outside.length === 3 && result.outside.every(r => r.visible && r.club === (r.held !== 2) && r.gun === (r.held === 2)), JSON.stringify(result.outside));
+} };
 // #428: a hallway page receives the running hunt without becoming a hunter or borrowing arena ammunition.
 const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regression: a hallway-only spectator receiving a running hunt gained unlimited rifle ammunition despite never entering the arena", run: async (b) => {
   await b.evaluate(`(async () => {
@@ -20239,6 +20289,7 @@ scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", s
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
+scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("skee", { steps: [carnivalPlay("skee", 0.5), trip("skee")] });
 scene("hoops", { steps: [carnivalPlay("hoops", 0.2), trip("hoops")] });
 scene("shy", { steps: [carnivalPlay("shy", 0.7), trip("shy")] });

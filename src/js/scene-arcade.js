@@ -1817,7 +1817,14 @@
     unsubscribeAccount = BL.net.subscribe(accountChanged);
     crowd = []; walkers = [];
     // Other signed-in players keep their real Ooga or gorilla avatars; no simulated roster crowd is created.
-    remotes = BL.remotePlayers.create({ root, crew: people, fx, visible: (rec) => HALL_ZONES.has(rec.zone) && !(ghosts && ghosts.down(rec.id)) });
+    remotes = BL.remotePlayers.create({ root, crew: people, fx,
+      visible: (rec) => HALL_ZONES.has(rec.zone) && !(ghosts && ghosts.down(rec.id)),
+      posed: (cave, feet) => {
+        // The shared unarmed pose keeps a club outside; Arcade parks it for every visitor.
+        if (cave.parts.club) cave.parts.club.visible = false;
+        if (cave.parts.gun && !inArenaRing(cave.root.position.x, cave.root.position.z, feet)) cave.parts.gun.visible = false;
+      }
+    });
     // HALLOWEEN: the ghost hunt, played in the arena: its herald over the middle until a click or a shot from inside
     // wakes it and its code loads, kept in step with the others in the arena through the room (`ghostChannel`).
     zoneNow = "arcade.hall"; zoneHeld = 0; armed = false;
