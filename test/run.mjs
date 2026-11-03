@@ -25314,7 +25314,7 @@ const genesisHoldsProof = async () => {
 const genesisAtriumProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-catalogue", "genesis-atrium", "genesis-courtyard", "genesis-walkways", "genesis-vignettes", "genesis-era-items", "genesis-docents", "genesis-network", "genesis-guide-data", "genesis-bitcoin-guide", "genesis-campfire", "genesis-scale-model", "genesis-lumber", "genesis-satoshi-fx", ...GENESIS_ERA_FILES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, M = W.MUSEUM, items = [];
   W.ERAS.forEach((e, n) => {
     const node = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
@@ -25490,6 +25490,23 @@ const genesisAtriumProof = async () => {
   if (!GD || GD.essays.length !== 12 || GD.essays.some((e) => e.text.length < 10 || !e.accent) || GD.sections.length < 20) wb.push("the guide's essays or resources are missing");
   const boards = [...GD.essays.map((e, i) => BG.BOARDS.essay(GD, i)), ...["library", "books", "videos", "news", "dice", "passphrase", "paths"].map((k) => BG.BOARDS[k](GD)), BG.BOARDS.guide(GD, "coldStorage"), BG.BOARDS.guide(GD, "airGapped")];
   for (const b of boards) if (!b.pages.length || b.pages.some((pg) => !pg.title || !pg.text.length || (pg.links || []).some((l) => !/^https:\/\//.test(l.href)))) wb.push(`the guide's board ${b.room} has an empty page or a link that is not https`);
+  // The Oogas' campfire and its totem poles stand on open floor, clear of everything above and off the paths.
+  const CF = BLc.genesisCampfire.layout();
+  for (const b of CF.boxes) {
+    const hit = (o) => b.x0 < o.x1 && b.x1 > o.x0 && b.z0 < o.z1 && b.z1 > o.z0;
+    if ([...others, ...GL.boxes].some(hit)) wb.push("the campfire or a totem stands in something");
+    if (Y.paths.some((q) => [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2))) wb.push("the campfire or a totem stands on a path");
+  }
+  if (Y.paths.some((q) => C.segDist(CF.fire.x, CF.fire.z, q) < q.w / 2 + CF.ring + 0.6)) wb.push("the dancers' circle crosses a path");
+  // The woodcutting camp (tree, stump, log pile) stands on open floor beside the fire, off the paths.
+  for (const b of BLc.genesisLumber.layout().boxes) {
+    if ([...others, ...GL.boxes, ...CF.boxes].some((o) => b.x0 < o.x1 && b.x1 > o.x0 && b.z0 < o.z1 && b.z1 > o.z0)) wb.push("the woodcutting camp stands in something");
+    if (Y.paths.some((q) => [[b.x0, b.z0], [b.x1, b.z0], [b.x0, b.z1], [b.x1, b.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2))) wb.push("the woodcutting camp stands on a path");
+  }
+  // The scale model of Ooga Booga Land stands on open floor by the arrival, off the paths and out of the view.
+  const SMl = BLc.genesisScaleModel.layout(), sb = SMl.box;
+  if ([...others, ...GL.boxes, ...CF.boxes].some((o) => sb.x0 < o.x1 && sb.x1 > o.x0 && sb.z0 < o.z1 && sb.z1 > o.z0)) wb.push("the scale model stands in something");
+  if (Y.paths.some((q) => [[sb.x0, sb.z0], [sb.x1, sb.z0], [sb.x0, sb.z1], [sb.x1, sb.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2)) || C.inView(SMl.at.x, SMl.at.z, 1.5)) wb.push("the scale model stands on a path or in the view");
   const SQ = BLc.genesisSatoshiFx;
   if (!SQ || SQ.QUOTES.length < 5 || SQ.QUOTES.some(([q, src]) => !/^\u201c.+\u201d$/.test(q) || !/(19|20)\d\d/.test(src))) wb.push("a quote round the statue lacks its quotation marks or a dated source");
   const walkways = { belts: WL.belts.length, perimeter: +perimeter.toFixed(1), items: itemCounts, bad: wb.slice(0, 8) };
