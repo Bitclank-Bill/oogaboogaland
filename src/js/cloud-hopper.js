@@ -183,10 +183,14 @@
     const ghost = BL.cloudHopperGhost.create({ root, renderer: ctx.renderer });
     const audio = BL.cloudHopperAudio.create();
     const scenery = BL.cloudHopperSky.create({ root, renderer: ctx.renderer, seaY: ctx.seaY, onStrike: (distance) => audio.thunder(distance) });
-    // Thunderhead's tornadoes, and whether one has the Ooga (and the height it took it at).
-    const tornado = BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer,
+    // Thunderhead's tornadoes, one a spot and any of them up at once, each writing its own whirl; `tornado` is the one
+    // that matters now (the one that has the Ooga, else the nearest down, else the nearest brewing), whose whirl the
+    // course takes. And whether one has the Ooga (and the height it took it at).
+    const tornadoes = BL.cloudHopperTornado.SPOTS.map(() => BL.cloudHopperTornado.create({ root: routeRoot, renderer: ctx.renderer,
       onDrop: (x, y, z) => { if (actor) audio.tornadoForm(Math.hypot(x - actor.root.position.x, y - actor.root.position.y, z - actor.root.position.z)); },
-      onStrike: (distance) => audio.thunder(distance) });
+      onStrike: (distance) => audio.thunder(distance) }));
+    const whirls = tornadoes.map(() => ({ x: 0, z: 0, strength: 0, reach: 1, core: 1, speed: 0, draw: 0, rise: 0 }));
+    let tornado = tornadoes[0];
     // How long the Ooga has been wholly inside a tornado's funnel on end (s).
     let whirled = false, engulfed = 0;
     // Swept up inside one: how long since (-1 not), the angle round its axis, the height it was taken at, the side of
@@ -264,7 +268,7 @@
       for (const node of pickupNodes) removeChild(routeRoot, node);
       cloudNodes.length = boostNodes.length = bounceNodes.length = pickupNodes.length = 0;
       launchContacts.fill(0); unrecoverableAt = -1;
-      scenery.clear(); tornado.clear(); whirled = false; audio.tornado(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
+      scenery.clear(); for (const t of tornadoes) t.clear(); whirled = false; audio.tornado(0); cloud.geometry = BL.cloudHopperModels.cloudMesh(0);
       xrayUntil = gustAt = -1; xrayWarned = feather = hookHeld = hookDown = false; hookAt = HAND; hookCloud = null;
       rope.visible = hookNode.visible = false;
       for (const leaf of leaves) leaf.visible = false;
@@ -420,7 +424,7 @@
         layout: level.layout, timing: level.timing, runSpeed: BL.pilot.WALK.speed * BL.pilot.WALK.run, jumpSpeed: BL.crew.JUMP_SPEED });
       // Far starts keep the island in view, and the level's scenery too.
       const reach = scenery.build(level, course, start, liftGoal);
-      if (level.sky?.tornado) tornado.start(courseSeed, course, liftGoal);
+      if (level.sky?.tornado) for (let i = 0; i < tornadoes.length; i++) tornadoes[i].start(courseSeed, course, liftGoal, i);
       if (!farBefore) farBefore = camera.far;
       camera.far = Math.max(farBefore, Math.hypot(start.x - liftGoal.x, start.y - liftGoal.y, start.z - liftGoal.z) + 150, reach);
       overlay.setGhost(record.best?.courseVersion === level.courseVersion ? record.best.duration : null);
@@ -523,7 +527,7 @@
       }
       ghost.hide();
       // A tornado ends with the run and lets the clouds go, unless the run ended in it, when it goes on behind the card.
-      if (how !== "tornado") { tornado.clear(course.whirl); audio.tornado(0); }
+      if (how !== "tornado") { for (let i = 0; i < tornadoes.length; i++) tornadoes[i].clear(whirls[i]); course.whirl.strength = 0; audio.tornado(0); }
       whirled = false;
       overlay.setDq(how);
       // A hook out comes home with the run's end.
@@ -590,9 +594,19 @@
         const contact = course.contactAt(p.x, p.z, feet);
         if (contact && Math.abs(feet - contact.top) < 0.06) { riding = contact; oldTop = contact.top; }
       }
-      // A tornado on its own clock, turning the clouds near it as the course moves them.
+      // Each tornado on its own clock; the one that matters now turns the clouds near it as the course moves them.
       if ((phase === "running" || swept >= 0) && level.sky?.tornado) {
-        tornado.update(dt, p.x, p.z, liftGoal, course.whirl, camera.position);
+        let best = -1, nearest = Infinity;
+        for (let i = 0; i < tornadoes.length; i++) {
+          const t = tornadoes[i];
+          t.update(dt, p.x, p.z, liftGoal, whirls[i], camera.position);
+          if (!t.active) continue;
+          t.axisAt(feet, whirlAxis);
+          const rank = Math.hypot(p.x - whirlAxis.x, p.z - whirlAxis.z) + (t.down ? 0 : 1e6);
+          if (rank < nearest) { nearest = rank; best = i; }
+        }
+        if (!whirled && swept < 0 && best >= 0) tornado = tornadoes[best];
+        Object.assign(course.whirl, whirls[tornadoes.indexOf(tornado)]);
         tornado.axisAt(feet, whirlAxis);
         const near = Math.max(0, 1 - Math.max(0, Math.hypot(p.x - whirlAxis.x, p.z - whirlAxis.z) - 6) / WHIRL_HEARD);
         audio.tornado(near * Math.max(tornado.strength, tornado.forming * 0.35));
@@ -1089,7 +1103,7 @@
       c2.restore();
     };
     const dispose = () => {
-      cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose(); tornado.dispose();
+      cancel(); overlay.dispose(); ghost.dispose(); clearRoute(); scenery.dispose(); for (const t of tornadoes) t.dispose();
       audio.dispose();
       document.removeEventListener("visibilitychange", onVisibility);
       removeChild(root, routeRoot); removeChild(root, platform);
@@ -1097,7 +1111,7 @@
     };
     const liveGeometry = (set) => {
       ghost.liveGeometry(set);
-      set.add(rope.geometry); set.add(hookNode.geometry); tornado.liveGeometry(set);
+      set.add(rope.geometry); set.add(hookNode.geometry); for (const t of tornadoes) t.liveGeometry(set);
       set.add(leaves[0].geometry);
       for (const surface of boostNodes) if (surface) set.add(surface.geometry);
       for (const marker of bounceNodes) if (marker) for (const part of marker.children) set.add(part.geometry);
@@ -1138,11 +1152,16 @@
       get bestGhost() { return session ? played().best : null; },
       get course() { return course; }, get start() { return start; }, get level() { return level; },
       // The level's fixed sky, which the hub samples instead of its clock while a run plays, and its lightning now.
-      get sky() { return level.sky; }, get flash() { return playing() ? Math.max(scenery.flash, tornado.flash) : 0; },
+      get sky() { return level.sky; }, get flash() {
+        if (!playing()) return 0;
+        let flash = scenery.flash;
+        for (const t of tornadoes) flash = Math.max(flash, t.flash);
+        return flash;
+      },
       // The power-ups held now, for debugging.
       get powers() { return { xray: Math.max(0, xrayUntil - seconds), feather, hook: hookHeld ? HOOK_NAMES[hookAt] : "" }; },
-      // Thunderhead's tornado and whether it has the Ooga, for debugging.
-      get tornado() { return tornado; }, get whirled() { return whirled; }, get swept() { return swept; }, get hiddenByTornado() { return hiddenByTornado(); },
+      // Thunderhead's tornado that matters now, all of them, and whether one has the Ooga, for debugging.
+      get tornado() { return tornado; }, get tornadoes() { return tornadoes; }, get whirled() { return whirled; }, get swept() { return swept; }, get hiddenByTornado() { return hiddenByTornado(); },
       get bound() { return Math.hypot(start.x, start.z) + 80; } };
   };
   BL.cloudHopper = { create, LIFT_SECONDS };

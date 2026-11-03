@@ -2,8 +2,8 @@
 // it (`SPOTS`, each somewhere in its own stretch of the course and well off to one side). Over the next spot the storm turns, a cap gathering (`FORM` seconds) and brewing there, so a rider
 // sees from afar where it will come down; once the rider comes within `TRIGGER` of it, or passes it, a funnel lowers
 // slowly from it through the course (`DROP`), a thin, weak rope as its tip reaches the course that grows wider and
-// stronger until its tip reaches the bottom, roams about the course there while it lives (`LIVE`), then ropes out
-// and draws back up into the sky (`FADE`), and the next spot starts to brew. Lightning strikes round it from when it starts to brew
+// stronger until its tip reaches the bottom, roams about the course there until the rider has gone by it (`GONE`),
+// then ropes out and draws back up into the sky (`FADE`), and the next spot starts to brew. Lightning strikes round it from when it starts to brew
 // until it ropes out, a second sign of where it is. While it is down it writes the course's `whirl`, which
 // turns the clouds near it round its axis, and `strength` says how hard it holds; the controller carries the Ooga round
 // it and, once it has been wholly inside the funnel a moment, up it to spin round over its top, holding it down meanwhile (`hold`). It is a giant voxel tornado: a stack of stepped slabs, white at its flared cap through blue
@@ -16,11 +16,15 @@
   const M = BL.models, { mulberry32 } = BL.math;
   const TAU = Math.PI * 2, GOLDEN = 2.399963;
   // Phase lengths (s): the sky turning, the funnel lowering, the funnel down, and roping out.
-  const FORM = 4.5, DROP = 20, LIVE = 32, FADE = 3;
+  const FORM = 4.5, DROP = 20, FADE = 3;
   // Its spots: over the main landing a rider at the expected pace reaches at a seeded share of the way down within
-  // `SPREAD` of each of these, this far off to one side of it (m), drifting back across the course this fast (m/s). A
-  // rider within `TRIGGER` of the spot across the course, or `PASS` nearer the finish than it, brings it down.
-  const SPOTS = [0.22, 0.5, 0.78], SPREAD = 0.1, SIDE = [8, 36], DRIFT = [1.4, 2.4], TRIGGER = 130, PASS = 8;
+  // `SPREAD` of each of these, this far off to one side of it (m), drifting back across the course this fast (m/s).
+  // One the rider is already within `AHEAD` of, or past, as it comes to brew moves on down to the main landing that
+  // far ahead of them, none nearer the finish than `LAST` of the way (or it is skipped), so each is met coming. Once
+  // its cap has gathered, a rider within `TRIGGER` of it across the course, or `PASS` nearer the finish than it,
+  // brings it down, and it stays down until the rider is `GONE` nearer the finish than it.
+  const SPOTS = [0.22, 0.5, 0.78], SPREAD = 0.1, SIDE = [8, 36], DRIFT = [1.4, 2.4], AHEAD = 180, LAST = 0.1;
+  const TRIGGER = 220, PASS = 8, GONE = 50;
   // It comes down young: its funnel under the cap `THIN` of its full girth and its hold `WEAK` of its full as its tip
   // reaches the course, both growing to full as its tip goes on down to the bottom. Under the cap it blends from the
   // cap's size to the funnel's over `TAPER` of its length, the cap keeping its size throughout.
@@ -31,9 +35,10 @@
   // Its lightning: a strike every STRIKE seconds, STRIKE_OFF from its axis (m), from just over its cap down past the
   // course, its thunder heard within HEARD (m).
   const STRIKE = [0.9, 2.2], STRIKE_OFF = [6, 26], HEARD = 200;
-  // The funnel: its top this far over the course at its spot, how far it reaches down, its cap's radius, how
-  // far its tail curls back from its drift (m), and how many slabs it stacks.
-  const TOP = 120, LENGTH = 195, TOP_R = 19, CURL = 12, LAYERS = 104;
+  // The funnel: its top this far over the course at its spot, low enough that a rider coming down sees its cap ahead,
+  // how far it reaches down, its cap's radius, how far its tail curls back from its drift (m), and how many slabs it
+  // stacks.
+  const TOP = 75, LENGTH = 122, TOP_R = 19, CURL = 12, LAYERS = 66;
   // How much of it the brewing cap shows, as a share of its length, and how brightly it glows while it brews (and,
   // a little, once down), so it stands out against the storm's grey.
   const BREW = 0.14, BREW_GLOW = 1.2, DOWN_GLOW = 0.4;
@@ -70,7 +75,7 @@
   // A still of the funnel for its guide card (cloud-hopper-models.js), each slab a node of its own since the icon
   // renderer draws no instanced batches: `STILL` [share of its length, slabs], so it fits a wide card, its top at the
   // origin and its tail curling back from +x as it does from its drift.
-  const STILL = [0.4, 36];
+  const STILL = [0.64, 36];
   const still = () => {
     const root = createNode(), length = LENGTH * STILL[0], thick = length / STILL[1];
     for (let i = 0; i < STILL[1]; i++) {
@@ -107,7 +112,10 @@
     // the drift's direction, which its tail curls back from), its top, the height it formed at (the course's), the
     // lightning flickering in its cap, and how far it has come down, how thin it has roped and how hard it holds; how
     // wide its funnel is and its full hold now, by how far it has come down.
-    const spots = [];
+    // The run's main landings, how far the first stands from the goal, and the goal itself.
+    const spots = [], mains = [];
+    let total = 1, goalX = 0, goalZ = 0;
+    const away = (px, pz) => Math.hypot(goalX - px, goalZ - pz);
     let rand = mulberry32(1), state = IDLE, age = 0, clock = 0, made = 0;
     let ax = 0, az = 0, vx = 0, vz = 0, dirX = 1, dirZ = 0, top = 0, band = 0, flashAt = -1, flashNext = 0, strength = 0, reveal = 0, rope = 1, grow = 0;
     let girth = THIN, power = WEAK;
@@ -150,30 +158,42 @@
       strikeLevel = Math.max(0.15, Math.min(1, 1.3 - d / 140));
       if (d < HEARD) onStrike?.(d);
     };
-    // The next spot starts to brew, set to drift back across the course from its side.
-    const brew = (spot) => {
-      const drift = range(DRIFT), dx = -spot.sx + spot.sz * (rand() - 0.5) * 0.4, dz = -spot.sz - spot.sx * (rand() - 0.5) * 0.4, d = Math.hypot(dx, dz);
-      begin(spot.x, spot.y, spot.z, dx / d, dz / d, drift, spot.cx, spot.cz);
+    // The next spot starts to brew by its landing, or the one `AHEAD` of a rider who is too near it, set to drift back
+    // across the course from its side; false when too little course is left for it.
+    const brew = (spot, x, z) => {
+      const ahead = away(x, z) - AHEAD;
+      let best = spot.landing;
+      if (away(best.x, best.z) > ahead) {
+        best = null;
+        for (const c of mains) if (away(c.x, c.z) <= ahead && (!best || away(c.x, c.z) > away(best.x, best.z))) best = c;
+        if (!best || away(best.x, best.z) < LAST * total) return false;
+      }
+      const fx = goalX - best.x, fz = goalZ - best.z, d = Math.hypot(fx, fz) || 1, sx = -fz / d * spot.side, sz = fx / d * spot.side;
+      const drift = range(DRIFT), dx = -sx + sz * (rand() - 0.5) * 0.4, dz = -sz - sx * (rand() - 0.5) * 0.4, l = Math.hypot(dx, dz);
+      begin(best.x + sx * spot.off, best.top, best.z + sz * spot.off, dx / l, dz / l, drift, best.x, best.z);
+      return true;
     };
+    // How much nearer the goal the rider is than the tornado (m).
+    const passed = (x, z) => away(ax, az) - away(x, z);
     // Each frame of a run: (x, z) the rider's feet across the course, `finish` the final cloud, `whirl` the course's,
     // which this writes, and `eye` the camera's place.
     const update = (dt, x, z, finish, whirl, eye) => {
       clock += dt;
       if (state === IDLE) {
         whirl.strength = strength = 0;
-        if (made === spots.length) return;
-        brew(spots[made++]);
+        while (state === IDLE && made < spots.length) brew(spots[made++], x, z);
+        if (state === IDLE) return;
       }
       if (state === FORMING) {
-        // Brewing holds once its cap has gathered, until the rider comes near or goes by.
+        // Brewing gathers its cap, then holds until the rider comes near or goes by.
         age = Math.min(FORM, age + dt);
-        if (Math.hypot(x - ax, z - az) < TRIGGER || Math.hypot(finish.x - x, finish.z - z) < Math.hypot(finish.x - ax, finish.z - az) - PASS) {
+        if (age >= FORM && (Math.hypot(x - ax, z - az) < TRIGGER || passed(x, z) > PASS)) {
           state = DROPPING; age = 0; onDrop?.(ax, top, az);
         }
       } else age += dt;
       if (state === DROPPING && age >= DROP) { state = DOWN; age -= DROP; }
       if (kept && state === FADING) { state = DOWN; age = 0; }
-      if (state === DOWN && age >= LIVE && !kept) { state = FADING; age -= LIVE; }
+      if (state === DOWN && !kept && passed(x, z) > GONE) { state = FADING; age = 0; }
       if (state === FADING && age >= FADE) { state = IDLE; whirl.strength = strength = 0; hide(); return; }
       if (state !== FORMING) {
         // Roaming: its heading wanders, pulled back toward home, and its tail curls back from where it heads.
@@ -244,18 +264,19 @@
     };
     // A run begins: `seed` its course's, from which its spots are laid on `course` toward `finish`; `clear` ends any
     // tornado at once and brews no more.
-    const start = (seed, course, finish) => {
-      rand = mulberry32(seed ^ 0x51ed270b); spots.length = made = 0; state = IDLE; age = 0; strength = 0; kept = false; hide();
+    // `only`, for one of a run's several tornadoes, keeps that spot alone, the others laid the same way by every one.
+    const start = (seed, course, finish, only = -1) => {
+      rand = mulberry32(seed ^ 0x51ed270b); spots.length = mains.length = made = 0; state = IDLE; age = 0; strength = 0; kept = false; hide();
+      goalX = finish.x; goalZ = finish.z; total = 1;
       let last = 0;
-      for (const c of course.clouds) if (c.main) last = Math.max(last, c.arrival);
+      for (const c of course.clouds) if (c.main) { mains.push(c); last = Math.max(last, c.arrival); total = Math.max(total, away(c.x, c.z)); }
       for (const centre of SPOTS) {
         const share = centre + (rand() * 2 - 1) * SPREAD;
         let best = null;
-        for (const c of course.clouds) if (c.main && (!best || Math.abs(c.arrival - share * last) < Math.abs(best.arrival - share * last))) best = c;
-        const fx = finish.x - best.x, fz = finish.z - best.z, d = Math.hypot(fx, fz) || 1, side = rand() < 0.5 ? -1 : 1, off = range(SIDE);
-        const sx = -fz / d * side, sz = fx / d * side;
-        spots.push({ x: best.x + sx * off, y: best.top, z: best.z + sz * off, sx, sz, cx: best.x, cz: best.z });
+        for (const c of mains) if (!best || Math.abs(c.arrival - share * last) < Math.abs(best.arrival - share * last)) best = c;
+        spots.push({ landing: best, side: rand() < 0.5 ? -1 : 1, off: range(SIDE) });
       }
+      if (only >= 0) { spots[0] = spots[only]; spots.length = 1; rand = mulberry32(seed ^ 0x51ed270b ^ Math.imul(only + 1, 0x9e3779b9)); }
     };
     const clear = (whirl = null) => { state = IDLE; made = spots.length; strength = 0; strikeAt = -1; kept = false; if (whirl) whirl.strength = 0; hide(); };
     const hold = (on) => { kept = on; };
@@ -270,5 +291,5 @@
       // Its lightning's flash where the eye stands, 0 to 1, for the sky.
       get flash() { return strikeAt < 0 ? 0 : Math.max(0, 1 - (clock - strikeAt) / 0.3) * strikeLevel; } };
   };
-  BL.cloudHopperTornado = { create, still, FORM, DROP, LIVE, FADE, SPOTS, TRIGGER };
+  BL.cloudHopperTornado = { create, still, FORM, DROP, FADE, SPOTS, TRIGGER };
 })();

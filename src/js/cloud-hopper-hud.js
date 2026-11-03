@@ -14,19 +14,19 @@
     swept: ["Disqualified", "Swept up into the tornado and caught spinning inside it!"]
   };
   const GUIDE = [
-    ["normal", "Drifting clouds", "WASD or arrows move, Shift runs and Space jumps. Leave the starting cloud to start the clock. A cloud shimmers and whistles before it fades, so jump for one that isn't shimmering; some white clouds never fade at all."],
-    ["boost", "Boost clouds", "Touch any part of a pink cloud, even its sides or underside, to launch toward the island. The white arrows point the way."],
-    ["jetpack", "Jetpacks", "Collect a pack, then use J to equip or stow it. Hold Space for lift. Extra packs refill fuel; it never regenerates, and an empty pack disappears."],
-    ["finish", "Banana pile", "Land on the banana pile to stop the clock. Your fastest finish becomes a ghost you can race next time."]
+    ["normal", "Drifting clouds", "WASD moves, Shift runs and Space jumps. The clock starts when you leave this cloud. A shimmering cloud is about to fade."],
+    ["boost", "Boost clouds", "Touch a pink cloud anywhere to launch toward the island."],
+    ["jetpack", "Jetpacks", "Press J to wear a jetpack, then hold Space to fly up. Fuel never refills, so grab another pack for more."],
+    ["finish", "Banana pile", "Land on the banana pile to stop the clock. Your best run comes back as a ghost to race."]
   ];
   // Bounce clouds (from Level 2), Thunderhead's tornadoes and the power-ups, each introduced the first time a session
   // plays a level that carries it.
   const ITEMS = {
-    bounce: ["bounce", "Bounce clouds", "Touch any part of a purple cloud to bounce high into the air. Steer toward your next landing while airborne."],
-    tornado: ["tornado", "Tornadoes", "Watch for a white cap gathering high in the storm with lightning round it: a tornado comes down there as you near it, thin at first and growing wider and stronger. It whirls the clouds near it and drags you in too. Pass through it quickly, and a pink cloud's boost helps, or it sweeps you up and the run is over."],
-    xray: ["xray", "X-ray goggles", "Take the stone goggles to see how long each nearby cloud has before it fades, for 30 seconds. A gold ∞ marks a cloud that never fades, a red ring one that is about to, and a dashed ring counts down until a cloud comes back."],
-    updraft: ["updraft", "Sky feather", "Carry one feather at a time. Once both your jumps are spent and you wear no fuelled jetpack, Space lets it go: a gust throws you about eight metres up."],
-    hook: ["hook", "Grappling hook", "Aim at a cloud and click to throw: hold to be reeled toward it, let go to fly on as the hook comes back. A cloud in reach shows a gold ring. Miss, and the hook is gone. On a pad it is RT; on a touch screen, hold the HOOK button."]
+    bounce: ["bounce", "Bounce clouds", "Touch a purple cloud anywhere to bounce high. Steer to your next cloud on the way down."],
+    tornado: ["tornado", "Tornadoes", "A tornado comes down where a glowing cap gathers, and it grows stronger as it goes. Dash through it fast or it sweeps you away."],
+    xray: ["xray", "X-ray goggles", "For 30 seconds, see how long each cloud has before it fades. A gold ∞ never fades."],
+    updraft: ["updraft", "Sky feather", "Out of jumps? Press Space and the feather throws you high into the air."],
+    hook: ["hook", "Grappling hook", "Aim at a cloud and hold click (RT on a pad) to reel yourself in. Let go to fly on. Miss, and it's gone."]
   };
   const formatTime = (value) => `${String(Math.floor(value / 6000)).padStart(2, "0")}:${String(Math.floor(value / 100) % 60).padStart(2, "0")}.${String(value % 100).padStart(2, "0")}`;
   const create = ({ onStart, onReplay, onExit, onGuideDone, onSelect, onNext, onHook, letterSign } = {}) => {
@@ -200,6 +200,22 @@
       play.textContent = guideIndex === guide.length - 1 ? "Let's go" : "Next";
       panel.scrollTop = 0;
     };
+    // Every card of the guide stands at its tallest one's size, so its buttons stay put from card to card; measured
+    // as the guide opens and when the window changes.
+    const fitGuide = () => {
+      if (phase !== "briefing" || !panel.open) return;
+      panelTitle.style.minHeight = panelHelp.style.minHeight = "";
+      let title = 0, help = 0;
+      for (const [, name, text] of guide) {
+        if (letterSign) letterSign(panelTitle, name);
+        else panelTitle.textContent = name;
+        panelHelp.textContent = text;
+        title = Math.max(title, panelTitle.offsetHeight); help = Math.max(help, panelHelp.offsetHeight);
+      }
+      panelTitle.style.minHeight = title + "px"; panelHelp.style.minHeight = help + "px";
+      showGuide();
+    };
+    window.addEventListener("resize", fitGuide);
     const previous = () => {
       if (phase === "briefing" && guideIndex > 0) { guideIndex--; showGuide(); }
     };
@@ -407,6 +423,8 @@
           panel.showModal();
           panel.scrollTop = 0;
         }
+        if (briefing) fitGuide();
+        else panelTitle.style.minHeight = panelHelp.style.minHeight = "";
         (nextOpen() ? next : play).focus({ preventScroll: true });
       } else closePanel();
       measureFraming();
@@ -426,6 +444,7 @@
       panel.removeEventListener("focusout", clearActivation);
       window.removeEventListener("blur", clearActivation);
       window.removeEventListener("resize", measureFraming);
+      window.removeEventListener("resize", fitGuide);
       guidePictures?.dispose(); guidePictures = null;
       hud.remove(); panel.remove();
     };
