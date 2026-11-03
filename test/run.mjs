@@ -15157,15 +15157,24 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
     await b.evaluate(`(() => { const B = __ooga; for (const action of ["weapon-primary", "weapon-secondary", "weapon-fire", "magazine-swap"]) B.pilot.weaponAction(action); B.advance(0.8, 1 / 60); })()`);
     const blocked = await b.evaluate(read);
     const mouse = await b.evaluate(`(() => { const B = __ooga, before = B.pilot.orbit.yaw; document.getElementById("scene").dispatchEvent(new MouseEvent("mousemove", { bubbles: true, movementX: 35, movementY: 0 })); B.advance(0.1, 1 / 60); return Math.abs(B.pilot.orbit.yaw - before); })()`);
+    let arena = null;
+    if (mode === "focused") arena = await b.evaluate(`(() => {
+      const B = __ooga, H = BL.arcadeModels.HAUNT;
+      B.pilot.navigate({ position: { x: H.arena.x - 16, y: H.y, z: H.arena.z }, yaw: Math.PI / 2, pitch: 0.1, dist: 4 });
+      B.advance(0.5, 1 / 60); B.pilot.weaponAction("magazine-swap"); B.advance(2, 1 / 60);
+      const w = B.pilot.player.weapon;
+      return { armed: BL.scenes.arcade.debug.arena.armed, equipped: w.equipped, unlimited: w.unlimited, ammo: w.ammo, spare: w.spareAmmo.slice() };
+    })()`);
     await leave();
     const outside = await b.evaluate(read);
-    rows.push({ mode, before, hall, blocked, mouse, outside });
+    rows.push({ mode, before, hall, blocked, mouse, arena, outside });
   }
   record("arcade carry: combat and released cursor intent survive both doorways, hall weapons cannot act, and the outside loadout and ammunition return inside the mainland overhang in every control mode",
     rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.focused
       && !r.hall.held && !r.hall.gun && !r.hall.club && !r.hall.primary && !r.hall.secondary
       && !r.blocked.held && r.blocked.ammo === 11 && r.blocked.spare[0] === 4 && !r.blocked.unlimited
       && (r.mode !== "focused" || r.mouse > 0.001) && (r.mode !== "released" || r.mouse < 0.001)
+      && (r.mode !== "focused" || r.arena.armed && r.arena.equipped && r.arena.unlimited && r.arena.ammo === 4 && r.arena.spare[0] === 11)
       && r.outside.who === r.before.who && r.outside.held === r.before.held && r.outside.combat === r.before.combat
       && r.outside.focused === r.before.focused && r.outside.ammo === 11 && r.outside.spare[0] === 4
       && r.outside.primary === r.before.primary && r.outside.secondary === r.before.secondary && !r.outside.unlimited
@@ -15217,9 +15226,18 @@ const arcadeStage = { name: "arcade stage approaches", why: "regression: oversiz
     r.rows.every(x => x.clear && Math.abs(x.y - 0.36) < 0.001) && !r.cabinet, JSON.stringify(r));
 } };
 const arcadePlay = { name: "arcade play", why: "rule: a cabinet starts its game, the game's exit comes back to that cabinet as the same Ooga, and Escape leaves for the island", run: async (b) => {
-  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), s = window.BL.arcadeModels.CABINETS[0].play; if (B.crew.player !== a) B.pilot.possess(a); a.root.position.x = s.x; a.root.position.z = s.z; B.advance(0.2, 1 / 60); })()`);
+  await b.evaluate(`(() => {
+    const B = __ooga, a = B.cavemen.get("portlandhodl"), s = BL.arcadeModels.CABINETS[0].play;
+    if (B.crew.player !== a) B.pilot.possess(a);
+    // A preceding fixture may have visited the mezzanine or kept combat focus. Start this playthrough on its stage.
+    if (a.weapon.aiming) B.pilot.modeAction("mode-toggle");
+    B.pilot.freeCursor();
+    B.pilot.navigate({ position: { x: s.x, y: BL.arcadeModels.STAGE.high, z: s.z }, yaw: 0, pitch: 0.2, dist: 5 });
+    B.advance(0.2, 1 / 60);
+  })()`);
   await b.key(" ");
   const played = await untilPage(b, 'B.scene === "race" && !B.transitioning', 15000);
+  if (!played) throw new Error("Rally cabinet did not enter the race scene");
   const raced = await b.evaluate(`(() => { const go = document.querySelector('[data-intro="race"] [data-action="intro-go"]'); if (go && go.offsetParent) go.click(); const leave = document.querySelector('nav[data-scene="race"] .leave'), seen = { racer: window.__ooga.racers.player.name, exit: leave.textContent }; leave.click(); return seen; })()`);
   await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 15000);
   const back = await b.evaluate(`(() => { const B = window.__ooga, p = B.pilot.player, s = window.BL.arcadeModels.CABINETS[0].play; return { scene: B.scene, who: p && p.traits.name, off: p ? Math.hypot(p.root.position.x - s.x, p.root.position.z - s.z) : null }; })()`);

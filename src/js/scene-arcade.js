@@ -1809,7 +1809,7 @@
       }
       const w = avatar.weapon;
       outsideWeapon = { primaryOwned: w.primaryOwned, secondaryOwned: w.secondaryOwned, selectedSlot: w.selectedSlot,
-        held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0, unlimited: w.unlimited };
+        held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0, unlimited: w.unlimited, ammo: w.ammo, spareAmmo: w.spareAmmo.slice() };
       putWeaponsAway();
       hud.hint(COARSE ? "Stick walks · PLAY at a game" : "W A S D walk · mouse or Q E turn · Space plays what is next to you", 6000);
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
@@ -2003,6 +2003,10 @@
       const w = avatar.weapon;
       w.primaryOwned = outsideWeapon.primaryOwned; w.secondaryOwned = outsideWeapon.secondaryOwned;
       w.unlimited = outsideWeapon.unlimited;
+      // Arena swaps and knockout drops belong to the borrowed rifle, not the parked mainland magazines.
+      // Combat cleanup above returns the drops before these original counts are restored.
+      w.ammo = outsideWeapon.ammo;
+      w.spareAmmo.splice(0, w.spareAmmo.length, ...outsideWeapon.spareAmmo);
       people.selectWeapon(outsideWeapon.held, avatar);
       w.selectedSlot = outsideWeapon.selectedSlot;
       outsideWeapon = null;
