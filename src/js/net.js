@@ -964,6 +964,8 @@
   const chalkEdit = (op) => {
     const c = state.chalk, C = BL.chalkBoard;
     if (!c || c.editor !== state.selfId || state.room !== "live") return "away";
+    // A repeated clear/reset changes neither the marks nor the shared writing session.
+    if (op.k === "wipe" && C.preset(c.board) === op.to) return null;
     const error = C.apply(c.board, op, c.session);
     if (error) return error;
     const last = chalkOut[chalkOut.length - 1];

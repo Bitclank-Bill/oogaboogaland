@@ -13,7 +13,7 @@ import * as studio from "../src/studio-policy.js";
 const { CHALK, CHALK_BURST, CHALK_FEATURE, CHALK_IDLE_MS, CHALK_TELL_MS } = protocol;
 
 const host = () => {
-  const accepted = [], saved = new Map(), clock = { at: 1e12 };
+  const accepted = [], saved = new Map(), chalkWrites = [], clock = { at: 1e12 };
   class FakeDate extends Date { static now() { return clock.at; } }
   const socket = () => ({
     sent: [], closed: null, store: null,
@@ -37,7 +37,8 @@ const host = () => {
   const ctx = {
     setWebSocketAutoResponse() {}, blockConcurrencyWhile: (fn) => pending.push(fn()), acceptWebSocket: (ws) => accepted.push(ws),
     getWebSockets: () => accepted.filter((ws) => !ws.closed), waitUntil: (p) => pending.push(p),
-    storage: { get: async (key) => Array.isArray(key) ? new Map() : structuredClone(saved.get(key)), put: async (k, v) => { saved.set(k, structuredClone(v)); },
+    storage: { get: async (key) => Array.isArray(key) ? new Map() : structuredClone(saved.get(key)), put: async (k, v) => { saved.set(k, structuredClone(v)); if (k === "chalk") chalkWrites.push("put"); },
+      delete: async (k) => { if (k === "chalk") chalkWrites.push("delete"); return saved.delete(k); },
       getAlarm: async () => 0, setAlarm: async () => {} },
   };
   const room = async () => { const r = new context.Room(ctx, {}); await Promise.all(pending.splice(0)); return r; };
@@ -48,7 +49,7 @@ const host = () => {
     r.players.get(id).body = login;
     return ws;
   };
-  return { room, join, saved, clock, settle: () => Promise.all(pending.splice(0)) };
+  return { room, join, saved, chalkWrites, clock, settle: () => Promise.all(pending.splice(0)) };
 };
 // Feet `along` metres out in front of the board.
 const at = (along) => ({ x: CHALK.AT.x + CHALK.AT.frontX * along, y: CHALK.AT.y, z: CHALK.AT.z + CHALK.AT.frontZ * along, yaw: 0 });
@@ -84,6 +85,36 @@ test("room: an Ooga at the board holds it alone; its edits reach every other pag
   assert.deepEqual(h.saved.get("chalk").marks, r.chalk.marks, "letting go stores the board");
   const woken = await h.room(), c = await h.join(woken, 3, "late");
   assert.deepEqual(heard(c, "chalk-board").at(-1).marks, r.chalk.marks, "a room woken from storage hands the same board to the next to join");
+  send(woken, c, { t: "pose", ...at(1) });
+  send(woken, c, { t: "chalk", k: "take" });
+  send(woken, c, { t: "chalk", k: "wipe", to: "clean" });
+  await h.settle();
+  assert.deepEqual(h.saved.get("chalk"), { marks: [] }, "clearing remembers only the blank board");
+  const blank = await h.room();
+  assert.equal(blank.chalk.marks.length, 0, "blank stays blank after waking");
+  const writes = h.chalkWrites.length, relays = heard(a, "chalk").length;
+  send(woken, c, { t: "chalk", k: "wipe", to: "clean" });
+  await h.settle();
+  assert.equal(h.chalkWrites.length, writes, "clearing a blank board does not save again");
+  assert.equal(heard(a, "chalk").length, relays, "nor relay another wipe");
+  assert.equal(woken.chalkTimer, 0, "nor keep the room awake");
+  send(woken, c, { t: "chalk", k: "wipe", to: "original" });
+  await h.settle();
+  assert.equal(h.saved.has("chalk"), false, "reset removes the stored board");
+  assert.equal(h.chalkWrites.at(-1), "delete");
+  const reset = await h.room();
+  assert.deepEqual(reset.chalk.marks, CHALK.initial(), "absence restores the original drawing");
+  const resetWrites = h.chalkWrites.length, resetRelays = heard(a, "chalk").length;
+  send(woken, c, { t: "chalk", k: "wipe", to: "original" });
+  send(woken, c, { t: "chalk", k: "drop" });
+  await h.settle();
+  assert.equal(h.chalkWrites.length, resetWrites, "resetting the original and letting go do not save");
+  assert.equal(heard(a, "chalk").length, resetRelays, "nor relay an unchanged reset");
+  assert.equal(woken.chalkTimer, 0);
+  h.saved.set("chalk", { marks: CHALK.initial() });
+  const legacy = await h.room();
+  assert.deepEqual(legacy.chalk.marks, CHALK.initial());
+  assert.equal(h.saved.has("chalk"), false, "an older saved default is removed on load too");
 });
 
 test("room: the board lets go when its writer walks off, changes body or zone, leaves, or sits idle while another waits", async () => {

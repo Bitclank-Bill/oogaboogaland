@@ -24016,11 +24016,17 @@ const integrationChecks = async BL => {
     const more=c.sent.slice(before+1),batched=more.length===2&&more[0].p.length===C.CHUNK*2&&more[1].p.length===10;
     c.net.chalkEdit({k:"type",c:[["a",1,1]]});c.net.chalkEdit({k:"type",c:[["b",2,1]]});c.net.chalkEdit({k:"back"});
     const ordered=c.sent.at(-2).k==="type"&&c.sent.at(-2).c.length===2&&c.sent.at(-1).k==="back";
+    let quietWipes=true;
+    for(const to of ["clean","original"]){
+      c.net.chalkEdit({k:"wipe",to});const sent=c.sent.length;
+      quietWipes=quietWipes&&c.net.chalkEdit({k:"wipe",to})===null;
+      c.net.flushChalk();quietWipes=quietWipes&&c.sent.length===sent;
+    }
     c.net.dropChalk();const dropped=c.sent.at(-1).k==="drop"&&c.net.state.chalk.editor===0;
     cm({t:"chalk-refused",why:"busy",name:"Peer"});const refused=events.at(-1)==="refused";
     welcome([]);const older=c.net.state.chalk===null&&events.at(-1)==="board";
     record("integration chalkboard: a room that keeps the chalkboard hands it over and the page follows its holder's edits alone; the visitor's own go in order a few to a frame while they hold it; an older room leaves the page its own",
-      handed&&followed&&unheld&&lineAtOnce&&held&&batched&&ordered&&dropped&&refused&&older,JSON.stringify({handed,followed,unheld,lineAtOnce,held,batched,ordered,dropped,refused,older}));
+      handed&&followed&&unheld&&lineAtOnce&&held&&batched&&ordered&&quietWipes&&dropped&&refused&&older,JSON.stringify({handed,followed,unheld,lineAtOnce,held,batched,ordered,quietWipes,dropped,refused,older}));
     c.net.dispose();
   }
   // Rule: a companion keeps its authenticated owner and real pose when a visitor switches bodies.

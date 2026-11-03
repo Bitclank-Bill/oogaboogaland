@@ -52,6 +52,7 @@ export class Room extends DurableObject {
     this.chalkEditor = null;
     this.chalkTimer = 0;
     this.chalkDirty = false;
+    this.chalkStored = false;
     this.spawnSlot = 0;
     this.dirty = false;
     this.flushTimer = 0;
@@ -89,6 +90,12 @@ export class Room extends DurableObject {
       this.cleanupJobs = (await ctx.storage.get("voiceCleanup")) || [];
       const chalk = await ctx.storage.get("chalk"), marks = chalk && CHALK.restore(chalk.marks);
       if (marks) this.chalk = CHALK.board(marks);
+      this.chalkStored = chalk !== undefined;
+      // Older versions stored the original drawing too; it can always be rebuilt locally.
+      if (this.chalkStored && CHALK.preset(this.chalk) === "original") {
+        await ctx.storage.delete("chalk");
+        this.chalkStored = false;
+      }
       const stored = await ctx.storage.get(["loopEpoch", "sweepAt"]);
       this.loopEpoch = stored.get("loopEpoch") || Date.now();
       this.sweepAt = stored.get("sweepAt") || Date.now() + SWEEP_MS;
@@ -901,7 +908,10 @@ export class Room extends DurableObject {
     } else if (refusal) return this.chalkLetGo(p);
     const held = this.chalkEditor;
     held.at = now;
-    if (p.chalkBehind || C.apply(this.chalk, msg, held.session)) return this.chalkResync(p, now);
+    if (p.chalkBehind) return this.chalkResync(p, now);
+    // Older pages may still send repeated wipes. They need no relay, save or timer.
+    if (msg.k === "wipe" && C.preset(this.chalk) === msg.to) return;
+    if (C.apply(this.chalk, msg, held.session)) return this.chalkResync(p, now);
     this.broadcast({ ...msg, id: p.id }, p.ws);
     this.chalkDirty = true;
     if (msg.k === "wipe") this.chalkSave();
@@ -942,7 +952,15 @@ export class Room extends DurableObject {
     if (this.chalkTimer) { clearTimeout(this.chalkTimer); this.chalkTimer = 0; }
     if (!this.chalkDirty) return;
     this.chalkDirty = false;
-    if (this.ctx && this.ctx.storage) this.background(this.ctx.storage.put("chalk", { marks: this.chalk.marks }));
+    if (!this.ctx || !this.ctx.storage) return;
+    if (CHALK.preset(this.chalk) === "original") {
+      if (this.chalkStored) this.background(this.ctx.storage.delete("chalk"));
+      this.chalkStored = false;
+    } else {
+      // An empty marks array is the blank marker; absence means the original board.
+      this.background(this.ctx.storage.put("chalk", { marks: this.chalk.marks }));
+      this.chalkStored = true;
+    }
   }
 
   // DSB Land's free hardware wallets (WALLET_CAP in protocol.js). A player's live ones, a little past their end so a

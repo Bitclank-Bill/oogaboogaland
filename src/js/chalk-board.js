@@ -42,6 +42,19 @@
     }
     return marks;
   };
+  // Recognize the two built-in boards only when saving or wiping, never per point. Keep this reference private.
+  const original = initial();
+  const preset = (b) => {
+    const marks = b.marks;
+    if (!marks.length) return "clean";
+    if (marks.length !== original.length) return null;
+    for (let i = 0; i < marks.length; i++) {
+      const a = marks[i], o = original[i];
+      if (a.t !== o.t || a.s !== o.s || a.p.length !== o.p.length) return null;
+      for (let j = 0; j < a.p.length; j++) if (a.p[j] !== o.p[j]) return null;
+    }
+    return "original";
+  };
   const count = (marks) => marks.reduce((n, mark) => n + mark.p.length / 2, 0);
   const board = (marks = initial()) => ({ marks, points: count(marks) });
   const character = (ch) => typeof ch === "string" && Array.from(ch).length === 1 && !/[\x00-\x1f\x7f]/.test(ch);
@@ -124,5 +137,5 @@
     }
     return null;
   };
-  BL.chalkBoard = Object.freeze({ FEATURE, MAX_MARKS, MAX_POINTS, LINE_POINTS, CHUNK, TYPE_CHUNK, AT, REACH, RISE, near, initial, board, restore, parse, session, apply });
+  BL.chalkBoard = Object.freeze({ FEATURE, MAX_MARKS, MAX_POINTS, LINE_POINTS, CHUNK, TYPE_CHUNK, AT, REACH, RISE, near, initial, preset, board, restore, parse, session, apply });
 })();
