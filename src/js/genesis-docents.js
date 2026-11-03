@@ -52,12 +52,16 @@
     "Gold numbers on the floor are steps toward Bitcoin.",
     "Ride the out walkway back to the courtyard."
   ];
-  const create = ({ eras, museum, lane, entry, root, footing, fx, addChild, createNode }) => {
+  // `guide[n]`, optional: what era n's docent points out ({ steps: [titles of its steps toward Bitcoin], game: title }).
+  const create = ({ eras, museum, lane, entry, root, footing, fx, addChild, createNode, guide = [] }) => {
     const posts = [], p = { x: 0, z: 0 };
     // A gallery's docent: by its opening, to the side of its walk away from its overview board.
     for (const e of eras) {
       museum.toMuseum(e.n, lane + 4, e.z1 - 3.5, p);
-      posts.push({ x: p.x, z: p.z, r: RADIUS, era: e, lines: [`Welcome to Era ${e.n}: ${e.name}, ${e.years}.`, ...TIPS] });
+      const g = guide[e.n] || {}, own = [];
+      if (g.steps && g.steps.length) own.push(g.steps.length === 1 ? `Find the gold step here: ${g.steps[0]}. It led toward Bitcoin.` : `${g.steps.length} gold steps toward Bitcoin are in here, starting with ${g.steps[0]}.`);
+      if (g.game) own.push(`Ride the walkway to the end: the cabinet there plays ${g.game}.`);
+      posts.push({ x: p.x, z: p.z, r: RADIUS, era: e, lines: [`Welcome to Era ${e.n}: ${e.name}, ${e.years}.`, ...own, ...TIPS] });
     }
     // Two in the atrium: one beside the arrival, one by the statue.
     posts.push({ x: entry.x + 5, z: entry.z - 3, r: 3, era: null, lines: ATRIUM_LINES }, { x: -9, z: 3, r: 3, era: null, lines: ATRIUM_LINES.slice(1).concat(ATRIUM_LINES[0]) });

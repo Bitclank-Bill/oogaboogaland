@@ -619,6 +619,201 @@
       }
     };
   };
+  // --- FIVE IN A ROW (board tables) ---------------------------------------------------------------------------------
+  // A 9 x 9 board against an Ooga: arrows or W A S D move the cursor, Space places a teal stone; five in a line (across,
+  // down or diagonal) wins. The Ooga weighs every empty point by the lines it would make or block.
+  const gomoku = (host) => {
+    const B = base(host, "Wins"), { K, out, J, status, rng, aim } = B, { W, INK, TEXT, text, centre, number } = K;
+    const N = 9, CELL = 10, BX = (W - N * CELL) >> 1, BY = 16, YOU = 1, OOGA = 2, DIRS = [1, 0, 0, 1, 1, 1, 1, -1];
+    const board = new Uint8Array(N * N);
+    const S = { phase: "idle", cx: 4, cy: 4, steps: 0, stepsY: 0, turn: YOU, think: 0, moves: 0, winner: 0, end: 0, ended: 0, seed: 1, lastX: -1, lastY: -1 };
+    const finish = ender(B, S);
+    const at = (x, y) => (x < 0 || y < 0 || x >= N || y >= N ? 3 : board[y * N + x]);
+    const run5 = (x, y, who) => {
+      for (let d = 0; d < 8; d += 2) {
+        let n = 1;
+        for (let k = 1; at(x + DIRS[d] * k, y + DIRS[d + 1] * k) === who; k++) n++;
+        for (let k = 1; at(x - DIRS[d] * k, y - DIRS[d + 1] * k) === who; k++) n++;
+        if (n >= 5) return true;
+      }
+      return false;
+    };
+    // How good point (x, y) is for `who`: each direction's run through it, open ends counting.
+    const weigh = (x, y, who) => {
+      let v = 0;
+      for (let d = 0; d < 8; d += 2) {
+        let n = 1, open = 0, k = 1;
+        while (at(x + DIRS[d] * k, y + DIRS[d + 1] * k) === who) { n++; k++; }
+        if (at(x + DIRS[d] * k, y + DIRS[d + 1] * k) === 0) open++;
+        k = 1;
+        while (at(x - DIRS[d] * k, y - DIRS[d + 1] * k) === who) { n++; k++; }
+        if (at(x - DIRS[d] * k, y - DIRS[d + 1] * k) === 0) open++;
+        v += n >= 5 ? 100000 : open === 0 ? 0 : Math.pow(10, n - 1) * open;
+      }
+      return v;
+    };
+    const place = (x, y, who) => {
+      board[y * N + x] = who; S.moves++; S.lastX = x; S.lastY = y; out.cue("tap", who === YOU ? 0.4 : 0.3);
+      if (run5(x, y, who)) { S.winner = who; if (who === YOU) status.score += 300 + (N * N - S.moves) * 5; finish(who === YOU); return; }
+      if (S.moves >= N * N) { S.winner = 3; status.score += 100; finish(false); return; }
+      S.turn = who === YOU ? OOGA : YOU; if (S.turn === OOGA) S.think = 0.5;
+    };
+    const ooga = () => {
+      let best = -1, bx = 4, by = 4;
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        if (board[y * N + x]) continue;
+        const v = weigh(x, y, OOGA) * 1.1 + weigh(x, y, YOU) + rng.next() * 3 - (Math.abs(x - 4) + Math.abs(y - 4)) * 0.5;
+        if (v > best) { best = v; bx = x; by = y; }
+      }
+      place(bx, by, OOGA);
+    };
+    const step = (dt) => {
+      if (S.phase === "play" && S.turn === OOGA && (S.think -= dt) <= 0) ooga();
+      tickEnd(B, S, dt);
+    };
+    const run = K.stepper(step);
+    const reset = () => { board.fill(0); S.cx = S.cy = 4; S.steps = aim.steps; S.stepsY = aim.stepsY; S.turn = YOU; S.moves = 0; S.winner = 0; S.end = 0; S.ended = 0; S.lastX = S.lastY = -1; status.score = 0; status.verb = ""; J.reset(); };
+    reset();
+    return {
+      kind: "gomoku", name: "Five in a Row", aims: true, status, roundLabel: "Game",
+      help: "Sit with an Ooga at the board. The arrows or W A S D move the cursor, Space places your teal stone. Five in a line, any way, wins.",
+      coach: ["Arrows move, Space places", "Tap a point to place"], stars: [300, 500, 700], tickets: (s) => Math.floor(s / 100),
+      get playing() { return S.phase === "play"; },
+      start: (seed) => { S.seed = Number.isInteger(seed) ? seed >>> 0 : 1; rng.seed(S.seed); reset(); S.phase = "play"; },
+      stop: () => { S.phase = "idle"; reset(); },
+      act: () => { if (S.phase === "play" && S.turn === YOU && !board[S.cy * N + S.cx]) place(S.cx, S.cy, YOU); else if (S.phase === "play") out.cue("bump", 0.2); },
+      update: (dt) => {
+        J.update(dt);
+        if (aim.steps !== S.steps) { S.cx = Math.max(0, Math.min(N - 1, S.cx + (aim.steps - S.steps))); S.steps = aim.steps; }
+        if (aim.stepsY !== S.stepsY) { S.cy = Math.max(0, Math.min(N - 1, S.cy + (aim.stepsY - S.stepsY))); S.stepsY = aim.stepsY; }
+        if (S.phase !== "idle") run(dt);
+      },
+      draw: (ctx) => {
+        ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, 120);
+        J.begin(ctx);
+        ctx.fillStyle = INK.ochre; ctx.fillRect(BX - 3, BY - 3, N * CELL + 6, N * CELL + 6);
+        ctx.fillStyle = INK.huskDk;
+        for (let k = 0; k < N; k++) { ctx.fillRect(BX + CELL / 2, BY + k * CELL + CELL / 2, (N - 1) * CELL, 1); ctx.fillRect(BX + k * CELL + CELL / 2, BY + CELL / 2, 1, (N - 1) * CELL); }
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+          const v = board[y * N + x];
+          if (!v) continue;
+          ctx.fillStyle = v === YOU ? INK.teal : INK.banana; ctx.fillRect(BX + x * CELL + 2, BY + y * CELL + 2, CELL - 4, CELL - 4);
+          if (x === S.lastX && y === S.lastY) { ctx.fillStyle = INK.night; ctx.fillRect(BX + x * CELL + 4, BY + y * CELL + 4, 2, 2); }
+        }
+        if (S.phase === "play" && S.turn === YOU) { ctx.fillStyle = INK.white; ctx.fillRect(BX + S.cx * CELL + 1, BY + S.cy * CELL + CELL - 2, CELL - 2, 1); ctx.fillRect(BX + S.cx * CELL + 1, BY + S.cy * CELL + 1, CELL - 2, 1); }
+        J.end(ctx);
+        text(ctx, "FIVE IN A ROW", 4, 3, TEXT.bone);
+        number(ctx, host.best || 0, W - 4, 3, TEXT.gold, 1, 2, 3);
+        if (S.phase === "idle") centre(ctx, "PRESS START", 110, TEXT.banana);
+        else if (S.phase === "end") centre(ctx, S.winner === YOU ? "YOU WIN" : S.winner === OOGA ? "OOGA WINS" : "DRAW", 110, S.winner === YOU ? TEXT.teal : TEXT.red);
+        else centre(ctx, S.turn === YOU ? "YOUR MOVE" : "OOGA THINKS", 110, S.turn === YOU ? TEXT.teal : TEXT.banana);
+      }
+    };
+  };
+
+  // --- DOTS AND BOXES (board tables) --------------------------------------------------------------------------------
+  // A 4 x 4 grid of boxes against an Ooga: the arrows move along the lines, Space draws one. Close a box's fourth side
+  // and it is yours, and you go again. Most boxes wins.
+  const dots = (host) => {
+    const B = base(host, "Boxes"), { K, out, J, status, rng, aim } = B, { W, INK, TEXT, text, centre, number } = K;
+    const BOXES = 4, G = BOXES * 2 + 1, SP = 20, GX = (W - BOXES * SP) >> 1, GY = 18, YOU = 1, OOGA = 2;
+    const line = new Uint8Array(G * G), owner = new Uint8Array(BOXES * BOXES);
+    const S = { phase: "idle", cx: 1, cy: 0, steps: 0, stepsY: 0, turn: YOU, think: 0, you: 0, ooga: 0, end: 0, ended: 0, seed: 1 };
+    const finish = ender(B, S);
+    const isLine = (x, y) => x >= 0 && y >= 0 && x < G && y < G && ((x & 1) !== (y & 1));
+    const presentSides = (bx, by) => { const x = bx * 2 + 1, y = by * 2 + 1; return (line[(y - 1) * G + x] ? 1 : 0) + (line[(y + 1) * G + x] ? 1 : 0) + (line[y * G + x - 1] ? 1 : 0) + (line[y * G + x + 1] ? 1 : 0); };
+    const claim = (x, y, who) => {
+      line[y * G + x] = who; let closed = 0;
+      for (let by = 0; by < BOXES; by++) for (let bx = 0; bx < BOXES; bx++) if (!owner[by * BOXES + bx] && presentSides(bx, by) === 4) { owner[by * BOXES + bx] = who; closed++; }
+      if (who === YOU) S.you += closed; else S.ooga += closed;
+      out.cue(closed ? "win" : "tap", closed ? 0.3 : 0.25);
+      if (closed && who === YOU) { status.score += closed * 60; J.shake(1); }
+      if (S.you + S.ooga >= BOXES * BOXES) { if (S.you > S.ooga) status.score += 200; finish(S.you > S.ooga); return; }
+      if (!closed) S.turn = who === YOU ? OOGA : YOU;
+      if (S.turn === OOGA) S.think = 0.45;
+    };
+    // Would drawing (x, y) leave a box with three sides for the other player?
+    const gives = (x, y) => {
+      line[y * G + x] = 1; let bad = false;
+      for (let by = 0; by < BOXES && !bad; by++) for (let bx = 0; bx < BOXES; bx++) if (!owner[by * BOXES + bx] && presentSides(bx, by) === 3) { bad = true; break; }
+      line[y * G + x] = 0; return bad;
+    };
+    const closes = (x, y) => {
+      line[y * G + x] = 1; let c = false;
+      for (let by = 0; by < BOXES && !c; by++) for (let bx = 0; bx < BOXES; bx++) if (!owner[by * BOXES + bx] && presentSides(bx, by) === 4) { c = true; break; }
+      line[y * G + x] = 0; return c;
+    };
+    const ooga = () => {
+      let pick = -1, safe = -1, any = -1, n = 0, m = 0, a = 0;
+      for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {
+        if (!isLine(x, y) || line[y * G + x]) continue;
+        const k = y * G + x;
+        if (closes(x, y)) { pick = k; break; }
+        if (!gives(x, y)) { if (rng.int(++n) === 0) safe = k; }
+        else if (rng.int(++a) === 0) any = k;
+      }
+      const k = pick >= 0 ? pick : safe >= 0 ? safe : any;
+      if (k >= 0) claim(k % G, (k / G) | 0, OOGA);
+    };
+    const step = (dt) => {
+      if (S.phase === "play" && S.turn === OOGA && (S.think -= dt) <= 0) ooga();
+      tickEnd(B, S, dt);
+    };
+    const run = K.stepper(step);
+    // The cursor on the lines: left and right step along the row it is on (across lines in an even row, up-and-down
+    // lines in an odd one), up and down to the next row, landing on the nearest line there, so every line is reached.
+    const snap = (dx, dy) => {
+      if (dx) { const nx = S.cx + dx * 2; if (isLine(nx, S.cy)) S.cx = nx; return; }
+      const ny = S.cy + dy;
+      if (ny < 0 || ny >= G) return;
+      S.cx = isLine(S.cx, ny) ? S.cx : isLine(S.cx - 1, ny) ? S.cx - 1 : S.cx + 1; S.cy = ny;
+    };
+    const reset = () => { line.fill(0); owner.fill(0); S.cx = 1; S.cy = 0; S.steps = aim.steps; S.stepsY = aim.stepsY; S.turn = YOU; S.you = S.ooga = 0; S.end = 0; S.ended = 0; status.score = 0; status.verb = ""; J.reset(); };
+    reset();
+    return {
+      kind: "dots", name: "Dots and Boxes", aims: true, status, roundLabel: "Game",
+      help: "Sit with an Ooga at the board. The arrows move along the lines, Space draws one. Close the fourth side of a box to win it and go again.",
+      coach: ["Arrows choose a line, Space draws", "Tap a line to draw it"], stars: [300, 500, 700], tickets: (s) => Math.floor(s / 100),
+      get playing() { return S.phase === "play"; },
+      start: (seed) => { S.seed = Number.isInteger(seed) ? seed >>> 0 : 1; rng.seed(S.seed); reset(); S.phase = "play"; },
+      stop: () => { S.phase = "idle"; reset(); },
+      act: () => { if (S.phase === "play" && S.turn === YOU && !line[S.cy * G + S.cx]) claim(S.cx, S.cy, YOU); else if (S.phase === "play") out.cue("bump", 0.2); },
+      update: (dt) => {
+        J.update(dt);
+        while (aim.steps !== S.steps) { const d = aim.steps > S.steps ? 1 : -1; S.steps += d; snap(d, 0); }
+        while (aim.stepsY !== S.stepsY) { const d = aim.stepsY > S.stepsY ? 1 : -1; S.stepsY += d; snap(0, d); }
+        if (S.phase !== "idle") run(dt);
+      },
+      draw: (ctx) => {
+        ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, 120);
+        J.begin(ctx);
+        const px = (x) => GX + (x >> 1) * SP, py = (y) => GY + (y >> 1) * SP;
+        for (let by = 0; by < BOXES; by++) for (let bx = 0; bx < BOXES; bx++) { const o = owner[by * BOXES + bx]; if (o) { ctx.fillStyle = o === YOU ? INK.teal : INK.banana; ctx.globalAlpha = 0.5; ctx.fillRect(GX + bx * SP + 3, GY + by * SP + 3, SP - 5, SP - 5); ctx.globalAlpha = 1; } }
+        for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {
+          if (!isLine(x, y)) continue;
+          const v = line[y * G + x], cur = S.phase === "play" && S.turn === YOU && x === S.cx && y === S.cy;
+          if (!v && !cur) continue;
+          ctx.fillStyle = cur && !v ? INK.white : v === YOU ? INK.teal : INK.banana;
+          if (y & 1) ctx.fillRect(px(x), py(y - 1) + 2, 2, SP - 3); else ctx.fillRect(px(x - 1) + 2, py(y), SP - 3, 2);
+        }
+        ctx.fillStyle = INK.bone;
+        for (let y = 0; y <= BOXES; y++) for (let x = 0; x <= BOXES; x++) ctx.fillRect(GX + x * SP, GY + y * SP, 2, 2);
+        J.end(ctx);
+        text(ctx, "DOTS AND BOXES", 4, 3, TEXT.bone);
+        number(ctx, host.best || 0, W - 4, 3, TEXT.gold, 1, 2, 3);
+        text(ctx, "YOU", 4, 102, TEXT.teal); number(ctx, S.you, 30, 102, TEXT.teal);
+        text(ctx, "OOGA", 118, 102, TEXT.banana); number(ctx, S.ooga, 156, 102, TEXT.banana, 1, 2);
+        if (S.phase === "idle") centre(ctx, "PRESS START", 112, TEXT.banana);
+        else if (S.phase === "end") centre(ctx, S.you > S.ooga ? "YOU WIN" : S.you === S.ooga ? "DRAW" : "OOGA WINS", 112, S.you > S.ooga ? TEXT.teal : TEXT.red);
+        else centre(ctx, S.turn === YOU ? "YOUR LINE" : "OOGA THINKS", 112, S.turn === YOU ? TEXT.teal : TEXT.banana);
+      }
+    };
+  };
+  // The board tables' games (the era decor's game tables, genesis-era-items.js): which game each table plays.
+  const BOARDS = [
+    { id: "b-gomoku", era: 6, title: "Five in a Row", make: gomoku },
+    { id: "b-dots", era: 2, title: "Dots and Boxes", make: dots }
+  ];
   // The cabinets: which game, in which gallery, and its sign.
   const GAMES = [
     { id: "g0-punch", era: 0, year: 1960, title: "Card Punch", span: "1956–1969", make: punch },
@@ -633,5 +828,7 @@
   const registry = BL.genesisCartridges = BL.genesisCartridges || { list: [] };
   for (const g of GAMES) registry.list.push({ id: g.id, era: g.era, title: g.title, make: g.make,
     label: `A modern original museum game in the spirit of the ${g.span} gallery, not a game from those years` });
-  BL.genesisGamesPlus = { GAMES, punch, dial, hash, builder, pocket, switchboard, breaker, sorter, spend, fnv };
+  for (const g of BOARDS) registry.list.push({ id: g.id, era: g.era, title: g.title, make: g.make,
+    label: `${g.title} against an Ooga: a modern original museum game on a generic public-domain board game` });
+  BL.genesisGamesPlus = { GAMES, BOARDS, punch, dial, hash, builder, pocket, switchboard, breaker, sorter, spend, gomoku, dots, fnv };
 })();
