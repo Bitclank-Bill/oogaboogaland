@@ -20047,10 +20047,21 @@ const hubHammockTap = { name: "hub hammock tap", why: "rule: on a phone one tap 
   const keyed = await b.evaluate(`(() => { document.getElementById("act").click(); __ooga.advance(2, 1 / 60); return ${state}; })()`);
   record("hub hammock tap: one tap on STAND UP! gets up once; a press whose click comes late after a reset acts once; a click with no press still acts",
     !up.seat && up.act === "REST" && late.lying && !late.exit && late.heard === 0 && !keyed.seat && keyed.heard === 1, JSON.stringify({ up, late, keyed }));
+  // A reset while the finger is still down, then a hold past the click grace before it lifts: the grace runs from the lift.
+  const held = await b.evaluate(`(async () => {
+    const B = __ooga, e = document.getElementById("act"), o = { bubbles: true, pointerId: 42, pointerType: "touch", isPrimary: true };
+    e.dispatchEvent(new PointerEvent("pointerdown", o)); window.dispatchEvent(new Event("blur"));
+    await new Promise((r) => setTimeout(r, 1300));
+    e.dispatchEvent(new PointerEvent("pointerup", o)); e.dispatchEvent(new PointerEvent("pointerleave", o));
+    e.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })); B.advance(1.5, 1 / 60);
+    return ${state};
+  })()`);
+  record("hub hammock tap: a press reset mid-hold and lifted after the click grace still owns its own click",
+    held.lying && !held.exit && held.heard === keyed.heard, JSON.stringify({ keyed, held }));
   const label = await b.evaluate(`(() => { const e = document.getElementById("act"), s = getSelection(); s.selectAllChildren(e); const text = String(s); s.removeAllRanges();
     return { text, name: e.textContent, focusable: e.tabIndex >= 0 && !e.disabled }; })()`);
   record("hub hammock tap: selecting all leaves the act button's label out, which keeps its name and focus",
-    label.text === "" && label.name === "REST" && label.focusable, JSON.stringify(label));
+    label.text === "" && label.name === held.act && label.focusable, JSON.stringify(label));
 } };
 scene("hub", { label: "sphere keypad", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: PHONE_SIZE, steps: [hubHammockTap, { ...sphereKeypadPhone, name: "sphere keypad phone", run: async (b) => {
   await sphereKeypadPhone.run(b);

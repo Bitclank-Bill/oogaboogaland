@@ -189,7 +189,8 @@
     };
     const onBoostUp = (e) => {
       if (!pressActions) { held.boost = 0; return; }
-      if (boostClick && boostLift === Infinity) boostLift = performance.now();
+      // The click follows the lift, so the grace runs from here, even after a reset of held input started it early.
+      if (boostClick) boostLift = performance.now();
       if (e.pointerId !== boostPointer) return;
       boostPointer = null;
       held.boost = 0;
