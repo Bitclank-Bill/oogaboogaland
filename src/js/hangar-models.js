@@ -1558,30 +1558,22 @@
 
   // The hangar as the Factory's walkway sees it through the door's shield, for `hangar-window.js`, which pulls every
   // point of it along its own sight line into a band just behind the shield: so it is built at full size in the
-  // hangar's frame and kept light. The hall a gridded shell (no front wall, behind the eye), the gantries as plain
-  // trusses, the lanterns as their glass; the landing, the runway and its lamps, the tunnel's frames and every neon
-  // ring, the catwalks, the floor's fixtures, the boards on their mounts with their faces, and the Jet at its dock; and
-  // past the tunnel's end space, deep blue with stars, the galaxy's haze and a ringed planet. Every face glows with the
-  // hangar's light at rest baked into its colour (`FM.bakeWindow` under `MOOD`, with every fixed light and lantern), so
-  // the Factory's own light never touches it, and stone and timber stay dark so the hall's bloom picks out its lights.
+  // hangar's frame and kept light. The hall's own shell (`shell`: its floor, walls, vault and light slots, but not the
+  // front wall, which stands behind the eye), the gantries as plain trusses; the landing, the runway and its lamps, the
+  // tunnel's frames and every neon ring, the catwalks, the floor's fixtures, the boards on their mounts with their
+  // faces, and the Jet at its dock; and past the tunnel's end space, deep blue with stars, the galaxy's haze and a ringed
+  // planet. Every face glows with the hangar's light at rest baked into its colour (`FM.bakeWindow` under `MOOD`, with
+  // every fixed light, the crates' lanterns and a point light where the Jet's key hangs, `KEY_BAKE` of its colour and
+  // reach), so the Factory's own light never touches it, and the hall's haze deepens down the runway as it does inside,
+  // and the walls stay dark so the hall's bloom picks out its lights.
   const MOOD = {
     sky: [0.54, 0.38, 0.26], ground: [0.24, 0.16, 0.1], floor: 0.4, sun: [0.25, 0.9, 0.35], direct: [0.7, 0.52, 0.36], strength: 0.36, fill: [0.05, 0.04, 0.11],
-    fog: [0.05, 0.04, 0.035], near: 150, far: 400, eye: [0, 3.3, 27], dim: 0.55, knee: 0.08, cap: 0.22
+    fog: [0.045, 0.06, 0.095], near: 14, far: 120, eye: [0, 3.3, 27], dim: 0.55, knee: 0.08, cap: 0.22
   };
+  const KEY_BAKE = { color: 0.66, reach: 0.75 };
   const doorWindow = cached(() => {
-    const L = LAYOUT, { x0: X0, x1: X1, back: B, front: F, h: H } = HALL, T = L.tunnel, rand = mulberry32(5151), parts = [];
-    // The shell: a floor of big tiles, the side and back walls in four-metre blocks leaning in as they rise (the back
-    // wall round the tunnel's mouth), and the vault.
-    for (let x = X0; x < X1; x += 8) for (let z = B; z < F; z += 8) parts.push(box({ w: 8, h: 0.4, d: 8, color: STONE[Math.floor(rand() * 4)], offset: { x: x + 4, y: -0.2, z: z + 4 } }));
-    for (let y = 0; y < H; y += 4) {
-      const depth = 0.6 + (y + 2) / H * 2.6;
-      for (let z = B; z < F; z += 4) for (const [x, s] of [[X0, 1], [X1, -1]]) parts.push(box({ w: 2.2, h: 4, d: 4, color: STONE[Math.floor(rand() * 4)], offset: { x: x + s * (depth - 1.1), y: y + 2, z: z + 2 } }));
-      for (let x = X0; x < X1; x += 4) {
-        if (Math.abs(x + 2) < T.r + 1 && Math.abs(y + 2 - T.y) < T.r + 1) continue;
-        parts.push(box({ w: 4, h: 4, d: 2.2, color: STONE[Math.floor(rand() * 4)], offset: { x: x + 2, y: y + 2, z: B + depth - 1.1 } }));
-      }
-    }
-    parts.push(box({ w: X1 - X0, h: 1, d: F - B, color: STONE_DK, offset: { x: (X0 + X1) / 2, y: H + 0.5, z: (B + F) / 2 } }));
+    const L = LAYOUT, { x0: X0, x1: X1 } = HALL, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
+    parts.push(sh.floor, sh.walls, sh.vault, sh.slots);
     // The gantries, as trusses: their chords and verticals.
     const span = X1 - X0 - 4, mid = (X0 + X1) / 2;
     for (const z of L.gantries) {
@@ -1614,7 +1606,7 @@
     const geo = merge(...parts);
     geo.lines = [];
     delete geo.voxel;
-    const lit = [...fixedLights()];
+    const lit = [...fixedLights(), [...KEY.at, KEY.reach * KEY_BAKE.reach, ...KEY.color.map((k) => k * KEY_BAKE.color)]];
     for (let i = 0; i < fix.lights.length; i += 4) lit.push([fix.lights[i], fix.lights[i + 1], fix.lights[i + 2], fix.lights[i + 3], ...LANTERN_GLOW]);
     return [FM.bakeWindow(geo, FM.windowLights(lit), [0, 0, 0], MOOD)];
   });
