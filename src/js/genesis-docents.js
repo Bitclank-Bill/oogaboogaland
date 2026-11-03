@@ -65,7 +65,8 @@
     }
     // Two in the atrium: one beside the arrival, one by the statue.
     posts.push({ x: entry.x + 5, z: entry.z - 3, r: 3, era: null, lines: ATRIUM_LINES }, { x: -9, z: 3, r: 3, era: null, lines: ATRIUM_LINES.slice(1).concat(ATRIUM_LINES[0]) });
-    const vestGeo = vest(), capGeo = cap(), staff = [];
+    // Each docent as a body the visitor's Ooga meets (crew.js outsideActors): its feet, height and a shoulder radius.
+    const vestGeo = vest(), capGeo = cap(), staff = [], bodies = [];
     for (const post of posts) {
       const d = { post, agent: null, cool: Math.random() * 6, line: 0, greet: 0, face: 0 };
       d.agent = BL.agent.create({
@@ -78,6 +79,7 @@
       d.agent.pace(post.x, post.z, post.r);
       addChild(root, d.agent.root);
       staff.push(d);
+      bodies.push(d.body = { x: post.x, z: post.z, y: 0, height: 1.4, radius: 0.42 });
     }
     // Each frame: stroll, or, when the visitor (at vx, vz; null when nobody walks) comes near and the docent is free,
     // turn to them, beat the chest and say the next line.
@@ -98,11 +100,12 @@
           if (d.greet <= 0) a.pace(d.post.x, d.post.z, d.post.r);
         }
         a.update(dt);
+        d.body.x = q.x; d.body.z = q.z; d.body.y = q.y;
       }
     };
     const liveGeometry = (set) => { for (const d of staff) d.agent.liveGeometry(set); };
-    const dispose = () => { for (const d of staff) d.agent.dispose(); staff.length = 0; };
-    return { update, liveGeometry, dispose, staff, posts };
+    const dispose = () => { for (const d of staff) d.agent.dispose(); staff.length = 0; bodies.length = 0; };
+    return { update, liveGeometry, dispose, staff, posts, bodies };
   };
   BL.genesisDocents = { create, ATRIUM_LINES, TIPS, RADIUS, NEAR };
 })();

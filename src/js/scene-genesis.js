@@ -340,6 +340,20 @@
   const mayPick = (c) => !BL.net.mayDrive(c.name, BL.contributors.stateFor(c) === "working");
   const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
   const groundFor = (x, z, feet) => footing.supportAt(x, z, feet);
+  // The roof over (x, z): a gallery's own (its frame drawn at MUSEUM.SCALE, its roof slab's underside) or the
+  // museum's over the atrium, so a jetpack stops under it rather than flying through.
+  const GALLERY_ROOF = ISLAND_TOP * (1 - MU.SCALE) + (ROOF - 0.4) * MU.SCALE;
+  const ceilingFor = (x, z) => MU.bayAt(x, z) >= 0 ? GALLERY_ROOF : ROOF;
+  // Who else the visitor's Ooga meets: the other players, and the docents (genesis-docents.js), in one list kept in
+  // place (the crew reads it every frame).
+  const ACTORS = [];
+  const outsideActors = () => {
+    ACTORS.length = 0;
+    const r = remotes ? remotes.actors() : NO_ACTORS;
+    for (let i = 0; i < r.length; i++) ACTORS.push(r[i]);
+    if (docents) for (let i = 0; i < docents.bodies.length; i++) ACTORS.push(docents.bodies[i]);
+    return ACTORS;
+  };
   const walkableFor = (ax, az, bx, bz, y, height, actor) => footing.walkable(ax, az, bx, bz, Math.min(actor.bodyRadius || 0.3, 0.3), y);
   const useNear = (x, z, reach, feet = feetOf()) => {
     const prop = props.near(x, z, feet, Math.max(0, reach - 1.4));
@@ -1520,7 +1534,7 @@
     playerName = wantedEntry && mayPick(wantedEntry) ? wanted : BL.contributors.activeRoster.find(mayPick)?.name || null;
     if (playerName) {
       const shared = { root, input, hud, game, world: { level: 0, weapons: new Map(), magazine: { owned: false, count: 0, ammo: 0, carrier: null } }, playerName, fx, viewYaw: 0,
-        outsideActors: () => remotes ? remotes.actors() : NO_ACTORS, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor, useNear };
+        outsideActors, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor, ceilingAt: ceilingFor, useNear };
       people = shared.crew = BL.crew.create(shared);
       pilot.bind(shared);
       avatar = people.cavemen.get(playerName);
