@@ -20020,7 +20020,9 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
         const m = JSON.parse(text);
         if (m.t !== "pm") continue;
         W.wire.push(text); sent.push(m.op === "data" ? { op: m.op, to: m.to } : m);
-        if (m.op === "data") { W.heard.push(await W.anna.heard(unb64(m.d))); W.room({ t: "pm", op: "ok", to: 2, n: m.n }); }
+        // W.refuse frames are refused for the room's rate instead: they never reach Anna.
+        if (m.op === "data" && W.refuse > 0) { W.refuse--; W.room({ t: "pm", op: "refused", to: 2, n: m.n, reason: "rate" }); }
+        else if (m.op === "data") { W.heard.push(await W.anna.heard(unb64(m.d))); W.room({ t: "pm", op: "ok", to: 2, n: m.n }); }
       }
       return sent;
     };
@@ -20049,9 +20051,19 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
   record("private chat: a line reaches Anna intact while the room carries only a sealed frame of it, Anna's answer shows, and the page keeps only how much of the pad is used",
     talk.anna.kind === "text" && talk.anna.text === "hi anna, ünïcode 🦍" && !talk.wire.includes("hi anna") && !talk.wire.includes("ünïcode") && talk.view.lines.map((l) => l.text).join() === "hi anna, ünïcode 🦍,hello tester"
       && talk.view.lines[0].own && talk.view.lines[0].state === "sent" && !talk.view.lines[1].own && talk.records.length === 1 && /^\{"v":1,"send":\d+,"recv":\d+\}$/.test(talk.records[0]), JSON.stringify(talk));
+  const retry = await b.evaluate(`(async () => { const W = __pm;
+    W.refuse = 1; W.say("one more"); await W.wait(() => W.view().lines.length === 3); await W.flush(); await W.wait(() => W.view().lines[2].state === "failed");
+    const refused = W.view().lines[2], button = !!document.querySelector("#pm-log .pm-retry");
+    W.say("and another"); await W.wait(() => W.view().lines.length === 4); await W.flush();
+    document.querySelector("#pm-log .pm-retry").click(); await W.wait(() => W.out.length > 0); await W.flush();
+    await W.wait(() => W.view().lines[3].state === "sent");
+    return { refused, button, anna: W.heard.slice(-2), stopped: W.anna.stopped, lines: W.view().lines.slice(2), ready: W.view().ready }; })()`);
+  record("private chat: a line the room refused shows Not sent with Retry, and Retry after a later line got through reaches Anna on fresh bytes without stopping the pad",
+    retry.refused.state === "failed" && retry.button && retry.anna.map((r) => r.text || r.kind).join() === "and another,one more" && !retry.stopped && retry.ready
+      && retry.lines.map((l) => l.text + ":" + l.state).join() === "and another:sent,one more:sent", JSON.stringify(retry));
   await tourGo(b, "lab");
   await tourGo(b, "hub");
-  const after = await b.evaluate(`(async () => { const W = __pm; const kept = W.view(); await W.anna.say("still here"); await W.wait(() => W.view().lines.length === 3);
+  const after = await b.evaluate(`(async () => { const W = __pm; const kept = W.view(); await W.anna.say("still here"); await W.wait(() => W.view().lines.length === 5);
     document.getElementById("pm-end").click(); const ended = await W.flush(); const view = W.view();
     // A second conversation, with a pad made here: one download for the two of them, and this page loads its own copy.
     const click = HTMLAnchorElement.prototype.click, made = URL.createObjectURL;
@@ -20066,7 +20078,7 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
     return { kept, ended, view, invited, accepting, made: W.view(), downloads: W.downloads, logins: pad.logins, half: pad.halves[0].length }; })()`);
   await b.evaluate(`(() => { const W = __pm; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
   record("private chat: the conversation carries on across a trip to another scene and End tells the room and clears it; an invite accepted keeps the private view until it opens, and a pad made here downloads once for the two of them and loads on this page",
-    after.kept.phase === "open" && after.kept.ready && after.kept.lines.length === 2 && after.ended.length === 1 && after.ended[0].op === "end" && after.view.phase === "idle" && after.view.lines.length === 0
+    after.kept.phase === "open" && after.kept.ready && after.kept.lines.length === 4 && after.ended.length === 1 && after.ended[0].op === "end" && after.view.phase === "idle" && after.view.lines.length === 0
       && after.invited.privateView && after.accepting.phase === "accepting" && after.accepting.privateView && after.accepting.switcher && after.accepting.sent.length === 1 && after.accepting.sent[0].op === "accept"
       && after.downloads.length === 1 && after.downloads[0].name === "ooga-pad-tester-anna.oogapad" && after.logins.join() === "tester,anna" && after.half === (262144 - 32) / 2 && after.made.padLoaded,
     JSON.stringify(after));
@@ -22927,15 +22939,27 @@ const privatePadChecks = async () => {
   const after = await a.say("after"); const late = a.wire.splice(0);
   const order = [];
   for (const { frame } of [...sealed, ...late]) order.push(await b.heard(frame));
-  const resent = a.retry(after.n) && a.wire.at(-1).frame, again = await b.heard(resent);
+  const exact = await a.retry(after.n), resent = a.wire.at(-1).frame, again = await b.heard(resent);
   const flip = (i) => { const f = resent.slice(); f[i] ^= 1; return f; };
   const tampered = [await b.heard(flip(30)), await b.heard(flip(22)), await b.heard(flip(2)), await b.heard(resent.subarray(0, 40))].map((r) => r.error);
   const reflected = (await a.heard(resent)).error;
   const other = P.parse(P.make("anna", "bob", 8192, random)), stranger = side(other, 0);
   await stranger.start(); const foreign = (await b.heard(stranger.wire[0].frame)).error;
   record("private pads: lines sealed at once take separate bytes, a refused send's bytes stay used, an exact retry is known as a repeat, and a changed, cut, reflected or foreign frame is dropped unread",
-    one.n !== two.n && offsets[1] - offsets[0] === 32 + 3 && lost.kind === "sent" && order.map((r) => r.text || r.kind).join() === "one,two,after" && resent === late[0].frame && again.kind === "duplicate"
+    one.n !== two.n && offsets[1] - offsets[0] === 32 + 3 && lost.kind === "sent" && order.map((r) => r.text || r.kind).join() === "one,two,after" && exact.n === after.n && resent === late[0].frame && again.kind === "duplicate"
       && tampered.join() === "auth,auth,pad,malformed" && reflected === "direction" && foreign === "pad", JSON.stringify({ offsets, order, tampered, reflected, foreign }));
+
+  // The room refuses a line (its rate), a later line gets through, then the first is retried: the other side has read
+  // past the refused bytes, so the retry must not look like a partner who used the pad before.
+  const rated = pair();
+  await rated.a.start(); await rated.b.start(); await deliver(rated.a, rated.b); await deliver(rated.b, rated.a);
+  const refusedLine = await rated.a.say("first"); rated.a.wire.length = 0;
+  await rated.a.say("second"); const through = await deliver(rated.a, rated.b);
+  const retried = await rated.a.retry(refusedLine.n), afterRetry = await deliver(rated.a, rated.b);
+  const kept = await rated.a.say("third"), next = await deliver(rated.a, rated.b);
+  record("private pads: a line the room refused, retried after a later line got through, arrives on fresh bytes and the pad keeps working",
+    through[0].text === "second" && retried.kind === "sent" && retried.n !== refusedLine.n && afterRetry.length === 1 && afterRetry[0].kind === "text" && afterRetry[0].text === "first"
+      && !rated.b.stopped && kept.kind === "sent" && next[0].text === "third", JSON.stringify({ through, retried, afterRetry, next, stopped: rated.b.stopped }));
 
   // Two tabs on one record: reservations under the lock never overlap.
   const store = memory(), lock = locks(), tabs = [P.ledger(store, lock, padA, 0), P.ledger(store, lock, padA, 0)];

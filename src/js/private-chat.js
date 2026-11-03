@@ -349,8 +349,19 @@
   log.addEventListener("click", (e) => {
     const retry = e.target.closest(".pm-retry");
     if (!retry || !c.session) return;
-    const n = Number(retry.dataset.n);
-    if (c.session.retry(n)) mark(n, c.lastSend.n === n && !c.lastSend.ok ? "failed" : "sending");
+    const n = Number(retry.dataset.n), gen = c.generation;
+    retry.disabled = true;
+    c.session.retry(n).then((r) => {
+      if (gen !== c.generation) return;
+      if (r.kind === "stopped") return stop(r.error);
+      const line = c.lines.find((l) => l.n === n);
+      if (!line || r.kind !== "sent") return;
+      // Sealed again on fresh bytes, it reaches the other side after the lines since: shown there too.
+      if (r.n !== n) { c.lines.splice(c.lines.indexOf(line), 1); c.lines.push(line); line.at = Date.now(); line.n = r.n; }
+      line.state = c.lastSend.n === r.n && !c.lastSend.ok ? "failed" : "sending";
+      c.revision++;
+      render();
+    });
   });
 
   net.subscribePrivate(heard);

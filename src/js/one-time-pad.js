@@ -13,7 +13,7 @@
 // The record (`ledger`): per pad and sender, where this device sends next and how far it has read the other half,
 // kept in localStorage and changed under a Web Lock so two tabs never take the same bytes. A range is written as used
 // before it is sealed, so a crash, a refused send or a retry never seals new text with it: a retry resends the same
-// frame. A record that cannot be read or written stops the pad. The pad itself is never stored.
+// frame while nothing was sealed after it, and otherwise seals the same text on fresh bytes. A record that cannot be read or written stops the pad. The pad itself is never stored.
 // A conversation (`session`) starts with a hello from each side carrying how far it has read the other's half; a side
 // whose own record is behind that, or whose partner sends from a range already read, has used the pad before on
 // another device or a restored profile, and the pad must be replaced. Exports PAD (sizes), make, parse, roleOf,
@@ -32,7 +32,7 @@
   const SIZES = [256 * 1024, 1024 * 1024, 16 * 1024 * 1024];
   const LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/;
   const STORE = "oogaboogaland.pad.";
-  const RECENT = 32;
+  const RECENT = 32, OUTBOX = 32;
   const fail = (code) => Object.assign(new Error(code), { code });
   const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   const encoder = new TextEncoder(), decoder = new TextDecoder("utf-8", { fatal: true });
@@ -203,7 +203,9 @@
       s.send = offset + KEY + plain.length;
       s.remaining = book.size - s.send;
       const frame = await seal(subtle, pad, role, offset, type, plain), n = ++serial;
-      s.outbox.set(n, frame);
+      // Kept until the room answers ok, for a retry; the oldest unanswered go past OUTBOX.
+      s.outbox.set(n, { frame, type, plain });
+      if (s.outbox.size > OUTBOX) s.outbox.delete(s.outbox.keys().next().value);
       send(frame, n);
       return n;
     };
@@ -225,8 +227,18 @@
         if (bytes.length > TEXT_BYTES) return { kind: "refused", error: "long" };
         return { kind: "sent", n: await transmit(TYPE.text, bytes) };
       })),
-      // The same frame again for a send the room refused or never answered: never new text on its bytes.
-      retry: (n) => { const frame = s.outbox.get(n); if (frame && !s.stopped) send(frame, n); return !!frame; },
+      // A send the room refused or never answered, again: `{ kind: "sent", n }` with the number it now goes under, or
+      // `{ kind: "gone" }`. While it is the newest frame sealed it goes again unchanged, so a copy that did arrive is a
+      // repeat. Once a later frame has been sealed, that one may already have taken the other side past these bytes,
+      // which would read as a pad used before; the same text is sealed again on fresh bytes instead. A pad never
+      // carries new text on bytes it used, and the same text on two sets of bytes tells the room nothing.
+      retry: (n) => run(() => guarded(async () => {
+        const entry = s.outbox.get(n);
+        if (!entry || s.stopped) return { kind: "gone" };
+        if (n === serial) { send(entry.frame, n); return { kind: "sent", n }; }
+        s.outbox.delete(n);
+        return { kind: "sent", n: await transmit(entry.type, entry.plain) };
+      })),
       delivered: (n) => { s.outbox.delete(n); s.sent++; },
       heard: (frame) => run(() => guarded(async () => {
         if (s.stopped) return { kind: "stopped", error: s.stopped };
