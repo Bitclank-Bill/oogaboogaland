@@ -164,9 +164,9 @@ test("retirement grace and orphan maintenance keep current winners and reclaim b
   assert.equal(f.DB.sql.prepare("SELECT count(*) n FROM cloud_hopper_replay_objects").get().n, 1);
 });
 
-test("client lazily loads by immutable hash, holds mid-run winner, defaults off and cancels on level/exit without local fallback", async () => {
+test("client keeps the active ghost fixed while numeric boards and post-finish results stay live, loads lazily and clears on level/exit", async () => {
   const r = recording(), bytes = codec.encode(r), hash = createHash("sha256").update(new Uint8Array(bytes)).digest("hex");
-  const pointer = { hash, score: 1000, username: "winner", courseVersion: 1 }, board = { game: GAME, replay: pointer };
+  const pointer = { hash, score: 1000, username: "winner", courseVersion: 1 }, board = { game: GAME, highscores: { winner: 1000 }, achieved: { winner: 1 }, replay: pointer };
   const fetches = [], states = [], plays = [], boards = []; let hiding = 0, fail = false;
   const BL = { cloudHopperReplayCodec: codec };
   const context = { window: { BL, setTimeout, clearTimeout }, crypto: webcrypto, AbortController, Uint8Array,
@@ -175,10 +175,20 @@ test("client lazily loads by immutable hash, holds mid-run winner, defaults off 
   const player = BL.cloudHopperReplays.create({ onBoard: b => boards.push(b), onState: s => states.push(s), onPlay: r => plays.push(r), onHide: () => hiding++ });
   player.select(GAME, 1, board); player.start(); assert.equal(fetches.length, 0); assert.equal(states.at(-1), "off");
   await player.toggle(); assert.equal(fetches.length, 1); assert.equal(plays.length, 1); assert.equal(states.at(-1), "on");
-  const next = { ...board, replay: { ...pointer, hash: "f".repeat(64) } };
-  player.update(next); assert.equal(boards.at(-1), board); assert.equal(states.at(-1), "on");
+  const next = { ...board, highscores: { other: 800, winner: 1000 }, achieved: { other: 2, winner: 1 },
+    replay: { ...pointer, username: "other", score: 800, hash: "f".repeat(64) } };
+  const beforeUpdate = hiding;
+  player.update(next); assert.equal(boards.at(-1), next); assert.equal(states.at(-1), "on");
+  assert.equal(hiding, beforeUpdate); assert.equal(plays.length, 1); assert.equal(player.frozen, true);
   await player.toggle(); await player.toggle(); assert.equal(fetches.length, 1); // Same immutable replay cached.
-  player.start(); assert.equal(states.at(-1), "off"); assert.equal(boards.at(-1), next);
+  assert.equal(plays.at(-1).username, "winner"); assert.equal(plays.at(-1).duration, 1);
+  player.end(); assert.equal(player.frozen, false); assert.equal(player.enabled, false);
+  assert.equal(boards.at(-1), next); assert.equal(states.at(-1), "off");
+  // The player's accepted finish arrives asynchronously after the result card opened.
+  const finished = { ...next, highscores: { other: 800, winner: 500 }, achieved: { other: 2, winner: 3 },
+    replay: { ...pointer, score: 500, hash: "e".repeat(64) } };
+  player.update(finished); assert.equal(boards.at(-1), finished); assert.equal(fetches.length, 1);
+  player.start(); assert.equal(states.at(-1), "off"); assert.equal(boards.at(-1), finished);
   fail = true; await player.toggle(); assert.equal(states.at(-1), "error"); assert.equal(plays.length, 2);
   player.select("cloud-hopper-l2", 1, { replay: null }); await player.toggle(); assert.equal(states.at(-1), "unavailable");
   assert.equal(fetches.length, 2); player.clear(); assert.ok(hiding >= 4); assert.equal(player.enabled, false);

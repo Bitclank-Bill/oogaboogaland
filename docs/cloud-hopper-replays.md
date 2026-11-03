@@ -3,8 +3,10 @@
 Each of `cloud-hopper-l1` through `cloud-hopper-l4` has one current winning replay. Guests can read it. Only an
 eligible signed-in character owner can submit a recording from a run begun in the same account/session. The timer
 shows the shared record holder, a small ghost button immediately left of the time, and the existing race clock.
-The ghost defaults off on each attempt, loads only when enabled, and retains that attempt's selected winner until
-the next start or level change. There is no browser-personal-best playback fallback. Numeric local bests remain.
+The ghost defaults off on each attempt, loads only when enabled, and retains that attempt's selected winner
+through the active run. Numeric boards keep updating independently, including the timer and result card. Ending
+the run stops playback and releases the selection, so an accepted finish updates the results immediately.
+There is no browser-personal-best playback fallback. Numeric local bests remain.
 Clouds are randomized each attempt: this is a historical comparison, not a route guide or collision actor.
 
 ## Format and validation

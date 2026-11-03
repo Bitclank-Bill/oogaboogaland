@@ -63,13 +63,13 @@
     };
     const update = board => {
       latest = board;
-      if (!frozen || !shown) {
-        if (board?.replay?.hash !== shown?.replay?.hash) show(board);
-        else { shown = board; onBoard(board); }
-      }
+      // Freeze the attempted ghost, not the numeric board feeding the timer and result card.
+      if (frozen && shown) { onBoard(board); return; }
+      if (board?.replay?.hash !== shown?.replay?.hash) show(board);
+      else { shown = board; onBoard(board); }
     };
     const start = () => { frozen = true; show(latest); };
-    const end = () => { stop(); state(); };
+    const end = () => { frozen = false; show(latest); };
     const toggle = async () => {
       if (enabled) { stop(); state(); return; }
       const reference = pointer();
