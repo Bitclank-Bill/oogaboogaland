@@ -834,14 +834,13 @@
   // Jet at its dock, the door back to the hall with its shield, the launch shield and space past it.
   const build = () => {
     const L = LAYOUT, s = { crew: [], dimmed: 1, ambient: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), dressed = HM.dressing(), fixtures = HM.fixtures(), frames = HM.boardFrames();
-    // The lanterns' and the fixtures' glass, which an anomaly dims with the hall's lights.
-    s.glass = [createNode({ geometry: dressed.glass, sightHidden: true }), createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true })];
+    // The fixtures' glass, which an anomaly dims with the hall's lights.
+    s.glass = [createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true })];
     addChild(root, createNode({ geometry: shell.rock }), createNode({ geometry: shell.vault }), createNode({ geometry: shell.backing }),
       createNode({ geometry: HM.landing() }), createNode({ geometry: runway.flat }),
       createNode({ geometry: tunnel.stone }),
-      createNode({ geometry: HM.catwalks() }), createNode({ geometry: dressed.iron }), createNode({ geometry: dressed.banners }),
-      createNode({ geometry: dressed.frame }), s.glass[0], s.glass[1],
-      createNode({ geometry: fixtures.frame }), s.glass[2], createNode({ geometry: HM.dock() }));
+      createNode({ geometry: HM.catwalks() }), createNode({ geometry: dressed.iron }), s.glass[0],
+      createNode({ geometry: fixtures.frame }), s.glass[1], createNode({ geometry: HM.dock() }));
     s.mouth = createNode({ geometry: tunnel.iron });
     // The tunnel's neon, a strip on every frame, each flickering on its own (`neonLife`).
     s.neon = tunnel.neonZ.map((z) => createNode({ position: { x: 0, y: 0, z }, geometry: tunnel.neon, sightHidden: true }));
@@ -1018,13 +1017,12 @@
     s.statsFlag.visible = milestone;
   };
 
-  // Point lights, most important first so the lowest tier keeps them: the door's cyan, the landing, the dock's two work
-  // lamps, the boards' blue, the tunnel mouth's and the launch shield's, and two warm ones over the crew's floor
-  // (`HM.fixedLights`); the
-  // lanterns share what is left, the vault's and the floor's, the nearest the view first, each reaching as far as
-  // `hangar-models.js` says and flickering like a flame, as the Factory shares its own.
+  // Point lights, most important first so the lowest tier keeps them: the door's cyan, the landing, the Jet's two rims,
+  // the boards' blue, the tunnel mouth's and the launch shield's, and two warm ones over the crew's floor
+  // (`HM.fixedLights`); the lanterns on the crates share what is left, the nearest the view first, each reaching as far
+  // as `hangar-models.js` says and flickering like a flame, as the Factory shares its own.
   const LANTERN_GLOW = HM.LANTERN_GLOW, FIXED = 10;
-  const lanternPool = models.cached(() => new Float32Array([...HM.dressing().lights, ...HM.fixtures().lights]));
+  const lanternPool = models.cached(() => new Float32Array(HM.fixtures().lights));
   const lamp = (i, x, y, z, radius, r, g, b) => {
     const o = i * 8, l = RENDER_OPTS.lights;
     l[o] = x; l[o + 1] = y; l[o + 2] = z; l[o + 3] = radius; l[o + 4] = r; l[o + 5] = g; l[o + 6] = b; l[o + 7] = 0;

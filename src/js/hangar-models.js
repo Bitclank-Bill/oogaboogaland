@@ -2,13 +2,13 @@
 // walkway, as its concept draws it. A timber landing inside the door with steps down to the runway, which runs down the
 // middle of the floor between hazard-striped edges and blue marker lamps, and on through the launch tunnel's octagonal
 // frames, each lined with blue neon, to the launch shield at its far end, sealed until Jet v2 flies, space beyond.
-// Ochre truss gantries cross the vault, hung with lanterns on chains of every length and the bolt's royal-blue banners;
-// timber catwalks run along both side walls on brackets, a stair up to each from the back. On the right, in the
+// Ochre truss gantries cross the vault, two crane trolleys over the Jet; timber catwalks run along both side walls on
+// brackets, a stair up to each from the back. On the right, in the
 // hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a timber
 // gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long stair down from behind the
 // wing toward the runway; trestles stand under its wings. On the left the crew's workstations stand in rows, their
 // screens glowing blue, and on the wall above them the two boards, the repository's stats right after the door and
-// its timeline farther in. Crates, lantern posts, blue floor lamps and terminals on stands line the runway. The Jet
+// its timeline farther in. Crates, blue floor lamps and terminals on stands line the runway. The Jet
 // itself is `jet-models.js`'s; the boards' faces and the crew are the scene's.
 //
 // `LAYOUT` is the one table of where everything stands, read by the scene too. The hangar's frame: +z runs back out
@@ -285,32 +285,10 @@
     return merge(...geos);
   });
 
-  // Every lantern in the hall, as `FM.lanterns` takes them: hung from the gantries on chains of every length (none
-  // over the hangar's sign, against the Jet's fin or in the film screen's way but the one it stows under), on posts
-  // both sides of the runway and on the landing, and on the catwalks' rails. `hangDrop` is how far below a gantry's
-  // bottom chord each hung one's hook is, those over the runway's middle hung short so the tunnel's mouth stays clear
-  // from the door.
-  const hangDrop = (i, j) => HUNG_X[j] === 0 ? 0.4 : 0.8 + ((i * 7 + j * 3) % 5) * 0.75;
-  const HUNG_X = [-17, -11, -5.5, 0, 5.5, 11, 16.5, 22];
-  const lamps = cached(() => {
-    const L = LAYOUT, S = L.show.screen, out = [], fin = (z) => z > L.jet.z + 6.6 && z < L.jet.z + 14;
-    L.gantries.forEach((z, i) => HUNG_X.forEach((x, j) => {
-      if (z === L.signs.hangar[2] && Math.abs(x) < 3 || fin(z) && Math.abs(x - L.jet.x) < 1.6 || z === S.z && x !== S.x && Math.abs(x - S.x) < S.w / 2 + 1) return;
-      out.push(["hang", x, L.gantryY - 0.6 - hangDrop(i, j), z]);
-    }));
-    for (let z = L.runway.z0 - 5; z > HALL.back + 4; z -= 9) for (const s of [-1, 1]) out.push(["post", s * (L.runway.halfW + 1.6), 0, z, s < 0 ? 0 : Math.PI]);
-    out.push(["post", -4, L.landing.y, 25.4, 0], ["post", 4, L.landing.y, 25.4, Math.PI]);
-    L.catwalks.forEach(([x0, x1, z0, z1], i) => {
-      for (let z = z1 - 4; z > z0 + 2; z -= 8) out.push(["rail", i ? x0 + 0.1 : x1 - 0.1, L.catwalkY, z]);
-    });
-    return out;
-  });
-
-  // The vault's dressing: the gantries, each a truss of ochre girders on knee braces into the walls, with the chains
-  // the lanterns hang from and two crane trolleys over the Jet; the bolt's banners, down both walls and hung from the
-  // gantries; and the lanterns, whose lights the scene shares out, each with how far it reaches.
+  // The vault's dressing: the gantries, each a truss of ochre girders on knee braces into the walls, and two crane
+  // trolleys over the Jet.
   const dressing = cached(() => {
-    const L = LAYOUT, { x0: X0, x1: X1 } = HALL, iron = [], banners = [], gy = L.gantryY, mid = (X0 + X1) / 2, span = X1 - X0 - 4;
+    const L = LAYOUT, { x0: X0, x1: X1 } = HALL, iron = [], gy = L.gantryY, mid = (X0 + X1) / 2, span = X1 - X0 - 4;
     for (const z of L.gantries) {
       for (const y of [gy + 0.5, gy - 0.5]) iron.push(box({ w: span, h: 0.32, d: 0.46, color: GIRDER, offset: { x: mid, y, z } }));
       const n = Math.round(span / 2.4);
@@ -324,26 +302,13 @@
       }
       for (const [x, s] of [[X0, 1], [X1, -1]]) iron.push(beam(x + s * 3.2, gy - 3, z, x + s * 1.8, gy - 0.3, z, 0.32, GIRDER_DK), box({ w: 0.5, h: 1.3, d: 0.6, color: IRON_DK, offset: { x: x + s * 2.2, y: gy, z } }));
     }
-    const hung = lamps();
-    L.gantries.forEach((z, i) => HUNG_X.forEach((x, j) => {
-      const hook = gy - 0.6 - hangDrop(i, j);
-      if (hung.some(([kind, hx, hy, hz]) => kind === "hang" && hx === x && hz === z)) iron.push(...chain(x, gy - 0.66, z, x, hook, z, 0.06, IRON_DK));
-    }));
     // The crane trolleys: a yellow carriage on the bottom chord, its hook block hung over the Jet.
     for (const [x, z, drop] of [[L.jet.x, -18, 3.6], [L.jet.x + 3.5, -2, 3.4]]) {
       iron.push(bevelBox({ w: 1.3, h: 0.7, d: 1.1, color: "#e0a92a", bevel: 0.06, offset: { x, y: gy - 1.05, z } }), box({ w: 1.5, h: 0.12, d: 0.3, color: IRON_DK, offset: { x, y: gy - 0.72, z } }));
       iron.push(...chain(x, gy - 1.4, z, x, gy - 1.4 - drop, z, 0.09, IRON_DK));
       iron.push(bevelBox({ w: 0.5, h: 0.55, d: 0.34, color: "#e0a92a", bevel: 0.05, offset: { x, y: gy - 1.7 - drop, z } }), box({ w: 0.12, h: 0.4, d: 0.12, color: IRON_DK, offset: { x, y: gy - 2.15 - drop, z } }));
     }
-    for (const z of [20, 10, 0, -10, -22]) for (const [x, s] of [[X0 + 3.4, -1], [X1 - 3.4, 1]]) {
-      banners.push(moved(turnedY(merge(FM.banner(3)), -s * Math.PI / 2), x, 12.6, z));
-    }
-    for (const [z, xs] of [[14, [-8.5, 8.5]], [6, [-14]], [-2, [-8.5, 8.5]], [-10, [-14, 21]], [-18, [-8.5, 8.5]]]) for (const x of xs) {
-      banners.push(moved(merge(FM.banner(2.6)), x, gy - 0.7, z + 0.36));
-    }
-    const lit = FM.lanterns(hung, []);
-    for (let i = 0; i < lit.lights.length; i += 4) lit.lights[i + 3] = lit.lights[i + 1] > 8 ? 11 : 7.5;
-    return { iron: merge(...iron), banners: merge(...banners), frame: lit.frame, glass: lit.glass, lights: lit.lights };
+    return { iron: merge(...iron) };
   });
 
   // ---- the floor's fixtures ---------------------------------------------------------------------------------------
@@ -1502,8 +1467,8 @@
   // The hangar's fixed point lights, most important first, [x, y, z, radius, r, g, b] each: the door's shield in the
   // hall's cyan, the landing, two cool rims on the Jet (from over the runway behind its nose and from the right wall),
   // the boards' blue, the tunnel's mouth (`TINTS.mouth`, which the scene flickers with the neon) and the launch shield
-  // (`TINTS.launch`), and two warm fills over the crew's floor. The scene lights them and the lanterns after them; the
-  // window into the hangar bakes them all.
+  // (`TINTS.launch`), and two warm fills over the crew's floor. The scene lights them and the crates' lanterns after
+  // them; the window into the hangar bakes them all.
   const TINTS = { door: math.hexToRgb("#5fe3ff").map((k) => k / 255), mouth: [0.36, 0.66, 1.2], launch: [0.45, 0.72, 1] };
   const LANTERN_GLOW = [1.3, 0.8, 0.36];
   const fixedLights = cached(() => {
@@ -1549,8 +1514,8 @@
       for (const y of [L.gantryY + 0.5, L.gantryY - 0.5]) parts.push(box({ w: span, h: 0.32, d: 0.46, color: GIRDER, offset: { x: mid, y, z } }));
       for (let x = X0 + 2; x <= X1 - 2; x += 4.8) parts.push(box({ w: 0.16, h: 0.7, d: 0.3, color: GIRDER_DK, offset: { x, y: L.gantryY, z } }));
     }
-    const run = runway(), tun = tunnel(), dressed = dressing(), fix = fixtures();
-    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, dressed.banners, dressed.glass, catwalks(), fix.flat, fix.glow, fix.lampGlow, fix.glass, dock());
+    const run = runway(), tun = tunnel(), fix = fixtures();
+    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), fix.flat, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
     // The boards on their mounts, their glass and tiles, as they hang.
     const frames = boardFrames(), faces = { stats: statsFace(), timeline: timelineFace() };
@@ -1576,7 +1541,7 @@
     geo.lines = [];
     delete geo.voxel;
     const lit = [...fixedLights()];
-    for (const P of [dressed.lights, fix.lights]) for (let i = 0; i < P.length; i += 4) lit.push([P[i], P[i + 1], P[i + 2], P[i + 3], ...LANTERN_GLOW]);
+    for (let i = 0; i < fix.lights.length; i += 4) lit.push([fix.lights[i], fix.lights[i + 1], fix.lights[i + 2], fix.lights[i + 3], ...LANTERN_GLOW]);
     return [FM.bakeWindow(geo, FM.windowLights(lit), [0, 0, 0], MOOD)];
   });
 
@@ -1735,8 +1700,6 @@
       solid(x + 0.05, z - 0.04, ux, uz, -1, CRATE_TOPS[1]);
     }
     for (const [x, z] of L.floorLamps) around(x, z, 0.3, 0.3, 0.4);
-    // The lanterns' posts by the runway.
-    for (const [kind, x, y, z] of lamps()) if (kind === "post") block(x - 0.2, x + 0.2, z - 0.2, z + 0.2, y - 1, y + 2.9);
     return { rects: new Float32Array(rects), boxes: new Float32Array(boxes), solids: new Float32Array(solids), jet: JM.columns() };
   });
   // How many of the Jet's columns a walker of `radius` at (x, z) with its feet at `feet` stands among: those reaching
