@@ -107,3 +107,8 @@ The later explicit screenshot request authorizes bounded local multiplayer captu
 
 
 Final local capture after the requested half-circle score placement: all three browsers and the real Room agreed on active session `e784d0bf9da27bce`, score 0–0, before and after the parallel player/player/spectator screenshots (sequence 35–38). The separate solo session `32530e756ff116b3` shows the Clanker approaching and playing. All three browser console-error lists were empty. Codex used Claude's reviewed capture harness for the final label revision, capturing early in live play; a previous Claude capture reached the result screen and is not used as live-match evidence. Selected files are in `untracked/hockey-capture/shots-circles/`. No physical-device, SFU, deployed-runtime, load or billing validation is claimed.
+
+
+## Integration with current rock
+
+The branch incorporates rock `6be8c5eb`, preserving its Cloud Hopper/Rally placement, Arcade roster-crowd removal, staff behavior, stage access, and weapon parking. The hockey table keeps its enlarged geometry and collision footprint; removed score-post collisions are not restored. Shared hockey views also hide parked remote weapons, matching the hall. The Watchtower unit fixture now loads `hockey-wire` before `arcade-models` and checks 16 scored kinds / 26 IDs, explicitly excluding hockey while retaining its three physical tables. The two affected unit checks pass after integration; browser/device/deployed validation remains deferred.

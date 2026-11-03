@@ -1097,7 +1097,13 @@
       BL.hockeyWire.seat(slot, 0, 0, HOCKEY_SEAT);
       BL.net.sendPose(HOCKEY_SEAT.x, 0, HOCKEY_SEAT.z, HOCKEY_SEAT.yaw);
       hockeyAmbience = BL.arcadeAmbience.create(audio, HOCKEY_SEAT, camera);
-      hockeyRemotes = BL.remotePlayers.create({ root, fx, visible: rec => rec.zone === BL.hockeyWire.ZONE });
+      hockeyRemotes = BL.remotePlayers.create({ root, fx, visible: rec => rec.zone === BL.hockeyWire.ZONE,
+        posed: cave => {
+          // Keep the merged Arcade hall's parked-weapon policy while viewing a shared table.
+          if (cave.parts.club) cave.parts.club.visible = false;
+          if (cave.parts.gun) cave.parts.gun.visible = false;
+        }
+      });
       hockeyPlayers = BL.hockeyPlayers.create({ root, games: scoreMachines, body: id => hockeyRemotes.body(id), showSelf: true, localSlot: slot });
       hockeyLobby = introEl.querySelector(".game-intro-kicker");
       joinHockey();
