@@ -82,7 +82,10 @@
   const dropTimers = new Map();
   try {
     const saved = JSON.parse(localStorage.getItem(MUTED_KEY));
-    if (Array.isArray(saved)) for (const login of saved.slice(0, MUTED_MAX)) if (typeof login === "string" && login.length <= 39) mutedLogins.add(login.toLowerCase());
+    if (Array.isArray(saved)) for (const login of saved.slice(0, MUTED_MAX)) if (typeof login === "string" && login.length <= 39) {
+      const account = BL.accountIdentities.accountForHandle(login);
+      mutedLogins.add(account ? `github:${account.id}` : login.toLowerCase());
+    }
   } catch {
     // No list, or storage is off: nobody is muted.
   }
@@ -264,7 +267,7 @@
   const heard = (id) => {
     if (!desired.includes(id)) return false;
     const rec = BL.net.remotes.get(id);
-    return !rec || !mutedLogins.has(rec.login.toLowerCase());
+    return !rec || !mutedLogins.has(muteKey(rec.login));
   };
 
   const api = async (op, body, token = lifecycle) => {
@@ -707,9 +710,17 @@
     return !!(s && s.meter && s.meter.speaking);
   };
 
+  const muteKey = login => {
+    const key = String(login).toLowerCase();
+    for (const rec of BL.net.remotes.values()) if (rec.login.toLowerCase() === key) {
+      const account = BL.accountIdentities.accountForId(rec.id);
+      return account || BL.accountIdentities.accountForHandle(key) ? `github:${rec.id}` : key;
+    }
+    return key;
+  };
   // Silences one player for this visitor alone, on every visit, until unmuted.
   const muteLocal = (login, on) => {
-    const key = String(login).toLowerCase();
+    const key = muteKey(login);
     if (on === mutedLogins.has(key)) return;
     if (on) {
       if (mutedLogins.size >= MUTED_MAX) return;
@@ -725,7 +736,7 @@
     for (const [id, s] of subs) hear(s, heard(id));
     emit();
   };
-  const mutedLocally = (login) => mutedLogins.has(String(login).toLowerCase());
+  const mutedLocally = (login) => mutedLogins.has(muteKey(login));
 
   const subscribe = (fn) => {
     subscribers.add(fn);

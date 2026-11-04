@@ -1,92 +1,46 @@
-# Bitcoin-Bill → Bitclank-Bill: proposed account migration
+# Bitcoin-Bill → Bitclank-Bill: safeguards and controlled activation
 
-Status: coordination draft for w-s-bitcoin. No account rename or runtime identity change is performed by this PR.
+This PR prepares the transition; it does not rename the account or activate a new displayed owner. Bill's original planning commits remain in the PR history. Implementation and operator preparation are being handled at the maintainer's request.
 
-## Identity and scope
+## Verified identity and current state
 
-- Existing GitHub login: `Bitcoin-Bill`.
-- Requested new login, exactly as supplied by Billy: `Bitclank-Bill`. Comparisons must remain case-insensitive.
-- Existing numeric GitHub account ID: `185141343`; verify the same ID before and after the rename.
-- Existing character file/stable handle: `src/characters/Bitcoin-Bill.js` / `Bitcoin-Bill`.
-- Existing display name: `Bitclank Bill`; existing poke: `clank clank`.
-- Proposed minimal runtime change: preserve the file, stable handle, look, dates, voice and companion; change the authenticated `github` owner to the verified new login through a maintainer-controlled migration. The exact implementation needs operator approval.
-- This is an account rename, not a transfer to a second account. Availability of the requested login is not established by this document.
+GitHub `/user/185141343` returned `Bitcoin-Bill` on 2026-11-04. `/users/Bitclank-Bill` returned 404; that is not proof that GitHub will allow the name. The rename has **not** been verified. Preserve numeric account ID `185141343`, file/handle `src/characters/Bitcoin-Bill.js` / `Bitcoin-Bill`, display `Bitclank Bill`, authored appearance, dates, voice (`clank clank`) and companion.
 
-## Findings from rock edf2c08
+An earlier read-only D1 preflight failed with Cloudflare API error **7403**. A subsequent check now succeeds using the existing OAuth session and configured account: metadata and `SELECT 1` pass, with zero writes. Bounded reads confirm OBL player ID `185141343` is still `Bitcoin-Bill`, Oogatron contributor row `42` has that GitHub ID/login, and neither database has a conflicting proposed-login row. OBL has one level-1 score of `54642` ms and one run for this ID, with no replay objects or winner pointers; BananaPayServer has no matching donations. Applied migrations end at OBL `0007`, Oogatron `0010` and BananaPayServer `0008`; the proposed guards remain uninstalled. Full backups, restore proof, R2/browser-state inspection and staging activation are still unverified. No live rows, account names, deployment, sessions or cache were changed. These observations must be refreshed immediately before any future activation.
 
-1. `worker/src/db.js` keys players by numeric GitHub ID and upserts the current login after OAuth. Existing player state is designed to survive a login rename.
-2. OAuth in `worker/src/auth.js` calls `contributorFor(profile.login)` BEFORE that upsert. `worker/src/contributor-policy.js` matches generated cast owners and current contribution logins by text. A renamed account can therefore fail recognition or receive a temporary/default character until the owner mapping and relevant deployment are updated.
-3. `src/js/net.js` resolves the owned character using `github || handle` and requires that owner login to equal the authenticated login. Updating GitHub alone does not migrate the existing custom Ooga.
-4. `scripts/character-identity.mjs` checks both previous and proposed owner against the submitting login unless the submitter has Maintain/Admin permission. A self-authored owner change can fail before OR after the rename. The documented cosmetic display-name bundle is not an account-owner migration lane.
-5. `src/js/characters.js` supports a stable handle with a different GitHub owner. Keeping the stable handle avoids needless model/save/body-key churn. Check all callers rather than assuming this covers every subsystem.
-6. `src/js/contributor-identities.js` explicitly supplies contribution attribution, not OAuth aliases or driving permission. Do not use an attribution-only alias to grant access.
-7. `scripts/sync-characters.mjs` reserves handles/owners from existing and queued characters. Coordinate refreshed activity data and onboarding to avoid a duplicate new-login default.
-8. The high-score migration `worker/migrations/0003_highscores.sql` has a login-rename trigger moving attributed entries by numeric ownership. Inspect subsequent migrations and test current behavior; deployed database state has not been verified.
-9. Existing bundled provenance and historical commit authors must not be globally replaced. Old-login reuse must never grant somebody else Billy's custom character or score ownership.
+## Prepared changes
 
-## Proposed sequence
+- The shared `accountIdentities` registry pins the existing character to its verified numeric GitHub ID. OAuth, existing sessions, page ownership and room Ooga/gorilla claims pass that ID. A different account using the old spelling cannot acquire this character. No proposed-login or contribution alias grants authorization.
+- Migration `0008_identity_collision_guard.sql` installs BEFORE triggers. A claimant arriving before the former owner refreshes their login receives a recoverable refusal; the whole write rolls back before the old deletion triggers can run. The former owner's scores, runs, timestamps, replay pointers and sessions remain. After the same ID refreshes its verified new login, the claimant can retry (subject to normal character eligibility). Destination collisions also stop for review.
+- Same-ID old/new score keys merge by the better score and its original achievement time, earliest on ties. Machine boards stay unattributed. The retired single Cloud Hopper board and all four level boards remain covered. Replay objects/pointers keep their hashes and ownership. Run history joins the current player's name.
+- Cloud Hopper's browser save moves the pinned account to `github:<id>` after authenticated `/api/me`, taking the per-level minimum of existing old/current entries. Unrelated records and unlocks remain; the next holder of the old login gets a separate key. Migration is once per retained ID record, on each browser/origin separately. Local scores are unverified preferences and are never uploaded as historical shared scores.
+- Activity snapshots and jumbotron labels resolve only the current `github` owner, not the permanent art handle. The coordinated character update below is required before ingestion resumes; a reused former login then stays separate.
+- Rescue dogs remain at their original browser save key; the verified numeric owner resolves to that key before and after the rename. A later old-login claimant gets a separate numeric key. Existing dog details, adoption time, hunger, piles and scoop count remain untouched. Other saved game equipment, mine lead and scene positions use the stable character handle or browser-wide state.
+- Voice mutes for the pinned identity follow the numeric owner. A later holder of the old spelling does not inherit them. Other voice/device settings are browser-wide; no account migration is needed.
+- Oogatron companion work adds resolver and SQL collision guards. An explicit different ID, occupied destination or an unverified login-only row cannot overwrite a contributor identity. Existing events and rollups remain linked to the same internal contributor row. An initially empty `contributor_login_history` table supports a reviewed last-old-login cutoff for events lacking IDs; explicit IDs always win. A missing-ID event after that cutoff stops ingestion for review rather than guessing. No historical Git author/email is rewritten.
+- BananaPayServer companion work adds an initially empty verified-donor mapping. Only donations with the matching numeric ID, `verified=1`, and the former account login move in the *derived public ranking*. Raw receipts, amounts, timestamps, payment identity, tally, anonymous donations, custom labels and other users remain. A delayed verified old-name payment uses the same mapping. Unverified historical names cannot be claimed by text alone.
+- `scripts/account-migration.mjs` verifies both GitHub ID→new login and new login→ID before emitting bounded, reviewable SQL for the three databases. It never executes that SQL or changes the character.
 
-### Before the rename
+Companion PR links and final check results belong in the PR description once published. All three code/schema changes require review. A merge is not evidence of deployment.
 
-- [ ] Billy confirms the exact available login in GitHub account settings.
-- [ ] Record the account ID, current access/teams and open PR head SHAs. Freeze concurrent identity/character edits during the changeover.
-- [ ] Back up all owned repositories/branches/tags and release assets as needed. Save uncommitted, untracked and stashed local work separately; a mirror clone cannot capture those, issue/PR discussion, secrets or service configuration.
-- [ ] An authorized OBL operator agrees the migration mechanism, review route and maintenance window.
-- [ ] Prepare and review the minimal owner-binding change plus relevant regression tests. Keep this planning PR distinct from activation.
-- [ ] Plan page/cast AND Worker updates together: generated Worker cast drives contributor lookup. A source merge alone is not proof that the live site recognizes the new owner.
-- [ ] Decide how to handle existing OAuth sessions and already connected room clients. Plan a clean sign-out/re-authentication/reconnect after deployment.
-- [ ] Record current scores/custom character and relevant save/companion behavior for comparison.
+## Activation procedure (operator-owned)
 
-### Coordinated activation
+1. Verify access to the intended Cloudflare account and each production database. Record deployed Worker versions and applied migrations. Install reviewed guards in staging first and run the rename/claimant scenarios there. Keep production identity unchanged until the remaining checks pass.
+2. Pause Oogatron ingestion and OBL contributor generation/automatic rollout for a short coordinated window. Pause concurrent character identity edits. Record existing relevant open PR heads; do not alter Genesis Hall #400 or unrelated work.
+3. Export fresh D1 backups for OBL, Oogatron and BananaPayServer and test restoration into isolated databases. Save replay winner/object metadata and the referenced R2 objects. Export browser localStorage for each affected origin/device. Record exact files/checksums privately. Never commit production exports, session hashes or credentials.
+4. Capture a baseline: the player row for ID `185141343`; case-insensitive old/new player collisions; every score/owner/achievement entry; run IDs, scores and timestamps; replay hashes, pointers and objects; contribution row ID, GitHub ID, raw events and rollup totals; donor rows grouped by ID, verification flag and handle; public aggregate sums; unrelated rows. Compare both old/new names. Resolve duplicate contribution rows only after evidence-backed review and backup; do not delete or merge them automatically.
+5. Immediately before the human account rename, query GitHub `/user/185141343` and record the UTC observation while it still says `Bitcoin-Bill`. This is the conservative `lastOldAt` cutoff. The human account owner performs the GitHub rename; this tooling must not impersonate them. Verify the exact same ID afterward. If the name has not changed, stop here.
+6. Run `node scripts/account-migration.mjs 185141343 Bitcoin-Bill Bitclank-Bill <lastOldAt>` with the recorded ISO UTC timestamp (including milliseconds). Review the output and fresh database preflight. Abort for an occupied destination, missing/wrong ID, unexpected row counts or mismatched existing history/mapping. Do not invent a cutoff. Apply each database's SQL in an atomic D1 batch through the authorized operator workflow; cross-database changes are not one transaction, so keep the window paused until all three verify. Expected OBL/Oogatron owner updates are exactly one row when those records exist; zero requires inspection, not assumed success.
+7. Change only `github` in the existing character file to the newly verified login, through a maintainer-authored change. Keep its file/handle, display, dates, look, dress, voice and companion. Ordinary self-edit intake checks compare both owners; maintainer review handles this transfer. Do not add a second character or a global old/new-login authorization alias. Generate and deploy matching page/cast and Worker while onboarding remains paused.
+8. Re-authenticate the owner and reconnect/refresh existing room clients. Verify `/api/me` reports the same ID and original character; take Ooga and gorilla control; check appearance, companion and voice. Check old/new browser save entries before/after, per-level minimums, other users' records, the original rescue dog and storage-disabled behavior. Test a distinct synthetic old-login claimant only in staging—never impersonate either live user.
+9. Verify contribution totals, per-repository totals, all five activity leaderboards, weekly/recent data and raw event cardinality. Existing IDs carry all old and new events together; no event counts may be added twice. Apply/rebuild any reviewed duplicate repair before cache refresh. Refresh Oogatron's KV generation (normal successful sync), wait out its 60-second cache, refresh the baked snapshot and discard older browser activity caches. Confirm one custom character and no generated new-login duplicate before resuming onboarding.
+10. Verify Cloud Hopper's retired board, all four level boards, public run names, original achievement times and each existing replay URL/hash. Verify anonymous machine boards and other users are byte-for-byte unchanged apart from expected revisions/notifications. Drain the high-score outbox and inspect stale clients. Verify the donation ranking moves only proven verified contributions, conserves sats/bananas/counts, preserves unrelated same-name donations and handles a synthetic delayed receipt in staging. Historical receipts retain the name originally entered; unverified records remain explicitly unmigrated.
+11. Resume ingestion/generation only after the recorded comparisons pass. Record exact deployed commits, applied migrations, verification evidence and remaining unverified devices. Update active integration/remotes references as needed; preserve published Git authorship and historical discussions.
 
-- [ ] Confirm no relevant branch or identity edits have advanced.
-- [ ] Billy renames the SAME account; verify numeric ID 185141343 is unchanged.
-- [ ] Operator applies the reviewed owner-binding update using ordinary PR history. Avoid broad permission bypasses and permanent dual-login access.
-- [ ] Run normal generation/build, character identity/intake checks, client units and relevant Worker auth/ownership/high-score tests.
-- [ ] An authorized maintainer coordinates the required deployment of matching page/cast and Worker. This document does not authorize a deployment.
-- [ ] Re-authenticate Billy, verify access, then check ownership and score continuity.
-- [ ] Update live Git remotes, active PR handoff references, reviewer mentions and relevant automation prompts after confirming the new login. Preserve historical provenance and closed discussions.
+## Recovery and merge gates
 
-A short interruption may be necessary with the present login-based authorization. If seamless overlap is required, an operator should design a transition bound to the numeric account ID and test it first. Do not simply authorize both old and new names: the old login can be reused.
+Stop on any collision or invariant mismatch. Keep guards installed and preserve every record. Recover through reviewed forward changes or restore into an isolated database first; never delete/recreate the player, force-push history, broadly erase sessions/scores, or assume the old GitHub name can be reclaimed. The donor mapping and contribution cutoff are immutable without a new reviewed migration. The owner-scoped session invalidation in the prepared cutover is intentional; unrelated sessions remain.
 
-### Acceptance
+Before calling this ready to activate: production access rechecked; backups and restore proof recorded; companion changes reviewed; staging migration and matching page/Worker rollout verified; account owner has actually renamed; final cutover queries reviewed; browser/device and two-client presence checks complete. Account availability and the owner's rename cannot be performed on their behalf. No comment, merge or deployment is performed by this work.
 
-- [ ] New login reaches the same player record; no duplicate account/default Ooga.
-- [ ] Billy controls his original custom Ooga and gorilla where permitted; another account cannot acquire either through the old spelling.
-- [ ] Appearance, chihuahua, `clank clank`, stable handle and intended local saves remain.
-- [ ] Contributor activity/boards attach to the intended Ooga across old/new attribution without double counting.
-- [ ] Existing high scores survive and show correct ownership; rename collision/reused-login tests pass.
-- [ ] Character edit intake works under the new login through the approved process.
-- [ ] Existing sessions/reconnects, two-client presence and signed-out rendering behave as expected.
-- [ ] Open feature PRs and assigned Genesis Hall #400 remain intact; #400 stays draft.
-- [ ] Production checks are recorded separately from local/test evidence.
-
-Respect existing browser STOP history. Missing browser/device access remains unverified, not a pass.
-
-## Recovery
-
-If recognition fails, preserve account ID, records and source history; keep the character stable. Have an authorized operator correct binding/deployment and re-authenticate. Revert corrective source changes only through new commits. Do not delete/recreate the account, erase scores/sessions broadly, rewrite published history or force-push. Do not rely on immediately renaming back: old-name availability is not guaranteed.
-
-## Questions for Wicked
-
-1. Can an OBL Maintain/Admin operator own the actual owner-binding migration, since ordinary self-edit checks compare both owners?
-2. Is preserving file/handle with only the `github` owner changed the preferred approach?
-3. Should an ID-bound general rename path be added, or should this remain a focused operator migration?
-4. Who will coordinate matching page/Worker rollout and verify authentication, activity and scores?
-5. Are there Oogatron/external contributor-cache, room, moderation or account-name integrations outside this repository to update?
-
-## Separate owner-side work
-
-Git remotes, GitHub profile/gist links, CODEOWNERS, integration settings, credentials and future Git commit identity need audit. Tee Sniper repository URLs change, while inspected extension license endpoints use teesniper.app. That does not verify live hosting or every external service. No Tee Sniper code is changed here.
-
-References:
-- https://docs.github.com/en/account-and-profile/concepts/username-changes
-- https://docs.github.com/en/account-and-profile/reference/username-reference
-- docs/character-bundles.md
-- worker/src/auth.js
-- worker/src/contributor-policy.js
-- worker/src/db.js
-- src/js/net.js
-- scripts/character-identity.mjs
-
-Prepared with Codex assistance at Billy's direction. Source inspection only; no migration tests, runtime changes, account rename or deployment performed.
+References: `worker/src/contributor-access.js`, `worker/src/contributor-policy.js`, `worker/src/auth.js`, `worker/src/db.js`, `worker/migrations/0008_identity_collision_guard.sql`, `src/js/net.js`, `scripts/character-identity.mjs`, `docs/character-bundles.md`.
