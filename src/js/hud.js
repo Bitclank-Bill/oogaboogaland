@@ -6,8 +6,6 @@
   const { createNode, addChild, createCamera, boundsOf } = BL.scene;
   const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "away", online: "online" };
   const ROSTER_ORDER = { working: 0, chilling: 1, sleeping: 2, away: 3 };
-  // Signed-in players online lead the roster, ahead of every activity.
-  const ONLINE_RANK = -1;
   const stampOf = (contributor) => contributor.lastContributionAt || contributor.lastCommitAt;
   // Local control is online only while signed in; remote presence remains independent.
   const statusFor = (cave) => {
@@ -374,6 +372,7 @@
     el.lootTab.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
     const sheet = BL.sheet.create({ lootEnabled, signal });
+    sheet.setPlaying(document.body.classList.contains("arcade-game"));
     el.primary.hidden = true;
     el.gorillaSmash.hidden = true;
     el.mode.hidden = true;
@@ -452,7 +451,8 @@
         if (!bannerFrame) bannerFrame = window.requestAnimationFrame(fitBanner);
       };
       const bannerResize = new ResizeObserver(scheduleBanner), bannerEquipment = new MutationObserver(scheduleBanner);
-      for (const node of [el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
+      // Cabinet zooms resize the stage without changing the viewport or the title's own size.
+      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
       if (presets) {
         bannerResize.observe(presets);
         bannerEquipment.observe(presets, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ["hidden", "disabled"] });
@@ -569,8 +569,8 @@
       for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway && !row.online;
       updateAwayButton();
     });
-    // Online players lead the roster, by their activity's stamp; an away player who is online is never folded away.
-    const rankOf = (row) => row.online ? ONLINE_RANK : ROSTER_ORDER[row.state.dataset.state];
+    // Activity and its timestamp order the roster; online presence never changes a row's rank.
+    const rankOf = (row) => ROSTER_ORDER[row.state.dataset.state];
     const countAway = () => {
       awayCount = onlineCount = 0;
       for (const row of rosterRows.values()) {
@@ -594,17 +594,16 @@
       } else if (el.roster.lastElementChild !== row.li) el.roster.append(row.li);
     };
     // A scene's local driver needs a signed-in account; remote drivers and the room's
-    // signed-in identities remain online independently. A change repaints the dot and moves the row.
+    // signed-in identities remain online independently. A change repaints the dot without moving the row.
     const showOnline = (row) => {
       const online = row.sceneOnline && !!BL.net.state.me || row.remoteOnline || row.netOnline;
-      if (row.online === online) return false;
+      if (row.online === online) return;
       row.online = online;
       row.presence.dataset.online = online ? "true" : "false";
       row.presence.title = online ? "Online" : "Offline";
       row.presence.setAttribute("aria-label", row.presence.title);
       row.li.hidden = row.state.dataset.state === "away" && !showAway && !online;
       countAway();
-      return true;
     };
     const setRosterRow = (name, _stateKey, _ageText, online = false, remoteOnline = false) => {
       const row = rosterRows.get(name);
@@ -624,7 +623,7 @@
       if (row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
       row.sceneOnline = online;
       row.remoteOnline = remoteOnline;
-      if (showOnline(row)) moved = true;
+      showOnline(row);
       const stamp = stampOf(row.contributor);
       if (row.placedStamp !== stamp) {
         row.placedStamp = stamp;
@@ -642,11 +641,9 @@
     const rosterTimer = window.setInterval(refreshRosterActivity, 60000);
     listeners.push(() => window.clearInterval(rosterTimer));
     on(document, "visibilitychange", refreshRosterActivity);
-    // The page-level pass marks rows online from the room and moves only those that changed.
+    // The page-level pass updates presence without changing contribution order.
     liveRows = rosterRows;
-    liveOnline = (row) => {
-      if (showOnline(row)) placeRosterRow(row);
-    };
+    liveOnline = showOnline;
     showVoices();
     // Value the donated sats at the current price; donor rankings retain their receipt prices.
     const showBananaRate = () => {
@@ -1827,10 +1824,12 @@
     };
     // Active gameplay borrows the play area without changing the visitor's saved panel choices.
     const setPanelsHidden = (on) => {
+      const arcadeGame = document.body.classList.contains("arcade-game");
+      sheet.setPlaying(arcadeGame);
       on = !!on;
+      sheet.setHidden(on && !arcadeGame);
       if (on === panelsHidden) return;
       panelsHidden = on;
-      sheet.setHidden(on);
       for (const popup of floatingBoards) popup.setHidden(on);
     };
     const openRecipe = () => {
@@ -2348,7 +2347,7 @@
       },
       el, openFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setPanelsHidden, foldPanels, setRosterRow, setStats, setAct, setMode, setDestinations, setOwnOoga, get retakeActor() { return retake.actor ? retake : null; }, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, whitepaperNav, letterSign, selectTab, onPreset, setPileValueVisible, onAssign, onUnassign, renderInventory, dispose };
   };
-  // The account line in the sheet's foot is page-level: shown only when a backend answered, and
+  // The roster panel owns the page-level account controls, shown only when a backend answered, and
   // the director hands every change of `BL.net.state` here, whichever scene is active.
   const ROOM_WORDS = { replaced: "open in another tab", full: "island full" };
   // Net and voice emits re-run this several times a second with the same outcome; last-written
@@ -2366,7 +2365,7 @@
       $("account-login").hidden = !!me;
       $("account-logout").hidden = !me;
     }
-    // The foot's green dot shows only while the room is live.
+    // The account green dot shows only while the room is live.
     const live = String(!!me && room === "live");
     if (live !== accountLive) { accountLive = live; $("account").dataset.live = live; }
     const words = room === "live" ? `${online} online` : ROOM_WORDS[room] || "";

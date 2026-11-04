@@ -17,9 +17,10 @@
 // row holds that mark's cell from the start, shown and hidden by visibility, so it never moves a name or a control, and its
 // animation's end hides it again; `clearPulses` hides them all at once. Exports setDoors, pulse, clearPulses and stats.
 // The tab always holds the visitor's hearing range (#380, `BL.voice.setRadius`), ready before joining: the slider's last
-// stop is no limit, and a distance at or past the range is dimmed, since that voice is faded out for them. A voice in
+// stop is no limit, and a distance at or past the range is dimmed, since that voice is muted for them. A voice in
 // another place of the group, which shows no distance, is silenced by a range without a mark here. The slider is offered
 // before any audio is active; Web Audio supplies quieting and boost once the listener joins.
+// Hearing range and join-reading live together under the panel's Advanced settings disclosure.
 // Joins (#430, `net.subscribePresence`): a player who comes online while the visitor is in the room is named on screen
 // (`hud.toast`, read out by assistive technology) and counted on the tab until the visitor looks at it
 // (`sheet.watchViews`), unless they are in the panel as it happens. Those already there when the visitor (re)joins are
@@ -183,12 +184,12 @@
     for (const row of rows.values()) {
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
-      let aim = "route", metres = -1, lastKnown = false;
+      let aim = "route", metres = -1, distance = -1, lastKnown = false;
       if (rec.zone === mine) {
         if (rec.poseZone === rec.zone) {
           lastKnown = !rec.body;
           aim = lastKnown ? "known" : "player";
-          if (placed) metres = Math.round(Math.hypot(rec.x - me.x, rec.y - me.y, rec.z - me.z));
+          if (placed) { distance = Math.hypot(rec.x - me.x, rec.y - me.y, rec.z - me.z); metres = Math.round(distance); }
         } else aim = "nowhere";
       } else {
         const step = Z.next(mine, rec.zone);
@@ -207,7 +208,7 @@
         row.distance.title = lastKnown && metres >= 0 ? "Last known location" : "";
         row.note.hidden = !(lastKnown && metres >= 0);
       }
-      const far = radius > 0 && metres >= radius;
+      const far = radius > 0 && distance >= radius;
       if (row.far !== far) { row.far = far; row.distance.dataset.far = String(far); }
     }
   };
