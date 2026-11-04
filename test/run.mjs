@@ -6550,6 +6550,13 @@ const gameRulesChecks = async () => {
     const overflow=makeRemote(), clacksBefore=overflow.game.capture()[17], many=[];for(let i=0;i<32;i++)many.push(-1000,overflow.y);
     overflow.game.peerPath(many,false);overflow.game.peerPath([1000,overflow.y],false);overflow.game.update(1/240);const afterOverflow=overflow.game.capture().slice();
     record("hockey guest backlog: packets replay in order; overflow resynchronizes without a fabricated strike",twoPackets[17]>count&&twoPackets[6]===480&&afterOverflow[17]===clacksBefore&&afterOverflow[6]===-480,JSON.stringify({twoPackets,count,afterOverflow,clacksBefore}));
+    const gentle=makeRemote(), previous=gentle.game.capture().slice(), side=previous[0]>=0?-1:1;
+    const start=previous[0]/1000+side*.13, target=previous[0]/1000+side*.10;
+    gentle.game.peerPath([Math.round(-start/.48*1000),gentle.y],true);gentle.game.update(1/240);
+    const gentleBefore=gentle.game.capture()[17];gentle.game.peerPath([Math.round(-target/.48*1000),gentle.y],false);gentle.game.update(1/240);
+    const gentleShot=gentle.game.capture().slice();
+    record("hockey guest impact: a small sampled movement uses the packet interval rather than the replay step",gentleShot[17]===gentleBefore+1&&Math.hypot(gentleShot[2],gentleShot[3])<3000,JSON.stringify({previous,gentleBefore,gentleShot}));
+    gentle.game.stop();
     batched.game.stop();overflow.game.stop();
     h.stop();guest.stop();strike.stop();
     const A = BL.arcadeModels, L = A.LAYOUT;
@@ -15865,6 +15872,7 @@ const hockeySharedVisit = { name: "hockey shared visit", why: "contract: lobby, 
     V.send=N.sendHockey;V.subscribe=N.subscribeHockey;V.peers=BL.voice.setPeers;
     V.me=N.state.me;V.room=N.state.room;V.id=N.state.selfId;V.feature=N.state.hockey;
     N.state.me={id:2,login:"portlandhodl",display:"portlandhodl"};N.state.selfId=2;N.state.hockey=true;N.state.room="live";
+    V.noSocket=N.sendHockey({k:"join",i:0})===false;
     N.setBody("portlandhodl");V.off=N.subscribeRoster(()=>{if(!N.state.body)V.releases++;});
     BL.voice.setPeers=(...args)=>{if(!args[0].length)V.peerClears++;return V.peers(...args);};
     V.emit=m=>{for(const fn of V.listeners)fn(m);};
@@ -15889,9 +15897,9 @@ const hockeySharedVisit = { name: "hockey shared visit", why: "contract: lobby, 
   await b.key("Enter");await untilPage(b,'B.carnival?.phase === "count"',5000);
   const earlyEnd=await b.evaluate(`(() => {const a=[0,660,0,0,0,200,0,2000,0,7,-1,0,-1000,-1000,0,7,0,0];__hockeyVisit.emit({k:"frame",i:0,s:"0123456789abcdef",q:2,a});__ooga.advance(1.5,1/60);return __ooga.carnival.phase;})()`);
   await b.evaluate(`__ooga.go("arcade",0)`);await untilPage(b,'B.scene === "arcade" && !B.transitioning',20000);
-  const back=await b.evaluate(`(() => {const V=__hockeyVisit,N=BL.net;const r={body:N.state.body,zone:N.state.zone,releases:V.releases,peerClears:V.peerClears,listeners:V.listeners.size,leave:V.sent.filter(m=>m.k==="leave").length,voice:BL.voice.stats.muted,radius:BL.voice.stats.radius,level:BL.voice.stats.receiveLevel,localMute:BL.voice.mutedLocally(900000001),muted:BL.sound.muted};V.off();N.sendHockey=V.send;N.subscribeHockey=V.subscribe;BL.voice.setPeers=V.peers;BL.sound.setMuted(V.muted);BL.voice.setMuted(V.voiceMuted);BL.voice.setRadius(V.radius);BL.voice.setReceiveLevel(V.level);BL.voice.muteLocal(900000001,V.localMute);N.state.me=V.me;N.state.room=V.room;N.state.selfId=V.id;N.state.hockey=V.feature;return r;})()`);
+  const back=await b.evaluate(`(() => {const V=__hockeyVisit,N=BL.net;const r={noSocket:V.noSocket,body:N.state.body,zone:N.state.zone,releases:V.releases,peerClears:V.peerClears,listeners:V.listeners.size,leave:V.sent.filter(m=>m.k==="leave").length,voice:BL.voice.stats.muted,radius:BL.voice.stats.radius,level:BL.voice.stats.receiveLevel,localMute:BL.voice.mutedLocally(900000001),muted:BL.sound.muted};V.off();N.sendHockey=V.send;N.subscribeHockey=V.subscribe;BL.voice.setPeers=V.peers;BL.sound.setMuted(V.muted);BL.voice.setMuted(V.voiceMuted);BL.voice.setRadius(V.radius);BL.voice.setReceiveLevel(V.level);BL.voice.muteLocal(900000001,V.localMute);N.state.me=V.me;N.state.room=V.room;N.state.selfId=V.id;N.state.hockey=V.feature;return r;})()`);
   record("hockey shared visit: the panel is a two-player lobby, overhead far-side camera and mouse send two-axis input without smash or meter",lobby.shown&&lobby.phase==="intro"&&lobby.text.includes("Both")&&play.side===1&&play.overhead&&play.upZ===1&&play.controlsHidden&&play.bestHidden&&play.inputs.some(x=>x>0)&&Math.abs(play.rightPixels)<1,JSON.stringify({lobby,play}));
-  record("hockey shared visit: ending from the menu reaches results, the body and Arcade voice never drop, mute/radius/volume persist, server close preserves completed results and releases subscriptions",ending.phase==="results"&&back.body==="portlandhodl"&&back.zone==="arcade.hall"&&!back.releases&&!back.peerClears&&back.leave===1&&earlyEnd==="results"&&departed.phase==="results"&&!departed.results&&departed.pause&&back.listeners===1&&play.muted&&ending.muted&&back.muted&&play.voice&&back.voice&&back.localMute&&play.radius===10&&back.radius===10&&play.level===.35&&back.level===.35,JSON.stringify({play,ending,departed,earlyEnd,back}));
+  record("hockey shared visit: ending from the menu reaches results, the body and Arcade voice never drop, mute/radius/volume persist, server close preserves completed results and releases subscriptions",ending.phase==="results"&&back.noSocket&&back.body==="portlandhodl"&&back.zone==="arcade.hall"&&!back.releases&&!back.peerClears&&back.leave===1&&earlyEnd==="results"&&departed.phase==="results"&&!departed.results&&departed.pause&&back.listeners===1&&play.muted&&ending.muted&&back.muted&&play.voice&&back.voice&&back.localMute&&play.radius===10&&back.radius===10&&play.level===.35&&back.level===.35,JSON.stringify({play,ending,departed,earlyEnd,back}));
 } };
 const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics and shared session keep bounded frames, two human controls, interpolation, physical scale and cleanup", run: async b => {
   const result = await b.evaluate(`(() => {

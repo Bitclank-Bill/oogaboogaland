@@ -1113,14 +1113,14 @@
     // The first human retains the original fixed-step simulation. A second human replaces only the AI input.
     const peer = { on: false, x: 0, depth: (REST - MR) / (L / 2 - 2 * MR), meter: -1 };
     // Fixed host-side backlog: paths beyond this budget resynchronize without a fabricated sweep.
-    const peerU = new Float64Array(32), peerV = new Float64Array(32);
+    const peerU = new Float64Array(32), peerV = new Float64Array(32), peerTime = new Float64Array(32);
     let peerHead = 0, peerCount = 0, peerJump = false;
     const clearPeerPath = () => { peerHead = peerCount = 0; peerJump = false; };
-    const queuePeer = (x, depth) => {
+    const queuePeer = (x, depth, strikeTime = 1 / 20) => {
       x = Math.max(-1, Math.min(1, x)); depth = Math.max(0, Math.min(1, depth));
       peer.x = x; peer.depth = depth;
       if (peerCount === peerU.length) { clearPeerPath(); peerJump = true; }
-      const i = (peerHead + peerCount++) % peerU.length; peerU[i] = x; peerV[i] = depth;
+      const i = (peerHead + peerCount++) % peerU.length; peerU[i] = x; peerV[i] = depth; peerTime[i] = strikeTime;
     };
     let clacks = 0, remoteClacks = -1, remotePlaying = false, remoteSide = 0;
     const clack = () => { clacks = (clacks + 1) & 65535; out.cue("clack"); };
@@ -1212,11 +1212,11 @@
     };
     // Human targets arrive once per displayed frame. Sweep the entire travel over this frame's fixed
     // steps, without limiting distance. Only the velocity used to strike the puck is capped.
-    const prepareMallet = (m, x, depth, side, duration) => {
+    const prepareMallet = (m, x, depth, side, duration, strikeTime = duration) => {
       BL.hockeyWire.malletTarget(x, depth, side, destination);
       m.tu = destination.u; m.tv = destination.v;
       m.du = (m.tu - m.u) / duration; m.dv = (m.tv - m.v) / duration;
-      const scale = Math.min(1, 6 / (Math.hypot(m.du, m.dv) || 1));
+      const scale = Math.min(duration / strikeTime, 6 / (Math.hypot(m.du, m.dv) || 1));
       m.su = m.du * scale; m.sv = m.dv * scale;
       if (Math.hypot(P.u - m.u, P.v - m.v) > PR + MR + 1e-6) m.touch = false;
     };
@@ -1384,9 +1384,11 @@
       shared: on => { shared = !!on; },
       multiplayer: (on, side = 0) => { clearPeerPath(); peer.on = !!on; localSide = on ? side : -1; peer.x = 0; peer.depth = (REST - MR) / (L / 2 - 2 * MR); },
       peerInput: (x, depth) => queuePeer(x, depth),
+      // No client timestamp is trusted: apportion the 50 ms packet interval evenly among
+      // its retained segments for strike velocity, independently of the fixed replay step.
       peerPath: (points, discontinuity) => {
         if (discontinuity) { clearPeerPath(); peerJump = true; }
-        for (let i = 0; i < points.length; i += 2) queuePeer(points[i] / 1000, points[i + 1] / 1000);
+        for (let i = 0; i < points.length; i += 2) queuePeer(points[i] / 1000, points[i + 1] / 1000, 1 / (10 * points.length));
       },
       peerIdle: () => { clearPeerPath(); peer.x = -A.u / (W / 2 - MR); peer.depth = (L - A.v - MR) / (L / 2 - 2 * MR); },
       get following() { return following; },
@@ -1447,7 +1449,7 @@
               peerHead = (peerHead + 1) % peerU.length; peerCount--; peerJump = false;
             }
             if (peerCount) {
-              prepareMallet(A, peerU[peerHead], peerV[peerHead], 1, 1 / 240);
+              prepareMallet(A, peerU[peerHead], peerV[peerHead], 1, 1 / 240, peerTime[peerHead]);
               peerHead = (peerHead + 1) % peerU.length; peerCount--;
             } else prepareMallet(A, -A.u / (W / 2 - MR), (L - A.v - MR) / (L / 2 - 2 * MR), 1, 1 / 240);
           }
@@ -2473,11 +2475,7 @@
         if (N.rampT > 0 && (N.rampT -= dt) <= 0) { combo = 0; status.streak = 0; }
         arrow.geometry = LIT[(multi ? jack : lit && (N.rampT > 0 ? blinking(4, 0.5) : blinking(0.9, 0.65))) ? 1 : 0];
         N.acc += Math.min(dt, 0.05);
-        const duration = Math.floor((N.acc + 1e-12) * 240) / 240;
-        if (peer.on && duration > 0) {
-          prepareMallet(M, aim.x, aim.depth, 0, duration); prepareMallet(A, peer.x, peer.depth, 1, duration);
-        }
-        while (N.acc + 1e-12 >= 1 / 240) { N.acc -= 1 / 240; if (phase === "play") step(1 / 240); }
+        while (N.acc >= 1 / 240) { N.acc -= 1 / 240; if (phase === "play") step(1 / 240); }
         // Knocked teeth sink; they stand again together once the field beside them is clear.
         if (N.teethT > 0 && (N.teethT -= dt) <= 0) {
           let clear = true;

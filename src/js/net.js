@@ -155,7 +155,7 @@
   const hockeyTables = [null, null, null];
   const hockeyEmit = m => { for (const fn of hockeySubscribers) fn(m); };
   const subscribeHockey = fn => { hockeySubscribers.add(fn); return () => hockeySubscribers.delete(fn); };
-  const sendHockey = m => { if (!state.hockey || state.room !== "live") return false; send(JSON.stringify({ t: "hockey", ...m, v: 3 })); return true; };
+  const sendHockey = m => { if (!state.hockey || state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN) return false; send(JSON.stringify({ t: "hockey", ...m, v: 3 })); return true; };
   const studioEmit = message => { for (const fn of studioSubscribers) fn(message); };
   const chatSubscribers = new Set();
   // The shared chalkboard's listeners, and the page's own edits waiting to go (merged into frames of a few points).
