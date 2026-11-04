@@ -61,12 +61,16 @@
 // room's own doors, which nobody reserves. `subscribeDoor` hears all of it, and `{ t: "door", op: "lost" }` when the
 // socket goes. Without the feature these send nothing and return false, and the sphere crosses on this page alone.
 // `recheck` looks at /api/me again after a look that went unanswered (the keypad's Retry), bounded as the first.
-// `setPokerVoice(table)` scopes Ember Den voice to one table, or the floor when null, without moving the body.
+// `setPokerVoice(table)` scopes Ember Den voice to one table, or the floor when null, without moving the body; `state.pokerVoice`
+// holds it and the roster subscribers hear the change.
 // Where players stand, for the live players tab (players.js): a remote's `poseZone` is the zone its position was reported
 // in, so a player who changed zone has none there until they move (the room re-sends the last pose it holds, from the
 // zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
 // position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
 // snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
+// Ooga thumps (thump.js): `sendThump` sends `{"t":"thump"}` while the room is live (the room checks voice and rate),
+// and `subscribeThump` hears `fn(id, audible)` for a remote player's thump the room relayed, `audible` when the room says
+// this page would hear that player's voice; a sender never hears its own.
 // A crossing (#392, voice-blend.js): `setBlend(to, t)` says the driven body is `t` (0 to 1) of the way from its zone's
 // group toward the adjacent group `to` (null for none). `state.blendTo` and `state.blendT` keep it exact for this page's
 // own volumes; the room gets it in BLEND.STEPS steps, at most BLEND_MS apart, and every remote record carries the
@@ -75,7 +79,7 @@
 // `subscribePresence` hears `fn(rec, true)` for a player who joins the room while this page is in it, never for those
 // already there on this page's (re)join, and `fn(rec, false)` when one leaves (players.js names the joins, #430).
 // Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), sendThump, subscribeThump, npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -111,6 +115,36 @@
   };
   const chatIdValid = (id) => typeof id === "string" && id.length > 0 && id.length <= 64 && !/[^\w-]/.test(id);
   const DOOR_NAME = /^[a-z0-9-]{1,24}$/;
+  const cabinetSeats = new Map();
+  let cabinetRequest = null, cabinetSeat = null, cabinetAnchor = null, cabinetSequence = 0;
+  const finishCabinetRequest = reason => {
+    if (!cabinetRequest) return;
+    const pending = cabinetRequest;
+    cabinetRequest = null;
+    window.clearTimeout(pending.timer);
+    pending.resolve(reason);
+  };
+  const leaveCabinet = () => {
+    const seat = cabinetSeat || cabinetRequest;
+    if (seat) send(JSON.stringify({ t: "cabinet", op: "leave", id: seat.id, q: seat.q }));
+    cabinetSeat = cabinetAnchor = null;
+    finishCabinetRequest("Cabinet opening cancelled");
+  };
+  // Resolves to null on success, or a player-facing reason. Never enter a live game optimistically.
+  const takeCabinet = id => {
+    if (!state.me) return Promise.resolve(null);
+    if (state.room !== "live") return Promise.resolve("Connect to the live arcade before playing");
+    if (!state.cabinets) return Promise.resolve("The live arcade needs an update before cabinets can open");
+    if (cabinetSeat || cabinetRequest) return Promise.resolve("A cabinet is already opening");
+    const q = ++cabinetSequence;
+    return new Promise(resolve => {
+      cabinetRequest = { id, q, resolve, timer: window.setTimeout(() => {
+        send(JSON.stringify({ t: "cabinet", op: "leave", id, q }));
+        finishCabinetRequest("The arcade did not answer · try again");
+      }, 8000) };
+      send(JSON.stringify({ t: "cabinet", op: "take", id, q }));
+    });
+  };
   const subscribers = new Set();
   const highscoreSubscribers = new Set();
   const doorSubscribers = new Set();
@@ -136,7 +170,7 @@
   const offline = new URLSearchParams(location.search);
   const state = { backend: false, me: null, donations: false, tess: false, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
-    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
+    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, chalk: null, blendTo: null, blendT: 0 };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
   let npcFrame = null, inHub = false, hubSent = null, visibleSent = null;
@@ -174,6 +208,7 @@
 
   const setRoom = (room) => {
     state.room = room;
+    if (room !== "live") { cabinetSeats.clear(); cabinetSeat = null; state.cabinets = false; finishCabinetRequest("Connection to the arcade was lost"); }
     if (room !== "live") state.chatUnicode = false;
     if (room !== "live") { hockeyTables.fill(null); hockeyEmit({ k: "lost" }); state.hockey = false; }
     if (room !== "live") { state.studio = null; state.connectionToken = ""; studioEmit({t:"studio-state",state:null}); }
@@ -200,6 +235,7 @@
   };
   // Under half a step is no crossing, so a body a hair past a level's height never has the room pull the next place.
   const setBlend = (to, t) => {
+    if (cabinetAnchor) return;
     const on = !!to && t * BLEND.STEPS >= 0.5;
     state.blendTo = on ? to : null;
     state.blendT = on ? Math.min(1, t) : 0;
@@ -292,7 +328,16 @@
     } catch {
       return;
     }
-    if (msg.t === "highscore") {
+    if (msg.t === "cabinets") {
+      cabinetSeats.clear();
+      if (Array.isArray(msg.seats)) for (const seat of msg.seats) if (BL.arcadeCabinets.get(seat.id)) cabinetSeats.set(seat.id, seat);
+      if (cabinetSeat && cabinetSeats.get(cabinetSeat.id)?.player !== state.selfId) { cabinetSeat = null; emit(); }
+    } else if (msg.t === "cabinet") {
+      if (cabinetRequest?.id === msg.id && cabinetRequest.q === msg.q) {
+        if (msg.ok) { cabinetSeat = { id: msg.id, q: msg.q }; cabinetAnchor = BL.arcadeCabinets.get(msg.id); }
+        finishCabinetRequest(msg.ok ? null : msg.reason || "This cabinet is occupied");
+      } else if (msg.ok) send(JSON.stringify({ t: "cabinet", op: "leave", id: msg.id, q: msg.q }));
+    } else if (msg.t === "highscore") {
       if (state.room === "live") for (const fn of highscoreSubscribers) fn(msg.board);
     } else if (msg.t === "studio-mic-revoked") {
       BL.voice.dropMic();
@@ -352,6 +397,7 @@
       state.ghostFollowers = Number.isSafeInteger(msg.ghostFollowers) ? msg.ghostFollowers : 0;
       state.selfId = msg.you.id;
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
+      state.cabinets = Array.isArray(msg.features) && msg.features.includes(BL.arcadeCabinets.FEATURE);
       state.hockey = Array.isArray(msg.features) && msg.features.includes("hockey-v2");
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
       state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
@@ -490,6 +536,8 @@
       if (Array.isArray(msg.peers)) BL.voice.setPeers(msg.peers, Array.isArray(msg.gens) ? msg.gens : null, state.zone === "dsb-studio" ? msg.listeners : undefined);
     } else if (msg.t === "ghost") {
       if (ghostHeard) ghostHeard(msg); // HALLOWEEN
+    } else if (msg.t === "thump") {
+      if (thumpHeard && remotes.has(msg.id)) thumpHeard(msg.id, msg.a === 1);
     } else if (msg.t === "release") {
       state.released = { name: String(msg.name), reason: String(msg.reason) };
       emit();
@@ -658,10 +706,11 @@
     return n === groupLength(b) && a.startsWith(b.slice(0, n));
   };
   const setZone = (name) => {
+    if (cabinetAnchor) return;
     if (name === zone) return;
     const moved = !sameGroup(name, zone) && name !== state.blendTo;
     zone = state.zone = name;
-    pokerVoice = null;
+    pokerVoice = state.pokerVoice = null;
     poseAt = 0; px = NaN;
     if (moved) BL.voice.setPeers([]);
     sendZone();
@@ -672,9 +721,10 @@
   // Voice changes without moving or hiding anybody on the shared floor.
   const setPokerVoice = table => {
     if (zone !== "ember-den" || table !== null && (!Number.isInteger(table) || table < 0 || table >= 10) || pokerVoice === table) return;
-    pokerVoice = table;
+    pokerVoice = state.pokerVoice = table;
     BL.voice.setPeers([]);
     sendPokerVoice();
+    rosterChanged();
   };
 
   // The hub says when it shows the island; a hidden tab stops counting until it is looked at again.
@@ -703,6 +753,17 @@
   };
   document.addEventListener("visibilitychange", onVisibility);
 
+  // One listener, thump.js; false when the room is not live.
+  let thumpHeard = null;
+  const sendThump = () => {
+    if (state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    send('{"t":"thump"}');
+    return true;
+  };
+  const subscribeThump = (fn) => {
+    thumpHeard = fn;
+    return () => { if (thumpHeard === fn) thumpHeard = null; };
+  };
   // HALLOWEEN: the ghost hunt's word to its host (ghost-sync.js): a start or a hit, relayed to the arcade's ghost
   // arena's host (`ghostHostId`) alone, from a page in the arena.
   let ghostHeard = null, ghostStateHeard = null;
@@ -743,7 +804,7 @@
     if (ws && ws.readyState === WebSocket.OPEN && state.hostId === state.selfId) ws.send(view);
   };
 
-  // A synchronous Arcade ↔ hockey scene handoff keeps the same driven body and voice subscriptions.
+  // A synchronous handoff between Arcade hall scenes keeps the same driven body and voice subscriptions.
   let holdingBody = false;
   const handoffBody = fn => {
     holdingBody = true;
@@ -752,6 +813,7 @@
     finally { holdingBody = false; }
   };
   const setBody = (name) => {
+    if (cabinetAnchor) return;
     if (holdingBody && name === null) return;
     if (name === body) return;
     body = state.body = name;
@@ -800,6 +862,10 @@
 
   // Throttled to POSE_MS and skipped while nothing moved; a changed gorilla pose, jetpack or weapon also earns a report.
   const sendPose = (x, y, z, yaw, g = null, jet = 0, weapon = 0) => {
+    if (cabinetAnchor) {
+      const at = cabinetAnchor;
+      x = at.x; y = at.y; z = at.z; yaw = at.yaw; g = null; jet = weapon = 0;
+    }
     const now = performance.now();
     if (state.bodyKind === "gorilla" && g && g.length === 6) {
       let valid = true;
@@ -1033,8 +1099,9 @@
     presenceSubscribers.clear();
     doorSubscribers.clear();
     ghostHeard = ghostStateHeard = null; // HALLOWEEN
+    thumpHeard = null;
     close("off");
   };
 
-  BL.net = { handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendThump, subscribeThump, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

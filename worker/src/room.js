@@ -19,16 +19,19 @@
 // Chat: each line is named from the session, rate limited per account across awake-room reconnects, sent to every socket and kept in a
 // ring of the last CHAT_KEEP in memory alone, which a joiner gets after `welcome`. No durable chat storage: a room
 // that hibernates, restarts or is redeployed wakes with an empty ring, and the lines are gone.
+// Thumps: a voice participant's reaction, relayed to its voice place alone (`thumpPeers`, with `thumpAudible` marking the
+// copies whose recipient would hear it) within a per-account bucket; nothing is kept, timed or answered, and the
+// attachment is untouched.
 
 import { DurableObject } from "cloudflare:workers";
 import {
-  hockey, CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, CLEANUP_MS, TICK_HZ,
+  CABINETS, hockey, CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, CLEANUP_MS, TICK_HZ,
   NPC_FRAME_MAX, NPC_HZ, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
-  DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST,
+  DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST, THUMP_HZ, THUMP_BURST,
   GHOST_MAGIC, GHOST_FRAME_MAX, GHOST_FRAME_HZ, GHOST_FRAME_BURST, inGhostArena, ghostCandidate, watchesGhost,
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
-  chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
+  chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers, thumpPeers, thumpAudible, thumpBucketFor,
   BLEND, BLEND_HZ,
 } from "./protocol.js";
 import { sha256Hex } from "./crypto.js";
@@ -68,6 +71,7 @@ export class Room extends DurableObject {
     this.chatId = 0;
     this.chatAccepted = new Map();
     this.chatBuckets = new Map();
+    this.thumpBuckets = new Map();
     this.doorQueue = [];
     this.doorActive = null;
     this.doorPasses = new Map();
@@ -144,7 +148,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, voice: p.voice, muted: p.muted, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, blendTo: p.blendTo, blendK: p.blendK };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, voice: p.voice, muted: p.muted, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, blendTo: p.blendTo, blendK: p.blendK };
   }
 
   view(p) {
@@ -343,9 +347,10 @@ export class Room extends DurableObject {
 
     const others = [];
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, features: ["door", CHAT_FEATURE, CHALK_FEATURE, "hockey-v2"] });
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, features: [CABINETS.FEATURE, "door", CHAT_FEATURE, CHALK_FEATURE, "hockey-v2"] });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
     this.send(server, { t: "chat-history", messages: this.chat.list() });
+    this.sendCabinets(server);
     this.send(server, { t: "chalk-board", marks: this.chalk.marks, editor: this.chalkEditor ? this.chalkEditor.id : 0 });
     this.broadcast({ t: "join", p: this.view(p) }, server);
     this.sendStudio(p);
@@ -377,6 +382,9 @@ export class Room extends DurableObject {
     }
     p.seenAt = Date.now();
     if (!msg) return;
+    if (msg.t === "cabinet") { this.cabinetMessage(p, msg); return; }
+    // While playing, the room owns the floor pose and body, regardless of game-scene reports.
+    if (p.cabinet && ["pose", "zone", "body", "blend", "hp", "shot", "swing", "hockey"].includes(msg.t)) return;
     if (msg.t === "hockey") { hockey.message(this, p, msg); ws.serializeAttachment(this.attachment(p)); return; }
     if (msg.t === "studio") {
       this.studioMessage(p, msg);
@@ -457,6 +465,9 @@ export class Room extends DurableObject {
     } else if (msg.t === "chat") {
       // Nothing in the attachment changes.
       return this.say(p, msg.text, msg.clientId);
+    } else if (msg.t === "thump") {
+      // Nothing in the attachment changes.
+      return this.thump(p);
     } else if (msg.t === "door") {
       return this.doorMessage(p, msg);
     } else if (msg.t === "chalk") {
@@ -517,8 +528,46 @@ export class Room extends DurableObject {
     if (p) this.drop(p, "error");
   }
 
+  sendCabinets(ws = null) {
+    const seats = [];
+    for (const p of this.players.values()) if (p.cabinet) seats.push({ id: p.cabinet.id, player: p.id, name: p.display || p.login });
+    const message = { t: "cabinets", seats };
+    if (ws) this.send(ws, message); else this.broadcast(message);
+  }
+
+  releaseCabinet(p) {
+    if (!p.cabinet) return;
+    p.cabinet = null;
+    p.ws.serializeAttachment(this.attachment(p));
+    this.sendCabinets();
+  }
+
+  cabinetMessage(p, msg) {
+    if (msg.op === "leave") {
+      if (p.cabinet?.id === msg.id && p.cabinet.q === msg.q) this.releaseCabinet(p);
+      return;
+    }
+    const reply = reason => this.send(p.ws, { t: "cabinet", id: msg.id, q: msg.q, ok: !reason, reason });
+    p.cabinetBucket ||= { tokens: 3, at: Date.now() };
+    if (!takeToken(p.cabinetBucket, 2, Date.now(), 3)) { reply("Please wait before trying again"); return; }
+    if (!p.body || p.zone !== "arcade.hall" || p.ko) { reply("Stand in the arcade with your Ooga first"); return; }
+    if (p.cabinet) { reply(p.cabinet.id === msg.id && p.cabinet.q === msg.q ? null : "You already have a cabinet open"); return; }
+    for (const other of this.players.values()) if (other.cabinet?.id === msg.id) { reply("This cabinet is occupied"); return; }
+    // No await between checking and assigning: concurrent requests have exactly one winner.
+    const at = CABINETS.get(msg.id);
+    p.cabinet = { id: msg.id, q: msg.q };
+    p.x = at.x; p.y = at.y; p.z = at.z; p.yaw = at.yaw; p.g = null; p.j = p.w = 0;
+    p.blendTo = null; p.blendK = 0;
+    p.ws.serializeAttachment(this.attachment(p));
+    this.dirty = true;
+    this.scheduleFlush();
+    this.sendCabinets();
+    reply(null);
+  }
+
   drop(p, reason) {
     if (this.players.get(p.id) !== p) return;
+    this.releaseCabinet(p);
     hockey.leave(this, p.id);
     this.cancelDoor(p);
     this.clearPasses(p);
@@ -537,6 +586,7 @@ export class Room extends DurableObject {
   }
 
   release(p, reason) {
+    this.releaseCabinet(p);
     hockey.leave(this, p.id);
     this.cancelDoor(p);
     this.clearPasses(p);
@@ -618,6 +668,18 @@ export class Room extends DurableObject {
     this.chat.push(line);
     this.broadcast({ t: "chat", ...line });
     if (key) this.send(p.ws, { t: "chat-ack", clientId });
+  }
+
+  // A thump from a voice participant goes to everyone in voice in its place as one tiny frame, never back to the sender,
+  // marked `a: 1` for those who would hear the sender speak; over the bucket, or with nobody to see it, it is dropped
+  // without a word.
+  thump(p) {
+    const peers = thumpPeers(this.players.values(), p, this.studio);
+    if (!peers.length) return;
+    if (!p.thumpBucket) p.thumpBucket = thumpBucketFor(this.thumpBuckets, p.id, p.seenAt, this.players);
+    if (!p.thumpBucket || !takeToken(p.thumpBucket, THUMP_HZ, p.seenAt, THUMP_BURST)) return;
+    const seen = `{"t":"thump","id":${p.id}}`, heard = `{"t":"thump","id":${p.id},"a":1}`;
+    for (const q of peers) this.send(q.ws, thumpAudible(q, p, this.studio) ? heard : seen);
   }
 
   // Also after any page's `hub` flag changes: the host sends frames only while someone follows.
