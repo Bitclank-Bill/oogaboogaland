@@ -327,6 +327,7 @@
     if (msg.t === "cabinets") {
       cabinetSeats.clear();
       if (Array.isArray(msg.seats)) for (const seat of msg.seats) if (BL.arcadeCabinets.get(seat.id)) cabinetSeats.set(seat.id, seat);
+      if (cabinetSeat && cabinetSeats.get(cabinetSeat.id)?.player !== state.selfId) { cabinetSeat = null; emit(); }
     } else if (msg.t === "cabinet") {
       if (cabinetRequest?.id === msg.id && cabinetRequest.q === msg.q) {
         if (msg.ok) { cabinetSeat = { id: msg.id, q: msg.q }; cabinetAnchor = BL.arcadeCabinets.get(msg.id); }

@@ -23732,9 +23732,13 @@ const cabinetNetworkChecks = async BL => {
   await cancel;
   message({ t: "cabinet", id: "mine", q: cancelledRequest.q, ok: true });
   const late = !f.net.cabinet && f.sent.at(-1).op === "leave" && f.sent.at(-1).q === cancelledRequest.q;
+  const revoke = f.net.takeCabinet("snake"), revokeRequest = f.sent.at(-1);
+  message({ t: "cabinet", id: "snake", q: revokeRequest.q, ok: true }); await revoke;
+  message({ t: "cabinets", seats: [] });
+  const revoked = !f.net.cabinet; f.net.leaveCabinet();
   const disconnected = f.net.takeCabinet("mine"); ws.onclose();
   const lost = await disconnected;
-  record("cabinet client: waits for the room, pins presence, cancels late grants, fails closed on old servers and disconnect, and releases on return", !!old && waiting && granted === null && held && released && late && !!lost);
+  record("cabinet client: waits for the room, pins presence, cancels late grants, fails closed on old servers and disconnect, and releases on return", !!old && waiting && granted === null && held && released && late && revoked && !!lost);
   f.net.dispose();
 };
 
