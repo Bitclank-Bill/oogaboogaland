@@ -9,7 +9,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const BALL_R = 0.1, CUP_R = 0.2, MAX_SPEED = 8, DECEL = 1.5, DRAG = 0.35, WALL_E = 0.78, BUMP_E = 0.95, SINK_SPEED = 3.4;
+  const BALL_R = 0.1, CUP_R = 0.2, MAX_SPEED = 11, DECEL = 1.5, DRAG = 0.35, WALL_E = 0.78, BUMP_E = 0.95, SINK_SPEED = 3.4;
   // A rolling ball on a slope: gravity's pull along the ground, with the five sevenths a rolling sphere keeps.
   const ROLL_G = 9.81 * 5 / 7, TUNNEL_R = 0.3, TUNNEL_T = 0.7, TUNNEL_SPEED = 2.6;
   const CELL_X = [-22, 0, 22], CELL_Z = [-14, 0, 14];
@@ -27,15 +27,15 @@
   // shots and replayed by the suite, so a change that makes a hole unplayable is caught), and `prop`, the carving that stands
   // over it (the scene's to build).
   const HOLES = [
-    { name: "The Warm-Up", line: [[1.5708, 1]], par: 2, edge: rect(-6, 6, -1.6, 1.6), tee: [-5, 0], cup: [5, 0], hills: [[0, 0, 1.5, 0.3]], prop: "torches" },
-    { name: "Jaguar's Turn", line: [[1.6406, 1], [0.0175, 0.925]], par: 2, edge: [[-7, -1.2], [3, -1.2], [3, -4.5], [5.4, -4.5], [5.4, 1.2], [-7, 1.2]], tee: [-6, 0], cup: [4.2, -3.6], bridges: [[-3.4, -1.4, 0, 0.5, 0.32]], prop: "jaguar" },
-    { name: "Cocoa Beans", line: [[1.5708, 0.95], [0.0524, 0.675]], par: 2, edge: rect(-6.5, 6.5, -1.6, 1.6), tee: [-5.5, 0], cup: [5.5, 0], bumpers: [[-2, -0.6, 0.45], [0.3, 0.7, 0.45], [2.6, -0.5, 0.4]], hills: [[-3.6, 0.8, 0.7, 0.16], [1.4, -0.85, 0.7, 0.16]], bridges: [[3.5, 4.9, 0, 0.55, 0.28]], prop: "beans" },
-    { name: "The Long Way Round", line: [[3.543, 0.75], [4.4157, 1], [0, 0.7]], par: 3, edge: [[-6, -4], [6, -4], [6, 4], [3.6, 4], [3.6, -1.6], [-3.6, -1.6], [-3.6, 4], [-6, 4]], tee: [-4.8, 3], cup: [4.8, 3], via: [[-4.8, -2.8], [4.8, -2.8]], hills: [[0, -2.8, 1.1, 0.2]], blocks: [rect(5.3, 6, -0.4, 0.5)], tunnels: [[-5.55, 0.6, 5.55, 0.75, 0, Math.PI / 2]], prop: "stela" },
-    { name: "Mouth of the Stone Head", line: [[4.7124, 1], [3.543, 0.675]], par: 2, edge: rect(-7, 7, -2, 2), tee: [-6, 0], cup: [6, 0], blocks: [rect(-1.2, 1.2, -2, -0.42), rect(-1.2, 1.2, 0.42, 2)], prop: "head" },
-    { name: "The Pyramid", line: [[4.6077, 0.775]], par: 3, edge: rect(-6, 6, -3, 3), tee: [-5, 0], cup: [5, 0], blocks: [rect(-1.8, 1.8, -1.8, 1.8)], tunnels: [[-2.15, 0, 2.3, 0, Math.PI / 2, -Math.PI / 2]], hills: [[-3.6, -1.8, 1.0, 0.2], [3.6, 1.8, 1.0, 0.2]], prop: "pyramid" },
-    { name: "Feathered Serpent", line: [[1.4486, 1], [2.8449, 0.875], [5.4105, 1], [3.6826, 0.925]], par: 3, edge: rect(-7, 7, -3.5, 3.5), tee: [-6, -2.3], cup: [-6, 2.3], blocks: [rect(-7, 5.2, -0.5, 0.5)], via: [[6, 0]], hills: [[-1, -2.1, 1.3, 0.24], [0.6, 2.1, 1.3, 0.24]], prop: "serpent" },
-    { name: "The Sun Stone", line: [[1.2741, 0.95], [0.0524, 0.65]], par: 3, edge: rect(-6, 6, -2.5, 2.5), tee: [-5, 0], cup: [5, 0], bar: [0, 0, 3.8, 1.3], hills: [[-3.6, 0, 1.2, 0.24]], prop: "sun" },
-    { name: "Temple of the Block", line: [[1.4312, 1], [2.8274, 0.825]], par: 4, edge: rect(-7, 7, -4.5, 4.5), tee: [-6, 0], cup: [5.2, 0], bumpers: [[-3, -2, 0.5], [-3, 2, 0.5], [-0.5, 0, 0.6], [2, -2.4, 0.4], [2, 2.4, 0.4]], segs: ring(5.2, 0, 1.15, Math.PI), water: [rect(-6.9, -4.6, -4.4, -2.9)], hills: [[-1.8, -3.3, 1.0, 0.2], [-1.8, 3.3, 1.0, 0.2]], prop: "temple" }
+    { name: "The Warm-Up", line: [[0.925, 0.875]], par: 2, edge: rect(-6, 6, -1.6, 1.6), tee: [-5, 0], cup: [5, 0], hills: [[0, 0, 1.5, 0.3]], prop: "torches" },
+    { name: "Jaguar's Turn", line: [[1.7279, 0.95], [0.0175, 0.75]], par: 2, edge: [[-7, -1.2], [3, -1.2], [3, -4.5], [5.4, -4.5], [5.4, 1.2], [-7, 1.2]], tee: [-6, 0], cup: [4.2, -3.6], bridges: [[-3.4, -1.4, 0, 0.5, 0.32]], prop: "jaguar" },
+    { name: "Cocoa Beans", line: [[1.5533, 0.775]], par: 2, edge: rect(-6.5, 6.5, -1.6, 1.6), tee: [-5.5, 0], cup: [5.5, 0], bumpers: [[-2, -0.6, 0.45], [0.3, 0.7, 0.45], [2.6, -0.5, 0.4]], hills: [[-3.6, 0.8, 0.7, 0.16], [1.4, -0.85, 0.7, 0.16]], bridges: [[3.5, 4.9, 0, 0.55, 0.28]], prop: "beans" },
+    { name: "The Long Way Round", line: [[0.5411, 0.85], [4.1888, 0.8], [0, 0.525]], par: 3, edge: [[-6, -4], [6, -4], [6, 4], [3.6, 4], [3.6, -1.6], [-3.6, -1.6], [-3.6, 4], [-6, 4]], tee: [-4.8, 3], cup: [4.8, 3], via: [[-4.8, -2.8], [4.8, -2.8]], hills: [[0, -2.8, 1.1, 0.2]], blocks: [rect(5.3, 6, -0.4, 0.5)], tunnels: [[-5.55, 0.6, 5.55, 0.75, 0, Math.PI / 2]], prop: "stela" },
+    { name: "Mouth of the Stone Head", line: [[4.66, 0.825]], par: 2, edge: rect(-7, 7, -2, 2), tee: [-6, 0], cup: [6, 0], blocks: [rect(-1.2, 1.2, -2, -0.42), rect(-1.2, 1.2, 0.42, 2)], prop: "head" },
+    { name: "The Pyramid", line: [[0.6807, 0.95]], par: 3, edge: rect(-6, 6, -3, 3), tee: [-5, 0], cup: [5, 0], blocks: [rect(-1.8, 1.8, -1.8, 1.8)], tunnels: [[-2.15, 0, 2.3, 0, Math.PI / 2, -Math.PI / 2]], hills: [[-3.6, -1.8, 1.0, 0.2], [3.6, 1.8, 1.0, 0.2]], prop: "pyramid" },
+    { name: "Feathered Serpent", line: [[1.9722, 1], [5.4803, 0.975], [3.2987, 0.675]], par: 3, edge: rect(-7, 7, -3.5, 3.5), tee: [-6, -2.3], cup: [-6, 2.3], blocks: [rect(-7, 5.2, -0.5, 0.5)], via: [[6, 0]], hills: [[-1, -2.1, 1.3, 0.24], [0.6, 2.1, 1.3, 0.24]], prop: "serpent" },
+    { name: "The Sun Stone", line: [[1.0996, 0.925]], par: 3, edge: rect(-6, 6, -2.5, 2.5), tee: [-5, 0], cup: [5, 0], bar: [0, 0, 3.8, 1.3], hills: [[-3.6, 0, 1.2, 0.24]], prop: "sun" },
+    { name: "Temple of the Block", line: [[1.5184, 1]], par: 4, edge: rect(-7, 7, -4.5, 4.5), tee: [-6, 0], cup: [5.2, 0], bumpers: [[-3, -2, 0.5], [-3, 2, 0.5], [-0.5, 0, 0.6], [2, -2.4, 0.4], [2, 2.4, 0.4]], segs: ring(5.2, 0, 1.15, Math.PI), water: [rect(-6.9, -4.6, -4.4, -2.9)], hills: [[-1.8, -3.3, 1.0, 0.2], [-1.8, 3.3, 1.0, 0.2]], prop: "temple" }
   ];
   // Hole i's cell: rows of three played in a snake (left to right, back, then again).
   const cellOf = (i) => { const row = Math.floor(i / 3), k = i % 3, col = row % 2 ? 2 - k : k; return { x: CELL_X[col], z: CELL_Z[row], flip: row % 2 === 1 }; };
