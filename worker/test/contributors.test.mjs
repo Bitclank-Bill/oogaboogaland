@@ -20,7 +20,14 @@ const snapshot = (...rows) => ({ meta: { org: "OogaBoogaX", schema_version: 3, g
 
 const accountRenameFixture = () => {
   const rock = "a".repeat(40), head = "b".repeat(40), path = "src/characters/Bitcoin-Bill.js", repo = "example/land";
-  const base = readFileSync(new URL("../../src/characters/Bitcoin-Bill.js", import.meta.url), "utf8");
+  // Historical fixture: the deployed character can already have its new login.
+  const base = `BL.characters.add({
+    handle: "Bitcoin-Bill",
+    github: "Bitcoin-Bill",
+    display: "Bitclank Bill",
+    joined: 1,
+    lastCommit: 2
+  });\n`;
   const f = { rock, head, path, repo, base, source: base.replace('github: "Bitcoin-Bill"', 'github: "Bitclank-Bill"'),
     permission: "admin", commits: [{ sha: head }], reviews: [], calls: [], signed: true,
     account: { id: 185141343, login: "Bitclank-Bill", type: "User" }, revisionFiles: [{ filename: path, status: "modified" }] };
