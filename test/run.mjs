@@ -25478,6 +25478,12 @@ const genesisAtriumProof = async () => {
   // screen, with room to stand at each; the essay cubes' medallions sit inside the ring path; every essay is there in
   // full and every station's board pages with links that lead out over https.
   const BG = BLc.genesisBitcoinGuide, GD = BLc.bitcoinGuideData, GL = BG.layout();
+  // Every link the hall takes from the site is official and untracked (scripts/bitcoin-guide-clean.mjs): no copy on a
+  // link shortener or Linktree, nothing calling itself unofficial, no referral or tracking codes.
+  { const urls = []; const walk = (o, text) => { if (typeof o === "string") { if (/^https?:/.test(o)) urls.push(o); return; } if (o && typeof o === "object") for (const k in o) walk(o[k]); }; walk(GD);
+    const bad = urls.filter((u) => /(^|\/\/|\.)(tr\.ee|linktr\.ee)\//.test(u) || /[?&](ref|r|s|si|utm_[a-z_]+|aff|affiliate|referral)=/i.test(u));
+    if (bad.length) wb.push(`the guide still links an unofficial copy or a tracking code: ${bad.slice(0, 3).join(" ")}`);
+    if ([...GD.sections.flatMap((x) => x.links), ...GD.further].some((l) => /unofficial/i.test(`${l.title} ${l.description}`))) wb.push("the guide still lists an unofficial copy"); }
   const others = [...blockers, ...NL.boxes];
   for (const st of GL.stations) {
     const b = st.box, hit = (o) => b.x0 < o.x1 && b.x1 > o.x0 && b.z0 < o.z1 && b.z1 > o.z0;

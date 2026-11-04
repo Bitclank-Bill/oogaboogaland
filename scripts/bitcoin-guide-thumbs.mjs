@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { runInNewContext } from "node:vm";
+import { kept } from "./bitcoin-guide-clean.mjs";
 
 const [dir, assets] = process.argv.slice(2);
 if (!dir || !assets) { console.error("usage: node scripts/bitcoin-guide-thumbs.mjs <site dir> <assets dir>"); process.exit(1); }
@@ -37,7 +38,7 @@ const value = (text, name) => runInNewContext(`(${literal(text, name)})`, string
 // What each picture belongs to: key -> its address on the site.
 const want = new Map();
 const res = await read("src/pages/Resources.jsx");
-for (const s of value(res, "sections")) for (const l of s.links) if (l.thumbnail) want.set(`res:${l.title}`, l.thumbnail);
+for (const s of value(res, "sections")) for (const l of s.links) if (l.thumbnail && kept(l)) want.set(`res:${l.title}`, l.thumbnail);
 for (const e of value(await read("src/components/ArchiveSection.jsx"), "essays")) if (e.icon) want.set(`essay:${e.title}`, e.icon);
 const vid = await read("src/pages/VideoEssays.jsx");
 for (const r of value(vid, "REELS")) if (r.image && r.title) want.set(`video:${r.title}`, r.image);

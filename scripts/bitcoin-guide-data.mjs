@@ -5,9 +5,11 @@
 // the site's source: `node scripts/bitcoin-guide-data.mjs <dir>`. It reads the data arrays out of the site's own
 // files and evaluates only those literals (no imports run), and the essays' text from the functions that build their
 // PDFs (heading, para and bullet calls). Pictures stay on the site: only their addresses are kept, never fetched.
+// Links go through scripts/bitcoin-guide-clean.mjs: no unofficial copies, no referral or tracking codes.
 import { readFile, writeFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
+import { clean } from "./bitcoin-guide-clean.mjs";
 
 const dir = process.argv[2];
 if (!dir) { console.error("usage: node scripts/bitcoin-guide-data.mjs <bitcoinguide source dir>"); process.exit(1); }
@@ -89,6 +91,8 @@ const data = {
   dice: { steps: tryValue(diceText, "steps"), notes: tryValue(diceText, "notes") },
   passphrase: { steps: tryValue(passText, "steps"), notes: tryValue(passText, "notes") }
 };
+// No unofficial copies and no tracking codes (scripts/bitcoin-guide-clean.mjs).
+clean(data);
 const body = JSON.stringify(data).split(String.fromCharCode(0x2028)).join(" ").split(String.fromCharCode(0x2029)).join(" ");
 await writeFile(new URL("../src/js/genesis-guide-data.js", import.meta.url), `// Baked by scripts/bitcoin-guide-data.mjs from bitcoinguide.app's source (Bitcoin Bill's site): its essays, resources,
 // reading list, paths, video essays and guides, for the Genesis museum's Bitcoin Guide hall. Data, no code.
