@@ -677,10 +677,10 @@
     for (const n of [visorNode, bagNode]) if (n && n.parent) removeChild(n.parent, n);
     torsoBase = visorNode = bagNode = null;
   };
-  // tsniper.app's window: Bitclank Bill's app for booking tee times at real golf courses, and the link out to it.
-  const tsniperBoard = () => ({ room: "tsniper.app - Glow Golf", sources: [], pages: [{ caption: "Real golf", title: "tsniper.app", accent: "#39ff7a",
-    text: ["Done putting in the cave? Play a real round.", "tsniper.app is the app Bitclank Bill built for booking tee times at real golf courses.", "The link opens it in a new tab."],
-    links: [{ href: "https://tsniper.app", label: "Open tsniper.app ↗" }],
+  // teesniper.app's window: Bitclank Bill's app for booking tee times at real golf courses, and the link out to it.
+  const teesniperBoard = () => ({ room: "teesniper.app - Glow Golf", sources: [], pages: [{ caption: "Real golf", title: "teesniper.app", accent: "#39ff7a",
+    text: ["Done putting in the cave? Play a real round.", "teesniper.app is the app Bitclank Bill built for booking tee times at real golf courses.", "The link opens it in a new tab."],
+    links: [{ href: "https://teesniper.app", label: "Open teesniper.app ↗" }],
     paint: (g, x0, y0, w, h) => {
       const cx = x0 + w / 2, cy = y0 + h * 0.42, r = Math.min(w, h) * 0.3;
       g.fillStyle = "#10261a"; g.fillRect(x0 + 24, y0 + 40, w - 48, h * 0.75);
@@ -688,7 +688,7 @@
       g.beginPath(); g.moveTo(cx - r * 1.2, cy); g.lineTo(cx + r * 1.2, cy); g.moveTo(cx, cy - r * 1.2); g.lineTo(cx, cy + r * 1.2); g.stroke();
       g.fillStyle = "#e8e0d0"; g.fillRect(cx + r * 0.15, cy - r * 0.9, 5, r * 0.9); g.fillStyle = "#ff4fd8"; g.beginPath(); g.moveTo(cx + r * 0.15 + 5, cy - r * 0.9); g.lineTo(cx + r * 0.65, cy - r * 0.72); g.lineTo(cx + r * 0.15 + 5, cy - r * 0.54); g.fill();
       g.fillStyle = "#f4fff8"; g.beginPath(); g.arc(cx, cy, 10, 0, 7); g.fill();
-      g.fillStyle = "#39ff7a"; g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.textBaseline = "top"; g.fillText("tsniper.app", cx, y0 + h * 0.8); g.textAlign = "left";
+      g.fillStyle = "#39ff7a"; g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.textBaseline = "top"; g.fillText("teesniper.app", cx, y0 + h * 0.8); g.textAlign = "left";
     } }] });
   const eatMarquesita = () => {
     const S = shopState(), n = S.belly[playerName] || 0;
@@ -1257,8 +1257,8 @@
       for (const b of SH.boxes) built.obstacles.push(b);
       props.register({ id: "marquesitas", era: 7, year: 2026, title: "The marquesita stand", label: "MARQUESITAS · GLOW GOLF, 2026", sourceKeys: [], hint: "eat a marquesita (crispy rolled crepe)", at: { x: SH.stand.at.x, y: ISLAND_TOP, z: SH.stand.at.z }, reach: 2, onUse: () => ({}) });
       props.register({ id: "golf-gear", era: 7, year: 2026, title: "The golf gear rack", label: "GOLF GEAR · GLOW GOLF, 2026", sourceKeys: [], hint: "try on a golf visor and bag", at: { x: SH.rack.at.x, y: ISLAND_TOP, z: SH.rack.at.z }, reach: 1.8, onUse: () => ({}) });
-      props.register({ id: "tsniper", era: 7, year: 2026, title: "tsniper.app", label: "TSNIPER.APP · GLOW GOLF, 2026", sourceKeys: [], hint: "tsniper.app: book a tee time at a real golf course", at: { x: SH.kiosk.at.x, y: ISLAND_TOP, z: SH.kiosk.at.z }, reach: 1.8, onUse: () => ({}) });
-      built.propNodes.marquesitas = SH.stand.node; built.propNodes["golf-gear"] = SH.rack.node; built.propNodes.tsniper = SH.kiosk.node; }
+      props.register({ id: "teesniper", era: 7, year: 2026, title: "teesniper.app", label: "TEESNIPER.APP · GLOW GOLF, 2026", sourceKeys: [], hint: "teesniper.app: book a tee time at a real golf course", at: { x: SH.kiosk.at.x, y: ISLAND_TOP, z: SH.kiosk.at.z }, reach: 1.8, onUse: () => ({}) });
+      built.propNodes.marquesitas = SH.stand.node; built.propNodes["golf-gear"] = SH.rack.node; built.propNodes.teesniper = SH.kiosk.node; }
     for (const h of built.golf.holes) {
       const c = h.c, i = c.i;
       props.register({ id: `golf-tee-${i}`, era: 7, year: 2026, title: `Glow Golf, hole ${i + 1}: ${c.hole.name}`, label: `GLOW GOLF HOLE ${i + 1} · PAR ${c.hole.par} · 2026`, sourceKeys: [], hint: `play hole ${i + 1}, ${c.hole.name} (par ${c.hole.par})`,
@@ -1570,7 +1570,7 @@
     if (prop.id.startsWith("golf-tee-") && golf) { golf.start(+prop.id.slice(9)); return; }
     if (prop.id === "marquesitas") { eatMarquesita(); return; }
     if (prop.id === "golf-gear") { tryGear(); return; }
-    if (prop.id === "tsniper") { openGuideItem({ board: tsniperBoard }); return; }
+    if (prop.id === "teesniper") { openGuideItem({ board: teesniperBoard }); return; }
     const st = built.guideStations && built.guideStations[prop.id];
     if (st) { if (st.act) st.act(); else openGuideItem(st); return; }
     if (prop.opens) { host.open(prop.opens, "walk"); return; }

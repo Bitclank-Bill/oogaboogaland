@@ -328,7 +328,7 @@
     const rackNode = createNode({ geometry: M.merge(...rack), position: { x: SHOP.rack.x, y: 0, z: SHOP.rack.z }, sightHidden: true });
     addChild(root, rackNode);
     { const w = label("GOLF GEAR", "click to try on a visor and bag", { height: 0.36, style: "gold" }), sn = createNode({ position: { x: SHOP.rack.x, y: 2.3, z: SHOP.rack.z + 0.06 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
-    // The tsniper.app kiosk in the corner: a stone post with a screen in a green neon frame, a little flag on top, and
+    // The teesniper.app kiosk in the corner: a stone post with a screen in a green neon frame, a little flag on top, and
     // its sign; a click opens its window with the link out to the app (Bitclank Bill's, for booking real tee times).
     const kiosk = [
       M.bevelBox({ w: 0.7, h: 1.1, d: 0.5, color: STONE[1], emissive: 0.04, bevel: 0.12, offset: { x: 0, y: 0.55, z: 0 } }),
@@ -340,7 +340,7 @@
     ];
     const kioskNode = createNode({ geometry: M.merge(...kiosk), position: { x: SHOP.kiosk.x, y: 0, z: SHOP.kiosk.z }, sightHidden: true });
     addChild(root, kioskNode);
-    { const w = label("TSNIPER.APP", "book a real tee time · click", { height: 0.3, style: "gold" }), sn = createNode({ position: { x: SHOP.kiosk.x - 0.1, y: 2.75, z: SHOP.kiosk.z - 0.05 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
+    { const w = label("TEESNIPER.APP", "book a real tee time · click", { height: 0.3, style: "gold" }), sn = createNode({ position: { x: SHOP.kiosk.x - 0.1, y: 2.75, z: SHOP.kiosk.z - 0.05 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
     const shop = {
       kiosk: { node: kioskNode, x: C.x + SHOP.kiosk.x, z: C.z + SHOP.kiosk.z, at: { x: C.x + SHOP.kiosk.x + 0.3, z: C.z + SHOP.kiosk.z + 1.2 } },
       stand: { node: standNode, x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z, at: { x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z + 1.5 } },
