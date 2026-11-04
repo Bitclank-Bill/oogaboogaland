@@ -6108,7 +6108,7 @@
       animation.settle = changed ? 1.2 : Math.max(0, animation.settle - dt);
       const stationary = p.x === beforeX && p.y === beforeY && p.z === beforeZ
         && Math.abs(e.speed) < 0.01 && Math.abs(e.heading - e.root.rotation.y) < 1e-6;
-      const resting = e.sleep.stage === "asleep" || e.phase === "chill" && e.lounge && !e.roam.transition
+      const resting = e.sleep.stage === "asleep" || e.sleep.stage === "rough" || e.phase === "chill" && e.lounge && !e.roam.transition
         || e.office.stage === "work" || e.lab.arrived && (work === "type" || work === "touch");
       const quiet = stationary && resting && !animation.settle && !e.controlled && !e.remoteControlled
         && !e.rage.active && !e.fire.burning && !e.fire.rolling && !e.fire.rollRecover
@@ -6121,7 +6121,7 @@
       if (animation.due) {
         e.gorilla.poseManaged(animation.dt, p.x, p.y, p.z, e.heading, e.speed,
           e.jump.active || e.drive.airborne && !e.drive.passiveFall, e.biped, e.lounge, e.motion);
-        if (e.sleep.stage === "asleep") e.gorilla.chest.scale.y = 1 + Math.sin(elapsed * 1.4 + e.index) * 0.018;
+        if (e.sleep.stage === "asleep" || e.sleep.stage === "rough") e.gorilla.chest.scale.y = 1 + Math.sin(elapsed * 1.4 + e.index) * 0.018;
         animation.pending = 0;
         animation.at = elapsed + interval * (animation.interval ? 1 : 0.5 + e.index * 0.61803398875 % 0.5);
         animation.updates++;
