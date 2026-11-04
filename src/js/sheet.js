@@ -42,7 +42,7 @@
   let shared = null;
   const create = ({ lootEnabled, signal }) => {
     const root = document.getElementById("sheet"), parent = root.parentElement;
-    const content = root.querySelector(".sheet-content"), nav = root.querySelector(".sheet-panels"), footer = root.querySelector(".sheet-foot");
+    const content = root.querySelector(".sheet-content"), nav = root.querySelector(".sheet-panels");
     const panels = [...content.children], templates = [...nav.children].map((tab) => tab.cloneNode(true));
     const windows = [], listeners = [], bottom = window.matchMedia("(width < 1140px)"), coarse = window.matchMedia("(pointer: coarse)");
     const phone = window.matchMedia("(pointer: coarse) and (max-width: 720px), (pointer: coarse) and (max-height: 500px)");
@@ -57,9 +57,9 @@
     }
     const saved = shared;
     folded = saved?.folded === true;
-    // The live players tab is for signed-in visitors only (players.js).
-    const available = (name) => NAMES.includes(name) && (name !== "loot" || lootEnabled) && (name !== "chat" || BL.net.state.backend)
-      && (name !== "players" || !!BL.net.state.me);
+    // Online Oogas and Ooga Chat are for signed-in visitors only.
+    const available = (name) => NAMES.includes(name) && (name !== "loot" || lootEnabled)
+      && (name !== "players" && name !== "chat" || !!BL.net.state.me);
     const isOpen = (w) => !folded && w.open && available(w.tab);
     // On a phone every tab folds into the main drawer; separate panels stay saved, hidden, for a larger screen.
     const ownerOf = (name) => windows.find((w) => (w.node === root || !phone.matches) && w.tab === name && (w.open || w.rect || w.kept));
@@ -68,9 +68,10 @@
       target.addEventListener(type, fn, { ...options, signal });
       listeners.push(() => target.removeEventListener(type, fn, options));
     };
+    let playing = null;
     const save = () => {
       window.clearTimeout(saveTimer); saveTimer = 0;
-      if (disposed) return;
+      if (disposed || playing) return;
       shared = { open: main.open, tab: main.tab, folded, drawer: 2,
         height: savedHeight, rect: main.rect, dock: main.dock, windows: windows.filter((w) => w !== main).map((w) => ({ open: w.open, tab: w.tab, rect: w.rect, dock: w.dock })) };
       try { localStorage.setItem(KEY, JSON.stringify(shared)); } catch { /* Storage may be unavailable. */ }
@@ -121,15 +122,10 @@
         else parent.style.removeProperty("--drawer-height");
       }
     };
-    const placeFooter = () => {
-      const owner = isOpen(main) ? main : [...windows].reverse().find(isOpen) || main;
-      if (footer.parentElement !== owner.body) owner.body.append(footer);
-    };
     const front = (w) => {
       const i = windows.indexOf(w);
       windows.splice(i, 1); windows.push(w);
-      for (let j = 0; j < windows.length; j++) windows[j].node.style.zIndex = String(13 + j);
-      placeFooter();
+      for (let j = 0; j < windows.length; j++) windows[j].node.style.zIndex = String((playing ? 90 : 13) + j);
     };
     const observe = new MutationObserver(notify);
     const makeWindow = (node, tab, rect, dock) => {
@@ -221,7 +217,7 @@
         w.body.inert = !open || w.node.hidden;
         w.body.setAttribute("aria-hidden", String(w.body.inert));
       }
-      placeFooter(); showCounts(); showExpand();
+      showCounts(); showExpand();
       notify();
     };
     const close = (w) => {
@@ -415,17 +411,38 @@
     on(window, "resize", layout); on(bottom, "change", layout); on(phone, "change", layout);
     if (window.visualViewport) { on(window.visualViewport, "resize", layout); on(window.visualViewport, "scroll", layout); }
     on(window, "pagehide", () => { finish(); save(); });
-    let backend = BL.net.state.backend, signedIn = !!BL.net.state.me;
+    let signedIn = !!BL.net.state.me;
     const unsubscribe = BL.net.subscribe(() => {
-      if (backend === BL.net.state.backend && signedIn === !!BL.net.state.me) return;
-      backend = BL.net.state.backend;
+      if (signedIn === !!BL.net.state.me) return;
       signedIn = !!BL.net.state.me;
       finish();
       refresh(); save();
     });
     refresh();
     for (let i = 0; i < windows.length; i++) windows[i].node.style.zIndex = String(13 + i);
+    // Games start folded without overwriting the visitor's ordinary panel choices.
+    const setPlaying = (on) => {
+      if (!!playing === !!on) return;
+      finish();
+      if (on) {
+        playing = { folded, windows: windows.map(w => ({ node: w.node, open: w.open, tab: w.tab })) };
+        for (const w of windows) w.open = false;
+        folded = true;
+        if (document.activeElement?.closest(".sheet")) document.activeElement.blur();
+      } else {
+        folded = playing.folded;
+        for (const w of windows) {
+          const saved = playing.windows.find(p => p.node === w.node);
+          w.open = saved?.open || false;
+          if (saved) w.tab = saved.tab;
+        }
+        playing = null;
+      }
+      for (let i = 0; i < windows.length; i++) windows[i].node.style.zIndex = String((playing ? 90 : 13) + i);
+      refresh();
+    };
     return {
+      setPlaying,
       setLootCount(count) { lootCount = count; showCounts(); },
       selectTab(name) { select(ownerOf(name) || main, name); },
       fold() { finish(); folded = true; if (document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); save(); },
@@ -434,14 +451,13 @@
         if (!w) return false;
         finish(); close(w); return true;
       },
-      setHidden(on) { finish(); hidden = !!on; if (hidden && document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); },
+      setHidden(on) { if (hidden === !!on) return; finish(); hidden = !!on; if (hidden && document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); },
       dispose() {
-        finish(); save(); disposed = true; observe.disconnect(); unsubscribe();
+        setPlaying(false); finish(); save(); disposed = true; observe.disconnect(); unsubscribe();
         if (paintBadges === showCounts) paintBadges = null;
         for (const off of listeners) off();
         listeners.length = 0;
-        for (const panel of panels) { content.append(panel); panel.hidden = panel.dataset.panel !== main.tab; }
-        main.body.append(footer);
+        for (const panel of panels) { content.append(panel); panel.hidden = !available(panel.dataset.panel) || panel.dataset.panel !== main.tab; }
         main.body.inert = false; main.body.removeAttribute("aria-hidden");
         for (const w of windows) if (w !== main) w.node.remove();
         root.querySelector(".sheet-drag").remove();

@@ -428,11 +428,11 @@
       if (ctx.arcade) { Object.assign(platform.position, home); moveRider(); }
       overlay.setRunner(cave);
       const login = BL.net.state.me?.login || "";
-      runnerName = login || cave.traits.name; player = login.toLowerCase();
-      session = sessions.get(login);
+      runnerName = login || cave.traits.name; player = game.cloudHopperPlayer(BL.net.state.me);
+      session = sessions.get(player);
       if (!session) {
         session = { levels: LEVELS.map(() => ({ runs: 0, scores: [], lastSeed: null })), lastLevel: 0 };
-        sessions.set(login, session);
+        sessions.set(player, session);
         if (sessions.size > SESSION_PLAYERS) sessions.delete(sessions.keys().next().value);
       }
       level = LEVELS[pickLevel() - 1]; showLevels(); audio.song(level.id - 1);
@@ -442,7 +442,7 @@
       return true;
     };
     const beginRun = (ride = false) => {
-      const replay = phase === "won" || phase === "dq", climb = !replay || ride;
+      const replay = phase === "won" || phase === "dq", climb = (!replay || ride) && !ctx.cabinet?.();
       if (phase !== "intro" && !replay || level.id > opened()) return false;
       const cave = actor;
       if (!cave || pilot.player !== cave || crew.player !== cave) { cancel(); return false; }
@@ -508,18 +508,18 @@
       if (!climb) Object.assign(platform.position, start);
       // A replay starts at the top at once, after a card for any power-up of the level not met yet; a ride shows
       // those cards at the top.
-      const items = climb ? null : newItems();
-      if (items?.length) overlay.setGuide(false, items);
-      setPhase(climb ? "lifting" : items.length ? "briefing" : "ready");
+      const items = climb ? null : newItems(), guide = !climb && !hasSeenGuide(), briefing = guide || !!items?.length;
+      if (briefing) overlay.setGuide(guide, items);
+      setPhase(climb ? "lifting" : briefing ? "briefing" : "ready");
       // No carry here: the run is played in combat, at the shoulder or in first person. The hub's `combatOnly` holds
       // it there from now on, and lets the pilot enter it while the ride holds the controls.
       if (!cave.weapon.aiming) pilot.modeAction("mode-toggle");
       if (!replay) ctx.mode(true);
       moveRider();
       if (!climb) {
-        if (!items.length) stageGhost();
+        if (!briefing) stageGhost();
         pilot.controls.reset(); turnLiftView(1);
-        if (items.length) pilot.freeCursor();
+        if (briefing) pilot.freeCursor();
       }
       return true;
     };
@@ -611,6 +611,7 @@
     };
     const exit = () => {
       if (!active()) return false;
+      if (ctx.arcade && ctx.cabinet?.()) { ctx.onExit(); return true; }
       cancel(!ctx.arcade);
       if (ctx.arcade) ctx.onExit();
       else { audio.stage("dock"); audio.level(dockMusicLevel(), 0.8); dockMusicOn = true; }

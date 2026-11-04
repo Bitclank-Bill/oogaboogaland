@@ -25,7 +25,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import {
-  hockey, CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, CLEANUP_MS, TICK_HZ,
+  CABINETS, hockey, CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, CLEANUP_MS, TICK_HZ,
   NPC_FRAME_MAX, NPC_HZ, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
   DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST, THUMP_HZ, THUMP_BURST,
   GHOST_MAGIC, GHOST_FRAME_MAX, GHOST_FRAME_HZ, GHOST_FRAME_BURST, inGhostArena, ghostCandidate, watchesGhost,
@@ -121,7 +121,7 @@ export class Room extends DurableObject {
     }
     // Old guest sockets can survive a deployment in hibernated attachments.
     // Use the ordinary departure path so peers drop their presence and voice.
-    for (const p of this.players.values()) if (!ownedBody(CAST, p.login, p.contributor)) this.evict(p, "revoked");
+    for (const p of this.players.values()) if (!ownedBody(CAST, p.login, p.contributor, p.id)) this.evict(p, "revoked");
     this.restoreDoor();
     this.hostId = electHost(this.players.values());
     this.followers = npcFollowers(this.players.values(), this.hostId);
@@ -148,7 +148,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, voice: p.voice, muted: p.muted, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, blendTo: p.blendTo, blendK: p.blendK };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, voice: p.voice, muted: p.muted, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, blendTo: p.blendTo, blendK: p.blendK };
   }
 
   view(p) {
@@ -323,7 +323,7 @@ export class Room extends DurableObject {
     if (path.startsWith("/voice/")) return this.voiceRequest(path.slice("/voice/".length), request);
     if (request.headers.get("upgrade") !== "websocket") return new Response("Expected WebSocket", { status: 426 });
     const who = playerFromHeaders(request.headers);
-    if (!who || !ownedBody(CAST, who.login, who.contributor)) return new Response("Contributors with an Ooga only", { status: 403 });
+    if (!who || !ownedBody(CAST, who.login, who.contributor, who.id)) return new Response("Contributors with an Ooga only", { status: 403 });
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -341,15 +341,16 @@ export class Room extends DurableObject {
     const p = this.record(server, { ...who, connectionToken: crypto.randomUUID(), body: null, x: spawn.x, y: 0, z: spawn.z, yaw: spawn.yaw });
     server.serializeAttachment(this.attachment(p));
     // An owner arriving takes either body back from whoever holds it.
-    const own = ownedBody(CAST, p.login, p.contributor);
+    const own = ownedBody(CAST, p.login, p.contributor, p.id);
     if (own) for (const o of this.players.values()) if (o.body && bodyName(o.body).toLowerCase() === own) this.release(o, "owner-here");
     this.players.set(p.id, p);
 
     const others = [];
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, features: ["door", CHAT_FEATURE, CHALK_FEATURE, "hockey-v2"] });
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, features: [CABINETS.FEATURE, "door", CHAT_FEATURE, CHALK_FEATURE, "hockey-v2"] });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
     this.send(server, { t: "chat-history", messages: this.chat.list() });
+    this.sendCabinets(server);
     this.send(server, { t: "chalk-board", marks: this.chalk.marks, editor: this.chalkEditor ? this.chalkEditor.id : 0 });
     this.broadcast({ t: "join", p: this.view(p) }, server);
     this.sendStudio(p);
@@ -367,7 +368,7 @@ export class Room extends DurableObject {
   webSocketMessage(ws, message) {
     const p = this.byWs(ws);
     if (!p) return;
-    if (!ownedBody(CAST, p.login, p.contributor)) { this.evict(p, "revoked"); return; }
+    if (!ownedBody(CAST, p.login, p.contributor, p.id)) { this.evict(p, "revoked"); return; }
     if (typeof message !== "string") {
       if (message instanceof ArrayBuffer && message.byteLength >= 4 && new DataView(message).getUint32(0, true) === GHOST_MAGIC) this.ghostFrame(p, message);
       else this.npcFrame(p, message);
@@ -381,6 +382,9 @@ export class Room extends DurableObject {
     }
     p.seenAt = Date.now();
     if (!msg) return;
+    if (msg.t === "cabinet") { this.cabinetMessage(p, msg); return; }
+    // While playing, the room owns the floor pose and body, regardless of game-scene reports.
+    if (p.cabinet && ["pose", "zone", "body", "blend", "hp", "shot", "swing", "hockey"].includes(msg.t)) return;
     if (msg.t === "hockey") { hockey.message(this, p, msg); ws.serializeAttachment(this.attachment(p)); return; }
     if (msg.t === "studio") {
       this.studioMessage(p, msg);
@@ -491,7 +495,7 @@ export class Room extends DurableObject {
     } else if (msg.t === "body") {
       if (msg.name === p.body) return;
       hockey.leave(this, p.id);
-      const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values(), p.contributor);
+      const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values(), p.contributor, p.id);
       if (refusal) {
         this.send(ws, { t: "release", name: msg.name, reason: refusal });
         if (p.body === null) return;
@@ -524,8 +528,46 @@ export class Room extends DurableObject {
     if (p) this.drop(p, "error");
   }
 
+  sendCabinets(ws = null) {
+    const seats = [];
+    for (const p of this.players.values()) if (p.cabinet) seats.push({ id: p.cabinet.id, player: p.id, name: p.display || p.login });
+    const message = { t: "cabinets", seats };
+    if (ws) this.send(ws, message); else this.broadcast(message);
+  }
+
+  releaseCabinet(p) {
+    if (!p.cabinet) return;
+    p.cabinet = null;
+    p.ws.serializeAttachment(this.attachment(p));
+    this.sendCabinets();
+  }
+
+  cabinetMessage(p, msg) {
+    if (msg.op === "leave") {
+      if (p.cabinet?.id === msg.id && p.cabinet.q === msg.q) this.releaseCabinet(p);
+      return;
+    }
+    const reply = reason => this.send(p.ws, { t: "cabinet", id: msg.id, q: msg.q, ok: !reason, reason });
+    p.cabinetBucket ||= { tokens: 3, at: Date.now() };
+    if (!takeToken(p.cabinetBucket, 2, Date.now(), 3)) { reply("Please wait before trying again"); return; }
+    if (!p.body || p.zone !== "arcade.hall" || p.ko) { reply("Stand in the arcade with your Ooga first"); return; }
+    if (p.cabinet) { reply(p.cabinet.id === msg.id && p.cabinet.q === msg.q ? null : "You already have a cabinet open"); return; }
+    for (const other of this.players.values()) if (other.cabinet?.id === msg.id) { reply("This cabinet is occupied"); return; }
+    // No await between checking and assigning: concurrent requests have exactly one winner.
+    const at = CABINETS.get(msg.id);
+    p.cabinet = { id: msg.id, q: msg.q };
+    p.x = at.x; p.y = at.y; p.z = at.z; p.yaw = at.yaw; p.g = null; p.j = p.w = 0;
+    p.blendTo = null; p.blendK = 0;
+    p.ws.serializeAttachment(this.attachment(p));
+    this.dirty = true;
+    this.scheduleFlush();
+    this.sendCabinets();
+    reply(null);
+  }
+
   drop(p, reason) {
     if (this.players.get(p.id) !== p) return;
+    this.releaseCabinet(p);
     hockey.leave(this, p.id);
     this.cancelDoor(p);
     this.clearPasses(p);
@@ -544,6 +586,7 @@ export class Room extends DurableObject {
   }
 
   release(p, reason) {
+    this.releaseCabinet(p);
     hockey.leave(this, p.id);
     this.cancelDoor(p);
     this.clearPasses(p);
@@ -737,7 +780,7 @@ export class Room extends DurableObject {
     if (!this.sfu) return json({ error: "voice is not configured" }, 503);
     const p = this.players.get(Number(request.headers.get("x-player-id")));
     if (!p || p !== expected) return json({ error: "connection replaced" }, 409);
-    if (!ownedBody(CAST, p.login, p.contributor)) {
+    if (!ownedBody(CAST, p.login, p.contributor, p.id)) {
       this.evict(p, "revoked");
       return json({ error: "contributors with an Ooga only" }, 403);
     }
@@ -1307,7 +1350,7 @@ export class Room extends DurableObject {
     if (sweepDue) {
       try { await this.refreshHighscores(); } catch { /* Pending D1 revisions survive until the next sweep. */ }
       for (const p of [...this.players.values()]) {
-        if (!ownedBody(CAST, p.login, p.contributor)) { this.evict(p, "revoked"); continue; }
+        if (!ownedBody(CAST, p.login, p.contributor, p.id)) { this.evict(p, "revoked"); continue; }
         // The existing operator D1 ban also ends active presence at the next successful sweep.
         // Retry on a later alarm if D1 is unavailable; never infer a ban from a failed read.
         if (this.env.DB) {
