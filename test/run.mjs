@@ -20842,11 +20842,18 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
   record("join alerts: looking at a tab clears its count alone, and a line heard while typing in the chat needs no count",
     viewed.chatViewed.chat === "" && viewed.chatViewed.players === "2" && viewed.typing.inPanel === "" && viewed.typing.away === "1" && viewed.playersViewed.players === "" && viewed.playersViewed.chat === "1",
     JSON.stringify(viewed));
+  const settings = await b.evaluate(`(() => {
+    const details = document.getElementById("players-settings"), summary = details.querySelector("summary"), r = summary.getBoundingClientRect(), range = document.getElementById("players-hearing-range");
+    return { closed: !details.open, x: r.x + r.width / 2, y: r.y + r.height / 2, grouped: details.contains(range) && details.contains(document.getElementById("players-speak-input")), step: range.step, min: range.min, max: range.max };
+  })()`);
+  await b.click(settings.x, settings.y);
   // Another message on screen ends the shared one, so Dee starts a new one.
   const box = await b.evaluate(`(() => { const r = document.getElementById("players-speak-input").getBoundingClientRect(); BL.hud.toast("Something else"); __joins.join(5, "Dee");
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2, shown: !document.getElementById("players-speak").hidden, said: __joins.said.length }; })()`);
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2, shown: document.getElementById("players-settings").open && !document.getElementById("players-speak").hidden, said: __joins.said.length }; })()`);
   await b.click(box.x, box.y);
   await b.sleep(50);
+  await b.click(settings.x, settings.y);
+  const collapsed = await b.evaluate(`!document.getElementById("players-settings").open && document.getElementById("players-speak-input").checked`);
   const spoken = await b.evaluate(`new Promise((resolve) => { const W = __joins; W.join(6, "Eve"); setTimeout(() => { W.join(7, "Fay"); W.join(8, "Gus"); W.join(9, "Hal");
     setTimeout(() => { BL.sound.setMuted(true); W.join(20, "Ivy"); const muted = W.read(); BL.sound.setMuted(false);
       resolve({ said: W.said.slice(), muted, saved: localStorage.getItem("oogaboogaland.players.speak") }); }, 30); }, 30); })`);
@@ -20854,8 +20861,8 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     delete speechSynthesis.speak; delete speechSynthesis.cancel; window.fetch = W.fetch; window.WebSocket = W.WebSocket;
     Object.assign(BL.net.state, { backend: false, started: false, resolved: true }); BL.hud.showAccount(BL.net.state); delete window.__joins; return r; })()`);
   record("join alerts: joins are read aloud only once the box is ticked, one at a time with waiting names said together, never while muted, which keeps the message; signing out clears both counts",
-    box.shown && box.said === 0 && spoken.saved === "on" && spoken.said.join("|") === "Joins will be read aloud|Eve is online|Fay is online|Gus and Hal are online"
-      && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "", JSON.stringify({ box, spoken, out }));
+    collapsed && settings.closed && settings.grouped && settings.step === "1" && settings.min === "1" && settings.max === "61" && box.shown && box.said === 0 && spoken.saved === "on" && spoken.said.join("|") === "Joins will be read aloud|Eve is online|Fay is online|Gus and Hal are online"
+      && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "", JSON.stringify({ settings, collapsed, box, spoken, out }));
 } };
 const controlsHelpCheck = { name: "controls reference", why: "regression: help must isolate practice input, release held keys and return movement after closing, including on hybrid devices", run: async b => {
   const initial = await b.evaluate(`(() => {
@@ -22613,7 +22620,7 @@ const voiceHearingChecks = async () => {
       resume(){this.set("running");return Promise.resolve();}close(){this.set("closed");return Promise.resolve();}
       createMediaStreamSource(st){return new Node("source",st.getTracks()[0].id);}
       createAnalyser(){const n=new Node("analyser");n.getFloatTimeDomainData=a=>a.fill(0.1);return n;}
-      createGain(){const n=new Node("gain");n.gain={value:1,setTargetAtTime(v){this.value=v;}};gains.push(n);return n;}}
+      createGain(){const n=new Node("gain");n.gain={value:1,instant:false,cancelled:false,setTargetAtTime(v){this.value=v;this.instant=false;},cancelScheduledValues(){this.cancelled=true;},setValueAtTime(v){this.value=v;this.instant=this.cancelled;this.cancelled=false;}};gains.push(n);return n;}}
     const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op);if(op==="pull")pulled.push(...body.ids);return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map(id=>({id,mid:String(id)}))}:{sessionDescription:{}}};};
     const probe={level:1};volume(probe);
     const win={BL:{net:{state,setMuted:on=>netMuted.push(on),remotes}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),addEventListener:(k,fn)=>handlers.set(k,fn)};
@@ -22627,6 +22634,7 @@ const voiceHearingChecks = async () => {
     return {V,ops,netMuted,timers,els,gains,ctxs,handlers,store,remotes,state,track,
       land:ids=>{for(const id of ids)onTrack({transceiver:{mid:String(id)},track:{id,stop(){}}});},
       tick:(n=1)=>{for(let i=0;i<n;i++)for(const fn of timers.values())fn();},
+      instant:id=>!ios||gainOf(id)?.gain.instant===true,
       levels:ids=>ids.map(id=>+audible(id).toFixed(3)).join(",")};
   };
   const play=async r=>{
@@ -22634,30 +22642,35 @@ const voiceHearingChecks = async () => {
     await V.enable();await settle();V.setPeers(ids,[1,1,1,1]);await settle();r.land(ids);
     r.tick(3);rows.noLimit=r.levels(ids);rows.radius0=V.stats.radius;rows.speaking=V.speaking(2);
     const sent=r.ops.length,muteCalls=r.netMuted.length;
-    V.setRadius(20);r.tick();rows.firstRead=r.levels(ids);r.tick(10);rows.settled=r.levels(ids);await settle();
+    V.setRadius(20);rows.immediate=r.levels(ids);rows.instant=r.instant(4);r.tick();rows.firstRead=r.levels(ids);r.tick(10);rows.settled=r.levels(ids);await settle();
     rows.stored=r.store.get("oogaboogaland.voice-radius");rows.mic=r.track.enabled;rows.quiet=r.ops.length===sent&&r.netMuted.length===muteCalls;
     // A voice pulled once the range is set starts at its own level, never at full first.
     r.remotes.set(6,remote("far","factory",0,40));V.setPeers(all,[1,1,1,1,1]);await settle();r.land([6]);rows.joinedFar=r.levels([6]);
     V.setReceiveLevel(0.5);rows.level=r.levels(all);V.setReceiveLevel(1);
     V.muteLocal("mid",true);r.tick();rows.localMute=r.levels(all);V.muteLocal("mid",false);rows.unmuted=r.levels(all);
+    const mid=r.remotes.get(3);
+    mid.z=19.999;r.tick();rows.inside=r.levels([3]);
+    mid.z=20;r.tick();rows.edge=r.levels([3]);rows.instant&&=r.instant(3);
+    mid.z=19.999;r.tick();rows.returned=r.levels([3]);rows.instant&&=r.instant(3);
+    mid.z=15;V.setRadius(15);rows.preciseEdge=r.levels([3]);V.setRadius(16);rows.preciseInside=r.levels([3]);rows.precision=V.stats.radius;V.setRadius(20);
     r.remotes.get(5).poseZone="factory";r.tick(10);rows.placed=r.levels([5]);
     r.state.self.zone="factory.hall";r.tick(10);rows.unplacedSelf=r.levels(all);r.state.self.zone="factory";
     V.setRadius(65);r.tick(10);rows.back=r.levels(all);rows.radius65=V.stats.radius;
     rows.fades=V.fades;rows.playback=V.inspect().playback;
     return rows;
   };
-  const shared=rows=>rows.noLimit==="1,1,1,1"&&rows.radius0===0&&rows.speaking&&rows.firstRead==="1,0.85,0.85,0.85"&&rows.settled==="1,0.5,0,0"&&rows.stored==="20"&&rows.mic&&rows.quiet&&
-    rows.joinedFar==="0"&&rows.level==="0.5,0.25,0,0,0"&&rows.localMute==="1,0,0,0,0"&&rows.unmuted==="1,0.5,0,0,0"&&rows.placed==="1"&&rows.unplacedSelf==="1,1,1,1,1"&&rows.back==="1,1,1,1,1"&&rows.radius65===0&&rows.fades;
+  const shared=rows=>rows.noLimit==="1,1,1,1"&&rows.radius0===0&&rows.speaking&&rows.immediate==="1,1,0,0"&&rows.instant&&rows.firstRead==="1,1,0,0"&&rows.settled==="1,1,0,0"&&rows.stored==="20"&&rows.mic&&rows.quiet&&
+    rows.joinedFar==="0"&&rows.level==="0.5,0.5,0,0,0"&&rows.localMute==="1,0,0,0,0"&&rows.unmuted==="1,1,0,0,0"&&rows.inside==="1"&&rows.edge==="0"&&rows.returned==="1"&&rows.preciseEdge==="0"&&rows.preciseInside==="1"&&rows.precision===16&&rows.placed==="1"&&rows.unplacedSelf==="1,1,1,1,1"&&rows.back==="1,1,1,1,1"&&rows.radius65===0&&rows.fades;
   const desk=rig(false),rows=await play(desk);
   rows.noGains=desk.gains.length===0&&desk.handlers.size===0;
-  const F=desk.V.falloff;let step=0,rising=false;for(let d=0;d<=25;d+=0.01){const a=F(d,20),b=F(d+0.01,20);step=Math.max(step,Math.abs(b-a));if(b>a+1e-12)rising=true;}
-  rows.curve={full:F(10,20),half:F(15,20),edge:F(20,20),past:F(30,20),step:+step.toFixed(4),rising,noLimit:F(1e6,0),unknown:F(NaN,20)};
+  const F=desk.V.falloff;
+  rows.cutoff={inside:F(19.999,20),edge:F(20,20),past:F(20.001,20),noLimit:F(1e6,0),unknown:F(NaN,20)};
   rows.checked=["abc","-3","999","2","20"].map(v=>rig(false,true,v).V.stats.radius).join(",");
   desk.V.stop();rows.timersAfterStop=desk.timers.size;
-  record("voice hearing range: voices fade smoothly with distance in the visitor's own place, others past it go quiet, a voice joining starts at its own level, no limit is the old full volume, a local mute and the receive level still hold, and neither the microphone nor the room hears of it",
+  record("voice hearing range: a hard cutoff keeps full volume inside the visitor's range, silences voices at its edge on the next movement read, applies slider changes immediately in 1 m steps, a voice joining starts at its own level, no limit is the old full volume, a local mute and the receive level still hold, and neither the microphone nor the room hears of it",
     shared(rows)&&rows.playback==="element"&&rows.noGains&&
-    rows.curve.full===1&&rows.curve.half===0.5&&rows.curve.edge===0&&rows.curve.past===0&&rows.curve.step<0.005&&!rows.curve.rising&&rows.curve.noLimit===1&&rows.curve.unknown===0&&
-    rows.checked==="0,0,0,5,20"&&rows.timersAfterStop===0,JSON.stringify(rows));
+    rows.cutoff.inside===1&&rows.cutoff.edge===0&&rows.cutoff.past===0&&rows.cutoff.noLimit===1&&rows.cutoff.unknown===0&&
+    rows.checked==="0,0,0,2,20"&&rows.timersAfterStop===0,JSON.stringify(rows));
   const ios=rig(true),io=await play(ios),ctx=ios.ctxs[0],live=()=>ios.gains.filter(g=>g.out.size);
   io.elementsMuted=ios.els.every(el=>el.muted);io.toOutput=live().length===5&&live().every(g=>g.out.size===1&&g.out.has(ctx.destination));
   ctx.set("interrupted");io.asleep=ios.V.stats.blocked;
@@ -22680,13 +22693,13 @@ const voiceHearingChecks = async () => {
     s.blendT=0.9;r.tick(10);out.near=r.levels([2,3,4]);
     s.blendT=1;r.tick(10);out.end=r.levels([2,3,4]);
     Object.assign(s,{zone:"rainforest",blendTo:null,blendT:0});s.self.zone="rainforest";r.tick(10);out.over=r.levels([3,4]);
-    V.setRadius(40);r.tick(10);out.radius=r.levels([3,4]);
+    V.setRadius(40);r.tick(10);out.radius=r.levels([3,4]);V.setRadius(30);out.cutoff=r.levels([3,4]);
     V.stop();
     return out;
   };
   const cross={desk:await crossing(false),ios:await crossing(true)};
   record("voice crossing: along a bridge the island fades out as the land ahead fades in, equal-power, a second crosser plays by how near, the far side hears a crosser by its share, iOS sounds the same, and the hearing range reaches across",
-    [cross.desk,cross.ios].every(c=>c.half==="0.707,0.707,1"&&c.near==="0.156,0.988,0.809"&&c.end==="0,1,0.707"&&c.over==="1,0.707"&&c.radius==="0.469,0.707"),JSON.stringify(cross));
+    [cross.desk,cross.ios].every(c=>c.half==="0.707,0.707,1"&&c.near==="0.156,0.988,0.809"&&c.end==="0,1,0.707"&&c.over==="1,0.707"&&c.radius==="1,0.707"&&c.cutoff==="0,0.707"),JSON.stringify(cross));
 };
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;

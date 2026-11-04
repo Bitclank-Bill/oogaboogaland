@@ -1983,7 +1983,7 @@ body[data-active-scene="hub"] .home-link {
   display: none;
 }
 
-/* A player whose voice the visitor's hearing range has faded out. */
+/* A player at or beyond the visitor's hearing range. */
 .players-distance[data-far="true"] {
   opacity: 0.45;
 }
@@ -2028,38 +2028,17 @@ body[data-active-scene="hub"] .home-link {
   cursor: pointer;
 }
 
-/* A phone's short drawer keeps Read joins aloud on the title's line, left of the online count. */
-@media (pointer: coarse) and (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
-  .panel[data-panel="players"]:not([hidden]) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    column-gap: 8px;
-    row-gap: 0;
-  }
-  .panel[data-panel="players"] > .panel-title { display: contents; }
-  .panel[data-panel="players"] .panel-title h2,
-  .panel[data-panel="players"] > .players-speak,
-  .panel[data-panel="players"] #players-count { grid-row: 1; align-self: center; }
-  .panel[data-panel="players"] > .players-speak { grid-column: 2; }
-  .panel[data-panel="players"] #players-count { grid-column: 3; }
-  .panel[data-panel="players"] > .players-hearing,
-  .panel[data-panel="players"] > .players,
-  .panel[data-panel="players"] > .players-status { grid-column: 1 / -1; margin-top: 10px; }
-  .panel[data-panel="players"] > .players-hearing { grid-row: 2; }
-  .panel[data-panel="players"] > .players { grid-row: 3; }
-  .panel[data-panel="players"] > .players-status { grid-row: 4; }
+/* Native disclosure keeps advanced settings together on every panel layout. */
+.players-settings { flex: none; }
+.players-settings:not(:has(.players-settings-content > :not([hidden]))) { display: none; }
+.players-settings > summary {
+  padding: 6px 0;
+  color: var(--paper);
+  font-size: 11px;
+  cursor: pointer;
 }
-
-/* Narrow phones give the join-reading option its own row, clear of the full panel name. */
-@media (pointer: coarse) and (max-width: 360px) {
-  .panel[data-panel="players"]:not([hidden]) { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
-  .panel[data-panel="players"] .panel-title h2 { grid-column: 1 / 3; }
-  .panel[data-panel="players"] > .players-speak { grid-row: 2; grid-column: 1 / -1; }
-  .panel[data-panel="players"] > .players-hearing { grid-row: 3; }
-  .panel[data-panel="players"] > .players { grid-row: 4; }
-  .panel[data-panel="players"] > .players-status { grid-row: 5; }
-}
+.players-settings > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.players-settings-content { display: grid; gap: 8px; padding-top: 8px; }
 
 .players-hearing-label {
   color: rgba(243, 239, 228, 0.72);
@@ -2090,7 +2069,6 @@ body[data-active-scene="hub"] .home-link {
   grid-column: 1 / -1;
   color: rgba(243, 239, 228, 0.62);
   font-size: 9.5px;
-  white-space: nowrap;
 }
 
 @media (pointer: coarse) {
