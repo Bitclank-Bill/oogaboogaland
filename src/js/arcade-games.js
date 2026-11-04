@@ -1142,7 +1142,7 @@
     let clacks = 0, remoteClacks = -1, remotePlaying = false, remoteSide = 0;
     const clack = () => { clacks = (clacks + 1) & 65535; out.cue("clack"); };
     const frame = new Array(18).fill(0), from = new Float64Array(8), target = new Float64Array(8);
-    let following = false, blend = 1, shared = false, localSide = -1;
+    let following = false, blend = 1, shared = false, localSide = -1, flipped = false;
     const local = { u: 0, v: 0 }, destination = { u: 0, v: 0 };
     for (const m of [M, A]) { m.su = m.sv = m.tu = m.tv = 0; m.touch = false; }
     const capture = () => {
@@ -1183,10 +1183,10 @@
       M.u = lerp(4); M.v = lerp(5); A.u = lerp(6); A.v = lerp(7);
       puck.ember = Math.min(1, N.burn * 1.5);
       mark.visible = remotePlaying && status.meter >= 0;
-      if (mark.visible) { const v = remoteSide ? A.v : M.v; N.fu = P.u + (Math.abs(P.dv) > 0.15 ? P.du * (v - P.v) / P.dv : 0); fold(); mark.position.x = N.fu * SCALE; mark.position.z = -NEAR - v * SCALE; const hot = status.meter >= .7 && status.meter <= .93; mark.glow = hot ? 2.4 : 1.2; mark.highlight = hot ? 1 : 0; mark.scale.x = mark.scale.z = (hot ? 1.2 : 1) * SCALE; }
+      if (mark.visible) { const v = remoteSide ? A.v : M.v; N.fu = P.u + (Math.abs(P.dv) > 0.15 ? P.du * (v - P.v) / P.dv : 0); fold(); mark.position.x = (flipped ? -N.fu : N.fu) * SCALE; mark.position.z = -NEAR - (flipped ? L - v : v) * SCALE; const hot = status.meter >= .7 && status.meter <= .93; mark.glow = hot ? 2.4 : 1.2; mark.highlight = hot ? 1 : 0; mark.scale.x = mark.scale.z = (hot ? 1.2 : 1) * SCALE; }
       place3();
     };
-    const put = (n, o) => { n.position.x = o.u * SCALE; n.position.y = Y; n.position.z = -NEAR - o.v * SCALE; };
+    const put = (n, o) => { n.position.x = (flipped ? -o.u : o.u) * SCALE; n.position.y = Y; n.position.z = -NEAR - (flipped ? L - o.v : o.v) * SCALE; };
     const reset = (towards) => { P.u = 0; P.v = towards > 0 ? L * 0.3 : L * 0.7; P.du = P.dv = 0; N.serve = 0.8; N.still = N.burn = 0; by = rally = 0; banked = tried = false; };
     const hit = (m) => {
       const du = P.u - m.u, dv = P.v - m.v, d = Math.sqrt(du * du + dv * dv), min = PR + MR;
@@ -1218,7 +1218,8 @@
         mineGoals++; streak++; status.streak = streak; status.fire = !peer.on && streak >= 3;
         status.score = mineGoals;
         flash.hit(k ? 2.6 : 1.8); out.popup(HOCKEY_GOAL[k], true); out.cue(k ? "fire" : "big"); out.shake(k ? 0.55 : 0.4);
-        host.burst(0, Y + 0.2, -NEAR - L * SCALE, k ? 28 : 18); out.crack(0, Y + 0.2, -NEAR - L * SCALE, true);
+        const goalZ = -NEAR - (flipped ? 0 : L) * SCALE;
+        host.burst(0, Y + 0.2, goalZ, k ? 28 : 18); out.crack(0, Y + 0.2, goalZ, true);
       } else { theirGoals++; streak = status.streak = 0; status.fire = false; out.popup("Whoa... Ooga score", false); out.cue("buzzer"); out.flop(); }
       status.left = theirGoals;
       if (mineGoals >= HOCKEY_TO || theirGoals >= HOCKEY_TO) { end(-1); return; }
@@ -1398,7 +1399,7 @@
     };
     const tease = () => { I.boost = 1; I.dv = P.v < L / 2 ? Math.abs(I.dv) : -Math.abs(I.dv); clack(); };
     return {
-      capture, receive, follow, remoteAct: () => out.cue("throw"),
+      capture, receive, follow, orientation: side => { flipped = side === 1; place3(); }, remoteAct: () => out.cue("throw"),
       shared: on => { shared = !!on; },
       multiplayer: (on, side = 0) => { clearHostPath(); clearPeerPath(); peer.on = !!on; localSide = on ? side : -1; peer.x = 0; peer.depth = (REST - MR) / (L / 2 - 2 * MR); },
       localPoint: (x, depth) => queueHost(x, depth),
@@ -1440,7 +1441,7 @@
         if (N.smash <= 0) power = false;
         N.burn = Math.max(0, N.burn - dt);
         puck.ember = Math.min(1, N.burn * 1.5);
-        if (N.burn > 0 && (N.trailT -= dt) <= 0) { N.trailT = 0.06; host.burst(P.u * SCALE, Y + 0.03, -NEAR - P.v * SCALE, 2); }
+        if (N.burn > 0 && (N.trailT -= dt) <= 0) { N.trailT = 0.06; host.burst((flipped ? -P.u : P.u) * SCALE, Y + 0.03, -NEAR - (flipped ? L - P.v : P.v) * SCALE, 2); }
         if (!peer.on && N.sayT > 0 && (N.sayT -= dt) <= 0) { out.popup(HOCKEY_SAY[round][0], true); out.cue("round"); N.tipT = 1.1; }
         if (!peer.on && N.tipT > 0 && (N.tipT -= dt) <= 0) out.popup(HOCKEY_SAY[round][1], false);
         // The sand, shown by the second: a call with 30 and 10 seconds left and each of the last five, then the match
@@ -1495,7 +1496,7 @@
           const m = 1 - gap / reach, hot = !tried && m >= status.window0 && m <= status.window1;
           status.meter = tried ? -1 : m;
           N.fu = P.u + P.du * gap / -P.dv; fold();
-          mark.visible = true; mark.position.x = N.fu * SCALE; mark.position.z = -NEAR - M.v * SCALE;
+          mark.visible = true; mark.position.x = (flipped ? -N.fu : N.fu) * SCALE; mark.position.z = -NEAR - (flipped ? L - M.v : M.v) * SCALE;
           mark.glow = hot ? 2.4 : 1.2; mark.highlight = hot ? 1 : 0; mark.scale.x = mark.scale.z = (hot ? 1.2 : 1) * SCALE;
         } else { status.meter = -1; mark.visible = false; tried = false; }
         peer.meter = -1;

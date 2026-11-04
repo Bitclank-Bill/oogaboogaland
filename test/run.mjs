@@ -6534,7 +6534,7 @@ const gameRulesChecks = async () => {
       const host={node:BL.scene.createNode(),aim:{x:side},onEnd(){},burst(){}};
       const game=exposed.arcadeGames.airHockey(host);game.shared(true);game.start();
       host.railProbe.P.u=side*.5;host.railProbe.M.u=side*.48;game.act();game.update(1/240);
-      const a=game.capture().slice();railCases.push({side,u:a[4],accepted:!!BL.hockeyWire.parse({t:"hockey",v:3,k:"frame",i:0,s:"0123456789abcdef",q:0,a})});game.stop();
+      const a=game.capture().slice();railCases.push({side,u:a[4],accepted:!!BL.hockeyWire.parse({t:"hockey",v:4,k:"frame",i:0,s:"0123456789abcdef",q:0,a})});game.stop();
     }
     record("hockey solo rail regression: smash assist keeps both mallet edges and transmitted frames legal",railCases.every(r=>r.u===r.side*480&&r.accepted),JSON.stringify(railCases));
     const aimH={x:0,depth:0}, rootH=BL.scene.createNode(), h=BL.arcadeGames.airHockey({node:rootH,aim:aimH,onEnd(){},burst(){}});
@@ -6545,6 +6545,10 @@ const gameRulesChecks = async () => {
     }
     const legal=edges.every(a=>Math.abs(a[0])<=480&&a[1]>=70&&a[1]<=1030&&Math.abs(a[2])<=480&&a[3]>=1170&&a[3]<=2130)
       &&edges[0][0]===-480&&edges[1][0]===-480&&edges[0][1]!==edges[1][1]&&edges[2][1]===1030;
+    const mirrorRoot=BL.scene.createNode(), mirrorAim={x:0,depth:0}, mirror=BL.arcadeGames.airHockey({node:mirrorRoot,aim:mirrorAim,onEnd(){},burst(){}});
+    mirror.shared(true);mirror.multiplayer(true);mirror.start();mirror.update(1/60);const nearZ=mirrorRoot.children[1].position.z;
+    mirror.orientation(1);const farZ=mirrorRoot.children[1].position.z,opponentZ=mirrorRoot.children[2].position.z;
+    record("hockey chosen end: mirrored host and opponent mallets occupy opposite physical ends",farZ<opponentZ&&nearZ>opponentZ,JSON.stringify({nearZ,farZ,opponentZ}));mirror.stop();
     const guestAim={x:1,depth:1}, guestRoot=BL.scene.createNode(), guest=BL.arcadeGames.airHockey({node:guestRoot,aim:guestAim,onEnd(){},burst(){}});
     guest.multiplayer(true,1);guest.follow(.016);const initial=guestRoot.children[2].position.x;
     const snap=[0,660,0,0,0,200,0,2000,0,0,-1,0,-1000,-1000,0,0,1,0];guest.receive(snap,1);guest.follow(.016);
@@ -15944,6 +15948,31 @@ const hockeyHallSample = { name: "hockey hall sample", why: "rule: live table sn
   record("hockey hall sample: snapshots reached the actual hall nodes while rendered frames and avatars remained bounded",result.frames>0&&result.rows.length===2&&result.rows.every(r=>Number.isFinite(r.p95Ms)),JSON.stringify(result));
   console.log("HOCKEY_RENDER "+JSON.stringify(result));
 } };
+const hockeyChosenEnd = { name: "hockey chosen end", why: "regression: the player entering from the far end keeps that end and the other player occupies the opposite end", run: async b => {
+  await b.evaluate(`(() => {
+    const N=BL.net,B=__ooga,V=window.__hockeyEndFixture={listeners:new Set(),poses:[],messages:[]};
+    V.send=N.sendHockey;V.subscribe=N.subscribeHockey;V.pose=N.sendPose;V.me=N.state.me;V.room=N.state.room;V.id=N.state.selfId;V.feature=N.state.hockey;
+    N.state.me={id:1,login:"portlandhodl",display:"portlandhodl"};N.state.selfId=1;N.state.hockey=true;N.state.room="live";N.setBody("portlandhodl");
+    V.emit=m=>{for(const fn of V.listeners)fn(m);};N.subscribeHockey=fn=>{V.listeners.add(fn);return()=>V.listeners.delete(fn);};
+    N.sendPose=(x,y,z,yaw)=>{V.poses.push({x,y,z,yaw});return true;};
+    N.sendHockey=m=>{V.messages.push(JSON.parse(JSON.stringify(m)));if(m.k==="join")queueMicrotask(()=>V.emit({k:"table",i:0,s:"0123456789abcdef",e:V.forceEnd ?? m.e,ids:[1,2],ready:[false,false],phase:"lobby",q:-1}));if(m.k==="ready")queueMicrotask(()=>V.emit({k:"table",i:0,s:"0123456789abcdef",e:1,ids:[1,2],ready:[true,true],phase:"play",q:-1}));return true;};
+    const seat=BL.hockeyWire.seat(0,1,0,{});B.pilot.navigate({position:{x:seat.x,y:0,z:seat.z},yaw:seat.yaw-Math.PI,pitch:.2,dist:4});B.arcade.open("hockey",0);
+  })()`);
+  await untilPage(b,'B.scene === "hockey" && !B.transitioning && B.carnival?.side === 1',20000);
+  await b.key("Enter");await untilPage(b,'B.carnival?.phase === "count" || B.carnival?.phase === "play"',5000);
+  await b.evaluate(`__ooga.advance(3.5,1/60)`);
+  await b.evaluate(`(() => {const W=BL.hockeyWire,canvas=document.querySelector("canvas"),r=canvas.getBoundingClientRect(),p=__ooga.project(W.TABLES[0][0]+.2,.825,W.TABLES[0][1]-.5,{});canvas.dispatchEvent(new PointerEvent("pointermove",{clientX:r.left+p.x,clientY:r.top+p.y,pointerType:"mouse",isPrimary:true,bubbles:true}));__ooga.advance(1/60,1/60);})()`);
+  const result=await b.evaluate(`(() => {const V=__hockeyEndFixture,W=BL.hockeyWire,B=__ooga,positions=[];const visit=n=>{if(n.geometry===BL.arcadeModels.hockeyPieces().mallet)positions.push(n);for(const c of n.children)visit(c);};BL.scene.updateWorld(BL.scenes.hockey.root);visit(BL.scenes.hockey.root);const host=positions[0]?.world[14],guest=positions[1]?.world[14],hostX=positions[0]?.world[12];return {hostX,end:V.messages.find(m=>m.k==="join")?.e,side:B.carnival.side,pose:V.poses.at(-1),host,guest,center:W.TABLES[0][1],centerX:W.TABLES[0][0],up:BL.scenes.hockey.camera.up.z,phase:B.carnival.phase};})()`);
+  await b.evaluate(`__ooga.go("arcade",0)`);await untilPage(b,'B.scene === "arcade" && !B.transitioning',20000);
+  await b.evaluate(`(() => {const V=__hockeyEndFixture,N=BL.net,B=__ooga;N.state.me={id:2,login:"portlandhodl",display:"portlandhodl"};N.state.selfId=2;V.forceEnd=1;V.poses.length=0;V.messages.length=0;const p=BL.hockeyWire.seat(0,0,0,{});B.pilot.navigate({position:{x:p.x,y:0,z:p.z},yaw:p.yaw-Math.PI,pitch:.2,dist:4});B.arcade.open("hockey",0);})()`);
+  await untilPage(b,'B.scene === "hockey" && !B.transitioning && B.carnival?.shared',20000);
+  await b.key("Enter");await untilPage(b,'B.carnival?.phase === "count" || B.carnival?.phase === "play"',5000);await b.evaluate(`__ooga.advance(3.5,1/60)`);
+  await b.evaluate(`(() => {const W=BL.hockeyWire,canvas=document.querySelector("canvas"),r=canvas.getBoundingClientRect(),p=__ooga.project(W.TABLES[0][0]+.2,.825,W.TABLES[0][1]+.5,{});canvas.dispatchEvent(new PointerEvent("pointermove",{clientX:r.left+p.x,clientY:r.top+p.y,pointerType:"mouse",isPrimary:true,bubbles:true}));__ooga.advance(1/60,1/60);})()`);
+  const guest=await b.evaluate(`(() => {const V=__hockeyEndFixture,B=__ooga,W=BL.hockeyWire,positions=[];const visit=n=>{if(n.geometry===BL.arcadeModels.hockeyPieces().mallet)positions.push(n);for(const c of n.children)visit(c);};BL.scene.updateWorld(BL.scenes.hockey.root);visit(BL.scenes.hockey.root);return {side:B.carnival.side,pose:V.poses.at(-1),host:positions[0]?.world[14],guest:positions[1]?.world[14],guestX:positions[1]?.world[12],centerX:W.TABLES[0][0],center:W.TABLES[0][1],up:BL.scenes.hockey.camera.up.z,phase:B.carnival.phase};})()`);
+  await b.evaluate(`__ooga.go("arcade",0)`);await untilPage(b,'B.scene === "arcade" && !B.transitioning',20000);
+  await b.evaluate(`(() => {const V=__hockeyEndFixture,N=BL.net;N.sendHockey=V.send;N.subscribeHockey=V.subscribe;N.sendPose=V.pose;N.state.me=V.me;N.state.room=V.room;N.state.selfId=V.id;N.state.hockey=V.feature;delete window.__hockeyEndFixture;})()`);
+  record("hockey chosen end: a host entering from far remains there and the opponent mallet is opposite",result.end===1&&result.side===1&&result.pose?.z<result.center&&result.host<result.center&&result.guest>result.center&&Math.abs(result.hostX-result.centerX-.2)<.02&&result.up===1&&result.phase==="play"&&guest.side===0&&guest.pose?.z>guest.center&&guest.host<guest.center&&guest.guest>guest.center&&Math.abs(guest.guestX-guest.centerX-.2)<.02&&guest.up===-1&&guest.phase==="play",JSON.stringify({result,guest}));
+} };
 const hockeySharedVisit = { name: "hockey shared visit", why: "contract: lobby, opposite camera, keyboard input, ending and hall return preserve the claimed Ooga, audio preferences and subscriptions", run: async b => {
   await b.evaluate(`(() => {
     const N=BL.net, V=window.__hockeyVisit={listeners:new Set(),sent:[],releases:0,peerClears:0,side:1};
@@ -21151,6 +21180,7 @@ scene("shy", { steps: [carnivalPlay("shy", 0.7), trip("shy")] });
 scene("claw", { steps: [carnivalPlay("claw", 0.6), trip("claw")] });
 scene("hockey", { steps: [hockeyPilot, carnivalPlay("hockey", 0.5), trip("hockey")] });
 scene("arcade", { query: "character=portlandhodl", steps: [hockeySharedVisit] });
+scene("arcade", { query: "character=portlandhodl", steps: [hockeyChosenEnd] });
 scene("arcade", {query:"character=portlandhodl",opts:{w:1440,h:900,perf:true},steps:[hockeyHallSample]});
 scene("arcade", {query:"character=portlandhodl",opts:{w:390,h:844,mobile:true,perf:true},steps:[hockeyHallSample]});
 scene("arcade", { query: "character=portlandhodl", opts: {w:390,h:844,mobile:true}, steps: [hockeySharedVisit] });

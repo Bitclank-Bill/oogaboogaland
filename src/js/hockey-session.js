@@ -2,9 +2,9 @@
 (() => {
   "use strict";
   const BL = window.BL, W = BL.hockeyWire;
-  const create = ({ slot, play, aim, lobby, start, end, closed, sideChanged }) => {
+  const create = ({ slot, play, aim, lobby, start, end, closed, sideChanged, preferredEnd = 0 }) => {
     const net = BL.net;
-    let table = null, side = -1, lastQ = -1, q = 0, peerAt = 0, beat = 0, sent = 0, active = false, finished = false, dead = false, joined = false, joinWait = 0, joinElapsed = 0;
+    let table = null, side = -1, flip = preferredEnd, lastQ = -1, q = 0, peerAt = 0, beat = 0, sent = 0, active = false, finished = false, dead = false, joined = false, joinWait = 0, joinElapsed = 0;
     const pose = { x: 0, y: 0, z: 0, yaw: 0 }, path = [];
     let discontinuity = 0, lastInputQ = -1, peerStale = false;
     // Fixed-size buffer: on overload drop the unrepresentable path, and tell the host to
@@ -40,7 +40,8 @@
         if (nextSide < 0) return;
         if (table && m.s !== table.s) return;
         table = m;
-        if (side !== nextSide) { side = nextSide; sideChanged(side); }
+        const nextFlip = m.e === 1 ? 1 : 0;
+        if (side !== nextSide || flip !== nextFlip) { side = nextSide; flip = nextFlip; play.orientation?.(flip); sideChanged(side, flip); }
         if (m.phase === "lobby") lobby(m.ids[1] ? (m.ready[side] ? "Ready — waiting for the other player." : "Two players seated. Both press Face off to begin.") : "Waiting for another Ooga. Face off starts solo against a Clanker.");
         if (m.phase === "play" && !active) { active = true; play.shared(true); play.multiplayer(!!m.ids[1], side); start(); }
         if (m.a && side === 1 && m.q > lastQ) { lastQ = m.q; play.receive(m.a, side); }
@@ -61,7 +62,7 @@
     };
     const off = net.subscribeHockey(receive);
     const reportPose = () => {
-      W.seat(slot, Math.max(0, side), 0, pose);
+      W.seat(slot, side < 0 ? preferredEnd : side ^ flip, 0, pose);
       net.sendPose(pose.x, pose.y, pose.z, pose.yaw);
     };
     reportPose();
@@ -77,7 +78,7 @@
         if (!table && net.state.room === "live") {
           joinElapsed += dt; joinWait -= dt;
           if (joinElapsed >= 10) { net.sendHockey({ k: "cancel", i: slot }); dead = true; closed("Could not reserve this table — return to the Arcade and try again."); return; }
-          if (joinWait <= 0) { joined = net.sendHockey({ k: "join", i: slot }) || joined; joinWait = 1; }
+          if (joinWait <= 0) { joined = net.sendHockey({ k: "join", i: slot, e: preferredEnd }) || joined; joinWait = 1; }
         }
         beat += dt; sent += dt;
         if (table && beat >= 2) { beat = 0; command("beat"); }
@@ -110,6 +111,7 @@
         if (m.phase === "closed") { if (!m.s || m.s === sessions[m.i]) { checked[m.i] = true; g.stop(); sessions[m.i] = null; seq[m.i] = -1; } return; }
         checked[m.i] = true;
         if (sessions[m.i] !== m.s) { sessions[m.i] = m.s; seq[m.i] = -1; g.stop(); }
+        g.orientation?.(m.e === 1 ? 1 : 0);
       }
       if (m.s === sessions[m.i] && m.q > seq[m.i] && W.validFrame(m.a)) { checked[m.i] = true; seq[m.i] = m.q; g.receive(m.a); }
     };

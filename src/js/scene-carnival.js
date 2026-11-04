@@ -174,7 +174,7 @@
 
   let hockeySession = null, hockeyRemotes = null, hockeyAmbience = null, hockeyLobby = null, hockeyPlayers = null;
   const HOCKEY_SEAT = { x: 0, y: 0, z: 0, yaw: 0 };
-  let hockeySide = 0;
+  let hockeySide = 0, hockeyPreferredEnd = 0;
   const hockeyView = side => {
     if (side === hockeySide) return;
     const cx = BL.hockeyWire.TABLES[slot][0], cz = BL.hockeyWire.TABLES[slot][1];
@@ -993,9 +993,9 @@
       el.root.dataset.hockeyShared = "true";
       text(el.needLabel, "To win");
       text(el.help, "One point per goal. First to seven, with no time limit. Leaving ends the match for both players. Live play continues while this menu is open.");
-      hockeySession = BL.hockeySession.create({ slot, play, aim,
+      hockeySession = BL.hockeySession.create({ slot, play, aim, preferredEnd: hockeyPreferredEnd,
         lobby: message => { text(hockeyLobby, message); introEl.hidden = false; },
-        sideChanged: side => { hockeyView(side); BL.hockeyWire.seat(slot, side, 0, HOCKEY_SEAT); },
+        sideChanged: (side, flip) => { const physical = side ^ flip; hockeyView(physical); BL.hockeyWire.seat(slot, physical, 0, HOCKEY_SEAT); },
         start: () => {
           el.act.hidden = hockeySession.human;
           if (hockeySession.human) {
@@ -1012,7 +1012,7 @@
   const enter = (ctx, id) => {
     cabinetView = ctx.cabinet;
     ({ renderer, game, world, go } = ctx);
-    kind = id; hockeySide = 0; aim.depth = 0.13 / 0.96;
+    kind = id; hockeySide = 0; hockeyPreferredEnd = id === "hockey" && world.hockeyEnd === 1 ? 1 : 0; world.hockeyEnd = null; aim.depth = 0.13 / 0.96;
     slot = Number.isInteger(ctx.place) && KINDS[id].spots[ctx.place] ? ctx.place : 0;
     aim.x = aim.hold = aim.steps = aim.y = aim.stepsY = 0; held.left = held.right = held.up = held.down = DRAG.down = false;
     canvasEl = ctx.canvas;
@@ -1105,7 +1105,8 @@
     BL.net.setBody(world.pilot);
     if (kind !== "hockey") BL.net.sendPose(machine.play.x, machine.y || 0, machine.play.z, machine.play.facing);
     if (kind === "hockey") {
-      BL.hockeyWire.seat(slot, 0, 0, HOCKEY_SEAT);
+      play.orientation(hockeyPreferredEnd); hockeyView(hockeyPreferredEnd);
+      BL.hockeyWire.seat(slot, hockeyPreferredEnd, 0, HOCKEY_SEAT);
       BL.net.sendPose(HOCKEY_SEAT.x, 0, HOCKEY_SEAT.z, HOCKEY_SEAT.yaw);
       hockeyAmbience = BL.arcadeAmbience.create(audio, HOCKEY_SEAT, camera);
       hockeyRemotes = BL.remotePlayers.create({ root, fx, visible: rec => rec.zone === BL.hockeyWire.ZONE,

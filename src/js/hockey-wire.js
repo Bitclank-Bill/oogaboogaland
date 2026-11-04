@@ -3,7 +3,7 @@
   "use strict";
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
-  const FEATURE = "hockey-v3", ZONE = "arcade.hall", HZ = 10, INPUT_HZ = 20, IDLE_MS = 15000;
+  const FEATURE = "hockey-v4", ZONE = "arcade.hall", HZ = 10, INPUT_HZ = 20, IDLE_MS = 15000;
   const SCALE = 1.35, SEAT = 1.1 * SCALE + 0.55;
   const MALLET_RADIUS = 0.07, MALLET_X = 0.48, MALLET_DEPTH = 0.96, LENGTH = 2.2;
   // One radius-aware rectangle for pointer presentation and host simulation. Clamp axes independently.
@@ -23,10 +23,11 @@
     integer(a[12], -1000, 1000) && integer(a[13], -1000, 1000) && a[14] === a[8] && a[15] === a[9] && integer(a[16], 0, 1) && integer(a[17], 0, 65535);
   const parse = m => {
     if (!integer(m.i, 0, 2)) return null;
-    // A cached v2 browser must never join or drive a v3 table. Allow its owned cleanup only.
-    if (m.v !== 3 && !(m.v === undefined && (m.k === "leave" || m.k === "cancel"))) return null;
+    // Older browsers must never join or drive a v4 table. Allow their owned cleanup only.
+    if (m.v !== 4 && !((m.v === undefined || m.v === 3) && (m.k === "leave" || m.k === "cancel"))) return null;
     const base = { t: "hockey", k: m.k, i: m.i };
-    if (m.k === "join" || m.k === "watch" || m.k === "cancel") return base;
+    if (m.k === "join") { if (!integer(m.e, 0, 1)) return null; base.e = m.e; return base; }
+    if (m.k === "watch" || m.k === "cancel") return base;
     if (typeof m.s !== "string" || !/^[a-f0-9]{16}$/.test(m.s)) return null;
     base.s = m.s;
     if (["ready", "leave", "beat"].includes(m.k)) return base;

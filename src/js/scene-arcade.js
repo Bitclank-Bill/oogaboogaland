@@ -163,7 +163,10 @@
     if (id === "race") { hud.toast("Ooga Rally · out of order"); return; }
     const cabinetId = id === "hub" && place === "cloud-hopper" ? "cloud-hopper" : id;
     const cabinet = LAYOUT.cabinets.find(c => (c.game >= 0 ? GAMES[c.game].id : AM.RETRO[c.retro].id) === cabinetId);
-    if (!cabinet) { if (go(id, place)) leaving = openingGame = true; return; }
+    if (!cabinet) {
+      const preferred = id === "hockey" && Number.isInteger(place) && BL.hockeyWire.TABLES[place] && avatar && avatar.root.position.z < BL.hockeyWire.TABLES[place][1] ? 1 : 0;
+      if (go(id, place)) { if (id === "hockey") world.hockeyEnd = preferred; leaving = openingGame = true; } return;
+    }
     const occupied = BL.net.cabinetSeats.get(cabinetId);
     if (occupied && occupied.player !== BL.net.state.selfId) { hud.toast(`${occupied.name} is playing · cabinet occupied`); return; }
     const actor = pilot.player || avatar;
