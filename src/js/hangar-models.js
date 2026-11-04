@@ -4,7 +4,7 @@
 // frames, each lined with blue neon, to the launch shield at its far end, sealed until Jet v2 flies, space beyond.
 // Ochre truss gantries cross the vault, two crane trolleys over the Jet; steel catwalks run along both side walls on
 // brackets, a stair up to each from the back. On the right, in the
-// hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a timber
+// hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a steel
 // gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long stair down from behind the
 // wing toward the runway; trestles stand under its wings. On the left the crew's workstations stand in rows, their
 // screens glowing blue, and on the wall above them the two boards, the repository's stats right after the door and
@@ -986,20 +986,20 @@
 
   // ---- the Jet's dock ----------------------------------------------------------------------------------------
 
-  // The dock's timber: the gangway up the Jet's left flank, its decks on braced posts in front of the wing and behind
-  // it and the span between on two stringers over the wing, railed along its outer edge and across both ends but where
-  // the stair comes up, and open along the fuselage; the stair; and the trestles under the wings, each a braced pair
-  // of legs under a padded cradle.
+  // The dock: the gangway up the Jet's left flank in steel, its grated decks on braced columns in front of the wing and
+  // behind it and the span between on two steel stringers over the wing, railed along its outer edge and across both
+  // ends but where the stair comes up, and open along the fuselage; the timber stair; and the timber trestles under the
+  // wings, each a braced pair of legs under a padded cradle.
   const dock = cached(() => {
     const L = LAYOUT, g = L.gangway, [sx, , sz0, , sy1, sz1, sw] = L.jetStairs, geos = [], last = g.decks.length - 1;
     g.decks.forEach(([z0, z1, posts], i) => {
       const d = z1 - z0, cz = (z0 + z1) / 2, rails = (i === 0 ? "n" : "") + (i === last ? "s" : "");
-      placed(geos, deckParts(g.w, d, posts ? g.y : 0, rails, 37 + i, i === last ? [[sx - g.x, d / 2, sw / 2 + 0.05, 0, 1]] : []), g.x, g.y, cz);
+      placed(geos, steelDeck(g.w, d, posts ? g.y : 0, rails, i === last ? [[sx - g.x, d / 2, sw / 2 + 0.05, 0, 1]] : []), g.x, g.y, cz);
     });
     const z0 = g.decks[0][0], z1 = g.decks[last][1], outer = g.x - g.w / 2 + 0.1;
-    placed(geos, models.railParts(outer, z0 + 0.1, outer, z1 - 0.1, [false, false]), 0, g.y, 0);
+    placed(geos, steelRail(outer, z0 + 0.1, outer, z1 - 0.1, [false, false]), 0, g.y, 0);
     const [b0, b1] = g.decks.find(([, , posts]) => !posts);
-    for (const dx of [-0.8, 0.8]) geos.push(beam(g.x + dx, g.y - 0.62, b0 - 0.6, g.x + dx, g.y - 0.62, b1 + 0.6, 0.3, TIMBER_DK));
+    for (const dx of [-0.8, 0.8]) geos.push(beam(g.x + dx, g.y - 0.62, b0 - 0.6, g.x + dx, g.y - 0.62, b1 + 0.6, 0.3, STEEL.frame));
     geos.push(...stairParts(sx, 0, sz0, sx, sy1, sz1, sw, [true, false], true));
     for (const [x, z] of L.trestles) {
       const top = 3.3;
