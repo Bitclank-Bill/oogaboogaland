@@ -9943,19 +9943,26 @@ const hubWalking = { name: "hub walking", why: "regression: steering keys came o
     const B = __ooga, cave = B.pilot.player, net = BL.net.state, account = net.me, backend = net.backend, room = net.room;
     const remote = cave.remoteControlled, row = document.querySelector('#roster [data-name="' + cave.traits.name + '"]');
     const dot = row.querySelector(".roster-presence"), activity = row.querySelector(".roster-state").dataset.state;
+    const order = () => [...row.parentElement.children].filter(li => li.dataset.name).map(li => li.dataset.name).join(","), before = order();
+    let stableOrder = true;
     try {
       net.me = null; net.backend = false; net.room = "off";
       B.crew.refreshRosterRow(cave); BL.hud.showVoices();
       const staticOffline = dot.dataset.online === "false" && BL.hud.statusFor(cave) !== "online";
+      stableOrder &&= order() === before;
       net.backend = true; BL.hud.showVoices();
       const signedOut = dot.dataset.online === "false";
+      stableOrder &&= order() === before;
       net.me = { id: 71, login: cave.traits.name, display: cave.traits.display }; BL.hud.showVoices();
       const signedIn = dot.dataset.online === "true" && BL.hud.statusFor(cave) === "online";
+      stableOrder &&= order() === before;
       net.me = null; BL.hud.showVoices();
       const signedOutAgain = dot.dataset.online === "false" && BL.hud.statusFor(cave) !== "online";
+      stableOrder &&= order() === before;
       cave.remoteControlled = true; B.crew.refreshRosterRow(cave); BL.hud.showVoices();
       const remoteOnline = dot.dataset.online === "true" && BL.hud.statusFor(cave) === "online";
-      return { staticOffline, signedOut, signedIn, signedOutAgain, remoteOnline,
+      stableOrder &&= order() === before;
+      return { staticOffline, signedOut, signedIn, signedOutAgain, remoteOnline, stableOrder,
         selection: B.pilot.player === cave && document.getElementById("mode-hud").dataset.selected === "true",
         activity: row.querySelector(".roster-state").dataset.state === activity };
     } finally {
@@ -9963,7 +9970,7 @@ const hubWalking = { name: "hub walking", why: "regression: steering keys came o
       B.crew.refreshRosterRow(cave); BL.hud.showVoices();
     }
   })()`);
-  record("presence markers: local selection stays offline on static and signed-out pages, login and logout repaint cached rows, and remote presence keeps its green dot without changing selection or activity", Object.values(presence).every(Boolean), JSON.stringify(presence));
+  record("presence markers: local selection stays offline on static and signed-out pages, login and logout repaint cached rows, and remote presence keeps its green dot without changing selection, activity or contribution order", Object.values(presence).every(Boolean), JSON.stringify(presence));
   await b.evaluate(`window.__ooga.pilot.release(true)`);
   await agentShortcut(b);
   const agent = await b.evaluate(`window.__ooga.agent`);
