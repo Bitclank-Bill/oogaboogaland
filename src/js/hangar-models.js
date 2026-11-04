@@ -5,8 +5,8 @@
 // Ochre truss gantries cross the vault, two crane trolleys over the Jet; steel catwalks run along both side walls on
 // brackets, a stair up to each from the back. On the right, in the
 // hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a steel
-// gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long stair down from behind the
-// wing toward the runway; trestles stand under its wings. On the left the crew's workstations stand in rows, their
+// gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long steel stair down from
+// behind the wing toward the runway; trestles stand under its wings. On the left the crew's workstations stand in rows, their
 // screens glowing blue, and on the wall above them the two boards, the repository's stats right after the door and
 // its timeline farther in. Crates, blue floor lamps and terminals on stands line the runway. The Jet
 // itself is `jet-models.js`'s; the boards' faces and the crew are the scene's.
@@ -988,7 +988,7 @@
 
   // The dock: the gangway up the Jet's left flank in steel, its grated decks on braced columns in front of the wing and
   // behind it and the span between on two steel stringers over the wing, railed along its outer edge and across both
-  // ends but where the stair comes up, and open along the fuselage; the timber stair; and the timber trestles under the
+  // ends but where the stair comes up, and open along the fuselage; its steel stair; and the timber trestles under the
   // wings, each a braced pair of legs under a padded cradle.
   const dock = cached(() => {
     const L = LAYOUT, g = L.gangway, [sx, , sz0, , sy1, sz1, sw] = L.jetStairs, geos = [], last = g.decks.length - 1;
@@ -1000,7 +1000,7 @@
     placed(geos, steelRail(outer, z0 + 0.1, outer, z1 - 0.1, [false, false]), 0, g.y, 0);
     const [b0, b1] = g.decks.find(([, , posts]) => !posts);
     for (const dx of [-0.8, 0.8]) geos.push(beam(g.x + dx, g.y - 0.62, b0 - 0.6, g.x + dx, g.y - 0.62, b1 + 0.6, 0.3, STEEL.frame));
-    geos.push(...stairParts(sx, 0, sz0, sx, sy1, sz1, sw, [true, false], true));
+    geos.push(...steelStair(sx, 0, sz0, sx, sy1, sz1, sw, [true, false]));
     for (const [x, z] of L.trestles) {
       const top = 3.3;
       for (const s of [-1, 1]) {
