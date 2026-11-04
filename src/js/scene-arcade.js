@@ -1196,15 +1196,15 @@
   // (cosmetic, so `Math.random`): it walks there on a route planned round everything in the hall (the deck's attendant
   // on the deck), turns to its maintenance work, then moves on. They avoid one another and scenery,
   // but neither react to nor block live players.
-  // Each role: its hat, uniform and prop (-1 none) and the arm holding it, whether it walks upright (prop in hand) or
-  // on its knuckles, whether it keeps to the deck and its jobs (one listed twice comes up twice as often).
+  // Each role: its hat, uniform and prop (-1 none) and the arm holding it, whether it keeps to the deck and its
+  // jobs (one listed twice comes up twice as often). All staff walk upright between jobs.
   const ROLES = [
     { id: "gamemaster", hat: 0, vest: 0, prop: 1, hand: "armR", upright: true, deck: false, start: "tap", jobs: ["tap", "fix"] },
-    { id: "attendant", hat: 1, vest: 1, prop: -1, hand: "armL", upright: false, deck: false, start: "totem", jobs: ["totem", "muncher"] },
-    { id: "mechanic", hat: 2, vest: 2, prop: 1, hand: "armL", upright: false, deck: false, start: "fix", jobs: ["fix", "fix", "fix", "tap"] },
+    { id: "attendant", hat: 1, vest: 1, prop: -1, hand: "armL", upright: true, deck: false, start: "totem", jobs: ["totem", "muncher"] },
+    { id: "mechanic", hat: 2, vest: 2, prop: 1, hand: "armL", upright: true, deck: false, start: "fix", jobs: ["fix", "fix", "fix", "tap"] },
     { id: "runner", hat: 3, vest: 3, prop: 2, hand: "armL", upright: true, deck: false, start: "fill", jobs: ["fill", "serve"] },
-    { id: "clerk", hat: 1, vest: 4, prop: 3, hand: "armL", upright: false, deck: false, start: "stock", jobs: ["stock", "claw", "muncher", "bucket"] },
-    { id: "keeper", hat: 1, vest: 4, prop: 4, hand: "armL", upright: false, deck: true, start: "dust", jobs: ["dust", "dust", "fan"] }
+    { id: "clerk", hat: 1, vest: 4, prop: 3, hand: "armL", upright: true, deck: false, start: "stock", jobs: ["stock", "claw", "muncher", "bucket"] },
+    { id: "keeper", hat: 1, vest: 4, prop: 4, hand: "armL", upright: true, deck: true, start: "dust", jobs: ["dust", "dust", "fan"] }
   ];
   // Each job: the pose it is worked in, how long (s), whether the role's prop comes out, how often it speaks up and
   // what it says, a cue at the start and one repeated while it works ([name, every s, loudness]). Its spots are laid
@@ -1673,7 +1673,7 @@
       else if (!a.beating) {
         const turn = Math.atan2(Math.sin(g.face - a.heading), Math.cos(g.face - a.heading));
         if (Math.abs(turn) > 0.004) a.place(p.x, p.z, a.heading + turn * (1 - Math.exp(-7 * dt)));
-        a.setGait(g.phase === "wait" ? "idle" : "beat");
+        a.setGait(g.phase === "wait" ? "upright" : "beat");
       }
       const x0 = p.x, z0 = p.z;
       a.update(dt);

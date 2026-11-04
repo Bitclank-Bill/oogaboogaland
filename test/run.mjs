@@ -15348,7 +15348,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
   // Leave the shared scene session in the Arcade for the following playthrough.
   await b.key(" "); await arrive("arcade");
 } };
-const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simulated visitors played machines and Clankers diverted or greeted when a live player stood in their path", run: async (b) => {
+const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simulated visitors played machines and Clankers diverted or greeted when a live player stood in their path; four working roles walked on their knuckles", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, A = B.arcade, a = B.pilot.player, rows = [];
     for (const g of A.staff) {
@@ -15358,13 +15358,20 @@ const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simula
       B.advance(0.5, 1 / 60);
       rows.push({ role: g.role.id, phase: g.phase });
     }
-    B.advance(15, 1 / 60);
+    const walkedUpright = new Set(), bent = [];
+    for (let tick = 0; tick < 900; tick++) {
+      B.advance(1 / 60, 1 / 60);
+      for (const g of A.staff) if (g.phase === "walk" && g.agent.walking && !g.agent.beating) {
+        walkedUpright.add(g.role.id);
+        if (g.agent.debug.gait !== "upright" && bent.length < 6) bent.push(g.role.id);
+      }
+    }
     B.pilot.navigate({ position: { x: 0, y: 0, z: 2 }, yaw: 0, pitch: 0.2, dist: 5 });
     return { crowd: A.crowd.length, walkers: A.walkers.length, bots: A.bots.length, staff: A.staff.length,
-      playing: A.carnival.some(g => g.playing), rows, jobs: A.staff.map(g => ({ phase: g.phase, done: g.done, walked: g.walked })) };
+      playing: A.carnival.some(g => g.playing), upright: [...walkedUpright], bent, rows, jobs: A.staff.map(g => ({ phase: g.phase, done: g.done, walked: g.walked })) };
   })()`);
-  record("arcade maintenance: only the live player and maintenance Clankers remain, machines never start bot games, and nearby players cause no greetings or chats",
-    r.crowd === 0 && r.walkers === 0 && r.bots === 0 && r.staff === 6 && !r.playing
+  record("arcade maintenance: only the live player and maintenance Clankers remain, machines never start bot games, nearby players cause no greetings or chats, and all six roles walk upright between jobs",
+    r.upright.length === 6 && r.bent.length === 0 && r.crowd === 0 && r.walkers === 0 && r.bots === 0 && r.staff === 6 && !r.playing
     && r.rows.every(g => g.phase !== "greet" && g.phase !== "chat") && r.jobs.some(g => g.done > 0 || g.walked > 0), JSON.stringify(r));
 } };
 const arcadeStage = { name: "arcade stage approaches", why: "regression: oversized decorative root collision boxes blocked walking onto the central stage from its sides and back", run: async (b) => {
