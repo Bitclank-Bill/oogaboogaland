@@ -25,8 +25,12 @@ END;
 -- original achievement time (earliest on ties), keeping matching replay pointers.
 DROP TRIGGER highscores_player_rename;
 CREATE TRIGGER highscores_player_rename AFTER UPDATE OF login ON players
-WHEN lower(OLD.login) <> lower(NEW.login)
 BEGIN
+  -- Revoke stale authentication even on an unchanged-login refresh. The verified
+  -- current holder must not share their login with another account's live session.
+  DELETE FROM sessions WHERE player_id IN
+    (SELECT id FROM players WHERE id <> NEW.id AND lower(login) = lower(NEW.login));
+
   UPDATE game_highscores SET
     highscores = json_set(json_remove(highscores, '$.' || json_quote(lower(OLD.login))), '$.' || json_quote(lower(NEW.login)), CASE WHEN json_extract(owners, '$.' || json_quote(lower(NEW.login))) = NEW.id AND (
       (direction = 'asc' AND json_extract(highscores, '$.' || json_quote(lower(NEW.login))) < json_extract(highscores, '$.' || json_quote(lower(OLD.login))))
@@ -48,6 +52,11 @@ END;
 -- New claims/renames are already guarded above. Legacy cleanup would otherwise
 -- erase another numeric owner's rows during an unchanged-login session refresh.
 DROP TRIGGER highscores_player_login;
+CREATE TRIGGER highscores_player_login AFTER INSERT ON players
+BEGIN
+  DELETE FROM sessions WHERE player_id IN
+    (SELECT id FROM players WHERE id <> NEW.id AND lower(login) = lower(NEW.login));
+END;
 DROP TRIGGER cloud_hopper_runs_login;
 DROP TRIGGER cabinet_runs_login;
 DROP TRIGGER cloud_hopper_runs_rename;

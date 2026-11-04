@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { deletePlayer, upsertPlayerFromGitHub } from "../src/db.js";
+import { deletePlayer, getSession, upsertPlayerFromGitHub } from "../src/db.js";
 import { createSession } from "../src/db.js";
 import { sha256Hex } from "../src/crypto.js";
 import { routeFixture } from "./routes.mjs";
@@ -477,10 +477,11 @@ test("identity guard installs without data changes and preserves every board thr
   }
 });
 
-test("returning players with legacy duplicate logins retain every numeric owner's data while new claims remain blocked", async t => {
+test("returning players with legacy duplicate logins revoke stale sessions but preserve every owner's history and reject new claims", async t => {
   const DB = database(true, true, false); t.after(() => DB.sql.close());
   await player(DB, 1, "Shared"); await player(DB, 2, "shared"); await player(DB, 4, "other");
-  for (const id of [1,2,4]) await createSession(DB,id,"existing");
+  const tokens = new Map();
+  for (const id of [1,2,4]) tokens.set(id,await createSession(DB,id,"existing"));
   DB.sql.exec(`UPDATE game_highscores SET highscores='{"shared":47000}',owners='{"shared":1}',achieved='{"shared":10}' WHERE game_id='cloud-hopper-l1'`);
   for (const id of [1,2,4]) {
     DB.sql.prepare("INSERT INTO cloud_hopper_runs(game,run_id,player_id,score,achieved) VALUES('cloud-hopper-l1',?,?,?,?)").run(runId(id),id,46000+id*1000,10*id);
@@ -495,16 +496,20 @@ test("returning players with legacy duplicate logins retain every numeric owner'
   const before = snapshot();
   DB.sql.exec(readFileSync(new URL("../migrations/0009_identity_collision_guard.sql",import.meta.url),"utf8"));
   assert.deepEqual(snapshot(),before);
-  for (const [id,login] of [[2,"shared"],[2,"SHARED"],[1,"Shared"]]) {
+  const refreshed = before.map((rows,i) => tables[i] === "sessions" ? rows.filter(row => row.player_id !== 1) : rows);
+  for (const [id,login] of [[2,"shared"],[2,"SHARED"]]) {
     await player(DB,id,login);
-    assert.deepEqual(snapshot(),before);
+    assert.deepEqual(snapshot(),refreshed);
+    assert.equal(await getSession(DB,tokens.get(1)),null);
+    assert.equal((await getSession(DB,tokens.get(2))).player.id,2);
+    assert.equal((await getSession(DB,tokens.get(4))).player.id,4);
   }
   await assert.rejects(player(DB,3,"shared"),/identity collision/);
   await assert.rejects(player(DB,4,"SHARED"),/identity collision/);
-  assert.deepEqual(snapshot(),before);
+  assert.deepEqual(snapshot(),refreshed);
   await player(DB,1,"current-name");
   for (const table of ["sessions","cloud_hopper_runs","cabinet_runs","cloud_hopper_replay_objects","cloud_hopper_replay_winners","cloud_hopper_replay_tickets"])
-    assert.deepEqual(DB.sql.prepare(`SELECT * FROM ${table}`).all(),before[tables.indexOf(table)]);
+    assert.deepEqual(DB.sql.prepare(`SELECT * FROM ${table}`).all(),refreshed[tables.indexOf(table)]);
   assert.deepEqual(JSON.parse(DB.sql.prepare("SELECT highscores FROM game_highscores WHERE game_id='cloud-hopper-l1'").get().highscores),{"current-name":47000});
 });
 
