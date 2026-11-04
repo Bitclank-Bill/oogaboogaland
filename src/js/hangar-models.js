@@ -19,7 +19,7 @@
   const BL = window.BL = window.BL || {};
   const { models, math } = BL;
   const FM = BL.factoryModels, JM = BL.jetModels;
-  const { cached, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, chain, lanternParts, deckParts, stairParts, turn, shaded, forwardLathe } = models;
+  const { cached, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, chain, lanternParts, turn, shaded, forwardLathe } = models;
   const { mulberry32 } = math;
   const TAU = Math.PI * 2;
 
