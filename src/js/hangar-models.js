@@ -412,8 +412,8 @@
   });
 
   // The catwalks along the side walls: grated steel decks bracketed into the wall (no posts to stand in front of the
-  // boards below), railed along the hall side and across both ends but where the stair comes up, and the stairs up to
-  // them.
+  // boards below), railed along the hall side and across both ends but where the stair comes up, and the steel stairs
+  // up to them.
   const catwalks = cached(() => {
     const L = LAYOUT, y = L.catwalkY, geos = [], B = L.boards;
     const underBoard = (x, z) => Object.values(B).some((b) => Math.sign(b.x) === Math.sign(x) && Math.abs(z - b.z) < b.w * b.scale / 2 + 0.4);
@@ -429,7 +429,7 @@
         geos.push(box({ w: 0.08, h: 2.6, d: 0.36, color: STEEL.plate, offset: { x: wall + side * 0.04, y: y - 1.5, z } }));
       }
     });
-    for (const [ax, ay, az, bx, by, bz, w] of L.catwalkStairs) geos.push(...stairParts(ax, ay, az, bx, by, bz, w, [true, false], true));
+    for (const [ax, ay, az, bx, by, bz, w] of L.catwalkStairs) geos.push(...steelStair(ax, ay, az, bx, by, bz, w, [true, false]));
     return merge(...geos);
   });
 
