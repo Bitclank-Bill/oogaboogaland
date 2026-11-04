@@ -697,7 +697,6 @@ body[data-active-scene="hub"] .home-link {
 
 .sheet[data-dock="bottom"] .sheet-body {
   border-bottom: 0;
-  padding-top: 12px;
   padding-bottom: var(--safe-bottom);
   box-shadow: 0 -6px 30px rgba(0, 0, 0, 0.35);
 }
