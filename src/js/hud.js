@@ -171,8 +171,8 @@
     path.setAttribute("fill", "currentColor");
     voiceIcon.append(path);
   }
-  // The Ooga thump's pixel mallet (thump.js), on the voice mark's 9x9 grid: the crowd notice, the chat board and the
-  // support mark beside a name all clone it.
+  // The Ooga thump's pixel mallet (thump.js), on the voice mark's 9x9 grid: the Thump button and the mark beside a
+  // player in Online Oogas (players.js) clone it.
   const malletIcon = document.createElementNS(SIGN_NS, "svg");
   malletIcon.setAttribute("viewBox", "0 0 9 9");
   malletIcon.setAttribute("aria-hidden", "true");
@@ -183,34 +183,6 @@
     path.setAttribute("fill", "currentColor");
     malletIcon.append(path);
   }
-  // A support mark beside a name (the roster's and the players tab's), made once a row, shown for a pulse and hidden
-  // again when its animation finishes: no timer. Under Calm it holds still for the same time.
-  const SUPPORT_MS = 1400, CALM = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const SUPPORT_PULSE = [{ opacity: 0, transform: "scale(0.6)" }, { opacity: 1, transform: "scale(1.25)", offset: 0.18 }, { opacity: 1, transform: "scale(1)", offset: 0.4 }, { opacity: 0, transform: "scale(1)" }];
-  const SUPPORT_STILL = [{ opacity: 1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }];
-  const supportMark = (marks) => {
-    const mark = document.createElement("span");
-    mark.className = "roster-thump"; mark.hidden = true; mark.setAttribute("role", "img");
-    mark.setAttribute("aria-label", "Thumped in support"); mark.title = "Thumped in support";
-    mark.append(malletIcon.cloneNode(true));
-    marks.prepend(mark);
-    return mark;
-  };
-  const pulseSupport = (mark) => {
-    if (mark.pulse) mark.pulse.cancel();
-    mark.hidden = false;
-    const pulse = mark.pulse = mark.animate(CALM.matches ? SUPPORT_STILL : SUPPORT_PULSE, { duration: SUPPORT_MS, easing: "ease-out" });
-    pulse.onfinish = () => { if (mark.pulse === pulse) { mark.pulse = null; mark.hidden = true; } };
-  };
-  // Every support mark still pulsing goes at once (thump.js, when the visitor's voice group changes).
-  const clearSupport = () => {
-    for (const mark of document.querySelectorAll(".roster-thump")) {
-      if (!mark.pulse) continue;
-      mark.pulse.cancel();
-      mark.pulse = null;
-      mark.hidden = true;
-    }
-  };
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -249,14 +221,14 @@
     renderer.render(root, camera);
     renderer.dispose();
   };
-  const copyPortraitNode = (source, portraitRoot, portraitGeometry) => {
+  const copyPortraitNode = (source, portraitRoot, portraitGeometry, excluded = null) => {
     if (source.portraitHidden) return null;
     const copy = createNode({ geometry: source === portraitRoot ? portraitGeometry : source.geometry });
     Object.assign(copy.position, source.position);
     Object.assign(copy.rotation, source.rotation);
     Object.assign(copy.scale, source.scale);
     copy.visible = source.visible;
-    for (const child of source.children) if (child.visible && !child.portraitHidden) addChild(copy, copyPortraitNode(child, portraitRoot, portraitGeometry));
+    for (const child of source.children) if (child.visible && !child.portraitHidden && !excluded?.has(child)) addChild(copy, copyPortraitNode(child, portraitRoot, portraitGeometry, excluded));
     return copy;
   };
   const renderFaceIcon = (canvas, cave, gorilla = null, px = ICON_PX, unlit = false) => {
@@ -282,9 +254,10 @@
   };
   // An Ooga standing square to the view, whole, as it stands posed now: its built parts copied (hidden ones left out)
   // and turned to face the camera, `w` by `h` pixels. A podium's portraits (HALLOWEEN: the arcade's ghost hunt's winners).
-  const renderBodyIcon = (canvas, cave, w, h) => {
+  const renderBodyIcon = (canvas, cave, w, h, weapons = true) => {
     const renderer = iconRendererMod.createRenderer(canvas, { width: w, height: h, transparent: true });
-    const root = createNode(), body = copyPortraitNode(cave.root, null, null), tall = cave.bodyHeight;
+    const excluded = weapons ? null : new Set([cave.parts.club, cave.parts.gun]);
+    const root = createNode(), body = copyPortraitNode(cave.root, null, null, excluded), tall = cave.bodyHeight;
     body.visible = true;
     body.position.x = body.position.z = 0;
     body.position.y = cave.baseY;
@@ -2008,7 +1981,6 @@
       else if (b.dataset.action === "account-voice") BL.voice.toggle();
       else if (b.dataset.action === "account-voice-leave") BL.voice.stop();
       else if (b.dataset.action === "account-thump") BL.thump.press();
-      else if (b.dataset.action === "account-thump-sound") BL.thump.toggleSound();
       else actionHandler && actionHandler(b.dataset.action);
     });
     // A game's side panels fold away and come back from a tab on the screen's edge: a `data-fold`
@@ -2533,14 +2505,6 @@
       liveOnline(row);
     }
   };
-  // An Ooga thump's support mark on the thumper's roster row (their own Ooga's, else the one they drive).
-  const showSupport = (login, body) => {
-    const row = liveRows && voiceRowOf(login, body);
-    if (!row) return false;
-    const marks = row.voice.parentElement;
-    pulseSupport(marks.querySelector(":scope > .roster-thump") || supportMark(marks));
-    return true;
-  };
   // A game's Ooga list (`rows`, name to button, each button in its own <li>) held to one Ooga, a signed-in
   // visitor's own: its row stands alone, moved last so it keeps no divider. `null` brings every row back in order.
   const holdRow = (list, rows, name) => {
@@ -2560,5 +2524,5 @@
       else b.textContent = `Back to ${place}`;
     }
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, showSupport, supportMark, pulseSupport, clearSupport, malletIcon, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, malletIcon, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

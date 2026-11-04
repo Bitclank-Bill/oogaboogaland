@@ -467,7 +467,7 @@
       return false;
     };
 
-    const pool = { update, actors, drawNames, liveGeometry, stats, setUnderlying, thumped, clearThumps, dispose };
+    const pool = { update, actors, drawNames, liveGeometry, stats, setUnderlying, thumped, clearThumps, dispose, body: id => bodies.get(id)?.cave || null };
     return pool;
   };
   const thumped = (id) => activePool ? activePool.thumped(id) : null;

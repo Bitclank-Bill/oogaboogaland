@@ -1,5 +1,9 @@
+export { hockey } from "./hockey.js";
+import "../../src/js/hockey-wire.js";
+export const HOCKEY = globalThis.BL.hockeyWire;
 import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy.js";
 import "../../src/js/chat-policy.js";
+import "../../src/js/chalk-board.js";
 import "../../src/js/voice-blend.js";
 // The room's wire format and the limits it enforces, as pure functions the tests can reach.
 //
@@ -26,6 +30,8 @@ import "../../src/js/voice-blend.js";
 //                 { t: "ghost", k, g?, d?, h? }  HALLOWEEN: the ghost hunt's `start`, `ready`, `pause` or `leave`, or `hits` h, for its
 //                                host, from a page in the arcade's ghost arena
 //                 { t: "thump" }                 a voice participant's Ooga thump (see Thumps below); no other field
+//                 { t: "chalk", k, ... }        the EntropyLab chalkboard: `take` or `drop` the board, or an edit by
+//                                                whoever holds it (chalk-board.js; see CHALK_HZ below)
 //                 { t: "wallet", k, u, ... }   DSB Land: one of the driven Ooga's free hardware wallets taken, set
 //                                                down, picked up, thrown or blown (see WALLET_CAP below)
 //                 binary                         the NPC host's frame of every Ooga's pose, relayed as is; or,
@@ -54,6 +60,10 @@ import "../../src/js/voice-blend.js";
 //                 chat-ack { clientId }     the sender's line was accepted, including a recognized retry
 //                 chat-rejected { clientId?, reason }  refused; rate retries keep the same id
 //                 chat-history { messages }  after welcome: the lines the room still holds, oldest first
+//                 chalk-board { marks, editor }  after welcome: the chalkboard as the room holds it, and who holds it
+//                 chalk-lock { id }          who holds the chalkboard now (0 for nobody), to everyone
+//                 chalk { id, k, ... }       the holder's edit, to everyone else; chalk-refused { why, name? } to a
+//                                            page whose take was refused (`away`, `busy` with the holder's name)
 //                 wallet { k, w }            another player's wallet event, to their zone: `w` is the wallet as
 //                                            [id, u, look, state, x, y, z, vx, vy, vz, at, end], state "c" carried,
 //                                            "d" set down or "f" thrown, at and end on the room's clock;
@@ -63,7 +73,8 @@ import "../../src/js/voice-blend.js";
 //                 ghost-host { id, followers }  who runs the ghost arena's hunt (0 for nobody) and how many pages in
 //                                            the arena follow it; welcome carries ghostHost and ghostFollowers; binary
 //                                            frames led by GHOST_MAGIC from it, to pages in the arena
-//                 thump { id }               player `id` thumped: sent only to their voice peers, never the sender
+//                 thump { id, a? }           player `id` thumped: sent only to those voice places them with, never the
+//                                            sender; `a: 1` when this recipient would hear the sender's voice
 // Zones: `<group>` or `<group>.<place>`. Voice is shared within a group; who is shown is matched on the whole
 // name, since a place inside a group can have coordinates of its own (the Factory's tunnel on the island and
 // its hall). `none` is nowhere: off the island's edge, or between scenes; it shares voice with nobody.
@@ -74,13 +85,16 @@ import "../../src/js/voice-blend.js";
 // limit: one that starts with CHAT_PREFIX, as the page sends it, may run to CHAT_FRAME_MAX and is ignored past
 // it, so a long line is dropped rather than closing the socket; every other frame keeps MESSAGE_MAX.
 // Thumps: a reaction in voice instead of unmuting to say "yes!". Taken only from a current voice participant (a receive
-// session, as `voicePeers` counts a listener: talking or listen-only) and relayed as `{"t":"thump","id":N}` only to the
-// players voice joins them with (`thumpPeers`): those the sender hears and those who would hear the sender if they
-// spoke, by the same predicates as `voicePeers`, so poker tables, DSB Studio permissions and `none` all hold. A frame
-// with any other field is ignored. Each account spends a bucket of THUMP_HZ a second bursting to THUMP_BURST
+// session, as `voicePeers` counts a listener: talking or listen-only) and relayed as `{"t":"thump","id":N}` to every
+// other voice participant who shares a voice place with them either way (`thumpPeers`: the zone group or a crossing's
+// share of it, and in the Ember Den the table, by the same predicates as `voicePeers`), so other tables, other places
+// and `none` never see it. Each copy also says whether its recipient would hear the sender's voice there (`a: 1`,
+// `thumpAudible`): not where the DSB Studio keeps the sender from speaking, as it does its audience. The page shows every
+// thump it is sent and sounds only those, within its own hearing range and mutes. A frame with any other field is
+// ignored. Each account spends a bucket of THUMP_HZ a second bursting to THUMP_BURST
 // (`takeToken`); buckets live in memory alone, at most THUMP_BUCKET_KEEP, and an absent account's full bucket is
 // dropped when the next one is made (`thumpBucketFor`). No timer, alarm, storage, reply or history: a dropped thump is
-// simply not relayed. The page counts supporters and draws everything.
+// simply not relayed. The page draws everything.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -155,6 +169,22 @@ export const SWING_HZ = 4;
 export const SWING_BURST = 4;
 export const GHOST_HZ = 20;
 export const GHOST_BURST = 24;
+// Chalkboard: the EntropyLab board on the island, kept for good. One page at a time holds it, and only while its
+// Ooga stands at the board in the island's `outside` zone (chalk-board.js `near`, against the last pose it sent);
+// moving off, changing zone or body, or leaving lets it go. A holder silent for CHALK_IDLE_MS can be taken over by the
+// next Ooga to ask, so nobody holds it for good, with no timer. Edits arrive batched (a line's points, typed
+// characters) at most CHALK_HZ a second. An edit over the rate is dropped unanswered; one that does not apply, or one
+// from a holder whose earlier edits were dropped, sends the holder the board as the room has it instead (CHALK_TELL_MS). The board goes to storage at most every CHALK_SAVE_MS while someone writes, at
+// once on a wipe, and when the holder lets go, never for each point.
+export const CHALK_HZ = 30;
+export const CHALK_BURST = 30;
+export const CHALK_IDLE_MS = 60000;
+export const CHALK_SAVE_MS = 5000;
+// A board sent back to correct a page (an edit that did not apply, or one from a page without the board) reaches that
+// page at most once every CHALK_TELL_MS, so no stream of edit frames makes the room send a full board for each.
+export const CHALK_TELL_MS = 2000;
+export const CHALK = globalThis.BL.chalkBoard;
+export const CHALK_FEATURE = CHALK.FEATURE;
 // DSB Land's free hardware wallets (wallet-bombs.js): every page runs its own visitor's devices, and the room passes
 // their events to the pages in the same zone, keeping each player's live ones (WALLET_CAP at most) for whoever joins
 // or walks into that zone later. A device is `u` (1-65535, the page's own number for it), its look `l`, and with
@@ -173,9 +203,13 @@ export const GHOST_BATCH = 16;
 // voice to itself) elect a ghost host of their own, follower reports from the arena go to it, and it sends the hunt's
 // state as a binary frame led by GHOST_MAGIC ("GHST"), up to GHOST_FRAME_MAX bytes and GHOST_FRAME_HZ a second, which
 // the room hands to every other page in the arena and keeps for the next to walk in. Only a visible page may host
-// (`ghostCandidate`): a hidden one runs no frames, so it would send nothing while every follower's hunt froze.
+// (`ghostCandidate`): a hidden one runs no frames, so it would send nothing while every follower's hunt froze. The
+// arena's hallway (`arcade.haunt`) watches: its pages hear the frames and count as followers, so a spectator walked out
+// sees the hunt through the fence, but they neither host nor report to the host (`watchesGhost`).
 export const GHOST_ARENA_ZONES = ["arcade.arena", "arcade-hunt"];
+export const GHOST_WATCH_ZONES = [...GHOST_ARENA_ZONES, "arcade.haunt"];
 export const inGhostArena = (p) => GHOST_ARENA_ZONES.includes(p.zone);
+export const watchesGhost = (p) => GHOST_WATCH_ZONES.includes(p.zone);
 export const ghostCandidate = (p) => p.visible && inGhostArena(p);
 export const GHOST_MAGIC = 0x54534847;
 export const GHOST_FRAME_MAX = 65536;
@@ -209,6 +243,7 @@ export const parseClientMessage = (text) => {
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return false;
   // Only chat earns the longer frame: a repeated key could make a chat-prefixed frame parse as anything.
   if (text.length > MESSAGE_MAX && msg.t !== "chat") return false;
+  if (msg.t === "hockey") return HOCKEY.parse(msg);
   if (msg.t === "studio") return parseStudioCommand(msg);
   if (msg.t === "pose") {
     const { x, y, z, yaw } = msg;
@@ -251,6 +286,11 @@ export const parseClientMessage = (text) => {
     if (msg.clientId === undefined) return { t: "chat", text: line };
     return typeof msg.clientId === "string" && msg.clientId.length > 0 && msg.clientId.length <= 64 && !/[^\w-]/.test(msg.clientId)
       ? { t: "chat", text: line, clientId: msg.clientId } : null;
+  }
+  if (msg.t === "chalk") {
+    if (msg.k === "take" || msg.k === "drop") return { t: "chalk", k: msg.k };
+    const op = CHALK.parse(msg);
+    return op ? { t: "chalk", ...op } : null;
   }
   if (msg.t === "door") {
     if (msg.op === "ask") return (msg.dir === "in" || msg.dir === "out") && Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9
@@ -431,19 +471,19 @@ export const voicePeers = (players, studio = null) => {
   return out;
 };
 
-/** The players a thump from `sender` reaches: other voice participants it hears (`voicePeers`), or who would hear it
- *  were its microphone live. Empty unless the sender is a voice participant itself. */
+/** The players a thump from `sender` reaches: every other voice participant sharing a voice place with it, from either
+ *  side (one may be part of the way across to the other's place). Empty unless the sender is a voice participant. */
 export const thumpPeers = (players, sender, studio = null) => {
   const out = [];
   if (!voiceListener(sender, studio)) return out;
-  const audible = voiceAudible(sender, studio);
   for (const q of players) {
-    if (q === sender || !voiceListener(q, studio)) continue;
-    // Each way from its own listener's side: `q` would hear the sender, or the sender hears `q`.
-    if (audible && voiceTogether(q, sender) || voiceAudible(q, studio) && q.voice.track && voiceTogether(sender, q)) out.push(q);
+    if (q !== sender && voiceListener(q, studio) && (voiceTogether(q, sender) || voiceTogether(sender, q))) out.push(q);
   }
   return out;
 };
+
+/** Whether recipient `q` would hear `sender`'s voice, microphone aside: the sound of its thump, not the sight. */
+export const thumpAudible = (q, sender, studio = null) => voiceListener(q, studio) && voiceAudible(sender, studio) && voiceTogether(q, sender);
 
 // NPC host: one page runs the Ooga crew (and the hub's events) for everyone and streams them; the others
 // follow. The sitting host (`incumbent`) keeps the role while it still shows the island (`inHub`: in the hub

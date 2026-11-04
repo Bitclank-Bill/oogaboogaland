@@ -10,13 +10,10 @@
 // A refusal or disconnect keeps the draft and id, unless the player edits it into a different message.
 // Escape leaves the input with the sheet open. Keys typed in the sheet never reach a scene
 // (controls.js, director.js). On a phone the sheet rises above the keyboard while the input has focus.
-// An Ooga thump crowd (thump.js) shows here as one notice row of this page's own (`support`): a pixel mallet and its words,
-// after the newest line when it came. It is never a line: never sent, kept, counted in the history or announced twice.
-// `clearSupport` takes the notice away (another voice group, thump.js) and leaves every line.
 // Unread lines (#430): a line from someone else that this page had not had, heard while the visitor is not in the
 // panel, counts on the tab until they look at it (`sheet.watchViews`). The first lines the room hands over on arrival
 // do not count; on a rejoin (a reconnect, a tab back from the background), only lines newer than any this page had.
-// Exports account (fed `BL.net.state`), heard (fed the room's lines), support, clearSupport and stats.
+// Exports account (fed `BL.net.state`), heard (fed the room's lines) and stats.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -37,18 +34,6 @@
   const identity = $("chat-identity"), accountLogin = $("chat-account-login"), displayForm = $("chat-display-form"), displayInput = $("chat-display"), displaySave = $("chat-display-save"), displayStatus = $("chat-display-status");
   let identityId = "", identityDisplay = "", displaySaving = false, displayComposing = false;
   let showing = false, drawn = true, live = false, me = "", composing = false, pending = null, notice = "", revision = 0, logoutEpoch = 0, ackTimer = 0;
-  // The thump notice: one row, made on the first and reused; `supportAfter` is the id of the line it follows (0 before
-  // any), -1 for none.
-  let supportRow = null, supportText = null, supportAfter = -1;
-  const placeSupport = () => {
-    if (!supportRow) return;
-    if (supportAfter < 0) { supportRow.remove(); return; }
-    if (supportAfter === 0) { log.prepend(supportRow); return; }
-    for (const child of log.children) if (child.dataset.id === String(supportAfter)) { child.after(supportRow); return; }
-    // Its line scrolled out of the history: so does the notice.
-    supportAfter = -1;
-    supportRow.remove();
-  };
   let unread = 0, newest = -1, synced = false;
   const setUnread = (count) => { unread = count; BL.sheet.setBadge("chat", count); };
   const stopWaiting = () => { window.clearTimeout(ackTimer); ackTimer = 0; if (pending) pending.awaiting = false; };
@@ -85,7 +70,6 @@
     const rows = document.createDocumentFragment();
     for (const line of lines) rows.append(row(line));
     log.replaceChildren(rows);
-    placeSupport();
     if (follow) log.scrollTop = log.scrollHeight;
     else {
       log.scrollTop = oldTop;
@@ -144,12 +128,7 @@
     }
     const follow = atFoot();
     for (const line of list) log.append(row(line));
-    for (let i = 0; i < over;) {
-      const first = log.firstElementChild;
-      first.remove();
-      if (first !== supportRow) i++;
-      else supportAfter = -1;
-    }
+    for (let i = 0; i < over; i++) log.firstElementChild.remove();
     if (follow) log.scrollTop = log.scrollHeight;
   };
 
@@ -181,7 +160,7 @@
     if (epoch !== logoutEpoch) {
       logoutEpoch = epoch;
       stopWaiting(); pending = null; notice = ""; revision++; input.value = "";
-      lines.length = 0; log.replaceChildren(); drawn = true; supportAfter = -1;
+      lines.length = 0; log.replaceChildren(); drawn = true;
       newest = -1; synced = false; setUnread(0);
       announce("Signed out. Local chat and draft cleared.");
     }
@@ -284,13 +263,17 @@
     if (!keyboardSheet) return;
     keyboardSheet.style.removeProperty("--chat-keyboard");
     keyboardSheet.style.removeProperty("--chat-viewport");
+    delete keyboardSheet.dataset.keyboard;
     keyboardSheet = null;
   };
   const fit = () => {
     const owner = panel.closest(".sheet");
     if (keyboardSheet !== owner) { clearFit(); keyboardSheet = owner; }
     if (!owner) return;
-    owner.style.setProperty("--chat-keyboard", `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`);
+    const keyboard = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+    owner.style.setProperty("--chat-keyboard", `${keyboard}px`);
+    if (keyboard > 0) owner.dataset.keyboard = "true";
+    else delete owner.dataset.keyboard;
     owner.style.setProperty("--chat-viewport", `${Math.floor(viewport.height)}px`);
     // A short landscape viewport scrolls the panel rather than hiding the focused editor.
     const field = document.activeElement;
@@ -314,29 +297,8 @@
     if (viewport && (document.activeElement === input || document.activeElement === displayInput)) fit();
   });
 
-  // The crowd's notice, as thump.js words it, after the newest line.
-  const support = (text) => {
-    if (!supportRow) {
-      supportRow = document.createElement("li"); supportText = document.createElement("span");
-      supportRow.className = "chat-row chat-notice"; supportText.className = "chat-text";
-      supportRow.append(BL.hud.malletIcon.cloneNode(true), supportText);
-    }
-    supportText.textContent = text;
-    supportAfter = lines.length ? lines[lines.length - 1].id : 0;
-    if (!showing || !drawn) { drawn = false; return; }
-    const follow = atFoot();
-    log.append(supportRow);
-    if (follow) log.scrollTop = log.scrollHeight;
-  };
-
-  // The visitor's voice group changed: the last group's notice goes; the lines and the crowd's cooldown are not ours.
-  const clearSupport = () => {
-    supportAfter = -1;
-    if (supportRow) supportRow.remove();
-  };
-
   BL.sheet.watchViews(panel, () => { if (unread) setUnread(0); });
   net.subscribe(account);
   net.subscribeChat(heard);
-  BL.chat = { account, heard, support, clearSupport, get stats() { return { lines: lines.length, rows: log.childElementCount - (supportRow && supportRow.parentNode === log ? 1 : 0), support: supportRow && supportRow.parentNode === log ? supportText.textContent : "", showing, drawn, live, unread }; } };
+  BL.chat = { account, heard, get stats() { return { lines: lines.length, rows: log.childElementCount, showing, drawn, live, unread }; } };
 })();

@@ -1,5 +1,6 @@
-// Ooga thumps: the wire rule, who a thump reaches (the same predicates as voicePeers, so poker tables, the DSB Studio
-// and `none` hold), the per-account bucket, and the real room driven through its socket handler with storage, alarms
+// Ooga thumps: the wire rule, who a thump reaches (everyone in voice in its voice place, by the same predicates as
+// voicePeers, so poker tables, other places and `none` hold) and for whom it sounds (`thumpAudible`: those who would hear
+// the sender's voice, so the DSB Studio's audience boundary holds), the per-account bucket, and the real room driven through its socket handler with storage, alarms
 // and timers that fail the test if anything touches them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +11,7 @@ import * as studio from "../src/studio-policy.js";
 import { sfuClient } from "../src/sfu.js";
 import { getPlayer } from "../src/db.js";
 
-const { THUMP_HZ, THUMP_BURST, THUMP_BUCKET_KEEP, MESSAGE_MAX, parseClientMessage, thumpPeers, thumpBucketFor, voicePeers, takeToken } = protocol;
+const { THUMP_HZ, THUMP_BURST, THUMP_BUCKET_KEEP, MESSAGE_MAX, parseClientMessage, thumpPeers, thumpAudible, thumpBucketFor, voicePeers, takeToken } = protocol;
 const listening = { sub: "receive", pub: null, track: null };
 const talking = { sub: "receive", pub: "publish", track: "mic" };
 const player = (id, zone, voice = listening, extra = {}) => ({ id, zone, body: `ooga-${id}`, voice: { ...voice }, ...extra });
@@ -39,6 +40,8 @@ test("thump membership: listen-only and talking participants reach their voice g
   assert.deepEqual(thumpPeers(players, players[5]), [], "bodiless outside the Studio: nothing is relayed");
   assert.deepEqual(ids(thumpPeers(players, players[4])), [], "alone in its group");
   assert.deepEqual(ids(thumpPeers(players, players[6])), [8], "the Factory's tunnel and hall are one voice group");
+  for (const q of [players[1], players[2]]) assert.ok(thumpAudible(q, players[0]), "a listen-only sender is heard as any voice would be");
+  assert.ok(!thumpAudible(players[4], players[0]), "another group never hears it");
 });
 
 test("thump boundaries: `none` shares with nobody and Ember Den tables stay apart", () => {
@@ -52,7 +55,7 @@ test("thump boundaries: `none` shares with nobody and Ember Den tables stay apar
   assert.deepEqual(ids(thumpPeers(den, den[4])), [4]);
 });
 
-test("thump boundaries: DSB Studio permissions hold; an audience reaches only the speakers it hears", () => {
+test("thump boundaries: everyone in the DSB Studio sees a thump; only those who would hear its sender hear it", () => {
   const s = { ...studio.studioState(1000), hostId: 1, mode: "presentation", restrictedIds: [6] };
   const zone = studio.STUDIO_ZONE;
   const players = [
@@ -63,19 +66,25 @@ test("thump boundaries: DSB Studio permissions hold; an audience reaches only th
     player(5, "dsb-outside", talking), // outside the Studio
     player(6, zone, talking, { studioSeat: 1 }), // restricted
   ];
-  assert.deepEqual(ids(thumpPeers(players, players[0], s)), [2, 3, 4, 6], "everyone in the Studio hears the host");
-  assert.deepEqual(ids(thumpPeers(players, players[1], s)), [1], "an audience member reaches the host it hears, never another listener");
-  assert.deepEqual(ids(thumpPeers(players, players[3], s)), [1], "an unpermitted attendee reaches only the host");
-  assert.deepEqual(ids(thumpPeers(players, players[5], s)), [1], "a restricted attendee reaches only the host");
+  const heardBy = (sender) => ids(thumpPeers(players, sender, s).filter((q) => thumpAudible(q, sender, s)));
+  assert.deepEqual(ids(thumpPeers(players, players[0], s)), [2, 3, 4, 6], "the host's thump is seen in the whole Studio");
+  assert.deepEqual(heardBy(players[0]), [2, 3, 4, 6], "and heard there, as the host's voice is");
+  assert.deepEqual(ids(thumpPeers(players, players[1], s)), [1, 3, 4, 6], "an audience member's thump is seen in the whole Studio");
+  assert.deepEqual(heardBy(players[1]), [], "but heard by nobody: an audience is never heard");
+  assert.deepEqual(ids(thumpPeers(players, players[3], s)), [1, 2, 3, 6]);
+  assert.deepEqual(heardBy(players[3]), [], "an unpermitted attendee is not heard");
+  assert.deepEqual(heardBy(players[5]), [], "a restricted attendee is not heard");
   assert.deepEqual(thumpPeers(players, players[4], s), [], "DSB Land outside does not reach the Studio");
+  assert.ok(!thumpAudible(players[4], players[0], s), "nor does the Studio's sound reach DSB Land outside");
   assert.deepEqual(thumpPeers([player(2, "dsb-outside", listening, { body: null }), player(1, "dsb-outside", talking)], { id: 2, zone: "dsb-outside", body: null, voice: listening }, s), [],
     "a bodiless listener counts only inside the Studio");
   s.mode = "discussion";
-  assert.deepEqual(ids(thumpPeers(players, players[3], s)), [1, 2, 3, 6], "a permitted attendee reaches the Studio, restricted players still hear");
-  assert.deepEqual(ids(thumpPeers(players, players[5], s)), [1, 4], "restriction keeps a speaker unheard in discussion too");
+  assert.deepEqual(heardBy(players[3]), [1, 2, 3, 6], "a permitted attendee is heard in the Studio, restricted players included");
+  assert.deepEqual(heardBy(players[5]), [], "restriction keeps a speaker unheard in discussion too");
+  assert.deepEqual(ids(thumpPeers(players, players[5], s)), [1, 2, 3, 4], "while the restricted player's thump is still seen");
 });
 
-test("thumpPeers is exactly voicePeers both ways: whom the sender hears, and who would hear it speak", () => {
+test("thump reach and sound are voicePeers' own: seen by every voice participant sharing a place either way, heard by those who would hear the sender", () => {
   let seed = 7;
   const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
   // Crossings (BLEND, #392) included: a player part of the way along to an adjacent group.
@@ -91,14 +100,19 @@ test("thumpPeers is exactly voicePeers both ways: whom the sender hears, and who
     const players = Array.from({ length: 2 + Math.floor(rand() * 7) }, (_, i) => player(i + 1, zones[Math.floor(rand() * zones.length)],
       rand() < 0.2 ? { sub: null, pub: null, track: null } : rand() < 0.5 ? listening : talking,
       { body: rand() < 0.2 ? null : `ooga-${i + 1}`, pokerVoice: rand() < 0.5 ? null : Math.floor(rand() * 2), studioSeat: rand() < 0.5 ? i : undefined })).map(cross);
-    const heard = voicePeers(players, s);
+    // Places alone: everyone live, embodied and allowed to speak (a seat, discussion, nobody restricted), so voicePeers
+    // says only who shares a voice place, from each listener's side.
+    const open = { ...s, mode: "discussion", restrictedIds: [] };
+    const shared = voicePeers(players.map((p, i) => ({ ...p, body: p.body || (p.zone === studio.STUDIO_ZONE ? `ooga-${p.id}` : null), studioSeat: i, voice: { ...p.voice, track: "mic" } })), open);
     for (const sender of players) {
       const live = players.map((p) => p === sender ? { ...p, voice: { ...p.voice, track: "mic" } } : p);
       const wouldHear = voicePeers(live, s);
-      const participant = (q) => heard.has(q.id) && protocol.voiceListener(q, s);
-      const want = protocol.voiceListener(sender, s) ? players.filter((q) => q !== sender && participant(q)
-        && (heard.get(sender.id).includes(q.id) || wouldHear.get(q.id).includes(sender.id))).map((q) => q.id) : [];
-      assert.deepEqual(ids(thumpPeers(players, sender, s)), want.sort((a, b) => a - b), JSON.stringify({ round, sender: sender.id }));
+      const listens = (q) => protocol.voiceListener(q, s);
+      const want = listens(sender) ? players.filter((q) => q !== sender && listens(q)
+        && (shared.get(q.id).includes(sender.id) || shared.get(sender.id).includes(q.id))).map((q) => q.id) : [];
+      const got = thumpPeers(players, sender, s);
+      assert.deepEqual(ids(got), want.sort((a, b) => a - b), JSON.stringify({ round, sender: sender.id }));
+      for (const q of got) assert.equal(thumpAudible(q, sender, s), wouldHear.get(q.id).includes(sender.id), JSON.stringify({ round, sender: sender.id, q: q.id }));
     }
   }
 });
@@ -151,14 +165,14 @@ const thumpRoom = (clock) => {
   return { room, join };
 };
 
-test("the room relays a thump as one tiny frame to the sender's voice peers alone, with no storage, alarm, timer or reply", () => {
+test("the room relays a thump as one tiny frame to the sender's voice place alone, marked for those who would hear it, with no storage, alarm, timer or reply", () => {
   const clock = { now: 1000 };
   const { room, join } = thumpRoom(clock);
   const a = join(1, "outside", listening), b = join(2, "outside", talking), c = join(3, "outside", listening);
   const off = join(4, "outside", {}), lab = join(5, "lab", talking), nowhere = join(6, "none", talking);
   room.webSocketMessage(a, '{"t":"thump"}');
-  assert.deepEqual(b.sent, ['{"t":"thump","id":1}']);
-  assert.deepEqual(c.sent, ['{"t":"thump","id":1}']);
+  assert.deepEqual(b.sent, ['{"t":"thump","id":1,"a":1}']);
+  assert.deepEqual(c.sent, ['{"t":"thump","id":1,"a":1}']);
   for (const ws of [a, off, lab, nowhere]) assert.deepEqual(ws.sent, [], "never the sender, nobody outside voice or the group");
   room.webSocketMessage(off, '{"t":"thump"}');
   room.webSocketMessage(nowhere, '{"t":"thump"}');
@@ -167,6 +181,13 @@ test("the room relays a thump as one tiny frame to the sender's voice peers alon
   assert.equal(b.sent.length, 1, "a frame carrying anything more is ignored");
   for (const ws of [a, b, c, off, lab, nowhere]) assert.equal(ws.attachments, 0, "the attachment is untouched");
   assert.equal(room.chat.size, 0, "no history");
+  // The DSB Studio: an audience member's thump is seen there, and heard by nobody; the host's is heard by everyone.
+  room.studio = { ...studio.studioState(0), hostId: 11, mode: "presentation" };
+  const host = join(11, studio.STUDIO_ZONE, talking), seat = join(12, studio.STUDIO_ZONE, listening, { body: null }), other = join(13, studio.STUDIO_ZONE, listening, { body: null });
+  room.webSocketMessage(seat, '{"t":"thump"}');
+  assert.deepEqual([host.sent, other.sent], [['{"t":"thump","id":12}'], ['{"t":"thump","id":12}']], "seen without sound");
+  room.webSocketMessage(host, '{"t":"thump"}');
+  assert.deepEqual([seat.sent, other.sent.at(-1)], [['{"t":"thump","id":11,"a":1}'], '{"t":"thump","id":11,"a":1}'], "the host is heard");
 });
 
 test("the room spends the sender's bucket: three at once, then two a second, and a reconnect does not refill it", () => {
