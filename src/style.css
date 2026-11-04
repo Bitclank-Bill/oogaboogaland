@@ -10608,7 +10608,7 @@ body[data-active-scene] #controls-help-button { display: flex; align-items: cent
 .stage.cabinet-display { position: absolute; overflow: hidden; isolation: isolate; background: #080604; container-type: inline-size; --safe-top: 0px; --safe-bottom: 0px; --safe-left: 0px; --safe-right: 0px; }
 .cabinet-display :is(.topbar, .bottom-bar, .joysticks, #equipment-hud, #mode-hud, #act, #position-debug) { visibility: hidden; }
 body[data-cabinet-phase]:not([data-cabinet-phase="idle"]):not([data-cabinet-phase="playing"]) :is(#position-debug, .equipment-hud, .mode-hud, .joysticks) { visibility: hidden; }
-body[data-cabinet-phase]:not([data-cabinet-phase="idle"]) .sheet { visibility: hidden; }
+body[data-cabinet-phase]:not([data-cabinet-phase="idle"]):not([data-cabinet-phase="playing"]) .sheet { visibility: hidden; }
 .cabinet-display .race:has(.game-intro:not([hidden])) :is(.race-hud, .carnival-coach, .carnival-touch) { visibility: hidden; }
 .cabinet-display .game-intro:not([hidden]) {
   display: flex; flex-direction: column; gap: 6px; position: absolute; inset: 0;
@@ -10727,3 +10727,6 @@ body[data-cabinet-phase="menu"] .cloud-hopper-intro .cloud-hopper-scores-title {
 .arcade-game :is(.race, .presets) button:disabled { opacity: 0.55; cursor: default; }
 .cabinet-exit { background: linear-gradient(#77706a, #4a4541); color: var(--paper); }
 .cabinet-exit:hover { background: linear-gradient(#8a837c, #77706a); }
+
+/* Arcade player controls remain reachable above game cards, including Cloud Hopper. */
+body.arcade-game .cloud-hopper-panel { z-index: 40; }

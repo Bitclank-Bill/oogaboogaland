@@ -316,9 +316,9 @@
     positionDebug.removeEventListener("click", copyPositionDebug);
     for (const el of sceneSections) el.hidden = el.classList.contains("hub-presets") || el.dataset.scene !== next.id;
     for (const el of intros) el.hidden = el.dataset.intro !== next.id;
-    // The page styles by scene too: the games hide the island's sheet, see style.css.
+    // Arcade games share the hall's controls and start with folded social panels.
     document.body.dataset.activeScene = next.id;
-    document.body.classList.toggle("arcade-game", arcadeScenes.has(next.id));
+    document.body.classList.toggle("arcade-game", arcadeScenes.has(next.id) || next.id === "hub" && place === "cloud-hopper");
     window.BL.net.setBody(null);
     window.BL.net.setBlend(null, 0);
     // The scene's own zone (`voiceZone`), else one of its own; the island and DSB Land report theirs as they go.
@@ -476,8 +476,9 @@
     return false;
   };
   const swap = (next, place, done) => {
-    const hockey = !next.enterSteps && (active.id === "arcade" && next.id === "hockey" || active.id === "hockey" && next.id === "arcade");
-    return hockey ? window.BL.net.handoffBody(() => swapScenes(next, place, done)) : swapScenes(next, place, done);
+    // Physical games keep their player and voice in the hall through both sides of the scene handoff.
+    const arcade = !next.enterSteps && active.voiceZone === "arcade.hall" && next.voiceZone === "arcade.hall";
+    return arcade ? window.BL.net.handoffBody(() => swapScenes(next, place, done)) : swapScenes(next, place, done);
   };
   // Where a settled transition lands: its own scene, or where its preparation redirected it.
   const landing = (t) => t.redirect ? { next: scenes[t.redirect.scene], place: t.redirect.place ?? null } : { next: t.next, place: t.place };

@@ -786,7 +786,7 @@
     if (ws && ws.readyState === WebSocket.OPEN && state.hostId === state.selfId) ws.send(view);
   };
 
-  // A synchronous Arcade ↔ hockey scene handoff keeps the same driven body and voice subscriptions.
+  // A synchronous handoff between Arcade hall scenes keeps the same driven body and voice subscriptions.
   let holdingBody = false;
   const handoffBody = fn => {
     holdingBody = true;

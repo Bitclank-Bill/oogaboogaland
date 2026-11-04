@@ -522,7 +522,9 @@
         if (!panel.open) {
           previousFocus = document.activeElement;
           panel.hidden = false;
-          panel.showModal();
+          // Arcade voice/player tabs remain usable beside the game card.
+          if (document.body.classList.contains("arcade-game")) panel.show();
+          else panel.showModal();
           panel.scrollTop = 0;
         }
         if (briefing) fitGuide();

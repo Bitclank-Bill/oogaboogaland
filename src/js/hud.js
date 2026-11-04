@@ -362,6 +362,7 @@
     el.lootTab.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
     const sheet = BL.sheet.create({ lootEnabled, signal });
+    sheet.setPlaying(document.body.classList.contains("arcade-game"));
     el.primary.hidden = true;
     el.gorillaSmash.hidden = true;
     el.mode.hidden = true;
@@ -1816,10 +1817,12 @@
     };
     // Active gameplay borrows the play area without changing the visitor's saved panel choices.
     const setPanelsHidden = (on) => {
+      const arcadeGame = document.body.classList.contains("arcade-game");
+      sheet.setPlaying(arcadeGame);
       on = !!on;
+      sheet.setHidden(on && !arcadeGame);
       if (on === panelsHidden) return;
       panelsHidden = on;
-      sheet.setHidden(on);
       for (const popup of floatingBoards) popup.setHidden(on);
     };
     const openRecipe = () => {

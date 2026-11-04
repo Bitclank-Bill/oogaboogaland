@@ -307,6 +307,14 @@ test("every video cabinet arbitrates simultaneous players, pins presence and rel
     h.send(a.ws, { t: "body", name: null });
     const p = h.room.players.get(1);
     assert.deepEqual([p.x, p.y, p.z, p.yaw, p.body, p.zone], [cabinet.x, cabinet.y, cabinet.z, cabinet.yaw, "a", "arcade.hall"]);
+    // Playing a cabinet keeps the hall's two-way voice; the active ghost hunt stays in its separate group.
+    const listener = h.room.players.get(2), voice = { sub: "listen", track: "mic" };
+    p.voice = listener.voice = voice;
+    const ghost = { id: 3, body: "c", zone: "arcade-hunt", voice };
+    const peers = protocol.voicePeers([p, listener, ghost]);
+    assert.deepEqual(peers.get(1), [2]);
+    assert.deepEqual(peers.get(2), [1]);
+    assert.deepEqual(peers.get(3), []);
     h.send(b.ws, { ...claim, op: "leave" });
     h.send(a.ws, { ...claim, op: "leave", q: q + 1 });
     assert.equal(p.cabinet.id, cabinet.id);

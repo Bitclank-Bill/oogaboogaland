@@ -9315,23 +9315,23 @@ const sharedPanelBuildings = { name: "shared panel buildings", why: "regression:
   await tourGo(b, "bifrost");
   record("shared panel: DSB's latest closed choice returns through Bifrost", await b.evaluate('document.getElementById("sheet").dataset.open === "false" && !document.getElementById("sheet").hidden'));
 } };
-const sharedPanelGameplay = { name: "shared panel gameplay", why: "regression: only an active game suppresses the panel; game end and exit restore the latest choice without a banner override", run: async b => {
+const sharedPanelGameplay = { name: "shared panel gameplay", why: "regression: arcade games keep folded social tabs available and restore hall choices; other active games still suppress panels", run: async b => {
   await b.evaluate('__ooga.hud.selectTab("bananas")');
   const rows = [];
   for (let pass = 0; pass < 2; pass++) {
     await tourGo(b, "skee");
     rows.push(await b.evaluate(`(() => { const H = __ooga.hud, s = document.getElementById("sheet"), C = BL.scenes.skee.debug.carnival;
-      const intro = !s.hidden && s.dataset.open === "true";
+      const intro = !s.hidden && s.dataset.open === "false";
       C.again(); __ooga.advance(4,1/60);
-      const playing = s.hidden && s.querySelector(".sheet-body").inert;
+      const playing = !s.hidden && s.querySelector(".sheet-body").inert;
       document.getElementById("mode-hud").click(); H.selectTab("roster"); window.dispatchEvent(new Event("resize"));
-      const held = s.hidden; C.finish(0); __ooga.advance(1.1,1/60);
+      const held = !s.hidden && s.dataset.open === "true"; C.finish(0); __ooga.advance(1.1,1/60);
       const ended = !s.hidden && s.dataset.open === "true" && s.querySelector('[aria-selected="true"]').dataset.tab === "roster";
       return { intro, playing, held, ended }; })()`));
     await tourGo(b, "arcade");
-    rows[rows.length - 1].returned = await b.evaluate('!document.getElementById("sheet").hidden && document.getElementById("sheet").dataset.open === "true" && document.querySelector("#sheet [aria-selected=true]").dataset.tab === "roster"');
+    rows[rows.length - 1].returned = await b.evaluate('!document.getElementById("sheet").hidden && document.getElementById("sheet").dataset.open === "true" && document.querySelector("#sheet [aria-selected=true]").dataset.tab === "bananas"');
   }
-  record("shared panel: repeated game start, end and exit restore the latest tab", rows.every(r => Object.values(r).every(Boolean)), JSON.stringify(rows));
+  record("shared panel: arcade play starts folded, permits tabs, and restores the hall choice on exit", rows.every(r => Object.values(r).every(Boolean)), JSON.stringify(rows));
   for (const [id, start, end] of [
     ["race", "__ooga.race.startRace()", "__ooga.race.finishRace()"],
     ["drop", "__ooga.drop.start()", '__ooga.drop.finish("lost", 0)'],
@@ -9341,7 +9341,7 @@ const sharedPanelGameplay = { name: "shared panel gameplay", why: "regression: o
   ]) {
     await tourGo(b, id);
     const r = await b.evaluate(`(() => { const s = document.getElementById("sheet"); const idle = !s.hidden;
-      ${start}; const playing = s.hidden; const tab = document.getElementById("sheet-bananas"); if (tab.getAttribute("aria-selected") !== "true") tab.click();
+      ${start}; const playing = document.body.classList.contains("arcade-game") ? !s.hidden : s.hidden; const tab = document.getElementById("sheet-bananas"); if (tab.getAttribute("aria-selected") !== "true") tab.click();
       ${end || ""}; return { idle, playing, ended: ${end ? "!s.hidden" : "true"} }; })()`);
     await tourGo(b, "arcade");
     r.returned = await b.evaluate('!document.getElementById("sheet").hidden && document.getElementById("sheet").dataset.open === "true" && document.querySelector("#sheet [aria-selected=true]").dataset.tab === "bananas"');
@@ -15487,6 +15487,27 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
     && back.off < 0.5 && back.unarmed && back.parked && again && cancelled && routed, JSON.stringify(state));
 
 } };
+// Real tabs and mute buttons stay operable during a game, without requesting microphone access.
+const arcadeSocialPanels = async (b, label) => {
+  const initial=await b.evaluate(`(() => {
+    const N=BL.net,s=document.getElementById("sheet");
+    window.__arcadeSocial={me:N.state.me,room:N.state.room,backend:N.state.backend,saved:localStorage.getItem("oogaboogaland.sheet.v1")};
+    N.state.me={id:991,login:"arcade-viewer",display:"Arcade viewer"};N.state.room="live";N.state.backend=true;
+    N.remotes.set(992,{id:992,login:"arcade-neighbor",display:"Arcade neighbor",body:"portlandhodl",zone:"arcade.hall",poseZone:"arcade.hall",x:0,y:0,z:0,voice:true,muted:false});
+    __ooga.pilot?.freeCursor();window.dispatchEvent(new Event("resize"));
+    const tab=s.querySelector('[data-tab="players"]'),r=tab.getBoundingClientRect();
+    return {folded:s.dataset.open==="false",visible:!s.hidden&&getComputedStyle(s).visibility==="visible",hit:tab.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)),x:r.x+r.width/2,y:r.y+r.height/2};
+  })()`);
+  await b.click(initial.x,initial.y);
+  await untilPage(b, `BL.players.stats.showing && document.querySelector('#players-panel .roster-voice[data-login="arcade-neighbor"]')`);
+  await untilPage(b, '!document.getElementById("sheet").getAnimations().length');
+  const button=await b.evaluate(`(() => {const e=document.querySelector('#players-panel .roster-voice[data-login="arcade-neighbor"]');if(!e)return null;e.scrollIntoView({block:"nearest"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
+  if(button) await b.click(button.x,button.y);
+  const socialDir=join(root,"untracked","arcade-social-review");mkdirSync(socialDir,{recursive:true});
+  await b.screenshot(join(socialDir,label.replaceAll(" ","-")+".png"));
+  const result=await b.evaluate(`(() => {const muted=BL.voice.mutedLocally("arcade-neighbor"),saved=localStorage.getItem("oogaboogaland.sheet.v1")===__arcadeSocial.saved;BL.voice.muteLocal("arcade-neighbor",false);BL.net.remotes.delete(992);Object.assign(BL.net.state,{me:__arcadeSocial.me,room:__arcadeSocial.room,backend:__arcadeSocial.backend});document.querySelector('.sheet [data-tab="players"][aria-selected="true"]')?.click();delete window.__arcadeSocial;return {muted,saved};})()`);
+  record(label+": folded player tabs open during gameplay and mute a nearby player without replacing saved panels",initial.folded&&initial.visible&&initial.hit&&button?.hit&&result.muted&&result.saved,JSON.stringify({initial,button,result}));
+};
 const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival machine opens its game, and leaving the game brings the same Ooga back to that machine", run: async (b) => {
   // Every machine and cabinet uses the same grounded, forward-facing Space gate, on both floors.
   const eligibility = await b.evaluate(`(() => {
@@ -15524,6 +15545,9 @@ const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival 
   await b.evaluate(`__ooga.advance(2,1/60)`);
   await b.key(" ");
   const opened = await untilPage(b, 'B.scene === "skee" && !B.transitioning', 15000);
+  const presence=await b.evaluate(`({zone:BL.net.state.zone,body:BL.net.state.body,self:BL.net.state.self})`);
+  record("arcade machine: skee-ball keeps the same body and nearby voice in the hall",presence.zone==="arcade.hall"&&presence.body==="portlandhodl"&&presence.self.zone==="arcade.hall"&&Number.isFinite(presence.self.x),JSON.stringify(presence));
+  await arcadeSocialPanels(b,"arcade machine");
   // The first Escape closes the title card, the second leaves the game.
   await b.key("Escape");
   await b.evaluate("window.__ooga.advance(0.1, 1 / 60)");
@@ -15531,6 +15555,15 @@ const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival 
   await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 15000);
   const back = await b.evaluate(`(() => { const B = window.__ooga, st = B.arcade.stations.find((s) => s.kind === "machine" && s.game.kind === "skee"), p = B.pilot.player; return { scene: B.scene, who: p && p.traits.name, off: p ? Math.hypot(p.root.position.x - st.play.x, p.root.position.z - st.play.z) : null }; })()`);
   record("arcade machine: Space at the skee-ball machine opens skee-ball, and Escape brings the same Ooga back to the machine", opened && back.scene === "arcade" && back.who === "portlandhodl" && back.off < 0.5, JSON.stringify({ opened, back }));
+  for(const id of ["hoops","shy","claw","hockey","billiards","darts","pinball","ride"]) {
+    await b.evaluate(`__ooga.go(${JSON.stringify(id)},0)`);
+    await untilPage(b, `B.scene === ${JSON.stringify(id)} && !B.transitioning`,20000);
+    const presence=await b.evaluate(`({zone:BL.net.state.zone,body:BL.net.state.body,self:BL.net.state.self})`);
+    record(`arcade machine: ${id} retains the player and hall proximity`,presence.zone==="arcade.hall"&&presence.body==="portlandhodl"&&presence.self.zone==="arcade.hall"&&Number.isFinite(presence.self.x),JSON.stringify(presence));
+    await arcadeSocialPanels(b,`arcade machine ${id}`);
+    await b.evaluate(`__ooga.go("arcade")`);
+    await untilPage(b, 'B.scene === "arcade" && !B.transitioning',20000);
+  }
 } };
 // A carnival game from its title card to its results: a press every `step` seconds (the hoop shot presses only
 // outside the green, so the first round is missed and ends on time), then the saved best and the tickets it paid.
@@ -20699,6 +20732,7 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
     const header = await b.evaluate(`(() => { const e=document.getElementById('equipment-hud'), p=document.querySelector('.topbar .presets:not([hidden])'); const buttons=p ? [...p.querySelectorAll('button')].filter(b=>!b.hidden && b.getClientRects().length) : []; return {equipment:e.getBoundingClientRect().top,presets:p?.getBoundingClientRect().top,tappable:buttons.every(b=>{const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})}; })()`);
     record(`cabinet ${id}: phone header controls return above the game`, header.equipment < 180 && (!header.presets || header.presets < 180) && header.tappable, JSON.stringify(header));
   }
+  await arcadeSocialPanels(b, `cabinet ${id} ${shape}`);
   await b.screenshot(join(dir, `${id}-${shape}-play.png`));
   await b.evaluate(`__ooga.go('arcade')`);
   const returned = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
