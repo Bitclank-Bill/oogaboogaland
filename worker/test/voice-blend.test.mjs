@@ -173,6 +173,16 @@ test("room: a crossing reaches the next land's voices and everyone else's pages,
   h.send(crosser, { t: "zone", name: "rainforest" });
   assert.equal(h.room.players.get(3).blendTo, null, "the zone takes the crossing with it");
   assert.deepEqual(last(crosser, "voice").peers, [2]);
+  // The page can reach the end before its throttled final step reaches the room. Its explicit clear after the zone
+  // must remove the room's inverted remainder, including the old land's permission to hear the arriving player.
+  h.send(crosser, { t: "zone", name: "outside" });
+  h.advance(1000);
+  h.send(crosser, { t: "blend", to: "rainforest", k: STEPS - 1 });
+  h.send(crosser, { t: "zone", name: "rainforest" });
+  assert.equal(h.room.players.get(3).blendK, 1, "the room still holds the penultimate wire step");
+  h.send(crosser, { t: "blend", to: null, k: 0 });
+  assert.equal(h.room.players.get(3).blendTo, null, "the page's explicit endpoint clear removes the remainder");
+  assert.deepEqual([last(crosser, "voice").peers, last(islander, "voice").peers, last(forester, "voice").peers], [[2], [], [3]], "endpoint isolation holds both ways");
   h.advance(1000);
   h.send(crosser, { t: "blend", to: "bifrost", k: 5 });
   assert.equal(h.room.players.get(3).blendTo, null, "no crossing from the rainforest to ₿IFRÖST");

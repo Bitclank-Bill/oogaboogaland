@@ -24524,6 +24524,21 @@ const playersTabChecks = async BL => {
       && gap.to === "arcade" && gap.k === 9 && gap.share === shareBefore && settled === shareBefore && shareBefore > 0.6 && shareBefore < 0.7
       && gap.poseZone === "ghost-arena.haunt" && rec(2).poseZone === "ghost-arena.haunt" && rec(2).zone === "outside" && !rec(2).blendTo,
     JSON.stringify({ nearHalf, turned, leftHallway, shareBefore, gap, settled }));
+  // The exact local position can reach a bridge's end before the throttled wire step does. The room turns its last
+  // step round on the zone change, so the page must explicitly clear that remainder, once, even when its own is zero.
+  const exits = [];
+  for (const land of ["rainforest", "sphere", "bifrost", "hq"]) for (const [from, to] of [["outside", land], [land, "outside"]]) {
+    f.net.setBlend(null, 0); f.net.setZone(from); f.advance(1000);
+    f.net.setBlend(to, 0.95); const lastStep = f.sent.at(-1);
+    f.net.setBlend(to, 0.99); const throttled = f.sent.at(-1) === lastStep;
+    f.net.setZone(to); const at = f.sent.length;
+    f.net.setBlend(null, 0);
+    for (let i = 0; i < 4; i++) { f.advance(1000); f.net.setBlend(null, 0); }
+    const clears = f.sent.slice(at).filter(m => m.t === "blend");
+    exits.push({ from, to, lastStep, throttled, clears, local: f.net.state.blendTo });
+  }
+  record("voice bridge exit: a zone change with wire step 19 and exact progress past the endpoint explicitly clears the room's remaining crossing once in either direction",
+    exits.every(r => r.lastStep.t === "blend" && r.lastStep.k === 19 && r.throttled && r.local === null && r.clears.length === 1 && r.clears[0].to === null && r.clears[0].k === 0), JSON.stringify(exits));
   f.net.dispose();
 };
 const rememberedCharacterChecks = async BL => {

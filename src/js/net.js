@@ -224,7 +224,7 @@
 
   const sendBody = () => send(JSON.stringify({ t: "body", name: body }));
   const sendZone = () => send(JSON.stringify({ t: "zone", name: zone }));
-  // The crossing last sent (`to`/`k`), "" when the room holds none of this page's: after a zone, which resets it there.
+  // The crossing last sent (`to`/`k`), "" for none; null after a zone forces the next report, including a clear.
   const BLEND = BL.voiceBlend, BLEND_MS = 250;
   let blendSent = "", blendAt = -Infinity;
   const sendBlend = () => {
@@ -732,8 +732,9 @@
     poseAt = 0; px = NaN;
     if (moved) BL.voice.setPeers([]);
     sendZone();
-    // The room dropped this page's crossing with its old zone: the next one is sent afresh.
-    blendSent = ""; blendAt = -Infinity;
+    // The room may have inverted an older quantized step, even when this page is already at the endpoint. Always send
+    // the next crossing, including none, so that stale remainder cannot keep the land just left audible.
+    blendSent = null; blendAt = -Infinity;
     rosterChanged();
   };
   // Voice changes without moving or hiding anybody on the shared floor.
