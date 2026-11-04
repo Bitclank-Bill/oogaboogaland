@@ -48,8 +48,13 @@
     boards: view(HALL.x0 + 5.5, 4.3, 7, Math.PI / 2 - 0.35, 0.05, 17),
     door: view(0, 3.2, DOOR.z - 4, Math.PI, 0.12, 11)
   };
-  // In from the hall: on the landing a step in from the door, facing down the runway, the view in the doorway behind it.
-  const ARRIVAL = { position: { x: 0, y: DOOR.y, z: DOOR.z - 3.4 }, target: { x: 0, y: DOOR.y + 1, z: DOOR.z - 3.4 }, yaw: 0, pitch: 0.12, dist: 2.8 };
+  // In from the hall: at the landing's front edge, facing down the runway, the view behind it turned a little left, so a
+  // wide screen takes in the timeline, the stats board's far end, the Jet and the launch shield; on a tall screen, where
+  // the Jet and the shield cannot share the frame, the view turns to the Jet instead and flatter (`ARRIVAL_TALL`), the
+  // Jet over the Ooga. `arrival()` is the one for the screen as it stands.
+  const ARRIVAL = { position: { x: 0, y: DOOR.y, z: DOOR.z - 4.6 }, target: { x: 0, y: DOOR.y + 1, z: DOOR.z - 4.6 }, yaw: 0.12, pitch: 0.3, dist: 4.2 };
+  const ARRIVAL_TALL = { ...ARRIVAL, yaw: -0.45, pitch: 0.04 };
+  const arrival = () => renderer.size.width < renderer.size.height ? ARRIVAL_TALL : ARRIVAL;
   // The walk through the door's shield either way, as the Factory's gate walks it (`factoryWindow.GLIDE`): the door as
   // the walk takes it (its middle, the way out through it, its shield), how far in from it an arrival stands, how near
   // the door a step back from there may come before it walks out (OUT_SLACK), and the view's reach as an Ooga comes in
@@ -1345,7 +1350,7 @@
       if (!pilot.arrive(avatar)) people.selectWeapon(avatar.weapon.selectedSlot, avatar);
       if (!pilot.loginViewRestored) {
         if (crossing) walkIn(crossing);
-        else pilot.navigate(ARRIVAL);
+        else pilot.navigate(arrival());
       }
       const heads = Math.max(avatar.headOpen.verts.length, avatar.headClosed.verts.length);
       scene.gate.phase.body.track(avatar.root, avatar.traits.height * 2, heads);
