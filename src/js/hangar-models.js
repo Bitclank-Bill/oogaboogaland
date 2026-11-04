@@ -988,8 +988,8 @@
 
   // The dock: the gangway up the Jet's left flank in steel, its grated decks on braced columns in front of the wing and
   // behind it and the span between on two steel stringers over the wing, railed along its outer edge and across both
-  // ends but where the stair comes up, and open along the fuselage; its steel stair; and the timber trestles under the
-  // wings, each a braced pair of legs under a padded cradle.
+  // ends but where the stair comes up, and open along the fuselage; its steel stair; and the steel trestles under the
+  // wings, each a braced pair of legs on foot plates under a padded cradle.
   const dock = cached(() => {
     const L = LAYOUT, g = L.gangway, [sx, , sz0, , sy1, sz1, sw] = L.jetStairs, geos = [], last = g.decks.length - 1;
     g.decks.forEach(([z0, z1, posts], i) => {
@@ -1002,13 +1002,14 @@
     for (const dx of [-0.8, 0.8]) geos.push(beam(g.x + dx, g.y - 0.62, b0 - 0.6, g.x + dx, g.y - 0.62, b1 + 0.6, 0.3, STEEL.frame));
     geos.push(...steelStair(sx, 0, sz0, sx, sy1, sz1, sw, [true, false]));
     for (const [x, z] of L.trestles) {
-      const top = 3.3;
+      const top = 3.3, S = STEEL;
       for (const s of [-1, 1]) {
-        geos.push(beam(x - 0.9, 0, z + s * 0.6, x - 0.2, top - 0.2, z + s * 0.6, 0.18, TIMBER_DK), beam(x + 0.9, 0, z + s * 0.6, x + 0.2, top - 0.2, z + s * 0.6, 0.18, TIMBER_DK));
-        geos.push(beam(x - 0.6, 1, z + s * 0.6, x + 0.6, 1, z + s * 0.6, 0.12, TIMBER));
+        geos.push(beam(x - 0.9, 0, z + s * 0.6, x - 0.2, top - 0.2, z + s * 0.6, 0.16, S.paint), beam(x + 0.9, 0, z + s * 0.6, x + 0.2, top - 0.2, z + s * 0.6, 0.16, S.paint));
+        geos.push(beam(x - 0.6, 1, z + s * 0.6, x + 0.6, 1, z + s * 0.6, 0.1, S.paint));
+        for (const k of [-1, 1]) geos.push(box({ w: 0.36, h: 0.04, d: 0.3, color: S.plate, offset: { x: x + k * 0.9, y: 0.02, z: z + s * 0.6 } }));
       }
-      geos.push(beam(x - 0.55, 1.6, z - 0.6, x + 0.55, 1.6, z + 0.6, 0.1, TIMBER), beam(x + 0.55, 1.6, z - 0.6, x - 0.55, 1.6, z + 0.6, 0.1, TIMBER));
-      geos.push(bevelBox({ w: 0.7, h: 0.22, d: 1.5, color: TIMBER_LT, bevel: 0.04, offset: { x, y: top - 0.11, z } }), box({ w: 0.6, h: 0.06, d: 1.4, color: "#2b2b2b", offset: { x, y: top + 0.02, z } }));
+      geos.push(beam(x - 0.55, 1.6, z - 0.6, x + 0.55, 1.6, z + 0.6, 0.08, S.paint), beam(x + 0.55, 1.6, z - 0.6, x - 0.55, 1.6, z + 0.6, 0.08, S.paint));
+      geos.push(box({ w: 0.7, h: 0.22, d: 1.5, color: S.frame, offset: { x, y: top - 0.11, z } }), box({ w: 0.6, h: 0.06, d: 1.4, color: "#2b2b2b", offset: { x, y: top + 0.02, z } }));
     }
     return merge(...geos);
   });
