@@ -216,15 +216,16 @@
     if (!play) return;
     if (hockeySession?.human) {
       if (phase !== "play" || !e.isPrimary) return;
-      renderer.ray(e.offsetX * renderer.size.width / canvasEl.clientWidth, e.offsetY * renderer.size.height / canvasEl.clientHeight, camera, HOCKEY_RAY);
+      const rect = canvasEl.getBoundingClientRect();
+      renderer.ray((e.clientX - rect.left) * renderer.size.width / rect.width, (e.clientY - rect.top) * renderer.size.height / rect.height, camera, HOCKEY_RAY);
       if (HOCKEY_RAY.dy >= -0.001) return;
       const AH = AM.HOCKEY, t = (AH.y + 0.005 - HOCKEY_RAY.oy) / HOCKEY_RAY.dy;
       if (t < 0) return;
       const center = BL.hockeyWire.TABLES[slot], sign = hockeySide ? -1 : 1;
       const u = (HOCKEY_RAY.ox + HOCKEY_RAY.dx * t - center[0]) * sign / AH.scale;
       const v = AH.w / 2 - (HOCKEY_RAY.oz + HOCKEY_RAY.dz * t - center[1]) * sign / AH.scale;
-      aim.x = Math.max(-1, Math.min(1, u / (AH.d / 2 - 0.07)));
-      aim.depth = Math.max(0, Math.min(1, (v - 0.07) / (AH.w / 2 - 0.14)));
+      aim.x = Math.max(-1, Math.min(1, u / BL.hockeyWire.MALLET_X));
+      aim.depth = Math.max(0, Math.min(1, (v - BL.hockeyWire.MALLET_RADIUS) / BL.hockeyWire.MALLET_DEPTH));
       return;
     }
     if (!play.aims || play.taps) { if (e.type === "pointerdown" && e.button === 0) act(); return; }
@@ -264,6 +265,8 @@
       while (DRAG.ny - y >= notch) { aim.stepsY--; DRAG.ny -= notch; DRAG.x = x; }
     }
   };
+  // Mouse hover keeps sliding along a rail even after leaving the canvas or crossing a HUD element.
+  const onHockeyPoint = e => { if (hockeySession?.human && e.target !== canvasEl && e.pointerType === "mouse") onPoint(e); };
   const onLift = (e) => { if (e.pointerId === steerId) steerId = -1; DRAG.down = false; };
   const onTapped = () => { if (play.aims && !play.taps && !(retro && pressedBy === "mouse")) act(); };
   const onActDown = (e) => {
@@ -1015,6 +1018,7 @@
     window.addEventListener("keydown", onDown, { signal: ctx.signal });
     window.addEventListener("keyup", onUp, { signal: ctx.signal });
     canvasEl.addEventListener("pointermove", onPoint, { signal: ctx.signal });
+    if (kind === "hockey") window.addEventListener("pointermove", onHockeyPoint, { signal: ctx.signal });
     canvasEl.addEventListener("pointerdown", onPoint, { signal: ctx.signal });
     canvasEl.addEventListener("pointerup", onLift, { signal: ctx.signal });
     canvasEl.addEventListener("pointercancel", onLift, { signal: ctx.signal });
@@ -1181,7 +1185,7 @@
     }
     T.slow = Math.max(0, T.slow - dt);
     T.big = Math.max(0, T.big - dt);
-    if (hockeySession?.follower) { if (play.following) play.follow(dt); }
+    if (hockeySession?.follower) play.follow(dt);
     else if (phase !== "pause" || hockeySession) play.update(!hockeySession?.human && pace < 1 && !play.status.verb ? dt * pace : dt);
     audio.tick();
     if (rival) {
@@ -1316,6 +1320,7 @@
     window.removeEventListener("keydown", onDown);
     window.removeEventListener("keyup", onUp);
     canvasEl.removeEventListener("pointermove", onPoint);
+    window.removeEventListener("pointermove", onHockeyPoint);
     canvasEl.removeEventListener("pointerdown", onPoint);
     canvasEl.removeEventListener("pointerup", onLift);
     canvasEl.removeEventListener("pointercancel", onLift);

@@ -23,7 +23,7 @@
         table = m;
         if (side !== nextSide) { side = nextSide; sideChanged(side); }
         if (m.phase === "lobby") lobby(m.ids[1] ? (m.ready[side] ? "Ready — waiting for the other player." : "Two players seated. Both press Face off to begin.") : "Waiting for another Ooga. Face off starts solo against a Clanker.");
-        if (m.phase === "play" && !active) { active = true; play.shared(true); play.multiplayer(!!m.ids[1]); start(); }
+        if (m.phase === "play" && !active) { active = true; play.shared(true); play.multiplayer(!!m.ids[1], side); start(); }
         if (m.a && side === 1 && m.q > lastQ) { lastQ = m.q; play.receive(m.a, side); }
         if (m.phase === "done" && side === 1 && active) { active = false; finished = true; end(m.a[15]); }
       } else if (m.s === table?.s && m.k === "frame" && side === 1 && m.q > lastQ && W.validFrame(m.a)) {

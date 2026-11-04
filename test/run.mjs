@@ -6517,6 +6517,25 @@ const gameRulesChecks = async () => {
     // wedge, from a turn at rest and one far round after many spins, stops under the clapper wherever in it the spin
     // aims, after its whole turns and less than one more.
     for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "arcade-scene-models"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+    runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
+    const aimH={x:0,depth:0}, rootH=BL.scene.createNode(), h=BL.arcadeGames.airHockey({node:rootH,aim:aimH,onEnd(){},burst(){}});
+    h.shared(true);h.multiplayer(true);h.start();
+    const edges=[];
+    for(const [x,y] of [[-2,-1],[-2,.5],[-2,2],[2,-1],[2,.5],[2,2],[0,-1],[0,2]]) {
+      aimH.x=x;aimH.depth=y;h.peerInput(x,y);h.update(1/60);edges.push(h.capture().slice(4,8));
+    }
+    const legal=edges.every(a=>Math.abs(a[0])<=480&&a[1]>=70&&a[1]<=1030&&Math.abs(a[2])<=480&&a[3]>=1170&&a[3]<=2130)
+      &&edges[0][0]===-480&&edges[1][0]===-480&&edges[0][1]!==edges[1][1]&&edges[2][1]===1030;
+    const guestAim={x:1,depth:1}, guestRoot=BL.scene.createNode(), guest=BL.arcadeGames.airHockey({node:guestRoot,aim:guestAim,onEnd(){},burst(){}});
+    guest.multiplayer(true,1);guest.follow(.016);const initial=guestRoot.children[2].position.x;
+    const snap=[0,660,0,0,0,200,0,2000,0,0,-1,0,-1000,-1000,0,0,1,0];guest.receive(snap,1);guest.follow(.016);
+    const predicted=guestRoot.children[2].position.x===initial&&initial<0&&guest.capture()[6]===0;
+    const strikeAim={x:-1,depth:(.66-.07)/.96}, strike=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:strikeAim,onEnd(){},burst(){}});
+    strike.shared(true);strike.multiplayer(true);strike.start();for(let i=0;i<456;i++)strike.update(1/240);
+    const before=strike.capture()[17];strikeAim.x=1;strike.update(1/240);const shot=strike.capture().slice();
+    const swept=shot[17]===before+1&&shot[2]>0&&Math.hypot(shot[2],shot[3])<=7501;
+    record("hockey responsiveness: immediate legal host targets and guest presentation survive a delayed snapshot, with swept capped fast strikes",legal&&predicted&&swept,JSON.stringify({edges,initial,predicted,shot,before}));
+    h.stop();guest.stop();strike.stop();
     const A = BL.arcadeModels, L = A.LAYOUT;
     const machines = { skee: L.skee, hoops: L.hoops, shy: [L.shy], claw: L.frames.claw,
       billiards: L.frames.pool, darts: L.frames.darts, pinball: L.frames.pinball, ride: L.frames.ride };
@@ -15855,7 +15874,7 @@ const hockeySharedVisit = { name: "hockey shared visit", why: "contract: lobby, 
   const earlyEnd=await b.evaluate(`(() => {const a=[0,660,0,0,0,200,0,2000,0,7,-1,0,-1000,-1000,0,7,0,0];__hockeyVisit.emit({k:"frame",i:0,s:"0123456789abcdef",q:2,a});__ooga.advance(1.5,1/60);return __ooga.carnival.phase;})()`);
   await b.evaluate(`__ooga.go("arcade",0)`);await untilPage(b,'B.scene === "arcade" && !B.transitioning',20000);
   const back=await b.evaluate(`(() => {const V=__hockeyVisit,N=BL.net;const r={body:N.state.body,zone:N.state.zone,releases:V.releases,peerClears:V.peerClears,listeners:V.listeners.size,leave:V.sent.filter(m=>m.k==="leave").length,voice:BL.voice.stats.muted,radius:BL.voice.stats.radius,level:BL.voice.stats.receiveLevel,localMute:BL.voice.mutedLocally("hockey-fixture"),muted:BL.sound.muted};V.off();N.sendHockey=V.send;N.subscribeHockey=V.subscribe;BL.voice.setPeers=V.peers;BL.sound.setMuted(V.muted);BL.voice.setMuted(V.voiceMuted);BL.voice.setRadius(V.radius);BL.voice.setReceiveLevel(V.level);BL.voice.muteLocal("hockey-fixture",V.localMute);N.state.me=V.me;N.state.room=V.room;N.state.selfId=V.id;N.state.hockey=V.feature;return r;})()`);
-  record("hockey shared visit: the panel is a two-player lobby, overhead far-side camera and mouse send two-axis input without smash or meter",lobby.shown&&lobby.phase==="intro"&&lobby.text.includes("Both")&&play.side===1&&play.overhead&&play.upZ===1&&play.controlsHidden&&play.bestHidden&&play.inputs.some(x=>x>0)&&play.rightPixels>0,JSON.stringify({lobby,play}));
+  record("hockey shared visit: the panel is a two-player lobby, overhead far-side camera and mouse send two-axis input without smash or meter",lobby.shown&&lobby.phase==="intro"&&lobby.text.includes("Both")&&play.side===1&&play.overhead&&play.upZ===1&&play.controlsHidden&&play.bestHidden&&play.inputs.some(x=>x>0)&&Math.abs(play.rightPixels)<1,JSON.stringify({lobby,play}));
   record("hockey shared visit: ending from the menu reaches results, the body and Arcade voice never drop, mute/radius/volume persist, server close preserves completed results and releases subscriptions",ending.phase==="results"&&back.body==="portlandhodl"&&back.zone==="arcade.hall"&&!back.releases&&!back.peerClears&&back.leave===1&&earlyEnd==="results"&&departed.phase==="results"&&!departed.results&&departed.pause&&back.listeners===1&&play.muted&&ending.muted&&back.muted&&play.voice&&back.voice&&back.localMute&&play.radius===10&&back.radius===10&&play.level===.35&&back.level===.35,JSON.stringify({play,ending,departed,earlyEnd,back}));
 } };
 const hockeyPilot = { name: "hockey pilot", why: "rule: the real hockey physics and shared session keep bounded frames, two human controls, interpolation, physical scale and cleanup", run: async b => {
