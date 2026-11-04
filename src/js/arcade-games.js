@@ -1122,6 +1122,23 @@
       if (peerCount === peerU.length) { clearPeerPath(); peerJump = true; }
       const i = (peerHead + peerCount++) % peerU.length; peerU[i] = x; peerV[i] = depth; peerTime[i] = strikeTime;
     };
+    // Pointer events can reverse between display frames for the host as well as the guest.
+    const hostU = new Float64Array(32), hostV = new Float64Array(32);
+    let hostHead = 0, hostCount = 0, hostJump = false;
+    const clearHostPath = () => { hostHead = hostCount = 0; hostJump = false; };
+    const queueHost = (x, depth) => {
+      if (hostCount) {
+        const last = (hostHead + hostCount - 1) % hostU.length;
+        if (hostU[last] === x && hostV[last] === depth) return;
+        if (hostCount >= 2) {
+          const prev = (last + hostU.length - 1) % hostU.length;
+          const du = hostU[last] - hostU[prev], dv = hostV[last] - hostV[prev], eu = x - hostU[last], ev = depth - hostV[last];
+          if (du * ev === dv * eu && du * eu + dv * ev >= 0) { hostU[last] = x; hostV[last] = depth; return; }
+        }
+      }
+      if (hostCount === hostU.length) { clearHostPath(); hostJump = true; }
+      const i = (hostHead + hostCount++) % hostU.length; hostU[i] = x; hostV[i] = depth;
+    };
     let clacks = 0, remoteClacks = -1, remotePlaying = false, remoteSide = 0;
     const clack = () => { clacks = (clacks + 1) & 65535; out.cue("clack"); };
     const frame = new Array(18).fill(0), from = new Float64Array(8), target = new Float64Array(8);
@@ -1293,6 +1310,7 @@
       const rest = loose ? Math.max(REST, Math.min(L / 2 - MR - LUNGE, P.v - 0.25)) : REST;
       {
         M.u += Math.max(-4 * h, Math.min(4 * h, want - M.u));
+        M.u = Math.max(MR - W / 2, Math.min(W / 2 - MR, M.u));
         M.v += Math.max(-6 * h, Math.min(6 * h, (N.smash > 0 ? rest + LUNGE : rest) - M.v));
         M.du = (M.u - mu) / h; M.dv = (M.v - mv) / h;
       }
@@ -1382,7 +1400,8 @@
     return {
       capture, receive, follow, remoteAct: () => out.cue("throw"),
       shared: on => { shared = !!on; },
-      multiplayer: (on, side = 0) => { clearPeerPath(); peer.on = !!on; localSide = on ? side : -1; peer.x = 0; peer.depth = (REST - MR) / (L / 2 - 2 * MR); },
+      multiplayer: (on, side = 0) => { clearHostPath(); clearPeerPath(); peer.on = !!on; localSide = on ? side : -1; peer.x = 0; peer.depth = (REST - MR) / (L / 2 - 2 * MR); },
+      localPoint: (x, depth) => queueHost(x, depth),
       peerInput: (x, depth) => queuePeer(x, depth),
       // No client timestamp is trusted: apportion the 50 ms packet interval evenly among
       // its retained segments for strike velocity, independently of the fixed replay step.
@@ -1399,12 +1418,12 @@
       get rivalU() { return A.u; },
       get puckU() { return P.u / (W / 2); },
       start: () => {
-        following = false; clearPeerPath(); peer.meter = -1;
+        following = false; clearHostPath(); clearPeerPath(); peer.meter = -1;
         mineGoals = theirGoals = streak = round = 0; N.sand = HOCKEY_SAND;
         status.score = status.left = status.streak = 0; status.round = 1; status.target = shared ? HOCKEY_TO : HOCKEY_CLOCK[HOCKEY_SAND]; status.fire = false; status.verb = peer.on ? "" : "Smash!"; status.meter = -1; status.window0 = 0.7; status.window1 = 0.93;
         M.u = 0; M.v = REST; A.u = 0; A.v = L - 0.2; M.touch = A.touch = false; N.acc = 0; N.smash = N.tipT = 0; N.sayT = 1.1; power = false; reset(1); N.serve = 1.9; phase = "play";
       },
-      stop: () => { clearPeerPath(); following = false; localSide = -1; phase = "idle"; status.verb = ""; status.meter = -1; status.target = 0; mark.visible = false; puck.ember = 0; reset(1); place3(); },
+      stop: () => { clearHostPath(); clearPeerPath(); following = false; localSide = -1; phase = "idle"; status.verb = ""; status.meter = -1; status.target = 0; mark.visible = false; puck.ember = 0; reset(1); place3(); },
       act: () => {
         if (peer.on || phase !== "play" || N.smash > 0) return;
         // One try an approach: a smash while the meter runs spends it, in the green or not.
@@ -1438,11 +1457,22 @@
         if (N.serve > 0) { N.serve -= dt; if (N.serve <= 0) { P.dv = P.v < L / 2 ? 0.6 : -0.6; P.du = (tri(M.u * 3 + A.u * 5) - 0.5) * 0.6; } }
         N.acc += Math.min(dt, 0.05);
         const duration = Math.floor((N.acc + 1e-12) * 240) / 240;
-        if (peer.on && duration > 0) prepareMallet(M, aim.x, aim.depth, 0, duration);
+        const hostSegments = Math.min(hostCount, Math.round(duration * 240));
+        const hostStrikeTime = hostSegments ? duration / hostSegments : duration;
+        if (peer.on && duration > 0 && !hostCount) prepareMallet(M, aim.x, aim.depth, 0, duration);
         while (N.acc + 1e-12 >= 1 / 240) {
           N.acc -= 1 / 240;
           if (phase !== "play") continue;
           if (peer.on) {
+            if (hostJump && hostCount) {
+              BL.hockeyWire.malletTarget(hostU[hostHead], hostV[hostHead], 0, destination);
+              M.u = destination.u; M.v = destination.v; M.touch = true;
+              hostHead = (hostHead + 1) % hostU.length; hostCount--; hostJump = false;
+            }
+            if (hostCount) {
+              prepareMallet(M, hostU[hostHead], hostV[hostHead], 0, 1 / 240, hostStrikeTime);
+              hostHead = (hostHead + 1) % hostU.length; hostCount--;
+            } else if (hostSegments) prepareMallet(M, M.u / (W / 2 - MR), (M.v - MR) / (L / 2 - 2 * MR), 0, 1 / 240);
             if (peerJump && peerCount) {
               BL.hockeyWire.malletTarget(peerU[peerHead], peerV[peerHead], 1, destination);
               A.u = destination.u; A.v = destination.v; A.touch = true;
@@ -1455,7 +1485,7 @@
           }
           step(1 / 240);
         }
-        if (peer.on && duration > 0) { M.u = M.tu; M.v = M.tv; }
+        if (peer.on && duration > 0 && !hostCount) { M.u = M.tu; M.v = M.tv; }
         if (phase === "idle") return;
         // The meter runs down the coconut's approach to the mallet, the ring where it will cross the mallet's line.
         // Once the approach's try is spent the meter goes and the ring stays, dim.

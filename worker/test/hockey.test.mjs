@@ -102,8 +102,10 @@ test("a v2 live attachment is closed on wake and unversioned clients cannot join
 });
 test("two authenticated lobby seats require both ready; spectators cannot steal a started solo or human game", async t => {
   const h=harness(t), a=await seat(h,1,"a"), b=await seat(h,2,"b"), c=await seat(h,3,"c");
+  const far=W.seat(0,1,0,{}),near=W.seat(0,0,0,{});
+  h.send(a.ws,{t:"pose",x:far.x,y:0,z:far.z,yaw:far.yaw});h.send(b.ws,{t:"pose",x:near.x,y:0,z:near.z,yaw:near.yaw});
   cmd(h,a,"join"); cmd(h,b,"join");
-  const s=h.room.hockeyTables[0]; assert.deepEqual([...s.ids],[1,2]);
+  const s=h.room.hockeyTables[0]; assert.deepEqual([...s.ids],[1,2]);assert.ok(near.z>W.TABLES[0][1]&&far.z<W.TABLES[0][1],"two seats occupy opposite ends");
   cmd(h,b,"ready"); assert.equal(s.phase,"lobby"); cmd(h,a,"ready"); assert.equal(s.phase,"play");
   cmd(h,c,"join"); assert.equal(messages(c.ws).at(-1).k,"busy"); assert.deepEqual([...s.ids],[1,2]);
   cmd(h,c,"frame",{q:5,a:frame()}); assert.equal(s.q,-1);
@@ -166,10 +168,10 @@ test("serialized session-to-Room transport retries a dropped join, cancels befor
   const h=harness(t), a=await seat(h,1,"a"), b=await seat(h,2,"b"), pending=[];
   const clients=[];
   const connect=p=>{
-    const listeners=new Set(), row={starts:0,ends:0,closed:0,inputs:[],paths:[],frames:[],a:frame(),index:p.ws.sent.length};
+    const listeners=new Set(), row={starts:0,ends:0,closed:0,inputs:[],local:[],paths:[],frames:[],a:frame(),index:p.ws.sent.length};
     const net={state:{selfId:p.p.id,room:"live"},subscribeHockey:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},sendHockey:m=>{pending.push([p.ws,JSON.stringify({t:"hockey",...m,v:3})]);return true;},sendPose:(x,y,z,yaw)=>pending.push([p.ws,JSON.stringify({t:"pose",x,y,z,yaw})])};
     const BL={hockeyWire:W,net};runInNewContext(readFileSync(new URL("../../src/js/hockey-session.js",import.meta.url),"utf8"),{window:{BL},performance:{now:()=>Date.now()}});
-    const play={shared(){},multiplayer(){},capture:()=>row.a,receive:a=>row.frames.push([...a]),peerInput:(x,y)=>row.inputs.push([x,y]),peerPath:(p,d)=>{row.paths.push({p:[...p],d});row.inputs.push([p[p.length-2]/1000,p[p.length-1]/1000]);},peerIdle(){},act(){},remoteAct(){}};
+    const play={shared(){},multiplayer(){},capture:()=>row.a,receive:a=>row.frames.push([...a]),peerInput:(x,y)=>row.inputs.push([x,y]),localPoint:(x,y)=>row.local.push([x,y]),peerPath:(p,d)=>{row.paths.push({p:[...p],d});row.inputs.push([p[p.length-2]/1000,p[p.length-1]/1000]);},peerIdle(){},act(){},remoteAct(){}};
     row.aim={x:1,depth:.5};row.session=BL.hockeySession.create({slot:0,play,aim:row.aim,lobby(){},sideChanged(){},start(){row.starts++;},end(){row.ends++;},closed(){row.closed++;}});
     row.deliver=()=>{while(row.index<p.ws.sent.length){const m=JSON.parse(JSON.stringify(p.ws.sent[row.index++]));if(m.t==="hockey")for(const fn of listeners)fn(m);}};
     clients.push(row);return row;
@@ -181,6 +183,9 @@ test("serialized session-to-Room transport retries a dropped join, cancels befor
   h.advance(5100);host.session.tick(1.1,false);pump();assert.ok(host.session.table,"unacknowledged join retries after the real room bucket refills");
   const guest=connect(b);guest.session.tick(.1,false);pump();host.session.ready();guest.session.ready();pump();
   assert.equal(host.starts,1);assert.equal(guest.starts,1);
+  host.session.tick(.001,false);guest.session.tick(.001,false);pump();
+  assert.ok(a.p.z>W.TABLES[0][1]&&b.p.z<W.TABLES[0][1],"active players report opposite table ends");
+  host.session.point(-1,.5);host.session.point(1,.5);assert.deepEqual(host.local,[[-1,.5],[1,.5]],"host pointer reversals reach local physics");
   guest.session.act();guest.session.point(-1,.5);guest.session.point(1,.5);guest.session.tick(.1,true);pump();assert.deepEqual(host.inputs.at(-1),[1,.5]);
   assert.deepEqual(host.paths.at(-1),{p:[-1000,500,1000,500],d:false},"out-and-back points survive the serialized Worker relay");
   h.advance(100);for(let n=0;n<7;n++)guest.session.point(n/10,n%2?.6:.5);guest.session.tick(.1,true);pump();

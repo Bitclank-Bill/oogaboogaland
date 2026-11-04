@@ -10,7 +10,9 @@
     // Fixed-size buffer: on overload drop the unrepresentable path, and tell the host to
     // resynchronize without inventing a collision along the missing movement.
     const point = (x, depth) => {
-      if (!active || side !== 1 || dead) return;
+      if (!active || dead) return;
+      if (side === 0) { if (play.localPoint) play.localPoint(x, depth); return; }
+      if (side !== 1) return;
       x = Math.round(x * 1000); depth = Math.round(depth * 1000);
       if (path.length && path[path.length - 2] === x && path[path.length - 1] === depth) return;
       // Coalesce exactly collinear, same-direction samples only. This keeps high-polling straight

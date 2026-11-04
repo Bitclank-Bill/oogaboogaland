@@ -6518,6 +6518,25 @@ const gameRulesChecks = async () => {
     // aims, after its whole turns and less than one more.
     for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "arcade-scene-models"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
+    // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
+    const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});
+    solo.shared(true);solo.multiplayer(false);solo.start();let soloInvalid=0,soloEdge=false;
+    for(let i=0;i<18000&&solo.playing;i++){const old=solo.capture();soloAim.x=old[0]<0?-1:1;if(i%18===0)solo.act();solo.update(1/240);const f=solo.capture();soloInvalid+=!BL.hockeyWire.validFrame(f);soloEdge ||= Math.abs(f[4])===480;}
+    record("hockey solo: rail-assisted smashes retain radius clearance and valid shared frames",soloInvalid===0&&soloEdge,JSON.stringify({soloInvalid,soloEdge}));solo.stop();
+    // Put the real solo simulation at each rail, then trigger its actual smash-assist path.
+    const exposed={scene:BL.scene,arcadeModels:BL.arcadeModels,hockeyWire:BL.hockeyWire};
+    const hockeySource=await readFile(new URL("../src/js/arcade-games.js",import.meta.url),"utf8");
+    const instrumented=hockeySource.replace("    const put = (n, o) =>", "    host.railProbe = { P, M };\n    const put = (n, o) =>");
+    if(instrumented===hockeySource)throw Error("hockey rail probe anchor missing");
+    runInNewContext(instrumented,{window:{BL:exposed}});
+    const railCases=[];
+    for(const side of [-1,1]){
+      const host={node:BL.scene.createNode(),aim:{x:side},onEnd(){},burst(){}};
+      const game=exposed.arcadeGames.airHockey(host);game.shared(true);game.start();
+      host.railProbe.P.u=side*.5;host.railProbe.M.u=side*.48;game.act();game.update(1/240);
+      const a=game.capture().slice();railCases.push({side,u:a[4],accepted:!!BL.hockeyWire.parse({t:"hockey",v:3,k:"frame",i:0,s:"0123456789abcdef",q:0,a})});game.stop();
+    }
+    record("hockey solo rail regression: smash assist keeps both mallet edges and transmitted frames legal",railCases.every(r=>r.u===r.side*480&&r.accepted),JSON.stringify(railCases));
     const aimH={x:0,depth:0}, rootH=BL.scene.createNode(), h=BL.arcadeGames.airHockey({node:rootH,aim:aimH,onEnd(){},burst(){}});
     h.shared(true);h.multiplayer(true);h.start();
     const edges=[];
@@ -6558,6 +6577,18 @@ const gameRulesChecks = async () => {
     record("hockey guest impact: a small sampled movement uses the packet interval rather than the replay step",gentleShot[17]===gentleBefore+1&&Math.hypot(gentleShot[2],gentleShot[3])<3000,JSON.stringify({previous,gentleBefore,gentleShot}));
     gentle.game.stop();
     batched.game.stop();overflow.game.stop();
+    const hostAim={x:-1,depth:(.66-.07)/.96}, hostGame=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:hostAim,onEnd(){},burst(){}});
+    hostGame.shared(true);hostGame.multiplayer(true);hostGame.start();for(let i=0;i<456;i++)hostGame.update(1/240);
+    const hostBefore=hostGame.capture()[17];hostGame.localPoint(1,hostAim.depth);hostGame.localPoint(-1,hostAim.depth);hostGame.update(1/120);
+    const hostShot=hostGame.capture().slice();
+    record("hockey host stroke: an out-and-back between display frames sweeps the puck and returns to the cursor",hostShot[17]>hostBefore&&hostShot[4]===-480&&Math.hypot(hostShot[2],hostShot[3])<=7501,JSON.stringify({hostBefore,hostShot}));
+    hostGame.stop();
+    const hostOverflowAim={x:-1,depth:(.66-.07)/.96}, hostOverflow=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:hostOverflowAim,onEnd(){},burst(){}});
+    hostOverflow.shared(true);hostOverflow.multiplayer(true);hostOverflow.start();for(let i=0;i<456;i++)hostOverflow.update(1/240);
+    const hostOverflowBefore=hostOverflow.capture()[17];for(let i=0;i<32;i++)hostOverflow.localPoint(i%2?-1:-.9,hostOverflowAim.depth);
+    hostOverflowAim.x=1;hostOverflow.localPoint(1,hostOverflowAim.depth);hostOverflow.update(1/240);const hostOverflowAfter=hostOverflow.capture().slice();
+    record("hockey host backlog: overflow resynchronizes without a fabricated strike",hostOverflowAfter[17]===hostOverflowBefore&&hostOverflowAfter[4]===480,JSON.stringify({hostOverflowBefore,hostOverflowAfter}));
+    hostOverflow.stop();
     h.stop();guest.stop();strike.stop();
     const A = BL.arcadeModels, L = A.LAYOUT;
     const machines = { skee: L.skee, hoops: L.hoops, shy: [L.shy], claw: L.frames.claw,
@@ -15860,6 +15891,8 @@ const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival 
     return rows;
   })()`);
   record("arcade machine: every game requires grounded feet and a forward-facing player, including takeoff and descent",eligibility.length>12 && eligibility.every(r=>r.facing&&r.away&&r.sideways&&r.takeoff&&r.falling),JSON.stringify(eligibility));
+  const hockeyEnds=await b.evaluate(`(() => {const B=__ooga,A=B.arcade,W=BL.hockeyWire,actor=B.pilot.player;return W.TABLES.map((center,i)=>{const rows=A.stations.filter(s=>s.kind==="machine"&&s.game.kind==="hockey"&&s.index===i);return {i,count:rows.length,same:rows.length===2&&rows[0].game===rows[1].game,near:rows.some(s=>s.play.z>center[1]),far:rows.some(s=>s.play.z<center[1]),facing:rows.length===2&&Math.cos(rows[0].play.facing-rows[1].play.facing)<-.99,reachable:rows.every(s=>{const p=s.play;return [[-.8,0],[.8,0],[0,p.z>center[1]?.8:-.8]].some(([dx,dz])=>A.walkable(p.x+dx,p.z+dz,p.x,p.z,0,actor.bodyHeight,actor));})};});})()`);
+  record("arcade hockey: both opposite ends open the same physical table",hockeyEnds.length===3&&hockeyEnds.every(x=>x.count===2&&x.same&&x.near&&x.far&&x.facing&&x.reachable),JSON.stringify(hockeyEnds));
   await b.evaluate(`(() => {const B=__ooga,st=B.arcade.stations.find(s=>s.kind==="machine"&&s.game.kind==="skee");B.pilot.navigate({position:{x:st.play.x,y:0,z:st.play.z},yaw:st.play.facing-Math.PI,pitch:.2,dist:4});B.advance(.2,1/60);})()`);
   const invited=await b.evaluate(`document.getElementById("hint").classList.contains("show") && document.getElementById("hint").textContent.includes("Space:")`);
   await b.evaluate(`(() => {const B=__ooga,a=B.pilot.player;a.root.rotation.y+=Math.PI;B.advance(.02,1/60);})()`);
