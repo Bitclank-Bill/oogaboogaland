@@ -1,11 +1,11 @@
-# Bitcoin-Bill → Bitclank-BIll: proposed account migration
+# Bitcoin-Bill → Bitclank-Bill: proposed account migration
 
 Status: coordination draft for w-s-bitcoin. No account rename or runtime identity change is performed by this PR.
 
 ## Identity and scope
 
 - Existing GitHub login: `Bitcoin-Bill`.
-- Requested new login, exactly as supplied by Billy: `Bitclank-BIll`. Comparisons must remain case-insensitive.
+- Requested new login, exactly as supplied by Billy: `Bitclank-Bill`. Comparisons must remain case-insensitive.
 - Existing numeric GitHub account ID: `185141343`; verify the same ID before and after the rename.
 - Existing character file/stable handle: `src/characters/Bitcoin-Bill.js` / `Bitcoin-Bill`.
 - Existing display name: `Bitclank Bill`; existing poke: `clank clank`.
