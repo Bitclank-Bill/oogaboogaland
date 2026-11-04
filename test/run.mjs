@@ -20562,7 +20562,15 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
   await b.screenshot(join(dir, `${id}-menu.png`));
   if (id === "cloud-hopper") await b.evaluate(`document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click()`);
   else if (id === "mine") await b.evaluate(`document.querySelector('[data-action="mine-start"]').click()`);
-  else { await b.key("Enter"); if (id === "orbit") await b.key(" "); }
+  else {
+    await b.key("Enter");
+    if (id === "orbit") {
+      const panels = await b.evaluate(`(() => { const a=document.getElementById('orbit-build').getBoundingClientRect(), b=document.getElementById('orbit-rocket').getBoundingClientRect(), s=document.getElementById('stage').getBoundingClientRect();return a.right <= b.left && a.left >= s.left && b.right <= s.right && [...document.querySelectorAll('#orbit-tabs button')].every(el=>el.getBoundingClientRect().right<=a.right); })()`);
+      record("cabinet orbit: parts and launch panels remain separate inside the screen", panels);
+      await b.screenshot(join(dir, framed.width < 400 ? "orbit-builder-phone.png" : "orbit-builder.png"));
+      await b.key(" ");
+    }
+  }
   const expanded = await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
   const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && __ooga.fade === 0`);
   await b.evaluate(`__ooga.go('arcade')`);
@@ -20574,6 +20582,7 @@ for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede
   scene("arcade", { label: `cabinet ${id}`, query: "character=portlandhodl", opts: { motion: true }, steps: [cabinetVisit(id)] });
 }
 scene("arcade", { label: "cabinet phone", query: "character=portlandhodl", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit("drop")] });
+scene("arcade", { label: "cabinet orbit phone", query: "character=portlandhodl", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit("orbit")] });
 scene("arcade", { label: "cabinet canvas2d", query: "character=portlandhodl&canvas2d=1", steps: [cabinetVisit("snake")] });
 scene("arcade", { label: "cabinet interruptions", opts: { motion: true }, steps: [{ name: "cabinet interruptions", why: "regression: cancelling a menu or partial zoom must return without enlarging the screen or holding controls", run: async b => {
   await b.evaluate(`__ooga.arcade.open('drop')`);

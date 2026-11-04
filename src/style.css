@@ -10614,7 +10614,8 @@ body[data-cabinet-phase]:not([data-cabinet-phase="idle"]) .game-rules li { anima
 .cabinet-display .orbit-rocket { right: 8px; }
 .cabinet-display .orbit-head h2 { font-size: 16px; }
 @media (max-width: 600px) {
-  .cabinet-display .orbit-panel { width: calc(100% - 16px); }
+  .cabinet-display .orbit-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cabinet-display .orbit-tab { min-width: 0; padding: 3px 2px; letter-spacing: 0; }
 }
 
 .cabinet-exit { position: fixed; bottom: calc(12px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); z-index: 100; padding: 10px 18px; }
