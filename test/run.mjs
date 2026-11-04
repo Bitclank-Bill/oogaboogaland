@@ -96,7 +96,7 @@ const gorillaSleepRouteProof = () => {
   const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
   // Run the real wake/re-sleep controllers with fixed dry paths. Reservations
   // supply either the old bed or another bed after an overflow sleeper took it.
-  const controllers = section("    const sleepLegFrom =", "    // Rage shares");
+  const controllers = section("    const SLEEP_POSES =", "\n") + "\n" + section("    const sleepLegFrom =", "    // Rage shares");
   const rows = [];
   for (const slot of [0, 1, 2]) {
     const paths = [[0, 0, 10, 0, 20, 0, 30, 0], [0, 0, 22, 5, 40, 10, 60, 15], [0, 0, 22, 5, 60, 15]];
@@ -106,7 +106,7 @@ const gorillaSleepRouteProof = () => {
       roam: {}, climb: { active: false }, lounge: "", recover: 0, retry: 0 };
     e.sleep.path.set(paths[0]);
     const noop = () => {};
-    const context = { e, slot, paths, bedDay: 0, SLEEP_REACH: 1.1, SLEEP_ARRIVE: 0.3, SLEEP_STALL: 25, SPEED: 2.7,
+    const context = { e, slot, paths, bedDay: 0, sleepBeam: null, SLEEP_REACH: 1.1, SLEEP_ARRIVE: 0.3, SLEEP_STALL: 25, SPEED: 2.7,
       ctx: { sleep: { slots: [{ y: 0 }, { y: 0 }, { y: 0 }], path: (i, out) => { out.set(paths[i]); return paths[i].length / 2; } } },
       reserveBed: actor => { actor.sleep.slot = slot; return true; },
       releasePortal: noop, releaseLab: noop, releaseOffice: noop, clearWallSearch: noop, poseEntry: noop, move: noop,
@@ -122,6 +122,176 @@ const gorillaSleepRouteProof = () => {
         && e.goalX === (slot === 0 ? 30 : 22) && e.goalZ === (slot === 0 ? 0 : 5) });
   }
   return rows;
+};
+// Synthetic blocked-route tests run the production controllers; they do not identify a real island obstruction.
+const gorillaSleepStallProof = () => {
+  const source = readFileSync(join(root, "src/js/clankers.js"), "utf8");
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const controllers = section("    const SLEEP_POSES =", "\n") + "\n" + section("    const releaseBed =", "    const reserveBed")
+    + section("    const sleepLegFrom =", "    // Rage shares");
+  const script = controllers + `
+    let t = 0, walked = 0, done = false, jumps = 0, skipped = 0, fresh = null, unexpected = 0;
+    let departure = -1, arrival = -1, maxTries = 0, denied = false, backwalk = 0;
+    const move = (actor, step, speed) => {
+      if (!open(t, actor)) return;
+      const p = actor.root.position, dx = actor.goalX - p.x, dz = actor.goalZ - p.z, d = Math.hypot(dx, dz);
+      const go = Math.min(d, speed * pace * step);
+      if (d > 0) { p.x += dx / d * go; p.z += dz / d * go; walked += go; if (actor.sleep.retrying) backwalk += go; }
+    };
+    for (; t < limit && !done; t += dt) {
+      const p = e.root.position, s = e.sleep, x = p.x, z = p.z, leg = s.leg, stage = s.stage;
+      walked = 0;
+      if (jumpPause) e.jump.active = t >= 0.5 && t < 3.5;
+      if (denyDuringBeam && stage === "beamOut") denied = true;
+      if (rageDuringBeam && stage === "beamOut" && s.beamTime + dt >= SLEEP_BEAM) e.rage.active = true;
+      blockedLanding = landingBlocked || denied;
+      if (wakeDuringBeam && stage === "beamOut") wakeAt = t;
+      if (releaseDuringBeam && stage === "beamOut") { releaseBed(e); done = true; }
+      else if (t >= wakeAt) done = !updateWake(e, dt, p.x, p.y, p.z);
+      else updateSleep(e, dt, p.x, p.y, p.z);
+      if (t >= wakeAt && stage !== "return" && fresh === null) fresh = s.stuck === -1 && s.tries === 0;
+      maxTries = Math.max(maxTries, s.tries);
+      if (s.stage === "beamOut" && departure < 0) departure = t;
+      if (Math.hypot(p.x - x, p.z - z) - walked > 1e-9) {
+        jumps++;
+        if (stage !== "beamOut" || s.stage !== "beamIn" || p.x !== 30 || p.z !== 0) unexpected++;
+        arrival = t;
+      }
+      const passed = s.stage === stage && (stage === "return" && s.leg < leg || stage === "go" && s.leg > leg);
+      if (passed && Math.hypot(s.path[leg * 2] - x, s.path[leg * 2 + 1] - z) >= SLEEP_REACH) skipped++;
+      if (t < wakeAt && s.stage === "asleep") done = true;
+    }
+    globalThis.out = { t, done, jumps, unexpected, skipped, fresh, departure, arrival, maxTries,
+      stage: e.sleep.stage, slot: e.sleep.slot, bedDay, phase: e.phase, x: e.root.position.x, backwalk,
+      beamVisible: visible, outFrames, inFrames, form: e.gorilla.form, native: e.root.matrixNative };
+  `;
+  const path = [0, 0, 10, 0, 20, 0, 30, 0], noop = () => {};
+  const blocked = (t, e) => e.sleep.leg < 1;
+  const cases = [
+    { name: "bed unreachable: two retries inside two seconds, then 90ms out and in", open: blocked,
+      ok: r => r.stage === "asleep" && r.slot === 0 && r.x === 30 && r.maxTries === 2 && r.departure >= 2 && r.departure < 2.2
+        && r.arrival - r.departure >= 0.09 && r.arrival - r.departure < 0.12 && r.outFrames > 0 && r.inFrames > 0 && !r.beamVisible },
+    { name: "mid-leg obstruction makes short backsteps without renewing the budget", open: (t, e) => e.goalX < e.root.position.x || e.root.position.x < 4,
+      ok: r => r.stage === "asleep" && r.backwalk > 1.2 && r.maxTries === 2 && r.departure > 3 && r.departure < 4 },
+    { name: "temporary blockage clears before two seconds", open: (t, e) => t > 0.8 || blocked(t, e),
+      ok: r => r.stage === "asleep" && r.jumps === 0 && r.departure === -1 },
+    { name: "long slow walk keeps resetting stall budget", pace: 0.1, open: () => true,
+      ok: r => r.stage === "asleep" && r.jumps === 0 && r.t > 100 },
+    { name: "very slow forward movement prevents retry-induced stalls", pace: 0.05, open: () => true,
+      ok: r => r.stage === "asleep" && r.jumps === 0 && r.maxTries === 0 && r.t > 200 },
+    { name: "meaningful forward progress resets two-second budget", open: (t, e) => t > 1.2 && t < 1.6 || blocked(t, e),
+      ok: r => r.stage === "asleep" && r.departure > 3 && r.departure < 3.8 },
+    { name: "getting up pauses the stall budget", recover: 12, open: blocked,
+      ok: r => r.stage === "asleep" && r.departure >= 14 && r.departure < 14.3 },
+    { name: "jumping pauses the stall budget", jumpPause: true, open: blocked,
+      ok: r => r.stage === "asleep" && r.departure >= 5 && r.departure < 5.3 },
+    { name: "occupied landing retains reservation and never starts a beam", landingBlocked: true, limit: 20, open: blocked,
+      ok: r => !r.done && r.stage === "go" && r.slot === 0 && r.jumps === 0 && r.departure === -1 },
+    { name: "player entering destination during departure cancels transfer", denyDuringBeam: true, limit: 20, open: blocked,
+      ok: r => !r.done && r.stage === "go" && r.slot === 0 && r.jumps === 0 && !r.beamVisible },
+    { name: "rage starting on the transfer frame prevents teleport", rageDuringBeam: true, limit: 12, open: blocked,
+      ok: r => !r.done && r.stage === "go" && r.jumps === 0 && !r.beamVisible },
+    { name: "owner waking during departure cancels beam and resets retries", wakeDuringBeam: true, open: blocked,
+      ok: r => r.done && r.fresh && r.stage === "" && r.slot === -1 && r.jumps === 0 && !r.beamVisible },
+    { name: "release during departure clears effect and reservation", releaseDuringBeam: true, open: blocked,
+      ok: r => r.done && r.stage === "" && r.slot === -1 && r.jumps === 0 && !r.beamVisible },
+    { name: "home unreachable hands over to chill without skipping", wakeAt: 0, start: 30, open: (t, e) => e.sleep.leg > 2,
+      ok: r => r.stage === "" && r.slot === -1 && r.phase === "chill" && r.x === 30 && r.jumps === 0 },
+    { name: "home reached after a hold-up", wakeAt: 0, start: 30, open: (t, e) => t > 40 || e.sleep.leg !== 1,
+      ok: r => r.stage === "" && r.phase === "chill" && Math.abs(r.x) < 1.1 && r.jumps === 0 },
+    { name: "woken while held up", wakeAt: 4, open: (t, e) => t >= 4 || e.sleep.leg < 2,
+      ok: r => r.fresh && r.stage === "" && r.phase === "chill" && Math.abs(r.x) < 1.1 && r.jumps === 0 },
+  ];
+  return cases.concat([30, 120].map(fps => ({ ...cases[0], name: `bounded beam at ${fps} fps`, dt: 1 / fps }))).map(c => {
+    const asleep = c.start === 30;
+    const e = { active: true, index: 0, heading: 0, speed: 0, mode: "", phase: "", route: "", rest: 0, lounge: asleep ? "left" : "", recover: c.recover || 0, retry: 0,
+      root: { position: { x: c.start || 0, y: 0, z: 0 } }, owner: { traits: { name: "stall" } },
+      sleep: { stage: asleep ? "asleep" : "", slot: asleep ? 0 : -1, home: -1, leg: asleep ? 3 : 0, count: asleep ? 4 : 0, path: new Float64Array(48),
+        mark: 0, pose: "left", stall: 0, near: Infinity, stuck: -1, tries: 0, forwardLeg: -1, forwardNear: Infinity, beamTime: 0, beamWait: 0 },
+      gorilla: { chest: { scale: { y: 1 } }, poseManaged: noop, mouth: noop }, lab: { item: -1 }, motion: {}, jump: { active: false },
+      roam: {}, climb: { active: false }, rage: { active: false } };
+    e.sleep.path.set(path);
+    e.gorilla.root = e.root; e.gorilla.form = "ape"; e.root.matrixNative = false;
+    e.gorilla.setForm = form => { e.gorilla.form = form; };
+    const context = { e, dt: c.dt || 1 / 60, pace: c.pace || 1, limit: c.limit || 300, wakeAt: c.wakeAt ?? Infinity, open: c.open, bedDay: 0, SPEED: 2.7,
+      sleepBeam: { show: (slot, x, y, z, heading, progress, incoming) => { context.visible = true; context[incoming ? "inFrames" : "outFrames"]++; }, hide: () => { context.visible = false; } },
+      visible: false, outFrames: 0, inFrames: 0, blockedLanding: false, landingBlocked: !!c.landingBlocked,
+      jumpPause: !!c.jumpPause, rageDuringBeam: !!c.rageDuringBeam, updateJump: noop,
+      denyDuringBeam: !!c.denyDuringBeam, wakeDuringBeam: !!c.wakeDuringBeam, releaseDuringBeam: !!c.releaseDuringBeam,
+      bedTaken: () => false,
+      ctx: { sleep: { slots: [{ x: 30, y: 0, z: 0, heading: 0 }], path: (i, out) => { out.set(path); return path.length / 2; } }, restPoseClear: () => !context.blockedLanding },
+      reserveBed: actor => { actor.sleep.slot = 0; actor.sleep.pose = "left"; return true; },
+      caveAt: () => -1, clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      releasePortal: noop, releaseLab: noop, releaseOffice: noop, clearWallSearch: noop, leaveLounge: noop, poseEntry: noop,
+      setGoal: (actor, x, y, z) => { actor.goalX = x; actor.goalY = y; actor.goalZ = z; } };
+    runInNewContext(script, context);
+    const r = context.out;
+    return { name: c.name, ...r, ok: r.unexpected === 0 && r.skipped === 0 && (c.rageDuringBeam || r.form === "ape" && !r.native) && c.ok(r) };
+  });
+};
+// Run the hub's real landing/player predicate, including the NPC exception to walking collision.
+const sleepLandingPlayersProof = () => {
+  const source = readFileSync(join(root, "src/js/scene-hub.js"), "utf8");
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const bodies = [], crew = { player: null }, context = { crew, remotes: { actors: () => bodies } };
+  runInNewContext(section("  const cylinderSegmentClear =", "  const actorBounds =")
+    + section("  const clankerBedPlayersClear =", "  const clankerPlayersSupportAt =")
+    + "globalThis.clear = clankerBedPlayersClear;", context);
+  const e = { controlled: false, gorilla: { bodyRadius: 1.9, bodyHeight: 2.2 } }, bed = { x: 4, y: 2, z: 6 };
+  const rows = { empty: context.clear(e, bed) };
+  crew.player = { root: { visible: true, position: { x: 4, y: 2.5, z: 6 } }, baseY: 0.5, bodyHeight: 1.8, bodyRadius: 0.4 };
+  rows.local = !context.clear(e, bed);
+  crew.player.root.position.y = 6; rows.above = context.clear(e, bed);
+  crew.player = null;
+  bodies.push({ player: true, x: 4, y: 2, z: 6, height: 1.8, radius: 0.4 });
+  rows.remote = !context.clear(e, bed);
+  bodies[0].x = 8; rows.cleared = context.clear(e, bed);
+  const actor = { ...e, root: { position: { x: 0, y: 0, z: 0 }, rotation: { y: 0 } }, heading: 0, climb: {}, motion: {},
+    gorilla: { bodyRadius: 1.9, bodyHeight: 2.2, climbPoseClear(dt, x, y, z, heading, motion, solid, transition, entry) {
+      this.bodyRadius = 3;
+      try { return transition(entry, x, y, z, x, y, z, 3, 2.2); }
+      finally { this.bodyRadius = 1.9; }
+    } } };
+  bodies[0].x = bed.x + 2.8;
+  rows.standingGap = context.clear(actor, bed);
+  Object.assign(context, { clankerCenterClear: () => true, clankerPeersClear: () => true,
+    clankerClimbTransitionClear: () => true, island: { solidAt: () => false } });
+  runInNewContext(section("  let clankerBedLanding =", "  let clankerExitBodyPending =")
+    + "globalThis.poseClear = clankerRestPoseClear; globalThis.landingHeld = () => clankerBedLanding;", context);
+  rows.lyingBlocked = !context.poseClear(actor, 2, "left", true, bed.x, bed.y, bed.z, 0, null, 0, bed);
+  rows.previewReset = context.landingHeld() === null && actor.gorilla.bodyRadius === 1.9
+    && context.poseClear(actor, 2, "left", true, bed.x, bed.y, bed.z, 0);
+  return rows;
+};
+// The visual pool keeps fixed storage, preserves another bed's active pulse when a slot is removed,
+// follows live reduced motion, and removes all scene ownership on disposal.
+const sleepBeamPoolProof = () => {
+  const media = { matches: false }, context = { window: { BL: {}, matchMedia: () => media } };
+  for (const name of ["math", "scene"]) runInNewContext(readFileSync(join(root, `src/js/${name}.js`), "utf8"), context);
+  const BL = context.window.BL, originals = Array.from({ length: 8 }, () => ({ verts: [0, 0, 0], faces: [], matrixGlyph: true }));
+  BL.hubModels = { matrixGlyph: i => originals[i] };
+  runInNewContext(readFileSync(join(root, "src/js/sleep-beam.js"), "utf8"), context);
+  const sceneRoot = BL.scene.createNode(), beam = BL.sleepBeam.create({ root: sceneRoot, capacity: 20 }), nodes = sceneRoot.children.slice();
+  const buffers = nodes.map(n => n.instanceData), sizes = buffers.map(b => b.length);
+  beam.show(0, 1, 2, 3, 0, 0.4, false);
+  const one = nodes.map(n => n.instanceCount), first = nodes.map(n => n.instanceData.slice(0, n.instanceCount * 20));
+  beam.show(19, 40, 2, 3, 0, 0.4, true);
+  const last = nodes.map((n, i) => n.instanceData.slice(one[i] * 20, 2 * one[i] * 20));
+  beam.hide(0);
+  const compacted = nodes.every((n, i) => n.instanceCount === one[i] && last[i].every((v, j) => v === n.instanceData[j]));
+  beam.hide(19);
+  for (let step = 1; step < 200; step++) for (let slot = 0; slot < 20; slot++) beam.show(slot, slot * 5, 0, 0, 0.3, step % 99 / 100, !!(step & 1));
+  const bounded = nodes.length === 8 && nodes.every((n, i) => n.instanceData === buffers[i] && n.instanceData.length === sizes[i] && n.instanceCount === one[i] * 20);
+  media.matches = true;
+  for (let slot = 0; slot < 20; slot++) beam.show(slot, 0, 0, 0, 0, 0.5, false);
+  const calm = nodes.every(n => !n.visible && !n.instanceCount);
+  media.matches = false; beam.show(0, 1, 2, 3, 0, 0.4, false);
+  const deterministic = nodes.every((n, i) => first[i].every((v, j) => v === n.instanceData[j]));
+  beam.clear(); const kept = new Set(); beam.liveGeometry(kept);
+  const clean = nodes.every(n => !n.visible && !n.instanceCount) && kept.size === 8
+    && nodes.every((n, i) => n.geometry !== originals[i] && n.geometry.verts === originals[i].verts);
+  beam.dispose(); beam.dispose(); const released = new Set(); beam.liveGeometry(released);
+  return { compacted, bounded, calm, deterministic, clean, disposed: !sceneRoot.children.length && !released.size };
 };
 // Rule: exercise the actual bounded rage state machine with a small physical
 // adapter. Collision and the rendered carry are covered by the hub regressions.
@@ -11590,11 +11760,36 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     const restoredSlots = sleepers.map(e => e.sleep.slot);
     H.setGameMode(false);
     const stableExit = normal() && sleepers.every((e, i) => e.sleep.slot === restoredSlots[i]);
-    return { lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit,
+    // Real ownership entry points must cancel a pulse immediately, in either half of the transfer.
+    const beamEntry = sleepers[0], noBeam = () => !BL.scenes.hub.root.children.some(n => n.geometry?.matrixGlyph && n.fixedInstanceCapacity && n.visible && n.instanceCount);
+    beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
+    C.update(1 / 60);
+    const before = { ...beamEntry.root.position }, heldSlot = beamEntry.sleep.slot;
+    const selected = C.possess(beamEntry); C.update(0.25);
+    const beamPossession = selected && beamEntry.controlled && beamEntry.sleep.stage === "" && beamEntry.sleep.slot === heldSlot
+      && Math.hypot(beamEntry.root.position.x - before.x, beamEntry.root.position.z - before.z) < 0.001 && noBeam() && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
+    C.release(); reset(sleepers);
+    beamEntry.sleep.stage = "beamIn"; beamEntry.sleep.beamTime = 0.02;
+    C.update(1 / 60); C.possess(beamEntry);
+    const beamArrivalPossession = C.sleeping(beamEntry) && beamEntry.sleep.slot >= 0 && noBeam() && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
+    C.release(); reset(sleepers);
+    beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
+    C.update(1 / 60); C.setRemote(beamEntry.owner.traits.name, true);
+    const beamRemote = beamEntry.remoteControlled && !visible(beamEntry) && beamEntry.sleep.slot === -1 && noBeam() && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
+    C.setRemote(beamEntry.owner.traits.name, false); reset(sleepers);
+    beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
+    C.update(1 / 60); C.setAway(true); C.update(1 / 30);
+    const beamReset = !visible(beamEntry) && beamEntry.sleep.slot === -1 && noBeam() && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
+    C.setAway(false);
+    beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
+    C.update(1 / 60); C.cancelSleepBeams();
+    const beamSuspend = noBeam() && beamEntry.sleep.stage === "go" && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
+    return { beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
       population: [worker, chiller, away, ...sleepers].map(e => ({ state: e.owner.state, mode: e.mode, active: e.active, visible: e.root.visible, bed: e.sleep.slot })) };
   })()`);
   record("gorilla population: late-roster sleepers get exclusive beds; working, chilling and away owners get none; overflow waits at the 20-bed cap, respects driven reservations and reuses released beds", r.lateSleepers && r.stable && r.capped && r.reused && r.heldWhileDriven && r.uniqueAfterRelease, JSON.stringify(r));
   record("gorilla population: island game mode hides companions and its exit immediately restores current working, chilling and sleeping gorillas; repeated exit keeps their beds", r.hidden && r.restored && r.stableExit, JSON.stringify(r));
+  record("gorilla sleep beam: possession, remote takeover and population reset cancel both transfer stages without displacing a driven character", r.beamPossession && r.beamArrivalPossession && r.beamRemote && r.beamReset && r.beamSuspend, JSON.stringify(r));
 } };
 const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visits retain harmless weapons and both look modes while damage, health simulation, rage and grabs stay off, and ending a game clears its transient combat state", run: async b => {
   const r = await b.evaluate(`(() => {
@@ -15246,9 +15441,9 @@ const arcadeRemoteWeapons = { name: "arcade remote weapons", why: "regression: t
       BL.models.caveman = build;
       for (const [place, x, y, z, zone] of [
         ["hall", 0, 0, 4, "arcade.hall"],
-        ["haunt", H.end - 4, H.y, A.z, "arcade.haunt"],
-        ["arena", A.x, H.y, A.z, "arcade.arena"],
-        ["below arena", A.x, H.y - 2, A.z, "arcade.arena"],
+        ["haunt", H.end - 4, H.y, A.z, "ghost-arena.haunt"],
+        ["arena", A.x, H.y, A.z, "ghost-arena"],
+        ["below arena", A.x, H.y - 2, A.z, "ghost-arena"],
         ["returned hall", 0, 0, 4, "arcade.hall"]
       ]) {
         Object.assign(peer, { x, y, z, zone });
@@ -15325,11 +15520,56 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
   })()`);
   await b.key("v");
   const after = await b.evaluate(`(() => { __ooga.advance(0.6, 1 / 60); const W = __hallAmmo, fired = W.read(); W.send("DAWN"); __ooga.advance(0.1, 1 / 60); return { fired, restored: W.read() }; })()`);
+  // #422: the same spectator, the hunt running again, walked from the gate to the Arcade end, into the hall and back: the
+  // zone each half reports, the voice crossing toward the other land, and the level the hunt's music and effects play at.
+  const walk = await b.evaluate(`(() => {
+    const B = __ooga, W = __hallAmmo, H = BL.arcadeModels.HAUNT, hall = BL.arcadeModels.HALL.halfW, z = (H.z0 + H.z1) / 2, G = B.halloween.audio, rows = [];
+    W.send("ACTIVE");
+    for (const [name, x] of [["gate", H.end - 1], ["far", H.end - 4], ["mid", (hall + H.end) / 2], ["near", hall + 4], ["mouth", hall + 0.5], ["hall", 0], ["back", H.end - 4]]) {
+      B.pilot.navigate({ position: name === "hall" ? { x: 0, y: 0, z: 4 } : { x, y: H.y, z }, yaw: -Math.PI / 2, pitch: 0.18, dist: 4 });
+      W.send("ACTIVE"); B.advance(0.5, 1 / 60);
+      const a = BL.scenes.arcade.debug.arena;
+      rows.push({ name, zone: a.zone, hearing: +a.hearing.toFixed(3), level: +G.hearing.toFixed(3), music: G.musicWanted, to: a.blendTo, t: +a.blendT.toFixed(3), state: B.halloween.state });
+    }
+    // Back near the gate: a hunter's rifle in the arena sounds once here; a shot reported from the hallway sounds nothing.
+    const N = BL.net, shot = JSON.stringify({ t: "shot", id: 2, a: [60, 4, -20, 62, 4, -20] }), sounds = {};
+    N.remotes.set(2, { id: 2, login: "hunter", display: "Hunter", body: "w-s-bitcoin", zone: "ghost-arena", x: 64, y: 3.2, z: -20, yaw: 0, weapon: 0, jet: 0, poseZone: "ghost-arena", blendTo: null, blendK: 0 });
+    let before = G.played; W.socket.onmessage({ data: shot }); sounds.arena = G.played - before;
+    N.remotes.get(2).zone = "ghost-arena.haunt";
+    before = G.played; W.socket.onmessage({ data: shot }); sounds.hallway = G.played - before;
+    N.remotes.delete(2);
+    // A hunter hurt in the snapshots: this spectator, in no hunt, hears it once; the first sight of them sounds nothing.
+    W.host.debug.results(2, { kills: 0, foes: 0 }, []);
+    const q = W.host.players.find(p => p.on && p.id === 2);
+    const frame = () => {
+      const bytes = new TextEncoder().encode(JSON.stringify(W.host.snapshot())), f = new Uint8Array(bytes.length + 4);
+      new DataView(f.buffer).setUint32(0, 0x54534847, true); f.set(bytes, 4);
+      W.socket.onmessage({ data: f.buffer });
+    };
+    q.seg = 5; frame(); B.advance(0.2, 1 / 60);
+    before = G.played; frame(); B.advance(0.2, 1 / 60); sounds.steady = G.played - before;
+    q.seg = 4; before = G.played; frame(); B.advance(0.2, 1 / 60); sounds.hurt = G.played - before;
+    W.send("DAWN"); B.advance(0.1, 1 / 60);
+    return { rows, sounds };
+  })()`);
   await b.evaluate(`(() => { const W = __hallAmmo; W.socket.close(); BL.net.state.room = "off"; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
-  const kept = result.rows.every(r => !r.armed && r.zone === "arcade.haunt" && r.received === r.state && !r.unlimited && r.ammo === result.before.ammo && r.equipped === result.before.equipped && r.aiming === result.before.aiming);
+  const kept = result.rows.every(r => !r.armed && r.zone === "ghost-arena.haunt" && r.received === r.state && !r.unlimited && r.ammo === result.before.ammo && r.equipped === result.before.equipped && r.aiming === result.before.aiming);
   record("arcade hallway ammunition: a signed-in hallway-only spectator keeps weapon state through every hunt phase, rejects firing and keeps the same ammunition policy at dawn",
-    !result.before.armed && result.before.zone === "arcade.haunt" && result.role === "follow" && !result.hunter && kept && after.fired.ammo === result.before.ammo && !after.fired.equipped && !after.fired.unlimited && !after.restored.unlimited,
+    !result.before.armed && result.before.zone === "ghost-arena.haunt" && result.role === "follow" && !result.hunter && kept && after.fired.ammo === result.before.ammo && !after.fired.equipped && !after.fired.unlimited && !after.restored.unlimited,
     JSON.stringify({ ...result, ...after }));
+  const row = Object.fromEntries(walk.rows.map(r => [r.name, r]));
+  const hallway = ["gate", "far", "mid", "near", "mouth"].map(n => row[n]);
+  record("arcade hallway game sounds (#422): an arena hunter's rifle sounds once for a hallway spectator and a hallway shot not at all; a hunter's hurt sounds once, never on first sight or an unchanged snapshot",
+    walk.sounds.arena === 1 && walk.sounds.hallway === 0 && walk.sounds.steady === 0 && walk.sounds.hurt === 1, JSON.stringify(walk.sounds));
+  record("arcade hallway audio (#422): a spectator never in the hunt hears its music and effects louder toward the gate and fainter toward the Arcade, none in the hall and back on return, half by half in each land's zone with the voice crossing toward the other, equal power at the midpoint",
+    walk.rows.every(r => r.state === "ACTIVE" && Math.abs(r.level - r.hearing) <= 0.02)
+      && hallway.every((r, i) => r.music && r.hearing > 0 && (i === 0 || r.hearing < hallway[i - 1].hearing))
+      && row.gate.zone === "ghost-arena.haunt" && row.gate.to === "arcade" && row.far.zone === "ghost-arena.haunt"
+      && row.mid.zone === "ghost-arena.haunt" && row.mid.to === "arcade" && Math.abs(row.mid.t - 0.5) < 0.01 && Math.abs(row.mid.hearing - Math.SQRT1_2) < 0.01
+      && row.near.zone === "arcade.haunt" && row.near.to === "ghost-arena" && row.mouth.hearing < 0.1
+      && row.hall.zone === "arcade.hall" && row.hall.hearing === 0 && !row.hall.music && !row.hall.to
+      && row.back.music && row.back.hearing === row.far.hearing && row.back.zone === "ghost-arena.haunt",
+    JSON.stringify(walk.rows));
 } };
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
@@ -20918,7 +21158,7 @@ scene("poker", { opts: PHONE_SIZE, steps: [phone("poker", { card: '[data-intro="
   record("poker phone: nine seat choices and two private cards fit the panel", r.fits && r.seats === 9 && r.cards === 2, JSON.stringify(r));
   if (process.env.POKER_SHOTS) await b.screenshot(join(process.env.POKER_SHOTS, "poker-phone.png"));
 } }] });
-scene("hub", { label: "gorilla population restoration", query: "status=clankin", exclusive: true, steps: [hubGorillaPopulation] });
+scene("hub", { label: "gorilla population restoration", query: "status=clankin", exclusive: true, opts: { motion: true }, steps: [hubGorillaPopulation] });
 scene("hub", { label: "weapons", query: "character=portlandhodl&weapon=2&mag=1&ammo=6&jetpack=1&gorillarage=1", steps: [hubCombatGate, ...[hubAk, hubMelee, hubJetpack].map(gameCombat)] });
 // Her greeting comes once a page, to a fresh landing nothing has moved, so the guide has its own page.
 scene("hub", { label: "guide", query: "character=portlandhodl&jetpack=1", steps: [hubGuide, hubAsk] });
@@ -23211,6 +23451,73 @@ const voiceHearingChecks = async () => {
   const cross={desk:await crossing(false),ios:await crossing(true)};
   record("voice crossing: along a bridge the island fades out as the land ahead fades in, equal-power, a second crosser plays by how near, the far side hears a crosser by its share, iOS sounds the same, and the hearing range reaches across",
     [cross.desk,cross.ios].every(c=>c.half==="0.707,0.707,1"&&c.near==="0.156,0.988,0.809"&&c.end==="0,1,0.707"&&c.over==="1,0.707"&&c.radius==="1,0.707"&&c.cutoff==="0,0.707"&&c.thump===c.cutoff),JSON.stringify(cross));
+  // #422: the arcade's haunted hallway, a listener halfway along with someone in the hall, someone in the arena and a
+  // second walker on the arena's half: equal power from either half, the same when the zone flips at the midpoint, a
+  // local mute holding, and the hearing range measured across the arcade scene's shared coordinates. The workload of the
+  // walk is counted from the rig: SFU calls and audio nodes made while walking (none; only gains move).
+  const hallway=async ios=>{
+    const r=rig(ios),V=r.V,s=r.state,out={};
+    r.remotes.clear();r.remotes.set(2,remote("hal","arcade.hall",5,0));r.remotes.set(3,remote("are","ghost-arena",5,30));
+    r.remotes.set(4,{...remote("wlk","ghost-arena.haunt",0,15),blendTo:"arcade",blendK:10});
+    Object.assign(s,{zone:"arcade.haunt",self:{x:0,y:0,z:0,zone:"arcade.haunt"},blendTo:"ghost-arena",blendT:0.5});
+    await V.enable();await settle();V.setPeers([2,3,4],[1,1,1]);await settle();r.land([2,3,4]);
+    const ops=r.ops.length,nodes=r.gains.length;
+    r.tick(10);out.mid=r.levels([2,3,4]);
+    Object.assign(s,{zone:"ghost-arena.haunt",blendTo:"arcade",blendT:0.5});s.self.zone="ghost-arena.haunt";r.tick(10);out.turned=r.levels([2,3,4]);
+    s.blendT=0.1;r.tick(10);out.gate=r.levels([2,3,4]);
+    V.muteLocal("are",true);r.tick();out.muted=r.levels([2,3,4]);V.muteLocal("are",false);
+    s.blendT=0.5;V.setRadius(10);r.tick(10);out.radius=r.levels([2,3,4]);V.setRadius(0);
+    out.work={sfu:r.ops.length-ops,nodes:r.gains.length-nodes};
+    V.stop();
+    return out;
+  };
+  const hall={desk:await hallway(false),ios:await hallway(true)};
+  record("voice hallway (#422): halfway along the arcade's haunted hallway the hall and the arena play at equal power from either half, toward the gate the arena takes over, a local mute holds, the hearing range reaches the hall through the shared coordinates, and walking costs no SFU call or audio node",
+    [hall.desk,hall.ios].every(h=>h.mid==="0.707,0.707,1"&&h.turned===h.mid&&h.gate==="0.156,0.988,0.809"&&h.muted==="0.156,0,0.809"&&h.radius==="0.707,0,0"&&h.work.sfu===0&&h.work.nodes===0),JSON.stringify(hall));
+};
+// #422: the hunt's sound as ghost-audio.js plays it, on a fake AudioContext: nothing opened or scheduled where the hunt
+// is not heard, the master following a spectator's level along the hallway at bounded cost (no decode or fetch from a
+// level), a hushed catch-up frame, and a track that finishes decoding after `dispose` starting nothing.
+const ghostAudioChecks = async () => {
+  const ctxs=[],pending=[],loads=[];
+  const param=()=>{const p={value:0,calls:0};for(const m of ["setValueAtTime","exponentialRampToValueAtTime","linearRampToValueAtTime","setTargetAtTime","cancelScheduledValues"])p[m]=v=>{p.calls++;if(m!=="cancelScheduledValues"&&m!=="exponentialRampToValueAtTime"&&m!=="linearRampToValueAtTime")p.value=v;};return p;};
+  const node=(extra)=>Object.assign({connect(){},disconnect(){},start(){},stop(){}},extra);
+  class Ctx {constructor(){ctxs.push(this);this.currentTime=0;this.state="running";this.sampleRate=800;this.destination=node({});this.gains=[];this.decodes=0;this.sources=0;}
+    createGain(){const g=node({gain:param()});this.gains.push(g);return g;}
+    createOscillator(){return node({frequency:param(),detune:param(),type:"sine"});}
+    createBiquadFilter(){return node({frequency:param(),Q:param(),type:"lowpass"});}
+    createBuffer(c,n){return {getChannelData:()=>new Float32Array(n)};}
+    createBufferSource(){this.sources++;return node({buffer:null,loop:false,onended:null});}
+    decodeAudioData(){this.decodes++;return new Promise(r=>pending.push(()=>r({})));}
+    resume(){return Promise.resolve();} close(){this.state="closed";return Promise.resolve();}}
+  const clips={},music={};
+  for(const name of ["wave","kaboom","screech","freeze","apples","double","banana","ooga","landing","network","fiatRush","tessZap","tessScream","monkeyGet","choir","gameOver1","gameOver2","gameOver3","gameOver4","gameOverLast"])clips[name]="AA==";
+  for(const key of ["boss","colt","martial","nightmare","synthed","nr"])music[key]="AA==";
+  let soundFn=null;
+  const window={BL:{sound:{muted:false,subscribe:fn=>{soundFn=fn;return()=>{soundFn=null;};}},ghostAudioData:clips,ghostMusic:music,deferred:{load:g=>{loads.push(g);return null;}}},setTimeout:()=>0};
+  const context={window,document:{hidden:false,addEventListener(){},removeEventListener(){}},navigator:{userActivation:{hasBeenActive:true}},AudioContext:Ctx,localStorage:{getItem:()=>null,setItem(){}},atob,Math,Float32Array,Uint8Array,Promise};
+  runInNewContext(readFileSync(join(root,"src/js/ghost-audio.js"),"utf8"),context);
+  const A=window.BL.ghostAudio.create(),out={};
+  A.level(0);A.play("shot");A.play("hurt");out.silent={played:A.played,contexts:ctxs.length};
+  A.level(1);A.play("shot");const ctx=ctxs[0],master=ctx.gains[0];out.heard={played:A.played,contexts:ctxs.length,master:+master.gain.value.toFixed(3)};
+  // A walk from the gate to the Arcade end, a level every frame for 1,000 frames.
+  const calls=master.gain.calls,decodes=ctx.decodes;
+  for(let i=0;i<=1000;i++)A.level(Math.sin(Math.PI/2*(1-i/1000)));
+  out.walk={reschedules:master.gain.calls-calls,decodes:ctx.decodes-decodes,loads:loads.length,end:master.gain.value};
+  A.level(Math.SQRT1_2);out.mid=+master.gain.value.toFixed(4);
+  A.hush(true);const p0=A.played;A.play("hurt");A.hush(false);out.hushed=A.played-p0;A.play("hurt");out.after=A.played-p0;
+  soundFn(true);out.muted=master.gain.value;soundFn(false);out.unmuted=+master.gain.value.toFixed(4);
+  // Music asked for, its track still decoding when the hunt is disposed.
+  A.music(true);const sources=ctx.sources;A.dispose();
+  for(const resolve of pending.splice(0))resolve();
+  await new Promise(r=>setTimeout(r,0));
+  A.play("shot");
+  out.disposed={playing:A.playing,sources:ctx.sources-sources,contexts:ctxs.length,state:ctx.state,sound:soundFn===null};
+  record("ghost hunt audio (#422): a page that hears nothing of the hunt opens no context and schedules no cue; heard, the master follows the spectator's level, rescheduled at most once a 0.02 step over a 1,000-frame walk with no decode or fetch, equal power at the midpoint, through mute and back; a hushed catch-up frame plays nothing; a track decoded after dispose starts nothing and opens no context",
+    out.silent.played===0&&out.silent.contexts===0&&out.heard.played===1&&out.heard.contexts===1&&out.heard.master===0.35
+      &&out.walk.reschedules>0&&out.walk.reschedules<=52&&out.walk.decodes===0&&out.walk.loads===0&&out.walk.end===0
+      &&Math.abs(out.mid-0.35*Math.SQRT1_2)<1e-4&&out.hushed===0&&out.after===1&&out.muted===0&&out.unmuted===out.mid
+      &&!out.disposed.playing&&out.disposed.sources===0&&out.disposed.contexts===1&&out.disposed.state==="closed"&&out.disposed.sound,JSON.stringify(out));
 };
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
@@ -24188,7 +24495,7 @@ const netFixture=(BL,response,step=200,cookie="")=>{
   class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"?JSON.parse(v):v);}close(){this.readyState=3;}}
   const voice={setPeers:()=>{},restart:()=>{},stop:()=>{}};
   const location={protocol:"https:",host:"fixture.invalid",pathname:"/",search:"",assign:url=>navigations.push(url)},pilot={saveLoginView(){savedViews++;}};
-  const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
+  const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voiceBlend:BL.voiceBlend,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
   runInNewContext(source,context);
   return {net:context.window.BL.net,document:context.document,voice,sockets,sent,events,location,navigations,advance(ms){tick+=ms;},get calls(){return calls;},get savedViews(){return savedViews;}};
 };
@@ -24267,17 +24574,21 @@ const playersTabChecks = async BL => {
     ["outside", "dsb-studio", "bifrost"], ["outside", "scene-race", "arcade"], ["outside", "scene-skee", "arcade"], ["outside", "sphere-4", "sphere"], ["outside", "hq", "hq"],
     ["factory", "factory.hangar", "factory.hall"], ["factory.hangar", "outside", "factory.hall"], ["factory.hangar", "arcade.hall", "factory.hall"], ["lab", "rainforest", "outside"],
     ["bifrost.chamber", "ember-den", "ember-den"], ["ember-den", "dsb-maxis", "bifrost.chamber"], ["dsb-maxis", "dsb-studio", "dsb-outside"], ["sphere-4", "sphere-7", "sphere"],
-    ["outside", "none", null], ["none", "outside", null], ["scene-transition", "lab", null], ["lab", "lab", null], ["outside", "made-up", null], ["outside", "constructor", null], ["constructor", "lab", null]];
+    ["outside", "none", null], ["none", "outside", null], ["scene-transition", "lab", null], ["lab", "lab", null], ["outside", "made-up", null], ["outside", "constructor", null], ["constructor", "lab", null],
+    ["outside", "ghost-arena", "arcade"], ["arcade.hall", "arcade-hunt", "arcade.haunt"], ["arcade.haunt", "ghost-arena", "ghost-arena.haunt"], ["ghost-arena", "arcade.hall", "ghost-arena.haunt"], ["arcade-hunt", "outside", "ghost-arena"]];
   const routed = steps.map(([from, to, want]) => ({ from, to, want, got: Z.next(from, to) })).filter(r => r.got !== r.want);
   record("players tab routes: the first step between zones goes down toward the target or up toward the island (Factory before the hangar, ₿IFRÖST before the Ember Den and DSB Land, the Arcade before its games), and nowhere has no route",
     routed.length === 0, JSON.stringify(routed));
   const lands = { outside: "The island", "factory.hall": "Lightning Factory", factory: "Lightning Factory", "factory.hangar": "Lightning Jet Hangar", "arcade.hall": "Ooga Arcade", "bifrost.chamber": "\u20bfIFR\u00d6ST chamber",
-    "sphere-3": "Timechain Sphere \u00b7 Room 3", "dsb-maxis": "DSB Land", "cave-c9": "A cave on the island", "scene-race": "Ooga Rally", "scene-skee": "A game", none: "Between lands", "ember-den": "Ember Den" };
+    "sphere-3": "Timechain Sphere \u00b7 Room 3", "dsb-maxis": "DSB Land", "cave-c9": "A cave on the island", "scene-race": "Ooga Rally", "scene-skee": "A game", none: "Between lands", "ember-den": "Ember Den",
+    "arcade.haunt": "Ooga Arcade", "ghost-arena.haunt": "Ghost Hunter's Arena", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena" };
   const headings = { outside: "The island", factory: "Lightning Factory tunnel", "factory.hall": "Lightning Factory", arcade: "Ooga Arcade entrance", "arcade.hall": "Ooga Arcade",
+    "arcade.haunt": "Ooga Arcade", "ghost-arena.haunt": "Ghost Hunter's Arena", "ghost-arena": "Ghost Hunter's Arena", "arcade-hunt": "Ghost Hunter's Arena",
     "dsb-maxis": "DSB Land \u00b7 Maxis Club", "scene-race": "Ooga Rally", "scene-skee": "Ooga Arcade games", "scene-invaders": "Ooga Arcade games", "scene-transition": "Between lands" };
   const landMiss = Object.entries(lands).filter(([zone, want]) => Z.landOf(zone) !== want), headMiss = Object.entries(headings).filter(([zone, want]) => Z.heading(Z.groupOf(zone)) !== want);
-  record("players tab groups: the roster keeps its land names; the tab heads the Factory tunnel and the Arcade entrance apart from their halls, each DSB venue apart, and the arcade's unrouted games together",
-    !landMiss.length && !headMiss.length && Z.heading("constructor") === "constructor" && Z.groupOf("scene-skee") === Z.groupOf("scene-invaders") && Z.groupOf("scene-race") !== Z.groupOf("scene-skee") && Z.groupOf("scene-transition") === "none",
+  record("players tab groups: the roster keeps its land names; the tab heads the Factory tunnel and the Arcade entrance apart from their halls, each DSB venue apart, the arcade's unrouted games together, and each half of the haunted hallway with its own land, Ooga Arcade or Ghost Hunter's Arena (#422)",
+    !landMiss.length && !headMiss.length && Z.heading("constructor") === "constructor" && Z.groupOf("scene-skee") === Z.groupOf("scene-invaders") && Z.groupOf("scene-race") !== Z.groupOf("scene-skee") && Z.groupOf("scene-transition") === "none"
+      && Z.groupOf("arcade.haunt") === Z.groupOf("arcade.hall") && Z.groupOf("ghost-arena.haunt") === Z.groupOf("ghost-arena") && Z.groupOf("arcade-hunt") === Z.groupOf("ghost-arena") && Z.groupOf("ghost-arena") !== Z.groupOf("arcade.hall"),
     JSON.stringify({ landMiss, headMiss }));
   const row = (id, name, zone, self = false) => ({ id, name, group: Z.groupOf(zone), self });
   const rows = [row(5, "zed", "lab"), row(2, "Bea", "rainforest"), row(9, "amy", "lab"), row(1, "Me", "lab", true), row(4, "carl", "factory.hall"), row(3, "Al", "rainforest"), row(7, "Ánna", "factory")];
@@ -24314,6 +24625,49 @@ const playersTabChecks = async BL => {
   record("players tab positions: the visitor's own is their Ooga's last reported, kept after letting go, and stale once they change zone",
     placed.x === 3 && placed.z === 4 && placed.zone === "outside" && kept.x === 3 && kept.zone === "outside" && f.net.state.self.zone !== f.net.state.zone && moves > heard,
     JSON.stringify({ placed, kept, zone: f.net.state.zone }));
+  // #422: the arcade hallway's midpoint changes the zone (the land each half is listed under) while both lands are heard:
+  // the page keeps every voice and turns its crossing round, as the room does; a remote's position stays placed across
+  // the two halves' shared coordinates and goes stale on leaving them.
+  const dropped = [];
+  f.net.setBody("NickDaGreek"); f.net.setZone("arcade.haunt");
+  f.voice.setPeers = ids => dropped.push(ids.length);
+  f.net.setBlend("ghost-arena", 0.55);
+  const nearHalf = { to: f.net.state.blendTo, t: f.net.state.blendT };
+  f.net.setZone("ghost-arena.haunt");
+  const turned = { to: f.net.state.blendTo, t: +f.net.state.blendT.toFixed(3), dropped: dropped.length };
+  f.net.setBlend(null, 0); f.net.setZone("arcade.hall");
+  const leftHallway = dropped.length;
+  message({ t: "zone", id: 2, name: "arcade.haunt" }); message({ t: "state", now: Date.now(), ps: [2, 25, 3.2, -20, 0] });
+  message({ t: "blend", id: 2, to: "ghost-arena", k: 11 });
+  // What a listener in the hall plays that remote at (voice.js `nearness`), before its zone flips and in the gap between
+  // the room's `zone` and the `blend` that follows it.
+  const share = () => +BL.voiceBlend.gain("arcade.hall", null, 0, rec(2).zone, rec(2).blendTo, rec(2).blendK / BL.voiceBlend.STEPS).toFixed(6);
+  const shareBefore = share();
+  message({ t: "zone", id: 2, name: "ghost-arena.haunt" });
+  const gap = { to: rec(2).blendTo, k: rec(2).blendK, share: share(), poseZone: rec(2).poseZone };
+  message({ t: "blend", id: 2, to: "arcade", k: 9 });
+  const settled = share();
+  message({ t: "zone", id: 2, name: "outside" });
+  record("players tab hallway (#422): crossing the haunted hallway's midpoint keeps every voice and turns the crossing round, a remote's too before the room's next step arrives (no moment at another share), leaving the arena's half for the hall drops them, and a remote's position stays placed across the halves",
+    nearHalf.to === "ghost-arena" && turned.to === "arcade" && turned.t === 0.45 && turned.dropped === 0 && leftHallway === 1
+      && gap.to === "arcade" && gap.k === 9 && gap.share === shareBefore && settled === shareBefore && shareBefore > 0.6 && shareBefore < 0.7
+      && gap.poseZone === "ghost-arena.haunt" && rec(2).poseZone === "ghost-arena.haunt" && rec(2).zone === "outside" && !rec(2).blendTo,
+    JSON.stringify({ nearHalf, turned, leftHallway, shareBefore, gap, settled }));
+  // The exact local position can reach a bridge's end before the throttled wire step does. The room turns its last
+  // step round on the zone change, so the page must explicitly clear that remainder, once, even when its own is zero.
+  const exits = [];
+  for (const land of ["rainforest", "sphere", "bifrost", "hq"]) for (const [from, to] of [["outside", land], [land, "outside"]]) {
+    f.net.setBlend(null, 0); f.net.setZone(from); f.advance(1000);
+    f.net.setBlend(to, 0.95); const lastStep = f.sent.at(-1);
+    f.net.setBlend(to, 0.99); const throttled = f.sent.at(-1) === lastStep;
+    f.net.setZone(to); const at = f.sent.length;
+    f.net.setBlend(null, 0);
+    for (let i = 0; i < 4; i++) { f.advance(1000); f.net.setBlend(null, 0); }
+    const clears = f.sent.slice(at).filter(m => m.t === "blend");
+    exits.push({ from, to, lastStep, throttled, clears, local: f.net.state.blendTo });
+  }
+  record("voice bridge exit: a zone change with wire step 19 and exact progress past the endpoint explicitly clears the room's remaining crossing once in either direction",
+    exits.every(r => r.lastStep.t === "blend" && r.lastStep.k === 19 && r.throttled && r.local === null && r.clears.length === 1 && r.clears[0].to === null && r.clears[0].k === 0), JSON.stringify(exits));
   f.net.dispose();
 };
 const rememberedCharacterChecks = async BL => {
@@ -26579,6 +26933,12 @@ const unitChecks = async () => {
   await gpuGeometryDiagnosticChecks();
   const sleepRoutes = gorillaSleepRouteProof();
   record("gorilla re-sleep regression: waking remembers its former bed; the same bed keeps its return leg and a changed bed chooses the nearest waypoint on its own path", sleepRoutes.every(row => row.ok), JSON.stringify(sleepRoutes));
+  const sleepLandingPlayers = sleepLandingPlayersProof();
+  record("gorilla sleep landing: the real hub predicate protects local and remote players while allowing vertically clear beds", Object.values(sleepLandingPlayers).every(Boolean), JSON.stringify(sleepLandingPlayers));
+  const sleepBeamPool = sleepBeamPoolProof();
+  record("gorilla sleep beam: fixed pool, slot isolation, live reduced motion and scene cleanup", Object.values(sleepBeamPool).every(Boolean), JSON.stringify(sleepBeamPool));
+  const sleepStalls = gorillaSleepStallProof();
+  record("gorilla sleep stall regression: two seconds without forward progress permits a bounded beam to a clear reserved bed; progress, waits, cancellation and walking home retain their contracts", sleepStalls.every(row => row.ok), JSON.stringify(sleepStalls));
   const rage = await gorillaRageProof();
   record("gorilla rage: distinct rolling hits, only agitating Oogas targeted, held capture through planning and swing, bounded throws, exact expiry, zero health and account/lifecycle cancellation", Object.values(rage).every(Boolean), JSON.stringify(rage));
   const reviewCrowd=await reviewCrowdAndFallbackProof();
@@ -26789,6 +27149,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   footstepChecks(BL);
   await voiceAloneChecks();
   await voiceHearingChecks();
+  await ghostAudioChecks();
   exteriorEnrichmentChecks(BL);
   if(ARGS.includes("exterior-unit"))return;
   maxisChecks(BL);
