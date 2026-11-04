@@ -5,7 +5,24 @@
   const create = ({ slot, play, aim, lobby, start, end, closed, sideChanged }) => {
     const net = BL.net;
     let table = null, side = -1, lastQ = -1, q = 0, peerAt = 0, beat = 0, sent = 0, active = false, finished = false, dead = false, joined = false, joinWait = 0, joinElapsed = 0;
-    const pose = { x: 0, y: 0, z: 0, yaw: 0 };
+    const pose = { x: 0, y: 0, z: 0, yaw: 0 }, path = [];
+    let discontinuity = 0, lastInputQ = -1, peerStale = false;
+    // Fixed-size buffer: on overload drop the unrepresentable path, and tell the host to
+    // resynchronize without inventing a collision along the missing movement.
+    const point = (x, depth) => {
+      if (!active || side !== 1 || dead) return;
+      x = Math.round(x * 1000); depth = Math.round(depth * 1000);
+      if (path.length && path[path.length - 2] === x && path[path.length - 1] === depth) return;
+      // Coalesce exactly collinear, same-direction samples only. This keeps high-polling straight
+      // strokes compact without inventing a new segment or dropping a reversal.
+      if (path.length >= 4) {
+        const i = path.length - 4, du = path[i + 2] - path[i], dv = path[i + 3] - path[i + 1];
+        const eu = x - path[i + 2], ev = depth - path[i + 3];
+        if (du * ev === dv * eu && du * eu + dv * ev >= 0) { path[i + 2] = x; path[i + 3] = depth; return; }
+      }
+      if (path.length === 12) { path.length = 0; discontinuity = 1; }
+      path.push(x, depth);
+    };
     const command = k => net.sendHockey({ k, i: slot, s: table?.s });
     const receive = m => {
       if (dead) return;
@@ -29,9 +46,15 @@
       } else if (m.s === table?.s && m.k === "frame" && side === 1 && m.q > lastQ && W.validFrame(m.a)) {
         lastQ = m.q; play.receive(m.a, side);
         if (!m.a[16] && active) { active = false; finished = true; end(m.a[15]); }
-      } else if (m.s === table?.s && m.k === "input" && side === 0) {
-        peerAt = performance.now();
-        play.peerInput(m.x / 1000, m.y / 1000);
+      } else if (m.s === table?.s && m.k === "input" && side === 0 && m.q > lastInputQ) {
+        const input = W.parse(m);
+        if (!input) return;
+        const now = performance.now(), gap = input.q > lastInputQ + 1;
+        const stalled = peerAt > 0 && now - peerAt > 500;
+        lastInputQ = input.q; peerAt = now;
+        if (play.peerPath) play.peerPath(input.p || [input.x, input.y], input.d === 1 || gap || peerStale || stalled);
+        else play.peerInput(input.x / 1000, input.y / 1000);
+        peerStale = false;
       }
     };
     const off = net.subscribeHockey(receive);
@@ -43,6 +66,7 @@
     return {
       get side() { return side; }, get table() { return table; }, get dead() { return dead; },
       get follower() { return side === 1; }, get human() { return !!table?.ids[1]; },
+      point,
       ready: () => { if (table && !dead) command("ready"); },
       act: () => { if (!active || dead) return false; if (table?.ids[1]) return false; play.act(); return true; },
       tick(dt, playing) {
@@ -55,10 +79,17 @@
         }
         beat += dt; sent += dt;
         if (table && beat >= 2) { beat = 0; command("beat"); }
-        if (side === 0 && peerAt && performance.now() - peerAt > 500) { play.peerIdle(); peerAt = 0; }
+        if (side === 0 && peerAt && performance.now() - peerAt > 500) { play.peerIdle(); peerAt = 0; peerStale = true; }
         if (table && active && playing && sent >= (side === 1 ? 1 / W.INPUT_HZ : 1 / W.HZ)) {
           sent = 0;
-          net.sendHockey(side === 1 ? { k: "input", i: slot, s: table.s, q: q++, x: Math.round(aim.x * 1000), y: Math.round(aim.depth * 1000) } : { k: "frame", i: slot, s: table.s, q: q++, a: play.capture() });
+          if (side === 1) {
+            const x = Math.round(aim.x * 1000), y = Math.round(aim.depth * 1000);
+            // The path endpoint and current target must agree, including if another input source changed aim.
+            if (path.length && (path[path.length - 2] !== x || path[path.length - 1] !== y)) point(aim.x, aim.depth);
+            const input = { k: "input", i: slot, s: table.s, q, x, y };
+            if (path.length) { input.p = path; input.d = discontinuity; }
+            if (net.sendHockey(input)) { q++; path.length = 0; discontinuity = 0; }
+          } else net.sendHockey({ k: "frame", i: slot, s: table.s, q: q++, a: play.capture() });
         }
       },
       finish() { if (side === 0 && table && active) { net.sendHockey({ k: "frame", i: slot, s: table.s, q: q++, a: play.capture() }); active = false; finished = true; } },

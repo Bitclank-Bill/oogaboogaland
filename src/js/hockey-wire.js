@@ -3,7 +3,7 @@
   "use strict";
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
-  const FEATURE = "hockey-v2", ZONE = "arcade.hall", HZ = 10, INPUT_HZ = 20, IDLE_MS = 15000;
+  const FEATURE = "hockey-v3", ZONE = "arcade.hall", HZ = 10, INPUT_HZ = 20, IDLE_MS = 15000;
   const SCALE = 1.35, SEAT = 1.1 * SCALE + 0.55;
   const MALLET_RADIUS = 0.07, MALLET_X = 0.48, MALLET_DEPTH = 0.96, LENGTH = 2.2;
   // One radius-aware rectangle for pointer presentation and host simulation. Clamp axes independently.
@@ -23,6 +23,8 @@
     integer(a[12], -1000, 1000) && integer(a[13], -1000, 1000) && a[14] === a[8] && a[15] === a[9] && integer(a[16], 0, 1) && integer(a[17], 0, 65535);
   const parse = m => {
     if (!integer(m.i, 0, 2)) return null;
+    // A cached v2 browser must never join or drive a v3 table. Allow its owned cleanup only.
+    if (m.v !== 3 && !(m.v === undefined && (m.k === "leave" || m.k === "cancel"))) return null;
     const base = { t: "hockey", k: m.k, i: m.i };
     if (m.k === "join" || m.k === "watch" || m.k === "cancel") return base;
     if (typeof m.s !== "string" || !/^[a-f0-9]{16}$/.test(m.s)) return null;
@@ -31,7 +33,13 @@
     if (!integer(m.q, 0, 0x7fffffff)) return null;
     base.q = m.q;
     if (m.k === "frame" && validFrame(m.a)) return { ...base, a: m.a };
-    if (m.k === "input" && integer(m.x, -1000, 1000) && integer(m.y, 0, 1000)) return { ...base, x: m.x, y: m.y };
+    if (m.k === "input" && integer(m.x, -1000, 1000) && integer(m.y, 0, 1000)) {
+      if (m.p === undefined && m.d === undefined) return { ...base, x: m.x, y: m.y };
+      if (!Array.isArray(m.p) || m.p.length < 2 || m.p.length > 12 || m.p.length % 2 || !integer(m.d, 0, 1)) return null;
+      for (let i = 0; i < m.p.length; i += 2) if (!integer(m.p[i], -1000, 1000) || !integer(m.p[i + 1], 0, 1000)) return null;
+      if (m.p[m.p.length - 2] !== m.x || m.p[m.p.length - 1] !== m.y) return null;
+      return { ...base, x: m.x, y: m.y, p: m.p, d: m.d };
+    }
     return null;
   };
   const eligible = p => p && p.zone === ZONE && !!p.body && !p.body.startsWith("gorilla:");

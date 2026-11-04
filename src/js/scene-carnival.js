@@ -226,6 +226,7 @@
       const v = AH.w / 2 - (HOCKEY_RAY.oz + HOCKEY_RAY.dz * t - center[1]) * sign / AH.scale;
       aim.x = Math.max(-1, Math.min(1, u / BL.hockeyWire.MALLET_X));
       aim.depth = Math.max(0, Math.min(1, (v - BL.hockeyWire.MALLET_RADIUS) / BL.hockeyWire.MALLET_DEPTH));
+      hockeySession.point(aim.x, aim.depth);
       return;
     }
     if (!play.aims || play.taps) { if (e.type === "pointerdown" && e.button === 0) act(); return; }

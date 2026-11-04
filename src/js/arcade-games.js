@@ -1112,6 +1112,16 @@
     let phase = "idle", mineGoals = 0, theirGoals = 0, power = false, tried = false, by = 0, banked = false, round = 0, streak = 0, rally = 0;
     // The first human retains the original fixed-step simulation. A second human replaces only the AI input.
     const peer = { on: false, x: 0, depth: (REST - MR) / (L / 2 - 2 * MR), meter: -1 };
+    // Fixed host-side backlog: paths beyond this budget resynchronize without a fabricated sweep.
+    const peerU = new Float64Array(32), peerV = new Float64Array(32);
+    let peerHead = 0, peerCount = 0, peerJump = false;
+    const clearPeerPath = () => { peerHead = peerCount = 0; peerJump = false; };
+    const queuePeer = (x, depth) => {
+      x = Math.max(-1, Math.min(1, x)); depth = Math.max(0, Math.min(1, depth));
+      peer.x = x; peer.depth = depth;
+      if (peerCount === peerU.length) { clearPeerPath(); peerJump = true; }
+      const i = (peerHead + peerCount++) % peerU.length; peerU[i] = x; peerV[i] = depth;
+    };
     let clacks = 0, remoteClacks = -1, remotePlaying = false, remoteSide = 0;
     const clack = () => { clacks = (clacks + 1) & 65535; out.cue("clack"); };
     const frame = new Array(18).fill(0), from = new Float64Array(8), target = new Float64Array(8);
@@ -1372,9 +1382,13 @@
     return {
       capture, receive, follow, remoteAct: () => out.cue("throw"),
       shared: on => { shared = !!on; },
-      multiplayer: (on, side = 0) => { peer.on = !!on; localSide = on ? side : -1; peer.x = 0; peer.depth = (REST - MR) / (L / 2 - 2 * MR); },
-      peerInput: (x, depth) => { peer.x = Math.max(-1, Math.min(1, x)); peer.depth = Math.max(0, Math.min(1, depth)); },
-      peerIdle: () => { peer.x = -A.u / (W / 2 - MR); peer.depth = (L - A.v - MR) / (L / 2 - 2 * MR); },
+      multiplayer: (on, side = 0) => { clearPeerPath(); peer.on = !!on; localSide = on ? side : -1; peer.x = 0; peer.depth = (REST - MR) / (L / 2 - 2 * MR); },
+      peerInput: (x, depth) => queuePeer(x, depth),
+      peerPath: (points, discontinuity) => {
+        if (discontinuity) { clearPeerPath(); peerJump = true; }
+        for (let i = 0; i < points.length; i += 2) queuePeer(points[i] / 1000, points[i + 1] / 1000);
+      },
+      peerIdle: () => { clearPeerPath(); peer.x = -A.u / (W / 2 - MR); peer.depth = (L - A.v - MR) / (L / 2 - 2 * MR); },
       get following() { return following; },
       kind: "hockey", name: "Air Hockey", help: "Drag, arrows or A and D slide your mallet; Space or tap smashes, in the green for fire. One point per goal. First to seven; local practice also has three minutes.",
       stars: [1, 4, 7], tickets: (score) => Math.floor(score / 5), status, aims: true, attract, tease,
@@ -1383,12 +1397,12 @@
       get rivalU() { return A.u; },
       get puckU() { return P.u / (W / 2); },
       start: () => {
-        following = false; peer.meter = -1;
+        following = false; clearPeerPath(); peer.meter = -1;
         mineGoals = theirGoals = streak = round = 0; N.sand = HOCKEY_SAND;
         status.score = status.left = status.streak = 0; status.round = 1; status.target = shared ? HOCKEY_TO : HOCKEY_CLOCK[HOCKEY_SAND]; status.fire = false; status.verb = peer.on ? "" : "Smash!"; status.meter = -1; status.window0 = 0.7; status.window1 = 0.93;
         M.u = 0; M.v = REST; A.u = 0; A.v = L - 0.2; M.touch = A.touch = false; N.acc = 0; N.smash = N.tipT = 0; N.sayT = 1.1; power = false; reset(1); N.serve = 1.9; phase = "play";
       },
-      stop: () => { following = false; localSide = -1; phase = "idle"; status.verb = ""; status.meter = -1; status.target = 0; mark.visible = false; puck.ember = 0; reset(1); place3(); },
+      stop: () => { clearPeerPath(); following = false; localSide = -1; phase = "idle"; status.verb = ""; status.meter = -1; status.target = 0; mark.visible = false; puck.ember = 0; reset(1); place3(); },
       act: () => {
         if (peer.on || phase !== "play" || N.smash > 0) return;
         // One try an approach: a smash while the meter runs spends it, in the green or not.
@@ -1422,11 +1436,24 @@
         if (N.serve > 0) { N.serve -= dt; if (N.serve <= 0) { P.dv = P.v < L / 2 ? 0.6 : -0.6; P.du = (tri(M.u * 3 + A.u * 5) - 0.5) * 0.6; } }
         N.acc += Math.min(dt, 0.05);
         const duration = Math.floor((N.acc + 1e-12) * 240) / 240;
-        if (peer.on && duration > 0) {
-          prepareMallet(M, aim.x, aim.depth, 0, duration); prepareMallet(A, peer.x, peer.depth, 1, duration);
+        if (peer.on && duration > 0) prepareMallet(M, aim.x, aim.depth, 0, duration);
+        while (N.acc + 1e-12 >= 1 / 240) {
+          N.acc -= 1 / 240;
+          if (phase !== "play") continue;
+          if (peer.on) {
+            if (peerJump && peerCount) {
+              BL.hockeyWire.malletTarget(peerU[peerHead], peerV[peerHead], 1, destination);
+              A.u = destination.u; A.v = destination.v; A.touch = true;
+              peerHead = (peerHead + 1) % peerU.length; peerCount--; peerJump = false;
+            }
+            if (peerCount) {
+              prepareMallet(A, peerU[peerHead], peerV[peerHead], 1, 1 / 240);
+              peerHead = (peerHead + 1) % peerU.length; peerCount--;
+            } else prepareMallet(A, -A.u / (W / 2 - MR), (L - A.v - MR) / (L / 2 - 2 * MR), 1, 1 / 240);
+          }
+          step(1 / 240);
         }
-        while (N.acc + 1e-12 >= 1 / 240) { N.acc -= 1 / 240; if (phase === "play") step(1 / 240); }
-        if (peer.on && duration > 0) { M.u = M.tu; M.v = M.tv; A.u = A.tu; A.v = A.tv; }
+        if (peer.on && duration > 0) { M.u = M.tu; M.v = M.tv; }
         if (phase === "idle") return;
         // The meter runs down the coconut's approach to the mallet, the ring where it will cross the mallet's line.
         // Once the approach's try is spent the meter goes and the ring stays, dim.

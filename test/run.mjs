@@ -6535,6 +6535,22 @@ const gameRulesChecks = async () => {
     const before=strike.capture()[17];strikeAim.x=1;strike.update(1/240);const shot=strike.capture().slice();
     const swept=shot[17]===before+1&&shot[2]>0&&Math.hypot(shot[2],shot[3])<=7501;
     record("hockey responsiveness: immediate legal host targets and guest presentation survive a delayed snapshot, with swept capped fast strikes",legal&&predicted&&swept,JSON.stringify({edges,initial,predicted,shot,before}));
+    // The far mallet starts on one side of the puck, then crosses and returns within one host frame.
+    const remoteAim={x:0,depth:0}, remoteGame=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:remoteAim,onEnd(){},burst(){}});
+    remoteGame.shared(true);remoteGame.multiplayer(true);remoteGame.start();remoteGame.peerInput(-1,.6);
+    let state;for(let i=0;i<1200;i++){remoteGame.update(1/240);state=remoteGame.capture().slice();if(state[1]>=1500&&state[1]<1600)break;}
+    const v=state[1], d=Math.round((2.2-v/1000-.07)/.96*1000);remoteGame.peerInput(-1,d/1000);remoteGame.update(1/240);
+    const beforeRemote=remoteGame.capture()[17];remoteGame.peerPath([1000,d,-1000,d],false);remoteGame.update(1/120);
+    const remoteShot=remoteGame.capture().slice(), reversal=remoteShot[17]>beforeRemote&&Math.hypot(remoteShot[2],remoteShot[3])<=7501&&remoteShot[6]===480;
+    record("hockey guest stroke: ordered out-and-back segments cross the puck within one host frame with a bounded strike",reversal,JSON.stringify({v,d,beforeRemote,remoteShot}));
+    remoteGame.stop();
+    const makeRemote=()=>{const game=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:{x:0,depth:0},onEnd(){},burst(){}});game.shared(true);game.multiplayer(true);game.start();game.peerInput(-1,.6);for(let i=0;i<1200;i++){game.update(1/240);const a=game.capture();if(a[1]>=1500&&a[1]<1600)break;}const a=game.capture().slice(),y=Math.round((2.2-a[1]/1000-.07)/.96*1000);game.peerInput(-1,y/1000);game.update(1/240);return {game,y};};
+    const batched=makeRemote(), count=batched.game.capture()[17];batched.game.peerPath([1000,batched.y],false);batched.game.peerPath([-1000,batched.y],false);batched.game.update(1/120);
+    const twoPackets=batched.game.capture().slice();
+    const overflow=makeRemote(), clacksBefore=overflow.game.capture()[17], many=[];for(let i=0;i<32;i++)many.push(-1000,overflow.y);
+    overflow.game.peerPath(many,false);overflow.game.peerPath([1000,overflow.y],false);overflow.game.update(1/240);const afterOverflow=overflow.game.capture().slice();
+    record("hockey guest backlog: packets replay in order; overflow resynchronizes without a fabricated strike",twoPackets[17]>count&&twoPackets[6]===480&&afterOverflow[17]===clacksBefore&&afterOverflow[6]===-480,JSON.stringify({twoPackets,count,afterOverflow,clacksBefore}));
+    batched.game.stop();overflow.game.stop();
     h.stop();guest.stop();strike.stop();
     const A = BL.arcadeModels, L = A.LAYOUT;
     const machines = { skee: L.skee, hoops: L.hoops, shy: [L.shy], claw: L.frames.claw,
