@@ -1,5 +1,5 @@
 // The Lightning Jet Hangar's geometry: the long rock hall behind the Lightning Factory's door at the end of its left
-// walkway, as its concept draws it. A timber landing inside the door with steps down to the runway, which runs down the
+// walkway, as its concept draws it. A steel landing inside the door with steps down to the runway, which runs down the
 // middle of the floor between hazard-striped edges and blue marker lamps, and on through the launch tunnel's octagonal
 // frames, each lined with blue neon, to the launch shield at its far end, sealed until Jet v2 flies, space beyond.
 // Ochre truss gantries cross the vault, two crane trolleys over the Jet; timber catwalks run along both side walls on
@@ -330,12 +330,12 @@
     return { floor: merge(...floor), walls: noShadow(merge(...walls)), front: noShadow(merge(...frontWall)), vault: noShadow(merge(...vault)), slots: noShadow(merge(...slots)), backing: merge(...backing) };
   });
 
-  // The landing inside the door: timber planks on posts, railed down both sides and along its front but for its steps,
-  // which come down to the runway between heavy stringers.
+  // The landing inside the door: a grated steel deck on columns, railed down both sides and along its front but for
+  // its steps, which come down to the runway on steel stringers.
   const landing = cached(() => {
     const l = LAYOUT.landing, [sx, , sz0, , sy1, sz1, sw] = LAYOUT.steps, geos = [];
-    placed(geos, deckParts(l.w, l.d, l.y, "new", 29, [[sx - l.x, sz1 - l.z, sw / 2 + 0.05, 0, -1]]), l.x, l.y, l.z);
-    geos.push(...stairParts(sx, 0, sz0, sx, sy1, sz1, sw, [true, false], true));
+    placed(geos, steelDeck(l.w, l.d, l.y, "new", [[sx - l.x, sz1 - l.z, sw / 2 + 0.05, 0, -1]]), l.x, l.y, l.z);
+    geos.push(...steelStair(sx, 0, sz0, sx, sy1, sz1, sw, [true, false]));
     return merge(...geos);
   });
 
