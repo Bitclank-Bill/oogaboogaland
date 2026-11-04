@@ -21085,7 +21085,10 @@ const cloudCabinetJourney = async (b, dir, shape) => {
       && rows.every(r=>r.time===0 && Math.abs(r.ratio-r.viewport)<0.001 && r.scaleX===r.scaleY), JSON.stringify(rows));
     const skip = async () => { await b.evaluate(`if(BL.scenes.hub.debug.cloudHopper.phase==='briefing') document.querySelector('.cloud-hopper-guide .actions button:last-child').click()`); await advance(1.1); };
     await skip();
+    // Social checks wait for real rendered frames; resume the display loop while they run.
+    await b.evaluate(`window.requestAnimationFrame=window.__cabinetRaf;document.dispatchEvent(new Event('visibilitychange'))`);
     await arcadeSocialPanels(b, `cabinet cloud-hopper ${shape}`);
+    await b.evaluate(`window.requestAnimationFrame=()=>0`); await b.sleep(50);
     const finish = async won => b.evaluate(`(() => { const B=__ooga,H=BL.scenes.hub.debug.cloudHopper,a=H.actor;
       a.hop=.1;a.hopV=1;H.postUpdate();
       ${won ? "B.setPileLevel(0); B.advance(.1,1/60); Object.assign(a.root.position,{x:0,y:B.altar.height+.23+a.baseY,z:0});a.hop=a.hopV=0;" : "a.root.position.y=-1000;a.hopV=-20;"}
@@ -21199,6 +21202,15 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
   const back = await b.evaluate(`(() => { const p=__ooga.pilot.player, at=BL.arcadeCabinets.get(${JSON.stringify(id)});return {who:p?.traits.name,locked:document.pointerLockElement===document.getElementById('scene'),off:p?Math.hypot(p.root.position.x-at.x,p.root.position.z-at.z):999,clean:!__ooga.cabinet.active && !document.getElementById('stage').classList.contains('cabinet-display')}; })()`);
   await b.screenshot(join(dir, `${id}-${shape}-return.png`));
   record(`cabinet ${id}: menu in glass, full-screen game, same Ooga at cabinet, clean return`, menu && framed.inside && !framed.fade && expanded && full && returned && back.who === 'portlandhodl' && back.off < .1 && back.clean && (shape !== 'desktop' || back.locked), JSON.stringify({framed,expanded,full,returned,back}));
+  if (id === "cloud-hopper") {
+    await b.evaluate(`__ooga.arcade.open('hub','cloud-hopper')`);
+    const reopened=await untilPage(b, `B.cabinet.phase==='menu'`,30000);
+    const partial=await b.evaluate(`(() => { document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click();__ooga.advance(1.5,1/60);
+      const s=document.getElementById('stage'),before=s.getBoundingClientRect().width,phase=BL.scenes.hub.debug.cloudHopper.phase;
+      __ooga.go('arcade');__ooga.advance(.1,1/60);return {phase,before,after:s.getBoundingClientRect().width,panel:document.querySelector('.cloud-hopper-panel').open};})()`);
+    const cancelled=await untilPage(b,`B.scene==='arcade' && !B.transitioning`,30000);
+    record(`Cloud Hopper cabinet ${shape}: a later visit can cancel a partial ascent without expanding again or sticking`,reopened && cancelled && partial.phase==='lifting' && partial.after<partial.before && !partial.panel,JSON.stringify(partial));
+  }
 } });
 for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker"]) {
   scene("arcade", { label: `cabinet ${id} desktop`, exclusive: true, query: "character=portlandhodl&pos=0", opts: { motion: true }, steps: [cabinetVisit(id)] });
