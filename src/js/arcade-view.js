@@ -21,7 +21,7 @@
     exitButton.type = "button"; exitButton.className = "cabinet-exit"; exitButton.textContent = "Return to arcade"; exitButton.hidden = true;
     exitButton.addEventListener("click", () => route("arcade")); document.body.append(exitButton);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let visit = null, phase = "idle", age = 0, dispatching = false, lost = false;
+    let visit = null, phase = "idle", age = 0, zoom = 0, dispatching = false, lost = false;
     let shownW = 0, shownH = 0, shownX = -1, shownY = -1;
     let width = innerWidth, height = innerHeight, rw = 0, rh = 0, rx = 0, ry = 0;
     const rect = () => {
@@ -36,6 +36,7 @@
       exitButton.hidden = value === "idle" || value === "playing" || value === "return" || value === "leaving" || value === "shrinking";
     };
     const screen = k => {
+      zoom = k;
       rect();
       const w = rw + (width - rw) * k, h = rh + (height - rh) * k, x = rx * (1 - k), y = ry * (1 - k);
       if (w === shownW && h === shownH && x === shownX && y === shownY) return;
@@ -48,6 +49,7 @@
       if (w !== shownW || h !== shownH) { shownW = w; shownH = h; renderer.resize(); }
     };
     const full = () => {
+      zoom = 1;
       stage.classList.remove("cabinet-display");
       stage.style.left = stage.style.top = stage.style.width = stage.style.height = "";
       backdrop.hidden = true;
@@ -74,6 +76,7 @@
       const close = { target, fov: camera.fov, position: { x: target.x + s * Math.cos(S.lean) * d,
         y: target.y - Math.sin(S.lean) * d, z: target.z + c * Math.cos(S.lean) * d } };
       visit = { camera, id, live: !!BL.net.state.me, from: copy(camera), close, returnView: null, exit: null };
+      zoom = 0;
       setPhase("approach");
       return true;
     };
@@ -84,6 +87,7 @@
       if (phase === "approach") {
         visit.returnView = visit.from; visit.close = copy(visit.camera); setPhase("return"); return true;
       }
+      visit.shrink = zoom;
       setPhase("shrinking");
       return true;
     };
@@ -110,8 +114,9 @@
         screen(k);
         if (k === 1) { full(); setPhase("playing"); }
       } else if (phase === "shrinking") {
-        screen(1 - k);
-        if (k === 1 && !transitioning) {
+        if (transitioning) return;
+        screen(visit.shrink * (1 - k));
+        if (k === 1 || visit.shrink === 0) {
           setPhase("leaving");
           // Do not hand a game-world pose to the room between scenes.
           dispatch("arcade", visit.id === "cloud-hopper" ? "cloud-hopper-return" : null);

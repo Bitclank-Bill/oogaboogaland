@@ -20575,6 +20575,41 @@ for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede
 }
 scene("arcade", { label: "cabinet phone", query: "character=portlandhodl", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit("drop")] });
 scene("arcade", { label: "cabinet canvas2d", query: "character=portlandhodl&canvas2d=1", steps: [cabinetVisit("snake")] });
+scene("arcade", { label: "cabinet interruptions", opts: { motion: true }, steps: [{ name: "cabinet interruptions", why: "regression: cancelling a menu or partial zoom must return without enlarging the screen or holding controls", run: async b => {
+  await b.evaluate(`__ooga.arcade.open('drop')`);
+  const approach = await untilPage(b, `B.cabinet.phase === 'approach'`);
+  await b.key("Escape");
+  const first = await untilPage(b, `B.scene === 'arcade' && !B.transitioning && !B.cabinet.active`);
+  await b.evaluate(`__ooga.arcade.open('drop')`);
+  const menu = await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
+  const cancel = await b.evaluate(`(() => { const stage=document.getElementById('stage'), before=stage.clientWidth; __ooga.go('arcade'); __ooga.advance(1/60,1/60); return {before,after:stage.clientWidth,phase:__ooga.cabinet.phase}; })()`);
+  const second = await untilPage(b, `B.scene === 'arcade' && !B.transitioning && !B.cabinet.active`);
+  await b.evaluate(`__ooga.arcade.open('drop')`);
+  await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
+  await b.key("Enter");
+  const expanding = await untilPage(b, `B.cabinet.phase === 'expanding'`);
+  await b.key("Escape");
+  const third = await untilPage(b, `B.scene === 'arcade' && !B.transitioning && !B.cabinet.active`);
+  record("cabinet interruptions: approach, menu and partial expansion return cleanly without enlarging the menu", approach && first && menu && cancel.after <= cancel.before && second && expanding && third, JSON.stringify({approach,first,menu,cancel,second,expanding,third}));
+} }] });
+scene("arcade", { label: "cabinet public route", opts: { motion: true }, steps: [{ name: "cabinet public route", why: "regression: a public game link from inside the arcade could bypass the cabinet entrance", run: async b => {
+  const address = new URL(sceneUrl("drop")); address.searchParams.delete("debug");
+  await b.open(address.href);
+  const wait = async expression => {
+    for (let i = 0; i < 200; i++) { if (await b.evaluate(expression).catch(() => false)) return true; await b.sleep(100); }
+    return false;
+  };
+  const menu = await wait(`document.body.dataset.cabinetPhase === 'menu' && document.body.dataset.activeScene === 'drop'`);
+  await b.key("Enter");
+  const full = await wait(`document.body.dataset.cabinetPhase === 'playing'`);
+  await b.key("Escape");
+  const returned = await wait(`document.body.dataset.cabinetPhase === 'idle' && document.body.dataset.activeScene === 'arcade'`);
+  await b.evaluate(`location.hash = '/oogadrop'`);
+  const linked = await wait(`document.body.dataset.cabinetPhase === 'menu' && document.body.dataset.activeScene === 'drop'`);
+  await b.key("Escape");
+  const cancelled = await wait(`document.body.dataset.cabinetPhase === 'idle' && document.body.dataset.activeScene === 'arcade'`);
+  record("cabinet public route: direct arrival and a link from the hall both visit the cabinet, play and cancel cleanly", menu && full && returned && linked && cancelled, JSON.stringify({menu,full,returned,linked,cancelled}));
+} }] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });

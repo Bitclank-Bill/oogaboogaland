@@ -267,7 +267,7 @@
   const go = (id, place = null, instant = false) => {
     if (cabinetView?.route(id, place)) return true;
     // Public game links take the same cabinet entrance; debug scene fixtures remain isolated.
-    if (!DEBUG && BL.arcadeCabinets.get(id) && active?.id !== "arcade") { place = `cabinet:${id}`; id = "arcade"; }
+    if (!DEBUG && !cabinetView?.active && BL.arcadeCabinets.get(id)) { place = `cabinet:${id}`; id = "arcade"; }
     if (id === "race" && !RALLY_TEST) { id = "arcade"; place = "rally-out-of-order"; }
     const next = scenes[id];
     if (!next) throw new Error(`Unknown scene "${id}"`);
