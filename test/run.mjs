@@ -15811,18 +15811,34 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
     record('arcade play: Cloud Hopper launches unarmed through the cabinet, preserves preview gear, returns safely twice and blocks Rally', false, JSON.stringify({ entered, state, layout })); return;
   }
   const before = await b.evaluate(`(() => { const B = __ooga, H = BL.scenes.hub.debug.cloudHopper, p = B.pilot.player;
-    const weapons = new Set([p.parts.club.geometry, p.parts.gun.geometry, ...p.parts.gun.children.map(n => n.geometry)]);
-    let armedPreview = false; const create = BL.iconRenderer.createRenderer;
-    BL.iconRenderer.createRenderer = (...args) => { const renderer = create(...args), render = renderer.render;
-      renderer.render = (root, camera) => { BL.scene.traverseVisible(root, node => { if (node.geometry && weapons.has(node.geometry)) armedPreview = true; }); return render(root,camera); }; return renderer; };
+    // Gun rounds share their mesh with spare belt magazines; use the actual weapon bodies
+    // as witnesses, and require the carried spare gear to remain in the unarmed portrait.
+    const weapons = new Set([p.parts.club.geometry, p.parts.gunBody.geometry]);
+    const spares = p.magazineModels.filter(m => m?.node.parent && m.node.visible).map(m => m.node.geometry);
+    const seenWeapons = new Set(), seenSpares = new Set(), create = BL.iconRenderer.createRenderer;
     const canvas = document.createElement('canvas'), club = p.parts.club.visible, gun = p.parts.gun.visible;
-    p.parts.club.visible = p.parts.gun.visible = true;
-    BL.hud.renderBodyIcon(canvas,p,96,128,false); BL.iconRenderer.createRenderer = create;
-    const previewSafe = !armedPreview && p.parts.club.visible && p.parts.gun.visible;
-    p.parts.club.visible = club; p.parts.gun.visible = gun;
+    let previewSafe = false, previewDetail;
+    BL.iconRenderer.createRenderer = (...args) => { const renderer = create(...args), render = renderer.render;
+      renderer.render = (root, camera) => { BL.scene.traverseVisible(root, node => {
+        if (weapons.has(node.geometry)) seenWeapons.add(node.geometry);
+        if (spares.includes(node.geometry)) seenSpares.add(node.geometry);
+      }); return render(root,camera); }; return renderer; };
+    try {
+      p.parts.club.visible = p.parts.gun.visible = true;
+      BL.hud.renderBodyIcon(canvas,p,96,128,true);
+      const detectsWeapons = seenWeapons.size === weapons.size;
+      seenWeapons.clear(); seenSpares.clear();
+      BL.hud.renderBodyIcon(canvas,p,96,128,false);
+      previewDetail = { detectsWeapons, weapons: seenWeapons.size, spares: spares.length,
+        preservesSpares: spares.every(g => seenSpares.has(g)), club: p.parts.club.visible, gun: p.parts.gun.visible };
+      previewSafe = detectsWeapons && !seenWeapons.size && previewDetail.preservesSpares && p.parts.club.visible && p.parts.gun.visible;
+    } finally {
+      BL.iconRenderer.createRenderer = create;
+      p.parts.club.visible = club; p.parts.gun.visible = gun;
+    }
     document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click();
     return { who: p.traits.name, phase: H.phase, unarmed: !p.parts.club.visible && !p.parts.gun.visible,
-      previewSafe, y: H.platform.position.y, dockGone: !B.props.some(prop => prop.prop === 'dock') };
+      previewSafe, previewDetail, y: H.platform.position.y, dockGone: !B.props.some(prop => prop.prop === 'dock') };
   })()`);
   await b.evaluate(`__ooga.advance(2,1/60)`);
   const rising = await b.evaluate(`(() => { const H = BL.scenes.hub.debug.cloudHopper, p = __ooga.pilot.player;
