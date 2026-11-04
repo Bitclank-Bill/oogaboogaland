@@ -231,6 +231,7 @@
   };
   // Under half a step is no crossing, so a body a hair past a level's height never has the room pull the next place.
   const setBlend = (to, t) => {
+    if (cabinetAnchor) return;
     const on = !!to && t * BLEND.STEPS >= 0.5;
     state.blendTo = on ? to : null;
     state.blendT = on ? Math.min(1, t) : 0;

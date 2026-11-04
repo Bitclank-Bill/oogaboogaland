@@ -651,6 +651,7 @@
     el.results.hidden = el.pause.hidden = true;
     shown.verb = null;
     resetRun();
+    if (cabinetView?.active) { startPlay(); T.cam = 1; }
   };
   // Go: the game starts, the best to beat is the one saved, and a game's first run in the page visit coaches.
   const startPlay = () => {
