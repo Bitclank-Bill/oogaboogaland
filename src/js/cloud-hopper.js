@@ -442,7 +442,7 @@
       return true;
     };
     const beginRun = (ride = false) => {
-      const replay = phase === "won" || phase === "dq", climb = !replay || ride;
+      const replay = phase === "won" || phase === "dq", climb = (!replay || ride) && !ctx.cabinet?.();
       if (phase !== "intro" && !replay || level.id > opened()) return false;
       const cave = actor;
       if (!cave || pilot.player !== cave || crew.player !== cave) { cancel(); return false; }
@@ -611,6 +611,7 @@
     };
     const exit = () => {
       if (!active()) return false;
+      if (ctx.arcade && ctx.cabinet?.()) { ctx.onExit(); return true; }
       cancel(!ctx.arcade);
       if (ctx.arcade) ctx.onExit();
       else { audio.stage("dock"); audio.level(dockMusicLevel(), 0.8); dockMusicOn = true; }

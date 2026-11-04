@@ -81,8 +81,8 @@
   const ORDERS = ["Banana split! Ooga slurp slurp.", "Coconut milk, fresh from coconut. Ahh.", "Grub on stick. Ooga crunch!", "Lava pop. Hot hot hot. Good!"];
 
   let renderer, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null;
-  let repair = null;
-  let leaving = false, openingGame = false, people = null, avatar = null, playerWorld = null, screens = null, shownFrame = -1, prompt = null;
+  let repair = null, cabinetView = null, openingRequest = 0, queuedCabinet = null;
+  let leaving = false, openingGame = false, people = null, avatar = null, playerWorld = null, screens = null, shownFrame = -1, prompt = null, promptOccupied = null;
   // HALLOWEEN: the ghost arena's hunt: its herald before the hunt loads, the hunt, its channel to the room, GAME MODE,
   // the iron fence across the hallway's mouth (how far up), the totems and their lit parts, whether the visitor's Ooga carries its rifle
   // (in the arena), the voice zone it reports and the one it is turning to.
@@ -157,7 +157,27 @@
   const open = (id, place = null) => {
     if (leaving) return;
     if (id === "race") { hud.toast("Ooga Rally · out of order"); return; }
-    if (go(id, place)) leaving = openingGame = true;
+    const cabinetId = id === "hub" && place === "cloud-hopper" ? "cloud-hopper" : id;
+    const cabinet = LAYOUT.cabinets.find(c => (c.game >= 0 ? GAMES[c.game].id : AM.RETRO[c.retro].id) === cabinetId);
+    if (!cabinet) { if (go(id, place)) leaving = openingGame = true; return; }
+    const occupied = BL.net.cabinetSeats.get(cabinetId);
+    if (occupied && occupied.player !== BL.net.state.selfId) { hud.toast(`${occupied.name} is playing · cabinet occupied`); return; }
+    const actor = pilot.player || avatar;
+    if (!actor) { hud.toast("Choose your Ooga before opening a cabinet"); return; }
+    const request = ++openingRequest;
+    leaving = true;
+    pilot.controls.reset();
+    const at = BL.arcadeCabinets.get(cabinetId);
+    actor.root.position.x = at.x; actor.root.position.y = at.y + actor.baseY; actor.root.position.z = at.z;
+    actor.root.rotation.y = at.yaw;
+    BL.net.setBody(actor.traits.name); BL.net.setZone("arcade.hall");
+    BL.net.sendPose(at.x, at.y, at.z, at.yaw);
+    BL.net.takeCabinet(cabinetId).then(reason => {
+      if (request !== openingRequest || !hud) return;
+      if (reason) { leaving = false; hud.toast(reason); return; }
+      openingGame = true;
+      cabinetView.begin(cabinetId, cabinet, camera);
+    });
   };
   const play = (i) => GAMES[i].id === "cloud-hopper" ? open("hub", "cloud-hopper") : open(GAMES[i].id);
   // The game's deferred code did not arrive: the visitor stays in the hall, and its cabinets and way out work again.
@@ -730,6 +750,7 @@
 
   const toggleMute = () => { const off = audio.setMuted(!audio.muted); hud.toast(off ? "Sound off" : "Sound on"); };
   const onKey = (e) => {
+    if (leaving && !openingGame && e.key === "Escape") { openingRequest++; leaving = false; BL.net.leaveCabinet(); return true; }
     if (ghosts && ghosts.key(e)) return true; // HALLOWEEN
     // X keeps mouse-look available; ownership gates weapon actions outside the arena. 1 and 2
     // pick the club or the rifle, G swaps, V fires. Outside a hunt they meet nothing but the herald.
@@ -1676,7 +1697,9 @@
 
   const enter = (ctx) => {
     prefetchAt = 0;
+    queuedCabinet = typeof ctx.place === "string" && ctx.place.startsWith("cabinet:") ? ctx.place.slice(8) : null;
     ({ renderer, game, world, go, agentPlay } = ctx);
+    cabinetView = ctx.cabinet;
     camera = createCamera({ fov: 55, near: 0.2, far: 60 });
     root = createNode();
     hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
@@ -1726,6 +1749,10 @@
     });
     const tipFor = (hit) => {
       const o = hit.owner;
+      const cabinetId = o.kind === "cabinet" ? GAMES[o.game].id : o.kind === "retro" ? AM.RETRO[o.retro].id : null;
+      const occupied = cabinetId && BL.net.cabinetSeats.get(cabinetId);
+      if (occupied) return `${occupied.name} is playing · cabinet occupied`;
+      if (o.kind === "retro") return `${AM.RETRO[o.retro].name} · ${COARSE ? "tap" : "click"} to play`;
       if (o.kind === "halloween") return o.tooltip();
       if (o.kind === "repair") return "Clanker repairing Ooga Rally · out of order";
       if (o.kind === "cabinet") return GAMES[o.game].unavailable ? "Ooga Rally · out of order" : `${GAMES[o.game].name} · ${COARSE ? "tap" : "click"} to play`;
@@ -1751,6 +1778,7 @@
         if (o.kind === "halloween") { if (armed && o.tap) o.tap(); return; }
         if (o.kind === "repair") return hud.toast("Clanker is repairing Ooga Rally · out of order");
         if (o.kind === "cabinet") return play(o.game);
+        if (o.kind === "retro") return open(AM.RETRO[o.retro].id, 0);
         if (o.kind === "machine") return open(o.station.game.kind, o.station.index);
         if (o.kind === "snack") return order();
         if (o.kind === "prizes") return openPrizes();
@@ -1907,6 +1935,7 @@
   // station, the lamps nearest the view, and the way out.
   let prefetchAt = 0;
   const update = (dt, elapsed) => {
+    if (queuedCabinet) { const id = queuedCabinet; queuedCabinet = null; open(id); }
     if (ghosts) ghosts.unshake(camera);
     if (repair) {
       // One fixed work pose, with short turns separated by a pause. No pathfinding, effects pool or new geometry.
@@ -1923,7 +1952,7 @@
         if (GAMES[c.game] && !GAMES[c.game].unavailable && GAMES[c.game].id !== "cloud-hopper" && dx * dx + dy * dy + dz * dz <= 225) BL.deferred.prefetchScene(GAMES[c.game].id);
       }
     }
-    pilot.readInput(dt);
+    if (!leaving) pilot.readInput(dt);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
     // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
@@ -1992,11 +2021,13 @@
     audio.tick(dt);
     if (pilot.player && !leaving) {
       const p = avatar.root.position, near = nearStation(p.x, p.z, INVITE);
-      if (near !== prompt) {
-        prompt = near;
+      const cabinetId = near?.kind === "cabinet" ? GAMES[near.game].id : near?.kind === "retro" ? near.id : null;
+      const occupied = cabinetId && BL.net.cabinetSeats.get(cabinetId);
+      if (near !== prompt || occupied !== promptOccupied) {
+        prompt = near; promptOccupied = occupied;
         if (near) {
           const verb = near.kind === "snack" ? "order at " : near.kind === "prizes" ? "shop at " : "", act = near.kind === "snack" ? "ORDER" : near.kind === "prizes" ? "PRIZES" : near.kind === "wheel" ? "SPIN" : "PLAY";
-          hud.hint(near.kind === "wheel" ? `${COARSE ? act : "Space: spin"} (${AM.WHEEL_COST} tickets)` : `${COARSE ? act : "Space"}: ${verb}${near.label}`);
+          hud.hint(occupied ? `${near.label} · ${occupied.name} is playing` : near.kind === "wheel" ? `${COARSE ? act : "Space: spin"} (${AM.WHEEL_COST} tickets)` : `${COARSE ? act : "Space"}: ${verb}${near.label}`);
           hud.setAct(act);
         } else pilot.showAct();
       }
@@ -2023,6 +2054,8 @@
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
+    openingRequest++;
+    if (!openingGame) BL.net.leaveCabinet();
     // Whoever walked in goes on as themselves: into a game, or back out to the island at this mouth.
     const traveller = pilot.player || openingGame && avatar;
     world.pilotDetached = !traveller;

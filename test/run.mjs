@@ -8765,22 +8765,19 @@ const orbitHosted = { name: "orbit hosted", why: "regression: Ooga Orbit read Oo
     && drop && orbit && after.scene === "orbit" && site.fetched.filter(chunkOf("drop")).length === 1 && site.fetched.filter(chunkOf("drop-scene")).length === 1, JSON.stringify({ cold, flown: { phase: flown.phase, shown: flown.shown, rows: flown.rows, diver: flown.diver }, drop, orbit, after, fetched: site.fetched }));
 } };
 // Refused from the first request: entering the arcade prefetches its stage games, Drop included, before Space.
-const arcadeHostedDrop = { name: "arcade hosted drop cabinet", refuse: "/js/drop-", why: "regression: a refused Ooga Drop download left the arcade's departure flags set, so no cabinet opened again and its Leave did nothing until a reload, also when Leave was pressed during the fade back", run: async (b, site) => {
+const arcadeHostedDrop = { name: "arcade hosted drop cabinet", refuse: "/js/drop-", why: "regression: a refused Ooga Drop download left the arcade's departure flags set, so no cabinet opened again and its Leave did nothing until a reload, including recovery from the cabinet approach", run: async (b, site) => {
   await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), s = window.BL.arcadeModels.CABINETS[1].play; if (B.crew.player !== a) B.pilot.possess(a); a.root.position.x = s.x; a.root.position.z = s.z; B.advance(0.2, 1 / 60); })()`);
   const drops = () => site.fetched.filter(chunkOf("drop")).length, before = drops();
   await b.key(" ");
   for (let t = 0; t < 15000 && drops() === before; t += 50) await b.sleep(50);
-  // Leave, pressed while the view fades back in (after the refusal's toast), is refused with the transition still running.
-  const pressed = await b.evaluate(`new Promise(resolve => { const t0 = performance.now(), tick = () => {
-    if (__ooga.transitioning && document.getElementById("toast").textContent.includes("could not be opened")) { document.querySelector('nav[data-scene="arcade"] .leave').click(); resolve(__ooga.transitioning); }
-    else if (performance.now() - t0 > 10000) resolve(null); else requestAnimationFrame(tick); }; tick(); })`);
   const refused = await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 15000);
+  const recovered = await b.evaluate(`__ooga.cabinet.phase === 'idle' && __ooga.fade === 0 && !document.getElementById('stage').classList.contains('cabinet-display')`);
   site.refused.length = 0;
   dropRefusals(b);
   await b.key(" ");
   const opened = await untilPage(b, 'B.scene === "drop" && !B.transitioning', 15000);
   const asked = drops() - before;
-  record("arcade hosted: a refused Ooga Drop download fades back to the arcade, Leave pressed during that fade is refused without locking the hall, and Space at the same cabinet asks again and opens the game", pressed === true && refused && opened && asked === 2, JSON.stringify({ pressed, refused, opened, asked, fetched: site.fetched }));
+  record("arcade hosted: a refused Ooga Drop download returns from the cabinet without a fade or held controls, and Space at the same cabinet asks again and opens the game", recovered && refused && opened && asked === 2, JSON.stringify({ recovered, refused, opened, asked, fetched: site.fetched }));
 } };
 // The factory's code refused while the Ooga walks into the 2 o'clock shield, as offline or after a redeploy.
 const factoryHostedShield = { name: "factory hosted shield", refuse: "/js/factory-scene-", why: "regression: a refused factory download sent the Ooga back still inside the shield, which entered again on the same step, looping fade, toast and fetch with no frame of control", run: async (b, site) => {
@@ -15399,7 +15396,7 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
   const entered = await untilPage(b, `B.scene === 'hub' && !B.transitioning && BL.scenes.hub.debug.cloudHopper.phase === 'intro'`, 30000);
   if (!entered) {
     const state = await b.evaluate(`({ scene: __ooga.scene, transitioning: __ooga.transitioning, phase: BL.scenes.hub.debug?.cloudHopper?.phase, who: __ooga.pilot.player?.traits.name })`);
-    record('arcade play: Cloud Hopper launches unarmed, rises, preserves preview gear, returns safely twice and blocks Rally', false, JSON.stringify({ entered, state, layout })); return;
+    record('arcade play: Cloud Hopper launches unarmed through the cabinet, preserves preview gear, returns safely twice and blocks Rally', false, JSON.stringify({ entered, state, layout })); return;
   }
   const before = await b.evaluate(`(() => { const B = __ooga, H = BL.scenes.hub.debug.cloudHopper, p = B.pilot.player;
     const weapons = new Set([p.parts.club.geometry, p.parts.gun.geometry, ...p.parts.gun.children.map(n => n.geometry)]);
@@ -15431,12 +15428,12 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
   await b.evaluate(`__ooga.go('race')`); const routed = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
   const state = { layout, blocked, entered, before, rising, returned, back, again, cancelled, routed };
   writeFileSync(join(dir,'journey.json'),JSON.stringify(state,null,2));
-  record('arcade play: Cloud Hopper launches unarmed, rises, preserves preview gear, returns safely twice and blocks Rally',
+  record('arcade play: Cloud Hopper launches unarmed through the cabinet, preserves preview gear, returns safely twice and blocks Rally',
     layout.front === 'cloud-hopper' && layout.rally.x < layout.flame && layout.flame < layout.invaders.x && layout.rally.z === layout.invaders.z
     && layout.rally.y === 3.2 && layout.rally.turn === 0 && layout.rally.service
     && layout.deck === 3.2 && layout.walkable && layout.label.includes('out of order') && blocked && entered && before.who === 'portlandhodl'
-    && before.phase === 'lifting' && before.unarmed && before.previewSafe && before.dockGone
-    && rising.phase === 'lifting' && rising.y > before.y && rising.unarmed && returned && back.who === 'portlandhodl'
+    && ['ready','briefing'].includes(before.phase) && before.unarmed && before.previewSafe && before.dockGone
+    && ['ready','briefing'].includes(rising.phase) && rising.y === before.y && rising.unarmed && returned && back.who === 'portlandhodl'
     && back.off < 0.5 && back.unarmed && back.parked && again && cancelled && routed, JSON.stringify(state));
 
 } };
@@ -20556,6 +20553,28 @@ scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [b
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
+const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains its real menu, expands its game and returns the same player without a fade or retained UI", run: async b => {
+  const dir = join(root, "untracked", "cabinet-review"); mkdirSync(dir, { recursive: true });
+  await b.evaluate(`__ooga.arcade.open(${JSON.stringify(id === "cloud-hopper" ? "hub" : id)}, ${JSON.stringify(id === "cloud-hopper" ? "cloud-hopper" : null)})`);
+  const menu = await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
+  if (!menu) { record(`cabinet ${id}: opens its menu`, false, await b.evaluate(`({scene:__ooga.scene,phase:__ooga.cabinet.phase})`)); return; }
+  const framed = await b.evaluate(`(() => { const r=document.getElementById('stage').getBoundingClientRect(); return {width:r.width,height:r.height,x:r.x,y:r.y,inside:r.x>0 && r.y>0 && r.right<innerWidth && r.bottom<innerHeight,fade:__ooga.fade}; })()`);
+  await b.screenshot(join(dir, `${id}-menu.png`));
+  if (id === "cloud-hopper") await b.evaluate(`document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click()`);
+  else if (id === "mine") await b.evaluate(`document.querySelector('[data-action="mine-start"]').click()`);
+  else { await b.key("Enter"); if (id === "orbit") await b.key(" "); }
+  const expanded = await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
+  const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && __ooga.fade === 0`);
+  await b.evaluate(`__ooga.go('arcade')`);
+  const returned = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
+  const back = await b.evaluate(`(() => { const p=__ooga.pilot.player, at=BL.arcadeCabinets.get(${JSON.stringify(id)});return {who:p?.traits.name,off:p?Math.hypot(p.root.position.x-at.x,p.root.position.z-at.z):999,clean:!__ooga.cabinet.active && !document.getElementById('stage').classList.contains('cabinet-display')}; })()`);
+  record(`cabinet ${id}: menu in glass, full-screen game, same Ooga at cabinet, clean return`, menu && framed.inside && !framed.fade && expanded && full && returned && back.who === 'portlandhodl' && back.off < .1 && back.clean, JSON.stringify({framed,expanded,full,returned,back}));
+} });
+for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker"]) {
+  scene("arcade", { label: `cabinet ${id}`, query: "character=portlandhodl", opts: { motion: true }, steps: [cabinetVisit(id)] });
+}
+scene("arcade", { label: "cabinet phone", query: "character=portlandhodl", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit("drop")] });
+scene("arcade", { label: "cabinet canvas2d", query: "character=portlandhodl&canvas2d=1", steps: [cabinetVisit("snake")] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
@@ -23637,10 +23656,44 @@ const netFixture=(BL,response,step=200,cookie="")=>{
   class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"?JSON.parse(v):v);}close(){this.readyState=3;}}
   const voice={setPeers:()=>{},restart:()=>{},stop:()=>{}};
   const location={protocol:"https:",host:"fixture.invalid",pathname:"/",search:"",assign:url=>navigations.push(url)},pilot={saveLoginView(){savedViews++;}};
-  const context={window:{BL:{characters:BL.characters,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,chalkBoard:BL.chalkBoard,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
+  const context={window:{BL:{characters:BL.characters,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
   runInNewContext(source,context);
   return {net:context.window.BL.net,document:context.document,voice,sockets,sent,events,location,navigations,advance(ms){tick+=ms;},get calls(){return calls;},get savedViews(){return savedViews;}};
 };
+const cabinetNetworkChecks = async BL => {
+  const C = BL.arcadeCabinets;
+  const layout = C.entries.every(entry => {
+    const c = BL.arcadeModels.CABINETS.find(c => (c.game >= 0 ? BL.arcadeModels.GAMES[c.game].id : BL.arcadeModels.RETRO[c.retro].id) === entry.id);
+    return c && Math.hypot(c.play.x - entry.x, c.play.z - entry.z) < 1e-8 && c.y === entry.y && c.play.facing === entry.yaw;
+  });
+  record("cabinet presence: every authoritative play spot matches its rendered cabinet, and Rally is unavailable", layout && C.entries.length === 12 && !C.get("race"));
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "YellowBrokeIt", display: "Yellow" } }) }));
+  await f.net.start();
+  const ws = f.sockets[0], message = m => ws.onmessage({ data: JSON.stringify(m) });
+  const welcome = features => message({ t: "welcome", you: { id: 71 }, players: [], now: Date.now(), features });
+  welcome([]);
+  const old = await f.net.takeCabinet("drop");
+  welcome([C.FEATURE]); f.net.setBody("YellowBrokeIt"); f.net.setZone("arcade.hall");
+  const pending = f.net.takeCabinet("drop"), request = f.sent.at(-1);
+  const waiting = !f.net.cabinet;
+  message({ t: "cabinet", id: "drop", q: request.q, ok: true });
+  const granted = await pending;
+  f.net.setBody(null); f.net.setZone("scene-drop"); f.net.sendPose(100, 100, 100, 0);
+  const pose = f.sent.filter(m => m.t === "pose").at(-1), at = C.get("drop");
+  const held = f.net.state.body === "YellowBrokeIt" && f.net.state.zone === "arcade.hall" && Math.abs(pose.x - at.x) < .001 && Math.abs(pose.z - at.z) < .001 && pose.y === at.y;
+  f.net.leaveCabinet(); f.net.setZone("outside");
+  const released = !f.net.cabinet && f.net.state.zone === "outside" && f.sent.some(m => m.t === "cabinet" && m.op === "leave" && m.q === request.q);
+  f.net.setZone("arcade.hall");
+  const cancel = f.net.takeCabinet("mine"), cancelledRequest = f.sent.at(-1); f.net.leaveCabinet();
+  await cancel;
+  message({ t: "cabinet", id: "mine", q: cancelledRequest.q, ok: true });
+  const late = !f.net.cabinet && f.sent.at(-1).op === "leave" && f.sent.at(-1).q === cancelledRequest.q;
+  const disconnected = f.net.takeCabinet("mine"); ws.onclose();
+  const lost = await disconnected;
+  record("cabinet client: waits for the room, pins presence, cancels late grants, fails closed on old servers and disconnect, and releases on return", !!old && waiting && granted === null && held && released && late && !!lost);
+  f.net.dispose();
+};
+
 // Rule (#361): the live players tab names each zone's group as the panels always have, apart from the zones that share a
 // land but not coordinates; it orders the visitor's group and row first and everyone else by name; its crosshair takes
 // the first step of the route between zones; and a position counts only in the zone it was reported in, so a player
@@ -25635,6 +25688,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   }
   if(ARGS.includes("stackchain-unit")){stackchainChecks(BL);menuShellChecks(BL);return;}
   if(ARGS.includes("dsb-menus-unit")){stackchainChecks(BL);memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
+  await cabinetNetworkChecks(BL);
   await chatNetChecks(BL);
   await chatClientChecks();
   await chalkboardClientChecks(BL);

@@ -10585,3 +10585,62 @@ body[data-active-scene] #controls-help-button { display: flex; align-items: cent
 #carnival[data-kind="hockey"][data-hockey-shared="true"] .carnival-scores,
 #carnival[data-kind="hockey"][data-hockey-shared="true"] .race-hud-right > .race-lap:nth-child(-n+2) { display: none; }
 #carnival[data-kind="hockey"][data-hockey-shared="true"] .carnival-coach { top: calc(64px + var(--safe-top)); bottom: auto; }
+
+/* Cabinet menus use the real controls in a viewport bounded by the photographed glass. */
+#cabinet-backdrop { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#cabinet-backdrop[hidden] { display: none; }
+.stage.cabinet-display { position: absolute; overflow: hidden; isolation: isolate; background: #080604; }
+.cabinet-display .topbar, .cabinet-display .bottom-bar, .cabinet-display .joysticks,
+.cabinet-display #equipment-hud { visibility: hidden; }
+.cabinet-display .game-intro, .cabinet-display .garage, .cabinet-display .mine-card {
+  width: calc(100% - 16px); max-width: 880px; max-height: calc(100% - 16px); overflow-y: auto;
+  padding: 10px; animation: none;
+}
+body[data-cabinet-phase]:not([data-cabinet-phase="idle"]) .game-intro,
+body[data-cabinet-phase]:not([data-cabinet-phase="idle"]) .race-results { animation: none; }
+body[data-cabinet-phase="menu"] .cloud-hopper-panel,
+body[data-cabinet-phase="expanding"] .cloud-hopper-panel,
+body[data-cabinet-phase="shrinking"] .cloud-hopper-panel {
+  width: calc(var(--cabinet-width) - 16px); max-height: calc(var(--cabinet-height) - 16px);
+  padding: 8px; animation: none;
+}
+body[data-cabinet-phase="menu"] .cloud-hopper-panel::backdrop { background: transparent; }
+.cabinet-display .game-intro-title { font-size: clamp(22px, 3vw, 38px); }
+.cabinet-display .game-intro-coin { display: none; }
+
+body[data-cabinet-phase]:not([data-cabinet-phase="idle"]) .game-rules li { animation: none; }
+.cabinet-display .orbit-panel { top: 8px; bottom: 8px; width: calc(50% - 16px); max-height: calc(100% - 16px); }
+.cabinet-display .orbit-build { left: 8px; }
+.cabinet-display .orbit-rocket { right: 8px; }
+.cabinet-display .orbit-head h2 { font-size: 16px; }
+@media (max-width: 600px) {
+  .cabinet-display .orbit-panel { width: calc(100% - 16px); }
+}
+
+.cabinet-exit { position: fixed; bottom: calc(12px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); z-index: 100; padding: 10px 18px; }
+
+/* Cloud Hopper's action palette throughout the arcade: gold plays, green chooses,
+   light stone goes back/resumes, dark stone leaves. Text and pressed/disabled states remain explicit. */
+.arcade-game :is(.race, .presets) button {
+  --arcade-button: linear-gradient(#a6d97f, #5f9e3f);
+  --arcade-button-hover: linear-gradient(#c2e8a3, #a6d97f);
+  background: var(--arcade-button); color: #13260b;
+}
+.arcade-game :is(.race, .presets) button:is(.game-intro-go, .race-go, .act,
+  [data-action$="-start"], [data-action$="-again"], [data-action$="-next"], [data-action="orbit-launch"], [data-action="carnival-act"]) {
+  --arcade-button: linear-gradient(#ffe27a, #f0b62a);
+  --arcade-button-hover: linear-gradient(#fff0a8, #ffe27a); color: var(--ink);
+}
+.arcade-game :is(.race, .presets) button:is([data-action$="-pause"], [data-action$="-resume"],
+  [data-action="garage"], [data-action="orbit-build"], [data-action="mine-card-close"], .panel-fold) {
+  --arcade-button: linear-gradient(#bdb8b0, #87827b);
+  --arcade-button-hover: linear-gradient(#d1cdc6, #bdb8b0); color: var(--ink);
+}
+.arcade-game :is(.race, .presets) button:is([data-action="leave"], [data-action="mine-abandon"]) {
+  --arcade-button: linear-gradient(#77706a, #4a4541);
+  --arcade-button-hover: linear-gradient(#8a837c, #77706a); color: var(--paper);
+}
+.arcade-game :is(.race, .presets) button:is(:hover, .virtual-hover):not(:disabled) { background: var(--arcade-button-hover); }
+.arcade-game :is(.race, .presets) button:disabled { opacity: 0.55; cursor: default; }
+.cabinet-exit { background: linear-gradient(#77706a, #4a4541); color: var(--paper); }
+.cabinet-exit:hover { background: linear-gradient(#8a837c, #77706a); }

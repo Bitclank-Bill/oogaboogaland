@@ -271,6 +271,7 @@
     act();
   };
   let canvasEl = null, actDown = false, pressedBy = "", steerId = -1;
+  let cabinetView = null;
   let phase = "intro", shownCount = -1, finalScore = 0, introEl = null, leaving = false;
   let scoreRun = null, unsubscribeScores = null;
   const scoreMachines = [];
@@ -1003,6 +1004,7 @@
     } else text(hockeyLobby, "Solo practice against the moving mallet");
   };
   const enter = (ctx, id) => {
+    cabinetView = ctx.cabinet;
     ({ renderer, game, world, go } = ctx);
     kind = id; hockeySide = 0; aim.depth = 0.13 / 0.96;
     slot = Number.isInteger(ctx.place) && KINDS[id].spots[ctx.place] ? ctx.place : 0;
@@ -1128,6 +1130,7 @@
     if (phase === "intro" && introEl.hidden) {
       if (hockeySession) { introEl.hidden = false; hockeySession.ready(); }
       else if (kind === "hockey" && BL.net.state.me && BL.net.state.room !== "live") { introEl.hidden = false; text(hockeyLobby, "Connecting to the Arcade…"); }
+      else if (cabinetView.active) { resetRun(); startPlay(); T.cam = 1; }
       else startCount(COUNT);
     }
     if (kind === "hockey") {
@@ -1199,7 +1202,7 @@
     // and at the results eased part way back out so the watchers show round the card; a slow breath, a decaying
     // shake (two quick sines, so it rumbles rather than jitters) and on a big moment a punch in toward the play that
     // springs back.
-    T.back = phase === "results" ? Math.min(1, T.back + dt * 0.9) : 0;
+    T.back = phase === "results" && !cabinetView.active ? Math.min(1, T.back + dt * 0.9) : 0;
     const k = (T.k0 + (1 - T.k0) * dolly * dolly * (3 - 2 * dolly)) * (1 - T.back * T.back * (3 - 2 * T.back) * RESULTS_BACK), breath = Math.sin(T.elapsed * 0.8) * 0.02;
     T.cam = k;
     T.shake = Math.max(0, T.shake - dt * 2.2);
@@ -1253,6 +1256,18 @@
     // Paused, the game stands still, so the screen and its glow keep last frame's pixels and are only laid again.
     const kit = BL.retroGames.kit, scr = kit.screen(), crt = kit.crt(), W = kit.W, H = kit.H, paused = phase === "pause";
     if (!paused) play.draw(scr.ctx);
+    if (cabinetView.active) {
+      // The outer cabinet presentation owns the glass. Its game fills the viewport without a second cabinet.
+      const width = renderer.size.width, height = renderer.size.height, scale = Math.min(width / W, height / H);
+      const w = W * scale, h = H * scale, x = (width - w) / 2, y = (height - h) / 2;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      SHOWN.x = x; SHOWN.w = w;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#080604"; ctx.fillRect(0, 0, width, height);
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(scr.canvas, x, y, w, h);
+      ctx.imageSmoothingEnabled = true; ctx.drawImage(crt.cover, x, y, w, h);
+      return;
+    }
     SHOWN.w = 0;
     for (let k = 0; k < 4; k++) if (!renderer.project(CORNERS[k * 3], CORNERS[k * 3 + 1], CORNERS[k * 3 + 2], CORNER[k])) return;
     const a = CORNER[0], b = CORNER[1], c = CORNER[2], d = CORNER[3];
@@ -1319,6 +1334,7 @@
     for (const key in anim) { const a = anim[key]; if (Array.isArray(a)) for (const b of a) b.cancel(); else a.cancel(); }
     const scene = SCENES[kind];
     scene.input = scene.debug = null;
+    cabinetView = null;
     hud = hooks = input = fx = audio = play = machine = introEl = el = rival = rider = anim = retro = null;
     SHOWN.w = 0;
     return { targets: count };

@@ -111,6 +111,36 @@
   };
   const chatIdValid = (id) => typeof id === "string" && id.length > 0 && id.length <= 64 && !/[^\w-]/.test(id);
   const DOOR_NAME = /^[a-z0-9-]{1,24}$/;
+  const cabinetSeats = new Map();
+  let cabinetRequest = null, cabinetSeat = null, cabinetAnchor = null, cabinetSequence = 0;
+  const finishCabinetRequest = reason => {
+    if (!cabinetRequest) return;
+    const pending = cabinetRequest;
+    cabinetRequest = null;
+    window.clearTimeout(pending.timer);
+    pending.resolve(reason);
+  };
+  const leaveCabinet = () => {
+    const seat = cabinetSeat || cabinetRequest;
+    if (seat) send(JSON.stringify({ t: "cabinet", op: "leave", id: seat.id, q: seat.q }));
+    cabinetSeat = cabinetAnchor = null;
+    finishCabinetRequest("Cabinet opening cancelled");
+  };
+  // Resolves to null on success, or a player-facing reason. Never enter a live game optimistically.
+  const takeCabinet = id => {
+    if (!state.me) return Promise.resolve(null);
+    if (state.room !== "live") return Promise.resolve("Connect to the live arcade before playing");
+    if (!state.cabinets) return Promise.resolve("The live arcade needs an update before cabinets can open");
+    if (cabinetSeat || cabinetRequest) return Promise.resolve("A cabinet is already opening");
+    const q = ++cabinetSequence;
+    return new Promise(resolve => {
+      cabinetRequest = { id, q, resolve, timer: window.setTimeout(() => {
+        send(JSON.stringify({ t: "cabinet", op: "leave", id, q }));
+        finishCabinetRequest("The arcade did not answer · try again");
+      }, 8000) };
+      send(JSON.stringify({ t: "cabinet", op: "take", id, q }));
+    });
+  };
   const subscribers = new Set();
   const highscoreSubscribers = new Set();
   const doorSubscribers = new Set();
@@ -174,6 +204,7 @@
 
   const setRoom = (room) => {
     state.room = room;
+    if (room !== "live") { cabinetSeats.clear(); cabinetSeat = null; state.cabinets = false; finishCabinetRequest("Connection to the arcade was lost"); }
     if (room !== "live") state.chatUnicode = false;
     if (room !== "live") { hockeyTables.fill(null); hockeyEmit({ k: "lost" }); state.hockey = false; }
     if (room !== "live") { state.studio = null; state.connectionToken = ""; studioEmit({t:"studio-state",state:null}); }
@@ -292,7 +323,15 @@
     } catch {
       return;
     }
-    if (msg.t === "highscore") {
+    if (msg.t === "cabinets") {
+      cabinetSeats.clear();
+      if (Array.isArray(msg.seats)) for (const seat of msg.seats) if (BL.arcadeCabinets.get(seat.id)) cabinetSeats.set(seat.id, seat);
+    } else if (msg.t === "cabinet") {
+      if (cabinetRequest?.id === msg.id && cabinetRequest.q === msg.q) {
+        if (msg.ok) { cabinetSeat = { id: msg.id, q: msg.q }; cabinetAnchor = BL.arcadeCabinets.get(msg.id); }
+        finishCabinetRequest(msg.ok ? null : msg.reason || "This cabinet is occupied");
+      } else if (msg.ok) send(JSON.stringify({ t: "cabinet", op: "leave", id: msg.id, q: msg.q }));
+    } else if (msg.t === "highscore") {
       if (state.room === "live") for (const fn of highscoreSubscribers) fn(msg.board);
     } else if (msg.t === "studio-mic-revoked") {
       BL.voice.dropMic();
@@ -352,6 +391,7 @@
       state.ghostFollowers = Number.isSafeInteger(msg.ghostFollowers) ? msg.ghostFollowers : 0;
       state.selfId = msg.you.id;
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
+      state.cabinets = Array.isArray(msg.features) && msg.features.includes(BL.arcadeCabinets.FEATURE);
       state.hockey = Array.isArray(msg.features) && msg.features.includes("hockey-v2");
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
       state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
@@ -658,6 +698,7 @@
     return n === groupLength(b) && a.startsWith(b.slice(0, n));
   };
   const setZone = (name) => {
+    if (cabinetAnchor) return;
     if (name === zone) return;
     const moved = !sameGroup(name, zone) && name !== state.blendTo;
     zone = state.zone = name;
@@ -752,6 +793,7 @@
     finally { holdingBody = false; }
   };
   const setBody = (name) => {
+    if (cabinetAnchor) return;
     if (holdingBody && name === null) return;
     if (name === body) return;
     body = state.body = name;
@@ -800,6 +842,10 @@
 
   // Throttled to POSE_MS and skipped while nothing moved; a changed gorilla pose, jetpack or weapon also earns a report.
   const sendPose = (x, y, z, yaw, g = null, jet = 0, weapon = 0) => {
+    if (cabinetAnchor) {
+      const at = cabinetAnchor;
+      x = at.x; y = at.y; z = at.z; yaw = at.yaw; g = null; jet = weapon = 0;
+    }
     const now = performance.now();
     if (state.bodyKind === "gorilla" && g && g.length === 6) {
       let valid = true;
@@ -1036,5 +1082,5 @@
     close("off");
   };
 
-  BL.net = { handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();
