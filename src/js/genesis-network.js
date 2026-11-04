@@ -41,8 +41,7 @@
     return { centre: CENTRE, radius: R, nodes, miners, displays, boxes, links: nodes.map((n, i) => [i, (i + 1) % COUNT]) };
   };
 
-  // The explainer: the window Space or a tap on a display opens.
-  const RESOURCES = { href: "https://bitcoinguide.app/resources", label: "Bitcoin Guide · resources ↗" };
+  // The explainer: the window a click on a display opens.
   const PAGES = [
     { caption: "How Bitcoin works", title: "A network with nobody in charge", text: ["Bitcoin is run by thousands of computers called nodes, each keeping its own copy of every payment ever made and checking every rule for itself.", "The towers round the statue are a toy network of eight. Watch the lights: blue is a payment, gold is a new block."] },
     { caption: "How Bitcoin works", title: "1 · Sending", text: ["A wallet signs a payment with its private key and hands it to a node. The signature proves the owner agreed, without showing the key.", "The node checks it: is the signature right, are the coins there and not already spent? If so, it passes it to its neighbours, who check it too."] },
@@ -322,5 +321,5 @@
     };
     return { root, update, net, layout: L, displays };
   };
-  BL.genesisNetwork = { layout, build, PAGES, MINING_PAGES, RESOURCES, SCREEN_PAGES, SCREEN, paintScreen, keyScreen };
+  BL.genesisNetwork = { layout, build, PAGES, MINING_PAGES, SCREEN_PAGES, SCREEN, paintScreen, keyScreen };
 })();

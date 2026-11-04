@@ -1243,7 +1243,7 @@
     const NW = BL.genesisNetwork, S = built.atriumLayout.monument;
     built.network = NW.build({ M, createNode, addChild, place, top: ISLAND_TOP, statue: S, roof: ISLAND_TOP + ROOF });
     for (const b of built.network.layout.boxes) built.obstacles.push(b);
-    const board = { room: "How the Bitcoin network works", pages: [...NW.PAGES, ...NW.MINING_PAGES], sources: [], links: [NW.RESOURCES] };
+    const board = { room: "How the Bitcoin network works", pages: [...NW.PAGES, ...NW.MINING_PAGES], sources: [] };
     for (const d of built.network.layout.displays) props.register({ id: `network-${d.id}`, era: 7, year: 2009, title: "How the Bitcoin network works", label: "THE BITCOIN NETWORK · SINCE 2009", sourceKeys: [], hint: "how the Bitcoin network works",
       at: { x: d.at.x, y: ISLAND_TOP, z: d.at.z }, reach: 2.2, onUse: () => ({ board }) });
     // The Bitcoin Guide hall round it (genesis-bitcoin-guide.js): Space at a station, or a tap on its parts, opens it.

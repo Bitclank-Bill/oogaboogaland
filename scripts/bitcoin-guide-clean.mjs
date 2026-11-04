@@ -28,16 +28,14 @@ const unofficial = (url, text) => {
   return UNOFFICIAL_HOST.test(new URL(url).hostname);
 };
 
-// Whether the museum keeps a site link (its thumbnail too): false for the copies `clean` drops.
-export const kept = (l) => !unofficial(cleanUrl(l.url || ""), `${l.title || ""} ${l.description || ""}`);
 export const clean = (data) => {
   const dropped = [];
-  for (const s of data.sections) {
+  for (const s of data.sections || []) {
     s.links = s.links.filter((l) => { const keep = !unofficial(cleanUrl(l.url), `${l.title} ${l.description}`); if (!keep) dropped.push(l.title); return keep; });
     for (const l of s.links) l.url = cleanUrl(l.url);
   }
-  data.further = data.further.filter((f) => { const keep = !unofficial(cleanUrl(f.url), `${f.title} ${f.description}`); if (!keep) dropped.push(f.title); return keep; });
-  for (const f of data.further) { f.url = cleanUrl(f.url); for (const l of f.links) l.url = cleanUrl(l.url); }
+  if (data.further) data.further = data.further.filter((f) => { const keep = !unofficial(cleanUrl(f.url), `${f.title} ${f.description}`); if (!keep) dropped.push(f.title); return keep; });
+  for (const f of data.further || []) { f.url = cleanUrl(f.url); for (const l of f.links) l.url = cleanUrl(l.url); }
   for (const e of data.essays) { e.pdf = cleanUrl(e.pdf); if (e.reel) e.reel = cleanUrl(e.reel); }
   return dropped;
 };

@@ -25472,7 +25472,7 @@ const genesisAtriumProof = async () => {
     if (r + 1.1 > NL.radius - 0.75) wb.push(`the ${d.id} display reaches the ring of towers`);
     if ([...NL.boxes, ...statueBoxes].some((o) => d.at.x > o.x0 - 0.3 && d.at.x < o.x1 + 0.3 && d.at.z > o.z0 - 0.3 && d.at.z < o.z1 + 0.3)) wb.push(`the ${d.id} display's reading spot is blocked`);
   }
-  if (!NW.RESOURCES || !/^https:\/\/bitcoinguide\.app\//.test(NW.RESOURCES.href) || NW.PAGES.length < 6) wb.push("the network's explainer lacks its pages or its resources link");
+  if (NW.PAGES.length < 6) wb.push("the network's explainer lacks its pages");
   // The Bitcoin Guide hall (genesis-bitcoin-guide.js, from bitcoinguide.app's content): its stations stand on open
   // floor, clear of the courtyard's things, its paths, the network and each other and out of the view to the white
   // screen, with room to stand at each; the essay cubes' medallions sit inside the ring path; every essay is there in
@@ -25483,7 +25483,8 @@ const genesisAtriumProof = async () => {
   { const urls = []; const walk = (o, text) => { if (typeof o === "string") { if (/^https?:/.test(o)) urls.push(o); return; } if (o && typeof o === "object") for (const k in o) walk(o[k]); }; walk(GD);
     const bad = urls.filter((u) => /(^|\/\/|\.)(tr\.ee|linktr\.ee)\//.test(u) || /[?&](ref|r|s|si|utm_[a-z_]+|aff|affiliate|referral)=/i.test(u));
     if (bad.length) wb.push(`the guide still links an unofficial copy or a tracking code: ${bad.slice(0, 3).join(" ")}`);
-    if ([...GD.sections.flatMap((x) => x.links), ...GD.further].some((l) => /unofficial/i.test(`${l.title} ${l.description}`))) wb.push("the guide still lists an unofficial copy"); }
+    // Only Bitclank Bill's essays are taken from the site: no resources, reading list, guides or other pages.
+    if (Object.keys(GD).some((k) => k !== "site" && k !== "essays")) wb.push(`the guide carries more of the site than the essays: ${Object.keys(GD).join(", ")}`); }
   const others = [...blockers, ...NL.boxes];
   for (const st of GL.stations) {
     const b = st.box, hit = (o) => b.x0 < o.x1 && b.x1 > o.x0 && b.z0 < o.z1 && b.z1 > o.z0;
@@ -25493,8 +25494,8 @@ const genesisAtriumProof = async () => {
     if ([...others, ...GL.boxes].some((o) => st.at.x > o.x0 - 0.3 && st.at.x < o.x1 + 0.3 && st.at.z > o.z0 - 0.3 && st.at.z < o.z1 + 0.3)) wb.push(`the guide's ${st.id} has no room to stand at`);
   }
   for (const c of GL.cubes) if (Math.hypot(c.x, c.z) > Y.ring.r - Y.ring.w / 2 - 0.8 || NL.boxes.some((o) => c.x > o.x0 - 1 && c.x < o.x1 + 1 && c.z > o.z0 - 1 && c.z < o.z1 + 1)) wb.push(`essay cube ${c.k} is not on open floor inside the ring`);
-  if (!GD || GD.essays.length !== 12 || GD.essays.some((e) => e.text.length < 10 || !e.accent) || GD.sections.length < 20) wb.push("the guide's essays or resources are missing");
-  const boards = [...GD.essays.map((e, i) => BG.BOARDS.essay(GD, i)), ...["library", "books", "videos", "news", "dice", "passphrase", "paths", "live"].map((k) => BG.BOARDS[k](GD)), ...GD.sections.map((_, i) => BG.BOARDS.section(GD, i)), BG.BOARDS.guide(GD, "coldStorage"), BG.BOARDS.guide(GD, "airGapped")];
+  if (!GD || GD.essays.length !== 12 || GD.essays.some((e) => e.text.length < 10 || !e.accent)) wb.push("the guide's essays are missing");
+  const boards = [...GD.essays.map((e, i) => BG.BOARDS.essay(GD, i)), BG.BOARDS.videos(GD), BG.BOARDS.live(GD)];
   for (const b of boards) if (!b.pages.length || b.pages.some((pg) => !pg.title || !pg.text.length || (pg.links || []).some((l) => !/^https:\/\//.test(l.href)))) wb.push(`the guide's board ${b.room} has an empty page or a link that is not https`);
   // The Oogas' campfire and its totem poles stand on open floor, clear of everything above and off the paths.
   const CF = BLc.genesisCampfire.layout();
