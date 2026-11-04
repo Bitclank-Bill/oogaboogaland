@@ -254,15 +254,29 @@
         }
         return { at: env.now(), rows };
       } });
-    add({ id: "hopper", category: "arcade", title: "Cloud Hopper players", source: "highscores.js · one record a player", watch: ["cloud-hopper"],
-      status: () => !recordsOn(B) ? "off" : B.highscores.get("cloud-hopper") ? "live" : "waiting",
-      stamp: () => (recordsOn(B) ? 1 : 0) + recordsRevision(B, ["cloud-hopper"]) * 3,
+    // Cloud Hopper keeps one player-keyed board a level (cloud-hopper-levels.js `board`); its single board from before
+    // the levels is retired (highscore-rules.js): still read, never updated. The channel shows each level's best
+    // player and the retired board's best, all by login.
+    const HOPPER = [...(B.cloudHopperLevels ? B.cloudHopperLevels.LEVELS.map((l) => [l.board, l.name]) : []), ["cloud-hopper", "Before levels (retired)"]]
+      .filter(([id]) => B.highscoreRules.get(id));
+    const HOPPER_IDS = HOPPER.map(([id]) => id);
+    add({ id: "hopper", category: "arcade", title: "Cloud Hopper players", source: "highscores.js · one record a player, a board a level", watch: HOPPER_IDS,
+      status: () => {
+        if (!recordsOn(B)) return "off";
+        for (const id of HOPPER_IDS) if (B.highscores.get(id)) return "live";
+        return "waiting";
+      },
+      stamp: () => (recordsOn(B) ? 1 : 0) + recordsRevision(B, HOPPER_IDS) * 3,
       read: () => {
         if (!recordsOn(B)) return { at: 0, rows: [], empty: "Shared records show where the island's own server keeps them." };
-        const rule = B.highscoreRules.get("cloud-hopper"), s = scoresOf(rule, B.highscores.get("cloud-hopper"));
-        const rows = s.rows.slice(0, 5).map((r, i) => row(`${i + 1}. ${B.characters.displayOf(r.key)}`, scoreText(rule, r.score), i ? "" : "accent"));
-        if (s.rows.length) rows.push(row("Players with a time", num(s.rows.length), "dim"));
-        return rows.length ? { at: env.now(), rows } : { at: env.now(), rows, empty: "No descents timed yet." };
+        const rows = [], players = new Set();
+        for (const [id, name] of HOPPER) {
+          const rule = B.highscoreRules.get(id), s = scoresOf(rule, B.highscores.get(id)), best = s.rows[0];
+          for (const r of s.rows) players.add(r.key);
+          rows.push(row(name, best ? `${B.characters.displayOf(best.key)} · ${scoreText(rule, best.score)}` : "no time yet", best ? (rows.length ? "" : "accent") : "dim"));
+        }
+        if (players.size) rows.push(row("Players with a time", num(players.size), "dim"));
+        return players.size ? { at: env.now(), rows } : { at: env.now(), rows, empty: "No descents timed yet." };
       } });
     // ---- GitHub (the hanging Oogatron's reader; totem-feed.js; jet-feed.js once the Hangar has loaded it).
     if (env.reader) for (let i = 0; i < env.reader.count; i++) {

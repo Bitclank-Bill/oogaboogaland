@@ -7,7 +7,19 @@ and what the TV does with it. The TV reads only what these systems already hold.
 no fetch of its own, and none from `update()`.
 
 The one exception is that the arcade's records are watched (`highscores.watch`) the first time a records channel is
-shown. That is the module's own scene-visit contract, and on a page with no island server it sends nothing.
+shown, and stay watched until the visit ends. That is the module's own scene-visit contract, and on a page with no
+island server it sends nothing. Where the island server keeps records, watching does make requests, through
+`highscores.js` rather than the TV:
+
+- **First showing:** a records channel loads each game it watches. The Arcade's cabinet games come in one shared
+  snapshot where the server offers it (`net.state.highscoreSnapshots`). Rally and each Cloud Hopper board load one
+  at a time; Cloud Hopper is five boards, its four levels and the retired one.
+- **Signed-out visitors:** every watched game is read again about every 30 s while it stays watched (`scheduleGuest`,
+  rock's #437).
+- **Signed-in visitors:** updates arrive on the room socket the page already holds.
+
+So a signed-out archive visit with the island server present makes repeated record requests once a records channel
+has been shown. It does not make zero additional requests.
 
 Freshness is judged from each feed's own record of success, never from its being enabled:
 
@@ -47,7 +59,7 @@ The words mean:
 |---|---|---|---|
 | Donations | `donations.state` (`tally`, `board`, `recent`: handles and amounts only, never messages) | Bananas and tips | not connected (static host, `npm run serve`) |
 | Players online | `net.state`, `net.remotes` (zone only; never names, positions or voice) | Players online (counts by land; `zoneMap.landOf` where the page has it, which is official `rock` after `a1100ee`) | no backend, or the room not live |
-| Arcade records | `highscores.get` and `watch`, by `highscoreRules` score type | Cabinet records (one a cabinet) · Ooga Rally records (one a track and mode) · Cloud Hopper players (one a player, keyed by login) | `net.state.highscores` not true |
+| Arcade records | `highscores.get` and `watch`, by `highscoreRules` score type | Cabinet records (one a cabinet) · Ooga Rally records (one a track and mode) · Cloud Hopper players (one a player, keyed by login: each level's own board from `cloudHopperLevels`, and the retired pre-level board, which still reads but never updates) | `net.state.highscores` not true |
 
 ## Included when another scene has loaded it (never loaded by the TV)
 

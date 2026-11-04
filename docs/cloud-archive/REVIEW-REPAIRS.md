@@ -110,6 +110,13 @@ The rack-allocation and Cloud Hopper findings are closed.
 | Enabled was shown as LIVE | Status comes from each feed's own record. The Oogatron uses `lastAt` against 60 s and is HELD (the bake) before a good read once one failed. The totems' poll and failure counters are noted as they move (the feed keeps no success time) and judged against the 90 s step: an error in the newest attempt, or no movement for three steps, is STALE. Lightning Jet's single read is LIVE for its 30 min cache, then STALE, and its bake or cache is HELD. The chain is OFF when it has failed before any reading. `stampOf` folds the status into the repaint key | unit `oogatronNever`/`Failed`/`Fresh`/`Stale`, `totemNever`/`Failed`/`Fresh`/`Failing`/`Quiet`, `jetAbsent`/`Bake`/`Fresh`/`Old`, `statusInStamp`; `before-after.txt` on `f4a6339` |
 | Players online missed a zone-only move | The stamp folds every remote's zone in through an allocation-free string code, bounded by the room's size | unit `zoneMove` (same population and NPC version) |
 
+## Integration with official rock `edf2c08`
+
+| Finding | Resolution | Evidence |
+|---|---|---|
+| rock retired Cloud Hopper's single board (`cloud-hopper`: still read, never updated) and moved its records to a player-keyed board a level (`cloud-hopper-l1`…`l4`, `cloudHopperLevels`). The TV's Cloud Hopper channel would have shown only the frozen board as LIVE | The channel reads each level's board (named from `cloudHopperLevels`) and the retired board, best player by login, and watches all five lazily | `cloud archive tv`: `hopperChannel`, `watchesOnShow` fail on the `30a9c7cc` channel and pass after |
+| Watched records refresh about every 30 s for signed-out visitors where the island server keeps them (rock's #437), now for up to five Cloud Hopper boards plus Rally and the cabinet games | Not changed (upstream's watch contract); documented in `LIVE-SYSTEMS.md` | — |
+
 ## Block Frenzy view-assist branch
 
 `feature/block-frenzy-view-assist` (`5f42979…`) was inspected. Its `view-assist.js` is byte-identical to this branch's,
