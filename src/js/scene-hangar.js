@@ -255,9 +255,9 @@
     Object.assign(walk, { phase: WALK_ON, t: 0, x: p.x, z: p.z, through: false });
   };
   // The walk, a frame at a time, after the pilot has read the visitor's input and before the crew moves, as the
-  // Factory's gate walks it: down the door's middle at an even pace, the view swinging round behind; out through the
-  // shield it stands a beat, then the hall takes over without a fade. Anything else moving the Ooga, or a walk that runs
-  // long, lets go; so does reaching where an arrival stands.
+  // Factory's gate walks it: down the door's middle at an even pace, the view swinging round behind (coming in, turned as
+  // an arrival's is, `arrival`); out through the shield it stands a beat, then the hall takes over without a fade.
+  // Anything else moving the Ooga, or a walk that runs long, lets go; so does reaching where an arrival stands.
   const doorStep = (dt) => {
     const w = walk, G = BL.factoryWindow.GLIDE, d = DOOR_WAY, p = avatar.root.position, o = pilot.orbit, off = w.phase === WALK_OFF;
     const dx = p.x - d.x, dz = p.z - d.z, past = dx * d.ox + dz * d.oz + d.plane, side = dz * d.ox - dx * d.oz;
@@ -273,7 +273,7 @@
     w.x = p.x; w.z = p.z;
     const k = off ? G.ahead : -G.ahead, wx = d.ox * k + d.oz * side * 0.6, wz = d.oz * k - d.ox * side * 0.6, l = Math.hypot(wx, wz);
     people.steer(wx / l, wz / l, 0, 1, 0, G.speed);
-    const behind = off ? Math.atan2(-d.ox, -d.oz) : Math.atan2(d.ox, d.oz);
+    const behind = off ? Math.atan2(-d.ox, -d.oz) : Math.atan2(d.ox, d.oz) + arrival().yaw;
     o.tYaw = o.yaw + Math.atan2(Math.sin(behind - o.yaw), Math.cos(behind - o.yaw));
     if (!off) return;
     if (!w.through && past >= 0) {
