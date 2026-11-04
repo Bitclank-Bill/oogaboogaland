@@ -84,6 +84,7 @@
   let repair = null, cabinetView = null, openingRequest = 0, queuedCabinet = null;
   const cabinetHidden = new Map();
   let cabinetFocus = null;
+  let captureOnArrival = false;
   let leaving = false, openingGame = false, people = null, avatar = null, playerWorld = null, screens = null, shownFrame = -1, prompt = null, promptOccupied = null;
   // HALLOWEEN: the ghost arena's hunt: its herald before the hunt loads, the hunt, its channel to the room, GAME MODE,
   // the iron fence across the hallway's mouth (how far up), the totems and their lit parts, whether the visitor's Ooga carries its rifle
@@ -193,8 +194,8 @@
     if (!cabinetHidden.has(node)) cabinetHidden.set(node, node.cameraHidden);
     node.cameraHidden = true;
   };
-  // The game's deferred code did not arrive: the visitor stays in the hall, and its cabinets and way out work again.
-  const stay = () => { leaving = openingGame = false; revealCabinetPlayers(); cabinetFocus = null; };
+  // A cabinet return or interrupted load makes the hall playable again.
+  const stay = () => { leaving = openingGame = false; revealCabinetPlayers(); cabinetFocus = null; captureOnArrival = true; };
 
   // The line under each loop: the visitor's best in that game, or a call to play. A retro game's best is an arcade one.
   const bestOf = (id) => {
@@ -1928,6 +1929,7 @@
     }
     lightUp();
     leaving = openingGame = false;
+    captureOnArrival = true;
     shownFrame = -1;
     prompt = null;
     orders = 0;
@@ -1949,6 +1951,12 @@
   let prefetchAt = 0;
   const update = (dt, elapsed) => {
     if (queuedCabinet) { const id = queuedCabinet; queuedCabinet = null; open(id); }
+    // A scene handoff restores soft mouse-look only. Capture once when the hall
+    // is playable again, after the cabinet's return zoom; Escape stays released.
+    if (captureOnArrival && !leaving && !cabinetView.active) {
+      captureOnArrival = false;
+      pilot.focusAim(true);
+    }
     if (ghosts) ghosts.unshake(camera);
     if (repair) {
       // One fixed work pose, with short turns separated by a pause. No pathfinding, effects pool or new geometry.
@@ -2077,6 +2085,7 @@
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
+    captureOnArrival = false;
     revealCabinetPlayers();
     openingRequest++;
     if (!openingGame) BL.net.leaveCabinet();

@@ -15288,6 +15288,7 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
 } };
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
+  await b.send("Page.bringToFront");
   const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning`, 20000);
   const leave = async () => {
     await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; a.root.position.x = 0; a.root.position.z = BL.arcadeModels.HALL.front + 1.3; B.advance(0.2, 1 / 60); })()`);
@@ -15296,7 +15297,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
   const read = `(() => {
     const B = __ooga, a = B.pilot.player, w = a.weapon, t = B.pilot.captureControl({}), o = B.pilot.orbit;
     const m = B.mouths?.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id), p = a.root.position;
-    return { who: a.traits.name, view: t.view, combat: w.aiming, focused: t.focused, held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0,
+    return { who: a.traits.name, view: t.view, combat: w.aiming, focused: t.focused, locked: document.pointerLockElement === document.getElementById("scene"), held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0,
       primary: w.primaryOwned, secondary: w.secondaryOwned, gun: a.parts.gun.visible, club: a.parts.club.visible,
       ammo: w.ammo, spare: w.spareAmmo.slice(), unlimited: w.unlimited, dist: o.dist,
       along: m ? (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry) : null,
@@ -15317,6 +15318,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
     })()`);
     const before = await b.evaluate(read);
     await b.key(" "); await arrive("arcade");
+    if (mode !== "carry") await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
     const hall = await b.evaluate(read);
     // All ordinary weapon routes meet the same ownership/action gate, including the touch HUD.
     for (const key of ["1", "2", "g", "v", "r"]) await b.key(key);
@@ -15331,22 +15333,40 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
       const w = B.pilot.player.weapon;
       return { armed: BL.scenes.arcade.debug.arena.armed, equipped: w.equipped, unlimited: w.unlimited, ammo: w.ammo, spare: w.spareAmmo.slice() };
     })()`);
+    let released = null;
+    if (mode === "released") {
+      await b.evaluate(`__ooga.pilot.freeCursor(); __ooga.advance(1, 1 / 60)`);
+      released = await b.evaluate(read);
+    }
     await leave();
     const outside = await b.evaluate(read);
-    rows.push({ mode, before, hall, blocked, mouse, arena, outside });
+    rows.push({ mode, before, hall, blocked, mouse, arena, outside, released });
   }
-  record("arcade carry: combat and released cursor intent survive both doorways, hall weapons cannot act, and the outside loadout and ammunition return inside the mainland overhang in every control mode",
-    rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.focused
+  record("arcade carry: entry captures combat mouse-look, an explicit release stays free, hall weapons cannot act, and the outside loadout returns inside the mainland overhang",
+    rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.combat && r.hall.locked === r.before.combat
       && !r.hall.held && !r.hall.gun && !r.hall.club && !r.hall.primary && !r.hall.secondary
       && !r.blocked.held && r.blocked.ammo === 11 && r.blocked.spare[0] === 4 && !r.blocked.unlimited
-      && (r.mode !== "focused" || r.mouse > 0.001) && (r.mode !== "released" || r.mouse < 0.001)
+      && (r.mode === "carry" ? r.mouse < 0.001 : r.mouse > 0.001) && (!r.released || !r.released.focused && !r.released.locked)
       && (r.mode !== "focused" || r.arena.armed && r.arena.equipped && r.arena.unlimited && r.arena.ammo === 4 && r.arena.spare[0] === 11)
       && r.outside.who === r.before.who && r.outside.held === r.before.held && r.outside.combat === r.before.combat
       && r.outside.focused === r.before.focused && r.outside.ammo === 11 && r.outside.spare[0] === 4
       && r.outside.primary === r.before.primary && r.outside.secondary === r.before.secondary && !r.outside.unlimited
       && r.outside.along < 0 && r.outside.along > -3 && Math.abs(r.outside.across) < 0.5 && Math.abs(r.outside.feet - r.outside.floor) < 0.1), JSON.stringify(rows));
-  // Leave the shared scene session in the Arcade for the following playthrough.
+  // Physical games use the ordinary return transition, without the cabinet zoom.
   await b.key(" "); await arrive("arcade");
+  await b.key("x");
+  await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  await b.evaluate(`__ooga.arcade.open("pinball", 0)`); await arrive("pinball");
+  await b.key("Enter");
+  await untilPage(b, `B.carnival.phase === "play"`);
+  await b.evaluate(`__ooga.carnival.finish(1234)`);
+  const resultMenu = await untilPage(b, `!document.getElementById("carnival-results").hidden && !document.pointerLockElement`);
+  const exit = await b.evaluate(`(() => { const r=document.querySelector('#carnival-results [data-action="leave"]').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+  await b.click(exit.x, exit.y); await arrive("arcade");
+  const recaptured = await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  record("arcade carry: pinball results keep a free cursor and Back to arcade captures combat without a second click", resultMenu && recaptured, JSON.stringify({resultMenu,recaptured}));
+  // Leave the shared scene session in ordinary carry for the following playthrough.
+  await b.key("x");
 } };
 const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simulated visitors played machines and Clankers diverted or greeted when a live player stood in their path; four working roles walked on their knuckles", run: async (b) => {
   const r = await b.evaluate(`(() => {
@@ -20583,9 +20603,15 @@ scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [b
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
-const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains usable menu controls, expands its game and returns the same player without retained UI", run: async b => {
+const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains usable menu controls, expands its game and returns the same player with combat mouse capture and no retained UI", run: async b => {
   const dir = join(root, "untracked", "cabinet-review", "visual-pass"); mkdirSync(dir, { recursive: true });
   const shape = await b.evaluate(`innerWidth < 600 ? 'phone' : __ooga.renderer.kind === 'canvas2d' ? 'canvas2d' : 'desktop'`);
+  if (shape === "desktop") {
+    await b.send("Page.bringToFront");
+    await b.evaluate(`__ooga.pilot.enterClose(); if (__ooga.pilot.player.weapon.aiming) __ooga.pilot.modeAction("mode-toggle")`);
+    await b.key("x");
+    await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  }
   if (id !== "cloud-hopper") await b.evaluate(`(() => {
     const original = window.fetch;
     const board = id => { const r=BL.highscoreRules.get(id), ranked=BL.highscoreRules.cabinets.includes(id); return {game:id,version:r.version,scoreType:r.scoreType,direction:r.direction,unit:r.unit,revision:12,
@@ -20604,10 +20630,10 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
     const card=${JSON.stringify(id)} === 'cloud-hopper' ? document.querySelector('.cloud-hopper-panel') : [...document.querySelectorAll('.game-intro')].find(e=>!e.hidden && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
     const buttons=[...card.querySelectorAll('.actions button')].filter(e=>!e.hidden && e.getClientRects().length);
     const controls=buttons.map(e=>{const b=e.getBoundingClientRect(), hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return {label:e.textContent.trim(),inside:b.left>=r.left-1 && b.top>=r.top-1 && b.right<=r.right+1 && b.bottom<=r.bottom+1,tappable:b.height>=40 && e.contains(hit)};});
-    return {width:r.width,height:r.height,x:r.x,y:r.y,inside:r.x>0 && r.y>0 && r.right<innerWidth && r.bottom<innerHeight,controls,fade:__ooga.fade};
+    return {unlocked:!document.pointerLockElement,width:r.width,height:r.height,x:r.x,y:r.y,inside:r.x>0 && r.y>0 && r.right<innerWidth && r.bottom<innerHeight,controls,fade:__ooga.fade};
   })()`);
   await b.screenshot(join(dir, `${id}-${shape}-menu.png`));
-  record(`cabinet ${id}: ${shape} menu actions fit the glass and are reachable`, framed.controls.length===(shape === "phone" ? 3 : 2) && framed.controls.every(c=>c.inside && c.tappable), JSON.stringify(framed));
+  record(`cabinet ${id}: ${shape} menu actions fit the glass and are reachable`, framed.unlocked && framed.controls.length===(shape === "phone" ? 3 : 2) && framed.controls.every(c=>c.inside && c.tappable), JSON.stringify(framed));
   if (id !== "cloud-hopper") {
     await untilPage(b, `BL.highscores.get(${JSON.stringify(id)})?.runs?.length === 10`);
     const activateToggle = async () => {
@@ -20643,12 +20669,13 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
   await b.screenshot(join(dir, `${id}-${shape}-play.png`));
   await b.evaluate(`__ooga.go('arcade')`);
   const returned = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
-  const back = await b.evaluate(`(() => { const p=__ooga.pilot.player, at=BL.arcadeCabinets.get(${JSON.stringify(id)});return {who:p?.traits.name,off:p?Math.hypot(p.root.position.x-at.x,p.root.position.z-at.z):999,clean:!__ooga.cabinet.active && !document.getElementById('stage').classList.contains('cabinet-display')}; })()`);
+  if (shape === "desktop") await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  const back = await b.evaluate(`(() => { const p=__ooga.pilot.player, at=BL.arcadeCabinets.get(${JSON.stringify(id)});return {who:p?.traits.name,locked:document.pointerLockElement===document.getElementById('scene'),off:p?Math.hypot(p.root.position.x-at.x,p.root.position.z-at.z):999,clean:!__ooga.cabinet.active && !document.getElementById('stage').classList.contains('cabinet-display')}; })()`);
   await b.screenshot(join(dir, `${id}-${shape}-return.png`));
-  record(`cabinet ${id}: menu in glass, full-screen game, same Ooga at cabinet, clean return`, menu && framed.inside && !framed.fade && expanded && full && returned && back.who === 'portlandhodl' && back.off < .1 && back.clean, JSON.stringify({framed,expanded,full,returned,back}));
+  record(`cabinet ${id}: menu in glass, full-screen game, same Ooga at cabinet, clean return`, menu && framed.inside && !framed.fade && expanded && full && returned && back.who === 'portlandhodl' && back.off < .1 && back.clean && (shape !== 'desktop' || back.locked), JSON.stringify({framed,expanded,full,returned,back}));
 } });
 for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker"]) {
-  scene("arcade", { label: `cabinet ${id} desktop`, query: "character=portlandhodl&pos=0", opts: { motion: true }, steps: [cabinetVisit(id)] });
+  scene("arcade", { label: `cabinet ${id} desktop`, exclusive: true, query: "character=portlandhodl&pos=0", opts: { motion: true }, steps: [cabinetVisit(id)] });
   scene("arcade", { label: `cabinet ${id} phone`, query: "character=portlandhodl&pos=0", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit(id)] });
 }
 scene("arcade", { label: "cabinet canvas2d", query: "character=portlandhodl&canvas2d=1&pos=0", steps: [cabinetVisit("snake")] });
@@ -20687,7 +20714,7 @@ scene("arcade", { label: "cabinet public route", opts: { motion: true }, steps: 
   const cancelled = await wait(`document.body.dataset.cabinetPhase === 'idle' && document.body.dataset.activeScene === 'arcade'`);
   record("cabinet public route: direct arrival and a link from the hall both visit the cabinet, play and cancel cleanly", menu && full && returned && linked && cancelled, JSON.stringify({menu,full,returned,linked,cancelled}));
 } }] });
-scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
+scene("arcade", { query: "character=portlandhodl", exclusive: true, steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("skee", { steps: [carnivalPlay("skee", 0.5), trip("skee")] });
