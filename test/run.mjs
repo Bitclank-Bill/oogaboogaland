@@ -6957,6 +6957,29 @@ const highscoreClientChecks = async () => {
       } };
   };
   {
+    const checked = [];
+    for (const game of ["drop", "orbit", "mine", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"]) {
+      const f = fixture(true), ticket = f.scores.begin(game), machine = game + "-1";
+      f.reply(0, game); await flush();
+      const saving = f.scores.submit(ticket, machine, 1000); await flush();
+      const request = f.requests.at(-1), body = JSON.parse(request.options.body), rule = f.rules.get(game);
+      const board = {game,version:1,scoreType:rule.scoreType,direction:rule.direction,unit:rule.unit,highscores:{[machine]:1000},achieved:{[machine]:1},revision:2,
+        runs:[{id:"1".repeat(64),username:"score-one",score:1000,achieved:1},{id:"2".repeat(64),username:"score-one",score:900,achieved:2}]};
+      request.resolve({ok:true,status:200,headers:{get:()=>"application/json"},json:async()=>board});
+      const saved = await saving, accepted = f.scores.get(game)?.runs;
+      const next = f.scores.begin(game), invalid = f.scores.submit(next, machine, 800); await flush();
+      const second = f.requests.at(-1), distinct = JSON.parse(second.options.body).runId !== body.runId;
+      second.resolve({ok:true,status:200,headers:{get:()=>"application/json"},json:async()=>({...board,revision:3,runs:[...board.runs].reverse()})});
+      await invalid;
+      for (const runs of [[{username:"score-one",score:1000,achieved:1}], [board.runs[0], {...board.runs[1],id:board.runs[0].id}]]) {
+        for (const fn of f.live) fn({...board,revision:4,runs});
+      }
+      checked.push({game,ok:saved && typeof body.runId==="string" && distinct && accepted?.length===2 && accepted[0].score===1000 && f.scores.best(game,machine)===1000 && f.scores.get(game).revision===2});
+      f.scores.dispose();
+    }
+    record("highscores: all eleven cabinet boards retain attributed distinct runs, preserve machine bests, and reject reversed score order", checked.every(x=>x.ok), JSON.stringify(checked));
+  }
+  {
     const f = fixture(true), game = "cloud-hopper-l1";
     f.BL.cloudHopperReplays = { startTicket: () => Promise.resolve({ token: "test" }), submit: async () => null };
     const ticket = f.scores.begin(game); f.reply(0, game); await flush();
@@ -20556,6 +20579,16 @@ scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [b
 const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains usable menu controls, expands its game and returns the same player without retained UI", run: async b => {
   const dir = join(root, "untracked", "cabinet-review", "visual-pass"); mkdirSync(dir, { recursive: true });
   const shape = await b.evaluate(`innerWidth < 600 ? 'phone' : __ooga.renderer.kind === 'canvas2d' ? 'canvas2d' : 'desktop'`);
+  if (id !== "cloud-hopper") await b.evaluate(`(() => {
+    const original = window.fetch;
+    const board = id => { const r=BL.highscoreRules.get(id), ranked=BL.highscoreRules.cabinets.includes(id); return {game:id,version:r.version,scoreType:r.scoreType,direction:r.direction,unit:r.unit,revision:12,
+      highscores:ranked?{[r.machines[0]]:1000}:{},achieved:ranked?{[r.machines[0]]:1}:{},
+      ...(ranked?{runs:Array.from({length:10},(_,i)=>({id:(i+1).toString(16).padStart(64,'0'),username:i<2?'same-player':i===2?'player-with-a-very-long-name-123456789':'player-'+(i+1),score:1000-i*25,achieved:i+1}))}:{})}; };
+    window.fetch = (url, options) => { const prefix="/api/highscores/", path=String(url); if (!path.startsWith(prefix)) return original(url,options);
+      const id=path.slice(prefix.length), value=id==='arcade'||id==='arcade-live'?{refreshAfterMs:30000,boards:BL.highscoreRules.arcade.map(board)}:board(id);
+      return Promise.resolve({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>value}); };
+    Object.assign(BL.net.state,{backend:true,highscores:true,highscoreSnapshots:true,resolved:true});
+  })()`);
   await b.evaluate(`__ooga.arcade.open(${JSON.stringify(id === "cloud-hopper" ? "hub" : id)}, ${JSON.stringify(id === "cloud-hopper" ? "cloud-hopper" : null)})`);
   const menu = await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
   if (!menu) { record(`cabinet ${id}: opens its menu`, false, await b.evaluate(`({scene:__ooga.scene,phase:__ooga.cabinet.phase})`)); return; }
@@ -20567,7 +20600,23 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
     return {width:r.width,height:r.height,x:r.x,y:r.y,inside:r.x>0 && r.y>0 && r.right<innerWidth && r.bottom<innerHeight,controls,fade:__ooga.fade};
   })()`);
   await b.screenshot(join(dir, `${id}-${shape}-menu.png`));
-  record(`cabinet ${id}: ${shape} menu actions fit the glass and are reachable`, framed.controls.length===(id === "cloud-hopper" && shape === "phone" ? 3 : 2) && framed.controls.every(c=>c.inside && c.tappable), JSON.stringify(framed));
+  record(`cabinet ${id}: ${shape} menu actions fit the glass and are reachable`, framed.controls.length===(shape === "phone" ? 3 : 2) && framed.controls.every(c=>c.inside && c.tappable), JSON.stringify(framed));
+  if (id !== "cloud-hopper") {
+    await untilPage(b, `BL.highscores.get(${JSON.stringify(id)})?.runs?.length === 10`);
+    const activateToggle = async () => {
+      // Native Enter activation also emits a carriage-return keypress; game shortcuts only inspect keydown.
+      await b.send("Input.dispatchKeyEvent", {type:"keyDown",key:"Enter",code:"Enter",text:"\r",windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+      await b.send("Input.dispatchKeyEvent", {type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+    };
+    if (shape === "phone") {
+      await b.evaluate(`document.querySelector('.cabinet-leaderboard-toggle').focus()`);
+      await activateToggle();
+    }
+    const scores = await b.evaluate(`(() => { const e=document.querySelector('.cabinet-leaderboard'), r=e.getBoundingClientRect(), p=document.getElementById('stage').getBoundingClientRect(); return {fit:r.width>0 && r.height>40 && r.top>=p.top && r.bottom<=p.bottom, rows:[...e.querySelectorAll('li')].map(x=>({name:x.children[1].textContent,score:x.children[2].textContent})),phase:__ooga.cabinet.phase}; })()`);
+    await b.screenshot(join(dir, `${id}-${shape}-leaderboard.png`));
+    record(`cabinet ${id}: ${shape} attributed top ten fits the glass without starting play`, scores.fit && scores.phase==='menu' && scores.rows.length===10 && scores.rows[0].name==='same-player' && scores.rows[1].name==='same-player' && scores.rows[0].score==='1,000' && scores.rows[9].score==='775', JSON.stringify(scores));
+    if (shape === "phone") { await activateToggle(); await b.evaluate(`document.querySelector('.cabinet-leaderboard-toggle').blur()`); }
+  }
   if (id === "cloud-hopper") {
     if (shape === "phone") await b.evaluate(`document.querySelector('.cabinet-scores-toggle').click()`);
     const leaderboard = await b.evaluate(`(() => { const e=document.querySelector('.cloud-hopper-panel .cloud-hopper-scores'), r=e.getBoundingClientRect(), p=e.closest('dialog').getBoundingClientRect();return !e.hidden && r.width>0 && r.height>40 && r.top>=p.top && r.bottom<=p.bottom; })()`);
@@ -20579,7 +20628,7 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
   else if (id === "mine") await b.evaluate(`document.querySelector('[data-action="mine-start"]').click()`);
   else await b.key("Enter");
   const expanded = await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
-  const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && document.getElementById('cabinet-foreground').hidden && __ooga.fade === 0`);
+  const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && document.getElementById('cabinet-foreground').hidden && !document.querySelector('.cabinet-leaderboard') && __ooga.fade === 0`);
   if (shape === "phone" && id !== "cloud-hopper") {
     const header = await b.evaluate(`(() => { const e=document.getElementById('equipment-hud'), p=document.querySelector('.topbar .presets:not([hidden])'); const buttons=p ? [...p.querySelectorAll('button')].filter(b=>!b.hidden && b.getClientRects().length) : []; return {equipment:e.getBoundingClientRect().top,presets:p?.getBoundingClientRect().top,tappable:buttons.every(b=>{const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})}; })()`);
     record(`cabinet ${id}: phone header controls return above the game`, header.equipment < 180 && (!header.presets || header.presets < 180) && header.tappable, JSON.stringify(header));

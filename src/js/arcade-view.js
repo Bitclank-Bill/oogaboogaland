@@ -17,6 +17,52 @@
     camera.orthoMix = a.orthoMix + (b.orthoMix - a.orthoMix) * k;
     camera.orthoHeight = a.orthoHeight + (b.orthoHeight - a.orthoHeight) * k;
   };
+  // One shared board per menu visit. Scores remain server-attributed; local machine bests are never ranked.
+  const leaderboard = id => {
+    if (!BL.highscoreRules.cabinets.includes(id)) return null;
+    const card = document.querySelector(id === "mine" ? "#mine-intro:not([hidden])" : `.game-intro[data-intro="${id}"]:not([hidden])`);
+    const actions = card?.querySelector(".actions");
+    if (!actions) return null;
+    const section = document.createElement("section"), title = document.createElement("h3"), status = document.createElement("p");
+    const list = document.createElement("ol"), toggle = document.createElement("button"), rows = [];
+    section.className = "cabinet-leaderboard"; section.id = `cabinet-leaderboard-${id}`;
+    title.textContent = "Shared top 10"; title.id = `${section.id}-title`;
+    section.setAttribute("aria-labelledby", title.id); status.setAttribute("role", "status");
+    toggle.type = "button"; toggle.className = "cabinet-leaderboard-toggle"; toggle.textContent = "Leaderboard";
+    toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-controls", section.id);
+    toggle.addEventListener("click", () => {
+      const open = card.classList.toggle("cabinet-show-scores");
+      toggle.textContent = open ? "Controls" : "Leaderboard";
+      toggle.setAttribute("aria-expanded", String(open));
+    });
+    for (let i = 0; i < 10; i++) {
+      const row = document.createElement("li"), rank = document.createElement("span"), name = document.createElement("span"), score = document.createElement("strong");
+      rank.textContent = String(i + 1); rank.setAttribute("aria-hidden", "true");
+      row.append(rank, name, score); list.append(row); rows.push({ row, name, score });
+    }
+    section.append(title, status, list); card.insertBefore(section, actions);
+    actions.insertBefore(toggle, actions.lastElementChild); card.classList.add("cabinet-has-leaderboard");
+    let data = null, state = "loading";
+    const render = () => {
+      const runs = data?.runs || [];
+      status.textContent = state === "loading" ? "Loading shared scores…"
+        : state === "refreshing" ? "Updating · showing last shared scores"
+        : state === "stale" ? "Shared scores may be out of date · refresh unavailable"
+        : state === "unavailable" ? "Shared leaderboard unavailable"
+        : data && !data.runs ? "This server does not have the leaderboard yet"
+        : runs.length ? "All players · highest scores"
+        : "No shared runs yet. Sign in and finish a game to set a score.";
+      for (let i = 0; i < rows.length; i++) {
+        const { row, name, score } = rows[i], run = runs[i];
+        row.classList.toggle("empty", !run);
+        row.classList.toggle("you", !!run && run.username.toLowerCase() === BL.net.state.me?.login?.toLowerCase());
+        name.textContent = run ? run.username : "—"; name.title = run ? run.username : "";
+        score.textContent = run ? run.score.toLocaleString("en-US") : "—";
+      }
+    };
+    const off = BL.highscores.watch(id, value => { data = value; render(); }, value => { state = value; render(); });
+    return { dispose() { off(); section.remove(); toggle.remove(); card.classList.remove("cabinet-has-leaderboard", "cabinet-show-scores"); } };
+  };
   const create = ({ canvas, renderer, go }) => {
     const stage = document.getElementById("stage"), backdrop = document.createElement("canvas"), paint = backdrop.getContext("2d");
     backdrop.id = "cabinet-backdrop"; backdrop.hidden = true; backdrop.setAttribute("aria-hidden", "true");
@@ -28,6 +74,7 @@
     exitButton.type = "button"; exitButton.className = "cabinet-exit"; exitButton.textContent = "Return to arcade"; exitButton.hidden = true;
     exitButton.addEventListener("click", () => route("arcade")); document.body.append(exitButton);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let scores = null;
     let visit = null, phase = "idle", age = 0, zoom = 0, dispatching = false, lost = false;
     let shownW = 0, shownH = 0, shownX = -1, shownY = -1;
     let width = innerWidth, height = innerHeight, rw = 0, rh = 0, rx = 0, ry = 0;
@@ -39,6 +86,7 @@
     };
     const duration = () => reduced.matches ? 0 : 0.7;
     const setPhase = value => {
+      if (value !== "menu" && scores) { scores.dispose(); scores = null; }
       phase = value; age = 0; document.body.dataset.cabinetPhase = value;
       exitButton.hidden = value !== "approach" && value !== "loading";
     };
@@ -118,7 +166,7 @@
     };
     const arrived = scene => {
       if (!visit) return;
-      if (phase === "loading") { setPhase("menu"); screen(0); }
+      if (phase === "loading") { setPhase("menu"); screen(0); scores = leaderboard(visit.id); }
       else if (phase === "leaving" && scene.id === "arcade") {
         visit.returnView = null; full(); setPhase("return");
         BL.net.leaveCabinet();

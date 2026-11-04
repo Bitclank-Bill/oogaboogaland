@@ -10639,6 +10639,29 @@ body[data-cabinet-phase]:not([data-cabinet-phase="idle"]) .sheet { visibility: h
   .cabinet-display .game-intro .game-rules small { font-size: 10px; }
 }
 body[data-cabinet-phase]:not([data-cabinet-phase="idle"]) :is(.game-intro, .race-results, .game-rules li) { animation: none; }
+/* Cabinet scoreboards use the same ten ranked places and footer navigation as Cloud Hopper. */
+.cabinet-display .game-intro .cabinet-leaderboard { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.cabinet-leaderboard h3 { margin: 4px 0; color: var(--accent-text); font-size: 13px; }
+.cabinet-leaderboard p { margin: 4px 0 6px; font-size: 11px; line-height: 1.3; }
+.cabinet-leaderboard ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(5, auto); grid-auto-flow: column; padding: 0; margin: 0; list-style: none; border: 2px solid var(--stone-dk); border-radius: 8px; background: var(--tablet); overflow: hidden; }
+.cabinet-leaderboard li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: baseline; gap: 5px; padding: 4px 10px; font-size: 12px; text-align: left; border-bottom: 1px solid #0005; }
+.cabinet-leaderboard li:nth-child(n + 6) { border-left: 1px solid #0005; }
+.cabinet-leaderboard li:nth-child(5), .cabinet-leaderboard li:last-child { border-bottom: 0; }
+.cabinet-leaderboard li > span:first-child { color: var(--accent-text); font-weight: bold; }
+.cabinet-leaderboard li > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cabinet-leaderboard li.empty { color: var(--muted); }
+.cabinet-leaderboard li.you { background: #f5c54222; }
+.cabinet-leaderboard-toggle { display: none; }
+.arcade-game .race .cabinet-leaderboard-toggle[aria-expanded="true"] { --arcade-button: linear-gradient(#bdb8b0, #87827b); --arcade-button-hover: linear-gradient(#d1cdc6, #bdb8b0); color: var(--ink); }
+@container (max-width: 480px) {
+  .cabinet-display .game-intro.cabinet-has-leaderboard .actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+  .cabinet-display .game-intro.cabinet-has-leaderboard .actions button { padding: 6px 3px; font-size: 12px; letter-spacing: 0; }
+  .cabinet-display .cabinet-leaderboard-toggle { display: block; }
+  .cabinet-display .game-intro:not(.cabinet-show-scores) .cabinet-leaderboard,
+  .cabinet-display .game-intro.cabinet-show-scores :is(.game-rules, .game-intro-goal) { display: none; }
+  .cabinet-leaderboard li { grid-template-columns: 12px minmax(0, 1fr) auto; padding: 4px 5px; font-size: 11px; gap: 3px; }
+  .cabinet-leaderboard h3 { font-size: 12px; }
+}
 /* Native dialogs escape the stage's clipping; position Cloud Hopper in the same measured aperture. */
 body:is([data-cabinet-phase="menu"], [data-cabinet-phase="expanding"], [data-cabinet-phase="shrinking"]) .cloud-hopper-panel {
   left: var(--cabinet-center-x); top: var(--cabinet-center-y);
