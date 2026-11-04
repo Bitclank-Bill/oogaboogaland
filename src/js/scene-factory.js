@@ -68,9 +68,6 @@
   // that a step back from there stays in the hall. `HANGAR_WAY` is the door as the walk through it takes it
   // (`factoryWindow.crossing`): its middle, the way in through it, and its shield.
   const HANGAR_OPENING = { minX: -FM.HANGAR_DOOR.half, maxX: FM.HANGAR_DOOR.half, floorY: 0, ceilingY: FM.HANGAR_DOOR.top }, HANGAR_TINT = BL.factoryWindow.TINT;
-  // Through the door, the hangar clear, or veiled (`hangarModels.doorWindow(1)`) on a debug page asking for it with
-  // `doorview=veiled`, to compare the two.
-  const DOOR_VEILED = ((p) => p.get("debug") === "1" && p.get("doorview") === "veiled")(new URLSearchParams(location.search));
   // How the hangar door answers whoever comes near, as ₿IFRÖST's windows do: from DOOR_FAR metres of its opening,
   // growing faster the nearer they come, and fully only at the doorway itself (DOOR_NEAR), easing at DOOR_EASE a second,
   // its arch's glow brightening by up to DOOR_BRIGHTEN.
@@ -1436,7 +1433,7 @@
       // staying behind it and in its place on Canvas 2D).
       if (renderer.kind !== "canvas2d" && BL.hangarWindow) {
         const HD = BL.hangarModels.LAYOUT.door;
-        s.hangar.window = BL.hangarWindow.create({ group: node, pieces: BL.hangarModels.doorWindow(DOOR_VEILED ? 1 : 0), beyond: BL.hangarWindow.across(HD.x, HD.y, HD.z, HD.turn, D.plane), plane: D.plane });
+        s.hangar.window = BL.hangarWindow.create({ group: node, pieces: BL.hangarModels.doorWindow(), beyond: BL.hangarWindow.across(HD.x, HD.y, HD.z, HD.turn, D.plane), plane: D.plane });
       }
     }
     // Gallery stands along the top decks.
