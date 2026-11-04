@@ -123,6 +123,71 @@ const gorillaSleepRouteProof = () => {
   }
   return rows;
 };
+// Regression (#402): a gorilla held up on its way to bed was put in the bed after a 25 s stall, and one held up on
+// its way home skipped on to a point of its path it never reached. Run the real controllers on a fixed dry path
+// whose `move` walks only while `open` says the way is clear, and watch every frame for a jump or a skipped point.
+const gorillaSleepStallProof = () => {
+  const source = readFileSync(join(root, "src/js/clankers.js"), "utf8");
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const script = section("    const SLEEP_POSES =", "\n") + "\n" + section("    const releaseBed =", "    const reserveBed")
+    + section("    const sleepLegFrom =", "    // Rage shares") + `
+    let t = 0, walked = 0, done = false, jump = 0, skipped = 0, fresh = null;
+    const move = (actor, step, speed) => {
+      if (!open(t, actor)) return;
+      const p = actor.root.position, dx = actor.goalX - p.x, dz = actor.goalZ - p.z, d = Math.hypot(dx, dz), go = Math.min(d, speed * step);
+      if (d > 0) { p.x += dx / d * go; p.z += dz / d * go; walked += go; }
+    };
+    for (; t < 300 && !done; t += dt) {
+      const p = e.root.position, s = e.sleep, x = p.x, z = p.z, leg = s.leg, stage = s.stage, waking = t >= wakeAt;
+      walked = 0;
+      if (waking) done = !updateWake(e, dt, p.x, p.y, p.z);
+      else updateSleep(e, dt, p.x, p.y, p.z);
+      if (waking && stage !== "return" && fresh === null) fresh = s.stuck === -1 && s.tries === 0;
+      jump = Math.max(jump, Math.hypot(p.x - x, p.z - z) - walked);
+      // A point of the path is left behind only once the gorilla stood at it.
+      const passed = s.stage === stage && (stage === "return" && s.leg < leg || stage === "go" && s.leg > leg);
+      if (passed && Math.hypot(s.path[leg * 2] - x, s.path[leg * 2 + 1] - z) >= SLEEP_REACH) skipped++;
+      if (!waking && (s.stage === "asleep" || s.stage === "rough")) done = true;
+    }
+    globalThis.out = { t: Math.round(t * 10) / 10, done, jump, skipped, fresh, stage: e.sleep.stage, slot: e.sleep.slot, bedDay,
+      phase: e.phase, lounge: e.lounge, x: Math.round(e.root.position.x * 100) / 100, z: Math.round(e.root.position.z * 100) / 100 };
+  `;
+  const path = [0, 0, 10, 0, 20, 0, 30, 0], noop = () => {};
+  const cases = [
+    // Asleep: walks from the meadow, held at the second point for good, or until 40 s.
+    { name: "bed unreachable", wakeAt: Infinity, start: 0, open: (t, e) => e.sleep.leg < 1,
+      ok: r => r.stage === "rough" && r.slot === -1 && r.bedDay === -1 && r.lounge === "sit" && r.x === 0 },
+    { name: "bed reached after a hold-up", wakeAt: Infinity, start: 0, open: (t, e) => t > 40 || e.sleep.leg < 2,
+      ok: r => r.stage === "asleep" && r.slot === 0 && Math.abs(r.x - 30) < 0.3 },
+    // Awake: walks home from its bed, held on the way for good, or until 40 s.
+    { name: "home unreachable", wakeAt: 0, start: 30, open: (t, e) => e.sleep.leg > 2,
+      ok: r => r.stage === "" && r.slot === -1 && r.phase === "chill" && r.x === 30 },
+    { name: "home reached after a hold-up", wakeAt: 0, start: 30, open: (t, e) => t > 40 || e.sleep.leg !== 1,
+      ok: r => r.stage === "" && r.phase === "chill" && Math.abs(r.x) < 1.1 },
+    // Its Ooga wakes while it is held up on the way to bed: the stall's retries do not follow it home.
+    { name: "woken while held up", wakeAt: 30, start: 0, open: (t, e) => t >= 30 || e.sleep.leg < 2,
+      ok: r => r.fresh && r.stage === "" && r.phase === "chill" && Math.abs(r.x) < 1.1 },
+  ];
+  return cases.map(c => {
+    const asleep = c.start === 30;
+    const e = { active: true, index: 0, heading: 0, speed: 0, mode: "", phase: "", route: "", rest: 0, lounge: asleep ? "left" : "", recover: 0, retry: 0,
+      root: { position: { x: c.start, y: 0, z: 0 } }, owner: { traits: { name: "stall" } },
+      sleep: { stage: asleep ? "asleep" : "", slot: asleep ? 0 : -1, home: -1, leg: asleep ? 3 : 0, count: asleep ? 4 : 0, path: new Float64Array(48),
+        mark: 0, pose: "left", stall: 0, near: Infinity, stuck: -1, tries: 0 },
+      gorilla: { chest: { scale: { y: 1 } }, poseManaged: noop, mouth: noop }, lab: { item: -1 }, motion: {}, jump: { active: false },
+      roam: {}, climb: { active: false } };
+    e.sleep.path.set(path);
+    const context = { e, dt: 0.1, wakeAt: c.wakeAt, open: c.open, bedDay: 0, SPEED: 2.7,
+      ctx: { sleep: { slots: [{ x: 30, y: 0, z: 0, heading: 0 }], path: (i, out) => { out.set(path); return path.length / 2; } } },
+      reserveBed: actor => { actor.sleep.slot = 0; actor.sleep.pose = "left"; return true; }, restSpace: (actor, pose) => pose === "sit",
+      caveAt: () => -1, clamp: (v, lo, hi) => Math.min(hi, Math.max(lo, v)),
+      releasePortal: noop, releaseLab: noop, releaseOffice: noop, clearWallSearch: noop, leaveLounge: noop, poseEntry: noop,
+      setGoal: (actor, x, y, z) => { actor.goalX = x; actor.goalY = y; actor.goalZ = z; } };
+    runInNewContext(script, context);
+    const r = context.out;
+    return { name: c.name, ...r, ok: r.done && r.jump < 1e-9 && r.skipped === 0 && r.t < 300 && c.ok(r) };
+  });
+};
 // Rule: exercise the actual bounded rage state machine with a small physical
 // adapter. Collision and the rendered carry are covered by the hub regressions.
 const gorillaRageProof = async () => {
@@ -25440,6 +25505,8 @@ const unitChecks = async () => {
   await gpuGeometryDiagnosticChecks();
   const sleepRoutes = gorillaSleepRouteProof();
   record("gorilla re-sleep regression: waking remembers its former bed; the same bed keeps its return leg and a changed bed chooses the nearest waypoint on its own path", sleepRoutes.every(row => row.ok), JSON.stringify(sleepRoutes));
+  const sleepStalls = gorillaSleepStallProof();
+  record("gorilla sleep stall regression: a held-up gorilla walks back a point and tries again, never placed in its bed or skipping a point home; an unreachable bed is let go to sleep where it stands, an unreachable home hands over to chill there", sleepStalls.every(row => row.ok), JSON.stringify(sleepStalls));
   const rage = await gorillaRageProof();
   record("gorilla rage: distinct rolling hits, only agitating Oogas targeted, held capture through planning and swing, bounded throws, exact expiry, zero health and account/lifecycle cancellation", Object.values(rage).every(Boolean), JSON.stringify(rage));
   const reviewCrowd=await reviewCrowdAndFallbackProof();

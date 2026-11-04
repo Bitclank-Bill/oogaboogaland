@@ -2099,7 +2099,7 @@
         hasSlot: false, slotIndex: -1, slotX: 0, slotY: 0, slotZ: 0, goalX: 0, goalY: 0, goalZ: 0,
         random: mulberry32(fnv1a(`clanker/${owner.id || owner.traits.name || i}`)),
         // Its bed while its Ooga sleeps: see `updateSleep`.
-        sleep: { stage: "", slot: -1, home: -1, leg: 0, count: 0, path: new Float64Array(SLEEP_POINTS * 2), mark: 0, pose: "", stall: 0, near: Infinity },
+        sleep: { stage: "", slot: -1, home: -1, leg: 0, count: 0, path: new Float64Array(SLEEP_POINTS * 2), mark: 0, pose: "", stall: 0, near: Infinity, stuck: -1, tries: 0 },
         // Its desk or wait spot in B.C.A. and where it is in the routine: see `workOffice`.
         office: { stage: "", desk: -1, wait: -1, time: 0, count: 0, index: 0, path: new Float64Array(OFFICE_POINTS * 2), seed,
           cycle: 0, work: "", left: 0, stroke: 0, turn: 0, held: 0 },
@@ -6324,9 +6324,11 @@
     // The daily name hash deals free beds among current sleepers, never reshuffling an occupied bed.
     // Stages: "go" along the path, "settle" turning onto the bed, "asleep", then "return" back
     // along the path once its Ooga wakes, after which the ordinary work and chill machinery takes over.
+    // A trip is always walked. A leg it cannot walk is walked again from the point before it; when that fails too,
+    // a sleeper lets its bed go and sleeps where it stands ("rough"), and a waking gorilla chills where it is.
     // Selection keeps a settled sleeper in bed until Space wakes it. A release while its Ooga still sleeps
     // walks an awakened gorilla back to bed from where it stands.
-    const SLEEP_POSES = ["left", "right", "back"], SLEEP_REACH = 1.1, SLEEP_ARRIVE = 0.3, SLEEP_STALL = 25, SLEEP_MARK = 1.9, DAY_MS = 86400000;
+    const SLEEP_POSES = ["left", "right", "back"], SLEEP_REACH = 1.1, SLEEP_ARRIVE = 0.3, SLEEP_STALL = 25, SLEEP_TRIES = 2, SLEEP_MARK = 1.9, DAY_MS = 86400000;
     // Only current sleepers take part in the daily deal. Keep occupied beds stable
     // across activity changes and midnight. A driven gorilla keeps its existing bed
     // until release, even if its owner wakes; only sleepers get new reservations.
@@ -6339,7 +6341,7 @@
       const day = Math.floor(Date.now() / DAY_MS), beds = ctx.sleep.slots.length;
       let changed = day !== bedDay;
       for (let i = 0; i < list.length; i++) {
-        const asleep = sleeps(list[i].owner) && !list[i].remoteControlled ? 1 : 0;
+        const asleep = sleeps(list[i].owner) && !list[i].remoteControlled && list[i].sleep.stage !== "rough" ? 1 : 0;
         if (bedSleeping[i] !== asleep) changed = true;
         bedSleeping[i] = asleep;
       }
@@ -6399,6 +6401,25 @@
       e.heading = bed.heading; e.speed = 0; e.lounge = s.pose; e.loungeDepart = false; e.loungeHeading = bed.heading;
       e.footprintMode = "sit"; s.stage = "asleep"; s.mark = SLEEP_MARK * 0.5;
     };
+    // A leg that stalls is walked again from the point it came from (`back`: -1 toward home, +1 toward the bed).
+    // The tries count until it gets past the leg it first stalled on; false once they are spent.
+    const retryLeg = (e, back) => {
+      const s = e.sleep;
+      s.stall = 0; s.near = Infinity;
+      if (s.stuck < 0) s.stuck = s.leg;
+      if (++s.tries > SLEEP_TRIES) return false;
+      s.leg = Math.min(s.count - 1, Math.max(0, s.leg + back));
+      return true;
+    };
+    // No way to its bed: the bed is let go for another sleeper, and it lies down, sits or dozes on its feet where
+    // it stands, whichever fits there, until its Ooga wakes and it walks home from there.
+    const sleepRough = (e) => {
+      const s = e.sleep, p = e.root.position;
+      s.slot = -1; bedDay = -1; s.stage = "rough"; s.mark = SLEEP_MARK * 0.5;
+      e.speed = 0; e.loungeDepart = false; e.loungeHeading = e.heading;
+      e.lounge = restSpace(e, s.pose, p.x, p.y, p.z, e.heading) ? s.pose : restSpace(e, "sit", p.x, p.y, p.z, e.heading) ? "sit" : "";
+      e.footprintMode = e.lounge ? "sit" : "walk";
+    };
     // True while sleep owns the entry this frame. False hands it back to the caller: to hide it (no bed to be had)
     // or to let the ordinary update walk it out of a cave, down from a roof or back to its bench first.
     const updateSleep = (e, dt, beforeX, beforeY, beforeZ) => {
@@ -6432,11 +6453,12 @@
         s.count = site.path(s.slot, s.path);
         // A newly dealt bed has a different path; the old return leg belongs only to its old bed.
         s.leg = s.stage === "return" && s.home === s.slot ? Math.min(s.count - 1, s.leg + 1) : sleepLegFrom(e);
-        s.stage = "go"; s.stall = 0; s.near = Infinity;
+        s.stage = "go"; s.stall = 0; s.near = Infinity; s.stuck = -1; s.tries = 0;
       }
       if (s.stage === "go") {
         const last = s.leg >= s.count - 1, gx = s.path[s.leg * 2], gz = s.path[s.leg * 2 + 1], d = Math.hypot(gx - p.x, gz - p.z);
         if (d < (last ? SLEEP_ARRIVE : SLEEP_REACH)) {
+          if (s.leg === s.stuck) { s.stuck = -1; s.tries = 0; }
           if (last) { s.stage = "settle"; e.speed = 0; }
           else { s.leg++; s.near = Infinity; }
         } else {
@@ -6449,8 +6471,8 @@
           if (e.jump.active) updateJump(e, dt);
           else if (e.recover > 0) { e.recover = Math.max(0, e.recover - dt); e.speed = 0; }
           else move(e, dt, SPEED);
-          // A way that cannot be walked is not a reason to stand in the forest all night: after a long stall the
-          // sleeper is simply found in its bed.
+          // A way that cannot be walked is not a reason to stand in the forest all night, nor to be put in a bed it
+          // never reached: after a long stall it walks back a point and tries again, then sleeps where it stands.
           if (d < s.near - 0.25) { s.near = d; s.stall = 0; }
           else if (s.stall > 3 && !last && !e.jump.active && !e.climb.active && e.recover <= 0 && e.retry <= 0 && p.y > e.goalY + 0.8) {
             // Held up on high ground with the way on below it: hop down, as a stroller leaving a roof does.
@@ -6459,14 +6481,7 @@
             for (let i = 0; i < STEERING.length; i++) if (tryJump(e, desired + STEERING[i] * e.turn)) { e.heading = desired + STEERING[i] * e.turn; break; }
             s.stall += dt;
           }
-          else if ((s.stall += dt) > SLEEP_STALL) {
-            // Placed, not walked: the pose is set outright, as a spawn's is, with no step to certify.
-            const bed = site.slots[s.slot];
-            p.x = bed.x; p.y = bed.y; p.z = bed.z; e.jump.active = false;
-            layDown(e);
-            e.gorilla.poseManaged(2, p.x, p.y, p.z, e.heading, 0, false, false, e.lounge, e.motion);
-            return true;
-          }
+          else if ((s.stall += dt) > SLEEP_STALL && !e.jump.active && !retryLeg(e, -1)) sleepRough(e);
         }
       }
       if (s.stage === "settle") {
@@ -6475,7 +6490,7 @@
         e.heading += clamp(turn, -dt * 3, dt * 3);
         if (Math.abs(turn) < 0.05) layDown(e);
       }
-      if (s.stage === "asleep") {
+      if (s.stage === "asleep" || s.stage === "rough") {
         e.speed = 0;
         if (e.controlled) e.lounge = s.pose;
         // Slow breath in the chest, and a mark of sleep from its mouth now and then.
@@ -6500,19 +6515,21 @@
         // Back along the path from the point nearest where it stands: its bed if it reached it.
         const at = sleepLegFrom(e);
         s.leg = Math.max(0, Math.hypot(s.path[at * 2] - p.x, s.path[at * 2 + 1] - p.z) < SLEEP_REACH ? at - 1 : at);
-        s.stage = "return"; s.stall = 0; s.near = Infinity;
+        s.stage = "return"; s.stall = 0; s.near = Infinity; s.stuck = -1; s.tries = 0;
       }
       const gx = s.path[s.leg * 2], gz = s.path[s.leg * 2 + 1], d = Math.hypot(gx - p.x, gz - p.z);
-      if (d < SLEEP_REACH || (s.stall += dt) > SLEEP_STALL) {
+      let over = false;
+      if (d < SLEEP_REACH) {
         s.stall = 0;
+        if (s.leg === s.stuck) { s.stuck = -1; s.tries = 0; }
         // Home is the first point of the path, down the approach stair in the meadow: a gorilla is not left
         // standing at the bridge's head, where the walkers come and go.
-        if (s.leg <= 0) {
-          releaseBed(e);
-          e.exitFootprint = false; e.mode = ""; e.phase = "chill"; e.route = ""; e.rest = 0;
-          return false;
-        }
-        s.leg--; s.near = Infinity;
+        if (s.leg <= 0) over = true;
+        else { s.leg--; s.near = Infinity; }
+      } else if ((s.stall += dt) > SLEEP_STALL && !e.jump.active) {
+        // A leg it cannot walk is walked again from the point it came from. Failing that it stops where it is and the
+        // ordinary chill takes over there, rather than skipping on to a point of the way it never reached.
+        over = !retryLeg(e, 1);
       } else {
         if (d < s.near - 0.25) { s.near = d; s.stall = 0; }
         setGoal(e, gx, p.y, gz);
@@ -6520,6 +6537,11 @@
         if (e.jump.active) updateJump(e, dt);
         else if (e.recover > 0) { e.recover = Math.max(0, e.recover - dt); e.speed = 0; }
         else move(e, dt, SPEED);
+      }
+      if (over) {
+        releaseBed(e);
+        e.exitFootprint = false; e.mode = ""; e.phase = "chill"; e.route = ""; e.rest = 0;
+        return false;
       }
       poseEntry(e, dt, beforeX, beforeY, beforeZ);
       return true;
