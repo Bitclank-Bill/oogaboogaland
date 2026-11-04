@@ -25776,8 +25776,8 @@ const genesisAtriumProof = async () => {
   }
   // The scale model of Ooga Booga Land stands on open floor by the arrival, off the paths and out of the view.
   const SMl = BLc.genesisScaleModel.layout(), sb = SMl.box;
-  // Regression: the small islands' tops were left uncoloured and the renderer threw on them. Every voxel has a colour.
-  { const vox = BLc.genesisScaleModel.islandVox(); for (const c of vox.map.values()) if (!(c >= 0 && c < BLc.genesisScaleModel.PALETTE.length)) { wb.push("a voxel of the scale model has no colour"); break; } }
+  // The site model's zones each have their name, their label and their window's words, and lie on its table.
+  for (const z of BLc.genesisScaleModel.ZONES) if (!z.name || !z.label || !z.text.length || Math.hypot(z.x, z.z) + z.r > 31) wb.push(`the scale model's zone ${z.id} is incomplete or off its table`);
   if ([...others, ...GL.boxes, ...CF.boxes].some((o) => sb.x0 < o.x1 && sb.x1 > o.x0 && sb.z0 < o.z1 && sb.z1 > o.z0)) wb.push("the scale model stands in something");
   if (Y.paths.some((q) => [[sb.x0, sb.z0], [sb.x1, sb.z0], [sb.x0, sb.z1], [sb.x1, sb.z1]].some(([x, z]) => C.segDist(x, z, q) < q.w / 2)) || C.inView(SMl.at.x, SMl.at.z, 1.5)) wb.push("the scale model stands on a path or in the view");
   // Glow Golf (genesis-golf-course.js): its cavern lies clear of the museum, every hole's tee and cup stand on its green,

@@ -182,14 +182,17 @@
     // The signs: a post, an arrow on top pointing at the gallery, and the carved boards back to back (one merged mesh).
     const timber = [];
     const board = (text, scale, y, flip) => {
+      // Each board's back sits clear of the post and of the board on its other side, so neither's carved letters show
+      // through the other.
       const g = hub.caveSign(text), copy = { verts: g.verts.slice(), faces: g.faces, lines: g.lines || [] };
-      for (let i = 0; i < copy.verts.length; i += 3) { copy.verts[i] *= scale; copy.verts[i + 1] = copy.verts[i + 1] * scale + y; copy.verts[i + 2] = copy.verts[i + 2] * scale + 0.06; }
+      let z0 = Infinity; for (let i = 2; i < g.verts.length; i += 3) z0 = Math.min(z0, g.verts[i]);
+      for (let i = 0; i < copy.verts.length; i += 3) { copy.verts[i] *= scale; copy.verts[i + 1] = copy.verts[i + 1] * scale + y; copy.verts[i + 2] = (copy.verts[i + 2] - z0) * scale + 0.11; }
       return flip ? M.turnedY(copy, Math.PI) : copy;
     };
     for (const s of Lo.signs) {
       const parts = [M.bevelBox({ w: 0.18, h: 2.9, d: 0.18, color: WOOD_DK, offset: { y: 1.45 } })];
       s.lines.forEach((text, i) => {
-        const g = hub.caveSign(text), scale = Math.min(i < 2 ? 0.34 : 0.28, 2.4 / g.signWidth), y = 2.45 - i * 0.48;
+        const g = hub.caveSign(text), scale = Math.min(i < 2 ? 0.34 : 0.28, 1.7 / g.signWidth), y = 2.45 - i * 0.48;
         // The boards stand along the gallery's path (their faces to the loop either way), so the arrow points along them.
         parts.push(M.turnedY(board(text, scale, y, false), Math.PI / 2), M.turnedY(board(text, scale, y, true), Math.PI / 2));
       });

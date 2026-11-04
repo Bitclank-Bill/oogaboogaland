@@ -677,10 +677,10 @@
     for (const n of [visorNode, bagNode]) if (n && n.parent) removeChild(n.parent, n);
     torsoBase = visorNode = bagNode = null;
   };
-  // tsniper.app's window: Bitclank Bill's app for booking tee times at real golf courses, and the link out to it.
-  const tsniperBoard = () => ({ room: "tsniper.app - Glow Golf", sources: [], pages: [{ caption: "Real golf", title: "tsniper.app", accent: "#39ff7a",
-    text: ["Done putting in the cave? Play a real round.", "tsniper.app is the app Bitclank Bill built for booking tee times at real golf courses.", "The link opens it in a new tab."],
-    links: [{ href: "https://tsniper.app", label: "Open tsniper.app ↗" }],
+  // teesniper.app's window: Bitclank Bill's app for booking tee times at real golf courses, and the link out to it.
+  const teesniperBoard = () => ({ room: "teesniper.app - Glow Golf", sources: [], pages: [{ caption: "Real golf", title: "teesniper.app", accent: "#39ff7a",
+    text: ["Done putting in the cave? Play a real round.", "teesniper.app is the app Bitclank Bill built for booking tee times at real golf courses.", "The link opens it in a new tab."],
+    links: [{ href: "https://teesniper.app", label: "Open teesniper.app ↗" }],
     paint: (g, x0, y0, w, h) => {
       const cx = x0 + w / 2, cy = y0 + h * 0.42, r = Math.min(w, h) * 0.3;
       g.fillStyle = "#10261a"; g.fillRect(x0 + 24, y0 + 40, w - 48, h * 0.75);
@@ -688,8 +688,15 @@
       g.beginPath(); g.moveTo(cx - r * 1.2, cy); g.lineTo(cx + r * 1.2, cy); g.moveTo(cx, cy - r * 1.2); g.lineTo(cx, cy + r * 1.2); g.stroke();
       g.fillStyle = "#e8e0d0"; g.fillRect(cx + r * 0.15, cy - r * 0.9, 5, r * 0.9); g.fillStyle = "#ff4fd8"; g.beginPath(); g.moveTo(cx + r * 0.15 + 5, cy - r * 0.9); g.lineTo(cx + r * 0.65, cy - r * 0.72); g.lineTo(cx + r * 0.15 + 5, cy - r * 0.54); g.fill();
       g.fillStyle = "#f4fff8"; g.beginPath(); g.arc(cx, cy, 10, 0, 7); g.fill();
-      g.fillStyle = "#39ff7a"; g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.textBaseline = "top"; g.fillText("tsniper.app", cx, y0 + h * 0.8); g.textAlign = "left";
+      g.fillStyle = "#39ff7a"; g.font = "bold 44px sans-serif"; g.textAlign = "center"; g.textBaseline = "top"; g.fillText("teesniper.app", cx, y0 + h * 0.8); g.textAlign = "left";
     } }] });
+  // An order at the stand: the cook makes one and hands it over (genesis-golf.js), and the belly grows once it is eaten.
+  const orderMarquesita = () => {
+    const S = shopState();
+    if ((S.belly[playerName] || 0) >= SHOP_MAX) { hud.toast("The cook laughs: \"That belly's full, golfer. Go walk off a few holes!\""); return; }
+    if (!golf || !golf.order()) { hud.toast("The cook's making one already. Patience!"); return; }
+    hud.toast("\"One marquesita, coming right up!\"");
+  };
   const eatMarquesita = () => {
     const S = shopState(), n = S.belly[playerName] || 0;
     if (n >= SHOP_MAX) { hud.toast("The cook laughs: \"That belly's full, golfer. Go walk off a few holes!\""); return; }
@@ -1261,8 +1268,8 @@
       for (const b of SH.boxes) built.obstacles.push(b);
       props.register({ id: "marquesitas", era: 7, year: 2026, title: "The marquesita stand", label: "MARQUESITAS · GLOW GOLF, 2026", sourceKeys: [], hint: "eat a marquesita (crispy rolled crepe)", at: { x: SH.stand.at.x, y: ISLAND_TOP, z: SH.stand.at.z }, reach: 2, onUse: () => ({}) });
       props.register({ id: "golf-gear", era: 7, year: 2026, title: "The golf gear rack", label: "GOLF GEAR · GLOW GOLF, 2026", sourceKeys: [], hint: "try on a golf visor and bag", at: { x: SH.rack.at.x, y: ISLAND_TOP, z: SH.rack.at.z }, reach: 1.8, onUse: () => ({}) });
-      props.register({ id: "tsniper", era: 7, year: 2026, title: "tsniper.app", label: "TSNIPER.APP · GLOW GOLF, 2026", sourceKeys: [], hint: "tsniper.app: book a tee time at a real golf course", at: { x: SH.kiosk.at.x, y: ISLAND_TOP, z: SH.kiosk.at.z }, reach: 1.8, onUse: () => ({}) });
-      built.propNodes.marquesitas = SH.stand.node; built.propNodes["golf-gear"] = SH.rack.node; built.propNodes.tsniper = SH.kiosk.node; }
+      props.register({ id: "teesniper", era: 7, year: 2026, title: "teesniper.app", label: "TEESNIPER.APP · GLOW GOLF, 2026", sourceKeys: [], hint: "teesniper.app: book a tee time at a real golf course", at: { x: SH.kiosk.at.x, y: ISLAND_TOP, z: SH.kiosk.at.z }, reach: 1.8, onUse: () => ({}) });
+      built.propNodes.marquesitas = SH.stand.node; built.propNodes["golf-gear"] = SH.rack.node; built.propNodes.teesniper = SH.kiosk.node; }
     for (const h of built.golf.holes) {
       const c = h.c, i = c.i;
       props.register({ id: `golf-tee-${i}`, era: 7, year: 2026, title: `Glow Golf, hole ${i + 1}: ${c.hole.name}`, label: `GLOW GOLF HOLE ${i + 1} · PAR ${c.hole.par} · 2026`, sourceKeys: [], hint: `play hole ${i + 1}, ${c.hole.name} (par ${c.hole.par})`,
@@ -1279,6 +1286,7 @@
     built.obstacles.push(SL.box);
     props.register({ id: "scale-model", era: 7, year: 2026, title: "A scale model of Ooga Booga Land", label: "OOGA BOOGA LAND · A SCALE MODEL, 2026", sourceKeys: [], hint: "look round the scale model of Ooga Booga Land",
       at: { x: SL.use.x, y: ISLAND_TOP, z: SL.use.z }, reach: 2.6, onUse: () => ({ board: { room: "Ooga Booga Land", pages: SM.pages(), sources: [] } }) });
+    // Each zone on the model is clickable: its window opens on that zone's page.
     // The cavern round it all (genesis-cavern.js): rough roof, stalactites, rock pillars, crystals, the cenote,
     // the carved frieze and sun discs, and eagles under the roof.
     built.cavern = BL.genesisCavern.build({ M, createNode, addChild, place, top: ISLAND_TOP, atrium: MU.atrium, roof: ROOF, pillars: MU.PILLARS, walls: WALLS });
@@ -1560,6 +1568,7 @@
   // A Bitcoin Guide station or part: an essay reads on the portal, anything else opens its board in the panel.
   const openGuideItem = (it) => {
     audio.wake();
+    if (it.act) { it.act(); return; }
     if (it.essay !== undefined) { openEssay(it.essay); return; }
     const b = it.board();
     openPanel(Object.assign(makeBoard({ room: b.room, pages: b.pages, sources: b.sources || [], links: b.links }), { start: b.start || 0 }));
@@ -1572,9 +1581,9 @@
     if (prop.id.startsWith("bg-seat-") && people) { const seat = built.seats[+prop.id.slice(8)]; if (seat.sitter) people.standPlayer(); else if (!people.sitPlayer(seat)) hud.toast("Someone is sitting there"); return; }
     if (prop.id === "golf-up") { flipTo("hall"); return; }
     if (prop.id.startsWith("golf-tee-") && golf) { golf.start(+prop.id.slice(9)); return; }
-    if (prop.id === "marquesitas") { eatMarquesita(); return; }
+    if (prop.id === "marquesitas") { orderMarquesita(); return; }
     if (prop.id === "golf-gear") { tryGear(); return; }
-    if (prop.id === "tsniper") { openGuideItem({ board: tsniperBoard }); return; }
+    if (prop.id === "teesniper") { openGuideItem({ board: teesniperBoard }); return; }
     const st = built.guideStations && built.guideStations[prop.id];
     if (st) { if (st.act) st.act(); else openGuideItem(st); return; }
     if (prop.opens) { host.open(prop.opens, "walk"); return; }
@@ -2009,7 +2018,7 @@
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   // --- Visit ----------------------------------------------------------------------------------------------------
-  const tooltipFor = (hit) => !hit || bench.open ? "" : hit.owner.kind === "legend" ? "The Genesis timeline · tap for the museum's menu" : hit.owner.kind === "exhibit" ? "Fingerprints and Time (1991) · tap to read" : hit.owner.kind === "prop" ? `${hit.owner.prop.title} (${hit.owner.prop.year}) · tap to open its workbench` : hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : hit.owner.kind === "wall" ? "The era's press, posters and art · tap to see them up close" : hit.owner.kind === "bguide" ? (hit.owner.item.essay !== undefined ? "An essay from bitcoinguide.app · tap to read it" : "From bitcoinguide.app · tap to open") : "";
+  const tooltipFor = (hit) => !hit || bench.open ? "" : hit.owner.kind === "legend" ? "The Genesis timeline · tap for the museum's menu" : hit.owner.kind === "exhibit" ? "Fingerprints and Time (1991) · tap to read" : hit.owner.kind === "prop" ? `${hit.owner.prop.title} (${hit.owner.prop.year}) · tap to open its workbench` : hit.owner.kind === "guide" ? "Tock, the archivist Ooga (an invented guide)" : hit.owner.kind === "wall" ? "The era's press, posters and art · tap to see them up close" : hit.owner.kind === "bguide" ? hit.owner.item.tip || (hit.owner.item.essay !== undefined ? "An essay from bitcoinguide.app · tap to read it" : "From bitcoinguide.app · tap to open") : "";
   const enter = (ctx) => {
     ({ game, world, go } = ctx);
     overlayCanvas = ctx.overlay;
@@ -2053,6 +2062,7 @@
     target(built.guide.parts.head, { kind: "guide" });
     target(built.legend, { kind: "legend", priority: 1 });
     for (const t of built.guideHall.targets) target(t.node, { kind: "bguide", item: t, priority: 1 });
+    for (const z of built.scaleModel.zones) target(z.node, { kind: "bguide", item: { tip: `${z.zone.name} · click to read about it`, board: () => ({ room: "Ooga Booga Land", pages: BL.genesisScaleModel.pages(), start: z.page }) }, priority: 2 });
     for (const a of built.atriumProps) target(a.node, { kind: "prop", prop: a.prop, priority: 1 });
     for (const id of ["pc", "drives", "book"]) target(built[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
@@ -2116,7 +2126,10 @@
       hold: (on) => { pilot.setActive(!on); if (on) { hud.tooltip.hide(); hud.hideHint(); } },
       say: (text) => hud.toast(text),
       listener: () => avatar ? avatar.root.position : camera.target,
-      drips: () => built.cavern ? built.cavern.drips : 0
+      drips: () => built.cavern ? built.cavern.drips : 0,
+      avatar: () => avatar,
+      eat: () => eatMarquesita(),
+      M, node: createNode, add: addChild
     });
     lightIn = true; updateGolfLight();
     built.lumber = BL.genesisLumber.build({ M, createNode, addChild, place, top: ISLAND_TOP, footing, fx, flare: built.campfire.flare });

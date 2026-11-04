@@ -196,9 +196,9 @@
       const w = SHOW.w, h = SHOW.d;
       const face = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.9 }], lines: [], castShadow: false };
       face.imageSurface = { canvas, version: 1, rect: [-w / 2, -h / 2, w, h] };
-      // A screen on a post, tipped back a little toward the statue, facing out of the ring (the frame's +z after its
-      // turn) at a visitor walking up, its lower edge at waist height so it reads at a glance and hides nothing.
-      const frame = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.ry, z: 0 }, sightHidden: true });
+      // A screen on a post, tipped back a little toward the statue, facing out of the ring (the frame turned half
+      // round from the display's own facing, so its +z points outward) at a visitor walking round the statue, its lower edge at waist height so it reads at a glance and hides nothing.
+      const frame = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.ry + Math.PI, z: 0 }, sightHidden: true });
       const stand = createNode({ geometry: M.merge(
         M.bevelBox({ w: 1.0, h: 0.12, d: 0.7, color: "#15181d", bevel: 0.04, offset: { x: 0, y: 0.06, z: -0.2 } }),
         M.box({ w: 0.18, h: 1.3, d: 0.18, color: "#22262c", offset: { x: 0, y: 0.75, z: -0.32 } }),

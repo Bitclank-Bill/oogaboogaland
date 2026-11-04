@@ -300,7 +300,7 @@
     cart.push(M.box({ w: 2.45, h: 0.05, d: 0.05, color: "#ff4fd8", emissive: 1.1, offset: { x: 0, y: 2.66, z: 0.68 } }));
     for (let k = 0; k < 8; k++) cart.push(M.box({ w: 0.26, h: 0.14, d: 0.03, color: k % 2 ? "#ff4fd8" : "#ffd23a", emissive: 0.3, offset: { x: -1.05 + 0.3 * k, y: 2.57, z: 0.69 } }));
     // The press, its two iron plates and handle; a marquesita on it, curling.
-    cart.push(M.box({ w: 0.6, h: 0.08, d: 0.5, color: "#2a2a2e", emissive: 0.05, offset: { x: -0.55, y: 1.32, z: 0 } }), M.moved(M.turnedX(M.box({ w: 0.6, h: 0.06, d: 0.5, color: "#34343a", emissive: 0.05 }), -0.7), -0.55, 1.55, -0.18),
+    cart.push(M.box({ w: 0.6, h: 0.08, d: 0.5, color: "#2a2a2e", emissive: 0.05, offset: { x: -0.55, y: 1.32, z: 0 } }),
       M.box({ w: 0.5, h: 0.03, d: 0.4, color: "#e8b060", emissive: 0.15, offset: { x: -0.55, y: 1.37, z: 0.02 } }), M.box({ w: 0.05, h: 0.05, d: 0.5, color: "#ff7a1a", emissive: 1.2, offset: { x: -0.55, y: 1.29, z: 0.26 } }));
     // The fillings: jars, bananas, strawberries, the cheese, and rolled marquesitas in a cup.
     for (const [ink, x] of [["#4a2a18", -0.05], ["#c87830", 0.18], ["#d8c8a0", 0.41]]) cart.push(M.moved(M.lathe({ profile: [[0, 0], [0.08, 0], [0.08, 0.16], [0.06, 0.18], [0, 0.18]], segments: 10, color: ink, emissive: 0.08 }), x, 1.28, -0.2), M.moved(M.box({ w: 0.15, h: 0.03, d: 0.15, color: "#e8e0d0", emissive: 0.1 }), x, 1.47, -0.2));
@@ -313,6 +313,26 @@
     cart.push(M.box({ w: 2.0, h: 0.5, d: 0.08, color: "#2a1a10", emissive: 0.05, offset: { x: 0, y: 3.2, z: 0.3 } }), M.box({ w: 2.06, h: 0.04, d: 0.04, color: "#ffd23a", emissive: 1.1, offset: { x: 0, y: 3.47, z: 0.35 } }), M.box({ w: 2.06, h: 0.04, d: 0.04, color: "#ffd23a", emissive: 1.1, offset: { x: 0, y: 2.93, z: 0.35 } }));
     const standNode = createNode({ geometry: M.merge(...cart), position: { x: SHOP.stand.x, y: 0, z: SHOP.stand.z }, sightHidden: true });
     addChild(root, standNode);
+    // The press's lid on a hinge along its back edge, a handle at its front; the cook opens and closes it.
+    const lid = createNode({ geometry: M.merge(M.box({ w: 0.6, h: 0.06, d: 0.5, color: "#34343a", emissive: 0.05, offset: { x: 0, y: 0.03, z: 0.25 } }), M.box({ w: 0.08, h: 0.06, d: 0.3, color: "#5e3c22", offset: { x: 0, y: 0.06, z: 0.62 } })),
+      position: { x: SHOP.stand.x - 0.55, y: 1.36, z: SHOP.stand.z - 0.25 }, rotation: { x: -1.1, y: 0, z: 0 }, sightHidden: true });
+    addChild(root, lid);
+    // The cook: an Ooga of the house (a name no login has) behind the cart in a chef's hat, facing the customers.
+    let cook = null;
+    if (BL.contributors && BL.models.caveman) {
+      const fig = BL.models.caveman(BL.contributors.traitsFor("marquesita-cook/glow-golf")), P = fig.parts;
+      P.club.visible = false; if (P.gun) P.gun.visible = false;
+      const hat = createNode({ geometry: M.merge(M.lathe({ profile: [[0, 0], [0.17, 0], [0.17, 0.05], [0.15, 0.06], [0.15, 0.2], [0.2, 0.26], [0.18, 0.33], [0, 0.35]], segments: 12, color: "#f4f2ec", emissive: 0.2 }), M.lathe({ profile: [[0.172, 0], [0.18, 0], [0.18, 0.05], [0.172, 0.05]], segments: 12, color: "#ff4fd8", emissive: 0.8 })) });
+      P.hat.visible = true; addChild(P.hat, hat);
+      fig.root.position.x = SHOP.stand.x - 0.35; fig.root.position.z = SHOP.stand.z - 0.85; fig.root.position.y = fig.traits.height * 5 / 16;
+      addChild(root, fig.root);
+      cook = { fig, P, x: fig.root.position.x, z: fig.root.position.z, h: fig.traits.height };
+    }
+    // The marquesita being handed over: a golden roll with chocolate along it, and steam off the press.
+    const treat = createNode({ geometry: M.merge(M.turnedZ(M.lathe({ profile: [[0, -0.14], [0.045, -0.14], [0.05, 0.14], [0, 0.14]], segments: 10, color: "#e8b060", emissive: 0.2 }), Math.PI / 2), M.box({ w: 0.26, h: 0.015, d: 0.03, color: "#4a2a18", emissive: 0.1, offset: { x: 0, y: 0.045, z: 0 } })), visible: false, sightHidden: true });
+    addChild(root, treat);
+    const steamGeo = M.bevelBox({ w: 0.14, h: 0.14, d: 0.14, color: "#e8eef2", emissive: 0.3, bevel: 0.05 }), steam = [];
+    for (let k = 0; k < 5; k++) { const n = createNode({ geometry: steamGeo, position: { x: SHOP.stand.x - 0.55, y: 1.5, z: SHOP.stand.z }, sightHidden: true }); addChild(root, n); steam.push({ n, ph: k / 5 }); }
     { const w = label("MARQUESITAS", "crispy rolled crepes · click to eat one", { height: 0.42, style: "gold" }), sn = createNode({ position: { x: SHOP.stand.x, y: 3.2, z: SHOP.stand.z + 0.36 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
     { const w = label("CHOCOLATE · BANANA · STRAWBERRY", "cajeta · cheese · the works", { height: 0.3, style: "plain" }), sn = createNode({ position: { x: SHOP.stand.x, y: 0.85, z: SHOP.stand.z + 0.47 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
     // The gear rack: a timber frame with visors hanging in the course's neon colours, two bags of putters on stands.
@@ -328,7 +348,7 @@
     const rackNode = createNode({ geometry: M.merge(...rack), position: { x: SHOP.rack.x, y: 0, z: SHOP.rack.z }, sightHidden: true });
     addChild(root, rackNode);
     { const w = label("GOLF GEAR", "click to try on a visor and bag", { height: 0.36, style: "gold" }), sn = createNode({ position: { x: SHOP.rack.x, y: 2.3, z: SHOP.rack.z + 0.06 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
-    // The tsniper.app kiosk in the corner: a stone post with a screen in a green neon frame, a little flag on top, and
+    // The teesniper.app kiosk in the corner: a stone post with a screen in a green neon frame, a little flag on top, and
     // its sign; a click opens its window with the link out to the app (Bitclank Bill's, for booking real tee times).
     const kiosk = [
       M.bevelBox({ w: 0.7, h: 1.1, d: 0.5, color: STONE[1], emissive: 0.04, bevel: 0.12, offset: { x: 0, y: 0.55, z: 0 } }),
@@ -340,8 +360,9 @@
     ];
     const kioskNode = createNode({ geometry: M.merge(...kiosk), position: { x: SHOP.kiosk.x, y: 0, z: SHOP.kiosk.z }, sightHidden: true });
     addChild(root, kioskNode);
-    { const w = label("TSNIPER.APP", "book a real tee time · click", { height: 0.3, style: "gold" }), sn = createNode({ position: { x: SHOP.kiosk.x - 0.1, y: 2.75, z: SHOP.kiosk.z - 0.05 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
+    { const w = label("TEESNIPER.APP", "book a real tee time · click", { height: 0.3, style: "gold" }), sn = createNode({ position: { x: SHOP.kiosk.x - 0.1, y: 2.75, z: SHOP.kiosk.z - 0.05 }, sightHidden: true }); addChild(sn, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true })); addChild(root, sn); }
     const shop = {
+      lid, cook, treat, steam, press: { x: SHOP.stand.x - 0.55, y: 1.4, z: SHOP.stand.z },
       kiosk: { node: kioskNode, x: C.x + SHOP.kiosk.x, z: C.z + SHOP.kiosk.z, at: { x: C.x + SHOP.kiosk.x + 0.3, z: C.z + SHOP.kiosk.z + 1.2 } },
       stand: { node: standNode, x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z, at: { x: C.x + SHOP.stand.x, z: C.z + SHOP.stand.z + 1.5 } },
       rack: { node: rackNode, x: C.x + SHOP.rack.x, z: C.z + SHOP.rack.z, at: { x: C.x + SHOP.rack.x, z: C.z + SHOP.rack.z + 1.2 } },
@@ -353,13 +374,13 @@
   // The game, driven by the scene: `start(i)` at a tee, keys, update and the overlay.
   const controller = (B, host) => {
     const GC = G(), C = GC.CAVERN, ball = GC.createBall(), scores = new Int8Array(9);
-    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, t: 0, meter: 0, wait: 0, played: 0, via: 0, sink: -1, splashes: 0, bumps: 0, bumpAt: 0, cheer: 0, cheerText: "", dripAt: 0 };
+    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, t: 0, meter: 0, wait: 0, played: 0, via: 0, sink: -1, splashes: 0, bumps: 0, bumpAt: 0, cheer: 0, cheerText: "", dripAt: 0, club: 0, follow: 0, order: -1, bites: 0 };
     const local = { x: 0, z: 0 };
     const world = (x, z, out) => { out.x = C.x + x; out.z = C.z + z; return out; };
     const at = { x: 0, z: 0 }, cam = { x: 0, z: 0 };
     const standBeside = () => {
       const s = Math.sin(st.aim), c = Math.cos(st.aim);
-      world(ball.x - c * 0.95 + s * 0.15, ball.z + s * 0.95 + c * 0.15, at);
+      world(ball.x - s * 0.42 + c * 0.1, ball.z - c * 0.42 - s * 0.1, at);
       host.standAt(at.x, at.z, st.aim);
     };
     // Ready for the next stroke, aimed at the cup (or the hole's next turn, while it has one ahead).
@@ -367,6 +388,87 @@
       while (st.via < c.via.length && Math.hypot(ball.x - c.via[st.via].x, ball.z - c.via[st.via].z) < 1.8) st.via++;
       const tgt = st.via < c.via.length ? c.via[st.via] : c.cup;
       st.aim = Math.atan2(tgt.x - ball.x, tgt.z - ball.z);
+    };
+    // The marquesita cook (genesis-golf.js `shop`): between orders he works the press on a slow loop; an order (`order`)
+    // has him close the lid on fresh batter (a clank, the sizzle up), open it, roll the marquesita and hand it across
+    // the counter into the visitor's Ooga's hand, which eats it in three crunching bites; then the host's `eat` grows
+    // its belly. Times in seconds from the order.
+    const ORDER = { close: 0.5, open: 2.3, roll: 2.9, hand: 3.7, bites: [4.1, 4.6, 5.1], done: 5.5 };
+    const HAND = { x: 0, y: 0, z: 0 }, FROM = { x: 0, y: 0, z: 0 };
+    const order = () => { if (st.order >= 0 || !B.shop.cook) return false; st.order = 0; st.bites = 0; sfx.wake(); return true; };
+    const handOf = (a, out) => { const r = a.root, ry = r.rotation.y; out.x = r.position.x + Math.sin(ry) * 0.32 - C.x; out.z = r.position.z + Math.cos(ry) * 0.32 - C.z; out.y = r.position.y - host.top + 0.15; return out; };
+    const updateCook = (dt) => {
+      const S = B.shop, K = S.cook;
+      if (!K) return;
+      const P = K.P;
+      let lidA, armR = -0.5, armL = -0.45, turn = 0, near = 0;
+      const L = host.listener ? host.listener() : null;
+      if (L) near = Math.max(0, 1 - Math.hypot(L.x - C.x - K.x, L.z - C.z - K.z) / 9);
+      if (st.order < 0) {
+        // The idle loop: lid down for a while (pressing, sizzling), up to check, down again.
+        const k = (st.t % 5) / 5;
+        lidA = k < 0.7 ? 0 : -1.1 * Math.sin((k - 0.7) / 0.3 * Math.PI);
+        armR = k < 0.7 ? -0.75 + Math.sin(st.t * 3) * 0.06 : -1.0; armL = -0.4 + Math.sin(st.t * 1.3) * 0.08;
+        if (Math.floor(st.t / 5) !== Math.floor((st.t - dt) / 5)) sfx.clank(near * 0.6);
+        sfx.sizzle(near * (k < 0.7 ? 0.08 : 0.03));
+        S.treat.visible = false;
+      } else {
+        const t = (st.order += dt), a = host.avatar ? host.avatar() : null;
+        lidA = t < ORDER.close ? -1.1 * (1 - t / ORDER.close) : t < ORDER.open ? 0 : t < ORDER.roll ? -1.1 * Math.min(1, (t - ORDER.open) / 0.3) : -1.1;
+        if (t - dt < ORDER.close && t >= ORDER.close) sfx.clank(Math.max(0.4, near));
+        sfx.sizzle(t > ORDER.close && t < ORDER.open ? 0.22 * Math.max(0.4, near) : near * 0.03);
+        armR = t < ORDER.open ? -0.8 + Math.sin(t * 4) * 0.08 : t < ORDER.roll ? -0.9 + Math.sin(t * 14) * 0.15 : t < ORDER.hand ? -1.45 : -0.9;
+        armL = t < ORDER.roll ? -0.6 : -0.45;
+        turn = t > ORDER.roll && t < ORDER.hand ? 0.25 : 0;
+        // The treat: rolled on the press, then carried over the counter to the Ooga's hand, held, and eaten.
+        if (t >= ORDER.roll - 0.3 && a) {
+          S.treat.visible = true;
+          FROM.x = S.press.x; FROM.y = S.press.y + 0.05; FROM.z = S.press.z;
+          handOf(a, HAND);
+          const k = Math.max(0, Math.min(1, (t - ORDER.roll) / (ORDER.hand - ORDER.roll)));
+          S.treat.position.x = FROM.x + (HAND.x - FROM.x) * k; S.treat.position.z = FROM.z + (HAND.z - FROM.z) * k; S.treat.position.y = FROM.y + (HAND.y - FROM.y) * k + Math.sin(k * Math.PI) * 0.35;
+          S.treat.rotation.y = a.root.rotation.y + Math.PI / 2;
+          if (t - dt < ORDER.hand && t >= ORDER.hand) sfx.ding();
+          if (st.bites < 3 && t >= ORDER.bites[st.bites]) { st.bites++; sfx.crunch(); }
+          const sc = 1 - st.bites / 3.2; S.treat.scale.x = S.treat.scale.y = S.treat.scale.z = Math.max(0.1, sc);
+          // The Ooga brings it up to its mouth while it eats.
+          if (t >= ORDER.hand) { a.parts.armR.rotation.x = -1.9 + Math.sin(t * 9) * 0.1; S.treat.position.y = HAND.y + 0.35; }
+        }
+        if (t >= ORDER.done) { st.order = -1; S.treat.visible = false; S.treat.scale.x = S.treat.scale.y = S.treat.scale.z = 1; if (host.eat) host.eat(); }
+      }
+      S.lid.rotation.x = lidA;
+      P.armR.rotation.x = armR; P.armL.rotation.x = armL; K.fig.root.rotation.y = turn;
+      // Steam off the press, rising and fading in a loop, thicker while it cooks.
+      const cooking = st.order > ORDER.close && st.order < ORDER.open;
+      for (const q of S.steam) { const k = (st.t * (cooking ? 0.9 : 0.5) + q.ph) % 1; q.n.position.y = S.press.y + 0.1 + k * 0.9; q.n.position.x = S.press.x + Math.sin(st.t + q.ph * 6) * 0.08; const sc = (cooking ? 1.2 : 0.6) * (0.5 + k); q.n.scale.x = q.n.scale.y = q.n.scale.z = sc * (1 - k); q.n.visible = k < 0.95; }
+    };
+    // The putter: in the Ooga's right hand while it plays a hole, both hands on it; it swings back with the meter and
+    // through on the strike, then settles. Its shaft reaches the floor from the hand at the address.
+    let putter = null, putterFor = null;
+    const ADDRESS = -0.32;
+    const putterOn = (a) => {
+      if (putterFor !== a) {
+        if (putter && putter.parent) { const pa = putter.parent; pa.children.splice(pa.children.indexOf(putter), 1); putter.parent = null; }
+        const h = a.parts.hat.scale.x, u = h / 16, Lsh = (0.7725 * h) / Math.cos(ADDRESS) - 10 * u;
+        putter = host.node({ geometry: host.M.merge(host.M.box({ w: 0.025, h: Lsh, d: 0.025, color: "#cfd4da", emissive: 0.2, offset: { x: 0, y: -Lsh / 2, z: 0 } }), host.M.box({ w: 0.04, h: 0.12, d: 0.04, color: "#1a1a1a", offset: { x: 0, y: -0.04, z: 0 } }),
+          host.M.box({ w: 0.12, h: 0.04, d: 0.045, color: "#9aa0a8", emissive: 0.2, offset: { x: -0.04, y: -Lsh, z: 0.01 } }), host.M.box({ w: 0.1, h: 0.008, d: 0.01, color: "#39ff7a", emissive: 1, offset: { x: -0.04, y: -Lsh + 0.022, z: 0.035 } })),
+          position: { x: 0, y: -10 * u, z: 0.03 } });
+        host.add(a.parts.armR, putter); putterFor = a;
+      }
+      putter.visible = true;
+    };
+    const putterOff = () => { if (putter) putter.visible = false; };
+    const updateSwing = (dt) => {
+      const a = host.avatar ? host.avatar() : null;
+      if (!a) return;
+      if (st.mode === "walk") { putterOff(); st.club = 0; return; }
+      putterOn(a);
+      let target = 0;
+      if (st.mode === "aim" && st.charging) target = st.power * 0.8;
+      if (st.follow > 0) { st.follow -= dt; target = -0.55; }
+      st.club += (target - st.club) * Math.min(1, dt * (st.follow > 0 ? 30 : 10));
+      a.parts.armR.rotation.x = ADDRESS + st.club; a.parts.armL.rotation.x = ADDRESS + st.club;
+      a.parts.armR.rotation.z = -0.12; a.parts.armL.rotation.z = 0.3;
     };
     // Confetti from the cup: bits of the fixed pool thrown up and out, falling back under gravity.
     const celebrate = (x, z, n) => {
@@ -383,8 +485,8 @@
       B.ballNode.visible = true; B.ballNode.scale.x = B.ballNode.scale.y = B.ballNode.scale.z = 1; host.hold(true); toAim();
       host.say(`Hole ${i + 1}: ${c.hole.name}. Par ${c.hole.par}.`);
     };
-    const stop = () => { st.cheer = 0; if (st.mode === "walk") return; st.mode = "walk"; for (const d of B.dots) d.visible = false; host.hold(false); };
-    const dispose = () => { stop(); sfx.close(); };
+    const stop = () => { st.cheer = 0; putterOff(); if (st.mode === "walk") return; st.mode = "walk"; for (const d of B.dots) d.visible = false; host.hold(false); };
+    const dispose = () => { stop(); if (putter && putter.parent) { const pa = putter.parent; pa.children.splice(pa.children.indexOf(putter), 1); putter.parent = null; } putter = putterFor = null; sfx.close(); };
     const wake = () => sfx.wake();
     // The cave's sounds, all synthesized here: one context (made from a gesture, `wake`), on the page-wide mute, and a
     // cave's echo (a convolver on a decaying noise burst) under everything. The ball's tock, the cup's rattle, a wall's
@@ -392,7 +494,7 @@
     // Ooga is near it; and in the golf cavern a jungle groove (log drum, shaker and a marimba tune, written for this
     // file, in A minor pentatonic) on a small lookahead sequencer. `close` stops it all.
     const sfx = (() => {
-      let ctx = null, out = null, dry = null, wet = null, music = null, timer = 0, next = 0, step = 0, noise = null;
+      let ctx = null, out = null, dry = null, wet = null, music = null, timer = 0, next = 0, step = 0, noise = null, sizzleGain = null;
       const ready = () => {
         if (!ctx) {
           const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
@@ -410,8 +512,8 @@
         return ctx;
       };
       const send = (node, echo = 0.6) => { node.connect(dry); if (echo) { const g = ctx.createGain(); g.gain.value = echo; node.connect(g); g.connect(dry.verb); } };
-      const tone = (t, f, len, vol, type = "triangle", to = 0.6, dest = null) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * to, t + len); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + len); o.connect(g); if (dest) g.connect(dest); else send(g); o.start(t); o.stop(t + len + 0.02); };
-      const hiss = (t, len, vol, f, q, dest = null) => { const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain(); src.buffer = noise; bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = q; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len); src.connect(bp); bp.connect(g); if (dest) g.connect(dest); else send(g); src.start(t, Math.random() * 0.5, len + 0.05); };
+      const tone = (t, f, len, vol, type = "triangle", to = 0.6, dest = null) => { if (vol < 0.001) return; const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * to, t + len); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + len); o.connect(g); if (dest) g.connect(dest); else send(g); o.start(t); o.stop(t + len + 0.02); };
+      const hiss = (t, len, vol, f, q, dest = null) => { if (vol < 0.001) return; const src = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain(); src.buffer = noise; bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = q; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len); src.connect(bp); bp.connect(g); if (dest) g.connect(dest); else send(g); src.start(t, Math.random() * 0.5, len + 0.05); };
       // The groove: 16 steps a bar, four bars; numbers are semitones over A3 in the pentatonic, "." a rest.
       const TUNE = "0 . 3 5 . 7 . 5 3 . 0 . 10 . 7 . | 5 . 7 . 10 12 . 10 7 . 5 . 3 . . . | 0 . 3 5 . 7 . 12 10 . 7 . 5 . 3 . | 7 . 5 3 . 0 . 3 5 . . . 0 . . .".replace(/\|/g, "").trim().split(/\s+/);
       const BASS = [0, -2, -4, -5], BPM = 100, SIX = 60 / BPM / 4;
@@ -434,6 +536,15 @@
         splash: () => { if (!ready()) return; const t = ctx.currentTime; hiss(t, 0.5, 0.5, 900, 0.7); hiss(t + 0.05, 0.3, 0.3, 2400, 1.2); tone(t + 0.02, 260, 0.2, 0.2, "sine", 0.4); },
         tunnel: () => { if (!ready()) return; const t = ctx.currentTime; tone(t, 180, 0.3, 0.45); tone(t + 0.12, 140, 0.35, 0.35); hiss(t + 0.05, 0.4, 0.15, 400, 1); },
         fanfare: (big) => { if (!ready()) return; const t = ctx.currentTime, notes = big ? [0, 4, 7, 12, 16, 19, 24] : [0, 4, 7, 12]; notes.forEach((n, i) => { tone(t + i * 0.09, 440 * Math.pow(2, n / 12), 0.5, 0.22, "square", 0.995); tone(t + i * 0.09, 880 * Math.pow(2, n / 12), 0.3, 0.06, "sine", 1); }); if (big) for (let i = 0; i < 10; i++) tone(t + 0.6 + i * 0.05, 1800 + Math.random() * 1600, 0.12, 0.08, "sine", 1.2); },
+        clank: (v) => { if (!ctx) return; const t = ctx.currentTime; tone(t, 260, 0.09, 0.3 * v, "square", 0.6); hiss(t, 0.08, 0.2 * v, 4200, 2); },
+        crunch: () => { if (!ctx) return; const t = ctx.currentTime; hiss(t, 0.09, 0.45, 1700, 0.8); hiss(t + 0.04, 0.07, 0.3, 3200, 1.2); tone(t, 140, 0.08, 0.2, "sine", 0.6); },
+        ding: () => { if (!ctx) return; const t = ctx.currentTime; tone(t, 1320, 0.6, 0.18, "sine", 1); tone(t + 0.12, 1760, 0.5, 0.12, "sine", 1); },
+        // The press's sizzle: one looped noise through a bright band, its level set each frame by nearness and work.
+        sizzle: (level) => {
+          if (!ctx) return;
+          if (!sizzleGain) { const src = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), bp = ctx.createBiquadFilter(); src.buffer = noise; src.loop = true; hp.type = "highpass"; hp.frequency.value = 2500; bp.type = "peaking"; bp.frequency.value = 6500; bp.gain.value = 8; sizzleGain = ctx.createGain(); sizzleGain.gain.value = 0; src.connect(hp); hp.connect(bp); bp.connect(sizzleGain); send(sizzleGain, 0.3); src.start(); }
+          sizzleGain.gain.setTargetAtTime(level, ctx.currentTime, 0.15);
+        },
         drip: (near) => { if (!ctx) return; const t = ctx.currentTime, f = 900 + Math.random() * 900; tone(t, f, 0.12, 0.18 * near, "sine", 1.9); tone(t + 0.01, f * 0.5, 0.2, 0.06 * near, "sine", 1.4); },
         // The groove fades in while the Ooga is in the golf cavern and out when it leaves; the timer runs only then.
         groove: (on) => {
@@ -442,7 +553,7 @@
           if (on && !timer) { next = ctx.currentTime + 0.05; timer = setInterval(plan, 50); }
           else if (!on && timer && music.gain.value < 0.01) { clearInterval(timer); timer = 0; }
         },
-        close: () => { if (timer) { clearInterval(timer); timer = 0; } if (ctx) { ctx.close(); ctx = null; out = dry = wet = music = noise = null; } }
+        close: () => { if (timer) { clearInterval(timer); timer = 0; } if (ctx) { ctx.close(); ctx = null; out = dry = wet = music = noise = sizzleGain = null; } }
       };
     })();
     const key = (e) => {
@@ -454,7 +565,7 @@
       else if (k === "ArrowRight" || k === "d" || k === "D") st.aim -= 0.06;
       else if (k === " " || k === "Enter") {
         if (!st.charging) { st.charging = true; st.meter = 0; }
-        else { st.charging = false; GC.putt(ball, st.aim, st.power); st.mode = "roll"; sfx.putt(st.power); }
+        else { st.charging = false; GC.putt(ball, st.aim, st.power); st.mode = "roll"; st.follow = 0.35; sfx.putt(st.power); }
       } else return false;
       standBeside();
       return true;
@@ -474,6 +585,8 @@
       for (const f of B.fish) { const w = f.w, a = st.t * f.sp + f.ph, rx = (w.x1 - w.x0) / 2 - 0.15, rz = (w.z1 - w.z0) / 2 - 0.1; f.n.position.x = (w.x0 + w.x1) / 2 + Math.cos(a) * rx * (0.5 + 0.4 * Math.sin(f.ph)); f.n.position.z = (w.z0 + w.z1) / 2 + Math.sin(a) * rz * 0.8; f.n.rotation.y = Math.atan2(-Math.sin(a) * rx * f.sp, Math.cos(a) * rz * f.sp) + Math.sin(st.t * 6 + f.ph) * 0.15; }
       for (const b of B.confetti) { if (b.life <= 0) continue; b.life -= dt; b.vy -= 7 * dt; b.n.position.x += b.vx * dt; b.n.position.y = Math.max(0.03, b.n.position.y + b.vy * dt); b.n.position.z += b.vz * dt; b.n.rotation.x += dt * 9; b.n.rotation.y += dt * 7; if (b.n.position.y <= 0.03) { b.vx *= 0.9; b.vz *= 0.9; } if (b.life <= 0) b.n.visible = false; }
       if (st.cheer > 0) st.cheer -= dt;
+      updateCook(dt);
+      updateSwing(dt);
       for (let i = 0; i < B.holes.length; i++) { const h = B.holes[i]; if (h.bar) h.bar.rotation.y = -st.t * h.c.bar.w; if (h.head) h.head.visible = !(st.mode !== "walk" && st.hole === i); }
       for (const j of B.jets) { const hgt = 0.9 + 0.35 * Math.sin(st.t * 3 + j.k * 2); j.n.scale.y = hgt + (j.k === 1 ? 0.5 : 0); j.n.position.y = j.n.scale.y / 2; }
       for (const m of B.smoke) { const k = (st.t * 0.25 + m.k / B.smoke.length) % 1; m.n.position.y = 2.5 + k * 4; m.n.position.x = B.volcano.x + Math.sin(st.t * 0.5 + m.k) * k * 0.8; m.n.position.z = B.volcano.z + k * 0.6; const sc = 0.6 + k * 1.8; m.n.scale.x = m.n.scale.y = m.n.scale.z = sc; m.n.visible = k < 0.95; }
@@ -570,7 +683,7 @@
       g.restore();
       void tot; void local;
     };
-    return { start, stop, dispose, wake, key, turn, update, overlay, get active() { return st.mode !== "walk"; }, get mode() { return st.mode; }, get hole() { return st.hole; }, ball, scores };
+    return { start, stop, dispose, wake, order, key, turn, update, overlay, get ordering() { return st.order >= 0; }, get active() { return st.mode !== "walk"; }, get mode() { return st.mode; }, get hole() { return st.hole; }, ball, scores };
   };
   BL.genesisGolf = { build, controller };
 })();

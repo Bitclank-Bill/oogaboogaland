@@ -11,7 +11,8 @@
   const SERIF = "Georgia, 'Times New Roman', serif";
   // The essay's text as lines on pages at width W: returns the pages, each a list of [kind, text, y].
   const layout = (g, e, W, P) => {
-    const m = W * 0.1, inner = W - 2 * m, body = W * 0.024, lead = body * 1.5, pages = [];
+    // Laid out as the whitepaper's pages are: wide side margins, small body type, the title centred over it.
+    const m = W * 0.11, mx = W * 0.17, inner = W - 2 * mx, body = W * 0.0185, lead = body * 1.5, pages = [];
     let page = [], y = m;
     const next = () => { pages.push(page); page = []; y = m; };
     const put = (kind, text, size, gapAfter) => {
@@ -30,7 +31,8 @@
       });
       y += gapAfter;
     };
-    put("t", e.title, W * 0.052, body);
+    put("t", e.title, W * 0.036, body * 0.6);
+    put("a", "Bitclank Bill · bitcoinguide.app", body * 1.05, lead * 1.4);
     put("s", e.description, body * 1.05, lead * 1.2);
     for (const [k, t] of e.text) {
       if (k === "h") put("h", t, body * 1.25, body * 0.4);
@@ -52,7 +54,7 @@
     const gap = Math.round(W * 0.03), H = pages.length * P + (pages.length - 1) * gap;
     canvas.width = W; canvas.height = H;
     g.fillStyle = STONE; g.fillRect(0, 0, W, H);
-    const ink = essay.accent === "#000000" ? "#3a3f48" : essay.accent, m = W * 0.1;
+    const ink = essay.accent === "#000000" ? "#3a3f48" : essay.accent, m = W * 0.11, mx = W * 0.17;
     pages.forEach((rows, n) => {
       const top = n * (P + gap);
       g.fillStyle = PAPER; g.fillRect(0, top, W, P);
@@ -60,9 +62,10 @@
       g.textBaseline = "top"; g.textAlign = "left";
       for (const [kind, text, y, size, first] of rows) {
         g.font = kind === "h" || kind === "t" ? `bold ${size}px ${SERIF}` : kind === "s" ? `italic ${size}px ${SERIF}` : `${size}px ${SERIF}`;
-        g.fillStyle = kind === "t" ? ink : kind === "s" ? SOFT : INK;
-        const x = kind === "b" ? m + size * 1.4 : m;
-        if (kind === "b" && first) { g.fillStyle = ink; g.fillText("•", m + size * 0.2, top + y); g.fillStyle = INK; }
+        g.fillStyle = kind === "t" ? INK : kind === "s" || kind === "a" ? SOFT : INK;
+        if (kind === "t" || kind === "a") { g.textAlign = "center"; g.fillText(text, W / 2, top + y); g.textAlign = "left"; continue; }
+        const x = kind === "b" ? mx + size * 1.4 : mx;
+        if (kind === "b" && first) { g.fillStyle = ink; g.fillText("•", mx + size * 0.2, top + y); g.fillStyle = INK; }
         g.fillText(text, x, top + y);
       }
       g.font = `${Math.round(W * 0.016)}px ${SERIF}`; g.fillStyle = SOFT; g.textAlign = "center";
