@@ -9,7 +9,7 @@ import { sha256Hex } from "../src/crypto.js";
 import { getPlayer } from "../src/db.js";
 import * as studioPolicy from "../src/studio-policy.js";
 
-const { parseClientMessage, PM_DATA_MAX, PM_BURST, PM_FEATURE, CHAT_FRAME_MAX } = protocol;
+const { parseClientMessage, PM_DATA_MAX, PM_BURST, PM_CONTROL_BURST, PM_FEATURE, CHAT_FRAME_MAX } = protocol;
 const FRAME = "AQI" + "A".repeat(709);
 
 test("a private message is an op toward a player, and data a bounded base64 frame with a number; anything else is ignored", () => {
@@ -29,10 +29,10 @@ const harness = () => {
   let now = 100000;
   const accepted = [], stored = [];
   const socket = () => ({
-    sent: [], closed: null, store: null,
+    sent: [], closed: null, store: null, writes: 0,
     send(text) { if (typeof text === "string") this.sent.push(JSON.parse(text)); },
     close(code, reason) { this.closed = { code, reason }; },
-    serializeAttachment(value) { this.store = JSON.parse(JSON.stringify(value)); },
+    serializeAttachment(value) { this.writes++; this.store = JSON.parse(JSON.stringify(value)); },
     deserializeAttachment() { return this.store; },
   });
   class WebSocketPair { constructor() { this[0] = socket(); this[1] = socket(); } }
@@ -154,4 +154,20 @@ test("room: a block and a spent invite rate stay with the account across its rec
   const a3 = h.room.players.get(1).ws;
   h.send(a3, { t: "pm", op: "invite", to: 2 });
   assert.equal(last(a3).reason, "rate", "the rate outlived the reconnect");
+});
+
+// MrHodlX's review of #436: block, decline and end had no rate, and a block rewrote the attachment every time.
+test("room: block, decline and end are held to a rate, and blocking someone already blocked writes nothing", async () => {
+  const h = harness();
+  const a = await h.join(1, "a"); await h.join(2, "b"); await h.join(3, "c");
+  h.send(a, { t: "pm", op: "block", to: 3 });
+  const writes = a.writes;
+  for (let i = 0; i < 4; i++) h.send(a, { t: "pm", op: "block", to: 3 });
+  assert.equal(a.writes, writes, "the same block again changes nothing, so nothing is written");
+  h.advance(60000);
+  for (let id = 100; id < 140; id++) h.send(a, { t: "pm", op: "block", to: id });
+  assert.equal(h.room.players.get(1).pm.blocked.length, 1 + PM_CONTROL_BURST, "a flood of controls stops at the burst");
+  h.advance(60000);
+  h.send(a, { t: "pm", op: "block", to: 200 });
+  assert.ok(h.room.players.get(1).pm.blocked.includes(200), "the rate refills");
 });

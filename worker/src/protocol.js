@@ -144,12 +144,16 @@ export const CHAT_FRAME_MAX = 1024;
 // Private conversations (see Private above).
 export const PM_FEATURE = "pm-v1";
 export const PM_PREFIX = '{"t":"pm",';
-// The page's largest frame: a 29-byte header, a 480-byte line and a 32-byte tag, 541 bytes, is 724 base64 characters.
+// The page's largest frame: a 29-byte header, a 480-byte body (a 4-byte line number and the line) and a 32-byte tag,
+// 541 bytes, is 724 base64 characters.
 export const PM_DATA_MAX = 724;
 export const PM_HZ = 2;
 export const PM_BURST = 6;
 export const PM_INVITE_HZ = 0.2;
 export const PM_INVITE_BURST = 3;
+// Accept, decline, block and end: a rate of their own, so a flood of them writes nothing past the burst.
+export const PM_CONTROL_HZ = 1;
+export const PM_CONTROL_BURST = 6;
 export const PM_INVITES = 4;
 export const PM_BLOCKS = 32;
 // Accounts whose blocks and rate limits the room keeps across their reconnects while it is awake, as chat's buckets.

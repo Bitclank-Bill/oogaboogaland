@@ -5,7 +5,10 @@
 // The steps: an invite, its accept, then each side loads the pad file (or makes one here, downloads it and sends a
 // copy outside Ooga). A file this browser has no record of starts only once the visitor says it was never used. Each
 // side says hello and acks the other's; the line opens on an ack to its own hello. A frame that arrives before this
-// side's pad has started waits (QUEUE at most). Nothing private is kept: the pad lives in memory until the
+// side's pad has started waits (QUEUE at most). A hello the room refused, or one the other side never answered once
+// its own hello came, is said again after HELLO_WAIT, as often as the session allows. A line that hasn't arrived is
+// noted once a later one shows, and the note goes when the line comes, marked late. Frames longer than any the pad
+// seals are dropped unread (DATA_MAX). Nothing private is kept: the pad lives in memory until the
 // conversation ends, when the session closes and then its bytes are zeroed, and the lines go with it. Only the pad's
 // record of use stays in localStorage. The conversation ends when either side ends it, leaves the island or loses the
 // room; starting again with the same pad carries on where it stopped.
@@ -13,6 +16,8 @@
 // is, never what it says, provided this page and the pad file are trustworthy. A compromised device, a page served
 // with other code, or the other person copying the conversation are outside it. A record behind the other side's is
 // caught and stops the pad; a pad used again where no record of its use survives, by a visitor who says it is new, is not.
+// The pad file reads every line ever sealed with it, with the frames the room relayed, so the panel says to keep it safe
+// and delete it once the conversation is over. "Sent" is the room's word that it passed a line on, not the other side's.
 // The page's own notes carry no name, so no display name can pass for one; the other side's lines show their login.
 // Exports available, invite and stats.
 (() => {
@@ -20,7 +25,9 @@
   const BL = window.BL = window.BL || {};
   const net = BL.net, P = BL.oneTimePad, policy = BL.chatPolicy;
   const subtle = window.crypto && window.crypto.subtle;
-  const KEEP = 100, QUEUE = 16, INVITES = 8;
+  const KEEP = 100, QUEUE = 16, INVITES = 8, HELLO_WAIT = 8000;
+  // The longest frame the pad seals, as base64: the room's own limit.
+  const DATA_MAX = Math.ceil((P.PAD.HEAD + P.PAD.TEXT_BYTES + P.PAD.TAG) / 3) * 4;
   // What a typical line takes from the stream, to say roughly how many are left (each also takes one key slot).
   const LINE_BYTES = 50;
   const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -35,7 +42,7 @@
     : Promise.reject(Object.assign(new Error("locks"), { code: "locks" }));
   const c = { phase: "idle", peer: 0, login: "", name: "", invites: [], bytes: null, pad: null, session: null, started: false, unrecorded: false,
     print: "", queue: [], lines: [], unseen: 0, view: "island", notice: "", stopped: "", busy: false, generation: 0, loads: 0, sid: 0,
-    lastSend: { n: 0, ok: true }, revision: 0 };
+    lastSend: { n: 0, ok: true }, revision: 0, helloTimer: 0 };
   // The log is drawn again only when its lines change, never on an account or roster update.
   let drawn = -1;
 
@@ -78,6 +85,7 @@
   };
   // The session closes before the pad is zeroed, so nothing still in flight seals or reads on zeros.
   const wipe = () => {
+    if (c.helloTimer) { window.clearTimeout(c.helloTimer); c.helloTimer = 0; }
     if (c.session) c.session.close();
     if (c.bytes) c.bytes.fill(0);
     c.bytes = c.pad = c.session = null;
@@ -122,13 +130,32 @@
     if (line) { line.state = state; c.revision++; render(); }
   };
 
+  // Says hello again after HELLO_WAIT while the line is not open, until the session says no more.
+  const helloLater = () => {
+    const session = c.session;
+    if (c.helloTimer || !session || session.ready) return;
+    c.helloTimer = window.setTimeout(() => {
+      c.helloTimer = 0;
+      if (session !== c.session || session.ready || c.stopped) return;
+      session.hello().then((r) => { if (r.kind === "sent") helloLater(); });
+    }, HELLO_WAIT);
+  };
   const take = (frame) => {
-    const gen = c.generation;
+    const gen = c.generation, sid = c.sid;
     c.session.heard(frame).then((r) => {
       if (gen !== c.generation) return;
       if (r.kind === "text") {
-        add(policy.error(r.text) ? { note: "A message arrived that can't be shown here.", at: Date.now() } : { own: false, text: policy.text(r.text), at: Date.now() });
+        // A gap this line is the first past is noted before it; a gap a late line filled loses its note.
+        for (const gap of r.filled) {
+          const i = c.lines.findIndex((l) => l.gap === gap && l.sid === sid);
+          if (i >= 0) { c.lines.splice(i, 1); c.revision++; }
+        }
+        for (const gap of r.gaps) add({ note: `A line from ${c.name} hasn't arrived.`, gap, sid, at: Date.now() });
+        add(policy.error(r.text) ? { note: "A message arrived that can't be shown here.", at: Date.now() } : { own: false, text: policy.text(r.text), late: r.late, at: Date.now() });
         nudge(`${c.name} wrote to you privately.`);
+      } else if (r.kind === "hello") {
+        helloLater();
+        return;
       } else if (r.kind === "dropped") {
         add({ note: r.error === "pad" ? `${c.name} is using a different pad file.` : "A message failed its check and was dropped. Nothing of it is shown.", at: Date.now() });
       } else if (r.kind === "stopped") return stop(r.error, true);
@@ -202,7 +229,7 @@
       const name = c.name;
       reset(msg.reason === "left" ? `${name} left the island, which ended the private conversation.` : `${name} ended the private conversation.`);
       nudge(c.notice);
-    } else if (msg.op === "data" && c.phase === "open" && from === c.peer && typeof msg.d === "string") {
+    } else if (msg.op === "data" && c.phase === "open" && from === c.peer && typeof msg.d === "string" && msg.d.length <= DATA_MAX) {
       const frame = unb64(msg.d);
       if (!frame) return;
       if (c.session && c.started) take(frame);
@@ -213,7 +240,10 @@
       mark(msg.n, "sent");
       return;
     } else if (msg.op === "refused") {
-      if (Number.isSafeInteger(msg.n)) return mark(msg.n, "failed");
+      if (Number.isSafeInteger(msg.n)) {
+        if (c.session && msg.n === c.session.helloN) return helloLater();
+        return mark(msg.n, "failed");
+      }
       const name = who(msg.to).name;
       if ((c.phase === "inviting" || c.phase === "accepting") && msg.to === c.peer) reset(`${name} ${REFUSED[msg.reason] || "can't be asked now."}`);
       else {
@@ -242,7 +272,7 @@
   const row = (line) => {
     const li = document.createElement("li"), time = document.createElement("span"), text = document.createElement("p");
     li.className = "chat-row"; time.className = "chat-time"; text.className = "chat-text";
-    time.textContent = TIME.format(line.at);
+    time.textContent = line.late ? `${TIME.format(line.at)} · late` : TIME.format(line.at);
     if (line.note) {
       li.dataset.note = "true";
       const tag = document.createElement("span");
@@ -287,7 +317,7 @@
     else if (invite) words = `${who(invite).name} asks for a private conversation. Accept if you hold a pad file with them, or will make one and send it to them outside Ooga.`;
     else if (c.phase === "inviting") words = `Waiting for ${c.name} to answer…`;
     else if (c.phase === "accepting") words = `Opening the conversation with ${c.name}…`;
-    else if (c.phase === "open" && !c.session) words = `Load the pad file you and ${c.name} both hold, or make one and send it to them outside Ooga, the way you would hand over a key: in person, or over a channel you trust. Ooga never sends or keeps the pad.`;
+    else if (c.phase === "open" && !c.session) words = `Load the pad file you and ${c.name} both hold, or make one and send it to them outside Ooga, the way you would hand over a key: in person, or over a channel you trust. Ooga never sends or keeps the pad. Keep the file safe, and delete every copy when you're done: with it, anyone who recorded the conversation could read it.`;
     else if (c.unrecorded) words = "This browser has no record of this pad. Use it only if the file has never been used, on any device or in any browser; otherwise its pad would be used twice. If in doubt, make a new one together.";
     else if (c.phase === "open" && !ready) words = `Waiting for ${c.name} to load the same pad…`;
     // Once the line is open, what it protects is said in the log's empty state and the budget line, to leave room for lines.
@@ -366,8 +396,9 @@
     const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" })), a = document.createElement("a");
     a.href = url; a.download = `ooga-pad-${me().toLowerCase()}-${c.login.toLowerCase()}.oogapad`;
     document.body.append(a); a.click(); a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    add({ note: `A new pad was saved to your downloads. Send that file to ${c.name} outside Ooga and keep no other copies. Until they load it, nothing can be said.`, at: Date.now() });
+    // Firefox and Safari cancel a download whose address goes at once, so it is kept a minute.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    add({ note: `A new pad was saved to your downloads. Send that file to ${c.name} outside Ooga and keep no other copies. Until they load it, nothing can be said. Delete it when you're done: anyone who has it could read what you said.`, at: Date.now() });
     loadPad(bytes, true);
   });
   input.addEventListener("input", render);
@@ -413,6 +444,6 @@
 
   BL.privateChat = { available, invite,
     stats: () => ({ phase: c.phase, peer: c.peer, view: c.view, invites: c.invites.slice(), ready: !!(c.session && c.session.ready), stopped: c.stopped,
-      notice: c.notice, lines: c.lines.map((l) => l.note ? { note: l.note } : { own: l.own, text: l.text, state: l.state }), queued: c.queue.length, unseen: c.unseen,
+      notice: c.notice, lines: c.lines.map((l) => l.note ? { note: l.note } : { own: l.own, text: l.text, state: l.state, late: !!l.late }), queued: c.queue.length, unseen: c.unseen,
       padLoaded: !!c.pad, started: c.started, unrecorded: c.unrecorded, remaining: c.session ? c.session.remaining : 0 }) };
 })();

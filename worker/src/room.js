@@ -31,7 +31,7 @@ import {
   GHOST_MAGIC, GHOST_FRAME_MAX, GHOST_FRAME_HZ, GHOST_FRAME_BURST, inGhostArena, ghostCandidate, watchesGhost,
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
-  PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
+  PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
   BLEND, BLEND_HZ,
 } from "./protocol.js";
@@ -663,6 +663,8 @@ export class Room extends DurableObject {
       tell(q, { op: "invite", from: p.id });
       return tell(p, { op: "inviting", to });
     }
+    // The rest are held to their own rate: past it, an accept is refused and the others do nothing.
+    if (!takeToken(account.control, PM_CONTROL_HZ, now, PM_CONTROL_BURST)) return msg.op === "accept" ? tell(p, { op: "refused", to, reason: "rate" }) : undefined;
     if (msg.op === "accept") {
       if (!q || !q.pm.inv.includes(p.id)) return tell(p, { op: "refused", to, reason: "withdrawn" });
       if (p.pm.open || q.pm.open) return tell(p, { op: "refused", to, reason: "busy" });
@@ -676,6 +678,8 @@ export class Room extends DurableObject {
       }
       if (msg.op === "block") {
         if (p.pm.open === to) this.privateClose(p, "ended");
+        // Someone blocked already, with no invite out to them, changes nothing, and nothing is written.
+        if (p.pm.blocked.includes(to) && !p.pm.inv.includes(to)) return;
         p.pm.inv = p.pm.inv.filter((id) => id !== to);
         p.pm.blocked = [...p.pm.blocked.filter((id) => id !== to), to].slice(-PM_BLOCKS);
         account.blocked = p.pm.blocked.slice();
@@ -698,7 +702,8 @@ export class Room extends DurableObject {
     let a = this.pmAccounts.get(p.id);
     if (!a) {
       if (this.pmAccounts.size >= PM_ACCOUNT_KEEP) for (const id of this.pmAccounts.keys()) if (!this.players.has(id)) { this.pmAccounts.delete(id); break; }
-      a = { blocked: p.pm.blocked.slice(), data: { tokens: PM_BURST, at: p.seenAt }, invite: { tokens: PM_INVITE_BURST, at: p.seenAt } };
+      a = { blocked: p.pm.blocked.slice(), data: { tokens: PM_BURST, at: p.seenAt }, invite: { tokens: PM_INVITE_BURST, at: p.seenAt },
+        control: { tokens: PM_CONTROL_BURST, at: p.seenAt } };
       this.pmAccounts.set(p.id, a);
     }
     return a;

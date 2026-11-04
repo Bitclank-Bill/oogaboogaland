@@ -9,8 +9,8 @@
 // whole file, so a copy cut short or changed anywhere shows.
 // A frame: version, type, pad id, direction (the sender's half), key slot (u32), stream offset (u32) and body length
 // (u16), then the body and an HMAC-SHA256 tag over all of it keyed by that slot's KEY bytes, each slot used once. A
-// text's body is its UTF-8 XORed with the stream bytes at the offset, each used once; a hello's or an ack's body is
-// plain and uses no stream at all. The tag stops anyone without the pad from altering a frame or making one up; the
+// text's body is a LINE_ID-byte line number (the stream offset it was first sealed at) and its UTF-8, XORed with the
+// stream bytes at the offset, each used once; a hello's or an ack's body is plain and uses no stream at all. The tag stops anyone without the pad from altering a frame or making one up; the
 // pad hides the text. Lengths and timing still show.
 // The record (`ledger`): per pad and sender, the next slot and stream offset this device sends from, how far it has
 // read the other half, and a stop, kept in localStorage and changed under a Web Lock so two tabs never take the same
@@ -20,11 +20,17 @@
 // only when the visitor says so (`start({ fresh })`), because a browser that lost its storage would otherwise use the
 // pad again from the start. The pad itself is never stored.
 // A conversation (`session`): each side sends a hello with a fresh random nonce and the file's digest, and answers the
-// other's hello with an ack carrying that nonce and how far it has read the sender's half, by its record. A side is
-// ready only on an ack to its own nonce, so no recorded ack can be replayed, and only if the other side has read no
-// further than this device had sent before its hello: otherwise this device's record is behind (the pad was used
-// before, on another device or a restored profile), the stop is recorded and the pad never starts here again. A
-// different file stops at the digest. Frames the session has already read past are dropped, never shown. `close`
+// other's hello with an ack carrying that nonce and how far it has read the sender's half, by its record; each nonce
+// once, and ANSWERS at most a session, so a hello the room plays again spends nothing. A side is ready only on an ack
+// to its own latest nonce, and only before the line opened, so no recorded or late ack counts, and only if the other
+// side has read no text this device had not sent before its hello: otherwise this device's record is behind (the pad
+// was used before, on another device or a restored profile), the stop is recorded and the pad never starts here
+// again. Text is the check because its bytes are what must never be used twice; key slots only key a tag, so the other
+// side may have read any slot this device sealed, in whatever order the room delivered them. A hello the room dropped
+// is said again (`hello`), HELLO_TRIES times at most. A different file stops at the digest. A line is shown once: one
+// whose bytes were read already, or a copy sealed again of a line already shown, is dropped. Stream bytes skipped
+// over are a gap; once a later line shows, the reader is told a line hasn't arrived, and a line that fills it later
+// shows marked late (GAPS kept at most). `close`
 // ends a session before its pad is zeroed; nothing in flight seals or reads after it. Exports PAD (sizes), TYPE,
 // make, parse, roleOf, digest, fingerprint, seal, open, ledger, session.
 (() => {
@@ -39,11 +45,11 @@
   const KEY_SHARE = 0.4;
   const TYPE = { hello: 1, ack: 2, text: 3 };
   // A line is chat-policy's 160 UTF-16 units at most: 480 bytes of UTF-8 (a pair of units is 4 bytes, one unit 3 at most).
-  const TEXT_BYTES = 480, HELLO_BODY = NONCE + DIGEST, ACK_BODY = NONCE + DIGEST + 8;
+  const TEXT_BYTES = 480, LINE_ID = 4, HELLO_BODY = NONCE + DIGEST, ACK_BODY = NONCE + DIGEST + 8;
   const SIZES = [256 * 1024, 1024 * 1024, 16 * 1024 * 1024];
   const LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/;
   const STORE = "oogaboogaland.pad.";
-  const OUTBOX = 32;
+  const OUTBOX = 32, HELLO_TRIES = 3, ANSWERS = 8, GAPS = 32;
   const fail = (code) => Object.assign(new Error(code), { code });
   const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   const encoder = new TextEncoder(), decoder = new TextDecoder("utf-8", { fatal: true });
@@ -228,12 +234,33 @@
    * `sum` is the file's `digest`; `random(view)` fills a nonce. `start({ fresh })` checks the record and says hello;
    * `say(text)` seals a line once ready; `heard(frame)` opens one from the other side, one at a time in arrival order,
    * and answers what it was: { kind: "hello" | "ready" | "text" | "duplicate" | "dropped" | "closed" | "stopped",
-   * text?, error? }. A stop (`stopped`: behind-here, mismatch, or a record code) ends the pad here. */
+   * text?, error? }; a text also says whether it is `late` (a line sealed after it showed first), the `gaps` it is the
+   * first line past (lines that haven't arrived), and the gaps it or an earlier late line `filled`, by number. `hello()`
+   * says hello again while the line is not open. A stop (`stopped`: behind-here, mismatch, or a record code) ends the
+   * pad here. */
   const session = ({ subtle, pad, role, ledger: book, sum, random, send }) => {
     const s = { ready: false, stopped: "", closed: false, sent: 0, size: book.size, remaining: book.size, slotsLeft: book.slots,
-      outbox: new Map() };
+      outbox: new Map(), helloN: 0 };
     const mark = sum.subarray(0, DIGEST), nonce = new Uint8Array(NONCE);
-    let queue = Promise.resolve(), serial = 0, rk = 0, recv = 0, before = null;
+    // `sealed`: slots this device has used, as its record last said. `shown`: the furthest line shown, by line number.
+    let queue = Promise.resolve(), serial = 0, rk = 0, recv = 0, before = null, sealed = 0, hellos = 0, shown = -1, gapId = 0;
+    // The other side's hello nonces answered, and its stream ranges not read below `recv`: { id, to, parts, noted }.
+    const answered = new Set(), gaps = [];
+    const gapOpen = (from, to) => { gaps.push({ id: ++gapId, to, parts: [[from, to]], noted: false }); if (gaps.length > GAPS) gaps.shift(); };
+    // Takes [a, b) out of a gap if it lies wholly inside one, answering whether it did; an emptied gap goes to `filled`.
+    const fill = (a, b, filled) => {
+      for (let g = 0; g < gaps.length; g++) {
+        const gap = gaps[g];
+        for (let i = 0; i < gap.parts.length; i++) {
+          const [x, y] = gap.parts[i];
+          if (a < x || b > y) continue;
+          gap.parts.splice(i, 1, ...[[x, a], [b, y]].filter(([p, q]) => q > p));
+          if (!gap.parts.length) { gaps.splice(g, 1); if (gap.noted) filled.push(gap.id); }
+          return true;
+        }
+      }
+      return false;
+    };
     const stop = async (code, keep) => {
       if (!s.stopped) s.stopped = code;
       if (keep) try { await book.stop(code); } catch { /* The stop holds for this session either way. */ }
@@ -243,10 +270,13 @@
       try { return await fn(); } catch (e) { return e && e.code === "closed" ? { kind: "closed" } : stop(e && e.code || "error"); }
     };
     const open_ = () => { if (s.closed) throw fail("closed"); };
-    const transmit = async (type, body) => {
+    // `stamp` writes a new line's number, where its bytes start; a line sealed again keeps the one it had.
+    const transmit = async (type, body, stamp) => {
       open_();
       const r = await book.reserve(type === TYPE.text, body.length);
       open_();
+      sealed = r.sk;
+      if (stamp) new DataView(body.buffer, body.byteOffset, body.byteLength).setUint32(0, r.offset);
       s.remaining = book.size - r.send; s.slotsLeft = book.slots - r.sk;
       // `seal` XORs before its first await, and `close` comes before the pad is zeroed: no frame is sealed on zeros.
       const frame = await seal(subtle, pad, role, r.slot, r.offset, type, body);
@@ -259,6 +289,14 @@
       return n;
     };
     const run = (fn) => (queue = queue.then(fn, fn));
+    const sayHello = async () => {
+      random(nonce);
+      const hello = new Uint8Array(HELLO_BODY);
+      hello.set(nonce, 0); hello.set(mark, NONCE);
+      hellos++;
+      s.helloN = await transmit(TYPE.hello, hello);
+      return { kind: "sent", n: s.helloN };
+    };
     return Object.assign(s, {
       // `{ kind: "started" }`, `{ kind: "unrecorded" }` when this device has no record of the pad and was not told it is
       // new (nothing is spent; start again with fresh), or stopped.
@@ -268,12 +306,15 @@
         open_();
         before = { sk: r.sk, send: r.send };
         rk = r.rk; recv = r.recv;
-        s.remaining = book.size - r.send; s.slotsLeft = book.slots - r.sk;
-        random(nonce);
-        const hello = new Uint8Array(HELLO_BODY);
-        hello.set(nonce, 0); hello.set(mark, NONCE);
-        await transmit(TYPE.hello, hello);
+        s.remaining = book.size - r.send; s.slotsLeft = book.slots - r.sk; sealed = r.sk;
+        await sayHello();
         return { kind: "started" };
+      })),
+      // Hello again with a fresh nonce, for one the room dropped: `{ kind: "sent", n }`, or `{ kind: "none" }` once the
+      // line is open, after HELLO_TRIES, or before the pad started.
+      hello: () => run(() => guarded(async () => {
+        if (!before || s.ready || s.stopped || s.closed || hellos > HELLO_TRIES) return { kind: "none" };
+        return sayHello();
       })),
       // `{ kind: "sent", n }`, or `{ kind: "refused", error: "long" | "empty" | "not-ready" }` for a line that cannot go.
       say: (text) => run(() => guarded(async () => {
@@ -281,8 +322,10 @@
         if (!s.ready) return { kind: "refused", error: "not-ready" };
         const bytes = encoder.encode(text);
         if (!bytes.length) return { kind: "refused", error: "empty" };
-        if (bytes.length > TEXT_BYTES) return { kind: "refused", error: "long" };
-        return { kind: "sent", n: await transmit(TYPE.text, bytes) };
+        if (LINE_ID + bytes.length > TEXT_BYTES) return { kind: "refused", error: "long" };
+        const body = new Uint8Array(LINE_ID + bytes.length);
+        body.set(bytes, LINE_ID);
+        return { kind: "sent", n: await transmit(TYPE.text, body, true) };
       })),
       // A send the room refused or never answered, again: `{ kind: "sent", n }` with the number it now goes under, or
       // `{ kind: "gone" }`. While it is the newest frame sealed it goes again unchanged, so a copy that did arrive is a
@@ -307,8 +350,11 @@
         const body = got.body, view = new DataView(body.buffer, body.byteOffset, body.byteLength);
         if (got.type === TYPE.hello) {
           if (!same(body.subarray(NONCE, NONCE + DIGEST), mark)) return stop("mismatch");
-          // Answered even from a slot already read: a side whose record is behind learns it from this ack. A hello the
-          // room plays again only spends a slot here; nothing it carries is taken as fresh.
+          // Answered even from a slot already read: a side whose record is behind learns it from this ack, and says
+          // hello with a nonce never answered. A nonce answered already, a hello the room plays again, spends nothing.
+          const said = hex(body.subarray(0, NONCE));
+          if (answered.has(said) || answered.size >= ANSWERS) return { kind: "duplicate" };
+          answered.add(said);
           if (got.slot >= rk) { const r = await book.received(got.slot, recv); rk = r.rk; recv = r.recv; open_(); }
           const ack = new Uint8Array(ACK_BODY), out = new DataView(ack.buffer);
           ack.set(body.subarray(0, NONCE), 0); ack.set(mark, NONCE);
@@ -316,29 +362,39 @@
           await transmit(TYPE.ack, ack);
           return { kind: "hello" };
         }
-        if (got.slot < rk || got.type === TYPE.text && got.offset < recv) return { kind: "duplicate" };
         if (got.type === TYPE.ack) {
-          // Only an answer to this session's own hello counts; any other was recorded earlier and proves nothing now.
-          if (!same(body.subarray(0, NONCE), nonce)) return { kind: "duplicate" };
+          // Only an answer to this session's latest hello, before the line opened, counts; any other was recorded
+          // earlier, or came after, and proves nothing now.
+          if (s.ready || got.slot < rk || !same(body.subarray(0, NONCE), nonce)) return { kind: "duplicate" };
           if (!same(body.subarray(NONCE, NONCE + DIGEST), mark)) return stop("mismatch");
           const r = await book.received(got.slot, recv); rk = r.rk; recv = r.recv;
           open_();
-          // Having read this side's hello, the other side should stand exactly one slot past where this device stood.
-          if (view.getUint32(NONCE + DIGEST) > before.sk + 1 || view.getUint32(NONCE + DIGEST + 4) > before.send) return stop("behind-here", true);
+          // The other side may have read any slot this device sealed, but no text it had not sent before its hello.
+          if (view.getUint32(NONCE + DIGEST) > sealed || view.getUint32(NONCE + DIGEST + 4) > before.send) return stop("behind-here", true);
           s.ready = true;
           return { kind: "ready" };
         }
-        const r = await book.received(got.slot, got.end); rk = r.rk; recv = r.recv;
-        open_();
+        if (body.length <= LINE_ID || view.getUint32(0) > got.offset) return { kind: "dropped", error: "malformed" };
+        const line = view.getUint32(0), filled = [];
+        if (got.offset >= recv) {
+          if (got.offset > recv) gapOpen(recv, got.offset);
+          const r = await book.received(got.slot, got.end); rk = r.rk; recv = r.recv;
+          open_();
+        } else if (!fill(got.offset, got.end, filled)) return { kind: "duplicate" };
+        // A line sealed again on fresh bytes shows only if it never arrived where it was first sealed.
+        if (line !== got.offset && !fill(line, line + body.length, filled)) return { kind: "duplicate" };
         let text;
-        try { text = decoder.decode(body); } catch { return { kind: "dropped", error: "malformed" }; }
-        return { kind: "text", text };
+        try { text = decoder.decode(body.subarray(LINE_ID)); } catch { return { kind: "dropped", error: "malformed" }; }
+        const late = line < shown, passed = [];
+        if (line > shown) shown = line;
+        for (const gap of gaps) if (!gap.noted && line >= gap.to) { gap.noted = true; passed.push(gap.id); }
+        return { kind: "text", text, late, gaps: passed, filled };
       })),
       // Ends the session: nothing waiting or in flight seals, sends or reads after this, so the pad may be zeroed.
       close: () => { s.closed = true; s.ready = false; },
     });
   };
 
-  const PAD = Object.freeze({ MIN, MAX, KEY, TAG, HEAD, TEXT_BYTES, SIZES, STORE, KEY_SHARE });
+  const PAD = Object.freeze({ MIN, MAX, KEY, TAG, HEAD, TEXT_BYTES, LINE_ID, SIZES, STORE, KEY_SHARE });
   BL.oneTimePad = Object.freeze({ PAD, TYPE, make, parse, roleOf, digest, fingerprint, seal, open, ledger, session });
 })();
