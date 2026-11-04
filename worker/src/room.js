@@ -126,7 +126,7 @@ export class Room extends DurableObject {
     }
     // Old guest sockets can survive a deployment in hibernated attachments.
     // Use the ordinary departure path so peers drop their presence and voice.
-    for (const p of this.players.values()) if (!ownedBody(CAST, p.login, p.contributor)) this.evict(p, "revoked");
+    for (const p of this.players.values()) if (!ownedBody(CAST, p.login, p.contributor, p.id)) this.evict(p, "revoked");
     // A conversation stands only while both ends are here and hold each other; an invite only to someone here.
     for (const p of this.players.values()) {
       const pm = p.pm && typeof p.pm === "object" ? p.pm : {};
@@ -336,7 +336,7 @@ export class Room extends DurableObject {
     if (path.startsWith("/voice/")) return this.voiceRequest(path.slice("/voice/".length), request);
     if (request.headers.get("upgrade") !== "websocket") return new Response("Expected WebSocket", { status: 426 });
     const who = playerFromHeaders(request.headers);
-    if (!who || !ownedBody(CAST, who.login, who.contributor)) return new Response("Contributors with an Ooga only", { status: 403 });
+    if (!who || !ownedBody(CAST, who.login, who.contributor, who.id)) return new Response("Contributors with an Ooga only", { status: 403 });
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -356,7 +356,7 @@ export class Room extends DurableObject {
     if (kept) p.pm.blocked = kept.blocked.slice();
     server.serializeAttachment(this.attachment(p));
     // An owner arriving takes either body back from whoever holds it.
-    const own = ownedBody(CAST, p.login, p.contributor);
+    const own = ownedBody(CAST, p.login, p.contributor, p.id);
     if (own) for (const o of this.players.values()) if (o.body && bodyName(o.body).toLowerCase() === own) this.release(o, "owner-here");
     this.players.set(p.id, p);
 
@@ -383,7 +383,7 @@ export class Room extends DurableObject {
   webSocketMessage(ws, message) {
     const p = this.byWs(ws);
     if (!p) return;
-    if (!ownedBody(CAST, p.login, p.contributor)) { this.evict(p, "revoked"); return; }
+    if (!ownedBody(CAST, p.login, p.contributor, p.id)) { this.evict(p, "revoked"); return; }
     if (typeof message !== "string") {
       if (message instanceof ArrayBuffer && message.byteLength >= 4 && new DataView(message).getUint32(0, true) === GHOST_MAGIC) this.ghostFrame(p, message);
       else this.npcFrame(p, message);
@@ -513,7 +513,7 @@ export class Room extends DurableObject {
     } else if (msg.t === "body") {
       if (msg.name === p.body) return;
       hockey.leave(this, p.id);
-      const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values(), p.contributor);
+      const refusal = claimRefusal(CAST, p.login, msg.name, this.players.values(), p.contributor, p.id);
       if (refusal) {
         this.send(ws, { t: "release", name: msg.name, reason: refusal });
         if (p.body === null) return;
@@ -905,7 +905,7 @@ export class Room extends DurableObject {
     if (!this.sfu) return json({ error: "voice is not configured" }, 503);
     const p = this.players.get(Number(request.headers.get("x-player-id")));
     if (!p || p !== expected) return json({ error: "connection replaced" }, 409);
-    if (!ownedBody(CAST, p.login, p.contributor)) {
+    if (!ownedBody(CAST, p.login, p.contributor, p.id)) {
       this.evict(p, "revoked");
       return json({ error: "contributors with an Ooga only" }, 403);
     }
@@ -1475,7 +1475,7 @@ export class Room extends DurableObject {
     if (sweepDue) {
       try { await this.refreshHighscores(); } catch { /* Pending D1 revisions survive until the next sweep. */ }
       for (const p of [...this.players.values()]) {
-        if (!ownedBody(CAST, p.login, p.contributor)) { this.evict(p, "revoked"); continue; }
+        if (!ownedBody(CAST, p.login, p.contributor, p.id)) { this.evict(p, "revoked"); continue; }
         // The existing operator D1 ban also ends active presence at the next successful sweep.
         // Retry on a later alarm if D1 is unavailable; never infer a ban from a failed read.
         if (this.env.DB) {
