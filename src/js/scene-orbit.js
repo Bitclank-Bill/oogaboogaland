@@ -2138,7 +2138,6 @@
     return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), phase, smoke: smoke.count, debris: debris.length };
   };
   const orbitScene = BL.deferred.scene("orbit", {
-    get cabinetMenu() { return phase === "build"; },
     id: "orbit", renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
     enter, update, overlay, onDonation, onKey, onLootCleared, leave, stats, liveGeometry,
     get inMotion() {

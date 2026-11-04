@@ -20553,37 +20553,49 @@ scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [b
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
-const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains its real menu, expands its game and returns the same player without a fade or retained UI", run: async b => {
-  const dir = join(root, "untracked", "cabinet-review"); mkdirSync(dir, { recursive: true });
+const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains usable menu controls, expands its game and returns the same player without retained UI", run: async b => {
+  const dir = join(root, "untracked", "cabinet-review", "visual-pass"); mkdirSync(dir, { recursive: true });
+  const shape = await b.evaluate(`innerWidth < 600 ? 'phone' : __ooga.renderer.kind === 'canvas2d' ? 'canvas2d' : 'desktop'`);
   await b.evaluate(`__ooga.arcade.open(${JSON.stringify(id === "cloud-hopper" ? "hub" : id)}, ${JSON.stringify(id === "cloud-hopper" ? "cloud-hopper" : null)})`);
   const menu = await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
   if (!menu) { record(`cabinet ${id}: opens its menu`, false, await b.evaluate(`({scene:__ooga.scene,phase:__ooga.cabinet.phase})`)); return; }
-  const framed = await b.evaluate(`(() => { const r=document.getElementById('stage').getBoundingClientRect(); return {width:r.width,height:r.height,x:r.x,y:r.y,inside:r.x>0 && r.y>0 && r.right<innerWidth && r.bottom<innerHeight,fade:__ooga.fade}; })()`);
-  await b.screenshot(join(dir, `${id}-menu.png`));
-  if (id === "cloud-hopper") await b.evaluate(`document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click()`);
-  else if (id === "mine") await b.evaluate(`document.querySelector('[data-action="mine-start"]').click()`);
-  else {
-    await b.key("Enter");
-    if (id === "orbit") {
-      const panels = await b.evaluate(`(() => { const a=document.getElementById('orbit-build').getBoundingClientRect(), b=document.getElementById('orbit-rocket').getBoundingClientRect(), s=document.getElementById('stage').getBoundingClientRect();return a.right <= b.left && a.left >= s.left && b.right <= s.right && [...document.querySelectorAll('#orbit-tabs button')].every(el=>el.getBoundingClientRect().right<=a.right); })()`);
-      record("cabinet orbit: parts and launch panels remain separate inside the screen", panels);
-      await b.screenshot(join(dir, framed.width < 400 ? "orbit-builder-phone.png" : "orbit-builder.png"));
-      await b.key(" ");
-    }
+  const framed = await b.evaluate(`(() => {
+    const r=document.getElementById('stage').getBoundingClientRect();
+    const card=${JSON.stringify(id)} === 'cloud-hopper' ? document.querySelector('.cloud-hopper-panel') : [...document.querySelectorAll('.game-intro')].find(e=>!e.hidden && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
+    const buttons=[...card.querySelectorAll('.actions button')].filter(e=>!e.hidden && e.getClientRects().length);
+    const controls=buttons.map(e=>{const b=e.getBoundingClientRect(), hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return {label:e.textContent.trim(),inside:b.left>=r.left-1 && b.top>=r.top-1 && b.right<=r.right+1 && b.bottom<=r.bottom+1,tappable:b.height>=40 && e.contains(hit)};});
+    return {width:r.width,height:r.height,x:r.x,y:r.y,inside:r.x>0 && r.y>0 && r.right<innerWidth && r.bottom<innerHeight,controls,fade:__ooga.fade};
+  })()`);
+  await b.screenshot(join(dir, `${id}-${shape}-menu.png`));
+  record(`cabinet ${id}: ${shape} menu actions fit the glass and are reachable`, framed.controls.length===(id === "cloud-hopper" && shape === "phone" ? 3 : 2) && framed.controls.every(c=>c.inside && c.tappable), JSON.stringify(framed));
+  if (id === "cloud-hopper") {
+    if (shape === "phone") await b.evaluate(`document.querySelector('.cabinet-scores-toggle').click()`);
+    const leaderboard = await b.evaluate(`(() => { const e=document.querySelector('.cloud-hopper-panel .cloud-hopper-scores'), r=e.getBoundingClientRect(), p=e.closest('dialog').getBoundingClientRect();return !e.hidden && r.width>0 && r.height>40 && r.top>=p.top && r.bottom<=p.bottom; })()`);
+    await b.screenshot(join(dir, `${id}-${shape}-leaderboard.png`));
+    record(`cabinet Cloud Hopper: ${shape} leaderboard remains available inside glass`, leaderboard);
+    if (shape === "phone") await b.evaluate(`document.querySelector('.cabinet-scores-toggle').click()`);
+    await b.evaluate(`document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click()`);
   }
+  else if (id === "mine") await b.evaluate(`document.querySelector('[data-action="mine-start"]').click()`);
+  else await b.key("Enter");
   const expanded = await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
-  const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && __ooga.fade === 0`);
+  const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && document.getElementById('cabinet-foreground').hidden && __ooga.fade === 0`);
+  if (shape === "phone" && id !== "cloud-hopper") {
+    const header = await b.evaluate(`(() => { const e=document.getElementById('equipment-hud'), p=document.querySelector('.topbar .presets:not([hidden])'); const buttons=p ? [...p.querySelectorAll('button')].filter(b=>!b.hidden && b.getClientRects().length) : []; return {equipment:e.getBoundingClientRect().top,presets:p?.getBoundingClientRect().top,tappable:buttons.every(b=>{const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})}; })()`);
+    record(`cabinet ${id}: phone header controls return above the game`, header.equipment < 180 && (!header.presets || header.presets < 180) && header.tappable, JSON.stringify(header));
+  }
+  await b.screenshot(join(dir, `${id}-${shape}-play.png`));
   await b.evaluate(`__ooga.go('arcade')`);
   const returned = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
   const back = await b.evaluate(`(() => { const p=__ooga.pilot.player, at=BL.arcadeCabinets.get(${JSON.stringify(id)});return {who:p?.traits.name,off:p?Math.hypot(p.root.position.x-at.x,p.root.position.z-at.z):999,clean:!__ooga.cabinet.active && !document.getElementById('stage').classList.contains('cabinet-display')}; })()`);
+  await b.screenshot(join(dir, `${id}-${shape}-return.png`));
   record(`cabinet ${id}: menu in glass, full-screen game, same Ooga at cabinet, clean return`, menu && framed.inside && !framed.fade && expanded && full && returned && back.who === 'portlandhodl' && back.off < .1 && back.clean, JSON.stringify({framed,expanded,full,returned,back}));
 } });
 for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker"]) {
-  scene("arcade", { label: `cabinet ${id}`, query: "character=portlandhodl", opts: { motion: true }, steps: [cabinetVisit(id)] });
+  scene("arcade", { label: `cabinet ${id} desktop`, query: "character=portlandhodl&pos=0", opts: { motion: true }, steps: [cabinetVisit(id)] });
+  scene("arcade", { label: `cabinet ${id} phone`, query: "character=portlandhodl&pos=0", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit(id)] });
 }
-scene("arcade", { label: "cabinet phone", query: "character=portlandhodl", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit("drop")] });
-scene("arcade", { label: "cabinet orbit phone", query: "character=portlandhodl", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit("orbit")] });
-scene("arcade", { label: "cabinet canvas2d", query: "character=portlandhodl&canvas2d=1", steps: [cabinetVisit("snake")] });
+scene("arcade", { label: "cabinet canvas2d", query: "character=portlandhodl&canvas2d=1&pos=0", steps: [cabinetVisit("snake")] });
 scene("arcade", { label: "cabinet interruptions", opts: { motion: true }, steps: [{ name: "cabinet interruptions", why: "regression: cancelling a menu or partial zoom must return without enlarging the screen or holding controls", run: async b => {
   await b.evaluate(`__ooga.arcade.open('drop')`);
   const approach = await untilPage(b, `B.cabinet.phase === 'approach'`);

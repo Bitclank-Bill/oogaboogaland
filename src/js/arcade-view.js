@@ -5,18 +5,25 @@
   const BL = window.BL;
   const AXES = ["x", "y", "z"];
   const ease = t => t * t * (3 - 2 * t);
-  const copy = camera => ({ position: { ...camera.position }, target: { ...camera.target }, fov: camera.fov });
+  const copy = camera => ({ position: { ...camera.position }, target: { ...camera.target }, up: { ...(camera.up || { x: 0, y: 1, z: 0 }) }, fov: camera.fov, orthoMix: camera.orthoMix || 0, orthoHeight: camera.orthoHeight || 0 });
   const mix = (camera, a, b, k) => {
+    camera.up ||= { x: 0, y: 1, z: 0 };
     for (const key of AXES) {
       camera.position[key] = a.position[key] + (b.position[key] - a.position[key]) * k;
       camera.target[key] = a.target[key] + (b.target[key] - a.target[key]) * k;
+      camera.up[key] = a.up[key] + (b.up[key] - a.up[key]) * k;
     }
     camera.fov = a.fov + (b.fov - a.fov) * k;
+    camera.orthoMix = a.orthoMix + (b.orthoMix - a.orthoMix) * k;
+    camera.orthoHeight = a.orthoHeight + (b.orthoHeight - a.orthoHeight) * k;
   };
   const create = ({ canvas, renderer, go }) => {
     const stage = document.getElementById("stage"), backdrop = document.createElement("canvas"), paint = backdrop.getContext("2d");
     backdrop.id = "cabinet-backdrop"; backdrop.hidden = true; backdrop.setAttribute("aria-hidden", "true");
     document.body.prepend(backdrop);
+    const foreground = document.createElement("canvas"), foregroundPaint = foreground.getContext("2d");
+    foreground.id = "cabinet-foreground"; foreground.hidden = true; foreground.setAttribute("aria-hidden", "true");
+    document.body.append(foreground);
     const exitButton = document.createElement("button");
     exitButton.type = "button"; exitButton.className = "cabinet-exit"; exitButton.textContent = "Return to arcade"; exitButton.hidden = true;
     exitButton.addEventListener("click", () => route("arcade")); document.body.append(exitButton);
@@ -27,24 +34,35 @@
     const rect = () => {
       width = innerWidth; height = innerHeight;
       if (visit?.rect) { rx = visit.rect.x * width; ry = visit.rect.y * height; rw = visit.rect.w * width; rh = visit.rect.h * height; return; }
-      rw = Math.min(width * 0.86, height * 0.76 * 4 / 3); rh = rw * 3 / 4;
+      rw = Math.min(width * 0.94, height * 0.80 * 4 / 3); rh = rw * 3 / 4;
       rx = (width - rw) / 2; ry = (height - rh) / 2;
     };
     const duration = () => reduced.matches ? 0 : 0.7;
     const setPhase = value => {
       phase = value; age = 0; document.body.dataset.cabinetPhase = value;
-      exitButton.hidden = value === "idle" || value === "playing" || value === "return" || value === "leaving" || value === "shrinking";
+      exitButton.hidden = value !== "approach" && value !== "loading";
     };
     const screen = k => {
       zoom = k;
       rect();
+      const panel = visit?.id === "cloud-hopper" ? document.querySelector(".cloud-hopper-panel[open]") : null;
+      const parent = panel || document.body;
+      const changedParent = foreground.parentElement !== parent;
+      if (changedParent) parent.append(foreground);
       const w = rw + (width - rw) * k, h = rh + (height - rh) * k, x = rx * (1 - k), y = ry * (1 - k);
-      if (w === shownW && h === shownH && x === shownX && y === shownY) return;
+      if (!changedParent && w === shownW && h === shownH && x === shownX && y === shownY) return;
+      foreground.hidden = false;
+      foreground.style.position = panel ? "absolute" : "fixed";
+      foreground.style.opacity = String(Math.max(0, 1 - k * 4));
+      foreground.style.left = panel ? `${-rx * (1 - k)}px` : "0";
+      foreground.style.top = panel ? `${-ry * (1 - k)}px` : "0";
       shownX = x; shownY = y;
       stage.style.left = `${rx * (1 - k)}px`; stage.style.top = `${ry * (1 - k)}px`;
       stage.style.width = `${w}px`; stage.style.height = `${h}px`;
       document.body.style.setProperty("--cabinet-width", `${w}px`);
       document.body.style.setProperty("--cabinet-height", `${h}px`);
+      document.body.style.setProperty("--cabinet-center-x", `${x + w / 2}px`);
+      document.body.style.setProperty("--cabinet-center-y", `${y + h / 2}px`);
       stage.classList.add("cabinet-display"); backdrop.hidden = false;
       if (w !== shownW || h !== shownH) { shownW = w; shownH = h; renderer.resize(); }
     };
@@ -52,7 +70,8 @@
       zoom = 1;
       stage.classList.remove("cabinet-display");
       stage.style.left = stage.style.top = stage.style.width = stage.style.height = "";
-      backdrop.hidden = true;
+      backdrop.hidden = foreground.hidden = true;
+      document.body.append(foreground);
       shownW = shownH = 0; renderer.resize();
     };
     const dispatch = (id, place) => {
@@ -60,22 +79,28 @@
       try { return go(id, place, true); } finally { dispatching = false; }
     };
     const clear = () => {
+      if (visit?.display) visit.display.visible = true;
       full(); visit = null; lost = false; setPhase("idle");
       BL.net.leaveCabinet();
-      backdrop.width = backdrop.height = 1;
+      backdrop.width = backdrop.height = foreground.width = foreground.height = 1;
     };
     const unsubscribe = BL.net.subscribe(() => {
       if (visit?.live && (BL.net.state.room !== "live" || !BL.net.state.me || !BL.net.cabinet)) lost = true;
     });
-    const begin = (id, cabinet, camera) => {
+    const begin = (id, cabinet, camera, display) => {
       if (visit) return false;
       rect();
       const S = BL.arcadeModels.SCREEN, c = Math.cos(cabinet.turn), s = Math.sin(cabinet.turn);
       const target = { x: cabinet.x + s * S.z, y: cabinet.y + S.y, z: cabinet.z + c * S.z };
       const d = S.h / (2 * Math.tan(camera.fov / 2) * (rh / height));
-      const close = { target, fov: camera.fov, position: { x: target.x + s * Math.cos(S.lean) * d,
+      const close = { target, fov: camera.fov, up: { x: 0, y: 1, z: 0 }, orthoMix: 0, orthoHeight: camera.orthoHeight || 0, position: { x: target.x + s * Math.cos(S.lean) * d,
         y: target.y - Math.sin(S.lean) * d, z: target.z + c * Math.cos(S.lean) * d } };
-      visit = { camera, id, live: !!BL.net.state.me, from: copy(camera), close, returnView: null, exit: null };
+      const corners = [];
+      for (const x of [-S.w / 2, S.w / 2]) for (const y of [-S.h / 2, S.h / 2]) {
+        const z = S.z + Math.sin(S.lean) * y;
+        corners.push({ x: cabinet.x + c * x + s * z, y: cabinet.y + S.y + Math.cos(S.lean) * y, z: cabinet.z - s * x + c * z });
+      }
+      visit = { camera, id, cabinet, display, corners, live: !!BL.net.state.me, from: copy(camera), close, returnView: null, exit: null };
       zoom = 0;
       setPhase("approach");
       return true;
@@ -106,7 +131,10 @@
       }
       age += dt;
       const k = ease(duration() ? Math.min(1, age / duration()) : 1);
-      if (phase === "approach") mix(scene.camera, visit.from, visit.close, k);
+      if (phase === "approach") {
+        mix(scene.camera, visit.from, visit.close, k);
+        if (k === 1 && visit.display) visit.display.visible = false;
+      }
       else if (phase === "menu") {
         screen(0);
         if (!menu) setPhase("expanding");
@@ -134,8 +162,36 @@
     };
     const afterDraw = () => {
       if (phase !== "approach" || age < duration()) return;
+      width = innerWidth; height = innerHeight;
       backdrop.width = canvas.width; backdrop.height = canvas.height;
       paint.drawImage(canvas, 0, 0);
+      // Preserve the actual control geometry above the DOM menu, including inside native dialogs.
+      foreground.width = canvas.width; foreground.height = canvas.height;
+      foregroundPaint.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
+      const cabinet = visit.cabinet, c = Math.cos(cabinet.turn), s = Math.sin(cabinet.turn);
+      const mesh = BL.arcadeModels.cabinet(cabinet.index).cabinetForeground, projected = [];
+      for (let i = 0; i < mesh.verts.length; i += 3) {
+        const x = mesh.verts[i], y = mesh.verts[i + 1], z = mesh.verts[i + 2];
+        projected.push(renderer.project(cabinet.x + c * x + s * z, cabinet.y + y, cabinet.z - s * x + c * z, {}));
+      }
+      for (const face of mesh.faces) {
+        if (face.i.some(i => !projected[i])) continue;
+        foregroundPaint.beginPath();
+        face.i.forEach((i, n) => { const p = projected[i]; if (n) foregroundPaint.lineTo(p.x, p.y); else foregroundPaint.moveTo(p.x, p.y); });
+        foregroundPaint.closePath(); foregroundPaint.fill();
+      }
+      foregroundPaint.setTransform(1, 0, 0, 1, 0, 0);
+      foregroundPaint.globalCompositeOperation = "source-in";
+      foregroundPaint.drawImage(canvas, 0, 0);
+      foregroundPaint.globalCompositeOperation = "source-over";
+      // Measure the rendered glass, leaving only its narrow rim.
+      const points = visit.corners.map(p => renderer.project(p.x, p.y, p.z, {}));
+      if (points.every(Boolean)) {
+        const left = Math.min(...points.map(p => p.x)), right = Math.max(...points.map(p => p.x));
+        const top = Math.min(...points.map(p => p.y)), bottom = Math.max(...points.map(p => p.y));
+        rx = left + (right - left) * 0.03; ry = top + (bottom - top) * 0.03;
+        rw = (right - left) * 0.94; rh = (bottom - top) * 0.94;
+      }
       visit.rect = { x: rx / width, y: ry / height, w: rw / width, h: rh / height };
       setPhase("loading");
       dispatch(visit.id === "cloud-hopper" ? "hub" : visit.id, visit.id === "cloud-hopper" ? "cloud-hopper" : null);
@@ -148,7 +204,7 @@
     return { begin, route, arrived, update, afterDraw, failed,
       get active() { return !!visit; }, get phase() { return phase; },
       get held() { return visit && phase !== "menu" && phase !== "playing"; },
-      dispose() { clear(); unsubscribe(); backdrop.remove(); exitButton.remove(); } };
+      dispose() { clear(); unsubscribe(); backdrop.remove(); foreground.remove(); exitButton.remove(); } };
   };
   BL.arcadeView = { create };
 })();

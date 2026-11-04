@@ -82,6 +82,8 @@
 
   let renderer, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null;
   let repair = null, cabinetView = null, openingRequest = 0, queuedCabinet = null;
+  const cabinetHidden = new Map();
+  let cabinetFocus = null;
   let leaving = false, openingGame = false, people = null, avatar = null, playerWorld = null, screens = null, shownFrame = -1, prompt = null, promptOccupied = null;
   // HALLOWEEN: the ghost arena's hunt: its herald before the hunt loads, the hunt, its channel to the room, GAME MODE,
   // the iron fence across the hallway's mouth (how far up), the totems and their lit parts, whether the visitor's Ooga carries its rifle
@@ -175,13 +177,24 @@
     BL.net.takeCabinet(cabinetId).then(reason => {
       if (request !== openingRequest || !hud) return;
       if (reason) { leaving = false; hud.toast(reason); return; }
-      openingGame = true;
-      cabinetView.begin(cabinetId, cabinet, camera);
+      openingGame = true; cabinetFocus = cabinet;
+      cabinetView.begin(cabinetId, cabinet, camera, screens[LAYOUT.cabinets.indexOf(cabinet)].node);
     });
   };
   const play = (i) => GAMES[i].id === "cloud-hopper" ? open("hub", "cloud-hopper") : open(GAMES[i].id);
+  const revealCabinetPlayers = () => {
+    for (const [node, before] of cabinetHidden) node.cameraHidden = before;
+    cabinetHidden.clear();
+  };
+  const hideCabinetActor = (node, at = node?.position) => {
+    if (!node || !cabinetFocus) return;
+    const dx = at.x - cabinetFocus.x, dz = at.z - cabinetFocus.z;
+    if (dx * dx + dz * dz > 16 || Math.abs(at.y - cabinetFocus.y) > 3) return;
+    if (!cabinetHidden.has(node)) cabinetHidden.set(node, node.cameraHidden);
+    node.cameraHidden = true;
+  };
   // The game's deferred code did not arrive: the visitor stays in the hall, and its cabinets and way out work again.
-  const stay = () => { leaving = openingGame = false; };
+  const stay = () => { leaving = openingGame = false; revealCabinetPlayers(); cabinetFocus = null; };
 
   // The line under each loop: the visitor's best in that game, or a call to play. A retro game's best is an arcade one.
   const bestOf = (id) => {
@@ -346,7 +359,7 @@
           rotation: { x: 2.6, y: 0, z: 0 }, scale: { x: 1.54, y: 1.54, z: 1.54 } });
         addChild(clanker.parts.armR, driver);
         addChild(node, bay, panel, clanker.root);
-        repair = { clanker, driver };
+        repair = { clanker, driver, cabinet: c };
         // The detached panel and worker occupy only this service bay; keep the aisle and fire approach clear.
         blocks.push(blockOf(c, -1.7, 0.65, -0.15, 1.78, DECK_FEET));
         target(clanker.root, { kind: "repair" }, 0.7);
@@ -2017,6 +2030,16 @@
     cheerT = Math.max(0, cheerT - dt);
     lights(dt, elapsed);
     crewUpdate(dt);
+    // The close camera passes through visitors and staff near the cabinet. Hide their local rendering after
+    // their pose updates, preserving both simulation and shared presence; the hall restores them on return.
+    const cabinetPhase = cabinetView.phase, cabinetCamera = cabinetPhase === "approach" || cabinetPhase === "loading" || cabinetPhase === "return";
+    if (cabinetCamera) {
+      hideCabinetActor((pilot.player || avatar)?.root);
+      if (people) for (const cave of people.cavemen.values()) hideCabinetActor(cave.root);
+      for (const g of staff) hideCabinetActor(g.agent.root);
+      for (const actor of remotes.actors()) hideCabinetActor(remotes.body(actor.id)?.root);
+      if (repair) hideCabinetActor(repair.clanker.root, repair.cabinet);
+    } else if (cabinetHidden.size) revealCabinetPlayers();
     ambience(dt);
     audio.tick(dt);
     if (pilot.player && !leaving) {
@@ -2054,6 +2077,7 @@
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
+    revealCabinetPlayers();
     openingRequest++;
     if (!openingGame) BL.net.leaveCabinet();
     // Whoever walked in goes on as themselves: into a game, or back out to the island at this mouth.
