@@ -190,6 +190,83 @@
     for (const u of [u0 - 0.02, u1 - 0.02]) parts.push(wallBox(axis, face, dir, u, 0.04, 0, top, 0.3, 0.34, RIB.edge));
   };
 
+  // The hangar's own steel for what stands in the hall: grated decks on a dark frame, columns and braces in a burnt
+  // orange, safety-orange rails, and stairs of grated treads with a yellow nosing on open risers. It lays everything out
+  // exactly as the timber kit does (`deckRailSpans`, `deckPosts`, `stairTreads`), so the floor that stands walkers on
+  // it and off its rails holds unchanged. `steelRail` runs from one point to another on a deck whose top is at y 0,
+  // a post every metre and a half (`ends` as `railParts`); `steelColumn` stands from y0 up to y1 at (x, z); `steelDeck`
+  // is `deckParts` in steel, its top at y 0, its grating a bar and a recessed slot side by side so no face lies over
+  // another; `steelStair` is a stepped `stairParts` flight.
+  const STEEL = { grate: "#4a515b", slot: "#1b1e24", frame: "#2e333b", paint: "#a5552b", rail: "#e57a2e", plate: "#5a616b", nosing: "#e0b13a" };
+  const steelRail = (x0, z0, x1, z1, ends = [true, true]) => {
+    const S = STEEL, geos = [], len = Math.hypot(x1 - x0, z1 - z0), n = Math.max(1, Math.round(len / 1.5)), a = Math.atan2(-(z1 - z0), x1 - x0);
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    for (let i = 0; i <= n; i++) {
+      if (i === 0 && !ends[0] || i === n && !ends[1]) continue;
+      geos.push(box({ w: 0.08, h: 1.02, d: 0.08, color: S.rail, offset: { x: x0 + (x1 - x0) * i / n, y: 0.51, z: z0 + (z1 - z0) * i / n } }));
+    }
+    geos.push(moved(turnedY(box({ w: len + 0.08, h: 0.08, d: 0.1, color: S.rail }), a), mx, 1.06, mz));
+    geos.push(beam(x0, 0.55, z0, x1, 0.55, z1, 0.06, S.rail));
+    geos.push(moved(turnedY(box({ w: len, h: 0.14, d: 0.03, color: S.frame }), a), mx, 0.07, mz));
+    return geos;
+  };
+  const steelColumn = (x, z, y0, y1, w = 0.26) => [
+    box({ w: w + 0.2, h: 0.05, d: w + 0.2, color: STEEL.plate, offset: { x, y: y0 + 0.025, z } }),
+    box({ w, h: y1 - y0 - 0.09, d: w, color: STEEL.paint, offset: { x, y: (y0 + 0.05 + y1 - 0.04) / 2, z } }),
+    box({ w: w + 0.12, h: 0.04, d: w + 0.12, color: STEEL.plate, offset: { x, y: y1 - 0.02, z } })
+  ];
+  const steelDeck = (w, d, drop, rails = "", cuts = []) => {
+    const S = STEEL, geos = [], along = d > w, span = along ? w : d, n = Math.max(3, Math.round(span / 0.3)), pitch = span / n;
+    const bar = pitch * 0.62, gap = pitch - bar;
+    for (let i = 0; i < n; i++) {
+      const b = (i - n / 2) * pitch + bar / 2, s = b + bar / 2 + gap / 2;
+      geos.push(along ? box({ w: bar, h: 0.2, d: d - 0.04, color: S.grate, offset: { x: b, y: -0.1 } }) : box({ w: w - 0.04, h: 0.2, d: bar, color: S.grate, offset: { y: -0.1, z: b } }));
+      geos.push(along ? box({ w: gap, h: 0.04, d: d - 0.04, color: S.slot, offset: { x: s, y: -0.08 } }) : box({ w: w - 0.04, h: 0.04, d: gap, color: S.slot, offset: { y: -0.08, z: s } }));
+    }
+    for (const s of [-1, 1]) {
+      geos.push(box({ w, h: 0.3, d: 0.16, color: S.frame, offset: { y: -0.35, z: s * (d / 2 - 0.08) } }));
+      geos.push(box({ w: 0.16, h: 0.3, d: d - 0.32, color: S.frame, offset: { x: s * (w / 2 - 0.08), y: -0.35 } }));
+    }
+    const reach = typeof drop === "function" ? drop : () => drop;
+    const { cols, rows, at } = models.deckGrid(w, d);
+    for (const [x, z] of models.deckPosts(w, d)) {
+      const down = reach(x, z);
+      if (down < 0.4) continue;
+      geos.push(...steelColumn(x, z, -down, -0.5));
+      if (down > 1.6) {
+        if (x) geos.push(beam(x, -1.3, z, x - Math.sign(x) * 0.8, -0.52, z, 0.09, S.paint));
+        if (z) geos.push(beam(x, -1.3, z, x, -0.52, z - Math.sign(z) * 0.8, 0.09, S.paint));
+      }
+    }
+    for (const s of [-1, 1]) {
+      const [ax, az] = along ? at(s < 0 ? 0 : cols - 1, 0) : at(0, s < 0 ? 0 : rows - 1), [bx, bz] = along ? at(s < 0 ? 0 : cols - 1, rows - 1) : at(cols - 1, s < 0 ? 0 : rows - 1);
+      const depth = Math.min(reach(ax, az), reach(bx, bz), 4.5);
+      if (depth > 1.5) geos.push(beam(ax, -depth + 0.3, az, bx, -0.55, bz, 0.1, S.paint), beam(ax, -0.55, az, bx, -depth + 0.3, bz, 0.1, S.paint));
+    }
+    for (const [x0, z0, x1, z1, a, b] of models.deckRailSpans(w, d, rails, cuts)) geos.push(...steelRail(x0, z0, x1, z1, [a, b]));
+    return geos;
+  };
+  const steelStair = (ax, ay, az, bx, by, bz, w = 1.6, posts = [true, true]) => {
+    const S = STEEL, geos = [], rise = by - ay, len = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / len, uz = (bz - az) / len, px = -uz, pz = ux;
+    for (const s of [-1, 1]) geos.push(beam(ax + px * s * w / 2, ay, az + pz * s * w / 2, bx + px * s * w / 2, by, bz + pz * s * w / 2, 0.2, S.paint));
+    const n = models.stairTreads(rise), run = len / n, yaw = Math.atan2(ux, uz);
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n, top = ay + rise * (i + 1) / (n + 1);
+      geos.push(moved(turnedY(box({ w: w - 0.06, h: 0.06, d: run - 0.1, color: S.grate }), yaw), ax + (bx - ax) * t + ux * 0.035, top - 0.03, az + (bz - az) * t + uz * 0.035));
+      geos.push(moved(turnedY(box({ w: w - 0.06, h: 0.07, d: 0.07, color: S.nosing }), yaw), ax + (bx - ax) * i / n + ux * 0.035, top - 0.035, az + (bz - az) * i / n + uz * 0.035));
+    }
+    for (const s of [-1, 1]) {
+      const sx = px * s * (w / 2 + 0.05), sz = pz * s * (w / 2 + 0.05), m = Math.max(2, Math.round(len / 1.6) + 1);
+      for (let i = 0; i < m; i++) {
+        if (i === 0 && !posts[0] || i === m - 1 && !posts[1]) continue;
+        const t = i / (m - 1);
+        geos.push(box({ w: 0.08, h: 1.02, d: 0.08, color: S.rail, offset: { x: ax + (bx - ax) * t + sx, y: ay + rise * t + 0.51, z: az + (bz - az) * t + sz } }));
+      }
+      geos.push(beam(ax + sx, ay + 1.04, az + sz, bx + sx, by + 1.04, bz + sz, 0.09, S.rail), beam(ax + sx, ay + 0.55, az + sz, bx + sx, by + 0.55, bz + sz, 0.06, S.rail));
+    }
+    return geos;
+  };
+
   // The chamber: a floor of graphite tiles; walls of the kit's panels standing straight up, ribs out of the side walls
   // on the gantries' lines and a surround framing the launch tunnel's mouth in the back wall and round the door over
   // the landing in the front (`front`, apart from the rest, which the window into the hangar leaves out), its reveal
