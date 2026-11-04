@@ -6911,7 +6911,7 @@ const highscoreClientChecks = async () => {
   const sources = await Promise.all(["highscore-rules", "highscores"].map(name => readFile(join(root, `src/js/${name}.js`), "utf8")));
   // WebCrypto finishes on the worker pool, not after a fixed number of event-loop turns.
   // Drain its real promises before assertions inspect the requests they unlock.
-  const hashes = new Set(), testCrypto = { randomUUID: () => globalThis.crypto.randomUUID(), subtle: {
+  const hashes = new Set(), runIds = [], testCrypto = { randomUUID: () => { const id = globalThis.crypto.randomUUID(); runIds.push(id); return id; }, subtle: {
     digest(...args) {
       const pending = globalThis.crypto.subtle.digest(...args); hashes.add(pending);
       pending.then(() => hashes.delete(pending), () => hashes.delete(pending));
@@ -7023,6 +7023,7 @@ const highscoreClientChecks = async () => {
     const off = f.scores.watch(game, board => boards.push(board), null, rows => notices.push(rows.map(row => ({ ...row }))));
     f.reply(0, game, { rival: 30000 }, 1); await flush();
     const first = f.scores.begin(game), second = f.scores.begin(game);
+    const [firstId, secondId] = runIds.slice(-2);
     const a = f.scores.submit(first, game, 20000), b = f.scores.submit(second, game, 20000);
     const immediate = notices.at(-1).length === 2 && notices.at(-1).every(row => row.status === "saving")
       && f.scores.get(game).highscores.rival === 30000;
@@ -7035,10 +7036,12 @@ const highscoreClientChecks = async () => {
       unit: rule.unit, revision: 3, highscores: { 'score-one': 20000, rival: 30000 }, achieved: { 'score-one': 10, rival: 1 },
       runs: ids.map((id, i) => ({ id, username: 'score-one', score: 20000, achieved: 10 + i })) };
     const respond = (index, data) => f.requests[index].resolve({ ok: true, headers: { get: () => "application/json" }, json: async () => data });
+    // Hashing runs on the worker pool, so POST arrival order need not match submission order.
+    const requestOf = runId => f.requests.findIndex(req => req.options.method === "POST" && JSON.parse(req.options.body).runId === runId);
     // A later write response can confirm both runs before the earlier POST returns.
-    respond(2, board); const savedB = await b;
+    respond(requestOf(secondId), board); const savedB = await b;
     const reconciled = notices.at(-1).length === 0 && f.scores.get(game).runs.length === 2;
-    respond(1, { ...board, revision: 2, runs: [board.runs[0]] }); const savedA = await a;
+    respond(requestOf(firstId), { ...board, revision: 2, runs: [board.runs[0]] }); const savedA = await a;
     const ordered = f.scores.get(game).revision === 3 && f.scores.get(game).runs.length === 2;
     const failedRun = f.scores.begin(game), failed = f.scores.submit(failedRun, game, 40000); await flush();
     // Both bounded numeric attempts time out. The failed time remains a notice, outside the public board.
