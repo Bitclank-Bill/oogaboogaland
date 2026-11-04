@@ -16,6 +16,7 @@
 // is, never what it says, provided this page and the pad file are trustworthy. A compromised device, a page served
 // with other code, or the other person copying the conversation are outside it. A record behind the other side's is
 // caught and stops the pad; a pad used again where no record of its use survives, by a visitor who says it is new, is not.
+// Nor is a record rolled back mid-conversation (a restored profile) whose forgotten lines the room also dropped.
 // The pad file reads every line ever sealed with it, with the frames the room relayed, so the panel says to keep it safe
 // and delete it once the conversation is over. "Sent" is the room's word that it passed a line on, not the other side's.
 // The page's own notes carry no name, so no display name can pass for one; the other side's lines show their login.
