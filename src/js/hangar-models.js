@@ -2,7 +2,7 @@
 // walkway, as its concept draws it. A steel landing inside the door with steps down to the runway, which runs down the
 // middle of the floor between hazard-striped edges and blue marker lamps, and on through the launch tunnel's octagonal
 // frames, each lined with blue neon, to the launch shield at its far end, sealed until Jet v2 flies, space beyond.
-// Ochre truss gantries cross the vault, two crane trolleys over the Jet; timber catwalks run along both side walls on
+// Ochre truss gantries cross the vault, two crane trolleys over the Jet; steel catwalks run along both side walls on
 // brackets, a stair up to each from the back. On the right, in the
 // hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a timber
 // gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long stair down from behind the
@@ -411,20 +411,22 @@
     return { iron: merge(...iron), stone: merge(...stone), neon: noShadow(merge(...neon)), neonZ };
   });
 
-  // The catwalks along the side walls: plank decks bracketed into the rock (no posts to stand in front of the boards
-  // below), railed along the hall side and across both ends but where the stair comes up, and the stairs up to them.
+  // The catwalks along the side walls: grated steel decks bracketed into the wall (no posts to stand in front of the
+  // boards below), railed along the hall side and across both ends but where the stair comes up, and the stairs up to
+  // them.
   const catwalks = cached(() => {
     const L = LAYOUT, y = L.catwalkY, geos = [], B = L.boards;
     const underBoard = (x, z) => Object.values(B).some((b) => Math.sign(b.x) === Math.sign(x) && Math.abs(z - b.z) < b.w * b.scale / 2 + 0.4);
     L.catwalks.forEach(([x0, x1, z0, z1], i) => {
       const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, side = i ? 1 : -1, [sx, , , , , sz1, sw] = L.catwalkStairs[i];
-      // The rails: the hall side and both ends; the wall side is the rock.
+      // The rails: the hall side and both ends; the wall side is the wall.
       const rails = side < 0 ? "nse" : "nsw";
-      placed(geos, deckParts(x1 - x0, z1 - z0, 0, rails, 31 + i, [[sx - cx, sz1 - cz, sw / 2 + 0.05, 0, -1]]), cx, y, cz);
+      placed(geos, steelDeck(x1 - x0, z1 - z0, 0, rails, [[sx - cx, sz1 - cz, sw / 2 + 0.05, 0, -1]]), cx, y, cz);
       const wall = side < 0 ? HALL.x0 + 1.4 : HALL.x1 - 1.4, edge = side < 0 ? x1 - 0.2 : x0 + 0.2;
       for (let z = z0 + 1.5; z < z1 - 1; z += 4) {
         if (underBoard(edge, z)) continue;
-        geos.push(beam(wall, y - 2.6, z, edge, y - 0.6, z, 0.18, TIMBER_DK), beam(wall, y - 0.55, z, edge, y - 0.55, z, 0.22, TIMBER_DK));
+        geos.push(beam(wall, y - 2.6, z, edge, y - 0.6, z, 0.14, STEEL.frame), beam(wall, y - 0.5, z, edge, y - 0.5, z, 0.2, STEEL.frame));
+        geos.push(box({ w: 0.08, h: 2.6, d: 0.36, color: STEEL.plate, offset: { x: wall + side * 0.04, y: y - 1.5, z } }));
       }
     });
     for (const [ax, ay, az, bx, by, bz, w] of L.catwalkStairs) geos.push(...stairParts(ax, ay, az, bx, by, bz, w, [true, false], true));
