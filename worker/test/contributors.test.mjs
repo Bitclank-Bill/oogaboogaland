@@ -118,6 +118,46 @@ test("account-rename checks require another operator's exact-head approval and p
   assert.equal(f.calls.filter((call) => call.method === "POST").length, before);
 });
 
+test("rename refresh failures leave unidentified PR statuses untouched but identified renames fail closed", async () => {
+  for (const scenario of ["timeout", "5xx", "truncated", "file", "declaration"]) {
+    const f = accountRenameFixture(), api = f.gh.api, file = f.gh.file;
+    // An ordinary code PR or bot bundle must keep its required statuses, even
+    // when discovery fails before the refresh can tell which kind of PR it is.
+    f.diffFiles = [{ filename: "README.md", status: "modified" }];
+    if (scenario === "5xx") f.pr.user = { login: "private-app[bot]", type: "Bot" };
+    f.gh.api = async (url, ...rest) => {
+      if (url.startsWith("compare/")) {
+        if (scenario === "timeout" || scenario === "5xx") throw new Error(`GitHub ${scenario}`);
+        if (scenario === "truncated") return { merge_base_commit: { sha: f.rock }, files: Array(300).fill(f.diffFiles[0]) };
+      }
+      return api(url, ...rest);
+    };
+    if (scenario === "file" || scenario === "declaration") {
+      f.diffFiles = null; f.source = f.base;
+      f.gh.file = async (...args) => {
+        if (scenario === "file") throw new Error("GitHub blob unavailable");
+        return { ...await file(...args), source: "/* incomplete declaration" };
+      };
+    }
+    const coordinator = createCoordinator(f.gh, "private-app[bot]");
+    await assert.rejects(() => runAccountRenameChecks(coordinator, { schedule: "17,37,57 * * * *" }));
+    assert.equal(f.calls.filter((call) => call.method === "POST").length, 0, scenario);
+    f.gh.api = api; f.gh.file = file;
+    if (scenario === "file" || scenario === "declaration") f.source = f.base;
+    await coordinator.refreshAccountRenames();
+    assert.equal(f.calls.filter((call) => call.method === "POST").length, 0, `${scenario} recovery`);
+  }
+  const f = accountRenameFixture(), coordinator = createCoordinator(f.gh, "private-app[bot]");
+  f.lookup = async () => { throw new Error("GitHub unavailable after owner change identified"); };
+  await assert.rejects(() => coordinator.refreshAccountRenames(), /unavailable/);
+  assert.deepEqual(f.calls.filter((call) => call.method === "POST").map((call) => [call.data.context, call.data.state]),
+    [["Character intake", "failure"], ["Character bundle safety", "failure"]]);
+  f.lookup = null;
+  f.reviews = [{ user: { ...OPERATORS[1], type: "User" }, state: "APPROVED", commit_id: f.head }];
+  await coordinator.refreshAccountRenames();
+  assert.deepEqual(f.calls.filter((call) => call.method === "POST").slice(-2).map((call) => call.data.state), ["success", "success"]);
+});
+
 test("account lookup uses GitHub's ID and login endpoints without following supplied URLs", async () => {
   const calls = [], gh = createGitHub("example/land", "test-token", async (url, init) => {
     calls.push({ url, method: init.method }); return { ok: true, status: 200, json: async () => ({ id: 185141343 }) };

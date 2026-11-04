@@ -18,7 +18,7 @@ export const onlyAccountLoginChanged = (before, after) => {
   return before.slice(0, match.index) + replacement + before.slice(match.index + match[0].length) === after;
 };
 
-export const inspectAccountRename = async (gh, pr, rock) => {
+export const inspectAccountRename = async (gh, pr, rock, onIdentified = () => {}) => {
   if (!pr || pr.state !== "open" || pr.base.ref !== "rock" || pr.draft) return null;
   const diff = await gh.api(`compare/${rock}...${pr.head.sha}`);
   if (!Array.isArray(diff.files) || diff.files.length >= 300 || !diff.merge_base_commit?.sha) throw new Error("Incomplete account-rename comparison");
@@ -30,6 +30,8 @@ export const inspectAccountRename = async (gh, pr, rock) => {
   if (!base || !next) return null; // Ordinary intake handles additions/deletions.
   const previous = declaredIdentity(base.source), proposed = declaredIdentity(next.source);
   if (owner(previous) === owner(proposed)) return null;
+  // Discovery errors must not overwrite required checks on unrelated PRs.
+  onIdentified();
   const account = globalThis.BL.accountIdentities.accountForHandle(previous.handle);
   if (!account || path !== `src/characters/${account.handle}.js` || diff.files.length !== 1
     || file.status !== "modified" || file.previous_filename || !onlyAccountLoginChanged(base.source, next.source)) {

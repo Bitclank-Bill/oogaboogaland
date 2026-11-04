@@ -122,8 +122,9 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
     }
   };
   const checkAccountRename = async (pr, rock) => {
+    let identified = false;
     try {
-      const rename = await inspectAccountRename(gh, pr, rock);
+      const rename = await inspectAccountRename(gh, pr, rock, () => { identified = true; });
       if (!rename) return false;
       await status(pr.head.sha, BUNDLE_STATUS, "pending", "Verified account rename awaiting current-head operator approval");
       const queued = await queuedCharacters(gh, bot);
@@ -140,6 +141,7 @@ export const createCoordinator = (gh, bot, now = () => new Date()) => {
         : "Waiting for another operator to approve this exact account-rename head");
       return true;
     } catch (error) {
+      if (!identified) throw error;
       await status(pr.head.sha, STATUS, "failure", "Account rename not verified; inspect the trusted workflow log");
       await status(pr.head.sha, BUNDLE_STATUS, "failure", "Account rename or current-head approval verification failed");
       throw error;
