@@ -15488,7 +15488,40 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
 
 } };
 const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival machine opens its game, and leaving the game brings the same Ooga back to that machine", run: async (b) => {
-  await b.evaluate(`(() => { const B = window.__ooga, st = B.arcade.stations.find((s) => s.kind === "machine" && s.game.kind === "skee"), p = B.pilot.player.root.position; p.x = st.play.x; p.z = st.play.z; B.advance(0.2, 1 / 60); })()`);
+  // Every machine and cabinet uses the same grounded, forward-facing Space gate, on both floors.
+  const eligibility = await b.evaluate(`(() => {
+    const B=__ooga,a=B.pilot.player,A=B.arcade,rows=[];
+    if(a.weapon.aiming) B.pilot.modeAction("mode-toggle");
+    B.pilot.freeCursor();
+    for(const st of A.stations.filter(s=>["cabinet","retro","machine"].includes(s.kind))) {
+      const p=st.play,y=st.y||0;
+      B.pilot.navigate({position:{x:p.x,y,z:p.z},yaw:p.facing-Math.PI,pitch:.2,dist:4});
+      a.root.rotation.y=p.facing;a.hop=a.hopV=0;
+      const facing=A.nearStation(p.x,p.z,1.1,true)===st;
+      a.root.rotation.y=p.facing+Math.PI;
+      const away=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.root.rotation.y=p.facing+Math.PI/2;
+      const sideways=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.root.rotation.y=p.facing;a.hopV=4;
+      const takeoff=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.hopV=-2;a.hop=.4;a.root.position.y+=.4;
+      const falling=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.hop=0;a.hopV=0;a.root.position.y-=.4;
+      rows.push({label:st.label,facing,away,sideways,takeoff,falling});
+    }
+    return rows;
+  })()`);
+  record("arcade machine: every game requires grounded feet and a forward-facing player, including takeoff and descent",eligibility.length>12 && eligibility.every(r=>r.facing&&r.away&&r.sideways&&r.takeoff&&r.falling),JSON.stringify(eligibility));
+  await b.evaluate(`(() => {const B=__ooga,st=B.arcade.stations.find(s=>s.kind==="machine"&&s.game.kind==="skee");B.pilot.navigate({position:{x:st.play.x,y:0,z:st.play.z},yaw:st.play.facing-Math.PI,pitch:.2,dist:4});B.advance(.2,1/60);})()`);
+  const invited=await b.evaluate(`document.getElementById("hint").classList.contains("show") && document.getElementById("hint").textContent.includes("Space:")`);
+  await b.evaluate(`(() => {const B=__ooga,a=B.pilot.player;a.root.rotation.y+=Math.PI;B.advance(.02,1/60);})()`);
+  const hidden=await b.evaluate(`!document.getElementById("hint").classList.contains("show")`);
+  await b.key(" ");
+  const jumped=await b.evaluate(`(() => {const B=__ooga,a=B.pilot.player;B.advance(.08,1/60);const up=a.hop>0;a.root.rotation.y-=Math.PI;B.advance(.02,1/60);return {up,hidden:!document.getElementById("hint").classList.contains("show"),scene:B.scene};})()`);
+  await b.key(" ");
+  const airborne=await b.evaluate(`({scene:__ooga.scene,transitioning:__ooga.transitioning})`);
+  record("arcade machine: turning away removes the prompt, Space jumps, and facing the game in midair cannot start it",invited&&hidden&&jumped.up&&jumped.hidden&&jumped.scene==="arcade"&&airborne.scene==="arcade"&&!airborne.transitioning,JSON.stringify({invited,hidden,jumped,airborne}));
+  await b.evaluate(`__ooga.advance(2,1/60)`);
   await b.key(" ");
   const opened = await untilPage(b, 'B.scene === "skee" && !B.transitioning', 15000);
   // The first Escape closes the title card, the second leaves the game.

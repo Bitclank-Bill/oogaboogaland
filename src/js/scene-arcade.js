@@ -1175,17 +1175,20 @@
   const speakerHidden = (cave) => { const p = cave.root.position; return pointHidden(p.x, p.y + 1.2, p.z); };
   // The station nearest (x, z) on the walker's own level and in its sight: the deck's cabinets stand over the claws and
   // pinball, and nothing is played through a wall or a floor.
-  const nearStation = (x, z, reach) => {
+  const nearStation = (x, z, reach, playable = false) => {
     let found = null, best = reach * reach;
     const feet = feetOf();
+    // Space remains a jump unless the visitor is planted and looking into the station.
+    if (playable && (!avatar || avatar.hop > 0 || avatar.hopV > 0 || Math.abs(feet - supportAt(x, z, feet)) > 0.05)) return null;
     for (let i = 0; i < stations.length; i++) {
       const s = stations[i], p = s.play, d = (x - p.x) * (x - p.x) + (z - p.z) * (z - p.z), y = s.y || 0;
+      if (playable && Math.cos(avatar.root.rotation.y - p.facing) < 0.5) continue;
       if (d < best && Math.abs(y - feet) < 1.2 && sightClear(x, feet + 1.1, z, p.x, y + 1.1, p.z)) { best = d; found = s; }
     }
     return found;
   };
   const useNear = (x, z, reach) => {
-    const s = nearStation(x, z, Math.max(reach, REACH));
+    const s = nearStation(x, z, Math.max(reach, REACH), true);
     if (!s) return false;
     useStation(s);
     return true;
@@ -2051,7 +2054,7 @@
     ambience(dt);
     audio.tick(dt);
     if (pilot.player && !leaving) {
-      const p = avatar.root.position, near = nearStation(p.x, p.z, INVITE);
+      const p = avatar.root.position, near = nearStation(p.x, p.z, INVITE, true);
       const cabinetId = near?.kind === "cabinet" ? GAMES[near.game].id : near?.kind === "retro" ? near.id : null;
       const occupied = cabinetId && BL.net.cabinetSeats.get(cabinetId);
       if (near !== prompt || occupied !== promptOccupied) {
@@ -2060,7 +2063,7 @@
           const verb = near.kind === "snack" ? "order at " : near.kind === "prizes" ? "shop at " : "", act = near.kind === "snack" ? "ORDER" : near.kind === "prizes" ? "PRIZES" : near.kind === "wheel" ? "SPIN" : "PLAY";
           hud.hint(occupied ? `${near.label} · ${occupied.name} is playing` : near.kind === "wheel" ? `${COARSE ? act : "Space: spin"} (${AM.WHEEL_COST} tickets)` : `${COARSE ? act : "Space"}: ${verb}${near.label}`);
           hud.setAct(act);
-        } else pilot.showAct();
+        } else { hud.hideHint(); pilot.showAct(); }
       }
       if (p.z > EXIT_Z + 1.2 && Math.abs(p.x) < HALL.door) leaveCave();
     }
