@@ -171,6 +171,18 @@
     path.setAttribute("fill", "currentColor");
     voiceIcon.append(path);
   }
+  // The Ooga thump's pixel mallet (thump.js), on the voice mark's 9x9 grid: the Thump button and the mark beside a
+  // player in Online Oogas (players.js) clone it.
+  const malletIcon = document.createElementNS(SIGN_NS, "svg");
+  malletIcon.setAttribute("viewBox", "0 0 9 9");
+  malletIcon.setAttribute("aria-hidden", "true");
+  malletIcon.setAttribute("class", "pixel-mallet");
+  {
+    const path = document.createElementNS(SIGN_NS, "path");
+    path.setAttribute("d", "M1 1h7v3H1zM4 4h1v5H4z");
+    path.setAttribute("fill", "currentColor");
+    malletIcon.append(path);
+  }
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -362,6 +374,7 @@
     el.lootTab.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
     const sheet = BL.sheet.create({ lootEnabled, signal });
+    sheet.setPlaying(document.body.classList.contains("arcade-game"));
     el.primary.hidden = true;
     el.gorillaSmash.hidden = true;
     el.mode.hidden = true;
@@ -440,7 +453,8 @@
         if (!bannerFrame) bannerFrame = window.requestAnimationFrame(fitBanner);
       };
       const bannerResize = new ResizeObserver(scheduleBanner), bannerEquipment = new MutationObserver(scheduleBanner);
-      for (const node of [el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
+      // Cabinet zooms resize the stage without changing the viewport or the title's own size.
+      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
       if (presets) {
         bannerResize.observe(presets);
         bannerEquipment.observe(presets, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ["hidden", "disabled"] });
@@ -1815,10 +1829,12 @@
     };
     // Active gameplay borrows the play area without changing the visitor's saved panel choices.
     const setPanelsHidden = (on) => {
+      const arcadeGame = document.body.classList.contains("arcade-game");
+      sheet.setPlaying(arcadeGame);
       on = !!on;
+      sheet.setHidden(on && !arcadeGame);
       if (on === panelsHidden) return;
       panelsHidden = on;
-      sheet.setHidden(on);
       for (const popup of floatingBoards) popup.setHidden(on);
     };
     const openRecipe = () => {
@@ -1968,6 +1984,7 @@
       else if (b.dataset.action === "account-rejoin") BL.net.rejoin();
       else if (b.dataset.action === "account-voice") BL.voice.toggle();
       else if (b.dataset.action === "account-voice-leave") BL.voice.stop();
+      else if (b.dataset.action === "account-thump") BL.thump.press();
       else actionHandler && actionHandler(b.dataset.action);
     });
     // A game's side panels fold away and come back from a tab on the screen's edge: a `data-fold`
@@ -2511,5 +2528,5 @@
       else b.textContent = `Back to ${place}`;
     }
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, malletIcon, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

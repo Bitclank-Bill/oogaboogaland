@@ -6927,7 +6927,7 @@ const highscoreClientChecks = async () => {
   const sources = await Promise.all(["highscore-rules", "highscores"].map(name => readFile(join(root, `src/js/${name}.js`), "utf8")));
   // WebCrypto finishes on the worker pool, not after a fixed number of event-loop turns.
   // Drain its real promises before assertions inspect the requests they unlock.
-  const hashes = new Set(), testCrypto = { randomUUID: () => globalThis.crypto.randomUUID(), subtle: {
+  const hashes = new Set(), runIds = [], testCrypto = { randomUUID: () => { const id = globalThis.crypto.randomUUID(); runIds.push(id); return id; }, subtle: {
     digest(...args) {
       const pending = globalThis.crypto.subtle.digest(...args); hashes.add(pending);
       pending.then(() => hashes.delete(pending), () => hashes.delete(pending));
@@ -6973,6 +6973,29 @@ const highscoreClientChecks = async () => {
       } };
   };
   {
+    const checked = [];
+    for (const game of ["drop", "orbit", "mine", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"]) {
+      const f = fixture(true), ticket = f.scores.begin(game), machine = game + "-1";
+      f.reply(0, game); await flush();
+      const saving = f.scores.submit(ticket, machine, 1000); await flush();
+      const request = f.requests.at(-1), body = JSON.parse(request.options.body), rule = f.rules.get(game);
+      const board = {game,version:1,scoreType:rule.scoreType,direction:rule.direction,unit:rule.unit,highscores:{[machine]:1000},achieved:{[machine]:1},revision:2,
+        runs:[{id:"1".repeat(64),username:"score-one",score:1000,achieved:1},{id:"2".repeat(64),username:"score-one",score:900,achieved:2}]};
+      request.resolve({ok:true,status:200,headers:{get:()=>"application/json"},json:async()=>board});
+      const saved = await saving, accepted = f.scores.get(game)?.runs;
+      const next = f.scores.begin(game), invalid = f.scores.submit(next, machine, 800); await flush();
+      const second = f.requests.at(-1), distinct = JSON.parse(second.options.body).runId !== body.runId;
+      second.resolve({ok:true,status:200,headers:{get:()=>"application/json"},json:async()=>({...board,revision:3,runs:[...board.runs].reverse()})});
+      await invalid;
+      for (const runs of [[{username:"score-one",score:1000,achieved:1}], [board.runs[0], {...board.runs[1],id:board.runs[0].id}]]) {
+        for (const fn of f.live) fn({...board,revision:4,runs});
+      }
+      checked.push({game,ok:saved && typeof body.runId==="string" && distinct && accepted?.length===2 && accepted[0].score===1000 && f.scores.best(game,machine)===1000 && f.scores.get(game).revision===2});
+      f.scores.dispose();
+    }
+    record("highscores: all eleven cabinet boards retain attributed distinct runs, preserve machine bests, and reject reversed score order", checked.every(x=>x.ok), JSON.stringify(checked));
+  }
+  {
     const f = fixture(true), game = "cloud-hopper-l1";
     f.BL.cloudHopperReplays = { startTicket: () => Promise.resolve({ token: "test" }), submit: async () => null };
     const ticket = f.scores.begin(game); f.reply(0, game); await flush();
@@ -7016,6 +7039,7 @@ const highscoreClientChecks = async () => {
     const off = f.scores.watch(game, board => boards.push(board), null, rows => notices.push(rows.map(row => ({ ...row }))));
     f.reply(0, game, { rival: 30000 }, 1); await flush();
     const first = f.scores.begin(game), second = f.scores.begin(game);
+    const [firstId, secondId] = runIds.slice(-2);
     const a = f.scores.submit(first, game, 20000), b = f.scores.submit(second, game, 20000);
     const immediate = notices.at(-1).length === 2 && notices.at(-1).every(row => row.status === "saving")
       && f.scores.get(game).highscores.rival === 30000;
@@ -7028,10 +7052,12 @@ const highscoreClientChecks = async () => {
       unit: rule.unit, revision: 3, highscores: { 'score-one': 20000, rival: 30000 }, achieved: { 'score-one': 10, rival: 1 },
       runs: ids.map((id, i) => ({ id, username: 'score-one', score: 20000, achieved: 10 + i })) };
     const respond = (index, data) => f.requests[index].resolve({ ok: true, headers: { get: () => "application/json" }, json: async () => data });
+    // Hashing runs on the worker pool, so POST arrival order need not match submission order.
+    const requestOf = runId => f.requests.findIndex(req => req.options.method === "POST" && JSON.parse(req.options.body).runId === runId);
     // A later write response can confirm both runs before the earlier POST returns.
-    respond(2, board); const savedB = await b;
+    respond(requestOf(secondId), board); const savedB = await b;
     const reconciled = notices.at(-1).length === 0 && f.scores.get(game).runs.length === 2;
-    respond(1, { ...board, revision: 2, runs: [board.runs[0]] }); const savedA = await a;
+    respond(requestOf(firstId), { ...board, revision: 2, runs: [board.runs[0]] }); const savedA = await a;
     const ordered = f.scores.get(game).revision === 3 && f.scores.get(game).runs.length === 2;
     const failedRun = f.scores.begin(game), failed = f.scores.submit(failedRun, game, 40000); await flush();
     // Both bounded numeric attempts time out. The failed time remains a notice, outside the public board.
@@ -8781,22 +8807,19 @@ const orbitHosted = { name: "orbit hosted", why: "regression: Ooga Orbit read Oo
     && drop && orbit && after.scene === "orbit" && site.fetched.filter(chunkOf("drop")).length === 1 && site.fetched.filter(chunkOf("drop-scene")).length === 1, JSON.stringify({ cold, flown: { phase: flown.phase, shown: flown.shown, rows: flown.rows, diver: flown.diver }, drop, orbit, after, fetched: site.fetched }));
 } };
 // Refused from the first request: entering the arcade prefetches its stage games, Drop included, before Space.
-const arcadeHostedDrop = { name: "arcade hosted drop cabinet", refuse: "/js/drop-", why: "regression: a refused Ooga Drop download left the arcade's departure flags set, so no cabinet opened again and its Leave did nothing until a reload, also when Leave was pressed during the fade back", run: async (b, site) => {
+const arcadeHostedDrop = { name: "arcade hosted drop cabinet", refuse: "/js/drop-", why: "regression: a refused Ooga Drop download left the arcade's departure flags set, so no cabinet opened again and its Leave did nothing until a reload, including recovery from the cabinet approach", run: async (b, site) => {
   await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), s = window.BL.arcadeModels.CABINETS[1].play; if (B.crew.player !== a) B.pilot.possess(a); a.root.position.x = s.x; a.root.position.z = s.z; B.advance(0.2, 1 / 60); })()`);
   const drops = () => site.fetched.filter(chunkOf("drop")).length, before = drops();
   await b.key(" ");
   for (let t = 0; t < 15000 && drops() === before; t += 50) await b.sleep(50);
-  // Leave, pressed while the view fades back in (after the refusal's toast), is refused with the transition still running.
-  const pressed = await b.evaluate(`new Promise(resolve => { const t0 = performance.now(), tick = () => {
-    if (__ooga.transitioning && document.getElementById("toast").textContent.includes("could not be opened")) { document.querySelector('nav[data-scene="arcade"] .leave').click(); resolve(__ooga.transitioning); }
-    else if (performance.now() - t0 > 10000) resolve(null); else requestAnimationFrame(tick); }; tick(); })`);
   const refused = await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 15000);
+  const recovered = await b.evaluate(`__ooga.cabinet.phase === 'idle' && __ooga.fade === 0 && !document.getElementById('stage').classList.contains('cabinet-display')`);
   site.refused.length = 0;
   dropRefusals(b);
   await b.key(" ");
   const opened = await untilPage(b, 'B.scene === "drop" && !B.transitioning', 15000);
   const asked = drops() - before;
-  record("arcade hosted: a refused Ooga Drop download fades back to the arcade, Leave pressed during that fade is refused without locking the hall, and Space at the same cabinet asks again and opens the game", pressed === true && refused && opened && asked === 2, JSON.stringify({ pressed, refused, opened, asked, fetched: site.fetched }));
+  record("arcade hosted: a refused Ooga Drop download returns from the cabinet without a fade or held controls, and Space at the same cabinet asks again and opens the game", recovered && refused && opened && asked === 2, JSON.stringify({ recovered, refused, opened, asked, fetched: site.fetched }));
 } };
 // The factory's code refused while the Ooga walks into the 2 o'clock shield, as offline or after a redeploy.
 const factoryHostedShield = { name: "factory hosted shield", refuse: "/js/factory-scene-", why: "regression: a refused factory download sent the Ooga back still inside the shield, which entered again on the same step, looping fade, toast and fetch with no frame of control", run: async (b, site) => {
@@ -9311,23 +9334,23 @@ const sharedPanelBuildings = { name: "shared panel buildings", why: "regression:
   await tourGo(b, "bifrost");
   record("shared panel: DSB's latest closed choice returns through Bifrost", await b.evaluate('document.getElementById("sheet").dataset.open === "false" && !document.getElementById("sheet").hidden'));
 } };
-const sharedPanelGameplay = { name: "shared panel gameplay", why: "regression: only an active game suppresses the panel; game end and exit restore the latest choice without a banner override", run: async b => {
+const sharedPanelGameplay = { name: "shared panel gameplay", why: "regression: arcade games keep folded social tabs available and restore hall choices; other active games still suppress panels", run: async b => {
   await b.evaluate('__ooga.hud.selectTab("bananas")');
   const rows = [];
   for (let pass = 0; pass < 2; pass++) {
     await tourGo(b, "skee");
     rows.push(await b.evaluate(`(() => { const H = __ooga.hud, s = document.getElementById("sheet"), C = BL.scenes.skee.debug.carnival;
-      const intro = !s.hidden && s.dataset.open === "true";
+      const intro = !s.hidden && s.dataset.open === "false";
       C.again(); __ooga.advance(4,1/60);
-      const playing = s.hidden && s.querySelector(".sheet-body").inert;
+      const playing = !s.hidden && s.querySelector(".sheet-body").inert;
       document.getElementById("mode-hud").click(); H.selectTab("roster"); window.dispatchEvent(new Event("resize"));
-      const held = s.hidden; C.finish(0); __ooga.advance(1.1,1/60);
+      const held = !s.hidden && s.dataset.open === "true"; C.finish(0); __ooga.advance(1.1,1/60);
       const ended = !s.hidden && s.dataset.open === "true" && s.querySelector('[aria-selected="true"]').dataset.tab === "roster";
       return { intro, playing, held, ended }; })()`));
     await tourGo(b, "arcade");
-    rows[rows.length - 1].returned = await b.evaluate('!document.getElementById("sheet").hidden && document.getElementById("sheet").dataset.open === "true" && document.querySelector("#sheet [aria-selected=true]").dataset.tab === "roster"');
+    rows[rows.length - 1].returned = await b.evaluate('!document.getElementById("sheet").hidden && document.getElementById("sheet").dataset.open === "true" && document.querySelector("#sheet [aria-selected=true]").dataset.tab === "bananas"');
   }
-  record("shared panel: repeated game start, end and exit restore the latest tab", rows.every(r => Object.values(r).every(Boolean)), JSON.stringify(rows));
+  record("shared panel: arcade play starts folded, permits tabs, and restores the hall choice on exit", rows.every(r => Object.values(r).every(Boolean)), JSON.stringify(rows));
   for (const [id, start, end] of [
     ["race", "__ooga.race.startRace()", "__ooga.race.finishRace()"],
     ["drop", "__ooga.drop.start()", '__ooga.drop.finish("lost", 0)'],
@@ -9337,7 +9360,7 @@ const sharedPanelGameplay = { name: "shared panel gameplay", why: "regression: o
   ]) {
     await tourGo(b, id);
     const r = await b.evaluate(`(() => { const s = document.getElementById("sheet"); const idle = !s.hidden;
-      ${start}; const playing = s.hidden; const tab = document.getElementById("sheet-bananas"); if (tab.getAttribute("aria-selected") !== "true") tab.click();
+      ${start}; const playing = document.body.classList.contains("arcade-game") ? !s.hidden : s.hidden; const tab = document.getElementById("sheet-bananas"); if (tab.getAttribute("aria-selected") !== "true") tab.click();
       ${end || ""}; return { idle, playing, ended: ${end ? "!s.hidden" : "true"} }; })()`);
     await tourGo(b, "arcade");
     r.returned = await b.evaluate('!document.getElementById("sheet").hidden && document.getElementById("sheet").dataset.open === "true" && document.querySelector("#sheet [aria-selected=true]").dataset.tab === "bananas"');
@@ -15284,6 +15307,7 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
 } };
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
+  await b.send("Page.bringToFront");
   const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning`, 20000);
   const leave = async () => {
     await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; a.root.position.x = 0; a.root.position.z = BL.arcadeModels.HALL.front + 1.3; B.advance(0.2, 1 / 60); })()`);
@@ -15292,7 +15316,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
   const read = `(() => {
     const B = __ooga, a = B.pilot.player, w = a.weapon, t = B.pilot.captureControl({}), o = B.pilot.orbit;
     const m = B.mouths?.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id), p = a.root.position;
-    return { who: a.traits.name, view: t.view, combat: w.aiming, focused: t.focused, held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0,
+    return { who: a.traits.name, view: t.view, combat: w.aiming, focused: t.focused, locked: document.pointerLockElement === document.getElementById("scene"), held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0,
       primary: w.primaryOwned, secondary: w.secondaryOwned, gun: a.parts.gun.visible, club: a.parts.club.visible,
       ammo: w.ammo, spare: w.spareAmmo.slice(), unlimited: w.unlimited, dist: o.dist,
       along: m ? (p.x - m.x) * Math.sin(m.ry) + (p.z - m.z) * Math.cos(m.ry) : null,
@@ -15313,6 +15337,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
     })()`);
     const before = await b.evaluate(read);
     await b.key(" "); await arrive("arcade");
+    if (mode !== "carry") await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
     const hall = await b.evaluate(read);
     // All ordinary weapon routes meet the same ownership/action gate, including the touch HUD.
     for (const key of ["1", "2", "g", "v", "r"]) await b.key(key);
@@ -15327,24 +15352,42 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
       const w = B.pilot.player.weapon;
       return { armed: BL.scenes.arcade.debug.arena.armed, equipped: w.equipped, unlimited: w.unlimited, ammo: w.ammo, spare: w.spareAmmo.slice() };
     })()`);
+    let released = null;
+    if (mode === "released") {
+      await b.evaluate(`__ooga.pilot.freeCursor(); __ooga.advance(1, 1 / 60)`);
+      released = await b.evaluate(read);
+    }
     await leave();
     const outside = await b.evaluate(read);
-    rows.push({ mode, before, hall, blocked, mouse, arena, outside });
+    rows.push({ mode, before, hall, blocked, mouse, arena, outside, released });
   }
-  record("arcade carry: combat and released cursor intent survive both doorways, hall weapons cannot act, and the outside loadout and ammunition return inside the mainland overhang in every control mode",
-    rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.focused
+  record("arcade carry: entry captures combat mouse-look, an explicit release stays free, hall weapons cannot act, and the outside loadout returns inside the mainland overhang",
+    rows.every(r => r.hall.who === r.before.who && r.hall.combat === r.before.combat && r.hall.focused === r.before.combat && r.hall.locked === r.before.combat
       && !r.hall.held && !r.hall.gun && !r.hall.club && !r.hall.primary && !r.hall.secondary
       && !r.blocked.held && r.blocked.ammo === 11 && r.blocked.spare[0] === 4 && !r.blocked.unlimited
-      && (r.mode !== "focused" || r.mouse > 0.001) && (r.mode !== "released" || r.mouse < 0.001)
+      && (r.mode === "carry" ? r.mouse < 0.001 : r.mouse > 0.001) && (!r.released || !r.released.focused && !r.released.locked)
       && (r.mode !== "focused" || r.arena.armed && r.arena.equipped && r.arena.unlimited && r.arena.ammo === 4 && r.arena.spare[0] === 11)
       && r.outside.who === r.before.who && r.outside.held === r.before.held && r.outside.combat === r.before.combat
       && r.outside.focused === r.before.focused && r.outside.ammo === 11 && r.outside.spare[0] === 4
       && r.outside.primary === r.before.primary && r.outside.secondary === r.before.secondary && !r.outside.unlimited
       && r.outside.along < 0 && r.outside.along > -3 && Math.abs(r.outside.across) < 0.5 && Math.abs(r.outside.feet - r.outside.floor) < 0.1), JSON.stringify(rows));
-  // Leave the shared scene session in the Arcade for the following playthrough.
+  // Physical games use the ordinary return transition, without the cabinet zoom.
   await b.key(" "); await arrive("arcade");
+  await b.key("x");
+  await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  await b.evaluate(`__ooga.arcade.open("pinball", 0)`); await arrive("pinball");
+  await b.key("Enter");
+  await untilPage(b, `B.carnival.phase === "play"`);
+  await b.evaluate(`__ooga.carnival.finish(1234)`);
+  const resultMenu = await untilPage(b, `!document.getElementById("carnival-results").hidden && !document.pointerLockElement`);
+  const exit = await b.evaluate(`(() => { const r=document.querySelector('#carnival-results [data-action="leave"]').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
+  await b.click(exit.x, exit.y); await arrive("arcade");
+  const recaptured = await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  record("arcade carry: pinball results keep a free cursor and Back to arcade captures combat without a second click", resultMenu && recaptured, JSON.stringify({resultMenu,recaptured}));
+  // Leave the shared scene session in ordinary carry for the following playthrough.
+  await b.key("x");
 } };
-const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simulated visitors played machines and Clankers diverted or greeted when a live player stood in their path", run: async (b) => {
+const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simulated visitors played machines and Clankers diverted or greeted when a live player stood in their path; four working roles walked on their knuckles", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, A = B.arcade, a = B.pilot.player, rows = [];
     for (const g of A.staff) {
@@ -15354,13 +15397,20 @@ const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simula
       B.advance(0.5, 1 / 60);
       rows.push({ role: g.role.id, phase: g.phase });
     }
-    B.advance(15, 1 / 60);
+    const walkedUpright = new Set(), bent = [];
+    for (let tick = 0; tick < 900; tick++) {
+      B.advance(1 / 60, 1 / 60);
+      for (const g of A.staff) if (g.phase === "walk" && g.agent.walking && !g.agent.beating) {
+        walkedUpright.add(g.role.id);
+        if (g.agent.debug.gait !== "upright" && bent.length < 6) bent.push(g.role.id);
+      }
+    }
     B.pilot.navigate({ position: { x: 0, y: 0, z: 2 }, yaw: 0, pitch: 0.2, dist: 5 });
     return { crowd: A.crowd.length, walkers: A.walkers.length, bots: A.bots.length, staff: A.staff.length,
-      playing: A.carnival.some(g => g.playing), rows, jobs: A.staff.map(g => ({ phase: g.phase, done: g.done, walked: g.walked })) };
+      playing: A.carnival.some(g => g.playing), upright: [...walkedUpright], bent, rows, jobs: A.staff.map(g => ({ phase: g.phase, done: g.done, walked: g.walked })) };
   })()`);
-  record("arcade maintenance: only the live player and maintenance Clankers remain, machines never start bot games, and nearby players cause no greetings or chats",
-    r.crowd === 0 && r.walkers === 0 && r.bots === 0 && r.staff === 6 && !r.playing
+  record("arcade maintenance: only the live player and maintenance Clankers remain, machines never start bot games, nearby players cause no greetings or chats, and all six roles walk upright between jobs",
+    r.upright.length === 6 && r.bent.length === 0 && r.crowd === 0 && r.walkers === 0 && r.bots === 0 && r.staff === 6 && !r.playing
     && r.rows.every(g => g.phase !== "greet" && g.phase !== "chat") && r.jobs.some(g => g.done > 0 || g.walked > 0), JSON.stringify(r));
 } };
 const arcadeStage = { name: "arcade stage approaches", why: "regression: oversized decorative root collision boxes blocked walking onto the central stage from its sides and back", run: async (b) => {
@@ -15415,7 +15465,7 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
   const entered = await untilPage(b, `B.scene === 'hub' && !B.transitioning && BL.scenes.hub.debug.cloudHopper.phase === 'intro'`, 30000);
   if (!entered) {
     const state = await b.evaluate(`({ scene: __ooga.scene, transitioning: __ooga.transitioning, phase: BL.scenes.hub.debug?.cloudHopper?.phase, who: __ooga.pilot.player?.traits.name })`);
-    record('arcade play: Cloud Hopper launches unarmed, rises, preserves preview gear, returns safely twice and blocks Rally', false, JSON.stringify({ entered, state, layout })); return;
+    record('arcade play: Cloud Hopper launches unarmed through the cabinet, preserves preview gear, returns safely twice and blocks Rally', false, JSON.stringify({ entered, state, layout })); return;
   }
   const before = await b.evaluate(`(() => { const B = __ooga, H = BL.scenes.hub.debug.cloudHopper, p = B.pilot.player;
     const weapons = new Set([p.parts.club.geometry, p.parts.gun.geometry, ...p.parts.gun.children.map(n => n.geometry)]);
@@ -15447,19 +15497,76 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
   await b.evaluate(`__ooga.go('race')`); const routed = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
   const state = { layout, blocked, entered, before, rising, returned, back, again, cancelled, routed };
   writeFileSync(join(dir,'journey.json'),JSON.stringify(state,null,2));
-  record('arcade play: Cloud Hopper launches unarmed, rises, preserves preview gear, returns safely twice and blocks Rally',
+  record('arcade play: Cloud Hopper launches unarmed through the cabinet, preserves preview gear, returns safely twice and blocks Rally',
     layout.front === 'cloud-hopper' && layout.rally.x < layout.flame && layout.flame < layout.invaders.x && layout.rally.z === layout.invaders.z
     && layout.rally.y === 3.2 && layout.rally.turn === 0 && layout.rally.service
     && layout.deck === 3.2 && layout.walkable && layout.label.includes('out of order') && blocked && entered && before.who === 'portlandhodl'
-    && before.phase === 'lifting' && before.unarmed && before.previewSafe && before.dockGone
-    && rising.phase === 'lifting' && rising.y > before.y && rising.unarmed && returned && back.who === 'portlandhodl'
+    && ['ready','briefing'].includes(before.phase) && before.unarmed && before.previewSafe && before.dockGone
+    && ['ready','briefing'].includes(rising.phase) && rising.y === before.y && rising.unarmed && returned && back.who === 'portlandhodl'
     && back.off < 0.5 && back.unarmed && back.parked && again && cancelled && routed, JSON.stringify(state));
 
 } };
+// Real tabs and mute buttons stay operable during a game, without requesting microphone access.
+const arcadeSocialPanels = async (b, label) => {
+  const initial=await b.evaluate(`(() => {
+    const N=BL.net,s=document.getElementById("sheet");
+    window.__arcadeSocial={me:N.state.me,room:N.state.room,backend:N.state.backend,saved:localStorage.getItem("oogaboogaland.sheet.v1")};
+    N.state.me={id:991,login:"arcade-viewer",display:"Arcade viewer"};N.state.room="live";N.state.backend=true;
+    N.remotes.set(992,{id:992,login:"arcade-neighbor",display:"Arcade neighbor",body:"portlandhodl",zone:"arcade.hall",poseZone:"arcade.hall",x:0,y:0,z:0,voice:true,muted:false});
+    __ooga.pilot?.freeCursor();window.dispatchEvent(new Event("resize"));
+    const tab=s.querySelector('[data-tab="players"]'),r=tab.getBoundingClientRect();
+    return {folded:s.dataset.open==="false",visible:!s.hidden&&getComputedStyle(s).visibility==="visible",hit:tab.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)),x:r.x+r.width/2,y:r.y+r.height/2};
+  })()`);
+  await b.click(initial.x,initial.y);
+  await untilPage(b, `BL.players.stats.showing && document.querySelector('#players-panel .roster-voice[data-login="arcade-neighbor"]')`);
+  await untilPage(b, '!document.getElementById("sheet").getAnimations().length');
+  const button=await b.evaluate(`(() => {const e=document.querySelector('#players-panel .roster-voice[data-login="arcade-neighbor"]');if(!e)return null;e.scrollIntoView({block:"nearest"});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};})()`);
+  if(button) await b.click(button.x,button.y);
+  const socialDir=join(root,"untracked","arcade-social-review");mkdirSync(socialDir,{recursive:true});
+  await b.screenshot(join(socialDir,label.replaceAll(" ","-")+".png"));
+  const result=await b.evaluate(`(() => {const muted=BL.voice.mutedLocally("arcade-neighbor"),saved=localStorage.getItem("oogaboogaland.sheet.v1")===__arcadeSocial.saved;BL.voice.muteLocal("arcade-neighbor",false);BL.net.remotes.delete(992);Object.assign(BL.net.state,{me:__arcadeSocial.me,room:__arcadeSocial.room,backend:__arcadeSocial.backend});document.querySelector('.sheet [data-tab="players"][aria-selected="true"]')?.click();delete window.__arcadeSocial;return {muted,saved};})()`);
+  record(label+": folded player tabs open during gameplay and mute a nearby player without replacing saved panels",initial.folded&&initial.visible&&initial.hit&&button?.hit&&result.muted&&result.saved,JSON.stringify({initial,button,result}));
+};
 const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival machine opens its game, and leaving the game brings the same Ooga back to that machine", run: async (b) => {
-  await b.evaluate(`(() => { const B = window.__ooga, st = B.arcade.stations.find((s) => s.kind === "machine" && s.game.kind === "skee"), p = B.pilot.player.root.position; p.x = st.play.x; p.z = st.play.z; B.advance(0.2, 1 / 60); })()`);
+  // Every machine and cabinet uses the same grounded, forward-facing Space gate, on both floors.
+  const eligibility = await b.evaluate(`(() => {
+    const B=__ooga,a=B.pilot.player,A=B.arcade,rows=[];
+    if(a.weapon.aiming) B.pilot.modeAction("mode-toggle");
+    B.pilot.freeCursor();
+    for(const st of A.stations.filter(s=>["cabinet","retro","machine"].includes(s.kind))) {
+      const p=st.play,y=st.y||0;
+      B.pilot.navigate({position:{x:p.x,y,z:p.z},yaw:p.facing-Math.PI,pitch:.2,dist:4});
+      a.root.rotation.y=p.facing;a.hop=a.hopV=0;
+      const facing=A.nearStation(p.x,p.z,1.1,true)===st;
+      a.root.rotation.y=p.facing+Math.PI;
+      const away=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.root.rotation.y=p.facing+Math.PI/2;
+      const sideways=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.root.rotation.y=p.facing;a.hopV=4;
+      const takeoff=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.hopV=-2;a.hop=.4;a.root.position.y+=.4;
+      const falling=A.nearStation(p.x,p.z,1.1,true)===null;
+      a.hop=0;a.hopV=0;a.root.position.y-=.4;
+      rows.push({label:st.label,facing,away,sideways,takeoff,falling});
+    }
+    return rows;
+  })()`);
+  record("arcade machine: every game requires grounded feet and a forward-facing player, including takeoff and descent",eligibility.length>12 && eligibility.every(r=>r.facing&&r.away&&r.sideways&&r.takeoff&&r.falling),JSON.stringify(eligibility));
+  await b.evaluate(`(() => {const B=__ooga,st=B.arcade.stations.find(s=>s.kind==="machine"&&s.game.kind==="skee");B.pilot.navigate({position:{x:st.play.x,y:0,z:st.play.z},yaw:st.play.facing-Math.PI,pitch:.2,dist:4});B.advance(.2,1/60);})()`);
+  const invited=await b.evaluate(`document.getElementById("hint").classList.contains("show") && document.getElementById("hint").textContent.includes("Space:")`);
+  await b.evaluate(`(() => {const B=__ooga,a=B.pilot.player;a.root.rotation.y+=Math.PI;B.advance(.02,1/60);})()`);
+  const hidden=await b.evaluate(`!document.getElementById("hint").classList.contains("show")`);
+  await b.key(" ");
+  const jumped=await b.evaluate(`(() => {const B=__ooga,a=B.pilot.player;B.advance(.08,1/60);const up=a.hop>0;a.root.rotation.y-=Math.PI;B.advance(.02,1/60);return {up,hidden:!document.getElementById("hint").classList.contains("show"),scene:B.scene};})()`);
+  await b.key(" ");
+  const airborne=await b.evaluate(`({scene:__ooga.scene,transitioning:__ooga.transitioning})`);
+  record("arcade machine: turning away removes the prompt, Space jumps, and facing the game in midair cannot start it",invited&&hidden&&jumped.up&&jumped.hidden&&jumped.scene==="arcade"&&airborne.scene==="arcade"&&!airborne.transitioning,JSON.stringify({invited,hidden,jumped,airborne}));
+  await b.evaluate(`__ooga.advance(2,1/60)`);
   await b.key(" ");
   const opened = await untilPage(b, 'B.scene === "skee" && !B.transitioning', 15000);
+  const presence=await b.evaluate(`({zone:BL.net.state.zone,body:BL.net.state.body,self:BL.net.state.self})`);
+  record("arcade machine: skee-ball keeps the same body and nearby voice in the hall",presence.zone==="arcade.hall"&&presence.body==="portlandhodl"&&presence.self.zone==="arcade.hall"&&Number.isFinite(presence.self.x),JSON.stringify(presence));
+  await arcadeSocialPanels(b,"arcade machine");
   // The first Escape closes the title card, the second leaves the game.
   await b.key("Escape");
   await b.evaluate("window.__ooga.advance(0.1, 1 / 60)");
@@ -15467,6 +15574,15 @@ const arcadeMachine = { name: "arcade machine", why: "rule: Space at a carnival 
   await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 15000);
   const back = await b.evaluate(`(() => { const B = window.__ooga, st = B.arcade.stations.find((s) => s.kind === "machine" && s.game.kind === "skee"), p = B.pilot.player; return { scene: B.scene, who: p && p.traits.name, off: p ? Math.hypot(p.root.position.x - st.play.x, p.root.position.z - st.play.z) : null }; })()`);
   record("arcade machine: Space at the skee-ball machine opens skee-ball, and Escape brings the same Ooga back to the machine", opened && back.scene === "arcade" && back.who === "portlandhodl" && back.off < 0.5, JSON.stringify({ opened, back }));
+  for(const id of ["hoops","shy","claw","hockey","billiards","darts","pinball","ride"]) {
+    await b.evaluate(`__ooga.go(${JSON.stringify(id)},0)`);
+    await untilPage(b, `B.scene === ${JSON.stringify(id)} && !B.transitioning`,20000);
+    const presence=await b.evaluate(`({zone:BL.net.state.zone,body:BL.net.state.body,self:BL.net.state.self})`);
+    record(`arcade machine: ${id} retains the player and hall proximity`,presence.zone==="arcade.hall"&&presence.body==="portlandhodl"&&presence.self.zone==="arcade.hall"&&Number.isFinite(presence.self.x),JSON.stringify(presence));
+    await arcadeSocialPanels(b,`arcade machine ${id}`);
+    await b.evaluate(`__ooga.go("arcade")`);
+    await untilPage(b, 'B.scene === "arcade" && !B.transitioning',20000);
+  }
 } };
 // A carnival game from its title card to its results: a press every `step` seconds (the hoop shot presses only
 // outside the green, so the first round is missed and ends on time), then the saved best and the tickets it paid.
@@ -20572,7 +20688,119 @@ scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [b
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
-scene("arcade", { query: "character=portlandhodl", steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
+const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains usable menu controls, expands its game and returns the same player with combat mouse capture and no retained UI", run: async b => {
+  const dir = join(root, "untracked", "cabinet-review", "visual-pass"); mkdirSync(dir, { recursive: true });
+  const shape = await b.evaluate(`innerWidth < 600 ? 'phone' : __ooga.renderer.kind === 'canvas2d' ? 'canvas2d' : 'desktop'`);
+  if (shape === "desktop") {
+    await b.send("Page.bringToFront");
+    await b.evaluate(`__ooga.pilot.enterClose(); if (__ooga.pilot.player.weapon.aiming) __ooga.pilot.modeAction("mode-toggle")`);
+    await b.key("x");
+    await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  }
+  if (id !== "cloud-hopper") await b.evaluate(`(() => {
+    const original = window.fetch;
+    const board = id => { const r=BL.highscoreRules.get(id), ranked=BL.highscoreRules.cabinets.includes(id); return {game:id,version:r.version,scoreType:r.scoreType,direction:r.direction,unit:r.unit,revision:12,
+      highscores:ranked?{[r.machines[0]]:1000}:{},achieved:ranked?{[r.machines[0]]:1}:{},
+      ...(ranked?{runs:Array.from({length:10},(_,i)=>({id:(i+1).toString(16).padStart(64,'0'),username:i<2?'same-player':i===2?'player-with-a-very-long-name-123456789':'player-'+(i+1),score:1000-i*25,achieved:i+1}))}:{})}; };
+    window.fetch = (url, options) => { const prefix="/api/highscores/", path=String(url); if (!path.startsWith(prefix)) return original(url,options);
+      const id=path.slice(prefix.length), value=id==='arcade'||id==='arcade-live'?{refreshAfterMs:30000,boards:BL.highscoreRules.arcade.map(board)}:board(id);
+      return Promise.resolve({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>value}); };
+    Object.assign(BL.net.state,{backend:true,highscores:true,highscoreSnapshots:true,resolved:true});
+  })()`);
+  await b.evaluate(`__ooga.arcade.open(${JSON.stringify(id === "cloud-hopper" ? "hub" : id)}, ${JSON.stringify(id === "cloud-hopper" ? "cloud-hopper" : null)})`);
+  const menu = await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
+  if (!menu) { record(`cabinet ${id}: opens its menu`, false, await b.evaluate(`({scene:__ooga.scene,phase:__ooga.cabinet.phase})`)); return; }
+  const framed = await b.evaluate(`(() => {
+    const r=document.getElementById('stage').getBoundingClientRect();
+    const card=${JSON.stringify(id)} === 'cloud-hopper' ? document.querySelector('.cloud-hopper-panel') : [...document.querySelectorAll('.game-intro')].find(e=>!e.hidden && e.getClientRects().length && getComputedStyle(e).visibility!=='hidden');
+    const buttons=[...card.querySelectorAll('.actions button')].filter(e=>!e.hidden && e.getClientRects().length);
+    const controls=buttons.map(e=>{const b=e.getBoundingClientRect(), hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return {label:e.textContent.trim(),inside:b.left>=r.left-1 && b.top>=r.top-1 && b.right<=r.right+1 && b.bottom<=r.bottom+1,tappable:b.height>=40 && e.contains(hit)};});
+    return {unlocked:!document.pointerLockElement,width:r.width,height:r.height,x:r.x,y:r.y,inside:r.x>0 && r.y>0 && r.right<innerWidth && r.bottom<innerHeight,controls,fade:__ooga.fade};
+  })()`);
+  await b.screenshot(join(dir, `${id}-${shape}-menu.png`));
+  record(`cabinet ${id}: ${shape} menu actions fit the glass and are reachable`, framed.unlocked && framed.controls.length===(shape === "phone" ? 3 : 2) && framed.controls.every(c=>c.inside && c.tappable), JSON.stringify(framed));
+  if (id !== "cloud-hopper") {
+    await untilPage(b, `BL.highscores.get(${JSON.stringify(id)})?.runs?.length === 10`);
+    const activateToggle = async () => {
+      // Native Enter activation also emits a carriage-return keypress; game shortcuts only inspect keydown.
+      await b.send("Input.dispatchKeyEvent", {type:"keyDown",key:"Enter",code:"Enter",text:"\r",windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+      await b.send("Input.dispatchKeyEvent", {type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+    };
+    if (shape === "phone") {
+      await b.evaluate(`document.querySelector('.cabinet-leaderboard-toggle').focus()`);
+      await activateToggle();
+    }
+    const scores = await b.evaluate(`(() => { const e=document.querySelector('.cabinet-leaderboard'), r=e.getBoundingClientRect(), p=document.getElementById('stage').getBoundingClientRect(); return {fit:r.width>0 && r.height>40 && r.top>=p.top && r.bottom<=p.bottom, rows:[...e.querySelectorAll('li')].map(x=>({name:x.children[1].textContent,score:x.children[2].textContent})),phase:__ooga.cabinet.phase}; })()`);
+    await b.screenshot(join(dir, `${id}-${shape}-leaderboard.png`));
+    record(`cabinet ${id}: ${shape} attributed top ten fits the glass without starting play`, scores.fit && scores.phase==='menu' && scores.rows.length===10 && scores.rows[0].name==='same-player' && scores.rows[1].name==='same-player' && scores.rows[0].score==='1,000' && scores.rows[9].score==='775', JSON.stringify(scores));
+    if (shape === "phone") { await activateToggle(); await b.evaluate(`document.querySelector('.cabinet-leaderboard-toggle').blur()`); }
+  }
+  if (id === "cloud-hopper") {
+    if (shape === "phone") await b.evaluate(`document.querySelector('.cabinet-scores-toggle').click()`);
+    const leaderboard = await b.evaluate(`(() => { const e=document.querySelector('.cloud-hopper-panel .cloud-hopper-scores'), r=e.getBoundingClientRect(), p=e.closest('dialog').getBoundingClientRect();return !e.hidden && r.width>0 && r.height>40 && r.top>=p.top && r.bottom<=p.bottom; })()`);
+    await b.screenshot(join(dir, `${id}-${shape}-leaderboard.png`));
+    record(`cabinet Cloud Hopper: ${shape} leaderboard remains available inside glass`, leaderboard);
+    if (shape === "phone") await b.evaluate(`document.querySelector('.cabinet-scores-toggle').click()`);
+    await b.evaluate(`document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click()`);
+  }
+  else if (id === "mine") await b.evaluate(`document.querySelector('[data-action="mine-start"]').click()`);
+  else await b.key("Enter");
+  const expanded = await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
+  const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && document.getElementById('cabinet-foreground').hidden && !document.querySelector('.cabinet-leaderboard') && __ooga.fade === 0`);
+  if (shape === "phone" && id !== "cloud-hopper") {
+    const header = await b.evaluate(`(() => { const e=document.getElementById('equipment-hud'), p=document.querySelector('.topbar .presets:not([hidden])'); const buttons=p ? [...p.querySelectorAll('button')].filter(b=>!b.hidden && b.getClientRects().length) : []; return {equipment:e.getBoundingClientRect().top,presets:p?.getBoundingClientRect().top,tappable:buttons.every(b=>{const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})}; })()`);
+    record(`cabinet ${id}: phone header controls return above the game`, header.equipment < 180 && (!header.presets || header.presets < 180) && header.tappable, JSON.stringify(header));
+  }
+  await arcadeSocialPanels(b, `cabinet ${id} ${shape}`);
+  await b.screenshot(join(dir, `${id}-${shape}-play.png`));
+  await b.evaluate(`__ooga.go('arcade')`);
+  const returned = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
+  if (shape === "desktop") await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
+  const back = await b.evaluate(`(() => { const p=__ooga.pilot.player, at=BL.arcadeCabinets.get(${JSON.stringify(id)});return {who:p?.traits.name,locked:document.pointerLockElement===document.getElementById('scene'),off:p?Math.hypot(p.root.position.x-at.x,p.root.position.z-at.z):999,clean:!__ooga.cabinet.active && !document.getElementById('stage').classList.contains('cabinet-display')}; })()`);
+  await b.screenshot(join(dir, `${id}-${shape}-return.png`));
+  record(`cabinet ${id}: menu in glass, full-screen game, same Ooga at cabinet, clean return`, menu && framed.inside && !framed.fade && expanded && full && returned && back.who === 'portlandhodl' && back.off < .1 && back.clean && (shape !== 'desktop' || back.locked), JSON.stringify({framed,expanded,full,returned,back}));
+} });
+for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker"]) {
+  scene("arcade", { label: `cabinet ${id} desktop`, exclusive: true, query: "character=portlandhodl&pos=0", opts: { motion: true }, steps: [cabinetVisit(id)] });
+  scene("arcade", { label: `cabinet ${id} phone`, query: "character=portlandhodl&pos=0", opts: { w:390,h:844,mobile:true,motion:true }, steps: [cabinetVisit(id)] });
+}
+scene("arcade", { label: "cabinet canvas2d", query: "character=portlandhodl&canvas2d=1&pos=0", steps: [cabinetVisit("snake")] });
+scene("arcade", { label: "cabinet interruptions", opts: { motion: true }, steps: [{ name: "cabinet interruptions", why: "regression: cancelling a menu or partial zoom must return without enlarging the screen or holding controls", run: async b => {
+  await b.evaluate(`__ooga.arcade.open('drop')`);
+  const approach = await untilPage(b, `B.cabinet.phase === 'approach'`);
+  await b.key("Escape");
+  const first = await untilPage(b, `B.scene === 'arcade' && !B.transitioning && !B.cabinet.active`);
+  await b.evaluate(`__ooga.arcade.open('drop')`);
+  const menu = await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
+  const cancel = await b.evaluate(`(() => { const stage=document.getElementById('stage'), before=stage.clientWidth; __ooga.go('arcade'); __ooga.advance(1/60,1/60); return {before,after:stage.clientWidth,phase:__ooga.cabinet.phase}; })()`);
+  const second = await untilPage(b, `B.scene === 'arcade' && !B.transitioning && !B.cabinet.active`);
+  await b.evaluate(`__ooga.arcade.open('drop')`);
+  await untilPage(b, `B.cabinet.phase === 'menu'`, 30000);
+  await b.key("Enter");
+  const expanding = await untilPage(b, `B.cabinet.phase === 'expanding'`);
+  await b.key("Escape");
+  const third = await untilPage(b, `B.scene === 'arcade' && !B.transitioning && !B.cabinet.active`);
+  record("cabinet interruptions: approach, menu and partial expansion return cleanly without enlarging the menu", approach && first && menu && cancel.after <= cancel.before && second && expanding && third, JSON.stringify({approach,first,menu,cancel,second,expanding,third}));
+} }] });
+scene("arcade", { label: "cabinet public route", opts: { motion: true }, steps: [{ name: "cabinet public route", why: "regression: a public game link from inside the arcade could bypass the cabinet entrance", run: async b => {
+  const address = new URL(sceneUrl("drop")); address.searchParams.delete("debug");
+  await b.open(address.href);
+  const wait = async expression => {
+    for (let i = 0; i < 200; i++) { if (await b.evaluate(expression).catch(() => false)) return true; await b.sleep(100); }
+    return false;
+  };
+  const menu = await wait(`document.body.dataset.cabinetPhase === 'menu' && document.body.dataset.activeScene === 'drop'`);
+  await b.key("Enter");
+  const full = await wait(`document.body.dataset.cabinetPhase === 'playing'`);
+  await b.key("Escape");
+  const returned = await wait(`document.body.dataset.cabinetPhase === 'idle' && document.body.dataset.activeScene === 'arcade'`);
+  await b.evaluate(`location.hash = '/oogadrop'`);
+  const linked = await wait(`document.body.dataset.cabinetPhase === 'menu' && document.body.dataset.activeScene === 'drop'`);
+  await b.key("Escape");
+  const cancelled = await wait(`document.body.dataset.cabinetPhase === 'idle' && document.body.dataset.activeScene === 'arcade'`);
+  record("cabinet public route: direct arrival and a link from the hall both visit the cabinet, play and cancel cleanly", menu && full && returned && linked && cancelled, JSON.stringify({menu,full,returned,linked,cancelled}));
+} }] });
+scene("arcade", { query: "character=portlandhodl", exclusive: true, steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadePlay, trip("arcade")] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("skee", { steps: [carnivalPlay("skee", 0.5), trip("skee")] });
@@ -23668,10 +23896,48 @@ const netFixture=(BL,response,step=200,cookie="")=>{
   class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"?JSON.parse(v):v);}close(){this.readyState=3;}}
   const voice={setPeers:()=>{},restart:()=>{},stop:()=>{}};
   const location={protocol:"https:",host:"fixture.invalid",pathname:"/",search:"",assign:url=>navigations.push(url)},pilot={saveLoginView(){savedViews++;}};
-  const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,chalkBoard:BL.chalkBoard,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
+  const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
   runInNewContext(source,context);
   return {net:context.window.BL.net,document:context.document,voice,sockets,sent,events,location,navigations,advance(ms){tick+=ms;},get calls(){return calls;},get savedViews(){return savedViews;}};
 };
+const cabinetNetworkChecks = async BL => {
+  const C = BL.arcadeCabinets;
+  const layout = C.entries.every(entry => {
+    const c = BL.arcadeModels.CABINETS.find(c => (c.game >= 0 ? BL.arcadeModels.GAMES[c.game].id : BL.arcadeModels.RETRO[c.retro].id) === entry.id);
+    return c && Math.hypot(c.play.x - entry.x, c.play.z - entry.z) < 1e-8 && c.y === entry.y && c.play.facing === entry.yaw;
+  });
+  record("cabinet presence: every authoritative play spot matches its rendered cabinet, and Rally is unavailable", layout && C.entries.length === 12 && !C.get("race"));
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "YellowBrokeIt", display: "Yellow" } }) }));
+  await f.net.start();
+  const ws = f.sockets[0], message = m => ws.onmessage({ data: JSON.stringify(m) });
+  const welcome = features => message({ t: "welcome", you: { id: 71 }, players: [], now: Date.now(), features });
+  welcome([]);
+  const old = await f.net.takeCabinet("drop");
+  welcome([C.FEATURE]); f.net.setBody("YellowBrokeIt"); f.net.setZone("arcade.hall");
+  const pending = f.net.takeCabinet("drop"), request = f.sent.at(-1);
+  const waiting = !f.net.cabinet;
+  message({ t: "cabinet", id: "drop", q: request.q, ok: true });
+  const granted = await pending;
+  f.net.setBody(null); f.net.setZone("scene-drop"); f.net.sendPose(100, 100, 100, 0);
+  const pose = f.sent.filter(m => m.t === "pose").at(-1), at = C.get("drop");
+  const held = f.net.state.body === "YellowBrokeIt" && f.net.state.zone === "arcade.hall" && Math.abs(pose.x - at.x) < .001 && Math.abs(pose.z - at.z) < .001 && pose.y === at.y;
+  f.net.leaveCabinet(); f.net.setZone("outside");
+  const released = !f.net.cabinet && f.net.state.zone === "outside" && f.sent.some(m => m.t === "cabinet" && m.op === "leave" && m.q === request.q);
+  f.net.setZone("arcade.hall");
+  const cancel = f.net.takeCabinet("mine"), cancelledRequest = f.sent.at(-1); f.net.leaveCabinet();
+  await cancel;
+  message({ t: "cabinet", id: "mine", q: cancelledRequest.q, ok: true });
+  const late = !f.net.cabinet && f.sent.at(-1).op === "leave" && f.sent.at(-1).q === cancelledRequest.q;
+  const revoke = f.net.takeCabinet("snake"), revokeRequest = f.sent.at(-1);
+  message({ t: "cabinet", id: "snake", q: revokeRequest.q, ok: true }); await revoke;
+  message({ t: "cabinets", seats: [] });
+  const revoked = !f.net.cabinet; f.net.leaveCabinet();
+  const disconnected = f.net.takeCabinet("mine"); ws.onclose();
+  const lost = await disconnected;
+  record("cabinet client: waits for the room, pins presence, cancels late grants, fails closed on old servers and disconnect, and releases on return", !!old && waiting && granted === null && held && released && late && revoked && !!lost);
+  f.net.dispose();
+};
+
 // Rule (#361): the live players tab names each zone's group as the panels always have, apart from the zones that share a
 // land but not coordinates; it orders the visitor's group and row first and everyone else by name; its crosshair takes
 // the first step of the route between zones; and a position counts only in the zone it was reported in, so a player
@@ -23856,6 +24122,23 @@ const chalkboardClientChecks = async (BL) => {
   document.getElementById("chalk-keyboard").handlers.click();
   input.value = "hi"; input.handlers.input({ isComposing: false }); tick();
   const sentText = f.sent.at(-1).k === "type" && f.sent.at(-1).c.map(c => c[0]).join("") === "hi";
+  // Regression (#425): input is per-character locally, but accepted characters share a wire frame.
+  const capacity = [], marksAt = n => Array.from({ length: n }, () => ({ t: "t", ch: "x", p: [0.1, 0.2] }));
+  for (const [n, text] of [[548, "ab"], [549, "ab"], [550, "a"]]) {
+    room({ t: "chalk-board", marks: marksAt(n), editor: 71 });
+    const before = f.sent.length;
+    input.value = text; input.handlers.input({ isComposing: false }); tick();
+    const frames = f.sent.slice(before).filter(m => m.t === "chalk" && m.k === "type");
+    capacity.push({ n, marks: f.net.state.chalk.board.marks.length, frames: frames.map(m => m.c.map(c => c[0]).join("")) });
+  }
+  room({ t: "chalk-board", marks: marksAt(549), editor: 71 });
+  const beforeBatch = f.sent.length, beforeBoard = JSON.stringify(f.net.state.chalk.board);
+  const refusedBatch = f.net.chalkEdit({ k: "type", c: [["a", 100, 100], ["b", 200, 100]] });
+  f.net.flushChalk();
+  record("chalkboard capacity: normal input batches fitting characters, keeps only the final fitting character at 549, and rejects overflowing frames without changing or queueing them",
+    JSON.stringify(capacity) === JSON.stringify([{ n: 548, marks: 550, frames: ["ab"] }, { n: 549, marks: 550, frames: ["a"] }, { n: 550, marks: 550, frames: [] }])
+      && refusedBatch === "full" && f.sent.length === beforeBatch && JSON.stringify(f.net.state.chalk.board) === beforeBoard,
+    JSON.stringify({ capacity, refusedBatch, sent: f.sent.length - beforeBatch }));
   document.getElementById("chalk-close").handlers.click();
   const letGo = !dialog.open && f.sent.at(-1).k === "drop" && stored?.length === C.initial().length + 2;
   // Another's writing arrives as it is made, and the board names them while they hold it.
@@ -23917,6 +24200,308 @@ const chatClientChecks = async () => {
   record("ooga chat unread: arrival lines and the visitor's own never count; a rejoin counts only newer lines, once; nothing counts while in the panel; looking clears it, and so does signing out",
     unread.join() === "0,1,2,2,0,1,0", unread.join());
   record("ooga chat client: lost receipts time out to a stable retry; edited identical drafts and newer sends survive old receipts; explicit logout clears local text; Unicode, invalid controls and old-server gating use the shared policy", waiting && uncertain && stable && revision && late && policy && unicode && gated && restored && input.value === "" && C.stats.lines === 0 && timers.size === 0, JSON.stringify({ waiting, uncertain, stable, revision, late, policy, lines: C.stats.lines, timers: timers.size }));
+};
+// Ooga thump on the page (thump.js): every thump is seen (the body and the mallet beside the thumper in Online Oogas)
+// and sounds only where this visitor would hear that player's voice (the room's `a`, the local mute, voice's own hearing
+// range); the pooled sound's caps and no backlog; gesture-only recovery; membership cleanup on the real rigs; the wire;
+// the mallet's fixed cell on the real players.js; and that the crowd banner, its chat notice and the Reaction sounds
+// toggle are gone. The module runs on a small DOM with fake audio that records every scheduled value, so silence is
+// measured, not assumed.
+const thumpChecks = async BL => {
+  const source = await readFile(join(root, "src/js/thump.js"), "utf8");
+  // Fake Web Audio: a node per create call, every AudioParam event kept with its time.
+  const fakeAudio = () => {
+    const events = [], made = { nodes: 0, contexts: 0, list: [], resumes: 0 };
+    const param = (name) => {
+      const p = { value: 0 };
+      for (const k of ["setValueAtTime", "linearRampToValueAtTime", "exponentialRampToValueAtTime", "setTargetAtTime"]) p[k] = (v, t) => { events.push({ name, k, v, t }); return p; };
+      p.cancelScheduledValues = () => p;
+      return p;
+    };
+    class Context {
+      constructor() { made.contexts++; made.list.push(this); this.state = "running"; this.currentTime = 0; this.sampleRate = 8000; this.destination = {}; this.refuse = false; }
+      node(extra) { made.nodes++; return { connect: (n) => n, start() {}, ...extra }; }
+      createGain() { return this.node({ gain: param("gain") }); }
+      createOscillator() { return this.node({ frequency: param("frequency") }); }
+      createStereoPanner() { return this.node({ pan: param("pan") }); }
+      createBiquadFilter() { return this.node({ frequency: param("filter") }); }
+      createBufferSource() { return this.node({}); }
+      createBuffer(c, n) { const data = new Float32Array(n); return { getChannelData: () => data }; }
+      close() { this.state = "closed"; return Promise.resolve(); }
+      // A browser may refuse; either way the answer comes later than the gesture that asked.
+      resume() { made.resumes++; if (this.refuse) return Promise.reject(new Error("not allowed")); return Promise.resolve().then(() => { if (this.state !== "closed") this.state = "running"; }); }
+    }
+    return { Context, events, made };
+  };
+  // A thump's peak level as scheduled: the body's attack ramp after time `after` (each thump ramps its body, puff and
+  // knock in that order; the body's is its level).
+  const peaks = (events, after = -1) => events.filter(e => e.name === "gain" && e.k === "linearRampToValueAtTime" && e.t > after).filter((e, i) => i % 3 === 0).map(e => +e.v.toFixed(4));
+  // Pure parts first, from a page with no Thump button.
+  const bare = { window: { BL: {}, matchMedia: () => ({ matches: false }) }, document: { getElementById: () => null } };
+  runInNewContext(source, bare);
+  const { createMixer } = bare.window.BL.thump;
+  // The pool: four at once, six a second, nothing later for what was dropped, and a level of 0 never takes a voice.
+  const a = fakeAudio(), ctx = new a.Context(), mixer = createMixer(ctx, ctx.destination, () => 0.5);
+  const built = a.made.nodes;
+  const silentFirst = [mixer.play(0, false, 0), mixer.play(0, false, -1), mixer.play(0, false, NaN)];
+  const burst = Array.from({ length: 6 }, () => mixer.play(0, false));
+  const atOnce = mixer.playing;
+  const playedAt0 = a.events.filter(e => e.k === "setValueAtTime" && e.name === "pan").length;
+  const rate = [];
+  for (let i = 1; i <= 6; i++) { ctx.currentTime = 0.17 * i; rate.push(mixer.play(0, false)); }
+  ctx.currentTime = 3;
+  const pans = a.events.filter(e => e.name === "pan");
+  const ahead = a.events.filter(e => e.t > 3);
+  const resumed = mixer.play(0.5, true);
+  const ducked = peaks(a.events, 3);
+  ctx.currentTime = 5; mixer.play(0, false, 0.5); const half = peaks(a.events, 5);
+  ctx.state = "suspended";
+  const suspended = mixer.play(0, false);
+  record("ooga thump sound: at most four sounding at once and six started a second; a thump that cannot sound now is dropped, never queued; quieter under speech and by its level, and a level of 0 takes no voice; every node built once",
+    silentFirst.join() === "false,false,false" && burst.join() === "true,true,true,true,false,false" && atOnce === 4 && playedAt0 === 4 && rate.join() === "true,true,false,false,false,true" && pans.length === 7 && ahead.length === 0
+      && resumed && Math.max(...ducked) < 0.15 && half.join() === "0.11" && !suspended && a.made.nodes === built && mixer.counts.busy === 2 && mixer.counts.rate === 3 && mixer.counts.played === 9,
+    JSON.stringify({ silentFirst, burst, atOnce, rate, pans: pans.length, ahead: ahead.length, resumed, ducked, half, nodes: [built, a.made.nodes], counts: mixer.counts }));
+
+  // The page module, on a small DOM, with every collaborator recording what it was asked to do.
+  const page = () => {
+    const audio = fakeAudio(), calls = { thumped: [], pulse: [], clearedMarks: 0, clearedBodies: 0 }, sent = [];
+    const el = () => ({ hidden: true, textContent: "", title: "", attrs: {}, prepend() {}, setAttribute(k, v) { this.attrs[k] = v; } });
+    const nodes = { "account-thump": el() };
+    const remotes = new Map([[2, { id: 2, login: "bea", body: "Bea" }], [3, { id: 3, login: "cal", body: "gorilla:Cal" }], [4, { id: 4, login: "dee", body: "Dee" }], [5, { id: 5, login: "muted", body: "Mu" }], [6, { id: 6, login: "eve", body: "Eve" }]]);
+    // Voice's own hearing: Eve is past this visitor's range, Dee half way into its fade.
+    const near = new Map([[6, 0], [4, 0.5]]);
+    let roster = null, account = null, heard = null, voiceFn = null;
+    const net = { state: { room: "live", me: { login: "me" }, selfId: 1, body: "Me", zone: "outside", pokerVoice: null }, remotes,
+      subscribe: fn => { account = fn; }, subscribeRoster: fn => { roster = fn; }, subscribeThump: fn => { heard = fn; }, sendThump: () => { sent.push('{"t":"thump"}'); return net.state.room === "live"; } };
+    const voice = { stats: { enabled: true, joining: false, speaking: false }, speaking: () => false, mutedLocally: login => login === "muted", nearness: id => near.has(id) ? near.get(id) : 1, subscribe: fn => { voiceFn = fn; } };
+    let clock = 10000;
+    const window = { BL: { net, voice, hud: { malletIcon: { cloneNode: () => ({}) } }, players: { pulse: id => calls.pulse.push(id), clearPulses: () => { calls.clearedMarks++; } },
+      remotePlayers: { thumped: id => { calls.thumped.push(id); return 0; }, clearThumps: () => { calls.clearedBodies++; } }, sound: { output: c => c.destination } },
+      AudioContext: audio.Context, matchMedia: () => ({ matches: false }) };
+    const storage = { touched: 0 };
+    const context = { window, document: { hidden: false, getElementById: id => nodes[id] || null }, navigator: { userActivation: { hasBeenActive: true, isActive: true } },
+      localStorage: { getItem: () => { storage.touched++; return null; }, setItem: () => { storage.touched++; } }, performance: { now: () => clock }, Float64Array, Map, Math, JSON, Promise };
+    runInNewContext(source, context);
+    account(); roster();
+    clock += 2000; // past the first zone's settling
+    return { T: window.BL.thump, net, voice, near, nodes, calls, sent, audio, storage, context, heard: (id, audible) => heard(id, audible), roster: () => roster(), tick: ms => { clock += ms; }, voiceChanged: () => voiceFn(),
+      gesture: on => { context.navigator.userActivation.isActive = on; } };
+  };
+  // Sight and sound apart: every thump is drawn; only those the room says this page would hear, from a player not muted
+  // here and within this visitor's hearing range, sound, at the level voice would play that player.
+  const el = page();
+  el.T.press();                 // the visitor's own: full
+  el.tick(600); el.heard(2, true);  // heard, in range: full
+  el.heard(3, false);           // the room says not heard here (a Studio audience, another crossing's share)
+  el.tick(600); el.heard(5, true);  // muted for this visitor
+  el.heard(6, true);            // past the hearing range
+  el.tick(600); el.heard(4, true);  // half way into the range's fade: half as loud
+  const levels = peaks(el.audio.events);
+  record("ooga thump sight and sound: every accepted thump moves the body and shows its mallet in Online Oogas; it sounds only where the room says this page would hear that player, not for a player muted here or past the hearing range, and as loud as voice would play them",
+    el.calls.thumped.join() === "0,2,3,5,6,4" && el.calls.pulse.join() === "0,2,3,5,6,4" && el.T.stats.shown === 6 && el.T.stats.sounded === 3 && el.T.stats.unheard === 3
+      && levels.join() === "0.22,0.22,0.11" && el.audio.made.contexts === 1 && el.storage.touched === 0,
+    JSON.stringify({ thumped: el.calls.thumped, pulse: el.calls.pulse, levels, stats: el.T.stats }));
+  // Hidden, disconnected, nowhere, or settling into another voice group: neither drawn nor sounded; a place inside one
+  // group does not settle; out of voice the button goes and pressing sends nothing.
+  const gate = page();
+  gate.heard(99, true);
+  gate.context.document.hidden = true; gate.heard(2, true); gate.context.document.hidden = false;
+  gate.net.state.room = "connecting"; gate.heard(2, true); const offline = gate.T.press(); gate.net.state.room = "live";
+  gate.net.state.zone = "lab"; gate.roster(); gate.heard(2, true); gate.tick(1600); gate.heard(3, true);
+  gate.net.state.zone = "lab.back"; gate.roster(); gate.heard(4, true);
+  gate.net.state.zone = "none"; gate.roster(); gate.tick(2000); gate.heard(2, true);
+  gate.net.state.zone = "lab"; gate.roster(); gate.tick(2000);
+  gate.voice.stats.enabled = false; gate.voiceChanged(); gate.heard(2, true);
+  const buttonHidden = gate.nodes["account-thump"].hidden, pressedOutOfVoice = gate.T.press();
+  record("ooga thump gates: nothing is drawn or sounded while hidden, disconnected, nowhere or settling into another voice group (a place inside one group does not settle); out of voice the button goes and pressing sends nothing",
+    gate.calls.thumped.join() === "3,4" && gate.calls.pulse.join() === "3,4" && !offline && !pressedOutOfVoice && buttonHidden && gate.sent.length === 0,
+    JSON.stringify({ thumped: gate.calls.thumped, sent: gate.sent, stats: gate.T.stats }));
+  // A suspended context: relayed thumps never wake it, only a Thump press inside a real gesture does, and nothing missed
+  // while it slept (nor the press that woke it) is sounded afterwards.
+  const settle = () => new Promise(done => setImmediate(done));
+  const sus = page();
+  sus.heard(2, true);
+  const susCtx = sus.audio.made.list[0], playedBefore = sus.T.stats.audio.played;
+  susCtx.state = "suspended";
+  sus.tick(600); sus.heard(3, true); sus.heard(4, true);
+  const networkResumes = sus.audio.made.resumes;
+  sus.gesture(false); const scripted = sus.T.press(); const scriptedResumes = sus.audio.made.resumes; sus.gesture(true);
+  sus.tick(600); sus.T.press();
+  const pressResumes = sus.audio.made.resumes, playedAtPress = sus.T.stats.audio.played;
+  await settle();
+  const runningAfter = susCtx.state, playedAfterResume = sus.T.stats.audio.played;
+  sus.tick(600); sus.heard(2, true);
+  const playedNext = sus.T.stats.audio.played, pansAfter = sus.audio.events.filter(e => e.name === "pan").length;
+  // Refused: no throw, nothing sounds, the next press asks again.
+  susCtx.state = "suspended"; susCtx.refuse = true;
+  sus.tick(600); sus.T.press(); const refusedAsks = sus.audio.made.resumes;
+  await settle();
+  sus.tick(600); sus.heard(2, true);
+  const refused = { asks: refusedAsks - pressResumes, failed: sus.T.stats.resumeFailed, played: sus.T.stats.audio.played, state: susCtx.state };
+  susCtx.refuse = false; sus.tick(600); sus.T.press(); await settle(); sus.tick(600); sus.heard(3, true);
+  record("regression: ooga thump suspended sound: a relayed thump never resumes a suspended context, a Thump press inside a real gesture does, nothing missed while suspended (nor the waking press) is played later, and a refused resume stays silent until the next press",
+    playedBefore === 1 && networkResumes === 0 && scripted && scriptedResumes === 0 && pressResumes === 1 && playedAtPress === 1 && runningAfter === "running" && playedAfterResume === 1
+      && playedNext === 2 && pansAfter === 2 && refused.asks === 1 && refused.failed === 1 && refused.played === 2 && refused.state === "suspended"
+      && sus.T.stats.audio.played === 3 && sus.audio.made.contexts === 1,
+    JSON.stringify({ playedBefore, networkResumes, scriptedResumes, pressResumes, playedAtPress, runningAfter, playedAfterResume, playedNext, pansAfter, refused, stats: sus.T.stats }));
+  // Voice membership: leaving and rejoining voice, another poker table and a disconnect each clear the last
+  // membership's marks and reactions; a table change settles.
+  const mem = page();
+  mem.net.state.zone = "ember-den"; mem.roster(); mem.tick(2000);
+  const base = { marks: mem.calls.clearedMarks, bodies: mem.calls.clearedBodies };
+  mem.heard(2, true);
+  mem.voice.stats.enabled = false; mem.voiceChanged(); mem.voice.stats.enabled = true; mem.voiceChanged();
+  const rejoin = { marks: mem.calls.clearedMarks - base.marks, bodies: mem.calls.clearedBodies - base.bodies };
+  mem.net.state.pokerVoice = 3; mem.roster(); const tableSettles = !mem.T.press(); mem.tick(1600);
+  const tabled = { marks: mem.calls.clearedMarks - base.marks, shown: mem.T.stats.shown };
+  mem.net.state.room = "connecting"; mem.roster(); mem.net.state.room = "live"; mem.roster(); mem.tick(1600);
+  const dropped = { marks: mem.calls.clearedMarks - base.marks, bodies: mem.calls.clearedBodies - base.bodies };
+  mem.roster(); mem.heard(3, true);
+  const steady = { marks: mem.calls.clearedMarks - base.marks, shown: mem.T.stats.shown };
+  record("regression: ooga thump voice membership: a voice leave and rejoin, another poker table and a disconnect each clear the marks in Online Oogas and the bodies' reactions, a table change settles, and nothing clears while the membership holds",
+    rejoin.marks === 2 && rejoin.bodies === 2 && tableSettles && tabled.marks === 3 && tabled.shown === 1 && dropped.marks === 5 && dropped.bodies === 5 && steady.marks === 5 && steady.shown === 2,
+    JSON.stringify({ rejoin, tableSettles, tabled, dropped, steady, stats: mem.T.stats }));
+  // Reactions already running, on the real crew, remote pool and gorilla rig: a membership change ends the visitor's
+  // own club tap and a beat a thump started, restoring the stand pose, and leaves movement and an unrelated beat alone.
+  const noop = () => {}, oldNet = BL.net, records = new Map(), sceneRoot = BL.scene.createNode();
+  BL.net = { remotes: records };
+  const crew = BL.crew.create({ root: BL.scene.createNode(), world: { level: 0 }, playerName: "YellowBrokeIt", input: { add: noop, remove: noop }, hud: { setRosterRow: noop },
+    game: { state: { assignments: {}, inventory: [] } }, viewYaw: 0, groundAt: () => 0, walkable: () => true, fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop, damageNumber: noop } });
+  const own = crew.cavemen.get("YellowBrokeIt");
+  crew.control(own); crew.steer(0, 0);
+  for (let i = 0; i < 30; i++) crew.update(1 / 60, i / 60);
+  const rigs = [];
+  const remotes = BL.remotePlayers.create({ root: sceneRoot, crew, visible: r => r.zone === "outside",
+    createGorilla: (name, rec) => { const rig = BL.agent.create({ managed: true, groundAt: () => rec.y, x: rec.x, z: rec.z, heading: rec.yaw }); rigs.push(rig); return rig; }, hideGorilla: noop });
+  const peer = (id, x) => ({ id, login: "g" + id, display: "G" + id, body: "gorilla:w-s-bitcoin", bodyKind: "gorilla", bodyName: "w-s-bitcoin", zone: "outside", x, y: 0, z: 2, yaw: 0, g: new Float64Array(6) });
+  records.set(72, peer(72, 1)); records.set(73, { ...peer(73, 4), body: "gorilla:rules-without-rulers", bodyName: "rules-without-rulers" });
+  remotes.update(0.1);
+  const [ownedRig, otherRig] = rigs;
+  const tapped = BL.remotePlayers.thumped(0) === 0, tapping = own.thumpT > 0;
+  const beat = BL.remotePlayers.thumped(72) !== null && ownedRig.beating, unrelated = otherRig.beat() && otherRig.beating;
+  for (let i = 0; i < 6; i++) { crew.update(1 / 60, 1 + i / 60); remotes.update(1 / 60); }
+  // A second thump while the reaction's beat runs cannot start another, and must not give the running one away.
+  const again = BL.remotePlayers.thumped(72) !== null && ownedRig.beating;
+  const midTap = own.parts.armR.rotation.x, at = { x: own.root.position.x, z: own.root.position.z }, club = own.parts.club.parent === own.parts.armR;
+  BL.remotePlayers.clearThumps();
+  crew.update(1 / 60, 2); remotes.update(1 / 60);
+  const after = { thumpT: own.thumpT, arm: own.parts.armR.rotation.x, moved: Math.hypot(own.root.position.x - at.x, own.root.position.z - at.z), club: own.parts.club.parent === own.parts.armR,
+    controlled: crew.player === own, ownedBeat: ownedRig.beating, otherBeat: otherRig.beating };
+  for (let i = 0; i < 40; i++) remotes.update(1 / 60);
+  const settled = ownedRig.debug.gait;
+  // Once a thump's beat has ended, a beat begun by anything else is not the thump's to stop.
+  BL.remotePlayers.thumped(72); for (let i = 0; i < 120; i++) remotes.update(1 / 60);
+  const laterBeat = ownedRig.beat() && ownedRig.beating; BL.remotePlayers.clearThumps(); remotes.update(1 / 60);
+  const laterKept = ownedRig.beating;
+  remotes.dispose(); crew.dispose(); BL.net = oldNet;
+  record("regression: ooga thump running reactions: a membership change ends the visitor's own club tap (arm back to the stand pose, Ooga, club and control unchanged) and a chest beat a thump started, even after a second thump arrived during it, never a beat begun by anything else",
+    tapped && tapping && beat && unrelated && again && Math.abs(midTap + 0.2) > 0.05 && club && after.thumpT === 0 && Math.abs(after.arm + 0.2) < 1e-9 && after.moved < 1e-9 && after.club && after.controlled
+      && !after.ownedBeat && after.otherBeat && settled !== "beat" && laterBeat && laterKept,
+    JSON.stringify({ tapped, tapping, beat, unrelated, again, midTap, club, after, settled, laterBeat, laterKept }));
+  // The mallet's cell on the real players.js, on a small DOM: every row has it from the start, in its own place between
+  // the voice mark and the crosshair; a pulse changes nothing in the row but the cell's own state, and its end (or
+  // clearPulses) puts it back. The stylesheet gives that cell a column of its own, hidden by visibility, taking no pointer.
+  const playersCell = async () => {
+    const ids = new Map(), animations = [], handlers = {};
+    let top = null;
+    const make = (tag = "div") => {
+      const n = { tagName: tag, children: [], parentNode: null, dataset: {}, attrs: {}, hidden: false, disabled: false, textContent: "", className: "", title: "", value: "",
+        get isConnected() { let p = this; while (p.parentNode) p = p.parentNode; return p === top; },
+        get firstChild() { return this.children[0] || null; },
+        addEventListener() {}, removeEventListener() {}, focus() {}, closest() { return null; },
+        setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, removeAttribute(k) { delete this.attrs[k]; },
+        append(...items) { for (const c of items) { if (typeof c === "string") { this.children.push({ data: c, parentNode: this }); continue; } if (c.parentNode) c.remove(); c.parentNode = this; this.children.push(c); } },
+        insertBefore(c, ref) { if (c.parentNode) c.remove(); c.parentNode = this; const i = ref ? this.children.indexOf(ref) : -1; if (i < 0) this.children.push(c); else this.children.splice(i, 0, c); },
+        remove() { const p = this.parentNode; if (!p) return; p.children.splice(p.children.indexOf(this), 1); this.parentNode = null; },
+        cloneNode() { return make(tag); },
+        animate(frames, options) { const run = { frames, options, cancelled: false, cancel() { this.cancelled = true; }, onfinish: null }; animations.push(run); return run; } };
+      return n;
+    };
+    top = make("html");
+    const document = { activeElement: null, addEventListener(type, fn) { handlers[type] = fn; }, createElement: (tag) => make(tag), createElementNS: (ns, tag) => make(tag),
+      getElementById(id) { if (!ids.has(id)) { const n = make(); top.append(n); ids.set(id, n); } return ids.get(id); } };
+    const remotes = new Map([[2, { id: 2, login: "bea", display: "Bea", body: "Bea", zone: "outside", poseZone: "outside", x: 1, y: 0, z: 1, voice: true, muted: false }],
+      [3, { id: 3, login: "cal", display: "Cal", body: "Cal", zone: "outside", poseZone: "outside", x: 3, y: 0, z: 1, voice: true, muted: true }]]);
+    const window = { BL: {}, matchMedia: () => ({ matches: false }), speechSynthesis: null };
+    const context = { window, document, MutationObserver: class { observe() {} }, localStorage: { getItem: () => null, setItem() {} } };
+    runInNewContext(await readFile(join(root, "src/js/routes.js"), "utf8"), context);
+    runInNewContext(await readFile(join(root, "src/js/zone-map.js"), "utf8"), context);
+    Object.assign(window.BL, {
+      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" } }, remotes,
+        subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {} },
+      hud: { voiceIcon: make("svg"), malletIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
+      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, subscribe() {}, speaking: () => false, mutedLocally: () => false, setRadius() {} },
+      sheet: { visible: () => true, setBadge() {}, watchViews() {}, attending: () => true }, sound: { muted: false, subscribe() {} }, pilot: { turnToward() {} } });
+    runInNewContext(await readFile(join(root, "src/js/players.js"), "utf8"), context);
+    handlers.sheetchange();
+    const P = window.BL.players, list = ids.get("players-list");
+    const lis = [];
+    const walk = (n) => { if (n.tagName === "li") lis.push(n); for (const c of n.children || []) if (c.tagName) walk(c); };
+    walk(list);
+    const shape = (li) => li.children.map((c) => c.className).join(" ");
+    const cellOf = (li) => li.children.find((c) => c.className === "players-thump");
+    const rowOf = (id) => lis.find((li) => li.dataset.id === String(id));
+    const before = lis.map((li) => ({ shape: shape(li), kids: [...li.children], cell: cellOf(li), state: JSON.stringify([cellOf(li).dataset, cellOf(li).attrs, cellOf(li).hidden]) }));
+    const pulsed = [P.pulse(2), P.pulse(0)];
+    const during = lis.map((li) => ({ shape: shape(li), same: li.children.every((c, i) => c === before[lis.indexOf(li)].kids[i]) && li.children.length === before[lis.indexOf(li)].kids.length, on: cellOf(li).dataset.on, hidden: cellOf(li).hidden,
+      label: cellOf(li).attrs["aria-label"] || null, ariaHidden: cellOf(li).attrs["aria-hidden"] || null }));
+    const pulses = animations.length, own = animations[1];
+    animations[0].onfinish();
+    const ended = { bea: cellOf(rowOf(2)).dataset.on, beaHidden: cellOf(rowOf(2)).attrs["aria-hidden"], self: cellOf(lis[0]).dataset.on };
+    P.clearPulses();
+    const cleared = { self: cellOf(lis[0]).dataset.on, cancelled: own.cancelled, after: lis.map((li) => JSON.stringify([cellOf(li).dataset, cellOf(li).attrs, cellOf(li).hidden])) };
+    return { rows: lis.length, before: before.map((b) => b.shape), during, pulsed, pulses, ended, cleared, initial: before.map((b) => b.state), moving: own.frames.some((f) => "width" in f || "margin" in f || "display" in f) };
+  };
+  const cell = await playersCell();
+  const css = await readFile(join(root, "src/style.css"), "utf8");
+  const ruleOf = (selector) => { const i = css.indexOf(`\n${selector} {`); return i < 0 ? "" : css.slice(i, css.indexOf("}", i)); };
+  const tracks = (ruleOf(".players-rows").match(/grid-template-columns:\s*([^;]+);/) || [, ""])[1].trim().split(/\s+(?![^(]*\))/);
+  const columnOf = (selector) => +((ruleOf(selector).match(/grid-column:\s*(\d+);/) || [, NaN])[1]);
+  const columns = { marks: +((css.match(/\.players-rows \.roster-marks \{ grid-column: (\d+); \}/) || [, NaN])[1]), thump: columnOf(".players-thump"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
+  const thumpRule = ruleOf(".players-thump");
+  const shapeOk = cell.rows === 3 && cell.before.every((s) => s === "roster-presence players-name roster-marks players-thump players-look players-distance");
+  record("ooga thump Online Oogas: every row holds the mallet's cell from the start between the voice mark and the crosshair, with a fixed column of its own that hides by visibility and takes no pointer; a pulse and its end change only that cell's state, never a row's cells, their order or anything hidden",
+    shapeOk && cell.pulsed.join() === "true,true" && cell.pulses === 2 && cell.during.every((d) => d.same && d.hidden === false) && cell.during.filter((d) => d.on === "true").length === 2
+      && cell.during.filter((d) => d.on === "true").every((d) => d.label === "Thumped" && d.ariaHidden === null) && cell.during.filter((d) => d.on === "false").every((d) => d.ariaHidden === "true")
+      && cell.ended.bea === "false" && cell.ended.beaHidden === "true" && cell.ended.self === "true" && cell.cleared.self === "false" && cell.cleared.cancelled
+      && cell.cleared.after.join("|") === cell.initial.join("|") && !cell.moving
+      && tracks.length === 6 && tracks[columns.thump - 1] === "12px" && tracks[columns.marks - 1] === "14px" && columns.marks === 3 && columns.thump === 4 && columns.look === 5 && columns.distance === 6
+      && /visibility:\s*hidden/.test(thumpRule) && /pointer-events:\s*none/.test(thumpRule) && /width:\s*12px/.test(thumpRule) && !/display:\s*none/.test(thumpRule)
+      && /\.players-thump\[data-on="true"\] \{\s*visibility: visible;\s*\}/.test(css),
+    JSON.stringify({ cell, tracks, columns }));
+  // Gone: the crowd banner, its chat notice and the Reaction sounds toggle with its stored preference.
+  const html = await readFile(join(root, "src/index.html"), "utf8"), chatSource = await readFile(join(root, "src/js/chat.js"), "utf8"), hudSource = await readFile(join(root, "src/js/hud.js"), "utf8");
+  const leftovers = { html: ["thump-crowd", "account-thump-sound", "Reaction sounds"].filter((w) => html.includes(w)), css: [".thump-crowd", ".chat-notice", ".roster-thump"].filter((w) => css.includes(w)),
+    thump: ["localStorage", "ooga-thump-sound", "Oogas thumped", "toggleSound", "setSound", "createLedger", "support("].filter((w) => source.includes(w)),
+    chat: ["support(", "clearSupport", "chat-notice", "malletIcon"].filter((w) => chatSource.includes(w)), hud: ["account-thump-sound", "toggleSound", "showSupport", "clearSupport"].filter((w) => hudSource.includes(w)),
+    api: ["toggleSound", "setSound", "soundOn", "createLedger"].filter((k) => k in el.T) };
+  record("ooga thump aggregate feedback removed: no crowd-count banner, chat-board notice or Reaction sounds toggle remains, nor its stored preference, and the page module reads no storage",
+    Object.values(leftovers).every((l) => l.length === 0) && html.includes('id="account-thump"'), JSON.stringify(leftovers));
+  // The wire: `{"t":"thump"}` while live, and only known players' relayed thumps reach the module, with the room's word
+  // on whether this page would hear them.
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }));
+  const early = f.net.sendThump(), got = [];
+  f.net.subscribeThump((id, audible) => got.push(`${id}:${audible}`));
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) });
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), players: [{ id: 2, login: "a", display: "A", body: "NickDaGreek", zone: "outside", x: 0, y: 0, z: 0, yaw: 0 }] });
+  const live = f.net.sendThump();
+  message({ t: "thump", id: 2, a: 1 }); message({ t: "thump", id: 2 }); message({ t: "thump", id: 2, a: "1" }); message({ t: "thump", id: 2, a: true });
+  message({ t: "thump", id: 99, a: 1 }); message({ t: "thump", id: "2", a: 1 }); message({ t: "thump" });
+  const frames = f.sent.filter(m => m.t === "thump");
+  // The table is thump.js's membership signal: held in state and told to the roster's subscribers, no message added.
+  let rosterHeard = 0;
+  f.net.subscribeRoster(() => rosterHeard++);
+  f.net.setZone("ember-den"); const atZone = rosterHeard; f.net.setPokerVoice(4);
+  const table = { state: f.net.state.pokerVoice, told: rosterHeard - atZone };
+  f.net.setZone("outside");
+  const tableKinds = [...new Set(f.sent.map(m => m.t))].filter(t => t === "poker-voice" || t === "zone" || t === "thump").sort().join();
+  ws.readyState = 3;
+  const closed = f.net.sendThump();
+  f.net.dispose();
+  record("ooga thump wire: the page sends {\"t\":\"thump\"} alone and only while the room is live; only a known remote player's relayed thump is heard, audible only on the room's exact a: 1; the poker table it hears in is held in state.pokerVoice and told to roster subscribers",
+    !early && live && !closed && frames.length === 1 && Object.keys(frames[0]).join() === "t" && got.join() === "2:true,2:false,2:false,2:false"
+      && table.state === 4 && table.told === 1 && f.net.state.pokerVoice === null && tableKinds === "poker-voice,thump,zone", JSON.stringify({ early, live, closed, frames, got, table, tableKinds }));
 };
 const chatAccountChecks = async BL => {
   const requests = [], player = { id: 71, login: "Tester", display: "Tester" };
@@ -25666,8 +26251,10 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   }
   if(ARGS.includes("stackchain-unit")){stackchainChecks(BL);menuShellChecks(BL);return;}
   if(ARGS.includes("dsb-menus-unit")){stackchainChecks(BL);memeFactoryChecks(BL);menuShellChecks(BL);maxisChecks(BL);rulersChecks(BL);inkChecks(BL);bigBitcoinChecks(BL);return;}
+  await cabinetNetworkChecks(BL);
   await chatNetChecks(BL);
   await chatClientChecks();
+  await thumpChecks(BL);
   await chalkboardClientChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);
