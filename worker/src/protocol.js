@@ -202,9 +202,9 @@ export const WALLET_FUSE_MAX = 60;
 const walletId = (u) => Number.isInteger(u) && u >= 1 && u <= 65535;
 // A follower's batch: up to GHOST_BATCH targets, each a ghost id (0 the boss) and its summed damage, as one report.
 export const GHOST_BATCH = 16;
-// The arcade's ghost arena runs its own hunt: its pages (zone `ghost-arena`, Ghost Hunter's Arena, a voice group of its
-// own (#422), or `arcade-hunt` while a hunt keeps its voice to itself) elect a ghost host of their own, follower reports
-// from the arena go to it, and it sends the hunt's
+// The arcade's ghost arena runs its own hunt: its pages (zone `ghost-arena`, Ghost Hunter's Arena, a voice region of its
+// own (#422) whether a hunt runs or not; `arcade-hunt` from a page loaded before #422) elect a ghost host of their own,
+// follower reports from the arena go to it, and it sends the hunt's
 // state as a binary frame led by GHOST_MAGIC ("GHST"), up to GHOST_FRAME_MAX bytes and GHOST_FRAME_HZ a second, which
 // the room hands to every other page in the arena and keeps for the next to walk in. Only a visible page may host
 // (`ghostCandidate`): a hidden one runs no frames, so it would send nothing while every follower's hunt froze. The

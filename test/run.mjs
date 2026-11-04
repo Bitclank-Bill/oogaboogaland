@@ -15531,25 +15531,45 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
       const a = BL.scenes.arcade.debug.arena;
       rows.push({ name, zone: a.zone, hearing: +a.hearing.toFixed(3), level: +G.hearing.toFixed(3), music: G.musicWanted, to: a.blendTo, t: +a.blendT.toFixed(3), state: B.halloween.state });
     }
+    // Back near the gate: a hunter's rifle in the arena sounds once here; a shot reported from the hallway sounds nothing.
+    const N = BL.net, shot = JSON.stringify({ t: "shot", id: 2, a: [60, 4, -20, 62, 4, -20] }), sounds = {};
+    N.remotes.set(2, { id: 2, login: "hunter", display: "Hunter", body: "w-s-bitcoin", zone: "ghost-arena", x: 64, y: 3.2, z: -20, yaw: 0, weapon: 0, jet: 0, poseZone: "ghost-arena", blendTo: null, blendK: 0 });
+    let before = G.played; W.socket.onmessage({ data: shot }); sounds.arena = G.played - before;
+    N.remotes.get(2).zone = "ghost-arena.haunt";
+    before = G.played; W.socket.onmessage({ data: shot }); sounds.hallway = G.played - before;
+    N.remotes.delete(2);
+    // A hunter hurt in the snapshots: this spectator, in no hunt, hears it once; the first sight of them sounds nothing.
+    W.host.debug.results(2, { kills: 0, foes: 0 }, []);
+    const q = W.host.players.find(p => p.on && p.id === 2);
+    const frame = () => {
+      const bytes = new TextEncoder().encode(JSON.stringify(W.host.snapshot())), f = new Uint8Array(bytes.length + 4);
+      new DataView(f.buffer).setUint32(0, 0x54534847, true); f.set(bytes, 4);
+      W.socket.onmessage({ data: f.buffer });
+    };
+    q.seg = 5; frame(); B.advance(0.2, 1 / 60);
+    before = G.played; frame(); B.advance(0.2, 1 / 60); sounds.steady = G.played - before;
+    q.seg = 4; before = G.played; frame(); B.advance(0.2, 1 / 60); sounds.hurt = G.played - before;
     W.send("DAWN"); B.advance(0.1, 1 / 60);
-    return rows;
+    return { rows, sounds };
   })()`);
   await b.evaluate(`(() => { const W = __hallAmmo; W.socket.close(); BL.net.state.room = "off"; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
   const kept = result.rows.every(r => !r.armed && r.zone === "ghost-arena.haunt" && r.received === r.state && !r.unlimited && r.ammo === result.before.ammo && r.equipped === result.before.equipped && r.aiming === result.before.aiming);
   record("arcade hallway ammunition: a signed-in hallway-only spectator keeps weapon state through every hunt phase, rejects firing and keeps the same ammunition policy at dawn",
     !result.before.armed && result.before.zone === "ghost-arena.haunt" && result.role === "follow" && !result.hunter && kept && after.fired.ammo === result.before.ammo && !after.fired.equipped && !after.fired.unlimited && !after.restored.unlimited,
     JSON.stringify({ ...result, ...after }));
-  const row = Object.fromEntries(walk.map(r => [r.name, r]));
+  const row = Object.fromEntries(walk.rows.map(r => [r.name, r]));
   const hallway = ["gate", "far", "mid", "near", "mouth"].map(n => row[n]);
+  record("arcade hallway game sounds (#422): an arena hunter's rifle sounds once for a hallway spectator and a hallway shot not at all; a hunter's hurt sounds once, never on first sight or an unchanged snapshot",
+    walk.sounds.arena === 1 && walk.sounds.hallway === 0 && walk.sounds.steady === 0 && walk.sounds.hurt === 1, JSON.stringify(walk.sounds));
   record("arcade hallway audio (#422): a spectator never in the hunt hears its music and effects louder toward the gate and fainter toward the Arcade, none in the hall and back on return, half by half in each land's zone with the voice crossing toward the other, equal power at the midpoint",
-    walk.every(r => r.state === "ACTIVE" && Math.abs(r.level - r.hearing) <= 0.02)
+    walk.rows.every(r => r.state === "ACTIVE" && Math.abs(r.level - r.hearing) <= 0.02)
       && hallway.every((r, i) => r.music && r.hearing > 0 && (i === 0 || r.hearing < hallway[i - 1].hearing))
       && row.gate.zone === "ghost-arena.haunt" && row.gate.to === "arcade" && row.far.zone === "ghost-arena.haunt"
       && row.mid.zone === "ghost-arena.haunt" && row.mid.to === "arcade" && Math.abs(row.mid.t - 0.5) < 0.01 && Math.abs(row.mid.hearing - Math.SQRT1_2) < 0.01
       && row.near.zone === "arcade.haunt" && row.near.to === "ghost-arena" && row.mouth.hearing < 0.1
       && row.hall.zone === "arcade.hall" && row.hall.hearing === 0 && !row.hall.music && !row.hall.to
       && row.back.music && row.back.hearing === row.far.hearing && row.back.zone === "ghost-arena.haunt",
-    JSON.stringify(walk));
+    JSON.stringify(walk.rows));
 } };
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
@@ -23326,6 +23346,50 @@ const voiceHearingChecks = async () => {
   record("voice hallway (#422): halfway along the arcade's haunted hallway the hall and the arena play at equal power from either half, toward the gate the arena takes over, a local mute holds, the hearing range reaches the hall through the shared coordinates, and walking costs no SFU call or audio node",
     [hall.desk,hall.ios].every(h=>h.mid==="0.707,0.707,1"&&h.turned===h.mid&&h.gate==="0.156,0.988,0.809"&&h.muted==="0.156,0,0.809"&&h.radius==="0.707,0,0"&&h.work.sfu===0&&h.work.nodes===0),JSON.stringify(hall));
 };
+// #422: the hunt's sound as ghost-audio.js plays it, on a fake AudioContext: nothing opened or scheduled where the hunt
+// is not heard, the master following a spectator's level along the hallway at bounded cost (no decode or fetch from a
+// level), a hushed catch-up frame, and a track that finishes decoding after `dispose` starting nothing.
+const ghostAudioChecks = async () => {
+  const ctxs=[],pending=[],loads=[];
+  const param=()=>{const p={value:0,calls:0};for(const m of ["setValueAtTime","exponentialRampToValueAtTime","linearRampToValueAtTime","setTargetAtTime","cancelScheduledValues"])p[m]=v=>{p.calls++;if(m!=="cancelScheduledValues"&&m!=="exponentialRampToValueAtTime"&&m!=="linearRampToValueAtTime")p.value=v;};return p;};
+  const node=(extra)=>Object.assign({connect(){},disconnect(){},start(){},stop(){}},extra);
+  class Ctx {constructor(){ctxs.push(this);this.currentTime=0;this.state="running";this.sampleRate=800;this.destination=node({});this.gains=[];this.decodes=0;this.sources=0;}
+    createGain(){const g=node({gain:param()});this.gains.push(g);return g;}
+    createOscillator(){return node({frequency:param(),detune:param(),type:"sine"});}
+    createBiquadFilter(){return node({frequency:param(),Q:param(),type:"lowpass"});}
+    createBuffer(c,n){return {getChannelData:()=>new Float32Array(n)};}
+    createBufferSource(){this.sources++;return node({buffer:null,loop:false,onended:null});}
+    decodeAudioData(){this.decodes++;return new Promise(r=>pending.push(()=>r({})));}
+    resume(){return Promise.resolve();} close(){this.state="closed";return Promise.resolve();}}
+  const clips={},music={};
+  for(const name of ["wave","kaboom","screech","freeze","apples","double","banana","ooga","landing","network","fiatRush","tessZap","tessScream","monkeyGet","choir","gameOver1","gameOver2","gameOver3","gameOver4","gameOverLast"])clips[name]="AA==";
+  for(const key of ["boss","colt","martial","nightmare","synthed","nr"])music[key]="AA==";
+  let soundFn=null;
+  const window={BL:{sound:{muted:false,subscribe:fn=>{soundFn=fn;return()=>{soundFn=null;};}},ghostAudioData:clips,ghostMusic:music,deferred:{load:g=>{loads.push(g);return null;}}},setTimeout:()=>0};
+  const context={window,document:{hidden:false,addEventListener(){},removeEventListener(){}},navigator:{userActivation:{hasBeenActive:true}},AudioContext:Ctx,localStorage:{getItem:()=>null,setItem(){}},atob,Math,Float32Array,Uint8Array,Promise};
+  runInNewContext(readFileSync(join(root,"src/js/ghost-audio.js"),"utf8"),context);
+  const A=window.BL.ghostAudio.create(),out={};
+  A.level(0);A.play("shot");A.play("hurt");out.silent={played:A.played,contexts:ctxs.length};
+  A.level(1);A.play("shot");const ctx=ctxs[0],master=ctx.gains[0];out.heard={played:A.played,contexts:ctxs.length,master:+master.gain.value.toFixed(3)};
+  // A walk from the gate to the Arcade end, a level every frame for 1,000 frames.
+  const calls=master.gain.calls,decodes=ctx.decodes;
+  for(let i=0;i<=1000;i++)A.level(Math.sin(Math.PI/2*(1-i/1000)));
+  out.walk={reschedules:master.gain.calls-calls,decodes:ctx.decodes-decodes,loads:loads.length,end:master.gain.value};
+  A.level(Math.SQRT1_2);out.mid=+master.gain.value.toFixed(4);
+  A.hush(true);const p0=A.played;A.play("hurt");A.hush(false);out.hushed=A.played-p0;A.play("hurt");out.after=A.played-p0;
+  soundFn(true);out.muted=master.gain.value;soundFn(false);out.unmuted=+master.gain.value.toFixed(4);
+  // Music asked for, its track still decoding when the hunt is disposed.
+  A.music(true);const sources=ctx.sources;A.dispose();
+  for(const resolve of pending.splice(0))resolve();
+  await new Promise(r=>setTimeout(r,0));
+  A.play("shot");
+  out.disposed={playing:A.playing,sources:ctx.sources-sources,contexts:ctxs.length,state:ctx.state,sound:soundFn===null};
+  record("ghost hunt audio (#422): a page that hears nothing of the hunt opens no context and schedules no cue; heard, the master follows the spectator's level, rescheduled at most once a 0.02 step over a 1,000-frame walk with no decode or fetch, equal power at the midpoint, through mute and back; a hushed catch-up frame plays nothing; a track decoded after dispose starts nothing and opens no context",
+    out.silent.played===0&&out.silent.contexts===0&&out.heard.played===1&&out.heard.contexts===1&&out.heard.master===0.35
+      &&out.walk.reschedules>0&&out.walk.reschedules<=52&&out.walk.decodes===0&&out.walk.loads===0&&out.walk.end===0
+      &&Math.abs(out.mid-0.35*Math.SQRT1_2)<1e-4&&out.hushed===0&&out.after===1&&out.muted===0&&out.unmuted===out.mid
+      &&!out.disposed.playing&&out.disposed.sources===0&&out.disposed.contexts===1&&out.disposed.state==="closed"&&out.disposed.sound,JSON.stringify(out));
+};
 const exteriorEnrichmentChecks = BL => {
   const S=BL.scene,root=S.createNode(),land=BL.dsbGeography.build(),renderer={kind:"webgl2",quality:"high"},camera=S.createCamera();camera.position.y=110;
   const nature=BL.dsbNature.create({root,land,renderer,camera,weather:{state:{wind:{strength:.2}}}}),detail=BL.dsbExterior.create({root,land,nature});
@@ -24445,12 +24509,21 @@ const playersTabChecks = async BL => {
   f.net.setBlend(null, 0); f.net.setZone("arcade.hall");
   const leftHallway = dropped.length;
   message({ t: "zone", id: 2, name: "arcade.haunt" }); message({ t: "state", now: Date.now(), ps: [2, 25, 3.2, -20, 0] });
+  message({ t: "blend", id: 2, to: "ghost-arena", k: 11 });
+  // What a listener in the hall plays that remote at (voice.js `nearness`), before its zone flips and in the gap between
+  // the room's `zone` and the `blend` that follows it.
+  const share = () => +BL.voiceBlend.gain("arcade.hall", null, 0, rec(2).zone, rec(2).blendTo, rec(2).blendK / BL.voiceBlend.STEPS).toFixed(6);
+  const shareBefore = share();
   message({ t: "zone", id: 2, name: "ghost-arena.haunt" });
-  const remoteTurned = rec(2).poseZone;
+  const gap = { to: rec(2).blendTo, k: rec(2).blendK, share: share(), poseZone: rec(2).poseZone };
+  message({ t: "blend", id: 2, to: "arcade", k: 9 });
+  const settled = share();
   message({ t: "zone", id: 2, name: "outside" });
-  record("players tab hallway (#422): crossing the haunted hallway's midpoint keeps every voice and turns the crossing round, leaving the arena's half for the hall drops them, and a remote's position stays placed across the halves",
-    nearHalf.to === "ghost-arena" && turned.to === "arcade" && turned.t === 0.45 && turned.dropped === 0 && leftHallway === 1 && remoteTurned === "ghost-arena.haunt" && rec(2).poseZone === "ghost-arena.haunt" && rec(2).zone === "outside",
-    JSON.stringify({ nearHalf, turned, leftHallway, remoteTurned }));
+  record("players tab hallway (#422): crossing the haunted hallway's midpoint keeps every voice and turns the crossing round, a remote's too before the room's next step arrives (no moment at another share), leaving the arena's half for the hall drops them, and a remote's position stays placed across the halves",
+    nearHalf.to === "ghost-arena" && turned.to === "arcade" && turned.t === 0.45 && turned.dropped === 0 && leftHallway === 1
+      && gap.to === "arcade" && gap.k === 9 && gap.share === shareBefore && settled === shareBefore && shareBefore > 0.6 && shareBefore < 0.7
+      && gap.poseZone === "ghost-arena.haunt" && rec(2).poseZone === "ghost-arena.haunt" && rec(2).zone === "outside" && !rec(2).blendTo,
+    JSON.stringify({ nearHalf, turned, leftHallway, shareBefore, gap, settled }));
   f.net.dispose();
 };
 const rememberedCharacterChecks = async BL => {
@@ -26700,6 +26773,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   footstepChecks(BL);
   await voiceAloneChecks();
   await voiceHearingChecks();
+  await ghostAudioChecks();
   exteriorEnrichmentChecks(BL);
   if(ARGS.includes("exterior-unit"))return;
   maxisChecks(BL);

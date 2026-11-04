@@ -224,10 +224,10 @@ test("room: the hallway walk changes each voice list only at its ends, keeps it 
   assert.deepEqual(out, { walker: 2, hall: 1, arena: 1, blends: out.blends }, JSON.stringify(out));
   assert.deepEqual(both, { walker: 4, hall: 2, arena: 2, blends: both.blends }, JSON.stringify(both));
   assert.ok(out.blends <= STEPS + 2 && both.blends <= 2 * STEPS + 4, `blend steps bounded by STEPS a way: ${JSON.stringify(both)}`);
-  // Before #422 the arena was a place of the arcade's group (`arcade.arena`): no crossing and no isolation, so the hall
-  // heard the arena outright.
-  const before = voicePeers([{ id: 1, body: "a", zone: "arcade.hall", voice: { pub: "p", sub: "s", track: "mic" } }, { id: 2, body: "b", zone: "arcade.arena", voice: { pub: "p", sub: "s", track: "mic" } }]);
-  assert.deepEqual([before.get(1), voicePeers([...h.room.players.values()]).get(1)], [[2], [3]], "before: hall and arena shared voice; after: only through the hallway");
+  // A page loaded before #422 in the arena (`arcade.arena`) stays in the arena's region in the real room: the hall
+  // never hears it. (The pre-#422 baseline is measured from the old source, not here.)
+  h.send(arena, { t: "zone", name: "arcade.arena" });
+  assert.deepEqual([last(hall, "voice").peers, last(arena, "voice").peers], [[3], []], "the old arena name hears neither the hall nor the walker at the hall's end");
   // Reconnect halfway along: the old socket's crossing goes with it, and the new page starts from its zone alone.
   for (let i = 0; i <= 20; i++) report(i / 40 + 0.25);
   assert.equal(h.room.players.get(3).blendTo, "arcade");

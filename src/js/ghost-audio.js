@@ -46,7 +46,8 @@
     let hearing = 1;
     // A page catching up on a hunt it did not see (a late join, or back from where no frames came) hushes its cues for
     // the frame that applies the gap, so nothing that happened meanwhile sounds at once (`hush`). `played` counts the
-    // cues scheduled; `disposed` keeps a decode or fetch that finishes after `dispose` from starting anything.
+    // cues this page would sound (heard and not hushed), muted or not; `disposed` keeps a decode or fetch that finishes
+    // after `dispose` from opening or starting anything.
     let hushed = false, played = 0, disposed = false;
     const clips = {};
     // The playlist's order, where in it we are, the one decoded track it holds at a time (a decoded track is tens of
@@ -433,8 +434,9 @@
 
     /** Plays a cue by name; nothing while muted, before a gesture, or for a clip still decoding. */
     const play = (name, a) => {
-      if (muted || !hearing || hushed || !live()) return;
+      if (!hearing || hushed) return;
       played++;
+      if (muted || !live()) return;
       cues[name](a);
     };
     const hush = (on) => { hushed = on; };
