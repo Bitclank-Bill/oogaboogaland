@@ -2335,7 +2335,7 @@
       },
       el, openFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setPanelsHidden, foldPanels, setRosterRow, setStats, setAct, setMode, setDestinations, setOwnOoga, get retakeActor() { return retake.actor ? retake : null; }, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, whitepaperNav, letterSign, selectTab, onPreset, setPileValueVisible, onAssign, onUnassign, renderInventory, dispose };
   };
-  // The account line in the sheet's foot is page-level: shown only when a backend answered, and
+  // The roster panel owns the page-level account controls, shown only when a backend answered, and
   // the director hands every change of `BL.net.state` here, whichever scene is active.
   const ROOM_WORDS = { replaced: "open in another tab", full: "island full" };
   // Net and voice emits re-run this several times a second with the same outcome; last-written
@@ -2353,7 +2353,7 @@
       $("account-login").hidden = !!me;
       $("account-logout").hidden = !me;
     }
-    // The foot's green dot shows only while the room is live.
+    // The account green dot shows only while the room is live.
     const live = String(!!me && room === "live");
     if (live !== accountLive) { accountLive = live; $("account").dataset.live = live; }
     const words = room === "live" ? `${online} online` : ROOM_WORDS[room] || "";

@@ -9479,16 +9479,19 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: panels
     const same = before === localStorage.getItem("oogaboogaland.sheet.v1");
     document.getElementById("sheet-bananas").click();
     BL.hud.showAccount({ backend: true, me: null, room: "off", online: 0 });
-    const footer = document.querySelector(".sheet-foot"), owner = footer.closest(".sheet"), login = document.getElementById("account-login");
-    const account = owner.id !== "sheet" && !owner.hidden && owner.dataset.open === "true" && !!login.getClientRects().length && getComputedStyle(login).visibility === "visible" && document.querySelectorAll("#account-login").length === 1
-      && document.querySelectorAll(".sheet .feed-open").length === 1 && document.querySelectorAll(".sheet #account").length === 1
-      && !!footer.querySelector(".feed-open") && !!footer.querySelector("#account") && !!footer.querySelector(".feed-open").getClientRects().length;
+    const login = document.getElementById("account-login"), feed = document.querySelector('.sheet [data-action="feed"]'), owner = login.closest(".sheet");
+    const account = owner.id !== "sheet" && !owner.hidden && owner.dataset.open === "true" && !!login.getClientRects().length && getComputedStyle(login).visibility === "visible"
+      && login.closest("[data-panel]").dataset.panel === "roster" && feed.closest("[data-panel]").dataset.panel === "bananas"
+      && document.querySelectorAll("#account-login").length === 1 && document.querySelectorAll('.sheet [data-action="feed"]').length === 1
+      && !document.querySelector('.sheet-foot, #quality, .sheet [data-action="reset"]');
     H.selectTab("bananas");
-    const returned = footer.closest(".sheet").id === "sheet";
+    const returned = login.closest(".sheet") === owner && feed.closest(".sheet").id === "sheet"
+      && !!feed.getClientRects().length && getComputedStyle(feed).visibility === "visible"
+      && getComputedStyle(login).minHeight === getComputedStyle(feed).minHeight && parseFloat(getComputedStyle(login).minHeight) >= 44;
     BL.hud.showAccount(BL.net.state);
     return { hidden, folded, same, account, returned, count: document.querySelectorAll(".sheet").length };
   })()`);
-  record("side panel: temporary suppression and folding survive resize, reopening restores the saved layout, and detached-only panels retain one shared Feed button and account controls", Object.values(held).every(Boolean) && held.count === 2, JSON.stringify(held));
+  record("side panel: temporary suppression and folding survive resize, reopening restores the saved layout, and donation/account actions stay with their own panels at the same button height", Object.values(held).every(Boolean) && held.count === 2, JSON.stringify(held));
   if (!await settled()) throw Error("The restored panels did not finish opening");
   // A closed source rail can be merged into another panel, focusing its tab and removing only its own rail.
   await toggle(".sheet:not(#sheet) [data-tab='roster']");
@@ -9612,7 +9615,7 @@ const hubMuteKey = { name: "voice mute key", why: "regression: M reserves voice 
   record("voice mute key: inputs, message fields, editable content and modified shortcuts stay untouched, with environment mute as the voice-off fallback",
     r.fields.every(row => row.typing) && r.modifiers && r.fallback, JSON.stringify({ fields: r.fields, modifiers: r.modifiers, fallback: r.fallback }));
 } };
-const hubChat = { name: "ooga chat", why: "regression: Chat releases pre-focus movement and fits keyboard-reduced viewports; Ooga Chat shows only with a backend, asks a signed-out visitor to sign in, keeps the last 100 lines as plain text, never pulls a reader back down, and Enter sends while Escape only leaves the input", run: async (b) => {
+const hubChat = { name: "ooga chat", why: "regression: Chat releases pre-focus movement and fits keyboard-reduced viewports; Ooga Chat stays hidden while signed out like Online Oogas, keeps the last 100 lines as plain text, never pulls a reader back down, and Enter sends while Escape only leaves the input", run: async (b) => {
   // No backend in the suite: retain the saved selection while its tab is unavailable.
   await openWithSheetState(b, hubPage(src, "pos=0"), { open: true, tab: "chat" });
   const none = await b.evaluate(`({ hidden: document.getElementById("chat-tab").hidden, tab: document.querySelector("[data-tab][aria-selected='true']")?.dataset.tab || null,
@@ -9623,8 +9626,10 @@ const hubChat = { name: "ooga chat", why: "regression: Chat releases pre-focus m
     BL.net.state.backend = true;
     C.account({ backend: true, me: null, room: "off" });
     window.dispatchEvent(new Event("resize"));
-    out.signedOut = !tab.hidden && !$("chat-panel").hidden && input.disabled && send.disabled && !$("chat-status").hidden && $("chat-status-text").textContent.includes("Sign in to chat") && document.activeElement !== input;
-    C.account({ backend: true, me: { id: 9, login: "Tester", display: "Tester" }, room: "live" });
+    out.signedOut = tab.hidden && $("chat-panel").hidden && $("players-tab").hidden && input.disabled && send.disabled && document.activeElement !== input;
+    BL.net.state.me = { id: 9, login: "Tester", display: "Tester" };
+    C.account({ backend: true, me: BL.net.state.me, room: "live" });
+    window.dispatchEvent(new Event("resize"));
     tab.click();
     out.folded = $("sheet").dataset.open === "false";
     tab.click();
@@ -9732,9 +9737,13 @@ const hubChat = { name: "ooga chat", why: "regression: Chat releases pre-focus m
     input.focus(); input.dispatchEvent(new CompositionEvent("compositionstart"));
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, isComposing: true }));
     out.ime = document.activeElement === input; input.dispatchEvent(new CompositionEvent("compositionend"));
+    BL.net.state.me = null;
     C.account({ backend: true, me: null, room: "off", logoutEpoch: 1 });
-    out.logout = input.value === "" && log.childElementCount === 0 && C.stats.lines === 0;
-    C.account({ backend: true, me: { id: 9, login: "Tester" }, room: "live", logoutEpoch: 1 });
+    window.dispatchEvent(new Event("resize"));
+    out.logout = input.value === "" && log.childElementCount === 0 && C.stats.lines === 0 && tab.hidden && $("chat-panel").hidden && $("players-tab").hidden;
+    BL.net.state.me = { id: 9, login: "Tester" };
+    C.account({ backend: true, me: BL.net.state.me, room: "live", logoutEpoch: 1 });
+    window.dispatchEvent(new Event("resize"));
     input.value = "  hello b  ";
     input.dispatchEvent(new Event("input"));
     window.__chatSent = [];
@@ -10075,7 +10084,7 @@ const hubAsk = { name: "hub ask", why: "rule: a question typed to Tess is answer
     for (let t = 0; t < 20 && s.phase !== "offer"; t += 1 / 30) { if (s.phase === "tour") go.click(); B.advance(1 / 30, 1 / 30); }
     trip.back = s.phase === "offer" && !s.holding && s.kind === "island";
     asking("How do I donate?"); B.advance(0.3, 1 / 30);
-    const answered = s.phase === "offer" && !s.holding && said().includes("Feed the Ooga Boogas");
+    const answered = s.phase === "offer" && !s.holding && said().includes("Feed the Oogas");
     asking("what is bitcoin"); B.advance(0.3, 1 / 30);
     const offline = s.phase === "offer" && said().includes("know that one yet");
     document.querySelector(".greeter-menu .greeter-row button:last-child").click();
@@ -10109,7 +10118,7 @@ const hubAsk = { name: "hub ask", why: "rule: a question typed to Tess is answer
   const asked = await b.evaluate(`(() => {
     const B = __ooga, G = BL.scenes.hub.debug.tess, s = G.state;
     B.advance(0.3, 1 / 30);
-    return { phase: s.phase, holding: s.holding, said: JSON.stringify(G.speech && G.speech.beats || "").includes("Feed the Ooga Boogas") };
+    return { phase: s.phase, holding: s.holding, said: JSON.stringify(G.speech && G.speech.beats || "").includes("Feed the Oogas") };
   })()`);
   await b.evaluate(`document.querySelector(".greeter-chip").focus()`);
   await press("Enter", "Enter", 13, "\r");
@@ -10155,7 +10164,7 @@ const hubAsk = { name: "hub ask", why: "rule: a question typed to Tess is answer
   const second = await b.evaluate(`(() => {
     const B = __ooga, G = BL.scenes.hub.debug.tess, s = G.state;
     B.advance(0.3, 1 / 30);
-    const r = { said: JSON.stringify(G.speech && G.speech.beats || "").includes("Feed the Ooga Boogas"), calls: window.__held.calls, draft: document.querySelector(".greeter-ask input").value };
+    const r = { said: JSON.stringify(G.speech && G.speech.beats || "").includes("Feed the Oogas"), calls: window.__held.calls, draft: document.querySelector(".greeter-ask input").value };
     window.fetch = window.__held.real; BL.net.state.tess = false; delete window.__held;
     document.querySelector(".greeter-menu .greeter-row button:last-child").click();
     return r;
@@ -13928,9 +13937,19 @@ const phone = (id, { card = null, play = null, required, sheet = false }) => ({ 
     await b.evaluate(`document.getElementById("sheet-toggle").click()`);
     for (let i = 0; i < 200 && !(await b.evaluate(`(() => { const s = document.getElementById("sheet"), t = getComputedStyle(s).transform; return s.dataset.open === "true" && (t === "none" || new DOMMatrix(t).m42 === 0); })()`)); i++) await b.sleep(50);
     seen.sheet = await b.evaluate(PHONE(["#sheet-toggle", "#sheet-bananas", "#joy-move", "#joy-look"]));
-    seen.feedHidden = await b.evaluate(`getComputedStyle(document.querySelector(".sheet-foot > .feed-open")).display === "none"`);
+    seen.actions = await b.evaluate(`(() => {
+      const H = __ooga.hud, login = document.getElementById("account-login"), feed = document.querySelector('.sheet [data-action="feed"]');
+      BL.hud.showAccount({ backend: true, me: null, room: "off", online: 0 });
+      H.selectTab("roster");
+      const a = login.getBoundingClientRect(), roster = BL.sheet.visible(login.closest(".panel")) && !BL.sheet.visible(feed.closest(".panel"));
+      H.selectTab("bananas");
+      const b = feed.getBoundingClientRect(), bananas = BL.sheet.visible(feed.closest(".panel")) && !BL.sheet.visible(login.closest(".panel"));
+      H.selectTab("roster"); BL.hud.showAccount(BL.net.state);
+      return roster && bananas && a.height >= 44 && a.width === b.width && a.height === b.height
+        && !document.querySelector('.sheet-foot, #quality, .sheet [data-action="reset"]');
+    })()`);
   }
-  const ok = (!card || seen.card.touch.coarse && seen.card.touch.touchWording && seen.card.bad.length === 0 && seen.card.closed) && seen.play.length === 0 && (!sheet || seen.sheet.length === 0 && seen.feedHidden);
+  const ok = (!card || seen.card.touch.coarse && seen.card.touch.touchWording && seen.card.bad.length === 0 && seen.card.closed) && seen.play.length === 0 && (!sheet || seen.sheet.length === 0 && seen.actions);
   record(`${id} phone: ${card ? "the title card reads in touch words and its go button starts the game, then " : ""}nothing is clipped, wrapped by accident or off screen, and every control is under a thumb${sheet ? ", with the sheet open and the sticks still free" : ""}`, ok, JSON.stringify(seen));
 } });
 
@@ -23653,8 +23672,8 @@ const sheetRailChecks = async () => {
     node: { dataset: { dock: "right" } }, body: { setAttribute() {} }, nav: { setAttribute() {} } });
   const main = make("roster"), detached = make("players"), windows = [main, detached];
   const context = { panels: [], windows, main, folded: false, hidden: false, signedIn: true, phone: { matches: false },
-    available: name => name !== "players" || context.signedIn, ownerOf: name => windows.find(w => w.tab === name),
-    isOpen: w => !context.folded && w.open, fit() {}, placeFooter() {}, showCounts() {}, showExpand() {}, notify() {} };
+    available: name => name !== "players" && name !== "chat" || context.signedIn, ownerOf: name => windows.find(w => w.tab === name),
+    isOpen: w => !context.folded && w.open, fit() {}, showCounts() {}, showExpand() {}, notify() {} };
   runInNewContext(refresh + ";this.refresh = refresh;", context);
   const read = () => windows.filter(w => !w.node.hidden).map(w => w.tabs.filter(t => !t.hidden).map(t => t.dataset.tab));
   context.refresh(); const closed = read();
@@ -23666,7 +23685,7 @@ const sheetRailChecks = async () => {
   record("side panel rails: unowned tabs stay on main, detached Players keeps only its own tab, folding gathers tabs, and sign-out/in restores ownership without duplicates",
     [closed, opened, folded, signedOut, signedIn].every(unique) && closed[0].join() === "bananas,roster,loot,chat" && closed[1].join() === "players"
       && opened[1].join() === "players" && folded.length === 1 && folded[0].length === names.length
-      && signedOut.length === 1 && !signedOut[0].includes("players") && signedIn[1].join() === "players",
+      && signedOut.length === 1 && !signedOut[0].includes("players") && !signedOut[0].includes("chat") && signedIn[1].join() === "players",
     JSON.stringify({ closed, opened, folded, signedOut, signedIn }));
 };
 const playersTabChecks = async BL => {
