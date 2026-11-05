@@ -25519,11 +25519,27 @@ const integrationChecks = async BL => {
   record("integration weapons: an Ooga's pose carries its weapon on a change; its own shots and strikes are sent while a gorilla's are not; others' are heard until unsubscribed, and their weapon comes from each snapshot",
     armed&&swapped&&shotSent&&swingSent&&gorillaQuiet&&heardShot&&unsubscribed&&streamedWeapon&&weaponAbsent,
     JSON.stringify({armed,swapped,shotSent,swingSent,gorillaQuiet,heardShot,unsubscribed,streamedWeapon,weaponAbsent}));
+  // Regression: looking while stationary and interrupting/rejoining during an action must reconcile state.
+  const visual=[-80,-60,12,7,0,0,0,0,0,0,0,0,1300,0,0,0,0];
+  g.net.setBody("NickDaGreek");g.advance(101);g.net.sendPose(8,3,4,.5,null,0,1,visual);
+  const lookSent=poses().at(-1).v?.[0]===-80,lookBefore=poses().length;
+  g.advance(101);g.net.sendPose(8,3,4,.5,null,0,1,visual);const lookQuiet=poses().length===lookBefore;
+  visual[0]=65;g.advance(101);g.net.sendPose(8,3,4,.5,null,0,1,visual);const idleLook=poses().length===lookBefore+1&&poses().at(-1).v[0]===65;
+  gm({t:"join",p:{id:74,login:"look",body:"NickDaGreek",zone:"outside",v:visual,va:Date.now()}});
+  const looked=g.net.remotes.get(74),lookStore=looked.visual;
+  gm({t:"state",ps:[74,0,0,0,0],vs:[[74,Date.now(),...visual]]});const lookReused=looked.visual===lookStore&&looked.visual[0]===65;
+  gm({t:"state",ps:[74,0,0,0,0]});const lookCleared=looked.visual===null;
+  visual[3]=15;visual[4]=240;visual[5]=300;
+  g.advance(101);g.net.sendPose(8,3,4,.5,null,0,2,visual);
+  gm({t:"kick",reason:"replaced"});g.net.rejoin();gw=g.sockets.at(-1);gm({t:"welcome",you:{id:71},players:[],now:Date.now()});
+  const resumed=poses().at(-1).v,notReplayed=resumed?.[3]===7&&resumed.slice(4).every(n=>n===0);
+  g.advance(101);g.net.sendPose(8,3,4,.5,null,0,2,visual);const currentAction=poses().at(-1).v?.[3]===15;
+  record("integration presentation: stationary look changes ride poses without idle traffic; join and snapshots reuse bounded state, omitted state clears it, and reconnect restores equipment without replaying an obsolete action before its live sample",lookSent&&lookQuiet&&idleLook&&lookReused&&lookCleared&&notReplayed&&currentAction,JSON.stringify({lookSent,lookQuiet,idleLook,lookReused,lookCleared,notReplayed,currentAction}));
   g.net.dispose();
   const oldNet=BL.net,sceneRoot=BL.scene.createNode(),records=new Map(),cavemen=new Map();
   const replayed=[],crew={cavemen,player:null,refreshStates(){},showShot:(...a)=>replayed.push(a)};
-  let shotHeard=null,swingHeard=null;
-  BL.net={remotes:records,subscribeShots:fn=>(shotHeard=fn,()=>{shotHeard=null;}),subscribeSwings:fn=>(swingHeard=fn,()=>{swingHeard=null;})};
+  let shotHeard=null,swingHeard=null,remoteNow=Date.now();
+  BL.net={serverNow:()=>remoteNow,sendSwing:()=>true,remotes:records,subscribeShots:fn=>(shotHeard=fn,()=>{shotHeard=null;}),subscribeSwings:fn=>(swingHeard=fn,()=>{swingHeard=null;})};
   const pool=BL.remotePlayers.create({root:sceneRoot,crew,visible:r=>r.zone==="dsb-outside"});
   records.set(72,{id:72,login:"peer",display:"Peer",body:"w-s-bitcoin",zone:"outside",x:1,y:0,z:2,yaw:0});pool.update(.1);
   record("integration remotes: hub actors stay out of DSB",pool.stats().remotePlayers===0&&sceneRoot.children.every(n=>!n.visible));
@@ -25546,14 +25562,58 @@ const integrationChecks = async BL => {
   const armR=nodes.find(n=>n.children.some(c=>c.geometry===clubGeometry)),clubNode=armR&&armR.children.find(c=>c.geometry===clubGeometry);
   records.get(72).weapon=2|4|12<<3;pool.update(.1);
   const bananas=gunNode?gunNode.children.filter(c=>isRound(c)&&c.visible).length:-1;
-  const aimed=!!gunNode&&gunNode.visible&&bananas===3&&!!clubNode&&!clubNode.visible&&Math.abs(armR.rotation.x+Math.PI/2)<1e-9;
+  const aimed=!!gunNode&&gunNode.visible&&bananas===3&&!!clubNode&&clubNode.visible&&clubNode.parent===remoteRig&&Math.abs(armR.rotation.x+Math.PI/2)<1e-9;
   const clubBack=()=>!!gunNode&&!gunNode.visible&&!!clubNode&&clubNode.visible;
   records.get(72).weapon=1;pool.update(.1);let primary=clubBack();records.get(72).weapon=0;pool.update(.1);primary=primary&&clubBack();
   if(shotHeard)shotHeard(72,[1,2,3,4,5,6]);const replay=replayed.length===1&&replayed[0].join()===",1,2,3,4,5,6";
+  const restingArmX=armR.rotation.x;
   if(swingHeard)swingHeard(72);pool.update(.1);const swung=!!armR&&armR.rotation.x<-1;
-  pool.update(.4);const settled=!!armR&&Math.abs(armR.rotation.x+.2)<1e-9;
+  pool.update(.4);const settled=!!armR&&Math.abs(armR.rotation.x-restingArmX)<1e-9&&pool.body(72).weapon.meleeTime===0;
   record("integration remotes: another player's gun shows aimed with a banana for each three rounds, the club comes back when it is put away, their shots replay through the crew and their strike swings the arm and settles",
     aimed&&primary&&replay&&swung&&settled,JSON.stringify({aimed,bananas,primary,replay,swung,settled}));
+  const peerVisual=[-90,-90,0,7,0,0,0,0,0,0,0,0,1300,0,0,0,0],peerRecord=records.get(72),body=pool.body(72);
+  peerRecord.visual=peerVisual;peerRecord.visualAt=remoteNow;peerRecord.weapon=2|30<<3;pool.update(1);
+  const carried=body.parts.armR.quaternion&&body.parts.armL.quaternion&&body.parts.gun.visible&&body.parts.club.parent===body.root&&body.parts.head.rotation.x<-.89;
+  peerVisual[0]=90;peerRecord.visualAt=remoteNow;pool.update(1);const headOnly=body.parts.head.rotation.x>.89;
+  peerVisual[3]=15;peerVisual[5]=300;peerRecord.visualAt=remoteNow;pool.update(.1);
+  const loading=body.weapon.reloading&&body.parts.armL.rotation.x<-.5&&body.parts.snack.visible;
+  const rounds=body.weapon.ammo;remoteNow+=600;pool.update(.1);
+  const expired=!body.weapon.reloading&&!body.parts.snack.visible&&body.weapon.ammo===rounds;
+  peerVisual[3]=7;peerRecord.visualAt=remoteNow;peerRecord.weapon=1;pool.update(.1);
+  const restored=body.parts.gun.visible&&body.parts.club.visible&&body.parts.club.parent===body.parts.armR;
+  peerVisual[3]=31|2048;peerVisual[5]=300;peerVisual[15]=13;peerVisual[16]=8;peerRecord.weapon=2|30<<3;peerRecord.visualAt=remoteNow;pool.update(.1);
+  const spare=body.magazineModels[1],spareLoading=!!spare&&spare.node.parent===body.parts.armR&&body.parts.gun.visible&&body.weapon.ammo===30;
+  peerVisual[3]=7|4096;peerVisual[7]=220;peerRecord.visualAt=remoteNow;pool.update(.1);
+  const swappingSpare=spare.node.parent===body.root&&!!body.parts.armL.quaternion&&body.weapon.spareAmmo.join()==="12,7";
+  peerVisual[7]=0;peerRecord.visualAt=remoteNow;pool.update(.1);const spareReturned=spare.node.parent===body.parts.torso;
+  record("integration presentation: the actual indexed spare is held while loading, follows the connected left hand during a magazine swap and returns to its hip without changing either ammunition count",spareLoading&&swappingSpare&&spareReturned,JSON.stringify({spareLoading,swappingSpare,spareReturned}));
+  if(swingHeard)swingHeard(72);pool.update(.1);remoteNow+=400;pool.update(.4);
+  peerRecord.visual=null;pool.update(.1);const strikeExpired=body.weapon.meleeTime===0;
+  record("integration presentation: a strike event expires while semantic poses arrive and cannot replay when that state disappears",strikeExpired);
+  peerRecord.visual=peerVisual;
+  peerVisual[3]=0;peerVisual[15]=peerVisual[16]=0;peerRecord.visualAt=remoteNow;pool.update(.1);const missing=!body.parts.gun.visible&&!body.parts.club.visible;
+  record("integration presentation: the AK carry uses both connected arms and keeps the actual primary slung, idle head look follows without firing, reload expires without granting ammunition, and switching or missing gear restores current ownership",carried&&headOnly&&loading&&expired&&restored&&missing,JSON.stringify({carried,headOnly,loading,expired,restored,missing}));
+  // Regression: compare authored primary grips and both-hand AK carry with a real local crew's controls.
+  const gripRows=[],noopPose=()=>{};
+  const sameVector=(a,b)=>Math.abs(a.x-b.x)<.025&&Math.abs(a.y-b.y)<.025&&Math.abs(a.z-b.z)<.025;
+  const sameTurn=(a,b)=>!!a===!!b&&(!a||Math.abs(a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3])>.999);
+  for(const name of ["NickDaGreek","MrHodlX","w-s-bitcoin"]){
+    const local=BL.crew.create({root:BL.scene.createNode(),world:{level:100},playerName:name,input:{add:noopPose,remove:noopPose},hud:{setRosterRow:noopPose},
+      game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:()=>0,walkable:()=>true,fx:{say:noopPose,zzzAt:noopPose,burst:noopPose,puff:noopPose,spawnParticle:noopPose,damageNumber:noopPose}});
+    const actor=local.cavemen.get(name);actor.override="chilling";local.refreshStates(true);local.control(actor);
+    const peer={id:91,login:name,display:name,body:name,zone:"dsb-outside",x:0,y:0,z:0,yaw:0,visualAt:remoteNow};records.set(91,peer);
+    for(const slot of [1,2]){
+      local.selectWeapon(slot);local.poseWeapon(actor);
+      peer.weapon=BL.crew.weaponFlags(actor);peer.visual=BL.crew.visualState(actor);peer.visualAt=remoteNow;pool.update(.1);
+      const other=pool.body(91),club=slot===1,part=club?"club":"gun";
+      const match=sameVector(actor.parts[part].position,other.parts[part].position)&&sameTurn(actor.parts[part].quaternion,other.parts[part].quaternion)
+        &&actor.parts[part].geometry===other.parts[part].geometry;
+      const arms=slot===1||sameTurn(actor.parts.armL.quaternion,other.parts.armL.quaternion)&&sameTurn(actor.parts.armR.quaternion,other.parts.armR.quaternion);
+      gripRows.push({name,slot,match,arms});
+    }
+    records.delete(91);pool.update(.1);local.dispose();
+  }
+  record("regression: live player grips: club, Mr Hoddle's hockey stick and nunchaku retain their authored geometry and carry grip, and their AK carry matches both connected local arms",gripRows.every(r=>r.match&&r.arms),JSON.stringify(gripRows));
   records.get(72).zone="dsb-studio";pool.update(.1);
   record("integration remotes: a venue actor leaves the exterior immediately",pool.stats().remotePlayers===0);
   records.get(72).zone="dsb-outside";crew.player={traits:{name:"w-s-bitcoin"}};pool.update(.1);

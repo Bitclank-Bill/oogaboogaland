@@ -232,6 +232,10 @@ export const sanitizeChat = (text) => globalThis.BL.chatPolicy.error(text) ? "" 
 
 const finite = (v) => typeof v === "number" && Number.isFinite(v);
 const round = (v) => Math.round(v * 1000) / 1000;
+// pose.v: centiradian head/aim angles, ownership/action flags and millisecond animation phases.
+export const VISUAL_LIMITS = [157, 157, 314, 8191, 240, 1200, 560, 440, 320, 1240, 100, 750, 1300, 280, 2000, 31, 31];
+export const validVisual = (v) => Array.isArray(v) && v.length === VISUAL_LIMITS.length
+  && v.every((n, i) => Number.isInteger(n) && n >= (i < 3 ? -VISUAL_LIMITS[i] : 0) && n <= VISUAL_LIMITS[i]);
 
 /** A parsed client message, `null` for one to ignore, or `false` for one that should close the socket. */
 export const parseClientMessage = (text) => {
@@ -273,6 +277,10 @@ export const parseClientMessage = (text) => {
     if (msg.w !== undefined) {
       if (!Number.isInteger(msg.w) || msg.w < 0 || msg.w > 255) return null;
       if (msg.w) pose.w = msg.w;
+    }
+    if (msg.v !== undefined) {
+      if (!validVisual(msg.v)) return null;
+      pose.v = msg.v;
     }
     return pose;
   }
