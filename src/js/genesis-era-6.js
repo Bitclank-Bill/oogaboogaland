@@ -16,8 +16,12 @@
 // catalogue of the reference desk's twelve cards, whose console game (genesis-era-6-catch.js) sorts them as they
 // fall. Each exhibit's finer parts (frames, keys, lamps, trims) are one merged mesh at its own spot (`detail`).
 //
-// No sound, no toasts and nothing that moves by itself: the laptop's cursor is the only blink, and it holds still
-// while a panel or terminal is open or Calm is on. Nothing typed leaves the page.
+// Warm paper and lamplight: each exhibit stands in a pool of emissive floor light (no light sources), the paper's desk
+// in the brightest. Nothing moves by itself: models move only when a visitor opens or commands them, and then ease
+// between states (cards snap into order, tabs lift and settle, slips slide into conflict, a page turns, a slot's arrow
+// lights, the door's seal catches a glint); Calm shows each end state at once. Sounds are the scene's own cues (kit
+// `cue`, when given), one per command at most. The laptop's cursor is the only blink, held while a panel or terminal
+// is open or Calm is on. No toasts. Nothing typed leaves the page.
 (() => {
   "use strict";
   const BL = window.BL;
@@ -50,7 +54,72 @@
     return kit.place(nd);
   };
   const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
+  // A warm pool of lamplight on the floor at an exhibit (an emissive film just over the floor, no light source), w by d
+  // metres centred at (x, z): the era's paper-and-lamplight tone. Returns its node, so a model can brighten it.
+  const pool = (kit, x, z, w, d, level = 0.32) => detail(kit, x, kit.top, z, (M) => [B(M, w, 0.006, d, "#8a6226", 0, 0.004, 0, level), B(M, w * 0.62, 0.006, d * 0.62, "#b07f34", 0, 0.008, 0, level)]);
   const rows = (n, f) => Array.from({ length: n }, (_, k) => f(k));
+
+  // --- Motion: eased transitions between a model's states (allocation-free, preallocated) ----------------------------
+  // A command writes each moving part's final value at once (so a reader of the model, and RESET, always sees the end
+  // state), then `to` starts a tween from the value the visitor was seeing; `update` draws the in-between frames and
+  // writes the final value on the last. Calm starts no tween (end states at once) and finishes any running; pause and
+  // the bench, menu and console holds simply stop `update`, freezing a tween where it stands; `active(false)` finishes
+  // them all. With no tween running `update` returns before doing anything. Fields: position x/y/z, rotation x/z/y,
+  // scale x/y, glow (the renderer's emissive multiplier). Eases: 0 in-out cubic, 1 out-back (a snap that settles),
+  // 2 out-cubic, 3 a hop (`from` holds the height: up and back down onto the final value).
+  const PX = 0, PY = 1, PZ = 2, RX = 3, RZ = 4, SX = 5, SY = 6, GLOW = 7, RY = 8, CAP = 160;
+  const tw = { n: 0, node: new Array(CAP).fill(null), field: new Uint8Array(CAP), ease: new Uint8Array(CAP),
+    from: new Float32Array(CAP), to: new Float32Array(CAP), t: new Float32Array(CAP), dur: new Float32Array(CAP) };
+  // `live` is off during a build (its syncs only lay the model out); `calm` mirrors the visit's Calm; `cue` is the kit's
+  // sound hook when the scene gives one (genesis-audio cue names only), else nothing.
+  const anim = { live: false, calm: false, cue: null, started: 0 };
+  const CUES = new Set(["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"]);
+  const cue = (name) => { if (anim.live && anim.cue && CUES.has(name)) anim.cue(name); };
+  const getF = (n, f) => f === PX ? n.position.x : f === PY ? n.position.y : f === PZ ? n.position.z : f === RX ? n.rotation.x : f === RZ ? n.rotation.z
+    : f === RY ? n.rotation.y : f === SX ? n.scale.x : f === SY ? n.scale.y : (n.glow === undefined ? 1 : n.glow);
+  const putF = (n, f, v) => {
+    if (f === PX) n.position.x = v; else if (f === PY) n.position.y = v; else if (f === PZ) n.position.z = v; else if (f === RX) n.rotation.x = v;
+    else if (f === RZ) n.rotation.z = v; else if (f === RY) n.rotation.y = v; else if (f === SX) n.scale.x = v; else if (f === SY) n.scale.y = v; else n.glow = v;
+  };
+  const slotOf = (n, f) => { for (let i = 0; i < tw.n; i++) if (tw.node[i] === n && tw.field[i] === f) return i; return -1; };
+  const drop = (i) => { const k = --tw.n; tw.node[i] = tw.node[k]; tw.field[i] = tw.field[k]; tw.ease[i] = tw.ease[k]; tw.from[i] = tw.from[k]; tw.to[i] = tw.to[k]; tw.t[i] = tw.t[k]; tw.dur[i] = tw.dur[k]; tw.node[k] = null; };
+  // Sets `n`'s field to `v` now and eases the shown value there over `dur` seconds (after `delay`).
+  const to = (n, f, v, dur = 0.45, ease = 0, delay = 0) => {
+    let i = slotOf(n, f);
+    // A hop running on y is replaced by this move (it starts from the hop's resting height, not mid-air).
+    const from = i >= 0 && tw.ease[i] === 3 ? tw.to[i] : getF(n, f);
+    putF(n, f, v);
+    if (!anim.live || anim.calm || Math.abs(from - v) < 1e-5) { if (i >= 0) drop(i); return; }
+    if (i < 0) { if (tw.n >= CAP) return; i = tw.n++; }
+    tw.node[i] = n; tw.field[i] = f; tw.ease[i] = ease; tw.from[i] = from; tw.to[i] = v; tw.t[i] = -delay; tw.dur[i] = dur;
+    anim.started++;
+  };
+  // A hop on y: up by `h` and back down onto the part's own height, over `dur`.
+  const hop = (n, h, dur = 0.45, delay = 0) => {
+    if (!anim.live || anim.calm) return;
+    let i = slotOf(n, PY);
+    if (i >= 0 && tw.ease[i] !== 3) return;
+    if (i < 0) { if (tw.n >= CAP) return; i = tw.n++; }
+    tw.node[i] = n; tw.field[i] = PY; tw.ease[i] = 3; tw.from[i] = h; tw.to[i] = n.position.y; tw.t[i] = -delay; tw.dur[i] = dur; anim.started++;
+  };
+  const finishAll = () => { for (let i = 0; i < tw.n; i++) { putF(tw.node[i], tw.field[i], tw.to[i]); tw.node[i] = null; } tw.n = 0; };
+  const stepTweens = (dt) => {
+    for (let i = tw.n - 1; i >= 0; i--) {
+      const t = tw.t[i] += dt;
+      if (t <= 0) { if (tw.ease[i] !== 3) putF(tw.node[i], tw.field[i], tw.from[i]); continue; }
+      const k = t >= tw.dur[i] ? 1 : t / tw.dur[i], e = tw.ease[i];
+      if (k >= 1) { putF(tw.node[i], tw.field[i], tw.to[i]); drop(i); continue; }
+      if (e === 3) { putF(tw.node[i], tw.field[i], tw.to[i] + Math.sin(Math.PI * k) * tw.from[i]); continue; }
+      const q = e === 1 ? 1 + 2.70158 * (k - 1) ** 3 + 1.70158 * (k - 1) ** 2 : e === 2 ? 1 - (1 - k) ** 3 : k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2;
+      putF(tw.node[i], tw.field[i], tw.from[i] + (tw.to[i] - tw.from[i]) * q);
+    }
+  };
+  // A lamp coming on: shown now, its glow easing up from nothing; going off is at once (a reader sees it off).
+  const lampOn = (n, on, level = 1, dur = 0.5, delay = 0) => {
+    if (!on) { n.visible = false; const i = slotOf(n, GLOW); if (i >= 0) drop(i); n.glow = level; return; }
+    if (!n.visible) { n.glow = 0; n.visible = true; }
+    to(n, GLOW, level, dur, 2, delay);
+  };
 
   // --- The eight numbered references, as the paper's list gives them, and the cave that tells each story ---------
   // `keys`: the paper, then the other era's own source for that work where one is in the voyage. `where`: the cave.
@@ -152,11 +221,11 @@
     prompt: "PAYMENTS>",
     run(line) {
       const parts = clean(line).toUpperCase().split(/\s+/), cmd = parts[0];
-      if (cmd === "RESET") { pay.signed.BO = pay.signed.CY = false; pay.order = ""; return reply("Coin #8 is Ana's again. Nothing signed."); }
+      if (cmd === "RESET") { pay.signed.BO = pay.signed.CY = false; pay.order = ""; syncPay(); cue("thunk"); return reply("Coin #8 is Ana's again. Nothing signed."); }
       if (cmd === "SIGN") {
         const who = parts[1];
         if (who !== "BO" && who !== "CY") return reply("SIGN BO or SIGN CY.");
-        pay.signed[who] = true;
+        pay.signed[who] = true; syncPay(); cue("rustle-paper");
         return reply(`"${payLine(who === "BO" ? "Bo" : "Cy")}" signed: toy signature ${toySig(payLine(who))}.`);
       }
       if (cmd === "CHECK") {
@@ -169,7 +238,7 @@
         const a = parts[1], b = parts[2];
         if (!pay.signed.BO || !pay.signed.CY) return reply("SIGN BO and SIGN CY first.");
         if (!((a === "BO" && b === "CY") || (a === "CY" && b === "BO")) || parts.length > 3) return reply("ORDER BO CY or ORDER CY BO.");
-        pay.order = a + b;
+        pay.order = a + b; syncPay(); cue("thunk");
         const first = a === "BO" ? "Bo" : "Cy", second = a === "BO" ? "Cy" : "Bo";
         return reply(`Shared history: 1. Ana to ${first}: ACCEPTED. 2. Ana to ${second}: REJECTED, coin #8 already spent.`,
           "Everyone reading the same ordered history reaches the same answer. This toy simply assumes the order.",
@@ -261,11 +330,53 @@
   const HEADER_BYTES = 80, HEADERS_A_YEAR = 6 * 24 * 365, MEMORY_2008 = 2e9;
   const headerBytes = (years) => HEADER_BYTES * HEADERS_A_YEAR * years;
   const commas = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  BL.genesisEra6 = { SECTIONS, PAGES, ARG, createArgument, headerBytes, MEMORY_2008 };
+  BL.genesisEra6 = { SECTIONS, PAGES, ARG, createArgument, headerBytes, MEMORY_2008,
+    // For checks: how many transitions are running, and how many have started this page.
+    motion: { get running() { return tw.n; }, get started() { return anim.started; }, CUES } };
 
   let desk = null, cursor = null, blink = 0;
   // The cluster's per-visit state and model nodes (`build` sets them, `dispose` drops them).
   let arg = null, lay = null, ws = null, argNodes = null, layNodes = null, wsNodes = null, cat = null, catNodes = null;
+  // The upgrade's moving parts: the laptop's card piles, the payments' slips, the paper's turning leaf, the shelf's slot
+  // beacons, the January door's seal and glint, and the light pools (`pools`, by exhibit).
+  let deskNodes = null, payNodes = null, paperNodes = null, slotNodes = null, doorNodes = null, laptopNodes = null;
+  // One-shot effects when an exhibit is opened (its board or terminal): a page turns, a slot lights and points back,
+  // the seal catches the light, the laptop's screen wakes. Each starts its tweens and returns; nothing runs after.
+  const turnPage = () => {
+    if (!paperNodes) return;
+    const N = paperNodes;
+    N.side = -N.side;
+    to(N.leaf, RZ, N.side < 0 ? Math.PI : 0, 1.1, 0); hop(N.leaf, 0.04, 1.1);
+    // The desk lamp brightens as the page turns and settles back to its reading level.
+    N.lamp.visible = true; putF(N.lamp, GLOW, anim.live && !anim.calm ? 1.7 : 1.15); to(N.lamp, GLOW, 1.15, 1.2, 2, 0.4);
+    cue("rustle-paper");
+  };
+  const lightSlot = (n) => {
+    if (!slotNodes) return;
+    for (let i = 0; i < 8; i++) {
+      const b = slotNodes.beacons[i], on = i === n - 1;
+      // The lit slot's arrow slides out toward the gallery's way in (where earlier eras lie) and stays out; the others
+      // go dark and back.
+      lampOn(b, on, 1.2, 0.45);
+      to(b, PZ, slotNodes.beaconZ[i] + (on ? 0.14 : 0), 0.5, on ? 1 : 0);
+    }
+    cue("relay");
+  };
+  const sealGlint = () => {
+    if (!doorNodes) return;
+    const N = doorNodes;
+    // A glint sweeps across the wax seal and fades; the light under the door swells and settles.
+    N.glint.visible = true; putF(N.glint, PX, N.glintX0); putF(N.glint, GLOW, 1.4);
+    to(N.glint, PX, N.glintX1, 0.9, 0, 0.1); to(N.glint, GLOW, 0, 0.9, 0, 0.2);
+    putF(N.light, GLOW, anim.live && !anim.calm ? 1.8 : 1); to(N.light, GLOW, 1, 1.1, 0, 0.3);
+    cue("chime");
+  };
+  const wakeScreen = () => {
+    if (!laptopNodes) return;
+    const s = laptopNodes.screen;
+    if (anim.live && !anim.calm) { putF(s, GLOW, 0.3); to(s, GLOW, 1.35, 0.8, 2); } else s.glow = 1.35;
+    cue("hum-start");
+  };
   const filed = () => desk.filed.reduce((n, f) => n + (f ? 1 : 0), 0);
   const laptopTerminal = () => ({
     banner: ["REFERENCE DESK / an original, unbranded 2008-style laptop. Not the author's computer.",
@@ -275,7 +386,7 @@
     prompt: "DESK>",
     run(line) {
       const parts = clean(line).toUpperCase().split(/\s+/), cmd = parts[0];
-      if (cmd === "RESET") { desk.filed.fill(0); desk.zoom = 1; return reply("Desk cleared. CARDS lists them again."); }
+      if (cmd === "RESET") { desk.filed.fill(0); desk.zoom = 1; syncDesk(); cue("rustle-paper"); return reply("Desk cleared. CARDS lists them again."); }
       if (cmd === "CARDS") return reply(...CARDS.map((c, i) => `${c.id.padEnd(10)} ${c.name}${desk.filed[i] ? "  [filed]" : ""}`), `${filed()}/12 filed.`);
       if (cmd === "HINT") return reply("Cards R1 to R8 are the eight entries of the paper's numbered list: CITED. The other four are not in the list: NOT.",
         "A famous name is not a citation. Check the list, not the resemblance.");
@@ -284,7 +395,7 @@
         if (i < 0 || (pile !== "CITED" && pile !== "NOT") || parts.length > 3) return reply("FILE <card> CITED or FILE <card> NOT. CARDS lists the cards.");
         const c = CARDS[i];
         if ((pile === "CITED") !== !!c.cited) return reply(c.cited ? `Not quite: ${c.name} is reference [${c.cited}] in the list.` : `Not quite: ${c.name} is not among the eight numbered references.`, "Your other cards stay filed.");
-        desk.filed[i] = 1;
+        desk.filed[i] = 1; syncDesk(i); cue("rustle-paper");
         return reply(c.cited ? `Filed: reference [${c.cited}]. Its slot on the shelf points to Era ${REFS[c.cited - 1].era}.` : c.note ? `Filed: not listed. ${c.note}` : `Filed: not listed. ${c.name} is not among the eight numbered references; any influence claim needs its own evidence.`,
           filed() === 12 ? "All twelve filed! Eight citations, four not listed." : `${filed()}/12 filed.`);
       }
@@ -318,24 +429,24 @@
       if (cmd === "CARDS") return reply(...ARG.map((c, k) => `${c.tag}: ${c.line}${arg.mark[arg.where[k]] === 1 ? ` (section ${c.sec}, ${SECTIONS[c.sec - 1].title})` : ""}${arg.where[k] >= 0 ? ` [slot ${arg.where[k] + 1}]` : ""}`));
       if (cmd === "DEAL") {
         if (parts[1] !== undefined && !/^\d{1,6}$/.test(parts[1])) return reply("DEAL, or DEAL with a seed from 0 to 999999.");
-        arg.deal(parts[1] === undefined ? arg.S.seed + 1 : +parts[1]); syncArg();
+        arg.deal(parts[1] === undefined ? arg.S.seed + 1 : +parts[1]); syncArg(); cue("rustle-paper");
         return reply(`Tray shuffled with seed ${arg.S.seed}; the slots are empty. The same seed always deals the same tray.`);
       }
       if (cmd === "PLACE") {
         const c = argCard(parts[1]), s = Number(parts[2]) - 1;
         if (c < 0 || !/^[1-6]$/.test(parts[2] || "") || parts.length > 3) return reply("PLACE <card> <slot>, e.g. PLACE SIGN 1. CARDS lists the cards.");
-        const was = arg.place(c, s); syncArg();
+        const was = arg.place(c, s); syncArg(); cue("clack");
         return reply(`${ARG[c].tag} lies in slot ${s + 1}.${was >= 0 ? ` ${ARG[was].tag} goes back to the tray.` : ""} ${arg.placed()}/6 down.`, arg.placed() === 6 ? "All six are down: type CHECK." : "");
       }
       if (cmd === "LIFT") {
         const c = argCard(parts[1]);
         if (c < 0) return reply("LIFT <card>, e.g. LIFT WORK.");
-        arg.lift(c); syncArg();
+        arg.lift(c); syncArg(); cue("clack");
         return reply(`${ARG[c].tag} is back in the tray. ${arg.placed()}/6 down.`);
       }
       if (cmd === "CHECK") {
         if (arg.placed() < 6) return reply(`Lay all six first: ${arg.placed()}/6 down.`);
-        const right = arg.check(); syncArg();
+        const right = arg.check(); syncArg(); cue(right === 6 ? "chime" : "thunk");
         return reply(right === 6 ? "All six in the paper's order: sections 2, 3, 4, 5, 6 and 11. Solved!" : `${right}/6 in place. Red slots need another card; CARDS shows what is fixed.`,
           right === 6 ? "Sections 7 to 10 handle storage, light checking, payment shapes and privacy; the layout toy beside this table shows them." : "");
       }
@@ -363,13 +474,13 @@
       if (cmd === "SHOW") {
         const i = sectionNamed(parts[1]);
         if (i < 0 || parts.length > 2) return reply("SHOW 1 to 12, or SHOW REFS.");
-        lay.a = i; lay.b = -1; lay.page = 0; syncLay();
+        lay.a = i; lay.b = -1; lay.page = 0; syncLay(); cue("rustle-paper");
         return reply(tell(SECTIONS[i]));
       }
       if (cmd === "COMPARE") {
         const i = sectionNamed(parts[1]), j = sectionNamed(parts[2]);
         if (i < 0 || j < 0 || i === j || parts.length > 3) return reply("COMPARE two different sections, e.g. COMPARE 3 7.");
-        lay.a = i; lay.b = j; lay.page = 0; syncLay();
+        lay.a = i; lay.b = j; lay.page = 0; syncLay(); cue("rustle-paper");
         const A = SECTIONS[i], B = SECTIONS[j], shared = A.refs.filter((r) => B.refs.includes(r));
         return reply(`GOLD: ${tell(A)}`, `TEAL: ${tell(B)}`,
           `${A.role === B.role ? `Same job (${A.role}), different parts of it.` : `Different jobs: ${A.role} and ${B.role}.`} Shared references: ${refList(shared)}.`);
@@ -377,7 +488,7 @@
       if (cmd === "PAGE") {
         if (!/^[1-9]$/.test(parts[1] || "")) return reply("PAGE 1 to 9.");
         const p = +parts[1];
-        lay.a = lay.b = -1; lay.page = p; syncLay();
+        lay.a = lay.b = -1; lay.page = p; syncLay(); cue("click");
         return reply(`Page ${p}: ${onPage(p).map((s) => s.n === 13 ? s.title : `${s.n} ${s.title}${s.n === 11 && p > 6 ? " (continued)" : ""}`).join("; ")}.`);
       }
       if (cmd === "ROLES") return reply(...["PROBLEM", "OWNERSHIP", "ORDER", "COST", "PROCESS", "ECONOMICS", "EFFICIENCY", "FORMAT", "PRIVACY", "ANALYSIS", "SUMMARY", "SOURCES"]
@@ -402,17 +513,17 @@
       if (cmd === "RESET") { ws.page = 1; ws.years = 0; ws.lamp = true; syncWs(); return reply("Page 1, the bar empty, the lamp on."); }
       if (cmd === "PAGE") {
         if (!/^[1-9]$/.test(parts[1] || "")) return reply("PAGE 1 to 9.");
-        ws.page = +parts[1]; syncWs();
+        ws.page = +parts[1]; syncWs(); cue("click");
         return reply(`Page ${ws.page} of ${PAGES} on the display: ${onPage(ws.page).map((s) => s.title).join(", ")}.`);
       }
       if (cmd === "STORAGE") {
         if (!/^\d{1,3}$/.test(parts[1] || "") || +parts[1] < 1 || +parts[1] > 100) return reply("STORAGE 1 to 100 (years).");
-        ws.years = +parts[1]; syncWs();
+        ws.years = +parts[1]; syncWs(); cue("whir");
         const b = headerBytes(ws.years);
         return reply(`${ws.years} year${ws.years === 1 ? "" : "s"} of headers: 80 bytes x 6 an hour x 24 x 365${ws.years === 1 ? "" : ` x ${ws.years}`} = ${commas(b)} bytes, about ${(b / 1e6).toFixed(1)} MB.`,
           `That is ${(100 * b / MEMORY_2008).toFixed(2)}% of 2 GB, the bar's full width. The paper's own sum, redone with its decimal rounding. [E6-WP]`);
       }
-      if (cmd === "LAMP") { ws.lamp = !ws.lamp; syncWs(); return reply(ws.lamp ? "Lamp on." : "Lamp off: the display alone lights the desk."); }
+      if (cmd === "LAMP") { ws.lamp = !ws.lamp; syncWs(); cue("click"); return reply(ws.lamp ? "Lamp on." : "Lamp off: the display alone lights the desk."); }
       if (cmd === "MORE") return reply("THE DEEPER STORY: the desk shows reading conditions, not a particular machine. One dated example of the period, a laptop announced on 14 October 2008, is at the reference desk across this gallery. [E6-GEAR]",
         "STILL UNSOLVED: the paper's sum counts block headers only, at one block every ten minutes. How much room full blocks and real use would take was left open.",
         `MUSEUM NOTE: ${ORIGINAL}`);
@@ -437,7 +548,7 @@
         const i = CARDS.findIndex((c) => c.id === parts[1]);
         if (i < 0 || parts.length > 2) return reply("PULL <drawer>, e.g. PULL R3 or PULL CHORD. DRAWERS lists them.");
         const c = CARDS[i];
-        cat.open[i] = 1; cat.last = i; syncCat();
+        cat.open[i] = 1; cat.last = i; syncCat(); cue("clack");
         if (c.cited) return reply(`Gold lamp: ${c.name} is reference [${c.cited}] in the paper's list. Its story is in Era ${REFS[c.cited - 1].era}.`);
         return reply(`Blue lamp: ${c.name} is not among the eight numbered references.`, c.note || "Not listed means absent from the bibliography; any influence claim needs its own evidence.");
       }
@@ -453,39 +564,80 @@
   const syncArg = () => {
     if (!argNodes) return;
     const N = argNodes;
+    // Cards glide to their slot or tray place with a little hop, each a beat after the last, and snap down.
     for (let k = 0; k < 6; k++) {
-      const s = arg.where[k], p = N.cards[k].position;
-      if (s >= 0) { p.x = N.slotX[s]; p.z = N.slotZ; } else { let t = 0; while (arg.tray[t] !== k) t++; p.x = N.slotX[t]; p.z = N.trayZ; }
+      const s = arg.where[k], c = N.cards[k];
+      let x, z;
+      if (s >= 0) { x = N.slotX[s]; z = N.slotZ; } else { let t = 0; while (arg.tray[t] !== k) t++; x = N.slotX[t]; z = N.trayZ; }
+      const moving = Math.abs(c.position.x - x) > 1e-4 || Math.abs(c.position.z - z) > 1e-4;
+      to(c, PX, x, 0.5, 1); to(c, PZ, z, 0.5, 1);
+      if (moving) hop(c, 0.22, 0.5);
     }
-    for (let s = 0; s < 6; s++) { N.green[s].visible = arg.mark[s] === 1; N.red[s].visible = arg.mark[s] === 2; }
-    N.win.visible = arg.S.solved;
+    for (let s = 0; s < 6; s++) { lampOn(N.green[s], arg.mark[s] === 1, 1, 0.35, s * 0.08); lampOn(N.red[s], arg.mark[s] === 2, 1, 0.35, s * 0.08); }
+    lampOn(N.win, arg.S.solved, 1.3, 0.8, 0.5);
+    if (N.pool) to(N.pool, GLOW, arg.S.solved ? 1.6 : 1, 0.8, 2, 0.5);
   };
   const syncLay = () => {
     if (!layNodes) return;
     const N = layNodes;
+    // A tab lifts out and up with a small overshoot, then settles; a lowered one eases back.
     for (let i = 0; i < SECTIONS.length; i++) {
-      const up = i === lay.a || i === lay.b, p = N.tabs[i].position;
-      p.y = N.tabY[i] + (up ? 0.12 : 0); p.z = N.tabZ + (up ? 0.12 : 0);
+      const up = i === lay.a || i === lay.b, t = N.tabs[i];
+      to(t, PY, N.tabY[i] + (up ? 0.12 : 0), 0.45, up ? 1 : 0); to(t, PZ, N.tabZ + (up ? 0.12 : 0), 0.45, up ? 1 : 0);
     }
     const put = (marker, i, page) => {
-      marker.visible = i >= 0 || page > 0;
-      marker.position.x = N.pageX[marker.visible ? (i >= 0 ? SECTIONS[i].page : page) - 1 : 0];
+      const on = i >= 0 || page > 0;
+      to(marker, PX, N.pageX[on ? (i >= 0 ? SECTIONS[i].page : page) - 1 : 0], marker.visible && on ? 0.5 : 0, 0);
+      lampOn(marker, on, 1, 0.4);
     };
     put(N.gold, lay.a, lay.page); put(N.teal, lay.b, 0);
   };
   const syncCat = () => {
     if (!catNodes) return;
     const N = catNodes;
-    for (let i = 0; i < CARDS.length; i++) N.drawers[i].position.z = N.drawerZ + (cat.open[i] ? 0.3 : 0);
-    N.gold.visible = cat.last >= 0 && !!CARDS[cat.last].cited; N.blue.visible = cat.last >= 0 && !CARDS[cat.last].cited;
+    for (let i = 0; i < CARDS.length; i++) to(N.drawers[i], PZ, N.drawerZ + (cat.open[i] ? 0.3 : 0), 0.4, cat.open[i] ? 1 : 0);
+    lampOn(N.gold, cat.last >= 0 && !!CARDS[cat.last].cited, 1.2, 0.4, 0.25); lampOn(N.blue, cat.last >= 0 && !CARDS[cat.last].cited, 1.2, 0.4, 0.25);
   };
   const syncWs = () => {
     if (!wsNodes) return;
     const N = wsNodes;
-    for (let p = 0; p < PAGES; p++) N.lit[p].visible = p === ws.page - 1;
+    for (let p = 0; p < PAGES; p++) lampOn(N.lit[p], p === ws.page - 1, 1, 0.3);
     const f = Math.min(1, headerBytes(ws.years) / MEMORY_2008);
-    N.fill.visible = f > 0; N.fill.scale.x = Math.max(0.001, f); N.fill.position.x = N.barX0 + N.barW * f / 2;
-    N.glow.visible = ws.lamp;
+    // The bar grows from its left end: its width and its middle ease together.
+    N.fill.visible = f > 0; to(N.fill, SX, Math.max(0.001, f), 0.9, 2); to(N.fill, PX, N.barX0 + N.barW * f / 2, 0.9, 2);
+    lampOn(N.glow, ws.lamp, 1, 0.6);
+    if (N.pool) to(N.pool, GLOW, ws.lamp ? 1 : 0.35, 0.6, 2);
+  };
+  // The laptop: each filed card flies from the card box onto its pile (gold: in the paper's list; blue: not), and the
+  // piles stand as tall as their counts.
+  const syncDesk = (flew = -1) => {
+    if (!deskNodes) return;
+    const N = deskNodes;
+    let cited = 0, not = 0;
+    for (let i = 0; i < CARDS.length; i++) if (desk.filed[i]) { if (CARDS[i].cited) cited++; else not++; }
+    const pile = (n, count, of) => { const h = Math.max(0.001, count / of); n.visible = count > 0; to(n, SY, h, 0.4, 2, 0.35); to(n, PY, N.pileY + N.pileH * h / 2, 0.4, 2, 0.35); };
+    pile(N.citedPile, cited, 8); pile(N.notPile, not, 4);
+    if (flew >= 0) {
+      const c = N.flyer, toCited = !!CARDS[flew].cited, top = N.pileY + N.pileH * (toCited ? cited / 8 : not / 4) + 0.02;
+      c.visible = true;
+      putF(c, PX, N.boxX); putF(c, PZ, N.boxZ); putF(c, PY, top);
+      to(c, PX, toCited ? N.citedX : N.notX, 0.55, 2); to(c, PZ, N.pileZ, 0.55, 2); hop(c, 0.35, 0.55);
+    } else if (!cited && !not) N.flyer.visible = false;
+  };
+  // The two payments: signing slides a slip in toward the one coin; with both signed they meet in conflict (a red
+  // lamp between them); ORDER settles the first onto the ledger and pushes the second back, marked rejected.
+  const syncPay = () => {
+    if (!payNodes) return;
+    const N = payNodes, both = pay.signed.BO && pay.signed.CY, first = pay.order ? pay.order.slice(0, 2) : "";
+    const place = (side, who) => {
+      const s = N[side], signed = pay.signed[who], accepted = first === who, rejected = !!first && !accepted;
+      const x = accepted ? 0 : rejected ? s.home * 1.15 : signed ? s.home * 0.55 : s.home;
+      for (const n of s.parts) to(n, PX, N.cx + x + n.e6dx, 0.6, accepted || !signed ? 0 : 1);
+      lampOn(s.lamp, rejected, 1, 0.4, 0.4);
+    };
+    place("left", "BO"); place("right", "CY");
+    lampOn(N.conflict, both && !first, 1.2, 0.5, 0.4);
+    lampOn(N.ok, !!first, 1, 0.5, 0.5);
   };
 
   const overview = {
@@ -508,6 +660,8 @@
       pay = { signed: { BO: false, CY: false }, order: "" };
       desk = { filed: new Uint8Array(CARDS.length), zoom: 1 };
       arg = createArgument(); lay = { a: -1, b: -1, page: 0 }; ws = { page: 1, years: 0, lamp: true }; cat = { open: new Uint8Array(CARDS.length), last: -1 };
+      // No tween during the build (its syncs lay models out); the kit's sound hook when there is one.
+      anim.live = false; anim.calm = false; anim.cue = typeof kit.cue === "function" ? kit.cue : null; finishAll();
       blink = 0;
       const L = kit.channel.x0, R = kit.channel.x1, at = (u) => era.z1 - u;
 
@@ -526,6 +680,7 @@
           ...rows(4, (k) => B(M, 0.05, 0.05, 0.03, "#c8322a", (k % 2 ? 0.5 : -0.5), k < 2 ? 2.2 : 1.0, 0.11, 0.3)),
           B(M, 0.95, 0.06, 0.012, "#2f4f7a", 0, 2.17, 0.1), ...rows(3, (k) => B(M, 0.5 - k * 0.1, 0.03, 0.01, "#6d6352", -0.15 - k * 0.05, 1.12 - k * 0.07, 0.1)),
           B(M, 0.5, 0.16, 0.03, "#2b221d", 0.95, 1.0, 0.075), B(M, 0.4, 0.04, 0.02, "#ffb347", 0.95, 1.0, 0.095, 0.8)]);
+        pool(kit, x, z + 1.1, 3.4, 2.2);
         obstacle(x - 1.6, x + 1.6, z - 0.5, z + 0.5);
         sign("THE ANNOUNCEMENT · 31 OCT 2008", "18:10 UTC posting timestamp · the PDF itself is undated", x, top + 2.9, z + 0.2, 0, 0.42);
         prop({ id: "e6-announce", year: 2008, connection: "context", date: "31 October 2008, 18:10 UTC: the archived posting timestamp of the announcement email",
@@ -549,11 +704,19 @@
           B(M, 0.04, 0.006, 0.55, "#c8322a", 0.3, 1.06, 0.2), B(M, 0.26, 0.04, 0.22, "#b08a3a", 1.5, 1.04, -0.5), B(M, 0.04, 0.34, 0.04, "#b08a3a", 1.5, 1.22, -0.5),
           B(M, 0.52, 0.12, 0.22, "#2f6b4a", 1.5, 1.42, -0.42), B(M, 0.46, 0.02, 0.16, "#fff2c8", 1.5, 1.355, -0.42, 1),
           ...[-2.6, 2.6].map((dx) => B(M, 1.1, 0.07, 0.5, "#7a2f2a", dx, 0.48, 1.2))]);
+        // The era's clearest light: a warm glow across the desk top round the open paper, brightening as a page turns,
+        // and a pool on the floor where the reader stands. A loose leaf hinged at the gutter turns over each time the
+        // paper is opened (ruled on both faces).
+        const lamp = detail(kit, x, top, z, (M) => [B(M, 3.4, 0.004, 1.3, "#d6a752", 0, 1.023, 0, 0.55), B(M, 2.7, 0.004, 1.06, "#ffe1a0", 0, 1.026, 0, 0.6)]);
+        const leaf = detail(kit, x, top + 1.062, z, (M) => [B(M, 1.16, 0.008, 0.86, "#fbf6e6", 0.6, 0, 0, 0.42),
+          ...rows(10, (k) => B(M, 0.9, 0.003, 0.02, "#8a8070", 0.62, (k < 5 ? 0.006 : -0.006), -0.25 + (k % 5) * 0.12))]);
+        paperNodes = { leaf, lamp, side: 1 };
+        pool(kit, x, z + 1.6, 5, 3.4, 0.4);
         obstacle(x - 2, x + 2, z - 0.9, z + 0.9);
         sign("THE WHITEPAPER · 31 OCT 2008", "the anchor work: a proposal, read it here · announced date, the PDF is undated", x, top + 3.1, z, 0, 0.5);
         prop({ id: "e6-paper", year: 2008, connection: "anchor", date: "31 October 2008: the dated announcement; the PDF itself prints no day of publication",
           title: "Bitcoin: A Peer-to-Peer Electronic Cash System", label: "THE WHITEPAPER · 2008", sourceKeys: ["E6-WP", "E6-ANN", "E6-REL", "E6-DOSSIER"],
-          at: { x, y: top, z: z + 2 }, reach: 2.2, pick: { w: 4, h: 1.6, d: 1.8, x, z }, onUse: () => PAPER }); }
+          at: { x, y: top, z: z + 2 }, reach: 2.2, pick: { w: 4, h: 1.6, d: 1.8, x, z }, onUse: () => { turnPage(); return PAPER; } }); }
 
       // The reference shelf along the left bank (x about L - 20), facing the stream, eight slots in reference order
       // from u 14 to u 35, each 3 m apart. Core reading at standing height; the upper shelves rise to 7 m, optional.
@@ -569,7 +732,7 @@
           sign(`[${r.n}] ${r.who.toUpperCase()} · ${r.year}`, `${r.year}: the year the paper's list gives · story earlier, in Era ${r.era}`, sx + 0.75, top + 2.2, z, Math.PI / 2, 0.24);
           // A bibliography entry ([n]), not context and not a second stop: it names the citation stop upstream.
           prop({ id: `e6-ref-${r.n}`, year: r.year, connection: "bibliography", ref: `[${r.n}]`, date: `${r.year}: the year the paper's reference list gives`, title: `Reference ${r.n}: ${r.who}`, label: `REFERENCE [${r.n}] · ${r.who.toUpperCase()} · ${r.year}`, sourceKeys: r.keys,
-            at: { x: sx + 1.9, y: top, z }, reach: 1.3, pick: { w: 1, h: 2.2, d: 1.6, x: sx + 0.3, z }, onUse: () => slotBoard(r) });
+            at: { x: sx + 1.9, y: top, z }, reach: 1.3, pick: { w: 1, h: 2.2, d: 1.6, x: sx + 0.3, z }, onUse: () => { lightSlot(r.n); return slotBoard(r); } });
         });
         obstacle(sx - 0.7, sx + 0.7, z0, z1);
         // A kick plinth and a crown along the case, a brass reading rail, a divider between each pair of slots, brass
@@ -579,6 +742,19 @@
           B(M, 0.05, 0.05, len - 0.4, "#b08a3a", 0.78, 2.78, 0, 0.1), ...rows(7, (i) => B(M, 1.15, 1.5, 0.06, "#5a4430", 0.1, 1.7, slotDz[i] - step / 2)),
           ...slotDz.flatMap((dz) => [B(M, 0.46, 0.5, 0.04, "#b08a3a", 0.15, 1.22, dz - 0.78), B(M, 0.46, 0.5, 0.04, "#b08a3a", 0.15, 1.22, dz + 0.78),
             B(M, 0.02, 0.12, 0.34, "#c9a35a", 0.71, 0.82, dz, 0.2)])]);
+        // Under each slot's number plate a brass arrow, dark until that slot is opened: then it lights and slides out
+        // toward the gallery's way in, back round the museum to where that work's story is told.
+        const beacons = [], beaconZ = [];
+        slotDz.forEach((dz) => {
+          const bz = mid + dz;
+          beaconZ.push(bz);
+          const b = detail(kit, sx + 0.74, top + 1.75, bz, (M) => [B(M, 0.02, 0.06, 0.34, "#b08a3a", 0, 0, -0.04, 0.4),
+            B(M, 0.03, 0.05, 0.05, "#ffd36a", 0, 0, 0.16, 1), B(M, 0.03, 0.11, 0.05, "#ffd36a", 0, 0, 0.11, 1), B(M, 0.03, 0.17, 0.05, "#ffd36a", 0, 0, 0.06, 1)]);
+          b.visible = false;
+          beacons.push(b);
+        });
+        slotNodes = { beacons, beaconZ };
+        pool(kit, sx + 1.7, mid, 2.2, len, 0.3);
         sign("THE REFERENCE SHELF · 2008", "eight numbered references in the whitepaper · each slot points back to its era", sx + 0.75, top + 3.4, at(u0 + step * 3.5), Math.PI / 2, 0.42);
         // Optional for flyers: the upper shelf of names that are not references, with the same note on the paper's desk.
         const uz = at(u0 + step * 3.5);
@@ -594,7 +770,7 @@
         solid(1.3, 0.05, 0.9, "#b9bcbf", x, top + 0.93, z + 0.15);
         solid(1.1, 0.02, 0.45, "#2b2d30", x, top + 0.96, z + 0.05);
         solid(1.3, 0.85, 0.05, "#b9bcbf", x, top + 1.36, z - 0.3);
-        solid(1.15, 0.7, 0.02, "#1e3346", x, top + 1.36, z - 0.27, 0.35);
+        const screen = solid(1.15, 0.7, 0.02, "#1e3346", x, top + 1.36, z - 0.27, 0.35);
         for (let i = 0; i < 4; i++) solid(0.7, 0.04, 0.01, "#9fc4dd", x - 0.1, top + 1.6 - i * 0.12, z - 0.255, 0.4);
         cursor = solid(0.06, 0.07, 0.01, "#e8f2fa", x + 0.32, top + 1.24, z - 0.255, 0.8);
         for (let i = 0; i < 3; i++) solid(0.5, 0.02, 0.35, "#f3ecd8", x + 1.1, top + 0.92 + i * 0.02, z + 0.2 - i * 0.05);
@@ -607,26 +783,51 @@
           B(M, 0.14, 0.16, 0.14, "#e9e2cc", 1.4, 0.98, -0.4), B(M, 0.11, 0.006, 0.11, "#3a2414", 1.4, 1.06, -0.4),
           ...[-1, 1].flatMap((sd) => [B(M, 1.0, 0.3, 0.02, "#5a4430", sd * 0.95, 0.62, 0.71), B(M, 0.2, 0.04, 0.03, "#c9a35a", sd * 0.95, 0.66, 0.73, 0.2)]),
           B(M, 3.5, 0.08, 1.5, "#3a2e22", 0, 0.04, 0)]);
+        // Two filing trays at the desk's front left, gold for the paper's numbered references and blue for names it does
+        // not list; FILE sends a card flying from the card box onto its pile, and each pile stands as tall as its count.
+        detail(kit, x, top, z, (M) => [...[[-1.25, "#c9a35a"], [-0.85, "#4a7ab0"]].flatMap(([tx, rim]) => [B(M, 0.34, 0.02, 0.26, "#3a2e22", tx, 0.91, 0.45),
+          B(M, 0.34, 0.05, 0.02, rim, tx, 0.94, 0.33, 0.35), B(M, 0.34, 0.05, 0.02, rim, tx, 0.94, 0.57, 0.35)])]);
+        const PILE_H = 0.12, pileY = top + 0.92;
+        const citedPile = detail(kit, x - 1.25, pileY, z + 0.45, (M) => [B(M, 0.28, PILE_H, 0.2, "#f3ecd8", 0, 0, 0, 0.1), B(M, 0.06, PILE_H, 0.21, "#c9a35a", -0.1, 0, 0, 0.3)]);
+        const notPile = detail(kit, x - 0.85, pileY, z + 0.45, (M) => [B(M, 0.28, PILE_H, 0.2, "#f3ecd8", 0, 0, 0, 0.1), B(M, 0.06, PILE_H, 0.21, "#4a7ab0", -0.1, 0, 0, 0.3)]);
+        const flyer = detail(kit, x - 1.15, top + 1.2, z + 0.1, (M) => [B(M, 0.26, 0.008, 0.18, "#fbf6e6", 0, 0, 0, 0.2)]);
+        flyer.visible = false;
+        deskNodes = { citedPile, notPile, flyer, pileY, pileH: PILE_H, pileZ: z + 0.45, citedX: x - 1.25, notX: x - 0.85, boxX: x - 1.15, boxZ: z + 0.1 };
+        laptopNodes = { screen };
+        syncDesk();
+        pool(kit, x, z + 1.2, 4, 2.4, 0.3);
         obstacle(x - 1.7, x + 1.7, z - 0.7, z + 0.7);
         sign("REFERENCE DESK · 2008 LAPTOP", "Space: sort the reference cards · original design, not the author's computer", x, top + 2.6, z + 0.1, 0, 0.42);
         prop({ id: "e6-laptop", year: 2008, connection: "context", date: "14 October 2008: an example laptop announced; this desk is an original design",
           title: "2008 reference desk", label: "REFERENCE DESK · 2008", sourceKeys: ["E6-GEAR", "E6-WP"],
-          at: { x, y: top, z: z + 1.8 }, reach: 2, pick: { w: 3.4, h: 1.8, d: 1.4, x, z }, onUse: () => ({ terminal: laptopTerminal() }) }); }
+          at: { x, y: top, z: z + 1.8 }, reach: 2, pick: { w: 3.4, h: 1.8, d: 1.4, x, z }, onUse: () => { wakeScreen(); return { terminal: laptopTerminal() }; } }); }
 
       // Two conflicting payments (right bank, u 22): two slips on a table, one ledger between them.
       { const x = R + 9, z = at(22);
         solid(3.6, 0.9, 1.6, "#5e4a33", x, top + 0.45, z);
-        solid(0.9, 0.03, 0.6, "#f3ecd8", x - 1.1, top + 0.92, z, 0.25); solid(0.9, 0.03, 0.6, "#f3ecd8", x + 1.1, top + 0.92, z, 0.25);
-        solid(0.18, 0.04, 0.18, "#b8322a", x - 0.8, top + 0.95, z + 0.15); solid(0.18, 0.04, 0.18, "#b8322a", x + 1.4, top + 0.95, z + 0.15);
+        const slipL = solid(0.9, 0.03, 0.6, "#f3ecd8", x - 1.1, top + 0.92, z, 0.25), slipR = solid(0.9, 0.03, 0.6, "#f3ecd8", x + 1.1, top + 0.92, z, 0.25);
+        const sealL = solid(0.18, 0.04, 0.18, "#b8322a", x - 0.8, top + 0.95, z + 0.15), sealR = solid(0.18, 0.04, 0.18, "#b8322a", x + 1.4, top + 0.95, z + 0.15);
         solid(0.8, 0.12, 1, "#2f4f3a", x, top + 0.96, z);
         // The open ledger's pages and rules, written lines on both slips, a dish with the one toy coin behind the ledger,
         // an inkwell and pen, and the table's plinth.
         detail(kit, x, top, z, (M) => [B(M, 0.72, 0.02, 0.92, "#efe6d2", 0, 1.03, 0), B(M, 0.03, 0.025, 0.92, "#c8bc9c", 0, 1.035, 0),
           ...rows(8, (k) => B(M, 0.3, 0.004, 0.015, "#6d6352", (k < 4 ? -0.18 : 0.18), 1.042, -0.3 + (k % 4) * 0.18)),
-          ...rows(8, (k) => B(M, 0.6 - (k % 4 === 3 ? 0.25 : 0), 0.004, 0.03, "#6d6352", (k < 4 ? -1.1 : 1.1), 0.938, -0.2 + (k % 4) * 0.09)),
           B(M, 0.34, 0.04, 0.34, "#3a2e22", 0, 0.92, -0.62), B(M, 0.24, 0.24, 0.05, "#e0b84a", 0, 1.08, -0.62, 0.25), B(M, 0.1, 0.1, 0.06, "#8a6a2a", 0, 1.08, -0.62, 0.1),
           B(M, 0.14, 0.12, 0.14, "#1c2430", 1.55, 0.96, -0.55), B(M, 0.03, 0.03, 0.4, "#2b221d", 1.35, 0.93, -0.4),
           B(M, 3.7, 0.08, 1.7, "#3a2e22", 0, 0.04, 0)]);
+        // Each slip's written lines ride with it. Signing slides a slip in toward the one coin; with both signed a red lamp
+        // on the coin's dish says they conflict; ORDER settles the first onto the ledger (a green lamp) and pushes the
+        // second back to the table's edge, where its own red lamp marks it rejected.
+        const lines = (sx) => detail(kit, sx, top, z, (M) => rows(4, (k) => B(M, 0.6 - (k === 3 ? 0.25 : 0), 0.004, 0.03, "#6d6352", 0, 0.938, -0.2 + k * 0.09)));
+        const linesL = lines(x - 1.1), linesR = lines(x + 1.1);
+        slipL.e6dx = 0; slipR.e6dx = 0; linesL.e6dx = 0; linesR.e6dx = 0; sealL.e6dx = 0.3; sealR.e6dx = 0.3;
+        const lampAt = (lx, ly, lz, color, w = 0.14) => { const n = detail(kit, lx, ly, lz, (M) => [B(M, w, 0.06, 0.06, color, 0, 0, 0, 1)]); n.visible = false; return n; };
+        payNodes = { cx: x,
+          left: { home: -1.1, parts: [slipL, sealL, linesL], lamp: lampAt(x - 1.62, top + 0.97, z - 0.36, "#ff5a48") },
+          right: { home: 1.1, parts: [slipR, sealR, linesR], lamp: lampAt(x + 1.62, top + 0.97, z - 0.36, "#ff5a48") },
+          conflict: lampAt(x, top + 1.24, z - 0.62, "#ff6a3a", 0.2), ok: lampAt(x, top + 1.08, z + 0.52, "#7dff8a", 0.3) };
+        syncPay();
+        pool(kit, x, z + 1.3, 4.4, 2.6, 0.32);
         obstacle(x - 1.9, x + 1.9, z - 0.9, z + 0.9);
         sign("TWO PAYMENTS, ONE COIN · 2008", "a simplified teaching model · not a wallet or a security proof", x, top + 2.7, z + 0.2, 0, 0.42);
         prop({ id: "e6-payments", year: 2008, connection: "demonstration", demonstrates: ["e6-paper"],
@@ -644,12 +845,21 @@
         detail(kit, x, top, z, (M) => [...rows(4, (k) => B(M, 0.82, k < 2 ? 1 : 0.9, 0.03, "#5a3d24", (k % 2 ? 0.5 : -0.5), k < 2 ? 2.45 : 0.8, 0.075)),
           ...rows(3, (k) => B(M, 0.2, 0.08, 0.04, "#2e3236", -1.05, 0.5 + k * 1.1, 0.08)), B(M, 0.1, 0.24, 0.02, "#d8b05a", 0.85, 1.3, 0.07, 0.3),
           B(M, 0.5, 0.56, 0.02, "#f3ecd8", 0, 1.62, 0.075), B(M, 0.5, 0.12, 0.024, "#b8322a", 0, 1.84, 0.077), B(M, 0.16, 0.24, 0.026, "#2b221d", 0, 1.56, 0.078),
-          B(M, 2.7, 0.08, 0.7, "#3a2e22", 0, 0.04, 0.05), B(M, 2.2, 0.03, 0.05, "#ffe7a8", 0, 0.095, 0.07, 1.2)]);
+          B(M, 2.7, 0.08, 0.7, "#3a2e22", 0, 0.04, 0.05)]);
+        // A wax seal across the door's middle seam, still unbroken; opening the door's panel sweeps a glint across it and
+        // swells the warm light that leaks under the door.
+        detail(kit, x, top, z, (M) => [B(M, 0.26, 0.26, 0.03, "#9a2a22", 0, 1.2, 0.09, 0.12), B(M, 0.16, 0.16, 0.012, "#c8463a", 0, 1.2, 0.106, 0.2),
+          B(M, 0.5, 0.03, 0.012, "#c9a35a", 0, 1.2, 0.082, 0.2), B(M, 0.04, 0.12, 0.012, "#9a2a22", -0.05, 1.03, 0.09), B(M, 0.04, 0.09, 0.012, "#9a2a22", 0.06, 1.05, 0.09)]);
+        const glint = detail(kit, x - 0.14, top + 1.2, z + 0.115, (M) => [B(M, 0.035, 0.27, 0.006, "#fff6d8", 0, 0, 0, 1.4)]);
+        glint.visible = false;
+        const light = detail(kit, x, top + 0.095, z + 0.07, (M) => [B(M, 2.2, 0.03, 0.05, "#ffe7a8", 0, 0, 0, 1.2)]);
+        doorNodes = { glint, light, glintX0: x - 0.14, glintX1: x + 0.14 };
+        pool(kit, x, z + 1.4, 3.4, 2.4, 0.34);
         obstacle(x - 1.5, x + 1.5, z - 0.3, z + 0.3);
         sign("8 JANUARY 2009 · NOT YET", "the software-release announcement · 69 days after this cave's date", x, top + 4.3, z + 0.25, 0, 0.42);
         prop({ id: "e6-january", year: 2009, connection: "context", date: "8 January 2009, 19:27:40 UTC: the release announcement, a future date seen from this cave",
           title: "The January door", label: "JANUARY DOOR · 8 JANUARY 2009", sourceKeys: ["E6-REL", "E6-WP"],
-          at: { x, y: top, z: z + 1.6 }, reach: 2, pick: { w: 2.6, h: 3.4, d: 0.6, x, z }, onUse: () => JANUARY }); }
+          at: { x, y: top, z: z + 1.6 }, reach: 2, pick: { w: 2.6, h: 3.4, d: 0.6, x, z }, onUse: () => { sealGlint(); return JANUARY; } }); }
 
       // --- The reading corner: three compact stations on the right side between the payments table and the January
       // door (u 33 to 49), each 3.5 m wide at most, clear of the walk, the dock plot and the lamps. No lights: lit
@@ -670,7 +880,7 @@
         }
         for (let k = 0; k < 6; k++) cards.push(solid(0.4, 0.04, 0.3, inks[k], slotX[k], top + 0.95, z - 0.35, 0.15));
         const win = solid(0.5, 0.12, 0.12, "#ffd23a", cx, top + 1.4, z - 0.7, 1);
-        argNodes = { cards, green, red, win, slotX, slotZ: z + 0.35, trayZ: z - 0.35 };
+        argNodes = { cards, green, red, win, slotX, slotZ: z + 0.35, trayZ: z - 0.35, pool: pool(kit, cx, z + 1.3, 3.8, 2.4, 0.32) };
         // The tray's rails, a brass rule between the tray and the slots, a holder under each lamp, a numbered plaque (one
         // pip a slot number) on the table's front under each slot, the gold lamp's stand, and a plinth.
         detail(kit, cx, top, z, (M) => [...[-0.62, -0.08].map((dz) => B(M, 3.25, 0.04, 0.04, "#2b221d", 0, 0.94, dz)), B(M, 3.2, 0.02, 0.03, "#b08a3a", 0, 0.925, 0.06, 0.15),
@@ -698,6 +908,7 @@
         const gold = solid(pageW + 0.04, 0.05, 0.05, "#ffd23a", pageX[0], y0 - 0.32, z - 0.13, 0.9);
         const teal = solid(pageW + 0.04, 0.05, 0.05, "#46ffd2", pageX[0], y0 - 0.39, z - 0.13, 0.9);
         layNodes = { tabs, tabY, tabZ: z - 0.14, gold, teal, pageX };
+        pool(kit, cx, z + 1.2, 3.8, 2.2, 0.32);
         // A header beam over the posts with caps, five ruled lines on each page under its tabs, feet under the posts and
         // a brass plaque on the base.
         detail(kit, cx, top, z, (M) => [B(M, 3.6, 0.12, 0.14, "#4b3a26", 0, 2.36, -0.2), ...[-1.65, 1.65].map((px) => B(M, 0.18, 0.06, 0.18, "#6b5236", px, 2.45, -0.2)),
@@ -728,7 +939,7 @@
         solid(0.08, 0.7, 0.08, "#2b221d", cx + 1.3, top + 1.13, z - 0.35);
         solid(0.3, 0.12, 0.2, "#2b221d", cx + 1.15, top + 1.5, z - 0.3);
         const glow = solid(0.24, 0.03, 0.14, "#fff2c8", cx + 1.15, top + 1.43, z - 0.3, 1);
-        wsNodes = { lit, fill, glow, barX0, barW };
+        wsNodes = { lit, fill, glow, barX0, barW, pool: pool(kit, cx, z + 1.1, 3.6, 2.2, 0.3) };
         // Keys on the keyboard, a mouse on its pad, the display's foot, a mug, the lamp's base, a drawer with its pull and
         // a plinth: unbranded, as the sign says.
         detail(kit, cx, top, z, (M) => [...rows(42, (k) => B(M, 0.065, 0.012, 0.07, "#55575c", -0.82 + (k % 14) * 0.08, 0.826, 0.06 + Math.floor(k / 14) * 0.09)),
@@ -753,6 +964,7 @@
         solid(0.68, 0.44, 0.02, "#0f3a2c", x + 0.6, top + 1.61, z + 0.26, 0.6);
         const gold = solid(0.26, 0.16, 0.16, "#ffc94a", x - 0.95, top + 1.38, z + 0.2, 1.2), blue = solid(0.26, 0.16, 0.16, "#6ab8ff", x - 0.55, top + 1.38, z + 0.2, 1.2);
         catNodes = { drawers, drawerZ: front, gold, blue };
+        pool(kit, x, z + 1.4, 3.2, 2.2, 0.3);
         // Each drawer's brass pull and paper label frame move with it; the cabinet's plinth, side trims, the console's
         // bezel, knobs and a tray of index cards stand still.
         if (kit.M.merge) {
@@ -769,14 +981,27 @@
         prop({ id: "e6-catch", year: 2008, connection: "context", date: "2008: the paper whose reference list the cards follow; the cabinet and its game are modern museum designs",
           title: "Citation Catch", label: "CITATION CATCH · 2008 PAPER", hint: "Space plays Citation Catch on the console; type PULL R3 to open a drawer",
           sourceKeys: ["E6-WP", "E6-DOSSIER"], at: { x, y: top, z: z + 2 }, reach: 2.2, pick: { w: 2.8, h: 2, d: 1, x, z }, onUse: () => ({ terminal: catTerminal() }) }); }
+      // From here on, commands ease their models between states.
+      anim.live = true;
     },
-    // The laptop's cursor blinks; it stays lit while reading or under Calm. Allocation-free.
+    // Runs only while the visitor's gallery is this one, or its exhibit's workbench is open, and never under pause or the
+    // menu or console (scene-genesis.js holds it then). The models' tweens play here, even while a workbench is being
+    // read (that is where the visitor watches them); Calm ends them at once. The laptop's cursor blinks only while
+    // nobody is reading and Calm is off. Allocation-free.
     update(dt, elapsed, state) {
+      anim.calm = !!state.calm;
+      if (tw.n) { if (anim.calm) finishAll(); else stepTweens(dt); }
       if (!cursor) return;
       if (state.reading || state.calm) { cursor.visible = true; return; }
       blink += dt;
       cursor.visible = (blink % 1.1) < 0.6;
     },
-    dispose() { pay = desk = cursor = null; arg = lay = ws = argNodes = layNodes = wsNodes = cat = catNodes = null; }
+    // Leaving the gallery finishes every transition (nothing resumes on return; the models stand in their end states).
+    active(on) { if (!on) finishAll(); },
+    dispose() {
+      finishAll(); anim.live = false; anim.cue = null;
+      pay = desk = cursor = null; arg = lay = ws = argNodes = layNodes = wsNodes = cat = catNodes = null;
+      deskNodes = payNodes = paperNodes = slotNodes = doorNodes = laptopNodes = null;
+    }
   });
 })();
