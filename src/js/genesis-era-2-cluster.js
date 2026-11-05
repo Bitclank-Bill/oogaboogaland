@@ -190,7 +190,8 @@
   const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   const build = (kit) => {
     const { top: Y, M, createNode, addChild, place, solid, sign } = kit;
-    const live = createLive(), parts = { holes: [], pixels: [], knobs: [], colours: new Array(125).fill(null), shown: -1, tapeShown: -1, gameShown: -1 };
+    const live = createLive(), parts = { holes: [], pixels: [], knobs: [], colours: new Array(125).fill(null), shown: -1, tapeShown: -1, gameShown: -1,
+      cue: kit.cue || null, anim: createAnim() };
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, visible }));
     const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
     // The board table: a low table, an upright timber grid of 7 x 6 holes facing the walk-up side, and a marker for
@@ -265,20 +266,20 @@
     // Each station's finer parts, one merged mesh at its own spot (see `detail`), clear of every moving or lit part.
     // The board table: the grid's posts and cap, a marker over each column, the table's apron, and a tray of counters
     // for each player (teal on the visitor's left, banana on the right).
-    detail(kit, LAYOUT.four.x, Y, LAYOUT.four.z, (M) => [...[-1, 1].map((s) => B(M, 0.12, 1.15, 0.06, "#5c4630", -0.07, 1.27, s * 0.61)), B(M, 0.12, 0.05, 1.3, "#5c4630", -0.07, 1.77, 0),
+    detail(kit, LAYOUT.four.x, Y, LAYOUT.four.z, (M) => [B(M, 1.8, 0.01, 2.0, "#4f2590", 0.1, 0.006, 0, 0.5), B(M, 0.02, 0.02, 1.2, "#3ff0ff", -0.09, 1.795, 0, 1.2),...[-1, 1].map((s) => B(M, 0.12, 1.15, 0.06, "#5c4630", -0.07, 1.27, s * 0.61)), B(M, 0.12, 0.05, 1.3, "#5c4630", -0.07, 1.77, 0),
       ...Array.from({ length: 7 }, (_, c) => B(M, 0.012, 0.035, 0.035, "#efe6cf", -0.005, 1.815, 0.45 - c * 0.15)), B(M, 0.04, 0.1, 1.2, "#5c4630", 0.5, 0.62, 0),
       ...[-1, 1].flatMap((s) => [B(M, 0.26, 0.025, 0.38, "#3d2f20", 0.3, 0.75, s * 0.38),
         ...[[0.25, 0.32], [0.35, 0.44]].flatMap(([dx, dz]) => [0, 1, 2].map((k) => B(M, 0.1, 0.022, 0.1, s > 0 ? "#2fd1c4" : "#ffd23a", dx, 0.775 + k * 0.024, s * dz, 0.2)))])]);
     // The colour screen: a silver trim round the picture, a speaker grille under the knobs, wood grain down the sides,
     // the stand's lip, door line and handles, and the antenna's tips.
-    detail(kit, LAYOUT.crt.x, Y, LAYOUT.crt.z, (M) => [B(M, 0.03, 0.03, 0.74, "#c8c0b0", 0.39, 1.085, -0.08), B(M, 0.03, 0.03, 0.74, "#c8c0b0", 0.39, 0.615, -0.08),
+    detail(kit, LAYOUT.crt.x, Y, LAYOUT.crt.z, (M) => [B(M, 1.6, 0.01, 1.7, "#6a1f8a", 0.1, 0.006, 0, 0.5),B(M, 0.03, 0.03, 0.74, "#c8c0b0", 0.39, 1.085, -0.08), B(M, 0.03, 0.03, 0.74, "#c8c0b0", 0.39, 0.615, -0.08),
       ...[-1, 1].map((s) => B(M, 0.03, 0.5, 0.03, "#c8c0b0", 0.39, 0.85, -0.08 + s * 0.355)), ...[0, 1, 2].map((k) => B(M, 0.012, 0.012, 0.16, "#2a2420", 0.38, 0.58 + k * 0.025, 0.38)),
       ...[-1, 1].flatMap((s) => [0, 1, 2, 3].map((k) => B(M, 0.72, 0.01, 0.01, "#5e3a1f", 0, 0.64 + k * 0.13, s * 0.505))),
       B(M, 0.64, 0.03, 0.94, "#22202a", 0, 0.54, 0), B(M, 0.012, 0.45, 0.012, "#22202a", 0.305, 0.28, 0), ...[-1, 1].map((s) => B(M, 0.02, 0.06, 0.02, "#c8c0b0", 0.31, 0.3, s * 0.06)),
       B(M, 0.04, 0.04, 0.04, "#c8c0b0", -0.2, 1.415, -0.3), B(M, 0.04, 0.04, 0.04, "#c8c0b0", -0.2, 1.415, 0)]);
     // The cassette player: a carry handle over the buttons, speaker strips beside the window, the plinth's trim and a
     // striped label, and a stack of three cassettes beside the player.
-    detail(kit, LAYOUT.cassette.x, Y, LAYOUT.cassette.z, (M) => [...[-1, 1].map((s) => B(M, 0.04, 0.12, 0.03, "#202028", -0.02, 1.12, s * 0.27)), B(M, 0.04, 0.03, 0.6, "#202028", -0.02, 1.19, 0),
+    detail(kit, LAYOUT.cassette.x, Y, LAYOUT.cassette.z, (M) => [B(M, 1.4, 0.01, 1.5, "#2a3a8e", 0.1, 0.006, 0, 0.5),...[-1, 1].map((s) => B(M, 0.04, 0.12, 0.03, "#202028", -0.02, 1.12, s * 0.27)), B(M, 0.04, 0.03, 0.6, "#202028", -0.02, 1.19, 0),
       ...[-1, 1].map((s) => B(M, 0.006, 0.28, 0.05, "#202028", 0.073, 0.88, s * 0.265)), B(M, 0.62, 0.03, 0.72, "#3a3a44", 0, 0.69, 0),
       B(M, 0.01, 0.12, 0.4, "#e8e0cc", 0.305, 0.45, 0), ...["#ff8a2a", "#ff5fa8", "#2fd1c4"].map((c, k) => B(M, 0.012, 0.02, 0.4, c, 0.307, 0.41 + k * 0.03, 0)),
       ...["#f2ece0", "#ffe14a", "#ff5fa8"].map((c, k) => B(M, 0.11, 0.022, 0.17, c, 0.2, 0.716 + k * 0.023, -0.18))]);
@@ -293,34 +294,116 @@
     const S = parts.screen;
     return (parts.colours[k] = S.M.box({ w: 0.01, h: S.px * 0.9, d: S.px * 0.9, color: `#${hex(r)}${hex(g)}${hex(b)}`, emissive: k ? 1.1 : 0 }));
   };
-  // Poses the cluster from its state each frame, allocation-free (every colour's geometry exists from build).
-  const sync = (visit, dt, calm) => {
-    const { live, parts } = visit, g = live.game, sc = live.screen, t = live.tape;
+  // --- Motion ---------------------------------------------------------------------------------------------------
+  // Made once a visit; a frame writes numbers only. Each station moves after a command changes it, then settles and
+  // costs nothing. Calm shows every end state at once; holds and pause stop update, which freezes it; `settle`
+  // (Era 2's active(false)) jumps to the end states and stops the tape.
+  const DROP_G = 9.8, DROP_GAP = 0.35, KNOB_RATE = 6, SPIN_EASE = 5, PRESS_RATE = 0.12;
+  const createAnim = () => ({
+    shown: new Uint8Array(42), queue: new Int8Array(2), qn: 0, qi: 0, qt: 0, dropping: false,
+    level: new Float64Array(3), shownLevel: new Int8Array(3).fill(-1), knobsMoving: true, scVer: -1,
+    omegaL: 0, omegaR: 0, angL: 0, angR: 0, press: new Float64Array(3), tapeVer: -1, tapeMoving: true
+  });
+  const cue = (parts, name) => { if (parts.cue) parts.cue(name); };
+  const holeY = (G, r) => G.gy + 0.05 + r * G.cell + G.cell / 2;
+  // The board: each new counter falls from above the grid into its hole and lands with a clack; the computer's follows
+  // yours. A reset clears the board at once.
+  const syncFour = (parts, g, dt, calm) => {
+    const A = parts.anim, G = parts.fourGrid;
     if (parts.gameShown !== g.version) {
       parts.gameShown = g.version;
-      for (let i = 0; i < parts.holes.length; i++) parts.holes[i].geometry = parts.holeGeo[g.cells[i]];
-      parts.lastMark.visible = g.last >= 0;
-      if (g.last >= 0) { const G = parts.fourGrid, c = g.last % 7, r = (g.last / 7) | 0; parts.lastMark.position.y = G.gy + 0.05 + r * G.cell + G.cell / 2; parts.lastMark.position.z = G.gz - c * G.cell; }
+      // Every hole to its resting state first (a counter still falling from a move before lands at once), then the
+      // new ones (at most yours and the computer's) wait empty for their drop.
+      let added = 0;
+      for (let i = 0; i < 42; i++) {
+        const v = g.cells[i];
+        if (v && !A.shown[i] && added < 2) A.queue[added++] = i;
+        parts.holes[i].geometry = parts.holeGeo[v]; parts.holes[i].position.y = holeY(G, (i / 7) | 0);
+      }
+      // Yours first, then the computer's.
+      if (added === 2 && g.cells[A.queue[0]] !== 1) { const t = A.queue[0]; A.queue[0] = A.queue[1]; A.queue[1] = t; }
+      for (let i = 0; i < 42; i++) A.shown[i] = g.cells[i];
+      if (calm || !added) { A.qn = 0; A.dropping = false; }
+      else {
+        A.qn = added; A.qi = 0; A.qt = 0; A.dropping = true;
+        for (let q = 0; q < added; q++) { const h = parts.holes[A.queue[q]]; h.geometry = parts.holeGeo[0]; }
+      }
+      parts.lastMark.visible = g.last >= 0 && !A.dropping;
+      if (g.last >= 0) { const c = g.last % 7, r = (g.last / 7) | 0; parts.lastMark.position.y = holeY(G, r); parts.lastMark.position.z = G.gz - c * G.cell; }
     }
-    if (parts.shown !== sc.version) {
-      parts.shown = sc.version;
-      for (let i = 0; i < parts.pixels.length; i++) parts.pixels[i].geometry = colourGeo(parts, sc.colourOf(i));
-      parts.knobs[0].rotation.x = -sc.r * 0.6; parts.knobs[1].rotation.x = -sc.g * 0.6; parts.knobs[2].rotation.x = -sc.b * 0.6;
+    if (!A.dropping) return;
+    if (calm) A.qt = 99;
+    else A.qt += dt;
+    while (A.dropping) {
+      const i = A.queue[A.qi], r = (i / 7) | 0, h = parts.holes[i], top = holeY(G, 6.4), rest = holeY(G, r);
+      const fall = top - rest, tLand = Math.sqrt(2 * fall / DROP_G);
+      h.geometry = parts.holeGeo[parts.anim.shown[i]];
+      if (A.qt < tLand) { h.position.y = top - 0.5 * DROP_G * A.qt * A.qt; break; }
+      h.position.y = rest;
+      if (A.qt < tLand + 0.001 + dt || calm) cue(parts, "clack");
+      if (A.qi + 1 < A.qn && A.qt >= tLand + DROP_GAP) { A.qt -= tLand + DROP_GAP; A.qi++; continue; }
+      if (A.qi + 1 >= A.qn) { A.dropping = false; parts.lastMark.visible = true; }
+      break;
     }
+  };
+  // The colour screen: the knobs turn smoothly to their new settings, and the picture steps through each level as they
+  // pass it, so the colours come up as the light is turned up.
+  const syncScreen = (parts, sc, dt, calm) => {
+    const A = parts.anim;
+    if (A.scVer !== sc.version) { if (A.scVer !== -1) cue(parts, "click"); A.scVer = sc.version; A.knobsMoving = true; }
+    if (!A.knobsMoving) return;
+    let moving = false;
+    for (let ch = 0; ch < 3; ch++) {
+      const want = ch === 0 ? sc.r : ch === 1 ? sc.g : sc.b, d = want - A.level[ch];
+      if (calm || Math.abs(d) <= dt * KNOB_RATE) A.level[ch] = want; else { A.level[ch] += Math.sign(d) * dt * KNOB_RATE; moving = true; }
+      parts.knobs[ch].rotation.x = -A.level[ch] * 0.6;
+    }
+    const r = Math.round(A.level[0]), gg = Math.round(A.level[1]), b = Math.round(A.level[2]);
+    if (r !== A.shownLevel[0] || gg !== A.shownLevel[1] || b !== A.shownLevel[2]) {
+      A.shownLevel[0] = r; A.shownLevel[1] = gg; A.shownLevel[2] = b;
+      for (let i = 0; i < parts.pixels.length; i++) { const m = MASKS[i]; parts.pixels[i].geometry = parts.colours[(m & 1 ? r : 0) * 25 + (m & 2 ? gg : 0) * 5 + (m & 4 ? b : 0)]; }
+    }
+    A.knobsMoving = moving;
+  };
+  // The cassette: the reels spin up and coast to a stop (their speed follows each reel's wound size), the tape winds
+  // between them, and the pressed button travels down and back.
+  const syncTape = (parts, t, dt, calm) => {
+    const A = parts.anim;
+    if (A.tapeVer !== t.version) {
+      if (A.tapeVer !== -1) cue(parts, t.mode === "stop" ? "click" : "whir");
+      A.tapeVer = t.version; A.tapeMoving = true;
+    }
+    if (!A.tapeMoving && t.mode === "stop") return;
     t.step(dt, calm);
-    parts.packs[0].scale.y = parts.packs[0].scale.z = t.radius(1 - t.pos);
-    parts.packs[1].scale.y = parts.packs[1].scale.z = t.radius(t.pos);
-    parts.reels[0].rotation.x = t.spinL; parts.reels[1].rotation.x = t.spinR;
-    if (parts.tapeShown !== t.version) {
-      parts.tapeShown = t.version;
-      parts.buttons[0].position.y = parts.buttonY - (t.mode === "play" ? 0.02 : 0);
-      parts.buttons[1].position.y = parts.buttonY - (t.mode === "stop" ? 0.02 : 0);
-      parts.buttons[2].position.y = parts.buttonY - (t.mode === "rew" ? 0.02 : 0);
+    const rl = t.radius(1 - t.pos), rr = t.radius(t.pos);
+    parts.packs[0].scale.y = parts.packs[0].scale.z = rl;
+    parts.packs[1].scale.y = parts.packs[1].scale.z = rr;
+    const v = t.mode === "play" ? PLAY_RATE * 6 : t.mode === "rew" ? -REW_RATE * 6 : 0;
+    const tl = calm ? 0 : v / rl, tr = calm ? 0 : v / rr, k = Math.min(1, dt * SPIN_EASE);
+    A.omegaL += (tl - A.omegaL) * k; A.omegaR += (tr - A.omegaR) * k;
+    if (calm || (t.mode === "stop" && Math.abs(A.omegaL) + Math.abs(A.omegaR) < 0.01)) A.omegaL = A.omegaR = 0;
+    A.angL = (A.angL + A.omegaL * dt) % (Math.PI * 2); A.angR = (A.angR + A.omegaR * dt) % (Math.PI * 2);
+    parts.reels[0].rotation.x = A.angL; parts.reels[1].rotation.x = A.angR;
+    let pressing = false;
+    for (let i = 0; i < 3; i++) {
+      const want = (i === 0 && t.mode === "play") || (i === 1 && t.mode === "stop") || (i === 2 && t.mode === "rew") ? 0.02 : 0, d = want - A.press[i];
+      if (calm || Math.abs(d) <= dt * PRESS_RATE) A.press[i] = want; else { A.press[i] += Math.sign(d) * dt * PRESS_RATE; pressing = true; }
+      parts.buttons[i].position.y = parts.buttonY - A.press[i];
     }
+    A.tapeMoving = pressing || A.omegaL !== 0 || A.omegaR !== 0;
+  };
+  const sync = (visit, dt, calm) => {
+    const { live, parts } = visit;
+    syncFour(parts, live.game, dt, calm);
+    syncScreen(parts, live.screen, dt, calm);
+    syncTape(parts, live.tape, dt, calm);
   };
   // Per frame from genesis-era-2.js's update (only while the visitor is in Era 2's gallery, or its exhibit is open).
   const update = (visit, dt, state) => sync(visit, dt, state.calm === true);
+  // Leaving the gallery: the tape stops and everything shows its end state.
+  const settle = (visit) => { if (visit.live.tape.mode !== "stop") visit.live.tape.stop(); visit.parts.anim.tapeVer = visit.live.tape.version; sync(visit, 0, true); };
+  const moving = (visit) => { const A = visit.parts.anim; return A.dropping || A.knobsMoving || A.tapeMoving || visit.live.tape.mode !== "stop"; };
 
   BL.genesisEra2Cluster = { LAYOUT, KEYS, EXHIBITS, PICTURE, PIC_W, PIC_H, LEVELS, PLAY_RATE, REW_RATE, footprints, walkUp,
-    createScreen, screenTerminal, createCassette, cassetteTerminal, createLive, build, update, SCREEN_DEEPER, CASSETTE_DEEPER };
+    createScreen, screenTerminal, createCassette, cassetteTerminal, createLive, build, update, settle, moving, SCREEN_DEEPER, CASSETTE_DEEPER };
 })();

@@ -281,6 +281,8 @@
     solid(1.0, 0.95, 1.3, "#6e4a2e", x - 0.1, Y + 0.475, z);
     solid(1.2, 0.06, 1.4, "#d6ccb0", x, Y + 0.98, z);
     detail(kit, x, Y, z, (M) => [
+      // A soft violet light pool on the floor round the counter (a glowing decal; no lamp).
+      B(M, 1.8, 0.01, 2.0, "#4f2590", 0.1, 0.006, 0, 0.5),
       // Front panels and kick plate, with a gold rule along the edge.
       ...[-0.35, 0.35].map((dz) => B(M, 0.02, 0.6, 0.55, "#7f5836", 0.41, 0.5, dz)), B(M, 0.04, 0.08, 1.32, "#2a1d12", 0.4, 0.04, 0),
       B(M, 0.03, 0.03, 1.42, "#c9a35a", 0.6, 0.99, 0, 0.2),
