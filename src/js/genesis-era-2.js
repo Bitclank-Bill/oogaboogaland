@@ -100,7 +100,8 @@
     const leaves = records.slice(), nodes = new Array(2 * LEAVES).fill("");
     // 0 dark, 1 on the changed leaf's path, 2 a proof sibling, 3 the leaf being proved.
     const lit = new Uint8Array(2 * LEAVES);
-    const s = { leaves, nodes, lit, trusted: "", changed: -1, proved: -1, version: 0 };
+    // `checked`: the last VERIFY's answer for the model to show (0 none, 1 matched, 2 did not), cleared by any change.
+    const s = { leaves, nodes, lit, trusted: "", changed: -1, proved: -1, checked: 0, version: 0 };
     const leafHash = (text) => hash("leaf|" + text);
     const rebuild = () => {
       for (let i = 0; i < LEAVES; i++) nodes[LEAVES + i] = leafHash(leaves[i]);
@@ -108,7 +109,7 @@
     };
     const reset = () => {
       for (let i = 0; i < LEAVES; i++) leaves[i] = records[i];
-      rebuild(); s.trusted = nodes[1]; s.changed = s.proved = -1; lit.fill(0); s.version++;
+      rebuild(); s.trusted = nodes[1]; s.changed = s.proved = -1; s.checked = 0; lit.fill(0); s.version++;
     };
     // The nodes whose fingerprints change when leaf i changes: the leaf and every node up to the root.
     const pathOf = (i) => { const out = []; for (let k = LEAVES + i; k >= 1; k >>= 1) out.push(k); return out; };
@@ -119,7 +120,7 @@
       const before = nodes.slice();
       leaves[i] = t; rebuild(); lit.fill(0);
       for (let k = LEAVES + i; k >= 1; k >>= 1) lit[k] = 1;
-      s.changed = i; s.proved = -1; s.version++;
+      s.changed = i; s.proved = -1; s.checked = 0; s.version++;
       const moved = []; for (let k = 1; k < 2 * LEAVES; k++) if (nodes[k] !== before[k]) moved.push(k);
       return { path: pathOf(i), moved };
     };
@@ -130,6 +131,7 @@
       return out;
     };
     const show = (i) => {
+      s.checked = 0;
       lit.fill(0); lit[LEAVES + i] = 3;
       for (const p of proof(i)) lit[p.node] = 2;
       s.proved = i; s.version++;
@@ -179,6 +181,7 @@
           if (cmd === "PROVE") return { lines: [`Proof for record ${n + 1}: ${steps.length} fingerprints instead of all ${LEAVES} records.`,
             ...steps.map((p, k) => `  level ${k + 1}: ${p.hash} on the ${p.side}`)], proof: steps };
           const r = m.verify(m.leaves[n], steps, m.trusted);
+          m.checked = r.ok ? 1 : 2;
           return { lines: [`Record ${n + 1}: "${m.leaves[n]}" with ${steps.length} proof fingerprints gives root ${r.root}.`,
             r.ok ? "It matches the trusted root: this record is in the tree that root stands for." : "It does NOT match the trusted root: the table has changed since that root was trusted.",
             "A match shows the record is included. It does not show who owns it or whether it is true."], verified: r };
@@ -518,9 +521,12 @@
       }
       return { seed, grid, start, gate, leaves, par };
     });
-    const s = { index: 0, at: 0, got: new Uint8Array(MAZE.leaves), moves: 0, won: false, best: new Int16Array(mazes.length).fill(-1), version: 0, mazes };
+    // `trail`: the cells the player stepped through in the last moves typed (a run of up to maxRun, or single moves
+    // since), for the model to walk it cell by cell.
+    const s = { index: 0, at: 0, got: new Uint8Array(MAZE.leaves), moves: 0, won: false, best: new Int16Array(mazes.length).fill(-1), version: 0, mazes,
+      trail: new Int16Array(MAZE.maxRun + 1), trailN: 0, trailFrom: 0, run: 0 };
     const maze = () => mazes[s.index];
-    const reset = (index = s.index) => { s.index = index; s.at = mazes[index].start; s.got.fill(0); s.moves = 0; s.won = false; s.version++; };
+    const reset = (index = s.index) => { s.index = index; s.at = mazes[index].start; s.got.fill(0); s.moves = 0; s.won = false; s.trailN = 0; s.trailFrom = s.at; s.run++; s.version++; };
     const held = () => { let n = 0; for (let i = 0; i < MAZE.leaves; i++) n += s.got[i]; return n; };
     const STEP = { W: -GW_, S: GW_, A: -1, D: 1, U: -GW_, N: -GW_, E: 1, R: 1, L: -1 };
     // One move: "W", "A", "S" or "D" (also N/E/S and U/L/R). Walls stop it and it does not count.
@@ -530,12 +536,13 @@
       const to = s.at + step;
       if (m.grid[to] || (to === m.gate && held() < MAZE.leaves)) return false;
       s.at = to; s.moves++; s.version++;
+      if (s.trailN < s.trail.length) s.trail[s.trailN++] = to;
       const k = m.leaves.indexOf(to);
       if (k >= 0) s.got[k] = 1;
       if (to === m.gate) { s.won = true; if (s.best[s.index] < 0 || s.moves < s.best[s.index]) s.best[s.index] = s.moves; }
       return true;
     };
-    const runMoves = (keys) => { let n = 0; for (const ch of keys.toUpperCase().slice(0, MAZE.maxRun)) if (move(ch)) n++; return n; };
+    const runMoves = (keys) => { s.trailN = 0; s.trailFrom = s.at; s.run++; let n = 0; for (const ch of keys.toUpperCase().slice(0, MAZE.maxRun)) if (move(ch)) n++; return n; };
     const ascii = () => {
       const m = maze(), rows = [];
       for (let y = 0; y < GH_; y++) {
@@ -718,7 +725,9 @@
   const buildModels = (kit, live) => {
     const { top: Y, M, createNode, addChild, place, solid, sign } = kit;
     // Only exhibit signs here: the cave's years sign, pylons and overview board are the shared signage's.
-    const parts = { tiles: [], lit: [], proofs: [], marks: [], disks: [], runs: [], leaves: [], phase: 0, mazeShown: -1 };
+    const parts = { tiles: [], lit: [], proofs: [], marks: [], disks: [], runs: [], leaves: [], phase: 0, mazeShown: -1,
+      // The kit's sound cue when the host offers one (only the agreed names are used, sparingly).
+      cue: kit.cue || null, anim: createAnim() };
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, visible }));
     const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
     // 1. The Merkle table: a table, an upright board of fifteen tiles in four rows wired as a tree, the eight record
@@ -764,12 +773,16 @@
       parts.envelope = node(box(0.42, 0.03, 0.3, "#8e7ab8"), x - 0.15, Y + 0.84, z - 0.2, false);
       parts.envMark = node(box(0.14, 0.005, 0.14, "#d0304a", 0.4), x - 0.15, Y + 0.858, z - 0.2, false);
       parts.slipMark = node(box(0.12, 0.005, 0.12, "#d0304a", 0.4), x + 0.22, Y + 0.838, z + 0.6, false);
+      // The envelope's carbon lining, showing as a dark band along its open edge, travelling with it.
+      parts.carbon = node(box(0.42, 0.006, 0.05, "#141018"), x - 0.15, Y + 0.857, z - 0.32, false);
+      parts.slipRest = { x: x + 0.2, y: Y + 0.83, z: z + 0.6 }; parts.envRest = { x: x - 0.15, y: Y + 0.84, z: z - 0.2 };
       parts.stamp = node(box(0.16, 0.12, 0.16, "#d0304a"), x - 0.15, Y + 1.6, z - 0.2);
       addChild(parts.stamp, createNode({ geometry: box(0.05, 0.25, 0.05, "#2a2230"), position: { x: 0, y: 0.18, z: 0 } }));
       parts.stampRest = Y + 1.6; parts.stampLow = Y + 0.92;
       parts.okLamp = node(box(0.2, 0.2, 0.2, "#6aff9a", 1.3), x - 0.6, Y + 2.2, z + 0.9, false);
       parts.badLamp = node(box(0.2, 0.2, 0.2, "#ff5a4a", 1.3), x - 0.6, Y + 2.2, z + 0.9, false);
-      sign(EXHIBITS.blind.label, EXHIBITS.blind.sub, x + 0.75, Y + 1.25, z, FACE_X, 0.45);
+      // Over the signer's screen, clear of the desk where the slip, envelope and stamp move.
+      sign(EXHIBITS.blind.label, EXHIBITS.blind.sub, x - 0.6, Y + 2.75, z, FACE_X, 0.45);
     }
     // 3. The office PC, an invented early-1980s desk machine and nothing like the later caves' towers and terminals: a
     // wide, flat putty system unit with twin full-height disk doors and their latches, a green-screen monitor on a
@@ -820,12 +833,13 @@
       lid.rotation.z = 1.05;
       parts.diskY = Y + 0.84;
       for (const d of FLOPPY_DISKS) {
-        const n = node(box(0.26, 0.26, 0.012, "#1d1d22"), x + 0.02, parts.diskY, z);
+        const n = node(box(0.26, 0.26, 0.012, "#1d1d22"), x + 0.02, parts.diskY, z - 0.32 + parts.disks.length * 0.16);
         addChild(n, createNode({ geometry: box(0.2, 0.06, 0.014, d.color), position: { x: 0, y: 0.08, z: 0 } }));
         addChild(n, createNode({ geometry: box(0.06, 0.06, 0.015, "#6f6a60"), position: { x: 0, y: -0.02, z: 0 } }));
         parts.disks.push(n);
       }
-      sign(EXHIBITS.floppy.label, EXHIBITS.floppy.sub, x + 0.5, Y + 1.3, z, FACE_X, 0.4);
+      // High over the box, so the disks show beneath it from the walk-up spot.
+      sign(EXHIBITS.floppy.label, EXHIBITS.floppy.sub, x + 0.3, Y + 2.0, z, FACE_X, 0.4);
     }
     // 5. The maze: a sit-down cocktail-table cabinet (screen face up under glass, a stick and button at each end, a
     // stool on the far side), unlike the upright cabinets elsewhere. The walls are a pool of row runs (unit boxes
@@ -854,7 +868,8 @@
       for (let i = 0; i < MAZE.leaves; i++) parts.leaves.push(node(box(p * 0.6, 0.012, p * 0.6, "#6aff7a", 1.4), sx, sy, z));
       parts.gate = node(box(p * 0.9, 0.012, p * 0.9, "#ff5a4a", 1.2), sx, sy, z);
       parts.cell = { x: 0, y: 0, z: 0 };
-      sign(EXHIBITS.maze.label, EXHIBITS.maze.sub, x + 0.5, Y + 1.5, z, FACE_X, 0.42);
+      // Behind the table, past the stool, so the face-up screen is never under it.
+      sign(EXHIBITS.maze.label, EXHIBITS.maze.sub, x - 0.95, Y + 1.45, z, FACE_X, 0.42);
     }
     buildDecor(kit);
     return parts;
@@ -973,7 +988,12 @@
     const Y = kit.top, at = (key) => LAYOUT[key];
     // The Merkle table: the board's frame and its brass header, a tag for each level, the table's aprons and feet, a
     // brass rail and number tabs for the record cards, and the root lamp's bezel, hood and plate.
-    detail(kit, at("merkle").x, Y, at("merkle").z, (M) => [B(M, 0.16, 0.1, 3.96, "#3d2f20", -0.74, 2.8, 0), ...[-1, 1].map((s) => B(M, 0.16, 1.96, 0.08, "#3d2f20", -0.74, 1.82, s * 1.94)),
+    detail(kit, at("merkle").x, Y, at("merkle").z, (M) => [
+      // The era's clearest light: a violet pool round the table and a neon frame on the board's face (glowing parts
+      // only; no lamp), the frame on the timber edge so it never crosses a tile.
+      B(M, 2.4, 0.01, 4.7, "#6a2fd6", 0, 0.006, 0, 0.55), B(M, 2.0, 0.012, 4.3, "#9b5cff", 0, 0.008, 0, 0.35),
+      B(M, 0.02, 0.04, 3.9, "#ff4fd8", -0.655, 2.8, 0, 1.5), B(M, 0.02, 0.04, 3.9, "#ff4fd8", -0.655, 0.88, 0, 1.5),
+      ...[-1, 1].map((s) => B(M, 0.02, 1.92, 0.04, "#3ff0ff", -0.655, 1.84, s * 1.94, 1.5)),B(M, 0.16, 0.1, 3.96, "#3d2f20", -0.74, 2.8, 0), ...[-1, 1].map((s) => B(M, 0.16, 1.96, 0.08, "#3d2f20", -0.74, 1.82, s * 1.94)),
       B(M, 0.02, 0.1, 1.0, "#c9a35a", -0.705, 2.7, 0, 0.25), ...[2.5, 2.05, 1.6, 1.15].map((y) => B(M, 0.02, 0.06, 0.06, "#c9a35a", -0.705, y, 1.85, 0.2)),
       B(M, 0.04, 0.12, 3.6, "#4a3826", 0.79, 0.7, 0), ...[-1, 1].map((s) => B(M, 1.5, 0.12, 0.04, "#4a3826", 0, 0.7, s * 1.88)),
       ...[[-0.7, -1.8], [0.7, -1.8], [-0.7, 1.8], [0.7, 1.8]].map(([dx, dz]) => B(M, 0.13, 0.04, 0.13, "#2a2018", dx, 0.02, dz)),
@@ -981,23 +1001,23 @@
       B(M, 0.36, 0.05, 0.36, "#2a2230", -0.75, 2.4, -2.15), B(M, 0.36, 0.05, 0.36, "#2a2230", -0.75, 2.71, -2.15), B(M, 0.02, 0.08, 0.24, "#c9a35a", -0.59, 2.2, -2.15, 0.2)]);
     // The blind-stamp desk: drawers with brass pulls, an edge trim, an ink pad and a stack of envelopes, the signer's
     // screen with its cap, its envelope slot and the spent list pinned to it, the lamps' hood and the stamp's base.
-    detail(kit, at("blind").x, Y, at("blind").z, (M) => [...[-1, 1].flatMap((s) => [B(M, 0.03, 0.14, 0.8, "#7b5634", 0.715, 0.65, s * 0.7), B(M, 0.03, 0.03, 0.14, "#c9a35a", 0.735, 0.65, s * 0.7, 0.2)]),
+    detail(kit, at("blind").x, Y, at("blind").z, (M) => [B(M, 1.9, 0.01, 3.3, "#4f2590", 0, 0.006, 0, 0.5), B(M, 0.02, 0.03, 2.62, "#ff4fd8", -0.625, 2.07, 0, 1.2),...[-1, 1].flatMap((s) => [B(M, 0.03, 0.14, 0.8, "#7b5634", 0.715, 0.65, s * 0.7), B(M, 0.03, 0.03, 0.14, "#c9a35a", 0.735, 0.65, s * 0.7, 0.2)]),
       B(M, 0.03, 0.03, 2.62, "#c9a35a", 0.715, 0.8, 0, 0.1), B(M, 0.16, 0.03, 0.22, "#2a2230", 0.3, 0.835, -0.85), B(M, 0.12, 0.01, 0.18, "#7a1f2e", 0.3, 0.855, -0.85),
       B(M, 0.3, 0.05, 0.22, "#8e7ab8", 0.4, 0.845, 1.0), B(M, 0.3, 0.005, 0.02, "#6a5a8e", 0.4, 0.873, 1.0),
       B(M, 0.1, 0.05, 2.66, "#2a2230", -0.66, 2.045, 0), B(M, 0.08, 0.06, 0.5, "#141018", -0.66, 0.93, -0.2),
       B(M, 0.01, 0.5, 0.34, "#f5f0e2", -0.625, 1.5, 0.55), ...[0, 1, 2, 3, 4].map((k) => B(M, 0.012, 0.012, 0.24, k ? "#5a5068" : "#d0304a", -0.618, 1.68 - k * 0.08, 0.55)),
       B(M, 0.26, 0.04, 0.26, "#2a2230", -0.6, 2.33, 0.9), B(M, 0.16, 0.03, 0.16, "#2a2230", -0.6, 0.835, -0.2)]);
     // The office PC's desk: a drawer and its pull, a front trim, a mug, a floppy lying out, a notepad and pencil.
-    detail(kit, at("pc").x, Y, at("pc").z, (M) => [B(M, 0.03, 0.12, 0.5, "#5a3c22", 0.565, 0.6, 0.5), B(M, 0.03, 0.025, 0.12, "#c9a35a", 0.585, 0.6, 0.5, 0.15),
+    detail(kit, at("pc").x, Y, at("pc").z, (M) => [B(M, 1.7, 0.01, 2.5, "#3a2a86", 0, 0.006, 0, 0.5),B(M, 0.03, 0.12, 0.5, "#5a3c22", 0.565, 0.6, 0.5), B(M, 0.03, 0.025, 0.12, "#c9a35a", 0.585, 0.6, 0.5, 0.15),
       B(M, 0.03, 0.03, 1.82, "#4c331d", 0.565, 0.73, 0), B(M, 0.08, 0.1, 0.08, "#e2312f", 0.42, 0.81, 0.62), B(M, 0.02, 0.05, 0.03, "#e2312f", 0.42, 0.81, 0.675),
       B(M, 0.06, 0.005, 0.06, "#3a2414", 0.42, 0.862, 0.62), B(M, 0.14, 0.006, 0.14, "#1d1d22", 0.36, 0.763, 0.2), B(M, 0.1, 0.004, 0.03, "#5fb36a", 0.36, 0.768, 0.25),
       B(M, 0.12, 0.008, 0.16, "#f5ecb8", 0.38, 0.764, -0.75), B(M, 0.012, 0.012, 0.14, "#ffd23a", 0.43, 0.772, -0.75)]);
     // The disk box's cabinet: doors and handles, a plinth, the box's label strip and the lid's hinge.
-    detail(kit, at("floppy").x, Y, at("floppy").z, (M) => [...[-1, 1].flatMap((s) => [B(M, 0.02, 0.46, 0.42, "#2a2830", 0.36, 0.3, s * 0.215), B(M, 0.03, 0.1, 0.03, "#c0c0cc", 0.375, 0.34, s * 0.04)]),
+    detail(kit, at("floppy").x, Y, at("floppy").z, (M) => [B(M, 1.2, 0.01, 1.4, "#3a2a86", 0, 0.006, 0, 0.5),...[-1, 1].flatMap((s) => [B(M, 0.02, 0.46, 0.42, "#2a2830", 0.36, 0.3, s * 0.215), B(M, 0.03, 0.1, 0.03, "#c0c0cc", 0.375, 0.34, s * 0.04)]),
       B(M, 0.74, 0.05, 0.94, "#0c0b10", 0, 0.025, 0), B(M, 0.01, 0.05, 0.3, "#efe6cf", 0.165, 0.7, 0), B(M, 0.03, 0.03, 0.86, "#3a3742", -0.16, 0.79, 0)]);
     // The maze's cocktail cabinet: a coin door and slots on one end, a speaker grille on the other, glowing side trim,
     // a kick plate, chrome edges round the glass (never over it), and the stool's chrome ring and foot.
-    detail(kit, at("maze").x, Y, at("maze").z, (M) => [B(M, 0.22, 0.26, 0.02, "#141018", 0, 0.34, 0.36), ...[-1, 1].map((s) => B(M, 0.03, 0.06, 0.012, "#ff8a2a", s * 0.05, 0.4, 0.372, 0.9)),
+    detail(kit, at("maze").x, Y, at("maze").z, (M) => [B(M, 2.0, 0.01, 1.4, "#6a1f8a", -0.15, 0.006, 0, 0.55),B(M, 0.22, 0.26, 0.02, "#141018", 0, 0.34, 0.36), ...[-1, 1].map((s) => B(M, 0.03, 0.06, 0.012, "#ff8a2a", s * 0.05, 0.4, 0.372, 0.9)),
       B(M, 0.08, 0.04, 0.012, "#3a3742", 0, 0.27, 0.372), B(M, 0.24, 0.12, 0.02, "#141018", 0, 0.5, -0.36), ...[0, 1, 2].map((k) => B(M, 0.2, 0.012, 0.012, "#3a3742", 0, 0.47 + k * 0.03, -0.372)),
       ...[-1, 1].map((s) => B(M, 0.62, 0.02, 0.02, "#ff4fd8", 0, 0.6, s * 0.355, 1.0)), B(M, 0.64, 0.06, 0.74, "#0c0b10", 0, 0.03, 0),
       ...[-1, 1].flatMap((s) => [B(M, 0.76, 0.02, 0.02, "#c0c0cc", 0, 0.72, s * 0.48), B(M, 0.02, 0.02, 0.96, "#c0c0cc", s * 0.38, 0.72, 0)]),
@@ -1018,44 +1038,155 @@
 
   // Poses the models from the live state: allocation-free (the runs are re-laid only when the maze changes), with a
   // fixed node count. `calm` stills the stamp's press; the lit tiles do not move.
-  const sync = (parts, live, dt, calm) => {
-    parts.phase = (parts.phase + dt) % 1000;
-    const m = live.merkle;
+  // --- Motion ---------------------------------------------------------------------------------------------------
+  // Every animation's state, made once a visit (`createAnim`), so a frame writes numbers and allocates nothing. Each
+  // exhibit animates only after a command changes it (a version moves), then settles and costs nothing until the next.
+  // Calm (`calm`) shows every end state at once; the host's holds and pause stop calling update, which freezes it;
+  // `settle` (active(false)) jumps everything to its end state.
+  const WAVE_STEP = 0.22, WAVE_POP = 0.3, WAVE_END = 3 * WAVE_STEP + WAVE_POP;
+  // A node's level up the tree: leaves 0, then 1, 2 and the root 3; the hash wave reaches level L at L * WAVE_STEP.
+  const LEVEL = new Uint8Array(2 * LEAVES);
+  for (let k = 1; k < 2 * LEAVES; k++) LEVEL[k] = 3 - (31 - Math.clz32(k));
+  const SEAL_T = 0.6, OPEN_T = 0.75, WRITE_T = 0.35, MAZE_RATE = 12, STAMP_DOWN = 0.14, LIFT_RATE = 2.4, LIFT_GONE = 0.25;
+  const createAnim = () => ({
+    mkVer: -1, mkT: WAVE_END, rootWas: true, rootFired: true, mkDone: true,
+    blStep: "", blT: 9, blKind: 0, blThunk: false, blChecked: null,
+    flLoaded: -1, flVer: -1, lift: new Float32Array(FLOPPY_DISKS.length), flMoving: true,
+    mzRun: -1, mzI: 0, mzT: 0, mzFrom: 0, mzVer: -1, gotShown: new Uint8Array(MAZE.leaves), mzGotSeen: 0
+  });
+  const ease = (t) => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  const cue = (parts, name) => { if (parts.cue) parts.cue(name); };
+  // The Merkle board: tiles light in the order a recomputed hash climbs the tree, each popping as the wave reaches it;
+  // the root lamp keeps its old colour until the wave arrives.
+  const syncMerkle = (parts, m, dt, calm) => {
+    const A = parts.anim;
+    if (A.mkVer !== m.version) {
+      A.mkVer = m.version; A.mkT = 0; A.mkDone = false; A.rootFired = false;
+      for (let i = 0; i < LEAVES; i++) parts.marks[i].visible = m.leaves[i] !== RECORDS[i];
+      if (m.changed >= 0 || m.proved >= 0) cue(parts, "click");
+    } else if (A.mkDone) return;
+    A.mkT = calm ? WAVE_END : A.mkT + dt;
+    const t = A.mkT;
     for (let k = 1; k < 2 * LEAVES; k++) {
-      parts.lit[k].visible = m.lit[k] === 1 || m.lit[k] === 3;
-      parts.proofs[k].visible = m.lit[k] === 2;
+      const v = m.lit[k], since = t - LEVEL[k] * WAVE_STEP, on = since >= 0;
+      const lit = parts.lit[k], pr = parts.proofs[k];
+      lit.visible = on && (v === 1 || v === 3); pr.visible = on && v === 2;
+      const pop = on && since < WAVE_POP ? 1 + 0.4 * (1 - since / WAVE_POP) * (1 - since / WAVE_POP) : 1;
+      lit.scale.y = lit.scale.z = pr.scale.y = pr.scale.z = pop;
     }
-    for (let i = 0; i < LEAVES; i++) parts.marks[i].visible = m.leaves[i] !== RECORDS[i];
-    const ok = m.matches();
-    parts.rootOk.visible = ok; parts.rootBad.visible = !ok;
-    const b = live.blind;
-    parts.slip.visible = b.step === "written" || b.step === "opened";
-    parts.slipMark.visible = b.step === "opened" && b.impression === SEAL;
-    parts.envelope.visible = b.step === "sealed" || b.step === "stamped";
-    parts.envMark.visible = b.step === "stamped";
-    if (b.stampT > 0) b.stampT = Math.max(0, b.stampT - dt);
-    const press = calm || b.stampT <= 0 ? 0 : Math.sin(Math.PI * (1 - b.stampT / STAMP_TIME));
-    parts.stamp.position.y = parts.stampRest + (parts.stampLow - parts.stampRest) * press;
-    parts.okLamp.visible = b.checked === true; parts.badLamp.visible = b.checked === false;
-    const f = live.floppy, l = LAYOUT.floppy;
-    for (let slot = 0; slot < f.order.length; slot++) {
-      const d = f.order[slot], n = parts.disks[d];
-      n.visible = f.loaded !== d;
-      n.position.z = l.z - 0.32 + slot * 0.16;
+    if (t >= 3 * WAVE_STEP && !A.rootFired) {
+      const ok = m.matches();
+      A.rootFired = true;
+      parts.rootOk.visible = ok; parts.rootBad.visible = !ok;
+      if (m.checked === 1) cue(parts, "chime"); else if (m.checked === 2) cue(parts, "beep"); else if (ok !== A.rootWas) cue(parts, "relay");
+      A.rootWas = ok;
     }
-    parts.driveLight.visible = f.loaded >= 0;
-    const z = live.maze, mz = z.maze();
-    if (parts.mazeShown !== z.index) { parts.mazeShown = z.index; layRuns(parts, mz.grid, z.size.w, z.size.h); }
-    const c = parts.cell;
-    parts.mazeCell(z.at, c); parts.player.position.x = c.x; parts.player.position.y = c.y; parts.player.position.z = c.z;
-    for (let i = 0; i < MAZE.leaves; i++) {
-      const n = parts.leaves[i];
-      n.visible = !z.got[i];
-      parts.mazeCell(mz.leaves[i], c); n.position.x = c.x; n.position.y = c.y; n.position.z = c.z;
-    }
-    parts.mazeCell(mz.gate, c); parts.gate.position.x = c.x; parts.gate.position.y = c.y; parts.gate.position.z = c.z;
-    parts.gate.visible = z.held() < MAZE.leaves && !z.won;
+    if (t >= WAVE_END) A.mkDone = true;
   };
+  const put = (n, p, dx, dy, dz) => { n.position.x = p.x + dx; n.position.y = p.y + dy; n.position.z = p.z + dz; };
+  // The blind-stamp desk as a sequence: the slip slides in; sealing slides it into the envelope, which drops onto the
+  // desk; the stamp comes down and its mark appears as it lands; opening slides the envelope off and the slip back out.
+  const syncBlind = (parts, b, dt, calm) => {
+    const A = parts.anim, S = parts.slipRest, E = parts.envRest;
+    if (A.blStep !== b.step) { A.blKind = b.step === "written" ? 1 : b.step === "sealed" ? 2 : b.step === "opened" ? 3 : b.step === "stamped" ? 4 : 0; A.blStep = b.step; A.blT = 0; A.blThunk = false; if (A.blKind === 2 || A.blKind === 3) cue(parts, "rustle-paper"); }
+    if (A.blChecked !== b.checked) { if (b.checked !== null) cue(parts, b.checked ? "chime" : "beep"); A.blChecked = b.checked; parts.okLamp.visible = b.checked === true; parts.badLamp.visible = b.checked === false; }
+    if (b.stampT > 0) {
+      b.stampT = calm ? 0 : Math.max(0, b.stampT - dt);
+      // Down fast (it lands at STAMP_DOWN), then lifted slowly back, as a hand stamps.
+      const gone = STAMP_TIME - b.stampT, press = b.stampT <= 0 ? 0 : gone < STAMP_DOWN ? ease(gone / STAMP_DOWN) : 1 - ease((gone - STAMP_DOWN) / (STAMP_TIME - STAMP_DOWN));
+      parts.stamp.position.y = parts.stampRest + (parts.stampLow - parts.stampRest) * press;
+      if (!A.blThunk && gone >= STAMP_DOWN) { A.blThunk = true; cue(parts, "thunk"); parts.envMark.visible = parts.envelope.visible && b.step === "stamped"; }
+    } else if (parts.stamp.position.y !== parts.stampRest) parts.stamp.position.y = parts.stampRest;
+    if (A.blT >= 9) return;
+    A.blT = calm ? 9 : A.blT + dt;
+    const t = A.blT, k = A.blKind;
+    let slipOn = false, envOn = false, sx = 0, sy = 0, sz = 0, ex = 0, ey = 0;
+    if (k === 1) { slipOn = true; sx = 0.6 * (1 - ease(t / WRITE_T)); if (t >= WRITE_T) A.blT = 9; }
+    else if (k === 2) {
+      const a = ease(t / 0.4);
+      slipOn = t < 0.4; sx = (E.x - S.x) * a; sz = (E.z - S.z) * a; sy = 0.04 * Math.sin(Math.PI * a);
+      envOn = t >= 0.4; ey = 0.15 * (1 - ease((t - 0.4) / 0.2));
+      if (t >= SEAL_T) A.blT = 9;
+    } else if (k === 3) {
+      const a = ease(t / 0.4), c = ease((t - 0.25) / 0.5);
+      envOn = t < 0.4; ex = -0.3 * a; ey = 0.06 * a;
+      slipOn = t >= 0.25; sx = (E.x - S.x) * (1 - c); sz = (E.z - S.z) * (1 - c);
+      if (t >= OPEN_T) A.blT = 9;
+    } else if (k === 4) { envOn = true; A.blT = 9; }
+    else A.blT = 9;
+    if (A.blT >= 9) {
+      // The end state of whatever step the desk is at.
+      slipOn = b.step === "written" || b.step === "opened"; envOn = b.step === "sealed" || b.step === "stamped";
+      sx = sy = sz = ex = ey = 0;
+    }
+    parts.slip.visible = slipOn; put(parts.slip, S, sx, sy, sz);
+    parts.slipMark.visible = slipOn && b.step === "opened" && b.impression === SEAL; put(parts.slipMark, S, sx + 0.02, sy + 0.008, sz);
+    parts.envelope.visible = envOn; put(parts.envelope, E, ex, ey, 0);
+    parts.carbon.visible = envOn; put(parts.carbon, E, ex, ey + 0.017, -0.12);
+    put(parts.envMark, E, ex, ey + 0.018, 0);
+    parts.envMark.visible = envOn && b.step === "stamped" && STAMP_TIME - b.stampT >= STAMP_DOWN;
+  };
+  // The disks glide to their slots when swapped; the one loaded rises out of the box (into the PC) and a returned one
+  // drops back in. The PC's drive light shows a disk is in.
+  const syncFloppy = (parts, f, dt, calm) => {
+    const A = parts.anim, l = LAYOUT.floppy;
+    if (A.flLoaded !== f.loaded) { cue(parts, f.loaded >= 0 ? "whir" : "click"); A.flLoaded = f.loaded; A.flMoving = true; parts.driveLight.visible = f.loaded >= 0; }
+    if (f.version !== A.flVer) { A.flVer = f.version; A.flMoving = true; }
+    if (!A.flMoving) return;
+    let moving = false;
+    for (let slot = 0; slot < f.order.length; slot++) {
+      const d = f.order[slot], n = parts.disks[d], tz = l.z - 0.32 + slot * 0.16, up = f.loaded === d ? 0.35 : 0;
+      const dz = tz - n.position.z;
+      if (calm || Math.abs(dz) < 0.002) n.position.z = tz; else { n.position.z += dz * Math.min(1, dt * 9); moving = true; }
+      const dl = up - A.lift[d];
+      if (calm || Math.abs(dl) < 0.01) A.lift[d] = up; else { A.lift[d] += Math.sign(dl) * Math.min(Math.abs(dl), dt * LIFT_RATE); moving = true; }
+      n.position.y = parts.diskY + A.lift[d];
+      n.visible = A.lift[d] < LIFT_GONE;
+    }
+    A.flMoving = moving;
+  };
+  // The maze's player walks the cells it was moved through, one by one, collecting each leaf as it reaches it.
+  const syncMaze = (parts, z, dt, calm) => {
+    const A = parts.anim, mz = z.maze(), c = parts.cell;
+    if (parts.mazeShown !== z.index) { parts.mazeShown = z.index; layRuns(parts, mz.grid, z.size.w, z.size.h); }
+    if (A.mzRun !== z.run) {
+      A.mzRun = z.run; A.mzFrom = z.trailFrom; A.mzI = 0; A.mzT = 0;
+      for (let i = 0; i < MAZE.leaves; i++) { A.gotShown[i] = z.got[i]; if (z.trailN) for (let k = 0; k < z.trailN; k++) if (z.trail[k] === mz.leaves[i]) A.gotShown[i] = 0; }
+      for (let i = 0; i < MAZE.leaves; i++) { const n = parts.leaves[i]; parts.mazeCell(mz.leaves[i], c); n.position.x = c.x; n.position.y = c.y; n.position.z = c.z; }
+      parts.mazeCell(mz.gate, c); parts.gate.position.x = c.x; parts.gate.position.y = c.y; parts.gate.position.z = c.z;
+      A.mzVer = -1;
+    }
+    const walking = A.mzI < z.trailN;
+    if (!walking && A.mzVer === z.version) return;
+    A.mzVer = z.version;
+    if (calm) { A.mzI = z.trailN; A.mzT = 0; A.mzFrom = z.at; }
+    else if (walking) {
+      A.mzT += dt * MAZE_RATE;
+      while (A.mzT >= 1 && A.mzI < z.trailN) {
+        A.mzFrom = z.trail[A.mzI++]; A.mzT -= 1;
+        for (let i = 0; i < MAZE.leaves; i++) if (!A.gotShown[i] && mz.leaves[i] === A.mzFrom) { A.gotShown[i] = 1; cue(parts, "beep"); }
+        if (A.mzFrom === mz.gate && z.won && A.mzI >= z.trailN) cue(parts, "chime");
+      }
+      if (A.mzI >= z.trailN) { A.mzT = 0; A.mzFrom = z.at; }
+    }
+    if (A.mzI >= z.trailN) { for (let i = 0; i < MAZE.leaves; i++) A.gotShown[i] = z.got[i]; A.mzFrom = z.at; }
+    // Between two cells, eased.
+    parts.mazeCell(A.mzFrom, c);
+    let px = c.x, pz = c.z;
+    if (A.mzI < z.trailN) { const k = ease(A.mzT); parts.mazeCell(z.trail[A.mzI], c); px += (c.x - px) * k; pz += (c.z - pz) * k; }
+    parts.player.position.x = px; parts.player.position.y = c.y; parts.player.position.z = pz;
+    let held = 0;
+    for (let i = 0; i < MAZE.leaves; i++) { parts.leaves[i].visible = !A.gotShown[i]; held += A.gotShown[i]; }
+    parts.gate.visible = held < MAZE.leaves && !(z.won && A.mzI >= z.trailN);
+  };
+  const sync = (parts, live, dt, calm) => {
+    syncMerkle(parts, live.merkle, dt, calm);
+    syncBlind(parts, live.blind, dt, calm);
+    syncFloppy(parts, live.floppy, dt, calm);
+    syncMaze(parts, live.maze, dt, calm);
+  };
+  // Whether anything is still moving (for the checks, and so leaving can settle it).
+  const moving = (parts, live) => { const A = parts.anim; return !A.mkDone || A.blT < 9 || live.blind.stampT > 0 || A.flMoving || A.mzI < live.maze.trailN; };
   // Lays the pool of wall runs out for one maze and hides the rest. The callback is built once per visit.
   const layRuns = (parts, grid, w, h) => {
     const R = parts.mazeRun;
@@ -1101,10 +1232,17 @@
       sync(visit.parts, visit.live, dt, state.calm === true);
       if (visit.cluster) BL.genesisEra2Cluster.update(visit.cluster, dt, state);
     },
+    // Leaving the gallery: every exhibit jumps to its end state and the cassette stops, so nothing outlives the visit
+    // of this cave and coming back resumes nothing.
+    active(on) {
+      if (on || !visit) return;
+      sync(visit.parts, visit.live, 0, true);
+      if (visit.cluster) BL.genesisEra2Cluster.settle(visit.cluster);
+    },
     dispose() { visit = null; }
   });
 
   BL.genesisEra2 = { ERA, YEARS, NAME, SOURCES, OVERVIEW, HELD, FUD_PATROL_ZONE, RECORDS, SEAL, PC_FILES, PC_YEAR, FLOPPY_DISKS, MAZE, EXHIBITS, LAYOUT, PROPS,
     sourceOf, createMerkle, createBlind, createPc, createFloppies, createMaze, merkleTerminal, blindTerminal, floppyTerminal, mazeTerminal,
-    createLive, footprints, walkUp, buildModels, sync, get visit() { return visit; } };
+    createLive, footprints, walkUp, buildModels, sync, moving, WAVE_END, get visit() { return visit; } };
 })();
