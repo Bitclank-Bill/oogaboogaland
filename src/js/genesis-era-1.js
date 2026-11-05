@@ -66,7 +66,7 @@
   const GW_ROUNDS = [{ text: "KEYS ON THE WIRE", down: 2 }, { text: "TWO NETWORKS MEET", down: 1 }, { text: "PACKETS IN ORDER", down: 2 }];
   const GW_NETS = [null, { gate: "G1", net: "NET B", max: 3 }, { gate: "G2", net: "NET C", max: 4 }];
   const MAX_FRAGS = 6;
-  const createGateway = () => ({ round: 0, route: 0, pinged: [false, false, false], frags: [], have: [], order: [], missing: -1, solved: 0, anim: -1, single: false });
+  const createGateway = () => ({ round: 0, route: 0, pinged: [false, false, false], frags: [], have: [], order: [], missing: -1, solved: 0, anim: -1, single: false, feed: 0, flash: 0 });
   const gatewayTerminal = (s) => {
     const show = (f) => f.replace(/ /g, "_");
     const fresh = () => { s.route = 0; s.frags = []; s.have = []; s.order = []; s.missing = -1; s.pinged = [false, false, false]; };
@@ -82,6 +82,7 @@
         if (cmd === "PING") {
           const g = arg === "G1" ? 1 : arg === "G2" ? 2 : 0;
           if (!g) return { lines: ["PING G1 or PING G2."] };
+          cue("relay");
           s.pinged[g] = true;
           return { lines: r.down === g ? [`${arg}: no reply. The link beyond ${arg} is down.`] : [`${arg}: reply from HOST B through ${GW_NETS[g].net}.`] };
         }
@@ -103,7 +104,7 @@
           s.order = [];
           for (let i = 1; i < n; i += 2) s.order.push(i);
           for (let i = 0; i < n; i += 2) s.order.push(i);
-          s.anim = 0; s.single = false;
+          s.anim = 0; s.single = false; s.feed++; cue("rustle-paper");
           const arrived = s.order.filter((i) => s.have[i]).map((i) => `#${i + 1} ${show(s.frags[i])}`).join("  ");
           return { lines: [`NET A carries it in packets of up to 8 letters. Gateway ${net.gate} splits them to fit ${net.net}`, `(${net.max} letters at most): ${n} fragments, each numbered.`, `Arrived at HOST B, in this order:  ${arrived}`, "One fragment was lost on the way. Which number is missing? Type RESEND and its number."] };
         }
@@ -119,7 +120,7 @@
           if (!s.frags.length) return { lines: ["Nothing has arrived yet."] };
           if (s.have.some((h) => !h)) return { lines: ["A fragment is still missing. Look at the numbers that arrived."] };
           const text = s.frags.join("");
-          s.solved = Math.min(99, s.solved + 1); s.round = (s.round + 1) % GW_ROUNDS.length; fresh();
+          s.solved = Math.min(99, s.solved + 1); s.flash = 3; cue("chime"); s.round = (s.round + 1) % GW_ROUNDS.length; fresh();
           return { lines: [`HOST B puts the fragments in number order: "${text}"`, `Delivered! Puzzles solved this visit: ${s.solved}.`, "Next round: a new message, and a different link may be down. Type MAP."] };
         }
         if (cmd === "RESET") { const solved = s.solved; Object.assign(s, createGateway(), { solved: 0 }); return { lines: [`Puzzle reset (${solved} solved). Type MAP.`] }; }
@@ -142,6 +143,7 @@
       if (cmd === "PICK") {
         const n = Number.parseInt(arg, 10);
         if (!(n >= 1 && n <= 21)) return { lines: ["Pick a whole number from 1 to 21."] };
+        cue("click");
         s.a = n; s.A = powMod(DH_G, n, DH_P); s.b = BO_SECRETS[s.round % BO_SECRETS.length]; s.B = powMod(DH_G, s.b, DH_P); s.sent = false; s.key = 0;
         return { lines: [`Your secret: ${n} (keep it). Your public result: ${DH_G}^${n} mod ${DH_P} = ${s.A}.`, "Bo has picked a secret too. Now SEND."] };
       }
@@ -153,7 +155,7 @@
       if (cmd === "SHARE") {
         if (!s.sent) return { lines: ["SEND first."] };
         const mine = powMod(s.B, s.a, DH_P), bos = powMod(s.A, s.b, DH_P);
-        s.key = mine;
+        s.key = mine; cue("chime");
         return { lines: [`You:  Bo's ${s.B} ^ your secret ${s.a} mod ${DH_P} = ${mine}`, `Bo:   your ${s.A} ^ Bo's secret mod ${DH_P} = ${bos}`, mine === bos ? `Same key, ${mine}, worked out on both sides. The lamps match.` : "Keys differ (this should not happen)."] };
       }
       if (cmd === "EVE") return { lines: s.sent ? [`Eve heard p = ${DH_P}, g = ${DH_G}, ${s.A} and ${s.B}. She did not hear either secret.`] : ["Nothing on the wire yet."] };
@@ -171,7 +173,7 @@
 
   // Toy signatures: n = 33 (3 x 11), public e = 3, private d = 7, the textbook-sized example. NOT secure.
   const RSA_N = 33, RSA_E = 3, RSA_D = 7;
-  const createRsa = () => ({ signs: 0, stamp: 0, verdict: 0 });
+  const createRsa = () => ({ signs: 0, stamp: 0, verdict: 0, check: 0 });
   const msgOf = (arg) => {
     if (/^[A-Z]$/.test(arg)) return arg.charCodeAt(0) - 64;
     const n = Number.parseInt(arg, 10);
@@ -188,14 +190,14 @@
       if (cmd === "SIGN") {
         const m = msgOf(rest);
         if (!m) return { lines: ["SIGN a number 2 to 32, or a letter."] };
-        s.signs = Math.min(999, s.signs + 1); s.stamp = 1; s.verdict = 0;
+        s.signs = Math.min(999, s.signs + 1); s.stamp = 1; s.verdict = 0; cue("thunk");
         return { lines: [`Message ${m}: signature ${powMod(m, RSA_D, RSA_N)} (made with the secret number).`, `Check it: VERIFY ${powMod(m, RSA_D, RSA_N)} ${m}. Then try VERIFY with a changed message.`] };
       }
       if (cmd === "VERIFY") {
         const parts = rest.split(/\s+/), sig = Number.parseInt(parts[0], 10), m = msgOf(parts[1] || "");
         if (!(sig >= 0 && sig < RSA_N) || !m) return { lines: ["VERIFY <signature 0-32> <message>."] };
         const ok = powMod(sig, RSA_E, RSA_N) === m;
-        s.verdict = ok ? 1 : 2;
+        s.verdict = ok ? 1 : 2; s.check = 1; cue(ok ? "chime" : "beep");
         return { lines: [`${sig} ^ ${RSA_E} mod ${RSA_N} = ${powMod(sig, RSA_E, RSA_N)}, the message was ${m}:`, ok ? "VALID. Only the holder of the secret number could have made it." : "FAILS. The message or the signature was changed."] };
       }
       if (cmd === "DOUBLE") {
@@ -224,16 +226,16 @@
       if (cmd === "FLIP") {
         const n = Number.parseInt(arg, 10);
         if (!(n >= 0 && n <= 7)) return { lines: ["FLIP 0 to 7."] };
-        s.sw ^= 1 << n; s.dirty = true;
+        s.sw ^= 1 << n; s.dirty = true; cue("click");
         return { lines: [`Switches: ${bin(s.sw)}  (address ${s.addr})`] };
       }
       if (cmd === "SET") {
         if (!/^[01]{8}$/.test(arg)) return { lines: ["SET needs eight 0s and 1s, e.g. SET 01001111."] };
-        s.sw = Number.parseInt(arg, 2); s.dirty = true;
+        s.sw = Number.parseInt(arg, 2); s.dirty = true; cue("click");
         return { lines: [`Switches: ${bin(s.sw)}  (address ${s.addr})`] };
       }
       if (cmd === "DEPOSIT") {
-        s.mem[s.addr] = s.sw; const at = s.addr; s.addr = (s.addr + 1) & 255; s.dirty = true;
+        s.mem[s.addr] = s.sw; const at = s.addr; s.addr = (s.addr + 1) & 255; s.dirty = true; cue("relay");
         return { lines: [`Stored ${bin(s.sw)} at address ${at}. Address is now ${s.addr}.`] };
       }
       if (cmd === "EXAMINE") {
@@ -247,7 +249,7 @@
         let text = "";
         for (let i = 0; i < 32 && s.mem[i]; i++) text += s.mem[i] >= 32 && s.mem[i] < 127 ? String.fromCharCode(s.mem[i]) : ".";
         const won = text.startsWith("OOGA");
-        if (won && !s.won) { s.won = true; s.dirty = true; }
+        if (won && !s.won) { s.won = true; s.dirty = true; cue("chime"); }
         return { lines: [text ? `Memory reads: ${text}` : "Memory from address 0 is empty.", won ? "You toggled in OOGA one byte at a time, as early owners entered programs." : "Museum shortcut: a real machine would run these bytes as instructions."] };
       }
       if (cmd === "RESET") { Object.assign(s, createPanel()); return { lines: ["Memory and switches cleared."] }; }
@@ -279,6 +281,7 @@
   };
   const play = (s, withTone) => {
     s.t = 0; s.playing = s.count > 0;
+    if (S && s.playing) S.ease.seat = 0;
     const a = withTone ? sound() : null;
     if (!a || BL.sound.muted) return a ? "(sound is muted: watch the lamps)" : "(no sound here: watch the lamps)";
     if (a.context.state === "suspended") a.context.resume().catch(() => {});
@@ -335,7 +338,9 @@
   // names and look; not historical software). A 20 x 9 court, your paddle on the left, Ooga's on the right, three rows
   // tall; up to 8 moves a line; first to 5. Seeded, so RESET replays the same game.
   const PW = 20, PH = 9, PADDLE = 3, P_WIN = 5, P_TICKS = 8, P_SEED = 1975;
-  const createPaddle = () => ({ rng: P_SEED, py: 3, cy: 3, bx: 10, by: 4, dx: 0, dy: 0, live: false, you: 0, ooga: 0, toward: 1, over: false, hits: 0, dirty: true });
+  const createPaddle = () => ({ rng: P_SEED, py: 3, cy: 3, bx: 10, by: 4, dx: 0, dy: 0, live: false, you: 0, ooga: 0, toward: 1, over: false, hits: 0, dirty: true, path: new Float32Array((P_TICKS + 1) * 5), pathN: 0, pathT: 0 });
+  // One recorded tick (your paddle, Ooga's, the ball, whether it is live) for the TV's replay.
+  const pathAdd = (s) => { const o = s.pathN * 5; s.path[o] = s.py; s.path[o + 1] = s.cy; s.path[o + 2] = s.bx; s.path[o + 3] = s.by; s.path[o + 4] = s.live ? 1 : 0; s.pathN++; };
   const prand = (s) => { s.rng = (Math.imul(s.rng, 1103515245) + 12345) >>> 0; return (s.rng >>> 8) / 16777216; };
   const paddleField = (s) => {
     const rows = ["+--------------------+"];
@@ -389,8 +394,10 @@
       if (!/^[UDW]+$/.test(cmd) || cmd.length > P_TICKS) return { lines: [`Moves are U, D and W, up to ${P_TICKS} a line (e.g. UUW). Type HELP.`] };
       if (s.over) return { lines: ["The game is over. Type S for a new one."] };
       const said = [];
+      s.pathN = 0; s.pathT = 0; pathAdd(s);
       for (let i = 0; i < cmd.length; i++) {
         const pt = paddleTick(s, cmd[i]);
+        pathAdd(s);
         if (!pt) continue;
         said.push(pt === "you" ? "Your point! The ball got past Ooga." : "Ooga's point: the ball got past you.");
         if (s.you >= P_WIN || s.ooga >= P_WIN) { s.over = true; said.push(s.you >= P_WIN ? "You win the game! Type S to play again." : "Ooga wins this one. Type S to play again."); }
@@ -433,11 +440,11 @@
       if (cmd === "RESET") { Object.assign(t, createTv()); return { lines: ["The TV is off, on dial 2, fine tuning centred, selector on A."] }; }
       if (cmd === "PATH") return { lines: ["In this toy: console -> cable -> selector box -> the TV's input -> the tuner picks one channel -> the screen.", `The selector is on ${t.sw}, so the console comes in on dial ${CONSOLE_CH[t.sw]}.`, "The real connection of the period is on HOLD and not labelled."] };
       if (cmd === "WHAT") return { lines: tvWhat(t) };
-      if (cmd === "POWER" || cmd === "ON" || cmd === "OFF") { t.on = cmd === "ON" ? true : cmd === "OFF" ? false : !t.on; t.dirty = true; return { lines: [t.on ? "Click: the TV warms up." : "Click: the picture shrinks to a dot and the screen goes dark.", ...(t.on ? tvWhat(t) : [])] }; }
+      if (cmd === "POWER" || cmd === "ON" || cmd === "OFF") { const was = t.on; t.on = cmd === "ON" ? true : cmd === "OFF" ? false : !t.on; t.dirty = true; if (t.on !== was) cue(t.on ? "hum-start" : "hum-stop"); return { lines: [t.on ? "Click: the TV warms up." : "Click: the picture shrinks to a dot and the screen goes dark.", ...(t.on ? tvWhat(t) : [])] }; }
       if (cmd === "UP" || cmd === "DOWN" || cmd === "DIAL") {
         const n = cmd === "DIAL" ? Number.parseInt(arg, 10) : t.dial + (cmd === "UP" ? 1 : -1);
         if (cmd === "DIAL" && !(n >= 1 && n <= 12)) return { lines: ["DIAL 1 to 12 (the toy's channel numbers)."] };
-        t.dial = ((n - 1 + 12) % 12) + 1; t.fine = 0; t.dirty = true;
+        t.dial = ((n - 1 + 12) % 12) + 1; t.fine = 0; t.dirty = true; cue("clack");
         return { lines: [`Clunk: dial ${t.dial}.`, ...tvWhat(t)] };
       }
       if (cmd === "FINE") {
@@ -502,8 +509,10 @@
       if (cmd === "RESET") { Object.assign(c, createCalc()); return { lines: ["Cleared.", `Display: [${c.shown.padStart(9)}]`] }; }
       if (!/^[0-9.+\-X/=C]+$/.test(keys) || keys.length > 40) return { lines: ["Use digits, the point, + - X /, = and C (up to 40 keys). Type HELP."] };
       const notes = new Set();
+      const wasError = c.error;
       for (let i = 0; i < keys.length; i++) calcKey(c, keys[i], notes);
       c.dirty = true;
+      if (c.error && !wasError) cue("beep");
       return { lines: [`Display: [${c.shown.padStart(9)}]`, ...notes] };
     }
   });
@@ -696,7 +705,7 @@
     const { top } = kit, Z1 = kit.era.z1;
     // The two hosts: plinths, the tape drives' window frames, tape and heads, the processors' bezels, plates and
     // handles; the gateways' base plates and the cages round their lamps.
-    detail(kit, -18.5, top, Z1 - 24, (M) => [...[-8.5, 8.5].flatMap((hx) => { const L = hx - 0.65, R = hx + 0.65; return [
+    detail(kit, -18.5, top, Z1 - 24, (M) => [...pool(M, 3.2, 1.6, -8.5, 0.5), ...pool(M, 3.2, 1.6, 8.5, 0.5), ...[-8.5, 8.5].flatMap((hx) => { const L = hx - 0.65, R = hx + 0.65; return [
       B(M, 2.7, 0.08, 0.85, "#3a332b", hx, 0.04, 0), B(M, 0.02, 1.9, 0.77, "#5a5248", hx, 0.95, 0),
       B(M, 1.06, 0.04, 0.03, "#8f8670", L, 1.78, 0.41), B(M, 1.06, 0.04, 0.03, "#8f8670", L, 0.92, 0.41), B(M, 0.04, 0.86, 0.03, "#8f8670", L - 0.53, 1.35, 0.41), B(M, 0.04, 0.86, 0.03, "#8f8670", L + 0.53, 1.35, 0.41),
       B(M, 0.02, 0.42, 0.01, "#5a4a3a", L + 0.19, 1.35, 0.415), B(M, 0.02, 0.42, 0.01, "#5a4a3a", L - 0.19, 1.35, 0.415), B(M, 0.22, 0.1, 0.04, "#c9c3b4", L, 1.35, 0.42),
@@ -705,11 +714,11 @@
       ...[2.6, -2.6].flatMap((dz) => [...[-1, 1].map((sd) => B(M, 0.5, 0.06, 0.5, "#2a3442", sd, 0.03, dz)), B(M, 2.5, 0.05, 0.46, "#5a6a80", 0, 2.92, dz),
         ...[[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]].map(([a, b]) => B(M, 0.035, 0.4, 0.035, "#c9c3b4", a, 3.06, dz + b)), B(M, 0.46, 0.04, 0.46, "#c9c3b4", 0, 3.27, dz)])]);
     // The gateway puzzle's teleprinter: a plinth, the paper's fold over the top, platen knobs and orange function keys.
-    detail(kit, -11.5, top, Z1 - 24 + 6.1 - 0.95, (M) => [B(M, 1.0, 0.06, 0.65, "#5a5248", 0, 0.03, 0), B(M, 0.62, 0.02, 0.14, "#f7f3ea", 0, 1.72, -0.27),
+    detail(kit, -11.5, top, Z1 - 24 + 6.1 - 0.95, (M) => [...pool(M, 1.6, 1.4, 0, 0.4), B(M, 1.0, 0.06, 0.65, "#5a5248", 0, 0.03, 0), B(M, 0.62, 0.02, 0.14, "#f7f3ea", 0, 1.72, -0.27),
       ...[-1, 1].map((sd) => B(M, 0.06, 0.1, 0.1, "#2a2826", sd * 0.38, 1.07, -0.18)), ...grid(3, (r) => B(M, 0.06, 0.03, 0.05, "#c8601e", 0.38, 1.055, 0.08 + r * 0.075)),
       B(M, 0.5, 0.02, 0.05, "#efe8d6", 0, 1.01, 0.29)]);
     // Merkle's puzzle wall: a cornice, base and sides, shelf rails, and a brass number plate and knob on every box.
-    detail(kit, -18, top, Z1 - 35, (M) => [B(M, 5.5, 0.16, 0.7, "#3a2c1e", 0, 3.48, 0.05), B(M, 5.5, 0.12, 0.7, "#3a2c1e", 0, 0.06, 0.05),
+    detail(kit, -18, top, Z1 - 35, (M) => [...pool(M, 6, 1.6, 0, 0.9), B(M, 5.5, 0.16, 0.7, "#3a2c1e", 0, 3.48, 0.05), B(M, 5.5, 0.12, 0.7, "#3a2c1e", 0, 0.06, 0.05),
       ...[-1, 1].map((sd) => B(M, 0.14, 3.4, 0.62, "#3a2c1e", sd * 2.66, 1.7, 0.05)), ...grid(7, (r) => B(M, 5.0, 0.03, 0.1, "#3a2c1e", 0, 0.2 + r * 0.5, 0.3)),
       ...grid(48, (i) => B(M, 0.14, 0.035, 0.01, "#d9b44a", -2.1 + (i % 8) * 0.6, 0.55 + Math.floor(i / 8) * 0.5, 0.365, 0.2)),
       ...grid(48, (i) => B(M, 0.05, 0.05, 0.03, "#c9a35a", -2.1 + (i % 8) * 0.6, 0.4 + Math.floor(i / 8) * 0.5, 0.37))]);
@@ -718,7 +727,7 @@
       B(M, 0.2, 0.06, 0.01, "#f4efe2", 0, 0.74, 0.28), B(M, 0.03, 0.4, 0.03, "#2a2622", 0.3, 1.33, 0), B(M, 0.16, 0.1, 0.02, "#d94a3a", 0.38, 1.47, 0)]);
     // The key-exchange bench: a trimmed top, a keypad at each end, insulators on the wire's posts, and Eve's
     // headphones, notepad and the tap down from the wire.
-    detail(kit, -18, top, Z1 - 48, (M) => [B(M, 4.5, 0.04, 1.5, "#5a3f26", 0, 0.82, 0),
+    detail(kit, -18, top, Z1 - 48, (M) => [...pool(M, 5.2, 2.4, 0, 0.2), ...[-1, 1].flatMap((sd) => [B(M, 0.2, 0.16, 0.2, "#e8e2cc", sd * 1.95, 0.92, -0.38), B(M, 0.18, 0.012, 0.18, "#f2c84a", sd * 1.95, 1.005, -0.38, 0.25), B(M, 0.2, 0.16, 0.2, "#d8d0bc", sd * 1.45, 0.92, -0.38), B(M, 0.18, 0.012, 0.18, sd < 0 ? "#3a6ab8" : "#c8402a", sd * 1.45, 1.003, -0.38, 0.25), B(M, 0.19, 0.012, 0.19, "#c9d8d4", sd * 0.95, 0.866, -0.38), ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => B(M, 0.015, 0.26, 0.015, "#e8f0ee", sd * 0.95 + a * 0.085, 1.0, -0.38 + b * 0.085, 0.2))]), B(M, 4.5, 0.04, 1.5, "#5a3f26", 0, 0.82, 0),
       ...[-1, 1].flatMap((sd) => [B(M, 0.6, 0.04, 0.4, "#e8dcc0", sd * 1.15, 0.86, 0.35), ...grid(9, (k) => B(M, 0.1, 0.03, 0.08, "#2a2622", sd * 1.15 - 0.17 + (k % 3) * 0.17, 0.89, 0.24 + Math.floor(k / 3) * 0.11)),
         B(M, 0.1, 0.12, 0.1, "#e8e2cc", sd * 2.4, 2.86, 0)]),
       B(M, 0.6, 0.06, 0.1, "#2a2a2a", 0, 2.03, -1.7), ...[-1, 1].map((sd) => B(M, 0.12, 0.2, 0.2, "#2a2a2a", sd * 0.31, 1.86, -1.7)),
@@ -728,7 +737,7 @@
     detail(kit, -18, top, Z1 - 48 + 3.3 - 0.95 + 0.16, (M) => [...[[-0.3, 1.62, 0.36], [0.22, 1.62, 0.3], [-0.25, 0.99, 0.42], [0.25, 0.99, 0.3], [0.38, 1.55, 0.12]].map(([x, y, w]) => B(M, w, 0.014, 0.006, "#e8e6dc", x, y, -0.09)),
       B(M, 1.2, 0.05, 0.05, "#7a5232", 0, 0.4, -0.16), B(M, 0.14, 0.04, 0.06, "#6b4a2b", 0.3, 0.925, -0.06)]);
     // The signature desk: a trimmed top, drawers with brass pulls, an ink pad under the stamp, a pen pot and cards.
-    detail(kit, -18, top, Z1 - 61, (M) => [B(M, 2.7, 0.02, 1.3, "#3e2c1c", 0, 0.86, 0), ...[-1, 1].flatMap((sd) => [B(M, 0.8, 0.25, 0.02, "#6e5238", sd * 0.8, 0.55, 0.61), B(M, 0.2, 0.03, 0.03, "#c9a35a", sd * 0.8, 0.55, 0.63)]),
+    detail(kit, -18, top, Z1 - 61, (M) => [...pool(M, 3.2, 2.0, 0, 0.3), B(M, 0.36, 0.2, 0.22, "#6b4a2b", 0.12, 0.96, 0.38), B(M, 0.06, 0.06, 0.01, "#c9a35a", 0.02, 0.96, 0.492), B(M, 0.06, 0.06, 0.01, "#c9a35a", 0.22, 0.96, 0.492), B(M, 0.22, 0.01, 0.03, "#1a1a1a", 0.12, 1.061, 0.38), B(M, 2.7, 0.02, 1.3, "#3e2c1c", 0, 0.86, 0), ...[-1, 1].flatMap((sd) => [B(M, 0.8, 0.25, 0.02, "#6e5238", sd * 0.8, 0.55, 0.61), B(M, 0.2, 0.03, 0.03, "#c9a35a", sd * 0.8, 0.55, 0.63)]),
       B(M, 0.3, 0.03, 0.22, "#2a2a40", 0.6, 0.885, 0), B(M, 0.08, 0.14, 0.08, "#2a2622", 1.1, 0.94, -0.4), ...grid(3, (k) => B(M, 0.015, 0.12, 0.015, k ? "#d9b44a" : "#c84a3a", 1.08 + k * 0.02, 1.04, -0.4)),
       B(M, 0.3, 0.04, 0.2, "#f4efe2", 0.1, 0.89, -0.35)]);
     // Its typewriter: a space bar and the table's crossbar.
@@ -736,28 +745,28 @@
       B(M, 0.86, 0.04, 0.04, "#6a6f74", 0, 0.12, 0.29)]);
     // The floppy drive: the slot's bezel, a plate, a power switch, the card board's supports, and a box of sleeved disks
     // on the sleeve stand.
-    detail(kit, 27, top, Z1 - 17, (M) => [B(M, 0.9, 0.035, 0.03, "#5a554c", 0, 0.86, 0.52), ...[-1, 1].map((sd) => B(M, 0.035, 0.2, 0.03, "#5a554c", sd * 0.45, 0.95, 0.52)), B(M, 0.4, 0.06, 0.02, "#c9a35a", -0.5, 0.7, 0.52, 0.2),
+    detail(kit, 27, top, Z1 - 17, (M) => [...pool(M, 6.5, 2.2, -2.2, 0.6), B(M, 0.27, 0.025, 0.02, "#5a554c", 0.4, 0.825, 0.512), B(M, 0.27, 0.025, 0.02, "#5a554c", 0.4, 0.575, 0.512), B(M, 0.025, 0.27, 0.02, "#5a554c", 0.275, 0.7, 0.512), B(M, 0.025, 0.27, 0.02, "#5a554c", 0.525, 0.7, 0.512), B(M, 0.9, 0.035, 0.03, "#5a554c", 0, 0.86, 0.52), ...[-1, 1].map((sd) => B(M, 0.035, 0.2, 0.03, "#5a554c", sd * 0.45, 0.95, 0.52)), B(M, 0.4, 0.06, 0.02, "#c9a35a", -0.5, 0.7, 0.52, 0.2),
       B(M, 0.1, 0.1, 0.04, "#d9562b", 0.7, 0.7, 0.52), B(M, 1.5, 0.05, 0.08, "#2a2622", 0, 2.12, -0.3), B(M, 1.5, 0.05, 0.08, "#2a2622", 0, 1.28, -0.3),
       ...[-1, 1].map((sd) => B(M, 0.05, 0.12, 0.05, "#2a2622", sd * 0.6, 1.22, -0.3)), B(M, 0.32, 0.2, 0.18, "#6b4a2b", -4.25, 1.0, -0.1), B(M, 0.28, 0.16, 0.02, "#e9e2cf", -4.25, 1.06, -0.005)]);
     // Its operator's console: lamps over the push buttons and a plate.
     detail(kit, 24.6, top, Z1 - 17 + 3.3 - 0.95, (M) => [...grid(4, (i) => B(M, 0.08, 0.05, 0.03, ["#ff8a5a", "#ffd76a", "#8fe07a", "#f4f1e6"][i], -0.27 + i * 0.18, 1.165, -0.2, 1.0)), B(M, 0.5, 0.06, 0.02, "#c9a35a", 0, 0.75, 0.26, 0.2)]);
     // The front panel: a trimmed case, the lamps' label strip, the switches' group bands, vents, and the byte tray's frame.
-    detail(kit, 25, top, Z1 - 31, (M) => [B(M, 2.7, 0.04, 1.25, "#5a3a20", 0, 1.47, 0), B(M, 2.4, 0.012, 0.01, "#2a2622", 0, 1.28, 0.625),
+    detail(kit, 25, top, Z1 - 31, (M) => [...pool(M, 3.6, 2.2, 0, 0.6), B(M, 2.7, 0.04, 1.25, "#5a3a20", 0, 1.47, 0), B(M, 2.4, 0.012, 0.01, "#2a2622", 0, 1.28, 0.625),
       ...grid(3, (g) => B(M, 0.86, 0.04, 0.01, g % 2 ? "#3a6a9a" : "#9a3a3a", 0.75 - g * 0.9, 1.04, 0.625)), ...grid(6, (k) => B(M, 1.6, 0.01, 0.05, "#5a3a20", 0, 1.495, -0.45 + k * 0.12)),
       B(M, 2.3, 0.06, 0.1, "#c9a35a", 0, 4.92, -0.3), B(M, 2.3, 0.04, 0.1, "#c9a35a", 0, 2.73, -0.3), ...[-1, 1].map((sd) => B(M, 0.06, 2.2, 0.1, "#c9a35a", sd * 1.13, 3.83, -0.3))]);
     // Its manual: tabs out of the binder's edge and a pencil.
     detail(kit, 25, top, Z1 - 31 + 3.3 - 0.95, (M) => [...grid(4, (k) => B(M, 0.04, 0.01, 0.05, ["#d9641e", "#e9a23b", "#4f8a8b", "#6b7a3a"][k], 0.35, 1.0, -0.15 + k * 0.1)), B(M, 0.02, 0.02, 0.2, "#e9c23b", 0.12, 1.02, 0.1)]);
     // The acoustic coupler: rubber rims on the cups, a trimmed table, the phone's cord, and the bit meter's frame.
-    detail(kit, 25, top, Z1 - 45, (M) => [...[-1, 1].map((sd) => B(M, 0.34, 0.03, 0.34, "#111111", sd * 0.3, 1.19, 0)), B(M, 2.5, 0.02, 1.2, "#4a3a2a", 0, 0.76, 0),
+    detail(kit, 25, top, Z1 - 45, (M) => [...pool(M, 3.2, 2.0, 0, 0.4), ...[-1, 1].map((sd) => B(M, 0.34, 0.03, 0.34, "#111111", sd * 0.3, 1.19, 0)), B(M, 2.5, 0.02, 1.2, "#4a3a2a", 0, 0.76, 0),
       B(M, 0.02, 0.02, 0.5, "#2a2622", 0.6, 0.79, 0.1), B(M, 1.1, 0.04, 0.06, "#2a2622", 0, 1.48, -0.1), B(M, 1.1, 0.56, 0.02, "#1a1a1a", 0, 1.76, -0.15),
       ...[-1, 1].map((sd) => B(M, 0.04, 0.62, 0.04, "#2a2622", sd * 0.55, 1.77, -0.12))]);
     // Its portable terminal: the case's handle and catches.
     detail(kit, 25, top, Z1 - 45 + 3.3 - 0.95, (M) => [B(M, 0.3, 0.04, 0.04, "#2a1a10", 0, 1.28, -0.24), ...[-1, 1].map((sd) => B(M, 0.06, 0.05, 0.03, "#c9c3b4", sd * 0.3, 0.84, 0.24))]);
     // The home TV: chrome trim on top, a base rail, and the screen's bezel.
-    detail(kit, 22.6, top, Z1 - 52, (M) => [B(M, 0.62, 0.03, 1.52, "#c9c3b4", 0, 1.115, 0), B(M, 0.62, 0.05, 1.52, "#4a3020", 0, 0.27, 0),
+    detail(kit, 22.6, top, Z1 - 52, (M) => [...pool(M, 6, 4, 4.4, 0, 0.03), B(M, 0.62, 0.03, 1.52, "#c9c3b4", 0, 1.115, 0), B(M, 0.62, 0.05, 1.52, "#4a3020", 0, 0.27, 0),
       B(M, 0.01, 0.04, 0.9, "#c9a35a", 0.32, 1.05, 0.2), B(M, 0.01, 0.04, 0.9, "#c9a35a", 0.32, 0.39, 0.2)]);
     // The timeline wall: a cap and a base, a dateline across it with a tick at each plaque, and a stripe under the cap.
-    detail(kit, 26, top, Z1 - 59, (M) => [B(M, 11.3, 0.12, 0.5, "#5a4430", 0, 2.86, 0), B(M, 11.3, 0.1, 0.5, "#5a4430", 0, 0.05, 0), B(M, 10.6, 0.04, 0.02, "#e9a23b", 0, 1.58, 0.21, 0.4),
+    detail(kit, 26, top, Z1 - 59, (M) => [...pool(M, 11, 2, 0, 1.0), B(M, 11.3, 0.12, 0.5, "#5a4430", 0, 2.86, 0), B(M, 11.3, 0.1, 0.5, "#5a4430", 0, 0.05, 0), B(M, 10.6, 0.04, 0.02, "#e9a23b", 0, 1.58, 0.21, 0.4),
       ...grid(9, (i) => B(M, 0.04, 0.18, 0.02, "#e9a23b", -4.4 + (i % 5) * 2.2, 1.58, 0.21, 0.4)), B(M, 11, 0.06, 0.02, "#d9641e", 0, 2.66, 0.21)]);
   };
 
@@ -776,7 +785,7 @@
     N.relayDown = place(createNode({ geometry: M.box({ w: 0.1, h: 0.1, d: 0.03, color: "#ff4c4c", emissive: 1.6 }), position: { x: rx + 0.22, y: top + RELAY.laneY[0], z: face + 0.012 }, visible: false }));
     // The face's lit map (HOST A, three wires through three gateways, HOST B), a lever slot under it, a cap, a plinth,
     // vents, a plate and the switch's three marks.
-    detail(kit, rx, top, rz, (M) => [B(M, 1.6, 1.8, 0.7, "#d8cdb0", 0, 0.9, 0), B(M, 1.3, 0.62, 0.02, "#141820", 0, 1.32, 0.355), B(M, 1.4, 0.04, 0.03, "#8a8270", 0, 1.65, 0.36), B(M, 1.4, 0.04, 0.03, "#8a8270", 0, 0.99, 0.36),
+    detail(kit, rx, top, rz, (M) => [...pool(M, 2.4, 1.8, 0, 0.6), B(M, 1.6, 1.8, 0.7, "#d8cdb0", 0, 0.9, 0), B(M, 1.3, 0.62, 0.02, "#141820", 0, 1.32, 0.355), B(M, 1.4, 0.04, 0.03, "#8a8270", 0, 1.65, 0.36), B(M, 1.4, 0.04, 0.03, "#8a8270", 0, 0.99, 0.36),
       ...[-1, 1].map((sd) => B(M, 0.16, 0.5, 0.012, "#efe6d2", sd * 0.52, 1.32, 0.37, 0.5)),
       ...RELAY.laneY.flatMap((y) => [B(M, 0.84, 0.012, 0.01, "#5a5a62", 0, y, 0.37, 0.4), B(M, 0.1, 0.1, 0.012, "#8e8e96", 0, y, 0.372, 0.3)]),
       B(M, 1.7, 0.1, 0.78, "#8a6a44", 0, 1.85, 0), B(M, 1.7, 0.08, 0.78, "#5a4430", 0, 0.04, 0), ...[0, 1, 2, 3].map((k) => B(M, 0.9, 0.025, 0.02, "#a89f88", 0, 0.3 + k * 0.08, 0.36)),
@@ -786,7 +795,7 @@
     let term = null;
     if (R) {
       S.relay = R.create();
-      term = R.terminal(S.relay, () => { S.relayDirty = true; });
+      term = R.terminal(S.relay, () => { S.relayDirty = true; S.wake = true; });
     }
     prop({ id: "e1-relay", year: "1970s", date: "No historical date: a modern museum toy shown in the 1970s gallery", connection: "context", title: "Relay cabinet - modern toy",
       label: "RELAY CABINET · MODERN TOY · 1970s GALLERY", hint: "Type ROUTE 2, FAIL 2, then SEND", sourceKeys: ["e1CerfKahn", "e1Rfc675"],
@@ -797,7 +806,227 @@
 
   // --- Live scene state (rebuilt each visit) ------------------------------------------------------------------------
   let S = null;
+  // Interface sounds: only the Genesis tab's cue names, through the kit's `cue` when the scene offers one (see the
+  // exhibit notes' integration requests), and only on a visitor's command or the moment it lands.
+  const CUES = new Set(["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"]);
+  const cue = (name) => { if (S && S.cue && CUES.has(name)) S.cue(name); };
+  // A command may change a model: it wakes `update`, which otherwise does nothing while every model is settled.
+  const woke = (term) => { const run = term.run; term.run = (line) => { const r = run(line); if (S) S.wake = true; return r; }; return term; };
+  // One geometry from several parts (a single node for a moving part); a bare stand-in where the kit has no merge.
+  const parts = (M, list) => M.merge ? M.merge(...list) : list[0];
+  // An exhibit's light pool: three soft amber squares on the floor, brightest in the middle (emissive only).
+  const pool = (M, w, d, x, z, y = 0.006) => [B(M, w, 0.006, d, "#c87a2a", x, y, z, 0.16), B(M, w * 0.7, 0.006, d * 0.7, "#e8963a", x, y + 0.003, z, 0.26), B(M, w * 0.42, 0.006, d * 0.42, "#ffb85a", x, y + 0.006, z, 0.38)];
   const LAMP_COLORS = ["#ff5a4e", "#ffb23f", "#f2e14e", "#58e07a", "#4fb6ff", "#c47bff"];
+
+  // Eases v toward t by the fraction k, landing on t once within a thousandth (so a settled model reads as settled).
+  const approach = (v, t, k) => Math.abs(t - v) < 1e-3 ? t : v + (t - v) * k;
+  // One step of every model (update, and active(false) to settle them). Returns whether anything is still moving.
+  const step = (dt, elapsed, calm) => {
+    // k: a part settling in about half a second; k2: a slower reveal; k3: a small knob turning briskly.
+    const N = S.n, E = S.ease, k = calm ? 1 : Math.min(1, dt * 6), k2 = calm ? 1 : Math.min(1, dt * 3.5), k3 = calm ? 1 : Math.min(1, dt * 12);
+    let busy = false;
+    // Gateway: lamps; the packets' run (up to MAX_FRAGS cubes, one lost unless it is a resend); the racks' reels and
+    // lamps and the teleprinter's head while they travel; the paper feeding a line a send; HOST B's lamp after a solve.
+    const gw = S.gw;
+    for (let g = 1; g <= 2; g++) {
+      const l = N.gwLamps[g], known = gw.pinged[g], down = GW_ROUNDS[gw.round].down === g;
+      l.off.visible = !known; l.up.visible = known && !down; l.down.visible = known && down;
+    }
+    if (gw.flash > 0) { gw.flash = calm ? 0 : Math.max(0, gw.flash - dt); if (gw.flash > 0) busy = true; }
+    N.hostLamp.visible = gw.solved > 0 && (gw.flash <= 0 || (elapsed % 0.6) < 0.4);
+    if (calm && gw.anim >= 0) { gw.anim = -1; for (let i = 0; i < MAX_FRAGS; i++) N.packets[i].visible = false; }
+    if (gw.anim >= 0) {
+      gw.anim += dt / 3;
+      const G = N.gw, dz = gw.route === 2 ? -2.6 : 2.6, n = gw.single ? 1 : Math.min(MAX_FRAGS, Math.max(1, gw.frags.length || MAX_FRAGS));
+      for (let i = 0; i < MAX_FRAGS; i++) {
+        const c = N.packets[i], u = gw.anim * 1.4 - i * 0.08;
+        c.visible = i < n && u > 0 && u < 1;
+        if (!c.visible) continue;
+        const lost = !gw.single && (gw.missing === -2 ? true : i === gw.missing % n);
+        if (u < 0.5) { const t = u * 2; c.position.x = G.ax + (G.gx - G.ax) * t; c.position.z = G.zc + dz * t; c.position.y = G.y; }
+        else if (lost) { c.position.x = G.gx; c.position.z = G.zc + dz; c.position.y = G.y - (u - 0.5) * 3; }
+        else { const t = (u - 0.5) * 2; c.position.x = G.gx + (G.bx - G.gx) * t; c.position.z = G.zc + dz * (1 - t); c.position.y = G.y; }
+      }
+      if (gw.anim > 1) { gw.anim = -1; for (let i = 0; i < MAX_FRAGS; i++) N.packets[i].visible = false; }
+    }
+    if (!calm && gw.anim >= 0) {
+      busy = true;
+      for (let i = 0; i < N.reels.length; i++) N.reels[i].rotation.z += dt * (i & 1 ? -1.2 : 1.6);
+      const st = Math.floor(elapsed * 3);
+      if (st !== S.rackStep) { S.rackStep = st; for (let i = 0; i < N.rackLights.length; i++) N.rackLights[i].visible = ((i * 7 + st * 3) % 5) < 2; }
+      N.printHead.position.x = N.printX + Math.sin(gw.anim * 38) * 0.26;
+    } else N.printHead.position.x = N.printX;
+    const feed = Math.min(gw.feed, 8) * 0.012;
+    E.paper = approach(E.paper, feed, k2); if (E.paper !== feed) busy = true;
+    N.paper.position.y = N.paperY + E.paper;
+    // Key exchange: the two mixtures cross the wire (yours green, Bo's orange), then the matching lamps. The paint: the
+    // secret tins open on PICK and each jar fills with its mixture; after SHARE both jars fill the same brown.
+    const dh = S.dh;
+    if (calm && dh.anim >= 0) { dh.anim = -1; N.dhTokens[0].visible = N.dhTokens[1].visible = false; }
+    if (dh.anim >= 0) {
+      dh.anim = Math.min(2, dh.anim + dt * 0.8);
+      const a = N.dhTokens[0], b = N.dhTokens[1], t = Math.min(1, dh.anim), e = t * t * (3 - 2 * t);
+      a.visible = b.visible = dh.anim < 2;
+      a.position.x = N.dh.x0 + (N.dh.x1 - N.dh.x0) * e; b.position.x = N.dh.x1 - (N.dh.x1 - N.dh.x0) * e;
+      if (dh.anim >= 2) dh.anim = -1; else busy = true;
+    }
+    for (let i = 0; i < N.dhLamps.length; i++) { const on = dh.key > 0 && dh.key % LAMP_COLORS.length === i; N.dhLamps[i][0].visible = on; N.dhLamps[i][1].visible = on; }
+    const lidT = dh.a > 0 ? 1 : 0, mixT = calm ? lidT : (dh.a > 0 && E.lid > 0.85 ? 1 : 0), sharedT = dh.key > 0 && (calm || E.mix > 0.95) ? 1 : 0;
+    E.lid = approach(E.lid, lidT, k2); E.mix = approach(E.mix, mixT, k2); E.shared = approach(E.shared, sharedT, k2);
+    if (E.lid !== lidT || E.mix !== mixT || E.shared !== sharedT || (dh.key > 0) !== (sharedT > 0)) busy = true;
+    N.lids[0].rotation.x = N.lids[1].rotation.x = -E.lid * 1.9;
+    N.mixFill[0].scale.y = N.mixFill[1].scale.y = Math.max(0.001, E.mix);
+    N.sharedFill[0].scale.y = N.sharedFill[1].scale.y = Math.max(0.001, E.shared);
+    // Signature desk: the stamp comes down as the red private key turns in the lock box; the signed card rises out of
+    // it; VERIFY turns the green public key and its verdict lamp grows in.
+    const rsa = S.rsa;
+    if (rsa.stamp > 0) { rsa.stamp = calm ? 0 : Math.max(0, rsa.stamp - dt * 2); N.stamp.position.y = N.stampY - Math.sin(rsa.stamp * Math.PI) * 0.22; if (rsa.stamp > 0) busy = true; }
+    N.keys[0].rotation.z = Math.sin(rsa.stamp * Math.PI) * 1.57;
+    if (rsa.check > 0) { rsa.check = calm ? 0 : Math.max(0, rsa.check - dt * 1.6); if (rsa.check > 0) busy = true; }
+    N.keys[1].rotation.z = Math.sin(rsa.check * Math.PI) * 1.57;
+    const cardT = rsa.signs > 0 ? 1 : 0;
+    E.card = approach(E.card, cardT, k2); if (E.card !== cardT) busy = true;
+    N.sigCard.position.y = N.sigCardY + E.card * 0.15;
+    if (rsa.verdict !== E.lastVerdict) { E.lastVerdict = rsa.verdict; E.verdict = 0; }
+    E.verdict = approach(E.verdict, 1, k); if (E.verdict !== 1) busy = true;
+    const vs = 0.25 + 0.75 * E.verdict;
+    N.verdict[0].visible = rsa.verdict === 1; N.verdict[1].visible = rsa.verdict === 2;
+    N.verdict[0].scale.x = N.verdict[0].scale.y = N.verdict[0].scale.z = N.verdict[1].scale.x = N.verdict[1].scale.y = N.verdict[1].scale.z = vs;
+    // Floppy: the disk eases to where its step puts it; loaded, the door closes, the disk spins up behind the drive's
+    // window while the loader is read (the lamp flickers, the cards light in turn), then spins down, read.
+    const f = S.floppy, F = N.floppy, fs = f.step;
+    if (fs !== E.lastStep) { if (fs === 3) { E.load = 0; cue("whir"); } else if (fs === 0 || fs === 2) cue("click"); E.lastStep = fs; }
+    const target = fs === 0 ? F.sleeve : fs === 1 ? F.out : fs === 2 ? F.slot : F.inside;
+    for (let i = 0; i < 3; i++) { F.pos[i] = approach(F.pos[i], target[i], k); if (F.pos[i] !== target[i]) busy = true; }
+    N.disk.position.x = F.pos[0]; N.disk.position.y = F.pos[1]; N.disk.position.z = F.pos[2];
+    const loaded = fs === 3;
+    if (!loaded) E.load = 99; else if (E.load < 3.5) E.load = calm ? 3.5 : E.load + dt;
+    const reading = loaded && E.load < 3.5;
+    E.spin = calm ? 0 : approach(E.spin, reading ? 9 : 0, k2);
+    if (E.spin > 0) { N.hub.rotation.z += dt * E.spin; N.spinDisc.rotation.z -= dt * E.spin; }
+    if (reading || E.spin > 0) busy = true;
+    const doorT = loaded ? -1.2 : 0;
+    N.door.rotation.x = approach(N.door.rotation.x, doorT, k); if (N.door.rotation.x !== doorT) busy = true;
+    N.diskLamp.visible = loaded && (!reading || (elapsed % 0.4) < 0.2);
+    const cards = !loaded ? 0 : reading ? Math.min(3, Math.floor(E.load * 1.1)) : 3;
+    for (let i = 0; i < 3; i++) N.cards[i].visible = i < cards;
+    // Front panel: when a command changed it, a sweep runs across the lamps and down the byte tray, lighting the new
+    // state as it passes; the switch levers swing to their places.
+    const p = S.panel;
+    if (p.dirty) { p.dirty = false; E.sweep = calm ? 1 : 0; S.panelLive = true; }
+    if (S.panelLive) {
+      E.sweep = calm ? 1 : Math.min(1, E.sweep + dt / 0.6);
+      const litTo = Math.floor(E.sweep * 8.999), rows = Math.floor(E.sweep * 16.999);
+      let moving = E.sweep < 1;
+      for (let i = 0; i < 8; i++) {
+        const bit = 7 - i, on = (p.sw >> bit) & 1, lt = on ? -0.5 : 0.5;
+        S.levers[i] = approach(S.levers[i], lt, k); if (S.levers[i] !== lt) moving = true;
+        N.levers[i].rotation.x = S.levers[i];
+        N.dataOn[i].visible = !!on && i <= litTo; N.addrOn[i].visible = !!((p.addr >> bit) & 1) && i <= litTo;
+      }
+      for (let i = 0; i < 256; i++) N.tray[i].visible = p.mem[i] !== 0 && (i >> 4) <= rows;
+      N.wonLamp.visible = p.won && E.sweep >= 1;
+      S.panelLive = moving; if (moving) busy = true;
+    }
+    // Coupler: on SEND the handset lifts and seats in its cups with a thunk; the current bit's lamp and the current
+    // byte as bars while it plays.
+    let lift = 0;
+    if (E.seat < 1) {
+      E.seat = calm ? 1 : Math.min(1, E.seat + dt / 0.45);
+      const u = E.seat;
+      lift = u < 1 ? (u < 0.45 ? Math.sin(u / 0.45 * Math.PI / 2) * 0.16 : 0.16 * (1 - ((u - 0.45) / 0.55) * ((u - 0.45) / 0.55))) : 0;
+      if (E.seat >= 1) cue("thunk"); else busy = true;
+      N.handset.position.y = N.handsetY + lift;
+    }
+    const c = S.coupler;
+    if (c.playing) {
+      busy = true;
+      c.t += dt;
+      const i = Math.floor(c.t / BIT);
+      if (i >= c.count) c.playing = false;
+      else {
+        N.bitLamps[0].visible = !c.bits[i]; N.bitLamps[1].visible = !!c.bits[i];
+        const base = i - (i & 7);
+        for (let b = 0; b < 8; b++) N.bars[b].scale.y = base + b < c.count && c.bits[base + b] ? 1 : 0.2;
+        if (E.seat >= 1) N.handset.position.y = N.handsetY + (calm ? 0 : Math.sin(c.t * 40) * 0.008);
+      }
+      if (!c.playing) { N.bitLamps[0].visible = N.bitLamps[1].visible = false; for (let b = 0; b < 8; b++) N.bars[b].scale.y = 0.1; N.handset.position.y = N.handsetY; }
+    }
+    // The home cluster. The TV's knobs turn to the dial and fine settings; tuning in, snow lies over the new picture and
+    // thins out; the console's game replays its last line a tick at a time on the screen, and the controllers' knobs
+    // turn with each paddle; the calculator lights its places in turn from the right. Idle (TV off) nothing moves.
+    const tv = S.tv, shows = tvShows(tv), pd = S.paddle, Sc = N.screen;
+    let replay = false;
+    if (tv.dirty) {
+      if (shows !== E.lastShow) { E.tune = !calm && shows !== "off" && shows !== "snow" ? 0 : 1; E.lastShow = shows; }
+      N.tvLamp.visible = tv.on;
+      for (let i = 0; i < N.card.length; i++) N.card[i].visible = shows === "card";
+      for (let i = 0; i < N.sky.length; i++) N.sky[i].visible = shows === "sky";
+      for (let i = 0; i < N.fish.length; i++) N.fish[i].visible = shows === "fish";
+      for (let i = 0; i < N.court.length; i++) N.court[i].visible = shows === "console";
+      N.switchKnob.position.z = N.switchZ + (tv.sw === "B" ? -0.02 : 0.02);
+      S.speckStep = -1;
+    }
+    const dialT = tv.dial * 0.5, fineT = tv.fine * 0.4;
+    E.dial = approach(E.dial, dialT, k3); E.fine = approach(E.fine, fineT, k3);
+    if (E.dial !== dialT || E.fine !== fineT) busy = true;
+    N.tvDial.rotation.x = E.dial; N.tvFine.rotation.x = E.fine;
+    if (E.tune < 1) { E.tune = calm ? 1 : Math.min(1, E.tune + dt / 0.7); busy = true; }
+    const fuzzy = shows === "snow" || (shows !== "off" && !tvClear(tv)), nSpecks = fuzzy ? 8 : E.tune < 1 ? Math.ceil(8 * (1 - E.tune)) : 0;
+    N.snowBg.visible = shows === "snow" || (shows !== "off" && E.tune < 0.35);
+    for (let i = 0; i < N.specks.length; i++) N.specks[i].visible = i < nSpecks;
+    if (nSpecks > 0 && (!calm || S.speckStep < 0)) {
+      if (!calm) busy = true;
+      const st = calm ? 0 : Math.floor(elapsed * 12);
+      if (st !== S.speckStep) {
+        S.speckStep = st;
+        for (let i = 0; i < N.specks.length; i++) {
+          tv.rng = (Math.imul(tv.rng, 1103515245) + 12345) >>> 0;
+          N.specks[i].position.z = Sc.sz + ((tv.rng >>> 8) / 16777216 - 0.5) * 0.64;
+          N.specks[i].position.y = Sc.sy + ((tv.rng & 255) / 256 - 0.5) * 0.44;
+        }
+      }
+    }
+    let py = pd.py, cy = pd.cy, bx = pd.bx, by = pd.by, live = pd.live;
+    if (pd.pathN > 1 && pd.pathT < pd.pathN - 1) {
+      pd.pathT = calm ? pd.pathN - 1 : Math.min(pd.pathN - 1, pd.pathT + dt / 0.14);
+      const o = Math.floor(pd.pathT) * 5;
+      py = pd.path[o]; cy = pd.path[o + 1]; bx = pd.path[o + 2]; by = pd.path[o + 3]; live = pd.path[o + 4] > 0;
+      replay = true; if (pd.pathT < pd.pathN - 1) busy = true;
+    }
+    if (tv.dirty || pd.dirty || replay) {
+      const onConsole = shows === "console";
+      N.youPad.visible = N.oogaPad.visible = onConsole; N.ball.visible = onConsole && live;
+      N.youPad.position.y = Sc.sy + 0.21 - (py + 1) * Sc.rowH; N.oogaPad.position.y = Sc.sy + 0.21 - (cy + 1) * Sc.rowH;
+      N.ball.position.y = Sc.sy + 0.21 - by * Sc.rowH; N.ball.position.z = Sc.sz + Sc.half - bx * (2 * Sc.half / (PW - 1));
+      tv.dirty = false; pd.dirty = false;
+    }
+    const youT = (py - 3) * 0.6, oogaT = (cy - 3) * 0.6;
+    E.knobYou = approach(E.knobYou, youT, k3); E.knobOoga = approach(E.knobOoga, oogaT, k3);
+    if (E.knobYou !== youT || E.knobOoga !== oogaT) busy = true;
+    for (let i = 0; i < 2; i++) { N.knobs[i].rotation.y = N.knobs[i].baseY + E.knobYou; N.knobs[2 + i].rotation.y = N.knobs[2 + i].baseY + E.knobOoga; }
+    // The relay cabinet: its route and down lamps follow the toy when a command changed it.
+    if (S.relayDirty && S.relay) {
+      S.relayDirty = false;
+      const r = S.relay;
+      N.relayRoute.position.y = N.relayTop + RELAY.laneY[r.route];
+      N.relayDown.visible = r.down >= 0;
+      if (r.down >= 0) N.relayDown.position.y = N.relayTop + RELAY.laneY[r.down];
+    }
+    const calc = S.calc;
+    let drawCalc = false;
+    if (calc.dirty) { calc.dirty = false; calcCells(calc.shown, S.cells, S.dots); E.reveal = calm ? 8 : 0; drawCalc = true; }
+    if (E.reveal < 8) { E.reveal = calm ? 8 : Math.min(8, E.reveal + dt / 0.045); drawCalc = true; if (E.reveal < 8) busy = true; }
+    if (drawCalc) {
+      const from = CALC_PLACES - Math.floor(E.reveal);
+      for (let i = 0; i < CALC_PLACES; i++) {
+        const on = i >= from ? SEGS[S.cells[i]] || "" : "";
+        for (let kk = 0; kk < 7; kk++) N.segs[i][kk].visible = on.indexOf(SEG_ORDER[kk]) >= 0;
+        N.dots[i].visible = i >= from && S.dots[i] === 1;
+      }
+    }
+    return busy;
+  };
 
   window.BL.genesisExhibits.register(1, {
     sources,
@@ -810,6 +1039,14 @@
       S.paddleTerm = paddleTerminal(S.paddle); S.tvTerm = tvTerminal(S.tv); S.calcTerm = calcTerminal(S.calc);
       S.gwTerm = gatewayTerminal(S.gw); S.dhTerm = dhTerminal(S.dh); S.rsaTerm = rsaTerminal(S.rsa);
       S.panelTerm = panelTerminal(S.panel); S.couplerTerm = couplerTerminal(S.coupler);
+      for (const t of [S.paddleTerm, S.tvTerm, S.calcTerm, S.gwTerm, S.dhTerm, S.rsaTerm, S.panelTerm, S.couplerTerm]) woke(t);
+      S.cue = typeof kit.cue === "function" ? kit.cue : null;
+      // Eased values for the models (preallocated; update writes them in place). `wake` starts true so the first frame
+      // settles every model; afterwards update runs only while something moves (`busy`) or a command woke it.
+      S.wake = true; S.busy = false; S.wasCalm = false;
+      S.ease = { lid: 0, mix: 0, shared: 0, keyTurn: 0, check: 0, card: 0, verdict: 1, lastVerdict: 0, paper: 0, load: 99, spin: 0, lastStep: 0,
+        sweep: 1, seat: 1, dial: 0, fine: 0, tune: 1, lastShow: "off", knobYou: 0, knobOoga: 0, reveal: 8, lastShown: "" };
+      S.levers = new Float32Array(8);
       const N = S.n;
       // A solid that a walking Ooga cannot enter when it stands on the ground.
       const block = (w, h, d, color, x, y, z, em = 0) => {
@@ -842,7 +1079,10 @@
         solid(0.8, 0.04, 0.26, "#3a3632", x, top + 1.02, zz + 0.16);
         for (let r = 0; r < 3; r++) for (let c = 0; c < 9; c++) at(keyCream, x - 0.32 + c * 0.08, top + 1.055, zz + 0.08 + r * 0.075);
         solid(0.7, 0.14, 0.14, "#2a2826", x, top + 1.07, zz - 0.18);
-        solid(0.62, 0.6, 0.02, "#f7f3ea", x, top + 1.42, zz - 0.2);
+        N.paper = solid(0.62, 0.6, 0.02, "#f7f3ea", x, top + 1.42, zz - 0.2); N.paperY = top + 1.42;
+        // The print head on its carriage: it runs along the platen while packets travel (one merged part).
+        N.printHead = place(createNode({ geometry: parts(M, [M.box({ w: 0.1, h: 0.08, d: 0.07, color: "#2a2826" }), M.box({ w: 0.04, h: 0.03, d: 0.03, color: "#c8601e", emissive: 0.6, offset: { x: 0, y: 0.05, z: 0.02 } })]), position: { x, y: top + 1.15, z: zz - 0.08 } }));
+        N.printX = x;
         for (let i = 0; i < 5; i++) solid(0.42 - (i % 2) * 0.14, 0.012, 0.024, "#4a4a4a", x - 0.05, top + 1.24 + i * 0.08, zz - 0.18);
       };
       // An electric typewriter on a metal typing table.
@@ -890,8 +1130,10 @@
         const zz = z - 0.95;
         block(0.9, 0.7, 0.55, "#8a6a44", x, top + 0.35, zz);
         solid(0.78, 0.14, 0.46, "#4a3020", x, top + 0.77, zz);
-        solid(0.78, 0.42, 0.05, "#4a3020", x, top + 1.05, zz - 0.24);
-        solid(0.7, 0.34, 0.02, "#c4b79a", x, top + 1.05, zz - 0.21);
+        // The lid stands open on its hinge, tilted well back so it never hides the coupler behind it (one part).
+        // (Its node stands at the stand's middle, inside its footprint; the hinge at the case's back edge is in the geometry.)
+        const lidParts = [M.box({ w: 0.78, h: 0.42, d: 0.05, color: "#4a3020", offset: { x: 0, y: 0.21, z: 0 } }), M.box({ w: 0.7, h: 0.34, d: 0.02, color: "#c4b79a", offset: { x: 0, y: 0.21, z: 0.03 } })];
+        place(createNode({ geometry: M.turnedX && M.moved ? M.moved(M.turnedX(parts(M, lidParts), -1.15), 0, 0, -0.24) : lidParts[0], position: { x, y: top + 0.84, z: zz } }));
         solid(0.62, 0.03, 0.2, "#e6dcc4", x, top + 0.855, zz + 0.08);
         for (let r = 0; r < 3; r++) for (let c = 0; c < 8; c++) at(keyDark, x - 0.25 + c * 0.07, top + 0.875, zz + 0.02 + r * 0.055);
         solid(0.42, 0.02, 0.12, "#f7f3ea", x, top + 0.86, zz - 0.11);
@@ -983,7 +1225,7 @@
             const p = S.post, i = (p.opened + 17) % 48;
             p.opened = i;
             const b = N.postBoxes[i].position;
-            N.postOpen.position.x = b.x; N.postOpen.position.y = b.y; N.postOpen.visible = true;
+            N.postOpen.position.x = b.x; N.postOpen.position.y = b.y; N.postOpen.visible = true; S.wake = true; cue("click");
             return { caption: `You picked box ${i + 1} of 48 and solved its small puzzle quickly. A listener does not know which box you chose and would have to search many. A toy model of the work gap, not a secure method. Press Space again to try another box.` };
           } });
         lectern(-14, zc + 2.2, "#6b4a22");
@@ -994,15 +1236,25 @@
       {
         const zc = Z1 - 48, x = -18;
         block(4.4, 0.8, 1.4, "#7a5a38", x, top + 0.4, zc);
-        sign("YOU", "keep your secret", x - 1.9, top + 1.5, zc + 0.75, 0, 0.3);
-        sign("BO", "keeps a secret too", x + 1.9, top + 1.5, zc + 0.75, 0, 0.3);
+        // Name boards on the bench's front skirt, below its top, so they never hide the paint or the lamps.
+        sign("YOU", "keep your secret", x - 1.9, top + 0.42, zc + 0.75, 0, 0.3);
+        sign("BO", "keeps a secret too", x + 1.9, top + 0.42, zc + 0.75, 0, 0.3);
+        // Paint mixing, a picture of the idea: each side's secret tin opens on PICK and its mixing jar fills with the
+        // public yellow plus its secret (yours green, Bo's orange); SHARE fills both jars the same brown. Tins and jars
+        // are in the bench's merged mesh; only the lids and the paint move.
+        const lid = M.box({ w: 0.22, h: 0.025, d: 0.22, color: "#b9b2a0", offset: { x: 0, y: 0, z: 0.11 } });
+        N.lids = [-1, 1].map((sd) => place(createNode({ geometry: lid, position: { x: x + sd * 1.45, y: top + 1.02, z: zc - 0.49 } })));
+        const fill = (color, w) => M.box({ w, h: 0.22, d: w, color, emissive: 0.15, offset: { x: 0, y: 0.11, z: 0 } });
+        N.mixFill = [place(createNode({ geometry: fill("#6aa84f", 0.15), position: { x: x - 0.95, y: top + 0.87, z: zc - 0.38 } })), place(createNode({ geometry: fill("#e8902a", 0.15), position: { x: x + 0.95, y: top + 0.87, z: zc - 0.38 } }))];
+        N.sharedFill = [-1, 1].map((sd) => place(createNode({ geometry: fill("#8a5a2a", 0.158), position: { x: x + sd * 0.95, y: top + 0.87, z: zc - 0.38 } })));
+        for (const nd of [...N.mixFill, ...N.sharedFill]) nd.scale.y = 0.001;
         block(0.12, 2.9, 0.12, "#2a2622", x - 2.4, top + 1.45, zc); block(0.12, 2.9, 0.12, "#2a2622", x + 2.4, top + 1.45, zc);
         solid(4.8, 0.04, 0.04, "#1a1a1a", x, top + 2.8, zc);
         block(0.7, 1.5, 0.7, "#556070", x, top + 0.75, zc - 1.7);
         solid(0.5, 0.5, 0.5, "#6a778a", x, top + 1.75, zc - 1.7);
         solid(0.1, 0.25, 0.2, "#c9a27a", x + 0.3, top + 1.8, zc - 1.7);
         sign("EVE", "an invented listener: hears the wire", x, top + 2.4, zc - 1.3, 0, 0.3);
-        N.dhTokens = [at(M.box({ w: 0.22, h: 0.22, d: 0.22, color: "#4fb6ff", emissive: 1.2 }), x - 2.2, top + 2.62, zc, false),
+        N.dhTokens = [at(M.box({ w: 0.22, h: 0.22, d: 0.22, color: "#6aa84f", emissive: 1.2 }), x - 2.2, top + 2.62, zc, false),
           at(M.box({ w: 0.22, h: 0.22, d: 0.22, color: "#ff9e4f", emissive: 1.2 }), x + 2.2, top + 2.62, zc, false)];
         N.dh = { x0: x - 2.2, x1: x + 2.2 };
         // A lamp at each end per colour; SHARE lights the matching pair.
@@ -1025,6 +1277,13 @@
         solid(0.9, 0.04, 0.6, "#efe6cf", x - 0.5, top + 0.87, zc);
         N.stamp = at(M.box({ w: 0.3, h: 0.35, d: 0.3, color: "#7a2f2a" }), x + 0.6, top + 1.2, zc);
         N.stampY = top + 1.2;
+        // The lock box's keys turn: the red private key on SIGN, the green public key on VERIFY; a signed card rises.
+        // (Each key's node stands inside the desk's footprint; the key reaches out to its keyhole in the geometry, and
+        // turns about its own shaft.)
+        const keyGeo = (bow) => parts(M, [M.box({ w: 0.02, h: 0.02, d: 0.12, color: "#c9a35a", offset: { x: 0, y: 0, z: 0.14 } }), M.box({ w: 0.07, h: 0.07, d: 0.015, color: bow, emissive: 0.35, offset: { x: 0, y: 0, z: 0.205 } }), M.box({ w: 0.035, h: 0.012, d: 0.02, color: "#c9a35a", offset: { x: 0.02, y: 0, z: 0.11 } })]);
+        N.keys = [place(createNode({ geometry: keyGeo("#c84a3a"), position: { x: x + 0.02, y: top + 0.96, z: zc + 0.4 } })), place(createNode({ geometry: keyGeo("#4a9a5a"), position: { x: x + 0.22, y: top + 0.96, z: zc + 0.4 } }))];
+        N.sigCard = place(createNode({ geometry: parts(M, [M.box({ w: 0.2, h: 0.13, d: 0.008, color: "#f4efe2" }), M.box({ w: 0.06, h: 0.06, d: 0.01, color: "#b8342a", emissive: 0.2, offset: { x: 0.05, y: -0.02, z: 0.002 } }), M.box({ w: 0.12, h: 0.008, d: 0.01, color: "#4a4a4a", offset: { x: -0.03, y: 0.035, z: 0.002 } })]), position: { x: x + 0.12, y: top + 0.96, z: zc + 0.38 } }));
+        N.sigCardY = top + 0.96;
         N.verdict = [at(M.box({ w: 0.26, h: 0.26, d: 0.26, color: "#4cff7a", emissive: 1.4 }), x - 1.0, top + 1.05, zc - 0.4, false),
           at(M.box({ w: 0.26, h: 0.26, d: 0.26, color: "#ff4c4c", emissive: 1.4 }), x - 1.0, top + 1.05, zc - 0.4, false)];
         goldSign("CHECKABLE SIGNATURES · 1977 MANUSCRIPT · FEB 1978 JOURNAL", "toy numbers · context · a Bitcoin signature does not mean RSA", x, top + 2.6, zc + 0.3, 0.55);
@@ -1044,6 +1303,8 @@
         solid(0.7, 0.05, 0.05, "#1a1a1a", dx, top + 0.92, zc + 0.51);
         N.door = at(M.box({ w: 0.7, h: 0.1, d: 0.08, color: "#8a8270" }), dx, top + 1.05, zc + 0.53);
         N.diskLamp = at(M.box({ w: 0.08, h: 0.08, d: 0.04, color: "#ff4c4c", emissive: 1.6 }), dx + 0.7, top + 1.05, zc + 0.52, false);
+        // Behind the drive's window, the disk as it turns: brown media, the hub ring and the index hole (one part).
+        N.spinDisc = place(createNode({ geometry: parts(M, [M.box({ w: 0.2, h: 0.2, d: 0.004, color: "#3a2a1c" }), (M.turnedZ ? M.turnedZ(M.box({ w: 0.2, h: 0.2, d: 0.004, color: "#3a2a1c" }), Math.PI / 4) : M.box({ w: 0.2, h: 0.2, d: 0.004, color: "#3a2a1c" })), M.box({ w: 0.06, h: 0.06, d: 0.006, color: "#c9c3b4" }), M.box({ w: 0.02, h: 0.02, d: 0.007, color: "#f4efe2", emissive: 0.4, offset: { x: 0.06, y: 0, z: 0 } })].map((g) => M.moved ? M.moved(g, 0, 0, 0.256) : g)), position: { x: dx + 0.4, y: top + 0.7, z: zc + 0.25 } }));
         block(0.9, 0.9, 0.4, "#3a3530", sx, top + 0.45, zc);
         solid(0.72, 0.7, 0.06, "#e9e2cf", sx, top + 1.2, zc + 0.12);
         // The disk: a jacket and the hub that spins once loaded. Enlarged about 3 times so it can be seen.
@@ -1058,7 +1319,7 @@
         sign("8-INCH FLOPPY · IBM DRIVES SOLD 1971", "period technology · context · enlarged, unbranded model", 25, top + 3.0, zc + 0.3, 0, 0.5);
         opConsole(24.6, zc + 3.3);
         station({ id: "e1-floppy-toy", hint: "Press Space four times: out, in, load, eject", year: 1971, date: "1971: IBM begins selling floppy drives", on: { w: 6, h: 2.2, d: 1.4, x: 24.8, z: zc }, title: "Handle the 8-inch floppy", label: "FLOPPY · 1971", sourceKeys: ["e1FloppyIbm", "e1FloppyChm"], x: 24.6, z: zc + 3.3,
-          onUse: () => { const f = S.floppy, c = FLOPPY_STEPS[f.step]; f.step = (f.step + 1) % FLOPPY_STEPS.length; return { caption: c }; } });
+          onUse: () => { const f = S.floppy, c = FLOPPY_STEPS[f.step]; f.step = (f.step + 1) % FLOPPY_STEPS.length; S.wake = true; return { caption: c }; } });
         lectern(30, zc + 2.4, "#6b4a22");
         station({ id: "e1-floppy", hint: "Read how to handle the floppy", year: 1971, date: "1971: IBM begins selling floppy drives", title: "The 8-inch floppy", label: "8-INCH FLOPPY · 1971", sourceKeys: PANELS.floppy.sources, x: 30, z: zc + 3.3, onUse: board("floppy") });
       }
@@ -1135,12 +1396,14 @@
         const wallX = (side) => side < 0 ? WALL.L : WALL.R;
         const face = (side, layer) => wallX(side) - side * (0.13 + layer * 0.012);
         const art = (side, u, y, w, h, color, layer, em = 0) => solid(0.02, h, w, color, face(side, layer), y, Z1 - u, em);
-        const batten = M.box({ w: 0.04, h: 2.4, d: 0.07, color: "#4e321c" });
         for (const side of [-1, 1]) {
           const wx = wallX(side);
           // Panelling to head height, then three supergraphic bands.
           solid(0.1, 2.4, 56, "#6e4a2a", wx - side * 0.04, top + 1.2, Z1 - 40);
-          for (let u = 12.7; u < 68; u += 1.4) at(batten, wx - side * 0.1, top + 1.2, Z1 - u);
+          // The battens: one merged mesh along the wall (its spot is inside the panelling), the same pieces as before.
+          detail(kit, wx - side * 0.04, top, Z1 - 40, (Mm) => { const list = []; for (let u = 12.7; u < 68; u += 1.4) list.push(B(Mm, 0.04, 2.4, 0.07, "#4e321c", -side * 0.06, 1.2, 40 - u)); return list; });
+          // The battens' footprint as the layout knew it (each was its own piece), held to the cave's wall.
+          obstacle(Math.max(era.cave.x0, wx - side * 0.1 - 0.25), Math.min(era.cave.x1, wx - side * 0.1 + 0.25), Z1 - 67.3 - 0.25, Z1 - 12.7 + 0.25);
           solid(0.06, 0.5, 56, "#8a4a1f", wx - side * 0.04, top + 3.0, Z1 - 40);
           solid(0.06, 0.5, 56, "#d9641e", wx - side * 0.04, top + 3.55, Z1 - 40);
           solid(0.06, 0.5, 56, "#e9a23b", wx - side * 0.04, top + 4.1, Z1 - 40);
@@ -1215,14 +1478,17 @@
           at(globe, x, y, z);
           place(createNode({ geometry: globe, position: { x, y, z }, rotation: { x: 0, y: Math.PI / 4, z: 0 } }));
         };
-        const binderColors = ["#d9641e", "#e9a23b", "#4f8a8b", "#6b7a3a", "#8a4a1f"].map((color) => M.box({ w: 0.28, h: 0.36, d: 0.07, color }));
+        const BINDER_INKS = ["#d9641e", "#e9a23b", "#4f8a8b", "#6b7a3a", "#8a4a1f"];
         const bookshelf = (side, u) => {
           const x = wallX(side) - side * 0.32, z = Z1 - u;
           block(0.42, 2.2, 2.4, "#6e4a2a", x, top + 1.1, z);
           for (let r = 0; r < 4; r++) {
             solid(0.44, 0.04, 2.4, "#4e321c", x, top + 0.4 + r * 0.5, z);
-            for (let i = 0; i < 24; i++) at(binderColors[(i * 3 + r) % 5], x - side * 0.08, top + 0.62 + r * 0.5, z - 1.1 + i * 0.09 + (i > 11 ? 0.1 : 0));
           }
+          // The binders: one merged mesh a shelf (its spot is inside the shelf), the same 96 as before.
+          detail(kit, x, top, z, (Mm) => { const list = []; for (let r = 0; r < 4; r++) for (let i = 0; i < 24; i++) list.push(B(Mm, 0.28, 0.36, 0.07, BINDER_INKS[(i * 3 + r) % 5], -side * 0.08, 0.62 + r * 0.5, -1.1 + i * 0.09 + (i > 11 ? 0.1 : 0))); return list; });
+          // The binders' footprint as the layout knew it (each was its own piece), so merging them moves nothing.
+          obstacle(x - side * 0.08 - 0.25, x - side * 0.08 + 0.25, z - 1.35, z + 1.32);
         };
         const office = (x, u, side) => {
           const z = Z1 - u;
@@ -1303,10 +1569,10 @@
         solid(0.08, 0.03, 0.04, "#2a2622", cx + 0.18, ty + 0.105, cz - 0.08);
         N.switchZ = cz - 0.08; N.switchKnob = solid(0.03, 0.02, 0.03, "#f4f1e6", cx + 0.16, ty + 0.125, cz - 0.08);
         const knob = M.box({ w: 0.07, h: 0.04, d: 0.07, color: "#d9641e" });
+        N.knobs = [];
         for (const dx of [-0.2, 0.2]) {
           solid(0.11, 0.05, 0.15, "#e8dcc0", cx + dx, ty + 0.025, cz + 0.42);
-          place(createNode({ geometry: knob, position: { x: cx + dx, y: ty + 0.07, z: cz + 0.44 } }));
-          place(createNode({ geometry: knob, position: { x: cx + dx, y: ty + 0.07, z: cz + 0.44 }, rotation: { x: 0, y: Math.PI / 4, z: 0 } }));
+          for (const base of [0, Math.PI / 4]) { const kn = place(createNode({ geometry: knob, position: { x: cx + dx, y: ty + 0.07, z: cz + 0.44 }, rotation: { x: 0, y: base, z: 0 } })); kn.baseY = base; N.knobs.push(kn); }
           solid(0.012, 0.012, 0.24, "#2a2622", cx + dx * 0.6, ty + 0.012, cz + 0.27);
         }
         solid(cx - 0.3 - (sx - 0.3), 0.012, 0.02, "#2a2622", (cx - 0.3 + sx - 0.3) / 2, top + 0.032, cz);
@@ -1356,157 +1622,33 @@
 
     },
 
-    // Every frame in this cave: move what the toys changed. Allocation-free.
-    // Calm (`state.calm`, the visit's reduced motion) holds the decoration still: no blinking, spinning, flying
-    // packets or tokens, stamp bounce, card cycling or handset jiggle; each command's result shows at once, in its
-    // final state (the lamps, the disk where its step puts it, the verdict), and the coupler's bit lamps and bars,
-    // which read out the data, still follow it.
+    // Every frame in this gallery: move what the toys changed, eased and in order, allocating nothing. Nothing runs
+    // while every model is settled: only a command (`wake`), something still moving (`busy`) or Calm changing brings
+    // the models up to date. Calm shows each result in its final state at once; the scene's pause and its bench, menu
+    // and console holds stop calling update, so every motion (all stepped by dt) freezes with them.
     update(dt, elapsed, state) {
       if (!S) return;
-      const calm = !!(state && state.calm), N = S.n, k = calm ? 1 : Math.min(1, dt * 6);
-      // Gateway: lamps, then the packets' run (up to MAX_FRAGS cubes, one lost unless it is a resend).
-      const gw = S.gw;
-      for (let g = 1; g <= 2; g++) {
-        const l = N.gwLamps[g], known = gw.pinged[g], down = GW_ROUNDS[gw.round].down === g;
-        l.off.visible = !known; l.up.visible = known && !down; l.down.visible = known && down;
-      }
-      N.hostLamp.visible = gw.solved > 0 && (calm || (elapsed % 1.2) < 0.8);
-      if (calm && gw.anim >= 0) { gw.anim = -1; for (let i = 0; i < MAX_FRAGS; i++) N.packets[i].visible = false; }
-      if (gw.anim >= 0) {
-        gw.anim += dt / 3;
-        const G = N.gw, dz = gw.route === 2 ? -2.6 : 2.6, n = gw.single ? 1 : Math.min(MAX_FRAGS, Math.max(1, gw.frags.length || MAX_FRAGS));
-        for (let i = 0; i < MAX_FRAGS; i++) {
-          const c = N.packets[i], u = gw.anim * 1.4 - i * 0.08;
-          c.visible = i < n && u > 0 && u < 1;
-          if (!c.visible) continue;
-          const lost = !gw.single && (gw.missing === -2 ? true : i === gw.missing % n);
-          if (u < 0.5) { const t = u * 2; c.position.x = G.ax + (G.gx - G.ax) * t; c.position.z = G.zc + dz * t; c.position.y = G.y; }
-          else if (lost) { c.position.x = G.gx; c.position.z = G.zc + dz; c.position.y = G.y - (u - 0.5) * 3; }
-          else { const t = (u - 0.5) * 2; c.position.x = G.gx + (G.bx - G.gx) * t; c.position.z = G.zc + dz * (1 - t); c.position.y = G.y; }
-        }
-        if (gw.anim > 1) { gw.anim = -1; for (let i = 0; i < MAX_FRAGS; i++) N.packets[i].visible = false; }
-      }
-      // The hosts' racks work while packets are on their way (after SEND or RESEND): reels turn and the lamp rows chase,
-      // stepped a few times a second. Idle, and under Calm, they stand still.
-      if (!calm && gw.anim >= 0) {
-        for (let i = 0; i < N.reels.length; i++) N.reels[i].rotation.z += dt * (i & 1 ? -1.2 : 1.6);
-        const step = Math.floor(elapsed * 3);
-        if (step !== S.rackStep) { S.rackStep = step; for (let i = 0; i < N.rackLights.length; i++) N.rackLights[i].visible = ((i * 7 + step * 3) % 5) < 2; }
-      }
-      // Key exchange: the two public numbers cross the wire, then the matching lamps.
-      const dh = S.dh;
-      if (calm && dh.anim >= 0) { dh.anim = -1; N.dhTokens[0].visible = N.dhTokens[1].visible = false; }
-      if (dh.anim >= 0) {
-        dh.anim = Math.min(2, dh.anim + dt * 0.8);
-        const a = N.dhTokens[0], b = N.dhTokens[1], t = Math.min(1, dh.anim);
-        a.visible = b.visible = dh.anim < 2;
-        a.position.x = N.dh.x0 + (N.dh.x1 - N.dh.x0) * t; b.position.x = N.dh.x1 - (N.dh.x1 - N.dh.x0) * t;
-        if (dh.anim >= 2) dh.anim = -1;
-      }
-      for (let i = 0; i < N.dhLamps.length; i++) { const on = dh.key > 0 && dh.key % LAMP_COLORS.length === i; N.dhLamps[i][0].visible = on; N.dhLamps[i][1].visible = on; }
-      // Signature desk: the stamp comes down, the verdict lamp shows.
-      const rsa = S.rsa;
-      if (rsa.stamp > 0) { rsa.stamp = calm ? 0 : Math.max(0, rsa.stamp - dt * 2); N.stamp.position.y = N.stampY - Math.sin(rsa.stamp * Math.PI) * 0.22; }
-      N.verdict[0].visible = rsa.verdict === 1; N.verdict[1].visible = rsa.verdict === 2;
-      // Floppy: ease the disk to where its step puts it, spin while loaded, cards in turn.
-      const f = S.floppy, F = N.floppy, step = f.step;
-      const target = step === 0 ? F.sleeve : step === 1 ? F.out : step === 2 ? F.slot : F.inside;
-      for (let i = 0; i < 3; i++) F.pos[i] += (target[i] - F.pos[i]) * k;
-      N.disk.position.x = F.pos[0]; N.disk.position.y = F.pos[1]; N.disk.position.z = F.pos[2];
-      const loaded = step === 3;
-      if (loaded && !calm) N.hub.rotation.z += dt * 6;
-      N.door.rotation.x += ((loaded ? -1.2 : 0) - N.door.rotation.x) * k;
-      N.diskLamp.visible = loaded && (calm || (elapsed % 0.4) < 0.2);
-      const card = loaded ? (calm ? 3 : Math.floor(elapsed * 1.5) % 4) : -1;
-      for (let i = 0; i < 3; i++) N.cards[i].visible = card >= 0 && i <= card - 1;
-      // Front panel: only when a command changed it.
-      const p = S.panel;
-      if (p.dirty) {
-        p.dirty = false;
-        for (let i = 0; i < 8; i++) {
-          const bit = 7 - i, on = (p.sw >> bit) & 1;
-          N.levers[i].rotation.x = on ? -0.5 : 0.5; N.dataOn[i].visible = !!on; N.addrOn[i].visible = !!((p.addr >> bit) & 1);
-        }
-        for (let i = 0; i < 256; i++) N.tray[i].visible = p.mem[i] !== 0;
-        N.wonLamp.visible = p.won;
-      }
-      // Coupler: the current bit's lamp and the current byte as bars, while it plays.
-      const c = S.coupler;
-      if (c.playing) {
-        c.t += dt;
-        const i = Math.floor(c.t / BIT);
-        if (i >= c.count) c.playing = false;
-        else {
-          N.bitLamps[0].visible = !c.bits[i]; N.bitLamps[1].visible = !!c.bits[i];
-          const base = i - (i & 7);
-          for (let b = 0; b < 8; b++) N.bars[b].scale.y = base + b < c.count && c.bits[base + b] ? 1 : 0.2;
-          N.handset.position.y = N.handsetY + (calm ? 0 : Math.sin(c.t * 40) * 0.008);
-        }
-        if (!c.playing) { N.bitLamps[0].visible = N.bitLamps[1].visible = false; for (let b = 0; b < 8; b++) N.bars[b].scale.y = 0.1; N.handset.position.y = N.handsetY; }
-      }
-      // The home cluster. The TV's screen and knobs, the console's selector and the calculator's display follow their
-      // toys when a command changed them (flags, not every frame); snow and fuzz flicker while a fuzzy channel is up,
-      // held still in Calm. Idle (TV off) nothing moves.
-      const tv = S.tv, shows = tvShows(tv), pd = S.paddle, Sc = N.screen;
-      if (tv.dirty || pd.dirty) {
-        const onConsole = shows === "console";
-        if (tv.dirty) {
-          N.tvLamp.visible = tv.on; N.snowBg.visible = shows === "snow";
-          for (let i = 0; i < N.card.length; i++) N.card[i].visible = shows === "card";
-          for (let i = 0; i < N.sky.length; i++) N.sky[i].visible = shows === "sky";
-          for (let i = 0; i < N.fish.length; i++) N.fish[i].visible = shows === "fish";
-          for (let i = 0; i < N.court.length; i++) N.court[i].visible = onConsole;
-          N.tvDial.rotation.x = tv.dial * 0.5; N.tvFine.rotation.x = tv.fine * 0.4;
-          N.switchKnob.position.z = N.switchZ + (tv.sw === "B" ? -0.02 : 0.02);
-          const fuzzy = shows === "snow" || (shows !== "off" && !tvClear(tv));
-          for (let i = 0; i < N.specks.length; i++) N.specks[i].visible = fuzzy;
-          S.speckStep = -1;
-        }
-        N.youPad.visible = N.oogaPad.visible = onConsole; N.ball.visible = onConsole && pd.live;
-        N.youPad.position.y = Sc.sy + 0.21 - (pd.py + 1) * Sc.rowH; N.oogaPad.position.y = Sc.sy + 0.21 - (pd.cy + 1) * Sc.rowH;
-        N.ball.position.y = Sc.sy + 0.21 - pd.by * Sc.rowH; N.ball.position.z = Sc.sz + Sc.half - pd.bx * (2 * Sc.half / (PW - 1));
-        tv.dirty = false; pd.dirty = false;
-      }
-      if (N.specks[0].visible && (!calm || S.speckStep < 0)) {
-        const step = calm ? 0 : Math.floor(elapsed * 12);
-        if (step !== S.speckStep) {
-          S.speckStep = step;
-          for (let i = 0; i < N.specks.length; i++) {
-            tv.rng = (Math.imul(tv.rng, 1103515245) + 12345) >>> 0;
-            N.specks[i].position.z = Sc.sz + ((tv.rng >>> 8) / 16777216 - 0.5) * 0.64;
-            N.specks[i].position.y = Sc.sy + ((tv.rng & 255) / 256 - 0.5) * 0.44;
-          }
-        }
-      }
-      // The relay cabinet: its route and down lamps follow the toy when a command changed it.
-      if (S.relayDirty && S.relay) {
-        S.relayDirty = false;
-        const r = S.relay;
-        N.relayRoute.position.y = N.relayTop + RELAY.laneY[r.route];
-        N.relayDown.visible = r.down >= 0;
-        if (r.down >= 0) N.relayDown.position.y = N.relayTop + RELAY.laneY[r.down];
-      }
-      const calc = S.calc;
-      if (calc.dirty) {
-        calc.dirty = false;
-        calcCells(calc.shown, S.cells, S.dots);
-        for (let i = 0; i < CALC_PLACES; i++) {
-          const on = SEGS[S.cells[i]] || "";
-          for (let k = 0; k < 7; k++) N.segs[i][k].visible = on.indexOf(SEG_ORDER[k]) >= 0;
-          N.dots[i].visible = S.dots[i] === 1;
-        }
-      }
+      const calm = !!(state && state.calm);
+      if (!S.wake && !S.busy && calm === S.wasCalm) return;
+      S.wake = false; S.wasCalm = calm;
+      S.busy = step(dt, elapsed, calm);
     },
 
-    // Leaving the cave: the coupler falls silent and its readout clears, so nothing plays on out of sight and coming
-    // back starts quiet (a new send starts a new run). The context stays for the visit; `dispose` closes it.
+    // Leaving the gallery: the coupler falls silent, and every motion stops in its final state (so coming back resumes
+    // nothing). The context stays for the visit; `dispose` closes it.
     active(on) {
       if (on || !S) return;
-      const c = S.coupler, N = S.n;
+      const c = S.coupler, gw = S.gw, dh = S.dh, rsa = S.rsa, pd = S.paddle;
       c.playing = false; c.t = 0;
       hush();
-      if (N.bitLamps) { N.bitLamps[0].visible = N.bitLamps[1].visible = false; for (let b = 0; b < 8; b++) N.bars[b].scale.y = 0.1; N.handset.position.y = N.handsetY; }
+      gw.anim = -1; gw.flash = 0; dh.anim = -1; rsa.stamp = 0; rsa.check = 0;
+      if (pd.pathN > 0) pd.pathT = pd.pathN - 1;
+      step(0, 0, true);
+      S.busy = false;
     },
+
+    // For checks only (test/genesis-era-1-upgrade2.mjs): the visit's state and nodes, read, never written.
+    inspect: () => S,
 
     dispose() {
       closeAudio();
