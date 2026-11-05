@@ -1,4 +1,4 @@
-// Private conversations (#188) in Ooga Chat's panel: one person at a time, asked from the Players tab, sealed with a
+// Private conversations (#188) in Ooga Chat's panel: one person at a time, asked from Online Oogas, sealed with a
 // one-time pad the two swapped outside Ooga (one-time-pad.js) and passed on by the room, which cannot read it
 // (docs/auth-and-presence.md). A switch at the panel's head turns between the island's chat and the private one, which
 // has its own tint and lock; it shows only while there is an invite or a conversation.
