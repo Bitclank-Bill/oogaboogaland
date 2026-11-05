@@ -7,6 +7,7 @@ import { runInNewContext } from "node:vm";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
+import { setFlagsFromString } from "node:v8";
 import { createHash, webcrypto } from "node:crypto";
 import { externalizeAudio } from "../scripts/distribution-audio.mjs";
 import { PICTURE_MODULES, externalizeModules, externalizePage, externalizePictures } from "../scripts/distribution-modules.mjs";
@@ -26308,6 +26309,1633 @@ const genesisAudioProof = async () => {
   const closed = ctx.state === "closed" && intervals.size === 0 && !audio.ready && !audio.cue("splash") && audio.context === null;
   return { windowed, onTime, once, skipped, bounded, themes, calmEras, crossfade, engine, beforeActivation, woke, scheduledOnce, fading, settled, rapid, cued, musicSwitch, sharedCues, noAllocation, closed };
 };
+// Era 0's Upgrade 2 suite, folded in from test/genesis-era-0-upgrade2.mjs (gv/upgrade2-era-0) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra0Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Era 0's second upgrade (gv/upgrade2-era-0): the exhibits' motion. Run with
+//   node test/genesis-era-0-upgrade2.mjs
+// Builds Era 0 on a kit with real node fields (position, rotation, scale, visible, glow, children) and a model stub,
+// drives every exhibit through its own terminal, then steps the era's own `update` to check: each command's end state,
+// that the shown model moves between the two, Calm showing the end at once, holds (no update) freezing it,
+// `active(false)` finishing it, nothing running while idle, and only the cue names the host accepts. It also counts
+// the scene records the build adds against 3901b004 (git show), which it prints.
+
+const BASE_SHA = "3901b004e1a7fe895e9b0bdb6d7c97dcab84c41f";
+const CUES = new Set(["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"]);
+const FILES = ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer", "genesis-era-0-lamps", "genesis-era-0"];
+const load = async (source = (f) => readFile(join(root, `src/js/${f}.js`), "utf8")) => {
+  const context = { window: { BL: {} } };
+  for (const f of FILES) runInNewContext(await source(f), context);
+  return context.window.BL;
+};
+const results = [];
+const check = (name, ok, detail = "") => { results.push(!!ok); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok || !detail ? "" : ` :: ${detail}`}`); };
+
+// A kit whose nodes carry what the scene's do, a model stub that counts parts, and a cue that records names.
+const build = (BL) => {
+  const W = BL.genesisWorld, nodes = [], records = { solid: 0, sign: 0, placed: 0, child: 0 }, props = {}, cues = [];
+  const node = (o = {}) => { const n = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, glow: 1, children: [], ...o }; n.position = { ...{ x: 0, y: 0, z: 0 }, ...(o.position || {}) }; nodes.push(n); return n; };
+  const geo = () => ({ verts: [] });
+  const M = { box: geo, lathe: geo, bevelBox: geo, merge: geo, moved: (g) => g, turnedY: (g) => g, turnedX: (g) => g, turnedZ: (g) => g };
+  const kit = { era: W.ERAS[0], top: W.BANK_TOP, channel: W.CHANNEL, M, createNode: node, label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
+    addChild: (p, c) => { records.child++; p.children.push(c); return p; },
+    place: (n) => { records.placed++; return n; },
+    solid: (w, h, d, color, x, y, z, emissive = 0) => { records.solid++; return node({ color, emissive, w, position: { x, y, z } }); },
+    sign: () => { records.sign++; return node(); }, obstacle() {},
+    prop: (d) => { props[d.id] = d; return d; }, cue: (name) => cues.push(name) };
+  const def = BL.genesisExhibits.eras[0];
+  def.build(kit);
+  const term = (id) => { const r = props[id].onUse({}); return (line) => r.terminal.run(line).lines.join(" | "); };
+  const run = (seconds, state = {}) => { for (let t = 0; t < seconds; t += 1 / 60) def.update(1 / 60, t, { calm: false, ...state }); };
+  const running = () => def.motion.running;
+  return { def, kit, nodes, records, props, cues, term, run, running, top: W.BANK_TOP };
+};
+
+const BL = await load(), A = build(BL), top = A.top;
+const byColor = (c) => A.nodes.filter((n) => n.color === c);
+const settle = () => { A.run(8); return A.running(); };
+
+// ---- the disk record finder --------------------------------------------------------------------------------------
+const seek = A.term("e0-disk-seek"), arm = byColor("#ffd276").at(-1);
+const reply = seek("SEEK 49"), to = top + 0.45 + 49 * 0.05;
+const final = Math.abs(arm.position.y - to) < 1e-9;
+A.run(0.2);
+const between = arm.position.y > top + 0.45 + 1e-3 && arm.position.y < to - 1e-3;
+A.run(0.5);
+const arrived = Math.abs(arm.position.y - to) < 1e-9 && A.cues.includes("whir") && A.cues.includes("click");
+check("SEEK sets the arm's final height at once, the shown arm glides there (~0.6 s, eased) and says so in its reply", final && between && arrived && /watch it glide to that height in the live model/.test(reply) && !/after closing this window/.test(reply));
+const platters = A.nodes.find((n) => n.position && n.position.y === top && n.children.length === 0 && n.rotation.y !== 0);
+check("the round platters turn while the arm seeks, then coast to a stop", !!platters && settle() === 0 && (() => { const r = platters.rotation.y; A.run(1); return platters.rotation.y === r; })());
+check("the fifty square silhouettes stay as nodes, hidden behind the round platters", byColor("#707a7f").length === 25 && byColor("#9aa2a5").length === 25 && [...byColor("#707a7f"), ...byColor("#9aa2a5")].every((n) => !n.visible));
+
+// ---- punch a message ---------------------------------------------------------------------------------------------
+const punch = A.term("e0-punch"), holes = byColor("#20292c"), card = byColor("#e4d4a1").at(-1);
+const pattern = () => holes.map((h) => h.visible ? 1 : 0).join("");
+punch("PUNCH OOGA");
+const want = pattern();
+A.run(0.2);
+const travelling = card.scale.x < 0.99 && holes.every((h) => !h.visible);
+A.run(1.3);
+const partial = pattern() !== want && pattern() !== "0".repeat(56);
+const done = settle() === 0 && pattern() === want && Math.abs(card.position.x - holes[0].position.x - 1.35) < 1e-9 && card.scale.x === 1;
+check("PUNCH swaps the card (out to the stacker, in from the hopper), punches column by column, and ends with the command's holes", travelling && partial && done && A.cues.includes("rustle-paper") && A.cues.filter((c) => c === "clack").length >= 4);
+punch("FLIP 1 7"); const flipWant = pattern(); settle();
+check("FLIP punches one column and ends on the flipped card", pattern() === flipWant && /^Read: /.test(punch("READ")));
+check("the card prints its eight column numbers and the punch head carries pins", card.children.length === 1);
+
+// ---- the probability race ----------------------------------------------------------------------------------------
+const race = A.term("e0-race"), gold = byColor("#f2c14e").at(-1), blue = byColor("#68c6ed").at(-1), start0 = gold.position.x;
+race("ODDS 100"); race("STEP 64");
+const goldTo = gold.position.x;
+A.run(0.3);
+const easing = gold.position.x > start0 + 1e-3 && gold.position.x < goldTo - 1e-3;
+settle();
+const flag = A.nodes.find((n) => n.children.length === 0 && n.visible && n.position.y > top + 1.3 && n.rotation.y === 0 && Math.abs(n.position.x - (start0 + 6.7)) < 0.01);
+check("STEP sets the racers' final places at once, the shown racers ease there, and a won race raises the finish flag with a chime", easing && gold.position.x === goldTo && blue.position.x === start0 && !!flag && A.cues.includes("chime"), JSON.stringify({ easing, gx: gold.position.x, goldTo, flag: !!flag }));
+const board = A.nodes.find((n) => n.children.length === 16 && n.rotation.x === 0);
+check("the counting lamp board lights a lamp each eight steps: all eight gold, no blue after 64 gold steps", !!board && board.children.slice(0, 8).every((l) => l.visible) && board.children.slice(8).every((l) => !l.visible));
+race("RESET"); settle();
+check("RESET brings both racers home, the lamps out and the flag down", gold.position.x === start0 && blue.position.x === start0 && board.children.every((l) => !l.visible) && !flag.visible);
+
+// ---- ARPANET's login ---------------------------------------------------------------------------------------------
+const login = A.term("e0-login"), lamp = byColor("#8effab").at(-1);
+const light = A.nodes.find((n) => n.children.length === 6), printer = A.nodes.find((n) => n.children.length === 8);
+const typed = () => printer.children.map((c) => c.visible ? 1 : 0).join("");
+login("LOGIN");
+const lampFinal = lamp.visible === false;
+A.run(0.5);
+const carrying = light.visible && light.children[1].visible && !light.children[2].visible && lamp.visible && typed() === "00000000";
+A.run(0.6);
+const typedL = typed() === "10000000" && light.children[2].visible;
+settle();
+check("LOGIN: the light carries L, then O, each typed as it arrives, then stops red and the console lamp goes out", lampFinal && carrying && typedL && typed() === "11100000" && !light.visible && !lamp.visible && A.cues.includes("relay") && A.cues.includes("thunk"));
+login("RETRY"); settle();
+check("RETRY sends L O G I N down the line, typed on the sheet's second line, the lamp lit and a chime", typed() === "11111111" && lamp.visible && !light.visible);
+login("RESET");
+check("RESET clears the sheet and the line", typed() === "00000000" && !light.visible && lamp.visible && A.running() === 0 || (settle() === 0 && typed() === "00000000"));
+
+// ---- Feller's book -----------------------------------------------------------------------------------------------
+const book = A.nodes.find((n) => n.children.length === 16 && n.rotation.x > 0);
+A.props["e0-feller"].onUse({});
+A.run(1);
+const drawing = book.children.filter((c) => c.visible).length;
+settle();
+check("opening Feller's shelf draws the book's random walk a step at a time, to all sixteen steps", drawing > 2 && drawing < 16 && book.children.every((c) => c.visible) && book.rotation.x > 0);
+
+// ---- the toys: Nim, the CRT, the pointer, the lamp panel ---------------------------------------------------------
+const nim = A.term("e0-nim"), counters = byColor("#e8dcc0").slice(0, 15);
+const heapsLeft = (line) => { const m = /A (\d+), B (\d+), C (\d+)/.exec(line); return +m[1] + +m[2] + +m[3]; };
+const nimFinal = heapsLeft(nim("TAKE C 3"));
+const shownAt = counters.filter((c) => c.visible).length;
+A.run(0.1);
+const sliding = counters.some((c) => c.visible && c.position.y > top + 0.886);
+settle();
+check("Nim: taken counters slide off the table's end and go; the rest stand home", sliding && counters.filter((c) => c.visible).length <= shownAt && counters.every((c) => !c.visible || Math.abs(c.position.y - (top + 0.885)) < 1e-9) && counters.filter((c) => c.visible).length === nimFinal);
+const crt = A.term("e0-crt"), strips = byColor("#0f1a12");
+crt("BRIGHT 4");
+A.run(0.15);
+const scanning = strips.some((s) => s.visible) && !strips.every((s) => s.visible);
+settle();
+check("CRT: a change redraws the frame line by line, ending with every line drawn", scanning && strips.every((s) => s.visible));
+crt("BRIGHT 0"); crt("CONTRAST 0"); settle();
+check("CRT: the tube hums down when it goes dark and up when it lights", A.cues.includes("hum-stop") && (crt("CONTRAST 4"), settle(), A.cues.includes("hum-start")));
+const pt = A.term("e0-pointer"), cursor = byColor("#f4f4f4").at(-1), x0 = cursor.position.x;
+pt("MOVE 1 0"); const xTo = cursor.position.x;
+A.run(0.1);
+const gliding = cursor.position.x > x0 + 1e-4 && cursor.position.x < xTo - 1e-4;
+settle();
+check("pointer: the cursor glides to its cell", gliding && cursor.position.x === xTo);
+const panel = A.term("e0-lamps"), bulbs = byColor("#ffcf5a").slice(-8);
+panel("SET 255");
+A.run(0.1);
+const warming = bulbs.every((b) => b.visible && b.glow > 0 && b.glow < 1);
+settle();
+check("lamp panel: the switches throw and the lamps warm up to full", warming && bulbs.every((b) => b.visible && b.glow === 1));
+
+// ---- Calm, holds, leaving, idle, cues ----------------------------------------------------------------------------
+seek("SEEK 3"); punch("PUNCH CALM"); race("STEP 10"); nim("RESET");
+A.def.update(1 / 60, 0, { calm: true });
+check("Calm: one update shows every command's end at once", A.running() === 0 && Math.abs(arm.position.y - (top + 0.45 + 3 * 0.05)) < 1e-9 && card.scale.x === 1);
+seek("SEEK 40"); A.run(0.15);
+const held = arm.position.y;
+// A pause, the menu or the console holds the era (the scene calls no update): nothing moves.
+check("holds: with no update the shown model stays where it was", arm.position.y === held && A.running() > 0);
+A.def.active(false, {});
+check("leaving the gallery finishes the motion at its end, nothing left running", A.running() === 0 && Math.abs(arm.position.y - (top + 0.45 + 40 * 0.05)) < 1e-9);
+A.def.active(true, {}); settle();
+const snap = JSON.stringify(A.nodes.map((n) => [n.position.x, n.position.y, n.rotation.y, n.visible, n.glow]));
+A.run(2);
+check("idle: with nothing running a frame changes nothing", A.running() === 0 && JSON.stringify(A.nodes.map((n) => [n.position.x, n.position.y, n.rotation.y, n.visible, n.glow])) === snap);
+check(`cues: only the host's names (${[...new Set(A.cues)].join(", ")})`, A.cues.length > 0 && A.cues.every((c) => CUES.has(c)));
+const B2 = build(BL);
+check("a second visit starts fresh: its own animators and nodes, none running", B2.running() === 0 && B2.nodes.every((n) => !A.nodes.includes(n)));
+
+// ---- records against 3901b004 ------------------------------------------------------------------------------------
+try {
+  const base = await load(async (f) => execFileSync("git", ["show", `${BASE_SHA}:src/js/${f}.js`], { cwd: root, encoding: "utf8" }));
+  const R0 = build(base).records, R1 = build(await load()).records;
+  const sum = (r) => r.solid + r.sign + r.placed + r.child;
+  console.log(`records at 3901b004: ${JSON.stringify(R0)} (${sum(R0)}); now: ${JSON.stringify(R1)} (${sum(R1)}); added ${sum(R1) - sum(R0)}`);
+  check("no solid or sign records added (new parts are placed nodes and their children)", R1.solid === R0.solid && R1.sign === R0.sign);
+} catch (e) { console.log(`records: base not available (${e.message.split("\n")[0]})`); }
+
+const failed = results.filter((r) => !r).length;
+console.log(`\n${results.length - failed}/${results.length} Era 0 upgrade2 checks passed`);
+process.exit(failed ? 1 : 0);
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
+// Era 1's Upgrade 2 suite, folded in from test/genesis-era-1-upgrade2.mjs (gv/upgrade2-era-1) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra1Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Rule checks for Era 1's second upgrade (moving mechanisms, eased reveals, light pools, cues), through
+// genesis-era-1.js itself in Node: each exhibit's end state, Calm showing it at once, holds freezing motion, nothing
+// per frame while idle, active(false) stopping everything, cues only from the Genesis tab's list, the story text
+// unchanged, and the scene records against 3901b004. Run: node --expose-gc test/genesis-era-1-upgrade2.mjs
+
+const BASE = "3901b004e1a7fe895e9b0bdb6d7c97dcab84c41f", BASE_RECORDS = 1574;
+const CUE_NAMES = ["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"];
+const results = [];
+const record = (name, ok, detail = "") => { results.push(!!ok); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok || !detail ? "" : ` · ${detail}`}`); };
+const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
+
+const load = async (source) => {
+  const context = { window: {} };
+  context.window.BL = {};
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  runInNewContext(source, context);
+  return context.window.BL;
+};
+const headSource = await readFile(join(root, "src/js/genesis-era-1.js"), "utf8");
+const BL = await load(headSource), W = BL.genesisWorld, E1 = BL.genesisExhibits.eras[1];
+
+// A recording kit, packed as the scene packs it: nodes count writes to their transforms, so idle frames can be shown to
+// write nothing; cues are recorded.
+let writes = 0, records = 0;
+const cues = [];
+const watched = (o) => new Proxy(o, { set(t, k, v) { if (t[k] !== v) writes++; t[k] = v; return true; } });
+const build = (withCue = true) => {
+  const nodes = [], props = {};
+  const node = (o = {}) => {
+    const n = { position: watched({ x: 0, y: 0, z: 0 }), rotation: watched({ x: 0, y: 0, z: 0 }), scale: watched({ x: 1, y: 1, z: 1 }), visible: o.visible !== false, children: [] };
+    for (const k of ["position", "rotation", "scale"]) if (o[k]) Object.assign(n[k], o[k]);
+    const p = new Proxy(n, { set(t, k, v) { if (t[k] !== v) writes++; t[k] = v; return true; } });
+    nodes.push(p);
+    return p;
+  };
+  records = 0;
+  const kit = { era: W.ERAS[1], top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: (o) => { records++; return node(o); }, addChild: () => {}, place: (n) => n,
+    label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: (w, h, d, c, x, y, z) => { records++; return node({ position: { x, y, z } }); },
+    sign: () => { records += 3; return node(); }, obstacle: () => {}, prop: (d) => { records++; props[d.id] = d; return d; } };
+  if (withCue) kit.cue = (name) => cues.push(name);
+  E1.build(W.packedKit(kit, 1, E1.build));
+  const S = E1.inspect();
+  return { nodes, props, S, N: S.n, records };
+};
+let clock = 0;
+const frames = (seconds, calm = false, reading = false) => { for (let i = 0; i < Math.round(seconds * 30); i++) { clock += 1 / 30; E1.update(1 / 30, clock, { era: 1, walking: true, reading, x: 0, z: 0, calm }); } };
+const run = (V, id, line) => V.props[id].onUse({}).terminal.run(line);
+const snap = (V) => JSON.stringify(V.nodes.map((n) => [n.position.x, n.position.y, n.position.z, n.rotation.x, n.rotation.y, n.rotation.z, n.scale.x, n.scale.y, n.visible]));
+
+// --- Scene records ---------------------------------------------------------------------------------------------
+{
+  const V = build();
+  record(`scene records within the base's (${BASE_RECORDS} at ${BASE.slice(0, 7)})`, V.records <= BASE_RECORDS, `${V.records}`);
+  console.log(`INFO scene records: base ${BASE_RECORDS}, head ${V.records}, added ${V.records - BASE_RECORDS}`);
+}
+
+// --- Story text and commands unchanged ---------------------------------------------------------------------------
+{
+  let base = null;
+  try { base = execFileSync("git", ["show", `${BASE}:src/js/genesis-era-1.js`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { base = null; }
+  if (!base) console.log("INFO story-text comparison skipped: the base commit is not in this checkout");
+  else {
+    const BB = await load(base), EB = BB.genesisExhibits.eras[1];
+    const texts = (E) => {
+      const props = {}, kit = { era: W.ERAS[1], top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] }), addChild: () => {}, place: (n) => n,
+        label: () => ({ face: {}, back: {} }), solid: () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } }), sign: () => ({}), obstacle: () => {}, prop: (d) => { props[d.id] = d; return d; } };
+      E.build(kit);
+      const out = {};
+      for (const [id, d] of Object.entries(props)) {
+        const r = d.onUse({}), t = r && r.terminal;
+        out[id] = JSON.stringify({ title: d.title, label: d.label, date: d.date, year: d.year, sources: d.sourceKeys, connection: d.connection, hint: d.hint,
+          board: r && r.board ? r.board : null, banner: t ? t.banner : null, help: t ? t.run("HELP").lines : null, more: t ? t.run("MORE").lines : null });
+      }
+      return { out, overview: JSON.stringify(E.overview), sources: JSON.stringify(E.sources) };
+    };
+    const a = texts(EB), b = texts(E1), ids = Object.keys(a.out), changed = ids.filter((id) => a.out[id] !== b.out[id]);
+    record("every exhibit, id, label, date, source, connection, hint, panel, banner, HELP and MORE is unchanged", ids.length > 0 && changed.length === 0 && ids.every((id) => b.out[id]), changed.join(","));
+    record("the overview and the source register are unchanged", a.overview === b.overview && a.sources === b.sources);
+    // Nothing relocated: the gallery's packing (genesis-world.js packEra) puts every exhibit's walk-up point where it
+    // was, and every solid the base built stands where it stood (the coupler's case lid excepted: its two upright
+    // slabs became one lid tilted back on its hinge).
+    const layout = (E) => {
+      const props = {}, solids = new Set(), nd = () => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] });
+      const kit = { era: W.ERAS[1], top: W.BANK_TOP, channel: W.CHANNEL, M: new Proxy({}, { get: () => () => ({}) }), createNode: (o = {}) => Object.assign(nd(), o, { children: [] }), addChild: () => {}, place: (n) => n,
+        label: () => ({ face: {}, back: {} }), solid: (w, h, d, c, x, y, z) => { solids.add([w, h, d, c, x.toFixed(4), y.toFixed(4), z.toFixed(4)].join(",")); return nd(); }, sign: () => nd(), obstacle: () => {},
+        prop: (d) => { props[d.id] = `${d.at.x.toFixed(4)},${d.at.z.toFixed(4)}`; return d; } };
+      E.build(W.packedKit(kit, 1, E.build));
+      return { props, solids };
+    };
+    const la = layout(EB), lb = layout(E1), movedIds = Object.keys(la.props).filter((id) => la.props[id] !== lb.props[id]);
+    const lost = [...la.solids].filter((x) => !lb.solids.has(x) && !/^0\.(78,0\.42,0\.05,#4a3020|7,0\.34,0\.02,#c4b79a),/.test(x));
+    record("nothing relocated: every exhibit's packed walk-up point and every base solid stand where they did", movedIds.length === 0 && lost.length === 0, `${movedIds.join(",")} ${lost.slice(0, 3).join(" | ")}`);
+  }
+}
+
+// --- End states (played through without Calm) ----------------------------------------------------------------------
+const V = build();
+frames(1);
+{
+  run(V, "e1-dh-table", "PICK 4"); run(V, "e1-dh-table", "SEND"); run(V, "e1-dh-table", "SHARE");
+  frames(0.5); const mid = V.S.ease.mix;
+  frames(4);
+  const N = V.N, E = V.S.ease;
+  record("key exchange: PICK opens both tins and fills the jars (mixture), SHARE fills both the same brown; the tokens are home",
+    mid < 1 && near(N.lids[0].rotation.x, -1.9) && near(N.mixFill[0].scale.y, 1) && near(N.sharedFill[1].scale.y, 1) && !N.dhTokens[0].visible && E.lid === 1);
+}
+{
+  run(V, "e1-rsa-desk", "SIGN 5"); frames(0.25);
+  const turning = Math.abs(V.N.keys[0].rotation.z) > 0.3;
+  run(V, "e1-rsa-desk", "VERIFY 14 5"); frames(3);
+  const N = V.N;
+  record("signature desk: SIGN turns the private key and raises the signed card; VERIFY turns the public key and grows in the green lamp; keys come back",
+    turning && near(N.keys[0].rotation.z, 0) && near(N.keys[1].rotation.z, 0) && near(N.sigCard.position.y, N.sigCardY + 0.15) && N.verdict[0].visible && near(N.verdict[0].scale.y, 1));
+}
+{
+  const F = V.props["e1-floppy-toy"];
+  F.onUse({}); F.onUse({}); F.onUse({});
+  frames(1); const spinning = V.S.ease.spin > 1, cardsMid = V.N.cards.filter((c) => c.visible).length;
+  frames(6);
+  const N = V.N, E = V.S.ease;
+  record("floppy: loading spins the disk up behind its window and lights the cards in turn, then it spins down with all three lit and the lamp steady",
+    spinning && cardsMid < 3 && E.spin === 0 && N.cards.every((c) => c.visible) && N.diskLamp.visible && near(N.door.rotation.x, -1.2));
+}
+{
+  for (const l of ["SET 01001111", "DEPOSIT", "DEPOSIT", "SET 01000111", "DEPOSIT", "SET 01000001", "DEPOSIT"]) run(V, "e1-panel-toy", l);
+  frames(0.2); const sweeping = V.S.ease.sweep < 1;
+  run(V, "e1-panel-toy", "RUN"); frames(2);
+  const N = V.N;
+  record("front panel: a sweep runs across the lamps and down the tray, ending on the stored bytes, the levers on the switches and the OOGA lamp",
+    sweeping && V.S.ease.sweep === 1 && N.tray.slice(0, 4).every((t) => t.visible) && !N.tray[4].visible && N.wonLamp.visible && near(N.levers[0].rotation.x, 0.5) && near(N.levers[1].rotation.x, -0.5));
+}
+{
+  cues.length = 0;
+  run(V, "e1-coupler-toy", "SEND HI"); frames(0.2);
+  const lifted = V.N.handset.position.y > V.N.handsetY + 0.05;
+  frames(4);
+  record("coupler: SEND lifts the handset and seats it with a thunk; after the run the lamps are out and the handset rests",
+    lifted && cues.includes("thunk") && near(V.N.handset.position.y, V.N.handsetY) && !V.N.bitLamps[0].visible && !V.N.bitLamps[1].visible);
+}
+{
+  run(V, "e1-tv", "POWER"); run(V, "e1-tv", "DIAL 5"); frames(0.15);
+  const snowy = V.N.specks.some((s) => s.visible) && V.N.court[0].visible;
+  frames(1.5);
+  const N = V.N;
+  record("TV: the dial turns to its channel, snow lies over the new picture and thins out to a clear court",
+    snowy && near(N.tvDial.rotation.x, 2.5, 1e-3) && N.court[0].visible && !N.snowBg.visible && N.specks.every((s) => !s.visible));
+  run(V, "e1-paddle", "S"); run(V, "e1-paddle", "UUW"); frames(0.15);
+  const replaying = V.S.paddle.pathT < V.S.paddle.pathN - 1;
+  frames(2);
+  const pd = V.S.paddle, Sc = N.screen;
+  record("console: the line replays on the TV a tick at a time and ends where the game is; your controller's knob turns with your paddle",
+    replaying && near(N.youPad.position.y, Sc.sy + 0.21 - (pd.py + 1) * Sc.rowH) && near(N.knobs[0].rotation.y, N.knobs[0].baseY + (pd.py - 3) * 0.6, 1e-3));
+}
+{
+  run(V, "e1-calc", "C"); run(V, "e1-calc", "12+30="); frames(0.05);
+  const partial = V.N.segs[6].every((s) => !s.visible) && V.N.segs[7].some((s) => s.visible);
+  frames(1);
+  const lit = (i) => V.N.segs[i].filter((s) => s.visible).length;
+  record("calculator: the places light in turn from the right, ending on 42", partial && lit(6) === 4 && lit(7) === 5 && lit(5) === 0);
+}
+
+// --- Nothing per frame while idle ---------------------------------------------------------------------------------
+{
+  frames(3);
+  writes = 0; frames(3);
+  record("idle (every model settled, the TV on a clear channel): update writes nothing", writes === 0, `${writes} writes`);
+}
+
+// --- Calm: each command's result at once ---------------------------------------------------------------------------
+{
+  const C = build();
+  frames(1, true);
+  run(C, "e1-dh-table", "PICK 4"); run(C, "e1-dh-table", "SEND"); run(C, "e1-dh-table", "SHARE");
+  run(C, "e1-rsa-desk", "SIGN 5"); run(C, "e1-rsa-desk", "VERIFY 14 5");
+  const F = C.props["e1-floppy-toy"]; F.onUse({}); F.onUse({}); F.onUse({});
+  for (const l of ["SET 01001111", "DEPOSIT", "RUN"]) run(C, "e1-panel-toy", l);
+  run(C, "e1-coupler-toy", "SEND HI"); run(C, "e1-tv", "POWER"); run(C, "e1-tv", "DIAL 5"); run(C, "e1-calc", "12+30=");
+  run(C, "e1-paddle", "S"); run(C, "e1-paddle", "UUW");
+  frames(1 / 30, true);
+  const N = C.N, E = C.S.ease;
+  const final = near(N.lids[0].rotation.x, -1.9) && near(N.sharedFill[0].scale.y, 1) && near(N.sigCard.position.y, N.sigCardY + 0.15) && near(N.verdict[0].scale.y, 1)
+    && E.spin === 0 && N.cards.every((c) => c.visible) && E.sweep === 1 && N.tray[0].visible && near(E.seat, 1) && near(N.tvDial.rotation.x, 2.5) && N.specks.every((s) => !s.visible)
+    && C.S.paddle.pathT === C.S.paddle.pathN - 1 && E.reveal === 8;
+  record("Calm: one frame after the commands every model shows its final state", final);
+  // The coupler's bit lamps are a readout of the data, which the contract lets run on in Calm: let its run end first.
+  frames(2, true);
+  const held = snap(C); frames(2, true);
+  record("Calm: then nothing moves", snap(C) === held);
+}
+
+// --- Holds and leaving -----------------------------------------------------------------------------------------------
+{
+  const H = build();
+  frames(1);
+  run(H, "e1-dh-table", "PICK 4"); const F = H.props["e1-floppy-toy"]; F.onUse({}); F.onUse({}); F.onUse({});
+  frames(0.3);
+  const a = snap(H);
+  // The scene's pause and its bench, menu and console holds simply stop calling update; dt 0 is the same moment.
+  for (let i = 0; i < 30; i++) E1.update(0, clock, { era: 1, calm: false });
+  record("a hold (no update, or dt 0) freezes every motion where it is", snap(H) === a);
+  frames(0.3);
+  record("released, motion carries on from there", snap(H) !== a);
+  run(H, "e1-coupler-toy", "SEND HI"); run(H, "e1-tv", "POWER"); run(H, "e1-tv", "DIAL 2"); run(H, "e1-calc", "99999999X9=");
+  frames(0.1);
+  E1.active(false, { era: 2, calm: false });
+  const left = snap(H);
+  E1.active(true, { era: 1, calm: false });
+  writes = 0; frames(2);
+  record("active(false) stops everything in its final state; coming back resumes nothing", snap(H) === left && writes === 0, `${writes} writes`);
+}
+
+// --- Cues --------------------------------------------------------------------------------------------------------------
+{
+  cues.length = 0;
+  const Q = build();
+  const script = [["e1-gateway-puzzle", "PING G1"], ["e1-gateway-puzzle", "ROUTE G1"], ["e1-gateway-puzzle", "SEND"], ["e1-dh-table", "PICK 3"], ["e1-dh-table", "SEND"], ["e1-dh-table", "SHARE"],
+    ["e1-rsa-desk", "SIGN 5"], ["e1-rsa-desk", "VERIFY 14 6"], ["e1-panel-toy", "FLIP 3"], ["e1-panel-toy", "DEPOSIT"], ["e1-tv", "POWER"], ["e1-tv", "UP"], ["e1-calc", "7/0="], ["e1-coupler-toy", "SEND A"]];
+  for (const [id, l] of script) { run(Q, id, l); frames(0.6); }
+  frames(5);
+  const quiet = cues.length; frames(3);
+  record("cues use only the Genesis tab's names", cues.every((c) => CUE_NAMES.includes(c)), cues.filter((c) => !CUE_NAMES.includes(c)).join(","));
+  record("cues are sparing: at most one or two a command, none while idle", cues.length <= script.length * 2 && cues.length === quiet, `${cues.length} cues for ${script.length} commands`);
+  const before = cues.length, NQ = build(false);
+  run(NQ, "e1-tv", "POWER"); frames(1);
+  record("without the kit's cue nothing is called and nothing breaks", cues.length === before);
+}
+
+// --- Allocation (evidence only) ---------------------------------------------------------------------------------------
+if (global.gc) {
+  const A = build(); frames(1);
+  run(A, "e1-tv", "POWER"); run(A, "e1-tv", "DIAL 3");
+  global.gc(); const h0 = process.memoryUsage().heapUsed;
+  for (let r = 0; r < 200; r++) { run(A, "e1-calc", "12+30="); run(A, "e1-panel-toy", "DEPOSIT"); frames(1); }
+  global.gc(); const h1 = process.memoryUsage().heapUsed;
+  console.log(`INFO heap delta over 6,000 busy frames (snow, sweeps, reveals): ${h1 - h0} bytes · evidence only, a stable heap does not prove zero per-frame allocation`);
+} else console.log("INFO heap evidence skipped: run with node --expose-gc");
+
+E1.dispose();
+const failed = results.filter((ok) => !ok).length;
+console.log(`${results.length - failed}/${results.length} checks passed`);
+process.exit(failed ? 1 : 0);
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
+// Era 2's Upgrade 2 suite, folded in from test/genesis-era-2-upgrade2.mjs (gv/upgrade2-era-2) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra2Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Era 2's second upgrade (gv/upgrade2-era-2): end states, Calm, holds, active(false), idle frames, the agreed sound cues
+// and the scene records added, through genesis-era-2.js and its cluster themselves on a real kit (the engine's models
+// and scene graph, a stub label). Run from the repository root: `node test/genesis-era-2-upgrade2.mjs [base-dir]`,
+// where base-dir (optional) holds the base commit's src/js files for the record count.
+
+const baseDir = null;
+const FILES = ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2-spent", "genesis-era-2"];
+const ALLOWED = ["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"];
+const results = {}, info = {};
+const check = (name, ok) => { results[name] = !!ok; };
+
+const boot = async (dir) => {
+  const context = { window: {}, crypto: globalThis.crypto };
+  for (const f of FILES) {
+    let src;
+    try { src = await readFile(join(dir, `src/js/${f}.js`), "utf8"); } catch (_) { continue; }
+    runInNewContext(src, context);
+  }
+  const BL = context.window.BL, { createNode, addChild } = BL.scene, M = BL.models, W = BL.genesisWorld, parent = createNode(), cues = [], signs = [];
+  const label = () => ({ back: M.box({ w: 1, h: 0.3, d: 0.05, color: "#000000" }), face: M.box({ w: 1, h: 0.3, d: 0.01, color: "#ffffff" }), width: 2.4, height: 0.6 });
+  const place = (n) => { addChild(parent, n); return n; };
+  const kit = { era: W.ERAS[2], top: W.BANK_TOP, channel: W.CHANNEL, M, createNode, addChild, place, label, cue: (name) => cues.push(name),
+    solid: (w, h, d, color, x, y, z, emissive = 0) => place(createNode({ geometry: M.box({ w, h, d, color, emissive }), position: { x, y, z } })),
+    sign: (t, sub, x, y, z, yaw = 0, height = 0.6) => { signs.push({ t, x, y, z, height }); const l = label(), n = place(createNode({ position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 } })); addChild(n, createNode({ geometry: l.back }), createNode({ geometry: l.face })); return n; },
+    obstacle: () => {}, prop: (d) => d };
+  const def = BL.genesisExhibits.eras[2];
+  def.build(kit);
+  return { BL, def, parent, cues, signs, Y: W.BANK_TOP };
+};
+const count = (n) => 1 + n.children.reduce((s, c) => s + count(c), 0);
+const S = (calm = false) => ({ era: 2, walking: true, reading: false, x: -10, z: 0, calm });
+const run = (def, seconds, calm = false, dt = 1 / 60) => { for (let t = 0; t < seconds - 1e-9; t += dt) def.update(dt, t, S(calm)); };
+const snapshot = (n) => { const rows = []; const v = (q) => { rows.push(q.position.x, q.position.y, q.position.z, q.rotation.x, q.scale.y, q.visible ? 1 : 0, q.geometry ? 1 : 0); q.children.forEach(v); }; v(n); return rows.join(","); };
+
+const A = await boot(root), BL = A.BL, E2 = BL.genesisEra2, C = BL.genesisEra2Cluster, v = E2.visit, P = v.parts, L = v.live, cp = v.cluster.parts, cl = v.cluster.live;
+
+// --- The Merkle board: the hash wave climbs leaf to root, and the root lamp waits for it ------------------------------
+{
+  A.cues.length = 0;
+  L.merkle.change(2, "Mallory's key");
+  run(A.def, 1 / 60);
+  const start = P.lit[10].visible && !P.lit[5].visible && !P.lit[1].visible && P.rootOk.visible && !P.rootBad.visible && P.lit[10].scale.y > 1.2;
+  // Level 1 lights at 0.22 s and level 2 at 0.44 s; the root (0.66 s) not yet.
+  run(A.def, 0.5);
+  const middle = P.lit[5].visible && P.lit[2].visible && !P.lit[1].visible && P.rootOk.visible;
+  run(A.def, 0.3);
+  const root = P.lit[1].visible && P.rootBad.visible && !P.rootOk.visible;
+  run(A.def, 0.4);
+  check("merkleWave", start && middle && root && [10, 5, 2, 1].every((k) => P.lit[k].scale.y === 1) && !E2.moving(P, L) && A.cues.includes("click") && A.cues.includes("relay"));
+  // VERIFY after TRUST: the proof lights up the tree in order and the root answers with a chime.
+  A.cues.length = 0;
+  const t = L.merkle;
+  t.trust(); run(A.def, 1);
+  // Record 6 is leaf node 13; its proof is nodes 12, 7 and 2, lit one level at a time.
+  E2.merkleTerminal(t).run("VERIFY 6");
+  run(A.def, 1 / 60);
+  const proofStart = P.lit[13].visible && P.proofs[12].visible && !P.proofs[7].visible && !P.proofs[2].visible;
+  run(A.def, 1);
+  check("merkleVerify", proofStart && P.proofs[12].visible && P.proofs[7].visible && P.proofs[2].visible && A.cues.includes("chime"));
+  // Calm: one frame shows the whole path and the root at once.
+  t.change(5, "calm key"); run(A.def, 1 / 60, true);
+  check("merkleCalm", [13, 6, 3, 1].every((k) => P.lit[k].visible && P.lit[k].scale.y === 1) && P.rootBad.visible && !E2.moving(P, L));
+  t.reset(); run(A.def, 1);
+}
+
+// --- The blind-stamp desk as a sequence ------------------------------------------------------------------------------
+{
+  const b = L.blind, R = P.slipRest, En = P.envRest;
+  A.cues.length = 0;
+  b.write("token"); run(A.def, 1 / 60);
+  const sliding = P.slip.visible && P.slip.position.x > R.x + 0.3;
+  run(A.def, 0.5);
+  const written = P.slip.visible && Math.abs(P.slip.position.x - R.x) < 1e-9;
+  b.seal(); run(A.def, 0.2);
+  const into = P.slip.visible && !P.envelope.visible && P.slip.position.z < R.z && P.slip.position.z > En.z;
+  run(A.def, 0.6);
+  const sealed = !P.slip.visible && P.envelope.visible && P.carbon.visible && Math.abs(P.envelope.position.y - En.y) < 1e-9;
+  b.stamp(); run(A.def, 0.07);
+  const falling = P.stamp.position.y < P.stampRest && !P.envMark.visible;
+  run(A.def, 0.1);
+  const landed = P.envMark.visible && A.cues.includes("thunk");
+  run(A.def, 1);
+  const lifted = P.stamp.position.y === P.stampRest && P.envMark.visible;
+  b.open(); run(A.def, 0.2);
+  const opening = P.envelope.visible && P.envelope.position.x < En.x;
+  run(A.def, 1);
+  const opened = !P.envelope.visible && P.slip.visible && P.slipMark.visible && Math.abs(P.slip.position.x - R.x) < 1e-9 && Math.abs(P.slip.position.z - R.z) < 1e-9;
+  check("blindSequence", sliding && written && into && sealed && falling && landed && lifted && opening && opened && A.cues.filter((c) => c === "rustle-paper").length === 2);
+  b.check(); run(A.def, 1 / 60);
+  check("blindCheck", P.okLamp.visible && A.cues.includes("chime"));
+  // Calm: a whole sequence in one frame.
+  b.reset(); run(A.def, 1 / 60, true); b.write("t2"); b.seal(); b.stamp(); run(A.def, 1 / 60, true);
+  check("blindCalm", P.envelope.visible && P.envMark.visible && !P.slip.visible && P.stamp.position.y === P.stampRest && !E2.moving(P, L));
+  b.reset(); run(A.def, 1);
+}
+
+// --- The disks glide and lift; the maze's player walks its trail -----------------------------------------------------
+{
+  const f = L.floppy, l = E2.LAYOUT.floppy;
+  A.cues.length = 0;
+  const d0 = f.order[0], d1 = f.order[1];
+  f.swap(0, 1); run(A.def, 0.05);
+  const mid = P.disks[d0].position.z > l.z - 0.32 && P.disks[d0].position.z < l.z - 0.16;
+  run(A.def, 1.5);
+  const placed = Math.abs(P.disks[d0].position.z - (l.z - 0.16)) < 1e-9 && Math.abs(P.disks[d1].position.z - (l.z - 0.32)) < 1e-9;
+  f.load(2); run(A.def, 0.15);
+  const out = !P.disks[f.loaded].visible && P.driveLight.visible && A.cues.includes("whir");
+  f.eject(); run(A.def, 1);
+  check("floppyMotion", mid && placed && out && P.disks.every((n) => n.visible) && !E2.moving(P, L));
+  f.reset(); run(A.def, 2);
+  const z = L.maze;
+  z.reset(0); run(A.def, 0.1);
+  A.cues.length = 0;
+  const mz = z.maze(), cell = { x: 0, y: 0, z: 0 };
+  const moved = z.runMoves("DDSSAASSDDDDWW");
+  run(A.def, 1 / 60);
+  P.mazeCell(z.at, cell);
+  const notYet = moved > 2 && Math.hypot(P.player.position.x - cell.x, P.player.position.z - cell.z) > 1e-6;
+  run(A.def, moved / 12 + 0.3);
+  check("mazeWalk", notYet && Math.hypot(P.player.position.x - cell.x, P.player.position.z - cell.z) < 1e-9 && !E2.moving(P, L)
+    && A.cues.filter((c) => c === "beep").length === z.held() && P.leaves.every((n, i) => n.visible === !z.got[i]));
+  z.reset(0); run(A.def, 0.1); z.runMoves("DDSS"); run(A.def, 1 / 60, true);
+  P.mazeCell(z.at, cell);
+  check("mazeCalm", Math.hypot(P.player.position.x - cell.x, P.player.position.z - cell.z) < 1e-9);
+  z.reset(0); run(A.def, 0.2);
+}
+
+// --- The cluster: counters drop, knobs turn and colours climb, reels spin up and coast -------------------------------
+{
+  A.cues.length = 0;
+  const g = cl.game, G = cp.fourGrid;
+  const t4 = BL.genesisEra2Four.terminal(g);
+  t4.run("4");
+  run(A.def, 1 / 60);
+  const yours = g.cells.findIndex((c, i) => c === 1), its = g.cells.findIndex((c) => c === 2);
+  const rest = (i) => G.gy + 0.05 + ((i / 7) | 0) * G.cell + G.cell / 2;
+  const falling = cp.holes[yours].position.y > rest(yours) + 0.1 && cp.holes[its].geometry === cp.holeGeo[0];
+  // The first counter lands after about 0.44 s; the second starts 0.35 s after it.
+  run(A.def, 0.55);
+  const firstDown = Math.abs(cp.holes[yours].position.y - rest(yours)) < 1e-9 && A.cues.filter((c) => c === "clack").length === 1;
+  run(A.def, 1.2);
+  check("fourDrops", falling && firstDown && Math.abs(cp.holes[its].position.y - rest(its)) < 1e-9 && cp.holes[its].geometry === cp.holeGeo[2] && A.cues.filter((c) => c === "clack").length === 2 && cp.lastMark.visible);
+  t4.run("RESET"); run(A.def, 1 / 60);
+  check("fourReset", cp.holes.every((h, i) => h.geometry === cp.holeGeo[0] && Math.abs(h.position.y - rest(i)) < 1e-9));
+  // The colour screen.
+  A.cues.length = 0;
+  const sc = cl.screen;
+  sc.set("g", 4); run(A.def, 0.25);
+  const turning = cp.anim.level[1] > 0.5 && cp.anim.level[1] < 3.5 && cp.anim.shownLevel[1] > 0 && cp.anim.shownLevel[1] < 4;
+  run(A.def, 1);
+  check("screenKnobs", turning && cp.anim.level[1] === 4 && cp.anim.shownLevel[1] === 4 && Math.abs(cp.knobs[1].rotation.x + 2.4) < 1e-9 && A.cues.includes("click"));
+  sc.set("b", 4); run(A.def, 1 / 60, true);
+  check("screenCalm", cp.anim.level[2] === 4 && cp.anim.shownLevel[2] === 4);
+  sc.reset(); run(A.def, 1);
+  // The cassette.
+  A.cues.length = 0;
+  const tape = cl.tape;
+  tape.play(); run(A.def, 1 / 60);
+  const spinUp = cp.anim.omegaR > 0 && cp.anim.omegaR < 0.5 * (C.PLAY_RATE * 6 / tape.radius(tape.pos));
+  run(A.def, 2);
+  const full = Math.abs(cp.anim.omegaR - C.PLAY_RATE * 6 / tape.radius(tape.pos)) < 0.05 * Math.abs(cp.anim.omegaR) + 1e-3 && cp.anim.press[0] === 0.02;
+  tape.stop(); run(A.def, 0.1);
+  const coasting = cp.anim.omegaR > 0;
+  run(A.def, 3);
+  check("tapeMotion", spinUp && full && coasting && cp.anim.omegaR === 0 && cp.anim.omegaL === 0 && cp.anim.press[1] === 0.02 && cp.anim.press[0] === 0 && !C.moving(v.cluster)
+    && A.cues.includes("whir") && A.cues.includes("click"));
+  tape.reset(); run(A.def, 1);
+  tape.play(); const before = [cp.reels[0].rotation.x, cp.reels[1].rotation.x]; run(A.def, 1, true);
+  check("tapeCalm", cp.reels[0].rotation.x === before[0] && cp.reels[1].rotation.x === before[1] && tape.pos > 0);
+  tape.reset(); run(A.def, 1);
+}
+
+// --- active(false), holds, idle frames ------------------------------------------------------------------------------
+{
+  // Everything mid-motion, then the visitor leaves the gallery.
+  L.merkle.change(1, "x"); L.blind.write("y"); L.blind.seal(); L.floppy.swap(0, 3); L.maze.runMoves("DDSS");
+  BL.genesisEra2Four.terminal(cl.game).run("3"); cl.screen.set("r", 1); cl.tape.play();
+  run(A.def, 1 / 60);
+  const wasMoving = E2.moving(P, L) && C.moving(v.cluster);
+  A.def.active(false, S());
+  check("activeFalse", wasMoving && !E2.moving(P, L) && !C.moving(v.cluster) && cl.tape.mode === "stop" && P.envelope.visible && P.lit[9].visible && P.lit[1].visible);
+  // Holds and pause: the host stops calling update; nothing in these files moves on its own (no timers or frames).
+  const sources = await Promise.all(["genesis-era-2", "genesis-era-2-cluster", "genesis-era-2-four", "genesis-era-2-spent"].map((f) => readFile(join(root, `src/js/${f}.js`), "utf8")));
+  check("noTimers", sources.every((s) => !/setTimeout|setInterval|requestAnimationFrame|performance\.now|Date\.now/.test(s)));
+  L.merkle.change(3, "held"); run(A.def, 1 / 60);
+  const frozen = snapshot(A.parent);
+  // (no update calls: a hold)
+  check("holdFreezes", snapshot(A.parent) === frozen && E2.moving(P, L));
+  run(A.def, 2);
+  // Idle: settled, a hundred frames change nothing in the graph and do no work: a sample of each exhibit's animated
+  // transforms is wrapped in write counters, and none is written.
+  const idle = snapshot(A.parent);
+  const writes = { n: 0 }, watch = (node, key) => { const real = node[key]; node[key] = new Proxy(real, { set: (o, k, val) => { writes.n++; o[k] = val; return true; } }); return () => { node[key] = real; }; };
+  const undo = [watch(P.player, "position"), watch(P.lit[1], "scale"), watch(P.stamp, "position"), watch(P.slip, "position"), watch(P.disks[0], "position"),
+    watch(cp.reels[0], "rotation"), watch(cp.holes[0], "position"), watch(cp.knobs[0], "rotation"), watch(cp.buttons[0], "position")];
+  run(A.def, 100 / 60);
+  undo.forEach((f) => f());
+  info.idleWrites = writes.n;
+  check("idleStill", snapshot(A.parent) === idle && writes.n === 0 && !E2.moving(P, L) && !C.moving(v.cluster));
+}
+
+// --- Cues and labels ------------------------------------------------------------------------------------------------
+{
+  const used = new Set();
+  const capture = A.cues; capture.forEach((c) => used.add(c));
+  const src = await Promise.all(["genesis-era-2", "genesis-era-2-cluster"].map((f) => readFile(join(root, `src/js/${f}.js`), "utf8")));
+  for (const s of src) for (const m of s.matchAll(/cue\(parts, "([a-z-]+)"\)/g)) used.add(m[1]);
+  check("cuesAgreed", [...used].every((c) => ALLOWED.includes(c)) && used.size >= 6);
+  info.cues = [...used].sort();
+  // The moved labels stand clear of what they label: the blind desk's above its sequence, the disks' above the lifted
+  // disks, the maze's behind the table.
+  const Ly = E2.LAYOUT, sign = (re) => A.signs.find((g) => re.test(g.t)), grow = 1.4;
+  const blind = sign(/BLIND-STAMP/), disks = sign(/DISK/), maze = sign(/LEAVES TO ROOT/);
+  check("labelsClear", blind.y - blind.height * grow / 2 > A.Y + 2.35 && disks.y - disks.height * grow / 2 > P.diskY + 0.35 + 0.13 && maze.x < Ly.maze.x - 0.8);
+}
+
+// --- Scene records added against the base ------------------------------------------------------------------------
+{
+  const head = count(A.parent);
+  info.records = { head };
+  if (baseDir) {
+    const B = await boot(baseDir), base = count(B.parent);
+    info.records.base = base; info.records.added = head - base;
+    check("recordBudget", head - base >= 0 && head - base <= 150);
+  }
+}
+
+const failed = Object.entries(results).filter(([, ok]) => !ok).map(([k]) => k);
+console.log(JSON.stringify({ results, info }));
+console.log(failed.length ? `FAILED: ${failed.join(", ")}` : `PASS: ${Object.keys(results).length} checks · cues ${info.cues.join(", ")} · records ${JSON.stringify(info.records)}`);
+process.exit(failed.length ? 1 : 0);
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
+// Era 3's Upgrade 2 suite, folded in from test/genesis-era-3-upgrade2.mjs (gv/upgrade2-era-3) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra3Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Era 3's second upgrade (motion, light and sound cues), checked in Node through the era file's own build, terminals
+// and update, with a stand-in kit and canvas that only record what is asked of them:
+//   node test/genesis-era-3-upgrade2.mjs     one line a check; exit 1 on a failure.
+// It checks end states (every motion lands where the command says), Calm (end states at once, blinking steady), holds
+// (a frame not run moves nothing; the next frame carries on from where it was, no jump) and active(false) (everything
+// settled). Owned by the Era 3 builder; the integrator may call `era3Upgrade2Proof` from the unit tier.
+
+
+const era3Upgrade2Proof = async () => {
+  // Each canvas its own context, counting its fills.
+  const ctx2d = () => { const c = { fills: 0 }; return new Proxy(c, { get: (t, k) => k === "fills" ? c.fills : k === "fillRect" ? () => { c.fills++; } : typeof k === "string" && /^[a-z]/.test(k) ? () => ({ addColorStop: () => {} }) : undefined, set: () => true }); };
+  const context = { window: {}, document: { createElement: () => { const g = ctx2d(); return { width: 0, height: 0, getContext: () => g }; } } };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-3"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  const BLc = context.window.BL, W = BLc.genesisWorld, EX = BLc.genesisExhibits, E = BLc.genesisEra3, def = EX.eras[3];
+  const node = (o = {}) => ({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [], visible: true, glow: 1, ...o });
+  const cues = [], every = [], props = {};
+  const kit = { era: W.ERAS[3], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}), merge: () => ({}), moved: (g) => g, turnedX: (g) => g, turnedZ: (g) => g },
+    createNode: (o = {}) => node({ ...o, position: { x: 0, y: 0, z: 0, ...(o.position || {}) }, scale: { x: 1, y: 1, z: 1 }, children: [] }), addChild: () => {}, place: (n) => n,
+    label: () => ({ face: {}, back: {}, width: 1, height: 1 }),
+    solid: (w, h, d, c, x, y, z) => node({ position: { x, y, z } }), sign: () => node(), obstacle: () => {}, notify: () => {},
+    cue: (name) => { cues.push(name); every.push(name); }, prop: (d) => { props[d.id] = d; return { ...d, era: 3 }; } };
+  def.build(kit);
+  const V = E.visit, far = { era: 3, walking: true, reading: true, calm: false, x: -30, z: -340 };
+  let t = 0;
+  const run = (seconds, state = far, step = 1 / 60) => { for (let s = 0; s < seconds - 1e-9; s += step) { t += step; def.update(step, t, state); } };
+  const term = (id) => props[id].onUse({}).terminal;
+  const shown = () => Array.from(V.tileShown).join("");
+  const r = {};
+  run(0.2);
+  const ALLOWED = new Set(["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"]);
+
+  // --- The press: the links turn one after another from the changed page, then the printed box; a clack, a chime back.
+  cues.length = 0;
+  const press = term("e3-press");
+  press.run("EDIT 2 Ooga trades ten shells");
+  run(1 / 60);
+  const first = shown();
+  run(0.1);
+  const mid = shown();
+  // A hold (the frame not run: a pause, a workbench elsewhere) then one frame: it carries on, no jump to the end.
+  // Ten seconds pass with no frame run (a pause, or a workbench elsewhere): nothing moved, and the next frame carries on
+  // from where the cascade was rather than jumping to the end.
+  const held = shown();
+  t += 10;
+  run(1 / 60);
+  const afterHold = shown();
+  run(1.2);
+  r.pressCascade = first === "01000" && mid === "01000" && held === mid && afterHold !== "01111" && shown() === "01111" && V.printedBad.visible && !V.printedOk.visible
+    && V.pressClock === -1 && cues.filter((c) => c === "clack").length === 1;
+  press.run("RESET"); run(1.5);
+  r.pressRestores = shown() === "00000" && V.printedOk.visible && cues.includes("chime") && V.tilePop.every((p) => p === 0) && V.tiles.every((x) => x.ok.scale.y === 1);
+  // Calm: the end state at once.
+  press.run("EDIT 4 Day 4: Ooga lends TWO shells"); def.update(1 / 60, t += 1 / 60, { ...far, calm: true });
+  r.pressCalm = shown() === "00011" && V.printedBad.visible && V.pressClock === -1;
+  press.run("RESET"); def.update(1 / 60, t += 1 / 60, { ...far, calm: true });
+
+  // --- The padlock: the shackle eases down, then shows shut with a click; Calm shuts it at once.
+  cues.length = 0;
+  const pad = term("e3-padlock"), y0 = V.shackleBaseY;
+  pad.run("LOCK meet at the dock"); run(0.1);
+  const easing = V.shackleOpen.visible && V.shackleOpen.position.y < y0 && !V.shackleShut.visible;
+  run(0.4);
+  r.shackleEases = easing && V.shackleShut.visible && !V.shackleOpen.visible && cues.includes("click");
+  pad.run("RESET"); def.update(1 / 60, t += 1 / 60, { ...far, calm: true });
+  r.shackleCalm = V.shackleOpen.visible && V.shackleOpen.position.y === y0 && V.shackleT === 0;
+
+  // --- The modem: a chase while dialling (one lamp lit at a time), then sequence blinking; hum-start, hum-stop.
+  cues.length = 0;
+  const bbs = term("e3-bbs");
+  bbs.run("DIAL"); run(0.3);
+  const lit = V.modemLeds.filter((l) => l.glow > 1).length;
+  run(2);
+  const glows = new Set(); for (let k = 0; k < 20; k++) { run(1 / 20); glows.add(V.modemLeds.map((l) => l.glow).join()); }
+  r.modemSequence = lit === 1 && V.dialT === 0 && glows.size > 1 && cues.join() === "beep,hum-start";
+  def.update(1 / 60, t += 1 / 60, { ...far, calm: true });
+  r.modemCalm = V.modemLeds.every((l) => l.glow === 1.2);
+  bbs.run("HANGUP"); run(0.1);
+  const dark = V.modemLeds.map((l) => l.glow).join(); V.modemLeds[2].glow = 9; run(0.1);
+  r.modemIdle = cues.includes("hum-stop") && dark === "0.6,0.08,0.08,0.08,0.08" && V.ledsIdle && V.modemLeds[2].glow === 9;
+  V.modemLeds[2].glow = 0.08;
+
+  // --- The pager: a page buzzes it (body and lamp shake, the lamp at full), then it settles; Calm doesn't shake.
+  cues.length = 0;
+  const pager = term("e3-pager"), z0 = V.buzzBase[0];
+  pager.run("MEET"); run(0.05);
+  const zs = []; for (let k = 0; k < 10; k++) { run(1 / 60); zs.push(V.pagerBody.position.z); }
+  const buzzing = new Set(zs).size > 1 && V.pagerLamp.glow === 2 && cues.includes("beep");
+  run(1);
+  r.pagerBuzz = buzzing && V.buzzT === 0 && V.pagerBody.position.z === z0 && V.pagerLamp.position.z === V.buzzBase[1];
+  pager.run("HELLO"); def.update(1 / 60, t += 1 / 60, { ...far, calm: true });
+  r.pagerCalm = V.buzzT === 0 && V.pagerBody.position.z === z0;
+
+  // --- The test screen: the next grid wipes down from the top, a band at a time, then its label; Calm at once.
+  cues.length = 0;
+  bbs.run("CRT"); run(1 / 60);
+  const gh = E.GRIDS[V.bbs.crt.level][1], part = V.crtRow;
+  run(0.1);
+  const more = V.crtRow;
+  run(1);
+  r.crtWipe = part > 0 && part < gh && more > part && more < gh && V.crtRow === gh && V.crtClock === -1 && cues.includes("click");
+  const before = V.crtCtx.fills; run(0.5);
+  r.crtIdle = V.crtCtx.fills === before && V.crtClock === -1;
+  bbs.run("CRT"); def.update(1 / 60, t += 1 / 60, { ...far, calm: true });
+  r.crtCalm = V.crtRow === E.GRIDS[V.bbs.crt.level][1] && V.crtClock === -1;
+
+  // --- The cabinet: the marquee chases while nobody plays, steady in Calm.
+  const chase = new Set(); for (let k = 0; k < 16; k++) { run(1 / 16); chase.add(V.bulbs.map((b) => b.glow).join()); }
+  def.update(1 / 60, t += 1 / 60, { ...far, calm: true });
+  const steady = V.bulbs.map((b) => b.glow).join(); def.update(1 / 60, t += 0.4, { ...far, calm: true });
+  r.marquee = chase.size > 2 && V.bulbs.length === 7 && steady === V.bulbs.map((b) => b.glow).join() && V.bulbs.every((b) => b.glow === 1.1);
+
+  // --- The courier: the shut padlock's lamp eases on.
+  const courier = term("e3-courier");
+  courier.run("SEND TOCK hello"); run(0.1);
+  const easingLamp = V.courierGlow[1] > 0 && V.courierGlow[1] < 1;
+  run(0.5);
+  r.courierLamp = easingLamp && V.courierGlow[1] === 1 && V.courierLamps[1].visible && !V.courierLamps[0].visible;
+
+  // --- active(false) mid-motion: everything lands at its end state, and an open line's hum is told to stop.
+  bbs.run("DIAL"); press.run("EDIT 3 Ooga plants two trees"); pad.run("LOCK note"); pager.run("THANKS"); bbs.run("CRT");
+  run(1 / 60);
+  cues.length = 0;
+  def.active(false, far);
+  r.activeSettles = shown() === "00111" && V.pressClock === -1 && V.shackleShut.visible && V.dialT === 0 && V.buzzT === 0 && V.crtClock === -1 && V.pagerBody.position.z === z0 && cues.includes("hum-stop");
+
+  // Every cue asked for in the whole run is one of the Genesis tab's names.
+  r.cuesAllowed = every.length > 0 && every.every((c) => ALLOWED.has(c));
+  def.dispose();
+  r.disposed = E.visit === null;
+  return r;
+};
+
+{
+  const r = await era3Upgrade2Proof();
+  let ok = true;
+  for (const [k, v] of Object.entries(r)) { console.log(`${v ? "PASS" : "FAIL"} ${k}`); if (!v) ok = false; }
+  console.log(ok ? `era 3 upgrade 2: all ${Object.keys(r).length} checks passed` : "era 3 upgrade 2: FAILED");
+  process.exit(ok ? 0 : 1);
+}
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
+// Era 4's Upgrade 2 suite, folded in from test/genesis-era-4-upgrade2.mjs (gv/upgrade2-era-4) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra4Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Era 4 upgrade 2 (gv/upgrade2-era-4): the live models' end states, Calm, holds, leaving, idling, allocation and the
+// layout, through genesis-era-4.js's own build, terminals and update. Node only: `node test/genesis-era-4-upgrade2.mjs`.
+// Each check says why it exists, as test/run.mjs's do. One line a check; a non-zero exit on any failure.
+
+const BASE = "3901b004e1a7fe895e9b0bdb6d7c97dcab84c41f";
+const results = [];
+const record = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` ${detail}`}`); };
+const GAMES = ["genesis-era-4-strategy", "genesis-era-4-teletext", "genesis-era-4-wireless", "genesis-era-4-inbox"];
+const SHARED = ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data"];
+// A fresh window with the shared modules, the game modules and an era 4 file (this branch's, or the base's text).
+const load = async (eraText) => {
+  const context = { window: {} };
+  for (const f of [...SHARED, ...GAMES]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  runInNewContext(eraText, context);
+  return context.window.BL;
+};
+const ours = await readFile(join(root, "src/js/genesis-era-4.js"), "utf8");
+const base = execFileSync("git", ["show", `${BASE}:src/js/genesis-era-4.js`], { cwd: root, encoding: "utf8" });
+
+// A recording kit: every node it makes is kept, so a check can read every position, turn, scale, glow and visibility.
+const CUE_NAMES = new Set(["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"]);
+// Each visit loads its own window: the era file keeps one visit's state at module level, as the scene builds one.
+const visit = async (eraText = ours) => {
+  const BL = await load(eraText);
+  const W = BL.genesisWorld, E = BL.genesisExhibits.eras[4], nodes = [], props = {}, cues = [], calls = { solid: 0, sign: 0, place: 0, obstacle: 0, prop: 0 }, obstacles = [], placed = [];
+  const node = (o = {}) => { const n = Object.assign({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, glow: 1, children: [] }, o); nodes.push(n); return n; };
+  E.build({ era: W.ERAS[4], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: (o) => o, merge: (...a) => ({ parts: a.length }) }, createNode: (o = {}) => node(o), addChild() {},
+    place: (n) => { calls.place++; if (n.position.x || n.position.z) placed.push({ x: n.position.x, z: n.position.z }); return n; }, label: () => ({ face: {}, back: {} }), notify() {}, cue: (n) => cues.push(n),
+    solid: (w, h, d, col, x, y, z) => { calls.solid++; return node({ position: { x, y, z } }); }, sign: () => { calls.sign++; return node(); },
+    obstacle: (x0, x1, z0, z1) => { calls.obstacle++; obstacles.push({ x0, x1, z0, z1 }); }, prop: (d) => { calls.prop++; props[d.id] = d; return d; } });
+  const term = (id) => props[id].onUse({}).terminal;
+  const step = (n, state = {}) => { for (let i = 0; i < n; i++) E.update(1 / 60, i / 60, state); };
+  const snap = () => JSON.stringify(nodes.map((n) => [n.position.x, n.position.y, n.position.z, n.rotation.x, n.rotation.y, n.rotation.z, n.scale.x, n.scale.y, n.glow, n.visible].map((v) => typeof v === "number" ? Math.round(v * 1e4) / 1e4 : v)));
+  return { BL, E, nodes, props, cues, calls, obstacles, placed, term, step, snap };
+};
+const BL = await load(ours), BLbase = await load(base);
+// The commands that set every live model going, in one go.
+const COMMANDS = [["e4-hashcash", "SEARCH"], ["e4-bmoney", "TRANSFER"], ["e4-bmoney", "MISS"], ["e4-desktop", "OPEN HASHCASH"], ["e4-modem", "DIAL"], ["e4-cd", "PICK HC"], ["e4-cd", "PICK BM"],
+  ["e4-pocket", "E"], ["e4-strategy", "MOVE A N"], ["e4-teletext", "110"], ["e4-wireless", "SEND A E"]];
+const runAll = (v) => { for (const [id, line] of COMMANDS) v.term(id).run(line); };
+
+// contract: the upgrade keeps every exhibit, its words and its place: the same props (ids, labels, dates, connections,
+// sources, hints) and, once the museum packs the gallery, every walk-up spot exactly where it stood at the base.
+{
+  const a = await visit(), b = await visit(base), bad = [];
+  const keys = ["id", "year", "title", "label", "connection", "ref", "date", "hint"];
+  const ids = Object.keys(b.props);
+  if (Object.keys(a.props).join() !== ids.join()) bad.push(`ids ${Object.keys(a.props)}`);
+  for (const id of ids) {
+    for (const k of keys) if (JSON.stringify(a.props[id][k]) !== JSON.stringify(b.props[id][k])) bad.push(`${id}.${k}`);
+    if (a.props[id].sourceKeys.join() !== b.props[id].sourceKeys.join()) bad.push(`${id} sources`);
+    const ta = a.props[id].onUse({}), tb = b.props[id].onUse({});
+    const words = (r) => r.terminal ? r.terminal.banner.join("\n") : r.board ? JSON.stringify(r.board) : r.caption;
+    if (words(ta) !== words(tb)) bad.push(`${id} text`);
+  }
+  const W = BL.genesisWorld, at = (BLx) => { const out = {}; const kit = { era: W.ERAS[4], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: () => ({}) }, createNode: (o = {}) => Object.assign({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, children: [] }, o),
+    addChild() {}, place: (n) => n, label: () => ({ face: {}, back: {} }), notify() {}, solid: () => ({ position: {}, rotation: {}, scale: {} }), sign: () => ({}), obstacle() {}, prop: (d) => { out[d.id] = d.at; return d; } };
+    const def = BLx.genesisExhibits.eras[4]; def.build(W.packedKit(kit, 4, def.build)); return out; };
+  const pa = at(BL), pb = at(BLbase);
+  for (const id of ids) if (Math.hypot(pa[id].x - pb[id].x, pa[id].z - pb[id].z) > 1e-9) bad.push(`${id} moved ${pb[id].x},${pb[id].z} -> ${pa[id].x},${pa[id].z}`);
+  // Commands answer word for word as at the base.
+  const ra = await visit(), rb = await visit(base);
+  for (const [id, line] of COMMANDS) { const x = ra.term(id).run(line).lines.join("|"), y = rb.term(id).run(line).lines.join("|"); if (x !== y) bad.push(`${id} ${line} answers differently`); }
+  record("contract: every exhibit keeps its id, label, date, connection, sources, hint, words, command answers and packed place", !bad.length, bad.slice(0, 6).join("; "));
+}
+
+// rule: the added scene records are counted, and every new part stands inside an existing exhibit's footprint (so the
+// museum's packing cannot move anything).
+const added = await (async () => {
+  const a = await visit(), b = await visit(base), out = {};
+  for (const k of Object.keys(a.calls)) out[k] = a.calls[k] - b.calls[k];
+  const key = (p) => `${p.x.toFixed(3)},${p.z.toFixed(3)}`, before = new Map();
+  for (const p of b.placed) before.set(key(p), (before.get(key(p)) || 0) + 1);
+  const fresh = a.placed.filter((p) => { const n = before.get(key(p)) || 0; if (n) { before.set(key(p), n - 1); return false; } return true; });
+  // The packer records a placed node as a 0.5 m box round it, so that whole box must stay inside the footprint.
+  const outside = fresh.filter((p) => !a.obstacles.some((o) => p.x - 0.25 >= o.x0 - 1e-6 && p.x + 0.25 <= o.x1 + 1e-6 && p.z - 0.25 >= o.z0 - 1e-6 && p.z + 0.25 <= o.z1 + 1e-6));
+  const total = Object.values(out).reduce((s, v) => s + v, 0);
+  record(`rule: ${total} scene records added against ${BASE.slice(0, 8)} (${Object.entries(out).map(([k, v]) => `${k} ${v}`).join(", ")}); all ${fresh.length} new parts inside an exhibit's footprint`,
+    out.solid === 0 && out.sign === 0 && out.obstacle === 0 && out.prop === 0 && outside.length === 0 && total <= 150, JSON.stringify(outside.slice(0, 4)));
+  return out;
+})();
+
+// rule: each live model reaches the right end state through its own exhibit's commands, and the cues are only the
+// hall's names, once per event.
+{
+  const v = await visit(), bad = [], L = () => v.E;
+  const t = v.term;
+  // Hashcash: the counter turns, settles on quarter turns, the press lands once (whir, then thunk), the mark stays.
+  t("e4-hashcash").run("SEARCH");
+  v.step(10);
+  const drumsTurning = v.nodes.some((n) => n.rotation.x !== 0 && Math.abs(n.rotation.x) % (Math.PI / 2) > 1e-3);
+  v.step(400);
+  // The live parts are found by what they do: drums turn on x, the press rests at -0.55.
+  const press = v.nodes.filter((n) => Math.abs(n.rotation.x + 0.55) < 1e-9);
+  const drums = v.nodes.filter((n) => n.rotation.x > 1e-6);
+  if (!drumsTurning) bad.push("the counter never turned");
+  if (press.length !== 1) bad.push(`press ${press.length}`);
+  if (drums.some((n) => Math.abs((n.rotation.x / (Math.PI / 2)) - Math.round(n.rotation.x / (Math.PI / 2))) > 1e-6)) bad.push("drums not settled on quarter turns");
+  if (v.cues.join() !== "whir,thunk") bad.push(`hashcash cues ${v.cues}`);
+  // b-money, the desktop, the modem, the archive, the handheld, the board, the screen, the radio.
+  v.cues.length = 0;
+  for (const [id, line] of COMMANDS.slice(1)) { t(id).run(line); v.step(20); }
+  v.step(600);
+  const bal = t("e4-bmoney").run("COMPARE").lines[0];
+  if (!/Replica 1: A=1 B=7; Replica 2: A=3 B=5/.test(bal)) bad.push(bal);
+  const strat = t("e4-strategy").run("LOOK").lines.join("\n");
+  if (!/Board 1/.test(strat)) bad.push("strategy");
+  if (v.cues.some((n) => !CUE_NAMES.has(n))) bad.push(`unknown cue ${v.cues}`);
+  for (const n of ["clack", "click", "whir", "relay"]) if (!v.cues.includes(n)) bad.push(`no ${n}`);
+  if (v.cues.length > 16) bad.push(`too many cues ${v.cues.length}`);
+  record("rule: the live models run to their end states from their exhibits' own commands (the counter turns and settles, the press lands once), with only the hall's cue names, once an event", !bad.length, bad.join("; "));
+}
+
+// rule: Calm shows every motion's final state at once: one Calm frame after the commands equals a long run's end.
+{
+  const a = await visit(), b = await visit();
+  runAll(a); runAll(b);
+  a.step(1200);
+  // Calm snaps motion, not computation: the toy search still needs its few frames (64 attempts a frame), so Calm gets
+  // eight frames, each showing every motion settled.
+  // (One ordinary frame first: the base's decor lamps only take their Calm glow after a step of their own blink.)
+  b.step(1);
+  b.step(8, { calm: true });
+  a.step(1, { calm: true });
+  record("rule: under Calm every live model shows its final state at once, the same as running every motion to its end", a.snap() === b.snap(), "states differ");
+}
+
+// rule: holds freeze motion (the scene simply stops calling update, as genesis-world.js holdsFor rules), and on
+// resume each motion carries on from where it stood; leaving the cave (active(false)) settles everything at once
+// with no sound.
+{
+  const v = await visit(), w = await visit();
+  runAll(v); runAll(w);
+  // `elapsed` held, so the base's own decor blink (on elapsed) stays out of the comparison.
+  const run = (x, n) => { for (let i = 0; i < n; i++) x.E.update(1 / 60, 1, {}); };
+  v.step = (n) => run(v, n); w.step = (n) => run(w, n);
+  v.step(12); w.step(12);
+  const held = v.snap();
+  // A hold: nothing called for a while.
+  const stillHeld = v.snap() === held;
+  v.step(30); w.step(30);
+  const resumed = v.snap() === w.snap();
+  const cues = v.cues.length;
+  v.E.active(false, {});
+  const left = v.snap();
+  w.step(1200);
+  record("rule: a hold freezes every live model and resume carries on in step; active(false) settles everything to its final state without a sound", stillHeld && resumed && left === w.snap() && v.cues.length === cues,
+    `held ${stillHeld} resumed ${resumed} settled ${left === w.snap()}`);
+}
+
+// rule: idle, nothing moves and nothing sounds; with a panel open only the naming graph and the timestamp bead loop.
+{
+  const v = await visit();
+  // `elapsed` held, as the base's own decor blinks on it (the hub lamps and the inbox lamp, unchanged here).
+  const frames = (n, state = {}) => { for (let i = 0; i < n; i++) v.E.update(1 / 60, 1, state); };
+  frames(5);
+  const a = v.snap();
+  frames(600);
+  const idle = v.snap() === a && v.cues.length === 0;
+  frames(120, { reading: true });
+  const looping = v.snap() !== a && v.cues.length === 0;
+  record("rule: idle frames change nothing and play nothing; an open panel loops only the naming graph and the bead, silently", idle && looping, `idle ${idle} looping ${looping}`);
+}
+
+// rule: update allocates nothing per frame, with every motion running.
+{
+  setFlagsFromString("--expose-gc");
+  const gc = runInNewContext("gc");
+  const v = await visit();
+  runAll(v);
+  v.step(2);
+  const state = { reading: true, calm: false };
+  v.term("e4-hashcash").run("TARGET 12"); v.term("e4-hashcash").run("SEARCH");
+  // A warm-up the same length first, so the measure is the frames' own heap and not the engine compiling them.
+  for (let i = 0; i < 20000; i++) v.E.update(1 / 60, i / 60, state);
+  v.term("e4-hashcash").run("SEARCH"); v.term("e4-wireless").run("SEND A E"); v.term("e4-cd").run("PICK NAMES");
+  gc(); const before2 = process.memoryUsage().heapUsed;
+  for (let i = 0; i < 20000; i++) v.E.update(1 / 60, i / 60, state);
+  gc(); const grew = process.memoryUsage().heapUsed - before2;
+  // Commands run first (their replies allocate by design); the frames themselves must not.
+  record(`rule: 20,000 frames of every live model leave the heap within 64 KB (grew ${(grew / 1024).toFixed(1)} KB)`, grew < 65536, `${grew}`);
+}
+
+// rule: the strategy board's pegs stand on the board's own walls and its pieces on the game's squares; the radio's
+// lost packet leaves its marker; the disc archive's lamps count the loaded discs.
+{
+  const v = await visit(), bad = [], S = v.BL.genesisEra4Games.strategy, BL4 = v.BL;
+  v.step(2);
+  const t = v.term("e4-strategy");
+  t.run("BOARD 2"); v.step(200);
+  const walls = S.BOARDS[1].join("").split("").filter((c) => c === "#").length;
+  // Pegs stand within the board's square grid, as many as the board's walls.
+  const sx = 26, sz = BL.genesisWorld.ERAS[4].z + 1;
+  const cells = new Set();
+  for (const n of v.nodes) if (n.visible && Math.abs(n.position.y - (BL.genesisWorld.BANK_TOP + 0.94)) < 1e-6 || (n.visible && Math.abs(n.position.y - (BL.genesisWorld.BANK_TOP + 0.96)) < 1e-6 && Math.abs(n.position.x - sx) < 0.8 && Math.abs(n.position.z - sz) < 0.6)) {
+    const gx = Math.round((n.position.x - sx + 0.69) / 0.23), gy = Math.round((n.position.z - sz + 0.51) / 0.17);
+    if (Math.abs(n.position.x - sx) < 0.8 && Math.abs(n.position.z - sz) < 0.6) cells.add(gy * 7 + gx);
+  }
+  const want = new Set(S.BOARDS[1].join("").split("").map((c, i) => c === "#" ? i : -1).filter((i) => i >= 0));
+  if (cells.size !== walls || [...want].some((i) => !cells.has(i))) bad.push(`pegs ${[...cells]} want ${[...want]}`);
+  const r = v.term("e4-wireless");
+  r.run("NOISE 3"); r.run("OFF B"); r.run("OFF C");
+  r.run("ON B");
+  let lost = false;
+  for (let k = 0; k < 12 && !lost; k++) { const out = r.run("SEND A E").lines.join(" "); v.step(600); if (/LOST/.test(out)) lost = true; }
+  if (lost && !v.nodes.some((n) => n.visible && Math.abs(n.position.y - (BL.genesisWorld.BANK_TOP + 1.0)) < 1e-6 && n.position.x > 33)) bad.push("no lost marker");
+  const cd = v.term("e4-cd");
+  for (const d of ["HC", "NAMES", "BM", "TIMESEC"]) { cd.run(`PICK ${d}`); v.step(200); }
+  if (!v.cues.includes("chime")) bad.push("no chime on a complete archive");
+  record(`rule: the strategy board stands its ${walls} wall pegs on board 2's walls; a lost packet leaves its red marker${lost ? "" : " (no loss met)"}; a complete archive chimes`, !bad.length, bad.join("; "));
+}
+
+const passed = results.filter(Boolean).length;
+console.log(`${passed}/${results.length} Era 4 upgrade 2 checks passed`);
+process.exit(passed === results.length ? 0 : 1);
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
+// Era 5's Upgrade 2 suite, folded in from test/genesis-era-5-upgrade2.mjs (gv/upgrade2-era-5) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra5Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Era 5 upgrade 2 checks: node test/genesis-era-5-upgrade2.mjs. Node only, no Chrome, no build.
+// End states, motion, Calm, holds and leaving for the exhibits' new motion; the cue names; and the scene records added
+// against 3901b004 (skipped outside a git checkout).
+
+const BASE = "3901b004e1a7fe895e9b0bdb6d7c97dcab84c41f";
+const ALLOWED = ["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"];
+const results = [];
+const record = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` · ${detail}`}`); };
+const src = (f) => readFile(join(root, `src/js/${f}.js`), "utf8");
+
+// The era built on a recording kit: every node it makes (solid, place) with its geometry's options, every kit call.
+const build = async (eraText = null, withCue = true) => {
+  const context = { window: { BL: {} }, console };
+  for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-5-patchwork", "genesis-era-5-mixtape", "genesis-era-5-chain"]) runInNewContext(await src(f), context);
+  runInNewContext(eraText || await src("genesis-era-5"), context);
+  const BL = context.window.BL, W = BL.genesisWorld, e = W.ERAS[5], props = {}, nodes = [], calls = { solid: 0, sign: 0, obstacle: 0, prop: 0, place: 0 }, cues = [];
+  const node = (o = {}) => Object.assign({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, children: [] }, o);
+  const kit = { era: e, top: W.BANK_TOP, channel: W.CHANNEL, M: { box: (o) => ({ ...o }), lathe: (o) => ({ ...o, lathe: true }) }, addChild() {}, label: () => ({}), notify() {},
+    createNode: (o = {}) => node({ ...o, position: { x: 0, y: 0, z: 0, ...(o.position || {}) } }),
+    place: (n) => { calls.place++; nodes.push(n); return n; },
+    sign: () => { calls.sign++; return node(); },
+    obstacle: () => { calls.obstacle++; },
+    solid: (w, h, d, color, x, y, z, emissive = 0) => { calls.solid++; const n = node({ geometry: { w, h, d, color, emissive } }); n.position.x = x; n.position.y = y; n.position.z = z; nodes.push(n); return n; },
+    prop: (d) => { calls.prop++; props[d.id] = d; return d; } };
+  if (withCue) kit.cue = (name) => cues.push(name);
+  const def = BL.genesisExhibits.eras[5];
+  def.build(kit);
+  const term = (id) => { const t = props[id].onUse({}).terminal; return (line) => t.run(line).lines.join(" "); };
+  const state = { era: 5, walking: true, reading: true, x: 0, z: 0, calm: false };
+  const step = (seconds, calm = false) => { state.calm = calm; for (let t = 0; t < seconds; t += 1 / 60) def.update(1 / 60, t, state); };
+  const find = (pred) => nodes.filter((n) => n.geometry && pred(n.geometry));
+  const at = (n) => `${n.position.x.toFixed(3)},${n.position.y.toFixed(3)},${n.position.z.toFixed(3)},${n.scale.x.toFixed(3)}`;
+  return { BL, W, e, def, props, nodes, calls, cues, term, step, find, at, state };
+};
+
+const V = await build();
+const top = V.W.BANK_TOP;
+const hopper = V.find((g) => g.color === "#fff2b0")[0];
+const caps = V.find((g) => g.w === 0.2 && g.h === 0.06 && g.color === "#e8c35a");
+const [tokIn, tokOut] = [V.find((g) => g.w === 0.16 && g.h === 0.035 && g.color === "#9cb8d8")[0], V.find((g) => g.w === 0.16 && g.h === 0.035 && g.color === "#7fc9c4")[0]];
+const meter = V.find((g) => g.w === 0.28 && g.d === 0.28), stampTile = V.find((g) => g.w === 0.7 && g.d === 0.5 && g.color === "#e8c35a")[0];
+const bars = V.find((g) => g.w === 0.42 && g.h === 0.16), tiles = V.find((g) => g.w === 0.7 && g.h === 0.04 && g.d === 0.5);
+const patchTiles = V.find((g) => g.w === 0.22 && g.h === 0.03), cells = V.find((g) => g.w === 0.07 && g.h === 0.06), depthBars = V.find((g) => g.w === 0.06 && g.h === 0.02 && g.color === "#d9e36a");
+const pools = V.nodes.filter((n) => n.geometry && n.geometry.lathe);
+record("the parts the motion moves were all built: hop token, ring caps, two RPOW tokens, meter, stamp, bars, mosaic tiles, patch tiles, pocket cells, depth bars; light pools placed",
+  !!hopper && caps.length === 16 && !!tokIn && !!tokOut && meter.length === 10 && !!stampTile && bars.length === 6 && tiles.length === 12 && patchTiles.length === 27 && cells.length === 16 && depthBars.length === 2 && pools.length >= 18,
+  JSON.stringify({ caps: caps.length, meter: meter.length, bars: bars.length, tiles: tiles.length, patch: patchTiles.length, cells: cells.length, depth: depthBars.length, pools: pools.length }));
+record("light pools are emissive floor discs only: flat, on the floor, within the 8 m limit, gold under Hashcash and bit gold",
+  pools.every((n) => Math.abs(n.position.y - top) < 0.01 && n.geometry.emissive > 0) && pools.filter((n) => n.geometry.color === "#f0c860").length === 4);
+
+// ---- The Chord ring: the token hops the route; the owner's cap pops at the end ---------------------------------------
+{
+  const ring = V.term("e5-ring"), out = ring("LOOKUP 10");
+  const owner = +out.match(/Peer (\d+) holds/)[1], hops = +out.match(/; (\d+) hop/)[1];
+  const capNow = caps[owner].visible, start = V.at(hopper);
+  V.step(0.15); const mid = V.at(hopper), moving = hopper.visible && mid !== start;
+  V.step(hops * 0.32 + 0.6);
+  record("Chord LOOKUP: the owner's cap shows at once (end state); the token hops while time runs, then hides; the cap ends full size at home",
+    capNow && hops >= 1 && moving && !hopper.visible && caps[owner].scale.x === 1, JSON.stringify({ hops, moving, vis: hopper.visible, s: caps[owner].scale.x }));
+  ring("RESET");
+}
+// ---- Hashcash: the meter climbs, the stamp drops, a check lifts it ---------------------------------------------------
+{
+  const st = V.term("e5-stamp"), home = stampTile.position.y;
+  st("BITS 6"); st("MAKE");
+  const lit = meter.filter((m) => m.visible).length, grows = meter.some((m) => m.visible && m.scale.x < 1), up = stampTile.position.y > home + 0.3;
+  V.step(2);
+  const settled = meter.every((m) => m.scale.x === 1) && Math.abs(stampTile.position.y - home) < 1e-6;
+  st("CHECK"); V.step(0.15); const lifted = stampTile.position.y > home; V.step(1);
+  record("Hashcash MAKE: meter segments grow in and the stamp starts above the bench, both ending at rest; CHECK lifts the stamp and settles it",
+    lit > 0 && grows && up && settled && lifted && Math.abs(stampTile.position.y - home) < 1e-6);
+}
+// ---- RPOW: a spent token goes in and a fresh one comes out; a reused one bounces ------------------------------------
+{
+  const rp = V.term("e5-rpow-desk"), homeIn = V.at(tokIn), homeOut = V.at(tokOut);
+  rp("WORK"); rp("EXCHANGE W1"); V.step(0.4);
+  const inMoved = V.at(tokIn) !== homeIn; V.step(0.5); const outMoved = V.at(tokOut) !== homeOut; V.step(1.2);
+  const back = V.at(tokIn) === homeIn && V.at(tokOut) === homeOut;
+  rp("EXCHANGE W1"); V.step(0.35); const bounced = V.at(tokIn) !== homeIn; V.step(1); const home2 = V.at(tokIn) === homeIn;
+  record("RPOW EXCHANGE: the spent token travels to the slot and the fresh one out, both ending on their trays; a refused reuse bounces and returns",
+    inMoved && outMoved && back && bounced && home2);
+  rp("RESET");
+}
+// ---- Bit gold: the new string rises onto the shelf -------------------------------------------------------------------
+{
+  const gd = V.term("e5-bitgold-bench"), b0 = V.at(bars[0]);
+  gd("MINT"); const shown = bars[0].visible, low = V.at(bars[0]) !== b0; V.step(1);
+  record("bit gold MINT: the new bar shows at once and rises from below the shelf to its place", shown && low && V.at(bars[0]) === b0);
+  gd("RESET");
+}
+// ---- BitTorrent mosaic: the piece flies in from its peer ---------------------------------------------------------------
+{
+  const homes = tiles.map((t) => ({ x: t.position.x, z: t.position.z }));
+  const mo = V.term("e5-mosaic"), out = mo("FETCH AMBER"), piece = +out.match(/piece (\d+)/)[1], t = tiles[piece], home = homes[piece];
+  V.step(0); // no time yet: still where it starts
+  const fromPeer = t.visible && Math.abs(t.position.x - home.x) > 0.5; V.step(1);
+  record("mosaic FETCH: the piece's tile shows at once, starting at its peer's box and ending on its place", fromPeer && t.position.x === home.x && t.position.z === home.z);
+  mo("RESET");
+}
+// ---- Peer Patchwork: a sent tile slides across from the sender's board ----------------------------------------------
+{
+  const pt = V.props["e5-patchwork"].onUse({}).terminal, board = pt.run("BOARD").lines.slice(0, 3);
+  let cmd = "", dest = -1;
+  for (let i = 0; i < 9 && !cmd; i++) for (const [a, b] of [[0, 1], [1, 2], [2, 0]]) if (!cmd) { const ha = board[a].slice(8, 19).replace(/ /g, "")[i], hb = board[b].slice(8, 19).replace(/ /g, "")[i]; if (ha !== "." && hb === ".") { cmd = `SEND ${"ABC"[a]} ${"ABC"[b]} ${i + 1}`; dest = b * 9 + i; } }
+  const d = patchTiles[dest], homeX = d.position.x;
+  pt.run(cmd);
+  const startsAway = d.visible && Math.abs(d.position.x - homeX) > 0.5; V.step(1);
+  record("Peer Patchwork SEND: the received tile shows at once, starting on the sender's board and sliding home", startsAway && d.position.x === homeX, cmd);
+  pt.run("RESET");
+}
+// ---- The display comparison reveals; Pattern Pocket's screen plays -------------------------------------------------
+{
+  V.props["e5-displays"].onUse({}); const small = depthBars.every((b) => b.scale.x < 0.2); V.step(1.5);
+  record("display comparison: opening it grows each model's depth bar out in turn, ending full size", small && depthBars.every((b) => b.scale.x === 1));
+  const pk = V.props["e5-pocket"].onUse({}).terminal;
+  pk.run("ADD 5"); pk.run("ADD 2"); pk.run("PLAY");
+  const frames = new Set(); for (let i = 0; i < 40; i++) { V.step(0.1); frames.add(cells.map((c) => +c.visible).join("")); }
+  V.step(3);
+  const still = cells.map((c) => +c.visible).join("");
+  V.step(1); const stays = cells.map((c) => +c.visible).join("") === still;
+  record("Pattern Pocket PLAY: the screen's cells animate through several frames, then hold one still frame (the first pattern)", frames.size >= 4 && still.includes("1") && stays, `${frames.size} frames`);
+  pk.run("RESET"); V.step(0.1);
+  record("Pattern Pocket RESET: an empty playlist leaves the screen dark", cells.every((c) => !c.visible));
+}
+// ---- Calm: final states at once, nothing moves ---------------------------------------------------------------------
+{
+  const C = await build(), hop = C.find((g) => g.color === "#fff2b0")[0], bar = C.find((g) => g.w === 0.42 && g.h === 0.16)[0], b0 = C.at(bar);
+  C.step(1 / 60, true); // the host passes Calm in on its next frame
+  const ring = C.term("e5-ring"); ring("LOOKUP 10"); C.term("e5-bitgold-bench")("MINT");
+  const atOnce = !hop.visible && C.at(bar) === b0;
+  C.step(0.5, true);
+  // Calm switched on mid-motion snaps it.
+  C.step(1 / 60, false); C.term("e5-bitgold-bench")("MINT"); const bar1 = C.find((g) => g.w === 0.42 && g.h === 0.16)[1], h1 = C.at(bar1);
+  C.step(1 / 60, false); const moving = C.at(bar1) !== h1;
+  C.step(1 / 60, true);
+  const bh = C.find((g) => g.w === 0.42 && g.h === 0.16)[1];
+  record("Calm: a command shows its final state at once with nothing moving; Calm switched on mid-motion puts it at its end", atOnce && moving && bh.scale.x === 1, JSON.stringify({ atOnce, moving }));
+}
+// ---- Holds and leaving: no update, no motion; active(false) settles; coming back never resumes ----------------------
+{
+  const H = await build(), bar = H.find((g) => g.w === 0.42 && g.h === 0.16)[0];
+  H.term("e5-bitgold-bench")("MINT"); H.step(0.1);
+  const frozen = H.at(bar); // the host stops calling update (pause, menu, console): nothing moves however long
+  const held = H.at(bar) === frozen && bar.scale.x < 1;
+  H.def.active(false, H.state);
+  const settled = bar.scale.x === 1 && bar.position.y > 0;
+  const there = H.at(bar);
+  H.def.active(true, H.state); H.step(1);
+  record("holds and leaving: without updates the motion stays frozen; active(false) puts it at its end; coming back never resumes it", held && settled && H.at(bar) === there);
+  // Idle: with nothing moving, frames change nothing the motion owns.
+  const before = H.nodes.map(H.at).join("|"); H.step(1); const after = H.nodes.map(H.at).join("|");
+  const changed = before.split("|").filter((s, i) => s !== after.split("|")[i]).length;
+  record("idle: once settled, frames move only the era's existing decoration (the ring's beacon and the two satellites)", changed <= 3, `${changed} nodes moved`);
+}
+// ---- Cues: only the Genesis tab's names, sparingly; none without a kit cue ------------------------------------------
+{
+  record("cues: only the allowed names, at most a few a command", V.cues.length > 0 && V.cues.every((c) => ALLOWED.includes(c)) && V.cues.length < 40, JSON.stringify(V.cues));
+  const Q = await build(null, false); Q.term("e5-ring")("LOOKUP 10"); Q.step(2);
+  record("cues: a kit without `cue` builds and plays silently", Q.cues.length === 0);
+}
+// ---- Scene records added against 3901b004 ---------------------------------------------------------------------------
+{
+  let baseText = null;
+  try { baseText = execFileSync("git", ["show", `${BASE}:src/js/genesis-era-5.js`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { baseText = null; }
+  if (!baseText) record("records against 3901b004: skipped (no git checkout)", true);
+  else {
+    const B0 = await build(baseText), d = {};
+    for (const k of Object.keys(V.calls)) d[k] = V.calls[k] - B0.calls[k];
+    const ids = Object.keys(B0.props).every((id) => V.props[id]) && Object.keys(V.props).length === Object.keys(B0.props).length;
+    console.log(`  records added against 3901b004: ${JSON.stringify(d)}`);
+    record("records against 3901b004: no exhibit added or removed, no solid, sign or obstacle added; only placed parts and pools", ids && d.solid === 0 && d.sign === 0 && d.obstacle === 0 && d.prop === 0 && d.place > 0 && d.place <= 60, JSON.stringify(d));
+  }
+}
+
+const failed = results.filter((ok) => !ok).length;
+console.log(`${results.length - failed}/${results.length} checks passed`);
+process.exit(failed ? 1 : 0);
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
+// Era 6's Upgrade 2 suite, folded in from test/genesis-era-6-upgrade2.mjs (gv/upgrade2-era-6) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra6Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Era 6's second upgrade (gv/upgrade2-era-6): motion, light and sound on the existing exhibits, checked in Node through
+// the era file itself with a recording stand-in kit. End states, Calm, the holds, leaving the gallery, idle frames and
+// the cues. Run: node test/genesis-era-6-upgrade2.mjs (one line a check; exit 1 on any failure; changes no file).
+
+const results = [];
+const check = (name, ok, detail = "") => { results.push({ name, ok: !!ok }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${!ok && detail ? ` · ${detail}` : ""}`); };
+
+const context = { window: {}, crypto: globalThis.crypto, Math };
+context.window.window = context.window;
+context.window.BL = {};
+for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 8 }, (_, n) => `genesis-era-${n}`)])
+  runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+const BL = context.window.BL, W = BL.genesisWorld, EX = BL.genesisExhibits, E6 = BL.genesisEra6, def = EX.eras[6];
+
+// A recording kit: every node keeps position, rotation, scale, visibility and glow; `cue` records names.
+const build = () => {
+  const rec = { solid: 0, sign: 0, obstacle: 0, prop: 0, place: 0 }, props = {}, nodes = [], cues = [];
+  const node = (x = 0, y = 0, z = 0) => { const n = { position: { x, y, z }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true }; nodes.push(n); return n; };
+  def.build({
+    era: W.ERAS[6], top: W.BANK_TOP, channel: W.CHANNEL, M: {}, createNode: () => node(), addChild() {}, label: () => ({}), notify() {},
+    place: (n) => { rec.place++; return n; }, cue: (name) => cues.push(name),
+    solid: (w, h, d, c, x, y, z) => { rec.solid++; return node(x, y, z); }, sign: () => { rec.sign++; return node(); },
+    obstacle: () => { rec.obstacle++; }, prop: (d) => { rec.prop++; props[d.id] = d; return d; }
+  });
+  const term = (id) => props[id].onUse({}).terminal;
+  return { rec, props, nodes, cues, term };
+};
+const snap = (nodes) => nodes.map((n) => [n.position.x, n.position.y, n.position.z, n.rotation.x, n.rotation.y, n.rotation.z, n.scale.x, n.scale.y, n.visible ? 1 : 0, n.glow === undefined ? 1 : n.glow].map((v) => (+v).toFixed(4)).join(",")).join(";");
+const state = { era: 6, walking: true, reading: true, x: 0, z: 0, calm: false };
+const frames = (n, dt = 1 / 60, s = state) => { for (let i = 0; i < n; i++) def.update(dt, 0, s); };
+
+const A = build();
+// Scene records: the unit tier's Era 6 suite caps solids, signs, obstacles and props at 346 (196 + 150); the upgrade adds
+// none of those. Placed detail nodes (merged meshes and the new moving parts): 10 at 3901b004.
+const total = A.rec.solid + A.rec.sign + A.rec.obstacle + A.rec.prop;
+console.log(`records: ${JSON.stringify(A.rec)} (3901b004: solid 262, sign 19, obstacle 12, prop 18, place 10)`);
+check("rule: no new solids, signs, obstacles or exhibits (311 as at 3901b004), within the suite's 346 cap; 33 placed detail nodes added",
+  total === 311 && A.rec.place === 43, JSON.stringify(A.rec));
+check("rule: every exhibit id is still built", ["e6-announce", "e6-paper", ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `e6-ref-${n}`), "e6-not-listed", "e6-laptop", "e6-payments", "e6-january",
+  "e6-argument", "e6-layout", "e6-workstation", "e6-catch"].every((id) => A.props[id]));
+check("rule: building starts no transition and sounds no cue", E6.motion.running === 0 && A.cues.length === 0);
+
+// End states: a command writes its end state at once (a reader sees it before any frame), the next frames show the
+// way there, and when the transition is done the model stands exactly in that end state.
+{
+  const t = A.term("e6-argument"), before = snap(A.nodes);
+  ["SIGN", "TIME", "WORK", "NODE", "COIN", "ODDS"].forEach((c, k) => t.run(`PLACE ${c} ${k + 1}`));
+  t.run("CHECK");
+  const end = snap(A.nodes), running = E6.motion.running;
+  frames(6);
+  const mid = snap(A.nodes);
+  frames(240);
+  const settled = snap(A.nodes);
+  check("rule: a command's end state is written at once; frames ease toward it and settle exactly on it, then stop",
+    end !== before && running > 0 && mid !== end && settled === end && E6.motion.running === 0, `running ${running}`);
+  t.run("RESET"); frames(240);
+  check("rule: RESET eases back and lands exactly where the visit began", snap(A.nodes) === before);
+}
+// Each upgraded exhibit's commands and openings move its model and settle.
+{
+  const before = snap(A.nodes), starts = E6.motion.started;
+  const pay = A.term("e6-payments"); pay.run("SIGN BO"); pay.run("SIGN CY"); pay.run("ORDER BO CY");
+  const lap = A.term("e6-laptop"); lap.run("FILE R3 CITED"); lap.run("FILE RPOW NOT");
+  const lay = A.term("e6-layout"); lay.run("COMPARE 3 7");
+  const ws = A.term("e6-workstation"); ws.run("STORAGE 50"); ws.run("PAGE 4"); ws.run("LAMP");
+  const cat = A.term("e6-catch"); cat.run("PULL R3");
+  A.props["e6-paper"].onUse({}); A.props["e6-ref-4"].onUse({}); A.props["e6-january"].onUse({});
+  const moved = E6.motion.started - starts;
+  frames(300);
+  check("rule: payments, laptop, layout, workstation, catalogue, paper, shelf slot and January door each start transitions and all settle",
+    moved >= 30 && E6.motion.running === 0 && snap(A.nodes) !== before, `${moved} started`);
+  for (const [id, line] of [["e6-payments", "RESET"], ["e6-laptop", "RESET"], ["e6-layout", "RESET"], ["e6-workstation", "RESET"], ["e6-catch", "RESET"]]) A.term(id).run(line);
+  frames(300);
+}
+// Calm: no transition starts, and one already running ends at once in its end state.
+{
+  const t = A.term("e6-layout"), before = E6.motion.started;
+  t.run("SHOW 4");
+  const end = snap(A.nodes);
+  def.update(1 / 60, 0, { ...state, calm: true });
+  const calmNow = snap(A.nodes) === end && E6.motion.running === 0;
+  const s2 = E6.motion.started;
+  t.run("COMPARE 3 7");
+  check("rule: Calm ends a running transition at once in its end state and starts none for later commands",
+    s2 > before && calmNow && E6.motion.started === s2 && E6.motion.running === 0);
+  t.run("RESET");
+  frames(1, 1 / 60, { ...state, calm: false });
+}
+// The holds: pause, the menu and the console stop the era's update (scene-genesis.js through genesis-world.js holdsFor);
+// what is mid-transition stays where it is, and carries on to its end once the hold lifts.
+{
+  const t = A.term("e6-workstation"), out = {};
+  t.run("STORAGE 100");
+  frames(10);
+  const held = snap(A.nodes);
+  for (const hold of [{ paused: true, bench: false, menu: false, console: false }, { paused: false, bench: false, menu: true, console: false }, { paused: false, bench: false, menu: false, console: true }]) {
+    for (let i = 0; i < 30; i++) if (W.holdsFor(hold, out).exhibit) def.update(1 / 60, 0, state);
+  }
+  const frozen = snap(A.nodes) === held && E6.motion.running > 0;
+  const bench = W.holdsFor({ paused: false, bench: true, menu: false, console: false }, out).exhibit;
+  frames(240);
+  check("rule: pause, menu and console holds freeze a transition mid-way; an open workbench keeps it running to its end",
+    frozen && bench && E6.motion.running === 0);
+  t.run("RESET"); frames(240);
+}
+// Leaving the gallery finishes every transition; nothing resumes on return.
+{
+  const t = A.term("e6-argument");
+  t.run("PLACE WORK 1");
+  const end = snap(A.nodes);
+  frames(5);
+  def.active(false, state);
+  check("rule: leaving the gallery (active false) puts every model in its end state at once", snap(A.nodes) === end && E6.motion.running === 0);
+  def.active(true, state); frames(10);
+  check("rule: coming back starts nothing", E6.motion.running === 0 && snap(A.nodes) === end);
+  t.run("RESET"); frames(240);
+}
+// Idle: with nothing running, frames change nothing (the cursor's blink is held while reading, as before).
+{
+  const before = snap(A.nodes);
+  frames(600);
+  check("rule: idle frames move nothing", snap(A.nodes) === before && E6.motion.running === 0);
+}
+// Cues: only the agreed names, at most one a command, none from frames.
+{
+  const n0 = A.cues.length, t = A.term("e6-argument");
+  t.run("PLACE SIGN 1"); const one = A.cues.length - n0;
+  frames(120); const none = A.cues.length - n0 - one;
+  t.run("RESET"); frames(120);
+  check("rule: cues use only the agreed names, one per command at most, none from frames",
+    A.cues.every((c) => E6.motion.CUES.has(c)) && one === 1 && none === 0, A.cues.join());
+}
+// The one-shot openings: a page turns over (and back next time), a slot's arrow lights alone, the seal's glint ends
+// faded, the laptop's piles grow with filed cards.
+{
+  const findNear = (pred) => A.nodes.filter(pred);
+  const over = () => findNear((n) => Math.abs(n.rotation.z - Math.PI) < 1e-4).length;
+  const was = over();
+  A.props["e6-paper"].onUse({}); frames(120);
+  const turned = over() === 1 - was;
+  A.props["e6-paper"].onUse({}); frames(120);
+  const back = over() === was;
+  check("rule: opening the paper turns a page over, and the next opening turns it back", turned && back);
+  A.props["e6-ref-2"].onUse({}); frames(120);
+  const lit2 = findNear((n) => n.visible && n.glow > 1.1 && n.glow < 1.3 && Math.abs(n.position.y - (W.BANK_TOP + 1.75)) < 1e-4).length;
+  A.props["e6-ref-6"].onUse({}); frames(120);
+  const lit6 = findNear((n) => n.visible && n.glow > 1.1 && n.glow < 1.3 && Math.abs(n.position.y - (W.BANK_TOP + 1.75)) < 1e-4).length;
+  check("rule: opening a shelf slot lights its own arrow and darkens the last one", lit2 === 1 && lit6 === 1);
+  A.props["e6-january"].onUse({}); frames(120);
+  check("rule: the seal's glint sweeps and ends faded out", findNear((n) => n.visible && n.glow === 0).length >= 1 && E6.motion.running === 0);
+}
+
+const failed = results.filter((r) => !r.ok).length;
+console.log(`${results.length - failed}/${results.length} checks passed`);
+process.exit(failed ? 1 : 0);
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
+// Era 7's Upgrade 2 suite, folded in from test/genesis-era-7-upgrade2.mjs (gv/upgrade2-era-7) so test/ keeps its two
+// files (AGENTS.md). Its own checks run unchanged; its console lines are collected and its exit code becomes the result.
+const genesisEra7Upgrade2Suite = async () => {
+  const lines = [], console = { log: (...a) => lines.push(a.join(" ")), error: (...a) => lines.push(a.join(" ")), warn: (...a) => lines.push(a.join(" ")) };
+  const process = { env: {}, argv: [], exitCode: 0, cwd: () => root, memoryUsage: () => globalThis.process.memoryUsage(), exit: (code) => { throw { suiteExit: code }; } };
+  try {
+// Era 7's second upgrade (gv/upgrade2-era-7): motion and light. Rule checks in Node, no Chrome, no build.
+// Run: node test/genesis-era-7-upgrade2.mjs   (VERBOSE=1 prints every PASS)
+// Through the era file's own functions and terminals, on a recording kit: end states, Calm, holds, leaving the cave,
+// the cues each event asks for, the frame's conservation bar, the records this upgrade adds, and that every story
+// text, date, source and exhibit id is unchanged from the base (3901b004, read from git when available).
+
+const BASE = "3901b004e1a7fe895e9b0bdb6d7c97dcab84c41f";
+const results = [];
+const record = (name, ok, detail = "") => { results.push(ok); if (!ok || process.env.VERBOSE) console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : ` · ${detail}`}`); };
+
+const MODULES = ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...Array.from({ length: 7 }, (_, n) => `genesis-era-${n}`), "genesis-era-7-sync", "genesis-era-7-split", "genesis-era-7"];
+const load = async (source = (f) => readFile(join(root, `src/js/${f}.js`), "utf8")) => {
+  const context = { window: {}, crypto: globalThis.crypto };
+  for (const f of MODULES) runInNewContext(await source(f), context);
+  return context.window.BL;
+};
+
+// A recording kit: nodes with position, rotation, scale and visibility; every placed record counted; every cue kept.
+const makeKit = (BL, cues) => {
+  const W = BL.genesisWorld, props = {};
+  let records = 0;
+  const node = (o = {}) => Object.assign({ position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, children: [] }, o,
+    { position: { x: 0, y: 0, z: 0, ...(o.position || {}) }, rotation: { x: 0, y: 0, z: 0, ...(o.rotation || {}) }, scale: { x: 1, y: 1, z: 1 } });
+  const kit = { era: W.ERAS[7], top: W.BANK_TOP, channel: W.CHANNEL, M: { box: (o) => o }, createNode: node, addChild: () => {},
+    place: (n) => { records++; return n; }, label: () => ({ face: {}, back: {}, width: 1, height: 1 }), notify() {},
+    solid: () => { records++; return node(); }, sign: () => { records += 3; return node(); }, obstacle() {},
+    prop: (d) => { props[d.id] = d; return d; }, cue: cues ? (name) => cues.push(name) : undefined };
+  return { kit, props, records: () => records };
+};
+
+const BL = await load(), E7 = BL.genesisEra7, EX = BL.genesisExhibits;
+const cues = [], K = makeKit(BL, cues);
+EX.eras[7].build(K.kit);
+const def = EX.eras[7], v = E7.visit, mo = v.mo;
+const state = { era: 7, walking: true, reading: false, x: 0, z: 0, calm: false };
+const step = (seconds, dt = 1 / 60, s = state) => { for (let t = 0; t < seconds - 1e-9; t += dt) def.update(dt, 0, s); };
+const term = (id) => { const t = K.props[id].onUse({}).terminal; return (line) => t.run(line).lines.join(" | "); };
+const rowsLit = () => v.parts.rowLit.map((n) => n.visible ? 1 : 0).join("");
+const wordsLit = () => mo.words.filter((n) => n.visible).length;
+
+// --- The record case ---
+{
+  const g = term("e7-genesis");
+  cues.length = 0;
+  g("HEADER");
+  const seen = [];
+  for (let f = 0; f < 120; f++) { def.update(1 / 60, 0, state); const now = rowsLit(); if (seen[seen.length - 1] !== now) seen.push(now); }
+  const one = seen.every((r, i) => i === 0 || [...r].filter((c) => c === "1").length === [...seen[i - 1]].filter((c) => c === "1").length + 1);
+  record("record case: HEADER lights its five rows one at a time, in field order, and ends with all five lit",
+    rowsLit() === "1111100" && one && seen.length === 5 && seen[0] === "1000000" && cues.includes("relay"), seen.join(" "));
+  cues.length = 0;
+  g("TEXT");
+  def.update(1 / 60, 0, state);
+  const early = wordsLit();
+  let order = true, last = 0;
+  for (let f = 0; f < 240; f++) { def.update(1 / 60, 0, state); const n = wordsLit(); if (n < last || n > last + 1) order = false; last = n; for (let w = 0; w < n; w++) if (!mo.words[w].visible) order = false; }
+  record("record case: TEXT lights its row, then the headline's words one by one in reading order, then chimes once",
+    rowsLit() === "0000010" && early === 0 && wordsLit() === E7.HEAD_WORDS.length && order && cues.filter((c) => c === "chime").length === 1, `${early} ${wordsLit()} ${cues}`);
+  record("record case: the word tiles are the stored headline's own words, unchanged", E7.HEAD_WORDS.join(" ") === "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks" && mo.words.length === 11);
+  g("RESET"); step(0.1);
+  record("record case: RESET dims every row and word", rowsLit() === "0000000" && wordsLit() === 0);
+}
+// --- Calm, holds and leaving ---
+{
+  const g = term("e7-genesis");
+  g("TEXT"); def.update(1 / 60, 0, { ...state, calm: true });
+  record("Calm: one frame shows the final state at once (row and every word lit)", rowsLit() === "0000010" && wordsLit() === E7.HEAD_WORDS.length);
+  g("HEADER"); def.update(1 / 60, 0, state);
+  const held = rowsLit(), heldCopy = JSON.stringify({ r: held, w: wordsLit(), plug: mo.plugs.map((p) => p.position.x) });
+  // A hold (pause, workbench, menu or console) is the host not calling update: nothing moves meanwhile.
+  record("holds: without update calls (pause, bench, menu, console) nothing advances", JSON.stringify({ r: rowsLit(), w: wordsLit(), plug: mo.plugs.map((p) => p.position.x) }) === heldCopy && held === "1000000");
+  def.update(0, 0, state);
+  record("holds: a zero-length frame changes nothing either", rowsLit() === held);
+  def.active(false, state);
+  record("active(false): leaving mid-reveal settles to the end state at once", rowsLit() === "1111100");
+  const before = JSON.stringify({ r: rowsLit(), w: wordsLit(), bar: Array.from(mo.bar) });
+  def.active(true, state); step(1);
+  record("active(true): coming back resumes nothing (the settled state stays)", JSON.stringify({ r: rowsLit(), w: wordsLit(), bar: Array.from(mo.bar) }) === before);
+  g("RESET"); step(0.2);
+}
+// --- The software desk ---
+{
+  const d = term("e7-desk"), plugIn = mo.plugs[1].position.x, y0 = mo.plugs[1].position.y;
+  cues.length = 0;
+  d("UNPLUG B"); def.update(1 / 60, 0, state);
+  const mid = mo.plugs[1].position.x;
+  step(0.6);
+  const out = mo.plugs[1].position.x, low = mo.plugs[1].position.y;
+  record("desk: UNPLUG B clicks once and its plug slides out of the rail and drops, smoothly, to rest",
+    cues.filter((c) => c === "click").length === 1 && mid < plugIn && mid > out && out < plugIn - 0.3 && low < y0 - 0.2, `${plugIn} ${mid} ${out}`);
+  d("ADD A"); def.update(1 / 60, 0, state);
+  const flying = [0, 1, 2].map((k) => mo.packets[k].visible);
+  step(0.7);
+  record("desk: ADD A sends a packet to each plugged-in terminal (not the unplugged one), and the packets arrive",
+    flying[0] && !flying[1] && flying[2] && mo.packets.every((p) => !p.visible), JSON.stringify(flying));
+  cues.length = 0;
+  d("PLUG B"); def.update(1 / 60, 0, state);
+  const toB = mo.packets[1].visible;
+  step(0.7);
+  record("desk: PLUG B clicks, its plug slides home, and the record it lacked travels to it",
+    cues.includes("click") && toB && Math.abs(mo.plugs[1].position.x - plugIn) < 1e-9 && Math.abs(mo.plugs[1].position.y - y0) < 1e-9 && /All three hold the same history/.test(d("COMPARE")));
+  cues.length = 0;
+  d("BAD"); def.update(1 / 60, 0, state);
+  const flash = mo.refuse.visible;
+  step(1);
+  record("desk: BAD beeps once and flashes red at the rail's end, then goes dark", cues.filter((c) => c === "beep").length === 1 && flash && !mo.refuse.visible);
+  d("UNPLUG C"); def.update(1 / 60, 0, { ...state, calm: true });
+  record("desk: under Calm an unplugged plug is at rest out of the rail at once", mo.plugs[2].position.x < plugIn - 0.3);
+  d("RESET"); step(1);
+}
+// --- The Peer Sync cabinet ---
+{
+  const sy = term("e7-sync");
+  sy("RESET"); step(0.1); cues.length = 0;
+  let out = "";
+  for (let k = 0; k < 40 && !/link dropped/.test(out); k++) out = sy("WAIT");
+  def.update(1 / 60, 0, state);
+  const m = out.match(/Terminal ([ABC])'s link dropped/), name = m ? m[1] : "A";
+  const off = v.cparts.winOff["ABC".indexOf(name)].visible;
+  sy(`PLUG ${name}`); def.update(1 / 60, 0, state);
+  record("Peer Sync cabinet: a dropped link greys its window and clicks; plugging it back clicks and lights it",
+    !!m && off && cues.filter((c) => c === "click").length === 2 && !v.cparts.winOff["ABC".indexOf(name)].visible, `${out} ${cues}`);
+  sy("RESET"); step(0.1);
+}
+// --- The counting frame and its conservation bar ---
+{
+  const f = term("e7-frame"), B = mo.barAt, total = () => mo.bar[0] + mo.bar[1] + mo.bar[2];
+  const length = () => mo.barNodes.reduce((n, nd) => n + (nd.visible ? nd.scale.z : 0), 0);
+  f("RESET"); step(1);
+  cues.length = 0;
+  f("MOVE 10 TO 1");
+  let kept = true, moving = false;
+  for (let k = 0; k < 90; k++) { def.update(1 / 60, 0, state); if (Math.abs(total() - 50) > 0.05) kept = false; if (mo.bar[1] > 0.5 && mo.bar[1] < 9.5) moving = true; }
+  f("MOVE 40 TO 2"); step(1.5);
+  record("frame: the conservation bar re-divides smoothly as beads move, its total length 50 units at every frame",
+    kept && moving && Math.abs(mo.bar[1] - 10) < 1e-9 && Math.abs(mo.bar[2] - 40) < 1e-9 && mo.bar[0] === 0 && Math.abs(length() - 50 * B.unit) < 1e-6, `${Array.from(mo.bar)}`);
+  record("frame: each move clacks, and reaching block 170's 10 + 40 chimes once", cues.filter((c) => c === "clack").length === 2 && cues.filter((c) => c === "chime").length === 1, cues.join(","));
+  f("RESET"); def.update(1 / 60, 0, { ...state, calm: true });
+  record("frame: RESET under Calm puts the whole bar back on the input at once", mo.bar[0] === 50 && mo.bar[1] === 0 && mo.bar[2] === 0);
+}
+// --- The computer corner ---
+{
+  const pc = E7.CL.pc, near = { ...state, x: pc.x - 1.2, z: pc.z }, far = { ...state, x: pc.x - 9, z: pc.z };
+  cues.length = 0;
+  step(0.5, 1 / 60, far);
+  const r0 = mo.fan.rotation.x;
+  step(0.5, 1 / 60, near); step(0.5, 1 / 60, near);
+  const turned = mo.fan.rotation.x !== r0, blinkOn = [], c0 = mo.fan.rotation.x;
+  for (let k = 0; k < 120; k++) { def.update(1 / 60, 0, near); blinkOn.push(mo.cursor.visible); }
+  step(0.5, 1 / 60, far);
+  record("computer corner: the fan turns, the cursor blinks, and the hum starts once on approach and stops once on leaving",
+    turned && blinkOn.includes(true) && blinkOn.includes(false) && cues.join(",") === "hum-start,hum-stop", cues.join(","));
+  const r1 = mo.fan.rotation.x;
+  step(1, 1 / 60, { ...near, calm: true });
+  record("computer corner: Calm holds the fan still and the cursor steady", mo.fan.rotation.x === r1 && mo.cursor.visible);
+  cues.length = 0; step(0.2, 1 / 60, near); def.active(false, near);
+  record("computer corner: leaving the cave stops the hum (it was on from the Calm visit)", cues.join(",") === "hum-stop" && mo.hum === false, cues.join(","));
+}
+// --- Idle, sound and records ---
+{
+  step(2);
+  const busy = E7.animate(mo, v.live, v.cl, v.parts, v.cparts, 1 / 60, { ...state, x: 1e6, z: 1e6 });
+  cues.length = 0; step(3, 1 / 60, { ...state, x: 1e6, z: 1e6 });
+  record("idle: once everything has settled, animate reports nothing moving and asks for no sound", busy === false && cues.length === 0);
+  const NAMES = new Set(["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"]);
+  const src = await readFile(join(root, "src/js/genesis-era-7.js"), "utf8"), asked = [...src.matchAll(/say\("([a-z-]+)"\)/g)].map((m) => m[1]);
+  record("sound: every cue asked for is one of the host's ten names", asked.length > 0 && asked.every((n) => NAMES.has(n)), asked.join(","));
+  const BLn = await load(), Kn = makeKit(BLn, null);
+  let quiet = true;
+  try { BLn.genesisExhibits.eras[7].build(Kn.kit); Kn.props["e7-genesis"].onUse({}).terminal.run("TEXT"); for (let k = 0; k < 120; k++) BLn.genesisExhibits.eras[7].update(1 / 60, 0, state); } catch (e) { quiet = false; }
+  record("sound: a kit without cue builds and animates silently", quiet && BLn.genesisEra7.visit.mo.words.every((n) => n.visible));
+  const R = makeKit(BL, null);
+  E7.buildMotion(R.kit, v.live, v.cl, v.parts, v.cparts);
+  console.log(`records: the motion and light layer adds ${R.records()} scene records`);
+  record("records: the motion and light layer adds a bounded number of scene records", R.records() > 0 && R.records() <= 60, String(R.records()));
+}
+// --- Nothing removed or reworded ---
+{
+  let base = null;
+  try { base = execFileSync("git", ["-C", root, "show", `${BASE}:src/js/genesis-era-7.js`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch (e) { base = null; }
+  if (!base) record("unchanged: the base file could not be read from git (skipped)", true);
+  else {
+    const B0 = await load((f) => f === "genesis-era-7" ? base : readFile(join(root, `src/js/${f}.js`), "utf8")), O = B0.genesisEra7;
+    const words = (E) => JSON.stringify({ sources: E.SOURCES, overview: E.OVERVIEW, exhibits: E.EXHIBITS, cluster: E.CLUSTER, split: E.SPLIT_EX, genesis: E.GENESIS, b170: E.B170, release: E.RELEASE, rows: E.ROWS });
+    record("unchanged: every exhibit's text, date, source, connection and how-to is identical to the base", words(O) === words(E7));
+    const K0 = makeKit(B0, null); B0.genesisExhibits.eras[7].build(K0.kit);
+    const ids = (P) => Object.keys(P).sort().join(","), terms = (P) => Object.keys(P).sort().map((id) => { const r = P[id].onUse({}); return r.terminal ? r.terminal.banner.join("\n") : JSON.stringify(r.board || r.caption); }).join("\n---\n");
+    record("unchanged: the same exhibit ids as the base", ids(K0.props) === ids(K.props), ids(K.props));
+    const K1 = makeKit(BL, null), BLb = await load(); BLb.genesisExhibits.eras[7].build(K1.kit);
+    record("unchanged: a fresh build's terminals and panels match the base word for word", terms(K0.props) === terms(K1.props));
+  }
+}
+const passed = results.filter(Boolean).length;
+console.log(`${passed}/${results.length} Era 7 upgrade 2 checks passed`);
+process.exit(passed === results.length ? 0 : 1);
+
+  return { code: process.exitCode || 0, lines };
+  } catch (e) {
+    if (!e || e.suiteExit === undefined) return { code: 1, lines: [...lines, `threw: ${e && e.stack ? e.stack.split("\n").slice(0, 3).join(" / ") : e}`] };
+    return { code: e.suiteExit, lines };
+  }
+};
 const unitChecks = async () => {
   const genesisAudio = await genesisAudioProof();
   // rule: Genesis Hall's voice zone. The hall declares "genesis.hall" (a name the room accepts, in its own voice group)
@@ -26354,6 +27982,22 @@ const unitChecks = async () => {
   record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
   const era0More = await genesisEra0MoreProof();
   record("Genesis Era 0 terminals answer MORE: Nim, the scan-line CRT, the pointer station and the lamp panel each give their deeper lines (the workbench asks every exhibit for them), and the lamp panel's SET, SHIFT and ADD keep their binary", !era0More.bad.length, JSON.stringify(era0More));
+  const era0Upgrade2 = await genesisEra0Upgrade2Suite();
+  record("Genesis Era 0 Upgrade 2 suite (folded from gv/upgrade2-era-0): every one of its own checks passes", era0Upgrade2.code === 0 && !era0Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era0Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
+  const era1Upgrade2 = await genesisEra1Upgrade2Suite();
+  record("Genesis Era 1 Upgrade 2 suite (folded from gv/upgrade2-era-1): every one of its own checks passes", era1Upgrade2.code === 0 && !era1Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era1Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
+  const era2Upgrade2 = await genesisEra2Upgrade2Suite();
+  record("Genesis Era 2 Upgrade 2 suite (folded from gv/upgrade2-era-2): every one of its own checks passes", era2Upgrade2.code === 0 && !era2Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era2Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
+  const era3Upgrade2 = await genesisEra3Upgrade2Suite();
+  record("Genesis Era 3 Upgrade 2 suite (folded from gv/upgrade2-era-3): every one of its own checks passes", era3Upgrade2.code === 0 && !era3Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era3Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
+  const era4Upgrade2 = await genesisEra4Upgrade2Suite();
+  record("Genesis Era 4 Upgrade 2 suite (folded from gv/upgrade2-era-4): every one of its own checks passes", era4Upgrade2.code === 0 && !era4Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era4Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
+  const era5Upgrade2 = await genesisEra5Upgrade2Suite();
+  record("Genesis Era 5 Upgrade 2 suite (folded from gv/upgrade2-era-5): every one of its own checks passes", era5Upgrade2.code === 0 && !era5Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era5Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
+  const era6Upgrade2 = await genesisEra6Upgrade2Suite();
+  record("Genesis Era 6 Upgrade 2 suite (folded from gv/upgrade2-era-6): every one of its own checks passes", era6Upgrade2.code === 0 && !era6Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era6Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
+  const era7Upgrade2 = await genesisEra7Upgrade2Suite();
+  record("Genesis Era 7 Upgrade 2 suite (folded from gv/upgrade2-era-7): every one of its own checks passes", era7Upgrade2.code === 0 && !era7Upgrade2.lines.some((l) => /^(FAIL|FAILED)\b/.test(l)), JSON.stringify(era7Upgrade2.lines.filter((l) => /FAIL|threw|passed/i.test(l)).slice(-6)));
   const era0Suite = await genesisEra0UpgradeSuite();
   record("Genesis Era 0 upgrade suite (folded from its branch): every one of its own checks passes", era0Suite.code === 0 && !era0Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era0Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const era1Suite = await genesisEra1UpgradeSuite();
