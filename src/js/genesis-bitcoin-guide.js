@@ -3,7 +3,6 @@
 //   - the twelve essays as glowing cubes in their own colours, floating round the inside of the courtyard's ring path,
 //     each over a lit medallion: a click there, or on the cube, opens the whole essay in the reader, with its PDF and
 //     its video reel;
-//   - the video essays, a big screen running each essay's slide deck, its reels a click away;
 //   - the rock TV by the arrival, the real network's live readings and a look at Glow Golf in turn, with rock
 //     beanbags to sit on and watch it.
 //
@@ -19,7 +18,6 @@
   // The stations round the courtyard, in the atrium's frame (+z toward the arrival): where each stands, its facing
   // (`ry`, its front's direction), the box it fills and where a visitor stands to use it.
   const STATIONS = [
-    { id: "videos", x: -29.6, z: 0, ry: Math.PI / 2, w: 5.8, d: 0.8, reach: 3.2, hint: "the video essays" },
     { id: "live", x: 22, z: 22, ry: -1.04, w: 4.6, d: 1.4, reach: 3.4, hint: "the Bitcoin network, live, and its tools" }
   ];
   const layout = () => {
@@ -111,18 +109,9 @@
       { caption: "Live", title: "The Bitcoin network, live", note: "The screen reads mempool.space · the links open the tools", text: ["The screen shows the real network as it is now: block height, hashrate, fees and the mempool, the difficulty epoch, the bitcoin mined so far and the price.", "Watch it live, block by block, with the tools below."],
         links: [link("https://mempool.space", "mempool.space: blocks, fees and the mempool"), link("https://timechaincalendar.com/en", "Timechain Calendar"), link("https://bitcoin.clarkmoody.com/dashboard/", "Clark Moody's Bitcoin dashboard"), link("https://btcframe.com/dashboard/", "BTCFrame dashboard")], paint: cardPaint("Live", "https://mempool.space", "#f7931a") }
     ] }),
-    videos: (D) => ({ room: "Video essays - Bitcoin Guide", sources: [], pages: D.essays.map((e) => ({ caption: "Video essays", title: e.title, accent: e.accent, paint: picPaint(`video:${e.title}`, picPaint(`essay:${e.title}`)),
-      text: [e.description, ...e.slides.map((s) => `${s.title}${s.subtitle ? ` · ${s.subtitle}` : ""}`)].slice(0, 9),
-      links: [...(e.reel ? [link(e.reel, "Watch the reel")] : []), link("/video-essays", "All the video essays"), link(e.pdf, "Read the essay")] })) }),
   };
 
   // ---- Painting: small canvases shown on the stations' screens.
-  const isoCube = (g, cx, cy, s, ink) => {
-    const top = [[0, -s], [s * 0.87, -s / 2], [0, 0], [-s * 0.87, -s / 2]], left = [[-s * 0.87, -s / 2], [0, 0], [0, s], [-s * 0.87, s / 2]], right = [[s * 0.87, -s / 2], [0, 0], [0, s], [s * 0.87, s / 2]];
-    const poly = (pts, c) => { g.fillStyle = c; g.beginPath(); g.moveTo(cx + pts[0][0], cy + pts[0][1]); for (const p of pts) g.lineTo(cx + p[0], cy + p[1]); g.closePath(); g.fill(); };
-    poly(top, ink); g.globalAlpha = 0.75; poly(left, ink); g.globalAlpha = 0.55; poly(right, ink); g.globalAlpha = 1;
-    g.strokeStyle = "rgba(255,255,255,0.6)"; g.lineWidth = 3; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx, cy + s); g.moveTo(cx, cy); g.lineTo(cx - s * 0.87, cy - s / 2); g.moveTo(cx, cy); g.lineTo(cx + s * 0.87, cy - s / 2); g.stroke();
-  };
 
   const build = ({ M, createNode, addChild, place, top, label }) => {
     if (BL.bitcoinGuideThumbs) for (const k of Object.keys(BL.bitcoinGuideThumbs)) thumb(k);
@@ -167,19 +156,6 @@
       stations.push({ id: `essay-${i}`, essay: i, title: e.title, at: { x: c.x, z: c.z }, reach: 1.8, hint: `read ${e.title}, an essay from bitcoinguide.app`, board: open });
       return { holder, cube, core, ring, x: c.x, z: c.z, seed: i * 0.7, near: 0 };
     });
-    // ---- The video essays: a big screen running each essay's slide deck, a few seconds a slide.
-    const videoScreen = screen(960, 540, 5.4);
-    {
-      const s = station("videos"), n = stand(s);
-      addChild(n, createNode({ geometry: M.merge(M.box({ w: s.w, h: 3.5, d: 0.25, color: "#14171c", offset: { x: 0, y: 2.4, z: -0.1 } }),
-        ...[-s.w / 2 + 0.3, s.w / 2 - 0.3].map((x) => M.box({ w: 0.18, h: 1.4, d: 0.18, color: "#2a2d33", offset: { x, y: 0.7, z: -0.1 } })),
-        M.box({ w: s.w + 0.2, h: 0.1, d: 0.3, color: "#facc15", emissive: 1.2, offset: { x: 0, y: 4.2, z: -0.05 } })) }));
-      addChild(n, createNode({ geometry: videoScreen.face, position: { x: 0, y: 2.4, z: 0.04 } }));
-      const hit = createNode({ geometry: pick(s.w, 3.5, 0.6), position: { x: 0, y: 2.4, z: 0 } }); addChild(n, hit);
-      targets.push({ node: hit, board: () => BOARDS.videos(D) });
-      sign(n, "VIDEO ESSAYS", "the twelve essays as reels and slides · click here", 4.75, 0, 0.6);
-      stations.push({ ...s, title: "The video essays", board: () => BOARDS.videos(D) });
-    }
     // ---- The live screen near the arrival: two faces back to back on posts, each a page of the real network's live
     // readings (genesis-network.js paintScreen), a new page every few seconds; a click or a tap opens the tools.
     const liveFront = screen(960, 540, 4.8), liveBack = screen(960, 540, 4.8);
@@ -230,20 +206,9 @@
       g.font = "24px sans-serif"; g.fillStyle = "#dfe7ee"; g.fillText(`nine holes · par ${GC.totalPar} · step into the cenote to play`, W / 2, H - 46);
     };
     // ---- The screens' pictures, painted when what they show changes.
-    const vid = { essay: 0, slide: 0, t: 0 };
-    const paintVideo = (g, W, H) => {
-      const e = D.essays[vid.essay], ink = e.accent === "#000000" ? "#e9eef5" : e.accent, sl = e.slides[vid.slide] || { title: e.title, subtitle: "" };
-      g.fillStyle = "#06080b"; g.fillRect(0, 0, W, H);
-      const grd = g.createLinearGradient(0, 0, W, H); grd.addColorStop(0, ink); grd.addColorStop(1, "#06080b"); g.globalAlpha = 0.35; g.fillStyle = grd; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
-      isoCube(g, 150, 250, 90, ink);
-      g.textAlign = "left"; g.textBaseline = "top";
-      g.fillStyle = "#cfd8e3"; g.font = "24px sans-serif"; g.fillText(`VIDEO ESSAY ${vid.essay + 1} OF ${D.essays.length} · ${e.title.toUpperCase()}`, 300, 60);
-      g.fillStyle = "#ffffff"; g.font = "bold 58px sans-serif"; g.fillText(sl.title, 300, 180);
-      g.fillStyle = ink; g.font = "36px sans-serif"; g.fillText(sl.subtitle, 300, 260);
-      g.fillStyle = "#8a96a3"; g.font = "22px sans-serif"; g.fillText(`slide ${vid.slide + 1} of ${e.slides.length} · tap for the reels`, 300, 440);
-    };
+    const clock = { t: 0 };
     const update = (dt, calm, at) => {
-      const t = (vid.clock = (vid.clock || 0) + dt);
+      const t = (clock.t += dt);
       for (const c of cubes) {
         const d2 = at ? (at.x - c.x) * (at.x - c.x) + (at.z - c.z) * (at.z - c.z) : 1e9;
         c.near += ((d2 < 9 ? 1 : 0) - c.near) * Math.min(1, dt * 4);
@@ -252,9 +217,6 @@
         c.core.glow = 0.9 + Math.sin(t * 2 + c.seed) * 0.3 + c.near * 1.2;
         c.ring.glow = 0.8 + c.near * 1.5;
       }
-      vid.t += dt;
-      if (vid.t > 3.2) { vid.t = 0; vid.slide++; if (vid.slide >= Math.max(1, D.essays[vid.essay].slides.length)) { vid.slide = 0; vid.essay = (vid.essay + 1) % D.essays.length; } }
-      repaint(videoScreen, `${vid.essay}|${vid.slide}`, paintVideo);
       const NW = BL.genesisNetwork;
       // The rock TV turns through the live readings and, every other turn, a look at Glow Golf down the cenote.
       if ((live.t += dt) > 6) { live.t = 0; live.page = (live.page + 1) % (NW.SCREEN_PAGES.length * 2); }

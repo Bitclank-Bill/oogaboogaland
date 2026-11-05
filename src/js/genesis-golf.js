@@ -374,14 +374,16 @@
   // The game, driven by the scene: `start(i)` at a tee, keys, update and the overlay.
   const controller = (B, host) => {
     const GC = G(), C = GC.CAVERN, ball = GC.createBall(), scores = new Int8Array(9);
-    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, t: 0, meter: 0, wait: 0, played: 0, via: 0, sink: -1, splashes: 0, bumps: 0, bumpAt: 0, cheer: 0, cheerText: "", dripAt: 0, club: 0, follow: 0, order: -1, bites: 0 };
+    const st = { mode: "walk", hole: -1, aim: 0, power: 0, charging: false, swingT: -1, amp: 0, shot: 0, view: 0, t: 0, meter: 0, wait: 0, played: 0, via: 0, sink: -1, splashes: 0, bumps: 0, bumpAt: 0, cheer: 0, cheerText: "", dripAt: 0, club: 0, follow: 0, order: -1, bites: 0 };
     const local = { x: 0, z: 0 };
     const world = (x, z, out) => { out.x = C.x + x; out.z = C.z + z; return out; };
     const at = { x: 0, z: 0 }, cam = { x: 0, z: 0 };
+    // The putting stance: side-on to the line, as a putter stands (feet, shoulders and eyes parallel to it), facing
+    // the ball with the hole on the Ooga's left, the ball under the putter's head (pose.D in front of the Ooga).
     const standBeside = () => {
-      const s = Math.sin(st.aim), c = Math.cos(st.aim);
-      world(ball.x - s * 0.42 + c * 0.1, ball.z - c * 0.42 - s * 0.1, at);
-      host.standAt(at.x, at.z, st.aim);
+      const ry = st.aim - Math.PI / 2, fx = Math.sin(ry), fz = Math.cos(ry), d = pose.D || 0.65;
+      world(ball.x - fx * d, ball.z - fz * d, at);
+      host.standAt(at.x, at.z, ry);
     };
     // Ready for the next stroke, aimed at the cup (or the hole's next turn, while it has one ahead).
     const aimAhead = (c) => {
@@ -442,33 +444,62 @@
       const cooking = st.order > ORDER.close && st.order < ORDER.open;
       for (const q of S.steam) { const k = (st.t * (cooking ? 0.9 : 0.5) + q.ph) % 1; q.n.position.y = S.press.y + 0.1 + k * 0.9; q.n.position.x = S.press.x + Math.sin(st.t + q.ph * 6) * 0.08; const sc = (cooking ? 1.2 : 0.6) * (0.5 + k); q.n.scale.x = q.n.scale.y = q.n.scale.z = sc * (1 - k); q.n.visible = k < 0.95; }
     };
-    // The putter: in the Ooga's right hand while it plays a hole, both hands on it; it swings back with the meter and
-    // through on the strike, then settles. Its shaft reaches the floor from the hand at the address.
+    // The putter and the putting stance, measured on the Oogas' rig (a 1.14-tall Ooga: root 0.36 m over the floor,
+    // shoulders 0.5 m to each side and 0.53 m over the root, arms 0.72 m long; all scale with its size `k`). The
+    // putter hangs from a grip centred 0.32 m in front of the chest, on the Ooga's root, its shaft leaning down to a
+    // head resting just behind the ball; both arms reach in and down to that grip. The putting stroke, as putters are
+    // taught: the shoulders rock like a pendulum and the arms and hands keep their triangle, so the putter swings along
+    // the line about the grip (rotation z under its lean x) and the arms swing with it.
+    const RIG = { rootH: 0.357, shoulderX: 0.5, shoulderY: 0.53, gripZ: 0.32, gripY: 0.123, reach: 0.25, size: 1.1424 };
     let putter = null, putterFor = null;
-    const ADDRESS = -0.32;
+    const pose = { k: 1, D: 0, lean: 0, armZ: 0.767, armX: -0.665 };
     const putterOn = (a) => {
       if (putterFor !== a) {
         if (putter && putter.parent) { const pa = putter.parent; pa.children.splice(pa.children.indexOf(putter), 1); putter.parent = null; }
-        const h = a.parts.hat.scale.x, u = h / 16, Lsh = (0.7725 * h) / Math.cos(ADDRESS) - 10 * u;
-        putter = host.node({ geometry: host.M.merge(host.M.box({ w: 0.025, h: Lsh, d: 0.025, color: "#cfd4da", emissive: 0.2, offset: { x: 0, y: -Lsh / 2, z: 0 } }), host.M.box({ w: 0.04, h: 0.12, d: 0.04, color: "#1a1a1a", offset: { x: 0, y: -0.04, z: 0 } }),
-          host.M.box({ w: 0.12, h: 0.04, d: 0.045, color: "#9aa0a8", emissive: 0.2, offset: { x: -0.04, y: -Lsh, z: 0.01 } }), host.M.box({ w: 0.1, h: 0.008, d: 0.01, color: "#39ff7a", emissive: 1, offset: { x: -0.04, y: -Lsh + 0.022, z: 0.035 } })),
-          position: { x: 0, y: -10 * u, z: 0.03 } });
-        host.add(a.parts.armR, putter); putterFor = a;
+        const k = a.parts.hat.scale.x / RIG.size, drop = (RIG.rootH + RIG.gripY) * k - 0.03, ahead = RIG.reach * k, Ls = Math.hypot(drop, ahead);
+        pose.k = k; pose.D = (RIG.gripZ + RIG.reach) * k; pose.lean = Math.atan2(ahead, drop);
+        const M = host.M;
+        putter = host.node({ geometry: M.merge(
+          M.box({ w: 0.028, h: Ls, d: 0.028, color: "#cfd4da", emissive: 0.25, offset: { x: 0, y: -Ls / 2, z: 0 } }),
+          M.box({ w: 0.05, h: 0.16, d: 0.05, color: "#1a1a1a", offset: { x: 0, y: -0.06, z: 0 } }),
+          M.box({ w: 0.15, h: 0.035, d: 0.055, color: "#b8bec6", emissive: 0.25, offset: { x: 0.02, y: -Ls + 0.0175, z: 0 } }),
+          M.box({ w: 0.12, h: 0.006, d: 0.012, color: "#39ff7a", emissive: 1.2, offset: { x: 0.02, y: -Ls + 0.038, z: 0 } })),
+          position: { x: -0.06, y: RIG.gripY * k, z: RIG.gripZ * k } });
+        host.add(a.root, putter); putterFor = a;
+        if (st.mode === "aim") standBeside();
       }
       putter.visible = true;
     };
     const putterOff = () => { if (putter) putter.visible = false; };
+    // The back swing grows with the meter (distance comes from its length, not force); Space starts the forward stroke
+    // at one tempo, the ball leaves the face halfway (impact), and the follow-through goes as far forward as the back
+    // swing went back, holds, and settles. The head looks down over the ball the whole time.
+    const STROKE_T = 0.4, HOLD_T = 0.55, BACK_MAX = 0.55, VIEWS = ["down the line", "face-on", "overhead"];
     const updateSwing = (dt) => {
       const a = host.avatar ? host.avatar() : null;
       if (!a) return;
-      if (st.mode === "walk") { putterOff(); st.club = 0; return; }
+      if (st.mode === "walk") { if (putter && putter.visible) { a.parts.head.rotation.x = 0; a.parts.torso.rotation.z = 0; } putterOff(); st.club = 0; st.swingT = -1; return; }
       putterOn(a);
-      let target = 0;
-      if (st.mode === "aim" && st.charging) target = st.power * 0.8;
-      if (st.follow > 0) { st.follow -= dt; target = -0.55; }
-      st.club += (target - st.club) * Math.min(1, dt * (st.follow > 0 ? 30 : 10));
-      a.parts.armR.rotation.x = ADDRESS + st.club; a.parts.armL.rotation.x = ADDRESS + st.club;
-      a.parts.armR.rotation.z = -0.12; a.parts.armL.rotation.z = 0.3;
+      if (st.swingT >= 0) {
+        st.swingT += dt;
+        const k = Math.min(1, st.swingT / STROKE_T);
+        if (k < 1) st.club = st.amp * Math.cos(Math.PI * k);
+        else if (st.swingT < STROKE_T + HOLD_T) st.club = -st.amp;
+        else { st.club += (0 - st.club) * Math.min(1, dt * 5); if (Math.abs(st.club) < 0.01) st.swingT = -1; }
+        // Impact: the ball leaves the putter face as the swing passes the address.
+        if (k >= 0.5 && st.mode === "stroke") { GC.putt(ball, st.aim, st.shot); st.mode = "roll"; sfx.putt(st.shot); }
+      } else {
+        const target = st.mode === "aim" && st.charging ? st.power * BACK_MAX : 0;
+        st.club += (target - st.club) * Math.min(1, dt * 10);
+      }
+      const P = a.parts;
+      // Side-on to the line with the hole on the Ooga's left (its +x), written after the crew's update every frame.
+      a.root.rotation.y = st.aim - Math.PI / 2;
+      // The putter about its grip: back (away from the hole) is -z; the arms rock with it, a little less.
+      putter.rotation.x = -pose.lean; putter.rotation.z = -st.club; putter.rotation.y = 0;
+      P.armR.rotation.x = pose.armX; P.armL.rotation.x = pose.armX;
+      P.armR.rotation.z = pose.armZ - st.club * 0.8; P.armL.rotation.z = -pose.armZ - st.club * 0.8;
+      P.torso.rotation.z = -st.club * 0.2; P.head.rotation.x = 0.4;
     };
     // Confetti from the cup: bits of the fixed pool thrown up and out, falling back under gravity.
     const celebrate = (x, z, n) => {
@@ -561,11 +592,12 @@
       const k = e.key;
       if (k === "Escape") { stop(); return true; }
       if (st.mode !== "aim") return k === " ";
+      if (k === "v" || k === "V") { st.view = (st.view + 1) % VIEWS.length; host.say(`View: ${VIEWS[st.view]}`); return true; }
       if (k === "ArrowLeft" || k === "a" || k === "A") st.aim += 0.06;
       else if (k === "ArrowRight" || k === "d" || k === "D") st.aim -= 0.06;
       else if (k === " " || k === "Enter") {
         if (!st.charging) { st.charging = true; st.meter = 0; }
-        else { st.charging = false; GC.putt(ball, st.aim, st.power); st.mode = "roll"; st.follow = 0.35; sfx.putt(st.power); }
+        else { st.charging = false; st.shot = st.power; st.amp = Math.max(0.08, st.club); st.swingT = 0; st.mode = "stroke"; }
       } else return false;
       standBeside();
       return true;
@@ -634,11 +666,27 @@
       // The aiming dots, longer as the swing grows.
       const show = st.mode === "aim", len = 0.6 + (st.charging ? st.power : 0.3) * 3;
       for (let k = 0; k < B.dots.length; k++) { const d = B.dots[k], f = (k + 1) / B.dots.length * len; d.visible = show; d.position.x = ball.x + Math.sin(st.aim) * f; d.position.z = ball.z + Math.cos(st.aim) * f; d.position.y = 0.05 + GC.heightAt(c, d.position.x, d.position.z, null); }
-      // The camera behind the ball, looking along the aim (or after the rolling ball).
-      const s = Math.sin(st.aim), co = Math.cos(st.aim), k = Math.min(1, dt * 5);
-      world(ball.x - s * 4.2, ball.z - co * 4.2, cam); world(ball.x + s * 2, ball.z + co * 2, at);
-      camera.position.x += (cam.x - camera.position.x) * k; camera.position.z += (cam.z - camera.position.z) * k; camera.position.y += (host.top + 3.0 - camera.position.y) * k;
-      camera.target.x += (at.x - camera.target.x) * k; camera.target.z += (at.z - camera.target.z) * k; camera.target.y += (host.top + 0.1 - camera.target.y) * k;
+      // The camera low behind the ball, down the line, so the ball, the putter head and the Ooga beside it all show
+      // while it lines up and strokes; once the ball rolls it rises and follows it.
+      // V picks the view while lining up: down the line, face-on (across the line from the Ooga, which faces it) or
+      // overhead.
+      const s = Math.sin(st.aim), co = Math.cos(st.aim), k = Math.min(1, dt * 5), lining = st.mode === "aim" || st.mode === "stroke";
+      let up = 3.0, look = 0.1;
+      if (!lining || st.view === 0) {
+        const back = lining ? 3.2 : 4.2, ahead = lining ? 1.0 : 2;
+        up = lining ? 1.7 : 3.0; look = lining ? 0.2 : 0.1;
+        world(ball.x - s * back, ball.z - co * back, cam); world(ball.x + s * ahead, ball.z + co * ahead, at);
+      } else if (st.view === 1) {
+        // The Ooga faces (-cos aim, sin aim); the camera stands across the line in front of it.
+        const fx = -co, fz = s, d = pose.D || 0.65;
+        up = 1.3; look = 0.35;
+        world(ball.x + fx * 3.0, ball.z + fz * 3.0, cam); world(ball.x - fx * d * 0.5, ball.z - fz * d * 0.5, at);
+      } else {
+        up = 4.6; look = 0;
+        world(ball.x - s * 0.6, ball.z - co * 0.6, cam); world(ball.x + s * 0.4, ball.z + co * 0.4, at);
+      }
+      camera.position.x += (cam.x - camera.position.x) * k; camera.position.z += (cam.z - camera.position.z) * k; camera.position.y += (host.top + up - camera.position.y) * k;
+      camera.target.x += (at.x - camera.target.x) * k; camera.target.z += (at.z - camera.target.z) * k; camera.target.y += (host.top + look - camera.target.y) * k;
     };
     // The scorecard and, while aiming, the swing's meter.
     const overlay = (g) => {
@@ -678,7 +726,7 @@
         const grd = g.createLinearGradient(bx, 0, bx + bw, 0); grd.addColorStop(0, "#39ff7a"); grd.addColorStop(0.6, "#ffd23a"); grd.addColorStop(1, "#ff4f4f");
         g.fillStyle = grd; g.fillRect(bx, by, bw * st.power, 14 * u);
         g.fillStyle = "#e9eef5"; g.font = `${12 * u}px sans-serif`; g.textAlign = "center";
-        g.fillText(st.charging ? "Space to strike" : "A D or arrows to aim · Space to swing · Esc to walk", W / 2, by - 20 * u);
+        g.fillText(st.charging ? "Space to strike" : "A D or arrows to aim · Space to swing · V view · Esc to walk", W / 2, by - 20 * u);
       }
       g.restore();
       void tot; void local;
