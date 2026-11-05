@@ -609,6 +609,7 @@
       setVec(banana.scale, 0.135 * h * pop, 0.175 * h * pop, 0.11 * h * pop);
     }
     gun.ammoReloading = w.reloading;
+    if (cave.restEquipment) { parts.gunFlash.visible = false; w.carry = "rest"; return; }
     if (cave.sleepWeapons.visible || gun.parent === cave.sleepWeapons) {
       cave.sleepWeapons.visible = cave.root.visible && !cave.bedroll?.outdoor;
       if (cave.bedroll?.outdoor) for (const node of cave.swagNodes) node.visible = false;
@@ -3105,6 +3106,7 @@
       if (!clear) return false;
       const finish = () => {
         if (cave.camp.seat !== seat || !walkable(seat.walkAt.x, exitZ, seat.walkAt.x, exitZ, seat.floor, cave.bodyHeight, cave)) return false;
+        if (seat.releaseEquipment) seat.releaseEquipment(cave);
         seat.sitter = null;
         seat.entry = seat.exit = null;
         cave.camp.seat = null;
@@ -3124,7 +3126,8 @@
       if (!cave || cave.grabbedBy || cave.camp.burning || cave.camp.rolling || cave.camp.seat || seat.sitter || !grounded(cave)) return false;
       if (!walkable(seat.walkAt.x, seat.walkAt.z, seat.walkAt.x, seat.walkAt.z, seat.floor, cave.bodyHeight, cave)) return false;
       elevatePlayer(0);
-      removeJetpack(cave);
+      if (seat.keepEquipment && cave.jet) cutJet(cave);
+      else removeJetpack(cave);
       releaseBuild(cave);
       cave.walk = null;
       cave.hop = cave.hopV = cave.cheer = cave.catchT = cave.thumpT = 0;
