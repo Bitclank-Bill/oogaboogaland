@@ -12,7 +12,9 @@
 // stations whose commands change their own models: the "assemble the argument" teaching game, the paper's document
 // layout and a 2008-style reading workstation; docs/genesis-voyage/exhibits/era-6.md) and the unopened January door.
 // `BL.genesisEra6` exposes the corner's pure rules and the paper's section data; genesis-era-6-argument.js plays the
-// same game on the retro screen interface.
+// same game on the retro screen interface. Past the January door stands Citation Catch, a modern museum toy: a card
+// catalogue of the reference desk's twelve cards, whose console game (genesis-era-6-catch.js) sorts them as they
+// fall. Each exhibit's finer parts (frames, keys, lamps, trims) are one merged mesh at its own spot (`detail`).
 //
 // No sound, no toasts and nothing that moves by itself: the laptop's cursor is the only blink, and it holds still
 // while a panel or terminal is open or Calm is on. Nothing typed leaves the page.
@@ -39,6 +41,16 @@
   const clean = (text) => String(text).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 48).trim();
   const reply = (...lines) => ({ lines });
   const howTo = (steps) => ["HOW TO USE", ...steps.map((s, i) => `${i + 1}. ${s}`), ""];
+  // An exhibit's finer parts as one merged mesh at (x, y, z), its parts in its own frame (y from the floor), as Era 0
+  // builds them. The layout's dry run and the checks' kits have no `merge`, so they get a bare node at the same spot:
+  // every run makes the same calls in the same order, and the mesh moves with its exhibit's cluster.
+  const detail = (kit, x, y, z, make) => {
+    const nd = kit.createNode(kit.M.merge ? { geometry: kit.M.merge(...make(kit.M)) } : {});
+    nd.position.x = x; nd.position.y = y; nd.position.z = z;
+    return kit.place(nd);
+  };
+  const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
+  const rows = (n, f) => Array.from({ length: n }, (_, k) => f(k));
 
   // --- The eight numbered references, as the paper's list gives them, and the cave that tells each story ---------
   // `keys`: the paper, then the other era's own source for that work where one is in the voyage. `where`: the cave.
@@ -253,7 +265,7 @@
 
   let desk = null, cursor = null, blink = 0;
   // The cluster's per-visit state and model nodes (`build` sets them, `dispose` drops them).
-  let arg = null, lay = null, ws = null, argNodes = null, layNodes = null, wsNodes = null;
+  let arg = null, lay = null, ws = null, argNodes = null, layNodes = null, wsNodes = null, cat = null, catNodes = null;
   const filed = () => desk.filed.reduce((n, f) => n + (f ? 1 : 0), 0);
   const laptopTerminal = () => ({
     banner: ["REFERENCE DESK / an original, unbranded 2008-style laptop. Not the author's computer.",
@@ -408,6 +420,35 @@
       return reply("Commands: PAGE <1..9> | STORAGE <years> | LAMP");
     }
   });
+  // The catalogue cabinet beside the January door: twelve drawers, one a card (the reference desk's twelve), and two
+  // lamps on top that say which pile the last drawer pulled belongs to. Its console game is Citation Catch
+  // (genesis-era-6-catch.js), the same twelve cards falling to a sorting tray.
+  const catTerminal = () => ({
+    banner: ["CITATION CATCH: a modern museum toy and console game. The cabinet and the game are original museum designs, not period software.",
+      ...howTo(["Type DRAWERS to read the twelve drawer labels.", "Type PULL R3, or PULL RPOW, to slide a drawer out: the gold lamp means in the paper's list, the blue lamp means not listed.",
+        "SHUT closes every drawer. On the console, catch each falling card in the right tray."]),
+      "IN SHORT: eight of these twelve names are the paper's numbered references; four famous ones are not. File each where the list puts it. [E6-WP]"],
+    prompt: "CATALOGUE>",
+    run(line) {
+      const parts = clean(line).toUpperCase().split(/\s+/), cmd = parts[0];
+      if (cmd === "RESET" || cmd === "SHUT") { cat.open.fill(0); cat.last = -1; syncCat(); return reply(cmd === "RESET" ? "Every drawer shut, both lamps off." : "Drawers shut."); }
+      if (cmd === "DRAWERS") return reply(...CARDS.map((c, i) => `${c.id.padEnd(10)} ${c.name}${cat.open[i] ? "  [open]" : ""}`));
+      if (cmd === "PULL") {
+        const i = CARDS.findIndex((c) => c.id === parts[1]);
+        if (i < 0 || parts.length > 2) return reply("PULL <drawer>, e.g. PULL R3 or PULL CHORD. DRAWERS lists them.");
+        const c = CARDS[i];
+        cat.open[i] = 1; cat.last = i; syncCat();
+        if (c.cited) return reply(`Gold lamp: ${c.name} is reference [${c.cited}] in the paper's list. Its story is in Era ${REFS[c.cited - 1].era}.`);
+        return reply(`Blue lamp: ${c.name} is not among the eight numbered references.`, c.note || "Not listed means absent from the bibliography; any influence claim needs its own evidence.");
+      }
+      if (cmd === "HELP") return reply("Commands: DRAWERS | PULL <drawer> | SHUT");
+      if (cmd === "MORE") return reply("THE DEEPER STORY: a reference list is evidence of what an author pointed readers to. The game drills the difference between cited and merely famous, as the reference desk does. [E6-WP, E6-DOSSIER]",
+        "STILL UNSOLVED: a list cannot say how much each work shaped the design; other caves keep those stories with their own sources.",
+        `MUSEUM NOTE: ${ORIGINAL} The cards' names are the museum's short forms.`);
+      if (cmd === "SOURCES") return reply(...["E6-WP", "E6-DOSSIER"].map((k) => `[${k}] ${sources[k].label} ${sources[k].href}`));
+      return reply("Commands: DRAWERS | PULL <drawer> | SHUT");
+    }
+  });
   // Each model's nodes follow its state: called after every command and on RESET, never per frame.
   const syncArg = () => {
     if (!argNodes) return;
@@ -431,6 +472,12 @@
       marker.position.x = N.pageX[marker.visible ? (i >= 0 ? SECTIONS[i].page : page) - 1 : 0];
     };
     put(N.gold, lay.a, lay.page); put(N.teal, lay.b, 0);
+  };
+  const syncCat = () => {
+    if (!catNodes) return;
+    const N = catNodes;
+    for (let i = 0; i < CARDS.length; i++) N.drawers[i].position.z = N.drawerZ + (cat.open[i] ? 0.3 : 0);
+    N.gold.visible = cat.last >= 0 && !!CARDS[cat.last].cited; N.blue.visible = cat.last >= 0 && !CARDS[cat.last].cited;
   };
   const syncWs = () => {
     if (!wsNodes) return;
@@ -460,7 +507,7 @@
       const { era, top, solid, sign, obstacle, prop } = kit;
       pay = { signed: { BO: false, CY: false }, order: "" };
       desk = { filed: new Uint8Array(CARDS.length), zoom: 1 };
-      arg = createArgument(); lay = { a: -1, b: -1, page: 0 }; ws = { page: 1, years: 0, lamp: true };
+      arg = createArgument(); lay = { a: -1, b: -1, page: 0 }; ws = { page: 1, years: 0, lamp: true }; cat = { open: new Uint8Array(CARDS.length), last: -1 };
       blink = 0;
       const L = kit.channel.x0, R = kit.channel.x1, at = (u) => era.z1 - u;
 
@@ -471,6 +518,14 @@
         solid(2.8, 1.5, 0.12, "#3a2e22", x, top + 1.6, z);
         solid(1.1, 1.3, 0.03, "#f3ecd8", x, top + 1.6, z + 0.08, 0.25);
         for (let i = 0; i < 6; i++) solid(0.8, 0.04, 0.01, "#6d6352", x, top + 2.05 - i * 0.16, z + 0.1);
+        // The board's frame and the posts' feet, a hooded lamp over the notice, pins at the paper's corners, the email's
+        // header rule and sign-off, and a dated plaque under it with an amber strip.
+        detail(kit, x, top, z, (M) => [B(M, 2.96, 0.1, 0.2, "#7a6243", 0, 2.4, 0), B(M, 2.96, 0.1, 0.2, "#7a6243", 0, 0.8, 0),
+          ...[-1, 1].map((sd) => B(M, 0.1, 1.7, 0.2, "#7a6243", sd * 1.44, 1.6, 0)), ...[-1, 1].map((sd) => B(M, 0.42, 0.1, 0.62, "#3a2e22", sd * 1.3, 0.25, 0)),
+          B(M, 0.06, 0.06, 0.5, "#3b3f42", 0, 2.58, 0.2), B(M, 0.62, 0.12, 0.2, "#2f4a3a", 0, 2.56, 0.46), B(M, 0.54, 0.02, 0.14, "#fff2c8", 0, 2.49, 0.46, 1),
+          ...rows(4, (k) => B(M, 0.05, 0.05, 0.03, "#c8322a", (k % 2 ? 0.5 : -0.5), k < 2 ? 2.2 : 1.0, 0.11, 0.3)),
+          B(M, 0.95, 0.06, 0.012, "#2f4f7a", 0, 2.17, 0.1), ...rows(3, (k) => B(M, 0.5 - k * 0.1, 0.03, 0.01, "#6d6352", -0.15 - k * 0.05, 1.12 - k * 0.07, 0.1)),
+          B(M, 0.5, 0.16, 0.03, "#2b221d", 0.95, 1.0, 0.075), B(M, 0.4, 0.04, 0.02, "#ffb347", 0.95, 1.0, 0.095, 0.8)]);
         obstacle(x - 1.6, x + 1.6, z - 0.5, z + 0.5);
         sign("THE ANNOUNCEMENT · 31 OCT 2008", "18:10 UTC posting timestamp · the PDF itself is undated", x, top + 2.9, z + 0.2, 0, 0.42);
         prop({ id: "e6-announce", year: 2008, connection: "context", date: "31 October 2008, 18:10 UTC: the archived posting timestamp of the announcement email",
@@ -485,6 +540,15 @@
         solid(1.2, 0.03, 0.9, "#f6f0de", x - 0.62, top + 1.04, z, 0.3); solid(1.2, 0.03, 0.9, "#f6f0de", x + 0.62, top + 1.04, z, 0.3);
         for (let i = 0; i < 8; i++) solid(0.14, 0.06, 0.06, "#f2c14e", x - 1.4 + i * 0.4, top + 0.85, z + 0.92, 0.6);
         for (const dx of [-2.6, 2.6]) { solid(1.2, 0.45, 0.6, "#4a3a28", x + dx, top + 0.22, z + 1.2); obstacle(x + dx - 0.6, x + dx + 0.6, z + 0.9, z + 1.5); }
+        // A plinth and a carved front panel, a brass bezel round each reference light, the open paper's gutter, ruled
+        // lines on both pages (a heavier title line on the first) and a red ribbon, a green-shaded reading lamp at the
+        // back, and a cushion on each bench.
+        detail(kit, x, top, z, (M) => [B(M, 4.1, 0.08, 1.9, "#3a2e22", 0, 0.04, 0), B(M, 3.5, 0.5, 0.02, "#4e3c28", 0, 0.45, 0.905),
+          ...rows(8, (i) => B(M, 0.22, 0.12, 0.02, "#b08a3a", -1.4 + i * 0.4, 0.85, 0.905, 0.15)), B(M, 0.06, 0.03, 0.9, "#d8ccb0", 0, 1.05, 0),
+          B(M, 0.7, 0.008, 0.05, "#2b221d", -0.62, 1.058, -0.36), ...rows(14, (k) => B(M, 0.95, 0.004, 0.022, "#8a8070", (k < 7 ? -0.62 : 0.62), 1.057, -0.25 + (k % 7) * 0.09)),
+          B(M, 0.04, 0.006, 0.55, "#c8322a", 0.3, 1.06, 0.2), B(M, 0.26, 0.04, 0.22, "#b08a3a", 1.5, 1.04, -0.5), B(M, 0.04, 0.34, 0.04, "#b08a3a", 1.5, 1.22, -0.5),
+          B(M, 0.52, 0.12, 0.22, "#2f6b4a", 1.5, 1.42, -0.42), B(M, 0.46, 0.02, 0.16, "#fff2c8", 1.5, 1.355, -0.42, 1),
+          ...[-2.6, 2.6].map((dx) => B(M, 1.1, 0.07, 0.5, "#7a2f2a", dx, 0.48, 1.2))]);
         obstacle(x - 2, x + 2, z - 0.9, z + 0.9);
         sign("THE WHITEPAPER · 31 OCT 2008", "the anchor work: a proposal, read it here · announced date, the PDF is undated", x, top + 3.1, z, 0, 0.5);
         prop({ id: "e6-paper", year: 2008, connection: "anchor", date: "31 October 2008: the dated announcement; the PDF itself prints no day of publication",
@@ -508,6 +572,13 @@
             at: { x: sx + 1.9, y: top, z }, reach: 1.3, pick: { w: 1, h: 2.2, d: 1.6, x: sx + 0.3, z }, onUse: () => slotBoard(r) });
         });
         obstacle(sx - 0.7, sx + 0.7, z0, z1);
+        // A kick plinth and a crown along the case, a brass reading rail, a divider between each pair of slots, brass
+        // bookends either side of each slot's five spines and a number plate on the shelf's edge under each.
+        const slotDz = REFS.map((r, i) => at(u0 + i * step) - mid);
+        detail(kit, sx, top, mid, (M) => [B(M, 1.35, 0.16, len, "#3a2a1a", 0.12, 0.08, 0), B(M, 1.4, 0.16, len + 0.1, "#6b5236", 0.12, 7.06, 0),
+          B(M, 0.05, 0.05, len - 0.4, "#b08a3a", 0.78, 2.78, 0, 0.1), ...rows(7, (i) => B(M, 1.15, 1.5, 0.06, "#5a4430", 0.1, 1.7, slotDz[i] - step / 2)),
+          ...slotDz.flatMap((dz) => [B(M, 0.46, 0.5, 0.04, "#b08a3a", 0.15, 1.22, dz - 0.78), B(M, 0.46, 0.5, 0.04, "#b08a3a", 0.15, 1.22, dz + 0.78),
+            B(M, 0.02, 0.12, 0.34, "#c9a35a", 0.71, 0.82, dz, 0.2)])]);
         sign("THE REFERENCE SHELF · 2008", "eight numbered references in the whitepaper · each slot points back to its era", sx + 0.75, top + 3.4, at(u0 + step * 3.5), Math.PI / 2, 0.42);
         // Optional for flyers: the upper shelf of names that are not references, with the same note on the paper's desk.
         const uz = at(u0 + step * 3.5);
@@ -527,6 +598,15 @@
         for (let i = 0; i < 4; i++) solid(0.7, 0.04, 0.01, "#9fc4dd", x - 0.1, top + 1.6 - i * 0.12, z - 0.255, 0.4);
         cursor = solid(0.06, 0.07, 0.01, "#e8f2fa", x + 0.32, top + 1.24, z - 0.255, 0.8);
         for (let i = 0; i < 3; i++) solid(0.5, 0.02, 0.35, "#f3ecd8", x + 1.1, top + 0.92 + i * 0.02, z + 0.2 - i * 0.05);
+        // Keys on the keyboard, a trackpad and the hinge, a box of index cards (the cards the desk sorts) with a few
+        // coloured tabs, a mug, two drawers with pulls and a plinth: an original design, no maker's mark.
+        detail(kit, x, top, z, (M) => [...rows(44, (k) => B(M, 0.08, 0.012, 0.08, "#3c3f44", -0.5 + (k % 11) * 0.1, 0.976, -0.12 + Math.floor(k / 11) * 0.1)),
+          B(M, 0.4, 0.004, 0.22, "#a6a9ac", 0, 0.957, 0.45), B(M, 1.2, 0.05, 0.06, "#8d9093", 0, 0.975, -0.27), B(M, 0.03, 0.03, 0.01, "#101214", 0, 1.76, -0.27),
+          B(M, 0.5, 0.25, 0.35, "#7a6243", -1.15, 1.025, 0.1), ...rows(5, (k) => B(M, 0.44, 0.16, 0.012, "#f3ecd8", -1.15, 1.17, -0.02 + k * 0.06)),
+          ...rows(3, (k) => B(M, 0.1, 0.04, 0.014, ["#c8583a", "#4a7ab0", "#6fae3a"][k], -1.3 + k * 0.15, 1.26, 0.04 + k * 0.06)),
+          B(M, 0.14, 0.16, 0.14, "#e9e2cc", 1.4, 0.98, -0.4), B(M, 0.11, 0.006, 0.11, "#3a2414", 1.4, 1.06, -0.4),
+          ...[-1, 1].flatMap((sd) => [B(M, 1.0, 0.3, 0.02, "#5a4430", sd * 0.95, 0.62, 0.71), B(M, 0.2, 0.04, 0.03, "#c9a35a", sd * 0.95, 0.66, 0.73, 0.2)]),
+          B(M, 3.5, 0.08, 1.5, "#3a2e22", 0, 0.04, 0)]);
         obstacle(x - 1.7, x + 1.7, z - 0.7, z + 0.7);
         sign("REFERENCE DESK · 2008 LAPTOP", "Space: sort the reference cards · original design, not the author's computer", x, top + 2.6, z + 0.1, 0, 0.42);
         prop({ id: "e6-laptop", year: 2008, connection: "context", date: "14 October 2008: an example laptop announced; this desk is an original design",
@@ -539,6 +619,14 @@
         solid(0.9, 0.03, 0.6, "#f3ecd8", x - 1.1, top + 0.92, z, 0.25); solid(0.9, 0.03, 0.6, "#f3ecd8", x + 1.1, top + 0.92, z, 0.25);
         solid(0.18, 0.04, 0.18, "#b8322a", x - 0.8, top + 0.95, z + 0.15); solid(0.18, 0.04, 0.18, "#b8322a", x + 1.4, top + 0.95, z + 0.15);
         solid(0.8, 0.12, 1, "#2f4f3a", x, top + 0.96, z);
+        // The open ledger's pages and rules, written lines on both slips, a dish with the one toy coin behind the ledger,
+        // an inkwell and pen, and the table's plinth.
+        detail(kit, x, top, z, (M) => [B(M, 0.72, 0.02, 0.92, "#efe6d2", 0, 1.03, 0), B(M, 0.03, 0.025, 0.92, "#c8bc9c", 0, 1.035, 0),
+          ...rows(8, (k) => B(M, 0.3, 0.004, 0.015, "#6d6352", (k < 4 ? -0.18 : 0.18), 1.042, -0.3 + (k % 4) * 0.18)),
+          ...rows(8, (k) => B(M, 0.6 - (k % 4 === 3 ? 0.25 : 0), 0.004, 0.03, "#6d6352", (k < 4 ? -1.1 : 1.1), 0.938, -0.2 + (k % 4) * 0.09)),
+          B(M, 0.34, 0.04, 0.34, "#3a2e22", 0, 0.92, -0.62), B(M, 0.24, 0.24, 0.05, "#e0b84a", 0, 1.08, -0.62, 0.25), B(M, 0.1, 0.1, 0.06, "#8a6a2a", 0, 1.08, -0.62, 0.1),
+          B(M, 0.14, 0.12, 0.14, "#1c2430", 1.55, 0.96, -0.55), B(M, 0.03, 0.03, 0.4, "#2b221d", 1.35, 0.93, -0.4),
+          B(M, 3.7, 0.08, 1.7, "#3a2e22", 0, 0.04, 0)]);
         obstacle(x - 1.9, x + 1.9, z - 0.9, z + 0.9);
         sign("TWO PAYMENTS, ONE COIN · 2008", "a simplified teaching model · not a wallet or a security proof", x, top + 2.7, z + 0.2, 0, 0.42);
         prop({ id: "e6-payments", year: 2008, connection: "demonstration", demonstrates: ["e6-paper"],
@@ -551,6 +639,12 @@
         solid(2.9, 0.3, 0.4, "#3a2e22", x, top + 3.55, z);
         solid(2.3, 3.2, 0.12, "#6b4a2c", x, top + 1.6, z);
         solid(0.1, 0.1, 0.06, "#d8b05a", x + 0.85, top + 1.5, z + 0.09, 0.4);
+        // Four raised panels, iron hinges, a keyhole plate, a torn-off calendar leaf for the future date, a threshold
+        // and a thin warm light under the door: the next gallery is through it, not yet.
+        detail(kit, x, top, z, (M) => [...rows(4, (k) => B(M, 0.82, k < 2 ? 1 : 0.9, 0.03, "#5a3d24", (k % 2 ? 0.5 : -0.5), k < 2 ? 2.45 : 0.8, 0.075)),
+          ...rows(3, (k) => B(M, 0.2, 0.08, 0.04, "#2e3236", -1.05, 0.5 + k * 1.1, 0.08)), B(M, 0.1, 0.24, 0.02, "#d8b05a", 0.85, 1.3, 0.07, 0.3),
+          B(M, 0.5, 0.56, 0.02, "#f3ecd8", 0, 1.62, 0.075), B(M, 0.5, 0.12, 0.024, "#b8322a", 0, 1.84, 0.077), B(M, 0.16, 0.24, 0.026, "#2b221d", 0, 1.56, 0.078),
+          B(M, 2.7, 0.08, 0.7, "#3a2e22", 0, 0.04, 0.05), B(M, 2.2, 0.03, 0.05, "#ffe7a8", 0, 0.095, 0.07, 1.2)]);
         obstacle(x - 1.5, x + 1.5, z - 0.3, z + 0.3);
         sign("8 JANUARY 2009 · NOT YET", "the software-release announcement · 69 days after this cave's date", x, top + 4.3, z + 0.25, 0, 0.42);
         prop({ id: "e6-january", year: 2009, connection: "context", date: "8 January 2009, 19:27:40 UTC: the release announcement, a future date seen from this cave",
@@ -577,6 +671,12 @@
         for (let k = 0; k < 6; k++) cards.push(solid(0.4, 0.04, 0.3, inks[k], slotX[k], top + 0.95, z - 0.35, 0.15));
         const win = solid(0.5, 0.12, 0.12, "#ffd23a", cx, top + 1.4, z - 0.7, 1);
         argNodes = { cards, green, red, win, slotX, slotZ: z + 0.35, trayZ: z - 0.35 };
+        // The tray's rails, a brass rule between the tray and the slots, a holder under each lamp, a numbered plaque (one
+        // pip a slot number) on the table's front under each slot, the gold lamp's stand, and a plinth.
+        detail(kit, cx, top, z, (M) => [...[-0.62, -0.08].map((dz) => B(M, 3.25, 0.04, 0.04, "#2b221d", 0, 0.94, dz)), B(M, 3.2, 0.02, 0.03, "#b08a3a", 0, 0.925, 0.06, 0.15),
+          ...slotX.flatMap((sx, k) => [B(M, 0.2, 0.025, 0.1, "#3a2e22", sx - cx, 0.915, 0.7), B(M, 0.42, 0.14, 0.02, "#e8e4d4", sx - cx, 0.7, 0.81),
+            ...rows(k + 1, (d) => B(M, 0.035, 0.035, 0.01, "#2b221d", sx - cx - k * 0.025 + d * 0.05, 0.7, 0.822))]),
+          B(M, 0.05, 0.42, 0.05, "#3a2e22", 0, 1.13, -0.7), B(M, 0.62, 0.04, 0.16, "#b08a3a", 0, 1.33, -0.7, 0.1), B(M, 3.5, 0.08, 1.7, "#3a2e22", 0, 0.04, 0)]);
         syncArg();
         obstacle(cx - 1.8, cx + 1.8, z - 0.9, z + 0.9);
         sign("ASSEMBLE THE ARGUMENT · 2008 PAPER", "a teaching game, not the protocol · SIGN red, TIME blue, WORK gold, NODE green, COIN violet, ODDS teal", cx, top + 2.6, z + 0.2, 0, 0.42);
@@ -598,6 +698,11 @@
         const gold = solid(pageW + 0.04, 0.05, 0.05, "#ffd23a", pageX[0], y0 - 0.32, z - 0.13, 0.9);
         const teal = solid(pageW + 0.04, 0.05, 0.05, "#46ffd2", pageX[0], y0 - 0.39, z - 0.13, 0.9);
         layNodes = { tabs, tabY, tabZ: z - 0.14, gold, teal, pageX };
+        // A header beam over the posts with caps, five ruled lines on each page under its tabs, feet under the posts and
+        // a brass plaque on the base.
+        detail(kit, cx, top, z, (M) => [B(M, 3.6, 0.12, 0.14, "#4b3a26", 0, 2.36, -0.2), ...[-1.65, 1.65].map((px) => B(M, 0.18, 0.06, 0.18, "#6b5236", px, 2.45, -0.2)),
+          ...pageX.flatMap((px) => rows(5, (k) => B(M, 0.24 - (k === 4 ? 0.08 : 0), 0.012, 0.004, "#9a9080", px - cx, 1.55 + k * 0.04, -0.153))),
+          ...[-1.65, 1.65].map((px) => B(M, 0.5, 0.08, 0.9, "#3a2e22", px, 0.04, -0.05)), B(M, 0.8, 0.12, 0.02, "#c9a35a", 0, 0.15, 0.36, 0.2)]);
         syncLay();
         obstacle(cx - 1.8, cx + 1.8, z - 0.4, z + 0.4);
         sign("DOCUMENT LAYOUT · 2008 PAPER", "nine pages, twelve sections and the references · an original model, the paper in SOURCES", cx, top + 2.85, z - 0.1, 0, 0.42);
@@ -624,12 +729,46 @@
         solid(0.3, 0.12, 0.2, "#2b221d", cx + 1.15, top + 1.5, z - 0.3);
         const glow = solid(0.24, 0.03, 0.14, "#fff2c8", cx + 1.15, top + 1.43, z - 0.3, 1);
         wsNodes = { lit, fill, glow, barX0, barW };
+        // Keys on the keyboard, a mouse on its pad, the display's foot, a mug, the lamp's base, a drawer with its pull and
+        // a plinth: unbranded, as the sign says.
+        detail(kit, cx, top, z, (M) => [...rows(42, (k) => B(M, 0.065, 0.012, 0.07, "#55575c", -0.82 + (k % 14) * 0.08, 0.826, 0.06 + Math.floor(k / 14) * 0.09)),
+          B(M, 0.3, 0.005, 0.25, "#2b3a4a", 0.45, 0.783, 0.2), B(M, 0.08, 0.03, 0.13, "#3a3b3f", 0.45, 0.8, 0.2), B(M, 0.5, 0.03, 0.3, "#2a2b2e", -0.3, 0.795, -0.3),
+          B(M, 0.13, 0.15, 0.13, "#4a7ab0", -1.3, 0.855, 0.2), B(M, 0.22, 0.04, 0.22, "#2b221d", 1.3, 0.8, -0.35),
+          B(M, 0.9, 0.25, 0.02, "#5a4430", 1.0, 0.55, 0.61), B(M, 0.2, 0.04, 0.03, "#c9a35a", 1.0, 0.58, 0.63, 0.2), B(M, 3.3, 0.08, 1.3, "#3a2e22", 0, 0.04, 0)]);
         syncWs();
         obstacle(cx - 1.6, cx + 1.6, z - 0.6, z + 0.6);
         sign("READING WORKSTATION · 2008 STYLE", "an original, unbranded desk for reading the paper · context, nothing introduced on 31 October 2008", cx, top + 2.5, z + 0.1, 0, 0.42);
         prop({ id: "e6-workstation", year: 2008, connection: "context", date: "2008: the period illustrated; an original, unbranded design, not equipment introduced on 31 October 2008",
           title: "Reading workstation", label: "READING WORKSTATION · 2008 STYLE", hint: "Type PAGE 3 or STORAGE 10; LAMP switches the desk lamp",
           sourceKeys: ["E6-WP", "E6-GEAR", "E6-CLUSTER"], at: { x: cx, y: top, z: z + 1.8 }, reach: 2.2, pick: { w: 3.2, h: 2, d: 1.2, x: cx, z }, onUse: () => ({ terminal: wsTerminal() }) }); }
+
+      // Citation Catch (right bank, u 65, past the January door): a card-catalogue cabinet of twelve drawers, one a card,
+      // with a small console on top that plays the game. A modern museum toy, context only; built last so every earlier
+      // exhibit keeps its order.
+      { const x = R + 9, z = at(65), drawers = [], front = z + 0.43;
+        solid(2.6, 1.2, 0.8, "#6b5236", x, top + 0.6, z);
+        solid(2.8, 0.08, 0.95, "#4b3a26", x, top + 1.24, z);
+        for (let i = 0; i < CARDS.length; i++) drawers.push(solid(0.56, 0.28, 0.08, "#8a6a44", x - 0.93 + (i % 4) * 0.62, top + 0.95 - Math.floor(i / 4) * 0.34, front));
+        solid(0.9, 0.62, 0.6, "#2a2b2e", x + 0.6, top + 1.59, z - 0.05);
+        solid(0.68, 0.44, 0.02, "#0f3a2c", x + 0.6, top + 1.61, z + 0.26, 0.6);
+        const gold = solid(0.26, 0.16, 0.16, "#ffc94a", x - 0.95, top + 1.38, z + 0.2, 1.2), blue = solid(0.26, 0.16, 0.16, "#6ab8ff", x - 0.55, top + 1.38, z + 0.2, 1.2);
+        catNodes = { drawers, drawerZ: front, gold, blue };
+        // Each drawer's brass pull and paper label frame move with it; the cabinet's plinth, side trims, the console's
+        // bezel, knobs and a tray of index cards stand still.
+        if (kit.M.merge) {
+          const M = kit.M, face = M.merge(B(M, 0.16, 0.05, 0.04, "#c9a35a", 0, -0.06, 0.05, 0.15), B(M, 0.3, 0.09, 0.012, "#f3ecd8", 0, 0.06, 0.045), B(M, 0.34, 0.012, 0.014, "#3a2e22", 0, 0.11, 0.046));
+          for (const d of drawers) kit.addChild(d, kit.createNode({ geometry: face }));
+        }
+        detail(kit, x, top, z, (M) => [B(M, 2.7, 0.08, 0.9, "#3a2e22", 0, 0.04, 0), ...[-1, 1].map((sd) => B(M, 0.06, 1.2, 0.84, "#4b3a26", sd * 1.31, 0.6, 0)),
+          B(M, 0.82, 0.56, 0.03, "#3b3f42", 0.6, 1.61, 0.25), ...rows(3, (k) => B(M, 0.06, 0.06, 0.03, k ? "#c9c2ae" : "#ff8a5a", 0.4 + k * 0.12, 1.33, 0.26, k ? 0 : 0.8)),
+          B(M, 0.32, 0.04, 0.22, "#c9a35a", -0.95, 1.3, 0.2), B(M, 0.32, 0.04, 0.22, "#c9a35a", -0.55, 1.3, 0.2),
+          B(M, 0.5, 0.12, 0.3, "#7a6243", -0.75, 1.34, -0.25), ...rows(6, (k) => B(M, 0.44, 0.12, 0.012, "#f3ecd8", -0.75, 1.43, -0.36 + k * 0.045))]);
+        syncCat();
+        obstacle(x - 1.5, x + 1.5, z - 0.5, z + 0.8);
+        sign("CITATION CATCH · MODERN TOY", "the paper's eight references and four that are not · play it on the console", x, top + 2.6, z + 0.2, 0, 0.42);
+        prop({ id: "e6-catch", year: 2008, connection: "context", date: "2008: the paper whose reference list the cards follow; the cabinet and its game are modern museum designs",
+          title: "Citation Catch", label: "CITATION CATCH · 2008 PAPER", hint: "Space plays Citation Catch on the console; type PULL R3 to open a drawer",
+          sourceKeys: ["E6-WP", "E6-DOSSIER"], at: { x, y: top, z: z + 2 }, reach: 2.2, pick: { w: 2.8, h: 2, d: 1, x, z }, onUse: () => ({ terminal: catTerminal() }) }); }
     },
     // The laptop's cursor blinks; it stays lit while reading or under Calm. Allocation-free.
     update(dt, elapsed, state) {
@@ -638,6 +777,6 @@
       blink += dt;
       cursor.visible = (blink % 1.1) < 0.6;
     },
-    dispose() { pay = desk = cursor = null; arg = lay = ws = argNodes = layNodes = wsNodes = null; }
+    dispose() { pay = desk = cursor = null; arg = lay = ws = argNodes = layNodes = wsNodes = cat = catNodes = null; }
   });
 })();

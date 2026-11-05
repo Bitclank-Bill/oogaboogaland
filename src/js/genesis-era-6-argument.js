@@ -7,8 +7,10 @@
 // today): six cards, one per step of the paper's argument, laid into six slots in the paper's section order. Here the
 // cursor walks the tray (top row), `act` picks the card under it up, then walks the slots (bottom row) and `act` lays
 // it down; when all six are down the table is checked, the wrong ones go back to the tray and count as a mistake, and
-// a full row in order wins. Score 600 less 100 a mistake, never under 100. No sound (the cues are the host's to map),
-// no tickets (a museum game pays none), the shake and flash off under the host's `still`.
+// a full row in order wins. Score 600 less 100 a mistake, never under 100. Its cues are named for the host to map
+// (tap, drop, bump, win), no tickets (a museum game pays none), the shake, flash and sparks off under the host's
+// `still`. The screen shows the lifted card floating over the slot it would go to, a caret over the cursor, each slot
+// found right with its section number, the wrong ones outlined red while they go back, and the mistakes made.
 //
 // Loads after genesis-era-6.js and reads `BL.retroGames.kit` only inside `make`, so it needs retro-games.js loaded by
 // the time a game is made, not when this file runs. `update` and `draw` allocate nothing: preset strings, the kit's
@@ -21,9 +23,13 @@
   const INKS = ["#c8583a", "#4a7ab0", "#d9953a", "#6fae3a", "#9a6ad0", "#2fb8a0"];
   const LINES = ["OWNERS SIGN IT ON", "STAMP IT IN ORDER", "MAKE REWRITES COSTLY", "NODES BUILD THE CHAIN", "REWARD THE WORK", "ATTACKERS FALL BEHIND"];
   const SLOT_NUM = ["1", "2", "3", "4", "5", "6"];
+  // Each card's darker edge, and the paper's section number it stands for (shown once its slot is found right).
+  const shade = (hex) => "#" + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.6).toString(16).padStart(2, "0")).join("");
+  const EDGES = INKS.map(shade), HELD_Y = 45;
   const argument = (host) => {
     const K = BL.retroGames.kit, E6 = BL.genesisEra6, out = K.hooks(host), aim = out.aim, J = K.juice(host);
-    const G = E6.createArgument(), TAGS = E6.ARG.map((c) => c.tag);
+    const G = E6.createArgument(), TAGS = E6.ARG.map((c) => c.tag), SECS = E6.ARG.map((c) => `S${c.sec}`), SEC_X = SECS.map((t) => (BOX_W - K.textWidth(t)) >> 1);
+    const sparks = K.sparks(48, [K.INK.banana, K.INK.lime, K.INK.red, K.INK.white]);
     const status = K.makeStatus("Cards"), WRONG = new Uint8Array(6);
     // phase: 0 idle, 1 picking (cursor on the tray), 2 dropping (cursor on the slots), 3 won (end beat), 4 done.
     const S = { phase: 0, cursor: 0, steps: 0, mistakes: 0, beat: 0, wrongFlash: 0, seed: 1 };
@@ -42,17 +48,21 @@
       if (S.phase === 1) {
         const k = trayCard(S.cursor);
         if (k < 0) return;
-        G.S.held = k; S.phase = 2;
+        G.S.held = k; S.phase = 2; out.cue("tap", 0.35);
       } else if (S.phase === 2) {
         const was = G.place(G.S.held, S.cursor);
-        G.S.held = -1; S.phase = 1;
+        if (!host.still) sparks.spawn(X0 + S.cursor * PITCH + (BOX_W >> 1), SLOT_Y + 2, 6, 30, 3, 3, 0.35);
+        G.S.held = -1; S.phase = 1; out.cue("drop", 0.35);
         if (was >= 0) S.cursor = 0;
         if (G.placed() === 6) {
-          if (G.check() === 6) { S.phase = 3; S.beat = END_BEAT; J.flash(K.INK.banana, 0.6); out.popup("IN ORDER!", true); out.crack(true); out.over(); }
-          else {
-            S.mistakes++; S.wrongFlash = 0.8; J.shake(2); out.flop();
+          if (G.check() === 6) {
+            S.phase = 3; S.beat = END_BEAT; J.flash(K.INK.banana, 0.6); out.popup("IN ORDER!", true); out.cue("win", 0.6); out.crack(true); out.over();
+            if (!host.still) for (let s = 0; s < 6; s++) sparks.spawn(X0 + s * PITCH + (BOX_W >> 1), SLOT_Y + 6, 8, 60, 0, 1, 0.8);
+          } else {
+            S.mistakes++; S.wrongFlash = 0.8; J.shake(2); out.flop(); out.cue("bump", 0.5);
             // Lifting clears the marks, so the wrong slots are noted first; the right ones stay down, marked right.
             for (let s = 0; s < 6; s++) WRONG[s] = G.mark[s] === 2 ? 1 : 0;
+            if (!host.still) for (let s = 0; s < 6; s++) if (WRONG[s]) sparks.spawn(X0 + s * PITCH + (BOX_W >> 1), SLOT_Y + 6, 5, 40, 2, 2, 0.4);
             for (let s = 0; s < 6; s++) if (WRONG[s]) G.lift(G.slot[s]);
             for (let s = 0; s < 6; s++) if (G.slot[s] >= 0) G.mark[s] = 1;
           }
@@ -60,11 +70,23 @@
       }
       setStatus();
     };
+    // A card: its ink with a darker edge under it and a glint along its top; an empty place is a dark socket. The cursor
+    // brackets the box and puts a caret over it.
     const box = (ctx, x, y, k, lit) => {
-      ctx.fillStyle = k >= 0 ? INKS[k] : K.INK.deep;
-      ctx.fillRect(x, y, BOX_W, BOX_H);
-      if (lit) { ctx.fillStyle = K.INK.banana; ctx.fillRect(x - 1, y - 2, BOX_W + 2, 1); ctx.fillRect(x - 1, y + BOX_H + 1, BOX_W + 2, 1); }
-      if (k >= 0) K.text(ctx, TAGS[k], x + 1, y + 3, K.TEXT.night);
+      if (k >= 0) {
+        ctx.fillStyle = K.INK.band; ctx.fillRect(x + 1, y + 1, BOX_W, BOX_H);
+        ctx.fillStyle = INKS[k]; ctx.fillRect(x, y, BOX_W, BOX_H);
+        ctx.fillStyle = EDGES[k]; ctx.fillRect(x, y + BOX_H - 2, BOX_W, 2);
+        ctx.fillStyle = K.INK.cream; ctx.fillRect(x + 1, y + 1, BOX_W - 2, 1);
+        K.text(ctx, TAGS[k], x + 1, y + 3, K.TEXT.night);
+      } else {
+        ctx.fillStyle = K.INK.deep; ctx.fillRect(x, y, BOX_W, BOX_H);
+        ctx.fillStyle = K.INK.band; ctx.fillRect(x + 1, y + 1, BOX_W - 2, BOX_H - 2);
+      }
+      if (lit) {
+        ctx.fillStyle = K.INK.banana; ctx.fillRect(x - 1, y - 2, BOX_W + 2, 1); ctx.fillRect(x - 1, y + BOX_H + 1, BOX_W + 2, 1);
+        ctx.fillRect(x + (BOX_W >> 1) - 2, y - 5, 5, 1); ctx.fillRect(x + (BOX_W >> 1) - 1, y - 4, 3, 1); ctx.fillRect(x + (BOX_W >> 1), y - 3, 1, 1);
+      }
     };
     return {
       kind: "e6-argument", name: "Assemble the Argument", aims: true, status, roundLabel: "Table",
@@ -77,12 +99,12 @@
         S.seed = Number.isInteger(seed) ? seed >>> 0 : (Math.random() * 1e6) >>> 0;
         G.deal(S.seed);
         S.phase = 1; S.cursor = 0; S.mistakes = 0; S.beat = 0; S.wrongFlash = 0; S.steps = aim.steps;
-        J.reset(); setStatus();
+        J.reset(); sparks.clear(); setStatus();
       },
-      stop: () => { S.phase = 0; G.deal(1); J.reset(); setStatus(); },
+      stop: () => { S.phase = 0; G.deal(1); J.reset(); sparks.clear(); setStatus(); },
       act,
       update: (dt) => {
-        J.update(dt);
+        J.update(dt); sparks.update(dt);
         const moved = aim.steps - S.steps;
         S.steps = aim.steps;
         if (moved && (S.phase === 1 || S.phase === 2)) S.cursor = Math.min(5, Math.max(0, S.cursor + moved));
@@ -91,16 +113,29 @@
       draw: (ctx) => {
         ctx.fillStyle = K.INK.cave; ctx.fillRect(0, 0, K.W, K.H);
         J.begin(ctx);
+        // The desk under the slots and a rule under the title.
+        ctx.fillStyle = K.INK.earthDk; ctx.fillRect(2, SLOT_Y - 3, K.W - 4, BOX_H + 6);
+        ctx.fillStyle = K.INK.rule; ctx.fillRect(4, 13, K.W - 8, 1);
         K.centre(ctx, "ASSEMBLE THE ARGUMENT", 4, K.TEXT.banana);
         K.text(ctx, "TRAY", X0, TRAY_Y - 10, K.TEXT.stone);
-        K.text(ctx, "THE PAPER'S ORDER", X0, SLOT_Y - 10, K.TEXT.stone);
-        for (let t = 0; t < 6; t++) box(ctx, X0 + t * PITCH, TRAY_Y, trayCard(t), S.phase === 1 && S.cursor === t);
+        if (S.phase !== 2) K.text(ctx, "THE PAPER'S ORDER", X0, SLOT_Y - 10, K.TEXT.stone);
+        // How many are down, and a red pip for each mistake.
+        K.number(ctx, G.placed(), K.W - 18, TRAY_Y - 10, K.TEXT.bone, 1, 2); K.text(ctx, "/6", K.W - 17, TRAY_Y - 10, K.TEXT.stone);
+        for (let m = 0; m < S.mistakes && m < 5; m++) { ctx.fillStyle = K.INK.red; ctx.fillRect(K.W - 30 - m * 6, TRAY_Y - 9, 4, 4); }
+        for (let t = 0; t < 6; t++) {
+          const k = trayCard(t), lifted = S.phase === 2 && k >= 0 && k === G.S.held;
+          box(ctx, X0 + t * PITCH, TRAY_Y, lifted ? -1 : k, S.phase === 1 && S.cursor === t);
+        }
+        // The lifted card floats over the slot the cursor is on.
+        if (S.phase === 2 && G.S.held >= 0) box(ctx, X0 + S.cursor * PITCH, HELD_Y, G.S.held, false);
         for (let s = 0; s < 6; s++) {
           const x = X0 + s * PITCH, k = G.slot[s];
           box(ctx, x, SLOT_Y, k, S.phase === 2 && S.cursor === s);
           if (k < 0) K.text(ctx, SLOT_NUM[s], x + 9, SLOT_Y + 3, K.TEXT.stone);
-          if (G.mark[s] === 1) { ctx.fillStyle = K.INK.lime; ctx.fillRect(x, SLOT_Y + BOX_H + 3, BOX_W, 2); }
+          if (S.wrongFlash > 0 && WRONG[s]) { ctx.fillStyle = K.INK.red; ctx.fillRect(x - 1, SLOT_Y - 1, BOX_W + 2, 1); ctx.fillRect(x - 1, SLOT_Y + BOX_H, BOX_W + 2, 1); ctx.fillRect(x - 1, SLOT_Y, 1, BOX_H); ctx.fillRect(x + BOX_W, SLOT_Y, 1, BOX_H); }
+          if (G.mark[s] === 1 && k >= 0) K.text(ctx, SECS[k], x + SEC_X[k], SLOT_Y + BOX_H + 2, K.TEXT.lime);
         }
+        sparks.draw(ctx);
         const k = S.phase === 2 ? G.S.held : S.phase === 1 ? trayCard(S.cursor) : -1;
         if (k >= 0) K.centre(ctx, LINES[k], 88, K.TEXT.bone);
         if (S.wrongFlash > 0) K.centre(ctx, "NOT YET: TRY AGAIN", 88, K.TEXT.red);

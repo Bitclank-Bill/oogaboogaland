@@ -69,6 +69,14 @@
       "Context only: wireless networking is not an asserted influence on Bitcoin. No later brand names or logos are used here."]
   };
   const reply = (...lines) => ({ lines });
+  // An exhibit's finer parts as one merged mesh at (x, y, z), its parts in its own frame (y from the floor), as Era 0's
+  // are. The layout's dry run has no models, so it gets a bare node at the same spot: every run counts the same pieces.
+  const detail = (kit, x, y, z, make) => {
+    const nd = kit.createNode(kit.M.merge ? { geometry: kit.M.merge(...make(kit.M)) } : {});
+    nd.position.x = x; nd.position.y = y; nd.position.z = z;
+    return kit.place(nd);
+  };
+  const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   // Every station opens with a short HOW TO USE: a terminal's first lines, a panel's first page.
   const howTo = (steps) => ["HOW TO USE", ...steps.map((step, i) => `  ${i + 1}. ${step}`), ""];
   const guided = (make, steps) => () => { const t = make(); return { ...t, banner: [...howTo(steps), ...t.banner] }; };
@@ -87,7 +95,7 @@
     return (h ^ (h >>> 16)) >>> 0;
   };
   const PER_FRAME = 64, TOTAL = 32768;
-  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null, decor = null, cluster = null;
+  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null, decor = null, cluster = null, inbox = null;
   // The upgrade cluster's games live in their own files (BL.genesisEra4Games); each stand opens its game's terminal,
   // with its rules core made once a visit, or says the module is not on the page yet.
   const games = () => BL.genesisEra4Games || {};
@@ -98,6 +106,113 @@
     return cluster[name];
   };
   const missing = { caption: "This exhibit's game module is not loaded on this page yet." };
+  // ---- Finer parts, one merged mesh an exhibit (`detail`), each inside its exhibit's own footprint -----------------
+  // Original, unbranded shapes: trims, bezels, keys, vents, lamps and small props. `spots` are the stations and stands
+  // as built ({ id, x, z, style }); every part is in that exhibit's frame, y from the floor.
+  const FRAME = "#7a6856", KICK = "#3e342b", PLATE = "#c9b98f", BOARD = "#2d2a26";
+  // The plinth every station stands on (3.6 x 0.9 x 1.6): a kick, a top frame of four edge strips, a recessed front
+  // panel with a brass label plate, and corner posts.
+  const plinth = (M) => [B(M, 3.64, 0.1, 1.64, KICK, 0, 0.05, 0), B(M, 3.66, 0.04, 0.08, FRAME, 0, 0.9, 0.79), B(M, 3.66, 0.04, 0.08, FRAME, 0, 0.9, -0.79),
+    B(M, 0.08, 0.04, 1.5, FRAME, 1.79, 0.9, 0), B(M, 0.08, 0.04, 1.5, FRAME, -1.79, 0.9, 0), B(M, 3.2, 0.5, 0.02, "#54473b", 0, 0.48, 0.81),
+    B(M, 0.9, 0.16, 0.02, PLATE, 0, 0.62, 0.825), ...[-1, 1].flatMap((a) => [-1, 1].map((b) => B(M, 0.07, 0.82, 0.07, FRAME, a * 1.79, 0.47, b * 0.79)))];
+  // The four work blocks (genesis-era-4.js `station`'s default style): a base tray, a cap on each and a row of bit
+  // lamps on its face, more lamps the taller the block (more work, more zero bits).
+  const blocks = (M) => {
+    const out = [B(M, 3.2, 0.03, 0.72, "#3a3029", 0, 0.912, 0)];
+    for (let i = 0; i < 4; i++) {
+      const bx = -1.15 + i * 0.75, topY = 1.175 + i * 0.13;
+      out.push(B(M, 0.49, 0.03, 0.74, "#e8dcc0", bx, topY + 0.012, 0));
+      for (let k = 0; k <= i + 1; k++) out.push(B(M, 0.06, 0.06, 0.02, k <= i ? "#2a2a2a" : "#ffd23a", bx - 0.15 + k * 0.1, topY - 0.09, 0.36, k <= i ? 0 : 0.7));
+    }
+    return out;
+  };
+  // A backboard behind a station's blocks, its picture as small boxes in front of it.
+  const backboard = (M, art) => [B(M, 3, 1.15, 0.04, BOARD, 0, 1.58, -0.78), B(M, 3.08, 0.05, 0.06, FRAME, 0, 2.18, -0.78), B(M, 3.08, 0.05, 0.06, FRAME, 0, 0.99, -0.78), ...art];
+  const ART = {
+    // A big perforated postage stamp: the stamp a search pays for.
+    "e4-hashcash": (M) => { const o = [B(M, 0.9, 0.8, 0.01, "#efe8d6", 0, 1.6, -0.753), B(M, 0.62, 0.5, 0.012, "#c8463c", 0, 1.62, -0.75, 0.15)];
+      for (let k = 0; k < 7; k++) o.push(B(M, 0.05, 0.05, 0.012, BOARD, -0.36 + k * 0.12, 2.0, -0.75), B(M, 0.05, 0.05, 0.012, BOARD, -0.36 + k * 0.12, 1.2, -0.75));
+      for (let k = 0; k < 6; k++) o.push(B(M, 0.05, 0.05, 0.012, BOARD, -0.45, 1.3 + k * 0.12, -0.75), B(M, 0.05, 0.05, 0.012, BOARD, 0.45, 1.3 + k * 0.12, -0.75));
+      return o; },
+    // Two replicas' columns of balances, side by side, with one row that disagrees.
+    "e4-bmoney": (M) => { const o = []; for (const sx of [-0.7, 0.7]) { o.push(B(M, 1, 0.08, 0.01, "#8aa0c4", sx, 2.02, -0.753, 0.3));
+      for (let r = 0; r < 5; r++) o.push(B(M, 0.8 - (r === 3 && sx > 0 ? 0.3 : 0), 0.05, 0.01, r === 3 && sx > 0 ? "#e0452b" : "#d7d0be", sx, 1.86 - r * 0.14, -0.753, 0.25)); }
+      return o; },
+    // A growing graph of hashes: nodes joined by links, each new node hanging off the ones before it.
+    "e4-names": (M) => { const P = [[-1.1, 1.3], [-0.6, 1.75], [-0.1, 1.35], [0.4, 1.8], [0.9, 1.4], [1.2, 1.9]], o = [];
+      for (let k = 1; k < P.length; k++) { const [ax, ay] = P[k - 1], [bx, by] = P[k]; for (let t = 1; t < 6; t++) o.push(B(M, 0.03, 0.03, 0.01, "#9fd0ff", ax + (bx - ax) * t / 6, ay + (by - ay) * t / 6, -0.753, 0.5)); }
+      for (const [px, py] of P) o.push(B(M, 0.14, 0.14, 0.015, "#f3ecda", px, py, -0.752, 0.3));
+      return o; },
+    // A clock face: twelve ticks round a dial and two hands, for a timestamp service.
+    "e4-timesec": (M) => { const o = [B(M, 0.86, 0.86, 0.01, "#f3ecda", 0, 1.58, -0.753)];
+      for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6; o.push(B(M, 0.05, 0.05, 0.012, BOARD, Math.sin(a) * 0.34, 1.58 + Math.cos(a) * 0.34, -0.75)); }
+      for (let t = 0; t < 4; t++) o.push(B(M, 0.04, 0.04, 0.012, "#c0504f", t * 0.06, 1.58 + t * 0.03, -0.748));
+      for (let t = 0; t < 5; t++) o.push(B(M, 0.03, 0.03, 0.012, BOARD, -t * 0.03, 1.58 + t * 0.06, -0.748));
+      return o; }
+  };
+  const STYLE = {
+    blocks: (M, id) => [...blocks(M), ...(ART[id] ? backboard(M, ART[id](M)) : [])],
+    // The desktop: a bezel round the glass, a lit window on it, a power lamp, keys on the keyboard and a tilt foot.
+    screen: (M) => { const o = [B(M, 1.6, 0.06, 0.03, "#d8cfb8", 0, 2.06, 0.52), B(M, 1.6, 0.1, 0.03, "#d8cfb8", 0, 1.08, 0.52), B(M, 0.07, 0.96, 0.03, "#d8cfb8", -0.765, 1.58, 0.52),
+      B(M, 0.07, 0.96, 0.03, "#d8cfb8", 0.765, 1.58, 0.52), B(M, 0.05, 0.03, 0.01, "#7dff8a", 0.62, 1.07, 0.54, 0.9), B(M, 1.3, 0.06, 0.006, "#5e8fbf", 0, 1.94, 0.545, 0.6),
+      B(M, 0.12, 0.12, 0.006, "#efe6d2", -0.5, 1.75, 0.545, 0.4), B(M, 0.12, 0.12, 0.006, "#efe6d2", -0.5, 1.55, 0.545, 0.4), B(M, 1.0, 0.08, 0.04, "#b4aa92", 0, 0.93, 0.6)];
+      for (let r = 0; r < 4; r++) o.push(B(M, 0.7 - r * 0.1, 0.03, 0.006, "#d7dde6", 0.15, 1.8 - r * 0.12, 0.545, 0.35));
+      for (let r = 0; r < 3; r++) for (let k = 0; k < 12; k++) o.push(B(M, 0.1, 0.03, 0.09, "#e8e0cc", -0.66 + k * 0.12, 1.045, 0.82 + r * 0.12));
+      o.push(B(M, 0.6, 0.03, 0.09, "#e8e0cc", 0, 1.045, 1.14));
+      return o; },
+    // The modem: vents across its lid, a bezel under the lamps, rubber feet, a label stripe and a speaker grille.
+    modem: (M) => { const o = [B(M, 2.24, 0.06, 0.02, "#8f8878", 0, 1.0, 0.46), B(M, 0.5, 0.07, 0.01, "#d9ac52", 0.75, 1.24, 0.455)];
+      for (let k = 0; k < 6; k++) o.push(B(M, 1.2, 0.012, 0.04, "#8f8878", -0.3, 1.336, -0.3 + k * 0.1));
+      for (const a of [-1, 1]) for (const b of [-1, 1]) o.push(B(M, 0.12, 0.03, 0.12, "#2a2a2a", a * 0.95, 0.915, b * 0.35));
+      for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) o.push(B(M, 0.03, 0.03, 0.01, "#4a4a4a", 0.9 + k * 0.06, 1.16 - r * 0.05, 0.455));
+      return o; },
+    // The archive: a label card for each disc, a stack of empty cases and a spindle of blanks.
+    discs: (M) => { const o = [B(M, 0.06, 0.32, 0.06, "#8f8f8f", 1.5, 1.07, -0.6)];
+      ["#c1badf", "#9fcaca", "#c9d4a2", "#d8b194"].forEach((c, i) => o.push(B(M, 0.5, 0.012, 0.12, c, -1.2 + i * 0.8, 0.915, 0.64), B(M, 0.3, 0.014, 0.03, BOARD, -1.2 + i * 0.8, 0.917, 0.64)));
+      for (let k = 0; k < 4; k++) o.push(B(M, 0.46, 0.04, 0.4, k % 2 ? "#a9c6d8" : "#9ab8cc", -1.5, 0.92 + k * 0.042, -0.6));
+      for (let k = 0; k < 5; k++) o.push(B(M, 0.4, 0.014, 0.4, "#e4e6ee", 1.5, 0.915 + k * 0.03, -0.6));
+      return o; },
+    // The handheld: a cradle, a bezel round the screen, a power lamp, a shoulder ridge and two pill buttons.
+    pocket: (M) => [B(M, 1.1, 0.02, 1.4, "#3a3029", 0, 0.91, 0), B(M, 0.04, 0.03, 0.63, "#2f3a44", -0.33, 1.105, -0.2), B(M, 0.04, 0.03, 0.63, "#2f3a44", 0.33, 1.105, -0.2),
+      B(M, 0.7, 0.03, 0.04, "#2f3a44", 0, 1.105, -0.5), B(M, 0.7, 0.03, 0.04, "#2f3a44", 0, 1.105, 0.1), B(M, 0.04, 0.02, 0.04, "#e0452b", -0.38, 1.1, -0.45, 0.8),
+      B(M, 0.92, 0.06, 0.06, "#4b6075", 0, 1.06, -0.64), B(M, 0.1, 0.02, 0.04, "#263039", -0.05, 1.1, 0.56), B(M, 0.1, 0.02, 0.04, "#263039", 0.08, 1.1, 0.56)]
+  };
+  // The cluster's stands (2.6 x 0.8 x 1.4): a kick, an edge frame and a label plate, and each stand's own parts.
+  const standBase = (M) => [B(M, 2.64, 0.08, 1.44, "#2f2b38", 0, 0.04, 0), B(M, 2.66, 0.04, 0.06, "#6a6380", 0, 0.8, 0.7), B(M, 2.66, 0.04, 0.06, "#6a6380", 0, 0.8, -0.7),
+    B(M, 0.06, 0.04, 1.34, "#6a6380", 1.3, 0.8, 0), B(M, 0.06, 0.04, 1.34, "#6a6380", -1.3, 0.8, 0), B(M, 0.8, 0.14, 0.02, PLATE, 0, 0.55, 0.71)];
+  const RADIO = [[10, 45], [42, 22], [44, 72], [80, 45], [118, 52]].map(([bx, bz]) => [-1 + (bx - 10) / 108 * 2, -0.45 + (bz - 22) / 50 * 0.9, bx, bz]);
+  const STAND = {
+    // The strategy board: a timber frame, raised squares in a checker of its own 7 x 7 grid and a two-face move timer.
+    "e4-strategy": (M) => { const o = [B(M, 1.7, 0.05, 0.05, "#8a6f52", 0, 0.86, 0.625), B(M, 1.7, 0.05, 0.05, "#8a6f52", 0, 0.86, -0.625), B(M, 0.05, 0.05, 1.2, "#8a6f52", 0.825, 0.86, 0),
+      B(M, 0.05, 0.05, 1.2, "#8a6f52", -0.825, 0.86, 0), B(M, 0.36, 0.16, 0.14, "#2b2b30", 1.05, 0.9, -0.48), B(M, 0.1, 0.07, 0.01, "#ffd23a", 0.96, 0.92, -0.405, 0.6),
+      B(M, 0.1, 0.07, 0.01, "#ffd23a", 1.14, 0.92, -0.405, 0.6), B(M, 0.07, 0.04, 0.07, "#e0452b", 0.96, 1.0, -0.48), B(M, 0.07, 0.04, 0.07, "#5ec8ff", 1.14, 1.0, -0.48)];
+      for (let gy = 0; gy < 7; gy++) for (let gx = 0; gx < 7; gx++) if ((gx + gy) & 1) o.push(B(M, 0.2, 0.006, 0.15, "#3a4a62", -0.69 + gx * 0.23, 0.862, -0.51 + gy * 0.17));
+      return o; },
+    // The information screen: a bezel round the glass, a speaker grille, a set-top box and folding antenna rods.
+    "e4-teletext": (M) => { const o = [B(M, 1.0, 0.05, 0.02, "#3a3a42", 0, 1.585, 0.37), B(M, 1.0, 0.05, 0.02, "#3a3a42", 0, 0.915, 0.37), B(M, 0.05, 0.62, 0.02, "#3a3a42", -0.475, 1.25, 0.37),
+      B(M, 0.05, 0.62, 0.02, "#3a3a42", 0.475, 1.25, 0.37), B(M, 0.16, 0.05, 0.12, "#1d1d22", 0, 1.68, -0.2), B(M, 0.5, 0.08, 0.3, "#1d1d22", -0.85, 0.84, 0.2),
+      B(M, 0.06, 0.02, 0.01, "#e0452b", -0.7, 0.85, 0.355, 0.8)];
+      for (let k = 0; k < 9; k++) o.push(B(M, 0.025, 0.025, 0.02, "#d8d8d0", -0.06 - k * 0.04, 1.72 + k * 0.06, -0.2), B(M, 0.025, 0.025, 0.02, "#d8d8d0", 0.06 + k * 0.04, 1.72 + k * 0.06, -0.2));
+      for (let k = 0; k < 8; k++) o.push(B(M, 0.04, 0.02, 0.01, "#111114", -0.28 + k * 0.08, 0.87, 0.355));
+      return o; },
+    // The packet toy: a dark floor map under the five boxes, faint grid lines and dotted radio links between boxes in
+    // range of each other (the toy's own 45-unit range).
+    "e4-wireless": (M) => { const o = [B(M, 2.3, 0.01, 1.2, "#22302f", 0, 0.805, 0)];
+      for (let k = 1; k < 6; k++) o.push(B(M, 2.3, 0.004, 0.01, "#355b55", 0, 0.811, -0.6 + k * 0.2));
+      for (let k = 1; k < 11; k++) o.push(B(M, 0.01, 0.004, 1.2, "#355b55", -1.15 + k * 0.21, 0.811, 0));
+      for (let i = 0; i < RADIO.length; i++) for (let j = i + 1; j < RADIO.length; j++) {
+        const a = RADIO[i], b = RADIO[j];
+        if (Math.hypot(a[2] - b[2], a[3] - b[3]) > 45) continue;
+        for (let t = 1; t < 8; t++) o.push(B(M, 0.03, 0.006, 0.03, "#46ffd2", a[0] + (b[0] - a[0]) * t / 8, 0.815, a[1] + (b[1] - a[1]) * t / 8, 0.5));
+      }
+      return o; }
+  };
+  const dressSpots = (kit, spots) => {
+    for (const s of spots) {
+      if (s.style === "stand") detail(kit, s.x, kit.top, s.z, (M) => [...standBase(M), ...(STAND[s.id] ? STAND[s.id](M) : [])]);
+      else detail(kit, s.x, kit.top, s.z, (M) => [...plinth(M), ...STYLE[s.style](M, s.id)]);
+    }
+  };
   const status = () => reply(`Message: ${work.message}; target: ${work.bits} leading zero bits.`,
     `Attempts this visit: ${work.total}/${TOTAL}; this search: ${work.attempts}.`,
     work.running ? "Searching. Use STATUS in a moment, or STOP." : work.nonce >= 0 ? `Stamp nonce ${work.nonce}; digest ${work.hash.toString(16).padStart(8, "0")}. Use VERIFY, then MESSAGE changed.` : "No stamp. SEARCH starts; TARGET 4..12 adjusts difficulty.");
@@ -304,7 +419,9 @@
       // Station footprints stay at least 1.5 m from the channel and leave broad bank routes.
       // `link` is the station's place on the Steps toward Bitcoin (docs/genesis-voyage/EXHIBIT-CONTRACT.md):
       // { connection, ref, date }, from the Era 4 dossier's classes.
+      const spots = [];
       const station = (id, x, z, year, title, sub, keys, use, style, link) => {
+        spots.push({ id, x, z, style: style || "blocks" });
         solid(3.6, 0.9, 1.6, "#625346", x, top + 0.45, z);
         if (style === "screen") {
           solid(1.8, 1.3, 1, "#c4baa2", x, top + 1.55, z);
@@ -374,6 +491,7 @@
       cluster = { strategy: null, teletext: null, wireless: null, leds: [], mask: -1 };
       const stand = (id, x, year, title, sub, keys, use, link, model) => {
         const z = era.z + 1;
+        spots.push({ id, x, z, style: "stand" });
         solid(2.6, 0.8, 1.4, "#4f4a5c", x, y(0.4), z);
         model(x, z);
         obstacle(x - 1.4, x + 1.4, z - 0.8, z + 1);
@@ -479,8 +597,33 @@
       boxes(niche);
       group(38.6, R, 45, 49, [[1, 0.8, 1, "#b08a5a", R - 1, y(0.4), zn - 0.9], [0.9, 0.7, 0.9, "#a57f50", R - 0.95, y(1.15), zn - 0.8], [0.8, 0.6, 0.8, "#b8925f", R - 2, y(0.3), zn + 0.9],
         [1.02, 0.02, 0.12, "#d8c9a0", R - 1, y(0.805), zn - 0.9], [0.82, 0.02, 0.1, "#d8c9a0", R - 2, y(0.605), zn + 0.9]]);
+
+      // --- Finer parts on every station and stand (one merged mesh each), then Stamp Sort --------------------------
+      dressSpots(kit, spots);
+      // Stamp Sort (genesis-era-4-inbox.js): a modern original museum game on the home office's CRT, an inbox that
+      // keeps letters paid for with work. Its parts dress the desk (the inbox on the glass, a letter tray, the keys)
+      // inside the office's own footprint; its sign hangs on the wall over the desk, under the loft.
+      inbox = { lamp: null, step: -2 };
+      detail(kit, L + 1.1, top, zo, (M) => {
+        const o = [B(M, 0.004, 0.05, 0.44, "#5e8fbf", 0.183, 1.25, -0.4, 0.6), B(M, 0.32, 0.06, 0.4, "#5a4a3a", 0.15, 0.81, -0.95), B(M, 0.06, 0.012, 0.06, "#c8463c", 0.22, 0.866, -1.05)];
+        for (let r = 0; r < 4; r++) o.push(B(M, 0.004, 0.05, 0.3, "#efe6d2", 0.183, 1.15 - r * 0.08, -0.38, 0.5), B(M, 0.004, 0.04, 0.04, r === 1 ? "#5a5a62" : "#c8463c", 0.184, 1.15 - r * 0.08, -0.58, 0.5));
+        for (let k = 0; k < 3; k++) o.push(B(M, 0.26, 0.01, 0.34, "#efe8d6", 0.15, 0.83 + k * 0.012, -0.95));
+        for (let r = 0; r < 3; r++) for (let k = 0; k < 11; k++) o.push(B(M, 0.05, 0.02, 0.04, "#efe8d6", 0.3 + r * 0.06, 0.82, -0.62 + k * 0.05));
+        return o;
+      });
+      inbox.lamp = detail(kit, L + 1.1, top, zo, (M) => [B(M, 0.06, 0.04, 0.06, "#ff5f5f", 0.1, 1.345, -0.62, 1.2)]);
+      sign("STAMP SORT / MODERN GAME", "an inbox game - 1996-1999 gallery", L + 0.15, y(2.35), zo, Math.PI / 2, 0.24);
+      prop({ id: "e4-inbox", year: 1996, connection: "context", title: "Stamp Sort - modern game", label: "STAMP SORT · MODERN GAME · 1996-1999 GALLERY",
+        hint: "Type NEXT, then KEEP or PASS", date: "No historical date: a modern original museum game in the 1996-1999 gallery, about the idea at the Hashcash station",
+        sourceKeys: ["E4-HC"], at: { x: L + 5.3, y: top, z: zo + 0.6 }, reach: 2.2, pick: { w: 1.2, h: 1.6, d: 2.4, x: L + 1.1, z: zo },
+        onUse: () => { const c = core("inbox"); return c ? { terminal: games().inbox.terminal(c) } : missing; } });
     },
     update(dt, elapsed, state) {
+      // Stamp Sort's mail lamp on the office CRT blinks slowly; under Calm or while reading it holds lit.
+      if (inbox && inbox.lamp && typeof inbox.lamp === "object") {
+        const step = state && (state.calm || state.reading) ? -1 : Math.floor((elapsed || 0) * 1.25) & 1;
+        if (step !== inbox.step) { inbox.step = step; inbox.lamp.glow = step < 0 ? 1.4 : step ? 2 : 0.35; }
+      }
       // The games corner's hub lamps step twice a second; while a panel or terminal is open, or under Calm, they hold
       // steady. The modem's second lamp shows the toy link's state (a state, not an animation).
       if (decor) {
@@ -516,7 +659,7 @@
         for (const v of synth.voices) { v.osc.stop(); v.osc.disconnect(); v.gain.disconnect(); }
         synth.context.close().catch(() => {}); synth = null;
       }
-      work = desktop = maze = discs = balances = decor = cluster = null;
+      work = desktop = maze = discs = balances = decor = cluster = inbox = null;
     }
   });
 })();

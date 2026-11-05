@@ -11,15 +11,23 @@
   const BL = window.BL = window.BL || {};
   const CARTS = [
     { id: "e0-nim", era: 0, title: "Nim", span: "1956–1969", make: (host) => BL.genesisEra0Games.nim.make(host) },
+    { id: "e0-lamps", era: 0, title: "Lamp Lock", span: "1956–1969", make: (host) => BL.genesisEra0Games.lamps.make(host) },
     { id: "e1-paddle", era: 1, title: "Ooga Paddle", span: "1970s", make: (host) => BL.genesisEra1Paddle.make(host) },
+    { id: "e1-relay", era: 1, title: "Packet Relay", span: "1970s", make: (host) => BL.genesisEra1Relay.make(host) },
     { id: "e2-four", era: 2, title: "Four in a Row", span: "1980s", make: (host) => BL.genesisEra2Four.make(host) },
+    { id: "e2-spent", era: 2, title: "Spent List", span: "1980s", make: (host) => BL.genesisEra2Spent.make(host) },
     { id: "e3-rally", era: 3, title: "Tick-Tock Rally", span: "1990–1995", make: (host) => BL.genesisEra3Rally.make(host) },
+    { id: "e3-courier", era: 3, title: "Padlock Courier", span: "1990–1995", make: (host) => BL.genesisEra3Courier.make(host) },
     { id: "e4-strategy", era: 4, title: "Strategy Board", span: "1996–1999", make: (host) => BL.genesisEra4Games.strategy.make(host) },
     { id: "e4-pocket", era: 4, title: "Pocket Route", span: "1996–1999", make: (host) => BL.genesisGamesPlus.pocket(host) },
+    { id: "e4-inbox", era: 4, title: "Stamp Sort", span: "1996–1999", make: (host) => BL.genesisEra4Games.inbox.make(host) },
     { id: "e5-patchwork", era: 5, title: "Peer Patchwork", span: "2000–2007", make: (host) => BL.genesisEra5Patchwork.make(host) },
     { id: "e5-pocket", era: 5, title: "Pattern Pocket", span: "2000–2007", make: (host) => BL.genesisEra5Mixtape.make(host) },
+    { id: "e5-chain", era: 5, title: "Gold Chain", span: "2000–2007", make: (host) => BL.genesisEra5Chain.make(host) },
     { id: "e6-argument", era: 6, title: "Assemble the Argument", span: "2008", make: (host) => BL.genesisEra6Games.argument(host) },
-    { id: "e7-sync", era: 7, title: "Peer Sync", span: "January 2009", make: (host) => BL.genesisEra7Sync.make(host) }
+    { id: "e6-catch", era: 6, title: "Citation Catch", span: "2008", make: (host) => BL.genesisEra6Catch.make(host) },
+    { id: "e7-sync", era: 7, title: "Peer Sync", span: "January 2009", make: (host) => BL.genesisEra7Sync.make(host) },
+    { id: "e7-split", era: 7, title: "Split Chute", span: "January 2009", make: (host) => BL.genesisEra7Split.make(host) }
   ];
   const registry = BL.genesisCartridges = BL.genesisCartridges || { list: [] };
   const forExhibit = {};

@@ -10,8 +10,9 @@
 // The exhibits, west of the room on the left bank, each a terminal (typing stays in the prompt, so no key reaches
 // the walk): the Daily Ooga press (change a page, watch the later links fail), the padlock post (toy public-key maths,
 // a teaching model), the dial-up corner (museum notes, a floppy, a pretend BBS), the pocket pager (messages from the
-// exhibits you walk near) and Tick-Tock Rally (an original paddle-and-ball cabinet, played a tick at a time at its
-// prompt, its own screen running a demo). The pure rules come first so Node can check them; `build(kit)` places the
+// exhibits you walk near), Tick-Tock Rally (an original paddle-and-ball cabinet, played a tick at a time at its
+// prompt, its own screen running a demo) and, added later as a modern toy, the padlock courier (three friends' open
+// padlocks on a rack; its console game, Padlock Courier, is genesis-era-3-courier.js). The pure rules come first so Node can check them; `build(kit)` places the
 // models and props, `update` runs the screens and the pager without allocating, and `dispose` drops the visit.
 //
 // Commentary written today starts "Museum note (written today):". The BBS, pager, floppy and cabinet are period-style
@@ -111,6 +112,18 @@
         `${NOTE} the cabinet is context for the period's gear, with no model or date claimed. [E3-GEAR]`],
       sourceKeys: ["E3-ORIGINAL", "E3-GEAR"],
       pager: "ARCADE: RALLY IS ON" },
+    // A modern toy beside the padlock post (added with its console game, Padlock Courier, genesis-era-3-courier.js):
+    // a rack of three friends' open padlocks. Not historical software or any real tool.
+    courier: { title: "Padlock courier: address a note", year: 1990,
+      howTo: ["Type SEND BEA and a short note to snap Bea's open padlock shut on it.", "Type TRY TOCK to see whether Tock's key opens it, then TRY BEA.",
+        "Walk up and press Space to play Padlock Courier on the console.", "RESET empties the rack."], label: "PADLOCK COURIER · MODERN TOY · 1990–1995 GALLERY",
+      dated: "No historical date: a modern explanatory toy shown in the 1990–1995 gallery, beside the padlock post.",
+      kid: "Bea, Tock and Ooga each leave an open padlock on the rack: their public keys. To send one of them a note, snap that friend's padlock shut on it. Only that friend's own key, their private key, opens it again; the others' keys don't fit.",
+      deeper: [
+        `${NOTE} the rack and its console game are original museum toys, not PGP or any real program, and the padlocks are pictures, not encryption. The padlock post next to it shows the toy maths. [E3-ORIGINAL]`,
+        `${NOTE} the idea it plays with, that anyone may hold your open padlock while only you hold the key, is the public-key idea behind the privacy tools of these years, such as PGP (context: the whitepaper does not cite it). [E3-PGP]`],
+      sourceKeys: ["E3-ORIGINAL", "E3-PGP"],
+      pager: "COURIER: ADDRESS A NOTE" },
     // The shared overview board and Fingerprints and Time's desk, for the pager only: their words are the scene's.
     overview: { pager: "ERA 3 1990-95 WELCOME" },
     desk: { pager: "DESK: EACH STAMP HOLDS THE LAST" }
@@ -123,9 +136,9 @@
   const overview = {
     summary: "A digital page can be changed without a torn edge. In 1990–1995 researchers linked fingerprints so a change shows and a page can be shown to exist by a time; others built private-message tools. Different projects, not unfinished Bitcoins.",
     pages: [
-      { caption: "What to try", title: "Five things to try here", text: [
+      { caption: "What to try", title: "Six things to try here", text: [
         "Tock's desk (Fingerprints and Time) stamps pages and links them. Its lectern tells the two papers' story.",
-        "West of the desk: the Daily Ooga press (change a page and watch the later links fail), the padlock post (lock and sign a note, a toy), the dial-up corner (a pretend BBS), the pocket pager, and Tick-Tock Rally.",
+        "West of the desk: the Daily Ooga press (change a page and watch the later links fail), the padlock post (lock and sign a note, a toy), the dial-up corner (a pretend BBS), the pocket pager, Tick-Tock Rally, and the padlock courier (a modern toy with a console game).",
         "Walk up and press Space. RESET at any prompt starts that exhibit again."] },
       { caption: "In the whitepaper", title: "The timestamp references", text: [
         "Section 3, Timestamp Server: hash a block of items and widely publish the hash, \"such as in a newspaper or Usenet post [2-5]\".",
@@ -563,18 +576,72 @@
     }
   };
 
+  // --- The padlock courier: three friends' open padlocks on a rack -------------------------------------------------
+  // A note snapped shut in one friend's padlock opens only with that friend's key. `slot` is the padlock holding the
+  // note (-1: the rack is empty). The console game (genesis-era-3-courier.js) plays the same idea against a clock.
+  const FRIENDS = [{ id: "BEA", name: "Bea", ink: "#5ec8ff" }, { id: "TOCK", name: "Tock", ink: "#ffd23a" }, { id: "OOGA", name: "Ooga", ink: "#c8ff5a" }];
+  const friendOf = (word) => FRIENDS.findIndex((f) => f.id === String(word || "").toUpperCase());
+  const createCourier = () => {
+    const c = { slot: -1, note: "", sent: 0, version: 0 };
+    c.send = (who, text) => {
+      const i = friendOf(who), t = GP.clean(text).replace(/[^\x20-\x7e]/g, "").slice(0, MAX_NOTE);
+      if (i < 0) return { error: "Name a friend: BEA, TOCK or OOGA." };
+      if (!t) return { error: `Write the note after SEND ${FRIENDS[i].id}.` };
+      c.slot = i; c.note = t; c.sent++; c.version++;
+      return { slot: i };
+    };
+    c.opens = (who) => { const i = friendOf(who); return i < 0 ? null : c.slot >= 0 && i === c.slot; };
+    c.reset = () => { c.slot = -1; c.note = ""; c.version++; };
+    return c;
+  };
+  const courierTerminal = (c) => {
+    const ex = EXHIBITS.courier;
+    const show = () => ["The rack: " + FRIENDS.map((f, i) => `${f.name}'s padlock ${c.slot === i ? "SHUT on a note" : "open"}`).join(" · "),
+      c.slot >= 0 ? `In ${FRIENDS[c.slot].name}'s padlock: "${c.note}"` : "No note on the rack yet. Try SEND BEA meet at the press"];
+    const help = ["SEND BEA <note>  snap Bea's open padlock shut on a note (or TOCK, OOGA)", "TRY TOCK         does Tock's key open it? (or BEA, OOGA)", "SHOW             the rack's three padlocks",
+      "PLAY             how to play Padlock Courier on the console", "RESET            empty the rack · MORE · SOURCES"];
+    return {
+      get banner() { return [...howTo(ex), ex.label, ex.dated, "", ex.kid, "", ...show(), "", "Type HELP for the commands. RESET empties the rack.", ""]; },
+      prompt: "COURIER>",
+      run: (line) => {
+        const words = GP.clean(line).split(/\s+/), cmd = (words[0] || "").toUpperCase();
+        if (!cmd) return { lines: [] };
+        if (cmd === "HELP") return { lines: help };
+        if (cmd === "MORE") return { lines: ex.deeper };
+        if (cmd === "SOURCES") return { lines: sourceLines(ex.sourceKeys) };
+        if (cmd === "SHOW") return { lines: show() };
+        if (cmd === "RESET") { c.reset(); return { lines: ["The rack is empty and every padlock open again."], reset: true }; }
+        if (cmd === "PLAY") return { lines: ["PADLOCK COURIER, on the museum's console: notes come down addressed to Bea, Tock or Ooga.", "Move to the padlock of the friend each note is for and press Space to lock it there; a note left falling drops into the padlock you stand at.",
+          "From the sixth note the padlocks swap places, so read before you lock. Fifteen notes win; three in the wrong padlock end the run.", `${NOTE} a modern original museum game, not a game from these years.`] };
+        if (cmd === "SEND") {
+          const r = c.send(words[1], words.slice(2).join(" "));
+          return { lines: r.error ? [r.error] : [`Snapped ${FRIENDS[r.slot].name}'s padlock shut on "${c.note}". Only ${FRIENDS[r.slot].name}'s own key opens it.`, `Try TRY ${FRIENDS[(r.slot + 1) % 3].id}, then TRY ${FRIENDS[r.slot].id}.`] };
+        }
+        if (cmd === "TRY") {
+          const i = friendOf(words[1]), ok = c.opens(words[1]);
+          if (i < 0) return { lines: ["Name a friend: TRY BEA, TRY TOCK or TRY OOGA."] };
+          if (c.slot < 0) return { lines: ["No note is locked yet. Try SEND BEA meet at the press"] };
+          return { lines: [ok ? `${FRIENDS[i].name}'s key turns: "${c.note}"` : `${FRIENDS[i].name}'s key does not fit ${FRIENDS[c.slot].name}'s padlock. The note stays shut.`] };
+        }
+        return { lines: ["Unknown command. Type HELP."] };
+      }
+    };
+  };
+
   // --- Where everything stands --------------------------------------------------------------------------------------
   // West of Fingerprints and Time on the left bank (its room and margin end at x -9.9), clear of the gateway, the dock,
   // the lamp at (-14, u 18) and the stream's walk. Every exhibit faces the stream (+x); each one's `at` is where a
   // visitor stands to use it, in front of it, and its tap box sits on the model. A row at x -13.5 leaves a 3 m walk
-  // between it and the room's margin, and the second row at x -20.5 a 6 m walk behind the first.
+  // between it and the room's margin, and the second row at x -20.5 a 6 m walk behind the first. The padlock courier
+  // (a later modern toy) ends the first row toward the way in, past the padlock post.
   const E = GW.ERAS[ERA], TOP = GW.BANK_TOP, ROW = -13.5, BACK = -20.5;
   const LAYOUT = {
     newspaper: { x: ROW, z: E.z - 1, hx: 0.6, hz: 1.3, front: 1.4, h: 3.1 },
     keys: { x: ROW, z: E.z + 10, hx: 0.55, hz: 0.65, front: 1.3, h: 1.5 },
     pager: { x: ROW, z: E.z - 11, hx: 0.4, hz: 0.5, front: 1.1, h: 2.1 },
     rally: { x: BACK, z: E.z + 4, hx: 0.75, hz: 0.55, front: 1.5, h: 2.25 },
-    bbs: { x: BACK, z: E.z + 13, hx: 0.5, hz: 1.75, front: 1.25, h: 1.4 }
+    bbs: { x: BACK, z: E.z + 13, hx: 0.5, hz: 1.75, front: 1.25, h: 1.4 },
+    courier: { x: ROW, z: E.z + 18, hx: 0.55, hz: 0.9, front: 1.35, h: 2.0 }
   };
   // The pager's spots: every exhibit here, the shared overview board and the desk (as scene-genesis.js places them).
   const OVERVIEW_AT = GW.bankToWorld(GW.bankFrame(ERA, -1), 7, 6, { x: 0, z: 0 });
@@ -603,8 +670,24 @@
     g.fillStyle = "#ffcf7a"; g.font = "bold 10px monospace"; g.textBaseline = "top";
     g.fillText(v.showPlayer > 0 ? "TICK-TOCK RALLY" : "TICK-TOCK RALLY  DEMO", X, 4);
     g.fillStyle = "#e9e1ff"; drawNumber(g, s.score, 150, 4, 7);
-    g.fillStyle = "#ffd25f"; g.fillRect(X + (s.clock - R.clockW / 2) * FW, Y + (R.clockY - R.clockH / 2) / R.h * FH, R.clockW * FW, Math.max(2, R.clockH / R.h * FH));
-    g.fillStyle = "#2ad1ff"; g.fillRect(X + (s.paddle - R.paddleW / 2) * FW, Y + (R.paddleY - R.paddleH / 2) / R.h * FH, R.paddleW * FW, 3);
+    // A faint grid on the field, the balls left as dots under it, then the clock (a face with a hand that turns with
+    // the game's time), the paddle with its highlight and the ball with its shadow.
+    g.fillStyle = "#15132a";
+    for (let k = 1; k < 6; k++) g.fillRect(X + k * 24, Y, 1, FH);
+    for (let k = 1; k < 4; k++) g.fillRect(X, Y + k * 24, FW, 1);
+    g.fillStyle = "#2ad1ff";
+    for (let b = 0; b < s.balls; b++) g.fillRect(X + b * 6, Y + FH + 1, 4, 1);
+    const cx = X + (s.clock - R.clockW / 2) * FW, cy = Y + (R.clockY - R.clockH / 2) / R.h * FH, cw = R.clockW * FW, ch = Math.max(3, R.clockH / R.h * FH);
+    g.fillStyle = "#b8862a"; g.fillRect(cx - 1, cy - 1, cw + 2, ch + 2);
+    g.fillStyle = "#ffd25f"; g.fillRect(cx, cy, cw, ch);
+    g.fillStyle = "#2a1f44"; g.fillRect(cx + cw / 2 - 0.5, cy, 1, ch);
+    const tick = Math.floor(s.time * 2) & 3;
+    g.fillRect(cx + cw / 2 + (tick === 1 ? 1 : tick === 3 ? -3 : -0.5), cy + ch / 2 - 0.5, tick & 1 ? 3 : 1, 1);
+    const px = X + (s.paddle - R.paddleW / 2) * FW, py = Y + (R.paddleY - R.paddleH / 2) / R.h * FH;
+    g.fillStyle = "#1a6f8a"; g.fillRect(px, py + 2, R.paddleW * FW, 2);
+    g.fillStyle = "#2ad1ff"; g.fillRect(px, py, R.paddleW * FW, 2);
+    g.fillStyle = "#c8f6ff"; g.fillRect(px + 2, py, R.paddleW * FW - 4, 1);
+    g.fillStyle = "#2a2440"; g.fillRect(X + s.x * FW - 1, Y + s.y / R.h * FH, 4, 4);
     g.fillStyle = "#ffffff"; g.fillRect(X + s.x * FW - 2, Y + s.y / R.h * FH - 2, 4, 4);
     v.rallySurface.version++;
   };
@@ -634,6 +717,7 @@
     // `notify` is the hook the notes ask for (a toast); without it the pager's display board and prompt hold its messages.
     v = { notify: notify || null, paper, keys, bbs, pager, triggers, rally, demo, slot: { index: 0, time: 0, text: "" }, showPlayer: 0, screenT: 0, rallyAt: -1, rallyMine: false, rallyScore: -1, paperShown: -1, keysShown: -1,
       modemLamp: null, bbsCtx: null, bbsSurface: null, bbsOnline: -1, crtCtx: null, crtSurface: null, crtShown: -1, pagerShown: -1, now: 0,
+      courier: null, courierShown: -1, courierLamps: [], courierOpen: [], courierShut: [],
       tiles: [], links: [], printedOk: null, printedBad: null, shackleOpen: null, shackleShut: null, pagerLamp: null, rallyCtx: null, rallySurface: null, pagerCtx: null, pagerSurface: null };
     const visit = v;
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 }, visible }));
@@ -673,6 +757,24 @@
     }
     v.printedOk = node(M.box({ w: 0.6, h: 0.5, d: 0.04, color: "#7dffa0", emissive: 0.9 }), N.x - 0.42, top + 1.3, N.z);
     v.printedBad = node(M.box({ w: 0.6, h: 0.5, d: 0.05, color: "#ff3b30", emissive: 1.1 }), N.x - 0.42, top + 1.3, N.z, false);
+    // The press's finer parts: a timber frame round the link board with a header rail and rivets, a pale card
+    // behind each page's tile, a press roller across the stand with its crank, the stand's feet, a printed masthead
+    // and columns on the morning paper, and a hooded lamp over the board.
+    detail([
+      [0.08, 0.1, 2.72, "#4a3a2a", N.x - 0.42, top + 3.02, N.z], [0.08, 0.1, 2.72, "#4a3a2a", N.x - 0.42, top + 0.86, N.z],
+      [0.08, 2.26, 0.08, "#4a3a2a", N.x - 0.42, top + 1.94, N.z + 1.32], [0.08, 2.26, 0.08, "#4a3a2a", N.x - 0.42, top + 1.94, N.z - 1.32],
+      [0.03, 0.2, 2.4, "#14111f", N.x - 0.42, top + 2.82, N.z], [0.012, 0.05, 1.6, "#e8c35a", N.x - 0.4, top + 2.82, N.z, 0.6],
+      ...[0, 1, 2, 3, 4].map((i) => [0.02, 0.48, 0.44, "#e9e1cc", N.x - 0.445, top + 2.3, N.z + 1 - i * 0.5]),
+      ...[0, 1, 2, 3, 4].map((i) => [0.022, 0.04, 0.3, "#5a4a3a", N.x - 0.44, top + 2.06, N.z + 1 - i * 0.5]),
+      [0.03, 0.62, 0.72, "#14111f", N.x - 0.445, top + 1.3, N.z], [0.02, 0.05, 0.5, "#f2efe6", N.x - 0.43, top + 1.6, N.z, 0.4],
+      ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [0.03, 0.03, 0.03, "#c9a35a", N.x - 0.4, top + (b > 0 ? 3.02 : 0.86), N.z + a * 1.28, 0.3]),
+      [0.16, 0.16, 2.2, "#2a2a2e", N.x + 0.42, top + 1.0, N.z], [0.18, 0.04, 2.24, "#8a8f96", N.x + 0.42, top + 1.09, N.z],
+      [0.04, 0.22, 0.04, "#8a8f96", N.x + 0.42, top + 0.98, N.z + 1.18], [0.12, 0.04, 0.04, "#d82a2a", N.x + 0.48, top + 0.88, N.z + 1.18, 0.3],
+      ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => [0.16, 0.06, 0.16, "#3a2f25", N.x + a * 0.5, top + 0.03, N.z + b * 1.2]),
+      [0.7, 0.012, 0.18, "#1c1c1c", N.x + 0.05, top + 0.947, N.z + 1.0], ...[0, 1, 2].map((k) => [0.18, 0.008, 0.66, "#8a857a", N.x - 0.2 + k * 0.25, top + 0.946, N.z + 0.55]),
+      [0.62, 0.008, 0.9, "#b8b1a1", N.x + 0.05, top + 0.932, N.z - 0.65],
+      [0.04, 0.5, 0.04, "#2a2a2e", N.x - 0.42, top + 3.3, N.z], [0.3, 0.1, 0.4, "#2a2a2e", N.x - 0.3, top + 3.52, N.z], [0.24, 0.03, 0.32, "#fff2c4", N.x - 0.3, top + 3.46, N.z, 1.2]
+    ]);
     sign(ex.newspaper.label, "change a page · EDIT, UNDO, RESET", N.x - 0.3, top + 3.45, N.z, yaw, 0.45);
     const news = newspaperTerminal(paper);
     // It demonstrates the papers whose trail stops are Fingerprints and Time's lectern ([3], [4]): a demonstration, not
@@ -688,6 +790,18 @@
     solid(0.12, 0.3, 0.36, "#c9a64a", K.x + 0.46, top + 0.62, K.z);
     v.shackleOpen = node(M.box({ w: 0.24, h: 0.22, d: 0.05, color: "#d6dbe0" }), K.x + 0.46, top + 0.86, K.z);
     v.shackleShut = node(M.box({ w: 0.24, h: 0.14, d: 0.05, color: "#d6dbe0" }), K.x + 0.46, top + 0.8, K.z, false);
+    // The post's finer parts: a domed cap with a ridge, a hinged flap over the letter slot, a framed key plate with a
+    // keyhole under the padlock, a hasp, painted bands, a plinth, and a little stack of sealed envelopes on top.
+    detail([
+      [0.86, 0.06, 1.26, "#2f5d8a", K.x, top + 1.45, K.z], [0.7, 0.05, 1.1, "#3a6ea0", K.x, top + 1.5, K.z], [0.06, 0.04, 1.0, "#c9a64a", K.x, top + 1.545, K.z, 0.3],
+      [0.03, 0.1, 0.56, "#24486b", K.x + 0.415, top + 1.12, K.z, 0, 0.25], [0.02, 0.02, 0.6, "#c9a64a", K.x + 0.42, top + 1.18, K.z, 0.3],
+      [0.02, 0.4, 0.46, "#1d3a57", K.x + 0.405, top + 0.6, K.z], [0.022, 0.36, 0.42, "#24486b", K.x + 0.41, top + 0.6, K.z],
+      [0.024, 0.06, 0.03, "#0b0a12", K.x + 0.42, top + 0.5, K.z], [0.024, 0.05, 0.014, "#0b0a12", K.x + 0.42, top + 0.46, K.z],
+      [0.04, 0.08, 0.06, "#8a8f96", K.x + 0.43, top + 0.78, K.z],
+      [0.82, 0.04, 1.22, "#f2efe6", K.x, top + 0.24, K.z], [0.82, 0.04, 1.22, "#f2efe6", K.x, top + 1.24, K.z],
+      [0.9, 0.08, 1.3, "#1d3a57", K.x, top + 0.04, K.z],
+      [0.22, 0.02, 0.32, "#e9e1cc", K.x - 0.1, top + 1.53, K.z - 0.3], [0.2, 0.02, 0.3, "#f6ecd2", K.x - 0.08, top + 1.55, K.z - 0.28], [0.05, 0.022, 0.05, "#d82a2a", K.x - 0.08, top + 1.565, K.z - 0.28, 0.4]
+    ]);
     sign(ex.keys.label, "lock · sign · check (a toy)", K.x, top + 2.1, K.z, yaw, 0.45);
     const padlock = keyTerminal(keys);
     exhibit("keys", { id: "e3-padlock", year: 1991, connection: "context", title: ex.keys.title, label: ex.keys.label, sourceKeys: ex.keys.sourceKeys,
@@ -798,7 +912,12 @@
       [0.012, 0.42, 0.5, "#1c1628", C.x + 0.505, top + 0.42, C.z], [0.014, 0.08, 0.03, "#ff8c3a", C.x + 0.512, top + 0.52, C.z + 0.1, 1.2], [0.014, 0.08, 0.03, "#ff8c3a", C.x + 0.512, top + 0.52, C.z - 0.1, 1.2],
       [0.04, 0.16, 0.04, "#1a1a1a", C.x + 0.58, top + 1.3, C.z + 0.22], [0.08, 0.08, 0.08, "#d82a2a", C.x + 0.58, top + 1.4, C.z + 0.22, 0.4],
       ...[0, 1, 2].map((i) => [0.07, 0.03, 0.07, ["#ffd25f", "#2ee6d6", "#ff4fd8"][i], C.x + 0.62, top + 1.24, C.z - 0.05 - i * 0.12, 0.8]),
-      [0.012, 0.06, 1.1, "#16121f", C.x + 0.505, top + 0.04, C.z]
+      [0.012, 0.06, 1.1, "#16121f", C.x + 0.505, top + 0.04, C.z],
+      // A bezel round the screen, a row of marquee bulbs, and a coin-return cup and kick plate.
+      [0.02, 0.06, 0.92, "#1c1628", C.x + 0.51, top + 1.93, C.z], [0.02, 0.06, 0.92, "#1c1628", C.x + 0.51, top + 1.27, C.z],
+      [0.02, 0.66, 0.06, "#1c1628", C.x + 0.51, top + 1.6, C.z + 0.45], [0.02, 0.66, 0.06, "#1c1628", C.x + 0.51, top + 1.6, C.z - 0.45],
+      ...[0, 1, 2, 3, 4, 5, 6].map((i) => [0.03, 0.03, 0.03, i % 2 ? "#ff4fd8" : "#ffd25f", C.x + 0.49, top + 2.22, C.z - 0.39 + i * 0.13, 1.1]),
+      [0.03, 0.05, 0.08, "#0b0a12", C.x + 0.515, top + 0.3, C.z], [0.02, 0.1, 0.9, "#2ee6d6", C.x + 0.51, top + 0.12, C.z, 0.5]
     ]);
     if (screens) {
       const c = document.createElement("canvas"); c.width = 160; c.height = 120;
@@ -812,6 +931,35 @@
     exhibit("rally", { id: "e3-rally", year: 1990, connection: "context", title: ex.rally.title, label: ex.rally.label, sourceKeys: ex.rally.sourceKeys,
       date: "1990–1995 period style; the game is original to the voyage", onUse: () => ({ terminal: rallyTerm }) });
     decorate(kit, detail);
+
+    // The padlock courier (a modern toy, added after the cave's own pieces so their order stays): a timber rack of three
+    // cubbies, each with one friend's padlock in their colour, open until a note is snapped shut in it, a lamp over the
+    // cubby holding the note, an out-tray, and its console game's card. Space here plays Padlock Courier.
+    const Q = L.courier, courier = createCourier();
+    v.courier = courier;
+    solid(0.9, 1.7, 1.7, "#5c4430", Q.x, top + 0.85, Q.z);
+    solid(0.5, 0.1, 1.76, "#4a3624", Q.x + 0.2, top + 1.75, Q.z);
+    for (let i = 0; i < FRIENDS.length; i++) {
+      const z = Q.z + 0.52 - i * 0.52, ink = FRIENDS[i].ink;
+      solid(0.12, 0.2, 0.2, ink, Q.x + 0.48, top + 1.0, z);
+      v.courierOpen.push(node(M.box({ w: 0.04, h: 0.16, d: 0.14, color: "#d6dbe0" }), Q.x + 0.48, top + 1.2, z));
+      v.courierShut.push(node(M.box({ w: 0.04, h: 0.1, d: 0.14, color: "#d6dbe0" }), Q.x + 0.48, top + 1.15, z, false));
+      v.courierLamps.push(node(M.box({ w: 0.04, h: 0.06, d: 0.3, color: ink, emissive: 1.3 }), Q.x + 0.46, top + 1.62, z, false));
+    }
+    detail([
+      ...[0, 1, 2].flatMap((i) => { const z = Q.z + 0.52 - i * 0.52; return [[0.02, 0.36, 0.42, "#1c140d", Q.x + 0.455, top + 1.32, z], [0.03, 0.12, 0.3, "#e9e1cc", Q.x + 0.44, top + 1.26, z],
+        [0.02, 0.12, 0.42, "#3a2a1c", Q.x + 0.46, top + 0.66, z], [0.022, 0.04, 0.04, "#0b0a12", Q.x + 0.545, top + 0.96, z], [0.024, 0.04, 0.24, FRIENDS[i].ink, Q.x + 0.46, top + 1.54, z, 0.5]]; }),
+      ...[-0.78, -0.26, 0.26, 0.78].map((dz) => [0.04, 1.6, 0.04, "#3a2a1c", Q.x + 0.46, top + 0.85, Q.z + dz]),
+      [0.04, 0.04, 1.64, "#3a2a1c", Q.x + 0.46, top + 1.52, Q.z], [0.04, 0.04, 1.64, "#3a2a1c", Q.x + 0.46, top + 0.8, Q.z],
+      [0.9, 0.08, 1.74, "#3a2a1c", Q.x, top + 0.04, Q.z], [0.3, 0.06, 0.5, "#8a6440", Q.x + 0.2, top + 1.83, Q.z - 0.5], [0.24, 0.03, 0.34, "#f6ecd2", Q.x + 0.2, top + 1.87, Q.z - 0.5],
+      [0.02, 0.3, 0.4, "#0b0a12", Q.x + 0.455, top + 0.35, Q.z + 0.4], [0.022, 0.26, 0.36, "#1a1446", Q.x + 0.46, top + 0.35, Q.z + 0.4, 0.4],
+      ...[["#5ec8ff", -0.08], ["#ffd23a", 0], ["#c8ff5a", 0.08]].map(([c, dy]) => [0.024, 0.04, 0.22, c, Q.x + 0.47, top + 0.35 + dy, Q.z + 0.4, 0.9])
+    ]);
+    sign(ex.courier.label, "three open padlocks · a modern toy", Q.x + 0.2, top + 2.35, Q.z, yaw, 0.4);
+    const courierTerm = courierTerminal(courier);
+    exhibit("courier", { id: "e3-courier", year: 1990, connection: "context", title: ex.courier.title, label: ex.courier.label, sourceKeys: ex.courier.sourceKeys,
+      hint: "Type SEND BEA hello, then TRY TOCK; Space plays the game",
+      date: "No historical date: a modern explanatory toy shown in the 1990–1995 gallery", onUse: () => ({ terminal: courierTerm }) });
   };
 
   // --- Set dressing ---------------------------------------------------------------------------------------------------
@@ -930,6 +1078,10 @@
       }
       v.printedOk.visible = r.matches; v.printedBad.visible = !r.matches;
     }
+    if (v.courier.version !== v.courierShown) {
+      v.courierShown = v.courier.version;
+      for (let i = 0; i < v.courierLamps.length; i++) { const shut = v.courier.slot === i; v.courierLamps[i].visible = shut; v.courierShut[i].visible = shut; v.courierOpen[i].visible = !shut; }
+    }
     if (v.keys.version !== v.keysShown) { v.keysShown = v.keys.version; v.shackleShut.visible = !!v.keys.locked; v.shackleOpen.visible = !v.keys.locked; }
     // The modem's lamp flickers while the pretend call is up (steady in Calm), and is dark while it is down.
     if (v.modemLamp) v.modemLamp.glow = !v.bbs.online ? 0.15 : calm ? 1.4 : 0.6 + (Math.floor(elapsed * 7) % 3 === 0 ? 0.9 : 0);
@@ -954,6 +1106,6 @@
   // The pure rules, for Node checks, and the office PC's hand-on (hook request 2 in the notes): its prompt may pass a
   // line it doesn't know here, to the visit's dial-up corner; null when this answers nothing.
   BL.genesisEra3 = { GRIDS, CRT_INKS, crtPixel, createCrt, SENDS, ERA, NOTE, EXHIBITS, HOLD, TOY, RALLY, MAX_POSTS, MAX_NOTE, TICK, MAX_TICKS, LAYOUT, PAGE_SPOTS, PAGER_TEXTS, sources, overview, link,
-    createNewspaper, newspaperTerminal, createKeyStation, keyTerminal, createBbs, createPager, createTriggers, createRally, pagerTerminal, rallyTerminal,
+    createNewspaper, newspaperTerminal, createKeyStation, keyTerminal, createBbs, createPager, createTriggers, createRally, pagerTerminal, rallyTerminal, FRIENDS, createCourier, courierTerminal,
     pcRun: (line) => v && !/^\s*(HELP|MORE|SOURCES|RESET|CRT)\b/i.test(line) ? v.bbs.run(line) : null, get visit() { return v; } };
 })();

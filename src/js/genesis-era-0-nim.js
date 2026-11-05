@@ -112,19 +112,23 @@
   const RUN = 5, THINK = 0.6, END_S = 1.4;
   const make = (host) => {
     const kit = BL.retroGames.kit, out = kit.hooks(host), aim = out.aim, status = kit.makeStatus("Games"), { W, H, INK, TEXT } = kit;
-    const game = create(), S = game.state, C = { phase: "idle", sel: 2, count: 1, steps: 0, stepsY: 0, wait: 0, wins: 0, played: 0 };
+    const game = create(), S = game.state, C = { phase: "idle", sel: 2, count: 1, steps: 0, stepsY: 0, wait: 0, wins: 0, played: 0, flash: 0, fh: -1, fn: 0, t: 0 };
+    // Presentation only: the counters just taken glow and fade where they stood (the computer's too), and a win throws
+    // sparks off the board.
+    const sparks = kit.sparks(40, [INK.banana, INK.teal, INK.white]);
+    const taken = (h, n) => { C.fh = h; C.fn = n; C.flash = 0.9; };
     const clampCount = () => { const most = Math.max(1, game.heaps[C.sel]); if (C.count > most) C.count = most; if (C.count < 1) C.count = 1; };
     const setVerb = () => { status.verb = C.phase === "play" ? "Take" : ""; status.note = S.winner === 0 ? "You win" : S.winner === 1 ? "Computer wins" : ""; };
     const newGame = () => { game.reset(); C.sel = 2; C.count = 1; C.wait = 0; C.phase = "play"; status.round = C.played + 1; setVerb(); };
     const act = () => {
       if (C.phase !== "play" || S.turn !== 0) return;
       if (game.take(C.sel, C.count) !== 0) { out.flop(); return; }
-      out.cue("tap", 0.4);
+      out.cue("tap", 0.4); taken(C.sel, C.count);
       C.wait = THINK; clampCount(); setVerb();
     };
     const settle = () => {
       if (S.winner < 0) return;
-      C.played++; if (S.winner === 0) { C.wins++; status.score += 100; out.cue("win", 0.6); } else out.flop();
+      C.played++; if (S.winner === 0) { C.wins++; status.score += 100; out.cue("win", 0.6); if (!host.still) for (let k = 0; k < 4; k++) sparks.spawn(40 + k * 28, 50, 6, 50, k % 3, (k + 1) % 3, 0.8); } else out.flop();
       status.left = RUN - C.played; C.phase = "end"; C.wait = END_S; setVerb();
     };
     return {
@@ -138,9 +142,10 @@
         game.reset(Number.isInteger(seed) ? seed : SEED);
         C.wins = C.played = 0; status.score = 0; status.left = RUN; C.steps = aim.steps; C.stepsY = aim.stepsY; newGame();
       },
-      stop: () => { C.phase = "idle"; setVerb(); },
+      stop: () => { C.phase = "idle"; C.flash = 0; sparks.clear(); setVerb(); },
       act,
       update: (dt) => {
+        sparks.update(dt); C.t += dt; C.flash = Math.max(0, C.flash - dt);
         if (C.phase === "idle" || C.phase === "done") { C.steps = aim.steps; C.stepsY = aim.stepsY; return; }
         const ds = aim.steps - C.steps, dy = aim.stepsY - C.stepsY;
         C.steps = aim.steps; C.stepsY = aim.stepsY;
@@ -150,22 +155,34 @@
         }
         if (C.wait > 0 && (C.wait -= dt) <= 0) {
           // A take that emptied the board is decided at once; otherwise the computer answers.
-          if (C.phase === "play") { if (S.winner < 0) { game.reply(); clampCount(); } settle(); }
+          if (C.phase === "play") { if (S.winner < 0) { game.reply(); taken(S.lastH, S.lastN); clampCount(); } settle(); }
           else if (C.phase === "end") { if (C.played >= RUN) { C.phase = "done"; out.over(); out.onEnd(status.score); } else newGame(); }
         }
       },
       draw: (ctx) => {
         ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, H);
+        // A green baize board in a timber rim, one row a heap.
+        ctx.fillStyle = INK.huskDk; ctx.fillRect(4, 16, W - 8, 82);
+        ctx.fillStyle = INK.moss; ctx.fillRect(7, 19, W - 14, 76);
         kit.centre(ctx, "NIM - MUSEUM HOMAGE", 4, TEXT.teal);
+        const pulse = host.still || ((C.t * 3) | 0) % 2 === 0;
         for (let h = 0; h < HEAPS; h++) {
-          const y = 24 + h * 26, picked = C.phase === "play" && S.turn === 0 && h === C.sel;
-          kit.text(ctx, NAMES[h], 12, y + 3, picked ? TEXT.banana : TEXT.stone);
+          const y = 26 + h * 24, picked = C.phase === "play" && S.turn === 0 && h === C.sel;
+          if (picked) { ctx.fillStyle = INK.leaf; ctx.fillRect(9, y - 3, W - 18, 17); }
+          kit.text(ctx, NAMES[h], 13, y + 2, picked ? TEXT.banana : TEXT.bone);
+          if (picked && pulse) kit.text(ctx, ">", 6, y + 2, TEXT.banana);
           for (let k = 0; k < START[h]; k++) {
-            const here = k < game.heaps[h], marked = picked && here && k >= game.heaps[h] - C.count;
-            ctx.fillStyle = !here ? INK.deep : marked ? INK.ember : INK.bone;
-            ctx.fillRect(28 + k * 16, y, 11, 11);
+            const x = 28 + k * 16, here = k < game.heaps[h], marked = picked && here && k >= game.heaps[h] - C.count;
+            const gone = !here && C.flash > 0 && h === C.fh && k >= game.heaps[h] && k < game.heaps[h] + C.fn;
+            if (!here && !gone) { ctx.fillStyle = INK.moss; ctx.fillRect(x + 2, y + 2, 8, 8); ctx.fillStyle = INK.earthDk; ctx.fillRect(x + 3, y + 3, 6, 6); continue; }
+            // A bone counter with a shadow under it and a highlight on it; marked ones ember, just-taken ones fading gold.
+            ctx.fillStyle = INK.earthDk; ctx.fillRect(x + 1, y + 2, 11, 11);
+            ctx.fillStyle = gone ? (C.flash > 0.45 ? INK.gold : INK.ochre) : marked ? INK.ember : INK.bone;
+            ctx.fillRect(x, y, 11, 11);
+            ctx.fillStyle = gone || marked ? INK.banana : INK.white; ctx.fillRect(x + 2, y + 2, 3, 2);
           }
         }
+        sparks.draw(ctx);
         kit.text(ctx, "TAKE", 8, 104, TEXT.stone); kit.number(ctx, C.count, 34, 104, TEXT.banana);
         kit.text(ctx, S.winner === 0 ? "YOU WIN" : S.winner === 1 ? "COMPUTER WINS" : S.turn ? "COMPUTER..." : "YOUR TURN", 60, 104, S.winner === 1 ? TEXT.red : TEXT.leaf);
       }

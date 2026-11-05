@@ -15,6 +15,9 @@
 // serves. Pause is the console not calling `update`. Calm is `host.still`: no shake or flash, and the attract's demo
 // holds still. Sound only through `host.cue` (the console maps the names to its own pooled, muted-aware cues).
 // `update` and `draw` allocate nothing: text from the kit's atlas (literals only), numbers through `kit.number`.
+// The look (a gridded field, the clock as a little face whose hand ticks, the paddle's glint and flash on a return, a
+// short trail behind the ball, the balls left as balls, the streak and a results line) is drawing only: every rule
+// is still the cabinet's own.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -28,10 +31,12 @@
     const game = E3.createRally(), demo = E3.createRally();
     // The run on one object, so a frame's writes change it in place: what the rules counted last frame (to notice a
     // return, a stamp or a miss), the paddle's follow mode for a drag, the end beat, a stamp's flash and the seed.
-    const S = { hits: 0, stamps: 0, misses: 0, ax: 0, follow: 0, endT: 0, flashT: 0, clock: 0, seed: 0, best: host.best || 0 };
+    const S = { hits: 0, stamps: 0, misses: 0, ax: 0, follow: 0, endT: 0, flashT: 0, clock: 0, seed: 0, best: host.best || 0, padT: 0, missT: 0, trailT: 0, trailN: 0, trailDt: 0, newBest: 0 };
+    // The ball's trail: its last TRAIL places, sampled a few times a second, in a fixed ring.
+    const TRAIL = 6, tx = new Float32Array(TRAIL), ty = new Float32Array(TRAIL), TRAIL_INKS = [INK.white, INK.bone, INK.stoneLt, INK.stone, INK.stoneDk, INK.rule];
     let phase = "idle";
     const sync = () => { status.score = game.score; status.left = game.balls; status.round = 1 + Math.floor(game.hits / 10); status.verb = phase === "play" && game.state === "serve" ? "Serve!" : ""; };
-    const zero = () => { S.hits = S.stamps = S.misses = 0; S.follow = 0; S.ax = aim.x; S.endT = S.flashT = 0; status.streak = 0; status.mult = 0; };
+    const zero = () => { S.hits = S.stamps = S.misses = 0; S.follow = 0; S.ax = aim.x; S.endT = S.flashT = 0; S.padT = S.missT = S.trailT = 0; S.trailN = 0; S.newBest = 0; status.streak = 0; status.mult = 0; };
     // The paddle's wish from the host's aim: held keys slide it; otherwise a drag that moved sets where it heads.
     const steer = () => {
       const i = game.input;
@@ -45,24 +50,56 @@
     };
     // What happened this frame, from the rules' own counters: a return, a stamp, a miss, the end.
     const events = () => {
-      if (game.hits > S.hits) { S.hits = game.hits; status.streak++; out.cue("hit", 0.6); if (status.streak % 10 === 0) { out.popup("RALLY!", false); out.crack(false); } }
+      if (game.hits > S.hits) {
+        S.hits = game.hits; status.streak++; S.padT = 0.18; out.cue("hit", 0.6);
+        if (!host.still) fx.spawn(FX + game.x * FW, FY + RL.paddleY / RL.h * FH - 2, 5, 40, 1, 1, 0.3);
+        if (status.streak % 10 === 0) { out.popup("RALLY!", false); out.crack(false); }
+      }
       if (game.stamps > S.stamps) {
         S.stamps = game.stamps; S.flashT = 0.35; out.popup("STAMP +5", true); out.cue("score", 0.8); J.flash(INK.banana, 0.35); out.crack(true);
         fx.spawn(FX + game.x * FW, FY + RL.clockY / RL.h * FH, 14, 60, 0, 1, 0.5);
       }
-      if (game.misses > S.misses) { S.misses = game.misses; status.streak = 0; out.cue("miss", 0.7); J.shake(2); out.flop(); }
-      if (game.state === "over" && phase === "play") { phase = "end"; S.endT = END_BEAT; if (game.score > S.best) S.best = game.score; out.over(); }
+      if (game.misses > S.misses) { S.misses = game.misses; status.streak = 0; S.missT = 0.5; S.trailN = 0; out.cue("miss", 0.7); J.shake(2); J.flash(INK.red, 0.25); out.flop(); }
+      if (game.state === "over" && phase === "play") { phase = "end"; S.endT = END_BEAT; if (game.score > S.best) { S.best = game.score; S.newBest = game.score > 0 ? 1 : 0; } out.over(); }
     };
-    const drawField = (ctx, g) => {
+    const drawField = (ctx, g, live) => {
       ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = INK.deep; ctx.fillRect(FX, FY, FW, FH);
+      // A faint grid, and the field's frame with a rivet at each top corner; the open bottom glows red after a miss.
+      ctx.fillStyle = INK.rule;
+      for (let k = 1; k < 8; k++) ctx.fillRect(FX + k * 17, FY, 1, FH);
+      for (let k = 1; k < 6; k++) ctx.fillRect(FX, FY + k * 17, FW, 1);
       ctx.fillStyle = INK.violet; ctx.fillRect(FX - 2, FY - 2, FW + 4, 2); ctx.fillRect(FX - 2, FY - 2, 2, FH + 2); ctx.fillRect(FX + FW, FY - 2, 2, FH + 2);
-      ctx.fillStyle = S.flashT > 0 ? INK.white : INK.banana;
-      ctx.fillRect(Math.round(FX + (g.clock - RL.clockW / 2) * FW), Math.round(FY + (RL.clockY - RL.clockH / 2) / RL.h * FH), Math.round(RL.clockW * FW), 4);
-      ctx.fillStyle = INK.teal;
-      ctx.fillRect(Math.round(FX + (g.paddle - RL.paddleW / 2) * FW), Math.round(FY + (RL.paddleY - RL.paddleH / 2) / RL.h * FH), Math.round(RL.paddleW * FW), 3);
+      ctx.fillStyle = INK.white; ctx.fillRect(FX - 2, FY - 2, 2, 2); ctx.fillRect(FX + FW, FY - 2, 2, 2);
+      if (live && S.missT > 0) { ctx.fillStyle = INK.red; ctx.fillRect(FX, FY + FH - 2, FW, 2); }
+      // The clock: a gold face in a darker rim, its hand ticking round a quarter at a time.
+      const cx = Math.round(FX + (g.clock - RL.clockW / 2) * FW), cy = Math.round(FY + (RL.clockY - RL.clockH / 2) / RL.h * FH), cw = Math.round(RL.clockW * FW);
+      ctx.fillStyle = S.flashT > 0 && live ? INK.white : INK.gold; ctx.fillRect(cx - 1, cy - 1, cw + 2, 6);
+      ctx.fillStyle = S.flashT > 0 && live ? INK.white : INK.banana; ctx.fillRect(cx, cy, cw, 4);
+      const mid = cx + (cw >> 1), q = Math.floor(g.time * 2) & 3;
+      ctx.fillStyle = INK.night; ctx.fillRect(mid, cy, 1, 2);
+      ctx.fillRect(q === 1 ? mid + 1 : q === 3 ? mid - 2 : mid, q === 0 ? cy : q === 2 ? cy + 2 : cy + 1, q & 1 ? 2 : 1, q & 1 ? 1 : 2);
+      // The ball's trail, newest brightest, then the paddle (a glint along its top, white for a moment on a return).
+      const bx = Math.round(FX + g.x * FW), by = Math.round(FY + g.y / RL.h * FH);
+      if (live && !host.still) for (let k = 0; k < S.trailN; k++) {
+        const j = (S.trailT + TRAIL - 1 - k) % TRAIL;
+        ctx.fillStyle = TRAIL_INKS[k]; ctx.fillRect(Math.round(tx[j]) - 1, Math.round(ty[j]) - 1, 2, 2);
+      }
+      const px = Math.round(FX + (g.paddle - RL.paddleW / 2) * FW), py = Math.round(FY + (RL.paddleY - RL.paddleH / 2) / RL.h * FH), pw = Math.round(RL.paddleW * FW);
+      ctx.fillStyle = live && S.padT > 0 ? INK.white : INK.teal; ctx.fillRect(px, py, pw, 3);
+      ctx.fillStyle = INK.sky; ctx.fillRect(px + 2, py, pw - 4, 1);
       ctx.fillStyle = INK.white;
-      ctx.fillRect(Math.round(FX + g.x * FW) - 2, Math.round(FY + g.y / RL.h * FH) - 2, 4, 4);
+      ctx.fillRect(bx - 2, by - 2, 4, 4);
+      ctx.fillStyle = INK.stoneLt; ctx.fillRect(bx + 1, by + 1, 1, 1);
+    };
+    // The trail's ring takes the live ball's place a few times a second (a fixed ring, nothing allocated).
+    const trail = (dt) => {
+      if (game.state !== "play") { S.trailN = 0; return; }
+      S.trailDt += dt;
+      if (S.trailDt < 1 / 30) return;
+      S.trailDt = 0;
+      tx[S.trailT] = FX + game.x * FW; ty[S.trailT] = FY + game.y / RL.h * FH;
+      S.trailT = (S.trailT + 1) % TRAIL; if (S.trailN < TRAIL) S.trailN++;
     };
     const api = {
       kind: "tick-tock", name: "Tick-Tock Rally", aims: true, status, roundLabel: "Level",
@@ -89,7 +126,7 @@
       stop: () => { phase = "idle"; game.reset(); fx.clear(); J.reset(); zero(); sync(); },
       update: (dt) => {
         S.clock += dt; J.update(dt); fx.update(dt);
-        S.flashT = Math.max(0, S.flashT - dt);
+        S.flashT = Math.max(0, S.flashT - dt); S.padT = Math.max(0, S.padT - dt); S.missT = Math.max(0, S.missT - dt);
         if (phase === "idle") {
           // The attract: the demo plays itself, held still in Calm.
           if (!host.still) {
@@ -98,27 +135,42 @@
           }
           return;
         }
-        if (phase === "play") { steer(); game.update(dt); events(); }
+        if (phase === "play") { steer(); game.update(dt); events(); trail(dt); }
         else if (phase === "end") { S.endT -= dt; if (S.endT <= 0) { phase = "done"; out.onEnd(game.score); } }
         sync();
       },
       draw: (ctx) => {
         J.begin(ctx);
-        drawField(ctx, phase === "idle" ? demo : game);
+        drawField(ctx, phase === "idle" ? demo : game, phase !== "idle");
         fx.draw(ctx);
         J.end(ctx);
         text(ctx, "TICK-TOCK", 4, 4, TEXT.gold);
         number(ctx, phase === "idle" ? S.best : game.score, W - 4, 4, TEXT.bone, 1, 2, 3);
         if (phase === "idle") {
+          // The title on a dark band over the demo, a drop shadow under it.
+          ctx.fillStyle = INK.band; ctx.fillRect(FX + 8, 38, FW - 16, 30);
+          ctx.fillStyle = INK.violet; ctx.fillRect(FX + 8, 38, FW - 16, 1); ctx.fillRect(FX + 8, 67, FW - 16, 1);
+          centre(ctx, "TICK-TOCK RALLY", 45, TEXT.violet, 1);
           centre(ctx, "TICK-TOCK RALLY", 44, TEXT.banana, 1);
-          if (host.still || (Math.floor(S.clock * 2) & 1) === 0) centre(ctx, "PRESS START", 60, TEXT.bone);
-          centre(ctx, "MUSEUM HOMAGE", 100, TEXT.stone);
+          if (host.still || (Math.floor(S.clock * 2) & 1) === 0) centre(ctx, "PRESS START", 57, TEXT.bone);
+          text(ctx, "BEST", FX + 2, 108, TEXT.stone); number(ctx, S.best, FX + 30, 108, TEXT.gold);
+          text(ctx, "MUSEUM HOMAGE", FX + FW - 78, 108, TEXT.stone);
           return;
         }
-        ctx.fillStyle = INK.teal;
-        for (let b = 0; b < game.balls; b++) ctx.fillRect(60 + b * 6, 6, 3, 3);
-        if (phase === "play" && game.state === "serve") centre(ctx, "SERVE!", 70, TEXT.teal);
-        if (phase !== "play") centre(ctx, "GAME OVER", 60, TEXT.red, 1);
+        // The balls left as little balls, the streak once it is going, and the level.
+        for (let b = 0; b < RL.balls; b++) { ctx.fillStyle = b < game.balls ? INK.white : INK.rule; ctx.fillRect(62 + b * 7, 5, 4, 4); }
+        if (status.streak >= 3 && phase === "play") { text(ctx, "X", 92, 4, TEXT.teal); number(ctx, status.streak, 98, 4, TEXT.teal); }
+        if (phase === "play" && game.state === "serve") {
+          centre(ctx, "SERVE!", 70, (host.still || (Math.floor(S.clock * 3) & 1) === 0) ? TEXT.teal : TEXT.sky);
+          if (S.missT > 0) centre(ctx, "MISS", 56, TEXT.red);
+        }
+        if (phase !== "play") {
+          ctx.fillStyle = INK.band; ctx.fillRect(FX + 16, 50, FW - 32, 34);
+          centre(ctx, "GAME OVER", 54, TEXT.red, 1);
+          text(ctx, "SCORE", 52, 66, TEXT.stone); number(ctx, game.score, 108, 66, TEXT.bone, 1, 2);
+          if (S.newBest) centre(ctx, "NEW BEST!", 75, TEXT.banana);
+          else { text(ctx, "BEST", 52, 75, TEXT.stone); number(ctx, S.best, 108, 75, TEXT.gold, 1, 2); }
+        }
       }
     };
     sync();

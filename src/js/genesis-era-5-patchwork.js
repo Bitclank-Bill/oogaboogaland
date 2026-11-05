@@ -127,12 +127,23 @@
   const make = (host) => {
     const K = BL.retroGames.kit, { W, INK, TEXT, text, centre, number } = K;
     const out = K.hooks(host), aim = out.aim, status = K.makeStatus("Rounds"), R = K.rng(), p = puzzle();
-    const S = { col: 0, row: 0, hand: -1, from: -1, steps: 0, stepsY: 0, clock: 0, endT: 0, note: 0, seed: 0 };
+    const S = { col: 0, row: 0, hand: -1, from: -1, steps: 0, stepsY: 0, clock: 0, endT: 0, note: 0, seed: 0, noteT: 0, roundT: 0 };
+    // The screen's own feedback (no rule reads it): sparks, a shake and flash, and a piece in flight from its sender
+    // to its receiver (fx..fy from, tx..ty to, k 1 -> 0), plus each board's glow once it is complete.
+    const J = K.juice(host), sparks = K.sparks(72, [INK.banana, INK.teal, INK.lime, INK.white, INK.ember]);
+    const F = { piece: -1, fx: 0, fy: 0, tx: 0, ty: 0, k: 0 }, glow = new Float32Array(PEERS);
+    const cellX = (peer, piece) => BX[peer] + (piece % 3) * CELL, cellY = (piece) => BY + Math.floor(piece / 3) * CELL;
+    const say = (n) => { S.note = n; S.noteT = 1; };
     let phase = "idle";
     // Notes the screen shows, one at a time, chosen by index (no string built in play).
     const NOTES = ["PICK A PIECE", "SENT!", "SLOT SPENT THIS ROUND", "ALREADY THERE", "SAME PIECE, OTHER PEER", "PUT BACK", "NEXT ROUND", "PICK A PEER'S PIECE FIRST"];
     const sync = () => { status.round = p.P.round; status.left = Math.max(0, MAX_ROUNDS - p.P.round + 1); status.score = p.score(); status.target = p.P.bound; };
-    const finish = () => { phase = "done"; S.endT = 1.4; status.score = p.score(); out.cue(p.P.won ? "win" : "buzzer"); if (p.P.won) out.crack(p.stars() === 3); else out.flop(); out.over(); };
+    const finish = () => {
+      phase = "done"; S.endT = 1.4; status.score = p.score(); out.cue(p.P.won ? "win" : "buzzer"); if (p.P.won) out.crack(p.stars() === 3); else out.flop();
+      if (p.P.won) { J.flash(INK.lime, 0.4); if (!host.still) for (let d = 0; d < PEERS; d++) for (let i = 0; i < PIECES; i += 2) sparks.spawn(cellX(d, i) + 6, cellY(i) + 6, 3, 50, d, 3, 0.8); }
+      else { J.flash(INK.red, 0.4); J.shake(2); }
+      out.over();
+    };
     const run = K.stepper((h) => {
       // Steps, not a slide: read the counters' change since last time.
       const dx = aim.steps - S.steps, dy = aim.stepsY - S.stepsY;
@@ -140,34 +151,57 @@
       if (dx) S.col = (S.col + (dx % 9) + 9) % 9;
       if (dy) S.row = (S.row + (dy % 3) + 3) % 3;
       if (phase === "done") { S.endT -= h; if (S.endT <= 0) { phase = "over"; out.onEnd(status.score); } }
+      F.k = Math.max(0, F.k - h * 4); S.noteT = Math.max(0, S.noteT - h * 3); S.roundT = Math.max(0, S.roundT - h * 1.5);
+      for (let d = 0; d < PEERS; d++) glow[d] = p.complete(d) ? Math.min(1, glow[d] + h * 3) : 0;
     });
     const act = () => {
       if (phase !== "play") return;
       const peer = Math.floor(S.col / 3), piece = S.row * 3 + S.col % 3;
       if (S.hand < 0) {
-        if (!p.holds(peer, piece)) { S.note = 7; out.cue("tick"); return; }
-        if (p.used[peer]) { S.note = 2; out.cue("buzzer"); return; }
-        S.hand = piece; S.from = peer; S.note = 4; out.cue("tick"); return;
+        if (!p.holds(peer, piece)) { say(7); out.cue("tick"); return; }
+        if (p.used[peer]) { say(2); out.cue("buzzer"); J.shake(1); return; }
+        S.hand = piece; S.from = peer; say(4); out.cue("tick"); return;
       }
-      if (peer === S.from && piece === S.hand) { S.hand = S.from = -1; S.note = 5; return; }
-      if (piece !== S.hand) { S.note = 4; out.cue("tick"); return; }
-      const before = p.P.round, code = p.send(S.from, peer, piece);
-      if (code === 4) { S.note = 3; out.cue("tick"); return; }
+      if (peer === S.from && piece === S.hand) { S.hand = S.from = -1; say(5); return; }
+      if (piece !== S.hand) { say(4); out.cue("tick"); return; }
+      const before = p.P.round, from = S.from, code = p.send(S.from, peer, piece);
+      if (code === 4) { say(3); out.cue("tick"); return; }
       S.hand = S.from = -1;
-      if (code <= 1) { out.cue("bonk"); out.popup("SENT", false); S.note = p.P.round !== before ? 6 : 1; if (p.P.round !== before) out.cue("round"); }
+      if (code <= 1) {
+        out.cue("bonk"); out.popup("SENT", false); say(p.P.round !== before ? 6 : 1); if (p.P.round !== before) { out.cue("round"); S.roundT = 1; J.flash(INK.teal, 0.2); }
+        F.piece = piece; F.fx = cellX(from, piece); F.fy = cellY(piece); F.tx = cellX(peer, piece); F.ty = cellY(piece); F.k = 1;
+        if (!host.still) sparks.spawn(F.tx + 6, F.ty + 6, 8, 40, p.complete(peer) ? 2 : 0, 1, 0.5);
+      }
       sync();
       if (p.P.won || p.P.lost) finish();
     };
+    // A piece's tile: its ink with a glint at the top left and a shadow along its foot.
+    const tile = (ctx, piece, x, y) => {
+      ctx.fillStyle = ART[piece]; ctx.fillRect(x + 1, y + 1, CELL - 3, CELL - 3);
+      ctx.fillStyle = INK.white; ctx.fillRect(x + 2, y + 2, 3, 1); ctx.fillRect(x + 2, y + 3, 1, 1);
+      ctx.fillStyle = INK.band; ctx.fillRect(x + 1, y + CELL - 3, CELL - 3, 1);
+    };
     const drawBoard = (ctx, peer) => {
-      const x0 = BX[peer];
-      text(ctx, NAMES[peer], x0, BY - 10, p.complete(peer) ? TEXT.lime : TEXT.bone);
-      ctx.fillStyle = p.used[peer] ? INK.stoneDk : INK.teal;
-      ctx.fillRect(x0 + 34, BY - 9, 5, 5);
+      const x0 = BX[peer], done = p.complete(peer), g = glow[peer];
+      // The board's frame: a deep panel, its rim lime once the peer holds the whole picture.
+      ctx.fillStyle = INK.deep; ctx.fillRect(x0 - 3, BY - 13, CELL * 3 + 5, CELL * 3 + 17);
+      ctx.fillStyle = done ? (g < 1 && !host.still && (S.clock * 10 | 0) % 2 ? INK.white : INK.lime) : INK.rule;
+      ctx.fillRect(x0 - 3, BY - 13, CELL * 3 + 5, 1); ctx.fillRect(x0 - 3, BY + CELL * 3 + 3, CELL * 3 + 5, 1);
+      ctx.fillRect(x0 - 3, BY - 13, 1, CELL * 3 + 17); ctx.fillRect(x0 + CELL * 3 + 1, BY - 13, 1, CELL * 3 + 17);
+      text(ctx, NAMES[peer], x0, BY - 10, done ? TEXT.lime : TEXT.bone);
+      number(ctx, p.count(peer), x0 + 18, BY - 10, done ? TEXT.lime : TEXT.stone, 1, 1);
+      // The upload slot's lamp: teal while free (breathing), dark once spent this round.
+      const free = !p.used[peer] && phase === "play";
+      ctx.fillStyle = free ? (host.still || (S.clock * 2 | 0) % 2 ? INK.teal : INK.sky) : INK.stoneDk;
+      ctx.fillRect(x0 + 32, BY - 10, 5, 5);
+      if (free) { ctx.fillStyle = INK.white; ctx.fillRect(x0 + 33, BY - 9, 1, 1); }
       for (let i = 0; i < PIECES; i++) {
         const x = x0 + (i % 3) * CELL, y = BY + Math.floor(i / 3) * CELL;
         ctx.fillStyle = INK.band; ctx.fillRect(x, y, CELL - 1, CELL - 1);
-        if (p.holds(peer, i)) { ctx.fillStyle = ART[i]; ctx.fillRect(x + 1, y + 1, CELL - 3, CELL - 3); }
-        else { ctx.fillStyle = INK.rule; ctx.fillRect(x + 5, y + 5, 2, 2); }
+        // A piece still in flight to this board shows as its empty socket until it lands.
+        const landing = F.k > 0 && F.piece === i && F.tx === x && F.ty === y;
+        if (p.holds(peer, i) && !landing) tile(ctx, i, x, y);
+        else { ctx.fillStyle = INK.rule; ctx.fillRect(x + 4, y + 4, 4, 4); ctx.fillStyle = INK.band; ctx.fillRect(x + 5, y + 5, 2, 2); }
       }
     };
     return {
@@ -180,30 +214,66 @@
       start: (seed) => {
         S.seed = Number.isInteger(seed) ? seed >>> 0 : R.fresh();
         p.deal(S.seed); phase = "play"; S.hand = S.from = -1; S.col = S.row = 0; S.note = 0; S.steps = aim.steps; S.stepsY = aim.stepsY; sync();
+        F.k = 0; S.noteT = S.roundT = 0; glow.fill(0); sparks.clear(); J.reset();
       },
       // Interruption: drop the held piece, keep the deal.
-      stop: () => { phase = "idle"; S.hand = S.from = -1; },
+      stop: () => { phase = "idle"; S.hand = S.from = -1; F.k = 0; sparks.clear(); J.reset(); },
       act,
-      update: (dt) => { S.clock += dt; run(dt); },
+      update: (dt) => { S.clock += dt; J.update(dt); sparks.update(dt); run(dt); },
       draw: (ctx) => {
         ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, 120);
         if (phase === "idle") {
-          centre(ctx, "PEER PATCHWORK", 22, TEXT.teal, 2);
-          centre(ctx, "MODERN MUSEUM HOMAGE", 44, TEXT.stone);
-          centre(ctx, "SHARE NINE PIECES SO", 60, TEXT.bone);
-          centre(ctx, "ALL THREE PEERS FINISH", 70, TEXT.bone);
-          if (host.still || (S.clock * 1.6 | 0) % 2) centre(ctx, "PRESS START", 96, TEXT.bone);
+          centre(ctx, "PEER PATCHWORK", 8, TEXT.teal, 2);
+          // The picture all three peers are after, its pieces arriving one by one and starting again.
+          const shown = host.still ? PIECES : (S.clock * 3 | 0) % (PIECES + 4);
+          for (let i = 0; i < PIECES; i++) {
+            const x = 61 + (i % 3) * CELL, y = 26 + Math.floor(i / 3) * CELL;
+            ctx.fillStyle = INK.band; ctx.fillRect(x, y, CELL - 1, CELL - 1);
+            if (i < shown) tile(ctx, i, x, y);
+          }
+          centre(ctx, "MODERN MUSEUM HOMAGE", 70, TEXT.stone);
+          centre(ctx, "SHARE NINE PIECES SO", 80, TEXT.bone);
+          centre(ctx, "ALL THREE PEERS FINISH", 89, TEXT.bone);
+          if (host.still || (S.clock * 1.6 | 0) % 2) centre(ctx, "PRESS START", 104, TEXT.banana);
           return;
         }
-        text(ctx, "ROUND", 3, 2, TEXT.stone); number(ctx, p.P.round, 36, 2, TEXT.gold);
+        J.begin(ctx);
+        // The rounds as pips: spent, this one (lit, pulsing as it begins) and those left; the fewest possible marked.
+        text(ctx, "ROUND", 3, 2, TEXT.stone); number(ctx, p.P.round, 36, 2, S.roundT > 0 && (S.clock * 8 | 0) % 2 ? TEXT.white : TEXT.gold);
+        for (let r = 0; r < MAX_ROUNDS; r++) {
+          ctx.fillStyle = r + 1 < p.P.round ? INK.stoneDk : r + 1 === p.P.round ? INK.gold : INK.rule;
+          ctx.fillRect(46 + r * 6, 3, 4, 4);
+          if (r + 1 === p.P.bound) { ctx.fillStyle = INK.teal; ctx.fillRect(46 + r * 6, 8, 4, 1); }
+        }
         text(ctx, "BEST", 104, 2, TEXT.stone); number(ctx, p.P.bound, 128, 2, TEXT.gold);
         for (let i = 0; i < PEERS; i++) drawBoard(ctx, i);
-        // The cursor, and the held piece's source outlined.
+        // The held piece's source outlined, and the piece itself riding on the cursor.
         const cx = BX[Math.floor(S.col / 3)] + (S.col % 3) * CELL - 1, cy = BY + S.row * CELL - 1;
-        if (host.still || phase !== "play" || (S.clock * 4 | 0) % 2) { ctx.strokeStyle = INK.white; ctx.lineWidth = 1; ctx.strokeRect(cx + 0.5, cy + 0.5, CELL, CELL); }
-        if (S.hand >= 0) { const hx = BX[S.from] + (S.hand % 3) * CELL - 1, hy = BY + Math.floor(S.hand / 3) * CELL - 1; ctx.strokeStyle = INK.banana; ctx.strokeRect(hx + 0.5, hy + 0.5, CELL, CELL); }
-        if (phase === "play") centre(ctx, NOTES[S.note], 84, S.note === 2 || S.note === 7 ? TEXT.ember : TEXT.bone);
+        if (S.hand >= 0) {
+          const hx = BX[S.from] + (S.hand % 3) * CELL - 1, hy = BY + Math.floor(S.hand / 3) * CELL - 1;
+          ctx.strokeStyle = INK.banana; ctx.lineWidth = 1; ctx.strokeRect(hx + 0.5, hy + 0.5, CELL, CELL);
+          const bob = host.still ? 0 : (S.clock * 6 | 0) % 2;
+          ctx.fillStyle = INK.band; ctx.fillRect(cx + 4, cy - 6 - bob, 9, 9);
+          ctx.fillStyle = ART[S.hand]; ctx.fillRect(cx + 5, cy - 5 - bob, 7, 7);
+        }
+        // A sent piece flying from its sender to the receiver's same place (eased), then landing.
+        if (F.k > 0) {
+          const e = host.still ? 0 : F.k * F.k, x = F.tx + (F.fx - F.tx) * e, y = F.ty + (F.fy - F.ty) * e - Math.sin(e * Math.PI) * 10;
+          tile(ctx, F.piece, Math.round(x), Math.round(y));
+        }
+        // The cursor: corner brackets, blinking while play waits on a choice.
+        if (host.still || phase !== "play" || (S.clock * 4 | 0) % 2) {
+          ctx.fillStyle = S.hand >= 0 ? INK.banana : INK.white;
+          ctx.fillRect(cx, cy, 4, 1); ctx.fillRect(cx, cy, 1, 4); ctx.fillRect(cx + CELL - 3, cy, 4, 1); ctx.fillRect(cx + CELL, cy, 1, 4);
+          ctx.fillRect(cx, cy + CELL, 4, 1); ctx.fillRect(cx, cy + CELL - 3, 1, 4); ctx.fillRect(cx + CELL - 3, cy + CELL, 4, 1); ctx.fillRect(cx + CELL, cy + CELL - 3, 1, 4);
+        }
+        sparks.draw(ctx);
+        J.end(ctx);
+        // The note, bright as it is said and settling to its ink.
+        const warn = S.note === 2 || S.note === 7 || S.note === 3;
+        if (phase === "play") centre(ctx, NOTES[S.note], 84, S.noteT > 0.6 && !host.still ? TEXT.white : warn ? TEXT.ember : S.note === 1 || S.note === 6 ? TEXT.lime : TEXT.bone);
         else centre(ctx, p.P.won ? "EVERY PEER COMPLETE!" : "OUT OF ROUNDS", 84, p.P.won ? TEXT.lime : TEXT.red);
+        if (phase !== "play" && p.P.won) for (let k = 0; k < 3; k++) { ctx.fillStyle = k < p.stars() ? INK.banana : INK.rule; ctx.fillRect(68 + k * 9, 93, 6, 6); }
         centre(ctx, "COPYING IS NOT AGREEING", 104, TEXT.stone);
       }
     };

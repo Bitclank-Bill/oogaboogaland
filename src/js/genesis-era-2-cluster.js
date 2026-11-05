@@ -180,6 +180,14 @@
       resetAll: () => { game.reset(1); screen.reset(); tape.reset(); } };
   };
   const FACE_X = Math.PI / 2;
+  // An exhibit's finer parts as one merged mesh at (x, y, z), its parts in its own frame (y from the floor). The kit's
+  // dry runs (the layout's and the checks') have no models, so they get a bare node at the same spot.
+  const detail = (kit, x, y, z, make) => {
+    const nd = kit.createNode(kit.M.merge ? { geometry: kit.M.merge(...make(kit.M)) } : {});
+    nd.position.x = x; nd.position.y = y; nd.position.z = z;
+    return kit.place(nd);
+  };
+  const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
   const build = (kit) => {
     const { top: Y, M, createNode, addChild, place, solid, sign } = kit;
     const live = createLive(), parts = { holes: [], pixels: [], knobs: [], colours: new Array(125).fill(null), shown: -1, tapeShown: -1, gameShown: -1 };
@@ -254,6 +262,26 @@
       kit.prop({ id: ex.id, year: ex.year, connection: ex.connection, date: ex.date, title: ex.title, label: ex.label, sourceKeys: SOURCE,
         at: walkUp(k, Y), reach: l.reach, pick: { w: l.half.x * 2, h: l.h, d: l.half.z * 2, x: l.x, z: l.z }, onUse: () => ({ terminal: live.terminals[k] }) });
     }
+    // Each station's finer parts, one merged mesh at its own spot (see `detail`), clear of every moving or lit part.
+    // The board table: the grid's posts and cap, a marker over each column, the table's apron, and a tray of counters
+    // for each player (teal on the visitor's left, banana on the right).
+    detail(kit, LAYOUT.four.x, Y, LAYOUT.four.z, (M) => [...[-1, 1].map((s) => B(M, 0.12, 1.15, 0.06, "#5c4630", -0.07, 1.27, s * 0.61)), B(M, 0.12, 0.05, 1.3, "#5c4630", -0.07, 1.77, 0),
+      ...Array.from({ length: 7 }, (_, c) => B(M, 0.012, 0.035, 0.035, "#efe6cf", -0.005, 1.815, 0.45 - c * 0.15)), B(M, 0.04, 0.1, 1.2, "#5c4630", 0.5, 0.62, 0),
+      ...[-1, 1].flatMap((s) => [B(M, 0.26, 0.025, 0.38, "#3d2f20", 0.3, 0.75, s * 0.38),
+        ...[[0.25, 0.32], [0.35, 0.44]].flatMap(([dx, dz]) => [0, 1, 2].map((k) => B(M, 0.1, 0.022, 0.1, s > 0 ? "#2fd1c4" : "#ffd23a", dx, 0.775 + k * 0.024, s * dz, 0.2)))])]);
+    // The colour screen: a silver trim round the picture, a speaker grille under the knobs, wood grain down the sides,
+    // the stand's lip, door line and handles, and the antenna's tips.
+    detail(kit, LAYOUT.crt.x, Y, LAYOUT.crt.z, (M) => [B(M, 0.03, 0.03, 0.74, "#c8c0b0", 0.39, 1.085, -0.08), B(M, 0.03, 0.03, 0.74, "#c8c0b0", 0.39, 0.615, -0.08),
+      ...[-1, 1].map((s) => B(M, 0.03, 0.5, 0.03, "#c8c0b0", 0.39, 0.85, -0.08 + s * 0.355)), ...[0, 1, 2].map((k) => B(M, 0.012, 0.012, 0.16, "#2a2420", 0.38, 0.58 + k * 0.025, 0.38)),
+      ...[-1, 1].flatMap((s) => [0, 1, 2, 3].map((k) => B(M, 0.72, 0.01, 0.01, "#5e3a1f", 0, 0.64 + k * 0.13, s * 0.505))),
+      B(M, 0.64, 0.03, 0.94, "#22202a", 0, 0.54, 0), B(M, 0.012, 0.45, 0.012, "#22202a", 0.305, 0.28, 0), ...[-1, 1].map((s) => B(M, 0.02, 0.06, 0.02, "#c8c0b0", 0.31, 0.3, s * 0.06)),
+      B(M, 0.04, 0.04, 0.04, "#c8c0b0", -0.2, 1.415, -0.3), B(M, 0.04, 0.04, 0.04, "#c8c0b0", -0.2, 1.415, 0)]);
+    // The cassette player: a carry handle over the buttons, speaker strips beside the window, the plinth's trim and a
+    // striped label, and a stack of three cassettes beside the player.
+    detail(kit, LAYOUT.cassette.x, Y, LAYOUT.cassette.z, (M) => [...[-1, 1].map((s) => B(M, 0.04, 0.12, 0.03, "#202028", -0.02, 1.12, s * 0.27)), B(M, 0.04, 0.03, 0.6, "#202028", -0.02, 1.19, 0),
+      ...[-1, 1].map((s) => B(M, 0.006, 0.28, 0.05, "#202028", 0.073, 0.88, s * 0.265)), B(M, 0.62, 0.03, 0.72, "#3a3a44", 0, 0.69, 0),
+      B(M, 0.01, 0.12, 0.4, "#e8e0cc", 0.305, 0.45, 0), ...["#ff8a2a", "#ff5fa8", "#2fd1c4"].map((c, k) => B(M, 0.012, 0.02, 0.4, c, 0.307, 0.41 + k * 0.03, 0)),
+      ...["#f2ece0", "#ffe14a", "#ff5fa8"].map((c, k) => B(M, 0.11, 0.022, 0.17, c, 0.2, 0.716 + k * 0.023, -0.18))]);
     const visit = { live, parts };
     sync(visit, 0, true);
     return visit;

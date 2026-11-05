@@ -22991,7 +22991,7 @@ const genesisEra1LifecycleProof = async () => {
 // exhibit reachable; and the models pose from state without growing and leave the graph on dispose.
 const genesisEra2Proof = async () => {
   const context = { window: {} };
-  for (const f of ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2-spent", "genesis-era-2"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const BL = context.window.BL, G = BL.genesisVoyage, P = BL.genesisProps, W = BL.genesisWorld, EX = BL.genesisExhibits, E2 = BL.genesisEra2, era = W.ERAS[E2.ERA];
   // The kit, as scene-genesis.js makes it, over a bare parent node; props go to a registry, obstacles to a list.
   const { createNode, addChild } = BL.scene, M = BL.models, parent = createNode(), reg = P.createRegistry(), obs = [];
@@ -23117,7 +23117,7 @@ const genesisEra2Proof = async () => {
   const lamps = [[-14, 0.25], [-8, 0.8]].map(([x, fr]) => ({ x0: x - 0.15, x1: x + 0.15, z0: era.z1 - fr * C.len - 0.15, z1: era.z1 - fr * C.len + 0.15 }));
   // With its upgrade cluster loaded (as the page loads it): the five exhibits and the cluster's three, each footprint.
   const CL = context.window.BL.genesisEra2Cluster;
-  const footprinted = obs.length === E2.footprints().length + CL.footprints().length && reg.byEra(2).length === 5 + CL.KEYS.length;
+  const footprinted = obs.length === E2.footprints().length + CL.footprints().length + 1 && reg.byEra(2).length === 6 + CL.KEYS.length;
   const clear = obs.every((o) => o.x0 > C.x0 + 1 && o.x1 < ch.x0 - 4.5 && o.z0 > era.z0 + 2 && o.z1 < era.z1 - 2
     && !hits(o, -16.5, ch.x0, era.z - 2.6, era.z + 2.6) && !lamps.some((l) => hits(o, l.x0 - pad, l.x1 + pad, l.z0 - pad, l.z1 + pad)));
   // Breadth-first walk on a 0.2 grid from the ramp's head over the left bank, a 0.3-radius body against every box.
@@ -23143,7 +23143,7 @@ const genesisEra2Proof = async () => {
   // loaded as the page loads it) are context and keep their walk-up points clear, and its own suite checks the rest.
   const BASE_IDS = ["e2-merkle", "e2-blind", "e2-pc", "e2-floppy", "e2-maze"], baseDefs = defs.filter((d) => BASE_IDS.includes(d.id)), clusterDefs = defs.filter((d) => !BASE_IDS.includes(d.id));
   const byId = Object.fromEntries(defs.map((d) => [d.id, d]));
-  const ids = baseDefs.length === 5 && clusterDefs.length === 3 && BASE_IDS.every((id) => byId[id]) && defs.every((d) => /^e2-/.test(d.id) && !/^era\d/.test(d.id));
+  const ids = baseDefs.length === 5 && clusterDefs.length === 4 && BASE_IDS.every((id) => byId[id]) && defs.every((d) => /^e2-/.test(d.id) && !/^era\d/.test(d.id));
   const trailList = defs.map((d, order) => ({ era: 2, def: d, order, step: 0 })), trail = EX.trailOf(trailList);
   const m7 = byId["e2-merkle"];
   const citation7 = !!m7 && m7.connection === "citation" && m7.ref === "[7]" && EX.checkProp(2, m7) === null && trail.length === 1 && trail[0].def === m7
@@ -23216,10 +23216,10 @@ const genesisEra3Proof = async () => {
   def.build(kit);
   const registered = typeof def.update === "function" && typeof def.dispose === "function" && def.overview.summary.length <= 280 && def.overview.pages.length <= 3
     && def.overview.sourceKeys.every(k => /^https:\/\//.test(P.sourceOf(k).href)) && !signs.some(s => /^(ERA 3|1990–1995)$/.test(s.t)) && !props.some(p => /overview/.test(p.id));
-  const exhibits = props.length === 5 && props.every(p => /^e3-/.test(p.id) && p.label.includes(String(p.year)) && typeof p.date === "string" && /\d{4}/.test(p.date) && p.sourceKeys.length && p.sourceKeys.every(k => /^https:\/\//.test(P.sourceOf(k).href)))
+  const exhibits = props.length === 6 && props.every(p => /^e3-/.test(p.id) && p.label.includes(String(p.year)) && typeof p.date === "string" && /\d{4}/.test(p.date) && p.sourceKeys.length && p.sourceKeys.every(k => /^https:\/\//.test(P.sourceOf(k).href)))
     && Object.values(E.EXHIBITS).filter(x => x.kid).every(x => x.kid.split(" ").length <= 70 && x.deeper.length > 0 && x.pager.length <= 32);
   // The trail: none of these is a stop; the press names the room's stops it demonstrates.
-  const trail = props.every(p => !p.connection || !EX.CONNECTIONS[p.connection].trail) && props.filter(p => p.connection === "context").length === 4 && props.find(p => p.id === "e3-press").demonstrates.join() === "era3-room-haber1991,era3-room-bayer1993";
+  const trail = props.every(p => !p.connection || !EX.CONNECTIONS[p.connection].trail) && props.filter(p => p.connection === "context").length === 5 && props.find(p => p.id === "e3-press").demonstrates.join() === "era3-room-haber1991,era3-room-bayer1993";
   // Every prompt: a terminal with a banner naming its label, HELP, MORE, SOURCES and RESET.
   const terms = props.map(p => p.onUse({}).terminal);
   const prompts = terms.every((t, i) => t && t.banner.some(l => l.includes(props[i].label)) && t.run("HELP").lines.length > 0 && t.run("MORE").lines.length > 0 && t.run("SOURCES").lines.every(l => /https:\/\//.test(l)) && t.run("RESET").reset);
@@ -23330,10 +23330,11 @@ const genesisEra3CalmProof = async () => {
 // Every Genesis era file in the page's script order (src/index.html): each era's own modules where its notes ask
 // (before the era file, or after it for Era 1's paddle, Era 3's rally and Era 6's argument), so the shared proofs build
 // the eras with their upgrade clusters live.
-const GENESIS_ERA_FILES = ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer", "genesis-era-0", "genesis-era-1", "genesis-era-1-paddle",
-  "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2", "genesis-era-3", "genesis-era-3-rally", "genesis-era-4-strategy", "genesis-era-4-teletext",
-  "genesis-era-4-wireless", "genesis-era-4", "genesis-era-5-patchwork", "genesis-era-5-mixtape", "genesis-era-5", "genesis-era-6", "genesis-era-6-argument",
-  "genesis-era-7-sync", "genesis-era-7"];
+const GENESIS_ERA_FILES = ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer", "genesis-era-0-lamps", "genesis-era-0", "genesis-era-1-relay", "genesis-era-1", "genesis-era-1-paddle",
+  "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2-spent", "genesis-era-2", "genesis-era-3-courier", "genesis-era-3", "genesis-era-3-rally",
+  "genesis-era-4-strategy", "genesis-era-4-teletext", "genesis-era-4-wireless", "genesis-era-4-inbox", "genesis-era-4", "genesis-era-5-patchwork",
+  "genesis-era-5-mixtape", "genesis-era-5-chain", "genesis-era-5", "genesis-era-6-catch", "genesis-era-6", "genesis-era-6-argument",
+  "genesis-era-7-sync", "genesis-era-7-split", "genesis-era-7"];
 const genesisBoardingProof = async () => {
   const context = { window: {} };
   for (const f of ["genesis-voyage", "genesis-world"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
@@ -23650,13 +23651,19 @@ const genesisTimelineLayoutProof = async () => {
 const genesisEra0MoreProof = async () => {
   const context = { window: {} };
   context.window.BL = {};
-  for (const f of ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
+  for (const f of ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer", "genesis-era-0-lamps"]) runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   const G = context.window.BL.genesisEra0Games, bad = [];
-  const terms = { nim: G.nim.terminal(G.nim.create()), crt: G.crt.terminal(G.crt.create()), pointer: G.pointer.terminal(G.pointer.create()) };
+  const terms = { nim: G.nim.terminal(G.nim.create()), crt: G.crt.terminal(G.crt.create()), pointer: G.pointer.terminal(G.pointer.create()), lamps: G.lamps.terminal(G.lamps.create(), () => {}) };
   for (const [k, t] of Object.entries(terms)) {
     const more = (t.run("MORE") || {}).lines || [], info = (t.run("INFO") || {}).lines || [];
     if (!more.length || /^Use |Unknown/i.test(more[0]) || more.join("\n") !== info.join("\n")) bad.push(`${k}: MORE does not answer with its deeper lines`);
   }
+  // The lamp panel: SET shows the number in binary, ADD wraps past 255, SHIFT LEFT doubles; a bad SET changes nothing.
+  const lp = G.lamps.create(), lt = G.lamps.terminal(lp, () => {});
+  if (!/0010 1010 = 42/.test(lt.run("SET 42").lines.join(" ")) || lp.value !== 42) bad.push("lamps: SET 42 does not light 0010 1010");
+  if (!/= 84/.test(lt.run("SHIFT LEFT").lines.join(" "))) bad.push("lamps: SHIFT LEFT does not double");
+  if (!/starts again from 0/.test(lt.run("ADD 200").lines.join(" ")) || lp.value !== 28) bad.push("lamps: ADD past 255 does not wrap");
+  lt.run("SET 999"); if (lp.value !== 28) bad.push("lamps: a SET out of range changed the panel");
   return { bad };
 };
 // Era 0's upgrade suite, folded in from test/genesis-era-0-upgrade.mjs (gv/upgrade-era-0) so test/ keeps its two
@@ -23670,7 +23677,7 @@ const genesisEra0UpgradeSuite = async () => {
   // It loads the Genesis world, props, exhibits and every era file as the shared unit tier does, plus the three toy
   // modules, builds Era 0 on a recording kit and drives each toy through its terminal and its console factory.
 
-  const TOYS = ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer"];
+  const TOYS = ["genesis-era-0-nim", "genesis-era-0-crt", "genesis-era-0-pointer", "genesis-era-0-lamps"];
   const BASE = ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits"];
   const load = async (withToys) => {
     const context = { window: { BL: {} } };
@@ -23697,11 +23704,11 @@ const genesisEra0UpgradeSuite = async () => {
   };
 
   const BL = await load(true), A = build(BL), W = A.W, EX = BL.genesisExhibits, P = BL.genesisProps, G = BL.genesisEra0Games;
-  const ORIGINAL = ["e0-feller", "e0-arpanet", "e0-disk-seek", "e0-punch", "e0-race", "e0-login", "e0-compare"], NEW = ["e0-nim", "e0-crt", "e0-pointer"];
+  const ORIGINAL = ["e0-feller", "e0-arpanet", "e0-disk-seek", "e0-punch", "e0-race", "e0-login", "e0-compare"], NEW = ["e0-nim", "e0-crt", "e0-pointer", "e0-lamps"];
 
   // ---- placement, labels, sources -----------------------------------------------------------------------------------
   check("every original Era 0 exhibit keeps its id, in its original build order", ORIGINAL.every((id) => A.props[id]) && A.order.slice(0, 7).map((o) => o.id).join() === ["e0-feller", "e0-arpanet", "e0-disk-seek", "e0-punch", "e0-race", "e0-login", "e0-compare"].join());
-  check("the cluster adds exactly e0-nim, e0-crt and e0-pointer", Object.keys(A.props).length === 10 && NEW.every((id) => A.props[id]));
+  check("the cluster and the lamp panel add exactly e0-nim, e0-crt, e0-pointer and e0-lamps", Object.keys(A.props).length === 11 && NEW.every((id) => A.props[id]));
   const clusterStart = A.order.find((o) => o.id === "e0-compare").at;
   const added = A.records.length - clusterStart;
   check(`the cluster adds at most 150 scene records (${added})`, added > 0 && added <= 150, String(added));
@@ -23837,6 +23844,7 @@ const genesisEra0UpgradeSuite = async () => {
     const rng = () => { const s = new Uint32Array(1); const next = () => { s[0] += 0x6d2b79f5; let t = s[0]; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; return { seed: (n) => { s[0] = n >>> 0; }, next, int: (n) => Math.floor(next() * n) }; };
     const noop = () => {};
     return { W: 160, H: 120, INK: new Proxy({}, { get: () => "#000000" }), TEXT: new Proxy({}, { get: () => 0 }), text: noop, centre: noop, number: noop, makeStatus, rng,
+      sparks: () => ({ spawn: noop, update: noop, draw: noop, clear: noop }),
       hooks: (host) => ({ popup: noop, cue: noop, shake: noop, crack: noop, flop: noop, aim: host.aim, onEnd: host.onEnd || noop, over: host.over || noop }) };
   };
   BL.retroGames = { kit: stubKit() };
@@ -23889,9 +23897,9 @@ const genesisEra1UpgradeSuite = async () => {
     return context.window.BL;
   };
 
-  // The base's scene records for Era 1 (commit cb2b0b9, measured with the same counting kit): the cluster may add at
-  // most about 150.
-  const BASE_RECORDS = 1408, BUDGET = 150;
+  // The base's scene records for Era 1 (commit cb2b0b9, measured with the same counting kit), plus the detail pass's one
+  // merged mesh for each of its 16 exhibit groups: the cluster and the toys added since may add at most about 150.
+  const BASE_RECORDS = 1408 + 16, BUDGET = 150;
   const OLD_IDS = ["e1-gateway-puzzle", "e1-gateway", "e1-puzzle-post", "e1-merkle", "e1-dh-table", "e1-dh", "e1-rsa-desk", "e1-rsa", "e1-floppy-toy", "e1-floppy", "e1-panel-toy", "e1-panel", "e1-coupler-toy", "e1-coupler", "e1-timeline"];
   const NEW_IDS = ["e1-tv", "e1-paddle", "e1-calc"];
 
@@ -24100,7 +24108,7 @@ const genesisEra2UpgradeSuite = async () => {
   const fakeDocument = { createElement: () => ({ width: 0, height: 0, getContext: () => fakeCtx() }) };
 
   const context = { window: {}, document: fakeDocument, crypto: globalThis.crypto };
-  await load(context, ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2"]);
+  await load(context, ["math", "scene", "models", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-era-2-four", "genesis-era-2-cluster", "genesis-era-2-spent", "genesis-era-2"]);
   const BL = context.window.BL, F = BL.genesisEra2Four, C = BL.genesisEra2Cluster, E2 = BL.genesisEra2, W = BL.genesisWorld, P = BL.genesisProps, EX = BL.genesisExhibits;
 
   // --- Four in a row: the rules and the computer -----------------------------------------------------------------------
@@ -24229,7 +24237,7 @@ const genesisEra2UpgradeSuite = async () => {
   const count = (n) => 1 + n.children.reduce((s, c) => s + count(c), 0);
   {
     const B = buildEra2(BL), ids = B.defs.map((d) => d.id);
-    check("eightProps", ids.length === 8 && ["e2-merkle", "e2-blind", "e2-pc", "e2-floppy", "e2-maze", "e2-four", "e2-crt", "e2-cassette"].every((id) => ids.includes(id)));
+    check("eightProps", ids.length === 9 && ["e2-merkle", "e2-blind", "e2-pc", "e2-floppy", "e2-maze", "e2-four", "e2-crt", "e2-cassette", "e2-spent"].every((id) => ids.includes(id)));
     const mine = B.defs.filter((d) => C.KEYS.some((k) => C.EXHIBITS[k].id === d.id));
     check("contextOnly", mine.length === 3 && mine.every((d) => d.connection === "context" && d.ref === undefined && EX.checkProp(2, d) === null && d.year === "1980s" && d.label.includes("1980s") && /museum homage/.test(d.date) && /HOLD|claimed/.test(d.date)));
     check("sources", mine.every((d) => d.sourceKeys.every((k) => { const s = P.sourceOf(k); return s && /^https:\/\//.test(s.href); })));
@@ -24334,7 +24342,7 @@ const genesisEra3UpgradeSuite = async () => {
     const inside = (b, o) => b.x0 >= o.x0 - 1e-9 && b.x1 <= o.x1 + 1e-9 && b.z0 >= o.z0 - 1e-9 && b.z1 <= o.z1 + 1e-9;
     const overlaps = (p, q, pad = 0) => p.x0 < q.x1 + pad && p.x1 > q.x0 - pad && p.z0 < q.z1 + pad && p.z1 > q.z0 - pad;
     const B = E.LAYOUT.bbs, corner = obstacles.find((o) => o.x0 < B.x && o.x1 > B.x && o.z0 < B.z && o.z1 > B.z);
-    r.fiveExhibits = Object.keys(props).join() === "e3-press,e3-padlock,e3-bbs,e3-pager,e3-rally" && props["e3-press"].connection === "demonstration";
+    r.fiveExhibits = Object.keys(props).join() === "e3-press,e3-padlock,e3-bbs,e3-pager,e3-rally,e3-courier" && props["e3-press"].connection === "demonstration";
     r.cartInsideCorner = !!corner && solids.filter((s) => s.z0 > B.z + 0.9).length >= 4 && solids.every((s) => obstacles.some((o) => inside(s, o)))
       && obstacles.every((o, i) => obstacles.every((q, j) => i === j || !overlaps(o, q, 2.5)));
 
@@ -24443,7 +24451,7 @@ const genesisEra4UpgradeSuite = async () => {
   const ctx2d = new Proxy({}, { get: (t, k) => (k in t ? t[k] : () => ({ addColorStop() {} })), set: (t, k, v) => { t[k] = v; return true; } });
   const document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d }) };
   const context = () => ({ window: { BL: { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } } }, document, crypto: webcrypto });
-  const MODULES = ["genesis-era-4-strategy", "genesis-era-4-teletext", "genesis-era-4-wireless"];
+  const MODULES = ["genesis-era-4-strategy", "genesis-era-4-teletext", "genesis-era-4-wireless", "genesis-era-4-inbox"];
   const BL = await load(["math", "retro-games", "genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", "genesis-timeline-data", "genesis-bench", ...MODULES, "genesis-era-4"], context());
   const W = BL.genesisWorld, EX = BL.genesisExhibits, TD = BL.genesisTimelineData, GAMES = BL.genesisEra4Games, B = BL.genesisBench;
 
@@ -24462,7 +24470,7 @@ const genesisEra4UpgradeSuite = async () => {
     return out;
   };
   const built = build(BL), era = W.ERAS[4], NEW = ["e4-strategy", "e4-teletext", "e4-wireless"];
-  const OLD = ["e4-hashcash", "e4-bmoney", "e4-names", "e4-timesec", "e4-desktop", "e4-modem", "e4-cd", "e4-pocket", "e4-loft"];
+  const OLD = ["e4-hashcash", "e4-bmoney", "e4-names", "e4-timesec", "e4-desktop", "e4-modem", "e4-cd", "e4-pocket", "e4-loft", "e4-inbox"];
   const byId = Object.fromEntries(built.props.map((p) => [p.id, p]));
   const term = (id) => byId[id].onUse({}).terminal;
   const text = (r) => r.lines.join("\n");
@@ -24480,7 +24488,7 @@ const genesisEra4UpgradeSuite = async () => {
       for (const k of p.sourceKeys) { const s = BL.genesisProps.sourceOf(k); if (!s || !/^https:\/\//.test(s.href)) bad.push(`${p.id} source ${k}`); }
       if (NEW.includes(p.id) && (!p.hint || !p.date)) bad.push(`${p.id} needs a hint and a date that says what it marks`);
     }
-    record("rule: Era 4 keeps its nine exhibits and trail entries; the cluster adds three context exhibits, each dated, hinted and sourced", !bad.length, bad.join("; "));
+    record("rule: Era 4 keeps its nine exhibits (and Stamp Sort, a tenth) and trail entries; the cluster adds three context exhibits, each dated, hinted and sourced", !bad.length, bad.join("; "));
   }
 
   // rule: the cluster stands inside Era 4's gallery, off the old stream's walk, and overlaps no other obstacle or lamp;
@@ -24587,6 +24595,20 @@ const genesisEra4UpgradeSuite = async () => {
     record("playthrough: the strategy console plays a winning line from its own input to one over(), one onEnd with a score and tickets; a step held before start moves nothing", !bad.length, bad.join("; "));
   }
 
+  // rule: Stamp Sort keeps a letter only when its front bits are all 0, a seed replays a run, three spam letters end it.
+  {
+    const I = GAMES.inbox, bad = [];
+    const play = (seed, pick) => { const h = host(), g = I.make(h); g.start(seed); for (let f = 0; f < 6000; f++) { if (pick(g)) g.act(); g.update(1 / 60); } return { h, g }; };
+    const perfect = play(7, (g) => g.checker() === 1), again = play(7, (g) => g.checker() === 1);
+    if (perfect.h.overs !== 1 || perfect.h.ends.length !== 1 || !(perfect.h.ends[0] >= 300) || perfect.g.status.left !== 0) bad.push(`perfect ${perfect.h.ends}`);
+    if (again.h.ends[0] !== perfect.h.ends[0]) bad.push("a seed does not replay");
+    let spam = 0; const flood = play(7, (g) => g.checker() === 0 && spam++ < 3);
+    if (flood.h.overs !== 1 || flood.h.ends.length !== 1 || flood.h.ends[0] !== 0 || flood.g.playing || flood.g.status.left === 0) bad.push("three spam letters do not end the run");
+    const c = I.create(), t = I.terminal(c); t.run("TARGET 3");
+    for (let k = 0; k < 200; k++) { const l = c.letter(3); if (l.paid !== ((l.bits >> 5) === 0)) bad.push("paid means the front bits are 0"); }
+    if (!/Choose TARGET/.test(text(t.run("TARGET 9")))) bad.push("a bad target is not refused");
+    record("rule: Stamp Sort keeps a letter only when its front bits are all 0, a seed replays a run, three spam letters end it, and it ends once", !bad.length, bad.join("; "));
+  }
   // rule: the information screen ships only READY context records, word for word, names no real service, and its
   // remote reaches every page; the HOLD stays on the screen's own About page.
   const T = GAMES.teletext;
@@ -24791,6 +24813,28 @@ const genesisEra5UpgradeSuite = async () => {
       && /^1\. Spiral/.test(play) && /2\. Rings/.test(play) && /3\. Bars/.test(play) && /1 units still free/.test(play) && /Toy units only/.test(budget) && t.run("X".repeat(400)).lines.length > 0 && (t.run("RESET"), m.M.length === 0));
   }
 
+  const BLch = await contextWith(["genesis-era-5-chain"]), CH = BLch.genesisEra5Chain;
+  BLch.jumbotron = { text: { glyphOf: () => [], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } };
+  runInNewContext(await src("retro-games"), { window: { BL: BLch }, document: { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d() }) }, crypto: globalThis.crypto });
+  {
+    const c = CH.chain(); c.deal(9); const d = CH.chain(); d.deal(9);
+    let same = true; for (let i = 0; i < 40; i++) { if (c.C.head !== d.C.head || c.C.tail !== d.C.tail) same = false; c.skip(); d.skip(); }
+    let wins = 0; for (let s = 1; s <= 200; s++) { c.deal(s); for (let g = 0; g < 500 && !c.C.won && !c.C.lost; g++) c.fits() ? c.take() : c.skip(); if (c.C.won && c.C.lives === CH.LIVES && c.stars() === 3) wins++; }
+    c.deal(3); while (c.fits()) c.skip(); const n0 = c.linked(), r = c.take();
+    const refused = r === 2 && c.linked() === n0 && c.C.lives === CH.LIVES - 1;
+    c.deal(4); for (let i = 0; i < CH.LIVES; i++) { while (c.fits()) c.skip(); c.take(); }
+    const lost = c.C.lost && c.take() === 6 && c.score() === 0;
+    record("chain: a seed replays its links, taking only fits wins all 200 deals with 3 stars, a misfit is refused for a life, three misfits lose and accept nothing more", same && wins === 200 && refused && lost, JSON.stringify({ same, wins, refused, lost }));
+    let ends = true;
+    for (const seed of [1, 2, 3]) {
+      const h = { best: 0, still: seed === 3, aim: { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, overs: 0, ends: 0, score: -1, over() { h.overs++; }, onEnd(s) { h.ends++; h.score = s; } };
+      const g = CH.make(h), cx = ctx2d(); g.start(seed);
+      for (let i = 0; i < 60 * 200; i++) { if (i % 18 === 0) g.act(); g.update(1 / 60); g.draw(cx); }
+      if (h.overs !== 1 || h.ends !== 1 || h.score !== g.status.score || g.playing || cx.calls === 0) ends = false;
+    }
+    record("chain game: acting every 18 frames the run ends once (over() once, onEnd with its score), Calm or not", ends);
+  }
+
   // ---- The retro factories, on the real kit with a stub host ----------------------------------------------------------
   {
     const jumbotron = { text: { glyphOf: () => [], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } };
@@ -24929,7 +24973,7 @@ const genesisEra6UpgradeSuite = async () => {
   context.window.BL = { jumbotron: { text: { glyphOf: () => [0, 0, 0, 0, 0, 0, 0], GLYPH_W: 5, GLYPH_H: 7, TRACKING: 1 } } };
   const load = async (f) => runInNewContext(await readFile(join(root, `src/js/${f}.js`), "utf8"), context);
   for (const f of ["genesis-voyage", "genesis-world", "genesis-props", "genesis-exhibits", ...GENESIS_ERA_FILES,
-    "genesis-bench", "retro-games", "genesis-era-6-argument"]) await load(f);
+    "genesis-bench", "retro-games", "genesis-era-6-argument", "genesis-era-6-catch"]) await load(f);
   const BL = context.window.BL, W = BL.genesisWorld, EX = BL.genesisExhibits, P = BL.genesisProps, E6 = BL.genesisEra6;
 
   // Build Era 6 with a recording kit: every node keeps its position, scale and visibility so commands can be read back.
@@ -25060,6 +25104,25 @@ const genesisEra6UpgradeSuite = async () => {
       shape && won && retried && calls.over === 2 && calls.end[1] === 500, JSON.stringify({ shape, won, retried, calls }));
     g.stop();
     check("rule: stop leaves the game idle and drawable", !g.playing && (g.draw(ctx2d), true));
+  }
+  {
+    const run = (seed, bot) => {
+      const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, ends = [], host = { best: 0, aim, still: true, onEnd: (s) => ends.push(s), overs: 0, over() { host.overs++; } };
+      const g = BL.genesisEra6Catch.make(host), b = g.board; g.start(seed);
+      for (let f = 0; f < 24000 && !ends.length; f++) {
+        if (bot) { let low = -1; for (let s = 0; s < 2; s++) if (b.slotCard[s] >= 0 && (low < 0 || b.slotY[s] > b.slotY[low])) low = s;
+          if (low >= 0) { if (b.slotLane[low] !== b.lane) aim.steps += b.slotLane[low] > b.lane ? 1 : -1; if (b.mode !== (b.cited(b.slotCard[low]) ? 1 : 0)) g.act(); } }
+        else if (f % 18 === 0) g.act();
+        g.update(1 / 60);
+      }
+      for (let i = 0; i < 300; i++) g.update(1 / 60);
+      g.draw(ctx2d);
+      return { ends, overs: host.overs, filed: b.filed, lives: b.lives, playing: g.playing };
+    };
+    const won = run(42, true), lost = run(5, false);
+    check("rule: Citation Catch files all twelve for 1560 with a perfect tray, random play loses all three lives, and each run ends exactly once",
+      won.ends.join() === "1560" && won.overs === 1 && won.filed === 12 && won.lives === 3 && !won.playing && lost.ends.length === 1 && lost.overs === 1 && lost.lives === 0,
+      JSON.stringify({ won, lost }));
   }
 
   const failed = results.filter((r) => !r.ok).length;
@@ -25573,10 +25636,10 @@ const genesisEraCartridgeProof = async () => {
       label: () => ({ face: {}, back: {}, width: 1, height: 1 }), solid: () => node(), sign: () => node(), obstacle: () => {}, notify: () => {}, prop: (d) => { props[d.id] = d; return { ...d, era: n }; } };
     if (EX.eras[n]) EX.eras[n].build(kit);
   });
-  const WANT = ["e0-nim", "e1-paddle", "e2-four", "e3-rally", "e4-strategy", "e4-pocket", "e5-patchwork", "e5-pocket", "e6-argument", "e7-sync"];
+  const WANT = ["e0-nim", "e0-lamps", "e1-paddle", "e1-relay", "e2-four", "e2-spent", "e3-rally", "e3-courier", "e4-strategy", "e4-pocket", "e4-inbox", "e5-patchwork", "e5-pocket", "e5-chain", "e6-argument", "e6-catch", "e7-sync", "e7-split"];
   if (EC.ids.join() !== WANT.join()) bad.push(`cartridges ${EC.ids}`);
   // The era cartridges and the cabinet games (genesis-games-plus.js), and nothing else.
-  if (C.checkAll() !== WANT.length + BLc.genesisGamesPlus.GAMES.length + BLc.genesisGamesPlus.BOARDS.length) bad.push("the registry does not hold exactly the ten era cartridges and the cabinet games");
+  if (C.checkAll() !== WANT.length + BLc.genesisGamesPlus.GAMES.length + BLc.genesisGamesPlus.BOARDS.length) bad.push("the registry does not hold exactly the era cartridges and the cabinet games");
   const con = C.create({ root: null });
   for (const id of WANT) {
     const c = C.find(id), p = props[id];
@@ -25606,6 +25669,83 @@ const genesisEraCartridgeProof = async () => {
     }
   }
   con.dispose();
+  // Lamp Lock's rules: lighting the called number scores and calls a new one; three numbers left to run out end the
+  // run, and the console hears its end exactly once.
+  {
+    const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, ends = [], host = { best: 0, aim, still: true, onEnd: (s) => ends.push(s), over() {}, popup() {}, cue() {}, shake() {}, crack() {}, flop() {} };
+    const g = BLc.genesisEra0Games.lamps.make(host);
+    g.start(7);
+    let value = 0, cursor = 0;
+    for (let n = 0; n < 3; n++) {
+      const want = g.status.target, before = g.status.score;
+      for (let b = 0; b < 8; b++) {
+        if (((value ^ want) >> (7 - b) & 1) === 0) continue;
+        aim.steps += b - cursor; cursor = b; g.update(1 / 60); g.act(); value ^= 1 << (7 - b);
+      }
+      if (!(g.status.score > before) || g.status.round !== n + 2 || g.status.target === want) bad.push(`e0-lamps: lighting ${want} did not score and call the next number`);
+    }
+    for (let f = 0; f < 60 * 60 && !ends.length; f++) g.update(1 / 60);
+    for (let f = 0; f < 120; f++) g.update(1 / 60);
+    if (ends.length !== 1 || g.playing) bad.push(`e0-lamps: an idle run ended ${ends.length} times`);
+  }
+  // Packet Relay's rules: a run that steers round dead links delivers all eight messages; one that never steers or resends loses its three lives; each ends exactly once.
+  {
+    const R = BLc.genesisEra1Relay, run = (steer) => {
+      const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, ends = [], host = { best: 0, aim, still: true, onEnd: (s) => ends.push(s), over() {}, popup() {}, cue() {}, shake() {}, crack() {}, flop() {} };
+      const g = R.make(host); g.start(7);
+      for (let f = 0; f < 200 * 60; f++) {
+        if (steer) { if (f % 20 === 0) g.act(); if (f % 10 === 0 && g.links[g.lane]) { let b = 0; while (b < 3 && g.links[b]) b++; if (b < 3) aim.stepsY += b - g.lane; } }
+        g.update(1 / 60);
+      }
+      return { ends, verb: g.status.verb, round: g.status.round, playing: g.playing };
+    };
+    const won = run(true), lost = run(false);
+    if (won.ends.length !== 1 || won.verb !== "ALL DELIVERED" || won.round !== 8 || won.playing) bad.push(`e1-relay: a steered run ${JSON.stringify(won)}`);
+    if (lost.ends.length !== 1 || lost.verb !== "LINE DEAD" || lost.playing) bad.push(`e1-relay: an idle run ${JSON.stringify(lost)}`);
+  }
+  // Padlock Courier's rules: a note locked in its friend's padlock scores and calls the next; a full run of right locks
+  // wins all fifteen; wrong padlocks end the run; the console hears the end once either way.
+  {
+    const play = (right) => {
+      const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, ends = [], host = { best: 0, aim, still: true, onEnd: (s) => ends.push(s), over() {}, popup() {}, cue() {}, shake() {}, crack() {}, flop() {} };
+      const g = BLc.genesisEra3Courier.make(host); g.start(5);
+      for (let f = 0; f < 60 * 120 && !ends.length; f++) {
+        if (f % 20 === 10 && g.status.verb === "") { const want = g.order.indexOf(g.to), lane = right ? want : (want + 1) % 3; aim.steps += lane - g.lane; g.update(1 / 60); g.act(); } else g.update(1 / 60);
+      }
+      for (let f = 0; f < 120; f++) g.update(1 / 60);
+      return { ends: ends.length, done: g.delivered, playing: g.playing };
+    };
+    const win = play(true), lose = play(false);
+    if (win.ends !== 1 || win.done !== BLc.genesisEra3Courier.GOAL || win.playing) bad.push(`e3-courier: a run of right locks ${JSON.stringify(win)}`);
+    if (lose.ends !== 1 || lose.done !== 0 || lose.playing) bad.push(`e3-courier: a run of wrong locks ${JSON.stringify(lose)}`);
+  }
+  // Spent List's rules: a perfect run serves all twenty with no mistake; a seed replays its tokens; three mistakes end it; accepting a spent serial is a mistake.
+  {
+    const SP = BLc.genesisEra2Spent, c = SP.createCounter(3);
+    while (!c.done) c.answer(c.shouldAccept());
+    if (c.done !== 1 || c.served !== SP.GOAL || c.lives !== SP.LIVES) bad.push("e2-spent: a perfect run did not close the counter");
+    const seq = (x) => { const o = []; for (let i = 0; i < 6; i++) { o.push(x.token); x.answer(x.shouldAccept()); } return o.join(); };
+    if (seq(SP.createCounter(9)) !== seq(SP.createCounter(9))) bad.push("e2-spent: a seed does not replay");
+    const d = SP.createCounter(3);
+    for (let i = 0; i < 3; i++) d.answer(!d.shouldAccept());
+    if (d.done !== 2 || d.lives !== 0 || d.answer(true) !== -1) bad.push("e2-spent: three mistakes did not end the run");
+    const r = SP.createCounter(4); let caught = 0;
+    while (!r.done) { if (r.repeat && r.answer(true) === 3) caught++; else r.answer(r.shouldAccept()); }
+    if (!caught) bad.push("e2-spent: accepting a spent serial was not a mistake");
+  }
+  // Split Chute's rules: a seed replays a run, the run ends once after six rounds, and the chute toy keeps its 50 counters.
+  {
+    const SC = BLc.genesisEra7Split;
+    const run = (seed) => { const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0 }, ends = [];
+      const g = SC.make({ best: 0, aim, still: true, onEnd: (s) => ends.push(s), over() {}, popup() {}, cue() {}, shake() {}, crack() {}, flop() {} });
+      g.start(seed); for (let f = 0; f < 20000 && !ends.length; f++) { if (f % 18 === 0) g.act(); g.update(1 / 60); } for (let k = 0; k < 600; k++) g.update(1 / 60); return ends; };
+    const a = run(7), b = run(7);
+    if (a.length !== 1 || a.join() !== b.join() || a[0] > 900) bad.push(`e7-split: runs ${a} / ${b}`);
+    const ch = SC.create(); let kept = true;
+    for (let i = 0; i < 500; i++) { ch.setGate(i % 3 ? 0 : 1); ch.drop((i * 7) % 60 - 5); if (ch.total() !== 50) kept = false; if (i % 40 === 0) ch.reset(); }
+    ch.reset(); ch.drop(10); ch.setGate(1); ch.drop(50);
+    if (!kept || !ch.matches()) bad.push("e7-split: the chute lost a counter or missed 10 + 40");
+  }
   const other = Object.keys(props).find((id) => !WANT.includes(id));
   if (EC.withCartridge(other, props[other].onUse) !== props[other].onUse) bad.push(`${other}: an exhibit without a cartridge changed`);
   return { bad };
@@ -26196,7 +26336,7 @@ const unitChecks = async () => {
   const genesisBenchCheck = await genesisBenchProof();
   record("Genesis museum workbench and catalogue: every exhibit opens something it can show; the catalogue lists each once under a stable id in date order, numbers only citations, influence and the paper as steps, points each bibliography slot to its citation, wraps Previous and Next, refuses a repeated id, and ships only the research timeline's READY records; every terminal's right column repeats no line, and its buttons come from its own HELP (Hashcash SEARCH, STATUS, VERIFY and TARGET; the Merkle table SHOW and CHANGE); the camera framing lands a model's centre on the stage's centre in the wide and the stacked layout within reach; a decade sorts just after its first year", genesisBenchCheck.hashcash && genesisBenchCheck.merkle && genesisBenchCheck.framed && genesisBenchCheck.withinReach && genesisBenchCheck.ordered && !genesisBenchCheck.bad.length && genesisBenchCheck.terminals > 20 && Object.entries(genesisBenchCheck.catalogue).every(([k, v]) => k === "entries" ? v >= 77 : v === true), JSON.stringify(genesisBenchCheck));
   const era0More = await genesisEra0MoreProof();
-  record("Genesis Era 0 terminals answer MORE: Nim, the scan-line CRT and the pointer station each give their deeper lines (the workbench asks every exhibit for them)", !era0More.bad.length, JSON.stringify(era0More));
+  record("Genesis Era 0 terminals answer MORE: Nim, the scan-line CRT, the pointer station and the lamp panel each give their deeper lines (the workbench asks every exhibit for them), and the lamp panel's SET, SHIFT and ADD keep their binary", !era0More.bad.length, JSON.stringify(era0More));
   const era0Suite = await genesisEra0UpgradeSuite();
   record("Genesis Era 0 upgrade suite (folded from its branch): every one of its own checks passes", era0Suite.code === 0 && !era0Suite.lines.some((l) => /^(FAIL|FAILED)/.test(l)), JSON.stringify(era0Suite.lines.filter((l) => /FAIL|threw|passed|records/i.test(l)).slice(0, 12)));
   const era1Suite = await genesisEra1UpgradeSuite();
@@ -26231,7 +26371,7 @@ const unitChecks = async () => {
   record("Genesis monument (rule, review of gv/ovh-polish; option C): the atrium's monument is an original Satoshi statue with no borrowed sculpture features or light; its plinth's steps climb a step at a time, its robe is in the way, its shoulders and head are out of a step's reach and coming down from above lands on the head", !genesisCairn.bad.length, JSON.stringify(genesisCairn));
   record("Genesis gallery walls (rule): each era's board quotes only verified headlines with publication, date and source, labels its posters and art as museum originals in styles that exist, and hangs inside its gallery on the back wall facing in", !genesisWalls.bad.length, JSON.stringify(genesisWalls));
   record("Genesis white screen and menu (regression, reviews of 20eec91 and d59b831; the menu shows each era once, Era 6's bibliography under Era 6, and 1997's ring and dot are painted apart): every whitepaper citation and documented influence of the real catalogue is labelled, the timestamp papers [3] and [4] included; no leader crosses a label and no labels overlap; 1997's Hashcash ring and Secure Names dot stand apart within their year; a screen with no room throws rather than dropping a label", !genesisTimelineLayout.bad.length, JSON.stringify(genesisTimelineLayout));
-  record("Genesis era cartridges (rule, gv/integration-3 4d): the ten era playables (Pocket Route among them) are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
+  record("Genesis era cartridges (rule, gv/integration-3 4d): every era playable (Pocket Route, Lamp Lock and each era's new game among them) are console cartridges labelled modern and original that start, run and draw on the console with the arcade kit; each exhibit's onUse carries its cartridge while its terminal keeps answering, with the console note on top; Lamp Lock scores a lit number and ends an idle run once; Packet Relay, Padlock Courier, Spent List and Split Chute keep their rules", !genesisEraCartridges.bad.length, JSON.stringify(genesisEraCartridges));
   record("Genesis cartridge console: an era's cartridge registers the agreed way and its label must say modern original; with a dummy game the console starts a run on Space, steers on held keys (repeats ignored), pauses on P with held input cleared, pauses and lets go on an interruption, ignores keys it does not use, closes on Escape handing the view back, and stops a game closed mid-run", !genesisCartridge.bad.length, JSON.stringify(genesisCartridge));
   const genesisGuideR = await genesisGuideProof();
   record("Genesis guide (rule): Tess's museum tour stops at the statue, each era in date order and the mining corner, every line exists and each suggested question is answered", !genesisGuideR.bad.length, JSON.stringify(genesisGuideR));

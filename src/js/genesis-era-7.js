@@ -741,6 +741,171 @@
     parts.lamp.visible = lit; parts.lampOff.visible = !lit;
   };
 
+  // --- Finer parts (the museum polish) ------------------------------------------------------------------------------
+  // Each exhibit's finer parts (trims, keys, bezels, rims, small props) as one merged mesh at the exhibit's own spot,
+  // as Era 0 does (genesis-era-0.js `detail`). The layout's dry run and the checks have no `merge`, so they get a bare
+  // node at the same spot: every run counts the same pieces in the same order. Built after everything else, so no
+  // existing piece, prop or record changes its place in the build. Offsets are in the exhibit's frame: `a` toward the
+  // stream (the way the exhibit faces), `y` from the floor, `z` along the bank.
+  const detail = (kit, x, y, z, make) => {
+    const nd = kit.createNode(kit.M.merge ? { geometry: kit.M.merge(...make(kit.M)) } : {});
+    nd.position.x = x; nd.position.y = y; nd.position.z = z;
+    return kit.place(nd);
+  };
+  const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
+  // A box in a facing frame: depth `w` along the facing (s, +1 or -1 in x), offset `a` along it.
+  const facer = (M, s) => (w, h, d, color, a, y, z, emissive = 0) => B(M, w, h, d, color, s * a, y, z, emissive);
+  const range = (n, f) => Array.from({ length: n }, (_, k) => f(k));
+  const buildDetails = (kit) => {
+    const { top: Y } = kit;
+    // The record case: a stepped plinth with a skirt and a cap, a brass frame round the slab, a tick by each field
+    // row, a headline plate on the plinth's face, and a small dark block on the plinth top, ringed in gold.
+    {
+      const l = LAYOUT.genesis, s = -l.side;
+      detail(kit, l.x, Y, l.z, (M) => { const F = facer(M, s); return [
+        F(1.3, 0.1, 2.4, "#2a2522", 0, 0.05, 0), F(1.28, 0.06, 2.38, "#4a423c", 0, 0.93, 0), F(0.04, 0.03, 2.3, "#c86a28", 0.63, 0.95, 0, 0.4),
+        F(0.2, 0.06, 2.3, "#b08a54", -0.3, 2.33, 0, 0.15), F(0.2, 0.05, 2.3, "#8a6a44", -0.3, 0.98, 0),
+        ...range(ROWS.length, (i) => F(0.03, 0.05, 0.05, "#e0b060", -0.22, 2.15 - i * 0.18, ROWS[i] === "text" ? 1.0 : 0.7, 0.6)),
+        F(0.02, 0.22, 1.5, "#e9dcc0", 0.61, 0.58, 0, 0.25), F(0.02, 0.03, 1.2, "#3a3330", 0.625, 0.62, 0), F(0.02, 0.03, 0.9, "#3a3330", 0.625, 0.54, -0.15),
+        F(0.3, 0.3, 0.3, "#24222c", 0.3, 1.14, -0.6), F(0.32, 0.03, 0.32, "#e0b060", 0.3, 1.3, -0.6, 0.5), F(0.32, 0.03, 0.32, "#e0b060", 0.3, 0.99, -0.6, 0.3),
+        ...[-1, 1].map((k) => F(0.06, 0.06, 0.06, "#b08a54", 0.58, 0.88, k * 1.12))]; });
+    }
+    // The software desk: an apron and a drawer, keyboard keys, a mouse on its pad, the monitor's foot and lip, the
+    // tower's drive bays and vents, and the printed announcement lying by the keyboard.
+    {
+      const l = LAYOUT.desk, s = -l.side;
+      detail(kit, l.x, Y, l.z, (M) => { const F = facer(M, s); return [
+        F(1.2, 0.09, 2.1, "#4a3c2e", 0, 0.665, 0), F(0.02, 0.07, 0.5, "#6a5a48", 0.6, 0.665, -0.3), F(0.02, 0.02, 0.12, "#c8a060", 0.615, 0.665, -0.3, 0.3),
+        ...range(3, (r) => F(0.035, 0.012, 0.44, "#4a4a52", 0.08 + r * 0.05, 0.802, 0.1)), F(0.035, 0.012, 0.2, "#5a5a62", 0.23, 0.802, 0.1),
+        F(0.16, 0.006, 0.2, "#202024", 0.18, 0.774, 0.62), F(0.08, 0.03, 0.05, "#3a3a40", 0.18, 0.79, 0.62),
+        F(0.28, 0.02, 0.36, "#1c1c22", -0.38, 0.78, 0.1), F(0.06, 0.02, 0.72, "#2a2a30", -0.33, 1.34, 0.1), F(0.06, 0.02, 0.72, "#2a2a30", -0.33, 0.9, 0.1),
+        ...range(3, (k) => F(0.01, 0.035, 0.16, "#3a3a44", 0.03, 1.12 - k * 0.07, -0.8)), ...range(4, (k) => F(0.01, 0.01, 0.12, "#121216", 0.03, 0.86 + k * 0.025, -0.8)),
+        F(0.22, 0.006, 0.16, "#f2ead6", 0.38, 0.775, -0.3, 0.3), ...range(4, (k) => F(0.006, 0.004, 0.12 - (k % 2) * 0.04, "#6a6a72", 0.32 + k * 0.035, 0.779, -0.3)),
+        F(0.06, 0.08, 0.06, "#c86a28", 0.45, 0.81, 0.85)]; });
+    }
+    // The three peer stands: a cap with a little keyboard on each, a bezel round each screen and a foot; and clips
+    // along the cable rail behind them.
+    {
+      const mid = PEER_AT[1], s = -1;
+      detail(kit, mid.x, Y, mid.z, (M) => { const F = facer(M, s); return [
+        ...PEER_AT.flatMap((p) => { const dz = p.z - mid.z, dx = (p.x - mid.x) * s; return [
+          F(0.7, 0.04, 0.7, "#4a4540", dx, 0.97, dz), F(0.72, 0.08, 0.72, "#24201c", dx, 0.04, dz),
+          F(0.16, 0.02, 0.36, "#2a2a30", dx + 0.12, 1.0, dz), ...range(2, (r) => F(0.03, 0.01, 0.3, "#55555e", dx + 0.08 + r * 0.06, 1.012, dz)),
+          F(0.06, 0.03, 0.54, "#2a2a30", dx - 0.2, 1.345, dz), F(0.06, 0.03, 0.54, "#2a2a30", dx - 0.2, 0.955, dz)]; }),
+        ...range(9, (k) => F(0.36, 0.07, 0.05, "#3a3a42", (RAIL.x - mid.x) * s, 0.33, RAIL.z - mid.z - 3.6 + k * 0.9))]; });
+    }
+    // The counting table: an apron and a stretcher, raised rims round the tray and the two dishes, and block 170's
+    // ledger lying closed at the corner.
+    {
+      const l = LAYOUT.payment, s = -l.side;
+      detail(kit, l.x, Y, l.z, (M) => { const F = facer(M, s); return [
+        F(1.1, 0.08, 2.4, "#4a3826", 0, 0.73, 0), F(0.05, 0.05, 2.3, "#3d2f20", 0.5, 0.2, 0), F(0.05, 0.05, 2.3, "#3d2f20", -0.5, 0.2, 0),
+        ...[[0.62, 1.0, 0.6], [-0.2, 0.5, 0.3], [-0.85, 0.72, 0.6]].flatMap(([z, d, w]) => [F(w + 0.04, 0.03, 0.02, "#c8a060", 0, 0.86, z + d / 2), F(w + 0.04, 0.03, 0.02, "#c8a060", 0, 0.86, z - d / 2),
+          F(0.02, 0.03, d, "#c8a060", w / 2 + 0.01, 0.86, z), F(0.02, 0.03, d, "#c8a060", -w / 2 - 0.01, 0.86, z)]),
+        F(0.2, 0.04, 0.28, "#3a2418", -0.43, 0.85, -0.2), F(0.18, 0.03, 0.26, "#efe6d2", -0.43, 0.855, -0.2, 0.15), F(0.02, 0.045, 0.28, "#e0b060", -0.33, 0.85, -0.2, 0.3)]; });
+    }
+    // The three lecterns: a foot plate, a ledge to hold the page and gilt corner caps.
+    for (const { key, panel } of PROPS) if (panel) {
+      const l = LAYOUT[key], s = -l.side;
+      detail(kit, l.x, Y, l.z, (M) => { const F = facer(M, s); return [
+        F(0.42, 0.05, 0.42, "#2a2320", 0, 0.025, 0), F(0.04, 0.05, 0.9, "#5a4a3a", 0.26, 1.17, 0), F(0.2, 0.04, 0.2, "#3a3330", 0, 1.06, 0),
+        ...[-1, 1].map((k) => F(0.06, 0.03, 0.06, "#c8a060", 0.22, 1.18, k * 0.42, 0.3))]; });
+    }
+    // The launch cluster: the Peer Sync cabinet's marquee, bezel, buttons, stick and coin door; the computer corner's
+    // keys, mouse pad, monitor foot, a speaker and a stack of discs; the counting frame's rails and the lamp's bracket.
+    if (SYNC()) {
+      const l = CL.sync, s = -l.side;
+      detail(kit, l.x, Y, l.z, (M) => { const F = facer(M, s); return [
+        F(0.86, 0.22, 0.86, "#1f1e24", 0, 1.81, 0), F(0.01, 0.12, 0.62, "#ffd23a", 0.435, 1.81, 0, 0.8), F(0.86, 0.06, 0.86, "#3a3840", 0, 0.03, 0),
+        F(0.02, 0.04, 0.7, "#3a3840", 0.41, 1.65, 0), F(0.02, 0.04, 0.7, "#3a3840", 0.41, 0.99, 0), F(0.02, 0.66, 0.03, "#3a3840", 0.41, 1.32, 0.345), F(0.02, 0.66, 0.03, "#3a3840", 0.41, 1.32, -0.345),
+        ...range(3, (k) => F(0.05, 0.025, 0.05, ["#4ad08a", "#ffd23a", "#46ffd2"][k], 0.48, 0.995, 0.2 - k * 0.2, 0.8)),
+        F(0.03, 0.09, 0.03, "#121216", 0.36, 1.02, 0.28), F(0.05, 0.05, 0.05, "#e0452b", 0.36, 1.08, 0.28, 0.5),
+        F(0.01, 0.32, 0.3, "#151519", 0.405, 0.5, 0), ...[-0.06, 0.06].map((z) => F(0.01, 0.06, 0.02, "#ff8a2a", 0.412, 0.55, z, 0.9)),
+        ...[-1, 1].map((k) => F(0.8, 1.6, 0.01, "#3c3a44", 0, 0.85, k * 0.405))]; });
+    }
+    {
+      const l = CL.pc, s = -l.side;
+      detail(kit, l.x, Y, l.z, (M) => { const F = facer(M, s); return [
+        F(1.1, 0.09, 1.7, "#3f3528", 0, 0.665, 0), ...range(3, (r) => F(0.03, 0.012, 0.46, "#45454e", 0.06 + r * 0.045, 0.802, -0.05)),
+        F(0.16, 0.006, 0.18, "#203040", 0.14, 0.774, -0.45), F(0.24, 0.02, 0.34, "#1c1c22", -0.38, 0.78, -0.05),
+        F(0.12, 0.2, 0.1, "#26262c", -0.4, 0.87, -0.62), F(0.01, 0.12, 0.06, "#121216", -0.34, 0.88, -0.62), 
+        ...range(4, (k) => F(0.12, 0.012, 0.12, k % 2 ? "#c8ccd4" : "#9aa0aa", 0.3, 0.778 + k * 0.012, 0.55, 0.1)),
+        F(0.01, 0.06, 0.06, "#ffd23a", -0.315, 1.34, 0.18, 0.3), ...range(3, (k) => F(0.01, 0.01, 0.12, "#121216", -0.19, 0.9 + k * 0.03, 0.62))]; });
+    }
+    {
+      const l = CL.frame, s = -l.side;
+      detail(kit, l.x, Y, l.z, (M) => { const F = facer(M, s); return [
+        F(1.0, 0.08, 1.9, "#4a3826", 0, 0.73, 0), ...[-1, 1].map((k) => F(0.03, 0.05, 2.0, "#c8a060", k * 0.2, 0.86, 0, 0.1)),
+        ...[-1, 1].map((k) => F(0.44, 0.06, 0.04, "#8a6a44", 0, 0.86, k * 0.99)), F(0.05, 0.05, 1.8, "#3d2f20", 0.46, 0.2, 0), F(0.05, 0.05, 1.8, "#3d2f20", -0.46, 0.2, 0),
+        F(0.18, 0.03, 0.18, "#8a6a44", -0.42, 0.835, -0.9), F(0.17, 0.03, 0.17, "#c8a060", -0.42, 1.27, -0.9, 0.3)]; });
+    }
+  };
+
+  // --- The split chute (a modern museum toy and its console game) -------------------------------------------------
+  // Its rules live in genesis-era-7-split.js (BL.genesisEra7Split); until that file loads before this one the station
+  // is left out. It stands on the software desk's island, between the desk and the island's downstream edge, in free
+  // floor, so the gallery keeps its size. A hopper over a gate and two bins: ten lamps on each show what it holds in
+  // fives, the gate's flap leans toward the output it feeds, and a lamp lights on block 170's 10 and 40. Its console
+  // game is Split Chute (`e7-split`, genesis-era-cartridges.js).
+  const SPLIT = () => BL.genesisEra7Split || null;
+  const SPLIT_EX = { id: "e7-split", year: 2009, title: "Split chute - modern toy", label: "SPLIT CHUTE · MODERN TOY · JANUARY 2009 GALLERY",
+    date: "No historical date: a modern museum toy, made in 2026, shown in the January 2009 gallery beside block 170's 50 = 10 + 40 split",
+    sourceKeys: ["E7-170-TXS", "E7-DOSSIER"], hint: "Type GATE 1, DROP 10, GATE 2, then DROP ALL.",
+    howTo: ["Type GATE 1 or GATE 2 to swing the gate.", "Type DROP 10 (or DROP ALL) to let counters fall through it.",
+      "Hopper and outputs always add up to 50.", "CHECK compares with block 170's 10 and 40; RESET refills the hopper."] };
+  const SPLIT_AT = place(1, 27.6, 8.6, { x: 0.55, z: 0.7 }, 2.1, 1.6);
+  const buildSplit = (kit) => {
+    const S = SPLIT();
+    if (!S) return null;
+    const { top: Y, M, createNode, place: put, solid, sign, obstacle, prop } = kit, l = SPLIT_AT, x = l.x, z = l.z, s = -l.side;
+    const node = (geometry, px, py, pz, visible = true) => put(createNode({ geometry, position: { x: px, y: py, z: pz }, visible }));
+    const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
+    solid(1.0, 0.8, 1.3, "#34302c", x, Y + 0.4, z);
+    solid(0.5, 0.06, 1.2, "#4a4540", x + s * 0.12, Y + 0.83, z);
+    solid(0.12, 0.62, 0.12, "#6a6e74", x - s * 0.18, Y + 1.17, z);
+    solid(0.5, 0.32, 0.56, "#6a6e74", x - s * 0.18, Y + 1.64, z);
+    const BIN_Z = [z + 0.38, z - 0.38], BIN_C = ["#2f6a6a", "#5a3f7a"];
+    for (let k = 0; k < 2; k++) solid(0.42, 0.22, 0.4, BIN_C[k], x + s * 0.12, Y + 0.97, BIN_Z[k]);
+    const flaps = [node(box(0.05, 0.04, 0.3, "#46ffd2", 0.8), x - s * 0.08, Y + 1.12, z + 0.14), node(box(0.05, 0.04, 0.3, "#46ffd2", 0.8), x - s * 0.08, Y + 1.12, z - 0.14)];
+    const binPips = [[], []], hopperPips = [];
+    for (let k = 0; k < 2; k++) for (let i = 0; i < 10; i++) binPips[k].push(node(box(0.02, 0.035, 0.24, "#ffd23a", 0.9), x + s * 0.345, Y + 0.885 + i * 0.019, BIN_Z[k], false));
+    for (let i = 0; i < 10; i++) hopperPips.push(node(box(0.02, 0.022, 0.4, "#ffb02e", 0.9), x + s * 0.085, Y + 1.5 + i * 0.028, z, false));
+    solid(0.08, 0.36, 0.08, "#2a2320", x - s * 0.38, Y + 1.0, z - 0.55);
+    const lampOff = node(box(0.12, 0.1, 0.12, "#3a3a3a"), x - s * 0.38, Y + 1.23, z - 0.55);
+    const lampOn = node(box(0.13, 0.11, 0.13, "#6aff9a", 1.4), x - s * 0.38, Y + 1.23, z - 0.55, false);
+    sign("SPLIT CHUTE · MODERN TOY", "50 counters in · two outputs · none made or lost", x, Y + 2.25, z, yawOf(s), 0.36);
+    detail(kit, x, Y, z, (Mm) => { const F = facer(Mm, s); return [
+      F(1.04, 0.08, 1.34, "#24201c", 0, 0.04, 0), F(1.02, 0.04, 1.32, "#c86a28", 0, 0.8, 0, 0.4),
+      F(0.54, 0.04, 0.6, "#8a8e96", -0.18, 1.82, 0), F(0.3, 0.04, 0.36, "#4a4e56", -0.18, 1.46, 0), F(0.004, 0.3, 0.44, "#22262c", 0.071, 1.64, 0),
+      ...[-1, 1].flatMap((k) => [F(0.1, 0.06, 0.2, "#6a6e74", -0.08, 1.07, k * 0.2), F(0.1, 0.06, 0.12, "#6a6e74", 0.02, 1.04, k * 0.32)]),
+      ...[0, 1].flatMap((k) => [F(0.44, 0.03, 0.02, "#c8a060", 0.12, 1.09, (k ? -0.38 : 0.38) + 0.2), F(0.44, 0.03, 0.02, "#c8a060", 0.12, 1.09, (k ? -0.38 : 0.38) - 0.2),
+        F(0.002, 0.2, 0.28, "#121216", 0.332, 0.97, k ? -0.38 : 0.38)]),
+      F(0.04, 0.04, 0.3, "#6a6e74", -0.18, 1.7, 0.36), F(0.04, 0.16, 0.04, "#6a6e74", -0.18, 1.62, 0.5), F(0.06, 0.06, 0.06, "#e0452b", -0.18, 1.54, 0.5, 0.4),
+      ...range(4, (k) => F(0.02, 0.02, 0.02, "#b08a54", 0.505, 0.2 + k * 0.15, 0.6))]; });
+    obstacle(x - l.half.x, x + l.half.x, z - l.half.z, z + l.half.z);
+    const chute = S.create();
+    const show = (c) => {
+      for (let k = 0; k < 2; k++) for (let i = 0; i < 10; i++) binPips[k][i].visible = c.out[k] >= (i + 1) * 5 || (i === 0 && c.out[k] > 0);
+      for (let i = 0; i < 10; i++) hopperPips[i].visible = c.hopper >= (i + 1) * 5 || (i === 0 && c.hopper > 0);
+      flaps[0].visible = c.gate === 0; flaps[1].visible = c.gate === 1;
+      const lit = c.matches(); lampOn.visible = lit; lampOff.visible = !lit;
+    };
+    show(chute);
+    const term = S.terminal(chute, show), ex = SPLIT_EX;
+    const wrapped = {
+      get banner() { return [...howTo(ex), ex.label, `${ex.date}.`, "", ...term.banner]; },
+      prompt: term.prompt,
+      run: (line) => {
+        const cmd = clean(line).toUpperCase();
+        if (cmd === "SOURCES") return { lines: sourceLines(ex.sourceKeys) };
+        return term.run(line);
+      }
+    };
+    prop({ id: ex.id, year: ex.year, connection: "context", date: ex.date, title: ex.title, label: ex.label, sourceKeys: ex.sourceKeys, hint: ex.hint, howTo: ex.howTo,
+      at: { x: x - l.side * (l.half.x + FRONT), y: Y, z }, reach: l.reach, pick: { w: l.half.x * 2, h: l.h, d: l.half.z * 2, x, z }, onUse: () => ({ terminal: wrapped }) });
+    return { chute, show };
+  };
+
   // --- Registration -------------------------------------------------------------------------------------------------
   let visit = null;
   BL.genesisExhibits.register(ERA, {
@@ -770,9 +935,12 @@
         kit.solid(0.5, 0.06, 0.9, "#3a3330", l.x, kit.top + 1.12, l.z);
         kit.solid(0.46, 0.02, 0.84, "#e9dcc0", l.x, kit.top + 1.16, l.z, 0.25);
       }
+      // The museum polish and the split chute, after everything else (see buildDetails and buildSplit).
+      buildDetails(kit);
+      const split = buildSplit(kit);
       sync(parts, live, 0, true, true);
       syncCluster(cparts, cl, 0, true);
-      visit = { live, parts, cl, cparts };
+      visit = { live, parts, cl, cparts, split };
     },
     update(dt, elapsed, state) {
       if (!visit) return;
@@ -785,7 +953,7 @@
   });
 
   BL.genesisEra7 = { ERA, YEARS, NAME, SOURCES, OVERVIEW, EXHIBITS, ISLANDS, LAYOUT, PROPS, GENESIS, B170, RELEASE, ROWS, PEERS, MAX_RECORDS, COUNTERS,
-    CLUSTER, CL, createFrame, frameTerminal, createClusterLive, clusterFootprints, clusterKeys, buildCluster, syncCluster,
+    CLUSTER, CL, SPLIT_EX, SPLIT_AT, buildDetails, buildSplit, createFrame, frameTerminal, createClusterLive, clusterFootprints, clusterKeys, buildCluster, syncCluster,
     sourceOf, stamp, createRecord, createNet, createCounting, recordTerminal, netTerminal, countingTerminal, createLive, footprints, walkUp,
     buildModels, sync, get visit() { return visit; } };
 })();

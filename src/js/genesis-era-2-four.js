@@ -126,17 +126,29 @@
   // --- The cabinet game (retro-games.js factory interface) ----------------------------------------------------------
   // One game against the computer a run: a win scores 300 plus 10 for every empty space left, a draw 100, a loss the
   // counters you placed. The column follows `aim.steps` (and a drag's `aim.x`); `act` drops.
+  // The look (polish only; the rules, timings and scores are the ones above): round counters baked once as sprites, a
+  // timber frame with its holes, a ghost counter over the chosen column and a marker in the hole it would land in,
+  // sparks where a counter lands, the winning four joined by a blinking line, and a side panel for each player.
+  // Reduced motion (`host.still`) holds the bob, the blinks and the sparks still.
+  const DISC_ROWS = ["..aaaaa..", ".abbbbba.", "abcbbbbba", "abcbbbbba", "abbbbbbba", "abbbbbbda", "abbbbbdda", ".a" + "d".repeat(5) + "a.", "..aaaaa.."];
   const make = (host) => {
-    const { W, INK, TEXT, text, centre, number, makeStatus, hooks, stepper, juice } = BL.retroGames.kit;
+    const K = BL.retroGames.kit, { W, INK, TEXT, text, centre, number, makeStatus, hooks, stepper, juice, sprite, blit } = K;
     const out = hooks(host), aim = out.aim, J = juice(host), status = makeStatus("Moves"), game = createGame(1);
-    const S = { phase: "idle", col: 3, steps: 0, think: 0, fall: 0, fallRow: 0, fallCol: 0, end: 0, seed: 1, ended: 0 };
+    const S = { phase: "idle", col: 3, steps: 0, think: 0, fall: 0, fallRow: 0, fallCol: 0, end: 0, seed: 1, ended: 0, anim: 0, land: 0 };
     const CELL = 13, BX = (W - COLS * CELL) >> 1, BY = 22, THINK = 0.55, FALL_SPEED = 30, END_BEAT = 1.6;
-    const INKS = [INK.deep, INK.teal, INK.banana];
+    // The counters: an empty hole, teal (you) and banana (the computer), each a 9 x 9 disc with a rim, a glint and a shade.
+    const DISCS = [
+      sprite(DISC_ROWS, { a: INK.huskDk, b: INK.band, c: INK.band, d: INK.cave }),
+      sprite(DISC_ROWS, { a: "#1a7f6c", b: INK.teal, c: INK.white, d: "#2fb59a" }),
+      sprite(DISC_ROWS, { a: "#8a5a10", b: INK.banana, c: "#fff3a0", d: INK.gold })];
+    const sparks = K.sparks(40, [INK.teal, INK.banana, INK.white]), plus = K.worded("+");
     const finish = () => {
       S.phase = "end"; S.end = END_BEAT;
       status.score = game.winner === YOU ? 300 + (N - game.moves) * 10 : game.winner === 3 ? 100 : Math.ceil(game.moves / 2);
       status.verb = game.winner === YOU ? "YOU WIN" : game.winner === 3 ? "DRAW" : "OOGA WINS";
       if (game.winner === YOU) out.crack(true); else if (game.winner === OOGA) out.flop();
+      if (game.winner === YOU) out.popup(plus(status.score), true);
+      if (game.winner === YOU && !host.still) for (let k = 0; k < 4; k++) { const i = game.line[k]; sparks.spawn(BX + (i % COLS) * CELL + 6, BY + (ROWS - 1 - ((i / COLS) | 0)) * CELL + 6, 6, 50, 0, 2, 0.7); }
       out.cue(game.winner === YOU ? "win" : "lose", 0.6);
       out.over();
     };
@@ -151,7 +163,8 @@
       if (S.phase === "fall") {
         S.fall -= FALL_SPEED * dt * (host.still ? 4 : 1);
         if (S.fall > S.fallRow) return;
-        S.fall = S.fallRow;
+        S.fall = S.fallRow; S.land = 0.18;
+        if (!host.still) sparks.spawn(BX + S.fallCol * CELL + 6, BY + (ROWS - 1 - S.fallRow) * CELL + 11, 4, 28, game.at(S.fallCol, S.fallRow) - 1, 2, 0.35);
         if (game.winner) { finish(); return; }
         S.phase = game.turn === YOU ? "you" : "think"; S.think = THINK;
       } else if (S.phase === "think") {
@@ -161,7 +174,10 @@
       }
     };
     const run = stepper(step);
-    const reset = () => { game.reset(S.seed); S.col = 3; S.steps = aim.steps; S.think = S.fall = S.end = 0; S.ended = 0; status.score = 0; status.left = 0; status.verb = ""; J.reset(); };
+    const reset = () => { game.reset(S.seed); S.col = 3; S.steps = aim.steps; S.think = S.fall = S.end = S.land = 0; S.ended = 0; status.score = 0; status.left = 0; status.verb = ""; J.reset(); sparks.clear(); };
+    // The centre of a cell on screen (row 0 the bottom), written into a scratch point.
+    const P = { x: 0, y: 0 };
+    const cellAt = (i) => { P.x = BX + (i % COLS) * CELL + 6; P.y = BY + (ROWS - 1 - ((i / COLS) | 0)) * CELL + 6; return P; };
     reset();
     return {
       kind: "four", name: "Four in a Row", aims: true, status, roundLabel: "Game",
@@ -175,7 +191,9 @@
       stop: () => { S.phase = "idle"; reset(); },
       act: () => { if (S.phase === "you") drop(S.col); },
       update: (dt) => {
-        J.update(dt);
+        J.update(dt); sparks.update(dt);
+        if (!host.still) S.anim = (S.anim + dt) % 60;
+        S.land = Math.max(0, S.land - dt);
         // The column follows each step of the aim (presses, notches), clamped to the board.
         if (aim.steps !== S.steps) { S.col = Math.max(0, Math.min(COLS - 1, S.col + (aim.steps - S.steps))); S.steps = aim.steps; }
         if (S.phase === "idle") return;
@@ -183,31 +201,70 @@
       },
       draw: (ctx) => {
         ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, 120);
+        ctx.fillStyle = INK.cave; ctx.fillRect(0, BY + ROWS * CELL + 8, W, 120 - BY - ROWS * CELL - 8);
         J.begin(ctx);
-        ctx.fillStyle = INK.husk; ctx.fillRect(BX - 4, BY - 2, COLS * CELL + 8, ROWS * CELL + 6);
-        ctx.fillStyle = INK.huskDk; ctx.fillRect(BX - 4, BY + ROWS * CELL + 2, COLS * CELL + 8, 3);
+        // The frame: timber with a lit top edge and a shaded foot, the grooves between holes, two legs.
+        const fw = COLS * CELL + 8, fy = BY - 3, fh = ROWS * CELL + 6;
+        ctx.fillStyle = INK.huskDk; ctx.fillRect(BX - 6, BY + ROWS * CELL, 4, 10); ctx.fillRect(BX + COLS * CELL + 2, BY + ROWS * CELL, 4, 10);
+        ctx.fillStyle = INK.husk; ctx.fillRect(BX - 4, fy, fw, fh);
+        ctx.fillStyle = INK.ochre; ctx.fillRect(BX - 4, fy, fw, 1);
+        ctx.fillStyle = INK.huskDk; ctx.fillRect(BX - 4, fy + fh - 2, fw, 2);
+        for (let c = 1; c < COLS; c++) ctx.fillRect(BX + c * CELL, BY, 1, ROWS * CELL);
+        // The chosen column, faintly lit, while it is your move.
+        if (S.phase === "you") { ctx.fillStyle = INK.earth; ctx.fillRect(BX + S.col * CELL + 1, BY, CELL - 1, ROWS * CELL); }
         for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
           const v = game.at(c, r), falling = S.phase === "fall" && c === S.fallCol && r === S.fallRow;
-          ctx.fillStyle = INKS[falling ? 0 : v];
-          ctx.fillRect(BX + c * CELL + 2, BY + (ROWS - 1 - r) * CELL + 2, CELL - 4, CELL - 4);
+          blit(ctx, DISCS[falling ? 0 : v], BX + c * CELL + 2, BY + (ROWS - 1 - r) * CELL + 2);
+        }
+        // Where your counter would land: four corner dots in that hole.
+        if (S.phase === "you" && game.height[S.col] < ROWS) {
+          const x = BX + S.col * CELL + 2, y = BY + (ROWS - 1 - game.height[S.col]) * CELL + 2;
+          ctx.fillStyle = INK.teal; ctx.fillRect(x + 1, y + 1, 1, 1); ctx.fillRect(x + 7, y + 1, 1, 1); ctx.fillRect(x + 1, y + 7, 1, 1); ctx.fillRect(x + 7, y + 7, 1, 1);
         }
         if (S.phase === "fall") {
-          ctx.fillStyle = INKS[game.at(S.fallCol, S.fallRow)];
           const y = BY + (ROWS - 1 - S.fall) * CELL + 2;
-          if (y >= BY - CELL) ctx.fillRect(BX + S.fallCol * CELL + 2, y, CELL - 4, CELL - 4);
+          if (y >= BY - CELL) blit(ctx, DISCS[game.at(S.fallCol, S.fallRow)], BX + S.fallCol * CELL + 2, y);
+        } else if (S.land > 0 && game.last >= 0 && !game.winner) {
+          // The counter that just landed glints for a moment.
+          const p = cellAt(game.last);
+          ctx.fillStyle = INK.white; ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
         }
         if (game.winner === YOU || game.winner === OOGA) {
-          ctx.fillStyle = INK.white;
-          for (let k = 0; k < 4; k++) { const i = game.line[k], c = i % COLS, r = (i / COLS) | 0; ctx.fillRect(BX + c * CELL + 5, BY + (ROWS - 1 - r) * CELL + 5, CELL - 10, CELL - 10); }
+          // The winning four: a line joining their centres and a ring on each, blinking unless reduced motion.
+          const on = host.still || ((S.anim * 4) | 0) % 2 === 0;
+          ctx.fillStyle = on ? INK.white : (game.winner === YOU ? INK.teal : INK.gold);
+          for (let k = 0; k < 3; k++) {
+            const a = game.line[k], b = game.line[k + 1], ax = cellAt(a).x, ay = P.y, bx = cellAt(b).x, by = P.y;
+            for (let s = 0; s <= 12; s++) ctx.fillRect(Math.round(ax + (bx - ax) * s / 12) - 1, Math.round(ay + (by - ay) * s / 12) - 1, 2, 2);
+          }
+          for (let k = 0; k < 4; k++) { const p = cellAt(game.line[k]); ctx.fillRect(p.x - 5, p.y - 5, 10, 1); ctx.fillRect(p.x - 5, p.y + 4, 10, 1); ctx.fillRect(p.x - 5, p.y - 5, 1, 10); ctx.fillRect(p.x + 4, p.y - 5, 1, 10); }
+        } else if (game.last >= 0 && S.phase !== "fall") {
+          const p = cellAt(game.last);
+          ctx.fillStyle = INK.night; ctx.fillRect(p.x, p.y, 1, 1);
         }
-        if (S.phase === "you") { ctx.fillStyle = INK.teal; ctx.fillRect(BX + S.col * CELL + 3, BY - 9, CELL - 6, 5); }
+        // Your counter waiting over the chosen column, bobbing gently.
+        if (S.phase === "you") {
+          const bob = host.still ? 0 : Math.sin(S.anim * 5) > 0 ? 1 : 0;
+          blit(ctx, DISCS[YOU], BX + S.col * CELL + 2, BY - 12 + bob);
+        }
+        sparks.draw(ctx);
         J.end(ctx);
+        // The two players' panels: whose move it is glows, with how many counters each has placed.
+        const you = S.phase === "you", it = S.phase === "think" || (S.phase === "fall" && game.turn === YOU && !game.winner);
+        ctx.fillStyle = you ? INK.rule : INK.cave; ctx.fillRect(2, 30, 28, 34);
+        ctx.fillStyle = it ? INK.rule : INK.cave; ctx.fillRect(W - 30, 30, 28, 34);
+        text(ctx, "YOU", 7, 33, TEXT.teal); blit(ctx, DISCS[YOU], 11, 43); number(ctx, Math.ceil(game.moves / 2), 16, 55, TEXT.bone, 1, 1);
+        text(ctx, "OOGA", W - 28, 33, TEXT.banana); blit(ctx, DISCS[OOGA], W - 21, 43); number(ctx, game.moves >> 1, W - 16, 55, TEXT.bone, 1, 1);
         text(ctx, "FOUR IN A ROW", 4, 3, TEXT.bone);
         number(ctx, host.best || 0, W - 4, 3, TEXT.gold, 1, 2, 3);
         if (S.phase === "idle") centre(ctx, "PRESS START", 110, TEXT.banana);
         else if (S.phase === "you") centre(ctx, "YOUR MOVE", 110, TEXT.teal);
-        else if (S.phase === "think" || S.phase === "fall") centre(ctx, "OOGA THINKS", 110, TEXT.banana);
-        else centre(ctx, game.winner === YOU ? "YOU WIN" : game.winner === 3 ? "DRAW" : "OOGA WINS", 110, game.winner === YOU ? TEXT.lime : TEXT.red);
+        else if (S.phase === "think" || S.phase === "fall") {
+          centre(ctx, "OOGA THINKS", 110, TEXT.banana);
+          // Three dots that count up while the computer thinks.
+          const dots = host.still ? 3 : ((S.anim * 4) | 0) % 4;
+          ctx.fillStyle = INK.banana; for (let k = 0; k < dots; k++) ctx.fillRect(114 + k * 4, 115, 2, 2);
+        } else centre(ctx, game.winner === YOU ? "YOU WIN" : game.winner === 3 ? "DRAW" : "OOGA WINS", 110, game.winner === YOU ? TEXT.lime : game.winner === 3 ? TEXT.bone : TEXT.red);
       }
     };
   };

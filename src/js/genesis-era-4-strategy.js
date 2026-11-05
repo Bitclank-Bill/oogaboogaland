@@ -154,12 +154,31 @@
   };
 
   // ---- the console game (retro-games.js's factory interface) --------------------------------------------------
+  // The screen: pieces glide between squares, the goal pulses, a capture bursts at the square where the guard caught
+  // its piece and the piece flies home, a refused step nudges the lit piece, and a win throws sparks off the goal.
+  // All of it is feedback on the rules core's state; the moves, the guard and the score are the core's and finish's.
+  const CELL = 12, OY = 19, PIPS = 20;
   const make = (host) => {
-    const K = BL.retroGames.kit, { W, H, INK, TEXT } = K, h = K.hooks(host), core = create(), s = core.s;
-    const status = K.makeStatus("Moves"), CELL = 13, OX = (W - CELL * N) >> 1, OY = 22;
-    const run = { playing: false, piece: 0, steps: 0, stepsY: 0, endIn: -1, ended: false, flash: 0 };
+    const K = BL.retroGames.kit, { W, H, INK, TEXT } = K, h = K.hooks(host), core = create(), s = core.s, J = K.juice(host);
+    const status = K.makeStatus("Moves"), OX = (W - CELL * N) >> 1;
+    const sparks = K.sparks(56, [INK.gold, INK.banana, INK.red, INK.ember, INK.teal, INK.white]);
+    const run = { playing: false, piece: 0, steps: 0, stepsY: 0, endIn: -1, ended: false, flash: 0, nudge: 0, pulse: 0, trail: -1, trailT: 0 };
+    // Where each token is drawn (A, B, the guard), in screen pixels, easing toward its square.
+    const at = new Float32Array(6);
+    const cellX = (i) => OX + (i % N) * CELL, cellY = (i) => OY + (i / N | 0) * CELL;
+    const snap = () => { for (let k = 0; k < 3; k++) { const c = k < 2 ? s.at[k] : s.guard; at[k * 2] = cellX(c); at[k * 2 + 1] = cellY(c); } };
+    const ease = (dt) => {
+      const f = host.still ? 1 : 1 - Math.exp(-dt * 16);
+      for (let k = 0; k < 3; k++) {
+        const c = k < 2 ? s.at[k] : s.guard;
+        at[k * 2] += (cellX(c) - at[k * 2]) * f; at[k * 2 + 1] += (cellY(c) - at[k * 2 + 1]) * f;
+      }
+    };
     const tick = K.stepper((dt) => {
       if (run.flash > 0) run.flash -= dt;
+      if (run.nudge > 0) run.nudge -= dt;
+      if (run.trailT > 0) run.trailT -= dt;
+      run.pulse += dt;
       if (run.endIn >= 0) { run.endIn -= dt; if (run.endIn < 0 && !run.ended) { run.ended = true; run.playing = false; h.onEnd(status.score); } }
     });
     const finish = () => {
@@ -167,13 +186,27 @@
       h.over(); run.endIn = 1.4;
     };
     const tryMove = (dir) => {
-      const r = core.move(run.piece, dir);
-      if (r === "wall" || r === "blocked") { h.cue("bump", 0.5); return; }
-      if (r === "caught") { h.cue("miss", 0.6); h.flop(); run.flash = 0.25; }
-      else h.cue("step", 0.4);
+      const from = s.at[run.piece], r = core.move(run.piece, dir);
+      if (r === "wall" || r === "blocked") { h.cue("bump", 0.5); run.nudge = 0.18; J.shake(0.5); return; }
+      run.trail = from; run.trailT = 0.6;
+      if (r === "caught") {
+        h.cue("miss", 0.6); h.flop(); run.flash = 0.25; J.shake(2);
+        if (!host.still) sparks.spawn(cellX(s.guard) + CELL / 2, cellY(s.guard) + CELL / 2, 12, 50, 2, 3, 0.6);
+      } else h.cue("step", 0.4);
       status.left = MOVES - s.used;
-      if (s.won) { h.crack(true); h.popup("GOAL!", true); finish(); }
-      else if (s.lost) finish();
+      if (s.won) {
+        h.crack(true); h.popup("GOAL!", true); J.flash(INK.gold, 0.4);
+        if (!host.still) sparks.spawn(cellX(s.goal) + CELL / 2, cellY(s.goal) + CELL / 2, 24, 70, 0, 1, 0.9);
+        finish();
+      } else if (s.lost) { J.flash(INK.red, 0.3); finish(); }
+    };
+    // A token: a dark rim, its colour, a highlight and its letter.
+    const token = (ctx, px, py, fill, rim, letter) => {
+      const x = Math.round(px), y = Math.round(py);
+      ctx.fillStyle = rim; ctx.fillRect(x + 1, y + 1, CELL - 3, CELL - 3);
+      ctx.fillStyle = fill; ctx.fillRect(x + 2, y + 2, CELL - 5, CELL - 5);
+      ctx.fillStyle = INK.white; ctx.fillRect(x + 2, y + 2, 2, 1);
+      K.text(ctx, letter, x + 3, y + 2, TEXT.night);
     };
     const game = {
       kind: "e4-strategy", name: "Strategy board", aims: true, status,
@@ -184,14 +217,15 @@
       get playing() { return run.playing; },
       start(seed) {
         core.load((seed >>> 0) % BOARDS.length);
-        run.playing = true; run.piece = 0; run.endIn = -1; run.ended = false; run.flash = 0;
+        run.playing = true; run.piece = 0; run.endIn = -1; run.ended = false; run.flash = 0; run.nudge = 0; run.trail = -1; run.trailT = 0;
         run.steps = h.aim.steps; run.stepsY = h.aim.stepsY;
+        sparks.clear(); J.reset(); snap();
         status.score = 0; status.left = MOVES; status.round = s.board + 1; status.verb = "MOVE";
       },
-      act() { if (run.playing && run.endIn < 0) run.piece = 1 - run.piece; },
+      act() { if (run.playing && run.endIn < 0) { run.piece = 1 - run.piece; h.cue("tap", 0.3); } },
       stop() { run.playing = false; run.endIn = -1; },
       update(dt) {
-        tick(dt);
+        tick(dt); J.update(dt); sparks.update(dt); ease(dt);
         if (!run.playing || run.endIn >= 0) { run.steps = h.aim.steps; run.stepsY = h.aim.stepsY; return; }
         const dx = h.aim.steps - run.steps, dy = h.aim.stepsY - run.stepsY;
         run.steps = h.aim.steps; run.stepsY = h.aim.stepsY;
@@ -199,33 +233,65 @@
         else if (dy) tryMove(dy > 0 ? 2 : 0);
       },
       draw(ctx) {
+        const still = host.still, live = run.playing && run.endIn < 0;
         ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = INK.band; ctx.fillRect(0, 0, W, 9);
         K.text(ctx, "STRATEGY BOARD", 3, 1, TEXT.gold);
         K.text(ctx, "HOMAGE", W - 39, 1, TEXT.stone);
+        J.begin(ctx);
+        // The board's frame, then its squares: walls bevelled, floor in a quiet checker, the goal pulsing gold.
+        ctx.fillStyle = INK.husk; ctx.fillRect(OX - 3, OY - 3, CELL * N + 5, CELL * N + 5);
+        ctx.fillStyle = INK.huskDk; ctx.fillRect(OX - 1, OY - 1, CELL * N + 1, CELL * N + 1);
+        const glow = still ? 1 : 0.5 + 0.5 * Math.sin(run.pulse * 5);
         for (let i = 0; i < CELLS; i++) {
-          const x = OX + (i % N) * CELL, y = OY + (i / N | 0) * CELL, c = core.charAt(i);
-          ctx.fillStyle = core.wall[i] ? INK.stoneDk : (i % N + (i / N | 0)) & 1 ? INK.deep : INK.rule;
+          const x = cellX(i), y = cellY(i);
+          if (core.wall[i]) {
+            ctx.fillStyle = INK.stoneDk; ctx.fillRect(x, y, CELL - 1, CELL - 1);
+            ctx.fillStyle = INK.stone; ctx.fillRect(x, y, CELL - 1, 1); ctx.fillRect(x, y, 1, CELL - 1);
+            ctx.fillStyle = INK.charcoal; ctx.fillRect(x, y + CELL - 2, CELL - 1, 1);
+            continue;
+          }
+          ctx.fillStyle = (i % N + (i / N | 0)) & 1 ? INK.deep : INK.rule;
           ctx.fillRect(x, y, CELL - 1, CELL - 1);
-          if (i === s.goal) { ctx.fillStyle = INK.gold; ctx.fillRect(x + 2, y + 2, CELL - 5, CELL - 5); }
-          if (c === "A" || c === "B" || c === "X") {
-            const mine = c === (run.piece ? "B" : "A");
-            ctx.fillStyle = c === "X" ? INK.red : mine ? INK.teal : INK.sky;
-            ctx.fillRect(x + 2, y + 2, CELL - 5, CELL - 5);
-            K.text(ctx, c, x + 4, y + 3, TEXT.night);
+          if (i === s.goal) {
+            ctx.fillStyle = glow > 0.5 ? INK.banana : INK.gold; ctx.fillRect(x + 1, y + 1, CELL - 3, CELL - 3);
+            ctx.fillStyle = INK.ember; ctx.fillRect(x + 4, y + 3, 1, 6); ctx.fillRect(x + 5, y + 3, 3, 2);
+          } else if (i === s.home[0] || i === s.home[1]) {
+            ctx.fillStyle = i === s.home[0] ? INK.teal : INK.sky; ctx.fillRect(x + 1, y + CELL - 3, CELL - 3, 1);
           }
         }
-        K.text(ctx, "MOVES", 3, 14, TEXT.stone);
-        K.number(ctx, MOVES - s.used, 3, 23, TEXT.banana, 2);
-        K.text(ctx, "BOARD", W - 33, 14, TEXT.stone);
-        K.number(ctx, s.board + 1, W - 33, 23, TEXT.banana, 2);
-        if (run.flash > 0 && !host.still) { ctx.fillStyle = INK.red; ctx.globalAlpha = 0.25; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
+        if (run.trailT > 0 && run.trail >= 0 && !still) { ctx.fillStyle = INK.stoneDk; ctx.fillRect(cellX(run.trail) + 4, cellY(run.trail) + 4, 3, 3); }
+        // Tokens: the guard first, so a caught piece's flight home passes over it; the lit piece blinks its rim and
+        // jolts sideways when a step is refused.
+        token(ctx, at[4], at[5], INK.red, INK.rust, "X");
+        for (let p = 0; p < 2; p++) {
+          const mine = p === run.piece && live, jolt = mine && run.nudge > 0 && !still ? (run.nudge * 40 | 0) % 2 * 2 - 1 : 0;
+          const rim = mine ? (still || (run.pulse * 4 | 0) & 1 ? INK.white : INK.teal) : INK.stoneDk;
+          token(ctx, at[p * 2] + jolt, at[p * 2 + 1], p ? INK.sky : INK.teal, rim, p ? "B" : "A");
+        }
+        sparks.draw(ctx);
+        J.end(ctx);
+        // The side panels: moves as a column of pips with the count, the board and the piece in hand.
+        K.text(ctx, "MOVES", 3, 13, TEXT.stone);
+        K.number(ctx, MOVES - s.used, 3, 22, MOVES - s.used <= 5 ? TEXT.red : TEXT.banana, 2);
+        for (let k = 0; k < PIPS; k++) {
+          ctx.fillStyle = k < MOVES - s.used ? (MOVES - s.used <= 5 ? INK.red : INK.banana) : INK.earth;
+          ctx.fillRect(3 + (k % 4) * 6, 40 + (k / 4 | 0) * 6, 4, 4);
+        }
+        K.text(ctx, "BOARD", W - 33, 13, TEXT.stone);
+        K.number(ctx, s.board + 1, W - 33, 22, TEXT.banana, 2);
+        K.text(ctx, "PIECE", W - 33, 40, TEXT.stone);
+        token(ctx, W - 31, 49, run.piece ? INK.sky : INK.teal, INK.stoneDk, run.piece ? "B" : "A");
+        K.text(ctx, "CAUGHT", W - 35, 66, TEXT.stone);
+        K.number(ctx, s.captures, W - 33, 75, s.captures ? TEXT.red : TEXT.bone);
+        if (run.flash > 0 && !still) { ctx.fillStyle = INK.red; ctx.globalAlpha = 0.25; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
         if (!run.playing && run.endIn < 0 && !run.ended) K.centre(ctx, "PRESS START", H - 9, TEXT.banana);
         else if (s.won) K.centre(ctx, "GOAL REACHED!", H - 9, TEXT.lime);
         else if (s.lost) K.centre(ctx, "OUT OF MOVES", H - 9, TEXT.red);
         else K.centre(ctx, run.piece ? "PIECE B - SPACE SWAPS" : "PIECE A - SPACE SWAPS", H - 9, TEXT.bone);
       }
     };
+    snap();
     return game;
   };
   G.strategy = { BOARDS, MOVES, N, DIRS, create, terminal, make };

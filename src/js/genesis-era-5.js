@@ -58,6 +58,17 @@
       href: "https://github.com/Bitcoin-Bill/oogaboogaland/blob/gv/research/docs/genesis-voyage/eras/era-5-peers-and-reusable-work.md", kind: "context", verified: true }
   };
   const reply = (...lines) => ({ lines });
+  // An exhibit's finer parts as one merged mesh at (x, y, z), its parts in its own frame (y from the floor). The kit's
+  // dry runs (the layout's and the checks') have no models, so they get a bare node at the same spot: every run counts
+  // the same pieces, and the mesh moves with its exhibit's cluster.
+  const detail = (kit, x, y, z, make) => {
+    const nd = kit.createNode(kit.M.merge ? { geometry: kit.M.merge(...make(kit.M)) } : {});
+    nd.position.x = x; nd.position.y = y; nd.position.z = z;
+    return kit.place(nd);
+  };
+  const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
+  // A flat disc facing +z (a wheel, a dial), r across and t thick, centred at (x, y, z).
+  const disc = (M, r, t, color, x, y, z, emissive = 0) => M.moved(M.turnedX(M.lathe({ profile: [[0, 0], [r, 0], [r, t], [0, t]], segments: 24, color, emissive }), Math.PI / 2), x, y, z);
   const clean = (text) => String(text).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 64).trim();
   const integer = (word, lo, hi) => /^\d{1,3}$/.test(word || "") && +word >= lo && +word <= hi ? +word : -1;
   // A toy 32-bit mixer: deliberately NOT a cryptographic hash.
@@ -101,7 +112,7 @@
     wiki: { revs: [], at: 0 },
     player: { loaded: new Uint8Array(6), used: 0, cursor: 0 },
     route: { at: 0, hops: 0, target: 23, solved: false },
-    patch: null, pocket: null,
+    patch: null, pocket: null, chain: null,
     n: null
   });
   const RING0 = [1, 4, 9, 12];
@@ -389,6 +400,7 @@
     "The paper's story is on the BitTorrent lectern by the piece mosaic; reusable tokens, and who you must trust for them, are at the RPOW desk."];
   const patchShow = () => { const p = S.patch, t = S.n.patchTiles; for (let peer = 0; peer < 3; peer++) for (let i = 0; i < 9; i++) t[peer * 9 + i].visible = p.holds(peer, i); };
   const pocketShow = () => { const u = S.pocket.used(), b = S.n.pocketBar; for (let i = 0; i < b.length; i++) b[i].visible = i < u; };
+  const CHAIN_STORY = ["Context: the bit gold bench and its lectern across the walk (December 2005, qualified) tell the real proposal's story; this game borrows only its picture of each new string built on the last."];
   const watched = (term, show) => ({ banner: term.banner, prompt: term.prompt, run(line) { const r = term.run(line); show(); return r; } });
   const patchTerm = () => watched(BL.genesisEra5Patchwork.terminal(S.patch, PATCH_STORY), patchShow);
   const pocketTerm = () => watched(BL.genesisEra5Mixtape.terminal(S.pocket, ["Context: the silent pocket disk player further up this side (announced 23 October 2001); this toy makes no claim about that product."]), pocketShow);
@@ -416,7 +428,7 @@
       const { era, top, solid, sign, obstacle, prop } = kit;
       const N = S.n = { pillars: [], caps: [], slot: new Float32Array(32), keyMark: null, meter: [], stampTile: null, cabGreen: null, cabRed: null, cabBusy: null,
         bars: [], tiles: [], wide: [], tight: [], lines: [], cap: [], sats: [], satR: 0, satX: 0, satZ: 0, satY: 0, beacon: null, ringX: 0, ringZ: 0,
-        patchTiles: [], pocketBar: [] };
+        patchTiles: [], pocketBar: [], chainLinks: [] };
       const Z = (u) => era.z1 - u; // u: metres downstream from the way in
       // 2000s workshop palette: brushed silver, graphite, translucent sea-glass and powder blue, citrus accents.
       const C = { silver: "#b9c0c6", graphite: "#3a3f45", glass: "#7fc9c4", powder: "#9cb8d8", citrus: "#d9e36a", bench: "#6a6f74", mat: "#2f3a44", gold: "#e8c35a", ivory: "#e9e6dc" };
@@ -427,6 +439,12 @@
         solid(w + 0.6, 0.02, d + 1.6, C.mat, x, top + 0.01, z + 0.5);
         obstacle(x - w / 2, x + w / 2, z - d / 2, z + d / 2);
         sign(title, sub, x, top + 2.7, z - d / 2 + 0.1, 0, 0.42);
+        // Aprons under the top, foot rails and rubber feet, a sea-glass edge band, and the mat's citrus front edge.
+        detail(kit, x, top, z, (M) => [...[-1, 1].map((s) => B(M, w - 0.2, 0.12, 0.03, "#2c3035", 0, 0.82, s * (d / 2 - 0.06))),
+          ...[-1, 1].map((s) => B(M, 0.03, 0.12, d - 0.2, "#2c3035", s * (w / 2 - 0.06), 0.82, 0)),
+          ...[-1, 1].map((s) => B(M, w - 0.2, 0.04, 0.04, C.silver, 0, 0.18, s * (d / 2 - 0.1))),
+          ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => B(M, 0.13, 0.03, 0.13, "#1c1f22", a * (w / 2 - 0.1), 0.015, b * (d / 2 - 0.1))),
+          B(M, w + 0.02, 0.025, 0.025, C.glass, 0, 0.95, d / 2, 0.35), B(M, w + 0.6, 0.012, 0.05, C.citrus, 0, 0.022, 0.5 + (d + 1.6) / 2 - 0.05, 0.3)]);
       };
       // A paper lectern: a slanted reading desk, a lit edge in the bench's accent, an obstacle and a small sign.
       const lectern = (x, z, accent, title, sub) => {
@@ -435,6 +453,12 @@
         solid(1.1, 0.05, 0.05, accent, x, top + 1.14, z + 0.4, 0.8);
         obstacle(x - 0.6, x + 0.6, z - 0.45, z + 0.45);
         sign(title, sub, x, top + 2.1, z + 0.1, 0, 0.36);
+        // A plinth and a collar, a brass plaque, the paper lying open with its lines of type, and a small reading lamp.
+        detail(kit, x, top, z, (M) => [B(M, 0.72, 0.08, 0.72, C.graphite, 0, 0.04, 0), B(M, 0.56, 0.06, 0.56, "#9aa1a7", 0, 1.0, 0),
+          B(M, 0.3, 0.14, 0.012, C.gold, 0, 0.7, 0.256, 0.2),
+          ...[-1, 1].map((s) => B(M, 0.42, 0.025, 0.32, "#f6f3e8", s * 0.22, 1.145, -0.02)), B(M, 0.03, 0.04, 0.32, "#7a5a3a", 0, 1.15, -0.02),
+          ...[-1, 1].flatMap((s) => [0, 1, 2, 3].map((k) => B(M, 0.3, 0.006, 0.02, "#5a5f66", s * 0.22, 1.16, -0.13 + k * 0.07))),
+          B(M, 0.03, 0.34, 0.03, C.silver, 0.46, 1.3, -0.32), B(M, 0.16, 0.05, 0.1, C.silver, 0.42, 1.48, -0.27), B(M, 0.12, 0.02, 0.07, "#ffe9a8", 0.42, 1.45, -0.27, 0.9)]);
       };
       const toy = (id, year, date, title, keys, x, z, w, d, term) => prop({ id, year, date, connection: "context", title, label: `${title.toUpperCase()} · ${year}`, sourceKeys: keys,
         at: { x, y: top, z: z + d / 2 + 0.8 }, reach: 1.9, pick: { w, h: 1.8, d: d + 0.4, x, z }, onUse: () => ({ terminal: term }) });
@@ -497,6 +521,10 @@
               "Context: RPOW is not a whitepaper reference, and no direct influence is claimed. It is not decentralised consensus."]) }, lx, z);
         bench(bx, z, 3.4, 2, "RPOW EXCHANGE DESK · 2004", "WORK / EXCHANGE / reuse refused");
         solid(0.9, 0.5, 0.6, C.silver, bx - 0.8, top + 1.21, z - 0.3); solid(0.3, 0.04, 0.4, C.graphite, bx - 0.8, top + 1.48, z);
+        // The exchange box's slot, its in and out trays, and a keyboard on the desk.
+        detail(kit, bx, top, z, (M) => [B(M, 0.5, 0.03, 0.02, "#13181d", -0.8, 1.32, 0.005), B(M, 0.12, 0.08, 0.02, "#5ef08a", -0.45, 1.32, 0.005, 0.8),
+          ...[-1, 1].map((s) => B(M, 0.5, 0.05, 0.36, s < 0 ? C.powder : C.glass, 0.4 + s * 0.32, 0.985, -0.2)),
+          B(M, 0.8, 0.03, 0.26, "#2c3035", 0.5, 0.975, 0.5), ...[0, 1, 2].map((k) => B(M, 0.72, 0.01, 0.05, "#c9cdd1", 0.5, 0.995, 0.42 + k * 0.08))]);
         toy("e5-rpow-desk", 2004, "2004: the year of the RPOW announcement this toy illustrates; an original museum model", "RPOW exchange desk", ["E5-RPOW"], bx, z, 3.4, 2, rpowTerm);
         // Sealed cabinet: a generic graphite box, fictional indicator lights, a seal band.
         solid(1.8, 2.4, 1.2, C.graphite, cx, top + 1.2, z);
@@ -507,6 +535,12 @@
         N.cabBusy = solid(0.08, 0.08, 0.04, C.citrus, cx - 0.7, top + 1.25, z + 0.63, 1);
         for (let i = 0; i < 6; i++) solid(1.4, 0.04, 0.02, "#2a2e33", cx, top + 0.4 + i * 0.12, z + 0.61);
         obstacle(cx - 1, cx + 1, z - 0.7, z + 0.7);
+        // Rack rails, a plinth and a cap, a door handle, the red seal across the door's seam, a label plate and the
+        // small display's bezel.
+        detail(kit, cx, top, z, (M) => [B(M, 1.9, 0.1, 1.3, "#1c1f22", 0, 0.05, 0), B(M, 1.9, 0.08, 1.3, C.silver, 0, 2.44, 0),
+          ...[-1, 1].map((s) => B(M, 0.06, 2.2, 0.04, C.silver, s * 0.85, 1.2, 0.62)), B(M, 0.05, 0.5, 0.07, C.silver, 0.72, 1.45, 0.65),
+          B(M, 0.12, 0.6, 0.012, "#c8403a", 0, 1.62, 0.612, 0.25), B(M, 0.5, 0.1, 0.01, C.ivory, 0.42, 1.78, 0.612), B(M, 0.6, 0.4, 0.015, "#2a2e33", -0.4, 2.0, 0.607),
+          ...[0, 1, 2, 3, 4].map((k) => B(M, 0.5, 0.025, 0.012, "#0e1114", -0.4, 2.3 - k * 0.05 - 0.6, 0.612))]);
         sign("SEALED SERVER CABINET · 2004", "fingerprint comparison demo - not real attestation", cx, top + 3.1, z + 0.6, 0, 0.42);
         prop({ id: "e5-cabinet", year: 2004, connection: "context", date: "2004: RPOW's documented use of a secure coprocessor, not that hardware's introduction; the comparison is a museum demonstration",
           title: "Sealed server cabinet", label: "SEALED SERVER CABINET · 2004", sourceKeys: ["E5-RPOW"],
@@ -547,6 +581,11 @@
         N.satX = x; N.satZ = z; N.satR = 1.6; N.satY = top + 3.3;
         for (let i = 0; i < 2; i++) { const s = solid(0.3, 0.12, 0.12, C.silver, x, N.satY, z, 0.3); N.sats.push(s); }
         obstacle(x - 1.7, x + 1.7, z - 1.7, z + 1.7);
+        // The plinth's foot and lit lip, the receiver's antenna and keys, and a small dish on a post at the back.
+        detail(kit, x, top, z, (M) => [B(M, 1.5, 0.06, 1.5, C.graphite, 0, 0.03, 0), B(M, 1.46, 0.03, 1.46, C.glass, 0, 0.885, 0, 0.3),
+          B(M, 0.03, 0.34, 0.03, "#1c1f22", 0.19, 1.32, 0.86), B(M, 0.05, 0.05, 0.05, C.citrus, 0.19, 1.5, 0.86, 0.8),
+          ...[0, 1, 2, 3, 4].map((k) => B(M, 0.05, 0.02, 0.04, C.silver, -0.16 + k * 0.08, 1.16, 0.94)),
+          B(M, 0.05, 0.9, 0.05, C.silver, 0.55, 1.35, -0.55), B(M, 0.44, 0.05, 0.44, C.ivory, 0.55, 1.82, -0.55), B(M, 0.06, 0.12, 0.06, C.graphite, 0.55, 1.9, -0.55)]);
         sign("GPS SHARPENS · MAY 2000", "announced 1 May / changed 2 May - illustrative circles", x, top + 2.4, z + 1.6, 0, 0.4);
         prop({ id: "e5-gps", year: 2000, connection: "context", date: "1 May 2000: the announcement; 2 May 2000, just after midnight EDT: the change took effect",
           title: "GPS sharpens", label: "GPS SHARPENS · MAY 2000", sourceKeys: ["E5-GPS", "E5-GPS-WH"],
@@ -560,6 +599,11 @@
         solid(1.24, 0.8, 0.02, C.ivory, x, top + 2.1, z + 0.1, 0.5);
         for (let i = 0; i < 8; i++) { const l = solid(0.9 - (i % 3) * 0.15, 0.04, 0.01, C.graphite, x - 0.1, top + 2.42 - i * 0.085, z + 0.12); l.visible = i < 1; N.lines.push(l); }
         obstacle(x - 0.75, x + 0.75, z - 0.5, z + 0.5);
+        // A keyboard shelf on a bracket, the base's foot and front panel, the screen's camera dot and a pole collar.
+        detail(kit, x, top, z, (M) => [B(M, 1.3, 0.06, 0.9, C.graphite, 0, 0.03, 0), B(M, 0.9, 0.55, 0.012, C.ivory, 0, 0.5, 0.406),
+          B(M, 0.08, 0.1, 0.3, C.silver, 0, 0.98, 0.45), B(M, 0.92, 0.04, 0.36, C.graphite, 0, 1.05, 0.52),
+          ...[0, 1, 2].map((k) => B(M, 0.8, 0.012, 0.06, "#c9cdd1", 0, 1.077, 0.42 + k * 0.09)),
+          B(M, 0.2, 0.06, 0.2, C.silver, 0, 1.03, 0), B(M, 0.05, 0.05, 0.02, "#13181d", 0, 2.53, 0.105), B(M, 1.44, 0.04, 0.1, C.silver, 0, 1.6, 0.05)]);
         sign("VOLUNTEER ENCYCLOPEDIA · 2001", "anyone may EDIT / every revision kept", x, top + 3.1, z + 0.2, 0, 0.4);
         prop({ id: "e5-wiki", year: 2001, connection: "context", date: "January 2001: the launch month of a volunteer-written online encyclopedia; no exact day is claimed",
           title: "Volunteer encyclopedia", label: "VOLUNTEER ENCYCLOPEDIA · 2001", sourceKeys: ["E5-WIKI", "E5-WIKI-CA"],
@@ -575,6 +619,14 @@
         solid(0.14, 0.14, 0.03, C.citrus, x, top + 1.32, z + 0.13, 0.6);
         for (let i = 0; i < PLAYER_CAP; i++) { const c = solid(0.055, 0.05, 0.01, C.glass, x - 0.27 + i * 0.06, top + 1.8, z + 0.145, 0.9); c.visible = false; N.cap.push(c); }
         obstacle(x - 1.2, x + 1.2, z - 0.7, z + 0.7);
+        // The device's chrome back and rounded rims, a ring of a wheel round its buttons, a hold switch, the screen's
+        // menu lines, and the earphones' cord down its side to the buds lying on the plinth.
+        detail(kit, x, top, z, (M) => [B(M, 2.5, 0.05, 1.5, C.graphite, 0, 0.925, 0), B(M, 0.92, 1.36, 0.02, "#c9ced3", 0, 1.6, -0.13),
+          ...[-1, 1].map((s) => B(M, 0.86, 0.025, 0.26, "#f4f2ea", 0, 1.6 + s * 0.71, 0)), disc(M, 0.34, 0.012, "#d7d9db", 0, 1.32, 0.122),
+          B(M, 0.08, 0.03, 0.05, "#e98d6a", -0.3, 2.33, 0), B(M, 0.04, 0.03, 0.04, "#1c1f22", 0.3, 2.33, 0),
+          ...[0, 1, 2, 3].map((k) => B(M, k ? 0.5 : 0.6, 0.025, 0.006, k === 1 ? C.citrus : C.glass, 0, 2.16 - k * 0.09, 0.142, 0.7)),
+          B(M, 0.015, 1.4, 0.015, "#f2f2f2", 0.47, 1.62, 0), B(M, 0.5, 0.015, 0.015, "#f2f2f2", 0.72, 0.915, 0.1),
+          ...[0.95, 1.05].map((bx2, k) => B(M, 0.08, 0.08, 0.08, "#f2f2f2", bx2, 0.94, 0.1 + k * 0.14))]);
         sign("POCKET DISK PLAYER · 2001", "announced 23 Oct / available 10 Nov - silent model", x, top + 3, z + 0.3, 0, 0.4);
         prop({ id: "e5-player", year: 2001, connection: "context", date: "23 October 2001: announcement; 10 November 2001: availability",
           title: "Pocket disk player", label: "POCKET DISK PLAYER · 2001", sourceKeys: ["E5-GEAR"],
@@ -626,6 +678,14 @@
             const t = solid(0.22, 0.03, 0.22, ART[i], tx, top + 0.92, tz, 0.5); t.visible = !!(S.patch && S.patch.holds(peer, i)); N.patchTiles.push(t);
           }
           obstacle(x - 1.6, x + 1.6, z - 0.7, z + 0.7);
+          // A frame round each peer's board, a lettered plate and an upload lamp for each on the table's front, the
+          // links between the boards, and a kick plate.
+          detail(kit, x, top, z, (M) => [B(M, 2.96, 0.08, 1.16, "#1c1f22", 0, 0.04, 0),
+            ...[0, 1, 2].flatMap((peer) => { const px = -1.05 + peer * 1.05; return [B(M, 0.86, 0.025, 0.04, C.silver, px, 0.912, -0.43), B(M, 0.86, 0.025, 0.04, C.silver, px, 0.912, 0.43),
+              B(M, 0.04, 0.025, 0.82, C.silver, px - 0.43, 0.912, 0), B(M, 0.04, 0.025, 0.82, C.silver, px + 0.43, 0.912, 0),
+              B(M, 0.3, 0.14, 0.015, C.ivory, px - 0.08, 0.6, 0.556), ...[0, 1, 2].map((k) => B(M, 0.025, 0.08, 0.006, C.graphite, px - 0.16 + k * 0.08, 0.6, 0.566)),
+              B(M, 0.08, 0.08, 0.02, C.glass, px + 0.2, 0.6, 0.56, 1)]; }),
+            ...[0, 1].map((k) => B(M, 0.18, 0.015, 0.03, C.citrus, -0.525 + k * 1.05, 0.906, 0, 0.5))]);
           sign("PEER PATCHWORK", "share pieces so all three finish", x, top + 1.9, z + 0.2, 0, 0.3);
           prop({ id: "e5-patchwork", year: 2003, connection: "context", date: "2003: the year of the BitTorrent paper that inspired this original puzzle; a modern museum homage, not historical software",
             title: "Peer Patchwork puzzle", label: "PEER PATCHWORK · 2003-INSPIRED HOMAGE", sourceKeys: ["E5-BT"],
@@ -648,6 +708,13 @@
           solid(0.06, 0.02, 1.15, C.citrus, cx + 0.55, top + 0.71, z - 0.15, 0.6);
           solid(0.06, 0.02, 0.3, C.citrus, fx + 0.55, top + 0.71, z + 0.15, 0.6);
           obstacle(x - 1.55, x + 1.55, z - 0.85, z + 0.85);
+          // The tube's bezel, vents and power lamp, faint lines on its glass; the panel's buttons and lamp; a kick plate.
+          detail(kit, x, top, z, (M) => [B(M, 3.02, 0.06, 1.62, "#1c1f22", 0, 0.03, 0),
+            B(M, 0.92, 0.05, 0.02, "#b7b2a4", cx - x, 1.445, 0.415), B(M, 0.92, 0.05, 0.02, "#b7b2a4", cx - x, 0.775, 0.415),
+            ...[-1, 1].map((sd) => B(M, 0.05, 0.62, 0.02, "#b7b2a4", cx - x + sd * 0.435, 1.11, 0.415)), B(M, 0.05, 0.03, 0.02, "#5ef08a", cx - x + 0.35, 0.765, 0.43, 1),
+            ...[0, 1, 2, 3].map((k) => B(M, 0.6, 0.01, 0.03, "#8f8a7c", cx - x, 1.485, -0.35 + k * 0.1)),
+            ...[0, 1, 2, 3, 4].map((k) => B(M, 0.72, 0.006, 0.004, "#3d6f80", cx - x, 0.88 + k * 0.11, 0.424, 0.4)),
+            ...[0, 1, 2].map((k) => B(M, 0.04, 0.02, 0.02, "#9aa1a7", fx - x + 0.22 + k * 0.06, 1.12, 0.235)), B(M, 0.03, 0.02, 0.01, C.glass, fx - x - 0.4, 1.12, 0.235, 1)]);
           sign("CRT AND FLAT PANEL", "schematic: no product or measurement", x, top + 2.4, z + 0.3, 0, 0.3);
           prop({ id: "e5-displays", year: "2000s", connection: "context", date: "2000-2007: the period illustrated; a schematic comparison, with no product, measurement or introduction date claimed",
             title: "CRT and flat panel compared", label: "CRT AND FLAT PANEL · 2000s (SCHEMATIC)", sourceKeys: ["E5-DOSSIER"],
@@ -672,6 +739,10 @@
           solid(0.4, 0.07, 0.03, C.citrus, x, top + 0.98, z + 0.08, 0.4);
           for (let i = 0; i < 10; i++) { const c = solid(0.035, 0.05, 0.01, C.glass, x - 0.2 + i * 0.045, top + 1.55, z + 0.095, 0.9); c.visible = false; N.pocketBar.push(c); }
           obstacle(x - 0.5, x + 0.5, z - 0.4, z + 0.4);
+          // The slab's rims, the storage bar's dark frame, the pedestal's foot and lip, and earphones lying on top.
+          detail(kit, x, top, z, (M) => [B(M, 0.94, 0.06, 0.74, C.graphite, 0, 0.03, 0), B(M, 0.94, 0.03, 0.74, C.silver, 0, 0.885, 0),
+            ...[-1, 1].map((sd) => B(M, 0.66, 0.025, 0.16, "#c4d6ea", 0, 1.45 + sd * 0.55, 0)), B(M, 0.48, 0.08, 0.005, "#13181d", 0, 1.55, 0.086),
+            ...[-1, 1].map((sd) => B(M, 0.07, 0.07, 0.07, "#f2f2f2", sd * 0.24, 0.935, 0.22)), B(M, 0.48, 0.012, 0.012, "#f2f2f2", 0, 0.906, 0.26)]);
           sign("PATTERN POCKET", "make a playlist that fits", x, top + 2.4, z + 0.2, 0, 0.3);
           prop({ id: "e5-pocket", year: "2000s", connection: "context", date: "2000-2007: the period illustrated; a modern museum homage with original patterns, not any product or historical software",
             title: "Pattern Pocket player toy", label: "PATTERN POCKET · 2000s HOMAGE", sourceKeys: ["E5-GEAR"],
@@ -739,6 +810,36 @@
         solid(3, 0.6, 1, C.bench, x, top + 0.3, z);
         for (let i = 0; i < 5; i++) solid(0.4, 0.3 + (i % 3) * 0.15, 0.4, [C.glass, C.powder, C.citrus, C.ivory, C.glass][i], x - 1.1 + i * 0.55, top + 0.6 + (0.3 + (i % 3) * 0.15) / 2, z);
         obstacle(x - 1.5, x + 1.5, z - 0.5, z + 0.5);
+      }
+      // === Gold Chain (a later addition to the period-gear cluster): a console game station at x 27 on the cluster's
+      // mat, between the display comparison and Pattern Pocket. A pedestal, a back panel with its screen, and twelve
+      // gold links along its top that light as the terminal's chain grows. Its game is its own module
+      // (genesis-era-5-chain.js); until a page loads it, the station says so on a board.
+      {
+        const z = Z(60), x = 27, CH = BL.genesisEra5Chain;
+        if (CH) { S.chain = CH.chain(); S.chain.deal(2005); }
+        solid(1.4, 0.9, 0.9, C.bench, x, top + 0.45, z);
+        solid(1.4, 1.2, 0.12, C.graphite, x, top + 1.5, z - 0.3);
+        solid(1.1, 0.7, 0.02, "#141a20", x, top + 1.6, z - 0.235, 0.3);
+        for (let i = 0; i < 12; i++) { const l = solid(0.07, 0.05, 0.03, C.gold, x - 0.55 + i * 0.1, top + 2.18, z - 0.22, 0.7); l.visible = false; N.chainLinks.push(l); }
+        // The screen's chain of tiles, the gate's bracket, the pedestal's foot, lip and a sloped key shelf, and a
+        // plain gold medallion of three linked rings on the panel's crown.
+        detail(kit, x, top, z, (M) => [B(M, 1.44, 0.06, 0.94, C.graphite, 0, 0.03, 0), B(M, 1.44, 0.03, 0.94, C.silver, 0, 0.885, 0),
+          B(M, 1.44, 0.05, 0.16, C.silver, 0, 2.125, -0.3), B(M, 1.2, 0.08, 0.32, "#2c3035", 0, 0.94, 0.15),
+          ...[0, 1, 2, 3, 4].map((k) => B(M, 0.1, 0.06, 0.004, k === 4 ? C.gold : "#8a5a2c", -0.36 + k * 0.15, 1.78, -0.222, k === 4 ? 0.8 : 0.4)),
+          ...[0, 1, 2, 3].map((k) => B(M, 0.05, 0.008, 0.004, C.gold, -0.285 + k * 0.15, 1.78, -0.221, 0.5)),
+          ...[-1, 1].flatMap((sd) => [B(M, 0.015, 0.14, 0.004, C.glass, sd * 0.3, 1.5, -0.222, 1), B(M, 0.05, 0.015, 0.004, C.glass, sd * 0.28, 1.57, -0.222, 1), B(M, 0.05, 0.015, 0.004, C.glass, sd * 0.28, 1.43, -0.222, 1)]),
+          B(M, 0.5, 0.012, 0.004, "#8a5a2c", 0.35, 1.5, -0.222, 0.4), B(M, 0.4, 0.05, 0.02, C.citrus, 0, 1.08, 0.31, 0.5),
+          ...[-1, 0, 1].map((k) => disc(M, 0.07, 0.02, C.gold, k * 0.11, 2.3, -0.3, 0.3)), ...[-1, 0, 1].map((k) => disc(M, 0.035, 0.024, C.graphite, k * 0.11, 2.3, -0.298))]);
+        obstacle(x - 0.75, x + 0.75, z - 0.5, z + 0.5);
+        sign("GOLD CHAIN", "take the links that fit the tail", x, top + 2.75, z - 0.1, 0, 0.3);
+        const show = () => { for (let i = 0; i < 12; i++) N.chainLinks[i].visible = i < S.chain.linked(); };
+        prop({ id: "e5-chain", year: 2005, connection: "context", date: "2005: the qualified year of the bit gold essay whose chained strings inspired this original game; a modern museum homage, not historical software",
+          title: "Gold Chain game", label: "GOLD CHAIN · 2005-INSPIRED HOMAGE", hint: "Type TAKE when the link fits the tail", sourceKeys: ["E5-BG"],
+          at: { x, y: top, z: z + 1.5 }, reach: 1.9, pick: { w: 1.4, h: 2.4, d: 1, x, z },
+          onUse: () => !S.chain ? ({ board: { room: "Not loaded yet", sources: ["E5-DOSSIER"], pages: [{ caption: "Coming soon", title: "Gold Chain is not on this page yet",
+            text: ["This station's game is its own module, and this page has not loaded it yet.", "Everything else in the cave works as before."] }] } })
+            : ({ terminal: watched(CH.terminal(S.chain, CHAIN_STORY), show) }) });
       }
       ringShow(); stampShow(); cabShow(); goldShow(); mosaicShow(); gpsShow(); wikiShow(); playerShow();
     },

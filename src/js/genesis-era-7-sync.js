@@ -123,15 +123,43 @@
 
   // --- On the retro screen ----------------------------------------------------------------------------------------
   // The retro-games.js interface. Left and right (aim.steps) pick a terminal; Space or a tap (act) plugs it in, or
-  // starts a run when idle. A beat passes every BEAT_S seconds of play.
-  const BEAT_S = 1.1, END_S = 1.6;
+  // starts a run when idle. A beat passes every BEAT_S seconds of play. Everything below the rules is look and feel:
+  // each terminal is a little monitor on a stand whose cable runs down to the shared link line; a new record runs
+  // along the line as a pulse from its maker, a dropped link swings its cable loose, a broken record knocks at the
+  // line's far end and is turned away, and a terminal plugged back in throws sparks and counts what it copied. The
+  // effects use only the kit's text, numbers, juice and fixed step (plus a small spark pool of their own), and hold
+  // still under the visitor's reduced motion (`host.still`).
+  const BEAT_S = 1.1, END_S = 1.6, SPARKS = 32, SAY_S = 0.9;
+  const LINE_Y = 72, LINE_X0 = 10, LINE_X1 = 150;
+  // What the foot line says after an event: 1 a record, 2 a drop, 3 a refusal, 5 a terminal caught up.
+  const SAID = ["", "NEW RECORD SHARED", "A LINK DROPPED", "BROKEN RECORD REFUSED", "", "CAUGHT UP"];
+  const COPIED = ["+0", "+1", "+2", "+3", "+4", "+5", "+6", "+7", "+8"];
   const make = (host) => {
     const K = BL.retroGames.kit, out = K.hooks(host), aim = out.aim, status = K.makeStatus("Beats");
     const R = createRules(), J = K.juice(host), I = K.INK, T = K.TEXT, seeder = K.rng();
-    const G = { phase: "idle", t: 0, sel: 0, steps: 0, endT: 0, flash: new Float32Array(PEERS) };
+    const G = { phase: "idle", t: 0, sel: 0, steps: 0, endT: 0, flash: new Float32Array(PEERS), glow: new Float32Array(PEERS), plugged: new Float32Array(PEERS),
+      clock: 0, pulse: 0, pulseX: 0, knock: 0, say: 0, said: 0, win: 0 };
+    // Sparks: a fixed pool, two inks (a terminal's colour and white), thrown from a point and falling.
+    const P = { x: new Float32Array(SPARKS), y: new Float32Array(SPARKS), vx: new Float32Array(SPARKS), vy: new Float32Array(SPARKS), life: new Float32Array(SPARKS), ink: new Uint8Array(SPARKS), next: 0, live: 0 };
+    const SPARK_INK = [I.banana, I.white, I.lime, I.red];
+    const burst = (x, y, n, ink) => {
+      if (host.still) return;
+      for (let k = 0; k < n; k++) {
+        const i = P.next; P.next = (P.next + 1) % SPARKS;
+        if (P.life[i] <= 0) P.live++;
+        const a = Math.random() * Math.PI * 2, v = 18 + Math.random() * 30;
+        P.x[i] = x; P.y[i] = y; P.vx[i] = Math.cos(a) * v; P.vy[i] = Math.sin(a) * v - 20; P.life[i] = 0.35 + Math.random() * 0.3; P.ink[i] = k & 1 ? 1 : ink;
+      }
+    };
     const BOX_X = [12, 62, 112], BOX_Y = 34, BOX_W = 36, BOX_H = 28;
+    const mid = (i) => BOX_X[i] + BOX_W / 2;
     const sync = () => { status.score = R.score(); status.left = BEATS - R.beats; status.round = R.head; status.target = TARGET; status.note = R.inStep() ? "In step" : "Out of step"; };
-    const finish = () => { G.phase = "end"; G.endT = END_S; out.cue(R.won ? "win" : "lose", 0.8); out.over(); if (R.won) out.crack(true); else out.flop(); };
+    const tell = (k) => { G.said = k; G.say = SAY_S; };
+    const finish = () => {
+      G.phase = "end"; G.endT = END_S; out.cue(R.won ? "win" : "lose", 0.8); out.over();
+      if (R.won) { out.crack(true); G.win = 1; J.flash(I.lime, 0.4); for (let i = 0; i < PEERS; i++) burst(mid(i), BOX_Y, 8, 2); }
+      else { out.flop(); J.flash(I.red, 0.3); }
+    };
     const step = (dt) => {
       if (G.phase !== "play") return;
       const d = aim.steps - G.steps;
@@ -140,14 +168,60 @@
       if (G.t >= BEAT_S) {
         G.t -= BEAT_S;
         const e = R.beat();
-        if (e === 2) { G.flash[R.by] = 0.6; out.cue("miss", 0.5); J.shake(1); }
-        else if (e === 1) out.cue("tick", 0.4);
+        if (e === 2) { G.flash[R.by] = 0.6; out.cue("miss", 0.5); J.shake(1); tell(2); burst(mid(R.by), LINE_Y, 6, 3); }
+        else if (e === 1) { out.cue("tick", 0.4); G.pulse = 1; G.pulseX = mid(R.by); G.glow[R.by] = 0.5; tell(1); }
+        else if (e === 3) { G.knock = 0.8; tell(3); }
         sync();
         if (R.done) finish();
       }
-      for (let i = 0; i < PEERS; i++) if (G.flash[i] > 0) G.flash[i] = Math.max(0, G.flash[i] - dt);
+      for (let i = 0; i < PEERS; i++) {
+        if (G.flash[i] > 0) G.flash[i] = Math.max(0, G.flash[i] - dt);
+        if (G.glow[i] > 0) G.glow[i] = Math.max(0, G.glow[i] - dt);
+        if (G.plugged[i] > 0) G.plugged[i] = Math.max(0, G.plugged[i] - dt);
+      }
+      if (G.pulse > 0) G.pulse = Math.max(0, G.pulse - dt * 1.6);
+      if (G.knock > 0) G.knock = Math.max(0, G.knock - dt);
+      if (G.say > 0) G.say = Math.max(0, G.say - dt);
     };
     const tick = K.stepper(step);
+    const resetFx = () => { G.flash.fill(0); G.glow.fill(0); G.plugged.fill(0); G.pulse = G.knock = G.say = G.said = G.win = 0; P.life.fill(0); P.live = 0; };
+    // The pixels of one terminal: stand, bezel, screen with scanlines, name, record count and its chain of records.
+    const drawPeer = (ctx, i) => {
+      const x = BOX_X[i], on = R.online[i] === 1, behind = on && R.len[i] < R.head, chosen = G.phase === "play" && i === G.sel;
+      const live = !host.still, blink = live && ((G.clock * 4) | 0) % 2 === 0;
+      // The stand and its cable down to the line: plugged, a straight gold run with a plug seated in a socket; loose,
+      // a short cable swinging beside the socket.
+      ctx.fillStyle = I.stoneDk; ctx.fillRect(x + BOX_W / 2 - 4, BOX_Y + BOX_H + 2, 8, 2);
+      ctx.fillStyle = I.band; ctx.fillRect(mid(i) - 3, LINE_Y - 1, 6, 4);
+      if (on) {
+        ctx.fillStyle = G.plugged[i] > 0 && blink ? I.white : I.gold; ctx.fillRect(mid(i) - 1, BOX_Y + BOX_H + 4, 2, LINE_Y - BOX_Y - BOX_H - 5);
+        ctx.fillStyle = I.ochre; ctx.fillRect(mid(i) - 2, LINE_Y - 3, 4, 3);
+      } else {
+        const sway = live ? Math.round(Math.sin(G.clock * 3 + i) * 2) : 0;
+        ctx.fillStyle = I.husk; ctx.fillRect(mid(i) - 1, BOX_Y + BOX_H + 4, 2, 3); ctx.fillRect(mid(i) + sway - 1, BOX_Y + BOX_H + 7, 2, 2);
+        ctx.fillStyle = I.ochre; ctx.fillRect(mid(i) + sway * 2 - 2, BOX_Y + BOX_H + 9, 4, 3);
+      }
+      // Bezel (banana while chosen), then the screen.
+      ctx.fillStyle = chosen ? I.banana : I.stoneDk; ctx.fillRect(x - 2, BOX_Y - 2, BOX_W + 4, BOX_H + 4);
+      ctx.fillStyle = I.band; ctx.fillRect(x - 1, BOX_Y - 1, BOX_W + 2, BOX_H + 2);
+      ctx.fillStyle = G.flash[i] > 0 && live ? I.red : G.win && blink ? I.lime : !on ? I.charcoal : G.glow[i] > 0 && blink ? I.leaf : behind ? I.ochre : I.moss;
+      ctx.fillRect(x, BOX_Y, BOX_W, BOX_H);
+      ctx.fillStyle = I.band; ctx.globalAlpha = 0.25;
+      for (let y = BOX_Y + 2; y < BOX_Y + BOX_H; y += 3) ctx.fillRect(x, y, BOX_W, 1);
+      ctx.globalAlpha = 1;
+      K.text(ctx, NAMES[i], x + 3, BOX_Y + 3, on ? T.white : T.stone);
+      K.number(ctx, R.len[i], x + BOX_W - 3, BOX_Y + 3, on ? T.white : T.stone, 1, 2);
+      if (!on) K.text(ctx, "OFF", x + 9, BOX_Y + 12, blink ? T.red : T.stone);
+      else if (behind) K.text(ctx, "BEHIND", x + 1, BOX_Y + 12, T.night);
+      // The records as a chain: blocks with a link between each.
+      for (let k = 0; k < TARGET; k++) {
+        const bx = x + 2 + k * 4, have = k < R.len[i];
+        ctx.fillStyle = have ? I.banana : I.deep; ctx.fillRect(bx, BOX_Y + BOX_H - 7, 3, 4);
+        if (have && k > 0) { ctx.fillStyle = I.gold; ctx.fillRect(bx - 1, BOX_Y + BOX_H - 6, 1, 2); }
+      }
+      // A down arrow over the chosen terminal.
+      if (chosen && (blink || host.still)) { ctx.fillStyle = I.banana; ctx.fillRect(mid(i) - 3, BOX_Y - 8, 7, 1); ctx.fillRect(mid(i) - 2, BOX_Y - 7, 5, 1); ctx.fillRect(mid(i) - 1, BOX_Y - 6, 3, 1); ctx.fillRect(mid(i), BOX_Y - 5, 1, 1); }
+    };
     const game = {
       kind: "peersync", name: "Peer Sync", aims: true, status, roundLabel: "Records",
       help: "A and D or the arrows pick a terminal; Space or a tap plugs it back in. Keep all three in step until they share 8 records. A modern homage, not historical software.",
@@ -159,43 +233,72 @@
       rules: R,
       start: (seed) => {
         R.start(Number.isInteger(seed) ? seed : seeder.fresh());
-        G.phase = "play"; G.t = 0; G.sel = 0; G.steps = aim.steps; G.endT = 0; G.flash.fill(0); J.reset(); sync();
+        G.phase = "play"; G.t = 0; G.sel = 0; G.steps = aim.steps; G.endT = 0; resetFx(); J.reset(); sync();
       },
       act: () => {
         if (G.phase === "idle") { game.start(); return; }
         if (G.phase !== "play") return;
-        const n = R.plug(G.sel);
-        if (n >= 0) { out.cue("hit", 0.6); sync(); if (R.done) finish(); }
+        const i = G.sel, n = R.plug(i);
+        if (n >= 0) {
+          out.cue("hit", 0.6); G.plugged[i] = 0.5; burst(mid(i), LINE_Y - 2, 8, 0);
+          if (n > 0) { out.popup(COPIED[n] || COPIED[TARGET], false); tell(5); }
+          sync(); if (R.done) finish();
+        }
       },
-      stop: () => { G.phase = "idle"; J.reset(); },
+      stop: () => { G.phase = "idle"; resetFx(); J.reset(); },
       update: (dt) => {
         J.update(dt);
+        if (!host.still) G.clock += dt;
         tick(dt);
+        if (P.live) for (let i = 0; i < SPARKS; i++) {
+          if (P.life[i] <= 0) continue;
+          if ((P.life[i] -= dt) <= 0) { P.live--; continue; }
+          P.vy[i] += 90 * dt; P.x[i] += P.vx[i] * dt; P.y[i] += P.vy[i] * dt;
+        }
         if (G.phase === "end") { G.endT -= dt; if (G.endT <= 0) { G.phase = "done"; out.onEnd(R.score()); } }
       },
       draw: (ctx) => {
         ctx.fillStyle = I.night; ctx.fillRect(0, 0, K.W, K.H);
         J.begin(ctx);
+        // A title band and a faint floor under the line.
+        ctx.fillStyle = I.deep; ctx.fillRect(0, 0, K.W, 22);
+        ctx.fillStyle = I.rule; ctx.fillRect(0, 22, K.W, 1);
         K.centre(ctx, "PEER SYNC", 4, T.banana);
         K.centre(ctx, "MUSEUM HOMAGE 2026", 14, T.stone);
-        // The link line the terminals plug into.
-        ctx.fillStyle = I.rule; ctx.fillRect(10, 72, K.W - 20, 2);
-        for (let i = 0; i < PEERS; i++) {
-          const x = BOX_X[i], on = R.online[i], behind = on && R.len[i] < R.head;
-          ctx.fillStyle = G.phase === "play" && i === G.sel ? I.banana : I.stoneDk;
-          ctx.fillRect(x - 2, BOX_Y - 2, BOX_W + 4, BOX_H + 4);
-          ctx.fillStyle = G.flash[i] > 0 && !host.still ? I.red : !on ? I.charcoal : behind ? I.ochre : I.moss;
-          ctx.fillRect(x, BOX_Y, BOX_W, BOX_H);
-          K.text(ctx, NAMES[i], x + 3, BOX_Y + 3, on ? T.white : T.stone);
-          K.number(ctx, R.len[i], x + BOX_W - 3, BOX_Y + 3, on ? T.white : T.stone, 1, 2);
-          if (on) { ctx.fillStyle = I.gold; ctx.fillRect(x + BOX_W / 2 - 1, BOX_Y + BOX_H + 2, 2, 72 - BOX_Y - BOX_H - 2); }
-          for (let k = 0; k < TARGET; k++) { ctx.fillStyle = k < R.len[i] ? I.banana : I.deep; ctx.fillRect(x + 2 + k * 4, BOX_Y + BOX_H - 7, 3, 4); }
+        // The link line, with a socket at each end, and a record's pulse running both ways from its maker.
+        ctx.fillStyle = I.rule; ctx.fillRect(LINE_X0, LINE_Y, LINE_X1 - LINE_X0, 2);
+        ctx.fillStyle = I.stoneDk; ctx.fillRect(LINE_X0 - 2, LINE_Y - 1, 2, 4); ctx.fillRect(LINE_X1, LINE_Y - 1, 2, 4);
+        if (G.pulse > 0 && !host.still) {
+          const reach = (1 - G.pulse) * 140;
+          ctx.fillStyle = I.banana;
+          const a = G.pulseX - reach, b = G.pulseX + reach;
+          if (a >= LINE_X0) ctx.fillRect(a - 2, LINE_Y, 4, 2);
+          if (b <= LINE_X1) ctx.fillRect(b - 2, LINE_Y, 4, 2);
         }
-        if (G.phase === "idle") { K.centre(ctx, "PRESS START", 86, T.teal); K.centre(ctx, "KEEP 3 TERMINALS IN STEP", 98, T.bone); }
-        else {
+        // A broken record knocking at the far end of the line: a grey box crossed out in red.
+        if (G.knock > 0) {
+          ctx.fillStyle = I.stone; ctx.fillRect(LINE_X1 + 2, LINE_Y - 4, 6, 6);
+          ctx.fillStyle = I.red;
+          for (let k = 0; k < 6; k++) { ctx.fillRect(LINE_X1 + 2 + k, LINE_Y - 4 + k, 1, 1); ctx.fillRect(LINE_X1 + 7 - k, LINE_Y - 4 + k, 1, 1); }
+        }
+        for (let i = 0; i < PEERS; i++) drawPeer(ctx, i);
+        if (P.live) for (let k = 0; k < SPARK_INK.length; k++) {
+          ctx.fillStyle = SPARK_INK[k];
+          for (let i = 0; i < SPARKS; i++) if (P.life[i] > 0 && P.ink[i] === k) ctx.fillRect(Math.round(P.x[i]), Math.round(P.y[i]), P.life[i] > 0.3 ? 2 : 1, P.life[i] > 0.3 ? 2 : 1);
+        }
+        if (G.phase === "idle") {
+          K.centre(ctx, "PRESS START", 86, host.still || ((G.clock * 2) | 0) % 2 === 0 ? T.teal : T.stone);
+          K.centre(ctx, "KEEP 3 TERMINALS IN STEP", 98, T.bone);
+        } else {
           K.text(ctx, "REC", 10, 84, T.stone); K.number(ctx, R.head, 30, 84, T.banana); K.text(ctx, "/8", 36, 84, T.stone);
           K.text(ctx, "BEAT", 98, 84, T.stone); K.number(ctx, R.beats, 150, 84, T.banana, 1, 2);
+          // Time to the next beat, and the beats left as a thin strip.
+          if (G.phase === "play") {
+            ctx.fillStyle = I.deep; ctx.fillRect(10, 93, 140, 2);
+            ctx.fillStyle = BEATS - R.beats <= 8 ? I.ember : I.teal; ctx.fillRect(10, 93, Math.round(140 * G.t / BEAT_S), 2);
+          }
           if (G.phase !== "play") K.centre(ctx, R.won ? "IN STEP!" : "TIME UP", 100, R.won ? T.lime : T.red, 2);
+          else if (G.say > 0) K.centre(ctx, SAID[G.said], 100, G.said === 2 || G.said === 3 ? T.red : G.said === 5 ? T.lime : T.banana);
           else K.centre(ctx, R.inStep() ? "ALL AGREE" : "PLUG IN THE GREY ONES", 100, R.inStep() ? T.lime : T.ember);
         }
         J.end(ctx);
@@ -203,6 +306,5 @@
     };
     return game;
   };
-
   BL.genesisEra7Sync = { PEERS, NAMES, TARGET, BEATS, createRules, terminal, make };
 })();

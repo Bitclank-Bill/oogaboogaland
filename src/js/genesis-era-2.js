@@ -959,6 +959,51 @@
     }
   };
 
+  // --- Finer parts -----------------------------------------------------------------------------------------------
+  // Each exhibit's trims, frames, keys and small props as one merged mesh at its own spot, in its own frame (y from the
+  // floor, +x toward the stream), clear of every part that moves or lights. The layout's dry run and the checks' kits
+  // have no models, so they get a bare node at the same spot: every run counts the same pieces.
+  const detail = (kit, x, y, z, make) => {
+    const nd = kit.createNode(kit.M.merge ? { geometry: kit.M.merge(...make(kit.M)) } : {});
+    nd.position.x = x; nd.position.y = y; nd.position.z = z;
+    return kit.place(nd);
+  };
+  const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
+  const buildDetail = (kit) => {
+    const Y = kit.top, at = (key) => LAYOUT[key];
+    // The Merkle table: the board's frame and its brass header, a tag for each level, the table's aprons and feet, a
+    // brass rail and number tabs for the record cards, and the root lamp's bezel, hood and plate.
+    detail(kit, at("merkle").x, Y, at("merkle").z, (M) => [B(M, 0.16, 0.1, 3.96, "#3d2f20", -0.74, 2.8, 0), ...[-1, 1].map((s) => B(M, 0.16, 1.96, 0.08, "#3d2f20", -0.74, 1.82, s * 1.94)),
+      B(M, 0.02, 0.1, 1.0, "#c9a35a", -0.705, 2.7, 0, 0.25), ...[2.5, 2.05, 1.6, 1.15].map((y) => B(M, 0.02, 0.06, 0.06, "#c9a35a", -0.705, y, 1.85, 0.2)),
+      B(M, 0.04, 0.12, 3.6, "#4a3826", 0.79, 0.7, 0), ...[-1, 1].map((s) => B(M, 1.5, 0.12, 0.04, "#4a3826", 0, 0.7, s * 1.88)),
+      ...[[-0.7, -1.8], [0.7, -1.8], [-0.7, 1.8], [0.7, 1.8]].map(([dx, dz]) => B(M, 0.13, 0.04, 0.13, "#2a2018", dx, 0.02, dz)),
+      B(M, 0.03, 0.03, 3.5, "#c9a35a", 0.54, 0.855, 0, 0.15), ...Array.from({ length: LEAVES }, (_, i) => B(M, 0.06, 0.012, 0.06, "#4b3d68", 0.06, 0.866, 1.7 - 0.425 * (i + 0.5))),
+      B(M, 0.36, 0.05, 0.36, "#2a2230", -0.75, 2.4, -2.15), B(M, 0.36, 0.05, 0.36, "#2a2230", -0.75, 2.71, -2.15), B(M, 0.02, 0.08, 0.24, "#c9a35a", -0.59, 2.2, -2.15, 0.2)]);
+    // The blind-stamp desk: drawers with brass pulls, an edge trim, an ink pad and a stack of envelopes, the signer's
+    // screen with its cap, its envelope slot and the spent list pinned to it, the lamps' hood and the stamp's base.
+    detail(kit, at("blind").x, Y, at("blind").z, (M) => [...[-1, 1].flatMap((s) => [B(M, 0.03, 0.14, 0.8, "#7b5634", 0.715, 0.65, s * 0.7), B(M, 0.03, 0.03, 0.14, "#c9a35a", 0.735, 0.65, s * 0.7, 0.2)]),
+      B(M, 0.03, 0.03, 2.62, "#c9a35a", 0.715, 0.8, 0, 0.1), B(M, 0.16, 0.03, 0.22, "#2a2230", 0.3, 0.835, -0.85), B(M, 0.12, 0.01, 0.18, "#7a1f2e", 0.3, 0.855, -0.85),
+      B(M, 0.3, 0.05, 0.22, "#8e7ab8", 0.4, 0.845, 1.0), B(M, 0.3, 0.005, 0.02, "#6a5a8e", 0.4, 0.873, 1.0),
+      B(M, 0.1, 0.05, 2.66, "#2a2230", -0.66, 2.045, 0), B(M, 0.08, 0.06, 0.5, "#141018", -0.66, 0.93, -0.2),
+      B(M, 0.01, 0.5, 0.34, "#f5f0e2", -0.625, 1.5, 0.55), ...[0, 1, 2, 3, 4].map((k) => B(M, 0.012, 0.012, 0.24, k ? "#5a5068" : "#d0304a", -0.618, 1.68 - k * 0.08, 0.55)),
+      B(M, 0.26, 0.04, 0.26, "#2a2230", -0.6, 2.33, 0.9), B(M, 0.16, 0.03, 0.16, "#2a2230", -0.6, 0.835, -0.2)]);
+    // The office PC's desk: a drawer and its pull, a front trim, a mug, a floppy lying out, a notepad and pencil.
+    detail(kit, at("pc").x, Y, at("pc").z, (M) => [B(M, 0.03, 0.12, 0.5, "#5a3c22", 0.565, 0.6, 0.5), B(M, 0.03, 0.025, 0.12, "#c9a35a", 0.585, 0.6, 0.5, 0.15),
+      B(M, 0.03, 0.03, 1.82, "#4c331d", 0.565, 0.73, 0), B(M, 0.08, 0.1, 0.08, "#e2312f", 0.42, 0.81, 0.62), B(M, 0.02, 0.05, 0.03, "#e2312f", 0.42, 0.81, 0.675),
+      B(M, 0.06, 0.005, 0.06, "#3a2414", 0.42, 0.862, 0.62), B(M, 0.14, 0.006, 0.14, "#1d1d22", 0.36, 0.763, 0.2), B(M, 0.1, 0.004, 0.03, "#5fb36a", 0.36, 0.768, 0.25),
+      B(M, 0.12, 0.008, 0.16, "#f5ecb8", 0.38, 0.764, -0.75), B(M, 0.012, 0.012, 0.14, "#ffd23a", 0.43, 0.772, -0.75)]);
+    // The disk box's cabinet: doors and handles, a plinth, the box's label strip and the lid's hinge.
+    detail(kit, at("floppy").x, Y, at("floppy").z, (M) => [...[-1, 1].flatMap((s) => [B(M, 0.02, 0.46, 0.42, "#2a2830", 0.36, 0.3, s * 0.215), B(M, 0.03, 0.1, 0.03, "#c0c0cc", 0.375, 0.34, s * 0.04)]),
+      B(M, 0.74, 0.05, 0.94, "#0c0b10", 0, 0.025, 0), B(M, 0.01, 0.05, 0.3, "#efe6cf", 0.165, 0.7, 0), B(M, 0.03, 0.03, 0.86, "#3a3742", -0.16, 0.79, 0)]);
+    // The maze's cocktail cabinet: a coin door and slots on one end, a speaker grille on the other, glowing side trim,
+    // a kick plate, chrome edges round the glass (never over it), and the stool's chrome ring and foot.
+    detail(kit, at("maze").x, Y, at("maze").z, (M) => [B(M, 0.22, 0.26, 0.02, "#141018", 0, 0.34, 0.36), ...[-1, 1].map((s) => B(M, 0.03, 0.06, 0.012, "#ff8a2a", s * 0.05, 0.4, 0.372, 0.9)),
+      B(M, 0.08, 0.04, 0.012, "#3a3742", 0, 0.27, 0.372), B(M, 0.24, 0.12, 0.02, "#141018", 0, 0.5, -0.36), ...[0, 1, 2].map((k) => B(M, 0.2, 0.012, 0.012, "#3a3742", 0, 0.47 + k * 0.03, -0.372)),
+      ...[-1, 1].map((s) => B(M, 0.62, 0.02, 0.02, "#ff4fd8", 0, 0.6, s * 0.355, 1.0)), B(M, 0.64, 0.06, 0.74, "#0c0b10", 0, 0.03, 0),
+      ...[-1, 1].flatMap((s) => [B(M, 0.76, 0.02, 0.02, "#c0c0cc", 0, 0.72, s * 0.48), B(M, 0.02, 0.02, 0.96, "#c0c0cc", s * 0.38, 0.72, 0)]),
+      B(M, 0.36, 0.03, 0.36, "#c0c0cc", -0.6, 0.44, 0), B(M, 0.4, 0.03, 0.4, "#1a1520", -0.6, 0.015, 0)]);
+  };
+
   // The horizontal runs of wall in a maze grid; with `lay`, calls lay(i, row, col, length) for each. Returns the count.
   const mazeRuns = (grid, w, h, lay) => {
     let n = 0;
@@ -1029,8 +1074,8 @@
   // left bank just inside the arch (old u 10.5 to 13.5 down the gallery, v 9.25 to 12.25 out from the old stream's
   // edge), clear of the gateway, the lamp posts and every Era 2 exhibit. Nothing of Era 2's stands in it.
   const FUD_PATROL_ZONE = { x0: -12, x1: -9, z0: E.z1 - 13.5, z1: E.z1 - 10.5 };
-  // The upgrade cluster (genesis-era-2-cluster.js) is built here when the page has loaded its file; until the
-  // integrator adds its script tag, Era 2 builds as before.
+  // The upgrade cluster (genesis-era-2-cluster.js) and the spent-list counter (genesis-era-2-spent.js) are built here
+  // when the page has loaded their files; without them, Era 2 builds as before.
   let visit = null;
   BL.genesisExhibits.register(ERA, {
     sources: SOURCES,
@@ -1046,7 +1091,10 @@
       }
       sync(parts, live, 0, true);
       const cluster = BL.genesisEra2Cluster;
-      visit = { live, parts, cluster: cluster ? cluster.build(kit) : null };
+      visit = { live, parts, cluster: cluster ? cluster.build(kit) : null, spent: null };
+      buildDetail(kit);
+      // The spent-list counter (genesis-era-2-spent.js), built when the page has loaded its file.
+      if (BL.genesisEra2Spent) visit.spent = BL.genesisEra2Spent.build(kit);
     },
     update(dt, elapsed, state) {
       if (!visit) return;

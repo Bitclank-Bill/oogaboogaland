@@ -22,14 +22,17 @@
   const MODERN = {
     "e0-punch": "toy", // "the code is invented today"
     "e0-race": "toy", // "the race itself is a toy"
-    "e0-nim": "toy", "e0-crt": "toy", "e0-pointer": "toy", // "a modern explanatory toy"
+    "e0-nim": "toy", "e0-crt": "toy", "e0-pointer": "toy", "e0-lamps": "toy", // "a modern explanatory toy"
     "e1-gateway-puzzle": "toy", // "an illustration of the May 1974 paper"
     "e1-puzzle-post": "toy", "e1-dh-table": "toy", "e1-rsa-desk": "toy", // "a toy model of"
     "e1-floppy-toy": "toy", "e1-panel-toy": "toy", "e1-coupler-toy": "toy", // the hands-on toy beside each exhibit
     "e1-tv": "toy", "e1-calc": "toy", // "a toy tuner", "a toy with an 8-place display"
     "e1-paddle": "game", // "a modern museum homage on an original console"
+    "e1-relay": "toy", // "a modern museum toy"
     "e2-maze": "game", // "made for the voyage in 2026"
     "e2-four": "game", "e2-crt": "toy", "e2-cassette": "toy", // "a modern museum homage made in 2026"
+    "e2-spent": "game", "e3-courier": "game", "e4-inbox": "game", "e6-catch": "game", "e7-split": "game", // "a modern original museum game"
+    "e5-chain": "game", // "a modern museum homage ... not historical software"
     "e3-bbs": "toy", "e3-pager": "toy", // "period style; no model, date or specification claimed"
     "e3-rally": "game", // "the game is original to the voyage"
     "e4-desktop": "toy", // "an original museum design"

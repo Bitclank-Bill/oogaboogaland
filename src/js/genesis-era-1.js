@@ -10,6 +10,9 @@
 // original microcomputer front panel (inspired by the January 1975 Altair) with switches, lights and a 256-byte tray;
 // an acoustic-coupler demonstration with original synthesized tones (model and speed are on HOLD in the dossier, so
 // none is claimed); and a dated timeline wall.
+// On the gateway floor, between HOST B and the gateways, the relay cabinet (genesis-era-1-relay.js): a modern museum toy
+// with no historical date, whose console game is Packet Relay. Each exhibit's finer parts (frames, trims, plates,
+// knobs, chalk) are one merged mesh at its own spot (`buildDetails`), built only by the scene's kit.
 //
 // Contract (docs/genesis-voyage/EXHIBIT-CONTRACT.md on gv/exhibits): the era sign, pylons and overview board are the
 // shared signage's; this file gives the overview's summary and guide pages, two section signs past the gateway, and
@@ -672,9 +675,124 @@
         "IBM's 8-inch floppy (drives sold from 1971), a front panel inspired by the January 1975 Altair, an acoustic-coupler demonstration with original tones, and a dated timeline wall.",
         "These are context too: the gear of the decade, not steps toward Bitcoin."] },
       { caption: "How to play", title: "Toys are teaching models", text: [
-        "Walk up to a console and press Space (or USE). Every toy has HELP and RESET.",
+        "Walk up to a console and press Space (or USE). Every toy has HELP and RESET. By the hosts, the relay cabinet (a modern toy) routes packets round a dead link.",
         "The key, signature and puzzle toys use tiny numbers on purpose: they show the idea, not real security. The panel is not an emulator, and the coupler's model and speed are not yet verified."] }
     ]
+  };
+
+  // --- Finer parts: one merged mesh an exhibit ------------------------------------------------------------------------
+  // An exhibit's finer parts (frames, trims, plates, knobs, keys, chalk) as one merged mesh at (x, y, z), its parts in
+  // its own frame (y from the floor). The layout's dry run has no models, so it gets a bare node at the same spot:
+  // every run counts the same pieces, and the mesh moves with its exhibit's cluster. Each spot is inside one of the
+  // exhibit's own solids, so no cluster grows or joins another.
+  const detail = (kit, x, y, z, make) => {
+    const nd = kit.createNode(kit.M.merge ? { geometry: kit.M.merge(...make(kit.M)) } : {});
+    nd.position.x = x; nd.position.y = y; nd.position.z = z;
+    return kit.place(nd);
+  };
+  const B = (M, w, h, d, color, x, y, z, emissive = 0) => M.box({ w, h, d, color, emissive, offset: { x, y, z } });
+  const grid = (n, f) => Array.from({ length: n }, (_, i) => f(i));
+  const buildDetails = (kit) => {
+    const { top } = kit, Z1 = kit.era.z1;
+    // The two hosts: plinths, the tape drives' window frames, tape and heads, the processors' bezels, plates and
+    // handles; the gateways' base plates and the cages round their lamps.
+    detail(kit, -18.5, top, Z1 - 24, (M) => [...[-8.5, 8.5].flatMap((hx) => { const L = hx - 0.65, R = hx + 0.65; return [
+      B(M, 2.7, 0.08, 0.85, "#3a332b", hx, 0.04, 0), B(M, 0.02, 1.9, 0.77, "#5a5248", hx, 0.95, 0),
+      B(M, 1.06, 0.04, 0.03, "#8f8670", L, 1.78, 0.41), B(M, 1.06, 0.04, 0.03, "#8f8670", L, 0.92, 0.41), B(M, 0.04, 0.86, 0.03, "#8f8670", L - 0.53, 1.35, 0.41), B(M, 0.04, 0.86, 0.03, "#8f8670", L + 0.53, 1.35, 0.41),
+      B(M, 0.02, 0.42, 0.01, "#5a4a3a", L + 0.19, 1.35, 0.415), B(M, 0.02, 0.42, 0.01, "#5a4a3a", L - 0.19, 1.35, 0.415), B(M, 0.22, 0.1, 0.04, "#c9c3b4", L, 1.35, 0.42),
+      B(M, 1.06, 0.03, 0.03, "#2a2622", R, 1.665, 0.41), B(M, 1.06, 0.03, 0.03, "#2a2622", R, 1.135, 0.41), B(M, 0.5, 0.07, 0.02, "#c9a35a", R, 1.03, 0.4, 0.3),
+      B(M, 0.04, 0.22, 0.04, "#b8b8b8", R + 0.47, 0.6, 0.42), B(M, 0.04, 0.22, 0.04, "#b8b8b8", L + 0.4, 0.6, 0.39)]; }),
+      ...[2.6, -2.6].flatMap((dz) => [...[-1, 1].map((sd) => B(M, 0.5, 0.06, 0.5, "#2a3442", sd, 0.03, dz)), B(M, 2.5, 0.05, 0.46, "#5a6a80", 0, 2.92, dz),
+        ...[[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]].map(([a, b]) => B(M, 0.035, 0.4, 0.035, "#c9c3b4", a, 3.06, dz + b)), B(M, 0.46, 0.04, 0.46, "#c9c3b4", 0, 3.27, dz)])]);
+    // The gateway puzzle's teleprinter: a plinth, the paper's fold over the top, platen knobs and orange function keys.
+    detail(kit, -11.5, top, Z1 - 24 + 6.1 - 0.95, (M) => [B(M, 1.0, 0.06, 0.65, "#5a5248", 0, 0.03, 0), B(M, 0.62, 0.02, 0.14, "#f7f3ea", 0, 1.72, -0.27),
+      ...[-1, 1].map((sd) => B(M, 0.06, 0.1, 0.1, "#2a2826", sd * 0.38, 1.07, -0.18)), ...grid(3, (r) => B(M, 0.06, 0.03, 0.05, "#c8601e", 0.38, 1.055, 0.08 + r * 0.075)),
+      B(M, 0.5, 0.02, 0.05, "#efe8d6", 0, 1.01, 0.29)]);
+    // Merkle's puzzle wall: a cornice, base and sides, shelf rails, and a brass number plate and knob on every box.
+    detail(kit, -18, top, Z1 - 35, (M) => [B(M, 5.5, 0.16, 0.7, "#3a2c1e", 0, 3.48, 0.05), B(M, 5.5, 0.12, 0.7, "#3a2c1e", 0, 0.06, 0.05),
+      ...[-1, 1].map((sd) => B(M, 0.14, 3.4, 0.62, "#3a2c1e", sd * 2.66, 1.7, 0.05)), ...grid(7, (r) => B(M, 5.0, 0.03, 0.1, "#3a2c1e", 0, 0.2 + r * 0.5, 0.3)),
+      ...grid(48, (i) => B(M, 0.14, 0.035, 0.01, "#d9b44a", -2.1 + (i % 8) * 0.6, 0.55 + Math.floor(i / 8) * 0.5, 0.365, 0.2)),
+      ...grid(48, (i) => B(M, 0.05, 0.05, 0.03, "#c9a35a", -2.1 + (i % 8) * 0.6, 0.4 + Math.floor(i / 8) * 0.5, 0.37))]);
+    // Its postbox: hinges, a label card in a brass holder and a little flag.
+    detail(kit, -22, top, Z1 - 35 + 3.1 - 0.95, (M) => [...[-1, 1].map((sd) => B(M, 0.04, 0.12, 0.03, "#d9b44a", sd * 0.18, 0.95, 0.26)), B(M, 0.26, 0.1, 0.015, "#c9a35a", 0, 0.74, 0.27),
+      B(M, 0.2, 0.06, 0.01, "#f4efe2", 0, 0.74, 0.28), B(M, 0.03, 0.4, 0.03, "#2a2622", 0.3, 1.33, 0), B(M, 0.16, 0.1, 0.02, "#d94a3a", 0.38, 1.47, 0)]);
+    // The key-exchange bench: a trimmed top, a keypad at each end, insulators on the wire's posts, and Eve's
+    // headphones, notepad and the tap down from the wire.
+    detail(kit, -18, top, Z1 - 48, (M) => [B(M, 4.5, 0.04, 1.5, "#5a3f26", 0, 0.82, 0),
+      ...[-1, 1].flatMap((sd) => [B(M, 0.6, 0.04, 0.4, "#e8dcc0", sd * 1.15, 0.86, 0.35), ...grid(9, (k) => B(M, 0.1, 0.03, 0.08, "#2a2622", sd * 1.15 - 0.17 + (k % 3) * 0.17, 0.89, 0.24 + Math.floor(k / 3) * 0.11)),
+        B(M, 0.1, 0.12, 0.1, "#e8e2cc", sd * 2.4, 2.86, 0)]),
+      B(M, 0.6, 0.06, 0.1, "#2a2a2a", 0, 2.03, -1.7), ...[-1, 1].map((sd) => B(M, 0.12, 0.2, 0.2, "#2a2a2a", sd * 0.31, 1.86, -1.7)),
+      B(M, 0.02, 0.6, 0.02, "#1a1a1a", 0, 2.5, 0), B(M, 0.02, 0.02, 1.7, "#1a1a1a", 0, 2.2, -0.85), B(M, 0.02, 0.14, 0.02, "#1a1a1a", 0, 2.13, -1.7)]);
+    // Its chalkboard: chalked working, a crossbar between the legs and an eraser on the ledge.
+    // (Its spot sits 0.16 m into the easel so its dry-run box stays inside the exhibit's own footprint.)
+    detail(kit, -18, top, Z1 - 48 + 3.3 - 0.95 + 0.16, (M) => [...[[-0.3, 1.62, 0.36], [0.22, 1.62, 0.3], [-0.25, 0.99, 0.42], [0.25, 0.99, 0.3], [0.38, 1.55, 0.12]].map(([x, y, w]) => B(M, w, 0.014, 0.006, "#e8e6dc", x, y, -0.09)),
+      B(M, 1.2, 0.05, 0.05, "#7a5232", 0, 0.4, -0.16), B(M, 0.14, 0.04, 0.06, "#6b4a2b", 0.3, 0.925, -0.06)]);
+    // The signature desk: a trimmed top, drawers with brass pulls, an ink pad under the stamp, a pen pot and cards.
+    detail(kit, -18, top, Z1 - 61, (M) => [B(M, 2.7, 0.02, 1.3, "#3e2c1c", 0, 0.86, 0), ...[-1, 1].flatMap((sd) => [B(M, 0.8, 0.25, 0.02, "#6e5238", sd * 0.8, 0.55, 0.61), B(M, 0.2, 0.03, 0.03, "#c9a35a", sd * 0.8, 0.55, 0.63)]),
+      B(M, 0.3, 0.03, 0.22, "#2a2a40", 0.6, 0.885, 0), B(M, 0.08, 0.14, 0.08, "#2a2622", 1.1, 0.94, -0.4), ...grid(3, (k) => B(M, 0.015, 0.12, 0.015, k ? "#d9b44a" : "#c84a3a", 1.08 + k * 0.02, 1.04, -0.4)),
+      B(M, 0.3, 0.04, 0.2, "#f4efe2", 0.1, 0.89, -0.35)]);
+    // Its typewriter: a space bar and the table's crossbar.
+    detail(kit, -18, top, Z1 - 61 + 3.1 - 0.95, (M) => [B(M, 0.4, 0.02, 0.05, "#e8e2cc", 0, 0.86, 0.24),
+      B(M, 0.86, 0.04, 0.04, "#6a6f74", 0, 0.12, 0.29)]);
+    // The floppy drive: the slot's bezel, a plate, a power switch, the card board's supports, and a box of sleeved disks
+    // on the sleeve stand.
+    detail(kit, 27, top, Z1 - 17, (M) => [B(M, 0.9, 0.035, 0.03, "#5a554c", 0, 0.86, 0.52), ...[-1, 1].map((sd) => B(M, 0.035, 0.2, 0.03, "#5a554c", sd * 0.45, 0.95, 0.52)), B(M, 0.4, 0.06, 0.02, "#c9a35a", -0.5, 0.7, 0.52, 0.2),
+      B(M, 0.1, 0.1, 0.04, "#d9562b", 0.7, 0.7, 0.52), B(M, 1.5, 0.05, 0.08, "#2a2622", 0, 2.12, -0.3), B(M, 1.5, 0.05, 0.08, "#2a2622", 0, 1.28, -0.3),
+      ...[-1, 1].map((sd) => B(M, 0.05, 0.12, 0.05, "#2a2622", sd * 0.6, 1.22, -0.3)), B(M, 0.32, 0.2, 0.18, "#6b4a2b", -4.25, 1.0, -0.1), B(M, 0.28, 0.16, 0.02, "#e9e2cf", -4.25, 1.06, -0.005)]);
+    // Its operator's console: lamps over the push buttons and a plate.
+    detail(kit, 24.6, top, Z1 - 17 + 3.3 - 0.95, (M) => [...grid(4, (i) => B(M, 0.08, 0.05, 0.03, ["#ff8a5a", "#ffd76a", "#8fe07a", "#f4f1e6"][i], -0.27 + i * 0.18, 1.165, -0.2, 1.0)), B(M, 0.5, 0.06, 0.02, "#c9a35a", 0, 0.75, 0.26, 0.2)]);
+    // The front panel: a trimmed case, the lamps' label strip, the switches' group bands, vents, and the byte tray's frame.
+    detail(kit, 25, top, Z1 - 31, (M) => [B(M, 2.7, 0.04, 1.25, "#5a3a20", 0, 1.47, 0), B(M, 2.4, 0.012, 0.01, "#2a2622", 0, 1.28, 0.625),
+      ...grid(3, (g) => B(M, 0.86, 0.04, 0.01, g % 2 ? "#3a6a9a" : "#9a3a3a", 0.75 - g * 0.9, 1.04, 0.625)), ...grid(6, (k) => B(M, 1.6, 0.01, 0.05, "#5a3a20", 0, 1.495, -0.45 + k * 0.12)),
+      B(M, 2.3, 0.06, 0.1, "#c9a35a", 0, 4.92, -0.3), B(M, 2.3, 0.04, 0.1, "#c9a35a", 0, 2.73, -0.3), ...[-1, 1].map((sd) => B(M, 0.06, 2.2, 0.1, "#c9a35a", sd * 1.13, 3.83, -0.3))]);
+    // Its manual: tabs out of the binder's edge and a pencil.
+    detail(kit, 25, top, Z1 - 31 + 3.3 - 0.95, (M) => [...grid(4, (k) => B(M, 0.04, 0.01, 0.05, ["#d9641e", "#e9a23b", "#4f8a8b", "#6b7a3a"][k], 0.35, 1.0, -0.15 + k * 0.1)), B(M, 0.02, 0.02, 0.2, "#e9c23b", 0.12, 1.02, 0.1)]);
+    // The acoustic coupler: rubber rims on the cups, a trimmed table, the phone's cord, and the bit meter's frame.
+    detail(kit, 25, top, Z1 - 45, (M) => [...[-1, 1].map((sd) => B(M, 0.34, 0.03, 0.34, "#111111", sd * 0.3, 1.19, 0)), B(M, 2.5, 0.02, 1.2, "#4a3a2a", 0, 0.76, 0),
+      B(M, 0.02, 0.02, 0.5, "#2a2622", 0.6, 0.79, 0.1), B(M, 1.1, 0.04, 0.06, "#2a2622", 0, 1.48, -0.1), B(M, 1.1, 0.56, 0.02, "#1a1a1a", 0, 1.76, -0.15),
+      ...[-1, 1].map((sd) => B(M, 0.04, 0.62, 0.04, "#2a2622", sd * 0.55, 1.77, -0.12))]);
+    // Its portable terminal: the case's handle and catches.
+    detail(kit, 25, top, Z1 - 45 + 3.3 - 0.95, (M) => [B(M, 0.3, 0.04, 0.04, "#2a1a10", 0, 1.28, -0.24), ...[-1, 1].map((sd) => B(M, 0.06, 0.05, 0.03, "#c9c3b4", sd * 0.3, 0.84, 0.24))]);
+    // The home TV: chrome trim on top, a base rail, and the screen's bezel.
+    detail(kit, 22.6, top, Z1 - 52, (M) => [B(M, 0.62, 0.03, 1.52, "#c9c3b4", 0, 1.115, 0), B(M, 0.62, 0.05, 1.52, "#4a3020", 0, 0.27, 0),
+      B(M, 0.01, 0.04, 0.9, "#c9a35a", 0.32, 1.05, 0.2), B(M, 0.01, 0.04, 0.9, "#c9a35a", 0.32, 0.39, 0.2)]);
+    // The timeline wall: a cap and a base, a dateline across it with a tick at each plaque, and a stripe under the cap.
+    detail(kit, 26, top, Z1 - 59, (M) => [B(M, 11.3, 0.12, 0.5, "#5a4430", 0, 2.86, 0), B(M, 11.3, 0.1, 0.5, "#5a4430", 0, 0.05, 0), B(M, 10.6, 0.04, 0.02, "#e9a23b", 0, 1.58, 0.21, 0.4),
+      ...grid(9, (i) => B(M, 0.04, 0.18, 0.02, "#e9a23b", -4.4 + (i % 5) * 2.2, 1.58, 0.21, 0.4)), B(M, 11, 0.06, 0.02, "#d9641e", 0, 2.66, 0.21)]);
+  };
+
+  // --- The relay cabinet (genesis-era-1-relay.js): a modern museum toy beside the hosts ------------------------------
+  // A cream cabinet on the gateway floor between HOST B and the gateways, its face a lit map of HOST A, three gateways
+  // and HOST B: a teal lamp marks the route the switch points to, a red one the link taken down. No historical date; a
+  // toy in the spirit of the gateway paper the hosts illustrate. Its console game is Packet Relay
+  // (genesis-era-cartridges.js). Records: 7 (lamps 2, the cabinet and its finer parts in one mesh 1, sign 3, prop 1); its
+  // obstacle keeps the cabinet's footprint for the layout.
+  const RELAY = { x: -14.5, u: 19.8, laneY: [1.52, 1.32, 1.12] };
+  const buildRelay = (kit, N) => {
+    const { top, solid, sign, obstacle, prop, place, createNode, M } = kit, rx = RELAY.x, rz = kit.era.z1 - RELAY.u, face = rz + 0.36;
+    N.relayTop = top;
+    obstacle(rx - 0.85, rx + 0.85, rz - 0.4, rz + 0.4);
+    N.relayRoute = place(createNode({ geometry: M.box({ w: 0.08, h: 0.08, d: 0.03, color: "#46ffd2", emissive: 1.6 }), position: { x: rx - 0.2, y: top + RELAY.laneY[0], z: face + 0.012 } }));
+    N.relayDown = place(createNode({ geometry: M.box({ w: 0.1, h: 0.1, d: 0.03, color: "#ff4c4c", emissive: 1.6 }), position: { x: rx + 0.22, y: top + RELAY.laneY[0], z: face + 0.012 }, visible: false }));
+    // The face's lit map (HOST A, three wires through three gateways, HOST B), a lever slot under it, a cap, a plinth,
+    // vents, a plate and the switch's three marks.
+    detail(kit, rx, top, rz, (M) => [B(M, 1.6, 1.8, 0.7, "#d8cdb0", 0, 0.9, 0), B(M, 1.3, 0.62, 0.02, "#141820", 0, 1.32, 0.355), B(M, 1.4, 0.04, 0.03, "#8a8270", 0, 1.65, 0.36), B(M, 1.4, 0.04, 0.03, "#8a8270", 0, 0.99, 0.36),
+      ...[-1, 1].map((sd) => B(M, 0.16, 0.5, 0.012, "#efe6d2", sd * 0.52, 1.32, 0.37, 0.5)),
+      ...RELAY.laneY.flatMap((y) => [B(M, 0.84, 0.012, 0.01, "#5a5a62", 0, y, 0.37, 0.4), B(M, 0.1, 0.1, 0.012, "#8e8e96", 0, y, 0.372, 0.3)]),
+      B(M, 1.7, 0.1, 0.78, "#8a6a44", 0, 1.85, 0), B(M, 1.7, 0.08, 0.78, "#5a4430", 0, 0.04, 0), ...[0, 1, 2, 3].map((k) => B(M, 0.9, 0.025, 0.02, "#a89f88", 0, 0.3 + k * 0.08, 0.36)),
+      B(M, 0.5, 0.07, 0.02, "#c9a35a", 0, 0.66, 0.36, 0.2), B(M, 0.5, 0.16, 0.04, "#2a2622", 0, 0.86, 0.37), ...[0, 1, 2].map((k) => B(M, 0.08, 0.03, 0.05, "#c9c3b4", -0.15 + k * 0.15, 0.86, 0.39))]);
+    sign("RELAY CABINET · MODERN TOY", "1970s gallery / no real machine", rx, top + 2.5, rz + 0.2, 0, 0.42);
+    const R = BL.genesisEra1Relay;
+    let term = null;
+    if (R) {
+      S.relay = R.create();
+      term = R.terminal(S.relay, () => { S.relayDirty = true; });
+    }
+    prop({ id: "e1-relay", year: "1970s", date: "No historical date: a modern museum toy shown in the 1970s gallery", connection: "context", title: "Relay cabinet - modern toy",
+      label: "RELAY CABINET · MODERN TOY · 1970s GALLERY", hint: "Type ROUTE 2, FAIL 2, then SEND", sourceKeys: ["e1CerfKahn", "e1Rfc675"],
+      demo: ["ROUTE 2", "SEND", "FAIL 2", "SEND", "ROUTE 3", "SEND", "RULES"],
+      at: { x: rx, y: top, z: rz + 1.4 }, reach: 1.7, pick: { w: 1.7, h: 2, d: 1.0, x: rx, z: rz },
+      onUse: () => term ? { terminal: term } : { caption: "This station's program has not loaded yet." } });
   };
 
   // --- Live scene state (rebuilt each visit) ------------------------------------------------------------------------
@@ -1232,6 +1350,10 @@
         station({ id: "e1-timeline", hint: "Read what each date marks", year: 1970, date: "the decade 1970 to 1979, each plaque with what its date marks", on: { w: 11, h: 2.8, d: 0.6, x, z: zc }, title: "Timeline of the decade", label: "TIMELINE · 1970–1979", sourceKeys: PANELS.timeline.sources, x, z: zc + 1.6, onUse: board("timeline") });
       }
 
+      // --- Finer parts for every exhibit, then the relay cabinet (appended, so earlier pieces keep their order) ------
+      buildDetails(kit);
+      buildRelay(kit, N);
+
     },
 
     // Every frame in this cave: move what the toys changed. Allocation-free.
@@ -1355,6 +1477,14 @@
             N.specks[i].position.y = Sc.sy + ((tv.rng & 255) / 256 - 0.5) * 0.44;
           }
         }
+      }
+      // The relay cabinet: its route and down lamps follow the toy when a command changed it.
+      if (S.relayDirty && S.relay) {
+        S.relayDirty = false;
+        const r = S.relay;
+        N.relayRoute.position.y = N.relayTop + RELAY.laneY[r.route];
+        N.relayDown.visible = r.down >= 0;
+        if (r.down >= 0) N.relayDown.position.y = N.relayTop + RELAY.laneY[r.down];
       }
       const calc = S.calc;
       if (calc.dirty) {

@@ -107,7 +107,11 @@
   const make = (host) => {
     const K = BL.retroGames.kit, { W, INK, TEXT, text, centre, number } = K;
     const out = K.hooks(host), aim = out.aim, status = K.makeStatus("Units"), R = K.rng(), m = player();
-    const S = { col: 0, row: 0, lift: -1, steps: 0, stepsY: 0, clock: 0, show: 0, at: 0, endT: 0, note: 0, seed: 0 };
+    const S = { col: 0, row: 0, lift: -1, steps: 0, stepsY: 0, clock: 0, show: 0, at: 0, endT: 0, note: 0, seed: 0, noteT: 0, fill: 0 };
+    // The screen's own feedback (no rule reads it): sparks off the storage bar, a shake and flash, and the bar's fill
+    // easing to what is loaded (`fill`).
+    const J = K.juice(host), sparks = K.sparks(48, [INK.teal, INK.lime, INK.white, INK.banana, INK.red]);
+    const say = (n) => { S.note = n; S.noteT = 1; };
     let phase = "idle";
     const NOTES = ["LOAD PATTERNS THAT FIT", "LOADED", "UNLOADED", "PLAYLIST FULL", "OVER THE BUDGET", "LIFTED: UP/DOWN, SPACE", "SET DOWN", "LOAD SOMETHING FIRST", "PLAYING"];
     const sync = () => { status.left = BUDGET - m.used(); status.score = m.score(); status.round = Math.min(S.at + 1, Math.max(1, m.M.length)); };
@@ -125,23 +129,31 @@
         S.show -= h;
         if (S.show <= 0) {
           S.at++;
-          if (S.at >= m.M.length) { phase = "done"; S.endT = 1.2; sync(); out.cue("win"); out.crack(m.used() === BUDGET); out.over(); }
-          else { S.show = SHOW; out.cue("tick"); sync(); }
+          if (S.at >= m.M.length) {
+            phase = "done"; S.endT = 1.2; sync(); out.cue("win"); out.crack(m.used() === BUDGET);
+            if (m.used() === BUDGET) { J.flash(INK.lime, 0.35); if (!host.still) for (let i = 0; i < 5; i++) sparks.spawn(40 + i * 20, 54, 6, 55, i & 1, 3, 0.8); }
+            out.over();
+          }
+          else { S.show = SHOW; out.cue("tick"); sync(); J.flash(INK.white, 0.15); }
         }
       } else if (phase === "done") { S.endT -= h; if (S.endT <= 0) { phase = "over"; out.onEnd(status.score); } }
+      S.noteT = Math.max(0, S.noteT - h * 3);
+      const u = m.used(); S.fill += (u - S.fill) * Math.min(1, h * 12); if (Math.abs(u - S.fill) < 0.01) S.fill = u;
     });
     const act = () => {
       if (phase !== "play") return;
       if (S.col === 0) {
         const c = m.slotOf(S.row) >= 0 ? (m.remove(S.row), -1) : m.add(S.row);
-        S.note = c === -1 ? 2 : c === 0 ? 1 : c === 3 ? 3 : 4; out.cue(c <= 0 ? "click" : "buzzer");
+        say(c === -1 ? 2 : c === 0 ? 1 : c === 3 ? 3 : 4); out.cue(c <= 0 ? "click" : "buzzer");
+        if (c === 0 && !host.still) sparks.spawn(46 + m.used() * 10 - 4, 79, 8, 40, m.used() === BUDGET ? 1 : 0, 2, 0.5);
+        if (c > 0) { J.shake(2); J.flash(INK.red, 0.2); }
       } else if (S.col === 1) {
-        if (!m.M.length) { S.note = 7; out.cue("buzzer"); }
-        else if (S.lift >= 0) { S.lift = -1; S.note = 6; out.cue("click"); }
-        else { S.lift = S.row; S.note = 5; out.cue("tick"); }
+        if (!m.M.length) { say(7); out.cue("buzzer"); J.shake(1); }
+        else if (S.lift >= 0) { S.lift = -1; say(6); out.cue("click"); }
+        else { S.lift = S.row; say(5); out.cue("tick"); }
       } else {
-        if (!m.M.length) { S.note = 7; out.cue("buzzer"); return; }
-        phase = "show"; S.at = 0; S.show = SHOW; S.note = 8; out.cue("round");
+        if (!m.M.length) { say(7); out.cue("buzzer"); J.shake(1); return; }
+        phase = "show"; S.at = 0; S.show = SHOW; say(8); out.cue("round"); J.flash(INK.teal, 0.25);
       }
       sync();
     };
@@ -153,55 +165,83 @@
       get playing() { return phase === "play" || phase === "show"; },
       get seed() { return S.seed; },
       // Nothing here is random; the seed is kept so the console's replay contract still holds.
-      start: (seed) => { S.seed = Number.isInteger(seed) ? seed >>> 0 : R.fresh(); m.reset(); phase = "play"; S.col = S.row = 0; S.lift = -1; S.at = 0; S.note = 0; S.steps = aim.steps; S.stepsY = aim.stepsY; sync(); },
-      stop: () => { phase = "idle"; S.lift = -1; },
+      start: (seed) => { S.seed = Number.isInteger(seed) ? seed >>> 0 : R.fresh(); m.reset(); phase = "play"; S.col = S.row = 0; S.lift = -1; S.at = 0; S.note = 0; S.steps = aim.steps; S.stepsY = aim.stepsY; S.noteT = S.fill = 0; sparks.clear(); J.reset(); sync(); },
+      stop: () => { phase = "idle"; S.lift = -1; sparks.clear(); J.reset(); },
       act,
-      update: (dt) => { S.clock += dt; run(dt); },
+      update: (dt) => { S.clock += dt; J.update(dt); sparks.update(dt); run(dt); },
       draw: (ctx) => {
-        const t = host.still ? 0.6 : S.clock;
+        const t = host.still ? 0.6 : S.clock, spin = host.still ? 0 : (S.clock * 8 | 0) & 3;
         ctx.fillStyle = INK.night; ctx.fillRect(0, 0, W, 120);
         if (phase === "idle") {
-          centre(ctx, "PATTERN POCKET", 12, TEXT.teal, 2);
-          drawPattern(ctx, 1, t, PX, 34, PS, INK);
-          centre(ctx, "MODERN MUSEUM HOMAGE", 84, TEXT.stone);
-          if (host.still || (S.clock * 1.6 | 0) % 2) centre(ctx, "PRESS START", 100, TEXT.bone);
+          centre(ctx, "PATTERN POCKET", 8, TEXT.teal, 2);
+          // The pocket device itself: a rounded slab, its screen playing a pattern, a wheel of buttons below.
+          ctx.fillStyle = INK.stoneLt; ctx.fillRect(PX - 6, 26, PS + 12, 70); ctx.fillRect(PX - 5, 25, PS + 10, 72);
+          ctx.fillStyle = INK.white; ctx.fillRect(PX - 4, 27, PS + 8, 1);
+          drawPattern(ctx, (S.clock / 2.5 | 0) % LIBRARY.length, t, PX, 30, PS, INK);
+          ctx.fillStyle = INK.stone; ctx.fillRect(PX + 12, 78, 20, 16); ctx.fillRect(PX + 10, 80, 24, 12);
+          ctx.fillStyle = INK.stoneLt; ctx.fillRect(PX + 18, 83, 8, 6);
+          centre(ctx, "MODERN MUSEUM HOMAGE", 100, TEXT.stone);
+          if (host.still || (S.clock * 1.6 | 0) % 2) centre(ctx, "PRESS START", 110, TEXT.banana);
           return;
         }
+        J.begin(ctx);
         if (phase === "show" || phase === "done") {
-          const id = m.list[Math.min(S.at, m.M.length - 1)];
+          const at = Math.min(S.at, m.M.length - 1), id = m.list[at];
+          ctx.fillStyle = INK.deep; ctx.fillRect(36, 10, 88, 88);
           drawPattern(ctx, id, t, 40, 14, 80, INK);
-          text(ctx, UPPER[id], 40, 100, TEXT.bone);
-          number(ctx, Math.min(S.at + 1, m.M.length), 116, 100, TEXT.gold);
+          // Now playing: a turning disc, the name, which entry, and how far through this one.
+          ctx.fillStyle = INKS[id]; ctx.fillRect(4, 14, 14, 14);
+          ctx.fillStyle = INK.night; ctx.fillRect(9, 19, 4, 4);
+          ctx.fillStyle = INK.white; ctx.fillRect(spin === 0 ? 6 : spin === 1 ? 14 : spin === 2 ? 14 : 6, spin < 2 ? 16 : 24, 2, 2);
+          text(ctx, UPPER[id], 40, 101, TEXT.bone);
+          number(ctx, at + 1, 104, 101, TEXT.gold); text(ctx, "/", 110, 101, TEXT.stone); number(ctx, m.M.length, 116, 101, TEXT.stone);
+          if (phase === "show") { ctx.fillStyle = INK.rule; ctx.fillRect(40, 110, 80, 2); ctx.fillStyle = INK.teal; ctx.fillRect(40, 110, Math.round(80 * (1 - S.show / SHOW)), 2); }
+          sparks.draw(ctx);
+          J.end(ctx);
           if (phase === "done") centre(ctx, m.used() === BUDGET ? "PERFECT FIT!" : "PLAYLIST DONE", 110, TEXT.lime);
           return;
         }
-        // Library
+        // Library: each pattern's ink, its name (lime once loaded) and its size as little blocks.
         text(ctx, "LIBRARY", 2, 2, S.col === 0 ? TEXT.banana : TEXT.stone);
         for (let i = 0; i < LIBRARY.length; i++) {
-          const y = 12 + i * 10, on = m.slotOf(i) >= 0;
-          if (S.col === 0 && S.row === i) { ctx.fillStyle = INK.deep; ctx.fillRect(0, y - 1, 56, 9); }
+          const y = 12 + i * 10, on = m.slotOf(i) >= 0, here = S.col === 0 && S.row === i;
+          if (here) { ctx.fillStyle = INK.deep; ctx.fillRect(0, y - 1, 56, 9); ctx.fillStyle = INK.banana; ctx.fillRect(0, y - 1, 1, 9); }
           ctx.fillStyle = INKS[i]; ctx.fillRect(2, y + 1, 4, 5);
           text(ctx, UPPER[i], 8, y, on ? TEXT.lime : TEXT.bone);
-          number(ctx, LIBRARY[i][1], 54, y, TEXT.gold, 1, 2);
+          for (let k = 0; k < LIBRARY[i][1]; k++) { ctx.fillStyle = on ? INK.lime : INK.stoneDk; ctx.fillRect(53 - k * 3, y + 5, 2, 2); }
         }
-        // Preview
+        // Preview, in a bezel.
+        ctx.fillStyle = INK.stoneDk; ctx.fillRect(PX - 2, PY - 2, PS + 4, PS + 4);
         drawPattern(ctx, S.col === 0 ? S.row : m.M.length ? m.list[Math.min(S.row, m.M.length - 1)] : 3, t, PX, PY, PS, INK);
-        // Playlist
+        // Playlist: a lifted entry rides a warm bar and bobs.
         text(ctx, "PLAYLIST", 108, 2, S.col === 1 ? TEXT.banana : TEXT.stone);
         for (let i = 0; i < SLOTS; i++) {
-          const y = 12 + i * 10;
-          if (S.col === 1 && S.row === i) { ctx.fillStyle = S.lift >= 0 ? INK.huskDk : INK.deep; ctx.fillRect(106, y - 1, 54, 9); }
+          const y = 12 + i * 10, lifted = S.col === 1 && S.row === i && S.lift >= 0, bob = lifted && !host.still ? (S.clock * 6 | 0) & 1 : 0;
+          if (S.col === 1 && S.row === i) { ctx.fillStyle = S.lift >= 0 ? INK.huskDk : INK.deep; ctx.fillRect(106, y - 1, 54, 9); ctx.fillStyle = INK.banana; ctx.fillRect(106, y - 1, 1, 9); }
           number(ctx, i + 1, 108, y, TEXT.stone);
-          if (i < m.M.length) text(ctx, UPPER[m.list[i]], 116, y, TEXT.bone);
+          if (i < m.M.length) { ctx.fillStyle = INKS[m.list[i]]; ctx.fillRect(114, y + 1 - bob, 2, 5); text(ctx, UPPER[m.list[i]], 118, y - bob, TEXT.bone); }
+          else { ctx.fillStyle = INK.rule; ctx.fillRect(118, y + 3, 30, 1); }
         }
-        // PLAY
-        ctx.fillStyle = S.col === 2 ? INK.gold : INK.deep; ctx.fillRect(112, 56, 40, 11);
-        text(ctx, "PLAY", 121, 58, S.col === 2 ? TEXT.night : TEXT.bone);
-        // Storage bar
+        // PLAY: a button that pulses once it has something to play.
+        const ready = m.M.length > 0, pulse = ready && !host.still && (S.clock * 2 | 0) % 2;
+        ctx.fillStyle = S.col === 2 ? INK.gold : pulse ? INK.huskDk : INK.deep; ctx.fillRect(112, 56, 40, 11);
+        ctx.fillStyle = S.col === 2 ? INK.banana : INK.rule; ctx.fillRect(112, 56, 40, 1);
+        text(ctx, "PLAY", 121, 58, S.col === 2 ? TEXT.night : ready ? TEXT.bone : TEXT.stone);
+        ctx.fillStyle = S.col === 2 ? INK.night : ready ? INK.teal : INK.stoneDk; ctx.fillRect(114, 58, 1, 7); ctx.fillRect(115, 59, 1, 5); ctx.fillRect(116, 60, 1, 3); ctx.fillRect(117, 61, 1, 1);
+        // Storage bar: each unit in the ink of the pattern using it, easing in as it loads.
         text(ctx, "STORAGE", 2, 76, TEXT.stone);
-        for (let i = 0; i < BUDGET; i++) { ctx.fillStyle = i < m.used() ? INK.teal : INK.rule; ctx.fillRect(46 + i * 10, 76, 8, 7); }
+        let unit = 0;
+        for (let i = 0; i < m.M.length; i++) for (let k = 0; k < LIBRARY[m.list[i]][1]; k++, unit++) {
+          ctx.fillStyle = INK.rule; ctx.fillRect(46 + unit * 10, 76, 8, 7);
+          const f = Math.max(0, Math.min(1, S.fill - unit));
+          if (f > 0) { ctx.fillStyle = INKS[m.list[i]]; ctx.fillRect(46 + unit * 10, 76, Math.max(1, Math.round(8 * f)), 7); }
+        }
+        for (; unit < BUDGET; unit++) { ctx.fillStyle = INK.rule; ctx.fillRect(46 + unit * 10, 76, 8, 7); }
         number(ctx, m.used(), 46 + BUDGET * 10 + 3, 76, m.used() === BUDGET ? TEXT.lime : TEXT.bone);
-        centre(ctx, NOTES[S.note], 92, S.note === 3 || S.note === 4 || S.note === 7 ? TEXT.ember : TEXT.bone);
+        sparks.draw(ctx);
+        J.end(ctx);
+        const warn = S.note === 3 || S.note === 4 || S.note === 7;
+        centre(ctx, NOTES[S.note], 92, S.noteT > 0.6 && !host.still ? TEXT.white : warn ? TEXT.ember : S.note === 1 ? TEXT.lime : TEXT.bone);
         centre(ctx, "TOY UNITS, NOT MEGABYTES", 106, TEXT.stone);
       }
     };
