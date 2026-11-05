@@ -6026,6 +6026,8 @@ const hammockChecks = async () => {
   for (const handle of ["w-s-bitcoin", "MrHodlX", "2140data"])
     runInNewContext(await readFile(new URL(`../src/characters/${handle}.js`, import.meta.url), "utf8"), real);
   R.contributors = { roster: [] };
+  // This fixture runs the real equipment poser, without creating movement or NPC systems.
+  R.pilot = { WALK: { speed: 0, gravity: 1, step: 0 } };
   runInNewContext(await readFile(new URL("../src/js/crew.js", import.meta.url), "utf8"), real);
   const gearRows = [];
   for (const handle of ["hammock-club", "w-s-bitcoin", "MrHodlX", "2140data"]) {
@@ -6061,6 +6063,15 @@ const hammockChecks = async () => {
       n.parent === holder && n.geometry === originalGeometry[i] && n.visible) && cave.weapon.ammo === 7;
     if (parts.chukTrail) R.crew.poseEquipment(cave, true, 1.1);
     const trailsHidden = !parts.chukTrail || parts.chukTrail.every(n => !n.visible);
+    const lookPeer = { ...peer, visual: new Int16Array(17) };
+    parts.head.rotation.x = 0.65; lookPeer.visual[0] = 65;
+    ham.poseRemote(cave, feet, lookPeer, true);
+    const lookedUp = parts.head.rotation.x === 0.65;
+    parts.head.rotation.x = -0.45; lookPeer.visual[0] = -45;
+    ham.poseRemote(cave, feet, { ...lookPeer, rest: [0, 3, 128, 0, 0, 0] }, true);
+    const lookedDown = parts.head.rotation.x === -0.45;
+    ham.poseRemote(cave, feet, peer, true);
+    const legacyNeutral = parts.head.rotation.x === 0;
     ham.poseRemote(cave, feet, peer, false);
     const hidden = !holder.visible && !flame.visible;
     cave.weapon.primaryOwned = cave.weapon.secondaryOwned = cave.jetpackOwned = false;
@@ -6083,9 +6094,9 @@ const hammockChecks = async () => {
     R.scene.removeChild(root, cave.root);
     ham.update(0, 10, false);
     const dropped = !cave.restEquipment && !droppedHolder.parent && !cave.hammockRest;
-    gearRows.push({ handle, actual, hidden, absent, entering, exiting, restored, dropped, trailsStarted, trailsHidden, trailsResumed });
+    gearRows.push({ handle, actual, hidden, absent, entering, exiting, restored, dropped, trailsStarted, trailsHidden, trailsResumed, lookedUp, lookedDown, legacyNeutral });
   }
-  record("hub hammock: the actual club, authored axe or hockey stick, rifle and owned pack stay together under rest, including late entry/exit poses; absent gear and active twirl afterimages stay hidden, and get-up or removal restores attachments and the current twirl without changing ammo",
+  record("hub hammock: the actual club, authored axe or hockey stick, rifle and owned pack stay together under rest, including late entry/exit poses; absent gear and active twirl afterimages stay hidden, and get-up or removal restores attachments and the current twirl without changing ammo; modern rest/exit retains shared up/down head look while legacy peers remain neutral",
     gearRows.every(row => Object.entries(row).every(([key, value]) => key === "handle" || value)), JSON.stringify(gearRows));
   ham.dispose();
   record("hub hammock: dropped and disposed remote resting poses become upright and every hammock node is removed",
@@ -15643,7 +15654,7 @@ const arcadeRemoteWeapons = { name: "arcade remote weapons", why: "regression: t
     const id = 99445, previous = N.remotes.get(id), build = BL.models.caveman, rows = [], outside = [];
     const peer = { id, login: "peer", display: "Peer", body: "w-s-bitcoin", zone: "arcade.hall", x: 0, y: 0, z: 4, yaw: 0, weapon: 0, jet: 0 };
     let cave = null, pool = null;
-    const read = () => ({ visible: cave.root.visible, club: cave.parts.club.visible, gun: cave.parts.gun.visible });
+    const read = () => ({ visible: cave.root.visible, club: cave.parts.club.visible, gun: cave.parts.gun.visible, slung: cave.parts.club.parent === cave.root });
     try {
       BL.models.caveman = (...args) => { cave = build(...args); return cave; };
       N.remotes.set(id, peer); B.advance(0.1, 1 / 60);
@@ -15684,8 +15695,8 @@ const arcadeRemoteWeapons = { name: "arcade remote weapons", why: "regression: t
   })()`);
   record("arcade remote weapons: all remote held states hide clubs and hall rifles, preserve arena rifles, and hide them again on return and rejoin",
     result.rows.length === 15 && result.rows.every(r => r.visible && !r.club && r.gun === (r.place === "arena" && r.held === 2)) && result.removed && result.rejoined.visible && !result.rejoined.club && !result.rejoined.gun, JSON.stringify(result));
-  record("arcade remote weapons: the shared renderer keeps outside clubs and rifles unchanged",
-    result.outside.length === 3 && result.outside.every(r => r.visible && r.club === (r.held !== 2) && r.gun === (r.held === 2)), JSON.stringify(result.outside));
+  record("arcade remote weapons: outside the hall the primary stays visible, slung while the rifle is held",
+    result.outside.length === 3 && result.outside.every(r => r.visible && r.club && r.slung === (r.held === 2) && r.gun === (r.held === 2)), JSON.stringify(result.outside));
 } };
 // #428: a hallway page receives the running hunt without becoming a hunter or borrowing arena ammunition.
 const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regression: a hallway-only spectator receiving a running hunt gained unlimited rifle ammunition despite never entering the arena", run: async (b) => {
@@ -21557,8 +21568,14 @@ const hubPlayersAim = { name: "players camera targeting", why: "regression: the 
     rows.push({ framing });
     P.releaseFrame(true);
     P.navigate({ position: { x: 0, y: 0, z: 10 }, yaw: 0, pitch: 0.5, dist: 8 }); B.advance(1, 1 / 60);
-    const target = { x: a.root.position.x + 15, y: a.root.position.y + 1, z: a.root.position.z + 10 };
-    for (const mode of ["shoulder", "first-person"]) {
+    // Aim clearly above both eyes, so shoulder and first person each exercise a non-neutral head pitch.
+    const target = { x: a.root.position.x + 15, y: a.root.position.y + 6, z: a.root.position.z + 10 };
+    // Capture the real scene report, not a second direct call to visualState: the crew's reset runs
+    // before the pilot writes head look, so reporting too early silently sends a level head forever.
+    const sendPose = BL.net.sendPose;
+    let lookSample = null;
+    BL.net.sendPose = (...args) => { if (args[7]) lookSample = args[7][0]; return sendPose(...args); };
+    try { for (const mode of ["shoulder", "first-person"]) {
       if (mode === "shoulder") P.modeAction("mode-toggle");
       if (mode === "first-person") P.enterClose(true);
       B.advance(1, 1 / 60);
@@ -21566,10 +21583,10 @@ const hubPlayersAim = { name: "players camera targeting", why: "regression: the 
       B.advance(2, 1 / 60);
       const C = B.camera, dx = target.x - C.position.x, dy = target.y - C.position.y, dz = target.z - C.position.z;
       const fx = C.target.x - C.position.x, fy = C.target.y - C.position.y, fz = C.target.z - C.position.z;
-      rows.push({ mode, actual: P.view, accepted,
+      rows.push({ mode, actual: P.view, accepted, head: a.parts.head.rotation.x, lookSample,
         alignment: (dx * fx + dy * fy + dz * fz) / Math.hypot(dx, dy, dz) / Math.hypot(fx, fy, fz),
         moved: Math.hypot(a.root.position.x - before.x, a.root.position.y - before.y, a.root.position.z - before.z) });
-    }
+    } } finally { BL.net.sendPose = sendPose; }
     return rows;
   })()`);
   const framing = rows.shift().framing;
@@ -21578,6 +21595,8 @@ const hubPlayersAim = { name: "players camera targeting", why: "regression: the 
       && Math.abs(row.x - 0.5) < 0.05 && row.y > 0.2 && row.y < 0.6 && row.zoom === 0 && row.moved < 1e-6), JSON.stringify(framing));
   record("players camera targeting: shoulder and first person still centre the selected point within half a degree without translating the Ooga",
     rows.every(row => row.accepted && row.mode === row.actual && row.alignment > Math.cos(Math.PI / 360) && row.moved < 1e-6), JSON.stringify(rows));
+  record("regression: live head look is published after the final pilot pose while idle in shoulder and first person",
+    rows.every(row => Math.abs(row.head) > 0.01 && row.lookSample !== null && Math.abs(row.lookSample / 100 - row.head) <= 0.006), JSON.stringify(rows));
 } };
 scene("hub", { label: "birds-eye combat projection and targets", query: "solo=1&character=portlandhodl&weapon=1&mode=shoulder&combat=1", steps: [hubBirdsEyeProjection, gameCombat(hubBirdsEyeTargets), hubCombatReplay] });
 for (const character of ["portlandhodl", "w-s-bitcoin"]) for (const opts of [{ w: 1920, h: 1080 }, PHONE_SIZE]) {

@@ -608,6 +608,8 @@
     // Another page's resting Ooga, posed in this bed.
     const poseRemote = (cave, feet, rec = null, shown = true) => {
       const r = cave.root, state = rec?.rest;
+      // The shared remote pose already smoothed the current look before the bed tips the body.
+      const headPitch = rec?.visual ? cave.parts.head.rotation.x : 0;
       const k = state === 0 ? -1 : state ? state[0] : restingAt(r.position.x, feet, r.position.z);
       if (k < 0 || k >= seats.length || rec && seats[k].remote && seats[k].remote !== rec.id) {
         if (cave.hammockRest) upright(cave);
@@ -633,6 +635,7 @@
         }
         parkEquipment(cave, seats[k], shown);
       } else posed(cave, seats[k], null, shown);
+      cave.parts.head.rotation.x = headPitch;
       cave.hammockRest = true;
       return true;
     };
