@@ -495,8 +495,7 @@
   // the activity lights; `snap` puts the counters straight at their places (Calm, or leaving the cave).
   const STEP_RATE = 6, BLINK_TIME = 1.2;
   const sync = (parts, live, dt, still, snap) => {
-    const r = live.record;
-    for (let i = 0; i < ROWS.length; i++) parts.rowLit[i].visible = r.lit[i] === 1;
+    // The record case's rows are lit by `animate` (motion and light), one by one.
     const n = live.net, cmp = n.peers;
     let best = 0; for (const p of cmp) best = Math.max(best, p.history.length);
     if (n.blink > 0) n.blink = Math.max(0, n.blink - dt / BLINK_TIME);
@@ -906,6 +905,167 @@
     return { chute, show };
   };
 
+  // --- Motion and light (the second upgrade) -----------------------------------------------------------------------
+  // Built after everything else, so no earlier piece, prop or record changes its place in the build. It adds:
+  // - light pools: emissive amber floor patches at each exhibit (no point lights), the genesis case's the brightest;
+  // - the record case: lit rows come on one by one (ROW_S apart) in field order, and TEXT then lights the headline's
+  //   words on a strip of word tiles, one by one (WORD_S apart), each tile as wide as its word;
+  // - the software desk: each terminal's plug slides out of the cable rail and drops to the floor when it is unplugged,
+  //   and slides back in when it is plugged; a record travels as a packet along the cable from the rail to every
+  //   terminal that receives one; a broken record flashes red at the rail's end;
+  // - the counting frame: a conservation bar of 50 units along the frame's edge, three segments (input, output 1,
+  //   output 2) that re-divide as the beads slide, its whole length always the same;
+  // - the computer corner: a screen-light pool on the desk, a blinking cursor and the tower's turning fan.
+  // Sound goes through the kit's optional `cue(name)` (the host's cue: click, clack, relay, chime, beep, hum-start,
+  // hum-stop), once per event, never per frame. `animate` allocates nothing: every state is preallocated here, and it
+  // returns early when nothing moves. Calm shows every end state at once; leaving the cave (`settleMotion`) does too.
+  const ROW_S = 0.22, WORD_S = 0.16, PACKET_S = 0.55, PLUG_S = 0.35, BAR_RATE = 6, FAN_RATE = 9, HUM_NEAR = 3.2, HUM_FAR = 4.2;
+  const HEAD_WORDS = GENESIS.headline.split(" ");
+  const ease = (t) => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  const buildMotion = (kit, live, cl, parts, cparts) => {
+    const { top: Y, M, createNode, place: put, solid } = kit;
+    const node = (geometry, x, y, z, visible = true) => put(createNode({ geometry, position: { x, y, z }, visible }));
+    const box = (w, h, d, color, emissive = 0) => M.box({ w, h, d, color, emissive });
+    const mo = {
+      cue: typeof kit.cue === "function" ? kit.cue : null,
+      // The record case's reveal: the record's last seen version, the clock since it changed, the rows lit so far, the
+      // words lit so far, and the word tiles.
+      recVer: -1, revealT: 0, rowsShown: 0, wordsShown: 0, revealing: false, words: [], wordAt: new Int8Array(ROWS.length),
+      // The desk: last seen online flags, history lengths and refusals; each plug's position (0 in, 1 out); packets.
+      prevOn: new Uint8Array(PEERS.length), prevLen: new Uint8Array(PEERS.length), prevRej: 0, plugK: new Float32Array(PEERS.length),
+      plugs: [], packets: [], packetT: new Float32Array(PEERS.length), refuseT: 0, refuse: null,
+      // The Peer Sync cabinet's last seen plugged-in flags (its windows already show the run).
+      syncOn: new Uint8Array(3).fill(1),
+      // The frame's conservation bar: each segment's shown length in units, its nodes.
+      bar: new Float32Array(3), barNodes: [], barAt: null, frameVer: -1, frameMatch: false, countVer: -1,
+      // The computer corner: the fan, the cursor, the clock, and whether its hum is on.
+      fan: null, cursor: null, clock: 0, hum: false, top: Y
+    };
+    const say = (name) => { if (mo.cue) mo.cue(name); };
+    mo.say = say;
+    // Light pools, on the floors (just over the rugs).
+    const pool = (side, u, v, du, dv, color, emissive, lift) => { const a = at(side, u, v); solid(dv, 0.004, du, color, a.x, Y + lift, a.z, emissive); };
+    // Two layers each: a wide, dim amber wash and a smaller, warmer core, so the light falls off rather than ending
+    // at a hard edge. The genesis case's is the brightest in the gallery.
+    const pools = [[-1, 22, 6.8, 3.2, 2.6, 0.32], [1, 23, 6.8, 2.8, 2.0, 0.2], [-1, 49, 6.8, 3.0, 2.0, 0.2], [1, 44, 6.4, 1.4, 1.6, 0.16], [1, 48.5, 6.4, 2.0, 1.6, 0.16], [1, 53, 6.4, 2.2, 1.6, 0.16]];
+    for (const [side, u, v, du, dv, k] of pools) { pool(side, u, v, du, dv, "#3a2410", k, 0.026); pool(side, u, v, du * 0.55, dv * 0.55, "#6a3e18", k * 1.25, 0.031); }
+    // The headline's word tiles on the case's text row, each as wide as its word, in reading order along the row.
+    {
+      const l = LAYOUT.genesis, s = -l.side, ti = ROWS.indexOf("text"), y = Y + 2.15 - ti * 0.18, span = 1.84, gap = 0.02;
+      const chars = HEAD_WORDS.reduce((n, w) => n + w.length, 0), unit = (span - gap * (HEAD_WORDS.length - 1)) / chars;
+      let zc = l.z + span / 2;
+      for (const w of HEAD_WORDS) {
+        const d = unit * w.length;
+        mo.words.push(node(box(0.012, 0.075, d, "#fff0c8", 1.8), l.x - s * 0.212, y, zc - d / 2, false));
+        zc -= d + gap;
+      }
+    }
+    // The desk's plugs: one per terminal where its cable meets the rail.
+    {
+      const s = -1;
+      for (let k = 0; k < PEER_AT.length; k++) {
+        const p = PEER_AT[k];
+        mo.plugs.push(node(box(0.12, 0.08, 0.08, "#e0b060", 0.5), RAIL.x + s * 0.14, Y + 0.3, p.z));
+        mo.packets.push(node(box(0.07, 0.07, 0.07, "#fff0a0", 1.8), RAIL.x, Y + 0.34, p.z, false));
+      }
+      mo.refuse = node(box(0.14, 0.14, 0.14, "#ff4a3a", 1.6), RAIL.x, Y + 0.4, RAIL.z - 4.05, false);
+    }
+    // The frame's conservation bar, along the frame's stream-side edge: 50 units of BAR_U each, three segments.
+    {
+      const l = CL.frame, s = -l.side, BAR_U = 1.8 / COUNTERS, colors = ["#c8a070", "#46c8c8", "#b98cff"];
+      mo.barAt = { x: l.x + s * 0.5, y: Y + 0.84, z0: l.z + 0.9, unit: BAR_U };
+      for (let k = 0; k < 3; k++) { const nd = node(box(0.04, 0.03, 1, colors[k], 0.9), mo.barAt.x, mo.barAt.y, l.z); mo.barNodes.push(nd); }
+      solid(0.05, 0.012, 1.84, "#2a2320", mo.barAt.x, Y + 0.82, l.z);
+    }
+    // The computer corner: a screen-light pool on the desk, the cursor and the fan on the tower's face.
+    {
+      const l = CL.pc, s = -l.side;
+      solid(0.32, 0.004, 0.62, "#26405e", l.x - s * 0.18, Y + 0.773, l.z - 0.05, 0.3);
+      mo.cursor = node(box(0.012, 0.022, 0.03, "#e8f4ff", 1.6), l.x - s * 0.317, Y + 1.11, l.z - 0.3);
+      solid(0.01, 0.15, 0.15, "#18181c", l.x - s * 0.196, Y + 0.9, l.z + 0.62);
+      mo.fan = put(createNode({ position: { x: l.x - s * 0.192, y: Y + 0.9, z: l.z + 0.62 }, rotation: { x: 0, y: 0, z: 0 } }));
+      kit.addChild(mo.fan, createNode({ geometry: box(0.008, 0.13, 0.025, "#4a4a54") }), createNode({ geometry: box(0.008, 0.025, 0.13, "#4a4a54") }));
+    }
+    for (let k = 0; k < PEERS.length; k++) { mo.prevOn[k] = 1; mo.prevLen[k] = 0; }
+    return mo;
+  };
+  // The rank of each lit row among the lit rows (field order), into mo.wordAt; returns how many are lit.
+  const rankRows = (mo, r) => { let n = 0; for (let i = 0; i < ROWS.length; i++) mo.wordAt[i] = r.lit[i] === 1 ? n++ : -1; return n; };
+  const TEXT_ROW = ROWS.indexOf("text");
+  const animate = (mo, live, cl, parts, cparts, dt, state) => {
+    const snap = state.calm === true;
+    let busy = false;
+    // The record case.
+    const r = live.record;
+    if (r.version !== mo.recVer) {
+      mo.recVer = r.version; mo.revealT = 0; mo.rowsShown = 0; mo.wordsShown = 0;
+      mo.revealing = rankRows(mo, r) > 0;
+      if (mo.revealing) mo.say("relay");
+      for (let i = 0; i < ROWS.length; i++) parts.rowLit[i].visible = false;
+      for (let w = 0; w < mo.words.length; w++) mo.words[w].visible = false;
+    }
+    if (mo.revealing) {
+      mo.revealT += dt;
+      const lit = rankRows(mo, r), textRank = mo.wordAt[TEXT_ROW];
+      const rows = snap ? lit : Math.min(lit, 1 + Math.floor(mo.revealT / ROW_S));
+      const words = textRank < 0 ? 0 : snap ? mo.words.length : Math.max(0, Math.min(mo.words.length, Math.floor((mo.revealT - (textRank + 1) * ROW_S) / WORD_S) + 1));
+      if (rows !== mo.rowsShown) { mo.rowsShown = rows; for (let i = 0; i < ROWS.length; i++) parts.rowLit[i].visible = mo.wordAt[i] >= 0 && mo.wordAt[i] < rows; }
+      if (words !== mo.wordsShown) { mo.wordsShown = words; for (let w = 0; w < mo.words.length; w++) mo.words[w].visible = w < words; }
+      if (rows === lit && (textRank < 0 || words === mo.words.length)) { mo.revealing = false; if (textRank >= 0) mo.say("chime"); }
+      else busy = true;
+    }
+    // The desk: plugs, packets and refusals from what changed in the network.
+    const n = live.net;
+    for (let k = 0; k < n.peers.length; k++) {
+      const p = n.peers[k], on = p.online ? 1 : 0, len = p.history.length;
+      if (on !== mo.prevOn[k]) { mo.prevOn[k] = on; mo.say("click"); }
+      if (len > mo.prevLen[k]) { mo.packetT[k] = snap ? 0 : PACKET_S; }
+      mo.prevLen[k] = len;
+      const want = on ? 0 : 1, kk = mo.plugK[k];
+      if (kk !== want) { mo.plugK[k] = snap ? want : kk < want ? Math.min(want, kk + dt / PLUG_S) : Math.max(want, kk - dt / PLUG_S); busy = true; }
+      const e = ease(mo.plugK[k]), plug = mo.plugs[k];
+      plug.position.x = RAIL.x - 0.14 - e * 0.32; plug.position.y = mo.top + 0.3 - e * 0.24;
+      const pk = mo.packets[k];
+      if (mo.packetT[k] > 0) {
+        mo.packetT[k] = Math.max(0, mo.packetT[k] - dt);
+        const t = ease(1 - mo.packetT[k] / PACKET_S), from = RAIL.x, to = PEER_AT[k].x + PEER_HALF;
+        pk.visible = mo.packetT[k] > 0; pk.position.x = from + (to - from) * t; busy = true;
+      } else pk.visible = false;
+    }
+    if (n.rejected !== mo.prevRej) { mo.prevRej = n.rejected; mo.refuseT = snap ? 0 : 0.6; if (n.rejected) mo.say("beep"); }
+    if (mo.refuseT > 0) { mo.refuseT = Math.max(0, mo.refuseT - dt); busy = true; }
+    mo.refuse.visible = mo.refuseT > 0 && (((0.6 - mo.refuseT) * 10) | 0) % 2 === 0;
+    // The Peer Sync cabinet: a click when one of its terminals drops off or is plugged back in.
+    if (cl.rules) for (let k = 0; k < 3; k++) { const on = cl.rules.online[k]; if (on !== mo.syncOn[k]) { mo.syncOn[k] = on; mo.say("click"); } }
+    // The counting table and the frame: a clack when their counters move, a chime when the frame matches block 170.
+    const c = live.counting;
+    if (c.version !== mo.countVer) { if (mo.countVer >= 0 && c.split) mo.say("clack"); mo.countVer = c.version; }
+    const f = cl.frame;
+    if (f.version !== mo.frameVer) {
+      if (mo.frameVer >= 0 && f.moves) mo.say("clack");
+      mo.frameVer = f.version;
+      const m = f.matches(); if (m && !mo.frameMatch) mo.say("chime"); mo.frameMatch = m;
+    }
+    const B = mo.barAt;
+    let z = B.z0;
+    for (let k = 0; k < 3; k++) {
+      const want = f.count(k), cur = mo.bar[k];
+      if (cur !== want) { const nv = snap || Math.abs(want - cur) < 0.02 ? want : cur + (want - cur) * Math.min(1, dt * BAR_RATE); mo.bar[k] = nv; busy = true; }
+      const len = mo.bar[k] * B.unit, nd = mo.barNodes[k];
+      nd.visible = len > 0.001; nd.scale.z = Math.max(0.001, len); nd.position.z = z - len / 2; z -= len;
+    }
+    // The computer corner: its hum while the visitor is near, the fan and the cursor (held still under Calm).
+    const pc = CL.pc, d2 = (state.x - pc.x) * (state.x - pc.x) + (state.z - pc.z) * (state.z - pc.z);
+    if (!mo.hum && d2 < HUM_NEAR * HUM_NEAR) { mo.hum = true; mo.say("hum-start"); }
+    else if (mo.hum && d2 > HUM_FAR * HUM_FAR) { mo.hum = false; mo.say("hum-stop"); }
+    if (!snap) { mo.clock = (mo.clock + dt) % 1000; mo.fan.rotation.x = (mo.fan.rotation.x + dt * FAN_RATE) % (Math.PI * 2); }
+    mo.cursor.visible = snap || ((mo.clock * 2) | 0) % 2 === 0;
+    return busy;
+  };
+  // Every end state at once, and the hum stopped: on leaving the cave and in Calm.
+  const SETTLE = { calm: true, reading: false, x: 1e6, z: 1e6 };
+  const settleMotion = (mo, live, cl, parts, cparts) => { animate(mo, live, cl, parts, cparts, 0, SETTLE); };
+
   // --- Registration -------------------------------------------------------------------------------------------------
   let visit = null;
   BL.genesisExhibits.register(ERA, {
@@ -938,21 +1098,25 @@
       // The museum polish and the split chute, after everything else (see buildDetails and buildSplit).
       buildDetails(kit);
       const split = buildSplit(kit);
+      const mo = buildMotion(kit, live, cl, parts, cparts);
       sync(parts, live, 0, true, true);
       syncCluster(cparts, cl, 0, true);
-      visit = { live, parts, cl, cparts, split };
+      settleMotion(mo, live, cl, parts, cparts);
+      visit = { live, parts, cl, cparts, split, mo };
     },
     update(dt, elapsed, state) {
       if (!visit) return;
       sync(visit.parts, visit.live, dt, state.calm === true || state.reading === true, state.calm === true);
       syncCluster(visit.cparts, visit.cl, dt, state.calm === true);
+      animate(visit.mo, visit.live, visit.cl, visit.parts, visit.cparts, dt, state);
     },
     // Nothing outlives a frame here; leaving settles the counters and the activity lights so a return resumes nothing.
-    active(on) { if (visit && !on) { visit.live.net.blink = 0; sync(visit.parts, visit.live, 0, true, true); syncCluster(visit.cparts, visit.cl, 0, true); } },
+    active(on) { if (visit && !on) { visit.live.net.blink = 0; sync(visit.parts, visit.live, 0, true, true); syncCluster(visit.cparts, visit.cl, 0, true); settleMotion(visit.mo, visit.live, visit.cl, visit.parts, visit.cparts); } },
     dispose() { visit = null; }
   });
 
   BL.genesisEra7 = { ERA, YEARS, NAME, SOURCES, OVERVIEW, EXHIBITS, ISLANDS, LAYOUT, PROPS, GENESIS, B170, RELEASE, ROWS, PEERS, MAX_RECORDS, COUNTERS,
+    buildMotion, animate, settleMotion, HEAD_WORDS, ROW_S, WORD_S,
     CLUSTER, CL, SPLIT_EX, SPLIT_AT, buildDetails, buildSplit, createFrame, frameTerminal, createClusterLive, clusterFootprints, clusterKeys, buildCluster, syncCluster,
     sourceOf, stamp, createRecord, createNet, createCounting, recordTerminal, netTerminal, countingTerminal, createLive, footprints, walkUp,
     buildModels, sync, get visit() { return visit; } };
