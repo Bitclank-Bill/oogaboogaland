@@ -8823,6 +8823,7 @@
     if (!cloudPlaying()) timechainIsland.gate.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
     if (!cloudHopper.active) islandGuide.update(dt, elapsed);
+    shareDrivenPose();
     timechainIsland.site.view(camera.position);
     for (let i = 0; i < signDetails.length; i++) {
       const sign = signDetails[i], dx = camera.position.x - sign.x, dy = camera.position.y - sign.y, dz = camera.position.z - sign.z;
@@ -9329,6 +9330,13 @@
       zoneHeldFor = 0;
     } else if ((zoneHeldFor += dt) >= ZONE_HOLD) BL.net.setZone(zone);
     shareBlend(driven, !!gorilla, zone);
+  };
+  // The pilot writes the rendered head look and weapon aim after the crew resets its stand pose.
+  // Publish those final values, while body/zone reporting above stays before remote visibility updates.
+  const shareDrivenPose = () => {
+    if (cloudHopper?.active) return;
+    const gorilla = clankerPlay && clankerPlay.player, driven = gorilla || crew.player;
+    if (!driven) return;
     const p = driven.root.position;
     if (gorilla) {
       const g = gorilla.netMotion, m = gorilla.motion, d = gorilla.drive;
