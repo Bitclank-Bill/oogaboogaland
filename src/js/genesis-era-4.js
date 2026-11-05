@@ -95,7 +95,7 @@
     return (h ^ (h >>> 16)) >>> 0;
   };
   const PER_FRAME = 64, TOTAL = 32768;
-  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null, decor = null, cluster = null, inbox = null;
+  let work = null, synth = null, desktop = null, maze = null, discs = null, balances = null, decor = null, cluster = null, inbox = null, live = null;
   // The upgrade cluster's games live in their own files (BL.genesisEra4Games); each stand opens its game's terminal,
   // with its rules core made once a visit, or says the module is not on the page yet.
   const games = () => BL.genesisEra4Games || {};
@@ -213,6 +213,369 @@
       else detail(kit, s.x, kit.top, s.z, (M) => [...plinth(M), ...STYLE[s.style](M, s.id)]);
     }
   };
+  // ---- Live models (upgrade 2): moving mechanisms inside each exhibit's own footprint --------------------------------
+  // Every moving part is its own node, placed through the kit at its exhibit (so the museum's packing keeps it with
+  // that exhibit), and every motion follows the exhibit's own state: the work stamp's counter spins while a search runs
+  // and the press comes down when a stamp lands; b-money's two ledgers take each transfer in step (or one, on a missed
+  // message); the disc archive's tray slides out and the disc spins up; pieces slide, pages flip, packets travel and
+  // retry. Eased with preallocated state; no allocation in `liveUpdate`. Under Calm (or on leaving the cave) every
+  // motion shows its final state at once. Ambient loops (the naming graph growing, the timestamp bead) run only while
+  // a panel or the workbench is open; otherwise nothing moves unless a command set it going.
+  const TAU = Math.PI * 2, QUARTER = Math.PI / 2;
+  const easeTo = (cur, tgt, k, dt) => cur + (tgt - cur) * (1 - Math.exp(-k * dt));
+  const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+  // The only sound names the hall plays (the Genesis host's cue list); each is asked for once per event, never per frame.
+  const CUES = ["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"];
+  const cue = (name) => { if (live && live.cue && CUES.includes(name)) live.cue(name); };
+  // The era's tone, late-1990s blue: the floor pools under every exhibit, and the influence station's brighter one.
+  const POOL = "#1d3f78", POOL_IN = "#24508f", HALO = "#5ea8ff", HALO_IN = "#9fd0ff";
+  const DRUM_SPEED = [1.6, 3.4, 6.5, 11, 19];
+  const STRAT_CELL_X = (gx) => -0.69 + gx * 0.23, STRAT_CELL_Z = (gy) => -0.51 + gy * 0.17;
+  const MAZE_X = (gx) => -0.27 + gx * 0.0675, MAZE_Z = (gy) => -0.434 + gy * 0.078;
+  const LINE_W = [1, 0.7, 0.85, 0.55, 0.95], SEG = 0.42, SEGS = 16;
+  const DISC_INKS = ["#c1badf", "#9fcaca", "#c9d4a2", "#d8b194"];
+  const liveBuild = (kit, spots) => {
+    const top = kit.top, at = {};
+    for (const s of spots) at[s.id] = s;
+    // A part: its own merged mesh at (x, y above the floor, z), with a rotation and scale to move.
+    const part = (x, yy, z, make) => {
+      const nd = detail(kit, x, top + yy, z, make);
+      if (!nd.rotation) nd.rotation = { x: 0, y: 0, z: 0 };
+      if (!nd.scale) nd.scale = { x: 1, y: 1, z: 1 };
+      if (nd.glow === undefined) nd.glow = 1;
+      if (nd.visible === undefined) nd.visible = true;
+      return nd;
+    };
+    live.cue = typeof kit.cue === "function" ? kit.cue : null;
+    live.top = top;
+    // Light pools on the floor under every exhibit, inside its own footprint; the influence station's is the brightest.
+    for (const s of spots) {
+      const hc = s.id === "e4-hashcash", stand = s.style === "stand";
+      const w = stand ? 2.8 : 3.8, d = stand ? 1.8 : 2.2, dz = stand ? 0.1 : 0.2;
+      part(s.x, 0.004, s.z + dz, (M) => [B(M, w, 0.006, d, hc ? "#2f6cc8" : POOL, 0, 0, 0, hc ? 0.9 : 0.45), B(M, w - 0.5, 0.004, d - 0.4, hc ? HALO : POOL_IN, 0, 0.004, 0, hc ? 1.1 : 0.5)]);
+    }
+    // Hashcash (documented influence): the era's clearest light, a counter of five drums, a found lamp, a target bar
+    // and a stamping press over the envelope.
+    {
+      const s = at["e4-hashcash"], x = s.x, z = s.z, H = live.hc = { drums: [], ang: new Float32Array(5), spin: false, spinT: 0, hit: false, nonce: -1, armT: -1, arm: null, mark: null, lamp: null, bar: null, lampG: 0.3, bits: 0 };
+      part(x, 2.26, z - 0.6, (M) => [B(M, 3.12, 0.05, 0.08, HALO_IN, 0, 0, -0.18, 1.6), B(M, 3.12, 0.02, 0.5, "#3d7fd8", 0, -0.02, 0.09, 0.7)]);
+      part(x - 0.4, 1.01, z + 0.6, (M) => [B(M, 1.3, 0.22, 0.26, "#1d2433"), B(M, 1.34, 0.03, 0.3, "#3d4c66", 0, 0.125, 0), B(M, 1.22, 0.01, 0.02, "#33415a", 0, 0.142, 0.1)]);
+      for (let k = 0; k < 5; k++) H.drums.push(part(x - 0.4 + (k - 2) * 0.22, 1.02, z + 0.67, (M) => [B(M, 0.17, 0.15, 0.15, "#efe6d2"), B(M, 0.172, 0.022, 0.152, "#2a2a2a"),
+        B(M, 0.172, 0.152, 0.022, "#2a2a2a"), B(M, 0.05, 0.04, 0.004, "#c8463c", 0, 0.045, 0.077, 0.5)]));
+      H.bar = part(x - 1.0, 1.152, z + 0.7, (M) => [B(M, 1, 0.012, 0.03, "#ffd23a", 0.5, 0, 0, 0.9)]);
+      H.lamp = part(x + 0.35, 1.17, z + 0.6, (M) => [B(M, 0.08, 0.05, 0.08, "#7dff8a", 0, 0, 0, 1)]);
+      part(x + 1.45, 0.9, z + 0.2, (M) => [B(M, 0.06, 0.62, 0.06, "#3a3a42", 0, 0.31, 0), B(M, 0.16, 0.03, 0.16, "#3a3a42", 0, 0.015, 0)]);
+      H.arm = part(x + 1.45, 1.5, z + 0.2, (M) => [B(M, 0.05, 0.05, 0.38, "#2f333b", 0, 0, 0.19), B(M, 0.04, 0.46, 0.04, "#2f333b", 0, -0.25, 0.36),
+        B(M, 0.16, 0.08, 0.12, "#8a5a2c", 0, -0.52, 0.36), B(M, 0.14, 0.02, 0.1, "#c8463c", 0, -0.565, 0.36, 0.3)]);
+      H.arm.rotation.x = -0.55;
+      H.mark = part(x + 1.45, 0.926, z + 0.56, (M) => [B(M, 0.14, 0.004, 0.1, "#c8463c", 0, 0, 0, 0.4)]);
+      H.mark.visible = false;
+      H.lamp.glow = 0.3; H.bits = 1.2 * work.bits / 12; H.bar.scale.x = H.bits;
+    }
+    // b-money: a broadcast post between the two replicas' books, a token flying to each book a message reaches, two
+    // balance bars on each book (A teal, B amber), and a lamp: green while the replicas agree, red when they don't.
+    {
+      const s = at["e4-bmoney"], x = s.x, z = s.z, Bm = live.bm = { bars: [], len: new Float32Array(4), tgt: new Float32Array(4), seen: new Int16Array(4), tokens: [], tokT: new Float32Array(2), ok: null, bad: null };
+      part(x, 0.9, z + 0.6, (M) => [B(M, 0.08, 0.4, 0.08, "#3a3a42", 0, 0.2, 0), B(M, 0.14, 0.06, 0.14, HALO, 0, 0.42, 0, 0.8)]);
+      for (let r = 0; r < 2; r++) for (let k = 0; k < 2; k++) Bm.bars.push(part(x + (r ? 0.8 : -0.8) - 0.34, 0.952, z + (k ? 0.66 : 0.5), (M) => [B(M, 1, 0.012, 0.05, k ? "#ffb02e" : "#46ffd2", 0.5, 0, 0, 0.5)]));
+      for (let r = 0; r < 2; r++) { const t = part(x, 1.35, z + 0.6, (M) => [B(M, 0.06, 0.06, 0.06, "#ffd23a", 0, 0, 0, 1.2)]); t.visible = false; Bm.tokens.push(t); Bm.tokT[r] = -1; }
+      live.bmX = x;
+      Bm.ok = part(x, 0.93, z + 0.32, (M) => [B(M, 0.1, 0.03, 0.06, "#7dff8a", 0, 0, 0, 1)]);
+      Bm.bad = part(x, 0.935, z + 0.32, (M) => [B(M, 0.1, 0.03, 0.06, "#ff5f5f", 0, 0, 0, 1.2)]);
+      Bm.bad.visible = false;
+      Bm.seen.fill(-1);
+    }
+    // Secure Names: the naming graph's six nodes light in turn while its panel is open (the graph growing).
+    {
+      const s = at["e4-names"], P = [[-1.1, 1.3], [-0.6, 1.75], [-0.1, 1.35], [0.4, 1.8], [0.9, 1.4], [1.2, 1.9]], N = live.names = { tiles: [], t: 0, mode: -1 };
+      for (const [px, py] of P) N.tiles.push(part(s.x + px, py, s.z - 0.6, (M) => [B(M, 0.16, 0.16, 0.006, HALO_IN, 0, 0, -0.144, 1)]));
+    }
+    // TIMESEC: a lit bead steps round the clock's ticks while its panel is open, a stamp each tick.
+    {
+      const s = at["e4-timesec"], T = live.ts = { bead: null, ang: 0, goal: 0, t: 0 };
+      T.bead = part(s.x, 1.58, s.z - 0.6, (M) => [B(M, 0.07, 0.07, 0.012, HALO, 0, 0.34, -0.142, 1.4)]);
+    }
+    // The desktop: a loading bar under the page that fills each time a page opens.
+    {
+      const s = at["e4-desktop"], D = live.desk = { bar: null, t: -1, nav: 0 };
+      part(s.x, 1.16, s.z + 0.546, (M) => [B(M, 1.3, 0.055, 0.004, "#1d2433")]);
+      D.bar = part(s.x - 0.62, 1.16, s.z + 0.549, (M) => [B(M, 1, 0.035, 0.004, "#7dff8a", 0.5, 0, 0, 0.9)]);
+      D.bar.scale.x = 1.24;
+    }
+    // The modem: its send and receive lamps flicker through the handshake after DIAL.
+    live.modem = { t: -1, dials: 0 };
+    // The disc archive: a tray slides out of the drive, the picked disc rides in and spins up; a lamp by each disc
+    // once it is loaded, a red lamp for a wrong slot.
+    {
+      const s = at["e4-cd"], C = live.cd = { tray: null, discs: [], lamps: [], red: null, t: -1, disc: 0, spin: 0, next: 0, wrong: 0, redT: -1, x: s.x, z: s.z };
+      C.tray = part(s.x, 1.06, s.z - 0.6, (M) => [B(M, 0.5, 0.02, 0.48, "#3a3a42"), B(M, 0.42, 0.005, 0.42, "#22262e", 0, 0.012, 0)]);
+      for (let i = 0; i < 4; i++) {
+        const c = DISC_INKS[i], d = part(s.x, 1.085, s.z - 0.6, (M) => [B(M, 0.36, 0.012, 0.2, c), B(M, 0.3, 0.012, 0.3, c), B(M, 0.2, 0.012, 0.36, c), B(M, 0.06, 0.014, 0.06, "#625346")]);
+        d.visible = false; C.discs.push(d);
+        C.lamps.push(part(s.x - 1.2 + i * 0.8, 0.93, s.z + 0.5, (M) => [B(M, 0.07, 0.03, 0.04, "#7dff8a", 0, 0, 0, 1)]));
+      }
+      C.red = part(s.x + 0.35, 1.06, s.z - 0.41, (M) => [B(M, 0.05, 0.04, 0.02, "#ff5f5f", 0, 0, 0, 1)]);
+    }
+    // The handheld: the maze drawn on its screen, the exit and the player's dot, which slides cell to cell.
+    {
+      const s = at["e4-pocket"], P2 = live.pocket = { dot: null, x: 0, z: 0, won: false };
+      part(s.x, 1.148, s.z, (M) => {
+        const o = [];
+        for (let gy = 0; gy < 7; gy++) for (let gx = 0; gx < 9; gx++) if (mazeRows[gy][gx] === "#") o.push(B(M, 0.064, 0.006, 0.074, "#2d3a24", MAZE_X(gx), 0, MAZE_Z(gy)));
+        o.push(B(M, 0.045, 0.008, 0.05, "#ffd23a", MAZE_X(7), 0.002, MAZE_Z(5), 1));
+        return o;
+      });
+      P2.dot = part(s.x + MAZE_X(1), 1.156, s.z + MAZE_Z(1), (M) => [B(M, 0.045, 0.014, 0.05, "#1d2433")]);
+      P2.x = MAZE_X(1); P2.z = MAZE_Z(1); P2.bx = s.x; P2.bz = s.z;
+    }
+    // The strategy board: nine more wall pegs, so every board's walls stand, and the pieces slide to the game's squares.
+    {
+      const s = at["e4-strategy"], S = live.strat = { pegs: [], x: s.x, z: s.z, board: -1, used: -1, won: false, px: new Float32Array(3), pz: new Float32Array(3) };
+      if (live.board) for (let k = 2; k < 5; k++) S.pegs.push(live.board[k]);
+      for (let k = 0; k < 9; k++) { const p = part(s.x + STRAT_CELL_X(k % 7), 0.94, s.z + STRAT_CELL_Z(k < 7 ? 6 : 5), (M) => [B(M, 0.18, 0.14, 0.13, "#5a5a62"), B(M, 0.18, 0.015, 0.13, "#7a7a84", 0, 0.075, 0)]); p.visible = false; S.pegs.push(p); }
+    }
+    // The information screen and the packet toy keep what they need here; their nodes were made with their stands.
+    live.tt = { index: -1, t: -1, page: 0 };
+    {
+      const s = at["e4-wireless"], W2 = live.radio = { pkt: null, lost: null, from: new Int8Array(SEGS), to: new Int8Array(SEGS), ok: new Uint8Array(SEGS), n: 0, t: -1, sent: 0, done: 0, flash: -1, delivered: false, x: s.x, z: s.z };
+      W2.pkt = part(s.x, 1.0, s.z, (M) => [B(M, 0.07, 0.07, 0.07, "#ffd23a", 0, 0, 0, 1.6)]);
+      W2.lost = part(s.x, 1.0, s.z, (M) => [B(M, 0.08, 0.08, 0.08, "#ff5f5f", 0, 0, 0, 1.4)]);
+      W2.pkt.visible = W2.lost.visible = false;
+    }
+  };
+  // A radio box's place on the stand (genesis-era-4-wireless.js STATIONS, laid out as the stand lays them).
+  const radioX = (i) => RADIO[i][0], radioZ = (i) => RADIO[i][1];
+  // One frame of the live models. `snap` (Calm, or leaving the cave) puts every motion at its final state at once.
+  const liveUpdate = (dt, snap, reading) => {
+    const L = live;
+    if (!L || !L.hc) return;
+    // --- Hashcash: drums spin while the search runs, settle on a quarter turn when it stops; the press comes down once
+    // when a stamp lands (the thunk), leaving its mark on the envelope.
+    {
+      const H = L.hc;
+      // The drums spin at least 0.9 s, so a stamp found in a few frames still shows the counter turning before it lands.
+      if (work.running && !H.spin) { H.spin = true; H.spinT = 0; cue("whir"); }
+      if (H.spin) {
+        let settled = true;
+        H.spinT += dt;
+        const turning = (work.running || H.spinT < 0.9) && !snap;
+        for (let k = 0; k < 5; k++) {
+          if (turning) { H.ang[k] = (H.ang[k] + dt * DRUM_SPEED[k]) % TAU; settled = false; }
+          else {
+            // Each drum settles forward onto its digit of the stamp found (the nonce in base 4, a quarter turn a
+            // digit), or zero without one: the same rest however long it spun.
+            const digit = work.nonce >= 0 ? (work.nonce >>> (2 * (4 - k))) & 3 : 0, rest = digit * QUARTER;
+            // (A stored rest rounds in the Float32Array, so "a whole turn to go" within a hair of TAU means none.)
+            let ahead = ((rest - H.ang[k]) % TAU + TAU) % TAU;
+            if (ahead > TAU - 1e-3) ahead = 0;
+            const goal = H.ang[k] + ahead;
+            H.ang[k] = snap ? goal : easeTo(H.ang[k], goal, 9, dt);
+            if (Math.abs(goal - H.ang[k]) > 1e-3) settled = false; else H.ang[k] = rest;
+          }
+          H.drums[k].rotation.x = H.ang[k];
+        }
+        if (settled && !work.running) H.spin = false;
+      }
+      if (work.nonce < 0 && H.nonce >= 0) { H.nonce = -1; H.mark.visible = false; }
+      // A stamp found: the press comes down once the counter has stopped.
+      if (work.nonce >= 0 && work.nonce !== H.nonce && (!H.spin || snap)) { H.nonce = work.nonce; H.armT = 0; H.lampG = 3; }
+      if (H.armT >= 0) {
+        const before = H.armT;
+        H.armT = snap ? 1 : H.armT + dt;
+        if (before < 0.25 && H.armT >= 0.25) { H.mark.visible = true; if (!snap) cue("thunk"); }
+        const t = H.armT, down = t < 0.25 ? smooth(t / 0.25) : t < 0.45 ? 1 : 1 - smooth((t - 0.45) / 0.45);
+        H.arm.rotation.x = -0.55 * (1 - down);
+        if (t >= 0.9) { H.armT = -1; H.arm.rotation.x = -0.55; H.mark.visible = true; }
+      }
+      const lampGoal = work.running || H.spin ? 0.7 : work.nonce >= 0 && H.nonce === work.nonce ? 1.6 : 0.3;
+      if (H.lampG !== lampGoal) { H.lampG = snap ? lampGoal : easeTo(H.lampG, lampGoal, 4, dt); if (Math.abs(H.lampG - lampGoal) < 0.01) H.lampG = lampGoal; H.lamp.glow = H.lampG; }
+      const barGoal = 1.2 * work.bits / 12;
+      if (H.bits !== barGoal) { H.bits = snap ? barGoal : easeTo(H.bits, barGoal, 10, dt); if (Math.abs(H.bits - barGoal) < 1e-3) H.bits = barGoal; H.bar.scale.x = H.bits; }
+    }
+    // --- b-money: a change in either replica sends a token to each book it reaches; that book's bars move when its
+    // token lands, so a transfer reaches both in step and a missed message leaves one behind (the red lamp).
+    {
+      const Bm = L.bm, v0 = balances.a[0], v1 = balances.b[0], v2 = balances.a[1], v3 = balances.b[1];
+      const r0 = v0 !== Bm.seen[0] || v1 !== Bm.seen[1], r1 = v2 !== Bm.seen[2] || v3 !== Bm.seen[3];
+      if (r0 || r1) {
+        const first = Bm.seen[0] < 0;
+        Bm.seen[0] = v0; Bm.seen[1] = v1; Bm.seen[2] = v2; Bm.seen[3] = v3;
+        if (r0) { Bm.tgt[0] = v0 * 0.028; Bm.tgt[1] = v1 * 0.028; Bm.tokT[0] = first || snap ? -1 : 0; if (first || snap) { Bm.len[0] = Bm.tgt[0]; Bm.len[1] = Bm.tgt[1]; } }
+        if (r1) { Bm.tgt[2] = v2 * 0.028; Bm.tgt[3] = v3 * 0.028; Bm.tokT[1] = first || snap ? -1 : 0; if (first || snap) { Bm.len[2] = Bm.tgt[2]; Bm.len[3] = Bm.tgt[3]; } }
+        if (!first && !snap) cue("clack");
+        const agree = v0 === v2 && v1 === v3;
+        Bm.ok.visible = agree; Bm.bad.visible = !agree;
+      }
+      for (let r = 0; r < 2; r++) {
+        const tk = Bm.tokens[r];
+        if (Bm.tokT[r] >= 0) {
+          Bm.tokT[r] = snap ? 1 : Bm.tokT[r] + dt / 0.45;
+          const u = smooth(Bm.tokT[r]);
+          tk.visible = Bm.tokT[r] < 1;
+          tk.position.x = L.bmX + (r ? 0.8 : -0.8) * u;
+          tk.position.y = L.top + 1.35 - 0.37 * u + Math.sin(Math.PI * u) * 0.12;
+          if (Bm.tokT[r] >= 1) Bm.tokT[r] = -1;
+        }
+        for (let k = 0; k < 2; k++) {
+          const i = r * 2 + k;
+          if (Bm.tokT[r] < 0 && Bm.len[i] !== Bm.tgt[i]) { Bm.len[i] = snap ? Bm.tgt[i] : easeTo(Bm.len[i], Bm.tgt[i], 9, dt); if (Math.abs(Bm.len[i] - Bm.tgt[i]) < 1e-3) Bm.len[i] = Bm.tgt[i]; }
+          Bm.bars[i].scale.x = Math.max(0.001, Bm.len[i]);
+        }
+      }
+    }
+    // --- Secure Names: while a panel is open the graph grows node by node (a seven-second loop); otherwise, and under
+    // Calm, every node stands lit.
+    {
+      const N = L.names, grow = reading && !snap;
+      if (grow) {
+        N.t = (N.t + dt) % 7;
+        const lit = Math.floor(N.t);
+        for (let i = 0; i < 6; i++) N.tiles[i].glow = i < lit ? 1.4 : i === lit ? 0.4 + (N.t - lit) : 0.15;
+        N.mode = 1;
+      } else if (N.mode !== 0) { for (let i = 0; i < 6; i++) N.tiles[i].glow = 1; N.t = 0; N.mode = 0; }
+    }
+    // --- TIMESEC: while a panel is open the bead steps a tick every half second; under Calm it rests at twelve.
+    {
+      const T = L.ts;
+      if (reading && !snap) {
+        T.t += dt;
+        if (T.t >= 0.5) { T.t -= 0.5; T.goal -= Math.PI / 6; if (T.goal < -TAU * 4) { T.goal += TAU * 4; T.ang += TAU * 4; } }
+      } else if (snap) { T.goal = 0; T.t = 0; }
+      if (T.ang !== T.goal) {
+        T.ang = snap ? T.goal : easeTo(T.ang, T.goal, 16, dt);
+        if (Math.abs(T.ang - T.goal) < 1e-3) T.ang = T.goal;
+        T.bead.rotation.z = T.ang;
+      }
+    }
+    // --- The desktop: each page opened, back or forward, fills the loading bar again (a click as it starts).
+    {
+      const D = L.desk;
+      if (desktop.nav !== D.nav) { D.nav = desktop.nav; D.t = snap ? -1 : 0; if (!snap) cue("click"); }
+      if (D.t >= 0) { D.t = snap ? 1 : D.t + dt / 0.8; D.bar.scale.x = Math.max(0.001, 1.24 * smooth(D.t)); if (D.t >= 1) D.t = -1; }
+      else if (D.bar.scale.x !== 1.24) D.bar.scale.x = 1.24;
+    }
+    // --- The modem: send and receive lamps flicker through the handshake's 2.3 seconds, then stand lit.
+    {
+      const Mo = L.modem, tx = decor.modem[2], rx = decor.modem[3];
+      if (desktop.dials !== Mo.dials) { Mo.dials = desktop.dials; Mo.t = snap ? -1 : 0; }
+      if (Mo.t >= 0 && tx && typeof tx === "object") {
+        Mo.t = snap ? 2.3 : Mo.t + dt;
+        const on = Math.floor(Mo.t * 8) & 1;
+        tx.glow = Mo.t >= 2.3 ? 1 : on ? 2.2 : 0.4; rx.glow = Mo.t >= 2.3 ? 1 : on ? 0.4 : 2.2;
+        if (Mo.t >= 2.3) Mo.t = -1;
+      }
+    }
+    // --- The disc archive: a correct pick slides the tray out with that disc, back in, and spins it up and down; a
+    // wrong slot flashes the red lamp; the lamp by each loaded disc stays lit.
+    {
+      const C = L.cd;
+      if (discs.next !== C.next) {
+        const loaded = discs.next > C.next;
+        C.next = discs.next;
+        for (let i = 0; i < 4; i++) C.lamps[i].glow = i < C.next ? 1.4 : 0.12;
+        if (loaded && !snap) { C.disc = C.next - 1; C.t = 0; C.spin = 0; cue("clack"); }
+      }
+      if (discs.wrong !== C.wrong) { C.wrong = discs.wrong; C.redT = snap ? -1 : 0; }
+      if (C.redT >= 0) { C.redT = snap ? 0.6 : C.redT + dt; C.red.glow = C.redT >= 0.6 ? 0.1 : (Math.floor(C.redT * 10) & 1 ? 0.3 : 2.4); if (C.redT >= 0.6) C.redT = -1; }
+      else if (C.red.glow !== 0.1) C.red.glow = 0.1;
+      if (C.t >= 0) {
+        const before = C.t;
+        C.t = snap ? 2.8 : C.t + dt;
+        const t = C.t, out = t < 0.35 ? smooth(t / 0.35) : t < 0.5 ? 1 : 1 - smooth((t - 0.5) / 0.35);
+        const z = C.z - 0.6 + 0.48 * out, d = C.discs[C.disc];
+        C.tray.position.z = z;
+        for (let i = 0; i < 4; i++) C.discs[i].visible = i === C.disc && t < 2.8;
+        d.position.z = z;
+        if (before < 0.85 && t >= 0.85 && !snap) cue("whir");
+        C.spin = t < 0.85 ? 0 : t < 1.6 ? smooth((t - 0.85) / 0.75) * 22 : t < 2.8 ? (1 - smooth((t - 1.6) / 1.2)) * 22 : 0;
+        d.rotation.y = (d.rotation.y + C.spin * (snap ? 0 : dt)) % TAU;
+        if (t >= 2.8) { C.t = -1; d.visible = false; d.rotation.y = 0; C.tray.position.z = C.z - 0.6; if (C.next === 4 && !snap) cue("chime"); }
+      }
+    }
+    // --- The handheld: the dot slides to the maze's square; at the exit it blinks once a while, then stays.
+    {
+      const P2 = L.pocket, gx = MAZE_X(maze.x), gz = MAZE_Z(maze.y);
+      if (P2.x !== gx || P2.z !== gz) {
+        P2.x = snap ? gx : easeTo(P2.x, gx, 18, dt); P2.z = snap ? gz : easeTo(P2.z, gz, 18, dt);
+        if (Math.abs(P2.x - gx) < 1e-3) P2.x = gx;
+        if (Math.abs(P2.z - gz) < 1e-3) P2.z = gz;
+        P2.dot.position.x = P2.bx + P2.x; P2.dot.position.z = P2.bz + P2.z;
+      }
+      if (maze.won !== P2.won) { P2.won = maze.won; if (maze.won && !snap) cue("chime"); }
+    }
+    // --- The strategy board: on a new board the pegs stand on its walls; each piece and the guard slide to their
+    // squares (a caught piece slides home); a click a move, a chime at the goal.
+    {
+      const S = L.strat, c = cluster && cluster.strategy;
+      if (c && live.board) {
+        const s = c.s, first = S.board < 0;
+        if (s.board !== S.board || (s.used === 0 && S.used !== 0)) {
+          S.board = s.board;
+          let k = 0;
+          for (let i = 0; i < 49 && k < S.pegs.length; i++) if (c.wall[i]) { const p = S.pegs[k++]; p.position.x = S.x + STRAT_CELL_X(i % 7); p.position.z = S.z + STRAT_CELL_Z(i / 7 | 0); p.visible = true; }
+          for (; k < S.pegs.length; k++) S.pegs[k].visible = false;
+          const goal = live.board[1];
+          goal.position.x = S.x + STRAT_CELL_X(s.goal % 7); goal.position.z = S.z + STRAT_CELL_Z(s.goal / 7 | 0);
+        }
+        if (s.used !== S.used) { if (S.used >= 0 && s.used > S.used && !snap) cue(s.won ? "chime" : "click"); S.used = s.used; }
+        for (let p = 0; p < 3; p++) {
+          const cell = p < 2 ? s.at[p] : s.guard, nd = live.board[5 + p], gx = S.x + STRAT_CELL_X(cell % 7), gz = S.z + STRAT_CELL_Z(cell / 7 | 0);
+          if (nd.position.x !== gx || nd.position.z !== gz) {
+            nd.position.x = snap || first ? gx : easeTo(nd.position.x, gx, 14, dt); nd.position.z = snap || first ? gz : easeTo(nd.position.z, gz, 14, dt);
+            if (Math.abs(nd.position.x - gx) < 1e-3) nd.position.x = gx;
+            if (Math.abs(nd.position.z - gz) < 1e-3) nd.position.z = gz;
+          }
+        }
+      }
+    }
+    // --- The information screen: a new page flips its text lines shut and open again, at the new page's widths.
+    {
+      const tt = L.tt, c = cluster && cluster.teletext;
+      if (c && live.screen) {
+        if (c.s.index !== tt.index) { const first = tt.index < 0; tt.index = c.s.index; tt.page = c.page.number; tt.t = first || snap ? 1 : 0; if (!first && !snap) cue("click"); }
+        if (tt.t >= 0) {
+          tt.t = snap ? 1 : Math.min(1, tt.t + dt / 0.4);
+          const u = tt.t, open = u < 0.5 ? 1 - smooth(u * 2) : smooth(u * 2 - 1);
+          for (let k = 0; k < 3; k++) { const nd = live.screen[4 + k]; nd.scale.y = Math.max(0.001, open); if (u >= 0.5) nd.scale.x = LINE_W[(tt.page * 3 + k) % 5]; }
+          live.screen[3].glow = 1 + (1 - open) * 1.2;
+          if (tt.t >= 1) tt.t = -1;
+        }
+      }
+    }
+    // --- The packet toy: after each SEND the packet flies hop by hop; a lost try goes halfway and comes back; a
+    // delivered packet lights box E, a lost one leaves a red marker where it gave up.
+    {
+      const Rd = L.radio, c = cluster && cluster.wireless;
+      if (c && (c.s.sent !== Rd.sent || c.s.delivered + c.s.failed !== Rd.done)) {
+        Rd.sent = c.s.sent; Rd.done = c.s.delivered + c.s.failed;
+        Rd.n = 0;
+        for (let h = 0; h < c.log.hops; h++) for (let k = 1; k <= c.log.tries[h] && Rd.n < SEGS; k++) { Rd.from[Rd.n] = c.log.from[h]; Rd.to[Rd.n] = c.log.to[h]; Rd.ok[Rd.n] = k === c.log.tries[h] && c.log.ok[h] ? 1 : 0; Rd.n++; }
+        Rd.delivered = c.s.last === "delivered";
+        Rd.t = Rd.n ? 0 : -1; Rd.lost.visible = false;
+        if (Rd.n && !snap) cue("relay");
+      }
+      if (Rd.t >= 0) {
+        Rd.t = snap ? Rd.n * SEG : Rd.t + dt;
+        const i = Math.min(Rd.n - 1, Math.floor(Rd.t / SEG)), u = Math.min(1, Rd.t / SEG - i), a = Rd.from[i], b = Rd.to[i];
+        const f = Rd.ok[i] ? smooth(u) : 0.5 * Math.sin(Math.PI * u);
+        Rd.pkt.visible = Rd.t < Rd.n * SEG;
+        Rd.pkt.position.x = Rd.x + radioX(a) + (radioX(b) - radioX(a)) * f;
+        Rd.pkt.position.z = Rd.z + radioZ(a) + (radioZ(b) - radioZ(a)) * f;
+        Rd.pkt.position.y = L.top + 0.98 + Math.sin(Math.PI * u) * 0.12;
+        if (Rd.t >= Rd.n * SEG) {
+          Rd.t = -1; Rd.pkt.visible = false;
+          if (Rd.delivered) { Rd.flash = snap ? -1 : 0; if (!snap) cue("beep"); }
+          else { const last = Rd.n - 1; Rd.lost.visible = true; Rd.lost.position.x = Rd.x + (radioX(Rd.from[last]) + radioX(Rd.to[last])) / 2; Rd.lost.position.z = Rd.z + (radioZ(Rd.from[last]) + radioZ(Rd.to[last])) / 2; Rd.lost.position.y = L.top + 1.0; }
+        }
+      }
+      if (Rd.flash >= 0) {
+        const e = cluster && cluster.leds[4];
+        Rd.flash = snap ? 1 : Rd.flash + dt;
+        if (e && typeof e === "object") e.glow = Rd.flash >= 1 ? (c && c.on[4] ? 1 : 0.1) : 1 + 2 * (1 - Rd.flash);
+        if (Rd.flash >= 1) Rd.flash = -1;
+      }
+    }
+  };
   const status = () => reply(`Message: ${work.message}; target: ${work.bits} leading zero bits.`,
     `Attempts this visit: ${work.total}/${TOTAL}; this search: ${work.attempts}.`,
     work.running ? "Searching. Use STATUS in a moment, or STOP." : work.nonce >= 0 ? `Stamp nonce ${work.nonce}; digest ${work.hash.toString(16).padStart(8, "0")}. Use VERIFY, then MESSAGE changed.` : "No stamp. SEARCH starts; TARGET 4..12 adjusts difficulty.");
@@ -295,7 +658,7 @@
     prompt: "LOCAL WEB>",
     run(line) {
       const text = clean(line).toUpperCase(), parts = text.split(/\s+/), cmd = parts[0];
-      if (cmd === "DIAL") { desktop.connected = true; return reply(dial()); }
+      if (cmd === "DIAL") { desktop.connected = true; desktop.dials++; return reply(dial()); }
       if (cmd === "HANGUP") { desktop.connected = false; silence(); return reply("Local link disconnected."); }
       if (cmd === "SIZE") {
         const size = Number(parts[1]);
@@ -312,6 +675,7 @@
       } else if (cmd === "BACK") desktop.index = Math.max(0, desktop.index - 1);
       else if (cmd === "FORWARD") desktop.index = Math.min(desktop.pages.length - 1, desktop.index + 1);
       else return reply("OPEN <page> | BACK | FORWARD | DIAL | HANGUP | SIZE <1..64>");
+      desktop.nav++;
       const page = desktop.pages[desktop.index];
       return { lines: [`museum://${page.toLowerCase()} (local text)`, ...(page === "HOME" ? overview : history[page])] };
     }
@@ -369,7 +733,7 @@
       if (parts[0] === "LIST") return reply(history.HASHCASH[0], history.NAMES[0], history.BMONEY[0], history.TIMESEC[0]);
       if (parts[0] !== "PICK" || !order.includes(parts[1])) return reply("PICK HC | PICK NAMES | PICK BM | PICK TIMESEC | LIST | RESET");
       if (discs.next === 4) return reply("Archive complete! RESET to replay.");
-      if (parts[1] !== order[discs.next]) return reply("Wrong slot. LIST gives the dated labels. Your progress is kept.");
+      if (parts[1] !== order[discs.next]) { discs.wrong++; return reply("Wrong slot. LIST gives the dated labels. Your progress is kept."); }
       discs.next++;
       return reply(discs.next === 4 ? "Archive complete! Announcement, publication, proposal, proceedings." : `Correct: ${discs.next}/4. Select the next dated disc.`);
     }
@@ -380,12 +744,13 @@
       sourceKeys: ["E4-HC", "E4-BM", "E4-NAMES", "E4-TIMESEC"], pages: [{ caption: "Era overview", title: "Work, accounts and trust", text: overview }] },
     build(kit) {
       work = { message: "hello museum", seed: seedOf("hello museum"), bits: 8, total: 0, attempts: 0, nonce: -1, hash: 0, running: false, bound: "", boundSeed: 0, boundBits: 8 };
-      desktop = { pages: ["HOME"], index: 0, connected: false };
-      maze = { x: 1, y: 1, moves: 0, won: false }; discs = { next: 0 };
+      desktop = { pages: ["HOME"], index: 0, connected: false, dials: 0, nav: 0 };
+      maze = { x: 1, y: 1, moves: 0, won: false }; discs = { next: 0, wrong: 0 };
       balances = { a: new Uint8Array([5, 5]), b: new Uint8Array([3, 3]), created: 0 };
       const { era, top, solid, sign, obstacle, prop } = kit;
       const board = (room, keys, pages) => ({ board: { room, sources: keys, pages } });
       decor = { modem: [], hub: [], step: -1, quiet: null, line: null };
+      live = { board: null, screen: null };
       const y = (h) => top + h;
       const boxes = (list) => { for (const b of list) solid(...b); };
       // Recognisable details on each station, all inside its own obstacle (x +-1.9, z -0.9 to +1.3): original,
@@ -502,18 +867,21 @@
         () => { const c = core("strategy"); return c ? { terminal: games().strategy.terminal(c, history.CHESS) } : missing; },
         { hint: "Type LOOK, then MOVE A N", connection: "context", date: "May 1997: a chess machine wins its rematch; this board is a modern museum homage" },
         (x, z) => {
-          boxes([[1.6, 0.06, 1.2, "#2a3446", x, y(0.83), z], [0.22, 0.02, 0.22, "#ffb02e", x - 0.6, y(0.87), z - 0.42, 0.4],
+          // The board, the goal tile, three wall pegs and the pieces A, B and X: kept (live.board) so the live model can
+          // slide them to the game's own squares.
+          live.board = [[1.6, 0.06, 1.2, "#2a3446", x, y(0.83), z], [0.22, 0.02, 0.22, "#ffb02e", x - 0.6, y(0.87), z - 0.42, 0.4],
             [0.2, 0.2, 0.2, "#5a5a62", x - 0.15, y(0.96), z - 0.42], [0.2, 0.2, 0.2, "#5a5a62", x + 0.3, y(0.96), z - 0.05], [0.2, 0.2, 0.2, "#5a5a62", x - 0.3, y(0.96), z + 0.15],
-            [0.14, 0.22, 0.14, "#46ffd2", x - 0.6, y(0.97), z + 0.42], [0.14, 0.22, 0.14, "#5ec8ff", x + 0.6, y(0.97), z + 0.42], [0.16, 0.3, 0.16, "#e0452b", x, y(1.01), z]]);
+            [0.14, 0.22, 0.14, "#46ffd2", x - 0.6, y(0.97), z + 0.42], [0.14, 0.22, 0.14, "#5ec8ff", x + 0.6, y(0.97), z + 0.42], [0.16, 0.3, 0.16, "#e0452b", x, y(1.01), z]].map((b) => solid(...b));
         });
       stand("e4-teletext", 30.5, 1996, "INFORMATION SCREEN / 1996-1999", "original pages - type 100", ["E4-ORIGINAL"],
         () => { const c = core("teletext"); return c ? { terminal: games().teletext.terminal(c) } : missing; },
         { hint: "Type 100, then a page number", connection: "context", date: "1996-1999: the gallery's years; an original museum screen, no historical system claimed" },
         (x, z) => {
-          boxes([[1.1, 0.85, 0.8, "#2b2b30", x, y(1.23), z - 0.05], [0.8, 0.6, 0.4, "#24242a", x, y(1.2), z - 0.6], [0.9, 0.62, 0.02, "#08140f", x, y(1.25), z + 0.36, 0.3],
+          // Kept (live.screen): the header bar and the three text lines flip when the page changes.
+          live.screen = [[1.1, 0.85, 0.8, "#2b2b30", x, y(1.23), z - 0.05], [0.8, 0.6, 0.4, "#24242a", x, y(1.2), z - 0.6], [0.9, 0.62, 0.02, "#08140f", x, y(1.25), z + 0.36, 0.3],
             [0.8, 0.05, 0.01, "#c8ff5a", x, y(1.5), z + 0.375, 0.7], ...[0, 1, 2].map((k) => [0.6 - k * 0.12, 0.035, 0.01, "#efe6d2", x - 0.1 - k * 0.06, y(1.38 - k * 0.1), z + 0.375, 0.6]),
             ...["#e0452b", "#6fae3a", "#ffd23a", "#5ec8ff"].map((c, k) => [0.16, 0.05, 0.01, c, x - 0.3 + k * 0.2, y(1.03), z + 0.375, 0.6]),
-            [0.14, 0.04, 0.4, "#1d1d22", x + 0.85, y(0.82), z + 0.4], [0.06, 0.012, 0.06, "#e0452b", x + 0.85, y(0.845), z + 0.3, 0.4]]);
+            [0.14, 0.04, 0.4, "#1d1d22", x + 0.85, y(0.82), z + 0.4], [0.06, 0.012, 0.06, "#e0452b", x + 0.85, y(0.845), z + 0.3, 0.4]].map((b) => solid(...b));
         });
       stand("e4-wireless", 35, 1997, "PACKETS BY RADIO / 26 JUN 1997", "IEEE 802.11 approved - a toy, not the protocol", ["E4-WIFI", "E4-WIFI-PAR", "E4-ORIGINAL"],
         () => { const c = core("wireless"); return c ? { terminal: games().wireless.terminal(c, history.WIFI) } : missing; },
@@ -600,6 +968,9 @@
 
       // --- Finer parts on every station and stand (one merged mesh each), then Stamp Sort --------------------------
       dressSpots(kit, spots);
+      // The live models' parts, and the strategy game ready so its board shows its first position from the start.
+      liveBuild(kit, spots);
+      core("strategy"); core("teletext"); core("wireless");
       // Stamp Sort (genesis-era-4-inbox.js): a modern original museum game on the home office's CRT, an inbox that
       // keeps letters paid for with work. Its parts dress the desk (the inbox on the glass, a letter tray, the keys)
       // inside the office's own footprint; its sign hangs on the wall over the desk, under the loft.
@@ -619,6 +990,7 @@
         onUse: () => { const c = core("inbox"); return c ? { terminal: games().inbox.terminal(c) } : missing; } });
     },
     update(dt, elapsed, state) {
+      liveUpdate(dt || 0, !!(state && state.calm), !!(state && state.reading));
       // Stamp Sort's mail lamp on the office CRT blinks slowly; under Calm or while reading it holds lit.
       if (inbox && inbox.lamp && typeof inbox.lamp === "object") {
         const step = state && (state.calm || state.reading) ? -1 : Math.floor((elapsed || 0) * 1.25) & 1;
@@ -653,13 +1025,19 @@
       }
       if (work.total >= TOTAL) work.running = false;
     },
+    // Leaving the cave: every live motion shows its final state, and the modem's tones stop.
+    active(on) {
+      if (on) return;
+      liveUpdate(0, true, false);
+      silence();
+    },
     dispose() {
       if (synth) {
         silence();
         for (const v of synth.voices) { v.osc.stop(); v.osc.disconnect(); v.gain.disconnect(); }
         synth.context.close().catch(() => {}); synth = null;
       }
-      work = desktop = maze = discs = balances = decor = cluster = inbox = null;
+      work = desktop = maze = discs = balances = decor = cluster = inbox = live = null;
     }
   });
 })();
