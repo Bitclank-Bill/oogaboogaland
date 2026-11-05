@@ -663,7 +663,7 @@
   const DIGITS = "0123456789".split("");
   // Draws a whole number right-aligned at (x, y) a digit at a time from fixed strings, so nothing is allocated.
   const drawNumber = (g, n, x, y, step) => { n = Math.max(0, Math.floor(n)); do { g.fillText(DIGITS[n % 10], x, y); x -= step; n = Math.floor(n / 10); } while (n > 0); };
-  const paintRally = () => {
+  const paintRally = (calm = false) => {
     const g = v.rallyCtx, s = v.showPlayer > 0 ? v.rally : v.demo, R = RALLY, X = 8, Y = 18, FW = 144, FH = 96;
     g.fillStyle = "#0b0a12"; g.fillRect(0, 0, 160, 120);
     g.strokeStyle = "#5a4a8a"; g.lineWidth = 2; g.strokeRect(X - 2, Y - 2, FW + 4, FH + 4);
@@ -689,17 +689,22 @@
     g.fillStyle = "#c8f6ff"; g.fillRect(px + 2, py, R.paddleW * FW - 4, 1);
     g.fillStyle = "#2a2440"; g.fillRect(X + s.x * FW - 1, Y + s.y / R.h * FH, 4, 4);
     g.fillStyle = "#ffffff"; g.fillRect(X + s.x * FW - 2, Y + s.y / R.h * FH - 2, 4, 4);
+    // The attract's invitation, blinking (steady in Calm) while the demo plays.
+    if (v.showPlayer <= 0 && (calm || (Math.floor(v.now * 2) & 1) === 0)) { g.fillStyle = "#2ee6d6"; g.font = "bold 9px monospace"; g.fillText("SPACE TO PLAY", X + 42, Y + 40); }
     v.rallySurface.version++;
   };
   // The test screen at its grid: each square one sample of the picture, then the grid's label. Only when it changes.
   const GRID_LABELS = GRIDS.map(([w, h]) => `${w} x ${h} · ILLUSTRATIVE`);
-  const paintCrt = () => {
-    const g = v.crtCtx, [gw, gh] = GRIDS[v.bbs.crt.level], sw = 160 / gw, sh = 108 / gh;
-    for (let r = 0; r < gh; r++) for (let k = 0; k < gw; k++) { g.fillStyle = CRT_INKS[crtPixel((k + 0.5) / gw, (r + 0.5) / gh)]; g.fillRect(k * sw, r * sh, sw + 0.5, sh + 0.5); }
-    g.fillStyle = "#000000"; g.fillRect(0, 108, 160, 12);
-    g.fillStyle = "#e9e1cc"; g.font = "9px monospace"; g.textBaseline = "top"; g.fillText(GRID_LABELS[v.bbs.crt.level], 4, 110);
+  // The test screen, a band of rows at a time: rows r0 to r1 of grid `level`, each square one sample of the picture, a
+  // bright scan line under the band while the wipe runs, and the grid's label once the last row is in.
+  const paintCrtRows = (level, r0, r1) => {
+    const g = v.crtCtx, gw = GRIDS[level][0], gh = GRIDS[level][1], sw = 160 / gw, sh = 108 / gh;
+    for (let r = r0; r < r1; r++) for (let k = 0; k < gw; k++) { g.fillStyle = CRT_INKS[crtPixel((k + 0.5) / gw, (r + 0.5) / gh)]; g.fillRect(k * sw, r * sh, sw + 0.5, sh + 0.5); }
+    if (r1 < gh) { g.fillStyle = "#c8fff6"; g.fillRect(0, r1 * sh, 160, 1.5); }
+    else { g.fillStyle = "#000000"; g.fillRect(0, 108, 160, 12); g.fillStyle = "#e9e1cc"; g.font = "9px monospace"; g.textBaseline = "top"; g.fillText(GRID_LABELS[level], 4, 110); }
     v.crtSurface.version++;
   };
+  const paintCrt = () => paintCrtRows(v.bbs.crt.level, 0, GRIDS[v.bbs.crt.level][1]);
   const paintPager = () => {
     const g = v.pagerCtx, slot = v.slot;
     g.fillStyle = "#1d2b16"; g.fillRect(0, 0, 192, 64);
@@ -710,7 +715,7 @@
   };
 
   const build = (kit) => {
-    const { top, M, createNode, addChild, place, solid, sign, obstacle, prop, notify } = kit;
+    const { top, M, createNode, addChild, place, solid, sign, obstacle, prop, notify, cue } = kit;
     const yaw = Math.PI / 2, L = LAYOUT, screens = typeof document !== "undefined";
     const paper = createNewspaper(), keys = createKeyStation(), bbs = createBbs(), pager = createPager(PAGER_TEXTS), triggers = createTriggers(PAGE_SPOTS);
     const rally = createRally(), demo = createRally();
@@ -718,7 +723,17 @@
     v = { notify: notify || null, paper, keys, bbs, pager, triggers, rally, demo, slot: { index: 0, time: 0, text: "" }, showPlayer: 0, screenT: 0, rallyAt: -1, rallyMine: false, rallyScore: -1, paperShown: -1, keysShown: -1,
       modemLamp: null, bbsCtx: null, bbsSurface: null, bbsOnline: -1, crtCtx: null, crtSurface: null, crtShown: -1, pagerShown: -1, now: 0,
       courier: null, courierShown: -1, courierLamps: [], courierOpen: [], courierShut: [],
-      tiles: [], links: [], printedOk: null, printedBad: null, shackleOpen: null, shackleShut: null, pagerLamp: null, rallyCtx: null, rallySurface: null, pagerCtx: null, pagerSurface: null };
+      // Motion (all preallocated; `update` only writes numbers): the press's cascade of links (`tileWant`, what each page's
+      // tile should show, 1 broken; `tileShown`; `tilePop`, a tile's little jump as it turns; `pressClock`, -1 when still),
+      // the padlock's shackle easing down or up (`shackleT` 0 open to 1 shut, `shackleTo`), the modem's lamp row and its
+      // dial handshake (`modemLeds`, `dialT`), the pager's buzz (`buzzT`, `buzzBase`), the test screen's wipe from one
+      // grid to the next (`crtRow`, the rows of the new grid painted; `crtClock`), the cabinet's marquee bulbs and the
+      // courier's lamps easing on (`courierGlow`). `cue` is the scene's sound hook (docs: integration requests); null
+      // until the kit carries one.
+      cue: cue || null, tileWant: new Uint8Array(5), tileShown: new Uint8Array(5), tilePop: new Float32Array(5), pressClock: -1, pressFrom: 0, pressRestored: false,
+      shackleT: 0, shackleTo: 0, shackleBaseY: 0, modemLeds: [], dialT: 0, buzzT: 0, buzzNodes: [], buzzBase: new Float32Array(4), pagerReceived: 0,
+      crtRow: 0, crtClock: -1, crtLevel: 1, bulbs: [], courierGlow: new Float32Array(3),
+      tiles: [], links: [], printedOk: null, printedBad: null, shackleOpen: null, shackleShut: null, pagerLamp: null, rallyCtx: null, rallySurface: null, pagerCtx: null, pagerSurface: null, pagerBody: null, lastX: 0, lastZ: 0, ledsIdle: false };
     const visit = v;
     const node = (geometry, x, y, z, visible = true) => place(createNode({ geometry, position: { x, y, z }, rotation: { x: 0, y: yaw, z: 0 }, visible }));
     // Small parts merged into one mesh in world coordinates: [w, h, d, color, x, y, z, emissive, turn about x, turn
@@ -775,7 +790,11 @@
       [0.62, 0.008, 0.9, "#b8b1a1", N.x + 0.05, top + 0.932, N.z - 0.65],
       [0.04, 0.5, 0.04, "#2a2a2e", N.x - 0.42, top + 3.3, N.z], [0.3, 0.1, 0.4, "#2a2a2e", N.x - 0.3, top + 3.52, N.z], [0.24, 0.03, 0.32, "#fff2c4", N.x - 0.3, top + 3.46, N.z, 1.2]
     ]);
-    sign(ex.newspaper.label, "change a page · EDIT, UNDO, RESET", N.x - 0.3, top + 3.45, N.z, yaw, 0.45);
+    // The press's light pool: a teal glow on the floor where the visitor stands, and a soft band along the board's foot.
+    detail([[2.2, 0.006, 3.0, "#1d6f73", N.x + 1.5, top + 0.004, N.z, 0.35], [1.8, 0.008, 2.4, "#2ee6d6", N.x + 1.5, top + 0.006, N.z, 0.18],
+      [0.02, 0.03, 2.5, "#2ee6d6", N.x - 0.42, top + 0.95, N.z, 0.9]]);
+    // Its sign stands clear above the hooded lamp, so nothing covers the board's links.
+    sign(ex.newspaper.label, "change a page · EDIT, UNDO, RESET", N.x - 0.3, top + 4.05, N.z, yaw, 0.45);
     const news = newspaperTerminal(paper);
     // It demonstrates the papers whose trail stops are Fingerprints and Time's lectern ([3], [4]): a demonstration, not
     // a stop, so the trail keeps one stop each (docs/genesis-voyage/exhibits/era-3.md, hook request 4).
@@ -802,6 +821,9 @@
       [0.9, 0.08, 1.3, "#1d3a57", K.x, top + 0.04, K.z],
       [0.22, 0.02, 0.32, "#e9e1cc", K.x - 0.1, top + 1.53, K.z - 0.3], [0.2, 0.02, 0.3, "#f6ecd2", K.x - 0.08, top + 1.55, K.z - 0.28], [0.05, 0.022, 0.05, "#d82a2a", K.x - 0.08, top + 1.565, K.z - 0.28, 0.4]
     ]);
+    detail([[1.8, 0.006, 2.0, "#1d6f73", K.x + 1.3, top + 0.004, K.z, 0.35], [1.4, 0.008, 1.6, "#2ee6d6", K.x + 1.3, top + 0.006, K.z, 0.16],
+      [0.02, 0.36, 0.02, "#2ee6d6", K.x + 0.42, top + 0.62, K.z + 0.24, 0.8], [0.02, 0.36, 0.02, "#2ee6d6", K.x + 0.42, top + 0.62, K.z - 0.24, 0.8]]);
+    v.shackleBaseY = v.shackleOpen.position.y;
     sign(ex.keys.label, "lock · sign · check (a toy)", K.x, top + 2.1, K.z, yaw, 0.45);
     const padlock = keyTerminal(keys);
     exhibit("keys", { id: "e3-padlock", year: 1991, connection: "context", title: ex.keys.title, label: ex.keys.label, sourceKeys: ex.keys.sourceKeys,
@@ -828,11 +850,15 @@
       [0.2, 0.03, 0.62, "#e2dccd", B.x + 0.3, T + 0.015, B.z - 0.05],
       ...[0, 1, 2, 3].map((r) => [0.035, 0.012, 0.56, r === 3 ? "#bdb6a6" : "#cfc8b8", B.x + 0.23 + r * 0.04, T + 0.036, B.z - 0.05]),
       [0.2, 0.004, 0.22, "#2b7f8a", B.x + 0.3, T + 0.002, B.z + 0.42], [0.09, 0.03, 0.06, "#e2dccd", B.x + 0.3, T + 0.02, B.z + 0.42],
-      ...[0, 1, 2, 3, 4].map((i) => [0.02, 0.012, 0.012, i % 2 ? "#ff5a4a" : "#5aff9a", B.x - 0.11, T + 0.03, B.z - 0.72 + i * 0.04, 0.5]),
       ...[["#1d3c8a", 0], ["#b3202a", 0.12], ["#1c1c1c", 0.24]].map(([c, dz]) => [0.09, 0.006, 0.09, c, B.x + 0.28, T + 0.004 + dz * 0.05, B.z + 0.7 - dz]),
       [0.03, 0.004, 0.05, "#c9ced4", B.x + 0.28, T + 0.008, B.z + 0.7]
     ]);
     v.modemLamp = node(M.box({ w: 0.02, h: 0.014, d: 0.014, color: "#5aff9a", emissive: 1.4 }), B.x - 0.11, T + 0.032, B.z - 0.52);
+    // The modem's row of five lamps, each its own node so they can blink in sequence: dark while the line is down, a
+    // running chase while it dials, then sending and receiving in turn while the call is up.
+    for (let i = 0; i < 5; i++) v.modemLeds.push(node(M.box({ w: 0.022, h: 0.014, d: 0.016, color: i % 2 ? "#ff5a4a" : "#5aff9a", emissive: 1.4 }), B.x - 0.11, T + 0.032, B.z - 0.72 + i * 0.04));
+    detail([[2.0, 0.006, 3.6, "#1d6f73", B.x + 1.3, top + 0.004, B.z, 0.35], [1.6, 0.008, 3.0, "#2ee6d6", B.x + 1.3, top + 0.006, B.z, 0.16],
+      [0.22, 0.004, 0.42, "#2ee6d6", B.x - 0.11, T + 0.002, B.z - 0.62, 0.25]]);
     // The test screen: a smaller CRT on a rolling cart beside the desk, its screen the picture on the chosen sample grid,
     // with a card saying the settings are illustrative.
     const CZ = B.z + 1.35, CT = top + 0.72;
@@ -872,7 +898,7 @@
     // display board behind. Invented and unbranded.
     const P = L.pager, PT = top + 0.9;
     solid(0.7, 0.9, 0.7, "#4d4a56", P.x, top + 0.45, P.z);
-    solid(0.12, 0.34, 0.5, "#1b1b20", P.x + 0.1, PT + 0.2, P.z);
+    v.pagerBody = solid(0.12, 0.34, 0.5, "#1b1b20", P.x + 0.1, PT + 0.2, P.z);
     detail([
       [0.12, 0.04, 0.46, "#2a2a31", P.x + 0.1, PT + 0.39, P.z], [0.12, 0.3, 0.04, "#2a2a31", P.x + 0.1, PT + 0.2, P.z + 0.25], [0.12, 0.3, 0.04, "#2a2a31", P.x + 0.1, PT + 0.2, P.z - 0.25],
       [0.02, 0.1, 0.32, "#0f1a0c", P.x + 0.165, PT + 0.27, P.z + 0.03],
@@ -882,6 +908,11 @@
       [0.05, 0.016, 0.08, "#1b1b20", P.x + 0.12, PT + 0.018, P.z + 0.25], [0.004, 0.006, 0.05, "#9dff7a", P.x + 0.145, PT + 0.028, P.z + 0.25, 0.8]
     ]);
     v.pagerLamp = node(M.box({ w: 0.012, h: 0.07, d: 0.28, color: "#9dff7a", emissive: 1 }), P.x + 0.17, PT + 0.27, P.z + 0.03);
+    // What buzzes when a message arrives: the replica's body and its screen lamp shake a little along the plinth.
+    v.buzzNodes.push(v.pagerBody, v.pagerLamp);
+    for (let i = 0; i < v.buzzNodes.length; i++) v.buzzBase[i] = v.buzzNodes[i].position.z;
+    detail([[1.6, 0.006, 1.8, "#1d6f73", P.x + 1.1, top + 0.004, P.z, 0.35], [1.2, 0.008, 1.4, "#2ee6d6", P.x + 1.1, top + 0.006, P.z, 0.16],
+      [0.74, 0.02, 0.74, "#2ee6d6", P.x, top + 0.905, P.z, 0.5]]);
     solid(0.08, 0.6, 0.08, "#3b2a1a", P.x - 0.3, top + 1.2, P.z);
     if (screens) {
       const c = document.createElement("canvas"); c.width = 192; c.height = 64;
@@ -916,7 +947,6 @@
       // A bezel round the screen, a row of marquee bulbs, and a coin-return cup and kick plate.
       [0.02, 0.06, 0.92, "#1c1628", C.x + 0.51, top + 1.93, C.z], [0.02, 0.06, 0.92, "#1c1628", C.x + 0.51, top + 1.27, C.z],
       [0.02, 0.66, 0.06, "#1c1628", C.x + 0.51, top + 1.6, C.z + 0.45], [0.02, 0.66, 0.06, "#1c1628", C.x + 0.51, top + 1.6, C.z - 0.45],
-      ...[0, 1, 2, 3, 4, 5, 6].map((i) => [0.03, 0.03, 0.03, i % 2 ? "#ff4fd8" : "#ffd25f", C.x + 0.49, top + 2.22, C.z - 0.39 + i * 0.13, 1.1]),
       [0.03, 0.05, 0.08, "#0b0a12", C.x + 0.515, top + 0.3, C.z], [0.02, 0.1, 0.9, "#2ee6d6", C.x + 0.51, top + 0.12, C.z, 0.5]
     ]);
     if (screens) {
@@ -926,6 +956,10 @@
       const n = place(createNode({ position: { x: C.x + 0.515, y: top + 1.6, z: C.z }, rotation: { x: 0, y: yaw, z: 0 } }));
       addChild(n, createNode({ geometry: geo }));
     }
+    // The marquee's seven bulbs, each its own node so the attract can chase light along them (steady in Calm).
+    for (let i = 0; i < 7; i++) v.bulbs.push(node(M.box({ w: 0.03, h: 0.03, d: 0.03, color: i % 2 ? "#ff4fd8" : "#ffd25f", emissive: 1.1 }), C.x + 0.49, top + 2.22, C.z - 0.39 + i * 0.13));
+    detail([[2.2, 0.006, 2.2, "#1d6f73", C.x + 1.5, top + 0.004, C.z, 0.35], [1.8, 0.008, 1.8, "#2ee6d6", C.x + 1.5, top + 0.006, C.z, 0.16],
+      [0.6, 0.006, 1.0, "#ff4fd8", C.x + 0.9, top + 0.008, C.z, 0.2]]);
     sign(ex.rally.label, "an original game", C.x + 0.3, top + 2.65, C.z, yaw, 0.4);
     const rallyTerm = rallyTerminal(rally, () => { visit.showPlayer = 30; });
     exhibit("rally", { id: "e3-rally", year: 1990, connection: "context", title: ex.rally.title, label: ex.rally.label, sourceKeys: ex.rally.sourceKeys,
@@ -955,6 +989,7 @@
       [0.02, 0.3, 0.4, "#0b0a12", Q.x + 0.455, top + 0.35, Q.z + 0.4], [0.022, 0.26, 0.36, "#1a1446", Q.x + 0.46, top + 0.35, Q.z + 0.4, 0.4],
       ...[["#5ec8ff", -0.08], ["#ffd23a", 0], ["#c8ff5a", 0.08]].map(([c, dy]) => [0.024, 0.04, 0.22, c, Q.x + 0.47, top + 0.35 + dy, Q.z + 0.4, 0.9])
     ]);
+    detail([[2.0, 0.006, 2.4, "#1d6f73", Q.x + 1.4, top + 0.004, Q.z, 0.35], [1.6, 0.008, 2.0, "#2ee6d6", Q.x + 1.4, top + 0.006, Q.z, 0.16]]);
     sign(ex.courier.label, "three open padlocks · a modern toy", Q.x + 0.2, top + 2.35, Q.z, yaw, 0.4);
     const courierTerm = courierTerminal(courier);
     exhibit("courier", { id: "e3-courier", year: 1990, connection: "context", title: ex.courier.title, label: ex.courier.label, sourceKeys: ex.courier.sourceKeys,
@@ -1060,49 +1095,143 @@
   // the scene says so with `state.reading`), the press's and the padlock's models following their state, and the
   // cabinet's screen (a demo, or the visitor's game for 30 s after their last move). In Calm (`state.calm`) the pager's
   // lamp holds steady and the self-playing demo holds still; the screen repaints only when what it shows changes.
+  // The motion's timings (seconds): a link turning in the press's cascade, a turned tile's jump, the shackle's travel,
+  // the modem's dial handshake, the pager's buzz and the test screen's wipe from one grid to the next.
+  const CASCADE = 0.12, POP = 0.22, SHACKLE = 0.22, DIAL = 1.6, BUZZ = 0.6, WIPE = 0.45;
+  const ease = (t) => t * t * (3 - 2 * t);
+  const cueOf = (name) => { if (v.cue) v.cue(name); };
+  // Page i's tile (and the link after it) shows broken or whole.
+  const showTile = (i, bad) => {
+    v.tileShown[i] = bad; v.tiles[i].ok.visible = !bad; v.tiles[i].bad.visible = !!bad;
+    if (i < v.links.length) { v.links[i].ok.visible = !bad; v.links[i].bad.visible = !!bad; }
+  };
+  // Per frame while the visitor is in this cave, allocation-free (every buffer above is the visit's own): the pager
+  // (held while a panel or prompt is open, `state.reading`), then each exhibit's motion, which runs only while it has
+  // somewhere to go. The press's links turn one after another from the changed page (a clack as it starts, a chime
+  // when every link holds again), the padlock's shackle eases shut (a click), the modem dials with a running chase and
+  // then blinks sending and receiving in turn, the pager buzzes and lights when a message arrives (a beep), the test
+  // screen wipes down to its next grid (a click), the courier's lamps ease on, and the cabinet's marquee chases its
+  // attract. Calm (`state.calm`) shows every end state at once and holds the blinking steady; a pause, the workbench,
+  // menu or console elsewhere simply don't call this, so everything waits where it is; `active(false)` settles it.
   const update = (dt, elapsed, state) => {
     const calm = !!state.calm;
+    v.lastX = state.x; v.lastZ = state.z;
     const fired = v.triggers.update(state.x, state.z, !!state.reading);
     v.now = elapsed;
     if (fired >= 0) { v.pager.receive(fired, elapsed); if (v.notify) v.notify(PAGER_TOASTS[fired]); }
-    // The pager's screen and the test screen repaint only when what they show changes (a page sent or arrived, a grid).
     if (v.pager.version !== v.pagerShown) { v.pagerShown = v.pager.version; if (v.pagerCtx) paintPager(); }
-    if (v.bbs.crt.version !== v.crtShown) { v.crtShown = v.bbs.crt.version; if (v.crtCtx) paintCrt(); }
+    // The test screen: a new grid starts a wipe from the top.
+    if (v.bbs.crt.version !== v.crtShown) {
+      v.crtShown = v.bbs.crt.version;
+      if (v.crtCtx) { v.crtLevel = v.bbs.crt.level; v.crtRow = 0; v.crtClock = 0; if (v.crtSurface.version > 0) cueOf("click"); }
+    }
+    if (v.crtClock >= 0) {
+      v.crtClock = calm ? WIPE : v.crtClock + dt;
+      const gh = GRIDS[v.crtLevel][1], to = Math.min(gh, Math.ceil(gh * Math.min(1, v.crtClock / WIPE)));
+      if (to > v.crtRow || to === gh) { paintCrtRows(v.crtLevel, v.crtRow, to); v.crtRow = to; }
+      if (to >= gh) v.crtClock = -1;
+    }
+    // The press: what each tile should show, and from which page the cascade starts.
     if (v.paper.version !== v.paperShown) {
       v.paperShown = v.paper.version;
       const r = v.paper.result;
-      for (let i = 0; i < v.tiles.length; i++) {
-        const bad = r.first >= 0 && i >= r.first;
-        v.tiles[i].ok.visible = !bad; v.tiles[i].bad.visible = bad;
-        if (i < v.links.length) { v.links[i].ok.visible = !bad; v.links[i].bad.visible = bad; }
-      }
-      v.printedOk.visible = r.matches; v.printedBad.visible = !r.matches;
+      let from = -1;
+      for (let i = 0; i < v.tiles.length; i++) { const want = r.first >= 0 && i >= r.first ? 1 : 0; v.tileWant[i] = want; if (from < 0 && want !== v.tileShown[i]) from = i; }
+      if (from >= 0 || v.printedBad.visible === r.matches) { v.pressClock = 0; v.pressFrom = from < 0 ? 0 : from; v.pressRestored = r.matches; cueOf("clack"); }
     }
+    if (v.pressClock >= 0) {
+      v.pressClock = calm ? 1e9 : v.pressClock + dt;
+      let done = true;
+      for (let i = 0; i < v.tiles.length; i++) {
+        if (v.tileShown[i] === v.tileWant[i]) continue;
+        if (v.pressClock >= (i - v.pressFrom) * CASCADE) { showTile(i, v.tileWant[i]); v.tilePop[i] = calm ? 0 : POP; } else done = false;
+      }
+      if (done) {
+        const r = v.paper.result;
+        v.printedOk.visible = r.matches; v.printedBad.visible = !r.matches; v.pressClock = -1;
+        if (r.matches && v.pressRestored) cueOf("chime");
+      }
+    }
+    for (let i = 0; i < v.tiles.length; i++) {
+      if (v.tilePop[i] <= 0) continue;
+      v.tilePop[i] = calm ? 0 : Math.max(0, v.tilePop[i] - dt);
+      const k = 1 + Math.sin(v.tilePop[i] / POP * Math.PI) * 0.22;
+      v.tiles[i].ok.scale.y = v.tiles[i].ok.scale.z = v.tiles[i].bad.scale.y = v.tiles[i].bad.scale.z = k;
+    }
+    // The courier's rack: the shut padlock's lamp eases on, the others' off.
     if (v.courier.version !== v.courierShown) {
       v.courierShown = v.courier.version;
-      for (let i = 0; i < v.courierLamps.length; i++) { const shut = v.courier.slot === i; v.courierLamps[i].visible = shut; v.courierShut[i].visible = shut; v.courierOpen[i].visible = !shut; }
+      for (let i = 0; i < v.courierLamps.length; i++) { const shut = v.courier.slot === i; v.courierShut[i].visible = shut; v.courierOpen[i].visible = !shut; }
+      if (v.courier.slot >= 0) cueOf("click");
     }
-    if (v.keys.version !== v.keysShown) { v.keysShown = v.keys.version; v.shackleShut.visible = !!v.keys.locked; v.shackleOpen.visible = !v.keys.locked; }
-    // The modem's lamp flickers while the pretend call is up (steady in Calm), and is dark while it is down.
-    if (v.modemLamp) v.modemLamp.glow = !v.bbs.online ? 0.15 : calm ? 1.4 : 0.6 + (Math.floor(elapsed * 7) % 3 === 0 ? 0.9 : 0);
-    v.pagerLamp.glow = v.pager.unread ? (calm ? 1.3 : 1 + (Math.floor(elapsed * 3) & 1) * 0.6) : 0.4;
+    for (let i = 0; i < v.courierLamps.length; i++) {
+      const want = v.courier.slot === i ? 1 : 0, g0 = v.courierGlow[i];
+      if (g0 === want) continue;
+      const g1 = calm ? want : want > g0 ? Math.min(1, g0 + dt * 4) : Math.max(0, g0 - dt * 4);
+      v.courierGlow[i] = g1; v.courierLamps[i].visible = g1 > 0.02; v.courierLamps[i].glow = 0.2 + ease(g1) * 1.1;
+    }
+    // The padlock: the shackle eases down onto the post, then shows shut.
+    if (v.keys.version !== v.keysShown) { v.keysShown = v.keys.version; v.shackleTo = v.keys.locked ? 1 : 0; }
+    if (v.shackleT !== v.shackleTo) {
+      v.shackleT = calm ? v.shackleTo : v.shackleTo > v.shackleT ? Math.min(1, v.shackleT + dt / SHACKLE) : Math.max(0, v.shackleT - dt / SHACKLE);
+      const shut = v.shackleT >= 1;
+      v.shackleShut.visible = shut; v.shackleOpen.visible = !shut; v.shackleOpen.position.y = v.shackleBaseY - ease(v.shackleT) * 0.06;
+      if (shut) cueOf("click");
+    }
+    // The modem: dark with the line down, a chase while it dials, then its lamps blink in sequence (steady in Calm).
+    const on = v.bbs.online ? 1 : 0;
+    if (on !== v.bbsOnline) {
+      if (v.bbsOnline >= 0) { if (on) { v.dialT = calm ? 0 : DIAL; cueOf("beep"); if (calm) cueOf("hum-start"); } else { v.dialT = 0; cueOf("hum-stop"); } }
+      v.bbsOnline = on; v.ledsIdle = false;
+    }
+    if (v.dialT > 0) { v.dialT = calm ? 0 : Math.max(0, v.dialT - dt); if (v.dialT === 0) cueOf("hum-start"); }
+    if (on || !v.ledsIdle) {
+      const step = Math.floor(elapsed * (v.dialT > 0 ? 14 : 6));
+      for (let i = 0; i < v.modemLeds.length; i++) v.modemLeds[i].glow = !on ? (i === 0 ? 0.6 : 0.08) : calm ? 1.2 : v.dialT > 0 ? (step % 5 === i ? 1.7 : 0.15) : ((step + i) % 5 < 2 ? 1.5 : 0.3);
+      v.ledsIdle = !on;
+      if (v.modemLamp) v.modemLamp.glow = !on ? 0.15 : calm ? 1.4 : 0.6 + (Math.floor(elapsed * 7) % 3 === 0 ? 0.9 : 0);
+    }
+    // The pager: a new message buzzes it (a short shake of its body and screen) and lights its lamp.
+    if (v.pager.received !== v.pagerReceived) {
+      const more = v.pager.received > v.pagerReceived;
+      v.pagerReceived = v.pager.received;
+      if (more) { v.buzzT = calm ? 0 : BUZZ; cueOf("beep"); }
+    }
+    if (v.buzzT > 0 || calm) {
+      v.buzzT = calm ? 0 : Math.max(0, v.buzzT - dt);
+      const shake = v.buzzT > 0 ? Math.sin(elapsed * 90) * 0.012 * (v.buzzT / BUZZ) : 0;
+      for (let i = 0; i < v.buzzNodes.length; i++) v.buzzNodes[i].position.z = v.buzzBase[i] + shake;
+    }
+    v.pagerLamp.glow = v.buzzT > 0 ? 2 : v.pager.unread ? (calm ? 1.3 : 1 + (Math.floor(elapsed * 3) & 1) * 0.6) : 0.4;
+    // The cabinet: the demo plays itself and the marquee chases while nobody plays (both steady in Calm).
     const d = v.demo;
     if (!calm) {
       if (d.state === "serve") d.serve(); else if (d.state === "over") d.reset();
       d.input.aim = d.x;
       d.update(dt);
     }
+    const chase = Math.floor(elapsed * 8);
+    for (let i = 0; i < v.bulbs.length; i++) v.bulbs[i].glow = calm ? 1.1 : v.showPlayer > 0 ? 1.4 : (chase + i) % 7 < 2 ? 1.9 : 0.45;
     if (v.showPlayer > 0) v.showPlayer = Math.max(0, v.showPlayer - dt);
     v.screenT += dt;
     if (v.rallyCtx && v.screenT >= 0.05) {
       v.screenT = 0;
       const mine = v.showPlayer > 0, shown = mine ? v.rally : d;
-      if (!calm || shown.time !== v.rallyAt || mine !== v.rallyMine || shown.score !== v.rallyScore) { v.rallyAt = shown.time; v.rallyMine = mine; v.rallyScore = shown.score; paintRally(); }
+      if (!calm || shown.time !== v.rallyAt || mine !== v.rallyMine || shown.score !== v.rallyScore) { v.rallyAt = shown.time; v.rallyMine = mine; v.rallyScore = shown.score; paintRally(calm); }
     }
+  };
+  // Leaving the cave settles everything at its end state (Calm's path), with the visitor's last place, so nothing is left
+  // mid-motion and nothing runs while away; the modem's hum is told to stop.
+  const SETTLE = { era: 3, walking: false, reading: true, calm: true, x: 0, z: 0 };
+  const active = (on) => {
+    if (on || !v) return;
+    SETTLE.x = v.lastX; SETTLE.z = v.lastZ;
+    update(0, v.now, SETTLE);
+    if (v.bbs.online) cueOf("hum-stop");
   };
   const dispose = () => { v = null; };
 
-  BL.genesisExhibits.register(ERA, { sources, overview, build, update, dispose });
+  BL.genesisExhibits.register(ERA, { sources, overview, build, update, active, dispose });
   // The pure rules, for Node checks, and the office PC's hand-on (hook request 2 in the notes): its prompt may pass a
   // line it doesn't know here, to the visit's dial-up corner; null when this answers nothing.
   BL.genesisEra3 = { GRIDS, CRT_INKS, crtPixel, createCrt, SENDS, ERA, NOTE, EXHIBITS, HOLD, TOY, RALLY, MAX_POSTS, MAX_NOTE, TICK, MAX_TICKS, LAYOUT, PAGE_SPOTS, PAGER_TEXTS, sources, overview, link,
