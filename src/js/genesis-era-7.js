@@ -944,13 +944,11 @@
     const say = (name) => { if (mo.cue) mo.cue(name); };
     mo.say = say;
     // Light pools, on the floors (just over the rugs).
-    const pool = (side, u, v, du, dv, color, emissive) => { const a = at(side, u, v); solid(dv, 0.004, du, color, a.x, Y + 0.026, a.z, emissive); };
-    pool(-1, 22, 6.8, 3.2, 2.6, "#ffb860", 1.1);
-    pool(1, 23, 6.8, 2.8, 2.0, "#e09040", 0.6);
-    pool(-1, 49, 6.8, 3.0, 2.0, "#e09040", 0.6);
-    pool(1, 44, 6.4, 1.4, 1.6, "#d08038", 0.5);
-    pool(1, 48.5, 6.4, 2.0, 1.6, "#d08038", 0.5);
-    pool(1, 53, 6.4, 2.2, 1.6, "#d08038", 0.5);
+    const pool = (side, u, v, du, dv, color, emissive, lift) => { const a = at(side, u, v); solid(dv, 0.004, du, color, a.x, Y + lift, a.z, emissive); };
+    // Two layers each: a wide, dim amber wash and a smaller, warmer core, so the light falls off rather than ending
+    // at a hard edge. The genesis case's is the brightest in the gallery.
+    const pools = [[-1, 22, 6.8, 3.2, 2.6, 0.32], [1, 23, 6.8, 2.8, 2.0, 0.2], [-1, 49, 6.8, 3.0, 2.0, 0.2], [1, 44, 6.4, 1.4, 1.6, 0.16], [1, 48.5, 6.4, 2.0, 1.6, 0.16], [1, 53, 6.4, 2.2, 1.6, 0.16]];
+    for (const [side, u, v, du, dv, k] of pools) { pool(side, u, v, du, dv, "#3a2410", k, 0.026); pool(side, u, v, du * 0.55, dv * 0.55, "#6a3e18", k * 1.25, 0.031); }
     // The headline's word tiles on the case's text row, each as wide as its word, in reading order along the row.
     {
       const l = LAYOUT.genesis, s = -l.side, ti = ROWS.indexOf("text"), y = Y + 2.15 - ti * 0.18, span = 1.84, gap = 0.02;
@@ -982,7 +980,7 @@
     // The computer corner: a screen-light pool on the desk, the cursor and the fan on the tower's face.
     {
       const l = CL.pc, s = -l.side;
-      solid(0.32, 0.004, 0.62, "#5a8ac8", l.x - s * 0.18, Y + 0.773, l.z - 0.05, 0.5);
+      solid(0.32, 0.004, 0.62, "#26405e", l.x - s * 0.18, Y + 0.773, l.z - 0.05, 0.3);
       mo.cursor = node(box(0.012, 0.022, 0.03, "#e8f4ff", 1.6), l.x - s * 0.317, Y + 1.11, l.z - 0.3);
       solid(0.01, 0.15, 0.15, "#18181c", l.x - s * 0.196, Y + 0.9, l.z + 0.62);
       mo.fan = put(createNode({ position: { x: l.x - s * 0.192, y: Y + 0.9, z: l.z + 0.62 }, rotation: { x: 0, y: 0, z: 0 } }));
