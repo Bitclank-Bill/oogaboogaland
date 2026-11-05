@@ -1461,8 +1461,9 @@
     },
     menuClosed() { if (!bench.open) { view.reading = false; pilot.setActive(true); } },
     sourceOf: (key) => GP.sourceOf(key),
-    // The hall makes no interface sounds (the host contract keeps the call).
-    cue: () => {},
+    // The shared interface cues (genesis-audio.js SHARED_CUES): quiet, synthesized, under the page mute, the Music
+    // switch and Calm; an unknown name does nothing.
+    cue: (name) => { if (audio) audio.cue(name); },
     toast: (text) => hud.toast(text)
   };
   // The cartridge console (genesis-cartridge.js): it holds the scene as the workbench and menu do; closing it hands
@@ -1994,7 +1995,59 @@
     const hooks = {};
     renderer = ctx.renderer;
     input = BL.interact.create({ canvas: ctx.canvas, renderer: ctx.renderer, camera, hooks });
-    const target = (node, owner) => { input.add(node, owner); targets.push(node); };
+    // A click or hover picks what the ray really meets: each target's own box (its geometry's bounds in its own frame,
+    // not the input's broad sphere), within reach, and never through rock (any point outside the museum's rooms and
+    // Glow Golf's cavern) or a raised solid (the statue's steps, pedestal and bust), so a click on the statue or a
+    // wall no longer opens an exhibit behind it in another gallery. Allocation-free: scratch arrays, memoised boxes.
+    const PICK_REACH = 18, PICK_STEP = 0.4, BOXES = new WeakMap(), INV = new Float32Array(16), LO = new Float64Array(3), HI = new Float64Array(3);
+    const boxOf = (g) => {
+      let b = BOXES.get(g);
+      if (b) return b;
+      const v = g.verts;
+      b = new Float64Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+      for (let i = 0; i + 2 < v.length; i += 3) for (let k = 0; k < 3; k++) { if (v[i + k] < b[k]) b[k] = v[i + k]; if (v[i + k] > b[3 + k]) b[3 + k] = v[i + k]; }
+      BOXES.set(g, b);
+      return b;
+    };
+    // Where the ray enters a box from lo to hi (slab test), or Infinity.
+    const SO = new Float64Array(3), SD = new Float64Array(3);
+    const slab = (ox, oy, oz, dx, dy, dz, lo, hi) => {
+      let t0 = 0, t1 = Infinity;
+      const o = SO, d = SD;
+      o[0] = ox; o[1] = oy; o[2] = oz; d[0] = dx; d[1] = dy; d[2] = dz;
+      for (let k = 0; k < 3; k++) {
+        if (Math.abs(d[k]) < 1e-12) { if (o[k] < lo[k] || o[k] > hi[k]) return Infinity; continue; }
+        let a = (lo[k] - o[k]) / d[k], c = (hi[k] - o[k]) / d[k];
+        if (a > c) { const s = a; a = c; c = s; }
+        if (a > t0) t0 = a; if (c < t1) t1 = c;
+        if (t0 > t1) return Infinity;
+      }
+      return t0;
+    };
+    const openAt = (x, y, z) => y > ISLAND_TOP + ROOF || MU.inside(x, z, 0.05) || inGolf(x, z);
+    // Walked from the eye to 1.2 m short of the hit, so a board hung on a wall face just past a room's edge still counts.
+    const blocked = (ray, t) => {
+      for (let s = PICK_STEP; s < t - 1.2; s += PICK_STEP) {
+        const x = ray.ox + ray.dx * s, y = ray.oy + ray.dy * s, z = ray.oz + ray.dz * s;
+        if (!openAt(x, y, z)) return true;
+        for (const o of built.obstacles) if (o.top !== undefined && y < o.top && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return true;
+      }
+      return false;
+    };
+    const exactPick = (node) => (ray) => {
+      const g = node.geometry;
+      if (!g || !g.verts || !g.verts.length) return NaN;
+      const b = boxOf(g);
+      BL.math.mat4.invert(INV, node.world);
+      const m = INV, ox = m[0] * ray.ox + m[4] * ray.oy + m[8] * ray.oz + m[12], oy = m[1] * ray.ox + m[5] * ray.oy + m[9] * ray.oz + m[13], oz = m[2] * ray.ox + m[6] * ray.oy + m[10] * ray.oz + m[14];
+      const dx = m[0] * ray.dx + m[4] * ray.dy + m[8] * ray.dz, dy = m[1] * ray.dx + m[5] * ray.dy + m[9] * ray.dz, dz = m[2] * ray.dx + m[6] * ray.dy + m[10] * ray.dz;
+      LO[0] = b[0]; LO[1] = b[1]; LO[2] = b[2]; HI[0] = b[3]; HI[1] = b[4]; HI[2] = b[5];
+      // The local ray's parameter is the world one (the inverse keeps the world direction's scale), so t is in metres.
+      const t = slab(ox, oy, oz, dx, dy, dz, LO, HI);
+      if (!(t <= PICK_REACH) || blocked(ray, t)) return NaN;
+      return t;
+    };
+    const target = (node, owner) => { input.add(node, owner.pickRay ? owner : { ...owner, pickRay: exactPick(node) }); targets.push(node); };
     target(built.lectern, { kind: "exhibit", priority: 1 });
     target(built.lecternLight, { kind: "exhibit", priority: 1 });
     target(built.guide.parts.torso, { kind: "guide" });
@@ -2007,6 +2060,8 @@
     for (const id of Object.keys(built.propNodes)) target(built.propNodes[id], { kind: "prop", prop: props.get(id), priority: 1 });
     for (const o of built.overviews) target(o.pick, { kind: "prop", prop: props.get(`era${o.era}-overview`), priority: 1 });
     for (const wb of built.wallBoards || []) target(wb.pick, { kind: "wall", board: wb, priority: 1 });
+    // The network's four screens: a click on one opens it (the nearer of it and the paper behind wins, at equal priority).
+    for (const d of built.network.displays) target(d.edge, { kind: "prop", prop: props.get(`network-${d.id}`), priority: 1 });
     // Walking: the pilot and crew for the visitor's Ooga (as the arcade's are).
     const viewFov = camera.fov;
     // The camera and its target keep inside the museum: the atrium or a gallery, under the roof. A point outside
@@ -2153,7 +2208,7 @@
     showControls();
     hud.setStats(game.state);
     arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper, openGuideItem, shop: { eat: eatMarquesita, gear: tryGear },
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get golf() { return golf; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper, openGuideItem, shop: { eat: eatMarquesita, gear: tryGear },
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
@@ -2220,7 +2275,9 @@
   const scene = BL.deferred.scene("genesis", {
     id: "genesis", wip: true, renderOpts, root: null, camera: null, input: null, debug: null,
     enter, update, overlay, onDonation, onKey, onLootCleared: () => {}, leave: leaveScene, stats,
-    voiceZone: "genesis.voyage",
+    // Genesis Hall's own voice zone: the director reports it on every arrival and the next scene's own on every way
+    // out (director.js swap), so a pose or voice never stays in the island's zone or keeps a stale "genesis.hall".
+    voiceZone: "genesis.hall",
     liveGeometry: (set) => {
       if (built && built.guide) set.add(built.guide.headOpen).add(built.guide.headClosed);
       if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);

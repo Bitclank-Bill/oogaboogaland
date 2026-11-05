@@ -26295,15 +26295,32 @@ const genesisAudioProof = async () => {
   const musicOn = audio.music && audio.stats.scheduled > before, mutedOn = S.muted && gate.gain.last === 0;
   S.setMuted(false); const unmuted = gate.gain.last === 1;
   const musicSwitch = musicOff && mutedOff && musicOn && mutedOn && unmuted;
+  // The shared cues era exhibits call through host.cue: each sounds on the pooled voices (no new nodes), in Calm too;
+  // the Music switch silences them (the ride's own cues still sound); an unknown name is a silent no-op.
+  const pooled = nodes;
+  const sharedOn = A.SHARED_CUES.length === 10 && A.SHARED_CUES.every((name) => audio.cue(name));
+  audio.setCalm(true); const sharedCalm = A.SHARED_CUES.every((name) => audio.cue(name)); audio.setCalm(false);
+  audio.setMusic(false); const sharedOff = A.SHARED_CUES.every((name) => !audio.cue(name)) && audio.cue("stamp"); audio.setMusic(true);
+  const sharedCues = sharedOn && sharedCalm && sharedOff && !audio.cue("whirr") && !audio.cue("") && nodes === pooled;
   audio.setCalm(true); audio.setEngine(false); audio.setVolume(0.5);
   const noAllocation = nodes === built;
   audio.dispose(); audio.setThrottle(1, true); audio.setEra(1);
   const closed = ctx.state === "closed" && intervals.size === 0 && !audio.ready && !audio.cue("splash") && audio.context === null;
-  return { windowed, onTime, once, skipped, bounded, themes, calmEras, crossfade, engine, beforeActivation, woke, scheduledOnce, fading, settled, rapid, cued, musicSwitch, noAllocation, closed };
+  return { windowed, onTime, once, skipped, bounded, themes, calmEras, crossfade, engine, beforeActivation, woke, scheduledOnce, fading, settled, rapid, cued, musicSwitch, sharedCues, noAllocation, closed };
 };
 const unitChecks = async () => {
   const genesisAudio = await genesisAudioProof();
-  record("Genesis audio: lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, the Music switch stops only the themes (cues still sound) while the page-wide mute still silences everything, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
+  // rule: Genesis Hall's voice zone. The hall declares "genesis.hall" (a name the room accepts, in its own voice group)
+  // and never sets a zone itself: the director reports the hall's zone on entry and the next scene's own on every way
+  // out (Leave, Escape, the portal or monolith return all go through its swap), so none leaves a stale hall zone.
+  {
+    const P = await import(join(root, "worker/src/protocol.js")), hall = await readFile(join(root, "src/js/scene-genesis.js"), "utf8"), dir = await readFile(join(root, "src/js/director.js"), "utf8");
+    const zone = (hall.match(/voiceZone: "([^"]+)"/) || [])[1], swap = /BL\.net\.setZone\(next\.voiceZone \|\|/.test(dir), own = /net\.setZone\(/.test(hall);
+    const exits = (hall.match(/\bgo\("hub"/g) || []).length;
+    record("rule: Genesis Hall reports its own voice zone \"genesis.hall\" on entry and leaves only through the director's swap, which reports the next scene's own zone (never a stale hall zone)",
+      zone === "genesis.hall" && P.ZONE_NAME.test(zone) && P.zoneGroup(zone) === "genesis" && swap && !own && exits > 0, JSON.stringify({ zone, swap, own, exits }));
+  }
+  record("Genesis audio (with the ten shared cues the era exhibits call: pooled, in Calm, silent with the Music switch off, unknown names silent): lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, the Music switch stops only the themes (cues still sound) while the page-wide mute still silences everything, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
   const previewRange=await studioPreviewRangeProof();

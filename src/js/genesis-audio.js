@@ -521,10 +521,25 @@
       link: () => blip("triangle", 880, 1320, 0.005, 0.1, 0.25, 0.05),
       broken: () => { blip("sawtooth", 220, 132, 0.01, 0.2, 0.4, 0.04); blip("sawtooth", 233, 140, 0.01, 0.2, 0.4, 0.04); }
     };
+    // The shared cues the era exhibits call through the hall's host.cue(name): short and quiet, on the pooled voices,
+    // half as loud in Calm and silent with the Music switch off (the page-wide mute gates all sound as ever).
+    const soft = () => calm ? 0.5 : 1;
+    const shared = {
+      whir: () => { const q = soft(); blip("sawtooth", 180, 420, 0.04, 0.16, 0.2, 0.022 * q); hiss(1200, 2400, 1.2, 0.035 * q, 0.05, 0.32); },
+      click: () => blip("square", 2400, 1800, 0.001, 0.005, 0.02, 0.035 * soft()),
+      clack: () => { const q = soft(); blip("square", 900, 600, 0.001, 0.01, 0.04, 0.045 * q); hiss(3000, 2000, 2, 0.045 * q, 0.002, 0.05); },
+      relay: () => { const q = soft(); blip("square", 1500, 1500, 0.001, 0.004, 0.015, 0.035 * q); blip("square", 1100, 1100, 0.001, 0.004, 0.015, 0.03 * q, 0.045); },
+      chime: () => { const q = soft(); blip("sine", hz(84), hz(84), 0.005, 0.05, 0.5, 0.045 * q); blip("sine", hz(91), hz(91), 0.005, 0.05, 0.6, 0.03 * q, 0.08); },
+      thunk: () => blip("sine", 120, 55, 0.003, 0.03, 0.15, 0.07 * soft()),
+      "rustle-paper": () => { const q = soft(); hiss(4000, 2500, 0.8, 0.045 * q, 0.02, 0.16); hiss(3000, 5000, 0.8, 0.035 * q, 0.02, 0.14, 0.17); },
+      beep: () => blip("square", hz(88), hz(88), 0.002, 0.07, 0.02, 0.025 * soft()),
+      "hum-start": () => blip("sawtooth", 50, 110, 0.15, 0.2, 0.25, 0.025 * soft()),
+      "hum-stop": () => blip("sawtooth", 110, 45, 0.02, 0.15, 0.35, 0.025 * soft())
+    };
     const cue = (name) => {
       if (!ready || ctx.state === "closed") return false;
-      const fn = cues[name];
-      if (!fn) return false;
+      const own = cues[name], fn = own || shared[name];
+      if (!fn || (!own && !musicOn)) return false;
       fn();
       return true;
     };
@@ -564,5 +579,7 @@
       get buses() { return targets; }
     };
   };
-  BL.genesisAudio = { create, plan, busTargets, engineTarget, THEMES, COMPILED, ENGINES, ERAS, STEPS, LOOKAHEAD, FADE, MUSIC, REST, HOLD };
+  // The shared cue names the era exhibits may call (host.cue); any other name is a silent no-op.
+  const SHARED_CUES = ["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"];
+  BL.genesisAudio = { create, plan, busTargets, engineTarget, THEMES, COMPILED, ENGINES, ERAS, STEPS, LOOKAHEAD, FADE, MUSIC, REST, HOLD, SHARED_CUES };
 })();
