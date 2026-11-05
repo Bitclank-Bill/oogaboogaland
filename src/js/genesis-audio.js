@@ -23,7 +23,7 @@
   const ERAS = 8, STEPS = 64, BAR = 16;
   const TICK_MS = 25, LOOKAHEAD = 0.12, FADE = 2.4;
   const MASTER = 0.8, MUSIC = 0.34, CALM_MUSIC = 0.6, CALM_DRUMS = 0.3, CALM_ENGINE = 0.6, SFX = 0.7;
-  const CUE_VOICES = 6, NOISE_SECONDS = 2, PLAN_SLOTS = 16;
+  const CUE_VOICES = 6, NOISE_SECONDS = 2, PLAN_SLOTS = 16, HUM_MAX = 8;
   const REST = 0, HOLD = -1;
   const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
@@ -194,7 +194,7 @@
   const create = () => {
     let ctx = null, master = null, musicBus = null, engineBus = null, sfxBus = null, timer = 0, ready = false;
     let era = 0, calm = false, engineOn = true, throttle = 0, boost = false, volume = 1, current = 0;
-    const decks = [], cueVoices = [], targets = new Float32Array(ERAS);
+    const decks = [], cueVoices = [], targets = new Float32Array(ERAS), hum = { on: false, until: 0, gain: null, filter: null, osc: null, osc2: null };
     const times = new Float64Array(PLAN_SLOTS), steps = new Int16Array(PLAN_SLOTS);
     const eng = { freq: 0, level: 0, cutoff: 0, water: 0, putt: 0, puttRate: 0 }, applied = { t: -1, b: false };
     const engine = { osc: null, sub: null, filter: null, gain: null, lfo: null, lfoGain: null, water: null, waterFilter: null };
@@ -247,6 +247,11 @@
       engine.water = gain(0, engineBus);
       engine.waterFilter = filter("bandpass", 600, 0.6, engine.water);
       noise(engine.waterFilter);
+      // The shared hum (hum-start / hum-stop): one low voice built once, faded in and out, never a new node.
+      hum.gain = gain(0, sfxBus);
+      hum.filter = filter("lowpass", 260, 0.8, hum.gain);
+      hum.osc = osc("sawtooth", 55, hum.filter);
+      hum.osc2 = osc("sine", 110, gain(0.5, hum.filter));
       for (let i = 0; i < CUE_VOICES; i++) {
         const g = gain(0, sfxBus);
         cueVoices.push({ osc: osc("sine", 440, g), gain: g, until: 0 });
@@ -342,6 +347,8 @@
       stats.scheduled++;
     };
     const tick = () => {
+      // A hum left on stops by itself after HUM_MAX seconds, and never outlives the Music switch or a pause.
+      if (ready && hum.on && (ctx.currentTime > hum.until || paused || !musicOn)) stopHum();
       // Nothing to schedule while the context is suspended (its clock stands still) or the voyage is paused; on
       // carrying on, `plan` skips the steps that fell in the gap rather than playing them late.
       if (!ready || paused || !musicOn || ctx.state !== "running") return;
@@ -422,6 +429,7 @@
     const setPaused = (on) => {
       paused = !!on;
       if (!ready) return;
+      if (paused) stopHum();
       const now = ctx.currentTime;
       musicBus.gain.setTargetAtTime(paused || !musicOn ? 0 : 1, now, 0.12);
       engineBus.gain.setTargetAtTime(paused ? 0 : calm ? CALM_ENGINE : 1, now, 0.12);
@@ -433,6 +441,7 @@
     const setMusic = (on) => {
       musicOn = !!on;
       if (!ready) return;
+      if (!musicOn) stopHum();
       const now = ctx.currentTime;
       musicBus.gain.setTargetAtTime(paused || !musicOn ? 0 : 1, now, 0.12);
       if (!musicOn) for (let i = 0; i < decks.length; i++) if (decks[i].active) release(decks[i], now);
@@ -524,6 +533,12 @@
     // The shared cues the era exhibits call through the hall's host.cue(name): short and quiet, on the pooled voices,
     // half as loud in Calm and silent with the Music switch off (the page-wide mute gates all sound as ever).
     const soft = () => calm ? 0.5 : 1;
+    const stopHum = () => {
+      if (!ready || !hum.gain) return false;
+      const t = ctx.currentTime, was = hum.on;
+      hum.on = false; hum.gain.gain.cancelScheduledValues(t); hum.gain.gain.setTargetAtTime(0, t, 0.1);
+      return was;
+    };
     const shared = {
       whir: () => { const q = soft(); blip("sawtooth", 180, 420, 0.04, 0.16, 0.2, 0.022 * q); hiss(1200, 2400, 1.2, 0.035 * q, 0.05, 0.32); },
       click: () => blip("square", 2400, 1800, 0.001, 0.005, 0.02, 0.035 * soft()),
@@ -533,8 +548,9 @@
       thunk: () => blip("sine", 120, 55, 0.003, 0.03, 0.15, 0.07 * soft()),
       "rustle-paper": () => { const q = soft(); hiss(4000, 2500, 0.8, 0.045 * q, 0.02, 0.16); hiss(3000, 5000, 0.8, 0.035 * q, 0.02, 0.14, 0.17); },
       beep: () => blip("square", hz(88), hz(88), 0.002, 0.07, 0.02, 0.025 * soft()),
-      "hum-start": () => blip("sawtooth", 50, 110, 0.15, 0.2, 0.25, 0.025 * soft()),
-      "hum-stop": () => blip("sawtooth", 110, 45, 0.02, 0.15, 0.35, 0.025 * soft())
+      // A looping hum: on until hum-stop, the gallery is left, the hall pauses, Music goes off, or HUM_MAX passes.
+      "hum-start": () => { const t = ctx.currentTime; hum.on = true; hum.until = t + HUM_MAX; hum.gain.gain.cancelScheduledValues(t); hum.gain.gain.setTargetAtTime(0.03 * soft(), t, 0.12); },
+      "hum-stop": () => stopHum()
     };
     const cue = (name) => {
       if (!ready || ctx.state === "closed") return false;
@@ -567,10 +583,11 @@
       ready = stats.ready = false;
       master = musicBus = engineBus = sfxBus = noiseVoice = null;
       decks.length = 0; cueVoices.length = 0; stats.active = 0;
+      hum.on = false; hum.gain = hum.filter = hum.osc = hum.osc2 = null;
       for (const k in engine) engine[k] = null;
     };
     return {
-      wake, setEra, setThrottle, cue, dispose, setEngine, setCalm, setVolume, setPaused, setMusic, tick, stats,
+      wake, setEra, setThrottle, cue, stopHum, get humming() { return hum.on; }, dispose, setEngine, setCalm, setVolume, setPaused, setMusic, tick, stats,
       get paused() { return paused; },
       get music() { return musicOn; },
       get ready() { return ready; },

@@ -822,6 +822,10 @@
         era, top: ISLAND_TOP, channel: CHANNEL, M, createNode, addChild, place: kitPlace, solid: kitSolid, label,
         // A short notice from an exhibit's update (a toast once the HUD is up; the kit is built before it).
         notify: (text) => { if (hud) hud.toast(text); },
+        // The shared cues (genesis-audio.js SHARED_CUES), heard only from the era that is running (the visitor's
+        // gallery, or the workbench's), never while the hall is paused; the audio keeps the page mute, the Music
+        // switch and Calm, and an unknown name does nothing.
+        cue: (name) => { if (audio && n === exhibitEra && !view.paused) audio.cue(name); },
         sign: (title, sub, x, y, z, yaw = 0, height = 0.6) => {
           // Drawn 1.4 times the era's asked size, so a label reads from the walk (it grows upward from where it stood).
           const l = label(title, sub, { height: height * SIGN_GROW, style: "plain" }), node = place(createNode({ position: { x, y: y + height * (SIGN_GROW - 1) / 2, z }, rotation: { x: 0, y: yaw, z: 0 } }));
@@ -906,6 +910,8 @@
     if (era !== exhibitEra) {
       const left = exhibitEra >= 0 ? EX.eras[exhibitEra] : null;
       exhibitEra = era;
+      // Leaving a gallery stops any hum it started.
+      if (audio) audio.stopHum();
       if (left && left.active) left.active(false, exhibitState);
       if (def && def.active) def.active(true, exhibitState);
     }

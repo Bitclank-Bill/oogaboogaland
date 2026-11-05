@@ -26302,7 +26302,14 @@ const genesisAudioProof = async () => {
   const sharedOn = A.SHARED_CUES.length === 10 && A.SHARED_CUES.every((name) => audio.cue(name));
   audio.setCalm(true); const sharedCalm = A.SHARED_CUES.every((name) => audio.cue(name)); audio.setCalm(false);
   audio.setMusic(false); const sharedOff = A.SHARED_CUES.every((name) => !audio.cue(name)) && audio.cue("stamp"); audio.setMusic(true);
-  const sharedCues = sharedOn && sharedCalm && sharedOff && !audio.cue("whirr") && !audio.cue("") && nodes === pooled;
+  // The hum loops: hum-start holds it on until hum-stop, a pause, the Music switch or its safety cap (8 s) stops it.
+  const humOnOff = audio.cue("hum-start") && audio.humming && audio.cue("hum-stop") && !audio.humming;
+  audio.cue("hum-start"); audio.setPaused(true); const humPause = !audio.humming; audio.setPaused(false);
+  audio.cue("hum-start"); audio.setMusic(false); const humMusic = !audio.humming; audio.setMusic(true);
+  audio.cue("hum-start"); ctx.currentTime += 9; tickFn(); const humCap = !audio.humming;
+  audio.cue("hum-start"); const humStopped = audio.stopHum() && !audio.humming;
+  const hum = humOnOff && humPause && humMusic && humCap && humStopped;
+  const sharedCues = sharedOn && sharedCalm && sharedOff && hum && !audio.cue("whirr") && !audio.cue("") && nodes === pooled;
   audio.setCalm(true); audio.setEngine(false); audio.setVolume(0.5);
   const noAllocation = nodes === built;
   audio.dispose(); audio.setThrottle(1, true); audio.setEra(1);
@@ -27948,7 +27955,7 @@ const unitChecks = async () => {
     record("rule: Genesis Hall reports its own voice zone \"genesis.hall\" on entry and leaves only through the director's swap, which reports the next scene's own zone (never a stale hall zone)",
       zone === "genesis.hall" && P.ZONE_NAME.test(zone) && P.zoneGroup(zone) === "genesis" && swap && !own && exits > 0, JSON.stringify({ zone, swap, own, exits }));
   }
-  record("Genesis audio (with the ten shared cues the era exhibits call: pooled, in Calm, silent with the Music switch off, unknown names silent): lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, the Music switch stops only the themes (cues still sound) while the page-wide mute still silences everything, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
+  record("Genesis audio (with the ten shared cues the era exhibits call: pooled, in Calm, silent with the Music switch off, unknown names silent, the hum looping until hum-stop, a pause, the Music switch or its 8 s cap): lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, the Music switch stops only the themes (cues still sound) while the page-wide mute still silences everything, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
   const artifact = artifactUnitProof();
   record("artifact workflow: tests the generated commit with the Actions-owned status and blocks rock on failed tests, status writes or concurrent pushes; a lost race passes only when rock has moved to a later CI-triggering commit, and the staging branch is always deleted", artifact.parsed && artifact.rows.every(row => row.ok), JSON.stringify(artifact));
   const previewRange=await studioPreviewRangeProof();
