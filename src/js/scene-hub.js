@@ -1938,6 +1938,7 @@
       if (!cave || cave.camp.seat !== seat || crew.standPlayer(cave)) continue;
       seat.sitter = null;
       cave.camp.seat = null;
+      hammock.releaseEquipment(cave);
       cave.root.quaternion = null;
       cave.root.rotation.x = cave.root.rotation.z = 0;
       crew.recoverDragged(cave);
@@ -9340,9 +9341,10 @@
       BL.net.sendPose(p.x, p.y, p.z, gorilla.heading, g);
       BL.net.setHealth(gorilla.health.value / gorilla.health.max * 100, gorilla.health.value <= 0);
     } else if (driven.camp.seat && driven.camp.seat.kind === "hammock") {
-      // A resting Ooga reports the seat's still point, so its swing sends nothing; every page swings its own bed.
-      const seat = driven.camp.seat;
-      BL.net.sendPose(seat.restX, seat.restY + driven.traits.height * 0.08 - driven.baseY, seat.restZ, seat.ry, null, BL.crew.jetFlags(driven), BL.crew.weaponFlags(driven), BL.crew.visualState(driven));
+      // Entry/exit share the actual body transform; settled rest shares a still seat, with no sway traffic.
+      const seat = driven.camp.seat, rest = hammock.stateFor(driven), moving = rest[1] !== 2;
+      BL.net.sendPose(moving ? p.x : seat.restX, moving ? p.y - driven.baseY : seat.restY + driven.traits.height * 0.08 - driven.baseY,
+        moving ? p.z : seat.restZ, seat.ry, null, BL.crew.jetFlags(driven), BL.crew.weaponFlags(driven), BL.crew.visualState(driven), rest);
       BL.net.setHealth(driven.health.value, driven.health.stunned);
     } else {
       BL.net.sendPose(p.x, p.y - driven.baseY, p.z, driven.root.rotation.y, null, BL.crew.jetFlags(driven), BL.crew.weaponFlags(driven), BL.crew.visualState(driven));
@@ -12235,10 +12237,10 @@
       hideGorilla: (name, on) => {
         if (on && clankerPlay && clankerPlay.player?.owner.traits.name === name) clankerPlay.release();
         clankers.setRemote(name, on);
-      }, posed: (cave, feet) => {
+      }, posed: (cave, feet, rec) => {
         const p = cave.root.position, height = cave.bodyHeight || 1.4;
         floatPose(cave, feet, height, 0, now);
-        if (hammock) hammock.poseRemote(cave, feet);
+        if (hammock) hammock.poseRemote(cave, feet, rec, remoteShown(rec) && cave.root.visible);
         if (poolEffectsActive) mempoolIsland.wake(cave.root, p.x, feet, p.z, height, 0.35);
       }
     });

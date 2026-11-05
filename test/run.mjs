@@ -6022,6 +6022,71 @@ const hammockChecks = async () => {
   const a = remote(), b = remote();
   ham.poseRemote(a, feet); a.root.parent = null; ham.poseRemote(b, feet);
   const pruned = !a.hammockRest && !a.root.quaternion;
+  runInNewContext(await readFile(new URL("../src/js/characters.js", import.meta.url), "utf8"), real);
+  for (const handle of ["w-s-bitcoin", "MrHodlX", "2140data"])
+    runInNewContext(await readFile(new URL(`../src/characters/${handle}.js`, import.meta.url), "utf8"), real);
+  R.contributors = { roster: [] };
+  runInNewContext(await readFile(new URL("../src/js/crew.js", import.meta.url), "utf8"), real);
+  const gearRows = [];
+  for (const handle of ["hammock-club", "w-s-bitcoin", "MrHodlX", "2140data"]) {
+    const definition = R.characters.get(handle), look = definition?.look || {};
+    const cave = R.models.caveman({ ...look, name: handle, height: 1.1, belly: 1,
+      skin: look.skin || "#c98a5b", hair: look.hair || "#2b1b10", fur: look.fur || "#d98a2e",
+      rand: R.math.mulberry32(R.math.fnv1a(handle + "/hammock")), dress: definition?.dress });
+    const parts = cave.parts;
+    if (parts.chukTrail) {
+      R.crew.preparePresentation(cave);
+      cave.weapon.primaryEquipped = true; cave.twirlUntil = 10; cave.twirlHand = 1;
+      R.crew.poseEquipment(cave, true, 1);
+    }
+    const trailsStarted = !parts.chukTrail || parts.chukTrail.every(n => n.visible && n.parent === parts.armL);
+    const pack = parts.jetpack || R.scene.createNode({ geometry: R.hubModels.jetpack(),
+      position: { x: 0.07, y: 0.12, z: -0.24 }, rotation: { x: 0.1, y: 0.2, z: -0.05 } });
+    if (!pack.parent) R.scene.addChild(cave.root, pack);
+    const flame = parts.jetFlame || R.scene.createNode({ geometry: R.hubModels.jetFlame(), visible: false });
+    if (!flame.parent) R.scene.addChild(pack, flame);
+    pack.visible = true;
+    cave.jet = { node: pack, flame }; cave.jetpackOwned = true;
+    cave.weapon ||= {};
+    Object.assign(cave.weapon, { primaryOwned: true, secondaryOwned: true, ammo: 7 });
+    cave.camp ||= { seat: null };
+    cave.root.position.x = seat.restX; cave.root.position.z = seat.restZ;
+    R.scene.addChild(root, cave.root);
+    const nodes = [parts.club, parts.gun, pack], originalGeometry = nodes.map(n => n.geometry);
+    const original = nodes.map(n => ({ parent: n.parent, position: { ...n.position }, rotation: { ...n.rotation }, quaternion: n.quaternion }));
+    const id = 300 + gearRows.length, peer = { id, rest: [0, 2, 255, 0, 0, 0] };
+    seat.remote = id;
+    const rested = ham.poseRemote(cave, feet, peer, true), holder = cave.restEquipment?.holder;
+    const actual = rested && !!holder && holder.parent === root && nodes.every((n, i) =>
+      n.parent === holder && n.geometry === originalGeometry[i] && n.visible) && cave.weapon.ammo === 7;
+    if (parts.chukTrail) R.crew.poseEquipment(cave, true, 1.1);
+    const trailsHidden = !parts.chukTrail || parts.chukTrail.every(n => !n.visible);
+    ham.poseRemote(cave, feet, peer, false);
+    const hidden = !holder.visible && !flame.visible;
+    cave.weapon.primaryOwned = cave.weapon.secondaryOwned = cave.jetpackOwned = false;
+    ham.poseRemote(cave, feet, peer, true);
+    const absent = nodes.every(n => !n.visible) && cave.weapon.ammo === 7;
+    cave.weapon.primaryOwned = cave.weapon.secondaryOwned = cave.jetpackOwned = true;
+    ham.poseRemote(cave, feet, { id, rest: [0, 1, 128, 0, 0, 0] }, true);
+    const entering = !!cave.root.quaternion && nodes.every(n => n.parent === holder && n.visible);
+    ham.poseRemote(cave, feet, { id, rest: [0, 3, 128, 0, 0, 0] }, true);
+    const exiting = !!cave.root.quaternion && nodes.every(n => n.parent === holder && n.visible);
+    // Explicit zero must win even at coordinates that the legacy protocol inferred as occupied.
+    const left = !ham.poseRemote(cave, feet, { id, rest: 0 }, true);
+    const restored = left && !cave.restEquipment && !holder.parent && !cave.root.quaternion && nodes.every((n, i) =>
+      n.parent === original[i].parent && n.quaternion === original[i].quaternion
+      && ["x", "y", "z"].every(axis => n.position[axis] === original[i].position[axis] && n.rotation[axis] === original[i].rotation[axis]));
+    if (parts.chukTrail) R.crew.poseEquipment(cave, true, 2);
+    const trailsResumed = !parts.chukTrail || parts.chukTrail.every(n => n.visible && n.parent === parts.armL);
+    ham.poseRemote(cave, feet, peer, true);
+    const droppedHolder = cave.restEquipment.holder;
+    R.scene.removeChild(root, cave.root);
+    ham.update(0, 10, false);
+    const dropped = !cave.restEquipment && !droppedHolder.parent && !cave.hammockRest;
+    gearRows.push({ handle, actual, hidden, absent, entering, exiting, restored, dropped, trailsStarted, trailsHidden, trailsResumed });
+  }
+  record("hub hammock: the actual club, authored axe or hockey stick, rifle and owned pack stay together under rest, including late entry/exit poses; absent gear and active twirl afterimages stay hidden, and get-up or removal restores attachments and the current twirl without changing ammo",
+    gearRows.every(row => Object.entries(row).every(([key, value]) => key === "handle" || value)), JSON.stringify(gearRows));
   ham.dispose();
   record("hub hammock: dropped and disposed remote resting poses become upright and every hammock node is removed",
     pruned && !b.hammockRest && !b.root.quaternion && root.children.length === 0);
@@ -25535,6 +25600,22 @@ const integrationChecks = async BL => {
   const resumed=poses().at(-1).v,notReplayed=resumed?.[3]===7&&resumed.slice(4).every(n=>n===0);
   g.advance(101);g.net.sendPose(8,3,4,.5,null,0,2,visual);const currentAction=poses().at(-1).v?.[3]===15;
   record("integration presentation: stationary look changes ride poses without idle traffic; join and snapshots reuse bounded state, omitted state clears it, and reconnect restores equipment without replaying an obsolete action before its live sample",lookSent&&lookQuiet&&idleLook&&lookReused&&lookCleared&&notReplayed&&currentAction,JSON.stringify({lookSent,lookQuiet,idleLook,lookReused,lookCleared,notReplayed,currentAction}));
+  const rest=[0,1,128,-577,-577,-577],maxVisual=[-157,-157,-314,8191,240,1200,560,440,320,1240,100,750,1300,280,2000,31,31];
+  const rawSend=gw.send.bind(gw);let rawPose="";
+  gw.send=text=>{if(typeof text==="string"&&text.startsWith('{"t":"pose"'))rawPose=text;rawSend(text);};
+  g.advance(101);g.net.sendPose(-159.999,-129.999,-159.999,-3.142,null,7,255,maxVisual,rest);
+  const boundedRest=rawPose.length<=256&&poses().at(-1).r?.join()===rest.join(),restBefore=poses().length;
+  g.advance(101);g.net.sendPose(-159.999,-129.999,-159.999,-3.142,null,7,255,maxVisual,rest);
+  const restingQuiet=poses().length===restBefore;
+  gm({t:"join",p:{id:75,login:"rest",body:"NickDaGreek",zone:"outside",v:maxVisual,va:Date.now(),r:rest}});
+  const resting=g.net.remotes.get(75),restStore=resting.rest;
+  gm({t:"state",ps:[75,0,0,0,0],rs:[[75,...rest]]});const restReused=resting.rest===restStore&&resting.rest[1]===1;
+  gm({t:"state",ps:[75,0,0,0,0],rs:[[75,0]]});const explicitStand=resting.rest===0;
+  gm({t:"state",ps:[75,0,0,0,0]});const legacyRest=resting.rest===undefined;
+  gm({t:"kick",reason:"replaced"});g.net.rejoin();gw=g.sockets.at(-1);gm({t:"welcome",you:{id:71},players:[],now:Date.now()});
+  const resumedRest=poses().at(-1).r?.join()===rest.join();
+  g.advance(101);g.net.sendPose(0,0,0,0,null,0,1,visual,0);const stoodRest=poses().at(-1).r===0;
+  record("integration hammock: bounded phase and current quaternion ride the existing pose; unchanged rest is quiet, joins/snapshots reuse state, explicit stand overrides inference, legacy omission remains compatible and reconnect restores the current phase",boundedRest&&restingQuiet&&restReused&&explicitStand&&legacyRest&&resumedRest&&stoodRest,JSON.stringify({boundedRest,restingQuiet,restReused,explicitStand,legacyRest,resumedRest,stoodRest}));
   g.net.dispose();
   const oldNet=BL.net,sceneRoot=BL.scene.createNode(),records=new Map(),cavemen=new Map();
   const replayed=[],crew={cavemen,player:null,refreshStates(){},showShot:(...a)=>replayed.push(a)};
@@ -25618,8 +25699,11 @@ const integrationChecks = async BL => {
   record("integration remotes: a venue actor leaves the exterior immediately",pool.stats().remotePlayers===0);
   records.get(72).zone="dsb-outside";crew.player={traits:{name:"w-s-bitcoin"}};pool.update(.1);
   record("integration remotes: a pending local claim never renders a duplicate",pool.stats().remotePlayers===0);
+  const parkedRig=pool.body(72),parkedHolder=BL.scene.createNode();let releasedGear=0;
+  BL.scene.addChild(sceneRoot,parkedHolder);
+  parkedRig.restEquipment={release:cave=>{releasedGear++;BL.scene.removeChild(sceneRoot,parkedHolder);cave.restEquipment=null;}};
   pool.dispose();
-  record("integration remotes: scene disposal releases nodes and actor pool",sceneRoot.children.length===0&&pool.actors().length===0);
+  record("integration remotes: scene disposal releases nodes, actor pool and gear parked outside the body, including a retained hub whose updates stop immediately",sceneRoot.children.length===0&&pool.actors().length===0&&releasedGear===1&&!parkedRig.restEquipment);
   // Rule: one remote companion replaces its NPC gorilla, never its owner's Ooga, and returns both cleanly.
   records.clear();crew.player=null;
   const owner=BL.models.caveman(BL.contributors.traitsFor("w-s-bitcoin"));owner.override=null;owner.remoteControlled=false;cavemen.set("w-s-bitcoin",owner);

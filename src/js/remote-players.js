@@ -139,6 +139,7 @@
     };
 
     const drop = (entry) => {
+      if (entry.cave.restEquipment) entry.cave.restEquipment.release(entry.cave);
       if (fx) fx.hush(entry.cave);
       if (entry.gorilla) entry.cave.dispose();
       else removeChild(root, entry.cave.root);
@@ -316,6 +317,13 @@
           if (bodies.size >= MAX) continue;
           entry = build(rec);
         }
+        const restPhase = rec.rest ? rec.rest[1] : 0;
+        if (!entry.gorilla && entry.restPhase === 2 && restPhase !== 2) {
+          // Settled rest is reported at a canonical seat, but rendered at the body's cloth offset.
+          // Start exit/interruption from that visible body, rather than jumping back to the seat.
+          entry.x = entry.cave.root.position.x; entry.y = entry.cave.root.position.y - entry.baseY; entry.z = entry.cave.root.position.z;
+        }
+        entry.restPhase = restPhase;
         const far = Math.hypot(rec.x - entry.x, rec.y - entry.y, rec.z - entry.z) > SNAP;
         const t = far ? 1 : k;
         entry.dx = (rec.x - entry.x) * t;

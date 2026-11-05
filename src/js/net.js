@@ -186,6 +186,23 @@
     for (let i = 0; i < 17; i++) if (!Number.isInteger(v[i]) || v[i] < (i < 3 ? -VISUAL_LIMITS[i] : 0) || v[i] > VISUAL_LIMITS[i]) return false;
     return true;
   };
+  const restSent = new Int16Array(6);
+  let restKnown = false, restActive = false;
+  const validRest = r => {
+    if (r === 0) return true;
+    if (!r || r.length !== 6) return false;
+    for (let i = 0; i < 6; i++) if (!Number.isInteger(r[i])) return false;
+    return r[0] === 0 && r[1] >= 1 && r[1] <= 3 && r[2] >= 0 && r[2] <= 255
+      && Math.abs(r[3]) <= 1000 && Math.abs(r[4]) <= 1000 && Math.abs(r[5]) <= 1000
+      && r[3] ** 2 + r[4] ** 2 + r[5] ** 2 <= 1002001;
+  };
+  const readRest = (rec, r) => {
+    rec.rest = undefined;
+    if (r === 0) { rec.rest = 0; return; }
+    if (!Array.isArray(r) || !validRest(r)) return;
+    if (!rec.restData) rec.restData = new Int16Array(6);
+    rec.restData.set(r); rec.rest = rec.restData;
+  };
   const readVisual = (rec, v, at) => {
     rec.visual = null;
     if (!validVisual(v) || !Number.isFinite(at)) return;
@@ -301,6 +318,7 @@
     rec.jet = Number.isInteger(p.j) && p.j > 0 && p.j <= 7 ? p.j : 0;
     rec.weapon = Number.isInteger(p.w) && p.w > 0 && p.w <= 255 ? p.w : 0;
     readVisual(rec, p.v, p.va);
+    readRest(rec, p.r);
     rec.zone = typeof p.zone === "string" ? p.zone : "outside";
     rec.voice = p.voice === true;
     rec.hp = Number.isFinite(p.hp) ? p.hp : 100;
@@ -386,6 +404,7 @@
         // `js` lists every jetpack and `ws` every weapon; anyone in the snapshot left out has none.
         rec.jet = rec.weapon = 0;
         rec.visual = null;
+        rec.rest = undefined;
       }
       const gs = msg.gs;
       if (Array.isArray(gs)) for (let i = 0; i + 6 < gs.length; i += 7) {
@@ -407,6 +426,12 @@
         if (!Array.isArray(row) || row.length !== 19) continue;
         const rec = remotes.get(row[0]);
         if (rec) readVisual(rec, row.slice(2), row[1]);
+      }
+      const rs = msg.rs;
+      if (Array.isArray(rs)) for (const row of rs) {
+        if (!Array.isArray(row) || row.length !== 2 && row.length !== 7) continue;
+        const rec = remotes.get(row[0]);
+        if (rec) readRest(rec, row.length === 2 ? row[1] : row.slice(1));
       }
       if (changed) moved();
     } else if (msg.t === "welcome") {
@@ -442,7 +467,8 @@
         // live sample rather than replayed with a fresh room timestamp.
         if (visualKnown) { visualSent[3] &= 7; for (let i = 4; i < 15; i++) visualSent[i] = 0; }
         const extra = state.bodyKind === "gorilla" && poseHasG ? `,"g":[${gSent[0]},${gSent[1].toFixed(3)},${gSent[2].toFixed(3)},${gSent[3].toFixed(3)},${gSent[4].toFixed(3)},${gSent[5].toFixed(3)}]`
-          : (jetSent ? `,"j":${jetSent}` : "") + (weaponSent ? `,"w":${weaponSent}` : "") + (visualKnown ? `,"v":[${visualSent.join(",")}]` : "");
+          : (jetSent ? `,"j":${jetSent}` : "") + (weaponSent ? `,"w":${weaponSent}` : "") + (visualKnown ? `,"v":[${visualSent.join(",")}]` : "")
+            + (restKnown ? restActive ? `,"r":[${restSent.join(",")}]` : ',"r":0' : "");
         send(`{"t":"pose","x":${px.toFixed(3)},"y":${py.toFixed(3)},"z":${pz.toFixed(3)},"yaw":${pyaw.toFixed(3)}${extra}}`);
       }
       sendZone();
@@ -477,6 +503,7 @@
         rec.g = null;
         rec.jet = rec.weapon = 0;
         rec.visual = null;
+        rec.rest = undefined;
         rec.hp = 100;
         rec.ko = false;
       }
@@ -865,7 +892,7 @@
     state.bodyName = bodyName(name);
     poseAt = 0; px = NaN;
     gKnown = poseHasG = false;
-    jetSent = weaponSent = 0; visualKnown = false;
+    jetSent = weaponSent = 0; visualKnown = false; restKnown = restActive = false;
     sendBody();
     // The room starts another actor at full health.
     hpSent = 100; koSent = false; hpAt = 0;
@@ -905,10 +932,10 @@
   };
 
   // Throttled to POSE_MS and skipped while nothing moved; a changed gorilla pose, jetpack or weapon also earns a report.
-  const sendPose = (x, y, z, yaw, g = null, jet = 0, weapon = 0, visual = null) => {
+  const sendPose = (x, y, z, yaw, g = null, jet = 0, weapon = 0, visual = null, rest = 0) => {
     if (cabinetAnchor) {
       const at = cabinetAnchor;
-      x = at.x; y = at.y; z = at.z; yaw = at.yaw; g = null; jet = weapon = 0; visual = null;
+      x = at.x; y = at.y; z = at.z; yaw = at.yaw; g = null; jet = weapon = 0; visual = null; rest = 0;
     }
     const now = performance.now();
     if (state.bodyKind === "gorilla" && g && g.length === 6) {
@@ -929,7 +956,10 @@
     if (state.bodyKind === "gorilla" || !Number.isInteger(jet) || jet < 0 || jet > 7) jet = 0;
     if (state.bodyKind === "gorilla" || !Number.isInteger(weapon) || weapon < 0 || weapon > 255) weapon = 0;
     if (state.bodyKind === "gorilla" || !validVisual(visual)) visual = null;
-    let changed = !!g && !gKnown || jet !== jetSent || weapon !== weaponSent || !!visual !== visualKnown;
+    if (state.bodyKind === "gorilla" || !validRest(rest)) rest = 0;
+    let changed = !!g && !gKnown || jet !== jetSent || weapon !== weaponSent || !!visual !== visualKnown
+      || state.bodyKind !== "gorilla" && (!restKnown || !!rest !== restActive);
+    if (rest && !changed) for (let i = 0; i < 6; i++) if (rest[i] !== restSent[i]) { changed = true; break; }
     if (visual && !changed) for (let i = 0; i < 17; i++) if (visual[i] !== visualSent[i]) { changed = true; break; }
     // A held wind-up can outlast its last changing sample. A bounded heartbeat keeps it live, and
     // lets a silent/disconnected action expire without an extra timer or a new message type.
@@ -952,6 +982,11 @@
     if (weapon) extra += `,"w":${weapon}`;
     visualKnown = !!visual;
     if (visual) { visualSent.set(visual); extra += `,"v":[${visualSent.join(",")}]`; }
+    restKnown = state.bodyKind !== "gorilla"; restActive = !!rest;
+    if (restKnown) {
+      if (rest) { restSent.set(rest); extra += `,"r":[${restSent.join(",")}]`; }
+      else extra += ',"r":0';
+    }
     if (state.room === "live") send(`{"t":"pose","x":${x.toFixed(3)},"y":${y.toFixed(3)},"z":${z.toFixed(3)},"yaw":${yaw.toFixed(3)}${extra}}`);
     moved();
   };
