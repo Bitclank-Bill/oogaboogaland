@@ -117,6 +117,115 @@
   });
   const RING0 = [1, 4, 9, 12];
 
+  // --- Motion (upgrade 2) ------------------------------------------------------------------------------------------
+  // Every command still sets its exhibit's final state at once (the *Show functions); a changed part then glides into
+  // that state from where it came from, so cause and effect read in the workbench's live model. The pools are
+  // preallocated for the visit; `update` does nothing while none is moving (A.live 0). Calm starts no motion (the
+  // final state is already showing) and snaps anything moving; leaving the gallery (`active(false)`) snaps too. The
+  // host's holds (pause, the menu, the console) stop calling `update`, so motion freezes where it is.
+  // Sounds go through the kit's optional `cue` (the Genesis tab's names below), only on a command, never per frame.
+  const CUES = ["whir", "click", "clack", "relay", "chime", "thunk", "rustle-paper", "beep", "hum-start", "hum-stop"];
+  const cue = (name) => { if (S && S.cueFn && CUES.indexOf(name) >= 0) S.cueFn(name); };
+  const GLIDES = 24, HOPS = 10;
+  const ease = (t) => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  const motion = () => ({
+    live: 0, calm: false,
+    // Glides: node, its resting place (home), where it comes from, an arc's lift, the time, delay and length, a grow
+    // (0: none, 1: from nothing), the mode (0: from there to home; 1: from home to there, then back home unseen, a
+    // consumed token; 2: home to there and back, a refused one) and a cue index at its end (-1: none).
+    node: new Array(GLIDES).fill(null), home: new Float64Array(GLIDES * 3), from: new Float64Array(GLIDES * 3),
+    lift: new Float32Array(GLIDES), t: new Float32Array(GLIDES), delay: new Float32Array(GLIDES), dur: new Float32Array(GLIDES),
+    grow: new Uint8Array(GLIDES), mode: new Uint8Array(GLIDES), endCue: new Int8Array(GLIDES).fill(-1),
+    // The Chord ring's lookup: a token hopping slot to slot along the route.
+    hop: { n: 0, at: 0, t: 0, xs: new Float64Array(HOPS), zs: new Float64Array(HOPS), y: 0 },
+    // Pattern Pocket's screen: a 4x4 grid of cells playing the playlist's patterns for `left` seconds.
+    pocket: { left: 0, t: 0, ids: new Int8Array(4), n: 0, still: -1 }
+  });
+  const glide = (node, fx, fy, fz, lift = 0, dur = 0.5, delay = 0, grow = 0, mode = 0, endCue = "") => {
+    const A = S && S.anim;
+    if (!A || !node || A.calm) return;
+    let k = A.node.indexOf(node);
+    if (k < 0) {
+      k = A.node.indexOf(null);
+      if (k < 0) return; // the pool is full: this part simply shows its final state
+      A.node[k] = node; A.home[k * 3] = node.position.x; A.home[k * 3 + 1] = node.position.y; A.home[k * 3 + 2] = node.position.z;
+      A.live++;
+    }
+    A.from[k * 3] = fx; A.from[k * 3 + 1] = fy; A.from[k * 3 + 2] = fz;
+    A.lift[k] = lift; A.t[k] = 0; A.delay[k] = delay; A.dur[k] = dur; A.grow[k] = grow; A.mode[k] = mode; A.endCue[k] = CUES.indexOf(endCue);
+    pose(A, k, 0);
+  };
+  // Where glide k stands at progress u (0..1).
+  const pose = (A, k, u) => {
+    const nd = A.node[k], m = A.mode[k], e = ease(m === 2 ? (u < 0.5 ? u * 2 : 2 - u * 2) : u);
+    // Mode 0 travels from `from` to home; modes 1 and 2 travel from home toward `from`.
+    const w = m === 0 ? e : 1 - e;
+    nd.position.x = A.from[k * 3] + (A.home[k * 3] - A.from[k * 3]) * w;
+    nd.position.y = A.from[k * 3 + 1] + (A.home[k * 3 + 1] - A.from[k * 3 + 1]) * w + Math.sin(e * Math.PI) * A.lift[k];
+    nd.position.z = A.from[k * 3 + 2] + (A.home[k * 3 + 2] - A.from[k * 3 + 2]) * w;
+    if (A.grow[k]) { const s = 0.05 + 0.95 * ease(u * 1.6); nd.scale.x = nd.scale.y = nd.scale.z = s; }
+  };
+  const settle = (A, k) => {
+    const nd = A.node[k];
+    nd.position.x = A.home[k * 3]; nd.position.y = A.home[k * 3 + 1]; nd.position.z = A.home[k * 3 + 2];
+    if (A.grow[k]) nd.scale.x = nd.scale.y = nd.scale.z = 1;
+    A.node[k] = null; A.live--;
+  };
+  // The hop's token at the start of the route; each hop takes HOP_S seconds, arcing over the ring.
+  const HOP_S = 0.32;
+  const hopStart = (n) => { const A = S.anim, h = A.hop; if (A.calm || n < 2) { S.n.hopper.visible = false; return; } if (h.n === 0) A.live++; h.n = n; h.at = 0; h.t = 0; S.n.hopper.visible = true; };
+  const hopEnd = () => { const A = S.anim, h = A.hop; if (h.n) { h.n = 0; A.live--; } S.n.hopper.visible = false; };
+  // Pattern Pocket's screen cells: which are lit for pattern `id` at step `k`, on the toy's six original rules.
+  const SPIRAL = [0, 1, 2, 3, 7, 11, 15, 14, 13, 12, 8, 4, 5, 6, 10, 9];
+  const cellOn = (id, i, j, k) => id === 0 ? j >= 3 - ((i + k) & 3) : id === 1 ? ((Math.max(Math.abs(i - 1.5), Math.abs(j - 1.5)) | 0) === (k & 1))
+    : id === 2 ? i === ((j + k) & 3) : id === 3 ? ((i + j + k) & 1) === 1 : id === 4 ? SPIRAL.indexOf(j * 4 + i) < (k % 17) : ((((i * 7 + j * 13) ^ k) & 3) !== 0);
+  const pocketPaint = (id, k) => { const c = S.n.pocketCells; for (let q = 0; q < 16; q++) c[q].visible = id >= 0 && cellOn(id, q & 3, q >> 2, k); };
+  // Plays the given patterns on the screen, POCKET_S seconds each (one pattern once, a whole playlist in turn); the
+  // screen's last frame is the first pattern's still, or dark for an empty playlist.
+  const POCKET_S = 1.4;
+  const pocketPlay = (list, n) => {
+    const A = S.anim, p = A.pocket;
+    p.n = Math.min(n, 4); for (let i = 0; i < p.n; i++) p.ids[i] = list[i];
+    p.still = p.n ? p.ids[0] : -1;
+    if (A.calm || !p.n) { pocketPaint(p.still, 5); if (p.left > 0) { p.left = 0; A.live--; } return; }
+    if (p.left <= 0) A.live++;
+    p.left = p.n * POCKET_S; p.t = 0;
+  };
+  const pocketStop = () => { const A = S.anim, p = A.pocket; if (p.left > 0) { p.left = 0; A.live--; } pocketPaint(p.still, 5); };
+  // Everything moving, put at its end at once (Calm switched on, the gallery left, a reset).
+  const snapAll = () => {
+    const A = S && S.anim;
+    if (!A) return;
+    for (let k = 0; k < GLIDES; k++) if (A.node[k]) settle(A, k);
+    hopEnd(); pocketStop();
+  };
+  const tick = (dt) => {
+    const A = S.anim;
+    for (let k = 0; k < GLIDES; k++) {
+      if (!A.node[k]) continue;
+      if (A.delay[k] > 0) { A.delay[k] -= dt; continue; }
+      A.t[k] += dt;
+      const u = A.t[k] / A.dur[k];
+      if (u >= 1) { const c = A.endCue[k]; settle(A, k); if (c >= 0) cue(CUES[c]); } else pose(A, k, u);
+    }
+    const h = A.hop;
+    if (h.n) {
+      h.t += dt;
+      while (h.n && h.t >= HOP_S) { h.t -= HOP_S; h.at++; if (h.at >= h.n - 1) { hopEnd(); cue("chime"); } }
+      if (h.n) {
+        const u = ease(h.t / HOP_S), a = h.at, nd = S.n.hopper;
+        nd.position.x = h.xs[a] + (h.xs[a + 1] - h.xs[a]) * u; nd.position.z = h.zs[a] + (h.zs[a + 1] - h.zs[a]) * u;
+        nd.position.y = h.y + Math.sin(u * Math.PI) * 0.35;
+      }
+    }
+    const p = A.pocket;
+    if (p.left > 0) {
+      p.left -= dt; p.t += dt;
+      if (p.left <= 0) { p.left = 0; A.live--; pocketPaint(p.still, 5); cue("hum-stop"); }
+      else { const slot = Math.min(p.n - 1, Math.floor(p.t / POCKET_S)); pocketPaint(p.ids[slot], Math.floor(p.t * 5)); }
+    }
+  };
+
   // --- Chord ring --------------------------------------------------------------------------------------------------
   const succ = (nodes, id) => { for (let i = 0; i < 16; i++) { const k = (id + i) & 15; if (nodes[k]) return k; } return -1; };
   const inside = (x, a, b) => a < b ? x > a && x <= b : x > a || x <= b; // x in (a, b] around the ring
@@ -132,7 +241,7 @@
     "RING>", "NODES | LOOKUP k | JOIN n | LEAVE n | RESET")((cmd, w) => {
     const r = S.ring;
     const list = () => { const out = []; for (let i = 0; i < 16; i++) if (r.nodes[i]) out.push(i); return out; };
-    if (cmd === "RESET") { r.nodes.fill(0); for (const k of RING0) r.nodes[k] = 1; r.key = r.owner = -1; ringShow(); return reply("Ring reset: peers at 1, 4, 9 and 12."); }
+    if (cmd === "RESET") { snapAll(); r.nodes.fill(0); for (const k of RING0) r.nodes[k] = 1; r.key = r.owner = -1; ringShow(); return reply("Ring reset: peers at 1, 4, 9 and 12."); }
     if (cmd === "NODES") return reply(`Peers at: ${list().join(", ")}.`, "Each key belongs to the first peer at or after it, going round.");
     if (cmd === "JOIN" || cmd === "LEAVE") {
       const n = w.length === 2 ? integer(w[1], 0, 15) : -1, count = list().length;
@@ -147,7 +256,8 @@
       if (k < 0) return reply("LOOKUP needs one key from 0 to 15.");
       // From the lowest peer: jump by the furthest table entry (1, 2, 4 or 8 places ahead) that does not pass the key.
       let cur = succ(r.nodes, 0), path = `${cur}`, hops = 0;
-      const owner = succ(r.nodes, k);
+      const owner = succ(r.nodes, k), H = S.anim.hop;
+      H.xs[0] = S.n.slot[cur * 2]; H.zs[0] = S.n.slot[cur * 2 + 1];
       while (cur !== owner && hops < 8) {
         const next = succ(r.nodes, (cur + 1) & 15);
         if (inside(k, cur, next)) { cur = next; }
@@ -157,8 +267,11 @@
           cur = jump;
         }
         path += ` > ${cur}`; hops++;
+        H.xs[hops] = S.n.slot[cur * 2]; H.zs[hops] = S.n.slot[cur * 2 + 1];
       }
       r.key = k; r.owner = owner; ringShow();
+      // The lookup's token hops the route over the ring; the owner's cap pops up as it lands.
+      if (hops) { hopStart(hops + 1); cue("relay"); glide(S.n.caps[owner], S.n.slot[owner * 2], S.n.top + 1.2, S.n.slot[owner * 2 + 1], 0, 0.3, hops * HOP_S, 1); }
       return reply(`Key ${k}: route ${path}; ${hops} hop${hops === 1 ? "" : "s"}. Peer ${owner} holds it.`, "Finding a peer is not agreeing on a ledger: no vote, no ownership record, no double-spending check.");
     }
     return reply("NODES | LOOKUP k | JOIN n | LEAVE n | RESET");
@@ -173,18 +286,24 @@
     "STAMP>", "TEXT words | BITS 1..12 | MAKE | CHECK | RESET",
     ["The paper's idea: a cost-function verifiable cheaply but costly to compute. This toy mixer is NOT Hashcash's real hash."])((cmd, w, text) => {
     const s = S.stamp;
-    if (cmd === "RESET") { s.text = "museum note"; s.bits = 8; s.nonce = -1; s.attempts = 0; stampShow(); return reply("Bench cleared. TEXT is 'museum note', BITS 8."); }
+    if (cmd === "RESET") { snapAll(); s.text = "museum note"; s.bits = 8; s.nonce = -1; s.attempts = 0; stampShow(); return reply("Bench cleared. TEXT is 'museum note', BITS 8."); }
     if (cmd === "TEXT") { const t = text.replace(/^\S+\s*/, "").slice(0, 40); if (!t) return reply("TEXT needs a short message."); s.text = t; return reply(`Message: ${t}. The old stamp stays bound to its own message.`); }
     if (cmd === "BITS") { const b = w.length === 2 ? integer(w[1], 1, 12) : -1; if (b < 0) return reply("BITS needs a whole number from 1 to 12."); s.bits = b; return reply(`Target: a digest starting with ${b} zero bits. About ${2 ** b} tries on average.`); }
     if (cmd === "MAKE") {
       const n = search(seedOf(s.text), s.bits, STAMP_CAP);
       s.attempts = n < 0 ? STAMP_CAP : n + 1; s.nonce = n; s.digest = n < 0 ? 0 : mix(seedOf(s.text), n); s.boundText = s.text; s.boundBits = s.bits; stampShow();
+      // The meter climbs a segment at a time for the tries spent, then the stamp drops onto the bench.
+      { const N = S.n; let lit = 0; for (let i = 0; i < 10; i++) if (N.meter[i].visible) { lit++; glide(N.meter[i], N.meter[i].position.x, N.meter[i].position.y, N.meter[i].position.z, 0, 0.22, i * 0.09, 1); }
+        if (n >= 0) glide(N.stampTile, N.stampTile.position.x, N.stampTile.position.y + 0.6, N.stampTile.position.z, 0, 0.35, lit * 0.09 + 0.1, 0, 0, "thunk");
+        if (lit) cue("whir"); }
       return n < 0 ? reply(`No stamp within ${STAMP_CAP} tries (the bench's limit). Lower BITS and MAKE again.`)
         : reply(`Stamp found after ${s.attempts} tries: nonce ${n}, digest ${hex(s.digest)}.`, "The meter's lit segments grow with the number of tries. Now CHECK: one try.");
     }
     if (cmd === "CHECK") {
       if (s.nonce < 0) return reply("MAKE a stamp first.");
       const ok = s.text === s.boundText && mix(seedOf(s.text), s.nonce) < 2 ** (32 - s.boundBits);
+      // One check: the stamp lifts once off the bench and settles.
+      glide(S.n.stampTile, S.n.stampTile.position.x, S.n.stampTile.position.y, S.n.stampTile.position.z, 0.12, 0.3); cue(ok ? "chime" : "beep");
       return reply(ok ? "VALID: one try confirms the work for this message." : "INVALID: the stamp was made for different text.", "A service would still have to remember spent stamps; a stamp is not a shared payment history.");
     }
     return reply("TEXT words | BITS 1..12 | MAKE | CHECK | RESET");
@@ -199,7 +318,7 @@
     "RPOW>", "WORK | EXCHANGE name | WALLET | RESET",
     ["Context: Finney's 2004 announcement; not a whitepaper reference. No real tokens, keys or server."])((cmd, w) => {
     const r = S.rpow, c = S.cab;
-    if (cmd === "RESET") { r.spent.length = 0; r.wallet.length = 0; r.made = r.issued = 0; return reply("Desk cleared."); }
+    if (cmd === "RESET") { snapAll(); r.spent.length = 0; r.wallet.length = 0; r.made = r.issued = 0; return reply("Desk cleared."); }
     if (cmd === "WALLET") return reply(`Your tokens: ${r.wallet.length ? r.wallet.join(", ") : "none"}. Spent at the server: ${r.spent.length ? r.spent.join(", ") : "none"}.`);
     if (cmd === "WORK") {
       if (r.made >= 12) return reply("Toy limit: 12 work tokens a visit. RESET to start again.");
@@ -209,12 +328,13 @@
     if (cmd === "EXCHANGE") {
       const name = (w[1] || "").slice(0, 6);
       if (!/^(W|R)\d{1,2}$/.test(name)) return reply("EXCHANGE needs a token name such as W1 or R1.");
-      if (c.compared && !c.match) return reply("The cabinet's fingerprint no longer matches the published one: a careful user would not trust this server's tokens. Fix it at the cabinet (LOAD A).");
-      if (r.spent.indexOf(name) >= 0) return reply(`REFUSED: ${name} was already exchanged. Inputs cannot be reused.`);
+      if (c.compared && !c.match) { rpowBounce(); return reply("The cabinet's fingerprint no longer matches the published one: a careful user would not trust this server's tokens. Fix it at the cabinet (LOAD A)."); }
+      if (r.spent.indexOf(name) >= 0) { rpowBounce(); return reply(`REFUSED: ${name} was already exchanged. Inputs cannot be reused.`); }
       const i = r.wallet.indexOf(name);
       if (i < 0) return reply(`You do not hold ${name}. WALLET lists yours.`);
       if (r.spent.length >= 24) return reply("Toy server full (24 records). RESET to start again.");
       r.wallet.splice(i, 1); r.spent.push(name); r.issued++; const out = `R${r.issued}`; r.wallet.push(out);
+      rpowSwap();
       return reply(`Accepted ${name}; issued fresh signed token ${out}. You can exchange ${out} later, once.`, "Everything rests on this one server running honestly, and staying up.");
     }
     return reply("WORK | EXCHANGE name | WALLET | RESET");
@@ -248,7 +368,7 @@
     "GOLD>", "MINT | HARDWARE FAST or SLOW | OWNER name | LIST | RESET",
     ["The essay: the last-created string provides the challenge bits for the next. The toy mixer is not a real hash."])((cmd, w, text) => {
     const g = S.gold;
-    if (cmd === "RESET") { g.chain.length = 0; g.hw = "FAST"; goldShow(); return reply("Registry cleared; hardware FAST."); }
+    if (cmd === "RESET") { snapAll(); g.chain.length = 0; g.hw = "FAST"; goldShow(); return reply("Registry cleared; hardware FAST."); }
     if (cmd === "HARDWARE") { const v = w[1]; if (v !== "FAST" && v !== "SLOW") return reply("HARDWARE FAST or HARDWARE SLOW."); g.hw = v; return reply(`Hardware ${v}: ${v === "SLOW" ? "each try costs 4 time units" : "each try costs 1 time unit"}.`); }
     if (cmd === "LIST") return reply(g.chain.length ? g.chain.map((c, i) => `#${i + 1} ${hex(c.digest)} owner ${c.owner} cost ${c.cost}`).join(" / ") : "No strings yet. MINT makes the first.");
     if (cmd === "OWNER") {
@@ -263,6 +383,8 @@
       if (n < 0) return reply("No solution within the bench's limit. MINT again.");
       const cost = (n + 1) * (g.hw === "SLOW" ? 4 : 1);
       g.chain.push({ digest: mix(seed, n), owner: "unowned", cost }); goldShow();
+      // The new string rises onto the shelf beside the one it was built on.
+      { const b = S.n.bars[g.chain.length - 1]; glide(b, b.position.x, b.position.y - 0.35, b.position.z + 0.3, 0.25, 0.55, 0, 1, 0, "thunk"); cue("whir"); }
       return reply(`String #${g.chain.length}: ${n + 1} tries on ${g.hw} hardware, cost ${cost} time units; digest ${hex(g.chain[g.chain.length - 1].digest)}.`,
         "Strings made on different hardware, or at different times, cost different amounts: units are unequal.");
     }
@@ -280,7 +402,7 @@
     "MOSAIC>", "PEERS | FETCH peer | STATUS | RESET",
     ["No real files, trackers or network: three invented peers and an original picture."])((cmd, w) => {
     const m = S.mosaic;
-    if (cmd === "RESET") { m.have.fill(0); m.uploads.fill(0); m.done = 0; mosaicShow(); return reply("Mosaic cleared."); }
+    if (cmd === "RESET") { snapAll(); m.have.fill(0); m.uploads.fill(0); m.done = 0; mosaicShow(); return reply("Mosaic cleared."); }
     if (cmd === "PEERS") return reply(...PEERS.map((p, i) => `${p}: pieces ${HOLD[i].join(", ")}`));
     if (cmd === "STATUS") return reply(`You hold ${m.done}/12. Uploads: ${PEERS.map((p, i) => `${p} ${m.uploads[i]}`).join(", ")}.`, m.done === 12 ? "Picture complete. Copying pieces is not agreeing who owns them." : "FETCH more pieces.");
     if (cmd === "FETCH") {
@@ -291,6 +413,7 @@
       for (const p of HOLD[i]) if (!m.have[p] && (pick < 0 || rarity(p) < rarity(pick))) pick = p;
       if (pick < 0) return reply(`${PEERS[i]} has nothing you lack. Try another peer.`);
       m.have[pick] = 1; m.uploads[i]++; m.done++; mosaicShow();
+      { const t = S.n.tiles[pick]; glide(t, S.n.peerX, S.n.top + 0.75, S.n.peerZ - 1 + i, 0.6, 0.6, 0, 0, 0, "click"); }
       return reply(`${PEERS[i]} sent piece ${pick} (it chose the rarest piece you lacked). ${m.done}/12.`, m.done === 12 ? "Complete! STATUS shows how the uploading was shared." : "Close this window to watch the tiles fill.");
     }
     return reply("PEERS | FETCH peer | STATUS | RESET");
@@ -398,10 +521,32 @@
   // Their story is the era's own: the BitTorrent lectern and the RPOW desk, pointed to rather than retold.
   const PATCH_STORY = [PEERS_TEXT,
     "The paper's story is on the BitTorrent lectern by the piece mosaic; reusable tokens, and who you must trust for them, are at the RPOW desk."];
-  const patchShow = () => { const p = S.patch, t = S.n.patchTiles; for (let peer = 0; peer < 3; peer++) for (let i = 0; i < 9; i++) t[peer * 9 + i].visible = p.holds(peer, i); };
-  const pocketShow = () => { const u = S.pocket.used(), b = S.n.pocketBar; for (let i = 0; i < b.length; i++) b[i].visible = i < u; };
+  // A single send slides its tile across from the sender's board (a reset or a new deal just shows); every change of
+  // the board otherwise shows at once.
+  const patchShow = () => {
+    const p = S.patch, t = S.n.patchTiles, sent = S.patchSent;
+    let added = -1, adds = 0, from = -1;
+    for (let peer = 0; peer < 3; peer++) for (let i = 0; i < 9; i++) { const nd = t[peer * 9 + i], on = p.holds(peer, i); if (on && !nd.visible) { adds++; added = peer * 9 + i; } nd.visible = on; }
+    for (let peer = 0; peer < 3; peer++) { if (p.sent[peer] === sent[peer] + 1) from = peer; sent[peer] = p.sent[peer]; }
+    if (adds === 1 && from >= 0) { const src = t[from * 9 + added % 9], dst = t[added]; glide(dst, src.position.x, src.position.y, src.position.z, 0.3, 0.55, 0, 0, 0, "click"); }
+  };
+  // The storage bar's new segments grow in; the screen plays what was just added, or the whole playlist on PLAY, and
+  // otherwise shows the playlist's first pattern still.
+  const pocketShow = (line) => {
+    const m = S.pocket, u = m.used(), b = S.n.pocketBar, cmd = String(line).trim().toUpperCase().split(/\s+/)[0];
+    for (let i = 0; i < b.length; i++) { const on = i < u; if (on && !b[i].visible) glide(b[i], b[i].position.x, b[i].position.y, b[i].position.z, 0, 0.25, (i % 4) * 0.05, 1); b[i].visible = on; }
+    if (cmd === "PLAY" && m.M.length) { pocketPlay(m.list, m.M.length); cue("hum-start"); }
+    else if (cmd === "ADD" && m.M.length) { const keep = m.list[0]; pocketPlay(m.list.subarray(m.M.length - 1), 1); S.anim.pocket.still = keep; }
+    else { S.anim.pocket.still = m.M.length ? m.list[0] : -1; pocketStop(); }
+  };
+  // The RPOW desk's two tokens: a spent one slides into the box's slot and a fresh one slides out to the other tray; a
+  // refused one goes to the slot and comes back.
+  const rpowSwap = () => { const N = S.n; glide(N.tokIn, N.slotX, N.slotY, N.slotZ, 0.15, 0.5, 0, 0, 1); glide(N.tokOut, N.slotX, N.slotY, N.slotZ, 0.15, 0.5, 0.55, 0, 0, "clack"); };
+  // The display comparison reveals as its board opens: each model's depth bar grows out in turn.
+  const revealDisplays = () => { const b = S.n.depthBars; for (let i = 0; i < b.length; i++) glide(b[i], b[i].position.x, b[i].position.y, b[i].position.z, 0, 0.5, 0.15 + i * 0.35, 1); if (b.length) cue("click"); };
+  const rpowBounce = () => { const N = S.n; glide(N.tokIn, N.slotX, N.slotY, N.slotZ, 0.12, 0.7, 0, 0, 2); cue("beep"); };
   const CHAIN_STORY = ["Context: the bit gold bench and its lectern across the walk (December 2005, qualified) tell the real proposal's story; this game borrows only its picture of each new string built on the last."];
-  const watched = (term, show) => ({ banner: term.banner, prompt: term.prompt, run(line) { const r = term.run(line); show(); return r; } });
+  const watched = (term, show) => ({ banner: term.banner, prompt: term.prompt, run(line) { const r = term.run(line); show(line); return r; } });
   const patchTerm = () => watched(BL.genesisEra5Patchwork.terminal(S.patch, PATCH_STORY), patchShow);
   const pocketTerm = () => watched(BL.genesisEra5Mixtape.terminal(S.pocket, ["Context: the silent pocket disk player further up this side (announced 23 October 2001); this toy makes no claim about that product."]), pocketShow);
   BL.genesisExhibits.register(5, {
@@ -423,12 +568,21 @@
     },
     build(kit) {
       S = fresh();
+      S.anim = motion(); S.cueFn = typeof kit.cue === "function" ? kit.cue : null; S.patchSent = new Uint8Array(3);
       for (const k of RING0) S.ring.nodes[k] = 1;
       S.wiki.revs.push(ARTICLE);
       const { era, top, solid, sign, obstacle, prop } = kit;
       const N = S.n = { pillars: [], caps: [], slot: new Float32Array(32), keyMark: null, meter: [], stampTile: null, cabGreen: null, cabRed: null, cabBusy: null,
         bars: [], tiles: [], wide: [], tight: [], lines: [], cap: [], sats: [], satR: 0, satX: 0, satZ: 0, satY: 0, beacon: null, ringX: 0, ringZ: 0,
-        patchTiles: [], pocketBar: [], chainLinks: [] };
+        patchTiles: [], pocketBar: [], chainLinks: [],
+        hopper: null, tokIn: null, tokOut: null, slotX: 0, slotY: 0, slotZ: 0, peerX: 0, peerZ: 0, top, pocketCells: [], depthBars: [] };
+      // A part the upgrade moves, placed through the kit at its resting spot (inside its exhibit's footprint, so it
+      // stays with that exhibit's cluster); the kit's dry runs get a bare node.
+      const part = (w, h, d, color, x, y, z, emissive = 0) => kit.place(kit.createNode({ geometry: kit.M.box({ w, h, d, color, emissive }), position: { x, y, z } }));
+      // An emissive pool of light on the floor round an exhibit, in the era's silver-glass tone (gold for the two
+      // Bitcoin-line exhibits, Hashcash and bit gold). No point lights.
+      const pool = (x, z, r, color, emissive) => kit.place(kit.createNode({ geometry: kit.M.lathe ? kit.M.lathe({ profile: [[0, 0], [r, 0], [r, 0.006], [0, 0.006]], segments: 28, color, emissive }) : kit.M.box({ w: r, h: 0.006, d: r, color, emissive }), position: { x, y: top + 0.002, z } }));
+      const POOL = "#9cc4d8", GOLDPOOL = "#f0c860";
       const Z = (u) => era.z1 - u; // u: metres downstream from the way in
       // 2000s workshop palette: brushed silver, graphite, translucent sea-glass and powder blue, citrus accents.
       const C = { silver: "#b9c0c6", graphite: "#3a3f45", glass: "#7fc9c4", powder: "#9cb8d8", citrus: "#d9e36a", bench: "#6a6f74", mat: "#2f3a44", gold: "#e8c35a", ivory: "#e9e6dc" };
@@ -487,6 +641,9 @@
         }
         N.keyMark = solid(0.12, 0.5, 0.12, C.citrus, bx, top + 1.3, z, 1); N.keyMark.visible = false;
         N.beacon = solid(0.14, 0.14, 0.14, C.citrus, bx, top + 1.05, z - 1.25, 0.9);
+        // The lookup's token, hidden until a LOOKUP hops it round the ring.
+        N.hopper = part(0.13, 0.13, 0.13, "#fff2b0", bx, top + 1.25, z, 1.2); N.hopper.visible = false;
+        pool(bx, z, 3.2, POOL, 0.28); pool(lx, z, 1.4, POOL, 0.35);
         toy("e5-ring", 2001, "2001: the year of the Chord paper this toy illustrates; an original museum model", "Chord ring toy", ["E5-CHORD"], bx, z, 4.6, 3.2, ringTerm);
       }
       // Hashcash, u 31: the 2002 work-stamp manual and a stamp bench.
@@ -502,6 +659,8 @@
               "The paper itself recalls May 1997 as the start; the museum keeps the separately sourced March 1997 announcement date for Era 4."],
             ["Stamps are not a ledger", "A service still has to check and remember spent stamps.", "A stamp proves work was done for one message; it is not a shared payment history that strangers agree on."]) }, lx, z);
         bench(bx, z, 4, 2.4, "WORK-STAMP BENCH · 2002", "MAKE a stamp / CHECK it");
+        // The era's clearest light: gold pools under the cited paper and its bench.
+        pool(lx, z, 1.6, GOLDPOOL, 0.75); pool(bx, z, 3.0, GOLDPOOL, 0.5);
         for (let i = 0; i < 10; i++) { const m = solid(0.28, 0.12 + i * 0.05, 0.28, i < 7 ? C.glass : C.citrus, bx - 1.5 + i * 0.33, top + 1.02 + (0.12 + i * 0.05) / 2, z - 0.6, 0.5); m.visible = false; N.meter.push(m); }
         N.stampTile = solid(0.7, 0.03, 0.5, C.gold, bx + 1.2, top + 0.98, z + 0.5, 0.7); N.stampTile.visible = false;
         toy("e5-stamp", 2002, "2002: the year of the Hashcash paper this toy illustrates; an original museum model", "Work-stamp bench", ["E5-HC"], bx, z, 4, 2.4, stampTerm);
@@ -520,6 +679,11 @@
             ["Still one server", "It depends on an operating server and its attested trusted hardware; early beta resets could invalidate tokens.",
               "Context: RPOW is not a whitepaper reference, and no direct influence is claimed. It is not decentralised consensus."]) }, lx, z);
         bench(bx, z, 3.4, 2, "RPOW EXCHANGE DESK · 2004", "WORK / EXCHANGE / reuse refused");
+        // Two tokens on the desk's trays: a spent one (powder) for the slot, a fresh signed one (glass) coming out.
+        N.tokIn = part(0.16, 0.035, 0.11, C.powder, bx + 0.08, top + 1.03, z - 0.2, 0.3);
+        N.tokOut = part(0.16, 0.035, 0.11, C.glass, bx + 0.72, top + 1.03, z - 0.2, 0.6);
+        N.slotX = bx - 0.8; N.slotY = top + 1.32; N.slotZ = z + 0.02;
+        pool(bx, z, 2.9, POOL, 0.28); pool(lx, z, 1.4, POOL, 0.35); pool(cx, z, 1.5, POOL, 0.25);
         solid(0.9, 0.5, 0.6, C.silver, bx - 0.8, top + 1.21, z - 0.3); solid(0.3, 0.04, 0.4, C.graphite, bx - 0.8, top + 1.48, z);
         // The exchange box's slot, its in and out trays, and a keyboard on the desk.
         detail(kit, bx, top, z, (M) => [B(M, 0.5, 0.03, 0.02, "#13181d", -0.8, 1.32, 0.005), B(M, 0.12, 0.08, 0.02, "#5ef08a", -0.45, 1.32, 0.005, 0.8),
@@ -561,6 +725,7 @@
               "Documented influence: Satoshi's retrospective forum post of 20 July 2010 calls Bitcoin an implementation of b-money and \"Nick Szabo's Bitgold proposal\". That later attribution does not show when any idea was met or borrowed."],
             ["Unequal units, open registry", "Different hardware and production periods make units unequal.", "Who keeps the ownership registry, and why it can be trusted, remain important design questions."]) }, lx, z);
         bench(bx, z, 4, 2.2, "BIT GOLD BENCH · 2005", "MINT / HARDWARE SLOW / OWNER");
+        pool(lx, z, 1.6, GOLDPOOL, 0.75); pool(bx, z, 3.0, GOLDPOOL, 0.5);
         for (let i = 0; i < GOLD_MAX; i++) { const b = solid(0.42, 0.16, 0.24, C.gold, bx - 1.4 + i * 0.56, top + 1.04, z - 0.4, 0.6); b.visible = false; N.bars.push(b); }
         for (let i = 0; i < GOLD_MAX - 1; i++) solid(0.14, 0.03, 0.05, C.silver, bx - 1.12 + i * 0.56, top + 1.0, z - 0.4);
         toy("e5-bitgold-bench", 2005, "2005: the qualified year of the bit gold essay this toy illustrates; an original museum model", "Bit gold bench", ["E5-BG"], bx, z, 4, 2.2, goldTerm);
@@ -570,6 +735,7 @@
       // GPS sharpening, u 17: a receiver plinth with two illustrative circles and two slow satellites above.
       {
         const z = Z(17), x = 18;
+        pool(x, z, 2.3, POOL, 0.25);
         solid(1.4, 0.9, 1.4, C.silver, x, top + 0.45, z); solid(3.4, 0.03, 3.4, C.mat, x, top + 0.92, z);
         solid(0.5, 0.2, 0.3, C.graphite, x, top + 1.05, z + 0.9); solid(0.36, 0.12, 0.02, C.glass, x, top + 1.08, z + 1.06, 0.6);
         solid(0.12, 0.12, 0.12, C.citrus, x, top + 0.99, z, 1.1);
@@ -594,6 +760,7 @@
       // Volunteer encyclopedia, u 17 further back: a kiosk with a flat screen on a pole.
       {
         const z = Z(17), x = 31;
+        pool(x, z, 1.3, POOL, 0.3);
         solid(1.2, 1.0, 0.8, C.powder, x, top + 0.5, z); solid(0.12, 0.8, 0.12, C.silver, x, top + 1.4, z);
         solid(1.4, 0.95, 0.08, C.graphite, x, top + 2.1, z + 0.05);
         solid(1.24, 0.8, 0.02, C.ivory, x, top + 2.1, z + 0.1, 0.5);
@@ -612,6 +779,7 @@
       // Pocket music player, u 34 (behind the right lamp at x 22, u 36): a big generic box with arrow buttons.
       {
         const z = Z(32), x = 30;
+        pool(x, z, 1.8, POOL, 0.28);
         solid(2.4, 0.9, 1.4, C.bench, x, top + 0.45, z);
         solid(0.9, 1.4, 0.24, C.ivory, x, top + 1.6, z);
         solid(0.7, 0.5, 0.02, "#22323c", x, top + 1.98, z + 0.13, 0.4);
@@ -652,6 +820,8 @@
           const t = solid(0.7, 0.04, 0.5, art[(i * 5 + Math.floor(i / 4)) % 6], tx, top + 1.0, tz, 0.5); t.visible = false; N.tiles.push(t);
         }
         for (let i = 0; i < 3; i++) solid(0.5, 0.7, 0.4, [C.gold, C.powder, "#e98d6a"][i], bx + 2.8, top + 0.35, z - 1 + i, 0.2);
+        N.peerX = bx + 2.8; N.peerZ = z;
+        pool(bx + 0.4, z, 3.3, POOL, 0.28); pool(lx, z, 1.4, POOL, 0.35);
         obstacle(bx + 2.5, bx + 3.1, z - 1.3, z + 1.3);
         toy("e5-mosaic", 2003, "2003: the year of the BitTorrent paper this toy illustrates; an original museum model", "Piece mosaic", ["E5-BT"], bx, z, 4.2, 2.6, mosaicTerm);
       }
@@ -670,6 +840,7 @@
         // 1. Peer Patchwork: three peers' 3x3 boards on a table, each tile lit while that peer holds the piece.
         {
           const x = xs[0], PW = BL.genesisEra5Patchwork, ART = ["#5ec8ff", "#ffd23a", "#5ec8ff", "#46ffd2", "#ffb02e", "#46ffd2", "#6fae3a", "#3a6e24", "#6fae3a"];
+          pool(x, z, 2.0, POOL, 0.3);
           if (PW) { S.patch = PW.puzzle(); S.patch.deal(2003); }
           solid(3.2, 0.08, 1.4, C.graphite, x, top + 0.86, z);
           solid(2.9, 0.82, 1.1, C.bench, x, top + 0.41, z);
@@ -705,8 +876,9 @@
           solid(0.08, 0.36, 0.06, C.graphite, fx, top + 0.92, z + 0.15);
           solid(0.5, 0.03, 0.3, C.graphite, fx, top + 0.715, z + 0.15);
           // Depth guides on the plinth: one bar as deep as each model, drawn to the same schematic scale.
-          solid(0.06, 0.02, 1.15, C.citrus, cx + 0.55, top + 0.71, z - 0.15, 0.6);
-          solid(0.06, 0.02, 0.3, C.citrus, fx + 0.55, top + 0.71, z + 0.15, 0.6);
+          N.depthBars.push(solid(0.06, 0.02, 1.15, C.citrus, cx + 0.55, top + 0.71, z - 0.15, 0.6));
+          N.depthBars.push(solid(0.06, 0.02, 0.3, C.citrus, fx + 0.55, top + 0.71, z + 0.15, 0.6));
+          pool(x, z, 2.0, POOL, 0.3);
           obstacle(x - 1.55, x + 1.55, z - 0.85, z + 0.85);
           // The tube's bezel, vents and power lamp, faint lines on its glass; the panel's buttons and lamp; a kick plate.
           detail(kit, x, top, z, (M) => [B(M, 3.02, 0.06, 1.62, "#1c1f22", 0, 0.03, 0),
@@ -719,7 +891,7 @@
           prop({ id: "e5-displays", year: "2000s", connection: "context", date: "2000-2007: the period illustrated; a schematic comparison, with no product, measurement or introduction date claimed",
             title: "CRT and flat panel compared", label: "CRT AND FLAT PANEL · 2000s (SCHEMATIC)", sourceKeys: ["E5-DOSSIER"],
             at: { x, y: top, z: z + 1.65 }, reach: 1.9, pick: { w: 3, h: 1.9, d: 1.6, x, z },
-            onUse: () => ({ board: { room: "CRT and flat panel - schematic", sources: ["E5-DOSSIER"], pages: [
+            onUse: () => (revealDisplays(), { board: { room: "CRT and flat panel - schematic", sources: ["E5-DOSSIER"], pages: [
               { caption: "In short", title: "Two ways to show a picture", text: ["On the left, a deep box with glass at its front stands for a tube display; on the right, a thin panel on a stand stands for a flat one.",
                 "The yellow bars on the plinth show each model's depth at the same schematic scale."] },
               { caption: "Why schematic", title: "Numbers kept on HOLD", text: ["This museum has not verified any particular display's dimensions, weight or screen size, so none are given.",
@@ -738,6 +910,9 @@
           for (let i = 0; i < 4; i++) solid(0.12, 0.12, 0.03, C.silver, x - 0.09 + (i % 2) * 0.18, top + 1.22 - Math.floor(i / 2) * 0.17, z + 0.08);
           solid(0.4, 0.07, 0.03, C.citrus, x, top + 0.98, z + 0.08, 0.4);
           for (let i = 0; i < 10; i++) { const c = solid(0.035, 0.05, 0.01, C.glass, x - 0.2 + i * 0.045, top + 1.55, z + 0.095, 0.9); c.visible = false; N.pocketBar.push(c); }
+          // The screen's 4x4 cells, dark until the playlist plays (the toy's own six original patterns).
+          for (let q = 0; q < 16; q++) { const c = part(0.07, 0.06, 0.008, ["#ffd23a", "#46ffd2", "#5ec8ff", "#ff5fa2"][q & 3], x - 0.135 + (q & 3) * 0.09, top + 1.85 - (q >> 2) * 0.075, z + 0.092, 1); c.visible = false; N.pocketCells.push(c); }
+          pool(x, z, 1.1, POOL, 0.32);
           obstacle(x - 0.5, x + 0.5, z - 0.4, z + 0.4);
           // The slab's rims, the storage bar's dark frame, the pedestal's foot and lip, and earphones lying on top.
           detail(kit, x, top, z, (M) => [B(M, 0.94, 0.06, 0.74, C.graphite, 0, 0.03, 0), B(M, 0.94, 0.03, 0.74, C.silver, 0, 0.885, 0),
@@ -817,6 +992,7 @@
       // (genesis-era-5-chain.js); until a page loads it, the station says so on a board.
       {
         const z = Z(60), x = 27, CH = BL.genesisEra5Chain;
+        pool(x, z, 1.2, POOL, 0.3);
         if (CH) { S.chain = CH.chain(); S.chain.deal(2005); }
         solid(1.4, 0.9, 0.9, C.bench, x, top + 0.45, z);
         solid(1.4, 1.2, 0.12, C.graphite, x, top + 1.5, z - 0.3);
@@ -833,7 +1009,8 @@
           ...[-1, 0, 1].map((k) => disc(M, 0.07, 0.02, C.gold, k * 0.11, 2.3, -0.3, 0.3)), ...[-1, 0, 1].map((k) => disc(M, 0.035, 0.024, C.graphite, k * 0.11, 2.3, -0.298))]);
         obstacle(x - 0.75, x + 0.75, z - 0.5, z + 0.5);
         sign("GOLD CHAIN", "take the links that fit the tail", x, top + 2.75, z - 0.1, 0, 0.3);
-        const show = () => { for (let i = 0; i < 12; i++) N.chainLinks[i].visible = i < S.chain.linked(); };
+        // A new link slides in along the panel's crown from its right end.
+        const show = () => { for (let i = 0; i < 12; i++) { const l = N.chainLinks[i], on = i < S.chain.linked(); if (on && !l.visible) glide(l, x + 0.75, l.position.y, l.position.z, 0, 0.4, 0, 0, 0, "click"); l.visible = on; } };
         prop({ id: "e5-chain", year: 2005, connection: "context", date: "2005: the qualified year of the bit gold essay whose chained strings inspired this original game; a modern museum homage, not historical software",
           title: "Gold Chain game", label: "GOLD CHAIN · 2005-INSPIRED HOMAGE", hint: "Type TAKE when the link fits the tail", sourceKeys: ["E5-BG"],
           at: { x, y: top, z: z + 1.5 }, reach: 1.9, pick: { w: 1.4, h: 2.4, d: 1, x, z },
@@ -848,6 +1025,10 @@
     update(dt, elapsed, state) {
       if (!S || !S.n) return;
       const N = S.n, calm = !!(state && state.calm), reading = !!(state && state.reading);
+      // The upgrade's motion: nothing to do unless a command set something moving; Calm puts it at its end at once.
+      const A = S.anim;
+      A.calm = calm;
+      if (A.live) { if (calm) snapAll(); else tick(dt); }
       if (calm) {
         N.beacon.position.x = N.ringX; N.beacon.position.z = N.ringZ - 1.25;
         N.sats[0].position.x = N.satX - N.satR; N.sats[1].position.x = N.satX + N.satR;
@@ -862,8 +1043,9 @@
       N.sats[1].position.x = N.satX - Math.cos(b) * N.satR; N.sats[1].position.z = N.satZ - Math.sin(b) * N.satR;
       N.cabBusy.visible = reading || (elapsed % 1.6) < 1.1;
     },
-    // Nothing outlives a frame (no sound, timers or scheduled work); leaving or returning settles the decoration.
-    active() { if (S && S.n) S.n.cabBusy.visible = true; },
+    // Nothing outlives a frame (no sound, timers or scheduled work); leaving or returning settles the decoration, and
+    // leaving puts anything the upgrade set moving at its end (coming back never resumes it).
+    active(on) { if (S && S.n) { S.n.cabBusy.visible = true; if (!on) snapAll(); } },
     dispose() { S = null; }
   });
 })();
