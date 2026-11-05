@@ -1,15 +1,17 @@
-// Genesis museum: a scale model of Ooga Booga Land as architects build a site model, flat on a low table under glass
-// light and seen from above: the island laid out on a sea of dark blue glass, its meadow, sand paths and trees, the
-// banana pile and the jumbotron with its totems in the middle, each cave a little cutaway room in its own colour round
-// the rim (walls, floor, a lit pin), the library's nook and the whitepaper's monolith, and past the rim the Mempool
-// island's rainforest round its lake across the vine bridge, ₿IFRÖST's islet under its arch, and the Timechain Sphere.
-// Every zone carries a small label, and each is clickable: its window tells what the zone is, on a plan of the island
-// with that zone lit. `layout()` (pure) is where the table stands and what each zone is; `build(...)` makes it once a
-// visit, returning `zones` (a pick node and the zone each) for the scene to make clickable; update allocates nothing.
+// Genesis museum: a scale model of Ooga Booga Land on a low table, the island floating over a sea of blue glass as
+// it floats in the hub: voxel cliffs in layered brown bands under its grass, a rim of dark stone hills with a mouth,
+// a sign and banners at each cave, sand paths from the plaza to them, the banana pile and the jumbotron with its
+// totems, palms, green trees and pink blossom, the library's nook and the whitepaper's monolith, ₿IFRÖST's arch and
+// blue portal on the north hill up its stairs, and past the rim the Mempool island's rainforest round its lake across
+// the vine bridge, ₿IFRÖST's islet down its crystal bridge, the striped Timechain Sphere over its wooden bridge, and
+// a few voxel clouds. Every zone carries a small label, and each is clickable: its window tells what the zone is, on
+// a plan of the island with that zone lit. `layout()` (pure) is where the table stands and what each zone is;
+// `build(...)` makes it once a visit, returning `zones` (a pick node and the zone each) for the scene to make
+// clickable; update allocates nothing.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const AT = { x: -12.6, z: 27, ry: 0.5 }, TABLE = { w: 3.6, d: 3.0, h: 0.32 }, S = 0.047, TOP = TABLE.h + 0.1;
+  const AT = { x: -12.6, z: 27, ry: 0.5 }, TABLE = { w: 3.6, d: 3.0, h: 0.32 }, S = 0.047;
   // Where each zone lies on the island, by the clock from the north and its distance from the middle (in the model's
   // units, the island's rim at 15), its name on the model, its colour, and what its window says.
   const at = (clock, r) => { const a = clock / 12 * Math.PI * 2; return { x: Math.sin(a) * r, z: -Math.cos(a) * r }; };
@@ -81,75 +83,173 @@
     { caption: "Ooga Booga Land", title: "A floating island", paint: paintPlan(null), text: ["A floating island whose cliff caves are projects, laid out here as a site model.", "Click any zone on the model, or page on with the arrows, to read what it is."] },
     ...ZONES.map((z) => ({ caption: "Ooga Booga Land", title: z.name, paint: paintPlan(z.id), text: z.text }))
   ];
+  // The island in voxels half a unit across, greedy-meshed as the island's own terrain is: layered brown cliffs under a
+  // grass top, a rim of dark stone hills with a cave mouth (sign and banners) at each cave, sand paths from the plaza,
+  // the ₿IFRÖST hill with its stairs to the north, and the islets beyond, each floating over the sea of blue glass.
+  const U = 0.5, X0 = -31, Z0 = -28, NX = 124, NZ = 100, NY = 26, TOPL = 9;
+  const P = { grass: 1, grass2: 2, sand: 3, dirt: 4, dirt2: 5, clay: 6, stone: 7, stone2: 8, dark: 9, forest: 10, lake: 11, plaza: 12, moss: 13 };
+  const COLORS = [null, "#6cb547", "#5ea83f", "#e2c98f", "#8a5a2c", "#6b4424", "#a8774a", "#8a867c", "#6e6a62", "#1a1612", "#2f7a2c", "#3fa8f0", "#ecd59c", "#4a8f3a"];
+  const turn = (d) => ((d % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+  const angleOf = (z) => Math.atan2(z.x, -z.z);
+  const CAVES = ZONES.filter((z) => z.kind === "cave");
+  const ZONE = Object.fromEntries(ZONES.map((z) => [z.id, z]));
+  const ISLETS = [
+    { c: ZONE.mempool, r: 5.4, top: TOPL, depth: 7 },
+    { c: ZONE.bifrost, r: 2.7, top: TOPL + 3, depth: 5 },
+    { c: ZONE.timechain, r: 2.3, top: TOPL - 1, depth: 4 }
+  ];
+  // Sand paths, each a ray from the plaza: to a cave's mouth, the library, the ₿IFRÖST stairs and the two bridges.
+  const PATHS = [...CAVES.map((z) => ({ a: angleOf(z), r1: 12.1 })), { a: angleOf(ZONE.library), r1: 9 }, { a: 0, r1: 11.2 }, { a: angleOf(ZONE.mempool), r1: 15.6 }, { a: angleOf(ZONE.timechain), r1: 15.6 }];
+  const islandGrid = () => {
+    const grid = BL.terrain.makeGrid(NX, NY, NZ), top = new Int8Array(NX * NZ).fill(-1);
+    const L = ZONE.library, ln = Math.hypot(L.x, L.z), lnx = -L.x / ln, lnz = -L.z / ln;
+    const column = (ix, iz, bot, hi, mat) => {
+      for (let y = Math.max(0, bot); y <= hi; y++) {
+        let c;
+        if (y === hi) c = mat;
+        else if (y > TOPL) c = y % 2 ? P.stone : P.stone2;
+        else if (y === TOPL) c = hi > TOPL ? P.stone : P.dirt;
+        else if (y === TOPL - 1) c = P.clay;
+        else c = y <= bot + 1 ? P.stone2 : (TOPL - y) % 3 === 0 ? P.dirt2 : (TOPL - y) % 3 === 1 ? P.dirt : P.clay;
+        grid.set(ix, y, iz, c);
+      }
+      top[ix * NZ + iz] = hi;
+    };
+    for (let ix = 0; ix < NX; ix++) for (let iz = 0; iz < NZ; iz++) {
+      const x = X0 + (ix + 0.5) * U, z = Z0 + (iz + 0.5) * U, r = Math.hypot(x, z), a = Math.atan2(x, -z);
+      const rim = 15 + 0.35 * Math.sin(7 * a + 1) + 0.25 * Math.sin(13 * a + 2);
+      if (r <= rim) {
+        const t = r / rim, bot = TOPL - Math.round(3 + 5.5 * Math.sqrt(Math.max(0, 1 - t * t)) + hash(ix, iz) * 1.4);
+        let h = 0, mat = Math.sin(x * 0.9 + z * 0.4) * Math.cos(z * 0.8 - x * 0.3) > 0.45 ? P.grass2 : P.grass;
+        if (r < 3.6) mat = P.plaza;
+        for (const p of PATHS) { const along = x * Math.sin(p.a) - z * Math.cos(p.a), perp = Math.abs(x * Math.cos(p.a) + z * Math.sin(p.a)); if (along > 3 && along < p.r1 && perp < 0.55) mat = P.sand; }
+        // The rim's hills: steep where a cave opens, gapped for the two bridges, highest at the ₿IFRÖST hill.
+        const cave = CAVES.find((q) => Math.abs(turn(a - angleOf(q))) * r < 2.2), gap = [ZONE.mempool, ZONE.timechain].some((q) => Math.abs(turn(a - angleOf(q))) * r < 1.0);
+        const north = Math.abs(a) * r;
+        if (north < 3.2 && r > 11.2) { h = Math.min(6, Math.floor((r - 11.2) / 0.4) + 1); mat = north < 0.8 ? P.sand : h >= 6 ? P.moss : P.stone2; }
+        else if (!gap && r > 12) { const amp = cave ? 4 : 2 + Math.round(2 * hash(Math.round(a * 6), 9)); h = cave ? amp : Math.round(amp * Math.min(1, (r - 12) / 1.2)); if (h) mat = (Math.round(a * 5) + 20) % 3 ? P.stone2 : P.moss; }
+        // The library's mound beside the stairs, its nook open toward the plaza.
+        const ld = Math.hypot(x - L.x, z - L.z);
+        if (ld < 1.9) { const lh = Math.round(3.2 * (1 - (ld / 1.9) ** 2)); if (lh > h) { h = lh; mat = P.moss; } }
+        column(ix, iz, bot, TOPL + h, mat);
+        if (cave) {
+          const tl = turn(a - angleOf(cave)) * r;
+          if (Math.abs(tl) < 0.8 && r > 11.9 && r < 13.6) for (let y = TOPL + 1; y <= TOPL + 2; y++) grid.set(ix, y, iz, r < 12.9 ? 0 : P.dark);
+        }
+        if (ld < 1.9) { const f = (x - L.x) * lnx + (z - L.z) * lnz, s = Math.abs((x - L.x) * lnz - (z - L.z) * lnx); if (s < 0.6 && f > -0.3) for (let y = TOPL + 1; y <= TOPL + 2; y++) if (grid.get(ix, y, iz)) grid.set(ix, y, iz, f > 0.2 ? 0 : P.dark); }
+        continue;
+      }
+      for (const s of ISLETS) {
+        const d = Math.hypot(x - s.c.x, z - s.c.z), q = Math.atan2(x - s.c.x, -(z - s.c.z)), edge = s.r + 0.3 * Math.sin(5 * q + s.r);
+        if (d > edge) continue;
+        const t = d / edge, bot = s.top - Math.round(2 + s.depth * Math.sqrt(Math.max(0, 1 - t * t)) + hash(ix, iz));
+        let hi = s.top, mat = s.c.kind === "rainforest" ? P.forest : P.moss;
+        if (s.c.kind === "rainforest" && d < 2.4) { hi = s.top - 1; mat = P.lake; } else if (s.c.kind === "rainforest" && d < 2.9) { hi = s.top - 1; mat = P.sand; }
+        column(ix, iz, bot, hi, mat);
+      }
+    }
+    return { grid, top };
+  };
+  // The Timechain Sphere in finer voxels: orange, its sixteen screen lunes parted by white stripes.
+  const sphereGrid = () => {
+    const n = 19, R = 9.3, g = BL.terrain.makeGrid(n, n, n);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+      const x = i + 0.5 - n / 2, y = j + 0.5 - n / 2, z = k + 0.5 - n / 2;
+      if (x * x + y * y + z * z > R * R) continue;
+      const w = (Math.atan2(z, x) / (Math.PI * 2) * 16 + 16) % 1;
+      g.set(i, j, k, w < 0.2 || Math.abs(y) < 0.6 ? 2 : 1);
+    }
+    return g;
+  };
   const build = ({ M, createNode, addChild, place, top, label }) => {
     const root = place(createNode({ position: { x: AT.x, y: top, z: AT.z }, rotation: { x: 0, y: AT.ry, z: 0 } }));
-    const T = TABLE, base = [], model = [], glow = [];
+    const T = TABLE, base = [], model = [], glow = [], SEA = T.h + 0.06, V = U * S;
     // The table: a dark timber top on four legs, a black glass bed with a lit edge all round, the sea of blue glass.
     base.push(M.bevelBox({ w: T.w, h: 0.08, d: T.d, color: "#3b2a1a", bevel: 0.03, offset: { x: 0, y: T.h - 0.04, z: 0 } }),
       ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => M.box({ w: 0.1, h: T.h - 0.08, d: 0.1, color: "#2a1d12", offset: { x: a * (T.w / 2 - 0.12), y: (T.h - 0.08) / 2, z: b * (T.d / 2 - 0.12) } })),
       M.box({ w: T.w - 0.12, h: 0.04, d: T.d - 0.12, color: "#14161a", offset: { x: 0, y: T.h + 0.02, z: 0 } }),
-      M.box({ w: T.w - 0.3, h: 0.02, d: T.d - 0.3, color: "#16405e", offset: { x: 0, y: T.h + 0.05, z: 0 } }));
+      M.box({ w: T.w - 0.3, h: 0.02, d: T.d - 0.3, color: "#2a78b0", offset: { x: 0, y: T.h + 0.05, z: 0 } }));
     for (const [w, d, x, z] of [[T.w - 0.12, 0.025, 0, (T.d - 0.12) / 2], [T.w - 0.12, 0.025, 0, -(T.d - 0.12) / 2], [0.025, T.d - 0.12, (T.w - 0.12) / 2, 0], [0.025, T.d - 0.12, -(T.w - 0.12) / 2, 0]]) glow.push(M.box({ w, h: 0.02, d, color: "#e8f4ff", emissive: 1.4, offset: { x, y: T.h + 0.045, z } }));
-    // The model's own frame: the island's units scaled down onto the table, its ground at TOP.
-    const disc = (x, z, r, h, ink, seg = 28) => model.push(M.moved(M.lathe({ profile: [[0, 0], [r * S, 0], [r * S, h], [0, h]], segments: seg, color: ink }), x * S, TOP - 0.04, z * S));
-    const box = (x, z, w, d, h, ink, y = 0, em = 0) => (em ? glow : model).push(M.box({ w: w * S, h, d: d * S, color: ink, emissive: em, offset: { x: x * S, y: TOP - 0.04 + y + h / 2, z: z * S } }));
-    // The island: cliffs, the meadow, the hills round the rim, the plaza.
-    disc(0, 0, 15.4, 0.05, "#6e6a5e", 40); disc(0, 0, 15, 0.06, "#5c9a3a", 40); disc(0, 0, 11, 0.062, "#6aa844", 40); disc(0, 0, 3.6, 0.064, "#d9c08a", 32);
-    for (let k = 0; k < 36; k++) { const a = k / 36 * Math.PI * 2, r = 13.2 + hash(k, 3) * 1.2; if (ZONES.some((z) => z.kind === "cave" && Math.hypot(Math.sin(a) * 13 - z.x, -Math.cos(a) * 13 - z.z) < 3)) continue; model.push(M.moved(M.bevelBox({ w: 1.8 * S, h: 0.05 + hash(k, 5) * 0.05, d: 1.4 * S, color: k % 2 ? "#7d7a72" : "#8f8b82", bevel: 0.01 }), Math.sin(a) * r * S, TOP + 0.03, -Math.cos(a) * r * S)); }
-    // Sand paths from the plaza to every cave, and to the bridges.
-    for (const z of ZONES) if (z.kind === "cave" || z.kind === "nook" || z.kind === "rainforest" || z.kind === "islet" || z.kind === "sphere") {
-      const a = Math.atan2(z.x, -z.z), len = (z.kind === "cave" || z.kind === "nook" ? Math.hypot(z.x, z.z) - 2 : Math.hypot(z.x, z.z) - z.r) - 3.6, mid = 3.6 + len / 2;
-      model.push(M.moved(M.turnedY(M.box({ w: (z.kind === "rainforest" ? 0.9 : 0.7) * S, h: 0.004, d: len * S, color: z.kind === "rainforest" ? "#8a5a2c" : z.kind === "islet" ? "#b98cff" : "#d9c08a", emissive: z.kind === "islet" ? 0.4 : 0 }), a + Math.PI), Math.sin(a) * mid * S, TOP + 0.026, -Math.cos(a) * mid * S));
+    const { grid, top: tops } = islandGrid();
+    const land = BL.terrain.gridGeometry(grid, { unit: V, palette: COLORS.map((c) => c && BL.math.hexToRgb(c)), origin: { x: X0 * S, y: SEA, z: Z0 * S } });
+    // The height of the ground at a point of the island, in metres over the table's frame.
+    const ground = (x, z) => { const ix = Math.floor((x - X0) / U), iz = Math.floor((z - Z0) / U); return SEA + ((ix >= 0 && iz >= 0 && ix < NX && iz < NZ ? tops[ix * NZ + iz] : TOPL) + 1) * V; };
+    const G = SEA + (TOPL + 1) * V;
+    const put = (geo, x, z, y = ground(x, z)) => model.push(M.moved(geo, x * S, y, z * S));
+    // Trees: round green crowns, pink blossom and palms on the meadow and the hills, off the paths and the zones.
+    const roundTree = (k, pink) => M.merge(M.box({ w: 0.01, h: 0.045, d: 0.01, color: "#5a3a22", offset: { x: 0, y: 0.022, z: 0 } }),
+      M.bevelBox({ w: 0.06, h: 0.05, d: 0.06, color: pink ? (k % 2 ? "#f29ac2" : "#f7b8d6") : (k % 2 ? "#3f8f34" : "#2f7a2c"), bevel: 0.016, offset: { x: 0, y: 0.065, z: 0 } }),
+      M.bevelBox({ w: 0.04, h: 0.035, d: 0.04, color: pink ? "#f7c6dd" : "#4f9f3c", bevel: 0.012, offset: { x: 0.008, y: 0.095, z: -0.006 } }));
+    const palm = (k) => M.merge(M.turnedZ(M.box({ w: 0.009, h: 0.08, d: 0.009, color: "#8a6a3e", offset: { x: 0, y: 0.04, z: 0 } }), 0.12),
+      ...[0, 1, 2, 3, 4].map((i) => M.moved(M.turnedY(M.turnedX(M.box({ w: 0.014, h: 0.004, d: 0.045, color: i % 2 ? "#3f9a34" : "#2f8a2c", offset: { x: 0, y: 0, z: 0.022 } }), 0.4), i / 5 * Math.PI * 2 + k), -0.01, 0.08, 0)));
+    const clear = (x, z, pad) => !ZONES.some((q) => q.kind !== "cave" && Math.hypot(q.x - x, q.z - z) < q.r + pad) && !PATHS.some((p) => { const along = x * Math.sin(p.a) - z * Math.cos(p.a); return along > 2.5 && along < p.r1 + 1 && Math.abs(x * Math.cos(p.a) + z * Math.sin(p.a)) < pad; }) && Math.abs(Math.atan2(x, -z)) * Math.hypot(x, z) > 3.6;
+    for (let k = 0; k < 120; k++) {
+      const a = hash(k, 1) * Math.PI * 2, d = 4.6 + hash(k, 2) * 9.6, x = Math.sin(a) * d, z = -Math.cos(a) * d, kind = hash(k, 4);
+      if (!clear(x, z, 0.9) || CAVES.some((q) => Math.abs(turn(a - angleOf(q))) * d < 1.6 && d > 11)) continue;
+      put(kind < 0.35 ? palm(k) : roundTree(k, kind > 0.78), x, z);
     }
-    // Trees on the meadow, off the paths and the zones.
-    for (let k = 0; k < 46; k++) {
-      const a = hash(k, 1) * Math.PI * 2, d = 4.5 + hash(k, 2) * 6.5, x = Math.sin(a) * d, z = -Math.cos(a) * d;
-      if (ZONES.some((q) => Math.hypot(q.x - x, q.z - z) < q.r + 0.8)) continue;
-      model.push(M.moved(M.box({ w: 0.012, h: 0.05, d: 0.012, color: "#5a3a22" }), x * S, TOP + 0.05, z * S), M.moved(M.bevelBox({ w: 0.07, h: 0.06, d: 0.07, color: k % 2 ? "#2f7a2c" : "#3f8f34", bevel: 0.02 }), x * S, TOP + 0.1, z * S));
+    // The pile, the jumbotron on its legs facing the plaza, and the four totems in two pairs by it.
+    put(M.lathe({ profile: [[0, 0], [1.6 * S, 0], [1.1 * S, 0.03], [0.5 * S, 0.055], [0, 0.065]], segments: 12, color: "#f2d43a" }), 0, 0, G);
+    for (let k = 0; k < 9; k++) put(M.bevelBox({ w: 0.012, h: 0.008, d: 0.03, color: "#ffe25a", bevel: 0.003 }), Math.sin(k * 2.4) * (0.6 + k * 0.08), Math.cos(k * 2.4) * (0.6 + k * 0.08), G + 0.02 + (k % 3) * 0.012);
+    for (const sx of [-1, 1]) put(M.box({ w: 0.01, h: 0.07, d: 0.01, color: "#2a2620" }), sx * 1.3, 6.3, G);
+    put(M.box({ w: 3.2 * S, h: 0.07, d: 0.012, color: "#1b1d24", offset: { x: 0, y: 0.06, z: 0 } }), 0, 6.3, G);
+    glow.push(M.moved(M.box({ w: 3.0 * S, h: 0.06, d: 0.004, color: "#5ec8ff", emissive: 0.9 }), 0, G + 0.095, 6.3 * S - 0.008));
+    for (const [x, z, ink] of [[-3.2, 5.4, "#c84a3a"], [-2.4, 6.6, "#3aa0c8"], [2.4, 6.6, "#e8a03a"], [3.2, 5.4, "#9a5ac8"]]) put(M.merge(M.box({ w: 0.024, h: 0.07, d: 0.024, color: "#8a5a2c", offset: { x: 0, y: 0.035, z: 0 } }), ...[0.02, 0.045].map((y) => M.box({ w: 0.027, h: 0.008, d: 0.027, color: ink, offset: { x: 0, y, z: 0 } })), M.box({ w: 0.05, h: 0.006, d: 0.01, color: "#6b4424", offset: { x: 0, y: 0.06, z: 0 } })), x, z, G);
+    // Each cave's mouth: a sign over it in the cave's colour and a banner either side, facing the plaza.
+    for (const z of CAVES) {
+      const a = angleOf(z), sa = Math.sin(a), ca = -Math.cos(a), r = 11.95, y0 = SEA + (TOPL + 3) * V;
+      const sign = M.merge(M.box({ w: 1.9 * S, h: 0.02, d: 0.006, color: "#8a5a2c", offset: { x: 0, y: 0.01, z: 0 } }), ...[-1, 1].map((s) => M.box({ w: 0.012, h: 0.06, d: 0.004, color: z.ink, offset: { x: s * 1.25 * S, y: -0.02, z: 0 } })));
+      model.push(M.moved(M.turnedY(sign, -a), sa * r * S, y0, ca * r * S));
+      glow.push(M.moved(M.turnedY(M.box({ w: 1.5 * S, h: 0.008, d: 0.004, color: z.ink, emissive: 1.1 }), -a), sa * (r - 0.1) * S, y0 + 0.01, ca * (r - 0.1) * S));
     }
-    // The pile, the jumbotron and the totems.
-    model.push(M.moved(M.lathe({ profile: [[0, 0], [1.6 * S, 0], [0.9 * S, 0.06], [0, 0.09]], segments: 12, color: "#f2d43a" }), 0, TOP + 0.025, 0));
-    box(0, 6.2, 3.2, 0.3, 0.12, "#1b1d24", 0.07); box(0, 6.05, 3.0, 0.05, 0.1, "#5ec8ff", 0.08, 0.9);
-    for (const [x, z] of [[-3.2, 5.4], [-2.4, 6.6], [2.4, 6.6], [3.2, 5.4]]) box(x, z, 0.5, 0.5, 0.11, "#8a5a2c", 0.065);
-    // Each cave: a cutaway room in its own colour, its walls open toward the plaza, a lit pin over it.
+    // The library's nook: three shelves of books in its mouth, the whitepaper's black monolith on the mound above.
+    { const L = ZONE.library, n = Math.hypot(L.x, L.z), fx = L.x - L.x / n * 0.25, fz = L.z - L.z / n * 0.25;
+      for (let k = 0; k < 3; k++) model.push(M.moved(M.turnedY(M.box({ w: 1.0 * S, h: 0.006, d: 0.008, color: ["#c84a3a", "#3aa0c8", "#e8c35a"][k] }), -Math.atan2(L.x, -L.z)), fx * S, G + 0.005 + k * 0.009, fz * S));
+      put(M.turnedY(M.box({ w: 0.5 * S, h: 0.07, d: 0.18 * S, color: "#101012", offset: { x: 0, y: 0.035, z: 0 } }), -Math.atan2(L.x, -L.z)), L.x + L.x / n * 0.6, L.z + L.z / n * 0.6); }
+    // ₿IFRÖST's arch on its hill: stone legs and lintel, the blue portal between them, the orange ₿ medallion over it;
+    // the crystal bridge stepping down to the islet, its small gate there.
+    { const ay = SEA + (TOPL + 7) * V, az = -14.0 * S;
+      model.push(...[-1, 1].map((s) => M.box({ w: 0.5 * S, h: 0.1, d: 0.5 * S, color: "#d8d2c4", offset: { x: s * 1.1 * S, y: ay + 0.05, z: az } })), M.box({ w: 2.8 * S, h: 0.02, d: 0.55 * S, color: "#d8d2c4", offset: { x: 0, y: ay + 0.11, z: az } }));
+      glow.push(M.box({ w: 1.7 * S, h: 0.095, d: 0.004, color: "#4fb8ff", emissive: 1.0, offset: { x: 0, y: ay + 0.0475, z: az } }),
+        M.moved(M.turnedX(M.lathe({ profile: [[0, 0], [0.018, 0], [0.018, 0.004], [0, 0.004]], segments: 14, color: "#f7931a", emissive: 1.2 }), Math.PI / 2), 0, ay + 0.11, az + 0.28 * S),
+        ...[-1, 1].map((s) => M.box({ w: 0.06 * S, h: 0.08, d: 0.06 * S, color: "#b98cff", emissive: 0.8, offset: { x: s * 0.86 * S, y: ay + 0.04, z: az - 0.27 * S } })));
+      const by = SEA + (TOPL + 4) * V, b0 = 15.2, b1 = ZONE.bifrost.z + 2.6, steps = 5;
+      for (let k = 0; k < steps; k++) { const z0 = -(b0 + (-b1 - b0) * k / steps), z1 = -(b0 + (-b1 - b0) * (k + 1) / steps); glow.push(M.box({ w: 0.9 * S, h: 0.006, d: Math.abs(z1 - z0) * S + 0.002, color: "#b98cff", emissive: 0.7, offset: { x: 0, y: ay - (ay - by) * (k + 0.5) / steps, z: (z0 + z1) / 2 * S } })); }
+      const I = ZONE.bifrost;
+      for (const s of [-1, 1]) glow.push(M.box({ w: 0.25 * S, h: 0.07, d: 0.25 * S, color: "#b98cff", emissive: 0.9, offset: { x: (I.x + s * 1.0) * S, y: by + 0.035, z: I.z * S } }));
+      glow.push(M.box({ w: 2.3 * S, h: 0.012, d: 0.3 * S, color: "#b98cff", emissive: 0.9, offset: { x: I.x * S, y: by + 0.076, z: I.z * S } })); }
+    // The two bridges over the gaps in the rim: the vine bridge to the Mempool island, the wooden one to the Sphere.
+    const bridge = (q, r0, r1, deck, rope) => {
+      const a = angleOf(q), len = r1 - r0, mid = (r0 + r1) / 2, part = [];
+      for (let k = 0; k < Math.round(len / 0.45); k++) part.push(M.box({ w: 1.0 * S, h: 0.004, d: 0.32 * S, color: k % 2 ? deck : "#7a5530", offset: { x: 0, y: 0, z: (-len / 2 + 0.22 + k * 0.45) * S } }));
+      for (const s of [-1, 1]) part.push(M.box({ w: 0.004, h: 0.004, d: len * S, color: rope, offset: { x: s * 0.5 * S, y: 0.018, z: 0 } }), ...[0, 1].map((e) => M.box({ w: 0.005, h: 0.022, d: 0.005, color: "#5a3a22", offset: { x: s * 0.5 * S, y: 0.009, z: (e - 0.5) * len * S } })));
+      model.push(M.moved(M.turnedY(M.merge(...part), Math.PI - a), Math.sin(a) * mid * S, G - 0.002, -Math.cos(a) * mid * S));
+    };
+    bridge(ZONE.mempool, 14.8, 17.6, "#9a6a3a", "#3f7a2a");
+    bridge(ZONE.timechain, 14.8, 19.9, "#a8774a", "#6b4424");
+    // The Mempool island's rainforest round its lake, and the Timechain Sphere on its islet.
+    { const Mp = ZONE.mempool;
+      for (let k = 0; k < 34; k++) { const a = hash(k, 7) * Math.PI * 2, d = 3.1 + hash(k, 8) * 2.0, x = Mp.x + Math.sin(a) * d, z = Mp.z - Math.cos(a) * d; if (Math.abs(turn(Math.atan2(x - Mp.x, -(z - Mp.z)) - angleOf(Mp) - Math.PI)) * d < 0.8) continue; put(hash(k, 5) < 0.25 ? palm(k) : M.merge(M.box({ w: 0.01, h: 0.05, d: 0.01, color: "#4a3020", offset: { x: 0, y: 0.025, z: 0 } }), M.bevelBox({ w: 0.075, h: 0.06, d: 0.075, color: k % 3 ? "#1f6a24" : "#2f8a34", bevel: 0.02, offset: { x: 0, y: 0.075, z: 0 } })), x, z); } }
+    const ball = BL.terrain.gridGeometry(sphereGrid(), { unit: 0.25 * S, palette: [null, BL.math.hexToRgb("#f7931a"), BL.math.hexToRgb("#f4f0e6")], origin: { x: (ZONE.timechain.x - 19 * 0.125) * S, y: SEA + TOPL * V - 0.006, z: (ZONE.timechain.z - 19 * 0.125) * S } });
+    // Clouds: a few white voxel puffs drifting round the island, over the sea.
+    for (const [x, z, h, k] of [[-25, -9, 7, 1], [-23, 5, 5, 2], [25, -7, 8, 3], [11, -21, 6, 4], [-11, -23, 9, 5], [28, 3, 5, 6], [-27, 21, 6, 7], [5, 19, 8, 8]]) {
+      const puffs = [];
+      for (let i = 0; i < 4; i++) puffs.push(M.bevelBox({ w: (1.2 + hash(k, i) * 1.2) * S, h: (0.5 + hash(i, k) * 0.5) * S, d: (0.8 + hash(k + 3, i) * 0.6) * S, color: i % 2 ? "#f4f7fb" : "#e6ecf4", bevel: 0.008, offset: { x: (i - 1.5) * 0.8 * S, y: hash(i, k + 5) * 0.4 * S, z: (hash(k, i + 9) - 0.5) * 0.8 * S } }));
+      put(M.merge(...puffs), x, z, SEA + (TOPL + h) * V);
+    }
+    addChild(root, createNode({ geometry: M.merge(...base) }), createNode({ geometry: land }), createNode({ geometry: ball }), createNode({ geometry: M.merge(...model) }), createNode({ geometry: M.merge(...glow), sightHidden: true }));
+    // The labels: each zone's name on a little card tilted up toward the front of the table, without the label's
+    // wooden back, whose fixed margin and depth would bury the model.
     for (const z of ZONES) {
-      if (z.kind !== "cave" && z.kind !== "nook") continue;
-      const a = Math.atan2(z.x, -z.z), W = z.kind === "nook" ? 2.4 : 3.4, D = z.kind === "nook" ? 1.6 : 2.6, room = [];
-      room.push(M.box({ w: W * S, h: 0.006, d: D * S, color: z.ink, emissive: 0.25, offset: { x: 0, y: 0.003, z: 0 } }));
-      for (const [w, d, x, zz] of [[W, 0.15, 0, -D / 2], [0.15, D, -W / 2, 0], [0.15, D, W / 2, 0]]) room.push(M.box({ w: w * S, h: 0.06, d: d * S, color: "#3a3830", offset: { x: x * S, y: 0.03, z: zz * S } }));
-      room.push(M.box({ w: W * 0.6 * S, h: 0.02, d: 0.4 * S, color: "#2a2620", offset: { x: 0, y: 0.016, z: -D * 0.15 * S } }), M.box({ w: 0.5 * S, h: 0.03, d: 0.5 * S, color: "#ffffff", emissive: 0.4, offset: { x: W * 0.25 * S, y: 0.02, z: D * 0.15 * S } }));
-      model.push(M.moved(M.turnedY(M.merge(...room), a + Math.PI), z.x * S, TOP + 0.025, z.z * S));
-      glow.push(M.moved(M.box({ w: 0.03, h: 0.03, d: 0.03, color: z.ink, emissive: 2 }), z.x * S, TOP + 0.17, z.z * S), M.moved(M.box({ w: 0.006, h: 0.1, d: 0.006, color: "#cfcfcf" }), z.x * S, TOP + 0.1, z.z * S));
-    }
-    // Beyond the rim: the Mempool island's rainforest round its lake and its vine bridge, ₿IFRÖST's islet under its
-    // arch, and the Timechain Sphere on its own.
-    for (const z of ZONES) {
-      if (z.kind === "rainforest") {
-        disc(z.x, z.z, z.r + 0.3, 0.05, "#6e6a5e"); disc(z.x, z.z, z.r, 0.06, "#2f7a2c");
-        model.push(M.moved(M.lathe({ profile: [[0, 0], [2.4 * S, 0], [2.4 * S, 0.004], [0, 0.004]], segments: 20, color: "#4fb8ff", emissive: 0.5 }), z.x * S, TOP + 0.022, z.z * S));
-        for (let k = 0; k < 18; k++) { const a = k / 18 * Math.PI * 2, d = 3.2 + hash(k, 7) * 1.8, x = z.x + Math.sin(a) * d, zz = z.z - Math.cos(a) * d; model.push(M.moved(M.bevelBox({ w: 0.08, h: 0.08, d: 0.08, color: k % 3 ? "#1f6a24" : "#2f8a34", bevel: 0.025 }), x * S, TOP + 0.08, zz * S)); }
-      } else if (z.kind === "islet") {
-        disc(z.x, z.z, z.r, 0.06, "#7d7a72");
-        for (const sx of [-1, 1]) box(z.x + sx * 1.3, z.z, 0.35, 0.35, 0.14, "#b98cff", 0.02, 0.9);
-        box(z.x, z.z, 2.95, 0.35, 0.03, "#b98cff", 0.16, 0.9);
-      } else if (z.kind === "sphere") {
-        disc(z.x, z.z, z.r, 0.06, "#7d7a72");
-        model.push(M.moved(M.lathe({ profile: [[0, 0], [1.2 * S, 0.02], [2 * S, 2 * S], [1.2 * S, 3.6 * S], [0, 3.8 * S]], segments: 16, color: "#f7931a" }), z.x * S, TOP + 0.02, z.z * S));
-        glow.push(M.moved(M.lathe({ profile: [[1.95 * S, 1.9 * S], [2.05 * S, 1.9 * S], [2.05 * S, 2.1 * S], [1.95 * S, 2.1 * S]], segments: 16, color: "#ffd23a", emissive: 1.2 }), z.x * S, TOP + 0.02, z.z * S));
-      }
-    }
-    addChild(root, createNode({ geometry: M.merge(...base) }), createNode({ geometry: M.merge(...model) }), createNode({ geometry: M.merge(...glow), sightHidden: true }));
-    // The labels: each zone's name on a little card tilted up toward the front of the table.
-    for (const z of ZONES) {
-      const w = label(z.label, "", { height: 0.028, style: "gold" }), n = createNode({ position: { x: z.x * S, y: TOP + 0.13, z: (z.z + (z.kind === "cave" || z.kind === "nook" ? 0 : z.r * 0.3)) * S }, rotation: { x: -0.7, y: 0, z: 0 }, sightHidden: true });
-      addChild(n, createNode({ geometry: w.back, sightHidden: true }), createNode({ geometry: w.face, sightHidden: true }));
+      const w = label(z.label, "", { height: 0.028, style: "gold" }), n = createNode({ position: { x: z.x * S, y: G + 0.16, z: (z.z + (z.kind === "cave" || z.kind === "nook" ? 0 : z.r * 0.3)) * S }, rotation: { x: -0.7, y: 0, z: 0 }, sightHidden: true });
+      addChild(n, createNode({ geometry: w.face, sightHidden: true }));
       addChild(root, n);
     }
     const words = label("OOGA BOOGA LAND", "a site model of the island · click any zone", { height: 0.2, style: "gold" });
     addChild(root, createNode({ geometry: words.back, position: { x: 0, y: T.h - 0.16, z: T.d / 2 + 0.03 } }), createNode({ geometry: words.face, position: { x: 0, y: T.h - 0.16, z: T.d / 2 + 0.03 } }));
     // A pick box over each zone, for the scene to make clickable.
     const pick = (w, h, d) => ({ verts: [-w / 2, -h / 2, -d / 2, w / 2, -h / 2, -d / 2, w / 2, h / 2, -d / 2, -w / 2, h / 2, -d / 2, -w / 2, -h / 2, d / 2, w / 2, -h / 2, d / 2, w / 2, h / 2, d / 2, -w / 2, h / 2, d / 2], faces: [], lines: [], castShadow: false });
-    const zones = ZONES.map((z, i) => { const n = createNode({ geometry: pick(z.r * 2 * S + 0.08, 0.3, z.r * 2 * S + 0.08), position: { x: z.x * S, y: TOP + 0.12, z: z.z * S } }); addChild(root, n); return { node: n, zone: z, page: i + 1 }; });
+    const zones = ZONES.map((z, i) => { const n = createNode({ geometry: pick(z.r * 2 * S + 0.08, 0.3, z.r * 2 * S + 0.08), position: { x: z.x * S, y: G + 0.1, z: z.z * S } }); addChild(root, n); return { node: n, zone: z, page: i + 1 }; });
     if (BL.genesisScaleCards) for (const id of Object.keys(BL.genesisScaleCards)) cardOf(id);
     return { root, zones, update: () => {} };
   };
