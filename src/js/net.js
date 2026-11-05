@@ -15,8 +15,8 @@
 // Who drives which Ooga, on the page served by the Worker (`mayDrive`; the room enforces the same
 // ownership through its own copy of the cast): a signed-in contributor drives only their own Ooga, and
 // nobody else drives it while they are here. Signed-out visitors drive only their remembered
-// character or their default local Ooga. Ownership keys on the GitHub login
-// alone (`github`, else the handle). A claim the room refuses, or an owner arriving, lands as `released`.
+// character or their default local Ooga. Verified account bindings use GitHub IDs; other ownership
+// keys on the GitHub login (`github`, else the handle). A claim the room refuses, or an owner arriving, lands as `released`.
 // A body is its Ooga's canonical handle, or `gorilla:<handle>` for that Ooga's companion. Signed-in
 // visitors drive only their own gorilla; signed-out pages use only their assigned companion locally.
 // The NPC host: the room elects one page showing the island (`setHub`, which also counts a hidden tab
@@ -35,14 +35,20 @@
 // it; remote records carry `hp` and `ko`.
 // Gorilla poses optionally add `g`: flags (air, biped, climb, run, lab, office, sleep), speed, climb stride,
 // climb direction, climb side and swim. Each remote reuses its six values; ordinary poses keep their format.
+// The EntropyLab chalkboard (chalk-board.js): a room whose `features` hold its FEATURE sends the board after
+// `welcome`, and `state.chalk` keeps it as `{ board, editor, session }` from then on, current in every scene, from
+// the holder's edits; null leaves the page its own board. `takeChalk` asks to hold it (the room answers with
+// `chalk-lock`, or a refusal), `chalkEdit` applies one of the holder's own edits and queues it, `flushChalk` sends
+// the queue and `dropChalk` lets go. `subscribeChalk` hears `fn(kind, detail)`: "board" (a new board, or none),
+// "lock" (who holds it changed), "op" (another's edit, already applied) and "refused" ({ why, name }).
 // DSB Land's wallets: `sendWallet` sends one of the visitor's own devices' events (protocol.js WALLET_CAP) and
 // `subscribeWallets` hears others' `wallet` and `wallets` messages as they come.
 // An Ooga's pose may add `j`, its jetpack for other pages to draw (`crew.jetFlags`: 1 while worn, plus the flame's
 // power times 2), sent on a change; remote records carry it as `jet`, 0 for none. It may add `w`, its weapons
 // (`crew.weaponFlags`: the one in hand, aiming, the gun's rounds), the same way; remote records carry it as `weapon`.
 // `sendShot` and `sendSwing` report the visitor's own Ooga firing a banana (from and to) and striking, which the
-// room relays to players in the same zone; `subscribeShots` hears theirs as `fn(id, a)` and `subscribeSwings` as
-// `fn(id)`, for drawing only.
+// room relays to players in the same zone (from the ghost arena, to the arena and its hallway, #422); `subscribeShots`
+// hears theirs as `fn(id, a)` and `subscribeSwings` as `fn(id)`, for drawing and the hunt's shot sound only.
 // Ooga Chat: `sendChat` sends a line (validated by chat-policy.js, CHAT_MAX UTF-16 units at most) while the
 // room is live; `subscribeChat` hears the room's lines as `fn(lines, joined, receipt)`: one new line, or on every
 // (re)join the lines the room still holds, which chat.js merges; a rejection keeps the draft. The room names each line's
@@ -55,21 +61,27 @@
 // room's own doors, which nobody reserves. `subscribeDoor` hears all of it, and `{ t: "door", op: "lost" }` when the
 // socket goes. Without the feature these send nothing and return false, and the sphere crosses on this page alone.
 // `recheck` looks at /api/me again after a look that went unanswered (the keypad's Retry), bounded as the first.
-// `setPokerVoice(table)` scopes Ember Den voice to one table, or the floor when null, without moving the body.
+// `setPokerVoice(table)` scopes Ember Den voice to one table, or the floor when null, without moving the body; `state.pokerVoice`
+// holds it and the roster subscribers hear the change.
 // Where players stand, for the live players tab (players.js): a remote's `poseZone` is the zone its position was reported
 // in, so a player who changed zone has none there until they move (the room re-sends the last pose it holds, from the
 // zone before), and one who let go of their Ooga keeps the last. `state.self` is this page's own last reported
 // position and the zone it was in, kept after letting go. `subscribeMoves` hears positions change: the room's
 // snapshots and this page's own reports, a few times a second at most, nothing while nobody moves.
+// Ooga thumps (thump.js): `sendThump` sends `{"t":"thump"}` while the room is live (the room checks voice and rate),
+// and `subscribeThump` hears `fn(id, audible)` for a remote player's thump the room relayed, `audible` when the room says
+// this page would hear that player's voice; a sender never hears its own.
 // A crossing (#392, voice-blend.js): `setBlend(to, t)` says the driven body is `t` (0 to 1) of the way from its zone's
 // group toward the adjacent group `to` (null for none). `state.blendTo` and `state.blendT` keep it exact for this page's
 // own volumes; the room gets it in BLEND.STEPS steps, at most BLEND_MS apart, and every remote record carries the
-// other players' steps (`blendTo`, `blendK`), reset by their next zone. A zone change into the group being crossed into
-// keeps the voices this page hears, since it already plays them.
+// other players' steps (`blendTo`, `blendK`), ended by their next zone unless it is the place they were crossing into,
+// which turns the crossing round here as the room does (the room's `blend` after it says the same). A zone change into
+// the place being crossed into keeps the voices this page hears, since it already plays them, and turns the crossing
+// round, as the room does.
 // `subscribePresence` hears `fn(rec, true)` for a player who joins the room while this page is in it, never for those
 // already there on this page's (re)join, and `fn(rec, false)` when one leaves (players.js names the joins, #430).
-// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
-// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), npcFrame, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
+// Exports start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub,
+// setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState and subscribeGhostState (HALLOWEEN), sendThump, subscribeThump, npcFrame, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla,
 // ownCharacter, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX and CHAT_KEEP.
 (() => {
   "use strict";
@@ -105,14 +117,52 @@
   };
   const chatIdValid = (id) => typeof id === "string" && id.length > 0 && id.length <= 64 && !/[^\w-]/.test(id);
   const DOOR_NAME = /^[a-z0-9-]{1,24}$/;
+  const cabinetSeats = new Map();
+  let cabinetRequest = null, cabinetSeat = null, cabinetAnchor = null, cabinetSequence = 0;
+  const finishCabinetRequest = reason => {
+    if (!cabinetRequest) return;
+    const pending = cabinetRequest;
+    cabinetRequest = null;
+    window.clearTimeout(pending.timer);
+    pending.resolve(reason);
+  };
+  const leaveCabinet = () => {
+    const seat = cabinetSeat || cabinetRequest;
+    if (seat) send(JSON.stringify({ t: "cabinet", op: "leave", id: seat.id, q: seat.q }));
+    cabinetSeat = cabinetAnchor = null;
+    finishCabinetRequest("Cabinet opening cancelled");
+  };
+  // Resolves to null on success, or a player-facing reason. Never enter a live game optimistically.
+  const takeCabinet = id => {
+    if (!state.me) return Promise.resolve(null);
+    if (state.room !== "live") return Promise.resolve("Connect to the live arcade before playing");
+    if (!state.cabinets) return Promise.resolve("The live arcade needs an update before cabinets can open");
+    if (cabinetSeat || cabinetRequest) return Promise.resolve("A cabinet is already opening");
+    const q = ++cabinetSequence;
+    return new Promise(resolve => {
+      cabinetRequest = { id, q, resolve, timer: window.setTimeout(() => {
+        send(JSON.stringify({ t: "cabinet", op: "leave", id, q }));
+        finishCabinetRequest("The arcade did not answer · try again");
+      }, 8000) };
+      send(JSON.stringify({ t: "cabinet", op: "take", id, q }));
+    });
+  };
   const subscribers = new Set();
   const highscoreSubscribers = new Set();
   const doorSubscribers = new Set();
   const rosterSubscribers = new Set();
   const moveSubscribers = new Set();
   const studioSubscribers = new Set();
+  const hockeySubscribers = new Set();
+  const hockeyTables = [null, null, null];
+  const hockeyEmit = m => { for (const fn of hockeySubscribers) fn(m); };
+  const subscribeHockey = fn => { hockeySubscribers.add(fn); return () => hockeySubscribers.delete(fn); };
+  const sendHockey = m => { if (!state.hockey || state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN) return false; send(JSON.stringify({ t: "hockey", ...m, v: 4 })); return true; };
   const studioEmit = message => { for (const fn of studioSubscribers) fn(message); };
   const chatSubscribers = new Set();
+  // The shared chalkboard's listeners, and the page's own edits waiting to go (merged into frames of a few points).
+  const chalkSubscribers = new Set(), chalkOut = [];
+  const chalkEmit = (kind, detail) => { for (const fn of chalkSubscribers) fn(kind, detail); };
   const walletSubscribers = new Set();
   const shotSubscribers = new Set(), swingSubscribers = new Set();
   const presenceSubscribers = new Set();
@@ -122,13 +172,43 @@
   const offline = new URLSearchParams(location.search);
   const state = { backend: false, me: null, donations: false, tess: false, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
-    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false,
-    self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, blendTo: null, blendT: 0 };
+    room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
+    self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, chalk: null, blendTo: null, blendT: 0 };
   let ws = null, retry = 0, retryTimer = 0, pingTimer = 0, hiddenTimer = 0, stopped = false;
   let npcFrame = null, inHub = false, hubSent = null, visibleSent = null;
   let zone = "outside", body = null, muted = false, hpSent = 100, koSent = false, hpAt = 0, poseAt = 0, px = NaN, py = NaN, pz = NaN, pyaw = NaN;
   const gSent = new Float64Array(6);
-  let gKnown = false, poseHasG = false, jetSent = 0, weaponSent = 0;
+  let gKnown = false, poseHasG = false, jetSent = 0, weaponSent = 0, visualKnown = false;
+  const visualSent = new Int16Array(17);
+  const VISUAL_LIMITS = [157, 157, 314, 8191, 240, 1200, 560, 440, 320, 1240, 100, 750, 1300, 280, 2000, 31, 31];
+  const validVisual = (v) => {
+    if (!v || v.length !== 17) return false;
+    for (let i = 0; i < 17; i++) if (!Number.isInteger(v[i]) || v[i] < (i < 3 ? -VISUAL_LIMITS[i] : 0) || v[i] > VISUAL_LIMITS[i]) return false;
+    return true;
+  };
+  const restSent = new Int16Array(6);
+  let restKnown = false, restActive = false;
+  const validRest = r => {
+    if (r === 0) return true;
+    if (!r || r.length !== 6) return false;
+    for (let i = 0; i < 6; i++) if (!Number.isInteger(r[i])) return false;
+    return r[0] === 0 && r[1] >= 1 && r[1] <= 3 && r[2] >= 0 && r[2] <= 255
+      && Math.abs(r[3]) <= 1000 && Math.abs(r[4]) <= 1000 && Math.abs(r[5]) <= 1000
+      && r[3] ** 2 + r[4] ** 2 + r[5] ** 2 <= 1002001;
+  };
+  const readRest = (rec, r) => {
+    rec.rest = undefined;
+    if (r === 0) { rec.rest = 0; return; }
+    if (!Array.isArray(r) || !validRest(r)) return;
+    if (!rec.restData) rec.restData = new Int16Array(6);
+    rec.restData.set(r); rec.rest = rec.restData;
+  };
+  const readVisual = (rec, v, at) => {
+    rec.visual = null;
+    if (!validVisual(v) || !Number.isFinite(at)) return;
+    if (!rec.visualData) rec.visualData = new Int16Array(17);
+    rec.visualData.set(v); rec.visual = rec.visualData; rec.visualAt = at;
+  };
   let clockOffset = 0, clockKnown = false;
   let pokerVoice = null;
   // A server timestamp minus the arrival time is the true offset less the trip; the largest such
@@ -160,7 +240,9 @@
 
   const setRoom = (room) => {
     state.room = room;
+    if (room !== "live") { cabinetSeats.clear(); cabinetSeat = null; state.cabinets = false; finishCabinetRequest("Connection to the arcade was lost"); }
     if (room !== "live") state.chatUnicode = false;
+    if (room !== "live") { hockeyTables.fill(null); hockeyEmit({ k: "lost" }); state.hockey = false; }
     if (room !== "live") { state.studio = null; state.connectionToken = ""; studioEmit({t:"studio-state",state:null}); }
     state.online = room === "live" ? remotes.size + 1 : 0;
     emit();
@@ -172,7 +254,7 @@
 
   const sendBody = () => send(JSON.stringify({ t: "body", name: body }));
   const sendZone = () => send(JSON.stringify({ t: "zone", name: zone }));
-  // The crossing last sent (`to`/`k`), "" when the room holds none of this page's: after a zone, which resets it there.
+  // The crossing last sent (`to`/`k`), "" for none; null after a zone forces the next report, including a clear.
   const BLEND = BL.voiceBlend, BLEND_MS = 250;
   let blendSent = "", blendAt = -Infinity;
   const sendBlend = () => {
@@ -185,6 +267,7 @@
   };
   // Under half a step is no crossing, so a body a hair past a level's height never has the room pull the next place.
   const setBlend = (to, t) => {
+    if (cabinetAnchor) return;
     const on = !!to && t * BLEND.STEPS >= 0.5;
     state.blendTo = on ? to : null;
     state.blendT = on ? Math.min(1, t) : 0;
@@ -234,6 +317,8 @@
     if (Array.isArray(p.g) && p.g.length === 6) readGorillaPose(rec, p.g);
     rec.jet = Number.isInteger(p.j) && p.j > 0 && p.j <= 7 ? p.j : 0;
     rec.weapon = Number.isInteger(p.w) && p.w > 0 && p.w <= 255 ? p.w : 0;
+    readVisual(rec, p.v, p.va);
+    readRest(rec, p.r);
     rec.zone = typeof p.zone === "string" ? p.zone : "outside";
     rec.voice = p.voice === true;
     rec.hp = Number.isFinite(p.hp) ? p.hp : 100;
@@ -277,7 +362,16 @@
     } catch {
       return;
     }
-    if (msg.t === "highscore") {
+    if (msg.t === "cabinets") {
+      cabinetSeats.clear();
+      if (Array.isArray(msg.seats)) for (const seat of msg.seats) if (BL.arcadeCabinets.get(seat.id)) cabinetSeats.set(seat.id, seat);
+      if (cabinetSeat && cabinetSeats.get(cabinetSeat.id)?.player !== state.selfId) { cabinetSeat = null; emit(); }
+    } else if (msg.t === "cabinet") {
+      if (cabinetRequest?.id === msg.id && cabinetRequest.q === msg.q) {
+        if (msg.ok) { cabinetSeat = { id: msg.id, q: msg.q }; cabinetAnchor = BL.arcadeCabinets.get(msg.id); }
+        finishCabinetRequest(msg.ok ? null : msg.reason || "This cabinet is occupied");
+      } else if (msg.ok) send(JSON.stringify({ t: "cabinet", op: "leave", id: msg.id, q: msg.q }));
+    } else if (msg.t === "highscore") {
       if (state.room === "live") for (const fn of highscoreSubscribers) fn(msg.board);
     } else if (msg.t === "studio-mic-revoked") {
       BL.voice.dropMic();
@@ -288,6 +382,12 @@
       studioEmit(msg);
     } else if (msg.t === "studio-result") {
       studioEmit(msg);
+    } else if (msg.t === "hockey") {
+      if (Number.isInteger(msg.i) && msg.i >= 0 && msg.i < 3) {
+        if (msg.k === "table") hockeyTables[msg.i] = msg.phase === "closed" ? null : msg;
+        if (msg.k === "frame" && hockeyTables[msg.i]?.s === msg.s && msg.q > hockeyTables[msg.i].q && BL.hockeyWire.validFrame(msg.a)) Object.assign(hockeyTables[msg.i], { a: msg.a, q: msg.q, now: msg.now });
+        hockeyEmit(msg);
+      }
     } else if (msg.t === "state") {
       clockSample(msg.now);
       const ps = msg.ps;
@@ -303,6 +403,8 @@
         rec.x = ps[i + 1]; rec.y = ps[i + 2]; rec.z = ps[i + 3]; rec.yaw = ps[i + 4];
         // `js` lists every jetpack and `ws` every weapon; anyone in the snapshot left out has none.
         rec.jet = rec.weapon = 0;
+        rec.visual = null;
+        rec.rest = undefined;
       }
       const gs = msg.gs;
       if (Array.isArray(gs)) for (let i = 0; i + 6 < gs.length; i += 7) {
@@ -319,6 +421,18 @@
         const rec = remotes.get(ws[i]), w = ws[i + 1];
         if (rec && Number.isInteger(w) && w > 0 && w <= 255) rec.weapon = w;
       }
+      const vs = msg.vs;
+      if (Array.isArray(vs)) for (const row of vs) {
+        if (!Array.isArray(row) || row.length !== 19) continue;
+        const rec = remotes.get(row[0]);
+        if (rec) readVisual(rec, row.slice(2), row[1]);
+      }
+      const rs = msg.rs;
+      if (Array.isArray(rs)) for (const row of rs) {
+        if (!Array.isArray(row) || row.length !== 2 && row.length !== 7) continue;
+        const rec = remotes.get(row[0]);
+        if (rec) readRest(rec, row.length === 2 ? row[1] : row.slice(1));
+      }
       if (changed) moved();
     } else if (msg.t === "welcome") {
       retry = 0;
@@ -331,8 +445,12 @@
       state.ghostFollowers = Number.isSafeInteger(msg.ghostFollowers) ? msg.ghostFollowers : 0;
       state.selfId = msg.you.id;
       state.connectionToken = typeof msg.connectionToken === "string" ? msg.connectionToken : "";
+      state.cabinets = Array.isArray(msg.features) && msg.features.includes(BL.arcadeCabinets.FEATURE);
+      state.hockey = Array.isArray(msg.features) && msg.features.includes("hockey-v4");
       state.doorway = Array.isArray(msg.features) && msg.features.includes("door");
       state.chatUnicode = Array.isArray(msg.features) && msg.features.includes(BL.chatPolicy.FEATURE);
+      // A room that keeps the chalkboard sends it next (chalk-board); an older one leaves the page its own board.
+      if (state.chalk && !(Array.isArray(msg.features) && msg.features.includes(BL.chalkBoard.FEATURE))) { state.chalk = null; chalkEmit("board"); }
       remotes.clear();
       for (const p of msg.players) upsert(p);
       setRoom("live");
@@ -345,8 +463,12 @@
       // appear, or become voice-eligible, in a room without its last bounded pose.
       const restoredPose = body && Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz) && Number.isFinite(pyaw);
       if (restoredPose) {
+        // Cached equipment/look survive reconnect; transient actions are reconciled by the next
+        // live sample rather than replayed with a fresh room timestamp.
+        if (visualKnown) { visualSent[3] &= 7; for (let i = 4; i < 15; i++) visualSent[i] = 0; }
         const extra = state.bodyKind === "gorilla" && poseHasG ? `,"g":[${gSent[0]},${gSent[1].toFixed(3)},${gSent[2].toFixed(3)},${gSent[3].toFixed(3)},${gSent[4].toFixed(3)},${gSent[5].toFixed(3)}]`
-          : (jetSent ? `,"j":${jetSent}` : "") + (weaponSent ? `,"w":${weaponSent}` : "");
+          : (jetSent ? `,"j":${jetSent}` : "") + (weaponSent ? `,"w":${weaponSent}` : "") + (visualKnown ? `,"v":[${visualSent.join(",")}]` : "")
+            + (restKnown ? restActive ? `,"r":[${restSent.join(",")}]` : ',"r":0' : "");
         send(`{"t":"pose","x":${px.toFixed(3)},"y":${py.toFixed(3)},"z":${pz.toFixed(3)},"yaw":${pyaw.toFixed(3)}${extra}}`);
       }
       sendZone();
@@ -380,6 +502,8 @@
         rec.bodyName = bodyName(rec.body);
         rec.g = null;
         rec.jet = rec.weapon = 0;
+        rec.visual = null;
+        rec.rest = undefined;
         rec.hp = 100;
         rec.ko = false;
       }
@@ -397,7 +521,15 @@
       rec.ko = msg.ko === true;
     } else if (msg.t === "zone") {
       const rec = remotes.get(msg.id);
-      if (rec && typeof msg.name === "string") { rec.zone = msg.name; rec.blendTo = null; rec.blendK = 0; }
+      if (rec && typeof msg.name === "string") {
+        // A position stays where it stood across zones of one scene's coordinates (the arcade's hallway halves, #422).
+        if (rec.poseZone && BLEND.sameFrame(rec.poseZone, msg.name)) rec.poseZone = msg.name;
+        // Into the place it was crossing into, its crossing turns round as the room turns it (the room's `blend` after
+        // this says the same), so its voice never plays a moment at the wrong share; any other zone ends it.
+        const across = !!rec.blendTo && BLEND.place(msg.name) === BLEND.place(rec.blendTo) && BLEND.STEPS - rec.blendK > 0;
+        rec.blendTo = across ? BLEND.place(rec.zone) : null; rec.blendK = across ? BLEND.STEPS - rec.blendK : 0;
+        rec.zone = msg.name;
+      }
       rosterChanged();
     } else if (msg.t === "blend") {
       const rec = remotes.get(msg.id);
@@ -424,6 +556,24 @@
     } else if (msg.t === "chat-ack" || msg.t === "chat-rejected") {
       if (chatIdValid(msg.clientId))
         chatHeard([], false, { clientId: msg.clientId, accepted: msg.t === "chat-ack", conflict: msg.reason === "conflict" });
+    } else if (msg.t === "chalk-board") {
+      const marks = BL.chalkBoard.restore(msg.marks);
+      if (!marks) return;
+      const board = BL.chalkBoard.board(marks);
+      chalkOut.length = 0;
+      state.chalk = { board, editor: Number.isSafeInteger(msg.editor) ? msg.editor : 0, session: BL.chalkBoard.session(board) };
+      chalkEmit("board");
+    } else if (msg.t === "chalk-lock") {
+      const c = state.chalk;
+      if (!c) return;
+      c.editor = Number.isSafeInteger(msg.id) ? msg.id : 0;
+      c.session = BL.chalkBoard.session(c.board);
+      chalkEmit("lock");
+    } else if (msg.t === "chalk") {
+      const c = state.chalk, op = BL.chalkBoard.parse(msg);
+      if (c && op && msg.id === c.editor && msg.id !== state.selfId && !BL.chalkBoard.apply(c.board, op, c.session)) chalkEmit("op", op);
+    } else if (msg.t === "chalk-refused") {
+      chalkEmit("refused", { why: String(msg.why), name: typeof msg.name === "string" ? msg.name : "" });
     } else if (msg.t === "wallet" || msg.t === "wallets") {
       for (const fn of walletSubscribers) fn(msg);
     } else if (msg.t === "chat-history") {
@@ -448,6 +598,8 @@
       if (Array.isArray(msg.peers)) BL.voice.setPeers(msg.peers, Array.isArray(msg.gens) ? msg.gens : null, state.zone === "dsb-studio" ? msg.listeners : undefined);
     } else if (msg.t === "ghost") {
       if (ghostHeard) ghostHeard(msg); // HALLOWEEN
+    } else if (msg.t === "thump") {
+      if (thumpHeard && remotes.has(msg.id)) thumpHeard(msg.id, msg.a === 1);
     } else if (msg.t === "release") {
       state.released = { name: String(msg.name), reason: String(msg.reason) };
       emit();
@@ -475,6 +627,10 @@
     state.ghostFollowers = 0;
     // Any request for the doorway went with the socket.
     if (state.doorway) doorHeard({ t: "door", op: "lost" });
+    // So did the chalkboard: the board is kept to show until the room sends it again, but nobody here holds it.
+    chalkOut.length = 0;
+    if (state.chalk && (room === "connecting" || room === "paused")) { state.chalk.editor = 0; chalkEmit("lock"); }
+    else if (state.chalk) { state.chalk = null; chalkEmit("board"); }
     state.doorway = false;
     npcFrame = null;
     hubSent = null;
@@ -612,23 +768,34 @@
     return n === groupLength(b) && a.startsWith(b.slice(0, n));
   };
   const setZone = (name) => {
+    if (cabinetAnchor) return;
     if (name === zone) return;
-    const moved = !sameGroup(name, zone) && name !== state.blendTo;
+    // Into the place being crossed into (voice-blend.js `place`): the crossing turns round as the room turns it, off a
+    // bridge's far end to none and across the arcade hallway's midpoint (#422) to the same crossing from its other end.
+    const across = !!state.blendTo && BLEND.place(name) === BLEND.place(state.blendTo);
+    const moved = !sameGroup(name, zone) && !across;
+    if (across) {
+      const back = (1 - state.blendT) * BLEND.STEPS >= 0.5;
+      state.blendTo = back ? BLEND.place(zone) : null;
+      state.blendT = back ? 1 - state.blendT : 0;
+    }
     zone = state.zone = name;
-    pokerVoice = null;
+    pokerVoice = state.pokerVoice = null;
     poseAt = 0; px = NaN;
     if (moved) BL.voice.setPeers([]);
     sendZone();
-    // The room dropped this page's crossing with its old zone: the next one is sent afresh.
-    blendSent = ""; blendAt = -Infinity;
+    // The room may have inverted an older quantized step, even when this page is already at the endpoint. Always send
+    // the next crossing, including none, so that stale remainder cannot keep the land just left audible.
+    blendSent = null; blendAt = -Infinity;
     rosterChanged();
   };
   // Voice changes without moving or hiding anybody on the shared floor.
   const setPokerVoice = table => {
     if (zone !== "ember-den" || table !== null && (!Number.isInteger(table) || table < 0 || table >= 10) || pokerVoice === table) return;
-    pokerVoice = table;
+    pokerVoice = state.pokerVoice = table;
     BL.voice.setPeers([]);
     sendPokerVoice();
+    rosterChanged();
   };
 
   // The hub says when it shows the island; a hidden tab stops counting until it is looked at again.
@@ -657,10 +824,21 @@
   };
   document.addEventListener("visibilitychange", onVisibility);
 
+  // One listener, thump.js; false when the room is not live.
+  let thumpHeard = null;
+  const sendThump = () => {
+    if (state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    send('{"t":"thump"}');
+    return true;
+  };
+  const subscribeThump = (fn) => {
+    thumpHeard = fn;
+    return () => { if (thumpHeard === fn) thumpHeard = null; };
+  };
   // HALLOWEEN: the ghost hunt's word to its host (ghost-sync.js): a start or a hit, relayed to the arcade's ghost
   // arena's host (`ghostHostId`) alone, from a page in the arena.
   let ghostHeard = null, ghostStateHeard = null;
-  const GHOST_MAGIC = 0x54534847, GHOST_ZONES = ["arcade.arena", "arcade-hunt"];
+  const GHOST_MAGIC = 0x54534847, GHOST_ZONES = ["ghost-arena", "arcade-hunt"];
   const inGhostArena = () => GHOST_ZONES.includes(state.zone);
   const sendGhost = (msg) => {
     if (state.room === "live" && inGhostArena() && state.ghostHostId && state.ghostHostId !== state.selfId) send(JSON.stringify(msg));
@@ -697,14 +875,24 @@
     if (ws && ws.readyState === WebSocket.OPEN && state.hostId === state.selfId) ws.send(view);
   };
 
+  // A synchronous handoff between Arcade hall scenes keeps the same driven body and voice subscriptions.
+  let holdingBody = false;
+  const handoffBody = fn => {
+    holdingBody = true;
+    try { return fn(); }
+    catch (error) { holdingBody = false; setBody(null); throw error; }
+    finally { holdingBody = false; }
+  };
   const setBody = (name) => {
+    if (cabinetAnchor) return;
+    if (holdingBody && name === null) return;
     if (name === body) return;
     body = state.body = name;
     state.bodyKind = bodyKind(name);
     state.bodyName = bodyName(name);
     poseAt = 0; px = NaN;
     gKnown = poseHasG = false;
-    jetSent = weaponSent = 0;
+    jetSent = weaponSent = 0; visualKnown = false; restKnown = restActive = false;
     sendBody();
     // The room starts another actor at full health.
     hpSent = 100; koSent = false; hpAt = 0;
@@ -744,7 +932,11 @@
   };
 
   // Throttled to POSE_MS and skipped while nothing moved; a changed gorilla pose, jetpack or weapon also earns a report.
-  const sendPose = (x, y, z, yaw, g = null, jet = 0, weapon = 0) => {
+  const sendPose = (x, y, z, yaw, g = null, jet = 0, weapon = 0, visual = null, rest = 0) => {
+    if (cabinetAnchor) {
+      const at = cabinetAnchor;
+      x = at.x; y = at.y; z = at.z; yaw = at.yaw; g = null; jet = weapon = 0; visual = null; rest = 0;
+    }
     const now = performance.now();
     if (state.bodyKind === "gorilla" && g && g.length === 6) {
       let valid = true;
@@ -758,11 +950,20 @@
     x = Math.max(-BOUND_XZ, Math.min(BOUND_XZ, x));
     z = Math.max(-BOUND_XZ, Math.min(BOUND_XZ, z));
     y = Math.max(BOUND_Y_MIN, Math.min(BOUND_Y_MAX, y));
+    yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
     if (state.bodyKind !== "gorilla") g = null;
     if (g) for (let i = 0; i < 6; i++) if (!Number.isFinite(g[i])) { g = null; break; }
     if (state.bodyKind === "gorilla" || !Number.isInteger(jet) || jet < 0 || jet > 7) jet = 0;
     if (state.bodyKind === "gorilla" || !Number.isInteger(weapon) || weapon < 0 || weapon > 255) weapon = 0;
-    let changed = !!g && !gKnown || jet !== jetSent || weapon !== weaponSent;
+    if (state.bodyKind === "gorilla" || !validVisual(visual)) visual = null;
+    if (state.bodyKind === "gorilla" || !validRest(rest)) rest = 0;
+    let changed = !!g && !gKnown || jet !== jetSent || weapon !== weaponSent || !!visual !== visualKnown
+      || state.bodyKind !== "gorilla" && (!restKnown || !!rest !== restActive);
+    if (rest && !changed) for (let i = 0; i < 6; i++) if (rest[i] !== restSent[i]) { changed = true; break; }
+    if (visual && !changed) for (let i = 0; i < 17; i++) if (visual[i] !== visualSent[i]) { changed = true; break; }
+    // A held wind-up can outlast its last changing sample. A bounded heartbeat keeps it live, and
+    // lets a silent/disconnected action expire without an extra timer or a new message type.
+    if (visual && (visual[3] & 40 || visual[14] > 0) && now - poseAt >= 300) changed = true;
     if (g && !changed) for (let i = 0; i < 6; i++) if (g[i] !== gSent[i]) { changed = true; break; }
     // Even when the complete pose is unchanged, remember that its cached locomotion is valid for reconnect.
     if (g) poseHasG = true;
@@ -779,6 +980,13 @@
     jetSent = jet; weaponSent = weapon;
     if (jet) extra += `,"j":${jet}`;
     if (weapon) extra += `,"w":${weapon}`;
+    visualKnown = !!visual;
+    if (visual) { visualSent.set(visual); extra += `,"v":[${visualSent.join(",")}]`; }
+    restKnown = state.bodyKind !== "gorilla"; restActive = !!rest;
+    if (restKnown) {
+      if (rest) { restSent.set(rest); extra += `,"r":[${restSent.join(",")}]`; }
+      else extra += ',"r":0';
+    }
     if (state.room === "live") send(`{"t":"pose","x":${x.toFixed(3)},"y":${y.toFixed(3)},"z":${z.toFixed(3)},"yaw":${yaw.toFixed(3)}${extra}}`);
     moved();
   };
@@ -812,11 +1020,14 @@
 
   const loginOf = (character) => (character.github || character.handle).toLowerCase();
   // The character whose GitHub login this is; a handle that only looks like the login does not count.
-  const characterOf = (login) => {
+  const characterOf = (login, id) => {
+    const account = BL.accountIdentities.accountForId(id);
+    if (account) return BL.characters.get(account.handle);
     const character = BL.characters.get(login);
+    if (id !== undefined && character && BL.accountIdentities.accountForHandle(character.handle)) return null;
     return character && loginOf(character) === String(login).toLowerCase() ? character : null;
   };
-  const ownCharacter = () => state.me && characterOf(state.me.login);
+  const ownCharacter = () => state.me && characterOf(state.me.login, state.me.id);
   // A local control preference only: never used by room, microphone or sign-in checks.
   const preferredCharacter = () => ownCharacter() || localCharacter;
   const prepareLocalCharacter = () => {
@@ -850,9 +1061,9 @@
     } else if (String(owner ? owner.handle : name).toLowerCase() !== localCharacter.handle.toLowerCase()) return "Drive your own Ooga";
     if (!owner) return null;
     const who = owner.display || owner.handle;
-    const ownerLogin = loginOf(owner), wanted = owner.handle.toLowerCase();
+    const wanted = owner.handle.toLowerCase();
     for (const rec of remotes.values()) {
-      if (rec.login.toLowerCase() === ownerLogin) return `${who} is here and drives this Ooga`;
+      if (characterOf(rec.login, rec.id) === owner) return `${who} is here and drives this Ooga`;
       if (rec.body && rec.body.toLowerCase() === wanted) return `Someone is already driving ${who}`;
     }
     return null;
@@ -862,9 +1073,9 @@
     if (mayDrive(name)) return "Drive your own gorilla";
     const owner = BL.characters.get(name);
     if (state.me || !owner) return null;
-    const who = owner.display || owner.handle, ownerLogin = loginOf(owner), wanted = gorillaBody(owner.handle).toLowerCase();
+    const who = owner.display || owner.handle, wanted = gorillaBody(owner.handle).toLowerCase();
     for (const rec of remotes.values()) {
-      if (rec.login.toLowerCase() === ownerLogin) return `${who} is here and drives this gorilla`;
+      if (characterOf(rec.login, rec.id) === owner) return `${who} is here and drives this gorilla`;
       if (rec.body && rec.body.toLowerCase() === wanted) return `Someone is already driving ${who}'s gorilla`;
     }
     return null;
@@ -885,6 +1096,44 @@
   const subscribeChat = (fn) => {
     chatSubscribers.add(fn);
     return () => chatSubscribers.delete(fn);
+  };
+  // The shared chalkboard (chalk-board.js): ask for it, let it go, and edit it while holding it. An edit applies to
+  // the page's copy at once and waits in `chalkOut`, merged with the next of its kind, until `flushChalk` or an edit
+  // of another kind sends it, so a line's points go a few to a frame. Each says whether it was sent, or why not.
+  const takeChalk = () => {
+    if (!state.chalk || state.room !== "live") return false;
+    send(`{"t":"chalk","k":"take"}`);
+    return true;
+  };
+  const flushChalk = () => {
+    for (const op of chalkOut) send(JSON.stringify({ t: "chalk", ...op }));
+    chalkOut.length = 0;
+  };
+  const dropChalk = () => {
+    const c = state.chalk;
+    if (!c || c.editor !== state.selfId) return;
+    flushChalk();
+    if (state.room === "live") send(`{"t":"chalk","k":"drop"}`);
+    c.editor = 0;
+    c.session = BL.chalkBoard.session(c.board);
+  };
+  const chalkEdit = (op) => {
+    const c = state.chalk, C = BL.chalkBoard;
+    if (!c || c.editor !== state.selfId || state.room !== "live") return "away";
+    // A repeated clear/reset changes neither the marks nor the shared writing session.
+    if (op.k === "wipe" && C.preset(c.board) === op.to) return null;
+    const error = C.apply(c.board, op, c.session);
+    if (error) return error;
+    const last = chalkOut[chalkOut.length - 1];
+    if (op.k === "more" && last && last.k === "more" && last.p.length + op.p.length <= C.CHUNK * 2) last.p.push(...op.p);
+    else if (op.k === "type" && last && last.k === "type" && last.c.length + op.c.length <= C.TYPE_CHUNK) last.c.push(...op.c);
+    else chalkOut.push(op.k === "more" ? { k: "more", p: op.p.slice() } : op.k === "type" ? { k: "type", c: op.c.slice() } : op);
+    if (op.k !== "more" && op.k !== "type") flushChalk();
+    return null;
+  };
+  const subscribeChalk = (fn) => {
+    chalkSubscribers.add(fn);
+    return () => chalkSubscribers.delete(fn);
   };
   // DSB Land's free hardware wallets (wallet-bombs.js): one of the visitor's own devices' events, for the pages in
   // the same zone, sent only for an Ooga in a live room; and what the room passes on from others, each message as it
@@ -934,13 +1183,15 @@
     moveSubscribers.clear();
     studioSubscribers.clear();
     chatSubscribers.clear();
+    chalkSubscribers.clear();
     walletSubscribers.clear();
     shotSubscribers.clear(); swingSubscribers.clear();
     presenceSubscribers.clear();
     doorSubscribers.clear();
     ghostHeard = ghostStateHeard = null; // HALLOWEEN
+    thumpHeard = null;
     close("off");
   };
 
-  BL.net = { subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendGhostState, subscribeGhostState, sendPose, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
+  BL.net = { cabinetSeats, takeCabinet, leaveCabinet, get cabinet() { return cabinetSeat; }, handoffBody, hockeyTables, subscribeHockey, sendHockey, subscribeHighscores, subscribeStudio, studioCommand, start, recheck, subscribe, subscribeRoster, subscribeMoves, subscribeChat, subscribeChalk, subscribeWallets, subscribeShots, subscribeSwings, subscribePresence, subscribeDoor, dispose, login, logout, setDisplay, rejoin, setBody, setZone, setBlend, setPokerVoice, setHub, setMuted, setHealth, sendNpc, sendChat, sendGhost, subscribeGhost, sendThump, subscribeThump, sendGhostState, subscribeGhostState, sendPose, takeChalk, dropChalk, chalkEdit, flushChalk, sendWallet, sendShot, sendSwing, askDoor, goDoor, doneDoor, cancelDoor, passDoor, mayDrive, mayDriveGorilla, ownCharacter, preferredCharacter, prepareLocalCharacter, ownAmong, characterOf, gorillaBody, bodyName, bodyKind, serverNow, remotes, state, CHAT_MAX, CHAT_KEEP, get npcFrame() { return npcFrame; } };
 })();

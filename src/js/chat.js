@@ -1,6 +1,6 @@
 // Ooga Chat, the sheet's last tab: one live conversation for every signed-in player on the island, on the
-// page the Worker serves (docs/auth-and-presence.md). The tab shows only where a backend answered; signed
-// out, the input is off and the panel offers the footer's sign-in. The room names each speaker and holds
+// page the Worker serves (docs/auth-and-presence.md). Like Online Oogas, the tab is hidden while signed
+// out. Contributor sign-in lives in the Contributing Oogas panel. The room names each speaker and holds
 // the last CHAT_KEEP lines in its memory alone, not persisted to the database: a reload fetches the room history, and a
 // room that slept forgets it; an open page keeps what it saw until reload or explicit logout.
 // Cost: a line heard while the panel is not showing only joins a capped array, and the rows are drawn in one
@@ -263,13 +263,17 @@
     if (!keyboardSheet) return;
     keyboardSheet.style.removeProperty("--chat-keyboard");
     keyboardSheet.style.removeProperty("--chat-viewport");
+    delete keyboardSheet.dataset.keyboard;
     keyboardSheet = null;
   };
   const fit = () => {
     const owner = panel.closest(".sheet");
     if (keyboardSheet !== owner) { clearFit(); keyboardSheet = owner; }
     if (!owner) return;
-    owner.style.setProperty("--chat-keyboard", `${Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))}px`);
+    const keyboard = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+    owner.style.setProperty("--chat-keyboard", `${keyboard}px`);
+    if (keyboard > 0) owner.dataset.keyboard = "true";
+    else delete owner.dataset.keyboard;
     owner.style.setProperty("--chat-viewport", `${Math.floor(viewport.height)}px`);
     // A short landscape viewport scrolls the panel rather than hiding the focused editor.
     const field = document.activeElement;

@@ -200,6 +200,8 @@
     const audio = BL.ghostAudio.create(), hud = BL.ghostHud.create({ coarse: hub.coarse, onMusic: () => audio.toggleMusic(), onSkip: () => audio.skip(),
       onReady: () => readyUp(), onDecline: () => decline(), onLobby: hub.lobbyOpen,
       onSpectate: (mode) => watchFrom(mode), onSpectateNext: () => { specId = nextStanding(specId); } });
+    // A remote shot can arrive before the first update after the deferred hunt loads.
+    audio.level(hub.hearing ? hub.hearing() : 1);
     // Every mesh the hunt has shown, kept on the GPU for the visit (`liveGeometry`): frames swap in and out.
     const used = [];
     const keep = (geometry) => {
@@ -326,6 +328,9 @@
     const boltDrop = pool(1, MODELS.lightningBolt())[0], strikeNodes = pool(STRIKES, null), strikeGlows = pool(STRIKES, null);
     const strikeHeard = new Float64Array(STRIKES);
     const heraldWisps = pool(HERALD_WISPS, null), heraldBeam = pool(1, null)[0], heraldGlow = pool(1, null)[0];
+    // The herald's launch as the scene may dress it: how strongly its beam holds it (0 to 1) and where its middle is, in
+    // the scene's own frame (`launch`).
+    const LAUNCH = { k: 0, x: 0, y: 0, z: 0 };
     // The gorillas: the island's own gorilla rig in its glowing code green, one per slot, every part shootable; each
     // slot's arrival beam, ground glow, landing flash and two rings.
     const B = C.BRUTE, BP = SIM.BRUTE_PHASE;
@@ -490,7 +495,17 @@
     for (let i = 0; i < C.WEAPON.damage.length - 1; i++) keep(MODELS.laserBolt(i));
 
     // ---------- the hunt's place on this page ----------
-    const restore = (snap) => { if (sim.load(snap)) heardAt = clock(); };
+    // A snapshot after a gap (a page joining a hunt under way, or back from where no frames came) holds the cues its first
+    // frame would play for everything that happened meanwhile (`catchUp`, `audio.hush`); a hunt seen from its lobby or
+    // frame by frame plays them all.
+    const CATCH_UP_MS = 1500;
+    let catchUp = false, snapAt = -Infinity;
+    const restore = (snap) => {
+      if (!sim.load(snap)) return;
+      const now = clock();
+      if (S.state !== ST.IDLE && S.state !== ST.GATHER && (prevState === ST.IDLE || now - snapAt > CATCH_UP_MS)) catchUp = true;
+      heardAt = snapAt = now;
+    };
     const sync = BL.ghostSync.create({
       npcSync,
       write: () => S.state !== ST.IDLE || clock() - idleAt < 3000 ? sim.snapshot() : null,
@@ -524,7 +539,8 @@
       if (cave === crew.player && !hub.gorillaActive()) hub.readyGun();
     };
     const disarmHunters = () => {
-      for (const [cave, was] of ammo) cave.weapon.unlimited = was;
+      // Only revoke ammunition this hunt granted. The arena may already have revoked its own loan on exit.
+      for (const [cave, was] of ammo) if (!was) cave.weapon.unlimited = false;
       ammo.clear();
     };
 
@@ -578,7 +594,8 @@
     // While the lobby is open (and this visitor has not said "not this time"): who is there and who is ready, and the
     // seconds left; drawn again only when one of those changes.
     const drawLobby = (t) => {
-      if (S.state !== ST.GATHER || declined) { lobbyShown = -1; hud.lobby(null); return; }
+      // Only a page in the arena is invited (a spectator watching from outside it follows the hunt but never the lobby).
+      if (S.state !== ST.GATHER || declined || !inZone(hub.zoneOf(crew.player))) { lobbyShown = -1; hud.lobby(null); return; }
       const secs = Math.max(0, Math.ceil((S.endsAt - t) / 1000));
       let count = 0, readyBits = 0, ids = 0, meReady = false, hostReady = !S.startedBy;
       for (const q of sim.players) {
@@ -683,6 +700,31 @@
       if (bot.on) sim.present(SIM.REVIVE_BOT, bot.x, bot.y, bot.z);
     };
     const bot = { on: false, x: 0, y: 0, z: 0, dropAt: 0, head: "" };
+
+    // ---------- what a spectator hears of the hunters ----------
+    // A hunter hears their own hurt (`followMe`) and their own hits (`hitAs`); a page not in the hunt (a hallway
+    // spectator, or a hunter who left it) hears any hunter's hurt from the snapshots, at most one cue a frame. A slot's
+    // first sight of a hunter only takes its count, so joining late sounds nothing that happened before.
+    const segSeen = new Int8Array(C.MAX_PLAYERS).fill(-1), idSeen = new Float64Array(C.MAX_PLAYERS);
+    const hearHurts = () => {
+      const me = sim.playerById(myId()), hunter = !!me && !!me.inGame && !quitting, fight = S.state >= ST.COUNTDOWN && S.state <= ST.DEFEAT;
+      let hurt = false;
+      for (let i = 0; i < C.MAX_PLAYERS; i++) {
+        const q = sim.players[i];
+        if (!fight || !q.on || !q.inGame || q.id === myId()) { segSeen[i] = -1; continue; }
+        if (idSeen[i] !== q.id) { idSeen[i] = q.id; segSeen[i] = -1; }
+        if (segSeen[i] >= 0 && q.seg < segSeen[i]) hurt = true;
+        segSeen[i] = q.seg;
+      }
+      if (hurt && !hunter) audio.play("hurt");
+    };
+    // Another player's rifle in the arena (net.js `subscribeShots`; the room relays an arena player's shots to the arena
+    // and both halves of its hallway, `watchesGhost`): its sound, once, at this page's level. A shot from outside the
+    // arena sounds nothing here; this page's own sounds in `shot`.
+    const offShots = net.subscribeShots((id) => {
+      const rec = net.remotes.get(id);
+      if (rec && inZone(rec.zone)) audio.play("shot");
+    });
 
     // ---------- this page's own Ooga in the hunt ----------
     let segShown = -1, knockT = 0, knockX = 0, knockZ = 0;
@@ -1451,6 +1493,7 @@
       const ground = held || vanishing ? island.surfaceAt(at.x, at.z) : 0;
       if (held && !beamed) { beamed = true; audio.play("arrive"); }
       const beamK = held ? 1 : vanishing ? Math.min(1, 2.5 * (1 - (since - HERALD_BEAM_MS) / VANISH_MS)) : 0, reach = held ? Math.min(1, since / 300) : 1;
+      LAUNCH.k = held ? reach : beamK;
       sprite(heraldBeam, MODELS.beamOf(HERALD_BEAM.core, HERALD_BEAM.mid, HERALD_BEAM.edge, false), at.x, ground + BEAM_TOP * (1 - reach), at.z, 1.4 * 3, BEAM_TOP * reach, beamK, false);
       sprite(heraldGlow, MODELS.glowDisc(HERALD_BEAM.mid), at.x, ground + 0.03, at.z, 3, 3, 0.7 * beamK * (0.8 + 0.2 * Math.sin(now / 90)), true);
       if (!herald.visible) { for (const n of heraldWisps) n.visible = false; return; }
@@ -1483,6 +1526,7 @@
         if (Math.random() < dt * 2.5) fx.spawnParticle(EMBERS[Math.random() * 3 | 0], at.x + (Math.random() - 0.5) * 0.6, at.y + 0.2, at.z + (Math.random() - 0.5) * 0.6, 0, 0.3, 0, 1.2, 1, -0.3, -50);
       }
       p.x = heraldX = at.x; p.y = at.y + rise; p.z = heraldZ = at.z;
+      LAUNCH.x = O.x + p.x; LAUNCH.y = O.y + p.y + HERALD_SIZE * 0.55; LAUNCH.z = O.z + p.z;
       const foot = p.y;
       herald.scale.x = herald.scale.y = herald.scale.z = size;
       face(herald, size);
@@ -2579,20 +2623,27 @@
       }
       lastRole = role;
       if (role === "follow") flushHits(now);
+      // How much of the hunt's music and sound this page hears (`hub.hearing`, #422): all of it in the arena, a hallway
+      // spectator's share by where they stand, set before this frame's cues so every one of them plays at it.
+      const heard = hub.hearing ? hub.hearing() : 1;
+      audio.level(heard);
+      audio.hush(catchUp);
       const t = huntTime();
       if (S.state !== prevState) { onState(S.state, prevState, t); prevState = S.state; }
       spectate(waiting());
       nightK = nightOf(t);
       drawBlight(now);
-      // The playlist runs from the herald's launch to the victory banner; the mini player shows it meanwhile.
-      const musicTime = S.state >= ST.LAP && S.state <= ST.BOSS || S.state === ST.VICTORY;
+      // The playlist runs from the herald's launch to the victory banner, wherever the hunt is heard; the mini player
+      // shows it meanwhile.
+      const musicTime = (S.state >= ST.LAP && S.state <= ST.BOSS || S.state === ST.VICTORY) && heard > 0;
       audio.music(musicTime);
       hud.player(musicTime ? audio.nowPlaying : null, audio.musicOn, audio.tracks > 1);
       jolt = Math.max(0, jolt - dt * 2.2);
       landShake = Math.max(0, landShake - dt);
       // The landing shake holds for its second, easing off over the last quarter of one.
       quake = Math.max(quakeOf(t), jolt, LAND_SHAKE * Math.min(1, landShake / 0.25));
-      if (S.state >= ST.LAP && S.state <= ST.DEFEAT) armHunter(crew.player);
+      // Hallway pages follow the hunt too, but keep their ordinary weapon and ammunition policy.
+      if (localHere && S.state >= ST.LAP && S.state <= ST.DEFEAT) armHunter(crew.player);
       dim += clamp((S.bossOn && S.state === ST.BOSS ? 1 : 0) - dim, -dt / 1.5, dt / 1.5);
       hush += clamp((bannerUp && S.state !== ST.IDLE ? 1 : 0) - hush, -dt / BANNER_OUT_S, dt / BANNER_IN_S);
       drawHerald(dt, t, now);
@@ -2643,9 +2694,11 @@
           if (geo) { keep(geo); warm++; }
         }
       }
+      hearHurts();
       drawRing(dt);
       drawHud(t);
       drawMinimap(t);
+      if (catchUp) { catchUp = false; audio.hush(false); }
       audio.update();
     };
 
@@ -2916,6 +2969,7 @@
       letGo();
       disarmHunters();
       guide.lend(null);
+      offShots();
       audio.dispose();
       hud.dispose();
       removeChild(root, group);
@@ -2929,6 +2983,7 @@
       get state() { return Object.keys(ST).find((k) => ST[k] === S.state); },
       get round() { return S.round; },
       get role() { return npcSync.role; },
+      get audio() { return audio; },
       start: () => { if (npcSync.role === "follow") sync.start(); else sim.start(clock(), myId(), SKIP); },
       /** Straight to a state by name ("BOSS", "BREAK", ...), and a round for a countdown. */
       skip: (state, round) => sim.jump(ST[state], round),
@@ -2943,7 +2998,7 @@
     return {
       start: () => { if (S.state === ST.IDLE) tapHerald(); }, quit, receive: sync.receive, restore,
       update, drawOverlay, hit, shot, key, down, get waiting() { return spectating; }, shotGeometry: () => { const tier = rifleTier(); return tier ? MODELS.laserBolt(tier - 1) : MODELS.rock(); }, lanternsWanted, lanterns, shade, shake, unshake, dispose, liveGeometry, debug,
-      get hunting() { return !off(S.state); },
+      get hunting() { return !off(S.state); }, get launch() { return LAUNCH; },
       get inHunt() { return !off(S.state) && !quitting && !!sim.playerById(myId())?.inGame; },
       get inMotion() { return S.state !== ST.IDLE || sim.alive() > 0; },
       stats: () => ({ ghosts: sim.alive() + sim.brutesAlive() })
