@@ -139,6 +139,7 @@ const gorillaSleepStallProof = () => {
       if (d > 0) { p.x += dx / d * go; p.z += dz / d * go; walked += go; if (actor.sleep.retrying) backwalk += go; }
     };
     for (; t < limit && !done; t += dt) {
+      beginSleepFrame();
       const p = e.root.position, s = e.sleep, x = p.x, z = p.z, leg = s.leg, stage = s.stage;
       walked = 0;
       if (jumpPause) e.jump.active = t >= 0.5 && t < 3.5;
@@ -213,7 +214,7 @@ const gorillaSleepStallProof = () => {
     e.sleep.path.set(path);
     e.gorilla.root = e.root; e.gorilla.form = "ape"; e.root.matrixNative = false;
     e.gorilla.setForm = form => { e.gorilla.form = form; };
-    const context = { e, dt: c.dt || 1 / 60, pace: c.pace || 1, limit: c.limit || 300, wakeAt: c.wakeAt ?? Infinity, open: c.open, bedDay: 0, SPEED: 2.7,
+    const context = { e, list: [e], dt: c.dt || 1 / 60, pace: c.pace || 1, limit: c.limit || 300, wakeAt: c.wakeAt ?? Infinity, open: c.open, bedDay: 0, SPEED: 2.7,
       sleepBeam: { show: (slot, x, y, z, heading, progress, incoming) => { context.visible = true; context[incoming ? "inFrames" : "outFrames"]++; }, hide: () => { context.visible = false; } },
       visible: false, outFrames: 0, inFrames: 0, blockedLanding: false, landingBlocked: !!c.landingBlocked,
       jumpPause: !!c.jumpPause, rageDuringBeam: !!c.rageDuringBeam, updateJump: noop,
@@ -227,6 +228,49 @@ const gorillaSleepStallProof = () => {
     runInNewContext(script, context);
     const r = context.out;
     return { name: c.name, ...r, ok: r.unexpected === 0 && r.skipped === 0 && (c.rageDuringBeam || r.form === "ape" && !r.native) && c.ok(r) };
+  });
+};
+// Simultaneous stalled sleepers share the production admission controller even
+// when one rendered update catches up eight physics steps. A blocked first bed
+// must not monopolize the queue, and every clear reservation must eventually land.
+const gorillaSleepBudgetProof = () => {
+  const source = readFileSync(join(root, "src/js/clankers.js"), "utf8");
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const controllers = section("    const SLEEP_POSES =", "\n") + "\n"
+    + section("    const sleepBeamLook =", "    // True while sleep owns");
+  return [1 / 60, 0.25].map(dt => {
+    const script = controllers + `
+      let peak = 0, maxChecks = 0, maxStarts = 0, first = -1, unsafe = false;
+      for (time = 0; time < 12 && list.some(e => e.sleep.stage !== "asleep"); time += dt) {
+        beginSleepFrame(); checks = 0; let starts = 0, remaining = dt;
+        while (remaining > 1e-8) {
+          const step = Math.min(remaining, 1 / 30); remaining -= step;
+          for (const e of list) {
+            const s = e.sleep;
+            s.beamWait = Math.max(0, s.beamWait - step);
+            if (s.stage === "go" && !s.beamWait) { beginSleepBeam(e); if (s.stage === "beamOut") starts++; }
+            else if (s.stage === "beamOut" || s.stage === "beamIn") updateSleepBeam(e, step);
+            if (s.stage === "beamIn" && first < 0) first = s.slot;
+            if (s.slot === 0 && time < 1 && e.root.position.x === 10) unsafe = true;
+          }
+          peak = Math.max(peak, list.filter(e => e.sleep.stage === "beamOut" || e.sleep.stage === "beamIn").length);
+        }
+        maxChecks = Math.max(maxChecks, checks); maxStarts = Math.max(maxStarts, starts);
+      }
+      globalThis.out = { peak, maxChecks, maxStarts, first, unsafe, time,
+        arrived: list.filter(e => e.sleep.stage === "asleep" && e.root.position.x === e.sleep.slot + 10 && e.gorilla.form === "ape").length };
+    `;
+    const list = Array.from({ length: 20 }, (_, slot) => {
+      const root = { position: { x: 0, y: 0, z: 0 }, matrixNative: false };
+      const gorilla = { root, form: "ape", setForm(form) { this.form = form; }, poseManaged() {} };
+      return { root, gorilla, sleep: { slot, stage: "go", beamWait: 0, beamTime: 0 }, motion: {} };
+    });
+    const context = { list, dt, time: 0, checks: 0, bedTaken: () => false, sleepBeam: { show() {}, hide() {}, clear() {} }, layDown() {} };
+    context.ctx = { sleep: { slots: list.map((e, i) => ({ x: i + 10, y: 0, z: 0, heading: 0 })) },
+      restPoseClear(e) { context.checks++; return e.sleep.slot !== 0 || context.time >= 1; } };
+    runInNewContext(script, context);
+    const r = context.out;
+    return { dt, ...r, ok: r.peak === 1 && r.maxChecks === 1 && r.maxStarts === 1 && r.first === 1 && !r.unsafe && r.arrived === 20 };
   });
 };
 // Run the hub's real landing/player predicate, including the NPC exception to walking collision.
@@ -11861,12 +11905,35 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
     C.update(1 / 60); C.cancelSleepBeams();
     const beamSuspend = noBeam() && beamEntry.sleep.stage === "go" && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
-    return { beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
+    // Use the real rigs, route reservations, collision predicates and effect pool
+    // for ten simultaneous spent stall budgets. Queuing must not overlap beams
+    // or keep trying to walk/animate the actor behind the active recovery.
+    const queued = entries.slice(3, 13); reset(queued); C.update(1 / 30);
+    for (const e of queued) {
+      const s = e.sleep, p = e.root.position;
+      e.lounge = ""; e.recover = 0; e.jump.active = e.climb.active = e.drive.airborne = false;
+      s.stage = "go"; s.leg = Math.max(0, s.count - 2); s.stall = 26; s.near = s.forwardNear = 0;
+      s.forwardLeg = s.leg; s.tries = 2; s.retrying = false; s.beamWait = 0;
+      p.x = s.path[s.leg * 2] + 1.5; p.z = s.path[s.leg * 2 + 1] + 1.5; p.y = B.island.surfaceAt(p.x, p.z);
+      e.gorilla.poseManaged(2, p.x, p.y, p.z, e.heading, 0, false, false, "", e.motion);
+    }
+    const last = queued[queued.length - 1], start = { ...last.root.position };
+    let maxBeams = 0;
+    C.update(1 / 60);
+    const heldQueue = last.sleep.stage === "go" && last.root.position.x === start.x && last.root.position.z === start.z;
+    for (let i = 0; i < 240; i++) {
+      maxBeams = Math.max(maxBeams, queued.filter(e => e.sleep.stage === "beamOut" || e.sleep.stage === "beamIn").length);
+      C.update(1 / 60);
+    }
+    const queuedArrival = queued.every(e => e.sleep.stage === "asleep" && e.sleep.slot >= 0 && e.gorilla.form === "ape" && !e.root.matrixNative);
+    const boundedRecovery = heldQueue && maxBeams === 1 && queuedArrival && noBeam();
+    return { boundedRecovery, maxBeams, heldQueue, queuedArrival, beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
       population: [worker, chiller, away, ...sleepers].map(e => ({ state: e.owner.state, mode: e.mode, active: e.active, visible: e.root.visible, bed: e.sleep.slot })) };
   })()`);
   record("gorilla population: late-roster sleepers get exclusive beds; working, chilling and away owners get none; overflow waits at the 20-bed cap, respects driven reservations and reuses released beds", r.lateSleepers && r.stable && r.capped && r.reused && r.heldWhileDriven && r.uniqueAfterRelease, JSON.stringify(r));
   record("gorilla population: island game mode hides companions and its exit immediately restores current working, chilling and sleeping gorillas; repeated exit keeps their beds", r.hidden && r.restored && r.stableExit, JSON.stringify(r));
   record("gorilla sleep beam: possession, remote takeover and population reset cancel both transfer stages without displacing a driven character", r.beamPossession && r.beamArrivalPossession && r.beamRemote && r.beamReset && r.beamSuspend, JSON.stringify(r));
+  record("gorilla sleep recovery: ten stalled real rigs hold position in the queue and reach their reserved beds with at most one active beam", r.boundedRecovery, JSON.stringify(r));
 } };
 const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visits retain harmless weapons and both look modes while damage, health simulation, rage and grabs stay off, and ending a game clears its transient combat state", run: async b => {
   const r = await b.evaluate(`(() => {
@@ -15811,18 +15878,34 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
     record('arcade play: Cloud Hopper launches unarmed through the cabinet, preserves preview gear, returns safely twice and blocks Rally', false, JSON.stringify({ entered, state, layout })); return;
   }
   const before = await b.evaluate(`(() => { const B = __ooga, H = BL.scenes.hub.debug.cloudHopper, p = B.pilot.player;
-    const weapons = new Set([p.parts.club.geometry, p.parts.gun.geometry, ...p.parts.gun.children.map(n => n.geometry)]);
-    let armedPreview = false; const create = BL.iconRenderer.createRenderer;
-    BL.iconRenderer.createRenderer = (...args) => { const renderer = create(...args), render = renderer.render;
-      renderer.render = (root, camera) => { BL.scene.traverseVisible(root, node => { if (node.geometry && weapons.has(node.geometry)) armedPreview = true; }); return render(root,camera); }; return renderer; };
+    // Gun rounds share their mesh with spare belt magazines; use the actual weapon bodies
+    // as witnesses, and require the carried spare gear to remain in the unarmed portrait.
+    const weapons = new Set([p.parts.club.geometry, p.parts.gunBody.geometry]);
+    const spares = p.magazineModels.filter(m => m?.node.parent && m.node.visible).map(m => m.node.geometry);
+    const seenWeapons = new Set(), seenSpares = new Set(), create = BL.iconRenderer.createRenderer;
     const canvas = document.createElement('canvas'), club = p.parts.club.visible, gun = p.parts.gun.visible;
-    p.parts.club.visible = p.parts.gun.visible = true;
-    BL.hud.renderBodyIcon(canvas,p,96,128,false); BL.iconRenderer.createRenderer = create;
-    const previewSafe = !armedPreview && p.parts.club.visible && p.parts.gun.visible;
-    p.parts.club.visible = club; p.parts.gun.visible = gun;
+    let previewSafe = false, previewDetail;
+    BL.iconRenderer.createRenderer = (...args) => { const renderer = create(...args), render = renderer.render;
+      renderer.render = (root, camera) => { BL.scene.traverseVisible(root, node => {
+        if (weapons.has(node.geometry)) seenWeapons.add(node.geometry);
+        if (spares.includes(node.geometry)) seenSpares.add(node.geometry);
+      }); return render(root,camera); }; return renderer; };
+    try {
+      p.parts.club.visible = p.parts.gun.visible = true;
+      BL.hud.renderBodyIcon(canvas,p,96,128,true);
+      const detectsWeapons = seenWeapons.size === weapons.size;
+      seenWeapons.clear(); seenSpares.clear();
+      BL.hud.renderBodyIcon(canvas,p,96,128,false);
+      previewDetail = { detectsWeapons, weapons: seenWeapons.size, spares: spares.length,
+        preservesSpares: spares.every(g => seenSpares.has(g)), club: p.parts.club.visible, gun: p.parts.gun.visible };
+      previewSafe = detectsWeapons && !seenWeapons.size && previewDetail.preservesSpares && p.parts.club.visible && p.parts.gun.visible;
+    } finally {
+      BL.iconRenderer.createRenderer = create;
+      p.parts.club.visible = club; p.parts.gun.visible = gun;
+    }
     document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click();
     return { who: p.traits.name, phase: H.phase, unarmed: !p.parts.club.visible && !p.parts.gun.visible,
-      previewSafe, y: H.platform.position.y, dockGone: !B.props.some(prop => prop.prop === 'dock') };
+      previewSafe, previewDetail, y: H.platform.position.y, dockGone: !B.props.some(prop => prop.prop === 'dock') };
   })()`);
   await b.evaluate(`__ooga.advance(2,1/60)`);
   const rising = await b.evaluate(`(() => { const H = BL.scenes.hub.debug.cloudHopper, p = __ooga.pilot.player;
@@ -15844,8 +15927,8 @@ const arcadePlay = { name: "arcade play", why: "rule: Cloud Hopper replaces the 
     layout.front === 'cloud-hopper' && layout.rally.x < layout.flame && layout.flame < layout.invaders.x && layout.rally.z === layout.invaders.z
     && layout.rally.y === 3.2 && layout.rally.turn === 0 && layout.rally.service
     && layout.deck === 3.2 && layout.walkable && layout.label.includes('out of order') && blocked && entered && before.who === 'portlandhodl'
-    && ['ready','briefing'].includes(before.phase) && before.unarmed && before.previewSafe && before.dockGone
-    && ['ready','briefing'].includes(rising.phase) && rising.y === before.y && rising.unarmed && returned && back.who === 'portlandhodl'
+    && before.phase === 'lifting' && before.unarmed && before.previewSafe && before.dockGone
+    && rising.phase === 'lifting' && rising.y > before.y && rising.unarmed && returned && back.who === 'portlandhodl'
     && back.off < 0.5 && back.unarmed && back.parked && again && cancelled && routed, JSON.stringify(state));
 
 } };
@@ -21059,6 +21142,75 @@ scene("bifrost", { url: hubPage(src, "solo=1&character=portlandhodl"), steps: [b
 scene("bifrost", { label: "dsb round trip", query: "character=portlandhodl", steps: [bifrostDsb] });
 scene("bifrost", { label: "poker round trip", query: "character=portlandhodl", steps: [bifrostPoker] });
 scene("bifrost", { label: "canvas2d", url: hubPage(src, "canvas2d=1"), steps: [bifrostCanvas] });
+// Exercise the real Cloud Hopper controls between measured frames, including result-card starts.
+const cloudCabinetJourney = async (b, dir, shape) => {
+  await b.evaluate(`window.__cabinetRaf = requestAnimationFrame; window.requestAnimationFrame = () => 0`);
+  await b.sleep(50); // Let the already queued frame finish; advance now owns the displayed frames.
+  const state = `(() => { const B=__ooga,H=BL.scenes.hub.debug.cloudHopper,s=document.getElementById('stage'),r=s.getBoundingClientRect(),p=document.querySelector('.cloud-hopper-panel'),m=new DOMMatrix(getComputedStyle(s).transform); return {
+    phase:H.phase,cabinet:B.cabinet.phase,view:B.pilot.view,y:H.platform.position.y,top:H.start.y,level:H.level.id,time:H.time,
+    panel:p.open && !p.hidden && getComputedStyle(p).visibility!=='hidden',actor:H.actor.root.visible,
+    rider:(()=>{const a=H.actor,q=B.project(a.root.position.x,a.root.position.y-a.baseY+a.bodyHeight*.5,a.root.position.z,{});return !!q && q.x>0 && q.x<s.clientWidth && q.y>0 && q.y<s.clientHeight && a.parts.head.visible;})(),
+    width:r.width,height:r.height,ratio:r.width/r.height,viewport:innerWidth/innerHeight,scaleX:m.a,scaleY:m.d,
+    full:!s.classList.contains('cabinet-display'),backdrop:!document.getElementById('cabinet-backdrop').hidden
+  }; })()`;
+  const shot = async label => { await b.screenshot(join(dir, `cloud-hopper-${shape}-${label}.png`)); return b.evaluate(state); };
+  const click = label => b.evaluate(`(() => { const b=[...document.querySelectorAll('.cloud-hopper-panel .actions button')].find(b=>!b.hidden && b.textContent.trim()===${JSON.stringify(label)}); if(!b) throw new Error('Missing action: '+${JSON.stringify(label)}); b.click(); })()`);
+  const advance = seconds => b.evaluate(`__ooga.advance(${seconds},1/60)`);
+  const rows = [];
+  try {
+    await click('Play'); await advance(1/60); rows.push(await shot('ascent-start'));
+    await advance(2); rows.push(await shot('ascent-middle'));
+    await advance(4.1); rows.push(await shot('ascent-top'));
+    record(`Cloud Hopper cabinet ${shape}: Start closes selection and the live cloud rises during an undistorted zoom, immersive at the top`,
+      rows[0].phase==='lifting' && !rows[0].panel && rows[0].actor && rows[0].rider && rows[0].y<rows[0].top && rows[0].cabinet==='expanding'
+      && rows[1].phase==='lifting' && rows[1].y>rows[0].y && rows[1].width>rows[0].width && !rows[1].panel && rows[1].rider
+      && rows[2].y===rows[2].top && rows[2].cabinet==='playing' && rows[2].full && !rows[2].backdrop
+      && rows.every(r=>r.time===0 && Math.abs(r.ratio-r.viewport)<0.001 && r.scaleX===r.scaleY), JSON.stringify(rows));
+    const skip = async () => { await b.evaluate(`if(BL.scenes.hub.debug.cloudHopper.phase==='briefing') document.querySelector('.cloud-hopper-guide .actions button:last-child').click()`); await advance(1.1); };
+    await skip();
+    // Social checks wait for real rendered frames; resume the display loop while they run.
+    await b.evaluate(`window.requestAnimationFrame=window.__cabinetRaf;document.dispatchEvent(new Event('visibilitychange'))`);
+    await arcadeSocialPanels(b, `cabinet cloud-hopper ${shape}`);
+    await b.evaluate(`window.requestAnimationFrame=()=>0`); await b.sleep(50);
+    const finish = async won => b.evaluate(`(() => { const B=__ooga,H=BL.scenes.hub.debug.cloudHopper,a=H.actor;
+      a.hop=.1;a.hopV=1;H.postUpdate();
+      ${won ? "B.setPileLevel(0); B.advance(.1,1/60); Object.assign(a.root.position,{x:0,y:B.altar.height+.23+a.baseY,z:0});a.hop=a.hopV=0;" : "a.root.position.y=-1000;a.hopV=-20;"}
+      H.postUpdate(); B.advance(1/60,1/60);
+    })()`);
+    const rides = [];
+    for (const [label, won, action] of [['death',false,'Play again'],['complete',true,'Replay'],['levels',true,'Play level 2']]) {
+      await finish(won); const result = await shot(label);
+      if(label==='levels') {
+        await click('Level select');
+        await b.evaluate(`document.querySelectorAll('.cloud-hopper-level')[1].click()`);
+        rows.push(await shot('level-select'));
+      }
+      await click(action); const start = await b.evaluate(state);
+      await advance(2); const middle=await shot(label+'-ascent');
+      await advance(4.1); const top=await b.evaluate(state);
+      rides.push({label,result,start,middle,top}); await skip();
+    }
+    record(`Cloud Hopper cabinet ${shape}: death, completion, replay and another level stay immersed and every attempt ascends from home`,
+      rides.every(r=>r.result.phase===(r.label==='death'?'dq':'won') && r.result.panel
+        && r.start.phase==='lifting' && r.start.y<r.start.top && !r.start.panel
+        && r.middle.phase==='lifting' && r.middle.y>r.start.y && r.top.y===r.top.top
+        && [r.result,r.start,r.middle,r.top].every(v=>v.cabinet==='playing' && v.full && !v.backdrop))
+      && rows.at(-1).panel && rows.at(-1).full && rides.at(-1).top.level===2,JSON.stringify(rides));
+    await finish(false);
+    await click('Return to arcade');
+    const exit=[];
+    for(const [label,seconds] of [['exit-start',.0167],['exit-middle',.25],['exit-glass',.35]]) {
+      await advance(seconds); exit.push(await shot(label));
+    }
+    record(`Cloud Hopper cabinet ${shape}: explicit return withdraws continuously with a hidden result card and equal image scales`,
+      exit.every(r=>r.cabinet==='shrinking' && !r.panel && Math.abs(r.ratio-r.viewport)<.001 && r.scaleX===r.scaleY)
+      && exit[0].width>exit[1].width && exit[1].width>exit[2].width,JSON.stringify(exit));
+    writeFileSync(join(dir,`cloud-hopper-${shape}-transitions.json`),JSON.stringify({entry:rows,rides,exit},null,2));
+    return { expanded: rows[2].cabinet==='playing', full: rows[2].full && !rows[2].backdrop };
+  } finally {
+    await b.evaluate(`window.requestAnimationFrame=window.__cabinetRaf;delete window.__cabinetRaf;document.dispatchEvent(new Event('visibilitychange'))`);
+  }
+};
 const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet contains usable menu controls, expands its game and returns the same player with combat mouse capture and no retained UI", run: async b => {
   const dir = join(root, "untracked", "cabinet-review", "visual-pass"); mkdirSync(dir, { recursive: true });
   const shape = await b.evaluate(`innerWidth < 600 ? 'phone' : __ooga.renderer.kind === 'canvas2d' ? 'canvas2d' : 'desktop'`);
@@ -21106,30 +21258,42 @@ const cabinetVisit = id => ({ name: `cabinet ${id}`, why: "rule: each cabinet co
     record(`cabinet ${id}: ${shape} attributed top ten fits the glass without starting play`, scores.fit && scores.phase==='menu' && scores.rows.length===10 && scores.rows[0].name==='same-player' && scores.rows[1].name==='same-player' && scores.rows[0].score==='1,000' && scores.rows[9].score==='775', JSON.stringify(scores));
     if (shape === "phone") { await activateToggle(); await b.evaluate(`document.querySelector('.cabinet-leaderboard-toggle').blur()`); }
   }
+  let cloudJourney = null;
   if (id === "cloud-hopper") {
     if (shape === "phone") await b.evaluate(`document.querySelector('.cabinet-scores-toggle').click()`);
     const leaderboard = await b.evaluate(`(() => { const e=document.querySelector('.cloud-hopper-panel .cloud-hopper-scores'), r=e.getBoundingClientRect(), p=e.closest('dialog').getBoundingClientRect();return !e.hidden && r.width>0 && r.height>40 && r.top>=p.top && r.bottom<=p.bottom; })()`);
     await b.screenshot(join(dir, `${id}-${shape}-leaderboard.png`));
     record(`cabinet Cloud Hopper: ${shape} leaderboard remains available inside glass`, leaderboard);
     if (shape === "phone") await b.evaluate(`document.querySelector('.cabinet-scores-toggle').click()`);
-    await b.evaluate(`document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click()`);
+    cloudJourney = await cloudCabinetJourney(b, dir, shape);
   }
   else if (id === "mine") await b.evaluate(`document.querySelector('[data-action="mine-start"]').click()`);
   else await b.key("Enter");
-  const expanded = await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
-  const full = await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && document.getElementById('cabinet-foreground').hidden && !document.querySelector('.cabinet-leaderboard') && __ooga.fade === 0`);
+  const expanded = cloudJourney ? cloudJourney.expanded : await untilPage(b, `B.cabinet.phase === 'playing'`, 10000);
+  const full = cloudJourney ? cloudJourney.full : await b.evaluate(`document.getElementById('stage').clientWidth === innerWidth && document.getElementById('cabinet-backdrop').hidden && document.getElementById('cabinet-foreground').hidden && !document.querySelector('.cabinet-leaderboard') && __ooga.fade === 0`);
   if (shape === "phone" && id !== "cloud-hopper") {
     const header = await b.evaluate(`(() => { const e=document.getElementById('equipment-hud'), p=document.querySelector('.topbar .presets:not([hidden])'); const buttons=p ? [...p.querySelectorAll('button')].filter(b=>!b.hidden && b.getClientRects().length) : []; return {equipment:e.getBoundingClientRect().top,presets:p?.getBoundingClientRect().top,tappable:buttons.every(b=>{const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})}; })()`);
     record(`cabinet ${id}: phone header controls return above the game`, header.equipment < 180 && (!header.presets || header.presets < 180) && header.tappable, JSON.stringify(header));
   }
-  await arcadeSocialPanels(b, `cabinet ${id} ${shape}`);
-  await b.screenshot(join(dir, `${id}-${shape}-play.png`));
-  await b.evaluate(`__ooga.go('arcade')`);
+  if (id !== "cloud-hopper") {
+    await arcadeSocialPanels(b, `cabinet ${id} ${shape}`);
+    await b.screenshot(join(dir, `${id}-${shape}-play.png`));
+    await b.evaluate(`__ooga.go('arcade')`);
+  }
   const returned = await untilPage(b, `B.scene === 'arcade' && !B.transitioning`, 30000);
   if (shape === "desktop") await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
   const back = await b.evaluate(`(() => { const p=__ooga.pilot.player, at=BL.arcadeCabinets.get(${JSON.stringify(id)});return {who:p?.traits.name,locked:document.pointerLockElement===document.getElementById('scene'),off:p?Math.hypot(p.root.position.x-at.x,p.root.position.z-at.z):999,clean:!__ooga.cabinet.active && !document.getElementById('stage').classList.contains('cabinet-display')}; })()`);
   await b.screenshot(join(dir, `${id}-${shape}-return.png`));
   record(`cabinet ${id}: menu in glass, full-screen game, same Ooga at cabinet, clean return`, menu && framed.inside && !framed.fade && expanded && full && returned && back.who === 'portlandhodl' && back.off < .1 && back.clean && (shape !== 'desktop' || back.locked), JSON.stringify({framed,expanded,full,returned,back}));
+  if (id === "cloud-hopper") {
+    await b.evaluate(`__ooga.arcade.open('hub','cloud-hopper')`);
+    const reopened=await untilPage(b, `B.cabinet.phase==='menu'`,30000);
+    const partial=await b.evaluate(`(() => { document.querySelector('.cloud-hopper-panel .game-intro-go:not([hidden])').click();__ooga.advance(1.5,1/60);
+      const s=document.getElementById('stage'),before=s.getBoundingClientRect().width,phase=BL.scenes.hub.debug.cloudHopper.phase;
+      __ooga.go('arcade');__ooga.advance(.1,1/60);return {phase,before,after:s.getBoundingClientRect().width,panel:document.querySelector('.cloud-hopper-panel').open};})()`);
+    const cancelled=await untilPage(b,`B.scene==='arcade' && !B.transitioning`,30000);
+    record(`Cloud Hopper cabinet ${shape}: a later visit can cancel a partial ascent without expanding again or sticking`,reopened && cancelled && partial.phase==='lifting' && partial.after<partial.before && !partial.panel,JSON.stringify(partial));
+  }
 } });
 for (const id of ["cloud-hopper", "drop", "orbit", "mine", "invaders", "stampede", "pong", "snake", "flap", "breaker", "dash", "stacker"]) {
   scene("arcade", { label: `cabinet ${id} desktop`, exclusive: true, query: "character=portlandhodl&pos=0", opts: { motion: true }, steps: [cabinetVisit(id)] });
@@ -26060,10 +26224,10 @@ const visibilitySourceBakeProof = () => {
   const math = readFileSync(new URL("../src/js/math.js", import.meta.url), "utf8");
   const source = readFileSync(new URL("../src/js/character-visibility.js", import.meta.url), "utf8");
   const compact = readFileSync(new URL("../src/js/compact-geometry.js", import.meta.url), "utf8");
-  const expose = source.slice(0, source.indexOf("  const create =")) + " window.__meshProof={meshOf,meshes};})();";
+  const expose = source.replace("BL.characterVisibility = { create };", "BL.characterVisibility = { create }; window.__meshProof={meshOf,meshes,startMesh,builds};");
   return runInNewContext(math + "\n" + compact + "\n" + expose + `
 (() => {
-    const {meshOf}=window.__meshProof;
+    const {meshOf,meshes,startMesh,builds}=window.__meshProof;
     const source={verts:new Float64Array([0,0,0, 1,0,0, 0,1,0, 0,0,1]),faces:[{i:[0,1,2]},{i:[0,2,3]}]};
     const wrapper=()=>({...source,faces:source.faces.map(f=>({...f,matrixCave:2,matrixLocalGlyphSurface:true})),matrixSourceGeometry:source});
     const first=wrapper(), baked=meshOf(first);let cases=0;
@@ -26125,8 +26289,81 @@ const visibilitySourceBakeProof = () => {
     check(refused===2 && C.storageOf(packed)===data,'Reassigning a packed mesh did not throw');
     const legacy=packed.faces[0];
     check(packed.faces[0]===legacy && Object.isFrozen(legacy) && Object.isFrozen(legacy.i) && legacy.color[3]===-1 && data.legacy.size===1,'Legacy compact access is not stable and bounded');
-    return { cases, failures: 0, wrapperVisits: 100, sharedSourceBVHs: 1 };
-  })()`, { window: { location: { search: "?compactGeometry=1" }, BL: { scene: { boundsOf() { throw Error("Unused"); } } } }, URLSearchParams });
+    // Median partitioning may reorder triangles, but every leaf must keep an
+    // exact, enclosing subset and answer the same rays as a brute-force scan.
+    const random = window.BL.math.mulberry32(731);
+    let rays = 0, warmGeometry, warmExpected;
+    for (const shape of ["random", "sorted", "reverse", "equal", "clustered"]) {
+      const geometry = { verts: [], faces: [] }, count = 1003;
+      for (let i = 0; i < count; i++) {
+        const x = shape === "equal" ? 0 : shape === "random" ? random() * 20 - 10 : shape === "clustered" ? i < 990 ? 0 : 20 : (shape === "sorted" ? i : count - i) / 50 - 10;
+        const y = shape === "equal" ? 0 : Math.floor(i / 25) / 2 - 10, z = i % 17, at = geometry.verts.length / 3;
+        geometry.verts.push(x - .4, y - .4, z, x + .4, y - .4, z, x, y + .4, z);
+        geometry.faces.push({ i: [at, at + 1, at + 2], visibility: i % 19 ? true : false });
+      }
+      const pending = startMesh(geometry); pending.slice.until = -1;
+      check(!pending.steps.next().done && !meshes.has(geometry), "Idle bake failed to yield without publishing partial triangles");
+      const mesh = meshOf(geometry), triangles = mesh.indices.length / 3, seen = new Uint8Array(triangles);
+      check(!builds.has(geometry) && meshes.get(geometry) === mesh, "On-demand query did not finish and publish the pending bake");
+      warmGeometry = { ...geometry }; warmExpected = mesh;
+      check(triangles === geometry.faces.filter(f => f.visibility).length, "Partition dropped visible triangles");
+      for (const node of mesh.nodes) {
+        for (let k = node.from; k < node.to; k++) {
+          const id = mesh.order[k];
+          if (node.left < 0) seen[id]++;
+          for (let v = 0; v < 3; v++) for (let axis = 0; axis < 3; axis++) {
+            const value = mesh.vertices[mesh.indices[id * 3 + v] + axis];
+            check(value >= node.box[axis] && value <= node.box[axis + 3], "Partition bounds exclude a triangle");
+          }
+        }
+        if (node.left >= 0) {
+          const left = mesh.nodes[node.left], right = mesh.nodes[node.right];
+          check(left.from === node.from && left.to === right.from && right.to === node.to && Math.abs((left.to - left.from) - (right.to - right.from)) <= 1, "Partition is not balanced and contiguous");
+        }
+      }
+      check(seen.every(n => n === 1), "Partition duplicates or loses a leaf triangle");
+      const hit = (id, x, y) => {
+        const at = mesh.indices[id * 3], vx = mesh.vertices[at], vy = mesh.vertices[at + 1];
+        const u = (y - vy) / .8, v = (x - vx - .4 * u) / .8;
+        return u >= 0 && v >= 0 && u + v <= 1 ? 20 - mesh.vertices[at + 2] : Infinity;
+      };
+      for (let i = 0; i < 100; i++) {
+        const x = i < 50 ? random() * 20 - 10 : 0, y = i < 50 ? random() * 20 - 10 : 0;
+        let expected = Infinity;
+        for (let id = 0; id < triangles; id++) expected = Math.min(expected, hit(id, x, y));
+        const visit = index => {
+          const n = mesh.nodes[index], box = n.box;
+          if (x < box[0] || x > box[3] || y < box[1] || y > box[4]) return Infinity;
+          if (n.left >= 0) return Math.min(visit(n.left), visit(n.right));
+          let nearest = Infinity;
+          for (let k = n.from; k < n.to; k++) nearest = Math.min(nearest, hit(mesh.order[k], x, y));
+          return nearest;
+        };
+        check(visit(0) === expected, "Partition ray differs from brute force"); rays++;
+      }
+    }
+    // The public warmer must schedule large meshes instead of discarding them,
+    // resume across idle slices, publish only a complete tree and cancel on exit.
+    const idle = new Map(); let nextIdle = 0, clock = 0, warmSlices = 0;
+    globalThis.requestIdleCallback = fn => { idle.set(++nextIdle, fn); return nextIdle; };
+    globalThis.cancelIdleCallback = id => idle.delete(id);
+    globalThis.performance = { now: () => clock++ };
+    const warmRoot = { children: [{ geometry: warmGeometry, children: [] }] };
+    const visibility = window.BL.characterVisibility.create({ root: warmRoot, renderer: {}, camera: {} });
+    visibility.warm();
+    while (idle.size && warmSlices < 1000) {
+      const [id, fn] = idle.entries().next().value; idle.delete(id); fn({ timeRemaining: () => 10 }); warmSlices++;
+    }
+    const warmed = meshes.get(warmGeometry);
+    check(warmSlices > 1 && warmSlices < 1000 && warmed && !builds.has(warmGeometry), "Large idle bake was skipped, did not yield or did not finish");
+    check(JSON.stringify(warmed.nodes) === JSON.stringify(warmExpected.nodes) && warmed.indices.every((v, i) => v === warmExpected.indices[i]), "Idle and synchronous bakes differ");
+    visibility.dispose();
+    warmRoot.children[0].geometry = { ...warmGeometry };
+    const leaving = window.BL.characterVisibility.create({ root: warmRoot, renderer: {}, camera: {} });
+    leaving.warm(); leaving.dispose();
+    check(idle.size === 0, "Disposed visibility retained an idle callback");
+    return { cases, failures: 0, rays, warmSlices, wrapperVisits: 100, sharedSourceBVHs: 1 };
+  })()`, { window: { location: { search: "?compactGeometry=1" }, BL: { scene: { boundsOf() { throw Error("Unused"); } } } }, URLSearchParams, performance: { now: () => 0 } });
 };
 
 // Run the shipped driver with synthetic processes, discovery and sockets; never launch Chrome.
@@ -27045,6 +27282,8 @@ const unitChecks = async () => {
   record("gorilla sleep beam: fixed pool, slot isolation, live reduced motion and scene cleanup", Object.values(sleepBeamPool).every(Boolean), JSON.stringify(sleepBeamPool));
   const sleepStalls = gorillaSleepStallProof();
   record("gorilla sleep stall regression: two seconds without forward progress permits a bounded beam to a clear reserved bed; progress, waits, cancellation and walking home retain their contracts", sleepStalls.every(row => row.ok), JSON.stringify(sleepStalls));
+  const sleepBudget = gorillaSleepBudgetProof();
+  record("gorilla sleep recovery: twenty simultaneous stalls share one beam and one landing check per rendered update, including catch-up; a blocked bed yields and all clear reservations arrive", sleepBudget.every(row => row.ok), JSON.stringify(sleepBudget));
   const rage = await gorillaRageProof();
   record("gorilla rage: distinct rolling hits, only agitating Oogas targeted, held capture through planning and swing, bounded throws, exact expiry, zero health and account/lifecycle cancellation", Object.values(rage).every(Boolean), JSON.stringify(rage));
   const reviewCrowd=await reviewCrowdAndFallbackProof();

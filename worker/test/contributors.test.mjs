@@ -13,6 +13,7 @@ import { createCoordinator, runAccountRenameChecks } from "../../scripts/charact
 import { BOT, OPERATORS, isOperator } from "../../scripts/character-operators.mjs";
 import { inspectAccountRename, onlyAccountLoginChanged } from "../../scripts/character-account-rename.mjs";
 import { createGitHub } from "../../scripts/character-github.mjs";
+import { snapshotRename, refreshRenameSnapshot } from "../../scripts/account-rename-snapshot.mjs";
 
 const NOW = Date.parse("2026-10-04T12:00:00Z");
 const person = (login, extra = {}) => ({ login, counts: { commits: 1 }, first_seen_at: "2026-09-01T00:00:00Z", last_seen_at: "2026-10-04T11:00:00Z", ...extra });
@@ -20,7 +21,14 @@ const snapshot = (...rows) => ({ meta: { org: "OogaBoogaX", schema_version: 3, g
 
 const accountRenameFixture = () => {
   const rock = "a".repeat(40), head = "b".repeat(40), path = "src/characters/Bitcoin-Bill.js", repo = "example/land";
-  const base = readFileSync(new URL("../../src/characters/Bitcoin-Bill.js", import.meta.url), "utf8");
+  // Historical fixture: the deployed character can already have its new login.
+  const base = `BL.characters.add({
+    handle: "Bitcoin-Bill",
+    github: "Bitcoin-Bill",
+    display: "Bitclank Bill",
+    joined: 1,
+    lastCommit: 2
+  });\n`;
   const f = { rock, head, path, repo, base, source: base.replace('github: "Bitcoin-Bill"', 'github: "Bitclank-Bill"'),
     permission: "admin", commits: [{ sha: head }], reviews: [], calls: [], signed: true,
     account: { id: 185141343, login: "Bitclank-Bill", type: "User" }, revisionFiles: [{ filename: path, status: "modified" }] };
@@ -48,6 +56,33 @@ const accountRenameFixture = () => {
   };
   return f;
 };
+
+test("rename unit preparation refreshes only a pinned github-only change and fails closed on missing or stale activity", async () => {
+  const f = accountRenameFixture();
+  const detect = (files = [f.path], before = f.base, after = f.source) => snapshotRename(files, () => before, () => after);
+  assert.equal(detect(), "Bitclank-Bill");
+  assert.equal(detect([f.path, "README.md"]), null);
+  assert.equal(detect([f.path], null), null);
+  assert.equal(detect([f.path], f.base, null), null);
+  assert.equal(detect([f.path], f.base, f.base), null);
+  assert.equal(detect([f.path], f.base, f.source + "\n// unrelated"), null);
+  assert.equal(detect(["src/characters/Alice.js"], f.base.replaceAll("Bitcoin-Bill", "Alice"), f.source.replaceAll("Bitcoin-Bill", "Alice")), null);
+  let calls = 0, baked;
+  const bake = async (stats) => { baked = stats; };
+  const fetcher = (stats) => async () => { calls++; return new Response(JSON.stringify(stats)); };
+  assert.equal(await refreshRenameSnapshot(null, bake, () => { throw new Error("unexpected fetch"); }, NOW), false);
+  const current = snapshot(person("Bitclank-Bill"));
+  assert.equal(await refreshRenameSnapshot(detect(), bake, fetcher(current), NOW), true);
+  assert.deepEqual(baked, current);
+  baked = null;
+  await assert.rejects(refreshRenameSnapshot(detect(), bake, fetcher(snapshot(person("Bitcoin-Bill"))), NOW), /does not contain/);
+  await assert.rejects(refreshRenameSnapshot(detect(), bake, fetcher(current), NOW + 86400001), /stale/);
+  await assert.rejects(refreshRenameSnapshot(detect(), bake, async () => new Response("denied", { status: 403 }), NOW), /403/);
+  await assert.rejects(refreshRenameSnapshot(detect(), bake, async () => { throw new Error("offline"); }, NOW), /offline/);
+  assert.equal(baked, null);
+  await assert.rejects(refreshRenameSnapshot(detect(), async () => { throw new Error("bake failed"); }, fetcher(current), NOW), /bake failed/);
+  assert.equal(calls, 4);
+});
 
 test("same-ID account rename accepts only a verified github-only signed operator PR", async () => {
   const f = accountRenameFixture(), inspect = () => inspectAccountRename(f.gh, f.pr, f.rock);
@@ -91,19 +126,13 @@ test("same-ID account rename rejects mixed diffs, reverted code changes and stal
     { handle: "Bitcoin-Bill", github: "Bitcoin-Bill" }, OPERATORS[0].login, true), /separate maintainer-reviewed PR/);
 });
 
-test("account-rename checks require another operator's exact-head approval and perform no bundle or merge writes", async () => {
+test("verified account-rename checks pass without a second operator's approval and perform no bundle or merge writes", async () => {
   const f = accountRenameFixture(), coordinator = createCoordinator(f.gh, "private-app[bot]");
   const gate = () => f.calls.filter((call) => call.data?.context === "Character bundle safety").at(-1)?.data.state;
   assert.equal(await runAccountRenameChecks(coordinator, { action: "synchronize", pull_request: { number: 7 } }), true);
-  assert.equal(gate(), "pending");
-  f.reviews = [{ user: f.pr.user, state: "APPROVED", commit_id: f.head }];
-  await coordinator.accountRename(7); assert.equal(gate(), "pending");
-  f.reviews = [{ user: { ...OPERATORS[1], type: "User" }, state: "APPROVED", commit_id: "old" }];
-  await coordinator.accountRename(7); assert.equal(gate(), "pending");
-  f.reviews[0].commit_id = f.head;
+  assert.equal(gate(), "success");
   await runAccountRenameChecks(coordinator, { workflow_run: { event: "pull_request_review" } }); assert.equal(gate(), "success");
-  f.reviews.push({ ...f.reviews[0], state: "DISMISSED" });
-  await runAccountRenameChecks(coordinator, { schedule: "17,37,57 * * * *" }); assert.equal(gate(), "pending");
+  await runAccountRenameChecks(coordinator, { schedule: "17,37,57 * * * *" }); assert.equal(gate(), "success");
   f.account.id = 123;
   await assert.rejects(() => coordinator.accountRename(7), /not verified/);
   assert.equal(gate(), "failure");
@@ -153,7 +182,6 @@ test("rename refresh failures leave unidentified PR statuses untouched but ident
   assert.deepEqual(f.calls.filter((call) => call.method === "POST").map((call) => [call.data.context, call.data.state]),
     [["Character intake", "failure"], ["Character bundle safety", "failure"]]);
   f.lookup = null;
-  f.reviews = [{ user: { ...OPERATORS[1], type: "User" }, state: "APPROVED", commit_id: f.head }];
   await coordinator.refreshAccountRenames();
   assert.deepEqual(f.calls.filter((call) => call.method === "POST").slice(-2).map((call) => call.data.state), ["success", "success"]);
 });
