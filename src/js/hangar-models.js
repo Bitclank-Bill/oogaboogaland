@@ -484,14 +484,15 @@
   // `ropeTop` under the trolley's frame, down to the hook block, at least `rope` long. From the hook hangs a navy crate
   // with yellow edges on a four-leg sling (`load`, `sling` from the hook's eye to the crate's top, `crate` its size).
   // Between jobs the crate sits on one of two laydown stands (`stands`, [x, z], their decks `standTop` up), each in a
-  // painted keep-out square, its sling lying slack on its top; LJ-02 carries it between them with its bottom `carry` up.
+  // painted keep-out square, its sling lying slack on its top; LJ-02 carries it between them with its bottom `carry` up,
+  // throwing its blue safety spot, `spot` metres round, on the floor under the hook (`craneSpot`).
   // Where LJ-02 parks between jobs (`park`): at the runways' door end, the trolley over the right of the hall behind the
   // Jet's tail, its hook up. `cx` is the middle between the runways, where a bridge's frame stands. Its yellow and navy
   // glow a little (`lift`), as the concept's catch the hall's light, and dim with the hall's glass.
   const CRANE = {
     railY: 14.2, x: [HALL.x0 + 2.65, HALL.x1 - 2.65], runway: [-32.4, 28.4], travel: [-16, 11.2], trolley: [-15, 20.5],
     ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.2, x: 17.5 }, far: { z: -30.2, x: -4 }, lift: 0.16,
-    stands: [[17.5, 11.2], [-7.5, -1]], standTop: 0.3, carry: 5,
+    stands: [[17.5, 11.2], [-7.5, -1]], standTop: 0.3, carry: 5, spot: 1.5,
     yellow: "#f2b630", yellowDk: "#c88a1c", rivet: "#9a6a12", navy: "#1e2c66", navyDk: "#131c45", dark: "#2b3038", rail: "#8a929c", bracket: "#4b525c",
     amber: "#ffb347", plate: "#ffd04a"
   };
@@ -502,9 +503,10 @@
   // `trim`, their bolts and lamps `trolleyGlow`), its zero under its middle at that same height; the hoist's four falls
   // a metre long, hanging from y 0 (`rope`, the scene stretches them to length); the hook block hanging from its top
   // (`hook`); and the crate, its sling's eye at its zero (`load`), with its sling taut (`sling`, its legs from the eye
-  // down to the crate's top, which the scene shortens as the hook comes down to the crate) or slack (`slack`).
+  // down to the crate's top, which the scene shortens as the hook comes down to the crate) or slack (`slack`); and where
+  // the warning beacons stand on the twin lamp boxes' bases, in the bridge's frame (`beacons`, the forklift's dome).
   const crane = cached(() => {
-    const C = CRANE, H = (C.x[1] - C.x[0]) / 2, bridge = [], glow = [], trolleyGlow = [], hook = [], load = [];
+    const C = CRANE, H = (C.x[1] - C.x[0]) / 2, bridge = [], glow = [], trolleyGlow = [], hook = [], load = [], beacons = [];
     // The runways along the side walls: an I-beam with its rail on top, on a bracket and knee brace off each wall rib it
     // passes, with an end stop at each end; and down the left one the conductor bar.
     const runways = [], [r0, r1] = C.runway, len = r1 - r0, rz = (r0 + r1) / 2, ry = C.railY;
@@ -589,6 +591,8 @@
         bridge.push(box({ w: 0.4, h: 0.36, d: 0.03, color: C.dark, offset: { x: x + dx, y: 2.06, z: 0.35 + k * 0.31 } }));
         glow.push(box({ w: 0.32, h: 0.28, d: 0.02, color: C.amber, emissive: 1, offset: { x: x + dx, y: 2.06, z: 0.35 + k * 0.325 } }));
       }
+      bridge.push(moved(lathe({ profile: [[0, 0], [0.2, 0], [0.2, 0.04], [0.16, 0.07], [0, 0.07]], segments: 14, color: C.dark }), x, 2.31, 0.35));
+      beacons.push({ x, y: 2.38, z: 0.35 });
     }
     // The festoon: a track under the lip's back edge and two cables hanging from it in loops near the left end.
     bridge.push(box({ w: 7, h: 0.08, d: 0.1, color: C.dark, offset: { x: -H + 4, y: 0.56, z: -0.75 } }));
@@ -669,7 +673,7 @@
       load.push(box({ w: e, h: e, d: cd, color: C.yellow, emissive: C.lift, offset: { x: s * (cw / 2 - e / 2), y } }));
     }
     for (let k = 0; k < 4; k++) load.push(moved(turnedY(FM.smoothBolt(0.62, 0.04, "#ffd23a", 0), k * Math.PI / 2), Math.sin(k * Math.PI / 2) * (cw / 2 - 0.02), ct - ch / 2, Math.cos(k * Math.PI / 2) * (cd / 2 - 0.02)));
-    return { runways: merge(...runways), bridge: merge(...bridge), glow: noShadow(merge(...glow)), trolley: trolleyParts("LJ-02"), farTrolley: trolleyParts("LJ-01"), trolleyGlow: noShadow(merge(...trolleyGlow)), rope, hook: merge(...hook), load: merge(...load), sling: merge(...sling), slack: merge(...slack) };
+    return { runways: merge(...runways), bridge: merge(...bridge), glow: noShadow(merge(...glow)), trolley: trolleyParts("LJ-02"), farTrolley: trolleyParts("LJ-01"), trolleyGlow: noShadow(merge(...trolleyGlow)), rope, hook: merge(...hook), load: merge(...load), sling: merge(...sling), slack: merge(...slack), beacons };
   });
 
   // The laydown stands the crane sets its crate down on (`CRANE.stands`), in the hangar's frame: each a steel skid, a
@@ -689,6 +693,25 @@
       hazard(geos, x - h - 0.4, z + h + 0.4, x - h - 0.4, z - h - 0.4, 0.015, 0.2);
     }
     return merge(...geos);
+  });
+
+  // The crane's safety spot, the blue light its trolley throws on the floor under the hook while it works: a soft halo
+  // with a brighter ring near its edge, `CRANE.spot` metres round, as a picture laid in the xy plane facing +z (the scene
+  // lays it face up) and added to the light under it. The picture runs `OVER` times past its square, so no pixel on the
+  // square's edge falls outside it and is cut, which would leave the renderer reading the picture there at a blur level
+  // it can't tell, as a dotted line round the square.
+  const craneSpot = cached(() => {
+    const OVER = 1.1, canvas = document.createElement("canvas"), n = 128, r = n / 2;
+    canvas.width = canvas.height = n;
+    const paint = canvas.getContext("2d"), gradient = paint.createRadialGradient(r, r, 0, r, r, r / OVER);
+    for (const [at, rgba] of [[0, "130,196,255,0.5"], [0.55, "60,140,255,0.32"], [0.76, "40,120,255,0.24"], [0.84, "120,186,255,0.9"], [0.9, "60,140,255,0.36"], [1, "30,100,255,0"]]) gradient.addColorStop(at, `rgba(${rgba})`);
+    paint.fillStyle = gradient;
+    paint.fillRect(0, 0, n, n);
+    const image = new Image();
+    image.src = canvas.toDataURL("image/png");
+    const R = CRANE.spot, P = R * OVER, geo = { verts: [-R, -R, 0, R, -R, 0, R, R, 0, -R, R, 0], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
+    geo.imageSurface = { asset: { width: n, height: n, load: () => image }, rect: [-P, -P, 2 * P, 2 * P], cutout: true, soft: true, blend: "add", bright: 0.25 };
+    return geo;
   });
 
   // ---- the floor's fixtures ---------------------------------------------------------------------------------------
@@ -2192,7 +2215,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, CRANE, crane, laydown, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
