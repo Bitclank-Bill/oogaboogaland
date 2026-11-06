@@ -875,28 +875,34 @@
     // The Jet at its dock, nose to the tunnel, as far built as its stage.
     s.jet = jetNode({ position: { x: L.jet.x, y: 0, z: L.jet.z } });
     addChild(root, s.jet);
-    // The ceiling cranes (`HM.CRANE`) on their runways, each a bridge, a trolley on it and the hook block on the ropes'
-    // ends, a node each: LJ-02 parked with its crate on the hook over the laydown stand it works from, LJ-01 parked at
-    // the far end; all of it dims with the hall's glass, their lamps drawn over the girder on Canvas 2D.
+    // The ceiling cranes (`HM.CRANE`) on their runways, each a bridge, a trolley on it and, from a pivot under it the load
+    // swings from, the ropes and the hook block, a node each: LJ-02 at work (`hangar-crane.js`), its crate and the
+    // laydown stands it moves it between, LJ-01 parked at the far end; all of it dims with the hall's glass.
     {
       const C = HM.CRANE, g = HM.crane();
-      const crane = (at, parts, load) => {
+      const crane = (at, parts) => {
         const bridge = createNode({ position: { x: C.cx, y: C.railY, z: at.z }, geometry: g.bridge });
         const trolley = createNode({ position: { x: at.x - C.cx, y: 0, z: 0 }, geometry: parts.body });
-        const ropes = createNode({ position: { x: 0, y: C.ropeTop, z: 0 }, scale: { x: 1, y: C.rope, z: 1 }, geometry: g.rope });
-        const hook = createNode({ position: { x: 0, y: C.ropeTop - C.rope, z: 0 }, geometry: g.hook });
+        const pivot = createNode({ position: { x: 0, y: C.ropeTop, z: 0 } });
+        const ropes = createNode({ scale: { x: 1, y: C.rope, z: 1 }, geometry: g.rope });
+        const hook = createNode({ position: { x: 0, y: -C.rope, z: 0 }, geometry: g.hook });
         const lamps = createNode({ geometry: g.glow, sightHidden: true, depthBias: -0.25 }), bolts = createNode({ geometry: g.trolleyGlow, sightHidden: true });
-        addChild(trolley, createNode({ geometry: parts.trim, depthBias: -0.3 }), ropes, hook, bolts);
-        const crate = load ? createNode({ position: { x: 0, y: C.eye, z: 0.1 }, geometry: g.load }) : null;
-        if (crate) addChild(hook, crate), addChild(crate, createNode({ geometry: g.sling }));
+        addChild(pivot, ropes, hook);
+        addChild(trolley, createNode({ geometry: parts.trim, depthBias: -0.3 }), pivot, bolts);
         addChild(bridge, lamps, trolley);
         addChild(root, bridge);
-        s.glass.push(lamps, bolts, bridge, trolley, hook, ...(crate ? [crate] : []));
-        return { bridge, trolley, ropes, hook, crate };
+        s.glass.push(lamps, bolts, bridge, trolley, hook);
+        return { bridge, trolley, pivot, ropes, hook };
       };
       addChild(root, createNode({ geometry: g.runways }), createNode({ geometry: HM.laydown() }));
-      s.crane = crane(C.park, g.trolley, true);
-      s.farCrane = crane(C.far, g.farTrolley, false);
+      const work = crane(C.park, g.trolley);
+      work.sling = createNode({ geometry: g.sling });
+      work.crate = createNode({ geometry: g.load });
+      work.slack = createNode({ geometry: g.slack });
+      addChild(work.crate, work.sling, work.slack);
+      s.glass.push(work.crate);
+      s.crane = BL.hangarCrane.create({ C, nodes: work, root, cue: () => {} });
+      s.farCrane = crane(C.far, g.farTrolley);
     }
     // The forklift, parked on the runway by the steps.
     s.forklift = forklift(L.forklift);
@@ -1400,7 +1406,7 @@
     hangarScene.input = input;
     hangarScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get guide() { return scene && scene.guide; } }
+      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get crane() { return scene && scene.crane && scene.crane.debug; }, get guide() { return scene && scene.guide; } }
     };
   };
   const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
@@ -1572,6 +1578,7 @@
     neonLife(s, dt, elapsed, dim);
     lampLife(s, dt, elapsed, dim);
     boardJets(s, dt);
+    s.crane.update(dt);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     for (let i = 0; i < s.crew.length; i++) {
       s.crew[i].update(dt);
