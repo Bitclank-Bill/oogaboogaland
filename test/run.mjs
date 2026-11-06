@@ -24939,7 +24939,7 @@ const sheetRailChecks = async () => {
   const make = tab => ({ tab, rect: {}, open: false, tabs: names.map(name => ({ dataset: { tab: name }, setAttribute() {}, style: { setProperty() {} } })),
     node: { dataset: { dock: "right" } }, body: { setAttribute() {} }, nav: { setAttribute() {} } });
   const main = make("roster"), detached = make("players"), windows = [main, detached];
-  const context = { panels: [], windows, main, folded: false, hidden: false, signedIn: true, phone: { matches: false },
+  const context = { panels: [], notificationViews: [], windows, main, folded: false, hidden: false, signedIn: true, phone: { matches: false },
     available: name => name !== "players" && name !== "chat" || context.signedIn, ownerOf: name => windows.find(w => w.tab === name),
     isOpen: w => !context.folded && w.open, fit() {}, showCounts() {}, showExpand() {}, notify() {} };
   runInNewContext(refresh + ";this.refresh = refresh;", context);
