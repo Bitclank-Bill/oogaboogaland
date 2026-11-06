@@ -491,7 +491,7 @@
   const CRANE = {
     railY: 14.2, x: [HALL.x0 + 2.65, HALL.x1 - 2.65], runway: [-32.4, 28.4], travel: [-16, 11.2], trolley: [-15, 20.5],
     ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.2, x: 17.5 }, far: { z: -30.2, x: -4 }, lift: 0.16,
-    stands: [[17.5, 11.2], [-13, -4]], standTop: 0.3, carry: 5,
+    stands: [[17.5, 11.2], [-7.5, -1]], standTop: 0.3, carry: 5,
     yellow: "#f2b630", yellowDk: "#c88a1c", rivet: "#9a6a12", navy: "#1e2c66", navyDk: "#131c45", dark: "#2b3038", rail: "#8a929c", bracket: "#4b525c",
     amber: "#ffb347", plate: "#ffd04a"
   };
