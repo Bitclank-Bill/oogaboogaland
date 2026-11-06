@@ -2,7 +2,7 @@
 // walkway, as its concept draws it. A steel landing inside the door with steps down to the runway, which runs down the
 // middle of the floor between hazard-striped edges and blue marker lamps, and on through the launch tunnel's octagonal
 // frames, each lined with blue neon, to the launch shield at its far end, sealed until Jet v2 flies, space beyond.
-// Ochre truss gantries cross the vault, two crane trolleys over the Jet; steel catwalks run along both side walls on
+// Steel truss gantries cross the vault, two crane trolleys over the Jet; steel catwalks run along both side walls on
 // brackets, a stair up to each from the back. On the right, in the
 // hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a steel
 // gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long steel stair down from
@@ -24,7 +24,7 @@
   const TAU = Math.PI * 2;
 
   const STONE = ["#5b4a3e", "#524238", "#66544a", "#4a3d34"], STONE_DK = "#3a2f28", IRON = "#4a4d52", IRON_DK = "#2c2e33";
-  const TIMBER = "#8a5a32", TIMBER_LT = "#a8703e", TIMBER_DK = "#5c3a1e", GIRDER = "#86602f", GIRDER_DK = "#5e4223";
+  const TIMBER = "#8a5a32", TIMBER_LT = "#a8703e", TIMBER_DK = "#5c3a1e", GIRDER = "#666d77", GIRDER_DK = "#4b525c";
   const RUNWAY = "#2a2e36", SEAM = "#3b404a", PAINT = "#ffd23a", INK = "#141414", MARKER = "#6fc8ff", NEON = "#4fb4ff";
   const SCREEN = "#2f7fd8", FLOOR_LAMP = "#4aa8ff";
 
@@ -469,7 +469,7 @@
     return merge(...geos);
   });
 
-  // The vault's dressing: the gantries, each a truss of ochre girders on knee braces into the walls, and two crane
+  // The vault's dressing: the gantries, each a truss of steel girders on knee braces into the walls, and two crane
   // trolleys over the Jet.
   const dressing = cached(() => {
     const L = LAYOUT, { x0: X0, x1: X1 } = HALL, iron = [], gy = L.gantryY, mid = (X0 + X1) / 2, span = X1 - X0 - 4;
