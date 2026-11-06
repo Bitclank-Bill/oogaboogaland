@@ -875,6 +875,29 @@
     // The Jet at its dock, nose to the tunnel, as far built as its stage.
     s.jet = jetNode({ position: { x: L.jet.x, y: 0, z: L.jet.z } });
     addChild(root, s.jet);
+    // The ceiling cranes (`HM.CRANE`) on their runways, each a bridge, a trolley on it and the hook block on the ropes'
+    // ends, a node each: LJ-02 parked with its load on the hook, LJ-01 parked at the far end; all of it dims with the
+    // hall's glass, their lamps drawn over the girder on Canvas 2D.
+    {
+      const C = HM.CRANE, g = HM.crane();
+      const crane = (at, parts, load) => {
+        const bridge = createNode({ position: { x: C.cx, y: C.railY, z: at.z }, geometry: g.bridge });
+        const trolley = createNode({ position: { x: at.x - C.cx, y: 0, z: 0 }, geometry: parts.body });
+        const ropes = createNode({ position: { x: 0, y: C.ropeTop, z: 0 }, scale: { x: 1, y: C.rope, z: 1 }, geometry: g.rope });
+        const hook = createNode({ position: { x: 0, y: C.ropeTop - C.rope, z: 0 }, geometry: g.hook });
+        const lamps = createNode({ geometry: g.glow, sightHidden: true, depthBias: -0.25 }), bolts = createNode({ geometry: g.trolleyGlow, sightHidden: true });
+        addChild(trolley, createNode({ geometry: parts.plate, depthBias: -0.15 }), ropes, hook, bolts);
+        const crate = load ? createNode({ position: { x: 0, y: C.eye, z: 0.1 }, geometry: g.load }) : null;
+        if (crate) addChild(hook, crate);
+        addChild(bridge, lamps, trolley);
+        addChild(root, bridge);
+        s.glass.push(lamps, bolts, bridge, trolley, hook, ...(crate ? [crate] : []));
+        return { bridge, trolley, ropes, hook, crate };
+      };
+      addChild(root, createNode({ geometry: g.runways }));
+      s.crane = crane(C.park, g.trolley, true);
+      s.farCrane = crane(C.far, g.farTrolley, false);
+    }
     // The forklift, parked on the runway by the steps.
     s.forklift = forklift(L.forklift);
     addChild(root, s.forklift.root);
