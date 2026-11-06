@@ -8537,7 +8537,7 @@ const hubWorkingArrival = { name: "hub working arrival", why: "regression: worki
   record("working arrival: every Ooga starts upright beside the pile with no HQ or basement bed held", state.rows.length > 0 && state.rows.every(c => c.state === "working" && c.visible && c.surface === 0 && Math.abs(c.feet - c.surface) < 1e-6 && !c.bed && !c.quaternion && c.radius <= 11)
     && state.gap >= -1e-6 && !state.occupiedBeds, JSON.stringify(state));
 } };
-const hubLiveWake = { name: "hub live wake", why: "regression: live activity must clear HQ and basement mattresses before reuse, complete both indoor exit walks, and start rainforest wake trips in place", run: async b => {
+const hubLiveWake = { name: "hub live wake", why: "regression: live activity must clear HQ and basement mattresses before reuse; passive Hub NPCs now leave every bed by beam", run: async b => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, scene = BL.scenes.hub, now = Date.now(), day = 86400000, mattresses = B.headquarters.mattresses;
     // The baked roster ages with the clock, so the sleepers are made here. Sani is the Sphere's resident, hidden in its
@@ -8564,62 +8564,22 @@ const hubLiveWake = { name: "hub live wake", why: "regression: live activity mus
     const beds = actors.map(c => c.bedroll);
     BL.contributors.applyActivity(actors.map((c, i) => ({ name: c.contributor.name,
       lastCommitAt: now - (i & 1 ? 8 * 3600000 : 30000), repo: "oogaboogax/entropylab" })));
-    const started = actors.map((c, i) => {
-      const p = c.root.position, bed = beds[i], indoor = i < 2, feet = p.y - c.baseY;
-      return { name: c.traits.name, state: c.state, mode: c.bedTravel.mode,
-        clear: c.root.visible && !c.root.quaternion && !c.bedroll && bed.sleeper !== c,
-        // Outdoor wakes begin at their own floor instead of settling at a distant fire or pile.
-        placed: indoor ? Math.hypot(p.x - bed.walkAt.x, p.z - bed.walkAt.z) < 1e-6 && Math.abs(feet - bed.walkAt.y) < 1e-6
-          : Math.hypot(p.x - bed.x, p.z - bed.z) < 1e-6
-            && Math.abs(feet - B.headquarters.solids.supportAt(bed.x, bed.z, bed.y, bed.y, c)) < 1e-6 };
-    });
-    // The next sleeper settles into a vacated bed while its waker still stands at the bed's side: the waker's walking
-    // body must stay off that mattress, then and for as long as it is still on the bed's floor.
+    // Passive NPCs wake by beam: each leaves its HQ, basement or rainforest bed at once, with no bed walk,
+    // and stands upright on the meadow in its waking state.
+    const woke = actors.map((c, i) => ({ name: c.traits.name, state: c.state, mode: c.bedTravel.mode, act: c.act.kind,
+      released: c.root.visible && !c.root.quaternion && !c.bedroll && beds[i].sleeper !== c,
+      feet: c.root.position.y - c.baseY, surface: B.island.surfaceAt(c.root.position.x, c.root.position.z) }));
+    // The next sleeper takes a just-vacated HQ or basement bed, by beam too.
     sleepAt(nextSleeper, now - day - 3600000);
     B.crew.refreshStates(true);
-    const reuse = { name: nextSleeper.traits.name, bed: beds.indexOf(nextSleeper.bedroll), mode: nextSleeper.bedTravel.mode, samples: 0, clearance: Infinity };
-    const radius = B.headquarters.sleepNavigation.radius;
-    const watch = () => {
-      for (let i = 0; i < 2; i++) {
-        const bed = beds[i], c = actors[i], p = c.root.position, box = bed.collisionBoxes;
-        if (!bed.sleeper || bed.sleeper === c || bed.sleeper.bedTravel.mode !== "rest" || Math.abs(p.y - c.baseY - bed.y) > 1) continue;
-        const dx = p.x - bed.x, dz = p.z - bed.z, lx = dx * bed.cr - dz * bed.sr, lz = dx * bed.sr + dz * bed.cr;
-        reuse.samples++;
-        reuse.clearance = Math.min(reuse.clearance, Math.hypot(Math.max(box[0] - lx, 0, lx - box[3]), Math.max(box[2] - lz, 0, lz - box[5])));
-      }
-    };
-    watch();
-    let time = BL.scenes.hub.elapsed, frames = 0;
-    while (actors[0].bedTravel.mode === "waiting" && frames++ < 600) {
-      B.crew.update(1 / 30, time += 1 / 30);
-      BL.scene.updateWorld(scene.root);
-      watch();
-    }
-    const worker = actors[0], route = worker.bedTravel, before = { ...worker.root.position }, savedIndex = route.index;
-    if (route.mode !== "walk" || before.y - worker.baseY >= -1e-6) return { started, missingRoute: route.mode, feet: before.y - worker.baseY };
-    // Force the last handoff while still underground: ordinary work must not take over there.
-    route.index = route.route.length - 1;
-    B.crew.update(1 / 30, time += 1 / 30);
-    const heldUnderground = !!worker.bedTravel.mode || worker.root.position.y - worker.baseY >= -1e-6;
-    if (!heldUnderground) return { started, prematureWork: worker.traits.name, feet: worker.root.position.y - worker.baseY };
-    Object.assign(worker.root.position, before);
-    route.index = savedIndex; worker.avoidance.tx = NaN;
-    while (actors.slice(0, 2).some(c => c.bedTravel.mode) && frames++ < 2400) {
-      B.crew.update(1 / 30, time += 1 / 30);
-      BL.scene.updateWorld(scene.root);
-      B.headquarters.solids.props.sync();
-      watch();
-    }
-    // Arrival is the hand-over itself: out of the bed walk, on the meadow, in the waking state.
-    const arrived = actors.slice(0, 2).map(c => ({ name: c.traits.name, state: c.state, mode: c.bedTravel.mode, act: c.act.kind,
-      feet: c.root.position.y - c.baseY, surface: B.island.surfaceAt(c.root.position.x, c.root.position.z) }));
-    return { started, arrived, heldUnderground, reuse, radius, frames, reused: beds.slice(0, 2).map(bed => bed.sleeper?.traits.name || null) };
+    const reuse = { name: nextSleeper.traits.name, bed: beds.slice(0, 2).indexOf(nextSleeper.bedroll), mode: nextSleeper.bedTravel.mode,
+      route: !!nextSleeper.bedTravel.route || !!nextSleeper.bedTravel.plan };
+    return { woke, reuse, reused: beds.slice(0, 2).map(bed => bed.sleeper?.traits.name || null) };
   })()`);
-  record("live wake: working and chilling Oogas exit HQ and basement without bed overlap, while rainforest sleepers start walking in place",
-    state.started?.every((row, i) => row.clear && row.placed && row.state === (i & 1 ? "chilling" : "working")
-      && (row.mode === "waiting" || row.mode === "walk"))
-    && state.arrived?.every((row, i) => !row.mode && row.state === (i ? "chilling" : "working") && row.feet >= -1e-6 && row.surface >= -1e-6)
-    && state.heldUnderground && state.reuse.bed >= 0 && state.reuse.mode === "rest" && state.reuse.samples > 0 && state.reuse.clearance >= state.radius - 1e-6,
+  record("live wake: working and chilling Oogas leave HQ, basement and rainforest beds at once by beam, upright on the meadow, and a vacated indoor bed is taken by beam",
+    state.woke?.length === 4 && state.woke.every((row, i) => row.released && !row.mode && row.state === (i & 1 ? "chilling" : "working")
+      && row.feet >= -1e-6 && row.surface >= -1e-6)
+    && state.reuse.bed >= 0 && state.reuse.mode === "rest" && !state.reuse.route,
     JSON.stringify(state));
 } };
 const outdoorTravelProof = () => {
@@ -8647,89 +8607,39 @@ for(let sample=0;sample<fixtures.length;sample++){
  Object.assign(actor.root.position,{x:entry.x,y:entry.y+actor.baseY,z:entry.z});
  actor.hop=actor.hopV=0;actor.walk=null;actor.camp.seat=null;actor.avoidance.tx=NaN;
  actor.progress.resets=0;
- const from={...actor.root.position};
+ // A passive NPC's status change is the relocation itself: no route, no frames.
  actor.override='sleeping';crew.refreshStates();
- const start={mode:actor.bedTravel.mode,displacement:Math.hypot(actor.root.position.x-from.x,actor.root.position.z-from.z),bed:beds.indexOf(actor.bedroll)};
- let frames=0,maxStep=0;
- while(actor.bedTravel.mode!=='rest'&&frames++<9000){
-  const p=actor.root.position,x=p.x,z=p.z;
-  crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
-  maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
- }
- const sleep={mode:actor.bedTravel.mode,frames,maxStep,resets:actor.progress.resets,position:{...actor.root.position},index:actor.bedTravel.index,count:actor.bedTravel.route?.length};
- if(sleep.mode!=='rest'){rows.push({index,start,sleep});continue;}
- const wakeFrom={...actor.root.position};actor.override=sample===3?'chilling':'working';crew.refreshStates();
- const wakeStart={mode:actor.bedTravel.mode,distance:Math.hypot(actor.root.position.x-wakeFrom.x,actor.root.position.z-wakeFrom.z)};
- frames=0;maxStep=0;
- while(actor.bedTravel.mode&&frames++<9000){
-  const p=actor.root.position,x=p.x,z=p.z;
-  crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
-  maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
- }
- rows.push({index,start,sleep,wakeStart,wake:{mode:actor.bedTravel.mode,frames,maxStep,resets:actor.progress.resets,position:{...actor.root.position},state:actor.state,home:Math.hypot(actor.root.position.x,actor.root.position.z)<20}});
+ const sleep={mode:actor.bedTravel.mode,bed:actor.bedroll===bed,route:!!actor.bedTravel.route||!!actor.bedTravel.plan};
+ crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
+ sleep.held=actor.bedTravel.mode==='rest'&&actor.bedroll===bed;
+ const want=sample===3?'chilling':'working';actor.override=want;crew.refreshStates();
+ const p=actor.root.position;
+ const wake={mode:actor.bedTravel.mode,state:actor.state,bed:!!actor.bedroll,visible:actor.root.visible,
+  home:Math.hypot(p.x,p.z)<20,feet:p.y-actor.baseY};
+ actor.override='away';crew.refreshStates();
+ rows.push({index,want,sleep,wake,away:actor.state==='away'&&!actor.root.visible});
 }
-// Reassignment to a vacant HQ mattress must leave the old forest bed on foot too.
+// A newly vacant HQ mattress takes an outdoor sleeper by beam too.
 actor.override='away';crew.refreshStates();
 for(const bed of ctx.bedrolls)bed.sleeper={};
 for(const bed of beds)bed.sleeper={};
 const previous=fixtures[0],indoor=ctx.bedrolls[0];previous.sleeper=null;
 actor.override='sleeping';crew.refreshStates(true);
-const before={...actor.root.position};indoor.sleeper=null;actor.progress.resets=0;
+const migration={before:actor.bedroll===previous&&actor.bedTravel.mode==='rest'};indoor.sleeper=null;
 crew.update(1.1,time+=1.1);
-const migration={started:actor.bedroll===indoor&&actor.bedTravel.mode!=='rest',
-  displacement:Math.hypot(actor.root.position.x-before.x,actor.root.position.z-before.z)};
-let frames=0,maxStep=0;
-while(actor.bedTravel.mode!=='rest'&&frames++<9000){
- const p=actor.root.position,x=p.x,z=p.z,walking=actor.bedTravel.mode==='walk';
- crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
- if(walking)maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
-}
-Object.assign(migration,{arrived:actor.bedroll===indoor&&actor.bedTravel.mode==='rest',frames,maxStep,resets:actor.progress.resets});
-// A live activity update can cancel an outdoor trip before it reaches the bridge,
-// including while the sleeper is still leaving the HQ or basement.
-const turns=[],origins=[{x:-8,y:B.island.surfaceAt(-8,0),z:0},
- ctx.bedrolls.find(b=>b.walkAt.y<0&&b.walkAt.y>-8)?.walkAt,
- ctx.bedrolls.find(b=>b.walkAt.y<-8)?.walkAt];
-if(origins.some(p=>!p))return {routes,rows,migration,missingOrigins:true};
-for(const origin of origins)for(const state of ['working','chilling']){
- actor.override='away';crew.refreshStates();
- for(const bed of ctx.bedrolls)bed.sleeper={};
- for(const bed of beds)bed.sleeper={};
- const bed=fixtures[0];bed.sleeper=null;
- actor.override='chilling';crew.refreshStates();
- Object.assign(actor.root.position,{x:origin.x,y:origin.y+actor.baseY,z:origin.z});
- actor.hop=actor.hopV=0;actor.walk=null;actor.camp.seat=null;actor.avoidance.tx=NaN;actor.progress.resets=0;
- actor.override='sleeping';crew.refreshStates();
- const outbound=actor.bedroll===bed&&actor.bedTravel.toBed&&actor.bedTravel.mode==='waiting';
- const before={...actor.root.position};actor.override=state;crew.refreshStates();
- const displacement=Math.hypot(actor.root.position.x-before.x,actor.root.position.y-before.y,actor.root.position.z-before.z);
- const planned=!!finish(ctx.bedPlan(actor,bed,false));
- let frames=0,maxStep=0;
- while(actor.bedTravel.mode&&frames++<4500){
-  const p=actor.root.position,x=p.x,z=p.z;
-  crew.update(1/30,time+=1/30);BL.scene.updateWorld(scene.root);B.headquarters.solids.props.sync();
-  maxStep=Math.max(maxStep,Math.hypot(p.x-x,p.z-z));
- }
- turns.push({origin,state,outbound,displacement,planned,frames,maxStep,resets:actor.progress.resets,
-  arrived:!actor.bedTravel.mode&&actor.state===state&&!actor.bedroll&&actor.root.position.y-actor.baseY>=-1e-6});
-}
-return {routes,rows,migration,turns};
+migration.moved=actor.bedroll===indoor&&actor.bedTravel.mode==='rest'&&!actor.bedTravel.route;
+return {routes,rows,migration};
 };
-const hubOutdoorTravel = { name: "hub outdoor travel", why: "regression: overflow Oogas teleported to and from rainforest beds instead of walking the bridge, ridge and chamber", run: async b => {
+const hubOutdoorTravel = { name: "hub outdoor travel", why: "rule: passive Hub NPCs beam straight to their assigned indoor or outdoor bed and back to work instead of commuting across the bridge, ridge and chamber", run: async b => {
   const state = await b.evaluate(`(${outdoorTravelProof.toString()})()`);
   record("outdoor bed routes: every actual forest and chamber anchor has a supported clear route in both directions",
     state.routes?.length > 0 && state.routes.every(row => row.out && row.back), JSON.stringify(state.routes));
-  record("outdoor bed travel: ridge, eastern shoulder, western nest and chamber sleepers walk both ways and into a newly vacant HQ bed without relocation",
-    state.rows?.length === 4 && state.rows.every(row => row.start.displacement < 1e-6 && row.start.mode === "waiting"
-      && row.sleep.mode === "rest" && row.sleep.maxStep <= 2 / 30 + 1e-6 && row.sleep.resets === 0
-      && row.wakeStart.mode === "waiting" && row.wakeStart.distance < 1e-6
-      && !row.wake.mode && row.wake.home && row.wake.maxStep <= 2 / 30 + 1e-6 && row.wake.resets === 0)
-      && state.migration?.started && state.migration.displacement < 1e-6 && state.migration.arrived
-      && state.migration.maxStep <= 2 / 30 + 1e-6 && state.migration.resets === 0,
+  record("outdoor bed beams: ridge, eastern shoulder, western nest and chamber sleepers beam into their assigned bed without a route and stay there, wake straight to the pile or a chill spot, vanish while away, and a vacated HQ bed takes them by beam",
+    state.rows?.length === 4 && state.rows.every(row => row.sleep.mode === "rest" && row.sleep.bed && !row.sleep.route && row.sleep.held
+      && !row.wake.mode && !row.wake.bed && row.wake.visible && row.wake.state === row.want && row.wake.feet >= -1e-6
+      && (row.want !== "working" || row.wake.home) && row.away)
+      && state.migration?.before && state.migration.moved,
     JSON.stringify({ rows: state.rows, migration: state.migration, missingFixtures: state.missingFixtures }));
-  record("outdoor bed travel: waking before the bridge returns from meadow, HQ and basement without waiting forever or relocating",
-    state.turns?.length===6&&state.turns.every(row=>row.outbound&&row.displacement<1e-6&&row.planned&&row.arrived
-      &&row.maxStep<=2/30+1e-6&&row.resets===0),JSON.stringify({turns:state.turns,missingOrigins:state.missingOrigins}));
 } };
 // Away and back twice. The director's ?debug=1 leave contract throws inside advance on a broken leave,
 // and the second visit may hold no more GPU records, nodes, input targets or DOM than the first.
@@ -12213,7 +12123,9 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
       && new Set(reserved.map(e => e.sleep.slot)).size === 20;
     const waking = occupied[0], held = occupied.slice(1).map(e => [e, e.sleep.slot]);
     waking.owner.override = "chilling"; B.crew.refreshStates(true);
-    C.update(1 / 30); C.update(1 / 30);
+    // A passive sleeper without a bed retries its placement once a second
+    // (beamStatus), so give the waiting overflow that retry before checking.
+    for (let i = 0; i < 36; i++) C.update(1 / 30);
     const reused = waking.sleep.slot < 0 && visible(waking) && waiting.some(e => visible(e) && e.sleep.slot >= 0)
       && held.every(([e, slot]) => e.sleep.slot === slot);
     reset(sleepers);
@@ -12231,8 +12143,12 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
     C.update(1 / 60);
     const before = { ...beamEntry.root.position }, heldSlot = beamEntry.sleep.slot;
+    // Passive companions never run the legacy walk-and-beam transfer: a stray
+    // transfer stage resolves into the reserved bed on the next update, and
+    // possession then keeps that settled sleeper in place.
+    const placedDirectly = beamEntry.sleep.stage === "asleep" && heldSlot >= 0 && noBeam();
     const selected = C.possess(beamEntry); C.update(0.25);
-    const beamPossession = selected && beamEntry.controlled && beamEntry.sleep.stage === "" && beamEntry.sleep.slot === heldSlot
+    const beamPossession = placedDirectly && selected && beamEntry.controlled && C.sleeping(beamEntry) && beamEntry.sleep.slot === heldSlot
       && Math.hypot(beamEntry.root.position.x - before.x, beamEntry.root.position.z - before.z) < 0.001 && noBeam() && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
     C.release(); reset(sleepers);
     beamEntry.sleep.stage = "beamIn"; beamEntry.sleep.beamTime = 0.02;
@@ -12249,7 +12165,7 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     C.setAway(false);
     beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
     C.update(1 / 60); C.cancelSleepBeams();
-    const beamSuspend = noBeam() && beamEntry.sleep.stage === "go" && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
+    const beamSuspend = noBeam() && beamEntry.sleep.stage === "asleep" && beamEntry.sleep.slot >= 0 && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
     // Use the real rigs, route reservations, collision predicates and effect pool
     // for ten simultaneous spent stall budgets. Queuing must not overlap beams
     // or keep trying to walk/animate the actor behind the active recovery.
@@ -12266,19 +12182,22 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     let maxBeams = 0;
     C.update(1 / 60);
     const heldQueue = last.sleep.stage === "go" && last.root.position.x === start.x && last.root.position.z === start.z;
+    // Passive sleepers stalled mid-walk are placed into their reserved beds on
+    // this first update: no queue, and no legacy beam ever shows.
+    const settledAtOnce = queued.every(e => e.sleep.stage === "asleep" && e.sleep.slot >= 0);
     for (let i = 0; i < 240; i++) {
       maxBeams = Math.max(maxBeams, queued.filter(e => e.sleep.stage === "beamOut" || e.sleep.stage === "beamIn").length);
       C.update(1 / 60);
     }
     const queuedArrival = queued.every(e => e.sleep.stage === "asleep" && e.sleep.slot >= 0 && e.gorilla.form === "ape" && !e.root.matrixNative);
-    const boundedRecovery = heldQueue && maxBeams === 1 && queuedArrival && noBeam();
-    return { boundedRecovery, maxBeams, heldQueue, queuedArrival, beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
+    const boundedRecovery = settledAtOnce && maxBeams === 0 && queuedArrival && noBeam();
+    return { boundedRecovery, maxBeams, heldQueue, settledAtOnce, placedDirectly, queuedArrival, beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
       population: [worker, chiller, away, ...sleepers].map(e => ({ state: e.owner.state, mode: e.mode, active: e.active, visible: e.root.visible, bed: e.sleep.slot })) };
   })()`);
   record("gorilla population: late-roster sleepers get exclusive beds; working, chilling and away owners get none; overflow waits at the 20-bed cap, respects driven reservations and reuses released beds", r.lateSleepers && r.stable && r.capped && r.reused && r.heldWhileDriven && r.uniqueAfterRelease, JSON.stringify(r));
   record("gorilla population: island game mode hides companions and its exit immediately restores current working, chilling and sleeping gorillas; repeated exit keeps their beds", r.hidden && r.restored && r.stableExit, JSON.stringify(r));
-  record("gorilla sleep beam: possession, remote takeover and population reset cancel both transfer stages without displacing a driven character", r.beamPossession && r.beamArrivalPossession && r.beamRemote && r.beamReset && r.beamSuspend, JSON.stringify(r));
-  record("gorilla sleep recovery: ten stalled real rigs hold position in the queue and reach their reserved beds with at most one active beam", r.boundedRecovery, JSON.stringify(r));
+  record("gorilla sleep beam: a passive companion caught in either legacy transfer stage settles straight into its reserved bed with no glyphs; possession keeps it there undisplaced, and remote takeover or population reset releases it", r.beamPossession && r.beamArrivalPossession && r.beamRemote && r.beamReset && r.beamSuspend, JSON.stringify(r));
+  record("gorilla sleep recovery: ten passive sleepers stalled mid-walk on real rigs are placed into their reserved beds on the next update, with no queue and no legacy beam", r.boundedRecovery, JSON.stringify(r));
 } };
 const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visits retain harmless weapons and both look modes while damage, health simulation, rage and grabs stay off, and ending a game clears its transient combat state", run: async b => {
   const r = await b.evaluate(`(() => {
@@ -18446,12 +18365,14 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     return { count: group.length, initiallyCrowded, separated, approachClear, maxStep, airborne, standing,
       recoveries: C.stats().recoveries - recoveries };
   })()`);
-  record("gorilla crowd: three overlapping NPC trunks step apart without jumping or relocation, and converging walkers keep their trunks apart",
-    crowd.count === 3 && crowd.initiallyCrowded && crowd.separated && crowd.approachClear
+  // Passive Hub companions have no peer spacing: an overlapping crowd simply
+  // shares space, with no separation push, jump or relocation.
+  record("gorilla crowd: three overlapping passive NPC trunks share space without pushing apart, jumping or relocating, and standing coworkers keep animating in place",
+    crowd.count === 3 && crowd.initiallyCrowded
     && crowd.maxStep < 0.08 && !crowd.airborne && !crowd.recoveries
     && crowd.standing.initiallyClear && crowd.standing.clear && crowd.standing.upright
     && crowd.standing.animated > 0.29 && crowd.standing.displacement < 1e-6, JSON.stringify(crowd));
-} }, { name: "Oogas walk over gorillas", why: "regression: gorilla back attachments dragged and launched NPC passengers; walking Oogas should wait for moving NPC gorillas ahead and cross stationary ones", run: async (b) => {
+} }, { name: "Oogas walk over gorillas", why: "rule: passive Hub NPCs pass through gorillas and players, never riding, stepping on or waiting for one, while driven bodies keep their contact", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, P = B.pilot, c = B.cavemen.get("portlandhodl"), e = C.list.find(e => e.owner === c);
     P.release(true); C.release();
@@ -18467,7 +18388,11 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     Object.assign(e.motion, { lab: false, climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
     Object.assign(e.root.position, { x: -8, y: 0, z: 8 });
     e.gorilla.poseManaged(2, -8, 0, 8, 0, 0, false, false, "", e.motion);
+    // The policy is a hidden getter: passive for roster NPCs, never for a driven body.
+    const policy = { npcOoga: c.nonInteractive === true && !Object.keys(c).includes("nonInteractive"),
+      npcGorilla: e.nonInteractive === true && !Object.keys(e).includes("nonInteractive") };
     BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.companions.sync(); C.possess(e);
+    policy.drivenGorilla = e.nonInteractive === false;
     c.root.visible = true; c.root.quaternion = null; c.walk = null; c.bedTravel.mode = "";
     c.camp.seat = null; c.camp.burning = c.camp.rolling = c.camp.panic.active = c.roofEscape.active = false;
     c.hop = c.hopV = c.jumps = c.leap.vx = c.leap.vz = 0;
@@ -18488,24 +18413,33 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     e.gorilla.poseManaged(2, -8, 0, 8, 0, 0, false, false, "", e.motion);
     BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.companions.sync();
     c.hop = c.hopV = c.jumps = c.leap.vx = c.leap.vz = 0;
-    P.possess(c); P.controls.reset();
+    // A driven gorilla released alight joins the passive policy without its flames.
+    e.fire.burning = e.fireFX.burning = true; e.fire.heat = 1;
+    C.release(); policy.releasedGorilla = e.nonInteractive === true;
+    policy.gorillaExtinguished = !e.fire.burning && !e.fireFX.burning && !e.fire.heat;
+    P.possess(c); P.controls.reset(); policy.drivenOoga = c.nonInteractive === false;
     P.navigate({ position: { x: -10, y: 0, z }, yaw: 0, pitch: 0.4, dist: 10 });
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "d", code: "KeyD" }));
     B.advance(0.8, 1 / 60);
     window.dispatchEvent(new KeyboardEvent("keyup", { key: "d", code: "KeyD" }));
     const walked = c.root.position.x + 10, raised = c.root.position.y - c.baseY;
-    P.release(true); C.release();
-    return { back, drift, jumped, low, high, gorillaDistance, walked, raised };
+    c.camp.burning = true;
+    P.release(true); C.release(); policy.releasedOoga = c.nonInteractive === true;
+    policy.oogaExtinguished = !c.camp.burning;
+    return { back, drift, jumped, low, high, gorillaDistance, walked, raised, policy };
   })()`);
-  record("gorilla support: a moving back changes an idle NPC's height without carrying or launching it, and a grounded player walks onto it",
-    state.back > 0.5 && state.drift < 1e-6 && !state.jumped && state.high - state.low > 0.1 && state.gorillaDistance > 0.5
-    && state.walked > 1.5 && state.raised > 0.5, JSON.stringify(state));
+  record("gorilla support: an NPC Ooga drops through a driven gorilla's moving back without being carried or launched, a player walks through an NPC gorilla without stepping onto it, and only driven bodies leave the passive policy",
+    state.back > 0.5 && state.drift < 1e-6 && !state.jumped && state.low < state.back - 0.3 && state.gorillaDistance > 0.5
+    && state.walked > 1.5 && state.raised < state.back - 0.3 && Object.values(state.policy).every(Boolean), JSON.stringify(state));
   const traffic = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, c = B.cavemen.get("portlandhodl"), e = C.list.find(e => e.owner === c), rows = [];
     const reset = () => {
       Object.assign(c.root.position, { x: -9.3, y: c.baseY, z: 8.7 }); c.root.rotation.y = Math.PI / 2;
       c.override = c.state = "chilling"; c.humanControlled = c.remoteControlled = false;
-      c.hop = c.hopV = c.cheer = c.leap.vx = c.leap.vz = 0;
+      // The feet are placed at standing height above, so drop any seated-idle
+      // lowering (runIdle sets restLower with root.y lowered by it). Left set,
+      // the next runCamp adds it back and the walker falls before it can step.
+      c.hop = c.hopV = c.cheer = c.leap.vx = c.leap.vz = c.restLower = 0;
       c.walk = { tx: -6, tz: 8.7, speed: 1.7, phase: 0, heading: Math.PI / 2, to: "spot" };
       c.shoulder.phase = c.avoidance.navigation.mode = 0; c.avoidance.tx = NaN;
       c.progress.backoff = c.progress.stalled = c.progress.motionless = 0;
@@ -18546,8 +18480,8 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     e.controlled = false;
     return { rows, clear };
   })()`);
-  record("gorilla traffic: NPC Oogas wait for a moving NPC trunk ahead without replanning, resume over it when it stops, and ignore side, rear, overhead and player-controlled gorillas",
-    traffic.rows.every(row => row.waiting >= 1.1 && row.drift < 1e-6 && row.retained && row.released && row.raised > 0.5 && row.walked > 2 && !row.replans && !row.resets)
+  record("gorilla traffic: NPC Oogas walk straight through moving and stopped NPC gorillas without yielding, replanning or climbing them, wherever the gorilla stands",
+    traffic.rows.every(row => row.waiting === 0 && row.drift > 0.5 && row.retained && row.raised < 0.3 && row.walked > 2 && !row.replans && !row.resets)
     && traffic.clear.every(row => !row.waited && row.moved), JSON.stringify(traffic));
 } }] });
 // #392: walking each bridge reports the crossing the room and the page fade voices by.
@@ -27457,7 +27391,9 @@ const reviewMovementProof = async () => {
     pathing: { tx: 5, tz: 10, count: 4, index: 0, version: 1, laneX: [0, 0, 5, 5], laneZ: [0, 5, 5, 10] } };
   const context = { NAV_CENTER: 220, NAV_WIDTH: 21, NAV_SIZE: 441, NAV_HALF: 10, NAV_CELL: 0.5, NAV_STEP: 0.025,
     STEP: 0.6, ctx: {}, crewList: [], npcWalkable: () => true, groundAt: () => 0,
-    inBananas: () => false, SHOULDER_REACH: 2, shoulderClear: () => false, cave };
+    inBananas: () => false, SHOULDER_REACH: 2, shoulderClear: () => false, cave,
+    // An ordinary (non-passive) scene: no fixed meadow legs.
+    fixedTrip: () => false };
   runInNewContext(`${recovery} ${jump} this.jump = () => jumpWalker(cave, 0, 0.25); this.tick = () => recoverWalker(cave, 0, 1, 0.1, true);
 this.near = () => recoverWalker(cave, 0, 0.25, 0.1); this.search = () => searchWalker(cave, 0, 0.25, 0.025);`, context);
   context.tick();
@@ -27516,6 +27452,10 @@ const reviewCrowdAndFallbackProof = async () => {
   const occupied=source.slice(source.indexOf("    const spotOccupied ="),source.indexOf("    const outsideClear ="));
   runInNewContext(occupied+"this.occupied=spotOccupied;",c);
   const blocked=c.occupied(body,0,0,0);near.root.visible=false;const hidden=!c.occupied(body,0,0,0);near.root.visible=true;near.root.position.y=3;const above=!c.occupied(body,0,0,0);
+  // Passive NPCs skip the peer scan in both directions; a driven body keeps it.
+  near.root.position.y=0;body.nonInteractive=true;const passiveSelf=!c.occupied(body,0,0,0);
+  body.nonInteractive=false;near.nonInteractive=true;const passivePeer=!c.occupied(body,0,0,0);
+  near.nonInteractive=false;const driven=c.occupied(body,0,0,0);
   const renderer=await readFile(join(root,"src/js/gl-renderer.js"),"utf8");
   const collect=renderer.slice(renderer.indexOf("    const collect ="),renderer.indexOf("    const updateRig ="));
   const seen=[],r={rigMode:false,hiddenFromCutaway:()=>false,cutawayFade:0,foliageGeometry:n=>n.geometry,screenVisible:()=>true,recordFor:g=>{seen.push(g);return {active:true};},suppressed:0,CULL_MARGIN:0,sphereInFrustum:()=>true};
@@ -27523,7 +27463,74 @@ const reviewCrowdAndFallbackProof = async () => {
   const geo={meshRig:{}},original={faces:[{}]},aggregate={geometry:geo,instanceData:[],instanceCount:1},part={geometry:original,meshRigSource:geo.meshRig,instanceData:[],instanceCount:1};
   r.collect(aggregate);r.collect(part);const cpu=seen.length===1&&seen[0]===original;
   seen.length=0;r.rigMode=true;r.collectRig(aggregate);r.collectRig(part);const gpu=seen.length===1&&seen[0]===geo;
-  return {clear,filtered,blocked,hidden,above,cpu,gpu,fetches,gaps};
+  return {clear,filtered,blocked,hidden,above,passiveSelf,passivePeer,driven,cpu,gpu,fetches,gaps};
+};
+// The Hub's real support query: a passive NPC Clanker never holds a player up
+// while scenery under it still does, and a driven gorilla still holds one.
+const passiveClankerSupportProof = async () => {
+  const source = await readFile(join(root, "src/js/scene-hub.js"), "utf8");
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const npcNode = {}, drivenNode = {}, tops = new Map();
+  const entry = passive => ({ nonInteractive: passive, active: true, root: { position: { y: 0 } } });
+  const context = { STEP_MAX: 0.6, PLAYER_RADIUS: 0.4, ALTAR_HEIGHT: 0, altar: null, crew: null, pilot: null,
+    BL: { clankers: { WALK_HEIGHT: 0.6 } },
+    clankerPartOwners: new Map([[npcNode, entry(true)], [drivenNode, entry(false)]]),
+    solids: { supportAt: () => 0.3 },
+    clankerMeshes: { supportAt: (x, z, y, rise, radius, a, b, c, allowed) => {
+      let floor = -Infinity;
+      for (const [node, top] of tops) if (allowed(node, y)) floor = Math.max(floor, top);
+      return floor;
+    } } };
+  runInNewContext("let clankerSupportActor = null;"
+    + section("  const characterClankerSupportAllowed =", "  const riderSupportAllowed =")
+    + section("  const npcTreeSupportAllowed =", "  const propCeilingAt =")
+    + "this.support = propSupportAt;", context);
+  const player = { contributor: true, humanControlled: true, hop: 0, hopV: 0 }, npc = { ...player, humanControlled: false, nonInteractive: true };
+  tops.set(npcNode, 1);
+  const scenery = context.support(0, 0, 1, 0.6, player) === 0.3;
+  tops.clear(); tops.set(drivenNode, 1);
+  const driven = context.support(0, 0, 1, 0.6, player) === 1;
+  const passiveRider = context.support(0, 0, 1, 0.6, npc) === 0.3;
+  return { scenery, driven, passiveRider };
+};
+// Passive meadow legs: the real fixed planner leaves the pile along its ring and
+// out along an authored spoke, never across the pile, and never reuses a graph lane.
+const fixedRoutineProof = async () => {
+  const context = { window: { BL: {} } };
+  runInNewContext(await readFile(join(root, "src/js/npc-paths.js"), "utf8"), context);
+  const P = context.window.BL.npcPaths, line = (dx, dz) => Array.from({ length: 13 }, (_, i) => ({ x: dx * (6 + i * 2), z: dz * (6 + i * 2) }));
+  const island = { meadowRadius: 40, path: { version: 3, centerlines: [line(0, 1), line(1, 0)], debug: { ringTrafficRadius: 5 } } };
+  const fixed = P.fixed(island), state = P.create({ island }).createState();
+  const cave = { pathing: state, root: { position: { x: 0, y: 0, z: -4 } } };
+  fixed.target(cave, 30, 1);
+  const lanes = Array.from({ length: state.count }, (_, i) => [state.laneX[i], state.laneZ[i]]);
+  const outside = lanes.every(([x, z]) => Math.hypot(x, z) >= 5 - 1e-9);
+  const ring = Math.abs(Math.hypot(...lanes[0]) - 5) < 1e-9 && lanes.some(([x, z]) => x === 6 && z === 0) && lanes.some(([x, z]) => x === 30 && z === 0);
+  const arrives = lanes.at(-1)[0] === 30 && lanes.at(-1)[1] === 1 && state.targetX === lanes[0][0] && state.targetZ === lanes[0][1];
+  const stamped = state.version !== island.path.version;
+  const plans = state.plans; state.version = island.path.version; fixed.target(cave, 30, 1);
+  const replansGraphLane = state.plans === plans + 1;
+  island.path.centerlines = [];
+  return { outside, ring, arrives, stamped, replansGraphLane, unsupported: P.fixed(island) === null };
+};
+// The real weapon targets: a passive NPC neither takes nor blocks a shot, yet
+// hover/carry picks still see it; a non-passive body in its place takes the hit.
+const passiveWeaponTargetProof = async () => {
+  const context = { window: { BL: {} } };
+  for (const name of ["math", "scene", "weapon-targets"]) runInNewContext(await readFile(join(root, `src/js/${name}.js`), "utf8"), context);
+  const BL = context.window.BL, square = { verts: [0, -1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1], faces: [{ i: [0, 1, 2, 3] }] };
+  const near = { cave: { nonInteractive: true }, kind: "caveman" }, far = { cave: { nonInteractive: false }, kind: "caveman" };
+  const targets = [2, 4].map((x, i) => ({ node: BL.scene.createNode({ geometry: square, position: { x, y: 0, z: 0 } }), owner: i ? far : near }));
+  const W = BL.weaponTargets.create(targets);
+  for (const t of targets) W.register(t.node);
+  const hit = { node: null, owner: null, distance: Infinity };
+  // Off the quad's diagonal, so each hit is an unambiguous triangle interior.
+  const shot = () => W.ray(hit, 0, 0.3, -0.2, 1, 0, 0, 10) && hit.owner;
+  const passesThrough = shot() === far;
+  const picked = W.ray(hit, 0, 0.3, -0.2, 1, 0, 0, 10, null, null, true) && hit.owner === near;
+  near.cave.nonInteractive = false;
+  const driven = shot() === near;
+  return { passesThrough, picked, driven };
 };
 
 const studioVideoSecurityProof = async () => {
@@ -27994,7 +28001,16 @@ const unitChecks = async () => {
   const rage = await gorillaRageProof();
   record("gorilla rage: distinct rolling hits, only agitating Oogas targeted, held capture through planning and swing, bounded throws, exact expiry, zero health and account/lifecycle cancellation", Object.values(rage).every(Boolean), JSON.stringify(rage));
   const reviewCrowd=await reviewCrowdAndFallbackProof();
-  record("review crowd: recovery fetches outside actors once per edge and tests only nearby bodies; one station helper handles height and visibility; CPU fallback draws original joints only",["clear","filtered","blocked","hidden","above","cpu","gpu"].every(k=>reviewCrowd[k]),JSON.stringify(reviewCrowd));
+  record("review crowd: recovery fetches outside actors once per edge and tests only nearby bodies; one station helper handles height and visibility, and passive NPCs skip it either way; CPU fallback draws original joints only",["clear","filtered","blocked","hidden","above","passiveSelf","passivePeer","driven","cpu","gpu"].every(k=>reviewCrowd[k]),JSON.stringify(reviewCrowd));
+  const passiveSupport = await passiveClankerSupportProof();
+  record("passive clanker support: a player is never held up by an NPC gorilla while the scenery beneath still holds them, a driven gorilla still does, and a passive NPC rides neither",
+    Object.values(passiveSupport).every(Boolean), JSON.stringify(passiveSupport));
+  const fixedRoutine = await fixedRoutineProof();
+  record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane",
+    Object.values(fixedRoutine).every(Boolean), JSON.stringify(fixedRoutine));
+  const passiveWeapons = await passiveWeaponTargetProof();
+  record("passive weapon targets: a shot passes through a passive NPC to the body behind it, hover and carry picks still find the NPC, and a non-passive body takes the hit",
+    Object.values(passiveWeapons).every(Boolean), JSON.stringify(passiveWeapons));
   const movementReview = await reviewMovementProof();
   record("review movement: recovery follows the next lane bend, retains stalls on the same leg and resets on replans; solid platforms bypass terrain gates while walls and water remain blocked", Object.values(movementReview).every(Boolean), JSON.stringify(movementReview));
 
@@ -28855,6 +28871,38 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         record("NPC sync: matching site order accepts poses and events; incompatible catalogs and host changes release stale poses",
           accepted && rejected && cleared && resumed && releasedHost && rejectedHost && owned && remote,
           JSON.stringify({ accepted, rejected, cleared, resumed, releasedHost, rejectedHost, owned, remote }));
+        // Real host frames, applied by a real follower: a same-status move under
+        // SNAP still eases, while a status change under SNAP (a passive beam on
+        // the host) places the puppet at once.
+        const mover = crew.list.find(c => c !== oldest && c !== next && c !== newest);
+        const moverSaved = { state: mover.state, position: { ...mover.root.position }, quaternion: mover.root.quaternion, visible: mover.root.visible };
+        const p = mover.root.position, baseY = mover.baseY, hostFrames = [];
+        BL.net.state.hostId = BL.net.state.selfId = "host";
+        sync = BL.npcSync.create(options);
+        for (const [x, z, state] of [[1, 1, "chilling"], [3, 1, "chilling"], [3, 3, "working"]]) {
+          mover.state = state; mover.root.visible = true; mover.root.quaternion = null;
+          Object.assign(p, { x, y: baseY, z });
+          sync.update(0.3); hostFrames.push(BL.net.npcFrame);
+        }
+        sync.dispose();
+        Object.assign(p, { x: 1, y: baseY, z: 1 }); mover.state = "chilling";
+        BL.net.state.selfId = "follower";
+        const follow = (frame) => { BL.net.npcFrame = frame; BL.net.state.npcVersion++; sync.update(0.05); return { x: p.x, z: p.z, state: mover.state }; };
+        sync = BL.npcSync.create(options);
+        const start = follow(hostFrames[0]), eased = follow(hostFrames[1]), beamed = follow(hostFrames[2]);
+        sync.dispose();
+        const statusSnap = {
+          frames: hostFrames.length === 3 && hostFrames.every(Boolean) && new Set(hostFrames).size === 3,
+          puppet: start.x === 1 && start.z === 1 && start.state === "chilling",
+          // 2 m apart, same status: partway toward the host's pose this update.
+          eased: eased.state === "chilling" && eased.x > 1 + 1e-6 && eased.x < 3 - 1e-6 && Math.abs(eased.z - 1) < 1e-6,
+          // 2 m apart, new status: exactly at the host's pose.
+          snapped: beamed.state === "working" && Math.abs(beamed.x - 3) < 1e-6 && Math.abs(beamed.z - 3) < 1e-6
+        };
+        mover.state = moverSaved.state; Object.assign(p, moverSaved.position);
+        mover.root.quaternion = moverSaved.quaternion; mover.root.visible = moverSaved.visible;
+        record("NPC sync: a follower eases a same-status move under the snap distance, but places a puppet at once when its streamed status changes",
+          Object.values(statusSnap).every(Boolean), JSON.stringify({ statusSnap, start, eased, beamed }));
       } finally { if (sync) sync.dispose(); crew.workSites = savedSites; BL.net = savedNet; }
       newest.contributor.lastContributionAt = now;
       crew.refreshStates(); crew.update(1.1, 1.1);
