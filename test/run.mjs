@@ -8890,8 +8890,53 @@ const hubHammockExit = { name: "hub hammock exit", why: "rule: an Ooga resting i
   })()`);
   record("hub hammock exit: the departing occupant becomes upright and unseated; the rebuilt island has an empty hammock and only normal bed poses", before.hammock && before.sat && back.hammock && back.empty && !back.seated && back.restored && back.hung && !departed.seated && departed.upright, JSON.stringify({ before, departed, back }));
 } };
+// Demo donations at or over the 1,000 sat message bar, each from a donor of its own, through the game as a tip lands.
+const SEED_DONORS = (count, prefix) => `(() => { const B = __ooga;
+  for (let i = 0; i < ${count}; i++) B.game.recordDonation({ id: "${prefix}-" + i, sats: 1000 + i * 137, handle: "${prefix}" + String(i).padStart(2, "0"), message: "", at: Date.now() + i });
+  BL.hud.setDonationStats(B.game.state); })()`;
+// The Bananas panel as rendered, with the panel open: every ranked donor's row in order, each list's window (exactly
+// five donor rows tall for both), and what scrolling each list and the panel to its end brings into view.
+const BANANA_LISTS = `(() => {
+  const panel = document.getElementById("bananas-panel"), slab = panel.querySelector(".banana-slab"), feed = panel.querySelector('[data-action="feed"]');
+  const leaders = document.getElementById("banana-leaders"), recent = document.getElementById("banana-recent-list");
+  const shown = (list) => [...list.children].filter(n => !n.hidden), top = (list) => list.getBoundingClientRect().top + list.clientTop;
+  const rows = shown(leaders), latest = shown(recent), amounts = rows.map(n => parseFloat(n.querySelector(".banana-amount").textContent.replace(/,/g, "")));
+  const fifth = rows.length >= 5 ? rows[4].getBoundingClientRect().bottom - top(leaders) : null, sixth = rows.length >= 6 ? rows[5].getBoundingClientRect().top - top(leaders) : null;
+  const reach = (list, items) => { list.scrollTop = list.scrollHeight; const r = list.getBoundingClientRect(), last = items.at(-1).getBoundingClientRect(); const ok = last.bottom <= r.bottom + 1 && last.top >= r.top - 1; list.scrollTop = 0; return ok; };
+  const out = { visible: BL.sheet.visible(panel), donors: __ooga.game.state.donors.length, rows: rows.length,
+    names: rows.map(n => n.querySelector(".banana-donor").textContent).sort().join() === __ooga.game.state.donors.map(d => d.handle ? "@" + d.handle : "Anonymous").sort().join(),
+    ordered: amounts.every((a, i) => !i || a <= amounts[i - 1]), latest: latest.length, retained: __ooga.game.state.recentDonations.length,
+    window: leaders.clientHeight, fifth, sixth, recentWindow: recent.clientHeight, scrolls: leaders.scrollHeight > leaders.clientHeight && recent.scrollHeight > recent.clientHeight,
+    lastDonor: rows.length ? reach(leaders, rows) : false, lastTip: latest.length ? reach(recent, latest) : false,
+    whole: slab.scrollHeight <= slab.clientHeight + 1, panelScrolls: panel.scrollHeight > panel.clientHeight + 1 };
+  panel.scrollTop = panel.scrollHeight;
+  const p = panel.getBoundingClientRect(), f = feed.getBoundingClientRect();
+  out.feedReached = f.bottom <= p.bottom + 1 && f.top >= p.top; panel.scrollTop = 0;
+  return out;
+})()`;
+// Five donor rows fill the donors' window exactly and the latest tips' window is the same height; both scroll to
+// their last entry, every donor is listed in rank order, and the slab never shrinks, so the panel scrolls instead.
+// However few entries either list holds, even none, both keep the same window, the one five donor rows fill.
+const bananaWindowsMatch = (short, full) => short.visible && short.window > 0 && Math.abs(short.window - full.window) <= 0.5 && Math.abs(short.recentWindow - full.window) <= 0.5;
+const bananaListsHold = (s) => s.visible && s.rows === s.donors && s.rows > 5 && s.names && s.ordered && s.latest === s.retained && s.latest > 5
+  && Math.abs(s.fifth - s.window) <= 1 && s.sixth >= s.window - 1 && Math.abs(s.recentWindow - s.window) <= 0.5 && s.scrolls && s.lastDonor && s.lastTip && s.whole && s.feedReached;
+// A panel's last control, read with the panel scrolled to its end: the space above it to the control before it, and
+// below it to the inside of the panel's border, which may be larger only by the room a button's drop shadow takes.
+const FOOT_SPACE = (selector) => `(() => {
+  const el = document.querySelector(${JSON.stringify(selector)}), panel = el.closest(".panel"), body = el.closest(".sheet-body");
+  panel.scrollTop = panel.scrollHeight; body.scrollTop = body.scrollHeight;
+  let prev = el.previousElementSibling; while (prev && !prev.getClientRects().length) prev = prev.previousElementSibling;
+  const r = el.getBoundingClientRect(), b = body.getBoundingClientRect(), inside = b.bottom - parseFloat(getComputedStyle(body).borderBottomWidth);
+  // The suite's screens have no safe-area inset, so a docked drawer's inset adds nothing here.
+  const above = r.top - prev.getBoundingClientRect().bottom, below = inside - r.bottom;
+  panel.scrollTop = 0;
+  return { above: +above.toFixed(2), below: +below.toFixed(2), shown: !!el.getClientRects().length };
+})()`;
+const footMatches = (s) => s.shown && s.above > 0 && s.below - s.above >= 0 && s.below - s.above <= 4;
 // Keep the real sheet controls working while their rows survive a scene's lifetime.
 const hudVisit = { name: "hub HUD lifetime", why: "regression: scene visits recreated roster SVGs and donor rows; their handlers must end on leave while the attached rows keep their identity", run: async (b) => {
+  // A donor's row is made when the board first reaches it, so one is seeded before the visit whose identity is kept.
+  await b.evaluate(SEED_DONORS(1, "hud-seed"));
   await b.evaluate(`(() => {
     const H = window.__hudVisit = { rows: [...document.querySelectorAll("#roster [data-name]")], leaders: [...document.getElementById("banana-leaders").children], signals: [], calls: 0 }, S = BL.scenes;
     H.keep = __ooga.hubPolicy === "keep";
@@ -8931,13 +8976,22 @@ const hudVisit = { name: "hub HUD lifetime", why: "regression: scene visits recr
         && B.headquarters.objectGuides === H.guides && BL.scenes.hub.debug.terrainRampRoof === H.roof;
       return { painted, graph: graph === H.keep, ended: H.signals[0].aborted && !H.signals[1].aborted, calls: H.calls,
         roster: rows.length === H.rows.length && rows.every(n => H.rows.includes(n)),
-        leaders: [...leaders.children].every((n, i) => n === H.leaders[i]),
+        leaders: H.leaders.length >= 1 && H.leaders.every((n, i) => leaders.children[i] === n) && leaders.children.length === B.game.state.donors.length,
         visible: visible.length, ranked: visible[0].querySelector(".banana-donor").textContent === "@hud-diff",
         sats: visible[0].querySelector(".banana-amount").textContent.replace(/[^0-9]/g, "") === "987654",
         hidden: [...leaders.children].filter(n => n.hidden).every(n => getComputedStyle(n).display === "none"),
         away: away.getAttribute("aria-expanded") !== closed };
     })()`);
     record("HUD lifetime: leaving releases input and audio, the chosen policy retains or rebuilds the graph, fresh visit handlers fire once, and reused rows retain sorting, units and the away toggle", parked.policy && parked.empty && parked.quiet && parked.targets === 0 && !parked.audio && r.painted && r.graph && r.ended && r.calls === 1 && r.roster && r.leaders && r.visible > 0 && r.ranked && r.sats && r.hidden && r.away, JSON.stringify({ parked, resumed: r }));
+    // The few donors so far, then more donors than the old ten-row board held and a full recent list over the message bar.
+    const was = await b.evaluate(`(() => { const s = document.getElementById("sheet"), tab = s.dataset.open === "true" ? s.querySelector("[data-tab][aria-selected='true']")?.dataset.tab || null : null; __ooga.hud.selectTab("bananas"); return tab; })()`);
+    const short = await b.evaluate(BANANA_LISTS);
+    await b.evaluate(SEED_DONORS(12, "lister"));
+    const lists = await b.evaluate(BANANA_LISTS);
+    // The later steps on this page find the panel as it was.
+    await b.evaluate(was ? `__ooga.hud.selectTab(${JSON.stringify(was)})` : `document.getElementById("sheet-bananas").click()`);
+    record("HUD lifetime: the Bananas panel lists every donor in rank order inside a five-row window, the latest tips in a window of the same height however few either holds, and each scrolls to its last entry",
+      short.rows < 5 && short.rows === short.donors && short.names && bananaWindowsMatch(short, lists) && bananaListsHold(lists) && lists.rows > 10, JSON.stringify({ short, lists }));
   } finally {
     await b.evaluate(`(() => { const H = window.__hudVisit; BL.scenes.lab.enter = H.enters[0]; BL.scenes.hub.enter = H.enters[1]; BL.scenes.hub.enterSteps = H.hubSteps; delete window.__hudVisit; })()`);
   }
@@ -9789,6 +9843,10 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: panels
       saved: saved && JSON.parse(saved) };
   })()`;
   const first = await b.evaluate(read);
+  // The recent list's "1,000 sats and up only" box: on with no saved choice, and each choice kept across a reload.
+  const bar = `(() => { const box = document.getElementById("banana-recent-bar"); return { checked: box.checked, saved: localStorage.getItem("ooga-recent-bar") }; })()`;
+  const flip = `(() => { document.getElementById("banana-recent-bar").click(); return ${bar}; })()`;
+  const bars = { first: await b.evaluate(bar), off: await b.evaluate(flip) };
   await b.evaluate(`document.getElementById("sheet-bananas").click()`);
   if (!await settled()) throw Error("The opened panel did not finish docking");
   const opened = await b.evaluate(read);
@@ -9796,10 +9854,15 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: panels
   await untilReady(b);
   if (!await settled()) throw Error("The restored panel did not finish docking");
   const restored = await b.evaluate(read);
+  bars.keptOff = await b.evaluate(bar); bars.on = await b.evaluate(flip);
   await toggle("#sheet-bananas");
   await b.open(url);
   await untilReady(b);
   const closed = await b.evaluate(read);
+  bars.keptOn = await b.evaluate(bar);
+  record("side panel: the recent donations' 1,000 sats box starts on with no saved choice, and turning it off or back on is kept across reloads",
+    bars.first.checked && bars.first.saved === null && !bars.off.checked && bars.off.saved === "0" && !bars.keptOff.checked && bars.keptOff.saved === "0"
+      && bars.on.checked && bars.on.saved === "1" && bars.keptOn.checked && bars.keptOn.saved === "1", JSON.stringify(bars));
   record("side panel: first load has no selection, reloads restore its open tab, and closing slides the panel offscreen with its rail still reachable", first.open === "false" && first.tab === null && !first.panel && first.panels.length === 0 && first.shown.length === 0
     && (first.saved === null || first.saved.open === false && first.saved.tab === "roster" && first.saved.rect === null && first.saved.windows.length === 0)
     && opened.open === "true" && opened.tab === "bananas" && opened.saved?.open && opened.saved.tab === "bananas"
@@ -9910,14 +9973,22 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: panels
       && login.closest("[data-panel]").dataset.panel === "roster" && feed.closest("[data-panel]").dataset.panel === "bananas"
       && document.querySelectorAll("#account-login").length === 1 && document.querySelectorAll('.sheet [data-action="feed"]').length === 1
       && !document.querySelector('.sheet-foot, #quality, .sheet [data-action="reset"]');
+    const feet = { login: ${FOOT_SPACE("#account")} };
+    BL.hud.showAccount({ backend: true, me: { id: 5, login: "footer", display: "Footer" }, room: "live", online: 1 });
+    feet.signedIn = ${FOOT_SPACE("#account")};
+    BL.hud.showAccount({ backend: true, me: null, room: "off", online: 0 });
     H.selectTab("bananas");
+    feet.feed = ${FOOT_SPACE('#bananas-panel [data-action="feed"]')};
     const returned = login.closest(".sheet") === owner && feed.closest(".sheet").id === "sheet"
       && !!feed.getClientRects().length && getComputedStyle(feed).visibility === "visible"
       && getComputedStyle(login).minHeight === getComputedStyle(feed).minHeight && parseFloat(getComputedStyle(login).minHeight) >= 44;
     BL.hud.showAccount(BL.net.state);
-    return { hidden, folded, same, account, returned, count: document.querySelectorAll(".sheet").length };
+    return { hidden, folded, same, account, returned, count: document.querySelectorAll(".sheet").length, feet };
   })()`);
+  const { feet } = held; delete held.feet;
   record("side panel: temporary suppression and folding survive resize, reopening restores the saved layout, and donation/account actions stay with their own panels at the same button height", Object.values(held).every(Boolean) && held.count === 2, JSON.stringify(held));
+  record("side panel: Feed the Oogas, Contributor sign-in and the signed-in name, online and Join voice row leave as much room under them as above them, but for a button's shadow",
+    footMatches(feet.login) && footMatches(feet.signedIn) && footMatches(feet.feed), JSON.stringify(feet));
   if (!await settled()) throw Error("The restored panels did not finish opening");
   // A closed source rail can be merged into another panel, focusing its tab and removing only its own rail.
   await toggle(".sheet:not(#sheet) [data-tab='roster']");
@@ -14429,9 +14500,26 @@ const phone = (id, { card = null, play = null, required, sheet = false }) => ({ 
       return roster && bananas && a.height >= 44 && a.width === b.width && a.height === b.height
         && !document.querySelector('.sheet-foot, #quality, .sheet [data-action="reset"]');
     })()`);
+    // The drawer's foot in both account states, and the Bananas panel's lists, on the phone's short drawer.
+    seen.feet = await b.evaluate(`(() => {
+      const H = __ooga.hud;
+      BL.hud.showAccount({ backend: true, me: null, room: "off", online: 0 }); H.selectTab("roster");
+      const feet = { login: ${FOOT_SPACE("#account")} };
+      BL.hud.showAccount({ backend: true, me: { id: 5, login: "footer", display: "Footer" }, room: "live", online: 1 });
+      feet.signedIn = ${FOOT_SPACE("#account")};
+      BL.hud.showAccount(BL.net.state); H.selectTab("bananas");
+      feet.feed = ${FOOT_SPACE('#bananas-panel [data-action="feed"]')};
+      return feet;
+    })()`);
+    seen.empty = await b.evaluate(BANANA_LISTS);
+    await b.evaluate(SEED_DONORS(12, "phone"));
+    seen.lists = await b.evaluate(BANANA_LISTS);
+    await b.evaluate(`__ooga.hud.selectTab("roster")`);
   }
-  const ok = (!card || seen.card.touch.coarse && seen.card.touch.touchWording && seen.card.bad.length === 0 && seen.card.closed) && seen.play.length === 0 && (!sheet || seen.sheet.length === 0 && seen.actions);
-  record(`${id} phone: ${card ? "the title card reads in touch words and its go button starts the game, then " : ""}nothing is clipped, wrapped by accident or off screen, and every control is under a thumb${sheet ? ", with the sheet open and the sticks still free" : ""}`, ok, JSON.stringify(seen));
+  const ok = (!card || seen.card.touch.coarse && seen.card.touch.touchWording && seen.card.bad.length === 0 && seen.card.closed) && seen.play.length === 0 && (!sheet || seen.sheet.length === 0 && seen.actions
+    && footMatches(seen.feet.login) && footMatches(seen.feet.signedIn) && footMatches(seen.feet.feed) && bananaListsHold(seen.lists) && seen.lists.panelScrolls
+    && seen.empty.rows === seen.empty.donors && seen.empty.latest === seen.empty.retained && bananaWindowsMatch(seen.empty, seen.lists));
+  record(`${id} phone: ${card ? "the title card reads in touch words and its go button starts the game, then " : ""}nothing is clipped, wrapped by accident or off screen, and every control is under a thumb${sheet ? ", with the sheet open and the sticks still free, its footers as roomy under as over them, and the Bananas panel scrolling whole over lists that each scroll in a five-row window" : ""}`, ok, JSON.stringify(seen));
 } });
 
 // ---- The Lightning Factory ----
