@@ -842,14 +842,14 @@
   // The hangar for a visit: the hall and everything standing in it from the cached builds, the signs, the boards, the
   // Jet at its dock, the door back to the hall with its shield, the launch shield and space past it.
   const build = () => {
-    const L = LAYOUT, s = { crew: [], dimmed: 1, ambient: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), dressed = HM.dressing(), fixtures = HM.fixtures(), frames = HM.boardFrames();
+    const L = LAYOUT, s = { crew: [], dimmed: 1, ambient: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), fixtures = HM.fixtures(), frames = HM.boardFrames();
     // The fixtures' glass and the vault's light slots, which an anomaly dims with the hall's lights.
     s.glass = [createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true }), createNode({ geometry: shell.slots, sightHidden: true })];
     addChild(root, createNode({ geometry: shell.floor }), createNode({ geometry: shell.walls, depthBias: SHELL_BIAS }), createNode({ geometry: shell.front, depthBias: SHELL_BIAS }),
       createNode({ geometry: shell.vault, depthBias: SHELL_BIAS }), s.glass[2], createNode({ geometry: shell.backing, depthBias: BACKING_BIAS }),
       createNode({ geometry: HM.landing() }), createNode({ geometry: runway.flat }),
       createNode({ geometry: tunnel.stone }),
-      createNode({ geometry: HM.catwalks() }), createNode({ geometry: dressed.iron }), s.glass[0],
+      createNode({ geometry: HM.catwalks() }), s.glass[0],
       createNode({ geometry: fixtures.frame }), s.glass[1], createNode({ geometry: HM.dock() }));
     s.mouth = createNode({ geometry: tunnel.iron });
     // The tunnel's neon, a strip on every frame, each flickering on its own (`neonLife`).

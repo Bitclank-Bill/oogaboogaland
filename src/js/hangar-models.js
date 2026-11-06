@@ -2,8 +2,7 @@
 // walkway, as its concept draws it. A steel landing inside the door with steps down to the runway, which runs down the
 // middle of the floor between hazard-striped edges and blue marker lamps, and on through the launch tunnel's octagonal
 // frames, each lined with blue neon, to the launch shield at its far end, sealed until Jet v2 flies, space beyond.
-// Steel truss gantries cross the vault, two crane trolleys over the Jet; steel catwalks run along both side walls on
-// brackets, a stair up to each from the back. On the right, in the
+// Steel catwalks run along both side walls on brackets, a stair up to each from the back. On the right, in the
 // hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a steel
 // gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long steel stair down from
 // behind the wing toward the runway; trestles stand under its wings. On the left the crew's workstations stand in rows, their
@@ -19,12 +18,12 @@
   const BL = window.BL = window.BL || {};
   const { models, math } = BL;
   const FM = BL.factoryModels, JM = BL.jetModels;
-  const { cached, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, chain, lanternParts, turn, shaded, forwardLathe } = models;
+  const { cached, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, lanternParts, turn, shaded, forwardLathe } = models;
   const { mulberry32 } = math;
   const TAU = Math.PI * 2;
 
   const STONE = ["#5b4a3e", "#524238", "#66544a", "#4a3d34"], STONE_DK = "#3a2f28", IRON = "#4a4d52", IRON_DK = "#2c2e33";
-  const TIMBER = "#8a5a32", TIMBER_LT = "#a8703e", TIMBER_DK = "#5c3a1e", GIRDER = "#666d77", GIRDER_DK = "#4b525c";
+  const TIMBER = "#8a5a32", TIMBER_LT = "#a8703e", TIMBER_DK = "#5c3a1e";
   const RUNWAY = "#2a2e36", SEAM = "#3b404a", PAINT = "#ffd23a", INK = "#141414", MARKER = "#6fc8ff", NEON = "#4fb4ff";
   const SCREEN = "#2f7fd8", FLOOR_LAMP = "#4aa8ff";
 
@@ -45,12 +44,12 @@
     // the shield; walkers stop at `holdShort`, the hazard bar's line.
     tunnel: { y: 5, r: 7, z0: -34, z1: -84, step: 5, holdShort: -82.8 },
     // The catwalks along both side walls at the gantries' feet, decks [x0, x1, z0, z1], and the stairs up to their back
-    // ends, their feet far enough from the back wall to walk up to them straight; the truss gantries across the
-    // vault, by z, at the height they run; and the underside of the roof's ribs (`roofY`, `VAULT.rib` under the roof),
-    // which whatever hangs from the roof hangs from.
+    // ends, their feet far enough from the back wall to walk up to them straight; the lines across the hall the walls'
+    // ribs and the roof's stand on, by z (`gantries`); and the underside of the roof's ribs (`roofY`, `VAULT.rib` under
+    // the roof), which whatever hangs from the roof hangs from.
     catwalkY: 7.5, catwalks: [[HALL.x0 + 3, HALL.x0 + 5.4, -15, 24], [HALL.x1 - 5.4, HALL.x1 - 3, -15, 24]],
     catwalkStairs: [[HALL.x0 + 4.2, 0, -26.5, HALL.x0 + 4.2, 7.5, -15, 2], [HALL.x1 - 4.2, 0, -26.5, HALL.x1 - 4.2, 7.5, -15, 2]],
-    gantries: [22, 14, 6, -2, -10, -18, -26], gantryY: 15, roofY: HALL.h - 1,
+    gantries: [22, 14, 6, -2, -10, -18, -26], roofY: HALL.h - 1,
     // The shell's walls: how far in from the hall's bounds their panels' faces stand, the ribs out of the side walls on
     // the gantries' lines, how far they stand out of the panels and how wide they are, and how high the surround round
     // the door back to the Factory stands.
@@ -468,31 +467,6 @@
     });
     for (const [ax, ay, az, bx, by, bz, w] of L.catwalkStairs) geos.push(...steelStair(ax, ay, az, bx, by, bz, w, [true, false]));
     return merge(...geos);
-  });
-
-  // The vault's dressing: the gantries, each a truss of steel girders whose ends rest on the side walls' ribs on its
-  // line, and two crane trolleys over the Jet.
-  const dressing = cached(() => {
-    const L = LAYOUT, { x0: X0, x1: X1 } = HALL, iron = [], gy = L.gantryY, mid = (X0 + X1) / 2, span = X1 - X0 - 4;
-    for (const z of L.gantries) {
-      for (const y of [gy + 0.5, gy - 0.5]) iron.push(box({ w: span, h: 0.32, d: 0.46, color: GIRDER, offset: { x: mid, y, z } }));
-      const n = Math.round(span / 2.4);
-      for (let k = 0; k <= n; k++) {
-        const x = X0 + 2 + span * k / n;
-        iron.push(box({ w: 0.16, h: 0.7, d: 0.3, color: GIRDER_DK, offset: { x, y: gy, z } }));
-        if (k < n) {
-          const x2 = X0 + 2 + span * (k + 1) / n, up = k % 2 ? 1 : -1;
-          iron.push(beam(x, gy - up * 0.36, z, x2, gy + up * 0.36, z, 0.12, GIRDER_DK));
-        }
-      }
-    }
-    // The crane trolleys: a yellow carriage on the bottom chord, its hook block hung over the Jet.
-    for (const [x, z, drop] of [[L.jet.x, -18, 3.6], [L.jet.x + 3.5, -2, 3.4]]) {
-      iron.push(bevelBox({ w: 1.3, h: 0.7, d: 1.1, color: "#e0a92a", bevel: 0.06, offset: { x, y: gy - 1.05, z } }), box({ w: 1.5, h: 0.12, d: 0.3, color: IRON_DK, offset: { x, y: gy - 0.72, z } }));
-      iron.push(...chain(x, gy - 1.4, z, x, gy - 1.4 - drop, z, 0.09, IRON_DK));
-      iron.push(bevelBox({ w: 0.5, h: 0.55, d: 0.34, color: "#e0a92a", bevel: 0.05, offset: { x, y: gy - 1.7 - drop, z } }), box({ w: 0.12, h: 0.4, d: 0.12, color: IRON_DK, offset: { x, y: gy - 2.15 - drop, z } }));
-    }
-    return { iron: merge(...iron) };
   });
 
   // ---- the floor's fixtures ---------------------------------------------------------------------------------------
@@ -1657,7 +1631,7 @@
   // bakes them all.
   const TINTS = { door: math.hexToRgb("#5fe3ff").map((k) => k / 255), mouth: [0.36, 0.66, 1.2], launch: [0.45, 0.72, 1] };
   const LANTERN_GLOW = [1.3, 0.8, 0.36];
-  // The Jet's key light, the scene's spot: hung from the gantry over the Jet's left flank and aimed down at it, a cone of
+  // The Jet's key light, the scene's spot: hung under the roof over the Jet's left flank and aimed down at it, a cone of
   // cool white on the Jet and the floor round it, as far as `reach` m, full inside `inner` radians of its axis and gone
   // by `outer`.
   const KEY = { at: [LAYOUT.jet.x - 9, 14.2, LAYOUT.jet.z], aim: [LAYOUT.jet.x, 2, LAYOUT.jet.z], reach: 45, outer: 0.96, inner: 0.61, color: [10, 10.5, 11.4] };
@@ -1675,7 +1649,7 @@
   // The hangar as the Factory's walkway sees it through the door's shield, for `hangar-window.js`, which pulls every
   // point of it along its own sight line into a band just behind the shield: so it is built at full size in the
   // hangar's frame and kept light. The hall's own shell (`shell`: its floor, walls, vault and light slots, but not the
-  // front wall, which stands behind the eye), the gantries as plain trusses; the landing, the runway and its lamps, the
+  // front wall, which stands behind the eye); the landing, the runway and its lamps, the
   // tunnel's frames and every neon ring, the catwalks, the floor's fixtures, the boards on their mounts with their
   // faces, and the Jet at its dock; and past the tunnel's end space, deep blue with stars, the galaxy's haze and a ringed
   // planet. Every face glows with the hangar's light at rest baked into its colour (`FM.bakeWindow` under `MOOD`, with
@@ -1689,14 +1663,8 @@
   };
   const KEY_BAKE = { color: 0.66, reach: 0.75 };
   const doorWindow = cached(() => {
-    const L = LAYOUT, { x0: X0, x1: X1 } = HALL, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
+    const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.slots);
-    // The gantries, as trusses: their chords and verticals.
-    const span = X1 - X0 - 4, mid = (X0 + X1) / 2;
-    for (const z of L.gantries) {
-      for (const y of [L.gantryY + 0.5, L.gantryY - 0.5]) parts.push(box({ w: span, h: 0.32, d: 0.46, color: GIRDER, offset: { x: mid, y, z } }));
-      for (let x = X0 + 2; x <= X1 - 2; x += 4.8) parts.push(box({ w: 0.16, h: 0.7, d: 0.3, color: GIRDER_DK, offset: { x, y: L.gantryY, z } }));
-    }
     const run = runway(), tun = tunnel(), fix = fixtures();
     parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), fix.flat, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
@@ -2000,7 +1968,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, runway, marker, floorLamp, tunnel, catwalks, dressing, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
