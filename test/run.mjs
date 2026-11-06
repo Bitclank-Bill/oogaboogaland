@@ -21886,9 +21886,10 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
   })()`);
   await b.focus(true);
   const out = await b.evaluate(`(async () => {
-    const W = __joins; document.getElementById("players-speak-input").focus(); W.join(24, "Pat"); W.join(25, "Quin");
+    const W = __joins, unread = W.read().players;
+    document.getElementById("players-speak-input").focus(); W.join(24, "Pat"); W.join(25, "Quin");
     const before = W.read(), stale = W.lines.at(-1), count = W.said.length; await BL.net.logout();
-    if (stale.onend) stale.onend(); const r = { ...W.read(), stoppedWithoutBadge: before.players === "" && W.cancelled === 2 && W.said.length === count };
+    if (stale.onend) stale.onend(); const r = { ...W.read(), stoppedWithoutNewBadge: before.players === unread && W.cancelled === 2 && W.said.length === count };
     delete speechSynthesis.speak; delete speechSynthesis.cancel; window.fetch = W.fetch; window.WebSocket = W.WebSocket;
     Object.assign(BL.net.state, { backend: false, started: false, resolved: true }); BL.hud.showAccount(BL.net.state); delete window.__joins; return r;
   })()`);
@@ -21896,7 +21897,7 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
   record("join alerts: enabled speech continues and queues across environmental mute; disabling cancels current and waiting joins, stale callbacks cannot revive them, and signing out clears both counts",
     collapsed && settings.closed && settings.grouped && settings.step === "1" && settings.min === "1" && settings.max === "61" && box.shown && box.said === 0 && spoken.saved === "on" && spoken.queuedWhileMuted && spoken.disabled && spoken.cancelledQueue && spoken.staleIgnored
       && spoken.said.join("|") === "Joins will be read aloud|Eve is online|Fay and Gus are online|Hal is online|Ivy is online|Joins will be read aloud|Lou is online"
-      && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "" && out.stoppedWithoutBadge, JSON.stringify({ box, spoken, out }));
+      && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "" && out.stoppedWithoutNewBadge, JSON.stringify({ box, spoken, out }));
   await b.open(hubPage(src, "pos=0")); await untilReady(b);
   record("join alerts: the enabled reading choice survives reload", await b.evaluate('BL.players.stats.speakOn&&document.getElementById("players-speak-input").checked'));
 
