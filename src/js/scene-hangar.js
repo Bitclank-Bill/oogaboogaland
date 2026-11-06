@@ -905,12 +905,12 @@
     s.statsStars = createNode({ geometry: faces.stats.stars, sightHidden: true });
     s.statsFlag = createNode({ geometry: faces.stats.flag, sightHidden: true, visible: false });
     addChild(s.boards.stats, s.statsStars, s.statsFlag);
-    // The hangar's sign over the runway between two lit bolts, hung from the last gantry on two rods.
+    // The hangar's sign over the runway between two lit bolts, hung from the last roof rib on two rods.
     const [hx, hy, hz] = L.signs.hangar, hangarSign = FM.label("LIGHTNING JET\nHANGAR", "", { height: 1.7 });
     s.sign = sign(root, hangarSign, hx, hy, hz);
     for (const side of [-1, 1]) {
       addChild(root, createNode({ position: { x: hx + side * (hangarSign.width / 2 + 0.6), y: hy, z: hz + 0.05 }, geometry: FM.smoothBolt(1.2, 0.1, "#ffd23a", 1), sightHidden: true }));
-      addChild(root, createNode({ position: { x: hx + side * (hangarSign.width / 2 - 0.3), y: (hy + L.gantryY) / 2 + 0.4, z: hz - 0.05 }, geometry: models.box({ w: 0.06, h: L.gantryY - hy - 1.2, d: 0.06, color: "#2c2e33" }) }));
+      addChild(root, createNode({ position: { x: hx + side * (hangarSign.width / 2 - 0.3), y: (hy + 1 + L.roofY) / 2, z: hz - 0.05 }, geometry: models.box({ w: 0.06, h: L.roofY - hy - 1, d: 0.06, color: "#2c2e33" }) }));
     }
     // The door, the Factory's own stone arch turned to face in and set in the hangar's steel bulkhead, with the hall's
     // warm dark through it and its sign the way back.

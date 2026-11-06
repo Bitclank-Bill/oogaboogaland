@@ -45,11 +45,12 @@
     // the shield; walkers stop at `holdShort`, the hazard bar's line.
     tunnel: { y: 5, r: 7, z0: -34, z1: -84, step: 5, holdShort: -82.8 },
     // The catwalks along both side walls at the gantries' feet, decks [x0, x1, z0, z1], and the stairs up to their back
-    // ends, their feet far enough from the back wall to walk up to them straight; and the truss gantries across the
-    // vault, by z, at the height they run.
+    // ends, their feet far enough from the back wall to walk up to them straight; the truss gantries across the
+    // vault, by z, at the height they run; and the underside of the roof's ribs (`roofY`, `VAULT.rib` under the roof),
+    // which whatever hangs from the roof hangs from.
     catwalkY: 7.5, catwalks: [[HALL.x0 + 3, HALL.x0 + 5.4, -15, 24], [HALL.x1 - 5.4, HALL.x1 - 3, -15, 24]],
     catwalkStairs: [[HALL.x0 + 4.2, 0, -26.5, HALL.x0 + 4.2, 7.5, -15, 2], [HALL.x1 - 4.2, 0, -26.5, HALL.x1 - 4.2, 7.5, -15, 2]],
-    gantries: [22, 14, 6, -2, -10, -18, -26], gantryY: 15,
+    gantries: [22, 14, 6, -2, -10, -18, -26], gantryY: 15, roofY: HALL.h - 1,
     // The shell's walls: how far in from the hall's bounds their panels' faces stand, the ribs out of the side walls on
     // the gantries' lines, how far they stand out of the panels and how wide they are, and how high the surround round
     // the door back to the Factory stands.
@@ -98,9 +99,9 @@
     // terminals on stands by the runway, [x, z, turn], the dock's showing the Jet; and the tool chests, [x, z, turn].
     stations: [[-9.5, 17, 0], [-9.5, 9.5, 0.3], [-9.5, 2, 0], [-9.5, -5.5, 0.3], [-9.5, -13, 0], [-9.5, -20.5, 0.3], [-14.5, 6.5, Math.PI / 2], [-14.5, -11, Math.PI / 2], [-14.5, -18.5, Math.PI / 2]],
     kiosks: [[-6.9, 12.5, 0.7], [-6.9, -9, 0.7], [7.3, -3.2, -0.8, "jet"]],
-    // The film show the terminals start (`hangar-terminals.js`): the old projector's cradle hung from the second gantry
-    // in over the runway, as a cinema's over its seats, [x, y, z] of its deck, between the lanterns there and low enough
-    // that its reels clear the truss; and the roll-down screen hung from a gantry far down the runway facing the door,
+    // The film show the terminals start (`hangar-terminals.js`): the old projector's cradle hung from the second roof rib
+    // in over the runway, as a cinema's over its seats, [x, y, z] of its deck, between the lanterns there; and the
+    // roll-down screen hung from a roof rib far down the runway facing the door,
     // its roller's middle [x, y, z] let down for the show, under the lantern over the runway there and high enough that
     // the cloth's foot clears the walkers, the height it is wound back up to between shows (`stow`, just under that
     // lantern, out of the hangar's sign's way from anywhere on the floor), its cloth's width (no lantern hangs over it)
@@ -120,7 +121,7 @@
       stats: { x: HALL.x0 + 3.2, y: 4.3, z: 16, w: 9, h: 4, turn: Math.PI / 2, scale: 1.15 },
       timeline: { x: HALL.x0 + 3.2, y: 4.3, z: -2, w: 11, h: 4, turn: Math.PI / 2, scale: 1.15 }
     },
-    // The hangar's sign over the runway, from the last gantry.
+    // The hangar's sign over the runway, from the last roof rib.
     signs: { hangar: [0, 11.6, -26] },
     // The crew, gorillas in hard hats, each pacing its post: [x, y, z, radius, heading], heading 0 facing +z. At the
     // workstations (stood back from the desk, since a gorilla leans in over what it faces, and clear of the crates by
@@ -1535,7 +1536,7 @@
   // ---- the film show ------------------------------------------------------------------------------------------------
 
   // The old projector the terminals run, a cinema's in the hangar's colours, aimed at the screen's picture. Its cradle in
-  // the hangar's frame (`cradle`): a timber deck hung on four rods from its gantry's bottom chord, railed all round, the
+  // the hangar's frame (`cradle`): a timber deck hung on four rods from the roof's rib over it, railed all round, the
   // pedestal on it and two film cans beside. The head in its own frame, its pivot on the pedestal's top at the origin
   // and its lens toward -z (`head`): the enamelled body on its base plate with chrome trim and the operator's door, a
   // chimney off its lamp, the lens barrel in front with its focus knob, the reels' arms, and the film running down from
@@ -1547,13 +1548,13 @@
   const PROJECTOR = { size: 1.8, pivot: 0.62, lens: [0, 0.3, -0.69], reels: [[0.9, -0.2], [0.9, 0.44]], reel: 0.3 };
   const FILM = { body: "#2f3d38", trim: "#c9ced4", lamp: "#ffb347", glass: "#fff1c8", reel: "#aeb4ba", film: "#3a2a1c", cloth: "#e9e4d8" };
   const projector = cached(() => {
-    const P = PROJECTOR, S = P.size, [px, py, pz] = LAYOUT.show.projector, chord = LAYOUT.gantryY - 0.66, cradle = [], head = [], glow = [];
-    // The cradle: the deck, the iron under it, the rods up to the chord, the rail and the pedestal.
+    const P = PROJECTOR, S = P.size, [px, py, pz] = LAYOUT.show.projector, roof = LAYOUT.roofY, cradle = [], head = [], glow = [];
+    // The cradle: the deck, the iron under it, the rods up to the roof, the rail and the pedestal.
     const ex = 0.74 * S, ez = 0.68 * S;
     cradle.push(bevelBox({ w: 1.6 * S, h: 0.12, d: 1.5 * S, color: TIMBER, bevel: 0.03, offset: { x: px, y: py - 0.06, z: pz } }));
     for (const dz of [-0.6, 0.6]) cradle.push(box({ w: 1.7 * S, h: 0.1, d: 0.12, color: IRON_DK, offset: { x: px, y: py - 0.17, z: pz + dz * S } }));
     for (const dx of [-ex, ex]) for (const dz of [-ez, ez]) {
-      cradle.push(box({ w: 0.07, h: chord - py, d: 0.07, color: IRON_DK, offset: { x: px + dx, y: (chord + py) / 2, z: pz + dz } }));
+      cradle.push(box({ w: 0.07, h: roof - py, d: 0.07, color: IRON_DK, offset: { x: px + dx, y: (roof + py) / 2, z: pz + dz } }));
     }
     for (const [ax, az, bx, bz] of [[-ex, -ez, ex, -ez], [ex, -ez, ex, ez], [ex, ez, -ex, ez], [-ex, ez, -ex, -ez]]) {
       cradle.push(beam(px + ax, py + 0.55 * S, pz + az, px + bx, py + 0.55 * S, pz + bz, 0.06, IRON));
@@ -1603,14 +1604,14 @@
   });
 
   // The roll-down screen over the runway, facing the door: its roller in a case (`frame`, about the roller's middle),
-  // which the show winds down from where it is stowed and back up, on two rods from the gantry's bottom chord (`rods`,
-  // a metre long hanging from the chord, which the show stretches to the case, `chord` its height in the hangar's
+  // which the show winds down from where it is stowed and back up, on two rods from the roof's rib over it (`rods`,
+  // a metre long hanging from the rib, which the show stretches to the case, `roof` its height in the hangar's
   // frame); its cloth a metre long hanging from the origin, matte white with black bands down its sides, which the show
   // stands `under` the case's middle and stretches as it unrolls (`cloth`, from `top` when the case is down); and the
   // weighted batten along its foot with the pull ring, which goes down with it (`batten`). `picture` is where the film's
   // picture falls on the cloth unrolled, its middle a little in front of it, and its width and height.
   const filmScreen = cached(() => {
-    const S = LAYOUT.show.screen, chord = LAYOUT.gantryY - 0.66, frame = [], rods = [], cloth = [], batten = [], w = S.w, under = 0.17;
+    const S = LAYOUT.show.screen, roof = LAYOUT.roofY, frame = [], rods = [], cloth = [], batten = [], w = S.w, under = 0.17;
     frame.push(moved(turnedZ(lathe({ profile: [[0, 0], [under, 0], [under, w + 0.5], [0, w + 0.5]], segments: 12, color: IRON_DK }), -Math.PI / 2), -w / 2 - 0.25, 0, 0));
     for (const sx of [-1, 1]) {
       frame.push(moved(turnedZ(lathe({ profile: [[0, 0], [0.2, 0], [0.2, 0.06], [0, 0.06]], segments: 12, color: FILM.trim }), -Math.PI / 2), sx * (w / 2 + 0.28) - 0.03, 0, 0));
@@ -1621,7 +1622,7 @@
     batten.push(box({ w: w + 0.12, h: 0.08, d: 0.08, color: IRON_DK, offset: { y: -0.04 } }));
     batten.push(box({ w: 0.012, h: 0.24, d: 0.012, color: "#c8b48a", offset: { y: -0.2, z: 0.05 } }), moved(turnedX(torus(0.045, 0.01, FILM.trim, 0, 12, 6), Math.PI / 2), 0, -0.36, 0.05));
     const top = S.y - under, ph = (w - 0.4) * 9 / 16;
-    return { frame: merge(...frame), rods: merge(...rods), cloth: merge(...cloth), batten: merge(...batten), chord, under, top, picture: { x: S.x, y: top - S.drop / 2, z: S.z + 0.04, w: w - 0.4, h: ph } };
+    return { frame: merge(...frame), rods: merge(...rods), cloth: merge(...cloth), batten: merge(...batten), roof, under, top, picture: { x: S.x, y: top - S.drop / 2, z: S.z + 0.04, w: w - 0.4, h: ph } };
   });
 
   // The projector's beam, through the hall's dust from the lens to the picture's corners: a long frustum of glass, its
