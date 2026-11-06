@@ -9808,7 +9808,27 @@ const hubSheetPersistence = { name: "side panel persistence", why: "rule: panels
     && !closed.saved.open && closed.saved.tab === "bananas" && closed.saved.rect
     && Math.abs(opened.all[0].rect.x + opened.all[0].rect.width - opened.width) < 0.01
     && railAtEdge(closed.all[0], opened.all[0], closed) && closed.all[0].inert, JSON.stringify({ first, opened, restored, closed }));
-  const layout = { open: true, tab: "bananas", rect: { x: 900, y: 90, width: 420, height: 480 },
+  // A first visit opens Bananas by itself a beat after the world shows; a saved layout, a choice made first or
+  // unreadable storage keeps the panel as it is. Only the first case waits on the director's own timer.
+  const welcomed = async (state, before = "") => {
+    await openWithSheetState(b, url + (state === undefined ? "&welcome=1" : "&welcome=0"), state === undefined ? null : state);
+    if (state === undefined) await untilPage(b, `document.getElementById("sheet").dataset.open === "true"`);
+    return b.evaluate(`(() => { ${before}; const opened = BL.sheet.welcome(), s = document.getElementById("sheet"); let saved = null;
+      try { saved = localStorage.getItem("oogaboogaland.sheet.v1"); } catch { /* the blocked case */ }
+      return { opened, open: s.dataset.open, tab: s.querySelector("[data-tab][aria-selected='true']")?.dataset.tab || null, after: performance.now() - performance.getEntriesByName("ooga:drawn")[0].startTime, saved: saved && JSON.parse(saved).tab }; })()`);
+  };
+  const fresh = await welcomed(undefined);
+  const kept = await welcomed({ open: false, tab: "roster" });
+  const chosen = await welcomed(null, '__ooga.hud.selectTab("roster")');
+  const blockedScript = await b.send("Page.addScriptToEvaluateOnNewDocument", { source: '(() => { const get = Storage.prototype.getItem; Storage.prototype.getItem = function(key) { if (key === "oogaboogaland.sheet.v1") throw new DOMException("blocked", "SecurityError"); return get.call(this, key); }; })();' });
+  let blocked;
+  try { blocked = await welcomed(null); } finally { await b.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: blockedScript.result.identifier }); }
+  record("side panel: a first visit opens Bananas after the world shows, never over a saved layout, an earlier choice or unreadable storage",
+    fresh.open === "true" && fresh.tab === "bananas" && fresh.saved === "bananas" && !fresh.opened && fresh.after >= 1800
+    && !kept.opened && kept.open === "false" && kept.saved === "roster"
+    && !chosen.opened && chosen.open === "true" && chosen.tab === "roster"
+    && !blocked.opened && blocked.open === "false", JSON.stringify({ fresh, kept, chosen, blocked }));
+  const layout ={ open: true, tab: "bananas", rect: { x: 900, y: 90, width: 420, height: 480 },
     windows: [{ tab: "roster", rect: { x: 140, y: 130, width: 360, height: 430 } }] };
   await openWithSheetState(b, url, layout);
   const multiple = await b.evaluate(read);

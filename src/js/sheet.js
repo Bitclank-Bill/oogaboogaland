@@ -32,6 +32,9 @@
   // Scene HUDs come and go, but the latest choice belongs to this page even when
   // storage is blocked. Only explicit panel changes update it; game hiding does not.
   let shared = null;
+  // A first visit is a readable storage holding no saved layout, judged once a page. The director asks `welcome`
+  // a beat after the world shows; any panel choice before then, here or by a shortcut, wins instead.
+  let firstVisit = null, live = null;
   const create = ({ lootEnabled, signal }) => {
     const root = document.getElementById("sheet"), parent = root.parentElement;
     const content = root.querySelector(".sheet-content"), nav = root.querySelector(".sheet-panels");
@@ -45,7 +48,14 @@
     const fullHeight = (b) => b.width > b.height ? Math.ceil(b.height * 0.6) : drawerHeight(b);
     let serial = 0, gesture = null, mergeTarget = null, suppressClick = false, hidden = false, folded = false, disposed = false, lootCount = 0, saveTimer = 0;
     if (!shared) {
-      try { shared = JSON.parse(localStorage.getItem(KEY)); } catch { /* Storage may be unavailable. */ }
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (firstVisit === null) firstVisit = raw === null;
+        shared = JSON.parse(raw);
+      } catch {
+        // Storage may be unavailable, which is no first visit: a choice to close could not be remembered.
+        if (firstVisit === null) firstVisit = false;
+      }
     }
     const saved = shared;
     folded = saved?.folded === true;
@@ -260,6 +270,7 @@
       notify();
     };
     const close = (w) => {
+      firstVisit = false;
       if (w.node.contains(document.activeElement)) document.activeElement.blur();
       // A phone's untouched drawer stays untouched, so the sticks keep riding above it.
       if (!coarse.matches || w.node.dataset.dock !== "bottom") measure(w);
@@ -277,6 +288,7 @@
     };
     const select = (w, name, viewed = false) => {
       if (!available(name)) return;
+      firstVisit = false;
       w = ownerOf(name) || w; folded = false;
       w.tab = name; w.open = true; w.node.dataset.open = "true";
       refresh(); front(w); save();
@@ -329,7 +341,7 @@
     on(parent, "pointerdown", (e) => {
       const w = findWindow(e.target);
       if (!w || hidden || e.button !== 0 || !e.isPrimary || gesture) return;
-      front(w); suppressClick = false;
+      front(w); suppressClick = false; firstVisit = false;
       const handle = e.target.closest("[data-tab], .sheet-drag, .sheet-corner, .sheet-edge, .sheet-panels");
       if (!handle) return;
       e.preventDefault(); e.stopPropagation();
@@ -429,7 +441,7 @@
         const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 1) + tabs.length) % tabs.length;
         select(w, tabs[next].dataset.tab, true); tabs[next].focus({ preventScroll: true });
       } else if (handle && arrows.includes(e.key)) {
-        e.preventDefault(); e.stopPropagation(); measure(w);
+        e.preventDefault(); e.stopPropagation(); measure(w); firstVisit = false;
         const step = e.shiftKey ? 32 : 10, dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
         if (handle.dataset.corner || handle.dataset.edge) resize(w, w.bounds, handle.dataset.corner || handle.dataset.edge, dx, dy);
@@ -440,7 +452,7 @@
     on(parent, "dblclick", (e) => {
       const w = findWindow(e.target);
       if (!w || !e.target.closest(".sheet-drag")) return;
-      finish();
+      finish(); firstVisit = false;
       if (w === main) {
         w.rect = null; w.dock = null; savedHeight = null;
         root.style.removeProperty("--sheet-height");
@@ -481,11 +493,17 @@
       for (let i = 0; i < windows.length; i++) windows[i].node.style.zIndex = String((playing ? 90 : 13) + i);
       refresh();
     };
-    return {
+    const api = {
+      // The first visit's Bananas, only while panels are neither hidden nor folded for a game.
+      welcome() {
+        if (!firstVisit || disposed || hidden || playing || folded) return false;
+        select(main, "bananas");
+        return true;
+      },
       setPlaying,
       setLootCount(count) { lootCount = count; showCounts(); },
       selectTab(name) { select(ownerOf(name) || main, name); },
-      fold() { finish(); folded = true; if (document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); save(); },
+      fold() { finish(); firstVisit = false; folded = true; if (document.activeElement?.closest(".sheet")) document.activeElement.blur(); refresh(); save(); },
       escape() {
         const w = [...windows].reverse().find((w) => !w.node.hidden && w.node.dataset.open === "true" && w.node.getClientRects().length);
         if (!w) return false;
@@ -504,9 +522,18 @@
         root.querySelector(".sheet-drag").remove();
         for (const handle of root.querySelectorAll(".sheet-corner, .sheet-edge")) handle.remove();
         root.hidden = false;
+        if (live === api) live = null;
         notify();
       }
     };
+    live = api;
+    return api;
   };
-  BL.sheet = { create, visible, tabFor, setBadge, watchViews, attending };
+  // Asked once by the director: a missed moment (no sheet up, a game, a choice already made) is not tried again.
+  const welcome = () => {
+    const opened = !!live && live.welcome();
+    firstVisit = false;
+    return opened;
+  };
+  BL.sheet = { create, visible, tabFor, setBadge, watchViews, attending, welcome };
 })();
