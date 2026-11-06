@@ -223,6 +223,18 @@
     nearTest = null;
     return nearHit;
   };
+  // Whether anything that walks the hall (as `nearJet` counts them) stands within `reach` of the line from (ax, az) to
+  // (bx, bz) with its feet lower than `bottom`, for the crane, which holds its load while anyone is under it; `UNDER` is
+  // the line, set a call at a time.
+  const UNDER = { ax: 0, az: 0, dx: 0, dz: 0, reach: 0, bottom: 0 };
+  const underLine = (x, z, feet, height, radius) => {
+    const L = UNDER, len = L.dx * L.dx + L.dz * L.dz, k = len > 0 ? clamp(((x - L.ax) * L.dx + (z - L.az) * L.dz) / len, 0, 1) : 0;
+    return feet < L.bottom && Math.hypot(x - L.ax - L.dx * k, z - L.az - L.dz * k) < L.reach + radius;
+  };
+  const underLoad = (ax, az, bx, bz, reach, bottom) => {
+    UNDER.ax = ax; UNDER.az = az; UNDER.dx = bx - ax; UNDER.dz = bz - az; UNDER.reach = reach; UNDER.bottom = bottom;
+    return nearJet(underLine);
+  };
   const accountChanged = () => {
     if (!avatar) return;
     const released = BL.net.state.released;
@@ -882,7 +894,8 @@
     // swings from, the ropes and the hook block, and the forklift's beacon on each end of the bridge, a node each: LJ-02
     // at work (`hangar-crane.js`), its crate, the laydown stands it moves it between and the safety spot it throws on the
     // floor, LJ-01 parked at the far end, its beacons dark; all but the beacons and the spot dims with the hall's glass.
-    // LJ-02 stops while an anomaly has the hall's power off (`powered`).
+    // LJ-02 stops while an anomaly has the hall's power off (`powered`), and holds its load while anything that walks the
+    // hall stands under it (`underLoad`).
     {
       const C = HM.CRANE, g = HM.crane();
       const crane = (at, parts) => {
@@ -910,7 +923,7 @@
       addChild(work.crate, work.sling, work.slack);
       addChild(root, work.spot);
       s.glass.push(work.crate);
-      s.crane = BL.hangarCrane.create({ C, nodes: work, root, powered: () => s.anomaly.powered, cue: (name, x, y, z) => audio && audio.craneCue(name, x, y, z) });
+      s.crane = BL.hangarCrane.create({ C, nodes: work, root, powered: () => s.anomaly.powered, under: underLoad, cue: (name, x, y, z) => audio && audio.craneCue(name, x, y, z) });
       s.farCrane = crane(C.far, g.farTrolley);
     }
     // The forklift, parked on the runway by the steps.

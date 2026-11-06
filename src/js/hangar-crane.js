@@ -15,11 +15,15 @@
 // While a job runs the warning beacons on the bridge's ends turn (`BEACON`), each flashing as its reflector passes the
 // view, and the trolley throws its blue safety spot on the floor under the hook (`SPOT`). In a blackout (`powered`
 // false) its brakes set at once and everything stops where it is (`BRAKE`), the load swinging on, the beacons and the
-// spot dark, until the power is back and it carries on.
+// spot dark, until the power is back and it carries on. And it never moves its load over anyone: while anything that
+// walks the hall stands under the load, or where the load would come to rest if it stopped now, it stops
+// and holds (`HOLD`), and carries on once they have been clear a moment.
 //
-// `create({ C, nodes, root, cue, powered })` takes the crane's nodes (its bridge, trolley, the `pivot` the ropes and hook
-// hang from, the ropes, the hook, the crate, and on it the taut sling and the slack one, its `beacons` and the floor's
-// `spot`), the scene's root, whether the hall has power (`powered()`) and where its sound's cues go (`cue(name, x, y, z)`: `brake` as a motion starts and stops,
+// `create({ C, nodes, root, cue, powered, under })` takes the crane's nodes (its bridge, trolley, the `pivot` the ropes
+// and hook hang from, the ropes, the hook, the crate, and on it the taut sling and the slack one, its `beacons` and the
+// floor's `spot`), the scene's root, whether the hall has power (`powered()`), whether anything that walks stands within
+// `reach` of the line from (ax, az) to (bx, bz) lower than `bottom` (`under(ax, az, bx, bz, reach, bottom)`) and where
+// its sound's cues go (`cue(name, x, y, z)`: `brake` as a motion starts and stops,
 // `rattle` as the sling is hooked on or off, `lift` as the ropes take the crate's weight, `land` as it is set down), and
 // returns `update(dt, eye)` (`eye` the view's position, for the beacons' flash), `sound` (where its trolley is and how
 // fast its travel and its hoist run, 0 to 1, kept current for `hangarAudio.watchCrane`) and `debug`. Allocates nothing a
@@ -38,6 +42,9 @@
   const ACCEL = { bridge: 0.2, trolley: 0.18, hoist: 0.35 };
   // How hard the brakes stop each motion when the power goes (m/s²).
   const BRAKE = { bridge: 1, trolley: 1, hoist: 1.5 };
+  // Holding for someone under the load: how far from the hook's line a body's edge counts as under it (the crate's
+  // corners and a margin, m), and how long they must have been clear before it carries on (s).
+  const HOLD = { reach: 1.2, clear: 1.5 };
   const CREEP = 0.4, REACH = 0.3, RIG = 3, TAKE = 1.5, SETTLE = 6, WAIT = [30, 60], FIRST = [6, 12];
   // The swing: gravity, its damping, and stronger damping within `STEADY` metres of the stand, where the riggers'
   // hands are on it; still enough to set down below `STILL` radians.
@@ -53,7 +60,7 @@
   const BRIDGE = 1, TROLLEY = 2, HOIST = 3, PAUSE = 4, TIE = 5, LIFT = 6, LAND = 7, UNTIE = 8, CALM = 9, WAITING = 10;
   const NAMES = ["", "bridge", "trolley", "hoist", "pause", "tie", "lift", "land", "untie", "settle", "wait"];
 
-  const create = ({ C, nodes, root, cue, powered }) => {
+  const create = ({ C, nodes, root, cue, powered, under }) => {
     const { bridge, trolley, pivot, ropes, hook, sling, crate, slack, beacons, spot } = nodes;
     const ch = C.crate[1], lane = C.park.z;
     // The rope's length with the crate on a stand under it and its sling taut, with the hook just above the crate,
@@ -63,7 +70,7 @@
     const axes = { bridge: { p: C.park.z, v: 0, a: 0 }, trolley: { p: C.park.x, v: 0, a: 0 }, hoist: { p: up, v: 0, a: 0 } };
     const sway = { x: 0, wx: 0, z: 0, wz: 0 };
     const steps = Array.from({ length: 32 }, () => ({ kind: 0, to: 0, max: 0 }));
-    const state = { n: 0, i: 0, t: 0, at: 0, tied: false, loaded: false, jobs: 0, began: false, live: true, stopped: false };
+    const state = { n: 0, i: 0, t: 0, at: 0, tied: false, loaded: false, jobs: 0, began: false, live: true, stopped: false, held: false, clear: 0, holds: 0 };
     const sound = { x: 0, y: C.railY + 1, z: 0, travel: 0, hoist: 0 };
     let count = 0, sweep = 0, lit = 0;
     const push = (kind, to = 0, max = 0) => { const s = steps[count++]; s.kind = kind; s.to = to; s.max = max; };
@@ -194,8 +201,18 @@
         state.live = live;
         if (!live && moving(s.kind) && state.began) { at("brake"); state.began = false; state.stopped = true; }
       }
+      // Anyone under the load, where it hangs or where it would come to rest if it stopped now: it holds until they have
+      // been clear a moment, its brakes set on the motor that ran.
+      if (live && state.loaded && moving(s.kind)) {
+        const x = T.p, z = B.p + 0.1, stopX = T.v * Math.abs(T.v) / (2 * ACCEL.trolley), stopZ = B.v * Math.abs(B.v) / (2 * ACCEL.bridge);
+        if (under(x, z, x + stopX, z + stopZ, HOLD.reach, C.railY + C.ropeTop - H.p + C.eye - C.sling - ch)) {
+          state.clear = 0;
+          if (!state.held) { state.held = true; state.holds++; if (state.began) { at("brake"); state.began = false; state.stopped = true; } }
+        } else if (state.held && (state.clear += dt) >= HOLD.clear) state.held = false;
+      } else state.held = false;
       let done = false;
       if (!live) halt(BRAKE, dt);
+      else if (state.held) halt(ACCEL, dt);
       else {
         // The brake lets go as a motion starts, unless the same motor ran the step before and has not stopped since.
         if (!state.began) {
@@ -254,6 +271,8 @@
       get sway() { return Math.hypot(sway.x, sway.z); },
       get spot() { return lit; },
       get live() { return state.live; },
+      get held() { return state.held; },
+      get holds() { return state.holds; },
       run() { if (steps[state.i].kind === WAITING) state.t = steps[state.i].to; }
     };
     return { update, sound, debug };
