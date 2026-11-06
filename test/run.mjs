@@ -21786,10 +21786,25 @@ scene("hub", { label: "reset storage race", steps: [{ name: "reset storage race"
     record("browser reset: the same pooled browser clears final timer and pagehide writes before the next task", reused && kept.marker === null && kept.timer === null && kept.pagehide === null, JSON.stringify({ reused, ...kept }));
   } finally { next?.close(true); first?.close(true); rmSync(dir, { recursive: true, force: true }); }
 } }] });
+// The notification bells as rendered: which panels carry one, how many show, how many are expanded, and, while the
+// Players panel's shows, its button's size and how far its drawn bell sits from the middle of the circle's inside.
+const bellState = `(() => {
+  const views = [...document.querySelectorAll(".panel .sheet-notifications")], bell = document.querySelector("#players-panel .sheet-bell");
+  const r = bell.getBoundingClientRect(), icon = bell.querySelector("svg path").getBoundingClientRect(), drawn = r.width > 0 && icon.width > 0;
+  return { panels: views.map(v => v.closest(".panel").dataset.panel).sort().join(), shown: views.filter(v => !v.hidden).length,
+    expanded: views.filter(v => !v.querySelector(".sheet-unread").hidden || v.querySelector("button").getAttribute("aria-expanded") !== "false").length,
+    coarse: matchMedia("(pointer: coarse)").matches, size: drawn ? Math.round(r.width) + "x" + Math.round(r.height) : "",
+    dx: drawn ? Math.abs(icon.left + icon.width / 2 - (r.left + bell.clientLeft + bell.clientWidth / 2)) : null,
+    dy: drawn ? Math.abs(icon.top + icon.height / 2 - (r.top + bell.clientTop + bell.clientHeight / 2)) : null };
+})()`;
+const BELL_PANELS = "bananas,chat,loot,players,roster";
+// Every panel's bell shows, closed, with the drawn bell within half a pixel of its circle's middle at the pointer's size.
+const bellsCentred = (s) => s.panels === BELL_PANELS && s.shown === 5 && s.expanded === 0 && s.size === (s.coarse ? "40x40" : "26x26") && s.dx <= 0.5 && s.dy <= 0.5;
 // #430: joins named and counted, chat lines counted, each count cleared only by looking at its tab, joins read aloud on request.
 const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes online is named on screen and counted on the Players tab, new chat lines are counted on the Ooga Chat tab, each count clears only when its tab is looked at, and joins are read aloud only when asked", run: async (b) => {
   // The Players panel is the saved selection, so it shows as soon as the visitor is signed in, without being looked at.
   await openWithSheetState(b, hubPage(src, "pos=0"), { open: true, tab: "players" });
+  const signedOutBells = await b.evaluate(bellState);
   await b.evaluate(`(async () => {
     const W = window.__joins = { fetch: window.fetch, WebSocket: window.WebSocket, said: [], lines: [], cancelled: 0, sockets: [] };
     window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) })
@@ -21818,6 +21833,9 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     W.room({ t: "chat-history", messages: [{ id: 10, at: 0, login: "anna", name: "Anna", text: "earlier" }] });
   })()`);
   const arrived = await b.evaluate(`__joins.read()`);
+  const signedInBells = await b.evaluate(bellState);
+  record("join alerts: a signed-out arrival shows no notification bell on any panel, and signing in puts one on all five panels, centred in its circle",
+    signedOutBells.panels === BELL_PANELS && signedOutBells.shown === 0 && bellsCentred(signedInBells), JSON.stringify({ signedOutBells, signedInBells }));
   const joins = await b.evaluate(`(() => { const W = __joins, out = {};
     W.join(3, "<b>Bea</b>"); out.one = W.read();
     W.join(3, "<b>Bea</b>"); W.room({ t: "leave", id: 3 }); W.join(3, "<b>Bea</b>"); out.again = W.read();
@@ -21908,8 +21926,13 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
   const out = await b.evaluate(`(async () => {
     const W = __joins, unread = W.read().players;
     document.getElementById("players-speak-input").focus(); W.join(24, "Pat"); W.join(25, "Quin");
-    const before = W.read(), stale = W.lines.at(-1), count = W.said.length; await BL.net.logout();
+    const before = W.read(), stale = W.lines.at(-1), count = W.said.length;
+    // A breakdown tapped open before signing out closes with every bell; signing back in returns them all, closed.
+    document.querySelector("#players-panel .sheet-bell").click(); const bellsPinned = ${bellState};
+    await BL.net.logout(); const bellsOut = ${bellState};
     if (stale.onend) stale.onend(); const r = { ...W.read(), stoppedWithoutNewBadge: before.players === unread && W.cancelled === 2 && W.said.length === count };
+    BL.net.state.resolved = false; await BL.net.recheck(); r.bells = { pinned: bellsPinned, out: bellsOut, back: ${bellState}, me: !!BL.net.state.me };
+    await BL.net.logout(); r.bells.again = ${bellState};
     delete speechSynthesis.speak; delete speechSynthesis.cancel; window.fetch = W.fetch; window.WebSocket = W.WebSocket;
     Object.assign(BL.net.state, { backend: false, started: false, resolved: true }); BL.hud.showAccount(BL.net.state); delete window.__joins; return r;
   })()`);
@@ -21918,6 +21941,9 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
     collapsed && settings.closed && settings.grouped && settings.step === "1" && settings.min === "1" && settings.max === "61" && box.shown && box.said === 0 && spoken.saved === "on" && spoken.queuedWhileMuted && spoken.disabled && spoken.cancelledQueue && spoken.staleIgnored
       && spoken.said.join("|") === "Joins will be read aloud|Eve is online|Fay and Gus are online|Hal is online|Ivy is online|Joins will be read aloud|Lou is online"
       && spoken.muted.toast === "Dee, Eve, Fay and 3 others are online" && out.players === "" && out.chat === "" && out.stoppedWithoutNewBadge, JSON.stringify({ box, spoken, out }));
+  const { pinned, out: bellsOut, back: bellsBack, again } = out.bells;
+  record("join alerts: signing out hides and closes every panel's bell, even one tapped open, and signing back in returns all five closed and centred",
+    pinned.expanded === 1 && pinned.shown === 5 && bellsOut.shown === 0 && bellsOut.expanded === 0 && out.bells.me && bellsCentred(bellsBack) && again.shown === 0, JSON.stringify(out.bells));
   await b.open(hubPage(src, "pos=0")); await untilReady(b);
   record("join alerts: the enabled reading choice survives reload", await b.evaluate('BL.players.stats.speakOn&&document.getElementById("players-speak-input").checked'));
 
@@ -21925,6 +21951,7 @@ const hubJoinAlerts = { name: "join alerts", why: "rule: a player who comes onli
 // #443: operate the real controls with native keyboard/touch events while voice has never connected.
 const hubPlayerPreferences = { name: "player preferences", why: "regression: hearing range and individual mute were hidden before voice, and player names had no independent volume disclosure", run: async b => {
   await openWithSheetState(b, hubPage(src, "pos=0"), { open: true, tab: "players" });
+  const signedOutBells = await b.evaluate(bellState);
   await b.evaluate(`(async () => {
     const W = window.__playerPrefs = { fetch: window.fetch, WebSocket: window.WebSocket, gum: navigator.mediaDevices.getUserMedia, aim: BL.pilot.turnToward, captures: 0, voiceCalls: 0, turns: 0, sockets: [], activations: [] };
     window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "listener", display: "Listener" } }) })
@@ -21939,6 +21966,9 @@ const hubPlayerPreferences = { name: "player preferences", why: "regression: hea
     W.peer = (id, zone) => ({ id, login: "peer" + id, display: "Peer " + id, zone, x: 2, y: 0, z: 3, yaw: 0 });
     W.mobile = matchMedia("(pointer: coarse)").matches;
   })()`);
+  const signedInBells = await b.evaluate(bellState);
+  record("player preferences: on a touch screen the bell is hidden on every panel signed out, and signed in shows on all five at its 40px touch size, centred in its circle",
+    signedOutBells.panels === BELL_PANELS && signedOutBells.shown === 0 && signedInBells.coarse && bellsCentred(signedInBells), JSON.stringify({ signedOutBells, signedInBells }));
   await b.evaluate(`document.getElementById("players-settings").open = true`);
   const alone = await b.evaluate(`(() => { const e = document.getElementById("players-hearing-range"); return { shown: !document.getElementById("players-hearing").hidden, enabled: !e.disabled, voice: BL.voice.stats.enabled, peers: BL.net.remotes.size }; })()`);
   await b.focus(true);
