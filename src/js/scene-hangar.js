@@ -886,7 +886,7 @@
         const ropes = createNode({ position: { x: 0, y: C.ropeTop, z: 0 }, scale: { x: 1, y: C.rope, z: 1 }, geometry: g.rope });
         const hook = createNode({ position: { x: 0, y: C.ropeTop - C.rope, z: 0 }, geometry: g.hook });
         const lamps = createNode({ geometry: g.glow, sightHidden: true, depthBias: -0.25 }), bolts = createNode({ geometry: g.trolleyGlow, sightHidden: true });
-        addChild(trolley, createNode({ geometry: parts.plate, depthBias: -0.15 }), ropes, hook, bolts);
+        addChild(trolley, createNode({ geometry: parts.trim, depthBias: -0.3 }), ropes, hook, bolts);
         const crate = load ? createNode({ position: { x: 0, y: C.eye, z: 0.1 }, geometry: g.load }) : null;
         if (crate) addChild(hook, crate);
         addChild(bridge, lamps, trolley);
