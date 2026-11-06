@@ -2,7 +2,8 @@
 // walkway, as its concept draws it. A steel landing inside the door with steps down to the runway, which runs down the
 // middle of the floor between hazard-striped edges and blue marker lamps, and on through the launch tunnel's octagonal
 // frames, each lined with blue neon, to the launch shield at its far end, sealed until Jet v2 flies, space beyond.
-// Steel catwalks run along both side walls on brackets, a stair up to each from the back. On the right, in the
+// A crane runs under the roof's ribs, and steel catwalks run along both side walls on
+// brackets, a stair up to each from the back. On the right, in the
 // hall's wider half, the Jet stands docked beside the runway, nose to the tunnel, inside its striped bay: a steel
 // gangway runs along its left flank at the cockpit's sill, bridging the wing, with a long steel stair down from
 // behind the wing toward the runway; trestles stand under its wings. On the left the crew's workstations stand in rows, their
@@ -18,7 +19,7 @@
   const BL = window.BL = window.BL || {};
   const { models, math } = BL;
   const FM = BL.factoryModels, JM = BL.jetModels;
-  const { cached, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, lanternParts, turn, shaded, forwardLathe } = models;
+  const { cached, box, bevelBox, merge, noShadow, moved, turnedX, turnedY, turnedZ, beam, lathe, torus, prism, tube, lanternParts, turn, shaded, forwardLathe } = models;
   const { mulberry32 } = math;
   const TAU = Math.PI * 2;
 
@@ -467,6 +468,189 @@
     });
     for (const [ax, ay, az, bx, by, bz, w] of L.catwalkStairs) geos.push(...steelStair(ax, ay, az, bx, by, bz, w, [true, false]));
     return merge(...geos);
+  });
+
+  // ---- the ceiling crane --------------------------------------------------------------------------------------
+
+  // The overhead cranes, after their concept: each a yellow box-girder bridge across the hall on two end trucks that
+  // run on the runways along the side walls (`x`, their rails' tops at `railY`, the length of the hall between end
+  // stops at `runway`'s ends). The working crane, LJ-02, travels its bridge's middle `travel` along the hall, clear of
+  // the projector's cradle and the film screen hanging from the roof; its sister, LJ-01, stands parked at the far end
+  // (`far`). The girder's top is the walkway, railed along its back; amber lamps light its underside and front, a twin
+  // lamp box stands on each end, and the festoon carrying the trolley's power hangs in loops near its left end. The
+  // trolley (`trolley`, the range of its middle across the hall, the hook kept off the catwalks) rides the girder's
+  // front half: a navy hoist house with the bolt on both faces, the railing passing behind it, and a yellow carriage
+  // down the girder's face and under it with its number on a plate, the hoist's drum under that and the ropes from it,
+  // `ropeTop` under the trolley's frame, down to the hook block, at least `rope` long. From the hook hangs a navy crate
+  // with yellow edges on a four-leg sling (`load`, `sling` from the hook's eye to the crate's top, `crate` its size).
+  // Where LJ-02 parks between jobs (`park`): at the runways' door end, the trolley over the right of the hall behind the
+  // Jet's tail, its hook up. `cx` is the middle between the runways, where a bridge's frame stands. Its yellow and navy
+  // glow a little (`lift`), as the concept's catch the hall's light, and dim with the hall's glass.
+  const CRANE = {
+    railY: 14.2, x: [HALL.x0 + 2.65, HALL.x1 - 2.65], runway: [-32.4, 28.4], travel: [-16, 11.5], trolley: [-15, 20.5],
+    ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.5, x: 19 }, far: { z: -30.2, x: -4 }, lift: 0.16,
+    yellow: "#f2b630", yellowDk: "#c88a1c", rivet: "#9a6a12", navy: "#1e2c66", navyDk: "#131c45", dark: "#2b3038", rail: "#8a929c", bracket: "#4b525c",
+    amber: "#ffb347", plate: "#ffd04a"
+  };
+  CRANE.cx = (CRANE.x[0] + CRANE.x[1]) / 2;
+  // The cranes' meshes: their runways (`runways`, in the hangar's frame), and the rest each in its own frame for the
+  // scene to move: a bridge (`bridge`, its lamps `glow`) with its frame's origin on the runways' rail line midway between
+  // them, x along the bridge; a trolley (`trolley`, LJ-01's `farTrolley`: its `body` and its number's `plate`, their
+  // bolts and lamps `trolleyGlow`) with its origin under its middle at that same height; the hoist's four falls a metre
+  // long, hanging from y 0 (`rope`, the scene stretches them to length); the hook block hanging from its top (`hook`);
+  // and the load on the hook, its sling's eye at the origin (`load`).
+  const crane = cached(() => {
+    const C = CRANE, H = (C.x[1] - C.x[0]) / 2, bridge = [], glow = [], trolleyGlow = [], hook = [], load = [];
+    // The runways along the side walls: an I-beam with its rail on top, on a bracket and knee brace off each wall rib it
+    // passes, with an end stop at each end; and down the left one the conductor bar.
+    const runways = [], [r0, r1] = C.runway, len = r1 - r0, rz = (r0 + r1) / 2, ry = C.railY;
+    for (const [x, s] of [[C.x[0], -1], [C.x[1], 1]]) {
+      runways.push(box({ w: 0.36, h: 0.05, d: len, color: C.dark, offset: { x, y: ry - 0.105, z: rz } }));
+      runways.push(box({ w: 0.06, h: 0.52, d: len, color: C.dark, offset: { x, y: ry - 0.39, z: rz } }));
+      runways.push(box({ w: 0.36, h: 0.05, d: len, color: C.dark, offset: { x, y: ry - 0.675, z: rz } }));
+      runways.push(box({ w: 0.07, h: 0.08, d: len, color: C.rail, offset: { x, y: ry - 0.04, z: rz } }));
+      const face = s < 0 ? HALL.x0 + LAYOUT.shell.face + LAYOUT.shell.rib : HALL.x1 - LAYOUT.shell.face - LAYOUT.shell.rib, out = x - s * 0.24;
+      for (const z of LAYOUT.gantries) {
+        runways.push(box({ w: Math.abs(out - face), h: 0.22, d: 0.7, color: C.bracket, offset: { x: (out + face) / 2, y: ry - 0.81, z } }));
+        runways.push(beam(face, ry - 1.9, z, out, ry - 0.92, z, 0.16, C.bracket));
+      }
+      for (const [z, k] of [[r0 + 0.15, 1], [r1 - 0.15, -1]]) {
+        runways.push(box({ w: 0.4, h: 0.5, d: 0.25, color: C.yellow, offset: { x, y: ry + 0.25, z } }));
+        runways.push(box({ w: 0.3, h: 0.3, d: 0.12, color: INK, offset: { x, y: ry + 0.25, z: z + k * 0.18 } }));
+      }
+    }
+    runways.push(box({ w: 0.05, h: 0.1, d: len, color: "#b8332a", offset: { x: C.x[0] + 0.07, y: ry - 0.45, z: rz } }));
+    // Black and yellow stripes on a face square to z, from x0 to x1 and y0 to y1, at z, as parallelograms on the yellow.
+    const stripes = (out, x0, x1, y0, y1, z, width, lean) => {
+      for (let x = x0; x + width + lean <= x1 + 1e-6; x += width * 2) out.push(moved(prism([[x, y0], [x + width, y0], [x + width + lean, y1], [x + lean, y1]], 0.02, INK), 0, 0, z));
+    };
+    // The end trucks on the rails: a dark frame, its wheels' lower halves showing, yellow ends with black buffers and a
+    // striped plate on each end.
+    for (const s of [-1, 1]) {
+      const x = s * H;
+      bridge.push(box({ w: 0.7, h: 0.5, d: 3.2, color: C.dark, offset: { x, y: 0.32 } }));
+      for (const k of [-1, 1]) {
+        bridge.push(box({ w: 0.74, h: 0.54, d: 0.12, color: C.yellow, offset: { x, y: 0.32, z: k * 1.56 } }));
+        bridge.push(box({ w: 0.34, h: 0.22, d: 0.14, color: INK, offset: { x, y: 0.42, z: k * 1.69 } }));
+        bridge.push(moved(turnedZ(lathe({ profile: [[0, -0.08], [0.24, -0.08], [0.24, 0.08], [0, 0.08]], segments: 12, color: "#1d2126" }), Math.PI / 2), x, 0.24, k * 1.1));
+      }
+      stripes(bridge, x - 0.3, x + 0.3, 0.12, 0.26, 1.63, 0.07, 0.07);
+    }
+    // The girder: a box with a lip of plate under it and on top, its face in panels with rivets along the top and the
+    // bottom, the trolley's rails along its top's front half and the walkway's grating on the back half.
+    // It is laid in panels between its stiffeners, and so is everything along it, so the Canvas 2D sort never lets one
+    // long face paint over what is on it.
+    const W = 2 * H + 0.7, panels = Math.ceil(W / 2.4), pw = W / panels, lift = C.lift;
+    for (let i = 0; i < panels; i++) {
+      const x = -W / 2 + (i + 0.5) * pw;
+      bridge.push(box({ w: pw, h: 0.15, d: 2.0, color: C.yellowDk, emissive: lift, offset: { x, y: 0.675 } }));
+      bridge.push(box({ w: pw, h: 1.0, d: 1.8, color: C.yellow, emissive: lift, offset: { x, y: 1.25 } }));
+      bridge.push(box({ w: pw, h: 0.05, d: 1.86, color: C.yellowDk, emissive: lift, offset: { x, y: 1.775 } }));
+    }
+    for (const z of [-0.915, 0.915]) {
+      for (let i = 0; i < panels; i++) bridge.push(box({ w: pw, h: 0.035, d: 0.02, color: C.yellowDk, offset: { x: -W / 2 + (i + 0.5) * pw, y: 1.43, z } }));
+      for (let i = 1; i < panels; i++) bridge.push(box({ w: 0.06, h: 0.96, d: 0.03, color: C.yellowDk, offset: { x: -W / 2 + i * pw, y: 1.25, z } }));
+    }
+    for (let x = -W / 2 + 0.3; x < W / 2; x += 0.6) for (const y of [1.62, 0.86]) bridge.push(box({ w: 0.06, h: 0.06, d: 0.03, color: C.rivet, offset: { x, y, z: 0.92 } }));
+    for (let i = 0; i < panels; i++) {
+      const x = -W / 2 + (i + 0.5) * pw;
+      for (const z of [0.15, 0.75]) bridge.push(box({ w: pw, h: 0.06, d: 0.07, color: C.dark, offset: { x, y: 1.83, z } }));
+      bridge.push(box({ w: pw, h: 0.02, d: 0.9, color: "#3a4049", offset: { x, y: 1.81, z: -0.43 } }));
+    }
+    // The railing along the walkway's back edge, and across both ends.
+    const posts = Math.round(W / 1.2);
+    for (let i = 0; i <= posts; i++) bridge.push(box({ w: 0.06, h: 0.9, d: 0.06, color: C.yellow, offset: { x: -W / 2 + 0.05 + (W - 0.1) * i / posts, y: 2.25, z: -0.85 } }));
+    for (const [y, h] of [[2.68, 0.06], [2.22, 0.05], [1.88, 0.1]]) {
+      for (let i = 0; i < panels; i++) bridge.push(box({ w: pw, h, d: 0.06, color: C.yellow, offset: { x: -W / 2 + (i + 0.5) * pw, y, z: -0.85 } }));
+      for (const s of [-1, 1]) bridge.push(box({ w: 0.06, h, d: 0.9, color: C.yellow, offset: { x: s * (W / 2 - 0.05), y, z: -0.4 } }));
+    }
+    for (const s of [-1, 1]) bridge.push(box({ w: 0.06, h: 0.9, d: 0.06, color: C.yellow, offset: { x: s * (W / 2 - 0.05), y: 2.25, z: 0.05 } }));
+    // Hazard stripes along the face's lower band right of the middle, and a navy badge on the face near each end.
+    stripes(bridge, 1.6, 5.4, 0.8, 1.38, 0.925, 0.26, 0.42);
+    for (const s of [-1, 1]) {
+      bridge.push(box({ w: 0.55, h: 0.55, d: 0.04, color: C.navy, offset: { x: s * (H - 1.4), y: 1.2, z: 0.92 } }));
+      bridge.push(moved(FM.smoothBolt(0.36, 0.03, "#ffd23a", 0), s * (H - 1.4), 1.2, 0.95));
+    }
+    // The lamps: panels under the lip, each lens showing along its front edge too, and a twin lamp box on each end.
+    for (let i = 0; i < 8; i++) {
+      const x = -H + 2 + i * (2 * H - 4) / 7;
+      bridge.push(box({ w: 1.1, h: 0.08, d: 0.7, color: C.dark, offset: { x, y: 0.56, z: 0.5 } }));
+      glow.push(box({ w: 0.96, h: 0.03, d: 0.56, color: C.amber, emissive: 1, offset: { x, y: 0.51, z: 0.5 } }));
+      glow.push(box({ w: 0.9, h: 0.09, d: 0.02, color: C.amber, emissive: 1, offset: { x, y: 0.675, z: 1.005 } }));
+    }
+    for (const s of [-1, 1]) {
+      const x = s * (H - 0.4);
+      bridge.push(box({ w: 1.0, h: 0.5, d: 0.6, color: C.yellowDk, offset: { x, y: 2.06, z: 0.35 } }));
+      for (const dx of [-0.23, 0.23]) for (const k of [-1, 1]) {
+        bridge.push(box({ w: 0.4, h: 0.36, d: 0.03, color: C.dark, offset: { x: x + dx, y: 2.06, z: 0.35 + k * 0.31 } }));
+        glow.push(box({ w: 0.32, h: 0.28, d: 0.02, color: C.amber, emissive: 1, offset: { x: x + dx, y: 2.06, z: 0.35 + k * 0.325 } }));
+      }
+    }
+    // The festoon: a track under the lip's back edge and two cables hanging from it in loops near the left end.
+    bridge.push(box({ w: 7, h: 0.08, d: 0.1, color: C.dark, offset: { x: -H + 4, y: 0.56, z: -0.75 } }));
+    for (const [x0, x1, sag, z] of [[-H + 0.8, -H + 3.2, 1.3, -0.7], [-H + 3.2, -H + 5.4, 1.05, -0.8], [-H + 0.9, -H + 3.4, 1.15, -0.8]]) {
+      bridge.push(tube({ path: (t) => ({ x: x0 + (x1 - x0) * t, y: 0.5 - sag * Math.sin(Math.PI * t), z }), radius: () => 0.04, rings: 14, segments: 6, colorFn: () => "#15171b" }));
+      for (const x of [x0, x1]) bridge.push(box({ w: 0.16, h: 0.12, d: 0.14, color: C.dark, offset: { x, y: 0.48, z } }));
+    }
+    // The trolley: saddles on the rails, the navy hoist house framed at its edges with a bolt at each corner of its face
+    // and the bolt on both faces, a darker lid; the yellow carriage down the girder's face with the number's plate, and
+    // under the girder, the drum under it the ropes come off, and two small amber lamps on the carriage's ends.
+    const trolleyParts = (text) => {
+      const out = [], plate = [];
+      for (const x of [-0.8, 0.8]) for (const z of [0.15, 0.75]) out.push(box({ w: 0.34, h: 0.12, d: 0.2, color: C.dark, offset: { x, y: 1.88, z } }));
+      out.push(box({ w: 2.0, h: 0.95, d: 1.25, color: C.navy, emissive: C.lift, offset: { y: 2.3, z: 0.33 } }));
+      out.push(box({ w: 2.06, h: 0.06, d: 1.31, color: C.navyDk, offset: { y: 2.78, z: 0.33 } }));
+      for (const k of [-1, 1]) {
+        for (const sx of [-1, 1]) out.push(box({ w: 0.08, h: 0.95, d: 0.04, color: C.navyDk, offset: { x: sx * 0.96, y: 2.3, z: 0.33 + k * 0.63 } }));
+        out.push(box({ w: 2.0, h: 0.08, d: 0.04, color: C.navyDk, offset: { y: 1.86, z: 0.33 + k * 0.63 } }));
+        for (const sx of [-1, 1]) for (const sy of [-1, 1]) out.push(box({ w: 0.08, h: 0.08, d: 0.03, color: "#8a929c", offset: { x: sx * 0.84, y: 2.3 + sy * 0.36, z: 0.33 + k * 0.66 } }));
+      }
+      out.push(box({ w: 2.3, h: 1.45, d: 0.16, color: C.yellow, emissive: C.lift, offset: { y: 1.12, z: 1.0 } }));
+      out.push(box({ w: 2.3, h: 0.5, d: 2.1, color: C.yellow, emissive: C.lift, offset: { y: 0.35, z: 0.03 } }));
+      out.push(box({ w: 2.34, h: 0.06, d: 2.14, color: C.yellowDk, offset: { y: 0.1, z: 0.03 } }));
+      for (const sx of [-1, 1]) for (const sy of [0.5, 1.75]) out.push(box({ w: 0.08, h: 0.08, d: 0.03, color: C.rivet, offset: { x: sx * 1.05, y: sy, z: 1.095 } }));
+      // The number's plate, a grid of cells each yellow or black: its border, a margin and its letters, none over another.
+      const G = BL.hubModels.SIGN_GLYPHS, cell = 0.06, cols = text.length * 4 + 3, py = 0.95;
+      for (let c = 0; c < cols; c++) for (let r = 0; r < 9; r++) {
+        const gc = c - 2, gr = r - 2, i = Math.floor(gc / 4), border = c === 0 || c === cols - 1 || r === 0 || r === 8;
+        const ink = border || (gc >= 0 && gc % 4 < 3 && i < text.length && gr >= 0 && gr < 5 && G[text[i]][gr][gc % 4] === "1");
+        plate.push(box({ w: cell, h: cell, d: 0.03, color: ink ? INK : C.plate, offset: { x: (c - (cols - 1) / 2) * cell, y: py + (4 - r) * cell, z: 1.1 } }));
+      }
+      out.push(moved(turnedZ(lathe({ profile: [[0, -0.75], [0.22, -0.75], [0.22, 0.75], [0, 0.75]], segments: 14, color: C.dark }), Math.PI / 2), 0, -0.1, 0.1));
+      for (const sx of [-1, 1]) {
+        out.push(box({ w: 0.1, h: 0.5, d: 0.5, color: C.yellowDk, offset: { x: sx * 0.8, y: -0.1, z: 0.1 } }));
+        out.push(box({ w: 0.04, h: 0.16, d: 0.3, color: C.dark, offset: { x: sx * 1.17, y: 0.35, z: 0.6 } }));
+      }
+      return { body: merge(...out), plate: merge(...plate) };
+    };
+    trolleyGlow.push(moved(FM.smoothBolt(0.62, 0.05, "#ffd23a", 1), 0, 2.3, 0.99), moved(turnedY(FM.smoothBolt(0.62, 0.05, "#ffd23a", 1), Math.PI), 0, 2.3, -0.33));
+    for (const sx of [-1, 1]) trolleyGlow.push(box({ w: 0.02, h: 0.12, d: 0.24, color: C.amber, emissive: 1, offset: { x: sx * 1.19, y: 0.35, z: 0.6 } }));
+    // The ropes, four falls a metre long, two pairs off the drum.
+    const rope = merge(...[-0.3, -0.2, 0.2, 0.3].map((x) => box({ w: 0.035, h: 1, d: 0.035, color: "#15171b", offset: { x, y: -0.5, z: 0.1 } })));
+    // The hook block: a yellow block with its sheaves on both sides, a black band, the crosshead and the shank, and the
+    // hook itself, curled round under it with its latch, the eye of the sling's link in its throat at `eye`.
+    hook.push(box({ w: 0.6, h: 0.46, d: 0.42, color: C.yellow, emissive: C.lift, offset: { y: -0.23, z: 0.1 } }));
+    for (const sx of [-1, 1]) hook.push(moved(turnedZ(lathe({ profile: [[0, -0.03], [0.17, -0.03], [0.17, 0.03], [0, 0.03]], segments: 12, color: C.dark }), Math.PI / 2), sx * 0.33, -0.2, 0.1));
+    hook.push(box({ w: 0.62, h: 0.07, d: 0.44, color: INK, offset: { y: -0.41, z: 0.1 } }));
+    hook.push(box({ w: 0.34, h: 0.1, d: 0.2, color: C.dark, offset: { y: -0.51, z: 0.1 } }));
+    hook.push(box({ w: 0.11, h: 0.16, d: 0.11, color: C.dark, offset: { y: -0.64, z: 0.1 } }));
+    const hr = 0.17, hy = C.eye + hr;
+    hook.push(tube({ path: (t) => ({ x: -0.02 + Math.sin(-0.2 + t * 4.6) * hr, y: hy + Math.cos(-0.2 + t * 4.6) * hr, z: 0.1 }), radius: (t) => 0.06 - t * 0.025, rings: 16, segments: 8, colorFn: () => C.dark }));
+    hook.push(beam(-0.02 + Math.sin(4.4) * hr, hy + Math.cos(4.4) * hr, 0.1, -0.02, hy + hr, 0.1, 0.025, "#8a929c"));
+    // The load: the sling's master link in the hook, four legs down to the crate's top corners, and the crate, navy
+    // with chunky yellow edges and the bolt on its four faces.
+    const [cw, ch, cd] = C.crate, ct = -C.sling;
+    load.push(moved(turnedX(torus(0.09, 0.025, "#c9a23a", 0, 12, 6), Math.PI / 2), 0, -0.02, 0));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) load.push(beam(0, -0.1, 0, sx * (cw / 2 - 0.12), ct, sz * (cd / 2 - 0.12), 0.035, "#c9a23a"));
+    load.push(box({ w: cw - 0.06, h: ch - 0.06, d: cd - 0.06, color: C.navy, emissive: C.lift, offset: { y: ct - ch / 2 } }));
+    const e = 0.12;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) load.push(box({ w: e, h: ch, d: e, color: C.yellow, emissive: C.lift, offset: { x: sx * (cw / 2 - e / 2), y: ct - ch / 2, z: sz * (cd / 2 - e / 2) } }));
+    for (const y of [ct - e / 2, ct - ch + e / 2]) for (const s of [-1, 1]) {
+      load.push(box({ w: cw, h: e, d: e, color: C.yellow, emissive: C.lift, offset: { y, z: s * (cd / 2 - e / 2) } }));
+      load.push(box({ w: e, h: e, d: cd, color: C.yellow, emissive: C.lift, offset: { x: s * (cw / 2 - e / 2), y } }));
+    }
+    for (let k = 0; k < 4; k++) load.push(moved(turnedY(FM.smoothBolt(0.62, 0.04, "#ffd23a", 0), k * Math.PI / 2), Math.sin(k * Math.PI / 2) * (cw / 2 - 0.02), ct - ch / 2, Math.cos(k * Math.PI / 2) * (cd / 2 - 0.02)));
+    return { runways: merge(...runways), bridge: merge(...bridge), glow: noShadow(merge(...glow)), trolley: trolleyParts("LJ-02"), farTrolley: trolleyParts("LJ-01"), trolleyGlow: noShadow(merge(...trolleyGlow)), rope, hook: merge(...hook), load: merge(...load) };
   });
 
   // ---- the floor's fixtures ---------------------------------------------------------------------------------------
@@ -1968,7 +2152,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, CRANE, crane, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
