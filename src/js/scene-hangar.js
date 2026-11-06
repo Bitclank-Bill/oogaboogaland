@@ -912,12 +912,13 @@
       addChild(root, createNode({ position: { x: hx + side * (hangarSign.width / 2 + 0.6), y: hy, z: hz + 0.05 }, geometry: FM.smoothBolt(1.2, 0.1, "#ffd23a", 1), sightHidden: true }));
       addChild(root, createNode({ position: { x: hx + side * (hangarSign.width / 2 - 0.3), y: (hy + L.gantryY) / 2 + 0.4, z: hz - 0.05 }, geometry: models.box({ w: 0.06, h: L.gantryY - hy - 1.2, d: 0.06, color: "#2c2e33" }) }));
     }
-    // The door, the Factory's own turned to face in, with the hall's warm dark through it and its sign the way back.
+    // The door, the Factory's own stone arch turned to face in and set in the hangar's steel bulkhead, with the hall's
+    // warm dark through it and its sign the way back.
     const door = FM.hangarDoor(), D = FM.HANGAR_DOOR;
     s.door = createNode({ position: { x: DOOR.x, y: DOOR.y, z: DOOR.z }, rotation: { x: 0, y: DOOR.turn, z: 0 } });
-    s.doorStone = createNode({ geometry: door.stone });
+    s.doorStone = createNode({ geometry: door.arch });
     s.doorGlow = createNode({ geometry: door.glow, sightHidden: true });
-    addChild(s.door, s.doorStone, s.doorGlow, createNode({ geometry: HM.hallGlimpse(), sightHidden: true }));
+    addChild(s.door, s.doorStone, createNode({ geometry: HM.doorBulkhead() }), s.doorGlow, createNode({ geometry: HM.hallGlimpse(), sightHidden: true }));
     // Through the shield, the Factory's hall as it stands, from the hall's own stand-in (`hangar-window.js`; WebGL only,
     // the glimpse staying behind it and in its place on Canvas 2D).
     if (renderer.kind !== "canvas2d") {
