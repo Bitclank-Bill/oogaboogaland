@@ -11,12 +11,17 @@
 //
 // Every motion speeds up and slows down smoothly (`SPEED`, `ACCEL`), and the load swings as a pendulum from the
 // trolley's sheaves as the trolley and bridge speed up and slow down, damped, steadied by hand near the stand.
+//
+// While a job runs the warning beacons on the bridge's ends turn (`BEACON`), each flashing as its reflector passes the
+// view, and the trolley throws its blue safety spot on the floor under the hook (`SPOT`).
+//
 // `create({ C, nodes, root, cue })` takes the crane's nodes (its bridge, trolley, the `pivot` the ropes and hook hang
-// from, the ropes, the hook, the crate, and on it the taut sling and the slack one), the scene's root and where its
-// sound's cues go (`cue(name, x, y, z)`: `brake` as a motion starts and stops, `rattle` as the sling is hooked on or
-// off, `lift` as the ropes take the crate's weight, `land` as it is set down), and returns `update(dt)`, `sound` (where
-// its trolley is and how fast its travel and its hoist run, 0 to 1, kept current for `hangarAudio.watchCrane`) and
-// `debug`. Allocates nothing a frame.
+// from, the ropes, the hook, the crate, and on it the taut sling and the slack one, its `beacons` and the floor's
+// `spot`), the scene's root and where its sound's cues go (`cue(name, x, y, z)`: `brake` as a motion starts and stops,
+// `rattle` as the sling is hooked on or off, `lift` as the ropes take the crate's weight, `land` as it is set down), and
+// returns `update(dt, eye)` (`eye` the view's position, for the beacons' flash), `sound` (where its trolley is and how
+// fast its travel and its hoist run, 0 to 1, kept current for `hangarAudio.watchCrane`) and `debug`. Allocates nothing a
+// frame.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -33,6 +38,11 @@
   // The swing: gravity, its damping, and stronger damping within `STEADY` metres of the stand, where the riggers'
   // hands are on it; still enough to set down below `STILL` radians.
   const G = 9.81, DAMP = 0.2, STEADY = 1, STEADY_DAMP = 1.2, STILL = 0.004;
+  // The beacons: their dome's glow at rest and turning, how bright and how narrow the flash as a reflector passes the
+  // view, and how fast they turn (rad/s); the spot: how high over the floor it lies and how fast it comes on and goes off
+  // (a second).
+  const BEACON = { off: 0.2, on: 0.6, flash: 2.6, sharp: 8, rate: 7 };
+  const SPOT = { y: 0.03, fade: 2.5 };
   // How long the hook block is from the ropes' ends to its eye.
   const BLOCK = 0.6;
   // A step's kinds.
@@ -40,7 +50,7 @@
   const NAMES = ["", "bridge", "trolley", "hoist", "pause", "tie", "lift", "land", "untie", "settle", "wait"];
 
   const create = ({ C, nodes, root, cue }) => {
-    const { bridge, trolley, pivot, ropes, hook, sling, crate, slack } = nodes;
+    const { bridge, trolley, pivot, ropes, hook, sling, crate, slack, beacons, spot } = nodes;
     const ch = C.crate[1], lane = C.park.z;
     // The rope's length with the crate on a stand under it and its sling taut, with the hook just above the crate,
     // carrying, and with the hook up.
@@ -51,7 +61,7 @@
     const steps = Array.from({ length: 32 }, () => ({ kind: 0, to: 0, max: 0 }));
     const state = { n: 0, i: 0, t: 0, at: 0, tied: false, loaded: false, jobs: 0, began: false };
     const sound = { x: 0, y: C.railY + 1, z: 0, travel: 0, hoist: 0 };
-    let count = 0;
+    let count = 0, sweep = 0, lit = 0;
     const push = (kind, to = 0, max = 0) => { const s = steps[count++]; s.kind = kind; s.to = to; s.max = max; };
     // The way from (x, z) to (tx, tz): along the hall only over a stand's column, across it only at the door end.
     const route = (x, z, tx, tz) => {
@@ -140,8 +150,10 @@
     push(WAITING, FIRST[0] + Math.random() * (FIRST[1] - FIRST[0]));
     state.n = count;
     pose();
+    spot.position.y = SPOT.y;
+    spot.visible = false;
 
-    const update = (dt) => {
+    const update = (dt, eye) => {
       if (dt <= 0) return;
       const B = axes.bridge, T = axes.trolley, H = axes.hoist;
       B.a = T.a = H.a = 0;
@@ -178,6 +190,22 @@
         sway.z += sway.wz * h;
       }
       pose();
+      // The beacons and the spot while a job runs.
+      const working = steps[state.i].kind !== WAITING;
+      if (working) sweep += BEACON.rate * dt;
+      for (let i = 0; i < beacons.length; i++) {
+        const b = beacons[i];
+        b.rotation.y = sweep + i * Math.PI / 2;
+        if (!working) { b.glow = BEACON.off; continue; }
+        const m = b.world, vx = eye.x - m[12], vz = eye.z - m[14];
+        const facing = Math.abs((m[0] * vx + m[2] * vz) / ((Math.hypot(m[0], m[2]) * Math.hypot(vx, vz)) || 1));
+        b.glow = BEACON.on + BEACON.flash * facing ** BEACON.sharp;
+      }
+      lit = Math.max(0, Math.min(1, lit + (working ? dt : -dt) * SPOT.fade));
+      spot.visible = lit > 0;
+      spot.smokeOpacity = lit;
+      spot.position.x = axes.trolley.p;
+      spot.position.z = axes.bridge.p + 0.1;
     };
 
     // `run()` starts the next job now if the crane is waiting.
@@ -192,6 +220,7 @@
       get trolley() { return axes.trolley.p; },
       get rope() { return axes.hoist.p; },
       get sway() { return Math.hypot(sway.x, sway.z); },
+      get spot() { return lit; },
       run() { if (steps[state.i].kind === WAITING) state.t = steps[state.i].to; }
     };
     return { update, sound, debug };

@@ -171,6 +171,9 @@
   // What the driver is told once it is ready.
   const DRIVE_HINT = COARSE ? "Stick drives · tap the fork stick for the forks · tap the wheel to honk" : "W S drive · A D steer · R F forks · H horn · Space gets out";
   const POWER = { lit: [0.12, 1], dome: [0.2, 0.7], flash: 2.6, sharp: 8, rate: 9, turn: 9, needle: 2.4, speedo: 8, crank: 0.75, ready: 0.9, reach: 1.1, radius: 7, color: [1.6, 0.95, 0.22] };
+  // How many times the forklift's size the ceiling cranes' beacons are, and how much nearer the crane's spot sorts on
+  // Canvas 2D (m), so the floor's big tiles nearer the view don't paint over it.
+  const BEACON_SIZE = 1.8, SPOT_BIAS = -4;
   // How near the hold-short bar the launch shield answers whoever walks up to it, and how far back they must step before
   // it answers again; and how much of the hall's haze its shimmer cuts through.
   const SHIELD_NEAR = 0.6, SHIELD_REARM = 3, SHIELD_PIERCE = 0.7;
@@ -876,8 +879,9 @@
     s.jet = jetNode({ position: { x: L.jet.x, y: 0, z: L.jet.z } });
     addChild(root, s.jet);
     // The ceiling cranes (`HM.CRANE`) on their runways, each a bridge, a trolley on it and, from a pivot under it the load
-    // swings from, the ropes and the hook block, a node each: LJ-02 at work (`hangar-crane.js`), its crate and the
-    // laydown stands it moves it between, LJ-01 parked at the far end; all of it dims with the hall's glass.
+    // swings from, the ropes and the hook block, and the forklift's beacon on each end of the bridge, a node each: LJ-02
+    // at work (`hangar-crane.js`), its crate, the laydown stands it moves it between and the safety spot it throws on the
+    // floor, LJ-01 parked at the far end, its beacons dark; all but the beacons and the spot dims with the hall's glass.
     {
       const C = HM.CRANE, g = HM.crane();
       const crane = (at, parts) => {
@@ -889,17 +893,21 @@
         const lamps = createNode({ geometry: g.glow, sightHidden: true, depthBias: -0.25 }), bolts = createNode({ geometry: g.trolleyGlow, sightHidden: true });
         addChild(pivot, ropes, hook);
         addChild(trolley, createNode({ geometry: parts.trim, depthBias: -0.3 }), pivot, bolts);
-        addChild(bridge, lamps, trolley);
+        const beacons = g.beacons.map((b) => createNode({ position: { x: b.x, y: b.y, z: b.z }, scale: { x: BEACON_SIZE, y: BEACON_SIZE, z: BEACON_SIZE }, geometry: BL.forkliftModels.beacon(), sightHidden: true }));
+        for (const b of beacons) b.glow = POWER.dome[0];
+        addChild(bridge, lamps, trolley, ...beacons);
         addChild(root, bridge);
         s.glass.push(lamps, bolts, bridge, trolley, hook);
-        return { bridge, trolley, pivot, ropes, hook };
+        return { bridge, trolley, pivot, ropes, hook, beacons };
       };
       addChild(root, createNode({ geometry: g.runways }), createNode({ geometry: HM.laydown() }));
       const work = crane(C.park, g.trolley);
       work.sling = createNode({ geometry: g.sling });
       work.crate = createNode({ geometry: g.load });
       work.slack = createNode({ geometry: g.slack });
+      work.spot = createNode({ rotation: { x: -Math.PI / 2, y: 0, z: 0 }, geometry: HM.craneSpot(), sightHidden: true, depthBias: SPOT_BIAS });
       addChild(work.crate, work.sling, work.slack);
+      addChild(root, work.spot);
       s.glass.push(work.crate);
       s.crane = BL.hangarCrane.create({ C, nodes: work, root, cue: (name, x, y, z) => audio && audio.craneCue(name, x, y, z) });
       s.farCrane = crane(C.far, g.farTrolley);
@@ -1579,7 +1587,7 @@
     neonLife(s, dt, elapsed, dim);
     lampLife(s, dt, elapsed, dim);
     boardJets(s, dt);
-    s.crane.update(dt);
+    s.crane.update(dt, camera.position);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     for (let i = 0; i < s.crew.length; i++) {
       s.crew[i].update(dt);
