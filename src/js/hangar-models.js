@@ -50,9 +50,10 @@
     catwalkY: 7.5, catwalks: [[HALL.x0 + 3, HALL.x0 + 5.4, -15, 24], [HALL.x1 - 5.4, HALL.x1 - 3, -15, 24]],
     catwalkStairs: [[HALL.x0 + 4.2, 0, -26.5, HALL.x0 + 4.2, 7.5, -15, 2], [HALL.x1 - 4.2, 0, -26.5, HALL.x1 - 4.2, 7.5, -15, 2]],
     gantries: [22, 14, 6, -2, -10, -18, -26], gantryY: 15,
-    // The shell's walls: how far in from the hall's bounds their panels' faces stand, and the ribs out of the side
-    // walls on the gantries' lines, how far they stand out of the panels and how wide they are.
-    shell: { face: 1.3, rib: 1, ribW: 1.2 },
+    // The shell's walls: how far in from the hall's bounds their panels' faces stand, the ribs out of the side walls on
+    // the gantries' lines, how far they stand out of the panels and how wide they are, and how high the surround round
+    // the door back to the Factory stands.
+    shell: { face: 1.3, rib: 1, ribW: 1.2, doorTop: 10 },
     // The Jet's dock right of the runway, nose to the tunnel: where `jet-models.js`'s jet stands on the floor, and the
     // striped bay round it, [x0, x1, z0, z1]. Its gangway along the left flank at the cockpit's sill, `w` wide at `x`
     // and `y` up, in three decks [z0, z1, posts]: one in front of the wing on braced posts, one bridging the wing, and
@@ -294,7 +295,7 @@
     surround(walls, "z", back, 1, -mw, mw, mt, S.face);
     // The front wall round the door, the landing standing in its surround and the surround's reveal running back to the
     // door's arch.
-    const dw = LAYOUT.landing.w / 2 + 0.1, dt = 10;
+    const dw = LAYOUT.landing.w / 2 + 0.1, dt = S.doorTop;
     panels(frontWall, rand, "z", front, -1, X0, left, d.x - dw - 1, 0, top);
     panels(frontWall, rand, "z", front, -1, X0, d.x + dw + 1, right, 0, top);
     panels(frontWall, rand, "z", front, -1, X0, d.x - dw - 1, d.x + dw + 1, dt + 1, top);
