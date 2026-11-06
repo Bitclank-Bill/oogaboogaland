@@ -22,7 +22,7 @@
 // The blackout (`blackout`): a flicker and every light dies, the hall's own light nearly gone; only the two nozzles glow
 // in the dark like eyes, breathing, and blink once; Kortik's Sis's eyes glow too (`sis.dark`); then the banks clunk
 // back on one by one. Its sound is `hangarAudio.blackout`, the hall's electrical hum following its power
-// (`hangarAudio.power`).
+// (`hangarAudio.power`). The overhead crane stops while the power is off (`powered`), until the last bank is back.
 //
 // The lowrider (`lowrider`): the Jet bouncing to a beat, its nose lifting on each about its main gear, which stays on the
 // floor, and its nose gear banging back down with a bounce, harder and softer by turns, then settling. Kortik's
@@ -462,7 +462,8 @@
     const dispose = () => { if (kind) end(); };
     // The Jet's lit mesh, kept on the GPU off the graph, so the lightning swaps it in without a hitch.
     const liveGeometry = (set) => { set.add(lit); };
-    return { update, lights, liveGeometry, dispose, debug, standsOn, keepsOut, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; } };
+    return { update, lights, liveGeometry, dispose, debug, standsOn, keepsOut, get playing() { return !!kind; }, get dim() { return dim; }, get ambient() { return ambient; }, get rabbit() { return rabbit; },
+      get powered() { return kind !== "blackout" || t < BLACKOUT.kill || t >= BLACKOUT.banks[BLACKOUT.banks.length - 1]; } };
   };
 
   BL.hangarAnomaly = { create, MISFIRE, REVS, ZAP, BLACKOUT, LOWRIDER, SHUFFLE };

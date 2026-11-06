@@ -882,6 +882,7 @@
     // swings from, the ropes and the hook block, and the forklift's beacon on each end of the bridge, a node each: LJ-02
     // at work (`hangar-crane.js`), its crate, the laydown stands it moves it between and the safety spot it throws on the
     // floor, LJ-01 parked at the far end, its beacons dark; all but the beacons and the spot dims with the hall's glass.
+    // LJ-02 stops while an anomaly has the hall's power off (`powered`).
     {
       const C = HM.CRANE, g = HM.crane();
       const crane = (at, parts) => {
@@ -909,7 +910,7 @@
       addChild(work.crate, work.sling, work.slack);
       addChild(root, work.spot);
       s.glass.push(work.crate);
-      s.crane = BL.hangarCrane.create({ C, nodes: work, root, cue: (name, x, y, z) => audio && audio.craneCue(name, x, y, z) });
+      s.crane = BL.hangarCrane.create({ C, nodes: work, root, powered: () => s.anomaly.powered, cue: (name, x, y, z) => audio && audio.craneCue(name, x, y, z) });
       s.farCrane = crane(C.far, g.farTrolley);
     }
     // The forklift, parked on the runway by the steps.

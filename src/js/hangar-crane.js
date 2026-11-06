@@ -13,11 +13,13 @@
 // trolley's sheaves as the trolley and bridge speed up and slow down, damped, steadied by hand near the stand.
 //
 // While a job runs the warning beacons on the bridge's ends turn (`BEACON`), each flashing as its reflector passes the
-// view, and the trolley throws its blue safety spot on the floor under the hook (`SPOT`).
+// view, and the trolley throws its blue safety spot on the floor under the hook (`SPOT`). In a blackout (`powered`
+// false) its brakes set at once and everything stops where it is (`BRAKE`), the load swinging on, the beacons and the
+// spot dark, until the power is back and it carries on.
 //
-// `create({ C, nodes, root, cue })` takes the crane's nodes (its bridge, trolley, the `pivot` the ropes and hook hang
-// from, the ropes, the hook, the crate, and on it the taut sling and the slack one, its `beacons` and the floor's
-// `spot`), the scene's root and where its sound's cues go (`cue(name, x, y, z)`: `brake` as a motion starts and stops,
+// `create({ C, nodes, root, cue, powered })` takes the crane's nodes (its bridge, trolley, the `pivot` the ropes and hook
+// hang from, the ropes, the hook, the crate, and on it the taut sling and the slack one, its `beacons` and the floor's
+// `spot`), the scene's root, whether the hall has power (`powered()`) and where its sound's cues go (`cue(name, x, y, z)`: `brake` as a motion starts and stops,
 // `rattle` as the sling is hooked on or off, `lift` as the ropes take the crate's weight, `land` as it is set down), and
 // returns `update(dt, eye)` (`eye` the view's position, for the beacons' flash), `sound` (where its trolley is and how
 // fast its travel and its hoist run, 0 to 1, kept current for `hangarAudio.watchCrane`) and `debug`. Allocates nothing a
@@ -34,6 +36,8 @@
   // first a visit sooner.
   const SPEED = { bridge: 0.8, trolley: 0.6, hoist: 0.4, slack: 0.15, creep: 0.06 };
   const ACCEL = { bridge: 0.2, trolley: 0.18, hoist: 0.35 };
+  // How hard the brakes stop each motion when the power goes (m/s²).
+  const BRAKE = { bridge: 1, trolley: 1, hoist: 1.5 };
   const CREEP = 0.4, REACH = 0.3, RIG = 3, TAKE = 1.5, SETTLE = 6, WAIT = [30, 60], FIRST = [6, 12];
   // The swing: gravity, its damping, and stronger damping within `STEADY` metres of the stand, where the riggers'
   // hands are on it; still enough to set down below `STILL` radians.
@@ -49,7 +53,7 @@
   const BRIDGE = 1, TROLLEY = 2, HOIST = 3, PAUSE = 4, TIE = 5, LIFT = 6, LAND = 7, UNTIE = 8, CALM = 9, WAITING = 10;
   const NAMES = ["", "bridge", "trolley", "hoist", "pause", "tie", "lift", "land", "untie", "settle", "wait"];
 
-  const create = ({ C, nodes, root, cue }) => {
+  const create = ({ C, nodes, root, cue, powered }) => {
     const { bridge, trolley, pivot, ropes, hook, sling, crate, slack, beacons, spot } = nodes;
     const ch = C.crate[1], lane = C.park.z;
     // The rope's length with the crate on a stand under it and its sling taut, with the hook just above the crate,
@@ -59,7 +63,7 @@
     const axes = { bridge: { p: C.park.z, v: 0, a: 0 }, trolley: { p: C.park.x, v: 0, a: 0 }, hoist: { p: up, v: 0, a: 0 } };
     const sway = { x: 0, wx: 0, z: 0, wz: 0 };
     const steps = Array.from({ length: 32 }, () => ({ kind: 0, to: 0, max: 0 }));
-    const state = { n: 0, i: 0, t: 0, at: 0, tied: false, loaded: false, jobs: 0, began: false };
+    const state = { n: 0, i: 0, t: 0, at: 0, tied: false, loaded: false, jobs: 0, began: false, live: true, stopped: false };
     const sound = { x: 0, y: C.railY + 1, z: 0, travel: 0, hoist: 0 };
     let count = 0, sweep = 0, lit = 0;
     const push = (kind, to = 0, max = 0) => { const s = steps[count++]; s.kind = kind; s.to = to; s.max = max; };
@@ -110,6 +114,18 @@
       if ((to - m.p) * d <= 0) { m.p = to; m.v = 0; return true; }
       return false;
     };
+    // Every motion brought to a stop at `rate`'s pace, where it is.
+    const stop = (m, rate, dt) => {
+      const dv = Math.max(-rate * dt, Math.min(rate * dt, -m.v));
+      m.v += dv;
+      m.a = dv / dt;
+      m.p += m.v * dt;
+    };
+    const halt = (rate, dt) => {
+      stop(axes.bridge, rate.bridge, dt);
+      stop(axes.trolley, rate.trolley, dt);
+      stop(axes.hoist, rate.hoist, dt);
+    };
     // The crate on the stand under the hook, or on the hook.
     const standOn = (s) => {
       if (crate.parent) removeChild(crate.parent, crate);
@@ -136,12 +152,26 @@
       sling.scale.y = 1 + e / C.sling;
       sound.x = axes.trolley.p;
       sound.z = axes.bridge.p;
-      sound.travel = Math.max(Math.abs(axes.bridge.v) / SPEED.bridge, Math.abs(axes.trolley.v) / SPEED.trolley);
-      sound.hoist = Math.abs(axes.hoist.v) / SPEED.hoist;
+      sound.travel = state.live ? Math.max(Math.abs(axes.bridge.v) / SPEED.bridge, Math.abs(axes.trolley.v) / SPEED.trolley) : 0;
+      sound.hoist = state.live ? Math.abs(axes.hoist.v) / SPEED.hoist : 0;
     };
     // A cue where the trolley is, or down at the crate on the stand under it.
     const at = (name, low) => cue(name, axes.trolley.p, low ? C.standTop + ch : C.railY + 1, axes.bridge.p);
     const moving = (kind) => kind === BRIDGE || kind === TROLLEY || kind === HOIST;
+    // A frame of step `s`: true once it is done.
+    const run = (s, dt) => {
+      const B = axes.bridge, T = axes.trolley, H = axes.hoist;
+      if (s.kind === BRIDGE) return move(B, s.to, SPEED.bridge, ACCEL.bridge, dt);
+      if (s.kind === TROLLEY) return move(T, s.to, SPEED.trolley, ACCEL.trolley, dt);
+      if (s.kind === HOIST) return move(H, s.to, s.max, ACCEL.hoist, dt);
+      if (s.kind === PAUSE || s.kind === WAITING) return (state.t += dt) >= s.to;
+      if (s.kind === CALM) return (state.t += dt) >= SETTLE || Math.abs(sway.x) + Math.abs(sway.z) < STILL && Math.abs(sway.wx) + Math.abs(sway.wz) < STILL;
+      if (s.kind === TIE) { state.tied = true; sling.visible = true; slack.visible = false; still(); at("rattle", true); }
+      else if (s.kind === LIFT) { onHook(); state.loaded = true; still(); at("lift"); }
+      else if (s.kind === LAND) { state.at = 1 - state.at; standOn(C.stands[state.at]); state.loaded = false; still(); at("land", true); }
+      else if (s.kind === UNTIE) { state.tied = false; sling.visible = false; slack.visible = true; at("rattle", true); }
+      return true;
+    };
     // The crate starts on the first stand, its sling slack, the crane parked over it with its hook up.
     standOn(C.stands[0]);
     sling.visible = false;
@@ -158,21 +188,23 @@
       const B = axes.bridge, T = axes.trolley, H = axes.hoist;
       B.a = T.a = H.a = 0;
       const s = steps[state.i];
-      let done = true;
-      // The brake lets go as a motion starts, unless the same motor ran the step before.
-      if (!state.began) {
-        state.began = true;
-        if (moving(s.kind) && (state.i === 0 || steps[state.i - 1].kind !== s.kind)) at("brake");
+      // The power gone, the brakes set on the motor that runs, and nothing goes on until it is back.
+      const live = powered();
+      if (live !== state.live) {
+        state.live = live;
+        if (!live && moving(s.kind) && state.began) { at("brake"); state.began = false; state.stopped = true; }
       }
-      if (s.kind === BRIDGE) done = move(B, s.to, SPEED.bridge, ACCEL.bridge, dt);
-      else if (s.kind === TROLLEY) done = move(T, s.to, SPEED.trolley, ACCEL.trolley, dt);
-      else if (s.kind === HOIST) done = move(H, s.to, s.max, ACCEL.hoist, dt);
-      else if (s.kind === PAUSE || s.kind === WAITING) done = (state.t += dt) >= s.to;
-      else if (s.kind === CALM) done = (state.t += dt) >= SETTLE || Math.abs(sway.x) + Math.abs(sway.z) < STILL && Math.abs(sway.wx) + Math.abs(sway.wz) < STILL;
-      else if (s.kind === TIE) { state.tied = true; sling.visible = true; slack.visible = false; still(); at("rattle", true); }
-      else if (s.kind === LIFT) { onHook(); state.loaded = true; still(); at("lift"); }
-      else if (s.kind === LAND) { state.at = 1 - state.at; standOn(C.stands[state.at]); state.loaded = false; still(); at("land", true); }
-      else if (s.kind === UNTIE) { state.tied = false; sling.visible = false; slack.visible = true; at("rattle", true); }
+      let done = false;
+      if (!live) halt(BRAKE, dt);
+      else {
+        // The brake lets go as a motion starts, unless the same motor ran the step before and has not stopped since.
+        if (!state.began) {
+          state.began = true;
+          if (moving(s.kind) && (state.stopped || state.i === 0 || steps[state.i - 1].kind !== s.kind)) at("brake");
+          state.stopped = false;
+        }
+        done = run(s, dt);
+      }
       if (done) {
         // The brake sets as a motion stops, unless the same motor runs the next step.
         if (moving(s.kind) && (state.i + 1 >= state.n || steps[state.i + 1].kind !== s.kind)) at("brake");
@@ -190,13 +222,13 @@
         sway.z += sway.wz * h;
       }
       pose();
-      // The beacons and the spot while a job runs.
-      const working = steps[state.i].kind !== WAITING;
+      // The beacons and the spot while a job runs and the power is on.
+      const working = live && steps[state.i].kind !== WAITING;
       if (working) sweep += BEACON.rate * dt;
       for (let i = 0; i < beacons.length; i++) {
         const b = beacons[i];
         b.rotation.y = sweep + i * Math.PI / 2;
-        if (!working) { b.glow = BEACON.off; continue; }
+        if (!working) { b.glow = live ? BEACON.off : 0; continue; }
         const m = b.world, vx = eye.x - m[12], vz = eye.z - m[14];
         const facing = Math.abs((m[0] * vx + m[2] * vz) / ((Math.hypot(m[0], m[2]) * Math.hypot(vx, vz)) || 1));
         b.glow = BEACON.on + BEACON.flash * facing ** BEACON.sharp;
@@ -221,6 +253,7 @@
       get rope() { return axes.hoist.p; },
       get sway() { return Math.hypot(sway.x, sway.z); },
       get spot() { return lit; },
+      get live() { return state.live; },
       run() { if (steps[state.i].kind === WAITING) state.t = steps[state.i].to; }
     };
     return { update, sound, debug };
