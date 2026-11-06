@@ -8895,31 +8895,49 @@ const SEED_DONORS = (count, prefix) => `(() => { const B = __ooga;
   for (let i = 0; i < ${count}; i++) B.game.recordDonation({ id: "${prefix}-" + i, sats: 1000 + i * 137, handle: "${prefix}" + String(i).padStart(2, "0"), message: "", at: Date.now() + i });
   BL.hud.setDonationStats(B.game.state); })()`;
 // The Bananas panel as rendered, with the panel open: every ranked donor's row in order, each list's window (exactly
-// five donor rows tall for both), and what scrolling each list and the panel to its end brings into view.
+// five donor rows tall for both), what scrolling each list into the slab's view brings into view, and whether Feed the
+// Oogas stands whole at the panel's foot, under the slab and never over it, before and after the slab scrolls.
 const BANANA_LISTS = `(() => {
   const panel = document.getElementById("bananas-panel"), slab = panel.querySelector(".banana-slab"), feed = panel.querySelector('[data-action="feed"]');
-  const leaders = document.getElementById("banana-leaders"), recent = document.getElementById("banana-recent-list");
+  const leaders = document.getElementById("banana-leaders"), recent = document.getElementById("banana-recent-list"), note = document.getElementById("banana-board-note");
+  const body = panel.closest(".sheet-body") || panel;
   const shown = (list) => [...list.children].filter(n => !n.hidden), top = (list) => list.getBoundingClientRect().top + list.clientTop;
   const rows = shown(leaders), latest = shown(recent), amounts = rows.map(n => parseFloat(n.querySelector(".banana-amount").textContent.replace(/,/g, "")));
   const fifth = rows.length >= 5 ? rows[4].getBoundingClientRect().bottom - top(leaders) : null, sixth = rows.length >= 6 ? rows[5].getBoundingClientRect().top - top(leaders) : null;
-  const reach = (list, items) => { list.scrollTop = list.scrollHeight; const r = list.getBoundingClientRect(), last = items.at(-1).getBoundingClientRect(); const ok = last.bottom <= r.bottom + 1 && last.top >= r.top - 1; list.scrollTop = 0; return ok; };
+  const inside = (r, box) => r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+  // A list's last entry, scrolled to inside its own window and the window scrolled into the slab's view.
+  const reach = (list, items) => {
+    list.scrollTop = list.scrollHeight;
+    const l = list.getBoundingClientRect(), s = slab.getBoundingClientRect();
+    if (l.bottom > s.bottom) slab.scrollTop += l.bottom - s.bottom; else if (l.top < s.top) slab.scrollTop -= s.top - l.top;
+    const last = items.at(-1).getBoundingClientRect(), ok = inside(last, list.getBoundingClientRect()) && inside(last, slab.getBoundingClientRect()) && footed();
+    list.scrollTop = 0; slab.scrollTop = 0; return ok;
+  };
+  // Feed the Oogas whole inside the panel and the drawer, with the slab ending above it.
+  const footed = () => {
+    const f = feed.getBoundingClientRect(), p = panel.getBoundingClientRect(), d = body.getBoundingClientRect();
+    return !!feed.getClientRects().length && f.height > 0 && inside(f, p) && inside(f, d) && slab.getBoundingClientRect().bottom <= f.top + 0.5;
+  };
+  panel.scrollTop = 0; body.scrollTop = 0; slab.scrollTop = 0;
   const out = { visible: BL.sheet.visible(panel), donors: __ooga.game.state.donors.length, rows: rows.length,
     names: rows.map(n => n.querySelector(".banana-donor").textContent).sort().join() === __ooga.game.state.donors.map(d => d.handle ? "@" + d.handle : "Anonymous").sort().join(),
     ordered: amounts.every((a, i) => !i || a <= amounts[i - 1]), latest: latest.length, retained: __ooga.game.state.recentDonations.length,
     window: leaders.clientHeight, fifth, sixth, recentWindow: recent.clientHeight, scrolls: leaders.scrollHeight > leaders.clientHeight && recent.scrollHeight > recent.clientHeight,
-    lastDonor: rows.length ? reach(leaders, rows) : false, lastTip: latest.length ? reach(recent, latest) : false,
-    whole: slab.scrollHeight <= slab.clientHeight + 1, panelScrolls: panel.scrollHeight > panel.clientHeight + 1 };
-  panel.scrollTop = panel.scrollHeight;
-  const p = panel.getBoundingClientRect(), f = feed.getBoundingClientRect();
-  out.feedReached = f.bottom <= p.bottom + 1 && f.top >= p.top; panel.scrollTop = 0;
+    feedFirst: footed(), lastDonor: rows.length ? reach(leaders, rows) : false, lastTip: latest.length ? reach(recent, latest) : false,
+    slabScrolls: slab.scrollHeight > slab.clientHeight + 1, panelScrolls: panel.scrollHeight > panel.clientHeight + 1 };
+  slab.scrollTop = slab.scrollHeight;
+  out.feedScrolled = footed(); out.noteReached = inside(note.getBoundingClientRect(), slab.getBoundingClientRect());
+  slab.scrollTop = 0;
   return out;
 })()`;
 // Five donor rows fill the donors' window exactly and the latest tips' window is the same height; both scroll to
-// their last entry, every donor is listed in rank order, and the slab never shrinks, so the panel scrolls instead.
+// their last entry, every donor is listed in rank order, and the slab scrolls above Feed the Oogas, which stays whole
+// at the panel's foot without the panel scrolling, the slab's foot reachable over it and never under it.
 // However few entries either list holds, even none, both keep the same window, the one five donor rows fill.
 const bananaWindowsMatch = (short, full) => short.visible && short.window > 0 && Math.abs(short.window - full.window) <= 0.5 && Math.abs(short.recentWindow - full.window) <= 0.5;
+const bananaFeedFooted = (s) => s.visible && s.feedFirst && s.feedScrolled && s.noteReached && !s.panelScrolls;
 const bananaListsHold = (s) => s.visible && s.rows === s.donors && s.rows > 5 && s.names && s.ordered && s.latest === s.retained && s.latest > 5
-  && Math.abs(s.fifth - s.window) <= 1 && s.sixth >= s.window - 1 && Math.abs(s.recentWindow - s.window) <= 0.5 && s.scrolls && s.lastDonor && s.lastTip && s.whole && s.feedReached;
+  && Math.abs(s.fifth - s.window) <= 1 && s.sixth >= s.window - 1 && Math.abs(s.recentWindow - s.window) <= 0.5 && s.scrolls && s.lastDonor && s.lastTip && bananaFeedFooted(s);
 // A panel's last control, read with the panel scrolled to its end: the space above it to the control before it, and
 // below it to the inside of the panel's border, which may be larger only by the room a button's drop shadow takes.
 const FOOT_SPACE = (selector) => `(() => {
@@ -8988,10 +9006,20 @@ const hudVisit = { name: "hub HUD lifetime", why: "regression: scene visits recr
     const short = await b.evaluate(BANANA_LISTS);
     await b.evaluate(SEED_DONORS(12, "lister"));
     const lists = await b.evaluate(BANANA_LISTS);
+    // A short desktop drawer: the slab scrolls over Feed the Oogas, which stays whole at the foot.
+    const cramped = await b.evaluate(`(() => {
+      const sheet = document.getElementById("bananas-panel").closest(".sheet"), was = sheet.style.getPropertyValue("height"), prio = sheet.style.getPropertyPriority("height");
+      sheet.style.setProperty("height", "360px", "important");
+      const out = ${BANANA_LISTS};
+      if (was) sheet.style.setProperty("height", was, prio); else sheet.style.removeProperty("height");
+      return out;
+    })()`);
     // The later steps on this page find the panel as it was.
     await b.evaluate(was ? `__ooga.hud.selectTab(${JSON.stringify(was)})` : `document.getElementById("sheet-bananas").click()`);
     record("HUD lifetime: the Bananas panel lists every donor in rank order inside a five-row window, the latest tips in a window of the same height however few either holds, and each scrolls to its last entry",
       short.rows < 5 && short.rows === short.donors && short.names && bananaWindowsMatch(short, lists) && bananaListsHold(lists) && lists.rows > 10, JSON.stringify({ short, lists }));
+    record("HUD lifetime: in a short desktop drawer the Bananas slab scrolls above Feed the Oogas, which stays whole at the panel's foot over nothing, and both lists still reach their last entry",
+      bananaListsHold(cramped) && cramped.slabScrolls && bananaWindowsMatch(cramped, lists), JSON.stringify(cramped));
   } finally {
     await b.evaluate(`(() => { const H = window.__hudVisit; BL.scenes.lab.enter = H.enters[0]; BL.scenes.hub.enter = H.enters[1]; BL.scenes.hub.enterSteps = H.hubSteps; delete window.__hudVisit; })()`);
   }
@@ -14517,9 +14545,9 @@ const phone = (id, { card = null, play = null, required, sheet = false }) => ({ 
     await b.evaluate(`__ooga.hud.selectTab("roster")`);
   }
   const ok = (!card || seen.card.touch.coarse && seen.card.touch.touchWording && seen.card.bad.length === 0 && seen.card.closed) && seen.play.length === 0 && (!sheet || seen.sheet.length === 0 && seen.actions
-    && footMatches(seen.feet.login) && footMatches(seen.feet.signedIn) && footMatches(seen.feet.feed) && bananaListsHold(seen.lists) && seen.lists.panelScrolls
+    && footMatches(seen.feet.login) && footMatches(seen.feet.signedIn) && footMatches(seen.feet.feed) && bananaListsHold(seen.lists) && seen.lists.slabScrolls && bananaFeedFooted(seen.empty)
     && seen.empty.rows === seen.empty.donors && seen.empty.latest === seen.empty.retained && bananaWindowsMatch(seen.empty, seen.lists));
-  record(`${id} phone: ${card ? "the title card reads in touch words and its go button starts the game, then " : ""}nothing is clipped, wrapped by accident or off screen, and every control is under a thumb${sheet ? ", with the sheet open and the sticks still free, its footers as roomy under as over them, and the Bananas panel scrolling whole over lists that each scroll in a five-row window" : ""}`, ok, JSON.stringify(seen));
+  record(`${id} phone: ${card ? "the title card reads in touch words and its go button starts the game, then " : ""}nothing is clipped, wrapped by accident or off screen, and every control is under a thumb${sheet ? ", with the sheet open and the sticks still free, its footers as roomy under as over them, and the Bananas slab scrolling above Feed the Oogas, which stays whole at the panel's foot, over lists that each scroll in a five-row window" : ""}`, ok, JSON.stringify(seen));
 } });
 
 // ---- The Lightning Factory ----
