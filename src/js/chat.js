@@ -32,7 +32,7 @@
   const announce = (text) => { if (announcement && announcement.textContent !== text) announcement.textContent = text; };
   const viewport = window.visualViewport, fine = window.matchMedia("(pointer: fine)");
   const lines = [];
-  const identity = $("chat-identity"), accountLogin = $("chat-account-login"), displayForm = $("chat-display-form"), displayInput = $("chat-display"), displaySave = $("chat-display-save"), displayStatus = $("chat-display-status");
+  const identity = $("chat-identity"), displayForm = $("chat-display-form"), displayInput = $("chat-display"), displaySave = $("chat-display-save"), displayStatus = $("chat-display-status");
   let identityId = "", identityDisplay = "", displaySaving = false, displayComposing = false;
   let showing = false, drawn = true, live = false, me = "", composing = false, pending = null, notice = "", revision = 0, logoutEpoch = 0, ackTimer = 0;
   let unread = 0, newest = -1, synced = false;
@@ -158,7 +158,7 @@
     if (live) statusText.textContent = feedback;
     announce(statusText.textContent);
   };
-  const account = ({ me: player, room, logoutEpoch: epoch = logoutEpoch }) => {
+  const account = ({ me: player, room, online = 0, logoutEpoch: epoch = logoutEpoch }) => {
     if (epoch !== logoutEpoch) {
       logoutEpoch = epoch;
       stopWaiting(); pending = null; notice = ""; revision++; input.value = "";
@@ -168,7 +168,6 @@
     }
     if (identity) {
       identity.hidden = !player;
-      accountLogin.textContent = player ? "@" + player.login : "";
       const id = player ? String(player.id) : "", display = player ? player.display || player.login : "";
       if (id !== identityId || display !== identityDisplay) { displayInput.value = display; displayStatus.textContent = ""; }
       identityId = id; identityDisplay = display;
@@ -180,11 +179,11 @@
     input.disabled = !live;
     input.placeholder = live ? "Say something" : "";
     status.hidden = live;
-    const chip = live ? "Live" : !player ? "Signed out" : room === "connecting" ? "Joining" : room === "paused" ? "Paused" : "Offline";
+    const chip = live ? `${online} online` : "Offline";
     if (roomChip.textContent !== chip) {
       roomChip.textContent = chip;
-      roomChip.dataset.tone = live ? "live" : room === "connecting" ? "wait" : "idle";
     }
+    roomChip.dataset.tone = live ? "live" : "idle";
     statusText.textContent = room === "revoked" ? ROOM_WORDS.revoked : !player ? (logoutEpoch ? "Signed out. Local chat and draft cleared. Sign in to chat." : "Sign in to chat with everyone on the island.") : ROOM_WORDS[room] || "";
     update();
   };
