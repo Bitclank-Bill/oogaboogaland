@@ -11130,6 +11130,8 @@
       Math.max(0, entry.height - step), 1.4, CLANKER_TALL_OBSTACLE, aboveStep, entry.rage.active);
   };
   const poundClankerEquipment = (entry) => {
+    // A passive NPC's pound stays an animation: it builds no generic cave prop.
+    if (entry.nonInteractive) return;
     const p = entry.root.position;
     let nearest = null, distance = Infinity;
     for (let i = 0; i < clankerEquipment.length; i++) {

@@ -12242,15 +12242,17 @@ const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visit
       out.noRegeneration = a.health.value === 37 && e.health.value === 71;
       a.health.value = BL.crew.HEALTH_MAX; e.health.value = e.health.max;
       H.setGameMode(true); C.setAway(false); e.active = e.root.visible = true;
-      out.game = H.gameMode && B.crew.combatEnabled && C.combatEnabled && C.damage(e, 1)
-        && e.health.value < e.health.max && B.crew.damage(a, 100) && a.health.stunned && a.stunGear.drops.some(drop => drop.active);
+      // Game mode damages the driven Ooga; the passive NPC gorilla takes none.
+      out.game = H.gameMode && B.crew.combatEnabled && C.combatEnabled && !C.damage(e, 1)
+        && e.health.value === e.health.max && B.crew.damage(a, 100) && a.health.stunned && a.stunGear.drops.some(drop => drop.active);
       B.advance(1 / 60, 1 / 60);
       out.gameKnockoutBirds = a.stunBirds.visible;
       H.setGameMode(false);
       out.reset = !H.gameMode && B.crew.weaponsEnabled && !B.crew.combatEnabled && !C.combatEnabled && a.health.value === BL.crew.HEALTH_MAX
         && !a.health.stunned && !a.health.recovering && !a.stunBirds.visible && e.health.value === e.health.max
         && !a.stunGear.drops.some(drop => drop.active || drop.node?.visible) && !w.burstRemaining && !w.meleeTime && !w.bashTime;
-      // A real rider on a posed gorilla is a valid grab target in either mode.
+      // The released Ooga is a passive Hub NPC: not a grab target in either mode
+      // (grabbing NPC Oogas is retired). The driven gorilla's controls stay intact.
       P.release(true); C.release();
       a.override = a.state = "chilling"; a.root.visible = true; a.root.quaternion = null; a.walk = null; a.bedTravel.mode = "";
       a.camp.seat = null; a.camp.burning = a.camp.rolling = false; a.hop = a.hopV = a.jumps = 0;
@@ -12268,7 +12270,7 @@ const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visit
       out.noGrab = !a.grabbedBy && !e.capture.cave && !e.motion.dragging;
       H.setGameMode(true); C.setAway(false);
       key("keydown", "g", "KeyG"); B.advance(1 / 60, 1 / 60);
-      out.grab = a.grabbedBy === e && e.capture.cave === a;
+      out.gameNoGrab = e.controlled && a.nonInteractive && !a.grabbedBy && !e.capture.cave && !e.motion.dragging;
       H.setGameMode(false);
       out.release = !a.grabbedBy && !e.capture.cave && !e.capture.throwing && !e.motion.dragging && !a.leap.thrown;
       B.clankerPlay.release(); P.possess(a); B.advance(1 / 60, 1 / 60);
@@ -12279,7 +12281,7 @@ const hubCombatGate = { name: "hub game-only combat", why: "rule: ordinary visit
       B.crew.configureWeapon(a, saved.slot, saved.ammo); w.spareAmmo.splice(0, w.spareAmmo.length, ...saved.spare);
     }
   })()`);
-  record("hub game-only combat: HUB weapons fire, swing, swap magazines and reload without damage; regeneration, knockouts, dropped gear, rage and grabbing stay off, X keeps both look modes, and game exit restores health and releases held Oogas", Object.values(r).every(Boolean), JSON.stringify(r));
+  record("hub game-only combat: HUB weapons fire, swing, swap magazines and reload without damage; regeneration, knockouts, dropped gear, rage and grabbing stay off, X keeps both look modes, game mode damages the driven Ooga but never the passive NPC gorilla, a driven gorilla grabs no passive NPC Ooga in either mode, and game exit restores health", Object.values(r).every(Boolean), JSON.stringify(r));
 } };
 const hubMelee = { name: "hub melee", why: "rule: focused quick taps recover their strike power over time, changing weapons cannot bypass recovery, and a charged strike doubles damage", run: async (b) => {
   await tapKey(b, "1");
@@ -12384,7 +12386,7 @@ const hubAk = { name: "hub ak", why: "regression: R did nothing unless the playe
   await b.evaluate(removeWeaponTarget);
 } };
 const JET_STATE = `(() => { const c = window.__ooga.crew.player, J = window.__ooga.jetpack; return { worn: !!c.jet, owned: J.owned, fuel: +c.jetFuel.toFixed(3), feet: +(c.root.position.y - c.baseY).toFixed(2), pickup: !!(J.pickup && J.pickup.host), toast: (document.getElementById("toast") || {}).textContent }; })()`;
-const hubJetpack = { name: "hub jetpack", outsideRing: true, why: "rule: every Ooga permanently owns a J-toggleable jetpack, fueled steering recovers from thrown momentum, and abyss respawns remove only loaded and spare AK ammo", run: async (b) => {
+const hubJetpack = { name: "hub jetpack", outsideRing: true, why: "rule: every Ooga permanently owns a J-toggleable jetpack, its fuel climbs and refills, and abyss respawns remove only loaded and spare AK ammo", run: async (b) => {
   await b.evaluate(`(() => { const B = window.__ooga; B.pilot.navigate({ position: { x: -8, y: B.crew.player.root.position.y, z: 16 }, yaw: -Math.PI / 2, pitch: 0.3, dist: 5 }); B.advance(0.4, 1 / 60); })()`);
   await tapKey(b, "j");
   const off = await b.evaluate(JET_STATE);
@@ -12413,105 +12415,9 @@ const hubJetpack = { name: "hub jetpack", outsideRing: true, why: "rule: every O
     && lost.toast === "Spare magazines and loaded AK-47 ammo lost to the abyss", JSON.stringify({ off, on, up, down, fell, lost, permanent }));
   record("hub jetpack: stun keeps the pack, and dropped magazines carry a +1 MAG tag", permanent.wornAfterStun
     && permanent.drops.length === 1 && permanent.drops[0].kind === "magazine" && permanent.drops[0].label === "+1 MAG", JSON.stringify(permanent));
-  const recovery = [];
-  for (const dt of [1 / 30, 1 / 60]) for (const mode of ["passive", "brake", "empty"]) recovery.push(await b.evaluate(`((dt, mode) => {
-    const B = __ooga, C = B.clankers, S = BL.scene, c = B.cavemen.get("portlandhodl");
-    const e = C.list.find(entry => entry.owner === c), board = B.jumbotron.node;
-    const key = (type, name, code) => window.dispatchEvent(new KeyboardEvent(type, { key: name, code, bubbles: true, cancelable: true }));
-    key("keyup", "w", "KeyW"); key("keyup", " ", "Space");
-    B.pilot.release(true); B.clankerPlay.release(); C.release(); BL.scenes.hub.debug.selectDebugGorilla(null);
-    for (const entry of C.list) {
-      C.debugRage(entry, false); C.cancelDebugMove(entry);
-      entry.owner.override = entry.owner.state = entry === e ? "chilling" : "away";
-      entry.owner.bedTravel.mode = "";
-      entry.controlled = entry.drive.airborne = entry.climb.active = entry.fire.rolling = false;
-      entry.active = entry.root.visible = entry === e;
-    }
-    for (const cave of B.cavemen.values()) cave.root.visible = cave === c;
-    for (const prop of B.props) prop.node.visible = prop.node === board;
-    B.crew.prepareDragged(c); c.root.quaternion = null; c.root.rotation.x = c.root.rotation.z = 0;
-    c.camp.seat = null; c.camp.burning = c.camp.rolling = c.camp.panic.active = c.roofEscape.active = false;
-    Object.assign(c.health, { value: BL.crew.HEALTH_MAX, delay: 0, stunned: false, recovering: false });
-    c.hop = c.hopV = c.jumps = 0; c.jetFuel = 1; c.jetRecovering = false;
-    B.crew.wearJetpack(c, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
-    const fx = Math.sin(board.rotation.y), fz = Math.cos(board.rotation.y);
-    const x = board.position.x + fx * 20, z = board.position.z + fz * 20;
-    const victimX = board.position.x + fx * 17.5, victimZ = board.position.z + fz * 17.5;
-    B.pilot.possess(c);
-    // Establish the normal player view before capture. After release the
-    // measured launch direction determines the camera's return bearing.
-    B.pilot.navigate({ position: { x: victimX, y: B.island.surfaceAt(victimX, victimZ), z: victimZ }, yaw: 0, pitch: 0.3, dist: 5 });
-    const y = C.supportAt(e, x, z, B.island.surfaceAt(x, z), BL.clankers.PROP_STEP, board.rotation.y + Math.PI);
-    Object.assign(e.root.position, { x, y, z });
-    Object.assign(e, { active: true, controlled: false, mode: "chilling", phase: "chill", route: "", fromSite: -1,
-      pendingSite: -1, lounge: "", loungeDepart: false, loungeRoof: false, parked: false, biped: false,
-      recover: 0, rest: 0, heading: board.rotation.y + Math.PI, speed: 0, pound: 0, beat: 0, stand: 0,
-      footprintMode: "walk", radius: BL.clankers.WALK_RADIUS, height: BL.clankers.WALK_HEIGHT });
-    Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
-    e.jump.active = e.climb.active = e.fire.burning = e.fire.rolling = false; e.fire.rollRecover = 0;
-    Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, roll: 0, charge: 0, supportOffset: 0,
-      landing: 0, takeoff: 0, lab: false, labRunIn: false, labWork: "", smash: false, dragging: false, throwProgress: 0 });
-    e.health.value = e.health.max;
-    e.gorilla.poseManaged(2, x, y, z, e.heading, 0, false, false, "", e.motion);
-    S.updateWorld(BL.scenes.hub.root); B.headquarters.solids.props.sync(); B.headquarters.solids.companions.sync();
-    const selected = C.debugRage(e, true);
-    let held = 0, charged = false;
-    try {
-      for (let frame = 0; frame < Math.round(8 / dt) && !c.leap.thrown; frame++) {
-        B.advance(dt, dt);
-        if (c.grabbedBy === e) { held++; charged ||= e.capture.throwing && e.capture.charge === 1; }
-      }
-      if (!c.leap.thrown) return { dt, mode, selected, held, charged, launched: false, phase: e.rage.phase, blocked: e.capture.blocked,
-        map: { ready: BL.scenes.hub.debug.rageThrowMap.ready, homeSpots: BL.scenes.hub.debug.rageThrowMap.spots.filter(spot => spot.land === 1 && spot.valid).length },
-        position: { x: e.root.position.x, y: e.root.position.y, z: e.root.position.z },
-        victim: { x: c.root.position.x, y: c.root.position.y - c.baseY, z: c.root.position.z, grabbed: c.grabbedBy === e },
-        goal: { x: e.rage.goalX, y: e.rage.goalY, z: e.rage.goalZ },
-        edge: { ready: e.rage.edgeReady, waiting: e.rage.edgeWaiting, index: e.rage.edgeIndex, inset: e.rage.edgeInset,
-          probes: e.rage.edgeProbes, reason: e.rage.edgeRejectReason, land: e.rage.edgeLand,
-          x: e.rage.edgeX, z: e.rage.edgeZ, dx: e.rage.edgeDx, dz: e.rage.edgeDz },
-        pending: e.rage.pending, count: e.rage.countPath, index: e.rage.index, routeBlocked: e.rage.blocked, planAt: e.rage.planAt,
-        airborne: e.drive.airborne, traversing: e.rage.traversing, grabHeld: e.rage.grabHeld, throwHeld: e.rage.throwHeld,
-        charge: e.rage.throwCharge, blockedPart: e.capture.blockedPart, blockedStage: e.capture.blockedStage };
-      C.debugRage(e, false);
-      c.jetFuel = mode === "empty" ? 0 : 1; c.jetRecovering = false;
-      const p = c.root.position, initial = { x: p.x, z: p.z, vx: c.leap.vx, vz: c.leap.vz, vy: c.hopV };
-      const speed = Math.hypot(initial.vx, initial.vz), ux = initial.vx / speed, uz = initial.vz / speed;
-      // Turn only the camera after the actual release: navigation would
-      // relocate the airborne player and erase the throw being measured.
-      B.pilot.orbit.yaw = B.pilot.orbit.tYaw = Math.atan2(ux, uz);
-      if (mode !== "passive") { key("keydown", "w", "KeyW"); key("keydown", " ", "Space"); }
-      let first = null, maxChange = 0, drift = 0, peak = 0, tailStart = 0, powered = false, thrust = false, airborne = true;
-      let previousVx = initial.vx, previousVz = initial.vz;
-      const frames = Math.round(1.1 / dt), tailFrame = frames - Math.round(0.25 / dt);
-      for (let frame = 0; frame < frames; frame++) {
-        if (frame === tailFrame) tailStart = (p.x - initial.x) * ux + (p.z - initial.z) * uz;
-        B.advance(dt, dt);
-        const vx = c.leap.vx, vz = c.leap.vz, distance = (p.x - initial.x) * ux + (p.z - initial.z) * uz;
-        if (!first) first = { velocity: vx * ux + vz * uz, vy: c.hopV };
-        maxChange = Math.max(maxChange, Math.hypot(vx - previousVx, vz - previousVz));
-        drift = Math.max(drift, Math.hypot(vx - initial.vx, vz - initial.vz));
-        peak = Math.max(peak, distance); powered ||= c.jet.power > 0; thrust ||= c.jet.thrust;
-        airborne &&= c.leap.thrown && c.hop > 0;
-        previousVx = vx; previousVz = vz;
-      }
-      const distance = (p.x - initial.x) * ux + (p.z - initial.z) * uz;
-      return { dt, mode, selected, held, charged, launched: true, initial, first, maxChange, drift, peak, distance,
-        tailDistance: distance - tailStart, velocity: c.leap.vx * ux + c.leap.vz * uz, targetSpeed: BL.crew.JET_SPEED,
-        fuel: c.jetFuel, powered, thrust, airborne, identity: B.pilot.player === c && B.crew.player === c };
-    } catch (caught) { return { dt, mode, selected, held, charged, error: { message: String(caught), stack: caught.stack || "" } }; }
-    finally {
-      key("keyup", "w", "KeyW"); key("keyup", " ", "Space"); B.crew.thrust(false); C.debugRage(e, false);
-    }
-  })(${dt}, ${JSON.stringify(mode)})`).catch(error => ({ dt, mode, error: String(error) })));
-  const braking = recovery.filter(row => row.mode === "brake");
-  record("hub jetpack: real gorilla throws retain passive momentum, fueled opposite input brakes and reverses at 30/60 Hz without clipping upward velocity, and an empty tank cannot thrust",
-    recovery.length === 6 && recovery.every(row => !row.error && row.selected && row.held > 1 && row.charged && row.launched && row.identity && row.airborne
-      && (row.mode === "brake" ? row.first.velocity > 0 && row.first.velocity < Math.hypot(row.initial.vx, row.initial.vz)
-        && row.first.vy > row.initial.vy - 1 && row.maxChange < 21 * row.dt && Math.abs(row.velocity + row.targetSpeed) < 0.05
-        && row.tailDistance < -0.5 && row.distance < row.peak - 0.5 && row.powered && row.thrust && row.fuel > 0 && row.fuel < 1
-        : row.drift < 1e-6 && !row.powered && !row.thrust && row.fuel === (row.mode === "empty" ? 0 : 1)))
-      && braking.length === 2 && Math.abs(braking[0].distance - braking[1].distance) < 0.08 && Math.abs(braking[0].peak - braking[1].peak) < 0.08,
-    JSON.stringify(recovery));
+  // Retired with autonomous Hub rage: the jetpack's in-flight braking after a
+  // gorilla throw had no throw source other than an NPC rage capture. Passive
+  // NPC gorillas never rage ("hub game-only combat" asserts debugRage refuses).
 } };
 
 const nativeTabProbe = (chord = false) => {
@@ -19151,73 +19057,9 @@ scene("hub", { label: "gorilla work apron descent", query: "status=clankin", ste
   record("gorilla work apron descent: the worker climbs from the ramp roof onto the ground without stalling or relocation",
     state.roof > 6 && state.mounted && state.landed && !state.recoveries && state.maxBlocked < 1.2, JSON.stringify(state));
 } }] });
-scene("hub", { label: "gorilla carry jump", query: "status=chillin", steps: [{ name: "gorilla carry jump", why: "regression: a parked gorilla's recovery outlasted jump input while dragging an Ooga, blocking takeoff and a charged midair throw", run: async (b) => {
-  const state = await b.evaluate(`(() => {
-    const B = __ooga, C = B.clankers, S = BL.scene, c = B.cavemen.get("portlandhodl"), e = C.list.find(entry => entry.owner === c);
-    B.pilot.release(true); C.release();
-    for (const other of C.list) {
-      other.owner.override = other.owner.state = other === e ? "chilling" : "away";
-      other.active = other.root.visible = other === e;
-    }
-    for (const cave of B.cavemen.values()) cave.root.visible = cave === c;
-    for (const prop of B.props) prop.node.visible = false;
-    Object.assign(e, { active: true, phase: "chill", mode: "chilling", route: "", fromSite: -1, lounge: "",
-      loungeDepart: false, parked: true, biped: true, recover: 0, rest: 120, pound: 0, beat: 0, stand: 0,
-      heading: 0, speed: 0, footprintMode: "stand" });
-    e.jump.active = e.climb.active = e.drive.airborne = e.fire.burning = e.fire.rolling = false;
-    Object.assign(e.motion, { lab: false, climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
-    Object.assign(e.root.position, { x: -8, y: 0, z: 8 });
-    e.gorilla.poseManaged(2, -8, 0, 8, 0, 0, false, true, "", e.motion);
-    S.updateWorld(BL.scenes.hub.root); B.headquarters.solids.companions.sync();
-    c.root.visible = true; c.root.quaternion = null; c.walk = null; c.bedTravel.mode = "";
-    c.camp.seat = null; c.camp.burning = c.camp.rolling = c.camp.panic.active = c.roofEscape.active = false;
-    c.hop = c.hopV = c.jumps = c.leap.vx = c.leap.vz = 0; c.act.kind = "idle"; c.act.until = Infinity;
-    c.root.position.x = -8; c.root.position.z = 8.7;
-    c.root.position.y = c.baseY + B.headquarters.solids.companions.supportAt(-8, 8.7, Infinity, 0, 0.3);
-    B.clankerPlay.possess(e, true);
-    S.updateWorld(BL.scenes.hub.root); B.headquarters.solids.companions.sync();
-    const key = (type, name, code) => window.dispatchEvent(new KeyboardEvent(type, { key: name, code, bubbles: true, cancelable: true }));
-    key("keydown", "g", "KeyG"); B.advance(1 / 60, 1 / 60);
-    const grabbed = c.grabbedBy === e, pendingRecovery = e.recover > 0;
-    key("keydown", " ", "Space"); B.advance(1 / 60, 1 / 60);
-    const tookOff = e.drive.airborne && e.drive.jumps === 1 && c.grabbedBy === e;
-    for (let i = 0; i < 12; i++) B.advance(1 / 60, 1 / 60);
-    S.updateWorld(BL.scenes.hub.root);
-    const arm = e.gorilla.parts.armL, leg = c.parts.legR, a = S.boundsOf(arm.geometry), f = S.boundsOf(leg.geometry);
-    const hand = new Float64Array(3), foot = new Float64Array(3);
-    BL.math.mat4.transformPoint(hand, arm.world, a.center[0], a.min[1] + 0.08, a.center[2]);
-    BL.math.mat4.transformPoint(foot, leg.world, f.center[0], f.min[1], f.center[2]);
-    const grip = Math.hypot(hand[0] - foot[0], hand[1] - foot[1], hand[2] - foot[2]);
-    key("keyup", " ", "Space"); key("keydown", " ", "Space"); B.advance(1 / 60, 1 / 60);
-    const secondJump = e.drive.airborne && e.drive.jumps === 2 && c.grabbedBy === e;
-    key("keyup", " ", "Space");
-    const button = document.getElementById("gorilla-smash-hud"), serial = e.smashSerial;
-    button.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 31, pointerType: "mouse", button: 0, buttons: 1, bubbles: true }));
-    for (let i = 0; i < 12; i++) B.advance(1 / 60, 1 / 60);
-    const charged = c.grabbedBy === e && e.drive.airborne
-      && Number(document.getElementById("gorilla-strength").getAttribute("aria-valuenow")) > 33;
-    const strength = Number(document.getElementById("gorilla-strength").getAttribute("aria-valuenow"));
-    button.dispatchEvent(new PointerEvent("pointermove", { pointerId: 31, pointerType: "mouse", button: 2, buttons: 3, bubbles: true }));
-    button.dispatchEvent(new PointerEvent("pointermove", { pointerId: 31, pointerType: "mouse", button: 2, buttons: 1, bubbles: true }));
-    B.clankerPlay.readInput(0.1);
-    const rightReleaseHeld = c.grabbedBy === e && !e.capture.throwing
-      && Number(document.getElementById("gorilla-strength").getAttribute("aria-valuenow")) > strength;
-    button.dispatchEvent(new PointerEvent("pointermove", { pointerId: 31, pointerType: "mouse", button: 2, buttons: 3, bubbles: true }));
-    button.dispatchEvent(new PointerEvent("pointermove", { pointerId: 31, pointerType: "mouse", button: 0, buttons: 2, bubbles: true }));
-    const chordReleased = e.capture.throwing && !e.capture.aimed;
-    const heldThroughRelease = c.grabbedBy === e;
-    button.dispatchEvent(new PointerEvent("pointerup", { pointerId: 31, pointerType: "mouse", button: 2, buttons: 0, bubbles: true }));
-    for (let i = 0; i < 17; i++) B.advance(1 / 60, 1 / 60);
-    const thrownInAir = !c.grabbedBy && e.drive.airborne && c.hop > 0 && Math.hypot(c.leap.vx, c.leap.vz) > 1;
-    key("keyup", "g", "KeyG");
-    return { grabbed, pendingRecovery, tookOff, grip, secondJump, charged, rightReleaseHeld, chordReleased, heldThroughRelease, thrownInAir,
-      smashUnchanged: e.smashSerial === serial };
-  })()`);
-  record("gorilla carry jump: parked recovery cannot swallow takeoff; both jumps hold the Ooga's right foot and a charged click releases them in midair without smashing",
-    state.grabbed && state.pendingRecovery && state.tookOff && state.grip < 0.04 && state.secondJump && state.charged
-      && state.rightReleaseHeld && state.chordReleased && state.heldThroughRelease && state.thrownInAir && state.smashUnchanged, JSON.stringify(state));
-} }].map(gameCombat) });
-scene("hub", { label: "gorilla lab carry jump", exclusive: true, query: "character=gorilla-portlandhodl&status=clankin&gorillarage=1", steps: [{ name: "gorilla lab carry jump", why: "regression: EntropyLab rejected running carry jumps and reapplied its worker pose and coat during autonomous rage capture", run: async (b) => {
+// "gorilla carry jump" is retired: it carried an NPC Ooga, now a passive Hub NPC
+// that no gorilla can grab ("hub game-only combat" asserts the refusal).
+scene("hub", { label: "gorilla lab carry jump", exclusive: true, query: "character=gorilla-portlandhodl&status=clankin", steps: [{ name: "gorilla lab carry jump", why: "regression: EntropyLab rejected a driven gorilla's running double jump", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, S = BL.scene, e = B.clankers.player, cave = e.owner, p = e.root.position;
     for (const other of B.cavemen.values()) if (other !== cave) other.override = other.state = "away";
@@ -19257,924 +19099,27 @@ scene("hub", { label: "gorilla lab carry jump", exclusive: true, query: "charact
     }
     cave.root.position.x = riderX; cave.root.position.z = riderZ; cave.root.position.y = cave.baseY + support;
     S.updateWorld(BL.scenes.hub.root); mesh.sync();
+    // The owner Ooga is a passive Hub NPC: G grabs nothing (carrying NPC Oogas
+    // is retired). The driven gorilla's running double jump stays in the lab.
     key("keydown", "g", "KeyG"); B.advance(1 / 60, 1 / 60);
-    const grabbed = cave.grabbedBy === e;
+    const noGrab = cave.nonInteractive && !cave.grabbedBy && !e.capture.cave && !e.motion.dragging;
     key("keydown", " ", "Space"); B.advance(1 / 60, 1 / 60);
-    const first = e.drive.airborne && e.drive.jumps === 1 && e.drive.vy > 1 && p.y > startY + 0.05 && cave.grabbedBy === e;
+    const first = e.drive.airborne && e.drive.jumps === 1 && e.drive.vy > 1 && p.y > startY + 0.05;
     let peak = p.y;
     for (let i = 0; i < 8; i++) { B.advance(1 / 60, 1 / 60); peak = Math.max(peak, p.y); }
     key("keyup", " ", "Space"); key("keydown", " ", "Space"); B.advance(1 / 60, 1 / 60);
-    const second = e.drive.airborne && e.drive.jumps === 2 && e.drive.vy > 1 && cave.grabbedBy === e;
+    const second = e.drive.airborne && e.drive.jumps === 2 && e.drive.vy > 1;
     key("keyup", " ", "Space");
-    const button = document.getElementById("gorilla-smash-hud");
-    button.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 51, pointerType: "mouse", button: 0, buttons: 1, bubbles: true }));
-    for (let i = 0; i < 8; i++) B.advance(1 / 60, 1 / 60);
-    const charged = e.drive.airborne && cave.grabbedBy === e
-      && Number(document.getElementById("gorilla-strength").getAttribute("aria-valuenow")) > 33;
-    button.dispatchEvent(new PointerEvent("pointerup", { pointerId: 51, pointerType: "mouse", button: 0, buttons: 0, bubbles: true }));
-    const heldThroughRelease = cave.grabbedBy === e;
-    for (let i = 0; i < 17; i++) B.advance(1 / 60, 1 / 60);
-    const thrownInAir = !cave.grabbedBy && e.drive.airborne && cave.hop > 0 && Math.hypot(cave.leap.vx, cave.leap.vz) > 1;
     key("keyup", "g", "KeyG"); key("keyup", "w", "KeyW"); key("keyup", "Shift", "ShiftLeft");
-    return { startedInLab, lab: e.motion.lab, aisleError, ran, grabbed, first, peak, second, charged, heldThroughRelease, thrownInAir,
-      releaseHead: cave.root.position.y - cave.baseY + cave.bodyHeight + Math.max(0, cave.viewLift),
-      releaseCeiling: mouth.floorY + B.headquarters.entropyLab.opening.ceilingY,
+    return { startedInLab, lab: e.motion.lab, aisleError, ran, noGrab, first, peak, second,
       smashUnchanged: e.smashSerial === serial };
   })()`);
-  const rage = await b.evaluate(`(() => {
-    const B = __ooga, C = B.clankers, H = BL.scenes.hub.debug, S = BL.scene, root = BL.scenes.hub.root;
-    const c = B.cavemen.get("portlandhodl"), e = C.list.find(entry => entry.owner === c);
-    const lab = B.headquarters.entropyLab, m = lab.mouth, sx = Math.sin(m.ry), sz = Math.cos(m.ry);
-    const solids = B.headquarters.solids.props, mesh = B.headquarters.solids.companions, dt = 1 / 60;
-    B.pilot.release(true); B.clankerPlay.release(); C.release();
-    const map = H.rageThrowMap, limit = Math.ceil(map.spots.length * 201 / 24) + 1;
-    let warmup = 0;
-    while (!map.ready && warmup < limit) { B.advance(dt, dt); warmup++; }
-    for (const entry of C.list) {
-      C.debugRage(entry, false); C.cancelDebugMove(entry);
-      entry.owner.override = entry.owner.state = entry === e ? "working" : "away";
-      entry.active = entry.root.visible = entry === e;
-    }
-    for (const cave of B.cavemen.values()) cave.root.visible = cave === c;
-    // The central aisle is retained with all benches and cave collision.
-    // Only the initial placement is arranged; capture and carry use live updates.
-    Object.assign(e.root.position, { x: m.x - sx * 2.5, y: m.floorY, z: m.z - sz * 2.5 });
-    Object.assign(e, { active: true, controlled: false, mode: "working", phase: "work", route: "", fromSite: -1,
-      pendingSite: -1, lounge: "", loungeDepart: false, parked: false, recover: 0, rest: 0,
-      heading: m.ry, speed: 0, pound: 0, beat: 0, stand: 0 });
-    Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false,
-      vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
-    e.jump.active = e.climb.active = e.fire.burning = e.fire.rolling = false; e.fire.rollRecover = 0;
-    Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, openingSettle: 0, roll: 0, charge: 0,
-      supportOffset: 0, landing: 0, takeoff: 0, labWork: "", smash: false, dragging: false, throwProgress: 0 });
-    e.health.value = e.health.max;
-    B.crew.prepareDragged(c); B.crew.recoverDragged(c);
-    c.root.quaternion = null; c.walk = null; c.bedTravel.mode = ""; c.camp.seat = null;
-    c.camp.burning = c.camp.rolling = c.camp.panic.active = c.roofEscape.active = false;
-    c.health.stunned = 0; c.act.kind = "idle"; c.act.until = Infinity;
-    const labSite = B.crew.workSites.findIndex(site => site.mouth === m);
-    c.work.site = c.work.plannedSite = labSite;
-    const names = ["torso", "armR", "armL"], code = BL.agent.create({ groundAt: () => 0, managed: true, form: "code" });
-    const clipped = () => { let count = 0; S.traverseVisible(e.root, node => { if (node.geometry?.clipPlane) count++; }); return count; };
-    let began = false, queued = false, captured = false, captureInside = false, held = true, identity = true, cleanPose = true, insideFrames = 0;
-    let heldFrames = 0, setup = null, baseline = null, restored = false;
-    const pursuit = { frames: 0, bounded: true, maxStep: 0, noWarp: true, heldInside: true };
-    try {
-      C.possess(e); C.update(dt);
-      e.gorilla.poseManaged(2, e.root.position.x, e.root.position.y, e.root.position.z, e.heading, 0, false, true, "", e.motion);
-      S.updateWorld(root); solids.sync(); mesh.sync();
-      const normalGeometry = names.map(name => e.gorilla.parts[name].geometry), normalClipped = clipped();
-      baseline = { inside: lab.phase.inside(e.root.position.x, e.root.position.y, e.root.position.z),
-        lab: e.gorilla.debug.lab, gait: e.gorilla.debug.gait, clipped: normalClipped };
-      C.release(); B.pilot.possess(c, true);
-      // Beyond debug rage's 35 m reach the lab has no target: the raging body
-      // keeps its quadruped code form and queued job, then stopping restores
-      // the lab's own behavior in place.
-      const far = Math.hypot(m.x, m.z), away = { x: -m.x / far * 14, z: -m.z / far * 14 };
-      B.crew.relocatePlayer({ x: away.x, y: B.island.surfaceAt(away.x, away.z), z: away.z }, 0);
-      began = C.debugRage(e, true);
-      C.plan(c, labSite); queued = e.pendingSite === labSite && e.phase === "rage" && !e.route;
-      const p = e.root.position, q = c.root.position;
-      const watch = () => {
-        queued &&= e.pendingSite === labSite && e.phase === "rage" && !e.route;
-        cleanPose &&= e.rage.active && !e.motion.lab && !e.motion.labRunIn && !e.motion.labWork && !e.biped
-          && !e.gorilla.debug.lab && e.gorilla.debug.gait !== "upright" && e.gorilla.form === "code" && !clipped()
-          && names.every(name => e.gorilla.parts[name].geometry === code.parts[name].geometry);
-        identity &&= B.pilot.player === c && B.crew.player === c;
-      };
-      for (let frame = 0; frame < 30; frame++) {
-        B.advance(dt, dt); watch();
-        if (!c.grabbedBy && lab.phase.inside(p.x, p.y, p.z)) insideFrames++;
-      }
-      C.debugRage(e, false); B.advance(dt, dt);
-      restored = !e.rage.active && !c.grabbedBy && !e.capture.cave && !e.motion.dragging
-        && lab.phase.inside(p.x, p.y, p.z) && e.motion.lab && e.gorilla.debug.lab && e.gorilla.debug.gait === "upright"
-        && e.gorilla.form === "ape" && names.every((name, i) => e.gorilla.parts[name].geometry === normalGeometry[i])
-        && clipped() === normalClipped && B.pilot.player === c && B.crew.player === c;
-      // A cave interior never qualifies for the outer-ledge teleport. Keep
-      // this real clear contact and require ordinary capture in the lab.
-      B.crew.relocatePlayer({ x: m.x - sx * 1.3, y: m.floorY, z: m.z - sz * 1.3 }, m.ry);
-      e.gorilla.poseManaged(2, p.x, p.y, p.z, e.heading, 0, false, false, "", e.motion);
-      S.updateWorld(root);
-      const arm = e.gorilla.parts.armL, bounds = S.boundsOf(arm.geometry), hand = new Float64Array(3);
-      BL.math.mat4.transformPoint(hand, arm.world, bounds.center[0], bounds.min[1] + .08, bounds.center[2]);
-      B.crew.relocatePlayer({ x: hand[0], y: m.floorY, z: hand[2] }, m.ry);
-      S.updateWorld(root); solids.sync(); mesh.sync();
-      const feet = q.y - c.baseY;
-      const clearProps = (_entry, x, y, z, nx, ny, nz, radius, height, _props, _actors, toRadius, toHeight) =>
-        solids.segmentClear(x, y, z, nx, ny, nz, radius, height, null, toRadius, toHeight);
-      setup = { mapReady: map.ready, warmup, gorillaInside: lab.phase.inside(p.x, p.y, p.z), targetInside: lab.phase.inside(q.x, feet, q.z),
-        eligible: H.rageCaptureEligible(e, c), warpRequired: H.rageWarpRequired(e, c),
-        targetClear: B.island.clearAt(q.x, feet + .025, q.z, c.bodyRadius, c.bodyHeight - .025)
-          && solids.segmentClear(q.x, feet + .025, q.z, q.x, feet + .025, q.z, c.bodyRadius, c.bodyHeight - .025),
-        gorillaClear: e.gorilla.climbPoseClear(0, p.x, p.y, p.z, e.heading, e.motion, B.island.solidAt, clearProps, e, 0, true),
-        sceneryVisible: B.props.filter(prop => prop.node.visible).length, hand: Array.from(hand), target: { x: q.x, y: feet, z: q.z } };
-      began &&= C.debugRage(e, true);
-      C.plan(c, labSite); queued &&= e.pendingSite === labSite && e.phase === "rage" && !e.route;
-      for (let frame = 0; frame < 60; frame++) {
-        const targetInside = !c.grabbedBy && lab.phase.inside(q.x, q.y - c.baseY, q.z);
-        const beforeX = p.x, beforeZ = p.z;
-        B.advance(dt, dt); watch();
-        const step = Math.hypot(p.x - beforeX, p.z - beforeZ);
-        pursuit.frames++; pursuit.maxStep = Math.max(pursuit.maxStep, step);
-        pursuit.bounded &&= step <= BL.clankers.RAGE_SPEED * dt + 1e-7;
-        pursuit.noWarp &&= !e.capture.warpVisit && !e.rage.homePending;
-        if (!captured && c.grabbedBy === e) {
-          captured = true;
-          captureInside = targetInside && lab.phase.inside(p.x, p.y, p.z);
-        }
-        if (captured) {
-          held &&= c.grabbedBy === e && e.capture.cave === c && e.rage.grabHeld && e.motion.dragging;
-          heldFrames++;
-          pursuit.heldInside &&= lab.phase.inside(p.x, p.y, p.z);
-          if (!held || heldFrames >= 6) break;
-        }
-      }
-      const beforeStop = { position: { ...p }, phase: e.rage.phase, lab: e.motion.lab, gait: e.gorilla.debug.gait,
-        blocked: e.capture.blocked, blockedPart: e.capture.blockedPart, blockedStage: e.capture.blockedStage };
-      C.debugRage(e, false); B.advance(dt, dt);
-      const released = !e.rage.active && !c.grabbedBy && !e.capture.cave && !e.motion.dragging && e.gorilla.form === "ape"
-        && B.pilot.player === c && B.crew.player === c;
-      return { began, queued, baseline, setup, captured, captureInside, held, identity, cleanPose, insideFrames, heldFrames, pursuit, restored, released, beforeStop,
-        end: { position: { ...p }, phase: e.rage.phase, blocked: e.capture.blocked, blockedPart: e.capture.blockedPart,
-          blockedStage: e.capture.blockedStage, lab: e.motion.lab, gait: e.gorilla.debug.gait } };
-    } finally { C.debugRage(e, false); B.pilot.release(true); code.dispose(); }
-  })()`);
-  record("gorilla lab carry jump: Shift+W+G keeps a running grab through both jumps and a charged midair throw without a smash",
-    state.startedInLab && state.lab && state.aisleError < 0.03 && state.ran && state.grabbed && state.first && state.peak > 0.5 && state.second && state.charged && state.heldThroughRelease
-      && state.thrownInAir && state.releaseHead <= state.releaseCeiling + 1e-6 && state.smashUnchanged && rage.began && rage.queued && rage.baseline?.inside && rage.baseline.lab
-      && rage.baseline.gait === "upright" && rage.baseline.clipped > 0
-      && rage.setup?.mapReady && rage.setup.gorillaInside && rage.setup.targetInside && rage.setup.eligible && !rage.setup.warpRequired && rage.setup.targetClear && rage.setup.gorillaClear
-      && rage.insideFrames >= 30 && rage.restored && rage.captured && rage.captureInside && rage.held && rage.heldFrames >= 6
-      && rage.pursuit.frames >= 6 && rage.pursuit.bounded && rage.pursuit.noWarp && rage.pursuit.heldInside
-      && rage.identity && rage.cleanPose && rage.released,
-    JSON.stringify({ ...state, rage }));
-} }].map(gameCombat) });
-scene("hub", { label: "gorilla rage throw", query: "status=chillin&gorillarage=1", steps: [{ name: "gorilla rage throw", outsideRing: true, why: "playthrough: an autonomous gorilla carries past nearby Oogas and rocks, visibly grabs raised outer targets before returning them to flat ground, pursues ordinary ground targets on foot, then throws with real terrain clearance before hunting again", run: async (b) => {
-  const states = [], sceneryVisibility = await b.evaluate(`__ooga.props.map(prop => prop.node.visible)`);
-  // Complete the production map with all scenery present before isolating
-  // actors or adding contact props. Each spot uses at most 201 static checks.
-  const mapBake = await b.evaluate(`(() => {
-    const B = __ooga, map = BL.scenes.hub.debug.rageThrowMap;
-    // Combat normally hides the Mempool site. These perimeter cases need its
-    // real bridge and forest support present while the shared map is baked.
-    B.poolIsland.site.node.visible = true;
-    BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.props.sync();
-    const limit = Math.ceil(map.spots.length * 201 / 24) + 1;
-    let frames = 0;
-    while (!map.ready && frames < limit) { B.advance(1 / 60, 1 / 60); frames++; }
-    return { ready: map.ready, validCount: map.validCount, spots: map.spots.length,
-      frames, limit, maxFrameChecks: map.maxFrameChecks, liveProofs: map.liveProofs };
-  })()`);
-  const cases = [[1 / 30, "plain-east"], [1 / 60, "plain-west"], [1 / 30, "crate"], [1 / 60, "barrel"], [1 / 30, "rock-left"], [1 / 60, "rock-right"],
-    [1 / 30, "scenery-arcade"], [1 / 60, "scenery-factory"], [1 / 30, "scenery-lab"], [1 / 60, "scenery-north"], [1 / 30, "scenery-south"], [1 / 60, "raised-overlap"],
-    [1 / 30, "palm-left"], [1 / 60, "palm-right"], [1 / 30, "hill-east"], [1 / 60, "hill-west"], [1 / 30, "hill-factory"],
-    [1 / 30, "border-inside"], [1 / 60, "border-at"], [1 / 30, "border-outside"],
-    [1 / 30, "bridge"], [1 / 60, "rainforest"]];
-  for (const [dt, fixture] of cases) states.push(await b.evaluate(`((dt, fixture, sceneryVisibility, mapBake) => {
-    const B = __ooga, C = B.clankers, H = BL.scenes.hub.debug, S = BL.scene, root = BL.scenes.hub.root;
-    const solids = B.headquarters.solids.props, companions = B.headquarters.solids.companions;
-    const c = B.cavemen.get("portlandhodl"), second = B.cavemen.get("w-s-bitcoin"), e = C.list.find(entry => entry.owner === c);
-    const plain = fixture.startsWith("plain-"), crowded = fixture.startsWith("rock-"), sceneScenery = fixture.startsWith("scenery-"), raised = fixture === "raised-overlap";
-    const palm = fixture.startsWith("palm-"), hill = fixture.startsWith("hill-"), boundary = fixture.startsWith("border-") ? fixture.slice(7) : "";
-    // Keep low-prop captures inside the map rings so they exercise a real carry leg.
-    const mappedCarry = palm || crowded || fixture === "barrel" || fixture === "crate";
-    const regional = fixture === "bridge" || fixture === "rainforest", warpExpected = hill;
-    const expectedLand = fixture === "bridge" ? 5 : fixture === "rainforest" ? 2 : 1, fullScenery = sceneScenery || hill || boundary || regional;
-    const controlled = hill || !!boundary || regional;
-    const M = B.poolIsland;
-    const third = crowded || raised ? B.crew.list.find(cave => cave !== c && cave !== second) : null;
-    const bystanders = third ? [second, third] : [second];
-    B.pilot.release(true); B.clankerPlay.release(); C.release(); H.selectDebugGorilla(null);
-    for (const entry of C.list) {
-      C.debugRage(entry, false); C.cancelDebugMove(entry);
-      entry.owner.override = entry.owner.state = entry === e || bystanders.includes(entry.owner) ? "chilling" : "away";
-      entry.owner.bedTravel.mode = "";
-      entry.controlled = entry.drive.airborne = entry.climb.active = entry.fire.rolling = false;
-      entry.active = entry.root.visible = entry === e || bystanders.includes(entry.owner);
-      if (entry !== e && entry.active) {
-        Object.assign(entry.root.position, { x: -15, y: B.island.surfaceAt(-15, -12), z: -12 });
-        entry.recover = 1000; entry.lounge = ""; entry.loungeDepart = false;
-      }
-    }
-    for (const cave of B.cavemen.values()) cave.root.visible = cave === c || bystanders.includes(cave);
-    // Keep the real terrain, including its outer hills, and the cabinet.
-    // Contact cases add a real solid beside the approach or under the target.
-    for (let i = 0; i < B.props.length; i++) B.props[i].node.visible = fullScenery ? sceneryVisibility[i] : B.props[i].node === B.jumbotron.node;
-    S.updateWorld(root); solids.sync();
-    let fixtureSpot = null;
-    if (plain || raised || mappedCarry) {
-      const sign = fixture === "plain-west" ? -1 : 1, spots = H.rageThrowMap.spots;
-      for (const spot of spots) {
-        if (!spot.valid || spot.land !== 1 || (plain || mappedCarry) && spot.dx * sign <= 0.25) continue;
-        if (plain || mappedCarry) {
-          // Start inside every map ring, with a target already in reach.
-          // Confirm this bearing's nearest pad retains the requested side.
-          const x = spot.dx * 5, z = spot.dz * 5;
-          let nearest = null, distance = Infinity;
-          for (const candidate of spots) if (candidate.valid && candidate.land === 1) {
-            const next = Math.hypot(candidate.x - x, candidate.z - z);
-            if (next < distance) { distance = next; nearest = candidate; }
-          }
-          if (nearest !== spot) continue;
-        }
-        if (!fixtureSpot || spot.dx * sign > fixtureSpot.dx * sign) fixtureSpot = spot;
-      }
-      if (!fixtureSpot) return { dt, fixture, setup: { valid: false }, mapBake,
-        error: { message: "No valid mapped throw spot for this fixture's direction" } };
-    }
-    const bearing = { "scenery-arcade": Math.PI / 2, "scenery-factory": Math.PI / 3, "scenery-lab": -Math.PI / 6,
-      "scenery-north": 0, "scenery-south": Math.PI, "hill-east": Math.PI / 2, "hill-west": -Math.PI / 2, "hill-factory": Math.PI / 3 }[fixture] ?? 0;
-    const board = B.jumbotron.node, outwardX = fixtureSpot ? fixtureSpot.dx : fullScenery ? Math.sin(bearing) : -Math.sin(board.rotation.y);
-    const outwardZ = fixtureSpot ? fixtureSpot.dz : fullScenery ? -Math.cos(bearing) : -Math.cos(board.rotation.y), fx = -outwardX, fz = -outwardZ;
-    const origin = plain || mappedCarry || fullScenery || raised ? { x: outwardX * 30, z: outwardZ * 30 } : board.position;
-    let heading = Math.atan2(outwardX, outwardZ);
-    const stage = (distance, side = 0) => ({ x: origin.x + fx * distance + fz * side,
-      z: origin.z + fz * distance - fx * side });
-    const side = plain || mappedCarry || fullScenery || raised ? 0 : 4, offset = plain ? 0 : 1.5;
-    const spotDistance = fixtureSpot ? 30 - Math.hypot(fixtureSpot.x, fixtureSpot.z) : 0;
-    const start = stage(raised ? spotDistance : plain || mappedCarry ? 25 : hill ? 11 : sceneScenery ? 13.5 : 20 + offset, fixture === "crate" ? side + 2.5 : side);
-    const victim = stage(raised ? spotDistance - 1 : plain || mappedCarry ? 24 : hill ? 6 : sceneScenery ? 11 : 17.5 + offset, side);
-    const nearSide = fixture === "rock-left" || fixture === "palm-left" ? 1 : -1;
-    // Put traffic between the accepted capture and its nearest mapped pad.
-    // The rock remains beside that same held route, beyond the initial bodies.
-    const next = hill ? { x: 0, z: 16.5 } : crowded ? stage(23.25, -nearSide * 1.25) : stage(14, 6);
-    const extra = raised ? stage(spotDistance, 6) : crowded ? stage(23.75, nearSide * 1.25) : stage(17.1, side - 1.25);
-    let contactProp = null;
-    if (!plain && !fullScenery) {
-      const geometry = palm ? BL.dressing.palm(0) : raised ? BL.hubModels.altarSlab() : fixture === "crate" ? BL.hubModels.woodCrate(2)
-        : fixture.startsWith("rock-") ? BL.hubModels.breakableRock() : BL.hubModels.barrel(1);
-      const bounds = S.boundsOf(geometry);
-      const at = palm ? stage(23.75, nearSide * 2.1) : raised ? start : fixture === "crate" ? victim : stage(mappedCarry ? 22 : 17.5 + offset,
-        side + nearSide * (Math.max(Math.abs(bounds.min[0]), Math.abs(bounds.max[0])) + 0.9));
-      contactProp = S.createNode({ geometry, position: { x: at.x, y: B.island.surfaceAt(at.x, at.z), z: at.z } });
-      if (mappedCarry) contactProp.rotation.y = heading;
-      if (raised) {
-        Object.assign(contactProp.scale, { x: 3, y: 1, z: 3 });
-        contactProp.rotation.y = heading;
-      }
-      if (palm) {
-        contactProp.npcTreeSupport = contactProp.ragePass = true;
-        contactProp.rotation.y = heading + (nearSide > 0 ? Math.PI : 0);
-      }
-      else { contactProp.gorillaSteps = [[...bounds.min, ...bounds.max]]; contactProp.gorillaStepAll = true; }
-      S.addChild(root, contactProp); solids.add(contactProp); S.updateWorld(root); solids.sync();
-      if (fixture === "crate") {
-        // The crate's rails stand above its centre lid. Put ordinary body
-        // support on that real rail as well as the wider rendered feet.
-        const shell = S.boundsOf(geometry.collisionGeometry), rail = shell.max[0] - 0.27;
-        victim.x += fz * rail; victim.z -= fx * rail;
-      }
-    }
-    const propFloor = solids.supportAt(victim.x, victim.z, Infinity, 0, 0.3);
-    let initialFloor = fullScenery || palm ? B.island.surfaceAt(victim.x, victim.z) : Math.max(B.island.surfaceAt(victim.x, victim.z), propFloor);
-    for (const [cave, at] of [[c, victim], [second, next], ...(third ? [[third, extra]] : [])]) {
-      B.crew.prepareDragged(cave); B.crew.recoverDragged(cave);
-      cave.root.quaternion = null; cave.walk = null; cave.bedTravel.mode = "";
-      cave.root.rotation.x = cave.root.rotation.z = 0; cave.root.rotation.y = heading;
-      cave.override = cave.state = "chilling"; cave.root.visible = true;
-      cave.camp.seat = null; cave.camp.burning = cave.camp.rolling = cave.camp.panic.active = cave.roofEscape.active = false;
-      cave.health.stunned = false; cave.hop = cave.hopV = cave.jumps = 0;
-      cave.act.kind = "idle"; cave.act.until = Infinity; cave.act.spot.sit = false;
-      Object.assign(cave.root.position, { x: at.x, y: (cave === c ? initialFloor : B.island.surfaceAt(at.x, at.z)) + cave.baseY, z: at.z });
-    }
-    if (fixture === "crate" || raised) {
-      S.updateWorld(root);
-      const footPoint = new Float64Array(3);
-      let lift = 0;
-      for (const name of ["legR", "legL"]) {
-        const foot = c.parts[name], bounds = S.boundsOf(foot.geometry);
-        const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
-        for (let corner = 0; corner < 8; corner++) {
-          BL.math.mat4.transformPoint(footPoint, foot.world, bounds[corner & 1 ? "max" : "min"][0],
-            bounds[corner & 2 ? "max" : "min"][1], bounds[corner & 4 ? "max" : "min"][2]);
-          for (let axis = 0; axis < 3; axis++) { low[axis] = Math.min(low[axis], footPoint[axis]); high[axis] = Math.max(high[axis], footPoint[axis]); }
-        }
-        const floor = solids.supportAt((low[0] + high[0]) / 2, (low[2] + high[2]) / 2, Infinity, 0,
-          Math.hypot(high[0] - low[0], high[2] - low[2]) / 2);
-        lift = Math.max(lift, floor - low[1]);
-      }
-      c.root.position.y += lift; initialFloor += lift;
-    }
-    const elevated = initialFloor - B.island.surfaceAt(victim.x, victim.z);
-    const y = C.supportAt(e, start.x, start.z, B.island.surfaceAt(start.x, start.z), BL.clankers.PROP_STEP, heading);
-    Object.assign(e.root.position, { x: start.x, y, z: start.z });
-    Object.assign(e, { active: true, controlled: false, mode: "chilling", phase: "chill", route: "", fromSite: -1,
-      pendingSite: -1, lounge: "", loungeDepart: false, loungeRoof: false, parked: false, biped: false,
-      recover: 0, rest: 0, heading, speed: 0, pound: 0, beat: 0, stand: 0,
-      footprintMode: "walk", radius: BL.clankers.WALK_RADIUS, height: BL.clankers.WALK_HEIGHT });
-    Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
-    e.jump.active = e.climb.active = e.fire.burning = e.fire.rolling = false; e.fire.rollRecover = 0;
-    Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, roll: 0, charge: 0, supportOffset: 0,
-      landing: 0, takeoff: 0, lab: false, labRunIn: false, labWork: "", smash: false, dragging: false, throwProgress: 0 });
-    e.health.value = e.health.max; e.stuck.recoveries = 0;
-    e.gorilla.poseManaged(2, start.x, y, start.z, e.heading, 0, false, false, "", e.motion);
-    S.updateWorld(root); solids.sync(); companions.sync();
-    let riderSetup = null;
-    if (raised) {
-      let support = -Infinity, x = start.x, z = start.z;
-      for (let dx = -0.5; dx <= 0.501; dx += 0.25) for (let dz = -0.5; dz <= 0.501; dz += 0.25) {
-        const atX = start.x + dx, atZ = start.z + dz;
-        const floor = companions.supportAt(atX, atZ, Infinity, 0, 0.3, null, null, false, node => e.renderParts.includes(node));
-        if (floor > support) { support = floor; x = atX; z = atZ; }
-      }
-      Object.assign(second.root.position, { x, y: support + second.baseY, z });
-      riderSetup = { x, z, feet: support, above: support - e.root.position.y, distance: Math.hypot(x - start.x, z - start.z) };
-      S.updateWorld(root); companions.sync();
-    }
-    const point = new Float64Array(3), parts = ["legR", "legL", "torso", "armR", "armL", "head"].map(name => c.parts[name]);
-    // Captives retain full body clearance; the gorilla keeps only its torso solid.
-    // Free animated limbs may cross the bridge deck without invalidating its setup.
-    const blockedParts = (actor, dx = 0, dy = 0, dz = 0) => {
-      const blocked = [];
-      for (const name of actor === e.gorilla ? ["torso"] : ["legR", "legL", "torso", "armR", "armL", "head"]) {
-        const part = actor.parts[name], bounds = S.boundsOf(part.geometry);
-        const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
-        for (let corner = 0; corner < 8; corner++) {
-          BL.math.mat4.transformPoint(point, part.world, bounds[corner & 1 ? "max" : "min"][0],
-            bounds[corner & 2 ? "max" : "min"][1], bounds[corner & 4 ? "max" : "min"][2]);
-          for (let axis = 0; axis < 3; axis++) { low[axis] = Math.min(low[axis], point[axis]); high[axis] = Math.max(high[axis], point[axis]); }
-        }
-        const x = (low[0] + high[0]) / 2, y = low[1] + 0.025, z = (low[2] + high[2]) / 2;
-        const radius = Math.hypot(high[0] - low[0], high[2] - low[2]) / 2, height = high[1] - y;
-        if (!solids.segmentClear(x, y, z, x + dx, y + dy, z + dz, radius, height)) blocked.push({ name, low, high });
-      }
-      return blocked;
-    };
-    const setup = { valid: !fullScenery, attempts: 0, selected: null, lastRejected: null,
-      sceneryVisible: B.props.filter(prop => prop.node.visible).length,
-      contactProp: contactProp ? { x: contactProp.position.x, y: contactProp.position.y, z: contactProp.position.z,
-        heading: contactProp.rotation.y, ragePass: !!contactProp.ragePass } : null,
-      fixtureSpot: fixtureSpot ? { ray: fixtureSpot.ray, inset: fixtureSpot.inset, x: fixtureSpot.x, z: fixtureSpot.z,
-        dx: fixtureSpot.dx, dz: fixtureSpot.dz, start: { ...start }, victim: { ...victim },
-        distance: Math.hypot(fixtureSpot.x - start.x, fixtureSpot.z - start.z) } : null };
-    if (fullScenery && !regional && !boundary) {
-      // Select only the capture setup, never a launch goal. Keep every real
-      // prop in place and stay in this approach's neighbouring meadow.
-      captureSetup: for (const approach of hill ? [14, 16, 18, 20, 22, 24] : [0]) for (const radius of hill ? [24, 25, 26, 27, 28] : [19, 18]) {
-        for (const across of hill ? [0, -2, 2, -4, 4, -6, 6, -8, 8] : [0, -1, 1, -2, 2, -3, 3]) {
-          setup.attempts++;
-          Object.assign(victim, stage(30 - radius, across));
-          Object.assign(start, stage(hill ? approach : 32.5 - radius, across));
-          if (!hill) Object.assign(next, stage(33 - radius, across + 4));
-          initialFloor = B.island.surfaceAt(victim.x, victim.z);
-          const floor = B.island.surfaceAt(start.x, start.z), nextFloor = B.island.surfaceAt(next.x, next.z);
-          const support = C.supportAt(e, start.x, start.z, floor, BL.clankers.PROP_STEP, heading);
-          Object.assign(c.root.position, { x: victim.x, y: initialFloor + c.baseY, z: victim.z });
-          Object.assign(second.root.position, { x: next.x, y: nextFloor + second.baseY, z: next.z });
-          Object.assign(e.root.position, { x: start.x, y: support, z: start.z });
-          e.gorilla.poseManaged(2, start.x, support, start.z, heading, 0, false, false, "", e.motion);
-          S.updateWorld(root); companions.sync();
-          const targetBlocked = blockedParts(c), secondBlocked = blockedParts(second), gorillaBlocked = blockedParts(e.gorilla);
-          const perch = !hill || initialFloor >= 2 && floor === 0
-            && [[0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]].every(([dx, dz]) => B.island.surfaceAt(victim.x + dx, victim.z + dz) === initialFloor);
-          const ground = B.island.onLand(start.x, start.z) && B.island.onLand(victim.x, victim.z) && B.island.onLand(next.x, next.z)
-            && perch
-            && Math.abs(support - floor) < 0.025
-            && B.island.clearAt(start.x, floor + 0.025, start.z, e.radius, e.height)
-            && B.island.clearAt(victim.x, initialFloor + 0.025, victim.z, 0.3, c.bodyHeight)
-            && B.island.clearAt(next.x, nextFloor + 0.025, next.z, 0.3, second.bodyHeight);
-          const bodies = solids.clearAt(start.x, floor + 0.025, start.z, e.radius, e.height)
-            && solids.clearAt(victim.x, initialFloor + 0.025, victim.z, 0.3, c.bodyHeight)
-            && solids.clearAt(next.x, nextFloor + 0.025, next.z, 0.3, second.bodyHeight);
-          setup.valid = ground && bodies && !targetBlocked.length && !secondBlocked.length && !gorillaBlocked.length;
-          if (setup.valid) {
-            setup.selected = { radius, across, approach, start: { ...e.root.position }, victim: { ...c.root.position }, second: { ...second.root.position } };
-            break captureSetup;
-          }
-          setup.lastRejected = { radius, across, ground, bodies, floor, support, targetFloor: initialFloor, perch,
-            target: targetBlocked.map(part => part.name), second: secondBlocked.map(part => part.name), gorilla: gorillaBlocked.map(part => part.name) };
-        }
-        if (setup.valid) break;
-      }
-    }
-    if (boundary) {
-      const border = 18.5, radius = border + (boundary === "inside" ? -0.05 : boundary === "outside" ? 0.05 : 0);
-      // Keep all scenery and use exposed ordinary ground at the exact radius.
-      // Height is required as well as the border: all three must walk the
-      // four metres from their starts, outside ordinary grabbing reach.
-      for (let direction = 0; direction < 24; direction++) {
-        setup.attempts++;
-        const angle = direction * Math.PI / 12, dx = Math.sin(angle), dz = Math.cos(angle);
-        Object.assign(victim, { x: dx * radius, z: dz * radius });
-        if (Math.hypot(victim.x, victim.z) !== radius) continue;
-        Object.assign(start, { x: dx * (radius - 4), z: dz * (radius - 4) });
-        Object.assign(next, { x: dx * 12 + dz * 4, z: dz * 12 - dx * 4 });
-        heading = angle; initialFloor = B.island.surfaceAt(victim.x, victim.z);
-        const floor = B.island.surfaceAt(start.x, start.z), nextFloor = B.island.surfaceAt(next.x, next.z);
-        const support = C.supportAt(e, start.x, start.z, floor, BL.clankers.PROP_STEP, heading);
-        Object.assign(e.root.position, { x: start.x, y: support, z: start.z }); e.heading = heading;
-        Object.assign(c.root.position, { x: victim.x, y: initialFloor + c.baseY, z: victim.z }); c.root.rotation.y = heading;
-        Object.assign(second.root.position, { x: next.x, y: nextFloor + second.baseY, z: next.z });
-        e.gorilla.poseManaged(2, start.x, support, start.z, heading, 0, false, false, "", e.motion);
-        S.updateWorld(root); companions.sync();
-        const blocked = { target: blockedParts(c), second: blockedParts(second), gorilla: blockedParts(e.gorilla) };
-        const points = [[start, support, e.radius, e.height], [victim, initialFloor, 0.3, c.bodyHeight], [next, nextFloor, 0.3, second.bodyHeight]];
-        const clear = floor === 0 && initialFloor === 0 && Math.abs(support) < 0.025 && points.every(([p, y, radius, height]) =>
-          B.island.onLand(p.x, p.z) && B.island.clearAt(p.x, y + 0.025, p.z, radius, height) && solids.clearAt(p.x, y + 0.025, p.z, radius, height));
-        setup.valid = clear && !blocked.target.length && !blocked.second.length && !blocked.gorilla.length;
-        if (setup.valid) {
-          setup.selected = { border, radius, direction, start: { ...e.root.position }, victim: { ...c.root.position }, second: { ...second.root.position } }; break;
-        }
-        setup.lastRejected = { border, radius, direction, clear, floor, support, targetFloor: initialFloor,
-          target: blocked.target.map(part => part.name), second: blocked.second.map(part => part.name), gorilla: blocked.gorilla.map(part => part.name) };
-      }
-    }
-    if (regional) {
-      // Real supported starts, independent of the selected release pad.
-      // Keep bridge rails, forest terrain and every production prop present.
-      const candidates = [];
-      if (fixture === "bridge") {
-        for (const fraction of [0.5, 0.35, 0.65]) {
-          const z = M.place.bridgeLocalZ + BL.poolModels.SITE.span * fraction;
-          candidates.push({ start: [0, z], victim: [0, z - 1], second: [0, z + 5] });
-        }
-      } else for (const radius of [12, 13, 14, 15]) for (let direction = 0; direction < 12; direction++) {
-        const angle = direction * Math.PI / 6, x = Math.sin(angle), z = Math.cos(angle);
-        candidates.push({ start: [x * radius, z * radius], victim: [x * (radius + 1), z * (radius + 1)],
-          second: [x * radius + z * 4, z * radius - x * 4] });
-      }
-      for (const candidate of candidates) {
-        setup.attempts++;
-        const points = [candidate.start, candidate.victim, candidate.second].map(([x, z]) => ({ x: M.worldX(x, z), z: M.worldZ(x, z) }));
-        for (const p of points) p.y = fixture === "bridge"
-          ? solids.supportAt(p.x, p.z, M.place.y + 0.5, 0, 0.3, null, null, false, node => node === M.site.bridge)
-          : M.groundAt(p.x, p.z);
-        const [at, target, nearby] = points;
-        heading = Math.atan2(target.x - at.x, target.z - at.z);
-        const support = C.supportAt(e, at.x, at.z, at.y, BL.clankers.PROP_STEP, heading);
-        const classified = points.every(p => Number.isFinite(p.y) && H.rageCaptureLandAt(p.x, p.y, p.z) === expectedLand);
-        if (!classified || !Number.isFinite(support) || Math.abs(support - at.y) > 0.1) {
-          setup.lastRejected = { points, support, classified }; continue;
-        }
-        Object.assign(start, at); Object.assign(victim, target); Object.assign(next, nearby); initialFloor = target.y;
-        Object.assign(e.root.position, { x: at.x, y: support, z: at.z }); e.heading = heading;
-        for (const [actor, p] of [[c, target], [second, nearby]]) {
-          Object.assign(actor.root.position, { x: p.x, y: p.y + actor.baseY, z: p.z }); actor.root.rotation.y = heading;
-        }
-        e.gorilla.poseManaged(2, at.x, support, at.z, heading, 0, false, false, "", e.motion);
-        S.updateWorld(root); companions.sync();
-        const blocked = { target: blockedParts(c), second: blockedParts(second), gorilla: blockedParts(e.gorilla) };
-        const clear = points.every((p, i) => {
-          const radius = i ? 0.3 : e.radius, height = i ? (i === 1 ? c : second).bodyHeight : e.height;
-          // A flat coarse cylinder starts above the highest supporting plank;
-          // the real root and torso still use fitted support.
-          const coarseY = fixture === "bridge" && !i
-            ? solids.supportAt(p.x, p.z, M.place.y + 0.5, 0, radius, null, null, false, node => node === M.site.bridge) : p.y;
-          return M.boxClear(p.x - radius, coarseY + 0.025, p.z - radius, p.x + radius, coarseY + height, p.z + radius)
-            && solids.clearAt(p.x, coarseY + 0.025, p.z, radius, height);
-        });
-        const reachablePad = H.rageThrowMap.spots.some(spot => spot.valid && spot.land === expectedLand && H.rageMapRouteClear(e, spot));
-        setup.valid = clear && !blocked.target.length && !blocked.second.length && !blocked.gorilla.length && reachablePad;
-        if (setup.valid) {
-          setup.selected = { start: { ...e.root.position }, victim: { ...c.root.position }, second: { ...second.root.position },
-            captureLand: H.rageCaptureLandAt(at.x, support, at.z), exteriorLand: H.rageLandAt(at.x, at.z),
-            belowLand: H.rageCaptureLandAt(at.x, support - 3, at.z), reachablePad };
-          break;
-        }
-        setup.lastRejected = { points, support, classified, clear, reachablePad,
-          target: blocked.target.map(part => part.name), second: blocked.second.map(part => part.name), gorilla: blocked.gorilla.map(part => part.name) };
-      }
-    }
-    const initialClearance = { target: blockedParts(c), second: blockedParts(second), third: third ? blockedParts(third) : [], gorilla: blockedParts(e.gorilla),
-      targetBody: solids.clearAt(victim.x, initialFloor + 0.025, victim.z, 0.3, c.bodyHeight) };
-    if (!setup.valid) return { dt, fixture, sceneScenery, setup, initialClearance, error: { message: "No clear ground capture setup in this approach" } };
-    const flightClearance = () => {
-      let clearance = Infinity;
-      for (const part of parts) {
-        const b = S.boundsOf(part.geometry);
-        for (let corner = 0; corner < 8; corner++) {
-          BL.math.mat4.transformPoint(point, part.world, b[corner & 1 ? "max" : "min"][0], b[corner & 2 ? "max" : "min"][1], b[corner & 4 ? "max" : "min"][2]);
-          if (B.island.onLand(point[0], point[2])) {
-            const floor = B.island.surfaceAt(point[0], point[2]);
-            highestFlightFloor = Math.max(highestFlightFloor, floor);
-            clearance = Math.min(clearance, point[1] - floor);
-          }
-          if (regional) {
-            const floor = M.overAt(point[0], point[2])
-              ? M.place.y + M.layout.groundAt(M.localX(point[0], point[2]), M.localZ(point[0], point[2]))
-              : solids.supportAt(point[0], point[2], Infinity, 0, 0, null, null, false, node => node === M.site.bridge);
-            if (Number.isFinite(floor)) {
-              highestFlightFloor = Math.max(highestFlightFloor, floor);
-              clearance = Math.min(clearance, point[1] - floor);
-            }
-          }
-        }
-      }
-      return clearance;
-    };
-    let selected;
-    const controlledTarget = controlled ? { selected: false, retained: true, released: false, initial: null,
-      maxDrift: 0, minFeet: initialFloor, maxFeet: initialFloor } : null;
-    const history = [], contactBlocks = [];
-    const startRadius = Math.hypot(e.root.position.x, e.root.position.z);
-    const pathMetrics = { startRadius, minRadius: startRadius, maxRadius: startRadius, inward: 0, outward: 0, distance: 0,
-      waitFrames: 0, stillFrames: 0, firstCaptureTime: null, timeToLaunch: null, planStarts: 0, maxPoseBlocked: 0,
-      jumpFrames: 0, climbFrames: 0, goalChanges: 0, goals: [] };
-    const throwMap = H.rageThrowMap;
-    const mapSelection = { ready: throwMap.ready, validCount: throwMap.validCount, members: true, nearest: true,
-      regions: true, dryRoutes: true, bridgeCentered: true,
-      maxFrameChecks: throwMap.maxFrameChecks, liveProofsBefore: throwMap.liveProofs, liveProofs: 0, selections: [] };
-    const region = { expected: expectedLand, capture: null, minCarryRadius: Infinity, lakeRadius: M.layout.LAKE_R, bridgeMaxAcross: 0 };
-    const jumps = { startY: e.root.position.y, huntUp: 0, carryUp: 0, carryDown: 0, captureY: null, captureFeet: null,
-      countStart: e.jumps, countUnchanged: true, airborneFrames: 0, highestY: e.root.position.y, events: [] };
-    const warp = { observed: false, sameFrameCapture: false, traversalCleared: false, from: null, to: null,
-      target: null, targetClear: false, targetSupported: false, horizontal: 0, rise: 0, stepLimit: BL.clankers.RAGE_SPEED * dt + 1e-7, home: null,
-      visit: { required: BL.clankerRage.WARP_HOLD_TIME, frames: 0, held: true, below: true, ankleError: 0, anchorDrift: 0, root: null, rootDrift: 0 } };
-    const visitHand = new Float64Array(3), visitAnkle = new Float64Array(3);
-    const onFoot = { required: !fullScenery || !!boundary, frames: 0, bounded: true, noWarp: true, maxStep: 0, maxRise: 0, violation: null,
-      targetRadius: Math.hypot(c.root.position.x, c.root.position.z), borderRadius: 18.5, warpRequired: H.rageWarpRequired(e, c),
-      targetFeet: c.root.position.y - c.baseY, targetSurface: B.island.surfaceAt(c.root.position.x, c.root.position.z) };
-    let lastAir = false, closestPalm = Infinity, closestPalmPoint = null, palmPassed = false, palmEncounter = null, palmExit = null;
-    let palmDisplacement = 0, palmPoseBlocked = 0;
-    let previousRadius = startRadius, lastSearch = null, lastGoal = "";
-    let grabbed = false, held = 0, windup = 0, retained = true, dropped = false, launched = false, resumed = false;
-    let dragDistance = 0, maxCharge = 0, leftLand = false, reentered = false, fellBelowLand = false, lastPhase = "", lastTarget = "", lastBlocked = "", launch = null;
-    let minFlightClearance = Infinity, highestFlightFloor = -Infinity, highestCarryFloor = initialFloor, flightSamples = 0;
-    let closestBystander = Infinity, passedBystander = false;
-    let previousX = e.root.position.x, previousZ = e.root.position.z;
-    let release = null, captureEvent = null, flightEnd = null, frame = 0, grabHeld = true, rodeBeforeCapture = false, maximumUnsupportedRise = 0;
-    const initialFeetGap = initialFloor - e.root.position.y;
-    let contactFeetGap = null, closestContact = null, droppedAt = null, error = null;
-    let end = null, alive = false, recoveries = 0;
-    const updateCrew = B.crew.update, prepareDragged = B.crew.prepareDragged;
-    // Observe the accepted capture before the visible pause and later home
-    // return, without changing the existing capture lifecycle.
-    B.crew.prepareDragged = (...args) => {
-      if (!captureEvent && args[0] === c && c.grabbedBy === e && e.capture.cave === c) {
-        const p = e.root.position, q = c.root.position, feet = q.y - c.baseY + c.restLower;
-        const floor = B.island.surfaceAt(q.x, q.z);
-        const foot = c.parts.legR, bounds = S.boundsOf(foot.geometry);
-        S.updateWorld(c.root, c.root.parent.world);
-        BL.math.mat4.transformPoint(visitAnkle, foot.world, bounds.center[0], bounds.min[1], bounds.center[2]);
-        captureEvent = { frame, carrier: { ...p }, target: { x: q.x, feet, z: q.z, floor, radius: Math.hypot(q.x, q.z) },
-          ankle: Array.from(visitAnkle),
-          ownership: B.pilot.player === c && B.crew.player === c && c.humanControlled,
-          clear: B.island.clearAt(q.x, feet + 0.025, q.z, 0.3, c.bodyHeight) && solids.clearAt(q.x, feet + 0.025, q.z, 0.3, c.bodyHeight) };
-      }
-      return prepareDragged.apply(B.crew, args);
-    };
-    // Observe the real launch before this frame's gravity and collision move
-    // the Ooga. Do not infer the release angle from the stored aim direction.
-    B.crew.update = (...args) => {
-      if (!release && c.leap.thrown) {
-        const p = c.root.position, vx = c.leap.vx, vy = c.hopV, vz = c.leap.vz;
-        const carrier = e.root.position, r = e.rage;
-        pathMetrics.timeToLaunch = (frame + 1) * dt;
-        release = { frame, x: p.x, y: p.y, z: p.z, vx, vy, vz, charge: e.capture.charge,
-          ownership: B.pilot.player === c && B.crew.player === c && c.humanControlled,
-          onLand: H.rageLandAt(p.x, p.z) > 0,
-          captureLand: H.rageCaptureLandAt(carrier.x, carrier.y, carrier.z), mapLand: r.edgeLand,
-          regional: regional ? { across: M.localX(carrier.x, carrier.z), along: M.localZ(carrier.x, carrier.z),
-            alongVelocity: vx * M.sin + vz * M.cos,
-            support: solids.supportAt(carrier.x, carrier.z, carrier.y + 0.1, 0, e.radius, null, null, false, node => M.walked.has(node)) } : null,
-          radius: Math.hypot(p.x, p.z), carrier: { x: carrier.x, y: carrier.y, z: carrier.z, radius: Math.hypot(carrier.x, carrier.z),
-            raisedHeight: carrier.y - B.island.surfaceAt(carrier.x, carrier.z), support: solids.supportAt(carrier.x, carrier.z, Infinity, 0, e.radius),
-            flatGround: [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => B.island.surfaceAt(carrier.x + dx, carrier.z + dz) === 0)
-              && Math.abs(carrier.y) < 0.025 },
-          bystander: { distance: Math.hypot(second.root.position.x - carrier.x, second.root.position.z - carrier.z),
-            overlapRadius: e.radius + 0.38,
-            above: second.root.position.y - second.baseY - carrier.y, x: second.root.position.x, z: second.root.position.z },
-          goal: { x: r.goalX, y: r.goalY, z: r.goalZ }, boundary: { x: r.edgeX, z: r.edgeZ },
-          boundaryStandoff: (r.edgeX - carrier.x) * r.edgeDx + (r.edgeZ - carrier.z) * r.edgeDz,
-          bodyClearance: flightClearance(),
-          angle: Math.atan2(vy, Math.hypot(vx, vz)) * 180 / Math.PI, speed: Math.hypot(vx, vy, vz) };
-      }
-      return updateCrew.apply(B.crew, args);
-    };
-    try {
-      if (controlled) {
-        // A real idle visitor stays on this footing; an NPC's roof escape
-        // or stroll could leave the intended cliff, bridge or forest setup.
-        B.pilot.possess(c, true); B.pilot.controls.reset();
-        B.crew.relocatePlayer({ x: victim.x, y: initialFloor, z: victim.z }, heading);
-        controlledTarget.selected = B.pilot.player === c && B.crew.player === c && c.humanControlled;
-        controlledTarget.initial = { x: c.root.position.x, feet: c.root.position.y - c.baseY, z: c.root.position.z };
-        S.updateWorld(root); companions.sync();
-        initialClearance.target = blockedParts(c);
-        initialClearance.targetBody = solids.clearAt(c.root.position.x, c.root.position.y - c.baseY + 0.025, c.root.position.z, 0.3, c.bodyHeight);
-      }
-      if (raised) {
-        // The bystander above is not an agitator, so ordinary support keeps it
-        // on the real back while the gorilla holds G for the two shooters.
-        let serial = e.rage.serial;
-        for (let i = 0; i < 42; i++) selected = C.bananaHit(e, i ? c : third, ++serial);
-      } else selected = H.selectDebugGorilla(e);
-      for (; frame < Math.round(20 / dt); frame++) {
-      const feetBefore = c.root.position.y - c.baseY, carrierBeforeY = e.root.position.y;
-      const selectionX = e.root.position.x, selectionZ = e.root.position.z;
-      const wasReady = e.rage.edgeReady, wasHomePending = e.rage.homePending, previousRay = e.rage.edgeIndex, previousInset = e.rage.edgeInset;
-      B.advance(dt, dt);
-      const r = e.rage, capture = e.capture, p = e.root.position, q = c.root.position;
-      const holding = capture.cave === c && c.grabbedBy === e;
-      mapSelection.maxFrameChecks = Math.max(mapSelection.maxFrameChecks, throwMap.frameChecks, throwMap.maxFrameChecks);
-      mapSelection.liveProofs = throwMap.liveProofs - mapSelection.liveProofsBefore;
-      if (holding && r.edgeReady) {
-        const spot = throwMap.spots.find(spot => spot.ray === r.edgeIndex && spot.inset === r.edgeInset);
-        const member = !!spot && spot.valid && Math.hypot(r.goalX - spot.x, r.goalZ - spot.z) < 1e-7
-          && Math.abs(r.goalY - spot.y) < 1e-7 && spot.land === r.edgeLand
-          && Math.hypot(r.edgeDx - spot.dx, r.edgeDz - spot.dz) < 1e-7;
-        mapSelection.members &&= member;
-        mapSelection.regions &&= r.edgeLand === expectedLand && H.rageCaptureLandAt(r.edgeOriginX, r.edgeOriginY, r.edgeOriginZ) === expectedLand;
-        if (r.edgeLand === 5) mapSelection.bridgeCentered &&= Math.abs(M.localX(r.goalX, r.goalZ)) < 1e-7;
-        if (!wasReady || previousRay !== r.edgeIndex || previousInset !== r.edgeInset) {
-          const returnedNow = captureEvent && wasHomePending && !r.homePending
-            && Math.hypot(r.edgeOriginX - captureEvent.carrier.x, r.edgeOriginY - captureEvent.carrier.y, r.edgeOriginZ - captureEvent.carrier.z) > 1e-7;
-          const from = returnedNow ? { x: r.edgeOriginX, y: r.edgeOriginY, z: r.edgeOriginZ }
-            : { x: selectionX, y: carrierBeforeY, z: selectionZ };
-          const atSelection = { ...e, root: { ...e.root, position: from } };
-          let nearest = Infinity, nearestSpot = null;
-          for (const candidate of throwMap.spots) {
-            if (!candidate.valid || candidate.land !== r.edgeLand || r.edgeRejected[candidate.ray] & 1 << candidate.inset
-              || !H.rageMapRouteClear(atSelection, candidate)) continue;
-            const distance = Math.hypot(candidate.x - from.x, candidate.y - from.y, candidate.z - from.z);
-            if (distance < nearest) { nearest = distance; nearestSpot = { ray: candidate.ray, inset: candidate.inset }; }
-          }
-          const distance = Math.hypot(r.goalX - from.x, r.goalY - from.y, r.goalZ - from.z);
-          mapSelection.nearest &&= Number.isFinite(nearest) && distance <= nearest + 1e-7;
-          mapSelection.dryRoutes &&= !!spot && H.rageMapRouteClear(atSelection, spot);
-          mapSelection.selections.push({ frame, ...from, returnedNow, ray: r.edgeIndex, inset: r.edgeInset,
-            land: r.edgeLand, origin: { x: r.edgeOriginX, y: r.edgeOriginY, z: r.edgeOriginZ },
-            goal: { x: r.goalX, y: r.goalY, z: r.goalZ }, member, distance, nearest, nearestSpot });
-        }
-      }
-      if (controlled) {
-        controlledTarget.retained &&= B.pilot.player === c && B.crew.player === c && c.humanControlled;
-        if (!grabbed && !holding) {
-          controlledTarget.maxDrift = Math.max(controlledTarget.maxDrift, Math.hypot(q.x - victim.x, q.z - victim.z));
-          controlledTarget.minFeet = Math.min(controlledTarget.minFeet, q.y - c.baseY);
-          controlledTarget.maxFeet = Math.max(controlledTarget.maxFeet, q.y - c.baseY);
-        }
-      }
-      const air = e.jump.active || e.drive.airborne, rise = p.y - carrierBeforeY;
-      if (onFoot.required && !launched) onFoot.noWarp &&= !capture.warpVisit && !r.homePending;
-      if (onFoot.required && !grabbed) {
-        // Ground targets remain ordinary pursuit on either side of the
-        // border; the raised-prop targets here are inside it.
-        // Observe the capture frame too: a warp must not masquerade as a
-        // successful ordinary approach, even when its endpoint is clear.
-        const distance = Math.hypot(p.x - selectionX, p.z - selectionZ), limit = BL.clankers.RAGE_SPEED * dt + 1e-7;
-        onFoot.frames++; onFoot.maxStep = Math.max(onFoot.maxStep, distance); onFoot.maxRise = Math.max(onFoot.maxRise, rise);
-        onFoot.bounded &&= distance <= limit;
-        if (distance > limit && !onFoot.violation) onFoot.violation = { frame, distance, limit, rise, holding, phase: r.phase,
-          from: { x: selectionX, y: carrierBeforeY, z: selectionZ }, to: { x: p.x, y: p.y, z: p.z },
-          target: r.target?.traits.name || null, targetX: q.x, targetFeet: q.y - c.baseY, targetZ: q.z };
-      }
-      if (warpExpected && !warp.observed && captureEvent) {
-        const at = captureEvent.carrier, target = captureEvent.target;
-        warp.observed = true; warp.sameFrameCapture = holding && r.phase === "edge" && r.grabHeld && r.throwHeld;
-        warp.traversalCleared = !air && !e.climb.active && !r.traversing;
-        warp.from = { x: selectionX, y: carrierBeforeY, z: selectionZ }; warp.to = { ...at };
-        warp.target = target; warp.targetSupported = Math.abs(target.feet - target.floor) < 0.05;
-        warp.targetClear = captureEvent.clear;
-        warp.horizontal = Math.hypot(at.x - selectionX, at.z - selectionZ); warp.rise = at.y - carrierBeforeY;
-      }
-      if (warpExpected && warp.observed && capture.warpVisit) {
-        const arm = e.gorilla.parts.armL, armBounds = S.boundsOf(arm.geometry), foot = c.parts.legR, footBounds = S.boundsOf(foot.geometry);
-        S.updateWorld(root);
-        BL.math.mat4.transformPoint(visitHand, arm.world, armBounds.center[0], armBounds.min[1] + .08, armBounds.center[2]);
-        BL.math.mat4.transformPoint(visitAnkle, foot.world, footBounds.center[0], footBounds.min[1], footBounds.center[2]);
-        const visit = warp.visit, anchor = captureEvent.ankle;
-        // The capture hook precedes the rig's alignment below the ankle.
-        // Measure later visible poses against the first rendered visit pose.
-        if (!visit.root) visit.root = { ...p };
-        const at = visit.root;
-        visit.frames++; visit.held &&= holding && r.grabHeld && r.throwHeld && e.motion.dragging && r.homePending && r.warpWaiting;
-        visit.below &&= p.y < warp.target.feet && p.y < visitAnkle[1];
-        visit.ankleError = Math.max(visit.ankleError, Math.hypot(visitHand[0] - visitAnkle[0], visitHand[1] - visitAnkle[1], visitHand[2] - visitAnkle[2]));
-        visit.anchorDrift = Math.max(visit.anchorDrift, Math.hypot(visitAnkle[0] - anchor[0], visitAnkle[1] - anchor[1], visitAnkle[2] - anchor[2]));
-        visit.rootDrift = Math.max(visit.rootDrift, Math.hypot(p.x - at.x, p.y - at.y, p.z - at.z));
-      }
-      if (warpExpected && warp.observed && !warp.home && holding && !r.homePending) {
-        const at = captureEvent.carrier;
-        warp.home = { frame, duration: (frame - captureEvent.frame) * dt, x: p.x, y: p.y, z: p.z, visitEnded: !capture.warpVisit,
-          distance: Math.hypot(p.x - at.x, p.y - at.y, p.z - at.z),
-          flat: [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => B.island.surfaceAt(p.x + dx, p.z + dz) === 0)
-            && Math.abs(p.y) < 0.025 && Math.abs(C.supportAt(e, p.x, p.z, p.y, 0.15, e.heading) - p.y) < 0.025,
-          held: r.grabHeld && r.throwHeld && e.motion.dragging && e.capture.cave === c && c.grabbedBy === e,
-          clear: H.rageDragClear(e, p.x, p.y, p.z, p.x, p.y, p.z, e.heading, e.heading),
-          ownership: B.pilot.player === c && B.crew.player === c && c.humanControlled,
-          traversalCleared: !air && !e.climb.active && !r.traversing && !r.warpWaiting };
-      }
-      if (!launched) {
-        jumps.countUnchanged &&= e.jumps === jumps.countStart; if (air) jumps.airborneFrames++;
-        jumps.highestY = Math.max(jumps.highestY, p.y);
-        if (!grabbed && air && rise > 1e-4) jumps.huntUp++;
-        if (holding && air && rise > 1e-4) jumps.carryUp++;
-        if (holding && air && rise < -1e-4) jumps.carryDown++;
-        if (air !== lastAir && jumps.events.length < 16) jumps.events.push({ frame, airborne: air, holding, phase: r.phase,
-          x: p.x, y: p.y, z: p.z, targetX: q.x, targetFeet: q.y - c.baseY, targetZ: q.z });
-        lastAir = air;
-      }
-      if (!launched) {
-        const radius = Math.hypot(p.x, p.z), distance = Math.hypot(p.x - previousX, p.z - previousZ);
-        pathMetrics.minRadius = Math.min(pathMetrics.minRadius, radius); pathMetrics.maxRadius = Math.max(pathMetrics.maxRadius, radius);
-        pathMetrics.inward += Math.max(0, previousRadius - radius); pathMetrics.outward += Math.max(0, radius - previousRadius);
-        pathMetrics.distance += distance; previousRadius = radius;
-        if (holding) {
-          if (pathMetrics.firstCaptureTime === null) pathMetrics.firstCaptureTime = (frame + 1) * dt;
-          if (r.edgeWaiting) pathMetrics.waitFrames++;
-          if (distance < 1e-5) pathMetrics.stillFrames++;
-          if (e.jump.active || e.drive.airborne) pathMetrics.jumpFrames++;
-          if (e.climb.active) pathMetrics.climbFrames++;
-          pathMetrics.maxPoseBlocked = Math.max(pathMetrics.maxPoseBlocked, r.poseBlocked || 0);
-          const search = r.search?.started;
-          if (search !== undefined && search !== lastSearch) { pathMetrics.planStarts++; lastSearch = search; }
-          const goalKey = [r.goalX, r.goalY, r.goalZ, r.edgeIndex, r.edgeInset, r.edgeReady, r.edgeWaiting, r.edgeRejectReason].join(":");
-          if (goalKey !== lastGoal) {
-            pathMetrics.goalChanges++; lastGoal = goalKey;
-            if (pathMetrics.goals.length < 32) pathMetrics.goals.push({ frame, time: (frame + 1) * dt,
-              x: p.x, y: p.y, z: p.z, radius, goal: { x: r.goalX, y: r.goalY, z: r.goalZ, radius: Math.hypot(r.goalX, r.goalZ) },
-              edgeIndex: r.edgeIndex, edgeInset: r.edgeInset, ready: r.edgeReady, waiting: r.edgeWaiting,
-              reason: r.edgeRejectReason, rejected: Array.from(r.edgeRejected), pending: r.pending, count: r.countPath, search, poseBlocked: r.poseBlocked });
-          }
-        }
-      }
-      if (!release && (r.target === c || holding)) grabHeld &&= r.grabHeld;
-      if (!grabbed && !holding) {
-        const feet = q.y - c.baseY;
-        const floor = Math.max(B.island.surfaceAt(q.x, q.z), solids.supportAt(q.x, q.z, Infinity, 0, 0.3));
-        const back = companions.supportAt(q.x, q.z, feet, 0.05, 0.3);
-        const distance = Math.hypot(q.x - p.x, q.z - p.z);
-        if (r.target === c && (!closestContact || distance < closestContact.distance)) closestContact = { frame, distance, feet, floor, back,
-          gap: feet - p.y, x: p.x, y: p.y, z: p.z, target: r.target?.traits.name || null, grabHeld: r.grabHeld,
-          blocked: capture.blocked, blockedPart: capture.blockedPart, blockedStage: capture.blockedStage };
-        const blockedKey = [capture.blocked, capture.blockedPart, capture.blockedStage].join(":");
-        if (r.target === c && blockedKey !== lastBlocked && contactBlocks.length < 12) {
-          contactBlocks.push({ frame, blocked: capture.blocked, blockedPart: capture.blockedPart, blockedStage: capture.blockedStage, distance, feet, gap: feet - p.y,
-            x: p.x, y: p.y, z: p.z, heading: e.heading, approachInset: r.approachInset });
-          lastBlocked = blockedKey;
-        }
-        maximumUnsupportedRise = Math.max(maximumUnsupportedRise, feet - floor);
-        rodeBeforeCapture ||= feet > floor + 0.1 && Math.abs(back - feet) < 0.05;
-      }
-      const target = r.target?.traits.name || null;
-      if (r.phase !== lastPhase || target !== lastTarget) {
-        history.push({ frame, phase: r.phase, target, x: p.x, y: p.y, z: p.z }); lastPhase = r.phase; lastTarget = target;
-      }
-      if (holding) {
-        if (!grabbed) {
-          contactFeetGap = feetBefore - p.y; jumps.captureY = captureEvent?.carrier.y ?? p.y; jumps.captureFeet = captureEvent?.target.feet ?? feetBefore;
-          region.capture = { land: H.rageCaptureLandAt(p.x, p.y, p.z), exterior: H.rageLandAt(p.x, p.z), x: p.x, y: p.y, z: p.z };
-        }
-        if (grabbed) dragDistance += Math.hypot(p.x - previousX, p.z - previousZ);
-        grabbed = true; held++; retained &&= r.grabHeld && e.motion.dragging;
-        if (regional) {
-          region.minCarryRadius = Math.min(region.minCarryRadius, Math.hypot(M.localX(p.x, p.z), M.localZ(p.x, p.z)));
-          region.bridgeMaxAcross = Math.max(region.bridgeMaxAcross, Math.abs(M.localX(p.x, p.z)));
-        }
-        highestCarryFloor = Math.max(highestCarryFloor, regional ? M.groundAt(p.x, p.z) : B.island.surfaceAt(p.x, p.z));
-        if (crowded) for (const bystander of bystanders) {
-          const at = bystander.root.position, distance = Math.hypot(p.x - at.x, p.z - at.z);
-          closestBystander = Math.min(closestBystander, distance);
-          const before = (previousX - at.x) * outwardX + (previousZ - at.z) * outwardZ;
-          const after = (p.x - at.x) * outwardX + (p.z - at.z) * outwardZ;
-          passedBystander ||= before <= 0 && after > 0 && distance < 3;
-        }
-        if (palm) {
-          const at = contactProp.position, distance = Math.hypot(p.x - at.x, p.z - at.z);
-          if (distance < closestPalm) {
-            closestPalm = distance; closestPalmPoint = { frame, distance, x: p.x, y: p.y, z: p.z };
-          }
-          palmPoseBlocked = Math.max(palmPoseBlocked, r.poseBlocked || 0);
-          if (!palmEncounter && distance < e.radius + 0.5) palmEncounter = { frame, distance, reach: e.radius + 0.5, x: p.x, z: p.z };
-          // A viable inland stance can be on either side of the trunk.
-          // Require committed held movement away from the encounter itself.
-          if (palmEncounter) {
-            const displacement = Math.hypot(p.x - palmEncounter.x, p.z - palmEncounter.z);
-            palmDisplacement = Math.max(palmDisplacement, displacement);
-            if (!palmPassed && displacement >= 1.5 && distance > palmEncounter.distance) {
-              palmPassed = true; palmExit = { frame, distance, displacement, x: p.x, z: p.z };
-            }
-          }
-        }
-        maxCharge = Math.max(maxCharge, r.throwCharge);
-        if (capture.throwing) { windup++; retained &&= !r.throwHeld && r.grabHeld; }
-      }
-      if (grabbed && !holding && !launched) {
-        if (release) { launched = true; launch = release; }
-        else {
-          dropped = true; droppedAt = { frame, phase: r.phase, grabHeld: r.grabHeld, throwing: capture.throwing,
-            captive: capture.cave?.traits.name || null, x: q.x, y: q.y - c.baseY, z: q.z };
-        }
-      }
-      if (launched) {
-        if (!flightEnd) {
-          const clearance = flightClearance(), onLand = H.rageLandAt(q.x, q.z) > 0;
-          if (Number.isFinite(clearance)) { flightSamples++; minFlightClearance = Math.min(minFlightClearance, clearance); }
-          reentered ||= leftLand && onLand;
-          leftLand ||= !onLand && c.leap.thrown;
-          fellBelowLand ||= leftLand && !onLand && q.y - c.baseY < -2 && c.leap.thrown;
-          // Freeze the completed first flight while waiting for the next
-          // hunt; a later landing, abyss respawn or walk is a new movement.
-          if (fellBelowLand || !c.leap.thrown) flightEnd = { frame, kind: fellBelowLand ? "below-land" : "landed",
-            x: q.x, feet: q.y - c.baseY, z: q.z, onLand, thrown: c.leap.thrown };
-        }
-        // A nearby Ooga can be selected and physically grabbed in one
-        // frame; that completed hunt need not expose an intermediate pose.
-        resumed ||= bystanders.includes(r.target) && (r.phase === "hunt" || capture.cave === r.target);
-      }
-      previousX = p.x; previousZ = p.z;
-      if (dropped || fellBelowLand && resumed) break;
-    } } catch (caught) {
-      error = { message: String(caught), stack: caught.stack || "", frame };
-    } finally {
-      B.crew.update = updateCrew; B.crew.prepareDragged = prepareDragged;
-      try {
-        const arm = e.gorilla.parts.armL, armBounds = S.boundsOf(arm.geometry);
-        BL.math.mat4.transformPoint(point, arm.world, armBounds.center[0], armBounds.min[1] + 0.08, armBounds.center[2]);
-        const gripY = point[1], p = e.root.position, steps = [];
-        if (e.capture.cave && !launched) for (let direction = 0; direction < 8; direction++) {
-          const dx = Math.sin(direction * Math.PI / 4) * 0.1, dz = Math.cos(direction * Math.PI / 4) * 0.1;
-          const ny = C.supportAt(e, p.x + dx, p.z + dz, p.y, BL.clankers.PROP_STEP, e.heading);
-          steps.push({ direction, support: ny, rise: ny - p.y,
-            dragClear: H.rageDragClear(e, p.x, p.y, p.z, p.x + dx, ny, p.z + dz, e.heading, e.heading),
-            propBlockedParts: Number.isFinite(ny) ? blockedParts(e.capture.cave, dx, ny - p.y, dz).map(part => part.name) : null });
-        }
-        end = { phase: e.rage.phase, route: e.route, count: e.rage.countPath, index: e.rage.index, pending: e.rage.pending,
-          blocked: e.rage.blocked, reason: e.rage.reason, planAt: e.rage.planAt, target: e.rage.target?.traits.name || null,
-          goal: { x: e.rage.goalX, y: e.rage.goalY, z: e.rage.goalZ }, direction: { x: e.rage.dx, z: e.rage.dz },
-          edge: { ready: e.rage.edgeReady, waiting: e.rage.edgeWaiting, index: e.rage.edgeIndex, inset: e.rage.edgeInset,
-            probes: e.rage.edgeProbes, reason: e.rage.edgeRejectReason, land: e.rage.edgeLand,
-            x: e.rage.edgeX, z: e.rage.edgeZ, dx: e.rage.edgeDx, dz: e.rage.edgeDz },
-          airborne: e.drive.airborne, traversing: e.rage.traversing, grabHeld: e.rage.grabHeld, throwHeld: e.rage.throwHeld, charge: e.rage.throwCharge,
-          capture: { cave: e.capture.cave?.traits.name || null, autonomous: e.capture.autonomous, throwing: e.capture.throwing, blocked: e.capture.blocked,
-            blockedPart: e.capture.blockedPart, blockedStage: e.capture.blockedStage,
-            time: e.capture.time, charge: e.capture.charge, grabbedBy: c.grabbedBy?.owner.traits.name || null },
-          steps, gripY, x: e.root.position.x, y: e.root.position.y, z: e.root.position.z,
-          victim: { x: c.root.position.x, y: c.root.position.y - c.baseY, z: c.root.position.z, thrown: c.leap.thrown } };
-        alive = e.rage.active && (raised ? !e.rage.debug : e.rage.debug); recoveries = e.stuck.recoveries;
-      } finally {
-        try { if (raised) H.selectDebugGorilla(e); H.selectDebugGorilla(null); }
-        finally {
-          try {
-            if (controlled) {
-              B.pilot.controls.reset(); B.pilot.release(true);
-              controlledTarget.released = !B.pilot.player && !B.crew.player && !c.humanControlled;
-            }
-          } finally {
-            if (contactProp) { solids.remove(contactProp); S.removeChild(root, contactProp); solids.sync(); }
-          }
-        }
-      }
-    }
-    const cleared = !e.rage.active && !e.rage.debug && !e.capture.cave
-      && e.gorilla.form === "ape" && !e.root.matrixNative && S.matrixModeOf(e.root) === 2;
-    return { dt, fixture, sceneScenery, raised, palm, hill, boundary, warpExpected, regional, region, riderSetup, setup, pathMetrics, mapBake, mapSelection, jumps, warp, onFoot, controlledTarget, captureEvent,
-      closestPalm, closestPalmPoint, palmPassed, palmEncounter, palmExit, palmDisplacement, palmPoseBlocked,
-      error, elevated, initialClearance, initialFeetGap, contactFeetGap, closestContact, contactBlocks, droppedAt, grabHeld, rodeBeforeCapture, maximumUnsupportedRise,
-      selected, grabbed, held, windup, retained, dropped, dragDistance, maxCharge, launched, launch,
-      minFlightClearance, flightSamples, flightEnd, highestFlightFloor, highestCarryFloor, initialFloor, closestBystander, passedBystander,
-      leftLand, reentered, fellBelowLand, resumed, alive, recoveries, cleared, history, end };
-  })(${dt}, ${JSON.stringify(fixture)}, ${JSON.stringify(sceneryVisibility)}, ${JSON.stringify(mapBake)})`).catch(error => ({ dt, fixture, error: { message: String(error), stack: error.stack || "" } })));
-  record("gorilla rage throw: real capture holds G past nearby Oogas and rocks, charges fully, then clears real hills at 45 degrees toward different island edges before hunting again",
-    states.length === cases.length && states.every(state => !state.error && state.setup.valid && state.selected && state.grabbed && state.held > 1 && state.windup > 1 && state.retained && !state.dropped
-      && state.mapBake.ready && state.mapBake.validCount > 0 && state.mapBake.maxFrameChecks <= 24
-      && state.mapSelection.ready && state.mapSelection.validCount > 0 && state.mapSelection.members && state.mapSelection.nearest
-      && state.mapSelection.regions && state.mapSelection.dryRoutes && state.mapSelection.bridgeCentered
-      && state.mapSelection.selections.length > 0 && state.mapSelection.maxFrameChecks <= 24 && state.mapSelection.liveProofs === 0
-      && !state.initialClearance.target.length && !state.initialClearance.second.length && !state.initialClearance.third.length && !state.initialClearance.gorilla.length && state.initialClearance.targetBody
-      && state.grabHeld && !state.rodeBeforeCapture && (state.fixture !== "crate" || state.elevated > 0.7)
-      && (state.sceneScenery || state.raised || state.regional || state.warpExpected || state.dragDistance > 1.5) && state.maxCharge === 1 && state.launched && state.launch.charge === 1
-      && Math.abs(state.launch.angle - 45) <= 1 && Math.abs(state.launch.speed - 18) < 1e-6
-      && (!state.sceneScenery || state.launch.carrier.radius <= 14 + 1e-7 && state.launch.carrier.radius < state.pathMetrics.startRadius)
-      && (!state.onFoot.required || state.onFoot.frames > 0 && state.onFoot.bounded && state.onFoot.noWarp && !state.onFoot.warpRequired
-        && (state.boundary === "outside" ? state.onFoot.targetRadius > state.onFoot.borderRadius
-          : state.boundary === "at" ? state.onFoot.targetRadius === state.onFoot.borderRadius : state.onFoot.targetRadius < state.onFoot.borderRadius))
-      && (!state.palm || state.palmPassed)
-      && (!state.warpExpected || state.controlledTarget.selected && state.controlledTarget.retained && state.controlledTarget.released && state.launch.ownership
-        && state.onFoot.warpRequired
-        && state.warp.observed && state.warp.sameFrameCapture && state.warp.traversalCleared && state.warp.targetClear && state.warp.targetSupported
-        && state.warp.horizontal > state.warp.stepLimit && state.warp.target.radius > state.onFoot.borderRadius
-        && state.warp.visit.frames * state.dt + 1e-7 >= state.warp.visit.required && state.warp.visit.held && state.warp.visit.below
-        && state.warp.visit.ankleError < 1e-4 && state.warp.visit.anchorDrift < 1e-4
-        && state.warp.home && state.warp.home.duration + 1e-7 >= state.warp.visit.required && state.warp.home.visitEnded
-        && state.warp.home.flat && state.warp.home.held && state.warp.home.clear
-        && state.warp.home.ownership && state.warp.home.traversalCleared && state.warp.home.distance > 1.5
-        && !state.jumps.airborneFrames && state.jumps.countUnchanged && state.launch.carrier.flatGround && state.launch.carrier.radius <= 14 + 1e-7)
-      && (!state.hill || state.jumps.captureFeet >= 2 && state.warp.targetSupported && state.warp.visit.below)
-      && (!state.boundary || state.setup.selected.radius === state.onFoot.targetRadius && state.captureEvent.ownership
-        && state.controlledTarget.selected && state.controlledTarget.retained && state.controlledTarget.released && state.launch.ownership
-        && !state.onFoot.warpRequired && !state.warp.observed && !state.jumps.airborneFrames && state.jumps.countUnchanged)
-      && (!state.raised || state.riderSetup.above > 0.6 && state.launch.carrier.raisedHeight > 0.7
-        && Math.abs(state.launch.carrier.y - state.launch.carrier.support) < 0.15 && state.launch.bystander.distance < state.launch.bystander.overlapRadius
-        && state.launch.bystander.above > 0.6)
-      && (!state.regional || !state.onFoot.warpRequired && state.controlledTarget.selected && state.controlledTarget.retained && state.controlledTarget.released && state.launch.ownership
-        && state.region.capture.land === state.region.expected && state.launch.captureLand === state.region.expected && state.launch.mapLand === state.region.expected
-        && Math.abs(state.launch.carrier.y - state.launch.regional.support) < 0.15)
-      && (state.fixture !== "bridge" || state.region.capture.exterior === 0 && state.setup.selected.exteriorLand === 0
-        && state.setup.selected.captureLand === 5 && state.setup.selected.belowLand !== 5
-        && Math.abs(state.launch.regional.across) <= 0.15 + 1e-7 && Math.abs(state.launch.regional.alongVelocity) < 1e-6)
-      && (state.fixture !== "rainforest" || state.region.minCarryRadius > state.region.lakeRadius)
-      && (state.fixture === "bridge" || state.launch.onLand) && state.flightSamples > 1 && state.minFlightClearance >= -0.025
-      && state.leftLand && !state.reentered && state.fellBelowLand && state.resumed && state.alive && !state.recoveries && state.cleared
-      && (!state.fixture.startsWith("rock-") || state.passedBystander && state.closestBystander < 3)
-      && (state.fixture !== "plain-east" || state.launch.vx > 3)
-      && (state.fixture !== "plain-west" || state.launch.vx < -3))
-      // Mapped pads face open meadow east and west; a ground capture's throw
-      // over the outer hills is what proves the real terrain clearance.
-      && states.some(state => !state.hill && !state.regional && state.highestFlightFloor > state.initialFloor + 0.5),
-    JSON.stringify(states));
+  // The autonomous lab-rage capture half of this step is retired with Hub NPC
+  // rage; passive NPC gorillas never rage ("hub game-only combat").
+  record("gorilla lab carry jump: Shift+W runs the driven gorilla up the lab aisle and both jumps take off without a smash, while G grabs no passive NPC Ooga",
+    state.startedInLab && state.lab && state.aisleError < 0.03 && state.ran && state.noGrab && state.first && state.peak > 0.5 && state.second
+      && state.smashUnchanged,
+    JSON.stringify(state));
 } }].map(gameCombat) });
 scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1", steps: [{ name: "gorilla prop traversal", why: "regression: a box lost its supporting contact before the collision body cleared its side, low props interrupted the gallop, and a stale motion envelope trapped gorillas beneath trees", run: async (b) => {
   const state = await b.evaluate(`(() => {
@@ -20383,47 +19328,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
         airborne: e.drive.airborne, recoveries: e.stuck.recoveries });
     }
     beside.visible = false;
-    // Exercise the same support departure with the faster autonomous gallop.
-    // Only the clanker advances: its eligible target stays at a fixed, clear point.
-    const rageDepartures = [], serialBefore = e.rage.serial, serialsBefore = e.rage.serials.slice(), target = e.owner;
-    B.crew.prepareDragged(target); target.camp.seat = null; target.camp.rolling = target.camp.burning = false;
-    target.root.quaternion = null; target.root.visible = true; target.bedTravel.mode = "";
-    for (const kind of ["crate", "pebble"]) {
-      solids.remove(box);
-      box.geometry = kind === "crate" ? BL.hubModels.woodCrate() : BL.hubModels.rock(0);
-      Object.assign(box.scale, kind === "crate" ? { x: 1, y: 1, z: 1 } : { x: 0.45, y: 0.18, z: 0.45 });
-      solids.add(box);
-      for (let side = 0; side < 8; side++) {
-        const heading = side * Math.PI / 4, dx = Math.sin(heading), dz = Math.cos(heading), dt = [1 / 30, 1 / 60, 1 / 120][side % 3];
-        const y = onBox(false, heading, dt);
-        e.recover = e.rest = 0; e.heading = heading;
-        // Sample motion from the requested heading, not the previous turn's rig.
-        e.gorilla.poseManaged(2, BX, e.root.position.y, 0, heading, 0, false, false, "", e.motion);
-        Object.assign(target.root.position, { x: BX + dx * 6, y: B.island.surfaceAt(BX + dx * 6, dz * 6) + target.baseY, z: dz * 6 });
-        S.updateWorld(root);
-        for (let hit = 0; hit < 42; hit++) C.bananaHit(e, target, e.rage.serial + 1);
-        let peakSpeed = 0, largestStep = 0, moving = 0, quadruped = true, previous = { ...e.root.position };
-        let previousVisibleY = e.root.position.y + e.gorilla.root.children[0].position.y;
-        for (let t = 0; t < 6; t += dt) {
-          C.update(dt);
-          const p = e.root.position, travel = Math.hypot(p.x - previous.x, p.z - previous.z);
-          peakSpeed = Math.max(peakSpeed, travel / dt);
-          const visibleY = p.y + e.gorilla.root.children[0].position.y;
-          largestStep = Math.max(largestStep, Math.hypot(travel, visibleY - previousVisibleY)); previousVisibleY = visibleY;
-          if (travel > 1e-5) { moving++; quadruped &&= !e.biped && e.gorilla.debug.gait === "gallop"; }
-          Object.assign(previous, p);
-          if (Math.hypot(p.x - BX, p.z) > 3 && !e.drive.airborne) break;
-        }
-        const p = e.root.position;
-        rageDepartures.push({ kind, side, dt, y, active: e.rage.active, moving, quadruped, peakSpeed, largestStep,
-          distance: Math.hypot(p.x - BX, p.z), along: (p.x - BX) * dx + p.z * dz,
-          groundError: Math.abs(p.y - C.supportAt(e, p.x, p.z, p.y, BL.clankers.PROP_STEP, e.heading)),
-          airborne: e.drive.airborne, recoveries: e.stuck.recoveries });
-        C.possess(e); C.release();
-      }
-    }
-    // Synthetic impact identities must not hide the later real-projectile check.
-    e.rage.serial = serialBefore; e.rage.serials.set(serialsBefore); target.root.visible = false;
+    // The faster autonomous rage gallop off these props is retired with Hub NPC rage.
     solids.remove(box); box.geometry = BL.hubModels.woodCrate(); Object.assign(box.scale, { x: 1, y: 1, z: 1 }); solids.add(box);
     for (const controlled of [false, true]) {
       const dt = 1 / 60, y = onBox(controlled, 0, dt);
@@ -20565,7 +19470,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
       recoveries: e.stuck.recoveries - recoveries, grounded: !e.climb.active && !e.jump.active && !e.drive.airborne,
       corridor, path: detourPath, start: detourStart, end: detourState(detourFrames) };
     solids.remove(screen); S.removeChild(root, screen); solids.sync();
-    return { rainforest, rainforestNpc, traversals, intactProp, departures, rageDepartures, rageSpeed: BL.clankers.RAGE_SPEED, destroyed, raisedProp, jumps, canopy, detour };
+    return { rainforest, rainforestNpc, traversals, intactProp, departures, destroyed, raisedProp, jumps, canopy, detour };
   })()`);
   record("gorilla rainforest steps: the real court treads stay walkable uphill, downhill and backwards at walking/running pace and 30/60 Hz",
     state.rainforest.every(row => row.remaining <= 0.08 && !row.climbing && !row.airborne && row.longest < 4 && row.rise > 0.4), JSON.stringify(state.rainforest));
@@ -20591,18 +19496,10 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     && row.distance > 2.5 && row.along > 2 && row.largestStep < 0.3 && row.groundError < 0.05 && !row.airborne && !row.recoveries);
   const destroyed = state.destroyed.length === 2 && state.destroyed.every(row => row.fell && row.drop > 0.5
     && row.largestStep < 0.3 && row.groundError < 0.05 && !row.airborne && !row.recoveries);
-  const rage = state.rageSpeed === 12 && state.rageDepartures.length === 16 && state.rageDepartures.every(row => row.active
-    && row.distance > 3 && row.along > 2.5 && row.moving > 0 && row.quadruped && row.peakSpeed > 10
-    && row.peakSpeed <= state.rageSpeed + 1e-5 && row.largestStep < state.rageSpeed * row.dt + 0.15
-    && row.groundError < 0.05 && !row.airborne && !row.recoveries);
-  record("gorilla traversal: crates, barrels and rocks keep a grounded gallop; an autonomous gorilla leaves intact production crates without relocation; ordinary and controlled gorillas leave every box face and corner, rage departs crates and pebbles on four limbs at 12 m/s, and destroyed support falls normally; jumps, low cover and scenery detours retain their behavior", props && intactProp && departures && rage && destroyed && raisedProp && jump && canopy && detour, JSON.stringify(state));
-} }, { name: "gorilla rage contacts", outsideRing: true, why: "rule: only real banana impacts may count, and an autonomous ground capture must preserve visitor ownership and restore controls on every release", run: async (b) => {
+  record("gorilla traversal: crates, barrels and rocks keep a grounded gallop; an autonomous gorilla leaves intact production crates without relocation; ordinary and controlled gorillas leave every box face and corner, and destroyed support falls normally; jumps, low cover and scenery detours retain their behavior", props && intactProp && departures && destroyed && raisedProp && jump && canopy && detour, JSON.stringify(state));
+} }, { name: "passive gorilla contacts", outsideRing: true, why: "rule: autonomous Hub rage is retired, so a visitor's real banana shot, synthetic hits and a rage grab never count, damage, enrage or capture through a passive NPC gorilla", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, H = BL.scenes.hub.debug, S = BL.scene, c = B.cavemen.get("portlandhodl");
-    // Certify launch pads with the real scenery before isolating contact actors.
-    const map = H.rageThrowMap, limit = Math.ceil(map.spots.length * 201 / 24) + 1;
-    let warmup = 0;
-    while (!map.ready && warmup < limit) { B.advance(1 / 60, 1 / 60); warmup++; }
     // Combat deliberately excludes the shooter's own companion. Hit another
     // awake gorilla and keep the shooter's companion clear of the fixture.
     const e = C.list.find(entry => entry.owner.traits.name === "w-s-bitcoin"), other = C.list.find(entry => entry.owner === c);
@@ -20635,64 +19532,19 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     const torso = e.gorilla.parts.torso, bounds = S.boundsOf(torso.geometry), at = new Float64Array(3);
     BL.math.mat4.transformPoint(at, torso.world, bounds.center[0], bounds.center[1], bounds.center[2]);
     const target = { x: at[0], y: at[1], z: at[2] }, startHealth = e.health.value;
+    // The visitor still fires a real round; it passes through the passive NPC gorilla.
     const fired = B.crew.fireWeapon(c, target, 1); B.advance(0.35, 1 / 60);
-    const counted = e.rage.count === 1 && e.health.value < startHealth;
-    const count = e.rage.count, origin = { x: 0, y: 0, z: 0 }; B.crew.weaponOrigin(origin, c);
-    B.crew.showShot(c, origin.x, origin.y, origin.z, target.x, target.y, target.z);
-    B.advance(0.35, 1 / 60); C.damage(e, 1);
-    const excluded = e.rage.count === count;
-    const waveBefore = B.renderOpts.matrix;
-    for (let serial = 1000; serial < 1041; serial++) C.bananaHit(e, c, serial);
-    const active = e.rage.active && e.rage.target === c;
-    const body = ["armL", "armR", "legL", "legR", "torso", "head"].map(name => e.gorilla.parts[name]);
-    const codeForm = e.gorilla.form === "code" && e.root.matrixNative && body.every(part => S.matrixModeOf(part) === 5)
-      && B.renderOpts.matrix === waveBefore;
-    const hand = new Float64Array(3);
-    const placeForGrab = () => {
-      e.recover = 0; e.biped = false; e.speed = 0;
-      e.gorilla.poseManaged(2, e.root.position.x, e.root.position.y, e.root.position.z, e.heading, 0, false, false, "", e.motion);
-      S.updateWorld(BL.scenes.hub.root);
-      const arm = e.gorilla.parts.armL, b = S.boundsOf(arm.geometry);
-      BL.math.mat4.transformPoint(hand, arm.world, b.center[0], b.min[1] + 0.08, b.center[2]);
-      B.crew.relocatePlayer({ x: hand[0], y: e.root.position.y, z: hand[2] }, e.heading);
-      S.updateWorld(BL.scenes.hub.root);
-    };
-    placeForGrab();
-    const camera = { ...B.camera.position };
-    const grabbed = H.rageGrab(e, c), identity = B.pilot.player === c && B.crew.player === c
-      && Math.hypot(B.camera.position.x - camera.x, B.camera.position.y - camera.y, B.camera.position.z - camera.z) < 1e-6;
-    other.rage.active = true;
-    const exclusive = !H.rageGrab(other, c) && !H.rageGrab(e, e.owner) && e.capture.cave === c;
-    other.rage.active = false;
-    const jump = B.crew.jumpPlayer(), shot = B.crew.fireWeapon(c, target, 1), tomato = B.crew.throwTomato();
-    B.crew.thrust(true); B.crew.holdRocketJump(true);
-    const suppressed = !jump && !shot && !tomato && !c.jet?.thrust && !c.rocketJumpHeld && c.grabbedBy === e;
-    const dropped = H.rageRelease(e) && !c.grabbedBy && !e.capture.cave && !e.motion.dragging
-      && B.pilot.player === c && B.crew.player === c && !c.root.quaternion && Math.abs(c.root.rotation.x) < 1e-6;
-    placeForGrab();
-    // A grab alone does not authorize an arbitrary outbound throw. Let rage
-    // select and reach its proven launch pad, then cancel the actual wind-up.
-    let frames = 0, recaptured = false;
-    while (!e.capture.throwing && frames < 8 * 60) {
-      B.advance(1 / 60, 1 / 60); frames++;
-      recaptured ||= e.capture.cave === c && c.grabbedBy === e;
-      if (recaptured && e.capture.cave !== c) break;
-    }
-    const preparing = recaptured && e.capture.cave === c && e.capture.throwing && e.capture.charge === 1
-      && Math.abs(e.capture.aim.dy - Math.hypot(e.capture.aim.dx, e.capture.aim.dz)) < 1e-6;
-    const preparation = { mapReady: map.ready, homeSpots: map.spots.filter(spot => spot.land === 1 && spot.valid).length,
-      warmup, frames, recaptured, phase: e.rage.phase, reason: e.rage.edgeRejectReason, blocked: e.capture.blocked };
-    const account = BL.net.state.me; BL.net.state.me = { id: "fixture" }; C.update(1 / 60);
-    const cancelled = !e.rage.active && !e.capture.cave && !c.grabbedBy && !c.leap.thrown
-      && B.pilot.player === c && B.crew.player === c && e.gorilla.form === "ape" && !e.root.matrixNative
-      && body.every(part => S.matrixModeOf(part) === 2);
-    BL.net.state.me = account;
+    const untouched = e.nonInteractive && !e.rage.count && e.health.value === startHealth && !e.rage.active;
+    for (let serial = 1000; serial < 1043; serial++) C.bananaHit(e, c, serial);
+    const notEnraged = !e.rage.active && !e.rage.count && e.gorilla.form !== "code" && !C.debugRage(e, true);
+    const noCapture = !H.rageGrab(e, c) && !c.grabbedBy && !e.capture.cave
+      && B.pilot.player === c && B.crew.player === c;
     B.crew.configureWeapon(c, 2, "unlimited"); c.weapon.cooldown = 0;
     const restored = B.crew.fireWeapon(c, { x: c.root.position.x, y: c.root.position.y + 2, z: c.root.position.z + 5 }, 1);
     B.crew.clearProjectiles(); B.pilot.release(true);
-    return { checks: { fired, counted, excluded, active, codeForm, grabbed, identity, exclusive, suppressed, dropped, preparing, cancelled, restored }, preparation };
+    return { checks: { fired, untouched, notEnraged, noCapture, restored } };
   })()`);
-  record("gorilla rage contacts: a physical banana counts once while replay and generic damage do not; a clear ground grab preserves visitor ownership, suppresses conflicting controls, rejects duplicate captors and restores controls on drop and signed-in throw cancellation",
+  record("passive gorilla contacts: a visitor's real banana round neither damages nor counts against a passive NPC gorilla, synthetic hits and debug rage never enrage it, it captures no visitor, and the visitor keeps firing",
     Object.values(state.checks).every(Boolean), JSON.stringify(state));
 } }, { name: "gorilla camera modes", why: "regression: controlled gorillas lacked shared camera/cursor controls and Escape, and selecting an unavailable Ooga dropped the current gorilla", run: async (b) => {
   const state = await b.evaluate(`(() => {
@@ -21266,7 +20118,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     && state.mapCrowds.length === 2 && state.mapCrowds.every(row => row.blockers > 0 && row.refused && row.unchanged && row.restored && row.reopened),
     JSON.stringify({ arrivals: state.mapRows, crowds: state.mapCrowds }));
   record("gorilla reset: 0 resets camera framing while retaining the actor's position, carry/combat and view family", state.mapRows.every(row => row.resetKept && row.resetChanged), JSON.stringify(state.mapRows));
-  record("owned pair: T retakes the Ooga then cycles its gorilla at their existing positions; rapid reversal starts from the displayed view, same-actor selection does not restart it, G still grabs, held T does not repeat and signed-out T does not switch", Object.values(state.pair).every(Boolean), JSON.stringify(state.pair));
+  record("owned pair: T retakes the Ooga then cycles its gorilla at their existing positions; rapid reversal starts from the displayed view, same-actor selection does not restart it, G keeps the driven gorilla, held T does not repeat and signed-out T does not switch", Object.values(state.pair).every(Boolean), JSON.stringify(state.pair));
   record("owned pair views: T smoothly moves the displayed camera to each actor while preserving carry/combat and first-person, shoulder or distant view in both directions; after Escape frees combat's cursor, both switches keep it native", state.transitions.length === 6 && state.transitions.every(r => r.prepared && r.toGorilla && r.toOoga && r.gorillaBlend.smooth && r.oogaBlend.smooth && r.cursorFreed && r.nativeToOoga && r.nativeToGorilla), JSON.stringify(state.transitions));
   record("Ooga selection: an unavailable, remote-controlled or missing owned Ooga refuses T selection with a reason and preserves the current gorilla, camera and control mode", Object.values(state.selection).every(Boolean), JSON.stringify(state.selection));
   record("gorilla selection and retake: signed in or out, selection and the last-actor portrait smoothly recenter carry/orbit at the fixed detached eye; unavailable actors leave the view alone and same-actor selection does not restart the handoff", state.retakes.length === 2 && state.retakes.every(r => r.shown && r.nativeTab && r.detachedRight && r.acquisition.smooth && r.blend.smooth && r.refused && r.returned && r.repeated), JSON.stringify(state.retakes));
@@ -21492,7 +20344,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     labTransition.every(row => row.maxStep < 0.3 && Math.abs(row.after - row.settled) < 0.025
       && (row.entering ? row.gait === "upright" && row.before - row.after > 0.65 && row.workRaise > 0.4
         : row.gait === "knuckle" && row.after - row.before > 0.65)), JSON.stringify(labTransition));
-} }].map(step => ["gorilla prop traversal", "gorilla rage contacts"].includes(step.name) ? gameCombat(step) : step) });
+} }].map(step => ["gorilla prop traversal", "passive gorilla contacts"].includes(step.name) ? gameCombat(step) : step) });
 scene("hub", { label: "mirror clanker", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "mirror clanker stays inside", why: "regression: a clanker turned around after crossing the mirror, poked its head back out, and worked beside a glowing generic box", run: async (b) => {
   const state = await b.evaluate(`(() => { const B = __ooga, C = B.clankers, siteIndex = C.sites.findIndex(s => s.mirrorRoom), site = C.sites[siteIndex], m = site.mouth, e = C.list[0], localX = p => (p.x - m.x) * site.cr - (p.z - m.z) * site.sr, localZ = p => (p.x - m.x) * site.sr + (p.z - m.z) * site.cr, place = (x, z) => ({ x: m.x + site.cr * x + site.sr * z, y: m.floorY, z: m.z - site.sr * x + site.cr * z }); e.owner.state = "working"; e.owner.work.site = e.owner.work.plannedSite = e.site = siteIndex; e.pendingSite = -1; e.hasSlot = true; e.slotIndex = 0; Object.assign(e, { slotX: place(0, -4.92).x, slotY: m.floorY, slotZ: place(0, -4.92).z, phase: "travel", route: "enter", fromSite: -1, entryTurn: false, blocked: 0, retry: 0 }); Object.assign(e.root.position, place(0, 0)); e.heading = m.ry + Math.PI; B.advance(0.25, 1 / 60); const entry = { turn: e.entryTurn, goal: localZ({ x: e.goalX, z: e.goalZ }) }; Object.assign(e.root.position, place(0, -4.92)); e.phase = "work"; e.route = ""; e.goalX = e.slotX; e.goalY = e.slotY; e.goalZ = e.slotZ; let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, distance = 0, lastX = e.root.position.x, lastZ = e.root.position.z; for (let t = 0; t < 18; t += 1 / 30) { B.advance(1 / 30, 1 / 30); const x = localX(e.root.position), z = localZ(e.root.position); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); distance += Math.hypot(e.root.position.x - lastX, e.root.position.z - lastZ); lastX = e.root.position.x; lastZ = e.root.position.z; } return { room: m.room, entry, minX, maxX, minZ, maxZ, distance, recoveries: e.stuck.recoveries, equipment: C.equipment.filter(item => item.site === siteIndex).length }; })()`);
   record("mirror clanker: the safe chamber expands, entry continues straight inward, runs cross from side to side at varied depths behind the glass, and the room has no work equipment", state.room.w > 6 && state.room.to > 6.5 && Math.abs(state.entry.goal + 3.5) < 0.01 && state.maxZ <= -1.85 + 1e-6 && state.minX < -0.8 && state.maxX > 0.8 && state.maxZ - state.minZ > 1 && state.distance > 8 && state.equipment === 0, JSON.stringify(state));
@@ -27491,7 +26343,19 @@ const passiveClankerSupportProof = async () => {
   tops.clear(); tops.set(drivenNode, 1);
   const driven = context.support(0, 0, 1, 0.6, player) === 1;
   const passiveRider = context.support(0, 0, 1, 0.6, npc) === 0.3;
-  return { scenery, driven, passiveRider };
+  // The real pound callback: a passive NPC's pound scans and builds nothing,
+  // while a driven gorilla's pound still grows the nearby generic cave prop.
+  let clearCalls = 0, syncs = 0;
+  const item = { site: 1, progress: 0, radius: 0.5, height: 1, node: { position: { x: 0, y: 0, z: 0 }, scale: { y: 0 }, visible: false } };
+  const pound = { clankerEquipment: [item], solids: { sync: () => syncs++ }, clankerClear: () => (clearCalls++, true) };
+  runInNewContext(section("  const poundClankerEquipment =", "  const createClankerEquipment =") + "this.pound = poundClankerEquipment;", pound);
+  const gorilla = nonInteractive => ({ nonInteractive, site: 1, root: { position: { x: 1, y: 0, z: 0 } } });
+  pound.pound(gorilla(true));
+  const passivePound = !clearCalls && !syncs && item.progress === 0 && !item.node.visible && item.node.scale.y === 0;
+  pound.pound(gorilla(false));
+  const drivenPound = clearCalls === 1 && syncs === 1 && Math.abs(item.progress - 0.2) < 1e-12 && item.node.visible
+    && Math.abs(item.node.scale.y - 0.2 * 0.65) < 1e-12;
+  return { scenery, driven, passiveRider, passivePound, drivenPound };
 };
 // Passive meadow legs: the real fixed planner leaves the pile along its ring and
 // out along an authored spoke, never across the pile, and never reuses a graph lane.
@@ -28003,7 +26867,7 @@ const unitChecks = async () => {
   const reviewCrowd=await reviewCrowdAndFallbackProof();
   record("review crowd: recovery fetches outside actors once per edge and tests only nearby bodies; one station helper handles height and visibility, and passive NPCs skip it either way; CPU fallback draws original joints only",["clear","filtered","blocked","hidden","above","passiveSelf","passivePeer","driven","cpu","gpu"].every(k=>reviewCrowd[k]),JSON.stringify(reviewCrowd));
   const passiveSupport = await passiveClankerSupportProof();
-  record("passive clanker support: a player is never held up by an NPC gorilla while the scenery beneath still holds them, a driven gorilla still does, and a passive NPC rides neither",
+  record("passive clanker support: a player is never held up by an NPC gorilla while the scenery beneath still holds them, a driven gorilla still does, and a passive NPC rides neither; a passive gorilla's pound builds no cave prop while a driven one's still does",
     Object.values(passiveSupport).every(Boolean), JSON.stringify(passiveSupport));
   const fixedRoutine = await fixedRoutineProof();
   record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane",
