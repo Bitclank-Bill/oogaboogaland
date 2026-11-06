@@ -988,14 +988,13 @@ body[data-active-scene="hub"] .home-link {
 .roster-hint:not(:has(> :not([hidden]))) { display: none; }
 
 /* Bananas: the all-time total on top, its count and sats beneath, then the donors and the latest tips in the same
-   slab. The slab never shrinks: a panel too short for it all scrolls as a whole, and each list scrolls inside a
-   window five donor rows tall (`--banana-five`), both lists the same height. */
+   slab. Like every panel's slab it scrolls above the panel's action, so Feed the Oogas stays at the foot as
+   Contributor sign-in does; its sections never shrink, and each list scrolls inside a window five donor rows tall
+   (`--banana-five`), both lists the same height. */
 .panel > .banana-slab {
   --banana-five: calc(5 * (17px + 12px + 1px));
   display: flex;
   flex-direction: column;
-  flex: 1 0 auto;
-  overflow: visible;
   padding: 12px 12px 10px;
 }
 .banana-slab > section { flex: none; }
