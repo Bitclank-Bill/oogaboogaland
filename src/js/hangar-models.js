@@ -483,12 +483,15 @@
   // down the girder's face and under it with its number on a plate, the hoist's drum under that and the ropes from it,
   // `ropeTop` under the trolley's frame, down to the hook block, at least `rope` long. From the hook hangs a navy crate
   // with yellow edges on a four-leg sling (`load`, `sling` from the hook's eye to the crate's top, `crate` its size).
+  // Between jobs the crate sits on one of two laydown stands (`stands`, [x, z], their decks `standTop` up), each in a
+  // painted keep-out square, its sling lying slack on its top; LJ-02 carries it between them with its bottom `carry` up.
   // Where LJ-02 parks between jobs (`park`): at the runways' door end, the trolley over the right of the hall behind the
   // Jet's tail, its hook up. `cx` is the middle between the runways, where a bridge's frame stands. Its yellow and navy
   // glow a little (`lift`), as the concept's catch the hall's light, and dim with the hall's glass.
   const CRANE = {
-    railY: 14.2, x: [HALL.x0 + 2.65, HALL.x1 - 2.65], runway: [-32.4, 28.4], travel: [-16, 11.5], trolley: [-15, 20.5],
-    ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.5, x: 19 }, far: { z: -30.2, x: -4 }, lift: 0.16,
+    railY: 14.2, x: [HALL.x0 + 2.65, HALL.x1 - 2.65], runway: [-32.4, 28.4], travel: [-16, 11.2], trolley: [-15, 20.5],
+    ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.2, x: 17.5 }, far: { z: -30.2, x: -4 }, lift: 0.16,
+    stands: [[17.5, 11.2], [-13, -4]], standTop: 0.3, carry: 5,
     yellow: "#f2b630", yellowDk: "#c88a1c", rivet: "#9a6a12", navy: "#1e2c66", navyDk: "#131c45", dark: "#2b3038", rail: "#8a929c", bracket: "#4b525c",
     amber: "#ffb347", plate: "#ffd04a"
   };
@@ -498,7 +501,8 @@
   // x along the bridge; a trolley (`trolley`, LJ-01's `farTrolley`: its `body` and the small parts on its faces,
   // `trim`, their bolts and lamps `trolleyGlow`), its zero under its middle at that same height; the hoist's four falls
   // a metre long, hanging from y 0 (`rope`, the scene stretches them to length); the hook block hanging from its top
-  // (`hook`); and the load on the hook, its sling's eye at its zero (`load`).
+  // (`hook`); and the crate, its sling's eye at its zero (`load`), with its sling taut (`sling`, its legs from the eye
+  // down to the crate's top, which the scene shortens as the hook comes down to the crate) or slack (`slack`).
   const crane = cached(() => {
     const C = CRANE, H = (C.x[1] - C.x[0]) / 2, bridge = [], glow = [], trolleyGlow = [], hook = [], load = [];
     // The runways along the side walls: an I-beam with its rail on top, on a bracket and knee brace off each wall rib it
@@ -649,11 +653,14 @@
     const hr = 0.17, hy = C.eye + hr;
     hook.push(tube({ path: (t) => ({ x: -0.02 + Math.sin(-0.2 + t * 4.6) * hr, y: hy + Math.cos(-0.2 + t * 4.6) * hr, z: 0.1 }), radius: (t) => 0.06 - t * 0.025, rings: 16, segments: 8, colorFn: () => C.dark }));
     hook.push(beam(-0.02 + Math.sin(4.4) * hr, hy + Math.cos(4.4) * hr, 0.1, -0.02, hy + hr, 0.1, 0.025, "#8a929c"));
-    // The load: the sling's master link in the hook, four legs down to the crate's top corners, and the crate, navy
-    // with chunky yellow edges and the bolt on its four faces.
-    const [cw, ch, cd] = C.crate, ct = -C.sling;
-    load.push(moved(turnedX(torus(0.09, 0.025, "#c9a23a", 0, 12, 6), Math.PI / 2), 0, -0.02, 0));
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) load.push(beam(0, -0.1, 0, sx * (cw / 2 - 0.12), ct, sz * (cd / 2 - 0.12), 0.035, "#c9a23a"));
+    // The load, its sling's eye at its zero: the crate, navy with chunky yellow edges and the bolt on its four faces; the
+    // sling taut (`sling`), its master link in the hook and four legs down to the crate's top corners; and the same
+    // sling lying slack on the crate's top (`slack`), its link at the middle and its legs out to the corners.
+    const [cw, ch, cd] = C.crate, ct = -C.sling, sling = [], slack = [];
+    sling.push(moved(turnedX(torus(0.09, 0.025, "#c9a23a", 0, 12, 6), Math.PI / 2), 0, -0.02, 0));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) sling.push(beam(0, -0.1, 0, sx * (cw / 2 - 0.12), ct, sz * (cd / 2 - 0.12), 0.035, "#c9a23a"));
+    slack.push(moved(torus(0.09, 0.025, "#c9a23a", 0, 12, 6), 0.05, ct + 0.03, -0.04));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) slack.push(beam(0.05 + sx * 0.08, ct + 0.025, -0.04 + sz * 0.08, sx * (cw / 2 - 0.12), ct + 0.02, sz * (cd / 2 - 0.12), 0.035, "#c9a23a"));
     load.push(box({ w: cw - 0.06, h: ch - 0.06, d: cd - 0.06, color: C.navy, emissive: C.lift, offset: { y: ct - ch / 2 } }));
     const e = 0.12;
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) load.push(box({ w: e, h: ch, d: e, color: C.yellow, emissive: C.lift, offset: { x: sx * (cw / 2 - e / 2), y: ct - ch / 2, z: sz * (cd / 2 - e / 2) } }));
@@ -662,7 +669,26 @@
       load.push(box({ w: e, h: e, d: cd, color: C.yellow, emissive: C.lift, offset: { x: s * (cw / 2 - e / 2), y } }));
     }
     for (let k = 0; k < 4; k++) load.push(moved(turnedY(FM.smoothBolt(0.62, 0.04, "#ffd23a", 0), k * Math.PI / 2), Math.sin(k * Math.PI / 2) * (cw / 2 - 0.02), ct - ch / 2, Math.cos(k * Math.PI / 2) * (cd / 2 - 0.02)));
-    return { runways: merge(...runways), bridge: merge(...bridge), glow: noShadow(merge(...glow)), trolley: trolleyParts("LJ-02"), farTrolley: trolleyParts("LJ-01"), trolleyGlow: noShadow(merge(...trolleyGlow)), rope, hook: merge(...hook), load: merge(...load) };
+    return { runways: merge(...runways), bridge: merge(...bridge), glow: noShadow(merge(...glow)), trolley: trolleyParts("LJ-02"), farTrolley: trolleyParts("LJ-01"), trolleyGlow: noShadow(merge(...trolleyGlow)), rope, hook: merge(...hook), load: merge(...load), sling: merge(...sling), slack: merge(...slack) };
+  });
+
+  // The laydown stands the crane sets its crate down on (`CRANE.stands`), in the hangar's frame: each a steel skid, a
+  // dark deck `standTop` up on four short legs with yellow and black ends, in a painted square on the floor round it.
+  const laydown = cached(() => {
+    const C = CRANE, geos = [], top = C.standTop, h = 0.8;
+    for (const [x, z] of C.stands) {
+      geos.push(box({ w: 1.6, h: 0.08, d: 1.6, color: "#3a4049", offset: { x, y: top - 0.04, z } }));
+      for (const k of [-1, 1]) {
+        geos.push(box({ w: 1.66, h: 0.14, d: 0.12, color: C.yellow, offset: { x, y: top - 0.11, z: z + k * 0.77 } }));
+        for (let i = 0; i < 4; i++) geos.push(box({ w: 0.18, h: 0.145, d: 0.125, color: INK, offset: { x: x - 0.6 + i * 0.4, y: top - 0.11, z: z + k * 0.77 } }));
+      }
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) geos.push(box({ w: 0.14, h: top - 0.08, d: 0.14, color: C.dark, offset: { x: x + sx * 0.7, y: (top - 0.08) / 2, z: z + sz * 0.7 } }));
+      hazard(geos, x - h - 0.4, z - h - 0.4, x + h + 0.4, z - h - 0.4, 0.015, 0.2);
+      hazard(geos, x + h + 0.4, z - h - 0.4, x + h + 0.4, z + h + 0.4, 0.015, 0.2);
+      hazard(geos, x + h + 0.4, z + h + 0.4, x - h - 0.4, z + h + 0.4, 0.015, 0.2);
+      hazard(geos, x - h - 0.4, z + h + 0.4, x - h - 0.4, z - h - 0.4, 0.015, 0.2);
+    }
+    return merge(...geos);
   });
 
   // ---- the floor's fixtures ---------------------------------------------------------------------------------------
@@ -2047,6 +2073,8 @@
       solid(x + 0.05, z - 0.04, ux, uz, -1, CRATE_TOPS[1]);
     }
     for (const [x, z] of L.floorLamps) around(x, z, 0.3, 0.3, 0.4);
+    // The crane's laydown stands, kept clear as high as a crate standing on one.
+    for (const [x, z] of CRANE.stands) around(x, z, 0.85, 0.85, CRANE.standTop + CRANE.crate[1]);
     // The ribs standing out of the side walls, plinths and all.
     const S = L.shell, reach = S.face + S.rib + 0.2, half = S.ribW / 2 + 0.2;
     for (const z of L.gantries) block(HALL.x0, HALL.x0 + reach, z - half, z + half, -1, HALL.h), block(HALL.x1 - reach, HALL.x1, z - half, z + half, -1, HALL.h);
@@ -2164,7 +2192,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, CRANE, crane, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, CRANE, crane, laydown, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
