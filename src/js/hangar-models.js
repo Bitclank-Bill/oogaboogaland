@@ -469,8 +469,8 @@
     return merge(...geos);
   });
 
-  // The vault's dressing: the gantries, each a truss of steel girders on knee braces into the walls, and two crane
-  // trolleys over the Jet.
+  // The vault's dressing: the gantries, each a truss of steel girders whose ends rest on the side walls' ribs on its
+  // line, and two crane trolleys over the Jet.
   const dressing = cached(() => {
     const L = LAYOUT, { x0: X0, x1: X1 } = HALL, iron = [], gy = L.gantryY, mid = (X0 + X1) / 2, span = X1 - X0 - 4;
     for (const z of L.gantries) {
@@ -484,7 +484,6 @@
           iron.push(beam(x, gy - up * 0.36, z, x2, gy + up * 0.36, z, 0.12, GIRDER_DK));
         }
       }
-      for (const [x, s] of [[X0, 1], [X1, -1]]) iron.push(beam(x + s * 3.2, gy - 3, z, x + s * 1.8, gy - 0.3, z, 0.32, GIRDER_DK), box({ w: 0.5, h: 1.3, d: 0.6, color: IRON_DK, offset: { x: x + s * 2.2, y: gy, z } }));
     }
     // The crane trolleys: a yellow carriage on the bottom chord, its hook block hung over the Jet.
     for (const [x, z, drop] of [[L.jet.x, -18, 3.6], [L.jet.x + 3.5, -2, 3.4]]) {
