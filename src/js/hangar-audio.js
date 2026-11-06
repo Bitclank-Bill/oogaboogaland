@@ -43,8 +43,9 @@
 // where it is and how fast its travel and its hoist run, each 0 to 1): the travel drive's whine climbing with its speed
 // over its gearbox's hum and the rumble of its wheels on the rails, and the hoist's higher whine and hum; and its cues
 // (`craneCue`): the brakes' clunk as a motion starts and stops (`brake`), the sling's chains clinking as it is hooked
-// on or off (`rattle`), the creak as the ropes take the crate's weight (`lift`) and the thud of the crate set down on
-// its stand (`land`).
+// on or off (`rattle`), the creak as the ropes take the crate's weight (`lift`), the thud of the crate set down on
+// its stand (`land`) and its warning horn (`horn`); and its travel alarm beeping while the bridge or the trolley moves
+// (the state's `alarm`).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -90,7 +91,10 @@
   // The crane: how loud its travel drive's whine, its gearbox's hum and its wheels' rumble are at full speed, its hoist's
   // whine and hum, the brakes' clunk and click, a chain's clink, the load's creak and the crate's thud; how far its
   // whines climb (Hz) from their idle pitch at full speed; and how far it carries, half at `ref` metres.
-  const CRANE = { whine: 0.05, hum: 0.07, rumble: 0.09, hoist: 0.05, hoistHum: 0.06, clunk: 0.4, click: 0.18, clink: 0.16, creak: 0.12, thud: 0.5, travelHz: [180, 520], hoistHz: [260, 760], ref: 10 };
+  // Its travel alarm: how loud, its pitch (Hz), each beep's length and how often (s); and its horn: how loud, its two
+  // notes (Hz) and how long it sounds (s).
+  const CRANE = { whine: 0.05, hum: 0.07, rumble: 0.09, hoist: 0.05, hoistHum: 0.06, clunk: 0.4, click: 0.18, clink: 0.16, creak: 0.12, thud: 0.5, travelHz: [180, 520], hoistHz: [260, 760], ref: 10,
+    alarm: 0.05, alarmHz: 1250, beep: 0.22, every: 0.75, horn: 0.3, hornHz: [311, 392], hornLen: 0.7 };
   // The film show's levels at full: the projector's motor, its whir, the gate's clatter and the lamp's buzz, the
   // soundtrack's crackle and hiss, a picture's clunk and the roller's ratchet; and how far the projector and the screen
   // carry (half at that many metres), the hall being quiet enough to hear them across it.
@@ -110,7 +114,7 @@
       if (saved !== null && v >= 0 && v <= 1) volume = v;
     } catch {}
     const bed = {}, test = {}, sis = {}, proj = {}, fork = {}, crane = {};
-    // The crane's state, read live: { x, y, z, travel, hoist } (`watchCrane`).
+    // The crane's state, read live: { x, y, z, travel, hoist, alarm } (`watchCrane`).
     let craneState = null;
     // Whether the projector runs, so a context opened mid-show starts it running, and the same for the forklift.
     let projOn = false, liftOn = false, liftReady = 0, liftDrive = 0, liftPump = 0;
@@ -275,6 +279,13 @@
       crane.thud = osc("sine", 90, crane.thudGain);
       crane.thudNoise = gain(0, crane.cuePan);
       hissOf(filter("lowpass", 340, 0.8, crane.thudNoise));
+      // The travel alarm, placed at the trolley, its beeps scheduled ahead by `update`; and the horn's two notes.
+      crane.alarmGain = gain(0, crane.near);
+      crane.alarm = osc("square", CRANE.alarmHz, filter("bandpass", CRANE.alarmHz, 3, crane.alarmGain));
+      crane.nextBeep = 0;
+      crane.hornGain = gain(0, crane.cuePan);
+      const hornTone = filter("lowpass", 1500, 0.8, crane.hornGain);
+      crane.horn = CRANE.hornHz.map((hz) => osc("square", hz, hornTone));
     };
     // The projector's voices, all under its envelope, which `projector` opens and closes, and placed where it hangs; and
     // the screen's, placed where its picture falls.
@@ -846,6 +857,18 @@
         set(crane.whine.frequency, CRANE.travelHz[0] + (CRANE.travelHz[1] - CRANE.travelHz[0]) * c.travel, now);
         set(crane.hoist.gain, Math.min(1, c.hoist * 1.6), now);
         set(crane.hoistWhine.frequency, CRANE.hoistHz[0] + (CRANE.hoistHz[1] - CRANE.hoistHz[0]) * c.hoist, now);
+        // The alarm's beeps a little ahead, while the bridge or the trolley moves.
+        if (c.alarm) {
+          const g = crane.alarmGain.gain;
+          if (crane.nextBeep < now) crane.nextBeep = now + 0.05;
+          for (; crane.nextBeep < now + 0.25; crane.nextBeep += CRANE.every) {
+            const at = crane.nextBeep;
+            g.setValueAtTime(0, at);
+            g.linearRampToValueAtTime(CRANE.alarm, at + 0.01);
+            g.setValueAtTime(CRANE.alarm, at + CRANE.beep - 0.02);
+            g.linearRampToValueAtTime(0, at + CRANE.beep);
+          }
+        }
       }
       if (liftOn && now > liftReady) {
         set(fork.whine.frequency, 440 + WORK.whine * liftDrive, now);
@@ -1125,7 +1148,7 @@
     };
     // The crane's state to read from now on, { x, y, z, travel, hoist }, kept current by the crane.
     const watchCrane = (state) => { craneState = state; };
-    // A crane cue at (x, y, z): `brake`, `rattle`, `lift` or `land`.
+    // A crane cue at (x, y, z): `brake`, `rattle`, `lift`, `land` or `horn`.
     const craneCue = (name, x, y, z) => {
       if (!ready || muted) return;
       place(x, y, z, CRANE.ref);
@@ -1166,6 +1189,13 @@
         crane.thudGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
         crane.thudNoise.gain.setValueAtTime(CRANE.thud * 0.6 * k, now);
         crane.thudNoise.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+      } else if (name === "horn") {
+        const g = crane.hornGain.gain;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(0, now);
+        g.linearRampToValueAtTime(CRANE.horn * k, now + 0.03);
+        g.setValueAtTime(CRANE.horn * k, now + CRANE.hornLen - 0.08);
+        g.linearRampToValueAtTime(0, now + CRANE.hornLen);
       } else throw new Error(`hangarAudio: no crane cue ${name}`);
     };
     const setVolume = (value) => {
