@@ -340,6 +340,41 @@
     return merge(...geos);
   });
 
+  // The steel bulkhead the stone arch of the door back to the Factory stands in, in the door's frame (+z into the
+  // hangar, the sill at y 0): a plate filling the front wall's surround round the arch, its opening the arch's outer
+  // ring (`R` round its centre `cy`, straight down below it), cut in wedges along rays from that centre so each is a
+  // quad; a dark reveal round the opening back to the arch and an orange edge on its face; rivets down its sides and
+  // along its top; and a steel board the scene hangs the door's sign on, the sign's own bolts glowing either side.
+  const BULKHEAD = { R: 3.6, cy: 2.6, z: 0.71, d: 0.1, reveal: 1.06, edge: 0.12, n: 7 };
+  const doorBulkhead = cached(() => {
+    const B = BULKHEAD, S = STEEL, D = FM.HANGAR_DOOR, geos = [];
+    const half = LAYOUT.landing.w / 2 + 0.1, top = LAYOUT.shell.doorTop - LAYOUT.door.y, rise = top - B.cy, front = B.z + B.d / 2;
+    const ring = (r, a) => [Math.cos(a) * r, B.cy + Math.sin(a) * r];
+    const out = (a) => {
+      const c = Math.cos(a), s = Math.sin(a);
+      return Math.abs(c) * rise > s * half ? [Math.sign(c) * half, B.cy + half * s / Math.abs(c)] : [rise * c / s, top];
+    };
+    const corner = Math.atan2(rise, half), wedges = [];
+    for (const [a0, a1] of [[0, corner], [corner, Math.PI - corner], [Math.PI - corner, Math.PI]]) {
+      for (let k = 0; k < B.n; k++) wedges.push([a0 + (a1 - a0) * k / B.n, a0 + (a1 - a0) * (k + 1) / B.n]);
+    }
+    for (const [a0, a1] of wedges) {
+      geos.push(moved(prism([ring(B.R, a0), out(a0), out(a1), ring(B.R, a1)], B.d, S.plate), 0, 0, B.z));
+      geos.push(moved(prism([ring(B.R, a0), ring(B.R + 0.1, a0), ring(B.R + 0.1, a1), ring(B.R, a1)], B.reveal, S.frame), 0, 0, front - B.reveal / 2));
+      geos.push(moved(prism([ring(B.R - 0.02, a0), ring(B.R + B.edge, a0), ring(B.R + B.edge, a1), ring(B.R - 0.02, a1)], 0.04, S.rail), 0, 0, front + 0.02));
+    }
+    for (const s of [-1, 1]) {
+      geos.push(box({ w: half - B.R, h: B.cy, d: B.d, color: S.plate, offset: { x: s * (half + B.R) / 2, y: B.cy / 2, z: B.z } }));
+      geos.push(box({ w: 0.1, h: B.cy, d: B.reveal, color: S.frame, offset: { x: s * (B.R + 0.05), y: B.cy / 2, z: front - B.reveal / 2 } }));
+      geos.push(box({ w: B.edge + 0.02, h: B.cy, d: 0.04, color: S.rail, offset: { x: s * (B.R + B.edge / 2 - 0.01), y: B.cy / 2, z: front + 0.02 } }));
+      for (let y = 0.4; y < top - 0.3; y += 0.6) geos.push(box({ w: 0.08, h: 0.08, d: 0.04, color: S.frame, offset: { x: s * (half - 0.22), y, z: front + 0.02 } }));
+    }
+    for (let x = -half + 0.82; x < half - 0.6; x += 0.6) geos.push(box({ w: 0.08, h: 0.08, d: 0.04, color: S.frame, offset: { x, y: top - 0.22, z: front + 0.02 } }));
+    geos.push(box({ w: 5.6, h: 1.9, d: 0.06, color: S.frame, offset: { y: D.sign[1], z: front + 0.04 } }));
+    for (const s of [-1, 1]) for (const t of [-1, 1]) geos.push(box({ w: 0.2, h: 0.2, d: 0.04, color: S.plate, offset: { x: s * 2.62, y: D.sign[1] + t * 0.77, z: front + 0.09 } }));
+    return merge(...geos);
+  });
+
   // The runway: slate panels with their seams between twin yellow centre lines and hazard-striped edges, yellow and
   // black bands across it every eight metres and at the hold-short line, chevrons before the shield, and blue marker
   // lamps along both edges, the length of the floor and on through the tunnel; and on the floor beside it, the stripes
@@ -1965,7 +2000,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, runway, marker, floorLamp, tunnel, catwalks, dressing, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, runway, marker, floorLamp, tunnel, catwalks, dressing, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
