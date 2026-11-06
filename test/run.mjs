@@ -27951,9 +27951,11 @@ const unitChecks = async () => {
   {
     const P = await import(join(root, "worker/src/protocol.js")), hall = await readFile(join(root, "src/js/scene-genesis.js"), "utf8"), dir = await readFile(join(root, "src/js/director.js"), "utf8");
     const zone = (hall.match(/voiceZone: "([^"]+)"/) || [])[1], swap = /BL\.net\.setZone\(next\.voiceZone \|\|/.test(dir), own = /net\.setZone\(/.test(hall);
-    const exits = (hall.match(/\bgo\("hub"/g) || []).length;
+    // Its ways out: Escape and the Back to the island action both call leave(), which is go("hub"), the director's swap.
+    const exits = (hall.match(/\bgo\("hub"/g) || []).length, leaveIsSwap = /const leave = \(\) => go\("hub"\);/.test(hall);
+    const escapeLeaves = /k === "Escape"[^\n]*leave\(\)/.test(hall), actionLeaves = /action === "leave"\) leave\(\)/.test(hall);
     record("rule: Genesis Hall reports its own voice zone \"genesis.hall\" on entry and leaves only through the director's swap, which reports the next scene's own zone (never a stale hall zone)",
-      zone === "genesis.hall" && P.ZONE_NAME.test(zone) && P.zoneGroup(zone) === "genesis" && swap && !own && exits > 0, JSON.stringify({ zone, swap, own, exits }));
+      zone === "genesis.hall" && P.ZONE_NAME.test(zone) && P.zoneGroup(zone) === "genesis" && swap && !own && exits === 1 && leaveIsSwap && escapeLeaves && actionLeaves, JSON.stringify({ zone, swap, own, exits, leaveIsSwap, escapeLeaves, actionLeaves }));
   }
   record("Genesis audio (with the ten shared cues the era exhibits call: pooled, in Calm, silent with the Music switch off, unknown names silent, the hum looping until hum-stop, a pause, the Music switch or its 8 s cap): lookahead steps land on time once (swing, stalls skipped, bounded buffer), every era has a fitting theme, buses crossfade to one era, the engine follows throttle and boost, the Music switch stops only the themes (cues still sound) while the page-wide mute still silences everything, and an instance waits for a gesture, plays on fixed nodes and closes", Object.values(genesisAudio).every(Boolean), JSON.stringify(genesisAudio));
   const artifact = artifactUnitProof();

@@ -99,7 +99,7 @@
     };
     // The era's big sign, pylons, overview board and the Steps toward Bitcoin are the shared signage's
     // (docs/genesis-voyage/EXHIBIT-CONTRACT.md); this era's guide is in its overview's pages, below.
-    // Human-scale schematic storage cabinet: 50 square platter silhouettes, not an engineering reconstruction.
+    // Human-scale schematic storage cabinet: 50 round platters on a spindle, not an engineering reconstruction.
     const dx = -23, dz = era.z - 3;
     solid(3.5, 0.25, 2.8, "#494d4e", dx, top + 0.125, dz);
     for (const side of [-1, 1]) solid(0.15, 3.4, 2.8, "#c3c4b8", dx + side * 1.7, top + 1.8, dz);
@@ -386,7 +386,7 @@
     prop({ id: "e0-compare", year: 2019, connection: "context", date: "25 February 2019: an announcement, outside this era", title: "2019 comparison - outside this era", label: "OUTSIDE THIS ERA · 2019", sourceKeys: ["e0Storage", "e0Card2019"],
       at: { x: mx, y: top, z: mz + 1.6 }, reach: 1.8, pick: { w: 2.4, h: 1.6, d: 1.6, x: mx, z: mz },
       onUse: () => ({ board: { room: "1956 storage / 2019 comparison", sources: ["e0Storage", "e0Card2019"], pages: [
-        { caption: "1956", title: "Five million characters", text: ["The disk cabinet stored five million data characters. Characters and bytes are not interchangeable without specifying an encoding.", "The model is schematic. Its dimensions, square platters, toy records and movement are not engineering measurements."] },
+        { caption: "1956", title: "Five million characters", text: ["The disk cabinet stored five million data characters. Characters and bytes are not interchangeable without specifying an encoding.", "The model is schematic. Its dimensions, round platters, toy records and movement are not engineering measurements."] },
         { caption: "Outside this era", title: "25 February 2019: announcement", text: ["Micron announced its c200 one-terabyte microSD card in 2019. That is a modern comparison, not an object from 1956-1969.", "The original blank card model is enlarged for visibility. No exact capacity ratio or physical scale comparison is claimed."] }
       ] } }) });
   };

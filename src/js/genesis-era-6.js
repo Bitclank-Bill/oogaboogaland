@@ -948,7 +948,8 @@
           B(M, 0.9, 0.25, 0.02, "#5a4430", 1.0, 0.55, 0.61), B(M, 0.2, 0.04, 0.03, "#c9a35a", 1.0, 0.58, 0.63, 0.2), B(M, 3.3, 0.08, 1.3, "#3a2e22", 0, 0.04, 0)]);
         syncWs();
         obstacle(cx - 1.6, cx + 1.6, z - 0.6, z + 0.6);
-        sign("READING WORKSTATION · 2008 STYLE", "an original, unbranded desk for reading the paper · context, nothing introduced on 31 October 2008", cx, top + 2.5, z + 0.1, 0, 0.42);
+        // Its sign stands behind the display and over head height, clear of the sight line to the January door beside it.
+        sign("READING WORKSTATION · 2008 STYLE", "an original, unbranded desk for reading the paper · context, nothing introduced on 31 October 2008", cx, top + 3.0, z - 0.45, 0, 0.42);
         prop({ id: "e6-workstation", year: 2008, connection: "context", date: "2008: the period illustrated; an original, unbranded design, not equipment introduced on 31 October 2008",
           title: "Reading workstation", label: "READING WORKSTATION · 2008 STYLE", hint: "Type PAGE 3 or STORAGE 10; LAMP switches the desk lamp",
           sourceKeys: ["E6-WP", "E6-GEAR", "E6-CLUSTER"], at: { x: cx, y: top, z: z + 1.8 }, reach: 2.2, pick: { w: 3.2, h: 2, d: 1.2, x: cx, z }, onUse: () => ({ terminal: wsTerminal() }) }); }

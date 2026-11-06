@@ -1382,8 +1382,55 @@
     frameIn.ndc.y = 1 - ((rect.top + rect.height / 2) - cr.top) / cr.height * 2;
     frameIn.frac = Math.max(0.15, rect.height / cr.height);
     frameIn.aspect = cr.width / cr.height; frameIn.fov = bench.saved.fov || camera.fov;
-    GW.frame(frameIn, bench.view);
+    // The walk-up side first; where rock or another exhibit stands between it and the model (the galleries are packed
+    // close), the camera turns round the model and rises a step at a time until it sees it clear, else keeps that view.
+    // The model's own footprint, at most 1.2 m round its centre, so a neighbour standing close is still seen.
+    const bx = frameIn.toward.x, bz = frameIn.toward.z, own = Math.min(Math.max(pick.w, pick.d) / 2, 1.2) + 0.25;
+    let found = false;
+    const why = bench.frameWhy = bench.frameWhy || [];
+    why.length = 0;
+    for (let p = 0; p < FRAME_PITCH.length && !found; p++) for (let a = 0; a < FRAME_TURN.length && !found; a++) {
+      const ca = Math.cos(FRAME_TURN[a]), sa = Math.sin(FRAME_TURN[a]);
+      frameIn.toward.x = bx * ca + bz * sa; frameIn.toward.z = bz * ca - bx * sa; frameIn.pitch = FRAME_PITCH[p];
+      GW.frame(frameIn, bench.view);
+      const r = frameClear(c, bench.view.eye, own);
+      found = r === 0; why.push(r);
+    }
+    if (!found) { frameIn.toward.x = bx; frameIn.toward.z = bz; frameIn.pitch = FRAME_PITCH[0]; GW.frame(frameIn, bench.view); }
+    frameIn.pitch = FRAME_PITCH[0];
     bench.focus.x = c.x; bench.focus.z = c.z;
+  };
+  // The turns (radians off the walk-up side) and pitches the framing tries, in order; and its line-of-sight test: the
+  // eye in the model's own room (its gallery or the atrium) under that room's roof, and the line from the model to it
+  // staying in that room and, below FRAME_TALL (the tallest exhibits' height), clear of every exhibit's footprint
+  // but the model's own (within `own` of its centre). The footprints carry no heights, so each counts as 4 m tall.
+  const FRAME_TURN = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.45, -1.45], FRAME_PITCH = [0.2, 0.45, 0.8], FRAME_TALL = 4;
+  const frameClear = (c, eye, own) => {
+    const frameObs = built.frameObs || (built.frameObs = FOOTING.obstacles.concat(built.obstacles, built.oldObstacles.map((o) => MU.boxToMuseum(o.era, o))));
+    // The eye stands in the model's own room (its gallery, or the atrium), under that room's roof.
+    const room = MU.bayAt(c.x, c.z);
+    if (!MU.inside(eye.x, eye.z, 0.3) || MU.bayAt(eye.x, eye.z) !== room) return 1;
+    if (eye.y > (room >= 0 ? GALLERY_ROOF : ISLAND_TOP + ROOF) - 0.5) return 2;
+    // Three sight lines to the eye, from the model's middle and 0.6 m to either side of it (the view's cone, roughly).
+    // The turns stay on the model's front half, so it is never framed from behind.
+    const len0 = Math.hypot(eye.x - c.x, eye.z - c.z), rx = (eye.z - c.z) / len0, rz = -(eye.x - c.x) / len0;
+    for (let side = -1; side <= 1; side++) {
+    const sx = c.x + rx * side * 0.6, sz = c.z + rz * side * 0.6;
+    const dx = eye.x - sx, dy = eye.y - c.y, dz = eye.z - sz, len = Math.hypot(dx, dz);
+    for (let d = own; d < len; d += 0.25) {
+      const t = d / len, x = sx + dx * t, y = c.y + dy * t, z = sz + dz * t;
+      if (!MU.inside(x, z, 0) || MU.bayAt(x, z) !== room) return 3;
+      if (y > ISLAND_TOP + FRAME_TALL) continue;
+      for (const o of frameObs) {
+        if (x < o.x0 || x > o.x1 || z < o.z0 || z > o.z1) continue;
+        // The model's own footprint never blocks it.
+        const ox = Math.max(o.x0 - c.x, 0, c.x - o.x1), oz = Math.max(o.z0 - c.z, 0, c.z - o.z1);
+        if (ox * ox + oz * oz < own * own) continue;
+        return 4;
+      }
+    }
+    }
+    return 0;
   };
   const host = {
     get catalogue() { return catalogue; },
@@ -2214,7 +2261,7 @@
     showControls();
     hud.setStats(game.state);
     arrive();
-    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get golf() { return golf; }, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper, openGuideItem, shop: { eat: eatMarquesita, gear: tryGear },
+    Object.assign(scene, { root, camera, input, debug: { get demo() { return demo; }, get golf() { return golf; }, benchHost: host, get docents() { return docents; }, get guide() { return guide; }, view, built, wallPieceAt, board, openInfo, toggle, walk, footing, props, pilot, get avatar() { return avatar; }, paper, WPP, openEssay, openPaper, closePaper, openGuideItem, shop: { eat: eatMarquesita, gear: tryGear },
       openProp, pause, bench, host, get catalogue() { return catalogue; }, get workbench() { return workbench; }, get timeline() { return timeline; }, get cart() { return cart; }, get atrium() { return atrium; }, openConsole,
       openBench: (prop) => host.open(prop.id, "debug"), closeBench: (there) => host.close({ there }), showBench: (i) => host.open(catalogue.entries[(i + catalogue.entries.length) % catalogue.entries.length].id, "debug"),
       runBench: (line) => workbench.run(line), benchList: () => catalogue.entries.map((e) => ({ def: { ...e, year: e.year }, era: e.era, prop: propOf(e.id) })), openMenu, get exhibits() { return built.exhibitProps; }, get trail() { return built.trail; }, get audio() { return audio; }, sounds } });
