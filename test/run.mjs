@@ -21967,8 +21967,8 @@ const hubPlayerPreferences = { name: "player preferences", why: "regression: hea
     W.mobile = matchMedia("(pointer: coarse)").matches;
   })()`);
   const signedInBells = await b.evaluate(bellState);
-  record("player preferences: on a touch screen the bell is hidden on every panel signed out, and signed in shows on all five at its 40px touch size, centred in its circle",
-    signedOutBells.panels === BELL_PANELS && signedOutBells.shown === 0 && signedInBells.coarse && bellsCentred(signedInBells), JSON.stringify({ signedOutBells, signedInBells }));
+  record("player preferences: the bell is hidden on every panel signed out, and signed in shows on all five at the pointer's size (26px, or 40px on a touch screen), centred in its circle",
+    signedOutBells.panels === BELL_PANELS && signedOutBells.shown === 0 && bellsCentred(signedInBells), JSON.stringify({ signedOutBells, signedInBells }));
   await b.evaluate(`document.getElementById("players-settings").open = true`);
   const alone = await b.evaluate(`(() => { const e = document.getElementById("players-hearing-range"); return { shown: !document.getElementById("players-hearing").hidden, enabled: !e.disabled, voice: BL.voice.stats.enabled, peers: BL.net.remotes.size }; })()`);
   await b.focus(true);
