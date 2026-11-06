@@ -248,8 +248,9 @@
     };
     // The crane, placed at its trolley: the travel drive (a saw's whine through a band, wavering a little, the gearbox's
     // triangle hum and the wheels' rumble, low noise) and the hoist (its own whine and hum), each under its own level,
-    // which `update` sets from how fast it runs; and the cues' voices: the brakes' clunk (a falling sine) and click, a
-    // chain's clink (noise through a narrow ringing band), the load's creak (a slow saw through a band) and the thud.
+    // which `update` sets from how fast it runs; and the cues' voices, placed apart where each cue is (`cuePan`, their
+    // levels set by the cue): the brakes' clunk (a falling sine) and click, a chain's clink (noise through a narrow ringing
+    // band), the load's creak (a slow saw through a band) and the thud.
     const initCrane = () => {
       crane.pan = panner();
       crane.near = gain(0, crane.pan);
@@ -261,17 +262,18 @@
       crane.hoist = gain(0, crane.near);
       crane.hoistWhine = osc("sawtooth", CRANE.hoistHz[0], filter("bandpass", 1100, 4, gain(CRANE.hoist, crane.hoist)));
       crane.hoistHum = osc("sine", 88, gain(CRANE.hoistHum, crane.hoist));
-      crane.clunkGain = gain(0, crane.near);
+      crane.cuePan = panner();
+      crane.clunkGain = gain(0, crane.cuePan);
       crane.clunk = osc("sine", 120, crane.clunkGain);
-      crane.clickGain = gain(0, crane.near);
+      crane.clickGain = gain(0, crane.cuePan);
       crane.click = hissOf(filter("bandpass", 2400, 2, crane.clickGain));
-      crane.clinkGain = gain(0, crane.near);
+      crane.clinkGain = gain(0, crane.cuePan);
       crane.clink = hissOf(filter("bandpass", 3600, 18, crane.clinkGain));
-      crane.creakGain = gain(0, crane.near);
+      crane.creakGain = gain(0, crane.cuePan);
       crane.creak = osc("sawtooth", 70, filter("bandpass", 520, 6, crane.creakGain));
-      crane.thudGain = gain(0, crane.near);
+      crane.thudGain = gain(0, crane.cuePan);
       crane.thud = osc("sine", 90, crane.thudGain);
-      crane.thudNoise = gain(0, crane.near);
+      crane.thudNoise = gain(0, crane.cuePan);
       hissOf(filter("lowpass", 340, 0.8, crane.thudNoise));
     };
     // The projector's voices, all under its envelope, which `projector` opens and closes, and placed where it hangs; and
@@ -1128,7 +1130,8 @@
       if (!ready || muted) return;
       place(x, y, z, CRANE.ref);
       const now = ctx.currentTime, k = AT.level;
-      crane.pan.pan.setValueAtTime(AT.pan, now);
+      crane.cuePan.pan.cancelScheduledValues(now);
+      crane.cuePan.pan.setValueAtTime(AT.pan, now);
       if (name === "brake") {
         for (const param of [crane.clunkGain.gain, crane.clunk.frequency, crane.clickGain.gain]) param.cancelScheduledValues(now);
         crane.clickGain.gain.setValueAtTime(CRANE.click * k, now);
