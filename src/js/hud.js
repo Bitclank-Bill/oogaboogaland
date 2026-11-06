@@ -2353,10 +2353,9 @@
   // Detached panels can be visible together. Each has a view of the same account and voice state.
   const ROOM_WORDS = { replaced: "open in another tab", full: "island full" };
   const accountPrefixes = [""];
-  const account = $("account");
-  if (account) for (const slot of document.querySelectorAll("[data-account-copy]")) {
+  for (const slot of document.querySelectorAll("[data-account-copy]")) {
     const prefix = slot.dataset.accountCopy + "-";
-    const copy = account.cloneNode(true);
+    const copy = $("account").cloneNode(true);
     copy.id = prefix + copy.id;
     for (const child of copy.querySelectorAll("[id]")) child.id = prefix + child.id;
     slot.replaceWith(copy);
