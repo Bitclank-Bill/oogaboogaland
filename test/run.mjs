@@ -24960,22 +24960,30 @@ const sheetRailChecks = async () => {
   const make = tab => ({ tab, rect: {}, open: false, tabs: names.map(name => ({ dataset: { tab: name }, setAttribute() {}, style: { setProperty() {} } })),
     node: { dataset: { dock: "right" } }, body: { setAttribute() {} }, nav: { setAttribute() {} } });
   const main = make("roster"), detached = make("players"), windows = [main, detached];
-  const context = { panels: [], notificationViews: [], windows, main, folded: false, hidden: false, signedIn: true, phone: { matches: false },
+  // Every panel carries a bell, the signed-out Bananas and Contributing Oogas panels among them.
+  const bells = names.map(name => ({ panel: name, view: { hidden: true }, resets: 0, reset() { this.resets++; } }));
+  const context = { panels: [], notificationViews: bells, windows, main, folded: false, hidden: false, signedIn: true, phone: { matches: false },
     available: name => name !== "players" && name !== "chat" || context.signedIn, ownerOf: name => windows.find(w => w.tab === name),
+    belled: () => context.signedIn, visible: () => true,
     isOpen: w => !context.folded && w.open, fit() {}, showCounts() {}, showExpand() {}, notify() {} };
   runInNewContext(refresh + ";this.refresh = refresh;", context);
   const read = () => windows.filter(w => !w.node.hidden).map(w => w.tabs.filter(t => !t.hidden).map(t => t.dataset.tab));
-  context.refresh(); const closed = read();
+  const rung = () => bells.filter(b => !b.view.hidden).map(b => b.panel).join();
+  context.refresh(); const closed = read(), bellIn = rung();
   detached.open = true; context.refresh(); const opened = read();
   context.folded = true; context.refresh(); const folded = read();
-  context.folded = false; context.signedIn = false; context.refresh(); const signedOut = read();
-  context.signedIn = true; context.refresh(); const signedIn = read();
+  const before = bells.map(b => b.resets);
+  context.folded = false; context.signedIn = false; context.refresh(); const signedOut = read(), bellOut = rung();
+  const closedOut = bells.every((b, i) => b.resets > before[i]);
+  context.signedIn = true; context.refresh(); const signedIn = read(), bellBack = rung();
   const unique = rows => rows.flat().length === new Set(rows.flat()).size;
   record("side panel rails: unowned tabs stay on main, detached Players keeps only its own tab, folding gathers tabs, and sign-out/in restores ownership without duplicates",
     [closed, opened, folded, signedOut, signedIn].every(unique) && closed[0].join() === "bananas,roster,loot,chat" && closed[1].join() === "players"
       && opened[1].join() === "players" && folded.length === 1 && folded[0].length === names.length
       && signedOut.length === 1 && !signedOut[0].includes("players") && !signedOut[0].includes("chat") && signedIn[1].join() === "players",
     JSON.stringify({ closed, opened, folded, signedOut, signedIn }));
+  record("side panel bells: every panel's notification bell shows for a signed-in contributor, all of them hide and close when signed out (Bananas and Contributing Oogas too), and they return on sign-in",
+    bellIn === names.join() && bellOut === "" && closedOut && bellBack === names.join(), JSON.stringify({ bellIn, bellOut, closedOut, bellBack }));
 };
 const playersTabChecks = async BL => {
   const context = { window: { BL: {} } };

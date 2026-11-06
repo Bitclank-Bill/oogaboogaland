@@ -62,6 +62,7 @@
     // Online Oogas and Ooga Chat are for signed-in visitors only.
     const available = (name) => NAMES.includes(name) && (name !== "loot" || lootEnabled)
       && (name !== "players" && name !== "chat" || !!BL.net.state.me);
+    const belled = () => !!BL.net.state.me;
     const isOpen = (w) => !folded && w.open && available(w.tab);
     // On a phone every tab folds into the main drawer; separate panels stay saved, hidden, for a larger screen.
     const ownerOf = (name) => windows.find((w) => (w.node === root || !phone.matches) && w.tab === name && (w.open || w.rect || w.kept));
@@ -265,7 +266,12 @@
         w.body.inert = !open || w.node.hidden;
         w.body.setAttribute("aria-hidden", String(w.body.inert));
       }
-      for (const item of notificationViews) if (!visible(item.panel)) item.reset();
+      // The bell counts Online Oogas and Ooga Chat, so it shows on every panel for signed-in contributors alone.
+      const bell = belled();
+      for (const item of notificationViews) {
+        if (item.view.hidden === bell) item.view.hidden = !bell;
+        if (!bell || !visible(item.panel)) item.reset();
+      }
       showCounts(); showExpand();
       notify();
     };
