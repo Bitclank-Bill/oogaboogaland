@@ -54,7 +54,7 @@
   const NAVIGATION_DEPTHS = [0, 1.5, -1.5, 3, -3, 4.5, -4.5], NAVIGATION_SAME_DEPTH = [0];
   const AREA_COLUMN = { caveIndex: 0, floor: 0, ceiling: 0 };
   const ENTER_DIST = 10, ENTER_DUR = 0.45;
-  const FLY = { speed: 6, perDist: 0.5, climb: 6, yMin: -8, yMax: JET_RISE * JET_FUEL_SECONDS + 16 }, FLY_BOUND = RADIUS + JET_SPEED * JET_MOVE_SECONDS + 8;
+  const FLY_BOUND = RADIUS + JET_SPEED * JET_MOVE_SECONDS + 8;
   // ABYSS_FLOOR is an unseen support that keeps hop integration finite until the visible abyss fall ends.
   const ABYSS_FLOOR = -120, ABYSS_RESPAWN_Y = -60;
   // `view` is where a driven Ooga's camera arrives at the pile (signing in, a respawn) and where a reset puts it:
@@ -1926,7 +1926,7 @@
       meadowPalms.push(entry); chosen.b.owner = entry.owner;
     }
     const { plan } = chosen;
-    hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock"), anchors: [chosen.a.owner, chosen.b.owner] });
+    hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock"), anchors: [chosen.a.owner, chosen.b.owner], bumpSlots: HAMMOCK_SLOTS });
     hammock.anchors = [chosen.a.owner, chosen.b.owner];
     // Three circles along the bed's swing (its `envelope`), each covering a third of its length and its whole width.
     const { half, across } = plan.envelope, cover = Math.hypot(half / 3, across);
@@ -1971,6 +1971,92 @@
     if (crew.standPlayer(cave)) hud.toast("Someone got there first, and the hammock is full");
     return true;
   };
+  // Walking into the hammock rocks it (hub-hammock.js `bump`), and so does a banana through it. A walker's speed comes from
+  // successive positions: the visitor's own every frame, each other player's whenever their synced pose changes (the room
+  // sends 15 a second). Slot 0 is the visitor; the rest are fixed tables over the room's players, so nothing allocates.
+  // A burst of the rifle is a hit however short (hub-hammock.js `hit`; a held trigger tips by itself at about 20 rounds), and the fourth
+  // hit from anyone within a minute of the last tips out whoever is lying in it. A fallen Ooga lands HAMMOCK_LAND metres beyond the stand-up spot (the
+  // first clear one), off the way in.
+  const HAMMOCK_LAND = [1.2, 0.8], HAMMOCK_SLOTS = 1 + BL.remotePlayers.MAX;
+  const hamRemoteId = new Float64Array(HAMMOCK_SLOTS), hamRemoteSeen = new Int32Array(HAMMOCK_SLOTS);
+  const hamRemoteX = new Float64Array(HAMMOCK_SLOTS), hamRemoteZ = new Float64Array(HAMMOCK_SLOTS), hamRemoteT = new Float64Array(HAMMOCK_SLOTS);
+  let hamLocalHave = false, hamLocalX = 0, hamLocalZ = 0, hamFrame = 0, hamCueDir = 0, unshotHammock = null;
+  const hamRemote = (rec) => {
+    if (!rec.body || rec.bodyKind === "gorilla" || rec.rest || !remoteShown(rec)) return;
+    let slot = -1, free = -1;
+    for (let i = 1; i < HAMMOCK_SLOTS; i++) {
+      if (hamRemoteId[i] === rec.id) { slot = i; break; }
+      if (free < 0 && !hamRemoteId[i]) free = i;
+    }
+    const fresh = slot < 0;
+    if (fresh) { if (free < 0) return; slot = free; hamRemoteId[slot] = rec.id; }
+    hamRemoteSeen[slot] = hamFrame;
+    // First seen (or just up from the hammock), standing still: one already against the bed has to step clear before it can push.
+    if (fresh) hammock.bump(slot, rec.x, rec.y, rec.z, 0, 0);
+    else if (rec.x !== hamRemoteX[slot] || rec.z !== hamRemoteZ[slot]) {
+      const dt = now - hamRemoteT[slot];
+      if (dt > 0 && dt < 0.5) hammock.bump(slot, rec.x, rec.y, rec.z, (rec.x - hamRemoteX[slot]) / dt, (rec.z - hamRemoteZ[slot]) / dt);
+    } else return;
+    hamRemoteX[slot] = rec.x; hamRemoteZ[slot] = rec.z; hamRemoteT[slot] = now;
+  };
+  const rockHammock = (dt) => {
+    const player = pilot.player;
+    if (gameMode) { hamLocalHave = false; return; }
+    if (player && !player.camp.seat && player.root.visible && dt > 0) {
+      const p = player.root.position;
+      if (hamLocalHave && hammock.bump(0, p.x, p.y - player.baseY, p.z, (p.x - hamLocalX) / dt, (p.z - hamLocalZ) / dt) > 0) crew.pushPose(player);
+      hamLocalX = p.x; hamLocalZ = p.z; hamLocalHave = true;
+    } else hamLocalHave = false;
+    hamFrame = (hamFrame + 1) | 0;
+    BL.net.remotes.forEach(hamRemote);
+    for (let i = 1; i < HAMMOCK_SLOTS; i++) if (hamRemoteId[i] && hamRemoteSeen[i] !== hamFrame) hamRemoteId[i] = 0;
+    // Lying in it, the visitor rocks it with A and D (hub-hammock.js `pump`), while nothing else is going on with the seat.
+    const seat = hammock.seats[0];
+    if (player && seat.sitter === player && !seat.entry && !seat.exit && !seat.fall && dt > 0) {
+      const rock = pilot.controls.axes.x, dir = rock > 0.5 ? 1 : rock < -0.5 ? -1 : rock > -0.2 && rock < 0.2 ? 0 : hamCueDir;
+      hammock.pump(rock, dt);
+      // A fresh press of A or D (or the stick pushed sideways) shows its arrow, so the rock is seen to register.
+      if (dir !== hamCueDir && dir !== 0) hud.rockCue(dir);
+      hamCueDir = dir;
+    } else hamCueDir = 0;
+    if (hammock.spilling) tipOutOfHammock();
+  };
+  // Swung hard enough, the bed tips its occupant out: only the visitor's own Ooga on this page. It rolls out over the edge on the side the bed
+  // was last knocked toward (hub-hammock.js `tip`, `fallSide`), away from the push or the gunfire, lies a moment and gets up there: past the
+  // bed's whole swing on that side (`plan.swing`, HAMMOCK_LAND metres past the stand-up distance from it, the first clear, level one), else on the other side,
+  // else it is stood up at once as before. Other pages see it leave the seat at once and follow its body through the ordinary pose sync; a bed
+  // held by another page's pose is never emptied from here.
+  const tipOutOfHammock = () => {
+    const seat = hammock.seats[0], cave = seat.sitter;
+    if (!cave || cave !== pilot.player || seat.fall) return;
+    const plan = hammock.plan, first = hammock.fallSide || plan.side, out = plan.swing.across + BL.hubHammock.STAND;
+    for (let s = first, tries = 0; tries < 2; s = -s, tries++) for (let i = 0; i < HAMMOCK_LAND.length; i++) {
+      const x = plan.x + plan.nx * s * (out + HAMMOCK_LAND[i]), z = plan.z + plan.nz * s * (out + HAMMOCK_LAND[i]), floor = plan.surfaceAt(x, z);
+      if (Math.abs(floor - plan.ground) > 0.25 || !walkable(x, z, x, z, floor, cave.bodyHeight, cave)) continue;
+      const target = { x, z, floor, y: floor + cave.baseY, ry: Math.atan2(plan.nx * s, plan.nz * s), side: s };
+      if (!hammock.tip(cave, target, () => landTipped(cave, target))) return;
+      fx.say(cave, "WHOA!", 1.5);
+      hud.toast("Tipped out of the hammock!");
+      return;
+    }
+    vacateHammock();
+    if (cave.camp.seat) return;
+    fx.say(cave, "WHOA!", 1.5);
+    hud.toast("Tipped out of the hammock!");
+  };
+  // The roll is over: up on its feet where it landed, the seat released through the crew's usual stand-up (or let go, as `vacateHammock` does).
+  const landTipped = (cave, target) => {
+    if (cave.camp.seat && !crew.standPlayer(cave)) vacateHammock();
+    const p = cave.root.position;
+    p.x = target.x; p.y = target.y; p.z = target.z;
+    cave.root.rotation.y = target.ry;
+  };
+  // Another player's banana, from the room's shot relay: drawn elsewhere, and here it rocks the hammock if it crosses it.
+  const hammockShotHeard = (id, a) => {
+    if (hammock && !gameMode && hammock.crosses(a[0], a[1], a[2], a[3], a[4], a[5])) hammock.hit(a[0], a[2], a[3], a[5]);
+  };
+  const listenHammockShots = () => { if (!unshotHammock) unshotHammock = BL.net.subscribeShots(hammockShotHeard); };
+  const muteHammockShots = () => { if (unshotHammock) { unshotHammock(); unshotHammock = null; } };
   // The sea far below and the islands on it, standing well out past the clouds.
   const SEA_Y = -70;
   const raiseIslets = () => {
@@ -2188,7 +2274,6 @@
     const benches = [];
     for (const x of [-2.6, 2.6]) for (const z of [-0.55, 0.55]) benches.push({ kind: "bench", x, y: floor + 0.58, z, floor, ry: Math.atan2(-x, -z), sitter: null, walkAt: { x: x - Math.sign(x) * 0.85, z } });
     const entrances = [], lights = [], mattresses = [], roomSigns = [], rampMarkers = [], lazyBeds = [];
-    FLY.yMin = basement.floor - 1;
     const addEntrance = (node, roomIndex, lower, ramp = false) => {
       node.sightSolid = true;
       addChild(root, node);
@@ -3517,7 +3602,7 @@
   const rageThrown = actor => !!(actor?.leap?.thrown && actor.leap.rageThrown);
   const playerSupportAt = (x, z, y = 0, previousY = y, player = pilot?.player, ignoreClanker = false, passTraffic = false) => {
     passTraffic = passTraffic || rageThrown(player);
-    const step = player ? player.hop === 0 && player.hopV <= 0 : !pilot.freeFalling;
+    const step = !player || player.hop === 0 && player.hopV <= 0;
     const from = Math.max(y, previousY), rise = step ? STEP_MAX : 0;
     if (cloudPlaying()) return Math.max(island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS),
       solids.supportAt(x, z, from, rise, PLAYER_RADIUS),
@@ -4980,6 +5065,8 @@
       && mirrorActorSegmentClear(fromX, y, fromZ, toX, y, toZ, height, actor);
   };
   const walkable = (fromX, fromZ, toX, toZ, y, height = 1.5, actor = pilot?.player) => {
+    // An occupied hammock is a wall to walk into, not a cloth to cross (an empty one is stepped onto): whoever is inside it already may leave.
+    if (hammock && hammock.blocks(toX, y, toZ, PLAYER_RADIUS) && !hammock.blocks(fromX, y, fromZ, PLAYER_RADIUS)) return false;
     if (Math.hypot(toX, toZ) > worldBound() || crossesSealedCave(fromX, fromZ, toX, toZ, y)) return false;
     const floor = playerSupportAt(toX, toZ, y, y, actor), feet = Math.max(y, floor);
     if (floor - y > STEP_MAX && floor !== characterClankerSupportAt(toX, toZ, y, STEP_MAX, actor)) return false;
@@ -5703,7 +5790,8 @@
   const liveClear = (x, y, z, toX, toY, toZ) => !clankerFireReachable || clankerFireReachable(x, y, z, toX, toY, toZ, null, true);
   const liveTarget = (ox, oy, oz, dx, dy, dz, maxDistance) =>
     remotes && remotes.pick(LIVE_HIT, ox, oy, oz, dx, dy, dz, maxDistance, liveClear) ? LIVE_HIT.distance : Infinity;
-  // An NPC ghost track (npc-ghosts.js) under the cursor shows its name and online dot, an Ooga's or a gorilla's. Its glassy
+  // An NPC ghost track (npc-ghosts.js) under the cursor shows its name and its own activity dot (clank, chill or sleep;
+  // a gorilla's its Ooga's), never the online dot its driver's live body carries. Its glassy
   // twin is not in the outline registry, so its name goes by the overlay's exact test (`characterUiOccluded`), and the
   // hover is checked again every frame, as the pool block's is: the ghost moves under a still pointer, and a live player
   // standing in front of it (often its own driver, who has a nameplate of their own) takes the pointer from it.
@@ -5996,12 +6084,6 @@
     else if (action === timechainIsland.gate.action) timechainIsland.gate.engage();
     else if (action === CHALK_ACTION) chalkboard.open(null);
     else enterCave(action.slot);
-  };
-  const freeAction = () => {
-    const action = nearbyAction(camera.position.x, camera.position.y, camera.position.z, MATRIX_BUTTON_REACH);
-    if (!action) return false;
-    useNearbyAction(action);
-    return true;
   };
   // Stationary functional controls take priority over a jump or jetpack thrust.
   const useNear = (x, z, reach, feetY) => {
@@ -6579,7 +6661,9 @@
         hud.hint(COARSE ? "Tap DROP & ROLL! to put the fire out" : "Press Space to drop and roll until the fire goes out");
         hud.setAct("DROP & ROLL!");
       } else if (action === STAND_ACTION) {
-        hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
+        const inHammock = pilot.player?.camp.seat?.kind === "hammock";
+        hud.hint(inHammock ? (COARSE ? "Stick sideways rocks the hammock · forward, back or STAND UP! to get up" : "A and D rock the hammock · W, S or Space to get up")
+          : COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
         hud.setAct("STAND UP!");
       } else if (action.kind === "bench") {
         hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
@@ -6777,11 +6861,14 @@
     }
     return true;
   };
-  const navigate = (name, respawn = false, preserveActor = !respawn) => {
+  // `look`: the map's and the views' buttons. With an Ooga driven they only look at the place (pilot.js `look`): the Ooga
+  // stays where it stands, driven, and a movement brings the view back to it. Arrivals and respawns travel.
+  const navigate = (name, respawn = false, preserveActor = !respawn, look = false) => {
     const destination = NAVIGATION, p = destination.position, target = destination.target;
-    const gorilla = preserveActor && clankerPlay.active ? clankerPlay.player : null, ooga = pilot.player, player = gorilla || ooga;
+    const gorilla = preserveActor && clankerPlay.active ? clankerPlay.player : null, ooga = pilot.player;
+    const viewing = look && !!ooga && !gorilla, player = viewing ? null : gorilla || ooga;
     const travel = preserveActor && !!player, controller = gorilla ? clankerPlay : pilot;
-    const close = gorilla ? clankerPlay.firstPerson : pilot.closeWanted, basement = name === "basement", underground = name === "underground" || basement;
+    const close = !viewing && (gorilla ? clankerPlay.firstPerson : pilot.closeWanted), basement = name === "basement", underground = name === "underground" || basement;
     if (travel) {
       const refusal = controller.travelRefusal();
       if (refusal) { hud.toast(refusal); return refusal; }
@@ -6811,7 +6898,7 @@
       pitch = player ? 0.06 : 0.16;
       dist = player ? 8 : 12;
     } else if (name === "timechain" && timechainIsland) {
-      // On the bridge, square to the closed doors with the keypad in reach; a free view looks at them from further out.
+      // On the bridge, square to the closed doors with the keypad in reach; a look sees them from further out.
       const T = timechainIsland, site = T.place;
       yaw = site.ry;
       x = T.worldX(0.4, 15.4); z = T.worldZ(0.4, 15.4);
@@ -6820,8 +6907,8 @@
       dist = player ? 5 : 9;
     } else if (name === "bifrost" && bifrostIsle) {
       // Down the stairs from ₿IFRÖST's gate: an Ooga walks on out toward the bridge and the island, seen from over the
-      // gate's flight behind it (far enough back that the view keeps its pitch and clears the terraces); a free view looks
-      // back at the gate.
+      // gate's flight behind it (far enough back that the view keeps its pitch and clears the terraces); a look sees
+      // back to the gate.
       const a = bifrostIsle.site.arrival, q = bifrostIsle.site.portal, out = player ? 10 : 0;
       x = a.x; z = a.z; yaw = a.yaw;
       setVec(target, (player ? a.x : q.x) + Math.sin(a.yaw) * out, player ? a.y + 1.4 : q.floorY + 2.2, (player ? a.z : q.z) + Math.cos(a.yaw) * out);
@@ -6908,8 +6995,8 @@
         eyeZ = (player ? p.z : target.z) + Math.cos(destination.yaw) * Math.cos(viewPitch) * arrivalDist;
       }
       if (!navigationClearAt(eyeX, eyeY - CAMERA_RADIUS, eyeZ, CAMERA_RADIUS, CAMERA_RADIUS * 2)) continue;
-      setVec(CAMERA_PREVIOUS, eyeX, eyeY, eyeZ);
-      if (!travel) setVec(camera.position, eyeX, eyeY, eyeZ);
+      if (!viewing) setVec(CAMERA_PREVIOUS, eyeX, eyeY, eyeZ);
+      if (!travel && !viewing) setVec(camera.position, eyeX, eyeY, eyeZ);
       found = true;
       break;
     }
@@ -6917,6 +7004,12 @@
       const refusal = "That arrival is blocked. Choose another destination.";
       if (!randomPile) hud.toast(refusal);
       return refusal;
+    }
+    if (viewing) {
+      pilot.look(destination);
+      hud.setDetachedView(name, true, target);
+      hud.tooltip.hide();
+      return true;
     }
     if (travel && !controller.travel(p)) return "That character cannot travel right now.";
     if (!travel && clankerPlay.active) clankerPlay.release();
@@ -6944,6 +7037,9 @@
   };
   const updateAreaLabel = () => {
     const gorilla = clankerPlay.active ? clankerPlay.player : null, player = gorilla || pilot.player;
+    // A look keeps its destination's name: the Ooga stands where it was, away from that place, and the first movement
+    // (which ends the look) brings back the Ooga's own area.
+    if (!gorilla && pilot.looking) return;
     const p = player ? player.root.position : pilot.closeWanted ? camera.position : pilot.orbit.target;
     const feet = p.y - (gorilla ? 0 : player ? player.baseY : pilot.closeWanted ? CLOSE_VIEW.eyeHeight : 0);
     let area = "HUB";
@@ -6984,7 +7080,6 @@
     // Clearance is measured from the abyss there; keep the body-anchored eye and let swept rock constrain it.
     if (player && closeMix > 0.5 && (player.hop > 1e-5 || Math.abs(player.hopV) > 1e-5)) return -Infinity;
     if (player && (abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY) || !playerCaveIndex && player.root.position.y - player.baseY < island.surfaceAt(player.root.position.x, player.root.position.z) - STEP_MAX)) return -Infinity;
-    if (!player && pilot.freeFalling && abyssAt(x, z, y - CLOSE_VIEW.eyeHeight)) return -Infinity;
     if (undergroundAir && y < physicalFloor && cameraClearAt(x, y, z)) {
       exteriorCeiling = island.ceilingAt(x, y - CAMERA_RADIUS, z, CAMERA_RADIUS) - CAMERA_RADIUS;
       return island.onLand(x, z) ? island.supportAt(x, z, y - CAMERA_RADIUS, 0, ABYSS_FLOOR) + CAMERA_RADIUS : -Infinity;
@@ -7104,51 +7199,6 @@
     const t = progress >= 1 ? low : 1 - Math.max(0, progress) * (1 - low);
     setVec(eye, from.x + dx * t, from.y + dy * t, from.z + dz * t);
     if (target && from === head && aimPoint) setVec(target, aimPoint.x, aimPoint.y, aimPoint.z);
-    return true;
-  };
-  const enterFreeCameraView = (eye) => {
-    if (cameraClearAt(eye.x, eye.y, eye.z)) return false;
-    // A low orbit focus may overlap a walkable prop or the ground: lift the eye over that support first.
-    // A pile focus must not recover to HQ just because its platform became solid.
-    const floor = playerSupportAt(eye.x, eye.z, eye.y), raisedY = floor + CLOSE_VIEW.eyeHeight;
-    if (floor <= eye.y && raisedY > eye.y && cameraClearAt(eye.x, raisedY, eye.z)) {
-      eye.y = raisedY;
-      return false;
-    }
-    // A free orbit can be inside stone: enter walking view from the nearest clear authored circulation point.
-    // Then approach the requested eye as far as its real floor and swept camera volume permit.
-    const points = headquarters.sleepNavigation.points;
-    let best = Infinity, found = false;
-    for (const point of points) {
-      const y = playerSupportAt(point.x, point.z, point.y) + CLOSE_VIEW.eyeHeight;
-      const distance = (point.x - eye.x) ** 2 + (y - eye.y) ** 2 + (point.z - eye.z) ** 2;
-      if (distance >= best || !cameraClearAt(point.x, y, point.z)) continue;
-      best = distance; found = true;
-      setVec(CAMERA_RECOVERY, point.x, y, point.z);
-    }
-    if (!found) throw new Error("No clear free-camera entry");
-    const x = CAMERA_RECOVERY.x, y = CAMERA_RECOVERY.y, z = CAMERA_RECOVERY.z;
-    const count = Math.max(1, Math.min(1024, Math.ceil(Math.sqrt(best) / (island.unit * 0.5))));
-    for (let i = 1; i <= count; i++) {
-      const t = i / count, nx = lerp(x, eye.x, t), nz = lerp(z, eye.z, t), requestedY = lerp(y, eye.y, t);
-      const ny = Math.max(requestedY, playerSupportAt(nx, nz, requestedY - CLOSE_VIEW.eyeHeight) + CLOSE_VIEW.eyeHeight);
-      if (!cameraSegmentClear(CAMERA_RECOVERY.x, CAMERA_RECOVERY.y, CAMERA_RECOVERY.z, nx, ny, nz)) break;
-      setVec(CAMERA_RECOVERY, nx, ny, nz);
-    }
-    setVec(eye, CAMERA_RECOVERY.x, CAMERA_RECOVERY.y, CAMERA_RECOVERY.z);
-    setVec(CAMERA_PREVIOUS, eye.x, eye.y, eye.z);
-    setVec(CAMERA_REQUESTED, eye.x, eye.y, eye.z);
-    let index = 0;
-    if (island.cavityAt(eye.x, eye.z, CAMERA_COLUMN, island.headquarters.caveIndex, eye.y) && eye.y >= CAMERA_COLUMN.floor && eye.y <= CAMERA_COLUMN.ceiling) {
-      index = CAMERA_COLUMN.caveIndex;
-      if (index === island.headquarters.caveIndex) for (const opening of CAMERA_OPENINGS) if (opening.headquarters) { index = opening.caveIndex; break; }
-    }
-    setCameraCave(index);
-    cameraPreviousValid = true;
-    cameraTerrainValid = cameraTerrainRecovering = cameraManualContact = false;
-    cameraUnrestricted = cameraReentering = false;
-    cameraTrailPlayer = null;
-    cameraTrailCount = cameraTrailNext = 0;
     return true;
   };
   const releaseCameraView = (player, eye) => {
@@ -7442,7 +7492,7 @@
       // A requested point inside a wall must not lift the eye to that wall's top.
       const floor = playerSupportAt(p.x, p.z, CAMERA_PREVIOUS.y - CLOSE_VIEW.eyeHeight);
       const eye = floor + CLOSE_VIEW.eyeHeight;
-      if (opening && cameraSpaceAt(p.x, p.z, opening, p.y)) p.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, pilot.freeFalling ? Math.max(p.y, eye) : eye));
+      if (opening && cameraSpaceAt(p.x, p.z, opening, p.y)) p.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, eye));
     }
     cameraEntranceIndex = 0;
     if (!cameraCaveIndex) {
@@ -7498,7 +7548,7 @@
       // Sweep the whole eye volume, incl. outdoor voxel corners; let the blocked horizontal slide while rising.
       if (!caveView) p.y = Math.min(p.y, Math.max(requestedY, CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * Math.min(dt, 0.05)));
       if (caveView && closeMix <= 0.5 && p.y < requestedY) p.y = Math.max(p.y, CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * Math.min(dt, 0.05));
-      if (closeMix > 0.5 && !pilot.freeFalling) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), p.y));
+      if (closeMix > 0.5) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), p.y));
       sweepCameraVolume(CAMERA_PREVIOUS, p, true);
       if (previousCaveIndex) {
         const previousOpening = CAMERA_OPENINGS[previousCaveIndex - 1];
@@ -8735,6 +8785,8 @@
     if (gameMode) updateRageThrowMap();
     updateSleepingSolids();
     if (!chalkboard.openNow) {
+      // A movement ends Tess's tour before the pilot reads it, so it moves the Ooga this frame (hub-guide.js).
+      if (!cloudHopper.active) islandGuide.yieldToMovement();
       if (clankerPlay.active) clankerPlay.readInput(dt);
       else pilot.readInput(dt);
     }
@@ -8824,6 +8876,7 @@
       hammock.settle(BL.net.remotes, BL.net.state.selfId, remoteShown, moveHammockSeat, leaveFullHammock);
       // Sample once so the CPU suspension ends and GPU palm/wrap sway share a clock.
       if (!gameMode) RENDER_OPTS.windTime = performance.now() * 0.001 % 3600;
+      rockHammock(dt);
       hammock.update(dt, elapsed, gameMode, null);
     } else if (!gameMode) RENDER_OPTS.windTime = NaN;
     for (let i = 0; i < crew.list.length; i++) {
@@ -8861,7 +8914,6 @@
       loseAbyssAmmo(player);
       respawnAtPile();
     }
-    else if (!player && !pilot.poseHeld && pilot.freeFalling && camera.position.y - CLOSE_VIEW.eyeHeight < ABYSS_RESPAWN_Y && abyssAt(camera.position.x, camera.position.z, camera.position.y - CLOSE_VIEW.eyeHeight)) respawnAtPile();
     updatePlayerCave(player);
     if (player && player.jet && !cloudHopper.held && !jetpackAllowed(player)) {
       crew.removeJetpack(player);
@@ -8969,14 +9021,16 @@
     const refusal = mayDriveOoga(cave);
     if (refusal) { hud.toast(refusal); return false; }
     if (cave.remoteControlled || cave.ghostTrack) { hud.toast(`Someone is already driving ${cave.traits.display}`); return false; }
-    if (crew.stateOf(cave) === "away" || cave.state !== "working" && cave.state !== "chilling" && cave.state !== "sleeping") {
+    if (!cave.avatar && (crew.stateOf(cave) === "away" || cave.state !== "working" && cave.state !== "chilling" && cave.state !== "sleeping")) {
       hud.toast(`${cave.traits.display} is in another place`);
       return false;
     }
     if (clankerPlay.active) {
+      // The avatar has no place of its own while its gorilla is driven: it steps out where the gorilla stands.
+      const from = clankerPlay.player.root.position, x = from.x, y = from.y, z = from.z, heading = clankerPlay.player.heading;
       clankerPlay.captureControl(actorTransition);
       clankerPlay.release();
-      pilot.possess(cave, actorTransition);
+      if (pilot.possess(cave, actorTransition) && cave.avatar) crew.relocatePlayer({ x, y, z }, heading);
     } else pilot.possess(cave);
     return drivesOoga(cave);
   };
@@ -8991,50 +9045,35 @@
     return clankerPlay.possess(entry);
   };
   const RELEASE_WORDS = { "owner-here": "Its owner arrived and took their Ooga back", taken: "Someone else is already driving that Ooga", "not-yours": "Contributors drive only their own Ooga" };
-  // The account or the room changed: an Ooga driven here that is no longer this visitor's to drive is let go.
-  // The account and room this page last drove a separate body under. A sign-out, an account switch or losing a room
-  // that was live lets the body go at once (its NPC turns solid where its track has it) and claims nothing on that
-  // same change; signing in or the room coming back live after such a loss allows one fresh claim. Nothing before the
-  // room was first live counts as a loss, and signed-out (local) driving is left alone. No timer.
-  let sessionAccount = null, sessionLive = false, sessionLost = false;
+  // The account changed: an Ooga driven here that is no longer this visitor's to drive is let go, and the one they may
+  // drive now (their own, or once signed out the one remembered from it) is taken in its place, so the visitor always
+  // drives one. A sign-out keeps the Ooga that is still theirs; a room lost or regained changes nothing here (the room
+  // hears the body again once it is live). Another account's sign-in lets the old one's body go and claims the new
+  // one's own, as a fresh arrival would. No timer.
+  let sessionAccount = null;
   const watchAccount = () => {
-    sessionAccount = BL.net.state.me?.id ?? null; sessionLive = BL.net.state.room === "live"; sessionLost = false;
+    sessionAccount = BL.net.state.me?.id ?? null;
     return BL.net.subscribe(onAccountChange);
   };
-  const releaseSeparateBodies = () => {
-    if (clankerPlay?.player?.npc) clankerPlay.release();
-    if (pilot.player?.npc) pilot.release(true);
-  };
-  const sessionChanged = () => {
-    const account = BL.net.state.me?.id ?? null, live = BL.net.state.room === "live";
-    const signedOut = sessionAccount !== null && account === null, switched = sessionAccount !== null && account !== null && account !== sessionAccount;
-    const lost = sessionLive && !live && account !== null;
-    const regained = sessionLost && account !== null && (live || account !== sessionAccount);
-    sessionAccount = account; sessionLive = live;
-    if (signedOut || lost) {
-      releaseSeparateBodies();
-      sessionLost = true; ownOogaClaimed = true;
-      return true;
-    }
-    // Another account: the old one's body goes, and the new one may claim its own as a fresh arrival would.
-    if (switched) { releaseSeparateBodies(); sessionLost = false; ownOogaClaimed = false; return false; }
-    if (regained) { sessionLost = false; ownOogaClaimed = false; }
-    return false;
-  };
   const onAccountChange = () => {
-    // A sign-out or a lost room ends here: the body is gone and nothing is claimed in its place.
-    if (sessionChanged()) return;
+    const account = BL.net.state.me?.id ?? null;
+    if (sessionAccount !== null && account !== null && account !== sessionAccount) {
+      if (clankerPlay?.player?.npc) clankerPlay.release();
+      if (pilot.player?.npc) pilot.release(true);
+      ownOogaClaimed = false;
+    }
+    sessionAccount = account;
     const driven = crew.player, released = BL.net.state.released;
     const gorilla = clankerPlay && clankerPlay.player;
     if (gorilla) {
       let refusal = BL.net.mayDriveGorilla(gorilla.owner.traits.name);
       if (!refusal && released && released.name === gorilla.netBody) refusal = "That gorilla is no longer yours to drive";
       BL.net.state.released = null;
-      if (refusal) { clankerPlay.release(); hud.toast(refusal); }
+      if (refusal) { clankerPlay.release(); hud.toast(refusal); ownOogaClaimed = false; }
       claimOwnOoga();
       return;
     }
-    if (!driven) { claimOwnOoga(); return; }
+    if (!driven) { ownOogaClaimed = false; claimOwnOoga(); return; }
     crew.refreshRosterRow(driven);
     let refusal = BL.net.mayDrive(driven.traits.name, false);
     if (!refusal && released && released.name === driven.traits.name) refusal = RELEASE_WORDS[released.reason] || "That Ooga is not yours to drive";
@@ -9042,10 +9081,11 @@
     if (!refusal) { claimOwnOoga(); return; }
     pilot.release(true);
     hud.toast(refusal);
+    ownOogaClaimed = false;
     claimOwnOoga();
   };
   // The visitor arrives awake beside the pile: their authenticated Ooga, remembered local likeness, or Ooga.
-  // Claim once per arrival. Returning actors keep their exit; letting go stays detached.
+  // Claim once per arrival. Returning actors keep their exit.
   const claimOwnOoga = () => {
     const me = BL.net.state.me;
     if (ownOogaClaimed) return false;
@@ -9069,10 +9109,7 @@
     // which has no place on the island, sends it to the pile (navigation also resets a saved underground eye).
     const placed = cave.root.visible && crew.stateOf(cave) !== "away";
     if (!pilot.possess(cave)) return false;
-    if (!placed && navigate("pile", true, false) !== true) {
-      pilot.release(true);
-      return false;
-    }
+    if (!placed) navigate("pile", true, false);
     ownOogaClaimed = true;
     if (me) hud.toast(`Welcome back, ${BL.characters.displayOf(character.handle)}: this Ooga is yours`);
     return true;
@@ -11560,7 +11597,7 @@
       return;
     }
     if (BL.controls.matches(e, "escape") && islandGuide.escape()) { e.preventDefault(); return; }
-    // While Tess's tour holds the view the island's keys wait, actor switches (T) among them; Enter and → are hers.
+    // While Tess's tour holds the view, Enter advances it and movement ends it; other island keys, including T, wait.
     if (islandGuide.holding) return;
     if (BL.controls.matches(e, "escape") && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
     if (BL.controls.matches(e, "escape")) {
@@ -11672,6 +11709,7 @@
     if (wpGroup) { wpGroup.visible = false; wpGroup.position.y = wpGround - WP.sink; }
     clankerPlay.dispose();
     remotes.dispose();
+    muteHammockShots();
     npcSync.dispose();
     npcStatusBeams?.clear();
     pilot.suspend();
@@ -11704,6 +11742,7 @@
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     glCanvas = ctx.canvas; overlayCanvas = ctx.overlay;
     heldHub = false;
+    listenHammockShots();
     factoryDeparting = bifrostDeparting = factoryHeld = entering = false;
     Object.assign(factoryWalk, { phase: 0, cave: null, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false });
     world.islandKeep = null;
@@ -11748,7 +11787,8 @@
       const driven = pilot.player;
       if (driven && !carried && ctx.from === "factory") crew.selectWeapon(driven.weapon.selectedSlot, driven);
     }
-    ownOogaClaimed = !!world.pilotDetached || !!(returningCharacter && BL.net.state.me) || !BL.net.state.me && ctx.from !== null; world.pilotDetached = false;
+    // Every arrival drives the visitor's Ooga: the one carried back in, else their own or assigned one, claimed here.
+    ownOogaClaimed = !!pilot.player;
     claimOwnOoga();
     unsubscribeActivity = contributors.subscribe(() => crew.refreshStates());
     unsubscribeAccount = watchAccount();
@@ -11912,7 +11952,7 @@
       wpContextOn = true;
     }
     presets = { pile: PILE_VIEW, gate: GATE_VIEW };
-    pilot = pilotMod.create({ carry: true, renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, enterFreeView: enterFreeCameraView, coarse: COARSE, onFreeAction: freeAction, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly || !!cloudHopper?.playing, noOverhead: () => !!cloudHopper?.active, primaryAction: (down) => !!cloudHopper?.hookAction(down), cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
+    pilot = pilotMod.create({ carry: true, renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, clampTarget, clampCamera, observeOrbit: (position, dt) => clampCamera(position, 0, CLEARANCE, false, dt), ceilingAt: (x, z, y, cave) => cloudPlaying() ? Infinity : ceilingAt(x, z, y, cave), birdsEyeMin: BIRDS_EYE_MIN, birdsEyeCeiling, releaseView: releaseCameraView, coarse: COARSE, jetpackStatus: jetpackHudStatus, mayPossess: mayDriveOoga, combatOnly: () => gameCombatOnly || !!cloudHopper?.playing, noOverhead: () => !!cloudHopper?.active, primaryAction: (down) => !!cloudHopper?.hookAction(down), cameraTargets: () => !cloudPlaying(), fixedFollow: cloudPlaying, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, sleepEyeFloorAt, zone: () => playerCaveIndex } });
     chalkboard = BL.chalkboard.create({
       renderer,
       onOpen: () => { pilot.setActive(false); pilot.controls.reset(); input.reset(); hud.tooltip.hide(); },
@@ -12491,7 +12531,12 @@
       npcSync.recordHit(cave);
       return workHit(cave);
     };
-    shared.onShot = (cave, from, to) => npcSync.recordShot(cave, from, to);
+    shared.onShot = (cave, from, to) => {
+      npcSync.recordShot(cave, from, to);
+      // The visitor's own banana through the hammock rocks it; the crew's and work shots never do.
+      if (hammock && !gameMode && cave === pilot.player && hammock.crosses(from.x, from.y, from.z, to.x, to.y, to.z)) hammock.hit(from.x, from.z, to.x, to.z);
+    };
+    listenHammockShots();
     BL.net.setHub(true);
     for (const cave of crew.list) crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
@@ -12734,7 +12779,7 @@
     entering = false;
     enteringTween = null;
     now = 0;
-    hud.onPreset(name => { if (!cloudHopper?.active && !factoryDeparting && !bifrostDeparting && !islandGuide.holding) navigate(name); });
+    hud.onPreset(name => { if (!cloudHopper?.active && !factoryDeparting && !bifrostDeparting && !islandGuide.holding) navigate(name, false, true, true); });
     hud.setDetachedView("pile");
     hud.setDestinations(["pile", "lab", "mirror", "underground", "basement", "mempool", "factory", "arcade", "bca", "gate", "bifrost", "timechain"]);
     hud.onAction((action, value) => {
@@ -12749,21 +12794,13 @@
       if (action === "wp-next") return wpStep(1);
       if (action === "wp-prev") return wpStep(-1);
       if (action === "wp-close") { wpReadEnd(); return true; }
-      if (action === "mode-retake") {
-        if (pilot.player || clankerPlay.active) return;
-        const last = hud.retakeActor;
-        if (!last) hud.toast("Select an Ooga or gorilla first");
-        else if (last.gorilla) selectGorilla(last.actor);
-        else selectOoga(last.actor);
-        return;
-      }
       if (clankerPlay.active && clankerPlay.action(action)) return;
       if (action === "clear-loot") clearLoot();
       else if (action === "reset") resetDemo();
       else if (action === "act") pilot.action();
       else if (action === "mode-preset") {
         (clankerPlay.active ? clankerPlay : pilot).freeCursor();
-        return navigate(value);
+        return navigate(value, false, true, true);
       }
       else if (action.startsWith("mode-")) pilot.modeAction(action);
       else if (action === "jetpack-toggle") toggleJetpack();
@@ -12776,8 +12813,8 @@
     unsubscribeActivity = contributors.subscribe(() => crew.refreshStates());
     // Sign-in returns to the bare page; a routed hub place (a shared link, the Sphere's keypad) is still honoured.
     const signedInArrival = ctx.from === null && (!ctx.place || ctx.place === "donate") && !!BL.net.ownCharacter();
-    let initialCharacter = ctx.from === null && !signedInArrival && !pilot.loginViewRestored && preloadedCharacter ? contributors.activeRoster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
-    if (ctx.from === null && !signedInArrival && !pilot.loginViewRestored && (preloadedJetpackWear || preloadedEquipment) && !params.has("character") && !initialCharacter) initialCharacter = contributors.activeRoster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.activeRoster[0];
+    let initialCharacter = ctx.from === null && !signedInArrival && preloadedCharacter ? contributors.activeRoster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
+    if (ctx.from === null && !signedInArrival && (preloadedJetpackWear || preloadedEquipment) && !params.has("character") && !initialCharacter) initialCharacter = contributors.activeRoster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.activeRoster[0];
     const initialGorilla = initialCharacter && preloadedGorilla ? crew.cavemen.get(initialCharacter.name) : null;
     // The Ooga that went into DSB, the Lightning Factory, ₿IFRÖST or Ooga Arcade comes back out as the one played.
     const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain";
@@ -12799,12 +12836,12 @@
       if (driven && !carried && returningCharacter && ctx.from === "factory") crew.selectWeapon(driven.weapon.selectedSlot, driven);
       if (driven && initialCharacter) crew.configureWeapon(driven, preloadedWeapon, preloadedAmmo);
     }
-    ownOogaClaimed = !!world.pilotDetached || !!(returningCharacter && BL.net.state.me) || !BL.net.state.me && ctx.from !== null;
-    world.pilotDetached = false;
+    // Every arrival drives the visitor's Ooga: the one carried back in, else their own or assigned one, claimed here.
+    ownOogaClaimed = !!pilot.player;
     claimOwnOoga();
     unsubscribeAccount = watchAccount();
     BL.players.setDoors(doorToward);
-    const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla && !pilot.loginViewRestored;
+    const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla;
     if (initialFirstPerson) pilot.enterClose(true);
     // The /donate route: the island's own view with the donation popup open. As a routed place it keeps Tess from
     // greeting over the dialog.
@@ -12820,7 +12857,7 @@
     else if (returningCharacter && ctx.from === "arcade" && pilot.player && arcadeMouth) arriveFromArcade();
     else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
     else if (ctx.from === "bifrost" && !routedPlace) navigate("bifrost", false, false);
-    else if (!signedInArrival && !pilot.loginViewRestored && !crew.sleeping && !initialGorilla && (routedPlace || preloadedView || initialCharacter || initialFirstPerson)) navigate(routedPlace || preloadedView || "pile", false, false);
+    else if (!signedInArrival && !crew.sleeping && !initialGorilla && (routedPlace || preloadedView || initialCharacter || initialFirstPerson)) navigate(routedPlace || preloadedView || "pile", false, false);
     if (donate) hud.openFeed();
     if (initialCharacter && !initialGorilla && preloadedJetpack) {
       grantJetpack(pilot.player, preloadedJetpackWear);
@@ -12937,7 +12974,7 @@
       }
     });
     pilot.update(0);
-    if (ctx.from === null && !signedInArrival && !initialGorilla && !pilot.loginViewRestored) restorePositionDebug();
+    if (ctx.from === null && !signedInArrival && !initialGorilla) restorePositionDebug();
     if (initialGorilla) {
       const entry = clankers.list.find(entry => entry.owner === initialGorilla);
       if (clankerPlay.possess(entry, true)) {
@@ -13025,6 +13062,10 @@
     pilot.controls.reset(); input.reset(); pilot.setActive(true);
   };
   const leave = (destroy = false) => {
+    // Left by Back or Forward, the logo or any other way than a door of its own (which handed its Ooga over and set
+    // `entering`), the island hands on the Ooga driven, as every other scene does, so the next one plays the same one;
+    // driving none (a gorilla), nothing stale goes with it.
+    if (!entering) world.pilot = pilot.player ? (pilot.player.npc || pilot.player).traits.name : null;
     wpVisit++; wpSignal = null;
     cloudHopper?.cancel();
     rememberCharacterLocations();
@@ -13119,6 +13160,7 @@
     clankerCaptures.length = 0;
     clankerPlay.dispose();
     remotes.dispose();
+    muteHammockShots();
     crates.dispose();
     pile.dispose();
     npcStatusBeams?.dispose(); npcStatusBeams = null;
@@ -13334,6 +13376,7 @@
       if (!gorilla && player) {
         if (!pilot.birdsEye && player.traits.nunchaku && player.state !== "sleeping" && !player.camp.burning && !player.camp.rolling) help.rows.push(H.row(BL.controls.shortcutKeys("twirl"), "Twirl nunchaku"));
         if (player.tint) help.rows.push(H.row(BL.controls.shortcutKeys("tint"), "Change colourway"));
+        if (player.camp.seat?.kind === "hammock") help.rows.push(H.row(["a", "d"], "Rock the hammock (in time with the swing)"));
       }
     }
     if (!gorilla) help.title = "Island · " + help.title; return help;
