@@ -256,7 +256,7 @@
   };
 
   // One visit's state: created in enter, dropped in leave.
-  let oogatronUnsub, renderer, game, world, go, lootEnabled, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, npcSync;
+  let oogatronUnsub, renderer, game, world, go, lootEnabled, testBananas, root, camera, overlayCanvas, island, terrainRampRoof, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, mirrorCave, matrixCave, matrixControl, gateRain, fireRigs, firePitRig, fire, headquarters, jumbotron, positionDebug, remotes, npcSync, npcStatusBeams, npcGhosts;
   // GAME MODE (`setGameMode`): an island event holds the island still for play while it runs.
   let gameMode = false, gameCombatOnly = false;
   let cloudHopper = null, cloudIsland = null, cloudPile = null, cloudPileSolids = null, cloudFinishFruit = null;
@@ -2929,6 +2929,16 @@
   const timechainResidentPose = (cave) => {
     if (!timechainIsland || cave.traits.name !== "SaniExp") return false;
     const T = timechainIsland;
+    // A separate body made where its resident NPC sits inside the ball steps out onto the bridge; the NPC stays in.
+    if (cave.npc) {
+      const p = cave.root.position;
+      if (T.residentInside && Math.hypot(p.x - T.place.x, p.z - T.place.z) < 1) {
+        const W = BL.timechainModels.SPOTS.WAIT;
+        p.x = T.worldX(W.x, W.z + 1.2); p.z = T.worldZ(W.x, W.z + 1.2); p.y = T.place.y + cave.baseY;
+        cave.root.rotation.y = T.place.ry + Math.PI;
+      }
+      return false;
+    }
     if (cave.state === "working" || cave.state === "chilling" || cave === pilot?.player || cave.remoteControlled) {
       if (T.residentInside) {
         T.residentInside = false;
@@ -3157,6 +3167,7 @@
   };
   const isPlayerAttack = source => !!source && (source === crew.player || source.controlled && source.actionControlled);
   const weaponImpact = (source, hit, dx, dy, dz, power = 1, projectile = null) => {
+    if (source?.nonInteractive || hit.owner?.cave?.nonInteractive || hit.owner?.entry?.nonInteractive) return;
     if (hit.node === mirrorCave.node) {
       // Ordinary HUB melee reports its contact without the combat-only sweep effect.
       if (!gameMode && !projectile) mirrorCave.ripples.cross(hit.x - dx * 0.02, hit.y - dy * 0.02, hit.z - dz * 0.02,
@@ -3555,7 +3566,7 @@
   const updateSleepingSolids = () => {
     for (let index = 0; index < crew.list.length; index++) {
       const cave = crew.list[index];
-      if (!cave.root.visible || !cave.root.quaternion) continue;
+      if (cave.nonInteractive || !cave.root.visible || !cave.root.quaternion) continue;
       const out = cave.solidBounds;
       out[0] = out[1] = out[2] = Infinity; out[3] = out[4] = out[5] = -Infinity;
       BL.scene.updateWorld(cave.root);
@@ -3577,7 +3588,7 @@
     const dx = Math.max(b[0] - x, 0, x - b[3]), dz = Math.max(b[2] - z, 0, z - b[5]);
     return dx * dx + dz * dz < radius * radius - 1e-8;
   };
-  const uprightCharacter = (cave) => cave.root.visible && cave.state !== "sleeping" && !cave.grabbedBy && !cave.root.quaternion && !cave.camp.seat && !cave.camp.rolling;
+  const uprightCharacter = (cave) => !cave.nonInteractive && cave.root.visible && cave.state !== "sleeping" && !cave.grabbedBy && !cave.root.quaternion && !cave.camp.seat && !cave.camp.rolling;
   const standingPassenger = (cave) => uprightCharacter(cave) && cave.hop <= 1e-7 && cave.hopV <= 0 && !cave.jet?.thrust;
   const passengerOf = (cave, support) => {
     if (!support || !cave.riding.support || !uprightCharacter(support)) return false;
@@ -3606,7 +3617,7 @@
   };
   let clankerSupportActor = null;
   const npcYieldAhead = (cave, fx, fz) => {
-    if (!clankers || cave.humanControlled || cave.remoteControlled) return false;
+    if (!clankers || cave.nonInteractive || cave.humanControlled || cave.remoteControlled) return false;
     const p = cave.root.position, feet = p.y - cave.baseY, shape = BL.agent.torso;
     for (const entry of clankers.list) {
       if (!entry.active || !entry.root.visible || entry.controlled || entry.remoteControlled
@@ -3633,10 +3644,11 @@
       && (rage.debug || rage.agitators[crew.list.indexOf(clankerSupportActor)])
       && rageCaptureEligible(entry, clankerSupportActor)) return false;
     // A gorilla on another floor or hanging overhead is not a step below us.
-    return entry.active && entry.root.position.y <= y + STEP_MAX + 1e-7;
+    // A passive NPC Clanker is never a step: players and Oogas pass through it.
+    return !entry.nonInteractive && entry.active && entry.root.position.y <= y + STEP_MAX + 1e-7;
   };
   const characterClankerSupportAt = (x, z, y, rise, actor) => {
-    if (!clankerMeshes) return -Infinity;
+    if (!clankerMeshes || actor?.nonInteractive) return -Infinity;
     // Grounded Oogas walk over the live mesh without a body/side barrier.
     // Airborne Oogas still land only on surfaces below their world feet.
     const step = actor && actor.hop === 0 && actor.hopV <= 0 && !actor.ladder?.plane
@@ -3701,6 +3713,7 @@
     }
   };
   const beginClankerCapture = (entry, cave, autonomous) => {
+    if (entry?.nonInteractive || cave?.nonInteractive) return false;
     if (!gameMode) return false;
     const rec = entry.capture;
     if (!rec || rec.cave || cave.grabbedBy) return false;
@@ -4336,8 +4349,8 @@
   };
   // Tree tops are landing surfaces for the visitor, not resting floors for wandering Oogas.
   const npcTreeSupportAllowed = (node) => !node.npcTreeSupport;
-  const npcPassesPlayer = (actor, other) => actor?.contributor && !actor.humanControlled && !actor.remoteControlled
-    && (other.humanControlled || other.remoteControlled);
+  const npcPassesPlayer = (actor, other) => actor?.nonInteractive || other.nonInteractive
+    || actor?.contributor && !actor.humanControlled && !actor.remoteControlled && (other.humanControlled || other.remoteControlled);
   const propSupportAt = (x, z, y, rise, actor, ignoreClanker = false, passTraffic = false) => {
     const npc = actor?.contributor && actor !== pilot?.player;
     let floor = solids ? solids.supportAt(x, z, y, rise, PLAYER_RADIUS, null, null, passTraffic, npc ? npcTreeSupportAllowed : null, passTraffic) : -Infinity;
@@ -4366,6 +4379,7 @@
     return ceiling;
   };
   const clankerBodySegmentClear = (other, x, y, z, toX, toY, toZ, radius, height) => {
+    if (other.nonInteractive) return true;
     const shape = BL.agent.footprint, p = other.root.position;
     if (Math.min(y, toY) > p.y + other.height || Math.max(y, toY) + height < p.y) return true;
     const count = shape.count(other), size = shape.radius(other), first = shape.offset(other, 0);
@@ -4552,6 +4566,8 @@
     else fallback();
   };
   const moveCampBody = (cave, x, y, z, dt) => {
+    // Passive NPCs swing no room signs and catch no fire; driven bodies keep both.
+    if (cave.nonInteractive) return;
     moveRoomSigns(cave, x, y, z, dt);
     if (cave.camp.burning || cave.camp.rolling || cave.camp.cooldown > 0) return;
     const p = cave.root.position, dx = p.x - x, dz = p.z - z, distance = dx * dx + dz * dz;
@@ -8569,6 +8585,8 @@
     job.handle = job.idle ? requestIdleCallback(start, { timeout: 250 }) : setTimeout(start, 0);
   };
   const update = (dt, elapsed) => {
+    // Every system reads the real models; the ghosts are painted back once the frame's poses are final.
+    npcGhosts.restore();
     cloudHopper?.preUpdate(dt);
     if (cloudPlaying()) {
       cloudMask();
@@ -8697,7 +8715,7 @@
     if (factoryMouth && !cloudPlaying()) factoryShield(dt, elapsed);
     if (bifrostIsle && !cloudPlaying()) bifrostGate(dt, elapsed);
     if (bcaMouth) bcaVeil(dt, elapsed);
-    if (factoryDeparting || bifrostDeparting) return; // The Ooga through a shield and its camera hold through the director fade.
+    if (factoryDeparting || bifrostDeparting) { npcGhosts.paint(dt); return; } // The Ooga through a shield and its camera hold through the director fade.
     if (gameMode) prepareClankerStrike();
     for (let i = 0; gameMode && i < clankerCaptures.length; i++) {
       const rec = clankerCaptures[i];
@@ -8733,8 +8751,11 @@
         finishClankerRider(entry, true, rec.charge, rec.aimed ? rec.aim : null, carryX, carryZ);
       }
     }
-    for (let i = 0; i < clankers.list.length; i++) {
-      const entry = clankers.list[i], p = entry.root.position;
+    // The roster's companions, then the visitor's separate gorilla (clankers.js), which floats and respawns the same way.
+    for (let i = 0; i <= clankers.list.length; i++) {
+      const entry = i < clankers.list.length ? clankers.list[i] : clankers.player?.npc ? clankers.player : null;
+      if (!entry) continue;
+      const p = entry.root.position;
       // Afloat in the Mempool island's water a gorilla paddles: the rig poses it, this only says so.
       entry.motion.swim = entry.active && mempoolIsland.afloat(p.x, p.z, p.y, GORILLA_DRAUGHT) ? 1 : 0;
       if (!entry.active || p.y >= ABYSS_RESPAWN_Y || island.supportAt(p.x, p.z, p.y, 0, ABYSS_FLOOR) !== ABYSS_FLOOR) continue;
@@ -8776,8 +8797,12 @@
       const cave = crew.list[i];
       if (cave.root.visible) floatPose(cave, cave.root.position.y - cave.baseY, cave.bodyHeight, cave.phase, elapsed);
     }
+    // The visitor's separate body swims as any roster Ooga does.
+    const ownBody = crew.player?.npc ? crew.player : null;
+    if (ownBody && ownBody.root.visible) floatPose(ownBody, ownBody.root.position.y - ownBody.baseY, ownBody.bodyHeight, ownBody.phase, elapsed);
     footsteps.update(crew.player);
     if (!cloudPlaying()) npcSync.update(dt);
+    if (!cloudPlaying()) npcStatusBeams?.update(dt);
     shareDrivenActor(dt);
     remotes.update(dt);
     if (poolEffectsActive) {
@@ -8892,22 +8917,25 @@
       bcaMouth.phase.body.update(dt);
       bcaMouth.phase.body.time = bcaMouth.phase.ripples.time;
     }
+    npcGhosts.paint(dt);
   };
   // Every visitor controls only their assigned Ooga and its companion.
   const mayDriveOoga = (cave) => {
-    if (cloudHopper?.active && cave !== cloudHopper.actor) return "Finish Cloud Hopper before changing Oogas";
+    if (cloudHopper?.active && cave !== cloudHopper.actor && cave !== cloudHopper.actor?.npc) return "Finish Cloud Hopper before changing Oogas";
     return BL.net.mayDrive(cave.traits.name);
   };
+  // Whether the visitor drives this roster Ooga: itself, or the separate body standing for it (crew `separateBodies`).
+  const drivesOoga = (cave) => !!cave && !!pilot.player && (pilot.player === cave || pilot.player.npc === cave);
   const actorTransition = {};
   // Validate a new Ooga before giving up the current actor or its camera.
   const selectOoga = (cave) => {
     if (!cave || crew.cavemen.get(cave.traits.name) !== cave) { hud.toast("That Ooga is not available here"); return false; }
-    if (cave === pilot.player) return true;
+    if (drivesOoga(cave)) return true;
     // The Timechain Sphere's doorway holds its Ooga from the keypad until it is through.
     if (timechainIsland.gate && timechainIsland.gate.busy) { hud.toast("Finish at the Timechain Sphere's doors first"); return false; }
     const refusal = mayDriveOoga(cave);
     if (refusal) { hud.toast(refusal); return false; }
-    if (cave.remoteControlled) { hud.toast(`Someone is already driving ${cave.traits.display}`); return false; }
+    if (cave.remoteControlled || cave.ghostTrack) { hud.toast(`Someone is already driving ${cave.traits.display}`); return false; }
     if (crew.stateOf(cave) === "away" || cave.state !== "working" && cave.state !== "chilling" && cave.state !== "sleeping") {
       hud.toast(`${cave.traits.display} is in another place`);
       return false;
@@ -8917,21 +8945,52 @@
       clankerPlay.release();
       pilot.possess(cave, actorTransition);
     } else pilot.possess(cave);
-    return pilot.player === cave;
+    return drivesOoga(cave);
   };
   const selectGorilla = (entry) => {
     if (!entry || !clankers.list.includes(entry) || !entry.active || !entry.root.visible) {
       hud.toast("That gorilla is not available here"); return false;
     }
-    if (clankerPlay.player === entry) return true;
+    if (clankerPlay.player === entry || clankerPlay.player?.npc === entry) return true;
     const refusal = BL.net.mayDriveGorilla(entry.owner.traits.name);
     if (refusal) { hud.toast(refusal); return false; }
-    if (entry.remoteControlled) { hud.toast("Someone is already driving that gorilla"); return false; }
+    if (entry.remoteControlled || entry.ghostTrack) { hud.toast("Someone is already driving that gorilla"); return false; }
     return clankerPlay.possess(entry);
   };
   const RELEASE_WORDS = { "owner-here": "Its owner arrived and took their Ooga back", taken: "Someone else is already driving that Ooga", "not-yours": "Contributors drive only their own Ooga" };
   // The account or the room changed: an Ooga driven here that is no longer this visitor's to drive is let go.
+  // The account and room this page last drove a separate body under. A sign-out, an account switch or losing a room
+  // that was live lets the body go at once (its NPC turns solid where its track has it) and claims nothing on that
+  // same change; signing in or the room coming back live after such a loss allows one fresh claim. Nothing before the
+  // room was first live counts as a loss, and signed-out (local) driving is left alone. No timer.
+  let sessionAccount = null, sessionLive = false, sessionLost = false;
+  const watchAccount = () => {
+    sessionAccount = BL.net.state.me?.id ?? null; sessionLive = BL.net.state.room === "live"; sessionLost = false;
+    return BL.net.subscribe(onAccountChange);
+  };
+  const releaseSeparateBodies = () => {
+    if (clankerPlay?.player?.npc) clankerPlay.release();
+    if (pilot.player?.npc) pilot.release(true);
+  };
+  const sessionChanged = () => {
+    const account = BL.net.state.me?.id ?? null, live = BL.net.state.room === "live";
+    const signedOut = sessionAccount !== null && account === null, switched = sessionAccount !== null && account !== null && account !== sessionAccount;
+    const lost = sessionLive && !live && account !== null;
+    const regained = sessionLost && account !== null && (live || account !== sessionAccount);
+    sessionAccount = account; sessionLive = live;
+    if (signedOut || lost) {
+      releaseSeparateBodies();
+      sessionLost = true; ownOogaClaimed = true;
+      return true;
+    }
+    // Another account: the old one's body goes, and the new one may claim its own as a fresh arrival would.
+    if (switched) { releaseSeparateBodies(); sessionLost = false; ownOogaClaimed = false; return false; }
+    if (regained) { sessionLost = false; ownOogaClaimed = false; }
+    return false;
+  };
   const onAccountChange = () => {
+    // A sign-out or a lost room ends here: the body is gone and nothing is claimed in its place.
+    if (sessionChanged()) return;
     const driven = crew.player, released = BL.net.state.released;
     const gorilla = clankerPlay && clankerPlay.player;
     if (gorilla) {
@@ -8960,31 +9019,24 @@
     const character = BL.net.ownCharacter() || (!DEBUG && BL.net.preferredCharacter());
     const cave = character && crew.cavemen.get(character.handle);
     if (!cave) return false;
-    if (pilot.player && pilot.player !== cave || clankerPlay && clankerPlay.active) {
+    if (pilot.player && !drivesOoga(cave) || clankerPlay && clankerPlay.active) {
       ownOogaClaimed = true;
       return false;
     }
-    // Another tab of this account drives it: its remote copy has sent this one away.
-    if (cave.remoteControlled || mayDriveOoga(cave)) return false;
+    // Another tab of this account drives it: its NPC here walks on as a ghost track (npc-ghosts.js).
+    if (cave.remoteControlled || cave.ghostTrack && !cave.localBody || mayDriveOoga(cave)) return false;
     // An account retry can identify the Ooga already held at the Sphere's keypad.
     // Keep that doorway interaction and its view; a fresh sign-in has no held actor.
-    if (pilot.player === cave && timechainIsland?.gate?.busy) {
+    if (drivesOoga(cave) && timechainIsland?.gate?.busy) {
       ownOogaClaimed = true;
       return true;
     }
-    const previousOverride = pilot.player === cave ? cave.controlOverride : cave.override;
-    if (crew.stateOf(cave) === "away") {
-      cave.override = "chilling";
-      crew.refreshStates(true);
-    }
-    if (!pilot.possess(cave)) {
-      cave.override = previousOverride;
-      crew.refreshStates(true);
-      return false;
-    }
-    cave.controlOverride = previousOverride;
-    // Respawn navigation also releases a sleeper's bed, clears motion and resets a saved underground eye.
-    if (navigate("pile", true, false) !== true) {
+    // The visitor's body is a separate one (crew.js `separateBodies`): the NPC keeps its own activity and override,
+    // never woken or moved for this. The body stands where the NPC is, as it faces; only an away or hidden NPC,
+    // which has no place on the island, sends it to the pile (navigation also resets a saved underground eye).
+    const placed = cave.root.visible && crew.stateOf(cave) !== "away";
+    if (!pilot.possess(cave)) return false;
+    if (!placed && navigate("pile", true, false) !== true) {
       pilot.release(true);
       return false;
     }
@@ -9132,7 +9184,7 @@
     if (!character) { hud.toast("Sign in as a contributor to switch between your Ooga and gorilla"); return; }
     const cave = crew.cavemen.get(character.handle);
     if (!cave) { hud.toast("Your Ooga is not available here"); return; }
-    if (pilot.player === cave) {
+    if (drivesOoga(cave)) {
       const gorilla = clankers.list.find(entry => entry.owner === cave);
       if (!gorilla || !gorilla.active || !gorilla.root.visible) { hud.toast("Your gorilla is not available here yet"); return; }
       selectGorilla(gorilla);
@@ -9552,7 +9604,7 @@
   const clankerLabWorker = entry => !!entry && !entry.rage.active && !entry.controlled && entry.mode === "working"
     && (entry.route === "exit" && clankers?.sites[entry.fromSite]?.mouth === entropyLab.mouth
       || clankers?.sites[entry.site]?.mouth === entropyLab.mouth && (entry.motion.lab || entry.planningLab));
-  const clankerPassingPeer = (entry, other) => !!entry
+  const clankerPassingPeer = (entry, other) => entry?.nonInteractive || other.nonInteractive || !!entry
     && (entry === clankerPassingEntry || clankerEntering(entry) || clankerLabWorker(entry)) && other !== entry;
   const clankerSatelliteLandAt = (x, y, z, radius) => {
     // The rounded underside's balconies extend past the surface land mask.
@@ -9586,9 +9638,9 @@
     return support > -Infinity && support <= y + STEP_MAX && support >= y - 3.5;
   };
   const clankerPeersClear = (entry, x, y, z, toX, toY, toZ, fromHeading, toHeading, strictEnd = false) => {
-    if (!clankers || clankerEntering(entry) || clankerLabWorker(entry)) return true;
+    if (!clankers || entry.nonInteractive || clankerEntering(entry) || clankerLabWorker(entry)) return true;
     for (const other of clankers.list) {
-      if (other === entry || !other.active) continue;
+      if (other.nonInteractive || other === entry || !other.active) continue;
       const p = other.root.position, shape = BL.agent.torso;
       // A pose preview has already installed the destination trunk. Do not
       // mistake its expansion into a neighbour for escaping an old overlap.
@@ -9599,6 +9651,26 @@
     }
     return true;
   };
+  // A passive NPC gorilla collides with cave walls only: island terrain and the
+  // cave masonry it climbs. No other solid is queried at all, so props, bodies
+  // and scenery never block, lift or divert it.
+  // Terrain stays with the callers' own island checks (climb poses skip it on
+  // purpose); this adds only the cave masonry, less any row a climb grips.
+  const PASSIVE_WALL_HULL = new Float64Array(24);
+  const clankerWallsOnlyClear = (x, y, z, radius, height, ignore = null) => {
+    for (let corner = 0; corner < 8; corner++) {
+      PASSIVE_WALL_HULL[corner * 3] = x + (corner & 1 ? radius : -radius);
+      PASSIVE_WALL_HULL[corner * 3 + 1] = y + (corner & 2 ? height : 0);
+      PASSIVE_WALL_HULL[corner * 3 + 2] = z + (corner & 4 ? radius : -radius);
+    }
+    for (let i = 0; i < climbMasonry.length; i++) {
+      const row = climbMasonry[i];
+      if (row.node === ignore || x + radius < row.minX || x - radius > row.maxX || y + height < row.minY || y > row.maxY
+        || z + radius < row.minZ || z - radius > row.maxZ || !solids.isActive(row.node)) continue;
+      for (let j = 0; j < row.boxes.length; j++) if (BL.convex.hullsOverlap(PASSIVE_WALL_HULL, row.boxes[j])) return false;
+    }
+    return true;
+  };
   const clankerCylinderClear = (x, y, z, toX, toY, toZ, radius, height, entry = null, ignore = null, climbing = false, actors = true, checkTerrain = true, toRadius = radius, toHeight = height, skipClimbMasonry = false) => {
     const fromRadius = radius, fromHeight = height;
     radius = Math.max(radius, toRadius); height = Math.max(height, toHeight);
@@ -9606,8 +9678,10 @@
     if (!climbing && !island.onLand(toX, toZ) && !clankerSatelliteLandAt(toX, toY, toZ, radius) || crossesSealedCave(x, z, toX, toZ, y)
       || checkTerrain && (!island.clearAt(toX, toFloor, toZ, radius, body)
         || !island.voxelSegmentClearAt(x, floor, z, toX, toFloor, toZ, radius, body))
-      || !solids.segmentClear(x, floor, z, toX, toFloor, toZ, fromRadius, fromHeight - 0.002, ignore, toRadius, toHeight - 0.002, !!entry && !climbing, skipClimbMasonry, false, !!entry?.rage?.active)
+      || (entry?.nonInteractive ? !skipClimbMasonry && !clankerWallsOnlyClear(toX, toFloor, toZ, radius, body, ignore)
+        : !solids.segmentClear(x, floor, z, toX, toFloor, toZ, fromRadius, fromHeight - 0.002, ignore, toRadius, toHeight - 0.002, !!entry && !climbing, skipClimbMasonry, false, !!entry?.rage?.active))
       || !matrixGateSegmentClear(x, floor, z, toX, toFloor, toZ, radius, body, true)) return false;
+    if (entry?.nonInteractive) return true;
     if ((!entry || !entry.controlled) && !npcFireClear(x, y, z, toX, toY, toZ, height)) return false;
     if (!actors) return true;
     if (clankers) for (let i = 0; i < clankers.list.length; i++) {
@@ -9625,7 +9699,7 @@
     return along * along + across * across;
   };
   const clankerFireClear = (entry, x, y, z, toX, toY, toZ, fromHeading = entry.heading, toHeading = fromHeading) => {
-    if (entry.controlled) return true;
+    if (entry.controlled || entry.nonInteractive) return true;
     // Prop-height blending can leave the rendered feet below their support
     // position. Keep that lower body inside the pit's avoidance height band.
     const offset = Math.min(0, entry.motion.supportOffset);
@@ -9665,7 +9739,8 @@
       || crossesSealedCave(x, z, toX, toZ, y)
       || !island.clearAt(toX, to, toZ, radius, height)
       || !island.voxelSegmentClearAt(x, from, z, toX, to, toZ, radius, height)
-      || !solids.segmentClear(x, from, z, toX, to, toZ, radius, height, null, radius, height, true, false, !entry.drive.airborne && !entry.jump.active, entry.rage.active)
+      || (entry.nonInteractive ? !clankerWallsOnlyClear(toX, to, toZ, radius, height)
+        : !solids.segmentClear(x, from, z, toX, to, toZ, radius, height, null, radius, height, true, false, !entry.drive.airborne && !entry.jump.active, entry.rage.active))
       || !matrixGateSegmentClear(x, from, z, toX, to, toZ, radius, height, true)) return false;
     return clankerFireClear(entry, x, y, z, toX, toY, toZ, fromHeading, toHeading);
   };
@@ -9722,7 +9797,7 @@
     clankerPeerPoseChecked = true;
     const shape = BL.agent.torso, p = entry.root.position, from = CLANKER_PEER_FROM;
     for (const other of clankers.list) {
-      if (other === entry || !other.active) continue;
+      if (other.nonInteractive || other === entry || !other.active) continue;
       const q = other.root.position;
       if (shape.overlaps(entry, p.x, p.y, p.z, entry.root.rotation.y,
         other, q.x, q.y, q.z, other.heading, 0.03)
@@ -9735,6 +9810,7 @@
     return clankerPeerPoseClear = capturedPosePreview(entry);
   };
   const clankerWalkingPeersClear = (entry, dt, x, y, z) => {
+    if (entry.nonInteractive) return true;
     const p = entry.root.position, nx = p.x, ny = p.y, nz = p.z, heading = entry.root.rotation.y, nextHeading = entry.heading;
     if (!clankers || entry.controlled || entry.planningRoam || entry.drive.airborne
       || entry.fire.rolling || clankerEntering(entry) || clankerLabWorker(entry)) return true;
@@ -9783,7 +9859,8 @@
     return clankerCenterClear(entry, x, y, z, toX, toY, toZ, true)
       && island.clearAt(toX, to, toZ, radius, 0.12)
       && island.voxelSegmentClearAt(x, from, z, toX, to, toZ, radius, 0.12)
-      && solids.segmentClear(x, from, z, toX, to, toZ, radius, 0.12, null, radius, 0.12, true, false, false, entry.rage.active)
+      && (entry.nonInteractive ? clankerWallsOnlyClear(toX, to, toZ, radius, 0.12)
+        : solids.segmentClear(x, from, z, toX, to, toZ, radius, 0.12, null, radius, 0.12, true, false, false, entry.rage.active))
       && clankerPlayersClear(entry, x, y, z, toX, toY, toZ);
   };
   const clankerPlatformEntryAt = (x, y, z, out) => {
@@ -9903,7 +9980,7 @@
   const clankerRestFootingClear = (entry, x, y, z, heading) => {
     if (entry.rage.active || !entropyLab.phase.inside(x, y, z))
       return clankerCenterClear(entry, x, y, z, x, y, z, false, heading, heading)
-        && Math.abs(clankerPointFootingAt(x, z, y, entry.rage.active) - y) < 0.1;
+        && Math.abs((entry.nonInteractive ? island.supportAt(x, z, y, 0.02, ABYSS_FLOOR) : clankerPointFootingAt(x, z, y, entry.rage.active)) - y) < 0.1;
     CLANKER_REST_FOOTING.lab = entropyLab.phase.inside(x, y, z);
     return entry.gorilla.walkPoseClear(x, y, z, x, y, z, heading, heading,
       CLANKER_REST_FOOTING, clankerWalkSolidAt, clankerWalkTransitionClear,
@@ -9914,6 +9991,7 @@
   // it up on that one footprint. NPC gorillas still run under players.
   const clankerPlayers = (entry) => entry && entry.controlled && remotes && !cloudPlaying() ? remotes.actors() : null;
   const clankerPlayersClear = (entry, x, y, z, toX, toY, toZ, carrier = null) => {
+    if (entry?.nonInteractive) return true;
     const bodies = clankerPlayers(entry);
     if (bodies) for (let i = 0; i < bodies.length; i++) {
       const body = bodies[i];
@@ -9925,6 +10003,7 @@
   // NPC walking deliberately passes under players. A discontinuous bed landing must still keep
   // clear of both the locally driven Ooga and every remote player's current body.
   const clankerBedPlayersClear = (entry, bed) => {
+    if (entry.nonInteractive) return true;
     const radius = entry.gorilla.bodyRadius, height = entry.gorilla.bodyHeight;
     const local = crew.player;
     if (local && local.root.visible) {
@@ -10094,6 +10173,7 @@
     return clankerClimbTransitionClear(entry, x, y, z, nx, ny, nz, radius, height, actors, riders, toRadius, toHeight);
   };
   const clankerGroomClear = (entry, partner) => {
+    if (entry.nonInteractive || partner?.nonInteractive) return false;
     const p = entry.root.position, sine = Math.sin(entry.heading), cosine = Math.cos(entry.heading), side = entry.motion.groomSide;
     const x = p.x + cosine * side * 0.7 + sine * 0.3, z = p.z - sine * side * 0.7 + cosine * 0.3;
     const nx = p.x + cosine * side * 1.55 + sine * 0.55, nz = p.z - sine * side * 1.55 + cosine * 0.55;
@@ -10168,13 +10248,14 @@
     const entries = clankers.list;
     // Snapshot the sources so a new contact cannot ignite a whole crowd in one frame.
     for (let i = 0; i < entries.length; i++) entries[i].fire.contactBurning = entries[i].fire.burning;
+    // Passive NPCs (gorillas and Oogas) neither spread nor catch fire: skip them before any contact test.
     for (let i = 0; i < entries.length; i++) {
       const source = entries[i];
-      if (!source.active || !source.root.visible || !source.fire.contactBurning) continue;
+      if (source.nonInteractive || !source.active || !source.root.visible || !source.fire.contactBurning) continue;
       const p = source.root.position;
       for (let j = 0; j < entries.length; j++) {
         const target = entries[j];
-        if (target === source || !target.active || !target.root.visible || target.fire.burning || target.fire.cooldown > 0) continue;
+        if (target === source || target.nonInteractive || !target.active || !target.root.visible || target.fire.burning || target.fire.cooldown > 0) continue;
         const q = target.root.position;
         if (!BL.agent.footprint.overlaps(source, p.x, p.y, p.z, source.heading,
           target, q.x, q.y, q.z, target.heading, 0.06)) continue;
@@ -10183,7 +10264,7 @@
       }
       for (let j = 0; j < crew.list.length; j++) {
         const cave = crew.list[j], q = cave.root.position, floor = q.y - cave.baseY;
-        if (!cave.root.visible || cave.state === "away" || cave.camp.burning || cave.camp.cooldown > 0) continue;
+        if (cave.nonInteractive || !cave.root.visible || cave.state === "away" || cave.camp.burning || cave.camp.cooldown > 0) continue;
         if (!BL.agent.footprint.circleOverlaps(source, p.x, p.y, p.z, source.heading,
           q.x, floor, q.z, 0.38, cave.bodyHeight, 0.06)) continue;
         const y = Math.max(p.y, floor) + Math.min(source.height, cave.bodyHeight) * 0.5;
@@ -10209,6 +10290,9 @@
   const clankerSceneSupportAt = (entry, x, z, y, step, heading = entry.heading, props = true) => {
     // Tree tops are landing surfaces for the driven gorilla, not floors for a roaming one (as for Oogas).
     const accept = entry.controlled ? null : npcTreeSupportAllowed;
+    // A passive gorilla stands on terrain alone: the props-off path below is
+    // island support only (ramps and the lab floor included), never a prop.
+    if (entry.nonInteractive) props = false;
     const padSupportAt = entry.rage.active ? clankerRagePadSupportAt : clankerPadSupportAt;
     if (!entry.motion.lab && !entry.planningLab) {
       const terrainStep = step >= STEP_MAX && BL.wallPanels.rampAt(island.surfaceAt, x, y, z, heading, CLANKER_TERRAIN_RAMP)
@@ -10277,6 +10361,8 @@
   };
   // The scene's support, and other players' tops for the gorilla the visitor drives.
   const clankerSupportAt = (entry, x, z, y, step, heading = entry.heading, props = true) => {
+    // Passive: terrain only, and never another player's top.
+    if (entry.nonInteractive) props = false;
     const floor = clankerSceneSupportAt(entry, x, z, y, step, heading, props);
     return props ? Math.max(floor, clankerPlayersSupportAt(entry, x, z, y, step)) : floor;
   };
@@ -11012,8 +11098,10 @@
     out.dx = sx; out.dz = sz; return true;
   };
   const updateClankerEffects = (dt) => {
-    for (let i = 0; i < clankers.list.length; i++) {
-      const entry = clankers.list[i];
+    // The roster's companions, then the visitor's separate gorilla, whose game effects are a player's.
+    for (let i = 0; i <= clankers.list.length; i++) {
+      const entry = i < clankers.list.length ? clankers.list[i] : clankers.player?.npc ? clankers.player : null;
+      if (!entry || entry.nonInteractive) continue;
       BL.clankerRage.effects(entry);
       if (!entry.active) continue;
       const f = entry.fire, parts = entry.renderParts, fireFX = entry.fireFX, spread = fireFX.spread;
@@ -11112,11 +11200,15 @@
     minContactAcross: 0, maxContactAcross: 0
   };
   const clankerTallObstacleAhead = (entry, dx, dz) => {
+    // No prop is an obstacle to a passive gorilla.
+    if (entry.nonInteractive) return false;
     const p = entry.root.position, step = BL.clankers.PROP_STEP, aboveStep = p.y + step + 0.02;
     return solids.shoulderAt(p.x, aboveStep, p.z, dx, dz, 0.025,
       Math.max(0, entry.height - step), 1.4, CLANKER_TALL_OBSTACLE, aboveStep, entry.rage.active);
   };
   const poundClankerEquipment = (entry) => {
+    // A passive NPC's pound stays an animation: it builds no generic cave prop.
+    if (entry.nonInteractive) return;
     const p = entry.root.position;
     let nearest = null, distance = Infinity;
     for (let i = 0; i < clankerEquipment.length; i++) {
@@ -11538,6 +11630,7 @@
     clankerPlay.dispose();
     remotes.dispose();
     npcSync.dispose();
+    npcStatusBeams?.clear();
     pilot.suspend();
     input.suspend();
     crew.pause();
@@ -11601,20 +11694,19 @@
     const returningCharacter = handsBack ? world.pilot : null;
     if (handsBack) world.pilot = null;
     if (returningCharacter) {
+      // A separate body comes back (crew.js `separateBodies`); the NPC keeps its own track and override, untouched.
       const cave = crew.cavemen.get(returningCharacter);
-      if (!contributors.debugState && !contributors.debugRoster && crew.stateOf(cave) !== "working") {
-        cave.override = "working"; crew.refreshStates(true);
-      }
       // Back as it left the last scene: its view, combat and weapon (pilot.js `arrive`); out of the Sphere's doorway,
       // which keeps its own exit view. With nothing carried, back from the Factory armed, as before.
       const carried = ctx.from !== "timechain" && pilot.arrive(cave);
       if (ctx.from === "timechain") pilot.possess(cave);
-      if (!carried && ctx.from === "factory") crew.selectWeapon(cave.weapon.selectedSlot, cave);
+      const driven = pilot.player;
+      if (driven && !carried && ctx.from === "factory") crew.selectWeapon(driven.weapon.selectedSlot, driven);
     }
     ownOogaClaimed = !!world.pilotDetached || !!(returningCharacter && BL.net.state.me) || !BL.net.state.me && ctx.from !== null; world.pilotDetached = false;
     claimOwnOoga();
     unsubscribeActivity = contributors.subscribe(() => crew.refreshStates());
-    unsubscribeAccount = BL.net.subscribe(onAccountChange);
+    unsubscribeAccount = watchAccount();
     BL.players.setDoors(doorToward);
     const donate = ctx.place === "donate", routedPlace = donate ? null : ctx.place;
     const sphereExit = ctx.from === "timechain" ? world.sphereExit : null;
@@ -12012,7 +12104,9 @@
     shared.npcCaveRoofAt = npcCaveRoofAt;
     shared.npcRecoverySpot = npcRecoverySpot;
     shared.respawnSpot = pileRespawnSpot;
-    shared.initialWorkSpot = (cave, out) => pileRespawnSpot(cave, out, true) || npcRecoverySpot(cave, out);
+    // A passive NPC starts work at the pile or retries from away; never elsewhere.
+    shared.initialWorkSpot = (cave, out) => pileRespawnSpot(cave, out, true)
+      || !cave.nonInteractive && npcRecoverySpot(cave, out);
     shared.shoulderObstacleActive = solids.isActive;
     shared.shoulderObstacle = (cave, fx, fz, reach, out) => {
       const p = cave.root.position;
@@ -12136,6 +12230,11 @@
       island, walkable: npcWalkable, pointAllowed: (x, z) => !npcClosedCaveAt(x, z) && !npcRampRoofAt(x, island.surfaceAt(x, z), z),
       surfaceAt: (x, z, y) => island.supportAt(x, z, y, 1e-6, null, PLAYER_RADIUS)
     });
+    // Passive NPC work trips follow only the authored spokes and pile ring.
+    shared.npcFixedPaths = BL.npcPaths.fixed(island);
+    // Those mainland legs stand on the island's own terrain only (ramps and
+    // path heights included): no props, bodies, beds or water hold them up.
+    shared.npcFixedTerrainAt = (x, z, y) => island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS);
     yield* pause(slice);
     const sleepNavigation = headquarters.sleepNavigation = BL.headquartersSleep.create({ island, beds: bedrolls, walkable: sleepRouteClear, surfaceRoute: shared.npcPaths.route });
     yield* pause(slice);
@@ -12266,15 +12365,51 @@
     shared.outsideActors = () => cloudPlaying() ? CLOUD_NO_ACTORS : remotes.actors();
     shared.outsideActorHeight = REMOTE_BODY_HEIGHT;
     shared.characterModel = takePreparedCharacter;
+    // Hub NPCs pass through each other and players, and beam between routines.
+    shared.npcPassive = true;
+    // Driving an Ooga builds the visitor a separate body (crew.js); its NPC stays on its track, drawn as a ghost.
+    // The body takes part in the mirror and every portal as a roster Ooga does, for exactly as long as it exists.
+    shared.separateBodies = true;
+    shared.onBody = (body, on) => {
+      const height = body.traits.height * 2, verts = Math.max(body.headOpen.verts.length, body.headClosed.verts.length);
+      const portals = [factoryMouth, bcaMouth, bifrostIsle];
+      if (on) {
+        // Built after the outline registry, like a remote rig: its UI uses the overlay's exact visibility test, and
+        // a registry refresh never takes it for scenery.
+        body.root.sightHidden = body.sleepWeapons.sightHidden = true;
+        if (body.pet) body.pet.node.sightHidden = true;
+        body.root.matrixLiving = true;
+        body.solidBounds = new Float64Array(6);
+        mirrorActorRadius(body);
+        crew?.setJetpackOwnership(body, true, hubModels.jetpack(), hubModels.jetFlame());
+        trackMirrorObject(body.root, height, verts);
+        for (const place of portals) place?.phase.body.track(body.root, height, verts);
+        npcGhosts?.set(body.npc, true);
+      } else {
+        untrackMirrorObject(body.root);
+        for (const place of portals) place?.phase.body.untrack(body.root);
+        fx.hush(body);
+        npcGhosts?.set(body.npc, false);
+      }
+    };
     yield* pause(slice);
     crew = shared.crew = crewMod.create(shared);
+    // A signed-in player's driven body stands apart from their NPC, which keeps its track as a ghost (npc-ghosts.js).
+    npcGhosts = BL.npcGhosts.create({ renderer });
+    shared.shotLook = npcGhosts.shotLook;
+    const ghostedGorillas = new Map();
     remotes = BL.remotePlayers.create({
       root, crew, fx, player: controlledGuideActor, visible: remoteShown,
       createGorilla: (name, rec) => clankers.createRemote(name, rec),
       hideGorilla: (name, on) => {
         if (on && clankerPlay && clankerPlay.player?.owner.traits.name === name) clankerPlay.release();
-        clankers.setRemote(name, on);
-      }, posed: (cave, feet, rec) => {
+        // The companion stays on its own track (office, beds, work) beside the remote rig, as a ghost.
+        if (!on) { npcGhosts.set(ghostedGorillas.get(name), false); ghostedGorillas.delete(name); return; }
+        const owner = crew.cavemen.get(name), entry = owner && clankers.list.find((e) => e.owner === owner);
+        if (entry && npcGhosts.set(entry, true)) ghostedGorillas.set(name, entry);
+      },
+      ghost: (cave, on) => { npcGhosts.set(cave, on); crew.refreshRosterRow(cave); },
+      posed: (cave, feet, rec) => {
         const p = cave.root.position, height = cave.bodyHeight || 1.4;
         floatPose(cave, feet, height, 0, now);
         if (hammock) hammock.poseRemote(cave, feet, rec, remoteShown(rec) && cave.root.visible);
@@ -12286,6 +12421,8 @@
     // a following page replays them into the same effects and gorillas.
     npcSync = BL.npcSync.create({
       crew, fx, animationInterval,
+      // The room's crew host runs another version: the crew holds still here rather than run a second copy.
+      onIncompatible: () => hud.toast("The island's crew host is on another version of Ooga Booga Land · the crew waits until every page reloads"),
       onPlan: (cave, site) => clankers && clankers.plan(cave, site),
       onHit: (cave) => clankers && clankers.hit(cave),
       onModelChange: (cave) => {
@@ -12410,17 +12547,39 @@
       restPoseClear: clankerRestPoseClear, restFootingClear: clankerRestFootingClear,
       groomClear: clankerGroomClear, restSiteClear: clankerRestSiteClear,
       groundAt: (x, z, y) => island.supportAt(x, z, y, 0.52), groundPlaneAt: clankerGroundPlaneAt, rectangleAt: clankerRectangleAt, surfaceAt: island.surfaceAt, stairAt: island.stairAt,
-      pointSupportAt: (x, z, y, entry = null) => Math.max(island.supportAt(x, z, y, 0.02, -Infinity),
-        solids.supportAt(x, z, y, 0.02, 0, null, null, false, null, !!entry?.rage?.active)),
+      pointSupportAt: (x, z, y, entry = null) => entry?.nonInteractive ? island.supportAt(x, z, y, 0.02, -Infinity)
+        : Math.max(island.supportAt(x, z, y, 0.02, -Infinity), solids.supportAt(x, z, y, 0.02, 0, null, null, false, null, !!entry?.rage?.active)),
       isGrass: island.isGrassAt, restSurfaceClear: clankerRestSurfaceClear, onLand: island.onLand,
       roamRadius: island.radius, meadowRadius: island.meadowRadius,
       clear: clankerClear, playersClear: clankerPlayersClear, tallObstacleAhead: clankerTallObstacleAhead,
       onPound: poundClankerEquipment,
+      // Passive companions' meadow legs follow the Oogas' authored spokes and pile ring.
+      npcFixedPaths: shared.npcFixedPaths, npcPathState: () => shared.npcPaths.createState(),
+      pileRingRadius: shared.reloadSlotRadius,
       fireContact: clankerFireContact, fireReachable: shared.fireReachable, fireClear: clankerFireClear,
       canSmash: canClankerSmash, supportAt: clankerSupportAt, terrainSupportAt: clankerTerrainSupportAt,
-      track: (entry) => trackMirrorObject(entry.root, 3.6, 4248), untrack: (entry) => untrackMirrorObject(entry.root)
+      track: (entry) => trackMirrorObject(entry.root, 3.6, 4248), untrack: (entry) => untrackMirrorObject(entry.root),
+      // Driving a companion builds the visitor a separate gorilla (clankers.js); its NPC walks on as a ghost.
+      separateBodies: true, onBody: (body, on) => {
+        if (on) {
+          body.root.sightHidden = true;
+          body.netBody = body.npc.netBody;
+          body.netMotion = new Float64Array(6);
+          registerClanker(body);
+          npcGhosts?.set(body.npc, true);
+          return;
+        }
+        npcGhosts?.set(body.npc, false);
+        fx.hush(body);
+        const at = clankerCaptures.indexOf(body.capture);
+        if (at >= 0) { finishClankerRider(body, false); clankerCaptures.splice(at, 1); }
+        if (clankerMeshes) clankerMeshes.remove(body.root);
+        for (const node of body.renderParts || []) { removeTarget(node); clankerPartOwners?.delete(node); }
+        body.renderParts = body.capture = null;
+      }
     });
     yield* pause(slice);
+    npcStatusBeams = BL.npcStatusBeams.create({ root, crew, clankers });
     shared.fireThreats = () => clankers.list;
     for (const entry of clankers.list) {
       entry.netBody = BL.net.gorillaBody(entry.owner.traits.name);
@@ -12579,19 +12738,18 @@
         crew.refreshStates(true);
       }
     } else if (initialCharacter || returningCharacter) {
+      // The driven Ooga is a separate body standing for this NPC (crew.js `separateBodies`); the NPC keeps its own
+      // track and override, untouched.
       const cave = crew.cavemen.get(returningCharacter || initialCharacter.name);
-      if (!contributors.debugState && !contributors.debugRoster && crew.stateOf(cave) !== "working") {
-        cave.override = "working";
-        crew.refreshStates(true);
-      }
       const carried = returningCharacter && ctx.from !== "timechain" ? pilot.arrive(cave) : pilot.possess(cave) && false;
-      if (!carried && returningCharacter && ctx.from === "factory") crew.selectWeapon(cave.weapon.selectedSlot, cave);
-      if (initialCharacter) crew.configureWeapon(cave, preloadedWeapon, preloadedAmmo);
+      const driven = pilot.player;
+      if (driven && !carried && returningCharacter && ctx.from === "factory") crew.selectWeapon(driven.weapon.selectedSlot, driven);
+      if (driven && initialCharacter) crew.configureWeapon(driven, preloadedWeapon, preloadedAmmo);
     }
     ownOogaClaimed = !!world.pilotDetached || !!(returningCharacter && BL.net.state.me) || !BL.net.state.me && ctx.from !== null;
     world.pilotDetached = false;
     claimOwnOoga();
-    unsubscribeAccount = BL.net.subscribe(onAccountChange);
+    unsubscribeAccount = watchAccount();
     BL.players.setDoors(doorToward);
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla && !pilot.loginViewRestored;
     if (initialFirstPerson) pilot.enterClose(true);
@@ -12665,7 +12823,7 @@
         get shown() {
           return pile.shown;
         },
-        terrainSections, caveSections, cutawayPaths: CUTAWAY_PATH_STATE, terrainRampRoof, get cutawayTravelRamp() { return cutawayTravelRamp; }, get cutawayTravelChannel() { return cutawayTravelChannel; }, get cutawayTravelStation() { return cutawayTravelStation; }, island, mouths: island.mouths, labels, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, get hammock() { return hammock; }, altar, path: island.path.debug, headquarters, jumbotron, totems: { list: totems, flare: flareTotem }, get npcSync() { return npcSync; }, clankers, clankerPlay, rageThrowMap, rageEdgeGoal, rageLandAt, rageCaptureLandAt, rageMapRouteClear, rageCaptureEligible, rageApproach, rageWarpRequired, rageGrab, rageCaptive, rageRelease, rageThrow, rageDragClear,
+        terrainSections, caveSections, cutawayPaths: CUTAWAY_PATH_STATE, terrainRampRoof, get cutawayTravelRamp() { return cutawayTravelRamp; }, get cutawayTravelChannel() { return cutawayTravelChannel; }, get cutawayTravelStation() { return cutawayTravelStation; }, island, mouths: island.mouths, labels, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, get hammock() { return hammock; }, altar, path: island.path.debug, headquarters, jumbotron, totems: { list: totems, flare: flareTotem }, get npcSync() { return npcSync; }, get npcGhosts() { return npcGhosts; }, claimOwnOoga: () => { ownOogaClaimed = false; return claimOwnOoga(); }, accountChanged: () => onAccountChange(), clankers, clankerPlay, rageThrowMap, rageEdgeGoal, rageLandAt, rageCaptureLandAt, rageMapRouteClear, rageCaptureEligible, rageApproach, rageWarpRequired, rageGrab, rageCaptive, rageRelease, rageThrow, rageDragClear,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -12728,10 +12886,11 @@
     if (initialGorilla) {
       const entry = clankers.list.find(entry => entry.owner === initialGorilla);
       if (clankerPlay.possess(entry, true)) {
-        const position = positionVector("pos");
-        if (position) {
-          const p = entry.root.position, dx = position[0] - p.x, dy = position[1] - p.y, dz = position[2] - p.z;
-          clankers.respawn(entry, position[0], position[1], position[2]);
+        // A debug pose moves the visitor's separate gorilla (clankers.js), never the NPC companion.
+        const position = positionVector("pos"), driven = clankerPlay.player;
+        if (position && driven) {
+          const p = driven.root.position, dx = position[0] - p.x, dy = position[1] - p.y, dz = position[2] - p.z;
+          clankers.respawn(driven, position[0], position[1], position[2]);
           clankerPlay.respawn(dx, dy, dz);
         }
         clankerPlay.update(0);
@@ -12916,6 +13075,7 @@
     remotes.dispose();
     crates.dispose();
     pile.dispose();
+    npcStatusBeams?.dispose(); npcStatusBeams = null;
     for (const entry of clankers.list) returnLabEquipment(entry);
     clankers.dispose();
     clankerMeshes.dispose();
@@ -12930,6 +13090,7 @@
     BL.net.setHub(false);
     npcSync.dispose();
     remotes = npcSync = null;
+    npcGhosts.dispose(); npcGhosts = null;
     crew.dispose();
     critters.dispose();
     fx.dispose();
@@ -13058,6 +13219,8 @@
     mempoolIsland.water.liveGeometry(set);
     pile.liveGeometry(set);
     clankers.liveGeometry(set);
+    npcStatusBeams?.liveGeometry(set);
+    npcGhosts?.liveGeometry(set);
     entropyLab.phase.liveGeometry(set);
     for (const veil of caveVeils) veil.phase.liveGeometry(set);
     if (factoryMouth) factoryMouth.phase.liveGeometry(set);
@@ -13121,7 +13284,7 @@
     const gorilla = clankerPlay?.active, help = gorilla ? clankerPlay.controlsHelp(touch) : pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon", "jetpack"]);
     if (!touch) {
       const own = BL.net.ownCharacter(), cave = own && crew.cavemen.get(own.handle);
-      if (cave && (pilot.player !== cave || clankers.list.some(entry => entry.owner === cave && entry.active && entry.root.visible))) help.rows.push(H.row(BL.controls.shortcutKeys("actor"), "Switch between your Ooga and gorilla"));
+      if (cave && (!drivesOoga(cave) || clankers.list.some(entry => entry.owner === cave && entry.active && entry.root.visible))) help.rows.push(H.row(BL.controls.shortcutKeys("actor"), "Switch between your Ooga and gorilla"));
       const player = pilot.player;
       if (!gorilla && player) {
         if (!pilot.birdsEye && player.traits.nunchaku && player.state !== "sleeping" && !player.camp.burning && !player.camp.rolling) help.rows.push(H.row(BL.controls.shortcutKeys("twirl"), "Twirl nunchaku"));
