@@ -2747,6 +2747,9 @@ body[data-active-scene="hub"] .home-link {
   border-color: var(--accent);
 }
 
+/* Ooga Chat's message fields, island and private, as dark as the log over them and the reaction card under them. */
+.chat-form input { background: var(--slab-dark); }
+
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
