@@ -501,7 +501,13 @@ export class Room extends DurableObject {
       for (const other of this.players.values()) if (other !== p && other.zone === p.zone) this.send(other.ws, out);
       return;
     } else if (msg.t === "hand") {
-      if (msg.on === p.hand && (!msg.on || msg.tone === p.handTone) || !this.reactToken(p)) return;
+      if (msg.on === p.hand && (!msg.on || msg.tone === p.handTone)) return;
+      // Over the bucket the change is refused, and the sender hears the hand the room still holds, so its page never
+      // shows one nobody else sees.
+      if (!this.reactToken(p)) {
+        this.send(p.ws, { t: "hand", id: p.id, on: p.hand, tone: p.handTone });
+        return;
+      }
       p.hand = msg.on;
       p.handTone = msg.tone;
       this.broadcast({ t: "hand", id: p.id, on: p.hand, tone: p.handTone }, p.ws);

@@ -1,6 +1,7 @@
 // Reactions: the wire rule (one emoji the shared policy accepts, plain or toned, never text; the hand a boolean), the room
 // relaying a reaction to the sender's zone alone and keeping the raised hand on the record, its attachment and every
-// view, one bucket a record limiting both, and nothing touching storage, alarms or timers.
+// view, one bucket a record limiting both (a refused hand change answered to its sender alone), and nothing touching
+// storage, alarms or timers.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -93,16 +94,21 @@ test("the raised hand lives on the record, its attachment and every view, and go
   assert.equal(room.record({}, { id: 10 }).hand, false, "an older attachment starts with it down");
 });
 
-test("one bucket a record: a burst, then three a second across reactions and the hand", () => {
+test("one bucket a record: a burst, then three a second across reactions and the hand; a refused hand change tells its sender", () => {
   const clock = { now: 5000 };
   const { room, join } = reactionRoom(clock);
   const a = join(1, "outside"), b = join(2, "outside");
   for (let i = 0; i < REACT_BURST + 3; i++) room.webSocketMessage(a, '{"t":"react","e":"💯"}');
   assert.equal(b.sent.length, REACT_BURST, "the burst, then nothing");
-  room.webSocketMessage(a, '{"t":"hand","on":true}');
+  assert.deepEqual(a.sent, [], "a dropped reaction is dropped without a word");
+  // regression: a hand change over the bucket was dropped silently, so the sender's page showed a hand nobody else saw.
+  room.webSocketMessage(a, '{"t":"hand","on":true,"tone":2}');
   assert.equal(b.sent.length, REACT_BURST, "the hand spends the same bucket");
+  assert.deepEqual(a.sent, ['{"t":"hand","id":1,"on":false,"tone":0}'], "the sender hears the hand the room still holds");
+  assert.equal(room.players.get(1).hand, false, "and the room keeps it");
   clock.now += Math.ceil(1000 / REACT_HZ);
   room.webSocketMessage(a, '{"t":"hand","on":true}');
   assert.deepEqual(b.sent.at(-1), '{"t":"hand","id":1,"on":true,"tone":0}', "one more a third of a second later");
+  assert.equal(a.sent.length, 1, "an accepted change is never echoed to its sender");
   assert.ok(REACT_FEATURE === "react-v1");
 });

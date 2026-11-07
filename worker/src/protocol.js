@@ -89,7 +89,7 @@ import "../../src/js/reaction-policy.js";
 //                                            sender; `a: 1` when this recipient would hear the sender's voice
 //                 react { id, e }            player `id` reacted with emoji `e`, to the players in their zone
 //                 hand { id, on, tone }      player `id` raised or lowered their hand; welcome and join carry `hand`
-//                                            and `handTone`
+//                                            and `handTone`. To the sender alone, its own id: a change it was refused
 // Zones: `<group>` or `<group>.<place>`. Voice is shared within a group; who is shown is matched on the whole
 // name, since a place inside a group can have coordinates of its own (the Factory's tunnel on the island and
 // its hall). `none` is nowhere: off the island's edge, or between scenes; it shares voice with nobody.
@@ -121,7 +121,9 @@ import "../../src/js/reaction-policy.js";
 // policy accepts (reaction-policy.js over emoji-data.js: plain or in a skin tone, never text), taken from a player
 // driving a body and relayed as `react { id, e }` to the other players in its zone, never kept. The raised hand is a
 // flag on the player's record, in its attachment and every view, sent to everyone on a change only. Both spend one
-// per-record bucket of REACT_HZ a second bursting to REACT_BURST; over it a frame is dropped without a word.
+// per-record bucket of REACT_HZ a second bursting to REACT_BURST (the page mirrors it, a little short); over it a
+// reaction is dropped without a word, and a hand change is refused with the sender's own `hand { id, on, tone }` as
+// the room holds it, so the sender's page puts it back.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;

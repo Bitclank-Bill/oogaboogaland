@@ -77,6 +77,9 @@
 // and `setHand(on, tone)`, the raised hand in a skin tone, kept by the room for everyone (`hand` and `handTone` on every
 // remote record, `state.hand` and `state.handTone` for this page, sent again after a reconnect, lowered on signing out). `subscribeReactions` hears `fn(id, emoji)` for a
 // remote player's reaction, and for this page's own as id 0, as it is sent; a hand going up or down is a roster change.
+// Both spend one bucket mirroring the room's, a little short of it, so neither is ever shown here and dropped there;
+// `setHand` refuses (false, nothing changed) when it is empty, and a hand change the room still refuses comes back as
+// this page's own `hand`, which puts `state.hand` back to what everyone else sees.
 // Ooga thumps (thump.js): `sendThump` sends `{"t":"thump"}` while the room is live (the room checks voice and rate),
 // and `subscribeThump` hears `fn(id, audible)` for a remote player's thump the room relayed, `audible` when the room says
 // this page would hear that player's voice; a sender never hears its own.
@@ -625,6 +628,13 @@
     } else if (msg.t === "react") {
       if (remotes.has(msg.id) && BL.reactionPolicy.valid(msg.e)) for (const fn of reactSubscribers) fn(msg.id, msg.e);
     } else if (msg.t === "hand") {
+      // The room's word on this page's own hand, sent back when it refused a change.
+      if (msg.id === state.selfId) {
+        state.hand = msg.on === true;
+        state.handTone = BL.reactionPolicy.tone(msg.tone) ? msg.tone : 0;
+        emit();
+        return;
+      }
       const rec = remotes.get(msg.id);
       if (!rec) return;
       rec.hand = msg.on === true;
@@ -944,9 +954,23 @@
     send(`{"t":"hp","v":${v},"ko":${ko}}`);
   };
 
-  // A reaction over this page's driven body; false when it was not sent (not live, an older room, not an emoji).
+  // The room's one bucket for reactions and the hand (worker/src/protocol.js REACT_HZ 3, REACT_BURST 6), mirrored a
+  // little short of it, since frames can reach the room closer together than they left here.
+  const REACT_HZ = 2.5, REACT_BURST = 5;
+  let reactTokens = REACT_BURST, reactAt = 0;
+  const reactToken = () => {
+    const now = performance.now();
+    reactTokens = Math.min(REACT_BURST, reactTokens + (now - reactAt) * REACT_HZ / 1000);
+    reactAt = now;
+    if (reactTokens < 1) return false;
+    reactTokens--;
+    return true;
+  };
+  // A reaction over this page's driven body; false when it was not sent (not live, an older room, not an emoji, or
+  // over the bucket).
   const sendReaction = (emoji) => {
     if (!state.reactions || state.room !== "live" || !ws || ws.readyState !== WebSocket.OPEN || !BL.reactionPolicy.valid(emoji)) return false;
+    if (!reactToken()) return false;
     send(JSON.stringify({ t: "react", e: emoji }));
     for (const fn of reactSubscribers) fn(0, emoji);
     return true;
@@ -955,14 +979,17 @@
     reactSubscribers.add(fn);
     return () => reactSubscribers.delete(fn);
   };
-  // The raised hand in skin tone `tone` (0 to 5), up until it is lowered; false when the room cannot take it.
+  // The raised hand in skin tone `tone` (0 to 5), up until it is lowered; false, with nothing changed, when the room
+  // cannot take it now (not live, an older room, or over the bucket it shares with reactions).
   const sendHand = () => send(`{"t":"hand","on":${state.hand},"tone":${state.handTone}}`);
   const setHand = (on, tone = state.handTone) => {
     if (on && (!state.reactions || state.room !== "live")) return false;
     if (state.hand === on && (!on || state.handTone === tone)) return true;
+    const live = state.room === "live" && !!ws && ws.readyState === WebSocket.OPEN;
+    if (live && !reactToken()) return false;
     state.hand = on;
     state.handTone = BL.reactionPolicy.tone(tone) ? tone : 0;
-    if (state.room === "live" && ws && ws.readyState === WebSocket.OPEN) sendHand();
+    if (live) sendHand();
     emit();
     return true;
   };

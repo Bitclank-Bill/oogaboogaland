@@ -25899,6 +25899,28 @@ const chatClientChecks = async () => {
 // the mallet's fixed cell on the real players.js; and that the crowd banner, its chat notice and the Reaction sounds
 // toggle are gone. The module runs on a small DOM with fake audio that records every scheduled value, so silence is
 // measured, not assumed.
+// Reactions and the raised hand share one room bucket (worker/src/room.js reactToken); the page spends its mirror of it.
+const reactionWireChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) });
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["react-v1"], players: [] });
+  const sent = [];
+  for (let i = 0; i < 8; i++) sent.push(f.net.sendReaction("💯"));
+  const raised = f.net.setHand(true, 2), afterBurst = { hand: f.net.state.hand, tone: f.net.state.handTone, frames: f.sent.filter(m => m.t === "hand").length };
+  f.advance(2000);
+  const later = f.net.setHand(true, 2), up = { hand: f.net.state.hand, tone: f.net.state.handTone, frame: f.sent.filter(m => m.t === "hand").at(-1) };
+  // The room refused a change after all: its word on this page's own hand puts the page back.
+  message({ t: "hand", id: 71, on: false, tone: 0 });
+  const corrected = { hand: f.net.state.hand, tone: f.net.state.handTone };
+  f.net.dispose();
+  record("regression: reactions and the raised hand spend one bucket, a little short of the room's; a hand change over it is refused with nothing changed, never shown here and dropped there, and the room's word on this page's own hand puts it back",
+    sent.slice(0, 5).every(Boolean) && sent.slice(5).every(s => !s) && f.sent.filter(m => m.t === "react").length === 5
+      && raised === false && afterBurst.hand === false && afterBurst.frames === 0
+      && later === true && up.hand === true && up.tone === 2 && up.frame && up.frame.on === true && up.frame.tone === 2
+      && corrected.hand === false && corrected.tone === 0,
+    JSON.stringify({ sent, raised, afterBurst, later, up, corrected }));
+};
 const thumpChecks = async BL => {
   const source = await readFile(join(root, "src/js/thump.js"), "utf8");
   // Fake Web Audio: a node per create call, every AudioParam event kept with its time.
@@ -28528,6 +28550,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await chatClientChecks();
   await privatePadChecks();
   await thumpChecks(BL);
+  await reactionWireChecks(BL);
   await chalkboardClientChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);

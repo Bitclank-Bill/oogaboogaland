@@ -1,4 +1,4 @@
-// Reactions, on X Spaces' pattern: a paper card of ten emoji in two rows of five and, past a divider, the raised hand
+// Reactions, on X Spaces' pattern: a dark card of ten emoji in two rows of five and, past a divider, the raised hand
 // pinned beside them, under Online Oogas' list and under Ooga Chat's input (two bars, the same state). A tap shows that
 // emoji over the visitor's Ooga for everyone in their zone for a moment (`net.sendReaction`, drawn by remote-players.js);
 // the hand stays up over it, and pressed here, until it is tapped again (`net.setHand`). A long press on any of the ten
@@ -7,9 +7,10 @@
 // a heart colour (any heart in a slot shows and goes out in it; red until changed) and Reset. Choosing one puts it in
 // that slot, swapping with the slot that already held it so the ten stay distinct; choosing a heart sets the heart
 // colour too, and the slot keeps "a heart". The ten, the tone and the heart are this browser's (localStorage
-// `ooga-reactions`, `ooga-reactions-tone`, `ooga-reactions-heart`), read at load and checked against the shared policy. The bars show only where the room takes reactions (`net.state.reactions`), signed
-// in; the bucket mirrors the room's, so a tap the room would drop shows nothing here either. The picker's grid is built
-// on its first opening and kept for the page life. No frame work and no timers but a long press's own.
+// `ooga-reactions`, `ooga-reactions-tone`, `ooga-reactions-heart`), read at load and checked against the shared policy.
+// The bars show only where the room takes reactions (`net.state.reactions`), signed in. net.js spends one bucket,
+// mirroring the room's, for reactions and the hand alike, so a tap the room would drop shows nothing here either. The
+// picker's grid is built on its first opening and kept for the page life. No frame work and no timers but a long press's.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -20,8 +21,6 @@
   const HEART_NAMES = ["Red", "Pink", "Orange", "Yellow", "Green", "Blue", "Light blue", "Purple", "Brown", "Black", "Grey", "White"];
   const asSlot = (emoji) => HEARTS.includes(emoji) ? HEART : emoji;
   const HOLD_MS = 450, MOVE_PX = 10;
-  // The room's bucket (worker/src/protocol.js REACT_HZ, REACT_BURST).
-  const HZ = 3, BURST = 6;
   const GROUP_ICONS = { "Smileys & Emotion": "😀", "People & Body": "👋", "Animals & Nature": "🐻", "Food & Drink": "🍔", "Travel & Places": "✈️",
     "Activities": "⚽", "Objects": "💡", "Symbols": "💯", "Flags": "🏁" };
   const TONE_NAMES = ["No skin tone", "Light skin tone", "Medium-light skin tone", "Medium skin tone", "Medium-dark skin tone", "Dark skin tone"];
@@ -100,14 +99,7 @@
     paint();
   };
 
-  let tokens = BURST, at = 0;
-  const react = (i) => {
-    const now = performance.now();
-    tokens = Math.min(BURST, tokens + (now - at) * HZ / 1000);
-    at = now;
-    if (tokens < 1) return;
-    if (net.sendReaction(shown(slots[i]))) tokens--;
-  };
+  const react = (i) => net.sendReaction(shown(slots[i]));
 
   // A long press: a held pointer that stays put opens the picker and swallows the click that follows.
   let holdTimer = 0, holdSlot = -1, holdBar = null, holdX = 0, holdY = 0, swallow = false;
