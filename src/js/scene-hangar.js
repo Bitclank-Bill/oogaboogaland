@@ -32,8 +32,9 @@
   // How near the view comes to the walls' faces, m.
   const WALL_GAP = 0.6;
   // The Canvas 2D renderer paints faces far to near by their middles, and the shell's panels are big: one a few metres
-  // nearer than a board's middle would paint over it. So there the shell is sorted as if this much farther (`depthBias`,
-  // m), behind everything standing in the hall, and its backing farther still, behind the shell from any end of it.
+  // nearer than a board's middle would paint over it, and a floor tile's over a crate standing on it. So there the shell,
+  // its floor too, is sorted as if this much farther (`depthBias`, m), behind everything standing in the hall, and its
+  // backing farther still, behind the shell from any end of it.
   const SHELL_BIAS = 8, BACKING_BIAS = 48;
   const FOLLOW = { y: 0.9, min: 3, max: 7, pitch: [0.25, 0.8] };
   const FLY = { speed: 6, perDist: 0.4, climb: 4, yMax: HALL.h - 3 };
@@ -863,7 +864,7 @@
     const L = LAYOUT, s = { crew: [], dimmed: 1, ambient: 1 }, shell = HM.shell(), runway = HM.runway(), tunnel = HM.tunnel(), fixtures = HM.fixtures(), frames = HM.boardFrames();
     // The fixtures' glass and the vault's light slots, which an anomaly dims with the hall's lights.
     s.glass = [createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true }), createNode({ geometry: shell.slots, sightHidden: true })];
-    addChild(root, createNode({ geometry: shell.floor }), createNode({ geometry: shell.walls, depthBias: SHELL_BIAS }), createNode({ geometry: shell.front, depthBias: SHELL_BIAS }),
+    addChild(root, createNode({ geometry: shell.floor, depthBias: SHELL_BIAS }), createNode({ geometry: shell.walls, depthBias: SHELL_BIAS }), createNode({ geometry: shell.front, depthBias: SHELL_BIAS }),
       createNode({ geometry: shell.vault, depthBias: SHELL_BIAS }), s.glass[2], createNode({ geometry: shell.backing, depthBias: BACKING_BIAS }),
       createNode({ geometry: HM.landing() }), createNode({ geometry: runway.flat }),
       createNode({ geometry: tunnel.stone }),
