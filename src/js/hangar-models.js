@@ -160,6 +160,9 @@
   // The vault's ribs, how deep they hang under it; and its light slots, down the bays between them at `slots` across the
   // hall, `w` wide, stopping `end` short of the ribs, lit cool white.
   const VAULT = { rib: 1, slots: [-11, 0, 13], w: 0.5, end: 0.8, color: "#e4eefa" };
+  // The columns' knees under the crane's runway: how far each juts out along its 45° slope, the straight lip under its
+  // top, how far its two blue strips stand either side of its middle, and their colour.
+  const KNEE = { reach: 1, lip: 0.35, strips: 0.3, color: "#5fb8ff" };
   // One box in a wall's frame: from `u` `w` along it, from `y` `h` up it, from `back` to `front` toward the hall.
   const wallBox = (axis, face, dir, u, w, y, h, back, front, color) => {
     const t = front - back, c = face + dir * (back + front) / 2, uc = u + w / 2, yc = y + h / 2;
@@ -182,10 +185,33 @@
       }
     }
   };
-  const rib = (parts, face, dir, z, h) => {
+  // A column's knee, after the concept's angled columns: where it meets the crane's runway (`CRANE.railY`, the knee's top
+  // under the runway beam's foot), the column juts toward the hall in a 45° slope `KNEE.reach` out with a `lip` straight
+  // under the top, carrying the beam; two blue strips run up the slope (`KNEE.strips` either side of its middle), into
+  // `glow`. Above it the column runs on straight to the roof, clear of the crane's bridge as it passes.
+  // The height a knee runs over, its foot to its top.
+  const kneeSpan = () => {
+    const top = CRANE.railY - 0.7;
+    return { top, foot: top - KNEE.lip - KNEE.reach };
+  };
+  const knee = (parts, glow, face, dir, z) => {
+    const K = KNEE, S = LAYOUT.shell, x0 = face + dir * S.rib, back = face - dir * PANEL.d, { top, foot } = kneeSpan();
+    const pts = [[back, foot], [x0, foot], [x0 + dir * K.reach, foot + K.reach], [x0 + dir * K.reach, top], [back, top]];
+    parts.push(moved(prism(dir > 0 ? pts : pts.slice().reverse(), S.ribW, RIB.color), 0, 0, z));
+    parts.push(moved(prism((dir > 0 ? [[x0, top - 0.06], [x0 + dir * K.reach, top - 0.06], [x0 + dir * K.reach, top], [x0, top]] : [[x0, top], [x0 + dir * K.reach, top], [x0 + dir * K.reach, top - 0.06], [x0, top - 0.06]]), S.ribW + 0.04, RIB.edge), 0, 0, z));
+    const n = 0.035 / Math.SQRT2, inset = 0.12;
+    for (const s of [-1, 1]) {
+      glow.push(beam(x0 + dir * (inset + n), foot + inset - n, z + s * K.strips, x0 + dir * (K.reach - inset + n), foot + K.reach - inset - n, z + s * K.strips, 0.05, K.color, 1));
+    }
+  };
+  // A rib, from the floor to `h`, but for its knee's stretch (`gap`, [from, to]), which the knee fills; in lengths, so
+  // the Canvas 2D sort never paints one tall face over the knee.
+  const rib = (parts, face, dir, z, h, gap) => {
     const S = LAYOUT.shell, w = S.ribW;
-    parts.push(wallBox("x", face, dir, z - w / 2, w, 0, h, -PANEL.d, S.rib, RIB.color));
-    parts.push(wallBox("x", face, dir, z - w * 0.2, w * 0.4, 0, h, S.rib, S.rib + 0.04, RIB.edge));
+    for (const [y0, y1] of [[0, gap[0]], [gap[1], h]]) {
+      parts.push(wallBox("x", face, dir, z - w / 2, w, y0, y1 - y0, -PANEL.d, S.rib, RIB.color));
+      parts.push(wallBox("x", face, dir, z - w * 0.2, w * 0.4, y0, y1 - y0, S.rib, S.rib + 0.04, RIB.edge));
+    }
     parts.push(wallBox("x", face, dir, z - w / 2 - 0.2, w + 0.4, 0, 0.6, -PANEL.d, S.rib + 0.2, PANEL.dark));
   };
   const surround = (parts, axis, face, dir, u0, u1, top, deep) => {
@@ -301,7 +327,11 @@
     seam(back - PANEL.d, C.z0, 0, top); seam(C.z1, front + PANEL.d, 0, top); seam(C.z0, C.z1, 0, C.y0); seam(C.z0, C.z1, C.y1, top);
     for (let i = 1; i < leftWall.length; i++) if (!opening(leftWall[i])) walls.push(leftWall[i]);
     panels(walls, rand, "x", right, -1, B, back - PANEL.d, front + PANEL.d, 0, top);
-    for (const z of LAYOUT.gantries) rib(walls, left, 1, z, top), rib(walls, right, -1, z, top);
+    for (const z of LAYOUT.gantries) {
+      const k = kneeSpan(), gap = [k.foot, k.top];
+      rib(walls, left, 1, z, top, gap), rib(walls, right, -1, z, top, gap);
+      knee(walls, slots, left, 1, z), knee(walls, slots, right, -1, z);
+    }
     // The back wall round the tunnel's mouth, its surround's reveal running back to the tunnel's sleeve.
     const mw = t.r + 0.4, mt = t.y + t.r;
     panels(walls, rand, "z", back, 1, X0, left, -mw - 1, 0, top);
@@ -770,7 +800,7 @@
     railY: 14.2, x: [HALL.x0 + 2.65, HALL.x1 - 2.65], runway: [-32.4, 28.4], travel: [-16, 11.2], trolley: [-15, 20.5],
     ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.2, x: 17.5 }, far: { z: -30.2, x: -4 }, lift: 0.16,
     stands: [[17.5, 11.2], [-7.5, -1]], standTop: 0.3, carry: 5, spot: 1.5,
-    yellow: "#f2b630", yellowDk: "#c88a1c", rivet: "#9a6a12", navy: "#1e2c66", navyDk: "#131c45", dark: "#2b3038", rail: "#8a929c", bracket: "#4b525c",
+    yellow: "#f2b630", yellowDk: "#c88a1c", rivet: "#9a6a12", navy: "#1e2c66", navyDk: "#131c45", dark: "#2b3038", rail: "#8a929c",
     amber: "#ffb347", plate: "#ffd04a"
   };
   CRANE.cx = (CRANE.x[0] + CRANE.x[1]) / 2;
@@ -784,19 +814,14 @@
   // the warning beacons stand on the twin lamp boxes' bases, in the bridge's frame (`beacons`, the forklift's dome).
   const crane = cached(() => {
     const C = CRANE, H = (C.x[1] - C.x[0]) / 2, bridge = [], glow = [], trolleyGlow = [], hook = [], load = [], beacons = [];
-    // The runways along the side walls: an I-beam with its rail on top, on a bracket and knee brace off each wall rib it
-    // passes, with an end stop at each end; and down the left one the conductor bar.
+    // The runways along the side walls: an I-beam with its rail on top, sitting on the columns' knees (`knee`), with an
+    // end stop at each end; and down the left one the conductor bar.
     const runways = [], [r0, r1] = C.runway, len = r1 - r0, rz = (r0 + r1) / 2, ry = C.railY;
     for (const [x, s] of [[C.x[0], -1], [C.x[1], 1]]) {
       runways.push(box({ w: 0.36, h: 0.05, d: len, color: C.dark, offset: { x, y: ry - 0.105, z: rz } }));
       runways.push(box({ w: 0.06, h: 0.52, d: len, color: C.dark, offset: { x, y: ry - 0.39, z: rz } }));
       runways.push(box({ w: 0.36, h: 0.05, d: len, color: C.dark, offset: { x, y: ry - 0.675, z: rz } }));
       runways.push(box({ w: 0.07, h: 0.08, d: len, color: C.rail, offset: { x, y: ry - 0.04, z: rz } }));
-      const face = s < 0 ? HALL.x0 + LAYOUT.shell.face + LAYOUT.shell.rib : HALL.x1 - LAYOUT.shell.face - LAYOUT.shell.rib, out = x - s * 0.24;
-      for (const z of LAYOUT.gantries) {
-        runways.push(box({ w: Math.abs(out - face), h: 0.22, d: 0.7, color: C.bracket, offset: { x: (out + face) / 2, y: ry - 0.81, z } }));
-        runways.push(beam(face, ry - 1.9, z, out, ry - 0.92, z, 0.16, C.bracket));
-      }
       for (const [z, k] of [[r0 + 0.15, 1], [r1 - 0.15, -1]]) {
         runways.push(box({ w: 0.4, h: 0.5, d: 0.25, color: C.yellow, offset: { x, y: ry + 0.25, z } }));
         runways.push(box({ w: 0.3, h: 0.3, d: 0.12, color: INK, offset: { x, y: ry + 0.25, z: z + k * 0.18 } }));
