@@ -1861,8 +1861,15 @@
     }
     const [jx0, jy0, jx1] = T.jet, jc = (jx0 + jx1) / 2;
     if (full) glyph(S, "jet", jc, JETS.stats[0][1]);
-    write(S, "JET V2", jc, jy0 + 0.75, 0.34, GOLD, { bold: true, align: "center", max: 2.1 });
-    write(S, "COMING SOON", jc, jy0 + 0.4, 0.22, GOLD, { bold: true, align: "center", max: 2.1 });
+    // Jet 2.0 under way on its own branch: its commits, this week's and its newest's day; or, with no reading of it,
+    // coming soon.
+    const v2 = r && r.v2;
+    write(S, "JET V2", jc, jy0 + (v2 ? 0.98 : 0.75), 0.34, GOLD, { bold: true, align: "center", max: 2.1 });
+    if (v2) {
+      write(S, `${number(v2.commits)} commits`, jc, jy0 + 0.62, 0.22, GOLD, { bold: true, align: "center", max: 2.1 });
+      const last = v2.lastAt ? new Date(v2.lastAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "";
+      write(S, `+${v2.week >= 100 ? "100+" : v2.week} this week${last ? ` · last ${last}` : ""}`, jc, jy0 + 0.3, 0.14, GREEN, { align: "center", max: 2.2 });
+    } else write(S, "COMING SOON", jc, jy0 + 0.4, 0.22, GOLD, { bold: true, align: "center", max: 2.1 });
     write(S, `ⓘ  ${boardNote(r)}`, 0, F.footer, 0.13, "#b4c8ee", { align: "center", max: 8.4 });
   };
 
