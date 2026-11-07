@@ -1090,8 +1090,8 @@ body[data-active-scene="hub"] .home-link {
   overflow-wrap: anywhere;
 }
 
-/* A bitcoin's price in bananas and a banana's in sats, a line each, flush left. A stale price dims; the line says so
-   on hover. */
+/* A banana's price in dollars and sats, then a bitcoin's in bananas, a line each, flush left. A stale price dims; the
+   line says so on hover. */
 .banana-rates {
   display: grid;
   gap: 6px;
