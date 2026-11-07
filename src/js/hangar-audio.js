@@ -31,8 +31,8 @@
 // "!" or a "?", and the censor's bleep over each grawlix; muttered, yelled, screamed or whispered, each line at its own
 // pitch and pace. It is placed where she stands while she talks, her yells heard across the hall. Her brother's shouts
 // through the hangar's door from next door come on the same voice, lower and muffled (`kortik`). Her boots thud
-// where she walks (`boot`), a poke boinks (`poke`), a warning light beeps (`beep`), and her hammer clangs on the Jet
-// (`clang`).
+// where she walks (`boot`), a poke boinks (`poke`), a warning light beeps (`beep`, which a door keypad's keys
+// take at their own pitches), and her hammer clangs on the Jet (`clang`).
 //
 // The film show's projector (`projector(on)`) runs where it hangs: its motor's hum and whir and the gate's clatter,
 // spinning up as it starts and running down as it stops, wavering as an old motor does, with the lamp's buzz; each
@@ -1062,18 +1062,18 @@
       sis.boinkGain.gain.exponentialRampToValueAtTime(k, now + 0.012);
       sis.boinkGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
     };
-    // A warning light's beep on the Jet at (x, y, z).
-    const beep = (x, y, z) => {
+    // A warning light's beep on the Jet at (x, y, z), or a door keypad's at its own pitch (Hz) and length (s).
+    const beep = (x, y, z, hz = 1900, length = 0.1) => {
       if (!ready || muted) return;
       place(x, y, z, BOOT_REF);
       const now = ctx.currentTime, k = 0.22 * AT.level;
       sis.bootPan.pan.setValueAtTime(AT.pan, now);
       sis.boink.frequency.cancelScheduledValues(now);
-      sis.boink.frequency.setValueAtTime(1900, now);
+      sis.boink.frequency.setValueAtTime(hz, now);
       sis.boinkGain.gain.cancelScheduledValues(now);
       sis.boinkGain.gain.setValueAtTime(k, now);
-      sis.boinkGain.gain.setValueAtTime(k, now + 0.09);
-      sis.boinkGain.gain.linearRampToValueAtTime(0, now + 0.1);
+      sis.boinkGain.gain.setValueAtTime(k, now + length - 0.01);
+      sis.boinkGain.gain.linearRampToValueAtTime(0, now + length);
     };
     // The forklift's button pressed at (x, y, z): its click and thunk, then the buzz that says no, twice.
     const denied = (x, y, z) => {
