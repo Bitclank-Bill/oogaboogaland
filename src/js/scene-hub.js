@@ -10229,8 +10229,9 @@
       let clear = true;
       // NPC lab departures retain their coworker passing policy while the
       // body opens outside. A queued upright trunk cannot veto that handoff.
-      if (!clankerLabWorker(entry) && !clankerEntering(entry)) for (const other of clankers.list) {
-        if (other === entry || !other.active) continue;
+      // Passive NPCs pass through each other, so neither side of a passive pair reserves the doorway.
+      if (!entry.nonInteractive && !clankerLabWorker(entry) && !clankerEntering(entry)) for (const other of clankers.list) {
+        if (other === entry || !other.active || other.nonInteractive) continue;
         const q = other.root.position;
         const shape = clankerPassingPeer(entry, other) ? BL.agent.torso : BL.agent.footprint;
         if (shape.overlaps(entry, p.x, p.y, p.z, entry.root.rotation.y,

@@ -13041,18 +13041,20 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     const occupied = many.filter(e => e.sleep.slot >= 0), waiting = many.filter(e => e.sleep.slot < 0);
     const capped = occupied.length === 20 && new Set(occupied.map(e => e.sleep.slot)).size === 20
       && waiting.length === 2 && waiting.every(e => !visible(e));
-    // Space wakes a driven gorilla without releasing its bed. Its owner can
-    // wake and sleep again while it is driven; overflow must not take that bed.
-    const driven = occupied[0], drivenSlot = driven.sleep.slot;
-    const drove = C.possess(driven) && C.wake();
-    driven.owner.override = "chilling"; B.crew.refreshStates(true);
+    // Driving a sleeping companion builds the visitor a separate, awake gorilla
+    // (C.player, its npc the companion), while the companion itself sleeps on in
+    // its bed undisturbed; overflow must not take that bed, before or after release.
+    const driven = occupied[0], drivenSlot = driven.sleep.slot, drivenAt = { ...driven.root.position };
+    const drove = C.possess(driven), body = C.player;
     C.update(1 / 30); C.update(1 / 30);
-    const heldWhileDriven = drove && driven.controlled && driven.sleep.slot === drivenSlot
+    const heldWhileDriven = drove && !!body && body !== driven && body.npc === driven && body.controlled && !C.sleeping(body)
+      && !driven.controlled && C.sleeping(driven) && driven.sleep.slot === drivenSlot
+      && Math.hypot(driven.root.position.x - drivenAt.x, driven.root.position.z - drivenAt.z) < 0.001
       && waiting.every(e => e.sleep.slot < 0 && !visible(e));
-    driven.owner.override = "sleeping"; B.crew.refreshStates(true); C.release();
+    C.release();
     C.update(1 / 30);
     const reserved = many.filter(e => e.sleep.slot >= 0);
-    const uniqueAfterRelease = driven.sleep.slot === drivenSlot && reserved.length === 20
+    const uniqueAfterRelease = !C.player && !body.active && driven.sleep.slot === drivenSlot && reserved.length === 20
       && new Set(reserved.map(e => e.sleep.slot)).size === 20;
     const waking = occupied[0], held = occupied.slice(1).map(e => [e, e.sleep.slot]);
     waking.owner.override = "chilling"; B.crew.refreshStates(true);
@@ -13075,7 +13077,7 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     // authored exit toward its Ooga's pile slot, moving continuously (no
     // relocation). A later sleep still takes it to bed or out of sight at once.
     let chillSteps = 0, chillJump = 0, chillLeft = false, chillPile = false, chillAtPile = false, chillLounge = false, chillFrames = 0;
-    let chillLast = { ...worker.root.position };
+    let chillLast = { ...worker.root.position }, chillPilePoint = null;
     worker.owner.override = "chilling"; B.crew.refreshStates(true);
     // Bounded: up to 60 s of simulation, stopping once it has reached its lounge leg.
     for (; chillFrames < 1800 && !chillLounge; chillFrames++) {
@@ -13084,12 +13086,59 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
       chillJump = Math.max(chillJump, step); if (step > 1e-4) chillSteps++;
       chillLeft ||= worker.phase === "leave" || worker.route === "pile";
       chillPile ||= worker.route === "pile";
-      chillAtPile ||= worker.route === "pile" && Math.hypot(worker.goalX - q.x, worker.goalZ - q.z) <= 0.5;
+      if (!chillAtPile && worker.route === "pile" && Math.hypot(worker.goalX - q.x, worker.goalZ - q.z) <= 0.5) {
+        chillAtPile = true; chillPilePoint = { x: worker.goalX, z: worker.goalZ };
+      }
       chillLounge = chillAtPile && worker.phase === "chill";
       chillLast = { ...q };
     }
     const chillWalk = worker.nonInteractive && worker.mode === "chilling" && worker.active && worker.root.visible
       && chillLeft && chillPile && chillAtPile && chillLounge && chillSteps > 0 && chillJump < 0.5;
+    // Regression: reaching the pile and flipping to the chill phase is not leaving it. Follow each passive gorilla,
+    // on its real rig, terrain and movement controllers, from its Ooga's clank-to-chill transition through the pile
+    // slot, out of the pile's ring and on until it settles at a lounge, walking all the way (no relocation or stall
+    // recovery). The away argument is how far from its pile slot counts as having left the pile.
+    // pile: a slot already reached (the walk above stopped there), else it is recorded on arrival.
+    const followChill = (list, frames, pile = null, away = 3) => {
+      // stall: the last state before a stall recovery first relocated it, for a blocked walk's diagnosis.
+      const snap = e => ({ phase: e.phase, route: e.route, lab: e.motion.lab, item: e.lab.item, stage: e.lab.stage, parked: e.parked,
+        fromSite: e.fromSite, site: e.site, x: +e.root.position.x.toFixed(2), y: +e.root.position.y.toFixed(2), z: +e.root.position.z.toFixed(2),
+        goalX: +e.goalX.toFixed(2), goalZ: +e.goalZ.toFixed(2), speed: +e.speed.toFixed(2), blocked: +e.blocked.toFixed(2),
+        stuck: +e.stuck.time.toFixed(2), recover: +e.recover.toFixed(2), climbing: e.climb.active, jumping: e.jump.active, footprint: e.footprintMode,
+        goalY: +e.goalY.toFixed(2), roof: e.loungeRoof, climb: e.climb.active ? { descending: e.climb.descending, free: e.climb.free, hold: e.climb.holdPose,
+          mount: e.climb.mountPending, wait: e.climb.waitRelease, handoff: e.climb.handoffDirection, claim: e.climb.claimPending, crest: e.climb.crestPending,
+          search: e.climb.searchPending, progress: +(e.climb.progress || 0).toFixed(2), length: +(e.climb.length || 0).toFixed(2), opening: e.climb.openingExit } : null });
+      const track = list.map(e => ({ e, pile, pileAt: pile ? 0 : -1, leftAt: -1, loungeAt: -1, maxStep: 0, prev: null, stall: null, trace: [],
+        last: { x: e.root.position.x, z: e.root.position.z }, recoveries: e.stuck.recoveries }));
+      let f = 0;
+      for (; f < frames && track.some(t => t.loungeAt < 0); f++) {
+        C.update(1 / 30);
+        for (const t of track) {
+          const e = t.e, q = e.root.position;
+          t.maxStep = Math.max(t.maxStep, Math.hypot(q.x - t.last.x, q.z - t.last.z)); t.last.x = q.x; t.last.z = q.z;
+          if (!t.pile && e.route === "pile" && Math.hypot(e.goalX - q.x, e.goalZ - q.z) <= 0.5) { t.pile = { x: e.goalX, z: e.goalZ }; t.pileAt = f; }
+          if (t.pile && t.leftAt < 0 && Math.hypot(q.x - t.pile.x, q.z - t.pile.z) > away) t.leftAt = f;
+          if (t.leftAt >= 0 && t.loungeAt < 0 && e.phase === "chill" && e.lounge && e.roam.arrived) t.loungeAt = f;
+          if (!t.stall && e.stuck.recoveries !== t.recoveries) t.stall = { frame: f, ...t.prev };
+          if (!t.stall) t.prev = snap(e);
+          // Until the pile, a sample every third of a second (at most 60): where a blocked walk dwells and why.
+          if (t.pileAt < 0 && !t.stall && f % 10 === 0 && t.trace.length < 60) t.trace.push([f, +q.x.toFixed(2), +q.z.toFixed(2), +e.goalX.toFixed(2),
+            +e.goalZ.toFixed(2), +e.speed.toFixed(2), +e.stuck.time.toFixed(2), e.stuck.escapeLeft > 0 ? 1 : 0, +e.blocked.toFixed(2), e.route]);
+        }
+      }
+      return track.map(t => {
+        const e = t.e, q = e.root.position;
+        return { name: e.owner.traits.name, ok: t.pileAt >= 0 && t.leftAt >= t.pileAt && t.loungeAt >= t.leftAt
+          && t.maxStep < 0.5 && e.stuck.recoveries === t.recoveries && e.mode === "chilling" && e.nonInteractive,
+          pileAt: t.pileAt, leftAt: t.leftAt, loungeAt: t.loungeAt, frames: f, maxStep: +t.maxStep.toFixed(3),
+          recoveries: e.stuck.recoveries - t.recoveries, reason: e.stuck.reason, stall: t.stall, trace: t.loungeAt < 0 ? t.trace : undefined, pile: t.pile,
+          at: { x: +q.x.toFixed(2), y: +q.y.toFixed(2), z: +q.z.toFixed(2) }, fromPile: t.pile ? +Math.hypot(q.x - t.pile.x, q.z - t.pile.z).toFixed(2) : null,
+          goal: { x: +e.goalX.toFixed(2), z: +e.goalZ.toFixed(2) }, phase: e.phase, route: e.route, lounge: e.lounge,
+          rest: +e.rest.toFixed(2), failedChoices: e.roam.failedChoices, detour: e.roam.detour, roam: [e.roam.index, e.roam.count],
+          progressTime: +e.roam.progressTime.toFixed(2), blocked: +e.blocked.toFixed(2), climbing: e.climb.active, jumping: e.jump.active };
+      });
+    };
+    const workerLounge = followChill([worker], 3600, chillPilePoint)[0];
     worker.owner.override = "sleeping"; B.crew.refreshStates(true); C.update(1 / 30);
     const chillInterrupted = worker.mode === "sleeping" && worker.sleep.slot >= 0 || !worker.root.visible;
     reset(sleepers);
@@ -13102,8 +13151,11 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     // transfer stage resolves into the reserved bed on the next update, and
     // possession then keeps that settled sleeper in place.
     const placedDirectly = beamEntry.sleep.stage === "asleep" && heldSlot >= 0 && noBeam();
+    // Possession drives a separate awake body (C.player); the companion sleeps on, undisplaced, in its bed.
     const selected = C.possess(beamEntry); C.update(0.25);
-    const beamPossession = placedDirectly && selected && beamEntry.controlled && C.sleeping(beamEntry) && beamEntry.sleep.slot === heldSlot
+    const beamBody = C.player;
+    const beamPossession = placedDirectly && selected && !!beamBody && beamBody.npc === beamEntry && beamBody.controlled
+      && !C.sleeping(beamBody) && !beamEntry.controlled && C.sleeping(beamEntry) && beamEntry.sleep.slot === heldSlot
       && Math.hypot(beamEntry.root.position.x - before.x, beamEntry.root.position.z - before.z) < 0.001 && noBeam() && beamEntry.gorilla.form === "ape" && !beamEntry.root.matrixNative;
     C.release(); reset(sleepers);
     beamEntry.sleep.stage = "beamIn"; beamEntry.sleep.beamTime = 0.02;
@@ -13146,7 +13198,30 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     }
     const queuedArrival = queued.every(e => e.sleep.stage === "asleep" && e.sleep.slot >= 0 && e.gorilla.form === "ape" && !e.root.matrixNative);
     const boundedRecovery = settledAtOnce && maxBeams === 0 && queuedArrival && noBeam();
+    // Run after the sleep fixtures above, which own their entries' states.
+    // The same transition for several owners at once, each first settled at work inside a real cave: a crowd sharing
+    // one cave (its Oogas' current site), then one spread one to a cave round the pile.
+    const sites = B.crew.workSites.length;
+    const crowdChill = (crowd, spread) => {
+      C.setAway(true); C.update(1 / 30);
+      for (const e of entries) e.owner.override = "away";
+      for (const e of crowd) e.owner.override = "working";
+      B.crew.refreshStates(true);
+      if (spread) crowd.forEach((e, i) => { e.owner.work.site = i % sites; });
+      C.setAway(false);
+      let settle = 0;
+      for (; settle < 2700 && !crowd.every(e => e.phase === "work"); settle++) C.update(1 / 30);
+      const atWork = crowd.filter(e => e.phase === "work");
+      for (const e of atWork) e.owner.override = "chilling";
+      B.crew.refreshStates(true);
+      return { atWork: atWork.length, caves: [...new Set(atWork.map(e => e.site))], settle, walks: followChill(atWork, 3600) };
+    };
+    const sharedCave = crowdChill(entries.slice(3, 9), false), spreadCaves = crowdChill(entries.slice(9, 9 + sites), true);
+    const chillToLounge = workerLounge.ok && sharedCave.atWork >= 4 && sharedCave.caves.length === 1
+      && spreadCaves.atWork >= sites - 1 && spreadCaves.caves.length >= sites - 1
+      && sharedCave.walks.every(t => t.ok) && spreadCaves.walks.every(t => t.ok);
     return { chillWalk, chillInterrupted, chillSteps, chillJump, chillPile, chillAtPile, chillLounge, chillFrames,
+      chillToLounge, workerLounge, sharedCave, spreadCaves,
       boundedRecovery, maxBeams, heldQueue, settledAtOnce, placedDirectly, queuedArrival, beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
       population: [worker, chiller, away, ...sleepers].map(e => ({ state: e.owner.state, mode: e.mode, active: e.active, visible: e.root.visible, bed: e.sleep.slot })) };
   })()`);
@@ -13154,6 +13229,8 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
   record("gorilla population: island game mode hides companions and its exit immediately restores current working, chilling and sleeping gorillas; repeated exit keeps their beds", r.hidden && r.restored && r.stableExit, JSON.stringify(r));
   record("gorilla population: a passive working gorilla switched to chilling walks out by its authored exit, reaches its Ooga's pile slot and only then heads for a lounge, without relocating, and a later sleep still takes it at once",
     r.chillWalk && r.chillInterrupted, JSON.stringify(r));
+  record("gorilla population: after clanking to chilling, passive gorillas sharing one cave and spread over every cave leave their Ooga's pile slot and walk on to settle at a lounge, on their real rigs and terrain, with no relocation or stall recovery",
+    r.chillToLounge, JSON.stringify({ worker: r.workerLounge, sharedCave: r.sharedCave, spreadCaves: r.spreadCaves }));
   record("gorilla sleep beam: a passive companion caught in either legacy transfer stage settles straight into its reserved bed with no glyphs; possession keeps it there undisplaced, and remote takeover or population reset releases it", r.beamPossession && r.beamArrivalPossession && r.beamRemote && r.beamReset && r.beamSuspend, JSON.stringify(r));
   record("gorilla sleep recovery: ten passive sleepers stalled mid-walk on real rigs are placed into their reserved beds on the next update, with no queue and no legacy beam", r.boundedRecovery, JSON.stringify(r));
 } };
