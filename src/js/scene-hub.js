@@ -1926,7 +1926,7 @@
       meadowPalms.push(entry); chosen.b.owner = entry.owner;
     }
     const { plan } = chosen;
-    hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock"), anchors: [chosen.a.owner, chosen.b.owner] });
+    hammock = H.create({ plan, root, solids, ra: chosen.ta.r, rb: chosen.tb.r, seed: fnv1a("hammock"), anchors: [chosen.a.owner, chosen.b.owner], bumpSlots: HAMMOCK_SLOTS });
     hammock.anchors = [chosen.a.owner, chosen.b.owner];
     // Three circles along the bed's swing (its `envelope`), each covering a third of its length and its whole width.
     const { half, across } = plan.envelope, cover = Math.hypot(half / 3, across);
@@ -1971,6 +1971,92 @@
     if (crew.standPlayer(cave)) hud.toast("Someone got there first, and the hammock is full");
     return true;
   };
+  // Walking into the hammock rocks it (hub-hammock.js `bump`), and so does a banana through it. A walker's speed comes from
+  // successive positions: the visitor's own every frame, each other player's whenever their synced pose changes (the room
+  // sends 15 a second). Slot 0 is the visitor; the rest are fixed tables over the room's players, so nothing allocates.
+  // A burst of the rifle is a hit however short (hub-hammock.js `hit`; a held trigger tips by itself at about 20 rounds), and the fourth
+  // hit from anyone within a minute of the last tips out whoever is lying in it. A fallen Ooga lands HAMMOCK_LAND metres beyond the stand-up spot (the
+  // first clear one), off the way in.
+  const HAMMOCK_LAND = [1.2, 0.8], HAMMOCK_SLOTS = 1 + BL.remotePlayers.MAX;
+  const hamRemoteId = new Float64Array(HAMMOCK_SLOTS), hamRemoteSeen = new Int32Array(HAMMOCK_SLOTS);
+  const hamRemoteX = new Float64Array(HAMMOCK_SLOTS), hamRemoteZ = new Float64Array(HAMMOCK_SLOTS), hamRemoteT = new Float64Array(HAMMOCK_SLOTS);
+  let hamLocalHave = false, hamLocalX = 0, hamLocalZ = 0, hamFrame = 0, hamCueDir = 0, unshotHammock = null;
+  const hamRemote = (rec) => {
+    if (!rec.body || rec.bodyKind === "gorilla" || rec.rest || !remoteShown(rec)) return;
+    let slot = -1, free = -1;
+    for (let i = 1; i < HAMMOCK_SLOTS; i++) {
+      if (hamRemoteId[i] === rec.id) { slot = i; break; }
+      if (free < 0 && !hamRemoteId[i]) free = i;
+    }
+    const fresh = slot < 0;
+    if (fresh) { if (free < 0) return; slot = free; hamRemoteId[slot] = rec.id; }
+    hamRemoteSeen[slot] = hamFrame;
+    // First seen (or just up from the hammock), standing still: one already against the bed has to step clear before it can push.
+    if (fresh) hammock.bump(slot, rec.x, rec.y, rec.z, 0, 0);
+    else if (rec.x !== hamRemoteX[slot] || rec.z !== hamRemoteZ[slot]) {
+      const dt = now - hamRemoteT[slot];
+      if (dt > 0 && dt < 0.5) hammock.bump(slot, rec.x, rec.y, rec.z, (rec.x - hamRemoteX[slot]) / dt, (rec.z - hamRemoteZ[slot]) / dt);
+    } else return;
+    hamRemoteX[slot] = rec.x; hamRemoteZ[slot] = rec.z; hamRemoteT[slot] = now;
+  };
+  const rockHammock = (dt) => {
+    const player = pilot.player;
+    if (gameMode) { hamLocalHave = false; return; }
+    if (player && !player.camp.seat && player.root.visible && dt > 0) {
+      const p = player.root.position;
+      if (hamLocalHave && hammock.bump(0, p.x, p.y - player.baseY, p.z, (p.x - hamLocalX) / dt, (p.z - hamLocalZ) / dt) > 0) crew.pushPose(player);
+      hamLocalX = p.x; hamLocalZ = p.z; hamLocalHave = true;
+    } else hamLocalHave = false;
+    hamFrame = (hamFrame + 1) | 0;
+    BL.net.remotes.forEach(hamRemote);
+    for (let i = 1; i < HAMMOCK_SLOTS; i++) if (hamRemoteId[i] && hamRemoteSeen[i] !== hamFrame) hamRemoteId[i] = 0;
+    // Lying in it, the visitor rocks it with A and D (hub-hammock.js `pump`), while nothing else is going on with the seat.
+    const seat = hammock.seats[0];
+    if (player && seat.sitter === player && !seat.entry && !seat.exit && !seat.fall && dt > 0) {
+      const rock = pilot.controls.axes.x, dir = rock > 0.5 ? 1 : rock < -0.5 ? -1 : rock > -0.2 && rock < 0.2 ? 0 : hamCueDir;
+      hammock.pump(rock, dt);
+      // A fresh press of A or D (or the stick pushed sideways) shows its arrow, so the rock is seen to register.
+      if (dir !== hamCueDir && dir !== 0) hud.rockCue(dir);
+      hamCueDir = dir;
+    } else hamCueDir = 0;
+    if (hammock.spilling) tipOutOfHammock();
+  };
+  // Swung hard enough, the bed tips its occupant out: only the visitor's own Ooga on this page. It rolls out over the edge on the side the bed
+  // was last knocked toward (hub-hammock.js `tip`, `fallSide`), away from the push or the gunfire, lies a moment and gets up there: past the
+  // bed's whole swing on that side (`plan.swing`, HAMMOCK_LAND metres past the stand-up distance from it, the first clear, level one), else on the other side,
+  // else it is stood up at once as before. Other pages see it leave the seat at once and follow its body through the ordinary pose sync; a bed
+  // held by another page's pose is never emptied from here.
+  const tipOutOfHammock = () => {
+    const seat = hammock.seats[0], cave = seat.sitter;
+    if (!cave || cave !== pilot.player || seat.fall) return;
+    const plan = hammock.plan, first = hammock.fallSide || plan.side, out = plan.swing.across + BL.hubHammock.STAND;
+    for (let s = first, tries = 0; tries < 2; s = -s, tries++) for (let i = 0; i < HAMMOCK_LAND.length; i++) {
+      const x = plan.x + plan.nx * s * (out + HAMMOCK_LAND[i]), z = plan.z + plan.nz * s * (out + HAMMOCK_LAND[i]), floor = plan.surfaceAt(x, z);
+      if (Math.abs(floor - plan.ground) > 0.25 || !walkable(x, z, x, z, floor, cave.bodyHeight, cave)) continue;
+      const target = { x, z, floor, y: floor + cave.baseY, ry: Math.atan2(plan.nx * s, plan.nz * s), side: s };
+      if (!hammock.tip(cave, target, () => landTipped(cave, target))) return;
+      fx.say(cave, "WHOA!", 1.5);
+      hud.toast("Tipped out of the hammock!");
+      return;
+    }
+    vacateHammock();
+    if (cave.camp.seat) return;
+    fx.say(cave, "WHOA!", 1.5);
+    hud.toast("Tipped out of the hammock!");
+  };
+  // The roll is over: up on its feet where it landed, the seat released through the crew's usual stand-up (or let go, as `vacateHammock` does).
+  const landTipped = (cave, target) => {
+    if (cave.camp.seat && !crew.standPlayer(cave)) vacateHammock();
+    const p = cave.root.position;
+    p.x = target.x; p.y = target.y; p.z = target.z;
+    cave.root.rotation.y = target.ry;
+  };
+  // Another player's banana, from the room's shot relay: drawn elsewhere, and here it rocks the hammock if it crosses it.
+  const hammockShotHeard = (id, a) => {
+    if (hammock && !gameMode && hammock.crosses(a[0], a[1], a[2], a[3], a[4], a[5])) hammock.hit(a[0], a[2], a[3], a[5]);
+  };
+  const listenHammockShots = () => { if (!unshotHammock) unshotHammock = BL.net.subscribeShots(hammockShotHeard); };
+  const muteHammockShots = () => { if (unshotHammock) { unshotHammock(); unshotHammock = null; } };
   // The sea far below and the islands on it, standing well out past the clouds.
   const SEA_Y = -70;
   const raiseIslets = () => {
@@ -4980,6 +5066,8 @@
       && mirrorActorSegmentClear(fromX, y, fromZ, toX, y, toZ, height, actor);
   };
   const walkable = (fromX, fromZ, toX, toZ, y, height = 1.5, actor = pilot?.player) => {
+    // An occupied hammock is a wall to walk into, not a cloth to cross (an empty one is stepped onto): whoever is inside it already may leave.
+    if (hammock && hammock.blocks(toX, y, toZ, PLAYER_RADIUS) && !hammock.blocks(fromX, y, fromZ, PLAYER_RADIUS)) return false;
     if (Math.hypot(toX, toZ) > worldBound() || crossesSealedCave(fromX, fromZ, toX, toZ, y)) return false;
     const floor = playerSupportAt(toX, toZ, y, y, actor), feet = Math.max(y, floor);
     if (floor - y > STEP_MAX && floor !== characterClankerSupportAt(toX, toZ, y, STEP_MAX, actor)) return false;
@@ -5697,14 +5785,47 @@
     if (!screen) { hud.tooltip.hide(); return; }
     hud.tooltip.show(owner.sequence.label, screen.x, screen.y, null, false, true);
   };
+  // The nearest live remote player (remote-players.js `pick`) along a sight line, unoccluded, or Infinity. Only the
+  // remote pool's bodies are tested, never the visitor's own: hover and crosshair feedback read it, nothing else.
+  const LIVE_HIT = { node: null, owner: null, type: "none", distance: Infinity, x: 0, y: 0, z: 0 };
+  const liveClear = (x, y, z, toX, toY, toZ) => !clankerFireReachable || clankerFireReachable(x, y, z, toX, toY, toZ, null, true);
+  const liveTarget = (ox, oy, oz, dx, dy, dz, maxDistance) =>
+    remotes && remotes.pick(LIVE_HIT, ox, oy, oz, dx, dy, dz, maxDistance, liveClear) ? LIVE_HIT.distance : Infinity;
+  // An NPC ghost track (npc-ghosts.js) under the cursor shows its name and online dot, an Ooga's or a gorilla's. Its glassy
+  // twin is not in the outline registry, so its name goes by the overlay's exact test (`characterUiOccluded`), and the
+  // hover is checked again every frame, as the pool block's is: the ghost moves under a still pointer, and a live player
+  // standing in front of it (often its own driver, who has a nameplate of their own) takes the pointer from it.
+  const GHOST_POINTER = { x: 0, y: 0 }, GHOST_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
+  const GHOST_HIT = { node: null, owner: null, distance: Infinity, x: 0, y: 0, z: 0 };
+  let ghostHovered = null, ghostHoverText = "";
+  const ghostOf = (owner) => (owner.kind === "caveman" || owner.kind === "clanker") && owner.cave.ghostTrack ? owner.cave : null;
+  const showGhostTooltip = () => {
+    const actor = ghostHovered, ray = GHOST_RAY, hit = GHOST_HIT;
+    renderer.ray(GHOST_POINTER.x, GHOST_POINTER.y, camera, ray);
+    poolBlockHoverIgnore = hooks.hoverIgnore();
+    if (!actor.ghostTrack || !input.weaponTargets.ray(hit, ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz,
+      camera.far, null, poolBlockHoverTarget, true) || hit.owner.cave !== actor
+      || liveTarget(ray.ox, ray.oy, ray.oz, ray.dx, ray.dy, ray.dz, hit.distance) < hit.distance
+      || !guideSegmentClear(ray.ox, ray.oy, ray.oz, hit.x, hit.y, hit.z)
+      || !mempoolIsland.sightClear(ray.ox, ray.oy, ray.oz, hit.x, hit.y, hit.z)) {
+      ghostHovered = null; ghostHoverText = ""; hud.tooltip.hide(); return;
+    }
+    hud.tooltip.show(ghostHoverText, GHOST_POINTER.x, GHOST_POINTER.y, actor, false);
+  };
   const showHoverTooltip = (hit, p) => {
     if (hit && (hit.owner.kind === "cave" || hit.owner.kind === "cave-sign")) BL.deferred.prefetchScene(hit.owner.slot.scene);
     pileHovered = hit?.owner.kind === "pile";
     if (!pileHovered) hud.setPileValueVisible(false);
     poolBlockHovered = hit?.owner.kind === "poolblock" ? hit.owner : null;
+    const ghost = hit ? ghostOf(hit.owner) : null;
+    if (ghost !== ghostHovered) ghostHoverText = ghost ? tooltipFor(hit) : "";
+    ghostHovered = ghost;
     if (poolBlockHovered) {
       POOL_BLOCK_POINTER.x = p.x; POOL_BLOCK_POINTER.y = p.y;
       showPoolBlockTooltip();
+    } else if (ghostHovered) {
+      GHOST_POINTER.x = p.x; GHOST_POINTER.y = p.y;
+      showGhostTooltip();
     } else if (pileHovered) showPileTooltip();
     else if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave, hit.owner.kind === "clanker");
     else hud.tooltip.hide();
@@ -6546,7 +6667,9 @@
         hud.hint(COARSE ? "Tap DROP & ROLL! to put the fire out" : "Press Space to drop and roll until the fire goes out");
         hud.setAct("DROP & ROLL!");
       } else if (action === STAND_ACTION) {
-        hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
+        const inHammock = pilot.player?.camp.seat?.kind === "hammock";
+        hud.hint(inHammock ? (COARSE ? "Stick sideways rocks the hammock · forward, back or STAND UP! to get up" : "A and D rock the hammock · W, S or Space to get up")
+          : COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
         hud.setAct("STAND UP!");
       } else if (action.kind === "bench") {
         hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
@@ -8791,6 +8914,7 @@
       hammock.settle(BL.net.remotes, BL.net.state.selfId, remoteShown, moveHammockSeat, leaveFullHammock);
       // Sample once so the CPU suspension ends and GPU palm/wrap sway share a clock.
       if (!gameMode) RENDER_OPTS.windTime = performance.now() * 0.001 % 3600;
+      rockHammock(dt);
       hammock.update(dt, elapsed, gameMode, null);
     } else if (!gameMode) RENDER_OPTS.windTime = NaN;
     for (let i = 0; i < crew.list.length; i++) {
@@ -11256,6 +11380,13 @@
       bananaGuides.reserve(objectGuides.result, null);
     }
   };
+  // A separate body is a character in the outline registry for exactly as long as it exists (object-guides.js `body`):
+  // the covered view asks it whether the driven body is in sight. One made before the registry is passed to its create.
+  const guideBody = (body, on) => {
+    if (!objectGuides || !objectGuides.body(body, on) || !sightGuides) return;
+    sightGuides.reserve(objectGuides.result, null);
+    bananaGuides.reserve(objectGuides.result, null);
+  };
   let uiGuideObjects = null, uiGuidesReady = false, preparingGuideActor = null;
   const collectViewObjects = () => {
     const player = controlledGuideActor(), p = player ? player.root.position : camera.target;
@@ -11266,6 +11397,8 @@
     // A speaker the outline registry walks past (Tess, who moves every frame) is left to the overlay's own test.
     if (cave.root.sightHidden) return false;
     if (RENDER_OPTS.birdsEyeCutaway) return cave.root.position.y - cave.baseY >= cutawayHeightAt(cave.root.position.x, cave.root.position.z);
+    // So is an NPC ghost track: it is drawn in twin geometry the registry never baked, which would read as not shown.
+    if (cave.ghostTrack) return false;
     // Input-time tooltips may run before this frame's transforms are rendered.
     // Use rock certificates only during the overlay, after updating providers;
     // all other callers keep the exact visibility query.
@@ -11361,6 +11494,7 @@
       return;
     }
     if (poolBlockHovered) showPoolBlockTooltip();
+    else if (ghostHovered) showGhostTooltip();
     else if (pileHovered) showPileTooltip();
     // World-anchored sleeping marks share the guide visibility cadence; their particles still move every frame.
     advanceSleepSight(dt);
@@ -11629,6 +11763,7 @@
     if (wpGroup) { wpGroup.visible = false; wpGroup.position.y = wpGround - WP.sink; }
     clankerPlay.dispose();
     remotes.dispose();
+    muteHammockShots();
     npcSync.dispose();
     npcStatusBeams?.clear();
     pilot.suspend();
@@ -11646,7 +11781,9 @@
     CLANKER_HIT.node = CLANKER_HIT.owner = POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
     DEBUG_MOVE_HIT.node = DEBUG_MOVE_HIT.owner = DEBUG_GORILLA_HIT.node = DEBUG_GORILLA_HIT.owner = null;
     viewPoseActor = grabSupportEntry = clankerSupportActor = clankerPassingEntry = preparingGuideActor = null;
-    poolBlockHovered = poolBlockHoverIgnore = null;
+    poolBlockHovered = poolBlockHoverIgnore = ghostHovered = null;
+    ghostHoverText = "";
+    GHOST_HIT.node = GHOST_HIT.owner = LIVE_HIT.node = LIVE_HIT.owner = null;
     glCanvas = overlayCanvas = null;
     heldDebug = hubScene.debug;
     heldHub = true;
@@ -11659,6 +11796,7 @@
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     glCanvas = ctx.canvas; overlayCanvas = ctx.overlay;
     heldHub = false;
+    listenHammockShots();
     factoryDeparting = bifrostDeparting = factoryHeld = entering = false;
     Object.assign(factoryWalk, { phase: 0, cave: null, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false });
     world.islandKeep = null;
@@ -12191,6 +12329,7 @@
       && solids.segmentClear(x, y, z, toX, toY, toZ, precise ? 1e-6 : 0.01, precise ? 2e-6 : 0.02, ignoreNode)
       && matrixGateSegmentClear(x, y, z, toX, toY, toZ, precise ? 1e-6 : 0.01, precise ? 2e-6 : 0.02);
     clankerFireReachable = shared.fireReachable;
+    shared.liveTarget = liveTarget;
     shared.workShotClear = (x, y, z, toX, toY, toZ) => actionReachable(x, y, z, toX, toY, toZ, 0.01)
       && solids.segmentClear(x, y, z, toX, toY, toZ, 0.01, 0.02)
       && matrixGateSegmentClear(x, y, z, toX, toY, toZ, 0.01, 0.02, true);
@@ -12218,7 +12357,8 @@
     mark("rockGuides");
     pile = shared.pile = pileMod.create(shared);
     pileHovered = false;
-    poolBlockHovered = poolBlockHoverIgnore = null;
+    poolBlockHovered = poolBlockHoverIgnore = ghostHovered = null;
+    ghostHoverText = "";
     POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
     pileTipValue = "";
     pileTopY = BL.scene.boundsOf(pile.core.geometry).max[1];
@@ -12374,8 +12514,9 @@
       const height = body.traits.height * 2, verts = Math.max(body.headOpen.verts.length, body.headClosed.verts.length);
       const portals = [factoryMouth, bcaMouth, bifrostIsle];
       if (on) {
-        // Built after the outline registry, like a remote rig: its UI uses the overlay's exact visibility test, and
-        // a registry refresh never takes it for scenery.
+        // Its root is sightHidden, like a remote rig's: its UI uses the overlay's exact visibility test, and no scenery
+        // pass or registry refresh takes it for scenery. The outline registry holds it as a character instead (guideBody);
+        // the sign-in claim can build it before that registry exists, which then takes it at creation.
         body.root.sightHidden = body.sleepWeapons.sightHidden = true;
         if (body.pet) body.pet.node.sightHidden = true;
         body.root.matrixLiving = true;
@@ -12384,8 +12525,11 @@
         crew?.setJetpackOwnership(body, true, hubModels.jetpack(), hubModels.jetFlame());
         trackMirrorObject(body.root, height, verts);
         for (const place of portals) place?.phase.body.track(body.root, height, verts);
+        guideBody(body, true);
         npcGhosts?.set(body.npc, true);
       } else {
+        // Forgotten while it still stands in the scene: crew.js detaches it only after this.
+        guideBody(body, false);
         untrackMirrorObject(body.root);
         for (const place of portals) place?.phase.body.untrack(body.root);
         fx.hush(body);
@@ -12440,7 +12584,12 @@
       npcSync.recordHit(cave);
       return workHit(cave);
     };
-    shared.onShot = (cave, from, to) => npcSync.recordShot(cave, from, to);
+    shared.onShot = (cave, from, to) => {
+      npcSync.recordShot(cave, from, to);
+      // The visitor's own banana through the hammock rocks it; the crew's and work shots never do.
+      if (hammock && !gameMode && cave === pilot.player && hammock.crosses(from.x, from.y, from.z, to.x, to.y, to.z)) hammock.hit(from.x, from.z, to.x, to.z);
+    };
+    listenHammockShots();
     BL.net.setHub(true);
     for (const cave of crew.list) crew.setJetpackOwnership(cave, true, hubModels.jetpack(), hubModels.jetFlame());
     mirrorCave.body = BL.mirrorBody.create(mirrorCave.node, crew.cavemen);
@@ -12566,9 +12715,11 @@
           body.netBody = body.npc.netBody;
           body.netMotion = new Float64Array(6);
           registerClanker(body);
+          guideBody(body, true);
           npcGhosts?.set(body.npc, true);
           return;
         }
+        guideBody(body, false);
         npcGhosts?.set(body.npc, false);
         fx.hush(body);
         const at = clankerCaptures.indexOf(body.capture);
@@ -12588,7 +12739,7 @@
     }
     resetRageThrowMap(false);
     clankerPlay = BL.clankerPlay.create({
-      canvas: ctx.canvas, camera, pilot, hud, clankers, input, renderer, reticleTarget,
+      canvas: ctx.canvas, camera, pilot, hud, clankers, input, renderer, reticleTarget, liveTarget,
       grabOoga: grabClankerRider, releaseOoga: releaseClankerRider,
       mayPossess: entry => BL.net.mayDriveGorilla(entry.owner.traits.name),
       combatOnly: () => gameCombatOnly,
@@ -12796,7 +12947,9 @@
     yield* pause(slice);
     // Scenery may receive outlines, but only island rock activates the hidden character view.
     // Banana interiors keep their separate covered-view pass.
-    objectGuides = headquarters.objectGuides = BL.objectGuides.create({ roots: root.children, crew, actorRoots: clankers.list.map((entry) => entry.root), exclude: [...terrainRampRoof.geometries, pathNode.geometry, mempoolIsland.site.ground.geometry], providers: [pileGuides, platformGuides, mirrorGuides], propsBlockActor: false, perceptionThrough: (actor) => inBananas(actor) ? pile.core : null });
+    objectGuides = headquarters.objectGuides = BL.objectGuides.create({ roots: root.children, crew, actorRoots: clankers.list.map((entry) => entry.root),
+      // The sign-in claim above can already have made the driven body (onBody ran with no registry yet).
+      bodies: [crew.player, clankerPlay.player].filter((body) => body && body.npc), exclude: [...terrainRampRoof.geometries, pathNode.geometry, mempoolIsland.site.ground.geometry], providers: [pileGuides, platformGuides, mirrorGuides], propsBlockActor: false, perceptionThrough: (actor) => inBananas(actor) ? pile.core : null });
     yield* pause(slice);
     const guideOptions = { segmentClear: guideSegmentClear, objectClear: objectGuides.cameraClear, actorClear: objectGuides.perceptionClear, eyeAt: guideEyeAt, ownerBoundary: objectGuides.ownerBoundaryAt, ownerPerceived: objectGuides.perceived, ownerConcealed: objectGuides.concealed, ownerDistance: objectGuides.distance, ownerInView: objectGuides.inView, ownerClear: objectGuides.ownerClear, getProvider: objectGuides.getProvider };
     sightGuides = BL.sightGuides.create(guideOptions);
@@ -13002,8 +13155,9 @@
     if (factoryMouth && factoryMouth.snap) snapFactoryView();
     if (bifrostIsle && bifrostIsle.snap) snapBifrostView();
     glCanvas = null;
-    poolBlockHovered = poolBlockHoverIgnore = null;
-    POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = null;
+    poolBlockHovered = poolBlockHoverIgnore = ghostHovered = null;
+    ghostHoverText = "";
+    POOL_BLOCK_HIT.node = POOL_BLOCK_HIT.owner = GHOST_HIT.node = GHOST_HIT.owner = LIVE_HIT.node = LIVE_HIT.owner = null;
     selectDebugGorilla(null);
     islandGuide.dispose();
     islandGuide = null;
@@ -13073,6 +13227,7 @@
     clankerCaptures.length = 0;
     clankerPlay.dispose();
     remotes.dispose();
+    muteHammockShots();
     crates.dispose();
     pile.dispose();
     npcStatusBeams?.dispose(); npcStatusBeams = null;
@@ -13289,6 +13444,7 @@
       if (!gorilla && player) {
         if (!pilot.birdsEye && player.traits.nunchaku && player.state !== "sleeping" && !player.camp.burning && !player.camp.rolling) help.rows.push(H.row(BL.controls.shortcutKeys("twirl"), "Twirl nunchaku"));
         if (player.tint) help.rows.push(H.row(BL.controls.shortcutKeys("tint"), "Change colourway"));
+        if (player.camp.seat?.kind === "hammock") help.rows.push(H.row(["a", "d"], "Rock the hammock (in time with the swing)"));
       }
     }
     if (!gorilla) help.title = "Island · " + help.title; return help;
