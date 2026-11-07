@@ -1973,6 +1973,7 @@ body[data-active-scene="hub"] .home-link {
 }
 
 .roster-stats-kinds[hidden] { display: none; }
+.roster-stats-kinds span { white-space: nowrap; }
 
 .roster-stats-repos {
   display: flex;

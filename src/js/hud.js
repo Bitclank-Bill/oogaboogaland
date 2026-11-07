@@ -2507,7 +2507,13 @@
       if (n) kinds.push(`${statCount(n)} ${n === 1 ? one : many}`);
     }
     stats.total.textContent = statCount(sum);
-    stats.kinds.textContent = kinds.join(" · ");
+    // Each count stays on one line with its label (and the dot after it), so the line wraps only between them.
+    stats.kinds.replaceChildren();
+    kinds.forEach((text, i) => {
+      const item = document.createElement("span");
+      item.textContent = i < kinds.length - 1 ? `${text}\u00a0·` : text;
+      stats.kinds.append(item, i < kinds.length - 1 ? " " : "");
+    });
     stats.kinds.hidden = !kinds.length;
     const list = [];
     for (const repo of data && Array.isArray(data.repos) ? data.repos : []) {
