@@ -31,7 +31,14 @@
   const INSTANCE_FLOATS = 20;
   const NO_OBJECT_CLIP = new Float32Array([0, 0, 0, -1]);
   const NO_OBJECT_SLAB = new Float32Array(4);
-  const NO_SPOT_LIGHT = new Float32Array(12);
+  // Up to two cone lights (`renderOpts.spotLight`, 12 floats each); a scene that passes one has the second zeroed.
+  const NO_SPOT_LIGHT = new Float32Array(24), SPOT_SCRATCH = new Float32Array(24);
+  const spotUniform = (spot) => {
+    if (spot.length >= 24) return spot;
+    SPOT_SCRATCH.fill(0);
+    SPOT_SCRATCH.set(spot);
+    return SPOT_SCRATCH;
+  };
   // MAX_PIXELS caps the pixel ratio to bound buffer memory.
   const MAX_PIXELS = 2.6e6;
   const DEFAULT_LIGHT = { x: 0.45, y: 0.85, z: 0.3 };
@@ -430,7 +437,7 @@ uniform sampler2DShadow uShadow;
 uniform float uShadowTexel;
 uniform vec4 uLights[64];
 uniform int uLightCount;
-uniform vec4 uSpotLight[3];
+uniform vec4 uSpotLight[6];
 ${VIEW_DIRECTION_GLSL}
 uniform vec3 uFog;
 uniform vec2 uFogRange;
@@ -641,15 +648,16 @@ vec3 lightFactorAt(vec3 n) {
     else a *= a;
     factor += uLights[i * 2 + 1].rgb * a * max(dot(n, ld), 0.0) / max(dist, 0.0001);
   }
-  if (uSpotLight[0].w > 0.0) {
-    vec3 toSurface = vWorld - uSpotLight[0].xyz;
+  for (int s = 0; s < 6; s += 3) {
+    if (uSpotLight[s].w <= 0.0) continue;
+    vec3 toSurface = vWorld - uSpotLight[s].xyz;
     float dist = length(toSurface);
-    if (dist > 0.0001 && dist < uSpotLight[0].w) {
+    if (dist > 0.0001 && dist < uSpotLight[s].w) {
       vec3 direction = toSurface / dist;
-      float cone = smoothstep(uSpotLight[1].w, uSpotLight[2].w, dot(direction, uSpotLight[1].xyz));
-      float fade = 1.0 - dist / uSpotLight[0].w;
+      float cone = smoothstep(uSpotLight[s + 1].w, uSpotLight[s + 2].w, dot(direction, uSpotLight[s + 1].xyz));
+      float fade = 1.0 - dist / uSpotLight[s].w;
       float energy = cone * fade * fade / (1.0 + 0.005 * dist * dist);
-      factor += uSpotLight[2].rgb * energy * max(dot(n, -direction), 0.0);
+      factor += uSpotLight[s + 2].rgb * energy * max(dot(n, -direction), 0.0);
     }
   }
   return factor;
@@ -3858,7 +3866,7 @@ void main() {
       // The shader breaks on uLightCount, so lights past it are dead traffic.
       if (lightCount) gl.uniform4fv(pg.mesh.u.uLights, lights, 0, lightCount * 8);
       gl.uniform1i(pg.mesh.u.uLightCount, lightCount);
-      gl.uniform4fv(pg.mesh.u.uSpotLight, spotLight);
+      gl.uniform4fv(pg.mesh.u.uSpotLight, spotUniform(spotLight));
       gl.uniform3fv(pg.mesh.u.uFog, fog);
       gl.uniform2f(pg.mesh.u.uFogRange, fogNear, fogFar);
       gl.uniform4f(pg.mesh.u.uBlacklight, blacklight ? blacklight[0] : 0, blacklight ? blacklight[1] : 0, blacklight ? blacklight[2] : 0, blacklight ? blacklight[3] : 0);
@@ -4504,7 +4512,7 @@ void main() {
         bindMatrixTexture(mp);
         if (nLights) gl.uniform4fv(mp.u.uLights, lights, 0, nLights * 8);
         gl.uniform1i(mp.u.uLightCount, nLights);
-        gl.uniform4fv(mp.u.uSpotLight, spotLight);
+        gl.uniform4fv(mp.u.uSpotLight, spotUniform(spotLight));
         gl.uniform3fv(mp.u.uFog, fogColor);
         gl.uniform2f(mp.u.uFogRange, fogA, fogB);
         gl.uniform4f(mp.u.uBlacklight, blacklight ? blacklight[0] : 0, blacklight ? blacklight[1] : 0, blacklight ? blacklight[2] : 0, blacklight ? blacklight[3] : 0);
