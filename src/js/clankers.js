@@ -2069,6 +2069,7 @@
       e.climb.debugTraverse = e.climb.debugStuck = false; e.climb.debugRole = -1;
       e.debugMove.active = e.debugMove.cancelled = e.debugMove.wallPending = false; e.debugMove.status = "";
       e.climb.traverseStart = e.climb.traverseEnd = 0;
+      e.climb.stallX = NaN; e.climb.stallTime = 0;
       e.climb.retry = e.climb.airAttachAfter = e.climb.handoffDirection = d.climbAxis = d.climbSide = 0; e.roam.count = e.roam.index = 0; e.roam.departPending = e.roam.propDeparture = e.roam.fromPile = false;
       e.actionControlled = e.motion.smash = false; e.startled.active = false;
       releaseLab(e); e.motion.lab = false; releaseOffice(e);
@@ -7172,6 +7173,8 @@
         } else updateClimb(e, dt);
         poseEntry(e, dt, beforeX, beforeY, beforeZ); return;
       }
+      // Off the wall the no-headway watch forgets its spot, so a later climb from the same place gets its full time.
+      e.climb.stallX = NaN;
       if (e.startled.active) {
         updateStartled(e, dt); poseEntry(e, dt, beforeX, beforeY, beforeZ); return;
       }

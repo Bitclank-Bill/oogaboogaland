@@ -12055,6 +12055,99 @@ const hubChalkboardReach = { name: "chalkboard reach", why: "rule: only an Ooga 
       && nearTap.open && !loose.open && loose.toast.startsWith("Only an Ooga can write."),
     JSON.stringify({ spot, farTap, nearAct, spaced, carried, nearTap, loose }));
 } };
+// A live player's name, over an Ooga and over a gorilla, against the NPC name tooltip shown for that same body in the
+// same frame: hud.js lays the tooltip's real DOM box out from character-visibility.js's head anchor, the live plate is
+// drawn on the overlay. Same font (computed family, size, weight, spacing), the same box, the name painted where the
+// tooltip's text lays out (its left edge and baseline), with a health bar (game mode) where the tooltip's health row
+// sits, and both kept inside the view at its edge.
+const hubNameplates = { name: "live nameplates", why: "rule: names over live players drew in a smaller font a little higher than names over the NPCs; they now match in type, size and place", run: async (b) => {
+  // Along the ring from the visitor's Ooga and a step out, clear of it and the pile; the view stands behind the Ooga
+  // looking at the peer (navigate's yaw is the bearing from what it looks at back to the eye), turned by turn.
+  const place = (kind, turn) => b.evaluate(`(() => {
+    const B = __ooga, net = BL.net, a = B.cavemen.get("portlandhodl");
+    if (B.crew.player !== a) B.pilot.possess(a);
+    const p = a.root.position, r = Math.hypot(p.x, p.z) || 1, ox = p.x / r, oz = p.z / r;
+    const x = p.x - oz * 6 + ox * 1.5, z = p.z + ox * 6 + oz * 1.5, yaw = Math.atan2(p.x - x, p.z - z);
+    net.remotes.set(515515, { id: 515515, login: "plate-peer", display: "Plate peer", body: "${kind}" === "gorilla" ? "gorilla:NickDaGreek" : "NickDaGreek",
+      bodyKind: "${kind}", bodyName: "NickDaGreek", zone: net.state.body ? net.state.zone : "outside", x, y: B.island.surfaceAt(x, z), z, yaw: yaw + Math.PI, hp: 60 });
+    B.pilot.navigate({ position: { x: p.x, y: p.y - a.baseY, z: p.z }, yaw: yaw + ${turn}, pitch: 0.3, dist: 6 });
+    B.advance(0.6, 1 / 60);
+  })()`);
+  // The live plate once a drawn frame has laid it out (null while it is off screen or not yet built).
+  const plateAt = async () => {
+    for (let i = 0; i < 12; i++) {
+      await b.sleep(100);
+      const at = await b.evaluate(`BL.remotePlayers.nameplate(515515)?.headX ?? null`);
+      if (at !== null) return at;
+    }
+    return null;
+  };
+  // The live plate as painted last frame, and the NPC tooltip shown for the same body (its health row too when asked).
+  const measure = (label, health) => b.evaluate(`(() => {
+    const live = BL.remotePlayers.nameplate(515515), cave = BL.remotePlayers.body(515515), tip = BL.scenes.hub.debug.hud.tooltip;
+    if (!live || !cave) return { label: "${label}", live };
+    tip.show("Plate peer", 0, 0, cave);
+    const el = document.getElementById("tooltip"), bar = document.getElementById("tooltip-health"), textEl = document.getElementById("tooltip-text");
+    // With health hud.js places the taller box on the same anchor (top = anchor - 2 - its height): a box measured
+    // without the row and then shown with it stands lift pixels too low, which every vertical reading below takes back.
+    const plainH = el.offsetHeight;
+    bar.hidden = !${health};
+    const lift = el.offsetHeight - plainH;
+    // A zero-size inline block on the text's line stands on its baseline.
+    const probe = document.createElement("span"); probe.style.cssText = "display:inline-block;width:0;height:0";
+    textEl.appendChild(probe);
+    const r = el.getBoundingClientRect(), cs = getComputedStyle(el), text = textEl.getBoundingClientRect(), base = probe.getBoundingClientRect().bottom;
+    const br = bar.getBoundingClientRect();
+    probe.remove(); bar.hidden = true;
+    const npc = { hidden: el.hidden, name: el.classList.contains("tooltip--name"), left: r.left, top: r.top - lift, width: r.width, height: r.height,
+      textX: text.left, baseline: base - lift, textWidth: text.width, barLeft: ${health} ? br.left : null, barTop: ${health} ? br.top - lift : null, barWidth: ${health} ? br.width : null,
+      font: (cs.fontWeight === "700" ? "bold " : cs.fontWeight + " ") + cs.fontSize + " " + cs.fontFamily, letterSpacing: cs.letterSpacing };
+    tip.hide();
+    // How many head vertices the live plate projects a frame (every one of every visible mesh, as the NPC anchor does).
+    let verts = 0;
+    const count = node => { if (!node.visible || node.cameraHidden) return; if (node.geometry?.verts) verts += node.geometry.verts.length / 3; for (const c of node.children) count(c); };
+    count(cave.parts.head);
+    return { label: "${label}", view: innerWidth, verts, live, npc };
+  })()`);
+  const rows = [];
+  // The first navigate after the scene's arrival keeps the carried look (pilot.js arriving) instead of the yaw asked
+  // for: spend it before the readings.
+  await place("ooga", 0); await plateAt();
+  for (const kind of ["ooga", "gorilla"]) {
+    await place(kind, 0); await plateAt();
+    rows.push(await measure(kind, false));
+  }
+  // At the view's left edge both are held 8 pixels inside it: turn the view (a secant search on the head's middle)
+  // until that middle is within a plate's half width of the edge.
+  let edge = null, t0 = 0, x0 = await plateAt(), t1 = 0.12;
+  await place("ooga", t1);
+  let x1 = await plateAt();
+  for (let i = 0; i < 8 && x0 !== null && x1 !== null && x1 !== x0 && !edge; i++) {
+    if (x1 > 2 && x1 < 50) { edge = t1; break; }
+    const t = t1 + (30 - x1) * (t1 - t0) / (x1 - x0);
+    await place("ooga", t);
+    const x = await plateAt();
+    if (x === null) break;
+    t0 = t1; x0 = x1; t1 = t; x1 = x;
+  }
+  if (edge === null && x1 !== null && x1 > 2 && x1 < 50) edge = t1;
+  rows.push(edge !== null ? await measure("edge", false) : { label: "edge", live: null, at: x1 });
+  // Game mode shows the room's health under live names, as the tooltip's health row.
+  await place("ooga", 0);
+  await b.evaluate(`(() => { BL.scenes.hub.debug.setGameMode(true); __ooga.advance(0.2, 1 / 60); })()`);
+  await plateAt(); await b.sleep(200);
+  rows.push(await measure("health", true));
+  await b.evaluate(`(() => { BL.scenes.hub.debug.setGameMode(false); BL.net.remotes.delete(515515); __ooga.advance(0.2, 1 / 60); })()`);
+  const near = (a, c, d = 1) => Number.isFinite(a) && Number.isFinite(c) && Math.abs(a - c) <= d;
+  const matches = row => row.live && row.npc && !row.npc.hidden && row.npc.name && row.live.font === row.npc.font && row.live.spacing === row.npc.letterSpacing
+    && near(row.live.textWidth, row.npc.textWidth, 0.5) && near(row.live.width, row.npc.width) && near(row.live.height, row.npc.height)
+    && near(row.live.left, row.npc.left) && near(row.live.top, row.npc.top) && near(row.live.textX, row.npc.textX) && near(row.live.baseline, row.npc.baseline)
+    && (row.npc.barLeft === null || near(row.live.barLeft, row.npc.barLeft) && near(row.live.barTop, row.npc.barTop) && row.live.barWidth === row.npc.barWidth);
+  const edgeRow = rows.find(row => row.label === "edge"), healthRow = rows.find(row => row.label === "health");
+  record("live nameplates: a live player's name over an Ooga and over a gorilla has the NPC name tooltip's font, size and box, its name painted on the tooltip text's left edge and baseline, its health bar where the tooltip's health row sits, and both kept inside the view at its edge",
+    rows.length === 4 && rows.every(matches) && edgeRow.live.left === 8 && edgeRow.npc.left === 8 && healthRow.live.height > rows[0].live.height,
+    JSON.stringify(rows));
+} };
 // A remote player stands near the pile as the room would place them: the roster's shortest and tallest Oogas, then a
 // gorilla. portlandhodl, the widest Ooga, drops onto each, rides the short one as it walks and rises as a jetpack
 // would, walks off it, then walks and jumps at the tall one, which no jump clears. Its gorilla, driven, then does the
@@ -13214,11 +13307,13 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
       const atWork = crowd.filter(e => e.phase === "work");
       for (const e of atWork) e.owner.override = "chilling";
       B.crew.refreshStates(true);
-      return { atWork: atWork.length, caves: [...new Set(atWork.map(e => e.site))], settle, walks: followChill(atWork, 3600) };
+      return { crowd: crowd.length, atWork: atWork.length, caves: [...new Set(atWork.map(e => e.site))], settle, walks: followChill(atWork, 3600) };
     };
     const sharedCave = crowdChill(entries.slice(3, 9), false), spreadCaves = crowdChill(entries.slice(9, 9 + sites), true);
-    const chillToLounge = workerLounge.ok && sharedCave.atWork >= 4 && sharedCave.caves.length === 1
-      && spreadCaves.atWork >= sites - 1 && spreadCaves.caves.length >= sites - 1
+    // Every gorilla of each group must have settled at work, the whole crowd in one cave and one in every cave, so a
+    // cave or gorilla that never arrives cannot quietly shrink what the walks cover.
+    const chillToLounge = workerLounge.ok && sites >= 2 && sharedCave.crowd === 6 && sharedCave.atWork === 6 && sharedCave.caves.length === 1
+      && spreadCaves.crowd === sites && spreadCaves.atWork === sites && spreadCaves.caves.length === sites
       && sharedCave.walks.every(t => t.ok) && spreadCaves.walks.every(t => t.ok);
     return { chillWalk, chillInterrupted, chillSteps, chillJump, chillPile, chillAtPile, chillLounge, chillFrames,
       chillToLounge, workerLounge, sharedCave, spreadCaves,
@@ -19607,7 +19702,7 @@ const hubVoiceCrossings = { name: "voice crossings", why: "rule: on each bridge 
       && lv.chamber.to === "rainforest-under" && lv.chamber.t === 1 && !lv.court.to && lv.court.zone === "rainforest" && !lv.lake.to,
     JSON.stringify(lv));
 } };
-scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubVoiceCrossings] });
+scene("hub", { label: "player stacking", query: "solo=1&character=portlandhodl&pos=0", steps: [hubPlayerStacking, hubChalkboardReach, hubVoiceCrossings, hubNameplates] });
 scene("hub", { label: "lab flask approach", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "gorilla lab exit through Oogas", why: "regression: Ooga occupancy, body sweeps and head support blocked gorillas leaving the lab", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, e = C.list[0], owner = e.owner, m = B.headquarters.entropyLab.mouth;
@@ -22522,6 +22617,7 @@ const hubTourTouch = { name: "hub tour touch", why: "regression: the touch stick
       && !!resized && resized.sized.sized === "true" && resized.sized.to > resized.sized.from && Math.abs(parseFloat(resized.sized.written) - (resized.layout.sheet.bottom - resized.layout.sheet.top)) <= 1
       && resized.layout.sticks === "true" && resized.layout.stick.bottom <= resized.layout.sheet.top && resized.layout.panel.bottom <= resized.layout.stick.top, JSON.stringify(rows));
 } };
+scene("hub", { label: "live nameplates phone", query: "solo=1&character=portlandhodl&pos=0", opts: PHONE_SIZE, steps: [hubNameplates] });
 scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required: ["#joy-move", "#joy-look", "#sheet-toggle", "#sheet-bananas"], sheet: true }), hubTourTouch, { name: "hub home screen", why: "rule: an iPhone home-screen web app is named OogaBoogaLand and carries its own icon", run: async (b) => {
   const meta = await b.evaluate(`(() => {
     const title = document.querySelector('meta[name="apple-mobile-web-app-title"]')?.content;
