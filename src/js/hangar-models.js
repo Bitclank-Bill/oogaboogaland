@@ -666,6 +666,18 @@
     // The console in front of the one who works it, its front to the glass with the bolt on it, a row of lit buttons
     // along its top, and two monitors turned to its operator; the chair behind.
     const kx = b + 1.55, kz = z0 + 2.7, kd = 2.2, kt = C.floor + 0.85;
+    // Where things happen in the room, in the hangar's frame: the operator's post behind the console, facing out over
+    // the hall; where a fire takes on the console's top, by its far end; the extinguisher's bracket on the side wall by
+    // the back, the foot of the extinguisher standing in it; where the operator stands to take it, facing the wall; and
+    // where he stands to put a fire out, facing it from its side, so he is seen side-on through the glass.
+    const spots = {
+      post: { x: HALL.x0 + 0.45, z: kz, heading: Math.PI / 2 },
+      fire: { x: kx, y: kt + 0.07, z: kz - 0.8 },
+      bracket: { x: b + 0.7, y: C.floor + 0.42, z: z0 + 0.2 },
+      take: { x: b + 0.7, z: z0 + 0.75, heading: Math.PI },
+      spray: { x: kx + 0.05, z: kz - 1.95 }
+    };
+    spots.spray.heading = Math.atan2(spots.fire.x - spots.spray.x, spots.fire.z - spots.spray.z);
     flat.push(bevelBox({ w: 0.6, h: 0.85, d: kd, color: "#4a5160", bevel: 0.02, offset: { x: kx, y: C.floor + 0.425, z: kz } }));
     flat.push(box({ w: 0.66, h: 0.05, d: kd + 0.06, color: "#2a2f3a", offset: { x: kx, y: kt + 0.025, z: kz } }));
     flat.push(moved(turnedY(FM.smoothBolt(0.32, 0.02, "#ffd23a", 0.4), Math.PI / 2), kx + 0.31, C.floor + 0.45, kz));
@@ -709,7 +721,30 @@
     for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) glow.push(box({ w: 0.01, h: 0.03, d: 0.03, color: r === 3 ? "#2ecc71" : "#7fdcff", emissive: 1, offset: { x: f + 0.105, y: kpy + 0.08 - r * 0.05, z: kpz - 0.04 + c * 0.04 } }));
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
-    return { flat: merge(...flat), glow: noShadow(merge(...glow)), glass: windows, pictures };
+    // The extinguisher's bracket on the side wall by the back, its foot at `spots.bracket`.
+    const X = spots.bracket;
+    flat.push(box({ w: 0.2, h: 0.08, d: 0.06, color: C.frame, offset: { x: X.x, y: X.y + 0.05, z: X.z - 0.05 } }));
+    flat.push(box({ w: 0.22, h: 0.03, d: 0.16, color: C.frame, offset: { x: X.x, y: X.y - 0.015, z: X.z + 0.02 } }));
+    flat.push(box({ w: 0.04, h: 0.5, d: 0.03, color: C.frame, offset: { x: X.x, y: X.y + 0.25, z: X.z - 0.065 } }));
+    return { flat: merge(...flat), glow: noShadow(merge(...glow)), glass: windows, pictures, spots };
+  });
+
+  // The control room's fire extinguisher, in its own frame, its foot at (0, 0, 0) and its front (the hose's nozzle)
+  // toward +z: a red cylinder with a domed top, a white band, the black valve with its lever and carrying handle and its
+  // gauge, and the black hose down its side to the nozzle, held out in front.
+  // Where its nozzle's mouth is, in its frame, for the spray.
+  const NOZZLE = { x: 0.09, y: 0.29, z: 0.28 };
+  const extinguisher = cached(() => {
+    const parts = [], red = "#d4231b", black = "#1d1f24";
+    parts.push(lathe({ profile: [[0, 0], [0.075, 0], [0.08, 0.02], [0.08, 0.36], [0.07, 0.4], [0.04, 0.43], [0, 0.44]], segments: 14, color: red }));
+    parts.push(lathe({ profile: [[0.081, 0.24], [0.081, 0.3], [0.08, 0.3], [0.08, 0.24]], segments: 14, color: "#f2f0e8" }));
+    parts.push(box({ w: 0.05, h: 0.06, d: 0.05, color: black, offset: { y: 0.47 } }));
+    parts.push(box({ w: 0.03, h: 0.02, d: 0.16, color: black, offset: { y: 0.51, z: -0.05 } }));
+    parts.push(box({ w: 0.03, h: 0.02, d: 0.14, color: "#3a3d44", offset: { y: 0.545, z: -0.04 } }));
+    parts.push(moved(turnedX(lathe({ profile: [[0, 0], [0.022, 0], [0.022, 0.012], [0, 0.012]], segments: 10, color: "#e8e8e0" }), Math.PI / 2), 0.03, 0.46, 0.02));
+    parts.push(tube({ path: (u) => ({ x: 0.06 + 0.03 * Math.sin(u * Math.PI), y: 0.47 - 0.3 * u + 0.12 * u * u, z: 0.03 + 0.17 * u }), radius: () => 0.012, rings: 10, segments: 6, colorFn: () => black }));
+    parts.push(moved(turnedX(lathe({ profile: [[0, 0], [0.016, 0], [0.026, 0.08], [0, 0.08]], segments: 8, color: black }), Math.PI / 2), 0.09, 0.29, 0.2));
+    return merge(...parts);
   });
 
   // ---- the ceiling crane --------------------------------------------------------------------------------------
@@ -2605,7 +2640,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
