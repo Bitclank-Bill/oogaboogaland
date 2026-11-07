@@ -18,9 +18,10 @@
 // out and the runway's marker lamps running the wrong way (`rabbit`), its gold trim and canopy lighting up as they go
 // (the Jet's lit mesh, `jetModels.jet(stage, true)`, swapped in for it); then one crack and a flash, and it's over,
 // Kortik's Sis zapped if she stands near it (`sis.zap`). Its sound is `hangarAudio.zap`. Now and then (`ZAP.room`,
-// or when `debug.play` asks) the crack doesn't end on the Jet: a bolt leaps off its back across the hall to the
-// control room's console (`JUMP`), and the room catches fire there (`room.ignite`, `hangar-room-fire.js`), never
-// while it already burns.
+// or when `debug.play` asks) the crack doesn't end on the Jet: a bolt leaps off its back across the hall to a room's
+// console, the room picked at random at the crack (`room.pick`, the control room or one of the crew's rooms on the
+// right wall) (`JUMP`), and the room catches fire there (`room.ignite`, `hangar-room-fire.js`), never while one
+// already burns.
 //
 // The blackout (`blackout`): a flicker and every light dies, the hall's own light nearly gone; only the two nozzles glow
 // in the dark like eyes, breathing, and blink once; Kortik's Sis's eyes glow too (`sis.dark`); then the banks clunk
@@ -132,7 +133,7 @@
   // on a test page, where only `debug.play` starts one); `gap`, a fixed wait between them instead of GAP's, s; `riders()`,
   // whether any Ooga stands on the Jet (`standsOn` says for one); `near(test)`, whether `test(x, z, feet, height,
   // radius)` holds for anything that walks the hall.
-  // `room`: the control room's fire (`hangar-room-fire.js`: where the bolt lands, `ignite()` and `burning`).
+  // `room`: the rooms' fire (`hangar-room-fire.js`: `pick(i)`, where the bolt lands, `ignite()` and `burning`).
   const create = ({ root, fire, sis, fx, audio, jet, stage, room, auto = true, gap = null, riders = () => false, near = () => false }) => {
     const SPARK = HM.blast().spark, BLUE = BL.models.particleGeometry("#a8ecff", 0.05, 1), J = jet.position;
     const exits = JM.EXHAUST.map((e) => ({ x: J.x + e.x, y: e.y, z: J.z + e.z, r: e.r }));
@@ -148,7 +149,7 @@
     // The jump's path: its points off the Jet to the room, ARCS lengths of it, and whether this lightning jumps and
     // whether it has landed.
     const path = new Float32Array((ARCS + 1) * 3);
-    let jumping = false, landed = false;
+    let jumping = false, landed = false, into;
     addChild(root, ...arcs.map((a) => a.node));
     // The kinds in their turn: a bag shuffled in place each time it runs out.
     const bag = Object.keys(LENGTH);
@@ -320,7 +321,7 @@
         sis.zap(J.x, nose, tail);
         sis.settle();
         BL.gamepad.rumble(0.4, 0.6, 200);
-        if (jumping) lay();
+        if (jumping) { room.pick(into); lay(); }
       }
       // The jump: the bolt running a length at a time from the Jet to the room, and the room catching fire as it lands.
       if (jumping && t >= Z.crack) {
@@ -432,13 +433,15 @@
       if (!spooked && t >= S.brake) { spooked = true; sis.spook(engines.x, engines.z, "stay"); }
     };
 
-    // `jump`, for a lightning: whether it ends in the jump to the room (left to chance when not said).
-    const begin = (k, jump) => {
+    // `jump`, for a lightning: whether it ends in the jump to a room (left to chance when not said), and `to`, which room
+    // (one at random when not said).
+    const begin = (k, jump, to) => {
       kind = k; t = 0; arcAt = 0; spooked = false;
       if (k === "misfire") audio.misfire(MISFIRE);
       else if (k === "phantom") audio.revs(REVS.script);
       else if (k === "lightning") {
         jumping = !room.burning && (jump === undefined ? Math.random() < ZAP.room : jump);
+        into = to;
         landed = false;
         jet.geometry = lit;
         jet.glow = ZAP.glow[0];
@@ -505,7 +508,7 @@
 
     // For debugging: play one now (unless one plays or the static fire holds them off), and where things stand.
     const debug = {
-      play: (k = "misfire", jump) => { if (kind || held() || !LENGTH[k]) return false; begin(k, jump); return true; },
+      play: (k = "misfire", jump, to) => { if (kind || held() || !LENGTH[k]) return false; begin(k, jump, to); return true; },
       get kind() { return kind; }, get t() { return t; }, get wait() { return wait; }, get dim() { return dim; }, get heat() { return heat; }, get jumping() { return jumping; }
     };
     // Leaving mid-anomaly: the engines cold, the Jet plain and at rest, and the lights full; the arcs go with the scene's
