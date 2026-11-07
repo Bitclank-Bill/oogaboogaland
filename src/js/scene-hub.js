@@ -11256,6 +11256,13 @@
       bananaGuides.reserve(objectGuides.result, null);
     }
   };
+  // A separate body is a character in the outline registry for exactly as long as it exists (object-guides.js `body`):
+  // the covered view asks it whether the driven body is in sight. One made before the registry is passed to its create.
+  const guideBody = (body, on) => {
+    if (!objectGuides || !objectGuides.body(body, on) || !sightGuides) return;
+    sightGuides.reserve(objectGuides.result, null);
+    bananaGuides.reserve(objectGuides.result, null);
+  };
   let uiGuideObjects = null, uiGuidesReady = false, preparingGuideActor = null;
   const collectViewObjects = () => {
     const player = controlledGuideActor(), p = player ? player.root.position : camera.target;
@@ -12374,8 +12381,9 @@
       const height = body.traits.height * 2, verts = Math.max(body.headOpen.verts.length, body.headClosed.verts.length);
       const portals = [factoryMouth, bcaMouth, bifrostIsle];
       if (on) {
-        // Built after the outline registry, like a remote rig: its UI uses the overlay's exact visibility test, and
-        // a registry refresh never takes it for scenery.
+        // Its root is sightHidden, like a remote rig's: its UI uses the overlay's exact visibility test, and no scenery
+        // pass or registry refresh takes it for scenery. The outline registry holds it as a character instead (guideBody);
+        // the sign-in claim can build it before that registry exists, which then takes it at creation.
         body.root.sightHidden = body.sleepWeapons.sightHidden = true;
         if (body.pet) body.pet.node.sightHidden = true;
         body.root.matrixLiving = true;
@@ -12384,8 +12392,11 @@
         crew?.setJetpackOwnership(body, true, hubModels.jetpack(), hubModels.jetFlame());
         trackMirrorObject(body.root, height, verts);
         for (const place of portals) place?.phase.body.track(body.root, height, verts);
+        guideBody(body, true);
         npcGhosts?.set(body.npc, true);
       } else {
+        // Forgotten while it still stands in the scene: crew.js detaches it only after this.
+        guideBody(body, false);
         untrackMirrorObject(body.root);
         for (const place of portals) place?.phase.body.untrack(body.root);
         fx.hush(body);
@@ -12566,9 +12577,11 @@
           body.netBody = body.npc.netBody;
           body.netMotion = new Float64Array(6);
           registerClanker(body);
+          guideBody(body, true);
           npcGhosts?.set(body.npc, true);
           return;
         }
+        guideBody(body, false);
         npcGhosts?.set(body.npc, false);
         fx.hush(body);
         const at = clankerCaptures.indexOf(body.capture);
@@ -12796,7 +12809,9 @@
     yield* pause(slice);
     // Scenery may receive outlines, but only island rock activates the hidden character view.
     // Banana interiors keep their separate covered-view pass.
-    objectGuides = headquarters.objectGuides = BL.objectGuides.create({ roots: root.children, crew, actorRoots: clankers.list.map((entry) => entry.root), exclude: [...terrainRampRoof.geometries, pathNode.geometry, mempoolIsland.site.ground.geometry], providers: [pileGuides, platformGuides, mirrorGuides], propsBlockActor: false, perceptionThrough: (actor) => inBananas(actor) ? pile.core : null });
+    objectGuides = headquarters.objectGuides = BL.objectGuides.create({ roots: root.children, crew, actorRoots: clankers.list.map((entry) => entry.root),
+      // The sign-in claim above can already have made the driven body (onBody ran with no registry yet).
+      bodies: [crew.player, clankerPlay.player].filter((body) => body && body.npc), exclude: [...terrainRampRoof.geometries, pathNode.geometry, mempoolIsland.site.ground.geometry], providers: [pileGuides, platformGuides, mirrorGuides], propsBlockActor: false, perceptionThrough: (actor) => inBananas(actor) ? pile.core : null });
     yield* pause(slice);
     const guideOptions = { segmentClear: guideSegmentClear, objectClear: objectGuides.cameraClear, actorClear: objectGuides.perceptionClear, eyeAt: guideEyeAt, ownerBoundary: objectGuides.ownerBoundaryAt, ownerPerceived: objectGuides.perceived, ownerConcealed: objectGuides.concealed, ownerDistance: objectGuides.distance, ownerInView: objectGuides.inView, ownerClear: objectGuides.ownerClear, getProvider: objectGuides.getProvider };
     sightGuides = BL.sightGuides.create(guideOptions);

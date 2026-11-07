@@ -1321,6 +1321,104 @@ const visibilityDemandUsersProof = async () => {
     return { rows, boundsTracked, replacementReleased, bothResolved, disposed };
   })()`, context);
 };
+// Separate bodies (#501): the driven Ooga or gorilla is a character in the outline registry for exactly as long as it
+// exists, its root still sightHidden for scenery passes: made before the registry, kept through refreshes and both head
+// states, its sightHidden effects left out, forgotten while still in the scene, and nothing left over take after take.
+const separateBodyRegistryProof = async () => {
+  const context = { window: {}, performance };
+  for (const name of ["math", "scene", "models", "object-guides"]) {
+    let source = await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8");
+    if (name === "object-guides") source = source.replace("return { collect, clear,", "return { geometryRecords: () => geometries, entryRecords: () => registered, ownerRecords: () => ownerGroups, descriptorUsers: () => descriptorUsers, collect, clear,");
+    runInNewContext(source, context);
+  }
+  return runInNewContext(`(() => {
+    const B = window.BL, S = B.scene, M = B.models, root = S.createNode();
+    const box = (w, h, d) => M.box({ w, h, d, color: "#fff" });
+    // The roster Ooga shares the bodies' skin: that descriptor must outlive every body.
+    const skin = box(0.6, 0.8, 0.4), rosterHead = S.createNode({ geometry: box(0.5, 0.5, 0.5), position: { x: 0, y: 1, z: 0 } });
+    const roster = { root: S.createNode({ position: { x: 6, y: 0, z: 8 } }), parts: { head: rosterHead }, headOpen: rosterHead.geometry, headClosed: box(0.5, 0.45, 0.5) };
+    S.addChild(roster.root, S.createNode({ geometry: skin }), rosterHead);
+    const wall = S.createNode({ geometry: box(8, 8, 0.4), position: { x: 0, y: 0.5, z: 3 }, visible: false });
+    S.addChild(root, roster.root, wall);
+    // An Ooga body has its own heads and bed gear; a gorilla body is its rig alone. Both carry a sightHidden effect.
+    const makeBody = (ooga) => {
+      const body = { root: S.createNode({ position: { x: 0, y: 0, z: 8 }, sightHidden: true }), parts: {} };
+      body.torso = S.createNode({ geometry: skin });
+      body.effect = S.createNode({ geometry: box(0.3, 0.3, 0.3), position: { x: 0, y: 1.6, z: 0 }, sightHidden: true });
+      // Held gear the body drops (detached) before it is let go.
+      body.held = S.createNode({ geometry: box(0.1, 0.1, 0.7), position: { x: 0.4, y: 0.6, z: 0 } });
+      S.addChild(body.root, body.torso, body.effect, body.held);
+      if (ooga) {
+        body.headOpen = box(0.5, 0.5, 0.5); body.headClosed = box(0.5, 0.45, 0.5);
+        body.parts.head = S.createNode({ geometry: body.headOpen, position: { x: 0, y: 1, z: 0 } });
+        S.addChild(body.root, body.parts.head);
+        body.sleepWeapons = S.createNode({ sightHidden: true });
+        body.gear = S.createNode({ geometry: box(0.2, 0.2, 1), position: { x: 1, y: 0, z: 8 } });
+        S.addChild(body.sleepWeapons, body.gear); S.addChild(root, body.sleepWeapons);
+      }
+      S.addChild(root, body.root);
+      return body;
+    };
+    const detach = (body) => { S.removeChild(root, body.root); if (body.sleepWeapons) S.removeChild(root, body.sleepWeapons); };
+    const camera = S.createCamera({ near: 0.1, far: 100 });
+    Object.assign(camera.position, { x: 0, y: 0.5, z: 0 }); Object.assign(camera.target, { x: 0, y: 0.5, z: 8 });
+    const clear = () => true;
+    const look = (q, body) => { S.updateWorld(root); q.collect(body, 0, 0.5, 8, camera, 1.6); return q.actorVisible(body, clear); };
+    const owns = (q, body) => q.ownerRecords().some(group => group.owner === body.root);
+    const entryOf = (q, node) => q.entryRecords().find(e => e.node === node);
+    // Every descriptor user is a live entry: nothing forgotten is still reachable through a pending bake.
+    const users = (q) => [...q.descriptorUsers().values()].every(set => [...set].every(e => q.entryRecords().includes(e)));
+    // The sign-in claim makes its body before the hub builds the registry.
+    const boot = makeBody(true);
+    const q = B.objectGuides.create({ roots: root.children, crew: { cavemen: new Map([["roster", roster]]) }, bodies: [boot] });
+    const booted = owns(q, boot) && !!entryOf(q, boot.torso) && !!entryOf(q, boot.parts.head) && !!entryOf(q, boot.gear)
+      && !entryOf(q, boot.effect) && boot.root.sightHidden && look(q, boot);
+    wall.visible = true; const covered = !look(q, boot); wall.visible = false;
+    const once = !q.body(boot, true) && look(q, boot);
+    // A refresh keeps the body, and its head's other state still registers when it swaps after that refresh.
+    q.refresh();
+    boot.parts.head.geometry = boot.headClosed; look(q, boot);
+    const head = entryOf(q, boot.parts.head);
+    const heads = owns(q, boot) && !!head && head.shown && head.geometry === q.geometryRecords().get(boot.headClosed)
+      && q.geometryRecords().has(boot.headOpen) && !entryOf(q, boot.effect) && look(q, boot);
+    boot.parts.head.geometry = boot.headOpen;
+    // Forgotten while it still stands in the scene, as crew.js and clankers.js let it go; an entry whose node already left
+    // the body goes too, the shared skin and the roster's heads stay, and a later refresh does not take the root back.
+    const heldWas = !!entryOf(q, boot.held);
+    S.removeChild(boot.root, boot.held);
+    const forgot = q.body(boot, false);
+    const gone = forgot && heldWas && boot.root.parent === root && !owns(q, boot) && !entryOf(q, boot.torso) && !entryOf(q, boot.parts.head) && !entryOf(q, boot.gear)
+      && !entryOf(q, boot.held) && !q.entryRecords().some(e => e.owner === boot.root) && !q.geometryRecords().has(boot.held.geometry)
+      && !q.geometryRecords().has(boot.headOpen) && !q.geometryRecords().has(boot.headClosed) && !q.geometryRecords().has(boot.gear.geometry)
+      && q.geometryRecords().has(skin) && q.geometryRecords().has(roster.headClosed) && !!entryOf(q, rosterHead) && users(q);
+    q.refresh();
+    const stays = !owns(q, boot) && !entryOf(q, boot.torso) && !q.body(boot, false);
+    detach(boot); q.refresh();
+    // Baked metrics too: every held descriptor is baked first, so a take that bakes and forgets returns them exactly.
+    for (const descriptor of q.geometryRecords().values()) void descriptor.triangleIndices;
+    const counts = () => JSON.stringify({ entries: q.entryRecords().length, owners: q.ownerRecords().length, geometries: q.geometryRecords().size, statsOwners: q.stats.owners, registered: q.stats.registered,
+      statsGeometries: q.stats.geometries, triangles: q.stats.triangles, triangleBytes: q.stats.triangleBytes, samples: q.stats.samples });
+    // The baseline is the refresh's own measure; each forget must arrive at the same numbers without one.
+    q.refresh();
+    const before = counts();
+    let repeated = true;
+    for (let take = 0; take < 3; take++) for (const ooga of [true, false]) {
+      const body = makeBody(ooga);
+      repeated &&= q.body(body, true) && owns(q, body) && look(q, body) && q.stats.owners === q.ownerRecords().length;
+      if (ooga) { q.refresh(); body.parts.head.geometry = body.headClosed; repeated &&= look(q, body) && entryOf(q, body.parts.head).shown; }
+      // Its own bakes raise the metrics, and its held gear leaves it before it is let go.
+      for (const descriptor of q.geometryRecords().values()) void descriptor.triangleIndices;
+      repeated &&= q.stats.triangles > JSON.parse(before).triangles;
+      S.removeChild(body.root, body.held);
+      repeated &&= q.body(body, false) && !owns(q, body) && !q.entryRecords().some(e => e.owner === body.root);
+      detach(body);
+      repeated &&= counts() === before && users(q);
+    }
+    const last = makeBody(true); q.body(last, true); q.dispose();
+    const disposed = q.entryRecords().length === 0 && q.ownerRecords().length === 0 && q.geometryRecords().size === 0 && !q.body(last, false);
+    return { booted, covered, once, heads, gone, stays, repeated, users: users(q), disposed };
+  })()`, context);
+};
 // ---- solid-props.mjs ----
 const { solidPropsProbe } = (() => {
   // Exercise the same transformed mesh queries used by hub movement.
@@ -8296,9 +8394,11 @@ const wallPerformance = async (b) => {
   await b.focus(true);
   for (const covered of [false, true]) {
     const r = await b.evaluate(`(async () => {
-      const B = window.__ooga, actor = B.cavemen.get("portlandhodl");
+      const B = window.__ooga, npc = B.cavemen.get("portlandhodl");
       B.renderer.setQuality("high");
-      if (B.crew.player !== actor) B.pilot.possess(actor);
+      // Driving builds a separate body (crew.js \`separateBodies\`): walk, view and measure that body, never its NPC's track.
+      if (B.crew.player?.npc !== npc) B.pilot.possess(npc);
+      const actor = B.crew.player;
       B.pilot.navigate({ position: { x: 10, y: B.island.surfaceAt(10, 0), z: 0 }, yaw: 0, pitch: 0.4, dist: ${covered ? 55 : 10} });
       let start = null, first = 0;
       const p = actor.root.position, originX = p.x, originZ = p.z, frames = [];
@@ -8746,8 +8846,64 @@ const hubSeparateBodies = { name: "hub separate bodies", why: "rule: a driven Oo
         lifecycle = { driving, signedOut, signedIn, roomLost, reconnected, out, lost };
         pilot.release(true);
       }
-      return { oogas, gorilla, login, lifecycle };
+      // #501: the covered view asks the outline registry whether the driven body is in sight. Through the hub's own frames
+      // and the wall-movement fixture's two views, an Ooga or gorilla body in the open draws no outline or wall fill and
+      // behind island rock is covered; a registry refresh and a head swap keep it; letting go leaves the registry as it was.
+      const H = B.headquarters, registry = H.objectGuides, scene = BL.scenes.hub;
+      const counts = () => ({ owners: registry.stats.owners, registered: registry.stats.registered, geometries: registry.stats.geometries });
+      const same = (a, b) => a.owners === b.owners && a.registered === b.registered && a.geometries === b.geometries;
+      let held = null;
+      saved.update = scene.update;
+      scene.update = function (...args) {
+        const result = saved.update.apply(this, args);
+        if (held) { const p = held.body.root.position; Object.assign(B.camera.position, held.eye); Object.assign(B.camera.target, { x: p.x, y: p.y + 0.7, z: p.z }); }
+        return result;
+      };
+      const view = (body, eye = null) => { held = eye ? { body, eye } : null; step(0.5); held = null;
+        return { enabled: !!H.sightGuides.objectsEnabled, outlined: !!H.cameraCover.outlined }; };
+      const ROCK_EYE = { x: 0, y: 0, z: 10 }, meadowY = B.island.surfaceAt(10, 0);
+      // A segment down into the head's own centre is blocked only while that head is registered in its current state.
+      const headHeld = (body) => {
+        const head = body.parts.head, c = BL.scene.boundsOf(head.geometry).center, m = head.world;
+        const x = m[0] * c[0] + m[4] * c[1] + m[8] * c[2] + m[12], y = m[1] * c[0] + m[5] * c[1] + m[9] * c[2] + m[13], z = m[2] * c[0] + m[6] * c[1] + m[10] * c[2] + m[14];
+        return !registry.ownerClear(body.root, x, y + 2, z, x, y, z);
+      };
+      let sight = { missing: true };
+      const driver = pick(c => c.state === "chilling" || c.state === "working"), companion = clankers.list.find(e => e.active && e.root.visible && !e.remoteControlled && !e.ghostTrack);
+      if (driver && companion) {
+        const base = counts();
+        let open = null, ooga = { refused: true }, ape = { refused: true }, repeated = true;
+        if (pilot.possess(driver) && pilot.player?.npc === driver) {
+          const body = pilot.player, owners = registry.stats.owners;
+          pilot.navigate({ position: { x: 10, y: meadowY, z: 0 }, yaw: 0, pitch: 0.4, dist: 10 });
+          const clear = view(body); open = { ...B.camera.position };
+          const covered = view(body, ROCK_EYE);
+          registry.refresh(); body.parts.head.geometry = body.headClosed; view(body);
+          const closedHead = headHeld(body), refreshed = view(body);
+          body.parts.head.geometry = body.headOpen;
+          ooga = { clear, covered, refreshed, closedHead, registered: owners === base.owners + 1 };
+          pilot.release(true); step(0.2);
+        }
+        if (open && play.possess(companion) && play.player?.npc === companion) {
+          const body = play.player;
+          Object.assign(body.root.position, { x: 10, y: meadowY, z: 0 });
+          ape = { clear: view(body, open), covered: view(body, ROCK_EYE) };
+          play.release(); step(0.2);
+        }
+        const released = same(counts(), base);
+        // Repeated takes of both kinds leave nothing registered.
+        for (let take = 0; take < 3; take++) {
+          repeated &&= pilot.possess(driver) && registry.stats.owners === base.owners + 1;
+          step(0.1); pilot.release(true); step(0.1);
+          repeated &&= play.possess(companion) && registry.stats.owners === base.owners + 1;
+          step(0.1); play.release(); step(0.1);
+          repeated &&= same(counts(), base);
+        }
+        sight = { ooga, gorilla: ape, released, repeated, base, after: counts() };
+      }
+      return { oogas, gorilla, login, lifecycle, sight };
     } finally {
+      if (saved.update) BL.scenes.hub.update = saved.update;
       if (saved.restoreAccount) saved.restoreAccount();
       net.mayDrive = saved.mayDrive; net.mayDriveGorilla = saved.mayDriveGorilla; net.ownCharacter = saved.ownCharacter;
       pilot.release(true); play.release();
@@ -8769,6 +8925,10 @@ const hubSeparateBodies = { name: "hub separate bodies", why: "rule: a driven Oo
   const L = state.lifecycle || { missing: true };
   record("separate bodies: signing out or losing a live room lets the body go at once, leaving the NPC solid where it is with nothing claimed, and signing back in or reconnecting claims a fresh body beside it",
     !L.missing && L.driving && L.signedOut && L.signedIn && L.roomLost && L.reconnected, JSON.stringify(L));
+  const V = state.sight || { missing: true }, seen = (v) => !!v && !v.enabled && !v.outlined, covered = (v) => !!v && v.enabled;
+  record("separate bodies (#501): a driven Ooga or gorilla body in the open draws no outline or wall fill and behind island rock takes the covered view; a registry refresh and a head swap keep it, and letting go, take after take, leaves the outline registry as it was",
+    !V.missing && seen(V.ooga.clear) && covered(V.ooga.covered) && seen(V.ooga.refreshed) && V.ooga.closedHead && V.ooga.registered
+      && seen(V.gorilla.clear) && covered(V.gorilla.covered) && V.released && V.repeated, JSON.stringify(V));
 } };
 const outdoorTravelProof = () => {
 const B=__ooga,ctx=__outdoorTravelContext,crew=B.crew,P=B.poolIsland,scene=BL.scenes.hub;
@@ -27358,6 +27518,9 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   record("visibility lifecycle: shared bakes survive removal and replacement; hidden transforms, clips and geometry restore exact queries", storage.lifecycle, JSON.stringify(storage));
   const demandUsers = await visibilityDemandUsersProof();
   record("visibility demand: first demand visits only descriptor users and releases replaced, removed and disposed entries", demandUsers.rows.every(row => row.visits === row.count && row.released && row.resolved) && demandUsers.boundsTracked && demandUsers.replacementReleased && demandUsers.bothResolved && demandUsers.disposed, JSON.stringify(demandUsers));
+  const separateBodies = await separateBodyRegistryProof();
+  record("visibility separate bodies (#501): a driven Ooga or gorilla body is a registry character from before the registry exists, reads in sight in the open and covered behind a blocker, keeps both head states through refreshes with its sightHidden effects left out, and is forgotten before it is detached with nothing left take after take",
+    Object.values(separateBodies).every(Boolean), JSON.stringify(separateBodies));
   await distributionAudioChecks();
   const canvasStub = () => ({
     width: 0, height: 0,
