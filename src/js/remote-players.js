@@ -23,8 +23,8 @@
 // A beat begun by anything else is left alone.
 // Reactions (reactions.js, through `net.subscribeReactions`): an emoji a player sent pops up over their nameplate, or
 // over the visitor's own head for their own (id 0), rises a little and fades over REACT_TIME, the newest replacing the
-// one before; a raised hand (`rec.hand`, `net.state.hand` for the visitor's own) stands there until it is lowered, beside
-// a reaction while both show. Under Calm a reaction only fades. Drawn on the overlay as text, nothing built or kept.
+// one before; a raised hand (`rec.hand`, `net.state.hand` for the visitor's own) stands there until it is lowered, never
+// moving: a reaction pops up in front of it and rises on over it. Under Calm a reaction only fades. Drawn on the overlay as text, nothing built or kept.
 // `pick` finds the nearest live body along a sight line, mesh by mesh, through a weapon-target list of the pool's own
 // (never the scene's input targets, so a live player is seen by a view's crosshair without being tapped, possessed,
 // struck or shot); a body that is not shown (another zone, the visitor's own name) is never found, and the scene's
@@ -54,10 +54,10 @@
   // The thump's fallback mallet, on the same 9x9 grid: x, y, w, h runs, drawn ICON_LIFT over the nameplate or head.
   const MALLET = [1, 1, 7, 3, 4, 4, 1, 5], MALLET_FILL = "#d8892b", ICON_TIME = 1.2, ICON_LIFT = 12;
   // A reaction's emoji and the raised hand, in CSS pixels over the nameplate's baseline (or the head's top): how long a
-  // reaction shows, how far it rises, its pop and fade, and how far apart the two stand when both show.
+  // reaction shows, how far it rises (further from a raised hand, to clear it), its pop and fade.
   const EMOJI_FONT = "26px 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
   const HAND_FONT = "20px 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
-  const REACT_TIME = 2.6, REACT_LIFT = 16, REACT_RISE = 22, REACT_POP = 0.18, REACT_FADE = 0.7, PAIR_GAP = 15;
+  const REACT_TIME = 2.6, REACT_LIFT = 16, REACT_RISE = 22, REACT_OVER = 14, REACT_POP = 0.18, REACT_FADE = 0.7;
   // Gorilla flags a chest beat must not interrupt: airborne, climbing, the lab's and the office's stances, asleep.
   const BEAT_BLOCKED = 1 | 4 | 16 | 32 | 64;
   const CALM = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -471,22 +471,24 @@
       ctx.fillStyle = MALLET_FILL;
       runs(ctx, MALLET, x, y);
     };
-    // A reaction `emoji` `left` seconds before it goes, and the raised hand, over the point (x, y).
+    // A reaction `emoji` `left` seconds before it goes, and the raised hand, over the point (x, y). The hand never moves;
+    // a reaction starts on it, drawn after it so in front, and rises clear of it.
     const drawReaction = (ctx, x, y, emoji, left, hand) => {
-      const showing = left > 0, both = showing && !!hand;
       ctx.textBaseline = "middle";
       if (hand) {
         ctx.font = HAND_FONT;
-        ctx.fillText(hand, both ? x - PAIR_GAP : x, y - REACT_LIFT);
+        ctx.fillText(hand, x, y - REACT_LIFT);
       }
-      if (showing) {
-        const age = REACT_TIME - left, calm = CALM.matches;
+      if (left > 0) {
+        const age = REACT_TIME - left, calm = CALM.matches, k = 1 - age / REACT_TIME;
         const pop = calm ? 1 : Math.min(1, age / REACT_POP), scale = calm ? 1 : 0.4 + 0.6 * (1 - (1 - pop) * (1 - pop)) + 0.12 * Math.sin(Math.PI * pop);
-        const rise = calm ? 0 : REACT_RISE * (1 - (1 - age / REACT_TIME) * (1 - age / REACT_TIME));
+        // From a raised hand it starts on the hand and goes further; under Calm it stands clear of the hand from the start.
+        const start = hand ? 0 : 4, reach = hand ? REACT_RISE + REACT_OVER : REACT_RISE;
+        const rise = calm ? (hand ? reach : 0) : reach * (1 - k * k);
         ctx.globalAlpha = Math.min(1, left / REACT_FADE);
         ctx.font = EMOJI_FONT;
         ctx.save();
-        ctx.translate(both ? x + PAIR_GAP : x, y - REACT_LIFT - 4 - rise);
+        ctx.translate(x, y - REACT_LIFT - start - rise);
         ctx.scale(scale, scale);
         ctx.fillText(emoji, 0, 0);
         ctx.restore();
