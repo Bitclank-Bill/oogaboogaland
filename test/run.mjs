@@ -27093,6 +27093,42 @@ const fixedRoutineProof = async () => {
   const gorillaDirect = [gorillaFromMeadow, gorillaFromCave, gorillaReset].every(t => !t.plannedSteps && t.arrived && t.onTerrain && !t.moves
     && t.offLine < 1e-6 && t.wallChecks > 0 && t.frames <= straightFrames) && gorillaReset.frames > 180;
   const gorillaClimbsWalls = [gorillaWall, gorillaWorkWall].every(t => t.moves === 1 && !t.arrived);
+  // Regression: the fixed planner keeps a walker's lane until its goal or the map changes, and a straight work leg
+  // never touched it, so a gorilla's next walk to the same pile slot took up its old lane (consumed, or cut short)
+  // from wherever the work trip had left it. One gorilla walks to the pile (all the way, or only partway), walks
+  // straight to work, then walks to the same slot again: that third walk plans afresh from where it now stands,
+  // exactly the lane a gorilla first setting out from there gets, in the same state and buffers, and arrives.
+  const passiveWalker = (x, z) => {
+    const gorilla = { nonInteractive: true, heading: Math.PI, speed: 0, blocked: 0, stuckTime: 0, goalX: 30, goalY: 0, goalZ: 1,
+      ...PILE_TRIP, root: { position: { x, y: 0.02 * x, z } } };
+    const c = { clamp: (v, a, b) => Math.max(a, Math.min(b, v)), PROP_STEP: 1.16, ctx: { npcFixedPaths: fixed, npcPathState: () => P.create({ island }).createState() },
+      support: (_e, sx) => 0.02 * sx, groundStepClear: () => true, setSupportY: (e, y) => { e.root.position.y = y; }, move: () => {}, e: gorilla };
+    runInNewContext(`${stepperCode} this.step = () => movePassive(e, 1 / 30, 2.7, passivePlanned(e));`, c);
+    const at = (gx, gz) => Math.hypot(gorilla.root.position.x - gx, gorilla.root.position.z - gz);
+    const walk = (frames) => { for (let i = 0; i < frames && at(gorilla.goalX, gorilla.goalZ) > 0.02; i++) c.step(); };
+    return { gorilla, step: c.step, walk, at };
+  };
+  const laneOf = s => Array.from(s.laneX.subarray(0, s.count), (v, i) => [v, s.laneZ[i]].join()).join("|");
+  const pileAgain = (firstFrames) => {
+    const w = passiveWalker(0, -4), g = w.gorilla;
+    w.walk(firstFrames);
+    const s = g.pathing, buffers = [s.laneX, s.laneZ], plans = s.plans, version = s.version;
+    Object.assign(g, WORK_TRIP, { goalX: -20, goalZ: 12 });
+    w.walk(150);
+    const leftAlone = s.plans === plans && Number.isNaN(s.tx);
+    Object.assign(g, PILE_TRIP, { goalX: 30, goalZ: 1 });
+    const from = { x: g.root.position.x, z: g.root.position.z };
+    w.step();
+    const fresh = passiveWalker(from.x, from.z);
+    fresh.step();
+    const replanned = s.plans === plans + 1 && s.version === version && s.tx === 30 && s.tz === 1;
+    const sameLane = laneOf(s) === laneOf(fresh.gorilla.pathing) && s.index === fresh.gorilla.pathing.index;
+    const reused = g.pathing === s && s.laneX === buffers[0] && s.laneZ === buffers[1];
+    w.walk(2000);
+    return { leftAlone, replanned, sameLane, reused, arrived: w.at(30, 1) <= 0.02, moved: Math.hypot(from.x, from.z + 4) > 1 };
+  };
+  const pileConsumed = pileAgain(2000), pileInterrupted = pileAgain(60);
+  const gorillaReplans = [pileConsumed, pileInterrupted].every(t => Object.values(t).every(v => v === true));
   // The real doorway claim: a passive companion passes a held portal without
   // scanning or taking it (the holder keeps its claim), drops a stale claim of
   // its own, and a driven gorilla still waits its turn.
@@ -27115,8 +27151,8 @@ const fixedRoutineProof = async () => {
   const passivePortal = passedHeld && droppedStale && drivenWaits;
   island.path.centerlines = [];
   return { outside, ring, arrives, stamped, replansGraphLane, midOutboundChill, returningChill, slotlessChill, restsAtPile,
-    slotWalkRetargets, authoredRouteKept, slotWalks: [ownLeg, authoredLeg], gorillaPlanned, gorillaDirect, gorillaClimbsWalls, passivePortal,
-    gorillaToPile, gorillaWall, gorillaFromMeadow, gorillaFromCave, gorillaReset, gorillaWorkWall,
+    slotWalkRetargets, authoredRouteKept, slotWalks: [ownLeg, authoredLeg], gorillaPlanned, gorillaDirect, gorillaClimbsWalls, gorillaReplans, passivePortal,
+    gorillaToPile, gorillaWall, gorillaFromMeadow, gorillaFromCave, gorillaReset, gorillaWorkWall, pileConsumed, pileInterrupted,
     portal: { passedHeld, droppedStale, drivenWaits, caveScans },
     unsupported: P.fixed(island) === null,
     trips: [outboundTrip, returnTrip, slotlessTrip, restTrip].map(({ steps, ...trip }) => ({ ...trip, steps: steps.length })) };

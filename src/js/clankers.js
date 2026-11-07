@@ -4658,6 +4658,11 @@
         PASSIVE_WALKER.pathing = e.pathing; PASSIVE_WALKER.root = e.root;
         ctx.npcFixedPaths.target(PASSIVE_WALKER, e.goalX, e.goalZ);
         tx = e.pathing.targetX; tz = e.pathing.targetZ;
+      } else if (e.pathing) {
+        // A straight leg leaves the planned lane behind: the next planned leg plans afresh from wherever the
+        // gorilla then stands, even to the same goal (`fixed.target` replans only on a new goal or map), in
+        // the same state and buffers.
+        e.pathing.tx = NaN;
       }
       const dx = tx - p.x, dz = tz - p.z, distance = Math.hypot(dx, dz);
       if (distance < 0.02) { e.speed = 0; return; }
