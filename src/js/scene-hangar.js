@@ -1477,7 +1477,7 @@
     scene.fire = BL.hangarFire.create({ root, jet: scene.jet, nozzles: scene.jet.children[0] || null, fx, audio, hold: (on) => {
       pilot.setActive(!on);
       pilot.setExternalControl(on);
-    }, toast: hud.toast, busy: () => !!scene.anomaly && scene.anomaly.playing });
+    }, toast: hud.toast, busy: () => !!scene.anomaly && scene.anomaly.playing || !!scene.meltdown && scene.meltdown.active });
     input.add(scene.fire.body, { kind: "firetest", preset: null }, { radius: 1.6 });
     targets.push(scene.fire.body);
     soundPanel = openSoundPanel();
@@ -1496,7 +1496,16 @@
     // on the right wall, whose operators' posts come just before it.
     const side = HM.sideRooms(), first = LAYOUT.crew.length - 1 - side.length;
     scene.roomFire = BL.hangarRoomFire.create({ root, fx, audio, rooms: [{ spots: HM.controlRoom().spots, gorilla: scene.crew[LAYOUT.crew.length - 1] }, ...side.map((r, i) => ({ spots: r.spots, gorilla: scene.crew[first + i] }))] });
-    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, room: scene.roomFire, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden(), near: (test) => nearJet(test) });
+    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, room: scene.roomFire, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden(), near: (test) => nearJet(test), busy: () => scene.meltdown.active });
+    // Now and then a worker in one of the crew's rooms has had enough, and runs down to pound on the Jet
+    // (`hangar-meltdown.js`), with nothing else going on: not on a test page unless `meltdown=` asks, which under debug
+    // also sets the wait between them, s.
+    const fed = DEBUG ? Number(params.get("meltdown")) : NaN;
+    scene.meltdown = BL.hangarMeltdown.create({ root, fx, audio, sis: scene.sis, rooms: side.map((r, i) => ({ spots: r.spots, gorilla: scene.crew[first + i], door: scene.roomDoors[i], shut: r.door.turn })),
+      // Tess, to break up the fight, when nobody else has her.
+      tess: { free: () => !scene.guide.lent && !scene.guide.holding, lend: (drive) => { scene.guide.lend(drive); scene.tessFor = drive ? "meltdown" : null; } },
+      busy: () => leaving || scene.anomaly.playing || scene.fire.t >= 0 || scene.roomFire.burning || scene.sis.rampaging || scene.guide.lent,
+      blocker: () => people && people.player, auto: !params.has("nosim") || fed > 0, gap: fed > 0 ? fed : null });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
     for (const n of scene.terminals.nodes) {
@@ -1599,7 +1608,7 @@
     hangarScene.input = input;
     hangarScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get roomFire() { return scene && scene.roomFire && scene.roomFire.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get keypad() { return scene && scene.keypad && scene.keypad.debug; }, get crane() { return scene && scene.crane && scene.crane.debug; }, get guide() { return scene && scene.guide; } }
+      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get roomFire() { return scene && scene.roomFire && scene.roomFire.debug; }, get meltdown() { return scene && scene.meltdown && scene.meltdown.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get keypad() { return scene && scene.keypad && scene.keypad.debug; }, get crane() { return scene && scene.crane && scene.crane.debug; }, get guide() { return scene && scene.guide; } }
     };
   };
   const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
@@ -1690,6 +1699,7 @@
     // the crew has moved, so a presser it knocks down lies where the crew left them.
     s.anomaly.update(dt);
     s.roomFire.update(dt);
+    s.meltdown.update(dt);
     s.fire.update(dt, drivenHere);
     pressLife(s.forklift, dt);
     powerLife(s.forklift, dt);
@@ -1701,10 +1711,11 @@
     s.terminals.update(dt, drivenHere);
     s.keypad.update(dt, drivenHere);
     // Kortik's Sis smashing the Jet brings Tess over to distract her, whatever she was doing; it over, she goes back.
+    // A worker's meltdown borrows her too, to break up its fight (`tessFor` says who has her).
     const sp = s.sis.node.position;
     s.sisHead.x = sp.x; s.sisHead.y = sp.y + 0.9; s.sisHead.z = sp.z;
-    if (s.sis.rampaging && !s.guide.lent) { s.guide.lend(s.distraction.drive); s.sis.distract(s.guide.root.position); }
-    else if (!s.sis.rampaging && s.guide.lent) { s.distraction.done(); s.guide.lend(null); s.sis.distract(null); }
+    if (s.sis.rampaging && !s.guide.lent) { s.guide.lend(s.distraction.drive); s.tessFor = "sis"; s.sis.distract(s.guide.root.position); }
+    else if (!s.sis.rampaging && s.tessFor === "sis") { s.distraction.done(); s.guide.lend(null); s.tessFor = null; s.sis.distract(null); }
     seatViewBack(drivenHere);
     pilot.update(dt);
     s.guide.update(dt, elapsed);
@@ -1780,10 +1791,10 @@
     craneBeam(s.crane.beam);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     for (let i = 0; i < s.crew.length; i++) {
-      // The control room's fire holds its operator while it burns.
-      if (s.roomFire.holding !== s.crew[i]) s.crew[i].update(dt);
+      // The control room's fire holds its operator while it burns, and a worker who has had enough is held while he is out.
+      if (s.roomFire.holding !== s.crew[i] && s.meltdown.holding !== s.crew[i]) s.crew[i].update(dt);
       const p = s.crew[i].root.position, a = s.crewActors[i];
-      a.x = p.x; a.z = p.z;
+      a.x = p.x; a.y = p.y; a.z = p.z;
     }
     if (boardsDirty) {
       boardsDirty = false;
@@ -1839,6 +1850,7 @@
     scene.launch.phase.dispose();
     if (scene.window) scene.window.dispose();
     scene.anomaly.dispose();
+    scene.meltdown.dispose();
     scene.roomFire.dispose();
     scene.fire.dispose();
     scene.keypad.dispose();
