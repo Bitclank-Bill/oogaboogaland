@@ -26231,7 +26231,7 @@ const integrationChecks = async BL => {
     const kept=npc.override===null&&!npc.remoteControlled&&!npc.humanControlled&&npc.state==="chilling"&&npc.camp.seat===seat&&seat.sitter===npc&&npc.root.parent===ghostRoot;
     // Regression: hovering a ghost showed neither its name nor its status, and the crosshair never knew a live player.
     // The live body is found along a sight line through the pool's own target list (never a weapon target), its ghost
-    // NPC never is, a blocked line or the visitor's own name finds nothing, and a ghost's tooltip status is online.
+    // NPC never is, and a blocked line or the visitor's own name finds nothing.
     BL.scene.updateWorld(ghostRoot);
     const live=ghostPool.body(73),liveHit={node:null,owner:null,type:"none",distance:Infinity,x:0,y:0,z:0};
     const aimAt=rig=>{const c=BL.scene.boundsOf(rig.parts.head.geometry).center,m=rig.parts.head.world;
@@ -26267,10 +26267,20 @@ const integrationChecks = async BL => {
     ghostCrew.player={traits:{name:"w-s-bitcoin"}};ghostPool.update(.1);
     const ownSkipped=!along(livePoint)&&cleared();
     ghostCrew.player=null;ghostPool.update(.1);
-    const ghostOnline=npc.ghostTrack&&BL.hud.statusFor(npc)==="online"&&along(livePoint);
+    // Regression: a ghost's dot was the live green one its driver's body carries. A ghost Ooga, and a ghost gorilla by
+    // its Ooga (`tooltipOwner`), shows the NPC's own clank, chill or sleep, signed in or out, while the signed-in
+    // visitor's own body and a remote-controlled one stay online beside it.
+    const STATES=["working","chilling","sleeping"];
+    const activityOf=(cave)=>STATES.every(s=>{npc.state=s;return [null,{id:74,login:"tab"}].every(me=>{BL.net.state.me=me;return BL.hud.statusFor(cave)===s;});});
+    const ownBody={humanControlled:true,npc,state:"chilling"},ownGorilla={controlled:true,npc:companion,tooltipOwner:npc},remoteBody={remoteControlled:true,state:"sleeping"};
+    const liveOnline=()=>{BL.net.state.me={id:74,login:"tab"};const on=[ownBody,ownGorilla,remoteBody].every(c=>BL.hud.statusFor(c)==="online");BL.net.state.me=null;return on;};
+    const ghostActivity=npc.ghostTrack&&activityOf(npc)&&liveOnline()&&along(livePoint);
+    npc.state="chilling";BL.net.state.me=null;
+    companion.tooltipOwner=npc;
     tab.body="gorilla:w-s-bitcoin";tab.bodyKind="gorilla";ghostPool.update(.1);
     const switched=!npc.ghostTrack&&head.geometry===source&&companion.ghostTrack===true;
-    const companionOnline=BL.hud.statusFor(companion)==="online";
+    const companionActivity=activityOf(companion)&&liveOnline();
+    npc.state="chilling";BL.net.state.me=null;
     ghostRecords.clear();ghostPool.update(.1);
     const left=!companion.ghostTrack&&looks.stats().ghosts===0&&head.geometry===source&&npc.root.parent===ghostRoot;
     // Hit the live body once more so the empty pool's miss below must clear a stale result.
@@ -26279,8 +26289,8 @@ const integrationChecks = async BL => {
     looks.paint(.6);looks.paint(.6);const dropped=looks.stats().twins===0&&releasedGeometry.includes(round);
     ghostPool.dispose();looks.dispose();BL.scene.removeChild(ghostRoot,npc.root);BL.net=netBefore;
     record("integration npc ghosts: a remote driver's NPC keeps its own track and seat as a ghost, turns solid in place on switch or leave, and releases its look",heldHere&&painted&&restored&&swapped&&swappedBack&&tinted&&kept&&switched&&left&&dropped,JSON.stringify({heldHere,painted,restored,swapped,swappedBack,tinted,kept,switched,left,dropped}));
-    record("integration npc ghosts: a ghost Ooga or gorilla reads online under the cursor, and only a shown live body in plain sight with whatever gear it shows now, never its ghost, the visitor's own name, one behind cover or gear hidden, replaced or taken off it, is found along a sight line; none once it leaves",
-      picked&&ghostSkipped&&blocked&&lateGear&&detached&&ownSkipped&&ghostOnline&&companionOnline&&solidAgain,JSON.stringify({picked,ghostSkipped,blocked,lateGear:{gearFound,gearHidden,gearCameraHidden,gearBlocked,gearReplaced,gearMoved,gearBack,gearOff},detached,ownSkipped,ghostOnline,companionOnline,solidAgain,distance:liveHit.distance}));
+    record("integration npc ghosts: a ghost Ooga or gorilla reads its own clank, chill or sleep under the cursor while live bodies stay online, and only a shown live body in plain sight with whatever gear it shows now, never its ghost, the visitor's own name, one behind cover or gear hidden, replaced or taken off it, is found along a sight line; none once it leaves",
+      picked&&ghostSkipped&&blocked&&lateGear&&detached&&ownSkipped&&ghostActivity&&companionActivity&&solidAgain,JSON.stringify({picked,ghostSkipped,blocked,lateGear:{gearFound,gearHidden,gearCameraHidden,gearBlocked,gearReplaced,gearMoved,gearBack,gearOff},detached,ownSkipped,ghostActivity,companionActivity,solidAgain,distance:liveHit.distance}));
   }
 };
 

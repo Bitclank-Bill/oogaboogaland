@@ -5702,7 +5702,8 @@
   const liveClear = (x, y, z, toX, toY, toZ) => !clankerFireReachable || clankerFireReachable(x, y, z, toX, toY, toZ, null, true);
   const liveTarget = (ox, oy, oz, dx, dy, dz, maxDistance) =>
     remotes && remotes.pick(LIVE_HIT, ox, oy, oz, dx, dy, dz, maxDistance, liveClear) ? LIVE_HIT.distance : Infinity;
-  // An NPC ghost track (npc-ghosts.js) under the cursor shows its name and online dot, an Ooga's or a gorilla's. Its glassy
+  // An NPC ghost track (npc-ghosts.js) under the cursor shows its name and its own activity dot (clank, chill or sleep;
+  // a gorilla's its Ooga's), never the online dot its driver's live body carries. Its glassy
   // twin is not in the outline registry, so its name goes by the overlay's exact test (`characterUiOccluded`), and the
   // hover is checked again every frame, as the pool block's is: the ghost moves under a still pointer, and a live player
   // standing in front of it (often its own driver, who has a nameplate of their own) takes the pointer from it.
