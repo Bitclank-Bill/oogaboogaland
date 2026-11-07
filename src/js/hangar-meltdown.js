@@ -1,8 +1,8 @@
 // A worker in the Lightning Jet Hangar who has had enough. Now and then (`GAP`, from the end of one to the start of the
 // next, each page its own), with nothing else going on in the hall (`busy`), the gorilla working one of the crew's
-// rooms on the right wall, picked at random, loses it at his console: he pounds it and yells, then runs out through the
-// room's door, which bangs open, along the right catwalk and down its stair to the Jet, and pounds on its main gear with
-// both fists, yelling, sparks flying from every clang. Kortik's Sis, if she is free, notices: she runs at him screaming
+// rooms on the right wall, picked at random but never the last one's, loses it at his console: he pounds it and
+// yells, then runs out through the room's door, which bangs open, along the right catwalk and down its stair to the
+// Jet, and pounds on its main gear with both fists, yelling, sparks flying from every clang. Kortik's Sis, if she is free, notices: she runs at him screaming
 // and squares up to him on his far side from the Jet (`sis.brawl`), they trade a line each, and then they are at it in
 // a cartoon dust cloud, fists, her hammer and his hard hat flying out of it, stars, POW!s and grawlix, until Tess, if
 // she is free (not touring or distracting Sis), flies over fast and breaks it up, a beam on each of them (lent through
@@ -91,7 +91,7 @@
     // The state: whether it runs, the beat and how far into it, the room, its worker and his parts; where he is along
     // his way (m), where he stands, his feet, heading and stride; the next blow; whether he has yelled at the Ooga in his
     // way since it last moved off; the wait for the next; and where his voice comes from.
-    let active = false, phase = "", t = 0, room = 0, gorilla = null, P = null, along = 0, feet = high, heading = 0, stride = 0;
+    let active = false, phase = "", t = 0, room = 0, last = -1, gorilla = null, P = null, along = 0, feet = high, heading = 0, stride = 0;
     let blowAt = 0, yelled = false, lineAt = 0, wait = gap !== null ? gap : between(FIRST);
     const pos = { x: 0, z: 0 }, voiceAt = { x: 0, y: 0, z: 0 };
     // The fight: whether Sis came, where she squares up, the cloud's middle, the things that fly out of it (her hammer,
@@ -264,9 +264,14 @@
       for (const q of pops) { q.u = 1; q.node.visible = false; }
       for (const b of balls) b.node.visible = false;
     };
-    const start = (i = Math.floor(Math.random() * rooms.length)) => {
+    // A room at random, never the one the last came from.
+    const anyRoom = () => {
+      const i = Math.floor(Math.random() * (rooms.length - (last >= 0 ? 1 : 0)));
+      return last >= 0 && i >= last ? i + 1 : i;
+    };
+    const start = (i = anyRoom()) => {
       if (active) return false;
-      active = true; room = i; gorilla = rooms[i].gorilla; P = gorilla.parts;
+      active = true; room = last = i; gorilla = rooms[i].gorilla; P = gorilla.parts;
       const S = rooms[i].spots;
       pos.x = S.post.x; pos.z = S.post.z; heading = S.post.heading; feet = high;
       along = 0; stride = 0; yelled = false; sisCame = false; said = 0;
