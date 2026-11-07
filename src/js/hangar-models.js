@@ -346,7 +346,6 @@
     panels(frontWall, rand, "z", front, -1, X0, d.x - dw - 1, d.x + dw + 1, dt + 1, top);
     surround(frontWall, "z", front, -1, d.x - dw, d.x + dw, dt, S.face + 0.5);
     const V = VAULT;
-    vault.push(box({ w: right - left, h: 0.2, d: front - back, color: PANEL.seam, offset: { x: mid, y: H + 0.3, z: (back + front) / 2 } }));
     for (let x = X0 + Math.floor((left - X0) / 4) * 4; x < right; x += 4) for (let z = B + Math.floor((back - B) / 4) * 4; z < front; z += 4) {
       const x0 = Math.max(x, left), x1 = Math.min(x + 4, right), z0 = Math.max(z, back), z1 = Math.min(z + 4, front);
       vault.push(box({ w: x1 - x0 - PANEL.gap, h: 0.2, d: z1 - z0 - PANEL.gap, color: PANEL.tones[Math.floor(rand() * PANEL.tones.length)], offset: { x: (x0 + x1) / 2, y: H + 0.1, z: (z0 + z1) / 2 } }));
@@ -363,11 +362,14 @@
         slots.push(box({ w: V.w, h: 0.05, d: z1 - z0, color: V.color, emissive: 1, offset: { x, y: H - 0.275, z: zc } }));
       }
     }
+    // The backing round the shell, and the dark sheet over the roof's panels: one box, whose middle would sort it over
+    // whatever hangs under the roof on Canvas 2D, so it sorts with the backing.
     const backing = [
       box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X0 - 1.2, y: H / 2, z: (B + F) / 2 } }),
       box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X1 + 1.2, y: H / 2, z: (B + F) / 2 } }),
       box({ w: span + 4, h: H + 4, d: 1, color: PANEL.seam, offset: { x: mid, y: H / 2, z: F + 1.6 } }),
-      box({ w: span + 4, h: 1, d: F - B + 4, color: PANEL.seam, offset: { x: mid, y: H + 3, z: (B + F) / 2 } })
+      box({ w: span + 4, h: 1, d: F - B + 4, color: PANEL.seam, offset: { x: mid, y: H + 3, z: (B + F) / 2 } }),
+      box({ w: right - left, h: 0.2, d: front - back, color: PANEL.seam, offset: { x: mid, y: H + 0.3, z: (back + front) / 2 } })
     ];
     // The back wall's backing leaves the tunnel's mouth, in three slabs round it.
     const bw = t.r + 0.6;
