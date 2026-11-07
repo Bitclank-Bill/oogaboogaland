@@ -22,7 +22,12 @@
   const BL = window.BL = window.BL || {};
   const { quat, fnv1a } = BL.math;
   const { addChild, removeChild } = BL.scene;
-  const FORMAT = 2, HEADER = 4, RECORD = 112, SEND_S = 0.25, KEEP_S = 2;
+  // Format 3: a driven Ooga's NPC stays in the frame on its own track (npc-ghosts.js), its player a separate body.
+  // A follower whose elected host sends another format holds every NPC where it stands (puppets, no AI of its own,
+  // no frames applied) and says so once (`onIncompatible`): the room keeps one authority, and this page never
+  // invents a second track. It follows again as soon as a matching frame arrives or the room elects another host.
+  // A format-2 page can't do the same: following a format-3 host it falls back to its own crew, as it always did.
+  const FORMAT = 3, HEADER = 4, RECORD = 112, SEND_S = 0.25, KEEP_S = 2;
   const EASE = 8, SNAP = 4, EVENTS_MAX = 96, SAY_MAX = 120;
   const F_VISIBLE = 1, F_CLOSED = 2, F_ROOT_Q = 4, F_ARM_L_Q = 8, F_ARM_R_Q = 16, F_HEAD_Q = 32;
   const F_CLUB = 64, F_CLUB_Q = 128, F_GUN = 256, F_GUN_Q = 512, F_FLASH = 1024, F_SNACK = 2048;
@@ -34,7 +39,7 @@
 
   const wrap = (d) => Math.atan2(Math.sin(d), Math.cos(d));
 
-  const create = ({ crew, fx, onPlan, onHit, onModelChange, animationInterval }) => {
+  const create = ({ crew, fx, onPlan, onHit, onModelChange, animationInterval, onIncompatible = null }) => {
     const net = BL.net;
     const list = crew.list.filter((cave) => !cave.contributor.temporary), n = list.length;
     const index = new Map(list.map((cave, i) => [cave, i]));
@@ -46,7 +51,7 @@
     // Each puppet's own quaternions: the crew's are never written from here.
     const quats = list.map(() => ({ root: quat.create(), armL: quat.create(), armR: quat.create(), head: quat.create(), club: quat.create(), gun: quat.create() }));
     const TQ = quat.create();
-    let role = "solo", hostId = null, sendIn = 0, sinceSent = 0, sentFloats = -1, seen = -1, frames = 0, events = [], elapsed = 0;
+    let role = "solo", hostId = null, sendIn = 0, sinceSent = 0, sentFloats = -1, seen = -1, frames = 0, events = [], elapsed = 0, incompatible = false;
     const poseFlags = new Int32Array(n).fill(-1);
 
     const driven = (cave) => cave === crew.player || !!cave.remoteControlled;
@@ -246,7 +251,14 @@
       if (!buffer || buffer.byteLength < HEADER * 4) return;
       const header = new Uint32Array(buffer, 0, HEADER);
       const count = header[2], eventBytes = header[3], recordBytes = (HEADER + count * RECORD) * 4;
-      if (header[0] !== FORMAT || header[1] !== signature) { release(); return; }
+      // Another format from the elected host: hold, never run a second track (see FORMAT).
+      if (header[0] !== FORMAT) {
+        if (!incompatible) { incompatible = true; if (onIncompatible) onIncompatible(header[0]); }
+        pendingEvents = null;
+        return;
+      }
+      incompatible = false;
+      if (header[1] !== signature) { release(); return; }
       if (count > n || buffer.byteLength !== recordBytes + eventBytes) return;
       const f = new Float32Array(buffer, 0, recordBytes / 4);
       for (let k = 0; k < count; k++) {
@@ -271,9 +283,11 @@
     let pendingEvents = null;
 
     // A quaternion eased toward the frame's, or dropped (back to the Euler rotation) when the frame has none.
+    // A puppet's pose is the host's alone: a quaternion its own crew left (a local sleep's `sleepRotation`)
+    // would hide the frame's Euler rotation, so it goes too. The crew's object itself is never written.
     const poseQuat = (node, own, t, o, on, k) => {
       if (!on) {
-        if (node.quaternion === own) node.quaternion = null;
+        if (node.quaternion) node.quaternion = null;
         return;
       }
       if (node.quaternion !== own) {
@@ -304,7 +318,12 @@
       const t = target, o = i * RECORD, r = cave.root, p = cave.parts, q = quats[i];
       const flags = t[o + 1];
       const distance = Math.hypot(t[o + 2] - r.position.x, t[o + 3] - r.position.y, t[o + 4] - r.position.z);
-      const far = fresh[i] || distance > SNAP;
+      // A status change is a passive relocation on the host (a beam): place it at
+      // once rather than easing across, however short. The exception is
+      // clanking to chilling, a walk on the host, which eases as usual.
+      const status = STATES[t[o + 96]];
+      const relocated = status !== undefined && status !== cave.state && !(cave.state === "working" && status === "chilling");
+      const far = fresh[i] || distance > SNAP || relocated;
       let k = far ? 1 : 1 - Math.exp(-EASE * dt);
       fresh[i] = 0;
       r.visible = (flags & F_VISIBLE) !== 0;
@@ -396,6 +415,7 @@
 
     const release = () => {
       for (let i = 0; i < n; i++) list[i].puppet = false;
+      incompatible = false;
       have.fill(0);
       fresh.fill(0);
       poseFlags.fill(-1);
@@ -445,6 +465,8 @@
           cave.puppet = false;
           continue;
         }
+        // Held where it stands: the host's format can't be followed and this page must not run its own.
+        if (incompatible) { cave.puppet = true; continue; }
         cave.puppet = !!have[i];
         if (have[i]) apply(i, cave, dt);
       }
@@ -461,7 +483,8 @@
       resetEvents();
     };
 
-    return { update, dispose, fx: recordingFx, recordShot, recordPlan, recordHit, get role() { return role; }, get frames() { return frames; } };
+    return { update, dispose, fx: recordingFx, recordShot, recordPlan, recordHit, get role() { return role; }, get frames() { return frames; },
+      get incompatible() { return incompatible; } };
   };
 
   BL.npcSync = { create, FORMAT, RECORD };

@@ -6,8 +6,6 @@
   const { createNode, addChild, createCamera, boundsOf } = BL.scene;
   const STATE_LABELS = { working: "clank", chilling: "chill", sleeping: "sleep", away: "away", online: "online" };
   const ROSTER_ORDER = { working: 0, chilling: 1, sleeping: 2, away: 3 };
-  // Signed-in players online lead the roster, ahead of every activity.
-  const ONLINE_RANK = -1;
   const stampOf = (contributor) => contributor.lastContributionAt || contributor.lastCommitAt;
   // Local control is online only while signed in; remote presence remains independent.
   const statusFor = (cave) => {
@@ -171,6 +169,18 @@
     path.setAttribute("fill", "currentColor");
     voiceIcon.append(path);
   }
+  // The Ooga thump's pixel mallet (thump.js), on the voice mark's 9x9 grid: the Thump button and the mark beside a
+  // player in Online Oogas (players.js) clone it.
+  const malletIcon = document.createElementNS(SIGN_NS, "svg");
+  malletIcon.setAttribute("viewBox", "0 0 9 9");
+  malletIcon.setAttribute("aria-hidden", "true");
+  malletIcon.setAttribute("class", "pixel-mallet");
+  {
+    const path = document.createElementNS(SIGN_NS, "path");
+    path.setAttribute("d", "M1 1h7v3H1zM4 4h1v5H4z");
+    path.setAttribute("fill", "currentColor");
+    malletIcon.append(path);
+  }
   // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
@@ -209,14 +219,14 @@
     renderer.render(root, camera);
     renderer.dispose();
   };
-  const copyPortraitNode = (source, portraitRoot, portraitGeometry) => {
+  const copyPortraitNode = (source, portraitRoot, portraitGeometry, excluded = null) => {
     if (source.portraitHidden) return null;
     const copy = createNode({ geometry: source === portraitRoot ? portraitGeometry : source.geometry });
     Object.assign(copy.position, source.position);
     Object.assign(copy.rotation, source.rotation);
     Object.assign(copy.scale, source.scale);
     copy.visible = source.visible;
-    for (const child of source.children) if (child.visible && !child.portraitHidden) addChild(copy, copyPortraitNode(child, portraitRoot, portraitGeometry));
+    for (const child of source.children) if (child.visible && !child.portraitHidden && !excluded?.has(child)) addChild(copy, copyPortraitNode(child, portraitRoot, portraitGeometry, excluded));
     return copy;
   };
   const renderFaceIcon = (canvas, cave, gorilla = null, px = ICON_PX, unlit = false) => {
@@ -242,9 +252,10 @@
   };
   // An Ooga standing square to the view, whole, as it stands posed now: its built parts copied (hidden ones left out)
   // and turned to face the camera, `w` by `h` pixels. A podium's portraits (HALLOWEEN: the arcade's ghost hunt's winners).
-  const renderBodyIcon = (canvas, cave, w, h) => {
+  const renderBodyIcon = (canvas, cave, w, h, weapons = true) => {
     const renderer = iconRendererMod.createRenderer(canvas, { width: w, height: h, transparent: true });
-    const root = createNode(), body = copyPortraitNode(cave.root, null, null), tall = cave.bodyHeight;
+    const excluded = weapons ? null : new Set([cave.parts.club, cave.parts.gun]);
+    const root = createNode(), body = copyPortraitNode(cave.root, null, null, excluded), tall = cave.bodyHeight;
     body.visible = true;
     body.position.x = body.position.z = 0;
     body.position.y = cave.baseY;
@@ -361,6 +372,7 @@
     el.lootTab.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
     const sheet = BL.sheet.create({ lootEnabled, signal });
+    sheet.setPlaying(document.body.classList.contains("arcade-game"));
     el.primary.hidden = true;
     el.gorillaSmash.hidden = true;
     el.mode.hidden = true;
@@ -439,7 +451,8 @@
         if (!bannerFrame) bannerFrame = window.requestAnimationFrame(fitBanner);
       };
       const bannerResize = new ResizeObserver(scheduleBanner), bannerEquipment = new MutationObserver(scheduleBanner);
-      for (const node of [el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
+      // Cabinet zooms resize the stage without changing the viewport or the title's own size.
+      for (const node of [el.topbar, el.brand, el.clock, el.block, el.equipmentRow]) bannerResize.observe(node);
       if (presets) {
         bannerResize.observe(presets);
         bannerEquipment.observe(presets, { attributes: true, subtree: true, childList: true, characterData: true, attributeFilter: ["hidden", "disabled"] });
@@ -462,7 +475,7 @@
     }
     let hintTimer = 0, hintHideTimer = 0, copyTimer = 0;
     const rosterRows = new Map();
-    let showAway = false, awayCount = 0, awayShownCount = -1, awayShownShow = null, onlineCount = 0, onlineShown = -1;
+    let showAway = false, awayCount = 0, awayShownCount = -1, awayShownShow = null;
     if (!rosterAway) {
       const li = document.createElement("li"), button = document.createElement("button");
       li.className = "roster-away"; button.type = "button"; li.append(button);
@@ -474,13 +487,8 @@
     const names = new Set(roster.map(contributor => contributor.name));
     for (const [name, row] of rosterNodes) if (!names.has(name)) { row.li.remove(); rosterNodes.delete(name); }
     // countAway rescans on every roster state flip and online toggle; skip the writes until they change.
-    // The title's chip counts the players online, or the cast while nobody is.
+    el.rosterCount.textContent = `${roster.length} Oogas`;
     const updateAwayButton = () => {
-      if (onlineCount !== onlineShown) {
-        onlineShown = onlineCount;
-        el.rosterCount.textContent = onlineCount ? `${onlineCount} online` : `${roster.length} Oogas`;
-        el.rosterCount.dataset.tone = onlineCount ? "live" : "idle";
-      }
       if (awayCount === awayShownCount && showAway === awayShownShow) return;
       awayShownCount = awayCount;
       awayShownShow = showAway;
@@ -556,14 +564,11 @@
       for (const row of rosterRows.values()) if (row.state.dataset.state === "away") row.li.hidden = !showAway && !row.online;
       updateAwayButton();
     });
-    // Online players lead the roster, by their activity's stamp; an away player who is online is never folded away.
-    const rankOf = (row) => row.online ? ONLINE_RANK : ROSTER_ORDER[row.state.dataset.state];
+    // Activity and its timestamp order the roster; online presence never changes a row's rank.
+    const rankOf = (row) => ROSTER_ORDER[row.state.dataset.state];
     const countAway = () => {
-      awayCount = onlineCount = 0;
-      for (const row of rosterRows.values()) {
-        if (row.online) onlineCount++;
-        else if (row.state.dataset.state === "away") awayCount++;
-      }
+      awayCount = 0;
+      for (const row of rosterRows.values()) if (!row.online && row.state.dataset.state === "away") awayCount++;
       updateAwayButton();
     };
     const placeRosterRow = (row) => {
@@ -581,17 +586,16 @@
       } else if (el.roster.lastElementChild !== row.li) el.roster.append(row.li);
     };
     // A scene's local driver needs a signed-in account; remote drivers and the room's
-    // signed-in identities remain online independently. A change repaints the dot and moves the row.
+    // signed-in identities remain online independently. A change repaints the dot without moving the row.
     const showOnline = (row) => {
       const online = row.sceneOnline && !!BL.net.state.me || row.remoteOnline || row.netOnline;
-      if (row.online === online) return false;
+      if (row.online === online) return;
       row.online = online;
       row.presence.dataset.online = online ? "true" : "false";
       row.presence.title = online ? "Online" : "Offline";
       row.presence.setAttribute("aria-label", row.presence.title);
       row.li.hidden = row.state.dataset.state === "away" && !showAway && !online;
       countAway();
-      return true;
     };
     const setRosterRow = (name, _stateKey, _ageText, online = false, remoteOnline = false) => {
       const row = rosterRows.get(name);
@@ -611,7 +615,7 @@
       if (row.age.firstChild.data !== ageText) row.age.firstChild.data = ageText;
       row.sceneOnline = online;
       row.remoteOnline = remoteOnline;
-      if (showOnline(row)) moved = true;
+      showOnline(row);
       const stamp = stampOf(row.contributor);
       if (row.placedStamp !== stamp) {
         row.placedStamp = stamp;
@@ -629,11 +633,9 @@
     const rosterTimer = window.setInterval(refreshRosterActivity, 60000);
     listeners.push(() => window.clearInterval(rosterTimer));
     on(document, "visibilitychange", refreshRosterActivity);
-    // The page-level pass marks rows online from the room and moves only those that changed.
+    // The page-level pass updates presence without changing contribution order.
     liveRows = rosterRows;
-    liveOnline = (row) => {
-      if (showOnline(row)) placeRosterRow(row);
-    };
+    liveOnline = showOnline;
     showVoices();
     // Value the donated sats at the current price; donor rankings retain their receipt prices.
     const showBananaRate = () => {
@@ -695,7 +697,10 @@
       el.bananaRecent.append(li);
       return { li, name, label, badge, amountText, message, messageText };
     }));
-    const leaderRows = donorRows || (donorRows = Array.from({ length: 10 }, (_, i) => {
+    // One row a ranked donor, made as the board first grows to it and kept for the page life: the board scrolls inside
+    // its five-row window, and both boards it shows hold at most 256 (the API's and the game's demo donors).
+    const leaderRows = donorRows || (donorRows = []);
+    const leaderRow = (i) => {
       const li = document.createElement("li"), rank = document.createElement("span"), name = document.createElement("span"), amount = document.createElement("strong");
       const nameText = document.createTextNode(""), amountText = document.createTextNode("");
       rank.className = "banana-rank"; rank.textContent = String(i + 1).padStart(2, "0");
@@ -703,11 +708,12 @@
       amount.className = "banana-amount"; amount.append(amountText);
       li.append(rank, name, amount); li.hidden = true; el.bananaLeaders.append(li);
       return { li, name, nameText, amountText };
-    }));
-    // The recent list's checkbox keeps it to tips at or above the message bar, remembered in this browser.
+    };
+    // The recent list's checkbox keeps it to tips at or above the message bar: on until the visitor turns it off,
+    // and their choice either way remembered in this browser.
     const RECENT_BAR_KEY = "ooga-recent-bar";
-    let recentBarOnly = false;
-    try { recentBarOnly = localStorage.getItem(RECENT_BAR_KEY) === "1"; } catch { /* no storage: shown unfiltered */ }
+    let recentBarOnly = true;
+    try { recentBarOnly = localStorage.getItem(RECENT_BAR_KEY) !== "0"; } catch { /* no storage: on, as for a first visit */ }
     el.bananaRecentBar.checked = recentBarOnly;
     on(el.bananaRecentBar, "change", () => {
       recentBarOnly = el.bananaRecentBar.checked;
@@ -737,6 +743,7 @@
       const ranked = missingSats ? [] : real ? entries || [] : (entries || []).slice().sort((a, b) =>
         b[donorUnit] - a[donorUnit] || b[donorUnit === "bananas" ? "sats" : "bananas"] - a[donorUnit === "bananas" ? "sats" : "bananas"]
         || a.handle.localeCompare(b.handle));
+      while (leaderRows.length < ranked.length) leaderRows.push(leaderRow(leaderRows.length));
       for (let i = 0; i < leaderRows.length; i++) {
         const entry = ranked[i], row = leaderRows[i];
         row.li.hidden = !entry;
@@ -1814,10 +1821,12 @@
     };
     // Active gameplay borrows the play area without changing the visitor's saved panel choices.
     const setPanelsHidden = (on) => {
+      const arcadeGame = document.body.classList.contains("arcade-game");
+      sheet.setPlaying(arcadeGame);
       on = !!on;
+      sheet.setHidden(on && !arcadeGame);
       if (on === panelsHidden) return;
       panelsHidden = on;
-      sheet.setHidden(on);
       for (const popup of floatingBoards) popup.setHidden(on);
     };
     const openRecipe = () => {
@@ -1967,6 +1976,7 @@
       else if (b.dataset.action === "account-rejoin") BL.net.rejoin();
       else if (b.dataset.action === "account-voice") BL.voice.toggle();
       else if (b.dataset.action === "account-voice-leave") BL.voice.stop();
+      else if (b.dataset.action === "account-thump") BL.thump.press();
       else actionHandler && actionHandler(b.dataset.action);
     });
     // A game's side panels fold away and come back from a tab on the screen's edge: a `data-fold`
@@ -2005,12 +2015,18 @@
         tipLeft = left; tipTop = top;
         element.style.transform = `translate(${left}px, ${top}px)`;
       };
+      let tipBaseText = "";
+      const shownName = () => !tipNoStatusDot && tipCave?.humanControlled ? BL.net.state.me?.display || tipBaseText : tipBaseText;
       const tooltip = {
         show: (text, x, y, cave = null, noStatusDot = false, above = false) => {
           if (cave !== tipCave) tipSpeechBottom = -Infinity;
           tipCave = cave;
           const name = !!cave;
-          const changed = text !== tipText || name !== tipName || element.classList.contains("tooltip--no-status-dot") !== noStatusDot;
+          tipBaseText = text;
+          const changedDot = tipNoStatusDot !== noStatusDot;
+          tipNoStatusDot = noStatusDot;
+          text = shownName();
+          const changed = text !== tipText || name !== tipName || changedDot;
           element.classList.toggle("tooltip--no-status-dot", noStatusDot);
           if (name !== tipName) {
             tipName = name;
@@ -2028,7 +2044,6 @@
             tipText = text;
             tipState = "";
             textElement.textContent = text;
-            tipNoStatusDot = noStatusDot;
             measureTooltip();
           }
           if (cave) {
@@ -2051,6 +2066,12 @@
         },
         update: (place = true) => {
           if (!tipCave) return;
+          const text = shownName();
+          if (text !== tipText) {
+            textElement.textContent = tipText = text;
+            tipState = "";
+            measureTooltip();
+          }
           const state = statusFor(tipCave);
           let healthChanged = false;
           if (showHealth) {
@@ -2334,44 +2355,45 @@
       },
       el, openFeed, openRecipe, closeRecipe, dismissOutside, openBoard, closeBoard, updateBoard, restoreBoards, setPanelsHidden, foldPanels, setRosterRow, setStats, setAct, setMode, setDestinations, setOwnOoga, get retakeActor() { return retake.actor ? retake : null; }, setGorilla, setGorillaSmashPower, setDetachedView, fadeDetachedName, setAreaLabel, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, whitepaperNav, letterSign, selectTab, onPreset, setPileValueVisible, onAssign, onUnassign, renderInventory, dispose };
   };
-  // The account line in the sheet's foot is page-level: shown only when a backend answered, and
-  // the director hands every change of `BL.net.state` here, whichever scene is active.
+  // Detached panels can be visible together. Each has a view of the same account and voice state.
   const ROOM_WORDS = { replaced: "open in another tab", full: "island full" };
-  // Net and voice emits re-run this several times a second with the same outcome; last-written
-  // records keep an unchanged textContent from re-invalidating the line.
-  let accountBackend = null, accountMe = null, accountName = null, accountWords = null, accountWordsHidden = null;
-  let accountLive = null, accountRejoinHidden = null, accountVoiceHidden = null, accountVoiceWords = null, accountVoicePressed = null, accountLeaveHidden = null;
-  const showAccount = ({ backend, me, room, online }) => {
-    const hasMe = !!me;
-    if (!!backend !== accountBackend) { accountBackend = !!backend; $("account").hidden = !backend; }
-    const name = me ? me.display : "";
-    if (name !== accountName) { accountName = name; $("account-name").textContent = name; }
-    if (hasMe !== accountMe) {
-      accountMe = hasMe;
-      $("account-name").hidden = !me;
-      $("account-login").hidden = !!me;
-      $("account-logout").hidden = !me;
+  const accountPrefixes = [""];
+  for (const slot of document.querySelectorAll("[data-account-copy]")) {
+    const prefix = slot.dataset.accountCopy + "-";
+    const copy = $("account").cloneNode(true);
+    copy.id = prefix + copy.id;
+    for (const child of copy.querySelectorAll("[id]")) child.id = prefix + child.id;
+    slot.replaceWith(copy);
+    accountPrefixes.push(prefix);
+  }
+  const accountFields = new Map();
+  const fieldsFor = (id) => {
+    if (!accountFields.has(id)) accountFields.set(id, accountPrefixes.map((prefix) => $(prefix + id)));
+    return accountFields.get(id);
+  };
+  const writeAccount = (id, key, value) => {
+    for (const el of fieldsFor(id)) {
+      if (el[key] !== value) el[key] = value;
     }
-    // The foot's green dot shows only while the room is live.
-    const live = String(!!me && room === "live");
-    if (live !== accountLive) { accountLive = live; $("account").dataset.live = live; }
-    const words = room === "live" ? `${online} online` : ROOM_WORDS[room] || "";
-    if (words !== accountWords) { accountWords = words; $("account-room").textContent = words; }
-    const wordsHidden = !me || !words;
-    if (wordsHidden !== accountWordsHidden) { accountWordsHidden = wordsHidden; $("account-room").hidden = wordsHidden; }
-    const rejoinHidden = !me || !ROOM_WORDS[room];
-    if (rejoinHidden !== accountRejoinHidden) { accountRejoinHidden = rejoinHidden; $("account-rejoin").hidden = rejoinHidden; }
-    // Voice: join, then mute and unmute beside Leave voice, which hangs up and releases the microphone without
-    // signing out; a failure says why on the button until the next try. Leave waits out a join in progress.
-    const voice = BL.voice.stats, voiceButton = $("account-voice");
-    const voiceHidden = room !== "live";
-    if (voiceHidden !== accountVoiceHidden) { accountVoiceHidden = voiceHidden; voiceButton.hidden = voiceHidden; }
+  };
+  const showAccount = ({ backend, me, room, online }) => {
+    const live = !!me && room === "live", words = live ? `${online} online` : ROOM_WORDS[room] || "";
+    writeAccount("account", "hidden", !backend);
+    writeAccount("account-name", "textContent", me ? me.display : "");
+    writeAccount("account-name", "hidden", !me);
+    writeAccount("account-login", "hidden", !!me);
+    writeAccount("account-logout", "hidden", !me);
+    writeAccount("account-room", "textContent", words);
+    writeAccount("account-room", "hidden", !me || !words);
+    writeAccount("account-rejoin", "hidden", !me || !ROOM_WORDS[room]);
+    const voice = BL.voice.stats;
     const voiceWords = voice.joining ? "Joining voice" : (voice.error || voice.micError) && !voice.enabled ? `Voice: ${voice.error || voice.micError}` : !voice.enabled ? "Join voice" : voice.muted ? "Unmute" : "Mute";
-    if (voiceWords !== accountVoiceWords) { accountVoiceWords = voiceWords; voiceButton.textContent = voiceWords; }
-    const pressed = String(voice.enabled && !voice.muted);
-    if (pressed !== accountVoicePressed) { accountVoicePressed = pressed; voiceButton.setAttribute("aria-pressed", pressed); }
-    const leaveHidden = voiceHidden || !voice.enabled;
-    if (leaveHidden !== accountLeaveHidden) { accountLeaveHidden = leaveHidden; $("account-voice-leave").hidden = leaveHidden; }
+    writeAccount("account-voice", "hidden", !live);
+    writeAccount("account-voice", "textContent", voiceWords);
+    writeAccount("account-voice-leave", "hidden", !live || !voice.enabled);
+    const pressed = String(voice.enabled && !voice.muted), onlineDot = String(live);
+    for (const row of fieldsFor("account")) if (row.dataset.live !== onlineDot) row.dataset.live = onlineDot;
+    for (const button of fieldsFor("account-voice")) if (button.getAttribute("aria-pressed") !== pressed) button.setAttribute("aria-pressed", pressed);
   };
   // The microphone's note (#181), page-level as the account line is: muted in voice, it stays until unmuted;
   // alone in voice (nobody here to hear, so the microphone is held off), it says so until someone comes;
@@ -2399,7 +2421,7 @@
   // (their own Ooga, else the one they drive) shows the host dot and their voice. The director hands every
   // room and voice change here; only marks that changed are touched, and rows never move for them.
   let liveRows = null, liveOnline = null, liveSignedIn = false;
-  const VOICE_WORDS = { on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
+  const VOICE_WORDS = { off: "Not in voice", on: "In voice", speaking: "Speaking", muted: "Muted their microphone" };
   // A voice mark's tooltip and label, shared with the live players tab: the visitor's own mark works their microphone,
   // anyone else's mutes them for this visitor (`login` empty when there is nobody to mute).
   const voiceWords = (look, self, blocked, login) => !look ? "" : self ? look === "muted" ? "Your microphone is muted: click to unmute" : "Your microphone: click to mute"
@@ -2510,5 +2532,5 @@
       else b.textContent = `Back to ${place}`;
     }
   };
-  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
+  BL.hud = { create, renderIcon, renderFaceIcon, renderBodyIcon, signLettering, showAccount, showMic, showVoices, malletIcon, setDonationStats, donationValueText, toast, offerReload, holdRow, leaveTo, STATE_LABELS, statusFor, voiceIcon, voiceWords };
 })();

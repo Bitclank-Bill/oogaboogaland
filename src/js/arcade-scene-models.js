@@ -1121,6 +1121,14 @@
     flat.push(bevelBox({ w: 0.9, h: 0.3, d: 1.2, color: S1, bevel: 0.05, offset: { y: 0.15, z: -0.3 } }), bevelBox({ w: 0.66, h: 0.26, d: 0.5, color: S1, bevel: 0.04, offset: { y: -0.12, z: 0.02 } }));
     return shaded(round, flat);
   });
+  // Where a gargoyle's eyes look out, in its own frame (the fronts of its glowing eyes, leant with its body as `perch`
+  // leans it), and the green laser the scene shines from each down onto the herald as it launches: a glowing rod a
+  // metre along +z from the origin, stretched and aimed by its node.
+  const GARGOYLE_EYES = [-1, 1].map((f) => {
+    const y = 0.765, z = 0.635 + 0.022, c = Math.cos(0.3), sn = Math.sin(0.3);
+    return [f * 0.075, y * c - z * sn + 0.3, y * sn + z * c - 0.12];
+  });
+  const gargoyleLaser = cached(() => unshadowed(box({ w: 0.035, h: 0.035, d: 1, color: HAUNT_GLOW, emissive: 1, offset: { z: 0.5 } })));
   // A white letter on a gargoyle's chest, in the signs' 3x5 alphabet, each block set on the curve of its breast and
   // belly as they lean with it; the gargoyles spell `GARGOYLE_WORDS` round the wall from the one over the mouth. The M
   // is the carved signs' five-wide one, centred as the others are, since a three-wide M reads as an H (#420).
@@ -2024,6 +2032,32 @@
   // A bone lying along x, `len` long: a shaft between two double knobs.
   const boneBar = (len, r) => merge(turnedZ(turn([[0, -len / 2], [r, -len / 2], [r, len / 2], [0, len / 2]], 8, BONE), Math.PI / 2),
     ...[-1, 1].flatMap((sx) => [-1, 1].map((sy) => moved(ball(r * 1.6, BONE, 6), sx * len / 2, sy * r, 0))));
+  // A single open service bay. Chunky coils, circuit blocks and cloth-covered wires suit the timber cabinet.
+  const rallyRepairBay = cached(() => {
+    const J = BL.hubModels, parts = [
+      box({ w: 0.98, h: 0.72, d: 0.05, color: "#201a15", offset: { y: 0.56, z: -0.33 } }),
+      bevelBox({ w: 0.7, h: 0.54, d: 0.04, color: "#335746", bevel: 0.015, offset: { y: 0.58, z: -0.27 } }),
+      box({ w: 0.99, h: 0.05, d: 0.72, color: TIMBER_DK, offset: { y: 0.14, z: 0 } }),
+      bevelBox({ w: 0.1, h: 0.08, d: 0.1, color: "#a38b60", bevel: 0.01, offset: { x: 0.38, y: 0.91, z: 0.35 } })
+    ];
+    for (const x of [-0.22, 0, 0.22]) {
+      parts.push(bevelBox({ w: 0.12, h: 0.13, d: 0.09, color: "#292c2b", bevel: 0.01, offset: { x, y: 0.65, z: -0.2 } }));
+      parts.push(along(turn([[0.045, 0], [0.045, 0.16], [0, 0.16]], 8, "#b88b55"), x, 0.4, -0.21, 0, 0, 1));
+      for (const y of [0.81, 0.34]) parts.push(along(turn([[0.018, 0], [0.018, 0.02], [0, 0.02]], 6, "#c4bca7"), x, y, -0.24, 0, 0, 1));
+    }
+    return J.withJungle(shaded([], parts), g => {
+      for (const [x, color] of [[-0.36, "#bd6543"], [0.35, "#d0ab59"]])
+        J.liana(g, [[x, 0.86, -0.18], [x * 0.7, 0.75, 0.08], [x, 0.4, 0.18], [x * 0.5, 0.27, -0.15]], 0.015, 0.015, color);
+    });
+  });
+  // A long silver shaft reaches the upper service screw; the ochre fluted handle runs along +z into the palm.
+  const repairDriver = cached(() => merge(
+    box({ w: 0.025, h: 0.009, d: 0.06, color: "#b7bec1", offset: { z: -0.15 } }),
+    along(turn([[0.008, 0], [0.008, 0.41], [0, 0.41]], 6, "#a5afb3"), 0, 0, -0.14, 0, 0, 1),
+    along(turn([[0.025, 0], [0.04, 0.025], [0.04, 0.17], [0.027, 0.2], [0, 0.2]], 8, "#cf903c"), 0, 0, 0.25, 0, 0, 1),
+    moved(turnedX(torus(0.041, 0.005, "#493325", 0, 8, 4), Math.PI / 2), 0, 0, 0.3),
+    moved(turnedX(torus(0.041, 0.005, "#493325", 0, 8, 4), Math.PI / 2), 0, 0, 0.39)
+  ));
   const BEST_Y = 23;
   const attractStart = variants((i) => {
     const game = GAMES[i], palette = PALETTES[game.id];
@@ -2032,7 +2066,8 @@
       centred(g, game.title, 1, 1);
       titleBones(g, BONE_INK[game.id]);
       rect(g, 33, 21, 5, 5, 4); rect(g, 34, 20, 3, 7, 4); at(g, 35, 22, 7);
-      if (lit) { centred(g, "PRESS", 10, 3); centred(g, "START", 18, 3); }
+      if (game.unavailable) { centred(g, "OUT OF", 10, 3); centred(g, "ORDER", 18, 3); }
+      else if (lit) { centred(g, "PRESS", 10, 3); centred(g, "START", 18, 3); }
       return bake(g, palette, PIXEL, 0.45);
     });
   });
@@ -4434,16 +4469,19 @@
 
   // ---- the staff's uniforms ---------------------------------------------------------------------------------
   // The game-room gorillas are the arcade's staff and dress as one crew: hide dyed staff red, trimmed with banana-gold
-  // braid and bone buttons, the arcade's gold token for a badge, and each role's own piece. Hats sit on the Agent's
-  // head (its frame: the skull block spans x -0.3..0.3, y 0..0.6 and z -0.17..0.34, the crest rising to 0.86 down the
-  // middle and the brow jutting to z 0.43 just under y 0.52): 0 the gamemaster's tall ringmaster's hat, red with a
-  // gold band and token, a charcoal brim and a plume; 1 the staff's red cap, its visor edged in gold, the token on its
-  // front (the token attendant, the prize clerk and the deck's attendant); 2 the mechanic's, the same cap with its
-  // goggles pushed up on it; 3 the snack runner's paper soda-jerk cap with a red band. Vests fit the Agent's chest
-  // frame (the torso spans x -5U..5U, y 0..12U, z -3.5U..3.5U, U = 0.086; knuckle-walking, its back faces up, so the
-  // token on the back and the braid carry the look from above): 0 the gamemaster's tailcoat, 1 the token attendant's
-  // vest and change apron, 2 the mechanic's vest and tool belt, 3 the snack runner's vest under a long white apron,
-  // 4 the staff vest itself (`uniformParts`); `staffProp` is what each one holds.
+  // braid, charcoal facings and bone buttons in the manner of an old livery, the arcade's gold token for a badge, and
+  // each role's own piece. Hats sit on the Agent's head (its frame: the skull block spans x -0.3..0.3, y 0..0.6 and
+  // z -0.17..0.34, the crest rising to 0.86 down the middle and the brow jutting to z 0.43 just under y 0.52): 0 the
+  // gamemaster's tall ringmaster's hat, red with a gold band and token, a charcoal brim and a plume; 1 the staff's red
+  // cap on a charcoal band between two gold rings, a gold chin cord buttoned at its sides, its rounded visor rimmed in
+  // gold over a charcoal underside, the token on its front (the token attendant, the prize clerk and the deck's
+  // attendant); 2 the mechanic's, the same cap with a shorter visor and its goggles pushed up on it; 3 the snack
+  // runner's paper soda-jerk cap with a red band. Vests fit the Agent's chest frame (the torso spans x -5U..5U,
+  // y 0..12U, z -3.5U..3.5U, U = 0.086, the shoulder mounds x 3U..7U either side, y 8U..13U, z -2.5U..2.5U;
+  // knuckle-walking, its back faces up, so the token on the back and the braid carry the look from above): 0 the
+  // gamemaster's tailcoat, 1 the token attendant's vest and change apron, 2 the mechanic's vest and tool belt, 3 the
+  // snack runner's vest under a long white apron, 4 the staff vest itself (`uniformParts`); `staffProp` is what each
+  // one holds.
   const AU = 0.086;
   const WEAR_HIDE = "#7a4a26";
   const WEAR_DARK = "#4a2e18";
@@ -4451,6 +4489,20 @@
   // The staff's feathers (and the prize crown's), [light, dark] rgb: red, bone-white, ochre and the charcoal a white
   // one is tipped in, a redder red and a paler white than the machines' `FEATHERS`.
   const FEATHER_TONES = [["#d8563a", "#8a2a1c"], ["#f2e8d0", "#b8a888"], ["#e0a040", "#9a6220"], ["#3a3432", "#1e1a18"]].map((p) => p.map(hexToRgb));
+  // A cap's visor seen from above, `reach` out from its back edge at the origin and 0.6 across, `k` times that: a
+  // squared-off oval (a superellipse of power 2.5), so it reads as a soft bill rather than a slab. Convex, [x, ahead].
+  const visorOutline = (reach, k) => ccw(Array.from({ length: 15 }, (_, n) => {
+    const t = n / 14 * Math.PI, c = Math.cos(t);
+    return [Math.sign(c) * Math.abs(c) ** 0.8 * 0.3 * k, Math.sin(t) ** 0.8 * reach * k];
+  }));
+  // The visor, thin: red over a gold rim a little wider and a charcoal underside, its back edge sunk in the crown's
+  // band (every corner inside the crown) and drooping `droop` over the brow. In the head's frame.
+  const visor = (reach, droop) => {
+    const lay = (k, d, y, color) => moved(turnedX(prism(visorOutline(reach, k), d, color), Math.PI / 2), 0, y, 0);
+    return moved(turnedX(merge(lay(1.06, 0.02, 0, STAFF_GOLD), lay(1, 0.026, 0.009, STAFF_RED), lay(0.93, 0.012, -0.011, STAFF_INK)), droop), 0, 0.585, 0.23);
+  };
+  // The chin cord across the cap's front just over the visor, [x, z] round the band, and its two side buttons.
+  const CHIN_CORD = [[-0.34, 0.23], [-0.2, 0.385], [0, 0.44], [0.2, 0.385], [0.34, 0.23]];
   const staffHat = variants((i) => {
     if (i === 0) {
       // The crown rises from a charcoal brim with its edge turned up, a gold band round its foot with the token on
@@ -4472,11 +4524,15 @@
         box({ w: 0.012, h: 0.02, d: 0.6, color: "#e4dccb", offset: { y: 0.915, z: 0.06 } })
       ]);
     }
-    // The cap: a red crown over the crest with a gold band and button, the visor drooping a little over the brow.
+    // The cap: a red crown over the crest on a charcoal band between two gold rings, a gold button on top, the chin
+    // cord and the rounded visor; the mechanic's visor is shorter, so the goggles read over it.
     const z = 0.04, round = [
-      turn([[0.37, 0.55], [0.37, 0.66], [0.335, 0.78], [0.23, 0.875], [0.11, 0.91], [0, 0.915]], 14, STAFF_RED), turn([[0.376, 0.56], [0.376, 0.645]], 14, STAFF_GOLD),
+      turn([[0.37, 0.55], [0.37, 0.66], [0.335, 0.78], [0.23, 0.875], [0.11, 0.91], [0, 0.915]], 14, STAFF_RED), turn([[0.376, 0.56], [0.376, 0.645]], 14, STAFF_INK),
+      ...[0.565, 0.625].map((y) => turn([[0.381, y], [0.381, y + 0.016]], 14, STAFF_GOLD)),
       moved(ball(0.035, STAFF_GOLD, 6), 0, 0.915, 0)
-    ].map((p) => moved(p, 0, 0, z)), flat = [moved(turnedX(merge(bevelBox({ w: 0.58, h: 0.035, d: 0.32, color: STAFF_RED, bevel: 0.012 }), box({ w: 0.6, h: 0.03, d: 0.03, color: STAFF_GOLD, offset: { z: 0.16 } })), 0.12), 0, 0.585, 0.56)];
+    ].map((p) => moved(p, 0, 0, z)), flat = [visor(i === 2 ? 0.36 : 0.44, 0.12)];
+    for (let n = 1; n < CHIN_CORD.length; n++) flat.push(beam(CHIN_CORD[n - 1][0], 0.62, CHIN_CORD[n - 1][1], CHIN_CORD[n][0], 0.62, CHIN_CORD[n][1], 0.012, STAFF_GOLD));
+    for (const s of [-1, 1]) round.push(moved(ball(0.018, STAFF_GOLD, 6), s * 0.34, 0.62, 0.22));
     if (i === 1) round.push(...staffToken(0.075).map((p) => moved(p, 0, 0.73, z + 0.345)));
     else {
       // The mechanic's goggles, pushed up onto the crown on a charcoal strap: brass rims round dark glass, looking up.
@@ -4485,7 +4541,14 @@
       for (const s of [-1, 1]) for (const p of [torus(0.07, 0.02, brass, 0, 12, 5), turn([[0, 0.004], [0.062, 0.004], [0.055, 0.014], [0, 0.016]], 10, "#3d6266", 0.3)]) round.push(moved(turnedX(p, 1.02), s * 0.11, 0.745, z + 0.36));
       flat.push(beam(-0.045, 0.745, z + 0.375, 0.045, 0.745, z + 0.375, 0.02, brass));
     }
-    return shaded(round, flat);
+    // Pull the excess rear dome forward around the shallower skull. Taper the take-in to zero at its square
+    // corners so they and the crest stay covered; keep the front, visor, width and height as authored.
+    const cap = shaded(round, flat);
+    for (let n = 0; n < cap.verts.length; n += 3) {
+      const x = cap.verts[n], z = cap.verts[n + 2];
+      if (z < 0) cap.verts[n + 2] = z * (1 - 0.3 * Math.max(0, 1 - x * x / (0.24 * 0.24)));
+    }
+    return cap;
   });
   // A tooth or fang `len` long hanging down from its top at the origin, a charm for the prize crown. A round part.
   const charmTooth = (len, r) => turn([[0, 0], [r, 0], [r * 0.85, -len * 0.4], [0, -len]], 6, BONE);
@@ -4505,35 +4568,59 @@
   // A panel of dyed hide and a strip of braid (or any flat box) at (x, y, z), in the chest's frame.
   const dyed = (w, h, d, x, y, z, color = STAFF_RED) => bevelBox({ w, h, d, color, bevel: 0.2 * AU, offset: { x, y, z } });
   const braid = (w, h, d, x, y, z, color = STAFF_GOLD) => box({ w, h, d, color, offset: { x, y, z } });
-  // The staff's vest over the Agent's chest: a back panel, two front panels either side of a canvas shirt front, a
-  // panel under each arm and a pad over each shoulder, all red hide, with gold braid along the hems, up the front's
-  // edges and round the shoulders, three bone buttons, the token on the back (the side a knuckle-walker shows most)
-  // and, with `badge`, a name badge on the chest. Returns [round, flat] for `shaded`.
-  const uniformParts = (badge) => {
-    const y0 = 2.6 * AU, y1 = 11.8 * AU, mid = (y0 + y1) / 2, h = y1 - y0, flat = [];
+  // A line of braid `w` thick between two points of the chest's frame, all given in U.
+  const piping = (ax, ay, az, bx, by, bz, w = 0.45, color = STAFF_GOLD) => beam(ax * AU, ay * AU, az * AU, bx * AU, by * AU, bz * AU, w * AU, color);
+  // The shoulder yoke, one a side: hide cut to the shoulder's section in (z, y) and stood across x from beside the
+  // neck to just outside the mound, closing the gap between the vest's top and the shoulder: over the mound's front,
+  // top, back and outer face, its foot below the mound's underside. Its front and back sit a hair inside the panels'
+  // outer faces, so where a panel overlaps it the panel's own edge is the seam, piped in gold.
+  const YOKE = ccw([[2.9, 7.8], [4.0, 10.6], [4.0, 11.9], [3.0, 13.4], [1.2, 13.75], [-2.0, 13.75], [-3.6, 13.3], [-4.0, 11.9], [-4.0, 10.6], [-2.9, 7.8]].map(([z, y]) => [z * AU, y * AU]));
+  const yoke = (s) => sideShape(YOKE, s * 5.2 * AU, 4.4 * AU, STAFF_RED);
+  // A front panel, side `s`: tailored, its hem cut to a point at the front edge, its neckline a V from `neck` up to
+  // the yoke's inner edge and its top sloping down to the side seam. Outline in U, [x, y].
+  const frontPanel = (s, neck) => moved(prism(ccw([[1.2, 1.9], [5.3, 2.7], [5.3, 11.2], [3.0, 11.9], [1.2, neck]].map(([x, y]) => [s * x * AU, y * AU])), 0.6 * AU, STAFF_RED), 0, 0, 3.8 * AU);
+  // The staff's vest over the Agent's chest, as livery: a back panel, two tailored front panels either side of a
+  // canvas shirt front under charcoal collar points, a panel under each arm, a yoke over each shoulder and a charcoal
+  // stand collar behind, all red hide; gold braid along the hems (a bone line over it), the front edges, the
+  // neckline, the yoke seams and across the back; with `coat` false two rows of bone buttons and a charcoal shoulder
+  // board edged in gold on each yoke; the token on the back (the side a knuckle-walker shows most) and, with
+  // `badge`, a name badge on the chest. The tailcoat (`coat`) closes higher for its frogging and wears epaulettes.
+  // Returns [round, flat] for `shaded`.
+  const uniformParts = (badge, coat = false) => {
+    const y0 = 2.6 * AU, y1 = 11.8 * AU, mid = (y0 + y1) / 2, h = y1 - y0, neck = coat ? 11.2 : 9.6, flat = [];
     const round = staffToken(2.3 * AU).map((p) => moved(turnedY(p, Math.PI), 0, 7.6 * AU, -4.1 * AU));
-    flat.push(dyed(10.6 * AU, h, 0.6 * AU, 0, mid, -3.8 * AU), dyed(2.4 * AU, h - AU, 0.4 * AU, 0, mid + 0.5 * AU, 3.62 * AU, CANVAS));
-    for (const y of [y0 + 0.3 * AU, y1 - 0.3 * AU]) flat.push(braid(10.8 * AU, 0.6 * AU, 0.7 * AU, 0, y, -3.85 * AU));
+    flat.push(dyed(10.6 * AU, h, 0.6 * AU, 0, mid, -3.8 * AU), dyed(7 * AU, h - AU, 0.4 * AU, 0, mid + 0.5 * AU, 3.62 * AU, CANVAS), dyed(6.2 * AU, 1.6 * AU, 1.9 * AU, 0, 12 * AU, -3 * AU, STAFF_INK));
+    flat.push(braid(10.8 * AU, 0.6 * AU, 0.7 * AU, 0, y0 + 0.3 * AU, -3.85 * AU), braid(10.8 * AU, 0.2 * AU, 0.5 * AU, 0, y0 + 1 * AU, -3.95 * AU, BONE));
+    flat.push(braid(14.6 * AU, 0.5 * AU, 0.7 * AU, 0, 11.5 * AU, -3.85 * AU), braid(6.4 * AU, 0.3 * AU, 2 * AU, 0, 12.75 * AU, -3 * AU));
     for (const s of [-1, 1]) {
-      flat.push(dyed(4.1 * AU, h, 0.6 * AU, s * 3.25 * AU, mid, 3.8 * AU), dyed(0.6 * AU, 7 * AU, 7.6 * AU, s * 5.3 * AU, 6.5 * AU, 0), dyed(4 * AU, 0.9 * AU, 6.4 * AU, s * 5.6 * AU, 13.45 * AU, -0.3 * AU));
-      flat.push(braid(0.55 * AU, h, 0.7 * AU, s * 1.45 * AU, mid, 3.85 * AU), braid(4.1 * AU, 0.6 * AU, 0.7 * AU, s * 3.25 * AU, y0 + 0.3 * AU, 3.85 * AU), braid(0.5 * AU, AU, 6.6 * AU, s * 7.55 * AU, 13.4 * AU, -0.3 * AU));
+      flat.push(frontPanel(s, neck), yoke(s), dyed(0.6 * AU, 7 * AU, 7.6 * AU, s * 5.3 * AU, 6.5 * AU, 0));
+      flat.push(braid(0.5 * AU, (neck - 2.1) * AU, 0.5 * AU, s * 1.4 * AU, (neck + 2.1) / 2 * AU, 4.15 * AU), piping(s * 1.4, neck - 0.1, 4.15, s * 3.05, 11.75, 4.15));
+      flat.push(piping(s * 1.3, 2.15, 4.15, s * 5.3, 2.95, 4.15, 0.5), piping(s * 1.3, 2.75, 4.15, s * 5.3, 3.55, 4.15, 0.2, BONE));
+      // The yoke seams: along the front panel's top and down its outer edge, round the armhole.
+      flat.push(piping(s * 5.25, 11.2, 4.12, s * 3.05, 11.85, 4.12, 0.35), piping(s * 5.32, 7.9, 4.12, s * 5.32, 11.2, 4.12, 0.35));
+      // The collar's charcoal points over the shirt, and a gold welt pocket at the hip.
+      flat.push(moved(prism(ccw([[s * 0.9 * AU, 11.9 * AU], [s * 2.9 * AU, 11.9 * AU], [s * 1.35 * AU, 10.3 * AU]]), 0.3 * AU, STAFF_INK), 0, 0, 4.3 * AU), braid(1.7 * AU, 0.28 * AU, 0.3 * AU, s * 3.4 * AU, 4.4 * AU, 4.15 * AU));
+      if (!coat) {
+        flat.push(braid(4 * AU, 0.4 * AU, 2.3 * AU, s * 5.3 * AU, 13.75 * AU, 0.1 * AU), dyed(3.8 * AU, 0.45 * AU, 2 * AU, s * 5.3 * AU, 13.9 * AU, 0.1 * AU, STAFF_INK));
+        round.push(moved(ball(0.3 * AU, BONE, 6), s * 3.85 * AU, 14.2 * AU, 0.1 * AU));
+        for (const y of [4.4, 6.2, 8]) round.push(moved(ball(0.3 * AU, BONE, 6), s * 2.1 * AU, y * AU, 4.2 * AU));
+      }
     }
-    for (const y of [5.2, 7.2, 9.2]) round.push(moved(ball(0.32 * AU, BONE, 6), 2.05 * AU, y * AU, 4.2 * AU));
     if (badge) flat.push(braid(2.1 * AU, 1.1 * AU, 0.3 * AU, -3.2 * AU, 9.4 * AU, 4.2 * AU, CANVAS), braid(1.6 * AU, 0.24 * AU, 0.1 * AU, -3.2 * AU, 9.6 * AU, 4.38 * AU, STAFF_RED), braid(1.1 * AU, 0.18 * AU, 0.1 * AU, -3.4 * AU, 9.15 * AU, 4.38 * AU, STAFF_INK));
     return [round, flat];
   };
   const staffVest = variants((i) => {
-    const [round, flat] = uniformParts(i === 1 || i === 2 || i === 4);
+    const [round, flat] = uniformParts(i === 1 || i === 2 || i === 4, i === 0);
     if (i === 0) {
       // The gamemaster's tailcoat: gold frogging across the front with bone toggles, gold epaulettes fringed down the
-      // arms, a canvas jabot at the throat, and two tails edged in gold hanging from the waist behind.
+      // arms over the yokes, a canvas jabot at the throat, and two tails edged in gold hanging from the waist behind.
       for (const y of [5.3, 7, 8.7, 10.4]) for (const s of [-1, 1]) {
         flat.push(braid(3.3 * AU, 0.42 * AU, 0.8 * AU, s * 3.15 * AU, y * AU, 3.9 * AU));
         round.push(moved(ball(0.36 * AU, BONE, 6), s * 1.75 * AU, y * AU, 4.3 * AU));
       }
       for (const s of [-1, 1]) {
-        flat.push(dyed(4.3 * AU, 0.7 * AU, 6.6 * AU, s * 5.6 * AU, 14 * AU, -0.3 * AU, STAFF_GOLD));
-        for (let k = 0; k < 5; k++) flat.push(moved(turnedY(prism(ccw([[-0.55 * AU, 0.2 * AU], [0.55 * AU, 0.2 * AU], [0, -(k % 2 ? 1.9 : 1.4) * AU]]), 0.4 * AU, STAFF_GOLD), Math.PI / 2), s * 7.75 * AU, 13.7 * AU, (-2.9 + k * 1.3) * AU));
+        flat.push(dyed(4.3 * AU, 0.7 * AU, 5.2 * AU, s * 5.6 * AU, 13.85 * AU, -0.3 * AU, STAFF_GOLD));
+        for (let k = 0; k < 5; k++) flat.push(moved(turnedY(prism(ccw([[-0.55 * AU, 0.2 * AU], [0.55 * AU, 0.2 * AU], [0, -(k % 2 ? 1.9 : 1.4) * AU]]), 0.4 * AU, STAFF_GOLD), Math.PI / 2), s * 7.75 * AU, 13.6 * AU, (-2.9 + k * 1.3) * AU));
         const outline = (pts) => ccw(pts.map(([x, y]) => [s * x * AU, y * AU]));
         flat.push(moved(prism(outline([[0.2, 3.5], [5.25, 3.5], [4.6, -3.95], [2.35, -5.45]]), 0.4 * AU, STAFF_GOLD), 0, 0, -4.75 * AU), moved(prism(outline([[0.5, 3.2], [4.9, 3.2], [4.3, -3.6], [2.4, -5]]), 0.5 * AU, STAFF_RED), 0, 0, -5.05 * AU));
       }
@@ -4545,8 +4632,8 @@
         flat.push(dyed(2.3 * AU, 2 * AU, AU, x * AU, 0.3 * AU, 4.95 * AU));
         for (const dx of [-0.45, 0.4]) round.push(moved(turnedX(turn([[0, 0], [0.55 * AU, 0], [0.55 * AU, 0.2 * AU], [0, 0.2 * AU]], 8, STAFF_GOLD), Math.PI / 2), (x + dx) * AU, 1.45 * AU, 4.75 * AU));
       }
-      for (const s of [-1, 1]) flat.push(beam(s * 2.6 * AU, 11.9 * AU, 3.6 * AU, 1.5 * AU, 8.6 * AU, 4.35 * AU, 0.22 * AU, STAFF_GOLD));
-      round.push(moved(turnedZ(turn([[0, -0.8 * AU], [0.42 * AU, -0.8 * AU], [0.42 * AU, 0.8 * AU], [0, 0.8 * AU]], 8, BONE), Math.PI / 2), 1.9 * AU, 8.1 * AU, 4.5 * AU));
+      for (const s of [-1, 1]) flat.push(beam(s * 2.6 * AU, 11.9 * AU, 4.2 * AU, 1.5 * AU, 8.6 * AU, 4.45 * AU, 0.22 * AU, STAFF_GOLD));
+      round.push(moved(turnedZ(turn([[0, -0.8 * AU], [0.42 * AU, -0.8 * AU], [0.42 * AU, 0.8 * AU], [0, 0.8 * AU]], 8, BONE), Math.PI / 2), 1.2 * AU, 8.9 * AU, 4.6 * AU));
     } else if (i === 2) {
       // The mechanic's tool belt: leather round the waist with a gold buckle, a stone hammer hung head up in a loop, a
       // pouch with a bone driver standing in it, and a red-striped rag.
@@ -4557,15 +4644,15 @@
       for (const y of [0.1, 1.2]) flat.push(braid(1.75 * AU, 0.3 * AU, 0.3 * AU, -4.4 * AU, y * AU, 4.6 * AU, STAFF_RED));
       round.push(moved(turnedZ(boneBar(2.2 * AU, 0.2 * AU), Math.PI / 2), -1.7 * AU, 3.2 * AU, 4.85 * AU));
     } else if (i === 3) {
-      // The snack runner's long white apron, skirt and bib, banded red at the hem and the waist, on straps over the
-      // shoulders; a gold bow at the collar and the name badge on the bib.
+      // The snack runner's long white apron, skirt and bib, banded red at the hem and the waist, on straps up over the
+      // yokes' fronts onto the shoulders; a gold bow at the collar and the name badge on the bib.
       flat.push(dyed(8 * AU, 9.4 * AU, 0.35 * AU, 0, -0.3 * AU, 4.35 * AU, APRON), dyed(5.2 * AU, 6.4 * AU, 0.35 * AU, 0, 7.8 * AU, 4.3 * AU, APRON));
       flat.push(braid(8.2 * AU, 0.7 * AU, 0.45 * AU, 0, -4.2 * AU, 4.4 * AU, STAFF_RED), braid(8.2 * AU, 0.35 * AU, 0.45 * AU, 0, -3.35 * AU, 4.4 * AU), braid(8.2 * AU, 0.6 * AU, 0.45 * AU, 0, 4.4 * AU, 4.45 * AU, STAFF_RED));
       for (const s of [-1, 1]) {
-        flat.push(beam(s * 2.4 * AU, 10.9 * AU, 4.3 * AU, s * 3 * AU, 12.2 * AU, 1.5 * AU, 0.35 * AU, APRON));
-        flat.push(moved(prism(ccw([[0, 0], [s * 1.3 * AU, 0.6 * AU], [s * 1.3 * AU, -0.6 * AU]]), 0.4 * AU, STAFF_GOLD), 0, 11.9 * AU, 4.2 * AU));
+        flat.push(piping(s * 2.4, 10.9, 4.35, s * 3.6, 12.3, 4.15, 0.35, APRON), piping(s * 3.6, 12.3, 4.15, s * 3.8, 13.6, 3.2, 0.35, APRON), piping(s * 3.8, 13.6, 3.2, s * 3.6, 13.95, 1.4, 0.35, APRON));
+        flat.push(moved(prism(ccw([[0, 0], [s * 1.3 * AU, 0.6 * AU], [s * 1.3 * AU, -0.6 * AU]]), 0.4 * AU, STAFF_GOLD), 0, 11.9 * AU, 4.45 * AU));
       }
-      round.push(moved(ball(0.35 * AU, STAFF_GOLD, 6), 0, 11.9 * AU, 4.35 * AU));
+      round.push(moved(ball(0.35 * AU, STAFF_GOLD, 6), 0, 11.9 * AU, 4.6 * AU));
       flat.push(braid(2.1 * AU, 1.1 * AU, 0.3 * AU, -1.2 * AU, 9.2 * AU, 4.55 * AU), braid(1.6 * AU, 0.24 * AU, 0.1 * AU, -1.2 * AU, 9.4 * AU, 4.72 * AU, STAFF_RED));
     }
     // 4: the staff vest alone, for the prize clerk and the deck's attendant.
@@ -4621,6 +4708,6 @@
   };
   Object.assign(BL.arcadeModels, {
     buildSteps,
-    haunt, steelDoor, gargoyle, gargoyleLetter, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
+    haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
   });
 })();
