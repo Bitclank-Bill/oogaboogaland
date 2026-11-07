@@ -808,10 +808,7 @@
     flat.push(box({ w: 0.05, h: 0.04, d: 0.16, color: "#c9d0d8", offset: { x: f + 0.16, y: C.floor + 1.0, z: dz - 0.3 } }));
     flat.push(box({ w: 0.12, h: 0.12, d: 0.36, color: "#24282f", offset: { x: f + 0.12, y: C.floor + dh + 0.22, z: dz } }));
     glow.push(box({ w: 0.02, h: 0.06, d: 0.3, color: C.amber, emissive: 1, offset: { x: f + 0.19, y: C.floor + dh + 0.22, z: dz } }));
-    const kpz = z1 + 0.23, kpy = C.floor + 1.15;
-    flat.push(box({ w: 0.04, h: 0.26, d: 0.16, color: "#1d2028", offset: { x: f + 0.08, y: kpy, z: kpz } }));
-    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) glow.push(box({ w: 0.01, h: 0.03, d: 0.03, color: r === 3 ? "#2ecc71" : "#7fdcff", emissive: 1, offset: { x: f + 0.105, y: kpy + 0.08 - r * 0.05, z: kpz - 0.04 + c * 0.04 } }));
-    const keypad = { x: f + 0.06, y: kpy, z: kpz, turn: 0, floor: C.floor };
+    const keypad = { x: f + 0.06, y: C.floor + 1.15, z: z1 + 0.23, turn: 0, floor: C.floor };
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     // The extinguisher's bracket on the side wall by the back, its foot at `spots.bracket`.
@@ -926,10 +923,7 @@
     flat.push(box({ w: 0.05, h: 0.04, d: 0.16, color: "#c9d0d8", offset: { x: f + 0.16, y: C.floor + 1.0, z: dz + 0.3 } }));
     flat.push(box({ w: 0.12, h: 0.12, d: 0.36, color: "#24282f", offset: { x: f + 0.12, y: C.floor + dh + 0.22, z: dz } }));
     glow.push(box({ w: 0.02, h: 0.06, d: 0.3, color: C.amber, emissive: 1, offset: { x: f + 0.19, y: C.floor + dh + 0.22, z: dz } }));
-    const kpz = g0 - 0.2, kpy = C.floor + 1.15;
-    flat.push(box({ w: 0.04, h: 0.26, d: 0.16, color: "#1d2028", offset: { x: f + 0.08, y: kpy, z: kpz } }));
-    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) glow.push(box({ w: 0.01, h: 0.03, d: 0.03, color: r === 3 ? "#2ecc71" : "#7fdcff", emissive: 1, offset: { x: f + 0.105, y: kpy + 0.08 - r * 0.05, z: kpz - 0.04 + c * 0.04 } }));
-    const keypad = { x: f + 0.06, y: kpy, z: kpz, turn: 0, floor: C.floor };
+    const keypad = { x: f + 0.06, y: C.floor + 1.15, z: g0 - 0.2, turn: 0, floor: C.floor };
     // Turned round onto the right wall at the bay's middle.
     const onto = (g) => moved(turnedY(g, Math.PI), HALL.x0 + HALL.x1, 0, middle);
     const windows = noShadow(onto(merge(...glass)));

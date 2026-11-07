@@ -63,6 +63,8 @@
   const ARRIVAL = { position: { x: 0, y: DOOR.y, z: DOOR.z - 4.6 }, target: { x: 0, y: DOOR.y + 1, z: DOOR.z - 4.6 }, yaw: 0.12, pitch: 0.3, dist: 4.2 };
   const ARRIVAL_TALL = { ...ARRIVAL, yaw: -0.45, pitch: 0.04 };
   const arrival = () => renderer.size.width < renderer.size.height ? ARRIVAL_TALL : ARRIVAL;
+  // Where a door keypad shows on screen as its panel opens (`hangar-keypad.js`'s `across`).
+  const KEYPAD_AT = { x: 0, y: 0, depth: 0 };
   // The walk through the door's shield either way, as the Factory's gate walks it (`factoryWindow.GLIDE`): the door as
   // the walk takes it (its middle, the way out through it, its shield), how far in from it an arrival stands, how near
   // the door a step back from there may come before it walks out (OUT_SLACK), and the view's reach as an Ooga comes in
@@ -338,6 +340,7 @@
     if (!leaving) { world.hangarCrossing = null; w.through = w.grab = false; }
   };
   const onKey = (e) => {
+    if (scene && scene.keypad.onKey(e)) return true;
     if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !leaving) return pilot.resetCamera();
     if (BL.controls.matches(e, "horn") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && scene && honk(scene.forklift, people && people.player, false)) return true;
     if (BL.controls.matches(e, "view") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !leaving) {
@@ -1423,6 +1426,7 @@
         if (o.kind === "firetest" && scene.fire.near && scene.fire.press()) return;
         if (o.kind === "sis" && scene.sis.near && scene.sis.poke()) return;
         if (o.kind === "terminal" && scene.terminals.near && scene.terminals.press()) return;
+        if (o.kind === "keypad" && scene.keypad.press()) return;
         if (o.kind === "forkliftButton") return pressButton(scene.forklift, people && people.player);
         if (o.kind === "forkliftKey") return turnKey(scene.forklift, people && people.player);
         if (o.kind === "forkliftStick") return workStick(scene.forklift, people && people.player);
@@ -1494,6 +1498,22 @@
       input.add(n, { kind: "terminal", preset: null }, { radius: 0.8 });
       targets.push(n);
     }
+    // The rooms' door keypads (`hangar-keypad.js`), dimmed with the glass; the Ooga stands still while one is open, and
+    // Tess, if she is coming over or offering, goes back to work.
+    const pads = [{ ...HM.controlRoom().keypad, name: "Control room" }, ...HM.sideRooms().map((r, i) => ({ ...r.keypad, name: `Crew room ${i + 1}` }))];
+    scene.keypad = BL.hangarKeypad.create({ audio, hud, pads, hold: (on) => {
+      if (on) scene.guide.escape();
+      pilot.setActive(!on);
+    }, across: (x, y, z) => {
+      const at = renderer.project(x, y, z, KEYPAD_AT);
+      return at ? at.x / renderer.size.width : 0.5;
+    } });
+    for (const n of scene.keypad.nodes) {
+      addChild(root, n);
+      scene.glass.push(n);
+      input.add(n, { kind: "keypad", preset: null }, { radius: 0.3 });
+      targets.push(n);
+    }
     input.add(scene.terminals.projector, { kind: "projector", preset: null }, { radius: 1.2 });
     input.add(scene.terminals.screen, { kind: "screen", preset: null }, { radius: 4.5 });
     targets.push(scene.terminals.projector, scene.terminals.screen);
@@ -1503,7 +1523,7 @@
     scene.sisHead = { x: 0, y: 0, z: 0 };
     scene.guide = BL.hangarGuide.create({
       parent: root, input, fx, camera, pilot, visitor: () => people && people.player, world, hud, coarse: COARSE, landing: true,
-      quality: () => renderer.quality, busy: () => leaving || scene.fire.t >= 0,
+      quality: () => renderer.quality, busy: () => leaving || scene.fire.t >= 0 || scene.keypad.open >= 0,
       targets: { sis: [scene.sisHead], show: [HM.projector().lens, HM.filmScreen().picture] }
     });
     scene.distraction = BL.hangarGuide.distraction(scene.sis);
@@ -1529,7 +1549,7 @@
       // Keep the visitor's weapons and magazines across the doorway, as the hall does.
       playerWorld = { level: 0, weapons: world.weapons, magazine: world.magazine };
       const shared = { root, input, hud, game, world: playerWorld, playerName, weaponsEnabled: true, fx, viewYaw: 0, outsideActors, outsideActorHeight: BL.remotePlayers.BODY_HEIGHT, groundAt: groundFor, walkable: walkableFor, flyable: flyableFor, clipProjectileTarget, absorbProjectile, reloadPolicy,
-        useNear: (x, z, reach, feet) => scene.fire.useNear(x, z, reach, feet) || scene.terminals.useNear(x, z, reach, feet) || scene.sis.useNear() || getIn(scene.forklift, people.player) };
+        useNear: (x, z, reach, feet) => scene.keypad.useNear() || scene.fire.useNear(x, z, reach, feet) || scene.terminals.useNear(x, z, reach, feet) || scene.sis.useNear() || getIn(scene.forklift, people.player) };
       shared.onModelChange = () => {
         if (!avatar) return;
         scene.gate.phase.body.refresh(avatar.root);
@@ -1569,7 +1589,7 @@
     hangarScene.input = input;
     hangarScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get roomFire() { return scene && scene.roomFire && scene.roomFire.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get crane() { return scene && scene.crane && scene.crane.debug; }, get guide() { return scene && scene.guide; } }
+      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get roomFire() { return scene && scene.roomFire && scene.roomFire.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get keypad() { return scene && scene.keypad && scene.keypad.debug; }, get crane() { return scene && scene.crane && scene.crane.debug; }, get guide() { return scene && scene.guide; } }
     };
   };
   const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
@@ -1669,6 +1689,7 @@
     audio.forkliftWork(Math.abs(s.forklift.speed) / DRIVE.forward, s.forklift.lifting ? 1 : 0);
     s.sis.update(dt, drivenHere, camera.position);
     s.terminals.update(dt, drivenHere);
+    s.keypad.update(dt, drivenHere);
     // Kortik's Sis smashing the Jet brings Tess over to distract her, whatever she was doing; it over, she goes back.
     const sp = s.sis.node.position;
     s.sisHead.x = sp.x; s.sisHead.y = sp.y + 0.9; s.sisHead.z = sp.z;
@@ -1692,9 +1713,9 @@
     }
     remotes.update(dt);
     footsteps.update(drivenHere);
-    // The act button's START in the forklift (GET OUT while it runs), DON'T PRESS beside the static fire test's button, DISPLAY (or STOP) beside
-    // a terminal, POKE beside Kortik's Sis, and GET IN beside the forklift's cab.
-    const actLabel = drivenHere && (drivenHere.camp.seat === s.forklift.seat ? (s.forklift.on ? "GET OUT" : "START") : s.fire.actLabel() || s.terminals.actLabel() || s.sis.actLabel()
+    // The act button's START in the forklift (GET OUT while it runs), KEYPAD beside a room's door keypad, DON'T PRESS beside the static fire
+    // test's button, DISPLAY (or STOP) beside a terminal, POKE beside Kortik's Sis, and GET IN beside the forklift's cab.
+    const actLabel = drivenHere && (drivenHere.camp.seat === s.forklift.seat ? (s.forklift.on ? "GET OUT" : "START") : s.keypad.actLabel() || s.fire.actLabel() || s.terminals.actLabel() || s.sis.actLabel()
       || (!s.forklift.seat.sitter && besideCab(s.forklift, drivenHere) ? "GET IN" : null));
     if (actLabel) { hud.setAct(actLabel); actPrompt = true; }
     else if (actPrompt) { actPrompt = false; pilot.showAct(); }
@@ -1809,6 +1830,7 @@
     scene.anomaly.dispose();
     scene.roomFire.dispose();
     scene.fire.dispose();
+    scene.keypad.dispose();
     scene.guide.dispose();
     soundPanel.dispose();
     soundPanel = null;
@@ -1838,6 +1860,7 @@
       scene.sis.liveGeometry(set);
       scene.anomaly.liveGeometry(set);
       scene.terminals.liveGeometry(set);
+      scene.keypad.liveGeometry(set);
       scene.guide.liveGeometry(set);
       for (const a of scene.crew) a.liveGeometry(set);
       for (const g of scene.loftScreens) set.add(g);
