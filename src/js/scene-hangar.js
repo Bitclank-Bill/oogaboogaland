@@ -907,6 +907,13 @@
     addChild(root, createNode({ geometry: room.flat }), roomGlow, createNode({ geometry: room.glass, sightHidden: true }));
     for (const p of room.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
     s.glass.push(roomGlow);
+    // The crew's rooms on the right wall and the lofts' small windows over them, as the control room.
+    for (const r of [...HM.sideRooms(), HM.loftWindows()]) {
+      const lit = createNode({ geometry: r.glow, sightHidden: true });
+      addChild(root, createNode({ geometry: r.flat }), lit, createNode({ geometry: r.glass, sightHidden: true }));
+      for (const p of r.pictures || []) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
+      s.glass.push(lit);
+    }
     s.fixtures = createNode({ geometry: fixtures.flat });
     addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));
     addChild(root, s.mouth, s.fixtures);

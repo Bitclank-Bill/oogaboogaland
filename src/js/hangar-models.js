@@ -337,7 +337,20 @@
     const seam = (u0, u1, y0, y1) => walls.push(wallBox("x", left, 1, u0, u1 - u0, y0, y1 - y0, -PANEL.d - 0.1, -PANEL.d, PANEL.seam));
     seam(back - PANEL.d, C.z0, 0, top); seam(C.z1, front + PANEL.d, 0, top); seam(C.z0, C.z1, 0, C.y0); seam(C.z0, C.z1, C.y1, top);
     for (let i = 1; i < leftWall.length; i++) if (!opening(leftWall[i])) walls.push(leftWall[i]);
-    panels(walls, rand, "x", right, -1, B, back - PANEL.d, front + PANEL.d, 0, top);
+    // The right wall likewise round the crew's rooms (`SIDE_ROOMS`), at the control room's heights.
+    const R = SIDE_ROOMS, holes = R.bays.map((z) => [z - R.half, z + R.half]).sort((a, b) => a[0] - b[0]), rightWall = [];
+    panels(rightWall, rand, "x", right, -1, B, back - PANEL.d, front + PANEL.d, 0, top);
+    const hole = (g) => {
+      let y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (let i = 0; i < g.verts.length; i += 3) { y0 = Math.min(y0, g.verts[i + 1]); y1 = Math.max(y1, g.verts[i + 1]); z0 = Math.min(z0, g.verts[i + 2]); z1 = Math.max(z1, g.verts[i + 2]); }
+      const y = (y0 + y1) / 2, z = (z0 + z1) / 2;
+      return y > C.y0 && y < C.y1 && holes.some(([a, b]) => z > a && z < b);
+    };
+    const rightSeam = (u0, u1, y0, y1) => walls.push(wallBox("x", right, -1, u0, u1 - u0, y0, y1 - y0, -PANEL.d - 0.1, -PANEL.d, PANEL.seam));
+    let u = back - PANEL.d;
+    for (const [a, b] of holes) { rightSeam(u, a, 0, top); rightSeam(a, b, 0, C.y0); rightSeam(a, b, C.y1, top); u = b; }
+    rightSeam(u, front + PANEL.d, 0, top);
+    for (let i = 1; i < rightWall.length; i++) if (!hole(rightWall[i])) walls.push(rightWall[i]);
     for (const z of LAYOUT.gantries) {
       const k = kneeSpan(), gap = [k.foot, k.top];
       rib(walls, left, 1, z, top, gap), rib(walls, right, -1, z, top, gap);
@@ -2515,7 +2528,7 @@
     const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.lattice, sh.slots);
     const run = runway(), tun = tunnel(), fix = fixtures();
-    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, controlRoom().flat, controlRoom().glow, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
+    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, controlRoom().flat, controlRoom().glow, ...sideRooms().flatMap((r) => [r.flat, r.glow]), loftWindows().flat, loftWindows().glow, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
     // The boards on their mounts, their glass and tiles, as they hang.
     const frames = boardFrames(), faces = { stats: statsFace(), timeline: timelineFace() };
@@ -2704,6 +2717,8 @@
     for (const [x, z] of CRANE.stands) around(x, z, 0.85, 0.85, CRANE.standTop + CRANE.crate[1]);
     // The control room's front out from the left wall, its door and keypad with it, in the way at the catwalk's level.
     block(HALL.x0, CONTROL.front + 0.2, CONTROL.z0, CONTROL.z1, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
+    // The crew's rooms' fronts out from the right wall likewise.
+    for (const z of SIDE_ROOMS.bays) block(HALL.x0 + HALL.x1 - CONTROL.front - 0.2, HALL.x1, z - SIDE_ROOMS.half, z + SIDE_ROOMS.half, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
     // The ribs standing out of the side walls, plinths and all.
     const S = L.shell, reach = S.face + S.rib + 0.2, half = S.ribW / 2 + 0.2;
     for (const z of L.gantries) block(HALL.x0, HALL.x0 + reach, z - half, z + half, -1, HALL.h), block(HALL.x1 - reach, HALL.x1, z - half, z + half, -1, HALL.h);
