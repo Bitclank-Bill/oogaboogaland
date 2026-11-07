@@ -973,10 +973,14 @@
     addChild(root, createNode({ geometry: room.flat }), roomGlow, createNode({ geometry: room.glass, sightHidden: true }));
     for (const p of room.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
     s.glass.push(roomGlow);
-    // The crew's rooms on the right wall, as the control room.
+    // The crew's rooms on the right wall, as the control room, each its door on a node of its own on its hinge, its amber
+    // window dimmed with the glass.
+    s.roomDoors = [];
     for (const r of HM.sideRooms()) {
-      const lit = createNode({ geometry: r.glow, sightHidden: true });
-      addChild(root, createNode({ geometry: r.flat }), lit, createNode({ geometry: r.glass, sightHidden: true }));
+      const lit = createNode({ geometry: r.glow, sightHidden: true }), door = createNode({ position: { x: r.door.x, y: r.door.y, z: r.door.z }, rotation: { x: 0, y: r.door.turn, z: 0 }, geometry: HM.roomDoor() });
+      addChild(root, createNode({ geometry: r.flat }), lit, createNode({ geometry: r.glass, sightHidden: true }), door);
+      s.glass.push(door);
+      s.roomDoors.push(door);
       for (const p of r.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
       s.glass.push(lit);
     }
