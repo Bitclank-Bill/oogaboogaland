@@ -461,12 +461,12 @@
         // The controls and sound buttons at the top right. With the row below the title (a phone) they take its buttons'
         // size and margins: as tall as they are, 4px from the top and right edges and from each other, inside any safe
         // area. Otherwise they stand in line with the row: as tall as the banner's text (28 to 36px), their tops level with
-        // the row's buttons' tops.
+        // the row's buttons' tops, 8px from the right edge (past any safe area) and from each other.
         const below = banner === "below", paddingTop = parseFloat(topbar.paddingTop) || 0;
         const side = below ? Math.round(52 * scale) : Math.round(Math.max(28, Math.min(36, bottomEdge - topEdge)));
         bannerStyle(el.topbar, "--hub-banner-button", `${side}px`);
         bannerStyle(el.topbar, "--hub-banner-button-top", `${below ? Math.max(4, paddingTop - 6) : Math.round(top * 10) / 10}px`);
-        bannerStyle(el.topbar, "--hub-banner-button-right", `${below ? Math.max(4, paddingRight - 4) : paddingRight}px`);
+        bannerStyle(el.topbar, "--hub-banner-button-right", below ? `${Math.max(4, paddingRight - 4)}px` : "calc(var(--safe-right) + 8px)");
         bannerStyle(el.topbar, "--hub-banner-button-gap", `${below ? 4 : 8}px`);
         if (el.equipment.dataset.banner !== banner) el.equipment.dataset.banner = banner;
         bannerStyle(el.equipment, "--hub-equipment-scale", String(scale));
