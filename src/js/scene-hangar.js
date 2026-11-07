@@ -1395,7 +1395,7 @@
     // A fire in the control room and its operator putting it out (`hangar-room-fire.js`), which the lightning lights
     // now and then; the operator is the crew's last post.
     scene.roomFire = BL.hangarRoomFire.create({ root, fx, audio, gorilla: scene.crew[LAYOUT.crew.length - 1], room: HM.controlRoom() });
-    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden(), near: (test) => nearJet(test) });
+    scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, room: scene.roomFire, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden(), near: (test) => nearJet(test) });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
     for (const n of scene.terminals.nodes) {
