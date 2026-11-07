@@ -27030,32 +27030,48 @@ const fixedRoutineProof = async () => {
   const slotWalkRetargets = !!ownLeg.grewAt && ownLeg.meal && !ownLeg.walking && same([ownLeg.end.x, ownLeg.end.z], { x: 0, z: -7 })
     && !ownLeg.objectFloorCalls;
   const authoredRouteKept = !!authoredLeg.grewAt && authoredLeg.legsKept && !authoredLeg.walking && same([authoredLeg.end.x, authoredLeg.end.z], { x: 0, z: -5 });
-  // The real passive companion stepper: a planned meadow leg from the pile to a
-  // cave's apron follows the ring and one spoke, never crossing the pile, on
-  // terrain; only the wall clearance is consulted. A wall step hands over to
-  // the ordinary controller (wall climbs).
+  // The real passive companion stepper, with the real choice of route (`passivePlanned`): the walk from a cave to the
+  // pile follows the ring and one spoke, never crossing the pile, on terrain; only the wall clearance is consulted.
+  // Regression: a working gorilla's walk to a work cave was routed along the spokes and ring; it walks the straight
+  // line to that cave's apron, on terrain, passing through everything but walls, whether it set out from another cave
+  // or the meadow, and stays straight when its origin is reset mid-walk (a retarget or a blocked retry). A wall step
+  // hands over to the ordinary controller (wall climbs) on either route.
   const clankerSource = await readFile(join(root, "src/js/clankers.js"), "utf8");
   const stepperCode = clankerSource.slice(clankerSource.indexOf("    const PASSIVE_WALKER ="), clankerSource.indexOf("    const move = (e, dt, speed) => {"));
-  const gorillaLeg = (wall) => {
-    let wallChecks = 0, moves = 0, inside = 0;
+  const WORK_TRIP = { phase: "travel", mode: "working", route: "apron", fromSite: -1, site: 2 };
+  const PILE_TRIP = { phase: "leave", mode: "chilling", route: "pile", fromSite: 1, site: 1 };
+  // `resets`: the origin cave this walk is given at a frame, as `beginTravel` and the blocked retry rewrite it.
+  const gorillaLeg = (wall, trip, resets = []) => {
+    let wallChecks = 0, moves = 0, inside = 0, offLine = 0, plannedSteps = 0;
     const gorilla = { nonInteractive: true, heading: Math.PI, speed: 0, blocked: 0, stuckTime: 0, goalX: 30, goalY: 0, goalZ: 1,
-      root: { position: { x: 0, y: 0, z: -4 } } };
+      ...trip, root: { position: { x: 0, y: 0, z: -4 } } };
     const c = { clamp: (v, a, b) => Math.max(a, Math.min(b, v)), PROP_STEP: 1.16, ctx: { npcFixedPaths: fixed, npcPathState: () => P.create({ island }).createState() },
       support: (_e, x) => 0.02 * x, groundStepClear: () => (wallChecks++, !wall),
       setSupportY: (e, y) => { e.root.position.y = y; }, move: () => { moves++; }, e: gorilla };
-    runInNewContext(`${stepperCode} this.step = () => movePassive(e, 1 / 30, 2.7, true);`, c);
-    const p = gorilla.root.position;
+    runInNewContext(`${stepperCode} this.step = () => { const planned = passivePlanned(e); movePassive(e, 1 / 30, 2.7, planned); return planned; };`, c);
+    const p = gorilla.root.position, length = Math.hypot(30, 5);
     let onTerrain = true, frames = 0;
     for (; frames < 2000 && Math.hypot(p.x - 30, p.z - 1) > 0.02 && !moves; frames++) {
-      c.step();
+      for (const [at, fromSite] of resets) if (frames === at) gorilla.fromSite = fromSite;
+      if (c.step()) plannedSteps++;
       onTerrain &&= Math.abs(p.y - 0.02 * p.x) < 1e-9;
       if (frames > 30 && Math.hypot(p.x, p.z) < 4.9) inside++;
+      // Distance from the straight line from its start (0, -4) to its goal (30, 1), as measured.
+      offLine = Math.max(offLine, Math.abs(p.x * 5 - (p.z + 4) * 30) / length);
     }
-    return { arrived: Math.hypot(p.x - 30, p.z - 1) <= 0.02, onTerrain, wallChecks, moves, inside, frames };
+    return { plannedSteps, arrived: Math.hypot(p.x - 30, p.z - 1) <= 0.02, onTerrain, wallChecks, moves, inside, offLine, frames };
   };
-  const gorillaTrip = gorillaLeg(false), gorillaWall = gorillaLeg(true);
-  const gorillaPlanned = gorillaTrip.arrived && gorillaTrip.onTerrain && !gorillaTrip.moves && !gorillaTrip.inside && gorillaTrip.wallChecks > 0;
-  const gorillaClimbsWalls = gorillaWall.moves === 1 && !gorillaWall.arrived;
+  const straightFrames = Math.ceil(Math.hypot(30, 5) / 2.7 * 30) + 1;
+  const gorillaToPile = gorillaLeg(false, PILE_TRIP), gorillaWall = gorillaLeg(true, PILE_TRIP);
+  const gorillaFromMeadow = gorillaLeg(false, WORK_TRIP);
+  const gorillaFromCave = gorillaLeg(false, { ...WORK_TRIP, fromSite: 1 });
+  const gorillaReset = gorillaLeg(false, { ...WORK_TRIP, fromSite: 1 }, [[60, -1], [120, 3], [180, -1]]);
+  const gorillaWorkWall = gorillaLeg(true, WORK_TRIP);
+  const gorillaPlanned = gorillaToPile.plannedSteps === gorillaToPile.frames && gorillaToPile.arrived && gorillaToPile.onTerrain
+    && !gorillaToPile.moves && !gorillaToPile.inside && gorillaToPile.wallChecks > 0;
+  const gorillaDirect = [gorillaFromMeadow, gorillaFromCave, gorillaReset].every(t => !t.plannedSteps && t.arrived && t.onTerrain && !t.moves
+    && t.offLine < 1e-6 && t.wallChecks > 0 && t.frames <= straightFrames) && gorillaReset.frames > 180;
+  const gorillaClimbsWalls = [gorillaWall, gorillaWorkWall].every(t => t.moves === 1 && !t.arrived);
   // The real doorway claim: a passive companion passes a held portal without
   // scanning or taking it (the holder keeps its claim), drops a stale claim of
   // its own, and a driven gorilla still waits its turn.
@@ -27078,7 +27094,8 @@ const fixedRoutineProof = async () => {
   const passivePortal = passedHeld && droppedStale && drivenWaits;
   island.path.centerlines = [];
   return { outside, ring, arrives, stamped, replansGraphLane, midOutboundChill, returningChill, slotlessChill, restsAtPile,
-    slotWalkRetargets, authoredRouteKept, slotWalks: [ownLeg, authoredLeg], gorillaPlanned, gorillaClimbsWalls, passivePortal, gorillaTrip, gorillaWall,
+    slotWalkRetargets, authoredRouteKept, slotWalks: [ownLeg, authoredLeg], gorillaPlanned, gorillaDirect, gorillaClimbsWalls, passivePortal,
+    gorillaToPile, gorillaWall, gorillaFromMeadow, gorillaFromCave, gorillaReset, gorillaWorkWall,
     portal: { passedHeld, droppedStale, drivenWaits, caveScans },
     unsupported: P.fixed(island) === null,
     trips: [outboundTrip, returnTrip, slotlessTrip, restTrip].map(({ steps, ...trip }) => ({ ...trip, steps: steps.length })) };
@@ -27579,7 +27596,7 @@ const unitChecks = async () => {
   record("passive status beams: clanking to chilling in view walks without glyphs at 20 Hz steps, while a relocation to bed still beams",
     Object.values(statusBeams).every(Boolean), JSON.stringify(statusBeams));
   const fixedRoutine = await fixedRoutineProof();
-  record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects",
+  record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects; a passive gorilla's walk to the pile keeps the spokes and ring while its work travel to a cave walks straight from another cave or the meadow, even when its origin is reset mid-walk, on terrain, still handing wall steps to the climber",
     Object.values(fixedRoutine).every(Boolean), JSON.stringify(fixedRoutine));
   const passiveWeapons = await passiveWeaponTargetProof();
   record("passive weapon targets: a shot passes through a passive NPC to the body behind it, hover and carry picks still find the NPC, and a non-passive body takes the hit",

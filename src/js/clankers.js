@@ -4640,11 +4640,16 @@
       e.speed = step / dt; e.blocked = 0;
     };
     // A passive companion's travel steps straight at its authored goal (exit,
-    // apron, entry, slot or pile); on the meadow legs it follows the authored
-    // spokes and pile ring instead (`ctx.npcFixedPaths`). Support and clearance
-    // are terrain and cave walls only. A step a wall refuses goes to the
-    // ordinary controller, which owns wall climbs and roof descents.
+    // apron, entry, slot or pile). A working gorilla heading for a work cave
+    // walks straight to its apron wherever it set out from (another cave or the
+    // meadow), retargets and retries included. Only the walk to the pile, and
+    // an apron leg outside work travel, follow the authored spokes and pile
+    // ring (`ctx.npcFixedPaths`, `passivePlanned`). Support and clearance are
+    // terrain and cave walls only. A step a wall refuses goes to the ordinary
+    // controller, which owns wall climbs and roof descents.
     const PASSIVE_WALKER = { pathing: null, root: null };
+    const passivePlanned = (e) => e.route === "pile"
+      || e.route === "apron" && !(e.phase === "travel" && e.mode === "working");
     const movePassive = (e, dt, speed, planned) => {
       const p = e.root.position;
       let tx = e.goalX, tz = e.goalZ;
@@ -7298,7 +7303,7 @@
             // A short prop can lift the feet above the ground-level goal too.
             // Keep its supported exit on the ordinary steered walker.
             if (e.nonInteractive && !e.climb.active && !e.drive.airborne)
-              movePassive(e, dt, e.mode === "chilling" ? CHILL_SPEED : SPEED, e.route === "apron" || e.route === "pile");
+              movePassive(e, dt, e.mode === "chilling" ? CHILL_SPEED : SPEED, passivePlanned(e));
             else if (e.route === "apron" && p.y > e.goalY + 0.8 && !raisedSupport(e) && caveAt(p.x, p.y, p.z) < 0)
               runDownhill(e, dt, Math.atan2(e.goalX - p.x, e.goalZ - p.z));
             else if (enteringAisle(e)) moveEntryAisle(e, dt);
