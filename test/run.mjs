@@ -27638,6 +27638,32 @@ const fixedRoutineProof = async () => {
   const stamped = state.version !== island.path.version;
   const plans = state.plans; state.version = island.path.version; fixed.target(cave, 30, 1);
   const replansGraphLane = state.plans === plans + 1;
+  // Regression: a passive Ooga between two spoke samples (a return leg begun at its cave's first route point, or a
+  // replan mid-spoke when its slot or the ring changed) aimed first at the nearer sample behind it and turned round,
+  // and a goal between two samples was overshot and walked back to. Inbound to the pile, outbound to a cave and along
+  // one spoke each way, the real planner's first aim and every later lane point lie on the way to the goal, which is
+  // the last point. Short legs between two adjacent samples (each end nearest a different one) and legs whose ends
+  // share one nearest sample keep no sample behind or beyond them: a direct leg to the goal alone is a valid route,
+  // and `samples` counts the spoke samples kept, so a leg with one between its ends must still keep that one.
+  const onTheWay = (from, goal, samples = -1) => {
+    const s = P.create({ island }).createState();
+    fixed.target({ pathing: s, root: { position: { x: from.x, y: 0, z: from.z } } }, goal.x, goal.z);
+    const sign = Math.sign(goal.z - from.z);
+    let along = from.z, ahead = s.count >= 1 && (s.targetZ - from.z) * sign > 0, kept = 0;
+    for (let i = 0; i < s.count; i++) {
+      ahead &&= (s.laneZ[i] - along) * sign >= -1e-6; along = s.laneZ[i];
+      if (i < s.count - 1 && s.laneX[i] === 0 && s.laneZ[i] % 2 === 0) kept++;
+    }
+    return ahead && (samples < 0 || kept === samples)
+      && Math.abs(s.laneX[s.count - 1] - goal.x) < 1e-6 && Math.abs(s.laneZ[s.count - 1] - goal.z) < 1e-6;
+  };
+  const noTurnBack = onTheWay({ x: 0.1, z: 21.4 }, { x: 0, z: 4 }) && onTheWay({ x: 0.1, z: 4 }, { x: 0.1, z: 21.4 })
+    && onTheWay({ x: 0.1, z: 21.4 }, { x: 0.1, z: 12.6 }) && onTheWay({ x: 0.1, z: 12.6 }, { x: 0.1, z: 21.4 })
+    // Adjacent samples 10 and 12, nearest the start and the goal in turn, both drop: the goal alone.
+    && onTheWay({ x: 0, z: 10.2 }, { x: 0, z: 11.8 }, 0) && onTheWay({ x: 0.1, z: 11.8 }, { x: 0.1, z: 10.2 }, 0)
+    // One shared nearest sample (10): kept only when it lies between the ends, either way along the spoke.
+    && onTheWay({ x: 0.1, z: 9.6 }, { x: 0.1, z: 10.4 }, 1) && onTheWay({ x: 0.1, z: 10.4 }, { x: 0.1, z: 9.6 }, 1)
+    && onTheWay({ x: 0.1, z: 10.2 }, { x: 0.1, z: 10.6 }, 0) && onTheWay({ x: 0.1, z: 10.6 }, { x: 0.1, z: 10.2 }, 0);
   // Clanking to chilling, through the real crew route walk: from mid-outbound or
   // mid-return inside a cave, back along the authored route points, along the
   // planner to the pile slot, then to the chill spot. It never consults object
@@ -27688,6 +27714,29 @@ const fixedRoutineProof = async () => {
   const restsAtPile = restTrip.started && restTrip.state === "chilling" && !restTrip.arrived && !restTrip.walking
     && restTrip.kind === "idle" && inOrder(restTrip.steps, [route[0], slot]) && same([restTrip.end.x, restTrip.end.z], slot)
     && !restTrip.blockCalls && !restTrip.objectFloorCalls;
+  // Regression: the real `runWork` return leg to the pile ran the direct pile approach for a passive fixed trip too,
+  // which re-picks the nearest slot it can sweep to past props and the pile and leaves the ring planner, swinging the
+  // walker to another slot. A fixed trip keeps its reserved slot on the planned path; an ordinary walker keeps the
+  // direct approach and its switch.
+  const returnCode = slice("    const runWork =", "    const quoteFor =");
+  const pileReturn = (fixedLeg) => {
+    let approaches = 0, followed = null, walkedTo = null;
+    const reserved = { x: 0, z: -5 }, nearer = { x: 1, z: -4.9 };
+    const ooga = { fixedLeg, slot: reserved, pileApproach: false, root: { position: { x: 0.5, y: 0, z: -6 } }, weapon: { ammo: 0 },
+      work: { phase: "return", index: -1, site: 0, plannedSite: 0, reloadSlot: true, direct: false }, act: { kind: "reload-return" } };
+    const ctx = { cave: ooga, AMMO_MAX: 30, workSites: [{ route: [{ x: 20, z: 0 }] }], siteActive: () => true, planWorkSite: () => 0,
+      slotAvailable: () => true, closestSlot: () => reserved, fixedTrip: c => c.fixedLeg, standPose: () => {},
+      approachPile: c => { approaches++; c.slot = nearer; c.pileApproach = true; return true; },
+      walkWorkTo: (_c, target, _dt, followPath) => { walkedTo = target; followed = followPath; return false; } };
+    runInNewContext(`${returnCode} this.run = () => runWork(cave, 0.05);`, ctx);
+    ctx.run(); ctx.run();
+    return { approaches, followed, walkedTo, slot: ooga.slot, reserved, nearer, phase: ooga.work.phase };
+  };
+  const fixedReturn = pileReturn(true), ordinaryReturn = pileReturn(false);
+  const fixedReturnKeepsSlot = fixedReturn.approaches === 0 && fixedReturn.followed === true && fixedReturn.slot === fixedReturn.reserved
+    && fixedReturn.walkedTo === fixedReturn.reserved && fixedReturn.phase === "return"
+    && ordinaryReturn.approaches === 2 && ordinaryReturn.followed === false && ordinaryReturn.slot === ordinaryReturn.nearer
+    && ordinaryReturn.walkedTo === ordinaryReturn.nearer && ordinaryReturn.phase === "return";
   // Regression (#496 review): the pile grows while a passive Ooga walks its own one-leg route to its loading slot.
   // The real `updateFan` retargets through the real `walkToSlot`, and the real `runWalk`/`runRouteWalk` must arrive at
   // the newly assigned slot, not the snapshot taken when the leg was made. An authored route keeps its legs.
@@ -27721,8 +27770,11 @@ const fixedRoutineProof = async () => {
   const slotWalkRetargets = !!ownLeg.grewAt && ownLeg.meal && !ownLeg.walking && same([ownLeg.end.x, ownLeg.end.z], { x: 0, z: -7 })
     && !ownLeg.objectFloorCalls;
   const authoredRouteKept = !!authoredLeg.grewAt && authoredLeg.legsKept && !authoredLeg.walking && same([authoredLeg.end.x, authoredLeg.end.z], { x: 0, z: -5 });
-  // The real passive companion stepper, with the real choice of route (`passivePlanned`): the walk from a cave to the
-  // pile follows the ring and one spoke, never crossing the pile, on terrain; only the wall clearance is consulted.
+  // The real passive companion stepper, with the real choice of route (`passivePlanned`), on terrain; only the wall
+  // clearance is consulted.
+  // A gorilla leaving work for its Ooga's pile slot walks the straight line to the slot, over the pile itself: no
+  // planner lane routes it round the pile ring (while the ordinary controller, which takes any refused step, aims
+  // straight at the slot).
   // Regression: a working gorilla's walk to a work cave was routed along the spokes and ring; it walks the straight
   // line to that cave's apron, on terrain, passing through everything but walls, whether it set out from another cave
   // or the meadow, and stays straight when its origin is reset mid-walk (a retarget or a blocked retry). A wall step
@@ -27731,6 +27783,8 @@ const fixedRoutineProof = async () => {
   const stepperCode = clankerSource.slice(clankerSource.indexOf("    const PASSIVE_WALKER ="), clankerSource.indexOf("    const move = (e, dt, speed) => {"));
   const WORK_TRIP = { phase: "travel", mode: "working", route: "apron", fromSite: -1, site: 2 };
   const PILE_TRIP = { phase: "leave", mode: "chilling", route: "pile", fromSite: 1, site: 1 };
+  // The one leg still on the spokes and ring: an apron leg outside work travel.
+  const PLANNED_TRIP = { phase: "travel", mode: "chilling", route: "apron", fromSite: -1, site: 1 };
   // `resets`: the origin cave this walk is given at a frame, as `beginTravel` and the blocked retry rewrite it.
   const gorillaLeg = (wall, trip, resets = []) => {
     let wallChecks = 0, moves = 0, inside = 0, offLine = 0, plannedSteps = 0;
@@ -27758,19 +27812,20 @@ const fixedRoutineProof = async () => {
   const gorillaFromCave = gorillaLeg(false, { ...WORK_TRIP, fromSite: 1 });
   const gorillaReset = gorillaLeg(false, { ...WORK_TRIP, fromSite: 1 }, [[60, -1], [120, 3], [180, -1]]);
   const gorillaWorkWall = gorillaLeg(true, WORK_TRIP);
-  const gorillaPlanned = gorillaToPile.plannedSteps === gorillaToPile.frames && gorillaToPile.arrived && gorillaToPile.onTerrain
-    && !gorillaToPile.moves && !gorillaToPile.inside && gorillaToPile.wallChecks > 0;
+  // The straight line from its start (0, -4) to the slot (30, 1) passes 3.95 m from the centre, inside the 5 m ring.
+  const gorillaOverPile = !gorillaToPile.plannedSteps && gorillaToPile.arrived && gorillaToPile.onTerrain && !gorillaToPile.moves
+    && gorillaToPile.offLine < 1e-6 && gorillaToPile.inside > 0 && gorillaToPile.wallChecks > 0 && gorillaToPile.frames <= straightFrames;
   const gorillaDirect = [gorillaFromMeadow, gorillaFromCave, gorillaReset].every(t => !t.plannedSteps && t.arrived && t.onTerrain && !t.moves
     && t.offLine < 1e-6 && t.wallChecks > 0 && t.frames <= straightFrames) && gorillaReset.frames > 180;
   const gorillaClimbsWalls = [gorillaWall, gorillaWorkWall].every(t => t.moves === 1 && !t.arrived);
   // Regression: the fixed planner keeps a walker's lane until its goal or the map changes, and a straight work leg
-  // never touched it, so a gorilla's next walk to the same pile slot took up its old lane (consumed, or cut short)
-  // from wherever the work trip had left it. One gorilla walks to the pile (all the way, or only partway), walks
-  // straight to work, then walks to the same slot again: that third walk plans afresh from where it now stands,
+  // never touched it, so a gorilla's next planned walk to the same goal took up its old lane (consumed, or cut short)
+  // from wherever the work trip had left it. One gorilla walks a planned leg (all the way, or only partway), walks
+  // straight to work, then walks to the same goal again: that third walk plans afresh from where it now stands,
   // exactly the lane a gorilla first setting out from there gets, in the same state and buffers, and arrives.
   const passiveWalker = (x, z) => {
     const gorilla = { nonInteractive: true, heading: Math.PI, speed: 0, blocked: 0, stuckTime: 0, goalX: 30, goalY: 0, goalZ: 1,
-      ...PILE_TRIP, root: { position: { x, y: 0.02 * x, z } } };
+      ...PLANNED_TRIP, root: { position: { x, y: 0.02 * x, z } } };
     const c = { clamp: (v, a, b) => Math.max(a, Math.min(b, v)), PROP_STEP: 1.16, ctx: { npcFixedPaths: fixed, npcPathState: () => P.create({ island }).createState() },
       support: (_e, sx) => 0.02 * sx, groundStepClear: () => true, setSupportY: (e, y) => { e.root.position.y = y; }, move: () => {}, e: gorilla };
     runInNewContext(`${stepperCode} this.step = () => movePassive(e, 1 / 30, 2.7, passivePlanned(e));`, c);
@@ -27786,7 +27841,7 @@ const fixedRoutineProof = async () => {
     Object.assign(g, WORK_TRIP, { goalX: -20, goalZ: 12 });
     w.walk(150);
     const leftAlone = s.plans === plans && Number.isNaN(s.tx);
-    Object.assign(g, PILE_TRIP, { goalX: 30, goalZ: 1 });
+    Object.assign(g, PLANNED_TRIP, { goalX: 30, goalZ: 1 });
     const from = { x: g.root.position.x, z: g.root.position.z };
     w.step();
     const fresh = passiveWalker(from.x, from.z);
@@ -27820,8 +27875,8 @@ const fixedRoutineProof = async () => {
   const drivenWaits = pc.claim(driven) === false && pc.portals[0] === holder && caveScans > 0;
   const passivePortal = passedHeld && droppedStale && drivenWaits;
   island.path.centerlines = [];
-  return { outside, ring, arrives, stamped, replansGraphLane, midOutboundChill, returningChill, slotlessChill, restsAtPile,
-    slotWalkRetargets, authoredRouteKept, slotWalks: [ownLeg, authoredLeg], gorillaPlanned, gorillaDirect, gorillaClimbsWalls, gorillaReplans, passivePortal,
+  return { outside, ring, arrives, stamped, replansGraphLane, noTurnBack, fixedReturnKeepsSlot, midOutboundChill, returningChill, slotlessChill, restsAtPile,
+    slotWalkRetargets, authoredRouteKept, slotWalks: [ownLeg, authoredLeg], gorillaOverPile, gorillaDirect, gorillaClimbsWalls, gorillaReplans, passivePortal,
     gorillaToPile, gorillaWall, gorillaFromMeadow, gorillaFromCave, gorillaReset, gorillaWorkWall, pileConsumed, pileInterrupted,
     portal: { passedHeld, droppedStale, drivenWaits, caveScans },
     unsupported: P.fixed(island) === null,
@@ -28323,7 +28378,7 @@ const unitChecks = async () => {
   record("passive status beams: clanking to chilling in view walks without glyphs at 20 Hz steps, while a relocation to bed still beams",
     Object.values(statusBeams).every(Boolean), JSON.stringify(statusBeams));
   const fixedRoutine = await fixedRoutineProof();
-  record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects; a passive gorilla's walk to the pile keeps the spokes and ring while its work travel to a cave walks straight from another cave or the meadow, even when its origin is reset mid-walk, on terrain, still handing wall steps to the climber",
+  record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; a walker between spoke samples, or a goal between them, is never sent back to a sample behind it or past the goal; a passive return leg keeps its reserved pile slot on the planned path while an ordinary one keeps the direct pile approach; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects; a passive gorilla's walk to its Ooga's pile slot goes straight over the pile while its work travel to a cave walks straight from another cave or the meadow, even when its origin is reset mid-walk, on terrain, still handing wall steps to the climber",
     Object.values(fixedRoutine).every(Boolean), JSON.stringify(fixedRoutine));
   const passiveWeapons = await passiveWeaponTargetProof();
   record("passive weapon targets: a shot passes through a passive NPC to the body behind it, hover and carry picks still find the NPC, and a non-passive body takes the hit",

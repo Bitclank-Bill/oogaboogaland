@@ -4642,14 +4642,15 @@
     // A passive companion's travel steps straight at its authored goal (exit,
     // apron, entry, slot or pile). A working gorilla heading for a work cave
     // walks straight to its apron wherever it set out from (another cave or the
-    // meadow), retargets and retries included. Only the walk to the pile, and
-    // an apron leg outside work travel, follow the authored spokes and pile
+    // meadow), retargets and retries included, and a gorilla leaving work walks
+    // straight to its Ooga's pile slot, over the pile itself, so no lane aims it
+    // round the pile ring while the ordinary controller aims at the slot. Only
+    // an apron leg outside work travel follows the authored spokes and pile
     // ring (`ctx.npcFixedPaths`, `passivePlanned`). Support and clearance are
     // terrain and cave walls only. A step a wall refuses goes to the ordinary
     // controller, which owns wall climbs and roof descents.
     const PASSIVE_WALKER = { pathing: null, root: null };
-    const passivePlanned = (e) => e.route === "pile"
-      || e.route === "apron" && !(e.phase === "travel" && e.mode === "working");
+    const passivePlanned = (e) => e.route === "apron" && !(e.phase === "travel" && e.mode === "working");
     const movePassive = (e, dt, speed, planned) => {
       const p = e.root.position;
       let tx = e.goalX, tz = e.goalZ;

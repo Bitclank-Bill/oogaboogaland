@@ -12649,7 +12649,7 @@
       roamRadius: island.radius, meadowRadius: island.meadowRadius,
       clear: clankerClear, playersClear: clankerPlayersClear, tallObstacleAhead: clankerTallObstacleAhead,
       onPound: poundClankerEquipment,
-      // Passive companions' meadow legs follow the Oogas' authored spokes and pile ring.
+      // A passive companion's apron leg outside work travel follows the Oogas' authored spokes and pile ring.
       npcFixedPaths: shared.npcFixedPaths, npcPathState: () => shared.npcPaths.createState(),
       pileRingRadius: shared.reloadSlotRadius,
       fireContact: clankerFireContact, fireReachable: shared.fireReachable, fireClear: clankerFireClear,
