@@ -1392,6 +1392,9 @@
     // under debug also sets the wait between them, s. It asks whether any Ooga stands on the Jet (`jetRidden`), and
     // whether anything that walks the hall comes near it (`nearJet`).
     const every = DEBUG ? Number(params.get("anomaly")) : NaN;
+    // A fire in the control room and its operator putting it out (`hangar-room-fire.js`), which the lightning lights
+    // now and then; the operator is the crew's last post.
+    scene.roomFire = BL.hangarRoomFire.create({ root, fx, audio, gorilla: scene.crew[LAYOUT.crew.length - 1], room: HM.controlRoom() });
     scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden(), near: (test) => nearJet(test) });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });
@@ -1474,7 +1477,7 @@
     hangarScene.input = input;
     hangarScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get crane() { return scene && scene.crane && scene.crane.debug; }, get guide() { return scene && scene.guide; } }
+      hangar: { layout: LAYOUT, feed: BL.jetFeed, get scene() { return scene; }, get avatar() { return avatar; }, get audio() { return audio; }, get fire() { return scene && scene.fire; }, get sis() { return scene && scene.sis && scene.sis.debug; }, get anomaly() { return scene && scene.anomaly && scene.anomaly.debug; }, get roomFire() { return scene && scene.roomFire && scene.roomFire.debug; }, get terminals() { return scene && scene.terminals && scene.terminals.debug; }, get crane() { return scene && scene.crane && scene.crane.debug; }, get guide() { return scene && scene.guide; } }
     };
   };
   const feetOf = () => avatar ? avatar.root.position.y - avatar.baseY : 0;
@@ -1564,6 +1567,7 @@
     // The Jet acting up on its own, driving the engines before the static fire test burns them; then the test, after
     // the crew has moved, so a presser it knocks down lies where the crew left them.
     s.anomaly.update(dt);
+    s.roomFire.update(dt);
     s.fire.update(dt, drivenHere);
     pressLife(s.forklift, dt);
     powerLife(s.forklift, dt);
@@ -1634,11 +1638,12 @@
         hud.toast("Launch shield · sealed. The runway opens when Jet v2 is ready.");
       } else if (z > TUN.holdShort + SHIELD_REARM) s.launch.armed = true;
     }
-    // The fire test's lights (the booth's as dim as an anomaly has the hall's), an anomaly's, the film's, the forklift's
-    // beacon's and Tess's own, then the lanterns'.
+    // The fire test's lights (the booth's as dim as an anomaly has the hall's), an anomaly's, the control room's fire's,
+    // the film's, the forklift's beacon's and Tess's own, then the lanterns'.
     const fired = FIXED + s.fire.lights(RENDER_OPTS.lights, FIXED), odd = fired + s.anomaly.lights(RENDER_OPTS.lights, fired);
     for (let i = FIXED; i < fired; i++) { const o = i * 8; Lt[o + 4] *= dim; Lt[o + 5] *= dim; Lt[o + 6] *= dim; }
-    const shown = odd + s.terminals.lights(RENDER_OPTS.lights, odd);
+    const burnt = odd + s.roomFire.lights(RENDER_OPTS.lights, odd);
+    const shown = burnt + s.terminals.lights(RENDER_OPTS.lights, burnt);
     const beamed = shown + beaconLight(s.forklift, RENDER_OPTS.lights, shown);
     s.guide.light(RENDER_OPTS.lights, beamed * 8);
     glowNear(elapsed, beamed + 1, dim);
@@ -1650,7 +1655,8 @@
     craneBeam(s.crane.beam);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     for (let i = 0; i < s.crew.length; i++) {
-      s.crew[i].update(dt);
+      // The control room's fire holds its operator while it burns.
+      if (s.roomFire.holding !== s.crew[i]) s.crew[i].update(dt);
       const p = s.crew[i].root.position, a = s.crewActors[i];
       a.x = p.x; a.z = p.z;
     }
@@ -1708,6 +1714,7 @@
     scene.launch.phase.dispose();
     if (scene.window) scene.window.dispose();
     scene.anomaly.dispose();
+    scene.roomFire.dispose();
     scene.fire.dispose();
     scene.guide.dispose();
     soundPanel.dispose();
