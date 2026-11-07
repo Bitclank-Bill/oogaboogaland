@@ -470,6 +470,57 @@
     return merge(...geos);
   });
 
+  // The side walls' lights, after the concept, all glow and no light of their own (`WALL_LIGHTS`): pairs of amber strip
+  // lamps in recessed steel housings in every bay between the ribs, a row just under the catwalks over the boards and a
+  // row low down under them; the same pairs along each catwalk's hall-side edge with a blue strip under them, shining
+  // down; and an amber box lamp on each rib over the catwalks; a pair under a catwalk stands `aside` along from its bay's middle, clear of the catwalk's
+  // brackets. `wall` the lamps on the walls and ribs and `edge` those on the catwalks, each its `flat` housings and its
+  // `glow` lenses, which the scene dims with the hall's glass (and on Canvas 2D sorts the wall's with the wall).
+  const WALL_LIGHTS = { rows: [6.9, 1.5], strip: 1.2, gap: 0.24, aside: 1.5, beam: 0.3, sconceY: 9.6, amber: "#ff9f43", blue: "#5fb8ff", housing: "#24282f", lip: "#3a3f48" };
+  const wallLights = cached(() => {
+    const L = LAYOUT, W = WALL_LIGHTS, S = L.shell, onWall = { flat: [], glow: [] }, onEdge = { flat: [], glow: [] };
+    let into = onWall;
+    const bays = [HALL.front - S.face, ...L.gantries, HALL.back + S.face], mids = [];
+    for (let i = 0; i < bays.length - 1; i++) mids.push((bays[i] + bays[i + 1]) / 2);
+    // A strip lamp on a wall at (x, y, z) facing `side` across the hall: a back plate, lips round it standing out of the
+    // wall, and the lens set back between them.
+    const strip = (x, y, z, side) => {
+      const l = W.strip, at = (dx, w, h, d, color, emissive, out) => (emissive ? into.glow : into.flat).push(box({ w: d, h, d: w, color, emissive, offset: { x: x + side * out, y: y + dx, z } }));
+      at(0, l + 0.1, 0.26, 0.04, W.housing, 0, 0.02);
+      for (const s of [-1, 1]) at(s * 0.115, l + 0.1, 0.03, 0.1, W.lip, 0, 0.05);
+      for (const s of [-1, 1]) into.flat.push(box({ w: 0.1, h: 0.26, d: 0.03, color: W.lip, offset: { x: x + side * 0.05, y, z: z + s * (l + 0.1) / 2 } }));
+      at(0, l, 0.14, 0.03, W.amber, 1, 0.055);
+    };
+    for (const side of [-1, 1]) {
+      const wall = side < 0 ? HALL.x0 + S.face : HALL.x1 - S.face, rib = wall - side * S.rib;
+      // Under a catwalk a bay's pair stands to one side of its middle, between the catwalk's brackets on the wall.
+      const [, , c0, c1] = L.catwalks[side < 0 ? 0 : 1];
+      for (const mid of mids) {
+        const z = mid > c0 && mid < c1 ? mid - W.aside : mid;
+        for (const y of W.rows) for (const s of [-1, 1]) strip(wall, y, z + s * (W.strip + W.gap) / 2, -side);
+      }
+      // The box lamps on the ribs: a dark body and cap round an amber glass facing the hall.
+      for (const z of L.gantries) {
+        onWall.flat.push(bevelBox({ w: 0.18, h: 0.36, d: 0.28, color: W.housing, bevel: 0.02, offset: { x: rib - side * 0.09, y: W.sconceY, z } }));
+        onWall.flat.push(box({ w: 0.22, h: 0.05, d: 0.32, color: W.lip, offset: { x: rib - side * 0.11, y: W.sconceY + 0.2, z } }));
+        onWall.glow.push(box({ w: 0.03, h: 0.26, d: 0.2, color: W.amber, emissive: 1, offset: { x: rib - side * 0.19, y: W.sconceY, z } }));
+      }
+    }
+    // Along each catwalk's hall-side edge beam (its deck's frame, `W.beam` deep under the walkway), between each pair of
+    // brackets: a pair of amber strips on its face and a blue strip under it.
+    into = onEdge;
+    L.catwalks.forEach(([x0, x1, z0, z1], i) => {
+      const side = i ? -1 : 1, face = i ? x0 : x1, under = L.catwalkY - 0.2 - W.beam;
+      for (let z = z0 + 3.5; z < z1 - 1; z += 4) {
+        for (const s of [-1, 1]) strip(face, under + W.beam / 2, z + s * (W.strip + W.gap) / 2, side);
+        onEdge.flat.push(box({ w: 0.14, h: 0.05, d: 1.7, color: W.housing, offset: { x: face - side * 0.08, y: under - 0.025, z } }));
+        onEdge.glow.push(box({ w: 0.09, h: 0.025, d: 1.6, color: W.blue, emissive: 1, offset: { x: face - side * 0.08, y: under - 0.06, z } }));
+      }
+    });
+    const out = (g) => ({ flat: merge(...g.flat), glow: noShadow(merge(...g.glow)) });
+    return { wall: out(onWall), edge: out(onEdge) };
+  });
+
   // ---- the ceiling crane --------------------------------------------------------------------------------------
 
   // The overhead cranes, after their concept: each a yellow box-girder bridge across the hall on two end trucks that
@@ -2037,7 +2088,7 @@
     const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.slots);
     const run = runway(), tun = tunnel(), fix = fixtures();
-    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
+    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
     // The boards on their mounts, their glass and tiles, as they hang.
     const frames = boardFrames(), faces = { stats: statsFace(), timeline: timelineFace() };
@@ -2341,7 +2392,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, wallLights, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),

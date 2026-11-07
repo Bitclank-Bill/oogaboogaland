@@ -36,6 +36,9 @@
   // its floor too, is sorted as if this much farther (`depthBias`, m), behind everything standing in the hall, and its
   // backing farther still, behind the shell from any end of it.
   const SHELL_BIAS = 8, BACKING_BIAS = 48;
+  // And the lamps on its walls, sorted with the wall but this much nearer than its panels, so a panel never paints over
+  // a lamp on it.
+  const WALL_LAMP_BIAS = 6;
   const FOLLOW = { y: 0.9, min: 3, max: 7, pitch: [0.25, 0.8] };
   const FLY = { speed: 6, perDist: 0.4, climb: 4, yMax: HALL.h - 3 };
   // The door's shield, as wide as its arch, in the hall's cyan; and the launch shield across the tunnel's end, in a
@@ -879,6 +882,14 @@
     s.stutter = -1;
     s.stutterAt = 0;
     s.stutterWait = NEON_STUTTER[0];
+    // The side walls' strip lamps and box lamps and the catwalks' amber and blue strips (`HM.wallLights`), their lenses
+    // dimmed with the glass; on Canvas 2D the walls' sort with the wall, a little nearer than its panels.
+    const wallLit = HM.wallLights();
+    for (const [part, depthBias] of [[wallLit.wall, WALL_LAMP_BIAS], [wallLit.edge, 0]]) {
+      const lenses = createNode({ geometry: part.glow, sightHidden: true, depthBias });
+      addChild(root, createNode({ geometry: part.flat, depthBias }), lenses);
+      s.glass.push(lenses);
+    }
     s.fixtures = createNode({ geometry: fixtures.flat });
     addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));
     addChild(root, s.mouth, s.fixtures);
