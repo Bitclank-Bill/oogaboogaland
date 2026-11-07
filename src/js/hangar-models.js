@@ -484,6 +484,19 @@
     return merge(...geos);
   });
 
+  // The polished runway, after the concept: a sheet over the runway the whole of its length, from inside the door
+  // down through the launch tunnel to the shield, just above its paint (`y`), that the WebGL renderer turns into a
+  // glossy reflector (`reflector`, `gloss`): the hall and the tunnel's neon mirrored softly in it, `strength` of it
+  // looking straight down and more toward the grazing. Its plane clips the capture, so the runway and its paint never
+  // block the reflection. In the xy plane facing +z; the scene lays it face up. Canvas 2D has no reflection and keeps
+  // the runway as it is.
+  const GLOSS = { y: 0.085, strength: 0.55 };
+  const glossRunway = cached(() => {
+    const r = LAYOUT.runway, w = r.halfW, h = (r.z0 - r.z1) / 2;
+    return { verts: [-w, -h, 0, w, -h, 0, w, h, 0, -w, h, 0], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false, reflector: true, gloss: GLOSS.strength,
+      at: { x: 0, y: GLOSS.y, z: (r.z0 + r.z1) / 2 } };
+  });
+
   // The side walls' lights, after the concept, all glow and no light of their own (`WALL_LIGHTS`): pairs of amber strip
   // lamps in recessed steel housings in every bay between the ribs, a row just under the catwalks over the boards and a
   // row low down under them; the same pairs along each catwalk's hall-side edge with a blue strip under them, shining
@@ -2592,7 +2605,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, wallLights, CONTROL, controlRoom, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),

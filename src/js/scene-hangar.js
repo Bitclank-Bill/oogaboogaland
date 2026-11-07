@@ -888,6 +888,11 @@
     s.stutter = -1;
     s.stutterAt = 0;
     s.stutterWait = NEON_STUTTER[0];
+    // The polished runway (`HM.glossRunway`), on WebGL a glossy reflector laid face up over it.
+    if (renderer.kind === "webgl2") {
+      const gloss = HM.glossRunway();
+      addChild(root, createNode({ position: gloss.at, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, geometry: gloss, sightHidden: true }));
+    }
     // The side walls' strip lamps and box lamps and the catwalks' amber and blue strips (`HM.wallLights`), their lenses
     // dimmed with the glass; on Canvas 2D the walls' sort with the wall, a little nearer than its panels.
     const wallLit = HM.wallLights();
