@@ -24,7 +24,7 @@
   const TAU = Math.PI * 2;
 
   const STONE = ["#5b4a3e", "#524238", "#66544a", "#4a3d34"], STONE_DK = "#3a2f28", IRON = "#4a4d52", IRON_DK = "#2c2e33";
-  const TIMBER = "#8a5a32", TIMBER_LT = "#a8703e", TIMBER_DK = "#5c3a1e";
+  const TIMBER = "#8a5a32", TIMBER_DK = "#5c3a1e";
   const RUNWAY = "#2a2e36", SEAM = "#3b404a", PAINT = "#ffd23a", INK = "#141414", MARKER = "#6fc8ff", NEON = "#4fb4ff";
   const SCREEN = "#2f7fd8", FLOOR_LAMP = "#4aa8ff";
 
@@ -724,7 +724,63 @@
   };
   // A workstation's two monitors on its desk, [x, width, turn] each, the foot of each screen at (x, y, z) in the desk's
   // frame and `h` tall.
-  const DESK = { y: 0.98, z: -0.22, h: 0.46, monitors: [[-0.48, 0.78, 0.18], [0.5, 0.64, -0.2]] };
+  const DESK = { y: 0.99, z: -0.2, h: 0.52, monitors: [[-0.47, 0.84, 0.18], [0.5, 0.7, -0.2]] };
+  // The crew's desks in steel, after the concept: slate steel, a lighter slate on the drawers' faces, a yellow edge, trims
+  // and pulls, and the amber of the desk lanterns.
+  const STEEL_DESK = { body: "#33405c", face: "#41517a", top: "#4b5a7c", dark: "#212839", trim: "#f2b630", pull: "#ffd04a", lamp: "#ffb347" };
+  // A workstation in its own frame, the crew's side toward +z, its top at `top` within 2.1 by 0.9 (the walk blocks'
+  // footprint), into `f`, its glowing parts into `g` and the small parts on its faces into `d` (drawn after the rest on
+  // Canvas 2D, so its big faces don't paint over them): a slate steel top with a yellow lip along its front, on a drawer
+  // pedestal at its left end (three drawers, each with a yellow pull between dark end caps, yellow trims up its front
+  // corners, a dark plinth) and a steel end leg at its right on a yellow foot, a modesty panel across its back, and the
+  // tower under it with its lamp lit; the two monitors each on a neck and foot, the keyboard and mouse, a mug and papers,
+  // and on every other desk an amber lantern at its back corner.
+  const workstation = (f, g, d, i) => {
+    const S = STEEL_DESK, top = 0.84;
+    f.push(bevelBox({ w: 2.1, h: 0.05, d: 0.9, color: S.top, bevel: 0.015, offset: { y: top - 0.025 } }));
+    d.push(box({ w: 2.1, h: 0.05, d: 0.025, color: S.trim, offset: { y: top - 0.025, z: 0.4625 } }));
+    // The pedestal: its plinth, body, the drawers bottom up with their pulls, and the trims up its front corners.
+    const px = -0.73, front = 0.42;
+    f.push(box({ w: 0.56, h: 0.06, d: 0.78, color: S.dark, offset: { x: px, y: 0.03, z: -0.02 } }));
+    f.push(bevelBox({ w: 0.6, h: 0.73, d: 0.84, color: S.body, bevel: 0.02, offset: { x: px, y: 0.425 } }));
+    let y = 0.08;
+    for (const h of [0.26, 0.22, 0.175]) {
+      d.push(bevelBox({ w: 0.5, h, d: 0.02, color: S.face, bevel: 0.006, offset: { x: px, y: y + h / 2, z: front + 0.01 } }));
+      const py = y + h - 0.05;
+      d.push(box({ w: 0.2, h: 0.03, d: 0.025, color: S.pull, offset: { x: px, y: py, z: front + 0.0325 } }));
+      for (const sx of [-1, 1]) d.push(box({ w: 0.03, h: 0.04, d: 0.02, color: S.dark, offset: { x: px + sx * 0.115, y: py, z: front + 0.03 } }));
+      y += h + 0.015;
+    }
+    for (const sx of [-1, 1]) d.push(box({ w: 0.035, h: 0.73, d: 0.035, color: S.trim, offset: { x: px + sx * 0.2825, y: 0.425, z: front + 0.0175 } }));
+    // The end leg on its foot, and the modesty panel.
+    f.push(bevelBox({ w: 0.05, h: 0.73, d: 0.84, color: S.body, bevel: 0.01, offset: { x: 1.0, y: 0.425 } }));
+    f.push(box({ w: 0.09, h: 0.06, d: 0.86, color: S.trim, offset: { x: 1.0, y: 0.03 } }));
+    f.push(box({ w: 1.4, h: 0.5, d: 0.03, color: S.dark, offset: { x: 0.27, y: 0.54, z: -0.39 } }));
+    // The tower and its lamp.
+    f.push(bevelBox({ w: 0.3, h: 0.6, d: 0.6, color: S.dark, bevel: 0.015, offset: { x: 0.62, y: 0.32, z: -0.04 } }));
+    g.push(box({ w: 0.05, h: 0.05, d: 0.02, color: MARKER, emissive: 1, offset: { x: 0.62, y: 0.52, z: 0.27 } }));
+    // The monitors, each on a neck and foot behind it.
+    for (const [dx, w, a] of DESK.monitors) {
+      const mf = [], mg = [], drop = DESK.y - top;
+      monitor(mf, mg, w, DESK.h);
+      mf.push(box({ w: 0.07, h: drop + 0.12, d: 0.05, color: IRON_DK, offset: { y: (0.12 - drop) / 2, z: -0.09 } }));
+      mf.push(bevelBox({ w: 0.32, h: 0.025, d: 0.22, color: IRON_DK, bevel: 0.008, offset: { y: 0.0125 - drop, z: -0.06 } }));
+      for (const p of mf) f.push(moved(turnedY(p, a), dx, DESK.y, DESK.z));
+      for (const p of mg) g.push(moved(turnedY(p, a), dx, DESK.y, DESK.z));
+    }
+    // The keyboard and mouse, a mug and a stack of papers.
+    d.push(box({ w: 0.56, h: 0.03, d: 0.18, color: "#1d1f24", offset: { y: top + 0.015, z: 0.17 } }), box({ w: 0.09, h: 0.03, d: 0.13, color: "#1d1f24", offset: { x: 0.42, y: top + 0.015, z: 0.19 } }));
+    d.push(moved(lathe({ profile: [[0.045, 0], [0.045, 0.1], [0, 0.1]], segments: 8, color: i % 2 ? "#c23a2e" : "#e8e2d4" }), -0.85, top, 0.2));
+    d.push(box({ w: 0.3, h: 0.04, d: 0.22, color: "#efe9dc", offset: { x: 0.8, y: top + 0.02, z: 0.14 } }));
+    // The lantern: a dark base and cap round its amber glass.
+    if (i % 2) {
+      const lx = 0.96, lz = -0.32;
+      d.push(bevelBox({ w: 0.15, h: 0.03, d: 0.15, color: S.dark, bevel: 0.008, offset: { x: lx, y: top + 0.015, z: lz } }));
+      g.push(box({ w: 0.11, h: 0.15, d: 0.11, color: S.lamp, emissive: 1, offset: { x: lx, y: top + 0.105, z: lz } }));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) d.push(box({ w: 0.02, h: 0.15, d: 0.02, color: S.dark, offset: { x: lx + sx * 0.06, y: top + 0.105, z: lz + sz * 0.06 } }));
+      d.push(bevelBox({ w: 0.16, h: 0.03, d: 0.16, color: S.dark, bevel: 0.008, offset: { x: lx, y: top + 0.195, z: lz } }));
+    }
+  };
 
   // A mechanic's rolling tool chest in its own frame, its front toward +z, the floor at y 0, built fresh each call (the
   // parts are placed in place): the roll cab on four casters, five drawers of every depth down its front, each a face
@@ -796,28 +852,13 @@
   // the Factory's window into the hangar; the scene stands a `floorLamp` of its own on each base to light them one at a
   // time); the lanterns on the crates come back with their lights.
   const fixtures = cached(() => {
-    const L = LAYOUT, flat = [], glow = [], lamps = [], frame = [], glass = [], lights = [];
+    const L = LAYOUT, flat = [], glow = [], detail = [], lamps = [], frame = [], glass = [], lights = [];
     L.stations.forEach(([x, z, turn], i) => {
-      const f = [], g = [];
-      f.push(bevelBox({ w: 2.1, h: 0.08, d: 0.9, color: TIMBER_LT, bevel: 0.02, offset: { y: 0.8 } }));
-      for (const dx of [-0.95, 0.95]) for (const dz of [-0.35, 0.35]) f.push(box({ w: 0.08, h: 0.78, d: 0.08, color: TIMBER_DK, offset: { x: dx, y: 0.39, z: dz } }));
-      f.push(box({ w: 2, h: 0.06, d: 0.06, color: TIMBER_DK, offset: { y: 0.22, z: -0.35 } }));
-      // The tower under the desk, its lamp lit.
-      f.push(box({ w: 0.34, h: 0.62, d: 0.6, color: IRON_DK, offset: { x: 0.65, y: 0.33, z: -0.05 } }));
-      g.push(box({ w: 0.05, h: 0.05, d: 0.02, color: MARKER, emissive: 1, offset: { x: 0.65, y: 0.52, z: 0.26 } }));
-      for (const [dx, w, a] of DESK.monitors) {
-        const mf = [], mg = [];
-        monitor(mf, mg, w, DESK.h);
-        for (const p of mf) f.push(moved(turnedY(p, a), dx, DESK.y, DESK.z));
-        for (const p of mg) g.push(moved(turnedY(p, a), dx, DESK.y, DESK.z));
-        f.push(box({ w: 0.08, h: 0.14, d: 0.08, color: IRON_DK, offset: { x: dx, y: 0.91, z: -0.26 } }), box({ w: 0.26, h: 0.02, d: 0.18, color: IRON_DK, offset: { x: dx, y: 0.85, z: -0.26 } }));
-      }
-      f.push(box({ w: 0.56, h: 0.03, d: 0.18, color: "#1d1f24", offset: { y: 0.855, z: 0.14 } }), box({ w: 0.09, h: 0.03, d: 0.13, color: "#1d1f24", offset: { x: 0.42, y: 0.855, z: 0.16 } }));
-      // A mug and a stack of papers.
-      f.push(moved(lathe({ profile: [[0.045, 0], [0.045, 0.1], [0, 0.1]], segments: 8, color: i % 2 ? "#c23a2e" : "#e8e2d4" }), -0.85, 0.84, 0.18));
-      f.push(box({ w: 0.3, h: 0.04, d: 0.22, color: "#efe9dc", offset: { x: 0.8, y: 0.86, z: 0.12 } }));
+      const f = [], g = [], d = [];
+      workstation(f, g, d, i);
       placed(flat, f, x, 0, z, turn);
       placed(glow, g, x, 0, z, turn);
+      placed(detail, d, x, 0, z, turn);
     });
     for (const [x, z, turn] of L.kiosks) {
       const f = [], g = [], K = KIOSK;
@@ -848,7 +889,7 @@
       flat.push(bevelBox({ w: 0.56, h: 0.1, d: 0.56, color: IRON_DK, bevel: 0.02, offset: { x, y: 0.05, z } }));
       lamps.push(bevelBox({ w: 0.44, h: 0.42, d: 0.44, color: FLOOR_LAMP, emissive: 1, bevel: 0.03, offset: { x, y: 0.31, z } }));
     }
-    return { flat: merge(...flat), glow: noShadow(merge(...glow)), lampGlow: noShadow(merge(...lamps)), frame: merge(...frame), glass: noShadow(merge(...glass)), lights };
+    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lampGlow: noShadow(merge(...lamps)), frame: merge(...frame), glass: noShadow(merge(...glass)), lights };
   });
   const floorLamp = cached(() => noShadow(bevelBox({ w: 0.44, h: 0.42, d: 0.44, color: FLOOR_LAMP, emissive: 1, bevel: 0.03, offset: { y: 0.31 } })));
 
@@ -1911,7 +1952,7 @@
     const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.slots);
     const run = runway(), tun = tunnel(), fix = fixtures();
-    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), fix.flat, fix.glow, fix.lampGlow, fix.glass, dock());
+    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), fix.flat, fix.detail, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
     // The boards on their mounts, their glass and tiles, as they hang.
     const frames = boardFrames(), faces = { stats: statsFace(), timeline: timelineFace() };
