@@ -64,14 +64,16 @@
   // Kortik's Sis's ways of saying a line: her pitch, Hz; a syllable's length and the gap after it, s; how loud; how far
   // a stressed last syllable bends her pitch; how much of her is buzz and how much breath; her voice's shake, Hz either
   // way; the least she is heard at anywhere in the hall; and, for Kortik shouting through the door from next door on
-  // the same voice, his formants a man's and the wall muffling him (`formant`, `tone`, Hz). Her voice falls to half at
-  // SIS_REF metres, her boots at BOOT_REF.
+  // the same voice, his formants a man's and the wall muffling him (`formant`, `tone`, Hz), and for a gorilla of the
+  // crew who has had enough, deep and loud in the hall (`worker`). Her voice falls to half at SIS_REF metres, her boots
+  // at BOOT_REF.
   const SIS_STYLE = {
     mutter: { f0: 185, len: 0.085, gap: 0.03, level: 0.16, end: 0.85, buzz: 1, breath: 0.12, shake: 0, least: 0, formant: 1, tone: 20000 },
     yell: { f0: 300, len: 0.115, gap: 0.03, level: 0.34, end: 1.18, buzz: 1, breath: 0.22, shake: 0, least: 0.1, formant: 1, tone: 20000 },
     scream: { f0: 430, len: 0.14, gap: 0.025, level: 0.4, end: 1.3, buzz: 1, breath: 0.3, shake: 16, least: 0.14, formant: 1, tone: 20000 },
     soft: { f0: 215, len: 0.13, gap: 0.05, level: 0.16, end: 0.9, buzz: 0.1, breath: 1, shake: 0, least: 0, formant: 1, tone: 20000 },
-    kortik: { f0: 120, len: 0.12, gap: 0.035, level: 0.5, end: 1.12, buzz: 1, breath: 0.1, shake: 0, least: 0.12, formant: 0.82, tone: 700 }
+    kortik: { f0: 120, len: 0.12, gap: 0.035, level: 0.5, end: 1.12, buzz: 1, breath: 0.1, shake: 0, least: 0.12, formant: 0.82, tone: 700 },
+    worker: { f0: 105, len: 0.115, gap: 0.03, level: 0.42, end: 1.2, buzz: 1, breath: 0.28, shake: 7, least: 0.1, formant: 0.78, tone: 20000 }
   };
   const SIS_REF = 9, BOOT_REF = 5, BLEEP = 0.3;
   // How much farther apart than they stand the two engines' revs are panned, so each is heard on its own side.
