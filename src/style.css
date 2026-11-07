@@ -1970,8 +1970,8 @@ body[data-active-scene="hub"] .home-link {
 
 .roster-host {
   flex: none;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #000;
   box-shadow: 0 0 0 1px var(--paper);
