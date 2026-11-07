@@ -122,6 +122,15 @@
   const DOOR_NEAR = 0, DOOR_FAR = 12, DOOR_EASE = 5, DOOR_BRIGHTEN = 3.2, DOOR_POWER = 1.4, DOOR_REACH = 4, DOOR_LIGHT = HM.fixedLights()[0];
   const LAMP_STUTTER = [3, 9], LAMP_FAILS = [0, 0.05, 0.12, 0.2, 0.3, 0.34, 0.46, 0.5], LAMP_DIM = 0.15;
   const RABBIT = [8, 14], RABBIT_SPEED = 28, RABBIT_GLOW = 2.2, RABBIT_WIDTH = 2.5;
+  // The lofts' windows high on the right wall come alive (`loftLife`): the one of the crew in each works at its window,
+  // breathing, its head turned `look` toward its monitor, and every `work` seconds or so glances out over the hall for
+  // `glance` seconds, moves to another spot within `spot` of the window's middle, or walks out past its frame (gone
+  // where its window clips it) and comes back from either side `away` seconds later, walking at `walk` m/s turned
+  // `stride` toward the way it goes, its body and head turning at most `turn` a second; its monitor flickers and every
+  // `picture` seconds changes colour with a blink; and every `dark` seconds one loft's light goes out for `out` seconds
+  // (to `dim` of itself) and stutters back on.
+  const LOFT_LIFE = { work: [4, 10], glance: [1.2, 2.6], spot: 0.85, walk: 0.7, stride: 0.7, away: [4, 10], turn: 3, look: 0.9, picture: [8, 20], dark: [18, 40], out: [3, 7], dim: 0.12 };
+  const between = (r) => r[0] + Math.random() * (r[1] - r[0]);
   const TIPS = {
     exit: ["Lightning Factory · the way back", "Back to the hall, onto the walkway to the balcony."],
     sign: ["Lightning Jet Hangar", "Where Lightning Jet v2 is being built, and where it will launch from."],
@@ -839,6 +848,61 @@
       s.markers[i].glow = (1 + RABBIT_GLOW * Math.exp(-d * d)) * dim;
     }
   };
+  // The lofts' life (`LOFT_LIFE`): what each one's crew member does next, where it stands and which way it and its head
+  // face, its monitor's flicker and colour, and its light.
+  const loftLife = (s, dt, elapsed, dim) => {
+    const F = LOFT_LIFE, far = HM.LOFT.w / 2 + 0.4, step = F.turn * dt;
+    if ((s.loftDark -= dt) <= 0) {
+      s.loftDark = between(F.dark);
+      s.lofts[Math.floor(Math.random() * s.lofts.length)].out = between(F.out);
+    }
+    for (let i = 0; i < s.lofts.length; i++) {
+      const l = s.lofts[i];
+      if (l.mode === "walk") {
+        const d = l.to - l.x, stride = F.walk * dt;
+        if (Math.abs(d) > stride) l.x += Math.sign(d) * stride;
+        else {
+          l.x = l.to;
+          l.mode = l.leave ? "away" : "work";
+          l.wait = between(l.leave ? F.away : F.work);
+          l.body.visible = !l.leave;
+        }
+      } else if ((l.wait -= dt) <= 0) {
+        if (l.mode === "away") {
+          l.x = (Math.random() < 0.5 ? -1 : 1) * far;
+          l.to = (Math.random() * 2 - 1) * F.spot;
+          l.mode = "walk"; l.leave = false; l.body.visible = true;
+          l.heading = -Math.PI / 2 + Math.sign(l.to - l.x) * F.stride;
+        } else if (l.mode === "glance") {
+          l.mode = "work"; l.wait = between(F.work);
+        } else {
+          const r = Math.random();
+          if (r < 0.3) { l.mode = "glance"; l.wait = between(F.glance); } else {
+            l.mode = "walk"; l.leave = r > 0.78;
+            l.to = l.leave ? (l.x < 0 ? -far : far) : clamp(l.x + (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.6), -F.spot, F.spot);
+          }
+        }
+      }
+      const walking = l.mode === "walk", face = walking ? -Math.PI / 2 + Math.sign(l.to - l.x) * F.stride : -Math.PI / 2;
+      const gaze = l.mode === "work" ? (HM.LOFT.screen < l.x ? -F.look : F.look) : 0, p = l.body.position;
+      l.heading += clamp(face - l.heading, -step, step);
+      l.look += clamp(gaze - l.look, -step, step);
+      p.z = l.z + l.x;
+      p.y = l.y + (walking ? 0.025 * Math.abs(Math.sin(l.x * Math.PI / 0.32)) : 0.006 * Math.sin(elapsed * 1.7 + i * 2.3));
+      l.body.rotation.y = l.heading;
+      l.head.rotation.y = l.look;
+      if ((l.change -= dt) <= 0) {
+        l.change = between(F.picture);
+        l.picture = (l.picture + 1) % s.loftScreens.length;
+        l.screen.geometry = s.loftScreens[l.picture];
+        l.blink = 0.15;
+      }
+      l.blink -= dt;
+      l.screen.glow = (l.blink > 0 ? 0.25 : 0.9 + 0.1 * Math.sin(elapsed * 11 + i * 3.1) * Math.sin(elapsed * 2.9 + i)) * dim;
+      l.out -= dt;
+      l.back.glow = l.glass.glow = (l.out > 0.5 ? F.dim : l.out > 0 ? (Math.floor(l.out * 14) % 2 ? 1 : F.dim) : 1) * dim;
+    }
+  };
   // Space's life: stars twinkle a group at a time with their halos, the planets and their rings spin, moons go round
   // their planets, and now and then a shooting star streaks down its way and fades.
   const heavens = (s, dt, elapsed) => {
@@ -915,11 +979,13 @@
       s.glass.push(lit);
     }
     // The lofts' small windows over them, their lamps dimmed with the glass, and in each its lit back, its monitor, its
-    // glass and one of the crew, on nodes of their own, all dimmed with the glass.
+    // glass and one of the crew, on nodes of their own for `loftLife`.
     const loft = HM.loftWindows(), loftGlow = createNode({ geometry: loft.glow, sightHidden: true });
     addChild(root, createNode({ geometry: loft.flat }), loftGlow);
     s.glass.push(loftGlow);
-    for (const w of loft.windows) {
+    s.loftScreens = loft.screens;
+    s.loftDark = between(LOFT_LIFE.dark);
+    s.lofts = loft.windows.map((w) => {
       const back = createNode({ position: { ...w.back }, geometry: loft.back, sightHidden: true, depthBias: 1 });
       const screen = createNode({ position: { ...w.screen }, geometry: loft.screens[0], sightHidden: true, depthBias: 0.5 });
       const head = createNode({ position: { x: 0, y: HM.LOFT.neck, z: 0 }, geometry: w.head, sightHidden: true });
@@ -927,8 +993,11 @@
       const glass = createNode({ geometry: w.glass, sightHidden: true });
       addChild(body, head);
       addChild(root, back, screen, body, glass);
-      s.glass.push(back, screen, glass);
-    }
+      return {
+        back, screen, glass, body, head, z: w.crew.z, y: w.crew.y, mode: "work", wait: between(LOFT_LIFE.work), x: (Math.random() * 2 - 1) * LOFT_LIFE.spot, to: 0, leave: false,
+        heading: -Math.PI / 2, look: 0, picture: 0, change: between(LOFT_LIFE.picture), blink: 0, out: 0
+      };
+    });
     s.fixtures = createNode({ geometry: fixtures.flat });
     addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));
     addChild(root, s.mouth, s.fixtures);
@@ -1672,6 +1741,7 @@
     heavens(s, dt, elapsed);
     neonLife(s, dt, elapsed, dim);
     lampLife(s, dt, elapsed, dim);
+    loftLife(s, dt, elapsed, dim);
     boardJets(s, dt);
     s.crane.update(dt, camera.position);
     craneBeam(s.crane.beam);
@@ -1769,6 +1839,7 @@
       scene.terminals.liveGeometry(set);
       scene.guide.liveGeometry(set);
       for (const a of scene.crew) a.liveGeometry(set);
+      for (const g of scene.loftScreens) set.add(g);
     }
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
     if (remotes) remotes.liveGeometry(set);
