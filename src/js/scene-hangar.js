@@ -907,12 +907,27 @@
     addChild(root, createNode({ geometry: room.flat }), roomGlow, createNode({ geometry: room.glass, sightHidden: true }));
     for (const p of room.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
     s.glass.push(roomGlow);
-    // The crew's rooms on the right wall and the lofts' small windows over them, as the control room.
-    for (const r of [...HM.sideRooms(), HM.loftWindows()]) {
+    // The crew's rooms on the right wall, as the control room.
+    for (const r of HM.sideRooms()) {
       const lit = createNode({ geometry: r.glow, sightHidden: true });
       addChild(root, createNode({ geometry: r.flat }), lit, createNode({ geometry: r.glass, sightHidden: true }));
-      for (const p of r.pictures || []) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
+      for (const p of r.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
       s.glass.push(lit);
+    }
+    // The lofts' small windows over them, their lamps dimmed with the glass, and in each its lit back, its monitor, its
+    // glass and one of the crew, on nodes of their own, all dimmed with the glass.
+    const loft = HM.loftWindows(), loftGlow = createNode({ geometry: loft.glow, sightHidden: true });
+    addChild(root, createNode({ geometry: loft.flat }), loftGlow);
+    s.glass.push(loftGlow);
+    for (const w of loft.windows) {
+      const back = createNode({ position: { ...w.back }, geometry: loft.back, sightHidden: true, depthBias: 1 });
+      const screen = createNode({ position: { ...w.screen }, geometry: loft.screens[0], sightHidden: true, depthBias: 0.5 });
+      const head = createNode({ position: { x: 0, y: HM.LOFT.neck, z: 0 }, geometry: w.head, sightHidden: true });
+      const body = createNode({ position: { ...w.crew }, rotation: { x: 0, y: -Math.PI / 2, z: 0 }, geometry: w.body, sightHidden: true });
+      const glass = createNode({ geometry: w.glass, sightHidden: true });
+      addChild(body, head);
+      addChild(root, back, screen, body, glass);
+      s.glass.push(back, screen, glass);
     }
     s.fixtures = createNode({ geometry: fixtures.flat });
     addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));

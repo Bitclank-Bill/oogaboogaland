@@ -904,30 +904,42 @@
     return { flat: onto(merge(...flat)), glow: noShadow(onto(merge(...glow))), glass: windows, pictures };
   }));
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
-  // concept: each a deep dark frame standing out of the panels round a lit blue space, in it a monitor's glow and one
-  // of the crew in a hard hat at it, seen from behind the glass, and a small amber lamp over it.
-  const LOFT = { y: 12, w: 2.6, h: 1.3, deep: 0.36 };
+  // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
+  // (`flat` and `glow`, where they hang). In each a monitor and one of the crew in a hard hat, which the scene moves and
+  // lights: the lit back, dark but for its own glow, so it goes dark when its light goes out, and the
+  // monitor's screen in its colours (`screens`), each built about its own middle; and, one of each a window, its glass
+  // where it hangs, which dims with its light, and the crew member's shoulders and head (`body`, from its feet, reaching
+  // down into the frame's sill, and `head`, from the neck `neck` up, its hard hat's brim to its front, +z), clipped to
+  // the window across and up (`clipSlab`, `clipSlab2`, which the Canvas 2D renderer honours too, so its sort never
+  // paints a figure over the frame), so whoever walks out past its frame is gone. `windows` says where in each window
+  // its back, its screen and its crew member stand (the screen `screen` along from the window's middle), and `still` is
+  // the backs and screens where they stand, for the Factory's view through the door.
+  const LOFT = { y: 12, w: 2.6, h: 1.3, deep: 0.42, neck: 0.24, screen: -0.65, crew: "#151b2b", screens: ["#2f7fd8", "#2fc7b8", "#7fb0ff"] };
   const loftWindows = cached(() => {
-    const W = LOFT, flat = [], glow = [], glass = [], wall = HALL.x1 - LAYOUT.shell.face, out = wall - W.deep;
-    for (const z of SIDE_ROOMS.lofts) {
-      const y0 = W.y - W.h / 2, y1 = W.y + W.h / 2, xm = (wall + out) / 2;
-      glow.push(box({ w: 0.04, h: W.h, d: W.w, color: CONTROL.inside, emissive: 0.55, offset: { x: wall - 0.02, y: W.y, z } }));
+    const W = LOFT, flat = [], glow = [], still = [], wall = HALL.x1 - LAYOUT.shell.face, out = wall - W.deep, xm = (wall + out) / 2;
+    const back = () => noShadow(box({ w: 0.02, h: W.h, d: W.w, color: CONTROL.deep, emissive: 0.85 }));
+    const screen = (color) => noShadow(box({ w: 0.03, h: 0.3, d: 0.6, color, emissive: 0.9 }));
+    const windows = SIDE_ROOMS.lofts.map((z) => {
+      const y0 = W.y - W.h / 2, y1 = W.y + W.h / 2, at = { back: { x: wall - 0.01, y: W.y, z }, screen: { x: wall - 0.035, y: y0 + 0.45, z: z + W.screen }, crew: { x: wall - 0.11, y: y0, z } };
       for (const s of [-1, 1]) {
         flat.push(box({ w: W.deep, h: 0.16, d: W.w + 0.32, color: CONTROL.frame, offset: { x: xm, y: W.y + s * (W.h / 2 + 0.08), z } }));
         flat.push(box({ w: W.deep, h: W.h, d: 0.16, color: CONTROL.frame, offset: { x: xm, y: W.y, z: z + s * (W.w / 2 + 0.08) } }));
       }
-      flat.push(box({ w: W.deep, h: W.h, d: 0.08, color: CONTROL.frame, offset: { x: xm, y: W.y, z } }));
-      glow.push(box({ w: 0.03, h: 0.3, d: 0.6, color: "#2f7fd8", emissive: 0.9, offset: { x: wall - 0.06, y: y0 + 0.45, z: z - 0.65 } }));
-      flat.push(box({ w: 0.12, h: 0.24, d: 0.62, color: "#151b2b", offset: { x: wall - 0.12, y: y0 + 0.12, z: z + 0.6 } }));
-      flat.push(box({ w: 0.12, h: 0.2, d: 0.22, color: "#151b2b", offset: { x: wall - 0.12, y: y0 + 0.34, z: z + 0.6 } }));
-      flat.push(box({ w: 0.14, h: 0.08, d: 0.3, color: PAINT, offset: { x: wall - 0.13, y: y0 + 0.47, z: z + 0.6 } }));
-      glass.push(box({ w: 0.03, h: W.h, d: W.w, color: CONTROL.pane, emissive: 0.15, offset: { x: out + 0.06, y: W.y, z } }));
+      flat.push(box({ w: 0.1, h: W.h, d: 0.08, color: CONTROL.frame, offset: { x: out + 0.05, y: W.y, z } }));
+      const glass = noShadow(box({ w: 0.03, h: W.h, d: W.w, color: CONTROL.pane, emissive: 0.15, offset: { x: out + 0.06, y: W.y, z } }));
+      glass.glass = 0.16;
       flat.push(box({ w: 0.1, h: 0.1, d: 0.5, color: "#24282f", offset: { x: out + 0.03, y: y1 + 0.3, z } }));
       glow.push(box({ w: 0.03, h: 0.05, d: 0.42, color: CONTROL.amber, emissive: 1, offset: { x: out - 0.02, y: y1 + 0.3, z } }));
-    }
-    const windows = noShadow(merge(...glass));
-    windows.glass = 0.16;
-    return { flat: merge(...flat), glow: noShadow(merge(...glow)), glass: windows };
+      still.push(moved(back(), at.back.x, at.back.y, z), moved(screen(W.screens[0]), at.screen.x, at.screen.y, at.screen.z));
+      const clipSlab = [0, 0, 2 / W.w, -2 * z / W.w];
+      const body = noShadow(box({ w: 0.48, h: 0.4, d: 0.1, color: W.crew, offset: { y: 0.04 } }));
+      const head = noShadow(merge(box({ w: 0.2, h: 0.2, d: 0.2, color: W.crew, offset: { y: 0.1 } }), box({ w: 0.26, h: 0.08, d: 0.26, color: PAINT, offset: { y: 0.23 } }),
+        box({ w: 0.14, h: 0.03, d: 0.1, color: PAINT, offset: { y: 0.2, z: 0.17 } })));
+      body.clipSlab = head.clipSlab = clipSlab;
+      body.clipSlab2 = head.clipSlab2 = [0, 2 / W.h, 0, -2 * W.y / W.h];
+      return { ...at, glass, body, head };
+    });
+    return { flat: merge(...flat), glow: noShadow(merge(...glow)), back: back(), screens: W.screens.map(screen), windows, still: merge(...still) };
   });
 
   // The control room's fire extinguisher, in its own frame, its foot at (0, 0, 0) and its front (the hose's nozzle)
@@ -2530,7 +2542,7 @@
     const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.lattice, sh.slots);
     const run = runway(), tun = tunnel(), fix = fixtures();
-    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, controlRoom().flat, controlRoom().glow, ...sideRooms().flatMap((r) => [r.flat, r.glow]), loftWindows().flat, loftWindows().glow, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
+    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, controlRoom().flat, controlRoom().glow, ...sideRooms().flatMap((r) => [r.flat, r.glow]), loftWindows().flat, loftWindows().glow, loftWindows().still, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
     // The boards on their mounts, their glass and tiles, as they hang.
     const frames = boardFrames(), faces = { stats: statsFace(), timeline: timelineFace() };
@@ -2838,7 +2850,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, SIDE_ROOMS, sideRooms, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, SIDE_ROOMS, sideRooms, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
