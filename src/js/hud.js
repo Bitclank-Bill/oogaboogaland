@@ -454,10 +454,18 @@
           : compactWidth * scale + presetSpace <= available ? "compact" : "below";
         const paddingLeft = parseFloat(topbar.paddingLeft) || 0, paddingRight = parseFloat(topbar.paddingRight) || 0;
         const topEdge = Math.min(brand.top, clock.top, block.top), bottomEdge = Math.max(brand.bottom, clock.bottom, block.bottom);
-        const top = banner === "below" ? bottomEdge + 12 : (topEdge + bottomEdge - 52 * scale) / 2;
+        // The controls and sound buttons at the top right: as tall as the banner's text (28 to 36px) and centred on it, so a
+        // phone's shorter banner keeps them level with the title and clock rather than hanging below them.
+        const side = Math.round(Math.max(28, Math.min(36, bottomEdge - topEdge)));
+        bannerStyle(el.topbar, "--hub-banner-button", `${side}px`);
+        bannerStyle(el.topbar, "--hub-banner-button-top", `${Math.round((topEdge + bottomEdge - side) * 5) / 10}px`);
+        // Below the title (a phone), the row sits close under the banner's text and near the screen's left edge, still
+        // inside a notch's safe area.
+        const belowLeft = Math.max(4, paddingLeft - 4);
+        const top = banner === "below" ? bottomEdge + 4 : (topEdge + bottomEdge - 52 * scale) / 2;
         if (el.equipment.dataset.banner !== banner) el.equipment.dataset.banner = banner;
         bannerStyle(el.equipment, "--hub-equipment-scale", String(scale));
-        bannerStyle(el.equipment, "--hub-equipment-left", `${banner === "below" ? paddingLeft : leftEdge}px`);
+        bannerStyle(el.equipment, "--hub-equipment-left", `${banner === "below" ? belowLeft : leftEdge}px`);
         bannerStyle(el.equipment, "--hub-equipment-top", `${top}px`);
         bannerStyle(el.equipment, "--hub-equipment-width", `${Math.max(0, window.innerWidth - paddingLeft - paddingRight) / scale}px`);
         const equipmentHeight = count ? el.equipmentRow.offsetHeight * scale : 0;
@@ -465,7 +473,7 @@
         if (presets && presetCount) {
           const presetTop = banner === "below" ? top + equipmentHeight + (count ? 8 : 0) : (topEdge + bottomEdge - 28) / 2;
           const equipmentWidth = (compactWidth + (banner === "full" && expanded ? 140 : 0)) * scale;
-          const presetLeft = banner === "below" ? paddingLeft : leftEdge + equipmentWidth + (count ? 12 : 0);
+          const presetLeft = banner === "below" ? belowLeft : leftEdge + equipmentWidth + (count ? 12 : 0);
           bannerStyle(presets, "--banner-presets-top", `${presetTop}px`);
           bannerStyle(presets, "--banner-presets-left", `${presetLeft}px`);
           bannerStyle(presets, "--banner-presets-width", `${Math.max(0, window.innerWidth - presetLeft - paddingRight)}px`);
@@ -498,6 +506,7 @@
         for (const property of ["--hub-equipment-scale", "--hub-equipment-left", "--hub-equipment-top", "--hub-equipment-width"]) el.equipment.style.removeProperty(property);
         el.messageStack.style.removeProperty("--hub-equipment-bottom");
         el.micNote.style.removeProperty("--hub-equipment-bottom");
+        for (const property of ["--hub-banner-button", "--hub-banner-button-top"]) el.topbar.style.removeProperty(property);
       });
       scheduleBanner();
     }

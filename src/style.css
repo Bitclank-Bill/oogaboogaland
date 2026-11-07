@@ -8110,16 +8110,17 @@ body[data-active-scene="poker"] .ember-den-icon {
 }
 body[data-active-scene="dsb"] :is(#freeroam-icon, #weapon-hud, #magazine-hud) { display: none !important; }
 body[data-active-scene] :is(.world-clock, .world-block) {
-  right: calc(var(--hub-banner-gutter) + var(--safe-right) + 92px);
+  right: calc(var(--hub-banner-gutter) + var(--safe-right) + var(--hub-banner-button, 36px) * 2 + 20px);
 }
+/* The controls and sound buttons, sized and centred on the banner's text by hud.js (`--hub-banner-button`, `-top`). */
 .environment-sound {
   position: absolute;
-  top: calc(10px + var(--safe-top));
+  top: var(--hub-banner-button-top, calc(10px + var(--safe-top)));
   right: calc(var(--hub-banner-gutter) + var(--safe-right));
-  width: 36px;
-  height: 36px;
+  width: var(--hub-banner-button, 36px);
+  height: var(--hub-banner-button, 36px);
 }
-.environment-sound svg { width: 24px; height: 24px; }
+.environment-sound svg { width: calc(var(--hub-banner-button, 36px) * 2 / 3); height: calc(var(--hub-banner-button, 36px) * 2 / 3); }
 .environment-sound svg path:not(:first-child) { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .environment-sound .sound-muted, .environment-sound[aria-pressed="true"] .sound-waves { display: none; }
 .environment-sound[aria-pressed="true"] .sound-muted { display: block; }
@@ -11147,8 +11148,8 @@ body.cloud-hopper-active #mode-hud { display: none; }
 
 /* Controls reference: a quiet native modal, with real, independently lit keycaps. */
 body[data-active-scene] #controls-help-button { display: flex; align-items: center; justify-content: center; }
-.controls-help-button { position: absolute; top: calc(10px + var(--safe-top)); right: calc(var(--hub-banner-gutter) + var(--safe-right) + 44px); width: 36px; height: 36px; }
-.controls-help-button svg { width: 24px; height: 24px; }
+.controls-help-button { position: absolute; top: var(--hub-banner-button-top, calc(10px + var(--safe-top))); right: calc(var(--hub-banner-gutter) + var(--safe-right) + var(--hub-banner-button, 36px) + 8px); width: var(--hub-banner-button, 36px); height: var(--hub-banner-button, 36px); }
+.controls-help-button svg { width: calc(var(--hub-banner-button, 36px) * 2 / 3); height: calc(var(--hub-banner-button, 36px) * 2 / 3); }
 .controls-help { width: min(480px, calc(100vw - 24px)); padding: 16px; max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); overflow-y: auto; overscroll-behavior: contain; }
 #controls-help-context { margin: 8px 0 4px; color: var(--gold, #ffd84a); font-size: 12px; }
 #controls-help-note { margin: 4px 0 8px; font-size: 12px; line-height: 1.4; opacity: .8; }
