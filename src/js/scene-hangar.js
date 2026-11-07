@@ -1427,6 +1427,7 @@
         if (o.kind === "sis" && scene.sis.near && scene.sis.poke()) return;
         if (o.kind === "terminal" && scene.terminals.near && scene.terminals.press()) return;
         if (o.kind === "keypad" && scene.keypad.press()) return;
+        if (o.kind === "monitor" && scene.terminals.tapMonitor(o.desk, o.monitor)) return;
         if (o.kind === "forkliftButton") return pressButton(scene.forklift, people && people.player);
         if (o.kind === "forkliftKey") return turnKey(scene.forklift, people && people.player);
         if (o.kind === "forkliftStick") return workStick(scene.forklift, people && people.player);
@@ -1498,6 +1499,11 @@
       input.add(n, { kind: "terminal", preset: null }, { radius: 0.8 });
       targets.push(n);
     }
+    // The crew's desks' monitors, each turned on to its next picture by a tap from in front of its desk.
+    scene.terminals.monitors.forEach((pair, desk) => pair.forEach((n, monitor) => {
+      input.add(n, { kind: "monitor", preset: null, desk, monitor }, { radius: 0.35 });
+      targets.push(n);
+    }));
     // The rooms' door keypads (`hangar-keypad.js`), dimmed with the glass; the Ooga stands still while one is open, and
     // Tess, if she is coming over or offering, goes back to work.
     const pads = [{ ...HM.controlRoom().keypad, name: "Control room" }, ...HM.sideRooms().map((r, i) => ({ ...r.keypad, name: `Crew room ${i + 1}` }))];
@@ -1714,7 +1720,8 @@
     remotes.update(dt);
     footsteps.update(drivenHere);
     // The act button's START in the forklift (GET OUT while it runs), KEYPAD beside a room's door keypad, DON'T PRESS beside the static fire
-    // test's button, DISPLAY (or STOP) beside a terminal, POKE beside Kortik's Sis, and GET IN beside the forklift's cab.
+    // test's button, DISPLAY (or STOP) beside a terminal, NEXT SCREEN at a crew desk, POKE beside Kortik's Sis, and GET IN beside the
+    // forklift's cab.
     const actLabel = drivenHere && (drivenHere.camp.seat === s.forklift.seat ? (s.forklift.on ? "GET OUT" : "START") : s.keypad.actLabel() || s.fire.actLabel() || s.terminals.actLabel() || s.sis.actLabel()
       || (!s.forklift.seat.sitter && besideCab(s.forklift, drivenHere) ? "GET IN" : null));
     if (actLabel) { hud.setAct(actLabel); actPrompt = true; }
