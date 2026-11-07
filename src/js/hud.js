@@ -454,15 +454,20 @@
           : compactWidth * scale + presetSpace <= available ? "compact" : "below";
         const paddingLeft = parseFloat(topbar.paddingLeft) || 0, paddingRight = parseFloat(topbar.paddingRight) || 0;
         const topEdge = Math.min(brand.top, clock.top, block.top), bottomEdge = Math.max(brand.bottom, clock.bottom, block.bottom);
-        // The controls and sound buttons at the top right: as tall as the banner's text (28 to 36px) and centred on it, so a
-        // phone's shorter banner keeps them level with the title and clock rather than hanging below them.
-        const side = Math.round(Math.max(28, Math.min(36, bottomEdge - topEdge)));
-        bannerStyle(el.topbar, "--hub-banner-button", `${side}px`);
-        bannerStyle(el.topbar, "--hub-banner-button-top", `${Math.round((topEdge + bottomEdge - side) * 5) / 10}px`);
         // Below the title (a phone), the row sits close under the banner's text and near the screen's left edge, still
         // inside a notch's safe area.
         const belowLeft = Math.max(4, paddingLeft - 4);
         const top = banner === "below" ? bottomEdge + 4 : (topEdge + bottomEdge - 52 * scale) / 2;
+        // The controls and sound buttons at the top right. With the row below the title (a phone) they take its buttons'
+        // size and margins: as tall as they are, 4px from the top and right edges and from each other, inside any safe
+        // area. Otherwise they stand in line with the row: as tall as the banner's text (28 to 36px), their tops level with
+        // the row's buttons' tops.
+        const below = banner === "below", paddingTop = parseFloat(topbar.paddingTop) || 0;
+        const side = below ? Math.round(52 * scale) : Math.round(Math.max(28, Math.min(36, bottomEdge - topEdge)));
+        bannerStyle(el.topbar, "--hub-banner-button", `${side}px`);
+        bannerStyle(el.topbar, "--hub-banner-button-top", `${below ? Math.max(4, paddingTop - 6) : Math.round(top * 10) / 10}px`);
+        bannerStyle(el.topbar, "--hub-banner-button-right", `${below ? Math.max(4, paddingRight - 4) : paddingRight}px`);
+        bannerStyle(el.topbar, "--hub-banner-button-gap", `${below ? 4 : 8}px`);
         if (el.equipment.dataset.banner !== banner) el.equipment.dataset.banner = banner;
         bannerStyle(el.equipment, "--hub-equipment-scale", String(scale));
         bannerStyle(el.equipment, "--hub-equipment-left", `${banner === "below" ? belowLeft : leftEdge}px`);
@@ -506,7 +511,7 @@
         for (const property of ["--hub-equipment-scale", "--hub-equipment-left", "--hub-equipment-top", "--hub-equipment-width"]) el.equipment.style.removeProperty(property);
         el.messageStack.style.removeProperty("--hub-equipment-bottom");
         el.micNote.style.removeProperty("--hub-equipment-bottom");
-        for (const property of ["--hub-banner-button", "--hub-banner-button-top"]) el.topbar.style.removeProperty(property);
+        for (const property of ["--hub-banner-button", "--hub-banner-button-top", "--hub-banner-button-right", "--hub-banner-button-gap"]) el.topbar.style.removeProperty(property);
       });
       scheduleBanner();
     }

@@ -8110,13 +8110,13 @@ body[data-active-scene="poker"] .ember-den-icon {
 }
 body[data-active-scene="dsb"] :is(#freeroam-icon, #weapon-hud, #magazine-hud) { display: none !important; }
 body[data-active-scene] :is(.world-clock, .world-block) {
-  right: calc(var(--hub-banner-gutter) + var(--safe-right) + var(--hub-banner-button, 36px) * 2 + 20px);
+  right: calc(var(--hub-banner-button-right, calc(var(--hub-banner-gutter) + var(--safe-right))) + var(--hub-banner-button, 36px) * 2 + var(--hub-banner-button-gap, 8px) + 12px);
 }
-/* The controls and sound buttons, sized and centred on the banner's text by hud.js (`--hub-banner-button`, `-top`). */
+/* The controls and sound buttons, sized and placed by hud.js (`--hub-banner-button`, `-top`, `-right`, `-gap`). */
 .environment-sound {
   position: absolute;
   top: var(--hub-banner-button-top, calc(10px + var(--safe-top)));
-  right: calc(var(--hub-banner-gutter) + var(--safe-right));
+  right: var(--hub-banner-button-right, calc(var(--hub-banner-gutter) + var(--safe-right)));
   width: var(--hub-banner-button, 36px);
   height: var(--hub-banner-button, 36px);
 }
@@ -11148,7 +11148,7 @@ body.cloud-hopper-active #mode-hud { display: none; }
 
 /* Controls reference: a quiet native modal, with real, independently lit keycaps. */
 body[data-active-scene] #controls-help-button { display: flex; align-items: center; justify-content: center; }
-.controls-help-button { position: absolute; top: var(--hub-banner-button-top, calc(10px + var(--safe-top))); right: calc(var(--hub-banner-gutter) + var(--safe-right) + var(--hub-banner-button, 36px) + 8px); width: var(--hub-banner-button, 36px); height: var(--hub-banner-button, 36px); }
+.controls-help-button { position: absolute; top: var(--hub-banner-button-top, calc(10px + var(--safe-top))); right: calc(var(--hub-banner-button-right, calc(var(--hub-banner-gutter) + var(--safe-right))) + var(--hub-banner-button, 36px) + var(--hub-banner-button-gap, 8px)); width: var(--hub-banner-button, 36px); height: var(--hub-banner-button, 36px); }
 .controls-help-button svg { width: calc(var(--hub-banner-button, 36px) * 2 / 3); height: calc(var(--hub-banner-button, 36px) * 2 / 3); }
 .controls-help { width: min(480px, calc(100vw - 24px)); padding: 16px; max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); overflow-y: auto; overscroll-behavior: contain; }
 #controls-help-context { margin: 8px 0 4px; color: var(--gold, #ffd84a); font-size: 12px; }
