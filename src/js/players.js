@@ -13,18 +13,21 @@
 // changed it does nothing, and the next event redraws the rows.
 // Cost: rows are placed only when someone joins, leaves or changes zone, body or name, and only while the panel shows;
 // distances and crosshairs are rewritten as positions arrive (`subscribeMoves`, a few times a second at most), and only
-// what changed. No timers. Exports setDoors and stats.
-// While the visitor is in voice the tab also holds their hearing range (#380, `BL.voice.setRadius`): the slider's last
-// stop is no limit, and a distance at or past the range is dimmed, since that voice is faded out for them. A voice in
+// what changed. No timers. An Ooga thump (thump.js) shows a mallet beside its thumper's voice mark for a moment (`pulse`): every
+// row holds that mark's cell from the start, shown and hidden by visibility, so it never moves a name or a control, and its
+// animation's end hides it again; `clearPulses` hides them all at once. Exports setDoors, pulse, clearPulses and stats.
+// The tab always holds the visitor's hearing range (#380, `BL.voice.setRadius`), ready before joining: the slider's last
+// stop is no limit, and a distance at or past the range is dimmed, since that voice is muted for them. A voice in
 // another place of the group, which shows no distance, is silenced by a range without a mark here. The slider is offered
-// wherever voice.js can fade a voice (`fades`): by its element's volume, or on iOS and iPadOS through a Web Audio gain.
+// before any audio is active; Web Audio supplies quieting and boost once the listener joins.
+// Hearing range and join-reading live together under the panel's Advanced settings disclosure.
 // Joins (#430, `net.subscribePresence`): a player who comes online while the visitor is in the room is named on screen
 // (`hud.toast`, read out by assistive technology) and counted on the tab until the visitor looks at it
 // (`sheet.watchViews`), unless they are in the panel as it happens. Those already there when the visitor (re)joins are
 // not named, nor is one who comes back within REJOIN_QUIET of leaving (a reconnect, a reload, a newer tab). Joins close
 // together share one message while it shows. With "Read joins aloud" ticked (this browser's choice, in localStorage) the names are
 // spoken too, one utterance at a time: names that arrive while one plays wait and are said together after it, and the
-// page-wide mute (`BL.sound`) silences it, leaving the message. Speech starts only from the box, a gesture.
+// Read joins aloud checkbox alone controls it, independently of environment sound. Speech starts from the box, a gesture.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -49,34 +52,60 @@
   crosshairPath.setAttribute("fill", "currentColor");
   crosshairPath.setAttribute("d", "M3 1h3v1H3zM3 7h3v1H3zM1 3h1v3H1zM7 3h1v3H7zM2 2h1v1H2zM6 2h1v1H6zM2 6h1v1H2zM6 6h1v1H6zM4 0h1v3H4zM4 6h1v3H4zM0 4h3v1H0zM6 4h3v1H6zM4 4h1v1H4z");
   crosshair.append(crosshairPath);
+  const lockIcon = document.createElementNS(SVG, "svg");
+  lockIcon.setAttribute("viewBox", "0 0 7 8");
+  lockIcon.setAttribute("aria-hidden", "true");
+  const lockPath = document.createElementNS(SVG, "path");
+  lockPath.setAttribute("fill", "currentColor");
+  lockPath.setAttribute("d", "M2 0h3v1H2zM1 1h1v2H1zM5 1h1v2H5zM0 3h7v5H0z");
+  lockIcon.append(lockPath);
 
   const rows = new Map(), groups = new Map(), order = [], door = { x: 0, y: 0, z: 0 };
-  let serial = 0, pass = 0, showing = false, stale = true, doors = null, shownZone = "", shownRadius = -1, shownHearing = null;
+  let serial = 0, pass = 0, showing = false, stale = true, doors = null, shownZone = "", shownRadius = -1;
   const makeRow = () => {
-    const li = document.createElement("li"), presence = document.createElement("span"), name = document.createElement("span");
+    const li = document.createElement("li"), dots = document.createElement("span"), presence = document.createElement("span"), name = document.createElement("span");
     const label = document.createElement("span"), host = document.createElement("span"), marks = document.createElement("span");
     const voice = document.createElement("button"), look = document.createElement("button"), distance = document.createElement("span");
+    const priv = document.createElement("button");
     const note = document.createElement("span"), id = `players-name-${++serial}`;
+    const toggle = document.createElement("button"), volume = document.createElement("div"), volumeLabel = document.createElement("label");
+    const slider = document.createElement("input"), value = document.createElement("output");
+    toggle.type = "button"; toggle.className = "roster-name players-name-toggle";
+    toggle.setAttribute("aria-expanded", "false"); toggle.setAttribute("aria-controls", `${id}-volume`);
+    volume.className = "players-volume"; volume.id = `${id}-volume`; volume.hidden = true;
+    volumeLabel.className = "players-hearing-label"; volumeLabel.htmlFor = `${id}-range`; volumeLabel.textContent = "Volume";
+    slider.type = "range"; slider.className = "players-volume-range"; slider.id = `${id}-range`;
+    slider.min = "0"; slider.max = String(V.VOLUME_MAX * 100); slider.step = "5"; slider.value = "100";
+    value.className = "players-volume-value"; value.htmlFor = slider.id; value.textContent = "100%";
+    volume.append(volumeLabel, slider, value);
+    dots.className = "roster-dots";
     presence.className = "roster-presence"; presence.dataset.online = "true"; presence.setAttribute("role", "img");
     presence.setAttribute("aria-label", "Online"); presence.title = "Online";
     name.className = "players-name"; label.className = "roster-label"; label.id = id;
     host.className = "roster-host"; host.hidden = true; host.setAttribute("role", "img");
     host.setAttribute("aria-label", "Host: runs the Oogas for everyone"); host.title = "Host: runs the Oogas for everyone";
-    name.append(label, host);
+    toggle.append(label); name.append(toggle); dots.append(presence, host);
     marks.className = "roster-marks";
-    voice.className = "roster-voice"; voice.type = "button"; voice.hidden = true; voice.append(BL.hud.voiceIcon.cloneNode(true));
-    marks.append(voice);
+    voice.className = "roster-voice"; voice.type = "button"; voice.hidden = true; voice.setAttribute("aria-describedby", id); voice.append(BL.hud.voiceIcon.cloneNode(true));
+    // A private conversation (#188), offered where the room relays them; never on the visitor's own row.
+    priv.className = "players-private"; priv.type = "button"; priv.hidden = true; priv.append(lockIcon.cloneNode(true));
+    marks.append(voice, priv);
+    const thump = document.createElement("span");
+    thump.className = "players-thump"; thump.dataset.on = "false"; thump.setAttribute("aria-hidden", "true");
+    thump.append(BL.hud.malletIcon.cloneNode(true));
     look.className = "players-look"; look.type = "button"; look.setAttribute("aria-describedby", id); look.append(crosshair.cloneNode(true));
     distance.className = "players-distance"; distance.append("");
     note.className = "players-note"; note.textContent = ", last known location"; note.hidden = true;
     distance.append(note);
-    li.append(presence, name, marks, look, distance);
-    return { li, label, host, voice, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
+    li.append(dots, name, marks, thump, look, distance, volume);
+    return { li, label, toggle, volume, slider, value, host, voice, priv, privName: null, thump, pulse: null, button: look, distance, note, id: 0, self: false, name: "", zone: "", group: "", seen: 0,
       aim: "", voiceLook: "", voiceLogin: "", voiceSelf: false, blocked: false, hostOn: false, metres: -1, lastKnown: false, far: false };
   };
   const selfRow = makeRow();
   selfRow.self = true;
   selfRow.button.hidden = true;
+  selfRow.toggle.disabled = true;
+  selfRow.toggle.removeAttribute("aria-expanded"); selfRow.toggle.removeAttribute("aria-controls");
   const groupFor = (key) => {
     let group = groups.get(key);
     if (!group) {
@@ -108,11 +137,21 @@
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
       const look = rec.voice ? rec.muted ? "muted" : BL.voice.speaking(rec.id) ? "speaking" : "on" : "";
-      paintMark(row, look, rec.voice ? rec.login : "", false, rec.id === s.hostId);
+      paintMark(row, look || "off", rec.login, false, rec.id === s.hostId);
+      const name = BL.privateChat && BL.privateChat.available() ? rec.display : "";
+      if (row.privName !== name) {
+        row.privName = name; row.priv.hidden = !name;
+        const words = `Ask ${name} for a private conversation`;
+        row.priv.title = words; row.priv.setAttribute("aria-label", words);
+      }
+      const level = V.volumeOf(row.id), words = `${Math.round(level * 100)}%`;
+      if (row.slider.value !== String(level * 100)) row.slider.value = String(level * 100);
+      if (row.value.textContent !== words) row.value.textContent = words;
+      row.slider.setAttribute("aria-valuetext", words);
     }
   };
   const paintMark = (row, look, login, self, host) => {
-    const blocked = !!login && BL.voice.mutedLocally(login);
+    const blocked = !!login && BL.voice.mutedLocally(row.id);
     if (row.voiceLook !== look || row.voiceLogin !== login || row.voiceSelf !== self || row.blocked !== blocked) {
       row.voiceLook = look; row.voiceLogin = login; row.voiceSelf = self; row.blocked = blocked;
       const button = row.voice, words = BL.hud.voiceWords(look, self, blocked, login);
@@ -125,20 +164,49 @@
     if (row.hostOn !== host) { row.hostOn = host; row.host.hidden = !host; }
   };
 
+  // An Ooga thump's mallet beside a player's voice mark, while the tab shows (thump.js); 0 or the visitor's own id is their
+  // row. Only the cell's own state changes: its place in the row is kept either way. Under Calm it holds still.
+  const THUMP_MS = 1400, CALM = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const THUMP_PULSE = [{ opacity: 0, transform: "scale(0.6)" }, { opacity: 1, transform: "scale(1.25)", offset: 0.18 }, { opacity: 1, transform: "scale(1)", offset: 0.4 }, { opacity: 0, transform: "scale(1)" }];
+  const THUMP_STILL = [{ opacity: 1 }, { opacity: 1, offset: 0.85 }, { opacity: 0 }];
+  const unmark = (row) => {
+    row.pulse = null;
+    row.thump.dataset.on = "false";
+    row.thump.removeAttribute("role"); row.thump.removeAttribute("aria-label"); row.thump.removeAttribute("title");
+    row.thump.setAttribute("aria-hidden", "true");
+  };
+  const pulse = (id) => {
+    if (!showing || stale) return false;
+    const row = id === 0 || id === net.state.selfId ? selfRow : rows.get(id);
+    if (!row || !row.li.isConnected) return false;
+    const mark = row.thump;
+    if (row.pulse) row.pulse.cancel();
+    mark.dataset.on = "true";
+    mark.removeAttribute("aria-hidden"); mark.setAttribute("role", "img");
+    mark.setAttribute("aria-label", "Thumped"); mark.title = "Thumped";
+    const run = row.pulse = mark.animate(CALM.matches ? THUMP_STILL : THUMP_PULSE, { duration: THUMP_MS, easing: "ease-out" });
+    run.onfinish = () => { if (row.pulse === run) unmark(row); };
+    return true;
+  };
+  // Every mallet still showing goes at once (thump.js, when the visitor's voice membership changes).
+  const clearPulses = () => {
+    for (const row of [selfRow, ...rows.values()]) if (row.pulse) { row.pulse.cancel(); unmark(row); }
+  };
+
   // Distances and crosshairs, from where everyone stands now.
   const measure = () => {
     if (!showing || stale) return;
-    const s = net.state, me = s.self, mine = s.zone, placed = me.zone === mine, radius = V.fades && V.stats.enabled ? V.stats.radius : 0;
+    const s = net.state, me = s.self, mine = s.zone, placed = me.zone === mine, radius = V.stats.radius;
     shownZone = mine; shownRadius = radius;
     for (const row of rows.values()) {
       const rec = net.remotes.get(row.id);
       if (!rec) continue;
-      let aim = "route", metres = -1, lastKnown = false;
+      let aim = "route", metres = -1, distance = -1, lastKnown = false;
       if (rec.zone === mine) {
         if (rec.poseZone === rec.zone) {
           lastKnown = !rec.body;
           aim = lastKnown ? "known" : "player";
-          if (placed) metres = Math.round(Math.hypot(rec.x - me.x, rec.y - me.y, rec.z - me.z));
+          if (placed) { distance = Math.hypot(rec.x - me.x, rec.y - me.y, rec.z - me.z); metres = Math.round(distance); }
         } else aim = "nowhere";
       } else {
         const step = Z.next(mine, rec.zone);
@@ -157,20 +225,16 @@
         row.distance.title = lastKnown && metres >= 0 ? "Last known location" : "";
         row.note.hidden = !(lastKnown && metres >= 0);
       }
-      const far = radius > 0 && metres >= radius;
+      const far = radius > 0 && distance >= radius;
       if (row.far !== far) { row.far = far; row.distance.dataset.far = String(far); }
     }
   };
 
-  // The hearing range's slider, shown while the visitor is in voice; a new range redraws which distances are dimmed.
+  // Hearing range is ready even alone and before voice joins; changing it never acquires a microphone.
   const paintHearing = () => {
     if (!showing || stale) return;
-    const voice = V.stats, shown = V.fades && voice.enabled && net.state.room === "live";
-    if (shown !== shownHearing) { shownHearing = shown; hearing.hidden = !shown; }
-    if (!shown) {
-      if (shownRadius > 0) measure();
-      return;
-    }
+    const voice = V.stats;
+    hearing.hidden = false;
     const words = voice.radius ? `${voice.radius} m` : "No limit", value = String(voice.radius || V.RADIUS_MAX + RANGE_STEP);
     if (rangeValue.textContent !== words) { rangeValue.textContent = words; range.setAttribute("aria-valuetext", words); }
     if (range.value !== value && document.activeElement !== range) range.value = value;
@@ -218,7 +282,8 @@
       }
       if (group.ul.children[rowIndex] !== row.li) group.ul.insertBefore(row.li, group.ul.children[rowIndex] || null);
       rowIndex++;
-      if (row.label.textContent !== row.name) row.label.textContent = row.name;
+      if (row.label.textContent !== row.name) { row.label.textContent = row.name; row.label.title = row.name; }
+      if (!row.self) row.slider.setAttribute("aria-label", `Volume for ${row.name}`);
     }
     for (const [key, entry] of groups) if (entry.seen !== pass) { entry.section.remove(); groups.delete(key); }
     paintMarks();
@@ -239,13 +304,28 @@
     if (step && doors && doors(s.zone, step, door, placed ? me.x : NaN, placed ? me.z : NaN)) BL.pilot.turnToward(door.x, door.y, door.z);
   };
   list.addEventListener("click", (e) => {
+    const priv = e.target.closest(".players-private");
+    if (priv) {
+      priv.blur();
+      BL.privateChat.invite(Number(priv.closest("li").dataset.id));
+      return;
+    }
     const voice = e.target.closest(".roster-voice");
     if (voice) {
-      voice.blur();
+      if (e.detail) voice.blur();
       if (voice.disabled) return;
       // The visitor's own mark mutes and unmutes their microphone; anyone else's mutes them for this visitor.
       if (voice.dataset.self === "true") BL.voice.toggle();
-      else BL.voice.muteLocal(voice.dataset.login, voice.getAttribute("aria-pressed") !== "true");
+      else BL.voice.muteLocal(Number(voice.closest("li").dataset.id), voice.getAttribute("aria-pressed") !== "true");
+      return;
+    }
+    const toggle = e.target.closest(".players-name-toggle");
+    if (toggle && !toggle.disabled) {
+      const row = rows.get(Number(toggle.closest("li").dataset.id));
+      if (row) {
+        const open = toggle.getAttribute("aria-expanded") !== "true";
+        toggle.setAttribute("aria-expanded", String(open)); row.volume.hidden = !open;
+      }
       return;
     }
     const look = e.target.closest(".players-look");
@@ -253,6 +333,15 @@
     look.blur();
     const row = rows.get(Number(look.closest("li").dataset.id));
     if (row && look.getAttribute("aria-disabled") !== "true") lookAt(row);
+  });
+
+  list.addEventListener("input", (e) => {
+    if (!e.target.matches(".players-volume-range")) return;
+    const row = rows.get(Number(e.target.closest("li").dataset.id));
+    if (!row || !net.remotes.has(row.id)) return;
+    V.setVolume(row.id, Number(row.slider.value) / 100);
+    const words = `${Math.round(V.volumeOf(row.id) * 100)}%`;
+    row.value.textContent = words; row.slider.setAttribute("aria-valuetext", words);
   });
 
   // Marks and distances are not kept up while hidden, so the panel is drawn afresh whenever it shows again.
@@ -272,7 +361,7 @@
   // Joins: named, counted until looked at, and spoken when asked.
   const REJOIN_QUIET = 120000, TOAST_MS = 2800, SPEECH_STUCK_MS = 15000, NAMES_SHOWN = 3, SPEAK_KEY = "oogaboogaland.players.speak";
   const leftAt = new Map(), shown = { names: [], extra: 0 }, said = { names: [], extra: 0 };
-  let unread = 0, shownAt = -Infinity, shownText = "", speaking = false, speakingAt = 0, speakOn = false;
+  let unread = 0, shownAt = -Infinity, shownText = "", speaking = false, speakingAt = 0, speakOn = false, speechSerial = 0;
   const add = (list, name) => { if (list.names.length < NAMES_SHOWN) list.names.push(name); else list.extra++; };
   const words = (list) => {
     const all = list.extra ? [...list.names, `${list.extra} ${list.extra === 1 ? "other" : "others"}`] : list.names;
@@ -281,7 +370,8 @@
   const setUnread = (count) => { unread = count; BL.sheet.setBadge("players", count); };
   const utter = (text) => {
     const line = new SpeechSynthesisUtterance(text);
-    line.onend = line.onerror = sayNext;
+    const serial = ++speechSerial;
+    line.onend = line.onerror = () => { if (serial === speechSerial) sayNext(); };
     speaking = true; speakingAt = performance.now();
     synth.speak(line);
   };
@@ -290,17 +380,18 @@
     if (!said.names.length) return;
     const text = words(said);
     said.names.length = 0; said.extra = 0;
-    if (speakOn && !BL.sound.muted) utter(text);
+    if (speakOn) utter(text);
   };
   const say = (name) => {
-    if (!synth || !speakOn || BL.sound.muted) return;
+    if (!synth || !speakOn) return;
     add(said, name);
     if (!speaking || performance.now() - speakingAt > SPEECH_STUCK_MS) sayNext();
   };
   const hush = () => {
     said.names.length = 0; said.extra = 0;
-    if (synth && speaking) synth.cancel();
-    speaking = false;
+    const active = speaking;
+    speechSerial++; speaking = false;
+    if (synth && active) synth.cancel();
   };
   net.subscribePresence((rec, joined) => {
     const now = performance.now();
@@ -317,8 +408,9 @@
   });
   BL.sheet.watchViews(panel, () => { if (unread) setUnread(0); });
   net.subscribe(() => {
-    if (net.state.me || !unread && !leftAt.size) return;
-    setUnread(0); leftAt.clear(); hush();
+    if (net.state.me) return;
+    if (unread) setUnread(0);
+    leftAt.clear(); hush();
   });
   if (synth) {
     try { speakOn = localStorage.getItem(SPEAK_KEY) === "on"; } catch { /* Storage may be unavailable. */ }
@@ -329,10 +421,9 @@
       try { localStorage.setItem(SPEAK_KEY, speakOn ? "on" : "off"); } catch { /* Storage may be unavailable. */ }
       hush();
       // Said from the tick itself, the gesture a phone's browser needs before it speaks the joins that follow.
-      if (speakOn && !BL.sound.muted) utter("Joins will be read aloud");
+      if (speakOn) utter("Joins will be read aloud");
     });
     speakBox.addEventListener("click", (e) => { if (e.detail) speakBox.blur(); });
-    BL.sound.subscribe((muted) => { if (muted) hush(); });
   }
   net.subscribe(render);
   net.subscribeRoster(render);
@@ -344,5 +435,5 @@
     doors = fn;
     measure();
   };
-  BL.players = { setDoors, get stats() { return { showing, rows: rows.size, groups: groups.size, unread, speakOn }; } };
+  BL.players = { setDoors, pulse, clearPulses, get stats() { return { showing, rows: rows.size, groups: groups.size, unread, speakOn }; } };
 })();

@@ -174,7 +174,7 @@
 
   let hockeySession = null, hockeyRemotes = null, hockeyAmbience = null, hockeyLobby = null, hockeyPlayers = null;
   const HOCKEY_SEAT = { x: 0, y: 0, z: 0, yaw: 0 };
-  let hockeySide = 0;
+  let hockeySide = 0, hockeyPreferredEnd = 0;
   const hockeyView = side => {
     if (side === hockeySide) return;
     const cx = BL.hockeyWire.TABLES[slot][0], cz = BL.hockeyWire.TABLES[slot][1];
@@ -191,6 +191,7 @@
   // down or up while it goes more that way than across (`DRAG.ny`).
   const aim = { x: 0, hold: 0, steps: 0, y: 0, stepsY: 0, depth: 0.13 / 0.96 }, held = { left: false, right: false, up: false, down: false }, DRAG = { x: 0, y: 0, ny: 0, first: false, down: false, x0: 0, y0: 0, still: false }, NOTCH = 1 / 9, TAP_SLOP = 7;
   const onDown = (e) => {
+    if (BL.controls.uiKey(e)) return;
     const k = e.key.toLowerCase();
     if (k === "arrowleft" || k === "a") { held.left = true; if (!e.repeat && phase === "play") aim.steps--; }
     else if (k === "arrowright" || k === "d") { held.right = true; if (!e.repeat && phase === "play") aim.steps++; }
@@ -215,15 +216,17 @@
     if (!play) return;
     if (hockeySession?.human) {
       if (phase !== "play" || !e.isPrimary) return;
-      renderer.ray(e.offsetX * renderer.size.width / canvasEl.clientWidth, e.offsetY * renderer.size.height / canvasEl.clientHeight, camera, HOCKEY_RAY);
+      const rect = canvasEl.getBoundingClientRect();
+      renderer.ray((e.clientX - rect.left) * renderer.size.width / rect.width, (e.clientY - rect.top) * renderer.size.height / rect.height, camera, HOCKEY_RAY);
       if (HOCKEY_RAY.dy >= -0.001) return;
       const AH = AM.HOCKEY, t = (AH.y + 0.005 - HOCKEY_RAY.oy) / HOCKEY_RAY.dy;
       if (t < 0) return;
       const center = BL.hockeyWire.TABLES[slot], sign = hockeySide ? -1 : 1;
       const u = (HOCKEY_RAY.ox + HOCKEY_RAY.dx * t - center[0]) * sign / AH.scale;
       const v = AH.w / 2 - (HOCKEY_RAY.oz + HOCKEY_RAY.dz * t - center[1]) * sign / AH.scale;
-      aim.x = Math.max(-1, Math.min(1, u / (AH.d / 2 - 0.07)));
-      aim.depth = Math.max(0, Math.min(1, (v - 0.07) / (AH.w / 2 - 0.14)));
+      aim.x = Math.max(-1, Math.min(1, u / BL.hockeyWire.MALLET_X));
+      aim.depth = Math.max(0, Math.min(1, (v - BL.hockeyWire.MALLET_RADIUS) / BL.hockeyWire.MALLET_DEPTH));
+      hockeySession.point(aim.x, aim.depth);
       return;
     }
     if (!play.aims || play.taps) { if (e.type === "pointerdown" && e.button === 0) act(); return; }
@@ -263,6 +266,8 @@
       while (DRAG.ny - y >= notch) { aim.stepsY--; DRAG.ny -= notch; DRAG.x = x; }
     }
   };
+  // Mouse hover keeps sliding along a rail even after leaving the canvas or crossing a HUD element.
+  const onHockeyPoint = e => { if (hockeySession?.human && e.target !== canvasEl && e.pointerType === "mouse") onPoint(e); };
   const onLift = (e) => { if (e.pointerId === steerId) steerId = -1; DRAG.down = false; };
   const onTapped = () => { if (play.aims && !play.taps && !(retro && pressedBy === "mouse")) act(); };
   const onActDown = (e) => {
@@ -271,6 +276,7 @@
     act();
   };
   let canvasEl = null, actDown = false, pressedBy = "", steerId = -1;
+  let cabinetView = null;
   let phase = "intro", shownCount = -1, finalScore = 0, introEl = null, leaving = false;
   let scoreRun = null, unsubscribeScores = null;
   const scoreMachines = [];
@@ -650,6 +656,7 @@
     el.results.hidden = el.pause.hidden = true;
     shown.verb = null;
     resetRun();
+    if (cabinetView?.active) { startPlay(); T.cam = 1; }
   };
   // Go: the game starts, the best to beat is the one saved, and a game's first run in the page visit coaches.
   const startPlay = () => {
@@ -986,9 +993,9 @@
       el.root.dataset.hockeyShared = "true";
       text(el.needLabel, "To win");
       text(el.help, "One point per goal. First to seven, with no time limit. Leaving ends the match for both players. Live play continues while this menu is open.");
-      hockeySession = BL.hockeySession.create({ slot, play, aim,
+      hockeySession = BL.hockeySession.create({ slot, play, aim, preferredEnd: hockeyPreferredEnd,
         lobby: message => { text(hockeyLobby, message); introEl.hidden = false; },
-        sideChanged: side => { hockeyView(side); BL.hockeyWire.seat(slot, side, 0, HOCKEY_SEAT); },
+        sideChanged: (side, flip) => { const physical = side ^ flip; hockeyView(physical); BL.hockeyWire.seat(slot, physical, 0, HOCKEY_SEAT); },
         start: () => {
           el.act.hidden = hockeySession.human;
           if (hockeySession.human) {
@@ -1003,14 +1010,16 @@
     } else text(hockeyLobby, "Solo practice against the moving mallet");
   };
   const enter = (ctx, id) => {
+    cabinetView = ctx.cabinet;
     ({ renderer, game, world, go } = ctx);
-    kind = id; hockeySide = 0; aim.depth = 0.13 / 0.96;
+    kind = id; hockeySide = 0; hockeyPreferredEnd = id === "hockey" && world.hockeyEnd === 1 ? 1 : 0; world.hockeyEnd = null; aim.depth = 0.13 / 0.96;
     slot = Number.isInteger(ctx.place) && KINDS[id].spots[ctx.place] ? ctx.place : 0;
     aim.x = aim.hold = aim.steps = aim.y = aim.stepsY = 0; held.left = held.right = held.up = held.down = DRAG.down = false;
     canvasEl = ctx.canvas;
     window.addEventListener("keydown", onDown, { signal: ctx.signal });
     window.addEventListener("keyup", onUp, { signal: ctx.signal });
     canvasEl.addEventListener("pointermove", onPoint, { signal: ctx.signal });
+    if (kind === "hockey") window.addEventListener("pointermove", onHockeyPoint, { signal: ctx.signal });
     canvasEl.addEventListener("pointerdown", onPoint, { signal: ctx.signal });
     canvasEl.addEventListener("pointerup", onLift, { signal: ctx.signal });
     canvasEl.addEventListener("pointercancel", onLift, { signal: ctx.signal });
@@ -1092,9 +1101,12 @@
     resetRun();
     introEl = document.querySelector(`[data-intro="${kind}"]`);
     setPhase("intro");
+    // Playing remains a visit at this machine: proximity voice and the roster use the hall coordinates.
+    BL.net.setBody(world.pilot);
+    if (kind !== "hockey") BL.net.sendPose(machine.play.x, machine.y || 0, machine.play.z, machine.play.facing);
     if (kind === "hockey") {
-      BL.net.setBody(world.pilot);
-      BL.hockeyWire.seat(slot, 0, 0, HOCKEY_SEAT);
+      play.orientation(hockeyPreferredEnd); hockeyView(hockeyPreferredEnd);
+      BL.hockeyWire.seat(slot, hockeyPreferredEnd, 0, HOCKEY_SEAT);
       BL.net.sendPose(HOCKEY_SEAT.x, 0, HOCKEY_SEAT.z, HOCKEY_SEAT.yaw);
       hockeyAmbience = BL.arcadeAmbience.create(audio, HOCKEY_SEAT, camera);
       hockeyRemotes = BL.remotePlayers.create({ root, fx, visible: rec => rec.zone === BL.hockeyWire.ZONE,
@@ -1128,13 +1140,14 @@
     if (phase === "intro" && introEl.hidden) {
       if (hockeySession) { introEl.hidden = false; hockeySession.ready(); }
       else if (kind === "hockey" && BL.net.state.me && BL.net.state.room !== "live") { introEl.hidden = false; text(hockeyLobby, "Connecting to the Arcade…"); }
+      else if (cabinetView.active) { resetRun(); startPlay(); T.cam = 1; }
       else startCount(COUNT);
     }
     if (kind === "hockey") {
       if (!hockeySession) BL.net.sendPose(HOCKEY_SEAT.x, 0, HOCKEY_SEAT.z, HOCKEY_SEAT.yaw);
       hockeyRemotes.update(dt); hockeyAmbience.update(dt); hockeyPlayers.update(dt);
       if (hockeySession) hockeySession.tick(dt, phase === "play" || phase === "pause");
-    }
+    } else BL.net.sendPose(machine.play.x, machine.y || 0, machine.play.z, machine.play.facing);
     let dolly = 1;
     if (phase === "count") {
       T.countT -= dt;
@@ -1174,7 +1187,7 @@
     }
     T.slow = Math.max(0, T.slow - dt);
     T.big = Math.max(0, T.big - dt);
-    if (hockeySession?.follower) { if (play.following) play.follow(dt); }
+    if (hockeySession?.follower) play.follow(dt);
     else if (phase !== "pause" || hockeySession) play.update(!hockeySession?.human && pace < 1 && !play.status.verb ? dt * pace : dt);
     audio.tick();
     if (rival) {
@@ -1199,7 +1212,7 @@
     // and at the results eased part way back out so the watchers show round the card; a slow breath, a decaying
     // shake (two quick sines, so it rumbles rather than jitters) and on a big moment a punch in toward the play that
     // springs back.
-    T.back = phase === "results" ? Math.min(1, T.back + dt * 0.9) : 0;
+    T.back = phase === "results" && !cabinetView.active ? Math.min(1, T.back + dt * 0.9) : 0;
     const k = (T.k0 + (1 - T.k0) * dolly * dolly * (3 - 2 * dolly)) * (1 - T.back * T.back * (3 - 2 * T.back) * RESULTS_BACK), breath = Math.sin(T.elapsed * 0.8) * 0.02;
     T.cam = k;
     T.shake = Math.max(0, T.shake - dt * 2.2);
@@ -1253,6 +1266,18 @@
     // Paused, the game stands still, so the screen and its glow keep last frame's pixels and are only laid again.
     const kit = BL.retroGames.kit, scr = kit.screen(), crt = kit.crt(), W = kit.W, H = kit.H, paused = phase === "pause";
     if (!paused) play.draw(scr.ctx);
+    if (cabinetView.active) {
+      // The outer cabinet presentation owns the glass. Its game fills the viewport without a second cabinet.
+      const width = renderer.size.width, height = renderer.size.height, scale = Math.min(width / W, height / H);
+      const w = W * scale, h = H * scale, x = (width - w) / 2, y = (height - h) / 2;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      SHOWN.x = x; SHOWN.w = w;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#080604"; ctx.fillRect(0, 0, width, height);
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(scr.canvas, x, y, w, h);
+      ctx.imageSmoothingEnabled = true; ctx.drawImage(crt.cover, x, y, w, h);
+      return;
+    }
     SHOWN.w = 0;
     for (let k = 0; k < 4; k++) if (!renderer.project(CORNERS[k * 3], CORNERS[k * 3 + 1], CORNERS[k * 3 + 2], CORNER[k])) return;
     const a = CORNER[0], b = CORNER[1], c = CORNER[2], d = CORNER[3];
@@ -1289,7 +1314,7 @@
     if (hockeyPlayers) hockeyPlayers.dispose();
     hockeyPlayers = null;
     hockeySession = hockeyRemotes = hockeyAmbience = hockeyLobby = null;
-    if (kind === "hockey") BL.net.setBody(null);
+    BL.net.setBody(null);
     unsubscribeScores?.();
     unsubscribeScores = scoreRun = null;
     scoreMachines.length = 0;
@@ -1297,6 +1322,7 @@
     window.removeEventListener("keydown", onDown);
     window.removeEventListener("keyup", onUp);
     canvasEl.removeEventListener("pointermove", onPoint);
+    window.removeEventListener("pointermove", onHockeyPoint);
     canvasEl.removeEventListener("pointerdown", onPoint);
     canvasEl.removeEventListener("pointerup", onLift);
     canvasEl.removeEventListener("pointercancel", onLift);
@@ -1319,6 +1345,7 @@
     for (const key in anim) { const a = anim[key]; if (Array.isArray(a)) for (const b of a) b.cancel(); else a.cancel(); }
     const scene = SCENES[kind];
     scene.input = scene.debug = null;
+    cabinetView = null;
     hud = hooks = input = fx = audio = play = machine = introEl = el = rival = rider = anim = retro = null;
     SHOWN.w = 0;
     return { targets: count };
@@ -1350,7 +1377,7 @@
   BL.scenes = BL.scenes || {};
   for (const id of Object.keys(KINDS)) {
     SCENES[id] = BL.scenes[id] = {
-      id, voiceZone: id === "hockey" ? "arcade.hall" : undefined, prepare: () => { const loading = BL.deferred.load("arcade"); return loading ? loading.then(() => null) : null; }, enter: (ctx) => enter(ctx, id), update, overlay, onDonation, onKey, onLootCleared: () => {}, renderOpts: RENDER_OPTS,
+      id, voiceZone: "arcade.hall", prepare: () => { const loading = BL.deferred.load("arcade"); return loading ? loading.then(() => null) : null; }, enter: (ctx) => enter(ctx, id), update, overlay, onDonation, onKey, onLootCleared: () => {}, renderOpts: RENDER_OPTS,
       leave: leaveScene, stats, liveGeometry, root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
       controlsHelp(touch) {
         const H = BL.controlsHelp, rows = H.fromCopy((play.coach || COACH[kind])[touch ? 1 : 0], touch);
