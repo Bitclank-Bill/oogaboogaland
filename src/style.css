@@ -4249,9 +4249,10 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   height: 52px;
   padding: 7px 10px;
   background: var(--slab-dark);
-  border: 2px solid var(--stone-dk);
+  /* A border and top highlight only a little lighter than the near-black, so the frame stays quiet. */
+  border: 2px solid #221f1c;
   border-radius: 9px 7px 10px 8px;
-  box-shadow: var(--tablet-shadow);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 2px 0 rgba(0, 0, 0, 0.4);
   color: var(--paper);
   font: inherit;
   overflow: hidden;
@@ -4280,7 +4281,9 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
 .jetpack-hud:hover:not(:disabled),
 .jetpack-hud.virtual-hover:not(:disabled),
 .jetpack-hud:focus-visible {
-  background: linear-gradient(160deg, #2e2b27, #23201d 55%, #1a1816);
+  /* A solid colour, as at rest: the background fades between two colours, never a colour and a gradient, which would
+     show the button see-through for the length of the fade. */
+  background: #2a2622;
   outline: none;
 }
 
@@ -4319,7 +4322,7 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
 }
 
 .rescue-hud[data-holding="true"] {
-  background: linear-gradient(160deg, #3d3428, #2f281f 55%, #221d17);
+  background: #33291f;
 }
 
 .rescue-hud::after {
