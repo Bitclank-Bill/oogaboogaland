@@ -11503,7 +11503,7 @@
       return;
     }
     if (BL.controls.matches(e, "escape") && islandGuide.escape()) { e.preventDefault(); return; }
-    // While Tess's tour holds the view the island's keys wait, actor switches (T) among them; Enter and → are hers.
+    // While Tess's tour holds the view, Enter advances it and movement ends it; other island keys, including T, wait.
     if (islandGuide.holding) return;
     if (BL.controls.matches(e, "escape") && debugSelectedGorilla) { selectDebugGorilla(null); e.preventDefault(); return; }
     if (BL.controls.matches(e, "escape")) {
