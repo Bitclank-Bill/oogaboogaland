@@ -25497,7 +25497,7 @@ const thumpChecks = async BL => {
       && cell.during.filter((d) => d.on === "true").every((d) => d.label === "Thumped" && d.ariaHidden === null) && cell.during.filter((d) => d.on === "false").every((d) => d.ariaHidden === "true")
       && cell.ended.bea === "false" && cell.ended.beaHidden === "true" && cell.ended.self === "true" && cell.cleared.self === "false" && cell.cleared.cancelled
       && cell.cleared.after.join("|") === cell.initial.join("|") && !cell.moving
-      && tracks.length === 6 && tracks[columns.thump - 1] === "12px" && tracks[columns.marks - 1] === "14px" && columns.marks === 3 && columns.thump === 4 && columns.look === 5 && columns.distance === 6
+      && tracks.length === 6 && tracks[columns.thump - 1] === "12px" && tracks[columns.marks - 1] === "max-content" && columns.marks === 3 && columns.thump === 4 && columns.look === 5 && columns.distance === 6
       && /visibility:\s*hidden/.test(thumpRule) && /pointer-events:\s*none/.test(thumpRule) && /width:\s*12px/.test(thumpRule) && !/display:\s*none/.test(thumpRule)
       && /\.players-thump\[data-on="true"\] \{\s*visibility: visible;\s*\}/.test(css),
     JSON.stringify({ cell, tracks, columns }));

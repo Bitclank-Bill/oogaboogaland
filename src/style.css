@@ -1767,12 +1767,13 @@ body[data-active-scene="hub"] .home-link {
 }
 
 /* One row an Ooga: presence, name, the player's marks, activity age and state, each in a column of its own
-   so a long name ends in an ellipsis inside its cell and a mark or state coming and going never moves the others. */
+   so a long name ends in an ellipsis inside its cell and a mark or state coming and going never moves the others.
+   The voice mark's column is the mark's own width, so the age follows it closely and the name keeps the room. */
 .roster {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) 26px max-content 6.5ch;
+  grid-template-columns: 8px minmax(0, 1fr) 12px max-content 6.5ch;
   grid-auto-rows: max-content;
-  column-gap: 8px;
+  column-gap: 6px;
   align-content: start;
   list-style: none;
   margin: 0;
@@ -1791,6 +1792,8 @@ body[data-active-scene="hub"] .home-link {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   font-size: 12px;
 }
+
+.roster li > .roster-name { padding-left: 2px; }
 
 .roster li:first-child {
   border-top: 0;
@@ -1851,9 +1854,9 @@ body[data-active-scene="hub"] .home-link {
   box-shadow: 0 0 5px rgba(34, 197, 94, 0.55);
 }
 
-/* The name, on one line and cut short with an ellipsis where it would not fit, filling its cell. A signed-in player's
-   name is a button with a caret at the cell's right end, by the time, that opens their row onto the land they are in,
-   a darker strip under the row. */
+/* The name, on one line and cut short with an ellipsis where it would not fit, filling its cell: a button, with no
+   caret, that opens the row onto a darker strip under it (the contributor's stats here, a player's volume in Online
+   Oogas). */
 .roster-name {
   display: inline-flex;
   align-items: center;
@@ -1883,22 +1886,6 @@ body[data-active-scene="hub"] .home-link {
   cursor: pointer;
 }
 
-.roster-name:not(:disabled)::after {
-  content: "";
-  flex: none;
-  margin-left: auto;
-  border-top: 4px solid currentColor;
-  border-right: 3.5px solid transparent;
-  border-left: 3.5px solid transparent;
-  opacity: 0.55;
-  transform: rotate(-90deg);
-  transition: transform 0.15s ease;
-}
-
-.roster-name[aria-expanded="true"]::after {
-  transform: none;
-}
-
 .roster-name:not(:disabled):hover,
 .roster-name:not(:disabled).virtual-hover,
 .roster-name[aria-expanded="true"] {
@@ -1923,34 +1910,110 @@ body[data-active-scene="hub"] .home-link {
   }
 }
 
-.roster-where {
-  display: flex;
+/* A contributor's stats (hud.js `openStats`): their Ooga's face at the left, then their total and first contribution
+   side by side, the kinds on a line under them, and a chip a repository with their count there. */
+.roster-stats {
+  display: grid;
   grid-column: 1 / -1;
-  align-items: baseline;
-  gap: 8px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 5px;
+  align-items: start;
   margin: 6px -6px 0;
-  padding: 6px 8px 6px 22px;
+  padding: 8px;
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.28);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-.roster-where[hidden] {
+.roster-stats[hidden] {
   display: none;
 }
 
-.roster-where-label {
-  color: var(--muted);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.roster-stats-face {
+  grid-row: 1 / span 3;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(243, 239, 228, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(243, 239, 228, 0.14);
+  image-rendering: pixelated;
 }
 
-.roster-where-value {
-  min-width: 0;
+.roster-stats-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+}
+
+.roster-stats-facts dt {
+  color: var(--muted);
+  font-size: 8.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.roster-stats-facts dd {
+  margin: 1px 0 0;
   color: var(--paper);
-  font-size: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.roster-stats-kinds {
+  grid-column: 2;
+  margin: 0;
+  color: rgba(243, 239, 228, 0.72);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-stats-kinds[hidden] { display: none; }
+
+.roster-stats-repos {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 2;
+  gap: 4px;
+}
+
+.roster-stats-repos a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 6px;
+  border: 1px solid rgba(243, 239, 228, 0.16);
+  border-radius: 999px;
+  background: rgba(243, 239, 228, 0.05);
+  color: var(--paper);
+  font-size: 10px;
+  text-decoration: none;
   overflow-wrap: anywhere;
+}
+
+.roster-stats-repos b {
+  color: var(--accent-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-stats-repos a:hover,
+.roster-stats-repos a.virtual-hover {
+  border-color: var(--accent);
+}
+
+.roster-stats-repos a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.roster-stats-none {
+  color: var(--muted);
+  font-size: 10px;
 }
 
 /* A signed-in player's voice keeps a column of its own after the name (grey in voice, green speaking, red
@@ -1997,7 +2060,7 @@ body[data-active-scene="hub"] .home-link {
 
 .players-private {
   display: inline-flex;
-  padding: 0 0 0 6px;
+  padding: 0;
   border: 0;
   background: none;
   color: #9fbfee;
@@ -2041,7 +2104,7 @@ body[data-active-scene="hub"] .home-link {
 @media (pointer: coarse) {
   .roster-voice {
     padding: 6px;
-    margin: -6px -3px;
+    margin: -6px;
   }
 }
 
@@ -2054,17 +2117,19 @@ body[data-active-scene="hub"] .home-link {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 8px;
 }
 
 .players[hidden] {
   display: none;
 }
 
+/* The icons sit together at the row's end, each a column as wide as it needs, hard by the distance, which starts right
+   after the crosshair and is as wide as the widest distance: the name keeps every other pixel. */
 .players-rows {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) 14px 12px 14px 6ch;
-  column-gap: 8px;
+  grid-template-columns: 8px minmax(0, 1fr) max-content 12px 12px max-content;
+  column-gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2088,7 +2153,7 @@ body[data-active-scene="hub"] .home-link {
 }
 
 .players-rows .roster-dots { grid-column: 1; }
-.players-rows .roster-marks { grid-column: 3; }
+.players-rows .roster-marks { grid-column: 3; gap: 4px; }
 
 .players-thump {
   display: inline-flex;
@@ -2117,6 +2182,7 @@ body[data-active-scene="hub"] .home-link {
   align-items: center;
   gap: 6px;
   min-width: 0;
+  padding-left: 2px;
   color: var(--paper);
 }
 
@@ -2187,7 +2253,7 @@ body[data-active-scene="hub"] .home-link {
 
 .players-distance {
   grid-column: 6;
-  justify-self: end;
+  justify-self: start;
   color: var(--paper);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
