@@ -93,6 +93,9 @@
   // whines climb (Hz) from their idle pitch at full speed; and how far it carries, half at `ref` metres.
   // Its travel alarm: how loud, its pitch (Hz), each beep's length and how often (s); and its horn: how loud, its two
   // notes (Hz) and how long it sounds (s).
+  // The control room's fire: its roar and crackle at full, the extinguisher's hiss, the strike's crack and thump, the
+  // fire going out (a falling hiss), the extinguisher's clank on its bracket; how far it carries, half at `ref` metres.
+  const ROOM = { roar: 0.14, crackle: 0.22, spray: 0.11, crack: 0.55, thump: 0.5, out: 0.12, clank: 0.25, ref: 9 };
   const CRANE = { whine: 0.05, hum: 0.07, rumble: 0.09, hoist: 0.05, hoistHum: 0.06, clunk: 0.4, click: 0.18, clink: 0.16, creak: 0.12, thud: 0.5, travelHz: [180, 520], hoistHz: [260, 760], ref: 10,
     alarm: 0.05, alarmHz: 1250, beep: 0.22, every: 0.75, horn: 0.3, hornHz: [311, 392], hornLen: 0.7 };
   // The film show's levels at full: the projector's motor, its whir, the gate's clatter and the lamp's buzz, the
@@ -113,9 +116,11 @@
       const saved = localStorage.getItem(VOLUME_KEY), v = Number(saved);
       if (saved !== null && v >= 0 && v <= 1) volume = v;
     } catch {}
-    const bed = {}, test = {}, sis = {}, proj = {}, fork = {}, crane = {};
+    const bed = {}, test = {}, sis = {}, proj = {}, fork = {}, crane = {}, room = {};
     // The crane's state, read live: { x, y, z, travel, hoist, alarm } (`watchCrane`).
     let craneState = null;
+    // The control room's fire, read live: { x, y, z, level, spray } (`watchRoom`).
+    let roomState = null;
     // Whether the projector runs, so a context opened mid-show starts it running, and the same for the forklift.
     let projOn = false, liftOn = false, liftReady = 0, liftDrive = 0, liftPump = 0;
     // Her voice while she talks: where she stands (her node's position, read live), until when, and its least level.
@@ -214,6 +219,7 @@
       initProjector();
       initForklift();
       initCrane();
+      initRoom();
       ready = true;
     };
 
@@ -255,6 +261,30 @@
     // which `update` sets from how fast it runs; and the cues' voices, placed apart where each cue is (`cuePan`, their
     // levels set by the cue): the brakes' clunk (a falling sine) and click, a chain's clink (noise through a narrow ringing
     // band), the load's creak (a slow saw through a band) and the thud.
+    // The control room's fire, placed there: its roar (low noise) and crackle (noise through a band, its level ticked by
+    // `update`) under their levels, the extinguisher's hiss (high noise); and the cues' voices, placed apart where each
+    // cue is (`cuePan`): the strike's crack (a bright noise burst) and thump, the fire's last falling hiss, and the
+    // bracket's clank.
+    const initRoom = () => {
+      room.pan = panner();
+      room.near = gain(0, room.pan);
+      room.roar = gain(0, room.near);
+      hissOf(filter("lowpass", 420, 0.8, room.roar));
+      room.crackle = gain(0, room.near);
+      hissOf(filter("bandpass", 2600, 1.4, room.crackle));
+      room.spray = gain(0, room.near);
+      hissOf(filter("highpass", 1800, 0.7, room.spray));
+      room.cuePan = panner();
+      room.crackGain = gain(0, room.cuePan);
+      hissOf(filter("highpass", 900, 0.7, room.crackGain));
+      room.thumpGain = gain(0, room.cuePan);
+      room.thump = osc("sine", 70, room.thumpGain);
+      room.outGain = gain(0, room.cuePan);
+      room.outFilter = filter("bandpass", 3000, 1.2, room.outGain);
+      hissOf(room.outFilter);
+      room.clankGain = gain(0, room.cuePan);
+      room.clank = osc("triangle", 420, filter("bandpass", 900, 6, room.clankGain));
+    };
     const initCrane = () => {
       crane.pan = panner();
       crane.near = gain(0, crane.pan);
@@ -870,6 +900,24 @@
           }
         }
       }
+      if (roomState) {
+        const r = roomState;
+        place(r.x, r.y, r.z, ROOM.ref);
+        set(room.near.gain, AT.level, now);
+        set(room.pan.pan, AT.pan, now);
+        set(room.roar.gain, ROOM.roar * r.level, now);
+        set(room.spray.gain, r.spray ? ROOM.spray : 0, now);
+        // The crackle: a few sharp pops this tenth of a second, as many as the fire is big.
+        const g = room.crackle.gain;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(0, now);
+        for (let i = 0; i < 4; i++) {
+          if (Math.random() > r.level * 0.9) continue;
+          const at = now + Math.random() * 0.1, loud = ROOM.crackle * r.level * (0.4 + Math.random() * 0.6);
+          g.setValueAtTime(loud, at);
+          g.exponentialRampToValueAtTime(0.0001, at + 0.02 + Math.random() * 0.03);
+        }
+      }
       if (liftOn && now > liftReady) {
         set(fork.whine.frequency, 440 + WORK.whine * liftDrive, now);
         set(fork.whineGain.gain, LIFT.whine * (1 + WORK.swell * liftDrive), now);
@@ -1148,6 +1196,38 @@
     };
     // The crane's state to read from now on, { x, y, z, travel, hoist }, kept current by the crane.
     const watchCrane = (state) => { craneState = state; };
+    // The control room's fire to read from now on, { x, y, z, level, spray }, kept current by `hangar-room-fire.js`.
+    const watchRoom = (state) => { roomState = state; };
+    // A cue from the control room at (x, y, z): `strike`, `out` or `clank`.
+    const roomCue = (name, x, y, z) => {
+      if (!ready || muted) return;
+      place(x, y, z, ROOM.ref);
+      const now = ctx.currentTime, k = AT.level;
+      room.cuePan.pan.cancelScheduledValues(now);
+      room.cuePan.pan.setValueAtTime(AT.pan, now);
+      if (name === "strike") {
+        const c = room.crackGain.gain, g = room.thumpGain.gain, f = room.thump.frequency;
+        for (const p of [c, g, f]) p.cancelScheduledValues(now);
+        c.setValueAtTime(ROOM.crack * k, now);
+        c.exponentialRampToValueAtTime(0.0001, now + 0.35);
+        f.setValueAtTime(120, now);
+        f.exponentialRampToValueAtTime(40, now + 0.4);
+        g.setValueAtTime(ROOM.thump * k, now);
+        g.exponentialRampToValueAtTime(0.0001, now + 0.5);
+      } else if (name === "out") {
+        const g = room.outGain.gain, f = room.outFilter.frequency;
+        g.cancelScheduledValues(now); f.cancelScheduledValues(now);
+        f.setValueAtTime(3500, now);
+        f.exponentialRampToValueAtTime(700, now + 1.2);
+        g.setValueAtTime(ROOM.out * k, now);
+        g.linearRampToValueAtTime(0, now + 1.3);
+      } else if (name === "clank") {
+        const g = room.clankGain.gain;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(ROOM.clank * k, now);
+        g.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      } else throw new Error(`hangarAudio: no room cue ${name}`);
+    };
     // A crane cue at (x, y, z): `brake`, `rattle`, `lift`, `land` or `horn`.
     const craneCue = (name, x, y, z) => {
       if (!ready || muted) return;
@@ -1223,11 +1303,13 @@
       for (const key of Object.keys(proj)) proj[key] = null;
       for (const key of Object.keys(crane)) crane[key] = null;
       craneState = null;
+      for (const key of Object.keys(room)) room[key] = null;
+      roomState = null;
       sisVoice.pos = null;
     };
 
     return {
-      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, blackout, lowrider, shuffle, power: setPower, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, watchCrane, craneCue, dispose,
+      listen, update, setMuted, setVolume, test: play, misfire, revs, zap, blackout, lowrider, shuffle, power: setPower, clang, voice, boot, poke, beep, denied, forklift, forkliftWork, horn, projector, clunk, roll, watchCrane, craneCue, watchRoom, roomCue, dispose,
       get muted() { return muted; },
       get volume() { return volume; },
       get ready() { return ready; },
