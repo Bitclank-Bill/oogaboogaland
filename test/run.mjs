@@ -1643,7 +1643,11 @@ const { npcPathWalkingProbe, npcCenterlineProbe, npcLowerTurnsProbe, npcStairPas
             replanned: false, navigationHop: false, escaped: false });
           Object.assign(cave.root.position, { x: start.x, y: cave.baseY + B.island.surfaceAt(start.x, start.z), z: start.z });
           cave.act.kind = "wander"; Object.assign(cave.act.spot, { x: end.x, z: end.z, ry: 0 });
-          cave.walk = { tx: end.x, tz: end.z, speed: 1.7, phase: 0, heading: 0, to: "spot" };
+          // A passive NPC walks predetermined waypoints only: give it this trail's
+          // own authored points, in walking order, as its route.
+          const trail = direction > 0 ? points : [...points].reverse();
+          cave.walk = { tx: end.x, tz: end.z, speed: 1.7, phase: 0, heading: 0, to: "spot",
+            route: trail.map(q => ({ x: q.x, z: q.z, fixed: false })), leg: 0 };
           cave.hop = cave.hopV = 0; cave.avoidance.tx = cave.pathing.tx = NaN; cave.avoidance.navigation.mode = 0;
           S.updateWorld(scene.root); B.headquarters.solids.props.sync();
           let frames = 0, error = 0, laneError = 0, laneSamples = 0, rightSamples = 0, onPath = 0, deviation = null;
@@ -6502,6 +6506,7 @@ const workCaveTrips = async (b) => {
     const sites = repos.map(repo => B.crew.workSites.findIndex(site => site.repo === repo));
     const rows = actors.map(c => ({ name: c.contributor.name, outbound: [0, 0, 0], returned: [0, 0, 0],
       phase: "", stall: 0, maximumStall: 0, maximumStep: 0, missingRoutes: 0,
+      fixedFrames: 0, fixedStall: 0, maximumFixedStall: 0, maximumTerrainError: 0,
       resets: c.progress.resets, jumps: c.avoidance.navigation.jumps }));
     let time = BL.scenes.hub.elapsed, frames = 0;
     try {
@@ -6526,6 +6531,19 @@ const workCaveTrips = async (b) => {
           const moving = c.work.phase === "outbound" || c.work.phase === "station" || c.work.phase === "return";
           row.stall = moving && step < 0.001 ? row.stall + dt : 0;
           row.maximumStall = Math.max(row.maximumStall, row.stall); row.maximumStep = Math.max(row.maximumStep, step);
+          // Passive fixed meadow legs stand on the island terrain alone and keep
+          // moving. The terrain reference is the same island support query the Hub
+          // gives these legs (step, abyss floor and player radius as in scene-hub).
+          // Hostile blocking and object floors are covered by the unit proof.
+          const fixedLeg = c.nonInteractive && !c.walk && !c.bedTravel.mode
+            && (c.work.phase === "outbound" && c.work.index === 0 || c.work.phase === "return" && c.work.index < 0);
+          if (fixedLeg) {
+            const feet = p.y - c.baseY, terrain = B.island.supportAt(p.x, p.z, feet, BL.pilot.WALK.step, -120, 0.3);
+            row.fixedFrames++;
+            row.maximumTerrainError = Math.max(row.maximumTerrainError, Math.abs(feet - terrain));
+            row.fixedStall = step < 0.001 ? row.fixedStall + dt : 0;
+            row.maximumFixedStall = Math.max(row.maximumFixedStall, row.fixedStall);
+          } else row.fixedStall = 0;
           // Preserve the first bad frame, not only the eventual arrival.
           // Rare traffic failures otherwise lose the blocked route when the
           // recovery jump or relocation lets the worker finish its trip.
@@ -6538,7 +6556,8 @@ const workCaveTrips = async (b) => {
                 .map(other => ({ name: other.contributor.name, position: { ...other.root.position }, phase: other.work.phase })) };
           }
           const approach = B.crew.workSites[c.work.site].route.at(-1);
-          const followsPath = c.work.phase === "outbound" && Math.hypot(p.x - approach.x, p.z - approach.z) > 3
+          // Only the meadow legs use a planner; passive cave legs walk the authored route points directly.
+          const followsPath = c.work.phase === "outbound" && c.work.index === 0 && Math.hypot(p.x - approach.x, p.z - approach.z) > 3
             || c.work.phase === "return" && c.work.index < 0 && !c.pileApproach
               && Math.hypot(p.x, p.z) > B.island.path.debug.ringLoadingRadius + 2;
           if (followsPath && !c.work.direct && !c.hop && !c.bedTravel.mode
@@ -6562,6 +6581,9 @@ const workCaveTrips = async (b) => {
     r.sites.length === 3 && r.sites.every(Boolean) && r.rows.length === 5 && r.rows.every(row => row.outbound.every(n => n >= 2)
       && row.returned.every(n => n >= 2) && row.maximumStall < 5 && row.maximumStep <= 2.8 / 20 + 1e-6
       && row.missingRoutes === 0 && row.resets === 0 && row.jumps === 0), JSON.stringify({ failures: r.rows.filter(row => row.failure), ...r }));
+  record("work movement cave trips: passive workers' fixed meadow legs stand exactly on the island terrain support and keep moving",
+    r.rows.length === 5 && r.rows.every(row => row.fixedFrames > 0 && row.maximumTerrainError < 1e-6 && row.maximumFixedStall < 1),
+    JSON.stringify(r.rows.map(({ name, fixedFrames, maximumTerrainError, maximumFixedStall }) => ({ name, fixedFrames, maximumTerrainError, maximumFixedStall }))));
   for (const dt of [1 / 20, 1 / 60]) {
     const jitter = await b.evaluate(`(${npcLaneSpacingProbe.toString()})(${JSON.stringify({ dt, jittering: true })})`);
     record(`work movement cave trips: ${1 / dt}Hz moving-without-progress recovery walks around the blocked side without relocation`,
@@ -12138,6 +12160,28 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     const restoredSlots = sleepers.map(e => e.sleep.slot);
     H.setGameMode(false);
     const stableExit = normal() && sleepers.every((e, i) => e.sleep.slot === restoredSlots[i]);
+    // Clanking to chilling in view is a walk: the passive worker leaves by its
+    // authored exit toward its Ooga's pile slot, moving continuously (no
+    // relocation). A later sleep still takes it to bed or out of sight at once.
+    let chillSteps = 0, chillJump = 0, chillLeft = false, chillPile = false, chillAtPile = false, chillLounge = false, chillFrames = 0;
+    let chillLast = { ...worker.root.position };
+    worker.owner.override = "chilling"; B.crew.refreshStates(true);
+    // Bounded: up to 60 s of simulation, stopping once it has reached its lounge leg.
+    for (; chillFrames < 1800 && !chillLounge; chillFrames++) {
+      C.update(1 / 30);
+      const q = worker.root.position, step = Math.hypot(q.x - chillLast.x, q.z - chillLast.z);
+      chillJump = Math.max(chillJump, step); if (step > 1e-4) chillSteps++;
+      chillLeft ||= worker.phase === "leave" || worker.route === "pile";
+      chillPile ||= worker.route === "pile";
+      chillAtPile ||= worker.route === "pile" && Math.hypot(worker.goalX - q.x, worker.goalZ - q.z) <= 0.5;
+      chillLounge = chillAtPile && worker.phase === "chill";
+      chillLast = { ...q };
+    }
+    const chillWalk = worker.nonInteractive && worker.mode === "chilling" && worker.active && worker.root.visible
+      && chillLeft && chillPile && chillAtPile && chillLounge && chillSteps > 0 && chillJump < 0.5;
+    worker.owner.override = "sleeping"; B.crew.refreshStates(true); C.update(1 / 30);
+    const chillInterrupted = worker.mode === "sleeping" && worker.sleep.slot >= 0 || !worker.root.visible;
+    reset(sleepers);
     // Real ownership entry points must cancel a pulse immediately, in either half of the transfer.
     const beamEntry = sleepers[0], noBeam = () => !BL.scenes.hub.root.children.some(n => n.geometry?.matrixGlyph && n.fixedInstanceCapacity && n.visible && n.instanceCount);
     beamEntry.sleep.stage = "beamOut"; beamEntry.sleep.beamTime = 0;
@@ -12191,11 +12235,14 @@ const hubGorillaPopulation = { name: "gorilla population restoration", why: "reg
     }
     const queuedArrival = queued.every(e => e.sleep.stage === "asleep" && e.sleep.slot >= 0 && e.gorilla.form === "ape" && !e.root.matrixNative);
     const boundedRecovery = settledAtOnce && maxBeams === 0 && queuedArrival && noBeam();
-    return { boundedRecovery, maxBeams, heldQueue, settledAtOnce, placedDirectly, queuedArrival, beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
+    return { chillWalk, chillInterrupted, chillSteps, chillJump, chillPile, chillAtPile, chillLounge, chillFrames,
+      boundedRecovery, maxBeams, heldQueue, settledAtOnce, placedDirectly, queuedArrival, beamSuspend, lateSleepers, stable, capped, reused, heldWhileDriven, uniqueAfterRelease, hidden, restored, stableExit, beamPossession, beamArrivalPossession, beamRemote, beamReset,
       population: [worker, chiller, away, ...sleepers].map(e => ({ state: e.owner.state, mode: e.mode, active: e.active, visible: e.root.visible, bed: e.sleep.slot })) };
   })()`);
   record("gorilla population: late-roster sleepers get exclusive beds; working, chilling and away owners get none; overflow waits at the 20-bed cap, respects driven reservations and reuses released beds", r.lateSleepers && r.stable && r.capped && r.reused && r.heldWhileDriven && r.uniqueAfterRelease, JSON.stringify(r));
   record("gorilla population: island game mode hides companions and its exit immediately restores current working, chilling and sleeping gorillas; repeated exit keeps their beds", r.hidden && r.restored && r.stableExit, JSON.stringify(r));
+  record("gorilla population: a passive working gorilla switched to chilling walks out by its authored exit, reaches its Ooga's pile slot and only then heads for a lounge, without relocating, and a later sleep still takes it at once",
+    r.chillWalk && r.chillInterrupted, JSON.stringify(r));
   record("gorilla sleep beam: a passive companion caught in either legacy transfer stage settles straight into its reserved bed with no glyphs; possession keeps it there undisplaced, and remote takeover or population reset releases it", r.beamPossession && r.beamArrivalPossession && r.beamRemote && r.beamReset && r.beamSuspend, JSON.stringify(r));
   record("gorilla sleep recovery: ten passive sleepers stalled mid-walk on real rigs are placed into their reserved beds on the next update, with no queue and no legacy beam", r.boundedRecovery, JSON.stringify(r));
 } };
@@ -26301,7 +26348,32 @@ this.near = () => recoverWalker(cave, 0, 0.25, 0.1); this.search = () => searchW
   clear = false; const wall = !floorContext.walk(0, 0, 0, 0.1, 3, 1.5, actor);
   clear = true; support = -Infinity; const water = !floorContext.walk(0, 0, 0, 0.1, -5, 1.5, actor);
   terrainAllowed = true; const terrain = floorContext.walk(0, 0, 0, 0.1, -5, 1.5, actor);
-  return { corner, retained, replan, reset, nonempty, reopened, blocked, obstacleJump, platform, wall, water, terrain };
+  // The real walkToward and groundY: a passive fixed meadow leg walks through a
+  // fully blocking object and follows sloped terrain, never consulting the
+  // object-supported floor (higher than the terrain here). An ordinary walker
+  // still stops at the object and still stands on that object support.
+  const toward = crewSource.slice(crewSource.indexOf("    const walkToward ="), crewSource.indexOf("    const runBed ="));
+  const grounding = crewSource.slice(crewSource.indexOf("    const groundY ="), crewSource.indexOf("    const grounded ="));
+  let fixed = true, clearCalls = 0, objectCalls = 0, terrainCalls = 0;
+  const slope = x => 0.1 * x, objectFloor = 0.9;
+  const walker = { baseY: 0, restLower: 0, root: { position: { x: 0, y: 0, z: 0 }, rotation: { y: 0 } }, traffic: { yielding: false, waiting: false },
+    progress: { backoff: 0 }, avoidance: { active: false, side: 1, stalled: 0, navigation: { mode: 0 } }, shoulder: { prop: false } };
+  const passContext = { PLAYER_STEP: 0.05, NAV_STEP: 0.025, NPC_PASS_REACH: 2, cave: walker,
+    fixedTrip: () => fixed, walkerClear: () => (clearCalls++, false), shoulderStep: () => -1,
+    fixedTerrainAt: x => (terrainCalls++, slope(x)), groundAt: () => (objectCalls++, objectFloor) };
+  runInNewContext(`${grounding} ${toward} this.step = () => walkToward(cave, 2, 0, 1); this.ground = () => groundY(cave);`, passContext);
+  let throughSteps = 0, onTerrain = true;
+  const p = walker.root.position;
+  for (let i = 0; i < 10; i++) {
+    throughSteps += passContext.step() > 0 ? 1 : 0;
+    onTerrain &&= Math.abs(p.y - slope(p.x)) < 1e-12;
+  }
+  const passedThrough = throughSteps === 10 && Math.abs(p.x - 0.5) < 1e-9 && p.z === 0 && onTerrain
+    && Math.abs(p.y - 0.05) < 1e-12 && clearCalls === 0 && objectCalls === 0 && terrainCalls === 10;
+  fixed = false; const before = { ...p };
+  const ordinaryHeld = passContext.step() === 0 && p.x === before.x && p.y === before.y && clearCalls > 0
+    && passContext.ground() === objectFloor && objectCalls === 1 && terrainCalls === 10;
+  return { corner, retained, replan, reset, nonempty, reopened, blocked, obstacleJump, platform, wall, water, terrain, passedThrough, ordinaryHeld };
 };
 
 const reviewCrowdAndFallbackProof = async () => {
@@ -26373,6 +26445,23 @@ const passiveClankerSupportProof = async () => {
     && Math.abs(item.node.scale.y - 0.2 * 0.65) < 1e-12;
   return { scenery, driven, passiveRider, passivePound, drivenPound };
 };
+// The real status-beam module: clanking to chilling in view never shows glyphs,
+// even while walking a 20 Hz step each update, and a real relocation still does.
+const statusBeamProof = async () => {
+  const shows = [], context = { window: { BL: { sleepBeam: { create: () => ({ show: (...args) => shows.push(args), hide: () => {},
+    liveGeometry: () => {}, dispose: () => {} }) } } } };
+  runInNewContext(await readFile(join(root, "src/js/npc-status-beams.js"), "utf8"), context);
+  const actor = () => ({ state: "working", nonInteractive: true, baseY: 0, root: { visible: true, position: { x: 0, y: 0, z: 0 }, rotation: { y: 0 } } });
+  const walker = actor(), sleeper = actor();
+  const beams = context.window.BL.npcStatusBeams.create({ root: {}, crew: { list: [walker, sleeper] }, clankers: { list: [] } });
+  beams.update(0.05);
+  walker.state = "chilling";
+  for (let i = 0; i < 20; i++) { walker.root.position.x += 0.14; beams.update(0.05); }
+  const walkedWithoutGlyphs = shows.length === 0;
+  sleeper.state = "sleeping"; sleeper.root.position.x = 9;
+  for (let i = 0; i < 30; i++) beams.update(0.05);
+  return { walkedWithoutGlyphs, relocationBeams: shows.length > 0 };
+};
 // Passive meadow legs: the real fixed planner leaves the pile along its ring and
 // out along an authored spoke, never across the pile, and never reuses a graph lane.
 const fixedRoutineProof = async () => {
@@ -26390,8 +26479,108 @@ const fixedRoutineProof = async () => {
   const stamped = state.version !== island.path.version;
   const plans = state.plans; state.version = island.path.version; fixed.target(cave, 30, 1);
   const replansGraphLane = state.plans === plans + 1;
+  // Clanking to chilling, through the real crew route walk: from mid-outbound or
+  // mid-return inside a cave, back along the authored route points, along the
+  // planner to the pile slot, then to the chill spot. It never consults object
+  // blocking or object floors and stays on (sloped) terrain throughout.
+  const crewSource = await readFile(join(root, "src/js/crew.js"), "utf8");
+  const slice = (from, to) => crewSource.slice(crewSource.indexOf(from), crewSource.indexOf(to));
+  const chillCode = slice("    const groundY =", "    const grounded =") + slice("    const walkToward =", "    const runBed =")
+    + slice("    const runRouteWalk =", "    const runWalk =");
+  const route = [{ x: 20, z: 0 }, { x: 24, z: 2 }, { x: 26, z: 4 }], slot = { x: 0, z: -4 }, spot = { x: -3, z: 3 };
+  const chillTrip = (phase, index, at, { slotless = false, noSpot = false } = {}) => {
+    let blockCalls = 0, objectFloorCalls = 0, arrived = false, meal = false, onTerrain = true;
+    const steps = [];
+    const ooga = { nonInteractive: true, state: "working", baseY: 0, restLower: 0, slot: slotless ? null : slot,
+      root: { position: { x: at.x, y: 0.02 * at.x, z: at.z }, rotation: { y: 0 } }, pathing: P.create({ island }).createState(),
+      act: { spot: { x: 0, z: 0, ry: NaN }, trips: 0, kind: "work" }, work: { site: 0, phase, index, plannedSite: 0 },
+      avoidance: { tx: 0 }, parts: { snack: { visible: true } }, bedTravel: { mode: "" } };
+    const ctx = { PLAYER_STEP: 0.05, WANDER_SPEED: 1, fixedPaths: fixed, workSites: [{ route }], cave: ooga,
+      wantedFanRadius: () => 5, elapsed: 0, chillPause: () => 10,
+      // Every grounded step lands where walkToward placed it; log those positions.
+      fixedTrip: c => !!c.walk?.route, fixedTerrainAt: (x, z) => (steps.push([x, z]), 0.02 * x), groundAt: () => (objectFloorCalls++, 5),
+      walkerClear: () => (blockCalls++, false), wanderSpot: out => { if (noSpot) return false; out.x = spot.x; out.z = spot.z; return true; },
+      closestSlot: () => slotless ? null : slot, stopReload: () => {}, stopBurst: () => {}, releaseBuild: () => {},
+      arriveAtSpot: () => { arrived = true; }, startMeal: () => { meal = true; }, standPose: () => {}, walkPose: () => {} };
+    runInNewContext(`${chillCode} this.start = () => startChillReturn(cave); this.walk = dt => runRouteWalk(cave, dt);`, ctx);
+    const started = ctx.start(), legs = ooga.walk?.route.map(({ x, z, fixed }) => [x, z, fixed]) || [];
+    let frames = 0;
+    for (; frames < 4000 && ooga.walk; frames++) {
+      ctx.walk(0.05);
+      const p = ooga.root.position;
+      onTerrain &&= Math.abs(p.y - 0.02 * p.x) < 1e-9;
+    }
+    return { started, state: ooga.state, legs, steps, frames, arrived, meal, onTerrain, blockCalls, objectFloorCalls,
+      walking: !!ooga.walk, kind: ooga.act.kind, end: { x: ooga.root.position.x, z: ooga.root.position.z } };
+  };
+  const same = (a, b) => Math.abs(a[0] - b.x) < 1e-6 && Math.abs(a[1] - b.z) < 1e-6;
+  // Each expected waypoint must be stepped onto, in this order.
+  const inOrder = (steps, expected) => { let at = 0; for (const point of expected) { while (at < steps.length && !same(steps[at], point)) at++; if (at++ >= steps.length) return false; } return true; };
+  const outboundTrip = chillTrip("outbound", 2, { x: 25, z: 3 }), returnTrip = chillTrip("return", 0, { x: 21, z: 0.5 });
+  const viaPile = (trip, expected) => trip.started && trip.state === "chilling" && trip.arrived && !trip.meal && trip.onTerrain
+    && !trip.blockCalls && !trip.objectFloorCalls && inOrder(trip.steps, expected) && same([trip.end.x, trip.end.z], spot);
+  const midOutboundChill = viaPile(outboundTrip, [route[1], route[0], slot, spot]);
+  const returningChill = viaPile(returnTrip, [route[0], slot, spot]);
+  // No loading slot: the pile ring in the walker's own direction still comes first.
+  const slotlessTrip = chillTrip("return", 0, { x: 21, z: 0.5 }, { slotless: true }), ringAngle = Math.atan2(21, 0.5);
+  const slotlessChill = viaPile(slotlessTrip, [route[0], { x: Math.sin(ringAngle) * 5, z: Math.cos(ringAngle) * 5 }, spot]);
+  // No chill spot free: it still walks to the pile, then rests there.
+  const restTrip = chillTrip("return", 0, { x: 21, z: 0.5 }, { noSpot: true });
+  const restsAtPile = restTrip.started && restTrip.state === "chilling" && !restTrip.arrived && !restTrip.walking
+    && restTrip.kind === "idle" && inOrder(restTrip.steps, [route[0], slot]) && same([restTrip.end.x, restTrip.end.z], slot)
+    && !restTrip.blockCalls && !restTrip.objectFloorCalls;
+  // The real passive companion stepper: a planned meadow leg from the pile to a
+  // cave's apron follows the ring and one spoke, never crossing the pile, on
+  // terrain; only the wall clearance is consulted. A wall step hands over to
+  // the ordinary controller (wall climbs).
+  const clankerSource = await readFile(join(root, "src/js/clankers.js"), "utf8");
+  const stepperCode = clankerSource.slice(clankerSource.indexOf("    const PASSIVE_WALKER ="), clankerSource.indexOf("    const move = (e, dt, speed) => {"));
+  const gorillaLeg = (wall) => {
+    let wallChecks = 0, moves = 0, inside = 0;
+    const gorilla = { nonInteractive: true, heading: Math.PI, speed: 0, blocked: 0, stuckTime: 0, goalX: 30, goalY: 0, goalZ: 1,
+      root: { position: { x: 0, y: 0, z: -4 } } };
+    const c = { clamp: (v, a, b) => Math.max(a, Math.min(b, v)), PROP_STEP: 1.16, ctx: { npcFixedPaths: fixed, npcPathState: () => P.create({ island }).createState() },
+      support: (_e, x) => 0.02 * x, groundStepClear: () => (wallChecks++, !wall),
+      setSupportY: (e, y) => { e.root.position.y = y; }, move: () => { moves++; }, e: gorilla };
+    runInNewContext(`${stepperCode} this.step = () => movePassive(e, 1 / 30, 2.7, true);`, c);
+    const p = gorilla.root.position;
+    let onTerrain = true, frames = 0;
+    for (; frames < 2000 && Math.hypot(p.x - 30, p.z - 1) > 0.02 && !moves; frames++) {
+      c.step();
+      onTerrain &&= Math.abs(p.y - 0.02 * p.x) < 1e-9;
+      if (frames > 30 && Math.hypot(p.x, p.z) < 4.9) inside++;
+    }
+    return { arrived: Math.hypot(p.x - 30, p.z - 1) <= 0.02, onTerrain, wallChecks, moves, inside, frames };
+  };
+  const gorillaTrip = gorillaLeg(false), gorillaWall = gorillaLeg(true);
+  const gorillaPlanned = gorillaTrip.arrived && gorillaTrip.onTerrain && !gorillaTrip.moves && !gorillaTrip.inside && gorillaTrip.wallChecks > 0;
+  const gorillaClimbsWalls = gorillaWall.moves === 1 && !gorillaWall.arrived;
+  // The real doorway claim: a passive companion passes a held portal without
+  // scanning or taking it (the holder keeps its claim), drops a stale claim of
+  // its own, and a driven gorilla still waits its turn.
+  const portalCode = clankerSource.slice(clankerSource.indexOf("    const releasePortal ="), clankerSource.indexOf("    const caveAt ="));
+  let caveScans = 0;
+  const walker = (nonInteractive, controlled) => ({ nonInteractive, controlled, portal: -1, portalSince: 0, portalWait: true, route: "exit",
+    phase: "leave", fromSite: 0, active: true, jump: { active: false }, root: { position: { x: 0, y: 0, z: -2 } } });
+  const holder = walker(false, true), passive = walker(true, false), driven = walker(false, true);
+  holder.route = "work";
+  const pc = { portals: [holder], sites: [{ mouth: { x: 0, z: 0 } }], list: [holder, passive, driven], elapsed: 1,
+    caveAt: () => (caveScans++, 0) };
+  holder.portal = 0;
+  runInNewContext(`${portalCode} this.claim = (e) => claimPortal(e, 0);`, pc);
+  const passedHeld = pc.claim(passive) === true && pc.portals[0] === holder && holder.portal === 0 && passive.portal === -1
+    && !passive.portalWait && caveScans === 0;
+  pc.portals[0] = passive; passive.portal = 0;
+  const droppedStale = pc.claim(passive) === true && pc.portals[0] === null && passive.portal === -1 && caveScans === 0;
+  pc.portals[0] = holder;
+  const drivenWaits = pc.claim(driven) === false && pc.portals[0] === holder && caveScans > 0;
+  const passivePortal = passedHeld && droppedStale && drivenWaits;
   island.path.centerlines = [];
-  return { outside, ring, arrives, stamped, replansGraphLane, unsupported: P.fixed(island) === null };
+  return { outside, ring, arrives, stamped, replansGraphLane, midOutboundChill, returningChill, slotlessChill, restsAtPile,
+    gorillaPlanned, gorillaClimbsWalls, passivePortal, gorillaTrip, gorillaWall,
+    portal: { passedHeld, droppedStale, drivenWaits, caveScans },
+    unsupported: P.fixed(island) === null,
+    trips: [outboundTrip, returnTrip, slotlessTrip, restTrip].map(({ steps, ...trip }) => ({ ...trip, steps: steps.length })) };
 };
 // The real weapon targets: a passive NPC neither takes nor blocks a shot, yet
 // hover/carry picks still see it; a non-passive body in its place takes the hit.
@@ -26885,14 +27074,17 @@ const unitChecks = async () => {
   const passiveSupport = await passiveClankerSupportProof();
   record("passive clanker support: a player is never held up by an NPC gorilla while the scenery beneath still holds them, a driven gorilla still does, and a passive NPC rides neither; a passive gorilla's pound builds no cave prop while a driven one's still does",
     Object.values(passiveSupport).every(Boolean), JSON.stringify(passiveSupport));
+  const statusBeams = await statusBeamProof();
+  record("passive status beams: clanking to chilling in view walks without glyphs at 20 Hz steps, while a relocation to bed still beams",
+    Object.values(statusBeams).every(Boolean), JSON.stringify(statusBeams));
   const fixedRoutine = await fixedRoutineProof();
-  record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane",
+  record("passive work legs: the authored fixed planner circles the real pile ring, follows one spoke out to the target, never crosses the pile, and replans rather than reuse a graph lane; clanking to chilling from mid-outbound or mid-return walks back along the cave route to the pile slot, then to the chill spot, on terrain and ignoring objects",
     Object.values(fixedRoutine).every(Boolean), JSON.stringify(fixedRoutine));
   const passiveWeapons = await passiveWeaponTargetProof();
   record("passive weapon targets: a shot passes through a passive NPC to the body behind it, hover and carry picks still find the NPC, and a non-passive body takes the hit",
     Object.values(passiveWeapons).every(Boolean), JSON.stringify(passiveWeapons));
   const movementReview = await reviewMovementProof();
-  record("review movement: recovery follows the next lane bend, retains stalls on the same leg and resets on replans; solid platforms bypass terrain gates while walls and water remain blocked", Object.values(movementReview).every(Boolean), JSON.stringify(movementReview));
+  record("review movement: recovery follows the next lane bend, retains stalls on the same leg and resets on replans; solid platforms bypass terrain gates while walls and water remain blocked; a passive fixed meadow leg walks through a blocking object at terrain height while an ordinary walker still stops", Object.values(movementReview).every(Boolean), JSON.stringify(movementReview));
 
   const waterProgram = selectedWaterProgramProof();
   record("DSB water: environment and sampler bindings follow the selected ordinary or rig shader while state replacement releases owned textures", waterProgram.cases === 2 && waterProgram.failures === 0, JSON.stringify(waterProgram));

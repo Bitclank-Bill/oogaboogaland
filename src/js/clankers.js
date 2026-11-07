@@ -150,6 +150,12 @@
       e.portal = -1;
     };
     const claimPortal = (e, site) => {
+      // A passive companion passes through every doorway at once: it never takes,
+      // holds or waits on the shared portal, and drops any stale claim of its own.
+      if (e.nonInteractive && !e.controlled) {
+        releasePortal(e); e.portalWait = false;
+        return true;
+      }
       if (portals[site] === e) {
         if (e.route !== "exit" && e.route !== "enter" && !e.jump.active && caveAt(e.root.position.x, e.root.position.y, e.root.position.z) !== site
           && elapsed - e.portalSince > 18) {
@@ -743,6 +749,13 @@
     };
     const labGoal = (e, x, y, z, heading, partial = false) => {
       const job = e.lab, p = e.root.position;
+      // A passive companion walks straight to its authored lab point: no
+      // route search around benches, equipment or coworkers.
+      if (e.nonInteractive && !e.controlled) {
+        job.pathCount = job.pathIndex = 0; job.pathFixed = false; job.targetX = x; job.targetY = y; job.targetZ = z;
+        setGoal(e, x, y, z);
+        return true;
+      }
       if (job.targetX !== x || job.targetY !== y || job.targetZ !== z) {
         job.pathCount = job.pathIndex = 0; job.pathAt = job.coordinationUntil = job.trafficWait = 0; job.pathPartial = false;
       }
@@ -992,6 +1005,12 @@
     };
     const yieldLab = (e, dt) => {
       const job = e.lab, p = e.root.position, point = job.yieldPoint;
+      // A passive companion yields to nobody: clear any stale request, no route search.
+      if (e.nonInteractive && !e.controlled) {
+        job.yielding = 0; job.yieldFor = null; job.yieldStation = -1; job.yieldReady = false;
+        job.coordinationUntil = job.trafficWait = 0;
+        return;
+      }
       if (job.item >= 0) { workLab(e, dt); return; }
       e.motion.labWork = ""; e.motion.labReach = 0; e.motion.labSqueeze = false;
       if (!e.gorilla.labWalkCompact) { e.speed = 0; return; }
@@ -1109,7 +1128,8 @@
         // Changing jobs is optional. Keep the current desk productive until a
         // complete route is reserved; staging in its aisle would release the
         // old job before we know how to reach the new one.
-        if (moving && !planLabPath(e, destination.x, destination.y, destination.z, destination.heading)) continue;
+        // A passive companion walks lab points directly, so it needs no route proof.
+        if (moving && !(e.nonInteractive && !e.controlled) && !planLabPath(e, destination.x, destination.y, destination.z, destination.heading)) continue;
         chosen = index; chosenPickup = pickup; break;
       }
       e.radius = radius; e.height = height; e.compact = compact; e.footprintMode = mode; e.planningLab = false; e.planningLabWork = ""; e.planningLabStation = -1;
@@ -2031,6 +2051,7 @@
     };
     const activate = (e, atPosition = false) => {
       if (e.remoteControlled) return;
+      e.pileFirst = false;
       if (rage) rage.cancel(e, "respawn");
       if (ctx.rageRelease) ctx.rageRelease(e);
       clearWallSearch(e);
@@ -4423,9 +4444,24 @@
             setGoal(e, POINT.x, POINT.y, POINT.z);
             return true;
           }
+          // A passive walk from work visits its Ooga's pile slot before a lounge.
+          if (e.pileFirst) {
+            e.pileFirst = false; e.route = "pile";
+            // Its Ooga's loading slot; else the pile's loading ring, in its own direction.
+            const slot = e.owner.slot, angle = Math.atan2(p.x, p.z), ring = ctx.pileRingRadius ? ctx.pileRingRadius() : 6;
+            const x = slot ? slot.x : Math.sin(angle) * ring, z = slot ? slot.z : Math.cos(angle) * ring;
+            const y = groundAt(x, z, Infinity);
+            setGoal(e, x, Number.isFinite(y) ? y : p.y, z);
+            return true;
+          }
           e.phase = "chill"; e.route = ""; e.exitFootprint = true;
           return chooseChill(e, true);
         }
+      }
+      if (e.route === "pile") {
+        if (Math.hypot(e.goalX - p.x, e.goalZ - p.z) > 0.5) return true;
+        e.phase = "chill"; e.route = ""; e.exitFootprint = true;
+        return chooseChill(e, true);
       }
       if (e.route === "island") {
         if (Math.hypot(e.goalX - p.x, e.goalZ - p.z) > 0.3) return true;
@@ -4597,6 +4633,33 @@
       }
       setSupportY(e, y, x, z, heading, dt * 3); p.x = x; p.z = z; e.heading = heading;
       e.speed = step / dt; e.blocked = 0;
+    };
+    // A passive companion's travel steps straight at its authored goal (exit,
+    // apron, entry, slot or pile); on the meadow legs it follows the authored
+    // spokes and pile ring instead (`ctx.npcFixedPaths`). Support and clearance
+    // are terrain and cave walls only. A step a wall refuses goes to the
+    // ordinary controller, which owns wall climbs and roof descents.
+    const PASSIVE_WALKER = { pathing: null, root: null };
+    const movePassive = (e, dt, speed, planned) => {
+      const p = e.root.position;
+      let tx = e.goalX, tz = e.goalZ;
+      if (planned && ctx.npcFixedPaths && ctx.npcPathState) {
+        e.pathing = e.pathing || ctx.npcPathState();
+        PASSIVE_WALKER.pathing = e.pathing; PASSIVE_WALKER.root = e.root;
+        ctx.npcFixedPaths.target(PASSIVE_WALKER, e.goalX, e.goalZ);
+        tx = e.pathing.targetX; tz = e.pathing.targetZ;
+      }
+      const dx = tx - p.x, dz = tz - p.z, distance = Math.hypot(dx, dz);
+      if (distance < 0.02) { e.speed = 0; return; }
+      const desired = Math.atan2(dx, dz), turn = Math.atan2(Math.sin(desired - e.heading), Math.cos(desired - e.heading));
+      const heading = e.heading + clamp(turn, -dt * 7, dt * 7), step = Math.min(distance, speed * dt);
+      const x = p.x + dx / distance * step, z = p.z + dz / distance * step;
+      const y = support(e, x, z, p.y, PROP_STEP, heading);
+      if (!Number.isFinite(y) || Math.abs(y - p.y) > PROP_STEP || !groundStepClear(e, p.x, p.y, p.z, x, y, z, e.heading, heading)) {
+        move(e, dt, speed); return;
+      }
+      setSupportY(e, y, x, z, heading, dt * 3); p.x = x; p.z = z; e.heading = heading;
+      e.speed = step / dt; e.blocked = e.stuckTime = 0;
     };
     const move = (e, dt, speed) => {
       if (e.recover > 0) { e.speed = 0; return; }
@@ -6894,6 +6957,17 @@
         return true;
       }
       if (state === "sleeping" && s.stage === "asleep" && e.active) return false;
+      // Clanking to chilling in view is a walk, not a beam: out of its cave by the
+      // authored exit (climbs and wall descents included), to its Ooga's pile
+      // slot, then a lounge (travelGoal's "pile" route). A climb, jump or fall
+      // in progress finishes first.
+      if (state === "chilling" && e.mode === "working" && e.active && e.root.visible && !s.stage) {
+        if (e.climb.active || e.jump.active || e.drive.airborne || e.fire.rolling) return false;
+        releaseLab(e); releaseOffice(e); releasePortal(e); clearWallSearch(e);
+        e.mode = "chilling"; e.fromSite = caveAt(p.x, p.y, p.z); e.phase = "leave"; e.route = "exit";
+        e.pileFirst = true; e.hasSlot = false; e.entryTurn = false; e.pound = e.beat = e.stand = e.rest = 0;
+        return false;
+      }
       if (state !== "sleeping" && !s.stage && e.active && e.mode === state) return false;
       if (e.retry > 0) { e.retry = Math.max(0, e.retry - dt); return true; }
       releasePortal(e); releaseLab(e); releaseOffice(e); clearWallSearch(e);
@@ -7168,7 +7242,9 @@
           if (!e.jump.active) {
             // A short prop can lift the feet above the ground-level goal too.
             // Keep its supported exit on the ordinary steered walker.
-            if (e.route === "apron" && p.y > e.goalY + 0.8 && !raisedSupport(e) && caveAt(p.x, p.y, p.z) < 0)
+            if (e.nonInteractive && !e.climb.active && !e.drive.airborne)
+              movePassive(e, dt, e.mode === "chilling" ? CHILL_SPEED : SPEED, e.route === "apron" || e.route === "pile");
+            else if (e.route === "apron" && p.y > e.goalY + 0.8 && !raisedSupport(e) && caveAt(p.x, p.y, p.z) < 0)
               runDownhill(e, dt, Math.atan2(e.goalX - p.x, e.goalZ - p.z));
             else if (enteringAisle(e)) moveEntryAisle(e, dt);
             else if (e.motion.lab && !e.motion.labRunIn && (e.fromSite === labSite && e.route === "exit"

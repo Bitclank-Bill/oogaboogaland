@@ -1141,15 +1141,25 @@
     // A scene opts in (the hub does): roster NPCs then pass through peers and
     // players and skip incidental contact effects. A driven Ooga stays normal.
     const passiveNpcs = ctx.npcPassive === true;
-    // A passive NPC's meadow work legs (pile to a site's first route point and
-    // back to its loading slot) follow only the scene's authored spokes and pile
-    // ring (`ctx.npcFixedPaths`), without traffic, recovery searches or detours.
-    // Legs inside a cave, the slot walk, chill, roof and bed movement keep theirs.
-    const fixedPaths = passiveNpcs && ctx.npcFixedPaths || null;
-    const fixedTrip = (cave) => !!fixedPaths && !!cave.pathing && cave.nonInteractive
-      && cave.state === "working" && !cave.bedTravel.mode && !cave.walk
+    // A passive NPC follows predetermined waypoints only: its route walks
+    // (`cave.walk.route`, clanking to chilling) and every work leg (outbound,
+    // station, return) step
+    // straight toward the next waypoint on the island's terrain alone
+    // (`ctx.npcFixedTerrainAt`), without traffic, recovery searches, detours or
+    // object checks: it passes through anything in its way. Only its meadow
+    // legs (pile to a site's first route point and back to its loading slot)
+    // consult a planner, the authored spokes and pile ring (`ctx.npcFixedPaths`);
+    // cave legs walk the site's authored route points directly. Bed travel is a
+    // beam; the short local slot walk and chill/roof wanders keep their own
+    // movement. A scene without a terrain-only floor gets none of this.
+    const fixedTerrainAt = ctx.npcFixedTerrainAt || null;
+    const fixedPaths = passiveNpcs && fixedTerrainAt && ctx.npcFixedPaths || null;
+    const fixedTrip = (cave) => !!fixedPaths && !!cave.pathing && cave.nonInteractive && !cave.bedTravel.mode
+      && (cave.walk ? !!cave.walk.route : cave.state === "working"
+        && (cave.work.phase === "outbound" || cave.work.phase === "station" || cave.work.phase === "return"));
+    const meadowLeg = (cave) => fixedTrip(cave) && !cave.walk
       && (cave.work.phase === "outbound" && cave.work.index === 0 || cave.work.phase === "return" && cave.work.index < 0);
-    const pathsFor = (cave) => fixedTrip(cave) ? fixedPaths : ctx.npcPaths;
+    const pathsFor = (cave) => meadowLeg(cave) ? fixedPaths : fixedTrip(cave) ? null : ctx.npcPaths;
     let combatEnabled = ctx.combatEnabled === true;
     let weaponsEnabled = combatEnabled || ctx.weaponsEnabled === true;
     // Scenes can accept a harmless weapon interaction before a game enables damage.
@@ -1532,6 +1542,9 @@
     const groundY = (cave) => {
       const p = cave.root.position;
       const feet = p.y - cave.baseY + cave.restLower;
+      // A fixed meadow leg stands on terrain alone, so no per-frame grounding
+      // can lift it onto an object it is passing through.
+      if (fixedTrip(cave)) return cave.baseY + fixedTerrainAt(p.x, p.z, feet);
       return cave.baseY + groundAt(p.x, p.z, feet, feet, cave);
     };
     const grounded = (cave) => cave.bedTravel.mode === "rest" || cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y + cave.restLower - groundY(cave)) < 1e-6;
@@ -1943,7 +1956,8 @@
       }
       if (cave.camp.burning || cave.camp.panic.active) return;
       // A passive NPC's status change beams it straight to its destination: the
-      // pile's loading fan, a chill spot or its bed. No cross-island walk.
+      // pile's loading fan, a chill spot or its bed. The one walk is clanking to
+      // chilling, which returns along its route via the pile (startChillReturn).
       const beam = cave.nonInteractive;
       const wasAwake = cave.state === "working" || cave.state === "chilling";
       // The Timechain resident keeps its authored recliner rest, passive or not.
@@ -1955,6 +1969,10 @@
       }
       if ((ctx.bedRoute || beam) && state === "sleeping" && !resident) { startSleep(cave, beam || settle && cave.state === "away"); return; }
       if (!beam && ctx.bedRoute && cave.state === "sleeping" && (state === "working" || state === "chilling")) { beginWalk(cave, state); return; }
+      // Clanking to chilling is a walk, not a beam: back along the route to the
+      // pile, then to the chill spot (falls back to the beam with no chill spot).
+      if (beam && fixedPaths && cave.pathing && state === "chilling" && cave.state === "working" && cave.root.visible
+        && !cave.root.quaternion && !cave.camp.seat && startChillReturn(cave)) { refreshRosterRow(cave); return; }
       if (cave === player) release();
       if (ctx.bedRoute || cave.bedTravel.mode) { standFromBed(cave); cave.bedTravel.bed = null; }
       cave.state = state;
@@ -4192,6 +4210,12 @@
     // otherwise restart its local recovery forever without moving the Ooga.
     const watchWalker = (cave, dt, fromX, fromZ) => {
       const progress = cave.progress, p = cave.root.position, travel = cave.bedTravel, work = cave.work;
+      // A fixed meadow leg stands on terrain and walks through whatever is in
+      // its way: no roof check, escape, replan or relocation.
+      if (fixedTrip(cave)) {
+        progress.x = p.x; progress.z = p.z; progress.stalled = progress.motionless = progress.retry = progress.backoff = progress.roofTime = 0;
+        progress.replanned = progress.navigationHop = progress.escaped = false; return;
+      }
       const airborne = cave.hop > 0 || cave.hopV > 0;
       const roof = dt > 0 && cave !== player && cave.root.visible && (cave.state === "working" || cave.state === "chilling")
         && !cave.roofEscape.active && !cave.health.stunned && !cave.camp.burning && !cave.camp.rolling
@@ -4209,12 +4233,6 @@
           return;
         }
         progress.roofTime = 6;
-      }
-      // A fixed meadow leg keeps roof recovery above, but never launches an
-      // escape, replan or relocation: a blocked authored segment waits.
-      if (fixedTrip(cave)) {
-        progress.x = p.x; progress.z = p.z; progress.stalled = progress.motionless = progress.retry = progress.backoff = 0;
-        progress.replanned = progress.navigationHop = progress.escaped = false; return;
       }
       // Retain the navigation intent through its landing frame, when the
       // ordinary traffic snapshot is still paused and mode 4 has just ended.
@@ -4473,14 +4491,14 @@
       }
     };
     const walkToward = (cave, tx, tz, distance) => {
-      // A fixed meadow leg steps straight along its authored waypoint with the
-      // usual scenery, floor and step checks, and waits when that step is blocked.
+      // A fixed meadow leg steps straight along its authored waypoint and passes
+      // through any object in its way: the authored paths are clear, so there is
+      // no blocking check. Each step settles on the terrain beneath it (groundY).
       if (fixedTrip(cave)) {
         const p = cave.root.position, dx = tx - p.x, dz = tz - p.z, left = Math.hypot(dx, dz);
         if (left < 1e-7) return 0;
-        const step = Math.min(distance, PLAYER_STEP, left), x = p.x + dx / left * step, z = p.z + dz / left * step;
-        if (!walkerClear(cave, x, z)) return 0;
-        p.x = x; p.z = z; p.y = groundY(cave);
+        const step = Math.min(distance, PLAYER_STEP, left);
+        p.x += dx / left * step; p.z += dz / left * step; p.y = groundY(cave);
         const angle = Math.atan2(dx, dz);
         cave.root.rotation.y += Math.atan2(Math.sin(angle - cave.root.rotation.y), Math.cos(angle - cave.root.rotation.y)) * 0.35;
         return step;
@@ -4763,7 +4781,81 @@
       parts.legL.rotation.x = -0.3;
       parts.armR.rotation.x = parts.armL.rotation.x = -1.1;
     };
+    // A passive route walk follows its predetermined waypoints in order: straight
+    // steps on terrain, passing through bodies and objects. A `fixed` waypoint is
+    // reached along the authored spokes and pile ring. Arrival rests at a chill
+    // spot or starts the meal at the pile.
+    const runRouteWalk = (cave, dt) => {
+      const w = cave.walk, p = cave.root.position, route = w.route;
+      w.leg = w.leg || 0;
+      let remaining = w.speed * dt, moved = 0;
+      while (remaining > 1e-8 && w.leg < route.length) {
+        const leg = route[w.leg];
+        if (Math.hypot(leg.x - p.x, leg.z - p.z) < 1e-6) { w.leg++; cave.pathing.tx = NaN; continue; }
+        let tx = leg.x, tz = leg.z;
+        if (leg.fixed) { fixedPaths.target(cave, leg.x, leg.z); tx = cave.pathing.targetX; tz = cave.pathing.targetZ; }
+        const step = walkToward(cave, tx, tz, remaining);
+        if (!step) break;
+        moved += step; remaining -= step;
+      }
+      // Reaching the pile on a walk from work picks the chill spot only now, so
+      // the pile always comes first; with none free, it rests at the pile.
+      if (w.leg >= route.length && w.chillAfterPile) {
+        w.chillAfterPile = false;
+        const spot = cave.act.spot;
+        if (wanderSpot && wanderSpot(spot, cave) !== false) {
+          route.push({ x: spot.x, z: spot.z, fixed: true });
+          w.tx = spot.x; w.tz = spot.z;
+        } else {
+          cave.walk = null; cave.pathing.tx = NaN; standPose(cave);
+          cave.act.kind = "idle"; cave.act.until = elapsed + chillPause(cave);
+          return;
+        }
+      }
+      if (w.leg >= route.length) {
+        cave.walk = null; cave.pathing.tx = NaN;
+        if (w.to === "spot") arriveAtSpot(cave);
+        else { cave.root.rotation.y = Math.atan2(-p.x, -p.z); startMeal(cave); }
+        standPose(cave);
+        return;
+      }
+      w.heading = cave.root.rotation.y;
+      w.phase += moved * 5;
+      if (moved) walkPose(cave, w.phase); else standPose(cave);
+      p.y = groundY(cave);
+    };
+    // Work to chill for a passive Ooga: back along the work route it is on, to
+    // the banana pile (its loading slot, the nearest slot, or the pile ring in
+    // its own direction), then on to a chill spot chosen on arrival there.
+    const startChillReturn = (cave) => {
+      const p = cave.root.position, work = cave.work, route = workSites && work.site >= 0 ? workSites[work.site]?.route : null, legs = [];
+      // The route point it last passed on the way in, or the one it is returning to.
+      const from = !route ? -1 : work.phase === "outbound" ? Math.min(work.index, route.length) - 1
+        : work.phase === "station" || work.phase === "shoot" ? route.length - 1
+        : work.phase === "return" ? Math.min(work.index, route.length - 1) : -1;
+      for (let i = from; i >= 0; i--) legs.push({ x: route[i].x, z: route[i].z, fixed: false });
+      // The loading ring at the real pile edge (the scene's ring, else the pile's own edge).
+      const slot = cave.slot || closestSlot(cave), angle = Math.atan2(p.x, p.z), ring = wantedFanRadius();
+      const pile = slot || { x: Math.sin(angle) * ring, z: Math.cos(angle) * ring };
+      legs.push({ x: pile.x, z: pile.z, fixed: true });
+      stopReload(cave); stopBurst(cave);
+      releaseBuild(cave);
+      cave.state = "chilling";
+      cave.work.phase = ""; cave.work.plannedSite = -1; cave.work.targetReady = cave.work.aimReady = false;
+      cave.pileApproach = false;
+      cave.act.kind = "wander"; cave.act.trips++;
+      cave.walk = { tx: pile.x, tz: pile.z, speed: WANDER_SPEED + 0.5, phase: 0, heading: cave.root.rotation.y, to: "spot",
+        route: legs, leg: 0, chillAfterPile: true };
+      cave.pathing.tx = NaN; cave.avoidance.tx = NaN;
+      cave.parts.snack.visible = false;
+      return true;
+    };
     const runWalk = (cave, dt) => {
+      // A passive NPC's local walk (to its slot, or a chill wander) is one direct
+      // predetermined waypoint too: no graph, avoidance or destination checks.
+      if (!cave.walk.route && fixedPaths && cave.nonInteractive && cave.pathing && !cave.bedTravel.mode)
+        cave.walk.route = [{ x: cave.walk.tx, z: cave.walk.tz, fixed: false }];
+      if (fixedTrip(cave)) { runRouteWalk(cave, dt); return; }
       // A growing pile or new fire can cover a chosen destination; pick a safe spot instead of circling it.
       if (cave.walk.to === "spot" && npcDestinationBlocked(cave, cave.walk.tx, cave.walk.tz)) startWander(cave);
       const w = cave.walk, p = cave.root.position;

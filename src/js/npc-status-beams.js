@@ -26,7 +26,11 @@
           const state = row.companion ? a.owner.state : a.state;
           // Controlled and remote player bodies are never passive, so never beamed.
           const visible = a.nonInteractive && r.visible && state !== 'away';
-          if (row.warm && visible && (row.state !== state || !row.visible)) {
+          // Clanking to chilling while in view is a walk (back along the route via
+          // the pile), never a relocation: it shows no glyphs, here or on a
+          // follower page reading the same streamed status. Every other change beams.
+          const walked = row.visible && row.state === 'working' && state === 'chilling';
+          if (row.warm && visible && (row.state !== state || !row.visible) && !walked) {
             cancel(row);
             row.fromX = row.x; row.fromY = row.y; row.fromZ = row.z; row.fromYaw = row.yaw;
             row.departure = row.visible; row.pending = true; row.time = 0;
