@@ -899,6 +899,33 @@
   // A terminal's screen on its stand, in the stand's frame: its width and height, where its bottom edge stands, and how
   // far it leans back; `hangar-terminals.js` lays its pictures over it.
   const KIOSK = { w: 0.78, h: 0.5, y: 1.08, z: 0.02, tilt: -0.45 };
+  // A terminal on a pole, in its own frame, its front toward +z, into `f` and its glowing parts into `g`, in the concept's
+  // slate and yellow: a round weighted base with a yellow band round its edge, a slim steel pole with a yellow collar and
+  // its cable down its back, a keyboard tray on an arm with its keys lit, and the mount head the screen leans back from
+  // (`KIOSK`).
+  const kiosk = (f, g) => {
+    const S = STEEL_DESK, K = KIOSK, foot = 0.07, pole = 0.045, head = K.y + 0.05;
+    f.push(lathe({ profile: [[0.27, 0], [0.3, 0], [0.3, 0.03], [0.27, 0.03]], segments: 20, color: S.trim }));
+    f.push(lathe({ profile: [[0, 0], [0.27, 0], [0.28, 0.03], [0.27, 0.055], [0.22, foot], [0, foot]], segments: 20, color: S.body }));
+    // The pole in two lengths either side of its collar, so Canvas 2D never paints one long face over the collar.
+    const collar = [0.42, 0.47];
+    for (const [y0, y1] of [[foot, collar[0]], [collar[1], head]]) f.push(moved(lathe({ profile: [[0, 0], [pole, 0], [pole, y1 - y0], [0, y1 - y0]], segments: 12, color: S.top }), 0, y0, -0.08));
+    f.push(moved(lathe({ profile: [[0, 0], [pole + 0.012, 0], [pole + 0.012, collar[1] - collar[0]], [0, collar[1] - collar[0]]], segments: 12, color: S.trim }), 0, collar[0], -0.08));
+    f.push(tube({ path: (u) => ({ x: 0.035, y: head - 0.04 - u * (head - foot - 0.06), z: -0.08 - pole - 0.012 - 0.02 * Math.sin(u * Math.PI) }), radius: () => 0.012, rings: 10, segments: 6, colorFn: () => "#1d1f24" }));
+    // The keyboard tray on its arm, its keys lit.
+    const ty = 0.93, tilt = -0.18;
+    f.push(box({ w: 0.06, h: 0.05, d: 0.2, color: S.dark, offset: { y: ty - 0.03, z: 0.02 } }));
+    for (const p of [bevelBox({ w: 0.46, h: 0.025, d: 0.2, color: S.dark, bevel: 0.006 }), box({ w: 0.48, h: 0.03, d: 0.02, color: S.trim, offset: { z: 0.11 } }),
+      box({ w: 0.4, h: 0.02, d: 0.13, color: "#1d1f24", offset: { y: 0.022 } })]) f.push(moved(turnedX(p, tilt), 0, ty, 0.14));
+    g.push(moved(turnedX(box({ w: 0.36, h: 0.005, d: 0.1, color: SCREEN, emissive: 0.6, offset: { y: 0.034 } }), tilt), 0, ty, 0.14));
+    // The mount head and the hinge the screen hangs from.
+    f.push(bevelBox({ w: 0.16, h: 0.14, d: 0.07, color: S.dark, bevel: 0.015, offset: { y: head, z: -0.1 } }));
+    f.push(moved(turnedZ(lathe({ profile: [[0, -0.1], [0.025, -0.1], [0.025, 0.1], [0, 0.1]], segments: 10, color: S.top }), Math.PI / 2), 0, head, -0.06));
+    const mf = [], mg = [];
+    monitor(mf, mg, K.w, K.h);
+    for (const p of mf) f.push(moved(turnedX(p, K.tilt), 0, K.y, K.z));
+    for (const p of mg) g.push(moved(turnedX(p, K.tilt), 0, K.y, K.z));
+  };
   // The crew's workstations, the terminals on stands, the tool chests, the crates (some stacked, a lantern on the
   // tallest), and the blue floor lamps. Screens glow, so they are their own mesh, and so do the lamps (`lampGlow`, for
   // the Factory's window into the hangar; the scene stands a `floorLamp` of its own on each base to light them one at a
@@ -913,12 +940,8 @@
       placed(detail, d, x, 0, z, turn);
     });
     for (const [x, z, turn] of L.kiosks) {
-      const f = [], g = [], K = KIOSK;
-      f.push(bevelBox({ w: 0.6, h: 0.08, d: 0.5, color: IRON_DK, bevel: 0.02, offset: { y: 0.04 } }), box({ w: 0.14, h: 1.02, d: 0.14, color: IRON, offset: { y: 0.59, z: -0.06 } }));
-      const mf = [], mg = [];
-      monitor(mf, mg, K.w, K.h);
-      for (const p of mf) f.push(moved(turnedX(p, K.tilt), 0, K.y, K.z));
-      for (const p of mg) g.push(moved(turnedX(p, K.tilt), 0, K.y, K.z));
+      const f = [], g = [];
+      kiosk(f, g);
       placed(flat, f, x, 0, z, turn);
       placed(glow, g, x, 0, z, turn);
     }
