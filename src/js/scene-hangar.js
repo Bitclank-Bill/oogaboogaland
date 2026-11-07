@@ -936,11 +936,12 @@
       const work = crane(C.park, g.trolley);
       work.sling = createNode({ geometry: g.sling });
       work.crate = createNode({ geometry: g.load });
+      const crateTrim = createNode({ geometry: g.loadTrim, depthBias: -0.5 });
       work.slack = createNode({ geometry: g.slack });
       work.spot = createNode({ rotation: { x: -Math.PI / 2, y: 0, z: 0 }, geometry: HM.craneSpot(), sightHidden: true, depthBias: SPOT_BIAS });
-      addChild(work.crate, work.sling, work.slack);
+      addChild(work.crate, crateTrim, work.sling, work.slack);
       addChild(root, work.spot);
-      s.glass.push(work.crate);
+      s.glass.push(work.crate, crateTrim);
       s.crane = BL.hangarCrane.create({ C, nodes: work, root, powered: () => s.anomaly.powered, under: underLoad, cue: (name, x, y, z) => audio && audio.craneCue(name, x, y, z) });
       s.farCrane = crane(C.far, g.farTrolley);
     }

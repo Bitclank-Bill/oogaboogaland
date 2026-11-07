@@ -708,23 +708,43 @@
     const hr = 0.17, hy = C.eye + hr;
     hook.push(tube({ path: (t) => ({ x: -0.02 + Math.sin(-0.2 + t * 4.6) * hr, y: hy + Math.cos(-0.2 + t * 4.6) * hr, z: 0.1 }), radius: (t) => 0.06 - t * 0.025, rings: 16, segments: 8, colorFn: () => C.dark }));
     hook.push(beam(-0.02 + Math.sin(4.4) * hr, hy + Math.cos(4.4) * hr, 0.1, -0.02, hy + hr, 0.1, 0.025, "#8a929c"));
-    // The load, its sling's eye at its zero: the crate, navy with chunky yellow edges and the bolt on its four faces; the
-    // sling taut (`sling`), its master link in the hook and four legs down to the crate's top corners; and the same
-    // sling lying slack on the crate's top (`slack`), its link at the middle and its legs out to the corners.
-    const [cw, ch, cd] = C.crate, ct = -C.sling, sling = [], slack = [];
-    sling.push(moved(turnedX(torus(0.09, 0.025, "#c9a23a", 0, 12, 6), Math.PI / 2), 0, -0.02, 0));
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) sling.push(beam(0, -0.1, 0, sx * (cw / 2 - 0.12), ct, sz * (cd / 2 - 0.12), 0.035, "#c9a23a"));
-    slack.push(moved(torus(0.09, 0.025, "#c9a23a", 0, 12, 6), 0.05, ct + 0.03, -0.04));
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) slack.push(beam(0.05 + sx * 0.08, ct + 0.025, -0.04 + sz * 0.08, sx * (cw / 2 - 0.12), ct + 0.02, sz * (cd / 2 - 0.12), 0.035, "#c9a23a"));
-    load.push(box({ w: cw - 0.06, h: ch - 0.06, d: cd - 0.06, color: C.navy, emissive: C.lift, offset: { y: ct - ch / 2 } }));
-    const e = 0.12;
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) load.push(box({ w: e, h: ch, d: e, color: C.yellow, emissive: C.lift, offset: { x: sx * (cw / 2 - e / 2), y: ct - ch / 2, z: sz * (cd / 2 - e / 2) } }));
+    // The load, its sling's eye at its zero, after its close-up: the crate, royal blue in a yellow frame along all its
+    // edges with a chunky yellow block on each corner, a dark square set in each of its outer faces; the bolt on all four
+    // faces, beside a raised diagonal brace on the two broad ones; the sling taut (`sling`), its yellow ring in the hook
+    // and four yellow legs down to the crate's top corners; and the same sling lying slack on the crate's top (`slack`),
+    // its ring at the middle and its legs out to the corners. The crate's frame, blocks, braces and bolts are its `loadTrim`,
+    // which the scene sorts a little nearer on Canvas 2D, so the crate's big faces never paint over them.
+    const [cw, ch, cd] = C.crate, ct = -C.sling, sling = [], slack = [], trim = [], cy = ct - ch / 2, blue = "#2a46c0", brace = "#16246e";
+    sling.push(moved(turnedX(torus(0.1, 0.03, C.yellow, 0, 12, 6), Math.PI / 2), 0, -0.02, 0));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) sling.push(beam(0, -0.1, 0, sx * (cw / 2 - 0.1), ct, sz * (cd / 2 - 0.1), 0.04, C.yellow));
+    slack.push(moved(torus(0.1, 0.03, C.yellow, 0, 12, 6), 0.05, ct + 0.03, -0.04));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) slack.push(beam(0.05 + sx * 0.08, ct + 0.03, -0.04 + sz * 0.08, sx * (cw / 2 - 0.1), ct + 0.02, sz * (cd / 2 - 0.1), 0.04, C.yellow));
+    load.push(box({ w: cw - 0.04, h: ch - 0.04, d: cd - 0.04, color: blue, emissive: C.lift, offset: { y: cy } }));
+    const e = 0.1, k = 0.2, out = 0.03;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) trim.push(box({ w: e, h: ch - 2 * k, d: e, color: C.yellow, emissive: C.lift, offset: { x: sx * (cw / 2 - e / 2), y: cy, z: sz * (cd / 2 - e / 2) } }));
     for (const y of [ct - e / 2, ct - ch + e / 2]) for (const s of [-1, 1]) {
-      load.push(box({ w: cw, h: e, d: e, color: C.yellow, emissive: C.lift, offset: { y, z: s * (cd / 2 - e / 2) } }));
-      load.push(box({ w: e, h: e, d: cd, color: C.yellow, emissive: C.lift, offset: { x: s * (cw / 2 - e / 2), y } }));
+      trim.push(box({ w: cw - 2 * k, h: e, d: e, color: C.yellow, emissive: C.lift, offset: { y, z: s * (cd / 2 - e / 2) } }));
+      trim.push(box({ w: e, h: e, d: cd - 2 * k, color: C.yellow, emissive: C.lift, offset: { x: s * (cw / 2 - e / 2), y } }));
     }
-    for (let k = 0; k < 4; k++) load.push(moved(turnedY(FM.smoothBolt(0.62, 0.04, "#ffd23a", 0), k * Math.PI / 2), Math.sin(k * Math.PI / 2) * (cw / 2 - 0.02), ct - ch / 2, Math.cos(k * Math.PI / 2) * (cd / 2 - 0.02)));
-    return { runways: merge(...runways), bridge: merge(...bridge), glow: noShadow(merge(...glow)), trolley: trolleyParts("LJ-02"), farTrolley: trolleyParts("LJ-01"), trolleyGlow: noShadow(merge(...trolleyGlow)), rope, hook: merge(...hook), load: merge(...load), sling: merge(...sling), slack: merge(...slack), beacons };
+    // The corner blocks, standing a little proud, a dark square in each outer face.
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+      const x = sx * (cw / 2 - k / 2 + out), y = cy + sy * (ch / 2 - k / 2 + out), z = sz * (cd / 2 - k / 2 + out);
+      trim.push(bevelBox({ w: k, h: k, d: k, color: C.yellow, emissive: C.lift, bevel: 0.02, offset: { x, y, z } }));
+      trim.push(box({ w: 0.08, h: 0.08, d: 0.01, color: C.dark, offset: { x, y, z: z + sz * k / 2 } }));
+      trim.push(box({ w: 0.01, h: 0.08, d: 0.08, color: C.dark, offset: { x: x + sx * k / 2, y, z } }));
+      trim.push(box({ w: 0.08, h: 0.01, d: 0.08, color: C.dark, offset: { x, y: y + sy * k / 2, z } }));
+    }
+    // The braces on the broad faces (front and back, square to z), from the frame's foot near one end up to its top at
+    // the other, and the bolts, beside the braces on those faces and in the middle of the narrow ones.
+    const span = cw - 2 * e, rise = ch - 2 * e, braceLen = Math.hypot(span * 0.7, rise), tilt = Math.atan2(rise, span * 0.7);
+    for (const s of [-1, 1]) for (const part of [box({ w: braceLen, h: 0.1, d: 0.03, color: brace, emissive: C.lift }), box({ w: braceLen, h: 0.018, d: 0.034, color: C.yellow, emissive: C.lift, offset: { y: 0.05 } })]) {
+      trim.push(moved(turnedY(moved(turnedZ(part, tilt), span * 0.15, 0, cd / 2 + 0.005), s > 0 ? 0 : Math.PI), 0, cy, 0));
+    }
+    for (let q = 0; q < 4; q++) {
+      const broad = q % 2 === 0, a = q * Math.PI / 2, aside = broad ? -0.2 : 0;
+      trim.push(moved(turnedY(FM.smoothBolt(broad ? 0.6 : 0.52, 0.04, "#ffd23a", 0), a), Math.sin(a) * (cw / 2 + 0.005) + Math.cos(a) * aside, cy, Math.cos(a) * (cd / 2 + 0.01) - Math.sin(a) * aside));
+    }
+    return { runways: merge(...runways), bridge: merge(...bridge), glow: noShadow(merge(...glow)), trolley: trolleyParts("LJ-02"), farTrolley: trolleyParts("LJ-01"), trolleyGlow: noShadow(merge(...trolleyGlow)), rope, hook: merge(...hook), load: merge(...load), loadTrim: merge(...trim), sling: merge(...sling), slack: merge(...slack), beacons };
   });
 
   // The laydown stands the crane sets its crate down on (`CRANE.stands`), in the hangar's frame: each a steel skid, a
