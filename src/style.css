@@ -2128,7 +2128,7 @@ body[data-active-scene="hub"] .home-link {
 .players-rows {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) max-content 12px max-content 12px;
-  column-gap: 4px;
+  column-gap: 7px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2187,7 +2187,6 @@ body[data-active-scene="hub"] .home-link {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding-left: 2px;
   color: var(--paper);
 }
 
