@@ -1483,9 +1483,11 @@
     // under debug also sets the wait between them, s. It asks whether any Ooga stands on the Jet (`jetRidden`), and
     // whether anything that walks the hall comes near it (`nearJet`).
     const every = DEBUG ? Number(params.get("anomaly")) : NaN;
-    // A fire in the control room and its operator putting it out (`hangar-room-fire.js`), which the lightning lights
-    // now and then; the operator is the crew's last post.
-    scene.roomFire = BL.hangarRoomFire.create({ root, fx, audio, gorilla: scene.crew[LAYOUT.crew.length - 1], room: HM.controlRoom() });
+    // A fire in one of the rooms on the catwalks' level and its operator putting it out (`hangar-room-fire.js`), which
+    // the lightning lights now and then: the control room, whose operator is the crew's last post, and the crew's rooms
+    // on the right wall, whose operators' posts come just before it.
+    const side = HM.sideRooms(), first = LAYOUT.crew.length - 1 - side.length;
+    scene.roomFire = BL.hangarRoomFire.create({ root, fx, audio, rooms: [{ spots: HM.controlRoom().spots, gorilla: scene.crew[LAYOUT.crew.length - 1] }, ...side.map((r, i) => ({ spots: r.spots, gorilla: scene.crew[first + i] }))] });
     scene.anomaly = BL.hangarAnomaly.create({ root, fire: scene.fire, sis: scene.sis, fx, audio, jet: scene.jet, stage: JET_STAGE, room: scene.roomFire, auto: !params.has("nosim") || every > 0, gap: every > 0 ? every : null, riders: () => jetRidden(), near: (test) => nearJet(test) });
     // The terminals by the runway and the film show they start (`hangar-terminals.js`), its mood page reading hers.
     scene.terminals = BL.hangarTerminals.create({ root, audio, mood: () => scene.sis.mood, toast: hud.toast });

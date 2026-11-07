@@ -1,17 +1,19 @@
-// A fire in the Lightning Jet Hangar's control room, and its operator putting it out. Lightning over the Jet now and
-// then jumps across the hall to the room's console (`hangar-anomaly.js` hands it `ignite` as the bolt lands): a fire
-// takes on the console's top, flames rising off it with embers and smoke and its orange light flickering, and the
-// operator, the gorilla at the console (`hangarModels.controlRoom().spots`), jumps back with a shout, goes to the
-// extinguisher on the side wall, takes it, turns on the fire and sprays it out, a white cloud rolling off the console
-// as it dies, then hangs the extinguisher back on its bracket and goes back to his post. While it runs the routine
-// holds the gorilla (`holding`, which the scene leaves out of the crew's update), posing his root and parts itself:
-// walking in steps of his own, his chest upright, his arms out to the extinguisher; it hands him back where he stood.
-// Its sound is `hangarAudio`'s (`watchRoom`, `roomCue`).
+// A fire in one of the Lightning Jet Hangar's rooms on the catwalks' level, and its operator putting it out. Lightning
+// over the Jet now and then jumps across the hall to a room's console, the room picked at random as the bolt cracks
+// (`hangar-anomaly.js` asks `pick()` then, and hands it `ignite` as the bolt lands): a fire takes on the console's top,
+// flames rising off it with embers and smoke and its orange light flickering, and the operator, the gorilla at the
+// console, jumps back with a shout, goes to the extinguisher on the room's end wall, takes it, turns on the fire and
+// sprays it out, a white cloud rolling off the console as it dies, then hangs the extinguisher back on its bracket and
+// goes back to his post. While it runs the routine holds the gorilla (`holding`, which the scene leaves out of the
+// crew's update), posing his root and parts itself: walking in steps of his own, his chest upright, his arms out to
+// the extinguisher; it hands him back where he stood. Its sound is `hangarAudio`'s (`watchRoom`, `roomCue`).
 //
-// `create({ root, fx, audio, gorilla, room })`: the scene's root and particles, the hangar's sound, the operator (a
-// `BL.agent`) and the room (`hangarModels.controlRoom()`). Returns `ignite()`, `update(dt)`, `lights(Lt, slot)` (the
-// fire's light and the strike's flash, after the anomalies'; how many it wrote), `holding` (the gorilla while it holds
-// him, else null), `burning`, `at` (where the bolt lands), `dispose` and `debug`. Allocates nothing a frame.
+// `create({ root, fx, audio, rooms })`: the scene's root and particles, the hangar's sound, and the rooms, each its
+// operator (`gorilla`, a `BL.agent`) and the places its fire plays out (`spots`, `hangarModels.controlRoom()`'s and
+// `sideRooms()`'s), an extinguisher on each one's bracket. Returns `pick(i)` (the room the next fire takes in, `i` or
+// one at random, while none burns), `ignite()`, `update(dt)`, `lights(Lt, slot)` (the fire's light and the strike's
+// flash, after the anomalies'; how many it wrote), `holding` (the gorilla while it holds him, else null), `burning`,
+// `at` (where the bolt lands), `dispose` and `debug`. Allocates nothing a frame.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -34,14 +36,20 @@
   const ease = (u) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
   const clamp01 = (u) => u < 0 ? 0 : u > 1 ? 1 : u;
 
-  const create = ({ root, fx, audio, gorilla, room }) => {
-    const S = room.spots, C = HM.CONTROL, P = gorilla.parts, floor = C.floor;
+  const create = ({ root, fx, audio, rooms }) => {
+    const floor = HM.CONTROL.floor;
     // The flames: the arcade's smooth blaze, three of them, hidden while nothing burns.
     const flames = FIRE.flames.map(() => createNode({ geometry: BL.blaze.smooth(), visible: false, sightHidden: true }));
     addChild(root, ...flames);
-    // The extinguisher, on its bracket until he takes it.
-    const ext = createNode({ geometry: HM.extinguisher() });
-    addChild(root, ext);
+    // An extinguisher in each room, on its bracket until he takes it.
+    const exts = rooms.map((r) => {
+      const n = createNode({ geometry: HM.extinguisher() }), B = r.spots.bracket;
+      n.position.x = B.x; n.position.y = B.y; n.position.z = B.z; n.rotation.y = B.turn;
+      addChild(root, n);
+      return n;
+    });
+    // The room the fire takes in: its places, its operator and his parts, and its extinguisher.
+    let room = 0, S = rooms[0].spots, gorilla = rooms[0].gorilla, P = gorilla.parts, ext = exts[0];
     const EMBER = BL.models.particleGeometry("#ff8a2a", 0.05, 1), MIST = BL.models.particleGeometry("#f4f7fa", 0.14, 0.7);
     // The state: whether it runs and how far in; the fire's level; the strike's flash; where he stands, his heading and
     // his stride's phase; and what the sound reads.
@@ -54,14 +62,13 @@
     // The extinguisher back on its bracket, or held in front of him.
     const onBracket = () => {
       ext.position.x = S.bracket.x; ext.position.y = S.bracket.y; ext.position.z = S.bracket.z;
-      ext.rotation.y = 0;
+      ext.rotation.y = S.bracket.turn;
     };
     const held = () => {
       const s = Math.sin(heading), c = Math.cos(heading);
       ext.position.x = pos.x + s * WALKER.hold; ext.position.y = floor + WALKER.holdY; ext.position.z = pos.z + c * WALKER.hold;
       ext.rotation.y = heading;
     };
-    onBracket();
     // Where the nozzle's mouth is now, into NOZ.
     const NOZ = { x: 0, y: 0, z: 0 };
     const nozzle = () => {
@@ -98,6 +105,13 @@
     // Bending to the bracket and back up, `u` 0 to 1 and back, his arms reaching down to it.
     const bend = (u) => pose(0, WALKER.upright + (WALKER.bend - WALKER.upright) * u, 0, -0.5 - 0.5 * u, -0.5 - 0.5 * u);
 
+    // The room the next fire takes in, `i` or one at random, while none burns; where the bolt lands follows it.
+    const pick = (i = Math.floor(Math.random() * rooms.length)) => {
+      if (active) return;
+      room = i; S = rooms[i].spots; gorilla = rooms[i].gorilla; P = gorilla.parts; ext = exts[i];
+      at.x = S.fire.x; at.y = S.fire.y + 0.1; at.z = S.fire.z;
+      sound.x = S.fire.x; sound.y = S.fire.y; sound.z = S.fire.z;
+    };
     const ignite = () => {
       if (active) return;
       active = true; t = 0; level = 0; flash = 1; phase = 0;
@@ -140,8 +154,8 @@
       const spraying = t >= AT.spray && t < AT.stop;
       if (t < AT.go) {
         // Jumping back from it with his arms up, and the shout.
-        const u = clamp01(t / 0.35), hop = Math.sin(Math.min(1, t / 0.4) * Math.PI) * WALKER.hop;
-        pos.x = S.post.x - 0.12 * ease(t / 0.4);
+        const u = clamp01(t / 0.35), hop = Math.sin(Math.min(1, t / 0.4) * Math.PI) * WALKER.hop, back = 0.12 * ease(t / 0.4);
+        pos.x = S.post.x - Math.sin(S.post.heading) * back; pos.z = S.post.z - Math.cos(S.post.heading) * back;
         pose(hop, WALKER.upright, 0, -2.6 * u, -2.6 * u);
         if (t >= AT.shout && t - dt < AT.shout) fx.sayAt(pos.x, floor + 1.9, pos.z, "FIRE!", 1.4);
       } else if (t < AT.take) walk(S.post, S.take, AT.go, AT.take, S.take.heading, false, dt);
@@ -190,14 +204,15 @@
     // Leaving mid-fire: all of it put back at once.
     const dispose = () => { if (active) release(); };
     const debug = {
-      ignite,
+      ignite: (i) => { if (i !== undefined) pick(i); ignite(); },
+      get room() { return room; },
       get t() { return active ? t : -1; },
       get level() { return level; },
       get active() { return active; },
       get extinguisher() { return { x: ext.position.x, y: ext.position.y, z: ext.position.z }; },
       get operator() { return { x: pos.x, z: pos.z, heading }; }
     };
-    return { ignite, update, lights, dispose, debug, at, get holding() { return active ? gorilla : null; }, get burning() { return active; } };
+    return { pick, ignite, update, lights, dispose, debug, at, get holding() { return active ? gorilla : null; }, get burning() { return active; } };
   };
 
   BL.hangarRoomFire = { create, AT, FIRE };
