@@ -6,6 +6,7 @@
 // glassy, shadowless), and its harmless work rounds fly in the same colour (`shotLook`). Nothing here moves an
 // actor, reserves or frees a seat or bed, changes collision or authority, or sets `humanControlled`/`remoteControlled`;
 // the one mark is `ghostTrack`, which the roster dot, possession refusals and the work-round presentation read.
+// A guest's own likeness has no NPC track at all (crew.js `avatar`), so it never comes here.
 // Frame order: the scene calls `restore` before anything simulates, so every system reads the real models (head
 // swaps, colourways, gear), and `paint(dt)` once the frame's poses are final. Restoring walks the nodes painted, not
 // the ghosts' trees, so a part moved off a ghost meanwhile gets its own model back too.
@@ -13,16 +14,13 @@
 // ghost wore in that frame are released, unless a round flew in one within the last LINGER seconds; so equipment or
 // colourway changes leave no history behind, and nothing is released while still drawn. At most MAX ghosts: the
 // remote pool's cap plus the visitor's own.
-// Only a contributor's character is drawn as a ghost. The scene asks `set` to `hide` a track that is the visitor's
-// alone (the hub's guest likeness): that NPC keeps its track the same way, but `paint` turns its nodes off instead of
-// painting them, and `restore` turns back on exactly the nodes it turned off. It carries no `ghostTrack` mark.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const MAX = (BL.remotePlayers?.MAX || 32) + 1, LINGER = 1, PRUNE = 2;
   const create = ({ renderer }) => {
-    const ghosts = new Set(), hidden = new Set(), twins = new Map(), sources = new Map(), rounds = new Map(), used = new Set();
-    const painted = [], concealed = [];
+    const ghosts = new Set(), twins = new Map(), sources = new Map(), rounds = new Map(), used = new Set();
+    const painted = [];
     let disposed = false, clock = 0, pruneIn = PRUNE, marking = false;
     const twin = (source) => {
       let geometry = twins.get(source);
@@ -50,30 +48,12 @@
       if (actor.sleepWeapons) paintNode(actor.sleepWeapons);
       if (actor.pet) paintNode(actor.pet.node);
     };
-    // A hidden track: the same nodes, and the breath puffs a ghost keeps, turned off until `restore`.
-    const conceal = (node) => {
-      if (!node || !node.visible) return;
-      node.visible = false;
-      concealed.push(node);
-    };
-    const concealActor = (actor) => {
-      conceal(actor.root);
-      conceal(actor.sleepWeapons);
-      if (actor.pet) conceal(actor.pet.node);
-      conceal(actor.breathBatch);
-    };
-    const paintAll = () => {
-      for (const actor of ghosts) paintActor(actor);
-      for (const actor of hidden) concealActor(actor);
-    };
     const restore = () => {
       for (let i = 0; i < painted.length; i++) {
         const node = painted[i], source = node.geometry && sources.get(node.geometry);
         if (source) node.geometry = source;
       }
       painted.length = 0;
-      for (let i = 0; i < concealed.length; i++) concealed[i].visible = true;
-      concealed.length = 0;
     };
     const release = (geometry) => {
       const source = sources.get(geometry);
@@ -88,20 +68,20 @@
       }
       used.clear();
     };
-    // `hide`: the track is the visitor's alone, turned off rather than drawn as a ghost.
-    const set = (actor, on, hide = false) => {
+    const set = (actor, on) => {
       if (disposed || !actor || !actor.root) return false;
       if (on) {
-        if (ghosts.has(actor) || hidden.has(actor)) return true;
-        if (ghosts.size + hidden.size >= MAX) return false;
-        if (hide) hidden.add(actor);
-        else { ghosts.add(actor); actor.ghostTrack = true; }
-      } else if (ghosts.delete(actor)) actor.ghostTrack = false;
-      else if (!hidden.delete(actor)) return false;
+        if (ghosts.has(actor)) return true;
+        if (ghosts.size >= MAX) return false;
+        ghosts.add(actor); actor.ghostTrack = true;
+      } else {
+        if (!ghosts.delete(actor)) return false;
+        actor.ghostTrack = false;
+      }
       // Repaint from the real models, so the change shows at once and its leftovers are measured next frame.
-      const wasPainted = painted.length > 0 || concealed.length > 0;
+      const wasPainted = painted.length > 0;
       restore();
-      if (wasPainted) paintAll();
+      if (wasPainted) for (const ghost of ghosts) paintActor(ghost);
       pruneIn = Math.min(pruneIn, LINGER);
       return true;
     };
@@ -109,7 +89,7 @@
       if (disposed) return;
       clock += dt; pruneIn -= dt;
       marking = pruneIn <= 0;
-      paintAll();
+      for (const actor of ghosts) paintActor(actor);
       if (marking) { prune(); pruneIn = PRUNE; marking = false; }
     };
     // The geometry a ghost's round flies as, or null for anyone else's.
@@ -124,13 +104,12 @@
       if (disposed) return;
       restore();
       for (const actor of ghosts) actor.ghostTrack = false;
-      ghosts.clear(); hidden.clear();
+      ghosts.clear();
       for (const geometry of [...twins.values()]) release(geometry);
       used.clear(); disposed = true;
     };
-    return { set, restore, paint, shotLook, liveGeometry, dispose,
-      has: (actor) => ghosts.has(actor) || hidden.has(actor), hides: (actor) => hidden.has(actor),
-      stats: () => ({ ghosts: ghosts.size, hidden: hidden.size, twins: twins.size, painted: painted.length, concealed: concealed.length }) };
+    return { set, restore, paint, shotLook, liveGeometry, dispose, has: (actor) => ghosts.has(actor),
+      stats: () => ({ ghosts: ghosts.size, twins: twins.size, painted: painted.length }) };
   };
   BL.npcGhosts = { create, MAX };
 })();
