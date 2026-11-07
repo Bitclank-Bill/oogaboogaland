@@ -25,6 +25,8 @@
   --planks: radial-gradient(circle at 9px 9px, var(--nail) 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 9px) 9px, var(--nail) 2.5px, transparent 3px), radial-gradient(circle at 9px calc(100% - 9px), var(--nail) 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), var(--nail) 2.5px, transparent 3px), repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 11px), repeating-linear-gradient(180deg, var(--plank) 0 34px, var(--wood-edge) 34px 36px, var(--wood) 36px 70px, var(--wood-edge) 70px 72px);
   --tablet: linear-gradient(160deg, var(--stone-lt), var(--stone) 55%, var(--stone-dk));
   --tablet-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 2px 0 rgba(0, 0, 0, 0.4);
+  /* The panels' dark sections and the reaction card, one near-black. */
+  --slab-dark: #161412;
   --radius: 8px;
   --mono: ui-monospace, "Cascadia Code", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -963,7 +965,7 @@ body[data-active-scene="hub"] .home-link {
 .panel-chip[data-tone="closed"] { color: #ffb4a6; border-color: rgba(229, 83, 61, 0.45); }
 
 .slab {
-  background: var(--tablet);
+  background: var(--slab-dark);
   border: 2px solid var(--stone-dk);
   border-radius: 9px 7px 10px 8px;
   box-shadow: var(--tablet-shadow);
@@ -975,7 +977,7 @@ body[data-active-scene="hub"] .home-link {
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.45) transparent;
+  scrollbar-color: rgba(243, 239, 228, 0.2) transparent;
 }
 
 .slab-head {
@@ -2358,7 +2360,7 @@ body[data-active-scene="hub"] .home-link {
   padding: 8px 10px;
   border-radius: 22px;
   border: 1px solid rgba(243, 239, 228, 0.1);
-  background: #161412;
+  background: var(--slab-dark);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 4px 14px rgba(0, 0, 0, 0.45);
   -webkit-touch-callout: none;
   user-select: none;
@@ -2435,7 +2437,7 @@ body[data-active-scene="hub"] .home-link {
   max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
   padding: 12px;
   border-radius: 18px;
-  background: #161412;
+  background: var(--slab-dark);
   color: var(--paper);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(243, 239, 228, 0.12);
   transform: translate(-50%, -50%);
