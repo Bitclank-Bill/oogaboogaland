@@ -2,7 +2,8 @@
 // next, each page its own), with nothing else going on in the hall (`busy`), the gorilla working one of the crew's
 // rooms on the right wall, picked at random but never the last one's, loses it at his console: he pounds it and
 // yells, then runs out through the room's door, which bangs open, along the right catwalk and down its stair to the
-// Jet, and pounds on its main gear with both fists, yelling, sparks flying from every clang. Kortik's Sis, if she is free, notices: she runs at him screaming
+// Jet, and pounds on it with both fists at a spot picked at random (`SPOTS`: a gear leg or a wing's trestle, never
+// the last one's), yelling, sparks flying from every clang. Kortik's Sis, if she is free, notices: she runs at him screaming
 // and squares up to him on his far side from the Jet (`sis.brawl`), they trade a line each, and then they are at it in
 // a cartoon dust cloud, fists, her hammer and his hard hat flying out of it, stars, POW!s and grawlix, until Tess, if
 // she is free (not touring or distracting Sis), flies over fast and breaks it up, a beam on each of them (lent through
@@ -37,16 +38,28 @@
   // how long past his pounding he waits for her before giving up; how long they square up for, and how long the fight
   // lasts at least and at most (waiting for Tess); and the beats after it, s into the split: Tess's word, Sis's blame,
   // his mutter, home.
-  const NOTICE = 1, STAND = { x: 1.3, z: 0 }, SIS_WAIT = 12, FACEOFF = 2.4, FIGHT = 4.5, FIGHT_MAX = 11;
+  const NOTICE = 1, SIS_WAIT = 12, FACEOFF = 2.4, FIGHT = 4.5, FIGHT_MAX = 11;
   const SPLIT = { scold: 1.8, blame: 2.6, mutter: 3.9, home: 5 };
   // The dust cloud: its reach across and its height over the floor (m), how many puffs a second and how long each
   // lasts; how often something flies out of it and how far; how often a blow sounds, a word pops up and a voice yells.
   const CLOUD = { r: 0.8, low: 0.2, high: 1.7, rate: 18, life: [0.45, 0.8], balls: 12, shell: 0.64, swirl: 2.4, grow: 0.25 };
   const POP = { every: 0.3, out: 0.32, reach: 0.6 }, HITS = [0.16, 0.36], WORDS = 0.55, VOICES = 1.1;
-  // Tess breaking it up: how fast she comes and how high over the cloud she hangs.
-  const TESS = { speed: 16, rise: 2.4 };
-  // Where he pounds the Jet: beside its right main gear, facing it, his fists landing on its leg.
-  const GEAR = { x: 18.2, z: -19.5, heading: -Math.PI / 2, hitY: 1.0, reach: 0.55 };
+  // Tess breaking it up: how fast she comes.
+  const TESS = { speed: 16 };
+  // Where he pounds the Jet, one picked at random each time but never the last one's: the things on it a gorilla's
+  // fists reach, its gear's legs and the wings' trestles, the rest of it standing two metres and more off the floor.
+  // Each the floor he takes there from beside the right catwalk stair's foot (`via`, round the nose and up under the
+  // gangway between its posts for the Jet's left side), where he stands and the way he faces, where Kortik's Sis
+  // squares up to him (`sis`, his far side), and where Tess hangs to break them up, clear of the wings and the
+  // gangway's deck (`tess`, [x, y, z]). His fists land `HIT.reach` in front of him, `HIT.y` up.
+  const SPOTS = [
+    { name: "nose gear", via: [[17.6, -21.5]], at: [16.05, -19.5], heading: -Math.PI / 2, sis: [17.35, -19.5], tess: [18.7, 2.4, -19.5] },
+    { name: "right gear", via: [[20.4, -14]], at: [18.3, -8.5], heading: -Math.PI / 2, sis: [19.6, -8.5], tess: [19.6, 2.2, -6] },
+    { name: "right trestle", via: [[20.4, -14]], at: [20.45, -8.3], heading: Math.PI / 2, sis: [19.15, -8.3], tess: [20.2, 2.2, -6] },
+    { name: "left gear", via: [[14.5, -26.3], [11, -23], [11, -10]], at: [11.9, -8.5], heading: Math.PI / 2, sis: [10.65, -8.5], tess: [11, 2.3, -6.5] },
+    { name: "left trestle", via: [[14.5, -26.3], [11, -23], [11, -10]], at: [9.55, -8.3], heading: -Math.PI / 2, sis: [10.85, -8.3], tess: [9.2, 2.2, -6.3] }
+  ];
+  const HIT = { y: 1.0, reach: 0.55 };
   // The door: how far it swings open (rad), how fast it opens running and walking and swings shut (per s), and how near
   // its middle he is when it opens.
   const DOOR = { open: 1.75, bang: 7, walk: 2.2, shut: 1.6, near: 1.3 };
@@ -86,26 +99,27 @@
 
   const create = ({ root, fx, audio, rooms, sis, tess, busy, blocker, auto = true, gap = null }) => {
     const L = HM.LAYOUT, high = L.catwalkY, [sx, , sz0, , , sz1] = L.catwalkStairs[1];
-    // Each room's way to the Jet, its points and their distances along it: through the room at the catwalks' height,
-    // out of its door, along the catwalk to the stair's head, down it, out beside its foot and over to the gear.
-    const routes = rooms.map(({ spots: S }) => {
+    // Each room's way to each spot, its points and their distances along it: through the room at the catwalks' height,
+    // out of its door, along the catwalk to the stair's head, down it, out beside its foot and over the floor there.
+    const routes = rooms.map(({ spots: S }) => SPOTS.map((spot) => {
       const points = [[S.post.x, S.post.z, 1], [S.corner.x, S.corner.z, 1], [S.inside.x, S.inside.z, 1], [S.out.x, S.out.z, 1],
-        [sx, sz1 + 0.4, 1], [sx, sz0 - 0.6, 0], [sx - 2.4, sz0 - 0.7, 0], [GEAR.x, GEAR.z, 0]].map(([x, z, h]) => ({ x, z, high: !!h, at: 0 }));
+        [sx, sz1 + 0.4, 1], [sx, sz0 - 0.6, 0], [sx - 2.4, sz0 - 0.7, 0], ...spot.via.map(([x, z]) => [x, z, 0]), [spot.at[0], spot.at[1], 0]]
+        .map(([x, z, h]) => ({ x, z, high: !!h, at: 0 }));
       for (let i = 1; i < points.length; i++) points[i].at = points[i - 1].at + Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
       return { points, length: points[points.length - 1].at, door: { x: (S.inside.x + S.out.x) / 2, z: (S.inside.z + S.out.z) / 2 } };
-    });
+    }));
     const doors = rooms.map(() => ({ k: 0, was: 0 }));
     // The state: whether it runs, the beat and how far into it, the room, its worker and his parts; where he is along
     // his way (m), where he stands, his feet, heading and stride; the next blow; whether he has yelled at the Ooga in his
     // way since it last moved off; the wait for the next; and where his voice comes from.
-    let active = false, phase = "", t = 0, room = 0, last = -1, gorilla = null, P = null, along = 0, feet = high, heading = 0, stride = 0;
+    let active = false, phase = "", t = 0, room = 0, last = -1, spot = 0, lastSpot = -1, gorilla = null, P = null, along = 0, feet = high, heading = 0, stride = 0;
     let blowAt = 0, yelled = false, lineAt = 0, wait = gap !== null ? gap : between(FIRST);
     const pos = { x: 0, z: 0 }, voiceAt = { x: 0, y: 0, z: 0 };
     // The fight: whether Sis came, where she squares up, the cloud's middle, the things that fly out of it (her hammer,
     // a hard hat and two fists, each its own way out and how far through its pop), when the next blow, word, voice and
     // pop come; Tess, whether she is lent and her rig while she is, where she hangs, and where her beams land.
     let sisCame = false, hitIn = 0, wordIn = 0, voiceIn = 0, popIn = 0, voiceSis = false, lent = false, rig = null, said = 0;
-    const stand = { x: GEAR.x + STAND.x, z: GEAR.z + STAND.z }, mid = { x: 0, y: 0, z: 0 }, hover = { x: 0, y: 0, z: 0 };
+    const stand = { x: 0, z: 0 }, mid = { x: 0, y: 0, z: 0 }, hover = { x: 0, y: 0, z: 0 };
     const aimHim = { x: 0, y: 0, z: 0 }, aimHer = { x: 0, y: 0, z: 0 }, AIMS = [aimHim, aimHer];
     // The cloud's balls, each its place on a shell round the middle, its own pace and phase.
     const balls = Array.from({ length: CLOUD.balls }, (_, i) => {
@@ -166,7 +180,7 @@
     };
     // On along his way at `speed`, `dir` +1 to the Jet or -1 home; true once he is there.
     const go = (dt, speed, dir, gait) => {
-      const route = routes[room];
+      const route = routes[room][spot];
       if (blockedAhead()) {
         if (!yelled) { yelled = true; say(line(LINES.blocked)); }
         pose(0, dir > 0 ? 0.25 : 0.15, 0, -1.2, -0.3, 0.3, 0);
@@ -185,7 +199,7 @@
     };
     // The door of his room: open while he is at it, banging open as he runs out.
     const door = (dt) => {
-      const d = doors[room], r = routes[room], at = Math.hypot(pos.x - r.door.x, pos.z - r.door.z) < DOOR.near;
+      const d = doors[room], r = routes[room][spot], at = Math.hypot(pos.x - r.door.x, pos.z - r.door.z) < DOOR.near;
       const k = at ? Math.min(1, d.k + dt * (phase === "run" ? DOOR.bang : DOOR.walk)) : Math.max(0, d.k - dt * DOOR.shut);
       if (k > 0 && d.k === 0 && phase === "run") audio.roomCue("clank", r.door.x, high + 1, r.door.z);
       if (k === 0 && d.k > 0 && d.was > 0.5) audio.roomCue("clank", r.door.x, high + 1, r.door.z);
@@ -201,7 +215,7 @@
       pose(0, up ? 0.05 + 0.1 * k : 0.5 - 0.3 * (1 - k), 0, arm, arm, 0.15, 0.15);
     };
     const hit = () => {
-      const s = Math.sin(heading), c = Math.cos(heading), x = pos.x + s * GEAR.reach, y = feet + GEAR.hitY, z = pos.z + c * GEAR.reach;
+      const s = Math.sin(heading), c = Math.cos(heading), x = pos.x + s * HIT.reach, y = feet + HIT.y, z = pos.z + c * HIT.reach;
       audio.clang(x, y, z, 0.7);
       for (let i = 0; i < 9; i++) fx.spawnParticle(SPARK, x, y, z, (Math.random() - 0.5) * 3 - s, Math.random() * 2.5, (Math.random() - 0.5) * 3 - c, 0.3 + Math.random() * 0.3, 8, 6);
       BL.gamepad.rumble(0.15, 0.3, 60);
@@ -278,14 +292,17 @@
       for (const q of pops) { q.u = 1; q.node.visible = false; }
       for (const b of balls) b.node.visible = false;
     };
-    // A room at random, never the one the last came from.
-    const anyRoom = () => {
-      const i = Math.floor(Math.random() * (rooms.length - (last >= 0 ? 1 : 0)));
+    // One of `n` at random, never `last`.
+    const anyBut = (n, last) => {
+      const i = Math.floor(Math.random() * (n - (last >= 0 ? 1 : 0)));
       return last >= 0 && i >= last ? i + 1 : i;
     };
-    const start = (i = anyRoom()) => {
+    const start = (i = anyBut(rooms.length, last), j = anyBut(SPOTS.length, lastSpot)) => {
       if (active) return false;
-      active = true; room = last = i; gorilla = rooms[i].gorilla; P = gorilla.parts;
+      active = true; room = last = i; spot = lastSpot = j; gorilla = rooms[i].gorilla; P = gorilla.parts;
+      const at = SPOTS[j];
+      stand.x = at.sis[0]; stand.z = at.sis[1];
+      hover.x = at.tess[0]; hover.y = at.tess[1]; hover.z = at.tess[2];
       const S = rooms[i].spots;
       pos.x = S.post.x; pos.z = S.post.z; heading = S.post.heading; feet = high;
       along = 0; stride = 0; yelled = false; sisCame = false; said = 0;
@@ -325,7 +342,7 @@
         if (t >= lineAt) { say(line(LINES.run)); lineAt = t + 5 + Math.random() * 2; }
         if (go(dt, RUN, 1, STRIDE.run)) { phase = "pound"; t = 0; blowAt = 0; lineAt = 0.4; }
       } else if (phase === "pound") {
-        turnTo(GEAR.heading, dt, 8);
+        turnTo(SPOTS[spot].heading, dt, 8);
         const u = (t % BLOW) / BLOW, was = ((t - dt) % BLOW) / BLOW;
         blow(u);
         if (u >= 0.55 && was < 0.55) hit();
@@ -345,7 +362,6 @@
         if (t >= FACEOFF) {
           phase = "fight"; t = 0; hitIn = 0.1; wordIn = 0.2; voiceIn = 0.4; popIn = 0.15;
           mid.x = (pos.x + sp.x) / 2; mid.y = feet + 1; mid.z = (pos.z + sp.z) / 2;
-          hover.x = mid.x; hover.y = mid.y + TESS.rise; hover.z = mid.z;
           gorilla.root.visible = false; sis.node.visible = false;
           if (tess.free()) { lent = true; rig = null; tess.lend(drive); }
         }
@@ -388,13 +404,13 @@
       get active() { return active; },
       dispose: () => { if (active) release(); },
       debug: {
-        play: (i) => start(i),
+        play: (i, j) => start(i, j), spots: SPOTS.map((p) => p.name), get spot() { return active ? SPOTS[spot].name : ""; },
         get phase() { return phase; }, get t() { return t; }, get room() { return active ? room : -1; }, get wait() { return wait; },
-        get at() { return { x: pos.x, y: feet, z: pos.z, along, length: active ? routes[room].length : 0 }; },
+        get at() { return { x: pos.x, y: feet, z: pos.z, along, length: active ? routes[room][spot].length : 0 }; },
         get door() { return active ? doors[room].k : 0; }, get sisCame() { return sisCame; }, get tess() { return lent; }
       }
     };
   };
 
-  BL.hangarMeltdown = { create, GAP, GEAR, LINES };
+  BL.hangarMeltdown = { create, GAP, SPOTS, LINES };
 })();
