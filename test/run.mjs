@@ -28303,17 +28303,21 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         sync.dispose();
         BL.net.npcFrame = matchingFrame;
         BL.net.state.selfId = "follower"; BL.net.state.npcVersion++;
-        sync = BL.npcSync.create(options); sync.update(0.3);
+        // A follower plays frames back DELAY behind their arrival; a frame's events replay once playback reaches it.
+        const reach = () => sync.update(BL.npcSync.DELAY + 0.05);
+        sync = BL.npcSync.create(options); sync.update(0.3); reach();
         const rejected = sync.frames === 0 && plans === 0 && crew.list.every(c => !c.puppet);
         sync.dispose();
         crew.workSites = [{ mouth: { id: "c11" } }, { mouth: { id: "c10" } }];
         sync = BL.npcSync.create(options); sync.update(0.3);
-        const accepted = sync.frames === 1 && plans === 1 && oldest.puppet;
+        const waiting = plans === 0 && oldest.puppet;
+        reach();
+        const accepted = waiting && sync.frames === 1 && plans === 1 && oldest.puppet;
         BL.net.npcFrame = mismatchedFrame; BL.net.state.npcVersion++;
         sync.update(0.3);
         const cleared = sync.frames === 1 && plans === 1 && crew.list.every(c => !c.puppet);
         BL.net.npcFrame = matchingFrame; BL.net.state.npcVersion++;
-        sync.update(0.3);
+        sync.update(0.3); reach();
         const resumed = sync.frames === 2 && plans === 2 && oldest.puppet;
         // A host message leaves the old binary frame cached; it must not reclaim the crew.
         BL.net.state.hostId = "other"; sync.update(0.3);
@@ -28356,7 +28360,8 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         sync.dispose();
         sleeper.state = sleeperSaved.state; Object.assign(sr.position, sleeperSaved.position); Object.assign(sr.rotation, sleeperSaved.rotation); sr.quaternion = sleepQ;
         BL.net.state.selfId = "follower";
-        const followSleeper = (frame) => { BL.net.npcFrame = frame; BL.net.state.npcVersion++; sync.update(0.05); };
+        // Each frame is followed until playback has reached it (the first is shown at once).
+        const followSleeper = (frame) => { BL.net.npcFrame = frame; BL.net.state.npcVersion++; for (let s = 0; s * 0.05 < BL.npcSync.DELAY + 0.1; s++) sync.update(0.05); };
         const near = (q, w) => !!q && Math.abs(Math.abs(q[0] * w[0] + q[1] * w[1] + q[2] * w[2] + q[3] * w[3]) - 1) < 1e-4;
         sync = BL.npcSync.create(options);
         followSleeper(uprightFrame);
@@ -28372,9 +28377,10 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         record("NPC sync: a local sleep quaternion yields to an upright host frame; host sleep poses lie down and wake",
           stood.puppet && stood.quaternion && stood.yaw && stood.state === "chilling" && laid.owned && laid.pose && laid.state === "sleeping"
             && woke.quaternion && woke.state === "chilling" && untouched, JSON.stringify(sideways));
-        // Real host frames, applied by a real follower: a same-status move under
-        // SNAP still eases, while a status change under SNAP (a passive beam on
-        // the host) places the puppet at once.
+        // Real host frames, applied by a real follower at the host's 4 Hz: a
+        // same-status move under SNAP plays across, while a status change under
+        // SNAP (a passive beam on the host) places the puppet at once, its pose
+        // and status landing together when playback reaches that frame.
         const mover = crew.list.find(c => c !== oldest && c !== next && c !== newest);
         const moverSaved = { state: mover.state, position: { ...mover.root.position }, quaternion: mover.root.quaternion, visible: mover.root.visible };
         const p = mover.root.position, baseY = mover.baseY, hostFrames = [];
@@ -28388,18 +28394,26 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         sync.dispose();
         Object.assign(p, { x: 1, y: baseY, z: 1 }); mover.state = "chilling";
         BL.net.state.selfId = "follower";
-        const follow = (frame) => { BL.net.npcFrame = frame; BL.net.state.npcVersion++; sync.update(0.05); return { x: p.x, z: p.z, state: mover.state }; };
+        const trail = [];
+        const watch = (steps) => { for (let s = 0; s < steps; s++) { sync.update(0.05); trail.push({ x: p.x, z: p.z, state: mover.state }); } };
+        const follow = (frame) => { BL.net.npcFrame = frame; BL.net.state.npcVersion++; const from = trail.length; watch(5); return trail.slice(from); };
         sync = BL.npcSync.create(options);
-        const start = follow(hostFrames[0]), eased = follow(hostFrames[1]), beamed = follow(hostFrames[2]);
+        const start = follow(hostFrames[0]);
+        follow(hostFrames[1]); follow(hostFrames[2]); watch(10);
         sync.dispose();
+        const last = trail.at(-1);
         const statusSnap = {
           frames: hostFrames.length === 3 && hostFrames.every(Boolean) && new Set(hostFrames).size === 3,
-          puppet: start.x === 1 && start.z === 1 && start.state === "chilling",
-          // 2 m apart, same status: partway toward the host's pose this update.
-          eased: eased.state === "chilling" && eased.x > 1 + 1e-6 && eased.x < 3 - 1e-6 && Math.abs(eased.z - 1) < 1e-6,
-          // 2 m apart, new status: exactly at the host's pose.
-          snapped: beamed.state === "working" && Math.abs(beamed.x - 3) < 1e-6 && Math.abs(beamed.z - 3) < 1e-6
+          // The first frame is shown at once and held until the next is due.
+          puppet: start.every(e => e.x === 1 && e.z === 1 && e.state === "chilling"),
+          // 2 m apart, same status: shown partway between the two frames, never past the second.
+          eased: trail.some(e => e.state === "chilling" && e.x > 1 + 1e-6 && e.x < 3 - 1e-6 && Math.abs(e.z - 1) < 1e-6)
+            && trail.every((e, j) => e.x <= 3 + 1e-6 && (!j || e.x >= trail[j - 1].x - 1e-9)),
+          // 2 m apart, new status: never drawn across, and status and pose land in the same update.
+          snapped: trail.every(e => (e.z === 1 || e.z === 3) && (e.state === "working") === (e.z === 3) && (e.z === 1 || e.x === 3))
+            && last.state === "working" && last.x === 3 && last.z === 3
         };
+        const eased = trail.find(e => e.x > 1 && e.x < 3), beamed = last;
         mover.state = moverSaved.state; Object.assign(p, moverSaved.position);
         mover.root.quaternion = moverSaved.quaternion; mover.root.visible = moverSaved.visible;
         record("NPC sync: a follower eases a same-status move under the snap distance, but places a puppet at once when its streamed status changes",
@@ -28425,6 +28439,166 @@ record("character visibility source bakes: ownership wrappers share exact immuta
           mover.root.quaternion = moverSaved.quaternion; mover.root.visible = moverSaved.visible;
           record("NPC sync: a follower whose host sends another frame format holds every NPC in place, reports it once and runs no crew AI of its own, then follows a matching frame",
             holding && resumedFormat && freed, JSON.stringify({ holding, resumedFormat, freed, told, incompatible: sync.incompatible }));
+        }
+        // Regression: easing toward each 4 Hz frame made a walking puppet surge as a frame landed and crawl before
+        // the next. A real host's frames of a steady walk, followed at 60 fps, must play at the walk's own pace,
+        // never past the newest frame, and stop where it stopped; a frame's events replay with the pose it was
+        // sent with; late frames, an idle host's skipped frames and a new host never make the puppet jump.
+        {
+          const SEND = 0.25, STEP = 1 / 60, SPEED = 2, PER = Math.round(SEND / STEP), pace = SPEED * STEP;
+          const plansAt = [], travel = { ...options, onPlan: (cave) => { if (cave === mover) plansAt.push(p.x); } };
+          // The host walks 3 s along x, stands 3 s (its unchanged frames skipped but for KEEP_S's), then walks 2 s along z.
+          BL.net.state.hostId = BL.net.state.selfId = "host";
+          sync = BL.npcSync.create(travel);
+          const turnSaved = { ...mover.root.rotation };
+          mover.state = "chilling"; mover.root.visible = true; mover.root.quaternion = null; mover.root.rotation.y = 0;
+          const sent = [];
+          let lastFrame = BL.net.npcFrame;
+          for (let tick = 0; tick < 33; tick++) {
+            Object.assign(p, { x: 1 + Math.min(tick, 11) * SEND * SPEED, y: baseY, z: 1 + Math.max(0, tick - 24) * SEND * SPEED });
+            if (tick === 6) sync.recordPlan(mover, 1);
+            sync.update(SEND);
+            if (BL.net.npcFrame !== lastFrame) { lastFrame = BL.net.npcFrame; sent.push({ step: tick * PER, tick, frame: lastFrame }); }
+          }
+          sync.dispose();
+          // A follower at 60 fps from the update the first frame lands in; frame k lands `latency(k)` updates after the
+          // host sent it. `path[j]` is the update `latency(0) + j` steps after the host's first frame.
+          BL.net.state.selfId = "follower";
+          const playback = (latency) => {
+            sync = BL.npcSync.create(travel);
+            plansAt.length = 0;
+            const path = [];
+            for (let step = latency(0), next = 0; step <= sent.at(-1).step + 3 * PER; step++) {
+              let frame = null;
+              while (next < sent.length && sent[next].step + latency(next) <= step) frame = sent[next++].frame;
+              if (frame) { BL.net.npcFrame = frame; BL.net.state.npcVersion++; }
+              sync.update(STEP);
+              path.push({ x: p.x, z: p.z, puppet: mover.puppet });
+            }
+            sync.dispose();
+            return path;
+          };
+          // Steps along one axis over a stretch of the path; `moving` drops the stretch's first and last moving steps,
+          // which start and end between two updates.
+          const walkOf = (path, axis, from, to) => {
+            const steps = [];
+            for (let j = from + 1; j < to; j++) steps.push(path[j][axis] - path[j - 1][axis]);
+            const first = steps.findIndex(d => d > 1e-9), last = steps.findLastIndex(d => d > 1e-9);
+            return { steps, moving: first < 0 ? [] : steps.slice(first + 1, last) };
+          };
+          // Where the walks part: the idle host's first moving frame, a little before it lands.
+          const turn = sent.find(s => s.tick > 24).step;
+          const judge = (path) => {
+            const x = walkOf(path, "x", 0, turn), z = walkOf(path, "z", turn, path.length);
+            return {
+              x, z,
+              puppet: path.every(e => e.puppet),
+              // Never behind or past the host's walk, and still where it stopped.
+              bounded: path.every(e => e.x >= 1 && e.x <= 6.5 + 1e-6 && e.z >= 1 && e.z <= 5 + 1e-6)
+                && x.steps.every(d => d >= -1e-9) && z.steps.every(d => d >= -1e-9)
+                && path.slice(turn - PER).every(e => Math.abs(e.x - 6.5) < 1e-6) && path.at(-1).z === 5,
+              // No stall while it walks, and no step longer than two of the walk's own.
+              continuous: x.moving.length > 100 && z.moving.length > 60 && [...x.moving, ...z.moving].every(d => d > 1e-6 && d < 2 * pace)
+            };
+          };
+          const steady = judge(playback(() => 3));
+          const steadyPlan = plansAt.slice();
+          // Late by up to 4 updates (still inside JITTER), in a fixed uneven order.
+          const late = [0, 4, 1, 3, 0, 2, 4, 1, 3, 0, 4, 2];
+          const jittered = judge(playback(k => 3 + late[k % late.length]));
+          const sameSteps = (list) => list.every(d => Math.abs(d - pace) < pace * 1e-4);
+          const travelChecks = {
+            frames: sent.length >= 20 && sent.length < 33,
+            steady: steady.puppet && steady.bounded && steady.continuous,
+            // The pulse: a steady walk plays at exactly its own pace through every frame it crosses.
+            pace: sameSteps(steady.x.moving) && sameSteps(steady.z.moving.slice(-PER)),
+            // The idle host's first frame of a new walk starts from where the puppet stands, no faster than the walk.
+            restart: steady.z.moving.every(d => d <= pace * (1 + 1e-4)),
+            jittered: jittered.puppet && jittered.bounded && jittered.continuous,
+            // The plan the host made at x = 4 reaches the gorillas once, as the puppet passes x = 4.
+            plan: steadyPlan.length === 1 && steadyPlan[0] >= 4 - 1e-6 && steadyPlan[0] < 4 + pace + 1e-6
+          };
+          // A new host: the puppets are handed back, and the new host's first frame is shown at once, nothing kept from the old.
+          sync = BL.npcSync.create(travel);
+          BL.net.npcFrame = sent.at(-1).frame; BL.net.state.npcVersion++;
+          for (let s = 0; s < 30; s++) sync.update(STEP);
+          const before = { x: p.x, z: p.z, puppet: mover.puppet };
+          BL.net.state.hostId = "other"; sync.update(STEP);
+          const handedBack = !mover.puppet;
+          BL.net.npcFrame = sent[0].frame; BL.net.state.npcVersion++; sync.update(STEP);
+          travelChecks.handoff = before.puppet && before.x === 6.5 && before.z === 5 && handedBack && mover.puppet && p.x === 1 && p.z === 1;
+          sync.dispose();
+          BL.net.state.hostId = "host";
+          mover.state = moverSaved.state; Object.assign(p, moverSaved.position); Object.assign(mover.root.rotation, turnSaved);
+          mover.root.quaternion = moverSaved.quaternion; mover.root.visible = moverSaved.visible;
+          record("NPC sync: a follower plays a real host's 4 Hz walk at the walk's own pace, without a pulse per frame, a guess past the newest frame, a stall on late frames, a jump after the host idles or keeps a new host's old frames, and replays a frame's events with its pose",
+            Object.values(travelChecks).every(Boolean),
+            JSON.stringify({ travelChecks, sent: sent.length, steadyX: steady.x.moving.slice(0, 20), steadyZ: steady.z.moving.slice(0, 30), jitterX: jittered.x.moving.slice(0, 20), steadyPlan }));
+        }
+        // Regression: frames landing close together are folded into one, and every event they carried replays once, in
+        // arrival order, when playback reaches them; past SLOT_EVENTS (two frames' worth) the newest are dropped and counted.
+        {
+          const heard = [], listening = { ...options, onPlan: (cave, site) => { if (cave === mover) heard.push(site); } };
+          BL.net.state.hostId = BL.net.state.selfId = "host";
+          sync = BL.npcSync.create(listening);
+          sync.update(0.25);
+          const eventFrames = [];
+          for (const [base, count] of [[0, 1], [100, 64], [200, 64], [300, 96]]) {
+            for (let k = 0; k < count; k++) sync.recordPlan(mover, base + k);
+            sync.update(0.25); eventFrames.push(BL.net.npcFrame);
+          }
+          sync.dispose();
+          BL.net.state.selfId = "follower";
+          sync = BL.npcSync.create(listening);
+          const land = (frame) => { BL.net.npcFrame = frame; BL.net.state.npcVersion++; sync.update(1 / 60); };
+          land(eventFrames[0]);
+          for (let s = 0; s < 14; s++) sync.update(1 / 60);
+          land(eventFrames[1]); land(eventFrames[2]);
+          const folded = sync.buffered === 2;
+          land(eventFrames[3]);
+          const stillFolded = sync.buffered === 2, early = heard.length;
+          for (let s = 0; s < 40; s++) sync.update(1 / 60);
+          const want = [0];
+          for (const base of [100, 200, 300]) for (let k = 0; k < 64; k++) want.push(base + k);
+          const eventFold = { frames: eventFrames.length === 4 && new Set(eventFrames).size === 4, folded, stillFolded, early: early === 0,
+            replayed: heard.length === want.length && heard.every((site, j) => site === want[j]), dropped: sync.droppedEvents === 32 };
+          sync.dispose();
+          mover.state = moverSaved.state; Object.assign(p, moverSaved.position);
+          mover.root.quaternion = moverSaved.quaternion; mover.root.visible = moverSaved.visible;
+          record("NPC sync: events of frames folded together replay once each, in arrival order, after their poses; past the fold's budget the newest are dropped and counted",
+            Object.values(eventFold).every(Boolean), JSON.stringify({ eventFold, heard: heard.length, dropped: sync.droppedEvents }));
+        }
+        // Regression: a host on another frame format interrupts playback; the first matching frame afterwards is shown at
+        // once, and nothing buffered but unshown before the interruption is ever played.
+        {
+          const older = hostFrames[0].slice(0);
+          new Uint32Array(older, 0, 4)[0] = BL.npcSync.FORMAT - 1;
+          BL.net.state.hostId = "host"; BL.net.state.selfId = "follower";
+          sync = BL.npcSync.create(options);
+          const seen = [];
+          const land = (frame) => {
+            if (frame) { BL.net.npcFrame = frame; BL.net.state.npcVersion++; }
+            sync.update(0.05); seen.push({ x: p.x, z: p.z, state: mover.state });
+          };
+          land(hostFrames[0]); land(hostFrames[1]);
+          const waiting = sync.buffered === 2;
+          land(older);
+          const cleared = sync.incompatible && sync.buffered === 0;
+          for (let s = 0; s < 10; s++) land(null);
+          land(hostFrames[2]);
+          const resumed = seen.at(-1);
+          for (let s = 0; s < 12; s++) land(null);
+          const staleResume = {
+            waiting, cleared,
+            held: seen.slice(0, 13).every(e => e.x === 1 && e.z === 1),
+            resumedAtOnce: !sync.incompatible && resumed.x === 3 && resumed.z === 3 && resumed.state === "working",
+            neverStale: seen.every(e => (e.x === 1 && e.z === 1) || (e.x === 3 && e.z === 3))
+          };
+          sync.dispose();
+          mover.state = moverSaved.state; Object.assign(p, moverSaved.position);
+          mover.root.quaternion = moverSaved.quaternion; mover.root.visible = moverSaved.visible;
+          record("NPC sync: after a host's frames of another format, the first matching frame is shown at once and no pose buffered before them is played",
+            Object.values(staleResume).every(Boolean), JSON.stringify({ staleResume, seen }));
         }
       } finally { if (sync) sync.dispose(); crew.workSites = savedSites; BL.net = savedNet; }
       newest.contributor.lastContributionAt = now;
