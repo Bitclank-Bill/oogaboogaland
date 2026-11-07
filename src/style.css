@@ -1934,9 +1934,6 @@ body[data-active-scene="hub"] .home-link {
   grid-row: 1 / span 3;
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  background: rgba(243, 239, 228, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(243, 239, 228, 0.14);
   image-rendering: pixelated;
 }
 
@@ -2110,9 +2107,9 @@ body[data-active-scene="hub"] .home-link {
 
 /* The live players tab (players.js): a group a zone under its heading, and a row a player with the roster's marks,
    the crosshair that turns the camera and, for players in the visitor's zone, how far away they stand. Each cell keeps
-   its column, so a hidden crosshair or an empty distance never moves the others. An Ooga thump's mallet (thump.js) has
-   its own column beside the voice mark in every row, shown and hidden by visibility alone, so it never moves a name or
-   a control, and takes no pointer, so it never covers one. */
+   its column, so a hidden crosshair or an empty distance never moves the others. An Ooga thump's mallet (thump.js) is
+   drawn over the voice mark, in its cell in every row, shown and hidden by visibility alone, so it never moves a name or
+   a control, and takes no pointer, so the voice mark under it still takes a click. */
 .players {
   display: flex;
   flex-direction: column;
@@ -2124,11 +2121,13 @@ body[data-active-scene="hub"] .home-link {
   display: none;
 }
 
-/* The icons sit together at the row's end, each a column as wide as it needs, hard by the distance, which starts right
-   after the crosshair and is as wide as the widest distance: the name keeps every other pixel. */
+/* After the name: the private-conversation lock, the voice mark (the thump's mallet drawn over it in the same cell),
+   the distance and the crosshair, each in a column every row shares, so the voice mark keeps its place by the distance
+   whether a row shows one or not. The distance column is as wide as the widest distance and the icons take only their
+   own width: the name keeps every other pixel. Every cell sits on the row's first line; a player's volume, under it. */
 .players-rows {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) max-content 12px 12px max-content;
+  grid-template-columns: 8px minmax(0, 1fr) max-content 12px max-content 12px;
   column-gap: 4px;
   margin: 0;
   padding: 0;
@@ -2152,11 +2151,17 @@ body[data-active-scene="hub"] .home-link {
   box-shadow: none;
 }
 
+.players-rows li > * { grid-row: 1; }
+.players-rows li > .players-volume { grid-row: 2; }
 .players-rows .roster-dots { grid-column: 1; }
-.players-rows .roster-marks { grid-column: 3; gap: 4px; }
+.players-rows .roster-marks { display: contents; }
+.players-rows .players-private { grid-column: 3; grid-row: 1; justify-self: end; }
+.players-rows .roster-voice { grid-column: 4; grid-row: 1; justify-self: center; }
 
 .players-thump {
   display: inline-flex;
+  position: relative;
+  z-index: 1;
   grid-column: 4;
   justify-self: center;
   width: 12px;
@@ -2185,6 +2190,14 @@ body[data-active-scene="hub"] .home-link {
   padding-left: 2px;
   color: var(--paper);
 }
+
+/* A raised hand after the name, never squeezing it out: the name gives way first. */
+.players-hand {
+  flex: none;
+  font: 13px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+.players-hand[hidden] { display: none; }
 
 /* A player's own disclosure keeps volume apart from mute and camera targeting. */
 .players-volume {
@@ -2217,7 +2230,7 @@ body[data-active-scene="hub"] .home-link {
 
 .players-look {
   display: inline-flex;
-  grid-column: 5;
+  grid-column: 6;
   justify-self: center;
   padding: 0;
   border: 0;
@@ -2252,7 +2265,7 @@ body[data-active-scene="hub"] .home-link {
 }
 
 .players-distance {
-  grid-column: 6;
+  grid-column: 5;
   justify-self: start;
   color: var(--paper);
   font-size: 11px;
@@ -2323,6 +2336,279 @@ body[data-active-scene="hub"] .home-link {
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* Reactions (reactions.js), on X Spaces' pattern: a paper card, two rows of five emoji, a divider and the raised hand
+   pinned past it, under Online Oogas' list and Ooga Chat's input. A long press opens the picker over the bar, in the
+   same paper. Emoji are the system's own colour glyphs. */
+.reactions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.reactions[hidden] { display: none; }
+
+.reaction-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 4px 14px rgba(0, 0, 0, 0.45);
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.reaction-grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px 4px;
+}
+
+.reaction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font: 24px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.reaction:hover,
+.reaction.virtual-hover { background: rgba(42, 26, 12, 0.08); }
+.reaction:active { transform: scale(1.22); }
+.reaction:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.reaction:disabled { opacity: 0.4; cursor: default; transform: none; background: none; }
+.reaction[data-picking="true"] { background: rgba(216, 137, 43, 0.22); box-shadow: inset 0 0 0 2px var(--accent); }
+
+.reaction-divider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 2px;
+  background: rgba(42, 26, 12, 0.18);
+}
+
+.reaction-hand {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  font-size: 28px;
+}
+
+/* The hand while it is up: a ring in the accent, as a toggle that stays pressed. */
+.reaction-hand[aria-pressed="true"] {
+  background: rgba(216, 137, 43, 0.22);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reaction { transition: none; }
+  .reaction:active { transform: none; }
+}
+
+/* The picker floats in the middle of the screen, over the panels and the world, as wide as fits. */
+.reaction-picker {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
+  padding: 12px;
+  border-radius: 18px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(42, 26, 12, 0.12);
+  transform: translate(-50%, -50%);
+}
+
+.reaction-picker[hidden] { display: none; }
+
+.reaction-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reaction-picker-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-muted);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.reaction-picker-current {
+  font: 22px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  letter-spacing: 0;
+}
+
+.reaction-picker-close {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(42, 26, 12, 0.08);
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reaction-picker-close:hover { background: rgba(42, 26, 12, 0.16); }
+.reaction-picker-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.reaction-picker-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.reaction-picker-search {
+  flex: 1 1 140px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(42, 26, 12, 0.2);
+  border-radius: 15px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.reaction-picker-search:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+
+.reaction-tones { display: flex; gap: 4px; }
+
+.reaction-tone {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: #ffcc4d;
+  box-shadow: inset 0 0 0 1px rgba(42, 26, 12, 0.2);
+  cursor: pointer;
+}
+
+.reaction-tone[data-tone="1"] { background: #f7dece; }
+.reaction-tone[data-tone="2"] { background: #f3d2a2; }
+.reaction-tone[data-tone="3"] { background: #d5ab88; }
+.reaction-tone[data-tone="4"] { background: #af7e57; }
+.reaction-tone[data-tone="5"] { background: #7c533e; }
+.reaction-tone[aria-checked="true"] { border-color: var(--accent); }
+.reaction-tone:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.reaction-hearts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.reaction-heart {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: none;
+  font: 14px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  cursor: pointer;
+}
+
+.reaction-heart[aria-checked="true"] { border-color: var(--accent); background: rgba(216, 137, 43, 0.14); }
+.reaction-heart:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.reaction-picker-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(42, 26, 12, 0.14);
+}
+
+.reaction-picker-jump,
+.reaction-choice {
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reaction-picker-jump { flex: 1; height: 26px; font-size: 16px; }
+
+.reaction-picker-jump:hover,
+.reaction-choice:hover,
+.reaction-picker-jump.virtual-hover,
+.reaction-choice.virtual-hover { background: rgba(42, 26, 12, 0.08); }
+
+.reaction-picker-jump:focus-visible,
+.reaction-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.reaction-picker-grid {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.reaction-picker-group {
+  margin: 6px 2px 4px;
+  color: var(--ink-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.reaction-picker-group[hidden],
+.reaction-picker-set[hidden],
+.reaction-choice[hidden] { display: none; }
+
+.reaction-picker-set {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+}
+
+.reaction-choice { height: 34px; font-size: 22px; }
+
+.reaction-picker-foot { display: flex; justify-content: flex-end; }
+.reaction-picker .reaction-picker-reset { color: var(--ink-muted); font-size: 10px; }
+
+@media (pointer: coarse) {
+  .reaction { height: 44px; }
+  .reaction-choice { height: 40px; }
+  .reaction-picker-set { grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); }
+  .reaction-tone { width: 26px; height: 26px; }
+  .reaction-heart { width: 32px; height: 32px; font-size: 18px; }
 }
 
 /* Native disclosure keeps advanced settings together on every panel layout. */

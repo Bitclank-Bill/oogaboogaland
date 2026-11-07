@@ -662,17 +662,17 @@
       for (const row of rosterRows.values()) setRosterRow(row.contributor.name, null, null, row.sceneOnline, row.remoteOnline);
     };
     listeners.push(BL.contributors.subscribe(refreshRosterActivity));
+    const rosterTimer = window.setInterval(refreshRosterActivity, 60000);
+    listeners.push(() => window.clearInterval(rosterTimer));
+    on(document, "visibilitychange", refreshRosterActivity);
+    // The page-level pass updates presence without changing contribution order.
+    liveRows = rosterRows;
     // A fresh oogatron reading refills every open stats strip.
     listeners.push(BL.oogatronLive.subscribe((event) => {
       if (event.type !== "stats") return;
       liveStats = BL.activityRepos.normalizeStats(event.stats);
       for (const row of rosterRows.values()) if (row.open) fillStats(row);
     }));
-    const rosterTimer = window.setInterval(refreshRosterActivity, 60000);
-    listeners.push(() => window.clearInterval(rosterTimer));
-    on(document, "visibilitychange", refreshRosterActivity);
-    // The page-level pass updates presence without changing contribution order.
-    liveRows = rosterRows;
     liveOnline = showOnline;
     showVoices();
     // Value the donated sats at the current price; donor rankings retain their receipt prices. A bitcoin's price is
@@ -2502,7 +2502,8 @@
   // kept on `liveStats`) or the baked one. Built on its first opening and filled on each, and again while open when a
   // reading arrives; the face is drawn once a page a contributor.
   const STAT_KINDS = [["commits", "commit", "commits"], ["prs", "PR", "PRs"], ["reviews", "review", "reviews"], ["issues", "issue", "issues"], ["comments", "comment", "comments"]];
-  const STAT_FACE_PX = 40, REPO_URL = "https://github.com/OogaBoogaX/";
+  // The org's .github repository holds its profile and templates, not a project, so it gets no chip.
+  const STAT_FACE_PX = 40, REPO_URL = "https://github.com/OogaBoogaX/", UNLISTED_REPOS = new Set([".github"]);
   const SINCE = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
   const faces = new Map();
   let liveStats = null;
@@ -2562,6 +2563,7 @@
     stats.kinds.hidden = !kinds.length;
     const list = [];
     for (const repo of data && Array.isArray(data.repos) ? data.repos : []) {
+      if (UNLISTED_REPOS.has(repo.name)) continue;
       const listed = Array.isArray(repo.contributors) && repo.contributors.some((c) => c.login.toLowerCase() === login);
       const n = countFor(repo.leaderboards, login);
       if (listed || n) list.push({ name: repo.name, n });
