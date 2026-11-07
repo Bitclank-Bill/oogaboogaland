@@ -178,6 +178,8 @@
   // How much nearer the fixtures' small parts (the desks' drawers, pulls, trims and what stands on them) sort on Canvas
   // 2D (m), so the big faces they sit on don't paint over them.
   const DETAIL_BIAS = -0.5;
+  // And the crates' rivets, bolts and seams, only as much nearer as keeps those on a crate's back behind its lid.
+  const CRATE_BIAS = -0.15;
   // How near the hold-short bar the launch shield answers whoever walks up to it, and how far back they must step before
   // it answers again; and how much of the hall's haze its shimmer cuts through.
   const SHIELD_NEAR = 0.6, SHIELD_REARM = 3, SHIELD_PIERCE = 0.7;
@@ -878,7 +880,7 @@
     s.stutterAt = 0;
     s.stutterWait = NEON_STUTTER[0];
     s.fixtures = createNode({ geometry: fixtures.flat });
-    addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }));
+    addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));
     addChild(root, s.mouth, s.fixtures);
     // The runway's marker lamps and the floor lamps, each a node of its own, so they come alive one at a time
     // (`lampLife`).

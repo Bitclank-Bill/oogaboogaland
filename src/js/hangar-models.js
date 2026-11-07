@@ -24,7 +24,7 @@
   const TAU = Math.PI * 2;
 
   const STONE = ["#5b4a3e", "#524238", "#66544a", "#4a3d34"], STONE_DK = "#3a2f28", IRON = "#4a4d52", IRON_DK = "#2c2e33";
-  const TIMBER = "#8a5a32", TIMBER_DK = "#5c3a1e";
+  const TIMBER = "#8a5a32";
   const RUNWAY = "#2a2e36", SEAM = "#3b404a", PAINT = "#ffd23a", INK = "#141414", MARKER = "#6fc8ff", NEON = "#4fb4ff";
   const SCREEN = "#2f7fd8", FLOOR_LAMP = "#4aa8ff";
 
@@ -855,6 +855,47 @@
     d.push(moved(prism([[-0.006, -0.002], [0.018, -0.002], [-0.014, -0.026], [0.002, -0.002]], 0.006, C.gold, 0.4), -0.34, 1.31, 0.167));
   };
 
+  // A crate after the concept, in its own frame, centred on its foot at (0, 0, 0) and `s` times the full size (0.9 across
+  // and 0.8 tall, its top `CRATE_TOPS`' first): a royal blue body under a navy lid with a raised rim and corner blocks
+  // round its recessed top, a yellow band round it under the lid studded with rivets, yellow bands down its corners,
+  // dark bumper caps on its bottom corners with a bolt in each face, a panel seam and the hangar's bolt on its front and
+  // back; or, `grey`, the plain slate one, its bands and corners dark and no bolt. `body` its parts and `small` the
+  // rivets, bolts, seam and bolt on its faces, which Canvas 2D draws a little nearer (the scene's `CRATE_BIAS`: not as
+  // much as the other fixtures' details, or those on its back would show through its lid).
+  const CRATE = { body: "#2a44b0", lid: "#1a2a70", trim: "#f2b630", cap: "#262c3c", dot: "#0f1218", grey: "#59607a", greyLid: "#3d4356", greyTrim: "#2f3446" };
+  const crateParts = (s, grey) => {
+    const C = CRATE, body = [], small = [], k = (v) => v * s;
+    const skin = grey ? C.grey : C.body, lid = grey ? C.greyLid : C.lid, trim = grey ? C.greyTrim : C.trim;
+    body.push(bevelBox({ w: k(0.86), h: k(0.72), d: k(0.86), color: skin, bevel: k(0.02), offset: { y: k(0.36) } }));
+    // The lid, its rim and its corner blocks, the top `CRATE_TOPS` stands on.
+    body.push(bevelBox({ w: k(0.92), h: k(0.06), d: k(0.92), color: lid, bevel: k(0.015), offset: { y: k(0.74) } }));
+    for (const sz of [-1, 1]) body.push(box({ w: k(0.66), h: k(0.02), d: k(0.07), color: lid, offset: { y: k(0.78), z: sz * k(0.425) } }));
+    for (const sx of [-1, 1]) body.push(box({ w: k(0.07), h: k(0.02), d: k(0.66), color: lid, offset: { x: sx * k(0.425), y: k(0.78) } }));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) body.push(bevelBox({ w: k(0.13), h: k(0.03), d: k(0.13), color: lid, bevel: k(0.008), offset: { x: sx * k(0.395), y: k(0.785), z: sz * k(0.395) } }));
+    // The band under the lid and its rivets, the bands down the corners, and the caps on the bottom corners with
+    // their bolts.
+    for (const sd of [-1, 1]) {
+      body.push(box({ w: k(0.89), h: k(0.07), d: k(0.03), color: trim, offset: { y: k(0.64), z: sd * k(0.43) } }));
+      body.push(box({ w: k(0.03), h: k(0.07), d: k(0.83), color: trim, offset: { x: sd * k(0.43), y: k(0.64) } }));
+    }
+    for (const u of [-0.25, 0, 0.25]) for (const sd of [-1, 1]) {
+      small.push(box({ w: k(0.025), h: k(0.025), d: k(0.01), color: C.dot, offset: { x: k(u), y: k(0.64), z: sd * k(0.45) } }));
+      small.push(box({ w: k(0.01), h: k(0.025), d: k(0.025), color: C.dot, offset: { x: sd * k(0.45), y: k(0.64), z: k(u) } }));
+    }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      body.push(box({ w: k(0.1), h: k(0.48), d: k(0.1), color: trim, offset: { x: sx * k(0.405), y: k(0.36), z: sz * k(0.405) } }));
+      body.push(bevelBox({ w: k(0.15), h: k(0.12), d: k(0.15), color: C.cap, bevel: k(0.015), offset: { x: sx * k(0.405), y: k(0.06), z: sz * k(0.405) } }));
+      small.push(box({ w: k(0.03), h: k(0.03), d: k(0.01), color: C.dot, offset: { x: sx * k(0.405), y: k(0.06), z: sz * k(0.485) } }));
+      small.push(box({ w: k(0.01), h: k(0.03), d: k(0.03), color: C.dot, offset: { x: sx * k(0.485), y: k(0.06), z: sz * k(0.405) } }));
+    }
+    // The panel seam and the bolt, front and back.
+    for (const sz of [-1, 1]) {
+      small.push(box({ w: k(0.012), h: k(0.46), d: k(0.006), color: lid, offset: { x: -sz * k(0.1), y: k(0.35), z: sz * k(0.432) } }));
+      if (!grey) small.push(moved(turnedY(FM.smoothBolt(k(0.34), k(0.02), C.trim, 0.25), sz > 0 ? 0 : Math.PI), sz * k(0.13), k(0.33), sz * k(0.44)));
+    }
+    return { body, small };
+  };
+
   // A terminal's screen on its stand, in the stand's frame: its width and height, where its bottom edge stands, and how
   // far it leans back; `hangar-terminals.js` lays its pictures over it.
   const KIOSK = { w: 0.78, h: 0.5, y: 1.08, z: 0.02, tilt: -0.45 };
@@ -863,7 +904,7 @@
   // the Factory's window into the hangar; the scene stands a `floorLamp` of its own on each base to light them one at a
   // time); the lanterns on the crates come back with their lights.
   const fixtures = cached(() => {
-    const L = LAYOUT, flat = [], glow = [], detail = [], lamps = [], frame = [], glass = [], lights = [];
+    const L = LAYOUT, flat = [], glow = [], detail = [], crateDetail = [], lamps = [], frame = [], glass = [], lights = [];
     L.stations.forEach(([x, z, turn], i) => {
       const f = [], g = [], d = [];
       workstation(f, g, d, i);
@@ -887,25 +928,30 @@
       placed(flat, f, x, 0, z, turn);
       placed(detail, d, x, 0, z, turn);
     }
-    const crate = (x, y, z, a, s) => {
-      flat.push(moved(turnedY(bevelBox({ w: 0.9 * s, h: 0.8 * s, d: 0.9 * s, color: TIMBER, bevel: 0.05 }), a), x, y + 0.4 * s, z));
-      for (const h of [0.16, 0.64]) flat.push(moved(turnedY(box({ w: 0.92 * s, h: 0.06 * s, d: 0.92 * s, color: TIMBER_DK }), a), x, y + h * s, z));
-      flat.push(moved(turnedY(beam(-0.42 * s, 0.08 * s, 0.46 * s, 0.42 * s, 0.72 * s, 0.46 * s, 0.06 * s, TIMBER_DK), a), x, y, z));
+    const crate = (x, y, z, a, s, grey) => {
+      const { body, small } = crateParts(s, grey);
+      for (const p of body) flat.push(moved(turnedY(p, a), x, y, z));
+      for (const p of small) crateDetail.push(moved(turnedY(p, a), x, y, z));
     };
     L.crates.forEach(([x, z, a, stacked], i) => {
-      crate(x, 0, z, a, 1);
-      if (stacked > 1) crate(x + 0.05, CRATE_TOPS[0], z - 0.04, a + 0.3, 0.8);
+      crate(x, 0, z, a, 1, i % 4 === 3);
+      if (stacked > 1) crate(x + 0.05, CRATE_TOPS[0], z - 0.04, a + 0.3, 0.8, true);
       const top = CRATE_TOPS[stacked > 1 ? 1 : 0];
       if (i % 3 === 0) {
         lanternParts(0.75, x, top, z, frame, glass);
         lights.push(x, top + 0.35, z, 6);
-      } else if (i % 3 === 1) flat.push(moved(turnedY(bevelBox({ w: 0.42, h: 0.2, d: 0.22, color: "#c2402e", bevel: 0.03 }), a + 0.5), x, top + 0.1, z));
+      } else if (i % 3 === 1) {
+        // A small yellow case left on it, its lid's band and handle dark.
+        flat.push(moved(turnedY(bevelBox({ w: 0.42, h: 0.2, d: 0.22, color: CRATE.trim, bevel: 0.03 }), a + 0.5), x, top + 0.1, z));
+        flat.push(moved(turnedY(box({ w: 0.43, h: 0.035, d: 0.23, color: CRATE.lid, offset: { y: 0.06 } }), a + 0.5), x, top + 0.1, z));
+        flat.push(moved(turnedY(box({ w: 0.16, h: 0.03, d: 0.03, color: CRATE.cap, offset: { y: 0.115 } }), a + 0.5), x, top + 0.1, z));
+      }
     });
     for (const [x, z] of L.floorLamps) {
       flat.push(bevelBox({ w: 0.56, h: 0.1, d: 0.56, color: IRON_DK, bevel: 0.02, offset: { x, y: 0.05, z } }));
       lamps.push(bevelBox({ w: 0.44, h: 0.42, d: 0.44, color: FLOOR_LAMP, emissive: 1, bevel: 0.03, offset: { x, y: 0.31, z } }));
     }
-    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lampGlow: noShadow(merge(...lamps)), frame: merge(...frame), glass: noShadow(merge(...glass)), lights };
+    return { flat: merge(...flat), detail: merge(...detail), crateDetail: merge(...crateDetail), glow: noShadow(merge(...glow)), lampGlow: noShadow(merge(...lamps)), frame: merge(...frame), glass: noShadow(merge(...glass)), lights };
   });
   const floorLamp = cached(() => noShadow(bevelBox({ w: 0.44, h: 0.42, d: 0.44, color: FLOOR_LAMP, emissive: 1, bevel: 0.03, offset: { y: 0.31 } })));
 
@@ -1968,7 +2014,7 @@
     const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.slots);
     const run = runway(), tun = tunnel(), fix = fixtures();
-    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), fix.flat, fix.detail, fix.glow, fix.lampGlow, fix.glass, dock());
+    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
     // The boards on their mounts, their glass and tiles, as they hang.
     const frames = boardFrames(), faces = { stats: statsFace(), timeline: timelineFace() };
