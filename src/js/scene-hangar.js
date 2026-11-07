@@ -896,9 +896,11 @@
       addChild(root, createNode({ geometry: part.flat, depthBias }), lenses);
       s.glass.push(lenses);
     }
-    // The control room set into the left wall on the catwalks' level (`HM.controlRoom`), its glow dimmed with the glass.
+    // The control room set into the left wall on the catwalks' level (`HM.controlRoom`), its glow dimmed with the glass,
+    // and its screens' painted faces, sorted a metre nearer on Canvas 2D so the wall they hang on never paints over them.
     const room = HM.controlRoom(), roomGlow = createNode({ geometry: room.glow, sightHidden: true });
     addChild(root, createNode({ geometry: room.flat }), roomGlow, createNode({ geometry: room.glass, sightHidden: true }));
+    for (const p of room.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
     s.glass.push(roomGlow);
     s.fixtures = createNode({ geometry: fixtures.flat });
     addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));
