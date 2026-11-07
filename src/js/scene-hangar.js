@@ -82,7 +82,7 @@
     direct: [0.7, 0.52, 0.36], directStrength: 0.36, ambientFloor: 0.4, light: { x: 0.25, y: 0.9, z: 0.35 },
     horizon: [0.07, 0.06, 0.18], zenith: [0.006, 0.008, 0.03], sun: [0.05, 0.05, 0.08], stars: 1,
     moon: { x: 0.2, y: 0.13, z: -0.97 }, starMatrix: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
-    shadowCenter: { x: 2.5, y: 6, z: -2 }, shadowExtent: 42, spotLight: new Float32Array(12),
+    shadowCenter: { x: 2.5, y: 6, z: -2 }, shadowExtent: 42, spotLight: new Float32Array(24),
     fog: [0.045, 0.06, 0.095], fogNear: 14, fogFar: 120,
     lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8), lightCount: 0, bloomStrength: 1
   };
@@ -178,6 +178,12 @@
   // How many times the forklift's size the ceiling cranes' beacons are, and how much nearer the crane's spot sorts on
   // Canvas 2D (m), so the floor's big tiles nearer the view don't paint over it.
   const BEACON_SIZE = 1.8, SPOT_BIAS = -4;
+  // The crane's safety spot as the renderer's second spot light (`spotLight` from 12): shining straight down from under
+  // the hook, `y` up or, lower, just under the crate while it hangs on the hook (`gap` below), so its light falls on the
+  // floor and on whatever stands there, never on the crate over it; its cone always full within `inner` and gone past `outer` m round
+  // on the floor, reaching `range` times its height, so the ring is as big and as bright however low it shines from, in
+  // `color` at full.
+  const CRANE_BEAM = { y: 4.5, gap: 0.1, low: 0.25, inner: 1.25, outer: 1.5, range: 1.8, color: [2.2, 4.6, 11] };
   // How much nearer the fixtures' small parts (the desks' drawers, pulls, trims and what stands on them) sort on Canvas
   // 2D (m), so the big faces they sit on don't paint over them.
   const DETAIL_BIAS = -0.5;
@@ -938,9 +944,11 @@
       work.crate = createNode({ geometry: g.load });
       const crateTrim = createNode({ geometry: g.loadTrim, depthBias: -0.5 });
       work.slack = createNode({ geometry: g.slack });
-      work.spot = createNode({ rotation: { x: -Math.PI / 2, y: 0, z: 0 }, geometry: HM.craneSpot(), sightHidden: true, depthBias: SPOT_BIAS });
+      // Its blue spot is the renderer's second spot light (`craneBeam`); Canvas 2D, which lights a face at a time, lays
+      // the picture of it on the floor instead.
+      if (renderer.kind === "canvas2d") work.spot = createNode({ rotation: { x: -Math.PI / 2, y: 0, z: 0 }, geometry: HM.craneSpot(), sightHidden: true, depthBias: SPOT_BIAS });
       addChild(work.crate, crateTrim, work.sling, work.slack);
-      addChild(root, work.spot);
+      if (work.spot) addChild(root, work.spot);
       s.glass.push(work.crate, crateTrim);
       s.crane = BL.hangarCrane.create({ C, nodes: work, root, powered: () => s.anomaly.powered, under: underLoad, cue: (name, x, y, z) => audio && audio.craneCue(name, x, y, z) });
       s.farCrane = crane(C.far, g.farTrolley);
@@ -1116,6 +1124,13 @@
     for (let i = 0; i < 3; i++) { RENDER_OPTS.sky[i] = SKY[i]; RENDER_OPTS.ground[i] = GROUND[i]; RENDER_OPTS.fog[i] = HAZE[i]; }
     RENDER_OPTS.directStrength = DIRECT; RENDER_OPTS.ambientFloor = FLOOR;
     RENDER_OPTS.lightCount = Math.min(BL.glRenderer.POINT_LIGHT_CAPACITY, FIXED + lanternPool().length / 4);
+  };
+  // The crane's spot into the second spot light, as bright as its `level`; off at 0.
+  const craneBeam = (b) => {
+    const s = RENDER_OPTS.spotLight, B = CRANE_BEAM, h = clamp(b.y - B.gap, B.low, B.y);
+    s[12] = b.x; s[13] = h; s[14] = b.z; s[15] = b.level > 0 ? h * B.range : 0;
+    s[16] = 0; s[17] = -1; s[18] = 0; s[19] = h / Math.hypot(h, B.outer);
+    s[20] = B.color[0] * b.level; s[21] = B.color[1] * b.level; s[22] = B.color[2] * b.level; s[23] = h / Math.hypot(h, B.inner);
   };
   let poolScore = null;
   // The shared slots go to the lanterns nearest the view, nearest first, by repeated minimum: no sort, no list; as dim
@@ -1621,6 +1636,7 @@
     lampLife(s, dt, elapsed, dim);
     boardJets(s, dt);
     s.crane.update(dt, camera.position);
+    craneBeam(s.crane.beam);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
     for (let i = 0; i < s.crew.length; i++) {
       s.crew[i].update(dt);

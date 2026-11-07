@@ -13,7 +13,8 @@
 // trolley's sheaves as the trolley and bridge speed up and slow down, damped, steadied by hand near the stand.
 //
 // While a job runs the warning beacons on the bridge's ends turn (`BEACON`), each flashing as its reflector passes the
-// view, and the trolley throws its blue safety spot on the floor under the hook (`SPOT`). In a blackout (`powered`
+// view, and its blue safety spot lights the floor under the hook (`SPOT`, `beam`: where it is and how bright, for the
+// scene's spot light, and on Canvas 2D its `spot` picture on the floor, if it is given one). In a blackout (`powered`
 // false) its brakes set at once and everything stops where it is (`BRAKE`), the load swinging on, the beacons and the
 // spot dark, until the power is back and it carries on. And it never moves its load over anyone: while anything that
 // walks the hall stands under the load, or where the load would come to rest if it stopped now, it stops
@@ -22,15 +23,16 @@
 // trolley moves (`sound.alarm`).
 //
 // `create({ C, nodes, root, cue, powered, under })` takes the crane's nodes (its bridge, trolley, the `pivot` the ropes
-// and hook hang from, the ropes, the hook, the crate, and on it the taut sling and the slack one, its `beacons` and the
-// floor's `spot`), the scene's root, whether the hall has power (`powered()`), whether anything that walks stands within
+// and hook hang from, the ropes, the hook, the crate, and on it the taut sling and the slack one, its `beacons` and,
+// where the renderer has no spot light to spare, the floor's `spot` picture), the scene's root, whether the hall has power (`powered()`), whether anything that walks stands within
 // `reach` of the line from (ax, az) to (bx, bz) lower than `bottom` (`under(ax, az, bx, bz, reach, bottom)`) and where
 // its sound's cues go (`cue(name, x, y, z)`: `brake` as a motion starts and stops,
 // `rattle` as the sling is hooked on or off, `lift` as the ropes take the crate's weight, `land` as it is set down, `horn`
 // as it warns), and
 // returns `update(dt, eye)` (`eye` the view's position, for the beacons' flash), `sound` (where its trolley is and how
 // fast its travel and its hoist run, 0 to 1, and whether its travel alarm sounds, kept current for
-// `hangarAudio.watchCrane`) and `debug`. Allocates nothing a
+// `hangarAudio.watchCrane`), `beam` (its spot's place under the hook, `y` the crate's bottom while it hangs on the hook,
+// else the rail's height, and its level, 0 to 1) and `debug`. Allocates nothing a
 // frame.
 (() => {
   "use strict";
@@ -79,6 +81,7 @@
     const state = { n: 0, i: 0, t: 0, at: 0, tied: false, loaded: false, jobs: 0, began: false, live: true, stopped: false, held: false, clear: 0, holds: 0, horn: 0 };
     const sound = { x: 0, y: C.railY + 1, z: 0, travel: 0, hoist: 0, alarm: false };
     let count = 0, sweep = 0, lit = 0;
+    const beam = { x: 0, y: 0, z: 0, level: 0 };
     const push = (kind, to = 0, max = 0) => { const s = steps[count++]; s.kind = kind; s.to = to; s.max = max; };
     // The way from (x, z) to (tx, tz): along the hall only over a stand's column, across it only at the door end.
     const route = (x, z, tx, tz) => {
@@ -197,8 +200,10 @@
     push(WAITING, FIRST[0] + Math.random() * (FIRST[1] - FIRST[0]));
     state.n = count;
     pose();
-    spot.position.y = SPOT.y;
-    spot.visible = false;
+    if (spot) {
+      spot.position.y = SPOT.y;
+      spot.visible = false;
+    }
 
     const update = (dt, eye) => {
       if (dt <= 0) return;
@@ -263,10 +268,16 @@
         b.glow = BEACON.on + BEACON.flash * facing ** BEACON.sharp;
       }
       lit = Math.max(0, Math.min(1, lit + (working ? dt : -dt) * SPOT.fade));
-      spot.visible = lit > 0;
-      spot.smokeOpacity = lit;
-      spot.position.x = axes.trolley.p;
-      spot.position.z = axes.bridge.p + 0.1;
+      beam.x = axes.trolley.p;
+      beam.y = state.loaded ? C.railY + C.ropeTop - axes.hoist.p + C.eye - C.sling - ch : C.railY;
+      beam.z = axes.bridge.p + 0.1;
+      beam.level = lit;
+      if (spot) {
+        spot.visible = lit > 0;
+        spot.smokeOpacity = lit;
+        spot.position.x = beam.x;
+        spot.position.z = beam.z;
+      }
     };
 
     // `run()` starts the next job now if the crane is waiting.
@@ -287,7 +298,7 @@
       get holds() { return state.holds; },
       run() { if (steps[state.i].kind === WAITING) state.t = steps[state.i].to; }
     };
-    return { update, sound, debug };
+    return { update, sound, beam, debug };
   };
 
   BL.hangarCrane = { create, SPEED, ACCEL };
