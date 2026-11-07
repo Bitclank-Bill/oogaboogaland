@@ -25929,7 +25929,9 @@ const raceRigChecks = async () => {
     // Cloud Hopper's Thunderhead adds uFogPierce, a geometry's opt-in share of the fog taken off so its tornadoes and
     // lightning show through the haze, in the plain variant as in the full one (to b1c48c15); it is zero for every
     // other geometry.
-    "b1c48c156419060fb92624a8a81804196b91c6100821b4b7b176eddb6f7b3a61",
+    // The Lightning Jet Hangar's crane adds a second cone light for its safety spot: `uSpotLight` holds two and the
+    // shader loops over them (to 4678b5f4); the second is zero in every other scene.
+    "4678b5f4813a79fe30f90883c3221caff2d31a914d4b9a4602fb459a5e065bb1",
     "37030f053de422aa157f017ceedef0812ed57a17c9e1b2af4aab017c0b645364"
   ];
   record("race rig strategy: ordinary mesh, fragment and shadow shader bytes retain the pre-rig fast path", ordinaryHashes.every((hash, i) => hash === expectedOrdinaryHashes[i]), JSON.stringify(ordinaryHashes));
