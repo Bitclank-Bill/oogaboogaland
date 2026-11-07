@@ -896,6 +896,10 @@
       addChild(root, createNode({ geometry: part.flat, depthBias }), lenses);
       s.glass.push(lenses);
     }
+    // The control room set into the left wall on the catwalks' level (`HM.controlRoom`), its glow dimmed with the glass.
+    const room = HM.controlRoom(), roomGlow = createNode({ geometry: room.glow, sightHidden: true });
+    addChild(root, createNode({ geometry: room.flat }), roomGlow, createNode({ geometry: room.glass, sightHidden: true }));
+    s.glass.push(roomGlow);
     s.fixtures = createNode({ geometry: fixtures.flat });
     addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));
     addChild(root, s.mouth, s.fixtures);
