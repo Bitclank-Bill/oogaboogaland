@@ -54,12 +54,19 @@
   const BLOCK = { ahead: 0.55, reach: 0.95, feet: 1.4 };
   // His lines, by when he says them.
   const LINES = {
-    fume: ["THAT'S IT!", "I CAN'T TAKE IT ANYMORE!", "ARGH! NOT AGAIN!"],
-    run: ["I AM SICK OF THIS!", "THEY DON'T PAY ME ENOUGH!", "TEN YEARS AND IT STILL DOESN'T FLY!", "NO MORE OVERTIME!"],
-    pound: ["TAKE THAT, YOU OVERGROWN TOASTER!", "THEY PAY ME IN BANANAS! BANANAS!", "FLY, YOU STUPID JET! FLY!", "WHO NEEDS A BREAK? ME! I DO!"],
-    calm: ["...okay. I feel better.", "...nobody saw that.", "...back to work, I guess."],
-    blocked: ["OUT OF MY WAY!", "MOVE IT!"],
-    faceoff: ["OH YEAH? WANNA GO?", "COME ON THEN!"], blame: ["...she started it.", "...my hand hurts."],
+    fume: ["THAT'S IT!", "I CAN'T TAKE IT ANYMORE!", "ARGH! NOT AGAIN!", "ENOUGH! I'VE HAD ENOUGH!", "WHO WROTE THIS CODE?!",
+      "ANOTHER FAILED REBALANCE?!", "NOPE. NOPE. NOPE.", "I'M DONE! DONE!"],
+    run: ["I AM SICK OF THIS JOB!", "THEY DON'T PAY ME ENOUGH!", "AI IS TAKING OVER MY JOB!", "TEN YEARS AND IT STILL DOESN'T FLY!",
+      "NO MORE OVERTIME!", "I WANT A RAISE!", "NOBODY APPRECIATES ME!", "TWELVE-HOUR SHIFTS!", "I HAVEN'T SEEN DAYLIGHT IN WEEKS!",
+      "THE COFFEE MACHINE IS BROKEN AGAIN!", "I DIDN'T EVEN GET BIRTHDAY CAKE!"],
+    pound: ["TAKE THAT, YOU OVERGROWN TOASTER!", "THEY PAY ME IN BANANAS! BANANAS!", "FLY, YOU STUPID JET! FLY!", "WHO NEEDS A BREAK? ME! I DO!",
+      "THIS IS FOR EVERY STUCK HTLC!", "ROUTE THIS!", "AND THAT'S FOR THE NIGHT SHIFTS!", "A ROBOT COULD DO MY JOB? LET IT DO THIS!",
+      "FIVE YEARS! NOT ONE DAY OFF!"],
+    calm: ["...okay. I feel better.", "...nobody saw that.", "...back to work, I guess.", "...I need a vacation.", "...was that out loud?",
+      "...don't tell the boss."],
+    blocked: ["OUT OF MY WAY!", "MOVE IT!", "COMING THROUGH!", "STEP ASIDE, OOGA!"],
+    faceoff: ["OH YEAH? WANNA GO?", "COME ON THEN!", "YOU AND WHAT HAMMER?", "BRING IT, HARD HAT!"],
+    blame: ["...she started it.", "...my hand hurts.", "...worth it.", "...I still want a raise."],
     fight: ["POW!", "BONK!", "#@$%!", "OOF!", "WHAM!", "OW!", "#@$%ING...!"], yells: ["OOF!", "HEY!", "OW!", "#@$%!"],
     tessBreak: ["HEY! BREAK IT UP, YOU TWO!", "STOP! BOTH OF YOU, STOP!"], tessScold: ["Back to work. Both of you.", "Nobody hits the Jet. Nobody hits each other."]
   };
@@ -113,6 +120,13 @@
       return { node, a: 0, u: 1 };
     });
 
+    // A line from one of his pools, never the one he said last.
+    let lastLine = "";
+    const line = (pool) => {
+      let text = pick(pool);
+      while (text === lastLine && pool.length > 1) text = pick(pool);
+      return lastLine = text;
+    };
     const say = (text) => {
       voiceAt.x = pos.x; voiceAt.y = feet + 1.6; voiceAt.z = pos.z;
       const talk = audio.voice(text, "worker", voiceAt);
@@ -154,7 +168,7 @@
     const go = (dt, speed, dir, gait) => {
       const route = routes[room];
       if (blockedAhead()) {
-        if (!yelled) { yelled = true; say(pick(LINES.blocked)); }
+        if (!yelled) { yelled = true; say(line(LINES.blocked)); }
         pose(0, dir > 0 ? 0.25 : 0.15, 0, -1.2, -0.3, 0.3, 0);
         return false;
       }
@@ -276,7 +290,7 @@
       pos.x = S.post.x; pos.z = S.post.z; heading = S.post.heading; feet = high;
       along = 0; stride = 0; yelled = false; sisCame = false; said = 0;
       phase = "fume"; t = 0; blowAt = 0.2; lineAt = 0;
-      say(pick(LINES.fume));
+      say(line(LINES.fume));
       return true;
     };
     // Done: the door shut and him back at his post as the crew had him.
@@ -308,20 +322,20 @@
         else { turnTo(Math.atan2(rooms[room].spots.corner.x - pos.x, rooms[room].spots.corner.z - pos.z), dt, 8); pose(0, 0.2, 0, -0.6, -0.6); }
         if (t >= FUME) { phase = "run"; t = 0; lineAt = 1.2; }
       } else if (phase === "run") {
-        if (t >= lineAt) { say(pick(LINES.run)); lineAt = t + 5 + Math.random() * 2; }
+        if (t >= lineAt) { say(line(LINES.run)); lineAt = t + 5 + Math.random() * 2; }
         if (go(dt, RUN, 1, STRIDE.run)) { phase = "pound"; t = 0; blowAt = 0; lineAt = 0.4; }
       } else if (phase === "pound") {
         turnTo(GEAR.heading, dt, 8);
         const u = (t % BLOW) / BLOW, was = ((t - dt) % BLOW) / BLOW;
         blow(u);
         if (u >= 0.55 && was < 0.55) hit();
-        if (t >= lineAt) { say(pick(LINES.pound)); lineAt = t + 2.6 + Math.random(); }
+        if (t >= lineAt) { say(line(LINES.pound)); lineAt = t + 2.6 + Math.random(); }
         // Kortik's Sis notices, if she is free, and comes; he keeps at it until she is squared up to him, or gives up
         // waiting for her.
         if (t >= NOTICE && t - dt < NOTICE) sisCame = sis.brawl(pos, stand);
-        if (sisCame && sis.brawling) { phase = "faceoff"; t = 0; say(pick(LINES.faceoff)); }
+        if (sisCame && sis.brawling) { phase = "faceoff"; t = 0; say(line(LINES.faceoff)); }
         else if (sisCame && t >= POUND + SIS_WAIT) { sis.brawl(null, null, true); sisCame = false; }
-        else if (!sisCame && t >= POUND) { phase = "calm"; t = 0; say(pick(LINES.calm)); }
+        else if (!sisCame && t >= POUND) { phase = "calm"; t = 0; say(line(LINES.calm)); }
       } else if (phase === "faceoff") {
         // Turned on her, fists up, bouncing; her line back; then they are at it.
         const sp = sis.node.position;
@@ -352,7 +366,7 @@
         pose(0, 0.12 + Math.sin(t * 5) * 0.1, 0, -0.4, -0.4, 0.7 + Math.sin(t * 7) * 0.2, 0.7 - Math.sin(t * 7) * 0.2);
         if (said === 0 && t >= SPLIT.scold) { said = 1; if (lent && rig) rig.say(pick(LINES.tessScold)); }
         if (said === 1 && t >= SPLIT.blame) { said = 2; sis.brawl(null); sisCame = false; }
-        if (said === 2 && t >= SPLIT.mutter) { said = 3; say(pick(LINES.blame)); }
+        if (said === 2 && t >= SPLIT.mutter) { said = 3; say(line(LINES.blame)); }
         if (t >= SPLIT.home) {
           phase = "back"; t = 0;
           if (lent) { lent = false; rig = null; tess.lend(null); }
