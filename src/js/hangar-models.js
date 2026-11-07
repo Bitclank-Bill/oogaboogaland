@@ -157,9 +157,14 @@
   // high; `surround` frames an opening from `u0` to `u1` and `top` high, its reveal running back `deep` behind the face.
   const PANEL = { w: 4, h: 3, skirt: 1.2, gap: 0.08, d: 0.12, tones: ["#3e444e", "#393f48", "#434a54"], dark: "#2a2f37", seam: "#16191e" };
   const RIB = { color: "#4b525d", edge: "#6b7480" }, FLOOR_TONES = ["#3a3f47", "#363b43", "#3e434b"];
-  // The vault's ribs, how deep they hang under it; and its light slots, down the bays between them at `slots` across the
-  // hall, `w` wide, stopping `end` short of the ribs, lit cool white.
-  const VAULT = { rib: 1, slots: [-11, 0, 13], w: 0.5, end: 0.8, color: "#e4eefa" };
+  // The roof: its deck's darker panels; the ribs across it, how deep they hang under it; the purlins down the hall on
+  // the deck's seams, how deep and wide, with a flange under each `flange` wide in a warmer steel; the cross members
+  // between the ribs, shallower; and the light strips in pairs under the purlins at `lit` across the hall, `strip` wide,
+  // `pair` either side of the purlin's middle, stopping `end` short of what they meet, lit cool blue.
+  const VAULT = {
+    deck: ["#262a31", "#23272d", "#292d35"], rib: 1, purlin: 0.55, purlinW: 0.24, flange: 0.44, cross: 0.36, crossW: 0.2,
+    steel: "#3b4351", edge: "#5f5a53", lit: [-14, -6, 2, 10, 18], strip: 0.07, pair: 0.12, end: 0.45, color: "#6cc0ff"
+  };
   // The columns' knees under the crane's runway: how far each juts out along its 45° slope, the straight lip under its
   // top, how far its two blue strips stand either side of its middle, and their colour.
   const KNEE = { reach: 1, lip: 0.35, strips: 0.3, color: "#5fb8ff" };
@@ -345,21 +350,39 @@
     panels(frontWall, rand, "z", front, -1, X0, d.x + dw + 1, right, 0, top);
     panels(frontWall, rand, "z", front, -1, X0, d.x - dw - 1, d.x + dw + 1, dt + 1, top);
     surround(frontWall, "z", front, -1, d.x - dw, d.x + dw, dt, S.face + 0.5);
-    const V = VAULT;
+    // The roof's deck, then the lattice under it: the ribs, the purlins in lengths from rib to cross member (so the
+    // Canvas 2D sort keeps them in front of the deck's panels), the cross members in lengths between the purlins, and
+    // the light strips under the purlins at `lit`, a pair down each coffer.
+    const V = VAULT, lattice = [];
     for (let x = X0 + Math.floor((left - X0) / 4) * 4; x < right; x += 4) for (let z = B + Math.floor((back - B) / 4) * 4; z < front; z += 4) {
       const x0 = Math.max(x, left), x1 = Math.min(x + 4, right), z0 = Math.max(z, back), z1 = Math.min(z + 4, front);
-      vault.push(box({ w: x1 - x0 - PANEL.gap, h: 0.2, d: z1 - z0 - PANEL.gap, color: PANEL.tones[Math.floor(rand() * PANEL.tones.length)], offset: { x: (x0 + x1) / 2, y: H + 0.1, z: (z0 + z1) / 2 } }));
+      vault.push(box({ w: x1 - x0 - PANEL.gap, h: 0.2, d: z1 - z0 - PANEL.gap, color: V.deck[Math.floor(rand() * V.deck.length)], offset: { x: (x0 + x1) / 2, y: H + 0.1, z: (z0 + z1) / 2 } }));
     }
     for (const z of LAYOUT.gantries) {
-      vault.push(box({ w: right - left, h: V.rib, d: S.ribW, color: RIB.color, offset: { x: mid, y: H - V.rib / 2, z } }));
-      vault.push(box({ w: right - left, h: 0.04, d: S.ribW * 0.4, color: RIB.edge, offset: { x: mid, y: H - V.rib - 0.02, z } }));
+      lattice.push(box({ w: right - left, h: V.rib, d: S.ribW, color: RIB.color, offset: { x: mid, y: H - V.rib / 2, z } }));
+      lattice.push(box({ w: right - left, h: 0.04, d: S.ribW * 0.4, color: RIB.edge, offset: { x: mid, y: H - V.rib - 0.02, z } }));
     }
-    const bays = [front, ...LAYOUT.gantries, back];
-    for (let i = 1; i < bays.length; i++) {
-      const z0 = bays[i] + S.ribW / 2 + V.end, z1 = bays[i - 1] - S.ribW / 2 - V.end, zc = (z0 + z1) / 2;
-      for (const x of V.slots) {
-        vault.push(box({ w: V.w + 0.3, h: 0.25, d: z1 - z0 + 0.3, color: PANEL.seam, offset: { x, y: H - 0.125, z: zc } }));
-        slots.push(box({ w: V.w, h: 0.05, d: z1 - z0, color: V.color, emissive: 1, offset: { x, y: H - 0.275, z: zc } }));
+    const xs = [left], zs = [back];
+    for (let x = X0 + 4; x < right - 1; x += 4) if (x > left + 1) xs.push(x);
+    for (let z = B + 4; z < front - 1; z += 4) if (z > back + 1) zs.push(z);
+    xs.push(right), zs.push(front);
+    const onRib = (z) => LAYOUT.gantries.includes(z), fy = H - V.purlin + 0.03;
+    for (let j = 1; j < zs.length; j++) {
+      const z0 = zs[j - 1], z1 = zs[j], zc = (z0 + z1) / 2, d = z1 - z0;
+      for (let i = 1; i < xs.length - 1; i++) {
+        const x = xs[i];
+        lattice.push(box({ w: V.purlinW, h: V.purlin - 0.06, d, color: V.steel, offset: { x, y: H - (V.purlin - 0.06) / 2, z: zc } }));
+        lattice.push(box({ w: V.flange, h: 0.06, d, color: V.edge, offset: { x, y: fy, z: zc } }));
+        if (!V.lit.includes(x)) continue;
+        const s0 = z0 + V.end + (onRib(z0) ? S.ribW / 2 : 0), s1 = z1 - V.end - (onRib(z1) ? S.ribW / 2 : 0);
+        for (const side of [-1, 1]) slots.push(box({ w: V.strip, h: 0.03, d: s1 - s0, color: V.color, emissive: 1, offset: { x: x + side * V.pair, y: H - V.purlin - 0.015, z: (s0 + s1) / 2 } }));
+      }
+      if (j === zs.length - 1) continue;
+      const z = zs[j];
+      if (onRib(z)) continue;
+      for (let i = 1; i < xs.length; i++) {
+        const x0 = xs[i - 1], x1 = xs[i];
+        lattice.push(box({ w: x1 - x0, h: V.cross, d: V.crossW, color: V.steel, offset: { x: (x0 + x1) / 2, y: H - V.cross / 2, z } }));
       }
     }
     // The backing round the shell, and the dark sheet over the roof's panels: one box, whose middle would sort it over
@@ -375,7 +398,7 @@
     const bw = t.r + 0.6;
     backing.push(box({ w: -bw - X0 + 2, h: H + 4, d: 1, color: PANEL.seam, offset: { x: (X0 - 2 - bw) / 2, y: H / 2, z: B - 1.6 } }), box({ w: X1 + 2 - bw, h: H + 4, d: 1, color: PANEL.seam, offset: { x: (bw + X1 + 2) / 2, y: H / 2, z: B - 1.6 } }));
     backing.push(box({ w: 2 * bw, h: H + 4 - (t.y + bw), d: 1, color: PANEL.seam, offset: { y: (H + 4 + t.y + bw) / 2 - 2, z: B - 1.6 } }));
-    return { floor: merge(...floor), walls: noShadow(merge(...walls)), front: noShadow(merge(...frontWall)), vault: noShadow(merge(...vault)), slots: noShadow(merge(...slots)), backing: merge(...backing) };
+    return { floor: merge(...floor), walls: noShadow(merge(...walls)), front: noShadow(merge(...frontWall)), vault: noShadow(merge(...vault)), lattice: noShadow(merge(...lattice)), slots: noShadow(merge(...slots)), backing: merge(...backing) };
   });
 
   // The landing inside the door: a grated steel deck on columns, railed down both sides and along its front but for
@@ -2359,7 +2382,7 @@
   const KEY_BAKE = { color: 0.66, reach: 0.75 };
   const doorWindow = cached(() => {
     const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
-    parts.push(sh.floor, sh.walls, sh.vault, sh.slots);
+    parts.push(sh.floor, sh.walls, sh.vault, sh.lattice, sh.slots);
     const run = runway(), tun = tunnel(), fix = fixtures();
     parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, controlRoom().flat, controlRoom().glow, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));

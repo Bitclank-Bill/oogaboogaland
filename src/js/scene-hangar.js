@@ -33,9 +33,9 @@
   const WALL_GAP = 0.6;
   // The Canvas 2D renderer paints faces far to near by their middles, and the shell's panels are big: one a few metres
   // nearer than a board's middle would paint over it, and a floor tile's over a crate standing on it. So there the shell,
-  // its floor too, is sorted as if this much farther (`depthBias`, m), behind everything standing in the hall, and its
-  // backing farther still, behind the shell from any end of it.
-  const SHELL_BIAS = 8, BACKING_BIAS = 48;
+  // its floor too, is sorted as if this much farther (`depthBias`, m), behind everything standing in the hall, the roof's
+  // deck farther, behind the lattice under it, and its backing farther still, behind the shell from any end of it.
+  const SHELL_BIAS = 8, DECK_BIAS = 12, BACKING_BIAS = 48;
   // And the lamps on its walls, sorted with the wall but this much nearer than its panels, so a panel never paints over
   // a lamp on it.
   const WALL_LAMP_BIAS = 6;
@@ -876,7 +876,7 @@
     // The fixtures' glass and the vault's light slots, which an anomaly dims with the hall's lights.
     s.glass = [createNode({ geometry: fixtures.glow, sightHidden: true }), createNode({ geometry: fixtures.glass, sightHidden: true }), createNode({ geometry: shell.slots, sightHidden: true })];
     addChild(root, createNode({ geometry: shell.floor, depthBias: SHELL_BIAS }), createNode({ geometry: shell.walls, depthBias: SHELL_BIAS }), createNode({ geometry: shell.front, depthBias: SHELL_BIAS }),
-      createNode({ geometry: shell.vault, depthBias: SHELL_BIAS }), s.glass[2], createNode({ geometry: shell.backing, depthBias: BACKING_BIAS }),
+      createNode({ geometry: shell.vault, depthBias: DECK_BIAS }), createNode({ geometry: shell.lattice, depthBias: SHELL_BIAS }), s.glass[2], createNode({ geometry: shell.backing, depthBias: BACKING_BIAS }),
       createNode({ geometry: HM.landing() }), createNode({ geometry: runway.flat }),
       createNode({ geometry: tunnel.stone }),
       createNode({ geometry: HM.catwalks() }), s.glass[0],
