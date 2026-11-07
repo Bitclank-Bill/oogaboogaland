@@ -4544,7 +4544,6 @@ body.dsb-menu-open .rescue-equipment { visibility: hidden; pointer-events: none;
   user-select: none;
 }
 
-#mode-hud[data-selected="true"],
 .primary-hud[data-equipped="true"],
 .weapon-hud[data-equipped="true"],
 .jetpack-hud[data-equipped="true"] {
