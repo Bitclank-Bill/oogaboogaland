@@ -635,10 +635,25 @@
   // with its lights, a filing cabinet with a plant on it and binders beside, and the console, the bolt on its front, its
   // monitors turned to the one of the crew who works it from behind it, facing out over the hall (`LAYOUT.crew`'s last),
   // an office chair behind. `flat` the room, `glow` its lit parts, which the scene dims with the hall's glass, `glass`
-  // the panes, and `pictures` the screens' faces, each { geometry, x, y, z, turn }.
+  // the panes, `pictures` the screens' faces, each { geometry, x, y, z, turn }, and `keypad` where its door's keypad
+  // hangs (`keypad()`).
   const CONTROL = { z0: 6.6, z1: 13.4, glazed: 11.75, y0: 7.2, floor: 7.5, y1: 10.2, front: HALL.x0 + 2.95, back: HALL.x0 - 0.6,
     frame: "#232836", lip: "#363c4c", face: "#3a404d", inside: "#26324d", seam: "#1a2236", deep: "#1b2540", strip: "#c8ecff", pane: "#9fdcff",
     amber: "#ffb347", orange: "#e8761e", door: "#3a4152" };
+  // A door's keypad in its own frame, facing +x out of the wall its back stands on: a dark housing, a small screen over
+  // three columns of lit keys, the last row green (`body`), and its red twin (`denied`), which the scene shows while the
+  // keypad refuses a code. Each room says where its own hangs (`keypad`: its back's middle, its `turn` and the `floor`
+  // in front of it).
+  const KEYPAD = { body: "#1d2028", screen: "#1f5a3c", lit: "#7fdcff", go: "#2ecc71", red: "#ff3b30", redScreen: "#7a1c1c" };
+  const keypad = cached(() => {
+    const K = KEYPAD, make = (red) => {
+      const parts = [box({ w: 0.04, h: 0.26, d: 0.16, color: K.body, offset: { x: 0.02, y: 0, z: 0 } }),
+        box({ w: 0.01, h: 0.02, d: 0.12, color: red ? K.redScreen : K.screen, emissive: 0.9, offset: { x: 0.045, y: 0.112, z: 0 } })];
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) parts.push(box({ w: 0.01, h: 0.03, d: 0.03, color: red ? K.red : r === 3 ? K.go : K.lit, emissive: 1, offset: { x: 0.045, y: 0.08 - r * 0.05, z: -0.04 + c * 0.04 } }));
+      return noShadow(merge(...parts));
+    };
+    return { body: make(false), denied: make(true) };
+  });
   // A screen's picture, `w` by `h` metres facing +z, painted on `px` pixels a metre by `paint(g, W, H)`.
   const screenPicture = (w, h, px, paint) => {
     const canvas = document.createElement("canvas");
@@ -796,6 +811,7 @@
     const kpz = z1 + 0.23, kpy = C.floor + 1.15;
     flat.push(box({ w: 0.04, h: 0.26, d: 0.16, color: "#1d2028", offset: { x: f + 0.08, y: kpy, z: kpz } }));
     for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) glow.push(box({ w: 0.01, h: 0.03, d: 0.03, color: r === 3 ? "#2ecc71" : "#7fdcff", emissive: 1, offset: { x: f + 0.105, y: kpy + 0.08 - r * 0.05, z: kpz - 0.04 + c * 0.04 } }));
+    const keypad = { x: f + 0.06, y: kpy, z: kpz, turn: 0, floor: C.floor };
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     // The extinguisher's bracket on the side wall by the back, its foot at `spots.bracket`.
@@ -803,7 +819,7 @@
     flat.push(box({ w: 0.2, h: 0.08, d: 0.06, color: C.frame, offset: { x: X.x, y: X.y + 0.05, z: X.z - 0.05 } }));
     flat.push(box({ w: 0.22, h: 0.03, d: 0.16, color: C.frame, offset: { x: X.x, y: X.y - 0.015, z: X.z + 0.02 } }));
     flat.push(box({ w: 0.04, h: 0.5, d: 0.03, color: C.frame, offset: { x: X.x, y: X.y + 0.25, z: X.z - 0.065 } }));
-    return { flat: merge(...flat), glow: noShadow(merge(...glow)), glass: windows, pictures, spots };
+    return { flat: merge(...flat), glow: noShadow(merge(...glow)), glass: windows, pictures, spots, keypad };
   });
 
   // The crew's rooms on the right wall (`SIDE_ROOMS`), after the concept, each built as the control room is, in that
@@ -817,7 +833,7 @@
   // by the glass, and the console its crew member works from behind, facing out over the hall, the chair behind.
   // Its extinguisher's bracket and the places a fire there plays out are the control room's too, at its far end
   // (`spots`, turned with the room). `sideRooms()` is the rooms in the hangar's frame, each `flat`, `glow` (which the scene dims with the
-  // hall's glass), `glass`, `pictures` and `spots` as the control room's.
+  // hall's glass), `glass`, `pictures`, `spots` and `keypad` as the control room's.
   const SIDE_SCREENS = [
     [["blueprint", 8.95, -1], ["chart", 9.4, 0.9], ["radar", 8.7, 0.9]],
     [["chart", 9.05, -2.2], ["blueprint", 8.95, -0.4], ["radar", 9.05, 1.4]],
@@ -913,15 +929,16 @@
     const kpz = g0 - 0.2, kpy = C.floor + 1.15;
     flat.push(box({ w: 0.04, h: 0.26, d: 0.16, color: "#1d2028", offset: { x: f + 0.08, y: kpy, z: kpz } }));
     for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) glow.push(box({ w: 0.01, h: 0.03, d: 0.03, color: r === 3 ? "#2ecc71" : "#7fdcff", emissive: 1, offset: { x: f + 0.105, y: kpy + 0.08 - r * 0.05, z: kpz - 0.04 + c * 0.04 } }));
+    const keypad = { x: f + 0.06, y: kpy, z: kpz, turn: 0, floor: C.floor };
     // Turned round onto the right wall at the bay's middle.
     const onto = (g) => moved(turnedY(g, Math.PI), HALL.x0 + HALL.x1, 0, middle);
     const windows = noShadow(onto(merge(...glass)));
     windows.glass = 0.16;
-    for (const p of [...pictures, ...Object.values(spots)]) {
+    for (const p of [...pictures, ...Object.values(spots), keypad]) {
       p.x = HALL.x0 + HALL.x1 - p.x; p.z = middle - p.z;
       for (const key of ["turn", "heading"]) if (p[key] !== undefined) p[key] += Math.PI;
     }
-    return { flat: onto(merge(...flat)), glow: noShadow(onto(merge(...glow))), glass: windows, pictures, spots };
+    return { flat: onto(merge(...flat)), glow: noShadow(onto(merge(...glow))), glass: windows, pictures, spots, keypad };
   }));
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
@@ -2870,7 +2887,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, SIDE_ROOMS, sideRooms, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, SIDE_ROOMS, sideRooms, keypad, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
