@@ -744,12 +744,13 @@
     const kx = b + 1.55, kz = z0 + 2.7, kd = 2.2, kt = C.floor + 0.85;
     // Where things happen in the room, in the hangar's frame: the operator's post behind the console, facing out over
     // the hall; where a fire takes on the console's top, by its far end; the extinguisher's bracket on the side wall by
-    // the back, the foot of the extinguisher standing in it; where the operator stands to take it, facing the wall; and
+    // the back, the foot of the extinguisher standing in it, and the way the extinguisher faces there; where the
+    // operator stands to take it, facing the wall; and
     // where he stands to put a fire out, facing it from its side, so he is seen side-on through the glass.
     const spots = {
       post: { x: HALL.x0 + 0.45, z: kz, heading: Math.PI / 2 },
       fire: { x: kx, y: kt + 0.07, z: kz - 0.8 },
-      bracket: { x: b + 0.7, y: C.floor + 0.42, z: z0 + 0.2 },
+      bracket: { x: b + 0.7, y: C.floor + 0.42, z: z0 + 0.2, turn: 0 },
       take: { x: b + 0.7, z: z0 + 0.75, heading: Math.PI },
       spray: { x: kx + 0.05, z: kz - 1.95 }
     };
@@ -814,8 +815,9 @@
   // control room's pictures on the back wall, laid out differently in each room (`SIDE_SCREENS`, each [picture, height,
   // along the wall from the room's middle in its frame]), a server rack in the far corner, a filing cabinet with a plant
   // by the glass, and the console its crew member works from behind, facing out over the hall, the chair behind.
-  // `sideRooms()` is the rooms in the hangar's frame, each `flat`, `glow` (which the scene dims with the hall's glass),
-  // `glass` and `pictures` as the control room's.
+  // Its extinguisher's bracket and the places a fire there plays out are the control room's too, at its far end
+  // (`spots`, turned with the room). `sideRooms()` is the rooms in the hangar's frame, each `flat`, `glow` (which the scene dims with the
+  // hall's glass), `glass`, `pictures` and `spots` as the control room's.
   const SIDE_SCREENS = [
     [["blueprint", 8.95, -1], ["chart", 9.4, 0.9], ["radar", 8.7, 0.9]],
     [["chart", 9.05, -2.2], ["blueprint", 8.95, -0.4], ["radar", 9.05, 1.4]],
@@ -868,6 +870,21 @@
     flat.push(box({ w: 0.08, h: 0.45, d: 0.08, color: "#1d1f24", offset: { x: chx, y: C.floor + 0.225, z: kz } }));
     flat.push(bevelBox({ w: 0.5, h: 0.08, d: 0.5, color: "#3a4152", bevel: 0.02, offset: { x: chx, y: C.floor + 0.48, z: kz } }));
     flat.push(bevelBox({ w: 0.08, h: 0.6, d: 0.46, color: "#3a4152", bevel: 0.02, offset: { x: chx - 0.24, y: C.floor + 0.82, z: kz } }));
+    // Where a fire plays out, as in the control room but toward the far end, behind the glass rather than the door's
+    // stretch: the fire at the console's far end, sprayed from beyond it, and the extinguisher's bracket on the far end
+    // wall between the rack and the filing cabinet, where he takes it facing the wall.
+    const spots = {
+      post: { x: HALL.x0 + 0.45, z: kz, heading: Math.PI / 2 },
+      fire: { x: kx, y: kt + 0.07, z: kz + 0.8 },
+      bracket: { x: b + 1.3, y: C.floor + 0.42, z: z1 - 0.2, turn: Math.PI },
+      take: { x: b + 1.3, z: z1 - 0.75, heading: 0 },
+      spray: { x: kx + 0.05, z: kz + 1.95 }
+    };
+    spots.spray.heading = Math.atan2(spots.fire.x - spots.spray.x, spots.fire.z - spots.spray.z);
+    const X = spots.bracket;
+    flat.push(box({ w: 0.2, h: 0.08, d: 0.06, color: C.frame, offset: { x: X.x, y: X.y + 0.05, z: X.z + 0.05 } }));
+    flat.push(box({ w: 0.22, h: 0.03, d: 0.16, color: C.frame, offset: { x: X.x, y: X.y - 0.015, z: X.z - 0.02 } }));
+    flat.push(box({ w: 0.04, h: 0.5, d: 0.03, color: C.frame, offset: { x: X.x, y: X.y + 0.25, z: X.z + 0.065 } }));
     // The front: the sill and head along it, the posts at its ends and the mullions between three panes, the glass;
     // the header over it with its strip lamp; and the floor's edge down to the wall.
     const pane = (z1 - g0) / 3;
@@ -900,8 +917,11 @@
     const onto = (g) => moved(turnedY(g, Math.PI), HALL.x0 + HALL.x1, 0, middle);
     const windows = noShadow(onto(merge(...glass)));
     windows.glass = 0.16;
-    for (const p of pictures) { p.x = HALL.x0 + HALL.x1 - p.x; p.z = middle - p.z; p.turn += Math.PI; }
-    return { flat: onto(merge(...flat)), glow: noShadow(onto(merge(...glow))), glass: windows, pictures };
+    for (const p of [...pictures, ...Object.values(spots)]) {
+      p.x = HALL.x0 + HALL.x1 - p.x; p.z = middle - p.z;
+      for (const key of ["turn", "heading"]) if (p[key] !== undefined) p[key] += Math.PI;
+    }
+    return { flat: onto(merge(...flat)), glow: noShadow(onto(merge(...glow))), glass: windows, pictures, spots };
   }));
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
