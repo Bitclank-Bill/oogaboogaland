@@ -25874,6 +25874,26 @@ const integrationChecks = async BL => {
       &&liveHit.owner.weaponType==="none"&&liveHit.type==="none"&&liveHit.distance>0&&liveHit.distance<6;
     const cleared=()=>liveHit.node===null&&liveHit.owner===null&&liveHit.type==="none"&&liveHit.distance===Infinity;
     const ghostSkipped=!along(ghostPoint)&&cleared(),blocked=!along(livePoint,()=>false)&&cleared();
+    // Regression: only the meshes a body was built with were found, so gear put on later (a jetpack, a gun, anything
+    // nested under them) never turned the dot. Gear nested a level down, added after the build and standing clear of
+    // the body, is found as that player; hidden (or camera-hidden), behind cover, replaced, moved off the body or taken
+    // off it, it no longer is. A solid box centred on its node's origin, so the line through that origin meets it.
+    const gear=BL.scene.createNode(),item=BL.scene.createNode({geometry:BL.models.box({w:.3,h:.3,d:.3,color:"#fff"})});
+    gear.position.x=3;BL.scene.addChild(gear,item);BL.scene.addChild(live.root,gear);BL.scene.updateWorld(ghostRoot);
+    const gearPoint=[item.world[12],item.world[13],item.world[14]];
+    const gearFound=along(gearPoint)&&liveHit.node===item&&liveHit.owner.cave===live&&liveHit.owner.id===73;
+    gear.visible=false;const gearHidden=!along(gearPoint)&&cleared();gear.visible=true;
+    item.cameraHidden=true;const gearCameraHidden=!along(gearPoint)&&cleared();item.cameraHidden=false;
+    const gearBlocked=!along(gearPoint,()=>false)&&cleared()&&along(gearPoint,()=>true)&&liveHit.node===item;
+    const swap=BL.scene.createNode({geometry:item.geometry});BL.scene.removeChild(gear,item);BL.scene.addChild(gear,swap);
+    const gearReplaced=along(gearPoint)&&liveHit.node===swap;
+    // Moved under the scene itself, where it still stands on the same line, it is scenery and no longer the player.
+    BL.scene.removeChild(gear,swap);swap.position.x=gear.world[12];swap.position.y=gear.world[13];swap.position.z=gear.world[14];
+    BL.scene.addChild(ghostRoot,swap);BL.scene.updateWorld(ghostRoot);
+    const gearMoved=!along(gearPoint)&&cleared();BL.scene.removeChild(ghostRoot,swap);
+    BL.scene.addChild(gear,item);const gearBack=along(gearPoint)&&liveHit.node===item;
+    BL.scene.removeChild(live.root,gear);const gearOff=!along(gearPoint)&&cleared()&&along(livePoint)&&liveHit.owner.cave===live;
+    const lateGear=gearFound&&gearHidden&&gearCameraHidden&&gearBlocked&&gearReplaced&&gearMoved&&gearBack&&gearOff;
     // A body taken out of the scene keeps its visible, parentless meshes, which must not be found as the player.
     BL.scene.removeChild(ghostRoot,live.root);const detached=!along(livePoint)&&cleared();BL.scene.addChild(ghostRoot,live.root);
     ghostCrew.player={traits:{name:"w-s-bitcoin"}};ghostPool.update(.1);
@@ -25891,8 +25911,8 @@ const integrationChecks = async BL => {
     looks.paint(.6);looks.paint(.6);const dropped=looks.stats().twins===0&&releasedGeometry.includes(round);
     ghostPool.dispose();looks.dispose();BL.scene.removeChild(ghostRoot,npc.root);BL.net=netBefore;
     record("integration npc ghosts: a remote driver's NPC keeps its own track and seat as a ghost, turns solid in place on switch or leave, and releases its look",heldHere&&painted&&restored&&swapped&&swappedBack&&tinted&&kept&&switched&&left&&dropped,JSON.stringify({heldHere,painted,restored,swapped,swappedBack,tinted,kept,switched,left,dropped}));
-    record("integration npc ghosts: a ghost Ooga or gorilla reads online under the cursor, and only a shown live body in plain sight, never its ghost, the visitor's own name or one behind cover, is found along a sight line; none once it leaves",
-      picked&&ghostSkipped&&blocked&&detached&&ownSkipped&&ghostOnline&&companionOnline&&solidAgain,JSON.stringify({picked,ghostSkipped,blocked,detached,ownSkipped,ghostOnline,companionOnline,solidAgain,distance:liveHit.distance}));
+    record("integration npc ghosts: a ghost Ooga or gorilla reads online under the cursor, and only a shown live body in plain sight with whatever gear it shows now, never its ghost, the visitor's own name, one behind cover or gear hidden, replaced or taken off it, is found along a sight line; none once it leaves",
+      picked&&ghostSkipped&&blocked&&lateGear&&detached&&ownSkipped&&ghostOnline&&companionOnline&&solidAgain,JSON.stringify({picked,ghostSkipped,blocked,lateGear:{gearFound,gearHidden,gearCameraHidden,gearBlocked,gearReplaced,gearMoved,gearBack,gearOff},detached,ownSkipped,ghostOnline,companionOnline,solidAgain,distance:liveHit.distance}));
   }
 };
 
