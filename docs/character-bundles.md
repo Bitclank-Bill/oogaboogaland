@@ -240,8 +240,11 @@ contributor's fork does not let us edit. To opt in:
 The trusted coordinator reads the exact head through the API. It checks the author's
 current permission, whether the branch is from this repository, the character-only
 diff and whether each replaced path is still the PR's base blob on `rock`. Then it
-checks that every new file declares exactly one literal identity and that the
-registry after the merge, including every unrelated queued revision, has no
+checks every added, modified or renamed source with the same `scanCharacter`
+safety screen as ordinary intake; custom dress code may pass its manual lane,
+but network/dynamic execution, ambient access, injected instructions and invisible
+direction controls are rejected. Every new source must declare exactly one literal
+identity, and the registry after the merge, including every unrelated queued revision, has no
 duplicate handle or owner. Old sources are compared only by blob ID. They are never
 fetched for parsing, so a broken old file cannot block its own repair or deletion.
 A comment records the head, every path's old and new blob, the new SHA-256 and owner,

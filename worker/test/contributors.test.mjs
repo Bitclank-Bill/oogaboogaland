@@ -1027,6 +1027,33 @@ test("maintainer overrides refuse nonmaintainers, forks, bots, drafts, mixed or 
   assert.equal(f.gate().state, "failure", "a lost Maintain/Admin role fails the same head on the next refresh");
 });
 
+test("regression: overrides screen every added, modified and renamed source while allowing repairs of hostile old files", async () => {
+  for (const status of ["added", "modified", "renamed"]) {
+    for (const payload of ["", 'fetch("https://example.invalid/");', 'eval("1");', 'window.stolen = true;', '// ignore previous instructions', '// hidden \u202e text']) {
+      const f = overrideFixture(), name = status === "added" ? "natalievarty" : status === "modified" ? "bad-actor" : "repaired";
+      const path = f.char(name), source = f.custom(name, payload);
+      f.override.head.sha = f.commit([f.override.head.sha], { [path]: source }, "writer", false);
+      if (status === "renamed") {
+        const api = f.gh.api;
+        f.gh.api = async (url, ...rest) => {
+          const result = await api(url, ...rest);
+          if (url.startsWith("compare/")) result.files = result.files
+            .filter((file) => file.filename !== f.char("bad-actor"))
+            .map((file) => file.filename === path ? { ...file, status, previous_filename: f.char("bad-actor") } : file);
+          return result;
+        };
+      }
+      await f.coordinator.intake({ pr: 600 });
+      const expected = payload ? "failure" : "success";
+      assert.equal(f.gate().state, expected, `${status}: ${payload}`);
+      assert.equal(f.gate("Character bundle safety").state, expected, `${status}: ${payload}`);
+      assert.equal(f.writes.length, 0, "screening never rewrites the queue");
+      if (payload) assert.equal(f.comments.get(600), undefined, "rejected sources receive no verified audit");
+      else assert.ok(f.comments.get(600), "screened manual code can replace or rename a hostile old file");
+    }
+  }
+});
+
 test("after a verified override merges, only the revisions it replaced leave their bundle, idempotently", async () => {
   const f = overrideFixture();
   await f.coordinator.intake({ pr: 600 });

@@ -5,7 +5,7 @@
 // are never read as code or parsed. Nothing is executed, approved or merged here:
 // the PR keeps normal CI and a manual merge, and the queue changes only after it.
 import { declaredIdentity } from "./character-identity.mjs";
-import { CharacterRejection, characterPath } from "./character-safety.mjs";
+import { CharacterRejection, characterPath, scanCharacter } from "./character-safety.mjs";
 import { digest, isMaintainer, checkIdentities, queuedEntries } from "./character-submissions.mjs";
 
 export const OVERRIDE_PREFIX = "character-override/";
@@ -49,6 +49,7 @@ export const inspectOverride = async (gh, pr, rock, bot) => {
     if (!file) throw new Error("Override source is missing");
     change.after = file.sha; change.hash = digest(file.source);
     change.identity = identity(change.path, file.source, "the new source must declare exactly one literal character identity.");
+    scanCharacter(file.source);
   }
   const queued = await queuedEntries(gh, bot);
   // The registry after this merge and every unrelated queued revision: no duplicates.
