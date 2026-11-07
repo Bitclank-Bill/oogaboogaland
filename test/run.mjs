@@ -25830,7 +25830,7 @@ const integrationChecks = async BL => {
   // when the driver switches body, and ends solid in place on leave with its twins released.
   {
     const netBefore=BL.net,ghostRecords=new Map(),ghostRoot=BL.scene.createNode(),ghostCavemen=new Map(),releasedGeometry=[];
-    BL.net={serverNow:()=>Date.now(),sendSwing:()=>true,remotes:ghostRecords,subscribeShots:()=>()=>{},subscribeSwings:()=>()=>{}};
+    BL.net={serverNow:()=>Date.now(),sendSwing:()=>true,remotes:ghostRecords,subscribeShots:()=>()=>{},subscribeSwings:()=>()=>{},state:{me:null}};
     const npc=BL.models.caveman(BL.contributors.traitsFor("w-s-bitcoin")),seat={sitter:null};
     Object.assign(npc,{override:null,remoteControlled:false,humanControlled:false,state:"chilling",camp:{seat}});seat.sitter=npc;
     BL.scene.addChild(ghostRoot,npc.root);ghostCavemen.set("w-s-bitcoin",npc);
@@ -25850,13 +25850,38 @@ const integrationChecks = async BL => {
     const swappedBack=head.geometry===npc.headClosed;head.geometry=source;
     const banana=BL.models.bananaGeometry(),round=looks.shotLook(npc,banana),tinted=!!round&&round!==banana&&round.glass===.3&&looks.shotLook(companion,banana)===null;
     const kept=npc.override===null&&!npc.remoteControlled&&!npc.humanControlled&&npc.state==="chilling"&&npc.camp.seat===seat&&seat.sitter===npc&&npc.root.parent===ghostRoot;
+    // Regression: hovering a ghost showed neither its name nor its status, and the crosshair never knew a live player.
+    // The live body is found along a sight line through the pool's own target list (never a weapon target), its ghost
+    // NPC never is, a blocked line or the visitor's own name finds nothing, and a ghost's tooltip status is online.
+    BL.scene.updateWorld(ghostRoot);
+    const live=ghostPool.body(73),liveHit={node:null,owner:null,type:"none",distance:Infinity,x:0,y:0,z:0};
+    const aimAt=rig=>{const c=BL.scene.boundsOf(rig.parts.head.geometry).center,m=rig.parts.head.world;
+      return [m[0]*c[0]+m[4]*c[1]+m[8]*c[2]+m[12],m[1]*c[0]+m[5]*c[1]+m[9]*c[2]+m[13],m[2]*c[0]+m[6]*c[1]+m[10]*c[2]+m[14]];};
+    const along=(p,clear=null)=>ghostPool.pick(liveHit,p[0],p[1],p[2]-6,0,0,1,12,clear);
+    const livePoint=aimAt(live),ghostPoint=aimAt(npc);
+    const picked=along(livePoint)&&liveHit.owner.kind==="player"&&liveHit.owner.id===73&&liveHit.owner.cave===live
+      &&liveHit.owner.weaponType==="none"&&liveHit.type==="none"&&liveHit.distance>0&&liveHit.distance<6;
+    const cleared=()=>liveHit.node===null&&liveHit.owner===null&&liveHit.type==="none"&&liveHit.distance===Infinity;
+    const ghostSkipped=!along(ghostPoint)&&cleared(),blocked=!along(livePoint,()=>false)&&cleared();
+    // A body taken out of the scene keeps its visible, parentless meshes, which must not be found as the player.
+    BL.scene.removeChild(ghostRoot,live.root);const detached=!along(livePoint)&&cleared();BL.scene.addChild(ghostRoot,live.root);
+    ghostCrew.player={traits:{name:"w-s-bitcoin"}};ghostPool.update(.1);
+    const ownSkipped=!along(livePoint)&&cleared();
+    ghostCrew.player=null;ghostPool.update(.1);
+    const ghostOnline=npc.ghostTrack&&BL.hud.statusFor(npc)==="online"&&along(livePoint);
     tab.body="gorilla:w-s-bitcoin";tab.bodyKind="gorilla";ghostPool.update(.1);
     const switched=!npc.ghostTrack&&head.geometry===source&&companion.ghostTrack===true;
+    const companionOnline=BL.hud.statusFor(companion)==="online";
     ghostRecords.clear();ghostPool.update(.1);
     const left=!companion.ghostTrack&&looks.stats().ghosts===0&&head.geometry===source&&npc.root.parent===ghostRoot;
+    // Hit the live body once more so the empty pool's miss below must clear a stale result.
+    liveHit.node=live.root;liveHit.owner={kind:"player"};liveHit.type="friendly";liveHit.distance=1;
+    const solidAgain=BL.hud.statusFor(npc)==="chilling"&&!along(livePoint)&&cleared();
     looks.paint(.6);looks.paint(.6);const dropped=looks.stats().twins===0&&releasedGeometry.includes(round);
     ghostPool.dispose();looks.dispose();BL.scene.removeChild(ghostRoot,npc.root);BL.net=netBefore;
     record("integration npc ghosts: a remote driver's NPC keeps its own track and seat as a ghost, turns solid in place on switch or leave, and releases its look",heldHere&&painted&&restored&&swapped&&swappedBack&&tinted&&kept&&switched&&left&&dropped,JSON.stringify({heldHere,painted,restored,swapped,swappedBack,tinted,kept,switched,left,dropped}));
+    record("integration npc ghosts: a ghost Ooga or gorilla reads online under the cursor, and only a shown live body in plain sight, never its ghost, the visitor's own name or one behind cover, is found along a sight line; none once it leaves",
+      picked&&ghostSkipped&&blocked&&detached&&ownSkipped&&ghostOnline&&companionOnline&&solidAgain,JSON.stringify({picked,ghostSkipped,blocked,detached,ownSkipped,ghostOnline,companionOnline,solidAgain,distance:liveHit.distance}));
   }
 };
 
