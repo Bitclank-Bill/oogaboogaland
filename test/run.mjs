@@ -6227,7 +6227,9 @@ const hammockChecks = async () => {
     return { ok: parts.length >= 2 && flat && inside && !overlaps, flat, inside, overlaps, along, across };
   };
   const gearRows = [];
-  for (const handle of ["hammock-club", "w-s-bitcoin", "MrHodlX", "2140data"]) {
+  // One Ooga with its club, rifle and pack, built the same way every call, so a second copy stands for the same
+  // character on another page.
+  const makeOoga = (handle) => {
     const definition = R.characters.get(handle), look = definition?.look || {};
     const cave = R.models.caveman({ ...look, name: handle, height: 1.1, belly: 1,
       skin: look.skin || "#c98a5b", hair: look.hair || "#2b1b10", fur: look.fur || "#d98a2e",
@@ -6251,6 +6253,18 @@ const hammockChecks = async () => {
     cave.camp ||= { seat: null };
     cave.root.position.x = seat.restX; cave.root.position.z = seat.restZ;
     R.scene.addChild(root, cave.root);
+    return { cave, parts, pack, flame, trailsStarted };
+  };
+  // A holder and its parts as the world draws them, to a micrometre (a -0 rounds to 0).
+  const worlds = (holder, nodes) => {
+    R.scene.updateWorld(root);
+    return [holder, ...nodes].map(n => Array.from(n.world, v => (Math.round(v * 1e6) + 0) / 1e6).join()).join("|");
+  };
+  // Scale every magazine banana by k, as a reload's pop draws it partway in.
+  const popBananas = (parts, k) => { for (const b of parts.gunBananas) { b.scale.x *= k; b.scale.y *= k; b.scale.z *= k; } };
+  const bananaSizes = (parts) => parts.gunBananas.map(b => [b.scale.x, b.scale.y, b.scale.z].join()).join("|");
+  for (const handle of ["hammock-club", "w-s-bitcoin", "MrHodlX", "2140data"]) {
+    const { cave, parts, pack, flame, trailsStarted } = makeOoga(handle);
     const nodes = [parts.club, parts.gun, pack], originalGeometry = nodes.map(n => n.geometry);
     const original = nodes.map(n => ({ parent: n.parent, position: { ...n.position }, rotation: { ...n.rotation }, quaternion: n.quaternion }));
     const id = 300 + gearRows.length, peer = { id, rest: [0, 2, 255, 0, 0, 0] };
@@ -6259,6 +6273,8 @@ const hammockChecks = async () => {
     const actual = rested && !!holder && holder.parent === root && nodes.every((n, i) =>
       n.parent === holder && n.geometry === originalGeometry[i] && n.visible) && cave.weapon.ammo === 7;
     const laid = gearUnderCloth(holder, nodes).ok;
+    const layout = () => nodes.map(n => ["x", "y", "z"].map(axis => n.position[axis].toFixed(9) + "/" + n.rotation[axis].toFixed(9)).join()).join("|");
+    const firstLayout = layout(), firstWorld = worlds(holder, nodes);
     if (parts.chukTrail) R.crew.poseEquipment(cave, true, 1.1);
     const trailsHidden = !parts.chukTrail || parts.chukTrail.every(n => !n.visible);
     const lookPeer = { ...peer, visual: new Int16Array(17) };
@@ -6287,14 +6303,48 @@ const hammockChecks = async () => {
       && ["x", "y", "z"].every(axis => n.position[axis] === original[i].position[axis] && n.rotation[axis] === original[i].rotation[axis]));
     if (parts.chukTrail) R.crew.poseEquipment(cave, true, 2);
     const trailsResumed = !parts.chukTrail || parts.chukTrail.every(n => n.visible && n.parent === parts.armL);
+    // Regression: the gear was laid by each part's passing state when it parked (the rounds showing on the rifle, a
+    // flash or flame, a reload's pop shrinking the rounds, a nunchaku still out), so the page lying in the hammock and a
+    // page that parked it at another moment laid it differently. Parked again with an empty rifle, its rounds popped
+    // half in, its flash and flame lit and its nunchaku out, the same Ooga's gear lies exactly as before, the nunchaku
+    // folded and the rounds (shown and sized) and flames as they really are.
+    for (const banana of parts.gunBananas) banana.visible = false;
+    popBananas(parts, 0.5);
+    const poppedSizes = bananaSizes(parts);
+    if (parts.gunFlash) parts.gunFlash.visible = true;
+    flame.visible = true;
+    if (parts.chuk) parts.chuk.rotation.x = cave.chukAngle = 0;
+    ham.poseRemote(cave, feet, peer, true);
+    const steadyLayout = layout() === firstLayout && worlds(cave.restEquipment.holder, nodes) === firstWorld
+      && parts.gunBananas.every(b => !b.visible) && bananaSizes(parts) === poppedSizes && (!parts.gunFlash || !parts.gunFlash.visible)
+      && !flame.visible && (!parts.chuk || parts.chuk.rotation.x === R.crew.CHUK_FOLD && cave.chukAngle === R.crew.CHUK_FOLD);
+    ham.poseRemote(cave, feet, { id, rest: 0 }, true);
+    // Regression: the page lying in the hammock (its own body, or a guest's roster Ooga, seated through `enter` and
+    // posed by `update`) must lay the same Ooga's gear exactly where another page's remote copy lays it in the world,
+    // whatever rounds, pop and nunchaku state that page seats it in; leaving the seat releases it as before.
+    const guest = makeOoga(handle), gp = guest.parts, guestNodes = [gp.club, gp.gun, guest.pack];
+    gp.gunBananas.forEach((b, i) => { b.visible = i < 2; });
+    popBananas(gp, 0.6);
+    if (gp.chuk) gp.chuk.rotation.x = guest.cave.chukAngle = 0;
+    seat.remote = 0;
+    const entered = ham.enter(guest.cave, seat, (s) => { s.sitter = guest.cave; guest.cave.camp.seat = s; return true; });
+    ham.update(1, 11, false);
+    const guestHolder = guest.cave.restEquipment?.holder;
+    const localMatchesRemote = entered && !!guestHolder && guestNodes.every(n => n.parent === guestHolder)
+      && worlds(guestHolder, guestNodes) === firstWorld;
+    seat.sitter = null; guest.cave.camp.seat = null;
+    ham.update(0, 11, false);
+    const localReleased = !!guestHolder && !guest.cave.restEquipment && !guestHolder.parent;
+    R.scene.removeChild(root, guest.cave.root);
+    seat.remote = id;
     ham.poseRemote(cave, feet, peer, true);
     const droppedHolder = cave.restEquipment.holder;
     R.scene.removeChild(root, cave.root);
     ham.update(0, 10, false);
     const dropped = !cave.restEquipment && !droppedHolder.parent && !cave.hammockRest;
-    gearRows.push({ handle, actual, laid, hidden, absent, entering, exiting, restored, dropped, trailsStarted, trailsHidden, trailsResumed, lookedUp, lookedDown, legacyNeutral });
+    gearRows.push({ handle, actual, laid, steadyLayout, localMatchesRemote, localReleased, hidden, absent, entering, exiting, restored, dropped, trailsStarted, trailsHidden, trailsResumed, lookedUp, lookedDown, legacyNeutral });
   }
-  record("hub hammock: the actual club, authored axe or hockey stick, rifle and owned pack stay together under rest, laid flat under the cloth, including late entry/exit poses; absent gear and active twirl afterimages stay hidden, and get-up or removal restores attachments and the current twirl without changing ammo; modern rest/exit retains shared up/down head look while legacy peers remain neutral",
+  record("hub hammock: the actual club, authored axe or hockey stick, rifle and owned pack stay together under rest, laid flat under the cloth the same way in the world whatever rounds, reload pop, flash, flame or nunchaku state each page parks them in, by the page lying in it and another page's remote copy alike, including late entry/exit poses; absent gear and active twirl afterimages stay hidden, and get-up or removal restores attachments and the current twirl without changing ammo; modern rest/exit retains shared up/down head look while legacy peers remain neutral",
     gearRows.every(row => Object.entries(row).every(([key, value]) => key === "handle" || value)), JSON.stringify(gearRows));
   // Every Ooga on the roster as the live crew builds it (its hashed or authored traits, so its own height scales its
   // club, rifle and jetpack), its own pack or the hub's put on as the crew puts it on, stowed by a resting peer's pose.
