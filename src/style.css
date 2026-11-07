@@ -2338,9 +2338,9 @@ body[data-active-scene="hub"] .home-link {
   cursor: pointer;
 }
 
-/* Reactions (reactions.js), on X Spaces' pattern: a paper card, two rows of five emoji, a divider and the raised hand
-   pinned past it, under Online Oogas' list and Ooga Chat's input. A long press opens the picker over the bar, in the
-   same paper. Emoji are the system's own colour glyphs. */
+/* Reactions (reactions.js), on X Spaces' pattern in its dark mode: a near-black card, two rows of five emoji, a divider
+   and the raised hand pinned past it, under Online Oogas' list and Ooga Chat's input. A long press opens the picker
+   floating over the screen, in the same dark. Emoji are the system's own colour glyphs. */
 .reactions {
   flex: none;
   display: flex;
@@ -2357,8 +2357,9 @@ body[data-active-scene="hub"] .home-link {
   gap: 6px;
   padding: 8px 10px;
   border-radius: 22px;
-  background: var(--paper);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset, 0 4px 14px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(243, 239, 228, 0.1);
+  background: #161412;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 4px 14px rgba(0, 0, 0, 0.45);
   -webkit-touch-callout: none;
   user-select: none;
   -webkit-user-select: none;
@@ -2388,7 +2389,7 @@ body[data-active-scene="hub"] .home-link {
 }
 
 .reaction:hover,
-.reaction.virtual-hover { background: rgba(42, 26, 12, 0.08); }
+.reaction.virtual-hover { background: rgba(243, 239, 228, 0.1); }
 .reaction:active { transform: scale(1.22); }
 .reaction:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .reaction:disabled { opacity: 0.4; cursor: default; transform: none; background: none; }
@@ -2399,7 +2400,7 @@ body[data-active-scene="hub"] .home-link {
   align-self: stretch;
   width: 1px;
   margin: 2px 2px;
-  background: rgba(42, 26, 12, 0.18);
+  background: rgba(243, 239, 228, 0.16);
 }
 
 .reaction-hand {
@@ -2434,9 +2435,9 @@ body[data-active-scene="hub"] .home-link {
   max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
   padding: 12px;
   border-radius: 18px;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(42, 26, 12, 0.12);
+  background: #161412;
+  color: var(--paper);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(243, 239, 228, 0.12);
   transform: translate(-50%, -50%);
 }
 
@@ -2453,7 +2454,7 @@ body[data-active-scene="hub"] .home-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--ink-muted);
+  color: var(--muted);
   font-size: 9.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2471,14 +2472,14 @@ body[data-active-scene="hub"] .home-link {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: rgba(42, 26, 12, 0.08);
-  color: var(--ink);
+  background: rgba(243, 239, 228, 0.1);
+  color: var(--paper);
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
 }
 
-.reaction-picker-close:hover { background: rgba(42, 26, 12, 0.16); }
+.reaction-picker-close:hover { background: rgba(243, 239, 228, 0.18); }
 .reaction-picker-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .reaction-picker-tools {
@@ -2493,10 +2494,10 @@ body[data-active-scene="hub"] .home-link {
   min-width: 0;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid rgba(42, 26, 12, 0.2);
+  border: 1px solid rgba(243, 239, 228, 0.18);
   border-radius: 15px;
-  background: #fff;
-  color: var(--ink);
+  background: #0b0a09;
+  color: var(--paper);
   font-size: 12px;
 }
 
@@ -2511,7 +2512,7 @@ body[data-active-scene="hub"] .home-link {
   border: 2px solid transparent;
   border-radius: 50%;
   background: #ffcc4d;
-  box-shadow: inset 0 0 0 1px rgba(42, 26, 12, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
 }
 
@@ -2548,7 +2549,7 @@ body[data-active-scene="hub"] .home-link {
   justify-content: space-between;
   gap: 2px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(42, 26, 12, 0.14);
+  border-bottom: 1px solid rgba(243, 239, 228, 0.12);
 }
 
 .reaction-picker-jump,
@@ -2567,7 +2568,7 @@ body[data-active-scene="hub"] .home-link {
 .reaction-picker-jump:hover,
 .reaction-choice:hover,
 .reaction-picker-jump.virtual-hover,
-.reaction-choice.virtual-hover { background: rgba(42, 26, 12, 0.08); }
+.reaction-choice.virtual-hover { background: rgba(243, 239, 228, 0.1); }
 
 .reaction-picker-jump:focus-visible,
 .reaction-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -2582,7 +2583,7 @@ body[data-active-scene="hub"] .home-link {
 
 .reaction-picker-group {
   margin: 6px 2px 4px;
-  color: var(--ink-muted);
+  color: var(--muted);
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.12em;
@@ -2601,7 +2602,7 @@ body[data-active-scene="hub"] .home-link {
 .reaction-choice { height: 34px; font-size: 22px; }
 
 .reaction-picker-foot { display: flex; justify-content: flex-end; }
-.reaction-picker .reaction-picker-reset { color: var(--ink-muted); font-size: 10px; }
+.reaction-picker .reaction-picker-reset { color: var(--muted); font-size: 10px; }
 
 @media (pointer: coarse) {
   .reaction { height: 44px; }
