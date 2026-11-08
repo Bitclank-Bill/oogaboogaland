@@ -7728,24 +7728,38 @@ const gameRulesChecks = async () => {
         S.grapple(m, 0, 0, 0);
         const stunLog = run(m, 0.6, still, () => g.state === 4);
         out.stun = !!stunLog.gorillahooked && !cap.grabbed && g.state === 4 && g.hookCool > 0;
-        // The grip: exactly the skill's presses free you, each counted once, and paint or a blast doesn't break it.
+        // The grip: the struggle meter fills a press at a time against its drain, paint or a blast doesn't break it, a
+        // held key counts once, and an idle meter empties.
         [m, g] = hunt("fort", 1, 0, -14);
         const grip = m.actors[0];
         for (const o of m.actors) if (o.id) o.bot = true;
         Object.assign(grip, { x: 0, z: -15 }); run(m, 0.3, still, () => grip.grabbed);
-        const press = { x: 0, z: 0, jump: 0 }, need = grip.grabHits;
-        let presses = 0;
+        const press = { x: 0, z: 0, jump: 0 }, gb = m.bots.gorilla, need = gb.need;
         const oneTick = () => { S.tick(m, S.CONFIG.STEP, press); m.eventCount = 0; };
-        for (let k = 0; k < need - 1; k++) { press.jump = 1; presses++; oneTick(); oneTick(); press.jump = 0; oneTick(); }
+        press.jump = 1; for (let k = 0; k < 24; k++) oneTick();
+        out.heldOnce = grip.grabFill > 0.5 && grip.grabFill <= 1 && press.jump === 0;
+        for (let k = 0; k < 120 && grip.grabFill > 0; k++) oneTick();
+        out.drains = grip.grabFill === 0 && grip.grabbed === 2;
+        for (let k = 0; k < need - 2; k++) { press.jump = 1; oneTick(); }
         const stillHeld = grip.grabbed === 2;
         const shot = m.shots.find((q) => !q.live);
         Object.assign(shot, { live: true, kind: "paint", team: "blue", owner: 1, t: 0, ox: g.x, oz: g.z, x: g.x, y: 1.2, z: g.z, vx: 0.1, vy: 0, vz: 0, target: -1 });
         oneTick();
         const paintHolds = grip.grabbed === 2 && g.holding === 0;
-        press.jump = 1; oneTick(); press.jump = 0;
-        out.grip = need === 4 && stillHeld && paintHolds && !grip.grabbed;
-        out.difficulty = ["easy", "normal", "hard", "expert"].map((k) => S.SKILLS[k].gorilla.hits).join() === "3,4,5,5"
-          && ["easy", "normal", "hard", "expert"].every((k, i, a) => !i || S.SKILLS[k].gorilla.sight >= S.SKILLS[a[i - 1]].gorilla.sight);
+        for (let k = 0; k < 4 && grip.grabbed; k++) { press.jump = 1; oneTick(); }
+        out.grip = need === S.CONFIG.GRAB_NEED && stillHeld && paintHolds && !grip.grabbed;
+        // Every difficulty: more presses against a faster drain, and every gorilla number a step harder than the last.
+        const LEVELS = ["easy", "normal", "hard", "expert"].map((k) => S.SKILLS[k].gorilla);
+        const rises = (f, sign = 1) => LEVELS.every((l, i) => !i || (l[f] - LEVELS[i - 1][f]) * sign > 0);
+        out.meterRises = rises("need") && rises("drain") && rises("mash");
+        out.gorillaRises = rises("charge") && rises("drag") && rises("sight") && rises("reach") && rises("rest", -1);
+        // Beatable: an idle-meter fill at a firm mash (9 a second, 5 on Easy) beats the longest drag from home on Expert.
+        out.possible = LEVELS.every((l, i) => l.need / ((i ? 9 : 5) - l.drain) < 4.5);
+        // A round of bots still finishes at Expert.
+        const expert = S.create({ seed: 11, prep: 0, map: "fort", skill: "expert", target: 1 });
+        for (const o of expert.actors) o.bot = true;
+        for (let t = 0; t < 600 && !expert.over; t += S.CONFIG.STEP) { S.tick(expert, S.CONFIG.STEP, still); expert.eventCount = 0; }
+        out.expertRound = expert.over;
         out.count = S.MAPS.every((map) => S.ARENAS[map].gorillas.length >= 3 && S.ARENAS[map].gorillas.length <= 4);
         // The whole capture, on every map, from around every piece of terrain and across the field: grabbed, dragged by a
         // route that gets there, thrown from the edge past it and off the ground.

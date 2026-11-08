@@ -51,7 +51,7 @@
     TRAMP_R: 1.0, BOUNCE: 13.5, STEP_UP: 0.45, FIRE_R: 0.95, BURN_HOPS: 3, BURN_SLOW: 0.25,
     JET_FUEL: 2.6, JET_REFILL: 3, JET_ACCEL: 27, JET_RISE: 6, JET_CEILING: 15,
     GORILLA_SPEED: 3.2, GORILLA_CHARGE: 8, GORILLA_SIGHT: 8, GORILLA_LEASH: 11, GORILLA_WANDER: 5, GORILLA_R: 0.75,
-    GORILLA_GRAB_R: 1.2, GRAB_HITS: 4, GRAB_MAX_S: 30, GORILLA_REST: 6, GORILLA_STUN: 1.6,
+    GORILLA_GRAB_R: 1.2, GRAB_NEED: 10, GRAB_DRAIN: 1.4, GRAB_MASH: 5, GRAB_MAX_S: 30, GORILLA_REST: 6, GORILLA_STUN: 1.6,
     // A captive is dragged by the feet to the nearest edge at `GORILLA_DRAG`, swung over the wind-up (`GORILLA_THROW_S`)
     // and thrown off at `GORILLA_THROW`, up at `GORILLA_THROW_UP`, its steering knocked out for `THROWN_S`.
     GORILLA_DRAG: 7.5, GORILLA_DRAG_R: 0.5, GORILLA_THROW_S: 0.45, GORILLA_THROW: 11, GORILLA_THROW_UP: 9, THROWN_S: 0.5, DRAG_BACK: 1.3, DRAG_EDGE: 1.2,
@@ -538,12 +538,12 @@
   // The bots' skill: easy bots aim wider, wait longer before throwing, throw less often, run slower and see less far;
   // hard ones the other way. "normal" is the CONFIG values.
   const SKILLS = {
-    easy: { spread: 0.36, aim: 1.1, cool: 2.1, speed: 4.8, range: 10, gorilla: { sight: 6, charge: 6.5, reach: 1.05, hits: 3, drag: 6, dodge: 0 } },
-    normal: { spread: CONFIG.BOT_SPREAD, aim: CONFIG.BOT_AIM, cool: CONFIG.BOT_COOLDOWN, speed: CONFIG.BOT_SPEED, range: CONFIG.BOT_RANGE, gorilla: { sight: CONFIG.GORILLA_SIGHT, charge: CONFIG.GORILLA_CHARGE, reach: CONFIG.GORILLA_GRAB_R, hits: CONFIG.GRAB_HITS, drag: CONFIG.GORILLA_DRAG, dodge: 0.15 } },
-    hard: { spread: 0.1, aim: 0.35, cool: 0.95, speed: 6, range: 15, gorilla: { sight: 9, charge: 9.2, reach: 1.3, hits: 5, drag: 8.5, dodge: 0.35 } },
+    easy: { spread: 0.36, aim: 1.1, cool: 2.1, speed: 4.8, range: 10, gorilla: { sight: 6, charge: 6.5, reach: 1.05, drag: 6, rest: 9, need: 6, drain: 0.8, mash: 3.5, dodge: 0 } },
+    normal: { spread: CONFIG.BOT_SPREAD, aim: CONFIG.BOT_AIM, cool: CONFIG.BOT_COOLDOWN, speed: CONFIG.BOT_SPEED, range: CONFIG.BOT_RANGE, gorilla: { sight: CONFIG.GORILLA_SIGHT, charge: CONFIG.GORILLA_CHARGE, reach: CONFIG.GORILLA_GRAB_R, drag: CONFIG.GORILLA_DRAG, rest: CONFIG.GORILLA_REST, need: CONFIG.GRAB_NEED, drain: CONFIG.GRAB_DRAIN, mash: CONFIG.GRAB_MASH, dodge: 0.15 } },
+    hard: { spread: 0.1, aim: 0.35, cool: 0.95, speed: 6, range: 15, gorilla: { sight: 10, charge: 9.5, reach: 1.35, drag: 8.5, rest: 4, need: 15, drain: 2, mash: 6.5, dodge: 0.35 } },
     // Expert bots play the whole game: they ride the catapult and the ziplines, climb ladders and nets, hop walls on the
     // jetpack, stack crates at the gate and throw them, and spray the AK in bursts (`akCool` between rounds).
-    expert: { spread: 0.06, aim: 0.22, cool: 0.7, speed: 6.4, range: 18, akCool: 0.16, expert: true, gorilla: { sight: 10, charge: 10.5, reach: 1.4, hits: 5, drag: 9.5, dodge: 0.55 } }
+    expert: { spread: 0.06, aim: 0.22, cool: 0.7, speed: 6.4, range: 18, akCool: 0.16, expert: true, gorilla: { sight: 12, charge: 11, reach: 1.5, drag: 9.5, rest: 2.5, need: 22, drain: 2.4, mash: 9, dodge: 0.55 } }
   };
   // Where the k-th of `size` Oogas a side starts, across the inside of its fort (red's turned half round).
   const startAt = (team, k, size) => {
@@ -760,7 +760,7 @@
       x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, heading: 0, moving: 0, carrying: null, splat: 0, guard: 0, cooldown: 0,
       blocked: null, stuck: 0, lastX: 0, lastZ: 0, detour: 0, aim: 0, trapped: 0, think: 0, grounded: true, jumps: 0, crouch: false,
       waiting: false, stamina: 4, tired: false, sprinting: false, rest: 0, botJump: false, jump2At: 0, tries: 0, progT: 0, lastD: 0, netted: 0, grenade: 0, rocket: 0, net: 0, sniper: 0, crates: 0, holding: false, bonked: false,
-      climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabHits: 0, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
+      climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabFill: 0, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       wallet: -1, knock: 0, soot: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, vendGo: 0, vendI: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
       detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
       boltCool: 0, hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
@@ -840,7 +840,7 @@
       a.lastD = Infinity;
       a.stamina = CONFIG.SPRINT_S; a.tired = a.sprinting = a.waiting = a.holding = a.bonked = false; a.rest = 0;
       a.captures = a.splats = a.hits = a.longShot = a.rescues = 0;
-      a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabHits = 0;
+      a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabFill = 0;
       a.sniper = 0; a.climbing = a.riding = false; a.zipT = 0; a.flight = 0; a.boots = a.laser = a.beam = a.burnt = a.slip = 0; a.gold = false; a.akMag = CONFIG.AK_MAG; a.akReload = 0; a.monkeys = 0;
       a.wallet = -1; a.knock = a.soot = a.vendGo = 0; a.ride = a.rider = a.calling = 0;
       a.hook = a.hk = a.hookT = a.hookLen = a.hCool = a.flingT = 0; a.hookTarget = -1; a.hookHold = false;
@@ -1297,8 +1297,9 @@
   // The gorillas, wicked's island gorillas in the sim's rules: each roams round its home; an Ooga that comes within
   // `GORILLA_SIGHT` (and not too far from home) is charged and grabbed, any block in its hands dropped where it was
   // grabbed. Then the capture: it drags the Ooga by the feet to the nearest edge (`G_HOLD`), winds up (`G_THROW`) and
-  // throws it off, and the Ooga jetpacks back. `GRAB_HITS` jump presses break free at any point (a bot struggles on
-  // its own); paint, a burst or the hook stuns a gorilla, which drops whoever it holds.
+  // throws it off, and the Ooga jetpacks back. Each distinct press adds one to the struggle meter (`grabFill`), which
+  // drains at the skill's `drain` a second; filling it to the skill's `need` breaks free at any point (a bot presses at
+  // the skill's `mash` a second); the hook frees a captive too. Paint and a burst stun a free gorilla but never a grip.
   const G_ROAM = 0, G_CHASE = 1, G_HOLD = 2, G_REST = 3, G_STUN = 4, G_THROW = 5;
   const letGo = (sim, g, a, broke) => {
     if (a && a.grabbed) {
@@ -1309,7 +1310,7 @@
       emit(sim, broke ? "breakfree" : "letgo", a.team, a.id, a.x, a.y, a.z);
     }
     g.holding = -1;
-    if (g.state === G_HOLD || g.state === G_THROW) { g.state = G_REST; g.t = CONFIG.GORILLA_REST; }
+    if (g.state === G_HOLD || g.state === G_THROW) { g.state = G_REST; g.t = sim.bots.gorilla.rest; }
   };
   // Paint and blasts stun a gorilla but never break its grip; only a mash (`grabbed` loop) or the hook (`hook`) frees a captive.
   const stunGorilla = (sim, g, by, hook = false) => {
@@ -1409,7 +1410,7 @@
       if (g.hookCool > 0) g.hookCool -= dt;
       if (g.state === G_HOLD || g.state === G_THROW) {
         const a = sim.actors[g.holding];
-        if (!a || a.grabbed !== i + 1) { g.holding = -1; g.state = G_REST; g.t = CONFIG.GORILLA_REST; continue; }
+        if (!a || a.grabbed !== i + 1) { g.holding = -1; g.state = G_REST; g.t = gb.rest; continue; }
         g.held += dt;
         if (g.held > CONFIG.GRAB_MAX_S) { letGo(sim, g, a, false); continue; }
         if (g.state === G_THROW) {
@@ -1427,7 +1428,7 @@
           a.vx = ox * CONFIG.GORILLA_THROW; a.vz = oz * CONFIG.GORILLA_THROW; a.vy = CONFIG.GORILLA_THROW_UP;
           a.grounded = false; a.jumps = 0; a.fuel = CONFIG.JET_FUEL; a.knock = CONFIG.THROWN_S; a.guard = Math.max(a.guard, 1.5);
           emit(sim, "thrown", a.team, a.id, a.x, a.y, a.z);
-          g.holding = -1; g.state = G_REST; g.t = CONFIG.GORILLA_REST; g.throwT = 0;
+          g.holding = -1; g.state = G_REST; g.t = gb.rest; g.throwT = 0;
           continue;
         }
         // Dragging: down the route to the nearest edge it can throw from.
@@ -1478,7 +1479,7 @@
         if (bd < gb.reach * gb.reach) {
           // Grabbed: down by the feet, block and crate let fall where it was grabbed, and off to the edge.
           g.state = G_HOLD; g.holding = best.id; g.held = 0; g.vx = g.vz = 0; g.stall = 0;
-          best.grabbed = i + 1; best.grabHits = gb.hits;
+          best.grabbed = i + 1; best.grabFill = 0;
           best.climbing = best.jetting = false;
           if (best.holding) { best.holding = false; emit(sim, "smash", best.team, best.id, best.x, best.y + 2, best.z); }
           emit(sim, "grab", best.team, best.id, best.x, 1.4, best.z);
@@ -2758,13 +2759,16 @@
         }
       }
       if (a.calling > 0) a.calling -= dt;
-      // Held by a gorilla: no moving or throwing, only struggling (a jump press each), until free.
+      // Held by a gorilla: no moving or throwing, only struggling. The meter drains; each distinct press (the scene
+      // arms `jump` once per key-down, and it's spent here) adds one, and full is free.
       if (a.grabbed) {
+        const gb = sim.bots.gorilla;
         let push = false;
-        if (a.bot) push = sim.rng() < dt * (sim.bots.expert ? 8 : 3.5);
+        if (a.bot) push = sim.rng() < dt * gb.mash;
         else { push = !!input.jump; input.jump = 0; }
+        a.grabFill = Math.max(0, a.grabFill - gb.drain * dt);
         if (push) {
-          if (--a.grabHits <= 0) letGo(sim, sim.gorillas[a.grabbed - 1], a, true);
+          if (++a.grabFill >= gb.need) letGo(sim, sim.gorillas[a.grabbed - 1], a, true);
           else emit(sim, "struggle", a.team, a.id, a.x, a.y, a.z);
         }
         a.moving = 0;

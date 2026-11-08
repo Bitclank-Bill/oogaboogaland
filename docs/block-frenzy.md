@@ -109,7 +109,14 @@ A special weapon, two a round, hidden at seeded spots from each map's hand-check
 
 ## Gorillas (BF2.2, BF2.3)
 
-Three or four on every map (`gorillas`): wicked's hub gorilla (`BL.agent.create` managed rig, posed with `poseManaged` and its `dragging`/`throwProgress` motion flags). A gorilla roams its home, charges an Ooga on the ground that comes within sight and grabs it, the block (and any crate) dropping where it was grabbed. It then drags the captive by the leg down a route round the terrain (`dragFor`, worked out once a map) to the nearest edge it can throw from, winds up and throws it off, released past the rim (`thrown`), and the Ooga jetpacks back (its tank is filled for the throw). `GRAB_HITS` (10) jump presses break free at any point, paint, a burst or the hook stuns the gorilla (the hook frees a captive with a cooldown), and bots mash, shoot a charging gorilla and fly back.
+Three or four on every map (`gorillas`): wicked's hub gorilla (`BL.agent.create` managed rig, posed with `poseManaged` and its `dragging`/`throwProgress` motion flags). A gorilla roams its home, charges an Ooga on the ground that comes within sight and grabs it, the block (and any crate) dropping where it was grabbed. It then drags the captive by the leg down a route round the terrain (`dragFor`, worked out once a map) to the nearest edge it can throw from, winds up and throws it off, released past the rim (`thrown`), and the Ooga jetpacks back (its tank is filled for the throw). A captive fills a struggle meter (`grabFill`, shown on screen while held): each distinct press (Space, E, Enter, a click or a tap, never a held key) adds one, it drains over time, and full breaks free at any point. Only that or the hook (which stuns the gorilla, with a cooldown) frees a captive; paint and bursts stun a free gorilla but never a grip. Bots mash by the same rule at their skill's rate, shoot a charging gorilla and fly back.
+
+| `SKILLS[k].gorilla` | sight | charge | reach | drag | rest s | need | drain /s | bot mash /s |
+|---|---|---|---|---|---|---|---|---|
+| easy | 6 | 6.5 | 1.05 | 6 | 9 | 6 | 0.8 | 3.5 |
+| normal | 8 | 8 | 1.2 | 7.5 | 6 | 10 | 1.4 | 5 |
+| hard | 10 | 9.5 | 1.35 | 8.5 | 4 | 15 | 2 | 6.5 |
+| expert | 12 | 11 | 1.5 | 9.5 | 2.5 | 22 | 2.4 | 9 |
 
 ## Fort Chaos
 

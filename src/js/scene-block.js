@@ -362,7 +362,7 @@
       center(COARSE ? "PAUSED · Main menu for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
     } else el.center.hidden = true;
   };
-  const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Mash jump to wriggle out of a gorilla's grip.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
+  const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
   let tipK = 0;
   // The net launcher's aim line: from where the shot leaves, along where it goes; only while the net is in hand.
   let aimNode = null;
@@ -375,15 +375,28 @@
     setVec(aimNode.position, a.x + Math.sin(yaw) * c * 0.5, oy + Math.sin(pitch) * 0.5, a.z + Math.cos(yaw) * c * 0.5);
     aimNode.rotation.y = yaw; aimNode.rotation.x = -pitch; aimNode.scale.z = 9;
   };
+  // The struggle meter, shown while a gorilla holds the visitor's Ooga. It repaints only when the bar moves a step or
+  // the count of presses left changes.
+  const STRUGGLE_STEPS = 60;
+  let struggleStep = -1, struggleLeft = -1;
+  const hideStruggle = () => { if (struggleStep >= 0) el.struggle.hidden = true; struggleStep = struggleLeft = -1; };
+  const paintStruggle = () => {
+    const a = sim ? sim.actors[0] : null;
+    if (phase !== "play" || !a || !a.grabbed) { hideStruggle(); return; }
+    const need = sim.bots.gorilla.need, n = clamp(Math.round(a.grabFill / need * STRUGGLE_STEPS), 0, STRUGGLE_STEPS), left = Math.max(1, Math.ceil(need - a.grabFill));
+    if (struggleStep < 0) el.struggle.hidden = false;
+    if (n !== struggleStep) { struggleStep = n; el.struggleFill.style.transform = `scaleX(${n / STRUGGLE_STEPS})`; el.struggleMeter.setAttribute("aria-valuenow", String(n)); }
+    if (left !== struggleLeft) { struggleLeft = left; el.struggleLeft.textContent = String(left); }
+  };
   // The grouped controls list (`CONTROL_GROUPS`), the same on the menu and in the in-play Help.
   const CONTROL_GROUPS = [
-    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult, wallets"]]],
+    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult, wallets"], ["Space, E or click", "Mash to break a gorilla's grip"]]],
     ["Weapons", [["1 to 8", "Pick a weapon"], ["G", "Next weapon"], ["Click", "Fire"], ["Right click", "Aim, or sniper scope"], ["Y", "Throw a wallet"]]],
     ["Hook", [["R", "Fire at the crosshair, or let go"], ["Jump", "Let go"], ["C held", "Stop pulling, swing"]]],
     ["Blocks", [["Touch", "Pick up or send home"], ["K", "Drop"], ["Tab or T", "Throw to a teammate"], ["F", "Lift or set a crate"], ["B", "Place a crate"]]],
     ["View", [["X", "Capture the mouse"], ["V", "Change view"], ["U", "Hide the weapons bar"], ["N", "Hide the map"], ["?", "Help"], ["P", "Pause"], ["Esc", "Step back"]]]
   ];
-  const TOUCH_GROUPS = [["Controls", [["Left stick", "Move"], ["Right stick", "Turn and aim"], ["Jump", "Jump, jetpack, break free"], ["Throw!", "Fire"], ["Weapons bar", "Tap a weapon"], ["Ride", "Zipline, catapult, wallets"]]]];
+  const TOUCH_GROUPS = [["Controls", [["Left stick", "Move"], ["Right stick", "Turn and aim"], ["Jump or tap", "Mash to break a gorilla's grip"], ["Jump", "Jump, jetpack"], ["Throw!", "Fire"], ["Weapons bar", "Tap a weapon"], ["Ride", "Zipline, catapult, wallets"]]]];
   const paintControls = (box) => {
     for (const [name, rows] of COARSE ? TOUCH_GROUPS : CONTROL_GROUPS) {
       const head = document.createElement("h4"); head.textContent = name; box.append(head);
@@ -900,10 +913,9 @@
         gorillaPoke(e.actor);
         if (me) {
           center("GRABBED!", 1000);
-          notice(COARSE ? `A gorilla has you by the feet! Tap Jump ${sim.actors[0].grabHits} times to wriggle free` : `A gorilla has you by the feet! Mash Space ${sim.actors[0].grabHits} times to wriggle free`, 3000);
+          notice("A gorilla has you by the feet! Fill the meter to break free", 2200);
         } else say(e.actor, LINES.bonk, 1.3);
-      } else if (e.type === "struggle") { if (me) notice(`Wriggle! ${sim.actors[0].grabHits} more`, 700); }
-      else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
+      } else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
       else if (e.type === "letgo") { if (me) notice("The gorilla got bored and dropped you", 1500); }
       else if (e.type === "boltwarn") { if (e.actor === 0) { center("LIGHTNING!", 700); notice("Lightning coming · move!", 1300); } }
       else if (e.type === "bolt") {
@@ -1096,6 +1108,8 @@
   };
   const paint = () => {
     if (!inRound()) return false;
+    // In a gorilla's hands a click or tap is a struggle press, like Space.
+    if (sim.actors[0].grabbed) { move.jump = 1; return true; }
     if (sim.actors[0].flight === 2) return SIM.cutChute(sim, 0);
     if (sim.actors[0].wallet >= 0) return throwWallet();
     // Laser eyes ready: whatever is in hand, the click lets them loose.
@@ -1386,12 +1400,13 @@
   // faces; a captured mouse, Q E, the arrows and the look stick turn it, the chase camera swinging round behind.
   const TURN = 2.7;
   const readInput = (dt) => {
-    const a = controls.read(), turnKeys = arrows.left - arrows.right;
+    // A captive only struggles: E counts as a press there (`onKey`), so the keys and stick don't turn it as well.
+    const a = controls.read(), held = sim.actors[0].grabbed > 0, turnKeys = held ? 0 : arrows.left - arrows.right, yawIn = held ? 0 : a.yaw;
     if (cam.island) {
       // Island view: the camera swings on Q E and the arrows; the stick or W A S D run the way the screen faces, and
       // the Ooga turns to face where it runs.
       const side = clamp(a.x + turnKeys, -1, 1);
-      cam.orbit = wrap(cam.orbit + (a.yaw + turnKeys) * TURN * 0.8 * dt);
+      cam.orbit = wrap(cam.orbit + (yawIn + turnKeys) * TURN * 0.8 * dt);
       const ox = Math.sin(cam.orbit), oz = Math.cos(cam.orbit), rx = -Math.cos(cam.orbit), rz = Math.sin(cam.orbit);
       let mx = ox * a.y + rx * side, mz = oz * a.y + rz * side;
       const l = Math.hypot(mx, mz);
@@ -1399,7 +1414,7 @@
       move.x = mx; move.z = mz;
       if (l > 0.15) cam.face = Math.atan2(mx, mz);
     } else {
-      cam.face = wrap(cam.face + (a.yaw + turnKeys) * TURN * dt);
+      cam.face = wrap(cam.face + (yawIn + turnKeys) * TURN * dt);
       const side = clamp(a.x + turnKeys, -1, 1), f = clamp(a.y, -1, 1);
       const fx2 = Math.sin(cam.face), fz = Math.cos(cam.face), rx = -Math.cos(cam.face), rz = Math.sin(cam.face);
       let mx = fx2 * f + rx * side, mz = fz * f + rz * side;
@@ -1966,7 +1981,7 @@
         if (!SIM.nearVend(sim, sim.actors[0])) closeWalletMenu();
       }
       // Full auto: with the AK or the golden pair and the trigger held, a round goes each time the shot clock allows.
-      if (trigger && (tool === "ak" || (tool === "gold" && sim.actors[0].gold)) && !quiz.open && sim.actors[0].cooldown <= 0) paint();
+      if (trigger && (tool === "ak" || (tool === "gold" && sim.actors[0].gold)) && !quiz.open && !sim.actors[0].grabbed && sim.actors[0].cooldown <= 0) paint();
       // The live feed, folded in before the step: fees to weather, a new block to its reset.
       SIM.setLive(sim, feeWeather(live.fee));
       if (live.block) { SIM.newBlock(sim, live.block); live.block = 0; }
@@ -1990,6 +2005,7 @@
     poseGorillas(dt, elapsed);
     poseHooks(elapsed);
     poseAim();
+    paintStruggle();
     poseGhosts(elapsed);
     if (sim && actors) poseBeams(elapsed);
     poseShots();
@@ -2036,6 +2052,7 @@
     if (phase !== "play" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "p" || e.key === "P") { if (!quiz.open) setPaused(!paused); return; }
     if (paused) return;
+    if ((e.key === "e" || e.key === "E") && !quiz.open && sim.actors[0].grabbed) { move.jump = 1; return; }
     if (quiz.open) {
       if (e.key >= "1" && e.key <= "4") answer(Number(e.key) - 1);
       return;
@@ -2354,9 +2371,10 @@
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     fx = fxMod.create({ root, renderer, camera, hud, overlay: ctx.overlay, tickerAt: { x: 0, y: 8, z: 0 } });
-    for (const id of ["board", "results", "strip", "center", "notice", "best", "record", "score-blue", "score-red", "own", "theirs", "time", "drop", "summary", "stats", "result-title", "quiz", "quiz-q", "quiz-note", "quiz-fill"]) {
+    for (const id of ["board", "results", "strip", "center", "struggle", "struggle-fill", "struggle-left", "struggle-meter", "struggle-word", "notice", "best", "record", "score-blue", "score-red", "own", "theirs", "time", "drop", "summary", "stats", "result-title", "quiz", "quiz-q", "quiz-note", "quiz-fill"]) {
       el[id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = document.getElementById(`block-${id}`);
     }
+    el.struggleWord.textContent = COARSE ? "Tap fast!" : "Mash SPACE!";
     el.teams = [...document.querySelectorAll("#block-board [data-team]")];
     el.targets = [...document.querySelectorAll("#block-board [data-target]")];
     el.sizes = [...document.querySelectorAll("#block-board [data-size]")];
@@ -2662,6 +2680,7 @@
     fx.dispose();
     controls.dispose();
     hud.el.act.hidden = true;
+    hideStruggle();
     hud.setAct("Ooga!");
     for (const node of placed) removeChild(root, node);
     placed.length = 0;

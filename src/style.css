@@ -6147,6 +6147,35 @@ body.tess-touring #joy-look {
   pointer-events: none;
 }
 
+.block-struggle {
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  transform: translate(-50%, -50%);
+  width: min(260px, 66vw);
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--paper);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+.block-struggle-bar {
+  height: 16px;
+  margin-top: 4px;
+  border: 2px solid var(--paper);
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.block-struggle-bar i {
+  display: block;
+  height: 100%;
+  background: #f2c230;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
 .race-notice {
   position: absolute;
   left: 50%;
