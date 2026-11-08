@@ -760,7 +760,7 @@
       x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, heading: 0, moving: 0, carrying: null, splat: 0, guard: 0, cooldown: 0,
       blocked: null, stuck: 0, lastX: 0, lastZ: 0, detour: 0, aim: 0, trapped: 0, think: 0, grounded: true, jumps: 0, crouch: false,
       waiting: false, stamina: 4, tired: false, sprinting: false, rest: 0, botJump: false, jump2At: 0, tries: 0, progT: 0, lastD: 0, netted: 0, grenade: 0, rocket: 0, net: 0, sniper: 0, crates: 0, holding: false, bonked: false,
-      climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabFill: 0, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
+      climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabFill: 0, flung: false, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       wallet: -1, knock: 0, soot: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, vendGo: 0, vendI: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
       detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
       boltCool: 0, hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
@@ -840,7 +840,7 @@
       a.lastD = Infinity;
       a.stamina = CONFIG.SPRINT_S; a.tired = a.sprinting = a.waiting = a.holding = a.bonked = false; a.rest = 0;
       a.captures = a.splats = a.hits = a.longShot = a.rescues = 0;
-      a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabFill = 0;
+      a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabFill = 0; a.flung = false;
       a.sniper = 0; a.climbing = a.riding = false; a.zipT = 0; a.flight = 0; a.boots = a.laser = a.beam = a.burnt = a.slip = 0; a.gold = false; a.akMag = CONFIG.AK_MAG; a.akReload = 0; a.monkeys = 0;
       a.wallet = -1; a.knock = a.soot = a.vendGo = 0; a.ride = a.rider = a.calling = 0;
       a.hook = a.hk = a.hookT = a.hookLen = a.hCool = a.flingT = 0; a.hookTarget = -1; a.hookHold = false;
@@ -1163,7 +1163,9 @@
     const [x, z] = ARENA.catapults[other(a.team)][0];
     return (a.x - x) ** 2 + (a.z - z) ** 2 < CONFIG.CATAPULT_R * CONFIG.CATAPULT_R;
   };
-  // It throws you backward, off the back of the island past the rim, no parachute: jetpack or hook back, or fall.
+  // It throws you backward, off the back of the island past the rim, no parachute: jetpack or hook back, or fall. A
+  // block in hand stays there for the whole flight (`flung`): landed back on the island it's still yours; fallen all
+  // the way, it falls with you and goes home (`respawn`).
   const flingOff = (sim, a) => {
     const [x, z] = ARENA.catapults[other(a.team)][0], len = Math.hypot(x, z) || 1, ox = x / len, oz = z / len;
     let edge = 0;
@@ -1171,7 +1173,7 @@
     a.vy = CONFIG.ENEMY_CAT_UP;
     const t = 2 * a.vy / CONFIG.FALL, speed = (edge + CONFIG.ENEMY_CAT_PAST) / t;
     a.vx = ox * speed; a.vz = oz * speed;
-    a.grounded = false; a.jumps = 0; a.crouch = false; a.route = ""; a.heading = Math.atan2(ox, oz); a.knock = t * 0.85;
+    a.grounded = false; a.jumps = 0; a.crouch = false; a.route = ""; a.heading = Math.atan2(ox, oz); a.knock = t * 0.85; a.flung = !!a.carrying;
     emit(sim, "enemycat", other(a.team), a.id, x, a.y, z);
   };
   const launch = (sim, id = 0) => {
@@ -2675,9 +2677,12 @@
     emit(sim, "mined", null, -1, height, 0, 0);
   };
   // Fallen all the way past the island: back in its own block zone (where its side starts, in its own fort), with a
-  // full tank and a moment's fresh-paint protection. A block still in hand drops at the edge it went over.
+  // full tank and a moment's fresh-paint protection. A block still in hand drops at the edge it went over, or, after
+  // a wrong catapult's fling, has fallen too and goes straight home.
   const respawn = (sim, a) => {
-    if (a.carrying) dropFlag(sim, a, "edgedrop");
+    if (a.carrying && a.flung) { const f = sim.flags[a.carrying]; a.carrying = null; homeFlag(f); emit(sim, "return", f.team, -1, f.x, 0, f.z); }
+    else if (a.carrying) dropFlag(sim, a, "edgedrop");
+    a.flung = false;
     if (a.wallet >= 0) dropWallet(sim, a.id);
     // A grappling hook lost over the edge goes back into hiding.
     if (a.hook) { if (a.hk === H_REEL) hookBack(sim, a, "hookrelease"); hideHook(sim, sim.hooks[a.hook - 1]); a.hook = 0; a.hk = 0; a.hCool = 0; }
@@ -2908,8 +2913,8 @@
       }
       // The open edge: where an Ooga last stood on the island is where a block it carries over the edge drops; one gone
       // down under the top lets go of it, and one fallen all the way comes back home.
-      if (a.grounded && a.y > -CONFIG.RIM && onIsland(a.x, a.z)) { a.edgeX = a.x; a.edgeY = a.y; a.edgeZ = a.z; }
-      else if (a.carrying && a.y < -CONFIG.RIM) dropFlag(sim, a, "edgedrop");
+      if (a.grounded && a.y > -CONFIG.RIM && onIsland(a.x, a.z)) { a.edgeX = a.x; a.edgeY = a.y; a.edgeZ = a.z; a.flung = false; }
+      else if (a.carrying && !a.flung && a.y < -CONFIG.RIM) dropFlag(sim, a, "edgedrop");
       if (a.y < CONFIG.FALL_FLOOR) { respawn(sim, a); continue; }
       // The campfire: feet in it burn, and burnt feet take `BURN_HOPS` jumps to cool.
       if (a.grounded && a.y < 0.05 && free && a.burnt <= 0 && (a.x - ARENA.fire[0]) ** 2 + (a.z - ARENA.fire[1]) ** 2 < CONFIG.FIRE_R * CONFIG.FIRE_R) {

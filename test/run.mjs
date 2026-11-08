@@ -7690,6 +7690,20 @@ const gameRulesChecks = async () => {
         const threw = S.launch(ec, 0), outZ = v.vz < 0 && !v.flight;
         run(ec, 4, still, () => !S.onIsland(v.x, v.z) && v.y < 0);
         rows.enemyCat = threw && outZ && !S.onIsland(v.x, v.z);
+        // A carrier flung by it keeps the block in flight: jetpacked back it still has it; fallen all the way, the block
+        // goes home with no drop at the edge. An ordinary walk off the edge still drops it there.
+        const fling = () => { const q = fresh(), c1 = q.actors[0], [fx, fz] = S.ARENA.catapults.red[0]; Object.assign(c1, { x: fx, z: fz, y: 0, carrying: "red", grounded: true }); q.flags.red.state = "carried"; q.flags.red.carrier = 0; S.launch(q, 0); return [q, c1]; };
+        let [fq, fc] = fling();
+        const fallLog = run(fq, 12, still, () => fc.falls > 0);
+        rows.flungFalls = fc.falls === 1 && !fc.carrying && fq.flags.red.state === "home" && !fallLog.edgedrop && !!fallLog.return;
+        [fq, fc] = fling();
+        run(fq, 6, still, () => fc.knock <= 0);
+        const home = { x: 0, z: 0, jet: 1 };
+        run(fq, 8, home, () => { const l = Math.hypot(fc.x, fc.z) || 1; home.x = -fc.x / l; home.z = -fc.z / l; home.jet = S.onIsland(fc.x, fc.z) ? 0 : 1; return fc.grounded && S.onIsland(fc.x, fc.z); });
+        rows.flungRecovers = fc.grounded && S.onIsland(fc.x, fc.z) && fc.carrying === "red" && fc.falls === 0 && !fc.flung;
+        Object.assign(fc, { x: 0, z: 200, y: -1, vy: -3, grounded: false });
+        const walkLog = run(fq, 0.2, still, () => !fc.carrying);
+        rows.walkOffDrops = !fc.carrying && (fq.flags.red.state === "dropped") && !walkLog.return;
         const bot = fresh(), bv = bot.actors[1], [bx, bz] = S.ARENA.catapults.red[0];
         bv.bot = true; Object.assign(bv, { x: bx, z: bz, y: 0, grounded: true });
         rows.enemyCatBot = !S.nearEnemyCatapult(bot, bv);
