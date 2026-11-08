@@ -127,9 +127,8 @@
       stats: { x: HALL.x0 + 3.2, y: 4.3, z: 16, w: 9, h: 4, turn: Math.PI / 2, scale: 1.15 },
       timeline: { x: HALL.x0 + 3.2, y: 4.3, z: -2, w: 11, h: 4, turn: Math.PI / 2, scale: 1.15 }
     },
-    // The hangar's sign over the runway, from the last roof rib.
-    signs: { hangar: [0, 11.6, -26] },
-    // The arch round the launch tunnel's mouth (`ARCH`): how far in front of the back wall its middle stands.
+    // The arch round the launch tunnel's mouth, which holds the hangar's plaque (`ARCH`): how far in front of the back
+    // wall its middle stands.
     arch: { z: HALL.back + 1.3 + 0.62 },
     // The crew, gorillas in hard hats, each pacing its post: [x, y, z, radius, heading], heading 0 facing +z. At the
     // workstations (stood back from the desk, since a gorilla leans in over what it faces, and clear of the crates by
@@ -526,11 +525,13 @@
   // The arch round the launch tunnel's mouth, after the concept: a heavy steel frame standing in front of the back wall's
   // surround, its posts from the floor (`A` either side of the runway's middle), its top corners chamfered (`c`) up to
   // its top (`T`), `w` wide and `depth` deep, and inside it a lighter frame set back (`inner`), orange lights along its
-  // face and an amber lamp low on each post. `arch()` is the frame (`flat`, its lights `glow`, its small parts
-  // `detail`), in the hangar's frame. Each piece of the frame is a convex quad between its outer and inner outlines
-  // (`chamferRect`), so its corners meet mitred.
+  // face and an amber lamp low on each post; across its top the hangar's plaque (`plaque`: its middle `y` up, its width,
+  // height and chamfer), a navy lightbox with chamfered ends in a glowing orange rim, LIGHTNING JET HANGAR in cream over
+  // two lines between yellow bolts. `arch()` is the frame (`flat`, its lights `glow`, its small parts `detail`) and the
+  // plaque's body and rim, in the hangar's frame, and `picture` its face, { geometry, x, y, z }. Each piece of the
+  // frame is a convex quad between its outer and inner outlines (`chamferRect`), so its corners meet mitred.
   const ARCH = { A: 8.95, T: 13.15, c: 2.5, w: 1.1, depth: 0.75, inner: { w: 0.45, depth: 0.45, back: 0.24 }, body: "#565c78", edge: "#6c7394", dark: "#3c4156",
-    orange: "#f28a1c", amber: "#ffc77a" };
+    orange: "#f28a1c", amber: "#ffc77a", navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a", plaque: { y: 13.05, w: 10.4, h: 2.3, c: 0.5 } };
   // A chamfered rectangle's outline from the floor, `a` either side of x 0 up to `t`, its top corners cut `c` along
   // each side, counter-clockwise from the front.
   const chamferRect = (a, t, c) => [[a, 0], [a, t - c], [a - c, t], [-a + c, t], [-a, t - c], [-a, 0]];
@@ -541,8 +542,17 @@
     for (let k = 0; k < o.length - 1; k++) quads.push([o[k], o[k + 1], i[k + 1], i[k]]);
     return quads;
   };
+  const paintPlaque = (g, W, H) => {
+    const P = ARCH;
+    g.fillStyle = P.navy; g.fillRect(0, 0, W, H);
+    g.fillStyle = P.bolt;
+    for (const x of [H * 0.5, W - H * 0.5]) paintBolt(g, x, H / 2, H * 0.62);
+    g.fillStyle = P.cream; g.textAlign = "center"; g.textBaseline = "middle"; g.font = `bold ${Math.round(H * 0.38)}px sans-serif`;
+    g.fillText("LIGHTNING JET", W / 2, H * 0.29);
+    g.fillText("HANGAR", W / 2, H * 0.73);
+  };
   const arch = cached(() => {
-    const P = ARCH, z = LAYOUT.arch.z, flat = [], glow = [], detail = [];
+    const P = ARCH, Q = P.plaque, z = LAYOUT.arch.z, flat = [], glow = [], detail = [];
     for (const q of frameQuads(P.A, P.T, P.c, P.w)) flat.push(moved(prism(q, P.depth, P.body), 0, 0, z));
     const ia = P.A - P.w, it = P.T - P.w, ic = P.c - P.w * (2 - Math.SQRT2);
     for (const q of frameQuads(ia, it, ic, P.inner.w)) flat.push(moved(prism(q, P.inner.depth, P.dark), 0, 0, z - P.inner.back));
@@ -558,7 +568,14 @@
       glow.push(box({ w: 0.24, h: 0.5, d: 0.02, color: P.amber, emissive: 1, offset: { x: s * (P.A - P.w / 2), y: 1.3, z: front + 0.09 } }));
     }
     for (const [x, y] of lights) glow.push(box({ w: 0.28, h: 0.12, d: 0.03, color: P.orange, emissive: 0.9, offset: { x, y, z: front + 0.015 } }));
-    return { flat: merge(...flat), glow: noShadow(merge(...glow)), detail: merge(...detail) };
+    // The plaque: its orange rim behind its navy body, chamfered at both ends, standing proud of the frame's top.
+    const octagon = (w, h, c) => [[-w / 2 + c, Q.y - h / 2], [w / 2 - c, Q.y - h / 2], [w / 2, Q.y - h / 2 + c], [w / 2, Q.y + h / 2 - c],
+      [w / 2 - c, Q.y + h / 2], [-w / 2 + c, Q.y + h / 2], [-w / 2, Q.y + h / 2 - c], [-w / 2, Q.y - h / 2 + c]];
+    const pz = front + 0.12;
+    glow.push(moved(prism(octagon(Q.w + 0.18, Q.h + 0.18, Q.c + 0.07), 0.06, P.orange, 1), 0, 0, pz));
+    flat.push(moved(prism(octagon(Q.w, Q.h, Q.c), 0.12, P.navy, 0.45), 0, 0, pz + 0.04));
+    return { flat: merge(...flat), glow: noShadow(merge(...glow)), detail: merge(...detail),
+      picture: { geometry: screenPicture(Q.w - 2 * Q.c, Q.h - 0.12, 160, paintPlaque), x: 0, y: Q.y, z: pz + 0.105 } };
   });
 
   // The launch tunnel from the back wall to the shield: a stone sleeve, floored, walled and roofed, and inside it an
@@ -1451,7 +1468,7 @@
   // run on the runways along the side walls (`x`, their rails' tops at `railY`, the length of the hall between end
   // stops at `runway`'s ends). The working crane, LJ-02, travels its bridge's middle `travel` along the hall, clear of
   // the projector's cradle and the film screen hanging from the roof; its sister, LJ-01, stands parked at the far end
-  // (`far`). The girder's top is the walkway, railed along its back; amber lamps light its underside and front, a twin
+  // (`far`), its trolley off to the left, clear of the hangar's plaque on the arch under it. The girder's top is the walkway, railed along its back; amber lamps light its underside and front, a twin
   // lamp box stands on each end, and the festoon carrying the trolley's power hangs in loops near its left end. The
   // trolley (`trolley`, the range of its middle across the hall, the hook kept off the catwalks) rides the girder's
   // front half: a navy hoist house with the bolt on both faces, the railing passing behind it, and a yellow carriage
@@ -1466,7 +1483,7 @@
   // glow a little (`lift`), as the concept's catch the hall's light, and dim with the hall's glass.
   const CRANE = {
     railY: 14.2, x: [HALL.x0 + 2.65, HALL.x1 - 2.65], runway: [-32.4, 28.4], travel: [-16, 11.2], trolley: [-15, 20.5],
-    ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.2, x: 17.5 }, far: { z: -30.2, x: -4 }, lift: 0.16,
+    ropeTop: -0.3, rope: 0.6, eye: -1.0, sling: 1.15, crate: [1.3, 1.2, 1.3], park: { z: 11.2, x: 17.5 }, far: { z: -30.2, x: -13 }, lift: 0.16,
     stands: [[17.5, 11.2], [-7.5, -1]], standTop: 0.3, carry: 5, spot: 1.5,
     yellow: "#f2b630", yellowDk: "#c88a1c", rivet: "#9a6a12", navy: "#1e2c66", navyDk: "#131c45", dark: "#2b3038", rail: "#8a929c",
     amber: "#ffb347", plate: "#ffd04a"
