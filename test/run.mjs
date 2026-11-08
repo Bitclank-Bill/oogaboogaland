@@ -26405,12 +26405,12 @@ const thumpChecks = async BL => {
   const columns = { lock: cellOfRule(".players-private"), voice: cellOfRule(".roster-voice"), thump: columnOf(".players-thump"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
   const thumpRule = ruleOf(".players-thump");
   const shapeOk = cell.rows === 3 && cell.before.every((s) => s === "roster-dots players-name roster-marks players-thump players-look players-distance players-volume");
-  record("ooga thump Online Oogas: every row holds the mallet's cell from the start, drawn over the voice mark in its fixed column (lock, voice, distance, crosshair), hidden by visibility and taking no pointer; a pulse and its end change only that cell's state, never a row's cells, their order or anything hidden",
+  record("ooga thump Online Oogas: every row holds the mallet's cell from the start, drawn over the voice mark in its fixed column (lock, voice, distance as wide as 999 m, crosshair: none sized to its content, so they line up across groups), hidden by visibility and taking no pointer; a pulse and its end change only that cell's state, never a row's cells, their order or anything hidden",
     shapeOk && cell.pulsed.join() === "true,true" && cell.pulses === 2 && cell.during.every((d) => d.same && d.hidden === false) && cell.during.filter((d) => d.on === "true").length === 2
       && cell.during.filter((d) => d.on === "true").every((d) => d.label === "Thumped" && d.ariaHidden === null) && cell.during.filter((d) => d.on === "false").every((d) => d.ariaHidden === "true")
       && cell.ended.bea === "false" && cell.ended.beaHidden === "true" && cell.ended.self === "true" && cell.cleared.self === "false" && cell.cleared.cancelled
       && cell.cleared.after.join("|") === cell.initial.join("|") && !cell.moving
-      && tracks.length === 6 && tracks[columns.thump - 1] === "12px" && columns.lock === 3 && columns.voice === 4 && columns.thump === columns.voice && columns.distance === 5 && columns.look === 6
+      && tracks.length === 6 && tracks[columns.thump - 1] === "12px" && tracks[columns.lock - 1] === "10px" && tracks[columns.look - 1] === "12px" && /width:\s*5ch;/.test(ruleOf(".players-distance")) && columns.lock === 3 && columns.voice === 4 && columns.thump === columns.voice && columns.distance === 5 && columns.look === 6
       && /visibility:\s*hidden/.test(thumpRule) && /pointer-events:\s*none/.test(thumpRule) && /width:\s*12px/.test(thumpRule) && !/display:\s*none/.test(thumpRule)
       && /\.players-thump\[data-on="true"\] \{\s*visibility: visible;\s*\}/.test(css),
     JSON.stringify({ cell, tracks, columns }));

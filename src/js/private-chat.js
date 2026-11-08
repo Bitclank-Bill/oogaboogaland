@@ -44,8 +44,9 @@
   const size = $("pm-size"), make = $("pm-make"), printLine = $("pm-print-line"), printPeer = $("pm-print-peer"), print = $("pm-print");
   const log = $("pm-log"), budget = $("pm-budget"), form = $("pm-form"), input = $("pm-input"), left = $("pm-left"), sendButton = $("pm-send"), end = $("pm-end");
   const views = [...switcher.querySelectorAll("[data-pm-view]")];
-  // The lock's shackle, up while the line is not sealed and shut once it is, over a body at rows 4 to 8 (viewBox 7x9).
-  const SHACKLE = Object.freeze({ open: "M2 0h3v1H2zM1 1h1v2H1zM5 1h1v3H5z", shut: "M2 1h3v1H2zM1 2h1v2H1zM5 2h1v2H5z" });
+  // The lock's shackle over a body at rows 4 to 8 (viewBox 7x9): raised with its left leg two rows clear of the body
+  // while the line is not sealed, so it reads open even at 12 pixels, and shut once it is.
+  const SHACKLE = Object.freeze({ open: "M2 0h3v1H2zM1 1h1v1H1zM5 1h1v3H5z", shut: "M2 1h3v1H2zM1 2h1v2H1zM5 2h1v2H5z" });
   const lockBoxes = [views.find((b) => b.dataset.pmView === "private"), title.parentElement];
   const shackles = lockBoxes.map((box) => box.querySelector(".pm-shackle"));
   const watchers = new Set();
