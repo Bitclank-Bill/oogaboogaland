@@ -36,7 +36,7 @@ import {
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
-  LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView,
+  LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
   BLEND, BLEND_HZ, seenTogether,
 } from "./protocol.js";
@@ -169,7 +169,7 @@ export class Room extends DurableObject {
   }
 
   view(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: !!p.voice.track, muted: p.muted, hand: p.hand, handTone: p.handTone, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK };
+    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK };
   }
 
   send(ws, msg) {
@@ -937,6 +937,9 @@ export class Room extends DurableObject {
   updateVoice() {
     if (!this.sfu) return;
     const desired = this.voicePlan();
+    // Who hears a speaker without publishing is on no list of the speaker's own, so count them for it.
+    const quiet = new Map();
+    for (const q of this.players.values()) if (q.voice.sub && !q.voice.track) for (const id of desired.get(q.id) || []) quiet.set(id, (quiet.get(id) || 0) + 1);
     for (const p of this.players.values()) {
       const peers = desired.get(p.id) || [];
       const gens = peers.map((id) => this.players.get(id).voice.gen || 0);
@@ -948,9 +951,8 @@ export class Room extends DurableObject {
         listeners = 0;
         for (const q of this.players.values()) if (q !== p && q.voice && q.voice.sub && (q.zone === STUDIO_ZONE || voiceLinked(this.links, p.id, q.id))) listeners++;
       }
-      // A linked partner who only listens (a Studio audience) is on no list here, yet can hear this page.
-      let ears = 0;
-      if (p.zone !== STUDIO_ZONE) for (const q of this.players.values()) if (q !== p && q.voice.sub && !q.voice.track && voiceLinked(this.links, p.id, q.id)) ears++;
+      // Someone back from an earlier session with the microphone closed, or a linked partner in a Studio audience.
+      const ears = p.zone === STUDIO_ZONE ? 0 : quiet.get(p.id) || 0;
       const sig = peers.map((id, i) => `${id}:${gens[i]}`).join(",") + (listeners === undefined ? "" : `|${listeners}`) + (ears ? `+${ears}` : "");
       if (p.sent === sig) continue;
       p.sent = sig;
@@ -963,7 +965,7 @@ export class Room extends DurableObject {
 
   // Every other page's roster shows who is in voice (a live microphone) and who muted it: sent on a change only.
   voiceState(p) {
-    this.broadcast({ t: "vstate", id: p.id, voice: !!p.voice.track, muted: p.muted }, p.ws);
+    this.broadcast({ t: "vstate", id: p.id, voice: inVoice(p), muted: p.muted }, p.ws);
   }
 
   // /voice/<op> from the Worker, which checked the session and set x-player-id. Ops: session (a publish
@@ -1000,7 +1002,7 @@ export class Room extends DurableObject {
     }
     if (this.players.get(p.id) !== p || (p.connectionToken && request.headers.get("x-room-token") !== p.connectionToken)) return json({ error: "connection replaced" }, 409);
     if ((this.cleanupJobs || []).length >= 64 && !["leave", "unpublish", "close"].includes(op)) return json({ error: "media cleanup backlog; try later" }, 503);
-    const was = !!p.voice.track;
+    const was = inVoice(p);
     const voice = p.voice;
     let generation = voice.version || 0;
     const current = () => this.players.get(p.id) === p && p.voice === voice && (voice.version || 0) === generation;
@@ -1021,7 +1023,7 @@ export class Room extends DurableObject {
         if (kind === "sub") p.sent = null;
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
-        if (was && !p.voice.track) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "publish") {
@@ -1053,7 +1055,7 @@ export class Room extends DurableObject {
         p.voice.gen = Math.max(Date.now(), (p.voice.gen || 0) + 1);
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
-        if (!was) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "pull") {
@@ -1119,14 +1121,14 @@ export class Room extends DurableObject {
         await this.clearVoiceKind(p, "pub");
         p.ws.serializeAttachment(this.attachment(p));
         this.enforceStudio(); this.updateVoice();
-        if (was) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "leave") {
         await this.clearVoice(p);
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
-        if (was) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       return json({ error: "unknown voice op" }, 404);

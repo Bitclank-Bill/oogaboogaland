@@ -143,8 +143,8 @@
   // The voice and host marks, as the roster paints them.
   const paintMarks = () => {
     if (!showing || stale) return;
-    const s = net.state, voice = BL.voice.stats;
-    paintMark(selfRow, voice.enabled ? voice.muted ? "muted" : voice.speaking ? "speaking" : "on" : "", "", voice.enabled, s.hostId === s.selfId, s.hand ? BL.reactionPolicy.HANDS[s.handTone] : "");
+    const s = net.state, voice = BL.voice.stats, inVoice = voice.enabled || voice.returning;
+    paintMark(selfRow, inVoice ? voice.muted ? "muted" : voice.speaking ? "speaking" : "on" : "", "", inVoice, s.hostId === s.selfId, s.hand ? BL.reactionPolicy.HANDS[s.handTone] : "");
     for (const row of rows.values()) {
       const rec = net.remotes.get(row.id);
       if (!rec) continue;

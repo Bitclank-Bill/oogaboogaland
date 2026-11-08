@@ -2021,7 +2021,7 @@
       else if (b.dataset.action === "account-logout") BL.net.logout();
       else if (b.dataset.action === "account-rejoin") BL.net.rejoin();
       else if (b.dataset.action === "account-voice") BL.voice.toggle();
-      else if (b.dataset.action === "account-voice-leave") BL.voice.stop();
+      else if (b.dataset.action === "account-voice-leave") BL.voice.leave();
       else actionHandler && actionHandler(b.dataset.action);
     });
     // A game's side panels fold away and come back from a tab on the screen's edge: a `data-fold`
@@ -2435,10 +2435,11 @@
     writeAccount("account-room", "hidden", !me || !words);
     writeAccount("account-rejoin", "hidden", !me || !ROOM_WORDS[room]);
     const voice = BL.voice.stats;
-    const voiceWords = voice.joining ? "Joining voice" : (voice.error || voice.micError) && !voice.enabled ? `Voice: ${voice.error || voice.micError}` : !voice.enabled ? "Join voice" : voice.muted ? "Unmute" : "Mute";
+    const voiceFailure = voice.returning ? voice.micError : voice.enabled ? "" : voice.error || voice.micError;
+    const voiceWords = voice.joining ? "Joining voice" : voiceFailure ? `Voice: ${voiceFailure}` : !voice.enabled && !voice.returning ? "Join voice" : voice.muted ? "Unmute" : "Mute";
     writeAccount("account-voice", "hidden", !live);
     writeAccount("account-voice", "textContent", voiceWords);
-    writeAccount("account-voice-leave", "hidden", !live || !voice.enabled);
+    writeAccount("account-voice-leave", "hidden", !live || !voice.enabled && !voice.returning);
     const pressed = String(voice.enabled && !voice.muted), onlineDot = String(live);
     for (const row of fieldsFor("account")) if (row.dataset.live !== onlineDot) row.dataset.live = onlineDot;
     for (const button of fieldsFor("account-voice")) if (button.getAttribute("aria-pressed") !== pressed) button.setAttribute("aria-pressed", pressed);
@@ -2450,9 +2451,9 @@
   const MIC_ON_MS = 1500, MIC_COARSE = window.matchMedia("(pointer: coarse)").matches;
   let micShown = "", micTimer = 0;
   const showMic = (voice, keyed) => {
-    // Listen-only visitors (never opted in to speak) see no microphone status at all.
-    const speaker = !!voice.micWanted;
-    const muted = speaker && voice.muted && (voice.publishing || voice.joining), alone = !muted && speaker && voice.alone;
+    // Listen-only visitors (never opted in to speak, unlike one back from an earlier session) see no microphone status at all.
+    const speaker = !!voice.micWanted || !!voice.returning;
+    const muted = speaker && voice.muted && (voice.publishing || voice.joining || voice.returning), alone = !muted && speaker && voice.alone;
     const shown = muted ? keyed && !MIC_COARSE ? "Mic muted \u00b7 M to unmute" : "Mic muted \u00b7 Unmute in the panel" : alone ? "Alone \u00b7 mic off" : speaker && voice.publishing ? "Mic on" : "";
     if (shown === micShown) return;
     const note = $("mic-note"), was = micShown;
@@ -2687,7 +2688,7 @@
       for (const rec of BL.net.remotes.values()) markOnline(rec.login, rec.body);
       const self = voiceRowOf(net.me.login, net.body);
       if (self) {
-        if (voice.enabled) {
+        if (voice.enabled || voice.returning) {
           self.nextLook = voice.muted ? "muted" : voice.speaking ? "speaking" : "on";
           self.nextSelf = true;
         }

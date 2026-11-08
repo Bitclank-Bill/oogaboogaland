@@ -510,7 +510,7 @@
       hubSent = visibleSent = null;
       sendHub();
       sendVisible();
-      BL.voice.restart();
+      BL.voice.restart(true);
       if (restoredPose) poseAt = performance.now();
       else { poseAt = 0; px = NaN; gKnown = poseHasG = false; }
     } else if (msg.t === "join") {

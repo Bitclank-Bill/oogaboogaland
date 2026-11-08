@@ -24740,6 +24740,45 @@ const voiceAloneChecks = async () => {
     is(rows.mutedAlone,true,true,false)&&is(rows.mutedWithOther,false,true,false)&&is(rows.unmutedAlone,true,false,false)&&is(rows.twoOthers,false,false,true)&&
     rows.netMuted==="false,true,false"&&rows.emitted&&!rows.stopped.alone&&!rows.stopped.muted,JSON.stringify(rows));
 };
+// Someone who pressed Join voice comes back in voice, muted, on their first press, with the microphone never touched
+// until they unmute; only Leave voice ends that. voice.js runs per "page" over one shared localStorage.
+const voiceReturnChecks = async () => {
+  const source=readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const stored=new Map(),settle=()=>new Promise(r=>setTimeout(r,0));
+  const page=({active=false,zone="outside",denied=false}={})=>{
+    const ops=[],told=[],presses=new Map();let mics=0;
+    const track={enabled:true,stop(){}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
+    class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
+    class Audio {constructor(){this.muted=false;}pause(){}play(){return Promise.resolve();}}
+    const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op==="session"?`session:${body.kind}`:op);return {ok:true,json:async()=>({sessionDescription:{}})};};
+    const userActivation={hasBeenActive:active};
+    const context={window:{BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"},zone},setMuted:on=>told.push(on),remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{}}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},addEventListener:(t,f)=>presses.set(t,f),removeEventListener:t=>presses.delete(t)},document:{createElement:()=>({})},localStorage:{getItem:k=>stored.has(k)?stored.get(k):null,setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},navigator:{userActivation,mediaDevices:{getUserMedia:async()=>{mics++;if(denied)throw Object.assign(new Error("denied"),{name:"NotAllowedError"});return stream;}}},RTCPeerConnection:Pc,Audio,MediaStream:class{},fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math};
+    runInNewContext(source,context);
+    const V=context.window.BL.voice,S=V.stats;
+    return {V,S,ops,told,presses,userActivation,mics:()=>mics,press:(e={isTrusted:true})=>{const f=presses.get("pointerup");if(f)f(e);}};
+  };
+  const rows={};
+  let p=page();p.V.restart(true);rows.never=!p.S.returning&&p.presses.size===0;
+  p=page();p.V.toggle();await settle();rows.joinRemembered=stored.size===1;p.V.stop();rows.stopKeeps=stored.size===1;
+  p=page();p.V.restart(true);
+  rows.waiting=p.S.returning&&p.S.muted&&!p.S.enabled&&p.ops.length===0&&p.mics()===0&&p.presses.size===2;
+  p.press({isTrusted:false});p.press();rows.ignoresNonPresses=p.ops.length===0&&!p.S.joining;
+  p.userActivation.hasBeenActive=true;p.press();await settle();
+  rows.listening=p.S.enabled&&p.S.muted&&p.S.returning&&!p.S.micWanted&&!p.S.publishing&&!p.S.alone&&p.mics()===0&&p.ops.join()==="session:sub"&&p.told.join()==="true"&&p.presses.size===0;
+  p.V.toggle();await settle();
+  rows.unmuted=p.S.publishing&&!p.S.muted&&!p.S.returning&&p.mics()===1&&p.told.join()==="true,false";
+  p=page({active:true});p.V.restart(true);rows.atOnce=p.S.joining&&p.presses.size===0;p.V.toggle();await settle();
+  rows.unmuteWhileConnecting=p.S.publishing&&!p.S.muted&&p.mics()===1;
+  p=page();p.V.restart(true);p.V.toggle();await settle();rows.firstKeyUnmutes=p.S.publishing&&!p.S.muted&&p.ops.includes("session:sub");
+  p=page({active:true,denied:true});p.V.restart(true);await settle();p.V.toggle();await settle();
+  rows.blockedStillHears=p.S.enabled&&p.S.returning&&p.S.muted&&!p.S.publishing&&p.S.micError==="microphone blocked"&&stored.size===1;
+  p=page({zone:"dsb-studio"});p.V.restart(true);rows.studio=!p.S.returning&&p.presses.size===0;
+  p=page({active:true});p.V.restart(true);await settle();p.V.restart();await settle();rows.reconnectStaysClosed=p.S.enabled&&p.S.muted&&p.S.returning&&p.mics()===0;
+  p.V.leave();rows.leaveForgets=stored.size===0&&!p.S.returning&&!p.S.enabled;
+  p=page({active:true});p.V.restart(true);rows.afterLeave=!p.S.returning&&!p.S.joining;
+  record("voice return: Join voice is remembered until Leave voice, the next session connects muted on the first press with the microphone closed until Unmute, even a first press of Unmute or a blocked microphone",
+    Object.values(rows).every(Boolean),JSON.stringify(rows));
+};
 // #380: a visitor's hearing range only changes how loud this page plays the voices it receives. voice.js runs with remotes placed
 // round the visitor, a fake Worker, peer connection and AudioContext, and its own 150 ms meter read (captured from setInterval)
 // stepped by hand on desktop and iOS. Both use Web Audio gains so a saved boost can exceed an element's 0..1 volume.
@@ -29099,6 +29138,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   walletShareChecks(BL);
   footstepChecks(BL);
   await voiceAloneChecks();
+  await voiceReturnChecks();
   await voiceHearingChecks();
   await ghostAudioChecks();
   exteriorEnrichmentChecks(BL);

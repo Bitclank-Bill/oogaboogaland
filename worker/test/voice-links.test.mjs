@@ -172,6 +172,32 @@ test("room: a linked partner outside the Studio keeps a speaker's microphone liv
   assert.equal(voiceOf(a).listeners, 0, "a broken link takes the listener away");
 });
 
+test("room: a visitor back with the microphone closed shows as in voice and muted, and counts as someone who can hear", async () => {
+  const h = await harness();
+  const voiceOf = (ws) => ws.sent.filter((m) => m.t === "voice").at(-1);
+  const shown = (ws) => { const m = ws.sent.filter((s) => s.t === "vstate").at(-1); return { voice: m.voice, muted: m.muted }; };
+  const a = await h.join(1, "a"), b = await h.join(2, "b");
+  const back = h.room.players.get(2);
+  back.voice = { pub: null, sub: null, track: null, pending: null, gen: 0, mids: {}, pubMid: null };
+  h.room.sfu = { newSession: async () => ({ sessionId: "back" }) };
+  h.room.updateVoice();
+  assert.equal(voiceOf(a).ears, undefined, "with no receive session it hears nothing");
+  h.send(b, { t: "mute", on: true });
+  assert.deepEqual(shown(a), { voice: false, muted: true }, "not connected yet, so not in voice");
+  await h.room.voiceRequest("session", { headers: new Headers({ "x-player-id": "2", "x-room-token": back.connectionToken }), json: async () => ({ kind: "sub" }) });
+  assert.deepEqual(shown(a), { voice: true, muted: true }, "others see it in voice, muted");
+  assert.equal(h.room.view(back).voice, true, "and so does anyone who joins later");
+  assert.deepEqual(hears(b), [1], "it hears the speaker");
+  assert.deepEqual(voiceOf(a).peers, [], "a closed microphone is nothing to pull");
+  assert.equal(voiceOf(a).ears, 1, "and the speaker knows it can be heard, so its microphone is not held off as alone");
+  h.send(b, { t: "zone", name: "dsb-outside" });
+  assert.equal(voiceOf(a).ears, undefined, "from another zone it cannot hear the speaker");
+  h.send(b, { t: "zone", name: "outside" });
+  assert.equal(voiceOf(a).ears, 1);
+  h.send(b, { t: "mute", on: false });
+  assert.deepEqual(shown(a), { voice: false, muted: false }, "a listener who is not muted (a Studio audience) stays off the roster");
+});
+
 test("room: links outlive a reconnect and a woken room, and are stored as asks alone", async () => {
   const h = await harness();
   let a = await h.join(1, "a");
