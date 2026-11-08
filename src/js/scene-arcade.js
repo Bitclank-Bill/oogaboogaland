@@ -921,7 +921,7 @@
     if (!haunted) {
       const outdoors = t.z < BH.z0;
       RENDER_OPTS.sky = outdoors ? OPEN_SKY : CAVE_LIGHT.sky; RENDER_OPTS.ground = outdoors ? OPEN_GROUND : CAVE_LIGHT.ground; RENDER_OPTS.direct = outdoors ? OPEN_SKY : CAVE_LIGHT.direct;
-      RENDER_OPTS.directStrength = outdoors ? 0.6 : CAVE.directStrength;
+      RENDER_OPTS.directStrength = outdoors ? 0.3 : CAVE.directStrength;
     }
     if (!haunted) { RENDER_OPTS.fogNear = farOut ? 400 : 20; RENDER_OPTS.fogFar = farOut ? 900 : 42; RENDER_OPTS.bloomStrength = t.z < HALL.back - 2 && farOut ? 0.3 : 1.15; }
     if (haunted) {
@@ -1244,7 +1244,7 @@
     const [x, y, z] = PARAMS.get("pos").split(",").map(Number), yaw = Number((PARAMS.get("body") || "").split(",")[1]) || 0;
     return { x, z, facing: yaw, deck: y >= MEZZ.y - 0.5 };
   };
-  const PROMPT_STALE = {}, PROMPT_ZIP = {}, BLOCK_SKY_CLEAR = [0.45, 0.68, 0.92], CAVE_CLEAR = RENDER_OPTS.clear, OPEN_SKY = [0.8, 0.88, 1], OPEN_GROUND = [0.55, 0.6, 0.7], CAVE_LIGHT = { sky: RENDER_OPTS.sky, ground: RENDER_OPTS.ground, direct: RENDER_OPTS.direct };
+  const PROMPT_STALE = {}, PROMPT_ZIP = {}, BLOCK_SKY_CLEAR = [0.45, 0.68, 0.92], CAVE_CLEAR = RENDER_OPTS.clear, OPEN_SKY = [0.5, 0.55, 0.65], OPEN_GROUND = [0.3, 0.33, 0.4], CAVE_LIGHT = { sky: RENDER_OPTS.sky, ground: RENDER_OPTS.ground, direct: RENDER_OPTS.direct };
   // Block Frenzy's line: the survey's world is only the ledge and open sky. Its far end is inside the clouds, a floor the
   // survey needs and no Ooga reaches: the visitor is handed on at `BH.fade`, before it.
   const zipQueries = {

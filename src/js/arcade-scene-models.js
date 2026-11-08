@@ -1277,7 +1277,7 @@
     const puff = (k, x, y, z, size) => {
       const g = merge(BL.hubModels.cloud(k % 3));
       for (let v = 0; v < g.verts.length; v++) g.verts[v] *= size;
-      for (const f of g.faces) f.emissive = 0.62;
+      for (const f of g.faces) f.emissive = 0.5;
       return moved(g, x, y, z);
     };
     const cloudRand = mulberry32(5533), { cloudY, stop } = BLOCK_HALL;
