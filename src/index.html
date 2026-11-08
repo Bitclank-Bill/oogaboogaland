@@ -1053,7 +1053,7 @@
         <div class="garage-foot">
           <div class="block-help-wrap">
             <p class="help" id="block-help">W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back</p>
-            <details class="block-controls"><summary>All controls</summary><p class="help" id="block-controls-list">W A S D move · Q E or ← → turn · X or a click captures the mouse · click fires (hold for full-auto AK, 7) · 1 to 7 or G pick a weapon · hold right click to aim · 5 sniper from a tower · Space jumps, twice to climb, hold for the jetpack, mash it to escape a gorilla · Space by a zipline, catapult or wallet machine uses it · Shift sprints · Tab or T throws what you hold (block, crate, wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · V view · P pauses</p></details>
+            <details class="block-controls"><summary>All controls</summary><div class="block-keys" id="block-controls-list"></div></details>
           </div>
           <button type="button" class="feed-open race-go" data-action="block-start"><span data-sign>Play!</span></button>
         </div>
@@ -1078,7 +1078,7 @@
  <section class="block-help" id="block-help" hidden aria-label="How to play">
         <h3>How to play</h3>
         <p>Steal the rivals' Bitcoin block and carry it to your stand while your own block is home. Gorillas drag you to the edge: mash jump to break free. Fall off and you fly back, or respawn at home.</p>
-        <p id="block-help-keys"></p>
+        <div class="block-keys" id="block-help-keys"></div>
         <button type="button" data-action="block-help">Close</button>
       </section>
       <canvas class="block-map" id="block-map" width="88" height="148" hidden aria-label="Map: both blocks and every Ooga"></canvas>
@@ -2234,6 +2234,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/clanker-play.js"></script>
   <script src="js/bca-models.js"></script>
   <script src="js/arcade-models.js"></script>
+  <script src="js/haunt-models.js"></script>
   <script src="js/arcade-ambience.js"></script>
   <script src="js/hockey-session.js"></script>
   <script src="js/hockey-players.js"></script>

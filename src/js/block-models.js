@@ -119,6 +119,8 @@
       for (let iy = TOP - depth; iy < TOP; iy++) {
         const k = TOP - 1 - iy;
         // Haunted Hollow's field is brick, courses in staggered runs (slots 10 and 11 are its brick and mortar).
+        // An open grave's hole (the pit `GRAVE_Y` deep in the sim), down to dirt.
+        if (k === 0 && SIM.inGraveOf(x, z, M)) continue;
         const row = Math.floor(iz / 2), brick = M.id === "haunted" && field ? (iz % 2 === 0 || (ix + (row % 2) * 2) % 4 === 0 ? 11 : 10) : top;
         grid.set(ix, iy, iz, k === 0 ? brick : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
       }
@@ -871,5 +873,28 @@
   const puddle = cached(() => box({ w: 1.6, h: 0.02, d: 1.3, color: "#3a5a78", emissive: 0.05, offset: { y: 0.015 } }));
   // The lightning bolt's column, a tall thin white box with its foot at y 0.
   const bolt = cached(() => box({ w: 0.28, h: 40, d: 0.28, color: "#eaf4ff", emissive: 1, offset: { y: 20 } }));
-  BL.blockModels = { isle, keel, puddle, bolt, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  // Haunted Hollow's dressing, one merged mesh: lamps along the routes, neon tubes on the cave walls, skeletons in the
+  // open graves. Glow is emissive faces only, no extra lights.
+  const hauntDress = cached(() => {
+    const M = SIM.ARENAS.haunted, parts = [];
+    for (const [x, z] of [[-9, 2], [9, -2], [-15, 22], [15, -22], [9, 28], [-9, -28], [-24, 12], [24, -12], [0, 19], [0, -19], [18, 30], [-18, -30]]) {
+      parts.push(box({ w: 0.14, h: 2.8, d: 0.14, color: "#2a2c30", offset: { x, y: 1.4, z } }), box({ w: 0.42, h: 0.42, d: 0.42, color: "#ffd98a", emissive: 1, offset: { x, y: 2.95, z } }));
+    }
+    let k = 0;
+    for (const b of M.rocks) {
+      if (M.rockKind.get(b) !== "cave" || (b[5] || 0) > 0 || b[3] - b[2] < 2 || (k++ % 3)) continue;
+      const color = k % 2 ? "#46ff72" : "#ff4fd8";
+      parts.push(box({ w: 0.08, h: 0.12, d: b[3] - b[2] - 0.8, color, emissive: 1, offset: { x: b[1] + 0.05, y: 1.5, z: (b[2] + b[3]) / 2 } }));
+    }
+    for (const [x0, x1, z0, z1] of M.graves) {
+      const x = (x0 + x1) / 2, z = (z0 + z1) / 2;
+      parts.push(box({ w: 0.28, h: 0.28, d: 0.28, color: "#e0dccf", offset: { x, y: -0.26, z: z1 - 0.45 } }));
+      for (let r = 0; r < 4; r++) parts.push(box({ w: 0.42, h: 0.05, d: 0.06, color: "#d4cebd", offset: { x, y: -0.4, z: z1 - 0.8 - r * 0.2 } }));
+      parts.push(box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x - 0.12, y: -0.42, z: z0 + 0.7 } }), box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x + 0.12, y: -0.42, z: z0 + 0.7 } }));
+    }
+    return merge(...parts);
+  });
+  // The net launcher's aim line, one thin glowing metre along +z.
+  const aimLine = cached(() => box({ w: 0.03, h: 0.03, d: 1, color: "#bfe3ff", emissive: 1, offset: { z: 0.5 } }));
+  BL.blockModels = { isle, keel, puddle, bolt, hauntDress, aimLine, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

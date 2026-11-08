@@ -107,11 +107,11 @@
   let mapRoot = null, fireNode = null, dancers = null, burnSeen = false, peelNodes = null, catapults = null, catNear = false;
   const iceNodes = {};
   let tool = "paint", flash = 0, flashT = 0, audio = null, unfeed = null;
-  // The live Bitcoin network's say: the next block's median fee sets the weather (a busy mempool is a storm), and a
-  // block found resets the pads and caches. `FEE_WEATHER` is sat/vB: below the first clear, below the second breezy.
-  const FEE_WEATHER = [6, 25];
+  // The live Bitcoin network's say: a busy mempool (next block's median fee at `STORM_FEE` sat/vB or more) brings a storm
+  // over a map's own seeded weather, and a block found resets the pads and caches.
+  const STORM_FEE = 25;
   const live = { fee: 0, block: 0 };
-  const feeWeather = (fee) => fee <= 0 ? null : fee < FEE_WEATHER[0] ? "clear" : fee < FEE_WEATHER[1] ? "breeze" : "storm";
+  const feeWeather = (fee) => fee >= STORM_FEE ? "storm" : null;
   const onFeed = (ev) => {
     if (ev.type === "fees" && ev.nextFee > 0) live.fee = ev.nextFee;
     else if (ev.type === "block") live.block = ev.height;
@@ -364,6 +364,32 @@
   };
   const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Mash jump to wriggle out of a gorilla's grip.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
   let tipK = 0;
+  // The net launcher's aim line: from where the shot leaves, along where it goes; only while the net is in hand.
+  let aimNode = null;
+  const poseAim = () => {
+    if (!aimNode || !sim) return;
+    const a = sim.actors[0], on = phase === "play" && tool === "net" && !cam.island && a.splat <= 0 && a.trapped <= 0 && !a.grabbed;
+    aimNode.visible = on;
+    if (!on) return;
+    const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1, yaw = Math.atan2(dx, dz), pitch = clamp(Math.atan2(q.y - oy, flat) - 0.02, -1.4, 1.4), c = Math.cos(pitch);
+    setVec(aimNode.position, a.x + Math.sin(yaw) * c * 0.5, oy + Math.sin(pitch) * 0.5, a.z + Math.cos(yaw) * c * 0.5);
+    aimNode.rotation.y = yaw; aimNode.rotation.x = -pitch; aimNode.scale.z = 9;
+  };
+  // The grouped controls list (`CONTROL_GROUPS`), the same on the menu and in the in-play Help.
+  const CONTROL_GROUPS = [
+    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult, wallets"]]],
+    ["Weapons", [["1 to 8", "Pick a weapon"], ["G", "Next weapon"], ["Click", "Fire"], ["Right click", "Aim, or sniper scope"], ["Y", "Throw a wallet"]]],
+    ["Hook", [["R", "Fire at the crosshair, or let go"], ["Jump", "Let go"], ["C held", "Stop pulling, swing"]]],
+    ["Blocks", [["Touch", "Pick up or send home"], ["K", "Drop"], ["Tab or T", "Throw to a teammate"], ["F", "Lift or set a crate"], ["B", "Place a crate"]]],
+    ["View", [["X", "Capture the mouse"], ["V", "Change view"], ["U", "Hide the weapons bar"], ["N", "Hide the map"], ["?", "Help"], ["P", "Pause"], ["Esc", "Step back"]]]
+  ];
+  const TOUCH_GROUPS = [["Controls", [["Left stick", "Move"], ["Right stick", "Turn and aim"], ["Jump", "Jump, jetpack, break free"], ["Throw!", "Fire"], ["Weapons bar", "Tap a weapon"], ["Ride", "Zipline, catapult, wallets"]]]];
+  const paintControls = (box) => {
+    for (const [name, rows] of COARSE ? TOUCH_GROUPS : CONTROL_GROUPS) {
+      const head = document.createElement("h4"); head.textContent = name; box.append(head);
+      for (const [key, what] of rows) { const row = document.createElement("div"), k = document.createElement("kbd"), s = document.createElement("span"); k.textContent = key; s.textContent = what; row.append(k, s); box.append(row); }
+    }
+  };
   const showBoard = () => {
     el.tip.textContent = TIPS[tipK++ % TIPS.length];
     { const t = document.getElementById("block-intro-tip"); if (t) t.textContent = el.tip.textContent; }
@@ -587,6 +613,7 @@
     else if (t === "edgedrop") feed(`The ${TEAM_NAME[e.team]} block dropped at the edge`, e.team);
     else if (t === "gorillahit" && e.actor >= 0) feed(`${nameOf(e.actor)} stunned a gorilla`, sim.actors[e.actor].team);
     else if (t === "gold") feed(`${who} won the Golden Dual AKs!`, e.team);
+    else if (t === "enemycat") feed(`${who} tried the enemy catapult and was flung off the island!`, sim.actors[e.actor].team);
     else if (t === "launch") feed(`${who} catapulted toward the ${TEAM_NAME[SIM.other(e.team)]} fort!`, e.team);
     else if (t === "goldsteal") feed(`${who} wallet-bombed ${nameOf(e.by)} and stole the Golden Dual AKs!`, e.team);
     else if (t === "mined") feed(e.x ? `Bitcoin block ${e.x} found!` : "A Bitcoin block was found!", null);
@@ -780,7 +807,7 @@
       } else if (e.type === "landed") fx.burst(e.x, e.y + 0.3, e.z, 8, e.team === "blue" ? PAINT_BITS.blue : PAINT_BITS.red, 1.4);
       else if (e.type === "winded") { if (me) notice("Out of breath! Sprint refills in a moment", 1400); }
       else if (e.type === "weather") {
-        const w = sim.weather.kind, fee = sim.live ? ` · mempool fees ${Math.round(live.fee)} sat/vB` : "";
+        const w = sim.weather.kind, fee = sim.live === "storm" && w === "storm" ? ` · mempool fees ${Math.round(live.fee)} sat/vB` : "";
         notice((w === "storm" ? "A storm rolls in! Hold on to something" : w === "breeze" ? "The wind picks up · throws drift" : "The sky clears") + fee, 2800);
       } else if (e.type === "power") {
         const kind = SIM.POWERS[e.y], who = me ? "You" : mine ? "Teammate" : "They";
@@ -796,6 +823,10 @@
         if (me) center(kind === "boots" ? "⚡ BOOTS!" : kind === "laser" ? "LASER EYES!" : kind === "cold" ? "COLD STORAGE!" : kind === "monkeys" ? "MONKEYS!" : "HALVING!", 900);
         notice(words[kind], 2600);
         updateStrip();
+      } else if (e.type === "enemycat") {
+        for (const c of catapults) if (c.team === e.team) c.at = sceneTime;
+        audio.cues.boing(1);
+        if (me) { center("WRONG CATAPULT!", 1100); notice("Jetpack back (Space), hook the rim, or fall and respawn at home", 2600); }
       } else if (e.type === "launch") {
         for (const c of catapults) if (c.team === e.team) c.at = sceneTime;
         fx.burst(e.x, 1, e.z, 14, WOOD_BITS, 2.4);
@@ -922,7 +953,7 @@
     if (phase === "board" || phase === "results") { start(); return true; }
     if (phase !== "play" || paused || quiz.open || wmenu.open) return false;
     const a = sim.actors[0];
-    if (!SIM.nearVend(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearZip(sim, a)) return false;
+    if (!SIM.nearVend(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a) && !SIM.nearZip(sim, a)) return false;
     return zipNow();
   };
   // Paint along the camera's look, lobbed a little higher when the camera looks up.
@@ -1192,7 +1223,7 @@
       if (k === "sniper") b.disabled = !a.sniper;
       if (k === "grenade" || k === "rocket" || k === "net") b.disabled = a[k] <= 0;
       if (k === "pass") b.disabled = !a.carrying && !a.holding;
-      if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearVend(sim, a);
+      if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a) && !SIM.nearVend(sim, a);
       if (k === "grab") b.setAttribute("aria-pressed", String(a.holding || tool === "grab"));
     }
   };
@@ -1650,7 +1681,7 @@
     if (showBolt) { setVec(boltRing.position, w.boltX, 0.05, w.boltZ); boltRing.scale.x = boltRing.scale.z = 2.6 + (hookStill ? 0 : Math.sin(sim.time * 16) * 0.3); }
     if (boltNode.visible) { boltNode.visible = sim.time < flashSeen; }
     flash = Math.max(0, flash - dt * 5);
-    RENDER_OPTS.ambientFloor = 0.22 + flash * 0.8;
+    RENDER_OPTS.ambientFloor = (SIM.ARENA.id === "haunted" ? 0.42 : 0.22) + flash * 0.8;
     RENDER_OPTS.bloomStrength = 0.6 + flash * 1.2;
     const cx = camera.position.x, cz = camera.position.z, lean = 0.12;
     for (let i = 0; i < RAIN; i++) {
@@ -1713,6 +1744,8 @@
     }
     // The hook's slot shows when it is recharging; repainted only when that changes.
     { const m = sim.actors[0], busy = m.hook > 0 && (m.hk > 0 || m.hCool > 0); if (busy !== hookBusy) { hookBusy = busy; updateTools(); } }
+    // The other side's catapult warns you first: it throws you the wrong way.
+    { const m = phase === "play" && SIM.nearEnemyCatapult(sim, sim.actors[0]); if (m !== enemyCatNear) { enemyCatNear = m; updateTools(); if (m) notice("Enemy catapult! It'll throw you off the back", 2400); } }
     const onPad = phase === "play" && SIM.nearCatapult(sim, sim.actors[0]);
     if (onPad !== catNear) {
       catNear = onPad;
@@ -1956,6 +1989,7 @@
     poseFire(elapsed);
     poseGorillas(dt, elapsed);
     poseHooks(elapsed);
+    poseAim();
     poseGhosts(elapsed);
     if (sim && actors) poseBeams(elapsed);
     poseShots();
@@ -2072,24 +2106,26 @@
   };
   // A few themed plants and rocks round the island's outer ring: shared geometry, placed once a map, mirrored half
   // round. Haunted Hollow gets the Ghost Hunter's gargoyles and iron fence, when the arcade's models are loaded.
-  const MAP_DECOR = { fort: ["rock", "bush", "tree"], town: ["tree", "bush", "bush"], jungle: ["tree", "tree", "bush"], haunted: ["log", "rock", "bush"] };
+  const MAP_DECOR = { fort: ["rock", "bush", "tree"], town: ["tree", "bush", "bush"], jungle: ["tree", "tree", "bush"], haunted: ["rock", "rock", "bush"] };
   const buildDecor = (A, add) => {
     const kinds = MAP_DECOR[A.id], H = BL.hubModels;
     for (let k = 0; k < 18; k++) {
       const ang = k / 18 * Math.PI + 0.13 * (k % 5), n = 0.68 + 0.24 * ((k * 37 % 11) / 11), x = Math.sin(ang) * A.W * n, z = Math.cos(ang) * A.L * n;
       if (SIM.solidAt(x, 1, z) || SIM.solidAt(x, 3.8, z) || Math.abs(x) < A.fieldW + 1 && Math.abs(z) < A.fieldL + 1) continue;
-      const kind = kinds[k % kinds.length], geo = kind === "tree" ? H.tree(k % 3) : kind === "bush" ? H.bush(k % 2) : kind === "log" ? H.log(0) : H.rock(k % 3);
+      const kind = kinds[k % kinds.length], geo = kind === "tree" ? H.tree(k % 3) : kind === "bush" ? H.bush(k % 2) : H.rock(k % 3);
       for (const s of [1, -1]) add(createNode({ geometry: geo, sightHidden: true, position: { x: s * x, y: -0.02, z: s * z }, rotation: { x: 0, y: k * 2.1 * s, z: 0 } }));
     }
-    const AM = BL.arcadeModels;
-    if (A.id === "haunted" && AM && AM.gargoyle) {
+    const AM = BL.hauntModels;
+    if (A.id === "haunted" && AM) {
+      add(createNode({ geometry: BM.hauntDress(), sightHidden: true }));
+      for (const [x0, x1, z0, z1] of A.graves) add(createNode({ geometry: BM.ghost(), sightHidden: true, position: { x: (x0 + x1) / 2, y: 0.1, z: (z0 + z1) / 2 }, scale: { x: 0.7, y: 0.7, z: 0.7 } }));
       for (const [x, y, z, turn] of [[-10, 3, 26, 0], [10, 3, 26, 0], [-14, 3.6, 32.1, 0.4], [14, 3.6, 32.1, -0.4]]) for (const s of [1, -1]) {
         add(createNode({ geometry: AM.gargoyle(), sightHidden: true, position: { x: s * x, y: y - 1.2, z: s * z }, rotation: { x: 0, y: turn + (s < 0 ? Math.PI : 0), z: 0 } }));
       }
-      if (AM.ironFence) for (const z of [24.5, -24.5]) add(createNode({ geometry: AM.ironFence(), sightHidden: true, position: { x: 0, y: 0, z } }));
+      for (const z of [24.5, -24.5]) add(createNode({ geometry: AM.ironFence(), sightHidden: true, position: { x: 0, y: 0, z } }));
     }
   };
-  let boltNode = null, boltRing = null, flashSeen = 0;
+  let boltNode = null, boltRing = null, flashSeen = 0, enemyCatNear = false;
   const buildMap = () => {
     if (mapRoot) {
       removeChild(root, mapRoot);
@@ -2348,7 +2384,8 @@
     for (const b of el.details) { b.addEventListener("click", el.onDetail); b.setAttribute("aria-pressed", String((b.dataset.detail === "full") === detail.full)); }
     el.tip = document.getElementById("block-tip");
     el.helpBox = document.getElementById("block-help");
-    document.getElementById("block-help-keys").textContent = COARSE ? "Left stick moves · right stick turns · tap a weapon · Jump mashes free." : "W A S D move · Space jumps (held: jetpack) · click fires · 1 to 8 or G weapons · R hook · Tab throw · U bar · N map.";
+    paintControls(document.getElementById("block-help-keys"));
+    aimNode = place(createNode({ geometry: BM.aimLine(), visible: false, sightHidden: true }));
     el.barMin = document.getElementById("block-bar-min");
     el.barGrip = document.getElementById("block-bar-grip");
     el.barDrag = null;
@@ -2534,7 +2571,7 @@
     el.controlsList = document.getElementById("block-controls-list");
     // The board keeps one short line; the whole list waits behind "All controls", so it never crowds the choices.
     el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Main menu" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
-    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Main menu for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 8 pick a weapon on the bar (8 is the hook once found), G steps through them, U hides the bar, drag its handle to move it · R fires the hook at the crosshair or lets go, a jump lets go too · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
+    paintControls(el.controlsList);
     showBoard();
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);

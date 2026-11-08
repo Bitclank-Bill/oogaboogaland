@@ -7638,6 +7638,62 @@ const gameRulesChecks = async () => {
         rows.puddle = ju.slip > 0 && ju.carrying === "red" && pu.dark > 0;
         rows.weatherMix = S.ARENAS.jungle.puddles.length >= 6;
       }
+      // Regressions: a block behind solid can't be hooked (thin fence), and cover reached during the warning stops the yank.
+      {
+        const f1 = fresh("haunted"), a1 = f1.actors[0], c1 = f1.actors[2];
+        for (const k of f1.crates) k.live = false;
+        Object.assign(a1, { hook: 1, x: -16, z: 23.9, y: 0 }); Object.assign(c1, { x: -16, z: 25.75, y: 0, carrying: "blue" });
+        Object.assign(f1.flags.blue, { state: "carried", carrier: 2 });
+        S.grapple(f1, 0, 0, -0.12);
+        const fence = run(f1, 0.6);
+        rows.throughSolid = !fence.hookwarn && c1.carrying === "blue";
+        const f2 = fresh(), a2 = f2.actors[0], c2 = f2.actors[2];
+        for (const k of f2.crates) k.live = false;
+        Object.assign(a2, { hook: 1, x: -18.8, z: 22.3, y: 0 }); Object.assign(c2, { x: -16.9, z: 25, y: 0, carrying: "blue" });
+        Object.assign(f2.flags.blue, { state: "carried", carrier: 2 });
+        S.grapple(f2, 0, Math.atan2(c2.x - a2.x, c2.z - a2.z), 0);
+        run(f2, 0.5, still, () => a2.hk === 3);
+        const latched = a2.hk === 3;
+        Object.assign(c2, { x: -18.8, z: 25.4 });
+        run(f2, 0.5);
+        rows.reachedCover = latched && c2.carrying === "blue" && f2.flags.blue.state === "carried";
+        // Live fees: only storm overrides a map's weather.
+        const fees = fresh(), liveTry = (v) => { S.setLive(fees, v); return fees.live; };
+        rows.feeClear = liveTry("clear") === null;
+        rows.feeBreeze = liveTry("breeze") === null;
+        rows.feeStorm = liveTry("storm") === "storm" && (() => { fees.weather.left = 0; S.tick(fees, S.CONFIG.STEP, still); return fees.weather.kind === "storm"; })();
+        rows.feeNone = liveTry(null) === null;
+        // An open grave: fall in, step out on foot, a block can't rest inside.
+        const g = fresh("haunted"), gu = g.actors[0], I = S.ARENAS.haunted, [gx0, gx1, gz0, gz1] = I.graves[0], cx = (gx0 + gx1) / 2, cz = (gz0 + gz1) / 2;
+        for (const k of g.crates) k.live = false;
+        for (const o of g.actors) if (o.id) o.bot = true;
+        Object.assign(gu, { x: cx, z: cz, y: 0, grounded: true });
+        run(g, 0.4);
+        rows.graveFall = gu.y === S.GRAVE_Y;
+        run(g, 1.4, { x: 0, z: 1 }, () => gu.y >= 0 && gu.grounded);
+        rows.graveOut = gu.y === 0 && !S.inGrave(gu.x, gu.z);
+        S.create({ map: "haunted" });
+        rows.graveRest = I.graves.every(([x0, x1, z0, z1]) => { const p = S.restSpot((x0 + x1) / 2, (z0 + z1) / 2); return !S.inGrave(p.x, p.z); });
+      }
+      // A block back on its stand has a moment of grace, so a netted rival parked there can't loop take and return.
+      {
+        const m = fresh(), d = m.actors[0], c = m.actors[2], st = S.ARENA.stands.blue;
+        for (const k of m.crates) k.live = false;
+        for (const o of m.actors) if (o.id > 1) o.bot = false;
+        Object.assign(d, { x: st.x, z: st.z, y: 0 }); Object.assign(c, { x: st.x + 0.4, z: st.z + 0.3, y: 0, netted: 5, guard: 0 });
+        const seen = {};
+        for (let t = 0; t < 3; t += S.CONFIG.STEP) { S.tick(m, S.CONFIG.STEP, still); for (let i = 0; i < m.eventCount; i++) { const ty = m.events[i].type; seen[ty] = (seen[ty] || 0) + 1; } m.eventCount = 0; }
+        rows.blockLoop = (seen.pickup || 0) <= 5 && (seen.rescue || 0) <= 5;
+        // The other side's catapult throws a visitor off the back of the island, no parachute.
+        const ec = fresh(), v = ec.actors[0], I2 = S.ARENA, [cx, cz] = I2.catapults.red[0];
+        Object.assign(v, { x: cx, z: cz, y: 0, carrying: null, grounded: true });
+        const threw = S.launch(ec, 0), outZ = v.vz < 0 && !v.flight;
+        run(ec, 4, still, () => !S.onIsland(v.x, v.z) && v.y < 0);
+        rows.enemyCat = threw && outZ && !S.onIsland(v.x, v.z);
+        const bot = fresh(), bv = bot.actors[1], [bx, bz] = S.ARENA.catapults.red[0];
+        bv.bot = true; Object.assign(bv, { x: bx, z: bz, y: 0, grounded: true });
+        rows.enemyCatBot = !S.nearEnemyCatapult(bot, bv);
+      }
       record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a wallet bomb steals a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
       {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
@@ -7858,7 +7914,7 @@ const gameRulesChecks = async () => {
     // The jackpot wheel, from arcade-models.js and its scene half on the builders they load with: the house wins slowly, and every
     // wedge, from a turn at rest and one far round after many spins, stops under the clapper wherever in it the spin
     // aims, after its whole turns and less than one more.
-    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "arcade-scene-models"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "arcade-scene-models"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
     // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
     const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});

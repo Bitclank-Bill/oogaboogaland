@@ -11928,3 +11928,34 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 .block-tip {
   color: #ffd27a !important;
 }
+
+/* Block Frenzy's controls list: grouped key and action rows on a dark backing. */
+.block-keys {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(18, 11, 6, 0.82);
+  color: #f7ecd8;
+  font-size: 12px;
+}
+
+.block-keys h4 {
+  margin: 8px 0 3px;
+  color: #ffd27a;
+  font-size: 12px;
+}
+
+.block-keys h4:first-child {
+  margin-top: 0;
+}
+
+.block-keys div {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.block-keys kbd {
+  font: inherit;
+  color: #ffd27a;
+}

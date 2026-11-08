@@ -74,7 +74,7 @@
     // Lightning in a storm: every `BOLT_S` or so a spot under a seeded Ooga is warned (`BOLT_WARN`), then struck; anyone
     // still within `BOLT_R` is splatted (no more than once per `BOLT_COOL` each).
     BOLT_S: [7, 13], BOLT_WARN: 1.4, BOLT_R: 1.8, BOLT_COOL: 18, PUDDLE_R: 0.9, PUDDLE_REARM: 6,
-    RIM: 0.6, RESPAWN_GUARD: 0.4, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14,
+    RIM: 0.6, RESPAWN_GUARD: 0.4, ENEMY_CAT_UP: 17, ENEMY_CAT_PAST: 9, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14,
     // The grappling hook (Cloud Hopper's, a special weapon here): `HOOKS` a map, hidden at seeded spots from the map's
     // hand-checked `hookSpots`. It flies out at `HOOK_FLY`, up to `HOOK_RANGE`; a bite on rock pulls the Ooga toward it at
     // up to `HOOK_PULL` (`HOOK_ACCEL` to get there), on a rope that only shortens, so it swings under the bite; crouch
@@ -83,7 +83,7 @@
     // rival carrying a block has the block yanked out of their hands after `HOOK_WARN`. A gorilla is stunned for
     // `HOOK_STUN_S`, dropping its captive, and can't be hook-stunned again for `HOOK_STUN_COOL`. `HOOK_COOL` between throws.
     HOOKS: 2, HOOK_R: 1.1, HOOK_RANGE: 24, HOOK_FLY: 60, HOOK_MIN: 1.6, HOOK_HOLD_S: 4, HOOK_COOL: 2.5, HOOK_WARN: 0.35,
-    HOOK_HIT_R: 0.7, HOOK_STUN_S: 2.5, HOOK_STUN_COOL: 8, HOOK_YANK_LIFT: 6, HOOK_HOP: 4, HOOK_AIR: 0.12, HOOK_PULL: 16, HOOK_ACCEL: 45, HOOK_FLING_S: 0.8, HOOK_YANK_COOL: 12, HOOK_BLOCK_R: 0.9, HOOK_BLOCK_H: 2.2, HOOK_BLOCK_PULL: 30
+    HOOK_HIT_R: 0.7, HOOK_STUN_S: 2.5, HOOK_STUN_COOL: 8, HOOK_YANK_LIFT: 6, HOOK_HOP: 4, HOOK_AIR: 0.12, HOOK_PULL: 16, HOOK_ACCEL: 45, HOOK_FLING_S: 0.8, HOOK_YANK_COOL: 12, BLOCK_GRACE_S: 0.7, HOOK_BLOCK_R: 0.9, HOOK_BLOCK_H: 2.2, HOOK_BLOCK_PULL: 30
   };
   // The tools: speed, upward lob, gravity, life in seconds, hit radius, burst radius (0 for none), cooldown, and how
   // many a full refill holds (0 for no limit).
@@ -446,6 +446,8 @@
     const linkHalf = [[20, 21], [21, 22], [22, 23], [23, 24], [8, 20]];
     return {
       id: "haunted", name: "Haunted Hollow", BLOCKS, steps: stepSet, decor: allDecor,
+      // Open graves: shallow pits to fall in and step straight out of, footprints on blue's side, turned for red.
+      graves: [[-19, -17.5, 16.5, 19.5], [24, 25.5, 19, 22], [-22, -20.5, 27, 30]].flatMap((g) => [g, [-g[1], -g[0], -g[3], -g[2]]]),
       gorillas: [[-14, 2], [14, -2], [8, 22], [-8, -22]],
       // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
       // in the cave, on the mound's top, behind the outcrop.
@@ -566,6 +568,15 @@
   // The island is an oval, `W` by `L` its half sizes. `edgeDist` is how far (x, z) is inside its rim, about, and writes
   // the unit way out into EDGE; `isleDepth` is the rock under a spot, deepening toward the middle.
   const EDGE = { x: 0, z: 1 };
+  // In an open grave's footprint (Haunted Hollow's): the only ground below the top.
+  const GRAVE_Y = -0.55;
+  const inGrave = (x, z) => {
+    const list = ARENA.graves;
+    if (!list) return false;
+    for (let i = 0; i < list.length; i++) { const g = list[i]; if (x > g[0] && x < g[1] && z > g[2] && z < g[3]) return true; }
+    return false;
+  };
+  const inGraveOf = (x, z, A) => { const list = A.graves; if (list) for (let i = 0; i < list.length; i++) { const g = list[i]; if (x > g[0] && x < g[1] && z > g[2] && z < g[3]) return true; } return false; };
   const onIsland = (x, z, A = ARENA) => (x * x) / (A.W * A.W) + (z * z) / (A.L * A.L) < 1;
   const isleIn = (x, z, m) => (x * x) / ((ARENA.W - m) * (ARENA.W - m)) + (z * z) / ((ARENA.L - m) * (ARENA.L - m)) < 1;
   const edgeDist = (x, z, A = ARENA) => {
@@ -592,7 +603,7 @@
     CRATES = [];
     const clear = (i, j) => {
       const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L;
-      if (!isleIn(x, z, 1)) return false;
+      if (!isleIn(x, z, 1) || inGrave(x, z)) return false;
       REST_BODY.x = x; REST_BODY.y = 0; REST_BODY.z = z;
       resolve(REST_BODY, CONFIG.BODY_R * 0.95, 0.05);
       return REST_BODY.x === x && REST_BODY.z === z;
@@ -669,7 +680,7 @@
   // The highest top under a body of radius r that its feet at y are on or above: where it stands.
   // Over the open edge there is nothing (-Infinity), and nor is there for feet already down under the island's top.
   const groundAt = (x, z, y, r = CONFIG.BODY_R * 0.7) => {
-    let g = onIsland(x, z) && y >= -CONFIG.RIM ? 0 : -Infinity;
+    let g = onIsland(x, z) && y >= -CONFIG.RIM ? (inGrave(x, z) ? GRAVE_Y : 0) : -Infinity;
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (b[4] > y + 0.05 || b[4] <= g || x < b[0] - r || x > b[1] + r || z < b[2] - r || z > b[3] + r) continue;
@@ -695,7 +706,7 @@
   };
   // True when a point at height y is inside a box or the island's rock; past the open edge is open air.
   const solidAt = (x, y, z) => {
-    if (y <= 0) return y > -isleDepth(x, z) && onIsland(x, z);
+    if (y <= 0) return y > -isleDepth(x, z) && onIsland(x, z) && !(inGrave(x, z) && y > GRAVE_Y);
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (x > b[0] && x < b[1] && z > b[2] && z < b[3] && y < b[4] && y > b[5]) return true;
@@ -705,6 +716,12 @@
   // True when the straight line from (ax, az) to (bx, bz) misses every box, widened by r, that stands on the ground.
   // `over` skips boxes lower than it: a throw at chest height clears crates and low walls.
   const clearLine = (ax, az, bx, bz, r, over = 0) => {
+    // Open graves count as in the way, so bots walk round them.
+    if (ARENA.graves) for (let i = 0; i < ARENA.graves.length; i++) {
+      const g = ARENA.graves[i], cx = Math.max(g[0], Math.min(g[1], (ax + bx) / 2)), cz = Math.max(g[2], Math.min(g[3], (az + bz) / 2));
+      const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cz - az) * dz) / (dx * dx + dz * dz || 1)));
+      if (Math.hypot(ax + dx * t - cx, az + dz * t - cz) < r + Math.hypot(g[1] - g[0], g[3] - g[2]) * 0.5) return false;
+    }
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (b[5] > 1.4 || b[4] < over) continue;
@@ -749,7 +766,7 @@
       boltCool: 0, hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
     }));
     const flags = {};
-    for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0, homeT: 0, hookedBy: -1 };
+    for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0, homeT: 0, hookedBy: -1, graceT: 0 };
     const shots = Array.from({ length: CONFIG.MAX_SHOTS }, () => ({ live: false, kind: "paint", team: null, owner: -1, ox: 0, oz: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, target: -1 }));
     const crates = Array.from({ length: CONFIG.MAX_CRATES }, () => ({ live: false, team: null, x: 0, y: 0, z: 0 }));
     const traps = A.traps.map(([x, z]) => ({ x, z, dark: 0 }));
@@ -884,6 +901,7 @@
     f.thrower = -1;
     f.homeT = 0;
     f.hookedBy = -1;
+    f.graceT = 0;
   };
   // A carrier lets go: the flag lies at their feet and counts down home.
   const dropFlag = (sim, a, why) => {
@@ -1139,9 +1157,27 @@
     const [x, z] = ARENA.catapults[a.team][0];
     return (a.x - x) ** 2 + (a.z - z) ** 2 < CONFIG.CATAPULT_R * CONFIG.CATAPULT_R;
   };
+  // The other side's catapult: a visitor only (bots know better).
+  const nearEnemyCatapult = (sim, a) => {
+    if (sim.prep > 0 || a.bot || a.holding || a.flight || a.riding || !a.grounded || a.y > 0.2) return false;
+    const [x, z] = ARENA.catapults[other(a.team)][0];
+    return (a.x - x) ** 2 + (a.z - z) ** 2 < CONFIG.CATAPULT_R * CONFIG.CATAPULT_R;
+  };
+  // It throws you backward, off the back of the island past the rim, no parachute: jetpack or hook back, or fall.
+  const flingOff = (sim, a) => {
+    const [x, z] = ARENA.catapults[other(a.team)][0], len = Math.hypot(x, z) || 1, ox = x / len, oz = z / len;
+    let edge = 0;
+    while (onIsland(x + ox * edge, z + oz * edge) && edge < 200) edge += 2;
+    a.vy = CONFIG.ENEMY_CAT_UP;
+    const t = 2 * a.vy / CONFIG.FALL, speed = (edge + CONFIG.ENEMY_CAT_PAST) / t;
+    a.vx = ox * speed; a.vz = oz * speed;
+    a.grounded = false; a.jumps = 0; a.crouch = false; a.route = ""; a.heading = Math.atan2(ox, oz); a.knock = t * 0.85;
+    emit(sim, "enemycat", other(a.team), a.id, x, a.y, z);
+  };
   const launch = (sim, id = 0) => {
     use(sim);
     const a = sim.actors[id];
+    if (!sim.over && a.splat <= 0 && a.trapped <= 0 && a.burnt <= 0 && a.slip <= 0 && nearEnemyCatapult(sim, a)) { flingOff(sim, a); return true; }
     if (sim.over || a.splat > 0 || a.trapped > 0 || a.burnt > 0 || a.slip > 0 || !nearCatapult(sim, a)) return false;
     const [tx, tz] = ARENA.drops[a.team], dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz);
     // Straight up to `LAUNCH_H` and over the drop spot at the top of the arc.
@@ -1299,6 +1335,7 @@
       const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L, e = edgeDist(x, z);
       if (e < 0.8) continue;
       REST_BODY.x = x; REST_BODY.y = 0; REST_BODY.z = z;
+      if (inGrave(x, z)) continue;
       resolve(REST_BODY, CONFIG.GORILLA_DRAG_R, 0.05);
       if (REST_BODY.x !== x || REST_BODY.z !== z) continue;
       open[i * nz + j] = 1;
@@ -1500,6 +1537,7 @@
       a.rescues++;
       emit(sim, "rescue", f.team, a.id, f.x, 0, f.z);
       homeFlag(f);
+      f.graceT = CONFIG.BLOCK_GRACE_S;
       emit(sim, "return", f.team, a.id, f.x, 0, f.z);
     } else if (can) {
       f.state = "carried"; f.carrier = a.id; f.homeT = 0; f.x = a.x; f.y = a.y; f.z = a.z;
@@ -1544,6 +1582,13 @@
     }
     return false;
   };
+  const hookBite = (sim, a) => {
+    const tip = a.hookTip;
+    a.hk = H_BIT; a.hookT = 0; a.hookLen = Math.hypot(tip.x - a.x, tip.y - chestY(a), tip.z - a.z);
+    if (a.grounded) { a.vy = CONFIG.HOOK_HOP; a.grounded = false; a.jumps = 1; }
+    emit(sim, "hookbite", a.team, a.id, tip.x, tip.y, tip.z);
+  };
+  const LOS_OUT = { x: 0, y: 0, z: 0 };
   const stepHook = (sim, a, dt) => {
     const tip = a.hookTip, G = BL.grapple;
     if (a.hk === H_BACK) { if (G.toward(tip, a.x, chestY(a), a.z, CONFIG.HOOK_FLY * dt)) a.hk = 0; return; }
@@ -1563,6 +1608,8 @@
       // In short steps, so a thin rail or post can't be flown through.
       for (let sub = 0; sub < 4; sub++) {
       const done = G.toward(tip, a.hookEnd.x, a.hookEnd.y, a.hookEnd.z, CONFIG.HOOK_FLY * dt / 4);
+      // The first thing along the rope wins: solid rock or a wall bites before anything behind it can be reached.
+      if (solidAt(tip.x, tip.y, tip.z)) { hookBite(sim, a); return; }
       // A rival carrying a block: latched, a moment's warning, then the block is yanked out of their hands.
       for (const b of sim.actors) {
         if (b.team === a.team || !b.carrying || b.trapped > 0) continue;
@@ -1594,12 +1641,7 @@
         hookBack(sim, a, "hookrelease");
         return;
       }
-      if (hookSolid(tip.x, tip.y, tip.z)) {
-        a.hk = H_BIT; a.hookT = 0; a.hookLen = Math.hypot(tip.x - a.x, tip.y - chestY(a), tip.z - a.z);
-        if (a.grounded) { a.vy = CONFIG.HOOK_HOP; a.grounded = false; a.jumps = 1; }
-        emit(sim, "hookbite", a.team, a.id, tip.x, tip.y, tip.z);
-        return;
-      }
+      if (hookSolid(tip.x, tip.y, tip.z)) { hookBite(sim, a); return; }
       if (done) { hookBack(sim, a, "hookmiss"); return; }
       }
       return;
@@ -1609,6 +1651,11 @@
       tip.x = b.x; tip.y = b.y + 1.2; tip.z = b.z;
       if (!b.carrying || Math.hypot(b.x - a.x, b.z - a.z) > CONFIG.HOOK_RANGE + 2) { hookBack(sim, a, "hookrelease"); return; }
       if ((a.hookT += dt) < CONFIG.HOOK_WARN) return;
+      // The warning is up: if the carrier reached cover, the yank fails.
+      {
+        const dx = b.x - a.x, dy = b.y + 1.2 - chestY(a), dz = b.z - a.z, d = Math.hypot(dx, dy, dz) || 1;
+        if (G.march(a.x, chestY(a), a.z, dx / d, dy / d, dz / d, d - 0.3, 0.125, solidAt, LOS_OUT) >= 0) { hookBack(sim, a, "hookmiss"); return; }
+      }
       const f = sim.flags[b.carrying];
       f.x = b.x; f.y = b.y + 1.4; f.z = b.z;
       b.carrying = null;
@@ -2448,8 +2495,9 @@
     if (!a.carrying && !a.holding) for (const b of sim.actors) {
       if (b.team === a.team || !b.carrying || b.netted <= 0 || Math.abs(a.y - b.y) > 1.4 || (a.x - b.x) ** 2 + (a.z - b.z) ** 2 > 1.21) continue;
       const f = sim.flags[b.carrying];
+      if (f.graceT > 0) continue;
       b.carrying = null;
-      if (f.team === a.team) { a.rescues++; emit(sim, "rescue", f.team, a.id, b.x, 0, b.z); homeFlag(f); emit(sim, "return", f.team, a.id, f.x, 0, f.z); }
+      if (f.team === a.team) { a.rescues++; emit(sim, "rescue", f.team, a.id, b.x, 0, b.z); homeFlag(f); f.graceT = CONFIG.BLOCK_GRACE_S; emit(sim, "return", f.team, a.id, f.x, 0, f.z); }
       else { f.state = "carried"; f.carrier = a.id; f.homeT = 0; a.carrying = f.team; emit(sim, "pickup", f.team, a.id, b.x, 0, b.z); }
       emit(sim, "netsteal", a.team, a.id, b.x, b.y + 1, b.z, b.id);
       break;
@@ -2478,6 +2526,8 @@
       if (a.carrying || a.holding || f.state === "carried" || (f === own && f.state === "home")) continue;
       // Cold storage: a block on its own stand can't be lifted while its side's freeze lasts.
       if (f.state === "home" && sim.cold[f.team] > 0) continue;
+      // Just returned: it can't change hands again for a moment (no take-and-return loop on a stand).
+      if (f.graceT > 0) continue;
       if (f.state === "flying") {
         if (f.hookedBy >= 0) continue;
         // A catch: the block within reach of the body's middle, its thrower kept off it for a moment.
@@ -2494,6 +2544,7 @@
         a.rescues++;
         emit(sim, "rescue", f.team, a.id, f.x, 0, f.z);
         homeFlag(own);
+        own.graceT = CONFIG.BLOCK_GRACE_S;
         emit(sim, "return", own.team, a.id, own.x, 0, own.z);
         continue;
       }
@@ -2606,9 +2657,11 @@
     stepBolt(sim, w, dt);
   };
 
-  // The live Bitcoin network sets the weather: `kind` from the fees, or null to go back to seeded spells. A change
-  // starts at once.
+  // A busy Bitcoin network (`kind` "storm") brings a storm over a map's own seeded weather at once; anything else leaves
+  // that weather alone.
   const setLive = (sim, kind) => {
+    // Only a busy network (storm) overrides a map's own weather; calmer fees say nothing.
+    kind = kind === "storm" ? "storm" : null;
     if (kind === sim.live) return false;
     sim.live = kind;
     if (kind && kind !== sim.weather.kind) sim.weather.left = 0;
@@ -2908,6 +2961,7 @@
     }
     for (const t of TEAMS) {
       const f = sim.flags[t];
+      if (f.graceT > 0) f.graceT -= dt;
       if (f.state === "flying") flyFlag(sim, f, dt);
       // A block dropped at the edge goes home by itself.
       else if (f.state === "dropped" && f.homeT > 0 && (f.homeT -= dt) <= 0) { homeFlag(f); emit(sim, "return", f.team, -1, f.x, 0, f.z); }
@@ -2997,7 +3051,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute };
+  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();
