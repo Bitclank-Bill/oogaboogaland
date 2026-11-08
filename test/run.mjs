@@ -8952,13 +8952,14 @@ const gamepadBindingsProof = async () => {
   const pad = (index, id = "Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)") => ({ index, id, mapping: "standard", connected: true, axes: [0, 0, 0, 0], buttons: Array.from({ length: 18 }, () => ({ pressed: false, value: 0 })) });
   const one = pad(0), two = pad(1);
   let pads = [one];
-  const storage = new Map(), sent = [], verbs = [];
+  const storage = new Map(), sent = [], verbs = [], scrolled = [];
+  let clock = 0;
   const page = () => {
     const events = new Map();
     class KeyboardEvent { constructor(type, init) { Object.assign(this, init); this.type = type; } }
     const context = { window: { addEventListener: (name, fn) => events.set(name, fn), removeEventListener: () => {} }, navigator: { getGamepads: () => pads },
       localStorage: { getItem: (k) => storage.has(k) ? storage.get(k) : null, setItem: (k, v) => storage.set(k, String(v)) },
-      document: { body: { dispatchEvent: (e) => sent.push(`${e.type} ${e.key}${e.shiftKey ? " shift" : ""}${e.pad ? "" : " ?"}`) } }, KeyboardEvent, performance: { now: () => 0 } };
+      document: { body: { dispatchEvent: (e) => sent.push(`${e.type} ${e.key}${e.shiftKey ? " shift" : ""}${e.pad ? "" : " ?"}`) } }, KeyboardEvent, performance: { now: () => (clock += 16) } };
     return { events, context };
   };
   const { events, context } = page();
@@ -9035,13 +9036,16 @@ const gamepadBindingsProof = async () => {
   const stickArrows = sent.join() === "keydown ArrowRight,keyup ArrowRight";
   G.setContext("foot");
   // An open menu takes the pad from play: A selects there and acts on nothing.
-  context.window.BL.padFocus = { verb: (v) => verbs.push(v) };
+  context.window.BL.padFocus = { verb: (v) => verbs.push(v), scroll: (dy) => scrolled.push(dy) };
   let menu = true;
   G.setMenu(() => menu);
   sent.length = 0;
   const menuA = tap(one, 0) === 0 && verbs.join() === "select" && !sent.length;
   tap(one, 1); tap(one, 5);
   menu = false;
+  // The right stick scrolls the open layer, down for a push down.
+  menu = true; one.axes[3] = 1; G.poll(); G.poll(); G.poll(); one.axes[3] = 0; G.poll(); menu = false;
+  const menuScroll = scrolled.length >= 2 && scrolled.every(dy => dy > 0);
   const menuVerbs = verbs.join() === "select,back,next" && tap(one, 0) === ACT.act;
   G.setMenu(null);
   // Feel: inverted look and swapped sticks reach the published sticks.
@@ -9050,6 +9054,14 @@ const gamepadBindingsProof = async () => {
   G.setFeel("invertY", false); G.setFeel("swap", true); G.poll();
   const swapped = S.ly > 0 && S.ry === 0;
   G.setFeel("swap", false); one.axes[3] = 0; G.poll();
+  // Look speed raises the top turn rate: a full right-stick push at 2x turns twice as fast as the clamp allowed before.
+  const looker = context.window.BL.controls.create({});
+  G.setFeel("look", 2); one.axes[2] = 1; G.poll();
+  const fast = Math.abs(looker.read().yaw) > 1.9;
+  G.setFeel("look", 1); G.poll();
+  const normal = Math.abs(looker.read().yaw) <= 1;
+  one.axes[2] = 0; G.poll(); looker.dispose();
+  const lookSpeed = fast && normal;
   // A pad the browser doesn't map is named, not read, until a profile is learned: then a hat d-pad and triggers that
   // rest at -1 read as the standard places, diagonals as two directions.
   const odd = { index: 0, id: "Generic USB Joystick (Vendor: 0079 Product: 0006)", mapping: "", connected: true, axes: [0, 0, 0, 0, -1, -1, 3.2857], buttons: Array.from({ length: 12 }, () => ({ pressed: false, value: 0 })) };
@@ -9072,9 +9084,18 @@ const gamepadBindingsProof = async () => {
   two.axes[0] = 0.9; one.axes[0] = -0.9; G.poll();
   const firstKept = S.lx < 0;
   const switched = tap(two, 0) === ACT.act && S.lx > 0;
+  // Buttons held on both at once (two players, or Steam's twin mirroring the real pad) never trade places every read:
+  // each fresh press may take over once, then the last one pressed keeps play.
+  let swaps = 0;
+  const offSwap = G.subscribe((what) => { if (what === "device") swaps++; });
+  one.buttons[1].pressed = true; G.poll(); two.buttons[1].pressed = true; G.poll();
+  swaps = 0;
+  for (let i = 0; i < 6; i++) G.poll();
+  const steady = swaps === 0 && S.lx > 0;
+  one.buttons[1].pressed = two.buttons[1].pressed = false; G.poll(); offSwap();
   one.axes[0] = 0; two.axes[0] = 0;
   return { defaults, dpadRead, footKeys, remapped, shared, readerFollows, refused, survives, perFamily, backToXbox, corrupt, unreadable, reset,
-    raceDown, raceUp, leftUp, shifted, stickArrows, menuA, menuVerbs, inverted, swapped, learned, firstKept, switched };
+    raceDown, raceUp, leftUp, shifted, stickArrows, menuA, menuScroll, menuVerbs, inverted, swapped, lookSpeed, learned, firstKept, switched, steady };
 };
 
 

@@ -7,26 +7,38 @@
   // in that direction inside the topmost layer, A presses it, B is the layer's own Escape, the bumpers page its tabs or
   // board, and View opens the controller screen. A range slider takes left and right as its own steps. Focus shows
   // with `.pad-focus`. The gamepad calls `verb` on a press and `open` as it polls, which only looks again after a change.
-  const LAYERS = ["dialog:modal", ".dsb-menu-engaged", "[data-intro]:not([hidden])", "#mine-intro:not([hidden])", "#ghost-intro:not([hidden])",
-    "#ghost-lobby:not([hidden])", ".race-results:not([hidden])", ".race-pause:not([hidden])", "#prize-panel:not([hidden])",
+  // The ghost hunt's round cards take no input (hunters walk and shoot behind them), so they never take the pad.
+  const LAYERS = ["dialog:modal", ".dsb-menu-engaged", "[data-intro]:not([hidden])", "#mine-intro:not([hidden])",
+    "#ghost-lobby:not([hidden])", ".race-results:not([hidden]):not(.ghost-intro)", ".race-pause:not([hidden])", "#prize-panel:not([hidden])",
     "#garage:not([hidden])", "#drop-board:not([hidden])", "#orbit-build:not([hidden])", "#mine-card:not([hidden])", "#hangar-sound:not([hidden])"].join(",");
   const FOCUSABLE = "button, [href], input, select, textarea, summary, [tabindex]:not([tabindex='-1'])";
   // A layer's main button, in this order: where focus starts and what A presses before anything has focus.
   const PRIMARY = ["[autofocus]", ".game-intro-go", "[data-action='intro-go']", ".primary", ".race-go", ".panel-primary", ".actions button"];
   const shown = (el) => !el.hidden && !el.closest("[hidden], [inert]") && el.getClientRects().length > 0;
-  // The topmost open layer: the last modal dialog in the top layer wins, else the last visible card.
+  // The topmost open layer: the last modal dialog in the top layer wins, else the last visible card with something to
+  // press (a card that only shows, such as the hunt's results, leaves the pad to play).
   const layer = () => {
     let top = null;
-    for (const el of document.querySelectorAll(LAYERS)) if (shown(el) || el.matches("dialog:modal")) top = el;
+    for (const el of document.querySelectorAll(LAYERS)) {
+      if (el.matches("dialog:modal") || shown(el) && controls(el).length) top = el;
+    }
     return top;
   };
   // Asked every frame while a pad is connected, so the answer is kept until the page shows or hides something.
   let dirty = true, cached = false;
   new MutationObserver(() => { dirty = true; }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "open", "inert", "aria-modal"] });
+  // The right stick scrolls the open layer, or the first part of it that scrolls, found once per change.
+  const scrollerOf = (root) => {
+    if (root.scrollHeight > root.clientHeight + 1) return root;
+    for (const c of root.querySelectorAll("*")) if (c.scrollHeight > c.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(c).overflowY)) return c;
+    return root;
+  };
+  let scroller = null;
   const open = () => {
-    if (dirty) { dirty = false; cached = !!layer(); }
+    if (dirty) { dirty = false; const top = layer(); scroller = top && scrollerOf(top); cached = !!top; }
     return cached;
   };
+  const scroll = (dy) => { if (scroller) scroller.scrollTop += dy; };
   const controls = (root) => [...root.querySelectorAll(FOCUSABLE)].filter(el => !el.disabled && shown(el));
   let marked = null;
   const mark = (el) => {
@@ -123,6 +135,6 @@
   // Focus moved by anything else (a dialog opening, a list re-rendering) takes the ring with it.
   document.addEventListener("focusin", (e) => { if (marked && e.target !== marked) mark(null); }, true);
   window.addEventListener("keydown", (e) => { if (!e.pad && marked) marked.classList.remove("pad-focus"); }, true);
-  BL.padFocus = { layer, open, verb };
+  BL.padFocus = { layer, open, verb, scroll };
   BL.gamepad.setMenu(open);
 })();

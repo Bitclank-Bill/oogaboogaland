@@ -16,7 +16,7 @@
   // `state.held`, `pressed` and `released` are the physical places, `actions` the same three masks over ACTION bits;
   // `frame` counts the reads that changed anything, so a reader acts on an edge once however often it looks. Sticks
   // are -1..1 with y positive pushed up, past a radial dead zone; the right stick's travel is squared for fine aim and
-  // carries the look speed and inversion. Nothing here allocates per frame; a delivered key allocates its one event
+  // carries the inversion (`controls.js` applies the look speed after its clamp, so it raises the top turn rate). Nothing here allocates per frame; a delivered key allocates its one event
   // per press. `navigator.getGamepads` returns a new array on every call, so it is read only while a pad is
   // connected and a page without one pays nothing. Input is ignored while the window is unfocused.
   const BUTTON = { a: 1, b: 2, x: 4, y: 8, lb: 16, rb: 32, lt: 64, rt: 128, view: 256, menu: 512, ls: 1024, rs: 2048,
@@ -271,24 +271,38 @@
   });
   window.addEventListener("blur", () => { focused = false; });
   window.addEventListener("focus", () => { focused = true; });
-  const profileFor = (pad) => pad.mapping === "standard" ? null : saved.profiles[profileKey(pad.id)] || null;
-  const usable = (pad) => !!pad && pad.connected && (pad.mapping === "standard" || !!profileFor(pad));
-  const touched = (pad) => {
-    const buttons = pad.buttons;
-    for (let i = 0; i < buttons.length; i++) if (buttons[i].pressed) return true;
-    return false;
+  // A device's profile key, worked out once per id: a non-standard pad is asked about every read.
+  const profileKeys = new Map();
+  const keyOf = (id) => {
+    let k = profileKeys.get(id);
+    if (k === undefined) { k = profileKey(id); profileKeys.set(id, k); }
+    return k;
   };
-  // The pad to read: a connected one with a button down that isn't the current one takes over, then the current one
-  // while it stays, then the first usable one. Switching restarts trigger hysteresis, which belongs to the old pad.
-  // A pad the page can't read yet is named in `unknown` the moment a button is pressed on it.
+  const profileFor = (pad) => pad.mapping === "standard" ? null : saved.profiles[keyOf(pad.id)] || null;
+  const usable = (pad) => !!pad && pad.connected && (pad.mapping === "standard" || !!profileFor(pad));
+  // Each slot's raw buttons at the last read (the first 32), so a takeover needs a fresh press, not a button held: two
+  // pads held at once, or Steam's twin mirroring the real one, never trade places every read.
+  const lastRaw = new Uint32Array(16);
+  const freshPress = (pad, i) => {
+    const buttons = pad.buttons, n = Math.min(32, buttons.length);
+    let raw = 0;
+    for (let b = 0; b < n; b++) if (buttons[b].pressed) raw |= 1 << b;
+    const fresh = raw & ~lastRaw[i];
+    lastRaw[i] = raw;
+    return fresh !== 0;
+  };
+  // The pad to read: a connected one pressed afresh that isn't the current one takes over, then the current one while
+  // it stays, then the first usable one. Switching restarts trigger hysteresis, which belongs to the old pad. A pad
+  // the page can't read yet is named in `unknown` the moment a button is pressed on it.
   const pick = () => {
     const pads = navigator.getGamepads();
     let fallback = -1;
-    for (let i = 0; i < pads.length; i++) {
+    for (let i = 0; i < pads.length && i < 16; i++) {
       const pad = pads[i];
       if (!pad || !pad.connected) continue;
-      if (!usable(pad)) { if (touched(pad) && state.unknown !== pad.id) { state.unknown = pad.id; emit("unknown"); } continue; }
-      if (i !== active && touched(pad)) { switchTo(i, pad); return pad; }
+      const fresh = freshPress(pad, i);
+      if (!usable(pad)) { if (fresh && state.unknown !== pad.id) { state.unknown = pad.id; emit("unknown"); } continue; }
+      if (i !== active && fresh) { switchTo(i, pad); return pad; }
       if (fallback < 0) fallback = i;
     }
     // A different controller can take the same slot: it is a new pad, with its own family.
@@ -393,7 +407,16 @@
     const list = CONTEXTS.menus.entries;
     for (let i = 0, bits = pressed; bits; i++, bits >>>= 1) if (bits & 1 && list[i].menu) menuVerb(list[i].menu);
   };
+  // The right stick scrolls the layer, at up to SCROLL_SPEED pixels a second past the dead zone.
+  const SCROLL_SPEED = 900;
+  let scrollAt = 0;
   const menuStick = (now) => {
+    const dt = scrollAt ? Math.min(0.1, now - scrollAt) : 0, ry = state.rawRy;
+    scrollAt = now;
+    if (Math.abs(ry) > feel.dead && dt) {
+      const f = BL.padFocus, s = (Math.abs(ry) - feel.dead) / (1 - feel.dead);
+      if (f) f.scroll(Math.sign(ry) * s * s * SCROLL_SPEED * dt);
+    }
     const x = state.rawLx, y = state.rawLy;
     const dir = Math.abs(x) < MENU_STICK && Math.abs(y) < MENU_STICK ? 0 : Math.abs(x) > Math.abs(y) ? (x > 0 ? 4 : 3) : (y > 0 ? 1 : 2);
     const held = entryHeld & 0x3c;
@@ -506,7 +529,7 @@
     held &= ~blocked;
     let k = scale(state.rawLx, state.rawLy, false);
     state.lx = state.rawLx * k; state.ly = -state.rawLy * k;
-    k = scale(state.rawRx, state.rawRy, true) * feel.look;
+    k = scale(state.rawRx, state.rawRy, true);
     state.rx = state.rawRx * k * (feel.invertX ? -1 : 1); state.ry = -state.rawRy * k * (feel.invertY ? -1 : 1);
     if (context === "menus") { state.lx = state.ly = state.rx = state.ry = 0; menuStick(performance.now() / 1000); }
     const pressed = held & ~state.held, released = state.held & ~held;
@@ -542,7 +565,7 @@
   // `learn(id, profile)` saves a profile for a non-standard pad (`map`: 18 places, `axes`: lx, ly, rx, ry).
   const learn = (id, profile) => {
     if (!okProfile(profile)) throw new Error("gamepad: bad profile");
-    saved.profiles[profileKey(id)] = profile;
+    saved.profiles[keyOf(id)] = profile;
     store();
     if (state.unknown === id) state.unknown = "";
     emit("device");

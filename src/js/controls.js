@@ -256,10 +256,14 @@
       axes.up = clamp(held.up + held.space + held.boost + padUp - (canDescend() ? Math.max(held.down, padActions.held & PAD.descend ? 1 : 0) : 0), -1, 1);
       // Bird's-eye combat rotates with Q/E while its look stick aims the pointer.
       axes.orbitYaw = held.yawLeft - held.yawRight;
-      axes.yaw = clamp((shooter() ? 0 : held.yawLeft - held.yawRight) - (lookStick ? lookStick.x : 0) - pad.rx, -1, 1);
+      // The pad's look speed scales its share after the clamp, so above 1 a full push turns faster, not just sooner.
+      const look = gamepad.feel.look;
+      axes.yaw = clamp((shooter() ? 0 : held.yawLeft - held.yawRight) - (lookStick ? lookStick.x : 0), -1, 1);
+      axes.yaw = clamp(axes.yaw - pad.rx * look, -Math.max(1, pad.rx ? look : 1), Math.max(1, pad.rx ? look : 1));
       // R and F pitch the view unless a scene borrows them (`borrowPitch`), which reads them as `keyPitch` instead.
       axes.keyPitch = held.pitchDown - held.pitchUp;
-      axes.pitch = clamp((shooter() || pitchBorrowed ? 0 : axes.keyPitch) - (lookStick ? lookStick.y : 0) - pad.ry, -1, 1);
+      axes.pitch = clamp((shooter() || pitchBorrowed ? 0 : axes.keyPitch) - (lookStick ? lookStick.y : 0), -1, 1);
+      axes.pitch = clamp(axes.pitch - pad.ry * look, -Math.max(1, pad.ry ? look : 1), Math.max(1, pad.ry ? look : 1));
       axes.sprint = Math.max(held.sprint, padSprint);
       axes.peek = shooter() ? held.peek : 0;
       axes.shiftTap = shiftTap;
