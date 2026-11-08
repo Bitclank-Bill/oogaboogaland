@@ -1562,7 +1562,11 @@
         if (document.pointerLockElement !== canvas) {
           const alreadyFocused = softAimFocused;
           lockAim();
-          if (!alreadyFocused) return;
+          if (!alreadyFocused) {
+            // The capturing click never attacks, but a scene may answer what the free cursor was on.
+            if (e.button === 0) ctx.captureClick?.(e.clientX, e.clientY);
+            return;
+          }
         }
         resumePose();
         // A scene may take the left button first (`primaryAction`, Cloud Hopper's grappling hook), and then its release.
@@ -1908,6 +1912,9 @@
     let reloadPrompt = false;
     const syncWeaponHud = () => {
       const cave = player(), weapon = cave && cave.weapon;
+      // With no weapon to aim, combat's crosshair is a single dot.
+      const unarmed = String(!!weapon && !weapon.primaryOwned && !weapon.secondaryOwned);
+      if (reticle.dataset.unarmed !== unarmed) reticle.dataset.unarmed = unarmed;
       const ready = !!crew?.weaponsEnabled && !!weapon && !cave.grabbedBy && !crew.sleeping && (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode;
       const primaryReady = ready && weapon.primaryOwned;
       const secondaryReady = ready && weapon.secondaryOwned;

@@ -8127,6 +8127,17 @@ body[data-active-scene="timechain"] .weapon-reticle > span {
   visibility: visible;
 }
 
+/* With no weapon to aim (pilot.js `syncWeaponHud`), combat's crosshair is a single dot. */
+.weapon-reticle[data-unarmed="true"] { visibility: visible; }
+.weapon-reticle[data-unarmed="true"] > svg,
+.weapon-reticle[data-unarmed="true"] > span::after { display: none; }
+.weapon-reticle[data-unarmed="true"] > span {
+  width: 3px;
+  height: 3px;
+  background: #fff9dc;
+  visibility: visible;
+}
+
 /* DSB keeps controls in the existing page and its world in a separate scene. */
 .dsb-island-icon, .ember-den-icon { display: none; }
 body[data-active-scene="dsb"] .dsb-island-icon,

@@ -16293,8 +16293,8 @@ const factoryLadders = { name: "factory ladders", why: "rule: Oogas must climb t
   record("factory ladders: both climbs hold at rest, cross the lip continuously, descend without reversal and walk away at the bottom; Space jumps off", r.rows.every((v) => v.mounted && v.paused && v.hold < 1e-6 && v.maxStep < 0.2 && Math.abs(v.top - v.expectedTop) < 1e-6 && Math.abs(v.upperSupport - v.top) < 1e-6 && v.upperClear && v.descending && !v.rose && Math.abs(v.bottom - v.expectedBottom) < 1e-6 && v.walkedAway > 0.2 && !v.active)
     && r.jumped.attached && r.jumped.detached && r.jumped.rising && r.jumped.outward > 0.05, JSON.stringify(r));
 } };
-// In the page: whether the Ooga named by the expression `who` has no weapon at all, in hand, on its body or on the HUD.
-const unarmedInPage = (who) => `(() => { const c = ${who}, w = c.weapon; return !w.primaryOwned && !w.secondaryOwned && !w.equipped && !w.primaryEquipped && !c.parts.club.visible && !c.parts.gun.visible && ["primary-hud", "weapon-hud", "magazine-hud"].every((id) => document.getElementById(id).hidden); })()`;
+// In the page: whether the Ooga named by the expression `who` has no weapon at all, in hand, on its body or on the HUD, and combat's crosshair is the single dot.
+const unarmedInPage = (who) => `(() => { const c = ${who}, w = c.weapon; return !w.primaryOwned && !w.secondaryOwned && !w.equipped && !w.primaryEquipped && !c.parts.club.visible && !c.parts.gun.visible && ["primary-hud", "weapon-hud", "magazine-hud"].every((id) => document.getElementById(id).hidden) && document.getElementById("weapon-reticle").dataset.unarmed === "true"; })()`;
 const factoryRailingJump = { name: "factory railing jumps", why: "regression: descending past railings could trap the visitor inside a lower-floor obstacle", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, a = B.cavemen.get("portlandhodl"), rows = [];
@@ -17218,9 +17218,10 @@ const arcadeHuntGear = { name: "arcade hunt gear", why: "rule: no gun in the are
     const B = __ooga, a = B.pilot.player, w = a.weapon, S = BL.scenes.arcade.debug.arena, gun = document.getElementById("weapon-hud");
     return { armed: S.armed, inArena: S.inArena, primary: w.primaryOwned, owned: w.secondaryOwned, equipped: w.equipped, club: a.parts.club.visible, gun: a.parts.gun.visible, gear: !!a.ghostGear,
       bananas: a.parts.gunBananas.some((n) => n.visible), skin: gun.dataset.skin || "", shown: !gun.hidden && getComputedStyle(gun).display !== "none", width: gun.offsetWidth,
-      readout: getComputedStyle(gun.querySelector(".weapon-readout")).display, infinity: gun.querySelector(".weapon-compact").textContent.trim(), infinityShown: getComputedStyle(gun.querySelector(".weapon-compact")).visibility === "visible", primaryHud: !document.getElementById("primary-hud").hidden, magazineHud: !document.getElementById("magazine-hud").hidden };
+      readout: getComputedStyle(gun.querySelector(".weapon-readout")).display, infinity: gun.querySelector(".weapon-compact").textContent.trim(), infinityShown: getComputedStyle(gun.querySelector(".weapon-compact")).visibility === "visible", primaryHud: !document.getElementById("primary-hud").hidden, magazineHud: !document.getElementById("magazine-hud").hidden,
+      combat: B.pilot.aiming, crosshair: !document.getElementById("weapon-reticle").hidden, dot: document.getElementById("weapon-reticle").dataset.unarmed === "true" };
   })()`;
-  const noGun = (r) => r.inArena && !r.armed && !r.owned && !r.equipped && !r.gun && !r.gear && !r.primary && !r.club && !r.shown;
+  const noGun = (r) => r.inArena && !r.armed && !r.owned && !r.equipped && !r.gun && !r.gear && !r.primary && !r.club && !r.shown && r.dot;
   await b.evaluate(`(() => { const B = __ooga, H = BL.arcadeModels.HAUNT, A = H.arena; B.pilot.navigate({ position: { x: A.x - 7, y: H.y, z: A.z + 3 }, yaw: -Math.PI / 2, pitch: 0.15, dist: 5 }); B.advance(0.6, 1 / 60); })()`);
   const before = await b.evaluate(read);
   await b.evaluate(`BL.scenes.arcade.debug.halloween.start()`);
@@ -17228,11 +17229,14 @@ const arcadeHuntGear = { name: "arcade hunt gear", why: "rule: no gun in the are
   const lobby = await b.evaluate(read);
   record("arcade hunt gear: the arena and its lobby hand out no gun, pack or primary", noGun(before) && noGun(lobby), JSON.stringify({ before, lobby }));
   await b.evaluate(`[...document.querySelectorAll("#ghost-lobby button")].find((e) => /ready/i.test(e.textContent)).click()`);
+  // Whichever view it readied in, the start of the hunt puts it in combat.
+  await b.evaluate(`if (__ooga.pilot.aiming) __ooga.pilot.modeAction("mode-toggle")`);
   await untilPage(b, 'BL.scenes.arcade.debug.arena.armed', 30000);
   const hunting = await b.evaluate(`(() => { __ooga.advance(0.4, 1 / 60); return ${read}; })()`);
   record("arcade hunt gear: a hunter of a started hunt gets only the blaster and pack: no primary, no magazine, and the small gun button in its skin with its infinity",
     hunting.armed && hunting.owned && hunting.equipped && hunting.gun && hunting.gear && !hunting.bananas && !hunting.primary && !hunting.club && !hunting.primaryHud && !hunting.magazineHud
       && hunting.skin === "ghost" && hunting.shown && hunting.width === 78 && hunting.readout === "none" && hunting.infinity === "∞" && hunting.infinityShown, JSON.stringify(hunting));
+  record("arcade hunt gear: the hunt's start puts a hunter in combat with the full crosshair", hunting.combat && hunting.crosshair && !hunting.dot, JSON.stringify(hunting));
   const remote = await b.evaluate(`(() => {
     const B = __ooga, N = BL.net, H = BL.arcadeModels.HAUNT, A = H.arena, sim = BL.scenes.arcade.debug.halloween.sim, build = BL.models.caveman, caves = [];
     const peer = (id, x) => ({ id, login: "peer" + id, display: "Peer", body: "w-s-bitcoin", zone: "ghost-arena", x: A.x + x, y: H.y, z: A.z + 4, yaw: 0, weapon: 2 | 4, jet: 0 });
@@ -17256,6 +17260,26 @@ const arcadeHuntGear = { name: "arcade hunt gear", why: "rule: no gun in the are
   const left = await b.evaluate(read);
   record("arcade hunt gear: leaving the hunt takes the gun, pack and its skin away", !left.armed && !left.owned && !left.equipped && !left.gun && !left.gear && !left.skin, JSON.stringify(left));
 } };
+// HALLOWEEN: a real click on the ghost opens the hunt's lobby from either view.
+const arcadeHeraldClick = (view) => ({ name: "arcade herald click " + view, why: "rule: a player starts the ghost hunt by clicking the ghost, in carry or in combat view", run: async (b) => {
+  const size = await b.evaluate("({ w: innerWidth, h: innerHeight })"), lobby = '!document.getElementById("ghost-lobby").hidden';
+  await b.evaluate(`(() => { const B = __ooga, H = BL.arcadeModels.HAUNT, A = H.arena; B.pilot.navigate({ position: { x: A.x - 7, y: H.y, z: A.z }, yaw: -Math.PI / 2, pitch: 0.1, dist: 5 }); if (B.pilot.aiming !== ${view === "combat"}) B.pilot.modeAction("mode-toggle"); B.advance(0.6, 1 / 60); })()`);
+  // The middle of the pixels the input picks the ghost at. It drifts, so it is found again before each click.
+  const find = `(() => { const B = __ooga; let n = 0, sx = 0, sy = 0; for (let y = 8; y < innerHeight; y += 6) for (let x = 8; x < innerWidth; x += 6) { const hit = B.input.pick(x, y); if (hit && hit.owner.kind === "halloween") { n++; sx += x; sy += y; } } return n ? { x: sx / n, y: sy / n } : null; })()`;
+  let at = null;
+  for (let i = 0; i < 3 && !(await b.evaluate(lobby)); i++) {
+    at = await b.evaluate(find);
+    // In combat the click lands on the dot at the screen's centre, so the view is turned to the ghost first.
+    for (let turn = 0; view === "combat" && at && turn < 10 && Math.hypot(at.x - size.w / 2, at.y - size.h / 2) > 8; turn++) {
+      await b.evaluate(`__ooga.pilot.hooks.onOrbit(${(at.x - size.w / 2) * 0.7}, ${(at.y - size.h / 2) * 0.7}); __ooga.advance(0.2, 1 / 60)`);
+      at = await b.evaluate(find);
+    }
+    if (!at) break;
+    await b.click(view === "combat" ? size.w / 2 : at.x, view === "combat" ? size.h / 2 : at.y);
+    await untilPage(b, lobby, 6000).catch(() => {});
+  }
+  record("arcade herald click: clicking the ghost in " + view + " view opens the hunt's lobby", !!at && await b.evaluate(lobby), JSON.stringify(at));
+} });
 // #428: a hallway page receives the running hunt without becoming a hunter or borrowing arena ammunition.
 // A hunter gone down only follows the others: through the room's own snapshots from a host, with two other hunters in
 // the arena, the view rides behind one, Next moves on, one going down hands it to the other, and with nobody left it
@@ -22190,6 +22214,7 @@ scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] 
 scene("arcade", { label: "ghost spectate follows", query: "character=portlandhodl", steps: [arcadeSpectateFollow] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeHuntGear] });
+for (const view of ["carry", "combat"]) scene("arcade", { label: "herald click " + view, query: "character=portlandhodl", steps: [arcadeHeraldClick(view)] });
 scene("skee", { steps: [carnivalPlay("skee", 0.5), trip("skee")] });
 scene("hoops", { steps: [carnivalPlay("hoops", 0.2), trip("hoops")] });
 scene("shy", { steps: [carnivalPlay("shy", 0.7), trip("shy")] });

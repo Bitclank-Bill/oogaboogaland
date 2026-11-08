@@ -1184,6 +1184,14 @@
     BL.math.mat4.transformPoint(inViewMiddle, m, center[0], center[1], center[2]);
     return sightClear(c.x, c.y, c.z, inViewMiddle[0], inViewMiddle[1], inViewMiddle[2]);
   };
+  // HALLOWEEN: a click at a screen point on the herald wakes it or readies up, from inside the arena and before any gun.
+  const clickHerald = (x, y) => {
+    if (armed || !inArena) return false;
+    const hit = input.pick(x, y);
+    if (!hit || hit.owner.kind !== "halloween" || !hit.owner.tap || !inView(hit)) return false;
+    hit.owner.tap();
+    return true;
+  };
   // What the overlay draws at a place (an NPC's line, a player's name, the hunt's marks) shows only where it can be seen:
   // from inside the arena, nothing from outside the hallway and the arena, without a test, and otherwise along an open
   // line from the view (fx's `overlayVisible`, and `characterOccluded` for a line over a character's head).
@@ -1849,14 +1857,14 @@
       carry: true,
       renderer, canvas: ctx.canvas, camera, hud, presets: views, landing: "entrance", pitch: PITCH, dist: DIST,
       follow: FOLLOW, clampTarget, clampCamera, ceilingAt: () => HALL.h - 1, coarse: COARSE, mayPossess, combatOnly: () => gameMode && armed,
-      // With no gun yet, the combat view's click on the herald under the crosshair wakes it, as a click does in carry.
+      // HALLOWEEN: in combat view a click on the herald under the dot wakes it, as a click does in carry; so does the
+      // click that captures a free cursor on it.
       primaryAction: (down) => {
-        if (!down || armed || !inArena) return false;
-        const r = document.getElementById("weapon-reticle").getBoundingClientRect(), hit = input.pick(r.left + r.width / 2, r.top + r.height / 2);
-        if (!hit || hit.owner.kind !== "halloween" || !hit.owner.tap) return false;
-        hit.owner.tap();
-        return true;
+        if (!down) return false;
+        const r = document.getElementById("weapon-reticle").getBoundingClientRect();
+        return clickHerald(r.left + r.width / 2, r.top + r.height / 2);
       },
+      captureClick: clickHerald,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: (x, z) => supportAt(x, z, feetOf()) }
     });
     const tipFor = (hit) => {
@@ -1983,7 +1991,7 @@
         if (cave.parts.club) cave.parts.club.visible = false;
         const hunter = !!ghosts && gameMode && ghosts.isHunter(rec.id) && inArenaRing(cave.root.position.x, cave.root.position.z, feet);
         if (cave.parts.gun && !hunter) cave.parts.gun.visible = false;
-        if (hunter) { BL.ghostGear.wear(cave); BL.ghostGear.pose(cave); } else BL.ghostGear.remove(cave);
+        if (hunter) { BL.ghostGear.wear(cave); BL.ghostGear.pose(cave); } else BL.ghostGear.remove(cave); // HALLOWEEN
         // Sliding down a handrail, sat on the cane as the crew sits a seated Ooga.
         if (railSitter(cave)) {
           cave.parts.legR.rotation.x = cave.parts.legL.rotation.x = -Math.PI / 2;
@@ -2287,7 +2295,7 @@
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
     if (remotes) remotes.liveGeometry(set);
     if (hockeyPlayers) hockeyPlayers.liveGeometry(set);
-    BL.ghostGear.liveGeometry(set);
+    BL.ghostGear.liveGeometry(set); // HALLOWEEN
     if (ghosts) { ghosts.liveGeometry(set); tess.liveGeometry(set); }
     else if (ghostEntry) ghostEntry.liveGeometry(set);
   };
