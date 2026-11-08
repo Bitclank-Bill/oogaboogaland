@@ -253,6 +253,12 @@
   // at `ease` a second, a quarter turn open.
   const COMMAND_DOOR = { reach: 3.6, ease: 6, swing: Math.PI * 0.48 };
   const atCommandDoor = (x, z, feet) => feet < 1 && Math.hypot(x - HM.COMMAND.doorX, z - HM.COMMAND.front) < COMMAND_DOOR.reach;
+  // The control room's warning beacon: dim at rest, flashing `rate` times a second while one of the crew is out of their
+  // room (a worker's meltdown).
+  const BEACON = { idle: 0.12, rate: 2.2 };
+  const beaconLife = (s, elapsed) => {
+    s.commandBeacon.glow = s.meltdown.active ? (Math.sin(elapsed * BEACON.rate * Math.PI * 2) > 0 ? 1.4 : 0.15) * s.anomaly.dim : BEACON.idle;
+  };
   const commandDoorLife = (s, dt) => {
     const want = nearJet(atCommandDoor) ? 1 : 0;
     s.commandOpen += (want - s.commandOpen) * Math.min(1, dt * COMMAND_DOOR.ease);
@@ -1028,6 +1034,9 @@
     // sorted nearer.
     const command = HM.commandRoom(), commandGlow = createNode({ geometry: command.glow, sightHidden: true });
     addChild(root, createNode({ geometry: command.flat }), createNode({ geometry: command.detail, depthBias: DETAIL_BIAS }), commandGlow, createNode({ geometry: command.glass, sightHidden: true }));
+    s.commandBeacon = createNode({ position: { x: command.beacon.x, y: command.beacon.y, z: command.beacon.z }, geometry: command.beacon.geometry, sightHidden: true, depthBias: DETAIL_BIAS - 0.2 });
+    s.commandBeacon.glow = BEACON.idle;
+    addChild(root, s.commandBeacon);
     const cam = command.cameraScreen;
     addChild(root, createNode({ position: { x: cam.x, y: cam.y, z: cam.z }, rotation: { x: 0, y: cam.turn, z: 0 }, geometry: cam.geometry, sightHidden: true, depthBias: -1 }));
     s.feeds = renderer.kind === "webgl2" ? {
@@ -1856,6 +1865,7 @@
     else if (actPrompt) { actPrompt = false; pilot.showAct(); }
     node.tick(dt);
     commandDoorLife(s, dt);
+    beaconLife(s, elapsed);
     // The door answers whoever comes near (the Ooga driven here, or with none the view), as ₿IFRÖST's windows do: its
     // arch's studs and neon brighten, its light swells and reaches farther, and its field hums faster.
     const who = drivenHere ? drivenHere.root.position : pilot.orbit.target;

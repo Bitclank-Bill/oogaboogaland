@@ -1526,6 +1526,11 @@
     for (let k = 0; k < 3; k++) detail.push(box({ w: 0.36, h: 0.03, d: 0.02, color: "#181b26", offset: { x: ax, y: ay + 0.08 + k * 0.07, z: front - 0.4 } }));
     detail.push(moved(lathe({ profile: [[0.025, 0], [0.012, 1.3], [0, 1.3]], segments: 6, color: "#c9d0d8" }), ax + 0.12, ay + 0.3, front - 0.22));
     lamps.push(box({ w: 0.06, h: 0.06, d: 0.06, color: "#ff3b30", emissive: 1, offset: { x: ax + 0.12, y: ay + 1.63, z: front - 0.22 } }));
+    // The warning beacon beside it, its base here and its red dome a node of the scene's own (`beacon`), which flashes
+    // while one of the crew is out of their room.
+    const bkx = da - 0.32;
+    detail.push(moved(lathe({ profile: [[0.16, 0], [0.16, 0.08], [0.12, 0.1], [0, 0.1]], segments: 12, color: "#2a2d33" }), bkx, ay, front - 0.3));
+    const beacon = { x: bkx, y: ay + 0.1, z: front - 0.3, geometry: noShadow(lathe({ profile: [[0.12, 0], [0.12, 0.12], [0.09, 0.22], [0.04, 0.26], [0, 0.27]], segments: 12, color: "#ff2a1f", emissive: 1 })) };
     for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) lamps.push(box({ w: 0.035, h: 0.035, d: 0.01, color: r === 0 ? "#2ecc71" : F.blue, emissive: 1, offset: { x: kx - 0.05 + c * 0.05, y: 1.36 - r * 0.07, z: ff - 0.06 } }));
     const plate = { x: kx, y: 2.45, w: 0.56, h: 0.84 };
     detail.push(box({ w: plate.w + 0.1, h: plate.h + 0.1, d: 0.04, color: F.dark, offset: { x: plate.x, y: plate.y, z: ff - 0.02 } }));
@@ -1715,7 +1720,7 @@
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     const doors = [{ x: dx - K.door / 2, z: front + 0.1, turn: 0, open: -1 }, { x: dx + K.door / 2, z: front + 0.1, turn: Math.PI, open: 1 }];
-    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), board: noShadow(merge(...board)), boardFace, cameraScreen, glass: windows, pictures, doors, lamps: K.lamps.flat() };
+    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), board: noShadow(merge(...board)), boardFace, cameraScreen, beacon, glass: windows, pictures, doors, lamps: K.lamps.flat() };
   });
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
