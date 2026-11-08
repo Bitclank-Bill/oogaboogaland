@@ -1129,6 +1129,11 @@
       addChild(root, createNode({ position: { x: hx + side * (hangarSign.width / 2 + 0.6), y: hy, z: hz + 0.05 }, geometry: FM.smoothBolt(1.2, 0.1, "#ffd23a", 1), sightHidden: true }));
       addChild(root, createNode({ position: { x: hx + side * (hangarSign.width / 2 - 0.3), y: (hy + 1 + L.roofY) / 2, z: hz - 0.05 }, geometry: models.box({ w: 0.06, h: L.roofY - hy - 1, d: 0.06, color: "#2c2e33" }) }));
     }
+    // The arch round the launch tunnel's mouth (`HM.arch`): its lights dimmed with the glass, its small parts sorted
+    // nearer on Canvas 2D.
+    const archParts = HM.arch(), archGlow = createNode({ geometry: archParts.glow, sightHidden: true });
+    addChild(root, createNode({ geometry: archParts.flat }), createNode({ geometry: archParts.detail, depthBias: DETAIL_BIAS }), archGlow);
+    s.glass.push(archGlow);
     // The door, the Factory's own stone arch turned to face in and set in the hangar's steel bulkhead, with the hall's
     // warm dark through it and its sign the way back.
     const door = FM.hangarDoor(), D = FM.HANGAR_DOOR;

@@ -129,6 +129,8 @@
     },
     // The hangar's sign over the runway, from the last roof rib.
     signs: { hangar: [0, 11.6, -26] },
+    // The arch round the launch tunnel's mouth (`ARCH`): how far in front of the back wall its middle stands.
+    arch: { z: HALL.back + 1.3 + 0.62 },
     // The crew, gorillas in hard hats, each pacing its post: [x, y, z, radius, heading], heading 0 facing +z. At the
     // workstations (stood back from the desk, since a gorilla leans in over what it faces, and clear of the crates by
     // the second), at the stats board, on the Jet's gangway, at its stair (far enough off the tool chest beside it that
@@ -520,6 +522,44 @@
     return { flat: merge(...flat), glow: noShadow(merge(...glow)), markers: new Float32Array(markers) };
   });
   const marker = cached(() => noShadow(box({ w: 0.18, h: 0.1, d: 0.18, color: MARKER, emissive: 1, offset: { y: 0.12 } })));
+
+  // The arch round the launch tunnel's mouth, after the concept: a heavy steel frame standing in front of the back wall's
+  // surround, its posts from the floor (`A` either side of the runway's middle), its top corners chamfered (`c`) up to
+  // its top (`T`), `w` wide and `depth` deep, and inside it a lighter frame set back (`inner`), orange lights along its
+  // face and an amber lamp low on each post. `arch()` is the frame (`flat`, its lights `glow`, its small parts
+  // `detail`), in the hangar's frame. Each piece of the frame is a convex quad between its outer and inner outlines
+  // (`chamferRect`), so its corners meet mitred.
+  const ARCH = { A: 8.95, T: 13.15, c: 2.5, w: 1.1, depth: 0.75, inner: { w: 0.45, depth: 0.45, back: 0.24 }, body: "#565c78", edge: "#6c7394", dark: "#3c4156",
+    orange: "#f28a1c", amber: "#ffc77a" };
+  // A chamfered rectangle's outline from the floor, `a` either side of x 0 up to `t`, its top corners cut `c` along
+  // each side, counter-clockwise from the front.
+  const chamferRect = (a, t, c) => [[a, 0], [a, t - c], [a - c, t], [-a + c, t], [-a, t - c], [-a, 0]];
+  // The quads between an outline and the one `w` inside it, side by side, each counter-clockwise from the front; the
+  // floor's edge, which closes the outline, is left out.
+  const frameQuads = (a, t, c, w) => {
+    const o = chamferRect(a, t, c), i = chamferRect(a - w, t - w, c - w * (2 - Math.SQRT2)), quads = [];
+    for (let k = 0; k < o.length - 1; k++) quads.push([o[k], o[k + 1], i[k + 1], i[k]]);
+    return quads;
+  };
+  const arch = cached(() => {
+    const P = ARCH, z = LAYOUT.arch.z, flat = [], glow = [], detail = [];
+    for (const q of frameQuads(P.A, P.T, P.c, P.w)) flat.push(moved(prism(q, P.depth, P.body), 0, 0, z));
+    const ia = P.A - P.w, it = P.T - P.w, ic = P.c - P.w * (2 - Math.SQRT2);
+    for (const q of frameQuads(ia, it, ic, P.inner.w)) flat.push(moved(prism(q, P.inner.depth, P.dark), 0, 0, z - P.inner.back));
+    // A lighter edge along the frame's inner rim on its face, the orange lights along its face, and an amber lamp low
+    // on each post.
+    const front = z + P.depth / 2, rim = chamferRect(ia + 0.06, it + 0.06, ic + 0.02);
+    for (let k = 0; k < rim.length - 1; k++) detail.push(beam(rim[k][0], rim[k][1], front + 0.01, rim[k + 1][0], rim[k + 1][1], front + 0.01, 0.07, P.edge));
+    const lights = [];
+    for (const s of [-1, 1]) {
+      for (let y = 2.6; y < P.T - P.c - 0.5; y += 2.2) lights.push([s * (P.A - P.w / 2), y]);
+      lights.push([s * (P.A - P.c / 2 - 0.3), P.T - P.c / 2 - 0.3]);
+      detail.push(box({ w: 0.36, h: 0.62, d: 0.08, color: "#24282f", offset: { x: s * (P.A - P.w / 2), y: 1.3, z: front + 0.04 } }));
+      glow.push(box({ w: 0.24, h: 0.5, d: 0.02, color: P.amber, emissive: 1, offset: { x: s * (P.A - P.w / 2), y: 1.3, z: front + 0.09 } }));
+    }
+    for (const [x, y] of lights) glow.push(box({ w: 0.28, h: 0.12, d: 0.03, color: P.orange, emissive: 0.9, offset: { x, y, z: front + 0.015 } }));
+    return { flat: merge(...flat), glow: noShadow(merge(...glow)), detail: merge(...detail) };
+  });
 
   // The launch tunnel from the back wall to the shield: a stone sleeve, floored, walled and roofed, and inside it an
   // octagonal iron frame every few metres, the mouth's heaviest, each with a neon strip round its inside, a white-hot
@@ -2995,7 +3035,7 @@
     const L = LAYOUT, T = L.tunnel, rand = mulberry32(5151), parts = [], sh = shell();
     parts.push(sh.floor, sh.walls, sh.vault, sh.lattice, sh.slots);
     const run = runway(), tun = tunnel(), fix = fixtures();
-    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, controlRoom().flat, controlRoom().glow, ...sideRooms().flatMap((r) => [r.flat, r.glow, moved(turnedY(merge(roomDoor()), r.door.turn), r.door.x, r.door.y, r.door.z)]), loftWindows().flat, loftWindows().glow, loftWindows().still, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
+    parts.push(landing(), run.flat, run.glow, tun.stone, tun.iron, arch().flat, arch().glow, catwalks(), wallLights().wall.flat, wallLights().wall.glow, wallLights().edge.flat, wallLights().edge.glow, controlRoom().flat, controlRoom().glow, ...sideRooms().flatMap((r) => [r.flat, r.glow, moved(turnedY(merge(roomDoor()), r.door.turn), r.door.x, r.door.y, r.door.z)]), loftWindows().flat, loftWindows().glow, loftWindows().still, fix.flat, fix.detail, fix.crateDetail, fix.glow, fix.lampGlow, fix.glass, dock());
     for (const z of tun.neonZ) parts.push(moved(merge(tun.neon), 0, 0, z));
     // The boards on their mounts, their glass and tiles, as they hang.
     const frames = boardFrames(), faces = { stats: statsFace(), timeline: timelineFace() };
@@ -3201,6 +3241,8 @@
       const [hx, hz] = turned(0.55, 0.55, a);
       solid(x, z, hx, hz, -1, CRATE_TOPS[0]);
     }
+    // The arch's posts round the launch tunnel's mouth, from the floor up.
+    for (const sx of [-1, 1]) block(Math.min(sx * (ARCH.A - ARCH.w - ARCH.inner.w), sx * ARCH.A), Math.max(sx * (ARCH.A - ARCH.w - ARCH.inner.w), sx * ARCH.A), LAYOUT.arch.z - ARCH.depth / 2, LAYOUT.arch.z + ARCH.depth / 2, -1, HALL.h);
     // The crew's rooms' fronts out from the right wall likewise.
     for (const z of SIDE_ROOMS.bays) block(HALL.x0 + HALL.x1 - CONTROL.front - 0.2, HALL.x1, z - SIDE_ROOMS.half, z + SIDE_ROOMS.half, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
     // The ribs standing out of the side walls, plinths and all.
@@ -3321,7 +3363,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, COMMAND, commandRoom, commandDoor, SIDE_ROOMS, sideRooms, roomDoor, keypad, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, ARCH, arch, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, COMMAND, commandRoom, commandDoor, SIDE_ROOMS, sideRooms, roomDoor, keypad, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
