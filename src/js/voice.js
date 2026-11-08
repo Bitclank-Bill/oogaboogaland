@@ -32,6 +32,8 @@
 // of its own, or one not yet placed here counts as past the radius; a page with no position of its own here plays everyone.
 // Movement updates the cutoff on the speaking meter's own 150 ms read; changing the range applies it immediately.
 // No distance fade or volume ramp crosses the cutoff. A local mute still wins.
+// Voice links (net.js `voiceLink`): the room also lists a linked partner wherever they are, and that voice plays at full
+// whatever the crossing or this visitor's hearing range. `inEarshot` says whether a player can be heard where both stand.
 // Levels and crossings (#392): between two levels of the main world, or along a crossing between two places
 // (voice-blend.js), the room also lets a player hear the other, and each voice plays at its equal-power share
 // (`BL.voiceBlend.gain`, from `net.state.blendT` and the speaker's step), gated by the hearing range, so the two fade
@@ -48,7 +50,7 @@
 // range can be heard at all: where the element's volume is honoured, or through a gain. Without Web Audio, the
 // element remains the playback path and volume tops out at 1 rather than offering a boost it cannot play.
 // Exports enable, listen, dropMic, preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, setMuted, toggle, restart, stop,
-// setPeers, subscribe, dispose, inspect, speaking, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades,
+// setPeers, subscribe, dispose, inspect, speaking, inEarshot, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades,
 // RADIUS_MIN, RADIUS_MAX and stats.
 (() => {
   "use strict";
@@ -202,7 +204,7 @@
   const nearness = (id) => {
     const s = BL.net.state, zone = s.zone, rec = BL.net.remotes.get(id);
     let share = 1;
-    if (s.blendTo || rec && rec.blendTo) {
+    if ((s.blendTo || rec && rec.blendTo) && BL.net.voiceLink(id) !== "linked") {
       if (!rec) return 0;
       share = BL.voiceBlend.gain(zone, s.blendTo, s.blendT, rec.zone, rec.blendTo, rec.blendK / BL.voiceBlend.STEPS);
     }
@@ -210,13 +212,22 @@
   };
   // Two zones a crossing joins share coordinates, so a voice across it is measured too.
   const withinRange = (id) => {
-    if (!stats.radius) return 1;
+    if (!stats.radius || BL.net.voiceLink(id) === "linked") return 1;
     const s = BL.net.state, zone = s.zone, me = s.self, rec = BL.net.remotes.get(id);
     if (me.zone !== zone) return 1;
     const frame = BL.voiceBlend.sameFrame;
     const across = rec && (frame(rec.zone, zone) || rec.zone === s.blendTo || rec.blendTo === zone);
     if (!across || rec.poseZone !== rec.zone) return 0;
     return falloff(Math.hypot(rec.x - me.x, rec.y - me.y, rec.z - me.z), stats.radius);
+  };
+  // Whether this visitor could hear player `id` where both stand now: a voice link, or one place by the room's rule
+  // (`sharesPlace` in worker/src/protocol.js) and inside the hearing range. For the Online Oogas panel's faded mark.
+  const inEarshot = (id) => {
+    if (BL.net.voiceLink(id) === "linked") return true;
+    const s = BL.net.state, rec = BL.net.remotes.get(id), B = BL.voiceBlend;
+    if (!rec || !withinRange(id)) return false;
+    const k = s.blendTo ? Math.max(1, Math.min(B.STEPS, Math.round(s.blendT * B.STEPS))) : 0;
+    return s.blendTo || rec.blendTo || B.world(s.zone) || B.world(rec.zone) ? B.shares(s.zone, s.blendTo, k, rec.zone, rec.blendTo, rec.blendK) : B.group(s.zone) === B.group(rec.zone);
   };
   const localVolume = (id) => preferences.get(id)?.volume ?? 1;
   const playVolume = (s) => stats.receiveLevel * s.near * s.inRange * localVolume(s.id);
@@ -802,5 +813,5 @@
   const inspect = () => ({ desired: desired.slice(), pulled: [...subs.keys()], publish: pubPc ? pubPc.connectionState : "none", receive: subPc ? subPc.connectionState : "none",
     playback: GAIN_PLAY ? "gain" : "element", context: audio ? audio.state : "none" });
 
-  BL.voice = { preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, enable, listen, dropMic, setMuted, toggle, restart, stop, setPeers, subscribe, dispose, inspect, speaking, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
+  BL.voice = { preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, enable, listen, dropMic, setMuted, toggle, restart, stop, setPeers, subscribe, dispose, inspect, speaking, inEarshot, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
 })();
