@@ -81,7 +81,10 @@
   // passage to `z0`, then an open-air ledge out to `ledge` with a railing and gate. `island` is the small loading island
   // the zipline runs down to, its top at `y` (`scene-arcade.js`'s walk and the ride both read this).
   const BLOCK_HALL = { x: 9.5, x0: 8, x1: 11, y: MEZZ.y, h: 4, z0: -34, ledge: -38, top: { x: 9.5, z: -36.6 }, stop: { x: 9.5, z: -79.5 }, sag: 1.4,
-    torches: [[8, -26.5, 1], [11, -29.5, -1], [8, -32.5, 1]], island: { x: 9.5, z: -86, y: -8, r: 9 } };
+    torches: [[8, -26.9, 1], [8, -29.87, 1], [11, -27.6, -1], [11, -30.2, -1]],
+    // The hall's walls: the four maps, [z, side], and three racks of the game's weapons, each a row [`gun` index, label].
+    pictures: [[-25.8, -1], [-28.9, 1], [-30.9, -1], [-33, -1]],
+    racks: [[-28.4, -1, [[0, "PAINT"], [1, "GRENADE"], [2, "ROCKET"]]], [-25.9, 1, [[3, "NET"], [4, "SNIPER"], [5, "GOLD AKS"]]], [-32, 1, [[6, "OOGA AK"], ["hook", "HOOK"], ["wallet", "WALLET"]]]], island: { x: 9.5, z: -86, y: -8, r: 9 } };
   // The games with cabinets, as the island names them: scene id, name, the marquee's words and badge, and the
   // colour of its screen's light.
   const GAMES = [

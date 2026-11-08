@@ -8025,6 +8025,9 @@ const gameRulesChecks = async () => {
       && !!beside && beside[0] > H.x1 && beside[0] < H.x1 + 1.5 && beside[1] + 0.7 < 6 && !L.posters.some(p => p[2] === A.HALL.back + 0.1 && p[0] > H.x0 && p[0] < H.x1)
       && A.HAUNT.z0 === -22 && A.HAUNT.z1 === -18 && A.HAUNT.y === A.MEZZ.y && A.HAUNT.h === 4 && A.HAUNT.end === 34,
       JSON.stringify({ H, posters: rallyPosters }));
+    const racked = H.racks.flatMap(([, , rows]) => rows.map(([id]) => id));
+    record("arcade block hall: three racks hold the game's nine weapons, each from its own held model",
+      racked.length === 9 && racked.filter(Number.isInteger).every((i, k) => i === k) && racked.includes("hook") && racked.includes("wallet") && H.pictures.length === 4, JSON.stringify(racked));
     // The zipline off the ledge: the survey over the scene's world, ledge to island, is clean and the ride ends on the island's top.
     const Z = BL.zipline, I = H.island, onIsle = (x, z) => Math.hypot(x - I.x, z - I.z) <= I.r;
     const q = { support: (x, z) => onIsle(x, z) ? I.y : z >= H.ledge - 0.5 ? H.y : NaN, clear: () => true, landable: (x, y, z) => onIsle(x, z) };

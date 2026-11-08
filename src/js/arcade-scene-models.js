@@ -1228,7 +1228,7 @@
     // The four maps framed along the walls, each drawn facing +z round its middle and stood out of its wall.
     const FW = 1.7, FH = 1.14;
     blockMaps.forEach(([sky, land, draw], k) => {
-      const z = -26.2 - k * 2.3, side = k % 2 ? 1 : -1, wall = side < 0 ? X0 + 0.14 : X1 - 0.14, turn = side < 0 ? Math.PI / 2 : -Math.PI / 2, art = geometry(), e = 0.25;
+      const [z, side] = BLOCK_HALL.pictures[k], wall = side < 0 ? X0 + 0.14 : X1 - 0.14, turn = side < 0 ? Math.PI / 2 : -Math.PI / 2, art = geometry(), e = 0.25;
       daubPoly(art, [[-FW / 2 + 0.06, -FH / 2 + 0.06], [FW / 2 - 0.06, -FH / 2 + 0.06], [FW / 2 - 0.06, FH / 2 - 0.06], [-FW / 2 + 0.06, FH / 2 - 0.06]], sky, 0.15);
       daubPoly(art, [[-0.72, -0.26], [0.72, -0.26], [0.5, -0.46], [-0.5, -0.46]], land, e, 0.002);
       draw(art, e);
@@ -1237,22 +1237,24 @@
       for (const yy of [-FH / 2, FH / 2]) round.push(at(J.log(-FW / 2 - 0.06, yy, 0, FW / 2 + 0.06, yy, 0, 0.045, "#5c3f25")));
       for (const xx of [-FW / 2, FW / 2]) round.push(at(J.log(xx, -FH / 2 - 0.06, 0, xx, FH / 2 + 0.06, 0, 0.045, "#5c3f25")));
     });
-    // The racks: a plank on two pegs, each holding one weapon laid across it: the rifle, the gold AK, the grappling hook and a wallet bomb.
-    const METAL = "#3a3d42", WOOD = "#7a5634", GOLD = "#e0b83a";
-    const WEAPONS = [
-      (g) => g.push(box({ w: 1.0, h: 0.06, d: 0.05, color: METAL, offset: { x: 0.08 } }), box({ w: 0.3, h: 0.11, d: 0.06, color: WOOD, offset: { x: -0.48, y: -0.02 } }), box({ w: 0.06, h: 0.16, d: 0.05, color: WOOD, offset: { x: -0.1, y: -0.1 } })),
-      (g) => g.push(box({ w: 0.86, h: 0.07, d: 0.05, color: GOLD, offset: { x: 0.06 } }), box({ w: 0.26, h: 0.12, d: 0.06, color: GOLD, offset: { x: -0.42, y: -0.02 } }), box({ w: 0.1, h: 0.22, d: 0.05, color: "#b8902a", offset: { x: 0.12, y: -0.14 } })),
-      (g) => g.push(box({ w: 0.5, h: 0.05, d: 0.05, color: WOOD, offset: { x: -0.1 } }), box({ w: 0.05, h: 0.26, d: 0.05, color: METAL, offset: { x: 0.2, y: 0.1 } }), box({ w: 0.2, h: 0.05, d: 0.05, color: METAL, offset: { x: 0.28, y: 0.22 } })),
-      (g) => g.push(box({ w: 0.42, h: 0.28, d: 0.1, color: "#5a3c22", offset: {} }), box({ w: 0.08, h: 0.08, d: 0.04, color: "#f7931a", emissive: 0.5, offset: { z: 0.06 } }))
-    ];
-    WEAPONS.forEach((build, k) => {
-      const z = -27.35 - k * 2.3, side = k % 2 ? -1 : 1, wall = side < 0 ? X0 + 0.16 : X1 - 0.16, turn = side < 0 ? Math.PI / 2 : -Math.PI / 2, g = [];
-      const at = (p) => moved(turnedY(p, turn), wall, Y + 1.55, z);
-      for (const px of [-0.42, 0.42]) props.push(at(box({ w: 0.07, h: 0.07, d: 0.2, color: TIMBER_DK, offset: { x: px, y: -0.14, z: 0.08 } })));
-      props.push(at(box({ w: 1.15, h: 0.07, d: 0.09, color: TIMBER_DK, offset: { y: -0.18, z: 0.14 } })));
-      build(g);
-      props.push(...g.map((p) => at(moved(p, 0, 0, 0.1))));
-    });
+    // The racks: the game's own weapons, the geometry its Oogas hold, laid along the wall on pegs over a small board
+    // naming each. Baked once into the hall's props.
+    const BM = BL.blockModels, { boundsOf } = BL.scene, RACK_W = 2.6, ROW = [0.75, 1.5, 2.25];
+    const sized = (g, k) => { const c = merge(g); for (let v = 0; v < c.verts.length; v++) c.verts[v] *= k; return c; };
+    const centredX = (g) => moved(g, -boundsOf(g).center[0], 0, 0);
+    const alongRack = (i, turn = Math.PI / 2) => centredX(turnedY(merge(BM.gun(i * 2)), turn));
+    const weapon = (id, label) => id === "hook" ? [centredX(sized(BL.cloudHopperModels.hookHead(), 1.4))] : id === "wallet" ? [centredX(sized(BM.walletDevice(0), 1.6))]
+      : label === "GOLD AKS" ? [moved(alongRack(id), -0.58, 0, 0), moved(alongRack(id, -Math.PI / 2), 0.58, 0, 0)] : [alongRack(id)];
+    for (const [z, side, rows] of BLOCK_HALL.racks) {
+      const wall = side < 0 ? X0 + 0.1 : X1 - 0.1, turn = side < 0 ? Math.PI / 2 : -Math.PI / 2, at = (g) => moved(turnedY(g, turn), wall, Y, z), inRack = [box({ w: RACK_W, h: 2.3, d: 0.05, color: TIMBER_DK, offset: { y: 1.45 } })];
+      rows.forEach(([id, label], r) => {
+        const y = ROW[r], tag = brushWord(geometry(), label, 0, y - 0.3, 0.09, 0.016, EARTH_CHALK, 0.35, 0.06);
+        for (const px of [-0.42, 0.42]) inRack.push(box({ w: 0.06, h: 0.06, d: 0.2, color: "#b8a04a", offset: { x: px, y: y - 0.12, z: 0.1 } }));
+        inRack.push(box({ w: Math.max(0.5, brushWidth(label, 0.09) + 0.14), h: 0.15, d: 0.04, color: TIMBER_LT, offset: { y: y - 0.3, z: 0.04 } }), tag);
+        for (const g of weapon(id, label)) inRack.push(moved(g, 0, y, 0.16));
+      });
+      props.push(at(merge(...inRack)));
+    }
     // The ledge's railing: short bamboo runs on posts down its sides and across its lip, the gate standing open in the
     // middle of the lip for the rope to pass.
     const rail = (ax, az, bx, bz) => {

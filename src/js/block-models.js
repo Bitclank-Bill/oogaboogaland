@@ -605,7 +605,7 @@
   const rack = variants((i) => merge(
     box({ w: 0.08, h: 0.7, d: 0.08, color: "#5a3a22", offset: { x: -0.35, y: 0.35 } }), box({ w: 0.08, h: 0.7, d: 0.08, color: "#5a3a22", offset: { x: 0.35, y: 0.35 } }),
     box({ w: 0.8, h: 0.06, d: 0.1, color: "#8a6440", offset: { y: 0.6 } }),
-    moved(turnedY(gun(8 + i), Math.PI / 2), 0, 0.7, 0)
+    moved(turnedY(merge(gun(8 + i)), Math.PI / 2), 0, 0.7, 0)
   ));
   // A zipline: a cable sagging a little between its anchors, in the team's colour, and a pole at the low end.
   const zipline = variants((k) => {
