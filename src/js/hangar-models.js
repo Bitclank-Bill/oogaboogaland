@@ -1065,7 +1065,7 @@
   // the floor (`decal`) and blue strips along it.
   const COMMAND = { x0: -18, x1: -6, front: HALL.front - LAYOUT.shell.face, back: HALL.front - LAYOUT.shell.face + 8, top: 4.2, sill: 0.95, lean: 0.35,
     glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a",
-    facade: { x0: -18.45, x1: -5.65, out: 0.45, lip: 0.22, frame: 0.5, rim: 0.15, body: "#5f6589", edge: "#767da6", light: "#9aa0c8", dark: "#2a2e40",
+    facade: { x0: -18.45, x1: -5.65, out: 0.45, lip: 0.22, frame: 0.5, rim: 0.15, body: "#3e4459", edge: "#4f566e", light: "#6c738e", dark: "#2a2e40",
       orange: "#f28a1c", blue: "#4fb3ff", yellow: "#f2b630", pipe: "#2b3550",
       outline: [[-5.65, 5.5], [-6.1, 5.95], [-8.3, 5.95], [-8.9, 5.35], [-9.95, 5.35], [-10.6, 6.0], [-16.7, 6.0], [-17.35, 5.35], [-18.0, 5.35],
         [-18.15, 5.62], [-18.3, 5.62], [-18.45, 5.47]],
