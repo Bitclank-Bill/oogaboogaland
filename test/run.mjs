@@ -26388,6 +26388,7 @@ const playersColumnChecks = async () => {
     const context = { window, document, MutationObserver: class { observe() {} }, localStorage: { getItem: () => null, setItem() {} } };
     runInNewContext(await readFile(join(root, "src/js/routes.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/zone-map.js"), "utf8"), context);
+    runInNewContext(await readFile(join(root, "src/js/voice-blend.js"), "utf8"), context);
     Object.assign(window.BL, {
       net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" } }, remotes,
         subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {} },

@@ -158,7 +158,7 @@ test("room: a level reaches the next level's voices and everyone else's pages, s
   assert.deepEqual(last(mover, "voice").peers, [1, 2], "a little way down: HQ's level too");
   assert.deepEqual(last(low, "voice").peers, [3], "and HQ's level hears the mover");
   assert.deepEqual(last(islander, "blend"), { t: "blend", id: 3, to: "hq", k: 4 }, "every other page gets the step");
-  assert.equal(count(mover, "blend"), 0, "not the mover's own");
+  assert.equal(mover.sent.filter((m) => m.t === "blend" && m.id === 3).length, 0, "not the mover's own");
   const lists = count(mover, "voice");
   h.advance(1000);
   h.send(mover, { t: "blend", to: "hq", k: 12 });
