@@ -918,6 +918,7 @@
     const farOut = !haunted && t.z < HALL.back + 5 && t.x > BH.x0 - 6 && t.x < BH.x1 + 5;
     if (!haunted && camera.far !== (farOut ? 260 : 60)) camera.far = farOut ? 260 : 60;
     bhSky.visible = bhIsle.visible = farOut;
+    if (!haunted) { RENDER_OPTS.fogNear = farOut ? 140 : 20; RENDER_OPTS.fogFar = farOut ? 420 : 42; }
     if (haunted) {
       for (const key in NIGHT_TONES) for (let i = 0; i < 3; i++) TONES[key][i] = NIGHT_TONES[key][i];
       RENDER_OPTS.directStrength = CAVE.directStrength; RENDER_OPTS.ambientFloor = CAVE.ambientFloor;
@@ -1091,7 +1092,7 @@
     const hall = Math.max(Math.abs(x) + r - SIDE_FACE, BACK_FACE + r - z, Math.min(z + r - FRONT_FACE, Math.abs(x) + r - JAMB));
     if (feet < HAUNT.y - 1) return hall;
     // Block Frenzy's hall off the deck's back wall, held off its walls, out to the ledge's railing and gate.
-    const blockPass = Math.max(BH.x0 + BH_SIDE + r - x, x + r - BH.x1 + BH_SIDE, BH.ledge + 0.15 + r - z, z + r - HALL.back - 0.7);
+    const blockPass = Math.max(BH.x0 + BH_SIDE + r - x, x + r - BH.x1 + BH_SIDE, BH.ledge + 0.15 + r - z, z + r - HALL.back - 1.5);
     const d = Math.hypot(x - ARENA.x, z - ARENA.z), fenced = fenceK > 0.15;
     let arena = Math.max(d + r - ARENA.r + ARENA_SIDE, gameMode ? -Infinity : GHOST_KEEP + r - d, fenced ? FENCE_X + FENCE_GAP + r - x : -Infinity);
     for (let i = 0; i < totemsAt.length; i++) arena = Math.max(arena, AM.ARENA_TOTEMS.keep + r - Math.hypot(x - totemsAt[i].x, z - totemsAt[i].z));
@@ -2113,7 +2114,7 @@
     arcadeScene.input = input;
     arcadeScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      arcade: { screens, crowd, walkers, bots, spin, play, open, stations, carnival, nearStation, supportAt, slide: SLIDE, railSitter, walkable: walkableFor, flyable: flyableFor, sightClear, pointHidden, blocks, audio, staff, life, get frame() { return shownFrame; } },
+      arcade: { get zipline() { return zipline; }, screens, crowd, walkers, bots, spin, play, open, stations, carnival, nearStation, supportAt, slide: SLIDE, railSitter, walkable: walkableFor, flyable: flyableFor, sightClear, pointHidden, blocks, audio, staff, life, get frame() { return shownFrame; } },
       // HALLOWEEN: the arena's hunt (its herald's until it has loaded).
       get halloween() { return ghosts ? ghosts.debug : ghostEntry && ghostEntry.debug; },
       get arena() { return { armed, inArena, zone: zoneNow, fence: fenceK, gameMode, along: hallwayAlong, hearing: huntHearing, blendTo: BL.net.state.blendTo, blendT: BL.net.state.blendT }; }

@@ -7914,7 +7914,7 @@ const gameRulesChecks = async () => {
     // The jackpot wheel, from arcade-models.js and its scene half on the builders they load with: the house wins slowly, and every
     // wedge, from a turn at rest and one far round after many spins, stops under the clapper wherever in it the spin
     // aims, after its whole turns and less than one more.
-    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "arcade-cabinets", "haunt-models", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
     // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
     const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});
@@ -8011,7 +8011,9 @@ const gameRulesChecks = async () => {
       && c.game === -1 && c.scoreId === A.RETRO[k].scoreId && BL.highscoreRules.games[A.RETRO[k].id].machines.includes(c.scoreId));
     const gameOwn = A.GAMES.every((g, k) => cabs.filter(c => c.game === k).length === 1) && cabs.every(c => c.retro >= 0 || A.GAMES[c.game]);
     const byId = (id) => cabs.find(c => c.game === A.GAMES.findIndex(g => g.id === id));
-    const anchors = BL.arcadeCabinets.entries.slice(0, 4).map((e, i) => { const a = (i - 1.5) * 0.265, turn = -a; return Math.abs(e.x - (8 * Math.sin(a) + Math.sin(turn) * 1.25)) < 1e-9 && e.y === 0.36; });
+    const cabinetsWorld = {};
+    runInNewContext(readFileSync(new URL("../src/js/arcade-cabinets.js", import.meta.url), "utf8"), cabinetsWorld);
+    const anchors = cabinetsWorld.BL.arcadeCabinets.entries.slice(0, 4).map((e, i) => { const a = (i - 1.5) * 0.265, turn = -a; return Math.abs(e.x - (8 * Math.sin(a) + Math.sin(turn) * 1.25)) < 1e-9 && e.y === 0.36; });
     const placed = stage.length === 4 && !A.GAMES.some(g => g.id === "block") && byId("cloud-hopper") === cabs[0] && byId("race").service && byId("race").z === retroRows[0].z && anchors.every(Boolean);
     record("arcade cabinets: the stage is back to four cabinets on rock's arc and anchors, every retro cabinet keeps its own game and ID, and Block Frenzy has no cabinet",
       retroOwn && gameOwn && placed, JSON.stringify({ stage: stage.length, anchors, games: A.GAMES.map(g => g.id) }));
@@ -18629,7 +18631,7 @@ const arcadeHandrail = { name: "arcade handrail slide", why: "playthrough: Space
 const arcadeBlockHall = { name: "arcade block hall", why: "rule: an Ooga walks the hall from the deck to the cliff ledge and only there is offered the zipline", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, A = BL.arcadeModels, H = A.BLOCK_HALL, actor = B.cavemen.get('portlandhodl');
-    let ok = true, x = H.x, z = -20;
+    let ok = true, x = H.x - 0.6, z = -20;
     while (z > H.ledge + 0.8) { const nz = z - 0.2; ok = ok && B.arcade.walkable(x, z, x, nz, H.y, actor.bodyHeight, actor) && B.arcade.supportAt(x, nz, H.y) === H.y; z = nz; }
     const past = B.arcade.walkable(x, H.ledge + 0.5, x, H.ledge - 0.6, H.y, actor.bodyHeight, actor);
     return { ok, z, past, wall: B.arcade.walkable(H.x0 - 0.3, -28, H.x0 - 0.3, -28.2, H.y, actor.bodyHeight, actor) };
