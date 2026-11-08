@@ -103,7 +103,7 @@
     joined: 1792943472,
     lastCommit: 1792943472,
     look: {
-      face: "beard", noPupils: true, height: 1.04, hatY: 13,
+      face: "beard", noPupils: true, height: 1.04, hatY: 13, petRidesHat: true,
       skin: "#d99a74", hair: "#3b3430", fur: "#a97f52",
       portrait: { min: [-1, -2, 0], max: [7, 6, 8] }
     },
