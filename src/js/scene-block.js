@@ -445,6 +445,7 @@
     tool = "paint";
     updateTools();
     lockMouse();
+    SIM.parachuteIn(sim);
     center(`BUILD ${Math.ceil(sim.prep)}`, 0);
     notice(COARSE ? "Fortify! Crate drops one · walk into crates to push" : "Fortify! B drops a crate · F lifts and stacks", 0);
     updateStrip();
