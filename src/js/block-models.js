@@ -85,27 +85,21 @@
   // middle as the sim's `isleDepth` has it (which holds bodies out of it) with drips hanging under it; and the map's
   // terrain (`rocks`: mounds with grass on top, cave walls and roofs, outcrops) in the same rock. Half-metre cells, so
   // the terrain's boxes, which keep to a half-metre grid, mesh exactly as the sim stands on them.
-  const ISLE_CELL = 0.5;
+  const ISLE_CELL = 0.5, KEEL_CELL = 1, RIM_DEPTH = 3;
   const isleHash = (x, y, z) => { let h = Math.imul(x * 374761393 + y * 668265263 + z * 2147483647 | 0, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ h >>> 16) >>> 0) / 4294967296; };
+  const ISLE_P = { grass: 1, grassLight: 2, grassDark: 3, stone: 5, stoneDark: 6, dirt: 8 }, ISLE_BANDS = [ISLE_P.dirt, ISLE_P.stoneDark, ISLE_P.dirt, ISLE_P.stone];
+  const isleRock = (ix, iy, iz, per) => ISLE_BANDS[((Math.floor((iy + per * 1.5 * Math.sin(ix * 0.21 + iz * 0.13)) / (3 * per)) % 4) + 4) % 4];
+  // The top of the island: the rim's first `RIM_DEPTH` metres of cliff and the terrain.
   const isle = variants((mapIndex) => {
-    const M = SIM.ARENAS[SIM.MAPS[mapIndex]], T = BL.terrain, P = { grass: 1, grassLight: 2, grassDark: 3, stone: 5, stoneDark: 6, dirt: 8 };
-    const C = ISLE_CELL, nx = Math.round(M.W * 2 / C), nz = Math.round(M.L * 2 / C), TOP = Math.ceil((SIM.CONFIG.ISLE_DEPTH + 4) / C);
+    const M = SIM.ARENAS[SIM.MAPS[mapIndex]], T = BL.terrain, P = ISLE_P, C = ISLE_CELL, nx = Math.round(M.W * 2 / C), nz = Math.round(M.L * 2 / C), TOP = Math.round(RIM_DEPTH / C);
     let high = 0;
     for (const b of M.rocks || []) high = Math.max(high, b[4]);
     const grid = T.makeGrid(nx, TOP + Math.ceil(high / C) + 1, nz);
-    const BANDS = [P.dirt, P.stoneDark, P.dirt, P.stone];
-    const rockAt = (ix, iy, iz) => {
-      const band = Math.floor((iy + 1.5 * Math.sin(ix * 0.21 + iz * 0.13)) / 3);
-      return isleHash(ix, iy, iz) < 0.12 ? P.stoneDark : BANDS[((band % 4) + 4) % 4];
-    };
     for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
-      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C, edge = Math.min(M.W - Math.abs(x), M.L - Math.abs(z));
-      // Drips under the keel, away from the very edge so the cliff stays clean.
-      const drip = edge > 3 && isleHash(ix, 7, iz) < 0.05 ? 1 + isleHash(ix, 9, iz) * 4 : 0;
-      const depth = Math.round((SIM.isleDepth(x, z, M) + drip) / C), patch = Math.sin(x * 0.35) + Math.cos(z * 0.3);
+      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C, depth = Math.min(TOP, Math.round(SIM.isleDepth(x, z, M) / C)), patch = Math.sin(x * 0.35) + Math.cos(z * 0.3);
       for (let iy = TOP - depth; iy < TOP; iy++) {
         const k = TOP - 1 - iy;
-        grid.set(ix, iy, iz, k === 0 ? (patch > 0.9 ? P.grassLight : patch < -0.9 ? P.grassDark : P.grass) : k <= 2 ? P.dirt : rockAt(ix, iy, iz));
+        grid.set(ix, iy, iz, k === 0 ? (patch > 0.9 ? P.grassLight : patch < -0.9 ? P.grassDark : P.grass) : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
       }
     }
     for (const b of M.rocks || []) {
@@ -113,11 +107,22 @@
       const x0 = Math.round((b[0] + M.W) / C), x1 = Math.round((b[1] + M.W) / C), z0 = Math.round((b[2] + M.L) / C), z1 = Math.round((b[3] + M.L) / C);
       const y0 = TOP + Math.round((b[5] || 0) / C), y1 = TOP + Math.round(b[4] / C);
       for (let ix = Math.max(0, x0); ix < Math.min(nx, x1); ix++) for (let iz = Math.max(0, z0); iz < Math.min(nz, z1); iz++) for (let iy = y0; iy < y1; iy++) {
-        grid.set(ix, iy, iz, grassy && iy === y1 - 1 ? P.grass : grassy && iy === y1 - 2 ? P.dirt : rockAt(ix, iy, iz));
+        grid.set(ix, iy, iz, grassy && iy === y1 - 1 ? P.grass : grassy && iy === y1 - 2 ? P.dirt : isleRock(ix, iy, iz, 1));
       }
     }
-    const geo = T.gridGeometry(grid, { unit: C, palette: T.PALETTE, origin: { x: -M.W, y: -TOP * C, z: -M.L } });
-    return geo;
+    return T.gridGeometry(grid, { unit: C, palette: T.PALETTE, origin: { x: -M.W, y: -TOP * C, z: -M.L } });
+  });
+  // The keel under the rim, metre cells down to the sim's `isleDepth`, with drips hanging from it.
+  const keel = variants((mapIndex) => {
+    const M = SIM.ARENAS[SIM.MAPS[mapIndex]], T = BL.terrain, C = KEEL_CELL, nx = Math.round(M.W * 2 / C), nz = Math.round(M.L * 2 / C), H = Math.ceil(SIM.CONFIG.ISLE_DEPTH + 5 - RIM_DEPTH);
+    const grid = T.makeGrid(nx, H, nz);
+    for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
+      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C, edge = Math.min(M.W - Math.abs(x), M.L - Math.abs(z));
+      const drip = edge > 3 && isleHash(ix, 7, iz) < 0.07 ? 1 + Math.floor(isleHash(ix, 9, iz) * 4) : 0;
+      const depth = Math.round(SIM.isleDepth(x, z, M) - RIM_DEPTH) + drip;
+      for (let iy = H - depth; iy < H; iy++) grid.set(ix, iy, iz, isleRock(ix, iy, iz, 0.5));
+    }
+    return T.gridGeometry(grid, { unit: C, palette: T.PALETTE, origin: { x: -M.W, y: -RIM_DEPTH - H * C, z: -M.L } });
   });
   const arena = variants((mapIndex) => {
     const M = SIM.ARENAS[SIM.MAPS[mapIndex]], town = M.id === "town", jungle = M.id === "jungle", haunted = M.id === "haunted", parts = [];
@@ -840,5 +845,5 @@
     for (let y = 0.15; y <= top; y += 0.3) parts.push(box({ w, h: 0.05, d: 0.05, color: "#b0905a", offset: { y } }));
     return merge(...parts);
   });
-  BL.blockModels = { isle, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { isle, keel, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

@@ -51,7 +51,7 @@
     TRAMP_R: 1.0, BOUNCE: 13.5, STEP_UP: 0.45, FIRE_R: 0.95, BURN_HOPS: 3, BURN_SLOW: 0.25,
     JET_FUEL: 2.6, JET_REFILL: 3, JET_ACCEL: 27, JET_RISE: 6, JET_CEILING: 15,
     GORILLA_SPEED: 3.2, GORILLA_CHARGE: 6.4, GORILLA_SIGHT: 7, GORILLA_LEASH: 11, GORILLA_WANDER: 5, GORILLA_R: 0.75,
-    GORILLA_GRAB_R: 1.05, GRAB_HITS: 5, GRAB_MAX_S: 6, GORILLA_REST: 3, GORILLA_STUN: 1.6,
+    GORILLA_GRAB_R: 1.05, GRAB_HITS: 5, GRAB_MAX_S: 6, GORILLA_REST: 6, GORILLA_STUN: 1.6,
     GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 3.5, HOMER_SEEK: 20, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
     POWER_R: 1.1, POWER_RESPAWN: 20, BOOTS_S: 6, BOOTS: 1.5, HALVING_S: 12, COLD_S: 12, LASER_S: 25, BEAM_S: 3, BEAM_LEN: 30, BEAM_R: 0.45,
     // Free Hardware Wallets (DSB Land's VAC 2, brought over): a vending machine each side; a device taken goes off when
@@ -68,7 +68,16 @@
     // edge (it no longer stands on the island and is kept out of its rock); one that falls past `FALL_FLOOR` comes back
     // in its own block zone. A block carried over the edge drops at the edge and goes home after `EDGE_HOME_S`. The
     // rock under the island is `ISLE_EDGE` deep at the edge and deepens toward the middle, `ISLE_DEPTH` at most.
-    RIM: 0.6, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14
+    RIM: 0.6, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14,
+    // The grappling hook (Cloud Hopper's, a special weapon here): `HOOKS` a map, hidden at seeded spots from the map's
+    // hand-checked `hookSpots`. It flies out at `HOOK_FLY`, up to `HOOK_RANGE`; a bite on rock pulls the Ooga toward it at
+    // up to `HOOK_PULL` (`HOOK_ACCEL` to get there), on a rope that only shortens, so it swings under the bite; crouch
+    // held stops the pull and leaves the swing. It ends `HOOK_MIN` from the bite or after `HOOK_HOLD_S`, and the Ooga
+    // keeps its speed for `HOOK_FLING_S` (the air's usual steering held off). A
+    // rival carrying a block has the block yanked out of their hands after `HOOK_WARN`. A gorilla is stunned for
+    // `HOOK_STUN_S`, dropping its captive, and can't be hook-stunned again for `HOOK_STUN_COOL`. `HOOK_COOL` between throws.
+    HOOKS: 2, HOOK_R: 1.1, HOOK_RANGE: 24, HOOK_FLY: 60, HOOK_MIN: 1.6, HOOK_HOLD_S: 4, HOOK_COOL: 2.5, HOOK_WARN: 0.35,
+    HOOK_HIT_R: 0.7, HOOK_STUN_S: 2.5, HOOK_STUN_COOL: 8, HOOK_YANK_LIFT: 6, HOOK_HOP: 4, HOOK_AIR: 0.12, HOOK_PULL: 16, HOOK_ACCEL: 45, HOOK_FLING_S: 0.8, HOOK_YANK_COOL: 12
   };
   // The tools: speed, upward lob, gravity, life in seconds, hit radius, burst radius (0 for none), cooldown, and how
   // many a full refill holds (0 for no limit).
@@ -616,7 +625,8 @@
       waiting: false, stamina: 4, tired: false, sprinting: false, rest: 0, botJump: false, jump2At: 0, tries: 0, progT: 0, lastD: 0, netted: 0, grenade: 0, rocket: 0, net: 0, sniper: 0, crates: 0, holding: false, bonked: false,
       climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabHits: 0, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       wallet: -1, knock: 0, soot: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, vendGo: 0, vendI: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
-      detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0
+      detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
+      hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
     }));
     const flags = {};
     for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0, homeT: 0 };
@@ -633,9 +643,10 @@
     // the rival it hit (`stuck`, its back); the machines' cool-downs.
     const wallets = Array.from({ length: CONFIG.WALLET_CAP }, () => ({ live: false, state: 0, owner: -1, team: null, look: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fuse: 0, spin: 0, stuck: -1 }));
     const vends = A.vends.map(([x, z]) => ({ x, z, dark: 0 }));
+    const hooks = Array.from({ length: CONFIG.HOOKS }, () => ({ state: 0, x: 0, y: 0, z: 0, holder: -1 }));
     const events = Array.from({ length: CONFIG.MAX_EVENTS }, () => ({ type: "", team: null, actor: -1, by: -1, x: 0, y: 0, z: 0 }));
     const weather = { kind: "clear", left: 0, angle: 0, strength: 0, target: 0, x: 0, z: 0 };
-    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, gorillas, ghosts, wallets, vends, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
+    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, gorillas, ghosts, wallets, vends, hooks, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
     reset(sim);
     return sim;
   };
@@ -694,6 +705,7 @@
       a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabHits = 0;
       a.sniper = 0; a.climbing = a.riding = false; a.zipT = 0; a.flight = 0; a.boots = a.laser = a.beam = a.burnt = a.slip = 0; a.gold = false; a.akMag = CONFIG.AK_MAG; a.akReload = 0; a.monkeys = 0;
       a.wallet = -1; a.knock = a.soot = a.vendGo = 0; a.ride = a.rider = a.calling = 0;
+      a.hook = a.hk = a.hookT = a.hookLen = a.hCool = a.flingT = 0; a.hookTarget = -1; a.hookHold = false;
       a.route = ""; a.routeT = a.jetT = a.hopT = a.crateT = a.stacks = a.crateGo = a.routeBan = 0; a.botClimb = false;
       refill(a);
       a.crates = CONFIG.CRATE_STOCK;
@@ -714,6 +726,11 @@
     for (const w of sim.wallets) w.live = false;
     for (const g of sim.ghosts) { g.x = g.wx = g.hx; g.z = g.wz = g.hz; g.state = 0; g.t = 0; }
     for (const v of sim.vends) v.dark = 0;
+    if (sim.hooks.length && ARENA.hookSpots.length) {
+      // One hook hidden in each half, at the same seeded spot turned half round, so neither side is favoured.
+      const k = Math.floor(sim.rng() * ARENA.hookSpots.length);
+      for (let i = 0; i < sim.hooks.length; i++) placeHook(sim.hooks[i], ARENA.hookSpots[k], i % 2 === 1);
+    }
     for (const g of sim.gorillas) { g.x = g.wx = g.hx; g.z = g.wz = g.hz; g.vx = g.vz = 0; g.state = G_ROAM; g.t = 0; g.holding = -1; g.held = 0; }
     sim.goldLeft = CONFIG.GOLD_GUNS;
     // Each pair of spots starts with the same power (boots, laser eyes, then the halving or cold storage by the seed);
@@ -731,6 +748,8 @@
     sim.winner = null;
     return sim;
   };
+  // A grappling hook lying hidden at a spot [x, y, z] (`turnedSpot` turns it half round, into red's half).
+  const placeHook = (h, spot, turnedSpot) => { h.state = 0; h.holder = -1; h.x = turnedSpot ? -spot[0] : spot[0]; h.y = spot[1]; h.z = turnedSpot ? -spot[2] : spot[2]; };
   const homeFlag = (f) => {
     f.state = "home";
     f.x = ARENA.stands[f.team].x;
@@ -1185,6 +1204,115 @@
       g.heading = Math.atan2(g.vx, g.vz);
     }
   };
+  // ---- The grappling hook ----
+  // Cloud Hopper's hook as a special weapon: its head and rope models, its flight (`BL.grapple.toward`), plus a rope that
+  // swings (`BL.grapple.tether`). `hk` is what the actor's hook is doing: 0 in the hand, 1 flying out, 2 bitten into
+  // something and reeling the Ooga in, 3 latched on a block carrier, 4 coming back.
+  const H_OUT = 1, H_BIT = 2, H_YANK = 3, H_BACK = 4;
+  const chestY = (a) => a.y + (a.crouch ? CONFIG.CROUCH_H - 0.25 : CONFIG.SHOT_Y);
+  // Throw `id`'s hook along `yaw` and `pitch`; thrown already and bitten, the same press lets go. False when there is
+  // no hook, it is recharging or the Ooga can't.
+  const grapple = (sim, id = 0, yaw = sim.actors[id].heading, pitch = 0.2) => {
+    use(sim);
+    const a = sim.actors[id];
+    if (sim.over || !a.hook) return false;
+    if (a.hk === H_BIT || a.hk === H_YANK) { hookBack(sim, a, "hookrelease"); return true; }
+    if (a.hk || a.hCool > 0 || sim.prep > 0 || a.splat > 0 || a.trapped > 0 || a.grabbed || a.riding || a.flight || a.climbing || a.holding) return false;
+    const c = Math.cos(pitch), dx = Math.sin(yaw) * c, dy = Math.sin(pitch), dz = Math.cos(yaw) * c, oy = chestY(a);
+    a.hk = H_OUT; a.heading = yaw; a.hookT = 0;
+    a.hookTip.x = a.x + dx * 0.5; a.hookTip.y = oy + dy * 0.5; a.hookTip.z = a.z + dz * 0.5;
+    a.hookEnd.x = a.x + dx * CONFIG.HOOK_RANGE; a.hookEnd.y = oy + dy * CONFIG.HOOK_RANGE; a.hookEnd.z = a.z + dz * CONFIG.HOOK_RANGE;
+    emit(sim, "hookthrow", a.team, id, a.x, oy, a.z);
+    return true;
+  };
+  // Let go, or a miss: the head flies back to the hand and the hook recharges.
+  const hookBack = (sim, a, why) => {
+    if (a.hk === H_BIT && !a.grounded) a.flingT = CONFIG.HOOK_FLING_S;
+    a.hk = H_BACK; a.hookTarget = -1; a.hCool = CONFIG.HOOK_COOL;
+    emit(sim, why, a.team, a.id, a.hookTip.x, a.hookTip.y, a.hookTip.z);
+  };
+  const stepHook = (sim, a, dt) => {
+    const tip = a.hookTip, G = BL.grapple;
+    if (a.hk === H_BACK) { if (G.toward(tip, a.x, chestY(a), a.z, CONFIG.HOOK_FLY * dt)) a.hk = 0; return; }
+    if (a.splat > 0 || a.trapped > 0 || a.grabbed || a.riding || a.flight || a.climbing) { hookBack(sim, a, "hookrelease"); return; }
+    if (a.hk === H_OUT) {
+      const done = G.toward(tip, a.hookEnd.x, a.hookEnd.y, a.hookEnd.z, CONFIG.HOOK_FLY * dt);
+      // A rival carrying a block: latched, a moment's warning, then the block is yanked out of their hands.
+      for (const b of sim.actors) {
+        if (b.team === a.team || !b.carrying || b.trapped > 0) continue;
+        const dy = tip.y - b.y;
+        if (dy > -0.2 && dy < heightOf(b) + 0.3 && (tip.x - b.x) ** 2 + (tip.z - b.z) ** 2 < CONFIG.HOOK_HIT_R * CONFIG.HOOK_HIT_R) {
+          a.hk = H_YANK; a.hookTarget = b.id; a.hookT = 0;
+          emit(sim, "hookwarn", b.team, b.id, b.x, b.y + 1.2, b.z, a.id);
+          return;
+        }
+      }
+      for (let i = 0; i < sim.gorillas.length; i++) {
+        const g = sim.gorillas[i];
+        if (tip.y > 2.5 || (tip.x - g.x) ** 2 + (tip.z - g.z) ** 2 > 1) continue;
+        // A hooked gorilla is stunned and drops its captive, with a cooldown before the hook can do that again.
+        if (g.hookCool > 0) emit(sim, "hookbounce", a.team, a.id, g.x, 1.6, g.z);
+        else { stunGorilla(sim, g, a.id); g.t = CONFIG.HOOK_STUN_S; g.hookCool = CONFIG.HOOK_STUN_COOL; emit(sim, "gorillahooked", a.team, a.id, g.x, 1.6, g.z); }
+        hookBack(sim, a, "hookrelease");
+        return;
+      }
+      if (solidAt(tip.x, tip.y, tip.z)) {
+        a.hk = H_BIT; a.hookT = 0; a.hookLen = Math.hypot(tip.x - a.x, tip.y - chestY(a), tip.z - a.z);
+        if (a.grounded) { a.vy = CONFIG.HOOK_HOP; a.grounded = false; a.jumps = 1; }
+        emit(sim, "hookbite", a.team, a.id, tip.x, tip.y, tip.z);
+      } else if (done) hookBack(sim, a, "hookmiss");
+      return;
+    }
+    if (a.hk === H_YANK) {
+      const b = sim.actors[a.hookTarget];
+      tip.x = b.x; tip.y = b.y + 1.2; tip.z = b.z;
+      if (!b.carrying || Math.hypot(b.x - a.x, b.z - a.z) > CONFIG.HOOK_RANGE + 2) { hookBack(sim, a, "hookrelease"); return; }
+      if ((a.hookT += dt) < CONFIG.HOOK_WARN) return;
+      const f = sim.flags[b.carrying], dx = a.x - b.x, dz = a.z - b.z, dist = Math.hypot(dx, dz) || 1;
+      f.state = "flying"; f.carrier = null; f.thrower = b.id; f.t = 0;
+      f.x = b.x; f.y = b.y + 1.4; f.z = b.z;
+      // Out of the hands and toward the one who yanked it: it lands most of the way, near enough to catch.
+      const air = 2 * CONFIG.HOOK_YANK_LIFT / CONFIG.PASS_GRAVITY, speed = dist * 0.85 / air;
+      f.vx = dx / dist * speed; f.vz = dz / dist * speed; f.vy = CONFIG.HOOK_YANK_LIFT;
+      b.carrying = null;
+      emit(sim, "yank", f.team, a.id, b.x, b.y + 1.4, b.z, b.id);
+      hookBack(sim, a, "hookrelease");
+      // A yank is a big swing: longer to recharge than a pull.
+      a.hCool = CONFIG.HOOK_YANK_COOL;
+      return;
+    }
+    // Bitten: pulled toward the bite (Cloud Hopper's pull speed) until there, or too long has passed. The rope only ever
+    // shortens, and `tether` holds the Ooga to it, so whatever speed it has across the rope swings it.
+    const dx = tip.x - a.x, dy = tip.y - chestY(a), dz = tip.z - a.z, d = Math.hypot(dx, dy, dz);
+    if ((a.hookT += dt) > CONFIG.HOOK_HOLD_S || d < CONFIG.HOOK_MIN + 0.4) { hookBack(sim, a, "hookrelease"); return; }
+    a.hookLen = Math.min(a.hookLen, d);
+    if (a.hookHold) return;
+    const want = d * G.pullSpeed(d, CONFIG.HOOK_PULL), closing = (a.vx * dx + a.vy * dy + a.vz * dz) / d;
+    if (closing < want) { const add = Math.min(want - closing, CONFIG.HOOK_ACCEL * dt) / d; a.vx += dx * add; a.vy += dy * add; a.vz += dz * add; }
+  };
+  // Back into hiding, at a seeded spot from the map's list in either half (not the one the other hook holds).
+  const hideHook = (sim, h) => {
+    const n = ARENA.hookSpots.length * 2;
+    for (let tries = 0; tries < 8; tries++) {
+      const k = Math.floor(sim.rng() * n), spot = ARENA.hookSpots[k >> 1], turnedSpot = (k & 1) === 1;
+      const sx = turnedSpot ? -spot[0] : spot[0], sz = turnedSpot ? -spot[2] : spot[2];
+      let free = true;
+      for (const o of sim.hooks) if (o !== h && o.state === 0 && o.x === sx && o.z === sz) free = false;
+      if (free || tries === 7) { placeHook(h, spot, turnedSpot); break; }
+    }
+    emit(sim, "hookhide", null, -1, h.x, h.y, h.z);
+  };
+  // Picking up a hidden hook: walk over it.
+  const touchHooks = (sim, a) => {
+    if (a.hook || sim.prep > 0) return;
+    for (let i = 0; i < sim.hooks.length; i++) {
+      const h = sim.hooks[i];
+      if (h.state !== 0 || Math.abs(a.y - h.y) > 0.8 || (a.x - h.x) ** 2 + (a.z - h.z) ** 2 > CONFIG.HOOK_R * CONFIG.HOOK_R) continue;
+      h.state = 1; h.holder = a.id; a.hook = i + 1; a.hk = 0; a.hCool = 0;
+      emit(sim, "hookget", a.team, a.id, h.x, h.y, h.z);
+      return;
+    }
+  };
   // ---- Free Hardware Wallets ----
   // The machine actor `a` stands at with one ready, or null.
   const nearVend = (sim, a) => {
@@ -1266,6 +1394,17 @@
       if (!holder.gold || thief.gold || thief.team === holder.team) continue;
       holder.gold = false; thief.gold = true;
       emit(sim, "goldsteal", thief.team, thief.id, holder.x, holder.y + 1, holder.z, holder.id);
+    }
+    // So does a grappling hook: the same rule as the golden pair.
+    for (const w of chain) {
+      if (w.state !== 3 || w.stuck < 0 || w.owner < 0) continue;
+      const holder = sim.actors[w.stuck], thief = sim.actors[w.owner];
+      if (!holder.hook || thief.hook || thief.team === holder.team) continue;
+      if (holder.hk) hookBack(sim, holder, "hookrelease");
+      holder.hk = 0;
+      thief.hook = holder.hook; holder.hook = 0;
+      sim.hooks[thief.hook - 1].holder = thief.id;
+      emit(sim, "hooksteal", thief.team, thief.id, holder.x, holder.y + 1, holder.z, holder.id);
     }
     for (const g of sim.gorillas) if (g.state !== G_STUN && (g.x - x) ** 2 + (g.z - z) ** 2 < r * r) stunGorilla(sim, g, by);
     for (const g of sim.ghosts) if (g.state !== 2 && (g.x - x) ** 2 + (g.z - z) ** 2 < r * r) popGhost(sim, g, by);
@@ -1725,7 +1864,7 @@
       for (const b of sim.actors) {
         if (b.team === a.team || !open(b)) continue;
         // A Golden AK holder counts as nearer: stick it on them to take the pair.
-        const dd = ((b.x - a.x) ** 2 + (b.z - a.z) ** 2) * (b.gold && !a.gold ? 0.4 : 1);
+        const dd = ((b.x - a.x) ** 2 + (b.z - a.z) ** 2) * ((b.gold && !a.gold) || (b.hook && !a.hook) ? 0.4 : 1);
         if (dd < best && dd > 1 && clearLine(a.x, a.z, b.x, b.z, 0.05, 2)) { best = dd; t = b; }
       }
       if (t && a.cooldown <= 0) {
@@ -1736,7 +1875,7 @@
     }
     if (a.carrying || a.holding || sim.prep > 0) return;
     if (nearVend(sim, a) && (a.vendGo > 0 || sim.rng() < 0.3)) { takeWallet(sim, a.id); a.vendGo = 0; return; }
-    const goldOut = sim.actors.some((b) => b.gold && b.team !== a.team) && !a.gold;
+    const goldOut = sim.actors.some((b) => b.team !== a.team && ((b.gold && !a.gold) || (b.hook && !a.hook)));
     if (a.vendGo <= 0 && sim.rng() < dt * (goldOut ? 0.3 : 0.05)) {
       for (let i = 0; i < sim.vends.length; i++) {
         const v = sim.vends[i];
@@ -1744,8 +1883,29 @@
       }
     }
   };
+  // A bot's hook: at a rival carrying a block, or a gorilla holding a teammate, in reach and in sight.
+  const botHook = (sim, a) => {
+    const range = CONFIG.HOOK_RANGE * 0.6;
+    for (const b of sim.actors) {
+      if (b.team === a.team || !b.carrying || b.trapped > 0 || sim.rng() > 0.02) continue;
+      const dist = Math.hypot(b.x - a.x, b.z - a.z);
+      if (dist > range || !clearLine(a.x, a.z, b.x, b.z, 0.05, 1.8)) continue;
+      const lead = dist / CONFIG.HOOK_FLY;
+      grapple(sim, a.id, Math.atan2(b.x + b.vx * lead - a.x, b.z + b.vz * lead - a.z), Math.atan2(b.y + 1 - chestY(a), dist));
+      return;
+    }
+    for (const g of sim.gorillas) {
+      if (g.holding < 0 || g.hookCool > 0 || sim.actors[g.holding].team !== a.team) continue;
+      const dist = Math.hypot(g.x - a.x, g.z - a.z);
+      if (dist > range || !clearLine(a.x, a.z, g.x, g.z, 0.05, 1.8)) continue;
+      grapple(sim, a.id, Math.atan2(g.x - a.x, g.z - a.z), Math.atan2(1.2 - chestY(a), dist));
+      return;
+    }
+  };
   const thinkBot = (sim, a, dt) => {
     if (a.splat > 0 || a.trapped > 0) { a.botClimb = false; return; }
+    // On its own rope a bot goes where the rope takes it.
+    if (a.hk === H_BIT) { a.botClimb = false; return; }
     // Riding: no running of its own, only turning to aim and shooting (below).
     if (a.ride) {
       let t = null, best = sim.bots.range * sim.bots.range;
@@ -1785,6 +1945,8 @@
       const h = Math.atan2(goal.x - a.x, goal.z - a.z), sp = sim.bots.speed;
       a.vx = Math.sin(h) * sp; a.vz = Math.cos(h) * sp;
       a.jetT = 0.25; a.botClimb = a.botStop = false;
+      // With a hook in hand, bite the rock at the rim and be reeled back in.
+      if (a.hook && !a.hk && a.hCool <= 0) { const flat = Math.hypot(goal.x - a.x, goal.z - a.z) || 1; grapple(sim, a.id, h, Math.atan2(-1.5 - chestY(a), flat)); }
       return;
     }
     const ex = sim.bots.expert;
@@ -1805,6 +1967,21 @@
       }
     }
     if (ex && a.hopT > 0) a.hopT -= dt;
+    // A hidden hook in easy reach on the ground: go and get it.
+    if (a.detour <= 0 && !a.hook && !a.carrying && !a.botClimb && sim.prep <= 0) {
+      let best = null, bd = 16 * 16;
+      for (const h of sim.hooks) {
+        if (h.state !== 0 || h.y > 0.5) continue;
+        const dd = (h.x - a.x) ** 2 + (h.z - a.z) ** 2;
+        if (dd < bd) { bd = dd; best = h; }
+      }
+      if (best) { goal.x = best.x; goal.z = best.z; }
+    }
+    // Standing on a block it can't lift yet: out of its circle first, or it would wait there for ever.
+    if (a.blocked && a.detour <= 0) {
+      const f = sim.flags[a.blocked];
+      if (f.state === "dropped" && (f.x - a.x) ** 2 + (f.z - a.z) ** 2 < (CONFIG.PICK_R + 0.3) ** 2) { goal.x = f.x + (a.x > f.x ? 2.5 : -2.5); goal.z = f.z + (a.z > f.z ? 2.5 : -2.5); }
+    }
     if (a.detour <= 0 && !a.botClimb) navigate(sim, a, dt);
     const d = Math.hypot(goal.x - a.x, goal.z - a.z);
     // An autopiloted player (`auto`, the suite's and the debug handle's) runs at the player's sprint.
@@ -1864,6 +2041,7 @@
       }
       return;
     }
+    if (a.hook && !a.hk && a.hCool <= 0 && sim.prep <= 0) botHook(sim, a);
     if (ex && sim.prep <= 0) { expertWallets(sim, a, dt); expertCrates(sim, a, dt); }
     if (a.cooldown <= 0 && sim.prep <= 0 && !a.holding) {
       let t = null, best = sim.bots.range * sim.bots.range;
@@ -1891,7 +2069,8 @@
 
   // Flags: pickups, returns and captures for one actor, and its refill at home.
   const touchFlags = (sim, a) => {
-    if (a.splat > 0 || a.trapped > 0) return;
+    if (a.splat > 0 || a.trapped > 0 || a.grabbed) return;
+    touchHooks(sim, a);
     if (a.guard <= 0 && a.y < 0.3) {
       for (const t of sim.traps) {
         if (t.dark <= 0 && (a.x - t.x) ** 2 + (a.z - t.z) ** 2 < CONFIG.TRAP_R * CONFIG.TRAP_R) { spring(sim, a, t); return; }
@@ -2051,6 +2230,8 @@
   const respawn = (sim, a) => {
     if (a.carrying) dropFlag(sim, a, "edgedrop");
     if (a.wallet >= 0) dropWallet(sim, a.id);
+    // A grappling hook lost over the edge goes back into hiding.
+    if (a.hook) { hideHook(sim, sim.hooks[a.hook - 1]); a.hook = 0; a.hk = 0; a.hCool = 0; }
     const at = startAt(a.team, a.slot, sim.size);
     a.x = a.lastX = a.edgeX = at[0]; a.z = a.lastZ = a.edgeZ = at[1]; a.y = a.edgeY = 0;
     a.vx = a.vy = a.vz = 0; a.grounded = true; a.jumps = 0; a.flight = 0; a.riding = a.climbing = a.holding = a.jetting = false;
@@ -2079,6 +2260,9 @@
       const a = sim.actors[sim.flip ? N - 1 - n : n];
       if (a.cooldown > 0) a.cooldown -= dt;
       if (a.monkeyCool > 0) a.monkeyCool -= dt;
+      if (a.hCool > 0) a.hCool -= dt;
+      if (a.flingT > 0) a.flingT = a.grounded ? 0 : a.flingT - dt;
+      if (a.hk) { a.hookHold = !a.bot && !!input.crouch; stepHook(sim, a, dt); }
       // Status clocks belong to every actor, including mounted riders and grabbed actors that return early.
       if (a.knock > 0) a.knock = Math.max(0, a.knock - dt);
       if (a.soot > 0) a.soot = Math.max(0, a.soot - dt);
@@ -2164,7 +2348,8 @@
           if (a.tired && a.stamina >= CONFIG.SPRINT_S * CONFIG.SPRINT_MIN) a.tired = false;
         }
         const speed = CONFIG.SPEED * (a.rider ? CONFIG.MOUNT_SLOW : 1) * (a.crouch ? CONFIG.CROUCH_SPEED : 1) * (a.sprinting ? CONFIG.SPRINT : 1) * (a.carrying ? CONFIG.CARRY : 1) * (a.netted > 0 ? CONFIG.NET_SLOW : 1) * (a.boots > 0 ? CONFIG.BOOTS : 1) * (a.burnt > 0 ? CONFIG.BURN_SLOW : 1) * (a.flight === 2 ? CONFIG.CHUTE_SPEED / CONFIG.SPEED : 1);
-        const tx = input.x * speed, tz = input.z * speed, k = Math.min(1, CONFIG.ACCEL * dt);
+        // On a rope the Ooga swings: the air gives it only a nudge.
+        const tx = input.x * speed, tz = input.z * speed, k = Math.min(1, CONFIG.ACCEL * dt) * (!a.grounded && (a.hk === H_BIT || a.flingT > 0) ? (input.x || input.z ? CONFIG.HOOK_AIR : 0) : 1);
         a.vx += (tx - a.vx) * k;
         a.vz += (tz - a.vz) * k;
         // A press is used once: the first substep that sees it takes it, so one press is one jump, and the second
@@ -2192,6 +2377,8 @@
         if (a.carrying) { const f = sim.flags[a.carrying]; f.x = a.x; f.z = a.z; }
         continue;
       }
+      // A jump lets go of a bitten hook, with a little hop for the way off it.
+      if (jump && a.hk === H_BIT) { hookBack(sim, a, "hookrelease"); a.vy = Math.max(a.vy, CONFIG.HOOK_HOP); jump = false; }
       // A jump from the ground, and one more in the air, carrying or not; a net stops both.
       if (jump && free && a.netted <= 0 && !a.flight) {
         const k = a.carrying ? CONFIG.CARRY_JUMP : 1;
@@ -2259,6 +2446,11 @@
           a.y = ground; a.vy = 0; a.grounded = true; a.jumps = 0;
         } else a.grounded = false;
       } else { a.y = ground; a.grounded = true; }
+      // A bitten hook holds the Ooga to the rope; never through the floor.
+      if (a.hk === H_BIT && BL.grapple.tether(a, CONFIG.SHOT_Y, a.hookTip.x, a.hookTip.y, a.hookTip.z, a.hookLen)) {
+        const below = groundAt(a.x, a.z, a.y + 0.1);
+        if (a.y <= below) { a.y = below; a.vy = Math.max(a.vy, 0); a.grounded = true; } else a.grounded = false;
+      }
       // The open edge: where an Ooga last stood on the island is where a block it carries over the edge drops; one gone
       // down under the top lets go of it, and one fallen all the way comes back home.
       if (a.grounded && a.y > -CONFIG.RIM && onIsland(a.x, a.z)) { a.edgeX = a.x; a.edgeY = a.y; a.edgeZ = a.z; }
@@ -2397,7 +2589,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth };
+  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

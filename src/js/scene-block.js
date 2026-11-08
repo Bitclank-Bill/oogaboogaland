@@ -57,9 +57,9 @@
   const SMOKE_BITS = ["#3d3d44", "#6a6a72"].map((c) => models.particleGeometry(c, 0.12, 0));
   const BLAST_BITS = ["#ff8a1f", "#ffd66b", "#3d3d44", "#efe6cc"].map((c, i) => models.particleGeometry(c, 0.09, i < 2 ? 1 : 0));
   const STAR_BITS = ["#ffe066", "#fff3d6"].map((c) => models.particleGeometry(c, 0.09, 1));
-  const TOOL_KEYS = { 1: "paint", 2: "grenade", 3: "rocket", 4: "net", 5: "sniper", 6: "gold", 7: "ak" };
+  const TOOL_KEYS = { 1: "paint", 2: "grenade", 3: "rocket", 4: "net", 5: "sniper", 6: "gold", 7: "ak", 8: "hook" };
   // Each tool's gun (`BM.gun` takes the gun's index times two plus the team's); Lift shows none.
-  const GUN_OF = { paint: 0, grenade: 1, rocket: 2, net: 3, sniper: 4, gold: 5, ak: 6, crate: 0, grab: -1 };
+  const GUN_OF = { paint: 0, grenade: 1, rocket: 2, net: 3, sniper: 4, gold: 5, ak: 6, crate: 0, grab: -1, hook: -1 };
   const WEATHER_WORDS = { clear: "Clear", breeze: "Windy", storm: "Storm" };
   const RAIN = 140;
   // Sky, light and haze from the island's clock, as the drop's.
@@ -209,14 +209,20 @@
         place(node);
         pet = { node, x: 0, y: 0, z: 0, heading: 0, step: 0, warm: false };
       }
-      return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, pet, eyes, beam, phase: 0, name };
+      // The grappling hook's rope and head (Cloud Hopper's models), hung in world space while it is out, and a coiled
+      // hook on the hip while it is held.
+      const rope = place(createNode({ geometry: BL.cloudHopperModels.rope(), visible: false, sightHidden: true }));
+      const hookHead = place(createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true }));
+      const hookHip = createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
+      addChild(body, hookHip);
+      return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
     });
   };
   const disposeActors = () => {
     if (!actors) return;
     for (const a of actors) {
       if (a.cave) input.remove(a.cave.parts.torso);
-      for (const node of a.pet ? [a.body, a.beam, a.pet.node] : [a.body, a.beam]) {
+      for (const node of a.pet ? [a.body, a.beam, a.rope, a.hookHead, a.pet.node] : [a.body, a.beam, a.rope, a.hookHead]) {
         removeChild(root, node);
         const i = placed.indexOf(node);
         if (i >= 0) placed.splice(i, 1);
@@ -518,6 +524,10 @@
     else if (t === "struggle" && me) c.grunt();
     else if (t === "breakfree" && me) c.free();
     else if (t === "gorillahit") c.yelp(k);
+    else if (t === "hookthrow") c.hookThrow(k);
+    else if (t === "hookbite") c.hookBite(k);
+    else if (t === "hookrelease") c.hookOff(k);
+    else if (t === "hookmiss") c.hookMiss(k);
     else if (me && t === "trap") c.trap();
     else if (me && (t === "refill" || t === "cache")) c.refill();
     else if (me && t === "rifle") c.rifle();
@@ -560,6 +570,10 @@
     else if (t === "grab") feed(`A gorilla grabbed ${e.actor === 0 ? "you" : who}!`, e.team);
     else if (t === "breakfree") feed(`${who} wriggled free of a gorilla`, e.team);
     else if (t === "respawn") feed(`${who} fell off the island`, e.team);
+    else if (t === "hookget") feed(`${who} found a grappling hook`, e.team);
+    else if (t === "hooksteal") feed(`${who} stole ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} grappling hook`, e.team);
+    else if (t === "yank") feed(`${nameOf(e.actor)} yanked the ${TEAM_NAME[e.team]} block away`, sim.actors[e.actor].team);
+    else if (t === "gorillahooked") feed(`${nameOf(e.actor)} hooked a gorilla`, sim.actors[e.actor].team);
     else if (t === "edgedrop") feed(`The ${TEAM_NAME[e.team]} block dropped at the edge`, e.team);
     else if (t === "gorillahit" && e.actor >= 0) feed(`${nameOf(e.actor)} stunned a gorilla`, sim.actors[e.actor].team);
     else if (t === "gold") feed(`${who} won the Golden Dual AKs!`, e.team);
@@ -664,6 +678,23 @@
         else notice(me ? "Block dropped · grab it again, or a teammate can" : "Their block is down! Grab it", 2500);
       } else if (e.type === "edgedrop") {
         notice(e.team === sim.team ? "Our block dropped at the edge · it goes home in a moment" : "Their block dropped at the edge · grab it before it goes home", 2500);
+      } else if (e.type === "hookget") {
+        fx.burst(e.x, e.y + 1, e.z, 14, ORANGE_BITS, 2);
+        if (me) { center("GRAPPLING HOOK!", 1100); notice(COARSE ? "Hook · pick it on the tool bar, tap Throw at a rock or a carrier" : "Hook · R fires at the crosshair: pull yourself up, or yank a block off a carrier", 3200); updateTools(); }
+      } else if (e.type === "hooksteal") {
+        if (me) notice("You stole a grappling hook!", 2000);
+        else if (e.by === 0) notice("Your grappling hook was stolen!", 2200);
+        updateTools();
+      } else if (e.type === "hookwarn") {
+        if (e.actor === 0) { center("HOOKED!", 700); notice("They've hooked your block!", 1200); }
+      } else if (e.type === "yank") {
+        fx.burst(e.x, e.y, e.z, 12, ORANGE_BITS, 2.4);
+        if (e.by === 0) notice("Your block was yanked away!", 1800);
+        else if (e.actor === 0) notice("Yanked it! Grab the block", 1800);
+      } else if (e.type === "gorillahooked") {
+        fx.burst(e.x, e.y, e.z, 10, STAR_BITS, 2);
+      } else if (e.type === "hookmiss") {
+        if (me) { notice("Missed · the hook recharges", 900); updateTools(); }
       } else if (e.type === "respawn") {
         if (me) { center("BACK HOME", 1000); notice(COARSE ? "You fell off the island · hold Jump in the air to jetpack back next time" : "You fell off the island · hold Space in the air to jetpack back next time", 2600); }
       } else if (e.type === "go") {
@@ -1017,6 +1048,7 @@
     const a = sim.actors[0], q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y);
     // With Lift chosen and empty hands, a click lifts the crate in front; holding a crate, a throw throws the crate.
     if (tool === "grab" && !a.holding) return grabCrate();
+    if (tool === "hook" && !a.holding) return hookNow();
     if (a.holding) {
       const cdx = q.x - a.x, cdz = q.z - a.z, cflat = Math.hypot(cdx, cdz) || 1;
       const thrown = SIM.fire(sim, 0, Math.atan2(cdx, cdz), clamp(Math.atan2(q.y - a.y - 1.7, cflat) - 0.05, -0.6, 0.6), "crate");
@@ -1036,6 +1068,16 @@
     else if (!ok && tool !== "paint" && a[tool] <= 0) notice(`Out of ${tool}s · refill on your stand or an ammo cache`, 1400);
     return ok;
   };
+  // The grappling hook: at the crosshair, or, bitten or latched already, let go. R works whichever tool is in hand.
+  const hookNow = () => {
+    if (!inRound()) return false;
+    const a = sim.actors[0];
+    if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or steal one with a wallet bomb", 2000); return false; }
+    const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
+    const ok = SIM.grapple(sim, 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.2, 1.2));
+    if (!ok && a.hCool > 0) notice(`Hook recharging · ${Math.ceil(a.hCool)} s`, 900);
+    return ok;
+  };
   const scoped = () => tool === "sniper" && sim && sim.actors[0].sniper > 0 && cam.first;
   const zoomScope = (dir) => {
     scope.zoom = clamp(scope.zoom + dir, 0, ZOOMS.length - 1);
@@ -1046,7 +1088,7 @@
     updateTools();
   };
   // The next tool along (or back), skipping any that are empty, then Lift for the crates; G steps through them.
-  const ORDER = ["paint", "ak", "grenade", "rocket", "net", "gold", "sniper", "grab"];
+  const ORDER = ["paint", "ak", "grenade", "rocket", "net", "gold", "sniper", "hook", "grab"];
   const cycleTool = (dir = 1) => {
     const a = sim.actors[0];
     let i = ORDER.indexOf(tool);
@@ -1058,6 +1100,7 @@
     if (ORDER[i] === "grab") notice("Lift · click lifts a crate, click or Tab throws it, F sets it down", 1400);
     else if (ORDER[i] === "gold") notice("Golden Dual AKs", 900);
     else if (ORDER[i] === "ak") notice("Ooga AK · hold to fire on full auto", 900);
+    else if (ORDER[i] === "hook") notice("Grappling hook · click fires at the crosshair", 900);
     else notice(`${ORDER[i][0].toUpperCase()}${ORDER[i].slice(1)}${ORDER[i] === "paint" || ORDER[i] === "sniper" ? "" : ` · ${a[ORDER[i]]} left`}`, 900);
   };
   // Right click aims, as on the island: up a tower it steps the scope in (round to its widest); in the Island view it
@@ -1089,8 +1132,9 @@
       const k = b.dataset.tool;
       b.setAttribute("aria-pressed", String(k === tool));
       const n = b.querySelector("b");
-      if (n) n.textContent = k === "paint" ? "∞" : k === "sniper" ? (a.sniper ? "∞" : "tower") : k === "gold" ? (a.gold ? "∞" : "—") : k === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : k === "crate" ? String(a.crates) : String(a[k]);
+      if (n) n.textContent = k === "paint" ? "∞" : k === "sniper" ? (a.sniper ? "∞" : "tower") : k === "gold" ? (a.gold ? "∞" : "—") : k === "hook" ? (a.hook ? (a.hk || a.hCool > 0 ? "…" : "1") : "—") : k === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : k === "crate" ? String(a.crates) : String(a[k]);
       if (k === "gold") b.disabled = !a.gold;
+      if (k === "hook") b.disabled = !a.hook;
       if (k === "pass") b.disabled = !a.carrying && !a.holding;
       if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearVend(sim, a);
       if (k === "grab") b.setAttribute("aria-pressed", String(a.holding || tool === "grab"));
@@ -1189,6 +1233,10 @@
   // A number key picks its tool; one you don't have says where to get it instead.
   const keyTool = (k) => {
     const a = sim.actors[0];
+    if (k === "hook") {
+      if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or steal one with a wallet bomb", 2000); return; }
+      chooseTool(k); notice("Grappling hook · click fires at the crosshair · click or jump lets go", 1200); return;
+    }
     if (k === "gold" && !a.gold) { notice("No Golden Dual AKs yet · mine a block to win them, or stick a wallet bomb on whoever has them", 1800); return; }
     if (k === "sniper" && !a.sniper) { notice("The sniper rifle stays up the towers · climb a ladder", 1600); return; }
     chooseTool(k);
@@ -1357,6 +1405,18 @@
       a.held.visible = s.holding && !(i === 0 && cam.first);
       if (s.holding) a.held.geometry = BM.crate(TEAM_INDEX[s.team]);
       a.trolley.visible = s.riding;
+      // The hook on the hip while held; the rope and head while it flies, bites, or comes back.
+      a.hookHip.visible = s.hook > 0 && !s.hk && !(i === 0 && cam.first);
+      a.rope.visible = a.hookHead.visible = s.hook > 0 && s.hk > 0;
+      if (s.hk > 0) {
+        const hx = s.x + Math.sin(s.heading) * 0.3, hy = s.y + 1.25, hz = s.z + Math.cos(s.heading) * 0.3, t = s.hookTip;
+        const dx = t.x - hx, dy = t.y - hy, dz = t.z - hz, len = Math.hypot(dx, dy, dz) || 0.01;
+        setVec(a.rope.position, hx, hy, hz);
+        a.rope.rotation.x = -Math.atan2(dy, Math.hypot(dx, dz)); a.rope.rotation.y = Math.atan2(dx, dz);
+        a.rope.scale.z = len;
+        setVec(a.hookHead.position, t.x, t.y, t.z);
+        a.hookHead.rotation.x = a.rope.rotation.x; a.hookHead.rotation.y = a.rope.rotation.y;
+      }
       a.chute.visible = s.flight === 2;
       a.jetFlame.visible = s.jetting;
       if (s.jetting) {
@@ -1819,6 +1879,7 @@
     posePads(elapsed);
     poseFire(elapsed);
     poseGorillas(dt, elapsed);
+    poseHooks(elapsed);
     poseGhosts(elapsed);
     if (sim && actors) poseBeams(elapsed);
     poseShots();
@@ -1871,6 +1932,7 @@
     }
     if (TOOL_KEYS[e.key]) keyTool(TOOL_KEYS[e.key]);
     if (e.key === "t" || e.key === "T") passBlock();
+    if (e.key === "r" || e.key === "R") hookNow();
     if (e.key === "y" || e.key === "Y") throwWallet();
     if (e.key === "h" || e.key === "H") piggyback();
     if (e.key === "j" || e.key === "J") callRider();
@@ -1930,6 +1992,7 @@
     add(createNode({ geometry: BM.arena(SIM.MAPS.indexOf(selection.map)) }));
     // The floating island it stands on (its rock, cliffs and terrain), and the hub's white clouds drifting under it.
     add(createNode({ geometry: BM.isle(SIM.MAPS.indexOf(selection.map)) }));
+    add(createNode({ geometry: BM.keel(SIM.MAPS.indexOf(selection.map)) }));
     for (let k = 0; k < 12; k++) {
       const ang = k / 12 * Math.PI * 2 + 0.3, out = k % 3 === 0 ? 0.55 : 1.25, y = -9 - (k % 4) * 4.5;
       add(createNode({ geometry: BL.hubModels.cloud(k % 3), sightHidden: true, position: { x: Math.sin(ang) * (A.W * out + 6), y, z: Math.cos(ang) * (A.L * out + 6) }, rotation: { x: 0, y: ang, z: 0 } }));
@@ -1986,6 +2049,10 @@
       const key = `${Math.round(Math.max(w, 1.2) * 10)}:${Math.round(n.top * 10)}`;
       add(createNode({ geometry: BM.net2(key), position: { x: (x0 + x1) / 2, y: 0, z: (z0 + z1) / 2 }, rotation: { x: 0.08, y: n.dx ? Math.PI / 2 : 0, z: 0 } }));
     }
+    // The two grappling hooks, wherever they're hidden this round.
+    hookStill = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    hookNodes = [];
+    for (let i = 0; i < C.HOOKS; i++) hookNodes.push(add(createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true, scale: { x: 1.4, y: 1.4, z: 1.4 } })));
     // Haunted Hollow's ghosts, one node each (the sim has the haunts both ways round).
     ghostNodes = [];
     for (let i = 0; i < (A.ghosts || []).length * 2; i++) ghostNodes.push(add(createNode({ geometry: BM.ghost(), visible: false, scale: { x: 1.1, y: 1.1, z: 1.1 } })));
@@ -2012,6 +2079,18 @@
       a.beam.scale.z = Math.max(0.1, s.beamLen - 0.25);
       a.beam.scale.x = a.beam.scale.y = 1 + Math.sin(elapsed * 60) * 0.15;
       if (Math.random() < 0.6) fx.burst(s.x + dx * s.beamLen, ey, s.z + dz * s.beamLen, 2, LASER_BITS, 1.6);
+    }
+  };
+  let hookNodes = [], hookStill = false;
+  // A hidden hook sits where it lies, turning slowly (dead still for a visitor who asks for reduced motion), until someone picks it up.
+  const poseHooks = (elapsed) => {
+    if (!sim || !hookNodes.length) return;
+    for (let i = 0; i < hookNodes.length; i++) {
+      const h = sim.hooks[i], n = hookNodes[i];
+      n.visible = !!h && h.state === 0;
+      if (!n.visible) continue;
+      setVec(n.position, h.x, h.y + 0.55 + (hookStill ? 0 : Math.sin(elapsed * 2 + i) * 0.08), h.z);
+      n.rotation.y = hookStill ? i : elapsed * 0.9 + i;
     }
   };
   let ghostNodes = [];

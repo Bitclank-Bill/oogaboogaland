@@ -177,6 +177,12 @@
       // A ghost: a wavering whoo, falling; a pop when it's painted away.
       boo: (k = 1) => { for (let i = 0; i < 3; i++) blip("sine", 620 - i * 60, 240, 0.08, 0.25, 0.4, 0.14 * k, i * 0.12); },
       ghostPop: (k = 1) => { blip("triangle", 900, 1800, 0.005, 0.04, 0.15, 0.14 * k); splatNoise(0.3 * k, 0.2); },
+      // The grappling hook (Cloud Hopper's sounds, re-voiced on the game's pooled blips): a whoosh as it goes, a thunk as
+      // it bites, a zip as it lets go, a falling whoosh for a miss.
+      hookThrow: (k = 1) => { blip("triangle", 500, 2600, 0.01, 0.1, 0.17, 0.12 * k); },
+      hookBite: (k = 1) => { blip("sine", 140, 60, 0.01, 0.1, 0.2, 0.28 * k); splatNoise(0.15 * k, 0.12); },
+      hookOff: (k = 1) => { blip("triangle", 900, 1500, 0.01, 0.04, 0.08, 0.1 * k); },
+      hookMiss: (k = 1) => { blip("triangle", 2200, 300, 0.02, 0.25, 0.4, 0.1 * k); },
       // A wallet's fuse: a short beep, higher (`urgency` 0 to 2) as it runs out.
       beep: (k = 1, urgency = 0) => blip("square", 1400 + urgency * 500, 1400 + urgency * 500, 0.002, 0.03, 0.03, 0.08 * k)
     };

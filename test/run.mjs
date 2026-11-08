@@ -7458,6 +7458,53 @@ const gameRulesChecks = async () => {
         Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));
     }
     {
+      // The grappling hook, played through the sim's own calls: a hook found at its hiding spot, a bite on rock reeling the
+      // Ooga in, a block yanked off a rival carrier (nothing from a teammate), and a wallet bomb taking a held hook as it
+      // takes the Golden AKs. A hook lost over the edge goes back into hiding.
+      const fresh = (map = "fort", seed = 5) => {
+        const r = S.create({ seed, prep: 0, map });
+        for (const o of r.actors) o.bot = false;
+        Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 });
+        for (const g of r.gorillas) { g.x = g.wx = g.hx = 100; g.z = g.wz = g.hz = 100; g.state = 3; g.t = 1e9; }
+        return r;
+      };
+      const run = (r, secs, input = still, until = () => false) => { const seen = {}; for (let t = 0; t < secs && !until(); t += S.CONFIG.STEP) { S.tick(r, S.CONFIG.STEP, input); for (let i = 0; i < r.eventCount; i++) seen[r.events[i].type] = (seen[r.events[i].type] || 0) + 1; r.eventCount = 0; } return seen; };
+      const rows = {};
+      let r = fresh(), o = r.actors[0];
+      const h = r.hooks[0];
+      o.x = h.x; o.z = h.z; o.y = h.y; run(r, S.CONFIG.STEP);
+      rows.pickup = o.hook === 1 && h.state === 1 && h.holder === 0;
+      r = fresh(); o = r.actors[0]; o.hook = 1; o.x = 10; o.z = 20; o.y = 0;
+      const yaw = Math.atan2(5.5, -4), bit = S.grapple(r, 0, yaw, Math.atan2(1, Math.hypot(5.5, 4)));
+      run(r, 0.5, still, () => o.hk === 2);
+      const bx = o.x, bz = o.z;
+      run(r, 1.5);
+      rows.pull = bit && Math.hypot(o.x - bx, o.z - bz) > 2 && o.hCool > 0 && !S.grapple(r, 0, yaw, 0);
+      r = fresh(); o = r.actors[0];
+      const c = r.actors[2];
+      o.hook = 1; o.x = -17; o.z = -1; c.x = -17; c.z = 10; r.flags.blue.state = "carried"; r.flags.blue.carrier = 2; c.carrying = "blue";
+      S.grapple(r, 0, 0, 0);
+      const log = run(r, 2, still, () => !c.carrying && r.flags.blue.state !== "carried");
+      rows.yank = !!log.hookwarn && !!log.yank && !c.carrying && r.flags.blue.state !== "carried";
+      r = fresh(); o = r.actors[0];
+      const mate = r.actors[1];
+      o.hook = 1; o.x = -17; o.z = 0; mate.x = -17; mate.z = 6; r.flags.blue.state = "carried"; r.flags.blue.carrier = 1; mate.carrying = "blue";
+      S.grapple(r, 0, 0, 0);
+      rows.mate = !run(r, 0.6).hookwarn && mate.carrying === "blue";
+      r = fresh(); o = r.actors[0];
+      const holder = r.actors[2];
+      holder.hook = 1; r.hooks[0].state = 1; r.hooks[0].holder = 2; o.x = -17; o.z = 0; holder.x = -17; holder.z = 2.5; o.guard = holder.guard = 9;
+      const w = r.wallets.find((v) => !v.live);
+      Object.assign(w, { live: true, state: 3, owner: 0, team: o.team, look: 0, x: holder.x, y: holder.y + 1, z: holder.z, fuse: 0.01, stuck: 2 });
+      rows.steal = !!run(r, 0.2).hooksteal && o.hook === 1 && holder.hook === 0 && r.hooks[0].holder === 0;
+      r = fresh(); o = r.actors[0]; o.hook = 2; r.hooks[1].state = 1; r.hooks[1].holder = 0; o.y = S.CONFIG.FALL_FLOOR - 1; o.x = 40; o.grounded = false;
+      const fell = run(r, S.CONFIG.STEP * 2);
+      rows.rehide = !!fell.hookhide && o.hook === 0 && r.hooks[1].state === 0;
+      const hidden = S.MAPS.every((map) => { const m = fresh(map); return m.hooks.length === 2 && m.hooks.every((k) => k.state === 0 && S.ARENA.hookSpots.some(([x, , z]) => (Math.abs(k.x - x) < 1e-9 && Math.abs(k.z - z) < 1e-9) || (Math.abs(k.x + x) < 1e-9 && Math.abs(k.z + z) < 1e-9))); });
+      rows.hidden = hidden;
+      record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a wallet bomb steals a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
+    }
+    {
       // The play strip repaints only when something it shows moved (`stripChanged`, the scene's own test before it
       // touches the DOM): never on an unchanged frame or inside a clock second, on every input it shows, and afresh for
       // a new round or visit (`shown` cleared, as `start` does).
