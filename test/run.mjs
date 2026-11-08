@@ -6907,8 +6907,9 @@ const workCaveTrips = async (b) => {
       queue.disposed && queue.rows.length === 1 && queue.rows.every(row => row.waiting && row.passed && row.maximumStall < 5
         && row.gap >= 0.68 - 1e-6 && row.maxStep <= 1.7 * dt + 1e-6 && row.maxHop === 0 && row.jumps === 0 && row.resets === 0), JSON.stringify(queue));
   }
-  const r = await b.evaluate(`(() => {
-    const B = __ooga, S = BL.scene, scene = BL.scenes.hub, dt = 1 / 20;
+  // Real scene updates at a given step; the junction rule below is held at 20 and 60 Hz.
+  const tripsAt = (dt) => b.evaluate(`(() => {
+    const B = __ooga, S = BL.scene, scene = BL.scenes.hub, dt = ${dt};
     const update = scene.update; scene.update = () => {}; B.pilot.release(true); B.setPileLevel(100000);
     const actors = B.crew.list.filter(c => c.state === "working");
     const repos = ["oogaboogax/entropylab", "oogaboogax/oogaboogaland", "oogaboogax/lightningfoundry"];
@@ -6916,10 +6917,12 @@ const workCaveTrips = async (b) => {
     const rows = actors.map(c => ({ name: c.contributor.name, outbound: [0, 0, 0], returned: [0, 0, 0],
       phase: "", stall: 0, maximumStall: 0, maximumStep: 0, missingRoutes: 0,
       fixedFrames: 0, fixedStall: 0, maximumFixedStall: 0, maximumTerrainError: 0,
+      // Heading along a fixed meadow leg: a turn one way undone by a turn back within half a metre is a twitch.
+      dirX: 0, dirZ: 0, turnSign: 0, sinceTurn: Infinity, twitches: 0, reversals: 0, twitch: null, reversal: null, trail: [], planLog: [], lastPlans: -1, goalX: NaN, goalZ: NaN, goalFrame: -Infinity, retargets: 0,
       resets: c.progress.resets, jumps: c.avoidance.navigation.jumps }));
     let time = BL.scenes.hub.elapsed, frames = 0;
     try {
-      for (; frames < 6000; frames++) {
+      for (; frames < Math.ceil(300 / dt); frames++) {
         for (let i = 0; i < actors.length; i++) {
           const c = actors[i], row = rows[i], p = c.root.position;
           const site = sites.indexOf(c.work.site);
@@ -6952,7 +6955,41 @@ const workCaveTrips = async (b) => {
             row.maximumTerrainError = Math.max(row.maximumTerrainError, Math.abs(feet - terrain));
             row.fixedStall = step < 0.001 ? row.fixedStall + dt : 0;
             row.maximumFixedStall = Math.max(row.maximumFixedStall, row.fixedStall);
-          } else row.fixedStall = 0;
+            // A goal that moves (the loading slot reassigned to another walker) is a new errand, not a twitch in the path.
+            if (c.pathing.tx !== row.goalX || c.pathing.tz !== row.goalZ) { row.goalX = c.pathing.tx; row.goalZ = c.pathing.tz; row.goalFrame = frames; }
+            if (c.pathing.plans !== row.lastPlans) {
+              row.lastPlans = c.pathing.plans;
+              row.planLog.push({ frame: frames, at: [+p.x.toFixed(3), +p.z.toFixed(3)], tx: c.pathing.tx, tz: c.pathing.tz, slot: c.slot && [c.slot.x, c.slot.z], approach: c.pileApproach,
+                lanes: Array.from({ length: Math.min(6, c.pathing.count) }, (_, k) => [+c.pathing.laneX[k].toFixed(3), +c.pathing.laneZ[k].toFixed(3)]), count: c.pathing.count });
+              if (row.planLog.length > 4) row.planLog.shift();
+            }
+            if (step > 1e-4) {
+              row.trail.push([+p.x.toFixed(3), +p.z.toFixed(3)]); if (row.trail.length > 16) row.trail.shift();
+              const dx = (p.x - row.x) / step, dz = (p.z - row.z) / step;
+              if (row.dirX || row.dirZ) {
+                const turn = Math.atan2(row.dirX * dz - row.dirZ * dx, row.dirX * dx + row.dirZ * dz);
+                if (Math.abs(turn) > 2.1 && frames - row.goalFrame <= 2) row.retargets++;
+                else if (Math.abs(turn) > 2.1) {
+                  row.reversals++;
+                  if (!row.reversal) row.reversal = { frame: frames, x: p.x, z: p.z, turn, trail: row.trail.slice(), plans: row.planLog.slice(), slot: c.slot && [c.slot.x, c.slot.z], phase: c.work.phase,
+                    index: c.work.index, walk: !!c.walk, path: { count: c.pathing.count, index: c.pathing.index, tx: c.pathing.tx, tz: c.pathing.tz,
+                      lanes: Array.from({ length: Math.min(8, c.pathing.count) }, (_, k) => [+c.pathing.laneX[k].toFixed(3), +c.pathing.laneZ[k].toFixed(3)]) } };
+                }
+                if (Math.abs(turn) > 0.35) {
+                  const sign = Math.sign(turn);
+                  if (row.turnSign && sign !== row.turnSign && row.sinceTurn < 0.5) {
+                    row.twitches++;
+                    if (!row.twitch) row.twitch = { frame: frames, x: p.x, z: p.z, radius: Math.hypot(p.x, p.z), turn, previous: row.turnSign, after: row.sinceTurn, trail: row.trail.slice(),
+                      slot: c.slot && [c.slot.x, c.slot.z], ring: B.island.path.debug.ringTrafficRadius,
+                      phase: c.work.phase, path: { count: c.pathing.count, index: c.pathing.index, targetX: c.pathing.targetX, targetZ: c.pathing.targetZ,
+                        lanes: Array.from({ length: c.pathing.count }, (_, k) => [+c.pathing.laneX[k].toFixed(3), +c.pathing.laneZ[k].toFixed(3)]) } };
+                  }
+                  row.turnSign = sign; row.sinceTurn = 0;
+                } else row.sinceTurn += step;
+              }
+              row.dirX = dx; row.dirZ = dz;
+            }
+          } else { row.fixedStall = 0; row.dirX = row.dirZ = row.turnSign = 0; row.sinceTurn = Infinity; row.trail.length = 0; }
           // Preserve the first bad frame, not only the eventual arrival.
           // Rare traffic failures otherwise lose the blocked route when the
           // recovery jump or relocation lets the worker finish its trip.
@@ -6986,10 +7023,14 @@ const workCaveTrips = async (b) => {
       return { frames, rows, sites: sites.map(index => B.crew.workSites[index]?.repo) };
     } finally { scene.update = update; }
   })()`);
+  const r = await tripsAt(1 / 20), fine = await tripsAt(1 / 60);
   record("work movement cave trips: five workers retain path routes and finish repeated trips to lab, OBL and LF without stuck loops, jumps or relocation",
     r.sites.length === 3 && r.sites.every(Boolean) && r.rows.length === 5 && r.rows.every(row => row.outbound.every(n => n >= 2)
       && row.returned.every(n => n >= 2) && row.maximumStall < 5 && row.maximumStep <= 2.8 / 20 + 1e-6
       && row.missingRoutes === 0 && row.resets === 0 && row.jumps === 0), JSON.stringify({ failures: r.rows.filter(row => row.failure), ...r }));
+  for (const [hz, run] of [[20, r], [60, fine]]) record(`work movement cave trips: at ${hz}Hz passive workers walk straight between the pile ring and each cave's path both ways, with no turn away and back or reversal on their fixed meadow legs`,
+    run.rows.length === 5 && run.rows.every(row => row.fixedFrames > 0 && row.outbound.every(n => n >= 2) && row.returned.every(n => n >= 2) && row.twitches === 0 && row.reversals === 0),
+    JSON.stringify(run.rows.map(({ name, twitches, reversals, retargets, twitch, reversal }) => ({ name, twitches, reversals, retargets, reversal, twitch: twitch && { ...twitch, path: { ...twitch.path, lanes: twitch.path.lanes.slice(0, 6) } } }))));
   record("work movement cave trips: passive workers' fixed meadow legs stand exactly on the island terrain support and keep moving",
     r.rows.length === 5 && r.rows.every(row => row.fixedFrames > 0 && row.maximumTerrainError < 1e-6 && row.maximumFixedStall < 1),
     JSON.stringify(r.rows.map(({ name, fixedFrames, maximumTerrainError, maximumFixedStall }) => ({ name, fixedFrames, maximumTerrainError, maximumFixedStall }))));
