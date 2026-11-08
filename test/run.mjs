@@ -7197,7 +7197,7 @@ const gameRulesChecks = async () => {
     const sim = S.create({ team: "blue", seed: 7, prep: 0 });
     for (const a of sim.actors) if (a.id) a.bot = false;
     // Still air, so nothing drifts.
-    Object.assign(sim.weather, { target: 0, strength: 0, left: 1e9 });
+    Object.assign(sim.weather, { left: 1e9 });
     const me = sim.actors[0], put = (a, x, z) => { a.x = x; a.z = z; S.tick(sim, S.CONFIG.STEP, still); };
     const theirs = A.stands.red, mine = A.stands.blue;
     put(me, theirs.x, theirs.z);
@@ -7250,7 +7250,7 @@ const gameRulesChecks = async () => {
     // A pass: the carrier throws the block ahead and a teammate down the line catches it.
     const mate = sim.actors[1];
     S.reset(sim); sim.prep = 0;
-    Object.assign(sim.weather, { target: 0, strength: 0, left: 1e9 });
+    Object.assign(sim.weather, { left: 1e9 });
     put(me, theirs.x, theirs.z);
     me.x = -16.5; me.z = 14; me.y = 0; mate.x = -16.5; mate.z = 24; mate.y = 0;
     const threw = S.pass(sim, 0, 0) && sim.flags.red.state === "flying";
@@ -7276,7 +7276,7 @@ const gameRulesChecks = async () => {
       const r = S.create({ skill: "expert", prep: 0 }), bot = r.actors[1];
       for (const actor of r.actors) { actor.bot = false; actor.x = 18; actor.z = -35; }
       Object.assign(bot, { x: 0, z: 20, y: 0, bot: true });
-      Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 });
+      Object.assign(r.weather, { left: 1e9 });
       const lifted = S.grab(r, bot.id, 0);
       Object.assign(r.flags.blue, { state: "dropped", x: 0, z: 20, y: 0, carrier: null });
       const advance = (seconds) => { for (let n = 0; n < Math.round(seconds / S.CONFIG.STEP); n++) S.tick(r, S.CONFIG.STEP, { ...still }); };
@@ -7291,7 +7291,7 @@ const gameRulesChecks = async () => {
       // still stands on the ground; both measured through the sim's own ticks.
       const jungle = S.create({ team: "blue", seed: 7, prep: 0, map: "jungle" });
       for (const a of jungle.actors) if (a.id) a.bot = false;
-      Object.assign(jungle.weather, { target: 0, strength: 0, left: 1e9 });
+      Object.assign(jungle.weather, { left: 1e9 });
       const tree = S.ARENA.decor.find((d) => d.kind === "canopy" && !d.middle), j = jungle.actors[0];
       for (const a of jungle.actors) if (a.id) { a.x = 20; a.z = a.team === "blue" ? 34 : -34; }
       Object.assign(j, { x: tree.x + 0.9, z: tree.z + 0.4, y: tree.y + S.LEAF_TOP + 3, vx: 0, vz: 0, vy: 0, grounded: false });
@@ -7334,7 +7334,7 @@ const gameRulesChecks = async () => {
     const piggy = () => {
       const r = S.create({ team: "blue", seed: 2, prep: 0, size: 3 });
       for (const b of r.actors) { b.x = 18; b.z = -35; b.bot = false; }
-      Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 });
+      Object.assign(r.weather, { left: 1e9 });
       const run = (s, input = still) => { for (let n = 0; n < Math.round(s / S.CONFIG.STEP); n++) S.tick(r, S.CONFIG.STEP, { ...input }); };
       return { r, me: r.actors[0], b1: r.actors[1], b2: r.actors[2], run };
     };
@@ -7404,7 +7404,7 @@ const gameRulesChecks = async () => {
       // The floating island: its edges are open, an Ooga walking off falls, and one fallen all the way is back in its
       // own block zone; a block carried over the edge drops at the edge and goes home by itself; under the rim the
       // island's rock holds a body out, and the jetpack brings a thrown Ooga back over the edge, the visitor's or a bot's.
-      const fresh = (map = "fort") => { const r = S.create({ seed: 5, prep: 0, map }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 }); for (const g of r.gorillas) { g.state = 3; g.t = 1e9; } return r; };
+      const fresh = (map = "fort") => { const r = S.create({ seed: 5, prep: 0, map }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { left: 1e9 }); for (const g of r.gorillas) { g.state = 3; g.t = 1e9; } return r; };
       const run = (r, secs, input = still, until = () => false) => { for (let t = 0; t < secs && !until(); t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, input); };
       const rows = {};
       for (const map of S.MAPS) {
@@ -7516,7 +7516,7 @@ const gameRulesChecks = async () => {
       const fresh = (map = "fort", seed = 5) => {
         const r = S.create({ seed, prep: 0, map });
         for (const o of r.actors) o.bot = false;
-        Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 });
+        Object.assign(r.weather, { left: 1e9 });
         for (const g of r.gorillas) { g.x = g.wx = g.hx = 100; g.z = g.wz = g.hz = 100; g.state = 3; g.t = 1e9; }
         return r;
       };
@@ -7660,18 +7660,52 @@ const gameRulesChecks = async () => {
         // Live fees: only storm overrides a map's weather.
         const fees = fresh(), liveTry = (v) => { S.setLive(fees, v); return fees.live; };
         rows.feeClear = liveTry("clear") === null;
-        rows.feeBreeze = liveTry("breeze") === null;
+        rows.feeCalm = liveTry("clear") === null;
+        // No wind: a body in the air over a storm drifts nowhere, and only clear and storm ever come up.
+        const calm = fresh(), cu = calm.actors[0];
+        for (const k of calm.crates) k.live = false;
+        Object.assign(calm.weather, { kind: "storm", strength: 1 });
+        Object.assign(cu, { x: 3, z: 3, y: 8, vx: 0, vz: 0, vy: 0, grounded: false, guard: 9 });
+        run(calm, 0.4, still);
+        const kinds = new Set();
+        for (let n = 0; n < 40; n++) { calm.weather.left = 0; S.tick(calm, S.CONFIG.STEP, still); calm.eventCount = 0; kinds.add(calm.weather.kind); }
+        rows.noWind = cu.x === 3 && cu.z === 3 && S.CONFIG.WIND === undefined && [...kinds].every((k) => k === "clear" || k === "storm") && kinds.size === 2;
+        // The tall iron gate is solid, with the way round either end of it open, and the block zones are at the back.
+        const hg = fresh("haunted"), hu = hg.actors[0], hI = S.ARENAS.haunted;
+        for (const k of hg.crates) k.live = false;
+        Object.assign(hu, { x: 0, z: 26, y: 0, grounded: true });
+        run(hg, 1, { x: 0, z: -1 });
+        const stopped = hu.z > 24.5;
+        Object.assign(hu, { x: 3.2, z: 26, y: 0, vx: 0, vz: 0, grounded: true });
+        run(hg, 1, { x: 0, z: -1 });
+        rows.gateSolid = stopped && hu.z < 23.5 && S.solidAt(0, 1.5, 24.5) && S.solidAt(0, 1.5, -24.5) && !S.solidAt(3.2, 1.5, 24.5);
+        const twn = S.ARENAS.town;
+        rows.blockZones = twn.stands.blue.z === 32.2 && twn.stands.red.z === -32.2 && hI.goals.blue.z === 52.5 && hI.goals.red.z === -52.5;
         rows.feeStorm = liveTry("storm") === "storm" && (() => { fees.weather.left = 0; S.tick(fees, S.CONFIG.STEP, still); return fees.weather.kind === "storm"; })();
         rows.feeNone = liveTry(null) === null;
-        // An open grave: fall in, step out on foot, a block can't rest inside.
+        // An open grave: fall in, one jump can't clear the rim, a double jump does, a block can't rest inside, and a
+        // bot knocked in gets out on its own.
         const g = fresh("haunted"), gu = g.actors[0], I = S.ARENAS.haunted, [gx0, gx1, gz0, gz1] = I.graves[0], cx = (gx0 + gx1) / 2, cz = (gz0 + gz1) / 2;
         for (const k of g.crates) k.live = false;
         for (const o of g.actors) if (o.id) o.bot = true;
         Object.assign(gu, { x: cx, z: cz, y: 0, grounded: true });
-        run(g, 0.4);
-        rows.graveFall = gu.y === S.GRAVE_Y;
-        run(g, 1.4, { x: 0, z: 1 }, () => gu.y >= 0 && gu.grounded);
-        rows.graveOut = gu.y === 0 && !S.inGrave(gu.x, gu.z);
+        run(g, 0.7, still, () => gu.grounded && gu.y === S.GRAVE_Y);
+        rows.graveFall = gu.y === S.GRAVE_Y && S.inGrave(gu.x, gu.z);
+        const climb = { x: 0, z: 1, jump: 1 };
+        run(g, 0.15, climb);
+        run(g, 2, climb, () => gu.grounded);
+        rows.graveOneJump = gu.y === S.GRAVE_Y && S.inGrave(gu.x, gu.z);
+        Object.assign(gu, { carrying: "red" }); Object.assign(g.flags.red, { state: "carried", carrier: 0 });
+        climb.jump = 1;
+        run(g, 1, climb, () => gu.vy <= 0.6 && !gu.grounded);
+        climb.jump = 1;
+        run(g, 2.5, climb, () => gu.grounded);
+        rows.graveTwoJumps = gu.y === 0 && !S.inGrave(gu.x, gu.z) && gu.carrying === "red";
+        const gb2 = fresh("haunted"), gbot = gb2.actors[1];
+        for (const k of gb2.crates) k.live = false;
+        gbot.bot = true; Object.assign(gbot, { x: cx, z: cz, y: S.GRAVE_Y, grounded: true, guard: 9 });
+        run(gb2, 6, still, () => !S.inGrave(gbot.x, gbot.z) && gbot.y >= -0.1);
+        rows.graveBotOut = !S.inGrave(gbot.x, gbot.z);
         S.create({ map: "haunted" });
         rows.graveRest = I.graves.every(([x0, x1, z0, z1]) => { const p = S.restSpot((x0 + x1) / 2, (z0 + z1) / 2); return !S.inGrave(p.x, p.z); });
       }
@@ -11631,7 +11665,7 @@ const blockWalk = { name: "block walk", why: "rule: W A S D move the visitor's O
   await b.key("Enter");
   const rows = {};
   for (const k of "wsadqe") {
-    await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, a = s.actors[0]; s.prep = 0; Object.assign(s.weather, { target: 0, strength: 0, left: 1e9 }); a.x = -14; a.z = 2; a.vx = a.vz = 0; for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 30 : -30; } B.advance(0.6, 1 / 60); const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); window.__walk = { fx: vx / l, fz: vz / l, x0: a.x, z0: a.z }; })()`);
+    await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, a = s.actors[0]; s.prep = 0; Object.assign(s.weather, { left: 1e9 }); a.x = -14; a.z = 2; a.vx = a.vz = 0; for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 30 : -30; } B.advance(0.6, 1 / 60); const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); window.__walk = { fx: vx / l, fz: vz / l, x0: a.x, z0: a.z }; })()`);
     await holdKey(b, k, 0.5);
     rows[k] = await b.evaluate(`(() => { const q = window.__walk, a = window.__ooga.block.sim.actors[0], c = window.__ooga.camera, dx = a.x - q.x0, dz = a.z - q.z0, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); return { fwd: +(dx * q.fx + dz * q.fz).toFixed(2), side: +(dx * -q.fz + dz * q.fx).toFixed(2), turn: +((vx / l) * -q.fz + (vz / l) * q.fx).toFixed(2) }; })()`);
   }

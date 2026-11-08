@@ -29,8 +29,7 @@
 // answering a Bitcoin question (the scene asks it and calls `escape`), or the bubble wears off after `TRAP_MAX_S`.
 // Bots "work the question" for a seeded few seconds. A sprung pad goes dark for `TRAP_REARM_S`.
 //
-// Weather: the sky turns from clear to breezy to stormy and back on a seeded schedule; the wind gusts and wanders and
-// pushes Oogas about (hard in the air, a little on the ground) and bends every throw.
+// Weather: the sky turns from clear to stormy and back on a seeded schedule; a storm brings rain and lightning.
 //
 // Every number lives in CONFIG. The arena, its blocks and the stands live in ARENA. Actors, flags, shots, crates and
 // the event ring are preallocated in `create`; `step` allocates nothing. Bots and weather draw from the run's seeded
@@ -47,7 +46,7 @@
     TRAP_R: 0.95, TRAP_MAX_S: 25, TRAP_REARM_S: 8, BOT_THINK: [3.5, 8], MAX_SIDE: 5,
     PREP_S: 20, CRATE_HALF: 0.6, CRATE_H: 1.1, MAX_CRATES: 32, CRATE_STOCK: 3, PUSH: 0.55, STAND_CLEAR: 2.4,
     NET_S: 4, NET_SLOW: 0.4, PASS_SPEED: 13, PASS_LIFT: 5, PASS_GRAVITY: 13, PASS_SAFE: 0.45, CATCH_R: 1.5,
-    WIND: { clear: 0.4, breeze: 1.8, storm: 3.8 }, WEATHER_S: [24, 42], GROUND_WIND: 0.3, AIR_WIND: 0.85, SHOT_WIND: 0.7,
+    WEATHER_S: [24, 42],
     TRAMP_R: 1.0, BOUNCE: 13.5, STEP_UP: 0.45, FIRE_R: 0.95, BURN_HOPS: 3, BURN_SLOW: 0.25,
     JET_FUEL: 2.6, JET_REFILL: 3, JET_ACCEL: 27, JET_RISE: 6, JET_CEILING: 15,
     GORILLA_SPEED: 3.2, GORILLA_CHARGE: 8, GORILLA_SIGHT: 8, GORILLA_LEASH: 11, GORILLA_WANDER: 5, GORILLA_R: 0.75,
@@ -307,11 +306,14 @@
       // in the cave, on the mound's top, behind the outcrop.
       terrain: [...cave(16.5, 21.5, 17, 21), ...mound(-21.5, -17.5, 10, 15), ...outcrop(2, 4, 9, 10.5)],
       hookSpots: [[19, 0, 19.25], [-19.5, 2, 12.5], [3, 0, 11.4]],
+      // The block's stand at the back of the building, under its upper floor, with the board's Ooga out in the yard.
+      stands: { blue: { x: 0, z: 32.2 }, red: { x: 0, z: -32.2 } },
+      showcase: { blue: { x: 0, z: 25.5 }, red: { x: 0, z: -25.5 } },
       guard: { blue: { x: 0, z: 21.5 }, red: { x: 0, z: -21.5 } },
       traps: [[-12.5, 4], [12.5, -4], [7, 21], [-7, -21], [-19, 8], [19, -8], [0, 6.5], [0, -6.5]],
       crates: both([[-4.6, 22], [4.6, 22], [-3.2, 27.5], [4.5, 27.5]]),
       plug: both([[0, 24.5], [-1.3, 25.8], [1.3, 25.8]]),
-      alley: both([[-3, 36], [3, 36], [0, 33.4]]),
+      alley: both([[-3, 36], [3, 36], [0, 35.7]]),
       caches: [[12.5, 3, 13.5], [-12.5, 3, 13.5], [12.5, 3, -13.5], [-12.5, 3, -13.5], [0, 3, 32.5], [0, 3, -32.5]],
       tramps: [[-15, 19], [15, -19], [-5, 4], [5, -4]],
       powers: [[-6.5, 17], [6.5, -17], [19, 12], [-19, -12], [0, 4], [0, -4]],
@@ -422,6 +424,8 @@
     // The graveyard: rows of headstones for cover, an iron fence, dead trees, and a crypt at each side.
     for (const [x, z] of [[-9, 12], [-6, 12], [-3, 12], [3, 14], [6, 14], [9, 14], [-12, 18], [-9, 18], [12, 20], [15, 20], [-16, 7], [16, 9]]) half.push(at(x, z, 1, 0.35, 1.1));
     half.push([-20, -12, 25, 25.3, 1.3, 0], [12, 20, 25, 25.3, 1.3, 0]);
+    // The tall iron gate before the house, a lone panel (`hauntModels.IRON_FENCE`'s width): solid, the way round either end.
+    half.push([-2.3, 2.3, 24.4, 24.6, 3.9, 0]);
     const deadTree = (x, z, top = 5.5) => { half.push(at(x, z, 0.7, 0.7, top)); decor.push({ kind: "deadtree", x, z, y: top, r: 1.8 }); };
     deadTree(-20, 14); deadTree(20, 16, 6); deadTree(-7, 22, 5); deadTree(23, 30, 6.5); deadTree(-24, 34, 6);
     half.push([-25, -19, 4, 8, 2.6, 0]);
@@ -441,12 +445,14 @@
       // The way up through the house: the foot of the cellar stairs, their top on the house floor, inside the front door,
       // the yard before it, and the foot of the front stairs (indices 20 to 24, joined by `links`).
       // The middle three are up on the yard: a node's third number is its floor, 0 if left out.
-      [-4.5, 46.6], [-4.5, 42.3, YARD], [0, 37.6, YARD], [0, 34.2, YARD], [0, 27.8]];
+      [-4.5, 46.6], [-4.5, 42.3, YARD], [0, 37.6, YARD], [0, 34.2, YARD], [0, 27.8],
+      // The scoring ring behind the house.
+      [0, 51.5]];
     // Node pairs joined though a straight line between them crosses a step (the stairs are walked, not seen through).
     const linkHalf = [[20, 21], [21, 22], [22, 23], [23, 24], [8, 20]];
     return {
       id: "haunted", name: "Haunted Hollow", BLOCKS, steps: stepSet, decor: allDecor,
-      // Open graves: shallow pits to fall in and step straight out of, footprints on blue's side, turned for red.
+      // Open graves: pits too deep for one jump (`GRAVE_Y`), a double jump, the jetpack or the hook out, footprints on blue's side, turned for red.
       graves: [[-19, -17.5, 16.5, 19.5], [24, 25.5, 19, 22], [-22, -20.5, 27, 30]].flatMap((g) => [g, [-g[1], -g[0], -g[3], -g[2]]]),
       gorillas: [[-14, 2], [14, -2], [8, 22], [-8, -22]],
       // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
@@ -455,12 +461,11 @@
       hookSpots: [[25.5, 0, 10.5], [-27, 2, 15], [4, 0, 7.4]],
       // The rivals' block isn't marked on the mini-map until it's out of its cellar: it has to be found.
       hidden: true,
-      W: 30, L: 50, tower, gap, spawnZ: 26,
+      W: 30, L: 50, tower, gap, spawnZ: 26.6,
       // The block's stand, in the cellar's back room.
       stands: { blue: { x: -10.5, z: 46 }, red: { x: 10.5, z: -46 } },
-      // Where a stolen block is mined: at the foot of your own house's front stairs, so the hunt is in the rivals'
-      // cellar and the run home is a dash, not a second maze.
-      goals: { blue: { x: 0, z: 26.5 }, red: { x: 0, z: -26.5 } },
+      // Where a stolen block is mined: out behind your own house, at the back of the map, a run round the building.
+      goals: { blue: { x: 0, z: 52.5 }, red: { x: 0, z: -52.5 } },
       // Where the visitor's Ooga stands on show on the board: before its house's stairs.
       showcase: { blue: { x: 4, z: 24 }, red: { x: -4, z: -24 } },
       // A catapult drops its Ooga into the other house, right over its stairs down.
@@ -569,7 +574,7 @@
   // the unit way out into EDGE; `isleDepth` is the rock under a spot, deepening toward the middle.
   const EDGE = { x: 0, z: 1 };
   // In an open grave's footprint (Haunted Hollow's): the only ground below the top.
-  const GRAVE_Y = -0.55;
+  const GRAVE_Y = -2;
   const inGrave = (x, z) => {
     const list = ARENA.graves;
     if (!list) return false;
@@ -654,6 +659,12 @@
   // `step` is how far below its top a body's feet may be and still walk onto a box (a stair).
   const resolve = (p, r, step = 0.05) => {
     const feet = p.y || 0, head = feet + heightOf(p);
+    // Down in an open grave its earth walls hold a body in until its feet are up over the rim.
+    if (feet < 0 && ARENA.graves) for (let i = 0; i < ARENA.graves.length; i++) {
+      const g = ARENA.graves[i];
+      if (p.x < g[0] - 0.5 || p.x > g[1] + 0.5 || p.z < g[2] - 0.5 || p.z > g[3] + 0.5) continue;
+      p.x = Math.max(g[0] + 0.05, Math.min(g[1] - 0.05, p.x)); p.z = Math.max(g[2] + 0.05, Math.min(g[3] - 0.05, p.z));
+    }
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (feet >= b[4] - step || head <= b[5]) continue;
@@ -672,7 +683,7 @@
     }
     // The island's edge is open; a body that has gone over it and is down under the top is kept out of the rock, out
     // past the nearest edge, until it climbs back over.
-    if (feet < -CONFIG.RIM && head > -isleDepth(p.x, p.z) && onIsland(p.x, p.z)) {
+    if (feet < -CONFIG.RIM && head > -isleDepth(p.x, p.z) && onIsland(p.x, p.z) && !inGrave(p.x, p.z)) {
       const n = Math.sqrt((p.x * p.x) / (ARENA.W * ARENA.W) + (p.z * p.z) / (ARENA.L * ARENA.L)), k = n > 1e-6 ? (1 + r / Math.min(ARENA.W, ARENA.L)) / n : 1;
       p.x *= k; p.z *= k;
     }
@@ -680,7 +691,7 @@
   // The highest top under a body of radius r that its feet at y are on or above: where it stands.
   // Over the open edge there is nothing (-Infinity), and nor is there for feet already down under the island's top.
   const groundAt = (x, z, y, r = CONFIG.BODY_R * 0.7) => {
-    let g = onIsland(x, z) && y >= -CONFIG.RIM ? (inGrave(x, z) ? GRAVE_Y : 0) : -Infinity;
+    let g = onIsland(x, z) && (y >= -CONFIG.RIM || inGrave(x, z)) ? (inGrave(x, z) ? GRAVE_Y : 0) : -Infinity;
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (b[4] > y + 0.05 || b[4] <= g || x < b[0] - r || x > b[1] + r || z < b[2] - r || z > b[3] + r) continue;
@@ -782,7 +793,7 @@
     const vends = A.vends.map(([x, z]) => ({ x, z, dark: 0 }));
     const hooks = Array.from({ length: CONFIG.HOOKS }, () => ({ state: 0, x: 0, y: 0, z: 0, holder: -1 }));
     const events = Array.from({ length: CONFIG.MAX_EVENTS }, () => ({ type: "", team: null, actor: -1, by: -1, x: 0, y: 0, z: 0 }));
-    const weather = { kind: "clear", left: 0, angle: 0, strength: 0, target: 0, x: 0, z: 0, boltT: 0, boltWarn: 0, boltX: 0, boltZ: 0 };
+    const weather = { kind: "clear", left: 0, strength: 0, boltT: 0, boltWarn: 0, boltX: 0, boltZ: 0 };
     const puddles = (A.puddles || []).map(([x, z]) => ({ x, z, dark: 0 }));
     const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, puddles, gorillas, ghosts, wallets, vends, hooks, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
     reset(sim);
@@ -879,7 +890,7 @@
     for (let i = 0; i < sim.powers.length; i++) { const p = sim.powers[i]; p.dark = 0; p.kind = [0, 3, seed & 1 ? 2 : 1][(i >> 1) % 3]; }
     for (const t of TEAMS) sim.halving[t] = sim.cold[t] = 0;
     const w = sim.weather;
-    w.kind = "clear"; w.left = CONFIG.WEATHER_S[0]; w.angle = sim.rng() * Math.PI * 2; w.strength = 0; w.target = CONFIG.WIND.clear; w.x = w.z = 0;
+    w.kind = "clear"; w.left = CONFIG.WEATHER_S[0]; w.strength = 0;
     sim.score.blue = sim.score.red = 0;
     sim.time = sim.acc = 0;
     sim.prep = sim.prepS;
@@ -912,7 +923,7 @@
     f.carrier = null;
     a.blocked = f.team;
     a.carrying = null;
-    if (onIsland(a.x, a.z) && a.y >= -CONFIG.RIM) {
+    if (onIsland(a.x, a.z) && (a.y >= -CONFIG.RIM || inGrave(a.x, a.z))) {
       const at = restSpot(a.x, a.z);
       f.x = at.x; f.y = 0; f.z = at.z;
       emit(sim, why, f.team, a.id, f.x, 0, f.z);
@@ -947,13 +958,12 @@
     emit(sim, "pass", f.team, id, f.x, f.y, f.z);
     return true;
   };
-  // A block in flight: gravity and the wind; it lands on whatever it falls onto, or drops where it struck a wall.
+  // A block in flight: gravity; it lands on whatever it falls onto, or drops where it struck a wall.
   const flyFlag = (sim, f, dt) => {
     // On a hook's rope it goes where the rope takes it (`stepHook`).
     if (f.hookedBy >= 0) return;
     f.t += dt;
     f.vy -= CONFIG.PASS_GRAVITY * dt;
-    f.vx += sim.weather.x * CONFIG.SHOT_WIND * dt; f.vz += sim.weather.z * CONFIG.SHOT_WIND * dt;
     const nx = f.x + f.vx * dt, ny = f.y + f.vy * dt, nz = f.z + f.vz * dt;
     const outside = !isleIn(nx, nz, 0.4);
     if (outside || (ny > 0 && solidAt(nx, ny, nz))) { f.vx = f.vz = 0; f.vy = Math.min(f.vy, 0); }
@@ -2333,7 +2343,9 @@
       return;
     }
     // Over the edge: back over the nearest edge on the jetpack, steering in as soon as the feet are over the rim.
-    if (!a.grabbed && (a.y < -CONFIG.RIM || !onIsland(a.x, a.z))) {
+    if (!a.grabbed && (a.y < -CONFIG.RIM || !onIsland(a.x, a.z) || (a.y < 0 && inGrave(a.x, a.z)))) {
+      // On the floor of an open grave: a jump first, and the jetpack lifts it the rest of the way out.
+      if (a.grounded && inGrave(a.x, a.z)) a.botJump = true;
       goal.x = a.x; goal.z = a.z; clampIn(goal, 2.5);
       const h = Math.atan2(goal.x - a.x, goal.z - a.z), sp = sim.bots.speed;
       a.vx = Math.sin(h) * sp; a.vz = Math.cos(h) * sp;
@@ -2610,10 +2622,9 @@
       if (!ok) { c.x = ox; c.z = oz; } else if (Math.abs(c.x - ox) + Math.abs(c.z - oz) > 1e-6) a.pushing = true;
     }
   };
-  // The weather: a seeded run of clear, breezy and stormy spells, the wind easing toward each spell's strength,
-  // wandering in direction and gusting.
-  // Each map's chance of a clear, a breezy and a stormy spell.
-  const MAP_WEATHER = { fort: [0.35, 0.45], town: [0.6, 0.25], jungle: [0.1, 0.5], haunted: [0.4, 0.3] };
+  // The weather: a seeded run of clear and stormy spells, `strength` easing in and out of a storm (0 to 1).
+  // Each map's chance of a stormy spell.
+  const MAP_WEATHER = { fort: 0.2, town: 0.15, jungle: 0.4, haunted: 0.3 };
   const stepBolt = (sim, w, dt) => {
     if (w.boltWarn > 0) {
       if ((w.boltWarn -= dt) > 0) return;
@@ -2646,17 +2657,12 @@
     if (w.left <= 0) {
       // Live weather (`setLive`) holds its kind; otherwise each spell is a seeded draw.
       // Its own mix on each map; a busy network still makes a storm.
-      const r = sim.rng(), mix = MAP_WEATHER[sim.map];
-      w.kind = sim.live === "storm" ? "storm" : (r < mix[0] ? "clear" : r < mix[0] + mix[1] ? "breeze" : "storm");
-      w.target = CONFIG.WIND[w.kind];
+      const r = sim.rng();
+      w.kind = sim.live === "storm" || r < MAP_WEATHER[sim.map] ? "storm" : "clear";
       w.left = CONFIG.WEATHER_S[0] + sim.rng() * (CONFIG.WEATHER_S[1] - CONFIG.WEATHER_S[0]);
       emit(sim, "weather", null, -1, 0, 0, 0);
     }
-    w.strength += (w.target - w.strength) * Math.min(1, dt * 0.4);
-    w.angle += Math.sin(sim.time * 0.13 + sim.seed) * dt * 0.25;
-    const gust = 1 + 0.35 * Math.sin(sim.time * 1.7 + Math.sin(sim.time * 0.6) * 2);
-    w.x = Math.cos(w.angle) * w.strength * gust;
-    w.z = Math.sin(w.angle) * w.strength * gust;
+    w.strength += ((w.kind === "storm" ? 1 : 0) - w.strength) * Math.min(1, dt * 0.4);
     stepBolt(sim, w, dt);
   };
 
@@ -2705,7 +2711,6 @@
       if (prepWas > 0 && sim.prep === 0) emit(sim, "go", null, -1, 0, 0, 0);
     }
     stepWeather(sim, dt);
-    const wind = sim.weather;
     // Each step takes the four in the other order from the last, so neither side always moves, picks up or reaches a
     // dropped block first.
     sim.flip = !sim.flip;
@@ -2852,13 +2857,6 @@
       }
       a.x += a.vx * dt;
       a.z += a.vz * dt;
-      // The wind shoves anyone in the air; underfoot only a storm does, so an Ooga standing still in a breeze stays put.
-      const storm = wind.strength > CONFIG.WIND.breeze * 1.2;
-      if (free && (!a.grounded || storm)) {
-        const k = (a.grounded ? CONFIG.GROUND_WIND : CONFIG.AIR_WIND) * dt;
-        a.x += wind.x * k;
-        a.z += wind.z * k;
-      }
       // Fortifying keeps each side to its own half.
       if (sim.prep > 0) {
         if (a.team === "blue" && a.z < 1) a.z = 1;
@@ -2914,7 +2912,7 @@
       // The open edge: where an Ooga last stood on the island is where a block it carries over the edge drops; one gone
       // down under the top lets go of it, and one fallen all the way comes back home.
       if (a.grounded && a.y > -CONFIG.RIM && onIsland(a.x, a.z)) { a.edgeX = a.x; a.edgeY = a.y; a.edgeZ = a.z; a.flung = false; }
-      else if (a.carrying && !a.flung && a.y < -CONFIG.RIM) dropFlag(sim, a, "edgedrop");
+      else if (a.carrying && !a.flung && a.y < -CONFIG.RIM && !inGrave(a.x, a.z)) dropFlag(sim, a, "edgedrop");
       if (a.y < CONFIG.FALL_FLOOR) { respawn(sim, a); continue; }
       // The campfire: feet in it burn, and burnt feet take `BURN_HOPS` jumps to cool.
       if (a.grounded && a.y < 0.05 && free && a.burnt <= 0 && (a.x - ARENA.fire[0]) ** 2 + (a.z - ARENA.fire[1]) ** 2 < CONFIG.FIRE_R * CONFIG.FIRE_R) {
@@ -2976,7 +2974,7 @@
       else if (f.state === "dropped" && f.homeT > 0 && (f.homeT -= dt) <= 0) { homeFlag(f); emit(sim, "return", f.team, -1, f.x, 0, f.z); }
     }
     settleCrates(sim, dt);
-    // Throws in flight: gravity and the wind, then a rival in the way or anything solid.
+    // Throws in flight: gravity, then a rival in the way or anything solid.
     for (const s of sim.shots) {
       if (!s.live) continue;
       const tool = TOOLS[s.kind];
@@ -2993,8 +2991,6 @@
         }
       }
       s.vy -= tool.gravity * dt;
-      const drift = (s.kind === "rocket" ? 0.3 : s.kind === "sniper" ? 0.1 : s.kind === "homer" ? 0 : 1) * CONFIG.SHOT_WIND * dt;
-      s.vx += wind.x * drift; s.vz += wind.z * drift;
       s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
       let hit = null;
       for (const a of sim.actors) {

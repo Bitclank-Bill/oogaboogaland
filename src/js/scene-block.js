@@ -5,7 +5,7 @@
 //
 // Phases `board` (choose a side), `play` and `results`. The rules run in `blockSim.step` on a fixed step; this file
 // draws them: the arena and stands built once a visit, the four Oogas posed from the sim each frame, the two blocks on
-// their stands, at a carrier's back or lying where they fell, pooled crates, throws and splats, the weather (a wind
+// their stands, at a carrier's back or lying where they fell, pooled crates, throws and splats, the weather (a
 // sign, rain and lightning in a storm), and a chase camera behind the visitor's Ooga that a captured mouse, Q E, the
 // arrows or the look stick turns. The keys follow the island's: W A S D move from where the Ooga faces, Shift
 // sprints, Space jumps (again in the air) or uses what stands beside it (a zipline, catapult or wallet machine), a
@@ -60,7 +60,7 @@
   const TOOL_KEYS = { 1: "paint", 2: "grenade", 3: "rocket", 4: "net", 5: "sniper", 6: "gold", 7: "ak", 8: "hook" };
   // Each tool's gun (`BM.gun` takes the gun's index times two plus the team's); Lift shows none.
   const GUN_OF = { paint: 0, grenade: 1, rocket: 2, net: 3, sniper: 4, gold: 5, ak: 6, crate: 0, grab: -1, hook: -1 };
-  const WEATHER_WORDS = { clear: "Clear", breeze: "Windy", storm: "Storm" };
+  const WEATHER_WORDS = { clear: "Clear", storm: "Storm" };
   const RAIN = 140;
   const MAP_HOUR = { fort: 17.7, town: 12.5, jungle: 11, haunted: 0.8 }, MAP_CLOUDS = { fort: 0.3, town: 0.15, jungle: 0.85, haunted: 0.25 };
   // Sky, light and haze from the island's clock, as the drop's.
@@ -706,7 +706,7 @@
         if (e.actor >= 0) say(e.actor, LINES.splat, 1.2);
       } else if (e.type === "pickup") {
         fx.burst(e.x, 1.2, e.z, 14, ORANGE_BITS, 2);
-        if (me) { center("GOT THE BLOCK!", 1100); notice(SIM.ARENA.goals ? "Run it to the glowing ring at the foot of your house's front steps (or down to your block's spot in your cellar)" : COARSE ? "Run it home · Drop hands it off" : "Run it home to your stand · K drops it", 4000); }
+        if (me) { center("GOT THE BLOCK!", 1100); notice(SIM.ARENA.goals ? "Run it to the glowing ring behind your house (or down to your block's spot in your cellar)" : COARSE ? "Run it home · Drop hands it off" : "Run it home to your stand · K drops it", 4000); }
         // The block's side is the event's team; whose side picked it up is the carrier's.
         else if (sim.actors[e.actor].team === sim.team) notice("Teammate has the block! Cover them!", 2500);
         else { notice("They took your block! Paint the carrier!", 2500); say(1, LINES.lost); }
@@ -810,7 +810,7 @@
       else if (e.type === "winded") { if (me) notice("Out of breath! Sprint refills in a moment", 1400); }
       else if (e.type === "weather") {
         const w = sim.weather.kind, fee = sim.live === "storm" && w === "storm" ? ` · mempool fees ${Math.round(live.fee)} sat/vB` : "";
-        notice((w === "storm" ? "A storm rolls in! Hold on to something" : w === "breeze" ? "The wind picks up · throws drift" : "The sky clears") + fee, 2800);
+        notice((w === "storm" ? "A storm rolls in! Watch for lightning" : "The sky clears") + fee, 2800);
       } else if (e.type === "power") {
         const kind = SIM.POWERS[e.y], who = me ? "You" : mine ? "Teammate" : "They";
         fx.burst(e.x, 1.1, e.z, 16, kind === "laser" ? PAINT_BITS.red : kind === "cold" ? PAINT_BITS.blue : ORANGE_BITS, 2.6);
@@ -1671,10 +1671,10 @@
       n.geometry = BM.crate(TEAM_INDEX[c.team]);
     }
   };
-  // The sky follows the weather: a storm darkens the light and thickens the cloud, rain falls slanted by the wind
+  // The sky follows the weather: a storm darkens the light and thickens the cloud, rain falls
   // round the camera, and now and then lightning flashes.
   const poseWeather = (dt) => {
-    const w = sim.weather, storm = w.kind === "storm" ? Math.min(1, w.strength / C.WIND.storm) : 0;
+    const w = sim.weather, storm = w.kind === "storm" ? Math.min(1, w.strength) : 0;
     RENDER_OPTS.clouds = MAP_CLOUDS[SIM.ARENA.id] + 0.55 * storm;
     RENDER_OPTS.directStrength *= 1 - 0.55 * storm;
     RENDER_OPTS.sunStrength *= 1 - 0.55 * storm;
@@ -1687,7 +1687,7 @@
     flash = Math.max(0, flash - dt * 5);
     RENDER_OPTS.ambientFloor = (SIM.ARENA.id === "haunted" ? 0.42 : 0.22) + flash * 0.8;
     RENDER_OPTS.bloomStrength = 0.6 + flash * 1.2;
-    const cx = camera.position.x, cz = camera.position.z, lean = 0.12;
+    const cx = camera.position.x, cz = camera.position.z;
     for (let i = 0; i < RAIN; i++) {
       const r = rain[i];
       // Rain only on Full detail; Gorilla Jungle's is always falling, a storm brings it anywhere.
@@ -1695,21 +1695,13 @@
       r.node.visible = detail.full && wet > 0.2 && i < RAIN * wet;
       if (!r.node.visible) continue;
       r.y -= dt * 14;
-      r.x += w.x * dt * 0.8; r.z += w.z * dt * 0.8;
       if (r.y < 0 || Math.abs(r.x - cx) > 12 || Math.abs(r.z - cz) > 12) {
         r.x = cx + (Math.random() - 0.5) * 22; r.z = cz + (Math.random() - 0.5) * 22; r.y = 6 + Math.random() * 6;
       }
       setVec(r.node.position, r.x, r.y, r.z);
-      r.node.rotation.x = w.z * lean; r.node.rotation.z = -w.x * lean;
     }
-    // The wind sign: its strength, and an arrow turned to show where it blows relative to the camera.
-    const key = `${w.kind}${Math.round(w.strength * 2)}${Math.round(wrap(Math.atan2(w.x, w.z) - cam.yaw) * 4)}`;
-    if (key !== el.windKey) {
-      el.windKey = key;
-      el.windWord.textContent = WEATHER_WORDS[w.kind];
-      el.windArrow.style.transform = `rotate(${(-wrap(Math.atan2(w.x, w.z) - cam.yaw)).toFixed(2)}rad)`;
-      el.windArrow.style.opacity = String(Math.min(1, 0.25 + w.strength / C.WIND.storm));
-    }
+    // The weather word, written only when it changes.
+    if (w.kind !== el.weatherKind) { el.weatherKind = w.kind; el.weatherWord.textContent = WEATHER_WORDS[w.kind]; }
   };
   // The sprint gauge: full, draining while Shift is held, orange while it refills after running dry.
   const poseStamina = () => {
@@ -2003,8 +1995,7 @@
     poseWeather(dt);
     if (phase === "play") drawMap(dt, elapsed);
     if (sim) {
-      // The held sounds: the wind's strength, rain in a storm, and the whir while the visitor rides a zipline.
-      audio.state.wind = phase === "play" ? sim.weather.strength / C.WIND.storm : 0;
+      // The held sounds: rain in a storm, and the whir while the visitor rides a zipline.
       audio.state.rain = phase === "play" && sim.weather.kind === "storm" ? 1 : 0;
       audio.state.zip = phase === "play" && sim.actors[0].riding ? 1 : 0;
       audio.state.jet = phase === "play" && sim.actors[0].jetting ? 1 : 0;
@@ -2421,9 +2412,8 @@
     el.power = document.getElementById("block-power");
     el.powerWord = document.getElementById("block-power-word");
     el.staminaK = -1;
-    el.windWord = document.getElementById("block-wind-word");
-    el.windArrow = document.getElementById("block-wind-arrow");
-    el.windKey = "";
+    el.weatherWord = document.getElementById("block-weather-word");
+    el.weatherKind = "";
     el.cross = document.getElementById("block-cross");
     el.viewBtn = document.getElementById("block-view-btn");
     el.soundBtn = document.getElementById("block-sound-btn");

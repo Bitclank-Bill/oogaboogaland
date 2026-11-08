@@ -11177,13 +11177,6 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   background: rgba(70, 44, 20, 0.88) !important;
 }
 
-.block-wind span {
-  display: inline-block;
-  font-size: 16px;
-  color: #bfe3ff;
-  transition: transform 0.2s;
-}
-
 @media (pointer: fine) {
   .block-actions {
     display: none;

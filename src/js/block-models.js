@@ -66,6 +66,8 @@
       parts.push(box({ w: w + 0.1, h: 0.12, d: d + 0.12, color: "#55555e", offset: { x, y: 0.06, z } }));
       return true;
     }
+    // The tall iron gate's collision: the scene draws the gate itself (`hauntModels.ironFence`).
+    if (bottom === 0 && Math.abs(h - 3.9) < 0.05 && Math.abs(w - 4.6) < 0.05) return true;
     if (bottom === 0 && Math.abs(h - 1.3) < 0.05 && thin <= 0.35) {
       // The iron fence: rails and spiked bars.
       parts.push(box({ w, h: 0.06, d, color: "#1c1a20", offset: { x, y: 1.1, z } }), box({ w, h: 0.06, d, color: "#1c1a20", offset: { x, y: 0.3, z } }));
@@ -120,9 +122,10 @@
         const k = TOP - 1 - iy;
         // Haunted Hollow's field is brick, courses in staggered runs (slots 10 and 11 are its brick and mortar).
         // An open grave's hole (the pit `GRAVE_Y` deep in the sim), down to dirt.
-        if (k === 0 && SIM.inGraveOf(x, z, M)) continue;
+        const pit = SIM.inGraveOf(x, z, M), holeK = Math.round(-SIM.GRAVE_Y / C);
+        if (pit && k < holeK) continue;
         const row = Math.floor(iz / 2), brick = M.id === "haunted" && field ? (iz % 2 === 0 || (ix + (row % 2) * 2) % 4 === 0 ? 11 : 10) : top;
-        grid.set(ix, iy, iz, k === 0 ? brick : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
+        grid.set(ix, iy, iz, k === 0 ? brick : k <= 2 || (pit && k <= holeK + 1) ? P.dirt : isleRock(ix, iy, iz, 1));
       }
     }
     for (const b of M.rocks || []) {
@@ -522,7 +525,7 @@
     geo.castShadow = false;
     return geo;
   });
-  // A rain streak, a thin pale bar the scene leans with the wind.
+  // A rain streak, a thin pale bar.
   const streak = cached(() => {
     const geo = box({ w: 0.025, h: 0.5, d: 0.025, color: "#c8d8ff", emissive: 0.4 });
     geo.castShadow = false;
@@ -891,10 +894,10 @@
       parts.push(box({ w: 0.08, h: 0.12, d: b[3] - b[2] - 0.8, color, emissive: 1, offset: { x: b[1] + 0.05, y: 1.5, z: (b[2] + b[3]) / 2 } }));
     }
     for (const [x0, x1, z0, z1] of M.graves) {
-      const x = (x0 + x1) / 2, z = (z0 + z1) / 2;
-      parts.push(box({ w: 0.28, h: 0.28, d: 0.28, color: "#e0dccf", offset: { x, y: -0.26, z: z1 - 0.45 } }));
-      for (let r = 0; r < 4; r++) parts.push(box({ w: 0.42, h: 0.05, d: 0.06, color: "#d4cebd", offset: { x, y: -0.4, z: z1 - 0.8 - r * 0.2 } }));
-      parts.push(box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x - 0.12, y: -0.42, z: z0 + 0.7 } }), box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x + 0.12, y: -0.42, z: z0 + 0.7 } }));
+      const x = (x0 + x1) / 2, z = (z0 + z1) / 2, floor = SIM.GRAVE_Y;
+      parts.push(box({ w: 0.28, h: 0.28, d: 0.28, color: "#e0dccf", offset: { x, y: floor + 0.29, z: z1 - 0.45 } }));
+      for (let r = 0; r < 4; r++) parts.push(box({ w: 0.42, h: 0.05, d: 0.06, color: "#d4cebd", offset: { x, y: floor + 0.15, z: z1 - 0.8 - r * 0.2 } }));
+      parts.push(box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x - 0.12, y: floor + 0.13, z: z0 + 0.7 } }), box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x + 0.12, y: floor + 0.13, z: z0 + 0.7 } }));
     }
     return merge(...parts);
   });
