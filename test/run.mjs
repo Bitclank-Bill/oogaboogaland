@@ -7450,7 +7450,7 @@ const gameRulesChecks = async () => {
         const reached = (x, z) => { for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) if (seen.has(idx(x, z) + a * 100000 + b)) return true; return false; };
         const walked = [I.traps, I.powers, I.tramps, I.catapults.blue, I.catapults.red, I.gorillas].flat().every(([x, z]) => reached(x, z)) && S.TEAMS.every((t) => reached(I.stands[t].x, I.stands[t].z));
         const ladders = S.TEAMS.every((t) => { const l = I.ladders[t]; return reached((l.zone[0] + l.zone[1]) / 2 - l.dx * 0.75, (l.zone[2] + l.zone[3]) / 2 - l.dz * 0.75); });
-        const caves = (I.terrain || []).filter(([k]) => k === "cave").length === 3;
+        const caves = (I.terrain || []).filter(([k]) => k === "cave").length >= 12 && I.hookSpots.filter(([, y]) => y < 0.5).length >= 4;
         const hidden = I.hookSpots.length >= 3 && I.hookSpots.every(([x, y, z]) => y < 0.5 ? reached(x, z) : Math.abs(S.groundAt(x, z, y + 0.1) - y) < 0.05);
         rows[map] = { mirrored, clearOfBuildings, clearOfSpots, walked, ladders, caves, hidden };
         // Loose blocks, through the same flood: dropped from the top of every fixed block, and landing from the air on it.
@@ -7601,7 +7601,7 @@ const gameRulesChecks = async () => {
         const sweep = {};
         for (const map of S.MAPS) {
           const I = S.ARENAS[map], spots = [[0, I.L * 0.25], [I.W * 0.5, I.L * 0.4], [-I.W * 0.6, -I.L * 0.5]], done = { spots: 0, thrown: 0, off: 0, fails: [] };
-          for (const [, b] of I.terrain) if (b[5] === 0) spots.push([b[0] - 1.6, (b[2] + b[3]) / 2], [b[1] + 1.6, (b[2] + b[3]) / 2], [(b[0] + b[1]) / 2, b[2] - 1.6]);
+          for (const [kind, b] of I.terrain) if (kind !== "cave" && b[5] === 0) spots.push([b[0] - 1.6, (b[2] + b[3]) / 2], [b[1] + 1.6, (b[2] + b[3]) / 2], [(b[0] + b[1]) / 2, b[2] - 1.6]);
           for (const [x, z] of spots) {
             const q = fresh(map), who = q.actors[0], gor = q.gorillas[0];
             for (const t of q.traps) t.dark = 1e9;

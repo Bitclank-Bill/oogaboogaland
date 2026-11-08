@@ -153,6 +153,38 @@
     ["cave", [x0, x1, z0, z1, 3.5, 2.5]]
   ];
   const outcrop = (x0, x1, z0, z1, top = 3) => [["outcrop", [x0, x1, z0, z1, top, 0]]];
+  // A rock massif on a metre grid: solid to `top`, its ground floor holed by `tunnels` (walk-through corridors, any that
+  // meet joining up). The walls are the footprint less the tunnels, merged into boxes; the roof is one slab to stand on.
+  const massif = (x0, x1, z0, z1, tunnels, top = 3.5) => {
+    const nx = x1 - x0, nz = z1 - z0, rock = new Uint8Array(nx * nz).fill(1), out = [];
+    for (const [tx0, tx1, tz0, tz1] of tunnels) for (let i = tx0 - x0; i < tx1 - x0; i++) for (let j = tz0 - z0; j < tz1 - z0; j++) rock[i * nz + j] = 0;
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      if (!rock[i * nz + j]) continue;
+      let d = 1;
+      while (j + d < nz && rock[i * nz + j + d]) d++;
+      let w = 1;
+      for (;; w++) { if (i + w >= nx) break; let full = true; for (let k = 0; k < d; k++) if (!rock[(i + w) * nz + j + k]) { full = false; break; } if (!full) break; }
+      for (let a = 0; a < w; a++) for (let k = 0; k < d; k++) rock[(i + a) * nz + j + k] = 0;
+      out.push(["cave", [x0 + i, x0 + i + w, z0 + j, z0 + j + d, 2.5, 0]]);
+    }
+    out.push(["cave", [x0, x1, z0, z1, top, 2.5]]);
+    return out;
+  };
+  // A cliff: a 2 m step all round a 4 m block, a double jump and then a jump up.
+  const cliff = (x0, x1, z0, z1) => [["cliff", [x0, x1, z0, z1, 2, 0]], ["cliff", [x0 + 1, x1 - 1, z0 + 1, z1 - 1, 4, 2]]];
+  // The ring of terrain round every map's field, on blue's half (turned for red): a cave system on each flank, one
+  // behind each fort, cliffs by the back corners, a mound and an outcrop at the waist. `spots` are its hook hiding places.
+  const ringTerrain = (W, L) => ({
+    terrain: [
+      ...massif(W + 1, W + 9, 4, 18, [[W + 3, W + 6, 4, 18], [W + 1, W + 3, 9, 12], [W + 6, W + 9, 14, 16]]),
+      ...massif(-W - 8, -W - 1, 6, 22, [[-W - 6, -W - 3, 6, 22], [-W - 8, -W - 6, 12, 15], [-W - 3, -W - 1, 16, 19]]),
+      ...massif(-12, 12, L + 4, L + 12, [[-12, 12, L + 7, L + 10], [-2, 1, L + 4, L + 7]]),
+      ...cliff(14, 20, L + 1, L + 7), ...cliff(-20, -14, L + 1, L + 7),
+      ...mound(W + 1, W + 5, 24, 30), ...mound(-W - 5, -W - 1, 24, 30),
+      ...outcrop(W + 1, W + 3, -2, 1)
+    ],
+    spots: [[W + 4.5, 0, 11], [-W - 4.5, 0, 14], [0, 0, L + 8.5]]
+  });
 
   // Fort Chaos: a stone fort at each end, a double jump (`JUMP` then `JUMP2`) clearing its 2.4 m walls, stilt huts
   // and a centre deck for a second storey, and the alley behind each fort as a back way in.
@@ -461,9 +493,11 @@
     A.gorillas = A.gorillas || [];
     // The terrain's boxes join the map's blocks (both halves), remembered as the island's own rock (`rocks`, by kind
     // in `rockKind`) so the models mesh them into the island rather than drawing them as buildings.
+    const ring = ringTerrain(A.fieldW, A.fieldL);
+    A.terrain = [...(A.terrain || []), ...ring.terrain];
+    A.hookSpots = [...(A.hookSpots || []), ...ring.spots];
     A.rocks = new Set(); A.rockKind = new Map();
     for (const [kind, b] of A.terrain || []) for (const r of [b, turned(b)]) { A.BLOCKS.push(r); A.rocks.add(r); A.rockKind.set(r, kind); }
-    A.hookSpots = A.hookSpots || [];
     // The two wallet vending machines, one in each half, solid.
     A.vends = A.vends || [[-9, 5], [9, -5]];
     for (const [x, z] of A.vends) A.BLOCKS.push([x - 0.45, x + 0.45, z - 0.62, z + 0.62, 2.1, 0]);
