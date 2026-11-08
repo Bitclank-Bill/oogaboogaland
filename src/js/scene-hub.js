@@ -149,8 +149,8 @@
     tier: "high", selectedIds: new Array(LIGHT_CAPACITY).fill(null), approximatedIds: new Array(LIGHT_CAPACITY).fill(null)
   };
   const LAMP_STAGGER = 0.12, LAMP_RAMP = 0.4, LAMP_OFF = 0.12;
-  // The meadow's fire pit sits out toward the Headquarters ramp's mouth at 4:45, just clear of its path.
-  const FIRE_DEGREES = [134, 131, 128, 125, 122, 119, 116], FIRE_RADIUS = 13.5, FIRE_SEATS = 6, FIRE_SEAT_RADIUS = 1.8;
+  // The meadow's fire pit sits out toward the foot of the Mempool stairs, clear of the paths; the rest are its fallbacks.
+  const FIRE_DEGREES = [125, 122, 128, 119, 131, 116, 134], FIRE_RADIUS = 13.5, FIRE_SEATS = 6, FIRE_SEAT_RADIUS = 1.8;
   const FIRE_CONTACT_RADIUS = 0.65, FIRE_AVOID_RADIUS = 1.25, FIRE_BOTTOM = 0.12, FIRE_TOP = 0.85;
   const NIGHT = 0.5, FIRE_SEAT_CHANCE = 0.5;
   // Clock-face degrees to a meadow point: 0 is -z (far), 90 is +x (right).
