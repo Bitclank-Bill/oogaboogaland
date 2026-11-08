@@ -11959,10 +11959,34 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 }
 
 /* Block Frenzy's controls list: grouped key and action rows on a dark backing. */
-#block-board .block-keys {
-  max-height: min(42vh, 340px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+/* With All controls open, the panel grows sideways and the list runs in columns, so it stays on screen. */
+@media (min-width: 900px) {
+  #block-board:has(.block-controls[open]) {
+    width: min(94vw, 1060px);
+    max-width: min(94vw, 1060px);
+  }
+
+  #block-board .block-keys {
+    column-count: 3;
+    column-gap: 22px;
+  }
+
+  #block-board .block-keys h4 {
+    break-after: avoid;
+  }
+
+  #block-board .block-keys div {
+    break-inside: avoid;
+  }
+}
+
+/* A small screen scrolls the list inside the panel instead. */
+@media (max-width: 899px) {
+  #block-board .block-keys {
+    max-height: 42vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }
 
 .block-keys {
