@@ -6911,7 +6911,12 @@ const workCaveTrips = async (b) => {
   const tripsAt = (dt) => b.evaluate(`(() => {
     const B = __ooga, S = BL.scene, scene = BL.scenes.hub, dt = ${dt};
     const update = scene.update; scene.update = () => {}; B.pilot.release(true); B.setPileLevel(100000);
+    // The big pile widens its rim and moves the ring out under workers already mid-leg on the old layout. They arrive
+    // afresh at this pile, as the boot places them (refreshStates(true) from away), so every measured leg starts from
+    // the real slot walk, reload and trip.
     const actors = B.crew.list.filter(c => c.state === "working");
+    for (const c of actors) { c.state = "away"; c.root.visible = false; }
+    B.crew.refreshStates(true);
     const repos = ["oogaboogax/entropylab", "oogaboogax/oogaboogaland", "oogaboogax/lightningfoundry"];
     const sites = repos.map(repo => B.crew.workSites.findIndex(site => site.repo === repo));
     const rows = actors.map(c => ({ name: c.contributor.name, outbound: [0, 0, 0], returned: [0, 0, 0],
@@ -12893,6 +12898,12 @@ const labWalking = { name: "lab walking", why: "regression: Shift+A left A held 
   record("lab walking: W A S D walk an Ooga their way on screen, Right Shift+A summons a still Agent without leaving A held, and an Ooga taken after the Agent stands still", allWalk(ooga) && still.driven && still.drift < 0.2 && after < 0.2, JSON.stringify({ ooga, still, after }));
 } };
 const labKeys = { name: "lab keys", why: "rule: B streams the test bananas onto the pile, and each Escape closes UI, frees the cursor, then leaves the lab with the same Ooga", run: async (b) => {
+  // "lab walking" ends with Escape, which leaves for the island behind a fade while the hub rebuilds: start in the lab.
+  await untilPage(b, '!B.transitioning', 20000);
+  if (await b.evaluate(`__ooga.scene`) !== "lab") {
+    await b.evaluate(`__ooga.go("lab")`);
+    await untilPage(b, 'B.scene === "lab" && !B.transitioning', 20000);
+  }
   const before = await b.evaluate(`window.__ooga.stats().dropsLanded`);
   await b.key("b");
   const landed = await b.evaluate(`(() => { const B = window.__ooga; B.advance(4, 1 / 30); return B.stats().dropsLanded - ${before}; })()`);
