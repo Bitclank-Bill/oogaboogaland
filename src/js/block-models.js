@@ -89,6 +89,19 @@
   const isleHash = (x, y, z) => { let h = Math.imul(x * 374761393 + y * 668265263 + z * 2147483647 | 0, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ h >>> 16) >>> 0) / 4294967296; };
   const ISLE_P = { grass: 1, grassLight: 2, grassDark: 3, stone: 5, stoneDark: 6, dirt: 8 }, ISLE_BANDS = [ISLE_P.dirt, ISLE_P.stoneDark, ISLE_P.dirt, ISLE_P.stone];
   const isleRock = (ix, iy, iz, per) => ISLE_BANDS[((Math.floor((iy + per * 1.5 * Math.sin(ix * 0.21 + iz * 0.13)) / (3 * per)) % 4) + 4) % 4];
+  // The hub's ground palette with each theme's grass and two field colours (slots 10 and 11) laid over it.
+  const ISLE_THEME = {
+    fort: { grass: null, field: ["#c9a96b", "#bda05f"] },
+    town: { grass: null, field: ["#b9a77f", "#a89270"] },
+    jungle: { grass: ["#4f7030", "#5c7f38", "#456129"], field: ["#5f7a3a", "#4c6a2e"] },
+    haunted: { grass: ["#3f4632", "#4a5138", "#353b2b"], field: ["#4a5238", "#3d4430"] }
+  };
+  const islePalette = (M) => {
+    const theme = ISLE_THEME[M.id], palette = BL.terrain.PALETTE.slice();
+    if (theme.grass) theme.grass.forEach((hex, i) => { palette[1 + i] = hexToRgb(hex); });
+    palette[10] = hexToRgb(theme.field[0]); palette[11] = hexToRgb(theme.field[1]);
+    return palette;
+  };
   // The top of the island: the rim's first `RIM_DEPTH` metres of cliff and the terrain.
   const isle = variants((mapIndex) => {
     const M = SIM.ARENAS[SIM.MAPS[mapIndex]], T = BL.terrain, P = ISLE_P, C = ISLE_CELL, nx = Math.round(M.W * 2 / C), nz = Math.round(M.L * 2 / C), TOP = Math.round(RIM_DEPTH / C);
@@ -96,10 +109,16 @@
     for (const b of M.rocks || []) high = Math.max(high, b[4]);
     const grid = T.makeGrid(nx, TOP + Math.ceil(high / C) + 1, nz);
     for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
-      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C, depth = Math.min(TOP, Math.round(SIM.isleDepth(x, z, M) / C)), patch = Math.sin(x * 0.35) + Math.cos(z * 0.3);
+      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C;
+      if (!SIM.onIsland(x, z, M)) continue;
+      const depth = Math.min(TOP, Math.round(SIM.isleDepth(x, z, M) / C)), patch = Math.sin(x * 0.35) + Math.cos(z * 0.3);
+      // The playing field's ground in its theme's colours, its edge wandering so it reads as worn earth, not a carpet;
+      // grass round it, and a worn path ringing the island.
+      const wobble = 0.05 * Math.sin(x * 0.7 + z * 0.3) + 0.05 * Math.sin(z * 0.53 - x * 0.2), field = Math.max(Math.abs(x) / (M.fieldW + 1.5), Math.abs(z) / (M.fieldL + 1.5)) + wobble < 1;
+      const n = Math.hypot(x / M.W, z / M.L), top = field ? (patch > 0.3 ? 10 : 11) : Math.abs(n - 0.82) < 0.018 ? 4 : patch > 0.9 ? P.grassLight : patch < -0.9 ? P.grassDark : P.grass;
       for (let iy = TOP - depth; iy < TOP; iy++) {
         const k = TOP - 1 - iy;
-        grid.set(ix, iy, iz, k === 0 ? (patch > 0.9 ? P.grassLight : patch < -0.9 ? P.grassDark : P.grass) : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
+        grid.set(ix, iy, iz, k === 0 ? top : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
       }
     }
     for (const b of M.rocks || []) {
@@ -110,27 +129,27 @@
         grid.set(ix, iy, iz, grassy && iy === y1 - 1 ? P.grass : grassy && iy === y1 - 2 ? P.dirt : isleRock(ix, iy, iz, 1));
       }
     }
-    return T.gridGeometry(grid, { unit: C, palette: T.PALETTE, origin: { x: -M.W, y: -TOP * C, z: -M.L } });
+    return T.gridGeometry(grid, { unit: C, palette: islePalette(M), origin: { x: -M.W, y: -TOP * C, z: -M.L } });
   });
   // The keel under the rim, metre cells down to the sim's `isleDepth`, with drips hanging from it.
   const keel = variants((mapIndex) => {
     const M = SIM.ARENAS[SIM.MAPS[mapIndex]], T = BL.terrain, C = KEEL_CELL, nx = Math.round(M.W * 2 / C), nz = Math.round(M.L * 2 / C), H = Math.ceil(SIM.CONFIG.ISLE_DEPTH + 5 - RIM_DEPTH);
     const grid = T.makeGrid(nx, H, nz);
     for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
-      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C, edge = Math.min(M.W - Math.abs(x), M.L - Math.abs(z));
+      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C;
+      if (!SIM.onIsland(x, z, M)) continue;
+      const edge = SIM.edgeDist(x, z, M);
       const drip = edge > 3 && isleHash(ix, 7, iz) < 0.07 ? 1 + Math.floor(isleHash(ix, 9, iz) * 4) : 0;
       const depth = Math.round(SIM.isleDepth(x, z, M) - RIM_DEPTH) + drip;
       for (let iy = H - depth; iy < H; iy++) grid.set(ix, iy, iz, isleRock(ix, iy, iz, 0.5));
     }
-    return T.gridGeometry(grid, { unit: C, palette: T.PALETTE, origin: { x: -M.W, y: -RIM_DEPTH - H * C, z: -M.L } });
+    return T.gridGeometry(grid, { unit: C, palette: islePalette(M), origin: { x: -M.W, y: -RIM_DEPTH - H * C, z: -M.L } });
   });
   const arena = variants((mapIndex) => {
-    const M = SIM.ARENAS[SIM.MAPS[mapIndex]], town = M.id === "town", jungle = M.id === "jungle", haunted = M.id === "haunted", parts = [];
-    parts.push(box({ w: M.W * 2, h: 0.04, d: M.L * 2, color: "#c9a96b", offset: { y: 0.02 } }));
-    parts.push(box({ w: M.W * 2, h: 0.05, d: 0.6, color: ORANGE, emissive: 0.25, offset: { y: 0.03 } }));
+    const M = SIM.ARENAS[SIM.MAPS[mapIndex]], town = M.id === "town", jungle = M.id === "jungle", haunted = M.id === "haunted", parts = [], FW = M.fieldW, FL = M.fieldL;
+    parts.push(box({ w: FW * 2, h: 0.05, d: 0.6, color: ORANGE, emissive: 0.25, offset: { y: 0.03 } }));
     for (const t of SIM.TEAMS) {
       const s = t === "blue" ? 1 : -1;
-      parts.push(box({ w: M.W * 2, h: 0.05, d: 12, color: t === "blue" ? "#b8b894" : "#c8a586", offset: { y: 0.025, z: s * (M.L - 6) } }));
       // A ring of team paint round the stand, flush with the ground.
       for (let k = 0; k < 16; k++) {
         const a = k / 16 * Math.PI * 2;
@@ -148,9 +167,8 @@
     }
     if (jungle) {
       // Jungle floor: moss over the sand, darker patches, and the leaves of every tree (decor: nothing stops in them).
-      parts.push(box({ w: M.W * 2, h: 0.045, d: M.L * 2 - 26, color: "#5f7a3a", offset: { y: 0.03 } }));
       const r = (k) => ((Math.sin(k * 12.9898) * 43758.5453) % 1 + 1) % 1;
-      for (let k = 0; k < 40; k++) parts.push(box({ w: 1 + r(k) * 2.5, h: 0.05, d: 1 + r(k + 50) * 2.5, color: k % 2 ? "#4c6a2e" : "#6e8a44", offset: { x: (r(k + 100) - 0.5) * M.W * 1.9, y: 0.035, z: (r(k + 150) - 0.5) * (M.L * 2 - 28) } }));
+      for (let k = 0; k < 40; k++) parts.push(box({ w: 1 + r(k) * 2.5, h: 0.05, d: 1 + r(k + 50) * 2.5, color: k % 2 ? "#4c6a2e" : "#6e8a44", offset: { x: (r(k + 100) - 0.5) * FW * 1.9, y: 0.035, z: (r(k + 150) - 0.5) * (FL * 2 - 28) } }));
       for (const d of M.decor) {
         if (d.kind !== "canopy") continue;
         for (let k = 0; k < 6; k++) {
@@ -162,20 +180,19 @@
     }
     if (haunted) {
       // Haunted Hollow: dead grass over the field, bare patches, and each dead tree's crooked branches.
-      parts.push(box({ w: M.W * 2, h: 0.045, d: M.L * 2 - 4, color: "#4a5238", offset: { y: 0.03 } }));
       const r = (k) => ((Math.sin(k * 7.233) * 43758.5453) % 1 + 1) % 1;
-      for (let k = 0; k < 60; k++) parts.push(box({ w: 1 + r(k) * 3, h: 0.05, d: 1 + r(k + 70) * 3, color: k % 3 ? "#3d4430" : "#5a5a44", offset: { x: (r(k + 140) - 0.5) * M.W * 1.9, y: 0.035, z: (r(k + 210) - 0.5) * (M.L * 2 - 8) } }));
+      for (let k = 0; k < 60; k++) parts.push(box({ w: 1 + r(k) * 3, h: 0.05, d: 1 + r(k + 70) * 3, color: k % 3 ? "#3d4430" : "#5a5a44", offset: { x: (r(k + 140) - 0.5) * FW * 1.9, y: 0.035, z: (r(k + 210) - 0.5) * (FL * 2 - 8) } }));
       // Grass: tufts of blades in greens and dry yellows, thicker toward the edges and round the headstones.
       const greens = ["#4f6b34", "#5e7d3a", "#6f8a44", "#7d8a4a", "#8a8a52"];
       for (let k = 0; k < 1100; k++) {
-        const gx = (r(k + 400) - 0.5) * M.W * 1.94, gz = (r(k + 900) - 0.5) * M.L * 1.94;
+        const gx = (r(k + 400) - 0.5) * FW * 1.94, gz = (r(k + 900) - 0.5) * FL * 1.94;
         if (Math.abs(gz) > 31 && Math.abs(gx) < 14.5) continue;
         const c = greens[k % greens.length], hgt = 0.18 + r(k + 1300) * 0.3;
         for (let j = 0; j < 3; j++) parts.push(box({ w: 0.05, h: hgt * (1 - j * 0.2), d: 0.05, color: c, offset: { x: gx + (j - 1) * 0.07, y: hgt * (1 - j * 0.2) / 2, z: gz + ((j * 37) % 3 - 1) * 0.06 } }));
       }
       // Tall grass in clumps, and grey rocks half sunk in it.
       for (let k = 0; k < 46; k++) {
-        const cx = (r(k + 2400) - 0.5) * M.W * 1.9, cz = (r(k + 2500) - 0.5) * M.L * 1.6;
+        const cx = (r(k + 2400) - 0.5) * FW * 1.9, cz = (r(k + 2500) - 0.5) * FL * 1.6;
         if (Math.abs(cx) < 3.5 && Math.abs(cz) < 6) continue;
         for (let j = 0; j < 9; j++) {
           const hgt = 0.5 + r(k * 9 + j + 2600) * 0.45, ox = (r(k * 9 + j + 2700) - 0.5) * 1.1, oz = (r(k * 9 + j + 2800) - 0.5) * 1.1;
@@ -183,13 +200,13 @@
         }
       }
       for (let k = 0; k < 26; k++) {
-        const rx = (r(k + 3000) - 0.5) * M.W * 1.9, rz = (r(k + 3100) - 0.5) * M.L * 1.7, sz = 0.35 + r(k + 3200) * 0.5;
+        const rx = (r(k + 3000) - 0.5) * FW * 1.9, rz = (r(k + 3100) - 0.5) * FL * 1.7, sz = 0.35 + r(k + 3200) * 0.5;
         if (Math.abs(rx) < 3.5 && Math.abs(rz) < 6) continue;
         parts.push(bevelBox({ w: sz * 1.3, h: sz * 0.6, d: sz, color: k % 2 ? "#7a7880" : "#68666e", offset: { x: rx, y: sz * 0.25, z: rz } }));
       }
       // Bushes, dark and lumpy.
       for (let k = 0; k < 28; k++) {
-        const bx = (r(k + 1700) - 0.5) * M.W * 1.9, bz = (r(k + 1800) - 0.5) * M.L * 1.7;
+        const bx = (r(k + 1700) - 0.5) * FW * 1.9, bz = (r(k + 1800) - 0.5) * FL * 1.7;
         if (Math.abs(bz) > 30 || (Math.abs(bx) < 4 && Math.abs(bz) < 5)) continue;
         parts.push(bevelBox({ w: 0.9, h: 0.6, d: 0.8, color: "#3c5a2c", offset: { x: bx, y: 0.3, z: bz } }), bevelBox({ w: 0.6, h: 0.45, d: 0.6, color: "#4a6a34", offset: { x: bx + 0.35, y: 0.55, z: bz - 0.2 } }));
       }
@@ -218,8 +235,8 @@
     }
     if (town) {
       // Cobbled streets: a darker band down the middle and across the square.
-      parts.push(box({ w: 18, h: 0.05, d: M.L * 2 - 20, color: "#a89270", offset: { y: 0.03 } }));
-      parts.push(box({ w: M.W * 2, h: 0.05, d: 8, color: "#a89270", offset: { y: 0.035 } }));
+      parts.push(box({ w: 18, h: 0.05, d: FL * 2 - 20, color: "#a89270", offset: { y: 0.03 } }));
+      parts.push(box({ w: FW * 2, h: 0.05, d: 8, color: "#a89270", offset: { y: 0.035 } }));
     }
     for (const b of M.BLOCKS) {
       // The island's own rock (mounds, caves, outcrops) is the island's mesh (`isle`), not a building.

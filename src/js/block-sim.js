@@ -442,6 +442,10 @@
     // A map may be bigger (`W`, `L`, half its width and length) and put its stands, towers, landing spots and starts
     // elsewhere; the rest share Fort Chaos's.
     A.W = A.W || W; A.L = A.L || L;
+    // The field keeps those half sizes (`fieldW`, `fieldL`); the island is an oval round it, `W` and `L` its half sizes,
+    // reaching well past the field on every side.
+    A.fieldW = A.W; A.fieldL = A.L;
+    A.W = A.fieldW + 12; A.L = A.fieldL + 20;
     A.peels = PEELS.map(([dx, dz]) => [A.fire[0] + dx, A.fire[1] + dz]);
     // Where a catapult flings its Ooga: over the middle of the other end, a little in front of its stand.
     A.drops = A.drops || { blue: [0, -25], red: [0, 25] };
@@ -510,13 +514,28 @@
     CRATES = sim.crates;
     if (ARENA.id !== sim.map) { ARENA = ARENAS[sim.map]; BLOCKS = ARENA.BLOCKS; LEDGES = ARENA.ledges || []; }
   };
-  // The island under the field: the whole of the map's rectangle, the rock under it `isleDepth` deep.
-  const onIsland = (x, z, A = ARENA) => x > -A.W && x < A.W && z > -A.L && z < A.L;
-  const isleDepth = (x, z, A = ARENA) => Math.min(CONFIG.ISLE_DEPTH, CONFIG.ISLE_EDGE + 0.9 * Math.max(0, Math.min(A.W - Math.abs(x), A.L - Math.abs(z))));
+  // The island is an oval, `W` by `L` its half sizes. `edgeDist` is how far (x, z) is inside its rim, about, and writes
+  // the unit way out into EDGE; `isleDepth` is the rock under a spot, deepening toward the middle.
+  const EDGE = { x: 0, z: 1 };
+  const onIsland = (x, z, A = ARENA) => (x * x) / (A.W * A.W) + (z * z) / (A.L * A.L) < 1;
+  const isleIn = (x, z, m) => (x * x) / ((ARENA.W - m) * (ARENA.W - m)) + (z * z) / ((ARENA.L - m) * (ARENA.L - m)) < 1;
+  const edgeDist = (x, z, A = ARENA) => {
+    const n = Math.sqrt((x * x) / (A.W * A.W) + (z * z) / (A.L * A.L));
+    if (n < 1e-6) { EDGE.x = 1; EDGE.z = 0; return A.W; }
+    const gx = x / (A.W * A.W * n), gz = z / (A.L * A.L * n), g = Math.hypot(gx, gz);
+    EDGE.x = gx / g; EDGE.z = gz / g;
+    return (1 - n) / g;
+  };
+  const isleDepth = (x, z, A = ARENA) => Math.min(CONFIG.ISLE_DEPTH, CONFIG.ISLE_EDGE + 0.9 * Math.max(0, edgeDist(x, z, A)));
+  // Bring p (anything with x and z) inside the oval by margin m, along the line to the middle.
+  const clampIn = (p, m) => {
+    const n = Math.sqrt((p.x * p.x) / ((ARENA.W - m) * (ARENA.W - m)) + (p.z * p.z) / ((ARENA.L - m) * (ARENA.L - m)));
+    if (n >= 1) { p.x /= n * 1.0001; p.z /= n * 1.0001; }
+  };
   // Where a loose block may come to rest: open ground the bots can walk to. A flood at ground level from the side's
   // start, through the map's fixed blocks (`resolve`, a body's own collision), worked out once a map, on the same
   // half-metre grid as the terrain. `restSpot` writes the nearest such spot to (x, z) into REST.
-  const REST_CELL = 0.5, REST_MARGIN = 2, REST = { x: 0, z: 0 }, REST_BODY = { x: 0, y: 0, z: 0, crouch: false }, restCache = {};
+  const REST_CELL = 0.5, REST = { x: 0, z: 0 }, REST_BODY = { x: 0, y: 0, z: 0, crouch: false }, restCache = {};
   const restFor = () => {
     let G = restCache[ARENA.id];
     if (G) return G;
@@ -524,6 +543,7 @@
     CRATES = [];
     const clear = (i, j) => {
       const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L;
+      if (!isleIn(x, z, 1)) return false;
       REST_BODY.x = x; REST_BODY.y = 0; REST_BODY.z = z;
       resolve(REST_BODY, CONFIG.BODY_R * 0.95, 0.05);
       return REST_BODY.x === x && REST_BODY.z === z;
@@ -534,7 +554,7 @@
       const k = stack.pop(), i = Math.floor(k / nz), j = k % nz;
       for (let d = 0; d < 4; d++) {
         const ni = i + (d === 0 ? 1 : d === 1 ? -1 : 0), nj = j + (d === 2 ? 1 : d === 3 ? -1 : 0);
-        if (ni < REST_MARGIN || nj < REST_MARGIN || ni >= nx - REST_MARGIN || nj >= nz - REST_MARGIN || walk[ni * nz + nj] || !clear(ni, nj)) continue;
+        if (ni < 0 || nj < 0 || ni >= nx || nj >= nz || walk[ni * nz + nj] || !clear(ni, nj)) continue;
         walk[ni * nz + nj] = 1;
         stack.push(ni * nz + nj);
       }
@@ -593,8 +613,8 @@
     // The island's edge is open; a body that has gone over it and is down under the top is kept out of the rock, out
     // past the nearest edge, until it climbs back over.
     if (feet < -CONFIG.RIM && head > -isleDepth(p.x, p.z) && onIsland(p.x, p.z)) {
-      const ex = ARENA.W - Math.abs(p.x), ez = ARENA.L - Math.abs(p.z);
-      if (ex < ez) p.x = (p.x < 0 ? -1 : 1) * (ARENA.W + r); else p.z = (p.z < 0 ? -1 : 1) * (ARENA.L + r);
+      const n = Math.sqrt((p.x * p.x) / (ARENA.W * ARENA.W) + (p.z * p.z) / (ARENA.L * ARENA.L)), k = n > 1e-6 ? (1 + r / Math.min(ARENA.W, ARENA.L)) / n : 1;
+      p.x *= k; p.z *= k;
     }
   };
   // The highest top under a body of radius r that its feet at y are on or above: where it stands.
@@ -717,7 +737,7 @@
   // True when a crate fits at (x, y, z): inside the arena, off the stands, overlapping no box at that height.
   const freeSpot = (sim, x, z, y = 0) => {
     const h = CONFIG.CRATE_HALF, top = y + CONFIG.CRATE_H;
-    if (x < -ARENA.W + h || x > ARENA.W - h || z < -ARENA.L + h || z > ARENA.L - h) return false;
+    if (!isleIn(x, z, h)) return false;
     for (const t of TEAMS) { const s = ARENA.stands[t]; if (Math.hypot(x - s.x, z - s.z) < CONFIG.STAND_CLEAR) return false; }
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
@@ -864,7 +884,7 @@
     f.vy -= CONFIG.PASS_GRAVITY * dt;
     f.vx += sim.weather.x * CONFIG.SHOT_WIND * dt; f.vz += sim.weather.z * CONFIG.SHOT_WIND * dt;
     const nx = f.x + f.vx * dt, ny = f.y + f.vy * dt, nz = f.z + f.vz * dt;
-    const outside = nx < -ARENA.W + 0.4 || nx > ARENA.W - 0.4 || nz < -ARENA.L + 0.4 || nz > ARENA.L - 0.4;
+    const outside = !isleIn(nx, nz, 0.4);
     if (outside || (ny > 0 && solidAt(nx, ny, nz))) { f.vx = f.vz = 0; f.vy = Math.min(f.vy, 0); }
     else { f.x = nx; f.z = nz; }
     f.y = Math.max(ny, -1);
@@ -1219,15 +1239,14 @@
     const open = new Uint8Array(nx * nz);
     let tail = 0;
     for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-      const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L, ex = ARENA.W - Math.abs(x), ez = ARENA.L - Math.abs(z), e = Math.min(ex, ez);
+      const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L, e = edgeDist(x, z);
       if (e < 0.8) continue;
       REST_BODY.x = x; REST_BODY.y = 0; REST_BODY.z = z;
       resolve(REST_BODY, CONFIG.GORILLA_DRAG_R, 0.05);
       if (REST_BODY.x !== x || REST_BODY.z !== z) continue;
       open[i * nz + j] = 1;
       if (e < DRAG_STANCE[0] || e > DRAG_STANCE[1]) continue;
-      const ox = ex < ez ? (x < 0 ? -ARENA.W - 2 : ARENA.W + 2) : x, oz = ex < ez ? z : (z < 0 ? -ARENA.L - 2 : ARENA.L + 2);
-      if (!clearLine(x, z, ox, oz, 0.4)) continue;
+      if (!clearLine(x, z, x + EDGE.x * (e + 2), z + EDGE.z * (e + 2), 0.4)) continue;
       dist[i * nz + j] = 0;
       queue[tail++] = i * nz + j;
     }
@@ -1300,7 +1319,7 @@
         if (g.held > CONFIG.GRAB_MAX_S) { letGo(sim, g, a, false); continue; }
         if (g.state === G_THROW) {
           // Winding up at the edge, facing out over it: the captive swings round the gorilla, up and over the rim.
-          const ox = Math.sin(g.heading), oz = Math.cos(g.heading), edge = Math.abs(ox) > 0.5 ? ARENA.W - Math.abs(g.x) : ARENA.L - Math.abs(g.z);
+          const ox = Math.sin(g.heading), oz = Math.cos(g.heading), edge = Math.max(0.5, edgeDist(g.x, g.z));
           g.throwT = Math.min(1, 1 - Math.max(0, g.t) / CONFIG.GORILLA_THROW_S);
           const along = -CONFIG.DRAG_BACK + (edge + 0.8 + CONFIG.DRAG_BACK) * g.throwT;
           a.x = g.x + ox * along; a.z = g.z + oz * along; a.y = 0.15 + 3 * Math.sin(Math.PI * g.throwT);
@@ -1309,6 +1328,7 @@
           // Released past the rim, in the air and flying outward: nothing on the island can stop it now.
           a.grabbed = 0;
           a.x = g.x + ox * (edge + 0.8); a.z = g.z + oz * (edge + 0.8); a.y = 1.2;
+          for (let tries = 0; tries < 8 && onIsland(a.x, a.z); tries++) { a.x += ox * 0.5; a.z += oz * 0.5; }
           a.vx = ox * CONFIG.GORILLA_THROW; a.vz = oz * CONFIG.GORILLA_THROW; a.vy = CONFIG.GORILLA_THROW_UP;
           a.grounded = false; a.jumps = 0; a.fuel = CONFIG.JET_FUEL; a.knock = CONFIG.THROWN_S; a.guard = Math.max(a.guard, 1.5);
           emit(sim, "thrown", a.team, a.id, a.x, a.y, a.z);
@@ -1319,8 +1339,8 @@
         const D = dragFor(), here = dragCell(D, g.x, g.z);
         if (D.dist[here] === 0) {
           g.state = G_THROW; g.t = CONFIG.GORILLA_THROW_S; g.throwT = 0; g.vx = g.vz = 0;
-          const ex = ARENA.W - Math.abs(g.x), ez = ARENA.L - Math.abs(g.z);
-          g.heading = ex < ez ? (g.x < 0 ? -Math.PI / 2 : Math.PI / 2) : (g.z < 0 ? Math.PI : 0);
+          edgeDist(g.x, g.z);
+          g.heading = Math.atan2(EDGE.x, EDGE.z);
           placeCaptive(g, a);
           emit(sim, "windup", a.team, a.id, g.x, 1.4, g.z);
           continue;
@@ -1332,7 +1352,7 @@
         g.x += g.vx * dt; g.z += g.vz * dt;
         // Squeezing a captive through a narrow gap: a tighter body than it charges with.
         resolve(g, CONFIG.GORILLA_DRAG_R);
-        g.x = Math.max(-ARENA.W + 0.8, Math.min(ARENA.W - 0.8, g.x)); g.z = Math.max(-ARENA.L + 0.8, Math.min(ARENA.L - 0.8, g.z));
+        clampIn(g, 0.8);
         // Turning smoothly, so the captive swings along behind it.
         const turn = Math.atan2(Math.sin(Math.atan2(g.vx, g.vz) - g.heading), Math.cos(Math.atan2(g.vx, g.vz) - g.heading));
         g.heading += Math.max(-7 * dt, Math.min(7 * dt, turn));
@@ -1384,7 +1404,7 @@
       const ox = g.x, oz = g.z;
       g.x += g.vx * dt; g.z += g.vz * dt;
       resolve(g, CONFIG.GORILLA_R);
-      g.x = Math.max(-ARENA.W + 1, Math.min(ARENA.W - 1, g.x)); g.z = Math.max(-ARENA.L + 1, Math.min(ARENA.L - 1, g.z));
+      clampIn(g, 1);
       // Stuck on something while wandering: pick somewhere else.
       if (g.state === G_ROAM && Math.hypot(g.x - ox, g.z - oz) < speed * dt * 0.3) { g.wx = g.x; g.wz = g.z; }
       g.heading = Math.atan2(g.vx, g.vz);
@@ -2179,7 +2199,7 @@
     }
     // Over the edge: back over the nearest edge on the jetpack, steering in as soon as the feet are over the rim.
     if (!a.grabbed && (a.y < -CONFIG.RIM || !onIsland(a.x, a.z))) {
-      goal.x = Math.max(-ARENA.W + 2.5, Math.min(ARENA.W - 2.5, a.x)); goal.z = Math.max(-ARENA.L + 2.5, Math.min(ARENA.L - 2.5, a.z));
+      goal.x = a.x; goal.z = a.z; clampIn(goal, 2.5);
       const h = Math.atan2(goal.x - a.x, goal.z - a.z), sp = sim.bots.speed;
       a.vx = Math.sin(h) * sp; a.vz = Math.cos(h) * sp;
       a.jetT = 0.25; a.botClimb = a.botStop = false;
@@ -2258,7 +2278,8 @@
         a.tries = 0;
         a.detour = 1.2;
         const ang = sim.rng() * Math.PI * 2;
-        a.detourX = Math.max(-ARENA.W + 1.5, Math.min(ARENA.W - 1.5, a.x + Math.sin(ang) * 5)); a.detourZ = Math.max(-ARENA.L + 1.5, Math.min(ARENA.L - 1.5, a.z + Math.cos(ang) * 5));
+        goal.x = a.x + Math.sin(ang) * 5; goal.z = a.z + Math.cos(ang) * 5; clampIn(goal, 1.5);
+        a.detourX = goal.x; a.detourZ = goal.z;
       } else if (!stalled) a.tries = 0;
     }
     if (a.jump2At && sim.time >= a.jump2At) { a.jump2At = 0; a.botJump = true; }
@@ -2838,7 +2859,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot };
+  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

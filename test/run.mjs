@@ -7394,14 +7394,14 @@ const gameRulesChecks = async () => {
         const c = r.actors[0], f = r.flags.red;
         c.x = I.stands.red.x; c.z = I.stands.red.z; run(r, S.CONFIG.STEP);
         const took = c.carrying === "red";
-        c.x = I.W - 0.5; c.z = -10; c.y = 0; run(r, S.CONFIG.STEP);
+        c.x = I.W - 0.5; c.z = 0; c.y = 0; run(r, S.CONFIG.STEP);
         run(r, 1.2, { x: 1, z: 0 });
         const atEdge = took && f.state === "dropped" && f.homeT > 0 && Math.abs(f.x) < I.W && !c.carrying;
         run(r, S.CONFIG.EDGE_HOME_S + 0.2);
         const wentHome = f.state === "home";
         r = fresh(map);
         const u = r.actors[0];
-        u.x = I.W + 0.6; u.y = -3; u.grounded = false; run(r, 0.3, { x: -1, z: 0 });
+        u.x = I.W + 0.6; u.z = 0; u.y = -3; u.grounded = false; run(r, 0.3, { x: -1, z: 0 });
         const heldOut = u.x >= I.W;
         r = fresh(map);
         const j = r.actors[0], b = r.actors[1];
@@ -7435,7 +7435,7 @@ const gameRulesChecks = async () => {
         for (const t of S.TEAMS) spots.push([I.stands[t].x, I.stands[t].z]);
         const clearOfSpots = spots.every(([x, z]) => rocks.every((b) => b[5] > 0.05 || x <= b[0] - 0.4 || x >= b[1] + 0.4 || z <= b[2] - 0.4 || z >= b[3] + 0.4));
         // A flood at ground level, cell by cell, through the sim's own collision.
-        const cell = 0.5, W = I.W, L = I.L, free = (x, z) => { const p = { x, z, y: 0 }; S.resolve(p, S.CONFIG.BODY_R * 0.95, 0.05); return Math.abs(p.x - x) < 1e-6 && Math.abs(p.z - z) < 1e-6; };
+        const cell = 0.5, W = I.W, L = I.L, free = (x, z) => { if (!S.onIsland(x, z)) return false; const p = { x, z, y: 0 }; S.resolve(p, S.CONFIG.BODY_R * 0.95, 0.05); return Math.abs(p.x - x) < 1e-6 && Math.abs(p.z - z) < 1e-6; };
         const idx = (x, z) => Math.round((x + W) / cell) * 100000 + Math.round((z + L) / cell), nx = Math.round(2 * W / cell), nz = Math.round(2 * L / cell);
         const seen = new Set(), start = [Math.round((0.25 + W) / cell), Math.round((I.spawnZ + 0.25 + L) / cell)], stack = [start];
         seen.add(start[0] * 100000 + start[1]);
@@ -7573,12 +7573,14 @@ const gameRulesChecks = async () => {
         v.x = -12; v.z = 25; v.y = 0; v.carrying = "red"; m.flags.red.state = "carried"; m.flags.red.carrier = 0;
         run(m, 0.3, still, () => v.grabbed);
         out.grab = v.grabbed === 1 && g.state === 2 && !v.carrying && m.flags.red.state === "dropped" && Math.abs(m.flags.red.z - 25) < 1.5;
-        const edge = Math.min(22 - Math.abs(g.ex), 37 - Math.abs(g.ez)) <= 1.5;
-        run(m, 8, still, () => g.state === 5 || !v.grabbed);
-        out.drag = edge && g.state === 5 && Math.abs(v.x - g.x) < 2 && Math.abs(g.x) > 19;
+        const edge = S.edgeDist(g.ex, g.ez) <= 1.5;
+        run(m, 12, still, () => g.state === 5 || !v.grabbed);
+        out.drag = edge && g.state === 5 && Math.hypot(v.x - g.x, v.z - g.z) < 2 && S.edgeDist(g.x, g.z) <= 2.2;
         const thrown = run(m, 1, still, () => !v.grabbed);
-        out.thrown = !!thrown.thrown && v.vx < -5 && v.vy > 5 && g.state === 3;
-        run(m, 6, { x: 1, z: 0, jet: 1 }, () => v.grounded && S.onIsland(v.x, v.z));
+        out.thrown = !!thrown.thrown && Math.hypot(v.vx, v.vz) > 5 && v.vy > 5 && g.state === 3 && !S.onIsland(v.x, v.z);
+        // Steering back in, the jetpack held only until back over the island.
+        const fly = { x: Math.sign(-v.x) * Math.abs(v.vx) / (Math.hypot(v.vx, v.vz) || 1), z: Math.sign(-v.z) * Math.abs(v.vz) / (Math.hypot(v.vx, v.vz) || 1), jet: 1 };
+        run(m, 8, fly, () => { fly.jet = S.onIsland(v.x, v.z) ? 0 : 1; return v.grounded && S.onIsland(v.x, v.z); });
         out.back = v.grounded && S.onIsland(v.x, v.z) && v.falls === 0;
         [m, g] = hunt("fort", 1, 0, -14);
         const e = m.actors[0];
@@ -7610,10 +7612,10 @@ const gameRulesChecks = async () => {
             S.resolve(gor, S.CONFIG.GORILLA_R);
             if (Math.hypot(gor.x - who.x, gor.z - who.z) > 1.1) { gor.x = who.x - 0.8; gor.z = who.z; S.resolve(gor, S.CONFIG.GORILLA_R); }
             gor.hx = gor.wx = gor.x; gor.hz = gor.wz = gor.z;
-            const seen = run(q, 30, still, () => (Math.abs(who.x) > I.W || Math.abs(who.z) > I.L) && who.y < -1.5);
+            const seen = run(q, 30, still, () => !S.onIsland(who.x, who.z) && who.y < -1.5);
             done.spots++;
             if (seen.thrown) done.thrown++;
-            if (seen.grab && seen.windup && seen.thrown && !seen.letgo && (Math.abs(who.x) > I.W || Math.abs(who.z) > I.L) && !who.grounded) done.off++;
+            if (seen.grab && seen.windup && seen.thrown && !seen.letgo && !S.onIsland(who.x, who.z) && !who.grounded) done.off++;
             else done.fails.push([x, z, Object.keys(seen).join()]);
           }
           sweep[map] = done;
