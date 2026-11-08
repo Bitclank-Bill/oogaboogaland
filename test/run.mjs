@@ -7418,7 +7418,7 @@ const gameRulesChecks = async () => {
       // Hub-style terrain on every map: the boxes come in turned pairs, stand clear of the buildings and every spot the
       // game uses, and walking at ground level from the side's start reaches the forts, stands, catapults, ladders,
       // quiz pads, power-ups and the ground-level hiding spots; the high spots are somewhere to stand.
-      const rows = {};
+      const rows = {}, loose = {};
       for (const map of S.MAPS) {
         const r = S.create({ map, seed: 2 }), I = S.ARENA;
         for (const c of r.crates) c.live = false;
@@ -7453,7 +7453,33 @@ const gameRulesChecks = async () => {
         const caves = (I.terrain || []).filter(([k]) => k === "cave").length === 3;
         const hidden = I.hookSpots.length >= 3 && I.hookSpots.every(([x, y, z]) => y < 0.5 ? reached(x, z) : Math.abs(S.groundAt(x, z, y + 0.1) - y) < 0.05);
         rows[map] = { mirrored, clearOfBuildings, clearOfSpots, walked, ladders, caves, hidden };
+        // Loose blocks, through the same flood: dropped from the top of every fixed block, and landing from the air on it.
+        const cr = r.actors[0], red = r.flags.red, rests = (f) => f.state === "dropped" && f.y === 0 && reached(f.x, f.z);
+        let dropped = true, landed = true;
+        for (const b of I.BLOCKS) {
+          const x = (b[0] + b[1]) / 2, z = (b[2] + b[3]) / 2;
+          Object.assign(cr, { x, z, y: b[4], vx: 0, vy: 0, vz: 0, splat: 0, trapped: 0, carrying: "red", blocked: null, grounded: true });
+          Object.assign(red, { state: "carried", carrier: 0, homeT: 0 });
+          dropped &&= S.drop(r, 0) && rests(red);
+          cr.carrying = null;
+          Object.assign(red, { state: "flying", carrier: null, thrower: -1, t: 1, x, y: b[4] + 1.2, z, vx: 0, vy: -2, vz: 0 });
+          Object.assign(cr, { x: 0, z: I.spawnZ, y: 0 });
+          r.prep = 1;
+          for (let t = 0; t < 2 && red.state === "flying"; t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, still);
+          r.eventCount = 0;
+          landed &&= rests(red);
+        }
+        // A gorilla's grab on the mound's lower tier.
+        const mound = rocks.find((b) => I.rockKind.get(b) === "mound" && b[4] === 1 && b[0] < 0 && b[2] > 0), g = r.gorillas[0], tierX = mound[1] - 0.3, tierZ = (mound[2] + mound[3]) / 2;
+        Object.assign(cr, { x: tierX, z: tierZ, y: 1, splat: 0, trapped: 0, guard: 0, carrying: "red", blocked: null, grounded: true, grabbed: 0 });
+        Object.assign(red, { state: "carried", carrier: 0, homeT: 0 });
+        Object.assign(g, { x: tierX + 1, z: tierZ, wx: tierX + 1, wz: tierZ, hx: tierX + 1, hz: tierZ, state: 0, t: 0, holding: -1 });
+        r.prep = 0;
+        S.tick(r, S.CONFIG.STEP, still);
+        loose[map] = { dropped, landed, grabbed: cr.grabbed > 0 && rests(red) };
       }
+      record("block frenzy loose blocks: on every map a block dropped from the top of any block, landing on it from the air, or dropped by a gorilla's grab on a mound comes to rest on ground the bots can walk to",
+        Object.values(loose).every((v) => Object.values(v).every(Boolean)), JSON.stringify(loose));
       record("block frenzy terrain: on every map the mounds, caves and outcrops are mirrored half round, clear of the buildings and every spot in use, and the forts, stands, catapults, ladders and hiding spots stay reachable on foot",
         Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));
     }

@@ -513,6 +513,51 @@
   // The island under the field: the whole of the map's rectangle, the rock under it `isleDepth` deep.
   const onIsland = (x, z, A = ARENA) => x > -A.W && x < A.W && z > -A.L && z < A.L;
   const isleDepth = (x, z, A = ARENA) => Math.min(CONFIG.ISLE_DEPTH, CONFIG.ISLE_EDGE + 0.9 * Math.max(0, Math.min(A.W - Math.abs(x), A.L - Math.abs(z))));
+  // Where a loose block may come to rest: open ground the bots can walk to. A flood at ground level from the side's
+  // start, through the map's fixed blocks (`resolve`, a body's own collision), worked out once a map, on the same
+  // half-metre grid as the terrain. `restSpot` writes the nearest such spot to (x, z) into REST.
+  const REST_CELL = 0.5, REST_MARGIN = 2, REST = { x: 0, z: 0 }, REST_BODY = { x: 0, y: 0, z: 0, crouch: false }, restCache = {};
+  const restFor = () => {
+    let G = restCache[ARENA.id];
+    if (G) return G;
+    const nx = Math.round(2 * ARENA.W / REST_CELL) + 1, nz = Math.round(2 * ARENA.L / REST_CELL) + 1, walk = new Uint8Array(nx * nz), keep = CRATES;
+    CRATES = [];
+    const clear = (i, j) => {
+      const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L;
+      REST_BODY.x = x; REST_BODY.y = 0; REST_BODY.z = z;
+      resolve(REST_BODY, CONFIG.BODY_R * 0.95, 0.05);
+      return REST_BODY.x === x && REST_BODY.z === z;
+    };
+    const si = Math.round((0.25 + ARENA.W) / REST_CELL), sj = Math.round((ARENA.spawnZ + 0.25 + ARENA.L) / REST_CELL), stack = [si * nz + sj];
+    walk[si * nz + sj] = 1;
+    while (stack.length) {
+      const k = stack.pop(), i = Math.floor(k / nz), j = k % nz;
+      for (let d = 0; d < 4; d++) {
+        const ni = i + (d === 0 ? 1 : d === 1 ? -1 : 0), nj = j + (d === 2 ? 1 : d === 3 ? -1 : 0);
+        if (ni < REST_MARGIN || nj < REST_MARGIN || ni >= nx - REST_MARGIN || nj >= nz - REST_MARGIN || walk[ni * nz + nj] || !clear(ni, nj)) continue;
+        walk[ni * nz + nj] = 1;
+        stack.push(ni * nz + nj);
+      }
+    }
+    CRATES = keep;
+    G = restCache[ARENA.id] = { walk, nx, nz };
+    return G;
+  };
+  const restSpot = (x, z) => {
+    const G = restFor(), { walk, nx, nz } = G;
+    const i0 = Math.max(0, Math.min(nx - 1, Math.round((x + ARENA.W) / REST_CELL))), j0 = Math.max(0, Math.min(nz - 1, Math.round((z + ARENA.L) / REST_CELL)));
+    if (walk[i0 * nz + j0]) { REST.x = x; REST.z = z; return REST; }
+    for (let r = 1, top = Math.max(nx, nz); r < top; r++) {
+      let best = -1, bd = Infinity;
+      for (let i = i0 - r; i <= i0 + r; i++) for (let j = j0 - r; j <= j0 + r; j++) {
+        if ((i !== i0 - r && i !== i0 + r && j !== j0 - r && j !== j0 + r) || i < 0 || j < 0 || i >= nx || j >= nz || !walk[i * nz + j]) continue;
+        const d = (i - i0) ** 2 + (j - j0) ** 2;
+        if (d < bd) { bd = d; best = i * nz + j; }
+      }
+      if (best >= 0) { REST.x = Math.floor(best / nz) * REST_CELL - ARENA.W; REST.z = (best % nz) * REST_CELL - ARENA.L; return REST; }
+    }
+    throw new Error(`${ARENA.id}: no walkable ground for a loose block`);
+  };
   const crateBox = (c) => { CB[0] = c.x - CONFIG.CRATE_HALF; CB[1] = c.x + CONFIG.CRATE_HALF; CB[2] = c.z - CONFIG.CRATE_HALF; CB[3] = c.z + CONFIG.CRATE_HALF; CB[4] = c.y + CONFIG.CRATE_H; CB[5] = c.y; return CB; };
   const boxCount = () => BLOCKS.length + CRATES.length;
   // The i-th box: a fixed block, then the live crates (a dead crate is an empty box nothing touches).
@@ -770,18 +815,20 @@
   const dropFlag = (sim, a, why) => {
     const f = a.carrying && sim.flags[a.carrying];
     if (!f) return false;
-    // It falls to whatever is under the carrier, so a block dropped mid-jump lands on the ground or a roof.
+    // It comes to rest on open ground under or nearest the carrier (`restSpot`), never up on a roof the bots can't reach.
     f.state = "dropped";
     f.carrier = null;
     a.blocked = f.team;
     a.carrying = null;
     if (onIsland(a.x, a.z) && a.y >= -CONFIG.RIM) {
-      f.x = a.x; f.y = groundAt(a.x, a.z, a.y); f.z = a.z;
+      const at = restSpot(a.x, a.z);
+      f.x = at.x; f.y = 0; f.z = at.z;
       emit(sim, why, f.team, a.id, f.x, 0, f.z);
       return true;
     }
     // Over the open edge: it drops at the edge, where its carrier last stood on the island, and goes home soon after.
-    f.x = a.edgeX; f.y = a.edgeY; f.z = a.edgeZ; f.homeT = CONFIG.EDGE_HOME_S;
+    const at = restSpot(a.edgeX, a.edgeZ);
+    f.x = at.x; f.y = 0; f.z = at.z; f.homeT = CONFIG.EDGE_HOME_S;
     emit(sim, "edgedrop", f.team, a.id, f.x, f.y, f.z);
     return true;
   };
@@ -820,8 +867,10 @@
     f.y = Math.max(ny, -1);
     const ground = groundAt(f.x, f.z, f.y + 0.3, 0.2);
     if (f.y <= ground) {
+      // Wherever it fell (a roof, the centre deck), it comes to rest on the nearest ground the bots can reach.
+      const at = restSpot(f.x, f.z);
       f.state = "dropped";
-      f.y = ground;
+      f.x = at.x; f.y = 0; f.z = at.z;
       if (f.thrower >= 0) sim.actors[f.thrower].blocked = f.team;
       emit(sim, "landed", f.team, f.thrower, f.x, f.y, f.z);
     }
@@ -2035,15 +2084,6 @@
       const f = sim.flags[a.blocked];
       if (f.state === "dropped" && (f.x - a.x) ** 2 + (f.z - a.z) ** 2 < (CONFIG.PICK_R + 0.3) ** 2) { goal.x = f.x + (a.x > f.x ? 2.5 : -2.5); goal.z = f.z + (a.z > f.z ? 2.5 : -2.5); }
     }
-    // A loose block lying up on a crate or a wall, right overhead: jump for it (a bot under it would otherwise wait for ever).
-    if (a.grounded && a.netted <= 0 && a.detour <= 0) {
-      for (const t of TEAMS) {
-        const f = sim.flags[t];
-        if (f.state !== "dropped" || f.y <= a.y + 0.8 || Math.abs(f.x - goal.x) > 0.3 || Math.abs(f.z - goal.z) > 0.3 || (f.x - a.x) ** 2 + (f.z - a.z) ** 2 > 4) continue;
-        a.botJump = true; a.jetT = 0.5;
-        break;
-      }
-    }
     if (a.detour <= 0 && !a.botClimb) navigate(sim, a, dt);
     const d = Math.hypot(goal.x - a.x, goal.z - a.z);
     // An autopiloted player (`auto`, the suite's and the debug handle's) runs at the player's sprint.
@@ -2661,7 +2701,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple };
+  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

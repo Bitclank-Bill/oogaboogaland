@@ -29,6 +29,8 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
 - **Blocks.** Touch the rivals' block, on its stand or wherever it lies, to carry it. A carrier who is splatted,
   trapped or drops it (`K`) leaves it where they stood, and it stays there, as long as it takes: the carrier's
   teammates can grab it and run on, and its own side must pick it up and carry it all the way back to its stand.
+  A loose block always comes to rest on open ground the bots can reach (`restSpot`): dropped or landing on a roof or the
+  centre deck, it ends on the ground under it or nearest it.
   A carrier can't pick the same block up again until they have left its circle.
 - **Scoring.** Their block onto your stand while your own block is home. Reaching your stand while yours is away
   scores nothing yet (a NOT YET! banner says why), and a carrier who waits there scores the moment it returns.
