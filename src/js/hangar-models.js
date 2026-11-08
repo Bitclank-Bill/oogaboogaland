@@ -1063,9 +1063,10 @@
   // (`planter`); a ceiling of dark panels with blue skylights and vent grilles (`skylights`, `vents`, [x, z]) and amber
   // lamps along the top of the walls; pipes along the back wall; and the room's lamps (`lamps`, [x, y, z, reach] each,
   // which join the crates' lanterns' pool, so the room is lit while someone is near it); the bolt in yellow corners on
-  // the floor (`decal`) and blue strips along it.
+  // the floor (`decal`) and blue strips along it. While it is `locked` its door stays shut and its doorway is closed to
+  // walkers, and the keypad by the door refuses every code (`commandRoom().keypad`).
   const COMMAND = { x0: -18, x1: -6, front: HALL.front - LAYOUT.shell.face, back: HALL.front - LAYOUT.shell.face + 8, top: 4.2, sill: 0.95, lean: 0.35,
-    glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a",
+    locked: true, glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a",
     facade: { x0: -18.45, x1: -5.65, out: 0.45, lip: 0.22, frame: 0.5, rim: 0.15, body: "#3e4459", edge: "#4f566e", light: "#6c738e", dark: "#2a2e40",
       orange: "#f28a1c", blue: "#4fb3ff", yellow: "#f2b630", pipe: "#2b3550",
       outline: [[-5.65, 5.5], [-6.1, 5.95], [-8.3, 5.95], [-8.9, 5.35], [-9.95, 5.35], [-10.6, 6.0], [-16.7, 6.0], [-17.35, 5.35], [-18.0, 5.35],
@@ -3599,10 +3600,11 @@
     // The control room's front out from the left wall, its door and keypad with it, in the way at the catwalk's level.
     block(HALL.x0, CONTROL.front + 0.2, CONTROL.z0, CONTROL.z1, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
     // The command room's front either side of its door, from the facade's face and the bumpers at its foot back into the
-    // wall, and its ends and back wall round the floor inside it (`inside`).
+    // wall, its doorway too while it is locked, and its ends and back wall round the floor inside it (`inside`).
     const K = COMMAND, kd = K.doorX - K.door / 2 - 0.06, ke = K.doorX + K.door / 2 + 0.06, kf = K.front - K.facade.out - 0.15;
     block(K.facade.x0, kd, kf, K.front + 0.3, -1, K.top + 1);
     block(ke, K.facade.x1, kf, K.front + 0.3, -1, K.top + 1);
+    if (K.locked) block(kd, ke, kf, K.front + 0.3, -1, K.top + 1);
     block(K.x0 - 0.3, K.x0, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x1, K.x1 + 0.3, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x0 - 0.3, K.x1 + 0.3, K.back, K.back + 0.3, -1, K.top + 1);

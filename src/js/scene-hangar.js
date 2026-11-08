@@ -250,7 +250,7 @@
   };
   // The command room's door: its two leaves swing open into the room while anything that walks the hall (as `nearJet`
   // counts them) stands within `COMMAND_DOOR.reach` of its middle on the floor, and shut again once nobody does, easing
-  // at `ease` a second, a quarter turn open.
+  // at `ease` a second, a quarter turn open; shut for good while the room is locked (`COMMAND.locked`).
   const COMMAND_DOOR = { reach: 3.6, ease: 6, swing: Math.PI * 0.48 };
   const atCommandDoor = (x, z, feet) => feet < 1 && Math.hypot(x - HM.COMMAND.doorX, z - HM.COMMAND.front) < COMMAND_DOOR.reach;
   // The control room's warning beacon: dim at rest, flashing `rate` times a second while one of the crew is out of their
@@ -260,7 +260,7 @@
     s.commandBeacon.glow = s.meltdown.active ? (Math.sin(elapsed * BEACON.rate * Math.PI * 2) > 0 ? 1.4 : 0.15) * s.anomaly.dim : BEACON.idle;
   };
   const commandDoorLife = (s, dt) => {
-    const want = nearJet(atCommandDoor) ? 1 : 0;
+    const want = !HM.COMMAND.locked && nearJet(atCommandDoor) ? 1 : 0;
     s.commandOpen += (want - s.commandOpen) * Math.min(1, dt * COMMAND_DOOR.ease);
     const k = s.commandOpen * s.commandOpen * (3 - 2 * s.commandOpen), doors = HM.commandRoom().doors;
     for (let i = 0; i < 2; i++) s.commandDoors[i].rotation.y = doors[i].turn + doors[i].open * k * COMMAND_DOOR.swing;
