@@ -397,6 +397,7 @@
     closeQuiz();
     el.board.hidden = el.results.hidden = true;
     el.strip.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = false;
+    placeBar();
     for (const li of el.feedItems) { li.textContent = ""; delete li.dataset.team; }
     el.notice.hidden = false;
     hud.el.act.hidden = !COARSE;
@@ -1124,6 +1125,35 @@
     notice(a.crates <= 0 ? "No crates left · your stand or an ammo cache gives you 3 more" : !a.grounded ? "Land first, then drop a crate" : !ownHalf ? "Crates only go down on your own half" : "No room there · face open ground and try again", 1600);
     return false;
   };
+  let hookBusy = false;
+  // The weapons bar: bottom right unless moved, minimized or not, remembered for this visitor. Touch keeps its safe
+  // default spot (no dragging) so the bar never sits under the sticks.
+  const BAR_KEY = "ooga-block-bar", bar = { x: null, y: null, min: false };
+  const saveBar = () => { try { localStorage.setItem(BAR_KEY, JSON.stringify(bar)); } catch { /* kept this visit */ } };
+  const placeBar = () => {
+    const t = el.toolBar;
+    t.dataset.min = String(bar.min);
+    el.barMin.setAttribute("aria-pressed", String(bar.min));
+    el.barMin.textContent = bar.min ? "+" : "–";
+    if (COARSE || bar.x === null) { t.style.left = t.style.top = t.style.right = t.style.bottom = ""; return; }
+    const box = t.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+    bar.x = clamp(bar.x, 0, Math.max(0, W - box.width)); bar.y = clamp(bar.y, 0, Math.max(0, H - box.height));
+    t.style.right = t.style.bottom = "auto"; t.style.left = `${bar.x}px`; t.style.top = `${bar.y}px`;
+  };
+  const toggleBar = () => { bar.min = !bar.min; placeBar(); saveBar(); };
+  const onBarDown = (e) => {
+    if (COARSE || e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const box = el.toolBar.getBoundingClientRect();
+    el.barDrag = { id: e.pointerId, dx: e.clientX - box.left, dy: e.clientY - box.top };
+  };
+  const onBarMove = (e) => {
+    if (!el.barDrag || e.pointerId !== el.barDrag.id) return;
+    bar.x = e.clientX - el.barDrag.dx; bar.y = e.clientY - el.barDrag.dy;
+    placeBar();
+  };
+  const onBarUp = (e) => { if (el.barDrag && e.pointerId === el.barDrag.id) { el.barDrag = null; saveBar(); } };
   const updateTools = () => {
     if (!sim || !el.tools) return;
     const a = sim.actors[0];
@@ -1131,9 +1161,11 @@
       const k = b.dataset.tool;
       b.setAttribute("aria-pressed", String(k === tool));
       const n = b.querySelector("b");
-      if (n) n.textContent = k === "paint" ? "∞" : k === "sniper" ? (a.sniper ? "∞" : "tower") : k === "gold" ? (a.gold ? "∞" : "—") : k === "hook" ? (a.hook ? (a.hk || a.hCool > 0 ? "…" : "1") : "—") : k === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : k === "crate" ? String(a.crates) : String(a[k]);
+      if (n) n.textContent = k === "paint" || k === "sniper" || k === "gold" ? "" : k === "hook" ? (a.hook && (a.hk || a.hCool > 0) ? "…" : "") : k === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : k === "crate" ? String(a.crates) : String(a[k]);
       if (k === "gold") b.disabled = !a.gold;
       if (k === "hook") b.disabled = !a.hook;
+      if (k === "sniper") b.disabled = !a.sniper;
+      if (k === "grenade" || k === "rocket" || k === "net") b.disabled = a[k] <= 0;
       if (k === "pass") b.disabled = !a.carrying && !a.holding;
       if (k === "zip") b.disabled = !SIM.nearZip(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearVend(sim, a);
       if (k === "grab") b.setAttribute("aria-pressed", String(a.holding || tool === "grab"));
@@ -1650,6 +1682,8 @@
       const t = elapsed - c.at, up = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 1.4);
       c.arm.rotation.x = -0.25 + up * 1.9;
     }
+    // The hook's slot shows when it is recharging; repainted only when that changes.
+    { const m = sim.actors[0], busy = m.hook > 0 && (m.hk > 0 || m.hCool > 0); if (busy !== hookBusy) { hookBusy = busy; updateTools(); } }
     const onPad = phase === "play" && SIM.nearCatapult(sim, sim.actors[0]);
     if (onPad !== catNear) {
       catNear = onPad;
@@ -1937,6 +1971,7 @@
     if (TOOL_KEYS[e.key]) keyTool(TOOL_KEYS[e.key]);
     if (e.key === "t" || e.key === "T") passBlock();
     if (e.key === "r" || e.key === "R") hookNow();
+    if (e.key === "u" || e.key === "U") toggleBar();
     if (e.key === "y" || e.key === "Y") throwWallet();
     if (e.key === "h" || e.key === "H") piggyback();
     if (e.key === "j" || e.key === "J") callRider();
@@ -2229,6 +2264,16 @@
     chooseTarget(selection.target);
     el.paintBtn = document.getElementById("block-paint");
     el.toolBar = document.getElementById("block-tools");
+    el.barMin = document.getElementById("block-bar-min");
+    el.barGrip = document.getElementById("block-bar-grip");
+    el.barDrag = null;
+    try { const v = JSON.parse(localStorage.getItem(BAR_KEY) || "null"); if (v) { bar.min = !!v.min; bar.x = Number.isFinite(v.x) ? v.x : null; bar.y = Number.isFinite(v.y) ? v.y : null; } } catch { /* the defaults stand */ }
+    el.barMin.addEventListener("click", toggleBar);
+    el.barGrip.addEventListener("pointerdown", onBarDown);
+    el.barGrip.addEventListener("pointermove", onBarMove);
+    el.barGrip.addEventListener("pointerup", onBarUp);
+    el.barGrip.addEventListener("pointercancel", onBarUp);
+    window.addEventListener("resize", placeBar);
     el.passBtn = document.querySelector('#block-tools [data-tool="pass"]');
     el.tools = [...el.toolBar.querySelectorAll("[data-tool]")];
     el.onTool = (e) => { const k = e.currentTarget.dataset.tool; e.currentTarget.blur(); if (!inRound()) return; if (k === "crate") buildCrate(); else if (k === "grab") grabCrate(); else if (k === "pass") passBlock(); else if (k === "zip") zipNow(); else chooseTool(k); };
@@ -2403,7 +2448,7 @@
     el.controlsList = document.getElementById("block-controls-list");
     // The board keeps one short line; the whole list waits behind "All controls", so it never crowds the choices.
     el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Sides" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
-    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Sides for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 8 pick a weapon (8 is the grappling hook once found), G steps through them · R fires the hook at the crosshair or lets go, a jump lets go too · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
+    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Sides for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 8 pick a weapon on the bar (8 is the hook once found), G steps through them, U hides the bar, drag its handle to move it · R fires the hook at the crosshair or lets go, a jump lets go too · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
     showBoard();
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);
@@ -2463,6 +2508,12 @@
     trigger = false;
     el.toolBar.hidden = true;
     for (const b of el.tools) b.removeEventListener("click", el.onTool);
+    el.barMin.removeEventListener("click", toggleBar);
+    el.barGrip.removeEventListener("pointerdown", onBarDown);
+    el.barGrip.removeEventListener("pointermove", onBarMove);
+    el.barGrip.removeEventListener("pointerup", onBarUp);
+    el.barGrip.removeEventListener("pointercancel", onBarUp);
+    window.removeEventListener("resize", placeBar);
     document.removeEventListener("mousemove", onLockedMove);
     window.removeEventListener("keydown", onArrow);
     window.removeEventListener("keyup", onArrow);

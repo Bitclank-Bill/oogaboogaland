@@ -127,6 +127,7 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 | Q / E, ← / → | Turn; the chase camera swings round behind |
 | X, or a click on the view | Capture the mouse to turn and aim (the island's combat look); X again or Escape lets go |
 | Left click or Enter | Throw the chosen tool at the crosshair (the crate, when holding one) |
+| U | Hide or show the weapons bar (its handle drags it; both remembered on this device; on touch it stays put) |
 | 8, R | With the grappling hook found: 8 picks it (then click fires), R fires it at the crosshair; press again, or jump, to let go |
 | 1 to 7, G | Pick a weapon (paint, grenade, rocket, net, sniper rifle on a tower, Golden Dual AKs once won, Ooga AK); G steps through the ones you can use |
 | Right click | Aim, as the island's precision aim: held, the view narrows; up a tower it steps the sniper scope in (four steps); in the Island view it returns to the chase camera |
