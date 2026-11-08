@@ -310,7 +310,8 @@
         if (c.session && msg.n === c.session.helloN) return helloLater();
         return mark(msg.n, "failed");
       }
-      const words = `${who(msg.to).name} ${REFUSED[msg.reason] || "can't be asked now."}`;
+      // The one being asked may have left already, so their name is the page's own copy.
+      const words = `${msg.to === c.peer && c.phase !== "idle" ? c.name : who(msg.to).name} ${REFUSED[msg.reason] || "can't be asked now."}`;
       if ((c.phase === "inviting" || c.phase === "accepting") && msg.to === c.peer) reset(words);
       else {
         c.invites = c.invites.filter((id) => id !== msg.to);

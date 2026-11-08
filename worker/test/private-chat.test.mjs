@@ -146,6 +146,8 @@ test("room: a decline and a block answer the inviter, a block refuses them both 
   h.send(f, { t: "pm", op: "invite", to: 4 });
   h.leave(f);
   assert.deepEqual(last(d), { t: "pm", op: "withdrawn", from: 6, reason: "left" });
+  h.send(d, { t: "pm", op: "accept", to: 6 });
+  assert.equal(last(d).reason, "offline", "an accept that arrives after the inviter left says they are gone");
 });
 
 test("room: a block and a spent invite rate stay with the account across its reconnects while the room is awake", async () => {

@@ -748,7 +748,8 @@ export class Room extends DurableObject {
     // The rest are held to their own rate: past it, an accept is refused and the others do nothing.
     if (!takeToken(account.control, PM_CONTROL_HZ, now, PM_CONTROL_BURST)) return msg.op === "accept" ? tell(p, { op: "refused", to, reason: "rate" }) : undefined;
     if (msg.op === "accept") {
-      if (!q || !q.pm.inv.includes(p.id)) return tell(p, { op: "refused", to, reason: "withdrawn" });
+      if (!q) return tell(p, { op: "refused", to, reason: "offline" });
+      if (!q.pm.inv.includes(p.id)) return tell(p, { op: "refused", to, reason: "withdrawn" });
       if (p.pm.open || q.pm.open) return tell(p, { op: "refused", to, reason: "busy" });
       return this.privateOpen(q, p);
     }
