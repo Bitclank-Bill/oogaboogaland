@@ -1514,6 +1514,9 @@ body[data-active-scene="hub"] .home-link {
 .pm-switch-button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
 .pm-switch .pm-count { position: static; margin: 0 0 0 2px; }
 .pm-lock { flex: none; width: 9px; height: 10px; }
+/* As the partner's row lock shows it (private-chat.js): amber while an invite or the pad waits, blue once sealed. */
+.pm-switch-button[data-lock="waiting"] .pm-lock, .pm-title[data-lock="waiting"] .pm-lock { color: var(--warn); }
+.pm-switch-button[data-lock="sealed"] .pm-lock { color: #9fbfee; }
 
 .pm { display: none; flex: 1 1 auto; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .pm [hidden] { display: none; }
@@ -2060,18 +2063,31 @@ body[data-active-scene="hub"] .home-link {
   cursor: default;
 }
 
+/* The private conversation's lock (private-chat.js `lock`): open and grey, amber while it waits, shut and blue once
+   sealed, dim on the other rows while one is under way. */
 .players-private {
   display: inline-flex;
   padding: 0;
   border: 0;
   background: none;
-  color: #9fbfee;
+  color: var(--muted);
   cursor: pointer;
 }
 .players-private[hidden] { display: none; }
-.players-private svg { width: 10px; height: 11px; shape-rendering: crispEdges; }
-.players-private:hover, .players-private:focus-visible { color: #cfe0ff; outline: none; }
+.players-private svg { width: 10px; height: 12px; shape-rendering: crispEdges; }
+.players-private:hover, .players-private:focus-visible { color: var(--fg); outline: none; }
 .players-private:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.players-private[data-lock="waiting"] { color: var(--warn); }
+.players-private[data-lock="waiting"]:is(:hover, :focus-visible) { color: var(--accent-text); }
+.players-private[data-lock="waiting"] svg { animation: players-private-wait 2s ease-in-out infinite; }
+.players-private[data-lock="sealed"] { color: #9fbfee; }
+.players-private[data-lock="sealed"]:is(:hover, :focus-visible) { color: #cfe0ff; }
+.players-private[data-lock="busy"] { color: var(--faint); }
+.players-private[data-lock="busy"]:is(:hover, :focus-visible) { color: var(--muted); }
+@keyframes players-private-wait { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .players-private[data-lock="waiting"] svg { animation: none; }
+}
 
 .roster-voice:focus-visible {
   outline: 2px solid var(--accent);

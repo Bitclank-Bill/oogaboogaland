@@ -813,14 +813,14 @@ export class Room extends DurableObject {
     this.saveAttachment(p);
   }
 
-  // A player leaving ends their conversation and every invite to or from them.
+  // A player leaving ends their conversation and every invite to or from them, each told it was a leave, not a no.
   privateLeave(p) {
     for (const q of this.players.values()) {
       if (q === p) continue;
       let changed = false;
       if (q.pm.open === p.id) { q.pm.open = 0; changed = true; this.send(q.ws, { t: "pm", op: "closed", from: p.id, reason: "left" }); }
-      if (q.pm.inv.includes(p.id)) { q.pm.inv = q.pm.inv.filter((id) => id !== p.id); changed = true; this.send(q.ws, { t: "pm", op: "declined", from: p.id }); }
-      if (p.pm.inv.includes(q.id)) this.send(q.ws, { t: "pm", op: "withdrawn", from: p.id });
+      if (q.pm.inv.includes(p.id)) { q.pm.inv = q.pm.inv.filter((id) => id !== p.id); changed = true; this.send(q.ws, { t: "pm", op: "declined", from: p.id, reason: "left" }); }
+      if (p.pm.inv.includes(q.id)) this.send(q.ws, { t: "pm", op: "withdrawn", from: p.id, reason: "left" });
       if (changed) this.saveAttachment(q);
     }
   }
