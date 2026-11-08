@@ -26121,6 +26121,28 @@ const chatClientChecks = async () => {
     unread.join() === "0,1,2,2,0,1,0", unread.join());
   record("ooga chat client: lost receipts time out to a stable retry; edited identical drafts and newer sends survive old receipts; explicit logout clears local text; Unicode, invalid controls and old-server gating use the shared policy", waiting && uncertain && stable && revision && late && policy && unicode && gated && restored && input.value === "" && C.stats.lines === 0 && timers.size === 0, JSON.stringify({ waiting, uncertain, stable, revision, late, policy, lines: C.stats.lines, timers: timers.size }));
 };
+// Reactions and the raised hand share one room bucket (worker/src/room.js reactToken); the page spends its mirror of it.
+const reactionWireChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) });
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["react-v1"], players: [] });
+  const sent = [];
+  for (let i = 0; i < 8; i++) sent.push(f.net.sendReaction("💯"));
+  const raised = f.net.setHand(true, 2), afterBurst = { hand: f.net.state.hand, tone: f.net.state.handTone, frames: f.sent.filter(m => m.t === "hand").length };
+  f.advance(2000);
+  const later = f.net.setHand(true, 2), up = { hand: f.net.state.hand, tone: f.net.state.handTone, frame: f.sent.filter(m => m.t === "hand").at(-1) };
+  // The room refused a change after all: its word on this page's own hand puts the page back.
+  message({ t: "hand", id: 71, on: false, tone: 0 });
+  const corrected = { hand: f.net.state.hand, tone: f.net.state.handTone };
+  f.net.dispose();
+  record("regression: reactions and the raised hand spend one bucket, a little short of the room's; a hand change over it is refused with nothing changed, never shown here and dropped there, and the room's word on this page's own hand puts it back",
+    sent.slice(0, 5).every(Boolean) && sent.slice(5).every(s => !s) && f.sent.filter(m => m.t === "react").length === 5
+      && raised === false && afterBurst.hand === false && afterBurst.frames === 0
+      && later === true && up.hand === true && up.tone === 2 && up.frame && up.frame.on === true && up.frame.tone === 2
+      && corrected.hand === false && corrected.tone === 0,
+    JSON.stringify({ sent, raised, afterBurst, later, up, corrected }));
+};
 // Online Oogas columns: every row, built by the real players.js on a small DOM, holds its cells in one order, and the
 // stylesheet puts each icon in a column of fixed width (lock, voice, distance as wide as "999 m", crosshair), so they
 // line up down the whole tab, in every group and on the visitor's own row.
