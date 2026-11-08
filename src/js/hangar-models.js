@@ -2562,8 +2562,9 @@
   const LANTERN_GLOW = [1.3, 0.8, 0.36];
   // The Jet's key light, the scene's spot: hung under the roof over the Jet's left flank and aimed down at it, a cone of
   // cool white on the Jet and the floor round it, as far as `reach` m, full inside `inner` radians of its axis and gone
-  // by `outer`.
-  const KEY = { at: [LAYOUT.jet.x - 9, 14.2, LAYOUT.jet.z], aim: [LAYOUT.jet.x, 2, LAYOUT.jet.z], reach: 45, outer: 0.96, inner: 0.61, color: [10, 10.5, 11.4] };
+  // by `outer`. Bright enough that the Jet stands out white against the dark hall, but no brighter, or its white body
+  // runs into the grade's highlight shoulder and its panel steps wash out.
+  const KEY = { at: [LAYOUT.jet.x - 9, 14.2, LAYOUT.jet.z], aim: [LAYOUT.jet.x, 2, LAYOUT.jet.z], reach: 45, outer: 0.96, inner: 0.61, color: [6.5, 6.8, 7.4] };
   const fixedLights = cached(() => {
     const L = LAYOUT, B = L.boards, D = L.door, T = L.tunnel;
     return [
