@@ -971,7 +971,8 @@
   // control tower's do, in a heavy dark frame; and past them, at the end by the landing, a solid stretch with a double
   // door `door` wide round `doorX` (its leaves on nodes of the scene's own, `commandDoor`) and the room's plate beside
   // it; on the wall over the glass the room's sign. `flat` the room, `detail` the small parts on its faces (drawn after
-  // the rest on Canvas 2D), `glow` its lit parts, which the scene dims with the hall's glass, `glass` the panes,
+  // the rest on Canvas 2D), `glow` its lit parts and `lit` the small lamps on its facade (drawn after its small parts on
+  // Canvas 2D), which the scene dims with the hall's glass, `glass` the panes,
   // `pictures` its signs' and screens' faces, each { geometry, x, y, z, turn, tilt, bias } (`bias` how much nearer the
   // Canvas 2D sort takes it than a metre), `doors`, where each leaf's hinge stands and the way it turns shut, and
   // `lamps`, its lamps as the lanterns' pool has them.
@@ -986,6 +987,8 @@
   // clear of the aisle behind the second row (`crates`, [x, z, turn, grey]).
   const COMMAND = { x0: -18, x1: -6, front: HALL.front - LAYOUT.shell.face, back: HALL.front - LAYOUT.shell.face + 8, top: 4.2, sill: 0.95, lean: 0.35,
     glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a",
+    facade: { x0: -18.45, x1: -5.65, out: 0.45, head: 4.9, crown: 5.8, shoulder: 5.25, chamfer: 0.35, body: "#565c78", edge: "#6c7394", dark: "#2a2e40",
+      orange: "#f28a1c", blue: "#4fb3ff", yellow: "#f2b630", pipe: "#2b3550" },
     rows: [[-17.5, -10, 29.1], [-16.5, -10.5, 32.3]], deep: 0.9, chairs: [[-13.4, 30.75], [-15.6, 34], [-11.2, 34]],
     command: { z: 33.1, y: 2.35, w: 3.8, h: 2.1 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 },
     panels: [[-15.5, 31.2], [-12, 31.2], [-8.5, 31.2], [-15.5, 34.6], [-12, 34.6], [-8.5, 34.6]],
@@ -997,12 +1000,11 @@
     pts.forEach(([u, v], i) => (i ? g.lineTo : g.moveTo).call(g, x + u * h, y + v * h));
     g.closePath(); g.fill();
   };
-  // The sign over the opening: the room's name in cream on navy in an orange edge, a bolt at each end; and the plate by
-  // the door, the bolt over CONTROL ROOM and what it is for.
+  // The sign's face: the room's name in cream on navy, a bolt at each end; and the plate by the door, the bolt over
+  // CONTROL ROOM and what it is for.
   const paintCommandSign = (g, W, H) => {
     const K = COMMAND;
     g.fillStyle = K.navy; g.fillRect(0, 0, W, H);
-    g.strokeStyle = CONTROL.orange; g.lineWidth = H * 0.08; g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, W - g.lineWidth, H - g.lineWidth);
     g.fillStyle = K.bolt;
     for (const x of [H * 0.6, W - H * 0.6]) paintBolt(g, x, H / 2, H * 0.62);
     g.fillStyle = K.cream; g.font = `bold ${Math.round(H * 0.46)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
@@ -1138,7 +1140,7 @@
     return merge(...parts);
   });
   const commandRoom = cached(() => {
-    const K = COMMAND, C = CONTROL, flat = [], detail = [], glow = [], glass = [], pictures = [];
+    const K = COMMAND, C = CONTROL, flat = [], detail = [], glow = [], lamps = [], glass = [], pictures = [];
     const { x0, x1, front, back, top } = K, xc = (x0 + x1) / 2, xw = x1 - x0, ry = top / 2, zc = (front + back) / 2, zd = back - front;
     // The room: its floor (a little over the hall's, which runs on in under the wall), ceiling, back wall and ends,
     // glowing a little as a lit room does, with seams down its back wall. Each faces into the room alone, in strips
@@ -1164,38 +1166,89 @@
       glow.push(box({ w: 1.8, h: 0.02, d: 0.52, color: "#ffcf8a", emissive: 1, offset: { x, y: top - 0.065, z } }));
     }
     for (const x of [x0 + 0.35, x1 - 0.35]) glow.push(box({ w: 0.07, h: 0.03, d: zd - 1.2, color: KNEE.color, emissive: 1, offset: { x, y: top - 0.02, z: zc + 0.3 } }));
-    // The opening's frame on the wall's face: its jambs and its head.
-    for (const x of [x0, x1]) flat.push(box({ w: 0.44, h: top + 0.2, d: 0.3, color: C.frame, offset: { x, y: (top + 0.2) / 2, z: front - 0.05 } }));
-    flat.push(box({ w: xw + 0.3, h: 0.3, d: 0.3 + K.lean, color: C.frame, offset: { x: xc, y: top + 0.05, z: front + 0.1 - (0.3 + K.lean) / 2 } }));
-    // The sill under the glass with a blue strip along it, then the panes leaning out to the head in their frame.
-    const sillTop = K.sill, head = front - K.lean, gw = K.glazed - x0, gx = (x0 + K.glazed) / 2, pw = gw / K.panes;
+    // The front after the concept: a chunky steel facade standing `facade.out` out of the wall round the glass and the
+    // door, its head over them with an orange line along it, raised in the middle behind the sign and stepping down
+    // either side, its top corners chamfered (each piece convex, so a prism); the sign a navy lightbox with chamfered
+    // ends in a glowing blue rim, an amber lightbox either side of it, and two pipes coming down the wall into the head
+    // over the door in yellow brackets.
+    const F = K.facade, fm = front - F.out / 2, ff = front - F.out, gx = (x0 + K.glazed) / 2;
+    const slab = (pts, d, z, color, emissive = 0, into = flat) => into.push(moved(prism(pts, d, color, emissive), 0, 0, z));
+    const chamfered = (xa, xb, ya, yb, c, left, right) => [[xa, ya], [xb, ya], [xb, yb - (right ? c : 0)], [xb - (right ? c : 0), yb], [xa + (left ? c : 0), yb], [xa, yb - (left ? c : 0)]];
+    const crown = { xa: gx - 3.5, xb: gx + 3.5 };
+    slab(chamfered(F.x0, F.x1, top, F.head, 0, false, false), F.out, fm, F.body);
+    slab(chamfered(crown.xa, crown.xb, F.head - 0.01, F.crown, F.chamfer, true, true), F.out - 0.06, fm + 0.03, F.body);
+    slab(chamfered(F.x0, crown.xa + 0.01, F.head - 0.01, F.shoulder, F.chamfer, true, false), F.out - 0.1, fm + 0.05, F.body);
+    slab(chamfered(crown.xb - 0.01, F.x1, F.head - 0.01, F.shoulder, F.chamfer, false, true), F.out - 0.1, fm + 0.05, F.body);
+    detail.push(box({ w: F.x1 - F.x0, h: 0.06, d: 0.06, color: F.edge, offset: { x: (F.x0 + F.x1) / 2, y: F.head - 0.03, z: ff - 0.02 } }));
+    glow.push(box({ w: F.x1 - F.x0 - 0.3, h: 0.07, d: 0.02, color: F.orange, emissive: 0.8, offset: { x: (F.x0 + F.x1) / 2, y: top + 0.12, z: ff - 0.02 } }));
+    const sign = { w: 5.4, h: 0.9, y: (F.head + F.crown) / 2 - 0.02, z: front - F.out - 0.08, c: 0.22 };
+    const octagon = (w, h, c) => [[gx - w / 2 + c, sign.y - h / 2], [gx + w / 2 - c, sign.y - h / 2], [gx + w / 2, sign.y - h / 2 + c], [gx + w / 2, sign.y + h / 2 - c],
+      [gx + w / 2 - c, sign.y + h / 2], [gx - w / 2 + c, sign.y + h / 2], [gx - w / 2, sign.y + h / 2 - c], [gx - w / 2, sign.y - h / 2 + c]];
+    slab(octagon(sign.w + 0.16, sign.h + 0.16, sign.c + 0.06), 0.06, sign.z + 0.02, F.blue, 1, glow);
+    slab(octagon(sign.w, sign.h, sign.c), 0.1, sign.z - 0.02, K.navy, 0.45);
+    pictures.push({ geometry: screenPicture(sign.w - 2 * sign.c, sign.h - 0.08, 200, paintCommandSign), x: gx, y: sign.y, z: sign.z - 0.075, turn: Math.PI });
+    for (const x of [crown.xa - 0.75, crown.xb + 0.75]) {
+      detail.push(box({ w: 0.92, h: 0.3, d: 0.06, color: F.orange, emissive: 0.3, offset: { x, y: (F.head + F.shoulder) / 2, z: ff + 0.02 } }));
+      lamps.push(box({ w: 0.8, h: 0.18, d: 0.02, color: "#ffc77a", emissive: 1, offset: { x, y: (F.head + F.shoulder) / 2, z: ff - 0.02 } }));
+    }
+    for (const px of [-6.55, -6.15]) {
+      flat.push(moved(lathe({ profile: [[0.085, 0], [0.085, 3.1], [0, 3.1]], segments: 10, color: F.pipe }), px, F.shoulder - 0.05, front - 0.2));
+      for (let y = F.shoulder + 0.4; y < F.shoulder + 3; y += 0.9) detail.push(moved(lathe({ profile: [[0.105, 0], [0.105, 0.12], [0, 0.12]], segments: 10, color: F.yellow }), px, y, front - 0.2));
+    }
+    // The glass: the base under it standing out with its vents, three blue strips and a yellow bumper at its outer end,
+    // the sill over it, the panes leaning out to the head in a heavy frame, and inside along each pane's top a blue strip.
+    const sillTop = K.sill, head = front - K.lean, gw = K.glazed - x0, pw = gw / K.panes, base = 0.75;
     const rise = top - 0.1 - sillTop, lean = Math.atan2(K.lean, rise), len = Math.hypot(K.lean, rise);
-    flat.push(box({ w: gw, h: sillTop, d: 0.3, color: C.frame, offset: { x: gx, y: sillTop / 2, z: front + 0.1 } }));
-    flat.push(box({ w: gw, h: 0.06, d: 0.44, color: C.lip, offset: { x: gx, y: sillTop + 0.03, z: front + 0.03 } }));
-    glow.push(box({ w: gw - 0.4, h: 0.05, d: 0.02, color: KNEE.color, emissive: 1, offset: { x: gx, y: 0.5, z: front - 0.06 } }));
+    flat.push(box({ w: K.glazed - F.x0, h: base, d: F.out + 0.25, color: F.body, offset: { x: (F.x0 + K.glazed) / 2, y: base / 2, z: front + 0.25 - (F.out + 0.25) / 2 } }));
+    flat.push(box({ w: gw + 0.45, h: sillTop - base, d: 0.55, color: F.edge, offset: { x: gx - 0.225, y: (base + sillTop) / 2, z: front - 0.02 } }));
+    for (const vx of [x0 + 0.75, K.glazed - 0.75]) {
+      detail.push(box({ w: 0.9, h: 0.38, d: 0.02, color: F.dark, offset: { x: vx, y: 0.36, z: ff - 0.01 } }));
+      for (let k = 0; k < 5; k++) detail.push(box({ w: 0.82, h: 0.025, d: 0.02, color: "#151824", offset: { x: vx, y: 0.22 + k * 0.07, z: ff - 0.02 } }));
+    }
+    for (let k = 0; k < 3; k++) glow.push(box({ w: 1.7, h: 0.07, d: 0.02, color: F.blue, emissive: 1, offset: { x: x0 + 2.35 + k * (gw - 4.7) / 2, y: 0.4, z: ff - 0.02 } }));
+    detail.push(bevelBox({ w: 0.36, h: 0.5, d: F.out + 0.1, color: F.yellow, bevel: 0.03, offset: { x: F.x0 + 0.18, y: 0.25, z: front + 0.05 - (F.out + 0.1) / 2 - 0.02 } }));
     for (let i = 0; i < K.panes; i++) {
-      glass.push(moved(turnedX(box({ w: pw - 0.16, h: len - 0.12, d: 0.03, color: C.pane, emissive: 0.15 }), -lean), x0 + (i + 0.5) * pw, (sillTop + top - 0.1) / 2, (front + head) / 2));
+      glass.push(moved(turnedX(box({ w: pw - 0.22, h: len - 0.12, d: 0.03, color: C.pane, emissive: 0.15 }), -lean), x0 + (i + 0.5) * pw, (sillTop + top - 0.1) / 2, (front + head) / 2));
+      glow.push(box({ w: pw - 0.5, h: 0.04, d: 0.05, color: F.blue, emissive: 1, offset: { x: x0 + (i + 0.5) * pw, y: top - 0.32, z: front + 0.22 } }));
     }
-    for (let i = 1; i <= K.panes; i++) flat.push(beam(x0 + i * pw, sillTop, front, x0 + i * pw, top - 0.1, head, i < K.panes ? 0.14 : 0.24, C.frame));
-    flat.push(beam(x0 + 0.1, sillTop, front, x0 + 0.1, top - 0.1, head, 0.2, C.frame));
-    flat.push(beam(x0, sillTop + 0.04, front, K.glazed, sillTop + 0.04, front, 0.16, C.frame));
-    // The solid stretch past the glass, laid round the door's frame so the Canvas 2D sort never paints it over the
-    // door: the frame, the lamp over the door and the room's plate beside it.
+    for (let i = 1; i < K.panes; i++) flat.push(beam(x0 + i * pw, sillTop, front, x0 + i * pw, top - 0.1, head, 0.22, F.dark));
+    for (const [x, w] of [[x0 - 0.1, 0.5], [K.glazed + 0.05, 0.4]]) flat.push(beam(x, sillTop - 0.05, front - 0.05, x, top, head - 0.05, w, F.body));
+    flat.push(beam(x0 - 0.3, top - 0.08, head - 0.04, K.glazed + 0.25, top - 0.08, head - 0.04, 0.26, F.dark));
+    flat.push(beam(x0, sillTop + 0.06, front - 0.02, K.glazed, sillTop + 0.06, front - 0.02, 0.18, F.dark));
+    flat.push(box({ w: 0.45, h: top - base, d: F.out, color: F.body, offset: { x: F.x0 + 0.225, y: (top + base) / 2, z: fm } }));
+    // The door's stretch, laid round its frame so the Canvas 2D sort never paints it over the door; the frame standing
+    // out in the facade's steel with its top corners chamfered, a yellow bumper at each foot, the amber lightbox over it,
+    // an amber sconce beside it and a lit keypad on its other side; the room's plate between the door and the glass.
     const dx = K.doorX, dw = K.door / 2 + 0.06, dh = K.doorH;
-    for (const [a, b, y0, y1] of [[K.glazed, dx - dw, 0, top], [dx + dw, x1, 0, top], [dx - dw, dx + dw, dh + 0.06, top]]) {
-      flat.push(box({ w: b - a, h: y1 - y0, d: 0.3, color: C.face, offset: { x: (a + b) / 2, y: (y0 + y1) / 2, z: front + 0.1 } }));
+    for (const [a, b, y0, y1] of [[K.glazed + 0.25, dx - dw - 0.2, 0, top], [dx + dw + 0.2, F.x1, 0, top], [dx - dw - 0.2, dx + dw + 0.2, dh + 0.25, top]]) {
+      flat.push(box({ w: b - a, h: y1 - y0, d: F.out, color: F.body, offset: { x: (a + b) / 2, y: (y0 + y1) / 2, z: fm } }));
     }
-    for (const x of [dx - dw + 0.03, dx + dw - 0.03]) flat.push(box({ w: 0.06, h: dh + 0.06, d: 0.34, color: C.frame, offset: { x, y: (dh + 0.06) / 2, z: front + 0.1 } }));
-    flat.push(box({ w: dw * 2, h: 0.06, d: 0.34, color: C.frame, offset: { x: dx, y: dh + 0.03, z: front + 0.1 } }));
-    flat.push(box({ w: 0.42, h: 0.12, d: 0.12, color: "#24282f", offset: { x: dx, y: dh + 0.3, z: front - 0.1 } }));
-    glow.push(box({ w: 0.36, h: 0.06, d: 0.02, color: C.amber, emissive: 1, offset: { x: dx, y: dh + 0.3, z: front - 0.17 } }));
-    const plate = { x: (K.glazed + dx - dw) / 2, y: 1.6, w: 0.62, h: 0.9 };
-    flat.push(box({ w: plate.w + 0.1, h: plate.h + 0.1, d: 0.04, color: C.frame, offset: { x: plate.x, y: plate.y, z: front - 0.07 } }));
-    pictures.push({ geometry: screenPicture(plate.w, plate.h, 256, paintCommandPlate), x: plate.x, y: plate.y, z: front - 0.095, turn: Math.PI });
-    // The sign on the wall over the opening, in its orange frame.
-    const sign = { w: 5, h: 0.62, y: top + 0.75 };
-    flat.push(box({ w: sign.w + 0.16, h: sign.h + 0.14, d: 0.08, color: C.orange, emissive: 0.35, offset: { x: gx, y: sign.y, z: front - 0.04 } }));
-    pictures.push({ geometry: screenPicture(sign.w, sign.h, 200, paintCommandSign), x: gx, y: sign.y, z: front - 0.085, turn: Math.PI });
+    for (const sx of [-1, 1]) {
+      const x = dx + sx * (dw + 0.1);
+      flat.push(box({ w: 0.2, h: dh + 0.25, d: F.out + 0.08, color: F.edge, offset: { x, y: (dh + 0.25) / 2, z: fm - 0.04 } }));
+      slab(sx < 0 ? [[x + 0.1, dh - 0.3], [x + 0.4, dh], [x + 0.1, dh]] : [[x - 0.1, dh - 0.3], [x - 0.1, dh], [x - 0.4, dh]], F.out + 0.04, fm - 0.02, F.edge);
+      detail.push(bevelBox({ w: 0.28, h: 0.36, d: F.out + 0.16, color: F.yellow, bevel: 0.03, offset: { x, y: 0.18, z: fm - 0.06 } }));
+    }
+    flat.push(box({ w: 2 * dw + 0.4, h: 0.25, d: F.out + 0.08, color: F.edge, offset: { x: dx, y: dh + 0.125, z: fm - 0.04 } }));
+    detail.push(box({ w: 0.86, h: 0.3, d: 0.06, color: F.orange, emissive: 0.3, offset: { x: dx, y: dh + 0.55, z: ff - 0.04 } }));
+    lamps.push(box({ w: 0.74, h: 0.18, d: 0.02, color: "#ffc77a", emissive: 1, offset: { x: dx, y: dh + 0.55, z: ff - 0.08 } }));
+    const sx = (dx + dw + 0.2 + F.x1) / 2;
+    detail.push(box({ w: 0.2, h: 0.62, d: 0.1, color: "#24282f", offset: { x: sx, y: 1.95, z: ff - 0.05 } }));
+    detail.push(box({ w: 0.22, h: 0.06, d: 0.12, color: F.orange, emissive: 0.3, offset: { x: sx, y: 2.27, z: ff - 0.05 } }));
+    lamps.push(box({ w: 0.12, h: 0.5, d: 0.02, color: "#ffc77a", emissive: 1, offset: { x: sx, y: 1.95, z: ff - 0.11 } }));
+    const kx = dx - dw - 0.36;
+    detail.push(box({ w: 0.2, h: 0.32, d: 0.05, color: "#1d2028", offset: { x: kx, y: 1.25, z: ff - 0.03 } }));
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) lamps.push(box({ w: 0.035, h: 0.035, d: 0.01, color: r === 0 ? "#2ecc71" : F.blue, emissive: 1, offset: { x: kx - 0.05 + c * 0.05, y: 1.36 - r * 0.07, z: ff - 0.06 } }));
+    const plate = { x: (K.glazed + 0.25 + kx - 0.12) / 2, y: 1.7, w: 0.62, h: 0.9 };
+    detail.push(box({ w: plate.w + 0.1, h: plate.h + 0.1, d: 0.04, color: F.dark, offset: { x: plate.x, y: plate.y, z: ff - 0.02 } }));
+    pictures.push({ geometry: screenPicture(plate.w, plate.h, 256, paintCommandPlate), x: plate.x, y: plate.y, z: ff - 0.045, turn: Math.PI });
+    // On the floor in front: a hazard line along the facade's foot and blue strips beyond it.
+    hazard(flat, F.x0 + 0.2, ff - 0.25, F.x1 - 0.2, ff - 0.25, 0.015, 0.22, 0.4, 0.012);
+    for (const [a, b] of [[-17.8, -15.4], [-14.7, -12.3], [-11.6, -9.2], [-8.3, -6.1]]) glow.push(box({ w: b - a, h: 0.012, d: 0.08, color: F.blue, emissive: 1, offset: { x: (a + b) / 2, y: 0.008, z: ff - 0.6 } }));
+    // Inside, seen through the glass: the Jet's blue banner with the bolt hanging by the glass at its far end.
+    flat.push(box({ w: 1.0, h: 0.05, d: 0.05, color: "#1d1f24", offset: { x: x0 + 0.75, y: top - 0.15, z: front + 0.55 } }));
+    flat.push(box({ w: 0.9, h: 1.5, d: 0.03, color: "#2443a8", offset: { x: x0 + 0.75, y: top - 0.95, z: front + 0.55 } }));
+    detail.push(moved(turnedY(FM.smoothBolt(0.7, 0.02, K.bolt, 0.4), Math.PI), x0 + 0.75, top - 0.9, front + 0.53));
     // The consoles: a slate steel body on a dark plinth, its top with a yellow lip along the crew's side, drawer fronts
     // with yellow pulls there, a riser along the glass edge with its monitors on it (their faces `pictures`, one of
     // `commandScreens` each), keyboards, rows of lit buttons, a lantern at its left end and a mug or two.
@@ -1277,16 +1330,16 @@
     const [dcx, dcz] = K.decal;
     glow.push(moved(turnedX(FM.smoothBolt(1.1, 0.01, K.bolt, 0.35), -Math.PI / 2), dcx, 0.012, dcz));
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      detail.push(box({ w: 0.38, h: 0.01, d: 0.07, color: K.bolt, offset: { x: dcx + sx * 0.66, y: 0.01, z: dcz + sz * 0.82 } }));
-      detail.push(box({ w: 0.07, h: 0.01, d: 0.38, color: K.bolt, offset: { x: dcx + sx * 0.82, y: 0.01, z: dcz + sz * 0.66 } }));
+      flat.push(box({ w: 0.38, h: 0.01, d: 0.07, color: K.bolt, offset: { x: dcx + sx * 0.66, y: 0.01, z: dcz + sz * 0.82 } }));
+      flat.push(box({ w: 0.07, h: 0.01, d: 0.38, color: K.bolt, offset: { x: dcx + sx * 0.82, y: 0.01, z: dcz + sz * 0.66 } }));
     }
     glow.push(box({ w: 0.07, h: 0.012, d: back - front - 1.6, color: KNEE.color, emissive: 1, offset: { x: K.glazed - 0.45, y: 0.008, z: (front + back) / 2 + 0.55 } }));
     glow.push(box({ w: K.glazed - 0.9 - (x0 + 0.4), h: 0.012, d: 0.07, color: KNEE.color, emissive: 1, offset: { x: (x0 + 0.4 + K.glazed - 0.9) / 2, y: 0.008, z: K.rows[1][2] + D + 1.2 } }));
-    hazard(detail, K.doorX - K.door / 2, front + 0.45, K.doorX + K.door / 2, front + 0.45, 0.015, 0.25, 0.4, 0.012);
+    hazard(flat, K.doorX - K.door / 2, front + 0.45, K.doorX + K.door / 2, front + 0.45, 0.015, 0.25, 0.4, 0.012);
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     const doors = [{ x: dx - K.door / 2, z: front + 0.1, turn: 0, open: -1 }, { x: dx + K.door / 2, z: front + 0.1, turn: Math.PI, open: 1 }];
-    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), glass: windows, pictures, doors, lamps: K.lamps.flat() };
+    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), glass: windows, pictures, doors, lamps: K.lamps.flat() };
   });
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
@@ -3124,11 +3177,11 @@
     for (const [x, z] of CRANE.stands) around(x, z, 0.85, 0.85, CRANE.standTop + CRANE.crate[1]);
     // The control room's front out from the left wall, its door and keypad with it, in the way at the catwalk's level.
     block(HALL.x0, CONTROL.front + 0.2, CONTROL.z0, CONTROL.z1, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
-    // The command room's front either side of its door, from the jambs' faces back into the wall, and its ends and back
-    // wall round the floor inside it (`inside`).
-    const K = COMMAND, kd = K.doorX - K.door / 2 - 0.06, ke = K.doorX + K.door / 2 + 0.06;
-    block(K.x0 - 0.3, kd, K.front - 0.25, K.front + 0.3, -1, K.top + 1);
-    block(ke, K.x1 + 0.3, K.front - 0.25, K.front + 0.3, -1, K.top + 1);
+    // The command room's front either side of its door, from the facade's face and the bumpers at its foot back into the
+    // wall, and its ends and back wall round the floor inside it (`inside`).
+    const K = COMMAND, kd = K.doorX - K.door / 2 - 0.06, ke = K.doorX + K.door / 2 + 0.06, kf = K.front - K.facade.out - 0.15;
+    block(K.facade.x0, kd, kf, K.front + 0.3, -1, K.top + 1);
+    block(ke, K.facade.x1, kf, K.front + 0.3, -1, K.top + 1);
     block(K.x0 - 0.3, K.x0, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x1, K.x1 + 0.3, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x0 - 0.3, K.x1 + 0.3, K.back, K.back + 0.3, -1, K.top + 1);
