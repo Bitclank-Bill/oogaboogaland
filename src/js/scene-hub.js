@@ -7630,7 +7630,6 @@
   const setPhase = (next) => {
     const first = phase === null;
     phase = next;
-    if (first) hud.setSubtitle("an island of caves");
     if (!first) hud.toast(PHASE_TOASTS[next]);
   };
   // The plaza library's books in the shared board window: one page a book, its title, its site and what it is,
