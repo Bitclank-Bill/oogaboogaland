@@ -32,11 +32,12 @@
 // of its own, or one not yet placed here counts as past the radius; a page with no position of its own here plays everyone.
 // Movement updates the cutoff on the speaking meter's own 150 ms read; changing the range applies it immediately.
 // No distance fade or volume ramp crosses the cutoff. A local mute still wins.
-// Crossings (#392): on a bridge between two places (voice-blend.js) the room also lets a player hear the place ahead,
-// and each voice plays at its equal-power share (`BL.voiceBlend.gain`, from `net.state.blendT` and the speaker's step),
-// gated by the hearing range, so the two places fade into each other along the crossing. Only this share eases by NEAR_STEP.
-// Ooga Arcade's hall, its haunted hallway and Ghost Hunter's Arena are zones in one scene's coordinates (#422,
-// `BL.voiceBlend.sameFrame`), so the range is measured between them too.
+// Levels and crossings (#392): between two levels of the main world, or along a crossing between two places
+// (voice-blend.js), the room also lets a player hear the other, and each voice plays at its equal-power share
+// (`BL.voiceBlend.gain`, from `net.state.blendT` and the speaker's step), gated by the hearing range, so the two fade
+// into each other. Only this share eases by NEAR_STEP. The main world's zones, and Ooga Arcade's hall, its haunted
+// hallway and Ghost Hunter's Arena (#422), each share one scene's coordinates (`BL.voiceBlend.sameFrame`), so the range
+// is measured between them too.
 // Where a voice's level goes: with Web Audio (`GAIN_PLAY`), each voice plays through a gain fed by its
 // speaking meter's own source, in the context the Join click made, while its element stays muted and only keeps the
 // stream flowing; the gain carries the receive level, the hearing range, local volume and mute alike. A limiter after
@@ -47,8 +48,7 @@
 // range can be heard at all: where the element's volume is honoured, or through a gain. Without Web Audio, the
 // element remains the playback path and volume tops out at 1 rather than offering a boost it cannot play.
 // Exports enable, listen, dropMic, preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, setMuted, toggle, restart, stop,
-// setPeers, subscribe, dispose, inspect, speaking, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, nearness (the share of a
-// player's voice this page's hearing range and crossing would let it hear, 0 to 1; thump.js sounds a thump by it), fades,
+// setPeers, subscribe, dispose, inspect, speaking, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades,
 // RADIUS_MIN, RADIUS_MAX and stats.
 (() => {
   "use strict";
@@ -802,5 +802,5 @@
   const inspect = () => ({ desired: desired.slice(), pulled: [...subs.keys()], publish: pubPc ? pubPc.connectionState : "none", receive: subPc ? subPc.connectionState : "none",
     playback: GAIN_PLAY ? "gain" : "element", context: audio ? audio.state : "none" });
 
-  BL.voice = { preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, enable, listen, dropMic, setMuted, toggle, restart, stop, setPeers, subscribe, dispose, inspect, speaking, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, nearness: (id) => withinRange(id) * nearness(id), fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
+  BL.voice = { preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, enable, listen, dropMic, setMuted, toggle, restart, stop, setPeers, subscribe, dispose, inspect, speaking, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
 })();

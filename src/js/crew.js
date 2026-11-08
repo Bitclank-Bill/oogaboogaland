@@ -22,10 +22,6 @@
   const CHEW_PERIOD = 3.2;
   const AMMO_MAX = 30, AMMO_PER_BANANA = 3, RELOAD_PERIOD = 1.2, BURST_ROUNDS = 3, BURST_STEP = 0.09, SHOT_PERIOD = 0.44;
   const FOCUSED_AUTO_HOLD = 0.12;
-  // An Ooga thump's club arm, k from 0 to 1 over THUMP_TIME: up, down onto the ground ahead, and back to the stand's -0.2.
-  const THUMP_TIME = 0.5;
-  const thumpArm = (k) => k < 0.4 ? -0.2 - 1.5 * Math.sin(k / 0.4 * Math.PI / 2)
-    : k < 0.6 ? -1.7 + 1.95 * ((k - 0.4) / 0.2) ** 2 : 0.25 - 0.45 * Math.sin((k - 0.6) / 0.4 * Math.PI / 2);
   // A push into the hammock (hub-hammock.js `bump`), k from 0 to 1 over PUSH_TIME: how far both arms are taken from whatever the walk
   // or stand pose has them doing to PUSH_REACH (just past level, as pushing someone on a swing). They ease out with the bed's own shove
   // (hub-hammock.js `LEAN_RISE`), follow it through a little further, and ease back, smooth at both ends so the pose never snaps.
@@ -1588,7 +1584,7 @@
         meleePoints: meleeExtremes(cave.parts.club.geometry),
         clubSlingProfile: clubSlingProfile(cave.parts.club.geometry),
         clubTorsoBounds: BL.scene.boundsOf(cave.parts.torso.geometry),
-        work: { phase: "", site: 0, plannedSite: -1, targetReady: false, aimReady: false, aimSample: i, index: 0, place: -1, blocked: false, blockedTime: 0, gait: 0, timer: i * 0.137, emptyTime: 0, rest: 0, reloadSlot: false, direct: false, position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 } },
+        work: { phase: "", site: 0, plannedSite: -1, targetReady: false, aimReady: false, aimSample: i, index: 0, place: -1, blocked: false, blockedTime: 0, gait: 0, timer: i * 0.137, emptyTime: 0, rest: 0, reloadSlot: false, reservedAt: Infinity, direct: false, position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 } },
         slot: null,
         pileApproach: false,
         index: i,
@@ -1654,7 +1650,6 @@
         breathBatch: null,
         cheer: 0,
         catchT: 0,
-        thumpT: 0,
         pushT: 0,
         yawn: 0,
         yawnAt: 12 + i * 4.3 + Math.random() * 20,
@@ -2090,7 +2085,7 @@
         cave.hop = cave.hopV = cave.jumps = 0;
         cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
       }
-      cave.cheer = cave.catchT = cave.thumpT = 0;
+      cave.cheer = cave.catchT = 0;
       travel.mode = "";
       travel.route = null;
       travel.plan = null;
@@ -2307,18 +2302,25 @@
         cave.slot = fanSlots[eaters.length > 1 ? Math.round(i * (count - 1) / (eaters.length - 1)) : Math.floor(count / 2)];
       });
     };
+    // Whether a passive NPC is only passing through (on a work trip or a walk), not standing anywhere.
+    const passing = (other) => other !== player && other.nonInteractive && (other.walk || other.work.phase === "outbound" || other.work.phase === "return");
     const slotAvailable = (cave, slot) => {
       const floor = groundAt(slot.x, slot.z, 0, 0, cave);
       if (ctx.npcLandingAllowed && !ctx.npcLandingAllowed(slot.x, floor, slot.z, cave.bodyHeight)) return false;
+      // A returning worker's reserved slot is kept through others passing over it (passive work trips pass through each
+      // other) and against later reservations; re-checked every frame, either swung walkers between slots mid-leg.
+      const held = cave.work.reloadSlot && cave.slot === slot && cave.state === "working" && cave.work.phase === "return";
       for (let index = 0; index < crewList.length; index++) {
         const other = crewList[index];
         if (other === cave || !other.root.visible) continue;
         const p = other.root.position, feet = p.y - other.baseY, gap = Math.max(SHOULDER_GAP, cave.bodyRadius + other.bodyRadius);
-        if (feet < floor + cave.bodyHeight && feet + other.bodyHeight > floor && Math.hypot(p.x - slot.x, p.z - slot.z) < gap) return false;
+        if (feet < floor + cave.bodyHeight && feet + other.bodyHeight > floor && Math.hypot(p.x - slot.x, p.z - slot.z) < gap
+          && !(held && passing(other))) return false;
         // Reserve approaching eaters' destinations as well as their bodies; a player can still take the place first.
         if (other !== player && other.walk?.to === "slot" && Math.hypot(other.walk.tx - slot.x, other.walk.tz - slot.z) < gap) return false;
         if (other !== player && other.state === "working" && other.work.phase === "return" && other.work.reloadSlot
-          && other.slot && Math.hypot(other.slot.x - slot.x, other.slot.z - slot.z) < gap) return false;
+          && other.slot && Math.hypot(other.slot.x - slot.x, other.slot.z - slot.z) < gap
+          && !(held && (cave.work.reservedAt < other.work.reservedAt || cave.work.reservedAt === other.work.reservedAt && cave.index < other.index))) return false;
       }
       return true;
     };
@@ -2941,32 +2943,11 @@
       cave.chukAngle = damp(cave.chukAngle, out ? 0 : CHUK_FOLD, 12, dt);
       cave.parts.chuk.rotation.x = cave.chukAngle;
     };
-    // An Ooga thump (thump.js): the driven Ooga taps its club on the ground once and the arm settles back, only while
-    // it stands free: on its feet and still, nothing held up, carried, seated, climbing, flying or fighting. The arm
-    // alone moves; position, speed, collision and the weapon are never touched. False when it could not, and the page
-    // shows its icon instead.
-    const thumpFree = (cave) => cave === player && cave.root.visible && cave.state !== "sleeping" && grounded(cave) && !cave.hopV && !cave.jet
-      && !cave.grabbedBy && !cave.health.stunned && !cave.ladder?.plane && !cave.camp.seat && !cave.camp.burning && !cave.camp.rolling
-      && !cave.bedTravel.mode && !cave.build && cave.parts.club.parent === cave.parts.armR && cave.parts.club.visible && !cave.traits.nunchaku && !cave.traits.stoneAxe
-      && !cave.weapon.equipped && !cave.weapon.primaryEquipped && !cave.weapon.aiming && !cave.weapon.reloading && !cave.weapon.reloadHandoff
-      && !cave.weapon.swapTime && cave.weapon.meleeTime <= 0 && !cave.weapon.bashTime && cave.cheer <= 0 && cave.catchT <= 0 && cave.yawn <= 0;
-    const thump = (cave = player) => {
-      if (!cave || !thumpFree(cave) || Math.hypot(steer.x, steer.z) > 0.05) return false;
-      cave.thumpT = THUMP_TIME;
-      return true;
-    };
     // The driven Ooga's push into the hammock registered: both arms ease out and back over PUSH_TIME, run by `runPlayer` with the other arm
     // overrides. Only this page draws it (the room's pose carries no push flag).
     const pushPose = (cave = player) => {
       if (!cave || cave.camp.seat || cave.state === "sleeping") return false;
       cave.pushT = PUSH_TIME;
-      return true;
-    };
-    // The visitor's voice group changed (thump.js, through remotePlayers.clearThumps): a tap still running ends now and
-    // the stand pose has the arm back on the next frame. Only the tap's own timer changes, never movement or a tool.
-    const cancelThump = (cave = player) => {
-      if (!cave || cave.thumpT <= 0) return false;
-      cave.thumpT = 0;
       return true;
     };
     // An Ooga with its own melee weapon swaps hands now and then: the rifle rides
@@ -3442,7 +3423,7 @@
       else removeJetpack(cave);
       releaseBuild(cave);
       cave.walk = null;
-      cave.hop = cave.hopV = cave.cheer = cave.catchT = cave.thumpT = 0;
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
       cave.leap.vx = cave.leap.vz = 0;
       cave.rocketJumpTime = 0;
       if (cave.traits.footRockets && !cave.jet) cave.parts.jetpack.visible = cave.parts.jetFlame.visible = false;
@@ -3482,7 +3463,7 @@
       cave.avoidance.tx = NaN;
       if (cave.pathing) cave.pathing.tx = NaN;
       cave.act.kind = cave === player ? "player" : "panic";
-      cave.cheer = cave.catchT = cave.thumpT = cave.yawn = 0;
+      cave.cheer = cave.catchT = cave.yawn = 0;
       cave.parts.snack.visible = cave.parts.gun.visible = false;
     };
     const finishPanic = (cave) => {
@@ -3658,7 +3639,7 @@
       }
       cave.walk = null;
       releaseBuild(cave);
-      cave.hop = cave.hopV = cave.cheer = cave.catchT = cave.thumpT = 0;
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
       cave.leap.vx = cave.leap.vz = 0;
       c.rolling = true;
       c.rollTime = 0;
@@ -4798,6 +4779,12 @@
       if (cave.nonInteractive && (travel.mode === "walk" || travel.mode === "waiting" || travel.mode === "landing")) {
         if (travel.toBed && cave.bedroll) { startSleep(cave, true); return; }
         if (!travel.toBed) {
+          // One fallen past the abyss's respawn depth takes the scene's respawn first, as every abyss arrival does: it
+          // has priority over work slots and keeps clear of other players, which settling into the slot would not.
+          if (ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave) && p.y - cave.baseY < ctx.abyssRespawnY) {
+            travel.mode = ""; travel.route = null; travel.bed = null; travel.plan = null;
+            return;
+          }
           const state = cave.state;
           cave.state = "away"; applyState(cave, state, true);
           return;
@@ -5164,7 +5151,7 @@
       work.targetReady = work.aimReady = false;
       work.blocked = false; work.blockedTime = 0;
       work.rest = cave.traits.maintainer ? WORK_REST_MIN + Math.random() * WORK_REST_SPREAD : 0;
-      work.reloadSlot = work.direct = cave.pileApproach = false;
+      work.reloadSlot = work.direct = cave.pileApproach = false; work.reservedAt = Infinity;
       cave.act.kind = "work";
       cave.weapon.equipped = true;
       cave.avoidance.tx = NaN;
@@ -5328,7 +5315,7 @@
           if (!work.reloadSlot || !cave.slot || !slotAvailable(cave, cave.slot)) {
             const slot = closestSlot(cave);
             if (!slot) { standPose(cave); return; }
-            cave.slot = slot; work.reloadSlot = true; cave.pileApproach = false;
+            cave.slot = slot; work.reloadSlot = true; work.reservedAt = elapsed; cave.pileApproach = false;
           }
           // A passive meadow leg keeps its reserved slot along the authored ring. The direct approach re-picks the
           // nearest slot it can sweep to past props and the pile, which swings a walker on the ring to another slot.
@@ -5704,14 +5691,6 @@
         cave.parts.armL.rotation.x = -0.2 - k * 1.6;
         cave.parts.head.rotation.x = -k * 0.2;
       } else cave.parts.head.rotation.x = 0;
-      if (cave.thumpT > 0) {
-        // Moving, leaving the ground or taking anything up ends it at once; the walk or stand pose has the arm back.
-        if (len > 0.05 || !thumpFree(cave)) cave.thumpT = 0;
-        else {
-          cave.thumpT = Math.max(0, cave.thumpT - dt);
-          cave.parts.armR.rotation.x = thumpArm(1 - cave.thumpT / THUMP_TIME);
-        }
-      }
       if (cave.pushT > 0) {
         cave.pushT = Math.max(0, cave.pushT - dt);
         const k = 1 - cave.pushT / PUSH_TIME, w = pushWeight(k), to = pushReach(k), arms = cave.parts;
@@ -6295,7 +6274,7 @@
       releaseBuild(cave);
       removeJetpack(cave);
       cave.walk = null;
-      cave.hop = cave.hopV = cave.cheer = cave.catchT = cave.thumpT = 0;
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
       cave.override = cave.state = "sleeping";
       cave.bedroll = bed;
       bed.sleeper = cave;
@@ -6565,7 +6544,7 @@
           const slot = closestSlot(cave, true) || closestSlot(cave);
           if (slot) cave.slot = slot;
           cave.work.phase = "return"; cave.work.index = -1; cave.work.direct = true;
-          cave.work.reloadSlot = !!slot; cave.pileApproach = false;
+          cave.work.reloadSlot = !!slot; cave.work.reservedAt = slot ? elapsed : Infinity; cave.pileApproach = false;
           cave.act.kind = "reload-return";
           planWorkSite(cave);
         }
@@ -6603,7 +6582,7 @@
       cave.jumps = 0;
       cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
       cave.leap.thrown = cave.leap.rageThrown = false;
-      cave.cheer = cave.catchT = cave.thumpT = cave.yawn = 0;
+      cave.cheer = cave.catchT = cave.yawn = 0;
       if (cave.jet) {
         cave.jet.thrust = false;
         cave.jet.spending = false;
@@ -7388,12 +7367,12 @@
       get weaponsEnabled() { return weaponsEnabled; },
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, refreshRosterRow, updateFan, rush, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawDrops,
       throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
-      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, thump, cancelThump, pushPose, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;
       }
     };
   };
-  BL.crew = { create, hatRide, poseHatRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, preparePresentation, poseEquipment, poseReload, captureMeleePose, thumpArm, THUMP_TIME, bodyHeightOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
+  BL.crew = { create, hatRide, poseHatRide, HAT_RIDE, createMagazineModel, poseMagazine, visualState, VISUAL_SIZE, preparePresentation, poseEquipment, poseReload, captureMeleePose, bodyHeightOf, jetpackNode, jetFlags, weaponFlags, flyCompanion, COMPANION_FLIGHT, LAND_DUST, JET_SPARKS, EAT_RATE, AMMO_MAX, AMMO_PER_BANANA, RELOAD_PERIOD, BURST_ROUNDS, CHUK_FOLD, BURST_STEP, MELEE_TAP_TIME, MELEE_CHARGE_DELAY, HEALTH_MAX, HEALTH_REGEN_DELAY, HEALTH_REGEN_RATE, JUMP_SPEED, JET_ACCEL, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();
