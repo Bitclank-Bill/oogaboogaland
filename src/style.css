@@ -11959,6 +11959,12 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 }
 
 /* Block Frenzy's controls list: grouped key and action rows on a dark backing. */
+#block-board .block-keys {
+  max-height: min(42vh, 340px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .block-keys {
   padding: 8px 10px;
   border-radius: 6px;
