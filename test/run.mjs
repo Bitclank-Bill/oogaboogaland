@@ -12137,7 +12137,36 @@ const hubNameplates = { name: "live nameplates", why: "rule: names over live pla
   await b.evaluate(`(() => { BL.scenes.hub.debug.setGameMode(true); __ooga.advance(0.2, 1 / 60); })()`);
   await plateAt(); await b.sleep(200);
   rows.push(await measure("health", true));
-  await b.evaluate(`(() => { BL.scenes.hub.debug.setGameMode(false); BL.net.remotes.delete(515515); __ooga.advance(0.2, 1 / 60); })()`);
+  await b.evaluate(`(() => { BL.scenes.hub.debug.setGameMode(false); __ooga.advance(0.2, 1 / 60); })()`);
+  // Raised hands, the peer's and the visitor's own, as the overlay paints them over a few real frames: the peer's centred
+  // over the plate's box, both in emoji type of their own, the own one drawn first in the frame (before the names' type
+  // is set), and the name drawn after the peer's hand still in the tooltip's type, so a hand's state never leaks into it.
+  await place("ooga", 0); await plateAt();
+  const hands = await b.evaluate(`(async () => {
+    const net = BL.net, rec = net.remotes.get(515515), HANDS = BL.reactionPolicy.HANDS, was = { hand: net.state.hand, tone: net.state.handTone };
+    rec.hand = true; rec.handTone = 3; net.state.hand = true; net.state.handTone = 0;
+    const ctx = document.getElementById("overlay").getContext("2d"), calls = [], wrap = name => { const real = ctx[name];
+      ctx[name] = function (text, x, y) { if (text === "Plate peer" || HANDS.includes(text)) { const m = ctx.getTransform();
+        calls.push({ name, text, x, y, font: ctx.font, spacing: ctx.letterSpacing, align: ctx.textAlign, base: ctx.textBaseline, m: [m.a, m.b, m.c, m.d, m.e, m.f].join() }); }
+        return real.apply(this, arguments); }; return real; };
+    const fill = wrap("fillText"), stroke = wrap("strokeText");
+    await new Promise(r => setTimeout(r, 300));
+    ctx.fillText = fill; ctx.strokeText = stroke;
+    const live = BL.remotePlayers.nameplate(515515);
+    rec.hand = false; net.state.hand = was.hand; net.state.handTone = was.tone;
+    const last = text => calls.filter(c => c.text === text).pop() || null, name = calls.filter(c => c.text === "Plate peer" && c.name === "fillText").pop() || null;
+    const peerAt = calls.lastIndexOf(last(HANDS[3])), nameAt = calls.lastIndexOf(name), ownAt = calls.lastIndexOf(last(HANDS[0]));
+    return { live, peer: last(HANDS[3]), own: last(HANDS[0]), name, peerFirst: peerAt >= 0 && nameAt > peerAt, ownFirst: ownAt >= 0 && peerAt > ownAt, distinct: HANDS[3] !== HANDS[0] };
+  })()`);
+  await b.evaluate(`(() => { BL.net.remotes.delete(515515); __ooga.advance(0.2, 1 / 60); })()`);
+  // Chrome reads a context's untouched letter spacing as "" (its default, none) and keeps that when 0px is set over it.
+  const emojiType = c => c && /Apple Color Emoji/.test(c.font) && /^20px/.test(c.font) && (c.spacing === "0px" || c.spacing === "") && c.align === "center" && c.base === "middle";
+  const { live: hp, peer, own, name } = hands;
+  record("live nameplates: a raised hand stands centred over a live player's nameplate box, the visitor's own is drawn before any name, both in emoji type with no letter spacing, and the name drawn after a hand keeps the NPC tooltip's type, spacing and place",
+    hands.distinct && hp && emojiType(peer) && emojiType(own) && hands.peerFirst && hands.ownFirst && peer.m === name.m && own.m === name.m
+      && peer.x === hp.left + hp.width / 2 && peer.y === hp.top - 16 && Number.isInteger(own.x) && Number.isInteger(own.y)
+      && name.font === hp.font && name.spacing === hp.spacing && name.align === "left" && name.base === "alphabetic" && name.x === hp.textX && name.y === hp.baseline,
+    JSON.stringify(hands));
   const near = (a, c, d = 1) => Number.isFinite(a) && Number.isFinite(c) && Math.abs(a - c) <= d;
   const matches = row => row.live && row.npc && !row.npc.hidden && row.npc.name && row.live.font === row.npc.font && row.live.spacing === row.npc.letterSpacing
     && near(row.live.textWidth, row.npc.textWidth, 0.5) && near(row.live.width, row.npc.width) && near(row.live.height, row.npc.height)
@@ -25475,7 +25504,7 @@ const netFixture=(BL,response,step=200,cookie="")=>{
   class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"?JSON.parse(v):v);}close(){this.readyState=3;}}
   const voice={setPeers:()=>{},restart:()=>{},stop:()=>{}};
   const location={protocol:"https:",host:"fixture.invalid",pathname:"/",search:"",assign:url=>navigations.push(url)},pilot={saveLoginView(){savedViews++;}};
-  const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voiceBlend:BL.voiceBlend,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
+  const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,reactionPolicy:BL.reactionPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voiceBlend:BL.voiceBlend,voice,pilot},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
   runInNewContext(source,context);
   return {net:context.window.BL.net,document:context.document,voice,sockets,sent,events,location,navigations,advance(ms){tick+=ms;},get calls(){return calls;},get savedViews(){return savedViews;}};
 };
@@ -26072,6 +26101,28 @@ const chatClientChecks = async () => {
 // the mallet's fixed cell on the real players.js; and that the crowd banner, its chat notice and the Reaction sounds
 // toggle are gone. The module runs on a small DOM with fake audio that records every scheduled value, so silence is
 // measured, not assumed.
+// Reactions and the raised hand share one room bucket (worker/src/room.js reactToken); the page spends its mirror of it.
+const reactionWireChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const ws = f.sockets[0], message = v => ws.onmessage({ data: JSON.stringify(v) });
+  message({ t: "welcome", you: { id: 71 }, now: Date.now(), features: ["react-v1"], players: [] });
+  const sent = [];
+  for (let i = 0; i < 8; i++) sent.push(f.net.sendReaction("💯"));
+  const raised = f.net.setHand(true, 2), afterBurst = { hand: f.net.state.hand, tone: f.net.state.handTone, frames: f.sent.filter(m => m.t === "hand").length };
+  f.advance(2000);
+  const later = f.net.setHand(true, 2), up = { hand: f.net.state.hand, tone: f.net.state.handTone, frame: f.sent.filter(m => m.t === "hand").at(-1) };
+  // The room refused a change after all: its word on this page's own hand puts the page back.
+  message({ t: "hand", id: 71, on: false, tone: 0 });
+  const corrected = { hand: f.net.state.hand, tone: f.net.state.handTone };
+  f.net.dispose();
+  record("regression: reactions and the raised hand spend one bucket, a little short of the room's; a hand change over it is refused with nothing changed, never shown here and dropped there, and the room's word on this page's own hand puts it back",
+    sent.slice(0, 5).every(Boolean) && sent.slice(5).every(s => !s) && f.sent.filter(m => m.t === "react").length === 5
+      && raised === false && afterBurst.hand === false && afterBurst.frames === 0
+      && later === true && up.hand === true && up.tone === 2 && up.frame && up.frame.on === true && up.frame.tone === 2
+      && corrected.hand === false && corrected.tone === 0,
+    JSON.stringify({ sent, raised, afterBurst, later, up, corrected }));
+};
 const thumpChecks = async BL => {
   const source = await readFile(join(root, "src/js/thump.js"), "utf8");
   // Fake Web Audio: a node per create call, every AudioParam event kept with its time.
@@ -26322,15 +26373,16 @@ const thumpChecks = async BL => {
   const ruleOf = (selector) => { const i = css.indexOf(`\n${selector} {`); return i < 0 ? "" : css.slice(i, css.indexOf("}", i)); };
   const tracks = (ruleOf(".players-rows").match(/grid-template-columns:\s*([^;]+);/) || [, ""])[1].trim().split(/\s+(?![^(]*\))/);
   const columnOf = (selector) => +((ruleOf(selector).match(/grid-column:\s*(\d+);/) || [, NaN])[1]);
-  const columns = { marks: +((css.match(/\.players-rows \.roster-marks \{ grid-column: (\d+); \}/) || [, NaN])[1]), thump: columnOf(".players-thump"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
+  const cellOfRule = (selector) => +((css.match(new RegExp(`\\.players-rows ${selector.replace(".", "\\.")} \\{ grid-column: (\\d+);`)) || [, NaN])[1]);
+  const columns = { lock: cellOfRule(".players-private"), voice: cellOfRule(".roster-voice"), thump: columnOf(".players-thump"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
   const thumpRule = ruleOf(".players-thump");
   const shapeOk = cell.rows === 3 && cell.before.every((s) => s === "roster-dots players-name roster-marks players-thump players-look players-distance players-volume");
-  record("ooga thump Online Oogas: every row holds the mallet's cell from the start between the voice mark and the crosshair, with a fixed column of its own that hides by visibility and takes no pointer; a pulse and its end change only that cell's state, never a row's cells, their order or anything hidden",
+  record("ooga thump Online Oogas: every row holds the mallet's cell from the start, drawn over the voice mark in its fixed column (lock, voice, distance, crosshair), hidden by visibility and taking no pointer; a pulse and its end change only that cell's state, never a row's cells, their order or anything hidden",
     shapeOk && cell.pulsed.join() === "true,true" && cell.pulses === 2 && cell.during.every((d) => d.same && d.hidden === false) && cell.during.filter((d) => d.on === "true").length === 2
       && cell.during.filter((d) => d.on === "true").every((d) => d.label === "Thumped" && d.ariaHidden === null) && cell.during.filter((d) => d.on === "false").every((d) => d.ariaHidden === "true")
       && cell.ended.bea === "false" && cell.ended.beaHidden === "true" && cell.ended.self === "true" && cell.cleared.self === "false" && cell.cleared.cancelled
       && cell.cleared.after.join("|") === cell.initial.join("|") && !cell.moving
-      && tracks.length === 6 && tracks[columns.thump - 1] === "12px" && tracks[columns.marks - 1] === "14px" && columns.marks === 3 && columns.thump === 4 && columns.look === 5 && columns.distance === 6
+      && tracks.length === 6 && tracks[columns.thump - 1] === "12px" && columns.lock === 3 && columns.voice === 4 && columns.thump === columns.voice && columns.distance === 5 && columns.look === 6
       && /visibility:\s*hidden/.test(thumpRule) && /pointer-events:\s*none/.test(thumpRule) && /width:\s*12px/.test(thumpRule) && !/display:\s*none/.test(thumpRule)
       && /\.players-thump\[data-on="true"\] \{\s*visibility: visible;\s*\}/.test(css),
     JSON.stringify({ cell, tracks, columns }));
@@ -28755,6 +28807,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await chatClientChecks();
   await privatePadChecks();
   await thumpChecks(BL);
+  await reactionWireChecks(BL);
   await chalkboardClientChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);
