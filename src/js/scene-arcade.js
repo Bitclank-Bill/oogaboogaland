@@ -91,7 +91,6 @@
   // along the hallway it stands and how loud the hunt's music and sound play for it (#422).
   let ghostEntry = null, ghosts = null, ghostChannel = null, tess = null, gameMode = false, fence = null, fenceK = 0, totemsAt = [], totemLife = [], lasers = [], armed = false, rifleWas = false;
   let zoneNow = "arcade.hall", zoneHeld = 0, exitButton = null, hallwayFar = false, hallwayAlong = 0, huntHearing = 0;
-  let outsideWeapon = null;
   let stations = null, blocks = null, carnival = null, staff = null, orders = 0, ticketBoard = null, prizeUi = null;
   let crowd = null, spin = null;
   let unwatchHockey = null, hockeyPlayers = null;
@@ -1961,10 +1960,8 @@
         people.selectWeapon(0, avatar);
         avatar.weapon.aiming = false;
       }
-      const w = avatar.weapon;
-      outsideWeapon = { primaryOwned: w.primaryOwned, secondaryOwned: w.secondaryOwned, selectedSlot: w.selectedSlot,
-        held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0, unlimited: w.unlimited, ammo: w.ammo, spareAmmo: w.spareAmmo.slice() };
-      putWeaponsAway();
+      people.parkWeapons(avatar);
+      pilot.refreshCombat();
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
     unsubscribeAccount = BL.net.subscribe(accountChanged);
@@ -2215,18 +2212,9 @@
     ghostChannel.dispose();
     setGameMode(false);
     if (armed) arm(false);
-    if (avatar && outsideWeapon) {
-      const w = avatar.weapon;
-      w.primaryOwned = outsideWeapon.primaryOwned; w.secondaryOwned = outsideWeapon.secondaryOwned;
-      w.unlimited = outsideWeapon.unlimited;
-      // Arena swaps and knockout drops belong to the borrowed rifle, not the parked mainland magazines.
-      // Combat cleanup above returns the drops before these original counts are restored.
-      w.ammo = outsideWeapon.ammo;
-      w.spareAmmo.splice(0, w.spareAmmo.length, ...outsideWeapon.spareAmmo);
-      people.selectWeapon(outsideWeapon.held, avatar);
-      w.selectedSlot = outsideWeapon.selectedSlot;
-      outsideWeapon = null;
-    }
+    // Arena swaps and knockout drops belong to the borrowed rifle, not the parked mainland magazines.
+    // Combat cleanup above returns the drops before these original counts are restored.
+    if (avatar) people.unparkWeapons(avatar);
     document.body.classList.remove("game-mode");
     exitButton.hidden = true;
     ghosts = ghostEntry = ghostChannel = tess = fence = exitButton = null;

@@ -2699,6 +2699,27 @@
       }
       return changed;
     };
+    // A place with no weapons (DSB Land, ₿IFRÖST's chamber, the Lightning Factory, the arcade's hall) parks the visitor's
+    // on the weapon itself for the visit: nothing owned is nothing to hold, no button and no key that brings one out. It
+    // hands them back as it leaves, so the next scene with weapons gets what they came in with (pilot.js `remember`).
+    const parkWeapons = (cave) => {
+      const w = cave.weapon;
+      if (w.parked) return;
+      w.parked = { primaryOwned: w.primaryOwned, secondaryOwned: w.secondaryOwned, selectedSlot: w.selectedSlot,
+        held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0, unlimited: w.unlimited, ammo: w.ammo, spareAmmo: w.spareAmmo.slice() };
+      selectWeapon(0, cave);
+      w.primaryOwned = w.secondaryOwned = false;
+      poseWeapon(cave);
+    };
+    const unparkWeapons = (cave) => {
+      const w = cave.weapon, was = w.parked;
+      if (!was) return;
+      w.parked = null;
+      w.primaryOwned = was.primaryOwned; w.secondaryOwned = was.secondaryOwned; w.unlimited = was.unlimited; w.ammo = was.ammo;
+      w.spareAmmo.splice(0, w.spareAmmo.length, ...was.spareAmmo);
+      selectWeapon(was.held, cave);
+      w.selectedSlot = was.selectedSlot;
+    };
     const swingWeapon = (cave = player, held = false, focused = false) => {
       if (!weaponsEnabled) return false;
       if (!cave || cave.grabbedBy || cave.health.stunned || !cave.weapon.primaryOwned || !cave.weapon.primaryEquipped || cave !== player && (cave.camp.burning || cave.camp.rolling) || cave.camp.seat || cave.bedTravel.mode) return false;
@@ -7201,7 +7222,7 @@
       get weaponsEnabled() { return weaponsEnabled; },
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, refreshStates, refreshRosterRow, updateFan, rush, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawDrops,
       throwTomato, clearProjectiles, control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, clearHeadLook, prepareDragged, recoverDragged, ignite, soot, dropRoll, damage, fireView, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, setJetpackOwnership, cutJet, thrust, holdRocketJump, update, pause, dispose, stats,
-      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, outsideSupportAt, builtInJetpack, toggleTint, twirl, pushPose, toggleWeapon, selectWeapon, configureWeapon, parkWeapons, unparkWeapons, swingWeapon, bashWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, meleePower, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectGroundMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;

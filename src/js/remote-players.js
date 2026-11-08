@@ -82,6 +82,7 @@
   const OLD_CAVES = new Set(["lab", "bca", "factory", "arcade", "mirror"]);
   const onIsland = (zone) => BL.voiceBlend.world(zone) || OLD_CAVES.has(zone) || typeof zone === "string" && zone.startsWith("cave-");
   const sameZone = (rec) => rec.zone === BL.net.state.zone;
+  const UNARMED_PARTS = ["club", "gun"];
 
   // `posed(cave, feetY)` lets the scene finish a body's pose once it stands where the room says: the hub sets a
   // swimmer's arms by it, from the position the pose transport already carries, with no simulation of its own.
@@ -89,7 +90,8 @@
   // use a basic managed rig. Both bodies share the room pose, nameplate and collision actor lifecycle.
   // A scene with `ghost(cave, on)` (the hub, npc-ghosts.js) keeps the crew's copy on its own track instead: never
   // sent away nor marked `remoteControlled`, only drawn as a ghost while the remote body stands beside it.
-  const create = ({ root, crew = null, fx = null, player = null, posed = null, visible = sameZone, hide = null, createGorilla = null, hideGorilla = null, ghost = null }) => {
+  // `unarmed` is a place with no weapons: however a body's last pose reads, it shows neither club nor gun there.
+  const create = ({ root, crew = null, fx = null, player = null, posed = null, visible = sameZone, hide = null, createGorilla = null, hideGorilla = null, ghost = null, unarmed = false }) => {
     const net = BL.net;
     const bodies = new Map();
     // The chat subscription, taken on the first update and again after a kept hub's suspend disposed it; the
@@ -395,6 +397,7 @@
           pose(entry, dt);
           showJet(entry, rec);
           showWeapon(entry, rec, dt);
+          if (unarmed) for (const key of UNARMED_PARTS) if (entry.cave.parts[key]) entry.cave.parts[key].visible = false;
           if (posed) posed(entry.cave, entry.cave.root.position.y - entry.baseY, rec, dt);
         }
         // The top's move carries a player standing on it; a snap carries nobody.
