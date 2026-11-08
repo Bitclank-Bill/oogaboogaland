@@ -1934,6 +1934,15 @@
       const ang = k / 12 * Math.PI * 2 + 0.3, out = k % 3 === 0 ? 0.55 : 1.25, y = -9 - (k % 4) * 4.5;
       add(createNode({ geometry: BL.hubModels.cloud(k % 3), sightHidden: true, position: { x: Math.sin(ang) * (A.W * out + 6), y, z: Math.cos(ang) * (A.L * out + 6) }, rotation: { x: 0, y: ang, z: 0 } }));
     }
+    // The hub's mossy boulders at the foot of each outcrop, half sunk into the rock.
+    let boulders = 0;
+    for (const b of A.rocks) {
+      if (A.rockKind.get(b) !== "outcrop") continue;
+      for (const [fx, fz] of [[0.05, 0], [0.95, 0.5], [0.4, 1]]) {
+        const k = boulders++, sc = 0.85 + (k % 3) * 0.2;
+        add(createNode({ geometry: BL.hubModels.rock(k % 3), sightHidden: true, position: { x: b[0] + (b[1] - b[0]) * fx, y: -0.08, z: b[2] + (b[3] - b[2]) * fz }, rotation: { x: 0, y: k * 1.9, z: 0 }, scale: { x: sc, y: sc, z: sc } }));
+      }
+    }
     // The stands, and the sniper towers' ladders and rifle racks and the ziplines, where this map has them.
     const mapIndex = SIM.MAPS.indexOf(selection.map);
     for (const t of SIM.TEAMS) {

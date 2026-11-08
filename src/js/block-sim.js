@@ -130,6 +130,17 @@
     return { BLOCKS, steps: stepSet };
   };
   const both = (list) => ({ blue: list, red: flip(list) });
+  // Hub-style terrain, in the island's own rock: footprints on blue's half on a half-metre grid (so the voxel island
+  // meshes them exactly), turned half round for red, so each map stays mirrored and fair. A mound is two grassy tiers
+  // (1 m, then 2 m, each a jump up) for high ground; a cave is a walk-through tunnel, 3 m wide, its two walls 1 m thick
+  // and its roof from 2.5 m to 3.5 m (cover and a flanking way through, never a dead end); an outcrop is a tall rock
+  // breaking a long lane. `along` is "z" for a tunnel running down the field, "x" across it.
+  const mound = (x0, x1, z0, z1) => [["mound", [x0, x1, z0, z1, 1, 0]], ["mound", [x0 + 1, x1 - 1, z0 + 1, z1 - 1, 2, 1]]];
+  const cave = (x0, x1, z0, z1, along = "z") => [
+    ...(along === "z" ? [["cave", [x0, x0 + 1, z0, z1, 2.5, 0]], ["cave", [x1 - 1, x1, z0, z1, 2.5, 0]]] : [["cave", [x0, x1, z0, z0 + 1, 2.5, 0]], ["cave", [x0, x1, z1 - 1, z1, 2.5, 0]]]),
+    ["cave", [x0, x1, z0, z1, 3.5, 2.5]]
+  ];
+  const outcrop = (x0, x1, z0, z1, top = 3) => [["outcrop", [x0, x1, z0, z1, top, 0]]];
 
   // Fort Chaos: a stone fort at each end, a double jump (`JUMP` then `JUMP2`) clearing its 2.4 m walls, stilt huts
   // and a centre deck for a second storey, and the alley behind each fort as a back way in.
@@ -171,6 +182,10 @@
     for (const b of towerBlocks(TOWER)) BLOCKS.push(b, turned(b));
     return {
       id: "fort", name: "Fort Chaos", BLOCKS, steps: new Set(),
+      // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
+      // in the cave, on the mound's top, behind the outcrop.
+      terrain: [...cave(15.5, 20.5, 13.5, 18), ...mound(-21.5, -17.5, 9, 15), ...outcrop(1.5, 3.5, 6, 7.5)],
+      hookSpots: [[18, 0, 15.75], [-19.5, 2, 12], [2.5, 0, 8.4]],
       // Where a defender waits: a little in front of its own gate.
       guard: { blue: { x: 0, z: 17.2 }, red: { x: 0, z: -17.2 } },
       // The quiz pads.
@@ -228,6 +243,10 @@
     const { BLOCKS, steps: stepSet } = turnedMap(half, middle, steps);
     return {
       id: "town", name: "Ooga Town", BLOCKS, steps: stepSet,
+      // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
+      // in the cave, on the mound's top, behind the outcrop.
+      terrain: [...cave(16.5, 21.5, 17, 21.5), ...mound(-21.5, -17.5, 10, 15), ...outcrop(2, 4, 9, 10.5)],
+      hookSpots: [[19, 0, 19.25], [-19.5, 2, 12.5], [3, 0, 11.4]],
       guard: { blue: { x: 0, z: 21.5 }, red: { x: 0, z: -21.5 } },
       traps: [[-12.5, 4], [12.5, -4], [7, 21], [-7, -21], [-19, 8], [19, -8], [0, 6.5], [0, -6.5]],
       crates: both([[-4.6, 22], [4.6, 22], [-3.2, 27.5], [4.5, 27.5]]),
@@ -285,6 +304,10 @@
     for (const d of decor) { allDecor.push(d); if (!d.middle) allDecor.push({ ...d, x: -d.x, z: -d.z }); }
     return {
       id: "jungle", name: "Gorilla Jungle", BLOCKS, steps: stepSet, decor: allDecor,
+      // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
+      // in the cave, on the mound's top or up a tree, behind the outcrop.
+      terrain: [...cave(16.5, 21.5, 17, 21.5), ...mound(-21.5, -17.5, 10, 15), ...outcrop(1.5, 3.5, 5, 6.5)],
+      hookSpots: [[19, 0, 19.25], [-19.5, 2, 12.5], [5, 7.45, 17]],
       ledges: [...ledges, ...ledges.map(turned), leafTop(0, 0, 7.5, 4.2)],
       nets: [...nets, ...nets.map(turnNet), ...midNets],
       guard: { blue: { x: 0, z: 17.2 }, red: { x: 0, z: -17.2 } },
@@ -362,6 +385,10 @@
     const linkHalf = [[20, 21], [21, 22], [22, 23], [23, 24], [8, 20]];
     return {
       id: "haunted", name: "Haunted Hollow", BLOCKS, steps: stepSet, decor: allDecor,
+      // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
+      // in the cave, on the mound's top, behind the outcrop.
+      terrain: [...cave(23, 28, 8, 13), ...mound(-29, -25, 12, 18), ...outcrop(3, 5, 5, 6.5)],
+      hookSpots: [[25.5, 0, 10.5], [-27, 2, 15], [4, 0, 7.4]],
       // The rivals' block isn't marked on the mini-map until it's out of its cellar: it has to be found.
       hidden: true,
       W: 30, L: 50, tower, gap, spawnZ: 26,
@@ -413,6 +440,11 @@
     // Everything climbable: the towers' ladders and the map's own nets.
     A.climbs = [A.ladders.blue, A.ladders.red, ...(A.nets || [])];
     A.gorillas = A.gorillas || [];
+    // The terrain's boxes join the map's blocks (both halves), remembered as the island's own rock (`rocks`, by kind
+    // in `rockKind`) so the models mesh them into the island rather than drawing them as buildings.
+    A.rocks = new Set(); A.rockKind = new Map();
+    for (const [kind, b] of A.terrain || []) for (const r of [b, turned(b)]) { A.BLOCKS.push(r); A.rocks.add(r); A.rockKind.set(r, kind); }
+    A.hookSpots = A.hookSpots || [];
     // The two wallet vending machines, one in each half, solid.
     A.vends = A.vends || [[-9, 5], [9, -5]];
     for (const [x, z] of A.vends) A.BLOCKS.push([x - 0.45, x + 0.45, z - 0.62, z + 0.62, 2.1, 0]);

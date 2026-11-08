@@ -7140,7 +7140,7 @@ const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
 
 // The games' rules and saves in Node, under the same localStorage the page uses: the mine's seeded sim,
 // every game's stored best, the tickets a machine spends and the jackpot wheel's odds.
-const GAME_SOURCES = ["math", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-sim", "highscore-rules", "game", "cloud-hopper-levels"];
+const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-sim", "highscore-rules", "game", "cloud-hopper-levels"];
 const gameRulesChecks = async () => {
   const store = new Map();
   const context = { window: {}, URLSearchParams, location: { search: "" }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) } };
@@ -7412,6 +7412,49 @@ const gameRulesChecks = async () => {
         rows[map] = { over, home, atEdge, wentHome, heldOut, flewBack };
       }
       record("block frenzy island: on every map an Ooga walks off the open edge and, fallen all the way, is back in its own block zone; a block carried over drops at the edge and goes home; the rock under the rim holds a body out; the jetpack brings the visitor and a bot back after a throw",
+        Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));
+    }
+    {
+      // Hub-style terrain on every map: the boxes come in turned pairs, stand clear of the buildings and every spot the
+      // game uses, and walking at ground level from the side's start reaches the forts, stands, catapults, ladders,
+      // quiz pads, power-ups and the ground-level hiding spots; the high spots are somewhere to stand.
+      const rows = {};
+      for (const map of S.MAPS) {
+        const r = S.create({ map, seed: 2 }), I = S.ARENA;
+        for (const c of r.crates) c.live = false;
+        S.tick(r, S.CONFIG.STEP, still);
+        for (const c of r.crates) c.live = false;
+        const rocks = [...I.rocks], key = (b) => b.slice(0, 6).map((v) => v.toFixed(2)).join();
+        const twins = new Set(rocks.map(key));
+        const mirrored = rocks.length >= 12 && rocks.every((b) => twins.has(key([-b[1], -b[0], -b[3], -b[2], b[4], b[5]])));
+        const others = I.BLOCKS.filter((b) => !I.rocks.has(b));
+        const clearOfBuildings = rocks.every((b) => others.every((o) => b[0] >= o[1] || b[1] <= o[0] || b[2] >= o[3] || b[3] <= o[2] || b[5] >= o[4] || b[4] <= o[5]));
+        const spots = [];
+        for (const list of [I.traps, I.powers, I.tramps, I.vends, I.peels, [I.fire], I.catapults.blue, I.catapults.red, I.crates.blue, I.crates.red, I.plug.blue, I.plug.red, I.alley.blue, I.alley.red, I.gorillas]) spots.push(...list);
+        for (const s of I.caches) spots.push([s[0], s[2]]);
+        for (const t of S.TEAMS) spots.push([I.stands[t].x, I.stands[t].z]);
+        const clearOfSpots = spots.every(([x, z]) => rocks.every((b) => b[5] > 0.05 || x <= b[0] - 0.4 || x >= b[1] + 0.4 || z <= b[2] - 0.4 || z >= b[3] + 0.4));
+        // A flood at ground level, cell by cell, through the sim's own collision.
+        const cell = 0.5, W = I.W, L = I.L, free = (x, z) => { const p = { x, z, y: 0 }; S.resolve(p, S.CONFIG.BODY_R * 0.95, 0.05); return Math.abs(p.x - x) < 1e-6 && Math.abs(p.z - z) < 1e-6; };
+        const idx = (x, z) => Math.round((x + W) / cell) * 100000 + Math.round((z + L) / cell), nx = Math.round(2 * W / cell), nz = Math.round(2 * L / cell);
+        const seen = new Set(), start = [Math.round((0.25 + W) / cell), Math.round((I.spawnZ + 0.25 + L) / cell)], stack = [start];
+        seen.add(start[0] * 100000 + start[1]);
+        while (stack.length) {
+          const [i, j] = stack.pop();
+          for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const ni = i + a, nj = j + b, k = ni * 100000 + nj;
+            if (ni < 2 || nj < 2 || ni >= nx - 2 || nj >= nz - 2 || seen.has(k) || !free(ni * cell - W, nj * cell - L)) continue;
+            seen.add(k); stack.push([ni, nj]);
+          }
+        }
+        const reached = (x, z) => { for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) if (seen.has(idx(x, z) + a * 100000 + b)) return true; return false; };
+        const walked = [I.traps, I.powers, I.tramps, I.catapults.blue, I.catapults.red, I.gorillas].flat().every(([x, z]) => reached(x, z)) && S.TEAMS.every((t) => reached(I.stands[t].x, I.stands[t].z));
+        const ladders = S.TEAMS.every((t) => { const l = I.ladders[t]; return reached((l.zone[0] + l.zone[1]) / 2 - l.dx * 0.75, (l.zone[2] + l.zone[3]) / 2 - l.dz * 0.75); });
+        const caves = (I.terrain || []).filter(([k]) => k === "cave").length === 3;
+        const hidden = I.hookSpots.length >= 3 && I.hookSpots.every(([x, y, z]) => y < 0.5 ? reached(x, z) : Math.abs(S.groundAt(x, z, y + 0.1) - y) < 0.05);
+        rows[map] = { mirrored, clearOfBuildings, clearOfSpots, walked, ladders, caves, hidden };
+      }
+      record("block frenzy terrain: on every map the mounds, caves and outcrops are mirrored half round, clear of the buildings and every spot in use, and the forts, stands, catapults, ladders and hiding spots stay reachable on foot",
         Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));
     }
     {
