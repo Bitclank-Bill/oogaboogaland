@@ -1310,7 +1310,7 @@
   const monitorPictures = new Map();
   const monitorPicture = (kind, w, h) => {
     const key = `${kind}:${w}:${h}`;
-    if (!monitorPictures.has(key)) monitorPictures.set(key, screenPicture(w, h, 300, MONITOR_PAINT[kind]));
+    if (!monitorPictures.has(key)) monitorPictures.set(key, screenPicture(w, h, 300, MONITOR_PAINT[kind], 0.85));
     return monitorPictures.get(key);
   };
   // A clipboard's sheet: FLIGHT OPS over four ticked lines.
@@ -1539,9 +1539,9 @@
     detail.push(moved(turnedY(FM.smoothBolt(0.7, 0.02, K.bolt, 0.4), Math.PI), x0 + 0.75, top - 0.9, front + 0.53));
     // The console along the glass, after the concept: a slate steel body on a dark plinth with drawer pedestals and
     // yellow pulls on the crew's side and a yellow trim up each end, a light top with a dark lip, and along its glass
-    // edge a riser carrying the bank of monitors, each leaning back in a thick bezel (their faces `pictures`, one of
-    // `monitorPicture`'s), a pad of lit keys in front of each; keyboards where the crew work, lanterns, pencil cups,
-    // mugs with the bolt and a book.
+    // edge a riser carrying the bank of monitors, each leaning back in a thick bezel with a blue glow round its edge, so
+    // the glass shows them lit from outside (their faces `pictures`, one of `monitorPicture`'s), a pad of lit keys in
+    // front of each; keyboards where the crew work, lanterns, pencil cups, mugs with the bolt and a book.
     const S = STEEL_DESK, D = K.deep, kt = 0.82, [xa, xb, cz] = K.console, clen = xb - xa, xm = (xa + xb) / 2, zm = cz + D / 2, crew = cz + D;
     const lantern = (lx, ly, lz) => {
       detail.push(bevelBox({ w: 0.17, h: 0.035, d: 0.17, color: S.dark, bevel: 0.008, offset: { x: lx, y: ly + 0.018, z: lz } }));
@@ -1577,6 +1577,9 @@
       if (kind === "lantern") { lantern(mx, kt, cz + 0.5); return; }
       const h = kind === "jet" ? 0.56 : 0.46, r = h / 2 + 0.035;
       flat.push(moved(turnedX(box({ w: w + 0.06, h: h + 0.07, d: 0.07, color: "#1b1f2a", offset: { y: r } }), tilt), mx, by, mz0));
+      for (const [ow, oh, ox, oy] of [[w + 0.12, 0.03, 0, h / 2 + 0.05], [w + 0.12, 0.03, 0, -h / 2 - 0.05], [0.03, h + 0.1, w / 2 + 0.05, 0], [0.03, h + 0.1, -w / 2 - 0.05, 0]]) {
+        glow.push(moved(turnedX(box({ w: ow, h: oh, d: 0.03, color: "#3fa9ff", emissive: 0.8, offset: { x: ox, y: r + oy, z: -0.03 } }), tilt), mx, by, mz0));
+      }
       flat.push(box({ w: 0.14, h: 0.06, d: 0.14, color: "#1b1f2a", offset: { x: mx, y: by + 0.01, z: mz0 + 0.02 } }));
       pictures.push({ geometry: monitorPicture(kind, w, h), x: mx, y: by + r * Math.cos(tilt) - 0.037 * Math.sin(tilt), z: mz0 + r * Math.sin(tilt) + 0.037 * Math.cos(tilt), turn: 0, tilt, bias: -0.15 });
       detail.push(bevelBox({ w: Math.min(0.42, w - 0.2), h: 0.03, d: 0.2, color: "#1d2028", bevel: 0.006, offset: { x: mx, y: kt + 0.015, z: cz + 0.62 } }));
