@@ -684,12 +684,15 @@
     }
     return merge(...parts);
   });
+  // A banana peel: a curved stem and four yellow strips drooping out from it to brown tips.
   const peel = cached(() => {
-    const parts = [box({ w: 0.12, h: 0.06, d: 0.12, color: BANANA_DK, offset: { y: 0.04 } })];
+    const parts = [box({ w: 0.08, h: 0.16, d: 0.08, color: BANANA_DK, offset: { y: 0.3 } }), box({ w: 0.07, h: 0.08, d: 0.07, color: "#5a3a22", offset: { x: 0.04, y: 0.4 } })];
     for (let k = 0; k < 4; k++) {
       const a = k * Math.PI / 2 + 0.4;
-      parts.push(turnedY(box({ w: 0.1, h: 0.03, d: 0.34, color: k % 2 ? BANANA : "#f2c62e", offset: { y: 0.02, z: 0.2 } }), a));
-      parts.push(turnedY(box({ w: 0.06, h: 0.031, d: 0.06, color: "#5a3a22", offset: { y: 0.02, z: 0.37 } }), a));
+      for (let s = 0; s < 6; s++) {
+        const r = 0.05 + s * 0.085, y = 0.26 - s * 0.05 - s * s * 0.007;
+        parts.push(turnedY(box({ w: 0.12 - s * 0.012, h: 0.035, d: 0.11, color: s === 5 ? "#5a3a22" : k % 2 ? BANANA : "#f2c62e", offset: { y: Math.max(0.02, y), z: r } }), a));
+      }
     }
     return merge(...parts);
   });

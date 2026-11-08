@@ -148,7 +148,7 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 R fires the grappling hook at the crosshair (or lets it go), when you have one; the Ooga AK reloads itself when its magazine runs dry, and no other tool reloads.
 
 Touch: the left stick moves, the right stick turns, Jump and Throw! buttons, a tool bar (its Ride button uses a
-zipline, catapult or wallet machine) and a View button; Sides goes back to the board. A gamepad drives the sticks and
+zipline, catapult or wallet machine) and a View button; Main menu goes back to the board. A gamepad drives the sticks and
 A jumps, through the shared controls.
 
 ## Characters

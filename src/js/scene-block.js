@@ -33,7 +33,7 @@
   const hourParam = DEBUG ? parseFloat(params.get("hour")) : NaN;
   const dayParam = DEBUG ? parseFloat(params.get("day")) : NaN;
   const TEAM_INDEX = { blue: 0, red: 1 };
-  const WRONG_LOCK_MS = 2500, MAX_SPLATS = 40, CAM = { dist: 6.8, height: 1.8, pitch: [-0.15, 0.9], yawRate: 2.4 };
+  const WRONG_LOCK_MS = 2500, MAX_SPLATS = 40, CAM = { dist: 6.8, height: 1.8, pitch: [-0.75, 1.3], yawRate: 2.4 };
   const PAINT_BITS = { blue: ["#3a8dff", "#9cc8ff"].map((c) => models.particleGeometry(c, 0.1, 0.6)), red: ["#ff4a3a", "#ffb0a6"].map((c) => models.particleGeometry(c, 0.1, 0.6)) };
   const ORANGE_BITS = ["#f7931a", "#ffd27a", "#fff3d6"].map((c) => models.particleGeometry(c, 0.1, 1));
   const LINES = {
@@ -358,7 +358,7 @@
     if (on) {
       closeWalletMenu();
       if (locked()) document.exitPointerLock();
-      center(COARSE ? "PAUSED · Sides for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
+      center(COARSE ? "PAUSED · Main menu for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
     } else el.center.hidden = true;
   };
   const showBoard = () => {
@@ -901,7 +901,7 @@
   };
   // Paint along the camera's look, lobbed a little higher when the camera looks up.
   // In first person the ball goes where the eye looks, less the lob the throw adds.
-  const lookUp = () => clamp(-(cam.pitch - 0.28) * 1.6, -0.9, 0.9);
+  const lookUp = () => clamp(-(cam.pitch - 0.28) * 1.6, -1.4, 1.4);
   // Grenades lob higher; the chase camera's tilt still nudges every throw up or down.
   // Aiming: the crosshair is the middle of the view, so a throw goes from the Ooga toward wherever the camera's
   // centre ray meets something (or 30 m out), less the lift the throw adds itself; a grenade arcs higher.
@@ -1039,6 +1039,7 @@
   };
   const paint = () => {
     if (!inRound()) return false;
+    if (sim.actors[0].flight === 2) return SIM.cutChute(sim, 0);
     if (sim.actors[0].wallet >= 0) return throwWallet();
     // Laser eyes ready: whatever is in hand, the click lets them loose.
     { const me = sim.actors[0]; if (me.laser > 0 && me.beam <= 0 && !me.holding) return SIM.fire(sim, 0, cam.face, 0, "paint"); }
@@ -1055,7 +1056,7 @@
     }
     const dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
     const lob = tool === "grenade" ? 0.3 : tool === "rocket" || tool === "sniper" ? 0 : tool === "net" ? -0.12 : tool === "gold" || tool === "ak" ? -0.06 : -0.09;
-    const pitch = clamp(Math.atan2(q.y - oy, flat) + lob, -0.9, 0.9);
+    const pitch = clamp(Math.atan2(q.y - oy, flat) + lob, -1.4, 1.4);
     const ok = SIM.fire(sim, 0, Math.atan2(dx, dz), pitch, tool);
     // Say why a throw didn't go, so the tools never seem locked: paint on you, a quiz bubble, or an empty tool.
     if (!ok && a.splat > 0) notice(`Splatted · throwing again in ${Math.ceil(a.splat)} s`, 900);
@@ -1071,7 +1072,7 @@
     const a = sim.actors[0];
     if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or steal one with a wallet bomb", 2000); return false; }
     const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
-    const ok = SIM.grapple(sim, 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.2, 1.2));
+    const ok = SIM.grapple(sim, 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.45, 1.45));
     if (!ok && a.hCool > 0) notice(`Hook recharging · ${Math.ceil(a.hCool)} s`, 900);
     return ok;
   };
@@ -1080,8 +1081,11 @@
     scope.zoom = clamp(scope.zoom + dir, 0, ZOOMS.length - 1);
     notice(`Scope ${scope.zoom + 1}×`, 600);
   };
+  const TOOL_NAMES = { paint: "1 · Paint", grenade: "2 · Grenade", rocket: "3 · Rocket", net: "4 · Net", sniper: "5 · Sniper", gold: "6 · Golden AKs", ak: "7 · AK", hook: "8 · Hook", grab: "Lift" };
   const chooseTool = (k) => {
     if (k === "sniper" && tool !== "sniper") scope.tool = tool;
+    // Say the new weapon, whatever changed it, so it shows with the bar hidden too.
+    if (k !== tool && TOOL_NAMES[k]) notice(TOOL_NAMES[k], 900);
     tool = k;
     updateTools();
   };
@@ -1095,11 +1099,6 @@
       if (ORDER[i] === "paint" || ORDER[i] === "ak" || ORDER[i] === "grab" || a[ORDER[i]] > 0) break;
     }
     chooseTool(ORDER[i]);
-    if (ORDER[i] === "grab") notice("Lift · click lifts a crate, click or Tab throws it, F sets it down", 1400);
-    else if (ORDER[i] === "gold") notice("Golden Dual AKs", 900);
-    else if (ORDER[i] === "ak") notice("Ooga AK · hold to fire on full auto", 900);
-    else if (ORDER[i] === "hook") notice("Grappling hook · click fires at the crosshair", 900);
-    else notice(`${ORDER[i][0].toUpperCase()}${ORDER[i].slice(1)}${ORDER[i] === "paint" || ORDER[i] === "sniper" ? "" : ` · ${a[ORDER[i]]} left`}`, 900);
   };
   // Right click aims, as on the island: up a tower it steps the scope in (round to its widest); in the Island view it
   // returns to the chase camera; otherwise holding it narrows the view to aim. G and the number keys switch weapons.
@@ -1218,7 +1217,7 @@
     // Zoomed in, the same move turns the view less, so a far shot can be lined up.
     const k = camera.fov / (58 * Math.PI / 180);
     cam.face = wrap(cam.face - e.movementX * 2.6e-3 * k);
-    cam.pitch = cam.first ? clamp(cam.pitch + e.movementY * 2.2e-3 * k, -0.3, 0.86) : clamp(cam.pitch + e.movementY * 2.2e-3, CAM.pitch[0], CAM.pitch[1]);
+    cam.pitch = cam.first ? clamp(cam.pitch + e.movementY * 2.2e-3 * k, -0.7, 1.15) : clamp(cam.pitch + e.movementY * 2.2e-3, CAM.pitch[0], CAM.pitch[1]);
   };
   const lockMouse = () => {
     if (COARSE || locked() || !el.canvas.requestPointerLock) return;
@@ -1266,13 +1265,11 @@
     const a = sim.actors[0];
     if (k === "hook") {
       if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or steal one with a wallet bomb", 2000); return; }
-      chooseTool(k); notice("Grappling hook · click fires at the crosshair · click or jump lets go", 1200); return;
+      chooseTool(k); return;
     }
     if (k === "gold" && !a.gold) { notice("No Golden Dual AKs yet · mine a block to win them, or stick a wallet bomb on whoever has them", 1800); return; }
     if (k === "sniper" && !a.sniper) { notice("The sniper rifle stays up the towers · climb a ladder", 1600); return; }
     chooseTool(k);
-    const max = SIM.TOOLS[k].max;
-    notice(k === "gold" ? "Golden Dual AKs" : `${k[0].toUpperCase()}${k.slice(1)}${max ? (a[k] > 0 ? ` · ${a[k]} left` : " · empty · refill on your stand or an ammo cache") : ""}`, 900);
   };
   const onCrouchKey = (e) => { if (e.key === "c" || e.key === "C") move.crouch = e.type === "keydown" ? 1 : 0; };
   // Pick up the crate in front, or set the held one down (stacking it on a crate there).
@@ -1764,8 +1761,14 @@
       // The eye at the Ooga's eyes (lower when crouched), looking along the aim.
       const eye = y + (me.crouch ? 0.9 : 1.55), up = lookUp(), c = Math.cos(up);
       cam.close = false;
+      if (me.grabbed) {
+        // Dragged by a leg: on the back, looking up at the sky.
+        setVec(camera.position, x, y + 0.5, z);
+        setVec(camera.target, x - Math.sin(cam.yaw) * 2.5, y + 14, z - Math.cos(cam.yaw) * 2.5);
+      } else {
       setVec(camera.position, x + Math.sin(cam.yaw) * 0.25, eye, z + Math.cos(cam.yaw) * 0.25);
       setVec(camera.target, x + Math.sin(cam.yaw) * c * 10, eye + Math.sin(up) * 10, z + Math.cos(cam.yaw) * c * 10);
+      }
       // The sniper's scope narrows the view; the gun in hand sits low and right of the eye.
       const scopedNow = tool === "sniper" && me.sniper > 0;
       camera.fov = damp(camera.fov, (scopedNow ? ZOOMS[scope.zoom] : aiming ? AIM_FOV : 58) * Math.PI / 180, 10, dt);
@@ -2130,6 +2133,9 @@
       if (!n.visible) continue;
       setVec(n.position, h.x, h.y + 0.55 + (hookStill ? 0 : Math.sin(elapsed * 2 + i) * 0.08), h.z);
       n.rotation.y = hookStill ? i : elapsed * 0.9 + i;
+      // A soft golden glow and the odd sparkle so a hidden one catches the eye; still for reduced motion.
+      n.glow = hookStill ? 0.8 : 0.7 + 0.5 * Math.sin(elapsed * 3 + i);
+      if (!hookStill && Math.random() < 0.05) fx.burst(h.x, h.y + 0.8, h.z, 1, ORANGE_BITS, 0.5);
     }
   };
   let ghostNodes = [];
@@ -2447,8 +2453,8 @@
     el.help = document.getElementById("block-help");
     el.controlsList = document.getElementById("block-controls-list");
     // The board keeps one short line; the whole list waits behind "All controls", so it never crowds the choices.
-    el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Sides" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
-    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Sides for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 8 pick a weapon on the bar (8 is the hook once found), G steps through them, U hides the bar, drag its handle to move it · R fires the hook at the crosshair or lets go, a jump lets go too · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
+    el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Main menu" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
+    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Main menu for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 8 pick a weapon on the bar (8 is the hook once found), G steps through them, U hides the bar, drag its handle to move it · R fires the hook at the crosshair or lets go, a jump lets go too · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
     showBoard();
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);

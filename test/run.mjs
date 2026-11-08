@@ -7576,6 +7576,28 @@ const gameRulesChecks = async () => {
         rows.carrier = hooked.u.carrying === "red" && !hooked.m.actors[2].carrying && hooked.m.flags.red.carrier === 0;
         hooked = hookAt((m, u) => { u.carrying = "red"; Object.assign(m.flags.red, { state: "carried", carrier: 0 }); Object.assign(m.flags.blue, { state: "dropped", x: -17, y: 0, z: 8, homeT: 0 }); });
         rows.handsFull = hooked.u.carrying === "red" && hooked.m.flags.blue.state === "dropped" && hooked.m.flags.blue.y === 0 && Math.hypot(hooked.m.flags.blue.x - hooked.u.x, hooked.m.flags.blue.z - hooked.u.z) < 2.5;
+        // The parachute drops to a jump, a click (`cutChute`) or the hook; the hook also bites a canopy and, from mid-air off the edge, the rim.
+        const chuted = () => { const m = fresh(), u = m.actors[0]; for (const o of m.actors) if (o.id) o.bot = true; Object.assign(u, { x: -17, z: 12, y: 8, flight: 2, grounded: false, hook: 1 }); return { m, u }; };
+        let cut = chuted();
+        S.tick(cut.m, S.CONFIG.STEP, { x: 0, z: 0, jump: 1 });
+        rows.chuteJump = cut.u.flight === 0;
+        cut = chuted();
+        rows.chuteClick = S.cutChute(cut.m, 0) && cut.u.flight === 0;
+        cut = chuted();
+        rows.chuteHook = S.grapple(cut.m, 0, 0, 0.1) && cut.u.flight === 0 && cut.u.hk === 1;
+        const cm = fresh("jungle"), cu = cm.actors[0];
+        for (const k of cm.crates) k.live = false;
+        Object.assign(cu, { hook: 1, x: 5, z: 10, y: 0 });
+        S.grapple(cm, 0, 0, Math.atan2(5.2, 7));
+        run(cm, 0.6, still, () => cu.hk === 2);
+        rows.canopy = cu.hk === 2;
+        const sm = fresh(), su = sm.actors[0], sI = S.ARENA;
+        Object.assign(su, { hook: 1, x: sI.W + 3, z: 0, y: -1, vy: -2, grounded: false });
+        S.grapple(sm, 0, -Math.PI / 2, Math.atan2(-1.8, 4));
+        run(sm, 0.5, still, () => su.hk === 2);
+        const bitRim = su.hk === 2, sx = su.x;
+        run(sm, 0.6);
+        rows.midAirSave = bitRim && su.x < sx - 1;
         // Anything that is not a block or an Ooga pulls the Ooga: a crate, and past a rival who carries nothing.
         const pm = fresh(), pu = pm.actors[0], pc = pm.crates.find((k) => !k.live) || pm.crates[0];
         for (const k of pm.crates) k.live = false;

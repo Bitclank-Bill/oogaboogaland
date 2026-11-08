@@ -1457,7 +1457,8 @@
     const a = sim.actors[id];
     if (sim.over || !a.hook) return false;
     if (a.hk === H_BIT || a.hk === H_YANK) { hookBack(sim, a, "hookrelease"); return true; }
-    if (a.hk || a.hCool > 0 || sim.prep > 0 || a.splat > 0 || a.trapped > 0 || a.grabbed || a.riding || a.flight || a.climbing || a.holding) return false;
+    if (a.hk || a.hCool > 0 || sim.prep > 0 || a.splat > 0 || a.trapped > 0 || a.grabbed || a.riding || a.flight === 1 || a.climbing || a.holding) return false;
+    if (a.flight === 2) cutChute(sim, id);
     const c = Math.cos(pitch), dx = Math.sin(yaw) * c, dy = Math.sin(pitch), dz = Math.cos(yaw) * c, oy = chestY(a);
     a.hk = H_OUT; a.heading = yaw; a.hookT = 0;
     a.hookTip.x = a.x + dx * 0.5; a.hookTip.y = oy + dy * 0.5; a.hookTip.z = a.z + dz * 0.5;
@@ -1492,12 +1493,32 @@
     a.hk = H_REEL; a.hookT = 0; a.hookTarget = TEAMS.indexOf(f.team);
     if (f.y < 1) f.y = 1;
   };
+  // Out of the parachute in the air: a fall from here, the jetpack free again.
+  const cutChute = (sim, id = 0) => {
+    use(sim);
+    const a = sim.actors[id];
+    if (a.flight !== 2) return false;
+    a.flight = 0; a.jumps = 1;
+    emit(sim, "chuteoff", a.team, id, a.x, a.y, a.z);
+    return true;
+  };
   const hookBack = (sim, a, why) => {
     // Let go of a block still on the rope, and it lands where it is.
     if (a.hk === H_REEL) { const f = sim.flags[TEAMS[a.hookTarget]]; if (f.hookedBy === a.id) reelEnd(sim, a, f, false); }
     if (a.hk === H_BIT && !a.grounded) a.flingT = CONFIG.HOOK_FLING_S;
     a.hk = H_BACK; a.hookTarget = -1; a.hCool = CONFIG.HOOK_COOL;
     emit(sim, why, a.team, a.id, a.hookTip.x, a.hookTip.y, a.hookTip.z);
+  };
+  // What a hook bites: anything solid, and what the boxes leave out: the canopies, the stands, the catapults.
+  const hookSolid = (x, y, z) => {
+    if (solidAt(x, y, z)) return true;
+    for (let i = 0; i < LEDGES.length; i++) { const b = LEDGES[i]; if (x > b[0] && x < b[1] && z > b[2] && z < b[3] && y > b[5] - 1.5 && y < b[4] + 0.6) return true; }
+    for (let i = 0; i < ARENA.decor.length; i++) { const d = ARENA.decor[i]; if (d.kind === "canopy" && (x - d.x) ** 2 + (z - d.z) ** 2 < d.r * d.r && y > d.y - 0.5 && y < d.y + LEAF_TOP) return true; }
+    for (const t of TEAMS) {
+      const st = ARENA.stands[t], ca = ARENA.catapults[t][0];
+      if ((y < 1.1 && (x - st.x) ** 2 + (z - st.z) ** 2 < 1.2) || (y < 1.5 && (x - ca[0]) ** 2 + (z - ca[1]) ** 2 < 1.6)) return true;
+    }
+    return false;
   };
   const stepHook = (sim, a, dt) => {
     const tip = a.hookTip, G = BL.grapple;
@@ -1515,7 +1536,9 @@
       return;
     }
     if (a.hk === H_OUT) {
-      const done = G.toward(tip, a.hookEnd.x, a.hookEnd.y, a.hookEnd.z, CONFIG.HOOK_FLY * dt);
+      // In short steps, so a thin rail or post can't be flown through.
+      for (let sub = 0; sub < 4; sub++) {
+      const done = G.toward(tip, a.hookEnd.x, a.hookEnd.y, a.hookEnd.z, CONFIG.HOOK_FLY * dt / 4);
       // A rival carrying a block: latched, a moment's warning, then the block is yanked out of their hands.
       for (const b of sim.actors) {
         if (b.team === a.team || !b.carrying || b.trapped > 0) continue;
@@ -1546,11 +1569,14 @@
         hookBack(sim, a, "hookrelease");
         return;
       }
-      if (solidAt(tip.x, tip.y, tip.z)) {
+      if (hookSolid(tip.x, tip.y, tip.z)) {
         a.hk = H_BIT; a.hookT = 0; a.hookLen = Math.hypot(tip.x - a.x, tip.y - chestY(a), tip.z - a.z);
         if (a.grounded) { a.vy = CONFIG.HOOK_HOP; a.grounded = false; a.jumps = 1; }
         emit(sim, "hookbite", a.team, a.id, tip.x, tip.y, tip.z);
-      } else if (done) hookBack(sim, a, "hookmiss");
+        return;
+      }
+      if (done) { hookBack(sim, a, "hookmiss"); return; }
+      }
       return;
     }
     if (a.hk === H_YANK) {
@@ -2682,6 +2708,8 @@
         continue;
       }
       // A jump lets go of a bitten hook, with a little hop for the way off it.
+      // A jump in the air drops the parachute.
+      if (jump && a.flight === 2) { cutChute(sim, a.id); jump = false; }
       if (jump && a.hk === H_BIT) { hookBack(sim, a, "hookrelease"); a.vy = Math.max(a.vy, CONFIG.HOOK_HOP); jump = false; }
       // A jump from the ground, and one more in the air, carrying or not; a net stops both.
       if (jump && free && a.netted <= 0 && !a.flight) {
@@ -2893,7 +2921,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist };
+  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

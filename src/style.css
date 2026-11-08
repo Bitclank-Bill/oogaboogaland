@@ -11894,3 +11894,18 @@ body[data-cabinet-phase="menu"] .cloud-hopper-intro .cloud-hopper-scores-title {
 
 /* Arcade player controls remain reachable above game cards, including Cloud Hopper. */
 body.arcade-game .cloud-hopper-panel { z-index: 40; }
+
+/* Block Frenzy's menu: dark backing behind every line of text on the wood, so it reads. */
+#block-board .garage-head,
+#block-board .garage-col {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(18, 11, 6, 0.74);
+}
+
+#block-board .section-head,
+#block-board .help,
+#block-board label,
+#block-board summary {
+  color: #f7ecd8;
+}
