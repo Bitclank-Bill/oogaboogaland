@@ -17218,7 +17218,7 @@ const arcadeHuntGear = { name: "arcade hunt gear", why: "rule: no gun in the are
     const B = __ooga, a = B.pilot.player, w = a.weapon, S = BL.scenes.arcade.debug.arena, gun = document.getElementById("weapon-hud");
     return { armed: S.armed, inArena: S.inArena, primary: w.primaryOwned, owned: w.secondaryOwned, equipped: w.equipped, club: a.parts.club.visible, gun: a.parts.gun.visible, gear: !!a.ghostGear,
       bananas: a.parts.gunBananas.some((n) => n.visible), skin: gun.dataset.skin || "", shown: !gun.hidden && getComputedStyle(gun).display !== "none", width: gun.offsetWidth,
-      readout: getComputedStyle(gun.querySelector(".weapon-readout")).display, primaryHud: !document.getElementById("primary-hud").hidden, magazineHud: !document.getElementById("magazine-hud").hidden };
+      readout: getComputedStyle(gun.querySelector(".weapon-readout")).display, infinity: gun.querySelector(".weapon-compact").textContent.trim(), infinityShown: getComputedStyle(gun.querySelector(".weapon-compact")).visibility === "visible", primaryHud: !document.getElementById("primary-hud").hidden, magazineHud: !document.getElementById("magazine-hud").hidden };
   })()`;
   const noGun = (r) => r.inArena && !r.armed && !r.owned && !r.equipped && !r.gun && !r.gear && !r.primary && !r.club && !r.shown;
   await b.evaluate(`(() => { const B = __ooga, H = BL.arcadeModels.HAUNT, A = H.arena; B.pilot.navigate({ position: { x: A.x - 7, y: H.y, z: A.z + 3 }, yaw: -Math.PI / 2, pitch: 0.15, dist: 5 }); B.advance(0.6, 1 / 60); })()`);
@@ -17230,9 +17230,9 @@ const arcadeHuntGear = { name: "arcade hunt gear", why: "rule: no gun in the are
   await b.evaluate(`[...document.querySelectorAll("#ghost-lobby button")].find((e) => /ready/i.test(e.textContent)).click()`);
   await untilPage(b, 'BL.scenes.arcade.debug.arena.armed', 30000);
   const hunting = await b.evaluate(`(() => { __ooga.advance(0.4, 1 / 60); return ${read}; })()`);
-  record("arcade hunt gear: a hunter of a started hunt gets only the blaster and pack: no primary, no magazine, and the small gun button in its skin",
+  record("arcade hunt gear: a hunter of a started hunt gets only the blaster and pack: no primary, no magazine, and the small gun button in its skin with its infinity",
     hunting.armed && hunting.owned && hunting.equipped && hunting.gun && hunting.gear && !hunting.bananas && !hunting.primary && !hunting.club && !hunting.primaryHud && !hunting.magazineHud
-      && hunting.skin === "ghost" && hunting.shown && hunting.width === 78 && hunting.readout === "none", JSON.stringify(hunting));
+      && hunting.skin === "ghost" && hunting.shown && hunting.width === 78 && hunting.readout === "none" && hunting.infinity === "∞" && hunting.infinityShown, JSON.stringify(hunting));
   const remote = await b.evaluate(`(() => {
     const B = __ooga, N = BL.net, H = BL.arcadeModels.HAUNT, A = H.arena, sim = BL.scenes.arcade.debug.halloween.sim, build = BL.models.caveman, caves = [];
     const peer = (id, x) => ({ id, login: "peer" + id, display: "Peer", body: "w-s-bitcoin", zone: "ghost-arena", x: A.x + x, y: H.y, z: A.z + 4, yaw: 0, weapon: 2 | 4, jet: 0 });

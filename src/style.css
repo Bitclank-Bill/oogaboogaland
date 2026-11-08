@@ -4493,12 +4493,11 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   width: 218px;
 }
 
-/* HALLOWEEN: the ghost hunt's gun has its own icon and no rounds to show, so it stays the small button, and a hunter
-   keeps it on screen through the hunt on every kind of pointer. */
+/* HALLOWEEN: the ghost hunt's gun has its own icon and no magazine to count, so it stays the small button with its
+   infinity beside it, and a hunter keeps it on screen through the hunt on every kind of pointer. */
 .weapon-icon .weapon-art-ghost,
 .weapon-hud[data-skin="ghost"] .weapon-art-ak,
-.weapon-hud[data-skin="ghost"] .weapon-readout,
-.weapon-hud[data-skin="ghost"] .weapon-compact {
+.weapon-hud[data-skin="ghost"] .weapon-readout {
   display: none;
 }
 
@@ -4510,8 +4509,9 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   width: 78px;
 }
 
-.weapon-hud[data-skin="ghost"] {
-  justify-content: center;
+.weapon-hud[data-skin="ghost"][data-equipped="true"] .weapon-compact {
+  opacity: 1;
+  visibility: visible;
 }
 
 body.game-mode .weapon-hud[data-skin="ghost"] {
