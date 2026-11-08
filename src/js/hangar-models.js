@@ -1037,7 +1037,8 @@
   // Inside, after the concept: `rows` of consoles facing the glass, each [x0, x1, z] (its edge toward the glass at z,
   // `deep` deep), monitors along that edge turned to the crew who work them from behind (three of `LAYOUT.crew`) and
   // chairs where nobody does (`chairs`, [x, z]); HANGAR COMMAND on the left end wall and HANGAR CAMERAS on the right
-  // (`command`, `cameras`: the middle along the wall and up it, the width and height); amber panels in the ceiling
+  // (`command`, `cameras`: the middle along the wall and up it, the width and height), and the Jet's status on the back
+  // wall facing the glass (`status`: its middle across and up, its width and height); amber panels in the ceiling
   // (`panels`, [x, z]) and the room's lamps (`lamps`, [x, y, z, reach] each, which join the crates' lanterns' pool, so
   // the room is lit while someone is near it); the bolt in yellow corners on the floor by the door (`decal`), blue
   // strips along the floor, racks and a cabinet with a plant along the back wall, and a crate beside the cabinet,
@@ -1048,7 +1049,7 @@
       orange: "#f28a1c", blue: "#4fb3ff", yellow: "#f2b630", pipe: "#2b3550",
       blocks: [[-5.65, -8.6, 5.9, 1, 0], [-8.6, -10.3, 5.0, 0, 0], [-10.3, -17, 6.0, 1, 1], [-17, -18.45, 5.3, 0, 1]] },
     rows: [[-17.5, -10, 29.1], [-16.5, -10.5, 32.3]], deep: 0.9, chairs: [[-13.4, 30.75], [-15.6, 34], [-11.2, 34]],
-    command: { z: 33.1, y: 2.35, w: 3.8, h: 2.1 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 },
+    command: { z: 33.1, y: 2.35, w: 3.8, h: 2.1 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 }, status: { x: -12.4, y: 2.9, w: 3.4, h: 1.45 },
     panels: [[-15.5, 31.2], [-12, 31.2], [-8.5, 31.2], [-15.5, 34.6], [-12, 34.6], [-8.5, 34.6]],
     lamps: [[-15, 3.7, 31.8, 7], [-10.5, 3.7, 31.8, 7], [-8, 3.7, 35, 6]], decal: [-7.8, 33.6], crates: [[-6.6, 35.2, 0, false]] };
   // A lightning bolt in `g`'s current fill, `h` high with its middle at (x, y).
@@ -1182,6 +1183,25 @@
       g.strokeStyle = S.edge; g.lineWidth = 2; g.strokeRect(x, y, w, h);
       g.fillStyle = S.text; g.font = `bold ${Math.round(H * 0.04)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "alphabetic";
       g.fillText(label, x + w * 0.03, y + h - h * 0.06);
+    });
+  };
+  // The back wall's display, after the outside's concept: the Jet's plan on its grid beside four lines of its status,
+  // each ticked green.
+  const paintCommandStatus = (g, W, H) => {
+    const S = SCREEN_INK;
+    screenField(g, W, H);
+    titleBar(g, W, H, "LIGHTNING JET – HANGAR COMMAND");
+    g.strokeStyle = S.grid; g.lineWidth = 1;
+    for (let x = W * 0.04; x < W * 0.42; x += W / 36) { g.beginPath(); g.moveTo(x, H * 0.22); g.lineTo(x, H * 0.92); g.stroke(); }
+    for (let y = H * 0.24; y < H * 0.92; y += W / 36) { g.beginPath(); g.moveTo(W * 0.03, y); g.lineTo(W * 0.42, y); g.stroke(); }
+    g.strokeStyle = "#cfe9ff"; g.lineWidth = W / 220;
+    jetPlan(g, W * 0.05, H * 0.28, W * 0.35, H * 0.58);
+    [["Launch Readiness", "READY"], ["Hangar Systems", "ONLINE"], ["Flight Ops", "ONLINE"], ["Crew & Safety", "NOMINAL"]].forEach(([t, v], i) => {
+      const y = H * (0.3 + i * 0.17);
+      g.strokeStyle = "#2f6fd0"; g.lineWidth = W / 400; g.strokeRect(W * 0.46, y - H * 0.065, W * 0.5, H * 0.13);
+      g.fillStyle = S.text; g.font = `${Math.round(H * 0.075)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText(t, W * 0.48, y);
+      tick(g, W * 0.73, y - H * 0.035, H * 0.07);
+      g.fillStyle = S.green; g.font = `bold ${Math.round(H * 0.075)}px sans-serif`; g.fillText(v, W * 0.765, y);
     });
   };
   // The monitors' faces, a few kinds, shared by every console.
@@ -1329,7 +1349,8 @@
     detail.push(moved(turnedY(FM.smoothBolt(0.7, 0.02, K.bolt, 0.4), Math.PI), x0 + 0.75, top - 0.9, front + 0.53));
     // The consoles: a slate steel body on a dark plinth, its top with a yellow lip along the crew's side, drawer fronts
     // with yellow pulls there, a riser along the glass edge with its monitors on it (their faces `pictures`, one of
-    // `commandScreens` each), keyboards, rows of lit buttons, a lantern at its left end and a mug or two.
+    // `commandScreens` each), keyboards, rows of lit buttons, a lantern at its left end (and the first row's right end
+    // too, with a plant beside the left one, as the concept shows them through the glass) and a mug or two.
     const S = STEEL_DESK, screens = commandScreens(), D = K.deep, kt = 0.82;
     K.rows.forEach(([xa, xb, z], row) => {
       const len = xb - xa, xm = (xa + xb) / 2, zm = z + D / 2, crew = z + D;
@@ -1351,11 +1372,18 @@
         detail.push(box({ w: 0.46, h: 0.03, d: 0.16, color: "#1d1f24", offset: { x: mx, y: kt + 0.015, z: z + 0.58 } }));
         ["#7fdcff", "#ffb347", "#2ecc71", "#ff6b4a", "#7fdcff"].forEach((color, k) => glow.push(box({ w: 0.05, h: 0.02, d: 0.05, color, emissive: 1, offset: { x: mx - 0.12 + k * 0.06, y: kt + 0.01, z: z + 0.38 } })));
       }
-      const lx = xa + 0.16, lz = z + 0.55;
-      detail.push(bevelBox({ w: 0.15, h: 0.03, d: 0.15, color: S.dark, bevel: 0.008, offset: { x: lx, y: kt + 0.015, z: lz } }));
-      glow.push(box({ w: 0.11, h: 0.15, d: 0.11, color: S.lamp, emissive: 1, offset: { x: lx, y: kt + 0.105, z: lz } }));
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) detail.push(box({ w: 0.02, h: 0.15, d: 0.02, color: S.dark, offset: { x: lx + sx * 0.06, y: kt + 0.105, z: lz + sz * 0.06 } }));
-      detail.push(bevelBox({ w: 0.16, h: 0.03, d: 0.16, color: S.dark, bevel: 0.008, offset: { x: lx, y: kt + 0.195, z: lz } }));
+      for (const lx of row ? [xa + 0.16] : [xa + 0.16, xb - 0.16]) {
+        const lz = z + 0.55;
+        detail.push(bevelBox({ w: 0.15, h: 0.03, d: 0.15, color: S.dark, bevel: 0.008, offset: { x: lx, y: kt + 0.015, z: lz } }));
+        glow.push(box({ w: 0.11, h: 0.15, d: 0.11, color: S.lamp, emissive: 1, offset: { x: lx, y: kt + 0.105, z: lz } }));
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) detail.push(box({ w: 0.02, h: 0.15, d: 0.02, color: S.dark, offset: { x: lx + sx * 0.06, y: kt + 0.105, z: lz + sz * 0.06 } }));
+        detail.push(bevelBox({ w: 0.16, h: 0.03, d: 0.16, color: S.dark, bevel: 0.008, offset: { x: lx, y: kt + 0.195, z: lz } }));
+      }
+      if (!row) {
+        const px = xa + 0.5, pz = z + 0.55;
+        flat.push(box({ w: 0.22, h: 0.2, d: 0.22, color: "#8a91a0", offset: { x: px, y: kt + 0.1, z: pz } }));
+        for (const [dx, dy, dz, sz] of [[0, 0.26, 0, 0.18], [0.07, 0.36, 0.05, 0.13], [-0.06, 0.38, -0.05, 0.12], [0.01, 0.46, -0.01, 0.11]]) flat.push(box({ w: sz, h: sz, d: sz, color: dy > 0.4 ? "#5fbf3a" : "#3f9a2c", offset: { x: px + dx, y: kt + dy, z: pz + dz } }));
+      }
       for (const u of row ? [0.62] : [0.3, 0.78]) {
         detail.push(moved(lathe({ profile: [[0.045, 0], [0.045, 0.1], [0, 0.1]], segments: 8, color: "#b8bec8" }), xa + len * u, kt, z + 0.7));
         detail.push(box({ w: 0.035, h: 0.04, d: 0.01, color: K.bolt, offset: { x: xa + len * u, y: kt + 0.05, z: z + 0.75 } }));
@@ -1386,6 +1414,15 @@
     };
     bigScreen(x0, 1, K.command, paintHangarCommand);
     bigScreen(x1, -1, K.cameras, paintHangarCameras);
+    // On the back wall facing the glass, as the outside's concept shows it through the windows: the Jet beside its
+    // status, in the same dark frame and cyan light.
+    const st = K.status;
+    flat.push(box({ w: st.w + 0.16, h: st.h + 0.16, d: 0.08, color: C.frame, offset: { x: st.x, y: st.y, z: back - 0.04 } }));
+    for (const s of [-1, 1]) {
+      glow.push(box({ w: st.w + 0.12, h: 0.04, d: 0.02, color: "#3fa9ff", emissive: 1, offset: { x: st.x, y: st.y + s * (st.h / 2 + 0.05), z: back - 0.09 } }));
+      glow.push(box({ w: 0.04, h: st.h + 0.14, d: 0.02, color: "#3fa9ff", emissive: 1, offset: { x: st.x + s * (st.w / 2 + 0.05), y: st.y, z: back - 0.09 } }));
+    }
+    pictures.push({ geometry: screenPicture(st.w, st.h, 256, paintCommandStatus), x: st.x, y: st.y, z: back - 0.09, turn: Math.PI });
     // Along the back wall: two server racks, and the filing cabinet with a plant on it in the corner, the crate by it.
     for (const rx of [-17.35, -16.65]) {
       const rz = back - 0.32;
