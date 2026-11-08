@@ -2699,8 +2699,8 @@
       }
       return changed;
     };
-    // A place with no weapons (DSB Land, ₿IFRÖST's chamber, the Lightning Factory, the arcade's hall) parks the visitor's
-    // on the weapon itself for the visit: nothing owned is nothing to hold, no button and no key that brings one out. It
+    // A place with no weapons (DSB Land, ₿IFRÖST's chamber, the Lightning Factory and its Jet Hangar, the arcade's hall)
+    // parks the visitor's on the weapon itself for the visit: nothing owned is nothing to hold, no button and no key that brings one out. It
     // hands them back as it leaves, so the next scene with weapons gets what they came in with (pilot.js `remember`).
     const parkWeapons = (cave) => {
       const w = cave.weapon;

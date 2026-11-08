@@ -21829,6 +21829,7 @@ scene("mine", { steps: [mineResume, trip("mine"), mineControls, mineOwn] });
 const hangarWalking = { name: "hangar walking", why: "rule: W A S D walk the visitor's Ooga their way on screen in the Lightning Jet Hangar, as they do in the Factory", run: async (b) => {
   const ooga = await walkKeys(b, "portlandhodl", -1.5, 2, [0, 2.2], 0.5);
   record("hangar walking: W A S D walk the visitor's Ooga away, left, back and right on screen on the runway from two camera angles", allWalk(ooga), JSON.stringify(ooga));
+  record("hangar walking: the hangar leaves the Ooga with no weapon in hand, on its body or as a button", await b.evaluate(unarmedInPage("__ooga.pilot.player")));
 } };
 const hangarDoor = { name: "hangar door", why: "rule: the hangar's door walks the same Ooga through, out onto the Factory's landing and back in, on to where an arrival stands each side", run: async (b) => {
   // From the hangar's landing, walked out through its door.
