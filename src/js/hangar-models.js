@@ -1389,10 +1389,30 @@
     const [da, db] = F.door;
     for (let r = 0; r < 2; r++) for (let k = 0; k < 5; k++) detail.push(box({ w: 0.24, h: 0.05, d: 0.02, color: "#181b26", offset: { x: (da + db) / 2 + (k - 2) * 0.34, y: 5.0 + r * 0.14, z: ff - 0.01 } }));
     const crownTop = O.find(([x]) => x === F.crown[0])[1], cx = (F.crown[0] + F.crown[1]) / 2, cy = (top + F.lip + crownTop - F.rim) / 2;
-    const sign = { w: 5.0, h: 0.9, y: cy + 0.03, z: front - F.out - 0.1, c: 0.24 };
+    const sign = { w: 5.0, h: 0.9, y: cy + 0.03, z: front - F.out - 0.32, c: 0.24 }, plinth = ff - 0.11;
     const octagon = (x, y, w, h, k) => [[x - w / 2 + k, y - h / 2], [x + w / 2 - k, y - h / 2], [x + w / 2, y - h / 2 + k], [x + w / 2, y + h / 2 - k],
       [x + w / 2 - k, y + h / 2], [x - w / 2 + k, y + h / 2], [x - w / 2, y + h / 2 - k], [x - w / 2, y - h / 2 + k]];
-    slab(octagon(cx, sign.y, sign.w + 0.6, sign.h + 0.4, sign.c + 0.2), 0.08, ff - 0.03, F.dark);
+    // Depth round the sign: a raised plinth of the facade's lighter steel standing out of the housing, the sign's dark
+    // panel on it, a bolted bracket either side, and a raised rib down the head at each of the housing's turns.
+    slab(octagon(cx, sign.y, sign.w + 0.9, sign.h + 0.56, sign.c + 0.3), 0.2, plinth, F.edge);
+    slab(octagon(cx, sign.y, sign.w + 0.6, sign.h + 0.4, sign.c + 0.2), 0.08, plinth - 0.13, F.dark);
+    for (const sd of [-1, 1]) {
+      const bx = cx + sd * (sign.w / 2 + 0.55);
+      flat.push(bevelBox({ w: 0.16, h: 0.5, d: 0.28, color: F.edge, bevel: 0.02, offset: { x: bx, y: sign.y, z: plinth - 0.06 } }));
+      for (const by of [-0.16, 0.16]) detail.push(box({ w: 0.06, h: 0.06, d: 0.02, color: F.dark, offset: { x: bx, y: sign.y + by, z: plinth - 0.21 } }));
+    }
+    for (const rx of [F.crown[0], F.crown[1]]) {
+      const ry = O.find(([x]) => x === rx)[1] - F.rim;
+      flat.push(box({ w: 0.16, h: ry - top - F.lip, d: 0.1, color: F.edge, offset: { x: rx, y: (top + F.lip + ry) / 2, z: ff - 0.05 } }));
+      for (let by = top + F.lip + 0.15; by < ry - 0.1; by += 0.3) detail.push(box({ w: 0.05, h: 0.05, d: 0.02, color: F.dark, offset: { x: rx, y: by, z: ff - 0.11 } }));
+    }
+    // An equipment box on top of the housing at its far end, louvred, with a conduit from it along the housing's top.
+    const eqx = F.crown[1] + 1.1, eqy = crownTop + 0.24;
+    flat.push(bevelBox({ w: 1.2, h: 0.48, d: 0.4, color: F.body, bevel: 0.03, offset: { x: eqx, y: eqy, z: front - 0.24 } }));
+    for (let k = 0; k < 4; k++) detail.push(box({ w: 0.9, h: 0.035, d: 0.02, color: "#181b26", offset: { x: eqx, y: eqy - 0.13 + k * 0.09, z: front - 0.45 } }));
+    glow.push(box({ w: 0.06, h: 0.06, d: 0.02, color: "#2ecc71", emissive: 1, offset: { x: eqx + 0.48, y: eqy + 0.14, z: front - 0.45 } }));
+    flat.push(moved(turnedZ(lathe({ profile: [[0.06, 0], [0.06, 2.6], [0, 2.6]], segments: 8, color: F.pipe }), -Math.PI / 2), eqx + 0.6, crownTop + 0.08, front - 0.28));
+    for (let k = 0; k < 3; k++) detail.push(bevelBox({ w: 0.12, h: 0.18, d: 0.18, color: F.yellow, bevel: 0.02, offset: { x: eqx + 1.2 + k * 0.7, y: crownTop + 0.08, z: front - 0.28 } }));
     slab(octagon(cx, sign.y, sign.w + 0.16, sign.h + 0.16, sign.c + 0.06), 0.06, sign.z + 0.02, F.blue, 1, glow);
     slab(octagon(cx, sign.y, sign.w, sign.h, sign.c), 0.1, sign.z - 0.02, K.navy, 0.45);
     pictures.push({ geometry: screenPicture(sign.w - 2 * sign.c, sign.h - 0.08, 200, paintCommandSign), x: cx, y: sign.y, z: sign.z - 0.075, turn: Math.PI });
