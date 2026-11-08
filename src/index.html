@@ -339,6 +339,7 @@
       </nav>
       <nav class="presets" aria-label="Block Frenzy" data-scene="block" hidden>
         <button type="button" data-action="block-board" id="block-board-btn">Main menu</button>
+        <button type="button" data-action="block-help" id="block-help-btn">Help</button>
         <button type="button" data-action="block-view" id="block-view-btn" aria-pressed="false">View</button>
         <button type="button" data-action="block-sound" id="block-sound-btn" aria-pressed="true">Sound</button>
         <button type="button" data-action="block-drop" id="block-drop" disabled>Drop<span> block</span></button>
@@ -993,6 +994,7 @@
       <section class="garage" id="block-board" aria-label="Block Frenzy sides">
         <div class="garage-head">
           <h2><span data-sign>Block Frenzy</span></h2>
+          <p class="help block-tip" id="block-tip"></p>
           <p class="help" id="block-board-help">Pick a side. Steal the rivals' Bitcoin block (their colour), carry it to your own stand while your block is home. First to 3 captures wins.</p>
         </div>
         <div class="garage-columns">
@@ -1022,6 +1024,11 @@
               <button type="button" class="block-side block-target" data-size="3" aria-pressed="true">3</button>
               <button type="button" class="block-side block-target" data-size="4" aria-pressed="false">4</button>
               <button type="button" class="block-side block-target" data-size="5" aria-pressed="false">5</button>
+            </div>
+            <h3 class="section-head">Detail</h3>
+            <div class="block-sides block-targets">
+              <button type="button" class="block-side block-target" data-detail="full" aria-pressed="true">Full</button>
+              <button type="button" class="block-side block-target" data-detail="low" aria-pressed="false">Low</button>
             </div>
             <h3 class="section-head">Bots</h3>
             <div class="block-sides block-targets">
@@ -1068,6 +1075,12 @@
         </div>
       </div>
       <div class="race-center" id="block-center" hidden>GO!</div>
+ <section class="block-help" id="block-help" hidden aria-label="How to play">
+        <h3>How to play</h3>
+        <p>Steal the rivals' Bitcoin block and carry it to your stand while your own block is home. Gorillas drag you to the edge: mash jump to break free. Fall off and you fly back, or respawn at home.</p>
+        <p id="block-help-keys"></p>
+        <button type="button" data-action="block-help">Close</button>
+      </section>
       <canvas class="block-map" id="block-map" width="88" height="148" hidden aria-label="Map: both blocks and every Ooga"></canvas>
       <ol class="block-feed" id="block-feed" hidden aria-live="off"><li></li><li></li><li></li><li></li></ol>
       <button type="button" class="act block-paint" id="block-paint" hidden>Throw!</button>

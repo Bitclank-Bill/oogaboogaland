@@ -94,7 +94,7 @@
     fort: { grass: null, field: ["#c9a96b", "#bda05f"] },
     town: { grass: null, field: ["#b9a77f", "#a89270"] },
     jungle: { grass: ["#4f7030", "#5c7f38", "#456129"], field: ["#5f7a3a", "#4c6a2e"] },
-    haunted: { grass: ["#3f4632", "#4a5138", "#353b2b"], field: ["#4a5238", "#3d4430"] }
+    haunted: { grass: ["#3f4632", "#4a5138", "#353b2b"], field: ["#54433c", "#3a302a"] }
   };
   const islePalette = (M) => {
     const theme = ISLE_THEME[M.id], palette = BL.terrain.PALETTE.slice();
@@ -118,7 +118,9 @@
       const n = Math.hypot(x / M.W, z / M.L), top = field ? (patch > 0.3 ? 10 : 11) : Math.abs(n - 0.82) < 0.018 ? 4 : patch > 0.9 ? P.grassLight : patch < -0.9 ? P.grassDark : P.grass;
       for (let iy = TOP - depth; iy < TOP; iy++) {
         const k = TOP - 1 - iy;
-        grid.set(ix, iy, iz, k === 0 ? top : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
+        // Haunted Hollow's field is brick, courses in staggered runs (slots 10 and 11 are its brick and mortar).
+        const row = Math.floor(iz / 2), brick = M.id === "haunted" && field ? (iz % 2 === 0 || (ix + (row % 2) * 2) % 4 === 0 ? 11 : 10) : top;
+        grid.set(ix, iy, iz, k === 0 ? brick : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
       }
     }
     for (const b of M.rocks || []) {
@@ -865,5 +867,9 @@
     for (let y = 0.15; y <= top; y += 0.3) parts.push(box({ w, h: 0.05, d: 0.05, color: "#b0905a", offset: { y } }));
     return merge(...parts);
   });
-  BL.blockModels = { isle, keel, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  // A rain puddle: a flat dark pool (Gorilla Jungle's).
+  const puddle = cached(() => box({ w: 1.6, h: 0.02, d: 1.3, color: "#3a5a78", emissive: 0.05, offset: { y: 0.015 } }));
+  // The lightning bolt's column, a tall thin white box with its foot at y 0.
+  const bolt = cached(() => box({ w: 0.28, h: 40, d: 0.28, color: "#eaf4ff", emissive: 1, offset: { y: 20 } }));
+  BL.blockModels = { isle, keel, puddle, bolt, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

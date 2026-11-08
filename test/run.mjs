@@ -7622,6 +7622,22 @@ const gameRulesChecks = async () => {
         ru.y = S.CONFIG.FALL_FLOOR - 1; ru.x = 40; ru.grounded = false; run(rg, S.CONFIG.STEP * 2);
         rows.spawnGuard = ru.guard > 0 && ru.guard <= 0.5;
       }
+      // Storm lightning warns a spot, then strikes whoever stays; a jungle puddle slips without dropping the block.
+      {
+        const m = fresh(), u = m.actors[0], w = m.weather;
+        for (const k of m.crates) k.live = false;
+        Object.assign(u, { x: -17, z: 12 });
+        w.kind = "storm"; w.boltWarn = 0.5; w.boltX = u.x; w.boltZ = u.z;
+        run(m, 0.6);
+        rows.bolt = u.splat > 0 && u.boltCool > 0;
+        const j = fresh("jungle"), ju = j.actors[0];
+        for (const k of j.crates) k.live = false;
+        const pu = j.puddles[0];
+        Object.assign(ju, { x: pu.x, z: pu.z, y: 0, carrying: "red", grounded: true }); Object.assign(j.flags.red, { state: "carried", carrier: 0 });
+        run(j, 0.1);
+        rows.puddle = ju.slip > 0 && ju.carrying === "red" && pu.dark > 0;
+        rows.weatherMix = S.ARENAS.jungle.puddles.length >= 6;
+      }
       record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a wallet bomb steals a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
       {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
@@ -7680,8 +7696,10 @@ const gameRulesChecks = async () => {
         const sweep = {};
         for (const map of S.MAPS) {
           const I = S.ARENAS[map], spots = [[0, I.L * 0.25], [I.W * 0.5, I.L * 0.4], [-I.W * 0.6, -I.L * 0.5]], done = { spots: 0, thrown: 0, off: 0, fails: [] };
-          for (const [kind, b] of I.terrain) if (kind !== "cave" && b[5] === 0) spots.push([b[0] - 1.6, (b[2] + b[3]) / 2], [b[1] + 1.6, (b[2] + b[3]) / 2], [(b[0] + b[1]) / 2, b[2] - 1.6]);
+          for (const [kind, b] of I.terrain.filter(([k, bx], n) => k !== "cave" && bx[5] === 0 && n % 3 === 0)) if (kind !== "cave") spots.push([b[0] - 1.6, (b[2] + b[3]) / 2], [b[1] + 1.6, (b[2] + b[3]) / 2], [(b[0] + b[1]) / 2, b[2] - 1.6]);
           for (const [x, z] of spots) {
+            // Only open ground: a spot next to one piece of a rounded mound can land inside another.
+            S.create({ map }); if (S.solidAt(x, 0.5, z)) continue;
             const q = fresh(map), who = q.actors[0], gor = q.gorillas[0];
             for (const t of q.traps) t.dark = 1e9;
             for (const k of q.crates) k.live = false;

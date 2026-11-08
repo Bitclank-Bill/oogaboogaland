@@ -71,6 +71,9 @@
     // edge (it no longer stands on the island and is kept out of its rock); one that falls past `FALL_FLOOR` comes back
     // in its own block zone. A block carried over the edge drops at the edge and goes home after `EDGE_HOME_S`. The
     // rock under the island is `ISLE_EDGE` deep at the edge and deepens toward the middle, `ISLE_DEPTH` at most.
+    // Lightning in a storm: every `BOLT_S` or so a spot under a seeded Ooga is warned (`BOLT_WARN`), then struck; anyone
+    // still within `BOLT_R` is splatted (no more than once per `BOLT_COOL` each).
+    BOLT_S: [7, 13], BOLT_WARN: 1.4, BOLT_R: 1.8, BOLT_COOL: 18, PUDDLE_R: 0.9, PUDDLE_REARM: 6,
     RIM: 0.6, RESPAWN_GUARD: 0.4, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14,
     // The grappling hook (Cloud Hopper's, a special weapon here): `HOOKS` a map, hidden at seeded spots from the map's
     // hand-checked `hookSpots`. It flies out at `HOOK_FLY`, up to `HOOK_RANGE`; a bite on rock pulls the Ooga toward it at
@@ -148,31 +151,41 @@
   // (1 m, then 2 m, each a jump up) for high ground; a cave is a walk-through tunnel, 3 m wide, its two walls 1 m thick
   // and its roof from 2.5 m to 3.5 m (cover and a flanking way through, never a dead end); an outcrop is a tall rock
   // breaking a long lane. `along` is "z" for a tunnel running down the field, "x" across it.
-  const mound = (x0, x1, z0, z1) => [["mound", [x0, x1, z0, z1, 1, 0]], ["mound", [x0 + 1, x1 - 1, z0 + 1, z1 - 1, 2, 1]]];
-  const cave = (x0, x1, z0, z1, along = "z") => [
-    ...(along === "z" ? [["cave", [x0, x0 + 1, z0, z1, 2.5, 0]], ["cave", [x1 - 1, x1, z0, z1, 2.5, 0]]] : [["cave", [x0, x1, z0, z0 + 1, 2.5, 0]], ["cave", [x0, x1, z1 - 1, z1, 2.5, 0]]]),
-    ["cave", [x0, x1, z0, z1, 3.5, 2.5]]
-  ];
-  const outcrop = (x0, x1, z0, z1, top = 3) => [["outcrop", [x0, x1, z0, z1, top, 0]]];
+  // A footprint's cells rounded to an oval (corners knocked off), merged into boxes.
+  const inOval = (x0, x1, z0, z1, i, j) => { const u = (x0 + i + 0.5 - (x0 + x1) / 2) / ((x1 - x0) / 2), v = (z0 + j + 0.5 - (z0 + z1) / 2) / ((z1 - z0) / 2); return Math.abs(u) ** 2.6 + Math.abs(v) ** 2.6 <= 1; };
+  const gridBoxes = (x0, z0, nx, nz, cells, kind, top, bottom) => {
+    const out = [];
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      if (!cells[i * nz + j]) continue;
+      let d = 1;
+      while (j + d < nz && cells[i * nz + j + d]) d++;
+      let w = 1;
+      for (;; w++) { if (i + w >= nx) break; let full = true; for (let k = 0; k < d; k++) if (!cells[(i + w) * nz + j + k]) { full = false; break; } if (!full) break; }
+      for (let a = 0; a < w; a++) for (let k = 0; k < d; k++) cells[(i + a) * nz + j + k] = 0;
+      out.push([kind, [x0 + i, x0 + i + w, z0 + j, z0 + j + d, top, bottom]]);
+    }
+    return out;
+  };
+  const rounded = (x0, x1, z0, z1, kind, top, bottom) => {
+    const nx = x1 - x0, nz = z1 - z0;
+    if (nx % 1 || nz % 1 || nx < 3 || nz < 3) return [[kind, [x0, x1, z0, z1, top, bottom]]];
+    const cells = new Uint8Array(nx * nz);
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) cells[i * nz + j] = inOval(x0, x1, z0, z1, i, j) ? 1 : 0;
+    return gridBoxes(x0, z0, nx, nz, cells, kind, top, bottom);
+  };
+  const mound = (x0, x1, z0, z1) => [...rounded(x0, x1, z0, z1, "mound", 1, 0), ...rounded(x0 + 1, x1 - 1, z0 + 1, z1 - 1, "mound", 2, 1)];
+  const cave = (x0, x1, z0, z1, along = "z") => massif(x0, x1, z0, z1, along === "z" ? [[x0 + 1, x1 - 1, z0, z1]] : [[x0, x1, z0 + 1, z1 - 1]]);
+  const outcrop = (x0, x1, z0, z1, top = 3) => rounded(x0, x1, z0, z1, "outcrop", top, 0);
   // A rock massif on a metre grid: solid to `top`, its ground floor holed by `tunnels` (walk-through corridors, any that
   // meet joining up). The walls are the footprint less the tunnels, merged into boxes; the roof is one slab to stand on.
   const massif = (x0, x1, z0, z1, tunnels, top = 3.5) => {
-    const nx = x1 - x0, nz = z1 - z0, rock = new Uint8Array(nx * nz).fill(1), out = [];
+    const nx = x1 - x0, nz = z1 - z0, rock = new Uint8Array(nx * nz), roof = new Uint8Array(nx * nz);
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) rock[i * nz + j] = roof[i * nz + j] = inOval(x0, x1, z0, z1, i, j) ? 1 : 0;
     for (const [tx0, tx1, tz0, tz1] of tunnels) for (let i = tx0 - x0; i < tx1 - x0; i++) for (let j = tz0 - z0; j < tz1 - z0; j++) rock[i * nz + j] = 0;
-    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-      if (!rock[i * nz + j]) continue;
-      let d = 1;
-      while (j + d < nz && rock[i * nz + j + d]) d++;
-      let w = 1;
-      for (;; w++) { if (i + w >= nx) break; let full = true; for (let k = 0; k < d; k++) if (!rock[(i + w) * nz + j + k]) { full = false; break; } if (!full) break; }
-      for (let a = 0; a < w; a++) for (let k = 0; k < d; k++) rock[(i + a) * nz + j + k] = 0;
-      out.push(["cave", [x0 + i, x0 + i + w, z0 + j, z0 + j + d, 2.5, 0]]);
-    }
-    out.push(["cave", [x0, x1, z0, z1, top, 2.5]]);
-    return out;
+    return [...gridBoxes(x0, z0, nx, nz, rock, "cave", 2.5, 0), ...gridBoxes(x0, z0, nx, nz, roof, "cave", top, 2.5)];
   };
   // A cliff: a 2 m step all round a 4 m block, a double jump and then a jump up.
-  const cliff = (x0, x1, z0, z1) => [["cliff", [x0, x1, z0, z1, 2, 0]], ["cliff", [x0 + 1, x1 - 1, z0 + 1, z1 - 1, 4, 2]]];
+  const cliff = (x0, x1, z0, z1) => [...rounded(x0, x1, z0, z1, "cliff", 2, 0), ...rounded(x0 + 1, x1 - 1, z0 + 1, z1 - 1, "cliff", 4, 2)];
   // The ring of terrain round every map's field, on blue's half (turned for red): a cave system on each flank, one
   // behind each fort, cliffs by the back corners, a mound and an outcrop at the waist. `spots` are its hook hiding places.
   const ringTerrain = (W, L) => ({
@@ -229,7 +242,7 @@
       id: "fort", name: "Fort Chaos", BLOCKS, steps: new Set(),
       // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
       // in the cave, on the mound's top, behind the outcrop.
-      terrain: [...cave(15.5, 20.5, 13.5, 18), ...mound(-21.5, -17.5, 9, 15), ...outcrop(1.5, 3.5, 6, 7.5)],
+      terrain: [...cave(15.5, 20.5, 13.5, 17.5), ...mound(-21.5, -17.5, 9, 15), ...outcrop(1.5, 3.5, 6, 7.5)],
       hookSpots: [[18, 0, 15.75], [-19.5, 2, 12], [2.5, 0, 8.4]],
       // Where a defender waits: a little in front of its own gate.
       gorillas: [[-14, 1], [14, -1], [17, 10], [-17, -10]],
@@ -292,7 +305,7 @@
       gorillas: [[-12.5, 0.5], [12.5, -0.5], [0, 10], [0, -10]],
       // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
       // in the cave, on the mound's top, behind the outcrop.
-      terrain: [...cave(16.5, 21.5, 17, 21.5), ...mound(-21.5, -17.5, 10, 15), ...outcrop(2, 4, 9, 10.5)],
+      terrain: [...cave(16.5, 21.5, 17, 21), ...mound(-21.5, -17.5, 10, 15), ...outcrop(2, 4, 9, 10.5)],
       hookSpots: [[19, 0, 19.25], [-19.5, 2, 12.5], [3, 0, 11.4]],
       guard: { blue: { x: 0, z: 21.5 }, red: { x: 0, z: -21.5 } },
       traps: [[-12.5, 4], [12.5, -4], [7, 21], [-7, -21], [-19, 8], [19, -8], [0, 6.5], [0, -6.5]],
@@ -353,7 +366,7 @@
       id: "jungle", name: "Gorilla Jungle", BLOCKS, steps: stepSet, decor: allDecor,
       // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
       // in the cave, on the mound's top or up a tree, behind the outcrop.
-      terrain: [...cave(16.5, 21.5, 17, 21.5), ...mound(-21.5, -17.5, 10, 15), ...outcrop(1.5, 3.5, 5, 6.5)],
+      terrain: [...cave(16.5, 21.5, 17, 21), ...mound(-21.5, -17.5, 10, 15), ...outcrop(1.5, 3.5, 5, 6.5)],
       hookSpots: [[19, 0, 19.25], [-19.5, 2, 12.5], [5, 7.45, 17]],
       ledges: [...ledges, ...ledges.map(turned), leafTop(0, 0, 7.5, 4.2)],
       nets: [...nets, ...nets.map(turnNet), ...midNets],
@@ -368,7 +381,8 @@
       fire: [-20, 0],
       catapults: both([[-5, 29.5]]),
       // Where the gorillas live: each roams round its home and charges any Ooga that comes close.
-      gorillas: [[-6, 5], [6, -5], [10, 6], [-10, -6]]
+      gorillas: [[-6, 5], [6, -5], [10, 6], [-10, -6]],
+      puddles: [[-3, 11], [11, 3], [-9, 19], [16, 16], [3, 22]].flatMap(([x, z]) => [[x, z], [-x, -z]])
     };
   };
   // Haunted Hollow: a bigger field (60 x 100 m), a graveyard, and at each end a haunted house up on a raised yard 3 m
@@ -732,7 +746,7 @@
       climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabHits: 0, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       wallet: -1, knock: 0, soot: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, vendGo: 0, vendI: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
       detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
-      hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
+      boltCool: 0, hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
     }));
     const flags = {};
     for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0, homeT: 0, hookedBy: -1 };
@@ -751,8 +765,9 @@
     const vends = A.vends.map(([x, z]) => ({ x, z, dark: 0 }));
     const hooks = Array.from({ length: CONFIG.HOOKS }, () => ({ state: 0, x: 0, y: 0, z: 0, holder: -1 }));
     const events = Array.from({ length: CONFIG.MAX_EVENTS }, () => ({ type: "", team: null, actor: -1, by: -1, x: 0, y: 0, z: 0 }));
-    const weather = { kind: "clear", left: 0, angle: 0, strength: 0, target: 0, x: 0, z: 0 };
-    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, gorillas, ghosts, wallets, vends, hooks, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
+    const weather = { kind: "clear", left: 0, angle: 0, strength: 0, target: 0, x: 0, z: 0, boltT: 0, boltWarn: 0, boltX: 0, boltZ: 0 };
+    const puddles = (A.puddles || []).map(([x, z]) => ({ x, z, dark: 0 }));
+    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, puddles, gorillas, ghosts, wallets, vends, hooks, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
     reset(sim);
     return sim;
   };
@@ -829,6 +844,9 @@
     for (const t of sim.traps) t.dark = 0;
     for (const c of sim.caches) c.dark = 0;
     for (const p of sim.peels) p.dark = 0;
+    for (const p of sim.puddles) p.dark = 0;
+    sim.weather.boltT = CONFIG.BOLT_S[0]; sim.weather.boltWarn = 0;
+    for (const a of sim.actors) a.boltCool = 0;
     for (const w of sim.wallets) w.live = false;
     for (const g of sim.ghosts) { g.x = g.wx = g.hx; g.z = g.wz = g.hz; g.state = 0; g.t = 0; }
     for (const v of sim.vends) v.dark = 0;
@@ -2540,13 +2558,42 @@
   };
   // The weather: a seeded run of clear, breezy and stormy spells, the wind easing toward each spell's strength,
   // wandering in direction and gusting.
+  // Each map's chance of a clear, a breezy and a stormy spell.
+  const MAP_WEATHER = { fort: [0.35, 0.45], town: [0.6, 0.25], jungle: [0.1, 0.5], haunted: [0.4, 0.3] };
+  const stepBolt = (sim, w, dt) => {
+    if (w.boltWarn > 0) {
+      if ((w.boltWarn -= dt) > 0) return;
+      w.boltWarn = 0;
+      emit(sim, "bolt", null, -1, w.boltX, 0, w.boltZ);
+      for (const a of sim.actors) {
+        if (!open(a) || a.boltCool > 0 || a.grabbed || (a.x - w.boltX) ** 2 + (a.z - w.boltZ) ** 2 > CONFIG.BOLT_R * CONFIG.BOLT_R) continue;
+        a.boltCool = CONFIG.BOLT_COOL;
+        splat(sim, a, false, null);
+      }
+      return;
+    }
+    if (w.kind !== "storm" || (w.boltT -= dt) > 0) return;
+    let n = 0;
+    for (const a of sim.actors) if (open(a) && a.boltCool <= 0 && !a.grabbed && onIsland(a.x, a.z) && a.y > -0.5) n++;
+    if (!n) { w.boltT = 2; return; }
+    let k = Math.floor(sim.rng() * n);
+    for (const a of sim.actors) {
+      if (!open(a) || a.boltCool > 0 || a.grabbed || !onIsland(a.x, a.z) || a.y <= -0.5 || k--) continue;
+      w.boltX = a.x; w.boltZ = a.z;
+      emit(sim, "boltwarn", a.team, a.id, a.x, 0, a.z);
+      break;
+    }
+    w.boltWarn = CONFIG.BOLT_WARN;
+    w.boltT = CONFIG.BOLT_S[0] + sim.rng() * (CONFIG.BOLT_S[1] - CONFIG.BOLT_S[0]);
+  };
   const stepWeather = (sim, dt) => {
     const w = sim.weather;
     w.left -= dt;
     if (w.left <= 0) {
       // Live weather (`setLive`) holds its kind; otherwise each spell is a seeded draw.
-      const r = sim.rng();
-      w.kind = sim.live || (r < 0.4 ? "clear" : r < 0.75 ? "breeze" : "storm");
+      // Its own mix on each map; a busy network still makes a storm.
+      const r = sim.rng(), mix = MAP_WEATHER[sim.map];
+      w.kind = sim.live === "storm" ? "storm" : (r < mix[0] ? "clear" : r < mix[0] + mix[1] ? "breeze" : "storm");
       w.target = CONFIG.WIND[w.kind];
       w.left = CONFIG.WEATHER_S[0] + sim.rng() * (CONFIG.WEATHER_S[1] - CONFIG.WEATHER_S[0]);
       emit(sim, "weather", null, -1, 0, 0, 0);
@@ -2556,6 +2603,7 @@
     const gust = 1 + 0.35 * Math.sin(sim.time * 1.7 + Math.sin(sim.time * 0.6) * 2);
     w.x = Math.cos(w.angle) * w.strength * gust;
     w.z = Math.sin(w.angle) * w.strength * gust;
+    stepBolt(sim, w, dt);
   };
 
   // The live Bitcoin network sets the weather: `kind` from the fees, or null to go back to seeded spells. A change
@@ -2607,6 +2655,7 @@
       const a = sim.actors[sim.flip ? N - 1 - n : n];
       if (a.cooldown > 0) a.cooldown -= dt;
       if (a.monkeyCool > 0) a.monkeyCool -= dt;
+      if (a.boltCool > 0) a.boltCool -= dt;
       if (a.hCool > 0) a.hCool -= dt;
       if (a.flingT > 0) a.flingT = a.grounded ? 0 : a.flingT - dt;
       if (a.hk) { a.hookHold = !a.bot && !!input.crouch; stepHook(sim, a, dt); }
@@ -2824,6 +2873,13 @@
           break;
         }
       }
+      // A jungle puddle underfoot: a short slide, the block kept.
+      if (a.grounded && a.y < 0.1 && free && a.slip <= 0) for (const p of sim.puddles) {
+        if (p.dark > 0 || (a.x - p.x) ** 2 + (a.z - p.z) ** 2 > CONFIG.PUDDLE_R * CONFIG.PUDDLE_R) continue;
+        a.slip = 0.8; p.dark = CONFIG.PUDDLE_REARM;
+        emit(sim, "puddle", a.team, a.id, a.x, 0, a.z);
+        break;
+      }
       if (a.grounded && a.y < 0.05 && free && a.netted <= 0 && trampAt(a)) {
         a.vy = CONFIG.BOUNCE; a.grounded = false; a.jumps = 1;
         emit(sim, "boing", a.team, a.id, a.x, 0, a.z);
@@ -2845,6 +2901,7 @@
     for (const c of sim.caches) if (c.dark > 0) c.dark = Math.max(0, c.dark - dt);
     for (const p of sim.powers) if (p.dark > 0) p.dark = Math.max(0, p.dark - dt);
     for (const p of sim.peels) if (p.dark > 0) p.dark = Math.max(0, p.dark - dt);
+    for (const p of sim.puddles) if (p.dark > 0) p.dark -= dt;
     for (const t of TEAMS) {
       if (sim.halving[t] > 0) sim.halving[t] = Math.max(0, sim.halving[t] - dt);
       if (sim.cold[t] > 0) sim.cold[t] = Math.max(0, sim.cold[t] - dt);

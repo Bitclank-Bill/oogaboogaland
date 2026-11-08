@@ -62,6 +62,7 @@
   const GUN_OF = { paint: 0, grenade: 1, rocket: 2, net: 3, sniper: 4, gold: 5, ak: 6, crate: 0, grab: -1, hook: -1 };
   const WEATHER_WORDS = { clear: "Clear", breeze: "Windy", storm: "Storm" };
   const RAIN = 140;
+  const MAP_HOUR = { fort: 17.7, town: 12.5, jungle: 11, haunted: 0.8 }, MAP_CLOUDS = { fort: 0.3, town: 0.15, jungle: 0.85, haunted: 0.25 };
   // Sky, light and haze from the island's clock, as the drop's.
   const RENDER_OPTS = {
     clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), sun: new Float32Array(3), direct: new Float32Array(3),
@@ -361,7 +362,10 @@
       center(COARSE ? "PAUSED · Main menu for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
     } else el.center.hidden = true;
   };
+  const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Mash jump to wriggle out of a gorilla's grip.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
+  let tipK = 0;
   const showBoard = () => {
+    el.tip.textContent = TIPS[tipK++ % TIPS.length];
     paused = aiming = false;
     closeQuiz();
     closeWalletMenu();
@@ -396,7 +400,9 @@
     result = null;
     closeQuiz();
     el.board.hidden = el.results.hidden = true;
-    el.strip.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = false;
+    try { mapHidden = localStorage.getItem(MAP_KEY) === "1"; } catch { mapHidden = false; }
+    el.strip.hidden = el.toolBar.hidden = el.feed.hidden = false;
+    el.map.hidden = mapHidden;
     placeBar();
     for (const li of el.feedItems) { li.textContent = ""; delete li.dataset.team; }
     el.notice.hidden = false;
@@ -595,8 +601,13 @@
     const c = document.createElement("canvas");
     c.width = el.map.width; c.height = el.map.height;
     const g = c.getContext("2d");
-    g.fillStyle = "#8a7550";
+    g.fillStyle = "rgba(20, 28, 40, 0.75)";
     g.fillRect(0, 0, c.width, c.height);
+    // The island's outline.
+    g.fillStyle = "#6b7d46";
+    g.beginPath();
+    g.ellipse(mapX(0), mapY(0), SIM.ARENA.W * mapK(), SIM.ARENA.L * mapK(), 0, 0, Math.PI * 2);
+    g.fill();
     for (const b of SIM.ARENAS[sim.map].BLOCKS) {
       if (b[4] - (b[5] || 0) < 0.5 && (b[5] || 0) > 0.5) continue;
       const x0 = mapX(b[0]), x1 = mapX(b[1]), y0 = mapY(b[2]), y1 = mapY(b[3]);
@@ -617,7 +628,12 @@
     }
     mapBase = c;
   };
+  // The map can be hidden (N), remembered per device.
+  const MAP_KEY = "ooga-block-map";
+  const toggleMap = () => { el.map.hidden = !el.map.hidden; mapHidden = el.map.hidden; try { localStorage.setItem(MAP_KEY, mapHidden ? "1" : "0"); } catch { /* this visit only */ } };
+  let mapHidden = false;
   const drawMap = (dt, elapsed) => {
+    if (mapHidden) return;
     mapT -= dt;
     if (mapT > 0) return;
     mapT = 0.1;
@@ -857,6 +873,14 @@
       } else if (e.type === "struggle") { if (me) notice(`Wriggle! ${sim.actors[0].grabHits} more`, 700); }
       else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
       else if (e.type === "letgo") { if (me) notice("The gorilla got bored and dropped you", 1500); }
+      else if (e.type === "boltwarn") { if (e.actor === 0) { center("LIGHTNING!", 700); notice("Lightning coming · move!", 1300); } }
+      else if (e.type === "bolt") {
+        audio.cues.thunder();
+        boltNode.visible = detail.full; setVec(boltNode.position, e.x, 0, e.z); flashSeen = sim.time + 0.16;
+        if (detail.full && !hookStill) flash = 1;
+        fx.burst(e.x, 0.6, e.z, 12, STAR_BITS, 2.2);
+      }
+      else if (e.type === "puddle") { if (me) notice("Slipped in a puddle!", 900); }
       else if (e.type === "windup") { if (me) notice("It's swinging you! Mash!", 900); }
       else if (e.type === "thrown") { if (me) { center("THROWN!", 1000); notice(COARSE ? "Hold Jump to jetpack back over the edge" : "Hold Space to jetpack back over the edge", 2800); } }
       else if (e.type === "gorillahit") fx.burst(e.x, e.y, e.z, 10, STAR_BITS, 2);
@@ -1615,18 +1639,24 @@
   // round the camera, and now and then lightning flashes.
   const poseWeather = (dt) => {
     const w = sim.weather, storm = w.kind === "storm" ? Math.min(1, w.strength / C.WIND.storm) : 0;
-    RENDER_OPTS.clouds = 0.35 + 0.55 * storm;
+    RENDER_OPTS.clouds = MAP_CLOUDS[SIM.ARENA.id] + 0.55 * storm;
     RENDER_OPTS.directStrength *= 1 - 0.55 * storm;
     RENDER_OPTS.sunStrength *= 1 - 0.55 * storm;
     flashT -= dt;
-    if (storm > 0.6 && flashT <= 0 && Math.random() < dt * 0.25) { flash = 1; flashT = 3; audio.cues.thunder(); }
+    // Lightning: a warned ring where it will strike, a brief column and a flash (no flash for reduced motion or Low detail).
+    const showBolt = w.boltWarn > 0;
+    boltRing.visible = showBolt;
+    if (showBolt) { setVec(boltRing.position, w.boltX, 0.05, w.boltZ); boltRing.scale.x = boltRing.scale.z = 2.6 + (hookStill ? 0 : Math.sin(sim.time * 16) * 0.3); }
+    if (boltNode.visible) { boltNode.visible = sim.time < flashSeen; }
     flash = Math.max(0, flash - dt * 5);
     RENDER_OPTS.ambientFloor = 0.22 + flash * 0.8;
     RENDER_OPTS.bloomStrength = 0.6 + flash * 1.2;
     const cx = camera.position.x, cz = camera.position.z, lean = 0.12;
     for (let i = 0; i < RAIN; i++) {
       const r = rain[i];
-      r.node.visible = storm > 0.2 && i < RAIN * storm;
+      // Rain only on Full detail; Gorilla Jungle's is always falling, a storm brings it anywhere.
+      const wet = SIM.ARENA.id === "jungle" ? Math.max(storm, 0.55) : storm;
+      r.node.visible = detail.full && wet > 0.2 && i < RAIN * wet;
       if (!r.node.visible) continue;
       r.y -= dt * 14;
       r.x += w.x * dt * 0.8; r.z += w.z * dt * 0.8;
@@ -1889,7 +1919,9 @@
 
   const update = (dt, elapsed) => {
     sceneTime = elapsed;
-    daylight.sample(clock.read(), RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
+    // Each map's own time of day; Haunted Hollow is night and keeps its stars.
+    const mapHour = MAP_HOUR[SIM.ARENA.id];
+    daylight.sample(mapHour, RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
     RENDER_OPTS.time = elapsed;
     if (phase === "play" && paused) controls.read();
     else if (phase === "play") {
@@ -1977,6 +2009,8 @@
     if (e.key === "t" || e.key === "T") passBlock();
     if (e.key === "r" || e.key === "R") hookNow();
     if (e.key === "u" || e.key === "U") toggleBar();
+    if (e.key === "n" || e.key === "N") toggleMap();
+    if (e.key === "/" || e.key === "?") el.helpBox.hidden = !el.helpBox.hidden;
     if (e.key === "y" || e.key === "Y") throwWallet();
     if (e.key === "h" || e.key === "H") piggyback();
     if (e.key === "j" || e.key === "J") callRider();
@@ -2024,6 +2058,37 @@
   };
   // Everything that belongs to the map, under one node so a new map replaces it whole: the ground and buildings, the
   // quiz pads, power-up spots, trampolines, ammo caches, and the campfire with its three dancing potato Oogas.
+  // The extras (foliage, weather effects), all behind the Detail setting so they can be turned off or withdrawn.
+  const detail = { full: true };
+  const DETAIL_KEY = "ooga-block-detail";
+  const loadDetail = () => { try { detail.full = localStorage.getItem(DETAIL_KEY) !== "low"; } catch { /* the default stands */ } };
+  const chooseDetail = (full) => {
+    if (full === detail.full) return;
+    detail.full = full;
+    try { localStorage.setItem(DETAIL_KEY, full ? "full" : "low"); } catch { /* this visit only */ }
+    for (const b of el.details) b.setAttribute("aria-pressed", String((b.dataset.detail === "full") === full));
+    if (sim) { buildMap(); mapBase = null; }
+  };
+  // A few themed plants and rocks round the island's outer ring: shared geometry, placed once a map, mirrored half
+  // round. Haunted Hollow gets the Ghost Hunter's gargoyles and iron fence, when the arcade's models are loaded.
+  const MAP_DECOR = { fort: ["rock", "bush", "tree"], town: ["tree", "bush", "bush"], jungle: ["tree", "tree", "bush"], haunted: ["log", "rock", "bush"] };
+  const buildDecor = (A, add) => {
+    const kinds = MAP_DECOR[A.id], H = BL.hubModels;
+    for (let k = 0; k < 18; k++) {
+      const ang = k / 18 * Math.PI + 0.13 * (k % 5), n = 0.68 + 0.24 * ((k * 37 % 11) / 11), x = Math.sin(ang) * A.W * n, z = Math.cos(ang) * A.L * n;
+      if (SIM.solidAt(x, 1, z) || SIM.solidAt(x, 3.8, z) || Math.abs(x) < A.fieldW + 1 && Math.abs(z) < A.fieldL + 1) continue;
+      const kind = kinds[k % kinds.length], geo = kind === "tree" ? H.tree(k % 3) : kind === "bush" ? H.bush(k % 2) : kind === "log" ? H.log(0) : H.rock(k % 3);
+      for (const s of [1, -1]) add(createNode({ geometry: geo, sightHidden: true, position: { x: s * x, y: -0.02, z: s * z }, rotation: { x: 0, y: k * 2.1 * s, z: 0 } }));
+    }
+    const AM = BL.arcadeModels;
+    if (A.id === "haunted" && AM && AM.gargoyle) {
+      for (const [x, y, z, turn] of [[-10, 3, 26, 0], [10, 3, 26, 0], [-14, 3.6, 32.1, 0.4], [14, 3.6, 32.1, -0.4]]) for (const s of [1, -1]) {
+        add(createNode({ geometry: AM.gargoyle(), sightHidden: true, position: { x: s * x, y: y - 1.2, z: s * z }, rotation: { x: 0, y: turn + (s < 0 ? Math.PI : 0), z: 0 } }));
+      }
+      if (AM.ironFence) for (const z of [24.5, -24.5]) add(createNode({ geometry: AM.ironFence(), sightHidden: true, position: { x: 0, y: 0, z } }));
+    }
+  };
+  let boltNode = null, boltRing = null, flashSeen = 0;
   const buildMap = () => {
     if (mapRoot) {
       removeChild(root, mapRoot);
@@ -2037,6 +2102,10 @@
     // The floating island it stands on (its rock, cliffs and terrain), and the hub's white clouds drifting under it.
     add(createNode({ geometry: BM.isle(SIM.MAPS.indexOf(selection.map)) }));
     add(createNode({ geometry: BM.keel(SIM.MAPS.indexOf(selection.map)) }));
+    if (detail.full) buildDecor(A, add);
+    for (const [x, z] of A.puddles || []) add(createNode({ geometry: BM.puddle(), position: { x, y: 0, z } }));
+    boltNode = add(createNode({ geometry: BM.bolt(), visible: false, sightHidden: true }));
+    boltRing = add(createNode({ geometry: BM.ring(0), visible: false, sightHidden: true, scale: { x: 3.2, y: 1, z: 3.2 } }));
     for (let k = 0; k < 12; k++) {
       const ang = k / 12 * Math.PI * 2 + 0.3, out = k % 3 === 0 ? 0.55 : 1.25, y = -9 - (k % 4) * 4.5;
       add(createNode({ geometry: BL.hubModels.cloud(k % 3), sightHidden: true, position: { x: Math.sin(ang) * (A.W * out + 6), y, z: Math.cos(ang) * (A.L * out + 6) }, rotation: { x: 0, y: ang, z: 0 } }));
@@ -2272,6 +2341,13 @@
     chooseTarget(selection.target);
     el.paintBtn = document.getElementById("block-paint");
     el.toolBar = document.getElementById("block-tools");
+    loadDetail();
+    el.details = [...document.querySelectorAll("#block-board [data-detail]")];
+    el.onDetail = (e) => chooseDetail(e.currentTarget.dataset.detail === "full");
+    for (const b of el.details) { b.addEventListener("click", el.onDetail); b.setAttribute("aria-pressed", String((b.dataset.detail === "full") === detail.full)); }
+    el.tip = document.getElementById("block-tip");
+    el.helpBox = document.getElementById("block-help");
+    document.getElementById("block-help-keys").textContent = COARSE ? "Left stick moves · right stick turns · tap a weapon · Jump mashes free." : "W A S D move · Space jumps (held: jetpack) · click fires · 1 to 8 or G weapons · R hook · Tab throw · U bar · N map.";
     el.barMin = document.getElementById("block-bar-min");
     el.barGrip = document.getElementById("block-bar-grip");
     el.barDrag = null;
@@ -2437,6 +2513,7 @@
     hud.onAction((action) => {
       if (action === "block-start" || action === "block-again") start();
       else if (action === "block-board") showBoard();
+      else if (action === "block-help") el.helpBox.hidden = !el.helpBox.hidden;
       else if (action === "block-drop") dropBlock();
       else if (action === "block-view") { if (!paused) cycleView(); }
       else if (action === "block-sound") {
@@ -2516,6 +2593,7 @@
     trigger = false;
     el.toolBar.hidden = true;
     for (const b of el.tools) b.removeEventListener("click", el.onTool);
+    for (const b of el.details) b.removeEventListener("click", el.onDetail);
     el.barMin.removeEventListener("click", toggleBar);
     el.barGrip.removeEventListener("pointerdown", onBarDown);
     el.barGrip.removeEventListener("pointermove", onBarMove);

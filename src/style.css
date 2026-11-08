@@ -11909,3 +11909,22 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 #block-board summary {
   color: #f7ecd8;
 }
+
+/* Block Frenzy's in-play help card. */
+.block-help {
+  position: absolute;
+  z-index: 15;
+  left: 50%;
+  top: 20%;
+  transform: translateX(-50%);
+  width: min(460px, calc(100% - 24px));
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(18, 11, 6, 0.92);
+  color: #f7ecd8;
+  font-size: 13px;
+}
+
+.block-tip {
+  color: #ffd27a !important;
+}
