@@ -4632,6 +4632,12 @@
       if (cave.nonInteractive && (travel.mode === "walk" || travel.mode === "waiting" || travel.mode === "landing")) {
         if (travel.toBed && cave.bedroll) { startSleep(cave, true); return; }
         if (!travel.toBed) {
+          // One fallen past the abyss's respawn depth takes the scene's respawn first, as every abyss arrival does: it
+          // has priority over work slots and keeps clear of other players, which settling into the slot would not.
+          if (ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave) && p.y - cave.baseY < ctx.abyssRespawnY) {
+            travel.mode = ""; travel.route = null; travel.bed = null; travel.plan = null;
+            return;
+          }
           const state = cave.state;
           cave.state = "away"; applyState(cave, state, true);
           return;
