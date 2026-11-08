@@ -1129,15 +1129,22 @@
   // The monitors' faces, a few kinds, shared by every console.
   const commandScreens = cached(() => [paintChart, paintRadar, paintBlueprint].map((paint) => screenPicture(0.6, 0.36, 256, paint)));
   // One of the command room's door leaves about its hinge, reaching +x from it and facing the hall (-z) and the room
-  // alike: the leaf, an amber window in a frame and a push bar on both its faces.
+  // alike, after the concept: the leaf (`leaf`), and on both its faces (`trim`, which the scene sorts nearer on Canvas
+  // 2D) a narrow blue window by its meeting edge, the bolt (the same way round on both, so on Canvas 2D the far one
+  // lies exactly behind the near one), a lever handle and a vent along its foot.
   const commandDoor = cached(() => {
-    const C = CONTROL, K = COMMAND, w = K.door / 2, h = K.doorH, parts = [box({ w: w - 0.02, h, d: 0.06, color: C.door, offset: { x: w / 2, y: h / 2, z: 0 } })];
+    const C = CONTROL, K = COMMAND, F = K.facade, w = K.door / 2, h = K.doorH, parts = [];
+    const leaf = box({ w: w - 0.02, h, d: 0.06, color: C.door, offset: { x: w / 2, y: h / 2, z: 0 } });
     for (const s of [-1, 1]) {
-      parts.push(box({ w: 0.36, h: 0.62, d: 0.02, color: C.frame, offset: { x: w * 0.55, y: 1.62, z: s * 0.035 } }));
-      parts.push(box({ w: 0.28, h: 0.54, d: 0.02, color: C.amber, emissive: 0.85, offset: { x: w * 0.55, y: 1.62, z: s * 0.045 } }));
-      parts.push(box({ w: 0.5, h: 0.05, d: 0.05, color: "#c9d0d8", offset: { x: w * 0.55, y: 1.02, z: s * 0.06 } }));
+      parts.push(box({ w: 0.22, h: 0.82, d: 0.02, color: C.frame, offset: { x: w - 0.2, y: 1.6, z: s * 0.035 } }));
+      parts.push(box({ w: 0.15, h: 0.74, d: 0.02, color: F.blue, emissive: 0.85, offset: { x: w - 0.2, y: 1.6, z: s * 0.045 } }));
+      parts.push(moved(FM.smoothBolt(0.5, 0.02, K.bolt, 0.35), w * 0.42, 1.72, s * 0.04));
+      parts.push(box({ w: 0.2, h: 0.05, d: 0.05, color: "#c9d0d8", offset: { x: w - 0.22, y: 1.02, z: s * 0.06 } }));
+      parts.push(box({ w: 0.06, h: 0.12, d: 0.05, color: "#c9d0d8", offset: { x: w - 0.14, y: 1.02, z: s * 0.05 } }));
+      parts.push(box({ w: w - 0.3, h: 0.3, d: 0.02, color: F.dark, offset: { x: w / 2, y: 0.28, z: s * 0.035 } }));
+      for (let k = 0; k < 4; k++) parts.push(box({ w: w - 0.36, h: 0.025, d: 0.02, color: "#151824", offset: { x: w / 2, y: 0.17 + k * 0.07, z: s * 0.045 } }));
     }
-    return merge(...parts);
+    return { leaf, trim: merge(...parts) };
   });
   const commandRoom = cached(() => {
     const K = COMMAND, C = CONTROL, flat = [], detail = [], glow = [], lamps = [], glass = [], pictures = [];

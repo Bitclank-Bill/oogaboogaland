@@ -987,7 +987,7 @@
     // The command room set into the front wall left of the door (`HM.commandRoom`), as the control room: its small parts
     // sorted nearer on Canvas 2D and its facade's lamps nearer still, its glow and lamps dimmed with the glass, its signs'
     // and screens' faces nearer on Canvas 2D (a metre, or as each says), and its door's two leaves on nodes of their own
-    // on their hinges, which `commandDoorLife` swings open.
+    // on their hinges, which `commandDoorLife` swings open, each with its trim sorted nearer.
     const command = HM.commandRoom(), commandGlow = createNode({ geometry: command.glow, sightHidden: true });
     addChild(root, createNode({ geometry: command.flat }), createNode({ geometry: command.detail, depthBias: DETAIL_BIAS }), commandGlow, createNode({ geometry: command.glass, sightHidden: true }));
     for (const p of command.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: p.tilt || 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: p.bias ?? -1 }));
@@ -996,9 +996,11 @@
     addChild(root, commandLit);
     s.glass.push(commandLit);
     s.commandDoors = command.doors.map((d) => {
-      const leaf = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.turn, z: 0 }, geometry: HM.commandDoor() });
+      const leaf = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.turn, z: 0 }, geometry: HM.commandDoor().leaf });
+      const trim = createNode({ geometry: HM.commandDoor().trim, depthBias: DETAIL_BIAS });
+      addChild(leaf, trim);
       addChild(root, leaf);
-      s.glass.push(leaf);
+      s.glass.push(trim);
       return leaf;
     });
     s.commandOpen = 0;
