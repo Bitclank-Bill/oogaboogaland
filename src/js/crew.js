@@ -613,7 +613,7 @@
     let leftSupportsGun = false;
     parts.armL.quaternion = parts.armR.quaternion = null;
     for (let i = 0; i < parts.gunBananas.length; i++) {
-      const banana = parts.gunBananas[i], visible = w.ammo > (i + 1) * BURST_ROUNDS;
+      const banana = parts.gunBananas[i], visible = !cave.gunSkin && w.ammo > (i + 1) * BURST_ROUNDS;
       if (visible && !banana.visible && (w.reloading || gun.ammoReloading)) banana.ammoPopAt = elapsed;
       banana.visible = visible;
       const pop = 1 - 0.45 * (1 - clamp((elapsed - banana.ammoPopAt) / 0.22, 0, 1)) ** 3;
@@ -2709,6 +2709,7 @@
         held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0, unlimited: w.unlimited, ammo: w.ammo, spareAmmo: w.spareAmmo.slice() };
       selectWeapon(0, cave);
       w.primaryOwned = w.secondaryOwned = false;
+      w.spareAmmo.length = 0;
       poseWeapon(cave);
     };
     const unparkWeapons = (cave) => {
