@@ -364,11 +364,11 @@
   };
   const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
   let tipK = 0;
-  // The net launcher's aim line: from where the shot leaves, along where it goes; only while the net is in hand.
+  // The net launcher's aim line: from where the shot leaves, along where it goes; only while a net is loaded.
   let aimNode = null;
   const poseAim = () => {
     if (!aimNode || !sim) return;
-    const a = sim.actors[0], on = phase === "play" && tool === "net" && !cam.island && a.splat <= 0 && a.trapped <= 0 && !a.grabbed;
+    const a = sim.actors[0], on = phase === "play" && tool === "net" && a.net > 0 && !cam.island && a.splat <= 0 && a.trapped <= 0 && !a.grabbed;
     aimNode.visible = on;
     if (!on) return;
     const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1, yaw = Math.atan2(dx, dz), pitch = clamp(Math.atan2(q.y - oy, flat) - 0.02, -1.4, 1.4), c = Math.cos(pitch);

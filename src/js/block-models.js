@@ -530,7 +530,7 @@
   });
   // The guns, each in its own frame with the grip at the origin and the muzzle along +z, in team colours (variants by
   // team): a paintball marker with a hopper, a chunky grenade launcher with a drum, a big shoulder rocket launcher, a
-  // net gun with a flared mouth and a long sniper rifle with a scope.
+  // short, wide net launcher and a long sniper rifle with a scope.
   const GUNS = ["paint", "grenade", "rocket", "net", "sniper", "gold", "ak"];
   const GOLD = "#f2c230", GOLD_DK = "#b8901c";
   const METAL = "#3a3a40", DARK = "#24242a";
@@ -558,11 +558,15 @@
       parts.push(box({ w: 0.14, h: 0.14, d: 0.1, color: ORANGE, emissive: 1, offset: { y: 0.04, z: 0.74 } }));
       parts.push(box({ w: 0.05, h: 0.1, d: 0.14, color: DARK, offset: { x: 0.1, y: 0.2, z: 0.25 } }));
     } else if (kind === "net") {
+      // A chunky launcher: a squat breech behind a short, wide barrel with a team-coloured muzzle band, a dark bore and
+      // a weight at each corner of the mouth. The same whether a net is loaded or not.
       grip();
-      parts.push(bevelBox({ w: 0.12, h: 0.12, d: 0.34, color: "#3f5a3a", offset: { y: 0.04, z: 0.08 } }));
-      parts.push(box({ w: 0.3, h: 0.3, d: 0.08, color: "#7fe08a", emissive: 0.5, offset: { y: 0.04, z: 0.32 } }));
-      parts.push(box({ w: 0.2, h: 0.2, d: 0.1, color: "#5a8a52", offset: { y: 0.04, z: 0.26 } }));
-      for (const [x, y] of [[-0.13, -0.09], [0.13, -0.09], [-0.13, 0.17], [0.13, 0.17]]) parts.push(box({ w: 0.04, h: 0.04, d: 0.04, color: "#c9b48a", offset: { x, y, z: 0.37 } }));
+      parts.push(bevelBox({ w: 0.2, h: 0.2, d: 0.26, color: METAL, offset: { y: 0.05, z: -0.04 } }));
+      parts.push(bevelBox({ w: 0.42, h: 0.42, d: 0.4, color: "#3f5a3a", offset: { y: 0.1, z: 0.28 } }));
+      parts.push(box({ w: 0.48, h: 0.48, d: 0.08, color: c.deep, offset: { y: 0.1, z: 0.48 } }));
+      parts.push(box({ w: 0.32, h: 0.32, d: 0.04, color: DARK, offset: { y: 0.1, z: 0.53 } }));
+      for (const [x, y] of [[-0.2, -0.1], [0.2, -0.1], [-0.2, 0.3], [0.2, 0.3]]) parts.push(box({ w: 0.08, h: 0.08, d: 0.08, color: "#c9b48a", offset: { x, y, z: 0.55 } }));
+      parts.push(box({ w: 0.06, h: 0.08, d: 0.14, color: c.paint, emissive: 0.5, offset: { y: 0.35, z: 0.14 } }));
     } else if (kind === "ak") {
       // The Ooga AK: a wooden stock and grip, a dark receiver, a long barrel with a front sight, and a curved banana
       // magazine in the team's colour.
