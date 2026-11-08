@@ -24928,6 +24928,8 @@ const petChecks = BL => {
 // copies do the same from the room's `jet` alone. Riding reuses its state: the same quaternion and seat every frame.
 const petRideChecks = BL => {
   const noop=()=>{},S=BL.scene,M=BL.math.mat4,root=S.createNode();let wall=false;
+  // Character changes are queued separately; exercise the engine opt-in independently of that bundle.
+  const look=BL.characters.get("Bitcoin-Bill").look,rides=look.petRidesHat;look.petRidesHat=true;
   const C=BL.crew.create({root,world:{level:0},playerName:"Bitcoin-Bill",input:{add:noop,remove:noop},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,
     groundAt:()=>0,walkable:(ax,az,bx,bz)=>!(wall&&bx>0.3),fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
   const A=C.cavemen.get("Bitcoin-Bill"),pet=A.pet,dog=pet.node,ride=pet.ride,seat=ride&&ride.seat;
@@ -24969,6 +24971,7 @@ const petRideChecks = BL => {
   record("pets: another player's opted-in dog rides the hat while their jetpack is on and is back at the heel when it comes off, from the room's jet alone",
     remoteHeel&&remoteUp&&remoteFlying&&remoteDown,JSON.stringify({remoteHeel,remoteUp,remoteFlying,remoteDown}));
   pool.dispose();BL.net=oldNet;
+  if(rides===undefined)delete look.petRidesHat;else look.petRidesHat=rides;
 };
 
 // Rule: the authored Maxis routes and stand points must fit the real Yellow actor, not a guessed radius.
