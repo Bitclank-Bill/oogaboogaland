@@ -1,5 +1,6 @@
-// The Lightning Jet Hangar's door keypads: the one by the control room's door and one by each crew room's on the right
-// wall (`hangarModels.controlRoom().keypad`, `sideRooms()[i].keypad`), each a node of its own on `keypad()`. Beside
+// The Lightning Jet Hangar's door keypads: the one by the control room's door, one by each crew room's on the right
+// wall and the command room's security panel by its door (`hangarModels.controlRoom().keypad`, `sideRooms()[i].keypad`,
+// `commandRoom().keypad`), each a node of its own on `keypad()` or the panel's own lit parts. Beside
 // one on the catwalk, in front of it, the act button reads KEYPAD (`actLabel`), and Space there (`useNear`), the act
 // button or a tap on it (`press`) opens it on screen (`#hangar-keypad`): the room's name, a screen, and twelve keys,
 // pressed by tap or click or typed (0-9, Backspace, Delete, Enter; `onKey`), each with its beep. Every code is
@@ -12,8 +13,10 @@
 //
 // `create({ audio, hud, hold, across, pads })`: the hangar's sound, its HUD, `hold(on)` to still the Ooga while the
 // panel is open, `across(x, y, z)` how far across the screen a point shows (0 its left edge, 1 its right), and the
-// keypads, each { x, y, z, turn, floor, name }: its back's middle on the wall, the way it faces (+x
-// turned by `turn`), the floor in front of it and the room it opens. Returns `nodes` (the scene stands them in the
+// keypads, each { x, y, z, turn, floor, name, body?, denied?, bias? }: its back's middle on the wall, the way it faces
+// (+x turned by `turn`), the floor in front of it, the room it opens and, where a keypad is built into its wall (the
+// command room's security panel), its own lit parts and their red twin in its frame, in place of `keypad()`, and its
+// node's `depthBias` for the Canvas 2D sort. Returns `nodes` (the scene stands them in the
 // hall and dims them with its glass), `near` (the keypad the driven Ooga stands at, or -1), `open` (the one on screen,
 // or -1), `actLabel`, `useNear`, `press(i)`, `onKey(e)`, `update(dt, driven)`, `liveGeometry(set)`, `dispose` and
 // `debug`. Allocates nothing a frame.
@@ -40,7 +43,8 @@
     const name = document.getElementById("hangar-keypad-name"), shut = document.getElementById("hangar-keypad-close");
     const keys = panel.querySelectorAll("[data-key]"), note = panel.querySelector("[data-coarse]");
     if (window.matchMedia("(pointer: coarse)").matches) note.textContent = note.dataset.coarse;
-    const nodes = pads.map((p) => createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: K.body, sightHidden: true, depthBias: -0.3 }));
+    const bodies = pads.map((p) => p.body || K.body), denieds = pads.map((p) => p.denied || K.denied);
+    const nodes = pads.map((p, i) => createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: bodies[i], sightHidden: true, depthBias: p.bias === undefined ? -0.3 : p.bias }));
     // Each keypad's refusals in a row and the clock it is locked out until.
     const fails = new Float32Array(pads.length), until = new Float64Array(pads.length);
     let near = -1, open = -1, code = 0, state = "idle", t = 0, clock = 0, shown = "", ticks = 0;
@@ -155,7 +159,7 @@
       } else near = -1;
       for (let i = 0; i < pads.length; i++) {
         const red = locked(i) || (i === open && state === "deny");
-        nodes[i].geometry = red ? K.denied : K.body;
+        nodes[i].geometry = red ? denieds[i] : bodies[i];
       }
       if (open < 0) return;
       t += dt;
@@ -182,7 +186,7 @@
       nodes, actLabel, useNear, press, onKey, update,
       get near() { return near; },
       get open() { return open; },
-      liveGeometry: (set) => { set.add(K.body); set.add(K.denied); },
+      liveGeometry: (set) => { for (let i = 0; i < pads.length; i++) { set.add(bodies[i]); set.add(denieds[i]); } },
       dispose: () => {
         close();
         for (const b of keys) b.removeEventListener("click", onClick);
