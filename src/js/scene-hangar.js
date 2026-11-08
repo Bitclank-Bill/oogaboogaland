@@ -1655,7 +1655,8 @@
     }));
     // The rooms' door keypads (`hangar-keypad.js`), dimmed with the glass; the Ooga stands still while one is open, and
     // Tess, if she is coming over or offering, goes back to work.
-    const pads = [{ ...HM.controlRoom().keypad, name: "Control room" }, ...HM.sideRooms().map((r, i) => ({ ...r.keypad, name: `Crew room ${i + 1}` }))];
+    const pads = [{ ...HM.controlRoom().keypad, name: "Control room" }, ...HM.sideRooms().map((r, i) => ({ ...r.keypad, name: `Crew room ${i + 1}` })),
+      { ...HM.commandRoom().keypad, name: "Command & Observation", bias: DETAIL_BIAS - 0.2 }];
     scene.keypad = BL.hangarKeypad.create({ audio, hud, pads, hold: (on) => {
       if (on) scene.guide.escape();
       pilot.setActive(!on);

@@ -1514,9 +1514,7 @@
     const kx = (K.glazed + 0.25 + dx - dw - 0.2) / 2;
     detail.push(box({ w: 0.26, h: 0.78, d: 0.05, color: "#1d2028", offset: { x: kx, y: 1.48, z: ff - 0.03 } }));
     detail.push(box({ w: 0.2, h: 0.12, d: 0.02, color: "#0d1830", offset: { x: kx, y: 1.74, z: ff - 0.06 } }));
-    lamps.push(box({ w: 0.16, h: 0.08, d: 0.01, color: "#4fb3ff", emissive: 0.9, offset: { x: kx, y: 1.74, z: ff - 0.07 } }));
     detail.push(box({ w: 0.16, h: 0.03, d: 0.03, color: "#0b0d12", offset: { x: kx, y: 1.59, z: ff - 0.065 } }));
-    for (const [c, ox] of [["#ff3b30", -0.05], ["#2ecc71", 0.05]]) lamps.push(box({ w: 0.03, h: 0.03, d: 0.01, color: c, emissive: 1, offset: { x: kx + ox, y: 1.53, z: ff - 0.07 } }));
     const cmx = dx + dw + 0.35, cmy = dh + 0.85;
     detail.push(box({ w: 0.08, h: 0.08, d: 0.32, color: F.dark, offset: { x: cmx, y: cmy, z: ff - 0.16 } }));
     detail.push(moved(turnedY(turnedX(bevelBox({ w: 0.2, h: 0.16, d: 0.36, color: "#d9dde6", bevel: 0.03 }), 0.35), -0.5), cmx - 0.06, cmy - 0.1, ff - 0.36));
@@ -1531,7 +1529,16 @@
     const bkx = da - 0.32;
     detail.push(moved(lathe({ profile: [[0.16, 0], [0.16, 0.08], [0.12, 0.1], [0, 0.1]], segments: 12, color: "#2a2d33" }), bkx, ay, front - 0.3));
     const beacon = { x: bkx, y: ay + 0.1, z: front - 0.3, geometry: noShadow(lathe({ profile: [[0.12, 0], [0.12, 0.12], [0.09, 0.22], [0.04, 0.26], [0, 0.27]], segments: 12, color: "#ff2a1f", emissive: 1 })) };
-    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) lamps.push(box({ w: 0.035, h: 0.035, d: 0.01, color: r === 0 ? "#2ecc71" : F.blue, emissive: 1, offset: { x: kx - 0.05 + c * 0.05, y: 1.36 - r * 0.07, z: ff - 0.06 } }));
+    // The security panel's lit parts, its lock screen, the reader's lamps and its keys, are the door's keypad
+    // (`hangar-keypad.js`), a node of the scene's in front of the panel facing the hall (+x turned by `turn`), and their red
+    // twin while it refuses a code (`denied`); the reader's red lamp lit while the room is locked.
+    const pad = { x: kx, y: 1.48, z: ff - 0.055 }, keypadLit = (red) => {
+      const parts = [box({ w: 0.16, h: 0.08, d: 0.01, color: red ? KEYPAD.red : "#4fb3ff", emissive: 0.9, offset: { y: 0.26, z: -0.015 } })];
+      for (const [c, ox, on] of [[KEYPAD.red, -0.05, K.locked || red], ["#2ecc71", 0.05, !K.locked && !red]]) parts.push(box({ w: 0.03, h: 0.03, d: 0.01, color: on ? c : "#2a2e38", emissive: on ? 1 : 0, offset: { x: ox, y: 0.05, z: -0.015 } }));
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) parts.push(box({ w: 0.035, h: 0.035, d: 0.01, color: red ? KEYPAD.red : r === 0 ? "#2ecc71" : F.blue, emissive: 1, offset: { x: -0.05 + c * 0.05, y: -0.12 - r * 0.07, z: -0.005 } }));
+      return noShadow(turnedY(merge(...parts), -Math.PI / 2));
+    };
+    const keypad = { ...pad, turn: Math.PI / 2, floor: 0, body: keypadLit(false), denied: keypadLit(true) };
     const plate = { x: kx, y: 2.45, w: 0.56, h: 0.84 };
     detail.push(box({ w: plate.w + 0.1, h: plate.h + 0.1, d: 0.04, color: F.dark, offset: { x: plate.x, y: plate.y, z: ff - 0.02 } }));
     pictures.push({ geometry: screenPicture(plate.w, plate.h, 256, paintCommandPlate), x: plate.x, y: plate.y, z: ff - 0.045, turn: Math.PI });
@@ -1720,7 +1727,7 @@
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     const doors = [{ x: dx - K.door / 2, z: front + 0.1, turn: 0, open: -1 }, { x: dx + K.door / 2, z: front + 0.1, turn: Math.PI, open: 1 }];
-    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), board: noShadow(merge(...board)), boardFace, cameraScreen, beacon, glass: windows, pictures, doors, lamps: K.lamps.flat() };
+    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), board: noShadow(merge(...board)), boardFace, cameraScreen, beacon, keypad, glass: windows, pictures, doors, lamps: K.lamps.flat() };
   });
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
