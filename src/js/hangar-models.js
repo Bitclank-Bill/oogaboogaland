@@ -1432,6 +1432,10 @@
       detail.push(bevelBox({ w: 0.28, h: 0.36, d: F.out + 0.16, color: F.yellow, bevel: 0.03, offset: { x, y: 0.18, z: fm - 0.06 } }));
     }
     flat.push(box({ w: 2 * dw + 0.4, h: 0.25, d: F.out + 0.08, color: F.edge, offset: { x: dx, y: dh + 0.125, z: fm - 0.04 } }));
+    // The doorway's lining from the frame's face back past the leaves, at their hinges and over their heads, so no gap
+    // shows round a shut door.
+    for (const sx of [-1, 1]) flat.push(box({ w: 0.08, h: dh + 0.05, d: F.out + 0.35, color: C.frame, offset: { x: dx + sx * (K.door / 2 + 0.03), y: (dh + 0.05) / 2, z: front + 0.18 - (F.out + 0.35) / 2 } }));
+    flat.push(box({ w: K.door + 0.14, h: 0.1, d: F.out + 0.35, color: C.frame, offset: { x: dx, y: dh + 0.05, z: front + 0.18 - (F.out + 0.35) / 2 } }));
     flat.push(bevelBox({ w: 2 * dw + 0.5, h: 0.06, d: F.out + 0.5, color: F.edge, bevel: 0.015, offset: { x: dx, y: 0.03, z: front + 0.1 - (F.out + 0.5) / 2 } }));
     detail.push(box({ w: 0.86, h: 0.3, d: 0.06, color: F.orange, emissive: 0.3, offset: { x: dx, y: dh + 0.55, z: ff - 0.04 } }));
     lamps.push(box({ w: 0.74, h: 0.18, d: 0.02, color: "#ffc77a", emissive: 1, offset: { x: dx, y: dh + 0.55, z: ff - 0.08 } }));
