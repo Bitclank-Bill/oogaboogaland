@@ -904,6 +904,13 @@
   };
   // The lofts' life (`LOFT_LIFE`): what each one's crew member does next, where it stands and which way it and its head
   // face, its monitor's flicker and colour, and its light.
+  // The wall fan turns at its rate while the hall has power, running down when a blackout cuts it and back up after,
+  // easing `FAN_EASE` a second.
+  const FAN_EASE = 0.5;
+  const fanLife = (s, dt) => {
+    s.fanSpeed += ((s.anomaly.powered ? HM.FAN.rate * Math.PI * 2 : 0) - s.fanSpeed) * Math.min(1, dt * FAN_EASE);
+    s.fan.rotation.x = (s.fan.rotation.x + s.fanSpeed * dt) % (Math.PI * 2);
+  };
   const loftLife = (s, dt, elapsed, dim) => {
     const F = LOFT_LIFE, far = HM.LOFT.w / 2 + 0.4, step = F.turn * dt;
     if ((s.loftDark -= dt) <= 0) {
@@ -1095,6 +1102,13 @@
         heading: -Math.PI / 2, look: 0, picture: 0, change: between(LOFT_LIFE.picture), blink: 0, out: 0
       };
     });
+    // The industrial fan high on the right wall, its lamps dimmed with the glass (and sorted nearer, so the Canvas 2D sort
+    // never paints the housing over them) and its rotor turned by `fanLife`.
+    const fan = HM.fan(), fanGlow = createNode({ geometry: fan.glow, sightHidden: true, depthBias: DETAIL_BIAS - 0.2 });
+    s.fan = createNode({ position: { ...fan.at }, geometry: fan.rotor, sightHidden: true, depthBias: DETAIL_BIAS });
+    s.fanSpeed = HM.FAN.rate * Math.PI * 2;
+    addChild(root, createNode({ geometry: fan.flat }), fanGlow, s.fan);
+    s.glass.push(fanGlow);
     s.fixtures = createNode({ geometry: fixtures.flat });
     addChild(s.fixtures, createNode({ geometry: fixtures.detail, depthBias: DETAIL_BIAS }), createNode({ geometry: fixtures.crateDetail, depthBias: CRATE_BIAS }));
     addChild(root, s.mouth, s.fixtures);
@@ -1910,6 +1924,7 @@
     neonLife(s, dt, elapsed, dim);
     lampLife(s, dt, elapsed, dim);
     loftLife(s, dt, elapsed, dim);
+    fanLife(s, dt);
     boardJets(s, dt);
     feedLife(s);
     s.crane.update(dt, camera.position);
