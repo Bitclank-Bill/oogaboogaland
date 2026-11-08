@@ -9479,7 +9479,7 @@ const hubGuestLikeness = { name: "hub guest likeness", why: "regression: a guest
   // Cloud Hopper with the default Ooga, through its own card: the visible Play button (its hidden Next level button
   // carries the same class and stands before it) lifts the guest's own avatar into a run, and Escape ends it.
   const hopper = await b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub.debug.cloudHopper, ghosts = BL.scenes.hub.debug.npcGhosts, guest = B.crew.cavemen.get("Ooga");
+    const B = __ooga, H = BL.scenes.hub.debug.prepareCloudHopper(), ghosts = BL.scenes.hub.debug.npcGhosts, guest = B.crew.cavemen.get("Ooga");
     const taken = B.pilot.possess(guest) && B.pilot.player === guest;
     B.advance(0.3, 1 / 30);
     const launched = taken && H.launch(true);
