@@ -727,8 +727,9 @@
     };
     return { body: make(false), denied: make(true) };
   });
-  // A screen's picture, `w` by `h` metres facing +z, painted on `px` pixels a metre by `paint(g, W, H)`.
-  const screenPicture = (w, h, px, paint) => {
+  // A screen's picture, `w` by `h` metres facing +z, painted on `px` pixels a metre by `paint(g, W, H)`, as bright as
+  // `bright` says.
+  const screenPicture = (w, h, px, paint, bright = 0.5) => {
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(w * px); canvas.height = Math.round(h * px);
     const g = canvas.getContext("2d");
@@ -736,7 +737,7 @@
     const image = new Image();
     image.src = canvas.toDataURL("image/png");
     const geo = { verts: [-w / 2, -h / 2, 0, w / 2, -h / 2, 0, w / 2, h / 2, 0, -w / 2, h / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [0, 0, 0], emissive: 0 }], lines: [], castShadow: false };
-    geo.imageSurface = { asset: { width: canvas.width, height: canvas.height, load: () => image }, rect: [-w / 2, -h / 2, w, h], bright: 0.5 };
+    geo.imageSurface = { asset: { width: canvas.width, height: canvas.height, load: () => image }, rect: [-w / 2, -h / 2, w, h], bright };
     return geo;
   };
   // A screen's picture painted once and cut into `n` upright slices side by side, each a picture of its own, for a face
