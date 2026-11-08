@@ -942,10 +942,11 @@ export class Room extends DurableObject {
       const gens = peers.map((id) => this.players.get(id).voice.gen || 0);
       // Receiving attendees do not publish tracks. Their receive sessions, rather
       // than the list of speakers this player hears, keep a Studio microphone live.
+      // A linked partner's does too, wherever that partner is, since it hears from anywhere.
       let listeners;
       if (p.zone === STUDIO_ZONE) {
         listeners = 0;
-        for (const q of this.players.values()) if (q !== p && q.zone === STUDIO_ZONE && q.voice && q.voice.sub) listeners++;
+        for (const q of this.players.values()) if (q !== p && q.voice && q.voice.sub && (q.zone === STUDIO_ZONE || voiceLinked(this.links, p.id, q.id))) listeners++;
       }
       // A linked partner who only listens (a Studio audience) is on no list here, yet can hear this page.
       let ears = 0;

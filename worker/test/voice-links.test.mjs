@@ -147,6 +147,31 @@ test("room: a link in one zone keeps both hearing each other after one walks to 
   assert.deepEqual(hears(a), [2], "together, breaking a link changes nothing");
 });
 
+test("room: a linked partner outside the Studio keeps a speaker's microphone live there, as a listener inside does", async () => {
+  const h = await harness();
+  const voiceOf = (ws) => ws.sent.filter((m) => m.t === "voice").at(-1);
+  const a = await h.join(1, "a"), b = await h.join(2, "b");
+  h.room.studio.hostId = 1;
+  h.send(a, { t: "zone", name: "dsb-studio" });
+  assert.equal(voiceOf(a).listeners, 0, "alone in the Studio, nobody can hear it");
+  h.send(a, { t: "link", to: 2, on: true });
+  assert.equal(voiceOf(a).listeners, 0, "an ask carries no voice");
+  h.send(b, { t: "link", to: 1, on: true });
+  assert.deepEqual(voiceOf(a).peers, [2]);
+  assert.equal(voiceOf(a).listeners, 1, "the partner hears it from the island");
+  h.send(b, { t: "zone", name: "dsb-studio" });
+  assert.equal(voiceOf(a).listeners, 1, "in the Studio too, counted once");
+  h.send(b, { t: "zone", name: "outside" });
+  h.room.players.get(2).voice.sub = null;
+  h.room.updateVoice();
+  assert.equal(voiceOf(a).listeners, 0, "with no receive session the partner hears nothing");
+  h.room.players.get(2).voice.sub = "s";
+  h.room.updateVoice();
+  assert.equal(voiceOf(a).listeners, 1);
+  h.send(a, { t: "link", to: 2, on: false });
+  assert.equal(voiceOf(a).listeners, 0, "a broken link takes the listener away");
+});
+
 test("room: links outlive a reconnect and a woken room, and are stored as asks alone", async () => {
   const h = await harness();
   let a = await h.join(1, "a");

@@ -62,8 +62,9 @@ import "../../src/js/reaction-policy.js";
 //                 blend { id, to, k }        a player's crossing changed; welcome and join carry blendTo and blendK
 //                 voice { peers, gens }      whom to hear, and each one's publication count (a new count is a
 //                                            microphone published again, to be pulled again); in the Studio also
-//                                            `listeners`, the other receive sessions there; `ears` when linked
-//                                            partners who only listen can hear this page though it hears none of them
+//                                            `listeners`, the other receive sessions there and linked partners'
+//                                            anywhere; `ears` elsewhere when linked partners who only listen can
+//                                            hear this page though it hears none of them
 //                 studio-state { state }     the Studio's host, mode, program anchor, seats and this page's own
 //                                            rights; studio-result { action, commandId, ok, error, revision }
 //                                            answers a command; studio-mic-revoked: drop the microphone now
