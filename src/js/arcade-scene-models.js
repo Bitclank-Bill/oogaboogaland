@@ -1175,8 +1175,8 @@
   };
   // Block Frenzy's entry hall (`BLOCK_HALL`): the rock laid back round the mouth, a timber set like the haunted
   // hallway's, a short carved passage with torches (`lanterns`), the four maps framed and the game's weapons racked on
-  // its walls, then the open-air cliff ledge with a railing and gate, a sky to look out on and the small loading island
-  // below. `rock` and `ledge` are the body of it; `props` and `sky` carry `sightHidden` in the scene.
+  // its walls, then the open-air cliff ledge with a railing and gate, and blue sky and clouds to look out on, the zipline
+  // running away into them. `rock` and `ledge` are the body of it; `props` and `sky` carry `sightHidden` in the scene.
   const blockMaps = [
     ["#2a2a45", "#d9953a", (g, e) => { daubPoly(g, [[-0.5, -0.2], [-0.2, -0.2], [-0.2, 0.2], [-0.5, 0.2]], "#7a5634", e, 0.004); daubPoly(g, [[0.2, -0.2], [0.5, -0.2], [0.5, 0.2], [0.2, 0.2]], "#7a5634", e, 0.004); daubDot(g, 0, -0.06, 0.09, 0.09, "#f7931a", 0.5, 0, 0.006, 8); }],
     ["#3a5a78", "#a8703e", (g, e) => { for (const x of [-0.4, 0, 0.4]) { daubPoly(g, [[x - 0.14, -0.2], [x + 0.14, -0.2], [x + 0.14, 0.02], [x - 0.14, 0.02]], "#c8a678", e, 0.004); daubPoly(g, [[x - 0.2, 0.02], [x + 0.2, 0.02], [x, 0.22]], "#b8402e", e, 0.005); } }],
@@ -1184,12 +1184,12 @@
     ["#1b1230", "#4a3a5a", (g, e) => { daubDot(g, 0.42, 0.26, 0.11, 0.11, "#e8dcc0", 0.6, 0, 0.004, 10); daubPoly(g, [[-0.5, -0.2], [-0.22, -0.2], [-0.22, 0.12], [-0.36, 0.26], [-0.5, 0.12]], "#2a2230", e, 0.004); for (const x of [0.02, 0.28]) daubDot(g, x, -0.08, 0.07, 0.09, "#f2efe8", 0.6, 0, 0.006, 8); }]
   ];
   const blockHall = cached(() => {
-    const { x: X, x0: X0, x1: X1, y: Y, h: H, z0: Z0, ledge: LZ, island: I } = BLOCK_HALL, Z1 = HALL.back, TOP = Y + H, J = BL.hubModels;
-    const rand = mulberry32(5521), crag = geometry(), round = [], flat = [], props = [], leaf = mulberry32(5522);
+    const { x: X, x0: X0, x1: X1, y: Y, h: H, z0: Z0, ledge: LZ } = BLOCK_HALL, Z1 = HALL.back, TOP = Y + H, J = BL.hubModels;
+    const rand = mulberry32(5521), crag = geometry(), round = [], flat = [], props = [];
     const rough = () => STONE[Math.floor(rand() * 3)];
     const blocked = (s, y) => PAINTINGS.some(([w, a0, a1, y0, y1]) => w === "B" && s > a0 && s < a1 && y > y0 && y < y1);
     // Round the mouth, where the wall's own blocks were baked aside: below the deck too, so the wall under it stays whole.
-    for (let j = 2; j < 9; j++) for (let i = 6; i < 13; i++) {
+    for (let j = 2; j < 9; j++) for (let i = 6; i < 14; i++) {
       if (blocked(i + 0.5, j + 0.5) || i + 1 > X0 && i < X1 && j + 1 > Y && j < TOP) continue;
       stone(crag, [i + 0.5, j + 0.5, Z1 + 0.02 - rand() * 0.12], [1, 0, 0], UP, [0, 0, 1], 1 + LAP, 1 + LAP, 0.9, 0.18, 0.1, rough());
     }
@@ -1265,23 +1265,25 @@
     rail(X0 + 0.12, LZ, X - 0.6, LZ); rail(X + 0.6, LZ, X1 - 0.12, LZ);
     for (const [x, z, dx, dz] of [[X - 0.6, LZ, 0, 0.75], [X + 0.6, LZ, 0, 0.75]]) for (const y of [Y + 0.4, Y + 0.95]) round.push(J.bamboo(x, y, z, x + dx, y, z + dz, 0.035));
     const rock = merge(crag);
-    const isle = I.r, grass = lathe({ profile: [[isle, 0], [isle * 0.97, 0.22], [0, 0.26]], segments: 18, color: "#4f8f3a" });
-    const under = lathe({ profile: [[0, -10], [isle * 0.22, -8.4], [isle * 0.62, -4.8], [isle * 0.96, -1.2], [isle, 0.02], [0, 0.02]], segments: 18, color: "#5b4a3a" });
-    for (const g of [grass, under]) for (const f of g.faces) f.emissive = 0.35;
-    const lump = (x, y, z, r, c) => moved(lathe({ profile: [[0, 0], [r, r * 0.3], [r * 0.8, r * 0.8], [0, r]], segments: 7, color: c }), x, y, z);
-    const palm = J.withJungle(shaded([J.log(0, 0, 0, 0.4, 4.6, 0.1, 0.17, "#7a5634")]), (g) => { for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28; J.sprig(g, 0.4, 4.6, 0.1, Math.sin(a), 0.2, Math.cos(a), 8, 1.9, leaf); } });
-    const island = merge(under, grass, moved(palm, -3.4, 0.26, -2.5), lump(3.4, 0.26, -1.6, 0.7, "#6a6158"), lump(-1.6, 0.26, 3.2, 0.5, "#6a6158"));
-    for (const f of island.faces) f.emissive = Math.max(f.emissive || 0, 0.3);
-    // The sky round everything out here: emissive card faces well past the island, bands darker upward, a few clouds.
-    const FAR = 150, bands = [["#c9a88a", -60, 20], ["#a8bccb", -20, 40], ["#83a8c6", 20, 60], ["#5b8db8", 60, 75]];
-    const sky = [];
+    // Blue sky all round: emissive cards well past everything, paling toward the horizon, and the hub's voxel clouds,
+    // a bank of them swallowing the rope's far end and more drifted about the sky.
+    const FAR = 150, CZ = -40, bands = [["#bfe0f7", -60, -5], ["#8fc8f2", -5, 20], ["#5aa6ea", 20, 50], ["#3b86dc", 50, 75]], sky = [];
     for (const [c, y0, y1] of bands) {
       const h = y1 - y0, m = (y0 + y1) / 2;
-      sky.push(box({ w: 2 * FAR, h, d: 0.5, color: c, emissive: 0.55, offset: { x: X, y: m, z: -FAR - 40 } }), box({ w: 0.5, h, d: 2 * FAR, color: c, emissive: 0.55, offset: { x: X - FAR, y: m, z: -40 } }), box({ w: 0.5, h, d: 2 * FAR, color: c, emissive: 0.55, offset: { x: X + FAR, y: m, z: -40 } }));
+      sky.push(box({ w: 2 * FAR, h, d: 0.5, color: c, emissive: 0.85, offset: { x: X, y: m, z: CZ - FAR } }), box({ w: 2 * FAR, h, d: 0.5, color: c, emissive: 0.85, offset: { x: X, y: m, z: CZ + FAR } }));
+      for (const s of [-1, 1]) sky.push(box({ w: 0.5, h, d: 2 * FAR, color: c, emissive: 0.85, offset: { x: X + s * FAR, y: m, z: CZ } }));
     }
-    sky.push(box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#5b8db8", emissive: 0.55, offset: { x: X, y: 75, z: -40 } }), box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#b89a7a", emissive: 0.55, offset: { x: X, y: -60, z: -40 } }));
-    for (const [cx, cy, cz, sx] of [[-20, 10, -130, 22], [32, 16, -128, 30], [-48, -2, -128, 18], [10, -18, -125, 26], [60, -8, -120, 16]]) sky.push(box({ w: sx, h: 2.4, d: 0.5, color: "#d8d4cc", emissive: 0.55, offset: { x: cx, y: cy, z: cz } }), box({ w: sx * 0.6, h: 2, d: 0.5, color: "#e2dfd8", emissive: 0.55, offset: { x: cx + 2, y: cy + 2, z: cz + 0.3 } }));
-    return { rock, ledge: shaded(round, flat), props: merge(...props), sky: merge(...sky), island };
+    sky.push(box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#3b86dc", emissive: 0.85, offset: { x: X, y: 75, z: CZ } }), box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#bfe0f7", emissive: 0.85, offset: { x: X, y: -60, z: CZ } }));
+    const puff = (k, x, y, z, size) => {
+      const g = merge(BL.hubModels.cloud(k % 3));
+      for (let v = 0; v < g.verts.length; v++) g.verts[v] *= size;
+      for (const f of g.faces) f.emissive = 0.75;
+      return moved(g, x, y, z);
+    };
+    const cloudRand = mulberry32(5533), { cloudY, stop } = BLOCK_HALL;
+    for (let k = 0; k < 14; k++) sky.push(puff(k, X + (cloudRand() - 0.5) * 60, cloudY + 2 + cloudRand() * 10, stop.z + 12 - cloudRand() * 26, 1.6 + cloudRand() * 1.1));
+    for (let k = 0; k < 16; k++) sky.push(puff(k, X + (cloudRand() - 0.5) * 240, -30 + cloudRand() * 80, -60 - cloudRand() * 80, 1.2 + cloudRand() * 2));
+    return { rock, ledge: shaded(round, flat), props: merge(...props), sky: merge(...sky) };
   });
   const haunt = BL.models.cachedSteps(function* (slice = null) {
     const { z0, z1, y: Y, h: H, end, arena: A } = HAUNT, X0 = HALL.halfW, L = end - X0, TOP = Y + H, MID = (z0 + z1) / 2, J = BL.hubModels, TAU = Math.PI * 2;

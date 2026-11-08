@@ -8021,7 +8021,7 @@ const gameRulesChecks = async () => {
     // deck, reaching the ledge; the Rally poster beside the mouth and off it; Ghost Hunter's hall exactly where it was.
     const H = A.BLOCK_HALL, rallyPosters = L.posters.filter(p => p[4] === 0), beside = rallyPosters.find(p => p[2] === A.HALL.back + 0.1);
     record("arcade block hall: a walkable passage from the deck to the cliff ledge, the Rally poster moved just beside the mouth, Ghost Hunter's hall untouched",
-      H.y === A.MEZZ.y && H.x0 >= 8 && H.x1 <= 11 && H.z0 < A.HALL.back && H.ledge < H.z0 && H.h === 4
+      H.y === A.MEZZ.y && H.x0 >= 8 && H.x1 <= 12 && H.z0 < A.HALL.back && H.ledge < H.z0 && H.h === A.HAUNT.h && H.x1 - H.x0 === A.HAUNT.z1 - A.HAUNT.z0 && A.HALL.back - H.z0 === A.HAUNT.end - A.HALL.halfW
       && !!beside && beside[0] > H.x1 && beside[0] < H.x1 + 1.5 && beside[1] + 0.7 < 6 && !L.posters.some(p => p[2] === A.HALL.back + 0.1 && p[0] > H.x0 && p[0] < H.x1)
       && A.HAUNT.z0 === -22 && A.HAUNT.z1 === -18 && A.HAUNT.y === A.MEZZ.y && A.HAUNT.h === 4 && A.HAUNT.end === 34,
       JSON.stringify({ H, posters: rallyPosters }));
@@ -8029,12 +8029,12 @@ const gameRulesChecks = async () => {
     record("arcade block hall: three racks hold the game's nine weapons, each from its own held model",
       racked.length === 9 && racked.filter(Number.isInteger).every((i, k) => i === k) && racked.includes("hook") && racked.includes("wallet") && H.pictures.length === 4, JSON.stringify(racked));
     // The zipline off the ledge: the survey over the scene's world, ledge to island, is clean and the ride ends on the island's top.
-    const Z = BL.zipline, I = H.island, onIsle = (x, z) => Math.hypot(x - I.x, z - I.z) <= I.r;
-    const q = { support: (x, z) => onIsle(x, z) ? I.y : z >= H.ledge - 0.5 ? H.y : NaN, clear: () => true, landable: (x, y, z) => onIsle(x, z) };
-    const plan = Z.layout("arcade", { x: H.top.x, y: H.y, z: H.top.z }, H.stop.x, H.stop.z, H.sag, { bottomGap: 1, bottomGround: () => I.y }), run = Z.survey(plan.line, plan.grabS, q);
+    const Z = BL.zipline, far = (z) => z <= H.stop.z + 1;
+    const q = { support: (x, z) => far(z) ? H.cloudY : z >= H.ledge - 0.5 ? H.y : NaN, clear: () => true, landable: (x, y, z) => far(z) };
+    const plan = Z.layout("arcade", { x: H.top.x, y: H.y, z: H.top.z }, H.stop.x, H.stop.z, H.sag, { bottomGap: 1, bottomGround: () => H.cloudY }), run = Z.survey(plan.line, plan.grabS, q);
     const arcadeSource = readFileSync(new URL("../src/js/scene-arcade.js", import.meta.url), "utf8");
-    record("arcade block hall: the zipline runs clear from the ledge to the loading island and hands off to Block Frenzy's start",
-      run.ok && onIsle(run.landing.x, run.landing.z) && run.landing.y === I.y && plan.stand.z < H.z0 && plan.stand.z > H.ledge
+    record("arcade block hall: the zipline runs clear from the ledge into the clouds and hands off to Block Frenzy's start before its end",
+      run.ok && H.fade > H.stop.z && H.fade < H.ledge && !A.BLOCK_HALL.island && plan.stand.z < H.z0 && plan.stand.z > H.ledge
       && /open\("block", "zipline"\)/.test(arcadeSource) && arcadeSource.includes('fromBlockHall = ctx.from === "block"'), JSON.stringify({ ok: run.ok, landing: run.landing, blocked: run.blocked }));
     {
       // The handrail slide: Space offers it only at a stair's head, inside the stair beside its hall-side handrail and

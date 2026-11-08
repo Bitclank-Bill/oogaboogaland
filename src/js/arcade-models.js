@@ -77,14 +77,15 @@
     z0: -22, z1: -18, y: MEZZ.y, h: 4, end: 34, torches: [[20.6, -1], [23.8, 1], [27, -1], [30.2, 1], [33.1, -1]],
     arena: { x: 64, z: -20, r: 30, wall: 7, torches: 24 }
   };
-  // Block Frenzy's entry hall, off the deck's back wall: the mouth `x0` to `x1` where the Rally poster hung, a carved
-  // passage to `z0`, then an open-air ledge out to `ledge` with a railing and gate. `island` is the small loading island
-  // the zipline runs down to, its top at `y` (`scene-arcade.js`'s walk and the ride both read this).
-  const BLOCK_HALL = { x: 9.5, x0: 8, x1: 11, y: MEZZ.y, h: 4, z0: -34, ledge: -38, top: { x: 9.5, z: -36.6 }, stop: { x: 9.5, z: -79.5 }, sag: 1.4,
-    torches: [[8, -26.9, 1], [8, -29.87, 1], [11, -27.6, -1], [11, -30.2, -1]],
+  // Block Frenzy's entry hall, off the deck's back wall, as wide and long as the haunted hallway: the mouth `x0` to `x1`
+  // where the Rally poster hung, a carved passage to `z0`, then an open-air ledge out to `ledge` with a railing and gate.
+  // The zipline runs from `top` out into the clouds: its far end (`stop`, over `cloudY`) sits inside a cloud bank, and the
+  // visitor is handed to Block Frenzy at `fade`, before it (`scene-arcade.js`'s walk and the ride both read this).
+  const BLOCK_HALL = { x: 10, x0: 8, x1: 12, y: MEZZ.y, h: 4, z0: -40, ledge: -44, top: { x: 10, z: -42.6 }, stop: { x: 10, z: -85.5 }, sag: 1.4, cloudY: -8, fade: -74,
+    torches: [[8, -27.6, 1], [12, -28.5, -1], [8, -32.2, 1], [12, -33.6, -1], [8, -39.2, 1]],
     // The hall's walls: the four maps, [z, side], and three racks of the game's weapons, each a row [`gun` index, label].
-    pictures: [[-25.8, -1], [-28.9, 1], [-30.9, -1], [-33, -1]],
-    racks: [[-28.4, -1, [[0, "PAINT"], [1, "GRENADE"], [2, "ROCKET"]]], [-25.9, 1, [[3, "NET"], [4, "SNIPER"], [5, "GOLD AKS"]]], [-32, 1, [[6, "OOGA AK"], ["hook", "HOOK"], ["wallet", "WALLET"]]]], island: { x: 9.5, z: -86, y: -8, r: 9 } };
+    pictures: [[-26, -1], [-31, 1], [-34, -1], [-38, 1]],
+    racks: [[-30, -1, [[0, "PAINT"], [1, "GRENADE"], [2, "ROCKET"]]], [-26.4, 1, [[3, "NET"], [4, "SNIPER"], [5, "GOLD AKS"]]], [-37.5, -1, [[6, "OOGA AK"], ["hook", "HOOK"], ["wallet", "WALLET"]]]] };
   // The games with cabinets, as the island names them: scene id, name, the marquee's words and badge, and the
   // colour of its screen's light.
   const GAMES = [
@@ -180,7 +181,7 @@
     // the hall's vine curtains; the zone signs clear the paintings under them. The zones go by the Oogas' own words,
     // each with its earth paint for the handprints.
     posters: [
-      [-9.5, 7.4, HALL.back + 0.1, 0, 2], [12.35, 5, HALL.back + 0.1, 0, 0], [HALL.halfW - 0.1, 3.8, -2.8, -Math.PI / 2, 1],
+      [-9.5, 7.4, HALL.back + 0.1, 0, 2], [13.2, 5, HALL.back + 0.1, 0, 0], [HALL.halfW - 0.1, 3.8, -2.8, -Math.PI / 2, 1],
       [-HALL.halfW + 0.1, 4.6, -9.6, Math.PI / 2, 3], [HALL.halfW - 0.1, 6.2, 0.6, -Math.PI / 2, 2], [-HALL.halfW + 0.1, 6.4, -5.9, Math.PI / 2, 0]
     ],
     zones: [

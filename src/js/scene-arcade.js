@@ -91,8 +91,7 @@
   // (in the arena), the voice zone it reports and the one it is turning to, which half of the hallway it is on, how far
   // along the hallway it stands and how loud the hunt's music and sound play for it (#422).
   // Block Frenzy's zipline off the hall's ledge (`zipline.js`), the frames since its ride ended and the prompt it shows.
-  let bhSky = null, bhIsle = null, zipline = null, zipWas = false, zipDone = 0, promptZip = null;
-  const ZIP_HANDOFF = 0.45;
+  let bhSky = null, zipline = null, promptZip = null;
   let ghostEntry = null, ghosts = null, ghostChannel = null, tess = null, gameMode = false, fence = null, fenceK = 0, totemsAt = [], totemLife = [], lasers = [], armed = false, inArena = false, rifleWas = false;
   let zoneNow = "arcade.hall", zoneHeld = 0, exitButton = null, hallwayFar = false, hallwayAlong = 0, huntHearing = 0;
   let stations = null, blocks = null, carnival = null, staff = null, orders = 0, ticketBoard = null, prizeUi = null;
@@ -237,7 +236,6 @@
     // Block Frenzy's entry hall off the back wall, with its carved sign and orange cube over the mouth, facing the hall.
     const bh = AM.blockHall(), bfSign = BL.hubModels.caveSign("Block Frenzy", "cube", false, true), bb = boundsOf(bfSign), bk = 3 / (bb.max[0] - bb.min[0]);
     addChild(root, createNode({ geometry: bh.rock }), createNode({ geometry: bh.ledge }), createNode({ geometry: bh.props, sightHidden: true }), bhSky = createNode({ geometry: bh.sky, sightHidden: true, visible: false }),
-      bhIsle = createNode({ position: { x: BH.island.x, y: BH.island.y, z: BH.island.z }, geometry: bh.island, sightHidden: true, visible: false }),
       createNode({ position: { x: BH.x, y: BH.y + BH.h + 0.62, z: HALL.back + 0.3 }, scale: { x: bk, y: bk, z: bk }, geometry: bfSign }));
     // The arena's steel doors, shut, each leaf a node of its own.
     const steel = AM.steelDoor();
@@ -914,11 +912,12 @@
       if (!haunted) lightUp();
     }
     hauntLit = haunted;
-    // Out past the mouth the ledge looks over open sky to the loading island, beyond the cave's own short view.
+    // Out past the mouth the ledge looks over open sky and clouds, beyond the cave's own short view and its firelit haze.
     const farOut = !haunted && t.z < HALL.back + 5 && t.x > BH.x0 - 6 && t.x < BH.x1 + 5;
-    if (!haunted && camera.far !== (farOut ? 260 : 60)) camera.far = farOut ? 260 : 60;
-    bhSky.visible = bhIsle.visible = farOut;
-    if (!haunted) { RENDER_OPTS.fogNear = farOut ? 140 : 20; RENDER_OPTS.fogFar = farOut ? 420 : 42; RENDER_OPTS.bloomStrength = t.z < HALL.back - 2 && farOut ? 0.3 : 1.15; }
+    if (!haunted && camera.far !== (farOut ? 320 : 60)) camera.far = farOut ? 320 : 60;
+    bhSky.visible = farOut;
+    if (!haunted) RENDER_OPTS.clear = farOut ? BLOCK_SKY_CLEAR : CAVE_CLEAR;
+    if (!haunted) { RENDER_OPTS.fogNear = farOut ? 400 : 20; RENDER_OPTS.fogFar = farOut ? 900 : 42; RENDER_OPTS.bloomStrength = t.z < HALL.back - 2 && farOut ? 0.3 : 1.15; }
     if (haunted) {
       for (const key in NIGHT_TONES) for (let i = 0; i < 3; i++) TONES[key][i] = NIGHT_TONES[key][i];
       RENDER_OPTS.directStrength = CAVE.directStrength; RENDER_OPTS.ambientFloor = CAVE.ambientFloor;
@@ -1114,11 +1113,9 @@
   // The floors a walker stands on, the highest within a step of its feet: the cave floor, the stage's two rings, the
   // mezzanine's deck and the stair up to it (a ramp, running a little on past both ends), and the haunted hallway's
   // and the arena's floor, level with the deck. Allocation-free.
-  const onBlockIsle = (x, z) => Math.hypot(x - BH.island.x, z - BH.island.z) <= BH.island.r;
   const STEP = 0.6, STAIRS = MEZZ.stairs.map(([x, foot, , head]) => ({ x0: x - MEZZ.stairW / 2, x1: x + MEZZ.stairW / 2, foot, head, run: foot - head }));
   const supportAt = (x, z, feet) => {
     const reach = feet + STEP;
-    if (onBlockIsle(x, z)) return BH.island.y;
     if (x > BH.x0 - 0.5 && x < BH.x1 + 0.5 && z < HALL.back + 0.5 && z > BH.ledge - 0.5 && BH.y <= reach) return BH.y;
     let best = 0;
     const d = Math.hypot(x - STAGE.x, z - STAGE.z);
@@ -1241,20 +1238,22 @@
     const [x, y, z] = PARAMS.get("pos").split(",").map(Number), yaw = Number((PARAMS.get("body") || "").split(",")[1]) || 0;
     return { x, z, facing: yaw, deck: y >= MEZZ.y - 0.5 };
   };
-  const PROMPT_STALE = {}, PROMPT_ZIP = {};
-  // Block Frenzy's line: the survey's world is only the ledge, the open sky over the drop and the island's top.
+  const PROMPT_STALE = {}, PROMPT_ZIP = {}, BLOCK_SKY_CLEAR = [0.45, 0.68, 0.92], CAVE_CLEAR = RENDER_OPTS.clear;
+  // Block Frenzy's line: the survey's world is only the ledge and open sky. Its far end is inside the clouds, a floor the
+  // survey needs and no Ooga reaches: the visitor is handed on at `BH.fade`, before it.
   const zipQueries = {
-    support: (x, z, y) => onBlockIsle(x, z) ? BH.island.y : z >= BH.ledge - 0.5 && z <= HALL.back ? supportAt(x, z, y) : NaN,
+    support: (x, z, y) => z <= BH.stop.z + 1 ? BH.cloudY : z >= BH.ledge - 0.5 && z <= HALL.back ? supportAt(x, z, y) : NaN,
     clear: () => true,
-    landable: (x, y, z) => onBlockIsle(x, z)
+    landable: (x, y, z) => z <= BH.stop.z + 1
   };
   const buildZipline = (shared) => {
-    const plan = BL.zipline.layout("arcade", { x: BH.top.x, y: BH.y, z: BH.top.z }, BH.stop.x, BH.stop.z, BH.sag, { bottomGap: 1, bottomGround: () => BH.island.y });
+    const plan = BL.zipline.layout("arcade", { x: BH.top.x, y: BH.y, z: BH.top.z }, BH.stop.x, BH.stop.z, BH.sag, { bottomGap: 1, bottomGround: () => BH.cloudY });
     zipline = BL.zipline.create({ root, plan, crew: people, calm: REDUCED_MOTION, landYaw: Math.PI });
     blocks.push([BH.x - 0.12, BH.x + 0.12, plan.top.z - 0.1, plan.top.z + 0.3, BH.y - 0.5, BH.y + 3.3]);
     if (!zipline.survey(zipQueries)) { zipline.dispose(); zipline = null; return; }
+    zipline.bottom.visible = false;
     shared.residentPose = zipline.pose;
-    zipWas = false; zipDone = 0; promptZip = null;
+    promptZip = null;
   };
   const useNear = (x, z, reach) => {
     if (zipline && pilot.player) {
@@ -1875,7 +1874,7 @@
       p.y = clamp(p.y, HAUNT.y + pad, HAUNT.y + HAUNT.h - pad);
       p.z = clamp(p.z, HAUNT.z0 + pad, HAUNT.z1 - pad);
     };
-    // On Block Frenzy's line or island nothing holds the view; in its hall it keeps inside the passage and out on the ledge.
+    // On Block Frenzy's line nothing holds the view; in its hall it keeps inside the passage and out on the ledge.
     const inBlockHall = () => avatar && (avatar.root.position.z < HALL.back + 0.8 && avatar.root.position.x > BH.x0 - 0.8 && avatar.root.position.x < BH.x1 + 0.8);
     const clampTarget = (p) => {
       if (inBlockHall()) {
@@ -2241,13 +2240,8 @@
     } else if (cabinetHidden.size) revealCabinetPlayers();
     ambience(dt);
     audio.tick(dt);
-    // The ride over, its Ooga stands on the loading island: a beat, then on to Block Frenzy's start menu.
-    if (zipline && !leaving) {
-      const on = !!avatar && zipline.riding === avatar;
-      if (zipWas && !on && avatar && onBlockIsle(avatar.root.position.x, avatar.root.position.z)) zipDone = ZIP_HANDOFF;
-      zipWas = on;
-      if (zipDone > 0 && (zipDone -= dt) <= 0) { open("block", "zipline"); if (!leaving) zipDone = ZIP_HANDOFF; }
-    }
+    // Into the clouds: the fade to Block Frenzy's start menu.
+    if (zipline && !leaving && avatar && avatar.root.position.z < BH.fade) open("block", "zipline");
     if (pilot.player && !leaving) {
       const p = avatar.root.position, near = nearStation(p.x, p.z, INVITE, true);
       const cabinetId = near?.kind === "cabinet" ? GAMES[near.game].id : near?.kind === "retro" ? near.id : null;
@@ -2260,7 +2254,7 @@
       if (zipAct) {
         if (prompt !== PROMPT_ZIP) {
           prompt = PROMPT_ZIP;
-          hud.hint(zipAct === zipline.GRAB ? (COARSE ? "Tap ZIP! to zipline to Block Frenzy" : "Space: zipline to Block Frenzy") : zipline.hint(zipAct, COARSE, ""));
+          hud.hint(zipAct === zipline.GRAB ? (COARSE ? "Tap ZIP! to zipline to Block Frenzy" : "Space: zipline to Block Frenzy") : "Hold on · into the clouds");
           hud.setAct(zipline.label(zipAct));
         }
       } else if (near !== prompt || occupied !== promptOccupied || rail !== promptRail) {
@@ -2296,7 +2290,7 @@
 
   const leave = () => {
     if (zipline) { zipline.dispose(); zipline = null; }
-    zipWas = false; zipDone = 0; promptZip = null;
+    promptZip = null;
     captureOnArrival = false;
     revealCabinetPlayers();
     openingRequest++;

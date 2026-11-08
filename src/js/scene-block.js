@@ -1921,6 +1921,17 @@
   // turning slowly all the way round (a drag turns it faster); on a narrow one the board fills the screen and the
   // view circles the fort.
   const preview = { spin: 0, wide: false };
+  // The start menu's sky: the hub's voxel clouds drifting round the view, high over the map.
+  const CLOUD_Y = 220, CLOUD_SPAN = 170, CLOUD_DRIFT = 2.2, CLOUD_CALM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let skyClouds = [];
+  const buildSkyClouds = () => {
+    const rand = BL.math.mulberry32(8801);
+    skyClouds = [];
+    for (let i = 0; i < 18; i++) {
+      const a = i * 2.4, r = 30 + i * 8, k = 2 + rand() * 3;
+      skyClouds.push(place(createNode({ geometry: BL.hubModels.cloud(i % 3), position: { x: Math.cos(a) * r, y: CLOUD_Y - 34 + rand() * 62, z: Math.sin(a) * r }, scale: { x: k, y: k, z: k }, sightHidden: true, visible: false })));
+    }
+  };
   const PREVIEW_MIN_W = 760;
   const boardView = (elapsed, dt) => {
     const t = selection.team, s = SIM.ARENA.stands[t], sign = t === "blue" ? 1 : -1;
@@ -1934,29 +1945,35 @@
       home.append(el.oogaPick);
       el.oogaHead.hidden = preview.wide;
     }
+    // Up in the clouds, far above the map, whose island lies below the view.
     if (!preview.wide) {
       const a = elapsed * 0.12;
-      setVec(camera.position, s.x + Math.sin(a) * 16, 11, s.z * 0.55 + Math.cos(a) * 16);
-      setVec(camera.target, s.x, 1, s.z * 0.8);
+      setVec(camera.position, Math.sin(a) * 16, CLOUD_Y + 4, Math.cos(a) * 16);
+      setVec(camera.target, 0, CLOUD_Y + 5, 0);
       return;
     }
-    // The visitor's Ooga on its showcase spot, a step inside the gate, turning.
-    const show = SIM.ARENA.showcase ? SIM.ARENA.showcase[t] : null;
-    const me = sim.actors[0], x = show ? show.x : s.x, z = show ? show.z : s.z - sign * 2.5;
+    // The visitor's Ooga under its parachute in the middle of the sky, turning.
+    const me = sim.actors[0], x = 0, z = 0;
     preview.spin = wrap(preview.spin + dt * 0.7);
-    me.x = x; me.z = z; me.y = 0; me.grounded = true; me.moving = 0;
+    me.x = x; me.z = z; me.y = CLOUD_Y; me.grounded = false; me.flight = 2; me.moving = 0;
     me.carrying = null; me.holding = false; me.splat = me.trapped = me.burnt = me.slip = 0;
     me.heading = preview.spin;
     // The camera out past the gate at chest height, looking a little to the Ooga's left so it stands right of the board.
-    setVec(camera.position, x, 1.45, z - sign * 3.7);
-    setVec(camera.target, x + sign * 1.25, 1.0, z);
+    setVec(camera.position, x, CLOUD_Y + 1.45, z - sign * 3.7);
+    setVec(camera.target, x + sign * 1.25, CLOUD_Y + 1.0, z);
   };
 
   const update = (dt, elapsed) => {
     sceneTime = elapsed;
+    for (let i = 0; i < skyClouds.length; i++) {
+      const n = skyClouds[i];
+      n.visible = phase === "board";
+      if (n.visible && !CLOUD_CALM && (n.position.x += dt * CLOUD_DRIFT) > CLOUD_SPAN) n.position.x -= 2 * CLOUD_SPAN;
+    }
     // Each map's own time of day; Haunted Hollow is night and keeps its stars.
     const mapHour = MAP_HOUR[SIM.ARENA.id];
-    daylight.sample(mapHour, RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
+    // The start menu is up in the clouds at noon, whatever the map's own hour.
+    daylight.sample(phase === "board" ? 12 : mapHour, RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
     RENDER_OPTS.time = elapsed;
     if (phase === "play" && paused) controls.read();
     else if (phase === "play") {
@@ -2496,6 +2513,7 @@
     splatNext = 0;
     sim = SIM.create({ team: selection.team, seed: 1, size: selection.size, skill: selection.skill, target: selection.target, map: selection.map });
     buildMap();
+    buildSkyClouds();
     buildActors(castNames());
     for (let i = 0; i < actors.length; i++) sim.actors[i].name = actors[i].name;
     paintTeams();
@@ -2670,6 +2688,7 @@
     input.dispose();
     hud.dispose();
     phase = "board";
+    skyClouds = [];
     sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = trampNodes = powerNodes = result = null;
     mapRoot = fireNode = dancers = peelNodes = catapults = null;
     catNear = false;
