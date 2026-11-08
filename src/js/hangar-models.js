@@ -1077,7 +1077,7 @@
       { label: "CAM 1 · TUNNEL", at: [0.03, 0.18], eye: [2.5, 8.5, -22], look: [0, 4.6, -46] },
       { label: "CAM 2 · JET", at: [0.515, 0.18], eye: [5.5, 6.8, -25], look: [15, 2.4, -9] },
       { label: "CAM 3 · RUNWAY", at: [0.03, 0.58], eye: [-3, 11, 26.5], look: [2, 1.5, -6] },
-      { label: "CAM 4 · CREW", at: [0.515, 0.58], eye: [-3.5, 6.5, 21], look: [-11.5, 0.8, 8] }] }, status: { x: -12.4, y: 2.9, w: 3.4, h: 1.45 },
+      { label: "CAM 4 · CREW", at: [0.515, 0.58], eye: [-3.5, 6.5, 21], look: [-11.5, 0.8, 8] }] }, status: { x: -12.8, y: 2.7, w: 4.8, h: 1.9 },
     cabinet: [-16.5, 2.2], desk: [-11.3, 35.1, 2.2, 0.9], planter: [-6.5, 36.2],
     skylights: [[-15, 31.1], [-9.5, 31.1], [-15, 34.5], [-9.5, 34.5]], vents: [[-12.25, 31.1], [-12.25, 34.5]],
     lamps: [[-15, 3.7, 31.2, 7], [-10.5, 3.7, 31.2, 7], [-12, 3.7, 34.8, 6]], decal: [-12.9, 33] };
@@ -1657,7 +1657,7 @@
       glow.push(box({ w: st.w + 0.12, h: 0.04, d: 0.02, color: "#3fa9ff", emissive: 1, offset: { x: st.x, y: st.y + sd * (st.h / 2 + 0.05), z: back - 0.09 } }));
       glow.push(box({ w: 0.04, h: st.h + 0.14, d: 0.02, color: "#3fa9ff", emissive: 1, offset: { x: st.x + sd * (st.w / 2 + 0.05), y: st.y, z: back - 0.09 } }));
     }
-    pictures.push({ geometry: screenPicture(st.w, st.h, 256, paintCommandStatus), x: st.x, y: st.y, z: back - 0.09, turn: Math.PI });
+    pictures.push({ geometry: screenPicture(st.w, st.h, 200, paintCommandStatus, 0.85), x: st.x, y: st.y, z: back - 0.09, turn: Math.PI });
     // Along the back wall under the board's end, a drawer cabinet as the console's, with a plant, a lantern and a row of
     // binders on it; orange pipes along the top of the wall, in yellow brackets.
     const [cbx, cbw] = K.cabinet, cbz = back - 0.32, ct = 0.9;
