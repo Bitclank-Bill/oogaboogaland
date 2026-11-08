@@ -160,32 +160,32 @@
     <header class="topbar">
       <div class="brand">
         <h1><a class="home-link" href="./" title="Back to the island"><span data-sign>Ooga Booga Land</span></a></h1>
-        <p data-scene="hub" id="subtitle">an island of caves</p>
-        <p data-scene="dsb" hidden>DSB LAND</p>
-        <p data-scene="poker" hidden>EMBER DEN</p>
-        <p data-scene="lab" hidden>EntropyLab cave</p>
-        <p data-scene="factory" hidden>Lightning Factory</p>
-        <p data-scene="hangar" hidden>Lightning Jet Hangar</p>
-        <p data-scene="bifrost" hidden>₿IFRÖST</p>
+        <p data-scene="hub" id="subtitle" data-zone-line>The Island of Caves</p>
+        <p data-scene="dsb" data-zone-line hidden>DSB LAND</p>
+        <p data-scene="poker" data-zone-line hidden>EMBER DEN</p>
+        <p data-scene="lab" data-zone-line hidden>EntropyLab cave</p>
+        <p data-scene="factory" data-zone-line hidden>Lightning Factory</p>
+        <p data-scene="hangar" data-zone-line hidden>Lightning Jet Hangar</p>
+        <p data-scene="bifrost" data-zone-line hidden>₿IFRÖST</p>
         <p data-scene="timechain" id="sphere-subtitle" hidden>Timechain Sphere</p>
-        <p data-scene="arcade" hidden>Ooga Arcade</p>
-        <p data-scene="skee" hidden>Ooga Arcade · Thro-ball</p>
-        <p data-scene="hoops" hidden>Ooga Arcade · Hoop Shot</p>
-        <p data-scene="shy" hidden>Ooga Arcade · Coconut Toss</p>
-        <p data-scene="claw" hidden>Ooga Arcade · Claw Machine</p>
-        <p data-scene="hockey" hidden>Ooga Arcade · Air Hockey</p>
-        <p data-scene="billiards" hidden>Ooga Arcade · Pool</p>
-        <p data-scene="darts" hidden>Ooga Arcade · Darts</p>
-        <p data-scene="pinball" hidden>Ooga Arcade · Pinball</p>
-        <p data-scene="ride" hidden>Ooga Arcade · Beast Ride</p>
-        <p data-scene="invaders" hidden>Ooga Arcade · Coconut Invaders</p>
-        <p data-scene="snake" hidden>Ooga Arcade · Banana Snake</p>
-        <p data-scene="pong" hidden>Ooga Arcade · Ooga Pong</p>
-        <p data-scene="stampede" hidden>Ooga Arcade · Mammoth Stampede</p>
-        <p data-scene="flap" hidden>Ooga Arcade · Ptero Flap</p>
-        <p data-scene="breaker" hidden>Ooga Arcade · Rock Breaker</p>
-        <p data-scene="dash" hidden>Ooga Arcade · Dino Dash</p>
-        <p data-scene="stacker" hidden>Ooga Arcade · Stone Stacker</p>
+        <p data-scene="arcade" data-zone-line hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr></p>
+        <p data-scene="skee" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Thro-ball</p>
+        <p data-scene="hoops" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Hoop Shot</p>
+        <p data-scene="shy" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Coconut Toss</p>
+        <p data-scene="claw" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Claw Machine</p>
+        <p data-scene="hockey" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Air Hockey</p>
+        <p data-scene="billiards" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Pool</p>
+        <p data-scene="darts" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Darts</p>
+        <p data-scene="pinball" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Pinball</p>
+        <p data-scene="ride" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Beast Ride</p>
+        <p data-scene="invaders" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Coconut Invaders</p>
+        <p data-scene="snake" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Banana Snake</p>
+        <p data-scene="pong" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Ooga Pong</p>
+        <p data-scene="stampede" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Mammoth Stampede</p>
+        <p data-scene="flap" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Ptero Flap</p>
+        <p data-scene="breaker" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Rock Breaker</p>
+        <p data-scene="dash" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Dino Dash</p>
+        <p data-scene="stacker" hidden><abbr class="arcade-banner-name" title="Ooga Arcade"><span>Ooga Arcade</span></abbr> · Stone Stacker</p>
       </div>
       <time class="world-clock" id="world-clock"></time>
       <div class="world-block" id="world-block" aria-live="polite" aria-label="Bitcoin block height unavailable">
@@ -362,35 +362,32 @@
         <button type="button" class="sheet-toggle sheet-toggle-bananas" id="sheet-bananas" role="tab"
           data-tab="bananas" aria-selected="false" aria-controls="bananas-panel" aria-label="Bananas and top donors">
           <span class="sheet-tab-face">
-          <svg class="banana-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
-            <path fill="#211b14" d="M0 0h1v5H0zM2 0h1v2H2zM3 2h1v2H3zM4 4h1v1H4zM1 5h1v2H1zM5 5h1v1H5zM6 6h1v1H6zM2 7h2v1H2zM7 7h1v1H7zM4 8h4v1H4z" />
-            <path fill="#ffd84a" d="M1 2h2v2H1zM1 4h3v1H1zM2 5h3v1H2zM2 6h4v1H2zM4 7h3v1H4z" />
-            <path fill="#789a3b" d="M1 0h1v2H1z" />
+          <svg class="banana-icon" viewBox="-0.5 0 9 10" shape-rendering="crispEdges" aria-hidden="true">
+            <path fill="#2b1b10" d="M0 0h3v1H0zM0 1h1v1H0zM2 1h1v1H2zM0 2h1v1H0zM2 2h2v1H2zM0 3h1v1H0zM3 3h1v1H3zM0 4h1v1H0zM3 4h2v1H3zM0 5h1v1H0zM4 5h2v1H4zM0 6h2v1H0zM5 6h2v1H5zM1 7h1v1H1zM6 7h2v1H6zM1 8h3v1H1zM7 8h1v1H7zM3 9h5v1H3z" />
+            <path fill="#ffd84a" d="M1 3h2v2H1zM1 5h3v1H1zM2 6h3v1H2zM2 7h4v1H2zM4 8h3v1H4z" />
+            <path fill="#789a3b" d="M1 1h1v2H1z" />
           </svg>
           </span>
         </button>
         <button type="button" class="sheet-toggle" id="sheet-toggle" role="tab" data-tab="roster"
           aria-selected="true" aria-controls="roster-panel" aria-label="Contributing Oogas">
           <span class="sheet-tab-face">
-          <svg class="caveman-icon" viewBox="0 0 7 9" shape-rendering="crispEdges" aria-hidden="true">
-            <path fill="#2b1b10" d="M1 0h5v1H1zM0 1h7v2H0zM0 3h1v2H0zM6 3h1v2H6z" />
-            <path fill="#c98a5b" d="M1 3h5v3H1zM2 6h3v1H2z" />
-            <path fill="#141414" d="M2 3h1v1H2zM4 3h1v1H4z" />
-            <path fill="#4a2c14" d="M1 6h1v1H1zM5 6h1v1H5zM1 7h5v1H1zM2 8h3v1H2z" />
-            <path fill="#f2efe4" d="M1 8h1v1H1zM5 8h1v1H5z" />
+          <svg class="caveman-icon" viewBox="0 0 9 10" shape-rendering="crispEdges" aria-hidden="true">
+            <path fill="#2b1b10" d="M0 0h9v1H0zM0 1h1v6H0zM8 1h1v6H8zM0 7h2v1H0zM7 7h2v1H7zM1 8h1v1H1zM7 8h1v1H7zM1 9h7v1H1z" />
+            <path fill="#d9a06b" d="M1 1h7v1H1z" />
+            <path fill="#151312" d="M1 2h7v1H1zM1 5h7v1H1zM1 6h1v1H1zM3 6h3v1H3zM7 6h1v1H7zM2 7h5v2H2z" />
+            <path fill="#ffbd7e" d="M3 3h3v2H3z" />
+            <path fill="#f2efe4" d="M1 3h2v1H1zM6 3h2v1H6zM1 4h1v1H1zM7 4h1v1H7zM2 6h1v1H2zM6 6h1v1H6z" />
+            <path fill="#141414" d="M2 4h1v1H2zM6 4h1v1H6z" />
           </svg>
           </span>
         </button>
         <button type="button" class="sheet-toggle sheet-toggle-players" role="tab" data-tab="players"
           aria-selected="false" id="players-tab" aria-controls="players-panel" aria-label="Online Oogas" hidden>
           <span class="sheet-tab-face">
-          <svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
-            <path fill="#2b1b10" d="M5 0h3v1H5zM4 4h5v3H4z" />
-            <path fill="#c98a5b" d="M5 1h3v2H5zM1 3h3v2H1z" />
-            <path fill="#2b1b10" d="M1 2h3v1H1z" />
-            <path fill="#141414" d="M5 1h1v1H5zM7 1h1v1H7zM1 3h1v1H1zM3 3h1v1H3z" />
-            <path fill="#4a2c14" d="M0 6h5v3H0z" />
-            <path fill="#22c55e" d="M8 7h1v2H8z" />
+          <svg viewBox="0 0 9 9" aria-hidden="true">
+            <circle cx="4.5" cy="4.5" r="3.5" fill="#2b1b10" />
+            <circle cx="4.5" cy="4.5" r="2.5" fill="#22c55e" />
           </svg><span class="tab-count" hidden></span>
           </span>
         </button>
@@ -426,21 +423,41 @@
         </header>
         <ul id="roster" class="roster slab" aria-label="Contributing Oogas"></ul>
         <p class="help roster-hint" data-scene="hub"><span id="world-loot-hint" hidden>Something is hidden out there.</span></p>
+        <div class="account" id="account" hidden>
+          <button type="button" class="panel-primary" data-action="account-login" id="account-login" aria-label="Contributor sign-in with GitHub" title="Contributors can sign in with GitHub to control their own Ooga and gorilla."><span data-sign>Contributor sign-in</span></button>
+          <span class="account-who">
+            <span class="account-name" id="account-name" hidden></span>
+            <span class="account-room" id="account-room" hidden></span>
+          </span>
+          <span class="account-actions">
+            <button type="button" class="foot-button foot-primary" data-action="account-rejoin" id="account-rejoin" hidden>Play here</button>
+            <button type="button" class="foot-button" data-action="account-voice" id="account-voice" aria-pressed="false" hidden>Join voice</button>
+            <button type="button" class="foot-button" data-action="account-voice-leave" id="account-voice-leave" hidden>Leave voice</button>
+            <button type="button" class="link" data-action="account-logout" id="account-logout" hidden>Sign out</button>
+          </span>
+        </div>
       </section>
       <section class="panel" data-panel="players" id="players-panel" role="tabpanel" aria-labelledby="players-tab" hidden>
         <header class="panel-title">
           <h2><span data-sign>Online Oogas</span></h2>
           <span class="panel-chip" id="players-count" data-tone="idle">Offline</span>
         </header>
-        <div class="players-hearing" id="players-hearing" hidden>
-          <label class="players-hearing-label" for="players-hearing-range">Hearing range</label>
-          <input type="range" id="players-hearing-range" min="5" max="65" step="5" value="65" aria-describedby="players-hearing-help" aria-valuetext="No limit">
-          <output class="players-hearing-value" id="players-hearing-value" for="players-hearing-range">No limit</output>
-          <span class="players-hearing-help" id="players-hearing-help">Far voices fade, for you alone</span>
-        </div>
-        <label class="players-speak" id="players-speak" hidden><input type="checkbox" id="players-speak-input"> Read joins aloud</label>
+        <details class="players-settings" id="players-settings">
+          <summary>Advanced settings</summary>
+          <div class="players-settings-content">
+            <div class="players-hearing" id="players-hearing">
+              <label class="players-hearing-label" for="players-hearing-range">Hearing range</label>
+              <input type="range" id="players-hearing-range" min="1" max="61" step="1" value="61" aria-describedby="players-hearing-help" aria-valuetext="No limit">
+              <output class="players-hearing-value" id="players-hearing-value" for="players-hearing-range">No limit</output>
+              <span class="players-hearing-help" id="players-hearing-help">Voices at or beyond this range are muted for you</span>
+            </div>
+            <label class="players-speak" id="players-speak" hidden><input type="checkbox" id="players-speak-input"> Read joins aloud</label>
+          </div>
+        </details>
         <div class="players slab" id="players-list"></div>
+        <div class="reactions" id="players-reactions" hidden></div>
         <p class="help players-status" id="players-status" hidden></p>
+        <div data-account-copy="players"></div>
       </section>
       <section class="panel" data-panel="bananas" id="bananas-panel" role="tabpanel" aria-labelledby="sheet-bananas" hidden>
         <header class="panel-title">
@@ -450,29 +467,23 @@
         <div class="slab banana-slab">
           <section class="banana-total" aria-label="Current banana value of all sats donated">
             <div class="banana-hero">
-              <svg class="banana-hero-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+              <span class="banana-hero-label">Bananas current value</span>
+              <p class="banana-hero-value"><svg class="banana-hero-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
                 <g id="banana-panel-glyph">
                   <path fill="#211b14" d="M0 0h1v5H0zM2 0h1v2H2zM3 2h1v2H3zM4 4h1v1H4zM1 5h1v2H1zM5 5h1v1H5zM6 6h1v1H6zM2 7h2v1H2zM7 7h1v1H7zM4 8h4v1H4z" />
                   <path fill="#ffd84a" d="M1 2h2v2H1zM1 4h3v1H1zM2 5h3v1H2zM2 6h4v1H2zM4 7h3v1H4z" />
                   <path fill="#789a3b" d="M1 0h1v2H1z" />
                 </g>
-              </svg>
-              <strong id="banana-total" title="All donated sats valued at the current BTCUSD price; 1 banana = $1">—</strong>
-              <span class="banana-hero-label">bananas · current value</span>
+              </svg><strong id="banana-total" title="All donated sats valued at the current BTCUSD price; 1 banana = $1">—</strong></p>
             </div>
             <dl class="banana-totals">
               <div><dt>Donations</dt><dd id="stat-donations">0</dd></div>
               <div><dt>Sats donated</dt><dd id="stat-sats">0</dd></div>
             </dl>
-            <dl class="banana-rates" aria-label="Current Bitcoin and banana exchange rates">
-              <dt class="banana-rate-label" id="banana-rate-label" data-tone="wait">BTCUSD</dt>
-              <dd id="banana-btc-price">—</dd>
-              <dt class="banana-rate-label">1 banana = $1</dt>
-              <dd class="banana-exchange">
-                <svg class="banana-exchange-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" role="img" aria-label="Banana"><use href="#banana-panel-glyph" /></svg>
-                <span>1</span><span id="banana-exchange">— sats</span>
-              </dd>
-            </dl>
+            <div class="banana-rates" role="group" aria-label="Current Bitcoin and banana exchange rates">
+              <p class="banana-rate"><svg class="banana-rate-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" role="img" aria-label="Banana"><use href="#banana-panel-glyph" /></svg>1 = $1 <span id="banana-exchange">— sats</span></p>
+              <p class="banana-rate" id="banana-btc-rate" data-tone="wait"><span id="banana-btc-sats">100,000,000</span> sats = <svg class="banana-rate-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" role="img" aria-label="bananas"><use href="#banana-panel-glyph" /></svg><span id="banana-btc-price">—</span></p>
+            </div>
           </section>
           <section class="banana-board" aria-labelledby="banana-board-title">
             <div class="banana-board-head">
@@ -494,6 +505,7 @@
           </section>
           <p class="banana-board-note" id="banana-board-note">Demo donations saved in this browser.</p>
         </div>
+        <button type="button" class="panel-primary feed-open" data-action="feed"><span data-sign>Feed the Oogas</span></button>
       </section>
       <section class="panel" data-panel="loot" id="loot-panel" role="tabpanel" aria-labelledby="loot-tab" hidden>
         <header class="panel-title">
@@ -506,19 +518,59 @@
       <section class="panel" data-panel="chat" id="chat-panel" role="tabpanel" aria-labelledby="chat-tab" hidden>
         <header class="panel-title">
           <h2><span data-sign>Ooga Chat</span></h2>
+          <details class="chat-about">
+            <summary aria-label="About Ooga Chat" title="About Ooga Chat">?</summary>
+            <p class="chat-retention">Shared while the room is awake. Your page keeps up to 100 lines until reload or sign-out. No chat database.</p>
+          </details>
           <span class="panel-chip" id="chat-room" data-tone="idle">Offline</span>
         </header>
-        <details class="chat-about">
-          <summary aria-label="About Ooga Chat" title="About Ooga Chat">?</summary>
-          <p class="chat-retention">Shared while the room is awake. Your page keeps up to 100 lines until reload or sign-out. No chat database.</p>
-        </details>
+        <div class="pm-switch" id="pm-switch" role="group" aria-label="Which conversation" hidden>
+          <button type="button" class="pm-switch-button" data-pm-view="island" aria-pressed="true">Island</button>
+          <button type="button" class="pm-switch-button" data-pm-view="private" aria-pressed="false"><svg class="pm-lock" viewBox="0 0 7 9" shape-rendering="crispEdges" aria-hidden="true"><path class="pm-shackle" fill="currentColor" d="M2 0h3v1H2zM1 1h1v1H1zM5 1h1v3H5z" /><path fill="currentColor" d="M0 4h7v5H0z" /><path fill="#2b1b10" d="M3 5h1v2H3z" /></svg><span id="pm-switch-name">Private</span><span class="tab-count pm-count" id="pm-count" hidden></span></button>
+        </div>
+        <section class="pm" id="pm" aria-labelledby="pm-title">
+          <div class="pm-head">
+            <p class="pm-title"><svg class="pm-lock" viewBox="0 0 7 9" shape-rendering="crispEdges" aria-hidden="true"><path class="pm-shackle" fill="currentColor" d="M2 0h3v1H2zM1 1h1v1H1zM5 1h1v3H5z" /><path fill="currentColor" d="M0 4h7v5H0z" /><path fill="#2b1b10" d="M3 5h1v2H3z" /></svg><span id="pm-title">Private</span></p>
+            <button type="button" class="pm-button pm-quiet pm-end" id="pm-end" hidden>End</button>
+          </div>
+          <p class="help pm-note" id="pm-note" role="status" aria-live="polite"></p>
+          <div class="pm-actions" id="pm-answer" hidden>
+            <button type="button" class="pm-button" id="pm-accept">Accept</button>
+            <button type="button" class="pm-button" id="pm-decline">Decline</button>
+            <button type="button" class="pm-button pm-quiet" id="pm-block">Block</button>
+          </div>
+          <div class="pm-actions" id="pm-pad" hidden>
+            <label class="pm-button pm-file">Load pad file<input type="file" id="pm-file" accept=".oogapad,application/octet-stream"></label>
+            <span class="pm-make">
+              <select id="pm-size" aria-label="Pad size">
+                <option value="262144">256 KB</option>
+                <option value="1048576" selected>1 MB</option>
+                <option value="16777216">16 MB</option>
+              </select>
+              <button type="button" class="pm-button" id="pm-make">Make a pad</button>
+            </span>
+          </div>
+          <div class="pm-actions" id="pm-confirm" hidden>
+            <button type="button" class="pm-button" id="pm-fresh">It's new: use it</button>
+            <button type="button" class="pm-button pm-quiet" id="pm-other">Choose another file</button>
+          </div>
+          <p class="pm-print" id="pm-print-line" title="A digest of the whole pad file: the same digits on both sides mean the same file. Compare them outside Ooga." hidden>Check with <span id="pm-print-peer"></span>: <code id="pm-print"></code></p>
+          <ol class="chat-log slab pm-log" id="pm-log" role="log" aria-live="polite" aria-label="Private conversation" tabindex="0"></ol>
+          <p class="help pm-budget" id="pm-budget"></p>
+          <form class="chat-form pm-form" id="pm-form" autocomplete="off">
+            <span class="chat-field">
+              <input type="text" id="pm-input" aria-label="Say something privately" aria-describedby="pm-left pm-budget" maxlength="320" enterkeyhint="send" spellcheck="false" autocorrect="off" autocapitalize="sentences" disabled>
+              <span class="chat-left" id="pm-left" title="Characters left">160</span>
+            </span>
+            <button type="submit" class="chat-send" id="pm-send" disabled>Send</button>
+          </form>
+        </section>
         <div class="chat-identity" id="chat-identity" hidden>
           <form class="chat-display-form" id="chat-display-form" autocomplete="off">
             <label for="chat-display">Name</label>
-            <input id="chat-display" type="text" minlength="3" maxlength="24" aria-describedby="chat-display-status chat-account-login">
+            <input id="chat-display" type="text" minlength="3" maxlength="24" aria-describedby="chat-display-status">
             <button type="submit" class="chat-display-save" id="chat-display-save">Save</button>
           </form>
-          <span class="chat-account" title="Your GitHub account">signed in as <strong id="chat-account-login"></strong></span>
           <p class="chat-display-status" id="chat-display-status" role="status" aria-live="polite"></p>
         </div>
         <ol class="chat-log slab" id="chat-log" role="log" aria-live="off" aria-label="Island chat" tabindex="0"></ol>
@@ -531,30 +583,22 @@
           </span>
           <button type="submit" class="chat-send" id="chat-send" disabled>Send</button>
         </form>
+        <div class="reactions" id="chat-reactions" hidden></div>
+        <div data-account-copy="chat"></div>
       </section>
       </div>
-      <footer class="sheet-foot">
-        <button type="button" class="feed-open" data-action="feed"><span data-sign>Feed the Ooga Boogas</span></button>
-        <span class="account" id="account" hidden>
-          <span class="account-who">
-            <span class="account-name" id="account-name" hidden></span>
-          </span>
-          <span class="account-actions">
-            <button type="button" class="foot-button foot-primary" data-action="account-login" id="account-login" aria-label="Contributor sign-in with GitHub" title="Contributors can sign in with GitHub to control their own Ooga and gorilla.">Contributor sign-in</button>
-            <button type="button" class="foot-button foot-primary" data-action="account-rejoin" id="account-rejoin" hidden>Play here</button>
-            <button type="button" class="foot-button" data-action="account-voice" id="account-voice" aria-pressed="false" hidden>Join voice</button>
-            <button type="button" class="foot-button" data-action="account-voice-leave" id="account-voice-leave" hidden>Leave voice</button>
-            <button type="button" class="link" data-action="account-logout" id="account-logout" hidden>Sign out</button>
-          </span>
-        </span>
-        <span class="sheet-foot-meta">
-          <span class="account-room" id="account-room" hidden></span>
-          <span class="quality" id="quality" aria-live="polite"></span>
-          <button type="button" class="link" data-action="reset">Reset demo</button>
-        </span>
-      </footer>
       </div>
     </aside>
+
+    <template id="sheet-notifications">
+      <div class="sheet-notifications" hidden>
+        <button type="button" class="sheet-bell" aria-label="Notifications" title="Notifications" aria-expanded="false">
+          <svg viewBox="0 0.25 16 16" aria-hidden="true" focusable="false"><path d="M3 11h10l-1.5-2V6a3.5 3.5 0 0 0-7 0v3L3 11Zm3.5 2a1.6 1.6 0 0 0 3 0" fill="none" stroke="currentColor" stroke-linejoin="round"/></svg>
+          <span class="tab-count" aria-hidden="true" hidden></span>
+        </button>
+        <div class="sheet-unread" hidden></div>
+      </div>
+    </template>
 
     <template id="sheet-chrome">
       <button type="button" class="sheet-drag" aria-label="Move panel" title="Drag top edge to move · arrow keys move · double-click to reset"></button>
@@ -606,11 +650,6 @@
         </svg>
         <span class="detached-destination-name" id="detached-destination-name" aria-live="polite"></span>
         <span id="destination-hud-label" hidden>Map. Cycle destinations</span>
-      </button>
-      <button type="button" class="mode-hud" id="own-ooga-hud" data-action="mode-retake" data-selected="true"
-        aria-label="Return to your last character" title="Return to your last character" hidden>
-        <canvas class="mode-face-icon" id="own-ooga-face-icon" width="48" height="48" aria-hidden="true"></canvas>
-        <span class="mode-health" id="own-ooga-health" role="progressbar" aria-label="Last character's health" aria-valuemin="0" aria-valuemax="25" aria-valuenow="25" hidden><span id="own-ooga-health-fill"></span></span>
       </button>
       <button type="button" class="mode-hud" id="mode-hud" data-action="mode-toggle" data-selected="false" data-shooter="false"
         aria-label="Character controls" title="Character controls" hidden>
@@ -1772,7 +1811,7 @@
     </div>
     <dialog class="modal donation-popup" id="donation-popup" aria-labelledby="donation-title">
       <div class="panel-head">
-        <h2 id="donation-title"><span data-sign>Feed the Ooga Boogas</span></h2>
+        <h2 id="donation-title"><span data-sign>Feed the Oogas</span></h2>
         <button type="button" class="modal-close" id="donation-close" aria-label="Close donation">&times;</button>
       </div>
       <canvas id="donation-screen" width="400" height="400" tabindex="0" aria-label="Donation screen. Type an amount, press Enter to continue, A for your name and message. In the name field, the arrow shows previous names; Down Arrow previews a suggestion, Tab or Enter accepts it, and Escape cancels it. O for on-chain, C to copy, and Escape to go back."></canvas>
@@ -1821,7 +1860,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
         <button type="button" class="chalk-close" id="chalk-close" aria-label="Leave chalkboard">&times;</button>
       </div>
       <div class="chalk-frame" id="chalk-frame">
-        <canvas id="chalk-canvas" width="800" height="500" aria-label="Chalkboard drawing surface"></canvas>
+        <canvas id="chalk-canvas" width="1200" height="750" aria-label="Chalkboard drawing surface"></canvas>
         <div class="chalk-pointer" id="chalk-pointer" aria-hidden="true"><span class="chalk-held"></span></div>
         <div class="chalk-caret" id="chalk-caret" aria-hidden="true" hidden></div>
         <textarea class="chalk-type-input" id="chalk-type-input" aria-label="Type on chalkboard" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1"></textarea>
@@ -1876,6 +1915,9 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       <ol aria-label="Destinations"></ol>
       <p class="help" id="ooga-portal-status" role="status"></p>
     </dialog>
+    <!-- Lying in the hub hammock, A or D (or the stick sideways): a brief arrow that the rock registered (hud.js `rockCue`). Outside
+         .bottom-hud, whose transform would otherwise place it from that bar instead of the screen. -->
+    <div class="rock-cue" id="rock-cue" aria-hidden="true" hidden></div>
     <div class="bottom-hud">
       <button type="button" class="act" id="act" data-action="act" hidden>JUMP!</button>
       <div class="message-stack" id="message-stack">
@@ -1930,13 +1972,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
     </section>
     <canvas class="ghost-minimap" id="ghost-minimap" aria-hidden="true" hidden></canvas>
     <div class="ghost-spectate" id="ghost-spectate" role="group" aria-label="Watch while you're down" hidden>
-      <span class="ghost-spectate-head">You're down · watch from</span>
-      <div class="ghost-spectate-modes">
-        <button type="button" data-spec="grave" aria-pressed="true">My view</button>
-        <button type="button" data-spec="free" aria-pressed="false">Free camera</button>
-        <button type="button" data-spec="players" aria-pressed="false">Players</button>
-      </div>
-      <div class="ghost-spectate-watch" id="ghost-spectate-watch" hidden>
+      <span class="ghost-spectate-head">You're down · watching</span>
+      <div class="ghost-spectate-watch" id="ghost-spectate-watch">
         <span class="ghost-spectate-name" id="ghost-spectate-name"></span>
         <button type="button" class="ghost-spectate-next" id="ghost-spectate-next" aria-label="Next player">Next ▶</button>
       </div>
@@ -2018,6 +2055,10 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/lab-wallpaper.js"></script>
   <script src="js/lab-wallpaper-data.js" data-defer="lab-wallpaper"></script>
   <script src="js/hub-models.js"></script>
+  <script src="js/goldbug-models.js"></script>
+  <script src="js/hub-goldbug.js"></script>
+  <script src="js/sleep-beam.js"></script>
+  <script src="js/npc-status-beams.js"></script>
   <script src="js/dressing.js"></script>
   <script src="js/hub-hammock.js"></script>
   <script src="js/dressing-mediterranean.js"></script>
@@ -2062,8 +2103,11 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/zone-map.js"></script>
   <script src="js/hud.js"></script>
   <script src="js/chat-policy.js"></script>
+  <script src="js/emoji-data.js"></script>
+  <script src="js/reaction-policy.js"></script>
   <script src="js/voice-blend.js"></script>
   <script src="js/hockey-wire.js"></script>
+  <script src="js/arcade-cabinets.js"></script>
   <script src="js/net.js"></script>
   <script src="js/highscores.js"></script>
   <script src="js/cloud-hopper-replays.js"></script>
@@ -2071,7 +2115,10 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/studio-catalogue.js"></script>
   <script src="js/studio-session.js"></script>
   <script src="js/chat.js"></script>
+  <script src="js/one-time-pad.js"></script>
+  <script src="js/private-chat.js"></script>
   <script src="js/players.js"></script>
+  <script src="js/reactions.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/camera-cover.js"></script>
   <script src="js/crew.js"></script>
@@ -2132,6 +2179,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/cloud-hopper-tornado.js"></script>
   <script src="js/cloud-hopper-gust.js"></script>
   <script src="js/cloud-hopper.js"></script>
+  <script src="js/npc-ghosts.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
   <script src="js/factory-feed.js"></script>
@@ -2160,6 +2208,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/sis-models.js" data-defer="hangar-scene"></script>
   <script src="js/sis.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-anomaly.js" data-defer="hangar-scene"></script>
+  <script src="js/hangar-crane.js" data-defer="hangar-scene"></script>
+  <script src="js/hangar-room-fire.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-window.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-guide.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-audio.js" data-defer="hangar-scene"></script>
@@ -2308,6 +2358,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/ghost-track-synthed.js" data-defer="halloween-track-synthed"></script>
   <script src="js/ghost-track-nr.js" data-defer="halloween-track-nr"></script>
   <script src="js/controls-help.js"></script>
+  <script src="js/arcade-view.js"></script>
   <script src="js/director.js"></script>
 </body>
 

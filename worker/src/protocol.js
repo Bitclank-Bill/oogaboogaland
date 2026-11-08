@@ -1,10 +1,15 @@
+import "../../src/js/arcade-cabinets.js";
+export const CABINETS = globalThis.BL.arcadeCabinets;
 export { hockey } from "./hockey.js";
 import "../../src/js/hockey-wire.js";
 export const HOCKEY = globalThis.BL.hockeyWire;
 import { parseStudioCommand, studioCanSpeak, STUDIO_ZONE } from "./studio-policy.js";
 import "../../src/js/chat-policy.js";
+import "../../src/js/contributor-identities.js";
 import "../../src/js/chalk-board.js";
 import "../../src/js/voice-blend.js";
+import "../../src/js/emoji-data.js";
+import "../../src/js/reaction-policy.js";
 // The room's wire format and the limits it enforces, as pure functions the tests can reach.
 //
 // Client → room:  { t: "pose", x, y, z, yaw }   the driven body's feet and heading, at most MOVE_HZ
@@ -24,13 +29,18 @@ import "../../src/js/voice-blend.js";
 //                 { t: "shot", a }               a banana the driven Ooga fired: [from x, y, z, to x, y, z]
 //                 { t: "swing" }                 the driven Ooga's melee strike
 //                 { t: "chat", text, clientId? }            a line for Ooga Chat (see Chat below)
+//                 { t: "pm", op, to, d?, n? }   a private conversation with player `to` (see Private below): `invite`,
+//                                               `accept`, `decline`, `block`, `end`, or `data` with a sealed frame `d`
 //                 { t: "studio", action, playback?, commandId?, ... }  a DSB Studio seat or host command; transport
 //                                checks `playback` against the state's playbackRevision
 //                                (`parseStudioCommand` in studio-policy.js; see docs/dsb-studio-session.md)
 //                 { t: "ghost", k, g?, d?, h? }  HALLOWEEN: the ghost hunt's `start`, `ready`, `pause` or `leave`, or `hits` h, for its
 //                                host, from a page in the arcade's ghost arena
-//                 { t: "chalk", k, ... }        the EntropyLab chalkboard: `take` or `drop` the board, or an edit by
-//                                                whoever holds it (chalk-board.js; see CHALK_HZ below)
+//                 { t: "react", e }              an emoji over the driven body for a moment (see Reactions below)
+//                 { t: "hand", on, tone? }       the raised hand up or down, in skin tone 0 (none) to 5
+//                 { t: "chalk", v, k, ... }     the EntropyLab chalkboard: `take` or `drop` the board, or an edit by
+//                                                whoever holds it, on board layout `v` (chalk-board.js VERSION; see
+//                                                CHALK_HZ below)
 //                 { t: "wallet", k, u, ... }   DSB Land: one of the driven Ooga's free hardware wallets taken, set
 //                                                down, picked up, thrown or blown (see WALLET_CAP below)
 //                 binary                         the NPC host's frame of every Ooga's pose, relayed as is; or,
@@ -59,6 +69,10 @@ import "../../src/js/voice-blend.js";
 //                 chat-ack { clientId }     the sender's line was accepted, including a recognized retry
 //                 chat-rejected { clientId?, reason }  refused; rate retries keep the same id
 //                 chat-history { messages }  after welcome: the lines the room still holds, oldest first
+//                 pm { op, ... }            a private conversation: invite { from }, inviting { to }, open { with },
+//                                            declined { from, reason? }, withdrawn { from, reason? } (reason "left"
+//                                            when the other page left), closed { from, reason },
+//                                            data { from, d }, and to its sender ok { n, to } or refused { to, n?, reason }
 //                 chalk-board { marks, editor }  after welcome: the chalkboard as the room holds it, and who holds it
 //                 chalk-lock { id }          who holds the chalkboard now (0 for nobody), to everyone
 //                 chalk { id, k, ... }       the holder's edit, to everyone else; chalk-refused { why, name? } to a
@@ -72,15 +86,33 @@ import "../../src/js/voice-blend.js";
 //                 ghost-host { id, followers }  who runs the ghost arena's hunt (0 for nobody) and how many pages in
 //                                            the arena follow it; welcome carries ghostHost and ghostFollowers; binary
 //                                            frames led by GHOST_MAGIC from it, to pages in the arena
+//                 react { id, e }            player `id` reacted with emoji `e`, to the players in their zone
+//                 hand { id, on, tone }      player `id` raised or lowered their hand; welcome and join carry `hand`
+//                                            and `handTone`. To the sender alone, its own id: a change it was refused
 // Zones: `<group>` or `<group>.<place>`. Voice is shared within a group; who is shown is matched on the whole
-// name, since a place inside a group can have coordinates of its own (the Factory's tunnel on the island and
-// its hall). `none` is nowhere: off the island's edge, or between scenes; it shares voice with nobody.
+// name, since a place inside a group can have coordinates of its own. The exception is the main world, every zone the
+// island scene reports (`BLEND.WORLD`): its players are all shown to each other (`seenTogether`) and its voice goes by
+// height, not zone (voice-blend.js). `none` is nowhere, between scenes; it shares voice with nobody.
 // Chat: one conversation for the whole island. The room names the speaker from the session (`login`, and
 // `name`, their display name), never from the frame, keeps the last CHAT_KEEP lines in memory alone (never
 // storage: a room that sleeps, restarts or is redeployed has forgotten them) and hands them to each socket
 // that joins. A line is CHAT_MAX UTF-16 units at most under the shared chat policy. A chat frame gets its own size
 // limit: one that starts with CHAT_PREFIX, as the page sends it, may run to CHAT_FRAME_MAX and is ignored past
 // it, so a long line is dropped rather than closing the socket; every other frame keeps MESSAGE_MAX.
+// Private (#188): two players agree to talk (an invite, then its accept) and the room relays each `data` frame from
+// one to the other while both still hold the conversation, answering `ok` once it went. A frame is base64 the room
+// cannot read, sealed and opened with a one-time pad the two swapped outside Ooga (src/js/one-time-pad.js); it is
+// never kept, stored or logged. One conversation at a time and PM_INVITES invites out at most. Blocks (PM_BLOCKS ids)
+// and the rate limits stay with the account across its reconnects while the room is awake, as chat's do. The
+// conversation ends when either page leaves. A pm frame may run to CHAT_FRAME_MAX as a chat frame does, with
+// PM_DATA_MAX characters of frame.
+// Reactions: a room that takes them lists REACT_FEATURE in welcome's `features`. A reaction is one emoji the shared
+// policy accepts (reaction-policy.js over emoji-data.js: plain or in a skin tone, never text), taken from a player
+// driving a body and relayed as `react { id, e }` to the other players in its zone, never kept. The raised hand is a
+// flag on the player's record, in its attachment and every view, sent to everyone on a change only. Both spend one
+// per-record bucket of REACT_HZ a second bursting to REACT_BURST (the page mirrors it, a little short); over it a
+// reaction is dropped without a word, and a hand change is refused with the sender's own `hand { id, on, tone }` as
+// the room holds it, so the sender's page puts it back.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -125,10 +157,32 @@ export const CHAT_HZ = 1;
 export const CHAT_BURST = 3;
 // Active accounts plus bounded reconnect debt, held only while the room is awake.
 export const CHAT_BUCKET_KEEP = MAX_PLAYERS * 2;
+export const REACT_FEATURE = "react-v1";
+export const REACT_HZ = 3;
+export const REACT_BURST = 6;
 // The page sends `{"t":"chat","text":…}` with its text already sanitized, under MESSAGE_MAX; the margin is
 // for a page that sends it raw (every character escaped as \uXXXX is six).
 export const CHAT_PREFIX = '{"t":"chat",';
 export const CHAT_FRAME_MAX = 1024;
+// Private conversations (see Private above).
+export const PM_FEATURE = "pm-v1";
+export const PM_PREFIX = '{"t":"pm",';
+// The page's largest frame: a 29-byte header, a 480-byte body (a 4-byte line number and the line) and a 32-byte tag,
+// 541 bytes, is 724 base64 characters.
+export const PM_DATA_MAX = 724;
+export const PM_HZ = 2;
+export const PM_BURST = 6;
+export const PM_INVITE_HZ = 0.2;
+export const PM_INVITE_BURST = 3;
+// Accept, decline, block and end: a rate of their own, so a flood of them writes nothing past the burst.
+export const PM_CONTROL_HZ = 1;
+export const PM_CONTROL_BURST = 6;
+export const PM_INVITES = 4;
+export const PM_BLOCKS = 32;
+// Accounts whose blocks and rate limits the room keeps across their reconnects while it is awake, as chat's buckets.
+export const PM_ACCOUNT_KEEP = MAX_PLAYERS * 2;
+const PM_OPS = ["invite", "accept", "decline", "block", "end"];
+const PM_DATA = /^[A-Za-z0-9+/]+={0,2}$/;
 // The Sphere's one exterior doorway is a short, server-leased FIFO. Room door transits are independent
 // announcements inside exactly one numbered room. Alarms, rather than timers, expire both while idle.
 export const DOOR_ZONE = "sphere";
@@ -181,15 +235,18 @@ export const WALLET_FUSE_MAX = 60;
 const walletId = (u) => Number.isInteger(u) && u >= 1 && u <= 65535;
 // A follower's batch: up to GHOST_BATCH targets, each a ghost id (0 the boss) and its summed damage, as one report.
 export const GHOST_BATCH = 16;
-// The arcade's ghost arena runs its own hunt: its pages (zone `arcade.arena`, or `arcade-hunt` while a hunt keeps its
-// voice to itself) elect a ghost host of their own, follower reports from the arena go to it, and it sends the hunt's
+// The arcade's ghost arena runs its own hunt: its pages (zone `ghost-arena`, Ghost Hunter's Arena, a voice region of its
+// own (#422) whether a hunt runs or not; `arcade-hunt` from a page loaded before #422) elect a ghost host of their own,
+// follower reports from the arena go to it, and it sends the hunt's
 // state as a binary frame led by GHOST_MAGIC ("GHST"), up to GHOST_FRAME_MAX bytes and GHOST_FRAME_HZ a second, which
 // the room hands to every other page in the arena and keeps for the next to walk in. Only a visible page may host
 // (`ghostCandidate`): a hidden one runs no frames, so it would send nothing while every follower's hunt froze. The
-// arena's hallway (`arcade.haunt`) watches: its pages hear the frames and count as followers, so a spectator walked out
-// sees the hunt through the fence, but they neither host nor report to the host (`watchesGhost`).
-export const GHOST_ARENA_ZONES = ["arcade.arena", "arcade-hunt"];
-export const GHOST_WATCH_ZONES = [...GHOST_ARENA_ZONES, "arcade.haunt"];
+// arena's hallway watches, both its halves (`arcade.haunt` toward the hall, `ghost-arena.haunt` toward the arena): its
+// pages hear the frames and count as followers, so a spectator walked out sees and hears the hunt through the fence,
+// but they neither host nor report to the host (`watchesGhost`). `arcade.arena` is the arena's zone before #422, kept
+// for a page loaded before it.
+export const GHOST_ARENA_ZONES = ["ghost-arena", "arcade-hunt", "arcade.arena"];
+export const GHOST_WATCH_ZONES = [...GHOST_ARENA_ZONES, "arcade.haunt", "ghost-arena.haunt"];
 export const inGhostArena = (p) => GHOST_ARENA_ZONES.includes(p.zone);
 export const watchesGhost = (p) => GHOST_WATCH_ZONES.includes(p.zone);
 export const ghostCandidate = (p) => p.visible && inGhostArena(p);
@@ -208,12 +265,23 @@ export const sanitizeChat = (text) => globalThis.BL.chatPolicy.error(text) ? "" 
 
 const finite = (v) => typeof v === "number" && Number.isFinite(v);
 const round = (v) => Math.round(v * 1000) / 1000;
+// pose.v: centiradian head/aim angles, ownership/action flags and millisecond animation phases.
+export const VISUAL_LIMITS = [157, 157, 314, 8191, 240, 1200, 560, 440, 320, 1240, 100, 750, 1300, 280, 2000, 31, 31];
+export const validVisual = (v) => Array.isArray(v) && v.length === VISUAL_LIMITS.length
+  && v.every((n, i) => Number.isInteger(n) && n >= (i < 3 ? -VISUAL_LIMITS[i] : 0) && n <= VISUAL_LIMITS[i]);
+
+// pose.r: no rest (0), or seat, phase (entry/rest/exit), progress byte and the body's
+// signed quaternion xyz at 1/1000; nonnegative w is reconstructed by the renderer.
+export const validRest = r => r === 0 || Array.isArray(r) && r.length === 6
+  && r.every(Number.isInteger) && r[0] === 0 && r[1] >= 1 && r[1] <= 3 && r[2] >= 0 && r[2] <= 255
+  && Math.abs(r[3]) <= 1000 && Math.abs(r[4]) <= 1000 && Math.abs(r[5]) <= 1000
+  && r[3] ** 2 + r[4] ** 2 + r[5] ** 2 <= 1002001;
 
 /** A parsed client message, `null` for one to ignore, or `false` for one that should close the socket. */
 export const parseClientMessage = (text) => {
   if (typeof text !== "string") return false;
   if (text.length > MESSAGE_MAX) {
-    if (!text.startsWith(CHAT_PREFIX)) return false;
+    if (!text.startsWith(CHAT_PREFIX) && !text.startsWith(PM_PREFIX)) return false;
     if (text.length > CHAT_FRAME_MAX) return null;
   }
   let msg;
@@ -223,8 +291,10 @@ export const parseClientMessage = (text) => {
     return false;
   }
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return false;
-  // Only chat earns the longer frame: a repeated key could make a chat-prefixed frame parse as anything.
-  if (text.length > MESSAGE_MAX && msg.t !== "chat") return false;
+  // Only chat and private frames earn the longer frame: a repeated key could make a prefixed frame parse as anything.
+  if (text.length > MESSAGE_MAX && msg.t !== "chat" && msg.t !== "pm") return false;
+  if (msg.t === "cabinet") return CABINETS.get(msg.id) && (msg.op === "take" || msg.op === "leave") && Number.isSafeInteger(msg.q) && msg.q > 0
+    ? { t: "cabinet", op: msg.op, id: msg.id, q: msg.q } : null;
   if (msg.t === "hockey") return HOCKEY.parse(msg);
   if (msg.t === "studio") return parseStudioCommand(msg);
   if (msg.t === "pose") {
@@ -248,6 +318,14 @@ export const parseClientMessage = (text) => {
       if (!Number.isInteger(msg.w) || msg.w < 0 || msg.w > 255) return null;
       if (msg.w) pose.w = msg.w;
     }
+    if (msg.v !== undefined) {
+      if (!validVisual(msg.v)) return null;
+      pose.v = msg.v;
+    }
+    if (msg.r !== undefined) {
+      if (!validRest(msg.r)) return null;
+      pose.r = msg.r;
+    }
     return pose;
   }
   if (msg.t === "body") {
@@ -270,6 +348,8 @@ export const parseClientMessage = (text) => {
       ? { t: "chat", text: line, clientId: msg.clientId } : null;
   }
   if (msg.t === "chalk") {
+    // A page on an older board layout sends thousandths of a smaller board: none of it is taken.
+    if (msg.v !== CHALK.VERSION) return null;
     if (msg.k === "take" || msg.k === "drop") return { t: "chalk", k: msg.k };
     const op = CHALK.parse(msg);
     return op ? { t: "chalk", ...op } : null;
@@ -305,6 +385,11 @@ export const parseClientMessage = (text) => {
     if (msg.k === "hits") return ghostHits(msg.h);
     return msg.k === "hit" && ghostHit(msg.g, msg.d) ? { t: "ghost", k: "hit", g: msg.g, d: msg.d } : null;
   }
+  if (msg.t === "react") return globalThis.BL.reactionPolicy.valid(msg.e) ? { t: "react", e: msg.e } : null;
+  if (msg.t === "hand") {
+    const tone = msg.tone === undefined ? 0 : msg.tone;
+    return typeof msg.on === "boolean" && globalThis.BL.reactionPolicy.tone(tone) ? { t: "hand", on: msg.on, tone } : null;
+  }
   if (msg.t === "shot") {
     const a = msg.a;
     if (!Array.isArray(a) || a.length !== 6 || !a.every(finite)) return null;
@@ -315,6 +400,16 @@ export const parseClientMessage = (text) => {
     return { t: "shot", a: a.map(round) };
   }
   if (msg.t === "swing") return { t: "swing" };
+  if (msg.t === "pm") {
+    const { op, to } = msg;
+    if (!Number.isSafeInteger(to) || to <= 0) return null;
+    if (op === "data") {
+      const { d, n } = msg;
+      return typeof d === "string" && d.length <= PM_DATA_MAX && d.length % 4 === 0 && PM_DATA.test(d) && Number.isSafeInteger(n) && n > 0
+        ? { t: "pm", op, to, d, n } : null;
+    }
+    return PM_OPS.includes(op) ? { t: "pm", op, to } : null;
+  }
   if (msg.t === "poker-voice") return msg.table === null || Number.isInteger(msg.table) && msg.table >= 0 && msg.table < 10 ? { t: "poker-voice", table: msg.table } : null;
   return null;
 };
@@ -377,52 +472,74 @@ export const castIndex = (cast) => {
   return { owners, handleOf };
 };
 
-export const ownedBody = (index, login, contributor = false) => {
+export const ownedBody = (index, login, contributor = false, id) => {
   if (typeof login !== "string") return null;
+  const account = globalThis.BL.accountIdentities.accountForId(id);
+  if (account) return index.owners.has(account.handle.toLowerCase()) ? account.handle.toLowerCase() : null;
   const me = login.toLowerCase();
   const own = index.handleOf.get(me);
+  if (own && globalThis.BL.accountIdentities.accountForHandle(own)) return null;
   // Only the Worker can vouch for this fallback. Never shadow a curated alias,
   // never grant another visitor an unbundled body, and never mutate the shared cast.
   return own || (contributor && !index.owners.has(me) ? me : null);
 };
 
 /** null when `login` owns `body`; otherwise the refusal reason. */
-export const claimRefusal = (index, login, body, _players, contributor = false) => {
+export const claimRefusal = (index, login, body, _players, contributor = false, id) => {
   if (body === null) return null;
-  const own = ownedBody(index, login, contributor);
+  const own = ownedBody(index, login, contributor, id);
   return own && own === bodyName(body).toLowerCase() ? null : "not-yours";
 };
 
 // Voice: who hears whom. Players driving an Ooga or gorilla hear each other at one volume in the same
-// zone group (the island, a bridged land, one cave or portal; see Zones above). A listener with a receiving
-// session hears every other player in its group with a published microphone; nobody hears anyone `none`.
-// On a crossing between two adjacent groups (#392, `BLEND.PAIRS`) a player is in both, by its step along it
-// (`blendTo`, `blendK`), and hears whoever shares a place with it (`BLEND.shares`); the page sets the volumes.
+// zone group (one hall or portal; see Zones above). A listener with a receiving session hears every other player in
+// its group with a published microphone; nobody hears anyone `none`. In the main world (`BLEND.WORLD`) groups give way
+// to levels: the surface, HQ, HQ's basement and the rainforest's underground, by height (voice-blend.js).
+// On a crossing (#392) a player is in two places, by its step along it (`blendTo`, `blendK`), and hears whoever shares
+// a place with it (`BLEND.shares`), between the world's levels or across a pair `BLEND.PAIRS` names; the page sets the volumes.
+// Ooga Arcade (`arcade`) and Ghost Hunter's Arena (`ghost-arena`) are two groups joined by the haunted hallway, each
+// a place as a whole (`BLEND.place`), so its crossing reaches nothing else. The arena is one region with or without a
+// hunt; its older names (`arcade-hunt`, `arcade.arena`) are that region (`BLEND.ALIASES`), never the Arcade's.
 // The room decides and re-checks it on every pull.
 export const VOICE_TRACK = "mic";
 
-/** The voice group of a zone name: the part before its `.place`. */
+/** The voice group of a zone name: its alias's (`BLEND.ALIASES`), else the part before its `.place`. */
 export const zoneGroup = (zone) => {
+  if (typeof zone === "string" && Object.hasOwn(BLEND.ALIASES, zone)) return BLEND.ALIASES[zone];
   const dot = typeof zone === "string" ? zone.indexOf(".") : -1;
   return dot < 0 ? zone : zone.slice(0, dot);
 };
 
-/** Whether listener `p` (in voice group `group`) and speaker `q` share a place. With neither crossing, a group; with
- * either, a zone, so a crossing's far end never reaches into another place of its group (₿IFRÖST's chamber). */
-const sharesPlace = (p, group, q) => p.blendTo || q.blendTo
+/** Whether two zones' players are shown to each other, for what the room relays of them: the same zone, or two of the
+ *  main world, all in the island scene's coordinates. */
+export const seenTogether = (a, b) => a === b || BLEND.world(a) && BLEND.world(b);
+
+/** Whether listener `p` (in voice group `group`) and speaker `q` share a place. With neither crossing nor in the main
+ * world, a group; else by place, so a crossing's far end never reaches into another place of its group. */
+const sharesPlace = (p, group, q) => p.blendTo || q.blendTo || BLEND.world(p.zone) || BLEND.world(q.zone)
   ? BLEND.shares(p.zone, p.blendTo || null, p.blendK || 0, q.zone, q.blendTo || null, q.blendK || 0)
   : zoneGroup(q.zone) === group;
+// The three halves of who hears whom, for `voicePeers`. Both restrictions hold together: a
+// bodiless listener counts only inside the Studio, a Studio speaker only while permitted, and Ember Den voice only
+// between players at the same poker table.
+/** Whether `p` is a voice participant who can hear anyone: a receive session, driving (or in the Studio), not `none`. */
+export const voiceListener = (p, studio = null) => !!((p.body || (studio && p.zone === STUDIO_ZONE)) && p.voice && p.voice.sub && zoneGroup(p.zone) !== NOWHERE);
+/** Whether `q` may be heard where they are, microphone aside. */
+export const voiceAudible = (q, studio = null) => !!((q.body || (studio && q.zone === STUDIO_ZONE)) && (!studio || q.zone !== STUDIO_ZONE || studioCanSpeak(studio, q)));
+/** Whether listener `p` shares a voice place with `q` (`sharesPlace`, crossings included), and in the Ember Den one
+ *  table. Read from the listener's side: a crossing need not share both ways. */
+export const voiceTogether = (p, q) => {
+  const group = zoneGroup(p.zone);
+  return sharesPlace(p, group, q) && (group !== "ember-den" || (p.pokerVoice ?? null) === (q.pokerVoice ?? null));
+};
 
 /** Map of player id → sorted ids that player should hear. */
 export const voicePeers = (players, studio = null) => {
   const out = new Map();
   for (const p of players) {
     const ids = [];
-    const group = zoneGroup(p.zone);
-    // Both restrictions hold together: a bodiless listener counts only inside the Studio, a Studio
-    // speaker only while permitted, and Ember Den voice only between players at the same poker table.
-    if ((p.body || (studio && p.zone === STUDIO_ZONE)) && p.voice && p.voice.sub && group !== NOWHERE) {
-      for (const q of players) if (q !== p && (q.body || (studio && q.zone === STUDIO_ZONE)) && sharesPlace(p, group, q) && (group !== "ember-den" || (p.pokerVoice ?? null) === (q.pokerVoice ?? null)) && q.voice && q.voice.track && (!studio || q.zone !== STUDIO_ZONE || studioCanSpeak(studio, q))) ids.push(q.id);
+    if (voiceListener(p, studio)) {
+      for (const q of players) if (q !== p && voiceAudible(q, studio) && voiceTogether(p, q) && q.voice && q.voice.track) ids.push(q.id);
       ids.sort((a, b) => a - b);
     }
     out.set(p.id, ids);
