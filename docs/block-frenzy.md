@@ -89,6 +89,22 @@ ones you can use.
 
 Paint balls, the AKs and the rifle splat as paint does; nobody is removed and nobody has health.
 
+## Floating islands (BF2.1)
+
+Every map is a floating island in OBL's voxel style: the field is the whole top of the island (`onIsland`), with a grass-and-rock cliff around its open edge, the rock under it deepening toward the middle (`isleDepth`, the same function the mesh uses), the hub's clouds beneath it and the sea far below at the hub's height. Walking or being blown off an edge drops an Ooga past the rim: its feet below `RIM` the island no longer holds it, and the rock under the rim keeps it out. Every Ooga has its jetpack: hold Space in the air (or Jump on touch) and steer back over the edge. An Ooga that falls past `FALL_FLOOR` (40 m) comes back in its own block zone with a full tank and a moment's protection. A block carried over the edge drops at the edge the carrier left it (`EDGE_HOME_S` later it goes home by itself unless someone picks it up); a grappling hook lost over the edge goes back into hiding. Bots fly back the same way.
+
+## Terrain (BF2.1b)
+
+Each map adds hub-style terrain in the island's own rock (`terrain`, half a map turned half round so the maps stay mirrored): a two-tier grassy mound (`mound`: 1 m then 2 m, each a jump up, for high ground), a walk-through rock cave (`cave`: 3 m wide, walls and a roof to stand on, cover and a flanking way, never a dead end), and a tall outcrop breaking a long lane (`outcrop`), mossy boulders from the hub's kit at its foot. They stand on a half-metre grid so the voxel island meshes exactly what the sim collides with (`rocks`, joined to `BLOCKS`), clear of every fort, stand, catapult, ladder, zipline and spot the game uses; the bots steer round them as they do any building.
+
+## The grappling hook (BF2.1c)
+
+A special weapon, two a round, hidden at seeded spots from each map's hand-checked `hookSpots` (in the cave, on the mound's top, behind the outcrop, up a jungle tree): one in each half, the same spot turned half round. Walk over one to take it (it shows on the hip); `R` or tool `8` then fires it at the crosshair (range 24 m). Cloud Hopper's hook head, rope and flight (`BL.grapple.toward`, shared; the sim keeps its own state, `hk`): a bite on rock, a tree, a wall or the island's edge pulls the Ooga in on a rope that only shortens (`BL.grapple.pullSpeed` and `tether`), swinging it under the bite (hold C to stop the pull and swing), until it arrives or lets go (R again, or a jump), keeping its speed. A rival carrying a block is yanked: a moment's warning (`hookwarn`), then the block flies out of its hands toward the hook's thrower, landing most of the way there. A teammate is ignored and the hook can miss; it then recharges for `HOOK_COOL`. A gorilla hooked is stunned and drops its captive, with a cooldown before the hook can do that again. It can be stolen with a wallet bomb exactly as the Golden AKs are (`hooksteal`), and bots fetch the ground-level ones, hook carriers and captors in reach, and bite the rim to pull themselves back after a fall; expert bots aim wallet bombs at hook holders.
+
+## Gorillas (BF2.2, BF2.3)
+
+Three or four on every map (`gorillas`): wicked's hub gorilla (`BL.agent.create` managed rig, posed with `poseManaged` and its `dragging`/`throwProgress` motion flags). A gorilla roams its home, charges an Ooga on the ground that comes within sight and grabs it, the block (and any crate) dropping where it was grabbed. It then drags the captive by the feet to the nearest edge, winds up and throws it off (`thrown`), and the Ooga jetpacks back (its tank is filled for the throw). `GRAB_HITS` (10) jump presses break free at any point, paint, a burst or the hook stuns the gorilla (the hook frees a captive with a cooldown), and bots mash, shoot a charging gorilla and fly back.
+
 ## Fort Chaos
 
 44 by 74 m, mirrored half round between the halves so neither side is favoured. Each fort has a back wall, side
@@ -109,6 +125,7 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 | Q / E, ← / → | Turn; the chase camera swings round behind |
 | X, or a click on the view | Capture the mouse to turn and aim (the island's combat look); X again or Escape lets go |
 | Left click or Enter | Throw the chosen tool at the crosshair (the crate, when holding one) |
+| 8, R | With the grappling hook found: 8 picks it (then click fires), R fires it at the crosshair; press again, or jump, to let go |
 | 1 to 7, G | Pick a weapon (paint, grenade, rocket, net, sniper rifle on a tower, Golden Dual AKs once won, Ooga AK); G steps through the ones you can use |
 | Right click | Aim, as the island's precision aim: held, the view narrows; up a tower it steps the sniper scope in (four steps); in the Island view it returns to the chase camera |
 | Space, Space again in the air | Jump, double jump; held in the air, the jetpack |
@@ -125,7 +142,7 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 | Escape | One step back at a time: the captured mouse, then the view, then a pause, then the board (the round is given up), then the Arcade |
 | Tab outside a round | The page's own: moves the focus. In a round Tab throws (a game choice; Escape or X frees the mouse) |
 
-R has nothing to do here: the Ooga AK reloads itself when its magazine runs dry, and no other tool reloads.
+R fires the grappling hook at the crosshair (or lets it go), when you have one; the Ooga AK reloads itself when its magazine runs dry, and no other tool reloads.
 
 Touch: the left stick moves, the right stick turns, Jump and Throw! buttons, a tool bar (its Ride button uses a
 zipline, catapult or wallet machine) and a View button; Sides goes back to the board. A gamepad drives the sticks and

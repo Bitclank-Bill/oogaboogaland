@@ -517,7 +517,7 @@
     else if (t === "go") c.go();
     else if (t === "burn") c.burn(me ? 1 : k);
     else if (t === "slip") c.slip(me ? 1 : k);
-    else if (t === "grab") c.roar(me ? 1 : k);
+    else if (t === "grab" || t === "thrown") c.roar(me ? 1 : k);
     else if (t === "boo") c.boo(me ? 1 : k);
     else if (t === "homers") c.rocket(0.45 * k);
     else if (t === "ghostpop") c.ghostPop(k);
@@ -569,6 +569,7 @@
     else if (t === "rekt") feed(e.by >= 0 && e.by !== e.actor ? `${nameOf(e.by)}'s wallet rekt ${who}` : `${who} got rekt by a free wallet`, e.by >= 0 ? sim.actors[e.by].team : e.team);
     else if (t === "grab") feed(`A gorilla grabbed ${e.actor === 0 ? "you" : who}!`, e.team);
     else if (t === "breakfree") feed(`${who} wriggled free of a gorilla`, e.team);
+    else if (t === "thrown") feed(`A gorilla threw ${e.actor === 0 ? "you" : who} off the island`, e.team);
     else if (t === "respawn") feed(`${who} fell off the island`, e.team);
     else if (t === "hookget") feed(`${who} found a grappling hook`, e.team);
     else if (t === "hooksteal") feed(`${who} stole ${e.by === 0 ? "your" : `${nameOf(e.by)}'s`} grappling hook`, e.team);
@@ -856,11 +857,13 @@
         gorillaPoke(e.actor);
         if (me) {
           center("GRABBED!", 1000);
-          notice(COARSE ? "A gorilla has you! Tap Jump 5 times to wriggle free" : "A gorilla has you! Mash Space 5 times to wriggle free", 3000);
+          notice(COARSE ? `A gorilla has you by the feet! Tap Jump ${C.GRAB_HITS} times to wriggle free` : `A gorilla has you by the feet! Mash Space ${C.GRAB_HITS} times to wriggle free`, 3000);
         } else say(e.actor, LINES.bonk, 1.3);
       } else if (e.type === "struggle") { if (me) notice(`Wriggle! ${sim.actors[0].grabHits} more`, 700); }
       else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
       else if (e.type === "letgo") { if (me) notice("The gorilla got bored and dropped you", 1500); }
+      else if (e.type === "windup") { if (me) notice("It's swinging you! Mash!", 900); }
+      else if (e.type === "thrown") { if (me) { center("THROWN!", 1000); notice(COARSE ? "Hold Jump to jetpack back over the edge" : "Hold Space to jetpack back over the edge", 2800); } }
       else if (e.type === "gorillahit") fx.burst(e.x, e.y, e.z, 10, STAR_BITS, 2);
       else if (e.type === "steady") { if (me) notice("Back on your feet", 900); }
       else if (e.type === "burn") {
@@ -1398,7 +1401,11 @@
       // On the board only the Ooga on show stands in view.
       a.body.visible = !(i === 0 && (cam.first || cam.close) && phase === "play") && !(phase === "board" && preview.wide && i > 0);
       a.body.scale.y = s.crouch ? 0.66 : 1;
-      a.body.rotation.y = damp(a.body.rotation.y, a.body.rotation.y + wrap(s.heading - a.body.rotation.y), 14, dt);
+      // Dragged by a gorilla: facing it, pitched over so the feet are in its hand and the head trails along the ground (as
+      // wicked's hub capture holds an Ooga: `grabbedOogaPose`). Otherwise upright, turning to the heading.
+      const dragged = s.grabbed ? sim.gorillas[s.grabbed - 1] : null;
+      a.body.rotation.x = damp(a.body.rotation.x, dragged ? -1.25 : 0, dragged ? 18 : 12, dt);
+      a.body.rotation.y = dragged ? dragged.heading : damp(a.body.rotation.y, a.body.rotation.y + wrap(s.heading - a.body.rotation.y), 14, dt);
       a.ring.visible = s.grounded;
       a.bubble.visible = s.trapped > 0;
       a.netted.visible = s.netted > 0;
@@ -2109,6 +2116,7 @@
     }
   };
   const GORILLA_SCALE = 1.35;
+  const GORILLA_MOTION = [0, 1, 2, 3].map(() => ({ dragging: false, throwProgress: 0, walkGait: "" }));
   let gorillaRigs = [];
   const disposeGorillas = () => { for (const rig of gorillaRigs) rig.dispose(); gorillaRigs = []; };
   const gorillaPoke = (actor) => {
@@ -2121,8 +2129,11 @@
     for (let i = 0; i < gorillaRigs.length; i++) {
       const g = sim.gorillas[i], rig = gorillaRigs[i];
       if (!g || !rig) continue;
-      const stunned = g.state === 4, wob = stunned ? Math.sin(elapsed * 14) * 0.25 : 0;
-      rig.poseManaged(dt, g.x, 0, g.z, g.heading + wob, stunned ? 0 : Math.hypot(g.vx, g.vz), false);
+      const stunned = g.state === 4, wob = stunned ? Math.sin(elapsed * 14) * 0.25 : 0, carry = g.state === 2 || g.state === 5, m = GORILLA_MOTION[i];
+      // wicked's capture pose: the left hand on the Ooga's foot (`dragging`), swinging over on the throw (`throwProgress`).
+      m.dragging = carry; m.throwProgress = g.state === 5 ? g.throwT : 0;
+      m.walkGait = g.state === 1 ? "gallop" : "";
+      rig.poseManaged(dt, g.x, 0, g.z, g.heading + wob, stunned ? 0 : Math.hypot(g.vx, g.vz), false, false, "", m);
     }
   };
   // The fire flickers and spits embers; the potato Oogas dance round it, hopping and waving.
@@ -2377,7 +2388,7 @@
     el.controlsList = document.getElementById("block-controls-list");
     // The board keeps one short line; the whole list waits behind "All controls", so it never crowds the choices.
     el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Sides" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
-    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Sides for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 7 pick a weapon, G steps through them · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
+    el.controlsList.textContent = COARSE ? "Left stick moves · right stick turns · Jump twice to climb · Paint! throws the tool you pick · View for first person · Sides for the board" : "W A S D move · Q E or ← → turn · X or a click captures the mouse to turn and aim · Shift sprints · Space jumps, twice to climb, hold in the air for the jetpack, mash to escape a gorilla · Space by a zipline, catapult or FREE WALLETS machine uses it · click fires · 1 to 8 pick a weapon (8 is the grappling hook once found), G steps through them · R fires the hook at the crosshair or lets go, a jump lets go too · hold right click to aim (on a tower it steps the sniper scope in) · the wheel zooms · V changes view (chase, first person, Island) · 5 sniper (from a tower) · 6 Golden Dual AKs, 7 AK (hold to fire) · wallet bomb: click, Tab or Y throws it, it sticks to a rival and goes off 5 s later (stealing their Golden AKs) · H piggyback on a teammate, J call one onto your back · W into a ladder climbs · Tab or T throws what you hold (the block to a teammate, a crate, a wallet bomb) · K drops the block · F lifts crates · B new crate · C crouch · P pauses · Escape steps back";
     showBoard();
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);

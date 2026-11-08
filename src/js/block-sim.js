@@ -51,7 +51,10 @@
     TRAMP_R: 1.0, BOUNCE: 13.5, STEP_UP: 0.45, FIRE_R: 0.95, BURN_HOPS: 3, BURN_SLOW: 0.25,
     JET_FUEL: 2.6, JET_REFILL: 3, JET_ACCEL: 27, JET_RISE: 6, JET_CEILING: 15,
     GORILLA_SPEED: 3.2, GORILLA_CHARGE: 6.4, GORILLA_SIGHT: 7, GORILLA_LEASH: 11, GORILLA_WANDER: 5, GORILLA_R: 0.75,
-    GORILLA_GRAB_R: 1.05, GRAB_HITS: 5, GRAB_MAX_S: 6, GORILLA_REST: 6, GORILLA_STUN: 1.6,
+    GORILLA_GRAB_R: 1.05, GRAB_HITS: 10, GRAB_MAX_S: 16, GORILLA_REST: 6, GORILLA_STUN: 1.6,
+    // A captive is dragged by the feet to the nearest edge at `GORILLA_DRAG`, swung over the wind-up (`GORILLA_THROW_S`)
+    // and thrown off at `GORILLA_THROW`, up at `GORILLA_THROW_UP`, its steering knocked out for `THROWN_S`.
+    GORILLA_DRAG: 3.6, GORILLA_THROW_S: 0.45, GORILLA_THROW: 11, GORILLA_THROW_UP: 9, THROWN_S: 0.5, DRAG_BACK: 1.3, DRAG_EDGE: 1.2,
     GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 3.5, HOMER_SEEK: 20, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
     POWER_R: 1.1, POWER_RESPAWN: 20, BOOTS_S: 6, BOOTS: 1.5, HALVING_S: 12, COLD_S: 12, LASER_S: 25, BEAM_S: 3, BEAM_LEN: 30, BEAM_R: 0.45,
     // Free Hardware Wallets (DSB Land's VAC 2, brought over): a vending machine each side; a device taken goes off when
@@ -196,6 +199,7 @@
       terrain: [...cave(15.5, 20.5, 13.5, 18), ...mound(-21.5, -17.5, 9, 15), ...outcrop(1.5, 3.5, 6, 7.5)],
       hookSpots: [[18, 0, 15.75], [-19.5, 2, 12], [2.5, 0, 8.4]],
       // Where a defender waits: a little in front of its own gate.
+      gorillas: [[-14, 1], [14, -1], [17, 10], [-17, -10]],
       guard: { blue: { x: 0, z: 17.2 }, red: { x: 0, z: -17.2 } },
       // The quiz pads.
       traps: [[-10, 13], [10, -13], [10, 13], [-10, -13], [-17, 0], [17, 0], [-4.5, 4.5], [4.5, -4.5]],
@@ -252,6 +256,7 @@
     const { BLOCKS, steps: stepSet } = turnedMap(half, middle, steps);
     return {
       id: "town", name: "Ooga Town", BLOCKS, steps: stepSet,
+      gorillas: [[-12.5, 0.5], [12.5, -0.5], [0, 10], [0, -10]],
       // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
       // in the cave, on the mound's top, behind the outcrop.
       terrain: [...cave(16.5, 21.5, 17, 21.5), ...mound(-21.5, -17.5, 10, 15), ...outcrop(2, 4, 9, 10.5)],
@@ -394,6 +399,7 @@
     const linkHalf = [[20, 21], [21, 22], [22, 23], [23, 24], [8, 20]];
     return {
       id: "haunted", name: "Haunted Hollow", BLOCKS, steps: stepSet, decor: allDecor,
+      gorillas: [[-14, 2], [14, -2], [8, 22], [-8, -22]],
       // Hub-style terrain (`mound`, `cave`, `outcrop`) and the grappling hooks' hand-checked hiding spots [x, y, z]:
       // in the cave, on the mound's top, behind the outcrop.
       terrain: [...cave(23, 28, 8, 13), ...mound(-29, -25, 12, 18), ...outcrop(3, 5, 5, 6.5)],
@@ -636,7 +642,7 @@
     const caches = A.caches.map(([x, y, z]) => ({ x, y, z, dark: 0 }));
     const powers = A.powers.map(([x, z]) => ({ x, z, kind: 0, dark: 0 }));
     const peels = A.peels.map(([x, z]) => ({ x, z, dark: 0 }));
-    const gorillas = A.gorillas.map(([x, z]) => ({ hx: x, hz: z, x, y: 0, z, vx: 0, vz: 0, heading: 0, state: 0, t: 0, holding: -1, held: 0, wx: x, wz: z }));
+    const gorillas = A.gorillas.map(([x, z]) => ({ hx: x, hz: z, x, y: 0, z, vx: 0, vz: 0, heading: 0, state: 0, t: 0, holding: -1, held: 0, wx: x, wz: z, hookCool: 0, ex: 0, ez: 0, stall: 0, side: 0, lastD: 0, throwT: 0 }));
     // The ghosts: `state` 0 drifting, 1 chasing, 2 gone (faded or popped) till `t` runs out; each keeps to its haunt.
     const ghosts = (A.ghosts || []).map(([x, z, r]) => ({ hx: x, hz: z, leash: r, x, y: 1, z, heading: 0, state: 0, t: 0, wx: x, wz: z, phase: x * 0.7 + z }));
     // The wallets: `state` 0 is held over its Ooga's head (no fuse yet), 1 thrown, 2 lying on the ground, 3 stuck to
@@ -731,7 +737,7 @@
       const k = Math.floor(sim.rng() * ARENA.hookSpots.length);
       for (let i = 0; i < sim.hooks.length; i++) placeHook(sim.hooks[i], ARENA.hookSpots[k], i % 2 === 1);
     }
-    for (const g of sim.gorillas) { g.x = g.wx = g.hx; g.z = g.wz = g.hz; g.vx = g.vz = 0; g.state = G_ROAM; g.t = 0; g.holding = -1; g.held = 0; }
+    for (const g of sim.gorillas) { g.x = g.wx = g.hx; g.z = g.wz = g.hz; g.vx = g.vz = 0; g.state = G_ROAM; g.t = 0; g.holding = -1; g.held = 0; g.hookCool = 0; g.ex = g.ez = g.stall = g.side = g.lastD = g.throwT = 0; }
     sim.goldLeft = CONFIG.GOLD_GUNS;
     // Each pair of spots starts with the same power (boots, laser eyes, then the halving or cold storage by the seed);
     // after that each draws from the seed, so a seed replays the round's power-ups too.
@@ -1127,11 +1133,12 @@
   };
   const open = (a) => a.splat <= 0 && a.guard <= 0 && a.trapped <= 0;
   // A grenade or rocket bursts: every open rival within its radius is splatted.
-  // The gorillas (Gorilla Jungle's): each roams round its home; an Ooga that comes within `GORILLA_SIGHT` (and not
-  // too far from the gorilla's home) is charged and grabbed, held up off the ground, any block in its hands dropped.
-  // `GRAB_HITS` jump presses break free (a bot struggles on its own), or the gorilla lets go after `GRAB_MAX_S`; either
-  // way it rests a while. Paint or a burst stuns a gorilla, which drops whoever it holds.
-  const G_ROAM = 0, G_CHASE = 1, G_HOLD = 2, G_REST = 3, G_STUN = 4;
+  // The gorillas, wicked's island gorillas in the sim's rules: each roams round its home; an Ooga that comes within
+  // `GORILLA_SIGHT` (and not too far from home) is charged and grabbed, any block in its hands dropped where it was
+  // grabbed. Then the capture: it drags the Ooga by the feet to the nearest edge (`G_HOLD`), winds up (`G_THROW`) and
+  // throws it off, and the Ooga jetpacks back. `GRAB_HITS` jump presses break free at any point (a bot struggles on
+  // its own); paint, a burst or the hook stuns a gorilla, which drops whoever it holds.
+  const G_ROAM = 0, G_CHASE = 1, G_HOLD = 2, G_REST = 3, G_STUN = 4, G_THROW = 5;
   const letGo = (sim, g, a, broke) => {
     if (a && a.grabbed) {
       a.grabbed = 0;
@@ -1140,24 +1147,69 @@
       emit(sim, broke ? "breakfree" : "letgo", a.team, a.id, a.x, a.y, a.z);
     }
     g.holding = -1;
-    if (g.state === G_HOLD) { g.state = G_REST; g.t = CONFIG.GORILLA_REST; }
+    if (g.state === G_HOLD || g.state === G_THROW) { g.state = G_REST; g.t = CONFIG.GORILLA_REST; }
   };
   const stunGorilla = (sim, g, by) => {
-    if (g.state === G_HOLD) letGo(sim, g, sim.actors[g.holding], false);
+    if (g.state === G_HOLD || g.state === G_THROW) letGo(sim, g, sim.actors[g.holding], false);
     g.state = G_STUN; g.t = CONFIG.GORILLA_STUN; g.vx = g.vz = 0;
     emit(sim, "gorillahit", null, by, g.x, 1.6, g.z);
+  };
+  // Where a gorilla holding a captive at (x, z) drags it: the nearer of the two edges that axis-wise bound it, a
+  // `DRAG_EDGE` inside, unless `side` (a blocked first try) asks for the other axis.
+  const pickEdge = (g) => {
+    const ex = ARENA.W - Math.abs(g.x), ez = ARENA.L - Math.abs(g.z), xFirst = g.side ? ex >= ez : ex < ez;
+    if (xFirst) { g.ex = (g.x < 0 ? -1 : 1) * (ARENA.W - CONFIG.DRAG_EDGE); g.ez = g.z; }
+    else { g.ex = g.x; g.ez = (g.z < 0 ? -1 : 1) * (ARENA.L - CONFIG.DRAG_EDGE); }
+  };
+  // The captive trails behind the gorilla by the feet, lying along the ground.
+  const placeCaptive = (g, a) => {
+    a.x = g.x - Math.sin(g.heading) * CONFIG.DRAG_BACK; a.z = g.z - Math.cos(g.heading) * CONFIG.DRAG_BACK;
+    a.y = 0.15;
+    a.vx = a.vz = a.vy = 0; a.grounded = false;
   };
   const stepGorillas = (sim, dt) => {
     for (let i = 0; i < sim.gorillas.length; i++) {
       const g = sim.gorillas[i];
       if (g.t > 0) g.t -= dt;
-      if (g.state === G_HOLD) {
+      if (g.hookCool > 0) g.hookCool -= dt;
+      if (g.state === G_HOLD || g.state === G_THROW) {
         const a = sim.actors[g.holding];
-        g.held += dt;
         if (!a || a.grabbed !== i + 1) { g.holding = -1; g.state = G_REST; g.t = CONFIG.GORILLA_REST; continue; }
-        a.x = g.x + Math.sin(g.heading) * 0.85; a.z = g.z + Math.cos(g.heading) * 0.85; a.y = 1.1;
-        a.vx = a.vz = a.vy = 0; a.grounded = false;
-        if (g.held > CONFIG.GRAB_MAX_S) letGo(sim, g, a, false);
+        g.held += dt;
+        if (g.held > CONFIG.GRAB_MAX_S) { letGo(sim, g, a, false); continue; }
+        if (g.state === G_THROW) {
+          // Winding up at the edge, facing out over it.
+          placeCaptive(g, a);
+          g.throwT = 1 - Math.max(0, g.t) / CONFIG.GORILLA_THROW_S;
+          if (g.t > 0) continue;
+          const ox = Math.sin(g.heading), oz = Math.cos(g.heading);
+          a.grabbed = 0;
+          a.x = g.x + ox * 1.1; a.z = g.z + oz * 1.1; a.y = 1.2;
+          a.vx = ox * CONFIG.GORILLA_THROW; a.vz = oz * CONFIG.GORILLA_THROW; a.vy = CONFIG.GORILLA_THROW_UP;
+          a.grounded = false; a.jumps = 0; a.fuel = CONFIG.JET_FUEL; a.knock = CONFIG.THROWN_S; a.guard = Math.max(a.guard, 1.5);
+          emit(sim, "thrown", a.team, a.id, a.x, a.y, a.z);
+          g.holding = -1; g.state = G_REST; g.t = CONFIG.GORILLA_REST; g.throwT = 0;
+          continue;
+        }
+        // Dragging: to the edge, picking the other axis's edge if it stalls.
+        const dx = g.ex - g.x, dz = g.ez - g.z, d = Math.hypot(dx, dz);
+        if (d < 0.5) {
+          g.state = G_THROW; g.t = CONFIG.GORILLA_THROW_S; g.throwT = 0;
+          const ex = ARENA.W - Math.abs(g.x), ez = ARENA.L - Math.abs(g.z);
+          g.heading = ex < ez ? (g.x < 0 ? -Math.PI / 2 : Math.PI / 2) : (g.z < 0 ? Math.PI : 0);
+          placeCaptive(g, a);
+          emit(sim, "windup", a.team, a.id, g.x, 1.4, g.z);
+          continue;
+        }
+        g.vx = dx / d * CONFIG.GORILLA_DRAG; g.vz = dz / d * CONFIG.GORILLA_DRAG;
+        const ox = g.x, oz = g.z;
+        g.x += g.vx * dt; g.z += g.vz * dt;
+        resolve(g, CONFIG.GORILLA_R);
+        g.x = Math.max(-ARENA.W + 0.8, Math.min(ARENA.W - 0.8, g.x)); g.z = Math.max(-ARENA.L + 0.8, Math.min(ARENA.L - 0.8, g.z));
+        g.heading = Math.atan2(g.vx, g.vz);
+        placeCaptive(g, a);
+        g.stall = Math.hypot(g.x - ox, g.z - oz) < CONFIG.GORILLA_DRAG * dt * 0.3 ? g.stall + dt : 0;
+        if (g.stall > 0.8) { g.stall = 0; g.side = g.side ? 0 : 1; pickEdge(g); }
         continue;
       }
       if (g.state === G_REST || g.state === G_STUN) {
@@ -1167,7 +1219,7 @@
       // The nearest Ooga in reach on the ground, not too far from home.
       let best = null, bd = CONFIG.GORILLA_SIGHT * CONFIG.GORILLA_SIGHT;
       for (const a of sim.actors) {
-        if (a.splat > 0 || a.trapped > 0 || a.grabbed || a.guard > 0 || a.y > 1.4 || a.riding || a.flight || a.climbing) continue;
+        if (a.splat > 0 || a.trapped > 0 || a.grabbed || a.guard > 0 || a.y > 1.4 || a.y < -0.5 || a.riding || a.flight || a.climbing) continue;
         if ((a.x - g.hx) ** 2 + (a.z - g.hz) ** 2 > CONFIG.GORILLA_LEASH * CONFIG.GORILLA_LEASH) continue;
         const d = (a.x - g.x) ** 2 + (a.z - g.z) ** 2;
         if (d < bd) { bd = d; best = a; }
@@ -1176,13 +1228,14 @@
       if (best) {
         g.state = G_CHASE; tx = best.x; tz = best.z; speed = CONFIG.GORILLA_CHARGE;
         if (bd < CONFIG.GORILLA_GRAB_R * CONFIG.GORILLA_GRAB_R) {
-          // Grabbed: up off the ground, block and crate let fall.
-          g.state = G_HOLD; g.holding = best.id; g.held = 0; g.vx = g.vz = 0;
+          // Grabbed: down by the feet, block and crate let fall where it was grabbed, and off to the edge.
+          g.state = G_HOLD; g.holding = best.id; g.held = 0; g.vx = g.vz = 0; g.side = 0; g.stall = 0;
           best.grabbed = i + 1; best.grabHits = CONFIG.GRAB_HITS;
           best.climbing = best.jetting = false;
           if (best.holding) { best.holding = false; emit(sim, "smash", best.team, best.id, best.x, best.y + 2, best.z); }
           emit(sim, "grab", best.team, best.id, best.x, 1.4, best.z);
           dropFlag(sim, best, "knock");
+          pickEdge(g);
           continue;
         }
       } else {
@@ -1982,6 +2035,15 @@
       const f = sim.flags[a.blocked];
       if (f.state === "dropped" && (f.x - a.x) ** 2 + (f.z - a.z) ** 2 < (CONFIG.PICK_R + 0.3) ** 2) { goal.x = f.x + (a.x > f.x ? 2.5 : -2.5); goal.z = f.z + (a.z > f.z ? 2.5 : -2.5); }
     }
+    // A loose block lying up on a crate or a wall, right overhead: jump for it (a bot under it would otherwise wait for ever).
+    if (a.grounded && a.netted <= 0 && a.detour <= 0) {
+      for (const t of TEAMS) {
+        const f = sim.flags[t];
+        if (f.state !== "dropped" || f.y <= a.y + 0.8 || Math.abs(f.x - goal.x) > 0.3 || Math.abs(f.z - goal.z) > 0.3 || (f.x - a.x) ** 2 + (f.z - a.z) ** 2 > 4) continue;
+        a.botJump = true; a.jetT = 0.5;
+        break;
+      }
+    }
     if (a.detour <= 0 && !a.botClimb) navigate(sim, a, dt);
     const d = Math.hypot(goal.x - a.x, goal.z - a.z);
     // An autopiloted player (`auto`, the suite's and the debug handle's) runs at the player's sprint.
@@ -2042,6 +2104,16 @@
       return;
     }
     if (a.hook && !a.hk && a.hCool <= 0 && sim.prep <= 0) botHook(sim, a);
+    // A gorilla charging this Ooga: a splat of paint stuns it (the hook, above, frees a teammate from one).
+    if (a.cooldown <= 0 && sim.prep <= 0 && !a.holding && sim.rng() < dt * 3) {
+      for (const g of sim.gorillas) {
+        if (g.state !== G_CHASE) continue;
+        const dd = (g.x - a.x) ** 2 + (g.z - a.z) ** 2;
+        if (dd > 49 || dd < 1 || !clearLine(a.x, a.z, g.x, g.z, 0.05, CONFIG.SHOT_Y)) continue;
+        fire(sim, a.id, Math.atan2(g.x - a.x, g.z - a.z), 0, "paint");
+        break;
+      }
+    }
     if (ex && sim.prep <= 0) { expertWallets(sim, a, dt); expertCrates(sim, a, dt); }
     if (a.cooldown <= 0 && sim.prep <= 0 && !a.holding) {
       let t = null, best = sim.bots.range * sim.bots.range;

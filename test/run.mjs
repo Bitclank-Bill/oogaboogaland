@@ -7503,6 +7503,40 @@ const gameRulesChecks = async () => {
       const hidden = S.MAPS.every((map) => { const m = fresh(map); return m.hooks.length === 2 && m.hooks.every((k) => k.state === 0 && S.ARENA.hookSpots.some(([x, , z]) => (Math.abs(k.x - x) < 1e-9 && Math.abs(k.z - z) < 1e-9) || (Math.abs(k.x + x) < 1e-9 && Math.abs(k.z + z) < 1e-9))); });
       rows.hidden = hidden;
       record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a wallet bomb steals a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
+      {
+        // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
+        // edge, a throw off it, a jetpack back, breaking free by mashing, and the hook stunning a gorilla to free its
+        // captive, once per cooldown.
+        const hunt = (map, i, x, z) => { const m = fresh(map), g = m.gorillas[i]; g.x = g.wx = g.hx = x; g.z = g.wz = g.hz = z; g.state = 0; g.t = 0; return [m, g]; };
+        const out = {};
+        let [m, g] = hunt("jungle", 0, -12, 23.5);
+        const v = m.actors[0];
+        v.x = -12; v.z = 25; v.y = 0; v.carrying = "red"; m.flags.red.state = "carried"; m.flags.red.carrier = 0;
+        run(m, 0.3, still, () => v.grabbed);
+        out.grab = v.grabbed === 1 && g.state === 2 && !v.carrying && m.flags.red.state === "dropped" && Math.abs(m.flags.red.z - 25) < 1.5;
+        const edge = Math.min(22 - Math.abs(g.ex), 37 - Math.abs(g.ez)) < 1.3;
+        run(m, 8, still, () => g.state === 5 || !v.grabbed);
+        out.drag = edge && g.state === 5 && Math.abs(v.x - g.x) < 2 && Math.abs(g.x) > 19;
+        const thrown = run(m, 1, still, () => !v.grabbed);
+        out.thrown = !!thrown.thrown && v.vx < -5 && v.vy > 5 && g.state === 3;
+        run(m, 6, { x: 1, z: 0, jet: 1 }, () => v.grounded && S.onIsland(v.x, v.z));
+        out.back = v.grounded && S.onIsland(v.x, v.z) && v.falls === 0;
+        [m, g] = hunt("fort", 1, 0, -14);
+        const e = m.actors[0];
+        e.x = 0; e.z = -15; run(m, 0.3, still, () => e.grabbed);
+        const held = e.grabbed === 2, mash = { x: 0, z: 0, jump: 0 };
+        for (let t = 0, n = 0; t < 3 && e.grabbed; t += S.CONFIG.STEP, n++) { mash.jump = n % 10 === 0 ? 1 : 0; S.tick(m, S.CONFIG.STEP, mash); m.eventCount = 0; }
+        out.escape = held && !e.grabbed && g.state === 3;
+        [m, g] = hunt("jungle", 0, -17, 25);
+        const cap = m.actors[1], o2 = m.actors[0];
+        cap.x = -17; cap.z = 26; run(m, 0.3, still, () => cap.grabbed);
+        o2.hook = 1; o2.x = g.x; o2.z = g.z - 8;
+        S.grapple(m, 0, 0, 0);
+        const stunLog = run(m, 0.6, still, () => g.state === 4);
+        out.stun = !!stunLog.gorillahooked && !cap.grabbed && g.state === 4 && g.hookCool > 0;
+        out.count = S.MAPS.every((map) => S.ARENAS[map].gorillas.length >= 3 && S.ARENAS[map].gorillas.length <= 4);
+        record("block frenzy gorillas: a charge and grab drops the block where it was grabbed, the captive is dragged by the feet to the nearest edge and thrown off, and jetpacks back; mashing breaks free; a hook stuns a gorilla and frees its captive; three or four on every map", Object.values(out).every(Boolean), JSON.stringify(out));
+      }
     }
     {
       // The play strip repaints only when something it shows moved (`stripChanged`, the scene's own test before it
