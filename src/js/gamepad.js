@@ -280,29 +280,33 @@
   };
   const profileFor = (pad) => pad.mapping === "standard" ? null : saved.profiles[keyOf(pad.id)] || null;
   const usable = (pad) => !!pad && pad.connected && (pad.mapping === "standard" || !!profileFor(pad));
-  // Each slot's raw buttons at the last read (the first 32), so a takeover needs a fresh press, not a button held: two
-  // pads held at once, or Steam's twin mirroring the real one, never trade places every read.
-  const lastRaw = new Uint32Array(16);
-  const freshPress = (pad, i) => {
+  // Each slot's raw buttons at the last read (the first 32) and whether this read pressed one afresh. Another pad
+  // takes over only on a fresh press while the current one has been still for TWIN_READS reads: a button held on
+  // both, or a press that Steam's twin mirrors in the same read or the next, never trades places.
+  const SLOTS = 16, TWIN_READS = 3;
+  const lastRaw = new Uint32Array(SLOTS), fresh = new Uint8Array(SLOTS);
+  let activeStill = TWIN_READS;
+  const readRaw = (pad, i) => {
     const buttons = pad.buttons, n = Math.min(32, buttons.length);
     let raw = 0;
     for (let b = 0; b < n; b++) if (buttons[b].pressed) raw |= 1 << b;
-    const fresh = raw & ~lastRaw[i];
+    fresh[i] = raw & ~lastRaw[i] ? 1 : 0;
     lastRaw[i] = raw;
-    return fresh !== 0;
   };
-  // The pad to read: a connected one pressed afresh that isn't the current one takes over, then the current one while
-  // it stays, then the first usable one. Switching restarts trigger hysteresis, which belongs to the old pad. A pad
-  // the page can't read yet is named in `unknown` the moment a button is pressed on it.
+  // The pad to read: one pressed afresh that isn't the current one, once the current one is still; then the current
+  // one while it stays; then the first usable one. Switching restarts trigger hysteresis, which belongs to the old pad.
+  // A pad the page can't read yet is named in `unknown` the moment a button is pressed on it.
   const pick = () => {
-    const pads = navigator.getGamepads();
+    const pads = navigator.getGamepads(), count = Math.min(SLOTS, pads.length);
+    for (let i = 0; i < count; i++) { if (pads[i] && pads[i].connected) readRaw(pads[i], i); else fresh[i] = lastRaw[i] = 0; }
+    const current = active >= 0 && active < count && usable(pads[active]);
+    activeStill = current && lastRaw[active] ? 0 : Math.min(TWIN_READS, activeStill + 1);
     let fallback = -1;
-    for (let i = 0; i < pads.length && i < 16; i++) {
+    for (let i = 0; i < count; i++) {
       const pad = pads[i];
       if (!pad || !pad.connected) continue;
-      const fresh = freshPress(pad, i);
-      if (!usable(pad)) { if (fresh && state.unknown !== pad.id) { state.unknown = pad.id; emit("unknown"); } continue; }
-      if (i !== active && fresh) { switchTo(i, pad); return pad; }
+      if (!usable(pad)) { if (fresh[i] && state.unknown !== pad.id) { state.unknown = pad.id; emit("unknown"); } continue; }
+      if (i !== active && fresh[i] && (!current || activeStill >= TWIN_READS)) { switchTo(i, pad); activeStill = 0; return pad; }
       if (fallback < 0) fallback = i;
     }
     // A different controller can take the same slot: it is a new pad, with its own family.

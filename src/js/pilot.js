@@ -2679,7 +2679,8 @@
       }
       if (aimView()) {
         // Armed, the controls keep Q/E off the look axis (birds-eye orbits with them); aiming views turn with them here.
-        const turn = clamp(a.yaw + a.orbitYaw, -1, 1);
+        // A pad's look speed lets `a.yaw` pass 1; Q and E take only the room left, as they did at 1.
+        const turnMax = Math.max(1, Math.abs(a.yaw)), turn = clamp(a.yaw + a.orbitYaw, -turnMax, turnMax);
         if (a.x || a.y || a.up || turn || a.pitch) releaseCursorAim();
         if (lying) moveLyingView(turn * YAW_RATE * dt, a.pitch * PITCH_RATE * dt);
         else if (turning && !turn && !a.pitch) {

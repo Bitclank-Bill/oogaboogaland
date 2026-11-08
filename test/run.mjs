@@ -8948,6 +8948,16 @@ const gamepadHoldProof = async () => {
 // The real gamepad and controls modules against stub pads: what a button does comes from the bindings, so a remap
 // reaches a reader and survives a reload, the pad last pressed is the one read, a game's context delivers its keys,
 // menus take the pad from play, and a learned profile reads a pad the browser doesn't map.
+// The aiming views' own turn lines, read from pilot.js and clanker-play.js: a pad's look speed past 1 turns faster
+// there, while Q and E alone still turn at 1.
+const aimTurnProof = async () => {
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const line = async (file, re) => (await readFile(join(root, `src/js/${file}`), "utf8")).match(re)[0];
+  const pilot = new Function("clamp", "a", `${await line("pilot.js", /const turnMax = Math\.max\(1, Math\.abs\(a\.yaw\)\), turn = [^;]+;/)} return turn;`);
+  const gorilla = new Function("clamp", "axes", "isCombat", `${await line("clanker-play.js", /const turnMax = Math\.max\(1, Math\.abs\(axes\.yaw\)\), turn = [^;]+;/)} return turn;`);
+  return pilot(clamp, { yaw: -2.5, orbitYaw: 0 }) === -2.5 && pilot(clamp, { yaw: 1, orbitYaw: 1 }) === 1
+    && gorilla(clamp, { yaw: 2.5, orbitYaw: 0 }, () => true) === 2.5 && gorilla(clamp, { yaw: -1, orbitYaw: -1 }, () => true) === -1;
+};
 const gamepadBindingsProof = async () => {
   const pad = (index, id = "Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)") => ({ index, id, mapping: "standard", connected: true, axes: [0, 0, 0, 0], buttons: Array.from({ length: 18 }, () => ({ pressed: false, value: 0 })) });
   const one = pad(0), two = pad(1);
@@ -9092,10 +9102,21 @@ const gamepadBindingsProof = async () => {
   swaps = 0;
   for (let i = 0; i < 6; i++) G.poll();
   const steady = swaps === 0 && S.lx > 0;
-  one.buttons[1].pressed = two.buttons[1].pressed = false; G.poll(); offSwap();
+  one.buttons[1].pressed = two.buttons[1].pressed = false; G.poll();
+  // Steam's twin repeats each press of the real pad, in the same read or the next: the pad in play keeps it.
+  for (let i = 0; i < 5; i++) G.poll();
+  swaps = 0;
+  for (let k = 0; k < 3; k++) {
+    one.buttons[0].pressed = two.buttons[0].pressed = true; G.poll();
+    one.buttons[0].pressed = two.buttons[0].pressed = false; G.poll(); G.poll(); G.poll(); G.poll();
+    two.buttons[2].pressed = true; G.poll(); one.buttons[2].pressed = true; G.poll();
+    one.buttons[2].pressed = two.buttons[2].pressed = false; G.poll(); G.poll(); G.poll(); G.poll();
+  }
+  const mirrored = swaps === 0 && S.lx > 0;
+  offSwap();
   one.axes[0] = 0; two.axes[0] = 0;
   return { defaults, dpadRead, footKeys, remapped, shared, readerFollows, refused, survives, perFamily, backToXbox, corrupt, unreadable, reset,
-    raceDown, raceUp, leftUp, shifted, stickArrows, menuA, menuScroll, menuVerbs, inverted, swapped, lookSpeed, learned, firstKept, switched, steady };
+    raceDown, raceUp, leftUp, shifted, stickArrows, menuA, menuScroll, menuVerbs, inverted, swapped, lookSpeed, aimTurn: await aimTurnProof(), learned, firstKept, switched, steady, mirrored };
 };
 
 
