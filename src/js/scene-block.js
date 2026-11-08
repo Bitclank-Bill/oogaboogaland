@@ -1923,14 +1923,16 @@
   const preview = { spin: 0, wide: false };
   // The start menu's sky: the hub's voxel clouds drifting round the view, high over the map.
   const CLOUD_Y = 220, CLOUD_SPAN = 170, CLOUD_DRIFT = 2.2, CLOUD_CALM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let skyClouds = [];
+  let skyClouds = [], skyPerch = null;
   const buildSkyClouds = () => {
     const rand = BL.math.mulberry32(8801);
     skyClouds = [];
     for (let i = 0; i < 18; i++) {
-      const a = i * 2.4, r = 30 + i * 8, k = 2 + rand() * 3;
+      const a = i * 2.4, r = 46 + i * 7, k = 1.5 + rand() * 1.5;
       skyClouds.push(place(createNode({ geometry: BL.hubModels.cloud(i % 3), position: { x: Math.cos(a) * r, y: CLOUD_Y - 34 + rand() * 62, z: Math.sin(a) * r }, scale: { x: k, y: k, z: k }, sightHidden: true, visible: false })));
     }
+    const perch = BL.hubModels.cloud(0), top = BL.scene.boundsOf(perch).max[1];
+    skyPerch = place(createNode({ geometry: perch, position: { x: 0, y: CLOUD_Y - top * 0.6, z: 0 }, scale: { x: 0.6, y: 0.6, z: 0.6 }, sightHidden: true, visible: false }));
   };
   const PREVIEW_MIN_W = 760;
   const boardView = (elapsed, dt) => {
@@ -1952,10 +1954,10 @@
       setVec(camera.target, 0, CLOUD_Y + 5, 0);
       return;
     }
-    // The visitor's Ooga under its parachute in the middle of the sky, turning.
+    // The visitor's Ooga stood on a cloud in the middle of the sky, turning.
     const me = sim.actors[0], x = 0, z = 0;
     preview.spin = wrap(preview.spin + dt * 0.7);
-    me.x = x; me.z = z; me.y = CLOUD_Y; me.grounded = false; me.flight = 2; me.moving = 0;
+    me.x = x; me.z = z; me.y = CLOUD_Y; me.grounded = true; me.flight = 0; me.moving = 0;
     me.carrying = null; me.holding = false; me.splat = me.trapped = me.burnt = me.slip = 0;
     me.heading = preview.spin;
     // The camera out past the gate at chest height, looking a little to the Ooga's left so it stands right of the board.
@@ -1965,6 +1967,7 @@
 
   const update = (dt, elapsed) => {
     sceneTime = elapsed;
+    if (skyPerch) skyPerch.visible = phase === "board";
     for (let i = 0; i < skyClouds.length; i++) {
       const n = skyClouds[i];
       n.visible = phase === "board";
@@ -2688,7 +2691,7 @@
     input.dispose();
     hud.dispose();
     phase = "board";
-    skyClouds = [];
+    skyClouds = []; skyPerch = null;
     sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = trampNodes = powerNodes = result = null;
     mapRoot = fireNode = dancers = peelNodes = catapults = null;
     catNear = false;

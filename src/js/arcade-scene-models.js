@@ -1277,11 +1277,11 @@
     const puff = (k, x, y, z, size) => {
       const g = merge(BL.hubModels.cloud(k % 3));
       for (let v = 0; v < g.verts.length; v++) g.verts[v] *= size;
-      for (const f of g.faces) f.emissive = 0.75;
+      for (const f of g.faces) f.emissive = 0.42;
       return moved(g, x, y, z);
     };
     const cloudRand = mulberry32(5533), { cloudY, stop } = BLOCK_HALL;
-    for (let k = 0; k < 14; k++) sky.push(puff(k, X + (cloudRand() - 0.5) * 60, cloudY + 2 + cloudRand() * 10, stop.z + 12 - cloudRand() * 26, 1.6 + cloudRand() * 1.1));
+    for (let k = 0; k < 14; k++) sky.push(puff(k, X + (cloudRand() - 0.5) * 70, cloudY - 4 + cloudRand() * 6, stop.z + 12 - cloudRand() * 26, 2 + cloudRand() * 1.2));
     for (let k = 0; k < 16; k++) sky.push(puff(k, X + (cloudRand() - 0.5) * 240, -30 + cloudRand() * 80, -60 - cloudRand() * 80, 1.2 + cloudRand() * 2));
     return { rock, ledge: shaded(round, flat), props: merge(...props), sky: merge(...sky) };
   });
