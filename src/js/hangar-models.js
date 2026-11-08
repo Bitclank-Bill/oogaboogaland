@@ -1065,7 +1065,7 @@
   // the floor (`decal`) and blue strips along it.
   const COMMAND = { x0: -18, x1: -6, front: HALL.front - LAYOUT.shell.face, back: HALL.front - LAYOUT.shell.face + 8, top: 4.2, sill: 0.95, lean: 0.35,
     glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a",
-    facade: { x0: -18.45, x1: -5.65, out: 0.45, lip: 0.22, frame: 0.36, rim: 0.15, body: "#5f6589", edge: "#767da6", light: "#9aa0c8", dark: "#2a2e40",
+    facade: { x0: -18.45, x1: -5.65, out: 0.45, lip: 0.22, frame: 0.5, rim: 0.15, body: "#5f6589", edge: "#767da6", light: "#9aa0c8", dark: "#2a2e40",
       orange: "#f28a1c", blue: "#4fb3ff", yellow: "#f2b630", pipe: "#2b3550",
       outline: [[-5.65, 5.5], [-6.1, 5.95], [-8.3, 5.95], [-8.9, 5.35], [-9.95, 5.35], [-10.6, 6.0], [-16.7, 6.0], [-17.35, 5.35], [-18.0, 5.35],
         [-18.15, 5.62], [-18.3, 5.62], [-18.45, 5.47]],
@@ -1444,13 +1444,28 @@
     const leant = (geo, z = 0) => moved(turnedX(geo, -lean), gx, sillTop, front + z);
     const hw = gw / 2, fw = F.frame, oct = (h, v0, v1, k) => [[-h + k, v0], [h - k, v0], [h, v0 + k], [h, v1 - k], [h - k, v1], [-h + k, v1], [-h, v1 - k], [-h, v0 + k]];
     const outer = oct(hw + fw, -0.28, len + 0.22, 0.55), inner = oct(hw, 0, len - 0.06, 0.55 - fw * (2 - Math.SQRT2));
-    for (let k = 0; k < 8; k++) flat.push(leant(prism([outer[k], outer[(k + 1) % 8], inner[(k + 1) % 8], inner[k]], 0.32, F.edge), -0.06));
-    for (let k = 0; k < 8; k++) detail.push(leant(beam(inner[k][0], inner[k][1], -0.23, inner[(k + 1) % 8][0], inner[(k + 1) % 8][1], -0.23, 0.05, F.light)));
+    for (let k = 0; k < 8; k++) flat.push(leant(prism([outer[k], outer[(k + 1) % 8], inner[(k + 1) % 8], inner[k]], 0.42, F.edge), -0.08));
+    for (let k = 0; k < 8; k++) detail.push(leant(beam(inner[k][0], inner[k][1], -0.3, inner[(k + 1) % 8][0], inner[(k + 1) % 8][1], -0.3, 0.06, F.light)));
+    // Its cut corners reinforced: a plate across each, bolted at both ends.
+    for (let k = 1; k < 8; k += 2) {
+      const [ax, ay] = outer[k], [bx, by] = outer[(k + 1) % 8], mx = (ax + bx) / 2, my = (ay + by) / 2, a = Math.atan2(by - ay, bx - ax), off = my > len / 2 ? -0.08 : 0.08;
+      flat.push(leant(moved(turnedZ(box({ w: Math.hypot(bx - ax, by - ay) * 0.75, h: 0.18, d: 0.06, color: F.light }), a), mx * 0.97, my + off, -0.32)));
+      for (const t of [0.3, 0.7]) detail.push(leant(box({ w: 0.06, h: 0.06, d: 0.02, color: F.dark, offset: { x: (ax + (bx - ax) * t) * 0.97, y: ay + (by - ay) * t + off, z: -0.36 } })));
+    }
     for (let i = 0; i < K.panes; i++) {
       glass.push(leant(box({ w: pw - 0.1, h: len - 0.1, d: 0.03, color: C.pane, emissive: 0.15, offset: { x: -hw + (i + 0.5) * pw, y: (len - 0.06) / 2 } })));
       glow.push(box({ w: pw - 0.5, h: 0.04, d: 0.05, color: F.blue, emissive: 1, offset: { x: x0 + (i + 0.5) * pw, y: top - 0.38, z: front + 0.22 } }));
     }
-    for (let i = 1; i < K.panes; i++) flat.push(leant(box({ w: 0.2, h: len, d: 0.24, color: F.dark, offset: { x: -hw + i * pw, y: len / 2 - 0.03 } }), -0.04));
+    for (let i = 1; i < K.panes; i++) {
+      flat.push(leant(box({ w: 0.3, h: len, d: 0.34, color: F.dark, offset: { x: -hw + i * pw, y: len / 2 - 0.03 } }), -0.06));
+      detail.push(leant(box({ w: 0.08, h: len - 0.2, d: 0.02, color: F.edge, offset: { x: -hw + i * pw, y: len / 2 - 0.03, z: -0.24 } })));
+    }
+    // A support beam across the glass's head, standing out under the lip, on a bracket at each end.
+    const beamY = top - 0.06, beamZ = ff - 0.16;
+    flat.push(box({ w: gw + 0.5, h: 0.2, d: 0.14, color: F.dark, offset: { x: gx, y: beamY, z: beamZ } }));
+    for (const fy of [beamY - 0.12, beamY + 0.12]) flat.push(box({ w: gw + 0.5, h: 0.04, d: 0.26, color: F.edge, offset: { x: gx, y: fy, z: beamZ } }));
+    for (const ex of [x0 - 0.05, K.glazed + 0.05]) flat.push(bevelBox({ w: 0.24, h: 0.42, d: 0.42, color: F.edge, bevel: 0.02, offset: { x: ex, y: beamY, z: beamZ + 0.12 } }));
+    for (let bx = x0 + 0.6; bx < K.glazed - 0.3; bx += 1.2) detail.push(box({ w: 0.05, h: 0.05, d: 0.02, color: F.light, offset: { x: bx, y: beamY, z: beamZ - 0.08 } }));
     // The door's stretch, laid round its frame so the Canvas 2D sort never paints it over the door; the frame standing
     // out in the facade's steel with its top corners chamfered, a yellow bumper at each foot, the amber lightbox over it,
     // an amber sconce beside it and a lit keypad on its other side; the room's plate between the door and the glass.
