@@ -365,9 +365,19 @@
     panels(walls, rand, "z", back, 1, X0, -mw - 1, mw + 1, mt + 1, top);
     surround(walls, "z", back, 1, -mw, mw, mt, S.face);
     // The front wall round the door, the landing standing in its surround and the surround's reveal running back to the
-    // door's arch.
-    const dw = LAYOUT.landing.w / 2 + 0.1, dt = S.doorTop;
-    panels(frontWall, rand, "z", front, -1, X0, left, d.x - dw - 1, 0, top);
+    // door's arch; left of it, its panels built whole and then those in the command room's opening left out, and its
+    // seam behind them laid round the opening (`COMMAND`).
+    const dw = LAYOUT.landing.w / 2 + 0.1, dt = S.doorTop, K = COMMAND, frontLeft = [];
+    panels(frontLeft, rand, "z", front, -1, X0, left, d.x - dw - 1, 0, top);
+    const inOpening = (g) => {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (let i = 0; i < g.verts.length; i += 3) { x0 = Math.min(x0, g.verts[i]); x1 = Math.max(x1, g.verts[i]); y0 = Math.min(y0, g.verts[i + 1]); y1 = Math.max(y1, g.verts[i + 1]); }
+      const x = (x0 + x1) / 2, y = (y0 + y1) / 2;
+      return x > K.x0 && x < K.x1 && y < K.top;
+    };
+    const frontSeam = (u0, u1, y0, y1) => frontWall.push(wallBox("z", front, -1, u0, u1 - u0, y0, y1 - y0, -PANEL.d - 0.1, -PANEL.d, PANEL.seam));
+    frontSeam(left, K.x0, 0, top); frontSeam(K.x1, d.x - dw - 1, 0, top); frontSeam(K.x0, K.x1, K.top, top);
+    for (let i = 1; i < frontLeft.length; i++) if (!inOpening(frontLeft[i])) frontWall.push(frontLeft[i]);
     panels(frontWall, rand, "z", front, -1, X0, d.x + dw + 1, right, 0, top);
     panels(frontWall, rand, "z", front, -1, X0, d.x - dw - 1, d.x + dw + 1, dt + 1, top);
     surround(frontWall, "z", front, -1, d.x - dw, d.x + dw, dt, S.face + 0.5);
@@ -411,7 +421,11 @@
     const backing = [
       box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X0 - 1.2, y: H / 2, z: (B + F) / 2 } }),
       box({ w: 1, h: H + 4, d: F - B + 4, color: PANEL.seam, offset: { x: X1 + 1.2, y: H / 2, z: (B + F) / 2 } }),
-      box({ w: span + 4, h: H + 4, d: 1, color: PANEL.seam, offset: { x: mid, y: H / 2, z: F + 1.6 } }),
+      // The front's in three round the command room, which stands in the wall, and one behind the room.
+      box({ w: K.x0 - 0.4 - (X0 - 2), h: H + 4, d: 1, color: PANEL.seam, offset: { x: (X0 - 2 + K.x0 - 0.4) / 2, y: H / 2, z: F + 1.6 } }),
+      box({ w: X1 + 2 - (K.x1 + 0.4), h: H + 4, d: 1, color: PANEL.seam, offset: { x: (K.x1 + 0.4 + X1 + 2) / 2, y: H / 2, z: F + 1.6 } }),
+      box({ w: K.x1 - K.x0 + 0.8, h: H + 2 - (K.top + 0.6), d: 1, color: PANEL.seam, offset: { x: (K.x0 + K.x1) / 2, y: (K.top + 0.6 + H + 2) / 2, z: F + 1.6 } }),
+      box({ w: K.x1 - K.x0 + 2, h: K.top + 2, d: 1, color: PANEL.seam, offset: { x: (K.x0 + K.x1) / 2, y: K.top / 2, z: K.back + 0.9 } }),
       box({ w: span + 4, h: 1, d: F - B + 4, color: PANEL.seam, offset: { x: mid, y: H + 3, z: (B + F) / 2 } }),
       box({ w: right - left, h: 0.2, d: front - back, color: PANEL.seam, offset: { x: mid, y: H + 0.3, z: (back + front) / 2 } })
     ];
@@ -948,6 +962,118 @@
       box({ w: 0.02, h: 0.52, d: 0.38, color: C.frame, offset: { x: 0.03, y: 1.55, z: 0.45 } }),
       box({ w: 0.02, h: 0.44, d: 0.3, color: C.amber, emissive: 0.85, offset: { x: 0.04, y: 1.55, z: 0.45 } }),
       box({ w: 0.05, h: 0.04, d: 0.16, color: "#c9d0d8", offset: { x: 0.06, y: 1.0, z: 0.75 } }));
+  });
+  // The command room set into the front wall left of the door at the floor, after its concept: through an opening in
+  // the wall's panels from `x0` to `x1` and up to `top` (on the panels' grid and rows, so the wall round it keeps its
+  // seams), reaching back from the wall's face (`front`) to `back`. Its front looks down the hall toward the launch
+  // tunnel: `panes` big panes from `x0` to `glazed` over a sill `sill` high, leaning out at the top by `lean` as a
+  // control tower's do, in a heavy dark frame; and past them, at the end by the landing, a solid stretch with a double
+  // door `door` wide round `doorX` (its leaves on nodes of the scene's own, `commandDoor`) and the room's plate beside
+  // it; on the wall over the glass the room's sign. Inside, for now, lit blue: strips along the ceiling running out to
+  // the glass and paneled walls. `flat` the room, `glow` its lit parts, which the scene dims with the hall's glass,
+  // `glass` the panes, `pictures` its signs' faces, each { geometry, x, y, z, turn }, and `doors`, where each leaf's
+  // hinge stands and the way it turns shut.
+  const COMMAND = { x0: -18, x1: -6, front: HALL.front - LAYOUT.shell.face, back: HALL.front - LAYOUT.shell.face + 8, top: 4.2, sill: 0.95, lean: 0.35,
+    glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a" };
+  // A lightning bolt in `g`'s current fill, `h` high with its middle at (x, y).
+  const paintBolt = (g, x, y, h) => {
+    const pts = [[0.18, -0.5], [-0.3, 0.06], [-0.02, 0.06], [-0.2, 0.5], [0.3, -0.08], [0.02, -0.08]];
+    g.beginPath();
+    pts.forEach(([u, v], i) => (i ? g.lineTo : g.moveTo).call(g, x + u * h, y + v * h));
+    g.closePath(); g.fill();
+  };
+  // The sign over the opening: the room's name in cream on navy in an orange edge, a bolt at each end; and the plate by
+  // the door, the bolt over CONTROL ROOM and what it is for.
+  const paintCommandSign = (g, W, H) => {
+    const K = COMMAND;
+    g.fillStyle = K.navy; g.fillRect(0, 0, W, H);
+    g.strokeStyle = CONTROL.orange; g.lineWidth = H * 0.08; g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, W - g.lineWidth, H - g.lineWidth);
+    g.fillStyle = K.bolt;
+    for (const x of [H * 0.6, W - H * 0.6]) paintBolt(g, x, H / 2, H * 0.62);
+    g.fillStyle = K.cream; g.font = `bold ${Math.round(H * 0.46)}px sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText("CONTROL ROOM", W / 2, H * 0.53);
+  };
+  const paintCommandPlate = (g, W, H) => {
+    const K = COMMAND;
+    g.fillStyle = K.navy; g.fillRect(0, 0, W, H);
+    g.strokeStyle = "#3a4b7a"; g.lineWidth = W * 0.03; g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, W - g.lineWidth, H - g.lineWidth);
+    g.fillStyle = K.bolt; paintBolt(g, W / 2, H * 0.22, H * 0.24);
+    g.fillStyle = K.cream; g.textAlign = "center"; g.textBaseline = "middle";
+    g.font = `bold ${Math.round(W * 0.19)}px sans-serif`;
+    ["CONTROL", "ROOM"].forEach((t, i) => g.fillText(t, W / 2, H * (0.5 + i * 0.14)));
+    g.font = `bold ${Math.round(W * 0.085)}px sans-serif`;
+    ["COMMAND &", "OBSERVATION"].forEach((t, i) => g.fillText(t, W / 2, H * (0.8 + i * 0.08)));
+  };
+  // One of the command room's door leaves about its hinge, reaching +x from it and facing the hall (-z) and the room
+  // alike: the leaf, an amber window in a frame and a push bar on both its faces.
+  const commandDoor = cached(() => {
+    const C = CONTROL, K = COMMAND, w = K.door / 2, h = K.doorH, parts = [box({ w: w - 0.02, h, d: 0.06, color: C.door, offset: { x: w / 2, y: h / 2, z: 0 } })];
+    for (const s of [-1, 1]) {
+      parts.push(box({ w: 0.36, h: 0.62, d: 0.02, color: C.frame, offset: { x: w * 0.55, y: 1.62, z: s * 0.035 } }));
+      parts.push(box({ w: 0.28, h: 0.54, d: 0.02, color: C.amber, emissive: 0.85, offset: { x: w * 0.55, y: 1.62, z: s * 0.045 } }));
+      parts.push(box({ w: 0.5, h: 0.05, d: 0.05, color: "#c9d0d8", offset: { x: w * 0.55, y: 1.02, z: s * 0.06 } }));
+    }
+    return merge(...parts);
+  });
+  const commandRoom = cached(() => {
+    const K = COMMAND, C = CONTROL, flat = [], glow = [], glass = [], pictures = [];
+    const { x0, x1, front, back, top } = K, xc = (x0 + x1) / 2, xw = x1 - x0, ry = top / 2, zc = (front + back) / 2, zd = back - front;
+    // The room: its floor (a little over the hall's, which runs on in under the wall), ceiling, back wall and ends,
+    // glowing a little as a lit room does, with seams down its back wall. Each faces into the room alone, in strips
+    // (`inward`), so from the hall it is seen only through the glass and the door and the Canvas 2D sort never paints
+    // it over the wall round it.
+    const inward = (pts, color, emissive) => flat.push({ verts: pts.flat(), faces: [{ i: [0, 1, 2, 3], color: math.hexToRgb(color), emissive }], lines: [] });
+    const fy = 0.005;
+    for (let x = x0; x < x1 - 0.01; x += 1.5) {
+      const xa = x, xb = Math.min(x + 1.5, x1);
+      inward([[xa, fy, front], [xa, fy, back], [xb, fy, back], [xb, fy, front]], "#232a38", 0);
+      inward([[xa, top, front], [xb, top, front], [xb, top, back], [xa, top, back]], C.deep, 0.25);
+      inward([[xb, 0, back], [xa, 0, back], [xa, top, back], [xb, top, back]], C.inside, 0.3);
+      if (xa > x0) flat.push(box({ w: 0.03, h: top, d: 0.01, color: C.seam, offset: { x: xa, y: ry, z: back - 0.005 } }));
+    }
+    for (let z = front; z < back - 0.01; z += 2) {
+      const za = z, zb = Math.min(z + 2, back);
+      inward([[x0, 0, zb], [x0, 0, za], [x0, top, za], [x0, top, zb]], C.inside, 0.3);
+      inward([[x1, 0, za], [x1, 0, zb], [x1, top, zb], [x1, top, za]], C.inside, 0.3);
+    }
+    // The ceiling's strips, running out to the glass.
+    for (let k = 0; k < 5; k++) glow.push(box({ w: 0.14, h: 0.04, d: zd - 1.2, color: C.strip, emissive: 1, offset: { x: x0 + 1.4 + k * (xw - 2.8) / 4, y: top - 0.02, z: zc } }));
+    // The opening's frame on the wall's face: its jambs and its head.
+    for (const x of [x0, x1]) flat.push(box({ w: 0.44, h: top + 0.2, d: 0.3, color: C.frame, offset: { x, y: (top + 0.2) / 2, z: front - 0.05 } }));
+    flat.push(box({ w: xw + 0.3, h: 0.3, d: 0.3 + K.lean, color: C.frame, offset: { x: xc, y: top + 0.05, z: front + 0.1 - (0.3 + K.lean) / 2 } }));
+    // The sill under the glass with a blue strip along it, then the panes leaning out to the head in their frame.
+    const sillTop = K.sill, head = front - K.lean, gw = K.glazed - x0, gx = (x0 + K.glazed) / 2, pw = gw / K.panes;
+    const rise = top - 0.1 - sillTop, lean = Math.atan2(K.lean, rise), len = Math.hypot(K.lean, rise);
+    flat.push(box({ w: gw, h: sillTop, d: 0.3, color: C.frame, offset: { x: gx, y: sillTop / 2, z: front + 0.1 } }));
+    flat.push(box({ w: gw, h: 0.06, d: 0.44, color: C.lip, offset: { x: gx, y: sillTop + 0.03, z: front + 0.03 } }));
+    glow.push(box({ w: gw - 0.4, h: 0.05, d: 0.02, color: KNEE.color, emissive: 1, offset: { x: gx, y: 0.5, z: front - 0.06 } }));
+    for (let i = 0; i < K.panes; i++) {
+      glass.push(moved(turnedX(box({ w: pw - 0.16, h: len - 0.12, d: 0.03, color: C.pane, emissive: 0.15 }), -lean), x0 + (i + 0.5) * pw, (sillTop + top - 0.1) / 2, (front + head) / 2));
+    }
+    for (let i = 1; i <= K.panes; i++) flat.push(beam(x0 + i * pw, sillTop, front, x0 + i * pw, top - 0.1, head, i < K.panes ? 0.14 : 0.24, C.frame));
+    flat.push(beam(x0 + 0.1, sillTop, front, x0 + 0.1, top - 0.1, head, 0.2, C.frame));
+    flat.push(beam(x0, sillTop + 0.04, front, K.glazed, sillTop + 0.04, front, 0.16, C.frame));
+    // The solid stretch past the glass, laid round the door's frame so the Canvas 2D sort never paints it over the
+    // door: the frame, the lamp over the door and the room's plate beside it.
+    const dx = K.doorX, dw = K.door / 2 + 0.06, dh = K.doorH;
+    for (const [a, b, y0, y1] of [[K.glazed, dx - dw, 0, top], [dx + dw, x1, 0, top], [dx - dw, dx + dw, dh + 0.06, top]]) {
+      flat.push(box({ w: b - a, h: y1 - y0, d: 0.3, color: C.face, offset: { x: (a + b) / 2, y: (y0 + y1) / 2, z: front + 0.1 } }));
+    }
+    for (const x of [dx - dw + 0.03, dx + dw - 0.03]) flat.push(box({ w: 0.06, h: dh + 0.06, d: 0.34, color: C.frame, offset: { x, y: (dh + 0.06) / 2, z: front + 0.1 } }));
+    flat.push(box({ w: dw * 2, h: 0.06, d: 0.34, color: C.frame, offset: { x: dx, y: dh + 0.03, z: front + 0.1 } }));
+    flat.push(box({ w: 0.42, h: 0.12, d: 0.12, color: "#24282f", offset: { x: dx, y: dh + 0.3, z: front - 0.1 } }));
+    glow.push(box({ w: 0.36, h: 0.06, d: 0.02, color: C.amber, emissive: 1, offset: { x: dx, y: dh + 0.3, z: front - 0.17 } }));
+    const plate = { x: (K.glazed + dx - dw) / 2, y: 1.6, w: 0.62, h: 0.9 };
+    flat.push(box({ w: plate.w + 0.1, h: plate.h + 0.1, d: 0.04, color: C.frame, offset: { x: plate.x, y: plate.y, z: front - 0.07 } }));
+    pictures.push({ geometry: screenPicture(plate.w, plate.h, 256, paintCommandPlate), x: plate.x, y: plate.y, z: front - 0.095, turn: Math.PI });
+    // The sign on the wall over the opening, in its orange frame.
+    const sign = { w: 5, h: 0.62, y: top + 0.75 };
+    flat.push(box({ w: sign.w + 0.16, h: sign.h + 0.14, d: 0.08, color: C.orange, emissive: 0.35, offset: { x: gx, y: sign.y, z: front - 0.04 } }));
+    pictures.push({ geometry: screenPicture(sign.w, sign.h, 200, paintCommandSign), x: gx, y: sign.y, z: front - 0.085, turn: Math.PI });
+    const windows = noShadow(merge(...glass));
+    windows.glass = 0.16;
+    const doors = [{ x: dx - K.door / 2, z: front + 0.1, turn: 0, open: -1 }, { x: dx + K.door / 2, z: front + 0.1, turn: Math.PI, open: 1 }];
+    return { flat: merge(...flat), glow: noShadow(merge(...glow)), glass: windows, pictures, doors };
   });
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
@@ -2785,6 +2911,14 @@
     for (const [x, z] of CRANE.stands) around(x, z, 0.85, 0.85, CRANE.standTop + CRANE.crate[1]);
     // The control room's front out from the left wall, its door and keypad with it, in the way at the catwalk's level.
     block(HALL.x0, CONTROL.front + 0.2, CONTROL.z0, CONTROL.z1, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
+    // The command room's front either side of its door, from the jambs' faces back into the wall, and its ends and back
+    // wall round the floor inside it (`inside`).
+    const K = COMMAND, kd = K.doorX - K.door / 2 - 0.06, ke = K.doorX + K.door / 2 + 0.06;
+    block(K.x0 - 0.3, kd, K.front - 0.25, K.front + 0.3, -1, K.top + 1);
+    block(ke, K.x1 + 0.3, K.front - 0.25, K.front + 0.3, -1, K.top + 1);
+    block(K.x0 - 0.3, K.x0, K.front, K.back + 0.3, -1, K.top + 1);
+    block(K.x1, K.x1 + 0.3, K.front, K.back + 0.3, -1, K.top + 1);
+    block(K.x0 - 0.3, K.x1 + 0.3, K.back, K.back + 0.3, -1, K.top + 1);
     // The crew's rooms' fronts out from the right wall likewise.
     for (const z of SIDE_ROOMS.bays) block(HALL.x0 + HALL.x1 - CONTROL.front - 0.2, HALL.x1, z - SIDE_ROOMS.half, z + SIDE_ROOMS.half, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
     // The ribs standing out of the side walls, plinths and all.
@@ -2842,16 +2976,17 @@
     }
     return best;
   };
-  // Inside the hall, a step clear of its leaning walls; down the launch tunnel to the hold-short line; and through the
-  // door's passage out to a little past its shield, so a walker crosses it on its feet. A movement may leave a box it
+  // Inside the hall, a step clear of its leaning walls; down the launch tunnel to the hold-short line; through the
+  // door's passage out to a little past its shield, so a walker crosses it on its feet; and into the command room. A movement may leave a box it
   // already overlaps, so long as it does not go in deeper, and the same among the Jet's columns: never among more of
   // them than it was, so a walker that ends up in the Jet (a jump, a fall) can always walk out. A box stands in the way
   // of feet from its foot up to below its top, so one standing on it walks across it; on foot (`step`), a solid's within a
   // step above the feet lets a foot's breadth of the body over it (SOLID_FOOT), as a step does, and then holds it up
   // (`supportAt`).
   const inside = (x, z, feet) => {
-    const d = LAYOUT.door, t = LAYOUT.tunnel;
+    const d = LAYOUT.door, t = LAYOUT.tunnel, K = COMMAND;
     if (Math.abs(x - d.x) < d.half - 0.3 && z > HALL.front - 2.4 && z < HALL.front + 1 && Math.abs(feet - d.y) < 0.8) return true;
+    if (x > K.x0 && x < K.x1 && z > HALL.front - 2 && z < K.back && feet < K.top - 2) return true;
     if (z <= HALL.back + 2.2) return z > t.holdShort && Math.abs(x) < t.r - 1.6;
     return x > HALL.x0 + 2.4 && x < HALL.x1 - 2.4 && z < HALL.front - 1.6;
   };
@@ -2904,7 +3039,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, SIDE_ROOMS, sideRooms, roomDoor, keypad, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, COMMAND, commandRoom, commandDoor, SIDE_ROOMS, sideRooms, roomDoor, keypad, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),

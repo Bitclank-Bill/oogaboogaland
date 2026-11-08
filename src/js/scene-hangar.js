@@ -248,6 +248,17 @@
     nearTest = null;
     return nearHit;
   };
+  // The command room's door: its two leaves swing open into the room while anything that walks the hall (as `nearJet`
+  // counts them) stands within `COMMAND_DOOR.reach` of its middle on the floor, and shut again once nobody does, easing
+  // at `ease` a second, a quarter turn open.
+  const COMMAND_DOOR = { reach: 3.6, ease: 6, swing: Math.PI * 0.48 };
+  const atCommandDoor = (x, z, feet) => feet < 1 && Math.hypot(x - HM.COMMAND.doorX, z - HM.COMMAND.front) < COMMAND_DOOR.reach;
+  const commandDoorLife = (s, dt) => {
+    const want = nearJet(atCommandDoor) ? 1 : 0;
+    s.commandOpen += (want - s.commandOpen) * Math.min(1, dt * COMMAND_DOOR.ease);
+    const k = s.commandOpen * s.commandOpen * (3 - 2 * s.commandOpen), doors = HM.commandRoom().doors;
+    for (let i = 0; i < 2; i++) s.commandDoors[i].rotation.y = doors[i].turn + doors[i].open * k * COMMAND_DOOR.swing;
+  };
   // Whether anything that walks the hall (as `nearJet` counts them) stands within `reach` of the line from (ax, az) to
   // (bx, bz) with its feet lower than `bottom`, for the crane, which holds its load while anyone is under it; `UNDER` is
   // the line, set a call at a time.
@@ -973,6 +984,20 @@
     addChild(root, createNode({ geometry: room.flat }), roomGlow, createNode({ geometry: room.glass, sightHidden: true }));
     for (const p of room.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
     s.glass.push(roomGlow);
+    // The command room set into the front wall left of the door (`HM.commandRoom`), as the control room: its glow dimmed
+    // with the glass, its signs' faces a metre nearer on Canvas 2D, and its door's two leaves on nodes of their own on
+    // their hinges, which `commandDoorLife` swings open.
+    const command = HM.commandRoom(), commandGlow = createNode({ geometry: command.glow, sightHidden: true });
+    addChild(root, createNode({ geometry: command.flat }), commandGlow, createNode({ geometry: command.glass, sightHidden: true }));
+    for (const p of command.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
+    s.glass.push(commandGlow);
+    s.commandDoors = command.doors.map((d) => {
+      const leaf = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.turn, z: 0 }, geometry: HM.commandDoor() });
+      addChild(root, leaf);
+      s.glass.push(leaf);
+      return leaf;
+    });
+    s.commandOpen = 0;
     // The crew's rooms on the right wall, as the control room, each its door on a node of its own on its hinge, its amber
     // window dimmed with the glass.
     s.roomDoors = [];
@@ -1371,6 +1396,9 @@
   // whoever walks down it.
   const inDoorway = (p) => Math.abs(p.x - DOOR.x) < DOOR.half && p.z > HALL.front - 2.5 && p.y > DOOR.y && p.y < DOOR.y + DOOR.top;
   const inTunnel = (p) => p.z < HALL.back + 2;
+  // Past the front wall's face into the command room, `gap` in from its ends, and no higher than a little over its
+  // ceiling, so a view that rises there stays in the room while one over the left catwalk stays in the hall.
+  const inCommand = (p, gap) => p.z > HM.COMMAND.front - gap && p.y < HM.COMMAND.top + 2 && p.x > HM.COMMAND.x0 + gap && p.x < HM.COMMAND.x1 - gap;
 
   const enter = (ctx) => {
     ({ renderer, game, world, go, agentPlay } = ctx);
@@ -1389,11 +1417,18 @@
         p.z = Math.max(p.z, TUN.holdShort - 1);
         return;
       }
+      if (inCommand(p, 0.6)) {
+        p.x = clamp(p.x, HM.COMMAND.x0 + 0.6, HM.COMMAND.x1 - 0.6);
+        p.y = Math.min(p.y, HM.COMMAND.top - 0.6);
+        p.z = Math.min(p.z, HM.COMMAND.back - 0.6);
+        return;
+      }
       p.x = clamp(p.x, HALL.x0 + 3, HALL.x1 - 3);
       p.z = Math.min(p.z, HALL.front - 2);
     };
     // Inside the walls, clear of the ribs that stand out of the side walls (`WALL_GAP`); the door's passage lets the eye
-    // nearer the front, and the launch tunnel lets it on down the runway, inside its frames and short of the shield.
+    // nearer the front, the command room into itself, and the launch tunnel lets it on down the runway, inside its
+    // frames and short of the shield.
     const clampCamera = (p) => {
       p.y = clamp(p.y, 0.6, HALL.h - 1.5);
       if (inDoorway(p)) { p.z = Math.min(p.z, DOOR.z + 3); return; }
@@ -1401,6 +1436,12 @@
         p.x = clamp(p.x, -TUN.r + 1.5, TUN.r - 1.5);
         p.y = Math.min(p.y, TUN.y + TUN.r - 1.8);
         p.z = Math.max(p.z, TUN.z1 + 1.5);
+        return;
+      }
+      if (inCommand(p, WALL_GAP)) {
+        p.x = clamp(p.x, HM.COMMAND.x0 + WALL_GAP, HM.COMMAND.x1 - WALL_GAP);
+        p.y = Math.min(p.y, HM.COMMAND.top - 0.4);
+        p.z = Math.min(p.z, HM.COMMAND.back - WALL_GAP);
         return;
       }
       p.x = clamp(p.x, HALL.x0 + SHELL.face + SHELL.rib + WALL_GAP, HALL.x1 - SHELL.face - SHELL.rib - WALL_GAP);
@@ -1742,6 +1783,7 @@
     if (actLabel) { hud.setAct(actLabel); actPrompt = true; }
     else if (actPrompt) { actPrompt = false; pilot.showAct(); }
     node.tick(dt);
+    commandDoorLife(s, dt);
     // The door answers whoever comes near (the Ooga driven here, or with none the view), as ₿IFRÖST's windows do: its
     // arch's studs and neon brighten, its light swells and reaches farther, and its field hums faster.
     const who = drivenHere ? drivenHere.root.position : pilot.orbit.target;
