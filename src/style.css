@@ -1514,12 +1514,17 @@ body[data-active-scene="hub"] .home-link {
 .pm-switch-button:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 1px; }
 .pm-switch .pm-count { position: static; margin: 0 0 0 2px; }
 .pm-lock { flex: none; width: 9px; height: 10px; }
+/* As the partner's row lock shows it (private-chat.js): amber while an invite or the pad waits, blue once sealed. */
+.pm-switch-button[data-lock="waiting"] .pm-lock, .pm-title[data-lock="waiting"] .pm-lock { color: var(--warn); }
+.pm-switch-button[data-lock="sealed"] .pm-lock { color: #9fbfee; }
 
 .pm { display: none; flex: 1 1 auto; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .pm [hidden] { display: none; }
 .panel[data-panel="chat"][data-view="private"] .pm { display: flex; }
 .panel[data-panel="chat"][data-view="private"] > :is(.chat-identity, .chat-log, .chat-status, .chat-form),
 .panel[data-panel="chat"][data-view="private"] > .panel-title > .chat-about { display: none; }
+/* Without the island's About button, the title itself keeps the room's chip and the bell at the right. */
+.panel[data-panel="chat"][data-view="private"] > .panel-title h2 { margin-right: auto; }
 .pm-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; }
 .pm-head .pm-end { min-height: 24px; }
 .pm-title { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; color: #cfe0ff; font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
@@ -1914,8 +1919,9 @@ body[data-active-scene="hub"] .home-link {
   }
 }
 
-/* A contributor's stats (hud.js `openStats`): their Ooga's face at the left, then their total and first contribution
-   side by side, the kinds on a line under them, and a chip a repository with their count there. */
+/* A contributor's stats (hud.js `openStats`): their Ooga's face at the left with their total and first contribution
+   side by side next to it, then the kinds and a chip a repository with their count there across the whole strip, under
+   the face too. The facts keep to one line while they fit (`data-fit="line"`, hud.js `fitSince`). */
 .roster-stats {
   display: grid;
   grid-column: 1 / -1;
@@ -1935,7 +1941,7 @@ body[data-active-scene="hub"] .home-link {
 }
 
 .roster-stats-face {
-  grid-row: 1 / span 3;
+  grid-row: 1;
   width: 40px;
   height: 40px;
   image-rendering: pixelated;
@@ -1944,9 +1950,12 @@ body[data-active-scene="hub"] .home-link {
 .roster-stats-facts {
   display: flex;
   flex-wrap: wrap;
+  align-self: center;
   gap: 2px 14px;
   margin: 0;
 }
+
+.roster-stats-facts[data-fit="line"] { flex-wrap: nowrap; }
 
 .roster-stats-facts dt {
   color: var(--muted);
@@ -1966,7 +1975,7 @@ body[data-active-scene="hub"] .home-link {
 }
 
 .roster-stats-kinds {
-  grid-column: 2;
+  grid-column: 1 / -1;
   margin: 0;
   color: rgba(243, 239, 228, 0.72);
   font-size: 10px;
@@ -1979,7 +1988,7 @@ body[data-active-scene="hub"] .home-link {
 .roster-stats-repos {
   display: flex;
   flex-wrap: wrap;
-  grid-column: 2;
+  grid-column: 1 / -1;
   gap: 4px;
 }
 
@@ -2060,18 +2069,31 @@ body[data-active-scene="hub"] .home-link {
   cursor: default;
 }
 
+/* The private conversation's lock (private-chat.js `lock`): open and grey, amber while it waits, shut and blue once
+   sealed, dim on the other rows while one is under way. */
 .players-private {
   display: inline-flex;
   padding: 0;
   border: 0;
   background: none;
-  color: #9fbfee;
+  color: var(--muted);
   cursor: pointer;
 }
 .players-private[hidden] { display: none; }
-.players-private svg { width: 10px; height: 11px; shape-rendering: crispEdges; }
-.players-private:hover, .players-private:focus-visible { color: #cfe0ff; outline: none; }
+.players-private svg { width: 10px; height: 12px; shape-rendering: crispEdges; }
+.players-private:hover, .players-private:focus-visible { color: var(--fg); outline: none; }
 .players-private:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.players-private[data-lock="waiting"] { color: var(--warn); }
+.players-private[data-lock="waiting"]:is(:hover, :focus-visible) { color: var(--accent-text); }
+.players-private[data-lock="waiting"] svg { animation: players-private-wait 2s ease-in-out infinite; }
+.players-private[data-lock="sealed"] { color: #9fbfee; }
+.players-private[data-lock="sealed"]:is(:hover, :focus-visible) { color: #cfe0ff; }
+.players-private[data-lock="busy"] { color: var(--faint); }
+.players-private[data-lock="busy"]:is(:hover, :focus-visible) { color: var(--muted); }
+@keyframes players-private-wait { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .players-private[data-lock="waiting"] svg { animation: none; }
+}
 
 .roster-voice:focus-visible {
   outline: 2px solid var(--accent);
@@ -2112,9 +2134,7 @@ body[data-active-scene="hub"] .home-link {
 
 /* The live players tab (players.js): a group a zone under its heading, and a row a player with the roster's marks,
    the crosshair that turns the camera and, for players in the visitor's zone, how far away they stand. Each cell keeps
-   its column, so a hidden crosshair or an empty distance never moves the others. An Ooga thump's mallet (thump.js) is
-   drawn over the voice mark, in its cell in every row, shown and hidden by visibility alone, so it never moves a name or
-   a control, and takes no pointer, so the voice mark under it still takes a click. */
+   its column, so a hidden crosshair or an empty distance never moves the others. */
 .players {
   display: flex;
   flex-direction: column;
@@ -2126,14 +2146,16 @@ body[data-active-scene="hub"] .home-link {
   display: none;
 }
 
-/* After the name: the private-conversation lock, the voice mark (the thump's mallet drawn over it in the same cell),
-   the distance and the crosshair, each in a column every row shares, so the voice mark keeps its place by the distance
-   whether a row shows one or not. The distance column is as wide as the widest distance and the icons take only their
-   own width: the name keeps every other pixel. Every cell sits on the row's first line; a player's volume, under it. */
+/* After the name: the private-conversation lock, the voice mark, the distance and the crosshair, each in a column of
+   fixed width. Every group is a grid of its own, so no column may size to its content: the icons line up down the
+   whole tab, the visitor's own row too, whoever shows a lock, a voice mark or a distance. The distance cell is always
+   as wide as "999 m" (`.players-distance`), so the name keeps every other pixel. The gap spaces the items after the
+   name; the name takes back the extra beside its dot. Every cell sits on the row's first line; a player's volume,
+   under it. */
 .players-rows {
   display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) max-content 12px max-content 12px;
-  column-gap: 7px;
+  grid-template-columns: 8px minmax(0, 1fr) 10px 12px max-content 12px;
+  column-gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2163,45 +2185,37 @@ body[data-active-scene="hub"] .home-link {
 .players-rows .players-private { grid-column: 3; grid-row: 1; justify-self: end; }
 .players-rows .roster-voice { grid-column: 4; grid-row: 1; justify-self: center; }
 
-.players-thump {
-  display: inline-flex;
-  position: relative;
-  z-index: 1;
-  grid-column: 4;
-  justify-self: center;
-  width: 12px;
-  height: 12px;
-  color: var(--accent);
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.players-thump[data-on="true"] {
-  visibility: visible;
-}
-
-.players-thump svg {
-  width: 12px;
-  height: 12px;
-  shape-rendering: crispEdges;
-}
-
 .players-name {
   display: inline-flex;
   grid-column: 2;
+  margin-left: -7px;
   align-items: center;
   gap: 6px;
   min-width: 0;
   color: var(--paper);
 }
 
-/* A raised hand after the name, never squeezing it out: the name gives way first. */
-.players-hand {
+/* A raised hand after the name, never squeezing it out: the name gives way first. A reaction (players.js) pops up in
+   the same place, over the hand when one is raised, and fades. */
+.players-mark {
+  display: inline-grid;
   flex: none;
+  place-items: center;
+}
+
+.players-mark[hidden] { display: none; }
+.players-mark > * { grid-area: 1 / 1; }
+
+.players-hand {
   font: 13px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
 
-.players-hand[hidden] { display: none; }
+.players-react {
+  position: relative;
+  z-index: 1;
+  font: 16px/1 "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  pointer-events: none;
+}
 
 /* A player's own disclosure keeps volume apart from mute and camera targeting. */
 .players-volume {
@@ -2268,9 +2282,12 @@ body[data-active-scene="hub"] .home-link {
   cursor: default;
 }
 
+/* Every row has this cell, empty or not, at the width of "999 m" in the panel's monospace face, numbers to the right so
+   their units line up: the column it makes is the same in every group. */
 .players-distance {
   grid-column: 5;
-  justify-self: start;
+  width: 5ch;
+  text-align: right;
   color: var(--paper);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -2627,6 +2644,9 @@ body[data-active-scene="hub"] .home-link {
 }
 .players-settings > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .players-settings-content { display: grid; gap: 8px; padding-top: 8px; }
+/* Every word in Advanced settings is white, to read easily against the panel. */
+.players-settings > summary,
+.players-settings-content :is(.players-hearing-label, .players-hearing-value, .players-hearing-help, .players-speak) { color: #fff; }
 
 .players-hearing-label {
   color: rgba(243, 239, 228, 0.72);
@@ -3270,16 +3290,6 @@ body.wp-reading .joysticks {
   color: #ffb3a6;
   border-color: var(--danger);
 }
-
-/* Thump beside the voice controls: its mallet before the word, and quick repeated taps never zoom a phone. */
-.foot-thump {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  touch-action: manipulation;
-}
-
-.foot-thump .pixel-mallet { width: 11px; height: 11px; shape-rendering: crispEdges; }
 
 /* HALLOWEEN: the ghost hunt (ghost-hud.js). The round line and the visitor's bar under the clock and the hint, the
    banners across the middle, the flash when a ghost gets you; none of it takes a pointer. */
@@ -5458,7 +5468,7 @@ body.tess-touring #joy-look {
 .chalk-frame canvas { display: block; width: 100%; height: auto; aspect-ratio: 8 / 5; touch-action: none; cursor: crosshair; }
 .chalk-frame.has-tool canvas { cursor: none; }
 .chalk-frame.typing canvas { cursor: text; }
-.chalk-caret { position: absolute; width: 3px; height: 12%; background: #f2f3d6; box-shadow: 0 0 5px #f2f3d6; pointer-events: none; animation: chalk-caret-blink 1s steps(1) infinite; }
+.chalk-caret { position: absolute; width: 3px; height: 8%; background: #f2f3d6; box-shadow: 0 0 5px #f2f3d6; pointer-events: none; animation: chalk-caret-blink 1s steps(1) infinite; }
 .chalk-caret[hidden] { display: none; }
 .chalk-type-input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
 @keyframes chalk-caret-blink { 50% { opacity: 0; } }
