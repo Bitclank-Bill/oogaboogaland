@@ -738,6 +738,19 @@
     geo.imageSurface = { asset: { width: canvas.width, height: canvas.height, load: () => image }, rect: [-w / 2, -h / 2, w, h], bright: 0.5 };
     return geo;
   };
+  // A screen's picture painted once and cut into `n` upright slices side by side, each a picture of its own, for a face
+  // the Canvas 2D sort would otherwise take whole by its middle: [{ geometry, u }], `u` each slice's middle across it.
+  const slicedPicture = (w, h, px, paint, n) => {
+    const full = document.createElement("canvas");
+    full.width = Math.round(w * px); full.height = Math.round(h * px);
+    paint(full.getContext("2d"), full.width, full.height);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const a = Math.round(full.width * i / n), b = Math.round(full.width * (i + 1) / n);
+      out.push({ geometry: screenPicture((b - a) / px, h, px, (g) => g.drawImage(full, a, 0, b - a, full.height, 0, 0, b - a, full.height)), u: -w / 2 + (a + b) / 2 / px });
+    }
+    return out;
+  };
   // The screens' faces: a dark field in a lit border, and on it a line chart over bars, a radar's sweep, or the Jet's
   // blueprint on its grid with its READY badge; fixed shapes, so every page paints the same.
   const SCREEN_INK = { field: "#0a1838", edge: "#3fa9ff", line: "#7fdcff", bar: "#2f8ae0", text: "#e8f4ff", grid: "#173a72", green: "#2ecc71" };
@@ -1029,7 +1042,8 @@
   // door `door` wide round `doorX` (its leaves on nodes of the scene's own, `commandDoor`) and the room's plate beside
   // it; on the wall over the glass the room's sign. `flat` the room, `detail` the small parts on its faces (drawn after
   // the rest on Canvas 2D), `glow` its lit parts and `lit` the small lamps on its facade (drawn after its small parts on
-  // Canvas 2D), which the scene dims with the hall's glass, `glass` the panes,
+  // Canvas 2D), which the scene dims with the hall's glass, `board` HANGAR COMMAND's frame and `boardFace` its picture
+  // (`whole` and in `slices`, each a list as `pictures`), `glass` the panes,
   // `pictures` its signs' and screens' faces, each { geometry, x, y, z, turn, tilt, bias } (`bias` how much nearer the
   // Canvas 2D sort takes it than a metre), `doors`, where each leaf's hinge stands and the way it turns shut, and
   // `lamps`, its lamps as the lanterns' pool has them.
@@ -1049,7 +1063,7 @@
       orange: "#f28a1c", blue: "#4fb3ff", yellow: "#f2b630", pipe: "#2b3550",
       blocks: [[-5.65, -8.6, 5.9, 1, 0], [-8.6, -10.3, 5.0, 0, 0], [-10.3, -17, 6.0, 1, 1], [-17, -18.45, 5.3, 0, 1]] },
     rows: [[-17.5, -10, 29.1], [-16.5, -10.5, 32.3]], deep: 0.9, chairs: [[-13.4, 30.75], [-15.6, 34], [-11.2, 34]],
-    command: { z: 33.1, y: 2.35, w: 3.8, h: 2.1 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 }, status: { x: -12.4, y: 2.9, w: 3.4, h: 1.45 },
+    command: { z: 33.05, y: 2.45, w: 4.4, h: 2.2 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 }, status: { x: -12.4, y: 2.9, w: 3.4, h: 1.45 },
     panels: [[-15.5, 31.2], [-12, 31.2], [-8.5, 31.2], [-15.5, 34.6], [-12, 34.6], [-8.5, 34.6]],
     lamps: [[-15, 3.7, 31.8, 7], [-10.5, 3.7, 31.8, 7], [-8, 3.7, 35, 6]], decal: [-7.8, 33.6], crates: [[-6.6, 35.2, 0, false]] };
   // A lightning bolt in `g`'s current fill, `h` high with its middle at (x, y).
@@ -1100,39 +1114,82 @@
     g.fillStyle = "#eaf4ff"; g.font = `bold ${Math.round(H * 0.075)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "middle";
     g.fillText(text, H * 0.14, H * 0.09);
   };
-  // HANGAR COMMAND, after the concept: the Jet's plan on its grid, the launch readiness with its checks, and the
-  // hangar's systems, each in its own panel; fixed, so every page paints the same.
+  // The Jet from three-quarters in front, nose to the left, within the rect (x, y, w, h): its white fuselage over a blue
+  // belly with a gold stripe, swept blue wings, the fin, the canopy and an engine's glow.
+  const jetSide = (g, x, y, w, h) => {
+    const P = (pts, fill) => { g.beginPath(); pts.forEach(([u, v], i) => (i ? g.lineTo : g.moveTo).call(g, x + w * u, y + h * v)); g.closePath(); g.fillStyle = fill; g.fill(); g.stroke(); };
+    g.strokeStyle = "#bfe6ff"; g.lineWidth = Math.max(1, w / 220); g.lineJoin = "round";
+    P([[0.40, 0.52], [0.60, 0.46], [0.68, 0.18], [0.59, 0.18]], "#5b86ff");
+    P([[0.74, 0.42], [0.82, 0.10], [0.91, 0.10], [0.89, 0.42]], "#2f5bd0");
+    P([[0.80, 0.30], [0.84, 0.13], [0.88, 0.13], [0.86, 0.30]], "#eef4ff");
+    P([[0.02, 0.66], [0.20, 0.68], [0.80, 0.50], [0.87, 0.56], [0.24, 0.77]], "#2f5bd0");
+    P([[0.02, 0.66], [0.17, 0.53], [0.78, 0.37], [0.94, 0.41], [0.80, 0.50], [0.20, 0.68]], "#eef4ff");
+    P([[0.78, 0.46], [0.99, 0.52], [0.97, 0.57], [0.80, 0.53]], "#2f5bd0");
+    P([[0.34, 0.63], [0.62, 0.55], [0.82, 0.92], [0.71, 0.94]], "#3a6df0");
+    g.strokeStyle = "#ffc83a"; g.lineWidth = Math.max(1, w / 160); g.beginPath(); g.moveTo(x + w * 0.1, y + h * 0.655); g.lineTo(x + w * 0.82, y + h * 0.475); g.stroke();
+    g.fillStyle = "#7fe3ff"; g.beginPath(); g.ellipse(x + w * 0.22, y + h * 0.55, w * 0.08, h * 0.04, -0.25, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "#9fefff"; g.beginPath(); g.arc(x + w * 0.93, y + h * 0.46, Math.max(2, w * 0.03), 0, Math.PI * 2); g.fill();
+  };
+  // A small line drawing of the Jet from the top, the front or the side, within the rect (x, y, w, h).
+  const jetIcon = (g, view, x, y, w, h) => {
+    const L = (pts) => { g.beginPath(); pts.forEach(([u, v], i) => (i ? g.lineTo : g.moveTo).call(g, x + w * u, y + h * v)); g.stroke(); };
+    g.strokeStyle = "#cfe9ff"; g.lineWidth = Math.max(1, w / 40);
+    if (view === "top") {
+      L([[0.5, 0.08], [0.56, 0.4], [0.92, 0.62], [0.92, 0.7], [0.56, 0.62], [0.55, 0.82], [0.68, 0.92], [0.32, 0.92], [0.45, 0.82], [0.44, 0.62], [0.08, 0.7], [0.08, 0.62], [0.44, 0.4], [0.5, 0.08]]);
+    } else if (view === "front") {
+      g.beginPath(); g.arc(x + w * 0.5, y + h * 0.55, w * 0.1, 0, Math.PI * 2); g.stroke();
+      L([[0.06, 0.66], [0.4, 0.58]]); L([[0.6, 0.58], [0.94, 0.66]]); L([[0.5, 0.45], [0.5, 0.1]]); L([[0.3, 0.42], [0.7, 0.42]]);
+    } else {
+      L([[0.06, 0.62], [0.22, 0.5], [0.8, 0.46], [0.86, 0.14], [0.94, 0.14], [0.94, 0.62], [0.06, 0.62]]); L([[0.38, 0.62], [0.62, 0.76], [0.7, 0.62]]);
+    }
+  };
+  // The hangar systems' icons, `s` across with the middle at (x, y): the bolt, a fan, a drop, a crane, a camera and the
+  // comms arcs.
+  const systemIcon = (g, kind, x, y, s) => {
+    g.lineWidth = Math.max(1.5, s / 9); g.strokeStyle = g.fillStyle = kind === "power" || kind === "cranes" ? "#ffd23a" : kind === "cameras" || kind === "comms" ? "#e8f4ff" : "#7fdcff";
+    if (kind === "power") { paintBolt(g, x, y, s); return; }
+    g.beginPath();
+    if (kind === "fan") { for (let k = 0; k < 3; k++) { const a = k * 2.094; g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a) * s * 0.5, y + Math.sin(a) * s * 0.5, x + Math.cos(a + 0.9) * s * 0.45, y + Math.sin(a + 0.9) * s * 0.45); } g.stroke(); return; }
+    if (kind === "air") { g.moveTo(x, y - s * 0.45); g.quadraticCurveTo(x + s * 0.4, y + s * 0.05, x, y + s * 0.4); g.quadraticCurveTo(x - s * 0.4, y + s * 0.05, x, y - s * 0.45); g.fill(); return; }
+    if (kind === "cranes") { g.moveTo(x - s * 0.45, y - s * 0.3); g.lineTo(x + s * 0.45, y - s * 0.3); g.moveTo(x - s * 0.35, y - s * 0.3); g.lineTo(x - s * 0.35, y + s * 0.4); g.moveTo(x + s * 0.35, y - s * 0.3); g.lineTo(x + s * 0.35, y + s * 0.4); g.moveTo(x, y - s * 0.3); g.lineTo(x, y + s * 0.15); g.stroke(); return; }
+    if (kind === "cameras") { g.strokeRect(x - s * 0.42, y - s * 0.22, s * 0.6, s * 0.44); g.moveTo(x + s * 0.18, y); g.lineTo(x + s * 0.45, y - s * 0.2); g.lineTo(x + s * 0.45, y + s * 0.2); g.closePath(); g.stroke(); return; }
+    for (const r of [0.15, 0.3, 0.45]) { g.beginPath(); g.arc(x, y + s * 0.3, s * r, -2.4, -0.74); g.stroke(); }
+    g.beginPath(); g.arc(x, y + s * 0.3, s * 0.05, 0, Math.PI * 2); g.fill();
+  };
+  // HANGAR COMMAND, after the concept: under its title, the Jet on its grid with three small views of it, its status
+  // READY with its five systems ticked ONLINE, and the hangar's systems, each with its icon; fixed, so every page
+  // paints the same.
   const paintHangarCommand = (g, W, H) => {
-    const S = SCREEN_INK, panel = (x, y, w, h) => { g.strokeStyle = "#2f6fd0"; g.lineWidth = W / 300; g.strokeRect(W * x, H * y, W * w, H * h); };
-    const head = (text, x, y) => { g.fillStyle = "#bcd6ff"; g.font = `bold ${Math.round(H * 0.036)}px sans-serif`; g.textAlign = "left"; g.fillText(text, W * x, H * y); };
-    screenField(g, W, H);
+    const S = SCREEN_INK, panel = (x, y, w, h) => { g.strokeStyle = "#2f6fd0"; g.lineWidth = W / 320; g.strokeRect(W * x, H * y, W * w, H * h); };
+    const text = (t, x, y, size, color, bold = false, align = "left", most = 1) => { g.fillStyle = color; g.font = `${bold ? "bold " : ""}${Math.round(H * size)}px sans-serif`; g.textAlign = align; g.fillText(t, W * x, H * y, W * most); };
+    g.fillStyle = "#081430"; g.fillRect(0, 0, W, H);
     g.textBaseline = "middle";
-    titleBar(g, W, H, "LIGHTNING JET – HANGAR COMMAND");
-    panel(0.03, 0.18, 0.37, 0.76);
+    g.fillStyle = COMMAND.bolt; paintBolt(g, W * 0.045, H * 0.1, H * 0.11);
+    text("LIGHTNING JET – HANGAR COMMAND", 0.08, 0.1, 0.075, "#eaf4ff", true);
+    panel(0.03, 0.2, 0.38, 0.55);
     g.strokeStyle = S.grid; g.lineWidth = 1;
-    for (let x = W * 0.05; x < W * 0.39; x += W / 40) { g.beginPath(); g.moveTo(x, H * 0.2); g.lineTo(x, H * 0.92); g.stroke(); }
-    for (let y = H * 0.21; y < H * 0.92; y += W / 40) { g.beginPath(); g.moveTo(W * 0.04, y); g.lineTo(W * 0.39, y); g.stroke(); }
-    g.strokeStyle = "#cfe9ff"; g.lineWidth = W / 260;
-    jetPlan(g, W * 0.06, H * 0.26, W * 0.31, H * 0.6);
-    panel(0.43, 0.18, 0.23, 0.76);
-    head("LAUNCH READINESS", 0.445, 0.25);
-    g.fillStyle = S.green; g.beginPath(); g.arc(W * 0.465, H * 0.36, H * 0.04, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = "#ffffff"; g.lineWidth = H * 0.012; g.beginPath(); g.moveTo(W * 0.455, H * 0.36); g.lineTo(W * 0.463, H * 0.38); g.lineTo(W * 0.477, H * 0.34); g.stroke();
-    g.fillStyle = S.green; g.font = `bold ${Math.round(H * 0.09)}px sans-serif`;
-    g.fillText("READY", W * 0.495, H * 0.365);
-    g.font = `${Math.round(H * 0.038)}px sans-serif`;
-    ["Jet Condition", "Systems", "Hangar Systems", "Ground Support", "Crew & Safety"].forEach((t, i) => {
-      const y = H * (0.48 + i * 0.09);
-      tick(g, W * 0.445, y - H * 0.022, H * 0.044);
-      g.fillStyle = S.text; g.fillText(t, W * 0.475, y);
+    for (let x = W * 0.045; x < W * 0.41; x += W / 50) { g.beginPath(); g.moveTo(x, H * 0.21); g.lineTo(x, H * 0.74); g.stroke(); }
+    for (let y = H * 0.22; y < H * 0.74; y += W / 50) { g.beginPath(); g.moveTo(W * 0.035, y); g.lineTo(W * 0.405, y); g.stroke(); }
+    jetSide(g, W * 0.05, H * 0.23, W * 0.34, H * 0.5);
+    ["side", "top", "front"].forEach((view, i) => { panel(0.03 + i * 0.13, 0.79, 0.12, 0.16); jetIcon(g, view, W * (0.045 + i * 0.13), H * 0.8, W * 0.09, H * 0.14); });
+    panel(0.43, 0.2, 0.26, 0.75);
+    text("JET STATUS", 0.445, 0.27, 0.055, "#e8f4ff", true, "left", 0.23);
+    g.strokeStyle = S.green; g.lineWidth = H * 0.012; g.beginPath(); g.arc(W * 0.465, H * 0.385, H * 0.045, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(W * 0.454, H * 0.385); g.lineTo(W * 0.463, H * 0.405); g.lineTo(W * 0.478, H * 0.365); g.stroke();
+    text("READY", 0.5, 0.39, 0.1, S.green, true, "left", 0.18);
+    ["Airframe", "Engines", "Avionics", "Power Systems", "Flight Systems"].forEach((t, i) => {
+      const y = 0.52 + i * 0.09;
+      tick(g, W * 0.445, H * (y - 0.025), H * 0.05);
+      text(t, 0.475, y, 0.038, S.text, false, "left", 0.13);
+      text("ONLINE", 0.68, y, 0.034, S.green, true, "right", 0.065);
     });
-    panel(0.69, 0.18, 0.28, 0.76);
-    head("HANGAR SYSTEMS", 0.705, 0.25);
-    [["Power", "100%"], ["Env. Control", "100%"], ["Cranes / Lifts", "ONLINE"], ["Floor Systems", "ONLINE"], ["Comms / Net", "ONLINE"]].forEach(([t, v], i) => {
-      const y = H * (0.38 + i * 0.11);
-      g.fillStyle = i < 2 ? COMMAND.bolt : S.line; g.beginPath(); g.arc(W * 0.712, y, H * 0.013, 0, Math.PI * 2); g.fill();
-      g.fillStyle = S.text; g.font = `${Math.round(H * 0.038)}px sans-serif`; g.textAlign = "left"; g.fillText(t, W * 0.725, y);
-      g.fillStyle = S.green; g.font = `bold ${Math.round(H * 0.036)}px sans-serif`; g.textAlign = "right"; g.fillText(v, W * 0.958, y);
+    panel(0.71, 0.2, 0.27, 0.75);
+    text("HANGAR SYSTEMS", 0.725, 0.27, 0.05, "#e8f4ff", true, "left", 0.24);
+    [["power", "Power", "100%"], ["fan", "Env. Control", "72%"], ["air", "Air Quality", "GOOD"], ["cranes", "Cranes / Lifts", "ONLINE"], ["cameras", "Cameras", "12 / 12"], ["comms", "Comms", "OK"]].forEach(([icon, t, v], i) => {
+      const y = 0.37 + i * 0.1;
+      systemIcon(g, icon, W * 0.737, H * y, H * 0.055);
+      text(t, 0.755, y, 0.036, S.text, false, "left", 0.13);
+      text(v, 0.97, y, 0.034, S.green, true, "right", 0.075);
     });
     g.textAlign = "left";
   };
@@ -1225,7 +1282,7 @@
     return { leaf, trim: merge(...parts) };
   });
   const commandRoom = cached(() => {
-    const K = COMMAND, C = CONTROL, flat = [], detail = [], glow = [], lamps = [], glass = [], pictures = [];
+    const K = COMMAND, C = CONTROL, flat = [], detail = [], glow = [], lamps = [], board = [], glass = [], pictures = [];
     const { x0, x1, front, back, top } = K, xc = (x0 + x1) / 2, xw = x1 - x0, ry = top / 2, zc = (front + back) / 2, zd = back - front;
     // The room: its floor (a little over the hall's, which runs on in under the wall), ceiling, back wall and ends,
     // glowing a little as a lit room does, with seams down its back wall. Each faces into the room alone, in strips
@@ -1402,7 +1459,34 @@
       flat.push(bevelBox({ w: 0.48, h: 0.62, d: 0.08, color: "#3a4152", bevel: 0.02, offset: { x: cx, y: 0.86, z: cz + 0.24 } }));
       detail.push(moved(FM.smoothBolt(0.26, 0.02, K.bolt, 0.4), cx, 0.86, cz + 0.29));
     }
-    // HANGAR COMMAND on the left end wall and HANGAR CAMERAS on the right, each in a dark frame edged in cyan light.
+    // HANGAR COMMAND on the left end wall in a chamfered dark bezel edged in glowing blue (`board`, which the scene sorts
+    // in front of the wall on Canvas 2D), its frame in upright slices so that sort takes each piece where it stands, and
+    // its picture whole and in the same slices (`boardFace`, for Canvas 2D; WebGL would show their seams), amber lamps
+    // over it; HANGAR CAMERAS on the right in a plain frame edged in cyan light.
+    const B = K.command, onEnd = (geo, out) => moved(turnedY(geo, Math.PI / 2), x0 + out, B.y, B.z);
+    // An octagon `w` by `h` with its corners cut `k`, in upright slices across it, each convex, so the Canvas 2D sort
+    // takes each slice by where it stands rather than the whole face by its middle.
+    const slices = (w, h, k, n) => {
+      const top = (u) => h / 2 - Math.max(0, Math.abs(u) - (w / 2 - k)), cuts = [-w / 2, -(w / 2 - k)];
+      for (let i = 1; i < n; i++) cuts.push(-(w / 2 - k) + (w - 2 * k) * i / n);
+      cuts.push(w / 2 - k, w / 2);
+      const out = [];
+      for (let i = 0; i < cuts.length - 1; i++) { const a = cuts[i], b = cuts[i + 1]; out.push([[a, -top(a)], [b, -top(b)], [b, top(b)], [a, top(a)]]); }
+      return out;
+    };
+    for (const q of slices(B.w + 0.32, B.h + 0.32, 0.34, 6)) board.push(onEnd(prism(q, 0.08, "#141a2a"), 0.04));
+    for (const q of slices(B.w + 0.14, B.h + 0.14, 0.27, 6)) board.push(onEnd(prism(q, 0.03, "#3fa9ff", 1), 0.095));
+    for (const q of slices(B.w, B.h, 0.22, 6)) board.push(onEnd(prism(q, 0.03, "#081430", 0.3), 0.115));
+    const boardFace = { whole: [{ geometry: screenPicture(B.w - 0.36, B.h - 0.12, 256, paintHangarCommand), x: x0 + 0.135, y: B.y, z: B.z, turn: Math.PI / 2 }],
+      slices: slicedPicture(B.w - 0.36, B.h - 0.12, 256, paintHangarCommand, 6).map(({ geometry, u }) => ({ geometry, x: x0 + 0.135, y: B.y, z: B.z - u, turn: Math.PI / 2 })) };
+    const wallLamp = (x, y, z, onX) => {
+      const a = onX ? Math.PI / 2 : Math.PI;
+      flat.push(moved(turnedY(box({ w: 0.95, h: 0.28, d: 0.12, color: "#24282f", offset: { z: 0.06 } }), a), x, y, z));
+      detail.push(moved(turnedY(box({ w: 0.9, h: 0.24, d: 0.03, color: C.orange, emissive: 0.3, offset: { z: 0.135 } }), a), x, y, z));
+      lamps.push(moved(turnedY(box({ w: 0.8, h: 0.15, d: 0.02, color: "#ffc77a", emissive: 1, offset: { z: 0.16 } }), a), x, y, z));
+    };
+    for (const dz of [-1.3, 1.3]) wallLamp(x0, top - 0.32, B.z + dz, true);
+    for (const x of [-15.9, -8.9]) wallLamp(x, top - 0.32, back, false);
     const bigScreen = (x, side, at, paint) => {
       const turn = side * Math.PI / 2, { z, y, w, h } = at;
       flat.push(box({ w: 0.08, h: h + 0.16, d: w + 0.16, color: C.frame, offset: { x: x + side * 0.04, y, z } }));
@@ -1412,7 +1496,6 @@
       }
       pictures.push({ geometry: screenPicture(w, h, 256, paint), x: x + side * 0.09, y, z, turn });
     };
-    bigScreen(x0, 1, K.command, paintHangarCommand);
     bigScreen(x1, -1, K.cameras, paintHangarCameras);
     // On the back wall facing the glass, as the outside's concept shows it through the windows: the Jet beside its
     // status, in the same dark frame and cyan light.
@@ -1454,7 +1537,7 @@
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     const doors = [{ x: dx - K.door / 2, z: front + 0.1, turn: 0, open: -1 }, { x: dx + K.door / 2, z: front + 0.1, turn: Math.PI, open: 1 }];
-    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), glass: windows, pictures, doors, lamps: K.lamps.flat() };
+    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), board: noShadow(merge(...board)), boardFace, glass: windows, pictures, doors, lamps: K.lamps.flat() };
   });
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it

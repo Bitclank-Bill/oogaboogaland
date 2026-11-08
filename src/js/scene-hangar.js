@@ -985,16 +985,20 @@
     for (const p of room.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
     s.glass.push(roomGlow);
     // The command room set into the front wall left of the door (`HM.commandRoom`), as the control room: its small parts
-    // sorted nearer on Canvas 2D and its facade's lamps nearer still, its glow and lamps dimmed with the glass, its signs'
-    // and screens' faces nearer on Canvas 2D (a metre, or as each says), and its door's two leaves on nodes of their own
-    // on their hinges, which `commandDoorLife` swings open, each with its trim sorted nearer.
+    // sorted nearer on Canvas 2D and its facade's lamps and its board's frame nearer still, its glow, lamps and board
+    // dimmed with the glass, its signs' and screens' faces nearer on Canvas 2D (a metre, or as each says; the board's
+    // picture whole, or on Canvas 2D in its slices), and its
+    // door's two leaves on nodes of their own on their hinges, which `commandDoorLife` swings open, each with its trim
+    // sorted nearer.
     const command = HM.commandRoom(), commandGlow = createNode({ geometry: command.glow, sightHidden: true });
     addChild(root, createNode({ geometry: command.flat }), createNode({ geometry: command.detail, depthBias: DETAIL_BIAS }), commandGlow, createNode({ geometry: command.glass, sightHidden: true }));
-    for (const p of command.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: p.tilt || 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: p.bias ?? -1 }));
+    for (const p of [...command.pictures, ...command.boardFace[renderer.kind === "canvas2d" ? "slices" : "whole"]]) {
+      addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: p.tilt || 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: p.bias ?? -1 }));
+    }
     s.glass.push(commandGlow);
-    const commandLit = createNode({ geometry: command.lit, sightHidden: true, depthBias: DETAIL_BIAS - 0.2 });
-    addChild(root, commandLit);
-    s.glass.push(commandLit);
+    const commandLit = createNode({ geometry: command.lit, sightHidden: true, depthBias: DETAIL_BIAS - 0.2 }), commandBoard = createNode({ geometry: command.board, sightHidden: true, depthBias: DETAIL_BIAS - 0.1 });
+    addChild(root, commandLit, commandBoard);
+    s.glass.push(commandLit, commandBoard);
     s.commandDoors = command.doors.map((d) => {
       const leaf = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.turn, z: 0 }, geometry: HM.commandDoor().leaf });
       const trim = createNode({ geometry: HM.commandDoor().trim, depthBias: DETAIL_BIAS });
