@@ -6918,7 +6918,7 @@ const workCaveTrips = async (b) => {
       phase: "", stall: 0, maximumStall: 0, maximumStep: 0, missingRoutes: 0,
       fixedFrames: 0, fixedStall: 0, maximumFixedStall: 0, maximumTerrainError: 0,
       // Heading along a fixed meadow leg: a turn one way undone by a turn back within half a metre is a twitch.
-      dirX: 0, dirZ: 0, turnSign: 0, sinceTurn: Infinity, twitches: 0, reversals: 0, twitch: null, reversal: null, trail: [], planLog: [], lastPlans: -1, goalX: NaN, goalZ: NaN, goalFrame: -Infinity, retargets: 0,
+      dirX: 0, dirZ: 0, turnSign: 0, sinceTurn: Infinity, twitches: 0, reversals: 0, twitch: null, reversal: null, trail: [], planLog: [], lastPlans: -1, goalX: NaN, goalZ: NaN, goalFrame: -Infinity, retargets: 0, slotX: NaN, slotZ: NaN, slotChanges: [], leg: 0, slotLeg: -1, churn: 0, lastPhase: "", offPath: 0, offPathAt: null, rimClearance: Infinity,
       resets: c.progress.resets, jumps: c.avoidance.navigation.jumps }));
     let time = BL.scenes.hub.elapsed, frames = 0;
     try {
@@ -6955,6 +6955,25 @@ const workCaveTrips = async (b) => {
             row.maximumTerrainError = Math.max(row.maximumTerrainError, Math.abs(feet - terrain));
             row.fixedStall = step < 0.001 ? row.fixedStall + dt : 0;
             row.maximumFixedStall = Math.max(row.maximumFixedStall, row.fixedStall);
+            // On the painted ring and spokes, and never in the pile's solid rim, every frame of the leg (the island's own queries).
+            // Round the pile and through each join with a spoke (within 2 m of the ring's traffic lane) every frame stands
+            // on the painted path, and never on the pile's solid rim.
+            if (Math.hypot(p.x, p.z) < B.island.path.debug.ringTrafficRadius + 2 && !B.island.isPath(p.x, p.z)) {
+              row.offPath++; if (!row.offPathAt) row.offPathAt = { frame: frames, x: p.x, z: p.z, radius: Math.hypot(p.x, p.z), slot: c.slot && [c.slot.x, c.slot.z] };
+            }
+            row.rimClearance = Math.min(row.rimClearance, Math.hypot(p.x, p.z) - B.altar.platformRadius);
+            if (c.work.phase === "return" && row.lastPhase !== "return") row.leg++;
+            row.lastPhase = c.work.phase;
+            if (c.slot && (c.slot.x !== row.slotX || c.slot.z !== row.slotZ)) {
+              // One pick of a loading slot per return leg; a second in the same leg swings the walker round mid-leg.
+              if (c.work.phase === "return") { if (row.slotLeg === row.leg) row.churn++; row.slotLeg = row.leg; }
+              if (Number.isFinite(row.slotX) && row.slotChanges.length < 6) row.slotChanges.push({ frame: frames, phase: c.work.phase, index: c.work.index, at: [+p.x.toFixed(2), +p.z.toFixed(2)],
+                from: [+row.slotX.toFixed(2), +row.slotZ.toFixed(2)], to: [+c.slot.x.toFixed(2), +c.slot.z.toFixed(2)],
+                near: B.crew.list.filter(o => o !== c && o.root.visible && Math.hypot(o.root.position.x - row.slotX, o.root.position.z - row.slotZ) < 1.2)
+                  .map(o => ({ name: o.contributor.name, phase: o.work.phase, index: o.work.index, d: +Math.hypot(o.root.position.x - row.slotX, o.root.position.z - row.slotZ).toFixed(2),
+                    slot: o.slot && [+o.slot.x.toFixed(2), +o.slot.z.toFixed(2)], reloadSlot: o.work.reloadSlot, walk: o.walk?.to || null })) });
+              row.slotX = c.slot.x; row.slotZ = c.slot.z;
+            }
             // A goal that moves (the loading slot reassigned to another walker) is a new errand, not a twitch in the path.
             if (c.pathing.tx !== row.goalX || c.pathing.tz !== row.goalZ) { row.goalX = c.pathing.tx; row.goalZ = c.pathing.tz; row.goalFrame = frames; }
             if (c.pathing.plans !== row.lastPlans) {
@@ -7028,9 +7047,10 @@ const workCaveTrips = async (b) => {
     r.sites.length === 3 && r.sites.every(Boolean) && r.rows.length === 5 && r.rows.every(row => row.outbound.every(n => n >= 2)
       && row.returned.every(n => n >= 2) && row.maximumStall < 5 && row.maximumStep <= 2.8 / 20 + 1e-6
       && row.missingRoutes === 0 && row.resets === 0 && row.jumps === 0), JSON.stringify({ failures: r.rows.filter(row => row.failure), ...r }));
-  for (const [hz, run] of [[20, r], [60, fine]]) record(`work movement cave trips: at ${hz}Hz passive workers walk straight between the pile ring and each cave's path both ways, with no turn away and back or reversal on their fixed meadow legs`,
-    run.rows.length === 5 && run.rows.every(row => row.fixedFrames > 0 && row.outbound.every(n => n >= 2) && row.returned.every(n => n >= 2) && row.twitches === 0 && row.reversals === 0),
-    JSON.stringify(run.rows.map(({ name, twitches, reversals, retargets, twitch, reversal }) => ({ name, twitches, reversals, retargets, reversal, twitch: twitch && { ...twitch, path: { ...twitch.path, lanes: twitch.path.lanes.slice(0, 6) } } }))));
+  for (const [hz, run] of [[20, r], [60, fine]]) record(`work movement cave trips: at ${hz}Hz passive workers walk straight between the pile ring and each cave's path both ways, with no turn away and back, reversal or second loading slot picked mid-leg on their fixed meadow legs, on the painted path round the pile and through each join and off its rim`,
+    run.rows.length === 5 && run.rows.every(row => row.fixedFrames > 0 && row.outbound.every(n => n >= (hz === 20 ? 2 : 1)) && row.returned.every(n => n >= (hz === 20 ? 2 : 1))
+      && row.twitches === 0 && row.reversals === 0 && row.churn === 0 && row.offPath === 0 && row.rimClearance > 0),
+    JSON.stringify(run.rows.map(({ name, twitches, reversals, retargets, churn, twitch, reversal, offPath, offPathAt, rimClearance, outbound, returned, slotChanges }) => ({ name, twitches, reversals, retargets, churn, offPath, offPathAt, rimClearance, outbound, returned, slotChanges, reversal, twitch: twitch && { ...twitch, path: { ...twitch.path, lanes: twitch.path.lanes.slice(0, 6) } } }))));
   record("work movement cave trips: passive workers' fixed meadow legs stand exactly on the island terrain support and keep moving",
     r.rows.length === 5 && r.rows.every(row => row.fixedFrames > 0 && row.maximumTerrainError < 1e-6 && row.maximumFixedStall < 1),
     JSON.stringify(r.rows.map(({ name, fixedFrames, maximumTerrainError, maximumFixedStall }) => ({ name, fixedFrames, maximumTerrainError, maximumFixedStall }))));
