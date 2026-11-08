@@ -51,10 +51,10 @@
     TRAMP_R: 1.0, BOUNCE: 13.5, STEP_UP: 0.45, FIRE_R: 0.95, BURN_HOPS: 3, BURN_SLOW: 0.25,
     JET_FUEL: 2.6, JET_REFILL: 3, JET_ACCEL: 27, JET_RISE: 6, JET_CEILING: 15,
     GORILLA_SPEED: 3.2, GORILLA_CHARGE: 8, GORILLA_SIGHT: 8, GORILLA_LEASH: 11, GORILLA_WANDER: 5, GORILLA_R: 0.75,
-    GORILLA_GRAB_R: 1.2, GRAB_HITS: 10, GRAB_MAX_S: 30, GORILLA_REST: 6, GORILLA_STUN: 1.6,
+    GORILLA_GRAB_R: 1.2, GRAB_HITS: 4, GRAB_MAX_S: 30, GORILLA_REST: 6, GORILLA_STUN: 1.6,
     // A captive is dragged by the feet to the nearest edge at `GORILLA_DRAG`, swung over the wind-up (`GORILLA_THROW_S`)
     // and thrown off at `GORILLA_THROW`, up at `GORILLA_THROW_UP`, its steering knocked out for `THROWN_S`.
-    GORILLA_DRAG: 5, GORILLA_DRAG_R: 0.5, GORILLA_THROW_S: 0.45, GORILLA_THROW: 11, GORILLA_THROW_UP: 9, THROWN_S: 0.5, DRAG_BACK: 1.3, DRAG_EDGE: 1.2,
+    GORILLA_DRAG: 7.5, GORILLA_DRAG_R: 0.5, GORILLA_THROW_S: 0.45, GORILLA_THROW: 11, GORILLA_THROW_UP: 9, THROWN_S: 0.5, DRAG_BACK: 1.3, DRAG_EDGE: 1.2,
     GOLD_GUNS: 2, AK_MAG: 30, GOLD_SIDE: 0.3, AK_RELOAD: 1.4, MONKEYS_S: 12, MONKEY_SIDE: 0.8, MONKEY_COOL: 1, HOMER_TURN: 3.5, HOMER_SEEK: 20, CATAPULT_R: 1.0, LAUNCH_H: 13, CHUTE_FALL: 2.8, CHUTE_SPEED: 3.4, PEEL_R: 0.55, SLIP_S: 1.5, SLIP_SPIN: 13, PEEL_REARM: 8,
     POWER_R: 1.1, POWER_RESPAWN: 20, BOOTS_S: 6, BOOTS: 1.5, HALVING_S: 12, COLD_S: 12, LASER_S: 25, BEAM_S: 3, BEAM_LEN: 30, BEAM_R: 0.45,
     // Free Hardware Wallets (DSB Land's VAC 2, brought over): a vending machine each side; a device taken goes off when
@@ -71,7 +71,7 @@
     // edge (it no longer stands on the island and is kept out of its rock); one that falls past `FALL_FLOOR` comes back
     // in its own block zone. A block carried over the edge drops at the edge and goes home after `EDGE_HOME_S`. The
     // rock under the island is `ISLE_EDGE` deep at the edge and deepens toward the middle, `ISLE_DEPTH` at most.
-    RIM: 0.6, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14,
+    RIM: 0.6, RESPAWN_GUARD: 0.4, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14,
     // The grappling hook (Cloud Hopper's, a special weapon here): `HOOKS` a map, hidden at seeded spots from the map's
     // hand-checked `hookSpots`. It flies out at `HOOK_FLY`, up to `HOOK_RANGE`; a bite on rock pulls the Ooga toward it at
     // up to `HOOK_PULL` (`HOOK_ACCEL` to get there), on a rope that only shortens, so it swings under the bite; crouch
@@ -88,7 +88,8 @@
     paint: { speed: 24, lift: 2.2, gravity: 9, life: 1.1, r: 0.5, blast: 0, cool: 0.32, max: 0 },
     grenade: { speed: 12, lift: 4.5, gravity: 14, life: 2.2, r: 0.45, blast: 2.6, cool: 0.8, max: 3 },
     rocket: { speed: 28, lift: 0, gravity: 0, life: 1.6, r: 0.55, blast: 3.2, cool: 1.2, max: 1 },
-    net: { speed: 15, lift: 3, gravity: 9, life: 1.4, r: 0.75, blast: 0, cool: 0.8, max: 3 },
+    // The net launcher: flat and fast, opening wide in flight.
+    net: { speed: 30, lift: 0.3, gravity: 3, life: 1, r: 1.7, blast: 0, cool: 0.8, max: 3 },
     crate: { speed: 12, lift: 2.5, gravity: 14, life: 2.5, r: 0.9, blast: 0, cool: 0.6, max: 0 },
     // The sniper rifle: it stays in the sniper towers, so it fires only from a tower's platform; fast, flat and long.
     sniper: { speed: 60, lift: 0, gravity: 0.6, life: 0.85, r: 0.35, blast: 0, cool: 0.35, max: 0 },
@@ -521,12 +522,12 @@
   // The bots' skill: easy bots aim wider, wait longer before throwing, throw less often, run slower and see less far;
   // hard ones the other way. "normal" is the CONFIG values.
   const SKILLS = {
-    easy: { spread: 0.36, aim: 1.1, cool: 2.1, speed: 4.8, range: 10 },
-    normal: { spread: CONFIG.BOT_SPREAD, aim: CONFIG.BOT_AIM, cool: CONFIG.BOT_COOLDOWN, speed: CONFIG.BOT_SPEED, range: CONFIG.BOT_RANGE },
-    hard: { spread: 0.1, aim: 0.35, cool: 0.95, speed: 6, range: 15 },
+    easy: { spread: 0.36, aim: 1.1, cool: 2.1, speed: 4.8, range: 10, gorilla: { sight: 6, charge: 6.5, reach: 1.05, hits: 3, drag: 6, dodge: 0 } },
+    normal: { spread: CONFIG.BOT_SPREAD, aim: CONFIG.BOT_AIM, cool: CONFIG.BOT_COOLDOWN, speed: CONFIG.BOT_SPEED, range: CONFIG.BOT_RANGE, gorilla: { sight: CONFIG.GORILLA_SIGHT, charge: CONFIG.GORILLA_CHARGE, reach: CONFIG.GORILLA_GRAB_R, hits: CONFIG.GRAB_HITS, drag: CONFIG.GORILLA_DRAG, dodge: 0.15 } },
+    hard: { spread: 0.1, aim: 0.35, cool: 0.95, speed: 6, range: 15, gorilla: { sight: 9, charge: 9.2, reach: 1.3, hits: 5, drag: 8.5, dodge: 0.35 } },
     // Expert bots play the whole game: they ride the catapult and the ziplines, climb ladders and nets, hop walls on the
     // jetpack, stack crates at the gate and throw them, and spray the AK in bursts (`akCool` between rounds).
-    expert: { spread: 0.06, aim: 0.22, cool: 0.7, speed: 6.4, range: 18, akCool: 0.16, expert: true }
+    expert: { spread: 0.06, aim: 0.22, cool: 0.7, speed: 6.4, range: 18, akCool: 0.16, expert: true, gorilla: { sight: 10, charge: 10.5, reach: 1.4, hits: 5, drag: 9.5, dodge: 0.55 } }
   };
   // Where the k-th of `size` Oogas a side starts, across the inside of its fort (red's turned half round).
   const startAt = (team, k, size) => {
@@ -1256,8 +1257,12 @@
     g.holding = -1;
     if (g.state === G_HOLD || g.state === G_THROW) { g.state = G_REST; g.t = CONFIG.GORILLA_REST; }
   };
-  const stunGorilla = (sim, g, by) => {
-    if (g.state === G_HOLD || g.state === G_THROW) letGo(sim, g, sim.actors[g.holding], false);
+  // Paint and blasts stun a gorilla but never break its grip; only a mash (`grabbed` loop) or the hook (`hook`) frees a captive.
+  const stunGorilla = (sim, g, by, hook = false) => {
+    if (g.state === G_HOLD || g.state === G_THROW) {
+      if (!hook) return;
+      letGo(sim, g, sim.actors[g.holding], false);
+    }
     g.state = G_STUN; g.t = CONFIG.GORILLA_STUN; g.vx = g.vz = 0;
     emit(sim, "gorillahit", null, by, g.x, 1.6, g.z);
   };
@@ -1342,6 +1347,7 @@
     a.vx = a.vz = a.vy = 0; a.grounded = false;
   };
   const stepGorillas = (sim, dt) => {
+    const gb = sim.bots.gorilla;
     for (let i = 0; i < sim.gorillas.length; i++) {
       const g = sim.gorillas[i];
       if (g.t > 0) g.t -= dt;
@@ -1381,7 +1387,7 @@
         }
         const next = dragStep(D, here, 1), tx = Math.floor(next / D.nz) * REST_CELL - ARENA.W, tz = (next % D.nz) * REST_CELL - ARENA.L;
         const dx = tx - g.x, dz = tz - g.z, d = Math.hypot(dx, dz) || 1;
-        g.vx = dx / d * CONFIG.GORILLA_DRAG; g.vz = dz / d * CONFIG.GORILLA_DRAG;
+        g.vx = dx / d * gb.drag; g.vz = dz / d * gb.drag;
         const ox = g.x, oz = g.z;
         g.x += g.vx * dt; g.z += g.vz * dt;
         // Squeezing a captive through a narrow gap: a tighter body than it charges with.
@@ -1391,7 +1397,7 @@
         const turn = Math.atan2(Math.sin(Math.atan2(g.vx, g.vz) - g.heading), Math.cos(Math.atan2(g.vx, g.vz) - g.heading));
         g.heading += Math.max(-7 * dt, Math.min(7 * dt, turn));
         placeCaptive(g, a);
-        g.stall = Math.hypot(g.x - ox, g.z - oz) < CONFIG.GORILLA_DRAG * dt * 0.3 ? g.stall + dt : 0;
+        g.stall = Math.hypot(g.x - ox, g.z - oz) < gb.drag * dt * 0.3 ? g.stall + dt : 0;
         // Only a crate can be in the way of the route: it goes.
         if (g.stall > 0.6) {
           g.stall = 0;
@@ -1404,7 +1410,7 @@
         g.state = G_ROAM;
       }
       // The nearest Ooga in reach on the ground, not too far from home.
-      let best = null, bd = CONFIG.GORILLA_SIGHT * CONFIG.GORILLA_SIGHT;
+      let best = null, bd = gb.sight * gb.sight;
       for (const a of sim.actors) {
         if (a.splat > 0 || a.trapped > 0 || a.grabbed || a.guard > 0 || a.y > 1.4 || a.y < -0.5 || a.riding || a.flight || a.climbing) continue;
         if ((a.x - g.hx) ** 2 + (a.z - g.hz) ** 2 > CONFIG.GORILLA_LEASH * CONFIG.GORILLA_LEASH) continue;
@@ -1413,11 +1419,11 @@
       }
       let tx, tz, speed;
       if (best) {
-        g.state = G_CHASE; tx = best.x; tz = best.z; speed = CONFIG.GORILLA_CHARGE;
-        if (bd < CONFIG.GORILLA_GRAB_R * CONFIG.GORILLA_GRAB_R) {
+        g.state = G_CHASE; tx = best.x; tz = best.z; speed = gb.charge;
+        if (bd < gb.reach * gb.reach) {
           // Grabbed: down by the feet, block and crate let fall where it was grabbed, and off to the edge.
           g.state = G_HOLD; g.holding = best.id; g.held = 0; g.vx = g.vz = 0; g.stall = 0;
-          best.grabbed = i + 1; best.grabHits = CONFIG.GRAB_HITS;
+          best.grabbed = i + 1; best.grabHits = gb.hits;
           best.climbing = best.jetting = false;
           if (best.holding) { best.holding = false; emit(sim, "smash", best.team, best.id, best.x, best.y + 2, best.z); }
           emit(sim, "grab", best.team, best.id, best.x, 1.4, best.z);
@@ -1565,7 +1571,8 @@
         if (tip.y > 2.5 || (tip.x - g.x) ** 2 + (tip.z - g.z) ** 2 > 1) continue;
         // A hooked gorilla is stunned and drops its captive, with a cooldown before the hook can do that again.
         if (g.hookCool > 0) emit(sim, "hookbounce", a.team, a.id, g.x, 1.6, g.z);
-        else { stunGorilla(sim, g, a.id); g.t = CONFIG.HOOK_STUN_S; g.hookCool = CONFIG.HOOK_STUN_COOL; emit(sim, "gorillahooked", a.team, a.id, g.x, 1.6, g.z); }
+        else if ((g.state === G_ROAM || g.state === G_CHASE) && sim.rng() < sim.bots.gorilla.dodge) emit(sim, "hookbounce", a.team, a.id, g.x, 1.6, g.z);
+        else { stunGorilla(sim, g, a.id, true); g.t = CONFIG.HOOK_STUN_S; g.hookCool = CONFIG.HOOK_STUN_COOL; emit(sim, "gorillahooked", a.team, a.id, g.x, 1.6, g.z); }
         hookBack(sim, a, "hookrelease");
         return;
       }
@@ -1722,7 +1729,7 @@
       const dx = a.x - x, dz = a.z - z, dy = a.y + 0.9 - y, d = Math.hypot(dx, dy, dz);
       if (d > r || a.trapped > 0) continue;
       const f = (CONFIG.WALLET_PUSH * (1 - d / r) + 3) * (1 + (k - 1) * 0.15), flat = Math.hypot(dx, dz) || 1;
-      if (a.grabbed) letGo(sim, sim.gorillas[a.grabbed - 1], a, true);
+      if (a.grabbed) continue;
       if (a.riding) a.riding = false;
       a.climbing = false;
       a.vx = dx / flat * f; a.vz = dz / flat * f; a.vy = Math.max(a.vy, 4 + f * 0.35);
@@ -2419,6 +2426,16 @@
       if (refill(a)) { c.dark = CONFIG.CACHE_S; emit(sim, "cache", a.team, a.id, c.x, c.y, c.z); }
     }
     if (sim.prep > 0) return;
+    // A rival tangled in a net can be robbed of the block it carries, by a touch.
+    if (!a.carrying && !a.holding) for (const b of sim.actors) {
+      if (b.team === a.team || !b.carrying || b.netted <= 0 || Math.abs(a.y - b.y) > 1.4 || (a.x - b.x) ** 2 + (a.z - b.z) ** 2 > 1.21) continue;
+      const f = sim.flags[b.carrying];
+      b.carrying = null;
+      if (f.team === a.team) { a.rescues++; emit(sim, "rescue", f.team, a.id, b.x, 0, b.z); homeFlag(f); emit(sim, "return", f.team, a.id, f.x, 0, f.z); }
+      else { f.state = "carried"; f.carrier = a.id; f.homeT = 0; a.carrying = f.team; emit(sim, "pickup", f.team, a.id, b.x, 0, b.z); }
+      emit(sim, "netsteal", a.team, a.id, b.x, b.y + 1, b.z, b.id);
+      break;
+    }
     // Running through a power-up takes it; the spot draws its next one and rests.
     for (const p of sim.powers) {
       if (p.dark > 0 || a.y > 1.2 || (a.x - p.x) ** 2 + (a.z - p.z) ** 2 > CONFIG.POWER_R * CONFIG.POWER_R) continue;
@@ -2565,7 +2582,7 @@
     const at = startAt(a.team, a.slot, sim.size);
     a.x = a.lastX = a.edgeX = at[0]; a.z = a.lastZ = a.edgeZ = at[1]; a.y = a.edgeY = 0;
     a.vx = a.vy = a.vz = 0; a.grounded = true; a.jumps = 0; a.flight = 0; a.riding = a.climbing = a.holding = a.jetting = false;
-    a.knock = a.slip = 0; a.fuel = CONFIG.JET_FUEL; a.guard = CONFIG.GUARD_S; a.navI = -1; a.route = ""; a.detour = 0;
+    a.knock = a.slip = 0; a.fuel = CONFIG.JET_FUEL; a.guard = CONFIG.RESPAWN_GUARD; a.navI = -1; a.route = ""; a.detour = 0;
     a.heading = a.team === "blue" ? Math.PI : 0;
     a.falls++;
     emit(sim, "respawn", a.team, a.id, a.x, 0, a.z);
@@ -2863,7 +2880,7 @@
       for (const a of sim.actors) {
         if (a.team === s.team || !open(a)) continue;
         // A crate is big: it counts a little over the head and under the feet.
-        const dy = s.y - a.y, slack = s.kind === "crate" ? 0.45 : 0.15;
+        const dy = s.y - a.y, slack = s.kind === "crate" ? 0.45 : s.kind === "net" ? 0.9 : 0.15;
         if (dy > -slack && dy < heightOf(a) + slack && (s.x - a.x) ** 2 + (s.z - a.z) ** 2 < tool.r * tool.r) { hit = a; break; }
       }
       // A gorilla in the way takes it, stunned.
@@ -2878,7 +2895,9 @@
         for (const g of sim.gorillas) if (g.state !== G_STUN && s.y < 2.3 && (s.x - g.x) ** 2 + (s.z - g.z) ** 2 < 0.95) { gHit = g; break; }
         if (gHit) {
           s.live = false;
-          if (tool.blast) burst(sim, s); else stunGorilla(sim, gHit, s.owner);
+          if (tool.blast) burst(sim, s);
+          // A sharp gorilla dodges paint (the bots' skill sets how sharp).
+          else if ((gHit.state !== G_ROAM && gHit.state !== G_CHASE) || sim.rng() >= sim.bots.gorilla.dodge) stunGorilla(sim, gHit, s.owner);
           continue;
         }
       }

@@ -501,7 +501,7 @@
   const hear = (e, me, mine) => {
     const p = sim.actors[0], k = me ? 1 : clamp(1 - Math.hypot(e.x - p.x, e.z - p.z) / 32, 0.12, 1), c = audio.cues, t = e.type;
     if (t === "fire") c.fire(k);
-    else if (t === "throw") { const kind = e.actor >= 0 ? sim.actors[e.actor].lastKind : ""; if (kind === "sniper") c.sniper(k); else if (kind === "rocket") c.rocket(k); else c.throw(k); }
+    else if (t === "throw") { const kind = e.actor >= 0 ? sim.actors[e.actor].lastKind : ""; if (kind === "sniper") c.sniper(k); else if (kind === "rocket") c.rocket(k); else if (kind === "net") c.hookThrow(k); else c.throw(k); }
     else if (t === "splat") c.splat(me ? 1 : k);
     else if (t === "miss" || t === "netmiss") c.miss(k);
     else if (t === "pop") c.pop(k);
@@ -570,6 +570,7 @@
     else if (t === "rekt") feed(e.by >= 0 && e.by !== e.actor ? `${nameOf(e.by)}'s wallet rekt ${who}` : `${who} got rekt by a free wallet`, e.by >= 0 ? sim.actors[e.by].team : e.team);
     else if (t === "grab") feed(`A gorilla grabbed ${e.actor === 0 ? "you" : who}!`, e.team);
     else if (t === "breakfree") feed(`${who} wriggled free of a gorilla`, e.team);
+    else if (t === "netsteal") feed(`${who} took the block off ${e.by === 0 ? "you" : nameOf(e.by)} in the net`, e.team);
     else if (t === "thrown") feed(`A gorilla threw ${e.actor === 0 ? "you" : who} off the island`, e.team);
     else if (t === "respawn") feed(`${who} fell off the island`, e.team);
     else if (t === "hookget") feed(`${who} found a grappling hook`, e.team);
@@ -851,7 +852,7 @@
         gorillaPoke(e.actor);
         if (me) {
           center("GRABBED!", 1000);
-          notice(COARSE ? `A gorilla has you by the feet! Tap Jump ${C.GRAB_HITS} times to wriggle free` : `A gorilla has you by the feet! Mash Space ${C.GRAB_HITS} times to wriggle free`, 3000);
+          notice(COARSE ? `A gorilla has you by the feet! Tap Jump ${sim.actors[0].grabHits} times to wriggle free` : `A gorilla has you by the feet! Mash Space ${sim.actors[0].grabHits} times to wriggle free`, 3000);
         } else say(e.actor, LINES.bonk, 1.3);
       } else if (e.type === "struggle") { if (me) notice(`Wriggle! ${sim.actors[0].grabHits} more`, 700); }
       else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
@@ -1055,7 +1056,7 @@
       return thrown;
     }
     const dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
-    const lob = tool === "grenade" ? 0.3 : tool === "rocket" || tool === "sniper" ? 0 : tool === "net" ? -0.12 : tool === "gold" || tool === "ak" ? -0.06 : -0.09;
+    const lob = tool === "grenade" ? 0.3 : tool === "rocket" || tool === "sniper" ? 0 : tool === "net" ? -0.02 : tool === "gold" || tool === "ak" ? -0.06 : -0.09;
     const pitch = clamp(Math.atan2(q.y - oy, flat) + lob, -1.4, 1.4);
     const ok = SIM.fire(sim, 0, Math.atan2(dx, dz), pitch, tool);
     // Say why a throw didn't go, so the tools never seem locked: paint on you, a quiz bubble, or an empty tool.
@@ -1744,7 +1745,8 @@
       const t = TEAM_INDEX[s.team];
       const homer = s.kind === "homer";
       n.geometry = s.kind === "gold" ? BM.goldBall() : s.kind === "grenade" ? BM.grenade(t) : s.kind === "rocket" || homer ? BM.rocket(t) : s.kind === "net" ? BM.net() : s.kind === "crate" ? BM.crate(t) : BM.ball(t);
-      const k = homer ? 0.55 : 1;
+      // A net opens wide as it flies.
+      const k = homer ? 0.55 : s.kind === "net" ? 0.7 + Math.min(1.8, s.t * 8) : 1;
       n.scale.x = n.scale.y = n.scale.z = k;
       n.rotation.y = Math.atan2(s.vx, s.vz);
       n.rotation.x = s.kind === "rocket" || homer ? -Math.atan2(s.vy, Math.hypot(s.vx, s.vz)) : s.kind === "net" ? 0 : s.t * 9;
@@ -2187,7 +2189,7 @@
       const stunned = g.state === 4, wob = stunned ? Math.sin(elapsed * 14) * 0.25 : 0, carry = g.state === 2 || g.state === 5, m = GORILLA_MOTION[i];
       // wicked's capture pose: the left hand on the Ooga's foot (`dragging`), swinging over on the throw (`throwProgress`).
       m.dragging = carry; m.throwProgress = g.state === 5 ? g.throwT : 0;
-      m.walkGait = g.state === 1 ? "gallop" : "";
+      m.walkGait = g.state === 1 || carry ? "gallop" : "";
       rig.poseManaged(dt, g.x, 0, g.z, g.heading + wob, stunned ? 0 : Math.hypot(g.vx, g.vz), false, false, "", m);
       if (carry && g.holding >= 0 && actors[g.holding] && actors[g.holding].cave) holdByFoot(rig, actors[g.holding], g.heading);
     }

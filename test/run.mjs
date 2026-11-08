@@ -7609,6 +7609,19 @@ const gameRulesChecks = async () => {
         run(pm, 1);
         rows.anythingElse = bitCrate && pu.z > pz + 2;
       }
+      // A netted rival's block can be taken by a touch; the net launcher opens wide.
+      {
+        const m = fresh(), u = m.actors[0], c = m.actors[2];
+        for (const k of m.crates) k.live = false;
+        Object.assign(u, { x: -17, z: 12 }); Object.assign(c, { x: -16.5, z: 12, netted: 3, carrying: "red" });
+        Object.assign(m.flags.red, { state: "carried", carrier: 2 });
+        S.tick(m, S.CONFIG.STEP, still); m.eventCount = 0;
+        rows.netTake = u.carrying === "red" && !c.carrying && m.flags.red.carrier === 0;
+        rows.netLauncher = S.TOOLS.net.speed >= 25 && S.TOOLS.net.r >= 1.5;
+        const rg = fresh(), ru = rg.actors[0];
+        ru.y = S.CONFIG.FALL_FLOOR - 1; ru.x = 40; ru.grounded = false; run(rg, S.CONFIG.STEP * 2);
+        rows.spawnGuard = ru.guard > 0 && ru.guard <= 0.5;
+      }
       record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a wallet bomb steals a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
       {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
@@ -7643,6 +7656,24 @@ const gameRulesChecks = async () => {
         S.grapple(m, 0, 0, 0);
         const stunLog = run(m, 0.6, still, () => g.state === 4);
         out.stun = !!stunLog.gorillahooked && !cap.grabbed && g.state === 4 && g.hookCool > 0;
+        // The grip: exactly the skill's presses free you, each counted once, and paint or a blast doesn't break it.
+        [m, g] = hunt("fort", 1, 0, -14);
+        const grip = m.actors[0];
+        for (const o of m.actors) if (o.id) o.bot = true;
+        Object.assign(grip, { x: 0, z: -15 }); run(m, 0.3, still, () => grip.grabbed);
+        const press = { x: 0, z: 0, jump: 0 }, need = grip.grabHits;
+        let presses = 0;
+        const oneTick = () => { S.tick(m, S.CONFIG.STEP, press); m.eventCount = 0; };
+        for (let k = 0; k < need - 1; k++) { press.jump = 1; presses++; oneTick(); oneTick(); press.jump = 0; oneTick(); }
+        const stillHeld = grip.grabbed === 2;
+        const shot = m.shots.find((q) => !q.live);
+        Object.assign(shot, { live: true, kind: "paint", team: "blue", owner: 1, t: 0, ox: g.x, oz: g.z, x: g.x, y: 1.2, z: g.z, vx: 0.1, vy: 0, vz: 0, target: -1 });
+        oneTick();
+        const paintHolds = grip.grabbed === 2 && g.holding === 0;
+        press.jump = 1; oneTick(); press.jump = 0;
+        out.grip = need === 4 && stillHeld && paintHolds && !grip.grabbed;
+        out.difficulty = ["easy", "normal", "hard", "expert"].map((k) => S.SKILLS[k].gorilla.hits).join() === "3,4,5,5"
+          && ["easy", "normal", "hard", "expert"].every((k, i, a) => !i || S.SKILLS[k].gorilla.sight >= S.SKILLS[a[i - 1]].gorilla.sight);
         out.count = S.MAPS.every((map) => S.ARENAS[map].gorillas.length >= 3 && S.ARENAS[map].gorillas.length <= 4);
         // The whole capture, on every map, from around every piece of terrain and across the field: grabbed, dragged by a
         // route that gets there, thrown from the edge past it and off the ground.
