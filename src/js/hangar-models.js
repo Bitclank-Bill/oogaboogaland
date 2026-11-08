@@ -3471,13 +3471,16 @@
     block(K.x0 - 0.3, K.x0, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x1, K.x1 + 0.3, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x0 - 0.3, K.x1 + 0.3, K.back, K.back + 0.3, -1, K.top + 1);
-    // Inside it: the console, the chairs, the cabinet, the desk and the planter in the way.
-    const [ka, kb, kz] = K.console, [cbx, cbw] = K.cabinet, [dkx, dkz, dkw, dkd] = K.desk;
-    block(ka - 0.05, kb + 0.05, kz - 0.05, kz + K.deep + 0.06, -1, 1.3);
-    for (const [x, z] of K.chairs) around(x, z, 0.34, 0.36, 1.6);
-    block(cbx - cbw / 2 - 0.03, cbx + cbw / 2 + 0.03, K.back - 0.65, K.back, -1, 1.5);
-    around(dkx, dkz, dkw / 2 + 0.04, dkd / 2 + 0.04, 1.2);
-    around(K.planter[0], K.planter[1], 0.42, 0.42, 1.4);
+    // Inside it: the console's desk, the cabinet and the desk solid with their tops to stand on, so whoever jumps up
+    // lands on them rather than in them; the console's monitors, the chairs and the planter in the way higher than any
+    // jump reaches.
+    const [ka, kb, kz] = K.console, [cbx, cbw] = K.cabinet, [dkx, dkz, dkw, dkd] = K.desk, bank = 0.45, OVER = 3;
+    solid((ka + kb) / 2, kz + bank + (K.deep - bank) / 2, (kb - ka) / 2 + 0.05, (K.deep - bank) / 2 + 0.06, -1, 0.82);
+    block(ka - 0.05, kb + 0.05, kz - 0.05, kz + bank, -1, OVER);
+    for (const [x, z] of K.chairs) around(x, z, 0.34, 0.36, OVER);
+    solid(cbx, K.back - 0.32, cbw / 2 + 0.03, 0.33, -1, 0.95);
+    solid(dkx, dkz, dkw / 2 + 0.04, dkd / 2 + 0.04, -1, 0.82);
+    around(K.planter[0], K.planter[1], 0.42, 0.42, OVER);
     // The arch's posts round the launch tunnel's mouth, from the floor up.
     for (const sx of [-1, 1]) block(Math.min(sx * (ARCH.A - ARCH.w - ARCH.inner.w), sx * ARCH.A), Math.max(sx * (ARCH.A - ARCH.w - ARCH.inner.w), sx * ARCH.A), LAYOUT.arch.z - ARCH.depth / 2, LAYOUT.arch.z + ARCH.depth / 2, -1, HALL.h);
     // The crew's rooms' fronts out from the right wall likewise.
