@@ -1410,6 +1410,16 @@
   // Past the front wall's face into the command room, `gap` in from its ends, and no higher than a little over its
   // ceiling, so a view that rises there stays in the room while one over the left catwalk stays in the hall.
   const inCommand = (p, gap) => p.z > HM.COMMAND.front - gap && p.y < HM.COMMAND.top + 2 && p.x > HM.COMMAND.x0 + gap && p.x < HM.COMMAND.x1 - gap;
+  // Whether the view's target stands in the command room, and whether the line from it to the eye passes through the
+  // room's door while it stands open, so the view may only cross the room's front through the door.
+  const inCommandRoom = (t) => t.z > HM.COMMAND.front && t.y < HM.COMMAND.top && t.x > HM.COMMAND.x0 && t.x < HM.COMMAND.x1;
+  const throughCommandDoor = (t, p) => {
+    const K = HM.COMMAND, dz = p.z - t.z;
+    if (!scene || scene.commandOpen < 0.6 || Math.abs(dz) < 1e-3) return false;
+    const k = (K.front + 0.1 - t.z) / dz;
+    if (k < 0 || k > 1) return false;
+    return Math.abs(t.x + (p.x - t.x) * k - K.doorX) < K.door / 2 - 0.2 && t.y + (p.y - t.y) * k < K.doorH - 0.2;
+  };
 
   const enter = (ctx) => {
     ({ renderer, game, world, go, agentPlay } = ctx);
@@ -1449,10 +1459,13 @@
         p.z = Math.max(p.z, TUN.z1 + 1.5);
         return;
       }
-      if (inCommand(p, WALL_GAP)) {
+      // With the target in the command room the eye stays in it, but where it looks back out through the open door;
+      // with the target in the hall the eye stays in the hall, but where it looks in through the open door.
+      const t = pilot && pilot.orbit.target;
+      if (t && (inCommandRoom(t) ? !throughCommandDoor(t, p) : inCommand(p, WALL_GAP) && throughCommandDoor(t, p))) {
         p.x = clamp(p.x, HM.COMMAND.x0 + WALL_GAP, HM.COMMAND.x1 - WALL_GAP);
         p.y = Math.min(p.y, HM.COMMAND.top - 0.4);
-        p.z = Math.min(p.z, HM.COMMAND.back - WALL_GAP);
+        p.z = clamp(p.z, HM.COMMAND.front + WALL_GAP, HM.COMMAND.back - WALL_GAP);
         return;
       }
       p.x = clamp(p.x, HALL.x0 + SHELL.face + SHELL.rib + WALL_GAP, HALL.x1 - SHELL.face - SHELL.rib - WALL_GAP);
