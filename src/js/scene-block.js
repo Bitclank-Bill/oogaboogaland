@@ -364,17 +364,6 @@
   };
   const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
   let tipK = 0;
-  // The net launcher's aim line: from where the shot leaves, along where it goes; only while a net is loaded.
-  let aimNode = null;
-  const poseAim = () => {
-    if (!aimNode || !sim) return;
-    const a = sim.actors[0], on = phase === "play" && tool === "net" && a.net > 0 && !cam.island && a.splat <= 0 && a.trapped <= 0 && !a.grabbed;
-    aimNode.visible = on;
-    if (!on) return;
-    const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1, yaw = Math.atan2(dx, dz), pitch = clamp(Math.atan2(q.y - oy, flat) - 0.02, -1.4, 1.4), c = Math.cos(pitch);
-    setVec(aimNode.position, a.x + Math.sin(yaw) * c * 0.5, oy + Math.sin(pitch) * 0.5, a.z + Math.cos(yaw) * c * 0.5);
-    aimNode.rotation.y = yaw; aimNode.rotation.x = -pitch; aimNode.scale.z = 9;
-  };
   // The struggle meter, shown while a gorilla holds the visitor's Ooga. It repaints only when the bar moves a step or
   // the count of presses left changes.
   const STRUGGLE_STEPS = 60;
@@ -2004,7 +1993,6 @@
     poseFire(elapsed);
     poseGorillas(dt, elapsed);
     poseHooks(elapsed);
-    poseAim();
     paintStruggle();
     poseGhosts(elapsed);
     if (sim && actors) poseBeams(elapsed);
@@ -2403,7 +2391,6 @@
     el.tip = document.getElementById("block-tip");
     el.helpBox = document.getElementById("block-help");
     paintControls(document.getElementById("block-help-keys"));
-    aimNode = place(createNode({ geometry: BM.aimLine(), visible: false, sightHidden: true }));
     el.barMin = document.getElementById("block-bar-min");
     el.barGrip = document.getElementById("block-bar-grip");
     el.barDrag = null;

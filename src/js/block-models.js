@@ -898,7 +898,5 @@
     }
     return merge(...parts);
   });
-  // The net launcher's aim line, one thin glowing metre along +z.
-  const aimLine = cached(() => box({ w: 0.03, h: 0.03, d: 1, color: "#bfe3ff", emissive: 1, offset: { z: 0.5 } }));
-  BL.blockModels = { isle, keel, puddle, bolt, hauntDress, aimLine, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();
