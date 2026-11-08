@@ -366,6 +366,7 @@
   let tipK = 0;
   const showBoard = () => {
     el.tip.textContent = TIPS[tipK++ % TIPS.length];
+    { const t = document.getElementById("block-intro-tip"); if (t) t.textContent = el.tip.textContent; }
     paused = aiming = false;
     closeQuiz();
     closeWalletMenu();
