@@ -9064,6 +9064,10 @@ const hubArrival = { name: "hub initial bed occupancy", why: "regression: initia
 const hubWorkingArrival = { name: "hub working arrival", why: "regression: working Oogas must begin at their banana pile places instead of inheriting a sleeping pose underground", run: async b => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, actors = B.crew.list;
+    // Passive hub NPCs pass through one another on their fixed work lanes (crew.js \`npcPassive\`), so by the time the
+    // page is ready the crew may share a lane. Arrive afresh from away, as the boot does, and measure the placement itself.
+    for (const c of actors) { c.state = "away"; c.root.visible = false; }
+    B.crew.refreshStates(true);
     let gap = Infinity;
     for (let i = 0; i < actors.length; i++) for (let j = i + 1; j < actors.length; j++) {
       const a = actors[i], b = actors[j];
@@ -9293,9 +9297,11 @@ const hubSeparateBodies = { name: "hub separate bodies", why: "rule: a driven Oo
       let sight = { missing: true };
       const driver = pick(c => c.state === "chilling" || c.state === "working"), companion = clankers.list.find(e => e.active && e.root.visible && !e.remoteControlled && !e.ghostTrack);
       if (driver && companion) {
-        // The body's own checks below refresh the registry; start from a refreshed one, so the baseline counts only
-        // what the scene holds now, not entries an earlier fixture's refresh would already have dropped.
-        registry.refresh();
+        // Between frames the NPC ghost tracks wear their painted copies (npc-ghosts.js); a refresh reads the real models,
+        // as the hub's own refreshObjectGuides does. Start from a refreshed registry so the baseline counts what the
+        // scene holds now.
+        const refresh = () => { const G = D.npcGhosts, painted = !!G && G.stats().painted > 0; if (painted) G.restore(); registry.refresh(); if (painted) G.paint(0); };
+        refresh();
         const base = counts();
         let open = null, ooga = { refused: true }, ape = { refused: true }, repeated = true;
         if (pilot.possess(driver) && pilot.player?.npc === driver) {
@@ -9303,7 +9309,7 @@ const hubSeparateBodies = { name: "hub separate bodies", why: "rule: a driven Oo
           pilot.navigate({ position: { x: 10, y: meadowY, z: 0 }, yaw: 0, pitch: 0.4, dist: 10 });
           const clear = view(body); open = { ...B.camera.position };
           const covered = view(body, ROCK_EYE);
-          registry.refresh(); body.parts.head.geometry = body.headClosed; view(body);
+          refresh(); body.parts.head.geometry = body.headClosed; view(body);
           const closedHead = headHeld(body), refreshed = view(body);
           body.parts.head.geometry = body.headOpen;
           ooga = { clear, covered, refreshed, closedHead, registered: owners === base.owners + 1 };
@@ -9315,18 +9321,17 @@ const hubSeparateBodies = { name: "hub separate bodies", why: "rule: a driven Oo
           ape = { clear: view(body, open), covered: view(body, ROCK_EYE) };
           play.release(); step(0.2);
         }
-        // Letting go leaves no owner or registration behind. The registry memoises each geometry's outline bake once
-        // (object-guides.js), so the first takes may add the bodies' own geometries; later takes add none.
-        const warm = counts(), released = warm.owners === base.owners && warm.registered === base.registered;
+        // Letting go leaves nothing behind (object-guides.js forgetBody prunes the body's descriptors).
+        const released = same(counts(), base);
         // Repeated takes of both kinds leave nothing registered.
         for (let take = 0; take < 3; take++) {
           repeated &&= pilot.possess(driver) && registry.stats.owners === base.owners + 1;
           step(0.1); pilot.release(true); step(0.1);
           repeated &&= play.possess(companion) && registry.stats.owners === base.owners + 1;
           step(0.1); play.release(); step(0.1);
-          repeated &&= same(counts(), warm);
+          repeated &&= same(counts(), base);
         }
-        sight = { ooga, gorilla: ape, released, repeated, base, warm, after: counts() };
+        sight = { ooga, gorilla: ape, released, repeated, base, after: counts() };
       }
       return { oogas, gorilla, login, lifecycle, sight };
     } finally {
@@ -9612,11 +9617,12 @@ const hubHammock = { name: "hub hammock", why: "rule: one face-up Ooga rests off
   record("hub hammock: both palms share a grass patch with no path crossing and one REST place", setup.hammock && setup.crossings === 0 && setup.seats === 1 && setup.act === "REST", JSON.stringify(setup));
   // The rocking hammock (#499) hangs exactly where upstream rock hung it before #499, the same two palms, pivot, side and stand-up spot;
   // its whole swing (SWAY_MAX) keeps the lowest cloth 0.3 m over the ground, and every landing spot a tipped Ooga may be rolled to is level
-  // grass off the path, clear of both palms.
+  // and clear of both palms. A path may run there: the plan keeps paths off the anchor span, the swing and the stand-up spot, and a tip lands on
+  // any level walkable ground (scene-hub.js tipOutOfHammock), which a path is; the meadow's later paths cross one landing spot.
   const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= 0.01, placed = setup.placed;
-  record("hub hammock: it hangs where it always has (pivot, palms, side and stand-up spot within 1 cm), its whole swing clears the ground, and every landing spot is level grass off the path, clear of the palms",
+  record("hub hammock: it hangs where it always has (pivot, palms, side and stand-up spot within 1 cm), its whole swing clears the ground, and every landing spot is level, clear of the palms",
     !!placed && near(placed.pivot, [9.3683, 4.5253]) && placed.side === -1 && near(placed.palms[0], [5.2365, 4.2842]) && near(placed.palms[1], [13.5, 4.75]) && near(placed.walkAt, [9.4379, 3.0707])
-      && placed.swingSway === placed.cap && placed.low >= 0.3 && placed.lands.every((l) => l.level < 0.25 && !l.path && l.palm > 1.5),
+      && placed.swingSway === placed.cap && placed.low >= 0.3 && placed.lands.every((l) => l.level < 0.25 && l.palm > 1.5),
     JSON.stringify(placed));
   if (!setup.hammock) return;
   await b.key(" ");
@@ -9812,18 +9818,19 @@ const hubHammockEnds = { name: "hub hammock ends", why: "regression: both gather
           for(const cord of rope.fan){M.transformPoint(tip,cord.world,0,1,0);gap=Math.max(gap,Math.hypot(...tip.map((v,j)=>v-ring[j])));}
           const e=H.plan.envelope;inside=inside&&Math.abs(rope.ring[0])<=e.half&&Math.abs(rope.ring[2])<.3&&rope.ring[1]>=H.plan.endY&&rope.ring[1]<=H.plan.endY+1.6;
         }
-        if(occupied){Q.rotateVec(face,a.root.quaternion,0,0,1);faceY=Math.min(faceY,face[1]);}
+        // Face-up on the bed itself: the occupant's face against the bed's own surface normal (its node's up axis) as it rocks.
+        if(occupied){Q.rotateVec(face,a.root.quaternion,0,0,1);const w=H.bedNode.world,n=Math.hypot(w[4],w[5],w[6]);faceY=Math.min(faceY,(face[0]*w[4]+face[1]*w[5]+face[2]*w[6])/n);}
       }
       states.push({occupied,seated:!!a.camp.seat,free:!!H.free(a.root.position)});
     }
     B.crew.standPlayer();for(let k=0;k<2;k++)Object.assign(H.anchors[k].node.rotation,saved[k]);B.advance(.2,1/60);
-    return {angleDegrees:angle*180/Math.PI,gap,inside,faceY,sway:BL.hubHammock.SWAY_MAX,states,riseRanges:rises.map(r=>[Math.min(...r),Math.max(...r)]),anchors:H.anchors.map(o=>({x:o.x,z:o.z}))};
+    return {angleDegrees:angle*180/Math.PI,gap,inside,faceY,states,riseRanges:rises.map(r=>[Math.min(...r),Math.max(...r)]),anchors:H.anchors.map(o=>({x:o.x,z:o.z}))};
   })()`);
   record("hub hammock ends: near and far fan centerlines match their suspension slopes through 64 empty/occupied sway samples, with every cord joined at its gathering ring",
     result.angleDegrees<.001&&result.gap<1e-5&&result.riseRanges.every(r=>r[1]-r[0]>.01),JSON.stringify(result));
   record("hub hammock ends: the moving tips remain within the planned bounds, the sole occupant stays face-up, and approved tree positions are preserved",
-    // Face-up through the rocking swing #499 allows (SWAY_MAX), and on the palms "hub hammock" approves (within 1 cm).
-    result.inside&&result.faceY>=Math.cos(result.sway)-1e-3&&!result.states[0].seated&&result.states[0].free&&result.states[1].seated&&!result.states[1].free
+    // Face-up on the rocking bed (aligned with its surface normal), on the palms "hub hammock" approves (within 1 cm).
+    result.inside&&result.faceY>.98&&!result.states[0].seated&&result.states[0].free&&result.states[1].seated&&!result.states[1].free
       &&Math.hypot(result.anchors[0].x-5.2365,result.anchors[0].z-4.2842)<=.01&&result.anchors[1].x===13.5&&result.anchors[1].z===4.75,JSON.stringify(result));
 } };
 const hubHammockCamera = { name: "hub hammock camera", why: "regression: scrolling out of a reclining first-person view kept its rolled head basis in orbit", run: async (b) => {
@@ -10444,6 +10451,9 @@ const raceSteer = (keys) => `(() => { const B = window.__ooga, R = B.race; ${EV}
   for (const k of [null, ...${JSON.stringify(keys)}]) {
     R.startRace(); B.advance(3.6, 1 / 60); ev("keydown", "w"); B.advance(1.2, 1 / 60);
     const p = B.racers.player, h0 = p.heading, x0 = p.x, z0 = p.z, fx = Math.sin(h0), fz = Math.cos(h0);
+    // The lined-up grid (draw=0) leaves a rival touching the player, whose contact push would read as steering: rivals
+    // sit out the measured half second (racers.js skips a respawning racer in every step and collision).
+    for (const o of B.racers.racers) if (o !== p) o.respawn = 0.6;
     if (k) ev("keydown", k); B.advance(0.5, 1 / 60); if (k) ev("keyup", k); ev("keyup", "w");
     const along = (p.x - x0) * fx + (p.z - z0) * fz, sp = B.project(p.x, p.y + 0.5, p.z, {}), ss = B.project(x0 + fx * along, p.y + 0.5, z0 + fz * along, {});
     out[k || "none"] = +(sp.x - ss.x).toFixed(1);
@@ -12455,8 +12465,12 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
       Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
       e.gorilla.poseManaged(2, x, y, z, heading, 0, false, false, "", e.motion);
       BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.props.sync(); C.possess(e);
-      // The climber is the driven body standing for \`e\`, built where it stands.
-      g = C.player; q = g.root.position; B.advance(0.5, 1 / 60);
+      // The climber is the driven body standing for \`e\`, built on the nearest clear place beside it and carried to the
+      // fixture's exact start (respawn), the NPC stood aside on the meadow.
+      g = C.player; q = g.root.position;
+      Object.assign(p, { x: 7, y: B.island.surfaceAt(7, -4), z: -4 });
+      g.heading = heading; C.respawn(g, x, y, z); g.gorilla.poseManaged(2, x, y, z, heading, 0, false, false, "", g.motion);
+      B.advance(0.5, 1 / 60);
       if (player) net.remotes.set(id, { id, login: "stack-peer", display: "Stack peer", body: "${TALL}", bodyKind: "ooga", bodyName: "${TALL}", zone: "outside", x: px, y: py, z: pz, yaw: 0 });
       let top = -Infinity, nearest = Infinity, radius = 0;
       for (let i = 0; i < frames; i++) {
@@ -12505,7 +12519,8 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
 const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: scenery, rock and downhill movement changed the racing camera's angle and distance", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.cloudHopper, S = BL.scene, solids = B.headquarters.solids.props;
-    const actor = B.cavemen.get("portlandhodl"), rows = [], movementRows = [], rockRows = [], nodes = [];
+    let actor = B.cavemen.get("portlandhodl");
+    const rows = [], movementRows = [], rockRows = [], nodes = [];
     const pose = Object.fromEntries(["position", "target", "up", "orbit", "headOffset", "actor", "body", "head", "bodyQuaternion", "headQuaternion", "magazines"].map(key => [key, []]));
     const ghost = BL.cloudHopperGhost.create({ root: BL.scenes.hub.root, renderer: B.renderer });
     const cameraPose = () => [B.camera.position.x, B.camera.position.y, B.camera.position.z, B.camera.target.x, B.camera.target.y, B.camera.target.z];
@@ -12528,16 +12543,21 @@ const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: sce
     const anchor = () => ({ x: actor.root.position.x, y: actor.root.position.y - actor.baseY + actor.bodyHeight * 0.8, z: actor.root.position.z });
     const rockClear = (a, e) => B.island.voxelSegmentClearAt(a.x, a.y - 0.3, a.z, e.x, e.y - 0.3, e.z, 0.3, 0.6);
     P.possess(actor); if (B.crew.sleeping) B.crew.wakePlayer();
+    // The racer is the driven body (a separate one in the hub), and Cloud Hopper is entered from its Ooga Arcade cabinet
+    // (cloud-hopper.js \`arcade\`): the hub's launch takes that cabinet's call.
+    actor = B.pilot.player;
     P.navigate({ position: H.platform.position, yaw: 0, pitch: 0.5, dist: 12 });
-    const opened = H.launch();
-    document.querySelector(".cloud-hopper-panel .game-intro-go").click();
+    const opened = H.launch(true);
+    [...document.querySelectorAll(".cloud-hopper-panel .game-intro-go")].find(button => !button.hidden).click();
     B.advance(BL.cloudHopper.LIFT_SECONDS + 0.1, 1 / 60);
     if (H.phase === "briefing") document.querySelector(".cloud-hopper-guide .actions button:last-child").click();
     const ready = H.phase === "ready";
     actor.hop = 0.1; actor.hopV = 1; H.postUpdate();
     ghost.begin(actor); const recording = ghost.finish(0.1, actor);
     try {
-      for (const dt of [1 / 30, 1 / 60]) for (const mode of ["orbit", "shoulder", "first-person", "birds-eye"]) {
+      // A run is played in combat alone, at the shoulder or in first person: no carry orbit (the hub's combatOnly) and no
+      // bird's-eye view (cloud-hopper.js noOverhead).
+      for (const dt of [1 / 30, 1 / 60]) for (const mode of ["shoulder", "first-person"]) {
         setMode(mode);
         P.navigate({ position: { x: 100, y: 100, z: 100 }, yaw: 0, pitch: 0.55, dist: 12 });
         actor.hop = 100;
@@ -12591,20 +12611,22 @@ const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: sce
         rockRows.push({ dt, obstructed, firstChange, heldChange, clearedChange: changed(initial, relativePose()) });
       }
       return { opened, ready, rows, movementRows, rockRows, shore: !!shore };
-    } finally { clearProps(); ghost.dispose(); H.exit(); P.release(true); P.goPreset("pile"); }
+    // Cancel rather than exit: an arcade run's exit walks back into Ooga Arcade, and the next check shares this hub.
+    } finally { clearProps(); ghost.dispose(); H.cancel(); P.release(true); P.goPreset("pile"); }
   })()`);
   record("Cloud Hopper camera: nearby props, overhead scenery and a ghost never redirect or compress the racing view",
-    r.opened && r.ready && r.rows.length === 8 && r.rows.every(row => row.actualMode === row.mode && row.obstructed
+    r.opened && r.ready && r.rows.length === 4 && r.rows.every(row => row.actualMode === row.mode && row.obstructed
       && row.firstChange < 0.001 && row.heldChange < 0.001 && row.clearedChange < 0.001), JSON.stringify(r.rows));
   record("Cloud Hopper camera: downhill steps and airborne movement retain the exact actor-relative eye, target and up in every view at 30/60 Hz",
-    r.movementRows.length === 16 && r.movementRows.every(row => row.actualMode === row.mode && row.maxChange < 0.001), JSON.stringify(r.movementRows));
+    r.movementRows.length === 8 && r.movementRows.every(row => row.actualMode === row.mode && row.maxChange < 0.001), JSON.stringify(r.movementRows));
   record("Cloud Hopper camera: real island rock cannot shorten or pivot the camera, including the first crossing frame at 30/60 Hz",
     r.shore && r.rockRows.length === 2 && r.rockRows.every(row => row.obstructed
       && row.firstChange < 0.001 && row.heldChange < 0.001 && row.clearedChange < 0.001), JSON.stringify(r.rockRows));
 } };
 const hubCloudFraming = { name: "cloud hopper island framing", why: "regression: the starting cloud hid the island, replay changed the selected view, and held gameplay keys could activate the result panel", run: async (b) => {
   const r = await b.evaluate(`(() => {
-    const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.cloudHopper, actor = B.cavemen.get("portlandhodl");
+    const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.cloudHopper;
+    let actor = B.cavemen.get("portlandhodl");
     const pose = Object.fromEntries(["position", "target", "up", "orbit", "headOffset", "actor", "body", "head", "bodyQuaternion", "headQuaternion", "magazines"].map(key => [key, []]));
     const view = BL.math.mat4.create(), projection = BL.math.mat4.create(), island = new Float64Array(3), rows = [], keys = [];
     const clearCloud = () => {
@@ -12656,21 +12678,26 @@ const hubCloudFraming = { name: "cloud hopper island framing", why: "regression:
       P.navigate({ position: H.platform.position, yaw: 2.4, pitch: -0.15, dist: 12 });
     };
     P.possess(actor); if (B.crew.sleeping) B.crew.wakePlayer();
+    // The racer is the driven body (a separate one in the hub); Cloud Hopper is entered from its Ooga Arcade cabinet
+    // (cloud-hopper.js \`arcade\`), so the hub's launch takes that cabinet's call.
+    actor = B.pilot.player;
     mode("shoulder");
-    const opened = H.launch();
+    const opened = H.launch(true);
     try {
-      document.querySelector(".cloud-hopper-panel .game-intro-go").click();
+      [...document.querySelectorAll(".cloud-hopper-panel .game-intro-go")].find(button => !button.hidden).click();
       B.advance(BL.cloudHopper.LIFT_SECONDS + 0.1, 1 / 60);
       if (H.phase === "briefing") document.querySelector(".cloud-hopper-guide .actions button:last-child").click();
       const ascent = project(); B.advance(0.25, 1 / 60); const settled = project();
-      for (const name of ["orbit", "shoulder", "first-person", "birds-eye"]) {
+      // A run is played in combat alone (the hub's combatOnly, cloud-hopper.js noOverhead): first person and shoulder,
+      // the shoulder last so the manual turn below is measured from a third-person view, as it was from the orbit.
+      for (const name of ["first-person", "shoulder"]) {
         mode(name);
         // Finish from a deliberately unrelated heading, including a held DQ
         // view, before clicking the real replay button at the top cloud.
         actor.hop = 0.1; actor.hopV = 1; H.postUpdate();
         actor.root.position.x = 1000; actor.root.position.y = -1000; actor.hopV = -20; H.postUpdate();
         H.fallView(); const dq = H.phase === "dq";
-        const replay = document.querySelector(".cloud-hopper-panel .game-intro-go");
+        const replay = [...document.querySelectorAll(".cloud-hopper-panel .game-intro-go")].find(button => !button.hidden);
         if (!keys.length) {
           // Synthetic keyboard events do not perform native button clicks:
           // assert their default-action gate, then explicitly click to replay.
@@ -12697,24 +12724,25 @@ const hubCloudFraming = { name: "cloud hopper island framing", why: "regression:
             keys.push({ label, passed: event.defaultPrevented === blocked && H.phase === "dq" });
           }
         }
-        replay.click();
+        // An arcade replay rides the cloud up from beside the island again (cloud-hopper.js beginRun's climb).
+        replay.click(); B.advance(BL.cloudHopper.LIFT_SECONDS + 0.1, 1 / 60);
         const instant = project(); B.advance(0.25, 1 / 60); const later = project();
         rows.push({ name, dq, instant, later });
       }
       actor.hop = 0.1; actor.hopV = 1; H.postUpdate();
-      P.orbit.yaw = P.orbit.tYaw += 0.4; B.advance(0.1, 1 / 60);
+      // The racing shoulder view eases round to a turned heading (the orbit did within 0.1 s), so let it settle.
+      P.orbit.yaw = P.orbit.tYaw += 0.4; B.advance(0.5, 1 / 60);
       const manual = project();
       return { opened, ascent, settled, rows, keys, manual };
-    } finally { H.exit(); P.release(true); P.goPreset("pile"); }
+    } finally { H.cancel(); P.release(true); P.goPreset("pile"); }
   })()`);
   const aligned = (p, mode) => p.front && p.centreError < 3 && p.gap > 12 && p.y < 0.9 && p.phase === "ready" && p.mode === mode
     && (mode !== "orbit" || p.cloudClear) && (mode === "first-person" || p.actorVisible);
   const steady = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 0.005;
   record("Cloud Hopper framing: results reject held keys, deliberate replay retains the selected view and island framing, and racing releases the camera",
-    r.opened && aligned(r.ascent, "shoulder") && aligned(r.settled, "shoulder") && steady(r.ascent, r.settled) && r.rows.length === 4
+    r.opened && aligned(r.ascent, "shoulder") && aligned(r.settled, "shoulder") && steady(r.ascent, r.settled) && r.rows.length === 2
       && r.keys.length === 15 && r.keys.every(key => key.passed)
-      && r.rows.every(row => row.dq && aligned(row.instant, row.name === "birds-eye" ? "orbit" : row.name)
-        && aligned(row.later, row.name === "birds-eye" ? "orbit" : row.name) && steady(row.instant, row.later))
+      && r.rows.every(row => row.dq && aligned(row.instant, row.name) && aligned(row.later, row.name) && steady(row.instant, row.later))
       && r.manual.phase === "running" && Math.abs(r.manual.x - 0.5) > 0.08, JSON.stringify(r));
 } };
 const hubGrounding = { name: "hub grounding", why: "regression: a roaming gorilla read a tree crown as a floor", run: async (b) => {
@@ -13989,14 +14017,23 @@ const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizon
     focused.selected && focused.mode === "orbit" && !focused.combat && !focused.locked
       && Math.hypot(...focused.eye.map((n, i) => n - focusPoint.eye[i])) < 0.01, JSON.stringify({ before: focusPoint, after: focused }));
   const selectionModes = await b.evaluate(`(() => {
-    const B = __ooga, P = B.pilot, C = B.camera, H = B.hud, a = P.player, rows = [], retakes = [];
-    const net = BL.net.state, account = net.me, backend = net.backend, character = BL.characters.get(a.traits.name);
+    const B = __ooga, P = B.pilot, C = B.camera, H = B.hud, npc = P.player.npc || P.player, rows = [], retakes = [];
+    const net = BL.net.state, account = net.me, backend = net.backend, character = BL.characters.get(npc.traits.name);
+    // The driven Ooga is a separate body standing for its NPC (#501). A released body goes, so the NPC is stood where it
+    // was let go, and a double-click on the NPC takes a fresh body there.
+    const mine = () => !!P.player && P.player.npc === npc;
+    const releaseHere = () => {
+      const body = P.player, at = body && { x: body.root.position.x, y: body.root.position.y - body.baseY + npc.baseY, z: body.root.position.z };
+      P.release(true);
+      if (at) Object.assign(npc.root.position, at);
+    };
     const snapshot = () => [C.position.x, C.position.y, C.position.z, C.target.x, C.target.y, C.target.z];
     const error = (before, count = 6) => Math.max(...snapshot().slice(0, count).map((n, i) => Math.abs(n - before[i])));
-    const double = () => P.hooks.onDoubleTap({ owner: { kind: "caveman", cave: a } });
+    const double = () => P.hooks.onDoubleTap({ owner: { kind: "caveman", cave: npc } });
     const handoff = ${cameraSelectionProbe.toString()};
     const centered = () => {
-      const p = a.root.position, dx = C.target.x - C.position.x, dy = C.target.y - C.position.y, dz = C.target.z - C.position.z;
+      if (!mine()) return false;
+      const p = P.player.root.position, dx = C.target.x - C.position.x, dy = C.target.y - C.position.y, dz = C.target.z - C.position.z;
       const x = p.x - C.position.x, y = p.y - C.position.y, z = p.z - C.position.z;
       return (x * dx + y * dy + z * dz) / Math.hypot(x, y, z) / Math.hypot(dx, dy, dz) > 1 - 1e-8;
     };
@@ -14008,26 +14045,26 @@ const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizon
           P.navigate({ position: { x: 6, y: floor, z: 0 }, yaw: 0, pitch: 0.3, dist: 4 });
           const previousCombat = clearance === 30;
           if (P.aiming !== previousCombat) P.modeAction("mode-toggle");
-          B.advance(0.5, 1 / 60); P.release(true);
-          const p = a.root.position, headY = p.y - a.baseY + a.headOffset + a.viewLift;
+          B.advance(0.5, 1 / 60); releaseHere();
+          const p = npc.root.position, headY = p.y - npc.baseY + npc.headOffset + npc.viewLift;
           Object.assign(C.position, { x: p.x + 4, y: headY + clearance, z: p.z + 3 });
           Object.assign(C.target, { x: p.x + 1, y: headY, z: p.z - 2 }); C.up = null;
           const before = snapshot(), blend = handoff(B, P, double, double), immediate = blend.immediate;
-          const acquired = { selected: P.player === a, mode: P.mode, combat: P.aiming, error: error(before, 3), centered: centered() };
+          const taken = P.player, acquired = { selected: mine(), mode: P.mode, combat: P.aiming, error: error(before, 3), centered: centered() };
           if (previousCombat) { P.modeAction("mode-toggle"); B.advance(1, 1 / 60); }
           const current = snapshot(), mode = P.mode, combat = P.aiming;
           double();
           rows.push({ signedIn, floor, clearance, previousCombat, immediate, blend, acquired,
-            repeated: P.player === a && P.mode === mode && P.aiming === combat && error(current) < 0.001 });
+            repeated: mine() && P.player === taken && P.mode === mode && P.aiming === combat && error(current) < 0.001 });
         }
-        P.release(true); B.advance(0.1, 1 / 60);
+        releaseHere(); B.advance(0.1, 1 / 60);
         C.target.x += 3; C.target.z -= 2;
         const before = snapshot();
         const blend = handoff(B, P, double), immediate = blend.immediate;
         const entries = [];
-        retakes.push({ signedIn, selected: P.player === a, mode: P.mode, combat: P.aiming, immediate, blend, error: error(before, 3), centered: centered(), entries });
+        retakes.push({ signedIn, selected: mine(), mode: P.mode, combat: P.aiming, immediate, blend, error: error(before, 3), centered: centered(), entries });
         for (const rise of [-4, 20, 40]) {
-          P.release(true); const p = a.root.position;
+          releaseHere(); const p = npc.root.position;
           Object.assign(C.position, { x: p.x + 20, y: p.y + rise, z: p.z });
           Object.assign(C.target, { x: p.x - 20, y: p.y + 40, z: p.z + 2 }); C.up = { x: 0.6, y: 0.8, z: 0 };
           C.orthoMix = 0.35; C.orthoHeight = 24;
@@ -14035,7 +14072,7 @@ const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizon
           const pending = P.cameraHandoff.active;
           P.orbit.tPitch = rise > 20 ? 0.1 : 1.4;
           const blend = handoff(B, P, () => P.modeAction("mode-toggle")); P.update(2);
-          entries.push({ rise, pending, blend, mode: P.mode, combat: P.aiming, selected: P.player === a,
+          entries.push({ rise, pending, blend, mode: P.mode, combat: P.aiming, selected: mine(),
             projection: C.orthoMix, finite: snapshot().every(Number.isFinite) });
         }
       }
@@ -14052,7 +14089,9 @@ const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizon
       && e.mode === (e.rise > 20 ? "birds-eye" : "shoulder") && e.projection === (e.rise > 20 ? 1 : 0) && e.finite)),
     JSON.stringify(selectionModes.retakes.map(({ signedIn, entries }) => ({ signedIn, entries }))));
   const rightViews = await b.evaluate(`(() => {
-    const B = __ooga, P = B.pilot, C = B.camera, a = P.player, canvas = document.getElementById("scene"), rows = [];
+    const B = __ooga, P = B.pilot, C = B.camera, canvas = document.getElementById("scene"), rows = [];
+    // The driven Ooga is a separate body for its NPC (#501): taking the NPC again drives a fresh body, which \`a\` follows.
+    let a = P.player; const npc = a.npc || a;
     const pointer = (type, button = 2, buttons = type === "pointerdown" ? 2 : 0) => canvas.dispatchEvent(new PointerEvent(type, {
         bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 92, isPrimary: true, button,
         buttons, clientX: B.renderer.size.width / 2, clientY: B.renderer.size.height / 2
@@ -14160,7 +14199,7 @@ const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizon
             else if (reason === "other-button") { pointer("pointerdown", 1, 4); pointer("pointerup", 1, 0); }
             else if (reason === "mode") { toggle(); toggle(); }
             else if (reason === "view") { P.hooks.onZoom(0.5, {}); P.hooks.onZoom(1.2, {}); P.update(2); }
-            else { P.release(true); P.possess(a); if (P.aiming !== combat) toggle(); if (P.mode !== "shoulder") P.hooks.onZoom(0.001, {}); P.update(2); }
+            else { P.release(true); P.possess(npc); a = P.player; if (P.aiming !== combat) toggle(); if (P.mode !== "shoulder") P.hooks.onZoom(0.001, {}); P.update(2); }
             if (combat) P.focusAim();
             pointer("pointerdown"); P.update(0);
             interrupted.push({ reason, selected: P.player === a, mode: P.mode, combat: P.aiming,
@@ -14610,7 +14649,9 @@ const hubBirdsEye = { name: "birds-eye combat camera", why: "regression: horizon
 
 const hubBirdsEyeFloors = { name: "birds-eye lower floors", why: "regression: ramp labels reversed with the camera and the HQ ceiling cut left the basement arrow covered", run: async (b) => {
   const state = await b.evaluate(`(() => {
-    const B = __ooga, P = B.pilot, I = B.island, a = P.player, H = I.headquarters, room = H.rooms[0], lower = H.basement.rooms[0], D = BL.scenes.hub.debug;
+    const B = __ooga, P = B.pilot, I = B.island, npc = P.player.npc || P.player, H = I.headquarters, room = H.rooms[0], lower = H.basement.rooms[0], D = BL.scenes.hub.debug;
+    // The driven Ooga is a separate body standing for its NPC (#501): taking the NPC again stands a fresh one beside it.
+    let a = P.player;
     if (!P.birdsEye) { P.hooks.onZoom(1.2); B.advance(1.5, 1 / 60); }
     P.hooks.onZoom(32 / P.birdsEyeHeight); B.advance(1.5, 1 / 60);
     let hill = null;
@@ -15037,7 +15078,7 @@ const hubBirdsEyeFloors = { name: "birds-eye lower floors", why: "regression: ra
     transitions.push(transition("basement carry entry", toggle));
     transitions.push(transition("basement shoulder exit", () => P.hooks.onZoom(0.001, {}), 150));
     transitions.push(transition("basement shoulder entry", () => P.hooks.onZoom(1.2, {})));
-    const carryRoofs = [], G = B.clankerPlay, C = B.clankers, e = C.list.find(entry => entry.owner === a);
+    const carryRoofs = [], G = B.clankerPlay, C = B.clankers, e = C.list.find(entry => entry.owner === npc);
     const account = BL.net.state.me, backend = BL.net.state.backend, character = BL.characters.get(a.traits.name);
     const pressX = () => { key("keydown", "x", "KeyX"); key("keyup", "x", "KeyX"); };
     const canvas = document.getElementById("scene"), rect = canvas.getBoundingClientRect();
@@ -15051,24 +15092,27 @@ const hubBirdsEyeFloors = { name: "birds-eye lower floors", why: "regression: ra
       for (const signedIn of [false, true]) for (const gorilla of [false, true]) for (const q of places.filter(place => place.name === "HQ" || place.name === "basement")) {
         BL.net.state.me = signedIn ? { id: 75, login: character.github || character.handle, display: "Cutaway fixture" } : null;
         G.release(); P.release(true);
-        P.possess(a); if (B.crew.sleeping) B.crew.wakePlayer();
-        P.navigate({ position: gorilla ? { x: -5, y: I.surfaceAt(-5, 5), z: 5 } : { x: q.x, y: q.floor, z: q.z }, yaw: 0, pitch: 0.3, dist: 8 }); P.release(true);
-        if (gorilla) {
-          e.active = e.root.visible = true; G.possess(e); if (C.sleeping(e)) C.wake();
-          C.respawn(e, q.x, q.floor, q.z); e.root.visible = true; G.release();
-        }
+        if (gorilla) e.active = e.root.visible = true;
         P.goPreset("pile");
         Object.assign(B.camera.position, { x: q.x + 3, y: q.floor + 25, z: q.z + 5 });
         Object.assign(B.camera.target, { x: q.x, y: q.floor + 1, z: q.z }); B.camera.up = { x: 0, y: 1, z: 0 };
-        const controller = gorilla ? G : P, actor = gorilla ? e : a, zoom = factor => gorilla ? G.zoom(factor, {}) : P.hooks.onZoom(factor, {});
+        const controller = gorilla ? G : P, spot = gorilla ? e : npc, zoom = factor => gorilla ? G.zoom(factor, {}) : P.hooks.onZoom(factor, {});
+        // A released body goes (#501), so each acquisition stands the NPC on the roof floor and takes the fresh body
+        // standing beside it there.
+        let actor = null;
+        const take = () => {
+          Object.assign(spot.root.position, { x: q.x, y: q.floor + (gorilla ? 0 : spot.baseY), z: q.z });
+          controller.possess(spot); if (gorilla ? C.sleeping(controller.player || e) : B.crew.sleeping) gorilla ? C.wake() : B.crew.wakePlayer();
+          actor = controller.player;
+        };
         const read = () => ({ view: gorilla ? G.view : P.mode, combat: gorilla ? G.combat : P.aiming, controlled: controller.player === actor,
-          clear: cutClear(), cut: B.renderOpts.birdsEyeCutaway, geometryClear: geometryClear(actor, gorilla), mix: B.camera.orthoMix || 0, eye: B.camera.position.y });
+          clear: cutClear(), cut: B.renderOpts.birdsEyeCutaway, geometryClear: geometryClear(controller.player === actor ? actor : spot, gorilla), mix: B.camera.orthoMix || 0, eye: B.camera.position.y });
         const advance = (frames, requireClear = false) => {
           let clear = true;
           for (let i = 0; i < frames; i++) { B.advance(1 / 60, 1 / 60); if (requireClear) clear = clear && cutClear(); }
           return { ...read(), clearThroughout: clear };
         };
-        controller.possess(actor); const acquired = advance(1, true);
+        take(); const acquired = advance(1, true);
         pressX(); const overhead = advance(90);
         pressX(); const carryExit = advance(1, true);
         const carrySettling = advance(12, true);
@@ -15089,12 +15133,12 @@ const hubBirdsEyeFloors = { name: "birds-eye lower floors", why: "regression: ra
         }
         zoom(2); advance(1); zoom(2); advance(90);
         controller.release(true); const detached = advance(1, true);
-        controller.possess(actor); const retaken = advance(1, true);
+        take(); const retaken = advance(1, true);
         carryRoofs.push({ signedIn, gorilla, floor: q.name, ceiling: q.floor === H.floor ? H.ceiling : H.basement.ceiling,
           acquired, overhead, carryExit, carrySettling, overheadAgain, closeExit: { shoulder, blocked, retained, residualRestored, residualSafe, shoulderFrames, first, firstClear, firstFrames }, detached, retaken });
       }
     } finally { G.release(); P.release(true); BL.net.state.me = account; BL.net.state.backend = backend; }
-    P.possess(a); if (B.crew.sleeping) B.crew.wakePlayer();
+    P.possess(npc); if (B.crew.sleeping) B.crew.wakePlayer(); a = P.player;
     P.navigate({ position: { x: lower.x, y: H.basement.floor, z: lower.z }, yaw: 0, pitch: 0.3, dist: 8 });
     if (P.aiming) toggle(); P.hooks.onZoom(0.001, {}); B.advance(1, 1 / 60);
     toggle(); P.hooks.onZoom(1.2, {}); B.advance(1, 1 / 60);
@@ -15105,9 +15149,9 @@ const hubBirdsEyeFloors = { name: "birds-eye lower floors", why: "regression: ra
     const basement = { position: { x: lower.x, y: H.basement.floor, z: lower.z }, yaw: 0, pitch: 0.3, dist: 8 };
     P.navigate(basement); B.advance(2, 1 / 60);
     const released = transition("basement actor release", () => P.release(true));
-    P.possess(a); if (B.crew.sleeping) B.crew.wakePlayer(); P.navigate(basement); B.advance(0.7, 1 / 60);
+    P.possess(npc); if (B.crew.sleeping) B.crew.wakePlayer(); a = P.player; P.navigate(basement); B.advance(0.7, 1 / 60);
     if (!P.aiming) P.modeAction("mode-toggle"); if (P.mode === "shoulder") P.hooks.onZoom(1.2); B.advance(1, 1 / 60);
-    const restored = P.player === a && P.mode === "birds-eye" && P.birdsEyeMix === 1 && Math.abs(a.root.position.y - a.baseY - H.basement.floor) < 0.2;
+    const restored = !!a && a.npc === npc && P.player === a && P.mode === "birds-eye" && P.birdsEyeMix === 1 && Math.abs(a.root.position.y - a.baseY - H.basement.floor) < 0.2;
     const landmarks = [B.altar.node.position, B.headquarters.firepit.position, H.basement.hole].map(p => [p.x, p.z]);
     const clouds = [], weather = [];
     // Relief windows include an ordinary front mesh as well as projective
@@ -17080,11 +17124,12 @@ const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcad
   // said over the stage does not show.
   const HALL_KINDS = '["cabinet","machine","snack","prizes","wheel","ride","sign","changer","muncher","door","fame","disco"]';
   // The first pixel, scanning the screen, the input picks a target at whose kind `wanted` names.
-  const findPick = (wanted) => `(() => {
+  // \`playable\` passes over Ooga Rally's cabinet, out of order on purpose.
+  const findPick = (wanted, playable = false) => `(() => {
     const B = __ooga, wanted = ${wanted};
     for (let y = 8; y < innerHeight; y += 6) for (let x = 8; x < innerWidth; x += 6) {
       const hit = B.input.pick(x, y);
-      if (hit && wanted.includes(hit.owner.kind)) return { x, y, kind: hit.owner.kind };
+      if (hit && wanted.includes(hit.owner.kind) && !(${playable} && BL.arcadeModels.GAMES[hit.owner.game]?.unavailable)) return { x, y, kind: hit.owner.kind };
     }
     return null;
   })()`;
@@ -17110,7 +17155,7 @@ const arcadeHall = { name: "arcade hall", why: "regression: a jump in Ooga Arcad
     B.pilot.navigate({ position: { x: 0, y: 0, z: 4 }, yaw: 0, pitch: 0.12, dist: 5 }); B.advance(0.5, 1 / 60);
     return { armed: BL.scenes.arcade.debug.arena.armed, hidden: B.arcade.pointHidden(S.x, 2.2, S.z) };
   })()`);
-  const cabinet = await b.evaluate(findPick('["cabinet"]'));
+  const cabinet = await b.evaluate(findPick('["cabinet"]', true));
   let shown = null;
   if (cabinet) {
     await b.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: cabinet.x, y: cabinet.y });
@@ -17460,7 +17505,9 @@ const arcadeMaintenance = { name: "arcade maintenance", why: "regression: simula
     && r.rows.every(g => g.phase !== "greet" && g.phase !== "chat") && r.jobs.some(g => g.done > 0 || g.walked > 0), JSON.stringify(r));
 } };
 const arcadeHandrail = { name: "arcade handrail slide", why: "playthrough: Space at a stair's head slides the visitor's Ooga sitting down its hall-side handrail, where others see it sit, and hops it off onto the floor clear of the stair; Space on the way hops off onto the treads; the deck's rail never offers it", run: async (b) => {
-  const place = (x, z, yaw) => b.evaluate(`(() => { const B = __ooga, a = B.pilot.player, p = a.root.position; p.x = ${x}; p.z = ${z}; p.y = BL.arcadeModels.MEZZ.y + a.baseY; a.root.rotation.y = ${yaw}; a.hop = a.hopV = 0; B.advance(0.1, 1 / 20); })()`);
+  // Placed through the pilot, which turns the heading and the view together: an earlier step may leave first person,
+  // where the body follows the view and a bare root yaw is turned straight back.
+  const place = (x, z, yaw) => b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; B.pilot.navigate({ position: { x: ${x}, y: BL.arcadeModels.MEZZ.y, z: ${z} }, yaw: ${yaw} - Math.PI, pitch: 0.12, dist: 4 }); a.hop = a.hopV = 0; B.advance(0.1, 1 / 20); return a.root.rotation.y; })()`);
   const read = (i) => b.evaluate(`(() => {
     const B = __ooga, A = B.arcade, a = B.pilot.player, p = a.root.position, r = BL.arcadeModels.HANDRAILS[${i}], s = BL.net.state.self, h = document.getElementById("hint");
     return { hint: h.classList.contains("show") ? h.textContent : "", sliding: !!A.slide.rail, seated: !!a.camp.seat, x: p.x, z: p.z, feet: p.y - a.baseY,
@@ -19403,8 +19450,10 @@ scene("hub", { label: "timechain resident", steps: [{ name: "timechain resident"
     try {
       c.override = null;
       const away = activity(40 * 86400000), working = activity(1000), sleeping = activity(2 * 86400000);
+      // Driven, Sani is a separate body (#501) that steps out onto the bridge before the doors; the NPC stays inside.
       B.pilot.possess(c); B.advance(0.3, 1 / 60);
-      const out = { driven: B.pilot.player === c, visible: c.root.visible, fromDoors: local(c.root.position) - SP.THRESHOLD };
+      const body = B.pilot.player, driven = !!body && body !== c && body.npc === c;
+      const out = { driven, visible: driven && body.root.visible, fromDoors: driven ? local(body.root.position) - SP.THRESHOLD : null, npc: sample() };
       B.pilot.release(true); B.refreshStates(); B.advance(0.5, 1 / 60);
       const again = sample(), chilling = activity(2 * 3600000), back = activity(40 * 86400000);
       return { away, working, sleeping, out, again, chilling, back };
@@ -19416,10 +19465,10 @@ scene("hub", { label: "timechain resident", steps: [{ name: "timechain resident"
   })()`);
   const inside = row => !row.visible && row.held && row.fromMiddle < 0.5 && !row.bed && !row.walk;
   const mainland = row => row.visible && !row.held && row.fromMiddle > 20 && !row.bed;
-  record("timechain resident: sleeping and away Sani lives inside the Sphere without a bed, emerges when driven and returns when released; working and chilling Sani joins the mainland crew",
+  record("timechain resident: sleeping and away Sani lives inside the Sphere without a bed, his driven body emerges onto the bridge while he stays in, and he is inside when released; working and chilling Sani joins the mainland crew",
     r.away.state === "away" && inside(r.away) && r.sleeping.state === "sleeping" && inside(r.sleeping) && inside(r.again) && inside(r.back)
       && r.working.state === "working" && mainland(r.working) && r.chilling.state === "chilling" && mainland(r.chilling)
-      && r.out.driven && r.out.visible && r.out.fromDoors > 1, JSON.stringify(r));
+      && r.out.driven && r.out.visible && r.out.fromDoors > 1 && inside(r.out.npc), JSON.stringify(r));
 } }] });
 const roomPage = (room, query = "") => `${src}?debug=1&nosim=1${clock(`character=portlandhodl&pos=0${query ? "&" + query : ""}`)}#/sphere-${room}`;
 const roomGo = (room) => `(() => { const B = window.__ooga; B.go("timechain", "${room}"); for (let i = 0; i < 150 && (B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== ${room}); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); B.housekeep(); const s = B.stats(); return { scene: B.scene, room: B.timechain.room.id, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom, timers: s.timers, requests: s.requests }; })()`;
@@ -19433,7 +19482,9 @@ const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out 
       entry.lastCommitAt = entry.lastContributionAt = Date.now() - 40 * 86400000;
       B.hud.setRosterRow(entry.name);
       const away = row.hidden && state.dataset.state === "away", node = row, now = Date.now();
-      C.applySnapshot({ meta: { org: "OogaBoogaX", schema_version: 3 }, contributors: [{ login: entry.name, last_seen_at: new Date(now).toISOString() }] }, now);
+      // Stats arrive under the GitHub login behind the handle (characters.js ownedBy), not the handle itself.
+      const character = BL.characters.get(entry.name), login = character.github || character.handle;
+      C.applySnapshot({ meta: { org: "OogaBoogaX", schema_version: 3 }, contributors: [{ login, last_seen_at: new Date(now).toISOString() }] }, now);
       return { away, fresh: !row.hidden && state.dataset.state === "working" && age.textContent === "0m ago",
         same: document.querySelector('#roster [data-name="NickDaGreek"]') === node, scene: B.scene, player: B.pilot.player.traits.name };
     } finally { Object.assign(entry, saved); B.hud.setRosterRow(entry.name); }
@@ -19639,10 +19690,13 @@ scene("hub", { label: "chilling", query: "status=chillin&pos=0",
     }
     const occupiedBeds = B.headquarters.mattresses.filter(bed => bed.sleeper).length, c = B.cavemen.get("2140data");
     const innerOccupied = B.fireSeats.slice(0, 6).filter(s => actors.some(a => Math.hypot(s.x - a.root.position.x, s.z - a.root.position.z) < 1e-6)).length;
-    return { rows, rings: [...rings], gap, occupiedBeds, innerOccupied, spin: c.parts.chukTrail.some(n => n.visible), clubYaw: c.parts.club.rotation.y };
+    // The hammock's palm (hub-hammock.js, pinned by "hub hammock") hangs its fronds over part of the inner ring, so an
+    // inner seat counts where the scene's own solids leave room for one of these Oogas to sit.
+    const S = B.headquarters.solids.props, available = B.fireSeats.slice(0, 6).filter(s => actors.some(a => S.clearAt(s.x, 1e-5, s.z, a.bodyRadius, a.bodyHeight, a.root))).length;
+    return { available, rows, rings: [...rings], gap, occupiedBeds, innerOccupied, spin: c.parts.chukTrail.some(n => n.visible), clubYaw: c.parts.club.rotation.y };
   })()`);
   record("chilling arrival: every Ooga rests aboveground in separate concentric campfire rings facing the fire, with empty HQ beds and no eating or permanent nunchaku spin", state.rows.every(c => c.state === "chilling" && c.visible && c.feet >= -1e-6 && !c.bed && c.seated && c.facing > 0.999 && !c.snack)
-    && state.innerOccupied === 6 && state.rings.length > 1 && state.rings.some(([, count]) => count > 1) && state.gap >= -1e-6 && !state.occupiedBeds && !state.spin && Math.abs(state.clubYaw) < 1e-6, JSON.stringify(state));
+    && state.available >= 5 && state.innerOccupied === state.available && state.rings.length > 1 && state.rings.some(([, count]) => count > 1) && state.gap >= -1e-6 && !state.occupiedBeds && !state.spin && Math.abs(state.clubYaw) < 1e-6, JSON.stringify(state));
   const seated = await b.evaluate(`(() => {
     const gorilla = BL.agent.create({ managed: true, groundAt: () => 0 }), motion = { groom: 0, groomPhase: 0 };
     const parts = [gorilla.parts.head, gorilla.parts.armR, gorilla.parts.armL];
@@ -20082,7 +20136,9 @@ scene("hub", { label: "lab work rotation", query: "status=clankin", steps: [hubW
       e.owner.root.visible = false;
       const along = -2.5 - i * 0.3;
       Object.assign(e.root.position, { x: m.x + sx * along, y: m.floorY, z: m.z + sz * along });
-      Object.assign(e, { active: true, controlled: false, mode: "", phase: "work", route: "", site,
+      // Just in through the arch (route "enter", past its turn): a passive companion's mode change is a status
+      // relocation to its apron, and only an arrival reserves a desk or interior floor spot from inside the room.
+      Object.assign(e, { active: true, controlled: false, mode: "working", phase: "travel", route: "enter", entryTurn: 2, site,
         fromSite: site, pendingSite: -1, hasSlot: false, slotIndex: -1, heading: m.ry + Math.PI,
         parked: false, lounge: "", loungeDepart: false, speed: 0, recover: 0, pound: 0, beat: 0,
         stand: 0, blocked: 0, backoutLeft: 0, retry: 0, exitFootprint: false });
@@ -20152,11 +20208,12 @@ scene("hub", { label: "lab work rotation", query: "status=clankin", steps: [hubW
       C.plan(e.owner, next);
     }
     const released = departing.every(e => e.phase === "travel" && e.route === "exit" && e.lab.station < 0 && e.lab.item < 0);
-    const left = new Set(); let routed = false;
+    // Passive companions walk straight to their authored lab points (clankers.js \`labGoal\`): no route search.
+    const left = new Set(); let searched = false;
     for (let frame = 0; frame < 18 * 30 && left.size < departing.length; frame++) {
       C.update(1 / 30);
       for (const e of departing) {
-        routed ||= e.lab.pathCount > 1;
+        searched ||= e.lab.pathCount > 0;
         const p = e.root.position, along = (p.x - m.x) * sx + (p.z - m.z) * sz;
         if (along > 1.5) left.add(e.index);
       }
@@ -20169,10 +20226,10 @@ scene("hub", { label: "lab work rotation", query: "status=clankin", steps: [hubW
     const solo = workers[0]; solo.mode = "working";
     solo.owner.work.site = solo.owner.work.plannedSite = next;
     C.plan(solo.owner, next);
-    let straight = false, turnedAt = Infinity, soloLeft = false;
+    let turnedAt = Infinity, soloLeft = false;
     for (let frame = 0; frame < 6 * 60; frame++) {
       C.update(1 / 60);
-      straight ||= solo.lab.pathCount === 1 && !solo.lab.pathFixed;
+      searched ||= solo.lab.pathCount > 0;
       if (!Number.isFinite(turnedAt) && Math.abs(Math.atan2(Math.sin(solo.heading - m.ry), Math.cos(solo.heading - m.ry))) < 0.08)
         turnedAt = (frame + 1) / 60;
       if ((solo.root.position.x - m.x) * sx + (solo.root.position.z - m.z) * sz > 2.4) { soloLeft = true; break; }
@@ -20197,15 +20254,15 @@ scene("hub", { label: "lab work rotation", query: "status=clankin", steps: [hubW
     const bunchRecoveries = bunch.reduce((sum, e) => sum + e.stuck.recoveries, 0) - recoveries;
     return { actors: group.length, seconds, strokes: high.map((value, i) => value - low[i]), outside, duplicate,
       regular: regular.length, used: [...used], six, shared, overflowWorked: used.has(middle), code, scroll, restored,
-      released, routed, departures: departing.length, left: left.size, beakerWorked, dieRolled,
-      straight, turnedAt, soloLeft, bunchLeft: cleared.size, bunchRecoveries };
+      released, searched, departures: departing.length, left: left.size, beakerWorked, dieRolled,
+      turnedAt, soloLeft, bunchLeft: cleared.size, bunchRecoveries };
   })()`);
-  record("lab work: exclusive regular and overflow jobs animate correctly, and coworkers take room routes out together without a doorway stall",
+  record("lab work: exclusive regular and overflow jobs animate correctly, and passive coworkers walk straight out together, without a route search or a doorway stall",
     state.actors === 2 && state.seconds.every(value => value > 2) && state.strokes.every(value => value > 0.03)
     && !state.outside && !state.duplicate && state.regular === 6 && state.six.used && state.six.allClaimed && !state.six.premature
     && !state.shared && state.overflowWorked && state.code && state.scroll && state.restored
-    && state.released && state.routed && state.departures === 6 && state.left === state.departures
-    && state.beakerWorked && state.dieRolled && state.straight && state.turnedAt < 0.75 && state.soloLeft
+    && state.released && !state.searched && state.departures === 6 && state.left === state.departures
+    && state.beakerWorked && state.dieRolled && state.turnedAt < 0.75 && state.soloLeft
     && state.bunchLeft === 3 && !state.bunchRecoveries, JSON.stringify(state));
 } }] });
 scene("hub", { label: "gorilla inactive roofs", query: "status=chillin", steps: [{ name: "gorilla inactive roofs", why: "regression: resting-spot selection used active roofs and the cluttered ground between working caves", run: async (b) => {
@@ -20358,8 +20415,12 @@ scene("hub", { label: "gorilla wall handoff", query: "status=chillin", steps: [{
     Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
     e.gorilla.poseManaged(2, x, y, z, m.ry, 0, false, false, "", e.motion);
     BL.scene.updateWorld(BL.scenes.hub.root); B.headquarters.solids.props.sync(); C.possess(e);
-    // The driven gorilla is its own body standing for the companion \`e\` (clankers.js separateBodies).
+    // The driven gorilla is its own body standing for the companion \`e\` (clankers.js separateBodies), built on the nearest
+    // clear place beside it; it is carried to the fixture's exact start (respawn) and the NPC stood aside on the meadow.
     const g = C.player;
+    Object.assign(e.root.position, { x: 7, y: B.island.surfaceAt(7, -4), z: -4 });
+    g.heading = m.ry; C.respawn(g, x, y, z); g.gorilla.poseManaged(2, x, y, z, m.ry, 0, false, false, "", g.motion);
+    BL.scene.updateWorld(BL.scenes.hub.root);
     const trace = []; let mounted = false, jumped = false, reattached = false, staleMount = false, maxDistance = 0;
     let jumpFrame = -1, released = false, attachFrame = -1, attachX = 0, attachY = 0, attachZ = 0, maxDrift = 0;
     let facingCorrected = false, wrongFacing = 0, panelError = 0;
@@ -20592,7 +20653,10 @@ scene("hub", { label: "gorilla lab carry jump", exclusive: true, query: "charact
 } }].map(gameCombat) });
 scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1", steps: [{ name: "gorilla prop traversal", why: "regression: a box lost its supporting contact before the collision body cleared its side, low props interrupted the gallop, and a stale motion envelope trapped gorillas beneath trees", run: async (b) => {
   const state = await b.evaluate(`(() => {
-    const B = __ooga, S = BL.scene, root = BL.scenes.hub.root, C = B.clankers, e = C.list.find(e => e.owner.traits.name === "portlandhodl"), solids = B.headquarters.solids.props;
+    const B = __ooga, S = BL.scene, root = BL.scenes.hub.root, C = B.clankers, npc = C.list.find(e => e.owner.traits.name === "portlandhodl"), solids = B.headquarters.solids.props;
+    // \`e\` is the gorilla in hand: the driven body while one is taken (clankers.js separateBodies builds it where the NPC
+    // stands), else the NPC companion itself for the autonomous rows.
+    let e = npc;
     B.pilot.release(true);
     // Inactive companions reactivate while their owners are awake. An isolated fixture uses the real
     // away state; sleeping would require a claimed bedroll and the crew's complete sleep transition.
@@ -20602,20 +20666,29 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     }
     for (const cave of B.cavemen.values()) cave.root.visible = false;
     for (const prop of B.props) prop.node.visible = false;
-    const setup = (x, z, heading = Math.PI / 2, floor = B.island.supportAt(x, z, 50, 10)) => {
-      C.release();
-      Object.assign(e.root.position, { x, y: floor, z });
-      Object.assign(e, { active: true, controlled: false, recover: 0, lounge: "", parked: false, biped: false, heading, speed: 0, lowCover: false, pound: 0, beat: 0, stand: 0 });
-      Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, jumpHeld: false, jumpDown: false, jumpPressed: false, jumps: 0, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
-      Object.assign(e.climb, { requested: 0, searchPending: false, searchDeferred: false, claimPending: false, crestPending: false, retry: 0, searchCursor: 0 });
-      e.fire.burning = e.fire.rolling = false; e.fire.rollRecover = 0; e.actionControlled = e.motion.smash = e.climb.active = e.jump.active = false;
-      Object.assign(e.motion, { climb: 0, climbBlend: NaN, climbSide: 0, climbDirection: 0, climbStride: 0,
+    const reset = (entry, x, y, z, heading) => {
+      Object.assign(entry.root.position, { x, y, z });
+      Object.assign(entry, { active: true, recover: 0, lounge: "", parked: false, biped: false, heading, speed: 0, lowCover: false, pound: 0, beat: 0, stand: 0 });
+      Object.assign(entry.drive, { airborne: false, passiveFall: false, grounded: true, jumpHeld: false, jumpDown: false, jumpPressed: false, jumps: 0, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
+      Object.assign(entry.climb, { requested: 0, searchPending: false, searchDeferred: false, claimPending: false, crestPending: false, retry: 0, searchCursor: 0 });
+      entry.fire.burning = entry.fire.rolling = false; entry.fire.rollRecover = 0; entry.actionControlled = entry.motion.smash = entry.climb.active = entry.jump.active = false;
+      Object.assign(entry.motion, { climb: 0, climbBlend: NaN, climbSide: 0, climbDirection: 0, climbStride: 0,
         mantle: 0, roll: 0, rollAngle: 0, charge: 0, poundCharge: 0, landing: 0, takeoff: 0,
         supportOffset: 0, lab: false, labRunIn: false, labWork: "", smash: false });
       // Reset the rig as well as its controller: the preceding prop fall can leave a landing blend behind.
-      e.gorilla.poseManaged(2, x, e.root.position.y, z, heading, 0, false, false, "", e.motion);
-      e.root.visible = true; C.possess(e); B.advance(0.2, 1 / 60);
+      entry.gorilla.poseManaged(2, x, y, z, heading, 0, false, false, "", entry.motion);
+      entry.root.visible = true;
     };
+    // The driven gorilla is a body of its own (clankers.js separateBodies), built on a clear standing place beside its
+    // NPC: the NPC is stood on the open meadow to build it, and the body is carried to the fixture's place (respawn).
+    const drive = (x, y, z, heading) => {
+      C.release(); e = npc;
+      reset(npc, 7, B.island.surfaceAt(7, -4), -4, heading); npc.controlled = false;
+      C.possess(npc); e = C.player;
+      if (!e) throw new Error("gorilla prop traversal: no clear place on the meadow for the driven body");
+      reset(e, x, y, z, heading); C.respawn(e, x, y, z);
+    };
+    const setup = (x, z, heading = Math.PI / 2, floor = B.island.supportAt(x, z, 50, 10)) => { drive(x, floor, z, heading); B.advance(0.2, 1 / 60); };
     const advance = (input, seconds, sample = null) => {
       const dt = 1 / 60;
       for (let t = 0; t < seconds; t += dt) { C.control(input); B.advance(dt, dt); if (sample) sample(); }
@@ -20631,7 +20704,8 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
         const x = M.worldX(startX, localZ), z = M.worldZ(startX, localZ);
         const vx = M.cos * direction, vz = -M.sin * direction;
         const heading = Math.atan2(vx, vz) + (backwards ? Math.PI : 0);
-        setup(x, z, heading, C.supportAt(e, x, z, M.place.y + 1, 0, heading));
+        // The court's own ground (its layout), where the driven body is built: a passive NPC's support is terrain alone.
+        setup(x, z, heading, M.place.y + M.layout.groundAt(startX, localZ));
         const input = { x: vx, z: vz, heading, run, jumpHeld: false };
         let climbing = false, airborne = false, stopped = 0, longest = 0, minY = Infinity, maxY = -Infinity;
         for (let t = 0; t < 4; t += dt) {
@@ -20647,39 +20721,9 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
         rainforest.push({ dt, run, backwards, direction, remaining: (endX - M.localX(e.root.position.x, e.root.position.z)) * direction,
           climbing, airborne, longest, rise: maxY - minY });
       }
-    const rainforestNpc = [];
-    for (const dt of [1 / 30, 1 / 60]) for (const planned of [false, true]) for (const direction of [-1, 1]) {
-      const startX = direction < 0 ? -3 : -7, endX = direction < 0 ? -7 : -3, localZ = 15.5;
-      const x = M.worldX(startX, localZ), z = M.worldZ(startX, localZ), gx = M.worldX(endX, localZ), gz = M.worldZ(endX, localZ);
-      const heading = Math.atan2(M.cos * direction, -M.sin * direction);
-      setup(x, z, heading, C.supportAt(e, x, z, M.place.y + 1, 0, heading)); C.release();
-      const gy = C.supportAt(e, gx, gz, M.place.y + 1, 0, heading);
-      Object.assign(e, { controlled: false, mode: "chilling", phase: "chill", route: "", fromSite: -1,
-        lounge: "", loungeDepart: false, loungeRoof: false, loungePartner: null, loungeHeading: NaN,
-        recover: 0, rest: 120, goalX: gx, goalY: gy, goalZ: gz, blocked: 0, retry: 0,
-        backoutLeft: 0, stuckTime: 0, sampleTime: 0, steerFor: 0, steerSide: 0 });
-      e.owner.override = e.owner.state = "chilling";
-      e.drive.resume = false; e.debugMove.active = false;
-      Object.assign(e.roam, { count: planned ? 1 : 0, index: 0, wall: false, detour: planned, propDeparture: false,
-        reverseStart: false, waitUntil: 0, waitPeer: null, nextChoice: 1000, progressTime: 0,
-        progressX: NaN, progressZ: NaN, progressDistance: Infinity, runUp: 0, targetX: gx, targetY: gy, targetZ: gz });
-      e.roam.path.set([gx, gy, gz]);
-      e.stuck.x = e.stuck.y = e.stuck.z = NaN; e.stuck.time = e.stuck.taskTime = 0; e.stuck.taskActive = false;
-      const recoveries = e.stuck.recoveries;
-      let climbing = false, searching = false, airborne = false, stopped = 0, longest = 0;
-      for (let t = 0; t < 8; t += dt) {
-        if (Math.hypot(gx - e.root.position.x, gz - e.root.position.z) < 0.18) break;
-        const px = e.root.position.x, pz = e.root.position.z;
-        C.update(dt);
-        stopped = Math.hypot(e.root.position.x - px, e.root.position.z - pz) < 1e-5 ? stopped + dt : 0;
-        longest = Math.max(longest, stopped); climbing ||= e.climb.active;
-        searching ||= e.climb.searchPending || e.climb.claimPending || e.climb.searchCursor > 0;
-        airborne ||= e.jump.active || e.drive.airborne;
-      }
-      rainforestNpc.push({ dt, planned, direction, remaining: Math.hypot(gx - e.root.position.x, gz - e.root.position.z),
-        climbing, searching, airborne, longest, recoveries: e.stuck.recoveries - recoveries,
-        x: M.localX(e.root.position.x, e.root.position.z), y: e.root.position.y, goalY: e.goalY, reason: e.stuck.reason });
-    }
+    // Retired: autonomous gorilla walks on the rainforest court. A passive Hub NPC gorilla stands on terrain alone, never
+    // a prop (scene-hub.js clankerSceneSupportAt), and the Mempool island's ground is solid-prop meshes; the driven body's
+    // walk on the same treads is checked above.
     const traversals = [];
     for (const [kind, geometry] of [["crate", BL.hubModels.woodCrate()], ["barrel", BL.hubModels.barrel()], ["rock", BL.hubModels.rock(0)]]) {
       const node = S.createNode({ geometry, position: { x: 12, y: B.island.surfaceAt(12, 0), z: 0 } });
@@ -20696,35 +20740,9 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
       traversals.push({ kind, x: e.root.position.x, maxY, airborne, stopped, maxVisibleStep });
       solids.remove(node); S.removeChild(root, node); solids.sync();
     }
-    // An intact production crate must let an NPC leave its blended support.
-    let intactProp;
-    {
-      const intactCrate = S.createNode({ geometry: BL.hubModels.woodCrate(), position: { x: 12, y: B.island.surfaceAt(12, 0), z: 0 } });
-      const crateBounds = S.boundsOf(intactCrate.geometry);
-      intactCrate.gorillaSteps = [[...crateBounds.min, ...crateBounds.max]]; intactCrate.gorillaStepAll = true;
-      S.addChild(root, intactCrate); solids.add(intactCrate); S.updateWorld(root); solids.sync();
-      setup(7, 0); C.release();
-      const crateY = solids.supportAt(12, 0, 50, 50, 0.45);
-      Object.assign(e.root.position, { x: 12, y: crateY, z: 0 });
-      Object.assign(e, { active: true, controlled: false, mode: "chilling", phase: "chill", route: "", lounge: "", loungeDepart: false,
-        parked: false, biped: false, recover: 0, rest: 0, heading: Math.PI / 2, speed: 0, goalX: 12, goalY: crateY, goalZ: 0,
-        footprintMode: "walk", compact: e.gorilla.compact, radius: BL.clankers.WALK_RADIUS, height: BL.clankers.WALK_HEIGHT });
-      e.owner.state = "chilling"; e.root.visible = true;
-      Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0 });
-      e.jump.active = e.fire.burning = e.fire.rolling = false;
-      Object.assign(e.climb, { active: false, searchPending: false, searchDeferred: false, claimPending: false, crestPending: false, retry: 0, searchCursor: 0 });
-      Object.assign(e.roam, { count: 0, index: 0, wall: false, nextChoice: 1000, lastPose: "", transition: 0, progressTime: 0,
-        targetX: NaN, targetY: NaN, targetZ: NaN });
-      e.stuck.x = e.stuck.y = e.stuck.z = NaN; e.stuck.time = e.stuck.taskTime = 0; e.stuck.taskActive = false; e.stuck.reason = "";
-      e.gorilla.poseManaged(2, 12, crateY, 0, e.heading, 0, false, false, "", e.motion);
-      const recoveries = e.stuck.recoveries;
-      advance(null, 0.5);
-      const assignedExit = Math.hypot(e.goalX - 12, e.goalZ) > 2;
-      for (let frame = 0; frame < 6 * 60; frame++) C.update(1 / 60);
-      intactProp = { crateY, assignedExit, x: e.root.position.x, y: e.root.position.y, z: e.root.position.z,
-        airborne: e.drive.airborne, groundError: Math.abs(e.root.position.y - C.supportAt(e, e.root.position.x, e.root.position.z, e.root.position.y, BL.clankers.PROP_STEP, e.heading)), stuck: e.stuck.time, reason: e.stuck.reason, recoveries: e.stuck.recoveries - recoveries };
-      solids.remove(intactCrate); S.removeChild(root, intactCrate); solids.sync();
-    }
+    // Retired with the passive Hub NPC policy (a passive gorilla stands on terrain alone, never a prop, and walks through
+    // scenery; scene-hub.js clankerSceneSupportAt, crew/clankers passive paths): an autonomous gorilla leaving an intact
+    // crate or a raised rock, and its scenery detour. Driven bodies keep every prop, departure and fall check here.
     // A running crossing never exercises the stationary support-to-side transition.
     // Stop on the same bare solid used above, turn, then leave each face and corner.
     const departures = [], destroyed = [];
@@ -20735,7 +20753,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     const beside = S.createNode({ geometry: BL.models.box({ w: 0.5, h: 3, d: 4, color: BL.math.hexToRgb("#454545") }) });
     S.addChild(root, box); S.addChild(root, beside); solids.add(box); solids.add(beside);
     const onBox = (controlled, heading, dt) => {
-      C.cancelDebugMove(e); setup(7, 0, heading + Math.PI / 2); C.release();
+      C.cancelDebugMove(e); setup(7, 0, heading + Math.PI / 2); C.release(); e = npc;
       box.visible = true; S.updateWorld(root); solids.sync();
       const y = solids.supportAt(BX, 0, 50, 50, 0.45);
       Object.assign(e.root.position, { x: BX, y, z: 0 });
@@ -20765,14 +20783,15 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
       e.owner.override = e.owner.state = "chilling"; e.debugMove.cancelled = false;
       e.motion.supportOffset = 0;
       e.gorilla.poseManaged(2, BX, y, 0, e.heading, 0, false, false, "", e.motion);
-      if (controlled) C.possess(e);
+      if (controlled) { const q = npc.root.position; drive(q.x, q.y, q.z, heading); }
       for (let frame = 0; frame < Math.ceil(0.25 / dt); frame++) {
         if (controlled) C.control({ x: 0, z: 0, heading });
         C.update(dt);
       }
       return y;
     };
-    for (const controlled of [false, true]) for (let side = 0; side < 8; side++) {
+    // Driven bodies only: a passive NPC never stands on a box (see above).
+    for (const controlled of [true]) for (let side = 0; side < 8; side++) {
       const heading = side * Math.PI / 4, dx = Math.sin(heading), dz = Math.cos(heading), dt = [1 / 30, 1 / 60, 1 / 120][side % 3];
       Object.assign(beside.position, { x: BX + dz * 3, y: box.position.y + 1.5, z: -dx * 3 }); beside.rotation.y = heading;
       const y = onBox(controlled, heading, dt), start = { ...e.root.position };
@@ -20799,7 +20818,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     beside.visible = false;
     // The faster autonomous rage gallop off these props is retired with Hub NPC rage.
     solids.remove(box); box.geometry = BL.hubModels.woodCrate(); Object.assign(box.scale, { x: 1, y: 1, z: 1 }); solids.add(box);
-    for (const controlled of [false, true]) {
+    for (const controlled of [true]) {
       const dt = 1 / 60, y = onBox(controlled, 0, dt);
       box.visible = false; S.updateWorld(root); solids.sync();
       C.supportRemoved();
@@ -20813,29 +20832,6 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
         groundError: Math.abs(e.root.position.y - C.supportAt(e, e.root.position.x, e.root.position.z, e.root.position.y, BL.clankers.PROP_STEP, e.heading)), recoveries: e.stuck.recoveries });
     }
     solids.remove(box); solids.remove(beside); S.removeChild(root, box); S.removeChild(root, beside); solids.sync();
-    const escapeRock = S.createNode({ geometry: BL.hubModels.rock(0), position: { x: 12, y: B.island.surfaceAt(12, 0), z: 0 } });
-    S.addChild(root, escapeRock); solids.add(escapeRock); S.updateWorld(root); solids.sync();
-    C.release();
-    const rockY = solids.supportAt(12, 0, 50, 50, 0.45);
-    Object.assign(e.root.position, { x: 12, y: rockY, z: 0 });
-    Object.assign(e, { active: true, controlled: false, mode: "chilling", phase: "chill", route: "", lounge: "", loungeDepart: false,
-      parked: false, biped: false, recover: 0, rest: 0, heading: Math.PI / 2, speed: 0, goalX: 12, goalY: rockY, goalZ: 0,
-      footprintMode: "walk", compact: e.gorilla.compact, radius: BL.clankers.WALK_RADIUS, height: BL.clankers.WALK_HEIGHT });
-    e.owner.state = "chilling"; e.root.visible = true;
-    Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0 });
-    e.jump.active = e.fire.burning = e.fire.rolling = false;
-    Object.assign(e.climb, { active: false, searchPending: false, searchDeferred: false, claimPending: false, crestPending: false, retry: 0, searchCursor: 0 });
-    Object.assign(e.roam, { count: 0, index: 0, wall: false, nextChoice: 1000, lastPose: "", transition: 0, progressTime: 0,
-      targetX: NaN, targetY: NaN, targetZ: NaN });
-    e.stuck.x = e.stuck.y = e.stuck.z = NaN; e.stuck.time = e.stuck.taskTime = 0; e.stuck.taskActive = false; e.stuck.reason = "";
-    e.gorilla.poseManaged(2, 12, rockY, 0, e.heading, 0, false, false, "", e.motion);
-    advance(null, 0.5);
-    const assignedExit = Math.hypot(e.goalX - 12, e.goalZ) > 2;
-    escapeRock.visible = false; S.updateWorld(root); solids.sync(); C.supportRemoved();
-    advance(null, 3.5);
-    const raisedProp = { rockY, assignedExit, x: e.root.position.x, y: e.root.position.y, z: e.root.position.z,
-      airborne: e.drive.airborne, groundError: Math.abs(e.root.position.y - C.supportAt(e, e.root.position.x, e.root.position.z, e.root.position.y, BL.clankers.PROP_STEP, e.heading)), stuck: e.stuck.time, reason: e.stuck.reason };
-    solids.remove(escapeRock); S.removeChild(root, escapeRock); solids.sync();
     const jumps = [];
     for (const run of [false, true]) {
       // Reuse the clear corridor exercised above after removing its temporary prop.
@@ -20897,59 +20893,11 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     const canopy = { startX: q.x - 2.8, endX: e.root.position.x, startY, endY: e.root.position.y,
       lowFrames, bipedFrames, movingFrames, airborneFrames, envelopeCleared: !e.drive.motionEnvelope && !e.drive.motionRecover };
     Object.assign(tree.node.position, treePosition); tree.node.visible = false; S.updateWorld(root); solids.sync();
-    // Keep the identical 10 m approach and obstacle inside the cleared meadow.
-    // The old eastern goal crossed unrelated scenery after clearing the wall.
-    const corridorClear = points => points.slice(1).every((to, i) => {
-      const from = points[i], steps = Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / 0.4);
-      for (let step = 0; step <= steps; step++) {
-        const x = from[0] + (to[0] - from[0]) * step / steps, z = from[1] + (to[1] - from[1]) * step / steps;
-        if (!B.island.onLand(x, z) || Math.abs(B.island.surfaceAt(x, z)) > 0.05) return false;
-      }
-      return B.island.voxelSegmentClearAt(from[0], 0.05, from[1], to[0], 0.05, to[1], 0.4, 2)
-        && solids.segmentClear(from[0], 0.05, from[1], to[0], 0.05, to[1], 0.4, 2, null, 0.4, 2, true, false, true);
-    });
-    const corridor = { direct: corridorClear([[0, 10], [10, 10]]), around: corridorClear([[0, 10], [4, 13], [6, 13], [10, 10]]) };
-    const screen = S.createNode({ geometry: BL.models.box({ w: 0.5, h: 4, d: 4, color: BL.math.hexToRgb("#454545") }),
-      position: { x: 5, y: B.island.surfaceAt(5, 10) + 2, z: 10 } });
-    S.addChild(root, screen); solids.add(screen); S.updateWorld(root); solids.sync(); setup(0, 10);
-    C.release();
-    e.owner.override = e.owner.state = "chilling";
-    Object.assign(e, { controlled: false, mode: "chilling", phase: "chill", route: "", lounge: "", loungeDepart: false,
-      loungeRoof: false, loungeHeading: NaN, rest: 120, goalX: 10, goalY: B.island.surfaceAt(10, 10), goalZ: 10 });
-    // Start with the normal unmeasured progress baseline. Zero claims the goal was
-    // already reached and makes a clear approach expire as a stalled route.
-    Object.assign(e.roam, { count: 0, index: 0, wall: false, detour: false, pose: "", departPending: false,
-      targetX: 10, targetY: e.goalY, targetZ: 10, progressTime: 0, progressDistance: Infinity, planAt: 0, nextChoice: Infinity });
-    const recoveries = e.stuck.recoveries, plans = e.roam.plans, detourPath = [];
-    const detourState = frame => ({ frame, position: { ...e.root.position }, goal: [e.goalX, e.goalY, e.goalZ], heading: e.heading,
-      active: e.active, controlled: e.controlled, phase: e.phase, resume: e.drive.resume, airborne: e.drive.airborne,
-      climbing: e.climb.active, searching: e.climb.searchPending || e.climb.claimPending, lounge: e.lounge, recover: e.recover,
-      plans: e.roam.plans - plans, count: e.roam.count, index: e.roam.index, detour: e.roam.detour,
-      progress: e.roam.progressTime, remaining: e.roam.progressDistance, blocked: e.blocked, reason: e.stuck.reason });
-    const detourStart = detourState(0);
-    let detoured = false, crossed = false, detourFrames = 0;
-    for (let frame = 0; frame < 24 * 60; frame++) {
-      C.update(1 / 60); detourFrames = frame + 1;
-      if (!detoured && e.roam.detour && e.roam.count > 1) detourPath.push(...e.roam.path.subarray(0, e.roam.count * 3));
-      detoured ||= e.roam.detour && e.roam.count > 1;
-      crossed ||= Math.abs(e.root.position.x - 5) < 0.25 && Math.abs(e.root.position.z - 10) < 2;
-      if (Math.hypot(e.root.position.x - 10, e.root.position.z - 10) < 0.18) break;
-    }
-    const detour = { detoured, crossed, arrived: Math.hypot(e.root.position.x - 10, e.root.position.z - 10) < 0.18,
-      recoveries: e.stuck.recoveries - recoveries, grounded: !e.climb.active && !e.jump.active && !e.drive.airborne,
-      corridor, path: detourPath, start: detourStart, end: detourState(detourFrames) };
-    solids.remove(screen); S.removeChild(root, screen); solids.sync();
-    return { rainforest, rainforestNpc, traversals, intactProp, departures, destroyed, raisedProp, jumps, canopy, detour };
+    return { rainforest, traversals, departures, destroyed, jumps, canopy };
   })()`);
   record("gorilla rainforest steps: the real court treads stay walkable uphill, downhill and backwards at walking/running pace and 30/60 Hz",
     state.rainforest.every(row => row.remaining <= 0.08 && !row.climbing && !row.airborne && row.longest < 4 && row.rise > 0.4), JSON.stringify(state.rainforest));
-  record("gorilla rainforest NPC steps: autonomous and retained walking routes cross both directions without climb searches, jumps or recovery at 30/60 Hz",
-    state.rainforestNpc.every(row => row.remaining < 0.18 && !row.climbing && !row.searching && !row.airborne && row.longest < 0.2 && !row.recoveries), JSON.stringify(state.rainforestNpc));
   const props = state.traversals.every(row => row.x > 16 && row.maxY >= 0.75 && row.maxY <= 1.05 && !row.airborne && !row.stopped && row.maxVisibleStep < 0.25);
-  const intactProp = state.intactProp.assignedExit && Math.hypot(state.intactProp.x - 12, state.intactProp.z) > 1.5
-    && state.intactProp.groundError < 0.05 && !state.intactProp.airborne && !state.intactProp.recoveries && state.intactProp.reason !== "relocated";
-  const raisedProp = state.raisedProp.rockY > 0.8 && state.raisedProp.assignedExit && state.raisedProp.groundError < 0.05
-    && Math.hypot(state.raisedProp.x - 12, state.raisedProp.z) > 1.5 && !state.raisedProp.airborne && state.raisedProp.stuck < 0.65;
   const jump = state.jumps.every(row => {
     const speed = row.run ? 5.4 : 1.8, travel = speed * 39 / 60;
     return row.gait === (row.run ? "gallop" : "knuckle") && row.firstAir && !row.stopped
@@ -20959,13 +20907,11 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
       && row.thirdVelocity < row.secondVelocity && row.secondLift > row.peak * 0.98 && row.secondLift < row.peak * 1.02 && row.landed && row.nextJump;
   });
   const canopy = state.canopy.lowFrames > 0 && state.canopy.envelopeCleared && !state.canopy.bipedFrames && state.canopy.movingFrames > 10 && state.canopy.endX < state.canopy.startX - 1;
-  const detour = state.detour.corridor.direct && state.detour.corridor.around && state.detour.detoured && state.detour.arrived
-    && !state.detour.crossed && !state.detour.recoveries && state.detour.grounded;
-  const departures = state.departures.length === 16 && state.departures.every(row => row.y > 0.5 && row.stopped
+  const departures = state.departures.length === 8 && state.departures.every(row => row.y > 0.5 && row.stopped
     && row.distance > 2.5 && row.along > 2 && row.largestStep < 0.3 && row.groundError < 0.05 && !row.airborne && !row.recoveries);
-  const destroyed = state.destroyed.length === 2 && state.destroyed.every(row => row.fell && row.drop > 0.5
+  const destroyed = state.destroyed.length === 1 && state.destroyed.every(row => row.fell && row.drop > 0.5
     && row.largestStep < 0.3 && row.groundError < 0.05 && !row.airborne && !row.recoveries);
-  record("gorilla traversal: crates, barrels and rocks keep a grounded gallop; an autonomous gorilla leaves intact production crates without relocation; ordinary and controlled gorillas leave every box face and corner, and destroyed support falls normally; jumps, low cover and scenery detours retain their behavior", props && intactProp && departures && destroyed && raisedProp && jump && canopy && detour, JSON.stringify(state));
+  record("gorilla traversal: a driven gorilla keeps a grounded gallop over crates, barrels and rocks, leaves every box face and corner, falls normally when its support is destroyed, and keeps its jumps and low cover", props && departures && destroyed && jump && canopy, JSON.stringify(state));
 } }, { name: "passive gorilla contacts", outsideRing: true, why: "rule: autonomous Hub rage is retired, so a visitor's real banana shot, synthetic hits and a rage grab never count, damage, enrage or capture through a passive NPC gorilla", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, C = B.clankers, H = BL.scenes.hub.debug, S = BL.scene, c = B.cavemen.get("portlandhodl");
@@ -21523,8 +21469,10 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
           const combatKept = !!g() && P.combat && P.view === "shoulder" && resting();
           P.release(); C.update(1 / 60);
           const keptBed = resting() && e.sleep.slot === slot;
+          // Its Ooga awake again, the NPC companion wakes on its own track and frees its bed.
           e.owner.override = e.owner.state = "chilling";
-          sleepRows.push({ signedIn, fixture, selected, heldEye, separate, nativeTab, awakeCombat, releasedAsleep, combatKept, keptBed });
+          for (let i = 0; i < 600 && (e.sleep.slot >= 0 || e.sleep.stage); i++) C.update(1 / 60);
+          sleepRows.push({ signedIn, fixture, selected, heldEye, separate, nativeTab, awakeCombat, releasedAsleep, combatKept, keptBed, freedBed: e.sleep.slot === -1 && !e.sleep.stage });
         }
       } finally {
         key("keyup", "w"); key("keyup", " ", "Space");
@@ -21593,7 +21541,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     state.retakes.every(row => row.entries.length === 3 && row.entries.every(e => e.pending && e.blend.smooth && e.selected && e.combat
       && e.view === (e.rise > 20 ? "birds-eye" : "shoulder") && e.projection === (e.rise > 20 ? 1 : 0) && e.finite)),
     JSON.stringify(state.retakes.map(({ signedIn, entries }) => ({ signedIn, entries }))));
-  record("sleeping gorilla: signed in or out, selecting a sleeping companion from a still view holds the detached eye and drives an awake body beside it at once, combat included, while the NPC sleeps on in its own bed and pose through selection, release and a combat handoff", state.sleepRows.length === 2 && state.sleepRows.every(r => r.fixture && r.selected && r.heldEye && r.separate && r.nativeTab && r.awakeCombat && r.releasedAsleep && r.combatKept && r.keptBed), JSON.stringify(state.sleepRows));
+  record("sleeping gorilla: signed in or out, selecting a sleeping companion from a still view holds the detached eye and drives an awake body beside it at once, combat included, while the NPC sleeps on in its own bed and pose through selection, release and a combat handoff, and wakes on its own track freeing its bed once its Ooga does", state.sleepRows.length === 2 && state.sleepRows.every(r => r.fixture && r.selected && r.heldEye && r.separate && r.nativeTab && r.awakeCombat && r.releasedAsleep && r.combatKept && r.keptBed && r.freedBed), JSON.stringify(state.sleepRows));
 } }, { name: "gorilla wall destination", why: "regression: commanding a roof gorilla to a lower point farther along the cave face stalled at the crest instead of reaching the clicked wall", run: async (b) => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, S = BL.scene, C = B.clankers, e = C.list.find(e => e.owner.traits.name === "portlandhodl"), root = BL.scenes.hub.root;
@@ -21658,9 +21606,9 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
     S.updateWorld(root);
     // \`actor\` is the gorilla moved: the NPC under debug orders, or the driven body under the controller.
     const moveTo = (hit, dt = 1 / 30, controlled = false, reached = hit, actor = e) => {
-      const from = { ...e.root.position }, recoveries = actor.stuck.recoveries, torso = new Float64Array(24);
+      const from = { ...actor.root.position }, recoveries = actor.stuck.recoveries, torso = new Float64Array(24);
       const accepted = controlled ? C.player === actor && actor.controlled : C.debugMove(actor, hit.x, hit.y, hit.z, hit.normal);
-      let seconds = 0, maxStep = 0, climbing = 0, verticalExcursion = 0, overlap = null, stayedHanging = actor.climb.active, gripFrames = 0, lostGrip = null;
+      let biggest = null, seconds = 0, maxStep = 0, climbing = 0, verticalExcursion = 0, overlap = null, stayedHanging = actor.climb.active, gripFrames = 0, lostGrip = null;
       let controlStatus = "climbing", px = from.x, py = from.y, pz = from.z, lastFace = null;
       const face = { node: null, owner: null, x: 0, y: 0, z: 0, normal: { x: 0, y: 0, z: 0 } };
       const depth = { samples: 0, ascending: { inward: 0, outward: 0 }, descending: { inward: 0, outward: 0 }, sideways: { inward: 0, outward: 0 } };
@@ -21675,7 +21623,9 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
         }
         B.advance(dt, dt); seconds += dt;
         const p = actor.root.position;
-        maxStep = Math.max(maxStep, Math.hypot(p.x - px, p.y - py, p.z - pz));
+        const moved = Math.hypot(p.x - px, p.y - py, p.z - pz);
+        if (moved > maxStep) { maxStep = moved; biggest = { seconds, from: [px, py, pz], to: [p.x, p.y, p.z], climbing: actor.climb.active, free: actor.climb.free,
+          mount: actor.climb.mountPending, handoff: actor.climb.handoffDirection, airborne: actor.drive.airborne, jump: actor.jump.active, recoveries: actor.stuck.recoveries - recoveries }; }
         verticalExcursion = Math.max(verticalExcursion, Math.abs(p.y - from.y));
         px = p.x; py = p.y; pz = p.z;
         if (actor.climb.active) climbing++; else stayedHanging = false;
@@ -21709,7 +21659,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
         climbing, hanging: actor.climb.active, stayedHanging,
         lateral: Math.abs((p.x - from.x) * cr - (p.z - from.z) * sr), drop: from.y - p.y, verticalExcursion,
         tangentError: Math.abs(dx * hit.normal.z - dz * hit.normal.x), outwardGap: dx * hit.normal.x + dz * hit.normal.z,
-        verticalError: Math.abs(p.y - hit.y), maxStep, overlap, recoveries: actor.stuck.recoveries - recoveries };
+        verticalError: Math.abs(p.y - hit.y), maxStep, biggest, overlap, recoveries: actor.stuck.recoveries - recoveries };
     };
     const first = moveTo(target);
     // Retarget the hanging gorilla along the same real wall without moving it
@@ -21730,45 +21680,29 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
       take = { accepted, body: !!body, separate: !!body && body !== e && body.npc === e, bodyClimbing: !!body && body.climb.active,
         npcHanging: e.climb.active, npcMoved: Math.hypot(e.root.position.x - before.x, e.root.position.y - before.y, e.root.position.z - before.z) };
       C.release();
-      // The player's own climb: the NPC is stood on the ground in front of this same face, the driven body is built
-      // there on its clear standing place, and walks into the wall with climb input until the controller mounts it;
-      // it then climbs, under the controller alone, to the destination reached above and repeats both lateral legs.
+      // The player's own climb, as the NPC's began: the NPC is stood on the certified roof start above this face (the
+      // ground below it is a walkable stepped slope, not a wall), the driven body is built there on its clear standing
+      // place, and walks off the roof's edge toward the face's open side with climb input until the controller has it
+      // on the wall; it then climbs, under the controller alone, to the destination reached above and repeats both
+      // lateral legs.
       C.cancelDebugMove(e);
-      const nx = target.normal.x, nz = target.normal.z, nl = Math.hypot(nx, nz), ox = nx / nl, oz = nz / nl, heading = Math.atan2(-ox, -oz);
-      // A standing place in front of the face, settled and certified as the roof start is above, where the take builds
-      // the body (clankers.js spawnBody refuses one it cannot stand clear).
-      let g = null, foot = null;
-      for (let k = 0; k < 24 && !g; k++) {
-        const out = 1.6 + Math.floor(k / 6) * 0.6, along = [0, 0.7, -0.7, 1.4, -1.4, -2.1][k % 6];
-        const fx = third.end.x + ox * out - oz * along, fz = third.end.z + oz * out + ox * along;
-        let fy = B.island.surfaceAt(fx, fz);
-        for (let settle = 0; settle < 8; settle++) {
-          const floor = C.supportAt(e, fx, fz, fy, 0.52, heading);
-          if (!Number.isFinite(floor) || Math.abs(floor - fy) < 1e-5) { fy = floor; break; }
-          fy = floor;
-        }
-        if (!Number.isFinite(fy)) continue;
-        // Walking straight in from here must meet this same face, square to it, beside the destination's column.
-        const meet = { node: null, owner: null, x: 0, y: 0, z: 0, normal: { x: 0, y: 0, z: 0 } };
-        if (!ray.ray(meet, fx, fy + 1.1, fz, -ox, 0, -oz, out + 1) || meet.normal.x * ox + meet.normal.z * oz < 0.95
-          || Math.abs((meet.x - third.end.x) * -oz + (meet.z - third.end.z) * ox) > 1.5) continue;
-        C.release(); C.cancelDebugMove(e);
-        Object.assign(e.root.position, { x: fx, y: fy, z: fz });
-        Object.assign(e, { active: true, controlled: false, recover: 0, lounge: "", loungeDepart: false, parked: false, biped: false, heading, speed: 0, pound: 0, beat: 0, stand: 0 });
-        Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
-        Object.assign(e.climb, { active: false, free: false, mountPending: false, handoffDirection: 0, openingStagePending: false, retry: 0,
-          searchPending: false, searchDeferred: false, claimPending: false, crestPending: false });
-        e.jump.active = false; e.root.visible = true; Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
-        e.gorilla.poseManaged(2, fx, fy, fz, heading, 0, false, false, "", e.motion);
-        S.updateWorld(root); B.headquarters.solids.props.sync();
-        if (!e.gorilla.climbPoseClear(0, fx, fy, fz, heading, e.motion, solid, clearProps, e, 0, true)) continue;
-        if (C.possess(e) && C.player !== e) { g = C.player; foot = { x: fx, y: fy, z: fz, out, along }; }
-      }
+      const nx = target.normal.x, nz = target.normal.z, nl = Math.hypot(nx, nz), ox = nx / nl, oz = nz / nl, outward = Math.atan2(ox, oz);
+      Object.assign(e.root.position, start);
+      Object.assign(e, { active: true, controlled: false, recover: 0, lounge: "", loungeDepart: false, parked: false, biped: false, heading: outward, speed: 0, pound: 0, beat: 0, stand: 0 });
+      Object.assign(e.drive, { airborne: false, passiveFall: false, grounded: true, resume: false, vx: 0, vy: 0, vz: 0, motionRecover: 0, motionEnvelope: false });
+      Object.assign(e.climb, { active: false, free: false, mountPending: false, handoffDirection: 0, openingStagePending: false, retry: 0,
+        searchPending: false, searchDeferred: false, claimPending: false, crestPending: false });
+      e.jump.active = false; e.root.visible = true; Object.assign(e.motion, { climb: 0, climbBlend: NaN, mantle: 0, supportOffset: 0, landing: 0, takeoff: 0 });
+      e.gorilla.poseManaged(2, start.x, start.y, start.z, outward, 0, false, false, "", e.motion);
+      S.updateWorld(root); B.headquarters.solids.props.sync();
+      const g = C.possess(e) && C.player !== e ? C.player : null;
       mount = { taken: !!g && g.npc === e, grounded: !!g && g.drive.grounded && !g.climb.active, climbing: false, seconds: 0,
-        foot, wall: { x: third.end.x, y: third.end.y, z: third.end.z } };
+        start: { ...start }, wall: { x: third.end.x, y: third.end.y, z: third.end.z }, trail: [] };
       if (mount.taken) {
-        for (let i = 0; i < 360 && !g.climb.active; i++) { C.control({ x: -ox, z: -oz, heading, climbAxis: 1 }); B.advance(1 / 60, 1 / 60); mount.seconds += 1 / 60; }
-        mount.climbing = g.climb.active && !g.climb.mountPending;
+        for (let i = 0; i < 480 && !(g.climb.active && !g.climb.mountPending); i++) {
+          C.control({ x: ox, z: oz, heading: outward, climbAxis: 1 }); B.advance(1 / 60, 1 / 60); mount.seconds += 1 / 60;
+          if (!(i % 30)) mount.trail.push([+g.root.position.x.toFixed(2), +g.root.position.y.toFixed(2), +g.root.position.z.toFixed(2), g.climb.active, g.climb.mountPending]);
+        }
         for (let i = 0; i < 120 && g.climb.active && (g.climb.mountPending || g.gorilla.debug.climbing < 0.98); i++) { C.control({ x: 0, z: 0, climbAxis: 0 }); B.advance(1 / 60, 1 / 60); }
         mount.climbing = g.climb.active;
         if (mount.climbing) approach = moveTo(target, 1 / 60, true, third.end, g);
@@ -21869,7 +21803,7 @@ scene("hub", { label: "gorilla traversal", query: "status=chillin&gorillamove=1"
         : row.gait === "knuckle" && row.after - row.before > 0.65)), JSON.stringify(labTransition));
 } }].map(step => ["gorilla prop traversal", "passive gorilla contacts"].includes(step.name) ? gameCombat(step) : step) });
 scene("hub", { label: "mirror clanker", query: "solo=1&character=portlandhodl&status=clankin", steps: [{ name: "mirror clanker stays inside", why: "regression: a clanker turned around after crossing the mirror, poked its head back out, and worked beside a glowing generic box", run: async (b) => {
-  const state = await b.evaluate(`(() => { const B = __ooga, C = B.clankers, siteIndex = C.sites.findIndex(s => s.mirrorRoom), site = C.sites[siteIndex], m = site.mouth, e = C.list[0], localX = p => (p.x - m.x) * site.cr - (p.z - m.z) * site.sr, localZ = p => (p.x - m.x) * site.sr + (p.z - m.z) * site.cr, place = (x, z) => ({ x: m.x + site.cr * x + site.sr * z, y: m.floorY, z: m.z - site.sr * x + site.cr * z }); e.owner.state = "working"; e.owner.work.site = e.owner.work.plannedSite = e.site = siteIndex; e.pendingSite = -1; e.hasSlot = true; e.slotIndex = 0; Object.assign(e, { slotX: place(0, -4.92).x, slotY: m.floorY, slotZ: place(0, -4.92).z, phase: "travel", route: "enter", fromSite: -1, entryTurn: false, blocked: 0, retry: 0 }); Object.assign(e.root.position, place(0, 0)); e.heading = m.ry + Math.PI; B.advance(0.25, 1 / 60); const entry = { turn: e.entryTurn, goal: localZ({ x: e.goalX, z: e.goalZ }) }; Object.assign(e.root.position, place(0, -4.92)); e.phase = "work"; e.route = ""; e.goalX = e.slotX; e.goalY = e.slotY; e.goalZ = e.slotZ; let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, distance = 0, lastX = e.root.position.x, lastZ = e.root.position.z; for (let t = 0; t < 18; t += 1 / 30) { B.advance(1 / 30, 1 / 30); const x = localX(e.root.position), z = localZ(e.root.position); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); distance += Math.hypot(e.root.position.x - lastX, e.root.position.z - lastZ); lastX = e.root.position.x; lastZ = e.root.position.z; } return { room: m.room, entry, minX, maxX, minZ, maxZ, distance, recoveries: e.stuck.recoveries, equipment: C.equipment.filter(item => item.site === siteIndex).length }; })()`);
+  const state = await b.evaluate(`(() => { const B = __ooga, C = B.clankers, siteIndex = C.sites.findIndex(s => s.mirrorRoom), site = C.sites[siteIndex], m = site.mouth, e = C.list[0], localX = p => (p.x - m.x) * site.cr - (p.z - m.z) * site.sr, localZ = p => (p.x - m.x) * site.sr + (p.z - m.z) * site.cr, place = (x, z) => ({ x: m.x + site.cr * x + site.sr * z, y: m.floorY, z: m.z - site.sr * x + site.cr * z }); /* The Ooga's own passive trips would plan its gorilla to another cave: as a following page's puppet it holds this one. */ const puppet = e.owner.puppet; e.owner.puppet = true; try { e.owner.state = "working"; e.owner.work.site = e.owner.work.plannedSite = e.site = siteIndex; e.pendingSite = -1; e.hasSlot = true; e.slotIndex = 0; Object.assign(e, { slotX: place(0, -4.92).x, slotY: m.floorY, slotZ: place(0, -4.92).z, phase: "travel", route: "enter", fromSite: -1, entryTurn: false, blocked: 0, retry: 0 }); Object.assign(e.root.position, place(0, 0)); e.heading = m.ry + Math.PI; B.advance(0.25, 1 / 60); const entry = { turn: e.entryTurn, goal: localZ({ x: e.goalX, z: e.goalZ }) }; Object.assign(e.root.position, place(0, -4.92)); e.phase = "work"; e.route = ""; e.goalX = e.slotX; e.goalY = e.slotY; e.goalZ = e.slotZ; let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, distance = 0, lastX = e.root.position.x, lastZ = e.root.position.z; for (let t = 0; t < 18; t += 1 / 30) { B.advance(1 / 30, 1 / 30); const x = localX(e.root.position), z = localZ(e.root.position); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); distance += Math.hypot(e.root.position.x - lastX, e.root.position.z - lastZ); lastX = e.root.position.x; lastZ = e.root.position.z; } return { room: m.room, entry, minX, maxX, minZ, maxZ, distance, recoveries: e.stuck.recoveries, equipment: C.equipment.filter(item => item.site === siteIndex).length }; } finally { e.owner.puppet = puppet; } })()`);
   record("mirror clanker: the safe chamber expands, entry continues straight inward, runs cross from side to side at varied depths behind the glass, and the room has no work equipment", state.room.w > 6 && state.room.to > 6.5 && Math.abs(state.entry.goal + 3.5) < 0.01 && state.maxZ <= -1.85 + 1e-6 && state.minX < -0.8 && state.maxX > 0.8 && state.maxZ - state.minZ > 1 && state.distance > 8 && state.equipment === 0, JSON.stringify(state));
 } }] });
 scene("hub", { perf: true, query: "bananas=1000", opts: { w: 1920, h: 1080, perf: true, motion: true }, steps: [{ name: "wall movement performance", why: "regression: frame rate fell moving behind cave walls during a donation", run: wallPerformance }] });
@@ -23814,6 +23748,9 @@ scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps
   })()`);
   // Warm both scenes and the cooker's show, so the counts below start from a visit made after the instrumenting.
   await travel("factory"); await tip("soak-warm"); await travel("lab"); await travel("hub"); await settled(); await rendered(2);
+  // Each visit's tip grows the shared pile, whose wider footprint culls scenery off the ring (a target fewer): the
+  // closing count is taken at the opening pile, set back through the hub's own pile.
+  const startLevel = await b.evaluate("__ooga.level");
   const hubWarm = await warmHubGeometry(), beforeWindows = await warmWindowBatches(), before = await snapshot(), visits = [];
   let previous = before;
   for (let i = 0; i < 6; i++) {
@@ -23833,6 +23770,7 @@ scene("factory", { label: "lifecycle", exclusive: true, url: hubPage(src), steps
     previous = current;
     visits.push({ ...visit, hall, away, lighter, inFlight, geometry });
   }
+  await b.evaluate(`(() => { __ooga.setPileLevel(${startLevel}); __ooga.advance(0.5, 1 / 60); })()`);
   const afterWindows = await warmWindowBatches(), after = await snapshot(), same = (key) => before.stats[key] === after.stats[key];
   record("soak: factory cycles: both snapshots warm all bounded window batches and restore their visibility", [beforeWindows, afterWindows].every(w => w.windows === 2 && w.batches === 18 && w.warmed && w.restored), JSON.stringify({ before: beforeWindows, after: afterWindows }));
   // The hub's entrance and roof windows each own one subscription.
