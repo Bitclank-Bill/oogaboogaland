@@ -1044,7 +1044,8 @@
   // it; on the wall over the glass the room's sign. `flat` the room, `detail` the small parts on its faces (drawn after
   // the rest on Canvas 2D), `glow` its lit parts and `lit` the small lamps on its facade (drawn after its small parts on
   // Canvas 2D), which the scene dims with the hall's glass, `board` HANGAR COMMAND's frame and `boardFace` its picture
-  // (`whole` and in `slices`, each a list as `pictures`), `glass` the panes,
+  // (`whole` and in `slices`, each a list as `pictures`), `cameraScreen` HANGAR CAMERAS on a canvas the scene draws the
+  // hall's feeds over ({ geometry, canvas, x, y, z, turn }), `glass` the panes,
   // `pictures` its signs' and screens' faces, each { geometry, x, y, z, turn, tilt, bias } (`bias` how much nearer the
   // Canvas 2D sort takes it than a metre), `doors`, where each leaf's hinge stands and the way it turns shut, and
   // `lamps`, its lamps as the lanterns' pool has them.
@@ -1071,7 +1072,11 @@
       door: [-6.1, -8.3], lamps: [[-8.9, -9.95], [-17.35, -18.0]], crown: [-10.6, -16.7] },
     console: [-17.5, -9.6, 29.1], deep: 1.15, chairs: [[-16.8, 30.95], [-13.6, 30.95], [-10.4, 30.95]],
     monitors: [[0.75, "chart"], [1.0, "cams"], [0.75, "radar"], [0.4, "lantern"], [0.85, "bars"], [0.75, "radar"], [1.55, "jet"], [0.75, "blueprint"]],
-    command: { z: 33.05, y: 2.45, w: 4.4, h: 2.2 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 }, status: { x: -12.4, y: 2.9, w: 3.4, h: 1.45 },
+    command: { z: 33.05, y: 2.45, w: 4.4, h: 2.2 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6, feed: [0.455, 0.37], feeds: [
+      { label: "CAM 1 · TUNNEL", at: [0.03, 0.18], eye: [2.5, 8.5, -22], look: [0, 4.6, -46] },
+      { label: "CAM 2 · JET", at: [0.515, 0.18], eye: [5.5, 6.8, -25], look: [15, 2.4, -9] },
+      { label: "CAM 3 · RUNWAY", at: [0.03, 0.58], eye: [-3, 11, 26.5], look: [2, 1.5, -6] },
+      { label: "CAM 4 · CREW", at: [0.515, 0.58], eye: [-3.5, 6.5, 21], look: [-11.5, 0.8, 8] }] }, status: { x: -12.4, y: 2.9, w: 3.4, h: 1.45 },
     cabinet: [-16.5, 2.2], desk: [-11.3, 35.1, 2.2, 0.9], planter: [-6.5, 36.2],
     skylights: [[-15, 31.1], [-9.5, 31.1], [-15, 34.5], [-9.5, 34.5]], vents: [[-12.25, 31.1], [-12.25, 34.5]],
     lamps: [[-15, 3.7, 31.2, 7], [-10.5, 3.7, 31.2, 7], [-12, 3.7, 34.8, 6]], decal: [-12.9, 33] };
@@ -1202,17 +1207,18 @@
     });
     g.textAlign = "left";
   };
-  // HANGAR CAMERAS: four feeds, the launch tunnel's frames, the Jet in its bay, the runway with the forklift and the
-  // crew at their desks, each a sketch in its frame with its label, and the red REC light.
+  // HANGAR CAMERAS: four feeds (`COMMAND.cameras.feeds`), the launch tunnel's frames, the Jet in its bay, the runway
+  // with the forklift and the crew at their desks, each a sketch in its frame with its label, and the red REC light;
+  // on WebGL the scene draws the hall from each feed's camera over its sketch (`cameraScreen`).
   const paintHangarCameras = (g, W, H) => {
     const S = SCREEN_INK;
     screenField(g, W, H);
     titleBar(g, W, H, "HANGAR CAMERAS");
     g.fillStyle = "#ff3b30"; g.beginPath(); g.arc(W * 0.9, H * 0.09, H * 0.025, 0, Math.PI * 2); g.fill();
     g.fillStyle = S.text; g.font = `bold ${Math.round(H * 0.05)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText("REC", W * 0.92, H * 0.09);
-    const feeds = [["CAM 1 · TUNNEL", 0.03, 0.18], ["CAM 2 · JET", 0.515, 0.18], ["CAM 3 · RUNWAY", 0.03, 0.58], ["CAM 4 · CREW", 0.515, 0.58]];
-    feeds.forEach(([label, fx, fy], i) => {
-      const x = W * fx, y = H * fy, w = W * 0.455, h = H * 0.37, cx = x + w / 2, cy = y + h / 2;
+    const [fw, fh] = COMMAND.cameras.feed;
+    COMMAND.cameras.feeds.forEach(({ label, at: [fx, fy] }, i) => {
+      const x = W * fx, y = H * fy, w = W * fw, h = H * fh, cx = x + w / 2, cy = y + h / 2;
       g.fillStyle = "#050a16"; g.fillRect(x, y, w, h);
       g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
       if (i === 0) {
@@ -1566,9 +1572,15 @@
         glow.push(box({ w: 0.02, h: 0.04, d: w + 0.12, color: "#3fa9ff", emissive: 1, offset: { x: x + side * 0.09, y: y + sd * (h / 2 + 0.05), z } }));
         glow.push(box({ w: 0.02, h: h + 0.14, d: 0.04, color: "#3fa9ff", emissive: 1, offset: { x: x + side * 0.09, y, z: z + sd * (w / 2 + 0.05) } }));
       }
-      pictures.push({ geometry: screenPicture(w, h, 256, paint), x: x + side * 0.09, y, z, turn });
+      if (paint) pictures.push({ geometry: screenPicture(w, h, 256, paint), x: x + side * 0.09, y, z, turn });
     };
-    bigScreen(x1, -1, K.cameras, paintHangarCameras);
+    bigScreen(x1, -1, K.cameras, null);
+    const camCanvas = document.createElement("canvas"), cw = K.cameras.w, ch = K.cameras.h;
+    camCanvas.width = Math.round(cw * 256); camCanvas.height = Math.round(ch * 256);
+    paintHangarCameras(camCanvas.getContext("2d"), camCanvas.width, camCanvas.height);
+    const camGeometry = { verts: [-cw / 2, -ch / 2, 0, cw / 2, -ch / 2, 0, cw / 2, ch / 2, 0, -cw / 2, ch / 2, 0], faces: [{ i: [0, 1, 2, 3], color: [200, 205, 215], emissive: 0.55 }], lines: [], castShadow: false };
+    camGeometry.imageSurface = { canvas: camCanvas, version: 0, rect: [-cw / 2, -ch / 2, cw, ch], background: [5, 10, 22] };
+    const cameraScreen = { geometry: camGeometry, canvas: camCanvas, x: x1 - 0.09, y: K.cameras.y, z: K.cameras.z, turn: -Math.PI / 2 };
     // On the back wall facing the glass, as the outside's concept shows it through the windows: the Jet beside its
     // status, in the same dark frame and cyan light.
     const st = K.status;
@@ -1632,7 +1644,7 @@
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     const doors = [{ x: dx - K.door / 2, z: front + 0.1, turn: 0, open: -1 }, { x: dx + K.door / 2, z: front + 0.1, turn: Math.PI, open: 1 }];
-    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), board: noShadow(merge(...board)), boardFace, glass: windows, pictures, doors, lamps: K.lamps.flat() };
+    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), lit: noShadow(merge(...lamps)), board: noShadow(merge(...board)), boardFace, cameraScreen, glass: windows, pictures, doors, lamps: K.lamps.flat() };
   });
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it

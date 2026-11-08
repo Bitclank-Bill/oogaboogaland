@@ -203,7 +203,7 @@
   // it answers again; and how much of the hall's haze its shimmer cuts through.
   const SHIELD_NEAR = 0.6, SHIELD_REARM = 3, SHIELD_PIERCE = 0.7;
 
-  let renderer, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null;
+  let renderer, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null, ctx2canvas = null;
   let canvas = null, people = null, avatar = null, playerWorld = null, scene = null, leaving = false, dust = null, unsubscribeAccount = null, remotes = null, footsteps = null, node = null;
   let unsubscribeFeed = null, boardsDirty = false, audio = null, actPrompt = false, soundPanel = null;
   const NO_ACTORS = [];
@@ -258,6 +258,41 @@
     s.commandOpen += (want - s.commandOpen) * Math.min(1, dt * COMMAND_DOOR.ease);
     const k = s.commandOpen * s.commandOpen * (3 - 2 * s.commandOpen), doors = HM.commandRoom().doors;
     for (let i = 0; i < 2; i++) s.commandDoors[i].rotation.y = doors[i].turn + doors[i].open * k * COMMAND_DOOR.swing;
+  };
+  // HANGAR CAMERAS live, on WebGL: while the screen stands within `near` of the eye and in front of it, every `every`
+  // frames (a security feed's few frames a second, since each costs about a frame's own draw) the hall is drawn from the
+  // next of the security cameras (`COMMAND.cameras.feeds`) before the frame's own draw, its middle copied into that
+  // feed's quarter of the screen under the CCTV's blue tint and scanlines with its label, and the screen's picture
+  // bumped. The runway's gloss is hidden for that draw, so it captures nothing; `half` is each feed's half-height as the
+  // tangent of its angle.
+  const FEED = { every: 20, near: 13, ahead: 0.35, half: Math.tan(26 * Math.PI / 180) };
+  const feedLife = (s) => {
+    const F = s.feeds, C = HM.COMMAND, A = C.cameras;
+    if (!F) return;
+    const p = camera.position, aim = camera.target, dx = C.x1 - 0.1 - p.x, dy = A.y - p.y, dz = A.z - p.z, d = Math.hypot(dx, dy, dz);
+    const vx = aim.x - p.x, vy = aim.y - p.y, vz = aim.z - p.z, v = Math.hypot(vx, vy, vz) || 1;
+    if (d > FEED.near || (dx * vx + dy * vy + dz * vz) / (d * v) < FEED.ahead) return;
+    if (--F.wait > 0) return;
+    F.wait = FEED.every;
+    const i = F.next, f = A.feeds[i], c = F.cams[i], src = ctx2canvas, W = src.width, H = src.height, aspect = W / H;
+    F.next = (i + 1) % F.cams.length;
+    const cw = F.canvas.width, ch = F.canvas.height, rw = cw * A.feed[0], rh = ch * A.feed[1], rx = cw * f.at[0], ry = ch * f.at[1];
+    const across = FEED.half * rw / rh, t = Math.max(FEED.half, across / aspect);
+    c.fov = 2 * Math.atan(t);
+    if (s.gloss) s.gloss.visible = false;
+    const drawn = renderer.render(root, c, RENDER_OPTS);
+    if (s.gloss) s.gloss.visible = true;
+    if (!drawn) return;
+    const sx = W / 2 * (1 - across / (t * aspect)), sy = H / 2 * (1 - FEED.half / t), g = F.g;
+    g.drawImage(src, sx, sy, W - 2 * sx, H - 2 * sy, rx, ry, rw, rh);
+    g.fillStyle = "rgba(20, 60, 140, 0.12)"; g.fillRect(rx, ry, rw, rh);
+    g.fillStyle = "rgba(0, 0, 0, 0.2)";
+    for (let y = ry + 1; y < ry + rh; y += 3) g.fillRect(rx, y, rw, 1);
+    g.strokeStyle = "#3fa9ff"; g.lineWidth = 2; g.strokeRect(rx, ry, rw, rh);
+    g.fillStyle = "#e8f4ff"; g.font = `bold ${Math.round(ch * 0.04)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "alphabetic";
+    g.fillText(f.label, rx + rw * 0.03, ry + rh * 0.94);
+    g.fillStyle = "#ff3b30"; g.beginPath(); g.arc(rx + rw * 0.95, ry + rh * 0.09, ch * 0.012, 0, Math.PI * 2); g.fill();
+    F.surface.version++;
   };
   // Whether anything that walks the hall (as `nearJet` counts them) stands within `reach` of the line from (ax, az) to
   // (bx, bz) with its feet lower than `bottom`, for the crane, which holds its load while anyone is under it; `UNDER` is
@@ -968,7 +1003,8 @@
     // The polished runway (`HM.glossRunway`), on WebGL a glossy reflector laid face up over it.
     if (renderer.kind === "webgl2") {
       const gloss = HM.glossRunway();
-      addChild(root, createNode({ position: gloss.at, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, geometry: gloss, sightHidden: true }));
+      s.gloss = createNode({ position: gloss.at, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, geometry: gloss, sightHidden: true });
+      addChild(root, s.gloss);
     }
     // The side walls' strip lamps and box lamps and the catwalks' amber and blue strips (`HM.wallLights`), their lenses
     // dimmed with the glass; on Canvas 2D the walls' sort with the wall, a little nearer than its panels.
@@ -992,6 +1028,17 @@
     // sorted nearer.
     const command = HM.commandRoom(), commandGlow = createNode({ geometry: command.glow, sightHidden: true });
     addChild(root, createNode({ geometry: command.flat }), createNode({ geometry: command.detail, depthBias: DETAIL_BIAS }), commandGlow, createNode({ geometry: command.glass, sightHidden: true }));
+    const cam = command.cameraScreen;
+    addChild(root, createNode({ position: { x: cam.x, y: cam.y, z: cam.z }, rotation: { x: 0, y: cam.turn, z: 0 }, geometry: cam.geometry, sightHidden: true, depthBias: -1 }));
+    s.feeds = renderer.kind === "webgl2" ? {
+      g: cam.canvas.getContext("2d"), canvas: cam.canvas, surface: cam.geometry.imageSurface, next: 0, wait: 0,
+      cams: HM.COMMAND.cameras.feeds.map((f) => {
+        const c = createCamera({ fov: 50, near: 0.3, far: 160 });
+        Object.assign(c.position, { x: f.eye[0], y: f.eye[1], z: f.eye[2] });
+        Object.assign(c.target, { x: f.look[0], y: f.look[1], z: f.look[2] });
+        return c;
+      })
+    } : null;
     for (const p of [...command.pictures, ...command.boardFace[renderer.kind === "canvas2d" ? "slices" : "whole"]]) {
       addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: p.tilt || 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: p.bias ?? -1 }));
     }
@@ -1423,6 +1470,7 @@
 
   const enter = (ctx) => {
     ({ renderer, game, world, go, agentPlay } = ctx);
+    ctx2canvas = ctx.canvas;
     camera = createCamera({ fov: 55, near: 0.3, far: 700 });
     root = createNode();
     hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
@@ -1853,6 +1901,7 @@
     lampLife(s, dt, elapsed, dim);
     loftLife(s, dt, elapsed, dim);
     boardJets(s, dt);
+    feedLife(s);
     s.crane.update(dt, camera.position);
     craneBeam(s.crane.beam);
     dust.update(elapsed, pilot.orbit.target.x, pilot.orbit.target.z);
