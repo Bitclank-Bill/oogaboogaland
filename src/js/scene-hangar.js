@@ -984,12 +984,13 @@
     addChild(root, createNode({ geometry: room.flat }), roomGlow, createNode({ geometry: room.glass, sightHidden: true }));
     for (const p of room.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
     s.glass.push(roomGlow);
-    // The command room set into the front wall left of the door (`HM.commandRoom`), as the control room: its glow dimmed
-    // with the glass, its signs' faces a metre nearer on Canvas 2D, and its door's two leaves on nodes of their own on
-    // their hinges, which `commandDoorLife` swings open.
+    // The command room set into the front wall left of the door (`HM.commandRoom`), as the control room: its small parts
+    // sorted nearer on Canvas 2D, its glow dimmed with the glass, its signs' and screens' faces nearer on Canvas 2D (a
+    // metre, or as each says), and its door's two leaves on nodes of their own on their hinges, which `commandDoorLife`
+    // swings open.
     const command = HM.commandRoom(), commandGlow = createNode({ geometry: command.glow, sightHidden: true });
-    addChild(root, createNode({ geometry: command.flat }), commandGlow, createNode({ geometry: command.glass, sightHidden: true }));
-    for (const p of command.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: -1 }));
+    addChild(root, createNode({ geometry: command.flat }), createNode({ geometry: command.detail, depthBias: DETAIL_BIAS }), commandGlow, createNode({ geometry: command.glass, sightHidden: true }));
+    for (const p of command.pictures) addChild(root, createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: p.tilt || 0, y: p.turn, z: 0 }, geometry: p.geometry, sightHidden: true, depthBias: p.bias ?? -1 }));
     s.glass.push(commandGlow);
     s.commandDoors = command.doors.map((d) => {
       const leaf = createNode({ position: { x: d.x, y: 0, z: d.z }, rotation: { x: 0, y: d.turn, z: 0 }, geometry: HM.commandDoor() });
@@ -1244,7 +1245,9 @@
   // crew's desks (`HM.fixedLights`); the lanterns on the crates share what is left, the nearest the view first, each
   // reaching as far as `hangar-models.js` says and flickering like a flame, as the Factory shares its own.
   const LANTERN_GLOW = HM.LANTERN_GLOW, FIXED = 10;
-  const lanternPool = models.cached(() => new Float32Array(HM.fixtures().lights));
+  // The pool: the crates' lanterns, which flicker, and after them the command room's steady lamps.
+  const lanternPool = models.cached(() => new Float32Array([...HM.fixtures().lights, ...HM.commandRoom().lamps]));
+  const lanternCount = models.cached(() => HM.fixtures().lights.length / 4);
   const lamp = (i, x, y, z, radius, r, g, b) => {
     const o = i * 8, l = RENDER_OPTS.lights;
     l[o] = x; l[o + 1] = y; l[o + 2] = z; l[o + 3] = radius; l[o + 4] = r; l[o + 5] = g; l[o + 6] = b; l[o + 7] = 0;
@@ -1267,7 +1270,7 @@
   };
   let poolScore = null;
   // The shared slots go to the lanterns nearest the view, nearest first, by repeated minimum: no sort, no list; as dim
-  // as an anomaly has the hall's lights (`dim`).
+  // as an anomaly has the hall's lights (`dim`), the lanterns flickering and the command room's lamps steady.
   const glowNear = (elapsed, from, dim) => {
     const P = lanternPool(), n = P.length / 4, t = pilot.orbit.target, Lt = RENDER_OPTS.lights;
     if (!poolScore) poolScore = new Float32Array(n);
@@ -1279,7 +1282,7 @@
       let best = 0, bestD = Infinity;
       for (let i = 0; i < n; i++) if (poolScore[i] < bestD) { bestD = poolScore[i]; best = i; }
       poolScore[best] = Infinity;
-      const k = (0.9 + Math.sin(elapsed * 9.3 + best * 1.7) * 0.06 + Math.sin(elapsed * 23.7 + best * 5.3) * 0.04) * dim, w = slot * 8;
+      const k = (best < lanternCount() ? 0.9 + Math.sin(elapsed * 9.3 + best * 1.7) * 0.06 + Math.sin(elapsed * 23.7 + best * 5.3) * 0.04 : 1) * dim, w = slot * 8;
       Lt[w] = P[best * 4]; Lt[w + 1] = P[best * 4 + 1]; Lt[w + 2] = P[best * 4 + 2]; Lt[w + 3] = P[best * 4 + 3];
       Lt[w + 4] = LANTERN_GLOW[0] * k; Lt[w + 5] = LANTERN_GLOW[1] * k; Lt[w + 6] = LANTERN_GLOW[2] * k; Lt[w + 7] = 0;
     }

@@ -132,12 +132,13 @@
     // The crew, gorillas in hard hats, each pacing its post: [x, y, z, radius, heading], heading 0 facing +z. At the
     // workstations (stood back from the desk, since a gorilla leans in over what it faces, and clear of the crates by
     // the second), at the stats board, on the Jet's gangway, at its stair (far enough off the tool chest beside it that
-    // its pacing stays clear of the chest) and its engine, on both catwalks, one in each of the crew's rooms on the right
-    // wall and, last, one in the control room, each behind its console, facing out over the hall, standing where it is
+    // its pacing stays clear of the chest) and its engine, on both catwalks, three at the command room's consoles by the
+    // door (`COMMAND`), one in each of the crew's rooms on the right wall and, last, one in the control room, each behind its console, facing out over the hall, standing where it is
     // (no floor of its own to pace).
     crew: [[-9.5, 0, 18.35, 0.35, Math.PI], [-9.75, 0, 10.85, 0.35, Math.PI + 0.3], [-9.5, 0, -11.75, 0.35, Math.PI], [-13.15, 0, -11, 0.35, -Math.PI / 2],
       [HALL.x0 + 5.6, 0, 16.4, 0.8, -Math.PI / 2], [11, 5, -17.5, 0.9, Math.PI / 2], [6.8, 0, 0.4, 0.5, Math.PI / 2], [14.8, 0, 6.2, 0.4, Math.PI],
       [HALL.x1 - 4.2, 7.5, 6, 2.2, -Math.PI / 2], [HALL.x0 + 4.2, 7.5, 0, 2.2, Math.PI / 2],
+      [-15.2, 0, 30.75, 0.25, Math.PI], [-11.6, 0, 30.75, 0.25, Math.PI], [-13.4, 0, 34, 0.25, Math.PI],
       ...SIDE_ROOMS.bays.map((z, i) => [HALL.x1 - 0.45, 7.5, z - SIDE_ROOMS.consoles[i], 0.3, -Math.PI / 2]),
       [HALL.x0 + 0.45, 7.5, 9.3, 0.3, Math.PI / 2]]
   };
@@ -969,12 +970,26 @@
   // tunnel: `panes` big panes from `x0` to `glazed` over a sill `sill` high, leaning out at the top by `lean` as a
   // control tower's do, in a heavy dark frame; and past them, at the end by the landing, a solid stretch with a double
   // door `door` wide round `doorX` (its leaves on nodes of the scene's own, `commandDoor`) and the room's plate beside
-  // it; on the wall over the glass the room's sign. Inside, for now, lit blue: strips along the ceiling running out to
-  // the glass and paneled walls. `flat` the room, `glow` its lit parts, which the scene dims with the hall's glass,
-  // `glass` the panes, `pictures` its signs' faces, each { geometry, x, y, z, turn }, and `doors`, where each leaf's
-  // hinge stands and the way it turns shut.
+  // it; on the wall over the glass the room's sign. `flat` the room, `detail` the small parts on its faces (drawn after
+  // the rest on Canvas 2D), `glow` its lit parts, which the scene dims with the hall's glass, `glass` the panes,
+  // `pictures` its signs' and screens' faces, each { geometry, x, y, z, turn, tilt, bias } (`bias` how much nearer the
+  // Canvas 2D sort takes it than a metre), `doors`, where each leaf's hinge stands and the way it turns shut, and
+  // `lamps`, its lamps as the lanterns' pool has them.
+  //
+  // Inside, after the concept: `rows` of consoles facing the glass, each [x0, x1, z] (its edge toward the glass at z,
+  // `deep` deep), monitors along that edge turned to the crew who work them from behind (three of `LAYOUT.crew`) and
+  // chairs where nobody does (`chairs`, [x, z]); HANGAR COMMAND on the left end wall and HANGAR CAMERAS on the right
+  // (`command`, `cameras`: the middle along the wall and up it, the width and height); amber panels in the ceiling
+  // (`panels`, [x, z]) and the room's lamps (`lamps`, [x, y, z, reach] each, which join the crates' lanterns' pool, so
+  // the room is lit while someone is near it); the bolt in yellow corners on the floor by the door (`decal`), blue
+  // strips along the floor, racks and a cabinet with a plant along the back wall, and a crate beside the cabinet,
+  // clear of the aisle behind the second row (`crates`, [x, z, turn, grey]).
   const COMMAND = { x0: -18, x1: -6, front: HALL.front - LAYOUT.shell.face, back: HALL.front - LAYOUT.shell.face + 8, top: 4.2, sill: 0.95, lean: 0.35,
-    glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a" };
+    glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a",
+    rows: [[-17.5, -10, 29.1], [-16.5, -10.5, 32.3]], deep: 0.9, chairs: [[-13.4, 30.75], [-15.6, 34], [-11.2, 34]],
+    command: { z: 33.1, y: 2.35, w: 3.8, h: 2.1 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 },
+    panels: [[-15.5, 31.2], [-12, 31.2], [-8.5, 31.2], [-15.5, 34.6], [-12, 34.6], [-8.5, 34.6]],
+    lamps: [[-15, 3.7, 31.8, 7], [-10.5, 3.7, 31.8, 7], [-8, 3.7, 35, 6]], decal: [-7.8, 33.6], crates: [[-6.6, 35.2, 0, false]] };
   // A lightning bolt in `g`'s current fill, `h` high with its middle at (x, y).
   const paintBolt = (g, x, y, h) => {
     const pts = [[0.18, -0.5], [-0.3, 0.06], [-0.02, 0.06], [-0.2, 0.5], [0.3, -0.08], [0.02, -0.08]];
@@ -1004,6 +1019,113 @@
     g.font = `bold ${Math.round(W * 0.085)}px sans-serif`;
     ["COMMAND &", "OBSERVATION"].forEach((t, i) => g.fillText(t, W / 2, H * (0.8 + i * 0.08)));
   };
+  // The Jet from above, nose to the right, in outline within the rect (x, y, w, h), in `g`'s current stroke.
+  const jetPlan = (g, x, y, w, h) => {
+    const P = (pts) => { g.beginPath(); pts.forEach(([u, v], i) => (i ? g.lineTo : g.moveTo).call(g, x + w * u, y + h * v)); g.closePath(); g.stroke(); };
+    P([[0.04, 0.48], [0.76, 0.42], [0.96, 0.47], [0.76, 0.56], [0.04, 0.52]]);
+    P([[0.36, 0.43], [0.58, 0.06], [0.66, 0.06], [0.54, 0.43]]);
+    P([[0.36, 0.55], [0.58, 0.94], [0.66, 0.94], [0.54, 0.55]]);
+    P([[0.06, 0.48], [0.16, 0.26], [0.21, 0.26], [0.17, 0.48]]);
+    P([[0.06, 0.52], [0.16, 0.74], [0.21, 0.74], [0.17, 0.52]]);
+    P([[0.7, 0.45], [0.84, 0.47], [0.7, 0.52]]);
+  };
+  // A green tick in a box `s` across at (x, y), and the bolt and title of a screen's top bar.
+  const tick = (g, x, y, s) => {
+    g.fillStyle = "#1f8f4e"; g.fillRect(x, y, s, s);
+    g.strokeStyle = "#e8fff0"; g.lineWidth = s * 0.16; g.beginPath(); g.moveTo(x + s * 0.2, y + s * 0.52); g.lineTo(x + s * 0.42, y + s * 0.74); g.lineTo(x + s * 0.8, y + s * 0.28); g.stroke();
+  };
+  const titleBar = (g, W, H, text) => {
+    g.fillStyle = COMMAND.bolt; paintBolt(g, H * 0.075, H * 0.085, H * 0.11);
+    g.fillStyle = "#eaf4ff"; g.font = `bold ${Math.round(H * 0.075)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "middle";
+    g.fillText(text, H * 0.14, H * 0.09);
+  };
+  // HANGAR COMMAND, after the concept: the Jet's plan on its grid, the launch readiness with its checks, and the
+  // hangar's systems, each in its own panel; fixed, so every page paints the same.
+  const paintHangarCommand = (g, W, H) => {
+    const S = SCREEN_INK, panel = (x, y, w, h) => { g.strokeStyle = "#2f6fd0"; g.lineWidth = W / 300; g.strokeRect(W * x, H * y, W * w, H * h); };
+    const head = (text, x, y) => { g.fillStyle = "#bcd6ff"; g.font = `bold ${Math.round(H * 0.036)}px sans-serif`; g.textAlign = "left"; g.fillText(text, W * x, H * y); };
+    screenField(g, W, H);
+    g.textBaseline = "middle";
+    titleBar(g, W, H, "LIGHTNING JET – HANGAR COMMAND");
+    panel(0.03, 0.18, 0.37, 0.76);
+    g.strokeStyle = S.grid; g.lineWidth = 1;
+    for (let x = W * 0.05; x < W * 0.39; x += W / 40) { g.beginPath(); g.moveTo(x, H * 0.2); g.lineTo(x, H * 0.92); g.stroke(); }
+    for (let y = H * 0.21; y < H * 0.92; y += W / 40) { g.beginPath(); g.moveTo(W * 0.04, y); g.lineTo(W * 0.39, y); g.stroke(); }
+    g.strokeStyle = "#cfe9ff"; g.lineWidth = W / 260;
+    jetPlan(g, W * 0.06, H * 0.26, W * 0.31, H * 0.6);
+    panel(0.43, 0.18, 0.23, 0.76);
+    head("LAUNCH READINESS", 0.445, 0.25);
+    g.fillStyle = S.green; g.beginPath(); g.arc(W * 0.465, H * 0.36, H * 0.04, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "#ffffff"; g.lineWidth = H * 0.012; g.beginPath(); g.moveTo(W * 0.455, H * 0.36); g.lineTo(W * 0.463, H * 0.38); g.lineTo(W * 0.477, H * 0.34); g.stroke();
+    g.fillStyle = S.green; g.font = `bold ${Math.round(H * 0.09)}px sans-serif`;
+    g.fillText("READY", W * 0.495, H * 0.365);
+    g.font = `${Math.round(H * 0.038)}px sans-serif`;
+    ["Jet Condition", "Systems", "Hangar Systems", "Ground Support", "Crew & Safety"].forEach((t, i) => {
+      const y = H * (0.48 + i * 0.09);
+      tick(g, W * 0.445, y - H * 0.022, H * 0.044);
+      g.fillStyle = S.text; g.fillText(t, W * 0.475, y);
+    });
+    panel(0.69, 0.18, 0.28, 0.76);
+    head("HANGAR SYSTEMS", 0.705, 0.25);
+    [["Power", "100%"], ["Env. Control", "100%"], ["Cranes / Lifts", "ONLINE"], ["Floor Systems", "ONLINE"], ["Comms / Net", "ONLINE"]].forEach(([t, v], i) => {
+      const y = H * (0.38 + i * 0.11);
+      g.fillStyle = i < 2 ? COMMAND.bolt : S.line; g.beginPath(); g.arc(W * 0.712, y, H * 0.013, 0, Math.PI * 2); g.fill();
+      g.fillStyle = S.text; g.font = `${Math.round(H * 0.038)}px sans-serif`; g.textAlign = "left"; g.fillText(t, W * 0.725, y);
+      g.fillStyle = S.green; g.font = `bold ${Math.round(H * 0.036)}px sans-serif`; g.textAlign = "right"; g.fillText(v, W * 0.958, y);
+    });
+    g.textAlign = "left";
+  };
+  // HANGAR CAMERAS: four feeds, the launch tunnel's frames, the Jet in its bay, the runway with the forklift and the
+  // crew at their desks, each a sketch in its frame with its label, and the red REC light.
+  const paintHangarCameras = (g, W, H) => {
+    const S = SCREEN_INK;
+    screenField(g, W, H);
+    titleBar(g, W, H, "HANGAR CAMERAS");
+    g.fillStyle = "#ff3b30"; g.beginPath(); g.arc(W * 0.9, H * 0.09, H * 0.025, 0, Math.PI * 2); g.fill();
+    g.fillStyle = S.text; g.font = `bold ${Math.round(H * 0.05)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "middle"; g.fillText("REC", W * 0.92, H * 0.09);
+    const feeds = [["CAM 1 · TUNNEL", 0.03, 0.18], ["CAM 2 · JET", 0.515, 0.18], ["CAM 3 · RUNWAY", 0.03, 0.58], ["CAM 4 · CREW", 0.515, 0.58]];
+    feeds.forEach(([label, fx, fy], i) => {
+      const x = W * fx, y = H * fy, w = W * 0.455, h = H * 0.37, cx = x + w / 2, cy = y + h / 2;
+      g.fillStyle = "#050a16"; g.fillRect(x, y, w, h);
+      g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+      if (i === 0) {
+        g.fillStyle = "#3a1f7a"; g.fillRect(cx - w * 0.06, cy - h * 0.1, w * 0.12, h * 0.2);
+        for (let k = 6; k >= 1; k--) {
+          const r = h * 0.07 * k;
+          g.strokeStyle = `rgba(110, 200, 255, ${0.35 + 0.1 * k})`; g.lineWidth = 1 + k * 0.6; g.beginPath();
+          for (let j = 0; j <= 8; j++) { const a = Math.PI * 2 * (j + 0.5) / 8, px = cx + Math.cos(a) * r * 1.3, py = cy + Math.sin(a) * r; j ? g.lineTo(px, py) : g.moveTo(px, py); }
+          g.stroke();
+        }
+      } else if (i === 1) {
+        g.fillStyle = "#1a2236"; g.fillRect(x, y + h * 0.72, w, h * 0.28);
+        g.fillStyle = "#eef1f6"; g.beginPath(); g.moveTo(x + w * 0.1, cy + h * 0.06); g.lineTo(x + w * 0.78, cy - h * 0.02); g.lineTo(x + w * 0.92, cy + h * 0.06); g.lineTo(x + w * 0.78, cy + h * 0.14); g.lineTo(x + w * 0.1, cy + h * 0.14); g.closePath(); g.fill();
+        g.fillStyle = "#2443a8"; g.fillRect(x + w * 0.1, cy + h * 0.1, w * 0.66, h * 0.04);
+        g.beginPath(); g.moveTo(x + w * 0.12, cy + h * 0.06); g.lineTo(x + w * 0.2, cy - h * 0.24); g.lineTo(x + w * 0.27, cy - h * 0.24); g.lineTo(x + w * 0.26, cy + h * 0.06); g.closePath(); g.fill();
+        g.fillStyle = "#1b2f5e"; g.fillRect(x + w * 0.66, cy - h * 0.01, w * 0.08, h * 0.05);
+      } else if (i === 2) {
+        g.fillStyle = "#11182a"; g.fillRect(x, cy, w, h / 2);
+        g.strokeStyle = "#ffc83a"; g.lineWidth = 2;
+        for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * w * 0.03, cy); g.lineTo(cx + s * w * 0.08, y + h); g.stroke(); }
+        g.strokeStyle = "#e57a2e"; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + s * w * 0.12, cy); g.lineTo(cx + s * w * 0.48, y + h); g.stroke(); }
+        g.fillStyle = "#e8b73a"; g.fillRect(x + w * 0.6, cy + h * 0.12, w * 0.12, h * 0.14);
+        g.fillStyle = "#1d1f24"; g.fillRect(x + w * 0.61, cy + h * 0.25, w * 0.03, h * 0.04); g.fillRect(x + w * 0.68, cy + h * 0.25, w * 0.03, h * 0.04);
+      } else {
+        g.fillStyle = "#11182a"; g.fillRect(x, y + h * 0.65, w, h * 0.35);
+        for (let k = 0; k < 3; k++) {
+          const px = x + w * (0.2 + k * 0.3), py = y + h * 0.62;
+          g.fillStyle = "#2f7fd8"; g.fillRect(px - w * 0.07, py - h * 0.3, w * 0.12, h * 0.14);
+          g.fillStyle = "#1f3a8a"; g.fillRect(px - w * 0.04, py - h * 0.1, w * 0.08, h * 0.2);
+          g.fillStyle = "#f2b630"; g.beginPath(); g.arc(px, py - h * 0.13, w * 0.035, Math.PI, 0); g.fill();
+        }
+      }
+      g.restore();
+      g.strokeStyle = S.edge; g.lineWidth = 2; g.strokeRect(x, y, w, h);
+      g.fillStyle = S.text; g.font = `bold ${Math.round(H * 0.04)}px sans-serif`; g.textAlign = "left"; g.textBaseline = "alphabetic";
+      g.fillText(label, x + w * 0.03, y + h - h * 0.06);
+    });
+  };
+  // The monitors' faces, a few kinds, shared by every console.
+  const commandScreens = cached(() => [paintChart, paintRadar, paintBlueprint].map((paint) => screenPicture(0.6, 0.36, 256, paint)));
   // One of the command room's door leaves about its hinge, reaching +x from it and facing the hall (-z) and the room
   // alike: the leaf, an amber window in a frame and a push bar on both its faces.
   const commandDoor = cached(() => {
@@ -1016,7 +1138,7 @@
     return merge(...parts);
   });
   const commandRoom = cached(() => {
-    const K = COMMAND, C = CONTROL, flat = [], glow = [], glass = [], pictures = [];
+    const K = COMMAND, C = CONTROL, flat = [], detail = [], glow = [], glass = [], pictures = [];
     const { x0, x1, front, back, top } = K, xc = (x0 + x1) / 2, xw = x1 - x0, ry = top / 2, zc = (front + back) / 2, zd = back - front;
     // The room: its floor (a little over the hall's, which runs on in under the wall), ceiling, back wall and ends,
     // glowing a little as a lit room does, with seams down its back wall. Each faces into the room alone, in strips
@@ -1036,8 +1158,12 @@
       inward([[x0, 0, zb], [x0, 0, za], [x0, top, za], [x0, top, zb]], C.inside, 0.3);
       inward([[x1, 0, za], [x1, 0, zb], [x1, top, zb], [x1, top, za]], C.inside, 0.3);
     }
-    // The ceiling's strips, running out to the glass.
-    for (let k = 0; k < 5; k++) glow.push(box({ w: 0.14, h: 0.04, d: zd - 1.2, color: C.strip, emissive: 1, offset: { x: x0 + 1.4 + k * (xw - 2.8) / 4, y: top - 0.02, z: zc } }));
+    // The ceiling's amber panels in their frames, and a blue strip along it by each end wall.
+    for (const [x, z] of K.panels) {
+      flat.push(box({ w: 1.9, h: 0.06, d: 0.62, color: "#24282f", offset: { x, y: top - 0.03, z } }));
+      glow.push(box({ w: 1.8, h: 0.02, d: 0.52, color: "#ffcf8a", emissive: 1, offset: { x, y: top - 0.065, z } }));
+    }
+    for (const x of [x0 + 0.35, x1 - 0.35]) glow.push(box({ w: 0.07, h: 0.03, d: zd - 1.2, color: KNEE.color, emissive: 1, offset: { x, y: top - 0.02, z: zc + 0.3 } }));
     // The opening's frame on the wall's face: its jambs and its head.
     for (const x of [x0, x1]) flat.push(box({ w: 0.44, h: top + 0.2, d: 0.3, color: C.frame, offset: { x, y: (top + 0.2) / 2, z: front - 0.05 } }));
     flat.push(box({ w: xw + 0.3, h: 0.3, d: 0.3 + K.lean, color: C.frame, offset: { x: xc, y: top + 0.05, z: front + 0.1 - (0.3 + K.lean) / 2 } }));
@@ -1070,10 +1196,97 @@
     const sign = { w: 5, h: 0.62, y: top + 0.75 };
     flat.push(box({ w: sign.w + 0.16, h: sign.h + 0.14, d: 0.08, color: C.orange, emissive: 0.35, offset: { x: gx, y: sign.y, z: front - 0.04 } }));
     pictures.push({ geometry: screenPicture(sign.w, sign.h, 200, paintCommandSign), x: gx, y: sign.y, z: front - 0.085, turn: Math.PI });
+    // The consoles: a slate steel body on a dark plinth, its top with a yellow lip along the crew's side, drawer fronts
+    // with yellow pulls there, a riser along the glass edge with its monitors on it (their faces `pictures`, one of
+    // `commandScreens` each), keyboards, rows of lit buttons, a lantern at its left end and a mug or two.
+    const S = STEEL_DESK, screens = commandScreens(), D = K.deep, kt = 0.82;
+    K.rows.forEach(([xa, xb, z], row) => {
+      const len = xb - xa, xm = (xa + xb) / 2, zm = z + D / 2, crew = z + D;
+      flat.push(box({ w: len - 0.06, h: 0.08, d: D - 0.16, color: S.dark, offset: { x: xm, y: 0.04, z: zm } }));
+      flat.push(bevelBox({ w: len, h: kt - 0.13, d: D - 0.1, color: S.body, bevel: 0.02, offset: { x: xm, y: 0.08 + (kt - 0.13) / 2, z: zm - 0.02 } }));
+      flat.push(bevelBox({ w: len + 0.06, h: 0.05, d: D, color: S.top, bevel: 0.015, offset: { x: xm, y: kt - 0.025, z: zm } }));
+      detail.push(box({ w: len + 0.06, h: 0.05, d: 0.025, color: S.trim, offset: { x: xm, y: kt - 0.025, z: crew + 0.0125 } }));
+      flat.push(box({ w: len - 0.1, h: 0.12, d: 0.24, color: S.dark, offset: { x: xm, y: kt + 0.06, z: z + 0.15 } }));
+      for (let x = xa + 0.55; x < xb - 0.4; x += 1.6) {
+        detail.push(bevelBox({ w: 0.5, h: 0.5, d: 0.02, color: S.face, bevel: 0.006, offset: { x, y: 0.42, z: crew - 0.04 } }));
+        detail.push(box({ w: 0.2, h: 0.03, d: 0.025, color: S.pull, offset: { x, y: 0.58, z: crew - 0.02 } }));
+      }
+      const n = Math.max(1, Math.floor(len / 0.82)), step = len / n;
+      for (let i = 0; i < n; i++) {
+        const mx = xa + (i + 0.5) * step, my = kt + 0.12 + 0.24;
+        flat.push(box({ w: 0.66, h: 0.42, d: 0.05, color: IRON_DK, offset: { x: mx, y: my, z: z + 0.2 } }));
+        flat.push(box({ w: 0.06, h: 0.14, d: 0.05, color: IRON_DK, offset: { x: mx, y: kt + 0.12 + 0.03, z: z + 0.16 } }));
+        pictures.push({ geometry: screens[(i + row) % screens.length], x: mx, y: my, z: z + 0.23, turn: 0, bias: -0.15 });
+        detail.push(box({ w: 0.46, h: 0.03, d: 0.16, color: "#1d1f24", offset: { x: mx, y: kt + 0.015, z: z + 0.58 } }));
+        ["#7fdcff", "#ffb347", "#2ecc71", "#ff6b4a", "#7fdcff"].forEach((color, k) => glow.push(box({ w: 0.05, h: 0.02, d: 0.05, color, emissive: 1, offset: { x: mx - 0.12 + k * 0.06, y: kt + 0.01, z: z + 0.38 } })));
+      }
+      const lx = xa + 0.16, lz = z + 0.55;
+      detail.push(bevelBox({ w: 0.15, h: 0.03, d: 0.15, color: S.dark, bevel: 0.008, offset: { x: lx, y: kt + 0.015, z: lz } }));
+      glow.push(box({ w: 0.11, h: 0.15, d: 0.11, color: S.lamp, emissive: 1, offset: { x: lx, y: kt + 0.105, z: lz } }));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) detail.push(box({ w: 0.02, h: 0.15, d: 0.02, color: S.dark, offset: { x: lx + sx * 0.06, y: kt + 0.105, z: lz + sz * 0.06 } }));
+      detail.push(bevelBox({ w: 0.16, h: 0.03, d: 0.16, color: S.dark, bevel: 0.008, offset: { x: lx, y: kt + 0.195, z: lz } }));
+      for (const u of row ? [0.62] : [0.3, 0.78]) {
+        detail.push(moved(lathe({ profile: [[0.045, 0], [0.045, 0.1], [0, 0.1]], segments: 8, color: "#b8bec8" }), xa + len * u, kt, z + 0.7));
+        detail.push(box({ w: 0.035, h: 0.04, d: 0.01, color: K.bolt, offset: { x: xa + len * u, y: kt + 0.05, z: z + 0.75 } }));
+      }
+    });
+    // On the second row's right end the Jet's blueprint lies on the desk beside a navy binder with the bolt on it.
+    const [, bx, bz] = K.rows[1];
+    pictures.push({ geometry: screenPicture(0.8, 0.5, 256, paintBlueprint), x: bx - 0.75, y: kt + 0.006, z: bz + 0.55, turn: 0, tilt: -Math.PI / 2, bias: -0.15 });
+    flat.push(bevelBox({ w: 0.3, h: 0.08, d: 0.4, color: "#1a2a70", bevel: 0.01, offset: { x: bx - 0.22, y: kt + 0.04, z: bz + 0.55 } }));
+    detail.push(moved(turnedX(FM.smoothBolt(0.2, 0.01, K.bolt, 0.3), -Math.PI / 2), bx - 0.22, kt + 0.085, bz + 0.55));
+    // The chairs where nobody works, their backs to the room with the bolt on each.
+    for (const [cx, cz] of K.chairs) {
+      for (const a of [0, Math.PI / 2]) flat.push(moved(turnedY(box({ w: 0.56, h: 0.04, d: 0.07, color: "#1d1f24", offset: { y: 0.03 } }), a), cx, 0, cz));
+      flat.push(box({ w: 0.08, h: 0.42, d: 0.08, color: "#1d1f24", offset: { x: cx, y: 0.25, z: cz } }));
+      flat.push(bevelBox({ w: 0.52, h: 0.08, d: 0.5, color: "#3a4152", bevel: 0.02, offset: { x: cx, y: 0.5, z: cz } }));
+      flat.push(bevelBox({ w: 0.48, h: 0.62, d: 0.08, color: "#3a4152", bevel: 0.02, offset: { x: cx, y: 0.86, z: cz + 0.24 } }));
+      detail.push(moved(FM.smoothBolt(0.26, 0.02, K.bolt, 0.4), cx, 0.86, cz + 0.29));
+    }
+    // HANGAR COMMAND on the left end wall and HANGAR CAMERAS on the right, each in a dark frame edged in cyan light.
+    const bigScreen = (x, side, at, paint) => {
+      const turn = side * Math.PI / 2, { z, y, w, h } = at;
+      flat.push(box({ w: 0.08, h: h + 0.16, d: w + 0.16, color: C.frame, offset: { x: x + side * 0.04, y, z } }));
+      for (const s of [-1, 1]) {
+        glow.push(box({ w: 0.02, h: 0.04, d: w + 0.12, color: "#3fa9ff", emissive: 1, offset: { x: x + side * 0.09, y: y + s * (h / 2 + 0.05), z } }));
+        glow.push(box({ w: 0.02, h: h + 0.14, d: 0.04, color: "#3fa9ff", emissive: 1, offset: { x: x + side * 0.09, y, z: z + s * (w / 2 + 0.05) } }));
+      }
+      pictures.push({ geometry: screenPicture(w, h, 256, paint), x: x + side * 0.09, y, z, turn });
+    };
+    bigScreen(x0, 1, K.command, paintHangarCommand);
+    bigScreen(x1, -1, K.cameras, paintHangarCameras);
+    // Along the back wall: two server racks, and the filing cabinet with a plant on it in the corner, the crate by it.
+    for (const rx of [-17.35, -16.65]) {
+      const rz = back - 0.32;
+      flat.push(bevelBox({ w: 0.62, h: 2.2, d: 0.6, color: "#2b3140", bevel: 0.02, offset: { x: rx, y: 1.1, z: rz } }));
+      for (let k = 0; k < 9; k++) detail.push(box({ w: 0.44, h: 0.03, d: 0.01, color: C.seam, offset: { x: rx, y: 0.35 + k * 0.08, z: rz - 0.305 } }));
+      for (let k = 0; k < 6; k++) glow.push(box({ w: 0.06, h: 0.04, d: 0.01, color: k % 3 === 1 ? "#ffb347" : k % 3 ? "#2ecc71" : "#7fdcff", emissive: 1, offset: { x: rx - 0.12 + (k % 2) * 0.24, y: 1.3 + k * 0.12, z: rz - 0.305 } }));
+    }
+    for (const [x, z, a, grey] of K.crates) {
+      const c = crateParts(1, grey);
+      placed(flat, c.body, x, 0, z, a);
+      placed(detail, c.small, x, 0, z, a);
+    }
+    const fx = x1 - 0.5, fz = back - 0.4;
+    flat.push(bevelBox({ w: 0.5, h: 0.95, d: 0.5, color: "#7d8594", bevel: 0.015, offset: { x: fx, y: 0.475, z: fz } }));
+    for (let k = 0; k < 3; k++) detail.push(box({ w: 0.16, h: 0.025, d: 0.01, color: "#2a2f3a", offset: { x: fx, y: 0.3 + k * 0.28, z: fz - 0.255 } }));
+    flat.push(box({ w: 0.24, h: 0.18, d: 0.24, color: "#e8e6df", offset: { x: fx, y: 1.04, z: fz } }));
+    for (const [dx, dy, dz, sz] of [[0, 0.24, 0, 0.2], [0.08, 0.34, 0.06, 0.14], [-0.07, 0.36, -0.05, 0.13], [0.02, 0.44, -0.02, 0.12]]) flat.push(box({ w: sz, h: sz, d: sz, color: dy > 0.4 ? "#5fbf3a" : "#3f9a2c", offset: { x: fx + dx, y: 0.9 + dy, z: fz + dz } }));
+    // On the floor: the bolt in yellow corners by the door, blue strips along the way in and across behind the second
+    // row, and hazard stripes across the door's threshold.
+    const [dcx, dcz] = K.decal;
+    glow.push(moved(turnedX(FM.smoothBolt(1.1, 0.01, K.bolt, 0.35), -Math.PI / 2), dcx, 0.012, dcz));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      detail.push(box({ w: 0.38, h: 0.01, d: 0.07, color: K.bolt, offset: { x: dcx + sx * 0.66, y: 0.01, z: dcz + sz * 0.82 } }));
+      detail.push(box({ w: 0.07, h: 0.01, d: 0.38, color: K.bolt, offset: { x: dcx + sx * 0.82, y: 0.01, z: dcz + sz * 0.66 } }));
+    }
+    glow.push(box({ w: 0.07, h: 0.012, d: back - front - 1.6, color: KNEE.color, emissive: 1, offset: { x: K.glazed - 0.45, y: 0.008, z: (front + back) / 2 + 0.55 } }));
+    glow.push(box({ w: K.glazed - 0.9 - (x0 + 0.4), h: 0.012, d: 0.07, color: KNEE.color, emissive: 1, offset: { x: (x0 + 0.4 + K.glazed - 0.9) / 2, y: 0.008, z: K.rows[1][2] + D + 1.2 } }));
+    hazard(detail, K.doorX - K.door / 2, front + 0.45, K.doorX + K.door / 2, front + 0.45, 0.015, 0.25, 0.4, 0.012);
     const windows = noShadow(merge(...glass));
     windows.glass = 0.16;
     const doors = [{ x: dx - K.door / 2, z: front + 0.1, turn: 0, open: -1 }, { x: dx + K.door / 2, z: front + 0.1, turn: Math.PI, open: 1 }];
-    return { flat: merge(...flat), glow: noShadow(merge(...glow)), glass: windows, pictures, doors };
+    return { flat: merge(...flat), detail: merge(...detail), glow: noShadow(merge(...glow)), glass: windows, pictures, doors, lamps: K.lamps.flat() };
   });
   // The small lit windows of the crew's lofts high on the right wall over the rooms (`SIDE_ROOMS.lofts`), after the
   // concept: each a deep dark frame standing out of the panels round a lit blue space, with a small amber lamp over it
@@ -2919,6 +3132,15 @@
     block(K.x0 - 0.3, K.x0, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x1, K.x1 + 0.3, K.front, K.back + 0.3, -1, K.top + 1);
     block(K.x0 - 0.3, K.x1 + 0.3, K.back, K.back + 0.3, -1, K.top + 1);
+    // Inside it: the consoles, the chairs, the racks and the filing cabinet in the way, and the crates to stand on.
+    for (const [xa, xb, z] of K.rows) block(xa - 0.05, xb + 0.05, z - 0.05, z + K.deep + 0.05, -1, 1.3);
+    for (const [x, z] of K.chairs) around(x, z, 0.32, 0.32, 1.2);
+    block(-17.7, -16.3, K.back - 0.65, K.back, -1, 2.2);
+    around(K.x1 - 0.5, K.back - 0.4, 0.27, 0.27, 1.4);
+    for (const [x, z, a] of K.crates) {
+      const [hx, hz] = turned(0.55, 0.55, a);
+      solid(x, z, hx, hz, -1, CRATE_TOPS[0]);
+    }
     // The crew's rooms' fronts out from the right wall likewise.
     for (const z of SIDE_ROOMS.bays) block(HALL.x0 + HALL.x1 - CONTROL.front - 0.2, HALL.x1, z - SIDE_ROOMS.half, z + SIDE_ROOMS.half, CONTROL.y0 - 0.3, CONTROL.y1 + 0.5);
     // The ribs standing out of the side walls, plinths and all.
