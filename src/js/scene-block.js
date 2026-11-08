@@ -26,7 +26,7 @@
   const { math, models, contributors, daylight, game: gameMod, pile: pileMod, hud: hudMod, interact: interactMod, controls: controlsMod, fx: fxMod } = BL;
   const SIM = BL.blockSim, BM = BL.blockModels, C = SIM.CONFIG;
   const { clamp, damp } = math;
-  const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible } = BL.scene;
+  const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible, updateWorld, boundsOf } = BL.scene;
   const params = new URLSearchParams(location.search);
   const DEBUG = params.has("debug");
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
@@ -719,26 +719,19 @@
       else if (e.type === "throw") { if (e.actor === 0) updateTools(); }
       else if (e.type === "fire") { if (me && tool === "ak") updateTools(); }
       else if (e.type === "rifle") {
+        // On a tower the rifle is a choice, nothing more: the tool and the view stay as they are.
         if (me) {
-          // Up the tower: the rifle comes up in a scope view.
-          scope.tool = tool === "sniper" ? "paint" : tool; scope.first = cam.first; scope.zoom = 0;
-          if (sim.actors[0].carrying) {
-            // Up their tower with a block: the way home is the zipline, so the rifle waits on 5.
-            notice(COARSE ? "Zip rides their line straight into our fort!" : "Space by the cable rides their zipline straight home! (5 for the sniper rifle)", 3600);
-            updateTools();
-          } else {
-            chooseTool("sniper");
-            scope.island = cam.island;
-            if (!cam.first) setMode("first", true);
-            center("SNIPER RIFLE!", 1000);
-            notice(COARSE ? "Drag to aim · Paint! fires · tap View to look round" : "Click fires · right click, wheel, two-finger swipe or + − zooms · G puts it down · Space by the cable rides the zipline", 4200);
-          }
+          scope.zoom = 0;
+          if (sim.actors[0].carrying) notice(COARSE ? "Zip rides their line straight into our fort!" : "Space by the cable rides their zipline straight home! (5 for the sniper rifle)", 3600);
+          else notice(COARSE ? "Sniper on the tool bar" : "5 for the sniper rifle", 2200);
+          updateTools();
         }
       } else if (e.type === "unrifle") {
         if (me) {
-          // Off the tower the rifle stays on its rack, and the view goes back to how it was.
+          // Off the tower the rifle stays on its rack: the tool goes back, and the view if the scope changed it.
           if (tool === "sniper") chooseTool(scope.tool);
-          if (!scope.first && cam.first) setMode(scope.island ? "island" : "chase", true);
+          if (scope.on && !scope.first && cam.first) setMode(scope.island ? "island" : "chase", true);
+          scope.on = false;
           updateTools();
         }
       }
@@ -1087,6 +1080,7 @@
     notice(`Scope ${scope.zoom + 1}×`, 600);
   };
   const chooseTool = (k) => {
+    if (k === "sniper" && tool !== "sniper") scope.tool = tool;
     tool = k;
     updateTools();
   };
@@ -1112,6 +1106,8 @@
     if (e.button !== 2 || phase !== "play" || paused) return;
     e.preventDefault();
     if (scoped()) zoomScope(scope.zoom >= ZOOMS.length - 1 ? -(ZOOMS.length - 1) : 1);
+    // With the rifle out on a platform, right click brings the scope up; stepping off puts the view back.
+    else if (tool === "sniper" && sim.actors[0].sniper > 0 && !cam.first) { scope.on = true; scope.first = false; scope.island = cam.island; scope.zoom = 0; setMode("first", true); }
     else if (cam.island) setMode("chase");
     else aiming = true;
   };
@@ -1474,10 +1470,11 @@
         continue;
       }
       if (s.grabbed) {
-        // Held up by a gorilla: kicking and flailing.
+        // Dragged by a leg, as wicked's hub capture holds an Ooga: legs straight, arms trailing and flailing.
         const w = Math.sin(elapsed * 16 + i);
-        p.armL.rotation.x = -2.6 + w * 0.6; p.armR.rotation.x = -2.6 - w * 0.6;
-        p.legL.rotation.x = -0.7 * w; p.legR.rotation.x = 0.7 * w;
+        p.armL.rotation.x = -1.35 + w * 0.4; p.armR.rotation.x = -1.1 - w * 0.4;
+        p.legL.rotation.x = p.legR.rotation.x = -0.1;
+        p.head.rotation.x = 0.2;
         continue;
       }
       if (s.slip > 0) {
@@ -2115,6 +2112,23 @@
       n.rotation.z = Math.sin(elapsed * 1.3 + i * 2) * 0.12;
     }
   };
+  // The captive's right foot in the gorilla's left hand, its body pitched so the head trails near the ground: the hub's
+  // `clankerGripAt`, `alignDraggedFoot` and `grabbedOogaPose` (private to its scene) cut down to a flat field.
+  const GRIP_HAND = [0, 0, 0], GRIP_FOOT = [0, 0, 0];
+  const holdByFoot = (rig, a, heading) => {
+    const arm = rig.parts.armL, foot = a.cave.parts.legR, M4 = BL.math.mat4, p = a.body.position;
+    updateWorld(rig.root, rig.root.parent.world);
+    const hb = boundsOf(arm.geometry);
+    M4.transformPoint(GRIP_HAND, arm.world, hb.center[0], hb.min[1] + 0.08, hb.center[2]);
+    const reach = a.cave.traits.height * 0.9;
+    a.body.rotation.x = -Math.acos(clamp((0.12 - GRIP_HAND[1]) / reach, -0.7, 0.3));
+    a.body.rotation.y = heading; a.body.rotation.z = 0;
+    setVec(p, GRIP_HAND[0], GRIP_HAND[1], GRIP_HAND[2]);
+    updateWorld(a.body, a.body.parent.world);
+    const fb = boundsOf(foot.geometry);
+    M4.transformPoint(GRIP_FOOT, foot.world, fb.center[0], fb.min[1], fb.center[2]);
+    p.x += GRIP_HAND[0] - GRIP_FOOT[0]; p.y += GRIP_HAND[1] - GRIP_FOOT[1]; p.z += GRIP_HAND[2] - GRIP_FOOT[2];
+  };
   const GORILLA_SCALE = 1.35;
   const GORILLA_MOTION = [0, 1, 2, 3].map(() => ({ dragging: false, throwProgress: 0, walkGait: "" }));
   let gorillaRigs = [];
@@ -2134,6 +2148,7 @@
       m.dragging = carry; m.throwProgress = g.state === 5 ? g.throwT : 0;
       m.walkGait = g.state === 1 ? "gallop" : "";
       rig.poseManaged(dt, g.x, 0, g.z, g.heading + wob, stunned ? 0 : Math.hypot(g.vx, g.vz), false, false, "", m);
+      if (carry && g.holding >= 0 && actors[g.holding] && actors[g.holding].cave) holdByFoot(rig, actors[g.holding], g.heading);
     }
   };
   // The fire flickers and spits embers; the potato Oogas dance round it, hopping and waving.

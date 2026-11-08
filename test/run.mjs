@@ -7378,7 +7378,7 @@ const gameRulesChecks = async () => {
       // The floating island: its edges are open, an Ooga walking off falls, and one fallen all the way is back in its
       // own block zone; a block carried over the edge drops at the edge and goes home by itself; under the rim the
       // island's rock holds a body out, and the jetpack brings a thrown Ooga back over the edge, the visitor's or a bot's.
-      const fresh = (map = "fort") => { const r = S.create({ seed: 5, prep: 0, map }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 }); return r; };
+      const fresh = (map = "fort") => { const r = S.create({ seed: 5, prep: 0, map }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 }); for (const g of r.gorillas) { g.state = 3; g.t = 1e9; } return r; };
       const run = (r, secs, input = still, until = () => false) => { for (let t = 0; t < secs && !until(); t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, input); };
       const rows = {};
       for (const map of S.MAPS) {
@@ -7510,8 +7510,8 @@ const gameRulesChecks = async () => {
       const c = r.actors[2];
       o.hook = 1; o.x = -17; o.z = -1; c.x = -17; c.z = 10; r.flags.blue.state = "carried"; r.flags.blue.carrier = 2; c.carrying = "blue";
       S.grapple(r, 0, 0, 0);
-      const log = run(r, 2, still, () => !c.carrying && r.flags.blue.state !== "carried");
-      rows.yank = !!log.hookwarn && !!log.yank && !c.carrying && r.flags.blue.state !== "carried";
+      const log = run(r, 2, still, () => r.flags.blue.state === "home");
+      rows.yank = !!log.hookwarn && !!log.yank && !c.carrying && r.flags.blue.state === "home" && o.rescues === 1;
       r = fresh(); o = r.actors[0];
       const mate = r.actors[1];
       o.hook = 1; o.x = -17; o.z = 0; mate.x = -17; mate.z = 6; r.flags.blue.state = "carried"; r.flags.blue.carrier = 1; mate.carrying = "blue";
@@ -7528,6 +7528,39 @@ const gameRulesChecks = async () => {
       rows.rehide = !!fell.hookhide && o.hook === 0 && r.hooks[1].state === 0;
       const hidden = S.MAPS.every((map) => { const m = fresh(map); return m.hooks.length === 2 && m.hooks.every((k) => k.state === 0 && S.ARENA.hookSpots.some(([x, , z]) => (Math.abs(k.x - x) < 1e-9 && Math.abs(k.z - z) < 1e-9) || (Math.abs(k.x + x) < 1e-9 && Math.abs(k.z + z) < 1e-9))); });
       rows.hidden = hidden;
+      // A block on the hook comes along the rope into the hooker's hands, under touching's rules.
+      {
+        const hookAt = (setup) => {
+          const m = fresh();
+          for (const k of m.crates) k.live = false;
+          const u = m.actors[0];
+          u.hook = 1; u.x = -17; u.z = -2; u.y = 0;
+          setup(m, u);
+          S.grapple(m, 0, u.aim0 ?? 0, 0);
+          run(m, 3, still, () => u.hk === 4 || !u.hook);
+          return { m, u };
+        };
+        let hooked = hookAt((m, u) => { u.x = 0; u.z = -20; u.aim0 = Math.PI; });
+        rows.stand = hooked.u.carrying === "red" && hooked.m.flags.red.state === "carried" && hooked.m.flags.red.carrier === 0 && hooked.u.hCool > 2.5;
+        hooked = hookAt((m) => Object.assign(m.flags.red, { state: "dropped", x: -17, y: 0, z: 8, homeT: 0 }));
+        rows.loose = hooked.u.carrying === "red" && hooked.m.flags.red.state === "carried";
+        hooked = hookAt((m) => Object.assign(m.flags.blue, { state: "dropped", x: -17, y: 0, z: 8, homeT: 0 }));
+        rows.ownLoose = hooked.u.rescues === 1 && hooked.m.flags.blue.state === "home" && !hooked.u.carrying;
+        hooked = hookAt((m) => { const k = m.actors[2]; k.x = -17; k.z = 9; k.carrying = "red"; Object.assign(m.flags.red, { state: "carried", carrier: 2 }); });
+        rows.carrier = hooked.u.carrying === "red" && !hooked.m.actors[2].carrying && hooked.m.flags.red.carrier === 0;
+        hooked = hookAt((m, u) => { u.carrying = "red"; Object.assign(m.flags.red, { state: "carried", carrier: 0 }); Object.assign(m.flags.blue, { state: "dropped", x: -17, y: 0, z: 8, homeT: 0 }); });
+        rows.handsFull = hooked.u.carrying === "red" && hooked.m.flags.blue.state === "dropped" && hooked.m.flags.blue.y === 0 && Math.hypot(hooked.m.flags.blue.x - hooked.u.x, hooked.m.flags.blue.z - hooked.u.z) < 2.5;
+        // Anything that is not a block or an Ooga pulls the Ooga: a crate, and past a rival who carries nothing.
+        const pm = fresh(), pu = pm.actors[0], pc = pm.crates.find((k) => !k.live) || pm.crates[0];
+        for (const k of pm.crates) k.live = false;
+        Object.assign(pc, { live: true, team: "red", x: -15, y: 0, z: 9 });
+        Object.assign(pm.actors[2], { x: -15, z: 5 });
+        pu.hook = 1; pu.x = -15; pu.z = -2; S.grapple(pm, 0, 0, -0.03);
+        run(pm, 0.6, still, () => pu.hk === 2);
+        const pz = pu.z, bitCrate = pu.hk === 2;
+        run(pm, 1);
+        rows.anythingElse = bitCrate && pu.z > pz + 2;
+      }
       record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a wallet bomb steals a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
       {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
@@ -7540,7 +7573,7 @@ const gameRulesChecks = async () => {
         v.x = -12; v.z = 25; v.y = 0; v.carrying = "red"; m.flags.red.state = "carried"; m.flags.red.carrier = 0;
         run(m, 0.3, still, () => v.grabbed);
         out.grab = v.grabbed === 1 && g.state === 2 && !v.carrying && m.flags.red.state === "dropped" && Math.abs(m.flags.red.z - 25) < 1.5;
-        const edge = Math.min(22 - Math.abs(g.ex), 37 - Math.abs(g.ez)) < 1.3;
+        const edge = Math.min(22 - Math.abs(g.ex), 37 - Math.abs(g.ez)) <= 1.5;
         run(m, 8, still, () => g.state === 5 || !v.grabbed);
         out.drag = edge && g.state === 5 && Math.abs(v.x - g.x) < 2 && Math.abs(g.x) > 19;
         const thrown = run(m, 1, still, () => !v.grabbed);
@@ -7561,6 +7594,32 @@ const gameRulesChecks = async () => {
         const stunLog = run(m, 0.6, still, () => g.state === 4);
         out.stun = !!stunLog.gorillahooked && !cap.grabbed && g.state === 4 && g.hookCool > 0;
         out.count = S.MAPS.every((map) => S.ARENAS[map].gorillas.length >= 3 && S.ARENAS[map].gorillas.length <= 4);
+        // The whole capture, on every map, from around every piece of terrain and across the field: grabbed, dragged by a
+        // route that gets there, thrown from the edge past it and off the ground.
+        const sweep = {};
+        for (const map of S.MAPS) {
+          const I = S.ARENAS[map], spots = [[0, I.L * 0.25], [I.W * 0.5, I.L * 0.4], [-I.W * 0.6, -I.L * 0.5]], done = { spots: 0, thrown: 0, off: 0, fails: [] };
+          for (const [, b] of I.terrain) if (b[5] === 0) spots.push([b[0] - 1.6, (b[2] + b[3]) / 2], [b[1] + 1.6, (b[2] + b[3]) / 2], [(b[0] + b[1]) / 2, b[2] - 1.6]);
+          for (const [x, z] of spots) {
+            const q = fresh(map), who = q.actors[0], gor = q.gorillas[0];
+            for (const t of q.traps) t.dark = 1e9;
+            for (const k of q.crates) k.live = false;
+            Object.assign(who, { x, z, y: 0 });
+            S.resolve(who, S.CONFIG.BODY_R);
+            Object.assign(gor, { state: 0, t: 0, x: who.x + 0.8, z: who.z });
+            S.resolve(gor, S.CONFIG.GORILLA_R);
+            if (Math.hypot(gor.x - who.x, gor.z - who.z) > 1.1) { gor.x = who.x - 0.8; gor.z = who.z; S.resolve(gor, S.CONFIG.GORILLA_R); }
+            gor.hx = gor.wx = gor.x; gor.hz = gor.wz = gor.z;
+            const seen = run(q, 30, still, () => (Math.abs(who.x) > I.W || Math.abs(who.z) > I.L) && who.y < -1.5);
+            done.spots++;
+            if (seen.thrown) done.thrown++;
+            if (seen.grab && seen.windup && seen.thrown && !seen.letgo && (Math.abs(who.x) > I.W || Math.abs(who.z) > I.L) && !who.grounded) done.off++;
+            else done.fails.push([x, z, Object.keys(seen).join()]);
+          }
+          sweep[map] = done;
+        }
+        record("block frenzy capture: on every map, from around the terrain and across the field, a gorilla grabs the Ooga, drags it to an edge by a route that gets there, and throws it off the island",
+          Object.values(sweep).every((v) => v.spots >= 12 && v.off === v.spots), JSON.stringify(sweep));
         record("block frenzy gorillas: a charge and grab drops the block where it was grabbed, the captive is dragged by the feet to the nearest edge and thrown off, and jetpacks back; mashing breaks free; a hook stuns a gorilla and frees its captive; three or four on every map", Object.values(out).every(Boolean), JSON.stringify(out));
       }
     }
