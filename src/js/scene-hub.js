@@ -522,7 +522,7 @@
   // The Goldbug in the bushes (`hub-goldbug.js`), for the visit: null while the mirror's four bushes are not all there.
   let goldbug = null;
   let reuseHub = false, heldHub = false, heldDebug = null;
-  let stateTimer = 0, now = 0, hour = 12, unsubscribeActivity = null, unsubscribeAccount = null, ownOogaClaimed = false;
+  let stateTimer = 0, now = 0, hour = 12, unsubscribeActivity = null, unsubscribeAccount = null, ownOogaClaimed = false, claimView = false;
   // The daylight inputs as last sampled; sampledDay starts at a never-true 0 so the first frame always samples.
   // `sampledSky` is the Cloud Hopper level sky sampled instead of the clock, and `skyHour` the hour the sky shows.
   let sampledHour = 0, sampledDay = 0, sampledLatitude = NaN, sampledContinuousDay = 0, sampledUtcMs = 0, sampledSky = null, skyHour = 12;
@@ -9108,7 +9108,10 @@
     // never woken or moved for this. The body stands where the NPC is, as it faces; only an away or hidden NPC,
     // which has no place on the island, sends it to the pile (navigation also resets a saved underground eye).
     const placed = cave.root.visible && crew.stateOf(cave) !== "away";
-    if (!pilot.possess(cave)) return false;
+    if (claimView) {
+      pilot.arrive(cave);
+      if (!drivesOoga(cave)) return false;
+    } else if (!pilot.possess(cave)) return false;
     if (!placed) navigate("pile", true, false);
     ownOogaClaimed = true;
     if (me) hud.toast(`Welcome back, ${BL.characters.displayOf(character.handle)}: this Ooga is yours`);
@@ -12838,8 +12841,11 @@
       if (driven && initialCharacter) crew.configureWeapon(driven, preloadedWeapon, preloadedAmmo);
     }
     // Every arrival drives the visitor's Ooga: the one carried back in, else their own or assigned one, claimed here.
+    // A page that lands on the island's own view claims it in the view this browser last chose (pilot.js `arrive`).
     ownOogaClaimed = !!pilot.player;
+    claimView = ctx.from === null && (!ctx.place || ctx.place === "donate") && !Number.isFinite(yawParam);
     claimOwnOoga();
+    claimView = false;
     unsubscribeAccount = watchAccount();
     BL.players.setDoors(doorToward);
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla;
