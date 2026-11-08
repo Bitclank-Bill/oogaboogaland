@@ -7027,6 +7027,10 @@ const workCaveTrips = async (b) => {
     all.rows.length === all.lines * 2 && all.rows.some(row => row.line === 4 && row.pathLength > 12) && all.rows.some(row => row.line === 1 && row.pathLength > 12)
       && all.rows.every(row => row.connected && row.arrived && row.onPath > 0.95 && row.error < 0.45), JSON.stringify(all));
 };
+// The visitor's driven body for a roster Ooga, spliced into page code: in the hub it is a separate body standing for
+// the NPC (crew.js `separateBodies`, `body.npc`), elsewhere the NPC itself; null while neither is driven. A check that
+// measures the visitor's movement reads this body; one about the NPC's own activity, roster row or plan reads the NPC.
+const DRIVEN_OF = "const drivenOf = (B, c) => { const p = B.pilot.player; return p && (p === c || p.npc === c) ? p : null; };";
 const factoryActivityRouting = { name: "factory contribution routing", why: "regression: normal repo activity must assign both the Ooga and its clanker to Factory without falling back to OBL", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, C = BL.contributors, sites = B.crew.workSites, index = sites.findIndex(site => site.mouth.id === "c2"), site = sites[index];
@@ -7039,11 +7043,13 @@ const factoryActivityRouting = { name: "factory contribution routing", why: "reg
       for (const repo of ["OogaBoogaX/BananaPayServer", "OogaBoogaX/LightningFactory"]) {
         entry.activity.clear(); entry.lastCommitAt = entry.lastContributionAt = 0; cave.override = cave.controlOverride = null;
         C.applyActivity([{ name: entry.name, repo, lastCommitAt: Date.now() - 1000 }]);
-        B.pilot.possess(cave); B.crew.wakePlayer();
-        cave.override = cave.controlOverride = null;
-        B.pilot.navigate({ position: { x: 10, y: 0, z: 0 }, yaw: 0, pitch: 0.4, dist: 5 });
-        cave.weapon.workSite = -1; cave.work.plannedSite = -1;
-        B.pilot.release(true);
+        // The roster NPC plans its own work trip: the hub's driven body is a separate one, so taking and letting go
+        // of control no longer touches the NPC's plan. Settle it working through the native transition (from away, as
+        // hub fall does, so a trip left over from the previous repository does not carry on) and let its own update
+        // choose the site.
+        cave.weapon.workSite = -1; cave.work.plannedSite = -1; cave.state = "away";
+        B.crew.refreshStates(true);
+        for (let i = 0; i < 120 && cave.work.plannedSite < 0; i++) B.advance(1 / 30, 1 / 30);
         const clanker = B.clankers.list.find(e => e.owner === cave);
         rows.push({ repo, state: cave.state, assigned: cave.work.plannedSite, clanker: clanker ? clanker.pendingSite >= 0 ? clanker.pendingSite : clanker.site : -1 });
       }
@@ -10112,9 +10118,11 @@ const signedInArrivalWire = (mode) => {
 const signedInArrival = { name: "hub signed-in arrival", why: "regression: owners loaded asleep or away instead of standing beside the pile, and `view=` or saved underground views could put them back below", run: async b => {
   const result = await b.evaluate(`(async () => {
     const B = __ooga, W = __arrivalWire, c = B.cavemen.get("portlandhodl"), other = B.cavemen.get(W.otherAway);
-    const read = () => ({ selected: B.pilot.player === c, visible: c.root.visible, activity: BL.contributors.stateFor(c.contributor),
-      feet: c.root.position.y - c.baseY + c.restLower, radius: Math.hypot(c.root.position.x, c.root.position.z),
-      bed: !!c.bedroll || !!c.bedTravel.mode, seated: !!c.camp.seat, quaternion: !!c.root.quaternion,
+    ${DRIVEN_OF}
+    // The owner's driven body (the NPC itself, or the separate body standing for it) is what arrives; the activity is the NPC's own.
+    const read = (d = drivenOf(B, c)) => ({ selected: !!d, visible: !!d && d.root.visible, activity: BL.contributors.stateFor(c.contributor),
+      feet: d ? d.root.position.y - d.baseY + d.restLower : null, radius: d ? Math.hypot(d.root.position.x, d.root.position.z) : null,
+      bed: !!d && (!!d.bedroll || !!d.bedTravel.mode), seated: !!d && !!d.camp.seat, quaternion: !!d && !!d.root.quaternion,
       eye: B.camera.position.y, pile: B.altar.platformRadius, otherAway: !other.root.visible && other.state === "away" });
     const arrival = read(), beds = (${hubBedState.toString()})(true);
     B.crew.refreshStates(); const refreshed = read();
@@ -10136,9 +10144,12 @@ const signedInArrival = { name: "hub signed-in arrival", why: "regression: owner
 // A signed-in link to a hub place still arrives there: /sphere-3 with no visit of this tab's own is the Sphere's doors, room 3 chosen.
 const signedInRouted = { name: "hub signed-in arrival routed", why: "regression: every signed-in load was treated as a sign-in return, so links to hub places, the Sphere's keypad among them, landed at the pile", run: async b => {
   const r = await b.evaluate(`(() => {
-    const B = __ooga, c = B.cavemen.get("portlandhodl"), T = BL.scenes.hub.debug.timechainIsland, p = c.root.position;
-    return { scene: B.scene, path: location.pathname, selected: B.pilot.player === c, visible: c.root.visible,
-      doors: Math.hypot(p.x - T.worldX(0.4, 15.4), p.z - T.worldZ(0.4, 15.4)), pile: Math.hypot(p.x, p.z), preselected: T.gate.preselected };
+    const B = __ooga, c = B.cavemen.get("portlandhodl"), T = BL.scenes.hub.debug.timechainIsland;
+    ${DRIVEN_OF}
+    // Only a driven body has a place to report; an undriven owner reports none (and fails on \`selected\`).
+    const d = drivenOf(B, c), p = d && d.root.position;
+    return { scene: B.scene, path: location.pathname, selected: !!d, visible: !!d && d.root.visible,
+      doors: p ? Math.hypot(p.x - T.worldX(0.4, 15.4), p.z - T.worldZ(0.4, 15.4)) : null, pile: p ? Math.hypot(p.x, p.z) : null, preselected: T.gate.preselected };
   })()`);
   record("signed-in routed arrival: a signed-in link to /sphere-3 stands the owner at the Sphere's doors with room 3 chosen, not at the pile",
     r.scene === "hub" && r.path === "/sphere" && r.selected && r.visible && r.doors < 3.5 && r.preselected === 3, JSON.stringify(r));
@@ -10628,8 +10639,8 @@ const WALK = { w: [0, 1], s: [0, -1], a: [-1, 0], d: [1, 0] };
 const walkKeys = async (b, who, x, z, yaws, seconds) => {
   const rows = {};
   for (const yaw of yaws) for (const k of "wasd") {
-    await b.evaluate(`(() => { const B = window.__ooga; let body;
-      const a = B.cavemen.get("${who}"); if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: ${x}, y: B.island ? B.island.surfaceAt(${x}, ${z}) : 0, z: ${z} }, yaw: ${yaw}, pitch: 0.4, dist: 10 }); body = a.root;
+    await b.evaluate(`(() => { const B = window.__ooga; let body; ${DRIVEN_OF}
+      const a = B.cavemen.get("${who}"); if (!drivenOf(B, a)) B.pilot.possess(a); B.pilot.navigate({ position: { x: ${x}, y: B.island ? B.island.surfaceAt(${x}, ${z}) : 0, z: ${z} }, yaw: ${yaw}, pitch: 0.4, dist: 10 }); body = drivenOf(B, a).root;
       B.advance(0.5, 1 / 60);
       const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz), p = body.position;
       window.__walk = { body, fx: vx / l, fz: vz / l, x0: p.x, y0: p.y, z0: p.z }; })()`);
@@ -11355,7 +11366,9 @@ const hubWalking = { name: "hub walking", why: "regression: steering keys came o
   const duration = await b.evaluate(`2 / BL.pilot.WALK.speed`);
   const ooga = await walkKeys(b, "portlandhodl", -5, 5, [0, 2.2], duration);
   const running = await b.evaluate(`(() => {
-    const B = __ooga, a = B.cavemen.get("portlandhodl"), P = B.pilot, rows = [];
+    ${DRIVEN_OF}
+    // The body walkKeys left driven: it is what runs, not the roster NPC it stands for.
+    const B = __ooga, a = drivenOf(B, B.cavemen.get("portlandhodl")), P = B.pilot, rows = [];
     const key = (type, key, code, location = 0, shiftKey = false) => window.dispatchEvent(new KeyboardEvent(type, { key, code, location, shiftKey }));
     const move = (combat, direction, sprint) => {
       P.controls.reset(); if (P.aiming !== combat) P.modeAction("mode-toggle");
@@ -11416,11 +11429,12 @@ const hubWalking = { name: "hub walking", why: "regression: steering keys came o
   record("banana ledge: grounded walking and running step onto the stone rim without a jump",
     ledge.every(row => row.approach && Math.abs(row.startFeet) < 0.02 && row.onto && row.feet >= row.height - 0.02 && !row.jumped && row.keptControl), JSON.stringify(ledge));
   const presence = await b.evaluate(`(() => {
-    const B = __ooga, cave = B.pilot.player, net = BL.net.state, account = net.me, backend = net.backend, room = net.room;
-    const remote = cave.remoteControlled, row = document.querySelector('#roster [data-name="' + cave.traits.name + '"]');
+    // The roster row is the NPC's; the driven body (a separate one in the hub) speaks through it.
+    const B = __ooga, cave = B.pilot.player, npc = cave.npc || cave, net = BL.net.state, account = net.me, backend = net.backend, room = net.room;
+    const row = document.querySelector('#roster [data-name="' + cave.traits.name + '"]');
     const dot = row.querySelector(".roster-presence"), activity = row.querySelector(".roster-state").dataset.state;
     const order = () => [...row.parentElement.children].filter(li => li.dataset.name).map(li => li.dataset.name).join(","), before = order();
-    let stableOrder = true;
+    let stableOrder = true, other = null;
     try {
       net.me = null; net.backend = false; net.room = "off";
       B.crew.refreshRosterRow(cave); BL.hud.showVoices();
@@ -11435,15 +11449,21 @@ const hubWalking = { name: "hub walking", why: "regression: steering keys came o
       net.me = null; BL.hud.showVoices();
       const signedOutAgain = dot.dataset.online === "false" && BL.hud.statusFor(cave) !== "online";
       stableOrder &&= order() === before;
-      cave.remoteControlled = true; B.crew.refreshRosterRow(cave); BL.hud.showVoices();
-      const remoteOnline = dot.dataset.online === "true" && BL.hud.statusFor(cave) === "online";
+      // Remote presence belongs to an Ooga someone else drives: the visitor's own NPC, standing for the body they drive
+      // here, is a local row (crew.js refreshRosterRow), so the remote mark goes on another roster Ooga's row.
+      other = B.crew.list.find(c => c !== npc && !c.localBody && !c.humanControlled && !c.ghostTrack && !c.remoteControlled
+        && document.querySelector('#roster [data-name="' + c.traits.name + '"] .roster-presence'));
+      const otherDot = document.querySelector('#roster [data-name="' + other.traits.name + '"] .roster-presence');
+      other.remoteControlled = true; B.crew.refreshRosterRow(other); BL.hud.showVoices();
+      const remoteOnline = otherDot.dataset.online === "true" && BL.hud.statusFor(other) === "online" && dot.dataset.online === "false";
       stableOrder &&= order() === before;
       return { staticOffline, signedOut, signedIn, signedOutAgain, remoteOnline, stableOrder,
         selection: B.pilot.player === cave && document.getElementById("mode-hud").dataset.selected === "true",
         activity: row.querySelector(".roster-state").dataset.state === activity };
     } finally {
-      net.me = account; net.backend = backend; net.room = room; cave.remoteControlled = remote;
-      B.crew.refreshRosterRow(cave); BL.hud.showVoices();
+      net.me = account; net.backend = backend; net.room = room;
+      if (other) { other.remoteControlled = false; B.crew.refreshRosterRow(other); }
+      B.crew.refreshRosterRow(npc); BL.hud.showVoices();
     }
   })()`);
   record("presence markers: local selection stays offline on static and signed-out pages, login and logout repaint cached rows, and remote presence keeps its green dot without changing selection, activity or contribution order", Object.values(presence).every(Boolean), JSON.stringify(presence));
@@ -11792,6 +11812,7 @@ const hubMapNavigation = { name: "hub map navigation", why: "rule: a destination
 const hubRainforestSteps = { name: "rainforest bridge steps", why: "regression: diagonal treads and the bridge abutment caught walkers, and hanging vine tails protruded through the stair rock", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, P = BL.poolModels, D = P.DIR, rows = [];
+    ${DRIVEN_OF}
     const key = (type, k) => window.dispatchEvent(new KeyboardEvent(type, { key: k, code: "Key" + k.toUpperCase() }));
     // This measures the bridge and stair collision shell. Earlier hub trips
     // leave roaming gorillas in the lane; walking over one and falling off
@@ -11802,8 +11823,10 @@ const hubRainforestSteps = { name: "rainforest bridge steps", why: "regression: 
     for (const [entry] of traffic) entry.active = entry.root.visible = false;
     try {
       for (const across of [-0.75, 0, 0.75, null]) {
-        const replay = across === null, a = B.cavemen.get(replay ? "w-s-bitcoin" : "portlandhodl");
-        B.pilot.possess(a);
+        const replay = across === null, npc = B.cavemen.get(replay ? "w-s-bitcoin" : "portlandhodl");
+        B.pilot.possess(npc);
+        // The walker is the driven body (a separate one in the hub), not the roster NPC left on its own track.
+        const a = drivenOf(B, npc);
         if (B.pilot.aiming !== replay) B.pilot.modeAction("mode-toggle");
         const x = replay ? 25.38348 : D.x * 25.5 + D.z * across, z = replay ? 8.36988 : D.z * 25.5 - D.x * across;
         B.pilot.navigate({ position: { x, y: replay ? 4.58241 - a.baseY : B.island.surfaceAt(x, z), z }, yaw: replay ? 13.77019 - Math.PI : Math.atan2(D.x, D.z) + Math.PI, pitch: replay ? 0.105 : 0.25, dist: 8 });
@@ -11844,15 +11867,18 @@ const hubRainforestSteps = { name: "rainforest bridge steps", why: "regression: 
 // A scene's construction slices run as real tasks while the fade holds black, so each step gives them one, as tourGo does.
 const WAIT_OUT = `(async () => { const B = window.__ooga, t0 = performance.now(); while ((B.transitioning || B.scene === "hub") && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); return B.scene; })()`;
 const hubRoutes = { name: "hub routes", why: "playthrough: every scene the island opens is reached the way a player gets there", run: async (b) => {
-  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); if (B.crew.player !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(`(() => { ${DRIVEN_OF} const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); if (!drivenOf(B, a)) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
   await b.key(" ");
   const reached = { arcade: await b.evaluate(WAIT_OUT) };
   await tourGo(b, "hub");
   // The Mempool has no scene of its own: the same Ooga walks in at the mouth and down the whole descent. It is
   // steered along the layout's own centreline by turning the view, with W held through the real key path.
   const walked = await b.evaluate(`(() => {
-    const B = window.__ooga, M = B.poolIsland, L = M.layout, a = B.cavemen.get("portlandhodl"), point = {};
-    if (B.crew.player !== a) B.pilot.possess(a);
+    const B = window.__ooga, M = B.poolIsland, L = M.layout, npc = B.cavemen.get("portlandhodl"), point = {};
+    ${DRIVEN_OF}
+    if (!drivenOf(B, npc)) B.pilot.possess(npc);
+    // The walker is the driven body (a separate one in the hub); "the same Ooga" is that body throughout the walk.
+    const a = drivenOf(B, npc);
     const world = (p) => ({ x: M.worldX(p.x, p.z), y: M.place.y + p.y, z: M.worldZ(p.x, p.z) });
     const key = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: "w", code: "KeyW" }));
     B.pilot.navigate({ position: world(L.rampPoint(0.8, 0, point)), yaw: 0, pitch: 0.2, dist: 4 });
@@ -11896,10 +11922,12 @@ const hubRoutes = { name: "hub routes", why: "playthrough: every scene the islan
     walked.eyeInChamber && walked.rimBehindWall === true && walked.eyeInTunnel && walked.rimInSight === false, JSON.stringify({ eyeInChamber: walked.eyeInChamber, rimBehindWall: walked.rimBehindWall, eyeInTunnel: walked.eyeInTunnel, rimInSight: walked.rimInSight }));
 } };
 const hubFall = { name: "hub fall", why: "rule: abyss falls return players and NPCs to varied clear ground around the banana pile, preserving possession", run: async (b) => {
-  await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), I = B.island, ang = Math.PI / 4; if (B.crew.player !== a) B.pilot.possess(a); let r = 5; while (I.onLand(Math.sin(ang) * r, Math.cos(ang) * r)) r += 0.25; r -= 1.5; const x = Math.sin(ang) * r, z = Math.cos(ang) * r; B.pilot.navigate({ position: { x, y: I.surfaceAt(x, z), z }, yaw: ang + Math.PI, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(`(() => { ${DRIVEN_OF} const B = window.__ooga, a = B.cavemen.get("portlandhodl"), I = B.island, ang = Math.PI / 4; if (!drivenOf(B, a)) B.pilot.possess(a); let r = 5; while (I.onLand(Math.sin(ang) * r, Math.cos(ang) * r)) r += 0.25; r -= 1.5; const x = Math.sin(ang) * r, z = Math.cos(ang) * r; B.pilot.navigate({ position: { x, y: I.surfaceAt(x, z), z }, yaw: ang + Math.PI, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w", code: "KeyW" });
   const respawns = await b.evaluate(`(() => {
-    const B = __ooga, a = B.cavemen.get("portlandhodl"), solids = B.headquarters.solids.props;
+    ${DRIVEN_OF}
+    // The faller is the visitor's driven body (a separate one in the hub, standing for portlandhodl's NPC).
+    const B = __ooga, a = drivenOf(B, B.cavemen.get("portlandhodl")), solids = B.headquarters.solids.props;
     const available = c => c && c !== a && !c.humanControlled && !c.health.stunned && !c.grabbedBy
       && !c.camp.seat && !c.camp.burning && !c.camp.rolling && !c.camp.panic.active && !c.puppet && !c.remoteControlled;
     const npc = [B.cavemen.get("MrHodlX"), B.cavemen.get("hotpixelgroup")].find(available);
@@ -11968,7 +11996,7 @@ const hubFall = { name: "hub fall", why: "rule: abyss falls return players and N
       // Player respawn belongs to the later scene stage, covered above.
       const net = BL.net, savedRemotes = [...net.remotes], random = Math.random,
         puppets = B.crew.list.map(c => c.puppet), position = { ...npc.root.position }, yaw = npc.root.rotation.y, pending = [];
-      const peer = B.crew.list.find(c => c !== a && c !== npc);
+      const peer = B.crew.list.find(c => c !== a && c !== a.npc && c !== npc);
       const poolCount = BL.scenes.hub.stats().remotePlayers;
       let time = BL.scenes.hub.elapsed;
       try {
@@ -17681,7 +17709,9 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
       P.navigate({ position: { x: -8, y: 0, z: 8 }, yaw: 0, pitch: 1.1, dist: 24 }); B.advance(0.6, 1 / 60);
       P.modeAction("mode-toggle"); B.advance(1, 1 / 60);
       if (P.mode === "shoulder") { P.hooks.onZoom(1.2, {}); B.advance(1, 1 / 60); }
-      out.cutaway = { selected: P.player === actor, view: P.mode, combat: P.aiming, active: B.renderOpts.birdsEyeCutaway,
+      // Selected means the visitor drives portlandhodl: the NPC itself or the hub's separate body standing for it.
+      ${DRIVEN_OF}
+      out.cutaway = { selected: !!drivenOf(B, actor), view: P.mode, combat: P.aiming, active: B.renderOpts.birdsEyeCutaway,
         mix: B.renderOpts.cutawayCloudMix, heights: initial.every(c => Math.abs(c.node.world[13] - c.node.position.y) < 1e-6) };
     } finally { P.release(true); P.goPreset("pile"); B.advance(0.1, 1 / 60); }
     return out;
@@ -17696,6 +17726,7 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
     && state.horizon.every(row => row.clouds.length === 18 && row.clouds.every(c => c.visible && c.moving)), JSON.stringify(clouds));
   const animation = await b.evaluate(`(() => {
     const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug, a = B.cavemen.get("portlandhodl"), e = B.clankers.list.find(entry => entry.owner === a);
+    ${DRIVEN_OF}
     const net = BL.net, st = net.state, saved = { room: st.room, hostId: st.hostId, selfId: st.selfId, followers: st.followers };
     const send = net.sendNpc, override = a.override, out = {}; let sent = 0, current = true;
     const view = (p) => { P.navigate({ position: { x: p.x, y: p.y + 3, z: p.z + 4 }, target: p, yaw: 0, pitch: 0.2, dist: 5 }); B.advance(0.2, 1 / 60); };
@@ -17735,7 +17766,10 @@ const hubDistantEffects = { name: "hub distant effects", why: "rule: distant por
       Object.assign(st, { room: "live", hostId: 71, selfId: 71, followers: 1 }); far(); out.host = sample();
       out.network = sent >= 3 && current && B.npcSync.role === "host";
       Object.assign(st, saved); B.advance(1 / 60, 1 / 60);
-      P.possess(a); B.crew.wakePlayer(); far(); out.controlled = sample().ooga;
+      // The controlled actor is the driven body (a separate one in the hub), whose own poses must stay full rate far off.
+      P.possess(a); B.crew.wakePlayer(); far();
+      const body = drivenOf(B, a), before = body.animation.updates;
+      B.advance(1, 1 / 60); out.controlled = body.animation.updates - before;
       return out;
     } finally {
       net.sendNpc = send; Object.assign(st, saved); P.release(true); a.override = override;
