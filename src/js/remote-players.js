@@ -197,6 +197,8 @@
           cave.riding = { support: null, outside: null, x: rec.x, y: rec.y + cave.baseY, z: rec.z };
           cave.sleepParts = { headX: cave.parts.head.position.x, headZ: cave.parts.head.position.z };
           pets.attach(cave);
+          // Detached from the sightHidden root, and as late to the outline registry as the body it follows.
+          cave.pet.node.sightHidden = true;
         }
       }
       const entry = { id: rec.id, body: rec.body, name, gorilla, cave, motion, baseY: gorilla ? 0 : cave.root.position.y, height, top: NaN, dTop: 0, jetNode: null, jetFlame: null, swing: 0, shotAt: -Infinity, lastHeld: 0, lastMode: 0, lastMelee: 0, sampleAt: 0, sampleMelee: 0, sampleFlags: 0, sampleSwap: 0, sampleSwapIndex: 0, x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, phase: 0, hidden: null, hiddenOverride: null, ghosted: null, label: "", labelW: 0,

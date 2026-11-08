@@ -8880,7 +8880,7 @@
       rockHammock(dt);
       hammock.update(dt, elapsed, gameMode, null);
       // The bed poses after the crew; keep its pet on this frame's torso without advancing its leap twice.
-      for (const seat of hammock.seats) if (seat.sitter?.pet) crew.pets.update(seat.sitter, 0);
+      for (const seat of hammock.seats) if (seat.sitter?.pet?.ride) crew.pets.update(seat.sitter, 0);
     } else if (!gameMode) RENDER_OPTS.windTime = NaN;
     for (let i = 0; i < crew.list.length; i++) {
       const cave = crew.list[i];
@@ -11739,6 +11739,7 @@
     footsteps = BL.footsteps.create();
     petReactions = BL.petReactions.create();
     hubScene.debug.weather = weather;
+    hubScene.debug.petReactions = petReactions;
     weather.apply(chain.snapshot); mempoolIsland.water.apply(chain.snapshot);
     mempoolIsland.paintings.refresh(chain.snapshot); refreshChainSign();
     // As enter does: the distant island rests until the first proximity check below wakes it.
@@ -12117,7 +12118,7 @@
     critters = crittersMod.create({ root, renderer, flowers: scenery.filter((o) => o.prop === "flower" && o.active), fire: firePos, secondaryFire: { x: 0, y: island.headquarters.floor, z: 0 }, meadowRadius: MEADOW, heightAt: island.surfaceAt, activeAt: effectsActiveAt });
     cloudRememberNodes(cloudNodeStart);
     mark("props");
-    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, overlayVisible: matrixOverlayVisible, zzzVisible: sleepMarksVisible, tickerAt: TICKER_AT, buildSpots: buildSpotsList, walkIn: WALK_IN, clampDrag, viewYaw: PILE_VIEW.yaw, bedrolls, pileScale: PILE_SCALE, pileY: ALTAR_HEIGHT + 0.02, matrixLivingPile: true, onLayout: layoutPile, crateRadius: () => Math.max(4.4, altar.platformRadius + 0.8), groundAt: playerSupportAt, ceilingAt, wanderSpot, walkable, flyable, glideJetCeiling, useNear, abyssAt, abyssRespawnY: ABYSS_RESPAWN_Y, seaY: SEA_Y, jetpackAllowed, reticleTarget, phase: () => phase };
+    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, overlayVisible: matrixOverlayVisible, zzzVisible: sleepMarksVisible, tickerAt: TICKER_AT, buildSpots: buildSpotsList, walkIn: WALK_IN, clampDrag, viewYaw: PILE_VIEW.yaw, bedrolls, pileScale: PILE_SCALE, pileY: ALTAR_HEIGHT + 0.02, matrixLivingPile: true, onLayout: layoutPile, crateRadius: () => Math.max(4.4, altar.platformRadius + 0.8), groundAt: playerSupportAt, petLanding: (x, z) => hammock ? hammock.landing(x, z) : null, ceilingAt, wanderSpot, walkable, flyable, glideJetCeiling, useNear, abyssAt, abyssRespawnY: ABYSS_RESPAWN_Y, seaY: SEA_Y, jetpackAllowed, reticleTarget, phase: () => phase };
     shared.weaponsEnabled = true;
     shared.jetpackRefills = cave => !(cloudHopper?.active && cave === cloudHopper.actor);
     shared.jetpackLiftOnly = cave => !!cloudHopper?.active && cave === cloudHopper.actor;
@@ -13015,6 +13016,7 @@
           ? "Finish the current tour before playing Cloud Hopper" : clankerPlay.active ? "Choose an Ooga to play Cloud Hopper" : null });
     hubScene.debug.cloudHopper = cloudHopper;
     hubScene.debug.tess = islandGuide;
+    hubScene.debug.petReactions = petReactions;
     // Tess wears every tier of her detail in her first frames, so each is on the GPU before she comes close: build
     // them here, a mesh a slice, rather than in her first frame.
     const tessTiers = new Set();

@@ -252,7 +252,7 @@
       z: b.max[2] + 0.015 - BL.scene.boundsOf(dog.geometry).min[1] * dog.scale.y };
   };
   const hatRide = (cave) => ({ stomach: stomachSeatOf(cave), kind: 0, yaw: 0, seat: hatSeatOf(cave.parts.head, cave.parts.dog), q: math.quat.create(), angle: Math.PI, dir: 1, run: 0, step: 0,
-    t: 1, sx: 0, sy: 0, sz: 0, ex: 0, ez: 0, vy: 0 });
+    t: 1, sx: 0, sy: 0, sz: 0, ex: 0, ez: 0, vy: 0, free: false });
   // Trots the pet `dt` along its loop (not under Calm) and stands `node` there: `m` is the head's matrix in the node's
   // parent frame, so the pet keeps to the hat through every turn and tilt of the head. Writes in place; allocates nothing.
   const poseHatRide = (ride, node, m, dt) => {
@@ -347,15 +347,18 @@
     // The hat ride's own modes, after the heel's 0 and the fall's 2 (1, flight beside the owner, is never used): 3 the
     // leap up, 4 on the hat, 5 the hop down. The hop goes to the heel's side when the way there is clear at the hat's
     // height (else the other side, else straight down) and hands over to the fall, which lands only on checked ground.
+    // Off a resting owner the heel's spot means nothing and the bed itself is the ground under the hop, so a scene with a
+    // bed (`ctx.petLanding`) names the checked spot beyond it to hop to, and the hop leaves the bed without asking it.
     // True while the ride poses the pet this frame.
     const rideHat = (cave, dt, equipped, tx, tz, resting) => {
       const pet = cave.pet, ride = pet.ride, node = pet.node, r = cave.root, p = node.position;
       const kind = resting ? 2 : equipped ? 1 : 0;
       if ((pet.mode === 3 || pet.mode === 4) && !kind) {
         const feet = p.y - cave.baseY - pet.lift, mx = 2 * r.position.x - tx, mz = 2 * r.position.z - tz;
-        const side = pet.clear(r.position.x, r.position.z, tx, tz, feet) ? 1 : pet.clear(r.position.x, r.position.z, mx, mz, feet) ? -1 : 0;
-        ride.sx = p.x; ride.sy = p.y; ride.sz = p.z; ride.t = 0; ride.vy = HAT_RIDE.hopUp;
-        ride.ex = side > 0 ? tx : side < 0 ? mx : p.x; ride.ez = side > 0 ? tz : side < 0 ? mz : p.z;
+        const off = ride.kind === 2 && ctx.petLanding ? ctx.petLanding(p.x, p.z) : null;
+        const side = off ? 0 : pet.clear(r.position.x, r.position.z, tx, tz, feet) ? 1 : pet.clear(r.position.x, r.position.z, mx, mz, feet) ? -1 : 0;
+        ride.sx = p.x; ride.sy = p.y; ride.sz = p.z; ride.t = 0; ride.vy = HAT_RIDE.hopUp; ride.free = !!off;
+        ride.ex = off ? off.x : side > 0 ? tx : side < 0 ? mx : p.x; ride.ez = off ? off.z : side > 0 ? tz : side < 0 ? mz : p.z;
         node.quaternion = null; node.cameraHidden = false;
         node.rotation.x = node.rotation.z = 0; node.rotation.y = Math.atan2(ride.ex - p.x, ride.ez - p.z);
         pet.mode = 5; ride.kind = 0;
@@ -369,7 +372,7 @@
         if (!(dt > 0)) return true;
         ride.t = Math.min(1, ride.t + dt / HAT_RIDE.hop);
         const feet = p.y - cave.baseY - pet.lift, nx = ride.sx + (ride.ex - ride.sx) * ride.t, nz = ride.sz + (ride.ez - ride.sz) * ride.t;
-        if (pet.clear(p.x, p.z, nx, nz, feet)) { p.x = nx; p.z = nz; } else { ride.sx = ride.ex = p.x; ride.sz = ride.ez = p.z; }
+        if (ride.free || pet.clear(p.x, p.z, nx, nz, feet)) { p.x = nx; p.z = nz; } else { ride.sx = ride.ex = p.x; ride.sz = ride.ez = p.z; }
         p.y += ride.vy * dt; ride.vy -= BL.pilot.WALK.gravity * dt;
         if (ride.t < 1 && p.y - cave.baseY - pet.lift > groundAt(p.x, p.z, feet, feet, cave)) return true;
         pet.x = p.x; pet.z = p.z; pet.feet = Math.max(p.y - cave.baseY - pet.lift, feet); pet.heading = node.rotation.y;

@@ -9688,36 +9688,85 @@ const hubHammock = { name: "hub hammock", why: "rule: one face-up Ooga rests off
   await b.send("Input.dispatchKeyEvent", {type:"keyUp",key:"w",code:"KeyW"});
   const walking=await b.evaluate('({seat:!!__ooga.crew.player.camp.seat,q:!!__ooga.crew.player.root.quaternion})');
   record("hub hammock: movement also stands the occupant up",moved&&!walking.seat&&!walking.q,JSON.stringify(walking));
-  const petRest = await b.evaluate(`(() => {
-    const B=__ooga,H=BL.scenes.hub.debug.hammock,s=H.seats[0],M=BL.math.mat4;
-    const npc=B.cavemen.get("Bitcoin-Bill"),from=B.crew.player;
-    Object.assign(npc.root.position,{x:from.root.position.x,y:from.root.position.y-from.baseY+npc.baseY,z:from.root.position.z});
-    npc.root.visible=true;npc.state="chilling";
-    const selected=B.pilot.possess(npc),a=B.crew.player;
-    if(!selected||!a.pet)return {entered:false,selected,name:a.traits.name};
-    B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry,pitch:.5,dist:6});B.advance(.5,1/60);
-    const entered=H.enter(a,s,seat=>B.crew.sitPlayer(seat));B.advance(2,1/60);
-    const pet=a.pet,dog=pet.node,inv=M.create(),point=new Float32Array(3);let error=0;
-    for(let i=0;i<30;i++){
-      B.advance(1/60,1/60);BL.scene.updateWorld(a.root);M.invert(inv,a.parts.torso.world);
-      M.transformPoint(point,inv,dog.position.x,dog.position.y,dog.position.z);
-      const at=pet.ride.stomach;error=Math.max(error,Math.hypot(point[0]-at.x,point[1]-at.y,point[2]-at.z));
-    }
-    const resting=pet.mode===4&&pet.ride.kind===2&&dog.visible&&!dog.cameraHidden;
-    B.crew.standPlayer();B.advance(3,1/60);
-    const standing=!a.camp.seat&&pet.mode===0&&dog.quaternion===null;
-    B.pilot.release();
-    const rec={id:9901,login:"Bitclank-Bill",display:"Bill",body:"Bitcoin-Bill",zone:"outside",x:s.restX,y:s.restY,z:s.restZ,yaw:s.ry,jet:0,weapon:0,rest:[0,2,255,0,0,0]};
-    BL.net.remotes.set(rec.id,rec);B.advance(2,1/60);const remote=BL.remotePlayers.body(rec.id),dogRemote=remote.pet.node;
-    const remoteRest=remote.pet.mode===4&&remote.pet.ride.kind===2&&dogRemote.visible;
-    rec.rest=0;rec.x=s.walkAt.x;rec.y=s.floor;rec.z=s.walkAt.z-3;B.advance(3,1/60);
-    let remoteWalk=false;for(let i=0;i<60;i++){rec.z-=.025;B.advance(1/60,1/60);remoteWalk ||= dogRemote.visible&&Math.abs(dogRemote.rotation.z)>.001;}
-    BL.net.remotes.delete(rec.id);B.advance(.1,1/60);const removed=!dogRemote.parent;
-    return {entered,resting,error,standing,remoteRest,remoteWalk,removed};
-  })()`);
-  record("hub hammock: Bill's opted-in pet rests on the current rendered stomach throughout the bed's sway and hops down when he stands",
-    petRest.entered&&petRest.resting&&petRest.error<1e-4&&petRest.standing&&petRest.remoteRest&&petRest.remoteWalk&&petRest.removed,JSON.stringify(petRest));
-
+} };
+// Bill's own file decides whether his dog rides: the wire records what the file says and only then opts him in for the
+// steps below, so an engine check can run ahead of his queued file without hiding that the file doesn't say so yet.
+const petOptInWire = () => {
+  const BL = window.BL = window.BL || {};
+  Object.defineProperty(BL, "characters", { configurable: true, set(api) {
+    Object.defineProperty(BL, "characters", { configurable: true, writable: true, value: api });
+    const add = api.add;
+    api.add = (character) => {
+      if (character.handle === "Bitcoin-Bill") { window.__billFileOptsIn = character.look.petRidesHat === true; character.look.petRidesHat = true; }
+      return add(character);
+    };
+  } });
+};
+const hubPetOptIn = { name: "hub pet opt-in", open: "Bill's opt-in is queued in character intake, separately from the engine", why: "regression: #523's checks set the flag themselves while Bill's own file lost it, so live Bill's dog never rode anything", run: async (b) => {
+  record("hub pets: Bitcoin-Bill's own character file opts his dog in to riding", await b.evaluate("window.__billFileOptsIn === true"));
+} };
+const hubPetRides = { name: "hub pet rides", why: "regression: a dog leaving a body at rest hopped to the lying body's heel spot, landed on the cloth and stood stuck at its edge, on the owner's page and every other", run: async (b) => {
+  const setup = `const B=__ooga,D=BL.scenes.hub.debug,H=D.hammock,s=H.seats[0],M=BL.math.mat4,bill=B.crew.player,pet=bill.pet,dog=pet.node;
+    const inverse=M.create(),point=new Float32Array(3);
+    const offStomach=(a)=>{BL.scene.updateWorld(a.root);M.invert(inverse,a.parts.torso.world);M.transformPoint(point,inverse,a.pet.node.position.x,a.pet.node.position.y,a.pet.node.position.z);const at=a.pet.ride.stomach;return Math.hypot(point[0]-at.x,point[1]-at.y,point[2]-at.z);};
+    const onStomach=(a)=>a.pet.mode===4&&a.pet.ride.kind===2&&a.pet.node.visible&&offStomach(a)<1e-4;
+    const onHat=(a)=>a.pet.mode===4&&a.pet.ride.kind===1&&a.pet.node.visible&&a.pet.node.position.y>a.root.position.y+0.5*a.bodyHeight;
+    const heel=(a)=>{const r=a.root,sh=Math.sin(r.rotation.y),ch=Math.cos(r.rotation.y),p=a.pet;return Math.hypot(r.position.x-sh*p.back+ch*p.side-p.x,r.position.z-ch*p.back-sh*p.side-p.z);};
+    const down=(a)=>a.pet.mode===0&&Math.abs(a.pet.feet-s.floor)<0.01&&a.pet.node.quaternion===null&&heel(a)<0.3;
+    const follows=(a)=>a.pet.mode===0&&a.pet.node.quaternion===null&&heel(a)<0.3&&!H.near(a.pet.x,a.pet.z,0.3)&&Math.abs(a.pet.feet-B.headquarters.solids.supportAt(a.pet.x,a.pet.z,a.pet.feet,a.pet.feet,a))<0.01;
+    const lie=(a)=>{const entered=H.enter(a,s,seat=>B.crew.sitPlayer(seat));B.advance(2,1/60);return entered;};`;
+  const ready = await b.evaluate(`(() => { const B=__ooga,H=BL.scenes.hub.debug.hammock,s=H.seats[0];
+    const selected=B.pilot.possess(B.cavemen.get("Bitcoin-Bill"));
+    B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry,pitch:.5,dist:6});B.advance(1,1/60);
+    return {selected,jet:!!B.crew.player.jet}; })()`);
+  // The jetpack through its real key: on the hat while worn, down beside him when it comes off.
+  if (!ready.jet) { await tapKey(b, "j"); await b.evaluate("__ooga.advance(1, 1/60)"); }
+  const up = await b.evaluate(`(() => { ${setup} return onHat(bill); })()`);
+  await tapKey(b, "j");
+  const off = await b.evaluate(`(() => { ${setup} B.advance(3,1/60); return down(bill); })()`);
+  await tapKey(b, "j");
+  // The hammock outranks the jetpack, then gives the dog back to the hat; the bare exit lands off the bed and follows.
+  const local = await b.evaluate(`(() => { ${setup}
+    B.advance(1,1/60);const hatAgain=onHat(bill),entered=lie(bill);
+    let error=0;for(let i=0;i<30;i++){B.advance(1/60,1/60);error=Math.max(error,offStomach(bill));}
+    const resting=onStomach(bill)&&!dog.cameraHidden;
+    B.crew.standPlayer(bill,true);B.advance(3,1/60);const backToHat=onHat(bill);
+    B.crew.removeJetpack(bill);B.advance(3,1/60);const jetOff=down(bill);
+    lie(bill);const bare=onStomach(bill);
+    B.crew.standPlayer(bill,true);B.advance(3,1/60);
+    const landed=down(bill),clearOfBed=H.plan.shell.low+H.plan.y-s.floor>pet.feet+0.3;
+    B.pilot.navigate({position:{x:s.walkAt.x+3,y:s.floor,z:s.walkAt.z+3},yaw:s.ry,pitch:.5,dist:6});B.advance(3,1/60);const followed=down(bill);
+    B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry,pitch:.5,dist:6});B.advance(1,1/60);
+    lie(bill);const tipped=H.tip(bill,{x:s.walkAt.x,z:s.walkAt.z,y:s.floor+bill.baseY,floor:s.floor,ry:s.ry,side:H.plan.side},()=>B.crew.standPlayer(bill));
+    B.advance(4,1/60);const tipLanded=tipped&&down(bill);
+    return {hatAgain,entered,error,resting,backToHat,jetOff,bare,landed,clearOfBed,followed,tipLanded,feet:pet.feet,mode:pet.mode}; })()`);
+  // Another page's Bill, through the real pool, bed and ground: and the yap's target, the nearest live body and never an NPC.
+  const remote = await b.evaluate(`(() => { ${setup}
+    const rest=[0,2,255,0,0,0],npc=B.cavemen.get("Bitcoin-Bill");
+    const selected=B.pilot.possess(B.cavemen.get("portlandhodl"));
+    B.pilot.navigate({position:{x:s.walkAt.x+6,y:s.floor,z:s.walkAt.z+6},yaw:s.ry,pitch:.5,dist:6});
+    const rec={id:9901,login:"Bitclank-Bill",display:"Bill",body:"Bitcoin-Bill",zone:"outside",x:s.restX,y:s.restY,z:s.restZ,yaw:s.ry,jet:0,weapon:0,rest};
+    BL.net.remotes.set(rec.id,rec);B.advance(2,1/60);
+    const R=BL.remotePlayers.body(rec.id),rdog=R.pet.node,reactions=D.petReactions,resting=onStomach(R),hidden=rdog.sightHidden===true;
+    Object.assign(npc.root.position,{x:s.restX+1,y:s.floor+npc.baseY,z:s.restZ+1});npc.root.visible=true;B.advance(1/60,1/60);const npcIgnored=reactions.target===null;
+    const other={id:9902,login:"portlandhodl",body:"w-s-bitcoin",zone:"outside",x:s.walkAt.x+3,y:s.floor,z:s.walkAt.z,yaw:0,jet:0,weapon:0,rest:0};
+    BL.net.remotes.set(other.id,other);B.advance(0.5,1/60);const O=BL.remotePlayers.body(other.id),farther=reactions.target===O;
+    other.x=s.walkAt.x+1;B.advance(0.5,1/60);const nearest=reactions.target===O;
+    const me=B.crew.player;BL.net.state.me={id:1,login:"tester"};Object.assign(me.root.position,{x:s.walkAt.x,y:s.floor+me.baseY,z:s.walkAt.z});B.advance(1/60,1/60);const self=reactions.target===me;BL.net.state.me=null;
+    BL.net.remotes.delete(other.id);B.advance(0.1,1/60);other.x=99;const gone=reactions.target===null||reactions.target===B.crew.player;
+    B.pilot.navigate({position:{x:s.walkAt.x+6,y:s.floor,z:s.walkAt.z+6},yaw:s.ry,pitch:.5,dist:6});B.advance(0.1,1/60);
+    rec.rest=[0,3,0,0,0,0];B.advance(0.3,1/60);rec.rest=0;rec.x=s.walkAt.x;rec.y=s.floor;rec.z=s.walkAt.z;B.advance(3,1/60);
+    const remoteLanded=down(R);
+    for(let i=0;i<120;i++){rec.x+=.02;rec.z+=.02;B.advance(1/60,1/60);}
+    B.advance(1,1/60);const remoteFollowed=follows(R);
+    rec.jet=1;B.advance(1,1/60);const remoteHat=onHat(R);rec.jet=0;B.advance(3,1/60);const remoteOff=follows(R);
+    BL.net.remotes.delete(rec.id);B.advance(0.1,1/60);
+    return {selected,resting,hidden,npcIgnored,farther,nearest,self,gone,remoteLanded,remoteFollowed,remoteHat,remoteOff,removed:!rdog.parent,feet:R.pet.feet,mode:R.pet.mode}; })()`);
+  record("hub pets: the jetpack key puts Bill's dog on his hat and takes it down beside him", ready.selected && up && off, JSON.stringify({ ready, up, off }));
+  record("hub pets: Bill's dog rests on his swaying stomach ahead of the jetpack, returns to the hat, and leaving or tipping out lands it on the ground beyond the bed, following him",
+    local.hatAgain && local.entered && local.error < 1e-4 && local.resting && local.backToHat && local.jetOff && local.bare && local.landed && local.clearOfBed && local.followed && local.tipLanded, JSON.stringify(local));
+  record("hub pets: another page's Bill shows the same stomach, hat and landing from the room's pose alone, and his dog yaps at the nearest live body within reach, never an NPC",
+    Object.entries(remote).every(([k, v]) => ["feet", "mode"].includes(k) || v === true), JSON.stringify(remote));
 } };
 const hubHammockEntry = { name: "hub hammock entry", why: "regression: walking at the side must reach the cloth's edge and step onto its middle, and Space must reach the cloth from beside or above and ease into rest without snapping", run: async (b) => {
   const result = await b.evaluate(`(() => {
@@ -18631,6 +18680,7 @@ scene("hub", { label: "entry spinner", query: "hubcache=keep", steps: [{ name: "
 } }] });
 scene("hub", { query: "ooga=portlandhodl:clank:lab,obl,lf&ooga=w-s-bitcoin:clank:lab,obl,lf&ooga=bc1gui:clank:lab,obl,lf&ooga=DrNeski:clank:lab,obl,lf&ooga=2140data:clank:lab,obl,lf", steps: [{ name: "work movement cave trips", why: "regression: cave traffic aimed through obstacles, started backwards detours and got trapped behind players by short lane hints", run: workCaveTrips }] });
 scene("hub", { label: "hammock", query: "solo=1&character=portlandhodl&pos=0", steps: [hubHammockEntry, hubHammockGetUp, hubHammockRopes, hubHammockEnds, hubHammock, hubHammockCamera, hubHammockRemoval] });
+scene("hub", { label: "pet rides", opts: !ONLY || onlyMatches(hubPetRides.name) ? { initScript: `(${petOptInWire.toString()})()` } : {}, query: "character=Bitcoin-Bill&jetpack=1&pos=0", steps: [hubPetOptIn, hubPetRides] });
 scene("hub", { label: "hammock exit", query: "solo=1&character=portlandhodl&pos=0&hubcache=release", steps: [hubHammockExit, trip("hub")] });
 scene("hub", { label: "room sign", query: "pos=0", steps: [{ name: "room sign copies hash", why: "rule: tapping a room sign swings it and copies its displayed eight-character code with visible confirmation", run: async (b) => {
   const point = await b.evaluate(`(() => { const B = __ooga, sign = B.headquarters.roomSigns[0], n = sign.node; Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: (value) => { window.__roomHash = value; return Promise.resolve(); } } }); window.__roomSignBefore = sign.hits; B.pilot.release(true); B.pilot.navigate({ position: { x: n.position.x, y: n.position.y, z: n.position.z }, target: { x: n.position.x, y: n.position.y - 0.2, z: n.position.z }, yaw: n.rotation.y, pitch: 0, dist: 4 }); B.advance(0.6, 1 / 60); return B.project(n.position.x, n.position.y - 0.2, n.position.z, {}); })()`);
