@@ -533,7 +533,7 @@
   const POOL_EFFECTS_NEAR = 44, POOL_EFFECTS_FAR = 52;
   let poolEffectsActive = false, poolEffectsTime = 0;
   // The driven Ooga's own footsteps, heard by this page alone (footsteps.js).
-  let footsteps = null;
+  let footsteps = null, petReactions = null;
   let weather = null, unsubscribeMempool = null, unsubscribeChain = null, mempoolIsland = null, timechainIsland = null, bifrostIsle = null;
   // Decorative motion follows the view or the driven character, with room between waking and resting.
   const effectPointNear = (p, x, y, z, radius2) => (p.x - x) ** 2 + (p.y - y) ** 2 + (p.z - z) ** 2 <= radius2;
@@ -8879,6 +8879,8 @@
       if (!gameMode) RENDER_OPTS.windTime = performance.now() * 0.001 % 3600;
       rockHammock(dt);
       hammock.update(dt, elapsed, gameMode, null);
+      // The bed poses after the crew; keep its pet on this frame's torso without advancing its leap twice.
+      for (const seat of hammock.seats) if (seat.sitter?.pet) crew.pets.update(seat.sitter, 0);
     } else if (!gameMode) RENDER_OPTS.windTime = NaN;
     for (let i = 0; i < crew.list.length; i++) {
       const cave = crew.list[i];
@@ -8892,6 +8894,9 @@
     if (!cloudPlaying()) npcStatusBeams?.update(dt);
     shareDrivenActor(dt);
     remotes.update(dt);
+    const petSeat = hammock?.seats[0];
+    const petOwner = petSeat?.sitter === crew.player ? crew.player : petSeat?.remote ? remotes.body(petSeat.remote) : null;
+    petReactions.update(petOwner, BL.net.state.me ? controlledGuideActor() : null, remotes, dt);
     if (poolEffectsActive) {
       mempoolIsland.wildlife.update(dt, poolEffectsTime);
       for (const cave of crew.list) if (cave.root.visible) {
@@ -11688,6 +11693,7 @@
     crew.pause();
     weather.dispose();
     footsteps.dispose();
+    petReactions.dispose();
     fx.reset();
     if (factoryMouth?.hall) factoryMouth.hall.suspend();
     if (factoryMouth?.roofWindow) factoryMouth.roofWindow.suspend();
@@ -11731,6 +11737,7 @@
     if (factoryMouth?.roofWindow) factoryMouth.roofWindow.resume();
     weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.rainAt, fx, onRain: mempoolIsland.rainHit, centre: mempoolIsland.centre });
     footsteps = BL.footsteps.create();
+    petReactions = BL.petReactions.create();
     hubScene.debug.weather = weather;
     weather.apply(chain.snapshot); mempoolIsland.water.apply(chain.snapshot);
     mempoolIsland.paintings.refresh(chain.snapshot); refreshChainSign();
@@ -12133,6 +12140,7 @@
     fx = shared.fx = fxMod.create(shared);
     weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.rainAt, fx, onRain: mempoolIsland.rainHit, centre: mempoolIsland.centre });
     footsteps = BL.footsteps.create();
+    petReactions = BL.petReactions.create();
     // The snapshot outlives the visit, so a re-entered hub opens in the weather it left.
     weather.apply(chain.snapshot);
     mempoolIsland.water.apply(chain.snapshot);
@@ -13101,6 +13109,7 @@
     chainSign = null;
     weather.dispose();
     footsteps.dispose();
+    petReactions.dispose();
     mempoolIsland.water.dispose();
     mempoolIsland.paintings.dispose();
     mempoolIsland.wildlife.dispose();
@@ -13252,7 +13261,7 @@
     // Drop every per-visit ref but the cached island.
     terrainRampRoof = pathNode = altar = lawn = life = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = mirrorCave = matrixCave = matrixControl = fire = headquarters = positionDebug = overlayCanvas = null;
     beasts.clear();
-    magazine = magazineState = weather = footsteps = mempoolIsland = timechainIsland = clankers = clankerPlay = null;
+    magazine = magazineState = weather = footsteps = petReactions = mempoolIsland = timechainIsland = clankers = clankerPlay = null;
     hubScene.input = hubScene.debug = null;
     doorIsland = doorZones = null;
     island = chalkboardDressing = chalkboardClearance = null;

@@ -6032,7 +6032,7 @@ const environmentSoundChecks = async () => {
   let saved = "off", writable = true;
   const param = () => ({ value: 0, calls: 0, setTargetAtTime(v) { this.value = v; this.calls++; },
     setValueAtTime(v) { this.value = v; this.calls++; }, exponentialRampToValueAtTime(v) { this.value = v; this.calls++; }, cancelScheduledValues() {} });
-  const node = () => ({ gain: param(), frequency: param(), connect() {}, disconnect() {}, start() {} });
+  const node = () => ({ gain: param(), frequency: param(), Q: param(), connect() {}, disconnect() {}, start() {} });
   class AudioContext {
     constructor() { this.state = "running"; this.currentTime = 0; this.sampleRate = 100; this.destination = {}; this.gains = []; this.events = new Map(); contexts.push(this); }
     createGain() { const n = node(); this.gains.push(n); return n; }
@@ -6046,7 +6046,7 @@ const environmentSoundChecks = async () => {
   }
   const context = { window: { addEventListener: (k, fn) => events.set(k, fn) }, AudioContext,
     navigator: { userActivation: { hasBeenActive: true } }, localStorage: { getItem: () => saved, setItem: (k, v) => { if (!writable) throw Error("blocked"); saved = v; } } };
-  for (const file of ["sound", "footsteps"]) runInNewContext(await readFile(join(root, `src/js/${file}.js`), "utf8"), context);
+  for (const file of ["math", "scene", "sound", "footsteps", "pet-reactions"]) runInNewContext(await readFile(join(root, `src/js/${file}.js`), "utf8"), context);
   const { sound, footsteps } = context.window.BL, feet = footsteps.create(), walker = { act: { phase: 0 }, hop: 0, ladder: null };
   feet.update(walker); walker.act.phase = Math.PI; feet.update(walker);
   const startsMuted = sound.muted && contexts.length === 0 && feet.steps === 1;
@@ -6068,6 +6068,32 @@ const environmentSoundChecks = async () => {
   record("environment sound: saved mute, live footsteps, new effects, storage failure, cross-tab changes and disposal share one gate",
     startsMuted && opened && quiet && countsQuiet && released && reused && blockedStorage && newMuted && crossTab && output.gain.calls === closedCalls,
     JSON.stringify({ startsMuted, opened, quiet, countsQuiet, released, reused, blockedStorage, newMuted, crossTab }));
+  const BL=context.window.BL,S=BL.scene,owner={root:S.createNode(),parts:{torso:S.createNode()},pet:{node:S.createNode(),mode:4,ride:{kind:2,yaw:0,stomach:{x:0,y:0,z:0}}}};
+  BL.crew={poseStomachRide(){}};
+  const near={root:S.createNode({position:{x:2,y:0,z:0}})},far={root:S.createNode({position:{x:3,y:0,z:0}})};
+  const actors=[{id:1},{id:2},{id:3}],bodies=new Map([[1,owner],[2,far],[3,near]]),pool={actors:()=>actors,body:id=>bodies.get(id)};
+  const reaction=BL.petReactions.create(),before=contexts.length;
+  reaction.update(owner,owner,pool,.1);const muteStart=reaction.target===near&&contexts.length===before;
+  sound.setMuted(false);context.navigator.userActivation.hasBeenActive=false;reaction.update(owner,null,pool,.1);
+  const locked=contexts.length===before;context.navigator.userActivation.hasBeenActive=true;reaction.update(owner,null,pool,.1);
+  const barkContext=contexts.at(-1),openedBark=reaction.barks===1&&contexts.length===before+1;
+  const local={root:S.createNode({position:{x:1,y:0,z:0}})};reaction.update(owner,local,pool,.1);const closestLocal=reaction.target===local;
+  local.root.visible=false;near.root.position.x=4;far.root.visible=false;reaction.update(owner,local,pool,.1);
+  const boundary=reaction.target===near;near.root.position.x=4.001;reaction.update(owner,local,pool,.1);
+  const outOfRange=!reaction.target&&barkContext.gains.slice(1).every(n=>n.gain.value===0);
+  near.root.position.x=2;reaction.update(owner,null,pool,.1);sound.setMuted(true);
+  const quietBark=barkContext.gains.slice(1).every(n=>n.gain.value===0),heard=reaction.barks;
+  for(let i=0;i<30;i++)reaction.update(owner,null,pool,.1);
+  const heldMute=reaction.barks===heard;sound.setMuted(false);reaction.update(owner,null,pool,.1);
+  const unmuted=reaction.barks===heard+1&&contexts.length===before+1;
+  owner.pet.mode=3;reaction.update(owner,null,pool,.1);const leapingQuiet=!reaction.target;
+  owner.pet.mode=4;owner.pet.ride.kind=1;reaction.update(owner,null,pool,.1);const hatQuiet=!reaction.target;
+  owner.pet.ride.kind=2;owner.root.visible=false;reaction.update(owner,null,pool,.1);const hiddenQuiet=!reaction.target;
+  owner.root.visible=true;actors.length=1;reaction.update(owner,null,pool,.1);const departedQuiet=!reaction.target;
+  reaction.dispose();const closed=barkContext.state==="closed";
+  record("pet yaps: the closest other live body inside four metres wins, including this viewer; hidden/departed bodies, flight and exits stop it; gesture, mute/unmute and disposal gate one reused voice",
+    muteStart&&locked&&openedBark&&closestLocal&&boundary&&outOfRange&&quietBark&&heldMute&&unmuted&&leapingQuiet&&hatQuiet&&hiddenQuiet&&departedQuiet&&closed,
+    JSON.stringify({muteStart,locked,openedBark,closestLocal,boundary,outOfRange,quietBark,heldMute,unmuted,leapingQuiet,hatQuiet,hiddenQuiet,departedQuiet,closed}));
 };
 // Single occupancy and direct suspension: exercise the real geometry and seat contracts.
 const hammockChecks = async () => {
@@ -9662,6 +9688,36 @@ const hubHammock = { name: "hub hammock", why: "rule: one face-up Ooga rests off
   await b.send("Input.dispatchKeyEvent", {type:"keyUp",key:"w",code:"KeyW"});
   const walking=await b.evaluate('({seat:!!__ooga.crew.player.camp.seat,q:!!__ooga.crew.player.root.quaternion})');
   record("hub hammock: movement also stands the occupant up",moved&&!walking.seat&&!walking.q,JSON.stringify(walking));
+  const petRest = await b.evaluate(`(() => {
+    const B=__ooga,H=BL.scenes.hub.debug.hammock,s=H.seats[0],M=BL.math.mat4;
+    const npc=B.cavemen.get("Bitcoin-Bill"),from=B.crew.player;
+    Object.assign(npc.root.position,{x:from.root.position.x,y:from.root.position.y-from.baseY+npc.baseY,z:from.root.position.z});
+    npc.root.visible=true;npc.state="chilling";
+    const selected=B.pilot.possess(npc),a=B.crew.player;
+    if(!selected||!a.pet)return {entered:false,selected,name:a.traits.name};
+    B.pilot.navigate({position:{x:s.walkAt.x,y:s.floor,z:s.walkAt.z},yaw:s.ry,pitch:.5,dist:6});B.advance(.5,1/60);
+    const entered=H.enter(a,s,seat=>B.crew.sitPlayer(seat));B.advance(2,1/60);
+    const pet=a.pet,dog=pet.node,inv=M.create(),point=new Float32Array(3);let error=0;
+    for(let i=0;i<30;i++){
+      B.advance(1/60,1/60);BL.scene.updateWorld(a.root);M.invert(inv,a.parts.torso.world);
+      M.transformPoint(point,inv,dog.position.x,dog.position.y,dog.position.z);
+      const at=pet.ride.stomach;error=Math.max(error,Math.hypot(point[0]-at.x,point[1]-at.y,point[2]-at.z));
+    }
+    const resting=pet.mode===4&&pet.ride.kind===2&&dog.visible&&!dog.cameraHidden;
+    B.crew.standPlayer();B.advance(3,1/60);
+    const standing=!a.camp.seat&&pet.mode===0&&dog.quaternion===null;
+    B.pilot.release();
+    const rec={id:9901,login:"Bitclank-Bill",display:"Bill",body:"Bitcoin-Bill",zone:"outside",x:s.restX,y:s.restY,z:s.restZ,yaw:s.ry,jet:0,weapon:0,rest:[0,2,255,0,0,0]};
+    BL.net.remotes.set(rec.id,rec);B.advance(2,1/60);const remote=BL.remotePlayers.body(rec.id),dogRemote=remote.pet.node;
+    const remoteRest=remote.pet.mode===4&&remote.pet.ride.kind===2&&dogRemote.visible;
+    rec.rest=0;rec.x=s.walkAt.x;rec.y=s.floor;rec.z=s.walkAt.z-3;B.advance(3,1/60);
+    let remoteWalk=false;for(let i=0;i<60;i++){rec.z-=.025;B.advance(1/60,1/60);remoteWalk ||= dogRemote.visible&&Math.abs(dogRemote.rotation.z)>.001;}
+    BL.net.remotes.delete(rec.id);B.advance(.1,1/60);const removed=!dogRemote.parent;
+    return {entered,resting,error,standing,remoteRest,remoteWalk,removed};
+  })()`);
+  record("hub hammock: Bill's opted-in pet rests on the current rendered stomach throughout the bed's sway and hops down when he stands",
+    petRest.entered&&petRest.resting&&petRest.error<1e-4&&petRest.standing&&petRest.remoteRest&&petRest.remoteWalk&&petRest.removed,JSON.stringify(petRest));
+
 } };
 const hubHammockEntry = { name: "hub hammock entry", why: "regression: walking at the side must reach the cloth's edge and step onto its middle, and Space must reach the cloth from beside or above and ease into rest without snapping", run: async (b) => {
   const result = await b.evaluate(`(() => {
@@ -24954,22 +25010,49 @@ const petRideChecks = BL => {
   A.root.visible=true;run(60);const back=pet.mode===4&&onHat();
   record("pets: with petRidesHat the dog leaps onto the hat when the jetpack goes on, trots round it through turns, tilts, flight and landing without a jetpack of its own, reuses its ride state, and hops down to checked ground clear of walls when it comes off",
     heel&&leaping&&grounded&&trots&&flies&&landedUp&&hopping&&down&&walled&&hidden&&back,JSON.stringify({heel,leaping,grounded,trots,flies,landedUp,hopping,down,walled,hidden,back,mode:pet.mode}));
+  // Rest takes precedence over a worn jetpack, follows the current torso through sway, and remains in first person.
+  A.puppet=true;A.camp.seat={kind:"hammock"};A.root.quaternion=BL.math.quat.create();
+  BL.math.quat.fromEuler(A.root.quaternion,-Math.PI/2,0.7,0.2);run(60);
+  const onStomach=()=>{S.updateWorld(A.root);M.invert(inverse,A.parts.torso.world);M.transformPoint(local,inverse,dog.position.x,dog.position.y,dog.position.z);
+    return pet.mode===4&&ride.kind===2&&Math.hypot(local[0]-ride.stomach.x,local[1]-ride.stomach.y,local[2]-ride.stomach.z)<1e-5;};
+  const stomach=onStomach();A.parts.head.cameraHidden=true;A.jet=null;run(20);
+  BL.math.quat.fromEuler(A.root.quaternion,-Math.PI/2,0.7,-0.3);C.pets.update(A,0);
+  const sways=onStomach()&&!dog.cameraHidden&&!pet.pack.visible;
+  A.jet={power:0,thrust:false};A.camp.seat.exit={};A.root.quaternion=null;run(60);const restToHat=ride.kind===1&&onHat();
+  A.camp.seat=null;A.parts.head.cameraHidden=false;A.jet=null;run(180);const restDown=pet.mode===0;
+  record("pets: the hat opt-in also leaps onto the stomach at settled hammock rest, keeps to the current swaying torso in first person, and returns to hat or checked ground on exit",
+    stomach&&sways&&restToHat&&restDown,JSON.stringify({stomach,sways,restToHat,restDown}));
   C.dispose();
-  // Another player's Bill: the remote copy's dog, a child of the body at its heel, rides the hat while `jet` is on.
+  // Another player's Bill uses the same checked follower as the crew, independently on each viewer.
   const oldNet=BL.net,records=new Map(),sceneRoot=S.createNode();
   BL.net={serverNow:()=>Date.now(),sendSwing:()=>true,remotes:records,subscribeShots:()=>noop,subscribeSwings:()=>noop};
-  const pool=BL.remotePlayers.create({root:sceneRoot,crew:{cavemen:new Map(),player:null,refreshStates(){},showShot:noop},visible:()=>true});
+  const pool=BL.remotePlayers.create({root:sceneRoot,crew:{cavemen:new Map(),player:null,refreshStates(){},showShot:noop},visible:()=>true,posed:(cave,feet,rec)=>{
+    cave.hammockRest=!!rec.rest;
+    if(rec.rest){cave.root.quaternion ||= BL.math.quat.create();BL.math.quat.fromEuler(cave.root.quaternion,-Math.PI/2,0,0.2);}
+    else cave.root.quaternion=null;
+  }});
   records.set(81,{id:81,login:"Bitclank-Bill",display:"Bill",body:"Bitcoin-Bill",zone:"outside",x:0,y:0,z:0,yaw:0,jet:0,weapon:0});
   const tick=n=>{for(let i=0;i<n;i++)pool.update(1/60);};
   tick(5);const R=pool.body(81),rdog=R.parts.dog,home={...rdog.position};
-  const atHeel=()=>rdog.parent===R.root&&rdog.quaternion==null&&rdog.position.x===home.x&&rdog.position.y===home.y&&rdog.position.z===home.z;
-  const rOnHat=()=>{S.updateLocal(R.parts.head);M.invert(inverse,R.parts.head.local);M.transformPoint(local,inverse,rdog.position.x,rdog.position.y,rdog.position.z);
+  const atHeel=()=>rdog.parent===sceneRoot&&rdog.quaternion==null&&Math.hypot(rdog.position.x-R.root.position.x-home.x,rdog.position.z-R.root.position.z-home.z)<0.16&&Math.abs(R.pet.feet)<1e-6;
+  const rOnHat=()=>{S.updateWorld(R.root);M.invert(inverse,R.parts.head.world);M.transformPoint(local,inverse,rdog.position.x,rdog.position.y,rdog.position.z);
     const r=Math.hypot(local[0]-seat.cx,local[2]-seat.cz);return r<=Math.max(...seat.r)+1e-3&&local[1]>=Math.min(...seat.y)-1e-3;};
   const remoteHeel=atHeel();records.get(81).jet=1;tick(60);const remoteUp=rdog.quaternion!=null&&rOnHat();
   records.get(81).jet=5;records.get(81).y=4;tick(60);const remoteFlying=rOnHat();
-  records.get(81).jet=0;tick(60);const remoteDown=atHeel();
-  record("pets: another player's opted-in dog rides the hat while their jetpack is on and is back at the heel when it comes off, from the room's jet alone",
-    remoteHeel&&remoteUp&&remoteFlying&&remoteDown,JSON.stringify({remoteHeel,remoteUp,remoteFlying,remoteDown}));
+  records.get(81).jet=0;records.get(81).y=0;tick(180);const remoteDown=atHeel();
+  records.get(81).x=3;tick(1);const lag=rdog.position.x<R.root.position.x+home.x;
+  let remoteTrots=false;for(let i=0;i<30;i++){records.get(81).x+=0.04;tick(1);remoteTrots ||= R.pet.step>0&&rdog.rotation.z!==0;}
+  tick(90);const followed=atHeel();
+  records.get(81).x=40;tick(1);const snapped=atHeel();
+  records.get(81).rest=[0,2,255,0,0,0];tick(60);
+  S.updateWorld(R.root);M.invert(inverse,R.parts.torso.world);M.transformPoint(local,inverse,rdog.position.x,rdog.position.y,rdog.position.z);
+  const remoteRest=R.pet.ride.kind===2&&R.pet.mode===4&&Math.abs(local[2]-R.pet.ride.stomach.z)<1e-5;
+  records.get(81).rest=[0,3,0,0,0,0];tick(1);const remoteExit=R.pet.ride.kind===0;
+  records.get(81).rest=0;tick(180);
+  const remoteRestDown=atHeel();
+  records.delete(81);tick(1);const removed=!rdog.parent;
+  record("pets: a live player's dog trots after their shared movement, catches up, relocates and disposes cleanly, and rides the hat from the existing jet state",
+    remoteHeel&&remoteUp&&remoteFlying&&remoteDown&&lag&&remoteTrots&&followed&&snapped&&remoteRest&&remoteExit&&remoteRestDown&&removed,JSON.stringify({remoteHeel,remoteUp,remoteFlying,remoteDown,lag,remoteTrots,followed,snapped,remoteRest,remoteExit,remoteRestDown,removed}));
   pool.dispose();BL.net=oldNet;
   if(rides===undefined)delete look.petRidesHat;else look.petRidesHat=rides;
 };
