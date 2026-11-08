@@ -134,13 +134,13 @@
     // workstations (stood back from the desk, since a gorilla leans in over what it faces, and clear of the crates by
     // the second), at the stats board, on the Jet's gangway, at its stair (far enough off the tool chest beside it that
     // its pacing stays clear of the chest) and its engine, on both catwalks, three in the command room by the door
-    // (`COMMAND`: two at its console, one reading its board), one in each of the crew's rooms on the right wall and,
+    // (`COMMAND`: two at its console, one pacing behind them), one in each of the crew's rooms on the right wall and,
     // last, one in the control room, each behind its console, facing out over the hall, standing where it is
     // (no floor of its own to pace).
     crew: [[-9.5, 0, 18.35, 0.35, Math.PI], [-9.75, 0, 10.85, 0.35, Math.PI + 0.3], [-9.5, 0, -11.75, 0.35, Math.PI], [-13.15, 0, -11, 0.35, -Math.PI / 2],
       [HALL.x0 + 5.6, 0, 16.4, 0.8, -Math.PI / 2], [11, 5, -17.5, 0.9, Math.PI / 2], [6.8, 0, 0.4, 0.5, Math.PI / 2], [14.8, 0, 6.2, 0.4, Math.PI],
       [HALL.x1 - 4.2, 7.5, 6, 2.2, -Math.PI / 2], [HALL.x0 + 4.2, 7.5, 0, 2.2, Math.PI / 2],
-      [-15.2, 0, 31.05, 0.2, Math.PI], [-12, 0, 31.05, 0.2, Math.PI], [-16.2, 0, 33.05, 0.3, -Math.PI / 2],
+      [-15.2, 0, 31.05, 0.2, Math.PI], [-12, 0, 31.05, 0.2, Math.PI], [-15.4, 0, 32.7, 1.2, Math.PI],
       ...SIDE_ROOMS.bays.map((z, i) => [HALL.x1 - 0.45, 7.5, z - SIDE_ROOMS.consoles[i], 0.3, -Math.PI / 2]),
       [HALL.x0 + 0.45, 7.5, 9.3, 0.3, Math.PI / 2]]
   };
