@@ -1760,6 +1760,39 @@
     });
     return { flat: merge(...flat), glow: noShadow(merge(...glow)), back: back(), screens: W.screens.map(screen), windows, still: merge(...still) };
   });
+  // The industrial fan high on the right wall over the crew room whose bay has no loft window (`at`, the fan's middle on
+  // the wall), after the concept: a square dark steel housing standing `deep` out of the panels, its frame round a
+  // darker inset with two small blue lamps over it, bolts at its corners and an amber lamp by its foot; in it a round
+  // shroud `r` round with a heavy rim, dark down its duct, and a ledge under it. Its rotor (`rotor`, about its own
+  // middle and turning about x, the wall's normal) is `blades` pitched blades round a hub with a cap, which the scene
+  // turns (`FAN.rate` turns a second).
+  const FAN = { at: { y: 12.3, z: 10 }, w: 2.3, h: 2.4, deep: 0.5, r: 0.78, blades: 12, rate: 0.7, frame: "#262b35", inset: "#1b1f27", duct: "#0e1116", rim: "#4b525d", lip: "#6b7480", blade: "#5b6370", blue: "#5fb8ff", amber: "#ffb347" };
+  const fan = cached(() => {
+    const F = FAN, flat = [], glow = [], hw = F.w / 2, hh = F.h / 2, wall = HALL.x1 - LAYOUT.shell.face, cy = 0.1;
+    // Built facing +z about the fan's middle on the wall, then turned to face into the hall (-x) and moved there.
+    flat.push(box({ w: F.w - 0.3, h: F.h - 0.3, d: 0.12, color: F.inset, offset: { z: 0.06 } }));
+    for (const s of [-1, 1]) {
+      flat.push(bevelBox({ w: 0.2, h: F.h, d: F.deep, color: F.frame, bevel: 0.03, offset: { x: s * (hw - 0.1), z: F.deep / 2 } }));
+      flat.push(bevelBox({ w: F.w - 0.4, h: 0.2, d: F.deep - 0.06, color: F.frame, bevel: 0.03, offset: { y: s * (hh - 0.1), z: (F.deep - 0.06) / 2 } }));
+      flat.push(box({ w: 0.04, h: F.h - 0.1, d: 0.02, color: F.rim, offset: { x: s * (hw - 0.2), z: F.deep + 0.01 } }));
+      for (const t of [-1, 1]) flat.push(box({ w: 0.06, h: 0.06, d: 0.03, color: F.lip, offset: { x: s * (hw - 0.1), y: t * (hh - 0.12), z: F.deep + 0.015 } }));
+    }
+    const ring = (inner, outer, z0, z1, color) => turnedX(lathe({ profile: [[inner, z0], [outer, z0], [outer, z1], [inner, z1], [inner, z0]], segments: 32, color }), Math.PI / 2);
+    flat.push(moved(ring(F.r, F.r + 0.1, 0.12, 0.42, F.rim), 0, cy, 0));
+    flat.push(moved(turnedX(torus(F.r + 0.05, 0.06, F.lip, 0, 32, 6), Math.PI / 2), 0, cy, 0.42));
+    flat.push(moved(turnedX(lathe({ profile: [[0, 0], [F.r, 0], [F.r, 0.01], [0, 0.01]], segments: 32, color: F.duct }), Math.PI / 2), 0, cy, 0.125));
+    flat.push(bevelBox({ w: F.w - 0.5, h: 0.09, d: 0.32, color: F.lip, bevel: 0.02, offset: { y: -hh + 0.3, z: 0.28 } }));
+    flat.push(box({ w: F.w - 0.5, h: 0.05, d: 0.04, color: F.frame, offset: { y: -hh + 0.23, z: 0.43 } }));
+    for (const s of [-1, 1]) glow.push(box({ w: 0.3, h: 0.07, d: 0.03, color: F.blue, emissive: 1, offset: { x: s * 0.55, y: hh - 0.1, z: F.deep - 0.04 } }));
+    glow.push(box({ w: 0.07, h: 0.07, d: 0.03, color: F.amber, emissive: 1, offset: { x: hw - 0.42, y: -hh + 0.5, z: 0.16 } }));
+    // The rotor: blades from the hub out nearly to the shroud, each pitched about its length.
+    const blades = [], len = F.r - 0.2;
+    for (let k = 0; k < F.blades; k++) blades.push(turnedZ(moved(turnedY(box({ w: 0.15, h: len, d: 0.025, color: F.blade }), 0.5), 0, 0.15 + len / 2, 0), (k / F.blades) * Math.PI * 2));
+    blades.push(turnedX(lathe({ profile: [[0, -0.06], [0.17, -0.06], [0.17, 0.06], [0.12, 0.11], [0, 0.12]], segments: 16, color: F.rim }), Math.PI / 2));
+    blades.push(moved(turnedX(lathe({ profile: [[0, 0], [0.07, 0], [0.05, 0.04], [0, 0.05]], segments: 12, color: F.lip }), Math.PI / 2), 0, 0, 0.12));
+    const place = (geo, z) => moved(turnedY(geo, -Math.PI / 2), wall, F.at.y, F.at.z + z);
+    return { flat: place(merge(...flat), 0), glow: noShadow(place(merge(...glow), 0)), rotor: noShadow(turnedY(merge(...blades), -Math.PI / 2)), at: { x: wall - 0.3, y: F.at.y + cy, z: F.at.z } };
+  });
 
   // The control room's fire extinguisher, in its own frame, its foot at (0, 0, 0) and its front (the hose's nozzle)
   // toward +z: a red cylinder with a domed top, a white band, the black valve with its lever and carrying handle and its
@@ -3698,7 +3731,7 @@
   };
 
   BL.hangarModels = {
-    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, ARCH, arch, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, COMMAND, commandRoom, commandDoor, SIDE_ROOMS, sideRooms, roomDoor, keypad, LOFT, loftWindows, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
+    LAYOUT, STEP, TINTS, LANTERN_GLOW, shell, landing, doorBulkhead, ARCH, arch, GLOSS, glossRunway, wallLights, CONTROL, controlRoom, COMMAND, commandRoom, commandDoor, SIDE_ROOMS, sideRooms, roomDoor, keypad, LOFT, loftWindows, FAN, fan, extinguisher, NOZZLE, CRANE, crane, laydown, craneSpot, runway, marker, floorLamp, tunnel, catwalks, fixtures, boardFrames, statsFace, timelineFace, JETS, jetStreaks, boardText, boardNote, paintBoard, dock, vest,
     fixedLights, KEY, doorWindow, FIRE, fireStation, fireCables, firePicture, exhaust, blast, KIOSK, DESK, projector, filmScreen, projectorBeam,
     hallGlimpse: cached(() => noShadow(merge(
       box({ w: 4.4, h: 4.6, d: 0.1, color: "#2a1a10", emissive: 0.55, offset: { y: 2.3, z: -3.25 } }),
