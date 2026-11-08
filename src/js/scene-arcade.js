@@ -918,7 +918,7 @@
     const farOut = !haunted && t.z < HALL.back + 5 && t.x > BH.x0 - 6 && t.x < BH.x1 + 5;
     if (!haunted && camera.far !== (farOut ? 260 : 60)) camera.far = farOut ? 260 : 60;
     bhSky.visible = bhIsle.visible = farOut;
-    if (!haunted) { RENDER_OPTS.fogNear = farOut ? 140 : 20; RENDER_OPTS.fogFar = farOut ? 420 : 42; }
+    if (!haunted) { RENDER_OPTS.fogNear = farOut ? 140 : 20; RENDER_OPTS.fogFar = farOut ? 420 : 42; RENDER_OPTS.bloomStrength = t.z < HALL.back - 2 && farOut ? 0.3 : 1.15; }
     if (haunted) {
       for (const key in NIGHT_TONES) for (let i = 0; i < 3; i++) TONES[key][i] = NIGHT_TONES[key][i];
       RENDER_OPTS.directStrength = CAVE.directStrength; RENDER_OPTS.ambientFloor = CAVE.ambientFloor;

@@ -1271,14 +1271,14 @@
     const island = merge(under, grass, moved(palm, -3.4, 0.26, -2.5), lump(3.4, 0.26, -1.6, 0.7, "#6a6158"), lump(-1.6, 0.26, 3.2, 0.5, "#6a6158"));
     for (const f of island.faces) f.emissive = Math.max(f.emissive || 0, 0.3);
     // The sky round everything out here: emissive card faces well past the island, bands darker upward, a few clouds.
-    const FAR = 150, bands = [["#f1cfa6", -60, 20], ["#cfe0ea", -20, 40], ["#9fc7e6", 20, 60], ["#6ea7d8", 60, 75]];
+    const FAR = 150, bands = [["#c9a88a", -60, 20], ["#a8bccb", -20, 40], ["#83a8c6", 20, 60], ["#5b8db8", 60, 75]];
     const sky = [];
     for (const [c, y0, y1] of bands) {
       const h = y1 - y0, m = (y0 + y1) / 2;
-      sky.push(box({ w: 2 * FAR, h, d: 0.5, color: c, emissive: 1, offset: { x: X, y: m, z: -FAR - 40 } }), box({ w: 0.5, h, d: 2 * FAR, color: c, emissive: 1, offset: { x: X - FAR, y: m, z: -40 } }), box({ w: 0.5, h, d: 2 * FAR, color: c, emissive: 1, offset: { x: X + FAR, y: m, z: -40 } }));
+      sky.push(box({ w: 2 * FAR, h, d: 0.5, color: c, emissive: 0.55, offset: { x: X, y: m, z: -FAR - 40 } }), box({ w: 0.5, h, d: 2 * FAR, color: c, emissive: 0.55, offset: { x: X - FAR, y: m, z: -40 } }), box({ w: 0.5, h, d: 2 * FAR, color: c, emissive: 0.55, offset: { x: X + FAR, y: m, z: -40 } }));
     }
-    sky.push(box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#6ea7d8", emissive: 1, offset: { x: X, y: 75, z: -40 } }), box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#e8c89a", emissive: 1, offset: { x: X, y: -60, z: -40 } }));
-    for (const [cx, cy, cz, sx] of [[-20, 10, -130, 22], [32, 16, -128, 30], [-48, -2, -128, 18], [10, -18, -125, 26], [60, -8, -120, 16]]) sky.push(box({ w: sx, h: 2.4, d: 0.5, color: "#f7f4ee", emissive: 1, offset: { x: cx, y: cy, z: cz } }), box({ w: sx * 0.6, h: 2, d: 0.5, color: "#ffffff", emissive: 1, offset: { x: cx + 2, y: cy + 2, z: cz + 0.3 } }));
+    sky.push(box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#5b8db8", emissive: 0.55, offset: { x: X, y: 75, z: -40 } }), box({ w: 2 * FAR, h: 0.5, d: 2 * FAR, color: "#b89a7a", emissive: 0.55, offset: { x: X, y: -60, z: -40 } }));
+    for (const [cx, cy, cz, sx] of [[-20, 10, -130, 22], [32, 16, -128, 30], [-48, -2, -128, 18], [10, -18, -125, 26], [60, -8, -120, 16]]) sky.push(box({ w: sx, h: 2.4, d: 0.5, color: "#d8d4cc", emissive: 0.55, offset: { x: cx, y: cy, z: cz } }), box({ w: sx * 0.6, h: 2, d: 0.5, color: "#e2dfd8", emissive: 0.55, offset: { x: cx + 2, y: cy + 2, z: cz + 0.3 } }));
     return { rock, ledge: shaded(round, flat), props: merge(...props), sky: merge(...sky), island };
   });
   const haunt = BL.models.cachedSteps(function* (slice = null) {
