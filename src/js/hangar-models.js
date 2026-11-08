@@ -1064,9 +1064,11 @@
   // the floor (`decal`) and blue strips along it.
   const COMMAND = { x0: -18, x1: -6, front: HALL.front - LAYOUT.shell.face, back: HALL.front - LAYOUT.shell.face + 8, top: 4.2, sill: 0.95, lean: 0.35,
     glazed: -9.3, panes: 4, doorX: -7.2, door: 1.9, doorH: 2.5, navy: "#101a3c", cream: "#f3ead0", bolt: "#ffd23a",
-    facade: { x0: -18.45, x1: -5.65, out: 0.45, lip: 0.22, frame: 0.36, chamfer: 0.5, body: "#565c78", edge: "#6c7394", light: "#8088a8", dark: "#2a2e40",
+    facade: { x0: -18.45, x1: -5.65, out: 0.45, lip: 0.22, frame: 0.36, rim: 0.15, body: "#5f6589", edge: "#767da6", light: "#9aa0c8", dark: "#2a2e40",
       orange: "#f28a1c", blue: "#4fb3ff", yellow: "#f2b630", pipe: "#2b3550",
-      blocks: [[-5.65, -8.6, 5.9, 1, 0], [-8.6, -10.3, 5.0, 0, 0], [-10.3, -17, 6.0, 1, 1], [-17, -18.45, 5.3, 0, 1]] },
+      outline: [[-5.65, 5.5], [-6.1, 5.95], [-8.3, 5.95], [-8.9, 5.35], [-9.95, 5.35], [-10.6, 6.0], [-16.7, 6.0], [-17.35, 5.35], [-18.0, 5.35],
+        [-18.15, 5.62], [-18.3, 5.62], [-18.45, 5.47]],
+      door: [-6.1, -8.3], lamps: [[-8.9, -9.95], [-17.35, -18.0]], crown: [-10.6, -16.7] },
     console: [-17.5, -9.6, 29.1], deep: 1.15, chairs: [[-16.8, 30.95], [-13.6, 30.95], [-10.4, 30.95]],
     monitors: [[0.75, "chart"], [1.0, "cams"], [0.75, "radar"], [0.4, "lantern"], [0.85, "bars"], [0.75, "radar"], [1.55, "jet"], [0.75, "blueprint"]],
     command: { z: 33.05, y: 2.45, w: 4.4, h: 2.2 }, cameras: { z: 32.7, y: 2.3, w: 2.8, h: 1.6 }, status: { x: -12.4, y: 2.9, w: 3.4, h: 1.45 },
@@ -1357,42 +1359,47 @@
       for (let k = 0; k < 3; k++) glow.push(box({ w: 1.5, h: 0.02, d: 0.24, color: "#9fdcff", emissive: 1, offset: { x, y: top - 0.07, z: z - 0.3 + k * 0.3 } }));
     }
     // The front after the concept: a chunky steel facade standing `facade.out` out of the wall round the glass and the
-    // door. Its head steps along its top in blocks (`facade.blocks`, each [from, to, top, chamfered at its start, at its
-    // end], from the door's end), each a convex prism with its outer top corners cut and a lighter edge along its top;
-    // under them a lighter lip the width of the front with an orange line along it and rivets, seams down the head
-    // between the blocks, the sign a navy lightbox with chamfered ends in a glowing blue rim on a dark panel on the
-    // middle block, an amber lightbox on the blocks either side of it, and two pipes coming down the wall onto the
-    // block over the door in yellow brackets.
-    const F = K.facade, fm = front - F.out / 2, ff = front - F.out, gx = (x0 + K.glazed) / 2, c = F.chamfer;
+    // door. Its head steps along its top in one outline (`facade.outline`, from the door's end), the levels joined by
+    // diagonals: a tall block over the door with its outer corner cut (`facade.door`), down to a band holding an amber
+    // lightbox, up to the sign's raised housing (`facade.crown`), down to the far band's lightbox and up to a small end
+    // block, each stretch of the outline a convex prism from the head's foot, with a chunky lighter rim `rim` deep along
+    // its top standing a little proud (the concept's bevelled edges) and a seam down the head at each turn. Under it a
+    // lighter lip the width of the front with an orange line along it and rivets; vent slots on the block over the door,
+    // into whose top two pipes come down the wall in square yellow couplings; the sign a navy lightbox with chamfered
+    // ends in a glowing blue rim on a dark panel on the housing.
+    const F = K.facade, fm = front - F.out / 2, ff = front - F.out, gx = (x0 + K.glazed) / 2, O = F.outline;
     const slab = (pts, d, z, color, emissive = 0, into = flat) => into.push(moved(prism(pts, d, color, emissive), 0, 0, z));
-    const edgeLine = (ax, ay, bx, by, z) => detail.push(beam(ax, ay, z, bx, by, z, 0.06, F.light));
-    for (const [xa, xb, yt, cutA, cutB] of F.blocks) {
-      const lo = Math.min(xa, xb), hi = Math.max(xa, xb), cutLo = xa < xb ? cutA : cutB, cutHi = xa < xb ? cutB : cutA;
-      const pts = [[lo, top], [hi, top], [hi, yt - (cutHi ? c : 0)], [hi - (cutHi ? c : 0), yt], [lo + (cutLo ? c : 0), yt], [lo, yt - (cutLo ? c : 0)]];
-      slab(pts, F.out, fm, F.body);
-      for (let k = 2; k < 5; k++) if (Math.hypot(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]) > 0.05) edgeLine(pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], ff - 0.01);
-      detail.push(box({ w: 0.04, h: yt - top - 0.3, d: 0.02, color: F.dark, offset: { x: lo + 0.02, y: (top + yt - 0.3) / 2 + 0.1, z: ff - 0.005 } }));
+    for (let k = 0; k < O.length - 1; k++) {
+      const [ax, ay] = O[k], [bx, by] = O[k + 1], lo = ax < bx ? [ax, ay] : [bx, by], hi = ax < bx ? [bx, by] : [ax, ay];
+      if (hi[0] - lo[0] < 0.01) continue;
+      slab([[lo[0], top], [hi[0], top], [hi[0], hi[1] - F.rim], [lo[0], lo[1] - F.rim]], F.out, fm, F.body);
+      slab([[lo[0], lo[1] - F.rim], [hi[0], hi[1] - F.rim], [hi[0], hi[1]], [lo[0], lo[1]]], F.out + 0.06, fm - 0.03, F.light);
+      detail.push(beam(lo[0], lo[1] - F.rim - 0.015, ff - 0.035, hi[0], hi[1] - F.rim - 0.015, ff - 0.035, 0.035, F.dark));
+      if (k > 0) detail.push(box({ w: 0.035, h: ax === O[k][0] ? ay - top - F.lip - F.rim - 0.05 : 0.1, d: 0.02, color: F.dark, offset: { x: ax, y: (top + F.lip + ay - F.rim) / 2, z: ff - 0.005 } }));
     }
     flat.push(box({ w: F.x1 - F.x0 + 0.1, h: F.lip, d: F.out + 0.16, color: F.edge, offset: { x: (F.x0 + F.x1) / 2, y: top + F.lip / 2, z: front - (F.out + 0.16) / 2 } }));
     glow.push(box({ w: F.x1 - F.x0 - 0.3, h: 0.06, d: 0.02, color: F.orange, emissive: 0.8, offset: { x: (F.x0 + F.x1) / 2, y: top + 0.07, z: ff - 0.17 } }));
     for (let x = F.x0 + 0.4; x < F.x1 - 0.2; x += 0.8) detail.push(box({ w: 0.06, h: 0.06, d: 0.02, color: F.dark, offset: { x, y: top + F.lip - 0.06, z: ff - 0.17 } }));
-    const crown = F.blocks[2], cx = (crown[0] + crown[1]) / 2, cy = (top + F.lip + crown[2]) / 2;
-    const sign = { w: 5.4, h: 0.95, y: cy + 0.05, z: front - F.out - 0.1, c: 0.24 };
+    const [da, db] = F.door;
+    for (let r = 0; r < 2; r++) for (let k = 0; k < 5; k++) detail.push(box({ w: 0.24, h: 0.05, d: 0.02, color: "#181b26", offset: { x: (da + db) / 2 + (k - 2) * 0.34, y: 5.0 + r * 0.14, z: ff - 0.01 } }));
+    const crownTop = O.find(([x]) => x === F.crown[0])[1], cx = (F.crown[0] + F.crown[1]) / 2, cy = (top + F.lip + crownTop - F.rim) / 2;
+    const sign = { w: 5.0, h: 0.9, y: cy + 0.03, z: front - F.out - 0.1, c: 0.24 };
     const octagon = (x, y, w, h, k) => [[x - w / 2 + k, y - h / 2], [x + w / 2 - k, y - h / 2], [x + w / 2, y - h / 2 + k], [x + w / 2, y + h / 2 - k],
       [x + w / 2 - k, y + h / 2], [x - w / 2 + k, y + h / 2], [x - w / 2, y + h / 2 - k], [x - w / 2, y - h / 2 + k]];
     slab(octagon(cx, sign.y, sign.w + 0.6, sign.h + 0.4, sign.c + 0.2), 0.08, ff - 0.03, F.dark);
     slab(octagon(cx, sign.y, sign.w + 0.16, sign.h + 0.16, sign.c + 0.06), 0.06, sign.z + 0.02, F.blue, 1, glow);
     slab(octagon(cx, sign.y, sign.w, sign.h, sign.c), 0.1, sign.z - 0.02, K.navy, 0.45);
     pictures.push({ geometry: screenPicture(sign.w - 2 * sign.c, sign.h - 0.08, 200, paintCommandSign), x: cx, y: sign.y, z: sign.z - 0.075, turn: Math.PI });
-    for (const [xa, xb, yt] of [F.blocks[1], F.blocks[3]]) {
-      const x = (xa + xb) / 2, y = (top + F.lip + yt) / 2 + 0.02;
-      detail.push(bevelBox({ w: 0.92, h: 0.32, d: 0.08, color: F.orange, emissive: 0.3, bevel: 0.02, offset: { x, y, z: ff - 0.02 } }));
-      lamps.push(box({ w: 0.8, h: 0.2, d: 0.02, color: "#ffc77a", emissive: 1, offset: { x, y, z: ff - 0.07 } }));
+    for (const [la, lb] of F.lamps) {
+      const yt = O.find(([x]) => x === la)[1], x = (la + lb) / 2, w = Math.min(0.9, Math.abs(lb - la) - 0.12), y = (top + F.lip + yt - F.rim) / 2 + 0.01;
+      detail.push(bevelBox({ w: w + 0.1, h: 0.32, d: 0.08, color: F.orange, emissive: 0.3, bevel: 0.02, offset: { x, y, z: ff - 0.02 } }));
+      lamps.push(box({ w, h: 0.2, d: 0.02, color: "#ffc77a", emissive: 1, offset: { x, y, z: ff - 0.07 } }));
     }
-    const pipeFoot = F.blocks[0][2] - 0.05;
-    for (const px of [-6.6, -6.2]) {
-      flat.push(moved(lathe({ profile: [[0.09, 0], [0.09, 3], [0, 3]], segments: 10, color: F.pipe }), px, pipeFoot, front - 0.2));
-      for (let y = pipeFoot + 0.25; y < pipeFoot + 2.9; y += 0.85) detail.push(moved(lathe({ profile: [[0.11, 0], [0.11, 0.14], [0, 0.14]], segments: 10, color: F.yellow }), px, y, front - 0.2));
+    const pipeFoot = O.find(([x]) => x === da)[1];
+    for (const px of [-6.75, -7.2]) {
+      flat.push(moved(lathe({ profile: [[0.095, 0], [0.095, 3], [0, 3]], segments: 10, color: F.pipe }), px, pipeFoot, front - 0.22));
+      detail.push(bevelBox({ w: 0.3, h: 0.16, d: 0.3, color: F.yellow, bevel: 0.025, offset: { x: px, y: pipeFoot + 0.08, z: front - 0.22 } }));
+      for (let y = pipeFoot + 0.8; y < pipeFoot + 2.9; y += 0.9) detail.push(bevelBox({ w: 0.26, h: 0.2, d: 0.26, color: F.yellow, bevel: 0.025, offset: { x: px, y, z: front - 0.22 } }));
     }
     // The glass: the base under it standing out with its vents, three blue strips and a yellow bumper at its outer end,
     // the sill over it with its top corners cut, and the panes leaning out to the head in a heavy lighter frame with all
