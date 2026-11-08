@@ -9690,7 +9690,7 @@ const hubHammock = { name: "hub hammock", why: "rule: one face-up Ooga rests off
   record("hub hammock: movement also stands the occupant up",moved&&!walking.seat&&!walking.q,JSON.stringify(walking));
 } };
 // Bill's own file decides whether his dog rides: the wire records what the file says and only then opts him in for the
-// steps below, so an engine check can run ahead of his queued file without hiding that the file doesn't say so yet.
+// steps below. The opt-in check itself stays strict: this engine needs his character change landed first.
 const petOptInWire = () => {
   const BL = window.BL = window.BL || {};
   Object.defineProperty(BL, "characters", { configurable: true, set(api) {
@@ -9702,7 +9702,7 @@ const petOptInWire = () => {
     };
   } });
 };
-const hubPetOptIn = { name: "hub pet opt-in", open: "Bill's opt-in is queued in character intake, separately from the engine", why: "regression: #523's checks set the flag themselves while Bill's own file lost it, so live Bill's dog never rode anything", run: async (b) => {
+const hubPetOptIn = { name: "hub pet opt-in", why: "regression: #523's checks set the flag themselves while Bill's own file lost it, so live Bill's dog never rode anything", run: async (b) => {
   record("hub pets: Bitcoin-Bill's own character file opts his dog in to riding", await b.evaluate("window.__billFileOptsIn === true"));
 } };
 const hubPetRides = { name: "hub pet rides", why: "regression: a dog leaving a body at rest hopped to the lying body's heel spot, landed on the cloth and stood stuck at its edge, on the owner's page and every other", run: async (b) => {
