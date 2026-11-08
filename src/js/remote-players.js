@@ -82,7 +82,6 @@
   const OLD_CAVES = new Set(["lab", "bca", "factory", "arcade", "mirror"]);
   const onIsland = (zone) => BL.voiceBlend.world(zone) || OLD_CAVES.has(zone) || typeof zone === "string" && zone.startsWith("cave-");
   const sameZone = (rec) => rec.zone === BL.net.state.zone;
-  const UNARMED_PARTS = ["club", "gun"];
 
   // `posed(cave, feetY)` lets the scene finish a body's pose once it stands where the room says: the hub sets a
   // swimmer's arms by it, from the position the pose transport already carries, with no simulation of its own.
@@ -397,7 +396,11 @@
           pose(entry, dt);
           showJet(entry, rec);
           showWeapon(entry, rec, dt);
-          if (unarmed) for (const key of UNARMED_PARTS) if (entry.cave.parts[key]) entry.cave.parts[key].visible = false;
+          if (unarmed) {
+            const { club, gun } = entry.cave.parts;
+            if (club) club.visible = false;
+            if (gun) gun.visible = false;
+          }
           if (posed) posed(entry.cave, entry.cave.root.position.y - entry.baseY, rec, dt);
         }
         // The top's move carries a player standing on it; a snap carries nobody.
