@@ -66,6 +66,8 @@
       parts.push(box({ w: w + 0.1, h: 0.12, d: d + 0.12, color: "#55555e", offset: { x, y: 0.06, z } }));
       return true;
     }
+    // The tall iron gate's collision: the scene draws the gate itself (`hauntModels.ironFence`).
+    if (bottom === 0 && Math.abs(h - 3.9) < 0.05 && Math.abs(w - 4.6) < 0.05) return true;
     if (bottom === 0 && Math.abs(h - 1.3) < 0.05 && thin <= 0.35) {
       // The iron fence: rails and spiked bars.
       parts.push(box({ w, h: 0.06, d, color: "#1c1a20", offset: { x, y: 1.1, z } }), box({ w, h: 0.06, d, color: "#1c1a20", offset: { x, y: 0.3, z } }));
@@ -120,9 +122,10 @@
         const k = TOP - 1 - iy;
         // Haunted Hollow's field is brick, courses in staggered runs (slots 10 and 11 are its brick and mortar).
         // An open grave's hole (the pit `GRAVE_Y` deep in the sim), down to dirt.
-        if (k === 0 && SIM.inGraveOf(x, z, M)) continue;
+        const pit = SIM.inGraveOf(x, z, M), holeK = Math.round(-SIM.GRAVE_Y / C);
+        if (pit && k < holeK) continue;
         const row = Math.floor(iz / 2), brick = M.id === "haunted" && field ? (iz % 2 === 0 || (ix + (row % 2) * 2) % 4 === 0 ? 11 : 10) : top;
-        grid.set(ix, iy, iz, k === 0 ? brick : k <= 2 ? P.dirt : isleRock(ix, iy, iz, 1));
+        grid.set(ix, iy, iz, k === 0 ? brick : k <= 2 || (pit && k <= holeK + 1) ? P.dirt : isleRock(ix, iy, iz, 1));
       }
     }
     for (const b of M.rocks || []) {
@@ -522,7 +525,7 @@
     geo.castShadow = false;
     return geo;
   });
-  // A rain streak, a thin pale bar the scene leans with the wind.
+  // A rain streak, a thin pale bar.
   const streak = cached(() => {
     const geo = box({ w: 0.025, h: 0.5, d: 0.025, color: "#c8d8ff", emissive: 0.4 });
     geo.castShadow = false;
@@ -530,7 +533,7 @@
   });
   // The guns, each in its own frame with the grip at the origin and the muzzle along +z, in team colours (variants by
   // team): a paintball marker with a hopper, a chunky grenade launcher with a drum, a big shoulder rocket launcher, a
-  // net gun with a flared mouth and a long sniper rifle with a scope.
+  // short, wide net launcher and a long sniper rifle with a scope.
   const GUNS = ["paint", "grenade", "rocket", "net", "sniper", "gold", "ak"];
   const GOLD = "#f2c230", GOLD_DK = "#b8901c";
   const METAL = "#3a3a40", DARK = "#24242a";
@@ -558,11 +561,15 @@
       parts.push(box({ w: 0.14, h: 0.14, d: 0.1, color: ORANGE, emissive: 1, offset: { y: 0.04, z: 0.74 } }));
       parts.push(box({ w: 0.05, h: 0.1, d: 0.14, color: DARK, offset: { x: 0.1, y: 0.2, z: 0.25 } }));
     } else if (kind === "net") {
+      // A chunky launcher: a squat breech behind a short, wide barrel with a team-coloured muzzle band, a dark bore and
+      // a weight at each corner of the mouth. The same whether a net is loaded or not.
       grip();
-      parts.push(bevelBox({ w: 0.12, h: 0.12, d: 0.34, color: "#3f5a3a", offset: { y: 0.04, z: 0.08 } }));
-      parts.push(box({ w: 0.3, h: 0.3, d: 0.08, color: "#7fe08a", emissive: 0.5, offset: { y: 0.04, z: 0.32 } }));
-      parts.push(box({ w: 0.2, h: 0.2, d: 0.1, color: "#5a8a52", offset: { y: 0.04, z: 0.26 } }));
-      for (const [x, y] of [[-0.13, -0.09], [0.13, -0.09], [-0.13, 0.17], [0.13, 0.17]]) parts.push(box({ w: 0.04, h: 0.04, d: 0.04, color: "#c9b48a", offset: { x, y, z: 0.37 } }));
+      parts.push(bevelBox({ w: 0.2, h: 0.2, d: 0.26, color: METAL, offset: { y: 0.05, z: -0.04 } }));
+      parts.push(bevelBox({ w: 0.42, h: 0.42, d: 0.4, color: "#3f5a3a", offset: { y: 0.1, z: 0.28 } }));
+      parts.push(box({ w: 0.48, h: 0.48, d: 0.08, color: c.deep, offset: { y: 0.1, z: 0.48 } }));
+      parts.push(box({ w: 0.32, h: 0.32, d: 0.04, color: DARK, offset: { y: 0.1, z: 0.53 } }));
+      for (const [x, y] of [[-0.2, -0.1], [0.2, -0.1], [-0.2, 0.3], [0.2, 0.3]]) parts.push(box({ w: 0.08, h: 0.08, d: 0.08, color: "#c9b48a", offset: { x, y, z: 0.55 } }));
+      parts.push(box({ w: 0.06, h: 0.08, d: 0.14, color: c.paint, emissive: 0.5, offset: { y: 0.35, z: 0.14 } }));
     } else if (kind === "ak") {
       // The Ooga AK: a wooden stock and grip, a dark receiver, a long barrel with a front sight, and a curved banana
       // magazine in the team's colour.
@@ -887,14 +894,12 @@
       parts.push(box({ w: 0.08, h: 0.12, d: b[3] - b[2] - 0.8, color, emissive: 1, offset: { x: b[1] + 0.05, y: 1.5, z: (b[2] + b[3]) / 2 } }));
     }
     for (const [x0, x1, z0, z1] of M.graves) {
-      const x = (x0 + x1) / 2, z = (z0 + z1) / 2;
-      parts.push(box({ w: 0.28, h: 0.28, d: 0.28, color: "#e0dccf", offset: { x, y: -0.26, z: z1 - 0.45 } }));
-      for (let r = 0; r < 4; r++) parts.push(box({ w: 0.42, h: 0.05, d: 0.06, color: "#d4cebd", offset: { x, y: -0.4, z: z1 - 0.8 - r * 0.2 } }));
-      parts.push(box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x - 0.12, y: -0.42, z: z0 + 0.7 } }), box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x + 0.12, y: -0.42, z: z0 + 0.7 } }));
+      const x = (x0 + x1) / 2, z = (z0 + z1) / 2, floor = SIM.GRAVE_Y;
+      parts.push(box({ w: 0.28, h: 0.28, d: 0.28, color: "#e0dccf", offset: { x, y: floor + 0.29, z: z1 - 0.45 } }));
+      for (let r = 0; r < 4; r++) parts.push(box({ w: 0.42, h: 0.05, d: 0.06, color: "#d4cebd", offset: { x, y: floor + 0.15, z: z1 - 0.8 - r * 0.2 } }));
+      parts.push(box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x - 0.12, y: floor + 0.13, z: z0 + 0.7 } }), box({ w: 0.08, h: 0.05, d: 0.9, color: "#d4cebd", offset: { x: x + 0.12, y: floor + 0.13, z: z0 + 0.7 } }));
     }
     return merge(...parts);
   });
-  // The net launcher's aim line, one thin glowing metre along +z.
-  const aimLine = cached(() => box({ w: 0.03, h: 0.03, d: 1, color: "#bfe3ff", emissive: 1, offset: { z: 0.5 } }));
-  BL.blockModels = { isle, keel, puddle, bolt, hauntDress, aimLine, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

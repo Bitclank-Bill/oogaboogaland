@@ -1,6 +1,6 @@
 // Block Frenzy's sound, all synthesized: one AudioContext made on the first gesture, a fixed pool of tone voices
 // gated by gain, two noise bursts (a wet splat and a deep boom) shaped from one looping noise buffer, and three
-// held layers only ever shaped by gain: the wind and rain, which follow the weather, and the zipline's whir.
+// held layers only ever shaped by gain: the rain, which follows the weather, and the zipline's whir.
 //
 // The drop's pattern (`drop-audio.js`): nothing is built per cue, a cue only schedules automation on a pooled voice,
 // and it shares the island's mute key. Cues take a level from 0 to 1 so far-off sounds play quieter.
@@ -17,8 +17,8 @@
     let ctx = null, master = null, ready = false, muted = BL.sound.muted;
     const voices = [];
     let voiceNext = 0;
-    const layers = { wind: null, windFilter: null, rain: null, jet: null, zip: null, zipFilter: null, splat: null, splatFilter: null, boom: null, boomFilter: null };
-    const state = { wind: 0, rain: 0, zip: 0, jet: 0 };
+    const layers = { rain: null, jet: null, zip: null, zipFilter: null, splat: null, splatFilter: null, boom: null, boomFilter: null };
+    const state = { rain: 0, zip: 0, jet: 0 };
     const init = () => {
       if (ctx || typeof AudioContext === "undefined") return;
       ctx = new AudioContext();
@@ -60,7 +60,6 @@
         noise.connect(f);
         if (keyFilter) layers[keyFilter] = f;
       };
-      tap("bandpass", 420, 0.6, "wind", "windFilter");
       tap("highpass", 3200, 0.4, "rain");
       tap("bandpass", 900, 6, "zip", "zipFilter");
       tap("lowpass", 520, 1.2, "jet");
@@ -186,12 +185,10 @@
       // A wallet's fuse: a short beep, higher (`urgency` 0 to 2) as it runs out.
       beep: (k = 1, urgency = 0) => blip("square", 1400 + urgency * 500, 1400 + urgency * 500, 0.002, 0.03, 0.03, 0.08 * k)
     };
-    // The held layers follow `state` each frame: wind and rain from the weather (0 to 1), the whir from the zipline.
+    // The held layers follow `state` each frame: rain from the weather (0 to 1), the whir from the zipline.
     const update = () => {
       if (!ready) return;
       const now = ctx.currentTime;
-      layers.wind.gain.setTargetAtTime(clamp(state.wind, 0, 1) * 0.07, now, 0.3);
-      layers.windFilter.frequency.setTargetAtTime(300 + clamp(state.wind, 0, 1) * 600, now, 0.4);
       layers.rain.gain.setTargetAtTime(clamp(state.rain, 0, 1) * 0.05, now, 0.4);
       layers.zip.gain.setTargetAtTime(clamp(state.zip, 0, 1) * 0.12, now, 0.08);
       layers.jet.gain.setTargetAtTime(clamp(state.jet, 0, 1) * 0.22, now, 0.05);
@@ -200,7 +197,7 @@
     const quiet = () => {
       if (!ready) return;
       const now = ctx.currentTime;
-      for (const k of ["wind", "rain", "zip", "jet", "splat", "boom"]) {
+      for (const k of ["rain", "zip", "jet", "splat", "boom"]) {
         layers[k].gain.cancelScheduledValues(now);
         layers[k].gain.setTargetAtTime(0, now, 0.05);
       }

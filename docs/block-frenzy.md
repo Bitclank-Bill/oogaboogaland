@@ -53,15 +53,14 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   from below, and come down on top to stand there. The leaves themselves stay decor, so nobody hides inside them, and
   the chase camera comes in front of (or over) leaves as it does walls. The two trees before each sniper tower stand
   low (3.5 m), so the scope sees over them.
-- **Weather.** A seeded run of clear, windy and stormy spells. The wind gusts and wanders, pushes Oogas (hard in the
-  air, a little on the ground) and bends throws; storms darken the light and bring rain and lightning.
+- **Weather.** A seeded run of clear and stormy spells. Storms darken the light and bring rain and lightning.
 - **Movement.** Jump, and jump again in the air: a double jump reaches 2.55 m and clears the forts' 2.4 m walls, the
   stilt huts' floors and the centre deck, carrying or not. Shift sprints for up to 4 s, refilling after a rest. C
   crouches: slower, shorter, under chest-height paint.
 
 ## Play-test additions
 
-Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort Chaos at sunset, Ooga Town at midday, Gorilla Jungle cloudy and always raining with puddles that slip you, Haunted Hollow at night on a brick field. Storms warn a spot and then strike whoever stays with lightning (`bolt`), once per `BOLT_COOL` each. A busy network (fees at the storm rate) brings a storm over a map's own weather; calmer fees change nothing. Haunted Hollow has lamps, neon on the cave walls, a few open graves to fall in and step out of with a skeleton and a ghost. The Detail setting on the menu turns off foliage, rain, lightning effects and that dressing; the rules stay. `N` hides the mini-map, `?` or Help opens the in-play help.
+Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort Chaos at sunset, Ooga Town at midday, Gorilla Jungle cloudy and always raining with puddles that slip you, Haunted Hollow at night on a brick field. Storms warn a spot and then strike whoever stays with lightning (`bolt`), once per `BOLT_COOL` each. A busy network (fees at the storm rate) brings a storm over a map's own weather; calmer fees change nothing. Haunted Hollow has lamps, neon on the cave walls, a few open graves to fall in and step out of with a skeleton and a ghost. The Detail setting on the menu turns off foliage, rain, lightning effects and that dressing; the rules stay. `N` hides the mini-map, `?` or Help opens the in-play help. Ooga Town's block stand is at the back of its building, under the upper floor. Haunted Hollow's scoring ring is out behind each house at the back of the map, its tall iron gate is solid with the way round either end, and its open graves are too deep for one jump: a double jump, the jetpack or the hook gets you out.
 
 ## Towers, ziplines and ammo caches
 
@@ -96,7 +95,7 @@ Paint balls, the AKs and the rifle splat as paint does; nobody is removed and no
 
 ## Floating islands (BF2.1)
 
-Every map is an oval floating island in OBL's voxel style (`W`, `L` its half sizes, a good way past the playing field `fieldW`, `fieldL`; `onIsland`, `edgeDist`), with a grass-and-rock cliff around its open edge, the rock under it deepening toward the middle (`isleDepth`, the same function the mesh uses), the hub's clouds beneath it and the sea far below at the hub's height. Walking or being blown off an edge drops an Ooga past the rim: its feet below `RIM` the island no longer holds it, and the rock under the rim keeps it out. Every Ooga has its jetpack: hold Space in the air (or Jump on touch) and steer back over the edge. An Ooga that falls past `FALL_FLOOR` (40 m) comes back in its own block zone with a full tank and a moment's protection. A block carried over the edge drops at the edge the carrier left it (`EDGE_HOME_S` later it goes home by itself unless someone picks it up); a grappling hook lost over the edge goes back into hiding. Bots fly back the same way.
+Every map is an oval floating island in OBL's voxel style (`W`, `L` its half sizes, a good way past the playing field `fieldW`, `fieldL`; `onIsland`, `edgeDist`), with a grass-and-rock cliff around its open edge, the rock under it deepening toward the middle (`isleDepth`, the same function the mesh uses), the hub's clouds beneath it and the sea far below at the hub's height. Walking or being blown off an edge drops an Ooga past the rim: its feet below `RIM` the island no longer holds it, and the rock under the rim keeps it out. Every Ooga has its jetpack: hold Space in the air (or Jump on touch) and steer back over the edge. An Ooga that falls past `FALL_FLOOR` (40 m) comes back in its own block zone with a full tank and a moment's protection. A block carried over the edge drops at the edge the carrier left it (`EDGE_HOME_S` later it goes home by itself unless someone picks it up); a grappling hook lost over the edge goes back into hiding. Bots fly back the same way. A carrier flung by the other side's catapult keeps the block through the flight (`flung`): back on the island it is still theirs; fallen all the way, it falls with them and goes straight back to its stand rather than dropping at the edge.
 
 ## Terrain (BF2.1b)
 
@@ -108,7 +107,14 @@ A special weapon, two a round, hidden at seeded spots from each map's hand-check
 
 ## Gorillas (BF2.2, BF2.3)
 
-Three or four on every map (`gorillas`): wicked's hub gorilla (`BL.agent.create` managed rig, posed with `poseManaged` and its `dragging`/`throwProgress` motion flags). A gorilla roams its home, charges an Ooga on the ground that comes within sight and grabs it, the block (and any crate) dropping where it was grabbed. It then drags the captive by the leg down a route round the terrain (`dragFor`, worked out once a map) to the nearest edge it can throw from, winds up and throws it off, released past the rim (`thrown`), and the Ooga jetpacks back (its tank is filled for the throw). `GRAB_HITS` (10) jump presses break free at any point, paint, a burst or the hook stuns the gorilla (the hook frees a captive with a cooldown), and bots mash, shoot a charging gorilla and fly back.
+Three or four on every map (`gorillas`): wicked's hub gorilla (`BL.agent.create` managed rig, posed with `poseManaged` and its `dragging`/`throwProgress` motion flags). A gorilla roams its home, charges an Ooga on the ground that comes within sight and grabs it, the block (and any crate) dropping where it was grabbed. It then drags the captive by the leg down a route round the terrain (`dragFor`, worked out once a map) to the nearest edge it can throw from, winds up and throws it off, released past the rim (`thrown`), and the Ooga jetpacks back (its tank is filled for the throw). A captive fills a struggle meter (`grabFill`, shown on screen while held): each distinct press (Space, E, Enter, a click or a tap, never a held key) adds one, it drains over time, and full breaks free at any point. Only that or the hook (which stuns the gorilla, with a cooldown) frees a captive; paint and bursts stun a free gorilla but never a grip. Bots mash by the same rule at their skill's rate, shoot a charging gorilla and fly back.
+
+| `SKILLS[k].gorilla` | sight | charge | reach | drag | rest s | need | drain /s | bot mash /s |
+|---|---|---|---|---|---|---|---|---|
+| easy | 6 | 6.5 | 1.05 | 6 | 9 | 6 | 0.8 | 3.5 |
+| normal | 8 | 8 | 1.2 | 7.5 | 6 | 10 | 1.4 | 5 |
+| hard | 10 | 9.5 | 1.35 | 8.5 | 4 | 15 | 2 | 6.5 |
+| expert | 12 | 11 | 1.5 | 9.5 | 2.5 | 22 | 2.4 | 9 |
 
 ## Fort Chaos
 

@@ -5,7 +5,7 @@
 //
 // Phases `board` (choose a side), `play` and `results`. The rules run in `blockSim.step` on a fixed step; this file
 // draws them: the arena and stands built once a visit, the four Oogas posed from the sim each frame, the two blocks on
-// their stands, at a carrier's back or lying where they fell, pooled crates, throws and splats, the weather (a wind
+// their stands, at a carrier's back or lying where they fell, pooled crates, throws and splats, the weather (a
 // sign, rain and lightning in a storm), and a chase camera behind the visitor's Ooga that a captured mouse, Q E, the
 // arrows or the look stick turns. The keys follow the island's: W A S D move from where the Ooga faces, Shift
 // sprints, Space jumps (again in the air) or uses what stands beside it (a zipline, catapult or wallet machine), a
@@ -60,7 +60,7 @@
   const TOOL_KEYS = { 1: "paint", 2: "grenade", 3: "rocket", 4: "net", 5: "sniper", 6: "gold", 7: "ak", 8: "hook" };
   // Each tool's gun (`BM.gun` takes the gun's index times two plus the team's); Lift shows none.
   const GUN_OF = { paint: 0, grenade: 1, rocket: 2, net: 3, sniper: 4, gold: 5, ak: 6, crate: 0, grab: -1, hook: -1 };
-  const WEATHER_WORDS = { clear: "Clear", breeze: "Windy", storm: "Storm" };
+  const WEATHER_WORDS = { clear: "Clear", storm: "Storm" };
   const RAIN = 140;
   const MAP_HOUR = { fort: 17.7, town: 12.5, jungle: 11, haunted: 0.8 }, MAP_CLOUDS = { fort: 0.3, town: 0.15, jungle: 0.85, haunted: 0.25 };
   // Sky, light and haze from the island's clock, as the drop's.
@@ -362,28 +362,30 @@
       center(COARSE ? "PAUSED · Main menu for the board" : "PAUSED · P or click to play on · Escape for the board", 0);
     } else el.center.hidden = true;
   };
-  const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Mash jump to wriggle out of a gorilla's grip.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
+  const TIPS = ["Hold Space in the air to jetpack back to the island.", "A wallet bomb stuck on a rival steals their hook or gold AKs.", "Hook the block on its stand from across the field.", "Grabbed by a gorilla? Mash Space to fill the meter before it drains.", "A netted carrier's block can be taken by a touch.", "Paint knocks a carrier flat and drops the block."];
   let tipK = 0;
-  // The net launcher's aim line: from where the shot leaves, along where it goes; only while the net is in hand.
-  let aimNode = null;
-  const poseAim = () => {
-    if (!aimNode || !sim) return;
-    const a = sim.actors[0], on = phase === "play" && tool === "net" && !cam.island && a.splat <= 0 && a.trapped <= 0 && !a.grabbed;
-    aimNode.visible = on;
-    if (!on) return;
-    const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1, yaw = Math.atan2(dx, dz), pitch = clamp(Math.atan2(q.y - oy, flat) - 0.02, -1.4, 1.4), c = Math.cos(pitch);
-    setVec(aimNode.position, a.x + Math.sin(yaw) * c * 0.5, oy + Math.sin(pitch) * 0.5, a.z + Math.cos(yaw) * c * 0.5);
-    aimNode.rotation.y = yaw; aimNode.rotation.x = -pitch; aimNode.scale.z = 9;
+  // The struggle meter, shown while a gorilla holds the visitor's Ooga. It repaints only when the bar moves a step or
+  // the count of presses left changes.
+  const STRUGGLE_STEPS = 60;
+  let struggleStep = -1, struggleLeft = -1;
+  const hideStruggle = () => { if (struggleStep >= 0) el.struggle.hidden = true; struggleStep = struggleLeft = -1; };
+  const paintStruggle = () => {
+    const a = sim ? sim.actors[0] : null;
+    if (phase !== "play" || !a || !a.grabbed) { hideStruggle(); return; }
+    const need = sim.bots.gorilla.need, n = clamp(Math.round(a.grabFill / need * STRUGGLE_STEPS), 0, STRUGGLE_STEPS), left = Math.max(1, Math.ceil(need - a.grabFill));
+    if (struggleStep < 0) el.struggle.hidden = false;
+    if (n !== struggleStep) { struggleStep = n; el.struggleFill.style.transform = `scaleX(${n / STRUGGLE_STEPS})`; el.struggleMeter.setAttribute("aria-valuenow", String(n)); }
+    if (left !== struggleLeft) { struggleLeft = left; el.struggleLeft.textContent = String(left); }
   };
   // The grouped controls list (`CONTROL_GROUPS`), the same on the menu and in the in-play Help.
   const CONTROL_GROUPS = [
-    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult, wallets"]]],
+    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult, wallets"], ["Space, E or click", "Mash to break a gorilla's grip"]]],
     ["Weapons", [["1 to 8", "Pick a weapon"], ["G", "Next weapon"], ["Click", "Fire"], ["Right click", "Aim, or sniper scope"], ["Y", "Throw a wallet"]]],
     ["Hook", [["R", "Fire at the crosshair, or let go"], ["Jump", "Let go"], ["C held", "Stop pulling, swing"]]],
     ["Blocks", [["Touch", "Pick up or send home"], ["K", "Drop"], ["Tab or T", "Throw to a teammate"], ["F", "Lift or set a crate"], ["B", "Place a crate"]]],
     ["View", [["X", "Capture the mouse"], ["V", "Change view"], ["U", "Hide the weapons bar"], ["N", "Hide the map"], ["?", "Help"], ["P", "Pause"], ["Esc", "Step back"]]]
   ];
-  const TOUCH_GROUPS = [["Controls", [["Left stick", "Move"], ["Right stick", "Turn and aim"], ["Jump", "Jump, jetpack, break free"], ["Throw!", "Fire"], ["Weapons bar", "Tap a weapon"], ["Ride", "Zipline, catapult, wallets"]]]];
+  const TOUCH_GROUPS = [["Controls", [["Left stick", "Move"], ["Right stick", "Turn and aim"], ["Jump or tap", "Mash to break a gorilla's grip"], ["Jump", "Jump, jetpack"], ["Throw!", "Fire"], ["Weapons bar", "Tap a weapon"], ["Ride", "Zipline, catapult, wallets"]]]];
   const paintControls = (box) => {
     for (const [name, rows] of COARSE ? TOUCH_GROUPS : CONTROL_GROUPS) {
       const head = document.createElement("h4"); head.textContent = name; box.append(head);
@@ -705,7 +707,7 @@
         if (e.actor >= 0) say(e.actor, LINES.splat, 1.2);
       } else if (e.type === "pickup") {
         fx.burst(e.x, 1.2, e.z, 14, ORANGE_BITS, 2);
-        if (me) { center("GOT THE BLOCK!", 1100); notice(SIM.ARENA.goals ? "Run it to the glowing ring at the foot of your house's front steps (or down to your block's spot in your cellar)" : COARSE ? "Run it home · Drop hands it off" : "Run it home to your stand · K drops it", 4000); }
+        if (me) { center("GOT THE BLOCK!", 1100); notice(SIM.ARENA.goals ? "Run it to the glowing ring behind your house (or down to your block's spot in your cellar)" : COARSE ? "Run it home · Drop hands it off" : "Run it home to your stand · K drops it", 4000); }
         // The block's side is the event's team; whose side picked it up is the carrier's.
         else if (sim.actors[e.actor].team === sim.team) notice("Teammate has the block! Cover them!", 2500);
         else { notice("They took your block! Paint the carrier!", 2500); say(1, LINES.lost); }
@@ -809,7 +811,7 @@
       else if (e.type === "winded") { if (me) notice("Out of breath! Sprint refills in a moment", 1400); }
       else if (e.type === "weather") {
         const w = sim.weather.kind, fee = sim.live === "storm" && w === "storm" ? ` · mempool fees ${Math.round(live.fee)} sat/vB` : "";
-        notice((w === "storm" ? "A storm rolls in! Hold on to something" : w === "breeze" ? "The wind picks up · throws drift" : "The sky clears") + fee, 2800);
+        notice((w === "storm" ? "A storm rolls in! Watch for lightning" : "The sky clears") + fee, 2800);
       } else if (e.type === "power") {
         const kind = SIM.POWERS[e.y], who = me ? "You" : mine ? "Teammate" : "They";
         fx.burst(e.x, 1.1, e.z, 16, kind === "laser" ? PAINT_BITS.red : kind === "cold" ? PAINT_BITS.blue : ORANGE_BITS, 2.6);
@@ -901,10 +903,9 @@
         gorillaPoke(e.actor);
         if (me) {
           center("GRABBED!", 1000);
-          notice(COARSE ? `A gorilla has you by the feet! Tap Jump ${sim.actors[0].grabHits} times to wriggle free` : `A gorilla has you by the feet! Mash Space ${sim.actors[0].grabHits} times to wriggle free`, 3000);
+          notice("A gorilla has you by the feet! Fill the meter to break free", 2200);
         } else say(e.actor, LINES.bonk, 1.3);
-      } else if (e.type === "struggle") { if (me) notice(`Wriggle! ${sim.actors[0].grabHits} more`, 700); }
-      else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
+      } else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
       else if (e.type === "letgo") { if (me) notice("The gorilla got bored and dropped you", 1500); }
       else if (e.type === "boltwarn") { if (e.actor === 0) { center("LIGHTNING!", 700); notice("Lightning coming · move!", 1300); } }
       else if (e.type === "bolt") {
@@ -1097,6 +1098,8 @@
   };
   const paint = () => {
     if (!inRound()) return false;
+    // In a gorilla's hands a click or tap is a struggle press, like Space.
+    if (sim.actors[0].grabbed) { move.jump = 1; return true; }
     if (sim.actors[0].flight === 2) return SIM.cutChute(sim, 0);
     if (sim.actors[0].wallet >= 0) return throwWallet();
     // Laser eyes ready: whatever is in hand, the click lets them loose.
@@ -1387,12 +1390,13 @@
   // faces; a captured mouse, Q E, the arrows and the look stick turn it, the chase camera swinging round behind.
   const TURN = 2.7;
   const readInput = (dt) => {
-    const a = controls.read(), turnKeys = arrows.left - arrows.right;
+    // A captive only struggles: E counts as a press there (`onKey`), so the keys and stick don't turn it as well.
+    const a = controls.read(), held = sim.actors[0].grabbed > 0, turnKeys = held ? 0 : arrows.left - arrows.right, yawIn = held ? 0 : a.yaw;
     if (cam.island) {
       // Island view: the camera swings on Q E and the arrows; the stick or W A S D run the way the screen faces, and
       // the Ooga turns to face where it runs.
       const side = clamp(a.x + turnKeys, -1, 1);
-      cam.orbit = wrap(cam.orbit + (a.yaw + turnKeys) * TURN * 0.8 * dt);
+      cam.orbit = wrap(cam.orbit + (yawIn + turnKeys) * TURN * 0.8 * dt);
       const ox = Math.sin(cam.orbit), oz = Math.cos(cam.orbit), rx = -Math.cos(cam.orbit), rz = Math.sin(cam.orbit);
       let mx = ox * a.y + rx * side, mz = oz * a.y + rz * side;
       const l = Math.hypot(mx, mz);
@@ -1400,7 +1404,7 @@
       move.x = mx; move.z = mz;
       if (l > 0.15) cam.face = Math.atan2(mx, mz);
     } else {
-      cam.face = wrap(cam.face + (a.yaw + turnKeys) * TURN * dt);
+      cam.face = wrap(cam.face + (yawIn + turnKeys) * TURN * dt);
       const side = clamp(a.x + turnKeys, -1, 1), f = clamp(a.y, -1, 1);
       const fx2 = Math.sin(cam.face), fz = Math.cos(cam.face), rx = -Math.cos(cam.face), rz = Math.sin(cam.face);
       let mx = fx2 * f + rx * side, mz = fz * f + rz * side;
@@ -1668,10 +1672,10 @@
       n.geometry = BM.crate(TEAM_INDEX[c.team]);
     }
   };
-  // The sky follows the weather: a storm darkens the light and thickens the cloud, rain falls slanted by the wind
+  // The sky follows the weather: a storm darkens the light and thickens the cloud, rain falls
   // round the camera, and now and then lightning flashes.
   const poseWeather = (dt) => {
-    const w = sim.weather, storm = w.kind === "storm" ? Math.min(1, w.strength / C.WIND.storm) : 0;
+    const w = sim.weather, storm = w.kind === "storm" ? Math.min(1, w.strength) : 0;
     RENDER_OPTS.clouds = MAP_CLOUDS[SIM.ARENA.id] + 0.55 * storm;
     RENDER_OPTS.directStrength *= 1 - 0.55 * storm;
     RENDER_OPTS.sunStrength *= 1 - 0.55 * storm;
@@ -1684,7 +1688,7 @@
     flash = Math.max(0, flash - dt * 5);
     RENDER_OPTS.ambientFloor = (SIM.ARENA.id === "haunted" ? 0.42 : 0.22) + flash * 0.8;
     RENDER_OPTS.bloomStrength = 0.6 + flash * 1.2;
-    const cx = camera.position.x, cz = camera.position.z, lean = 0.12;
+    const cx = camera.position.x, cz = camera.position.z;
     for (let i = 0; i < RAIN; i++) {
       const r = rain[i];
       // Rain only on Full detail; Gorilla Jungle's is always falling, a storm brings it anywhere.
@@ -1692,21 +1696,13 @@
       r.node.visible = detail.full && wet > 0.2 && i < RAIN * wet;
       if (!r.node.visible) continue;
       r.y -= dt * 14;
-      r.x += w.x * dt * 0.8; r.z += w.z * dt * 0.8;
       if (r.y < 0 || Math.abs(r.x - cx) > 12 || Math.abs(r.z - cz) > 12) {
         r.x = cx + (Math.random() - 0.5) * 22; r.z = cz + (Math.random() - 0.5) * 22; r.y = 6 + Math.random() * 6;
       }
       setVec(r.node.position, r.x, r.y, r.z);
-      r.node.rotation.x = w.z * lean; r.node.rotation.z = -w.x * lean;
     }
-    // The wind sign: its strength, and an arrow turned to show where it blows relative to the camera.
-    const key = `${w.kind}${Math.round(w.strength * 2)}${Math.round(wrap(Math.atan2(w.x, w.z) - cam.yaw) * 4)}`;
-    if (key !== el.windKey) {
-      el.windKey = key;
-      el.windWord.textContent = WEATHER_WORDS[w.kind];
-      el.windArrow.style.transform = `rotate(${(-wrap(Math.atan2(w.x, w.z) - cam.yaw)).toFixed(2)}rad)`;
-      el.windArrow.style.opacity = String(Math.min(1, 0.25 + w.strength / C.WIND.storm));
-    }
+    // The weather word, written only when it changes.
+    if (w.kind !== el.weatherKind) { el.weatherKind = w.kind; el.weatherWord.textContent = WEATHER_WORDS[w.kind]; }
   };
   // The sprint gauge: full, draining while Shift is held, orange while it refills after running dry.
   const poseStamina = () => {
@@ -1987,7 +1983,7 @@
         if (!SIM.nearVend(sim, sim.actors[0])) closeWalletMenu();
       }
       // Full auto: with the AK or the golden pair and the trigger held, a round goes each time the shot clock allows.
-      if (trigger && (tool === "ak" || (tool === "gold" && sim.actors[0].gold)) && !quiz.open && sim.actors[0].cooldown <= 0) paint();
+      if (trigger && (tool === "ak" || (tool === "gold" && sim.actors[0].gold)) && !quiz.open && !sim.actors[0].grabbed && sim.actors[0].cooldown <= 0) paint();
       // The live feed, folded in before the step: fees to weather, a new block to its reset.
       SIM.setLive(sim, feeWeather(live.fee));
       if (live.block) { SIM.newBlock(sim, live.block); live.block = 0; }
@@ -2010,7 +2006,7 @@
     poseFire(elapsed);
     poseGorillas(dt, elapsed);
     poseHooks(elapsed);
-    poseAim();
+    paintStruggle();
     poseGhosts(elapsed);
     if (sim && actors) poseBeams(elapsed);
     poseShots();
@@ -2020,8 +2016,7 @@
     poseWeather(dt);
     if (phase === "play") drawMap(dt, elapsed);
     if (sim) {
-      // The held sounds: the wind's strength, rain in a storm, and the whir while the visitor rides a zipline.
-      audio.state.wind = phase === "play" ? sim.weather.strength / C.WIND.storm : 0;
+      // The held sounds: rain in a storm, and the whir while the visitor rides a zipline.
       audio.state.rain = phase === "play" && sim.weather.kind === "storm" ? 1 : 0;
       audio.state.zip = phase === "play" && sim.actors[0].riding ? 1 : 0;
       audio.state.jet = phase === "play" && sim.actors[0].jetting ? 1 : 0;
@@ -2057,6 +2052,7 @@
     if (phase !== "play" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "p" || e.key === "P") { if (!quiz.open) setPaused(!paused); return; }
     if (paused) return;
+    if ((e.key === "e" || e.key === "E") && !quiz.open && sim.actors[0].grabbed) { move.jump = 1; return; }
     if (quiz.open) {
       if (e.key >= "1" && e.key <= "4") answer(Number(e.key) - 1);
       return;
@@ -2375,9 +2371,10 @@
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     fx = fxMod.create({ root, renderer, camera, hud, overlay: ctx.overlay, tickerAt: { x: 0, y: 8, z: 0 } });
-    for (const id of ["board", "results", "strip", "center", "notice", "best", "record", "score-blue", "score-red", "own", "theirs", "time", "drop", "summary", "stats", "result-title", "quiz", "quiz-q", "quiz-note", "quiz-fill"]) {
+    for (const id of ["board", "results", "strip", "center", "struggle", "struggle-fill", "struggle-left", "struggle-meter", "struggle-word", "notice", "best", "record", "score-blue", "score-red", "own", "theirs", "time", "drop", "summary", "stats", "result-title", "quiz", "quiz-q", "quiz-note", "quiz-fill"]) {
       el[id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = document.getElementById(`block-${id}`);
     }
+    el.struggleWord.textContent = COARSE ? "Tap fast!" : "Mash SPACE!";
     el.teams = [...document.querySelectorAll("#block-board [data-team]")];
     el.targets = [...document.querySelectorAll("#block-board [data-target]")];
     el.sizes = [...document.querySelectorAll("#block-board [data-size]")];
@@ -2406,7 +2403,6 @@
     el.tip = document.getElementById("block-tip");
     el.helpBox = document.getElementById("block-help");
     paintControls(document.getElementById("block-help-keys"));
-    aimNode = place(createNode({ geometry: BM.aimLine(), visible: false, sightHidden: true }));
     el.barMin = document.getElementById("block-bar-min");
     el.barGrip = document.getElementById("block-bar-grip");
     el.barDrag = null;
@@ -2437,9 +2433,8 @@
     el.power = document.getElementById("block-power");
     el.powerWord = document.getElementById("block-power-word");
     el.staminaK = -1;
-    el.windWord = document.getElementById("block-wind-word");
-    el.windArrow = document.getElementById("block-wind-arrow");
-    el.windKey = "";
+    el.weatherWord = document.getElementById("block-weather-word");
+    el.weatherKind = "";
     el.cross = document.getElementById("block-cross");
     el.viewBtn = document.getElementById("block-view-btn");
     el.soundBtn = document.getElementById("block-sound-btn");
@@ -2684,6 +2679,7 @@
     fx.dispose();
     controls.dispose();
     hud.el.act.hidden = true;
+    hideStruggle();
     hud.setAct("Ooga!");
     for (const node of placed) removeChild(root, node);
     placed.length = 0;

@@ -7197,7 +7197,7 @@ const gameRulesChecks = async () => {
     const sim = S.create({ team: "blue", seed: 7, prep: 0 });
     for (const a of sim.actors) if (a.id) a.bot = false;
     // Still air, so nothing drifts.
-    Object.assign(sim.weather, { target: 0, strength: 0, left: 1e9 });
+    Object.assign(sim.weather, { left: 1e9 });
     const me = sim.actors[0], put = (a, x, z) => { a.x = x; a.z = z; S.tick(sim, S.CONFIG.STEP, still); };
     const theirs = A.stands.red, mine = A.stands.blue;
     put(me, theirs.x, theirs.z);
@@ -7250,7 +7250,7 @@ const gameRulesChecks = async () => {
     // A pass: the carrier throws the block ahead and a teammate down the line catches it.
     const mate = sim.actors[1];
     S.reset(sim); sim.prep = 0;
-    Object.assign(sim.weather, { target: 0, strength: 0, left: 1e9 });
+    Object.assign(sim.weather, { left: 1e9 });
     put(me, theirs.x, theirs.z);
     me.x = -16.5; me.z = 14; me.y = 0; mate.x = -16.5; mate.z = 24; mate.y = 0;
     const threw = S.pass(sim, 0, 0) && sim.flags.red.state === "flying";
@@ -7276,7 +7276,7 @@ const gameRulesChecks = async () => {
       const r = S.create({ skill: "expert", prep: 0 }), bot = r.actors[1];
       for (const actor of r.actors) { actor.bot = false; actor.x = 18; actor.z = -35; }
       Object.assign(bot, { x: 0, z: 20, y: 0, bot: true });
-      Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 });
+      Object.assign(r.weather, { left: 1e9 });
       const lifted = S.grab(r, bot.id, 0);
       Object.assign(r.flags.blue, { state: "dropped", x: 0, z: 20, y: 0, carrier: null });
       const advance = (seconds) => { for (let n = 0; n < Math.round(seconds / S.CONFIG.STEP); n++) S.tick(r, S.CONFIG.STEP, { ...still }); };
@@ -7291,7 +7291,7 @@ const gameRulesChecks = async () => {
       // still stands on the ground; both measured through the sim's own ticks.
       const jungle = S.create({ team: "blue", seed: 7, prep: 0, map: "jungle" });
       for (const a of jungle.actors) if (a.id) a.bot = false;
-      Object.assign(jungle.weather, { target: 0, strength: 0, left: 1e9 });
+      Object.assign(jungle.weather, { left: 1e9 });
       const tree = S.ARENA.decor.find((d) => d.kind === "canopy" && !d.middle), j = jungle.actors[0];
       for (const a of jungle.actors) if (a.id) { a.x = 20; a.z = a.team === "blue" ? 34 : -34; }
       Object.assign(j, { x: tree.x + 0.9, z: tree.z + 0.4, y: tree.y + S.LEAF_TOP + 3, vx: 0, vz: 0, vy: 0, grounded: false });
@@ -7334,7 +7334,7 @@ const gameRulesChecks = async () => {
     const piggy = () => {
       const r = S.create({ team: "blue", seed: 2, prep: 0, size: 3 });
       for (const b of r.actors) { b.x = 18; b.z = -35; b.bot = false; }
-      Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 });
+      Object.assign(r.weather, { left: 1e9 });
       const run = (s, input = still) => { for (let n = 0; n < Math.round(s / S.CONFIG.STEP); n++) S.tick(r, S.CONFIG.STEP, { ...input }); };
       return { r, me: r.actors[0], b1: r.actors[1], b2: r.actors[2], run };
     };
@@ -7404,7 +7404,7 @@ const gameRulesChecks = async () => {
       // The floating island: its edges are open, an Ooga walking off falls, and one fallen all the way is back in its
       // own block zone; a block carried over the edge drops at the edge and goes home by itself; under the rim the
       // island's rock holds a body out, and the jetpack brings a thrown Ooga back over the edge, the visitor's or a bot's.
-      const fresh = (map = "fort") => { const r = S.create({ seed: 5, prep: 0, map }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 }); for (const g of r.gorillas) { g.state = 3; g.t = 1e9; } return r; };
+      const fresh = (map = "fort") => { const r = S.create({ seed: 5, prep: 0, map }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { left: 1e9 }); for (const g of r.gorillas) { g.state = 3; g.t = 1e9; } return r; };
       const run = (r, secs, input = still, until = () => false) => { for (let t = 0; t < secs && !until(); t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, input); };
       const rows = {};
       for (const map of S.MAPS) {
@@ -7516,7 +7516,7 @@ const gameRulesChecks = async () => {
       const fresh = (map = "fort", seed = 5) => {
         const r = S.create({ seed, prep: 0, map });
         for (const o of r.actors) o.bot = false;
-        Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 });
+        Object.assign(r.weather, { left: 1e9 });
         for (const g of r.gorillas) { g.x = g.wx = g.hx = 100; g.z = g.wz = g.hz = 100; g.state = 3; g.t = 1e9; }
         return r;
       };
@@ -7660,18 +7660,52 @@ const gameRulesChecks = async () => {
         // Live fees: only storm overrides a map's weather.
         const fees = fresh(), liveTry = (v) => { S.setLive(fees, v); return fees.live; };
         rows.feeClear = liveTry("clear") === null;
-        rows.feeBreeze = liveTry("breeze") === null;
+        rows.feeCalm = liveTry("clear") === null;
+        // No wind: a body in the air over a storm drifts nowhere, and only clear and storm ever come up.
+        const calm = fresh(), cu = calm.actors[0];
+        for (const k of calm.crates) k.live = false;
+        Object.assign(calm.weather, { kind: "storm", strength: 1 });
+        Object.assign(cu, { x: 3, z: 3, y: 8, vx: 0, vz: 0, vy: 0, grounded: false, guard: 9 });
+        run(calm, 0.4, still);
+        const kinds = new Set();
+        for (let n = 0; n < 40; n++) { calm.weather.left = 0; S.tick(calm, S.CONFIG.STEP, still); calm.eventCount = 0; kinds.add(calm.weather.kind); }
+        rows.noWind = cu.x === 3 && cu.z === 3 && S.CONFIG.WIND === undefined && [...kinds].every((k) => k === "clear" || k === "storm") && kinds.size === 2;
+        // The tall iron gate is solid, with the way round either end of it open, and the block zones are at the back.
+        const hg = fresh("haunted"), hu = hg.actors[0], hI = S.ARENAS.haunted;
+        for (const k of hg.crates) k.live = false;
+        Object.assign(hu, { x: 0, z: 26, y: 0, grounded: true });
+        run(hg, 1, { x: 0, z: -1 });
+        const stopped = hu.z > 24.5;
+        Object.assign(hu, { x: 3.2, z: 26, y: 0, vx: 0, vz: 0, grounded: true });
+        run(hg, 1, { x: 0, z: -1 });
+        rows.gateSolid = stopped && hu.z < 23.5 && S.solidAt(0, 1.5, 24.5) && S.solidAt(0, 1.5, -24.5) && !S.solidAt(3.2, 1.5, 24.5);
+        const twn = S.ARENAS.town;
+        rows.blockZones = twn.stands.blue.z === 32.2 && twn.stands.red.z === -32.2 && hI.goals.blue.z === 52.5 && hI.goals.red.z === -52.5;
         rows.feeStorm = liveTry("storm") === "storm" && (() => { fees.weather.left = 0; S.tick(fees, S.CONFIG.STEP, still); return fees.weather.kind === "storm"; })();
         rows.feeNone = liveTry(null) === null;
-        // An open grave: fall in, step out on foot, a block can't rest inside.
+        // An open grave: fall in, one jump can't clear the rim, a double jump does, a block can't rest inside, and a
+        // bot knocked in gets out on its own.
         const g = fresh("haunted"), gu = g.actors[0], I = S.ARENAS.haunted, [gx0, gx1, gz0, gz1] = I.graves[0], cx = (gx0 + gx1) / 2, cz = (gz0 + gz1) / 2;
         for (const k of g.crates) k.live = false;
         for (const o of g.actors) if (o.id) o.bot = true;
         Object.assign(gu, { x: cx, z: cz, y: 0, grounded: true });
-        run(g, 0.4);
-        rows.graveFall = gu.y === S.GRAVE_Y;
-        run(g, 1.4, { x: 0, z: 1 }, () => gu.y >= 0 && gu.grounded);
-        rows.graveOut = gu.y === 0 && !S.inGrave(gu.x, gu.z);
+        run(g, 0.7, still, () => gu.grounded && gu.y === S.GRAVE_Y);
+        rows.graveFall = gu.y === S.GRAVE_Y && S.inGrave(gu.x, gu.z);
+        const climb = { x: 0, z: 1, jump: 1 };
+        run(g, 0.15, climb);
+        run(g, 2, climb, () => gu.grounded);
+        rows.graveOneJump = gu.y === S.GRAVE_Y && S.inGrave(gu.x, gu.z);
+        Object.assign(gu, { carrying: "red" }); Object.assign(g.flags.red, { state: "carried", carrier: 0 });
+        climb.jump = 1;
+        run(g, 1, climb, () => gu.vy <= 0.6 && !gu.grounded);
+        climb.jump = 1;
+        run(g, 2.5, climb, () => gu.grounded);
+        rows.graveTwoJumps = gu.y === 0 && !S.inGrave(gu.x, gu.z) && gu.carrying === "red";
+        const gb2 = fresh("haunted"), gbot = gb2.actors[1];
+        for (const k of gb2.crates) k.live = false;
+        gbot.bot = true; Object.assign(gbot, { x: cx, z: cz, y: S.GRAVE_Y, grounded: true, guard: 9 });
+        run(gb2, 6, still, () => !S.inGrave(gbot.x, gbot.z) && gbot.y >= -0.1);
+        rows.graveBotOut = !S.inGrave(gbot.x, gbot.z);
         S.create({ map: "haunted" });
         rows.graveRest = I.graves.every(([x0, x1, z0, z1]) => { const p = S.restSpot((x0 + x1) / 2, (z0 + z1) / 2); return !S.inGrave(p.x, p.z); });
       }
@@ -7690,6 +7724,20 @@ const gameRulesChecks = async () => {
         const threw = S.launch(ec, 0), outZ = v.vz < 0 && !v.flight;
         run(ec, 4, still, () => !S.onIsland(v.x, v.z) && v.y < 0);
         rows.enemyCat = threw && outZ && !S.onIsland(v.x, v.z);
+        // A carrier flung by it keeps the block in flight: jetpacked back it still has it; fallen all the way, the block
+        // goes home with no drop at the edge. An ordinary walk off the edge still drops it there.
+        const fling = () => { const q = fresh(), c1 = q.actors[0], [fx, fz] = S.ARENA.catapults.red[0]; Object.assign(c1, { x: fx, z: fz, y: 0, carrying: "red", grounded: true }); q.flags.red.state = "carried"; q.flags.red.carrier = 0; S.launch(q, 0); return [q, c1]; };
+        let [fq, fc] = fling();
+        const fallLog = run(fq, 12, still, () => fc.falls > 0);
+        rows.flungFalls = fc.falls === 1 && !fc.carrying && fq.flags.red.state === "home" && !fallLog.edgedrop && !!fallLog.return;
+        [fq, fc] = fling();
+        run(fq, 6, still, () => fc.knock <= 0);
+        const home = { x: 0, z: 0, jet: 1 };
+        run(fq, 8, home, () => { const l = Math.hypot(fc.x, fc.z) || 1; home.x = -fc.x / l; home.z = -fc.z / l; home.jet = S.onIsland(fc.x, fc.z) ? 0 : 1; return fc.grounded && S.onIsland(fc.x, fc.z); });
+        rows.flungRecovers = fc.grounded && S.onIsland(fc.x, fc.z) && fc.carrying === "red" && fc.falls === 0 && !fc.flung;
+        Object.assign(fc, { x: 0, z: 200, y: -1, vy: -3, grounded: false });
+        const walkLog = run(fq, 0.2, still, () => !fc.carrying);
+        rows.walkOffDrops = !fc.carrying && (fq.flags.red.state === "dropped") && !walkLog.return;
         const bot = fresh(), bv = bot.actors[1], [bx, bz] = S.ARENA.catapults.red[0];
         bv.bot = true; Object.assign(bv, { x: bx, z: bz, y: 0, grounded: true });
         rows.enemyCatBot = !S.nearEnemyCatapult(bot, bv);
@@ -7728,24 +7776,38 @@ const gameRulesChecks = async () => {
         S.grapple(m, 0, 0, 0);
         const stunLog = run(m, 0.6, still, () => g.state === 4);
         out.stun = !!stunLog.gorillahooked && !cap.grabbed && g.state === 4 && g.hookCool > 0;
-        // The grip: exactly the skill's presses free you, each counted once, and paint or a blast doesn't break it.
+        // The grip: the struggle meter fills a press at a time against its drain, paint or a blast doesn't break it, a
+        // held key counts once, and an idle meter empties.
         [m, g] = hunt("fort", 1, 0, -14);
         const grip = m.actors[0];
         for (const o of m.actors) if (o.id) o.bot = true;
         Object.assign(grip, { x: 0, z: -15 }); run(m, 0.3, still, () => grip.grabbed);
-        const press = { x: 0, z: 0, jump: 0 }, need = grip.grabHits;
-        let presses = 0;
+        const press = { x: 0, z: 0, jump: 0 }, gb = m.bots.gorilla, need = gb.need;
         const oneTick = () => { S.tick(m, S.CONFIG.STEP, press); m.eventCount = 0; };
-        for (let k = 0; k < need - 1; k++) { press.jump = 1; presses++; oneTick(); oneTick(); press.jump = 0; oneTick(); }
+        press.jump = 1; for (let k = 0; k < 24; k++) oneTick();
+        out.heldOnce = grip.grabFill > 0.5 && grip.grabFill <= 1 && press.jump === 0;
+        for (let k = 0; k < 120 && grip.grabFill > 0; k++) oneTick();
+        out.drains = grip.grabFill === 0 && grip.grabbed === 2;
+        for (let k = 0; k < need - 2; k++) { press.jump = 1; oneTick(); }
         const stillHeld = grip.grabbed === 2;
         const shot = m.shots.find((q) => !q.live);
         Object.assign(shot, { live: true, kind: "paint", team: "blue", owner: 1, t: 0, ox: g.x, oz: g.z, x: g.x, y: 1.2, z: g.z, vx: 0.1, vy: 0, vz: 0, target: -1 });
         oneTick();
         const paintHolds = grip.grabbed === 2 && g.holding === 0;
-        press.jump = 1; oneTick(); press.jump = 0;
-        out.grip = need === 4 && stillHeld && paintHolds && !grip.grabbed;
-        out.difficulty = ["easy", "normal", "hard", "expert"].map((k) => S.SKILLS[k].gorilla.hits).join() === "3,4,5,5"
-          && ["easy", "normal", "hard", "expert"].every((k, i, a) => !i || S.SKILLS[k].gorilla.sight >= S.SKILLS[a[i - 1]].gorilla.sight);
+        for (let k = 0; k < 4 && grip.grabbed; k++) { press.jump = 1; oneTick(); }
+        out.grip = need === S.CONFIG.GRAB_NEED && stillHeld && paintHolds && !grip.grabbed;
+        // Every difficulty: more presses against a faster drain, and every gorilla number a step harder than the last.
+        const LEVELS = ["easy", "normal", "hard", "expert"].map((k) => S.SKILLS[k].gorilla);
+        const rises = (f, sign = 1) => LEVELS.every((l, i) => !i || (l[f] - LEVELS[i - 1][f]) * sign > 0);
+        out.meterRises = rises("need") && rises("drain") && rises("mash");
+        out.gorillaRises = rises("charge") && rises("drag") && rises("sight") && rises("reach") && rises("rest", -1);
+        // Beatable: an idle-meter fill at a firm mash (9 a second, 5 on Easy) beats the longest drag from home on Expert.
+        out.possible = LEVELS.every((l, i) => l.need / ((i ? 9 : 5) - l.drain) < 4.5);
+        // A round of bots still finishes at Expert.
+        const expert = S.create({ seed: 11, prep: 0, map: "fort", skill: "expert", target: 1 });
+        for (const o of expert.actors) o.bot = true;
+        for (let t = 0; t < 600 && !expert.over; t += S.CONFIG.STEP) { S.tick(expert, S.CONFIG.STEP, still); expert.eventCount = 0; }
+        out.expertRound = expert.over;
         out.count = S.MAPS.every((map) => S.ARENAS[map].gorillas.length >= 3 && S.ARENAS[map].gorillas.length <= 4);
         // The whole capture, on every map, from around every piece of terrain and across the field: grabbed, dragged by a
         // route that gets there, thrown from the edge past it and off the ground.
@@ -11621,7 +11683,7 @@ const blockWalk = { name: "block walk", why: "rule: W A S D move the visitor's O
   await b.key("Enter");
   const rows = {};
   for (const k of "wsadqe") {
-    await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, a = s.actors[0]; s.prep = 0; a.flight = 0; a.y = 0; a.vy = 0; a.grounded = true; Object.assign(s.weather, { target: 0, strength: 0, left: 1e9 }); a.x = -14; a.z = 2; a.vx = a.vz = 0; for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 30 : -30; } B.advance(0.6, 1 / 60); const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); window.__walk = { fx: vx / l, fz: vz / l, x0: a.x, z0: a.z }; })()`);
+    await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, a = s.actors[0]; s.prep = 0; a.flight = 0; a.y = 0; a.vy = 0; a.grounded = true; Object.assign(s.weather, { left: 1e9 }); a.x = -14; a.z = 2; a.vx = a.vz = 0; for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 30 : -30; } B.advance(0.6, 1 / 60); const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); window.__walk = { fx: vx / l, fz: vz / l, x0: a.x, z0: a.z }; })()`);
     await holdKey(b, k, 0.5);
     rows[k] = await b.evaluate(`(() => { const q = window.__walk, a = window.__ooga.block.sim.actors[0], c = window.__ooga.camera, dx = a.x - q.x0, dz = a.z - q.z0, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); return { fwd: +(dx * q.fx + dz * q.fz).toFixed(2), side: +(dx * -q.fz + dz * q.fx).toFixed(2), turn: +((vx / l) * -q.fz + (vz / l) * q.fx).toFixed(2) }; })()`);
   }
@@ -23625,7 +23687,7 @@ scene("hangar", { label: "controls reference forklift", query: "character=portla
 scene("hub", { label: "side panel", query: "pos=0", steps: [hubSheetPersistence, hubMuteKey, hubChat] });
 // Private conversations (#188) on a signed-in page: the room is a stand-in, and the other person, Anna, is the real
 // sealing code on the same pad, so what the page sends is read as Anna's page would read it.
-const hubPrivateChat = { name: "private chat", why: "rule: two players who hold the same pad talk privately from the Players tab while the room carries only sealed frames; a pad for someone else is refused by name, the talk carries on across a scene trip, and a pad made here downloads for the two of them. regression: the row lock always showed blue and locked, and a Cancel the room had not yet heard came back as a live invite", run: async (b) => {
+const hubPrivateChat = { name: "private chat", why: "rule: two players who hold the same pad talk privately while the room carries only sealed frames; a pad for someone else is refused by name, the talk carries on across a scene trip, and a pad made here downloads for the two of them. regression: a Cancel the room had not yet heard came back as a live invite", run: async (b) => {
   await openWithSheetState(b, hubPage(src, "pos=0"), { open: true, tab: "players" });
   await b.evaluate(`(async () => {
     const W = window.__pm = { fetch: window.fetch, WebSocket: window.WebSocket, sockets: [], out: [], wire: [], heard: [], downloads: [] };
@@ -23657,23 +23719,18 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
     };
     W.load = (bytes) => { const dt = new DataTransfer(); dt.items.add(new File([bytes], "pad.oogapad")); const input = document.getElementById("pm-file"); input.files = dt.files; input.dispatchEvent(new Event("change")); };
     W.wait = async (test) => { for (let i = 0; i < 150 && !test(); i++) await new Promise((r) => setTimeout(r, 20)); return !!test(); };
-    W.lock = () => document.querySelector('#players-panel li[data-id="2"] .players-private');
-    // A row's lock as drawn, read with the Players tab up (it repaints only while it shows): its state and its shackle.
-    W.tab = (id) => { const panel = document.getElementById(id); if (!BL.sheet.visible(panel)) BL.sheet.tabFor(panel).click(); };
-    W.locks = () => { W.tab("players-panel"); const out = {};
-      for (const id of [2, 3]) { const b = document.querySelector('#players-panel li[data-id="' + id + '"] .players-private');
-        out[id] = !b || b.hidden ? "" : b.dataset.lock + ":" + (b.firstChild.firstChild.getAttribute("d") === BL.privateChat.SHACKLE.shut ? "shut" : "up"); }
-      W.tab("chat-panel"); return out; };
+    // Where this page stands with each player, which the switch and the private view's title show.
+    W.locks = () => ({ 2: BL.privateChat.lock(2), 3: BL.privateChat.lock(3) });
     W.view = () => { const s = BL.privateChat.stats(), panel = document.getElementById("chat-panel");
       return { phase: s.phase, ready: s.ready, padLoaded: s.padLoaded, started: s.started, unrecorded: s.unrecorded, queued: s.queued, lines: s.lines, note: document.getElementById("pm-note").textContent, shown: BL.sheet.visible(panel), privateView: panel.dataset.view === "private",
         input: !document.getElementById("pm-input").disabled, switcher: !document.getElementById("pm-switch").hidden }; };
     W.say = (text) => { const input = document.getElementById("pm-input"); input.value = text; input.dispatchEvent(new Event("input")); document.getElementById("pm-form").requestSubmit(); };
   })()`);
-  const asked = await b.evaluate(`(async () => { const W = __pm; await W.wait(() => W.lock() && !W.lock().hidden); const offered = !!W.lock() && !W.lock().hidden;
-    const before = W.locks(); W.tab("players-panel"); W.lock().click();
+  const asked = await b.evaluate(`(async () => { const W = __pm; await W.wait(() => BL.privateChat.available()); const offered = BL.privateChat.available();
+    const before = W.locks(); BL.privateChat.invite(2);
     const sent = await W.flush(); W.room({ t: "pm", op: "inviting", to: 2 }); const waiting = W.view(), inviting = W.locks();
-    // One at a time: Cy's lock asks nothing while Anna is asked, and shows the conversation to cancel first.
-    W.tab("players-panel"); document.querySelector('#players-panel li[data-id="3"] .players-private').click();
+    // One at a time: asking Cy asks nothing while Anna is asked, and shows the conversation to cancel first.
+    BL.privateChat.invite(3);
     const busy = { sent: await W.flush(), phase: BL.privateChat.stats().phase, privateView: W.view().privateView };
     W.room({ t: "pm", op: "open", with: 2 }); await W.anna.start({ fresh: true }); const open = W.view();
     W.load(W.wrong); await W.wait(() => W.view().note.includes("not you")); const wrong = W.view();
@@ -23683,14 +23740,14 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
     document.getElementById("pm-fresh").click(); await W.wait(() => W.view().started); await W.flush(); await W.wait(() => W.view().ready); await W.flush();
     const sealed = W.locks(), switchLock = document.querySelector('[data-pm-view="private"]').dataset.lock;
     return { offered, sent, waiting, open, wrong, unrecorded, ready: W.view(), annaHeard: W.heard.map((r) => r.kind), annaReady: W.anna.ready, locks: { before, inviting, loading, sealed, switchLock }, busy }; })()`);
-  record("private chat: the lock on another player's row asks them, the Ooga Chat panel turns to the private view, a pad made for someone else is refused by name, a file this browser never used waits for the visitor to say it is new, and the line opens once both sides acknowledge",
+  record("private chat: an invite asks the other player, the Ooga Chat panel turns to the private view, a pad made for someone else is refused by name, a file this browser never used waits for the visitor to say it is new, and the line opens once both sides acknowledge",
     asked.offered && asked.sent.length === 1 && asked.sent[0].op === "invite" && asked.sent[0].to === 2 && asked.waiting.phase === "inviting" && asked.waiting.shown && asked.waiting.privateView && asked.waiting.switcher
       && asked.open.phase === "open" && asked.open.queued === 1 && !asked.open.input && /delete every copy when you're done/.test(asked.open.note) && asked.wrong.note === "That pad is for anna and cy, not you." && !asked.wrong.padLoaded
       && asked.unrecorded.unrecorded && asked.unrecorded.confirm && !asked.unrecorded.started && asked.unrecorded.sent === 0 && /no record of this pad/.test(asked.unrecorded.note)
       && asked.ready.ready && asked.ready.input && asked.annaHeard.includes("hello") && asked.annaHeard.includes("ready") && asked.annaReady, JSON.stringify(asked));
-  record("private chat: the row lock is open and grey before an invite, amber while the invite and the pad wait, shut and blue once sealed, and every other row's lock waits its turn and asks nobody",
-    asked.locks.before[2] === "open:up" && asked.locks.before[3] === "open:up" && asked.locks.inviting[2] === "waiting:up" && asked.locks.inviting[3] === "busy:up"
-      && asked.locks.loading[2] === "waiting:up" && asked.locks.sealed[2] === "sealed:shut" && asked.locks.sealed[3] === "busy:up" && asked.locks.switchLock === "sealed"
+  record("private chat: a player stands open before an invite, waiting while the invite and the pad wait, sealed once the line opens, and everyone else busy, asking nobody",
+    asked.locks.before[2] === "open" && asked.locks.before[3] === "open" && asked.locks.inviting[2] === "waiting" && asked.locks.inviting[3] === "busy"
+      && asked.locks.loading[2] === "waiting" && asked.locks.sealed[2] === "sealed" && asked.locks.sealed[3] === "busy" && asked.locks.switchLock === "sealed"
       && asked.busy.sent.length === 0 && asked.busy.phase === "inviting" && asked.busy.privateView, JSON.stringify({ locks: asked.locks, busy: asked.busy }));
   const talk = await b.evaluate(`(async () => { const W = __pm; W.say("hi anna, ünïcode 🦍"); await W.wait(() => W.view().lines.length === 1); await W.flush(); await W.wait(() => W.view().lines[0].state === "sent");
     await W.anna.say("hello tester"); await W.wait(() => W.view().lines.length === 2);
@@ -23748,7 +23805,7 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
     document.getElementById("pm-end").click(); const ended = await W.flush(); const view = W.view(), endedLocks = W.locks();
     // Cy asked and the invite cancelled before the room heard: its late word that the invite went changes nothing, and an
     // open for it is ended at once.
-    W.tab("players-panel"); document.querySelector('#players-panel li[data-id="3"] .players-private').click(); const cyAsked = await W.flush();
+    BL.privateChat.invite(3); const cyAsked = await W.flush();
     document.getElementById("pm-end").click(); const cancelled = await W.flush();
     W.room({ t: "pm", op: "inviting", to: 3 }); W.room({ t: "pm", op: "open", with: 3 }); const late = { phase: BL.privateChat.stats().phase, sent: await W.flush() };
     W.room({ t: "pm", op: "closed", from: 3, reason: "ended" }); late.after = BL.privateChat.stats().phase; late.locks = W.locks();
@@ -23773,8 +23830,8 @@ const hubPrivateChat = { name: "private chat", why: "rule: two players who hold 
       && after.note && after.spellcheck === false,
     JSON.stringify(after));
   record("private chat: an ended conversation leaves every lock open, and an invite cancelled before the room heard stays cancelled: the room's late inviting changes nothing and its late open is ended at once",
-    after.endedLocks[2] === "open:up" && after.endedLocks[3] === "open:up" && after.cyAsked.map((m) => m.op + m.to).join() === "invite3" && after.cancelled.map((m) => m.op + m.to).join() === "end3"
-      && after.late.phase === "idle" && after.late.sent.map((m) => m.op + m.to).join() === "end3" && after.late.after === "idle" && after.late.locks[3] === "open:up",
+    after.endedLocks[2] === "open" && after.endedLocks[3] === "open" && after.cyAsked.map((m) => m.op + m.to).join() === "invite3" && after.cancelled.map((m) => m.op + m.to).join() === "end3"
+      && after.late.phase === "idle" && after.late.sent.map((m) => m.op + m.to).join() === "end3" && after.late.after === "idle" && after.late.locks[3] === "open",
     JSON.stringify({ endedLocks: after.endedLocks, cyAsked: after.cyAsked, cancelled: after.cancelled, late: after.late }));
 } };
 scene("hub", { label: "join alerts", query: "pos=0", steps: [hubJoinAlerts] });
@@ -25471,7 +25528,7 @@ const voiceAloneChecks = async () => {
   class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
   class Audio {constructor(){this.muted=false;}pause(){}play(){return Promise.resolve();}}
   const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push({op,mic:track.enabled});return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map((id,i)=>({id,mid:String(i+1)}))}:{sessionDescription:{}}};};
-  const context={window:{BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"}},setMuted:on=>netMuted.push(on),remotes:new Map(),subscribe:()=>()=>{}}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{createElement:()=>({})},localStorage:{getItem:()=>null,setItem(){}},navigator:{mediaDevices:{getUserMedia:async()=>stream}},RTCPeerConnection:Pc,Audio,MediaStream:class{},fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math};
+  const context={window:{BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"}},setMuted:on=>netMuted.push(on),remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{}}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){}},document:{createElement:()=>({})},localStorage:{getItem:()=>null,setItem(){}},navigator:{mediaDevices:{getUserMedia:async()=>stream}},RTCPeerConnection:Pc,Audio,MediaStream:class{},fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math};
   runInNewContext(source,context);
   const V=context.window.BL.voice,settle=()=>new Promise(r=>setTimeout(r,0)),read=()=>({alone:V.stats.alone,muted:V.stats.muted,mic:track.enabled});
   const remote = { id: 185141343, login: "Bitcoin-Bill" };
@@ -25498,6 +25555,45 @@ const voiceAloneChecks = async () => {
     is(rows.joinedAlone,true,false,false)&&rows.joinSends.split(",").every(s=>s.endsWith(":false"))&&is(rows.oneOther,false,false,true)&&is(rows.aloneAgain,true,false,false)&&
     is(rows.mutedAlone,true,true,false)&&is(rows.mutedWithOther,false,true,false)&&is(rows.unmutedAlone,true,false,false)&&is(rows.twoOthers,false,false,true)&&
     rows.netMuted==="false,true,false"&&rows.emitted&&!rows.stopped.alone&&!rows.stopped.muted,JSON.stringify(rows));
+};
+// Someone who pressed Join voice comes back in voice, muted, on their first press, with the microphone never touched
+// until they unmute; only Leave voice ends that. voice.js runs per "page" over one shared localStorage.
+const voiceReturnChecks = async () => {
+  const source=readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
+  const stored=new Map(),settle=()=>new Promise(r=>setTimeout(r,0));
+  const page=({active=false,zone="outside",denied=false}={})=>{
+    const ops=[],told=[],presses=new Map();let mics=0;
+    const track={enabled:true,stop(){}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
+    class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0"};}addTransceiver(){return {mid:"0"};}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}addEventListener(){}removeEventListener(){}getTransceivers(){return [];}close(){}}
+    class Audio {constructor(){this.muted=false;}pause(){}play(){return Promise.resolve();}}
+    const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op==="session"?`session:${body.kind}`:op);return {ok:true,json:async()=>({sessionDescription:{}})};};
+    const userActivation={hasBeenActive:active};
+    const context={window:{BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"},zone},setMuted:on=>told.push(on),remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{}}},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},addEventListener:(t,f)=>presses.set(t,f),removeEventListener:t=>presses.delete(t)},document:{createElement:()=>({})},localStorage:{getItem:k=>stored.has(k)?stored.get(k):null,setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},navigator:{userActivation,mediaDevices:{getUserMedia:async()=>{mics++;if(denied)throw Object.assign(new Error("denied"),{name:"NotAllowedError"});return stream;}}},RTCPeerConnection:Pc,Audio,MediaStream:class{},fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math};
+    runInNewContext(source,context);
+    const V=context.window.BL.voice,S=V.stats;
+    return {V,S,ops,told,presses,userActivation,mics:()=>mics,press:(e={isTrusted:true})=>{const f=presses.get("pointerup");if(f)f(e);}};
+  };
+  const rows={};
+  let p=page();p.V.restart(true);rows.never=!p.S.returning&&p.presses.size===0;
+  p=page();p.V.toggle();await settle();rows.joinRemembered=stored.size===1;p.V.stop();rows.stopKeeps=stored.size===1;
+  p=page();p.V.restart(true);
+  rows.waiting=p.S.returning&&p.S.muted&&!p.S.enabled&&p.ops.length===0&&p.mics()===0&&p.presses.size===2;
+  p.press({isTrusted:false});p.press();rows.ignoresNonPresses=p.ops.length===0&&!p.S.joining;
+  p.userActivation.hasBeenActive=true;p.press();await settle();
+  rows.listening=p.S.enabled&&p.S.muted&&p.S.returning&&!p.S.micWanted&&!p.S.publishing&&!p.S.alone&&p.mics()===0&&p.ops.join()==="session:sub"&&p.told.join()==="true"&&p.presses.size===0;
+  p.V.toggle();await settle();
+  rows.unmuted=p.S.publishing&&!p.S.muted&&!p.S.returning&&p.mics()===1&&p.told.join()==="true,false";
+  p=page({active:true});p.V.restart(true);rows.atOnce=p.S.joining&&p.presses.size===0;p.V.toggle();await settle();
+  rows.unmuteWhileConnecting=p.S.publishing&&!p.S.muted&&p.mics()===1;
+  p=page();p.V.restart(true);p.V.toggle();await settle();rows.firstKeyUnmutes=p.S.publishing&&!p.S.muted&&p.ops.includes("session:sub");
+  p=page({active:true,denied:true});p.V.restart(true);await settle();p.V.toggle();await settle();
+  rows.blockedStillHears=p.S.enabled&&p.S.returning&&p.S.muted&&!p.S.publishing&&p.S.micError==="microphone blocked"&&stored.size===1;
+  p=page({zone:"dsb-studio"});p.V.restart(true);rows.studio=!p.S.returning&&p.presses.size===0;
+  p=page({active:true});p.V.restart(true);await settle();p.V.restart();await settle();rows.reconnectStaysClosed=p.S.enabled&&p.S.muted&&p.S.returning&&p.mics()===0;
+  p.V.leave();rows.leaveForgets=stored.size===0&&!p.S.returning&&!p.S.enabled;
+  p=page({active:true});p.V.restart(true);rows.afterLeave=!p.S.returning&&!p.S.joining;
+  record("voice return: Join voice is remembered until Leave voice, the next session connects muted on the first press with the microphone closed until Unmute, even a first press of Unmute or a blocked microphone",
+    Object.values(rows).every(Boolean),JSON.stringify(rows));
 };
 // #380: a visitor's hearing range only changes how loud this page plays the voices it receives. voice.js runs with remotes placed
 // round the visitor, a fake Worker, peer connection and AudioContext, and its own 150 ms meter read (captured from setInterval)
@@ -25527,7 +25623,7 @@ const voiceHearingChecks = async () => {
       createDynamicsCompressor(){const n=new Node("limiter");for(const key of ["threshold","knee","ratio","attack","release"])n[key]={value:0};limiters.push(n);return n;}}
     const fetch=async(url,o)=>{const op=url.split("/").pop(),body=JSON.parse(o.body);ops.push(op);if(op==="pull")pulled.push(...body.ids);return {ok:true,json:async()=>op==="pull"?{tracks:body.ids.map(id=>({id,mid:String(id)}))}:{sessionDescription:{}}};};
     const probe={level:1};volume(probe);
-    const win={BL:{net:{state,setMuted:on=>netMuted.push(on),remotes,subscribe:fn=>{subscribers.add(fn);return()=>subscribers.delete(fn);}}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),addEventListener:(k,fn)=>handlers.set(k,fn)};
+    const win={BL:{net:{state,setMuted:on=>netMuted.push(on),remotes,voiceLink:()=>"none",subscribe:fn=>{subscribers.add(fn);return()=>subscribers.delete(fn);}}},setTimeout:()=>0,clearTimeout(){},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id),addEventListener:(k,fn)=>handlers.set(k,fn)};
     const context={window:win,document:{createElement:()=>probe},localStorage:{getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v))},navigator:{mediaDevices:{getUserMedia:async()=>{captures++;return stream;}}},RTCPeerConnection:Pc,Audio,MediaStream,fetch,AbortController,Promise,JSON,Error,Map,Set,Float32Array,Math,Number,String};
     if(webAudio)win.AudioContext=context.AudioContext=Ctx;
     runInNewContext(readFileSync(join(root,"src/js/voice-blend.js"),"utf8"),context);
@@ -27432,13 +27528,11 @@ const playersColumnChecks = async () => {
     runInNewContext(await readFile(join(root, "src/js/zone-map.js"), "utf8"), context);
     runInNewContext(await readFile(join(root, "src/js/voice-blend.js"), "utf8"), context);
     Object.assign(window.BL, {
-      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" } }, remotes,
-        subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {} },
+      net: { state: { room: "live", me: { login: "me", display: "Me" }, selfId: 1, online: 3, zone: "outside", hostId: 0, self: { x: 0, y: 0, z: 0, zone: "outside" }, voiceLinks: false }, remotes,
+        voiceLink: () => "none", toggleVoiceLink() {}, subscribe() {}, subscribeRoster() {}, subscribeMoves() {}, subscribePresence() {}, subscribeReactions() {} },
       hud: { voiceIcon: make("svg"), voiceWords: () => "In voice", toast() {} },
-      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, mutedLocally: () => false, volumeOf: () => 1, setVolume() {}, setRadius() {} },
-      sheet: { visible: () => true, setBadge() {}, watchViews() {}, attending: () => true }, sound: { muted: false, subscribe() {} }, pilot: { turnToward() {} },
-      // private-chat.js loads first on the page; here it relays nothing, so no row offers a lock.
-      privateChat: { SHACKLE: { open: "M0 0h1v1H0z", shut: "M0 0h1v1H0z" }, serial: 0, available: () => false, subscribe() {}, lock: () => "open", lockWords: () => "" } });
+      voice: { stats: { enabled: true, muted: false, speaking: false, radius: 0 }, fades: false, RADIUS_MIN: 5, RADIUS_MAX: 60, VOLUME_MAX: 2, subscribe() {}, speaking: () => false, inEarshot: () => true, mutedLocally: () => false, volumeOf: () => 1, setVolume() {}, setRadius() {} },
+      sheet: { visible: () => true, setBadge() {}, watchViews() {}, attending: () => true }, sound: { muted: false, subscribe() {} }, pilot: { turnToward() {} } });
     runInNewContext(await readFile(join(root, "src/js/players.js"), "utf8"), context);
     handlers.sheetchange();
     const list = ids.get("players-list");
@@ -27454,11 +27548,11 @@ const playersColumnChecks = async () => {
   const tracks = (ruleOf(".players-rows").match(/grid-template-columns:\s*([^;]+);/) || [, ""])[1].trim().split(/\s+(?![^(]*\))/);
   const columnOf = (selector) => +((ruleOf(selector).match(/grid-column:\s*(\d+);/) || [, NaN])[1]);
   const cellOfRule = (selector) => +((css.match(new RegExp(`\\.players-rows ${selector.replace(".", "\\.")} \\{ grid-column: (\\d+);`)) || [, NaN])[1]);
-  const columns = { lock: cellOfRule(".players-private"), voice: cellOfRule(".roster-voice"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
-  record("Online Oogas columns: every row holds its cells in one order, and the lock, voice mark, distance (as wide as 999 m) and crosshair each keep a fixed column, none sized to its content, so they line up across groups",
+  const columns = { link: cellOfRule(".players-link"), voice: cellOfRule(".roster-voice"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
+  record("Online Oogas columns: every row holds its cells in one order, and the voice link, voice mark, distance (as wide as 999 m) and crosshair each keep a fixed column, none sized to its content, so they line up across groups",
     cells.rows === 3 && cells.shapes.every((s) => s === "roster-dots players-name roster-marks players-look players-distance players-volume")
-      && tracks.length === 6 && tracks[columns.lock - 1] === "10px" && tracks[columns.voice - 1] === "12px" && tracks[columns.look - 1] === "12px" && /width:\s*5ch;/.test(ruleOf(".players-distance"))
-      && columns.lock === 3 && columns.voice === 4 && columns.distance === 5 && columns.look === 6,
+      && tracks.length === 6 && tracks[columns.link - 1] === "12px" && tracks[columns.voice - 1] === "12px" && tracks[columns.look - 1] === "12px" && /width:\s*5ch;/.test(ruleOf(".players-distance"))
+      && columns.link === 3 && columns.voice === 4 && columns.distance === 5 && columns.look === 6,
     JSON.stringify({ cells, tracks, columns }));
 };
 const chatAccountChecks = async BL => {
@@ -29228,7 +29322,7 @@ const studioVoiceLifecycleProof = async () => {
     }
     class Sound {constructor(){this.pending=[];elements.push(this);}play(){return new Promise((resolve,reject)=>this.pending.push({resolve,reject}));}pause(){this.pauses=(this.pauses||0)+1;}}
     const makeStream=()=>{const track={enabled:true,stops:0,stop(){this.stops++;}},stream={track,getTracks:()=>[track],getAudioTracks:()=>[track]};streams.push(stream);return stream;};
-    const win={BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"}},remotes:new Map(),subscribe:()=>()=>{},setMuted:on=>calls.push({op:"mute",on})}},setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id)};
+    const win={BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"}},remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{},setMuted:on=>calls.push({op:"mute",on})}},setTimeout:fn=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id)};
     const context={window:win,document:{createElement:()=>({})},localStorage:{getItem:()=>null,setItem(){}},AbortController,RTCPeerConnection:Peer,Audio:Sound,MediaStream:class {constructor(tracks){this.tracks=tracks;}getTracks(){return this.tracks;}},navigator:{mediaDevices:{enumerateDevices:async()=>[{kind:"audioinput",deviceId:"synthetic-mic",label:"Synthetic mic"},{kind:"videoinput",deviceId:"camera",label:"Camera"}],getUserMedia:constraints=>{gum++;calls.push({op:"capture",constraints});return permission||Promise.resolve(makeStream());}}},
       fetch:async(url,options)=>{const op=url.split("/").at(-1);calls.push({op,body:JSON.parse(options.body)});if(deferred?.op===op)return deferred.promise;if(op==="publish"&&publishResponse)return publishResponse;if(op==="pull")return {ok:true,json:async()=>({tracks:JSON.parse(options.body).ids.map(id=>({id,mid:String(id)}))})};return {ok:true,json:async()=>({sessionDescription:{type:"answer",sdp:"synthetic"}})};}};
     runInNewContext(source,context);
@@ -29860,6 +29954,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   walletShareChecks(BL);
   footstepChecks(BL);
   await voiceAloneChecks();
+  await voiceReturnChecks();
   await voiceHearingChecks();
   await ghostAudioChecks();
   exteriorEnrichmentChecks(BL);
