@@ -80,9 +80,47 @@
     }
     return false;
   };
+  // The floating island under a map, in the hub's voxel ground (`BL.terrain`'s grid, greedy mesher and palette): a
+  // grass top, soil, then banded rock down a cliff all round the field's open edge, the rock deepening toward the
+  // middle as the sim's `isleDepth` has it (which holds bodies out of it) with drips hanging under it; and the map's
+  // terrain (`rocks`: mounds with grass on top, cave walls and roofs, outcrops) in the same rock. Half-metre cells, so
+  // the terrain's boxes, which keep to a half-metre grid, mesh exactly as the sim stands on them.
+  const ISLE_CELL = 0.5;
+  const isleHash = (x, y, z) => { let h = Math.imul(x * 374761393 + y * 668265263 + z * 2147483647 | 0, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); return ((h ^ h >>> 16) >>> 0) / 4294967296; };
+  const isle = variants((mapIndex) => {
+    const M = SIM.ARENAS[SIM.MAPS[mapIndex]], T = BL.terrain, P = { grass: 1, grassLight: 2, grassDark: 3, stone: 5, stoneDark: 6, dirt: 8 };
+    const C = ISLE_CELL, nx = Math.round(M.W * 2 / C), nz = Math.round(M.L * 2 / C), TOP = Math.ceil((SIM.CONFIG.ISLE_DEPTH + 4) / C);
+    let high = 0;
+    for (const b of M.rocks || []) high = Math.max(high, b[4]);
+    const grid = T.makeGrid(nx, TOP + Math.ceil(high / C) + 1, nz);
+    const BANDS = [P.dirt, P.stoneDark, P.dirt, P.stone];
+    const rockAt = (ix, iy, iz) => {
+      const band = Math.floor((iy + 1.5 * Math.sin(ix * 0.21 + iz * 0.13)) / 3);
+      return isleHash(ix, iy, iz) < 0.12 ? P.stoneDark : BANDS[((band % 4) + 4) % 4];
+    };
+    for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
+      const x = -M.W + (ix + 0.5) * C, z = -M.L + (iz + 0.5) * C, edge = Math.min(M.W - Math.abs(x), M.L - Math.abs(z));
+      // Drips under the keel, away from the very edge so the cliff stays clean.
+      const drip = edge > 3 && isleHash(ix, 7, iz) < 0.05 ? 1 + isleHash(ix, 9, iz) * 4 : 0;
+      const depth = Math.round((SIM.isleDepth(x, z, M) + drip) / C), patch = Math.sin(x * 0.35) + Math.cos(z * 0.3);
+      for (let iy = TOP - depth; iy < TOP; iy++) {
+        const k = TOP - 1 - iy;
+        grid.set(ix, iy, iz, k === 0 ? (patch > 0.9 ? P.grassLight : patch < -0.9 ? P.grassDark : P.grass) : k <= 2 ? P.dirt : rockAt(ix, iy, iz));
+      }
+    }
+    for (const b of M.rocks || []) {
+      const grassy = M.rockKind.get(b) !== "outcrop";
+      const x0 = Math.round((b[0] + M.W) / C), x1 = Math.round((b[1] + M.W) / C), z0 = Math.round((b[2] + M.L) / C), z1 = Math.round((b[3] + M.L) / C);
+      const y0 = TOP + Math.round((b[5] || 0) / C), y1 = TOP + Math.round(b[4] / C);
+      for (let ix = Math.max(0, x0); ix < Math.min(nx, x1); ix++) for (let iz = Math.max(0, z0); iz < Math.min(nz, z1); iz++) for (let iy = y0; iy < y1; iy++) {
+        grid.set(ix, iy, iz, grassy && iy === y1 - 1 ? P.grass : grassy && iy === y1 - 2 ? P.dirt : rockAt(ix, iy, iz));
+      }
+    }
+    const geo = T.gridGeometry(grid, { unit: C, palette: T.PALETTE, origin: { x: -M.W, y: -TOP * C, z: -M.L } });
+    return geo;
+  });
   const arena = variants((mapIndex) => {
     const M = SIM.ARENAS[SIM.MAPS[mapIndex]], town = M.id === "town", jungle = M.id === "jungle", haunted = M.id === "haunted", parts = [];
-    parts.push(box({ w: M.W * 2 + 4, h: 1, d: M.L * 2 + 4, color: "#6b5a3e", offset: { y: -0.5 } }));
     parts.push(box({ w: M.W * 2, h: 0.04, d: M.L * 2, color: "#c9a96b", offset: { y: 0.02 } }));
     parts.push(box({ w: M.W * 2, h: 0.05, d: 0.6, color: ORANGE, emissive: 0.25, offset: { y: 0.03 } }));
     for (const t of SIM.TEAMS) {
@@ -102,11 +140,6 @@
         parts.push(box({ w: 0.6, h: 0.06, d: 0.2, color: TEAM[t].paint, emissive: 0.5, offset: { x: g.x + Math.sin(a) * R, y: 0.04, z: g.z + Math.cos(a) * R } }));
       }
       parts.push(box({ w: 1.2, h: 0.05, d: 1.2, color: ORANGE, emissive: 0.6, offset: { x: g.x, y: 0.035, z: g.z } }));
-    }
-    // A low rim round the field.
-    for (const s of [-1, 1]) {
-      parts.push(bevelBox({ w: 0.6, h: 0.8, d: M.L * 2 + 0.6, color: "#7d7468", offset: { x: s * (M.W + 0.3), y: 0.4 } }));
-      parts.push(bevelBox({ w: M.W * 2 + 1.2, h: 0.8, d: 0.6, color: "#7d7468", offset: { z: s * (M.L + 0.3), y: 0.4 } }));
     }
     if (jungle) {
       // Jungle floor: moss over the sand, darker patches, and the leaves of every tree (decor: nothing stops in them).
@@ -184,6 +217,8 @@
       parts.push(box({ w: M.W * 2, h: 0.05, d: 8, color: "#a89270", offset: { y: 0.035 } }));
     }
     for (const b of M.BLOCKS) {
+      // The island's own rock (mounds, caves, outcrops) is the island's mesh (`isle`), not a building.
+      if (M.rocks && M.rocks.has(b)) continue;
       const w = b[1] - b[0], d = b[3] - b[2], bottom = b[5] || 0, h = b[4] - bottom, x = (b[0] + b[1]) / 2, z = (b[2] + b[3]) / 2, y = bottom + h / 2;
       if (M.steps.has(b)) {
         // A stair: stone with a worn lip.
@@ -805,5 +840,5 @@
     for (let y = 0.15; y <= top; y += 0.3) parts.push(box({ w, h: 0.05, d: 0.05, color: "#b0905a", offset: { y } }));
     return merge(...parts);
   });
-  BL.blockModels = { beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { isle, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

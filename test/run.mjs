@@ -5041,7 +5041,7 @@ const cloudHopperFailureChecks = async engine => {
     document: { hidden: false, addEventListener(type, listener) { if (type === "visibilitychange") visibilityListeners.add(listener); },
       removeEventListener(type, listener) { if (type === "visibilitychange") visibilityListeners.delete(listener); } },
     localStorage: { getItem: key => key === guideKey ? "1" : null } };
-  for (const name of ["math", "scene", "cloud-hopper-course", "cloud-hopper-levels"])
+  for (const name of ["math", "scene", "grapple", "cloud-hopper-course", "cloud-hopper-levels"])
     runInNewContext(await readFile(join(root, "src/js/" + name + ".js"), "utf8"), context);
   const BL = context.window.BL, S = BL.scene, rootNode = S.createNode(), camera = S.createCamera();
   // Repeat selected draws deliberately: every start must still produce new
@@ -7374,6 +7374,46 @@ const gameRulesChecks = async () => {
     const round = (seed) => { const r = S.create({ team: "red", seed }); r.actors[0].bot = "auto"; for (let t = 0; t < 900 && !r.over; t += 1 / 30) S.step(r, 1 / 30, still), r.eventCount = 0; return JSON.stringify({ over: r.over, winner: r.winner, score: r.score, time: Math.round(r.time) }); };
     const a = round(3), b = round(3);
     record("block frenzy rounds: a seeded round replays exactly and reaches three captures", a === b && JSON.parse(a).over && Math.max(...Object.values(JSON.parse(a).score)) === S.CONFIG.CAPTURES, JSON.stringify({ a, b }));
+    {
+      // The floating island: its edges are open, an Ooga walking off falls, and one fallen all the way is back in its
+      // own block zone; a block carried over the edge drops at the edge and goes home by itself; under the rim the
+      // island's rock holds a body out, and the jetpack brings a thrown Ooga back over the edge, the visitor's or a bot's.
+      const fresh = (map = "fort") => { const r = S.create({ seed: 5, prep: 0, map }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { target: 0, strength: 0, left: 1e9 }); return r; };
+      const run = (r, secs, input = still, until = () => false) => { for (let t = 0; t < secs && !until(); t += S.CONFIG.STEP) S.tick(r, S.CONFIG.STEP, input); };
+      const rows = {};
+      for (const map of S.MAPS) {
+        let r = fresh(map);
+        const I = S.ARENA, o = r.actors[0], start = o.z;
+        o.x = I.W - 0.5; o.z = 0;
+        run(r, 0.4, { x: 1, z: 0 });
+        const over = o.x > I.W && !o.grounded;
+        let respawned = false;
+        for (let t = 0; t < 8 && !respawned; t += S.CONFIG.STEP) { S.tick(r, S.CONFIG.STEP, still); for (let i = 0; i < r.eventCount; i++) if (r.events[i].type === "respawn") respawned = true; r.eventCount = 0; }
+        const home = respawned && o.falls === 1 && o.grounded && Math.abs(o.z - start) < 2 && Math.abs(o.x) < 8;
+        r = fresh(map);
+        const c = r.actors[0], f = r.flags.red;
+        c.x = I.stands.red.x; c.z = I.stands.red.z; run(r, S.CONFIG.STEP);
+        const took = c.carrying === "red";
+        c.x = I.W - 0.5; c.z = -10; c.y = 0; run(r, S.CONFIG.STEP);
+        run(r, 1.2, { x: 1, z: 0 });
+        const atEdge = took && f.state === "dropped" && f.homeT > 0 && Math.abs(f.x) < I.W && !c.carrying;
+        run(r, S.CONFIG.EDGE_HOME_S + 0.2);
+        const wentHome = f.state === "home";
+        r = fresh(map);
+        const u = r.actors[0];
+        u.x = I.W + 0.6; u.y = -3; u.grounded = false; run(r, 0.3, { x: -1, z: 0 });
+        const heldOut = u.x >= I.W;
+        r = fresh(map);
+        const j = r.actors[0], b = r.actors[1];
+        j.x = I.W + 1; j.z = 0; j.y = 0; j.vx = 10; j.vy = 9; j.knock = 0.6; j.grounded = false;
+        b.bot = true; b.x = -I.W - 1; b.z = 0; b.y = 0; b.vx = -10; b.vy = 9; b.knock = 0.6; b.grounded = false;
+        run(r, 8, { x: -1, z: 0, jet: 1 }, () => j.grounded && b.grounded);
+        const flewBack = j.grounded && S.onIsland(j.x, j.z) && j.falls === 0 && b.grounded && S.onIsland(b.x, b.z) && b.falls === 0;
+        rows[map] = { over, home, atEdge, wentHome, heldOut, flewBack };
+      }
+      record("block frenzy island: on every map an Ooga walks off the open edge and, fallen all the way, is back in its own block zone; a block carried over drops at the edge and goes home; the rock under the rim holds a body out; the jetpack brings the visitor and a bot back after a throw",
+        Object.values(rows).every((v) => Object.values(v).every(Boolean)), JSON.stringify(rows));
+    }
     {
       // The play strip repaints only when something it shows moved (`stripChanged`, the scene's own test before it
       // touches the DOM): never on an unchanged frame or inside a clock second, on every input it shows, and afresh for

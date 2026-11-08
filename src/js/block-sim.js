@@ -63,7 +63,12 @@
     // and comes back after `GHOST_BACK`. Paint or a blast pops one sooner.
     GHOST_SPEED: 1.4, GHOST_CHASE: 3, GHOST_SIGHT: 6, GHOST_R: 0.7, SPOOK_S: 1.2, GHOST_BACK: 14, GHOST_POP: 10,
     GOAL_R: 2.4, HOP_R: 1.8, RIDE_UP: 0.55, RIDE_BACK: 0.42, MOUNT_SLOW: 0.85, CALL_S: 6, CALL_R: 12,
-    TOWER_TOP: 6.4, CLIMB: 3.6, ZIP_SPEED: 15, ZIP_HANG: 1.9, ZIP_R: 1.6, CACHE_S: 15, CACHE_R: 1.2
+    TOWER_TOP: 6.4, CLIMB: 3.6, ZIP_SPEED: 15, ZIP_HANG: 1.9, ZIP_R: 1.6, CACHE_S: 15, CACHE_R: 1.2,
+    // The floating island: its edges are open. A body whose feet are more than `RIM` under the top has gone over the
+    // edge (it no longer stands on the island and is kept out of its rock); one that falls past `FALL_FLOOR` comes back
+    // in its own block zone. A block carried over the edge drops at the edge and goes home after `EDGE_HOME_S`. The
+    // rock under the island is `ISLE_EDGE` deep at the edge and deepens toward the middle, `ISLE_DEPTH` at most.
+    RIM: 0.6, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14
   };
   // The tools: speed, upward lob, gravity, life in seconds, hit radius, burst radius (0 for none), cooldown, and how
   // many a full refill holds (0 for no limit).
@@ -458,6 +463,9 @@
     CRATES = sim.crates;
     if (ARENA.id !== sim.map) { ARENA = ARENAS[sim.map]; BLOCKS = ARENA.BLOCKS; LEDGES = ARENA.ledges || []; }
   };
+  // The island under the field: the whole of the map's rectangle, the rock under it `isleDepth` deep.
+  const onIsland = (x, z, A = ARENA) => x > -A.W && x < A.W && z > -A.L && z < A.L;
+  const isleDepth = (x, z, A = ARENA) => Math.min(CONFIG.ISLE_DEPTH, CONFIG.ISLE_EDGE + 0.9 * Math.max(0, Math.min(A.W - Math.abs(x), A.L - Math.abs(z))));
   const crateBox = (c) => { CB[0] = c.x - CONFIG.CRATE_HALF; CB[1] = c.x + CONFIG.CRATE_HALF; CB[2] = c.z - CONFIG.CRATE_HALF; CB[3] = c.z + CONFIG.CRATE_HALF; CB[4] = c.y + CONFIG.CRATE_H; CB[5] = c.y; return CB; };
   const boxCount = () => BLOCKS.length + CRATES.length;
   // The i-th box: a fixed block, then the live crates (a dead crate is an empty box nothing touches).
@@ -490,13 +498,17 @@
         if (m === l) p.x = b[0] - r; else if (m === rt) p.x = b[1] + r; else if (m === nn) p.z = b[2] - r; else p.z = b[3] + r;
       }
     }
-    const W = ARENA.W, L = ARENA.L;
-    if (p.x < -W + r) p.x = -W + r; else if (p.x > W - r) p.x = W - r;
-    if (p.z < -L + r) p.z = -L + r; else if (p.z > L - r) p.z = L - r;
+    // The island's edge is open; a body that has gone over it and is down under the top is kept out of the rock, out
+    // past the nearest edge, until it climbs back over.
+    if (feet < -CONFIG.RIM && head > -isleDepth(p.x, p.z) && onIsland(p.x, p.z)) {
+      const ex = ARENA.W - Math.abs(p.x), ez = ARENA.L - Math.abs(p.z);
+      if (ex < ez) p.x = (p.x < 0 ? -1 : 1) * (ARENA.W + r); else p.z = (p.z < 0 ? -1 : 1) * (ARENA.L + r);
+    }
   };
   // The highest top under a body of radius r that its feet at y are on or above: where it stands.
+  // Over the open edge there is nothing (-Infinity), and nor is there for feet already down under the island's top.
   const groundAt = (x, z, y, r = CONFIG.BODY_R * 0.7) => {
-    let g = 0;
+    let g = onIsland(x, z) && y >= -CONFIG.RIM ? 0 : -Infinity;
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (b[4] > y + 0.05 || b[4] <= g || x < b[0] - r || x > b[1] + r || z < b[2] - r || z > b[3] + r) continue;
@@ -520,14 +532,14 @@
     }
     return c;
   };
-  // True when a point at height y is inside a box (or below the ground, or past the arena's edge).
+  // True when a point at height y is inside a box or the island's rock; past the open edge is open air.
   const solidAt = (x, y, z) => {
-    if (y <= 0) return true;
+    if (y <= 0) return y > -isleDepth(x, z) && onIsland(x, z);
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (x > b[0] && x < b[1] && z > b[2] && z < b[3] && y < b[4] && y > b[5]) return true;
     }
-    return x < -ARENA.W || x > ARENA.W || z < -ARENA.L || z > ARENA.L;
+    return false;
   };
   // True when the straight line from (ax, az) to (bx, bz) misses every box, widened by r, that stands on the ground.
   // `over` skips boxes lower than it: a throw at chest height clears crates and low walls.
@@ -572,10 +584,10 @@
       waiting: false, stamina: 4, tired: false, sprinting: false, rest: 0, botJump: false, jump2At: 0, tries: 0, progT: 0, lastD: 0, netted: 0, grenade: 0, rocket: 0, net: 0, sniper: 0, crates: 0, holding: false, bonked: false,
       climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabHits: 0, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       wallet: -1, knock: 0, soot: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, vendGo: 0, vendI: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
-      detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0
+      detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0
     }));
     const flags = {};
-    for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0 };
+    for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0, homeT: 0 };
     const shots = Array.from({ length: CONFIG.MAX_SHOTS }, () => ({ live: false, kind: "paint", team: null, owner: -1, ox: 0, oz: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, target: -1 }));
     const crates = Array.from({ length: CONFIG.MAX_CRATES }, () => ({ live: false, team: null, x: 0, y: 0, z: 0 }));
     const traps = A.traps.map(([x, z]) => ({ x, z, dark: 0 }));
@@ -640,7 +652,7 @@
     for (const t of TEAMS) for (const [x, z] of ARENA.crates[t]) addCrate(sim, t, x, z);
     for (const a of sim.actors) {
       const at = startAt(a.team, a.slot, sim.size);
-      a.x = a.lastX = at[0]; a.z = a.lastZ = at[1]; a.y = a.vx = a.vz = a.vy = 0;
+      a.x = a.lastX = a.edgeX = at[0]; a.z = a.lastZ = a.edgeZ = at[1]; a.y = a.vx = a.vz = a.vy = a.edgeY = 0; a.falls = 0;
       a.heading = a.team === "blue" ? Math.PI : 0;
       a.moving = 0; a.grounded = true; a.jumps = 0; a.crouch = a.botJump = false; a.carrying = a.blocked = null;
       a.splat = a.guard = a.cooldown = a.stuck = a.detour = a.aim = a.trapped = a.think = a.painted = a.jump2At = a.tries = a.netted = a.progT = 0;
@@ -695,6 +707,7 @@
     f.carrier = null;
     f.vx = f.vy = f.vz = 0;
     f.thrower = -1;
+    f.homeT = 0;
   };
   // A carrier lets go: the flag lies at their feet and counts down home.
   const dropFlag = (sim, a, why) => {
@@ -702,13 +715,17 @@
     if (!f) return false;
     // It falls to whatever is under the carrier, so a block dropped mid-jump lands on the ground or a roof.
     f.state = "dropped";
-    f.x = a.x;
-    f.y = groundAt(a.x, a.z, a.y);
-    f.z = a.z;
     f.carrier = null;
     a.blocked = f.team;
     a.carrying = null;
-    emit(sim, why, f.team, a.id, f.x, 0, f.z);
+    if (onIsland(a.x, a.z) && a.y >= -CONFIG.RIM) {
+      f.x = a.x; f.y = groundAt(a.x, a.z, a.y); f.z = a.z;
+      emit(sim, why, f.team, a.id, f.x, 0, f.z);
+      return true;
+    }
+    // Over the open edge: it drops at the edge, where its carrier last stood on the island, and goes home soon after.
+    f.x = a.edgeX; f.y = a.edgeY; f.z = a.edgeZ; f.homeT = CONFIG.EDGE_HOME_S;
+    emit(sim, "edgedrop", f.team, a.id, f.x, f.y, f.z);
     return true;
   };
   // The player asks to drop what they carry; false when they carry nothing.
@@ -1130,6 +1147,7 @@
       const ox = g.x, oz = g.z;
       g.x += g.vx * dt; g.z += g.vz * dt;
       resolve(g, CONFIG.GORILLA_R);
+      g.x = Math.max(-ARENA.W + 1, Math.min(ARENA.W - 1, g.x)); g.z = Math.max(-ARENA.L + 1, Math.min(ARENA.L - 1, g.z));
       // Stuck on something while wandering: pick somewhere else.
       if (g.state === G_ROAM && Math.hypot(g.x - ox, g.z - oz) < speed * dt * 0.3) { g.wx = g.x; g.wz = g.z; }
       g.heading = Math.atan2(g.vx, g.vz);
@@ -1180,6 +1198,8 @@
     const w = sim.wallets[a.wallet];
     w.state = 2; w.fuse = CONFIG.WALLET_FUSE; w.x = a.x - Math.sin(a.heading) * 0.6; w.z = a.z - Math.cos(a.heading) * 0.6;
     w.y = groundAt(w.x, w.z, a.y + 0.3, 0.1); w.vx = w.vy = w.vz = 0;
+    // Let go of over the open edge, it falls ticking.
+    if (w.y === -Infinity) { w.y = a.y + 1; w.state = 1; }
     a.wallet = -1;
     emit(sim, "wdrop", a.team, id, w.x, w.y, w.z);
     return true;
@@ -1727,6 +1747,14 @@
       a.vx = Math.sin(h) * sp; a.vz = Math.cos(h) * sp;
       return;
     }
+    // Over the edge: back over the nearest edge on the jetpack, steering in as soon as the feet are over the rim.
+    if (!a.grabbed && (a.y < -CONFIG.RIM || !onIsland(a.x, a.z))) {
+      goal.x = Math.max(-ARENA.W + 2.5, Math.min(ARENA.W - 2.5, a.x)); goal.z = Math.max(-ARENA.L + 2.5, Math.min(ARENA.L - 2.5, a.z));
+      const h = Math.atan2(goal.x - a.x, goal.z - a.z), sp = sim.bots.speed;
+      a.vx = Math.sin(h) * sp; a.vz = Math.cos(h) * sp;
+      a.jetT = 0.25; a.botClimb = a.botStop = false;
+      return;
+    }
     const ex = sim.bots.expert;
     if (a.carrying && a.cooldown <= 0 && sim.rng() < dt * 2) botPass(sim, a);
     a.botStop = a.botStraight = false;
@@ -1783,7 +1811,7 @@
         a.tries = 0;
         a.detour = 1.2;
         const ang = sim.rng() * Math.PI * 2;
-        a.detourX = a.x + Math.sin(ang) * 5; a.detourZ = a.z + Math.cos(ang) * 5;
+        a.detourX = Math.max(-ARENA.W + 1.5, Math.min(ARENA.W - 1.5, a.x + Math.sin(ang) * 5)); a.detourZ = Math.max(-ARENA.L + 1.5, Math.min(ARENA.L - 1.5, a.z + Math.cos(ang) * 5));
       } else if (!stalled) a.tries = 0;
     }
     if (a.jump2At && sim.time >= a.jump2At) { a.jump2At = 0; a.botJump = true; }
@@ -1895,6 +1923,7 @@
       }
       f.state = "carried";
       f.carrier = a.id;
+      f.homeT = 0;
       a.carrying = f.team;
       emit(sim, "pickup", f.team, a.id, f.x, 0, f.z);
     }
@@ -1984,6 +2013,19 @@
     for (const t of sim.traps) t.dark = 0;
     for (const c of sim.caches) c.dark = 0;
     emit(sim, "mined", null, -1, height, 0, 0);
+  };
+  // Fallen all the way past the island: back in its own block zone (where its side starts, in its own fort), with a
+  // full tank and a moment's fresh-paint protection. A block still in hand drops at the edge it went over.
+  const respawn = (sim, a) => {
+    if (a.carrying) dropFlag(sim, a, "edgedrop");
+    if (a.wallet >= 0) dropWallet(sim, a.id);
+    const at = startAt(a.team, a.slot, sim.size);
+    a.x = a.lastX = a.edgeX = at[0]; a.z = a.lastZ = a.edgeZ = at[1]; a.y = a.edgeY = 0;
+    a.vx = a.vy = a.vz = 0; a.grounded = true; a.jumps = 0; a.flight = 0; a.riding = a.climbing = a.holding = a.jetting = false;
+    a.knock = a.slip = 0; a.fuel = CONFIG.JET_FUEL; a.guard = CONFIG.GUARD_S; a.navI = -1; a.route = ""; a.detour = 0;
+    a.heading = a.team === "blue" ? Math.PI : 0;
+    a.falls++;
+    emit(sim, "respawn", a.team, a.id, a.x, 0, a.z);
   };
   // One fixed step. `input` is the player's: `x`, `z` a world-space move direction of length up to 1, `sprint`,
   // `jump` (a press), `crouch` (held), and optionally `face`, the yaw the player looks along. The scene throws, drops and builds through `fire`, `drop` and `build`.
@@ -2185,6 +2227,11 @@
           a.y = ground; a.vy = 0; a.grounded = true; a.jumps = 0;
         } else a.grounded = false;
       } else { a.y = ground; a.grounded = true; }
+      // The open edge: where an Ooga last stood on the island is where a block it carries over the edge drops; one gone
+      // down under the top lets go of it, and one fallen all the way comes back home.
+      if (a.grounded && a.y > -CONFIG.RIM && onIsland(a.x, a.z)) { a.edgeX = a.x; a.edgeY = a.y; a.edgeZ = a.z; }
+      else if (a.carrying && a.y < -CONFIG.RIM) dropFlag(sim, a, "edgedrop");
+      if (a.y < CONFIG.FALL_FLOOR) { respawn(sim, a); continue; }
       // The campfire: feet in it burn, and burnt feet take `BURN_HOPS` jumps to cool.
       if (a.grounded && a.y < 0.05 && free && a.burnt <= 0 && (a.x - ARENA.fire[0]) ** 2 + (a.z - ARENA.fire[1]) ** 2 < CONFIG.FIRE_R * CONFIG.FIRE_R) {
         a.burnt = CONFIG.BURN_HOPS;
@@ -2229,7 +2276,12 @@
       if (sim.halving[t] > 0) sim.halving[t] = Math.max(0, sim.halving[t] - dt);
       if (sim.cold[t] > 0) sim.cold[t] = Math.max(0, sim.cold[t] - dt);
     }
-    for (const t of TEAMS) if (sim.flags[t].state === "flying") flyFlag(sim, sim.flags[t], dt);
+    for (const t of TEAMS) {
+      const f = sim.flags[t];
+      if (f.state === "flying") flyFlag(sim, f, dt);
+      // A block dropped at the edge goes home by itself.
+      else if (f.state === "dropped" && f.homeT > 0 && (f.homeT -= dt) <= 0) { homeFlag(f); emit(sim, "return", f.team, -1, f.x, 0, f.z); }
+    }
     settleCrates(sim, dt);
     // Throws in flight: gravity and the wind, then a rival in the way or anything solid.
     for (const s of sim.shots) {
@@ -2313,7 +2365,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt };
+  BL.blockSim = { LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

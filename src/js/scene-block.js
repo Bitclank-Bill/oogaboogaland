@@ -72,7 +72,8 @@
   RENDER_OPTS.starMatrix[0] = RENDER_OPTS.starMatrix[4] = RENDER_OPTS.starMatrix[8] = 1;
   RENDER_OPTS.fog = RENDER_OPTS.horizon;
   RENDER_OPTS.clouds = 0.35;
-  RENDER_OPTS.sea = -30;
+  // The sea far under the floating island, as far down as the hub's.
+  RENDER_OPTS.sea = -70;
   const setVec = (v, x, y, z) => { v.x = x; v.y = y; v.z = z; };
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   const pick = (list, i) => list[i % list.length];
@@ -504,7 +505,7 @@
     else if (t === "build" || t === "lift" || t === "set" || t === "smash") c.crate(k);
     else if (t === "pickup" && (me || mine)) c.pickup();
     else if (t === "rescue" && mine) c.rescue();
-    else if (t === "knock" || t === "drop") c.drop(k);
+    else if (t === "knock" || t === "drop" || t === "edgedrop") c.drop(k);
     else if (t === "pass") c.pass(k);
     else if (t === "capture") (mine ? c.capture : c.theirCapture)();
     else if (t === "go") c.go();
@@ -558,6 +559,8 @@
     else if (t === "rekt") feed(e.by >= 0 && e.by !== e.actor ? `${nameOf(e.by)}'s wallet rekt ${who}` : `${who} got rekt by a free wallet`, e.by >= 0 ? sim.actors[e.by].team : e.team);
     else if (t === "grab") feed(`A gorilla grabbed ${e.actor === 0 ? "you" : who}!`, e.team);
     else if (t === "breakfree") feed(`${who} wriggled free of a gorilla`, e.team);
+    else if (t === "respawn") feed(`${who} fell off the island`, e.team);
+    else if (t === "edgedrop") feed(`The ${TEAM_NAME[e.team]} block dropped at the edge`, e.team);
     else if (t === "gorillahit" && e.actor >= 0) feed(`${nameOf(e.actor)} stunned a gorilla`, sim.actors[e.actor].team);
     else if (t === "gold") feed(`${who} won the Golden Dual AKs!`, e.team);
     else if (t === "launch") feed(`${who} catapulted toward the ${TEAM_NAME[SIM.other(e.team)]} fort!`, e.team);
@@ -659,6 +662,10 @@
       } else if (e.type === "knock" || e.type === "drop") {
         if (e.team === sim.team) notice("Our block is loose! Touch it to send it home", 2500);
         else notice(me ? "Block dropped · grab it again, or a teammate can" : "Their block is down! Grab it", 2500);
+      } else if (e.type === "edgedrop") {
+        notice(e.team === sim.team ? "Our block dropped at the edge · it goes home in a moment" : "Their block dropped at the edge · grab it before it goes home", 2500);
+      } else if (e.type === "respawn") {
+        if (me) { center("BACK HOME", 1000); notice(COARSE ? "You fell off the island · hold Jump in the air to jetpack back next time" : "You fell off the island · hold Space in the air to jetpack back next time", 2600); }
       } else if (e.type === "go") {
         center("GO!", 900);
         notice(`First to ${sim.target} · steal the ${sim.rival} block · bring it home · ${COARSE ? "Pass" : "Tab"} throws it to a friend`, 4500);
@@ -1921,6 +1928,12 @@
     mapRoot = place(createNode());
     const add = (node) => { addChild(mapRoot, node); return node; };
     add(createNode({ geometry: BM.arena(SIM.MAPS.indexOf(selection.map)) }));
+    // The floating island it stands on (its rock, cliffs and terrain), and the hub's white clouds drifting under it.
+    add(createNode({ geometry: BM.isle(SIM.MAPS.indexOf(selection.map)) }));
+    for (let k = 0; k < 12; k++) {
+      const ang = k / 12 * Math.PI * 2 + 0.3, out = k % 3 === 0 ? 0.55 : 1.25, y = -9 - (k % 4) * 4.5;
+      add(createNode({ geometry: BL.hubModels.cloud(k % 3), sightHidden: true, position: { x: Math.sin(ang) * (A.W * out + 6), y, z: Math.cos(ang) * (A.L * out + 6) }, rotation: { x: 0, y: ang, z: 0 } }));
+    }
     // The stands, and the sniper towers' ladders and rifle racks and the ziplines, where this map has them.
     const mapIndex = SIM.MAPS.indexOf(selection.map);
     for (const t of SIM.TEAMS) {
