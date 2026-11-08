@@ -4,7 +4,22 @@ The hosted hub leaves Cloud Hopper's controller, HUD, weather, sound and game-on
 
 This is a bounded first-play improvement, not completion of regional streaming or lazy character rigs. It does **not** meet the original 40% startup or 30% critical-transfer targets. Geometry and visibility preparation remain dominant. The additional chunk moves bytes to first use; it does not remove them from a complete game visit.
 
-## Framing investigation resumed — 2026-11-05
+## Current integration: 2026-11-08
+
+This branch incorporates upstream `rock` at `5e5ad247117835ce676a79cd951d390084551de0`, starting from PR head `c389232bc76da04bbb1a78836fffa97e4c32870a`. The merge preserves upstream's removal of the old Whitepaper and Goldbug flows, the current pet-reaction hooks, and Cloud Hopper's deferred loading boundary. The shared ghost look stays available to island NPCs without loading the optional game.
+
+The PR is ready for review, not draft. The draft and pending-intake notes in the dated sections below describe those earlier checkpoints. Factory acceptance is still unresolved and was not rerun. The earlier startup measurements and full-suite totals do not measure this integration; no new performance or device claim is made.
+
+Validation on the integrated source:
+
+- `npm run build` and syntax checks on the touched JavaScript pass.
+- `node --test worker/test/cloud-hopper-replays.test.mjs`: **14/14**, including island NPC ghosts without the optional game.
+- `CHROME_ARCH=arm64 LANES=1 node test/run.mjs cloud-hopper-record`: **31/31**, covering recording/client and HUD lifecycle fixtures.
+- `ONLY='cloud hopper fixed camera,cloud hopper island framing,hub hosted optional game' LANES=1 CHROME_ARCH=arm64 node test/run.mjs --browser-only hub`: **8/8**. This covers the supported camera views, island framing, unloaded first play, refused download, retry and interrupted ascent returning the same Ooga to Arcade.
+
+The explicit `--browser-only` option selects existing scene checks and keeps their assertions, watchdogs and failure ledger. It cannot be combined with `full`, `unit`, `perf` or dedicated checks. Normal global/full commands and CI are unchanged. These are focused results, not a full-suite pass. No Factory, stopped local check, performance run or physical-device test was run. GitHub's automatic checks run separately on the published commit.
+
+## Historical framing investigation: 2026-11-05
 
 The maintainer explicitly authorized resuming the stopped framing and Factory investigations. This follow-up starts from `fc82ebc66c683195d37809ad5be5d26c556b3715`; the previous failures remain in the historical evidence below and archived local ledgers.
 
@@ -16,7 +31,7 @@ Final framing-only validation after reverting the Factory experiment: `ONLY='clo
 
 **Factory remains blocked.** The experiment tried to compare the same pile level after each real +12-banana tip, since the expanding ring intentionally removes scenery targets. It incorrectly called the departed hub's debug setter, which is null under scene release. The active Lab's existing `__ooga.setPileLevel` is the available setter. The runner counted the earlier launch failure and this exception as two session failures and printed STOP (`factory lifecycle`, streak 2, last `2026-11-05T19:57:43.030Z`). The experiment was archived locally and reverted; no Factory fixture or runtime change is included here, and no further Factory test was run after that STOP. The original exact-target failure remains unresolved; the disappearing target's identity has not been proved. Resuming the corrected experiment requires renewed maintainer clearance under the repository rule.
 
-The existing performance measurements remain historical. Keep the PR draft: Factory acceptance, real devices, live multiplayer/voice, unmet performance targets and maintainer play-testing remain open. Character intake continues to be the intentional draft gate.
+At this checkpoint the PR was draft and Character intake was pending for that reason. Factory acceptance, real devices, live multiplayer/voice, unmet performance targets and maintainer play-testing remained open. The measurements were not repeated.
 
 ## Earlier acceptance follow-up — 2026-11-05
 
@@ -35,7 +50,7 @@ Validation:
 
 **STOP gates remain.** The framing assertion reached streak **2**, last `2026-11-05T19:38:09.961Z`, with its sample still in `lifting` and the HUD hidden; it was not fixed or rerun after STOP. The parent checkout's `factory lifecycle` session remains at streak **3** (last `2026-10-12T17:46:42.144Z`); the PR worktree's exact-target assertion is still at streak **1** (last `2026-11-05T07:50:37.000Z`). Factory was not rerun and its assertion was not changed. Source inspection finds a confound to investigate: each simulated Factory tip increases the shared pile; its expanding path intentionally removes scenery targets. The old evidence shows 1,012→1,084 shown bananas with 1,715→1,714 targets, but does not identify the missing target. This is a diagnosis lead, not a proven fix.
 
-The repository's rule is: “When the same check fails a second run in a row, the runner prints `STOP`. Do not try again: report the ledger entry to the maintainer and move on.” Framing/Factory acceptance therefore needs maintainer clearance and investigation. No ledger was reset or moved to evade STOP; no full/performance/DSB rerun was made. Character intake is intentionally pending for a draft (“Draft character submissions wait until ready for review”), not an unfinished job. Keep this PR draft. Live multiplayer/voice, real devices, the unmet performance targets and maintainer play-testing remain open.
+The repository's rule is: “When the same check fails a second run in a row, the runner prints `STOP`. Do not try again: report the ledger entry to the maintainer and move on.” Framing/Factory acceptance therefore needs maintainer clearance and investigation. No ledger was reset or moved to evade STOP; no full/performance/DSB rerun was made. At that checkpoint Character intake was pending because the PR was draft (“Draft character submissions wait until ready for review”). Live multiplayer/voice, real devices, the unmet performance targets and maintainer play-testing remain open.
 
 ## Reproduction
 
@@ -90,4 +105,4 @@ The resource totals are observed **after** the ten-second window, not an exact c
 - The broader startup run was **433/438**: four legacy Cloud Hopper camera/framing assertions and the Factory target assertion failed. The old outdoor-cabinet geometry warm-up was updated to match the cabinet's removal; the remaining camera expectations still fail. They are not claimed fixed by deferred loading.
 - The full suite on the companion Map implementation was **2,070/2,106**. It is not a passing full-suite result for this series. Covered-wall performance, multiple older game/scene fixtures and lifecycle checks remain unresolved. STOPped checks were not repeatedly rerun after the authorized attempt.
 
-Draft until these gates and maintainer play-testing are resolved. Remaining original-plan work includes safe region extraction, lazy character preparation, a general cancellable during-play scheduler, constrained-network/real-device evidence and measured transition/residency acceptance. No generated `oogaboogaland.html` is included in the commit.
+These historical failures are not a passing acceptance result. Remaining original-plan work includes safe region extraction, lazy character preparation, a general cancellable during-play scheduler, constrained-network/real-device evidence and measured transition/residency acceptance. No generated `oogaboogaland.html` is included in the commit.

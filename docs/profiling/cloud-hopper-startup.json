@@ -1271,5 +1271,54 @@
       "test/run.mjs": "d313b263a676d3d37638fe1f1a9c9fe1263e01089e0d4ac947f90a6302472d32"
     },
     "draft": true
+  },
+  "integration20261108": {
+    "date": "2026-11-08",
+    "sourceHead": "c389232bc76da04bbb1a78836fffa97e4c32870a",
+    "upstream": "5e5ad247117835ce676a79cd951d390084551de0",
+    "draft": false,
+    "changes": [
+      "Preserve upstream Whitepaper and Goldbug removals and pet-reaction debug hook while retaining deferred Cloud Hopper setup.",
+      "Provide explicit browser-only selection without changing normal/full checks or failure tracking."
+    ],
+    "runs": [
+      {
+        "command": "npm run build",
+        "result": "pass"
+      },
+      {
+        "command": "node --check (touched JavaScript files)",
+        "result": "pass"
+      },
+      {
+        "command": "node --test worker/test/cloud-hopper-replays.test.mjs",
+        "passed": 14,
+        "total": 14
+      },
+      {
+        "command": "CHROME_ARCH=arm64 LANES=1 node test/run.mjs cloud-hopper-record",
+        "passed": 31,
+        "total": 31
+      },
+      {
+        "command": "ONLY='cloud hopper fixed camera,cloud hopper island framing,hub hosted optional game' LANES=1 CHROME_ARCH=arm64 node test/run.mjs --browser-only hub",
+        "passed": 8,
+        "total": 8
+      }
+    ],
+    "notRun": [
+      "Factory",
+      "stopped local checks",
+      "local global/full tier",
+      "performance measurements",
+      "physical-device checks"
+    ],
+    "sourceSHA256": {
+      "test/run.mjs": "b29bcf867628b042a7ecbeaf5b367c6f5e7517f01f2f20bf906db178e773fda3",
+      "src/js/scene-hub.js": "fd888ad40ac0757a5bc479ce977d1d28f10c5ca643bc66e5ca67af2e18ec8e87",
+      "src/js/deferred.js": "bb70a61c108b530a6fcdc1004e1374c3610bbdc832f38e332798b7e4b9259b69",
+      "src/index.html": "5f486c564d9db84dc8437fb6e307fa30e68f4b3762f873e348158e045ca2cc04"
+    },
+    "historicalEvidence": "All previous benchmark and acceptance sections are preserved as historical results, not this integration."
   }
 }
