@@ -3234,7 +3234,7 @@ const { autoQualityProbe } = (() => {
     const create = (quality = "high", renderedFrames = 100, deviceMemory) => {
       const changes = [], state = { focused: true, now: 0 };
       const renderer = { kind: "webgl2", quality, setQuality(value) { this.quality = value; changes.push(value); } };
-      const context = { renderer, navigator: { deviceMemory }, window: { matchMedia: () => ({ matches: false }) }, document: { hasFocus: () => state.focused }, transition: null, renderedFrames, showQuality() {} };
+      const context = { renderer, navigator: { deviceMemory }, window: { matchMedia: () => ({ matches: false }) }, document: { hasFocus: () => state.focused }, transition: null, active: { warming: false }, renderedFrames, showQuality() {} };
       const tier = runInNewContext(`${opening}\n${controller}\n({ autoTier, tierFromBoot, BOOT_MEDIUM, BOOT_LOW })`, context);
       // The governor reads delivered intervals only, so a frame costs the probe nothing but the interval it took.
       const frames = (count, interval = 1000 / 60) => { for (let n = 0; n < count; n++) tier.autoTier(interval, state.now += interval); };
@@ -3253,6 +3253,8 @@ const { autoQualityProbe } = (() => {
     const excluded = create(); excluded.frames(600);
     excluded.state.focused = false; excluded.frames(600, 40);
     excluded.state.focused = true; excluded.context.transition = {}; excluded.frames(600, 40);
+    // A scene readying the next behind its door spends part of these frames on that, so they say nothing of the tier.
+    excluded.context.transition = null; excluded.context.active.warming = true; excluded.frames(600, 40);
     const fallback = create(); fallback.renderer.kind = "canvas2d"; fallback.frames(600, 40);
     // Boot cost is the only device signal Safari cannot mask, and it is read once, before any frame exists. The
     // boots sit inside the director's own bands, so recalibrating its thresholds never strands this check.
@@ -4525,6 +4527,94 @@ const canvasSurfaceCacheChecks = async () => {
   }
   record("Canvas surface compatibility: the production painter needs no filter, readback or resize, keeps source and coverage draws, uses valid additive alpha for overbright light, and restores context state before reuse",
     rows.every(row => Object.values(row).every(Boolean)), JSON.stringify(rows));
+};
+// A door's far side readied ahead of the crossing: what it asks for, when, and that a failure neither traps nor loops.
+const doorReadyChecks = async () => {
+  const source = await readFile(join(root, "src/js/door-ready.js"), "utf8"), flush = () => new Promise(setImmediate);
+  const fixture = (steps = null) => {
+    const present = new Set(), calls = [], answers = new Map(), scopes = [];
+    const deferred = { present: (group) => present.has(group), prefetch: (group) => calls.push(`prefetch ${group}`),
+      load: (group) => { calls.push(`load ${group}`); return present.has(group) ? null : new Promise((resolve, reject) => answers.set(group, { resolve, reject })); } };
+    const BL = { deferred, models: { withScope: (id, build, arg) => { scopes.push(id); return build(arg); } } };
+    runInNewContext(source, { window: { BL }, performance });
+    return { door: BL.doorReady.create({ code: "hall", extra: "wing", scope: "place", steps }), present, calls, answers, scopes };
+  };
+  {
+    const f = fixture();
+    f.door.approach();
+    const asked = f.calls.join();
+    f.present.add("hall");
+    f.door.approach();
+    record("door ready: nearing a door asks speculatively for its code, and only then for the code it opens without, which would otherwise fetch its base again", asked === "prefetch hall" && f.calls.join() === "prefetch hall,prefetch wing", f.calls.join());
+  }
+  {
+    const f = fixture();
+    f.door.commit();
+    f.answers.get("hall").reject(new Error("refused"));
+    await flush();
+    const failed = f.door.failed && !f.door.ready, before = f.calls.length;
+    for (let i = 0; i < 60; i++) { f.door.approach(); f.door.step(3); }
+    const quiet = f.calls.length === before;
+    f.door.commit();
+    const retried = !f.door.failed && f.calls.length === before + 1;
+    f.present.add("hall");
+    f.answers.get("hall").resolve(null);
+    await flush();
+    f.door.step(3);
+    record("door ready: a refused download is failed until the next walk in, with no request of its own meanwhile, and that walk tries again and opens it", failed && quiet && retried && f.door.ready, JSON.stringify({ failed, quiet, retried, phase: f.door.phase, calls: f.calls }));
+  }
+  {
+    const f = fixture();
+    f.door.commit();
+    const late = f.answers.get("hall");
+    f.door.commit();
+    late.reject(new Error("timed out"));
+    await flush();
+    record("door ready: an earlier try failing late does not fail the walk in that followed it", !f.door.failed, f.door.phase);
+  }
+  {
+    const budgets = [];
+    let finished = 0;
+    const f = fixture(function* (slice) { try { budgets.push(slice.budget); yield; budgets.push(slice.budget); yield; } finally { finished++; } });
+    f.present.add("hall");
+    f.door.step(3);
+    const first = f.door.working && !f.door.ready;
+    f.door.step(20);
+    const second = f.door.working && !finished;
+    f.door.step(20);
+    f.door.step(20);
+    record("door ready: construction runs one frame's slice at a time on the budget of that frame, in the place's own scope, and is ready when it ends", first && second && f.door.ready && !f.door.working && budgets.join() === "3,20" && finished === 1 && f.scopes.every((s) => s === "place"), JSON.stringify({ first, second, budgets, finished, phase: f.door.phase, scopes: f.scopes }));
+  }
+  {
+    let finished = 0;
+    const f = fixture(function* () { try { yield; yield; } finally { finished++; } });
+    f.present.add("hall");
+    f.door.step(3);
+    f.door.reset();
+    const none = fixture(() => null);
+    none.present.add("hall");
+    none.door.step(3);
+    record("door ready: a reset closes construction part way through and goes back to nothing readied; a place with nothing to build is ready as soon as its code is", finished === 1 && f.door.phase === "idle" && none.door.ready, JSON.stringify({ finished, phase: f.door.phase, none: none.door.phase }));
+  }
+  {
+    const f = fixture();
+    f.door.commit();
+    f.door.step(3);
+    const beforeBase = !f.calls.includes("load wing");
+    f.present.add("hall");
+    f.answers.get("hall").resolve(null);
+    await flush();
+    f.door.step(3);
+    const waiting = f.door.ready && !f.door.extraDone && f.calls.includes("load wing");
+    f.answers.get("wing").reject(new Error("refused"));
+    await flush();
+    const given = f.door.extraDone && !f.door.failed;
+    const here = fixture();
+    here.present.add("hall");
+    here.door.step(3);
+    here.present.add("wing");
+    record("door ready: walking in asks for the optional code once the rest has come, and its failure neither fails the door nor keeps anyone waiting", beforeBase && waiting && given && here.door.extraDone, JSON.stringify({ beforeBase, waiting, given, calls: f.calls }));
+  }
 };
 const deferredLoadingChecks = async () => {
   {
@@ -9913,7 +10003,7 @@ const adaptiveQualityChecks = async () => {
   const r = autoQualityProbe();
   record("memory policy: devices below 8 GiB release the hub, 8 GiB retains it, unknown memory retains it with a fine pointer and releases it with a coarse one, and the explicit policy overrides either; the island cache's second build follows the same rule unless `terrainworker` forces it", r.hubMemory && r.cacheMemory, JSON.stringify(r));
   record("adaptive quality: a GPU-bound machine is seen through delivered frames and loses a tier within two seconds", r.healthy && r.gpuBound && r.reactsFast, JSON.stringify(r));
-  record("adaptive quality: warmup, transitions, background frames and isolated spikes do not lower quality", r.warmup && r.ignoresPauses && r.ignoresSpikes && r.fallback, JSON.stringify(r));
+  record("adaptive quality: warmup, transitions, a scene readying the next, background frames and isolated spikes do not lower quality", r.warmup && r.ignoresPauses && r.ignoresSpikes && r.fallback, JSON.stringify(r));
   record("adaptive quality: steps one tier at a time and stops at the lowest", r.bounded, JSON.stringify(r));
   record("adaptive quality: boot cost seeds the opening tier, only ever downward", r.bootFast && r.bootMedium && r.bootLow && r.bootOneWay && r.bootKeepsCoarse && r.bootMemory && r.memoryBoot, JSON.stringify(r));
 };
@@ -30249,7 +30339,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   const clearance = claimClearanceProof();
   record("hub footprint clearance: conservative rejection preserves circular boundaries, live reservations and exceptional numbers", clearance.failures === 0 && clearance.cases >= 4000, JSON.stringify(clearance));
   await cloudHopperFailureChecks(BL);
-  await deferredLoadingChecks(); await hudNoticeChecks(); await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await oogatronReplayChecks(); await mirrorRippleChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await timechainRoomChecks(); await timechainBlockChecks(); await environmentSoundChecks(); await weatherStepChecks(); await hammockChecks(); await poolLayoutChecks(); await gameRulesChecks(); await highscoreClientChecks(); await ghostHuntChecks(); await donationClientChecks(); await poolWildlifeChecks(); await totemFeedChecks();
+  await deferredLoadingChecks(); await doorReadyChecks(); await hudNoticeChecks(); await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await oogatronReplayChecks(); await mirrorRippleChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await timechainRoomChecks(); await timechainBlockChecks(); await environmentSoundChecks(); await weatherStepChecks(); await hammockChecks(); await poolLayoutChecks(); await gameRulesChecks(); await highscoreClientChecks(); await ghostHuntChecks(); await donationClientChecks(); await poolWildlifeChecks(); await totemFeedChecks();
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.

@@ -1134,10 +1134,16 @@
   };
   // While the hangar is open its door shows the hangar through the shield from the hangar's own stand-in, so a hosted
   // page fetches the hangar's code with the hall's. Should that fail, the hall opens all the same, its door keeping the
-  // glimpse, and walking through tries the hangar's code again.
-  const prepare = () => {
-    const loading = FM.hangarEntry() ? BL.deferred.load("hangar-scene") : null;
-    return loading && loading.catch(() => null);
+  // glimpse, and walking through tries the hangar's code again. It is a nicety, so slow code is treated the same way:
+  // the hall waits for it only HANGAR_GRACE, and an Ooga that walked in has already waited with the island running on.
+  const HANGAR_GRACE = 1500;
+  const prepare = (place, ctx) => {
+    const loading = FM.hangarEntry() && !ctx.world.factoryCrossing ? BL.deferred.load("hangar-scene") : null;
+    return loading && new Promise((resolve) => {
+      const done = () => { clearTimeout(timer); resolve(null); };
+      const timer = setTimeout(done, HANGAR_GRACE);
+      loading.then(done, done);
+    });
   };
   // On in through the gate's shield from the island: as far across and as far past it as the Ooga went through the
   // island's, facing in, the view square behind it, and the walk on.
@@ -1177,24 +1183,26 @@
     const behind = off ? Math.PI : 0;
     o.tYaw = o.yaw + Math.atan2(Math.sin(behind - o.yaw), Math.cos(behind - o.yaw));
     if (!off) return;
+    // A kept island takes over within the frame and needs no pause; one it has to rebuild gets a beat in the shield.
+    const kept = !!BL.scenes.hub.retained;
     if (!w.through && p.z >= GATE_Z) {
       w.through = true;
-      w.beat = G.beat;
+      w.beat = kept ? 0 : G.beat;
       scene.gate.phase.ripples.pulse(p.x, feetOf() - LAYOUT.entrance.y + 1, 0);
     }
-    // A step into the shield, it stands a beat, as the Timechain Sphere's way out does, so the island's rebuild lands on
-    // a still frame; then the island takes over with this frame held over its first.
+    // A step into the shield the island takes over: with this frame held over its first where it is kept, and where it
+    // must be rebuilt (seconds on a phone) by fading over that, as the Timechain Sphere's way out does.
     if (!w.through || p.z < GATE_Z + G.through / 2 && moved > 0.005) return;
     if (w.beat > 0) {
       w.beat -= dt;
       people.steer(0, 0, 0, 0, 0);
       return;
     }
-    world.factoryCrossing = { across: p.x, past: p.z - GATE_Z, pitch: o.pitch, dist: o.dist };
+    world.factoryCrossing = { across: p.x, past: p.z - GATE_Z, pitch: o.pitch, dist: o.dist, held: kept };
     w.phase = 0;
-    w.grab = true;
+    w.grab = kept;
     people.steer(0, 0, 0, 0, 0);
-    leaveCave(true);
+    leaveCave(kept);
     // A switch the director refuses (another under way) leaves the Ooga in the hall.
     if (!leaving) { world.factoryCrossing = null; w.through = w.grab = false; }
   };
@@ -2539,6 +2547,32 @@
     if (kortik) kortik.liveGeometry(set);
     if (remotes) remotes.liveGeometry(set);
   };
+  // Every mesh in a builder's result. `in` runs no accessor, so a packed mesh's lazy arrays stay unread.
+  const WARM_FACES = 40000;
+  const meshesIn = (value, out) => {
+    if (!value || typeof value !== "object") return;
+    if ("verts" in value && "faces" in value) out.add(value);
+    else for (const key in value) meshesIn(value[key], out);
+  };
+  // What the hall's first frame would otherwise build and upload all at once, readied while the visitor is still on the
+  // island (door-ready.js, on its `slice`): the pure builders, then their meshes and the ones the hall swaps in. `out`
+  // collects each mesh as it goes up, so the island keeps it on the GPU until the hall's own visit holds it.
+  const warmSteps = function* (gl, slice, out) {
+    const { pause } = BL.buildTasks;
+    yield* FM.buildSteps(slice);
+    for (const read of [...FM.BULK, FM.coreChamber, FM.forgeFire, FM.forgeSign, FM.forgeWave, FM.switchScreens, FM.rebalancerRing, FM.rebalancerFlow, FM.lookoutLamp, FM.galleryCaps, FM.capacitor, FM.cookerPort, FM.forgeShafts, FM.teslaArcs, BL.kortikModels.station, BL.kortikModels.geometries]) {
+      meshesIn(read(), out);
+      yield* pause(slice);
+    }
+    for (const geometry of out) {
+      // One upload cannot be cut short, so the hall's rock goes up under the crossing's held frame instead: a stumble
+      // in a free walk shows where a held frame a little longer does not. The hangar's door window stays there for the same reason.
+      if (geometry.faces.length > WARM_FACES) { out.delete(geometry); continue; }
+      gl.prepareGeometry(geometry);
+      yield* pause(slice);
+    }
+    return null;
+  };
   const stats = () => {
     let nodes = 0;
     traverseVisible(root, () => nodes++);
@@ -2550,7 +2584,7 @@
     // Voice zone: the Factory group, which its tunnel on the island shares (`factory`).
     voiceZone: "factory.hall",
     micKey: true,
-    id: "factory", prepare, buildSteps: () => FM.buildSteps(), enter, update, overlay, onDonation, previewDonation, onSeen, onKey, onLootCleared, renderOpts: RENDER_OPTS, stay, leave, stats, liveGeometry, allGeometry, hallGeometry,
+    id: "factory", prepare, buildSteps: () => FM.buildSteps(), warmSteps, enter, update, overlay, onDonation, previewDonation, onSeen, onKey, onLootCleared, renderOpts: RENDER_OPTS, stay, leave, stats, liveGeometry, allGeometry, hallGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     // Diagnostics observe the existing detached owner without reading model caches.
     get retainedGeometry() { return world ? world.factoryKeep : null; },

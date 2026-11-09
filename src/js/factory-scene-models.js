@@ -2267,13 +2267,14 @@
     }
     return { rock, timber: merge(...geos), glow: noShadow(merge(...glow)), outside: noShadow(merge(...outside)) };
   });
-  const buildSteps = function* () {
-    const slice = { until: 0, budget: BL.buildTasks.SLICE_MS };
-    for (const build of [hall, scaffold, coreBody, conduits, stationFrame, forge, peerPipes, cookerBody, studyHall]) yield* build.steps(slice);
+  // The hall's heavy, unchanging builders: built behind the crossing, or ahead of it on the island's own `slice`.
+  const BULK = [hall, scaffold, coreBody, conduits, stationFrame, forge, peerPipes, cookerBody, studyHall];
+  const buildSteps = function* (slice = { until: 0, budget: BL.buildTasks.SLICE_MS }) {
+    for (const build of BULK) yield* build.steps(slice);
     return null;
   };
   Object.assign(BL.factoryModels, {
-    buildSteps,
+    buildSteps, BULK,
     forgeSign, forgeLines, forgeTrack, forgeShafts, mintCoin, teslaCoil, statusLantern, peerPipes, peerMirrors, supportAt, stairCeilingAt, clearAt, walkable, resolveFall, hall, scaffold, coreBody, coreChamber, conduits, stationFrame, capacitor, forge, forgeFire, cart, switchboard, switchScreens, rebalancerBase, rebalancerRing, rebalancerFlow, treasuryBody, goldPile, hopperFill, beltNugget, goldCrate, dataBoard, moveBoard, cookerBody, cookerFixtures, cookerLid, cookerPort, cookerGear, cookerSats, donationKiosk, kioskScreen, kioskIdle, kioskThanks, donationBoard, boardFace, boardValues, paintBoard, satCube, flyingBanana, coreRingLime, coreRing, teslaArcs, lookoutTower, lookoutLamp, lookoutOptics, lookoutBeam, studyHall, studyNote, studyBoard, tunnels, galleryStation, galleryCaps, hardHat, exitTunnel, hangarDoor
   });
 })();
