@@ -26682,6 +26682,129 @@ const reactionWireChecks = async BL => {
       && corrected.hand === false && corrected.tone === 0,
     JSON.stringify({ sent, raised, afterBurst, later, up, corrected }));
 };
+// The static emoji, end to end on this side: the real reactions.js on a small DOM over the real net.js and its fake socket,
+// so a double-click is the frames it really sends and the panel the attributes it really writes.
+const reactionPinPanel = (BL, net) => {
+  const timers = new Map(), byId = new Map(), listeners = el => el.on;
+  let nextTimer = 1, now = 1000;
+  const make = () => { const el = { on: {}, children: [], dataset: {}, attrs: {}, hidden: false, disabled: false, textContent: "", className: "", title: "", value: "", parent: null,
+    append(...items) { for (const c of items) if (typeof c !== "string") { c.parent = this; this.children.push(c); } },
+    addEventListener(type, fn) { (this.on[type] ||= []).push(fn); }, removeEventListener() {}, dispatchEvent() {}, focus() {}, contains() { return true; },
+    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }, removeAttribute(k) { delete this.attrs[k]; },
+    querySelector: () => make(),
+    closest(sel) { const cls = sel.slice(1).split("[")[0], hit = this.className.split(" ").includes(cls) && (!sel.includes("[data-slot]") || this.dataset.slot !== undefined); return hit ? this : null; } };
+    return el; };
+  const body = make(), mount = id => { const el = make(); byId.set(id, el); return el; }; mount("players-reactions"); mount("chat-reactions");
+  const context = { window: { BL: { reactionPolicy: BL.reactionPolicy, emojiData: BL.emojiData, net }, setTimeout: fn => { timers.set(nextTimer, fn); return nextTimer++; }, clearTimeout: id => timers.delete(id), matchMedia: () => ({ matches: true }) },
+    document: { createElement: make, getElementById: id => byId.get(id), body, addEventListener() {}, removeEventListener() {} }, localStorage: { getItem: () => null, setItem() {} }, Event: class {}, JSON, Number, String, Map, Set, Math };
+  runInNewContext(readFileSync(join(root, "src/js/reactions.js"), "utf8"), context);
+  const bars = [...byId.values()].map(host => { const card = host.children[0], grid = card.children[0]; return { card, buttons: grid.children, hand: card.children[2] }; });
+  const fire = (el, type, e) => { for (const fn of listeners(el)[type] || []) fn(e); };
+  const find = (node, cls, out = []) => { if (node.className.split(" ").includes(cls)) out.push(node); for (const c of node.children) find(c, cls, out); return out; };
+  const tap = (slot, ms = 1000, extra = {}, bar = 0) => { now += ms; const target = bars[bar].buttons[slot], e = { target, button: 0, clientX: 0, clientY: 0, timeStamp: now, detail: 1, ...extra };
+    fire(bars[bar].card, "pointerdown", e); fire(bars[bar].card, "pointerup", e); fire(bars[bar].card, "click", e); };
+  const hold = slot => { now += 1000; const target = bars[0].buttons[slot], e = { target, button: 0, clientX: 0, clientY: 0, timeStamp: now, detail: 1 };
+    fire(bars[0].card, "pointerdown", e); for (const [id, fn] of [...timers]) { timers.delete(id); fn(); } fire(bars[0].card, "click", e); };
+  const key = (slot, init) => { let stopped = false; fire(bars[0].card, "keydown", { target: bars[0].buttons[slot], repeat: false, shiftKey: false, preventDefault() { stopped = true; }, ...init }); return stopped; };
+  const click = el => { for (let at = el.parent; at; at = at.parent) fire(at, "click", { target: el }); };
+  const runTimers = () => { for (const [id, fn] of [...timers]) { timers.delete(id); fn(); } };
+  return { reactions: context.window.BL.reactions, bars, tap, hold, key, find: cls => find(body, cls), click, runTimers, pressed: (slot, bar = 0) => bars[bar].buttons[slot].getAttribute("aria-pressed"), timers };
+};
+const reactionPinChecks = async BL => {
+  const P = BL.reactionPolicy, me = () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) });
+  const f = netFixture(BL, me, 0), net = f.net; await net.start();
+  const ws = () => f.sockets.at(-1), message = v => ws().onmessage({ data: JSON.stringify(v) });
+  const FEATURES = ["react-v1", "react-pin-v1"], welcome = (features = FEATURES) => message({ t: "welcome", you: { id: 71 }, now: Date.now(), features, players: [{ id: 5, login: "a", display: "A", pin: "👍" }, { id: 6, login: "b", display: "B", pin: "ooga" }, { id: 7, login: "c", display: "C" }] });
+  welcome();
+  const roster = [net.state.pins, net.remotes.get(5).pin, net.remotes.get(6).pin, net.remotes.get(7).pin];
+  message({ t: "pin", id: 7, e: "😂" }); roster.push(net.remotes.get(7).pin); message({ t: "pin", id: 7, e: "text" }); roster.push(net.remotes.get(7).pin);
+  record("static emoji roster: join and welcome carry a remote's valid pin, a later change updates it, and anything the policy refuses reads as none", roster.join() === "true,👍,,,😂,", roster.join());
+  const p = reactionPinPanel(BL, net), frames = t => f.sent.filter(m => m.t === t), rest = () => f.advance(3000);
+  const mark = () => [frames("react").length, frames("pin").length], since = (m, n) => frames(m === 0 ? "react" : "pin").length - n;
+  const THUMB = 7, HEART = 3, LAUGH = 0;
+  let m = mark();
+  p.tap(THUMB);
+  const single = [since(0, m[0]), since(1, m[1]), p.pressed(THUMB)].join();
+  rest(); m = mark();
+  p.tap(THUMB); p.tap(THUMB, 200);
+  const on = [since(0, m[0]), since(1, m[1]), frames("pin").at(-1).e, net.state.pin, p.pressed(THUMB, 0), p.pressed(THUMB, 1), /static/.test(p.bars[1].buttons[THUMB].title)].join();
+  rest(); m = mark();
+  p.tap(LAUGH); p.tap(LAUGH, 200);
+  const replaced = [since(0, m[0]), frames("pin").at(-1).e, p.pressed(THUMB), p.pressed(LAUGH), since(1, m[1])].join();
+  rest(); m = mark();
+  p.tap(LAUGH); p.tap(LAUGH, 200);
+  const off = [since(0, m[0]), frames("pin").at(-1).e, net.state.pin, p.pressed(LAUGH)].join();
+  rest(); m = mark();
+  p.tap(1); p.tap(1, 500); rest(); p.tap(1); p.tap(2, 100); rest(); p.tap(2); p.tap(2, 200, {}, 0); p.tap(2, 50);
+  const rhythm = [since(0, m[0]), since(1, m[1])].join();
+  net.setPin(""); rest(); m = mark();
+  p.tap(4); p.hold(4); const held = [since(0, m[0]), since(1, m[1]), p.reactions.stats().open, p.pressed(4)].join();
+  p.reactions.close(); rest(); m = mark();
+  p.tap(4); p.tap(4, 200); const afterHold = [since(0, m[0]), p.pressed(4)].join();
+  net.setPin(""); rest(); m = mark();
+  const stopped = p.key(5, { key: "Enter", shiftKey: true }), repeatStopped = p.key(5, { key: "Enter", shiftKey: true, repeat: true });
+  const keyboard = [stopped, repeatStopped, since(0, m[0]), since(1, m[1]), p.pressed(5)].join();
+  p.key(5, { key: "Enter", repeat: true }); rest(); m = mark(); p.tap(5, 30, { detail: 0 }); p.tap(5, 30, { detail: 0 });
+  const repeating = [since(0, m[0]), since(1, m[1])].join();
+  p.key(5, { key: "Enter", repeat: false }); net.setPin(""); rest();
+  p.tap(THUMB); p.tap(THUMB, 200); rest();
+  p.click(p.find("reaction-tone")[4] || (p.hold(THUMB), p.find("reaction-tone")[4]));
+  const tone = [frames("pin").at(-1).e === P.toned("👍", 4), net.state.pin === P.toned("👍", 4), p.pressed(THUMB)].join();
+  rest(); p.tap(HEART); p.tap(HEART, 200); rest();
+  p.click(p.find("reaction-heart")[7]);
+  const heart = [frames("pin").at(-1).e, p.pressed(HEART)].join();
+  rest(); p.hold(HEART); p.click(p.find("reaction-choice").find(c => c.dataset.e === "🍌"));
+  const swapped = [frames("pin").at(-1).e, p.reactions.slots[HEART], p.pressed(HEART)].join();
+  rest(); net.setPin(""); rest(); p.click(p.find("reaction-tone")[0]); rest();
+  // The room refused: its word puts the panel back, whichever way the change went.
+  p.tap(THUMB); p.tap(THUMB, 200); const shownBefore = p.pressed(THUMB); message({ t: "pin", id: 71, e: "" }); const refusedOn = [shownBefore, p.pressed(THUMB), net.state.pin === ""].join();
+  rest(); p.tap(THUMB); p.tap(THUMB, 200); rest(); p.tap(LAUGH); p.tap(LAUGH, 200); message({ t: "pin", id: 71, e: "👍" }); const refusedReplace = [p.pressed(LAUGH), p.pressed(THUMB), net.state.pin].join();
+  // Over the bucket a following change waits, the ring stays on its slot, and it goes once a token is back.
+  rest(); while (net.sendReaction("💯")); m = mark();
+  p.click(p.find("reaction-tone")[2]);
+  const waited = [since(1, m[1]), p.pressed(THUMB), p.timers.size > 0].join();
+  rest(); p.runTimers();
+  const followed = [frames("pin").at(-1).e === P.toned("👍", 2), net.state.pin === P.toned("👍", 2)].join();
+  // A double-click over the bucket changes nothing.
+  rest(); while (net.sendReaction("💯")); m = mark(); const emptyAt = net.state.pin; p.tap(LAUGH); p.tap(LAUGH, 200); const refused = [since(1, m[1]), net.state.pin === emptyAt, p.pressed(LAUGH), p.pressed(THUMB)].join();
+  // A reconnect sends it again; an older room drops it and two taps are two reactions; signing out lowers it.
+  rest(); const before = frames("pin").length; welcome(); const resent = [frames("pin").length - before, frames("pin").at(-1).e === net.state.pin, p.pressed(THUMB)].join();
+  rest(); welcome(["react-v1"]); net.state.hand = false; f.advance(1); m = mark();
+  p.tap(1, 1000); p.tap(1, 200);
+  const older = [net.state.pin, net.state.pins, since(0, m[0]), since(1, m[1]), p.pressed(1), p.bars[0].buttons[1].title.includes("double-click")].join();
+  rest(); welcome(); net.state.pin = "😂"; message({ t: "kick", reason: "revoked" }); const revoked = net.state.pin;
+  record("static emoji panel: a tap is one reaction and nothing held; a double-click is that one reaction then the static emoji, pressed and titled in both bars; again turns it off; another replaces it",
+    single === "1,0,false" && on === "1,1,👍,👍,true,true,true" && replaced === "1,😂,false,true,1" && off === "1,,,false", JSON.stringify({ single, on, replaced, off }));
+  record("static emoji panel: slow taps and taps on two emoji stay reactions, a third tap starts a new pair, a long press opens the picker and pins nothing, and a key held down is never a double-click; Shift+Enter toggles once",
+    rhythm === "6,1" && held === "1,0,true,false" && afterHold === "1,true" && keyboard === "true,true,0,1,true" && repeating === "2,0", JSON.stringify({ rhythm, held, afterHold, keyboard, repeating }));
+  record("static emoji panel: a skin tone, heart colour or new emoji in the static slot goes out at once and keeps the ring",
+    tone === "true,true,true" && heart === "💜,true" && swapped === "🍌,🍌,true", JSON.stringify({ tone, heart, swapped }));
+  record("static emoji panel: the room's refusal puts the ring back, a following change over the bucket waits and then goes, a double-click over the bucket changes nothing",
+    refusedOn === "true,false,true" && refusedReplace === "false,true,👍" && waited === "0,true,true" && followed === "true,true" && refused === "0,true,false,true", JSON.stringify({ refusedOn, refusedReplace, waited, followed, refused }));
+  record("static emoji wire: re-sent once after a reconnect, dropped with two taps as two reactions and no pressed state on an older room, lowered when access is revoked",
+    resent === "1,true,true" && older === ",false,2,0,,false" && revoked === "", JSON.stringify({ resent, older, revoked }));
+  f.net.dispose();
+};
+// A static emoji over the visitor's own head, in the raised hand's place, and beside it with neither over the other.
+const reactionPinDrawChecks = BL => {
+  const state = { hand: false, handTone: 0, pin: "" };
+  const net = { state, remotes: new Map() };
+  const context = { window: { BL: { scene: { boundsOf: () => ({ min: [0, 0, 0], max: [0, 0, 0] }) }, math: { quat: {} }, reactionPolicy: BL.reactionPolicy, net, weaponTargets: { create: () => ({}) } }, matchMedia: () => ({ matches: false }), innerWidth: 800 }, Map, Set, Math, Infinity, Number, Array, Object,
+    getComputedStyle: () => ({ getPropertyValue: () => "monospace" }), document: { documentElement: {}, body: { appendChild() {} }, createElement: () => ({ style: {}, appendChild() {}, remove() {}, getBoundingClientRect: () => ({ top: 0, bottom: 10 }) }) } };
+  runInNewContext(readFileSync(join(root, "src/js/remote-players.js"), "utf8"), context);
+  const head = { visible: true, geometry: {}, world: new Float64Array(16), children: [] }, own = { parts: { head }, root: { visible: true }, speechLift: 0 };
+  const pool = context.window.BL.remotePlayers.create({ root: {}, crew: { pets: {} }, player: () => own });
+  const draw = () => { const calls = []; const ctx = { save() {}, restore() {}, translate() {}, scale() {}, fillText(text, x, y) { calls.push({ text, x, y, font: ctx.font }); } }; pool.drawNames(ctx, () => ({ x: 100, y: 200 })); return calls; };
+  const none = draw().length, lifted0 = own.speechLift;
+  state.pin = "😂"; const alone = draw(), lifted = own.speechLift;
+  state.hand = true; state.handTone = 3; const both = draw();
+  state.pin = ""; const hand = draw();
+  const at = text => both.find(c => c.text === text);
+  const pin = at("😂"), raised = at(BL.reactionPolicy.HANDS[3]);
+  record("static emoji over the head: drawn in the hand's place and type, lifting the chat bubble; beside a raised hand the two stand clear of each other at one height; the hand alone is where it always was",
+    none === 0 && lifted0 === 0 && alone.length === 1 && alone[0].x === 100 && /^20px/.test(alone[0].font) && lifted > 0 && both.length === 2 && pin.x < 100 && raised.x > 100 && raised.x - pin.x >= 26 && pin.y === raised.y && hand.length === 1 && hand[0].x === 100,
+    JSON.stringify({ none, alone, lifted, both, hand }));
+};
 // Online Oogas columns: every row, built by the real players.js on a small DOM, holds its cells in one order, and the
 // stylesheet puts each icon in a column of fixed width (lock, voice, distance as wide as "999 m", crosshair), so they
 // line up down the whole tab, in every group and on the visitor's own row.
@@ -29129,6 +29252,8 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await privatePadChecks();
   await playersColumnChecks();
   await reactionWireChecks(BL);
+  await reactionPinChecks(BL);
+  reactionPinDrawChecks(BL);
   await chalkboardClientChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);

@@ -1,8 +1,12 @@
 // Reactions, on X Spaces' pattern: a dark card of ten emoji in two rows of five and, past a divider, the raised hand
 // pinned beside them, under Online Oogas' list and under Ooga Chat's input (two bars, the same state). A tap shows that
 // emoji over the visitor's Ooga for everyone in their zone for a moment (`net.sendReaction`, drawn by remote-players.js);
-// the hand stays up over it, and pressed here, until it is tapped again (`net.setHand`). A long press on any of the ten
-// (or a right click, the context-menu key or Shift+F10) opens the picker, floating in the middle of the screen: every emoji in
+// the hand stays up over it, and pressed here, until it is tapped again (`net.setHand`). A double-click or double-tap on
+// one of the ten (Shift+Enter on a keyboard) keeps that emoji over the Ooga too, ringed purple in both bars, until it is
+// done again; on another it moves there. Its first tap is an ordinary reaction, its second sends none. It is the slot that
+// is static, so a new emoji, tone or heart colour in that slot goes out at once, and what the panel rings always settles on
+// what the room holds (`net.setPin`, a room with `net.state.pins`; anywhere else two taps are two reactions, as ever).
+// A long press on any of the ten (or a right click, the context-menu key or Shift+F10) opens the picker, floating in the middle of the screen: every emoji in
 // emoji-data.js under its group, a search by name, a skin tone (applied to every bar emoji and the hand that takes one),
 // a heart colour (any heart in a slot shows and goes out in it; red until changed) and Reset. Choosing one puts it in
 // that slot, swapping with the slot that already held it so the ten stay distinct; choosing a heart sets the heart
@@ -10,7 +14,8 @@
 // `ooga-reactions`, `ooga-reactions-tone`, `ooga-reactions-heart`), read at load and checked against the shared policy.
 // The bars show only where the room takes reactions (`net.state.reactions`), signed in. net.js spends one bucket,
 // mirroring the room's, for reactions and the hand alike, so a tap the room would drop shows nothing here either. The
-// picker's grid is built on its first opening and kept for the page life. No frame work and no timers but a long press's.
+// picker's grid is built on its first opening and kept for the page life. No frame work and no timers but a long press's
+// and the retry of a static emoji's change that was over the bucket.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -21,6 +26,8 @@
   const HEART_NAMES = ["Red", "Pink", "Orange", "Yellow", "Green", "Blue", "Light blue", "Purple", "Brown", "Black", "Grey", "White"];
   const asSlot = (emoji) => HEARTS.includes(emoji) ? HEART : emoji;
   const HOLD_MS = 450, MOVE_PX = 10;
+  // Two taps of one emoji this close are a double-click; a static emoji's change over the bucket goes again this much later.
+  const DOUBLE_MS = 350, PIN_RETRY_MS = 400;
   const GROUP_ICONS = { "Smileys & Emotion": "😀", "People & Body": "👋", "Animals & Nature": "🐻", "Food & Drink": "🍔", "Travel & Places": "✈️",
     "Activities": "⚽", "Objects": "💡", "Symbols": "💯", "Flags": "🏁" };
   const TONE_NAMES = ["No skin tone", "Light skin tone", "Medium-light skin tone", "Medium skin tone", "Medium-dark skin tone", "Dark skin tone"];
@@ -76,7 +83,13 @@
         const e = slots[i], text = shown(e);
         if (b.textContent !== text) b.textContent = text;
         b.setAttribute("aria-label", label(e));
-        b.title = `${label(e)} · long-press to change`;
+        const pins = net.state.pins, pinned = pins && i === pinSlot;
+        if (pinned) b.setAttribute("aria-label", `${label(e)}, static over your Ooga`);
+        b.title = pinned ? `${label(e)} · static over your Ooga · double-click to clear · long-press to change`
+          : pins ? `${label(e)} · double-click to keep over your Ooga · long-press to change`
+          : `${label(e)} · long-press to change`;
+        if (pins) { b.setAttribute("aria-pressed", String(pinned)); b.setAttribute("aria-keyshortcuts", "Shift+Enter"); }
+        else { b.removeAttribute("aria-pressed"); b.removeAttribute("aria-keyshortcuts"); }
       });
       const up = net.state.hand, text = P.HANDS[tone];
       if (bar.hand.textContent !== text) bar.hand.textContent = text;
@@ -96,13 +109,38 @@
       bar.hand.disabled = !on;
     }
     if (available !== on) { available = on; if (!on) close(); }
+    settlePin();
     paint();
   };
 
   const react = (i) => net.sendReaction(shown(slots[i]));
 
+  // The slot that is static over the visitor's Ooga, -1 for none. `net.state.pin` is what the room holds, so that is what
+  // decides: refused, or lowered by signing out, the ring goes back to the slot holding what the room has (or nowhere).
+  let pinSlot = -1, pinTimer = 0;
+  const pinWanted = () => pinSlot < 0 ? "" : shown(slots[pinSlot]);
+  // Asks the room for what the panel shows; over the bucket, again in a moment.
+  const pushPin = () => {
+    window.clearTimeout(pinTimer);
+    pinTimer = 0;
+    if (!net.state.pins || net.state.room !== "live" || net.state.pin === pinWanted()) return;
+    if (!net.setPin(pinWanted())) pinTimer = window.setTimeout(pushPin, PIN_RETRY_MS);
+  };
+  const settlePin = () => {
+    const pin = net.state.pin;
+    if (pin !== pinWanted()) {
+      const at = pin ? slots.findIndex((e) => shown(e) === pin) : -1;
+      if (at >= 0 || !pin) pinSlot = at;
+    }
+    if (net.state.pin !== pinWanted() && !pinTimer) pushPin();
+  };
+  const togglePin = (i) => net.setPin(P.toggled(pinWanted(), shown(slots[i])));
+
   // A long press: a held pointer that stays put opens the picker and swallows the click that follows.
   let holdTimer = 0, holdSlot = -1, holdBar = null, holdX = 0, holdY = 0, swallow = false;
+  // The emoji last tapped and when, for a double-click; and whether the last key down was a held key's repeat, whose
+  // clicks (detail 0) are never one.
+  let lastTap = null, lastTapAt = 0, keyHeld = false;
   const cancelHold = () => { window.clearTimeout(holdTimer); holdTimer = 0; holdSlot = -1; };
   const wire = (bar) => {
     bar.card.addEventListener("pointerdown", (e) => {
@@ -131,12 +169,26 @@
     bar.card.addEventListener("click", (e) => {
       const b = e.target.closest(".reaction");
       if (!b || b.disabled) return;
-      if (swallow) { swallow = false; return; }
-      if (b === bar.hand) net.setHand(!net.state.hand, tone);
-      else react(Number(b.dataset.slot));
+      if (swallow) { swallow = false; lastTap = null; return; }
+      if (b === bar.hand) { lastTap = null; net.setHand(!net.state.hand, tone); return; }
+      const slot = Number(b.dataset.slot);
+      // The second tap of a double-click: the first went out at once, as any tap, and this one sends no reaction.
+      if (net.state.pins && !(keyHeld && !e.detail) && b === lastTap && e.timeStamp - lastTapAt <= DOUBLE_MS) {
+        lastTap = null;
+        togglePin(slot);
+        return;
+      }
+      lastTap = b; lastTapAt = e.timeStamp;
+      react(slot);
     });
     bar.card.addEventListener("keydown", (e) => {
       const b = e.target.closest(".reaction[data-slot]");
+      keyHeld = e.repeat;
+      if (b && !b.disabled && e.key === "Enter" && e.shiftKey && net.state.pins) {
+        e.preventDefault();
+        if (!e.repeat) togglePin(Number(b.dataset.slot));
+        return;
+      }
       if (!b || !(e.key === "ContextMenu" || e.key === "F10" && e.shiftKey)) return;
       e.preventDefault();
       open(bar, Number(b.dataset.slot));
@@ -221,6 +273,7 @@
       p.current.textContent = shown(slots[pickSlot]);
       // A raised hand takes the new tone at once.
       if (net.state.hand) net.setHand(true, tone);
+      pushPin();
       paint();
     });
     hearts.addEventListener("click", (e) => {
@@ -230,6 +283,7 @@
       save();
       paintTones();
       p.current.textContent = shown(slots[pickSlot]);
+      pushPin();
       paint();
     });
     nav.addEventListener("click", (e) => {
@@ -259,6 +313,7 @@
       save();
       paintTones();
       if (net.state.hand) net.setHand(true, tone);
+      pushPin();
       paint();
       close(true);
     });
@@ -277,6 +332,7 @@
     if (other >= 0) slots[other] = was;
     slots[pickSlot] = emoji;
     save();
+    pushPin();
     paint();
     close(true);
   };
@@ -286,6 +342,7 @@
   };
   const open = (bar, slot) => {
     if (!available) return;
+    lastTap = null;
     if (!picker) picker = build();
     pickSlot = slot; pickBar = bar;
     picker.current.textContent = shown(slots[slot]);

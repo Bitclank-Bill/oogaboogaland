@@ -2472,6 +2472,22 @@ body[data-active-scene="hub"] .home-link {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
+/* The emoji kept over the Ooga: a purple circle, whatever the width of its cell, that the picking ring can stand with. */
+.reaction[data-slot][aria-pressed="true"] { position: relative; }
+.reaction[data-slot][aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  box-sizing: border-box;
+  border: 2px solid #b26bff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reaction { transition: none; }
   .reaction:active { transform: none; }

@@ -3,7 +3,9 @@
 // until they lower it. A reaction is one emoji from emoji-data.js, plain or in one of its five skin tones, never text.
 // DEFAULTS are the reaction bar's ten until a visitor changes one; HAND is pinned beside them, and HANDS holds it in each
 // tone, ready to draw. `toned(emoji, tone)` is an emoji in tone 0 (none, the yellow) to 5 (dark), itself where it takes
-// none; `tone(value)` says whether a value is one of those; `valid` is the room's test for a reaction.
+// none; `tone(value)` says whether a value is one of those; `valid` is the room's test for a reaction. A static emoji,
+// kept over the Ooga until turned off, is one of those emoji or "" for none (`pin`), and `toggled(held, emoji)` is the
+// static emoji after a double-click on `emoji`: off when it was the one held, otherwise it, replacing any other.
 (() => {
   "use strict";
   const scope = typeof window === "undefined" ? globalThis : window;
@@ -41,5 +43,7 @@
   };
   const tone = (value) => Number.isInteger(value) && value >= 0 && value < TONE.length;
   const valid = (value) => typeof value === "string" && value.length > 0 && value.length <= MAX && known(value);
-  BL.reactionPolicy = Object.freeze({ DEFAULTS, HAND, HANDS, MAX, TONES: TONE.length, toned, takesTone, known, tone, valid });
+  const pin = (value) => value === "" || valid(value);
+  const toggled = (held, emoji) => held === emoji ? "" : emoji;
+  BL.reactionPolicy = Object.freeze({ DEFAULTS, HAND, HANDS, MAX, TONES: TONE.length, toned, takesTone, known, tone, valid, pin, toggled });
 })();

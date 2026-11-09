@@ -17,8 +17,9 @@
 // Reactions (reactions.js, through `net.subscribeReactions`): an emoji a player sent pops up over their nameplate, or
 // over the visitor's own head for their own (id 0), rises a little and fades over REACT_TIME, the newest replacing the
 // one before; a raised hand (`rec.hand`, `net.state.hand` for the visitor's own) stands there until it is lowered, never
-// moving: a reaction pops up in front of it and rises on over it, and a chat bubble stands over it, never under it.
-// Under Calm a reaction only fades. Drawn on the overlay as text, nothing built or kept.
+// moving: a reaction pops up in front of it and rises on over it, and a chat bubble stands over it, never under it. A
+// static emoji (`rec.pin`, `net.state.pin`) stands in the hand's place and is treated as it is; with both up they stand
+// side by side, the static emoji on the left, as the bar has them. Under Calm a reaction only fades. Drawn on the overlay as text, nothing built or kept.
 // `pick` finds the nearest live body along a sight line, mesh by mesh, through a weapon-target list of the pool's own
 // (never the scene's input targets, so a live player is seen by a view's crosshair without being tapped, possessed,
 // struck or shot); a body that is not shown (another zone, the visitor's own name) is never found, and the scene's
@@ -55,6 +56,8 @@
   // reaction shows, how far it rises (further from a raised hand, to clear it), its pop and fade.
   const EMOJI_FONT = "26px 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
   const HAND_FONT = "20px 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif";
+  // A raised hand and a static emoji together, each this far either side of the middle: clear of each other.
+  const HELD_APART = 15;
   const REACT_TIME = 2.6, REACT_LIFT = 16, REACT_RISE = 22, REACT_OVER = 14, REACT_POP = 0.18, REACT_FADE = 0.7;
   // A chat bubble over a raised hand stands this much higher, its tail clear over the hand.
   const HAND_ROOM = 26;
@@ -496,24 +499,27 @@
 
     // Nameplates on the overlay, just over each head, in the order the room sent them: the online dot, the name and,
     // in voice, the speaker in one row, with the health bar under the name when the game shows it.
-    // A reaction `emoji` `left` seconds before it goes, and the raised hand, over the point (x, y). The hand never moves;
-    // a reaction starts on it, drawn after it so in front, and rises clear of it. Emoji stand centred with no letter
+    // A reaction `emoji` `left` seconds before it goes, and the raised hand and static emoji, over the point (x, y). Those
+    // two never move; a reaction starts on them, drawn after it so in front, and rises clear of it. Emoji stand centred with no letter
     // spacing, in a state of their own, so a nameplate's type around them is left as it was.
-    const drawReaction = (ctx, x, y, emoji, left, hand) => {
+    const drawReaction = (ctx, x, y, emoji, left, hand, pin) => {
       ctx.save();
       ctx.letterSpacing = "0px";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      if (hand) {
+      const held = hand || pin;
+      if (held) {
+        const apart = hand && pin ? HELD_APART : 0;
         ctx.font = HAND_FONT;
-        ctx.fillText(hand, x, y - REACT_LIFT);
+        if (pin) ctx.fillText(pin, x - apart, y - REACT_LIFT);
+        if (hand) ctx.fillText(hand, x + apart, y - REACT_LIFT);
       }
       if (left > 0) {
         const age = REACT_TIME - left, calm = CALM.matches, k = 1 - age / REACT_TIME;
         const pop = calm ? 1 : Math.min(1, age / REACT_POP), scale = calm ? 1 : 0.4 + 0.6 * (1 - (1 - pop) * (1 - pop)) + 0.12 * Math.sin(Math.PI * pop);
-        // From a raised hand it starts on the hand and goes further; under Calm it stands clear of the hand from the start.
-        const start = hand ? 0 : 4, reach = hand ? REACT_RISE + REACT_OVER : REACT_RISE;
-        const rise = calm ? (hand ? reach : 0) : reach * (1 - k * k);
+        // From a raised hand or a static emoji it starts on it and goes further; under Calm it stands clear from the start.
+        const start = held ? 0 : 4, reach = held ? REACT_RISE + REACT_OVER : REACT_RISE;
+        const rise = calm ? (held ? reach : 0) : reach * (1 - k * k);
         ctx.globalAlpha = Math.min(1, left / REACT_FADE);
         ctx.font = EMOJI_FONT;
         ctx.translate(x, y - REACT_LIFT - start - rise);
@@ -524,22 +530,23 @@
     };
     const drawNames = (ctx, project, showHealth = false) => {
       const ownHand = net.state && net.state.hand ? BL.reactionPolicy.HANDS[net.state.handTone] : "";
-      // The visitor's own line stands over their raised hand, on whichever body they drive now.
-      const own = player ? player() : crew && crew.player, speaker = ownHand && own || null;
+      const ownPin = net.state && net.state.pin || "";
+      // The visitor's own line stands over their raised hand or static emoji, on whichever body they drive now.
+      const own = player ? player() : crew && crew.player, speaker = (ownHand || ownPin) && own || null;
       if (lifted !== speaker) {
         if (lifted) lifted.speechLift = 0;
         lifted = speaker;
         if (lifted) lifted.speechLift = HAND_ROOM;
       }
-      if (!bodies.size && selfReactT <= 0 && !ownHand) return;
+      if (!bodies.size && selfReactT <= 0 && !ownHand && !ownPin) return;
       ctx.save();
-      if (selfReactT > 0 || ownHand) {
+      if (selfReactT > 0 || ownHand || ownPin) {
         const rig = own && (own.parts ? own : own.gorilla);
         headMinX = Infinity; headMaxX = -Infinity; headTop = Infinity;
         if (rig && rig.parts && rig.parts.head && rig.root.visible) projectHead(rig.parts.head, project);
         if (headTop !== Infinity) {
           const x = Math.round((headMinX + headMaxX) / 2), y = Math.round(headTop);
-          if (selfReactT > 0 || ownHand) drawReaction(ctx, x, y, selfReact, selfReactT, ownHand);
+          drawReaction(ctx, x, y, selfReact, selfReactT, ownHand, ownPin);
         }
       }
       if (!nameFont) {
@@ -576,8 +583,8 @@
         headMinX = Infinity; headMaxX = -Infinity; headTop = Infinity;
         anchorHead(entry.cave.parts.head, exact);
         if (headTop === Infinity) continue;
-        // Over the box as over an NPC's name tooltip (hud.js speechSpace), and over a raised hand.
-        entry.cave.speechLift = boxH + SPEECH_GAP + (rec.hand ? HAND_ROOM : 0);
+        // Over the box as over an NPC's name tooltip (hud.js speechSpace), and over a raised hand or static emoji.
+        entry.cave.speechLift = boxH + SPEECH_GAP + (rec.hand || rec.pin ? HAND_ROOM : 0);
         // Measured once a name: measureText allocates.
         if (entry.label !== rec.display) { entry.label = rec.display; entry.labelW = ctx.measureText(rec.display).width; }
         // The tooltip's box, rounded as its offset size and translate are, centred across the head and standing on it,
@@ -589,8 +596,8 @@
         const textX = left + NAME_PAD_X + DOT_D + DOT_GAP, lineMid = line + NAME_LINE / 2;
         entry.screenX = mid; entry.plateLeft = left; entry.plateTop = top; entry.plateW = boxW; entry.plateH = boxH;
         entry.plateTextX = textX; entry.plateBaseline = line + nameBaseline;
-        // A reaction and the raised hand over the plate's box, centred on it (clamped with it at the view's edge).
-        if (entry.reactT > 0 || rec.hand) drawReaction(ctx, left + boxW / 2, top, entry.react, entry.reactT, rec.hand ? BL.reactionPolicy.HANDS[rec.handTone] : "");
+        // A reaction, the raised hand and the static emoji over the plate's box, centred on it (clamped with it at the view's edge).
+        if (entry.reactT > 0 || rec.hand || rec.pin) drawReaction(ctx, left + boxW / 2, top, entry.react, entry.reactT, rec.hand ? BL.reactionPolicy.HANDS[rec.handTone] : "", rec.pin);
         ctx.strokeStyle = NAME_STROKE;
         ctx.fillStyle = NAME_FILL;
         ctx.strokeText(rec.display, textX, line + nameBaseline);

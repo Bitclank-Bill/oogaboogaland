@@ -38,6 +38,7 @@ import "../../src/js/reaction-policy.js";
 //                                host, from a page in the arcade's ghost arena
 //                 { t: "react", e }              an emoji over the driven body for a moment (see Reactions below)
 //                 { t: "hand", on, tone? }       the raised hand up or down, in skin tone 0 (none) to 5
+//                 { t: "pin", e }                the static emoji kept over the player's Ooga, "" for none
 //                 { t: "link", to, on }          ask player `to` for a voice link, or take this player's ask back (see Voice links below)
 //                 { t: "chalk", v, k, ... }     the EntropyLab chalkboard: `take` or `drop` the board, or an edit by
 //                                                whoever holds it, on board layout `v` (chalk-board.js VERSION; see
@@ -92,6 +93,8 @@ import "../../src/js/reaction-policy.js";
 //                 react { id, e }            player `id` reacted with emoji `e`, to the players in their zone
 //                 hand { id, on, tone }      player `id` raised or lowered their hand; welcome and join carry `hand`
 //                                            and `handTone`. To the sender alone, its own id: a change it was refused
+//                 pin { id, e }              player `id`'s static emoji, "" for none; welcome and join carry `pin`. To
+//                                            the sender alone, its own id: a change it was refused
 //                 links { wants, linked, refused? }  this player's own asks and which of them are two-way links, after
 //                                            welcome and on every change to either; `refused: "full"` when an ask did not fit
 // Zones: `<group>` or `<group>.<place>`. Voice is shared within a group; who is shown is matched on the whole
@@ -117,7 +120,9 @@ import "../../src/js/reaction-policy.js";
 // flag on the player's record, in its attachment and every view, sent to everyone on a change only. Both spend one
 // per-record bucket of REACT_HZ a second bursting to REACT_BURST (the page mirrors it, a little short); over it a
 // reaction is dropped without a word, and a hand change is refused with the sender's own `hand { id, on, tone }` as
-// the room holds it, so the sender's page puts it back.
+// the room holds it, so the sender's page puts it back. A room that also lists PIN_FEATURE keeps a static emoji the same
+// way, on the same bucket: `pin` on the record, its attachment and every view, one emoji the policy accepts at a time,
+// sent to everyone on a change only, a refused change answered with the sender's own `pin { id, e }`.
 // Voice links: a room that keeps them lists LINK_FEATURE in welcome's `features`. Each player holds a set of asks by
 // account id, and two who have asked for each other are linked: `voicePeers` lets them hear each other wherever they
 // are, in any zone or none, with or without a body. An ask is told only to the one who made it, so the player asked
@@ -171,6 +176,7 @@ export const CHAT_BURST = 3;
 // Active accounts plus bounded reconnect debt, held only while the room is awake.
 export const CHAT_BUCKET_KEEP = MAX_PLAYERS * 2;
 export const REACT_FEATURE = "react-v1";
+export const PIN_FEATURE = "react-pin-v1";
 export const REACT_HZ = 3;
 export const REACT_BURST = 6;
 // The page sends `{"t":"chat","text":…}` with its text already sanitized, under MESSAGE_MAX; the margin is
@@ -408,6 +414,7 @@ export const parseClientMessage = (text) => {
     const tone = msg.tone === undefined ? 0 : msg.tone;
     return typeof msg.on === "boolean" && globalThis.BL.reactionPolicy.tone(tone) ? { t: "hand", on: msg.on, tone } : null;
   }
+  if (msg.t === "pin") return globalThis.BL.reactionPolicy.pin(msg.e) ? { t: "pin", e: msg.e } : null;
   if (msg.t === "link") return Number.isSafeInteger(msg.to) && msg.to > 0 && typeof msg.on === "boolean" ? { t: "link", to: msg.to, on: msg.on } : null;
   if (msg.t === "shot") {
     const a = msg.a;

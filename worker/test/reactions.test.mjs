@@ -11,7 +11,7 @@ import * as studio from "../src/studio-policy.js";
 import { sfuClient } from "../src/sfu.js";
 import { getPlayer } from "../src/db.js";
 
-const { REACT_FEATURE, REACT_BURST, REACT_HZ, MESSAGE_MAX, parseClientMessage } = protocol;
+const { REACT_FEATURE, PIN_FEATURE, REACT_BURST, REACT_HZ, MESSAGE_MAX, parseClientMessage } = protocol;
 const policy = globalThis.BL.reactionPolicy;
 
 test("a reaction is one emoji the policy knows, in any of its skin tones; the hand is a boolean; anything else is ignored", () => {
@@ -111,4 +111,53 @@ test("one bucket a record: a burst, then three a second across reactions and the
   assert.deepEqual(b.sent.at(-1), '{"t":"hand","id":1,"on":true,"tone":0}', "one more a third of a second later");
   assert.equal(a.sent.length, 1, "an accepted change is never echoed to its sender");
   assert.ok(REACT_FEATURE === "react-v1");
+});
+
+test("a static emoji is one emoji the policy knows or \"\" for none, and a double-click toggles or replaces it", () => {
+  for (const e of [...policy.DEFAULTS, policy.toned("👍", 3), "💜", ""]) assert.deepEqual(parseClientMessage(JSON.stringify({ t: "pin", e })), { t: "pin", e }, e);
+  for (const e of ["hello", "😂😂", "❤", " 😂", 7, null, true, "x".repeat(policy.MAX + 1)]) assert.equal(parseClientMessage(JSON.stringify({ t: "pin", e })), null, JSON.stringify(e));
+  assert.equal(parseClientMessage('{"t":"pin"}'), null, "no field, no message");
+  assert.equal(policy.toggled("", "😂"), "😂", "on");
+  assert.equal(policy.toggled("😂", "😂"), "", "the same again: off");
+  assert.equal(policy.toggled("😂", "👍"), "👍", "another: replaced");
+  assert.equal(PIN_FEATURE, "react-pin-v1");
+});
+
+test("the static emoji lives on the record, its attachment and every view, goes to everyone on a change only, and is listed in welcome", () => {
+  const clock = { now: 1000 };
+  const { room, join } = reactionRoom(clock);
+  const a = join(1, "outside"), b = join(2, "lab");
+  assert.equal(room.view(room.players.get(1)).pin, "");
+  room.webSocketMessage(a, '{"t":"pin","e":"😂"}');
+  assert.deepEqual(b.sent, ['{"t":"pin","id":1,"e":"😂"}'], "everyone, any zone, as the hand");
+  assert.equal(a.saved.pin, "😂", "kept in the attachment for a woken room");
+  assert.equal(room.view(room.players.get(1)).pin, "😂", "welcome and join carry it");
+  room.webSocketMessage(a, '{"t":"pin","e":"😂"}');
+  assert.equal(b.sent.length, 1, "no change, no message");
+  room.webSocketMessage(a, '{"t":"pin","e":"👍🏽"}');
+  assert.equal(b.sent.at(-1), '{"t":"pin","id":1,"e":"👍🏽"}', "replaced, one at a time");
+  room.webSocketMessage(a, '{"t":"pin","e":""}');
+  assert.equal(b.sent.at(-1), '{"t":"pin","id":1,"e":""}', "and off");
+  room.webSocketMessage(a, '{"t":"pin","e":"ooga"}');
+  assert.equal(b.sent.length, 3, "text is never a static emoji");
+  assert.deepEqual(a.sent, [], "an accepted change is never echoed to its sender");
+  assert.equal(room.record({}, { id: 9, pin: "👍" }).pin, "👍", "an attachment's static emoji survives hibernation");
+  assert.equal(room.record({}, { id: 10 }).pin, "", "an older attachment starts with none");
+  assert.match(readFileSync(new URL("../src/room.js", import.meta.url), "utf8"), /features: \[[^\]]*PIN_FEATURE/, "welcome lists the feature");
+});
+
+test("the static emoji spends the reactions' bucket; a refused change tells its sender what the room still holds", () => {
+  const clock = { now: 5000 };
+  const { room, join } = reactionRoom(clock);
+  const a = join(1, "outside"), b = join(2, "outside");
+  room.webSocketMessage(a, '{"t":"pin","e":"😂"}');
+  for (let i = 0; i < REACT_BURST + 3; i++) room.webSocketMessage(a, '{"t":"react","e":"💯"}');
+  const before = b.sent.length;
+  room.webSocketMessage(a, '{"t":"pin","e":"👍"}');
+  assert.equal(b.sent.length, before, "nobody else hears a refused change");
+  assert.deepEqual(a.sent, ['{"t":"pin","id":1,"e":"😂"}'], "the sender hears the one the room holds");
+  assert.equal(room.players.get(1).pin, "😂", "and the room keeps it");
+  clock.now += Math.ceil(1000 / REACT_HZ);
+  room.webSocketMessage(a, '{"t":"pin","e":"👍"}');
+  assert.equal(b.sent.at(-1), '{"t":"pin","id":1,"e":"👍"}', "one more a third of a second later");
 });
