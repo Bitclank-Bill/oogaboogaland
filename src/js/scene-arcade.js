@@ -1278,7 +1278,7 @@
   const enterWatchDoor = () => {
     watchSpent = true;
     if (!AW.mayWatch(BL.net.state.me, DEBUG)) { hud.toast(AW.SIGN_IN); return; }
-    AW.goToWatchDeck(hud);
+    AW.goToWatchDeck(open);
   };
   const useNear = (x, z, reach) => {
     if (zipline && pilot.player) {
@@ -2024,7 +2024,7 @@
     // walked in comes through the doorway. A page that opens here takes `character=`
     // instead, as the island does. With nobody named, the visitor's own or assigned Ooga (`preferredCharacter`) walks
     // in, else the roster's default pick, so the arcade always has someone to play it.
-    const fromBlockHall = ctx.from === "block", fromWatch = ctx.place === AW.PLACE;
+    const fromBlockHall = ctx.from === "block", fromWatch = ctx.place === AW.PLACE || ctx.place === AW.PLACE_FULL;
     const from = GAMES.findIndex((g) => g.id === (ctx.place === "cloud-hopper-return" ? "cloud-hopper" : ctx.from)), machineFrom = stations.find((st) => st.kind === "machine" && st.game.kind === ctx.from && st.index === (ctx.place || 0));
     const retroFrom = stations.find((st) => st.kind === "retro" && st.id === ctx.from) || null;
     const asked = ctx.from === null ? new URLSearchParams(location.search).get("character")?.trim().toLowerCase() : null;
@@ -2050,7 +2050,7 @@
       avatar = people.cavemen.get(playerName);
       buildZipline(shared);
       // At a machine an Ooga plays, a step back from its spot, where that Ooga stands again.
-      const at = DEBUG && PARAMS.get("pos") ? debugSpawn() : fromWatch ? AW.ARRIVAL : fromBlockHall ? { x: BH.x, z: BH.z0 + 1, facing: 0 } : from >= 0 ? live.find((c) => c.game === from).play : retroFrom ? retroFrom.play : machineFrom ? (machineFrom.bot ? toHall({ x: machineFrom.play.x, z: machineFrom.play.z, turn: machineFrom.turn }, 0, 1.3, { facing: machineFrom.play.facing }) : machineFrom.play) : { x: 0, z: HALL.front - 1.5, facing: Math.PI };
+      const at = fromWatch ? AW.ARRIVAL : DEBUG && PARAMS.get("pos") ? debugSpawn() : fromBlockHall ? { x: BH.x, z: BH.z0 + 1, facing: 0 } : from >= 0 ? live.find((c) => c.game === from).play : retroFrom ? retroFrom.play : machineFrom ? (machineFrom.bot ? toHall({ x: machineFrom.play.x, z: machineFrom.play.z, turn: machineFrom.turn }, 0, 1.3, { facing: machineFrom.play.facing }) : machineFrom.play) : { x: 0, z: HALL.front - 1.5, facing: Math.PI };
       Object.assign(avatar.root.position, { x: at.x, y: avatar.baseY + supportAt(at.x, at.z, fromBlockHall || at.deck || retroFrom || from >= 0 && live.find(c => c.game === from).y === MEZZ.y ? MEZZ.y : 1), z: at.z });
       avatar.root.rotation.y = at.facing;
       // Carry the view and record the outside loadout before parking its weapons for the visit.
@@ -2066,6 +2066,7 @@
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
     unsubscribeAccount = BL.net.subscribe(accountChanged);
+    if (ctx.place === AW.PLACE_FULL) hud.toast(AW.FULL);
     crowd = []; walkers = [];
     // Other signed-in players keep their real Ooga or gorilla avatars; no simulated roster crowd is created.
     remotes = BL.remotePlayers.create({ root, crew: people, fx,

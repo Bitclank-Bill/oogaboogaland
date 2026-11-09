@@ -148,6 +148,9 @@
   // "me" (none on the watch deck); `liveCast` the round's names by actor; `kept` the solo picks a live round borrows.
   const WIRE = BL.blockWire;
   let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [] };
+  // Came through the arcade's watch door: every way out goes back in front of it, and full chairs turn the viewer back there.
+  let doorVisit = false, chairsBounce = false;
+  const goHome = () => go(home, doorVisit ? BL.arcadeBlockWatch.PLACE : undefined);
   let chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
   // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
@@ -545,7 +548,7 @@
   };
   const openRound = () => {
     round = BL.blockLive.create({ onMatch: (m) => { if (!m || m.phase !== "play") arrival = false; renderLive(m); }, onStart: liveBegin, onHost: () => notice("You're hosting this round now", 2400),
-      onChairsFull: () => { chairsFull = true; if (onDeck()) showBoard(); else renderLive(round.match); } });
+      onChairsFull: () => { chairsFull = true; if (doorVisit) { chairsBounce = true; return; } if (onDeck()) showBoard(); else renderLive(round.match); } });
     arrival = true;
     round.hello();
     renderLive(null);
@@ -2135,6 +2138,7 @@
   };
 
   const update = (dt, elapsed) => {
+    if (chairsBounce) { chairsBounce = false; go(home, BL.arcadeBlockWatch.PLACE_FULL); return; }
     sceneTime = elapsed;
     if (skyPerch) skyPerch.visible = phase === "board";
     for (let i = 0; i < skyClouds.length; i++) {
@@ -2226,7 +2230,7 @@
       else if (phase === "play" && !paused && (cam.first || cam.island)) setMode("chase");
       else if (phase === "play" && !paused && !quiz.open) setPaused(true);
       else if (phase === "play" || phase === "results") showBoard();
-      else go(home);
+      else goHome();
       return;
     }
     if (e.key === "Enter" && phase !== "play") start();
@@ -2545,6 +2549,7 @@
     ({ renderer, game, world, go } = ctx);
     home = ctx.from === "arcade" ? "arcade" : "hub";
     watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;
+    doorVisit = watchVisit && ctx.from === "arcade"; chairsBounce = false;
     hudMod.leaveTo("block", home);
     camera = createCamera({ fov: 58, near: 0.3, far: 400 });
     audio = BL.blockAudio.create();
@@ -2783,7 +2788,7 @@
         el.soundBtn.setAttribute("aria-pressed", String(!audio.muted));
         notice(audio.muted ? "Sound off" : "Sound on", 900);
       }
-      else if (action === "leave") go(home);
+      else if (action === "leave") goHome();
       else if (action === "act") act();
     });
     hud.setStats(game.state);
@@ -2796,6 +2801,8 @@
     el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Main menu" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
     paintControls(el.controlsList);
     showBoard();
+    // The board the scene opens on clears a watch visit; one arriving for the chairs still wants them.
+    watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);
     Object.assign(blockScene, {
