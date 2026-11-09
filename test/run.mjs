@@ -7178,6 +7178,9 @@ const gameRulesChecks = async () => {
     const emitted = [...(await readFile(new URL("../src/js/block-sim.js", import.meta.url), "utf8")).matchAll(/emit\(sim, "([a-z0-9]+)"/g)].map(m => m[1]);
     const missing = [...new Set(emitted)].filter(t => !L.EVENT_TYPES.includes(t));
     record("block live: every event the rules emit has a wire code", missing.length === 0, missing.join(","));
+    const lobby = (reg, ready) => ({ phase: "lobby", reg, ready });
+    record("block live: a round starts itself only with two humans all ready; alone is a choice for the one registered",
+      !W.canStart(lobby([1], [1])) && !W.canStart(lobby([1, 2], [1, 0])) && W.canStart(lobby([1, 2], [1, 1])) && W.canStartAlone(lobby([1], [0]), 1) && !W.canStartAlone(lobby([1], [0]), 2) && !W.canStartAlone(lobby([1, 2], [0, 0]), 1) && !W.canStartAlone({ phase: "play", reg: [1], ready: [0] }, 1));
     record("block live: the wire's maps and the cap match the rules", W.MAPS.every(m => S.ARENAS[m]) && W.MAPS.length === Object.keys(S.ARENAS).length && W.MAX_SIDE <= S.CONFIG.MAX_SIDE && W.MAX_SIDE === 4);
     // Seat maps: own Ooga at actor 0, own side first, for every seat; both directions invert each other.
     let seatsOk = true;

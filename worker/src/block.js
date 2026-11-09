@@ -101,6 +101,8 @@ export const block = {
       else if (m.host === id) block.elect(room, m);
     }
     if (m.phase === "lobby" && !m.reg.length) { block.close(room, m); return; }
+    // Back to one person: their "ready" was for a group, so the choice to start alone or wait comes back.
+    if (m.phase === "lobby" && m.reg.length === 1) m.ready[0] = 0;
     block.tell(room, m);
   },
   sweep(room) {
@@ -151,13 +153,19 @@ export const block = {
       block.tell(room, m);
       return;
     }
+    if (msg.k === "alone") {
+      if (!W.canStartAlone(m, p.id)) return;
+      block.begin(room, m, now);
+      block.tell(room, m);
+      return;
+    }
     if (msg.k === "ready") {
       if (m.phase === "play") return;
       const i = m.reg.indexOf(p.id);
       if (i < 0 || m.ready[i] === msg.r) return;
       m.ready[i] = msg.r;
       if (m.phase === "countdown" && !msg.r) block.unseat(m);
-      if (m.phase === "lobby" && W.allReady(m)) block.begin(room, m, now);
+      if (m.phase === "lobby" && W.canStart(m)) block.begin(room, m, now);
       block.tell(room, m);
       return;
     }

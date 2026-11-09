@@ -33,6 +33,9 @@
     return seats;
   };
   const allReady = m => m.reg.length > 0 && m.ready.length === m.reg.length && m.ready.every(Boolean);
+  // A round only starts itself with two humans all ready; one person alone starts by choosing to (`alone`).
+  const canStart = m => m.reg.length >= 2 && allReady(m);
+  const canStartAlone = (m, id) => m.phase === "lobby" && m.reg.length === 1 && m.reg[0] === id;
   const seatOf = (m, id) => m && m.seats ? m.seats.indexOf(id) : -1;
   // The watch-deck rule: only a seat in the round under way enters the play area; everyone else watches until it ends.
   const canEnter = (m, id) => !!m && (m.phase === "play" || m.phase === "countdown") && id > 0 && seatOf(m, id) >= 0;
@@ -41,7 +44,7 @@
   const parse = m => {
     if (m.v !== WIRE) return null;
     const base = { t: "bf", k: m.k };
-    if (["hello", "reg", "unreg", "beat"].includes(m.k)) return base;
+    if (["hello", "reg", "unreg", "beat", "alone"].includes(m.k)) return base;
     if (m.k === "watch") return integer(m.on, 0, 1) ? { ...base, on: m.on } : null;
     if (m.k === "ready") return integer(m.r, 0, 1) ? { ...base, r: m.r } : null;
     if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, 0, MAPS.length - 1) ? { ...base, n: m.n, m: m.m } : null;
@@ -61,5 +64,5 @@
     }
     return null;
   };
-  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, allReady, seatOf, canEnter, watching, canRegister };
+  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
 })();

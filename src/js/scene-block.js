@@ -487,7 +487,10 @@
     const self = BL.net.state.selfId, play = !!m && m.phase === "play", count = m ? m.reg.length : 0, me = !!m && m.reg.includes(self), mine = !!m && m.reg[0] === self;
     const seated = play && WIRE.seatOf(m, self) >= 0;
     el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Live match";
-    el.liveStatus.textContent = !m ? "Register to start a live round. Alone you play against NPCs at once."
+    const solo = !!m && m.phase === "lobby" && count === 1 && me, waiting = solo && isReady();
+    el.liveStatus.textContent = !m ? "Register to start a live round, alone with NPCs or with whoever arrives."
+      : waiting ? `Waiting for players · ${WIRE.MAPS[m.map]} · ${m.size} a side · you pick the map and size.`
+      : solo ? `Just you so far · ${WIRE.MAPS[m.map]} · ${m.size} a side · you pick the map and size.`
       : play ? (seated ? "You're in this round." : `${m.seats.filter(Boolean).length} playing. Register now to join the next round.`)
       : m.phase === "countdown" ? `Round starts in a moment · ${WIRE.MAPS[m.map]} · ${m.size} a side.`
       : `${count} registered · ${m.size} a side · ${WIRE.MAPS[m.map]}${mine ? " · you pick the map and size" : ` · ${whoName(m.reg[0])} picks`}.`;
@@ -497,7 +500,9 @@
     if (m) for (const b of el.liveSizes.querySelectorAll("button")) b.setAttribute("aria-pressed", String(Number(b.dataset.liveSize) === m.size));
     el.liveReg.textContent = me ? "Unregister" : play ? "Register for next round" : "Register";
     el.liveReg.hidden = seated || !!m && m.reg.length >= WIRE.MAX_PLAYERS && !me;
-    el.liveReady.hidden = !me || play;
+    el.liveReady.hidden = !me || play || solo;
+    el.liveAlone.hidden = !solo;
+    el.liveWait.hidden = !solo || waiting;
     el.liveReady.textContent = me && isReady() ? "Not ready" : "Ready!";
     el.liveWatch.hidden = !(play && !seated && phase === "board");
     if (el.watch) {
@@ -2521,7 +2526,7 @@
     }
     el.struggleWord.textContent = COARSE ? "Tap fast!" : "Mash SPACE!";
     el.live = document.getElementById("block-live"); el.liveTitle = document.getElementById("block-live-title"); el.liveStatus = document.getElementById("block-live-status"); el.liveList = document.getElementById("block-live-list"); el.liveSizes = document.getElementById("block-live-sizes");
-    el.liveReg = document.getElementById("block-live-reg"); el.liveReady = document.getElementById("block-live-ready"); el.liveWatch = document.getElementById("block-live-watch");
+    el.liveReg = document.getElementById("block-live-reg"); el.liveReady = document.getElementById("block-live-ready"); el.liveWatch = document.getElementById("block-live-watch"); el.liveAlone = document.getElementById("block-live-alone"); el.liveWait = document.getElementById("block-live-wait");
     el.watch = document.getElementById("block-watch"); el.watchLine = document.getElementById("block-watch-line"); el.watchScore = document.getElementById("block-watch-score"); el.watchReg = document.getElementById("block-watch-reg");
     el.againBtn = document.querySelector('#block-results [data-action="block-again"]');
     el.teams = [...document.querySelectorAll("#block-board [data-team]")];
@@ -2724,6 +2729,8 @@
         else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); round.register(); }
       }
       else if (action === "block-live-ready") round.setReady(!isReady());
+      else if (action === "block-live-alone") round.startAlone();
+      else if (action === "block-live-wait") round.setReady(true);
       else if (action.startsWith("block-live-size-")) round.setOptions(Number(action.slice(-1)), WIRE.MAPS.indexOf(selection.map));
       else if (action === "block-live-watch") joinDeck();
       else if (action === "block-board") showBoard();

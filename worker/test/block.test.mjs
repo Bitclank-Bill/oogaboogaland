@@ -59,7 +59,7 @@ const enter = async (h, id, login = "ooga" + id) => {
 };
 const send = (h, a, k, extra = {}) => { if (a.p.blockBuckets) a.p.blockBuckets.control = { tokens: 12, at: Date.now() }; h.send(a.ws, { t: "bf", k, ...extra }); };
 const crowd = async (h, n) => { const list = []; for (let i = 1; i <= n; i++) list.push(await enter(h, i)); return list; };
-const startRound = (h, list) => { for (const a of list) send(h, a, "reg"); for (const a of list) send(h, a, "ready", { r: 1 }); const m = h.room.blockMatch; if (m.phase === "countdown") { h.advance(W.COUNTDOWN_MS); send(h, list[0], "go", { s: m.s }); } return h.room.blockMatch; };
+const startRound = (h, list) => { for (const a of list) send(h, a, "reg"); if (list.length === 1) send(h, list[0], "alone"); else for (const a of list) send(h, a, "ready", { r: 1 }); const m = h.room.blockMatch; if (m.phase === "countdown") { h.advance(W.COUNTDOWN_MS); send(h, list[0], "go", { s: m.s }); } return h.room.blockMatch; };
 const frame = (m, q = 1, size = 64) => { const b = new ArrayBuffer(size), v = new DataView(b); v.setUint32(0, W.MAGIC, true); v.setUint32(4, m.tag, true); v.setUint32(8, m.epoch, true); v.setUint32(12, q, true); return b; };
 
 test("the page and the Worker share one cap of four a side", () => {
@@ -90,7 +90,9 @@ test("random teams are as even as can be, and every empty seat is an NPC", () =>
 test("a round starts only when everyone registered is ready, and alone at once", async t => {
   const h = harness(t), [a, b, c] = await crowd(h, 3);
   send(h, a, "reg"); send(h, a, "ready", { r: 1 });
-  assert.equal(h.room.blockMatch.phase, "play", "alone it starts at once");
+  assert.equal(h.room.blockMatch.phase, "lobby", "ready alone is waiting, not starting");
+  send(h, a, "alone");
+  assert.equal(h.room.blockMatch.phase, "play", "Start alone starts at once");
   assert.deepEqual([...h.room.blockMatch.seats].filter(Boolean), [1]); assert.equal(h.room.blockMatch.host, 1);
   send(h, a, "over", { s: h.room.blockMatch.s, w: 0 });
   assert.equal(h.room.blockMatch.phase, "lobby"); assert.deepEqual([...h.room.blockMatch.reg], [1]); assert.deepEqual([...h.room.blockMatch.ready], [0]);
@@ -114,6 +116,21 @@ test("only the first registered picks the map and size, and the size grows to se
   send(h, a, "opt", { n: 1, m: 2 }); assert.equal(h.room.blockMatch.size, 1); assert.equal(h.room.blockMatch.map, 2);
   for (const x of [a, b, c]) send(h, x, "ready", { r: 1 });
   assert.equal(h.room.blockMatch.size, 2, "three players need two a side");
+});
+test("waiting alone stays open, a second player's ready starts it, and Start alone works only alone", async t => {
+  const h = harness(t), [a, b, c] = await crowd(h, 3);
+  send(h, a, "reg"); send(h, a, "ready", { r: 1 });
+  assert.equal(h.room.blockMatch.phase, "lobby"); assert.equal(W.canStart(h.room.blockMatch), false);
+  send(h, b, "reg");
+  send(h, b, "alone"); assert.equal(h.room.blockMatch.phase, "lobby", "not while two are in");
+  send(h, a, "alone"); assert.equal(h.room.blockMatch.phase, "lobby", "nor for the first, once someone joined");
+  send(h, b, "ready", { r: 1 });
+  assert.equal(h.room.blockMatch.phase, "countdown", "two humans ready start it");
+  send(h, b, "unreg");
+  assert.equal(h.room.blockMatch.phase, "lobby"); assert.deepEqual([...h.room.blockMatch.ready], [0], "the others left: the choice comes back");
+  send(h, c, "alone"); assert.equal(h.room.blockMatch.phase, "lobby", "someone not registered cannot start it");
+  send(h, a, "alone");
+  assert.equal(h.room.blockMatch.phase, "play"); assert.equal(h.room.blockMatch.host, a.id);
 });
 test("the first leaves and the next registered picks", async t => {
   const h = harness(t), [a, b] = await crowd(h, 2);
