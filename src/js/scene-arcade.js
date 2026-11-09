@@ -98,7 +98,6 @@
   let crowd = null, spin = null;
   let unwatchHockey = null, hockeyPlayers = null;
   let watchGate = null, watchSpent = false;
-  const WATCH_BEFORE = { x: 0, y: 0, z: 0 }, WATCH_AFTER = { x: 0, y: 0, z: 0 };
   let audio = null, bots = null, walkers = null, motes = null, power = null, disco = null, fame = null, shelf = null, lit = null;
   let ambientT = 0, wheelTick = 0, cheerT = 0, powerT = 99;
   // Who walked in, kept across a game so they come back out as themselves, and the ticket balance at the last visit,
@@ -240,13 +239,13 @@
     addChild(root, createNode({ geometry: bh.rock }), createNode({ geometry: bh.ledge }), createNode({ geometry: bh.props, sightHidden: true }), bhSky = createNode({ geometry: bh.sky, sightHidden: true, visible: false }),
       createNode({ position: { x: BH.x, y: BH.y + BH.h + 0.62, z: HALL.back + 0.3 }, scale: { x: bk, y: bk, z: bk }, geometry: bfSign }));
     // The doorway to watch Block Frenzy, in its entry hall's east wall: its timber set, the sign over it and the portal,
-    // always open, that only this scene's walker crosses. Separate from the zipline.
+    // always open, whose walk-through is `AW.atPortal`. Separate from the zipline.
     // The sign hangs over the walker's head where the view can read it, and a blade sign out from the wall reads along the hall both ways.
     const wd = AW.DOOR, watchSign = AM.watchSignBoard(), wb = boundsOf(watchSign), wk = 1, bladeK = 1.5 / (wb.max[0] - wb.min[0]);
     const watchSignNode = (x, y, z, turn, k) => createNode({ position: { x, y: y - wb.center[1] * k, z }, rotation: { x: 0, y: turn, z: 0 }, scale: { x: k, y: k, z: k }, geometry: watchSign });
     addChild(root, createNode({ geometry: AM.blockWatchDoor() }), watchSignNode(BH.x1 - 0.42, wd.y + AW.SIGN_Y, wd.z, -Math.PI / 2, wk),
       watchSignNode(BH.x1 - 1.05, wd.y + AW.BLADE_Y, wd.z1 + 0.24, 0, bladeK), watchSignNode(BH.x1 - 1.05, wd.y + AW.BLADE_Y, wd.z1 + 0.2, Math.PI, bladeK));
-    watchGate = BL.oogaPortal.create({ radius: 1.6, outerRadius: 1.8, aperture: AW.APERTURE, position: { x: wd.plane, y: wd.y + wd.h / 2, z: wd.z }, rotation: { x: Math.PI / 2, y: -Math.PI / 2, z: 0 }, receiving: true, onTraverse: enterWatchDoor });
+    watchGate = BL.oogaPortal.create({ radius: 1.6, outerRadius: 1.8, aperture: AW.APERTURE, position: { x: wd.plane, y: wd.y + wd.h / 2, z: wd.z }, rotation: { x: Math.PI / 2, y: -Math.PI / 2, z: 0 }, receiving: true });
     watchGate.ring.visible = false;
     addChild(root, watchGate.root);
     // The arena's steel doors, shut, each leaf a node of its own.
@@ -1273,12 +1272,12 @@
     shared.residentPose = zipline.pose;
     promptZip = null;
   };
-  // Walking through the Block Frenzy watch door: signed-in Oogas go to the deck, anyone else is told why not. Either way
-  // the portal rests until the walker steps back from it, so one push is one message.
+  // Walking into the Block Frenzy watch door: signed-in Oogas go to the chairs, anyone else is told why not, once, until
+  // they step back. The director refuses a change of scene during a fade, so the door keeps asking while they stand there.
   const enterWatchDoor = () => {
+    if (!watchSpent && !AW.mayWatch(BL.net.state.me, DEBUG)) { hud.toast(AW.SIGN_IN); watchSpent = true; return; }
     watchSpent = true;
-    if (!AW.mayWatch(BL.net.state.me, DEBUG)) { hud.toast(AW.SIGN_IN); return; }
-    AW.goToWatchDeck(open);
+    if (AW.mayWatch(BL.net.state.me, DEBUG)) AW.goToWatchDeck(open);
   };
   const useNear = (x, z, reach) => {
     if (zipline && pilot.player) {
@@ -2175,7 +2174,6 @@
     }
     if (!leaving) pilot.readInput(dt);
     slideStep(dt);
-    if (avatar) { WATCH_BEFORE.x = avatar.root.position.x; WATCH_BEFORE.y = avatar.root.position.y + avatar.bodyHeight / 2 - avatar.baseY; WATCH_BEFORE.z = avatar.root.position.z; }
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
     // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
@@ -2274,9 +2272,8 @@
       watchGate.update();
       if (avatar && !leaving && pilot.player === avatar) {
         const p = avatar.root.position;
-        WATCH_AFTER.x = p.x; WATCH_AFTER.y = p.y + avatar.bodyHeight / 2 - avatar.baseY; WATCH_AFTER.z = p.z;
-        watchGate.traverse(WATCH_BEFORE, WATCH_AFTER, avatar.bodyRadius, 1, avatar.bodyHeight);
-        if (watchSpent && p.x < AW.DOOR.plane - 0.8) { watchSpent = false; watchGate.receive(); }
+        if (AW.atPortal(p.x, p.z, p.y - avatar.baseY)) { if (!watchSpent || AW.mayWatch(BL.net.state.me, DEBUG)) enterWatchDoor(); }
+        else if (p.x < AW.DOOR.plane - 0.8) watchSpent = false;
       }
     }
     if (pilot.player && !leaving) {

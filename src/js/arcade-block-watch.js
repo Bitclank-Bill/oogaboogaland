@@ -17,9 +17,12 @@
   // How far a body reaches into rock here, negative in the clear: the hall's walk bound carried on to the portal, only
   // on the hall's own level and only across the opening.
   const doorDepth = (x, z, r, feet) => feet < Y - 1 || feet > Y + H ? Infinity : Math.max(BH.x0 + r - x, x + r - DOOR.reach, DOOR.z0 + r - z, z + r - DOOR.z1);
+  // A walker pressed up to the portal: its middle at the surface, inside the opening, on the hall's floor. A trigger zone
+  // rather than one exact crossing, so a jump, a slow frame or a step back can't lose the walk-through.
+  const atPortal = (x, z, feet) => x >= DOOR.plane - 0.05 && z > DOOR.z0 && z < DOOR.z1 && Math.abs(feet - Y) < 0.6;
   const mayWatch = (signedIn, debug) => !!signedIn || !!debug;
   const SIGN_IN = "Sign in to watch Block Frenzy", FULL = "The viewing chairs are full. Try again in a moment";
   // Off to the chairs, through the scene's own way of changing scene (`open`).
   const goToWatchDeck = (open) => BL.blockLive.openWatchDeck(open);
-  BL.arcadeBlockWatch = { SIGN_Y, BLADE_Y, DOOR, APERTURE, PLACE, PLACE_FULL, ARRIVAL, SIGN_IN, FULL, doorDepth, mayWatch, goToWatchDeck };
+  BL.arcadeBlockWatch = { SIGN_Y, BLADE_Y, DOOR, APERTURE, PLACE, PLACE_FULL, ARRIVAL, SIGN_IN, FULL, doorDepth, atPortal, mayWatch, goToWatchDeck };
 })();
