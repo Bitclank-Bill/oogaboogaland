@@ -147,7 +147,7 @@
   // The live round (block-live.js), present only signed in on a Worker that offers it. `you` is the actor events call
   // "me" (none on the watch deck); `liveCast` the round's names by actor; `kept` the solo picks a live round borrows.
   const WIRE = BL.blockWire;
-  let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [] };
+  let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [], home: { blue: false, red: false } };
   let chairsGreeted = false, chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
   // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
@@ -463,12 +463,13 @@
     chairsFull = false;
     if (round) round.watchFeed(true);
     else if (el.watchLine) el.watchLine.textContent = "No round running.";
+    el.watchReg.hidden = !round;
     you = -9;
     phase = "watch"; paused = false;
     deck ||= BL.blockViewer.buildChairs(createNode, addChild, place(createNode()), SIM.ARENA);
     BL.blockViewer.place(deck, SIM.ARENA);
     deckZoom = deckZoomTo = 1; deckYaw = deckPitch = 0;
-    deckBoard.blue = -1; deckCaps.total = -1; deckCapSeen.length = 0; deckSteals.was.length = 0; deckSteals.count.length = 0;
+    deckBoard.blue = -1; deckCaps.total = -1; deckCapSeen.length = 0; deckSteals.was.length = 0; deckSteals.count.length = 0; deckSteals.home.blue = deckSteals.home.red = false;
     el.viewerCaps.textContent = ""; el.viewerCaps.hidden = true;
     el.gameButtons(true);
     // A late arrival skips the title card: the chairs are the place they came to.
@@ -499,10 +500,11 @@
     line(["Player", "Mined", "Stolen", "Splats"], "", "th");
     for (const r of rows) line([nameOf(r.id), r.captures, r.stolen, r.hits], r.team, "td");
   };
+  const hearCaptures = () => { for (let n = BL.blockViewer.newCaptures(sim, deckCaps, !!round && round.hasFrame); n > 0; n--) audio.cues.capture(); };
   const deckView = (dt) => {
     deckZoom = BL.blockViewer.easeZoom(deckZoom, deckZoomTo, dt, hookStill);
     BL.blockViewer.look(camera, SIM.ARENA, deckYaw, deckPitch, setVec, deckZoom);
-    for (let n = BL.blockViewer.newCaptures(sim, deckCaps, !!round && round.hasFrame); n > 0; n--) audio.cues.capture();
+    hearCaptures();
     BL.blockViewer.trackSteals(sim, deckSteals);
     const statRows = BL.blockViewer.statRows(sim, deckSteals, deckCapSeen);
     if (statRows) paintStats(statRows);
@@ -512,11 +514,14 @@
   };
   const whoName = (id) => { const rec = BL.net.remotes.get(id); return rec ? (rec.display || rec.login || "an Ooga") : BL.net.state.selfId === id ? "You" : "an Ooga"; };
   const renderLive = (m) => {
+    // A round's last frame lands just before the lobby message: hear its winning capture before anything resets.
+    if (onDeck() && (!m || m.phase !== "play")) hearCaptures();
     if (!el.live) return;
     el.live.hidden = !round;
     if (!round) return;
     const self = BL.net.state.selfId, play = !!m && m.phase === "play", count = m ? m.reg.length : 0, me = !!m && m.reg.includes(self), mine = !!m && m.reg[0] === self;
     const seated = play && WIRE.seatOf(m, self) >= 0;
+    if (!play) chairsFull = false;
     el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Live match";
     const solo = !!m && m.phase === "lobby" && count === 1 && me, waiting = solo && isReady();
     el.liveStatus.textContent = chairsFull ? "The viewing chairs are full. You can register for the next round or go back."
@@ -542,7 +547,7 @@
       el.watchReg.textContent = me ? "Unregister" : "Register for next round";
     }
     // The round over or gone: the deck, or a round whose host vanished, goes back to the shared menu.
-    if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); }
+    if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); deckSteals.was.length = 0; deckSteals.count.length = 0; deckSteals.home.blue = deckSteals.home.red = false; }
     if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound() && !sim.over)) showBoard();
   };
   const openRound = () => {
@@ -552,6 +557,15 @@
     round.hello();
     renderLive(null);
     if (watchVisit) showDeck();
+  };
+  // Every way of asking to play from a menu: nothing from the chairs, the shared menu after a live round, otherwise a
+  // solo round, giving up any place in the lobby first.
+  const beginFromMenu = () => {
+    if (onDeck()) return false;
+    if (phase === "results" && kept) { showBoard(); return true; }
+    if (registered()) round.unregister();
+    start();
+    return true;
   };
   const showBoard = () => {
     el.tip.textContent = TIPS[tipK++ % TIPS.length];
@@ -869,6 +883,7 @@
     }
   };
   const readEvents = () => {
+    try {
     for (let i = 0; i < sim.eventCount; i++) {
       const e = sim.events[i], mine = e.team === sim.team, me = e.actor === you;
       hear(e, me, mine);
@@ -1119,14 +1134,14 @@
         if (me) { closeQuiz(); notice("The bubble wore off. Run!", 2200); }
       } else if (e.type === "win") say(e.actor, LINES.win, 2.4);
     }
-    sim.eventCount = 0;
+    } finally { sim.eventCount = 0; }
   };
 
   // Space and the act button start a round from the board or the results; in play they fall through to the jump.
   // Space (or the touch act button) uses what stands beside the Ooga, as on the island: a wallet machine, a catapult or
   // a tower's zipline; anywhere else it jumps. On the board and the results it starts a round.
   const act = () => {
-    if (phase === "board" || phase === "results") { start(); return true; }
+    if (phase === "board" || phase === "results") return beginFromMenu();
     if (phase !== "play" || paused || quiz.open || wmenu.open) return false;
     const a = sim.actors[0];
     if (!SIM.nearVend(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a) && !SIM.nearZip(sim, a)) return false;
@@ -2231,7 +2246,8 @@
       else go(home);
       return;
     }
-    if (e.key === "Enter" && phase !== "play") start();
+    if (onDeck()) { if (e.key === "+" || e.key === "=") zoomDeck(1.3); else if (e.key === "-" || e.key === "_") zoomDeck(1 / 1.3); return; }
+    if (e.key === "Enter" && phase !== "play") beginFromMenu();
     else if (e.key === "Enter" && !e.repeat && !quiz.open && !paused) paint();
     if (phase !== "play" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "p" || e.key === "P") { if (!quiz.open) setPaused(!paused); return; }
@@ -2253,7 +2269,6 @@
     if (e.key === "g" || e.key === "G") cycleTool(1);
     if (e.key === "f" || e.key === "F") grabCrate();
     if (e.key === "k" || e.key === "K") dropBlock();
-    if (onDeck()) { if (e.key === "+" || e.key === "=") zoomDeck(1.3); else if (e.key === "-" || e.key === "_") zoomDeck(1 / 1.3); return; }
     if ((e.key === "+" || e.key === "=") && scoped()) zoomScope(1);
     if ((e.key === "-" || e.key === "_") && scoped()) zoomScope(-1);
     if (e.key === "v" || e.key === "V") cycleView();
@@ -2763,8 +2778,7 @@
     hud.onAction((action) => {
       // Nothing in the chairs reaches the game: a viewer has no Ooga, tools or block.
       if (onDeck() && (action === "block-drop" || action === "act" || action === "block-view")) return;
-      if (action === "block-again" && kept) showBoard();
-      else if (action === "block-start" || action === "block-again") { if (registered()) round.unregister(); start(); }
+      if (action === "block-start" || action === "block-again") beginFromMenu();
       else if (action === "block-live-reg") {
         if (!round) return;
         const own = BL.net.ownAmong(contributors.activeRoster);

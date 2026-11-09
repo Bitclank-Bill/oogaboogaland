@@ -7301,6 +7301,20 @@ const gameRulesChecks = async () => {
       record("regression: landing in the chairs plays its own cue once a visit, not on each new round", scene.includes("if (!chairsGreeted) { chairsGreeted = true; audio.cues.seat(); }") && (await readFile(new URL("../src/js/block-audio.js", import.meta.url), "utf8")).includes("seat: () =>"));
       record("regression: only a seated player's own actor is called You; a viewer sees that actor's real name", scene.includes('if (i === 0 && !onDeck()) return "You";') && !scene.includes('if (i === 0) return "You";'));
     }
+    {
+      const src = await readFile(new URL("../src/js/block-sim.js", import.meta.url), "utf8"), scene = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), idLike = /^(a|m|best|holder|me|o|target|t|r)\.id$|^id$/;
+      const odd = L.ACTOR_EVENTS.filter(t => [...src.matchAll(new RegExp('emit\\(sim, "' + t + '", ([^,]+), ([^,]+),', "g"))].some(m => !idLike.test(m[2].trim())));
+      record("block live: events the wire demands an actor for are only ever raised with a real Ooga", odd.length === 0, odd.join(","));
+      const frameOf = (fix) => { const h = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 }), m = L.seatMap(2, 0), b = new DataView(new ArrayBuffer(W.FRAME_MAX)); fix(h); return new DataView(b.buffer.slice(0, L.encode(h, m, 1, 1, 1, b))); };
+      const viewS = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 }), viewM = L.seatMap(2, 0);
+      const wallet = (state, owner, stuck) => (h) => { Object.assign(h.wallets[0], { live: true, state, owner, stuck, team: "blue", look: 0, x: 0, y: 0, z: 0, fuse: 1 }); };
+      const event = (type, actor) => (h) => { h.eventCount = 1; Object.assign(h.events[0], { type, team: "blue", actor, by: -1, x: 0, y: 0, z: 0 }); };
+      record("block live: a frame naming no Ooga where one is required is refused; legal no-Ooga events pass", !L.validFrame(frameOf(wallet(0, -1, -1)), viewS, viewM) && !L.validFrame(frameOf(wallet(3, 0, -1)), viewS, viewM) && L.validFrame(frameOf(wallet(1, -1, -1)), viewS, viewM) && !L.validFrame(frameOf(event("pickup", -1)), viewS, viewM) && L.validFrame(frameOf(event("go", -1)), viewS, viewM));
+      record("regression: Enter, Space and Play share one menu helper that does nothing from the chairs and leaves a live results screen for the shared menu", scene.includes('if (e.key === "Enter" && phase !== "play") beginFromMenu();') && scene.includes('return beginFromMenu();') && /beginFromMenu = \(\) => \{\s*if \(onDeck\(\)\) return false;\s*if \(phase === "results" && kept\) \{ showBoard\(\); return true; \}/.test(scene));
+      record("regression: the zoom keys work from the chairs, ahead of the check that ends key handling outside play", scene.indexOf('if (onDeck()) { if (e.key === "+"') > 0 && scene.indexOf('if (onDeck()) { if (e.key === "+"') < scene.indexOf('if (phase !== "play" || e.repeat'));
+      record("regression: the last frame's winning capture is heard before the reset, and a thrown event can't leave the queue full", /renderLive = \(m\) => \{[\s\S]{0,200}hearCaptures\(\)/.test(scene) && scene.includes("} finally { sim.eventCount = 0; }"));
+      record("regression: chairs-full clears out of play and a no-room visit has no dead Register button", scene.includes("if (!play) chairsFull = false;") && scene.includes("el.watchReg.hidden = !round;"));
+    }
     const wentTo = []; L.openWatchDeck((scene, place) => wentTo.push(scene, place));
     const idle = session(50); idle.tell({ phase: "empty" }); idle.live.after(0.2, still());
     record("block live: the watch-deck entry opens the game on the deck, and with no round a page sends nothing", wentTo[0] === "block" && wentTo[1] === W.WATCH_DECK_PLACE && idle.live.role === "none" && idle.sent.length === 0 && idle.bins.length === 0);
@@ -7343,14 +7357,20 @@ const gameRulesChecks = async () => {
       midRound.score.red = 2; const nextCapture = V.newCaptures(midRound, arrive, true), repeat = V.newCaptures(midRound, arrive, true);
       record("block live: arriving mid-round plays nothing for captures already on the board, then one per new capture", beforeFrame === 0 && firstFrame === 0 && nextCapture === 1 && repeat === 0);
       record("block live: a viewer hears each capture once, from the score, across skipped frames and new rounds", onSit === 0 && none === 0 && one === 1 && again === 0 && skippedFrames === 2 && newRound === 0 && firstOfRound === 1);
-      const statSeen = [], steals = { was: [], count: [] }, mkSim = (c, h, carry) => ({ actors: c.map((n, i) => ({ id: i, captures: n, hits: h[i], team: i < 2 ? "blue" : "red", carrying: carry[i] || null })) });
-      V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals); V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals);
-      V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], [null, null, null, null]), steals); V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, null]), steals);
+      const statSeen = [], steals = { was: [], count: [], home: { blue: false, red: false } };
+      const mkSim = (c, h, carry, flags = { blue: "home", red: "home" }) => ({ flags: { blue: { state: flags.blue }, red: { state: flags.red } }, actors: c.map((n, i) => ({ id: i, captures: n, hits: h[i], team: i < 2 ? "blue" : "red", carrying: carry[i] || null })) });
+      const zero = [0, 0, 0, 0];
+      V.trackSteals(mkSim(zero, zero, [null, null, null, null]), steals); // the first look only learns the flags
+      V.trackSteals(mkSim(zero, zero, ["red", null, null, "blue"], { blue: "carried", red: "carried" }), steals); // two steals off the stands
+      V.trackSteals(mkSim(zero, zero, ["red", null, null, "blue"], { blue: "carried", red: "carried" }), steals); // held: no new steal
+      V.trackSteals(mkSim(zero, zero, [null, "red", null, null], { blue: "dropped", red: "carried" }), steals); // a pass or re-grab: not off the stand, and not a steal
+      V.trackSteals(mkSim(zero, zero, [null, null, null, null], { blue: "home", red: "home" }), steals);
+      V.trackSteals(mkSim(zero, zero, ["red", null, null, null], { blue: "home", red: "carried" }), steals); // off the stand again
       const firstRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
       const steadyRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
       steals.count.length = 0; const emptiedRows = V.statRows(mkSim([0, 0, 0, 0], [0, 0, 0, 0], [null, null, null, null]), steals, statSeen);
-      record("block live: the stats table counts captures, stolen and splats, sorted by captures, and each steal once; a new round empties it",
-        JSON.stringify(firstRows.map(r => [r.id, r.captures, r.stolen, r.hits])) === JSON.stringify([[2, 3, 0, 0], [0, 1, 2, 0], [3, 1, 0, 5], [1, 0, 0, 2]]) && steadyRows === null && emptiedRows.length === 0);
+      record("block live: the stats table counts captures, stolen and splats, sorted by captures; a steal is only off the stand, not a pass or re-grab; a new round empties it",
+        JSON.stringify(firstRows.map(r => [r.id, r.captures, r.stolen, r.hits])) === JSON.stringify([[2, 3, 0, 0], [0, 1, 2, 0], [3, 1, 1, 5], [1, 0, 0, 2]]) && steadyRows === null && emptiedRows.length === 0);
       const board = { blue: -1 }, boardSim = { score: { blue: 2, red: 1 }, prep: 0, time: 75.4, target: 3 };
       const changed = V.fillBoard(boardSim, board), still2 = V.fillBoard(boardSim, board);
       boardSim.prep = 3.5;
