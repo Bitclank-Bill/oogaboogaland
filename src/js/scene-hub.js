@@ -10834,7 +10834,7 @@
     clankerPlay.dispose();
     remotes.dispose();
     muteHammockShots();
-    npcSync.dispose();
+    npcSync.dispose(true);
     npcStatusBeams?.clear();
     pilot.suspend();
     input.suspend();
