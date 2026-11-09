@@ -6335,8 +6335,10 @@
   // photographed once from the shield, looking out, while the screen is dark: the mouth's own dressing is hidden,
   // since the factory builds the tunnel and its lamps itself, and so is the Ooga walking in. What the factory can
   // see through its rim is cropped out, halved down to a small copy that its display blurs as it enlarges it, given
-  // back the saturation the page's grade will add again, and misted a little, as seen through the shield.
-  const FACTORY_VIEW = { from: -3.8, width: 320, eye: 1.7, across: 0.82, up: 0.46, down: 0.5, colour: 0.83, mist: 0.12, haze: [206, 228, 238] };
+  // back the saturation the page's grade will add again, and misted a little, as seen through the shield. The crop is
+  // the rim's own opening as the eye sees it, 2.5 m either side, the floor to 3 m up, at the boards' end 4.25 m ahead,
+  // where the hall hangs it: its foot on the floor at that very edge, so grass and path meet the boards from any angle.
+  const FACTORY_VIEW = { from: -3.8, width: 640, eye: 1.7, across: 2.5 / 4.25, up: 1.3 / 4.25, down: 1.7 / 4.25, colour: 0.83, mist: 0.12, haze: [206, 228, 238] };
   // ₿IFRÖST's chamber looks back out through its own field the same way, at a picture taken from the portal as the
   // Ooga walks in: the landing, Heimdall, the bridge and the island past it, misted in the field's blue.
   // The window into the chamber follows the eye, so it moves once the camera is final for the frame. It is built on the
@@ -6350,7 +6352,7 @@
     }
     if (b.window) b.window.update(dt, camera, RENDER_OPTS, !b.phase.paused);
   };
-  const BIFROST_VIEW = { ...FACTORY_VIEW, haze: [188, 208, 255] };
+  const BIFROST_VIEW = { width: 320, eye: 1.7, across: 0.82, up: 0.46, down: 0.5, colour: 0.83, mist: 0.12, haze: [188, 208, 255] };
   const snapFactoryView = () => {
     // From a fixed depth, not the shield's: the hall hangs this picture past its tunnel's rim, framed for this distance.
     const view = snapFromShield(factoryMouth.group, factoryMouth.mouth, FACTORY_VIEW.from, FACTORY_VIEW);

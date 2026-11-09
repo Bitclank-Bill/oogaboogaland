@@ -934,6 +934,9 @@
   // the balcony its window shows behind the shield is fully self-lit, so HALL_BOARD_WINDOW.
   const HALL_BOARD = [0.53, 0.37, 0.29], HALL_BOARD_WINDOW = [0.36, 0.28, 0.25], HALL_BOARD_GLOW = 0.33;
   const hallBoard = (tone, shade = HALL_BOARD) => `#${hexToRgb(tone).map((c, i) => Math.round(c * shade[i]).toString(16).padStart(2, "0")).join("")}`;
+  // The tunnel's floor as each end shows it. The hall's end is wholly self-lit in the balcony's colours, gaps and all: the
+  // daylight falling in at its rim, which the walls and whoever walks there take, would flood lit boards orange.
+  const PLANK_GAP = "#1c120a", ISLAND_FLOOR = { shade: HALL_BOARD, glow: HALL_BOARD_GLOW, gap: PLANK_GAP, gapGlow: 0 }, HALL_FLOOR = { shade: [0.22, 0.185, 0.2], glow: 1, gap: "#100b07", gapGlow: 1 };
   // The section of `deckParts`' boards, chamfered along both top edges, run from z `near` to `far`.
   const plankRun = (x, w, near, far, tone, emissive) => {
     const geo = geometry(), hw = w / 2, low = PLANK_TOP - 0.2, rgb = hexToRgb(tone), spans = Math.ceil((near - far) / PLANK_SPAN);
@@ -946,11 +949,11 @@
     return geo;
   };
   // The dark under the boards, which their gaps show: `w` wide from `near` to `far`, tiled for that same sort.
-  const plankUnderlay = (w, near, far, tiles, emissive = 0) => moved(turnedX(models.panel({ w, h: near - far, tilesX: tiles, tilesY: Math.ceil((near - far) / PLANK_SPAN), color: "#1c120a", emissive }), -Math.PI / 2), 0, 0.006, (near + far) / 2);
-  const tunnelFloor = (out, reach, island) => {
-    const paint = island ? hallBoard : (tone) => tone, emissive = island ? HALL_BOARD_GLOW : 0;
+  const plankUnderlay = (w, near, far, tiles, emissive = 0, color = PLANK_GAP) => moved(turnedX(models.panel({ w, h: near - far, tilesX: tiles, tilesY: Math.ceil((near - far) / PLANK_SPAN), color, emissive }), -Math.PI / 2), 0, 0.006, (near + far) / 2);
+  const tunnelFloor = (out, reach, finish) => {
+    const paint = (tone) => hallBoard(tone, finish.shade), emissive = finish.glow;
     const e = LAYOUT.entrance, n = Math.max(2, Math.round(e.w / 0.9)), rand = mulberry32(Math.round(e.x * 7 + e.z)), w = e.w / n - 0.05;
-    out.push(plankUnderlay(e.w, reach, SHIELD_Z, n));
+    out.push(plankUnderlay(e.w, reach, SHIELD_Z, n, finish.gapGlow, finish.gap));
     for (let i = 0; i < n; i++) out.push(plankRun(((i + 0.5) / n - 0.5) * e.w, w, reach, SHIELD_Z, paint(PLANK_TONES[Math.floor(rand() * 3)]), emissive));
     for (const s of [-1, 1]) out.push(plankRun(s * 2.75, 0.46, -2.5, SHIELD_Z, paint(s < 0 ? TIMBER_LT : TIMBER), emissive));
   };
@@ -958,9 +961,9 @@
   // The part both ends share: the boarded floor (out to `reach`, since the factory's end stops at the rim), three
   // timber sets, the patch boards between them, and the shield's emitters, iron posts with cyan coils just outside the
   // phase plane, which is as wide as the mouth's opening (about ±2.5 m).
-  const tunnelFrame = (reach, island = false) => {
+  const tunnelFrame = (reach, finish) => {
     const geos = [], glow = [], flat = [], round = [], planks = [];
-    tunnelFloor(planks, reach, island);
+    tunnelFloor(planks, reach, finish);
     TUNNEL_BOARDS.forEach(([z, w, depth, x], i) => {
       for (const s of [-1, 1]) tunnelBoard({ flat, round, glow }, w, depth, s * x, z, -s * Math.PI / 2, 0x7a11 + i * 2 + (s > 0 ? 1 : 0));
     });
@@ -995,7 +998,7 @@
   const hubTunnel = cached(() => {
     // The boards stop just inside where the mouth's stone meets the island's grass and path, which lies on the terrain's
     // grid at up to z 0.1 across the width of the mouth, so none of them lies over either.
-    const { geos, glow, boards, floor } = tunnelFrame(-0.1, true);
+    const { geos, glow, boards, floor } = tunnelFrame(-0.1, ISLAND_FLOOR);
     geos.push(box({ w: 4.6, h: 3.6, d: 0.2, color: "#1f140e", offset: { y: 1.8, z: SHIELD_Z - 1.35 } }));
     // The bolt and its lamps are what Canvas 2D shows past the shield in place of the hall's window, in whose band they would stand.
     const backdrop = [moved(smoothBolt(2.2, 0.24, "#ffd84a", 1), 0, 1.6, SHIELD_Z - 1.1)];
@@ -1641,10 +1644,10 @@
     };
   });
 
-  // The picture the hub takes of the island on the way in (`world.factoryView`): taken from the shield looking out,
-  // `eye` above the floor, spanning `across` either side and `up` and `down` as slopes. Hung `distance` past where
-  // it was taken and square to the tunnel, it lines up with the island seen through the rim from anywhere behind
-  // the shield. A plain quad facing +z with the image over it; the scene turns it round to face the hall.
+  // The picture the hub takes of the island on the way in (`world.factoryView`): taken from behind the shield looking
+  // out, `eye` above the floor, spanning `across` either side and `up` and `down` as slopes. Hung `distance` past where
+  // it was taken and square to the tunnel. A plain quad facing +z with the image over it; the scene turns it round to
+  // face the hall.
   const outsideView = (view, distance) => {
     const geo = { verts: [], faces: [], lines: [], castShadow: false };
     const x = view.across * distance, y0 = view.eye - view.down * distance, y1 = view.eye + view.up * distance;
@@ -1657,5 +1660,5 @@
     FLOOR_BIAS, LAYOUT, LEVEL, HALL, WALL_LEAN, STATION_BACK, KORTIK, kortikAt, kortikFrom, kortikLamps, kortikLights, stationX, stationZ, SHIELD_Z, porchOf, FORGE_TRACKS, FORGE_STORES, FORGE_CY, SHAFTS, LINE_STEP, COIN_R, forgeWave, COILS, banner, TUNNEL_SIGN, TUNNEL_POST, EXIT_Z, CONDUIT_SAMPLES, TUNNEL_THEMES, STEP, sat, satFailed, REB, TRE, COOK, ROOF_TUBE, bananaOutlet, outletShaft, KIOSK, donationCorner, BOARD, LOOKOUT_BEAM, STUDY, label, lanterns, hubTunnel, hubWindow, bakeWindow, windowLights, outsideView, hangarEntry, HANGAR_DOOR, hangarLamps, hangarLanding, beam, moved, turnedY, smoothBolt, smoothBitcoin
   };
   // Private lexical bindings used by the scene-only extension; read once when that group evaluates.
-  BL.factoryModelsSceneKit = { BL, BOARD, BOARD_FACE, BOARD_VALUES, BRASS, BRONZE, BRONZE_DK, CAP, CAP_BLUE, CAP_ORANGE, COILS, COIN_R, CONDUIT_SAMPLES, CONSOLE, COOK, COPPER, COPPER_DK, CRYSTAL, CYAN, FALLS, FLOOR, FORGE_CONSOLE, FORGE_CY, FORGE_TRACKS, GOLD, HALL, HANGAR_DOOR, HANGAR_SET_BACK, IRON_BK, IRON_DK, IRON_LT, KIOSK, LABEL_FONT, LAYOUT, LEVEL, LINE_STEP, LOOKOUT_BEAM, MONITORS, ORANGE, PORCH_HALF, REB, RING_BRIDGES, SHAFTS, STEP, STONE, STONE_DK, STUDY, TAU, TIMBER, TIMBER_DK, TIMBER_LT, TRE, TUNNEL_BOX, TUNNEL_POST, TUNNEL_THEMES, WALL_LEAN, along, banner, beam, bevelBox, box, cached, chain, columnParts, conduitPath, deckParts, donationCorner, face, flame, forwardLathe, gem, geometry, groundUnder, hangarEntry, hexToRgb, label, labelCache, lanternParts, lathe, makeVox, merge, models, moved, mulberry32, networkGlyph, noShadow, outcropTop, outcrops, plate, porchOf, prism, pushVert, railParts, railPlan, deckRailing, walkRails, ringLanding, shaded, smoothBitcoin, smoothBolt, span, stairParts, stationX, stationZ, torus, tube, tunnelFrame, turn, turnedX, turnedY, turnedZ, voxelGeometry };
+  BL.factoryModelsSceneKit = { BL, BOARD, BOARD_FACE, BOARD_VALUES, BRASS, BRONZE, BRONZE_DK, CAP, CAP_BLUE, CAP_ORANGE, COILS, COIN_R, CONDUIT_SAMPLES, CONSOLE, COOK, COPPER, COPPER_DK, CRYSTAL, CYAN, FALLS, FLOOR, FORGE_CONSOLE, FORGE_CY, FORGE_TRACKS, GOLD, HALL, HANGAR_DOOR, HANGAR_SET_BACK, IRON_BK, IRON_DK, IRON_LT, KIOSK, LABEL_FONT, LAYOUT, LEVEL, LINE_STEP, LOOKOUT_BEAM, MONITORS, ORANGE, PORCH_HALF, REB, RING_BRIDGES, SHAFTS, STEP, STONE, STONE_DK, STUDY, TAU, TIMBER, TIMBER_DK, TIMBER_LT, TRE, TUNNEL_BOX, TUNNEL_POST, TUNNEL_THEMES, WALL_LEAN, along, banner, beam, bevelBox, box, cached, chain, columnParts, conduitPath, deckParts, donationCorner, face, flame, forwardLathe, gem, geometry, groundUnder, hangarEntry, hexToRgb, label, labelCache, lanternParts, lathe, makeVox, merge, models, moved, mulberry32, networkGlyph, noShadow, outcropTop, outcrops, plate, porchOf, prism, pushVert, railParts, railPlan, deckRailing, walkRails, ringLanding, shaded, smoothBitcoin, smoothBolt, span, stairParts, stationX, stationZ, torus, tube, tunnelFrame, HALL_FLOOR, turn, turnedX, turnedY, turnedZ, voxelGeometry };
 })();

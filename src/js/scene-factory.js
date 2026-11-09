@@ -47,7 +47,8 @@
   const FOLLOW = { y: 0.9, min: 3, max: 7, pitch: [0.25, 0.8] };
   // The shield across the way out, as wide as the mouth's opening, as on the hub's side; and how far past where the
   // hub took its picture of the island the picture hangs.
-  const GATE_OPENING = { minX: -2.5, maxX: 2.5, floorY: 0, ceilingY: 3 }, OUTSIDE_DISTANCE = 34;
+  // How far past where the hub took it the picture of the island hangs: at the end of the tunnel's boards.
+  const GATE_OPENING = { minX: -2.5, maxX: 2.5, floorY: 0, ceilingY: 3 }, OUTSIDE_DISTANCE = 4.25;
   // The gate's shield stands at the balcony's back edge, where the island's tunnel's shield lands in the hall; an Ooga
   // walking in through it comes on with the view no farther behind it than IN_VIEW and no higher than IN_PITCH, so the
   // view starts in the tunnel. Walking out, the walk takes it no nearer the arrival's step than OUT_SLACK behind it, so a
