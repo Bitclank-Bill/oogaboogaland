@@ -192,3 +192,13 @@ Mounted riders keep their existing trap/blast behaviour, but their knockback and
 clocks now expire normally while riding. The existing piggyback proof checks intermediate
 and completed expiry without dismounting. Multiplayer, low-ceiling/overhang geometry,
 physical touch controls and browser performance still require verification.
+
+## Live rounds
+Signed-in Oogas only, on a Worker that lists `block-v1` in welcome; anywhere else the game is solo as before.
+
+- **Registry** (`worker/src/block.js`, contract in `block-wire.js`): one match a room. `reg`/`unreg`/`ready`/`opt` in the lobby; the first registered picks the map and size (1v1 to 4v4, `MAX_SIDE`), grown if more have registered than it seats. Everyone registered ready starts a 3 s countdown (alone, at once).
+- **Teams:** random and as even as can be (`split`); empty seats are NPCs.
+- **Host:** one seated page runs `block-sim.js`, chosen as Ghost Hunter's host is (longest in the room, a visible page first). If it leaves, the next seated page continues from its last snapshot; if no seated human is left, the round ends. A leaver's seat goes to an NPC.
+- **No joining mid-round.** Late arrivals land on the watch deck (`phase === "watch"`): they receive the same snapshots, send nothing and have no actor. They can register for the next round from there.
+- **Wire:** binary frames (`"BFZ1"`, round tag, host epoch, sequence, at most 2048 bytes, 12/s), JSON inputs (20/s, at most four actions a message). Nothing reaches storage: the match rides one socket attachment.
+- **Voice:** zone `block-frenzy`, its own voice group, blended in from the arcade down the zipline (`voice-blend.js`), isolated on arrival.

@@ -144,10 +144,17 @@
   const pointer = { x: 0, y: 0, seen: false };
   const EYE = { x: 0, y: 0, z: 0 };
   const move = { x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 };
+  // The live round (block-live.js), present only signed in on a Worker that offers it. `you` is the actor events call
+  // "me" (none on the watch deck); `liveCast` the round's names by actor; `kept` the solo picks a live round borrows.
+  const WIRE = BL.blockWire;
+  let watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
+  const onDeck = () => phase === "watch";
+  const liveRound = () => !!round && (round.role === "host" || round.role === "guest");
+  const acts = (name, id, a, b, c) => liveRound() ? round.act(name, id, a, b, c) : SIM[name](sim, id, a, b, c);
   let jumpWas = false;
   const el = {};
   const blockScene = {
-    id: "block", renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
+    id: "block", voiceZone: BL.blockWire.ZONE, renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
     get inMotion() { return phase === "play" || fx.inMotion; }
   };
 
@@ -156,6 +163,7 @@
   // The four Oogas: the visitor's own when signed in, else the one a cabinet sent in, else the first; then three
   // others from the roster, in its order.
   const castNames = () => {
+    if (liveCast) return liveCast;
     const names = roster(), own = BL.net.ownAmong(contributors.activeRoster);
     if (world.pilot && names.includes(world.pilot)) selection.ooga = world.pilot;
     world.pilot = null;
@@ -327,7 +335,7 @@
       audio.cues.right();
       quiz.solved++;
       closeQuiz();
-      SIM.escape(sim, 0);
+      acts("escape", 0);
       center("FREE!", 900);
       notice(item.fact, 4500);
       return;
@@ -392,13 +400,130 @@
       for (const [key, what] of rows) { const row = document.createElement("div"), k = document.createElement("kbd"), s = document.createElement("span"); k.textContent = key; s.textContent = what; row.append(k, s); box.append(row); }
     }
   };
+  const registered = () => !!round && !!round.match && round.match.reg.includes(BL.net.state.selfId);
+  const firstRegistered = () => !!round && !!round.match && round.match.reg[0] === BL.net.state.selfId && round.match.phase === "lobby";
+  const isReady = () => { const m = round.match, i = m.reg.indexOf(BL.net.state.selfId); return i >= 0 && m.ready[i] === 1; };
+  const liveNames = (m, map) => {
+    const taken = new Set(), names = new Array(m.size * 2), people = roster(), own = BL.net.ownAmong(contributors.activeRoster), self = BL.net.state.selfId;
+    for (let s = 0; s < m.seats.length; s++) {
+      const id = m.seats[s];
+      if (!id) continue;
+      const name = (id === self ? own || selection.ooga : BL.net.remotes.get(id)?.body) || people[0];
+      names[map.toLocal[s]] = name; taken.add(name);
+    }
+    // Empty seats draw the same NPC on every page: a walk of the sorted roster from the round's seed.
+    const spare = people.slice().sort(), step = spare.length ? (m.seed % spare.length) : 0;
+    let walk = step;
+    for (let s = 0; s < m.seats.length; s++) {
+      if (m.seats[s]) continue;
+      let name = spare[walk % spare.length], tries = 0;
+      while (taken.has(name) && tries++ < spare.length) name = spare[++walk % spare.length];
+      taken.add(name); walk++;
+      names[map.toLocal[s]] = name;
+    }
+    return names;
+  };
+  // Borrows the board's picks for the round: `kept` restores them when the board comes back.
+  const setupRound = (m, map) => {
+    kept ||= { team: selection.team, size: selection.size, map: selection.map, target: selection.target, skill: selection.skill };
+    selection.team = map.team; selection.size = m.size; selection.map = WIRE.MAPS[m.map]; selection.target = C.CAPTURES; selection.skill = "normal";
+    liveCast = liveNames(m, map);
+    const changed = sim.map !== selection.map;
+    recast();
+    if (changed) { buildMap(); mapBase = null; }
+    round.bind(sim);
+  };
+  // Arriving during a round lands on the watch deck; someone already on the menu chooses to watch.
+  const liveBegin = (m, role, map) => {
+    if (role === "watch" && !watchVisit && (!arrival || phase === "play")) { renderLive(m); return; }
+    arrival = false;
+    if (role === "watch") { setupRound(m, map); joinDeckNow(m); return; }
+    setupRound(m, map);
+    start(m.seed);
+  };
+  const joinDeckNow = (m) => {
+    SIM.reset(sim, m.seed);
+    deckLive = true;
+    showDeck();
+    renderLive(m);
+  };
+  // The deck itself, round or no round: no actor, no input, nothing here reaches the play area.
+  const showDeck = () => {
+    you = -9;
+    phase = "watch"; paused = false;
+    if (!deck) {
+      deck = place(createNode());
+      addChild(deck, createNode({ geometry: BM.crate(0), position: { x: 0, y: 19.5, z: 9 }, scale: { x: 8, y: 0.4, z: 3 } }));
+      addChild(deck, createNode({ geometry: BM.crate(0), position: { x: 0, y: 20.2, z: 6.8 }, scale: { x: 8, y: 0.6, z: 0.15 } }));
+    }
+    setVec(deck.position, 0, 0, SIM.ARENA.L);
+    deck.visible = true;
+    el.board.hidden = el.results.hidden = el.toolBar.hidden = el.feed.hidden = true;
+    el.watch.hidden = false; el.strip.hidden = false; el.center.hidden = el.notice.hidden = true;
+    strip.shown = false; updateStrip();
+    if (document.pointerLockElement === el.canvas) document.exitPointerLock();
+  };
+  const joinDeck = () => { if (round.match && round.match.phase === "play") { arrival = true; round.watchNow(); } };
+  const deckView = () => {
+    camera.fov = 62 * Math.PI / 180;
+    const A = SIM.ARENA, z = A.L + 9.5;
+    setVec(camera.position, 0, 22, z);
+    const yaw = Math.PI + deckYaw, c = Math.cos(deckPitch);
+    setVec(camera.target, Math.sin(yaw) * c * 40, 22 - Math.sin(deckPitch + 0.32) * 40, z + Math.cos(yaw) * c * 40);
+    if (fpGun) fpGun.visible = fpGunL.visible = false;
+  };
+  const whoName = (id) => { const rec = BL.net.remotes.get(id); return rec ? (rec.display || rec.login || "an Ooga") : BL.net.state.selfId === id ? "You" : "an Ooga"; };
+  const renderLive = (m) => {
+    if (!el.live) return;
+    el.live.hidden = !round;
+    if (!round) return;
+    const self = BL.net.state.selfId, play = !!m && m.phase === "play", count = m ? m.reg.length : 0, me = !!m && m.reg.includes(self), mine = !!m && m.reg[0] === self;
+    const seated = play && WIRE.seatOf(m, self) >= 0;
+    el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Live match";
+    el.liveStatus.textContent = !m ? "Register to start a live round. Alone you play against NPCs at once."
+      : play ? (seated ? "You're in this round." : `${m.seats.filter(Boolean).length} playing. Register now to join the next round.`)
+      : m.phase === "countdown" ? `Round starts in a moment · ${WIRE.MAPS[m.map]} · ${m.size} a side.`
+      : `${count} registered · ${m.size} a side · ${WIRE.MAPS[m.map]}${mine ? " · you pick the map and size" : ` · ${whoName(m.reg[0])} picks`}.`;
+    el.liveList.textContent = "";
+    if (m) for (let i = 0; i < m.reg.length; i++) { const li = document.createElement("li"); li.textContent = `${m.ready[i] ? "✓ " : ""}${m.reg[i] === self ? "You" : whoName(m.reg[i])}`; el.liveList.append(li); }
+    el.liveSizes.hidden = !(mine && m.phase === "lobby");
+    if (m) for (const b of el.liveSizes.querySelectorAll("button")) b.setAttribute("aria-pressed", String(Number(b.dataset.liveSize) === m.size));
+    el.liveReg.textContent = me ? "Unregister" : play ? "Register for next round" : "Register";
+    el.liveReg.hidden = seated || !!m && m.reg.length >= WIRE.MAX_PLAYERS && !me;
+    el.liveReady.hidden = !me || play;
+    el.liveReady.textContent = me && isReady() ? "Not ready" : "Ready!";
+    el.liveWatch.hidden = !(play && !seated && phase === "board");
+    if (el.watch) {
+      el.watchLine.textContent = !play ? (me ? "No round running. You're registered: open Main menu to ready up." : "No round running. Register here, or open the lobby from Main menu.") : me ? "You're registered for the next round. It opens when this one ends." : "Round under way · you're on the watch deck. You can't enter until it ends.";
+      el.watchReg.textContent = me ? "Unregister" : "Register for next round";
+      el.watchScore.textContent = sim ? `Blue ${sim.score.blue} · Red ${sim.score.red}` : "";
+    }
+    // The round over or gone: the deck, or a round whose host vanished, goes back to the shared menu.
+    if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); }
+    if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound())) showBoard();
+  };
+  const openRound = () => {
+    round = BL.blockLive.create({ onMatch: renderLive, onStart: liveBegin, onHost: () => notice("You're hosting this round now", 2400) });
+    arrival = true;
+    const own = BL.net.ownAmong(contributors.activeRoster);
+    if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); }
+    round.hello();
+    renderLive(null);
+    if (watchVisit) showDeck();
+  };
   const showBoard = () => {
     el.tip.textContent = TIPS[tipK++ % TIPS.length];
     { const t = document.getElementById("block-intro-tip"); if (t) t.textContent = el.tip.textContent; }
     paused = aiming = false;
     closeQuiz();
     closeWalletMenu();
+    if (liveRound() && !sim.over) round.unregister();
+    if (el.watch) el.watch.hidden = true;
+    if (deck) deck.visible = false;
+    you = 0; watchVisit = false;
+    if (kept) { Object.assign(selection, kept); kept = null; liveCast = null; if (sim) { const was = sim.map; recast(); if (was !== selection.map) { buildMap(); mapBase = null; } } }
     phase = "board";
+    if (el.againBtn) el.againBtn.textContent = "Again";
     el.board.hidden = false;
     el.results.hidden = el.strip.hidden = el.center.hidden = el.notice.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = true;
     hud.el.act.hidden = el.paintBtn.hidden = el.cross.hidden = true;
@@ -411,7 +536,7 @@
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
-  const start = () => {
+  const start = (seed = (Date.now() & 0x7fffffff) || 1) => {
     audio.unlock();
     paused = false;
     if (!actors || !actors[0].cave) return;
@@ -421,7 +546,7 @@
     sim.target = selection.target;
     sim.skill = selection.skill;
     sim.bots = SIM.SKILLS[selection.skill];
-    SIM.reset(sim, (Date.now() & 0x7fffffff) || 1);
+    SIM.reset(sim, seed);
     strip.shown = false;
     paintTeams();
     for (const s of splats) s.visible = false;
@@ -448,6 +573,7 @@
     updateTools();
     lockMouse();
     SIM.parachuteIn(sim);
+    if (round && round.role === "host") for (let i = 1; i < sim.actors.length; i++) if (!sim.actors[i].bot) SIM.parachuteIn(sim, i);
     center(`BUILD ${Math.ceil(sim.prep)}`, 0);
     notice(COARSE ? "Fortify! Crate drops one · walk into crates to push" : "Fortify! B drops a crate · F lifts and stacks", 0);
     updateStrip();
@@ -458,7 +584,8 @@
     phase = "results";
     const won = sim.winner === sim.team, ms = Math.round(sim.time * 1000);
     // The fastest win is kept for the usual first to three; every round still counts.
-    const best = game.recordBlock({ won, ms: sim.target === C.CAPTURES ? ms : 0 });
+    const best = liveRound() ? false : game.recordBlock({ won, ms: sim.target === C.CAPTURES ? ms : 0 });
+    if (liveRound()) el.againBtn.textContent = "New game?";
     result = { won, ms, best };
     el.strip.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = true;
     el.center.hidden = el.notice.hidden = true;
@@ -696,7 +823,7 @@
   };
   const readEvents = () => {
     for (let i = 0; i < sim.eventCount; i++) {
-      const e = sim.events[i], mine = e.team === sim.team, me = e.actor === 0;
+      const e = sim.events[i], mine = e.team === sim.team, me = e.actor === you;
       hear(e, me, mine);
       log(e);
       if (e.type === "miss") stamp(e.team, e.x, e.y, e.z);
@@ -733,14 +860,14 @@
         if (me) { center("GRAPPLING HOOK!", 1100); notice(COARSE ? "Hook · pick it on the tool bar, tap Throw at a rock or a carrier" : "Hook · R fires at the crosshair: pull yourself up, or yank a block off a carrier", 3200); updateTools(); }
       } else if (e.type === "hooksteal") {
         if (me) notice("You stole a grappling hook!", 2000);
-        else if (e.by === 0) notice("Your grappling hook was stolen!", 2200);
+        else if (e.by === you) notice("Your grappling hook was stolen!", 2200);
         updateTools();
       } else if (e.type === "hookwarn") {
-        if (e.actor === 0) { center("HOOKED!", 700); notice("They've hooked your block!", 1200); }
+        if (e.actor === you) { center("HOOKED!", 700); notice("They've hooked your block!", 1200); }
       } else if (e.type === "yank") {
         fx.burst(e.x, e.y, e.z, 12, ORANGE_BITS, 2.4);
-        if (e.by === 0) notice("Your block was yanked away!", 1800);
-        else if (e.actor === 0) notice("Yanked it! Grab the block", 1800);
+        if (e.by === you) notice("Your block was yanked away!", 1800);
+        else if (e.actor === you) notice("Yanked it! Grab the block", 1800);
       } else if (e.type === "gorillahooked") {
         fx.burst(e.x, e.y, e.z, 10, STAR_BITS, 2);
       } else if (e.type === "hookmiss") {
@@ -765,7 +892,7 @@
         say(e.actor, LINES.net, 1.4);
       } else if (e.type === "netmiss") fx.burst(e.x, e.y, e.z, 6, NET_BITS, 1.2);
       else if (e.type === "refill") { if (me) { notice("Refilled: grenades, rockets, nets and crates", 1600); updateTools(); } }
-      else if (e.type === "throw") { if (e.actor === 0) updateTools(); }
+      else if (e.type === "throw") { if (e.actor === you) updateTools(); }
       else if (e.type === "fire") { if (me && tool === "ak") updateTools(); }
       else if (e.type === "rifle") {
         // On a tower the rifle is a choice, nothing more: the tool and the view stay as they are.
@@ -795,9 +922,9 @@
         if (me) { center("NOT YET!", 1200); notice("Your own block isn't home, so you can't score. Hold on here while your team brings it back, or go get it", 4000); }
         else if (mine) notice("Teammate is waiting at our stand · get our block home so they can score", 3000);
       } else if (e.type === "lift" || e.type === "set") {
-        if (e.actor === 0) updateTools();
+        if (e.actor === you) updateTools();
         if (e.type === "set") fx.burst(e.x, e.y + 0.2, e.z, 6, WOOD_BITS, 1.2);
-        if (e.type === "lift" && e.actor === 0) notice("Crate up! Click throws it · F sets it down or stacks it", 2200);
+        if (e.type === "lift" && e.actor === you) notice("Crate up! Click throws it · F sets it down or stacks it", 2200);
       } else if (e.type === "smash") fx.burst(e.x, e.y + 0.4, e.z, 14, WOOD_BITS, 2.4);
       else if (e.type === "bonk") {
         fx.burst(e.x, e.y + 0.8, e.z, 14, STAR_BITS, 2.2);
@@ -851,7 +978,7 @@
       } else if (e.type === "goldsteal") {
         fx.burst(e.x, e.y, e.z, 18, ORANGE_BITS, 2.6);
         if (me) { center("STOLEN!", 1000); notice("Your wallet bomb took the Golden Dual AKs! They're yours (6)", 3000); audio.cues.rescue(); chooseTool("gold"); }
-        else if (e.by === 0) { center("AKs STOLEN!", 1000); notice("A wallet bomb went off on you · they took your Golden Dual AKs", 2600); if (tool === "gold") chooseTool("paint"); }
+        else if (e.by === you) { center("AKs STOLEN!", 1000); notice("A wallet bomb went off on you · they took your Golden Dual AKs", 2600); if (tool === "gold") chooseTool("paint"); }
         updateTools();
       } else if (e.type === "reload") {
         if (me) { notice("Reloading…", 1000); audio.cues.crate(0.6); updateTools(); }
@@ -868,7 +995,7 @@
       else if (e.type === "wbounce") audio.cues.crate(0.25);
       else if (e.type === "stuck") {
         // Only the thrower hears of it; the one wearing it doesn't.
-        if (e.by === 0) {
+        if (e.by === you) {
           center("STUCK!", 900);
           notice(sim.actors[e.actor].gold && !sim.actors[0].gold ? `Stuck it on ${nameOf(e.actor)}! When it goes off, the Golden Dual AKs are yours` : `Stuck it on ${nameOf(e.actor)}! ${C.WALLET_FUSE} s…`, 2400);
           audio.cues.net(0.6);
@@ -887,7 +1014,7 @@
       } else if (e.type === "hopon") {
         audio.cues.jump(); audio.cues.pass(0.4);
         if (me) { center("PIGGYBACK!", 800); notice(`On ${nameOf(e.by)}'s back · aim and shoot · Space (or H) hops off`, 2600); }
-        else if (e.by === 0) { center("PIGGYBACK!", 800); notice(`${nameOf(e.actor)} is on your back, shooting for you · they stay on even if you're splatted`, 2600); }
+        else if (e.by === you) { center("PIGGYBACK!", 800); notice(`${nameOf(e.actor)} is on your back, shooting for you · they stay on even if you're splatted`, 2600); }
         else say(e.actor, ["Giddy up!", "Onward!", "Hup!"], 1.2);
       } else if (e.type === "hopoff") { if (me) notice("Back on your feet", 900); }
       else if (e.type === "laseron") {
@@ -907,7 +1034,7 @@
         } else say(e.actor, LINES.bonk, 1.3);
       } else if (e.type === "breakfree") { fx.burst(e.x, e.y + 0.8, e.z, 10, STAR_BITS, 2); if (me) { center("FREE!", 800); notice("Run before it grabs you again!", 1500); } }
       else if (e.type === "letgo") { if (me) notice("The gorilla got bored and dropped you", 1500); }
-      else if (e.type === "boltwarn") { if (e.actor === 0) { center("LIGHTNING!", 700); notice("Lightning coming · move!", 1300); } }
+      else if (e.type === "boltwarn") { if (e.actor === you) { center("LIGHTNING!", 700); notice("Lightning coming · move!", 1300); } }
       else if (e.type === "bolt") {
         audio.cues.thunder();
         boltNode.visible = detail.full; setVec(boltNode.position, e.x, 0, e.z); flashSeen = sim.time + 0.16;
@@ -1030,7 +1157,7 @@
   };
   const takePicked = () => {
     closeWalletMenu();
-    if (!SIM.takeWallet(sim, 0, wmenu.look)) notice("Too late · step back up to the machine to take one", 1600);
+    if (!acts("takeWallet", 0, wmenu.look)) notice("Too late · step back up to the machine to take one", 1600);
     return true;
   };
   const buildWalletMenu = () => {
@@ -1094,23 +1221,23 @@
     if (!inRound() || sim.actors[0].wallet < 0) return false;
     const a = sim.actors[0], q = aimPoint(), dx = q.x - a.x, dz = q.z - a.z;
     const flat = Math.hypot(dx, dz) || 1;
-    return SIM.throwWallet(sim, 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - a.y - 1.9, flat) + 0.12, -0.3, 0.9));
+    return acts("throwWallet", 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - a.y - 1.9, flat) + 0.12, -0.3, 0.9));
   };
   const paint = () => {
     if (!inRound()) return false;
     // In a gorilla's hands a click or tap is a struggle press, like Space.
     if (sim.actors[0].grabbed) { move.jump = 1; return true; }
-    if (sim.actors[0].flight === 2) return SIM.cutChute(sim, 0);
+    if (sim.actors[0].flight === 2) return acts("cutChute", 0);
     if (sim.actors[0].wallet >= 0) return throwWallet();
     // Laser eyes ready: whatever is in hand, the click lets them loose.
-    { const me = sim.actors[0]; if (me.laser > 0 && me.beam <= 0 && !me.holding) return SIM.fire(sim, 0, cam.face, 0, "paint"); }
+    { const me = sim.actors[0]; if (me.laser > 0 && me.beam <= 0 && !me.holding) return acts("fire", 0, cam.face, 0, "paint"); }
     const a = sim.actors[0], q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y);
     // With Lift chosen and empty hands, a click lifts the crate in front; holding a crate, a throw throws the crate.
     if (tool === "grab" && !a.holding) return grabCrate();
     if (tool === "hook" && !a.holding) return hookNow();
     if (a.holding) {
       const cdx = q.x - a.x, cdz = q.z - a.z, cflat = Math.hypot(cdx, cdz) || 1;
-      const thrown = SIM.fire(sim, 0, Math.atan2(cdx, cdz), clamp(Math.atan2(q.y - a.y - 1.7, cflat) - 0.05, -0.6, 0.6), "crate");
+      const thrown = acts("fire", 0, Math.atan2(cdx, cdz), clamp(Math.atan2(q.y - a.y - 1.7, cflat) - 0.05, -0.6, 0.6), "crate");
       if (!thrown && a.splat > 0) notice(`Splatted · throwing again in ${Math.ceil(a.splat)} s`, 900);
       else if (thrown && tool !== "grab") notice(`Crate thrown · ${tool} ready`, 900);
       return thrown;
@@ -1118,7 +1245,7 @@
     const dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
     const lob = tool === "grenade" ? 0.3 : tool === "rocket" || tool === "sniper" ? 0 : tool === "net" ? -0.02 : tool === "gold" || tool === "ak" ? -0.06 : -0.09;
     const pitch = clamp(Math.atan2(q.y - oy, flat) + lob, -1.4, 1.4);
-    const ok = SIM.fire(sim, 0, Math.atan2(dx, dz), pitch, tool);
+    const ok = acts("fire", 0, Math.atan2(dx, dz), pitch, tool);
     // Say why a throw didn't go, so the tools never seem locked: paint on you, a quiz bubble, or an empty tool.
     if (!ok && a.splat > 0) notice(`Splatted · throwing again in ${Math.ceil(a.splat)} s`, 900);
     else if (!ok && a.trapped > 0) notice("Answer the question to get out first", 1100);
@@ -1133,7 +1260,7 @@
     const a = sim.actors[0];
     if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or steal one with a wallet bomb", 2000); return false; }
     const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
-    const ok = SIM.grapple(sim, 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.45, 1.45));
+    const ok = acts("grapple", 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.45, 1.45));
     if (!ok && a.hCool > 0) notice(`Hook recharging · ${Math.ceil(a.hCool)} s`, 900);
     return ok;
   };
@@ -1175,7 +1302,7 @@
   const noMenu = (e) => { if (phase === "play") e.preventDefault(); };
   const buildCrate = () => {
     if (!inRound()) return false;
-    if (SIM.build(sim, 0, cam.face)) {
+    if (acts("build", 0, cam.face)) {
       const n = sim.actors[0].crates;
       notice(`Crate down! ${n ? `${n} left` : "That was your last · your stand or a cache gives you more"}`, 1200);
       return true;
@@ -1336,7 +1463,7 @@
   // Pick up the crate in front, or set the held one down (stacking it on a crate there).
   const grabCrate = () => {
     if (!inRound()) return false;
-    if (SIM.grab(sim, 0, cam.face)) return true;
+    if (acts("grab", 0, cam.face)) return true;
     const a = sim.actors[0];
     notice(a.holding ? "No room to set it there (stacks go three high)" : a.carrying ? "Hands full with the block" : "No crate in reach · face one and press F", 1200);
     return false;
@@ -1347,7 +1474,7 @@
     if (!inRound()) return false;
     if (sim.actors[0].wallet >= 0) return throwWallet();
     if (sim.actors[0].holding) return paint();
-    if (SIM.pass(sim, 0, cam.face)) return true;
+    if (acts("pass", 0, cam.face)) return true;
     notice("Nothing to throw · pick up a block, a crate with F, or a wallet bomb", 1100);
     return false;
   };
@@ -1355,8 +1482,8 @@
   const zipNow = () => {
     if (!inRound()) return false;
     if (openWalletMenu()) return true;
-    if (SIM.launch(sim, 0)) return true;
-    if (SIM.zip(sim, 0, cam.face)) return true;
+    if (acts("launch", 0)) return true;
+    if (acts("zip", 0, cam.face)) return true;
     const a = sim.actors[0];
     if (cam.island) return false;
     notice(sim.prep > 0 ? "The zipline opens when the round starts" : a.holding ? "Put the crate down first (F)" : "Climb a sniper tower's ladder and stand by the cable to ride", 1600);
@@ -1368,20 +1495,20 @@
     if (!inRound()) return false;
     const me = sim.actors[0];
     if (me.ride) { move.jump = 1; return true; }
-    if (SIM.hopOn(sim, 0)) return true;
+    if (acts("hopOn", 0)) return true;
     notice(me.rider ? "You've already got someone on your back" : "No teammate close enough to climb on · J calls one to ride on you", 1600);
     return false;
   };
   const callRider = () => {
     if (!inRound()) return false;
-    if (SIM.callRide(sim, 0)) { notice("Calling a teammate to climb on your back…", 1600); return true; }
+    if (acts("callRide", 0)) { notice("Calling a teammate to climb on your back…", 1600); return true; }
     return false;
   };
   const dropBlock = () => {
     if (!inRound()) return false;
-    if (SIM.drop(sim, 0)) return true;
+    if (acts("drop", 0)) return true;
     // No block in hand: K sets a held wallet down, ticking.
-    if (SIM.dropWallet(sim, 0)) { notice(`Wallet set down · it goes off in ${C.WALLET_FUSE} s · get clear!`, 1800); return true; }
+    if (acts("dropWallet", 0)) { notice(`Wallet set down · it goes off in ${C.WALLET_FUSE} s · get clear!`, 1800); return true; }
     notice("Nothing to drop", 900);
     return false;
   };
@@ -1974,7 +2101,9 @@
     // The start menu is up in the clouds at noon, whatever the map's own hour.
     daylight.sample(phase === "board" ? 12 : mapHour, RENDER_OPTS, clock.dayOfYear, daylight.ISLAND_LATITUDE_DEG, clock.continuousDay, clock.utcMs);
     RENDER_OPTS.time = elapsed;
-    if (phase === "play" && paused) controls.read();
+    if (round === null && BL.net.state.blockLive) openRound();
+    if (round) round.lobbyTick(dt);
+    if (phase === "play" && paused && !liveRound()) controls.read();
     else if (phase === "play") {
       readInput(dt);
       // Choosing a wallet: the Ooga stands still; walking off (or being knocked away) from the machine closes the panel.
@@ -1985,10 +2114,15 @@
       // Full auto: with the AK or the golden pair and the trigger held, a round goes each time the shot clock allows.
       if (trigger && (tool === "ak" || (tool === "gold" && sim.actors[0].gold)) && !quiz.open && !sim.actors[0].grabbed && sim.actors[0].cooldown <= 0) paint();
       // The live feed, folded in before the step: fees to weather, a new block to its reset.
-      SIM.setLive(sim, feeWeather(live.fee));
-      if (live.block) { SIM.newBlock(sim, live.block); live.block = 0; }
       const prepWas = sim.prep;
-      SIM.step(sim, dt, move);
+      if (round && round.role === "guest") round.after(dt, move);
+      else {
+        SIM.setLive(sim, feeWeather(live.fee));
+        if (live.block) { SIM.newBlock(sim, live.block); live.block = 0; }
+        if (round && round.role === "host") round.hostStep();
+        SIM.step(sim, dt, move);
+        if (round && round.role === "host") round.after(dt, move);
+      }
       if (sim.prep > 0 && Math.ceil(sim.prep) !== Math.ceil(prepWas)) {
         center(`BUILD ${Math.ceil(sim.prep)}`, 0);
         if (sim.prep <= 3) audio.cues.count();
@@ -1996,7 +2130,8 @@
       readEvents();
       updateStrip();
       if (sim.over) finish();
-    } else controls.read();
+    } else if (onDeck()) { controls.read(); round.after(dt, move); readEvents(); updateStrip(); }
+    else controls.read();
     poseActors(dt, elapsed);
     poseBlocks(elapsed);
     poseCrates();
@@ -2012,6 +2147,7 @@
     poseShots();
     poseWallets(elapsed);
     if (phase === "board") boardView(elapsed, dt);
+    else if (onDeck()) deckView();
     else updateCamera(dt);
     poseWeather(dt);
     if (phase === "play") drawMap(dt, elapsed);
@@ -2103,6 +2239,7 @@
     if (id === selection.map && sim && sim.map === id) return;
     selection.map = id;
     savePicks();
+    if (round && firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(id));
     if (!sim) return;
     recast();
     buildMap();
@@ -2359,6 +2496,7 @@
   const enter = (ctx) => {
     ({ renderer, game, world, go } = ctx);
     home = ctx.from === "arcade" ? "arcade" : "hub";
+    watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;
     hudMod.leaveTo("block", home);
     camera = createCamera({ fov: 58, near: 0.3, far: 400 });
     audio = BL.blockAudio.create();
@@ -2375,6 +2513,10 @@
       el[id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = document.getElementById(`block-${id}`);
     }
     el.struggleWord.textContent = COARSE ? "Tap fast!" : "Mash SPACE!";
+    el.live = document.getElementById("block-live"); el.liveTitle = document.getElementById("block-live-title"); el.liveStatus = document.getElementById("block-live-status"); el.liveList = document.getElementById("block-live-list"); el.liveSizes = document.getElementById("block-live-sizes");
+    el.liveReg = document.getElementById("block-live-reg"); el.liveReady = document.getElementById("block-live-ready"); el.liveWatch = document.getElementById("block-live-watch");
+    el.watch = document.getElementById("block-watch"); el.watchLine = document.getElementById("block-watch-line"); el.watchScore = document.getElementById("block-watch-score"); el.watchReg = document.getElementById("block-watch-reg");
+    el.againBtn = document.querySelector('#block-results [data-action="block-again"]');
     el.teams = [...document.querySelectorAll("#block-board [data-team]")];
     el.targets = [...document.querySelectorAll("#block-board [data-target]")];
     el.sizes = [...document.querySelectorAll("#block-board [data-size]")];
@@ -2543,6 +2685,7 @@
       onOrbit: (dx, dy) => {
         // On the board a drag turns the Ooga on show.
         if (phase === "board") { preview.spin = wrap(preview.spin + dx * 8e-3); return; }
+        if (onDeck()) { deckYaw = clamp(deckYaw - dx * 5e-3, -1.1, 1.1); deckPitch = clamp(deckPitch + dy * 3e-3, -0.25, 0.5); return; }
         if (!inRound()) return;
         cam.face = wrap(cam.face - dx * 5e-3);
         cam.pitch = clamp(cam.pitch + dy * 3.5e-3, CAM.pitch[0], CAM.pitch[1]);
@@ -2566,7 +2709,12 @@
       }
     });
     hud.onAction((action) => {
-      if (action === "block-start" || action === "block-again") start();
+      if (action === "block-again" && kept) showBoard();
+      else if (action === "block-start" || action === "block-again") { if (registered()) round.unregister(); start(); }
+      else if (action === "block-live-reg") { if (registered()) round.unregister(); else round.register(); }
+      else if (action === "block-live-ready") round.setReady(!isReady());
+      else if (action.startsWith("block-live-size-")) round.setOptions(Number(action.slice(-1)), WIRE.MAPS.indexOf(selection.map));
+      else if (action === "block-live-watch") joinDeck();
       else if (action === "block-board") showBoard();
       else if (action === "block-help") el.helpBox.hidden = !el.helpBox.hidden;
       else if (action === "block-drop") dropBlock();
@@ -2625,6 +2773,11 @@
     });
   };
   const leave = () => {
+    if (round) { round.dispose(); round = null; }
+    if (el.live) el.live.hidden = true;
+    if (el.watch) el.watch.hidden = true;
+    deck = null; you = 0; kept = null; liveCast = null; watchVisit = false;
+    BL.net.setBody(null);
     closeWalletMenu();
     if (wmenu.root) { wmenu.root.remove(); wmenu.root = wmenu.picks = wmenu.take = null; }
     audio.dispose();

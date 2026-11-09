@@ -221,3 +221,20 @@ test("a new page hears the current match on arrival; an older page is never told
   assert.equal(last(b.ws).phase, "lobby"); assert.deepEqual([...last(b.ws).reg], [1]);
   assert.ok(b.ws.sent.find(m => m.t === "welcome").features.includes(W.FEATURE));
 });
+test("traffic through the Worker with eight live players, simulated over ten seconds", async t => {
+  const h = harness(t), list = await crowd(h, 8), m = startRound(h, list);
+  assert.equal(m.phase, "play");
+  const host = list.find(x => x.id === m.host), guests = list.filter(x => x !== host);
+  const out0 = () => list.reduce((n, x) => n + x.ws.sent.length + x.ws.bins.length, 0), base = out0();
+  let framesIn = 0, inputsIn = 0, beats = 0;
+  for (let ms = 0; ms < 10000; ms += 50) {
+    h.advance(50);
+    for (const g of guests) { h.send(g.ws, { t: "bf", k: "input", s: m.s, q: ms / 50 + 1, x: 0, z: 0, f: 0, b: 0 }); inputsIn++; }
+    if (ms % 100 === 0) { h.room.webSocketMessage(host.ws, frame(m, ms / 100 + 1, 900)); framesIn++; }
+    if (ms % 2000 === 0) for (const x of list) { h.send(x.ws, { t: "bf", k: "beat" }); beats++; }
+  }
+  const seconds = 10, framesOut = guests.reduce((n, g) => n + g.ws.bins.length, 0), inputsOut = bf(host.ws).filter(x => x.k === "input").length, total = out0() - base;
+  t.diagnostic(`simulated 8 players, 10 s: IN frames ${framesIn / seconds}/s, inputs ${inputsIn / seconds}/s, beats ${beats / seconds}/s; OUT frames ${framesOut / seconds}/s, inputs relayed ${inputsOut / seconds}/s, total out ${total / seconds}/s`);
+  assert.equal(framesOut, 7 * framesIn, "each frame reaches the seven guests");
+  assert.equal(inputsOut, inputsIn, "every input reaches the host alone");
+});

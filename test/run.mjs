@@ -7166,12 +7166,92 @@ const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
 
 // The games' rules and saves in Node, under the same localStorage the page uses: the mine's seeded sim,
 // every game's stored best, the tickets a machine spends and the jackpot wheel's odds.
-const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-sim", "highscore-rules", "game", "cloud-hopper-levels"];
+const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-wire", "block-sim", "block-live", "highscore-rules", "game", "cloud-hopper-levels"];
 const gameRulesChecks = async () => {
   const store = new Map();
   const context = { window: {}, URLSearchParams, location: { search: "" }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) } };
   for (const name of GAME_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL, M = BL.mineSim, R = BL.mineRigs;
+  {
+    const S = BL.blockSim, W = BL.blockWire, L = BL.blockLive;
+    const still = () => ({ x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 });
+    const emitted = [...(await readFile(new URL("../src/js/block-sim.js", import.meta.url), "utf8")).matchAll(/emit\(sim, "([a-z0-9]+)"/g)].map(m => m[1]);
+    const missing = [...new Set(emitted)].filter(t => !L.EVENT_TYPES.includes(t));
+    record("block live: every event the rules emit has a wire code", missing.length === 0, missing.join(","));
+    record("block live: the wire's maps and the cap match the rules", W.MAPS.every(m => S.ARENAS[m]) && W.MAPS.length === Object.keys(S.ARENAS).length && W.MAX_SIDE <= S.CONFIG.MAX_SIDE && W.MAX_SIDE === 4);
+    // Seat maps: own Ooga at actor 0, own side first, for every seat; both directions invert each other.
+    let seatsOk = true;
+    for (const size of [1, 2, 3, 4]) for (let me = -1; me < size * 2; me++) {
+      const m = L.seatMap(size, me);
+      if (me >= 0 && m.toLocal[me] !== 0) seatsOk = false;
+      if (me >= 0 && m.team !== (me < size ? "blue" : "red")) seatsOk = false;
+      for (let s = 0; s < size * 2; s++) if (m.toSeat[m.toLocal[s]] !== s || (m.toLocal[s] < size) !== ((s < size) === (me < size))) seatsOk = false;
+    }
+    record("block live: a seat maps to a page's own Ooga at actor 0, own side first", seatsOk);
+    // A played 4v4: host at seat 5, a guest at seat 2 and a deck page agree on the world, under the frame limit.
+    const hostMap = L.seatMap(4, 5), guestMap = L.seatMap(4, 2), deckMap = L.seatMap(4, -1);
+    const host = S.create({ team: hostMap.team, seed: 4242, size: 4, map: "fort", prep: 0 }), guest = S.create({ team: guestMap.team, seed: 4242, size: 4, map: "fort", prep: 0 }), deck = S.create({ team: deckMap.team, seed: 4242, size: 4, map: "fort", prep: 0 });
+    const buf = new DataView(new ArrayBuffer(W.FRAME_MAX)), input = still();
+    let biggest = 0, total = 0, frames = 0;
+    for (let i = 0; i < 2400; i++) {
+      S.tick(host, S.CONFIG.STEP, input);
+      if (i % 12 === 0) { const n = L.encode(host, hostMap, 7, 1, ++frames, buf); biggest = Math.max(biggest, n); total += n; host.eventCount = 0; }
+    }
+    const nextG = new Float32Array(32), nextD = new Float32Array(32), n = L.encode(host, hostMap, 7, 1, frames + 1, buf);
+    const copy = new DataView(buf.buffer.slice(0, n));
+    L.decode(copy, guest, guestMap, nextG); L.decode(copy, deck, deckMap, nextD);
+    let agree = true;
+    for (let s = 0; s < 8; s++) {
+      const a = host.actors[hostMap.toLocal[s]], g = guestMap.toLocal[s], d = deckMap.toLocal[s];
+      if (Math.abs(nextG[g * 4] - a.x) > 0.02 || Math.abs(nextD[d * 4 + 1] - a.z) > 0.02 || guest.actors[g].splat !== Math.round(a.splat * 10) / 10) agree = false;
+    }
+    record("block live: a 4v4 frame reaches a guest and the watch deck intact and under the limit", agree && biggest > 0 && biggest <= W.FRAME_MAX && guest.score.blue === host.score.blue, `max ${biggest}, avg ${Math.round(total / frames)} bytes`);
+    context.blockFrameBytes = { biggest, average: Math.round(total / frames) };
+    // 1v1 is a real match with bots and flags, and a solo step is untouched by the new input table.
+    const one = S.create({ team: "blue", seed: 9, size: 1, map: "fort", prep: 0 });
+    one.actors[1].bot = true;
+    for (let i = 0; i < 1200; i++) S.tick(one, S.CONFIG.STEP, still());
+    const solo = (t) => { const s = S.create({ team: "blue", seed: 77, size: 3, map: "town", prep: 1 }); if (t) s.inputs = null; for (let i = 0; i < 1800; i++) S.tick(s, S.CONFIG.STEP, still()); return s.actors.map(a => a.x + a.z).join(","); };
+    record("block live: 1v1 runs, and a solo round is unchanged", one.actors.length === 2 && one.time > 9 && solo(false) === solo(true));
+    // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
+    const session = (selfId) => {
+      const subs = new Set(), frames_ = new Set(), sent = [], bins = [];
+      const net = { state: { selfId }, subscribeBf: f => { subs.add(f); return () => subs.delete(f); }, subscribeBfFrame: f => { frames_.add(f); return () => frames_.delete(f); }, sendBf: m => { sent.push(m); return true; }, sendBfInput: m => { sent.push({ ...m }); return true; }, sendBfFrame: b => { bins.push(b.slice().buffer); } };
+      const seen = { sim: null, started: 0 }, live = L.create({ net, now: () => context.clock, resolveBody: () => {}, onMatch: () => {}, onHost: () => { seen.tookOver = true; },
+        onStart: (m, role, map) => { seen.started++; seen.role = role; const s = S.create({ team: map.team, seed: m.seed, size: m.size, map: "fort", prep: 0 }); seen.sim = s; S.reset(s, m.seed); live.bind(s); } });
+      return { live, sent, bins, seen, tell: m => { for (const f of subs) f({ k: "match", ...m }); }, input: m => { for (const f of subs) f({ k: "input", ...m }); }, frame: b => { for (const f of frames_) f(b); } };
+    };
+    context.clock = 1000;
+    const match = { s: "0123456789abcdef", phase: "play", size: 2, map: 0, reg: [], ready: [], seats: [10, 20, 30, 0], host: 10, epoch: 1, tag: 99, seed: 5 };
+    const A = session(10), B = session(20), D = session(40);
+    A.tell(match); B.tell(match); D.tell(match);
+    const a = A.seen.sim, b = B.seen.sim, dk = D.seen.sim;
+    record("block live: roles and NPC fill from the seats", A.seen.role === "host" && B.seen.role === "guest" && D.seen.role === "watch" && a.actors[3].bot === true && !a.actors[0].bot && !b.actors[0].bot);
+    const mv = A.live.map.toLocal[1], before = a.actors[mv].x;
+    A.input({ from: 1, s: match.s, q: 1, x: 1000, z: 0, f: 0, b: 1 });
+    for (let i = 0; i < 120; i++) { context.clock += 1000 / 120; A.live.hostStep(); S.tick(a, S.CONFIG.STEP, still()); }
+    record("block live: a guest's input drives its Ooga on the host", Math.abs(a.actors[mv].x - before) > 0.5, `moved ${a.actors[mv].x - before}`);
+    A.input({ from: 3, s: match.s, q: 2, x: 1000, z: 0, f: 0, b: 0 });
+    record("block live: an NPC seat cannot be driven", !A.live.map || a.inputs[A.live.map.toLocal[3]] === null);
+    A.live.after(0.2, still());
+    record("block live: the host sends a frame and guests apply it", A.bins.length === 1 && (B.frame(A.bins[0]), D.frame(A.bins[0]), true) && Math.abs(b.flags.blue.x - a.flags.blue.x) < 0.1);
+    const deckAct = D.live.act === undefined ? false : D.live.role === "watch" && (() => { D.live.after(0.05, still()); return D.sent.filter(m => m.k === "input" || m.t === "bf").length === 0; })();
+    record("block live: the watch deck sends no input", deckAct);
+    B.live.after(1, still());
+    record("block live: a guest sends bounded input", B.sent.some(m => m.k === "input" && m.q === 0 && m.s === match.s));
+    const leftA = { ...match, seats: [10, 0, 30, 0] };
+    A.tell(leftA); record("block live: a leaver's seat falls back to an NPC", a.actors[mv].bot === true);
+    const handed = { ...match, seats: [0, 20, 30, 0], host: 20, epoch: 2 };
+    B.tell(handed);
+    record("block live: on handover the next page hosts from its last state", B.live.role === "host" && B.seen.tookOver === true && B.seen.sim.inputs !== null);
+    B.tell({ ...handed, phase: "lobby", reg: [20], ready: [0], seats: [] }); D.tell({ ...handed, phase: "lobby", reg: [20], ready: [0], seats: [] });
+    record("block live: the round's end returns everyone to the lobby role", B.live.role === "none" && D.live.role === "none");
+    A.live.dispose(); B.live.dispose(); D.live.dispose();
+    const wentTo = []; L.openWatchDeck((scene, place) => wentTo.push(scene, place));
+    const idle = session(50); idle.tell({ phase: "empty" }); idle.live.after(0.2, still());
+    record("block live: the watch-deck entry opens the game on the deck, and with no round a page sends nothing", wentTo[0] === "block" && wentTo[1] === W.WATCH_DECK_PLACE && idle.live.role === "none" && idle.sent.length === 0 && idle.bins.length === 0);
+    idle.live.dispose();
+  }
   {
     const g = BL.game.create({ catalog: [] });
     g.recordCloudHopper("bitcoin-bill", 1, 50000, 4);

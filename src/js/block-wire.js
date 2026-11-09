@@ -6,6 +6,8 @@
   const scope = typeof window === "undefined" ? globalThis : window;
   const BL = scope.BL = scope.BL || {};
   const FEATURE = "block-v1", ZONE = "block-frenzy", WIRE = 1;
+  // The `place` that arrives on the watch deck to spectate, for a portal or anything else that opens the game to watch.
+  const WATCH_DECK_PLACE = "watch-deck";
   // The most a side may hold: change this one number to change the cap on the page and in the Worker.
   const MAX_SIDE = 4, MIN_SIDE = 1, MAX_PLAYERS = MAX_SIDE * 2;
   const HZ = 10, INPUT_HZ = 20, IDLE_MS = 15000, COUNTDOWN_MS = 3000;
@@ -15,7 +17,7 @@
   const MAPS = ["fort", "town", "jungle", "haunted"];
   // What a guest asks its host to do for it, by index on the wire: `yaw` and `pitch` go in thousandths of a radian.
   const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "dropWallet", "throwWallet", "takeWallet", "escape", "cutChute"];
-  const KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate"];
+  const KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate", "homer"];
   const integer = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
   const session = v => typeof v === "string" && /^[a-f0-9]{16}$/.test(v);
   const eligible = p => !!p && p.zone === ZONE && !!p.body && !p.body.startsWith("gorilla:");
@@ -58,5 +60,5 @@
     }
     return null;
   };
-  BL.blockWire = { FEATURE, ZONE, WIRE, MAX_SIDE, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, allReady, seatOf, canEnter, watching, canRegister };
+  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, allReady, seatOf, canEnter, watching, canRegister };
 })();

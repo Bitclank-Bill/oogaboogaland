@@ -141,7 +141,7 @@ export const block = {
       return;
     }
     if (!m) return;
-    if (msg.k === "unreg") { if (m.reg.includes(p.id) && W.seatOf(m, p.id) < 0 || m.phase === "lobby" || m.phase === "countdown") block.leave(room, p.id); return; }
+    if (msg.k === "unreg") { block.leave(room, p.id); return; }
     if (msg.k === "opt") {
       if (m.phase !== "lobby" || m.reg[0] !== p.id) return;
       m.size = msg.n; m.map = msg.m;

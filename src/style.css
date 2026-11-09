@@ -12046,3 +12046,9 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
   font: inherit;
   color: #ffd27a;
 }
+
+.block-live { margin: 8px 0; }
+.block-live-sizes, .block-live-buttons { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.block-live-list { list-style: none; margin: 4px 0; padding: 0; font-size: 11px; }
+.block-watch { position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); padding: 8px 14px; background: var(--panel, rgba(30, 20, 10, 0.86)); color: var(--text, #fff); border-radius: 6px; font-size: 13px; pointer-events: auto; }
+.block-watch b { font-size: 14px; }
