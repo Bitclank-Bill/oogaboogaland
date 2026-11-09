@@ -242,7 +242,7 @@
     // The doorway to watch Block Frenzy, in its entry hall's east wall: its timber set, the sign over it and the portal,
     // always open, that only this scene's walker crosses. Separate from the zipline.
     // The sign hangs over the walker's head where the view can read it, and a blade sign out from the wall reads along the hall both ways.
-    const wd = AW.DOOR, watchSign = BL.hubModels.caveSign("Watch Block Frenzy", "cube", false, true), wb = boundsOf(watchSign), wk = 2.3 / (wb.max[0] - wb.min[0]), bladeK = 1.5 / (wb.max[0] - wb.min[0]);
+    const wd = AW.DOOR, watchSign = AM.watchSignBoard(), wb = boundsOf(watchSign), wk = 1, bladeK = 1.5 / (wb.max[0] - wb.min[0]);
     const watchSignNode = (x, y, z, turn, k) => createNode({ position: { x, y: y - wb.center[1] * k, z }, rotation: { x: 0, y: turn, z: 0 }, scale: { x: k, y: k, z: k }, geometry: watchSign });
     addChild(root, createNode({ geometry: AM.blockWatchDoor() }), watchSignNode(BH.x1 - 0.42, wd.y + AW.SIGN_Y, wd.z, -Math.PI / 2, wk),
       watchSignNode(BH.x1 - 1.05, wd.y + AW.BLADE_Y, wd.z1 + 0.24, 0, bladeK), watchSignNode(BH.x1 - 1.05, wd.y + AW.BLADE_Y, wd.z1 + 0.2, Math.PI, bladeK));

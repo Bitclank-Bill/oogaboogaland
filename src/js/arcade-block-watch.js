@@ -11,7 +11,7 @@
   // may press past it, so its middle just crosses the surface and no further.
   const DOOR = { z: CENTRE, z0: CENTRE - 1.2, z1: CENTRE + 1.2, plane: BH.x1 - 0.15, reach: BH.x1 + 0.27, h: H, y: Y };
   // Over the tallest walker's head, in the view from the hall's middle: the hanging sign and the blade sign's heights.
-  const SIGN_Y = 2.5, BLADE_Y = 3.1;
+  const SIGN_Y = 2.6, BLADE_Y = 3.1;
   const APERTURE = Object.freeze({ width: 2.5, height: H, footWidth: 2.5, footHeight: 0, inset: 0.06 });
   const PLACE = "block-watch", ARRIVAL = Object.freeze({ x: BH.x1 - 1.6, z: CENTRE, facing: -Math.PI / 2, deck: true });
   // How far a body reaches into rock here, negative in the clear: the hall's walk bound carried on to the portal, only

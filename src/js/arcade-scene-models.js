@@ -1285,6 +1285,38 @@
     for (let k = 0; k < 16; k++) sky.push(puff(k, X + (cloudRand() - 0.5) * 240, -30 + cloudRand() * 80, -60 - cloudRand() * 80, 1.2 + cloudRand() * 2));
     return { rock, ledge: shaded(round, flat), props: merge(...props), sky: merge(...sky) };
   });
+  // The watch door's sign, its own board in the carved signs' style: two lines so the letters can be large, the shared
+  // alphabet but for its own five-wide W (the shared one reads as an H and stays as it is), every line measured so it
+  // sits inside the board with a margin. 2.3 m wide, centred on its origin, facing +z.
+  const WATCH_W = ["10001", "10001", "10101", "11011", "10001"];
+  const watchSignBoard = cached(() => {
+    const G = BL.hubModels.SIGN_GLYPHS, glyphOf = (ch) => ch === "W" ? WATCH_W : ch === "M" ? BL.hubModels.CARVED_M : G[ch];
+    const measure = (s) => { let n = -1; for (const ch of s) n += ch === " " ? 2 : glyphOf(ch)[0].length + 1; return n; };
+    const LINES = ["Watch", "Block Frenzy"], W = 2.3, MARGIN = 0.16, BADGE = 6, cell = (W - MARGIN * 2) / Math.max(measure(LINES[0]) + BADGE + 2, measure(LINES[1])), ROW = 8 * cell, H = ROW * 2 + cell * 2;
+    const planks = ["#7a4f2a", "#86592f", "#6f4726"], plankH = H / 3, parts = [];
+    planks.forEach((c, k) => parts.push(bevelBox({ w: W + (k === 1 ? 0.08 : 0), h: plankH + 0.01, d: 0.12, color: c, bevel: 0.03, offset: { y: H / 2 - plankH * (k + 0.5) } })));
+    parts.push(box({ w: W - MARGIN, h: H - cell, d: 0.02, color: "#3f2513", offset: { z: 0.07 } }));
+    const ink = (x, y, w) => parts.push(box({ w, h: cell, d: 0.05, color: "#f5e6c0", emissive: 1, offset: { x, y, z: 0.1 } }));
+    LINES.forEach((line, l) => {
+      const n = measure(line) + (l === 0 ? BADGE + 2 : 0), base = H / 2 - cell * 1.5 - ROW * l;
+      let cursor = -n * cell / 2;
+      // The orange cube badge leads the first line, as on the hall's own sign.
+      if (l === 0) { parts.push(box({ w: BADGE * cell, h: BADGE * cell, d: 0.05, color: "#f7931a", emissive: 1, offset: { x: cursor + BADGE * cell / 2, y: base - 2.5 * cell + cell / 2, z: 0.1 } })); cursor += (BADGE + 2) * cell; }
+      for (const ch of line) {
+        if (ch === " ") { cursor += cell * 2; continue; }
+        const glyph = glyphOf(ch);
+        for (let row = 0; row < glyph.length; row++) for (let col = 0; col < glyph[row].length; col++) {
+          if (glyph[row][col] !== "1") continue;
+          let run = 1;
+          while (glyph[row][col + run] === "1") run++;
+          ink(cursor + (col + run / 2) * cell, base - row * cell, run * cell);
+          col += run - 1;
+        }
+        cursor += cell * (glyph[0].length + 1);
+      }
+    });
+    return merge(...parts);
+  });
   // The doorway to watch Block Frenzy (`BL.arcadeBlockWatch`): a timber set proud of the hall's east wall, like the hall's
   // own, with a vine along its lintel. The rock stays whole behind it; the scene hangs the portal and the sign in it.
   const blockWatchDoor = cached(() => {
@@ -4783,6 +4815,6 @@
   };
   Object.assign(BL.arcadeModels, {
     buildSteps,
-    blockHall, blockWatchDoor, haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
+    blockHall, blockWatchDoor, watchSignBoard, haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
   });
 })();
