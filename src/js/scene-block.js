@@ -459,12 +459,13 @@
   // The deck itself, round or no round: no actor, no input, nothing here reaches the play area.
   const showDeck = () => {
     const loading = BL.deferred.load("block-viewer");
-    if (loading) { loading.then(() => { if (round && (watchVisit || deckLive)) seatViewer(); }).catch(() => {}); return; }
+    if (loading) { loading.then(() => { if (watchVisit || deckLive) seatViewer(); }).catch(() => {}); return; }
     seatViewer();
   };
   const seatViewer = () => {
     chairsFull = false;
-    round.watchFeed(true);
+    if (round) round.watchFeed(true);
+    else if (el.watchLine) el.watchLine.textContent = "No round running.";
     you = -9;
     phase = "watch"; paused = false;
     deck ||= BL.blockViewer.buildChairs(createNode, addChild, place(createNode()), SIM.ARENA);
@@ -2801,8 +2802,9 @@
     el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Main menu" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
     paintControls(el.controlsList);
     showBoard();
-    // The board the scene opens on clears a watch visit; one arriving for the chairs still wants them.
+    // The board the scene opens on clears a watch visit; one arriving for the chairs still wants them, at once, room or no room.
     watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;
+    if (watchVisit) showDeck();
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);
     Object.assign(blockScene, {
