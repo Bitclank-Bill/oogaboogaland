@@ -746,7 +746,7 @@
   };
   // The name shown for Ooga i: "You" for the visitor, else its display name.
   const nameOf = (i) => {
-    if (i === 0) return "You";
+    if (i === 0 && !onDeck()) return "You";
     const n = sim.actors[i].name;
     return n ? contributors.traitsFor(n).display || n : `${sim.actors[i].team === "blue" ? "Blue" : "Red"} ${i}`;
   };
@@ -2796,6 +2796,8 @@
     el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Main menu" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
     paintControls(el.controlsList);
     showBoard();
+    // The board the scene opens on clears a watch visit; one arriving for the chairs still wants them.
+    watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;
     stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick a side, then Play!" : "Pick a side, then Play! (Enter)"), 1200);
     Object.assign(blockScene, {

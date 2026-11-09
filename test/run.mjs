@@ -7294,6 +7294,11 @@ const gameRulesChecks = async () => {
       record("block live: the countdown ends on the room's clock, not the page's", goSkew && noGo);
       for (const x of [H, G, LH, C, C2]) x.live.dispose();
     }
+    {
+      const scene = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), opens = scene.lastIndexOf("    showBoard();\n");
+      record("regression: a chairs visit survives the board the scene opens on, so the doorway lands in the chairs", opens > 0 && scene.indexOf("watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;", opens) > opens);
+      record("regression: only a seated player's own actor is called You; a viewer sees that actor's real name", scene.includes('if (i === 0 && !onDeck()) return "You";') && !scene.includes('if (i === 0) return "You";'));
+    }
     const wentTo = []; L.openWatchDeck((scene, place) => wentTo.push(scene, place));
     const idle = session(50); idle.tell({ phase: "empty" }); idle.live.after(0.2, still());
     record("block live: the watch-deck entry opens the game on the deck, and with no round a page sends nothing", wentTo[0] === "block" && wentTo[1] === W.WATCH_DECK_PLACE && idle.live.role === "none" && idle.sent.length === 0 && idle.bins.length === 0);
