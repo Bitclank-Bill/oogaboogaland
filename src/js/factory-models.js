@@ -945,10 +945,12 @@
     face(geo, orient(geo, [...rings[spans]], 0, 0, -1), rgb, { emissive });
     return geo;
   };
+  // The dark under the boards, which their gaps show: `w` wide from `near` to `far`, tiled for that same sort.
+  const plankUnderlay = (w, near, far, tiles, emissive = 0) => moved(turnedX(models.panel({ w, h: near - far, tilesX: tiles, tilesY: Math.ceil((near - far) / PLANK_SPAN), color: "#1c120a", emissive }), -Math.PI / 2), 0, 0.006, (near + far) / 2);
   const tunnelFloor = (out, reach, island) => {
     const paint = island ? hallBoard : (tone) => tone, emissive = island ? HALL_BOARD_GLOW : 0;
     const e = LAYOUT.entrance, n = Math.max(2, Math.round(e.w / 0.9)), rand = mulberry32(Math.round(e.x * 7 + e.z)), w = e.w / n - 0.05;
-    out.push(moved(turnedX(models.panel({ w: e.w, h: reach - SHIELD_Z, tilesX: n, tilesY: Math.ceil((reach - SHIELD_Z) / PLANK_SPAN), color: "#1c120a" }), -Math.PI / 2), 0, 0.006, (reach + SHIELD_Z) / 2));
+    out.push(plankUnderlay(e.w, reach, SHIELD_Z, n));
     for (let i = 0; i < n; i++) out.push(plankRun(((i + 0.5) / n - 0.5) * e.w, w, reach, SHIELD_Z, paint(PLANK_TONES[Math.floor(rand() * 3)]), emissive));
     for (const s of [-1, 1]) out.push(plankRun(s * 2.75, 0.46, -2.5, SHIELD_Z, paint(s < 0 ? TIMBER_LT : TIMBER), emissive));
   };
@@ -991,7 +993,9 @@
     ]);
   });
   const hubTunnel = cached(() => {
-    const { geos, glow, boards, floor } = tunnelFrame(0.3, true);
+    // The boards stop just inside where the mouth's stone meets the island's grass and path, which lies on the terrain's
+    // grid at up to z 0.1 across the width of the mouth, so none of them lies over either.
+    const { geos, glow, boards, floor } = tunnelFrame(-0.1, true);
     geos.push(box({ w: 4.6, h: 3.6, d: 0.2, color: "#1f140e", offset: { y: 1.8, z: SHIELD_Z - 1.35 } }));
     // The bolt and its lamps are what Canvas 2D shows past the shield in place of the hall's window, in whose band they would stand.
     const backdrop = [moved(smoothBolt(2.2, 0.24, "#ffd84a", 1), 0, 1.6, SHIELD_Z - 1.1)];
@@ -1335,11 +1339,14 @@
       const n = Math.max(2, Math.round(e.w / 0.9)), prand = mulberry32(Math.round(e.x * 7 + e.z)), top = e.y + 0.02, z0 = e.z - e.d / 2 + 0.02;
       for (let i = 0; i < n; i++) {
         const x = e.x + ((i + 0.5) / n - 0.5) * e.w, hw = e.w / n / 2 - 0.025, color = [TIMBER, TIMBER_LT, "#946236"][Math.floor(prand() * 3)];
-        // Self-lit in the hall's own colour, which the bake keeps, so the deck meets the tunnel's boards at the shield.
+        // The tunnel's boards exactly, the same section and gaps, self-lit in the hall's own colour, which the bake keeps,
+        // so the deck runs on from them through the shield as one floor.
         const lit = hallBoard(color, HALL_BOARD_WINDOW);
-        parts.push(span(x - hw, x + hw, top - 0.2, top, z0, CUT, lit, 1));
-        front.push(span(x - hw, x + hw, e.y, top, CUT, WINDOW_SHIELD - 0.02, lit, 1));
+        parts.push(moved(plankRun(x, hw * 2, CUT, z0, lit, 1), 0, e.y, 0));
+        front.push(moved(plankRun(x, hw * 2, WINDOW_SHIELD - 0.02, CUT, lit, 1), 0, e.y, 0));
       }
+      parts.push(moved(plankUnderlay(e.w, CUT, z0, n, 1), e.x, e.y, 0));
+      front.push(moved(plankUnderlay(e.w, WINDOW_SHIELD - 0.02, CUT, n, 1), e.x, e.y, 0));
       const ex = e.w / 2 - 0.1, ez0 = e.z - e.d / 2 + 0.1, ez1 = e.z + e.d / 2 - 0.1, [[, , a0, a1]] = L.walk, cz = (a0 + a1) / 2, ch = (a1 - a0) / 2 - 0.1, sh = L.stairway[6] / 2 + 0.1;
       // The left rail opens to the hangar's walkway while the hangar is open, as the right one does to the kiosk's.
       const [[, , b0, b1]] = L.walkLeft, lz = (b0 + b1) / 2, lh = (b1 - b0) / 2 - 0.1;
