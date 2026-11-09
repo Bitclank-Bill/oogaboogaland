@@ -39,7 +39,11 @@
   // milliseconds of a frame while someone is near; not ready by `hold` metres before the shield, the Ooga stands there
   // with the island running on and `hurry` milliseconds a frame. After `slow` seconds the shield beats every `pulse` and
   // says so; the hangar's code, which the hall opens without, is waited for only `extra` seconds, and `wait` gives up.
-  const GLIDE = { reach: 3, moving: 0.2, speed: 0.55, ahead: 1.6, through: 0.3, beat: 0.15, still: 0.1, dissolve: 0.45, limit: 4, past: 0.5, hold: 0.7, warm: 3, hurry: 20, slow: 0.6, pulse: 0.9, extra: 1.5, wait: 15 };
+  // The island's walk hands over at `hold` too, and the hall's walk out once its view too is through the gate's shield:
+  // the tunnel is the same at both ends, so the switch falls while the Ooga and the view are both in it, the whole body
+  // walks through the shield in plain sight, and it goes on walking with the view drawn in to `view` metres (at `frame`
+  // a second) and no higher than `pitch`.
+  const GLIDE = { reach: 3, moving: 0.2, speed: 0.55, ahead: 1.6, through: 0.3, beat: 0.15, still: 0.1, dissolve: 0.45, limit: 4, past: 0.5, hold: 0.7, warm: 3, hurry: 20, slow: 0.6, pulse: 0.9, extra: 1.5, wait: 15, view: 4, pitch: 0.45, frame: 5 };
   // The frame held over the switch: one canvas for the page, grabbed from the scene's canvas right after it is drawn
   // (`grab`, from the scene's overlay pass in the frame the switch is asked for) and painted over the next scene's
   // overlay at `k`, eased (`still`).

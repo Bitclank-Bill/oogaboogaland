@@ -6198,24 +6198,26 @@
     const behind = going ? m.ry : m.ry + Math.PI;
     o.tYaw = o.yaw + Math.atan2(Math.sin(behind - o.yaw), Math.cos(behind - o.yaw));
     if (!going) return;
-    if (!w.through && along <= shield + G.hold && !(factoryReady.ready && (factoryReady.extraDone || w.wait >= G.extra))) return factoryWait(dt, ownX, ownZ, across, feet);
+    // Framed as the hall will take it: the whole Ooga, from the distance and height the tunnel leaves room for.
+    o.dist += (G.view - o.dist) * Math.min(1, dt * G.frame);
+    o.tDist = G.view;
+    o.tPitch = clamp(o.tPitch, FOLLOW.pitch[0], G.pitch);
+    const there = along <= shield + G.hold;
+    if (there && !(factoryReady.ready && (factoryReady.extraDone || w.wait >= G.extra))) return factoryWait(dt, ownX, ownZ, across, feet);
     if (w.pulse) { w.pulse = 0; hud.hideHint(); }
-    if (!w.through && along <= shield) {
-      w.through = true;
-      factoryMouth.phase.ripples.pulse(across, feet + 1, 0);
-      w.beat = world.factoryKeep ? 0 : G.beat;
-    }
-    // On a step past the shield, or as far as it gets.
-    if (!w.through || along > shield - G.through && moved > 0.005) return;
+    if (!there) return;
+    if (!w.through) { w.through = true; w.beat = world.factoryKeep ? 0 : G.beat; }
     if (w.beat > 0) {
       w.beat -= dt;
       crew.steer(0, 0, 0, 0, 0);
       return;
     }
-    // Through: still played, so the crew never stands it up and turns it back out to work. The island's meshes stay on
-    // the GPU while the visit lasts (`world.islandKeep`), so walking back out uploads nothing, and this frame, once
-    // drawn, is held over the factory's first (`grab`).
-    world.factoryCrossing = { across, past: shield - along, pitch: o.pitch, dist: o.dist };
+    // Handed over a step short of the shield, still in the tunnel, which is the same in the hall: there the same Ooga
+    // walks on from here, whole, through the hall's own shield. Still played, so the crew never stands it up and turns it
+    // back out to work. The island's meshes stay on the GPU while the visit lasts (`world.islandKeep`), so walking back
+    // out uploads nothing, and this frame, once drawn, is held over the factory's first (`grab`).
+    // `trail`: how far the view's target has fallen behind the walking Ooga, kept across the switch so the view does not hop.
+    world.factoryCrossing = { across, past: shield - along, pitch: o.pitch, dist: o.dist, trail: (o.tx - p.x) * sr + (o.tz - p.z) * cr };
     world.islandKeep = islandMeshes();
     w.phase = 0;
     w.grab = true;
@@ -6263,6 +6265,7 @@
     const pitch = clamp(c.pitch, FOLLOW.pitch[0], FOLLOW.pitch[1]), along = BL.factoryModels.SHIELD_Z + Math.max(c.past, FOLLOW.min * Math.cos(pitch) + 0.4);
     const across = clamp(c.across, -1.2, 1.2), x = m.x + sr * along + cr * across, z = m.z + cr * along - sr * across;
     pilot.navigate({ position: { x, y: m.floorY, z }, yaw: m.ry + Math.PI, pitch, dist: FOLLOW.min, framed: true });
+    pilot.orbit.tx = x - sr * c.trail; pilot.orbit.tz = z - cr * c.trail;
     const p = player.root.position;
     Object.assign(factoryWalk, { phase: FACTORY_WALK_OUT, cave: player, t: 0, x: p.x, z: p.z, seen: true, through: false, still: c.held ? 1 : 0, hold: c.held ? G.still : 0 });
   };
