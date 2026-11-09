@@ -147,6 +147,7 @@
   // The live round (block-live.js), present only signed in on a Worker that offers it. `you` is the actor events call
   // "me" (none on the watch deck); `liveCast` the round's names by actor; `kept` the solo picks a live round borrows.
   const WIRE = BL.blockWire;
+  let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 };
   let watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
   const liveRound = () => !!round && (round.role === "host" || round.role === "guest");
@@ -458,7 +459,11 @@
     you = -9;
     phase = "watch"; paused = false;
     deck ||= BL.blockViewer.buildChairs(createNode, addChild, place(createNode()), SIM.ARENA);
-    deck.position.z = SIM.ARENA.L * 0.82;
+    BL.blockViewer.place(deck, SIM.ARENA);
+    deckZoom = deckZoomTo = 1; deckYaw = deckPitch = 0;
+    deckBoard.blue = -1; deckCaps.total = -1;
+    audio.unlock();
+    el.viewerBoard.hidden = false;
     deck.visible = true;
     // Only the match below: no drifting clouds, campfire, weather or sounds of its own.
     for (const n of mapClouds) n.visible = false;
@@ -469,13 +474,16 @@
     if (boltRing) boltRing.visible = false;
     if (boltNode) boltNode.visible = false;
     el.board.hidden = el.results.hidden = el.toolBar.hidden = el.feed.hidden = true;
-    el.watch.hidden = false; el.strip.hidden = false; el.center.hidden = el.notice.hidden = true;
+    el.watch.hidden = false; el.strip.hidden = true; el.center.hidden = el.notice.hidden = true;
     strip.shown = false; updateStrip();
     if (document.pointerLockElement === el.canvas) document.exitPointerLock();
   };
   const joinDeck = () => { if (round.match && round.match.phase === "play") { arrival = true; round.watchNow(); } };
-  const deckView = () => {
-    BL.blockViewer.look(camera, SIM.ARENA, deckYaw, deckPitch, setVec);
+  const deckView = (dt) => {
+    deckZoom = BL.blockViewer.easeZoom(deckZoom, deckZoomTo, dt, hookStill);
+    BL.blockViewer.look(camera, SIM.ARENA, deckYaw, deckPitch, setVec, deckZoom);
+    for (let n = BL.blockViewer.newCaptures(sim, deckCaps); n > 0; n--) audio.cues.capture();
+    if (BL.blockViewer.fillBoard(sim, deckBoard)) { el.viewerBlue.textContent = deckBoard.blue; el.viewerRed.textContent = deckBoard.red; el.viewerGoal.textContent = deckBoard.goal; el.viewerClock.textContent = deckBoard.clock; }
     BL.blockViewer.white(RENDER_OPTS);
     if (fpGun) fpGun.visible = fpGunL.visible = false;
   };
@@ -508,7 +516,6 @@
     if (el.watch) {
       el.watchLine.textContent = !play ? (me ? "No round running. You're registered: open Main menu to ready up." : "No round running. Register here, or open the lobby from Main menu.") : me ? "You're registered for the next round. It opens when this one ends." : "Round under way · you're in the viewing chairs. You can't enter until it ends.";
       el.watchReg.textContent = me ? "Unregister" : "Register for next round";
-      el.watchScore.textContent = sim ? `Blue ${sim.score.blue} · Red ${sim.score.red}` : "";
     }
     // The round over or gone: the deck, or a round whose host vanished, goes back to the shared menu.
     if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); }
@@ -529,6 +536,7 @@
     closeWalletMenu();
     if (liveRound() && !sim.over) round.unregister();
     if (el.watch) el.watch.hidden = true;
+    if (el.viewerBoard) el.viewerBoard.hidden = true;
     if (deck) { deck.visible = false; for (const n of mapClouds) n.visible = true; if (fireNode) fireNode.visible = true; if (dancers) for (const d of dancers) d.visible = true; }
     if (onDeck() && round) round.watchFeed(false);
     you = 0; watchVisit = false;
@@ -2158,7 +2166,7 @@
     poseShots();
     poseWallets(elapsed);
     if (phase === "board") boardView(elapsed, dt);
-    else if (onDeck()) deckView();
+    else if (onDeck()) deckView(dt);
     else updateCamera(dt);
     if (!onDeck()) poseWeather(dt);
     if (phase === "play") drawMap(dt, elapsed);
@@ -2527,7 +2535,7 @@
     el.struggleWord.textContent = COARSE ? "Tap fast!" : "Mash SPACE!";
     el.live = document.getElementById("block-live"); el.liveTitle = document.getElementById("block-live-title"); el.liveStatus = document.getElementById("block-live-status"); el.liveList = document.getElementById("block-live-list"); el.liveSizes = document.getElementById("block-live-sizes");
     el.liveReg = document.getElementById("block-live-reg"); el.liveReady = document.getElementById("block-live-ready"); el.liveWatch = document.getElementById("block-live-watch"); el.liveAlone = document.getElementById("block-live-alone"); el.liveWait = document.getElementById("block-live-wait");
-    el.watch = document.getElementById("block-watch"); el.watchLine = document.getElementById("block-watch-line"); el.watchScore = document.getElementById("block-watch-score"); el.watchReg = document.getElementById("block-watch-reg");
+    el.watch = document.getElementById("block-watch"); el.watchLine = document.getElementById("block-watch-line"); el.viewerBoard = document.getElementById("block-viewer-board"); el.viewerBlue = document.getElementById("block-viewer-blue"); el.viewerRed = document.getElementById("block-viewer-red"); el.viewerGoal = document.getElementById("block-viewer-goal"); el.viewerClock = document.getElementById("block-viewer-clock"); el.watchReg = document.getElementById("block-watch-reg");
     el.againBtn = document.querySelector('#block-results [data-action="block-again"]');
     el.teams = [...document.querySelectorAll("#block-board [data-team]")];
     el.targets = [...document.querySelectorAll("#block-board [data-target]")];
@@ -2694,10 +2702,11 @@
       onHoverMove: (hit, p) => { if (hit && hit.owner.kind === "ooga") hud.tooltip.show(actors[hit.owner.index].cave.traits.display, p.x, p.y, actors[hit.owner.index].cave); },
       // A mouse throws on press (`onLockedDown`); a tap on a touch screen throws here.
       onTap: () => { if (phase === "play" && COARSE) paint(); },
+      onZoom: (k) => { if (onDeck()) audio.unlock(), deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, 1 / k); },
       onOrbit: (dx, dy) => {
         // On the board a drag turns the Ooga on show.
         if (phase === "board") { preview.spin = wrap(preview.spin + dx * 8e-3); return; }
-        if (onDeck()) { deckYaw = clamp(deckYaw - dx * 5e-3, -1.1, 1.1); deckPitch = clamp(deckPitch + dy * 3e-3, -0.25, 0.5); return; }
+        if (onDeck()) { audio.unlock(); deckYaw = clamp(deckYaw - dx * 5e-3, -1.1, 1.1); deckPitch = clamp(deckPitch + dy * 3e-3, -0.25, 0.5); return; }
         if (!inRound()) return;
         cam.face = wrap(cam.face - dx * 5e-3);
         cam.pitch = clamp(cam.pitch + dy * 3.5e-3, CAM.pitch[0], CAM.pitch[1]);
@@ -2733,6 +2742,8 @@
       else if (action === "block-live-wait") round.setReady(true);
       else if (action.startsWith("block-live-size-")) round.setOptions(Number(action.slice(-1)), WIRE.MAPS.indexOf(selection.map));
       else if (action === "block-live-watch") joinDeck();
+      else if (action === "block-watch-in" && onDeck()) audio.unlock(), deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, 1.3);
+      else if (action === "block-watch-out" && onDeck()) audio.unlock(), deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, 1 / 1.3);
       else if (action === "block-board") showBoard();
       else if (action === "block-help") el.helpBox.hidden = !el.helpBox.hidden;
       else if (action === "block-drop") dropBlock();
@@ -2794,6 +2805,7 @@
     if (round) { round.dispose(); round = null; }
     if (el.live) el.live.hidden = true;
     if (el.watch) el.watch.hidden = true;
+    if (el.viewerBoard) el.viewerBoard.hidden = true;
     deck = null; you = 0; kept = null; liveCast = null; watchVisit = false;
     BL.net.setBody(null);
     closeWalletMenu();

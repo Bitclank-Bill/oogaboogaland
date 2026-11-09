@@ -7262,7 +7262,34 @@ const gameRulesChecks = async () => {
       const chairs = V.buildChairs(node, (p, ...c) => { p.kids.push(...c); kids.push(...c); }, node(), arena);
       V.look(cam, arena, 0, 0, set);
       const opts = {}; for (const k of ["clear", "horizon", "zenith", "sky"]) opts[k] = new Float32Array(3); V.white(opts);
-      record("block live: the viewing chairs are a row of plain chairs above the field, on a white backdrop", kids.length === 11 && chairs.position.y > 30 && cam.position.y > cam.target.y && [...opts.sky].every(v => v === 1) && opts.clouds === 0 && opts.bloomStrength === 0);
+      record("block live: the viewing chairs are a row of plain chairs above the field, on a white backdrop", kids.length === 11 && chairs.position.y > 10 && cam.position.y > cam.target.y && [...opts.sky].every(v => v === 1) && opts.clouds === 0 && opts.bloomStrength === 0);
+      // The default view holds every map's whole island; measured by projecting its rim through the camera.
+      const fits = (A, aspect) => {
+        const f = {}; V.frame(A, f);
+        const dx = 0, dy = -Math.sin(f.down), dz = -Math.cos(f.down), ux = 0, uy = Math.cos(f.down), uz = -Math.sin(f.down);
+        const tanV = Math.tan(V.FOV / 2), tanH = tanV * aspect;
+        for (let i = 0; i < 64; i++) {
+          const a = i / 64 * Math.PI * 2, x = A.W * Math.cos(a), y = -f.y, z = A.L * Math.sin(a) - f.z;
+          const depth = dx * x + dy * y + dz * z, up = ux * x + uy * y + uz * z, side = x;
+          if (depth <= 0 || Math.abs(up / depth) > tanV * 1.02 || Math.abs(side / depth) > tanH) return false;
+        }
+        return true;
+      };
+      const all = Object.keys(S.ARENAS).every(k => fits(S.ARENAS[k], 16 / 9));
+      const seats = Object.keys(S.ARENAS).every(k => { const f = V.frame(S.ARENAS[k], {}); return f.y < 46 && f.y > 0; });
+      record("block live: the chairs sit closer and still hold the whole field at the default view", all && seats);
+      record("block live: viewer zoom stops at the default view and a maximum, eases, and is direct under Calm", V.zoomBy(1, 0.5) === 1 && V.zoomBy(3, 9) === V.ZOOM_MAX && V.clampZoom(2) === 2 && V.easeZoom(1, 2, 0.05, false) > 1 && V.easeZoom(1, 2, 0.05, false) < 2 && V.easeZoom(1, 2, 0.05, true) === 2);
+      const seen = { total: -1 }, capSim = { score: { blue: 1, red: 2 } };
+      const onSit = V.newCaptures(capSim, seen), none = V.newCaptures(capSim, seen);
+      capSim.score.blue = 2; const one = V.newCaptures(capSim, seen), again = V.newCaptures(capSim, seen);
+      capSim.score.red = 4; const skippedFrames = V.newCaptures(capSim, seen);
+      capSim.score.blue = capSim.score.red = 0; const newRound = V.newCaptures(capSim, seen);
+      capSim.score.red = 1; const firstOfRound = V.newCaptures(capSim, seen);
+      record("block live: a viewer hears each capture once, from the score, across skipped frames and new rounds", onSit === 0 && none === 0 && one === 1 && again === 0 && skippedFrames === 2 && newRound === 0 && firstOfRound === 1);
+      const board = { blue: -1 }, boardSim = { score: { blue: 2, red: 1 }, prep: 0, time: 75.4, target: 3 };
+      const changed = V.fillBoard(boardSim, board), still2 = V.fillBoard(boardSim, board);
+      boardSim.prep = 3.5;
+      record("block live: the scoreboard reads match state and repaints only on a change", changed && !still2 && board.blue === 2 && board.red === 1 && board.clock === "1:15" && board.goal === "First to 3" && V.fillBoard(boardSim, board) && board.clock === "Build 4");
     }
   }
   {
