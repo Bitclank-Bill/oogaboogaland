@@ -18684,8 +18684,8 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
   await b.send("Page.bringToFront");
-  // Arrived once the door walk has handed the Ooga back.
-  const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning && (B.scene === "hub" ? BL.scenes.hub.debug.arcadeEntrance.walk : BL.scenes.arcade.debug.arcade.doorWalk).phase === "idle"`, 20000);
+  // Arrived once a door walk, in the two scenes that have one, has handed the Ooga back.
+  const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning && (B.scene === "hub" ? BL.scenes.hub.debug.arcadeEntrance.walk.phase === "idle" : B.scene === "arcade" ? BL.scenes.arcade.debug.arcade.doorWalk.phase === "idle" : true)`, 20000);
   const leave = async () => {
     await b.evaluate(`(() => { const B = __ooga, walk = BL.scenes.arcade.debug.arcade.doorWalk; B.pilot.navigate({ position: { x: 0, y: 0, z: BL.arcadeModels.HALL.front - 1.1 }, yaw: Math.PI, pitch: 0.2, dist: 4 }); walk.ask(); })()`);
     return arrive("hub");
