@@ -156,16 +156,21 @@
   const undeckRender = () => { RENDER_OPTS.sea = SEA_LEVEL; RENDER_OPTS.fogNear = FOG_NEAR; RENDER_OPTS.fogFar = FOG_FAR; RENDER_OPTS.bloomStrength = BLOOM; };
   const liveRound = () => !!round && (round.role === "host" || round.role === "guest");
   const acts = (name, id, a, b, c) => onDeck() ? false : liveRound() ? round.act(name, id, a, b, c) : SIM[name](sim, id, a, b, c);
-  let jumpWas = false;
+  let jumpWas = false, panelOpen = false;
   const el = {};
   const blockScene = {
     id: "block", voiceZone: BL.blockWire.ZONE, renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
     get inMotion() { return phase === "play" || fx.inMotion; },
-    // The director stops a scene behind the controller screen, and a host that stops stops the round for everyone (and
-    // loses its seat): View and Menu shut it again in a live round, in a microtask because it is still opening here.
-    controlsHelpHold(on) { if (on && phase === "play" && liveRound()) { queueMicrotask(BL.padSettings.close); notice("Controller settings wait until the round ends", 1800); } }
+    // A live session keeps stepping behind the controls panels: a host that stopped would freeze the round and lose its
+    // seat, and a registered page would stop beating. Its Ooga stands idle meanwhile (`panelLive`).
+    get runsBehindPanels() { return liveRound() || registered(); },
+    controlsHelpHold(on) {
+      panelOpen = on;
+      if (on && panelLive()) { trigger = false; arrows.left = arrows.right = 0; move.crouch = 0; jumpWas = false; }
+    }
   };
 
+  const panelLive = () => panelOpen && blockScene.runsBehindPanels;
   const place = (node) => { addChild(root, node); placed.push(node); return node; };
   const roster = () => contributors.activeRoster.map((c) => c.name);
   // The four Oogas: the visitor's own when signed in, else the one a cabinet sent in, else the first; then three
@@ -1427,6 +1432,7 @@
     }
   };
   const onArrow = (e) => {
+    if (panelLive()) return;
     const down = e.type === "keydown" ? 1 : 0;
     if (e.key === "ArrowLeft") arrows.left = down;
     else if (e.key === "ArrowRight") arrows.right = down;
@@ -1476,7 +1482,7 @@
     cam.pitch = cam.first ? clamp(cam.pitch + e.movementY * 2.2e-3 * k, -0.7, 1.15) : clamp(cam.pitch + e.movementY * 2.2e-3, CAM.pitch[0], CAM.pitch[1]);
   };
   const lockMouse = () => {
-    if (COARSE || locked() || !el.canvas.requestPointerLock) return;
+    if (COARSE || locked() || !el.canvas.requestPointerLock || panelLive()) return;
     const lock = el.canvas.requestPointerLock();
     if (lock && lock.catch) lock.catch(() => { });
   };
@@ -1498,7 +1504,7 @@
   // page's own key routing (which leaves Tab on a focused button to the browser) and before the browser moves the focus.
   // A game choice: on the island the first Tab frees a captured mouse; here Escape or X does.
   const onTabKey = (e) => {
-    if (e.key !== "Tab" || phase !== "play" || quiz.open || paused) return;
+    if (e.key !== "Tab" || phase !== "play" || quiz.open || paused || panelLive()) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -1508,7 +1514,7 @@
   // Caught first, as Tab is: a menu control left focused (the Ooga picker, a button) would otherwise take the key, and
   // only a text field keeps it.
   const onBuildKey = (e) => {
-    if ((e.key !== "b" && e.key !== "B" && e.code !== "KeyB") || !inRound() || quiz.open || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ((e.key !== "b" && e.key !== "B" && e.code !== "KeyB") || !inRound() || quiz.open || e.metaKey || e.ctrlKey || e.altKey || panelLive()) return;
     const t = e.target;
     if (t && (t.isContentEditable || (t.closest && t.closest("input, textarea")))) return;
     e.preventDefault();
@@ -1527,7 +1533,7 @@
     if (k === "sniper" && !a.sniper) { notice("The sniper rifle stays up the towers · climb a ladder", 1600); return; }
     chooseTool(k);
   };
-  const onCrouchKey = (e) => { if (e.key === "c" || e.key === "C") move.crouch = e.type === "keydown" ? 1 : 0; };
+  const onCrouchKey = (e) => { if (!panelLive() && (e.key === "c" || e.key === "C")) move.crouch = e.type === "keydown" ? 1 : 0; };
   // Pick up the crate in front, or set the held one down (stacking it on a crate there).
   const grabCrate = () => {
     if (!inRound()) return false;
@@ -2174,7 +2180,8 @@
     if (round) round.lobbyTick(dt);
     if (phase === "play" && paused && !liveRound()) controls.read();
     else if (phase === "play") {
-      readInput(dt);
+      if (panelLive()) { controls.read(); move.x = move.z = move.sprint = move.jump = move.jet = move.crouch = 0; }
+      else readInput(dt);
       // Choosing a wallet: the Ooga stands still; walking off (or being knocked away) from the machine closes the panel.
       if (wmenu.open) {
         move.x = move.z = move.sprint = move.jump = move.jet = move.crouch = 0;
@@ -2241,6 +2248,7 @@
     hud.setStats(game.state);
   };
   const onKey = (e) => {
+    if (panelLive()) return;
     audio.unlock();
     // Escape steps back one thing at a time, as on the island: the captured mouse, then the view, then a pause, then
     // the board, then the Arcade.
@@ -2314,9 +2322,8 @@
   };
   const chooseMap = (id) => {
     // Registered behind someone else, the board shows the map they picked.
-    if (registered() && !firstRegistered()) return;
-    if (!showMap(id)) return;
-    savePicks();
+    if (registered() && !firstRegistered()) { notice(round.match.phase === "countdown" ? "The map is set for this round" : "The first registered picks the map", 1800); return; }
+    if (showMap(id)) savePicks();
     if (firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(id));
   };
   // Registered for a round about to run, the board shows the map it will play: the Worker's word, whoever picked it.
@@ -2798,7 +2805,7 @@
         if (!round) return;
         const own = BL.net.ownAmong(contributors.activeRoster);
         if (registered()) { round.unregister(); BL.net.setBody(null); }
-        else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); round.register(WIRE.MAPS.indexOf(selection.map)); }
+        else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); const pick = WIRE.MAPS.indexOf((kept || selection).map); round.register(pick < 0 ? undefined : pick); }
       }
       else if (action === "block-live-ready") round.setReady(!isReady());
       else if (action === "block-live-alone") round.startAlone();
@@ -2872,7 +2879,7 @@
     if (el.viewerBoard) el.viewerBoard.hidden = true;
     undeckRender();
     chairsGreeted = false;
-    deck = null; you = 0; kept = null; liveCast = null; watchVisit = false;
+    deck = null; you = 0; kept = null; liveCast = null; watchVisit = false; panelOpen = false;
     BL.net.setBody(null);
     closeWalletMenu();
     if (wmenu.root) { wmenu.root.remove(); wmenu.root = wmenu.picks = wmenu.take = null; }

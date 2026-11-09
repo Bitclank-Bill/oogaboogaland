@@ -122,6 +122,24 @@ test("a map picked while a round runs waits for the next round, and leaves this 
   assert.equal(h.room.blockMatch.map, 2, "the waiter's latest pick");
   assert.equal(h.room.blockMatch.reg[0], b.p.id);
 });
+test("a first waiter who leaves takes their map with them, and the next waiter can pick", async t => {
+  const h = harness(t), [a, b, c] = await crowd(h, 3);
+  send(h, a, "reg", { m: 1 }); send(h, a, "alone");
+  const m = h.room.blockMatch;
+  send(h, b, "reg", { m: 3 }); send(h, c, "reg", { m: 2 });
+  assert.equal(m.next, 3);
+  send(h, b, "unreg");
+  assert.equal(m.next, -1, "not the departed waiter's");
+  send(h, a, "over", { s: m.s, w: 0 });
+  assert.equal(h.room.blockMatch.map, 1, "nothing picked: the last round's map stands");
+  send(h, a, "unreg"); send(h, c, "unreg");
+  send(h, a, "reg", { m: 1 }); send(h, a, "alone");
+  const n = h.room.blockMatch;
+  send(h, b, "reg", { m: 3 }); send(h, c, "reg", { m: 2 });
+  send(h, b, "unreg"); send(h, c, "opt", { n: 2, m: 2 });
+  send(h, a, "over", { s: n.s, w: 0 });
+  assert.equal(h.room.blockMatch.map, 2, "the new first waiter confirms their map");
+});
 test("a round starts only when everyone registered is ready, and alone at once", async t => {
   const h = harness(t), [a, b, c] = await crowd(h, 3);
   send(h, a, "reg"); send(h, a, "ready", { r: 1 });

@@ -19,7 +19,7 @@ Solo by default. Signed-in Oogas can also play together: see Live rounds below.
 
 Shared files touched, each by the smallest change: `arcade-models.js`, `arcade-scene-models.js` and `scene-arcade.js` (the entry hall: `BLOCK_HALL`, its walk, sight and light, and its zipline off the ledge; the stage stays rock's four cabinets, and the Rally poster moved just beside the mouth),
 `game.js` (a `block` save slot: rounds, wins, fastest win, validated on load), `routes.js` (`/blockfrenzy`),
-`director.js` (`block` in the debug handle list), `src/index.html` (script tags, the nav, `#block` and its title
+`director.js` (`block` in the debug handle list; `runsBehindPanels`, an opt-in that keeps a live session stepping behind the controls panels with the player's Ooga idle), `src/index.html` (script tags, the nav, `#block` and its title
 card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in the global tier, a `block` scene) and
 `AGENTS.md` (the module and test rows).
 

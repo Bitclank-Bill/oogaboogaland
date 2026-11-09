@@ -98,6 +98,8 @@ export const block = {
     const i = m.reg.indexOf(id), seat = W.seatOf(m, id);
     if (i < 0 && seat < 0) return;
     if (i >= 0) { m.reg.splice(i, 1); m.ready.splice(i, 1); }
+    // A first waiter's map leaves with them.
+    if (i === 0) m.next = -1;
     if (m.phase === "countdown") block.unseat(m);
     else if (seat >= 0 && m.phase === "play") {
       m.seats[seat] = 0;

@@ -685,14 +685,16 @@
     if (transition) stepTransition(dt);
     // Hold the fully black frame while resumable pure builders run; the old visit keeps its graph and controls.
     if (transition && transition.building) { drawFade(); return; }
-    if (helpHeld) dt = 0;
+    // The panels hold the scene, unless a live session needs it to keep stepping.
+    const panelHolds = helpHeld && !active.runsBehindPanels;
+    if (panelHolds) dt = 0;
     if (!transition) holdInput(!!cabinetView.held);
     const sceneDt = cabinetView.held ? 0 : dt;
     sceneTime += sceneDt;
     // In real mode the API owns the pile, so every browser shows the same one: its last count less what has been
     // eaten since it arrived, in whole bananas.
     if (pileFeed.at) world.level = Math.min(pileMod.MAX_BANANAS, Math.max(0, Math.floor(pileFeed.bananas - pileFeed.eatPerHour * (performance.now() - pileFeed.at) / 36e5)));
-    if (!helpHeld) active.update(sceneDt, sceneTime);
+    if (!panelHolds) active.update(sceneDt, sceneTime);
     showZoneLine();
     cabinetView.update(dt, active, !!openIntro() || !!active.cabinetMenu, !!transition);
     if (POSITION_DEBUG && active.id !== "hub" && elapsed >= positionDebugNext) {
