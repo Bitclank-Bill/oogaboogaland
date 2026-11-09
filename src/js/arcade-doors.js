@@ -1,6 +1,6 @@
 // The double doors between the island and Ooga Arcade's hall (#554), one rig in each scene's copy of the same doorway,
-// in the door's frame with +z out of the hall: the leaves swing out (+z), toward the mainland, by themselves, on their
-// own nodes. A door's `walk` takes a visitor through as the Timechain Sphere's doorway does: it keeps the doors shut
+// in the door's frame with +z out of the hall: the leaves swing by themselves, on their own nodes, away from whoever is
+// walking through. A door's `walk` takes a visitor through as the Timechain Sphere's doorway does: it keeps the doors shut
 // while what lies beyond readies, with the visitor still driving outside them, swoops the view into the Ooga's own eyes
 // and hands over to the other scene from that same eye, whose own rig walks the Ooga on and closes the doors behind it
 // before gliding the view back out. Going in from the island it hands over with the doors still shut (`shut`), so the
@@ -29,12 +29,14 @@
     addChild(parent, node);
     if (wall) { const stone = createNode({ geometry: parts.wall }); addChild(node, stone); solids?.add(stone); }
     if (solids) solids.add(frame);
-    let k = 0, opening = false;
+    let k = 0, opening = false, swing = 1;
     const pose = () => {
-      const e = smooth(k);
+      const e = smooth(k) * swing;
       left.rotation.y = -OPEN * e;
       right.rotation.y = Math.PI + OPEN * e;
     };
+    // Which way they open next, for someone heading along +z (1) or -z (-1): only shut can they change.
+    const away = (heading) => { if (k === 0) swing = heading; };
     const update = (dt, open) => {
       opening = open;
       const was = k;
@@ -42,7 +44,7 @@
       if (k !== was) pose();
     };
     const set = (open) => { opening = open; k = open ? 1 : 0; pose(); };
-    return { node, frame, left, right, update, set, get k() { return k; }, get open() { return k > 0.65; }, get opening() { return opening; } };
+    return { node, frame, left, right, update, set, away, get k() { return k; }, get open() { return k > 0.65; }, get opening() { return opening; } };
   };
 
   // Taking a visitor through, as the Timechain Sphere's doorway does: as the doors open the view swoops into the Ooga's
@@ -179,6 +181,7 @@
       if (state.ready && near && (state.wanted || atDoor && inward > 0.2) && Math.abs(p.y - player.baseY - (F.floor || 0)) < 0.3) {
         state.wanted = false;
         state.t = 0; state.cave = player; state.dist = pilot.orbit.dist; state.pitch = 0; state.heading = Math.atan2(sign * F.sr, sign * F.cr);
+        door.away(sign);
         pilot.setExternalControl(true);
         lens("eyes");
         set("opening");
@@ -190,7 +193,9 @@
       player.root.rotation.y = yaw + Math.PI;
       // Far enough on that the view handed back, at its nearest behind the Ooga, stands clear of the doors.
       Object.assign(state, { t: 0, cave: player, yaw, heading: yaw + Math.PI, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, followMin * Math.cos(LET_GO_PITCH) + CLEAR_BACK) });
-      door.set(!crossing.shut);
+      door.set(false);
+      door.away(-sign);
+      if (!crossing.shut) door.set(true);
       pilot.setExternalControl(true);
       hideHead(player, true);
       set("arriving");
