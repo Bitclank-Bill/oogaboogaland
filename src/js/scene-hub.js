@@ -6187,7 +6187,8 @@
     w.t += dt;
     const moved = Math.hypot(p.x - w.x, p.z - w.z);
     if (player !== w.cave || moved > 1.2 || w.t > G.limit || !going && along > OUT_WALK) {
-      w.phase = 0; w.through = false; w.seen = false; w.settle = player === w.cave;
+      // A forward key held through the walk goes on walking; anything else waits to be let go, as the view has turned.
+      w.phase = 0; w.through = false; w.seen = false; w.settle = player === w.cave && !pilot.controls.takeForward();
       crew.steer(0, 0, 0, 0, 0);
       return;
     }

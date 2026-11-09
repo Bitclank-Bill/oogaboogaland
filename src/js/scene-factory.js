@@ -1178,7 +1178,8 @@
     if (people.player !== avatar || moved > 1.2 || w.t > G.limit || !off && p.z <= ARRIVAL.position.z) {
       w.phase = 0;
       w.through = false;
-      w.settle = people.player === avatar;
+      // A forward key held through the walk goes on walking; anything else waits to be let go, as the view has turned.
+      w.settle = people.player === avatar && !pilot.controls.takeForward();
       people.steer(0, 0, 0, 0, 0);
       return;
     }
