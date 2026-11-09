@@ -999,7 +999,9 @@
     // The boards stop just inside where the mouth's stone meets the island's grass and path, which lies on the terrain's
     // grid at up to z 0.1 across the width of the mouth, so none of them lies over either.
     const { geos, glow, boards, floor } = tunnelFrame(-0.1, ISLAND_FLOOR);
-    geos.push(box({ w: 4.6, h: 3.6, d: 0.2, color: "#1f140e", offset: { y: 1.8, z: SHIELD_Z - 1.35 } }));
+    // Its front a hair behind where the hall's window lands the hall at infinity (AXIS - DEPTH there), or from an eye close
+    // to the shield the far hall would sink behind it.
+    geos.push(box({ w: 4.6, h: 3.6, d: 0.2, color: "#1f140e", offset: { y: 1.8, z: SHIELD_Z - 1.42 } }));
     // The bolt and its lamps are what Canvas 2D shows past the shield in place of the hall's window, in whose band they would stand.
     const backdrop = [moved(smoothBolt(2.2, 0.24, "#ffd84a", 1), 0, 1.6, SHIELD_Z - 1.1)];
     for (const x of [-1.5, 1.5]) backdrop.push(box({ w: 0.26, h: 0.34, d: 0.26, color: "#ffd27a", emissive: 1, offset: { x, y: 2.7, z: SHIELD_Z - 0.8 } }));

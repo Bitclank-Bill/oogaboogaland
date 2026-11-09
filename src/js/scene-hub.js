@@ -508,16 +508,16 @@
   const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null, factoryDeparting = false, bifrostDeparting = false, factoryHeld = false;
   // The walk through the Lightning Factory's shield (factoryGlide): which way, the Ooga it walks, how long it has
-  // walked, where the Ooga stood the frame before, whether it is through, and the shield's light over the view.
-  // Coming back out, the Ooga walks on until it is OUT_WALK metres out of the mouth.
-  const FACTORY_WALK_IN = 1, FACTORY_WALK_OUT = 2, OUT_WALK = 2;
+  // walked, where the Ooga stood the frame before and whether it is through. `eyes` is the view through the walk, and
+  // coming back out the Ooga walks on `stop` metres past the shield.
+  const FACTORY_WALK_IN = 1, FACTORY_WALK_OUT = 2;
   // Once a walk is done the Ooga stands (`settle`) until the visitor lets go of moving, since the view has turned round
   // behind it and a key still held may now mean the other way.
   // Across the switch, `grab` takes the island's last frame as it hands the Ooga over, and `still` is the Factory's last
   // frame over the island's first (`hold` seconds full, then dissolving); `beat` is how long the Ooga still stands in
   // the shield before a slow switch. `wait` is how long it has stood before the shield for the hall to be ready, and
   // `pulse` the time to that wait's next beat on the shield (0 until the first).
-  const factoryWalk = { phase: 0, cave: null, t: 0, x: 0, z: 0, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false, wait: 0, pulse: 0 };
+  const factoryWalk = { phase: 0, cave: null, t: 0, x: 0, z: 0, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false, wait: 0, pulse: 0, stop: 0, eyes: null };
   // The hall, readied behind its shield from FACTORY_NEAR2 (the prefetch's 15 m, squared) of the mouth or on the walk in
   // (door-ready.js), and the meshes that has uploaded so far, which the island keeps live until the hall's visit does.
   const FACTORY_NEAR2 = 225, factoryWarm = new Set();
@@ -6131,7 +6131,11 @@
     const w = factoryWalk, G = BL.factoryWindow.GLIDE;
     // The Factory's last frame dissolves away once the island has taken over.
     if (w.still > 0 && (w.hold -= dt) <= 0) w.still = Math.max(0, w.still - dt / G.dissolve);
-    if (!player || entering || !BL.scenes.factory) { w.phase = 0; w.seen = false; w.settle = false; return; }
+    if (!player || entering || !BL.scenes.factory) {
+      if (w.phase && !entering) w.eyes.reset();
+      w.phase = 0; w.seen = false; w.settle = false;
+      return;
+    }
     if (w.settle) {
       const a = pilot.controls.read();
       if (player === w.cave && (a.x || a.y)) crew.steer(0, 0, 0, 0, 0);
@@ -6169,56 +6173,57 @@
     pilot.controls.reset(); input.reset(); pilot.setActive(false); hud.tooltip.hide();
     go("factory");
   };
-  // The walk through the Factory's shield, in the third person, as the Timechain Sphere's doorway walks its visitor
-  // through: after the pilot has read the visitor's input, the Ooga's steering is set aside for the walk's own, so it
-  // walks itself down the tunnel's middle at an even pace while the view follows as always, swinging round behind it.
-  // Going in, a step through the shield the factory takes over with an instant switch, the island's last frame held
-  // over its first and dissolving away, with the same Ooga as far past its own shield and the view's pitch and distance
-  // (`world.factoryCrossing`); on a page's first walk in, whose switch builds the whole hall, the Ooga stands a beat in
-  // the shield first, so the switch lands on a still frame. Coming out (`arriveFromFactory`) the Ooga walks on out of
-  // the mouth while the Factory's last frame dissolves. Anything else moving the Ooga, or a walk that runs long, lets go.
-  // Nothing commits to the crossing before the hall is ready: as the Timechain Sphere's doors wait on its room, the Ooga
-  // stands before the shield until then (`factoryWait`).
+  // The walk through the Factory's shield, as the Timechain Sphere's doorway and Ooga Arcade's doors walk their visitors
+  // through: the pilot reads the visitor's input and the walk then sets the Ooga's steering aside for its own, so it walks
+  // itself down the tunnel's middle at an even pace, while the view swoops into its own eyes (`factoryWindow.eyes`). As
+  // that eye reaches the shield the factory takes over from the same eye with an instant switch (`world.factoryCrossing`:
+  // as far across and as far past as the Ooga stood), the island's last frame held over its first and dissolving away; on
+  // a page's first walk in, whose switch builds the whole hall, the Ooga stands a beat first, so the switch lands on a still
+  // frame. Coming out (`arriveFromFactory`) it goes on from that eye far enough for the view handed back behind it to clear
+  // the shield, then the view glides out. Anything else moving the Ooga, or a walk that runs long, lets go.
+  // Nothing commits to the crossing before the hall is ready: as the Timechain Sphere's doors wait on its room, the view
+  // stays the visitor's and the Ooga stands before the shield until then (`factoryWait`).
+  const factoryLetGo = (player) => {
+    const w = factoryWalk;
+    w.phase = 0; w.through = false; w.seen = false;
+    crew.steer(0, 0, 0, 0, 0);
+    w.eyes.letGo(FOLLOW.min);
+    // A forward key held through the walk goes on walking; anything else waits to be let go, as the view has turned.
+    w.settle = player === w.cave && !pilot.controls.takeForward();
+  };
   const factoryGlide = (dt, player, along, across, feet) => {
-    const w = factoryWalk, G = BL.factoryWindow.GLIDE, m = factoryMouth.mouth, p = player.root.position, o = pilot.orbit;
+    const w = factoryWalk, G = BL.factoryWindow.GLIDE, m = factoryMouth.mouth, p = player.root.position;
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry), shield = BL.factoryModels.SHIELD_Z, going = w.phase === FACTORY_WALK_IN;
     // The visitor's own move this frame, before the walk's steering replaces it.
     const ownX = crew.steering.x, ownZ = crew.steering.z;
     w.t += dt;
     const moved = Math.hypot(p.x - w.x, p.z - w.z);
-    if (player !== w.cave || moved > 1.2 || w.t > G.limit || !going && along > OUT_WALK) {
-      // A forward key held through the walk goes on walking; anything else waits to be let go, as the view has turned.
-      w.phase = 0; w.through = false; w.seen = false; w.settle = player === w.cave && !pilot.controls.takeForward();
-      crew.steer(0, 0, 0, 0, 0);
-      return;
-    }
+    if (player !== w.cave || moved > 1.2 || w.t > G.limit || !going && along >= shield + w.stop) return factoryLetGo(player);
     w.x = p.x; w.z = p.z;
     const to = along + (going ? -G.ahead : G.ahead), side = across * 0.4;
     const dx = m.x + sr * to + cr * side - p.x, dz = m.z + cr * to - sr * side - p.z, d = Math.hypot(dx, dz) || 1;
-    crew.steer(dx / d, dz / d, 0, 1, 0, G.speed);
-    const behind = going ? m.ry : m.ry + Math.PI;
-    o.tYaw = o.yaw + Math.atan2(Math.sin(behind - o.yaw), Math.cos(behind - o.yaw));
-    if (!going) return;
-    // Framed as the hall will take it: the whole Ooga, from the distance and height the tunnel leaves room for.
-    o.dist += (G.view - o.dist) * Math.min(1, dt * G.frame);
-    o.tDist = G.view;
-    o.tPitch = clamp(o.tPitch, FOLLOW.pitch[0], G.pitch);
-    const there = along <= shield + G.hold;
-    if (there && !(factoryReady.ready && (factoryReady.extraDone || w.wait >= G.extra))) return factoryWait(dt, ownX, ownZ, across, feet);
+    crew.steer(dx / d, dz / d, 0, 1, 0, G.eyePace);
+    if (!going) {
+      if (!w.through && along >= shield) { w.through = true; factoryMouth.phase.ripples.pulse(across, feet + 1.2, 0); }
+      return;
+    }
+    const ready = factoryReady.ready && (factoryReady.extraDone || w.wait >= G.extra);
+    if (!ready) { if (along <= shield + G.hold) factoryWait(dt, ownX, ownZ, across, feet); return; }
     if (w.pulse) { w.pulse = 0; hud.hideHint(); }
-    if (!there) return;
+    if (!w.eyes.on) w.eyes.enter(player, m.ry + Math.PI);
+    if (along - w.eyes.ahead(player) > shield + G.hand) return;
+    // There before the swoop is done (a walk begun right at the shield): it stands until the view is in its eyes.
+    if (!w.eyes.there) { crew.steer(0, 0, 0, 0, 0); return; }
     if (!w.through) { w.through = true; w.beat = world.factoryKeep ? 0 : G.beat; }
     if (w.beat > 0) {
       w.beat -= dt;
       crew.steer(0, 0, 0, 0, 0);
       return;
     }
-    // Handed over a step short of the shield, still in the tunnel, which is the same in the hall: there the same Ooga
-    // walks on from here, whole, through the hall's own shield. Still played, so the crew never stands it up and turns it
-    // back out to work. The island's meshes stay on the GPU while the visit lasts (`world.islandKeep`), so walking back
-    // out uploads nothing, and this frame, once drawn, is held over the factory's first (`grab`).
-    // `trail`: how far the view's target has fallen behind the walking Ooga, kept across the switch so the view does not hop.
-    world.factoryCrossing = { across, past: shield - along, pitch: o.pitch, dist: o.dist, trail: (o.tx - p.x) * sr + (o.tz - p.z) * cr };
+    // Still played, so the crew never stands it up and turns it back out to work. The island's meshes stay on the GPU while
+    // the visit lasts (`world.islandKeep`), so walking back out uploads nothing, and this frame, once drawn, is held over
+    // the factory's first (`grab`).
+    world.factoryCrossing = { across, past: shield - along };
     world.islandKeep = islandMeshes();
     w.phase = 0;
     w.grab = true;
@@ -6258,17 +6263,16 @@
       hud.hint("Opening the Lightning Factory…", G.pulse * 1500);
     }
   };
-  // Back out of the Factory's shield: the Ooga a view's length out from it facing the daylight, as far across as it left,
-  // the view behind it in the tunnel looking out, the Factory's last frame dissolving off it (when it was held over the crossing at all:
-  // an island that had to be rebuilt fades in instead), and the walk on out of the mouth.
+  // Back out of the Factory's shield: the Ooga as far past it and as far across as the hall let it go, seen from its own
+  // eyes facing the daylight, the Factory's last frame dissolving off it (when it was held over the crossing at all: an
+  // island that had to be rebuilt fades in instead), and the walk on out of the tunnel.
   const arriveFromFactory = (c) => {
     const m = factoryMouth.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), G = BL.factoryWindow.GLIDE, player = pilot.player;
-    const pitch = clamp(c.pitch, FOLLOW.pitch[0], FOLLOW.pitch[1]), along = BL.factoryModels.SHIELD_Z + Math.max(c.past, FOLLOW.min * Math.cos(pitch) + 0.4);
-    const across = clamp(c.across, -1.2, 1.2), x = m.x + sr * along + cr * across, z = m.z + cr * along - sr * across;
-    pilot.navigate({ position: { x, y: m.floorY, z }, yaw: m.ry + Math.PI, pitch, dist: FOLLOW.min, framed: true });
-    pilot.orbit.tx = x - sr * c.trail; pilot.orbit.tz = z - cr * c.trail;
+    const along = BL.factoryModels.SHIELD_Z + c.past, across = clamp(c.across, -1.2, 1.2), x = m.x + sr * along + cr * across, z = m.z + cr * along - sr * across;
+    pilot.navigate({ position: { x, y: m.floorY, z }, yaw: m.ry + Math.PI, pitch: 0, dist: FOLLOW.min, framed: true });
+    factoryWalk.eyes.arrive(player, m.ry);
     const p = player.root.position;
-    Object.assign(factoryWalk, { phase: FACTORY_WALK_OUT, cave: player, t: 0, x: p.x, z: p.z, seen: true, through: false, still: c.held ? 1 : 0, hold: c.held ? G.still : 0 });
+    Object.assign(factoryWalk, { phase: FACTORY_WALK_OUT, cave: player, t: 0, x: p.x, z: p.z, seen: true, through: false, stop: BL.factoryWindow.stopPast(FOLLOW.min), still: c.held ? 1 : 0, hold: c.held ? G.still : 0 });
   };
   // Step out into the mainland's Arcade overhang, independent of the carried camera/combat mode.
   // This is a doorway arrival, not the map destination's exterior framing (which can be blocked).
@@ -6335,10 +6339,11 @@
   // photographed once from the shield, looking out, while the screen is dark: the mouth's own dressing is hidden,
   // since the factory builds the tunnel and its lamps itself, and so is the Ooga walking in. What the factory can
   // see through its rim is cropped out, halved down to a small copy that its display blurs as it enlarges it, given
-  // back the saturation the page's grade will add again, and misted a little, as seen through the shield. The crop is
-  // the rim's own opening as the eye sees it, 2.5 m either side, the floor to 3 m up, at the boards' end 4.25 m ahead,
-  // where the hall hangs it: its foot on the floor at that very edge, so grass and path meet the boards from any angle.
-  const FACTORY_VIEW = { from: -3.8, width: 640, eye: 1.7, across: 2.5 / 4.25, up: 1.3 / 4.25, down: 1.7 / 4.25, colour: 0.83, mist: 0.12, haze: [206, 228, 238] };
+  // back the saturation the page's grade will add again, and misted a little, as seen through the shield. It is taken
+  // from the eye the walk hands over at, so the picture and the island agree there. The crop is the rim's own opening, 2.5 m
+  // either side, the floor to 3 m up, at the boards' end 5.55 m ahead, where the hall hangs it: its foot on the floor at
+  // that very edge, so grass and path meet the boards from any angle.
+  const FACTORY_VIEW = { width: 640, eye: 1.2, across: 2.5 / 5.55, up: 1.8 / 5.55, down: 1.2 / 5.55, colour: 0.83, mist: 0.12, haze: [206, 228, 238] };
   // ₿IFRÖST's chamber looks back out through its own field the same way, at a picture taken from the portal as the
   // Ooga walks in: the landing, Heimdall, the bridge and the island past it, misted in the field's blue.
   // The window into the chamber follows the eye, so it moves once the camera is final for the frame. It is built on the
@@ -6354,8 +6359,7 @@
   };
   const BIFROST_VIEW = { width: 320, eye: 1.7, across: 0.82, up: 0.46, down: 0.5, colour: 0.83, mist: 0.12, haze: [188, 208, 255] };
   const snapFactoryView = () => {
-    // From a fixed depth, not the shield's: the hall hangs this picture past its tunnel's rim, framed for this distance.
-    const view = snapFromShield(factoryMouth.group, factoryMouth.mouth, FACTORY_VIEW.from, FACTORY_VIEW);
+    const view = snapFromShield(factoryMouth.group, factoryMouth.mouth, BL.factoryModels.SHIELD_Z, FACTORY_VIEW);
     if (view) world.factoryView = view;
   };
   const snapBifrostView = () => {
@@ -8219,6 +8223,7 @@
     else if (!cloudHopper?.fallView()) pilot.update(dt);
     // The doorway's views (the keypad's, the swoop into the eyes and back out) take over from the pilot's.
     if (!cloudPlaying()) timechainIsland.gate.view(dt);
+    if (factoryMouth && !cloudPlaying()) factoryWalk.eyes.view(dt);
     // Tess moves after the view is set, so a tour's glide has the last word on it.
     if (!cloudHopper?.active) islandGuide.update(dt, elapsed);
     shareDrivenPose();
@@ -11444,6 +11449,7 @@
     if (factoryMouth) {
       Object.assign(factoryMouth, { phase: BL.labPhase.create(factoryMouth.group, factoryMouth.mouth, factoryMouth.opening, BL.factoryModels.SHIELD_Z, BL.factoryWindow.TINT), hum: 0, node: BL.factoryFeed.node(world) });
       factoryMouth.roofEffectsActive = false;
+      factoryWalk.eyes = BL.factoryWindow.eyes(pilot, camera);
       factoryReady = BL.doorReady.create({ code: "factory-scene", extra: BL.factoryModels.hangarEntry() ? "hangar-scene" : null, scope: "factory",
         steps: (slice) => world.factoryKeep ? null : BL.scenes.factory.warmSteps(renderer, slice, factoryWarm) });
       factoryMouth.hall = renderer.kind === "webgl2" ? BL.factoryWindow.create({ group: factoryMouth.group, mouth: factoryMouth.mouth, node: factoryMouth.node }) : null;
@@ -12256,6 +12262,7 @@
     factoryHeld = factoryDeparting;
     entering = factoryDeparting = bifrostDeparting = false;
     factoryWalk.phase = 0; factoryWalk.seen = factoryWalk.through = factoryWalk.grab = false; factoryWalk.still = factoryWalk.hold = 0;
+    if (factoryWalk.eyes) factoryWalk.eyes.reset();
     world.factoryCrossing = world.islandKeep = null;
     if (factoryMouth) factoryMouth.snap = false;
     if (bifrostIsle) bifrostIsle.snap = false;
@@ -12266,6 +12273,8 @@
     // `entering`), the island hands on the Ooga driven, as every other scene does, so the next one plays the same one;
     // driving none (a gorilla), nothing stale goes with it.
     if (!entering) world.pilot = pilot.player ? (pilot.player.npc || pilot.player).traits.name : null;
+    // A walk handed over to the Factory ends here: the island may be kept for the way back, so its Ooga gets its head back.
+    if (factoryWalk.eyes) factoryWalk.eyes.reset();
     cloudHopper?.cancel();
     rememberCharacterLocations();
     stopLazyBedding();
