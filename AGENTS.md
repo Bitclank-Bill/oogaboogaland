@@ -221,7 +221,8 @@ The scene contract, as `scene-lab.js` and `scene-hub.js` implement it:
 | `root`, `camera`, `input`, `debug` | set in `enter`; `input` and `debug` nulled in `leave` |
 | `agent`, `agentView`, `agentControls`, `agentHandoff` | the Agent hooks the director reads; the hub and lab set all four, the rally, drop and orbit only `agent` and `agentControls` |
 | `inMotion` | getter, true while the pile or fx animate; the governor keeps full rate for it even unfocused |
-| `warming` | optional getter, true while the scene spends part of its frames readying another behind a door; the quality auto-tier does not judge those frames |
+| `warming` | optional getter, true for a frame the scene spent part of readying another behind a door; the quality auto-tier does not judge those frames |
+| `cachesReleased()` | optional; the director has just dropped the builder caches another scene kept warm for this one (`keeps`), so what this scene holds for a quick return no longer applies (the Lightning Factory's `world.factoryKeep`) |
 | `cabinetMenu` | optional getter, true while a custom starting menu is showing (Mine); the director combines it with `[data-intro]` visibility to keep the menu within the glass and expand only when play starts |
 
 Both renderers expose `geometryRecords()` as an on-demand, read-only iterator of resident GPU geometry keys; Canvas 2D returns an empty iterator. Diagnostic traversal reports graph visibility, not frustum or draw visibility; it must not invoke tracked cache readers or change ownership.

@@ -516,8 +516,9 @@
   // Across the switch, `grab` takes the island's last frame as it hands the Ooga over, and `still` is the Factory's last
   // frame over the island's first (`hold` seconds full, then dissolving); `beat` is how long the Ooga still stands in
   // the shield before a slow switch. `wait` is how long it has stood before the shield for the hall to be ready, and
-  // `pulse` the time to that wait's next beat on the shield (0 until the first).
-  const factoryWalk = { phase: 0, cave: null, t: 0, x: 0, z: 0, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false, wait: 0, pulse: 0, stop: 0, eyes: null };
+  // `pulse` the time to that wait's next beat on the shield (0 until the first). `warming` is that this frame spent a slice
+  // readying the hall, set fresh each frame, so a warm-up left unfinished by walking away stops counting.
+  const factoryWalk = { phase: 0, cave: null, t: 0, x: 0, z: 0, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false, wait: 0, pulse: 0, stop: 0, eyes: null, warming: false };
   // The hall, readied behind its shield from FACTORY_NEAR2 (the prefetch's 15 m, squared) of the mouth or on the walk in
   // (door-ready.js), and the meshes that has uploaded so far, which the island keeps live until the hall's visit does.
   const FACTORY_NEAR2 = 225, factoryWarm = new Set();
@@ -6146,7 +6147,9 @@
     const feet = p.y - player.baseY - m.floorY;
     if (w.phase === FACTORY_WALK_IN || (p.x - m.x) ** 2 + (p.y - m.floorY) ** 2 + (p.z - m.z) ** 2 <= FACTORY_NEAR2) {
       factoryReady.approach();
+      const working = factoryReady.working;
       factoryReady.step(w.wait > 0 ? G.hurry : G.warm);
+      w.warming = working || factoryReady.working;
     }
     if (factoryHeld) {
       if (along > shield || along < shield - 2 || Math.abs(across) > 2.4 || feet < o.floorY - 0.12 || feet >= o.ceilingY) factoryHeld = false;
@@ -6183,6 +6186,11 @@
   // the shield, then the view glides out. Anything else moving the Ooga, or a walk that runs long, lets go.
   // Nothing commits to the crossing before the hall is ready: as the Timechain Sphere's doors wait on its room, the view
   // stays the visitor's and the Ooga stands before the shield until then (`factoryWait`).
+  // Whether the hall about to be walked into is the one the island kept: builders released since then made new meshes.
+  const hallKept = () => {
+    if (world.factoryKeep) for (const geometry of factoryWarm) if (world.factoryKeep.has(geometry)) return true;
+    return false;
+  };
   const factoryLetGo = (player) => {
     const w = factoryWalk;
     w.phase = 0; w.through = false; w.seen = false;
@@ -6214,7 +6222,7 @@
     if (along - w.eyes.ahead(player) > shield + G.hand) return;
     // There before the swoop is done (a walk begun right at the shield): it stands until the view is in its eyes.
     if (!w.eyes.there) { crew.steer(0, 0, 0, 0, 0); return; }
-    if (!w.through) { w.through = true; w.beat = world.factoryKeep ? 0 : G.beat; }
+    if (!w.through) { w.through = true; w.beat = hallKept() ? 0 : G.beat; }
     if (w.beat > 0) {
       w.beat -= dt;
       crew.steer(0, 0, 0, 0, 0);
@@ -8058,6 +8066,7 @@
     mirrorCave.ripples.update(dt, elapsed);
     updatePortalEffects(entropyLab.phase, dt);
     for (const veil of caveVeils) updatePortalEffects(veil.phase, dt);
+    factoryWalk.warming = false;
     if (factoryMouth && !cloudPlaying()) factoryShield(dt, elapsed);
     if (bifrostIsle && !cloudPlaying()) bifrostGate(dt, elapsed);
     if (bcaMouth) bcaVeil(dt, elapsed);
@@ -11451,7 +11460,7 @@
       factoryMouth.roofEffectsActive = false;
       factoryWalk.eyes = BL.factoryWindow.eyes(pilot, camera);
       factoryReady = BL.doorReady.create({ code: "factory-scene", extra: BL.factoryModels.hangarEntry() ? "hangar-scene" : null, scope: "factory",
-        steps: (slice) => world.factoryKeep ? null : BL.scenes.factory.warmSteps(renderer, slice, factoryWarm) });
+        steps: (slice) => BL.scenes.factory.warmSteps(renderer, slice, factoryWarm) });
       factoryMouth.hall = renderer.kind === "webgl2" ? BL.factoryWindow.create({ group: factoryMouth.group, mouth: factoryMouth.mouth, node: factoryMouth.node }) : null;
       if (factoryMouth.hall && island.roofOpening) {
         const roof = island.roofOpening;
@@ -12540,7 +12549,7 @@
     get retained() { return heldHub; }, get elapsed() { return now; },
     get retainedRoot() { return heldHub ? root : null; },
     // Readying the hall takes a slice of frames that are otherwise the island's; the tier does not judge them.
-    get warming() { return !!factoryReady && factoryReady.working; },
+    get warming() { return factoryWalk.warming; },
     // The Lightning Factory's builders stay warm while the island runs, since its shield walks straight in.
     keeps: ["factory"],
     root: null, camera: null, input: null, debug: null,

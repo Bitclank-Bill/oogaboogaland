@@ -417,7 +417,7 @@
     if (leaving.id !== "hub" || !KEEP_HUB) {
       models.release(leaving.id, keptScenes, retained);
       // What it kept warm for its own doors goes with it, so a door readied and never walked through pins nothing.
-      for (const id of leaving.keeps || []) if (!keptScenes.includes(id)) models.release(id, keptScenes, retained);
+      for (const id of leaving.keeps || []) if (!keptScenes.includes(id)) { models.release(id, keptScenes, retained); window.BL.scenes[id]?.cachesReleased?.(); }
       if (DEBUG && leaving.id !== next.id && !keptScenes.includes(leaving.id)) models.assertReleased(leaving.id);
     }
     renderer.releaseUnused(retained);

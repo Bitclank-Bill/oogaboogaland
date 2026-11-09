@@ -2598,6 +2598,8 @@
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     // Diagnostics observe the existing detached owner without reading model caches.
     get retainedGeometry() { return world ? world.factoryKeep : null; },
+    // The island, released, took the builders it kept warm with it: the next visit makes new meshes, so it lets go of these.
+    cachesReleased() { if (world) world.factoryKeep = null; },
     get inMotion() {
       return !!scene;
     }
