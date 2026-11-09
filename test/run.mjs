@@ -8186,25 +8186,22 @@ const gameRulesChecks = async () => {
       const opened = [], sentGo = (id, place) => opened.push(id, place), savedLive = BL.blockLive; BL.blockLive = { openWatchDeck: (g) => { g("block", "watch-deck"); return true; } };
       const left = W.goToWatchDeck(sentGo); BL.blockLive = savedLive;
       const sb = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8");
-      const wayBack = sb.includes('go(home, doorVisit ? BL.arcadeBlockWatch.PLACE : undefined)') && sb.includes("go(home, BL.arcadeBlockWatch.PLACE_FULL)") && W.PLACE === "block-watch" && W.PLACE_FULL === "block-watch-full";
+      const wayBack = sb.includes('go(home, doorVisit ? BL.arcadeBlockWatch.PLACE : undefined)') && sb.includes("go(home, BL.arcadeBlockWatch.PLACE_FULL)") && /watchVisit = ctx\.place === WIRE\.WATCH_DECK_PLACE;\s+if \(watchVisit\) showDeck\(\);/.test(sb) && W.PLACE === "block-watch" && W.PLACE_FULL === "block-watch-full";
       const menu = { querySelector: () => ({}), addEventListener() {}, removeEventListener() {} };
       context.document = context.document || { getElementById: () => menu }; context.matchMedia = context.matchMedia || (() => ({ matches: true }));
-      let crossed = 0;
-      const gate = BL.oogaPortal.create({ radius: 1.6, outerRadius: 1.8, aperture: W.APERTURE, position: { x: D.plane, y: D.y + D.h / 2, z: D.z }, rotation: { x: Math.PI / 2, y: -Math.PI / 2, z: 0 }, receiving: true, reducedMotion: true, now: () => 0, onTraverse: () => crossed++ });
-      const walk = (ax, bx, z, r = 0.4, h = 1.8) => gate.traverse({ x: ax, y: D.y + h / 2, z }, { x: bx, y: D.y + h / 2, z }, r, 1, h);
-      const offSide = walk(D.plane + 0.2, D.plane - 0.2, D.z), wide = walk(D.plane - 0.2, D.plane + 0.2, D.z0 - 0.5), through = walk(D.plane - 0.2, D.plane + 0.02, D.z), once = !walk(D.plane - 0.2, D.plane + 0.02, D.z);
-      gate.receive();
-      const again = walk(D.plane - 0.2, D.plane + 0.02, D.z);
+      const gate = BL.oogaPortal.create({ radius: 1.6, outerRadius: 1.8, aperture: W.APERTURE, position: { x: D.plane, y: D.y + D.h / 2, z: D.z }, rotation: { x: Math.PI / 2, y: -Math.PI / 2, z: 0 }, receiving: true, reducedMotion: true, now: () => 0 });
+      gate.update();
+      const shown = gate.state === "ACTIVE" && gate.horizon.visible, trigger = W.atPortal(D.plane, D.z, D.y) && W.atPortal(D.plane + 0.02, D.z, D.y + 0.3) && !W.atPortal(D.plane - 0.2, D.z, D.y) && !W.atPortal(D.plane, D.z0 - 0.1, D.y) && !W.atPortal(D.plane, D.z, D.y + 1);
       const R = 0.4, sees = (x, z, feet = D.y) => W.doorDepth(x, z, R, feet) < 0;
       const reach = D.reach - R, rock = !sees(reach + 0.05, D.z), crosses = reach > D.plane && sees(reach - 0.01, D.z), onlyOpening = !sees(D.plane, D.z0 + R - 0.05) && !sees(D.plane, D.z1 - R + 0.05);
       let seamless = true; for (let x = H.x1 - 2; x <= reach; x += 0.01) if (!sees(x, D.z)) seamless = false;
       const levels = !sees(D.plane - 0.5, D.z, D.y - 1.5) && !sees(D.plane - 0.5, D.z, D.y + D.h + 0.1);
       const clearDoor = D.z0 - 0.38 > BL.arcadeModels.BLOCK_HALL.pictures[3][0] + 0.91 && D.z1 + 0.38 < H.torches[3][1] - 0.07;
       const back = W.ARRIVAL.x > H.x0 && W.ARRIVAL.x < D.plane - 1 && W.ARRIVAL.z === D.z;
-      record("arcade watch door: signed-in only, sends the viewer to the chairs and back in front of the door, portal crossed from the hall once, no new way out",
+      record("arcade watch door: signed-in only, sends the viewer to the chairs and back in front of the door, the portal zone is the opening only, no new way out",
         !W.mayWatch(null, false) && !!W.mayWatch({ id: 1 }, false) && !!W.mayWatch(null, true) && left === true && opened.join() === "block,watch-deck" && wayBack
-        && !offSide && !wide && through && once && again && crossed === 2 && rock && crosses && seamless && onlyOpening && levels && clearDoor && back,
-        JSON.stringify({ left, opened, wayBack, offSide, wide, through, once, again, crossed, rock, crosses, seamless, onlyOpening, levels, clearDoor, back }));
+        && shown && trigger && rock && crosses && seamless && onlyOpening && levels && clearDoor && back,
+        JSON.stringify({ left, opened, wayBack, shown, trigger, rock, crosses, seamless, onlyOpening, levels, clearDoor, back }));
     }
     // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
     const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});
