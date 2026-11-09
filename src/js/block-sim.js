@@ -724,34 +724,36 @@
     }
     return false;
   };
+  // True when the segment from (ax, az) to (bx, bz) crosses the rectangle [x0, x1] by [z0, z1].
+  const crossesRect = (ax, az, bx, bz, x0, x1, z0, z1) => {
+    let t0 = 0, t1 = 1;
+    const dx = bx - ax, dz = bz - az;
+    if (Math.abs(dx) < 1e-9) { if (ax <= x0 || ax >= x1) return false; } else {
+      let a = (x0 - ax) / dx, c = (x1 - ax) / dx;
+      if (a > c) { const s = a; a = c; c = s; }
+      t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      if (t0 >= t1) return false;
+    }
+    if (Math.abs(dz) < 1e-9) { if (az <= z0 || az >= z1) return false; } else {
+      let a = (z0 - az) / dz, c = (z1 - az) / dz;
+      if (a > c) { const s = a; a = c; c = s; }
+      t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      if (t0 >= t1) return false;
+    }
+    return true;
+  };
   // True when the straight line from (ax, az) to (bx, bz) misses every box, widened by r, that stands on the ground.
-  // `over` skips boxes lower than it: a throw at chest height clears crates and low walls.
+  // `over` skips boxes lower than it: a throw at chest height clears crates and low walls, and any open grave.
   const clearLine = (ax, az, bx, bz, r, over = 0) => {
-    // Open graves count as in the way, so bots walk round them.
-    if (ARENA.graves) for (let i = 0; i < ARENA.graves.length; i++) {
-      const g = ARENA.graves[i], cx = Math.max(g[0], Math.min(g[1], (ax + bx) / 2)), cz = Math.max(g[2], Math.min(g[3], (az + bz) / 2));
-      const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cz - az) * dz) / (dx * dx + dz * dz || 1)));
-      if (Math.hypot(ax + dx * t - cx, az + dz * t - cz) < r + Math.hypot(g[1] - g[0], g[3] - g[2]) * 0.5) return false;
+    // Open graves count as in the way of a walk, so bots go round them.
+    if (!over && ARENA.graves) for (let i = 0; i < ARENA.graves.length; i++) {
+      const g = ARENA.graves[i];
+      if (crossesRect(ax, az, bx, bz, g[0] - r, g[1] + r, g[2] - r, g[3] + r)) return false;
     }
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (b[5] > 1.4 || b[4] < over) continue;
-      const x0 = b[0] - r, x1 = b[1] + r, z0 = b[2] - r, z1 = b[3] + r;
-      let t0 = 0, t1 = 1;
-      const dx = bx - ax, dz = bz - az;
-      if (Math.abs(dx) < 1e-9) { if (ax <= x0 || ax >= x1) continue; } else {
-        let a = (x0 - ax) / dx, c = (x1 - ax) / dx;
-        if (a > c) { const s = a; a = c; c = s; }
-        t0 = Math.max(t0, a); t1 = Math.min(t1, c);
-        if (t0 >= t1) continue;
-      }
-      if (Math.abs(dz) < 1e-9) { if (az <= z0 || az >= z1) continue; } else {
-        let a = (z0 - az) / dz, c = (z1 - az) / dz;
-        if (a > c) { const s = a; a = c; c = s; }
-        t0 = Math.max(t0, a); t1 = Math.min(t1, c);
-        if (t0 >= t1) continue;
-      }
-      return false;
+      if (crossesRect(ax, az, bx, bz, b[0] - r, b[1] + r, b[2] - r, b[3] + r)) return false;
     }
     return true;
   };
@@ -968,7 +970,8 @@
     const outside = !isleIn(nx, nz, 0.4);
     if (outside || (ny > 0 && solidAt(nx, ny, nz))) { f.vx = f.vz = 0; f.vy = Math.min(f.vy, 0); }
     else { f.x = nx; f.z = nz; }
-    f.y = Math.max(ny, -1);
+    // Down to the floor of an open grave if that is what is under it, where it lands and is lifted out by `restSpot`.
+    f.y = Math.max(ny, inGrave(f.x, f.z) ? GRAVE_Y : -1);
     const ground = groundAt(f.x, f.z, f.y + 0.3, 0.2);
     if (f.y <= ground) {
       // Wherever it fell (a roof, the centre deck), it comes to rest on the nearest ground the bots can reach.

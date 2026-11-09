@@ -7706,6 +7706,15 @@ const gameRulesChecks = async () => {
         gbot.bot = true; Object.assign(gbot, { x: cx, z: cz, y: S.GRAVE_Y, grounded: true, guard: 9 });
         run(gb2, 6, still, () => !S.inGrave(gbot.x, gbot.z) && gbot.y >= -0.1);
         rows.graveBotOut = !S.inGrave(gbot.x, gbot.z);
+        // A block thrown into a grave lands and is lifted out to ground the bots can reach.
+        const gf = fresh("haunted"), fb = gf.flags.red;
+        for (const k of gf.crates) k.live = false;
+        Object.assign(fb, { state: "flying", carrier: null, thrower: -1, t: 0, x: cx, y: 1, z: cz, vx: 0, vy: 0, vz: 0, hookedBy: -1 });
+        run(gf, 2, still, () => fb.state !== "flying");
+        rows.graveBlockLands = fb.state === "dropped" && fb.y === 0 && !S.inGrave(fb.x, fb.z);
+        // A walk is blocked only by a line that really crosses a grave; a throw at chest height never is.
+        const [lx0, lx1, lz0, lz1] = S.ARENAS.haunted.graves[0], lxm = (lx0 + lx1) / 2;
+        rows.graveLine = !S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.4) && S.clearLine(lx1 + 1, lz0 - 3, lx1 + 1, lz1 + 3, 0.4) && S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.05, 1.8);
         S.create({ map: "haunted" });
         rows.graveRest = I.graves.every(([x0, x1, z0, z1]) => { const p = S.restSpot((x0 + x1) / 2, (z0 + z1) / 2); return !S.inGrave(p.x, p.z); });
       }
