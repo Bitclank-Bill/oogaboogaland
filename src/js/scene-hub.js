@@ -6318,7 +6318,7 @@
   // walking in hidden, cropped to `V` and graded: the record a scene hangs past its own end of the tunnel.
   // Ooga Arcade's exit looks at this from behind its doors (#554): the cave and the mainland past its mouth, as seen from
   // the doors looking out, to the passage's measure in the hall, with the doors and their gorillas left out of the shot.
-  const ARCADE_VIEW = { width: 640, eye: 1.2, across: 0.413, up: 0.297, down: 0.198, colour: 1, mist: 0, haze: [0, 0, 0] };
+  const ARCADE_VIEW = { width: 640, eye: 1.2, across: 2.5 / 5.6, up: 1.8 / 5.6, down: 1.2 / 5.6, colour: 1, mist: 0, haze: [0, 0, 0] };
   const snapArcadeView = () => {
     const entrance = arcadeMouth.entrance, view = snapFromShield(entrance.door.node, arcadeMouth.slot && island.mouths.find((m) => m.id === arcadeMouth.slot.id), BL.arcadeEntrance.DOOR_Z, ARCADE_VIEW);
     if (view) world.arcadeView = view;

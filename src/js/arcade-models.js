@@ -258,8 +258,9 @@
   // The hall's floor, in the cave in front of it (#554), so the two read as one place: packed earth under the same
   // crazy paving, laid wall to wall from the mouth back past the doors. Mouth frame (`z` falling into the cave). Built
   // once a page; cosmetic, on top of the terrain's own floor. Variant 1 stops at the doors, for the hall's copy of the cave.
-  // `CAVE_FLOOR_END` keeps a clear margin of bare cave floor inside the grass and path, which reach the mouth at z 0.
-  const CAVE_FLOOR_END = -0.35, CAVE_DOORS_Z = -5.6;
+  // The grass and path start at the mouth, z 0. The packed earth runs right up to them (`CAVE_EARTH_END`) and the stones
+  // stop a hand short (`CAVE_FLOOR_END`), so a dark margin shows between the two.
+  const CAVE_FLOOR_END = -0.16, CAVE_EARTH_END = 0.005, CAVE_DOORS_Z = -5.6;
   const caveFloor = variants((toDoors) => {
     // The hall's stones as its firelight shows them, measured on screen just inside its doors. The cave has no fires of
     // its own, so they glow in those colours, the same at any hour, as the hall's firelight does.
@@ -270,12 +271,15 @@
       const sx = x + (rand() - 0.5) * 0.5, sz = z + (rand() - 0.5) * 0.5;
       seeds.push([sx, sz, inside(sx, sz)]);
     }
-    // Cut square just inside the mouth, a little short of the grass and the path.
+    // A straight edge just inside the mouth, along the line where the grass and the path begin.
     paving(seeds, 0.78).forEach(({ poly }) => {
       const end = clipped(poly, 0, 1, CAVE_FLOOR_END), cut = toDoors ? clipped(end, 0, -1, -CAVE_DOORS_Z) : end;
       if (cut.length > 2) flagstone(stones, cut, TONES[Math.floor(rand() * TONES.length)], 0.012, 0.004, 1);
     });
-    const floor = merge(box({ w: 7.8, h: 0.02, d: CAVE_FLOOR_END - back, color: toDoors ? "#24130a" : "#3a1e0e", emissive: 1, offset: { x: 0, y: -0.006, z: (CAVE_FLOOR_END + back) / 2 } }), stones);
+    const parts = [box({ w: 7.8, h: 0.02, d: CAVE_EARTH_END - back, color: toDoors ? "#24130a" : "#3a1e0e", emissive: 1, offset: { x: 0, y: -0.006, z: (CAVE_EARTH_END + back) / 2 } }), stones];
+    // On the island the bare rock runs a little further out on the left, from the opening along the foot of its pillar.
+    if (!toDoors) parts.push(box({ w: 1.75, h: 0.02, d: 0.255, color: "#3a1e0e", emissive: 1, offset: { x: -3.125, y: -0.006, z: 0.1275 } }));
+    const floor = merge(...parts);
     floor.castShadow = false;
     return floor;
   });

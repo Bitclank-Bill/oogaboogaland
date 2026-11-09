@@ -64,8 +64,8 @@
   };
   // How near a play spot counts as standing at it, and where walking out leaves.
   const REACH = 1.1, EXIT_Z = HALL.front - 0.2;
-  // How far past the doors the picture of the mainland hangs, at the passage's end.
-  const DOOR_VIEW = HALL.exit - 0.05;
+  // How far past the doors the picture of the mainland hangs: where the cave's floor ends and the grass begins.
+  const DOOR_VIEW = 5.6;
   // The jackpot wheel's top prize, and the pitch of the level view of it a spin swings the camera to.
   const WHEEL_JACKPOT = Math.max(...AM.WHEEL_VALUES), WHEEL_PITCH = -0.06;
   // What the Oogas say about the room, in their own words: [tooltip, what a tap tells you].
