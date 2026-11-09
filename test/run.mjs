@@ -7976,8 +7976,32 @@ const gameRulesChecks = async () => {
     // The jackpot wheel, from arcade-models.js and its scene half on the builders they load with: the house wins slowly, and every
     // wedge, from a turn at rest and one far round after many spins, stops under the clapper wherever in it the spin
     // aims, after its whole turns and less than one more.
-    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "ooga-portal-models", "ooga-portal", "arcade-block-watch", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
+    // The Block Frenzy watch door: signed-in only, the deck is a stub that moves nobody, the real portal is crossed from the
+    // hall's side within the opening, and the door opens no new way out of the hall.
+    {
+      const W = BL.arcadeBlockWatch, D = W.DOOR, H = BL.arcadeModels.BLOCK_HALL;
+      const toasts = [], left = W.goToWatchDeck({ toast: (m) => toasts.push(m) });
+      const menu = { querySelector: () => ({}), addEventListener() {}, removeEventListener() {} };
+      context.document = context.document || { getElementById: () => menu }; context.matchMedia = context.matchMedia || (() => ({ matches: true }));
+      let crossed = 0;
+      const gate = BL.oogaPortal.create({ radius: 1.6, outerRadius: 1.8, aperture: W.APERTURE, position: { x: D.plane, y: D.y + D.h / 2, z: D.z }, rotation: { x: Math.PI / 2, y: -Math.PI / 2, z: 0 }, receiving: true, reducedMotion: true, now: () => 0, onTraverse: () => crossed++ });
+      const walk = (ax, bx, z, r = 0.4, h = 1.8) => gate.traverse({ x: ax, y: D.y + h / 2, z }, { x: bx, y: D.y + h / 2, z }, r, 1, h);
+      const offSide = walk(D.plane + 0.2, D.plane - 0.2, D.z), wide = walk(D.plane - 0.2, D.plane + 0.2, D.z0 - 0.5), through = walk(D.plane - 0.2, D.plane + 0.02, D.z), once = !walk(D.plane - 0.2, D.plane + 0.02, D.z);
+      gate.receive();
+      const again = walk(D.plane - 0.2, D.plane + 0.02, D.z);
+      const R = 0.4, sees = (x, z, feet = D.y) => W.doorDepth(x, z, R, feet) < 0;
+      const reach = D.reach - R, rock = !sees(reach + 0.05, D.z), crosses = reach > D.plane && sees(reach - 0.01, D.z), onlyOpening = !sees(D.plane, D.z0 + R - 0.05) && !sees(D.plane, D.z1 - R + 0.05);
+      let seamless = true; for (let x = H.x1 - 2; x <= reach; x += 0.01) if (!sees(x, D.z)) seamless = false;
+      const levels = !sees(D.plane - 0.5, D.z, D.y - 1.5) && !sees(D.plane - 0.5, D.z, D.y + D.h + 0.1);
+      const clearDoor = D.z0 - 0.38 > BL.arcadeModels.BLOCK_HALL.pictures[3][0] + 0.91 && D.z1 + 0.38 < H.torches[3][1] - 0.07;
+      const back = W.ARRIVAL.x > H.x0 && W.ARRIVAL.x < D.plane - 1 && W.ARRIVAL.z === D.z;
+      record("arcade watch door: signed-in only, stub deck moves nobody, portal crossed from the hall once, no new way out",
+        !W.mayWatch(null, false) && !!W.mayWatch({ id: 1 }, false) && !!W.mayWatch(null, true) && left === false && toasts.join() === W.SOON
+        && !offSide && !wide && through && once && again && crossed === 2 && rock && crosses && seamless && onlyOpening && levels && clearDoor && back,
+        JSON.stringify({ left, offSide, wide, through, once, again, crossed, rock, crosses, seamless, onlyOpening, levels, clearDoor, back }));
+    }
     // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
     const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});
     solo.shared(true);solo.multiplayer(false);solo.start();let soloInvalid=0,soloEdge=false;
