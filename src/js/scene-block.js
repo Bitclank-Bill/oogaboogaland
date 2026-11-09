@@ -399,6 +399,7 @@
   ];
   const TOUCH_GROUPS = [["Controls", [["Left stick", "Move"], ["Right stick", "Turn and aim"], ["Jump or tap", "Mash to break a gorilla's grip"], ["Jump", "Jump, jetpack"], ["Throw!", "Fire"], ["Weapons bar", "Tap a weapon"], ["Ride", "Zipline, catapult, wallets"]]]];
   const paintControls = (box) => {
+    box.replaceChildren();
     for (const [name, rows] of COARSE ? TOUCH_GROUPS : CONTROL_GROUPS) {
       const head = document.createElement("h4"); head.textContent = name; box.append(head);
       for (const [key, what] of rows) { const row = document.createElement("div"), k = document.createElement("kbd"), s = document.createElement("span"); k.textContent = key; s.textContent = what; row.append(k, s); box.append(row); }
@@ -2570,7 +2571,7 @@
     el.onDetail = (e) => chooseDetail(e.currentTarget.dataset.detail === "full");
     for (const b of el.details) { b.addEventListener("click", el.onDetail); b.setAttribute("aria-pressed", String((b.dataset.detail === "full") === detail.full)); }
     el.tip = document.getElementById("block-tip");
-    el.helpBox = document.getElementById("block-help");
+    el.helpBox = document.getElementById("block-help-box");
     paintControls(document.getElementById("block-help-keys"));
     el.barMin = document.getElementById("block-bar-min");
     el.barGrip = document.getElementById("block-bar-grip");
