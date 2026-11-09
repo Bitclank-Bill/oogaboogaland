@@ -4304,13 +4304,17 @@ const orbitFlow = async (b) => {
 const SCENES = ["hub", "lab", "race", "drop", "block", "orbit", "mine", "dsb", "factory", "hangar", "bifrost", "timechain", "poker", "arcade", "skee", "hoops", "shy", "claw", "hockey", "billiards", "darts", "pinball", "ride", "invaders", "snake", "pong", "stampede", "flap", "breaker", "dash", "stacker"];
 const LANES = Number(process.env.LANES) || 2;
 const ARGS = process.argv.slice(2);
-for (const a of ARGS) if (!SCENES.includes(a) && !["unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | ${SCENES.join(" | ")})`);
+for (const a of ARGS) if (!SCENES.includes(a) && !["--browser-only", "unit", "cloud-hopper-arcade", "cloud-hopper-record", "cloud-hopper-controller", "highscores-unit", "chat-unit", "integration-unit", "svrn-unit", "svrn-review", "vacancy-unit", "rescue-unit", "wallets-unit", "portal-unit", "water-baseline", "water-review", "water-unit", "stackchain-review", "stackchain-unit", "dsb-menus-unit", "maxis-unit", "exterior-unit", "rulers-unit", "ink-unit", "big-unit", "perf", "full", "poker-protocol"].includes(a)) throw new Error(`Unknown argument "${a}" (unit | perf | full | poker-protocol | --browser-only <scene> | ${SCENES.join(" | ")})`);
 const ONLY = process.env.ONLY || ""; // Optional comma-separated substrings within the requested scenes.
 const onlyMatches = value => ONLY.split(",").some(part => value.includes(part));
 const FULL = ARGS.includes("full");
 const PICKED = FULL ? SCENES : SCENES.filter((s) => ARGS.includes(s));
 const PERF = FULL || ARGS.includes("perf");
-const UNIT = !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade"].includes(ARGS[0]));
+const BROWSER_ONLY = ARGS.includes("--browser-only");
+if (BROWSER_ONLY && (!PICKED.length || FULL || ARGS.some(arg => arg !== "--browser-only" && !SCENES.includes(arg)))) {
+  throw new Error("--browser-only requires named scenes and cannot be combined with full, unit, perf or dedicated checks");
+}
+const UNIT = !BROWSER_ONLY && !(ARGS.length === 1 && ["perf", "poker-protocol", "cloud-hopper-record", "cloud-hopper-arcade"].includes(ARGS[0]));
 const PROTOCOL = FULL || ARGS.includes("poker-protocol");
 // What keeps the cruft out: every step says why it exists, or the run does not start.
 const WHY = /^(regression|playthrough|rule|contract): \S/;
@@ -4553,6 +4557,16 @@ const deferredLoadingChecks = async () => {
     return { BL, shell, scripts, links, base, baseGroup, baseFile, timeout, timers, probes, context };
   };
   const rejected = promise => promise.then(() => false, () => true);
+  {
+    const f = fixture();
+    f.context.navigator = { connection: { saveData: true } };
+    f.BL.deferred.prefetchScene("drop");
+    const quiet = !f.scripts().length && !f.links().length;
+    const pending = f.BL.deferred.load("drop");
+    const deliberate = f.scripts().length === 1;
+    f.base(); await pending;
+    rows.push({ path: "Save-Data suppresses speculation but permits deliberate play", ok: quiet && deliberate && f.BL.deferred.present("drop") });
+  }
   // A failed prerequisite never starts its scene; repeated retries must not grow the DOM. Only an error moves the
   // address on: a timed-out copy may still arrive, and the retry must not fetch a second one under a new address.
   {
@@ -6273,23 +6287,12 @@ const hammockChecks = async () => {
   record("hub hammock fall-out: the tipped Ooga rolls out over the edge away from the gunfire, lies, and gets up upright at the landing spot in 1.2 to 1.8 s; meanwhile it no longer rests, ignores getting up and is not tipped again",
     rolls.every((r) => r.spilled && r.side === -r.sgn && r.began && r.quiet && r.rolledToward > 0.3 && r.tilted > 0.3 && r.done >= 1.2 && r.done <= 1.8
       && r.atLanding < 1e-6 && Math.abs(r.standY) < 1e-6 && r.upright > 0.999), JSON.stringify({ rolls }));
-  // Lying in it, A and D rock the bed: a key held with the swing for a third of a second is a good pump that lifts the swing a step, every
-  // good pump visibly higher than the last (at least 1.5 degrees); a key held against the swing damps it, and brief taps get nowhere.
-  // Well-timed pumping from rest tips the Ooga out on the eighth to twelfth half-swing (its own swing past FALL, the count untouched: four
-  // pushes are still needed after pumping a while), mistimed pumping never does, and pumping an empty bed tips nobody.
-  const pumpDrive = (h, seconds, mode, tapLen = Infinity, onFrame = null) => { let t = 0, last = acrossOf(h), prevKey = 0, held = 0, tipT = null, peak = 0;
-    for (let f = 0; f < seconds * 60; f++) { h.update(1 / 60, t, false); t += 1 / 60; const a = acrossOf(h), v = a - last; last = a;
-      let key = v > 0 ? 1 : v < 0 ? -1 : 0; if (mode === "against") key = -key; if (key !== prevKey) { held = 0; prevKey = key; } held += 1 / 60; if (held > tapLen) key = 0;
-      h.pump(key, 1 / 60); peak = Math.max(peak, h.amp); if (tipT === null && h.spilling) tipT = t; if (onFrame) onFrame(h, t); }
-    return { tipT, halfSwings: tipT === null ? null : Math.floor(tipT * 2.1 / Math.PI) + 1, peak }; };
-  const pumped = () => { const h = settled(), cave = stubCave(); h.seats[0].remote = 0; h.seats[0].sitter = cave; cave.camp.seat = h.seats[0]; return h; };
-  const rockWith = pumpDrive(pumped(), 40, "with"), rockAgainst = pumpDrive(pumped(), 40, "against"), taps = pumpDrive(pumped(), 40, "with", 0.2);
-  const steps = []; let lastHalf = -1; pumpDrive(pumped(), 12, "with", Infinity, (h, t) => { const half = Math.floor(t * 2.1 / Math.PI); if (half !== lastHalf) { if (lastHalf >= 0) steps.push(h.amp); lastHalf = half; } });
-  const grown = pumpDrive(pumped(), 6, "with"), partly = pumped(); pumpDrive(partly, 6, "with"); const stillFour = run(partly, evenly(5, 2)), unmanned = pumpDrive(settled(), 40, "with");
-  record("hub hammock rocking: every good pump lifts the swing a visible step and the eighth to twelfth tips the Ooga out, against the swing it never grows, brief taps get nowhere, the count is untouched, and an empty bed tips nobody",
-    rockWith.halfSwings >= 8 && rockWith.halfSwings <= 12 && steps.length >= 6 && steps.every((v, k) => k === 0 || v - steps[k - 1] >= 0.026) && grown.peak > 0.15 && rockAgainst.tipT === null && rockAgainst.peak < 0.05 && taps.tipT === null && taps.peak < 0.08
-      && stillFour === 4 && unmanned.tipT === null && unmanned.peak > 0.2,
-    JSON.stringify({ steps, rockWith, rockAgainst, taps, grownIn6s: grown.peak, pushesAfterPumping: stillFour, emptyBed: unmanned }));
+  // Knocks that lift the swing without adding to the count (a struck palm, a gentle push) still tip the visitor's own Ooga once it passes
+  // FALL, as the code that once served the occupant's own rocking also serves these; a bed nobody on this page lies in reports nothing.
+  const knocked = (lying) => { const h = settled(); if (lying) { const cave = stubCave(); h.seats[0].remote = 0; h.seats[0].sitter = cave; cave.camp.seat = h.seats[0]; } let n = 0; while (!h.spilling && n < 12) { h.kick(0.06); h.update(1 / 60, n / 60, false); n++; } return { kicks: n, spilling: h.spilling, amp: h.amp }; };
+  const knockedOwn = knocked(true), knockedRemote = knocked(false);
+  record("hub hammock fall-out: knocks that never reach the count still tip the visitor's own Ooga once the swing passes the fourth hit's height, and never report a bed another page's Ooga lies in",
+    knockedOwn.spilling && knockedOwn.kicks >= 6 && knockedOwn.kicks <= 8 && !knockedRemote.spilling, JSON.stringify({ knockedOwn, knockedRemote }));
   // A plain walk (7.75 m/s) is a full hit; slower pushes count in proportion (5 m/s is 0.71 of one, so six tip) and a gentle one, under half
   // a hit, only eases the swing up and never counts, however many there are.
   const walk = tipsAt(evenly(8, 2, 7.75)), brisk = tipsAt(evenly(10, 2, 5)), gentle = tipsAt(evenly(60, 2, 2));
@@ -7706,6 +7709,30 @@ const gameRulesChecks = async () => {
         gbot.bot = true; Object.assign(gbot, { x: cx, z: cz, y: S.GRAVE_Y, grounded: true, guard: 9 });
         run(gb2, 6, still, () => !S.inGrave(gbot.x, gbot.z) && gbot.y >= -0.1);
         rows.graveBotOut = !S.inGrave(gbot.x, gbot.z);
+        // A block thrown into a grave lands and is lifted out to ground the bots can reach.
+        const gf = fresh("haunted"), fb = gf.flags.red;
+        for (const k of gf.crates) k.live = false;
+        Object.assign(fb, { state: "flying", carrier: null, thrower: -1, t: 0, x: cx, y: 1, z: cz, vx: 0, vy: 0, vz: 0, hookedBy: -1 });
+        run(gf, 2, still, () => fb.state !== "flying");
+        rows.graveBlockLands = fb.state === "dropped" && fb.y === 0 && !S.inGrave(fb.x, fb.z);
+        // Below the surface it always lands, even travelling along the pit and out through its wall, at any depth.
+        rows.graveBlockAlong = [-0.2, -0.5, -0.95, -1.5].every((y) => {
+          const q = fresh("haunted"), f2 = q.flags.red;
+          for (const k of q.crates) k.live = false;
+          Object.assign(f2, { state: "flying", carrier: null, thrower: -1, t: 0, x: cx, y, z: cz, vx: 0, vy: -0.5, vz: 12, hookedBy: -1 });
+          run(q, 3, still, () => f2.state !== "flying");
+          return f2.state === "dropped" && f2.y === 0 && !S.inGrave(f2.x, f2.z);
+        });
+        // Wherever a block is lifted out of a grave to, it is outside the margin bots walk round the grave with.
+        S.create({ map: "haunted" });
+        const graveMargin = S.CONFIG.BODY_R;
+        rows.graveRestReach = S.ARENAS.haunted.graves.every(([x0, x1, z0, z1]) => [[(x0 + x1) / 2, (z0 + z1) / 2], [x0 - 0.1, z0 - 0.1], [x1 + 0.1, z1 + 0.1], [x0 - 0.3, (z0 + z1) / 2], [(x0 + x1) / 2, z1 + 0.3]].every(([x, z]) => {
+          const p = S.restSpot(x, z);
+          return S.clearLine(p.x, p.z, p.x + 0.01, p.z, graveMargin);
+        }));
+        // A walk is blocked only by a line that really crosses a grave; a throw at chest height never is.
+        const [lx0, lx1, lz0, lz1] = S.ARENAS.haunted.graves[0], lxm = (lx0 + lx1) / 2;
+        rows.graveLine = !S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.4) && S.clearLine(lx1 + 1, lz0 - 3, lx1 + 1, lz1 + 3, 0.4) && S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.05, 1.8);
         S.create({ map: "haunted" });
         rows.graveRest = I.graves.every(([x0, x1, z0, z1]) => { const p = S.restSpot((x0 + x1) / 2, (z0 + z1) / 2); return !S.inGrave(p.x, p.z); });
       }
@@ -10391,7 +10418,7 @@ const hubGuestLikeness = { name: "hub guest likeness", why: "regression: a guest
   // Cloud Hopper with the default Ooga, through its own card: the visible Play button (its hidden Next level button
   // carries the same class and stands before it) lifts the guest's own avatar into a run, and Escape ends it.
   const hopper = await b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub.debug.cloudHopper, ghosts = BL.scenes.hub.debug.npcGhosts, guest = B.crew.cavemen.get("Ooga");
+    const B = __ooga, H = BL.scenes.hub.debug.prepareCloudHopper(), ghosts = BL.scenes.hub.debug.npcGhosts, guest = B.crew.cavemen.get("Ooga");
     const taken = B.pilot.possess(guest) && B.pilot.player === guest;
     B.advance(0.3, 1 / 30);
     const launched = taken && H.launch(true);
@@ -11203,14 +11230,14 @@ const signedInArrivalWire = (mode) => {
     return fetch(url, options);
   };
 };
-const signedInArrival = { name: "hub signed-in arrival", why: "regression: owners loaded asleep or away instead of standing beside the pile, and `view=` or saved underground views could put them back below", run: async b => {
+const signedInArrival = { name: "hub signed-in arrival", why: "regression: owners loaded asleep, away or at their NPC instead of standing round the pile on a first visit, and `view=` or saved underground views could put them back below", run: async b => {
   const result = await b.evaluate(`(async () => {
     const B = __ooga, W = __arrivalWire, c = B.cavemen.get("portlandhodl"), other = B.cavemen.get(W.otherAway);
     ${DRIVEN_OF}
     // The owner's driven body (the NPC itself, or the separate body standing for it) is what arrives; the activity is the NPC's own.
-    // #497: the body stands where the NPC is (the nearest clear spot beside a bed or seat), and only an away NPC, which
-    // has no place on the island, sends it to the pile; the NPC keeps its own activity, seat and bed throughout.
-    const read = (d = drivenOf(B, c)) => ({ selected: !!d, visible: !!d && d.root.visible, activity: BL.contributors.stateFor(c.contributor),
+    // A debug page has no remembered spot, so this is a first visit: the body stands round the pile whatever its NPC is
+    // doing, and the NPC keeps its own activity, seat and bed throughout.
+    const read =(d = drivenOf(B, c)) => ({ selected: !!d, visible: !!d && d.root.visible, activity: BL.contributors.stateFor(c.contributor),
       feet: d ? d.root.position.y - d.baseY + d.restLower : null, radius: d ? Math.hypot(d.root.position.x, d.root.position.z) : null,
       fromNpc: d && d !== c && c.root.visible ? Math.hypot(d.root.position.x - c.root.position.x, d.root.position.z - c.root.position.z) : null,
       bed: !!d && (!!d.bedroll || !!d.bedTravel.mode), seated: !!d && !!d.camp.seat, quaternion: !!d && !!d.root.quaternion,
@@ -11226,16 +11253,14 @@ const signedInArrival = { name: "hub signed-in arrival", why: "regression: owner
     return { mode: W.mode, arrival, refreshed, released, reclaimed: B.pilot.player === c || B.pilot.player?.npc === c, beds };
   })()`);
   // The small initial pile's existing player arrival area extends to 8 m;
-  // its platform radius is not the origin of that safety boundary. A present NPC places the body on crew.js's
-  // BODY_RING (at most 1.4 m from it), and that NPC keeps its own activity: asleep in its bed, chilling in its seat.
+  // its platform radius is not the origin of that safety boundary. The NPC keeps its own activity: asleep in its bed,
+  // chilling in its seat.
   const npcKept = npc => result.mode === "away" ? !npc.visible && npc.state === "away"
     : npc.visible && npc.state === result.mode && (result.mode !== "sleeping" || npc.bed);
-  const placed = state => result.mode === "away"
-    ? Math.abs(state.feet) < 1e-6 && state.radius > state.pile && state.radius <= 8 + 1e-6
-    : state.fromNpc !== null && state.fromNpc <= 1.4 + 1e-6;
-  const arrived = state => state.selected && state.visible && state.activity === result.mode && placed(state) && npcKept(state.npc)
+  const placed = state => Math.abs(state.feet) < 1e-6 && state.radius > state.pile && state.radius <= 8 + 1e-6;
+  const arrived =state => state.selected && state.visible && state.activity === result.mode && placed(state) && npcKept(state.npc)
     && !state.bed && !state.seated && !state.quaternion && state.eye > 0 && state.otherAway;
-  record(`signed-in ${result.mode}: the owner arrives upright beside their NPC (at the pile when it is away) on real support while the NPC keeps its activity, stays controlled through activity refresh, and after a teardown release the next account reply hands their Ooga back`,
+  record(`signed-in ${result.mode}: on a first visit the owner arrives upright round the pile on real support while the NPC keeps its activity, stays controlled through activity refresh, and after a teardown release the next account reply hands their Ooga back`,
     arrived(result.arrival) && arrived(result.refreshed) && result.refreshed.settled && result.released.detached && result.reclaimed
       && (result.mode !== "away" || result.released.state === "away" && !result.released.visible), JSON.stringify(result));
   record(`sleeping overflow ${result.mode}: newest sleepers occupy separate HQ and basement beds and older sleepers have their own rainforest anchors`,
@@ -11348,6 +11373,36 @@ const factoryHostedShield = { name: "factory hosted shield", refuse: "/js/factor
   const entered = await untilPage(b, 'B.scene === "factory" && !B.transitioning', 15000);
   record("factory hosted: a refused factory download sends the Ooga back once, driving, until it steps out of the shield, and walking back in opens the hall", notified && refused.asked >= 1 && refused.asked <= 2 && refused.scene === "hub" && !refused.transitioning && refused.driving && entered && asked() > refused.asked, JSON.stringify({ notified, refused, entered, fetched: site.fetched }));
 } };
+// The hub reaches first play without constructing an unrelated cabinet game.
+const hubHostedOptionalGame = { name: "hub hosted optional game", refuse: "/js/cloud-hopper-", why: "rule: an island visit leaves Cloud Hopper unloaded, and its real cabinet can recover from a refused download without losing its actor", run: async (b, site) => {
+  const cold = await b.evaluate(`({ absent: !BL.cloudHopper && !document.querySelector(".cloud-hopper-panel"), scene: __ooga.scene, frames: __ooga.renderedFrames })`);
+  await b.evaluate(`(() => { const B=__ooga,a=B.cavemen.get("portlandhodl"),slot=BL.caves.slots.find(s=>s.scene==="arcade"),m=B.mouths.find(m=>m.id===slot.id);
+    if(B.crew.player!==a)B.pilot.possess(a); B.pilot.navigate({position:{x:m.x-Math.sin(m.ry)*1.2,y:m.floorY,z:m.z-Math.cos(m.ry)*1.2},yaw:m.ry,pitch:.4,dist:10}); B.advance(.5,1/60); })()`);
+  await b.key(" ");
+  if (!await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 30000)) throw Error("Arcade did not open: " + JSON.stringify(await b.evaluate('({scene:__ooga.scene,transitioning:__ooga.transitioning,notice:document.getElementById("toast").textContent})')));
+  const approach = `(() => { const B=__ooga,a=B.pilot.player,s=BL.arcadeModels.CABINETS[0].play;
+    if(a.weapon.aiming)B.pilot.modeAction("mode-toggle"); B.pilot.freeCursor();
+    B.pilot.navigate({position:{x:s.x,y:BL.arcadeModels.STAGE.high,z:s.z},yaw:0,pitch:.2,dist:5}); B.advance(.2,1/60); })()`;
+  await b.evaluate(approach); await b.key(" ");
+  const asked = () => site.fetched.filter(chunkOf("cloud-hopper")).length;
+  for (let i=0; i<300 && !asked(); i++) await b.sleep(50);
+  const refused = await untilPage(b, 'B.scene === "arcade" && !B.transitioning && B.cabinet.phase === "idle"', 30000);
+  const kept = await b.evaluate(`__ooga.pilot.player?.traits.name === "portlandhodl"`);
+  site.refused.length=0; dropRefusals(b);
+  await b.evaluate(approach); await b.key(" ");
+  const opened = await untilPage(b, 'B.scene === "hub" && !B.transitioning && BL.scenes.hub.debug.cloudHopper?.phase === "intro"', 30000);
+  const actor = await b.evaluate(`__ooga.pilot.player?.traits.name`);
+  const interrupted = await b.evaluate(`(() => {
+    document.querySelector(".cloud-hopper-panel .game-intro-go:not([hidden])").click();
+    __ooga.advance(0.25, 1 / 60);
+    return { phase: BL.scenes.hub.debug.cloudHopper.phase, focus: document.activeElement.id, cabinet: __ooga.cabinet.phase };
+  })()`);
+  await b.key("Escape");
+  const returned = await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 30000);
+  const returnedActor = await b.evaluate('__ooga.pilot.player?.traits.name');
+  record("hub hosted: first play excludes Cloud Hopper, its failed cabinet load retains control and retry opens the same Ooga then returns safely", cold.absent && cold.scene === "hub" && cold.frames > 2 && refused && kept && opened && actor === "portlandhodl" && interrupted.phase === "lifting" && interrupted.focus === "scene" && returned && returnedActor === actor && asked() >= 2,
+    JSON.stringify({cold,refused,kept,opened,actor,interrupted,returned,returnedActor,asked:asked()}));
+} };
 // After a deploy the tab's chunks are gone: the page says so once and offers a reload, never "try again".
 const orbitHostedDeploy = { name: "orbit hosted deploy", gone: "/js/drop", why: "regression: after a deploy replaced the chunks, an open tab asked again and again for its old chunk and said try again, which could never work", run: async (b, site) => {
   await b.evaluate(`__ooga.go("drop")`);
@@ -11364,7 +11419,7 @@ const orbitHostedDeploy = { name: "orbit hosted deploy", gone: "/js/drop", why: 
       && payment.text === "Your on-chain tip confirmed · 1,000 sats" && payment.shown && payment.separate && heads >= 1 && heads <= 2 && probes >= 1,
     JSON.stringify({ offered, toast, payment, heads, probes, fetched: site.fetched }));
 } };
-for (const [id, step, path] of [["orbit", orbitHosted, "/oogaorbit"], ["orbit", orbitHostedDeploy, "/oogaorbit"], ["arcade", arcadeHostedDrop, "/oogaarcade"], ["factory", factoryHostedShield, "/"]]) {
+for (const [id, step, path] of [["hub", hubHostedOptionalGame, "/"], ["orbit", orbitHosted, "/oogaorbit"], ["orbit", orbitHostedDeploy, "/oogaorbit"], ["arcade", arcadeHostedDrop, "/oogaarcade"], ["factory", factoryHostedShield, "/"]]) {
   if (ONLY && !onlyMatches(step.name)) continue;
   tasks.push({ name: `${id} hosted${step.gone ? " deploy" : ""}`, scene: id, perf: false, run: async () => {
     const site = await hostedSite();
@@ -13367,26 +13422,26 @@ const hubNameplates = { name: "live nameplates", why: "rule: names over live pla
   // is set), and the name drawn after the peer's hand still in the tooltip's type, so a hand's state never leaks into it.
   await place("ooga", 0); await plateAt();
   const hands = await b.evaluate(`(async () => {
-    const net = BL.net, rec = net.remotes.get(515515), HANDS = BL.reactionPolicy.HANDS, was = { hand: net.state.hand, tone: net.state.handTone };
-    rec.hand = true; rec.handTone = 3; net.state.hand = true; net.state.handTone = 0;
+    const net = BL.net, rec = net.remotes.get(515515), HANDS = BL.reactionPolicy.HANDS, ownGlyph = "🍌", was = { hand: net.state.hand, tone: net.state.handTone, emoji: net.state.handEmoji };
+    rec.hand = true; rec.handTone = 3; net.state.hand = true; net.state.handTone = 0; net.state.handEmoji = ownGlyph;
     const ctx = document.getElementById("overlay").getContext("2d"), calls = [], wrap = name => { const real = ctx[name];
-      ctx[name] = function (text, x, y) { if (text === "Plate peer" || HANDS.includes(text)) { const m = ctx.getTransform();
+      ctx[name] = function (text, x, y) { if (text === "Plate peer" || text === ownGlyph || HANDS.includes(text)) { const m = ctx.getTransform();
         calls.push({ name, text, x, y, font: ctx.font, spacing: ctx.letterSpacing, align: ctx.textAlign, base: ctx.textBaseline, m: [m.a, m.b, m.c, m.d, m.e, m.f].join() }); }
         return real.apply(this, arguments); }; return real; };
     const fill = wrap("fillText"), stroke = wrap("strokeText");
     await new Promise(r => setTimeout(r, 300));
     ctx.fillText = fill; ctx.strokeText = stroke;
     const live = BL.remotePlayers.nameplate(515515);
-    rec.hand = false; net.state.hand = was.hand; net.state.handTone = was.tone;
+    rec.hand = false; net.state.hand = was.hand; net.state.handTone = was.tone; net.state.handEmoji = was.emoji;
     const last = text => calls.filter(c => c.text === text).pop() || null, name = calls.filter(c => c.text === "Plate peer" && c.name === "fillText").pop() || null;
-    const peerAt = calls.lastIndexOf(last(HANDS[3])), nameAt = calls.lastIndexOf(name), ownAt = calls.lastIndexOf(last(HANDS[0]));
-    return { live, peer: last(HANDS[3]), own: last(HANDS[0]), name, peerFirst: peerAt >= 0 && nameAt > peerAt, ownFirst: ownAt >= 0 && peerAt > ownAt, distinct: HANDS[3] !== HANDS[0] };
+    const peerAt = calls.lastIndexOf(last(HANDS[3])), nameAt = calls.lastIndexOf(name), ownAt = calls.lastIndexOf(last(ownGlyph));
+    return { live, peer: last(HANDS[3]), own: last(ownGlyph), name, peerFirst: peerAt >= 0 && nameAt > peerAt, ownFirst: ownAt >= 0 && peerAt > ownAt, distinct: HANDS[3] !== ownGlyph };
   })()`);
   await b.evaluate(`(() => { BL.net.remotes.delete(515515); __ooga.advance(0.2, 1 / 60); })()`);
   // Chrome reads a context's untouched letter spacing as "" (its default, none) and keeps that when 0px is set over it.
   const emojiType = c => c && /Apple Color Emoji/.test(c.font) && /^20px/.test(c.font) && (c.spacing === "0px" || c.spacing === "") && c.align === "center" && c.base === "middle";
   const { live: hp, peer, own, name } = hands;
-  record("live nameplates: a raised hand stands centred over a live player's nameplate box, the visitor's own is drawn before any name, both in emoji type with no letter spacing, and the name drawn after a hand keeps the NPC tooltip's type, spacing and place",
+  record("live nameplates: a raised hand stands centred over a live player's nameplate box, the visitor's custom persistent emoji is drawn before any name, both in emoji type with no letter spacing, and the name drawn after a hand keeps the NPC tooltip's type, spacing and place",
     hands.distinct && hp && emojiType(peer) && emojiType(own) && hands.peerFirst && hands.ownFirst && peer.m === name.m && own.m === name.m
       && peer.x === hp.left + hp.width / 2 && peer.y === hp.top - 16 && Number.isInteger(own.x) && Number.isInteger(own.y)
       && name.font === hp.font && name.spacing === hp.spacing && name.align === "left" && name.base === "alphabetic" && name.x === hp.textX && name.y === hp.baseline,
@@ -13607,7 +13662,7 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
 } };
 const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: scenery, rock and downhill movement changed the racing camera's angle and distance", run: async (b) => {
   const r = await b.evaluate(`(() => {
-    const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.cloudHopper, S = BL.scene, solids = B.headquarters.solids.props;
+    const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.prepareCloudHopper(), S = BL.scene, solids = B.headquarters.solids.props;
     let actor = B.cavemen.get("portlandhodl");
     const rows = [], movementRows = [], rockRows = [], nodes = [];
     const pose = Object.fromEntries(["position", "target", "up", "orbit", "headOffset", "actor", "body", "head", "bodyQuaternion", "headQuaternion", "magazines"].map(key => [key, []]));
@@ -13639,8 +13694,10 @@ const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: sce
     const opened = H.launch(true);
     [...document.querySelectorAll(".cloud-hopper-panel .game-intro-go")].find(button => !button.hidden).click();
     B.advance(BL.cloudHopper.LIFT_SECONDS + 0.1, 1 / 60);
-    if (H.phase === "briefing") document.querySelector(".cloud-hopper-guide .actions button:last-child").click();
+    if (H.phase === "briefing") document.querySelector(".cloud-hopper-panel .actions [data-role=leave]").click();
+    B.advance(1, 1 / 60);
     const ready = H.phase === "ready";
+    // Cloud Hopper now races in shoulder/first person; carry and overhead are not game views.
     actor.hop = 0.1; actor.hopV = 1; H.postUpdate();
     ghost.begin(actor); const recording = ghost.finish(0.1, actor);
     try {
@@ -13687,7 +13744,7 @@ const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: sce
         if (rockClear(a, a) && !rockClear(a, e)) shore = { nx, nz, x: a.x, z: a.z };
       }
       if (shore) for (const dt of [1 / 30, 1 / 60]) {
-        setMode("orbit");
+        setMode("shoulder");
         const yaw = Math.atan2(-shore.nx, -shore.nz), far = { x: shore.nx * (B.island.radius + 30), y: -4, z: shore.nz * (B.island.radius + 30) };
         P.navigate({ position: far, yaw, pitch: 0.1, dist: 12 }); actor.hop = 100;
         for (let i = 0; i < Math.round(3 / dt); i++) P.update(dt);
@@ -13714,7 +13771,7 @@ const hubCloudCamera ={ name: "cloud hopper fixed camera", why: "regression: sce
 } };
 const hubCloudFraming = { name: "cloud hopper island framing", why: "regression: the starting cloud hid the island, replay changed the selected view, and held gameplay keys could activate the result panel", run: async (b) => {
   const r = await b.evaluate(`(() => {
-    const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.cloudHopper;
+    const B = __ooga, P = B.pilot, H = BL.scenes.hub.debug.prepareCloudHopper();
     let actor = B.cavemen.get("portlandhodl");
     const pose = Object.fromEntries(["position", "target", "up", "orbit", "headOffset", "actor", "body", "head", "bodyQuaternion", "headQuaternion", "magazines"].map(key => [key, []]));
     const view = BL.math.mat4.create(), projection = BL.math.mat4.create(), island = new Float64Array(3), rows = [], keys = [];
@@ -13775,7 +13832,8 @@ const hubCloudFraming = { name: "cloud hopper island framing", why: "regression:
     try {
       [...document.querySelectorAll(".cloud-hopper-panel .game-intro-go")].find(button => !button.hidden).click();
       B.advance(BL.cloudHopper.LIFT_SECONDS + 0.1, 1 / 60);
-      if (H.phase === "briefing") document.querySelector(".cloud-hopper-guide .actions button:last-child").click();
+      if (H.phase === "briefing") document.querySelector(".cloud-hopper-panel .actions [data-role=leave]").click();
+      B.advance(1, 1 / 60);
       const ascent = project(); B.advance(0.25, 1 / 60); const settled = project();
       // A run is played in combat alone (the hub's combatOnly, cloud-hopper.js noOverhead): first person and shoulder,
       // the shoulder last so the manual turn below is measured from a third-person view, as it was from the orbit.
@@ -24653,7 +24711,7 @@ const dsbSoak = async (b, { geometry = false, factory = false } = {}) => {
   // replacing any resource. Subsequent growth is still measured by the same bounds. Cloud Hopper's cabinet now stands in
   // Ooga Arcade (cloud-hopper.js \`arcade\`), so the hub holds none of its screen frames: \`frames\` reports that.
   const warmHubGeometry = () => b.evaluate(`(() => {
-    const B = __ooga, H = BL.scenes.hub, characters = new Set(), frames = H.debug.cloudHopper.cabinet.frames || [];
+    const B = __ooga, H = BL.scenes.hub, characters = new Set(), frames = H.debug.cloudHopper?.cabinet.frames || [];
     const visit = node => {
       if (node.geometry?.characterPart) characters.add(node.geometry);
       for (const child of node.children) visit(child);
@@ -25990,6 +26048,34 @@ const petRideChecks = BL => {
     remoteHeel&&remoteUp&&remoteFlying&&remoteDown&&lag&&remoteTrots&&followed&&snapped&&remoteRest&&remoteExit&&remoteRestDown&&removed,JSON.stringify({remoteHeel,remoteUp,remoteFlying,remoteDown,lag,remoteTrots,followed,snapped,remoteRest,remoteExit,remoteRestDown,removed}));
   pool.dispose();BL.net=oldNet;
   if(rides===undefined)delete look.petRidesHat;else look.petRidesHat=rides;
+};
+
+// Rule: the hammock's occupant has no rocking of their own: sideways input, through the real crew and the real seat, gets them up and leaves
+// the bed's swing alone, as forward and back do, and no input keeps them lying there.
+const hammockSidewaysChecks = BL => {
+  const noop=()=>{},S=BL.scene,H=BL.hubHammock,root=S.createNode(),targets=new Set();
+  const plan=H.plan({a:{x:-3,z:4,ground:0},b:{x:3,z:4,ground:0},clear:(x,z,r)=>z>1+r,surfaceAt:()=>0});
+  const C=BL.crew.create({root,world:{level:0},playerName:"YellowBrokeIt",input:{add:n=>targets.add(n),remove:n=>targets.delete(n)},hud:{setRosterRow:noop},game:{state:{assignments:{},inventory:[]}},viewYaw:0,groundAt:()=>0,walkable:()=>true,fx:{say:noop,zzzAt:noop,burst:noop,puff:noop,spawnParticle:noop,damageNumber:noop}});
+  const A=C.cavemen.get("YellowBrokeIt");C.control(A);
+  let t=0;
+  const trial=(x,z,forward,strafe)=>{
+    const ham=H.create({plan,root,solids:BL.solidProps.create(),ra:.15,rb:.15,seed:1}),seat=ham.seats[0];
+    Object.assign(A.root.position,{x:seat.walkAt.x,y:seat.floor+A.baseY,z:seat.walkAt.z});A.hop=A.hopV=0;
+    const sat=ham.enter(A,seat,C.sitPlayer);
+    const step=()=>{C.update(1/60,t);ham.update(1/60,t,false);t+=1/60;};
+    C.steer(0,0);for(let i=0;i<120;i++)step();
+    const stayed=A.camp.seat===seat,from=ham.amp;let peak=from;
+    C.steer(x,z,0,forward,strafe);let f=0;for(;f<240&&seat.sitter;f++){step();peak=Math.max(peak,ham.amp);}
+    C.steer(0,0);const up=!seat.sitter&&!A.camp.seat;ham.dispose();
+    return{sat,stayed,up,frames:f,from,peak};
+  };
+  const left=trial(-1,0,0,-1),right=trial(1,0,0,1),forward=trial(0,1,1,0);
+  const ok=r=>r.sat&&r.stayed&&r.up&&r.peak<=r.from+1e-9;
+  const probe=H.create({plan,root,solids:BL.solidProps.create(),ra:.15,rb:.15,seed:1});
+  const gone=probe.pump===undefined&&probe.seats[0].pumps===undefined;probe.dispose();
+  record("hub hammock: left and right get the lying Ooga up just as forward does, never rock the bed on the way, and no input leaves them lying there",
+    ok(left)&&ok(right)&&ok(forward)&&gone,JSON.stringify({left,right,forward,gone}));
+  C.dispose?.();
 };
 
 // Rule: the authored Maxis routes and stand points must fit the real Yellow actor, not a guessed radius.
@@ -27498,6 +27584,98 @@ const reactionWireChecks = async BL => {
       && corrected.hand === false && corrected.tone === 0,
     JSON.stringify({ sent, raised, afterBurst, later, up, corrected }));
 };
+// Uses the real panel and net client; the small DOM/clock follows #548's reusable panel fixture.
+const persistentPanel = (BL, net, saved = new Map()) => {
+  const timers = new Map(), ids = new Map();
+  let nextTimer = 1, focused = null;
+  const make = () => ({ on: {}, children: [], dataset: {}, attrs: {}, hidden: false, disabled: false, textContent: "", className: "", value: "", parent: null,
+    append(...items) { for (const c of items) if (typeof c !== "string") { c.parent = this; this.children.push(c); } },
+    addEventListener(type, fn) { (this.on[type] ||= []).push(fn); }, removeEventListener() {}, dispatchEvent() {}, focus() { focused = this; }, contains() { return true; },
+    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k] ?? null; },
+    querySelector: () => make(),
+    closest(sel) { return this.className.split(" ").includes(sel.slice(1).split("[")[0]) && (!sel.includes("[data-slot]") || this.dataset.slot !== undefined) ? this : null; } });
+  const body = make(); for (const id of ["players-reactions", "chat-reactions"]) ids.set(id, make());
+  const context = { window: { BL: { reactionPolicy: BL.reactionPolicy, emojiData: BL.emojiData, net }, addEventListener() {},
+    setTimeout: fn => { timers.set(nextTimer, fn); return nextTimer++; }, clearTimeout: id => timers.delete(id), matchMedia: () => ({ matches: true }) },
+    document: { createElement: make, getElementById: id => ids.get(id), body, addEventListener() {}, removeEventListener() {} },
+    localStorage: { getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) }, Event: class {} };
+  runInNewContext(readFileSync(join(root, "src/js/reactions.js"), "utf8"), context);
+  const bars = [...ids.values()].map(host => { const card = host.children[0]; return { card, buttons: [...card.children[0].children, card.children[2]] }; });
+  const event = (slot, type, extra = {}, bar = 0) => {
+    const e = { target: bars[bar].buttons[slot], button: 0, pointerId: 1, isPrimary: true, clientX: 0, clientY: 0, preventDefault() {}, ...extra };
+    for (const fn of bars[bar].card.on[type] || []) fn(e);
+  };
+  const tap = (slot, bar = 0) => { event(slot, "pointerdown", {}, bar); event(slot, "pointerup", {}, bar); event(slot, "click", {}, bar); };
+  const flush = () => { for (const [id, fn] of [...timers]) { timers.delete(id); fn(); } };
+  const hold = (slot, pointerType) => { event(slot, "pointerdown", { pointerType }); flush(); event(slot, "pointerup", { pointerType }); event(slot, "click", { pointerType }); };
+  const find = (cls, node = body) => node.className.split(" ").includes(cls) ? [node] : node.children.flatMap(c => find(cls, c));
+  const click = el => { for (let p = el; p; p = p.parent) for (const fn of p.on.click || []) fn({ target: el }); };
+  return { R: context.window.BL.reactions, bars, event, tap, hold, flush, find, click, saved, timers, focused: () => focused };
+};
+const persistentSlotChecks = async BL => {
+  const f = netFixture(BL, () => ({ ok: true, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "Tester", display: "Tester" } }) }), 0);
+  await f.net.start();
+  const net = f.net, message = v => f.sockets.at(-1).onmessage({ data: JSON.stringify(v) });
+  const welcome = (features = ["react-v1", "hand-emoji-v1"]) => message({ t: "welcome", you: { id: 71 }, now: Date.now(), features,
+    players: [{ id: 5, login: "peer", display: "Peer", hand: true, handEmoji: "🍌" }, { id: 6, login: "old", hand: true, handTone: 3 }] });
+  welcome();
+  const p = persistentPanel(BL, net), frames = t => f.sent.filter(m => m.t === t), rest = () => f.advance(3000);
+  const choose = emoji => p.click(p.find("reaction-choice").find(b => b.dataset.e === emoji));
+  const pressed = () => p.bars.every(bar => bar.buttons[10].getAttribute("aria-pressed") === String(net.state.hand));
+  const rows = [];
+  for (const pointerType of ["mouse", "touch"]) {
+    p.hold(10, pointerType);
+    const held = p.R.stats().open && p.R.stats().slot === 10 && !net.state.hand;
+    choose("🍌");
+    const configured = p.R.persistent === "🍌" && p.bars.every(bar => bar.buttons[10].textContent === "🍌") && !net.state.hand && p.focused() === p.bars[0].buttons[10];
+    rest(); p.tap(10);
+    const up = net.state.hand && net.state.handEmoji === "🍌" && pressed();
+    rest(); const before = frames("hand").length, reactions = frames("react").length;
+    p.tap(0); p.tap(0);
+    const transient = frames("react").length === reactions + 2 && frames("hand").length === before && net.state.handEmoji === "🍌" && p.bars.every(bar => bar.buttons.slice(0, 10).every(b => b.getAttribute("aria-pressed") === null));
+    rest(); p.tap(10, 1);
+    rows.push({ pointerType, held, configured, up, transient, off: !net.state.hand && pressed() });
+  }
+  record("rule: the right slot toggles in both bars; mouse/touch holds customize without toggling, while every left double tap stays transient",
+    rows.every(r => r.held && r.configured && r.up && r.transient && r.off), JSON.stringify(rows));
+  const cancelled = [];
+  for (const [type, extra] of [["pointermove", { clientX: 20 }], ["pointercancel", {}], ["pointerleave", {}], ["pointerdown", { pointerId: 2, isPrimary: false }]]) {
+    p.event(10, "pointerdown"); p.event(10, type, extra); p.flush(); p.event(10, "pointerup"); p.event(10, "click");
+    cancelled.push(!p.R.stats().open && !net.state.hand && p.timers.size === 0);
+  }
+  p.event(10, "keydown", { key: "F10", shiftKey: true });
+  const keyboard = p.R.stats().open && p.R.stats().slot === 10;
+  choose("👍"); rest(); p.R.toggleHand();
+  p.hold(10, "touch"); p.click(p.find("reaction-tone")[3]);
+  const toned = net.state.handEmoji === "👍🏽";
+  rest(); choose("💜");
+  const heart = net.state.handEmoji === "💜";
+  rest(); p.hold(10, "mouse"); choose("🍌");
+  const slots = JSON.stringify(p.R.slots), replaced = net.state.handEmoji === "🍌";
+  rest(); p.hold(0, "mouse"); choose("🍌");
+  const independent = net.state.handEmoji === "🍌" && p.R.slots[0] === "🍌" && slots !== JSON.stringify(p.R.slots);
+  // The server can refuse an optimistic update: show its actual active glyph, not the saved next choice.
+  message({ t: "hand", id: 71, on: true, tone: 0, e: "💯" });
+  const correction = p.bars.every(bar => bar.buttons[10].textContent === "💯") && pressed();
+  rest(); welcome();
+  const reconnect = frames("hand").at(-1).e === "💯" && net.remotes.get(5).handEmoji === "🍌" && net.remotes.get(6).handEmoji === "";
+  message({ t: "hand", id: 5, on: true, tone: 0, e: "👍" });
+  const remote = net.remotes.get(5).handEmoji === "👍";
+  rest(); p.hold(10, "mouse"); p.click(p.find("reaction-picker-reset")[0]);
+  const reset = p.R.persistent === BL.reactionPolicy.HAND && net.state.hand && net.state.handEmoji === "" && net.state.handTone === 0;
+  rest(); p.tap(10); p.hold(10, "mouse"); choose("🍌");
+  const loaded = persistentPanel(BL, net, p.saved);
+  const stored = loaded.R.persistent === "🍌" && !net.state.hand;
+  welcome(["react-v1"]); rest(); p.tap(10);
+  const older = !net.state.customHand && net.state.hand && net.state.handEmoji === "" && !Object.hasOwn(frames("hand").at(-1), "e");
+  p.hold(10, "touch"); const gated = !p.R.stats().open;
+  message({ t: "kick", reason: "revoked" });
+  record("rule: persistent customization supports cancellation, keyboard, tone, heart, independent slots, reset, saved choice, authoritative corrections, reconnect and old rooms",
+    cancelled.every(Boolean) && keyboard && toned && heart && replaced && independent && correction && reconnect && remote && reset && stored && older && gated && !net.state.hand,
+    JSON.stringify({ cancelled, keyboard, toned, heart, replaced, independent, correction, reconnect, remote, reset, stored, older, gated }));
+  net.dispose();
+};
+
 // Online Oogas columns: every row, built by the real players.js on a small DOM, holds its cells in one order, and the
 // stylesheet puts each icon in a column of fixed width (lock, voice, distance as wide as "999 m", crosshair), so they
 // line up down the whole tab, in every group and on the visitor's own row.
@@ -27548,11 +27726,11 @@ const playersColumnChecks = async () => {
   const tracks = (ruleOf(".players-rows").match(/grid-template-columns:\s*([^;]+);/) || [, ""])[1].trim().split(/\s+(?![^(]*\))/);
   const columnOf = (selector) => +((ruleOf(selector).match(/grid-column:\s*(\d+);/) || [, NaN])[1]);
   const cellOfRule = (selector) => +((css.match(new RegExp(`\\.players-rows ${selector.replace(".", "\\.")} \\{ grid-column: (\\d+);`)) || [, NaN])[1]);
-  const columns = { link: cellOfRule(".players-link"), voice: cellOfRule(".roster-voice"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
-  record("Online Oogas columns: every row holds its cells in one order, and the voice link, voice mark, distance (as wide as 999 m) and crosshair each keep a fixed column, none sized to its content, so they line up across groups",
-    cells.rows === 3 && cells.shapes.every((s) => s === "roster-dots players-name roster-marks players-look players-distance players-volume")
-      && tracks.length === 6 && tracks[columns.link - 1] === "12px" && tracks[columns.voice - 1] === "12px" && tracks[columns.look - 1] === "12px" && /width:\s*5ch;/.test(ruleOf(".players-distance"))
-      && columns.link === 3 && columns.voice === 4 && columns.distance === 5 && columns.look === 6,
+  const columns = { hand: columnOf(".players-mark"), link: cellOfRule(".players-link"), voice: cellOfRule(".roster-voice"), look: columnOf(".players-look"), distance: columnOf(".players-distance") };
+  record("Online Oogas columns: every row holds its cells in one order, and the raised hand, voice link, voice mark and crosshair each keep a column of one width, none sized to its content, with the distance (as wide as 999 m) last, so they line up across groups",
+    cells.rows === 3 && cells.shapes.every((s) => s === "roster-dots players-name players-mark roster-marks players-look players-distance players-volume")
+      && tracks.length === 7 && [columns.hand, columns.link, columns.voice, columns.look].every((c) => tracks[c - 1] === "12px") && /width:\s*5ch;/.test(ruleOf(".players-distance"))
+      && columns.hand === 3 && columns.link === 4 && columns.voice === 5 && columns.look === 6 && columns.distance === 7,
     JSON.stringify({ cells, tracks, columns }));
 };
 const chatAccountChecks = async BL => {
@@ -29945,6 +30123,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   await privatePadChecks();
   await playersColumnChecks();
   await reactionWireChecks(BL);
+  await persistentSlotChecks(BL);
   await chalkboardClientChecks(BL);
   await chatAccountChecks(BL);
   await rememberedCharacterChecks(BL);
@@ -29960,6 +30139,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   exteriorEnrichmentChecks(BL);
   if(ARGS.includes("exterior-unit"))return;
   maxisChecks(BL);
+  hammockSidewaysChecks(BL);
   if(ARGS.includes("maxis-unit"))return;
   petChecks(BL);
   rulersChecks(BL);
@@ -30647,6 +30827,32 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         record("NPC sync: a local sleep quaternion yields to an upright host frame; host sleep poses lie down and wake",
           stood.puppet && stood.quaternion && stood.yaw && stood.state === "chilling" && laid.owned && laid.pose && laid.state === "sleeping"
             && woke.quaternion && woke.state === "chilling" && untouched, JSON.stringify(sideways));
+        // Regression (#547): an Ooga in bed on this page while the host has it at work keeps this page's bed trip as it
+        // follows. Handed back, that trip held it still with its rifle hidden until its status next changed, and a page
+        // then elected host sent that pose to every other.
+        {
+          BL.net.state.hostId = BL.net.state.selfId = "host";
+          sync = BL.npcSync.create(options);
+          sleeper.state = "working"; sr.quaternion = null; Object.assign(sr.position, { x: 2, y: sleeper.baseY, z: 5 }); Object.assign(sr.rotation, { x: 0, y: 0.5, z: 0 });
+          sync.update(0.3); const atWork = BL.net.npcFrame;
+          sync.dispose();
+          sleeper.state = sleeperSaved.state; Object.assign(sr.position, sleeperSaved.position); Object.assign(sr.rotation, sleeperSaved.rotation); sr.quaternion = sleepQ;
+          BL.net.state.selfId = "follower";
+          sync = BL.npcSync.create(options);
+          sleeper.slot = crew.fanSlots[0];
+          followSleeper(atWork);
+          const heldBed = sleeper.bedroll;
+          const following = sleeper.puppet && sleeper.state === "working" && sleeper.bedTravel.mode === "rest" && !!heldBed;
+          BL.net.state.hostId = "other"; sync.update(0.05);
+          crew.poseWeapon(sleeper);
+          const handedBack = { released: !sleeper.puppet, state: sleeper.state, trip: sleeper.bedTravel.mode, bedFreed: !sleeper.bedroll && heldBed.sleeper !== sleeper,
+            rifle: sleeper.parts.gun.visible && sleeper.parts.gun.parent !== sleeper.sleepWeapons, act: sleeper.act.kind };
+          sync.dispose();
+          sleeper.state = "away"; crew.refreshStates(true);
+          record("NPC sync: an Ooga this page has in bed and the host at work is handed back with no bed trip, its rifle out and its bed free",
+            following && handedBack.released && handedBack.state === "working" && handedBack.trip === "" && handedBack.bedFreed && handedBack.rifle && handedBack.act === "eat"
+              && sleeper.bedTravel.mode === "rest", JSON.stringify({ following, handedBack, restored: sleeper.bedTravel.mode }));
+        }
         // Real host frames, applied by a real follower at the host's 4 Hz: a
         // same-status move under SNAP plays across, while a status change under
         // SNAP (a passive beam on the host) places the puppet at once, its pose
@@ -32233,6 +32439,7 @@ const runTasks = async () => {
   await dispose();
 };
 if (!PICKED.length && !PERF) console.log(`Global tier only. Name scenes to test them too: npm test -- ${SCENES.join(" ")} | full`);
+if (BROWSER_ONLY) console.log("Browser scenes only; global tier not run.");
 await runTasks();
 if (ARGS.includes("cloud-hopper-arcade")) {
   await fold(sceneUrl("arcade", "character=portlandhodl&hubcache=keep"), [[arcadePlay.name, arcadePlay.run]]);
