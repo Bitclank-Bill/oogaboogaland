@@ -258,7 +258,8 @@
   // The hall's floor, in the cave in front of it (#554), so the two read as one place: packed earth under the same
   // crazy paving, laid wall to wall from the mouth back past the doors. Mouth frame (`z` falling into the cave). Built
   // once a page; cosmetic, on top of the terrain's own floor. Variant 1 stops at the doors, for the hall's copy of the cave.
-  const CAVE_FLOOR_END = 0.1, CAVE_DOORS_Z = -5.6;
+  // `CAVE_FLOOR_END` keeps a clear margin of bare cave floor inside the grass and path, which reach the mouth at z 0.
+  const CAVE_FLOOR_END = -0.35, CAVE_DOORS_Z = -5.6;
   const caveFloor = variants((toDoors) => {
     // The hall's stones as its firelight shows them, measured on screen just inside its doors. The cave has no fires of
     // its own, so they glow in those colours, the same at any hour, as the hall's firelight does.

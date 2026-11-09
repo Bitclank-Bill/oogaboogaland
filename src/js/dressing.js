@@ -67,7 +67,6 @@
   // several times cheaper to fill and probe than string-keyed voxel maps.
   const KEY = (x, y, z) => ((x + 2048) * 4096 + (y + 2048)) * 4096 + (z + 2048);
   const BOLT = ["...##", "..##.", ".##..", "#####", "..##.", ".##..", "##..."];
-  const INVADER = ["..#..#..", "...##...", "..####..", ".#.##.#.", "########", "#.####.#", "#.#..#.#", "...##..."];
   // EntropyLab reference sampled at 48 x 72: quarter-size pixels preserve the leaf, liquid and die.
   const LAB_BANNER = [
     "................................................",
@@ -724,22 +723,23 @@
       for (const cx of [-8, 7]) for (let y = 0; y <= 5; y++) disc((x, yy, z) => put(SOLID, x, yy, z, y === 5 ? 1 : 2), 2.4, y, cx, 0);
       box(SOLID, -12, 11, 6, 8, -2, 1, (x, y) => y === 8 ? 1 : 2);
     }),
-    // Ooga Arcade: a cabinet with a lit screen and a coconut for a stick (0 timber, 1 stone).
-    cabinet: (v) => author((put, box) => {
-      const BODY = v & 1 ? [20, 21, 22] : [0, 1, 2], SCREEN = [30, 40][v & 1], PAINT = v & 1 ? 18 : 19;
-      const side = (x, y, z) => (x === -6 || x === 5) && (z === -5 || z === 4) ? BODY[2] : (y >> 2) & 1 ? BODY[1] : BODY[0];
-      box(SOLID, -6, 5, 0, 11, -5, 4, side);
-      box(SOLID, -6, 5, 12, 13, -5, 6, BODY[2]);
-      box(SOLID, -3, -3, 14, 15, 4, 4, 5);
-      put(SOLID, -3, 16, 4, 48);
-      put(SOLID, 1, 14, 4, 19);
-      put(SOLID, 3, 14, 4, 18);
-      box(SOLID, -6, 5, 14, 23, -5, 2, side);
-      for (let x = -6; x <= 5; x++) for (let y = 14; y <= 23; y++) {
-        const lit = x >= -4 && x <= 3 && y >= 15 && y <= 22 && INVADER[22 - y][x + 4] === "#";
-        put(lit ? GLOW : SOLID, x, y, 3, lit ? SCREEN : x < -4 || x > 3 || y < 15 || y > 22 ? BODY[2] : 36);
+    // Ooga Arcade's yard, outside its mouth.
+    // A joystick the size of an Ooga: a red ball on a steel stick, its yellow-rimmed base set with two buttons.
+    bigJoystick: () => author((put, box) => {
+      box(SOLID, -9, 8, 0, 2, -9, 8, (x, y, z) => y === 2 && (x === -9 || x === 8 || z === -9 || z === 8) ? 18 : 5);
+      box(SOLID, -1, 0, 3, 18, -1, 0, 38);
+      for (let k = -6; k <= 6; k++) disc((x, y, z) => put(SOLID, x, y, z, x < -2 && y > 25 && z > 1 ? 16 : 19), Math.sqrt(36.5 - k * k), 23 + k);
+      for (let y = 3; y <= 4; y++) {
+        disc((x, yy, z) => put(SOLID, x, yy, z, 19), 2, y, 5, 5);
+        disc((x, yy, z) => put(SOLID, x, yy, z, 18), 2, y, -5, 5);
       }
-      box(SOLID, -6, 5, 24, 27, -5, 4, (x, y, z) => y === 27 ? BODY[2] : z === 4 && (x + y) % 3 === 0 ? 16 : PAINT);
+    }),
+    // A leaning pile of gold tokens, each pressed with a darker rim.
+    tokenStack: () => author((put) => {
+      const stack = (cx, cz, n, lean) => {
+        for (let y = 0; y < n * 2; y++) disc((x, yy, z, d) => put(SOLID, x, yy, z, d > 5 ? 59 : 18), 6, y, cx + ((y >> 1) % 3 === 2 ? lean : 0), cz);
+      };
+      stack(-3, 0, 6, 1); stack(7, 4, 3, -1); stack(1, -8, 2, 0);
     }),
     // B.C.A.: a standing abacus of banana and ivory beads on brass rods, and a lectern with the open ledger and
     // a spike of receipts.

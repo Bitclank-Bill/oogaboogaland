@@ -1348,6 +1348,8 @@
       parts.push(lit(HW + THICK - 2.5, H, 0.3, s * (2.5 + (HW + THICK - 2.5) / 2), H / 2, MOUTH + 0.15));
     }
     parts.push(lit(5, H - 3, 0.3, 0, (H + 3) / 2, MOUTH + 0.15));
+    // The strip of bare cave floor between the stones and the mouth.
+    parts.push(lit(HW * 2, 0.02, MOUTH + 0.35, 0, -0.004, (MOUTH - 0.35) / 2, "#0b0a0c"));
     // Its overhead string lights.
     for (const x of [-2.35, 2.35]) for (let z = -1.5; z >= -5.2; z -= 0.6) parts.push(box({ w: 0.11, h: 0.14, d: 0.11, color: "#ff2a1e", emissive: 1, offset: { x, y: 3.56, z } }));
     return merge(...parts);
