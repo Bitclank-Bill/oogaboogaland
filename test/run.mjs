@@ -7251,6 +7251,16 @@ const gameRulesChecks = async () => {
     const idle = session(50); idle.tell({ phase: "empty" }); idle.live.after(0.2, still());
     record("block live: the watch-deck entry opens the game on the deck, and with no round a page sends nothing", wentTo[0] === "block" && wentTo[1] === W.WATCH_DECK_PLACE && idle.live.role === "none" && idle.sent.length === 0 && idle.bins.length === 0);
     idle.live.dispose();
+    {
+      const viewerCtx = { window: { BL: { models: { box: () => ({}) } } } };
+      runInNewContext(await readFile(new URL("../src/js/block-viewer.js", import.meta.url), "utf8"), viewerCtx);
+      const V = viewerCtx.window.BL.blockViewer, node = (o = {}) => ({ ...o, kids: [] }), arena = { L: 20 }, kids = [], cam = { position: {}, target: {} };
+      const set = (v, x, y, z) => { v.x = x; v.y = y; v.z = z; };
+      const chairs = V.buildChairs(node, (p, ...c) => { p.kids.push(...c); kids.push(...c); }, node(), arena);
+      V.look(cam, arena, 0, 0, set);
+      const opts = {}; for (const k of ["clear", "horizon", "zenith", "sky"]) opts[k] = new Float32Array(3); V.white(opts);
+      record("block live: the viewing chairs are a row of plain chairs above the field, on a white backdrop", kids.length === 11 && chairs.position.y > 30 && cam.position.y > cam.target.y && [...opts.sky].every(v => v === 1) && opts.clouds === 0 && opts.bloomStrength === 0);
+    }
   }
   {
     const g = BL.game.create({ catalog: [] });

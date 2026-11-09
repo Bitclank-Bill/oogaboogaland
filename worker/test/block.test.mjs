@@ -166,14 +166,17 @@ test("frames come only from the host, in order, for this round, and reach guests
   const h = harness(t), [a, b, late] = await crowd(h, 3), m = startRound(h, [a, b]);
   const away = await h.join(9, "ooga9"); h.send(away, { t: "body", name: "ooga9" }); h.send(away, { t: "zone", name: "outside" });
   const host = m.host === a.id ? a : b, guest = m.host === a.id ? b : a, n = () => guest.ws.bins.length;
+  send(h, late, "watch", { on: 1 });
   h.room.webSocketMessage(host.ws, frame(m, 1));
-  assert.equal(n(), 1); assert.equal(late.ws.bins.length, 1); assert.equal(away.bins.length, 0); assert.equal(host.ws.bins.length, 0);
+  assert.equal(n(), 1); assert.equal(late.ws.bins.length, 0, "odd frames skip viewers"); assert.equal(away.bins.length, 0); assert.equal(host.ws.bins.length, 0);
   h.room.webSocketMessage(host.ws, frame(m, 1)); assert.equal(n(), 1, "a replay");
   h.room.webSocketMessage(guest.ws, frame(m, 2)); assert.equal(n(), 1, "not from a guest");
   h.room.webSocketMessage(host.ws, frame({ tag: m.tag + 1, epoch: m.epoch }, 3)); assert.equal(n(), 1, "another round");
   h.room.webSocketMessage(host.ws, frame({ tag: m.tag, epoch: m.epoch + 1 }, 3)); assert.equal(n(), 1, "another host");
   h.room.webSocketMessage(host.ws, frame(m, 4, W.FRAME_MAX + 1)); assert.equal(n(), 1, "too big");
   h.room.webSocketMessage(host.ws, frame(m, 5, W.FRAME_MAX)); assert.equal(n(), 2);
+  h.room.webSocketMessage(host.ws, frame(m, 6)); assert.equal(late.ws.bins.length, 1, "a viewer takes every other frame");
+  send(h, late, "watch", { on: 0 }); h.room.webSocketMessage(host.ws, frame(m, 8)); assert.equal(late.ws.bins.length, 1, "and none once it stops watching");
 });
 test("rate limits hold input, frames and control to their budgets", async t => {
   const h = harness(t), [a, b] = await crowd(h, 2), m = startRound(h, [a, b]);
@@ -225,7 +228,11 @@ test("traffic through the Worker with eight live players, simulated over ten sec
   const h = harness(t), list = await crowd(h, 8), m = startRound(h, list);
   assert.equal(m.phase, "play");
   const host = list.find(x => x.id === m.host), guests = list.filter(x => x !== host);
-  const out0 = () => list.reduce((n, x) => n + x.ws.sent.length + x.ws.bins.length, 0), base = out0();
+  // Five viewers: no body, no input, no position, asking only for the feed; they must receive frames at half rate.
+  const viewers = [];
+  for (let i = 0; i < 5; i++) { const ws = await h.join(20 + i, "ooga" + (20 + i)); h.send(ws, { t: "zone", name: W.ZONE }); h.send(ws, { t: "bf", k: "watch", on: 1 }); viewers.push({ ws }); }
+  for (const v of viewers) v.ws.sent.length = 0;
+  const out0 = () => [...list, ...viewers].reduce((n, x) => n + x.ws.sent.length + x.ws.bins.length, 0), base = out0();
   let framesIn = 0, inputsIn = 0, beats = 0;
   for (let ms = 0; ms < 10000; ms += 50) {
     h.advance(50);
@@ -234,7 +241,9 @@ test("traffic through the Worker with eight live players, simulated over ten sec
     if (ms % 2000 === 0) for (const x of list) { h.send(x.ws, { t: "bf", k: "beat" }); beats++; }
   }
   const seconds = 10, framesOut = guests.reduce((n, g) => n + g.ws.bins.length, 0), inputsOut = bf(host.ws).filter(x => x.k === "input").length, total = out0() - base;
-  t.diagnostic(`simulated 8 players, 10 s: IN frames ${framesIn / seconds}/s, inputs ${inputsIn / seconds}/s, beats ${beats / seconds}/s; OUT frames ${framesOut / seconds}/s, inputs relayed ${inputsOut / seconds}/s, total out ${total / seconds}/s`);
+  const viewerFrames = viewers.reduce((n, v) => n + v.ws.bins.length, 0);
+  t.diagnostic(`simulated 8 players + 5 viewers, 10 s: IN frames ${framesIn / seconds}/s, inputs ${inputsIn / seconds}/s, beats ${beats / seconds}/s, viewer messages 0/s; OUT frames to players ${framesOut / seconds}/s, frames to viewers ${viewerFrames / seconds}/s, inputs relayed ${inputsOut / seconds}/s, total out ${total / seconds}/s`);
+  assert.equal(viewerFrames, framesIn * 5 / 2, "half rate to each viewer"); assert.equal(viewers.reduce((n, v) => n + v.ws.sent.filter(x => x.t === "bf").length, 0), 0, "no match traffic beyond the feed while the round runs");
   assert.equal(framesOut, 7 * framesIn, "each frame reaches the seven guests");
   assert.equal(inputsOut, inputsIn, "every input reaches the host alone");
 });

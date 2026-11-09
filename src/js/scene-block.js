@@ -449,15 +449,25 @@
   };
   // The deck itself, round or no round: no actor, no input, nothing here reaches the play area.
   const showDeck = () => {
+    const loading = BL.deferred.load("block-viewer");
+    if (loading) { loading.then(() => { if (round && (watchVisit || deckLive)) seatViewer(); }).catch(() => {}); return; }
+    seatViewer();
+  };
+  const seatViewer = () => {
+    round.watchFeed(true);
     you = -9;
     phase = "watch"; paused = false;
-    if (!deck) {
-      deck = place(createNode());
-      addChild(deck, createNode({ geometry: BM.crate(0), position: { x: 0, y: 19.5, z: 9 }, scale: { x: 8, y: 0.4, z: 3 } }));
-      addChild(deck, createNode({ geometry: BM.crate(0), position: { x: 0, y: 20.2, z: 6.8 }, scale: { x: 8, y: 0.6, z: 0.15 } }));
-    }
-    setVec(deck.position, 0, 0, SIM.ARENA.L);
+    deck ||= BL.blockViewer.buildChairs(createNode, addChild, place(createNode()), SIM.ARENA);
+    deck.position.z = SIM.ARENA.L * 0.82;
     deck.visible = true;
+    // Only the match below: no drifting clouds, campfire, weather or sounds of its own.
+    for (const n of mapClouds) n.visible = false;
+    for (const n of skyClouds) n.visible = false;
+    if (fireNode) fireNode.visible = false;
+    if (dancers) for (const d of dancers) d.visible = false;
+    if (rain) rain.visible = false;
+    if (boltRing) boltRing.visible = false;
+    if (boltNode) boltNode.visible = false;
     el.board.hidden = el.results.hidden = el.toolBar.hidden = el.feed.hidden = true;
     el.watch.hidden = false; el.strip.hidden = false; el.center.hidden = el.notice.hidden = true;
     strip.shown = false; updateStrip();
@@ -465,11 +475,8 @@
   };
   const joinDeck = () => { if (round.match && round.match.phase === "play") { arrival = true; round.watchNow(); } };
   const deckView = () => {
-    camera.fov = 62 * Math.PI / 180;
-    const A = SIM.ARENA, z = A.L + 9.5;
-    setVec(camera.position, 0, 22, z);
-    const yaw = Math.PI + deckYaw, c = Math.cos(deckPitch);
-    setVec(camera.target, Math.sin(yaw) * c * 40, 22 - Math.sin(deckPitch + 0.32) * 40, z + Math.cos(yaw) * c * 40);
+    BL.blockViewer.look(camera, SIM.ARENA, deckYaw, deckPitch, setVec);
+    BL.blockViewer.white(RENDER_OPTS);
     if (fpGun) fpGun.visible = fpGunL.visible = false;
   };
   const whoName = (id) => { const rec = BL.net.remotes.get(id); return rec ? (rec.display || rec.login || "an Ooga") : BL.net.state.selfId === id ? "You" : "an Ooga"; };
@@ -494,7 +501,7 @@
     el.liveReady.textContent = me && isReady() ? "Not ready" : "Ready!";
     el.liveWatch.hidden = !(play && !seated && phase === "board");
     if (el.watch) {
-      el.watchLine.textContent = !play ? (me ? "No round running. You're registered: open Main menu to ready up." : "No round running. Register here, or open the lobby from Main menu.") : me ? "You're registered for the next round. It opens when this one ends." : "Round under way · you're on the watch deck. You can't enter until it ends.";
+      el.watchLine.textContent = !play ? (me ? "No round running. You're registered: open Main menu to ready up." : "No round running. Register here, or open the lobby from Main menu.") : me ? "You're registered for the next round. It opens when this one ends." : "Round under way · you're in the viewing chairs. You can't enter until it ends.";
       el.watchReg.textContent = me ? "Unregister" : "Register for next round";
       el.watchScore.textContent = sim ? `Blue ${sim.score.blue} · Red ${sim.score.red}` : "";
     }
@@ -505,8 +512,6 @@
   const openRound = () => {
     round = BL.blockLive.create({ onMatch: renderLive, onStart: liveBegin, onHost: () => notice("You're hosting this round now", 2400) });
     arrival = true;
-    const own = BL.net.ownAmong(contributors.activeRoster);
-    if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); }
     round.hello();
     renderLive(null);
     if (watchVisit) showDeck();
@@ -519,7 +524,8 @@
     closeWalletMenu();
     if (liveRound() && !sim.over) round.unregister();
     if (el.watch) el.watch.hidden = true;
-    if (deck) deck.visible = false;
+    if (deck) { deck.visible = false; for (const n of mapClouds) n.visible = true; if (fireNode) fireNode.visible = true; if (dancers) for (const d of dancers) d.visible = true; }
+    if (onDeck() && round) round.watchFeed(false);
     you = 0; watchVisit = false;
     if (kept) { Object.assign(selection, kept); kept = null; liveCast = null; if (sim) { const was = sim.map; recast(); if (was !== selection.map) { buildMap(); mapBase = null; } } }
     phase = "board";
@@ -2046,7 +2052,7 @@
   const preview = { spin: 0, wide: false };
   // The start menu's sky: the hub's voxel clouds drifting round the view, high over the map.
   const CLOUD_Y = 220, CLOUD_SPAN = 170, CLOUD_DRIFT = 2.2, CLOUD_CALM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let skyClouds = [], skyPerch = null;
+  let skyClouds = [], skyPerch = null, mapClouds = [];
   const buildSkyClouds = () => {
     const rand = BL.math.mulberry32(8801);
     skyClouds = [];
@@ -2130,15 +2136,15 @@
       readEvents();
       updateStrip();
       if (sim.over) finish();
-    } else if (onDeck()) { controls.read(); round.after(dt, move); readEvents(); updateStrip(); }
+    } else if (onDeck()) { controls.read(); round.after(dt, move); sim.eventCount = 0; updateStrip(); }
     else controls.read();
     poseActors(dt, elapsed);
     poseBlocks(elapsed);
     poseCrates();
-    poseCompanions(dt, elapsed);
+    if (!onDeck()) poseCompanions(dt, elapsed);
     poseStamina();
     posePads(elapsed);
-    poseFire(elapsed);
+    if (!onDeck()) poseFire(elapsed);
     poseGorillas(dt, elapsed);
     poseHooks(elapsed);
     paintStruggle();
@@ -2149,7 +2155,7 @@
     if (phase === "board") boardView(elapsed, dt);
     else if (onDeck()) deckView();
     else updateCamera(dt);
-    poseWeather(dt);
+    if (!onDeck()) poseWeather(dt);
     if (phase === "play") drawMap(dt, elapsed);
     if (sim) {
       // The held sounds: rain in a storm, and the whir while the visitor rides a zipline.
@@ -2288,6 +2294,7 @@
     }
     const A = SIM.ARENAS[selection.map];
     mapRoot = place(createNode());
+    mapClouds = [];
     const add = (node) => { addChild(mapRoot, node); return node; };
     add(createNode({ geometry: BM.arena(SIM.MAPS.indexOf(selection.map)) }));
     // The floating island it stands on (its rock, cliffs and terrain), and the hub's white clouds drifting under it.
@@ -2299,7 +2306,7 @@
     boltRing = add(createNode({ geometry: BM.ring(0), visible: false, sightHidden: true, scale: { x: 3.2, y: 1, z: 3.2 } }));
     for (let k = 0; k < 12; k++) {
       const ang = k / 12 * Math.PI * 2 + 0.3, out = k % 3 === 0 ? 0.55 : 1.25, y = -9 - (k % 4) * 4.5;
-      add(createNode({ geometry: BL.hubModels.cloud(k % 3), sightHidden: true, position: { x: Math.sin(ang) * (A.W * out + 6), y, z: Math.cos(ang) * (A.L * out + 6) }, rotation: { x: 0, y: ang, z: 0 } }));
+      mapClouds.push(add(createNode({ geometry: BL.hubModels.cloud(k % 3), sightHidden: true, position: { x: Math.sin(ang) * (A.W * out + 6), y, z: Math.cos(ang) * (A.L * out + 6) }, rotation: { x: 0, y: ang, z: 0 } })));
     }
     // The hub's mossy boulders at the foot of each outcrop, half sunk into the rock.
     let boulders = 0;
@@ -2711,7 +2718,11 @@
     hud.onAction((action) => {
       if (action === "block-again" && kept) showBoard();
       else if (action === "block-start" || action === "block-again") { if (registered()) round.unregister(); start(); }
-      else if (action === "block-live-reg") { if (registered()) round.unregister(); else round.register(); }
+      else if (action === "block-live-reg") {
+        const own = BL.net.ownAmong(contributors.activeRoster);
+        if (registered()) { round.unregister(); BL.net.setBody(null); }
+        else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); round.register(); }
+      }
       else if (action === "block-live-ready") round.setReady(!isReady());
       else if (action.startsWith("block-live-size-")) round.setOptions(Number(action.slice(-1)), WIRE.MAPS.indexOf(selection.map));
       else if (action === "block-live-watch") joinDeck();

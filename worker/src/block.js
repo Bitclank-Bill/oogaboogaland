@@ -111,6 +111,7 @@ export const block = {
   },
   arrive(room, p) {
     if (p.zone === W.ZONE) block.tell(room, room.blockMatch, p);
+    else p.blockWatch = false;
   },
   message(room, p, msg) {
     const now = Date.now(), m0 = room.blockMatch;
@@ -126,6 +127,8 @@ export const block = {
     }
     if (!take(p, "control", CONTROL_HZ, CONTROL_BURST, now) || p.zone !== W.ZONE) return;
     if (msg.k === "hello") { block.tell(room, m0, p); return; }
+    // Viewers ask for frames; anyone else in the area receives none. No body needed, nothing about them is kept but this.
+    if (msg.k === "watch") { p.blockWatch = msg.on === 1; return; }
     if (!W.eligible(p)) return;
     if (m0 && (W.seatOf(m0, p.id) >= 0 || m0.reg.includes(p.id))) room.blockSeen.set(p.id, now);
     block.sweep(room);
@@ -170,7 +173,7 @@ export const block = {
       if (block.finish(room, m, msg.w)) block.tell(room, m);
     }
   },
-  // A binary snapshot, from the round's host only, to everyone else in the area: the seated and the watch deck.
+  // A binary snapshot, from the round's host only, to the seated and to viewers who asked for it.
   frame(room, p, data) {
     const m = room.blockMatch;
     if (!m || m.phase !== "play" || p.id !== m.host || p.zone !== W.ZONE || data.byteLength < W.FRAME_HEADER || data.byteLength > W.FRAME_MAX) return;
@@ -179,6 +182,7 @@ export const block = {
     if (view.getUint32(4, true) !== m.tag || view.getUint32(8, true) !== m.epoch || q <= m.q) return;
     m.q = q;
     room.blockSeen.set(p.id, Date.now());
-    for (const other of room.players.values()) if (other !== p && other.zone === W.ZONE) room.send(other.ws, data);
+    // Seated players take every frame; a viewer every other one (viewers cost the room half a player's frames, and nothing else).
+    for (const other of room.players.values()) if (other !== p && other.zone === W.ZONE && (W.seatOf(m, other.id) >= 0 || (other.blockWatch && q % 2 === 0))) room.send(other.ws, data);
   }
 };

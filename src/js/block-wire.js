@@ -42,6 +42,7 @@
     if (m.v !== WIRE) return null;
     const base = { t: "bf", k: m.k };
     if (["hello", "reg", "unreg", "beat"].includes(m.k)) return base;
+    if (m.k === "watch") return integer(m.on, 0, 1) ? { ...base, on: m.on } : null;
     if (m.k === "ready") return integer(m.r, 0, 1) ? { ...base, r: m.r } : null;
     if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, 0, MAPS.length - 1) ? { ...base, n: m.n, m: m.m } : null;
     if (!session(m.s)) return null;
