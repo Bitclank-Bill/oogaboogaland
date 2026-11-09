@@ -64,6 +64,8 @@
   };
   // How near a play spot counts as standing at it, and where walking out leaves.
   const REACH = 1.1, EXIT_Z = HALL.front - 0.2;
+  // How far past the doors the picture of the mainland hangs, at the passage's end.
+  const DOOR_VIEW = 3.95;
   // The jackpot wheel's top prize, and the pitch of the level view of it a spin swings the camera to.
   const WHEEL_JACKPOT = Math.max(...AM.WHEEL_VALUES), WHEEL_PITCH = -0.06;
   // What the Oogas say about the room, in their own words: [tooltip, what a tap tells you].
@@ -99,6 +101,8 @@
   // Who walked in, kept across a game so they come back out as themselves, and the ticket balance at the last visit,
   // so the wheel knows when to celebrate.
   let lastPlayer = null, lastTickets = null, unsubscribeAccount = null, remotes = null, footsteps = null;
+  // The way out (#554): the doors, the walk through them, and the last frame held over the switch.
+  let doors = null, doorWalk = null, grabNext = false, still = 0, stillHold = 0, sceneCanvas = null;
   const scoreSubscriptions = [];
   const machineBest = (kind, id) => kind === "hockey" ? 0 : BL.highscores.best(kind, id) ?? game.arcadeBest(id);
   const refreshScores = (kind) => {
@@ -157,6 +161,22 @@
     if (leaving) return;
     leaving = go("hub");
   };
+  // Through the doors and out to the island, as one walk: the island's own frame takes over from the hall's.
+  const throughDoors = (crossing) => {
+    if (leaving) return false;
+    world.arcadeCrossing = crossing;
+    grabNext = true;
+    pilot.controls.reset(); input.reset(); pilot.setActive(false); hud.tooltip.hide();
+    leaving = true;
+    if (!go("hub", null, true)) { leaving = false; world.arcadeCrossing = null; pilot.setActive(true); return false; }
+    return true;
+  };
+  // What the island needs ready first: on a released hub, its pure builds.
+  const readyIsland = (ctx) => () => {
+    const scene = BL.scenes.hub;
+    if (!scene.buildSteps || scene.retained) return null;
+    return BL.buildTasks.run(BL.models.withScope("hub", () => scene.buildSteps(ctx)), "hub", ctx.signal);
+  };
   // Into a game; a carnival machine names which of its kind (`place`), and the game comes back to it.
   const open = (id, place = null) => {
     if (leaving) return;
@@ -200,7 +220,7 @@
     node.cameraHidden = true;
   };
   // A cabinet return or interrupted load makes the hall playable again.
-  const stay = () => { leaving = openingGame = false; revealCabinetPlayers(); cabinetFocus = null; captureOnArrival = true; };
+  const stay = () => { leaving = openingGame = false; revealCabinetPlayers(); cabinetFocus = null; captureOnArrival = true; grabNext = false; if (doorWalk) doorWalk.reset(); pilot.setActive(true); };
 
   // The line under each loop: the visitor's best in that game, or a call to play. A retro game's best is an arcade one.
   const bestOf = (id) => {
@@ -226,7 +246,11 @@
   const build = () => {
     const hall = AM.hall(), frame = AM.signFrame(), S = LAYOUT.sign;
     addChild(root, createNode({ geometry: hall.floor }), createNode({ geometry: hall.rock }), createNode({ geometry: hall.timber }),
-      createNode({ geometry: hall.outside, sightHidden: true }));
+      // Past the doors: the mainland as the island photographed it on the way in (`world.arcadeView`, from the doors
+      // looking out), or with no visit from the island, the jungle drawn simply.
+      world.arcadeView
+        ? createNode({ geometry: BL.factoryModels.outsideView(world.arcadeView, DOOR_VIEW), position: { x: 0, y: 0, z: HALL.front + DOOR_VIEW }, rotation: { x: 0, y: Math.PI, z: 0 }, sightHidden: true })
+        : createNode({ geometry: hall.outside, sightHidden: true }));
     // The haunted hallway off the deck's right end, and its carved sign over the mouth, facing the hall.
     const haunt = AM.haunt(), ghostSign = BL.hubModels.caveSign("Ghost Hunter", "ghost", false, true), gb = boundsOf(ghostSign), gk = 3.2 / (gb.max[0] - gb.min[0]);
     addChild(root, createNode({ geometry: haunt.rock }), createNode({ geometry: haunt.props }), createNode({ geometry: haunt.glass, sightHidden: true }),
@@ -1076,7 +1100,9 @@
   // side of FENCE_X.
   const ARENA = HAUNT.arena, HAUNT_SIDE = 0.65, ARENA_SIDE = 0.75, GHOST_KEEP = 3.7, FENCE_X = HAUNT.end - 0.05, FENCE_GAP = 0.15, HALLWAY_HOLD = 0.03;
   const wallDepth = (x, z, r, feet = 0) => {
-    const hall = Math.max(Math.abs(x) + r - SIDE_FACE, BACK_FACE + r - z, Math.min(z + r - FRONT_FACE, Math.abs(x) + r - JAMB));
+    // The doors stand shut across the doorway unless they are open.
+    const front = doors && doors.k < 0.65 ? z + r - FRONT_FACE : Math.min(z + r - FRONT_FACE, Math.abs(x) + r - JAMB);
+    const hall = Math.max(Math.abs(x) + r - SIDE_FACE, BACK_FACE + r - z, front);
     if (feet < HAUNT.y - 1) return hall;
     const d = Math.hypot(x - ARENA.x, z - ARENA.z), fenced = fenceK > 0.15;
     let arena = Math.max(d + r - ARENA.r + ARENA_SIDE, gameMode ? -Infinity : GHOST_KEEP + r - d, fenced ? FENCE_X + FENCE_GAP + r - x : -Infinity);
@@ -1146,7 +1172,7 @@
   // hold a walk, but the floor may lie any way below, so a walking or running jump carries on as on the island (#420).
   const flyableFor = (ax, az, bx, bz, y, height, actor) => {
     const r = Math.min(actor.bodyRadius || BODY, BODY);
-    if (bz > HALL.front + 2 && bx < HALL.halfW || underStair(bx, bz, y)) return false;
+    if (bz > HALL.front + 3.7 && bx < HALL.halfW || underStair(bx, bz, y)) return false;
     if (wallDepth(bx, bz, r, y) > Math.max(0, wallDepth(ax, az, r, y)) + 1e-6) return false;
     for (let i = 0; i < blocks.length; i++) if (!clearOf(blocks[i], ax, az, bx, bz, r, y)) return false;
     for (let i = 0; i < RAILS.length; i++) if (!clearOf(RAILS[i], ax, az, bx, bz, r, y)) return false;
@@ -1817,6 +1843,7 @@
     root = createNode();
     hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
     hooks = {};
+    sceneCanvas = ctx.canvas;
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     // In the haunted hallway the view's target and the camera keep to the passage under its roof, and in the arena
     // inside its wall and under its top, `pad` from each.
@@ -1981,6 +2008,19 @@
       pilot.refreshCombat();
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
+    // The doors out to the island (arcade-doors.js).
+    const crossing = ctx.from === "hub" ? world.arcadeCrossing : null;
+    world.arcadeCrossing = null;
+    doors = BL.arcadeDoors.create({ parent: root, z: HALL.front });
+    doorWalk = avatar ? BL.arcadeDoors.walk({ door: doors, frame: { x: 0, z: 0, sr: 0, cr: 1, ry: 0, plane: HALL.front, floor: 0 }, sign: 1, pilot, crew: people, camera, prepare: readyIsland(ctx), onThrough: throughDoors, through: true }) : null;
+    still = stillHold = 0; grabNext = false;
+    if (crossing && avatar && doorWalk) {
+      const x = crossing.across, z = HALL.front - crossing.past;
+      Object.assign(avatar.root.position, { x, y: avatar.baseY, z });
+      pilot.navigate({ position: { x, y: 0, z }, yaw: 0, pitch: crossing.pitch, dist: crossing.dist, framed: true });
+      doorWalk.arrive(crossing, avatar, 0, crossing.past);
+      still = 1; stillHold = BL.factoryWindow.GLIDE.still;
+    }
     unsubscribeAccount = BL.net.subscribe(accountChanged);
     crowd = []; walkers = [];
     // Other signed-in players keep their real Ooga or gorilla avatars; no simulated roster crowd is created.
@@ -2053,7 +2093,7 @@
     arcadeScene.input = input;
     arcadeScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      arcade: { screens, crowd, walkers, bots, spin, play, open, stations, carnival, nearStation, supportAt, slide: SLIDE, railSitter, walkable: walkableFor, flyable: flyableFor, sightClear, pointHidden, blocks, audio, staff, life, get frame() { return shownFrame; } },
+      arcade: { screens, crowd, walkers, bots, spin, play, open, stations, carnival, nearStation, supportAt, slide: SLIDE, railSitter, walkable: walkableFor, flyable: flyableFor, sightClear, pointHidden, blocks, audio, staff, life, get frame() { return shownFrame; }, get doors() { return doors; }, get doorWalk() { return doorWalk; } },
       // HALLOWEEN: the arena's hunt (its herald's until it has loaded).
       get halloween() { return ghosts ? ghosts.debug : ghostEntry && ghostEntry.debug; },
       get arena() { return { armed, inArena, zone: zoneNow, fence: fenceK, gameMode, along: hallwayAlong, hearing: huntHearing, blendTo: BL.net.state.blendTo, blendT: BL.net.state.blendT }; }
@@ -2089,6 +2129,9 @@
     }
     if (!leaving) pilot.readInput(dt);
     slideStep(dt);
+    if (doorWalk && !leaving) doorWalk.update(dt, pilot.player);
+    else if (doors) doors.update(dt, doorWalk && doorWalk.holding);
+    if (still > 0 && (stillHold -= dt) <= 0) still = Math.max(0, still - dt / BL.factoryWindow.GLIDE.dissolve);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
     // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
@@ -2193,7 +2236,6 @@
           hud.setAct(act);
         } else { hud.hideHint(); pilot.showAct(); }
       }
-      if (p.z > EXIT_Z + 1.2 && Math.abs(p.x) < HALL.door) leaveCave();
     }
     ghostChannel.update(dt);
     if (ghosts) { ghosts.update(dt); tess.update(dt, elapsed); }
@@ -2212,11 +2254,16 @@
     remotes.drawNames(ctx2d, project);
     if (hockeyPlayers) hockeyPlayers.draw(ctx2d, project);
     if (ghosts) ghosts.drawOverlay(ctx2d, project);
+    // Over everything: the island's last frame, dissolving off the hall's first; and the hall's own, taken once drawn
+    // as the Ooga walks out through the doors.
+    BL.factoryWindow.still(ctx2d, still);
+    if (grabNext) { grabNext = false; BL.factoryWindow.grab(sceneCanvas); }
   };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
     captureOnArrival = false;
+    doors = doorWalk = null;
     revealCabinetPlayers();
     openingRequest++;
     if (!openingGame) BL.net.leaveCabinet();

@@ -65,8 +65,6 @@
   const CLOSE_VIEW = { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 6, orbitDist: 6 };
   const STEP_MAX = pilotMod.WALK.step;
   const MAGAZINE_REACH = 0.7, MAGAZINE_SCALE = 2.4;
-  // Space at Ooga Arcade's mouth works from MOUTH_REACH of a point MOUTH_ACTION_Z inside its doorway.
-  const MOUTH_REACH = 3.2, MOUTH_ACTION_Z = -3.6;
   const MATRIX_GATE_HIDDEN_Y = 3.2, MATRIX_BUTTON_REACH = 3.4, MATRIX_BUTTON_USE_REACH = 2.2;
   const MIRROR_GATE_Z = 0.28;
   const MIRROR_GATE_CLOSED = true;
@@ -335,6 +333,8 @@
   // Its floating lanterns (one node each over one geometry), and whether they showed last frame.
   const ringLanterns = [];
   let ringLanternsShown = false;
+  // The cave cabinet a Cloud Hopper run began at, when it began at one on the island (#554).
+  let cloudYard = null;
   let magazine, magazineState, clankers, clankerPlay, clankerMeshes, clankerPartOwners, grabSupportEntry = null, entropyLab, chalkboard, factoryMouth = null, arcadeMouth = null, bcaMouth = null, glCanvas = null;
   const dragHand = new Float64Array(3), dragFoot = new Float64Array(3);
   const THROW_SWING_TIME = 0.28, THROW_SETTLE_TIME = 0.2, THROW_CARRY_SPEED_MAX = 8;
@@ -794,7 +794,7 @@
   const matrixGates = [];
   const sealedCaves = [];
   // Mouths without a specialized portal share the lab's transparent contact veil.
-  const caveVeils = [], ARCADE_VEIL_TINT = [1, 0.16, 0.12];
+  const caveVeils = [];
   let sceneryVisible = 0, sceneryRadiusCulled = 0, sceneryPathCulled = 0, sceneryFixedCulled = 0, sceneryReflows = 0;
   const addTarget = (node, owner, opts) => {
     input.add(node, owner, opts);
@@ -1333,7 +1333,7 @@
     lab: { glass: 4, icon: "die", banners: [[-1, 1], [1, 1]], string: ["bulb", 4], ceiling: [[-1.6, 1.6, -1.5, -5.6, 3.0, [0.3, 0.72], "tube"]], pieces: [["flaskBench", -5.3, 1.1], ["die", -4.1, 2.8, 0, 1], ["die", -3.5, 3.6, 1, 3], ["die", -4.1, 2.8, 1, 4, 0.5], ["terminal", 3.7, 1.0], ["die", 4.3, 3.2, 1, 2]] },
     matrix: { glass: 2, icon: "glyph", banners: [[1, 2], [-1, 2]], string: ["bulb", 2], pieces: [["monolith", -5.0, 0.9, 0, 0], ["monolith", 5.0, 0.9, 0, 1], ["runeStone", -4.2, 2.8, 0, 0], ["runeStone", 4.4, 2.9, 0, 1]] },
     lightning: { glass: 0, icon: "bolt", banners: [[-1, 0], [1, 0]], string: ["hanging", 0, [0.3, 0.7]], boards: true, pieces: [["gauge", 5.0, 0.9], ["cart", 5.7, 2.4, 1], ["coil", 3.8, 3.4]] },
-    arcade: { glass: 3, icon: "invader", banners: [[-1, 3], [1, 3]], string: ["hanging", 3, [0.12, 0.5, 0.88]], ceiling: [[-2.35, 2.35, -1.5, -5.8, 3.0, [0.35, 0.8]]], pieces: [["cabinet", -3.6, 1.0, 0, 0], ["cabinet", -2.9, 2.2, 0, 1]] },
+    arcade: { glass: 3, icon: "invader", banners: [[-1, 3], [1, 3]], string: ["hanging", 3, [0.12, 0.5, 0.88]], ceiling: [[-2.35, 2.35, -1.5, -5.2, 3.72, [0.1, 0.26, 0.42, 0.58, 0.74, 0.9], "bulb"]], pieces: [["cabinet", -3.6, 1.0, 0, 0], ["cabinet", -2.9, 2.2, 0, 1]] },
     bca: { glass: 0, icon: "abacus", banners: [[-1, 4], [1, 4]], string: ["hanging", 0, [0.2, 0.5, 0.8]], ceiling: [[-1.6, 1.6, -2.2, -5.6, 3.1, [0.5]]], pieces: [["abacus", -5.0, 1.0], ["ledger", 5.0, 1.0, 2]] }
   };
   // Themes choose only [side, variant]. The whole standard stays behind and outside the lanterns,
@@ -2158,15 +2158,9 @@
     if (slot.status === "headquarters") {
       addChild(group, createNode({ position: { x: 0, y: 0, z: 0 }, geometry: headquartersModels.entranceRamp(), depthBias: 0.25 }));
     } else if (slot.status === "open" && slot.scene === "arcade") {
-      // Ooga Arcade's mouth: two cabinets glowing in the dark inside, each showing its loop's first frame.
-      const AM = BL.arcadeModels;
-      for (const [c, x, turn] of [[AM.CABINETS[0], -1.3, 0.25], [AM.CABINETS[3], 1.3, -0.25]]) {
-        const cabinet = createNode({ position: { x, y: 0, z: -4.4 }, rotation: { x: 0, y: turn, z: 0 }, geometry: AM.cabinet(c.index) });
-        addChild(cabinet, createNode({ position: { x: 0, y: AM.SCREEN.y, z: AM.SCREEN.z }, rotation: { x: AM.SCREEN.lean, y: 0, z: 0 }, geometry: AM.attractFrames(c.game)[0], sightHidden: true }));
-        addChild(group, cabinet);
-        solids.add(cabinet);
-      }
-      arcadeMouth = { slot, x: m.x + ax * MOUTH_ACTION_Z, y: m.floorY + 1.1, z: m.z + az * MOUTH_ACTION_Z };
+      // Ooga Arcade's cave: its doors at the back and the most played cabinets recessed down its walls (arcade-entrance.js).
+      const entrance = BL.arcadeEntrance.build({ root, group, mouth: m, solids, addTarget, removeTarget, reachable: actionReachable });
+      arcadeMouth = { slot, x: m.x + ax * BL.arcadeEntrance.DOOR_Z, y: m.floorY + 1.1, z: m.z + az * BL.arcadeEntrance.DOOR_Z, entrance };
     } else if (slot.status === "open" && slot.scene === "lab") {
       const lab = hubModels.entropyLab(m.room, m.floorY);
       addChild(group, lab.node);
@@ -2249,11 +2243,11 @@
       });
       if (mirrorCave && mirrorCave.slot === slot) mirrorCave.sign = sign;
     }
-    // The Factory's inner shield has its own crossing; its outer arch wears the shared cave veil too.
-    if (slot.status !== "mirror" && slot.scene !== "lab" && slot.place !== "bca") {
+    // The Factory's inner shield has its own crossing; its outer arch wears the shared cave veil too. The Arcade has doors.
+    if (slot.status !== "mirror" && slot.scene !== "lab" && slot.place !== "bca" && slot.scene !== "arcade") {
       const seal = slot.status === "dark" ? sealedCaves[sealedCaves.length - 1] : null;
       caveVeils.push({ mouth: m, group, opening: rim.geometry.openingBounds,
-        plane: seal ? seal.stopZ + 0.02 : PORTAL_Z, tint: slot.scene === "arcade" ? ARCADE_VEIL_TINT : null, phase: null });
+        plane: seal ? seal.stopZ + 0.02 : PORTAL_Z, tint: null, phase: null });
     }
     dressMouth(slot, m, group);
     addChild(root, group);
@@ -5716,6 +5710,8 @@
         return `${o.crate.loot.tier} crate · tap to open`;
       case "cave":
         return o.slot.status === "open" ? o.slot.scene === "lab" ? `${o.slot.name} · island workshop` : o.slot.title ? `${o.slot.name} · ${o.slot.title}` : `${o.slot.name} · tap to enter` : o.slot.status === "headquarters" ? "Headquarters · walk down the ramp" : o.slot.status === "mirror" ? `${o.slot.name} · mirror` : o.slot.status === "sleeping" ? "A project sleeps here · zzz" : o.slot.soon ? `${o.slot.name} · coming soon` : "An empty cave";
+      case "arcade-cabinet":
+        return arcadeMouth.entrance.tip(o);
       case "cave-sign":
         return `${o.slot.name} · open GitHub repo in a new tab`;
       case "gate":
@@ -6053,7 +6049,7 @@
       HAMMOCK_FROM.x = x; HAMMOCK_FROM.z = z;
       return hammock.free(HAMMOCK_FROM) || HAMMOCK_FULL;
     }
-    if (arcadeMouth && actionWithinReach(x, y, z, arcadeMouth.x, arcadeMouth.y, arcadeMouth.z, MOUTH_REACH)) return arcadeMouth;
+    if (arcadeMouth) { const near = arcadeMouth.entrance.nearby(x, y, z, player); if (near) return near; }
     if (player && timechainIsland.gate && timechainIsland.gate.nearKeypad(x, y, z)) return timechainIsland.gate.action;
     if (player && nearChalkboard(x, y, z)) return CHALK_ACTION;
     return null;
@@ -6069,7 +6065,7 @@
     else if (action.sleep) crew.sleepPlayer(action);
     else if (action === timechainIsland.gate.action) timechainIsland.gate.engage();
     else if (action === CHALK_ACTION) chalkboard.open(null);
-    else enterCave(action.slot);
+    else arcadeMouth.entrance.use(action);
   };
   // Stationary functional controls take priority over a jump or jetpack thrust.
   const useNear = (x, z, reach, feetY) => {
@@ -6080,8 +6076,15 @@
   };
   const releaseForScene = id => {
     if (id === "factory" && factoryMouth) factoryMouth.snap = true;
+    if (id === "arcade" && arcadeMouth) arcadeMouth.snap = true;
     pilot.release(true);
     hud.tooltip.hide();
+  };
+  // The Arcade cave's doors and cabinets, handed this visit's controls (arcade-entrance.js).
+  const bindArcadeEntrance = (ctx) => {
+    if (!arcadeMouth) return;
+    arcadeMouth.entrance.bind({ pilot, crew, input, hud, ctx, world, go, renderer, camera, cabinet: ctx.cabinet, coarse: COARSE, refreshPrompt: () => {},
+      entering: () => entering, setEntering: (on) => { entering = on; }, grab: () => { factoryWalk.grab = true; arcadeMouth.snap = true; } });
   };
   const enterScene = (view, id) => {
     if (entering) return;
@@ -6224,8 +6227,8 @@
   // Step out into the mainland's Arcade overhang, independent of the carried camera/combat mode.
   // This is a doorway arrival, not the map destination's exterior framing (which can be blocked).
   const arriveFromArcade = () => {
-    const m = island.mouths.find((mouth) => mouth.id === arcadeMouth.slot.id);
-    pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 },
+    const m = island.mouths.find((mouth) => mouth.id === arcadeMouth.slot.id), out = BL.arcadeEntrance.DOOR_Z + 1.4;
+    pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * out, y: m.floorY, z: m.z + Math.cos(m.ry) * out },
       yaw: m.ry + Math.PI, pitch: 0.18, dist: FOLLOW.min });
     cameraPreviousValid = cameraTerrainValid = cameraTerrainRecovering = cameraManualContact = false;
     cameraTrailPlayer = null; cameraTrailCount = cameraTrailNext = 0;
@@ -6312,6 +6315,13 @@
   };
   // A picture from a shield in `group` at `from` along its mouth's axis `m`, looking out, with the group and the Ooga
   // walking in hidden, cropped to `V` and graded: the record a scene hangs past its own end of the tunnel.
+  // Ooga Arcade's exit looks at this from behind its doors (#554): the cave and the mainland past its mouth, as seen from
+  // the doors looking out, to the passage's measure in the hall, with the doors and their gorillas left out of the shot.
+  const ARCADE_VIEW = { width: 512, eye: 1.7, across: 0.43, up: 0.355, down: 0.43, colour: 1, mist: 0, haze: [0, 0, 0] };
+  const snapArcadeView = () => {
+    const entrance = arcadeMouth.entrance, view = snapFromShield(entrance.door.node, arcadeMouth.slot && island.mouths.find((m) => m.id === arcadeMouth.slot.id), BL.arcadeEntrance.DOOR_Z, ARCADE_VIEW);
+    if (view) world.arcadeView = view;
+  };
   const snapFromShield = (group, m, from, V) => {
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry);
     const W = glCanvas.width, H = glCanvas.height, aspect = W / H, t = Math.max(V.up, V.down, V.across / aspect);
@@ -6473,6 +6483,9 @@
       case "cave":
         if (o.slot.status === "open") enterCave(o.slot);
         else hud.toast(tooltipFor(hit));
+        break;
+      case "arcade-cabinet":
+        arcadeMouth.entrance.tap(o);
         break;
       case "cave-sign":
         window.open(`https://github.com/${o.repo}`, "_blank", "noopener,noreferrer");
@@ -6657,10 +6670,7 @@
       } else if (action === CHALK_ACTION) {
         hud.hint(COARSE ? "Tap WRITE to use the chalkboard" : "Press Space to write on the chalkboard");
         hud.setAct("WRITE");
-      } else {
-        hud.hint(COARSE ? "Tap ENTER ARCADE to go in" : "Press Space to enter Ooga Arcade");
-        if (player) hud.setAct("ENTER ARCADE");
-      }
+      } else arcadeMouth.entrance.prompt(action, hud, COARSE);
     } else if (hadPlayerPrompt || player) pilot.showAct();
   };
   const syncMatrixInside = (player) => {
@@ -8001,6 +8011,7 @@
     updatePortalEffects(entropyLab.phase, dt);
     for (const veil of caveVeils) updatePortalEffects(veil.phase, dt);
     if (factoryMouth && !cloudPlaying()) factoryShield(dt, elapsed);
+    if (arcadeMouth && !cloudPlaying()) arcadeMouth.entrance.update(dt, elapsed, pilot.player);
     if (bifrostIsle && !cloudPlaying()) bifrostGate(dt, elapsed);
     if (bcaMouth) bcaVeil(dt, elapsed);
     if (factoryDeparting || bifrostDeparting) { npcGhosts.paint(dt); return; } // The Ooga through a shield and its camera hold through the director fade.
@@ -8188,6 +8199,7 @@
     // clampCamera resolves the eye's entrance crossing inside pilot.update.
     // Commit portal and Matrix state after that, before rendering, so mirror and interior never disagree.
     syncMatrixInside(player);
+    if (arcadeMouth && !cloudPlaying()) arcadeMouth.entrance.afterCamera(camera);
     // The factory's window follows the eye, so it moves once the camera is final for the frame.
     if (factoryMouth && factoryMouth.hall) factoryMouth.hall.update(dt, camera, RENDER_OPTS, !factoryMouth.phase.paused);
     if (factoryMouth && factoryMouth.roofWindow) {
@@ -10836,7 +10848,9 @@
     actorTransition.sourceRoot = actorTransition.sourceHead = null;
     if (factoryMouth && factoryMouth.snap) snapFactoryView();
     if (bifrostIsle && bifrostIsle.snap) snapBifrostView();
+    if (arcadeMouth && arcadeMouth.snap) snapArcadeView();
     if (factoryMouth) factoryMouth.snap = false;
+    if (arcadeMouth) arcadeMouth.snap = false;
     if (bifrostIsle) bifrostIsle.snap = false;
     // Heimdall's horn closes its sound as a full leave does; his next blast opens it again.
     if (bifrostIsle) bifrostIsle.heimdall.dispose();
@@ -10906,6 +10920,7 @@
     Object.assign(factoryWalk, { phase: 0, cave: null, seen: false, through: false, beat: 0, grab: false, still: 0, hold: 0, settle: false });
     world.islandKeep = null;
     if (factoryMouth) factoryMouth.snap = false;
+    if (arcadeMouth) arcadeMouth.snap = false;
     if (bifrostIsle) bifrostIsle.snap = false;
     hubScene.root = root; hubScene.camera = camera; hubScene.input = input; hubScene.debug = heldDebug;
     heldDebug = null;
@@ -10935,8 +10950,8 @@
     totemUnsub = BL.totemFeed.subscribe(onTotem);
     BL.net.setHub(true);
     crew.refreshStates(true);
-    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain";
-    const returningCharacter = handsBack ? world.pilot : null;
+    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain" || !!world.arcadeYard;
+    const returningCharacter = handsBack ? (world.arcadeYard ? world.arcadeYard.name : world.pilot) : null;
     if (handsBack) world.pilot = null;
     if (returningCharacter) {
       // A separate body comes back (crew.js `separateBodies`); the NPC keeps its own track and override, untouched.
@@ -10953,14 +10968,19 @@
     claimOwnOoga();
     unsubscribeActivity = contributors.subscribe(() => crew.refreshStates());
     unsubscribeAccount = watchAccount();
+    bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
     const donate = ctx.place === "donate", routedPlace = donate ? null : ctx.place;
     const sphereExit = ctx.from === "timechain" ? world.sphereExit : null;
     world.sphereExit = null;
     const factoryCrossing = ctx.from === "factory" ? world.factoryCrossing : null;
     world.factoryCrossing = null;
+    const arcadeCrossing = ctx.from === "arcade" ? world.arcadeCrossing : null, arcadeYard = world.arcadeYard;
+    world.arcadeCrossing = world.arcadeYard = null;
     if (returningCharacter && sphereExit && pilot.player) timechainIsland.gate.arrive(sphereExit);
     else if (returningCharacter && factoryCrossing && pilot.player && factoryMouth) arriveFromFactory(factoryCrossing);
+    else if (returningCharacter && arcadeYard && pilot.player && arcadeMouth) arcadeMouth.entrance.standAt(arcadeYard.slot);
+    else if (returningCharacter && arcadeCrossing && pilot.player && arcadeMouth) { arcadeMouth.entrance.arrive(arcadeCrossing); factoryWalk.still = 1; factoryWalk.hold = BL.factoryWindow.GLIDE.still; }
     else if (returningCharacter && ctx.from === "arcade" && pilot.player && arcadeMouth) arriveFromArcade();
     else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
     else navigate(routedPlace || (ctx.from === "bifrost" ? "bifrost" : "pile"), false, false);
@@ -10980,7 +11000,7 @@
       updatePositionDebug(true);
     }
     updatePoolEffectsActivity();
-    if (ctx.from === "arcade" && ctx.place === "cloud-hopper") ensureCloudHopper(ctx).launch(true);
+    if ((ctx.from === "arcade" || ctx.from === "hub") && ctx.place === "cloud-hopper") { cloudYard = ctx.from === "hub" ? arcadeYard : null; ensureCloudHopper(ctx).launch(true); }
   };
   // Prepare only raw character rigs: the published crew, its stable roster order, input, health and NPC/remote
   // registration are still created together by enter. No partly populated actor registry reaches a live scene.
@@ -11947,8 +11967,8 @@
     if (ctx.from === null && !signedInArrival && (preloadedJetpackWear || preloadedEquipment) && !params.has("character") && !initialCharacter) initialCharacter = contributors.activeRoster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.activeRoster[0];
     const initialGorilla = initialCharacter && preloadedGorilla ? crew.cavemen.get(initialCharacter.name) : null;
     // The Ooga that went into DSB, the Lightning Factory, ₿IFRÖST or Ooga Arcade comes back out as the one played.
-    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain";
-    const returningCharacter = handsBack ? world.pilot : null;
+    const handsBack = ctx.from === "dsb" || ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" || ctx.from === "lab" || ctx.from === "timechain" || !!world.arcadeYard;
+    const returningCharacter = handsBack ? (world.arcadeYard ? world.arcadeYard.name : world.pilot) : null;
     if (handsBack) world.pilot = null;
     if (initialGorilla) {
       // A sleeping contributor has no active companion. Wake only the named
@@ -11974,6 +11994,7 @@
     claimOwnOoga();
     claimView = claimArrival = false;
     unsubscribeAccount = watchAccount();
+    bindArcadeEntrance(ctx);
     BL.players.setDoors(doorToward);
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson && !initialGorilla;
     if (initialFirstPerson) pilot.enterClose(true);
@@ -11986,8 +12007,12 @@
     // Out of the Lightning Factory's shield on foot: in its light, walking on out of the mouth.
     const factoryCrossing = ctx.from === "factory" ? world.factoryCrossing : null;
     world.factoryCrossing = null;
+    const arcadeCrossing = ctx.from === "arcade" ? world.arcadeCrossing : null, arcadeYard = world.arcadeYard;
+    world.arcadeCrossing = world.arcadeYard = null;
     if (returningCharacter && sphereExit && pilot.player) timechainIsland.gate.arrive(sphereExit);
     else if (returningCharacter && factoryCrossing && pilot.player && factoryMouth) arriveFromFactory(factoryCrossing);
+    else if (returningCharacter && arcadeYard && pilot.player && arcadeMouth) arcadeMouth.entrance.standAt(arcadeYard.slot);
+    else if (returningCharacter && arcadeCrossing && pilot.player && arcadeMouth) { arcadeMouth.entrance.arrive(arcadeCrossing); factoryWalk.still = 1; factoryWalk.hold = BL.factoryWindow.GLIDE.still; }
     else if (returningCharacter && ctx.from === "arcade" && pilot.player && arcadeMouth) arriveFromArcade();
     else if (returningCharacter) navigate(ctx.from === "factory" || ctx.from === "bifrost" || ctx.from === "arcade" ? ctx.from : ctx.from === "timechain" ? "timechain" : "pile", false, false);
     else if (ctx.from === "bifrost" && !routedPlace) navigate("bifrost", false, false);
@@ -12039,6 +12064,7 @@
         get gameMode() { return gameMode; },
         selectDebugGorilla,
         get timechainIsland() { return timechainIsland; },
+        get arcadeEntrance() { return arcadeMouth && arcadeMouth.entrance; },
         levelOf,
         get factory() { return factoryMouth && factoryMouth.hall ? factoryMouth.hall.debug : null; },
         get bifrost() { return bifrostIsle; },
@@ -12156,7 +12182,7 @@
     yield* prepareCoveredView(ctx.overlay, slice);
     mark("covered-view");
     totemUnsub = BL.totemFeed.subscribe(onTotem);
-    if (ctx.from === "arcade" && ctx.place === "cloud-hopper") ensureCloudHopper(ctx).launch(true);
+    if ((ctx.from === "arcade" || ctx.from === "hub") && ctx.place === "cloud-hopper") { cloudYard = ctx.from === "hub" ? arcadeYard : null; ensureCloudHopper(ctx).launch(true); }
     if (DEBUG_GORILLA_MOVE) hud.toast("Gorilla movement debug · click a gorilla, then a destination");
   };
   // The cabinet is Cloud Hopper's only entrance. Its dormant game graphs, HUD,
@@ -12180,7 +12206,7 @@
     const launchPoint = { x: mouth.x, y: island.surfaceAt(mouth.x, mouth.z) + 4, z: mouth.z };
     cloudHopper = BL.cloudHopper.create({ root, dock: { position: launchPoint, rotation: { y: mouth.ry } }, launchPoint, arcade: true,
       cabinet: () => ctx.cabinet.active,
-      park: () => navigate("arcade", false, false), onExit: () => go("arcade", "cloud-hopper-return"),
+      park: () => navigate("arcade", false, false), onExit: () => { if (cloudYard) { world.arcadeYard = cloudYard; cloudYard = null; go("hub", "cloud-hopper-return"); } else go("arcade", "cloud-hopper-return"); },
       crew, pilot, hud, renderer, camera, game, seaY: SEA_Y,
       move: cloudMove, mode: cloudMode, pileSurface: cloudPileSurface, mainlandRadius: island.radius,
       finish: () => ({ x: 0, y: ALTAR_HEIGHT + 2, z: 0 }),
@@ -12195,15 +12221,18 @@
   // The scene a departure was heading for could not be prepared (its deferred code did not arrive): the visitor stays on
   // the island, driving again, and nothing is photographed for a crossing that did not happen.
   const stay = () => {
+    if (arcadeMouth) arcadeMouth.entrance.stay();
     factoryHeld = factoryDeparting;
     entering = factoryDeparting = bifrostDeparting = false;
     factoryWalk.phase = 0; factoryWalk.seen = factoryWalk.through = factoryWalk.grab = false; factoryWalk.still = factoryWalk.hold = 0;
     world.factoryCrossing = world.islandKeep = null;
     if (factoryMouth) factoryMouth.snap = false;
+    if (arcadeMouth) arcadeMouth.snap = false;
     if (bifrostIsle) bifrostIsle.snap = false;
     pilot.controls.reset(); input.reset(); pilot.setActive(true);
   };
   const leave = (destroy = false) => {
+    if (arcadeMouth) arcadeMouth.entrance.unbind();
     // Left by Back or Forward, the logo or any other way than a door of its own (which handed its Ooga over and set
     // `entering`), the island hands on the Ooga driven, as every other scene does, so the next one plays the same one;
     // driving none (a gorilla), nothing stale goes with it.
@@ -12224,6 +12253,7 @@
     resetRageThrowMap(false);
     if (factoryMouth && factoryMouth.snap) snapFactoryView();
     if (bifrostIsle && bifrostIsle.snap) snapBifrostView();
+    if (arcadeMouth && arcadeMouth.snap) snapArcadeView();
     glCanvas = null;
     poolBlockHovered = poolBlockHoverIgnore = ghostHovered = null;
     ghostHoverText = "";
@@ -12341,6 +12371,7 @@
       factoryMouth.phase.dispose();
     }
     if (bcaMouth) bcaMouth.phase.dispose();
+    if (arcadeMouth) arcadeMouth.entrance.dispose();
     factoryMouth = arcadeMouth = bcaMouth = coilCharge = null;
     if (bifrostIsle) {
       if (bifrostIsle.window) bifrostIsle.window.dispose();
@@ -12440,6 +12471,7 @@
     entropyLab.phase.liveGeometry(set);
     for (const veil of caveVeils) veil.phase.liveGeometry(set);
     if (factoryMouth) factoryMouth.phase.liveGeometry(set);
+    if (arcadeMouth) arcadeMouth.entrance.liveGeometry(set);
     if (bcaMouth) bcaMouth.phase.liveGeometry(set);
     if (bifrostIsle) bifrostIsle.phase.liveGeometry(set);
     for (const item of clankerEquipment) set.add(item.node.geometry);
@@ -12467,7 +12499,7 @@
     get retained() { return heldHub; }, get elapsed() { return now; },
     get retainedRoot() { return heldHub ? root : null; },
     // The Lightning Factory's builders stay warm while the island runs, since its shield walks straight in.
-    keeps: ["factory"],
+    keeps: ["factory", "arcade"],
     root: null, camera: null, input: null, debug: null,
     get inMotion() {
       // A crossing through the Timechain Sphere's doors keeps full rate, so its walk and swoop finish smoothly, and so

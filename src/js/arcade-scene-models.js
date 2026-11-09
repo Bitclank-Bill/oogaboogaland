@@ -1337,6 +1337,30 @@
   const GOURD = [[0, 0], [0.09, 0.008], [0.16, 0.045], [0.195, 0.1], [0.2, 0.16], [0.185, 0.22], [0.15, 0.275], [0.1, 0.315], [0.075, 0.35], [0.085, 0.43], [0.075, 0.5], [0.042, 0.55], [0, 0.565]];
   const GOURD_S = 1.3;
   const GOURD_BAND = 3;
+  // The hall itself (#554), seen through the doors from the island's cave (`hangar-window.js` pulls it into the shallow
+  // room behind them): its own floor, rock, timber, stage and cabinets, with the hall's firelight baked into their
+  // colours by the Factory window's bake, so the view through the doors is the room the visitor is about to walk into.
+  const SHELL_MOOD = { sky: [0.4, 0.35, 0.3], ground: [0.2, 0.16, 0.12], floor: 0.27, sun: [0.2, 0.9, 0.4], direct: [0.56, 0.48, 0.4], strength: 0.28, fill: [0.05, 0.04, 0.07],
+    fog: [0.06, 0.045, 0.035], near: 20, far: 42, eye: [0, 2, HALL.front], dim: 1, knee: 0.7, cap: 1.1 };
+  const hallShell = BL.models.cachedSteps(function* (slice = null) {
+    const FM = BL.factoryModels, S = BL.arcadeModels.SCREEN, W = LAYOUT.wheel, fires = [];
+    for (const s of [-1, 1]) for (const z of [-17, -11, -5, 1]) fires.push([s * 12.5, 6.6, z, 8, 1.3, 0.76, 0.4]);
+    const lights = FM.windowLights([[LAYOUT.sign.x, LAYOUT.sign.y, LAYOUT.sign.z + 2, 11, 1.3, 0.78, 0.45], [-1.1, 4, -7, 9, 1.35, 0.98, 0.62], [1.1, 4, -7, 9, 1.35, 0.98, 0.62],
+      [W.x, W.y, W.z + 1.3, 5.5, 1.2, 0.85, 0.5], [0, 2.8, HALL.front - 1, 6, 1.2, 0.68, 0.32], [-3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55], [3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55], ...fires]);
+    const bake = (g) => FM.bakeWindow({ verts: Array.from(g.verts), faces: g.faces.map((f) => ({ ...f, i: Array.from(f.i) })), lines: [] }, lights, [0, 0, 0], SHELL_MOOD);
+    const made = [], H = yield* hall.steps(slice), St = yield* stage.steps(slice), M = yield* mezzanine.steps(slice), L = yield* lanterns.steps(slice), Wh = yield* wheel.steps(slice);
+    const parts = [H.floor, H.rock, H.timber, L.frame, L.glass, St.body, St.lit, M.body, Wh.frame, Wh.face];
+    for (const part of parts) { made.push(bake(part)); yield* pause(slice); }
+    const cabs = [];
+    for (const c of LAYOUT.cabinets) {
+      if (c.service) continue;
+      const frames = c.game >= 0 ? BL.arcadeModels.attractFrames(c.game) : retroFrames(c.retro);
+      cabs.push(moved(turnedY(merge(BL.arcadeModels.cabinet(c.index), moved(turnedX(frames[0], S.lean), 0, S.y, S.z)), c.turn), c.x, c.y, c.z));
+      yield* pause(slice);
+    }
+    made.push(bake(merge(...cabs)));
+    return made;
+  });
   const lanterns = BL.models.cachedSteps(function* (slice = null) {
     const J = BL.hubModels, round = [], flat = [], glow = [], flames = [], lights = [], kinds = [], footprints = [], ties = [], leaf = mulberry32(1707);
     // Its light `lift` over the flame, and `out` in front of it along +z where a fire against the back wall spills.
@@ -4654,6 +4678,6 @@
   };
   Object.assign(BL.arcadeModels, {
     buildSteps,
-    haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
+    hallShell, haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
   });
 })();

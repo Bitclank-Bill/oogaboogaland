@@ -11359,7 +11359,7 @@ const factoryHostedShield = { name: "factory hosted shield", refuse: "/js/factor
 const hubHostedOptionalGame = { name: "hub hosted optional game", refuse: "/js/cloud-hopper-", why: "rule: an island visit leaves Cloud Hopper unloaded, and its real cabinet can recover from a refused download without losing its actor", run: async (b, site) => {
   const cold = await b.evaluate(`({ absent: !BL.cloudHopper && !document.querySelector(".cloud-hopper-panel"), scene: __ooga.scene, frames: __ooga.renderedFrames })`);
   await b.evaluate(`(() => { const B=__ooga,a=B.cavemen.get("portlandhodl"),slot=BL.caves.slots.find(s=>s.scene==="arcade"),m=B.mouths.find(m=>m.id===slot.id);
-    if(B.crew.player!==a)B.pilot.possess(a); B.pilot.navigate({position:{x:m.x-Math.sin(m.ry)*1.2,y:m.floorY,z:m.z-Math.cos(m.ry)*1.2},yaw:m.ry,pitch:.4,dist:10}); B.advance(.5,1/60); })()`);
+    if(B.crew.player!==a)B.pilot.possess(a); B.pilot.navigate({position:{x:m.x-Math.sin(m.ry)*4.5,y:m.floorY,z:m.z-Math.cos(m.ry)*4.5},yaw:m.ry,pitch:.4,dist:10}); B.advance(.5,1/60); })()`);
   await b.key(" ");
   if (!await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 30000)) throw Error("Arcade did not open: " + JSON.stringify(await b.evaluate('({scene:__ooga.scene,transitioning:__ooga.transitioning,notice:document.getElementById("toast").textContent})')));
   const approach = `(() => { const B=__ooga,a=B.pilot.player,s=BL.arcadeModels.CABINETS[0].play;
@@ -13099,7 +13099,7 @@ const hubRainforestSteps = { name: "rainforest bridge steps", why: "regression: 
 // A scene's construction slices run as real tasks while the fade holds black, so each step gives them one, as tourGo does.
 const WAIT_OUT = `(async () => { const B = window.__ooga, t0 = performance.now(); while ((B.transitioning || B.scene === "hub") && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); return B.scene; })()`;
 const hubRoutes = { name: "hub routes", why: "playthrough: every scene the island opens is reached the way a player gets there", run: async (b) => {
-  await b.evaluate(`(() => { ${DRIVEN_OF} const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); if (!drivenOf(B, a)) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(`(() => { ${DRIVEN_OF} const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); if (!drivenOf(B, a)) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 4.5, y: m.floorY, z: m.z - Math.cos(m.ry) * 4.5 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
   await b.key(" ");
   const reached = { arcade: await b.evaluate(WAIT_OUT) };
   await tourGo(b, "hub");
@@ -18609,7 +18609,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
       B.pilot.weaponMode(2); w.ammo = 11; if (!w.spareAmmo.length) B.crew.collectMagazine(a); w.spareAmmo[0] = 4; w.unlimited = false; B.pilot.enterClose();
       if (w.aiming !== ${mode !== 'carry'}) B.pilot.modeAction("mode-toggle");
       const m = B.mouths.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id);
-      B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.3, dist: 6 });
+      B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 4.5, y: m.floorY, z: m.z - Math.cos(m.ry) * 4.5 }, yaw: m.ry, pitch: 0.3, dist: 6 });
       ${mode === 'focused' ? 'B.pilot.focusAim();' : 'B.pilot.freeCursor();'}
       B.advance(0.2, 1 / 60);
     })()`);
@@ -29684,7 +29684,7 @@ const terrainCacheChecks = async () => {
 // must keep its golden digest, and the snapshot's queries, rehydrated after a structured clone (the Worker's and
 // IndexedDB's codec), must answer exactly as the direct build does on a seeded sample of every query.
 // The golden is the island as it was built before the snapshot existed.
-const TERRAIN_GOLDEN = "cdfe1bb2820f5119";
+const TERRAIN_GOLDEN = "5584e554d39886fc";
 const terrainParityChecks = (BL, island) => {
   const islandDigest = (built) => {
     const h = createHash("sha256"), g = built.geometry, faces = g.faces;
@@ -30371,7 +30371,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   {
     const expected = {
       c11: [6.25, 0.75, 6.75], c10: [6.25, 0.75, 6.75], c9: [7, 0.5, 6.75],
-      c1: [6.25, 0.75, 6.75], c2: [6.25, 0.75, 6.75], c3: [6.5, 0.5, 6.75]
+      c1: [6.25, 0.75, 6.75], c2: [6.25, 0.75, 6.75], c3: [6.5, 0.5, 7]
     };
     const column = { caveIndex: 0, floor: 0, ceiling: 0 }, rows = [];
     for (let caveIndex = 0; caveIndex < island.mouths.length; caveIndex++) {
@@ -30388,15 +30388,30 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         samples++;
       }
       const middle = (room.from + room.to) / 2;
-      const walls = [at(-room.w / 2 - 0.5, middle), at(room.w / 2 + 0.5, middle), at(0, room.to + 0.5)];
+      // The Arcade's long walls are recessed for its cabinets, so their rock stands past the recess.
+      const recess = mouth.id === "c3" ? 0.6 : 0;
+      const walls = [at(-room.w / 2 - recess - 0.5, middle), at(room.w / 2 + recess + 0.5, middle), at(0, room.to + 0.5)];
       const sweepFrom = at(0, -1.4), sweepTo = at(0, room.to - 0.5);
       rows.push({ id: mouth.id, dimensions: room.w === shape[0] && room.h === 4 && room.from === shape[1] && room.to === shape[2], samples, owned, clear, enclosed,
         swept: island.voxelSegmentClearAt(sweepFrom.x, 0.05, sweepFrom.z, sweepTo.x, 0.05, sweepTo.z, 0.3, 1.7), walls: walls.every((p) => island.solidAt(p.x, 1, p.z)) });
     }
     const ramps = island.mouths.filter((mouth) => mouth.id === "c730" || mouth.id === "c5");
     record("surface caves: every non-HQ mouth uses a terrain-fitted full-height carved chamber with owned air, solid floors, roofs and enclosing walls", rows.length === 6 && [...new Set(rows.map((row) => row.id))].sort().join() === Object.keys(expected).sort().join()
-      && rows.every((row) => row.dimensions && row.samples === 33 && row.owned && row.clear && row.enclosed && row.swept && row.walls)
+      && rows.every((row) => row.dimensions && row.samples === (row.id === "c3" ? 36 : 33) && row.owned && row.clear && row.enclosed && row.swept && row.walls)
       && ramps.length === 2 && ramps.every((mouth) => mouth.room.w === 6 && mouth.room.h === 4 && mouth.room.from === 2.5 && mouth.room.to === 6.5), JSON.stringify({ rows, ramps: ramps.map((mouth) => ({ id: mouth.id, room: mouth.room })) }));
+    // #554: the Arcade cave's six cabinets stand in the recesses the terrain cuts, at the seats the room is told.
+    const CAB = BL.arcadeCabinets, arcadeCave = island.mouths.find((m) => m.id === "c3"), recessColumn = { caveIndex: 0, floor: 0, ceiling: 0 };
+    const slotClear = CAB.slots.length === 6 && CAB.slots.every((s) => {
+      const sr = Math.sin(arcadeCave.ry), cr = Math.cos(arcadeCave.ry), x = arcadeCave.x + cr * s.lx + sr * s.lz, z = arcadeCave.z - sr * s.lx + cr * s.lz;
+      return island.cavityAt(x, z, recessColumn, 7, 1) && recessColumn.caveIndex === 7 && recessColumn.ceiling >= 2.75 && island.clearAt(x, 0.05, z, 0.3, 2.4);
+    });
+    const sameMouth = Math.abs(arcadeCave.x - CAB.MOUTH.x) < 1e-6 && Math.abs(arcadeCave.z - CAB.MOUTH.z) < 1e-6 && Math.abs(arcadeCave.ry - CAB.MOUTH.ry) < 1e-6;
+    const seat = CAB.get(CAB.outdoorSeat("mine")), popular = BL.arcadePopular;
+    const tied = popular.pick(null), ranked = popular.pick({ stacker: 9, snake: 9, dash: 3, pong: 2, flap: 1, invaders: 1 });
+    record("arcade entrance: its six cabinets stand in terrain recesses at the room's seats, keep a seat apart from the hall's, and the most played take them in a stable order",
+      slotClear && sameMouth && seat.outdoor && seat.game === "mine" && CAB.get("mine").outdoor === undefined && !CAB.get("race@out")
+        && tied.join() === popular.DEFAULT.join() && ranked.length === 6 && ranked.slice(0, 2).join() === "snake,stacker" && ranked[2] === "dash",
+      JSON.stringify({ slotClear, sameMouth, seat, tied, ranked }));
   }
   portalChecks(BL,el);
   {
