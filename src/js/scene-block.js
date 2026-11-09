@@ -501,7 +501,7 @@
   const deckView = (dt) => {
     deckZoom = BL.blockViewer.easeZoom(deckZoom, deckZoomTo, dt, hookStill);
     BL.blockViewer.look(camera, SIM.ARENA, deckYaw, deckPitch, setVec, deckZoom);
-    for (let n = BL.blockViewer.newCaptures(sim, deckCaps); n > 0; n--) audio.cues.capture();
+    for (let n = BL.blockViewer.newCaptures(sim, deckCaps, !!round && round.hasFrame); n > 0; n--) audio.cues.capture();
     BL.blockViewer.trackSteals(sim, deckSteals);
     const statRows = BL.blockViewer.statRows(sim, deckSteals, deckCapSeen);
     if (statRows) paintStats(statRows);

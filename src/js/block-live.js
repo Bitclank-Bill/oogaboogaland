@@ -342,7 +342,7 @@
       if (match.phase === "countdown" && !goSent && W.seatOf(match, self()) >= 0 && net.serverNow() + 200 >= match.start) { goSent = command("go", { s: match.s }); }
     };
     return {
-      get role() { return role; }, get match() { return match; }, get seat() { return seat; }, get map() { return map; },
+      get hasFrame() { return haveFrame; }, get role() { return role; }, get match() { return match; }, get seat() { return seat; }, get map() { return map; },
       bind, act, lobbyTick, hostStep,
       // A frame's work on a live round, after the host stepped it (or in place of stepping, on a guest or the deck).
       after(dt, move) {

@@ -7335,6 +7335,12 @@ const gameRulesChecks = async () => {
       capSim.score.red = 4; const skippedFrames = V.newCaptures(capSim, seen);
       capSim.score.blue = capSim.score.red = 0; const newRound = V.newCaptures(capSim, seen);
       capSim.score.red = 1; const firstOfRound = V.newCaptures(capSim, seen);
+      const arrive = { total: -1 }, midRound = { score: { blue: 0, red: 0 } };
+      const beforeFrame = V.newCaptures(midRound, arrive, false);
+      midRound.score.blue = 2; midRound.score.red = 1;
+      const firstFrame = V.newCaptures(midRound, arrive, true);
+      midRound.score.red = 2; const nextCapture = V.newCaptures(midRound, arrive, true), repeat = V.newCaptures(midRound, arrive, true);
+      record("block live: arriving mid-round plays nothing for captures already on the board, then one per new capture", beforeFrame === 0 && firstFrame === 0 && nextCapture === 1 && repeat === 0);
       record("block live: a viewer hears each capture once, from the score, across skipped frames and new rounds", onSit === 0 && none === 0 && one === 1 && again === 0 && skippedFrames === 2 && newRound === 0 && firstOfRound === 1);
       const statSeen = [], steals = { was: [], count: [] }, mkSim = (c, h, carry) => ({ actors: c.map((n, i) => ({ id: i, captures: n, hits: h[i], team: i < 2 ? "blue" : "red", carrying: carry[i] || null })) });
       V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals); V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals);

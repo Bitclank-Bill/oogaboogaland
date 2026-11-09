@@ -19,8 +19,10 @@
   // One frame of a zoom toward its target; under Calm the view goes straight there.
   const easeZoom = (cur, target, dt, calm) => calm ? target : cur + (target - cur) * Math.min(1, dt * 10);
   // How many captures happened since the last look, from the score a frame carries, so a skipped frame can't lose one
-  // or count one twice. The first look after sitting down counts nothing; a score that drops is a new round.
-  const newCaptures = (sim, seen) => {
+  // or count one twice. Nothing counts until the first frame has landed (`live`), and that first look only notes the
+  // score: arriving partway through a round plays nothing. A score that drops is a new round.
+  const newCaptures = (sim, seen, live = true) => {
+    if (!live) return 0;
     const total = sim.score.blue + sim.score.red, was = seen.total;
     seen.total = total;
     return was < 0 || total < was ? 0 : total - was;
