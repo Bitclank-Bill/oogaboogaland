@@ -116,6 +116,8 @@
       if (!visit) return;
       if (off) off(); off = null;
       for (const e of entries) removeTarget(e.body);
+      // A walk handed over to the hall ends here: the island may be kept for the way back, so its Ooga gets its head back.
+      if (walk) walk.reset();
       visit = walk = null;
     };
 
