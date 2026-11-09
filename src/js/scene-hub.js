@@ -794,7 +794,7 @@
   const matrixGates = [];
   const sealedCaves = [];
   // Mouths without a specialized portal share the lab's transparent contact veil.
-  const caveVeils = [];
+  const caveVeils = [], ARCADE_VEIL_TINT = [1, 0.16, 0.12];
   let sceneryVisible = 0, sceneryRadiusCulled = 0, sceneryPathCulled = 0, sceneryFixedCulled = 0, sceneryReflows = 0;
   const addTarget = (node, owner, opts) => {
     input.add(node, owner, opts);
@@ -2244,11 +2244,11 @@
       });
       if (mirrorCave && mirrorCave.slot === slot) mirrorCave.sign = sign;
     }
-    // The Factory's inner shield has its own crossing; its outer arch wears the shared cave veil too. The Arcade has doors.
-    if (slot.status !== "mirror" && slot.scene !== "lab" && slot.place !== "bca" && slot.scene !== "arcade") {
+    // The Factory's inner shield has its own crossing; its outer arch wears the shared cave veil too.
+    if (slot.status !== "mirror" && slot.scene !== "lab" && slot.place !== "bca") {
       const seal = slot.status === "dark" ? sealedCaves[sealedCaves.length - 1] : null;
       caveVeils.push({ mouth: m, group, opening: rim.geometry.openingBounds,
-        plane: seal ? seal.stopZ + 0.02 : PORTAL_Z, tint: null, phase: null });
+        plane: seal ? seal.stopZ + 0.02 : PORTAL_Z, tint: slot.scene === "arcade" ? ARCADE_VEIL_TINT : null, phase: null });
     }
     dressMouth(slot, m, group);
     addChild(root, group);
@@ -6228,7 +6228,8 @@
   // Step out into the mainland's Arcade overhang, independent of the carried camera/combat mode.
   // This is a doorway arrival, not the map destination's exterior framing (which can be blocked).
   const arriveFromArcade = () => {
-    const m = island.mouths.find((mouth) => mouth.id === arcadeMouth.slot.id), out = BL.arcadeEntrance.DOOR_Z + 1.4;
+    // Far enough out that the view behind it stays on this side of the doors.
+    const m = island.mouths.find((mouth) => mouth.id === arcadeMouth.slot.id), out = BL.arcadeEntrance.DOOR_Z + FOLLOW.min + 0.7;
     pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * out, y: m.floorY, z: m.z + Math.cos(m.ry) * out },
       yaw: m.ry + Math.PI, pitch: 0.18, dist: FOLLOW.min });
     cameraPreviousValid = cameraTerrainValid = cameraTerrainRecovering = cameraManualContact = false;

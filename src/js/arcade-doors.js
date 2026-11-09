@@ -17,6 +17,8 @@
   const OPEN = 1.55, OPEN_S = 0.85, FAR = 3.4, TOUCH = 1.25, GRACE = 0.5, ARRIVE = 2.4, SPEED = 0.55, AHEAD = 1.6, LIMIT = 9, VIEW_CLEAR = 1.2, HAND = 0.15, GLIDE = 0.45, LET_GO_PITCH = 0.12, CLEAR_BACK = 0.7;
   const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
   const smooth = (t) => t * t * (3 - 2 * t);
+  // How far off the middle a walk may start: inside the doorway, the widest Ooga's shoulders clear of its posts.
+  const WALK_HALF = AM.DOOR.half - 0.4;
 
   // A door rig under `parent`, at (x, y, z) turned `turn` there: the frame, the wall (`wall` for a cave with no rock
   // of its own round it) and the two leaves.
@@ -57,7 +59,7 @@
   // Ooga's eyes, these doors never opening: the other scene needs its own copy of this side of them.
   const walk = ({ door, frame: F, sign, pilot, crew, camera, prepare, onThrough, onState = () => {}, followMin = 3, shut = false }) => {
     const state = { phase: "idle", wanted: false, x: 0, z: 0, seen: false, t: 0, cave: null, ready: false, failed: false, busy: false, settle: false, yaw: 0, dist: 4.5,
-      lens: null, glide: 1, heading: 0, from: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, fromFov: 0, pitch: 0, head: null };
+      lens: null, glide: 1, heading: 0, focused: false, from: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, fromFov: 0, pitch: 0, head: null };
     const set = (phase) => { if (state.phase !== phase) { state.phase = phase; onState(phase); } };
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     // The eye as the pilot's first person places it, looking straight down the way through, so the view held here and
@@ -92,6 +94,9 @@
       lens("back");
       const p = cave.root.position;
       pilot.navigate({ position: { x: p.x, y: p.y - cave.baseY, z: p.z }, yaw: cave.root.rotation.y + Math.PI, pitch: LET_GO_PITCH, dist: followMin });
+      // Mouse-look, if the walk took it away.
+      if (state.focused) pilot.focusAim();
+      state.focused = false;
     };
     // Called once the camera is final for the frame.
     const view = (dt) => {
@@ -114,7 +119,7 @@
     const handOver = (player, across, d) => {
       crew.steer(0, 0, 0, 0, 0);
       set("through");
-      if (onThrough({ across, past: -d, pitch: state.pitch, dist: state.dist, shut }) === false) { letGo(player); set("idle"); state.wanted = false; }
+      if (onThrough({ across, past: -d, pitch: state.pitch, dist: state.dist, shut, focused: state.focused }) === false) { letGo(player); set("idle"); state.wanted = false; }
     };
     const load = () => {
       if (state.ready || state.busy) return;
@@ -178,9 +183,10 @@
       state.x = p.x; state.z = p.z; state.seen = true;
       if (near && !state.ready && !state.busy && !state.failed) load();
       const atDoor = near && d < TOUCH;
-      if (state.ready && near && (state.wanted || atDoor && inward > 0.2) && Math.abs(p.y - player.baseY - (F.floor || 0)) < 0.3) {
+      if (state.ready && near && Math.abs(across) < WALK_HALF && (state.wanted || atDoor && inward > 0.2) && Math.abs(p.y - player.baseY - (F.floor || 0)) < 0.3) {
         state.wanted = false;
         state.t = 0; state.cave = player; state.dist = pilot.orbit.dist; state.pitch = 0; state.heading = Math.atan2(sign * F.sr, sign * F.cr);
+        state.focused = pilot.captureControl({}).focused;
         door.away(sign);
         pilot.setExternalControl(true);
         lens("eyes");
@@ -192,7 +198,7 @@
     const arrive = (crossing, player, yaw) => {
       player.root.rotation.y = yaw + Math.PI;
       // Far enough on that the view handed back, at its nearest behind the Ooga, stands clear of the doors.
-      Object.assign(state, { t: 0, cave: player, yaw, heading: yaw + Math.PI, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, followMin * Math.cos(LET_GO_PITCH) + CLEAR_BACK) });
+      Object.assign(state, { t: 0, cave: player, yaw, heading: yaw + Math.PI, focused: !!crossing.focused, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, followMin * Math.cos(LET_GO_PITCH) + CLEAR_BACK) });
       door.set(false);
       door.away(-sign);
       if (!crossing.shut) door.set(true);
@@ -208,5 +214,5 @@
     return { state, update, view, ask, arrive, reset, load, get phase() { return state.phase; }, get holding() { return state.phase === "opening" || state.phase === "walking" || state.phase === "through" || state.phase === "arriving"; } };
   };
 
-  BL.arcadeDoors = { create, walk, ARRIVE };
+  BL.arcadeDoors = { create, walk, ARRIVE, WALK_HALF };
 })();

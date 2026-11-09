@@ -2116,7 +2116,7 @@
     if (queuedCabinet) { const id = queuedCabinet; queuedCabinet = null; open(id); }
     // A scene handoff restores soft mouse-look only. Capture once when the hall
     // is playable again, after the cabinet's return zoom; Escape stays released.
-    if (captureOnArrival && !leaving && !cabinetView.active) {
+    if (captureOnArrival && !leaving && !cabinetView.active && !(doorWalk && doorWalk.holding)) {
       captureOnArrival = false;
       pilot.focusAim(true);
     }

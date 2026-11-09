@@ -59,6 +59,8 @@
     const doorActions = { enter: { kind: "arcade-door", state: "enter" }, loading: { kind: "arcade-door", state: "loading" }, retry: { kind: "arcade-door", state: "retry" } };
     let visit = null, walk = null, off = null, barrier = false, prefetch = 0, request = 0, taken = false;
 
+    // A cabinet's whole loop on the GPU at once, so the loop never hitches and a later visit holds nothing more.
+    const warmFrames = (e) => { if (e.frames && visit) for (const f of e.frames) visit.renderer.prepareGeometry(f); };
     // One cabinet shows one game: its body, marquee and attract loop, and the footprint the walkers meet.
     const setGame = (e, id) => {
       if (e.game === id) return;
@@ -66,6 +68,7 @@
       if (registered) solids.remove(e.body);
       dress(e, id);
       solids.add(e.body);
+      warmFrames(e);
     };
     const show = (top) => { entries.forEach((e, i) => setGame(e, top[i])); };
     const setBarrier = (on) => {
@@ -87,7 +90,7 @@
       };
       return asked && asked.then ? asked.then(built) : built();
     };
-    const refreshFrames = () => { for (const e of entries) if (!e.frames && (e.frames = framesOf(e.cabinet))) { e.shown = -1; e.screen.visible = true; e.screen.geometry = e.frames[0]; } };
+    const refreshFrames = () => { for (const e of entries) if (!e.frames && (e.frames = framesOf(e.cabinet))) { e.shown = -1; e.screen.visible = true; e.screen.geometry = e.frames[0]; warmFrames(e); } };
 
     const onThrough = (crossing) => {
       const { pilot, world, go, hud, input, controls, player } = visit, o = pilot.orbit;
@@ -111,6 +114,7 @@
       BL.arcadePopular.load();
       show(BL.arcadePopular.top());
       refreshFrames();
+      entries.forEach(warmFrames);
     };
     const unbind = () => {
       if (!visit) return;
@@ -118,6 +122,8 @@
       for (const e of entries) removeTarget(e.body);
       // A walk handed over to the hall ends here: the island may be kept for the way back, so its Ooga gets its head back.
       if (walk) walk.reset();
+      // A seat granted after the island was left has no one to use it. A cabinet visit under way keeps its own.
+      if (!visit.cabinet.active) BL.net.leaveCabinet();
       visit = walk = null;
     };
 
@@ -149,7 +155,7 @@
       }
       if (walk.holding) return null;
       const dx = x - (m.x + sr * DOOR_ACTION), dz = z - (m.z + cr * DOOR_ACTION);
-      if (Math.hypot(dx, dz) >= DOOR_REACH) return null;
+      if (Math.hypot(dx, dz) >= DOOR_REACH || Math.abs(dx * cr - dz * sr) >= BL.arcadeDoors.WALK_HALF) return null;
       return walk.state.failed ? doorActions.retry : walk.state.busy ? doorActions.loading : doorActions.enter;
     };
 
@@ -158,7 +164,8 @@
       return seat ? `${seat.name} is playing · cabinet occupied` : `${gameOf(e.cabinet).name} · ${visit && visit.coarse ? "tap" : "click"} to play`;
     };
     const use = (action) => {
-      if (action.kind === "arcade-door") { if (action.state !== "loading") walk.ask(); return; }
+      // Asked while the hall is still loading, the walk starts as soon as it is ready.
+      if (action.kind === "arcade-door") { walk.ask(); return; }
       play(entries[action.slot]);
     };
     const tap = (o) => play(entries[o.slot]);
@@ -196,7 +203,7 @@
       });
     };
     // A way back that was cancelled, or a seat refused: the cave is playable again.
-    const stay = () => { taken = false; if (walk && walk.holding) walk.reset(); };
+    const stay = () => { taken = false; if (visit) visit.world.arcadeYard = null; if (walk && walk.holding) walk.reset(); };
 
     // Coming back out through the doors: the Ooga on past them, the view behind it, the doors standing open.
     // Coming back out through the doors: the Ooga and the view as they stood when the hall let go, both past the doors

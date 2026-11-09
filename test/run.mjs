@@ -18586,9 +18586,10 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
   await b.send("Page.bringToFront");
-  const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning`, 20000);
+  // Arrived once the door walk has handed the Ooga back.
+  const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning && (B.scene === "hub" ? BL.scenes.hub.debug.arcadeEntrance.walk : BL.scenes.arcade.debug.arcade.doorWalk).phase === "idle"`, 20000);
   const leave = async () => {
-    await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; a.root.position.x = 0; a.root.position.z = BL.arcadeModels.HALL.front + 1.3; B.advance(0.2, 1 / 60); })()`);
+    await b.evaluate(`(() => { const B = __ooga, walk = BL.scenes.arcade.debug.arcade.doorWalk; B.pilot.navigate({ position: { x: 0, y: 0, z: BL.arcadeModels.HALL.front - 1.1 }, yaw: Math.PI, pitch: 0.2, dist: 4 }); walk.ask(); })()`);
     return arrive("hub");
   };
   const read = `(() => {
@@ -18650,6 +18651,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
       && r.outside.primary === r.before.primary && r.outside.secondary === r.before.secondary && !r.outside.unlimited
       && r.outside.along < 0 && r.outside.along > -3 && Math.abs(r.outside.across) < 0.5 && Math.abs(r.outside.feet - r.outside.floor) < 0.1), JSON.stringify(rows));
   // Physical games use the ordinary return transition, without the cabinet zoom.
+  await b.evaluate(`(() => { const B = __ooga, m = B.mouths.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 4.5, y: m.floorY, z: m.z - Math.cos(m.ry) * 4.5 }, yaw: m.ry, pitch: 0.3, dist: 6 }); B.advance(0.2, 1 / 60); })()`);
   await b.key(" "); await arrive("arcade");
   await b.key("x");
   await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
