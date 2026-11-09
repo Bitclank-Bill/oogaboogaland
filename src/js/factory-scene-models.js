@@ -2227,7 +2227,7 @@
   // terrain's own dark inner stone; toward the hall it takes the hall's stone and fills the front wall round the
   // portal. `outside` is the island drawn simply, for a visit that did not come in from the hub, which is the one
   // time there is no picture of it to hang past the rim (`outsideView`).
-  const EXIT_ROCK = { unit: 0.5, x: [-13, 12], y: [-4, 8], z: [-9, 0] };
+  const EXIT_ROCK = { unit: 0.5, x: [-13, 12], y: [-4, 8], z: [Math.ceil((BL.factoryModels.SHIELD_Z - 0.7) / 0.5), 0] };
   const exitTunnel = cached(() => {
     const R = EXIT_ROCK, u = R.unit, v = makeVox();
     const open = (x, y, z) => y > 0 && (z > -2.5 ? Math.abs(x) < 2.5 && y < 3 : Math.abs(x) < 3 && y < 4);
@@ -2246,7 +2246,7 @@
     }
     const palette = [null, "#4e443c", "#453b34", "#62564c", "#584d44", "#7a6d60", "#6e6256", "#4a3e34", "#5a4c40", "#6c5c4d", ...STONE];
     const rock = voxelGeometry(v, { unit: u, palette, origin: { x: 0, y: -0.01, z: 0 } });
-    const { geos, glow } = tunnelFrame(0.45);
+    const { geos, glow, boards, floor } = tunnelFrame(0.45);
     const outside = [], band = (h, yc, color, emissive, z) => outside.push(box({ w: 11, h, d: 0.2, color, emissive, offset: { y: yc, z } }));
     const out = 0.5;
     band(2.2, 4.3, "#d6eeff", 1, out + 7.2);
@@ -2265,7 +2265,7 @@
         outside.push(moved(turnedY(box({ w: 1.5, h: 0.14, d: 0.4, color: k % 2 ? "#86bf78" : "#94c986", emissive: 0.75, offset: { x: 0.7 } }), a), x, 0.05 + h, z));
       }
     }
-    return { rock, timber: merge(...geos), glow: noShadow(merge(...glow)), outside: noShadow(merge(...outside)) };
+    return { rock, timber: merge(...geos), boards, floor, glow: noShadow(merge(...glow)), outside: noShadow(merge(...outside)) };
   });
   // The hall's heavy, unchanging builders: built behind the crossing, or ahead of it on the island's own `slice`.
   const BULK = [hall, scaffold, coreBody, conduits, stationFrame, forge, peerPipes, cookerBody, studyHall];

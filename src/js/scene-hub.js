@@ -2194,7 +2194,8 @@
     } else if (slot.status === "open" && slot.scene === "factory") {
       // The Lightning Factory's tunnel: timber sets and lamps down to a phase shield like the lab's, set further in.
       const tunnel = BL.factoryModels.hubTunnel();
-      addChild(group, createNode({ geometry: tunnel.timber }), createNode({ geometry: tunnel.glow, sightHidden: true }));
+      addChild(group, createNode({ geometry: tunnel.timber }), createNode({ geometry: tunnel.floor, sightHidden: true, depthBias: BL.factoryModels.FLOOR_BIAS }), createNode({ geometry: tunnel.boards, sightHidden: true }), createNode({ geometry: tunnel.glow, sightHidden: true }));
+      if (renderer.kind !== "webgl2") addChild(group, createNode({ geometry: tunnel.backdrop, sightHidden: true }));
       const tube = BL.factoryModels.ROOF_TUBE, sr = Math.sin(m.ry), cr = Math.cos(m.ry);
       const tx = m.x + cr * tube.x + sr * tube.z, tz = m.z - sr * tube.x + cr * tube.z;
       const base = island.surfaceAt(tx, tz) - 0.35;
@@ -6255,8 +6256,8 @@
       hud.hint("Opening the Lightning Factory…", G.pulse * 1500);
     }
   };
-  // Back out of the Factory's shield: the Ooga at the mouth's rim facing out, as far across as it left, the view behind
-  // it in the tunnel looking out, the Factory's last frame dissolving off it (when it was held over the crossing at all:
+  // Back out of the Factory's shield: the Ooga a view's length out from it facing the daylight, as far across as it left,
+  // the view behind it in the tunnel looking out, the Factory's last frame dissolving off it (when it was held over the crossing at all:
   // an island that had to be rebuilt fades in instead), and the walk on out of the mouth.
   const arriveFromFactory = (c) => {
     const m = factoryMouth.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), G = BL.factoryWindow.GLIDE, player = pilot.player;
@@ -6332,7 +6333,7 @@
   // since the factory builds the tunnel and its lamps itself, and so is the Ooga walking in. What the factory can
   // see through its rim is cropped out, halved down to a small copy that its display blurs as it enlarges it, given
   // back the saturation the page's grade will add again, and misted a little, as seen through the shield.
-  const FACTORY_VIEW = { width: 320, eye: 1.7, across: 0.82, up: 0.46, down: 0.5, colour: 0.83, mist: 0.12, haze: [206, 228, 238] };
+  const FACTORY_VIEW = { from: -3.8, width: 320, eye: 1.7, across: 0.82, up: 0.46, down: 0.5, colour: 0.83, mist: 0.12, haze: [206, 228, 238] };
   // ₿IFRÖST's chamber looks back out through its own field the same way, at a picture taken from the portal as the
   // Ooga walks in: the landing, Heimdall, the bridge and the island past it, misted in the field's blue.
   // The window into the chamber follows the eye, so it moves once the camera is final for the frame. It is built on the
@@ -6348,7 +6349,8 @@
   };
   const BIFROST_VIEW = { ...FACTORY_VIEW, haze: [188, 208, 255] };
   const snapFactoryView = () => {
-    const view = snapFromShield(factoryMouth.group, factoryMouth.mouth, BL.factoryModels.SHIELD_Z, FACTORY_VIEW);
+    // From a fixed depth, not the shield's: the hall hangs this picture past its tunnel's rim, framed for this distance.
+    const view = snapFromShield(factoryMouth.group, factoryMouth.mouth, FACTORY_VIEW.from, FACTORY_VIEW);
     if (view) world.factoryView = view;
   };
   const snapBifrostView = () => {

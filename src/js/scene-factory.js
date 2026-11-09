@@ -196,7 +196,7 @@
   const SPOTS = {
     core: [LAYOUT.core.x, (LAYOUT.core.chamber[0] + LAYOUT.core.chamber[1]) / 2, LAYOUT.core.z], forge: [FIRE.x, FIRE.y + 0.6, FIRE.z],
     rebalancer: above(LAYOUT.rebalancer, 2), cooker: above(LAYOUT.cooker, 1.5), board: FM.kortikAt(0, 1.3, FM.KORTIK.seat),
-    shields: [[0, LAYOUT.entrance.y + 1.5, FM.EXIT_Z], ...LAYOUT.tunnels.map((t) => [t.x, t.y + 2, t.z])],
+    shields: [[0, LAYOUT.entrance.y + 1.5, FM.EXIT_Z + FM.SHIELD_Z], ...LAYOUT.tunnels.map((t) => [t.x, t.y + 2, t.z])],
     console: above(LAYOUT.switchboard, 1.5), treasury: above(LAYOUT.treasury, 1.2), lookout: above(LAYOUT.lookout, LAYOUT.lookout.tower),
     shaftIn: [FM.SHAFTS[0][0], 0.5, FM.SHAFTS[0][1]], shaftOut: [FM.SHAFTS[1][0], 0.5, FM.SHAFTS[1][1]], gallery: [0, LEVEL.top + 4.5, HALL.back + 4.9]
   };
@@ -1624,7 +1624,7 @@
     const e = LAYOUT.entrance, tunnel = FM.exitTunnel(), view = world.factoryView;
     const mouth = createNode({ position: { x: 0, y: e.y, z: FM.EXIT_Z } }), exit = createNode({ geometry: tunnel.timber });
     addChild(root, mouth);
-    addChild(mouth, createNode({ geometry: tunnel.rock }), exit, createNode({ geometry: tunnel.glow, sightHidden: true }), view
+    addChild(mouth, createNode({ geometry: tunnel.rock }), exit, createNode({ geometry: tunnel.floor, sightHidden: true, depthBias: FM.FLOOR_BIAS }), createNode({ geometry: tunnel.boards, sightHidden: true }), createNode({ geometry: tunnel.glow, sightHidden: true }), view
       ? createNode({ geometry: FM.outsideView(view, OUTSIDE_DISTANCE), position: { x: 0, y: 0, z: view.from + OUTSIDE_DISTANCE }, rotation: { x: 0, y: Math.PI, z: 0 }, sightHidden: true })
       : createNode({ geometry: tunnel.outside, sightHidden: true }));
     target(exit, "exit", null, 2.5);
@@ -2560,7 +2560,7 @@
   const warmSteps = function* (gl, slice, out) {
     const { pause } = BL.buildTasks;
     yield* FM.buildSteps(slice);
-    for (const read of [...FM.BULK, FM.coreChamber, FM.forgeFire, FM.forgeSign, FM.forgeWave, FM.switchScreens, FM.rebalancerRing, FM.rebalancerFlow, FM.lookoutLamp, FM.galleryCaps, FM.capacitor, FM.cookerPort, FM.forgeShafts, FM.teslaArcs, BL.kortikModels.station, BL.kortikModels.geometries]) {
+    for (const read of [...FM.BULK, FM.coreChamber, FM.forgeFire, FM.forgeSign, FM.forgeWave, FM.switchScreens, FM.rebalancerRing, FM.rebalancerFlow, FM.lookoutLamp, FM.galleryCaps, FM.capacitor, FM.cookerPort, FM.forgeShafts, FM.teslaArcs, FM.exitTunnel, BL.kortikModels.station, BL.kortikModels.geometries]) {
       meshesIn(read(), out);
       yield* pause(slice);
     }
