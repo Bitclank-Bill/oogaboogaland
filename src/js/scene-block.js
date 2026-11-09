@@ -148,7 +148,7 @@
   // "me" (none on the watch deck); `liveCast` the round's names by actor; `kept` the solo picks a live round borrows.
   const WIRE = BL.blockWire;
   let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [] };
-  let chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
+  let chairsGreeted = false, chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
   // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
   const zoomDeck = (k) => { audio.unlock(); deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, k); };
@@ -474,6 +474,7 @@
     // A late arrival skips the title card: the chairs are the place they came to.
     document.querySelector('[data-intro="block"]:not([hidden]) [data-action="intro-go"]')?.click();
     audio.unlock();
+    if (!chairsGreeted) { chairsGreeted = true; audio.cues.seat(); }
     el.viewerBoard.hidden = false;
     deck.visible = true;
     // Only the match below: no drifting clouds, campfire, weather or sounds of its own.
@@ -566,7 +567,7 @@
     if (el.gameButtons) el.gameButtons(false);
     if (deck) { deck.visible = false; for (const n of mapClouds) n.visible = true; if (fireNode) fireNode.visible = true; if (dancers) for (const d of dancers) d.visible = true; }
     if (onDeck() && round) round.watchFeed(false);
-    you = 0; watchVisit = false;
+    you = 0; watchVisit = false; chairsGreeted = false;
     if (kept) { Object.assign(selection, kept); kept = null; liveCast = null; if (sim) { const was = sim.map; recast(); if (was !== selection.map) { buildMap(); mapBase = null; } } }
     phase = "board";
     if (el.againBtn) el.againBtn.textContent = "Again";
@@ -2841,6 +2842,7 @@
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
     undeckRender();
+    chairsGreeted = false;
     deck = null; you = 0; kept = null; liveCast = null; watchVisit = false;
     BL.net.setBody(null);
     closeWalletMenu();
