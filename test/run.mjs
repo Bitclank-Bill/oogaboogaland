@@ -7297,6 +7297,7 @@ const gameRulesChecks = async () => {
     {
       const scene = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), opens = scene.lastIndexOf("    showBoard();\n");
       record("regression: a chairs visit survives the board the scene opens on, so the doorway lands in the chairs", opens > 0 && scene.indexOf("watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;", opens) > opens);
+      record("regression: a chairs visit is seated at once, room or no room, and nothing on the deck needs the room", scene.indexOf("if (watchVisit) showDeck();", opens) > opens && scene.includes("if (round) round.watchFeed(true);") && scene.includes("if (round) round.after(dt, move); sim.eventCount = 0;"));
       record("regression: only a seated player's own actor is called You; a viewer sees that actor's real name", scene.includes('if (i === 0 && !onDeck()) return "You";') && !scene.includes('if (i === 0) return "You";'));
     }
     const wentTo = []; L.openWatchDeck((scene, place) => wentTo.push(scene, place));
