@@ -7257,7 +7257,7 @@ const gameRulesChecks = async () => {
     {
       const viewerCtx = { window: { BL: { models: { box: () => ({}) } } } };
       runInNewContext(await readFile(new URL("../src/js/block-viewer.js", import.meta.url), "utf8"), viewerCtx);
-      const V = viewerCtx.window.BL.blockViewer, node = (o = {}) => ({ ...o, kids: [] }), arena = { L: 20 }, kids = [], cam = { position: {}, target: {} };
+      const V = viewerCtx.window.BL.blockViewer, node = (o = {}) => ({ position: { x: 0, y: 0, z: 0 }, ...o, kids: [] }), arena = { L: 20 }, kids = [], cam = { position: {}, target: {} };
       const set = (v, x, y, z) => { v.x = x; v.y = y; v.z = z; };
       const chairs = V.buildChairs(node, (p, ...c) => { p.kids.push(...c); kids.push(...c); }, node(), arena);
       V.look(cam, arena, 0, 0, set);
