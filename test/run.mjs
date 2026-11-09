@@ -7712,6 +7712,21 @@ const gameRulesChecks = async () => {
         Object.assign(fb, { state: "flying", carrier: null, thrower: -1, t: 0, x: cx, y: 1, z: cz, vx: 0, vy: 0, vz: 0, hookedBy: -1 });
         run(gf, 2, still, () => fb.state !== "flying");
         rows.graveBlockLands = fb.state === "dropped" && fb.y === 0 && !S.inGrave(fb.x, fb.z);
+        // Below the surface it always lands, even travelling along the pit and out through its wall, at any depth.
+        rows.graveBlockAlong = [-0.2, -0.5, -0.95, -1.5].every((y) => {
+          const q = fresh("haunted"), f2 = q.flags.red;
+          for (const k of q.crates) k.live = false;
+          Object.assign(f2, { state: "flying", carrier: null, thrower: -1, t: 0, x: cx, y, z: cz, vx: 0, vy: -0.5, vz: 12, hookedBy: -1 });
+          run(q, 3, still, () => f2.state !== "flying");
+          return f2.state === "dropped" && f2.y === 0 && !S.inGrave(f2.x, f2.z);
+        });
+        // Wherever a block is lifted out of a grave to, it is outside the margin bots walk round the grave with.
+        S.create({ map: "haunted" });
+        const graveMargin = S.CONFIG.BODY_R;
+        rows.graveRestReach = S.ARENAS.haunted.graves.every(([x0, x1, z0, z1]) => [[(x0 + x1) / 2, (z0 + z1) / 2], [x0 - 0.1, z0 - 0.1], [x1 + 0.1, z1 + 0.1], [x0 - 0.3, (z0 + z1) / 2], [(x0 + x1) / 2, z1 + 0.3]].every(([x, z]) => {
+          const p = S.restSpot(x, z);
+          return S.clearLine(p.x, p.z, p.x + 0.01, p.z, graveMargin);
+        }));
         // A walk is blocked only by a line that really crosses a grave; a throw at chest height never is.
         const [lx0, lx1, lz0, lz1] = S.ARENAS.haunted.graves[0], lxm = (lx0 + lx1) / 2;
         rows.graveLine = !S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.4) && S.clearLine(lx1 + 1, lz0 - 3, lx1 + 1, lz1 + 3, 0.4) && S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.05, 1.8);

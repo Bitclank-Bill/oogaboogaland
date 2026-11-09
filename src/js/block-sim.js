@@ -601,6 +601,17 @@
   // start, through the map's fixed blocks (`resolve`, a body's own collision), worked out once a map, on the same
   // half-metre grid as the terrain. `restSpot` writes the nearest such spot to (x, z) into REST.
   const REST_CELL = 0.5, REST = { x: 0, z: 0 }, REST_BODY = { x: 0, y: 0, z: 0, crouch: false }, restCache = {};
+  // Graves are widened by a body's radius in `clearLine`, so a block resting nearer than that could never be walked to;
+  // half a cell more because `restSpot` keeps the exact point of any cell it accepts.
+  const GRAVE_REST_M = CONFIG.BODY_R + REST_CELL * 0.5 + 0.01;
+  const nearGrave = (x, z) => {
+    const list = ARENA.graves;
+    if (list) for (let i = 0; i < list.length; i++) {
+      const g = list[i];
+      if (x > g[0] - GRAVE_REST_M && x < g[1] + GRAVE_REST_M && z > g[2] - GRAVE_REST_M && z < g[3] + GRAVE_REST_M) return true;
+    }
+    return false;
+  };
   const restFor = () => {
     let G = restCache[ARENA.id];
     if (G) return G;
@@ -608,7 +619,7 @@
     CRATES = [];
     const clear = (i, j) => {
       const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L;
-      if (!isleIn(x, z, 1) || inGrave(x, z)) return false;
+      if (!isleIn(x, z, 1) || nearGrave(x, z)) return false;
       REST_BODY.x = x; REST_BODY.y = 0; REST_BODY.z = z;
       resolve(REST_BODY, CONFIG.BODY_R * 0.95, 0.05);
       return REST_BODY.x === x && REST_BODY.z === z;
@@ -970,10 +981,10 @@
     const outside = !isleIn(nx, nz, 0.4);
     if (outside || (ny > 0 && solidAt(nx, ny, nz))) { f.vx = f.vz = 0; f.vy = Math.min(f.vy, 0); }
     else { f.x = nx; f.z = nz; }
-    // Down to the floor of an open grave if that is what is under it, where it lands and is lifted out by `restSpot`.
-    f.y = Math.max(ny, inGrave(f.x, f.z) ? GRAVE_Y : -1);
+    f.y = Math.max(ny, -1);
     const ground = groundAt(f.x, f.z, f.y + 0.3, 0.2);
-    if (f.y <= ground) {
+    // Falling below the surface (only an open grave lets it) always ends the flight, whichever way it went in.
+    if (f.y <= ground || (f.y < 0 && f.vy <= 0)) {
       // Wherever it fell (a roof, the centre deck), it comes to rest on the nearest ground the bots can reach.
       const at = restSpot(f.x, f.z);
       f.state = "dropped";
