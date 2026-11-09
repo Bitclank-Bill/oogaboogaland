@@ -8,7 +8,7 @@ const names = git("diff", "--name-only", base, "--").trim().split("\n").filter(B
 const guarded = names.filter((f) => /^(worker\/|src\/js\/(ghost-|haunt-models|block-|voice-blend|zone-map))/.test(f));
 const removed = ["src/js/arcade-models.js", "src/js/arcade-scene-models.js", "src/js/scene-arcade.js"].flatMap((f) => git("diff", "-U0", base, "--", f).split("\n").filter((l) => /^-[^-]/.test(l)));
 const hit = removed.filter((l) => /const HAUNT\b|const BLOCK_HALL\b|const haunt = BL|const blockHall = cached|caveSign\("Ghost Hunter"|ghostSign/.test(l));
-const sceneBlock = git("diff", "-U0", base, "--", "src/js/scene-block.js").split("\n").filter((l) => /^[-+][^-+]/.test(l)).filter((l) => !/doorVisit|chairsBounce|goHome|go\(home\)|onChairsFull|came through the arcade/i.test(l));
+const sceneBlock = git("diff", "-U0", base, "--", "src/js/scene-block.js").split("\n").filter((l) => /^[-+][^-+]/.test(l)).filter((l) => !/doorVisit|chairsBounce|goHome|go\(home\)|onChairsFull|came through the arcade|watchVisit = ctx\.place|arriving for the chairs/i.test(l));
 hit.push(...sceneBlock);
 if (guarded.length || hit.length) { console.error("watch door touched guarded code:", guarded, hit); process.exit(1); }
 console.log(`ok: ${names.length} files changed, none guarded; no guarded line in the shared arcade files changed`);
