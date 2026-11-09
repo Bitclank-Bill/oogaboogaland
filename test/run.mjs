@@ -7208,7 +7208,12 @@ const gameRulesChecks = async () => {
       const a = host.actors[hostMap.toLocal[s]], g = guestMap.toLocal[s], d = deckMap.toLocal[s];
       if (Math.abs(nextG[g * 4] - a.x) > 0.02 || Math.abs(nextD[d * 4 + 1] - a.z) > 0.02 || guest.actors[g].splat !== Math.round(a.splat * 10) / 10) agree = false;
     }
-    record("block live: a 4v4 frame reaches a guest and the watch deck intact and under the limit", agree && biggest > 0 && biggest <= W.FRAME_MAX && guest.score.blue === host.score.blue, `max ${biggest}, avg ${Math.round(total / frames)} bytes`);
+    record("block live: a 4v4 frame reaches a guest and the watch deck intact and under the limit", agree && biggest > 0 && biggest <= W.FRAME_MAX && guest.score.blue === host.score.blue && Math.abs(guest.time - host.time) < 0.01 && host.time > 19 && (() => {
+      host.actors[hostMap.toLocal[3]].captures = 2;
+      const m = L.encode(host, hostMap, 7, 1, frames + 2, buf);
+      L.decode(new DataView(buf.buffer.slice(0, m)), deck, deckMap, nextD);
+      return deck.actors[deckMap.toLocal[3]].captures === 2;
+    })(), `max ${biggest}, avg ${Math.round(total / frames)} bytes`);
     context.blockFrameBytes = { biggest, average: Math.round(total / frames) };
     // 1v1 is a real match with bots and flags, and a solo step is untouched by the new input table.
     const one = S.create({ team: "blue", seed: 9, size: 1, map: "fort", prep: 0 });
@@ -7240,6 +7245,7 @@ const gameRulesChecks = async () => {
     record("block live: the host sends a frame and guests apply it", A.bins.length === 1 && (B.frame(A.bins[0]), D.frame(A.bins[0]), true) && Math.abs(b.flags.blue.x - a.flags.blue.x) < 0.1);
     const deckAct = D.live.act === undefined ? false : D.live.role === "watch" && (() => { D.live.after(0.05, still()); return D.sent.filter(m => m.k === "input" || m.t === "bf").length === 0; })();
     record("block live: the watch deck sends no input", deckAct);
+    record("block live: no game action works from the chairs", D.live.act("drop", 0) === false && D.sent.filter(m => m.k === "input").length === 0);
     B.live.after(1, still());
     record("block live: a guest sends bounded input", B.sent.some(m => m.k === "input" && m.q === 0 && m.s === match.s));
     const leftA = { ...match, seats: [10, 0, 30, 0] };
@@ -7286,6 +7292,14 @@ const gameRulesChecks = async () => {
       capSim.score.blue = capSim.score.red = 0; const newRound = V.newCaptures(capSim, seen);
       capSim.score.red = 1; const firstOfRound = V.newCaptures(capSim, seen);
       record("block live: a viewer hears each capture once, from the score, across skipped frames and new rounds", onSit === 0 && none === 0 && one === 1 && again === 0 && skippedFrames === 2 && newRound === 0 && firstOfRound === 1);
+      const statSeen = [], steals = { was: [], count: [] }, mkSim = (c, h, carry) => ({ actors: c.map((n, i) => ({ id: i, captures: n, hits: h[i], team: i < 2 ? "blue" : "red", carrying: carry[i] || null })) });
+      V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals); V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals);
+      V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], [null, null, null, null]), steals); V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, null]), steals);
+      const firstRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
+      const steadyRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
+      steals.count.length = 0; const emptiedRows = V.statRows(mkSim([0, 0, 0, 0], [0, 0, 0, 0], [null, null, null, null]), steals, statSeen);
+      record("block live: the stats table counts captures, stolen and splats, sorted by captures, and each steal once; a new round empties it",
+        JSON.stringify(firstRows.map(r => [r.id, r.captures, r.stolen, r.hits])) === JSON.stringify([[2, 3, 0, 0], [0, 1, 2, 0], [3, 1, 0, 5], [1, 0, 0, 2]]) && steadyRows === null && emptiedRows.length === 0);
       const board = { blue: -1 }, boardSim = { score: { blue: 2, red: 1 }, prep: 0, time: 75.4, target: 3 };
       const changed = V.fillBoard(boardSim, board), still2 = V.fillBoard(boardSim, board);
       boardSim.prep = 3.5;

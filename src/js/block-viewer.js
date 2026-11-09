@@ -25,6 +25,29 @@
     seen.total = total;
     return was < 0 || total < was ? 0 : total - was;
   };
+  // Stolen blocks aren't a stat of the rules: a viewer counts each time it sees an Ooga start carrying the other side's
+  // block, from the carrying state every frame already holds. Counts from when the viewer sat down.
+  const trackSteals = (sim, st) => {
+    for (let i = 0; i < sim.actors.length; i++) {
+      const a = sim.actors[i], other = !!a.carrying && a.carrying !== a.team;
+      if (other && !st.was[i]) st.count[i] = (st.count[i] || 0) + 1;
+      st.was[i] = other;
+    }
+  };
+  // Each player or NPC with a stat this round, sorted by captures: captures, blocks stolen and splats landed (the same
+  // captures and hits the results table shows). `seen` holds the last values: null while nothing changed, so it costs
+  // nothing per frame; a new round's zeros empty the table.
+  const statRows = (sim, st, seen) => {
+    let changed = false;
+    for (let i = 0; i < sim.actors.length; i++) {
+      const a = sim.actors[i], key = i * 3, stolen = st.count[i] || 0;
+      if (seen[key] !== a.captures || seen[key + 1] !== stolen || seen[key + 2] !== a.hits) { seen[key] = a.captures; seen[key + 1] = stolen; seen[key + 2] = a.hits; changed = true; }
+    }
+    if (!changed) return null;
+    const rows = [];
+    for (const a of sim.actors) { const stolen = st.count[a.id] || 0; if (a.captures || stolen || a.hits) rows.push({ id: a.id, team: a.team, captures: a.captures, stolen, hits: a.hits }); }
+    return rows.sort((p, q) => q.captures - p.captures || q.stolen - p.stolen || q.hits - p.hits || p.id - q.id);
+  };
   const fmtClock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   // The scoreboard's words from the match state a viewer already holds, into `out`; true only when one changed.
   const fillBoard = (sim, out) => {
@@ -59,5 +82,5 @@
     for (const key of ["clear", "horizon", "zenith", "sky"]) opts[key].fill(1);
     opts.sea = null; opts.clouds = 0; opts.stars = 0; opts.bloomStrength = 0; opts.fogNear = 1e4; opts.fogFar = 2e4; opts.sunStrength = 0;
   };
-  BL.blockViewer = { FOV, ZOOM_MIN, ZOOM_MAX, frame, place, buildChairs, look, white, clampZoom, zoomBy, easeZoom, fillBoard, newCaptures };
+  BL.blockViewer = { FOV, ZOOM_MIN, ZOOM_MAX, frame, place, buildChairs, look, white, clampZoom, zoomBy, easeZoom, fillBoard, newCaptures, trackSteals, statRows };
 })();

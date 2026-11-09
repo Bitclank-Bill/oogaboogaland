@@ -10,6 +10,8 @@
   const WATCH_DECK_PLACE = "watch-deck";
   // The most a side may hold: change this one number to change the cap on the page and in the Worker.
   const MAX_SIDE = 4, MIN_SIDE = 1, MAX_PLAYERS = MAX_SIDE * 2;
+  // The viewing chairs: at most this many viewers a match, enforced by the room. Bounds their share of the frames.
+  const MAX_VIEWERS = 5;
   const HZ = 10, INPUT_HZ = 20, IDLE_MS = 15000, COUNTDOWN_MS = 3000;
   // The binary snapshot's header: "BFZ1", then u32 round tag, u32 host epoch, u32 sequence (all little-endian).
   const MAGIC = 0x315a4642, FRAME_HEADER = 16, FRAME_MAX = 2048, FRAME_HZ = 12;
@@ -64,5 +66,5 @@
     }
     return null;
   };
-  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
+  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
 })();

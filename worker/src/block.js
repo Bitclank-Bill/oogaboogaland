@@ -130,7 +130,15 @@ export const block = {
     if (!take(p, "control", CONTROL_HZ, CONTROL_BURST, now) || p.zone !== W.ZONE) return;
     if (msg.k === "hello") { block.tell(room, m0, p); return; }
     // Viewers ask for frames; anyone else in the area receives none. No body needed, nothing about them is kept but this.
-    if (msg.k === "watch") { p.blockWatch = msg.on === 1; return; }
+    if (msg.k === "watch") {
+      if (msg.on === 1 && !p.blockWatch) {
+        let viewers = 0;
+        for (const other of room.players.values()) if (other.blockWatch && other.zone === W.ZONE) viewers++;
+        if (viewers >= W.MAX_VIEWERS) { room.send(p.ws, { t: "bf", k: "chairs-full" }); return; }
+      }
+      p.blockWatch = msg.on === 1;
+      return;
+    }
     if (!W.eligible(p)) return;
     if (m0 && (W.seatOf(m0, p.id) >= 0 || m0.reg.includes(p.id))) room.blockSeen.set(p.id, now);
     block.sweep(room);

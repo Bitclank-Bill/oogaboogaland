@@ -241,6 +241,19 @@ test("a new page hears the current match on arrival; an older page is never told
   assert.equal(last(b.ws).phase, "lobby"); assert.deepEqual([...last(b.ws).reg], [1]);
   assert.ok(b.ws.sent.find(m => m.t === "welcome").features.includes(W.FEATURE));
 });
+test("at most five viewers, the sixth is told the chairs are full, and a leaving viewer frees a seat", async t => {
+  const h = harness(t), list = await crowd(h, 2), m = startRound(h, list), viewers = [];
+  for (let i = 0; i < 6; i++) { const ws = await h.join(20 + i, "ooga" + (20 + i)); h.send(ws, { t: "zone", name: W.ZONE }); h.send(ws, { t: "bf", k: "watch", on: 1 }); viewers.push({ ws, p: h.room.players.get(20 + i) }); }
+  const sixth = viewers[5];
+  assert.equal(W.MAX_VIEWERS, 5); assert.equal(viewers.filter(v => v.p.blockWatch).length, 5); assert.ok(!sixth.p.blockWatch);
+  assert.ok(sixth.ws.sent.some(x => x.t === "bf" && x.k === "chairs-full"));
+  const host = list.find(x => x.id === m.host);
+  h.room.webSocketMessage(host.ws, frame(m, 2)); assert.equal(sixth.ws.bins.length, 0, "the sixth gets no frames");
+  h.send(viewers[0].ws, { t: "bf", k: "watch", on: 0 });
+  h.send(sixth.ws, { t: "bf", k: "watch", on: 1 }); assert.equal(sixth.p.blockWatch, true, "a seat freed by watch off");
+  h.send(viewers[1].ws, { t: "zone", name: "outside" });
+  h.send(viewers[0].ws, { t: "bf", k: "watch", on: 1 }); assert.equal(viewers[0].p.blockWatch, true, "a seat freed by walking away");
+});
 test("traffic through the Worker with eight live players, simulated over ten seconds", async t => {
   const h = harness(t), list = await crowd(h, 8), m = startRound(h, list);
   assert.equal(m.phase, "play");

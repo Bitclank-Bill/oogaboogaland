@@ -147,14 +147,14 @@
   // The live round (block-live.js), present only signed in on a Worker that offers it. `you` is the actor events call
   // "me" (none on the watch deck); `liveCast` the round's names by actor; `kept` the solo picks a live round borrows.
   const WIRE = BL.blockWire;
-  let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 };
-  let watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
+  let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [] };
+  let chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
   // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
   const zoomDeck = (k) => { audio.unlock(); deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, k); };
   const SEA_LEVEL = RENDER_OPTS.sea;
   const liveRound = () => !!round && (round.role === "host" || round.role === "guest");
-  const acts = (name, id, a, b, c) => liveRound() ? round.act(name, id, a, b, c) : SIM[name](sim, id, a, b, c);
+  const acts = (name, id, a, b, c) => onDeck() ? false : liveRound() ? round.act(name, id, a, b, c) : SIM[name](sim, id, a, b, c);
   let jumpWas = false;
   const el = {};
   const blockScene = {
@@ -459,13 +459,16 @@
     seatViewer();
   };
   const seatViewer = () => {
+    chairsFull = false;
     round.watchFeed(true);
     you = -9;
     phase = "watch"; paused = false;
     deck ||= BL.blockViewer.buildChairs(createNode, addChild, place(createNode()), SIM.ARENA);
     BL.blockViewer.place(deck, SIM.ARENA);
     deckZoom = deckZoomTo = 1; deckYaw = deckPitch = 0;
-    deckBoard.blue = -1; deckCaps.total = -1;
+    deckBoard.blue = -1; deckCaps.total = -1; deckCapSeen.length = 0; deckSteals.was.length = 0; deckSteals.count.length = 0;
+    el.viewerCaps.textContent = ""; el.viewerCaps.hidden = true;
+    el.gameButtons(true);
     // A late arrival skips the title card: the chairs are the place they came to.
     document.querySelector('[data-intro="block"]:not([hidden]) [data-action="intro-go"]')?.click();
     audio.unlock();
@@ -485,10 +488,21 @@
     if (document.pointerLockElement === el.canvas) document.exitPointerLock();
   };
   const joinDeck = () => { if (round.match && round.match.phase === "play") { arrival = true; round.watchNow(); } };
+  const paintStats = (rows) => {
+    el.viewerCaps.textContent = "";
+    el.viewerCaps.hidden = !rows.length;
+    if (!rows.length) return;
+    const line = (cells, side, tag) => { const tr = document.createElement("tr"); if (side) tr.dataset.side = side; for (const v of cells) { const c = document.createElement(tag); c.textContent = v; tr.append(c); } el.viewerCaps.append(tr); };
+    line(["Player", "Mined", "Stolen", "Splats"], "", "th");
+    for (const r of rows) line([nameOf(r.id), r.captures, r.stolen, r.hits], r.team, "td");
+  };
   const deckView = (dt) => {
     deckZoom = BL.blockViewer.easeZoom(deckZoom, deckZoomTo, dt, hookStill);
     BL.blockViewer.look(camera, SIM.ARENA, deckYaw, deckPitch, setVec, deckZoom);
     for (let n = BL.blockViewer.newCaptures(sim, deckCaps); n > 0; n--) audio.cues.capture();
+    BL.blockViewer.trackSteals(sim, deckSteals);
+    const statRows = BL.blockViewer.statRows(sim, deckSteals, deckCapSeen);
+    if (statRows) paintStats(statRows);
     if (BL.blockViewer.fillBoard(sim, deckBoard)) { el.viewerBlue.textContent = deckBoard.blue; el.viewerRed.textContent = deckBoard.red; el.viewerGoal.textContent = deckBoard.goal; el.viewerClock.textContent = deckBoard.clock; }
     BL.blockViewer.white(RENDER_OPTS);
     if (fpGun) fpGun.visible = fpGunL.visible = false;
@@ -502,7 +516,8 @@
     const seated = play && WIRE.seatOf(m, self) >= 0;
     el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Live match";
     const solo = !!m && m.phase === "lobby" && count === 1 && me, waiting = solo && isReady();
-    el.liveStatus.textContent = !m ? "Register to start a live round, alone with NPCs or with whoever arrives."
+    el.liveStatus.textContent = chairsFull ? "The viewing chairs are full. You can register for the next round or go back."
+      : !m ? "Register to start a live round, alone with NPCs or with whoever arrives."
       : waiting ? `Waiting for players · ${WIRE.MAPS[m.map]} · ${m.size} a side · you pick the map and size.`
       : solo ? `Just you so far · ${WIRE.MAPS[m.map]} · ${m.size} a side · you pick the map and size.`
       : play ? (seated ? "You're in this round." : `${m.seats.filter(Boolean).length} playing. Register now to join the next round.`)
@@ -528,7 +543,8 @@
     if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound())) showBoard();
   };
   const openRound = () => {
-    round = BL.blockLive.create({ onMatch: renderLive, onStart: liveBegin, onHost: () => notice("You're hosting this round now", 2400) });
+    round = BL.blockLive.create({ onMatch: renderLive, onStart: liveBegin, onHost: () => notice("You're hosting this round now", 2400),
+      onChairsFull: () => { chairsFull = true; if (onDeck()) showBoard(); else renderLive(round.match); } });
     arrival = true;
     round.hello();
     renderLive(null);
@@ -543,7 +559,9 @@
     if (liveRound() && !sim.over) round.unregister();
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
+    if (round && chairsFull) renderLive(round.match);
     RENDER_OPTS.sea = SEA_LEVEL;
+    if (el.gameButtons) el.gameButtons(false);
     if (deck) { deck.visible = false; for (const n of mapClouds) n.visible = true; if (fireNode) fireNode.visible = true; if (dancers) for (const d of dancers) d.visible = true; }
     if (onDeck() && round) round.watchFeed(false);
     you = 0; watchVisit = false;
@@ -2543,7 +2561,8 @@
     el.struggleWord.textContent = COARSE ? "Tap fast!" : "Mash SPACE!";
     el.live = document.getElementById("block-live"); el.liveTitle = document.getElementById("block-live-title"); el.liveStatus = document.getElementById("block-live-status"); el.liveList = document.getElementById("block-live-list"); el.liveSizes = document.getElementById("block-live-sizes");
     el.liveReg = document.getElementById("block-live-reg"); el.liveReady = document.getElementById("block-live-ready"); el.liveWatch = document.getElementById("block-live-watch"); el.liveAlone = document.getElementById("block-live-alone"); el.liveWait = document.getElementById("block-live-wait");
-    el.watch = document.getElementById("block-watch"); el.watchLine = document.getElementById("block-watch-line"); el.viewerBoard = document.getElementById("block-viewer-board"); el.viewerBlue = document.getElementById("block-viewer-blue"); el.viewerRed = document.getElementById("block-viewer-red"); el.viewerGoal = document.getElementById("block-viewer-goal"); el.viewerClock = document.getElementById("block-viewer-clock"); el.watchReg = document.getElementById("block-watch-reg");
+    el.watch = document.getElementById("block-watch"); el.watchLine = document.getElementById("block-watch-line"); el.viewerBoard = document.getElementById("block-viewer-board"); el.viewerBlue = document.getElementById("block-viewer-blue"); el.viewerRed = document.getElementById("block-viewer-red"); el.viewerGoal = document.getElementById("block-viewer-goal"); el.viewerClock = document.getElementById("block-viewer-clock"); el.viewerCaps = document.getElementById("block-viewer-captures"); el.watchReg = document.getElementById("block-watch-reg");
+    { const off = [document.getElementById("block-drop"), document.getElementById("block-view-btn")]; el.gameButtons = (viewing) => { for (const b of off) if (b) b.hidden = viewing; }; }
     el.againBtn = document.querySelector('#block-results [data-action="block-again"]');
     el.teams = [...document.querySelectorAll("#block-board [data-team]")];
     el.targets = [...document.querySelectorAll("#block-board [data-target]")];
@@ -2738,6 +2757,8 @@
       }
     });
     hud.onAction((action) => {
+      // Nothing in the chairs reaches the game: a viewer has no Ooga, tools or block.
+      if (onDeck() && (action === "block-drop" || action === "act" || action === "block-view")) return;
       if (action === "block-again" && kept) showBoard();
       else if (action === "block-start" || action === "block-again") { if (registered()) round.unregister(); start(); }
       else if (action === "block-live-reg") {

@@ -145,7 +145,7 @@
   };
   const blankInput = () => ({ x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 });
   const STALE_MS = 500;
-  const create = ({ net = BL.net, onMatch, onStart, onHost, now = () => performance.now(), resolveBody = (a, r) => SIM.resolve(a, r) }) => {
+  const create = ({ net = BL.net, onMatch, onStart, onHost, onChairsFull = () => {}, now = () => performance.now(), resolveBody = (a, r) => SIM.resolve(a, r) }) => {
     let match = null, sim = null, map = null, role = "none", seat = -1, startedTag = -1, epochSeen = 0, lastQ = -1, q = 0, inputQ = 0, sendWait = 0, beatWait = 0, goSent = false, lastAt = 0, jump = 0, frameAge = 0, frameGap = 1 / W.HZ, haveFrame = false;
     const buffer = new DataView(new ArrayBuffer(W.FRAME_MAX)), bytes = new Uint8Array(buffer.buffer), actions = [], remote = [];
     let prev = new Float32Array(0), next = new Float32Array(0), inputs = [];
@@ -219,11 +219,12 @@
       if (m.a) for (let i = 0; i < m.a.length; i += 4) if (r.queue.length < 16) r.queue.push(m.a[i], m.a[i + 1] / 1000, m.a[i + 2] / 1000, m.a[i + 3]);
     };
     const integerSeat = v => Number.isInteger(v) && v >= 0 && map && v < map.toLocal.length;
-    const offs = [net.subscribeBf(m => m.k === "match" ? receiveMatch(m) : m.k === "input" ? receiveInput(m) : m.k === "lost" ? (match = null, role !== "none" && endRound(), onMatch(null)) : undefined), net.subscribeBfFrame(receiveFrame)];
+    const offs = [net.subscribeBf(m => m.k === "match" ? receiveMatch(m) : m.k === "input" ? receiveInput(m) : m.k === "chairs-full" ? onChairsFull() : m.k === "lost" ? (match = null, role !== "none" && endRound(), onMatch(null)) : undefined), net.subscribeBfFrame(receiveFrame)];
     const command = (k, extra) => net.sendBf(extra ? Object.assign({ k }, extra) : { k });
     // The guest's action, or the host's own: a guest asks its host, and its own page shows the outcome when the next
     // frame says so. Returns what the scene would branch on: true on a page that decides, true-ish for a guest.
     const act = (name, id, a = 0, b = 0, c) => {
+      if (role !== "host" && role !== "guest") return false;
       if (role !== "guest") return ACTION_CALLS[name](sim, id, a, b, c === undefined ? 0 : W.KINDS.indexOf(c) >= 0 ? W.KINDS.indexOf(c) : 0);
       if (actions.length < 16) actions.push(W.ACTIONS.indexOf(name), Math.round(a * 1000), Math.round(b * 1000), c === undefined ? 0 : Math.max(0, W.KINDS.indexOf(c)));
       return true;
