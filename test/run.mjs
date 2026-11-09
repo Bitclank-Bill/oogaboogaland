@@ -7166,12 +7166,184 @@ const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
 
 // The games' rules and saves in Node, under the same localStorage the page uses: the mine's seeded sim,
 // every game's stored best, the tickets a machine spends and the jackpot wheel's odds.
-const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-sim", "highscore-rules", "game", "cloud-hopper-levels"];
+const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-wire", "block-sim", "block-live", "highscore-rules", "game", "cloud-hopper-levels"];
 const gameRulesChecks = async () => {
   const store = new Map();
   const context = { window: {}, URLSearchParams, location: { search: "" }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) } };
   for (const name of GAME_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL, M = BL.mineSim, R = BL.mineRigs;
+  {
+    const S = BL.blockSim, W = BL.blockWire, L = BL.blockLive;
+    const still = () => ({ x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 });
+    const emitted = [...(await readFile(new URL("../src/js/block-sim.js", import.meta.url), "utf8")).matchAll(/emit\(sim, "([a-z0-9]+)"/g)].map(m => m[1]);
+    const missing = [...new Set(emitted)].filter(t => !L.EVENT_TYPES.includes(t));
+    record("block live: every event the rules emit has a wire code", missing.length === 0, missing.join(","));
+    const lobby = (reg, ready) => ({ phase: "lobby", reg, ready });
+    record("block live: a round starts itself only with two humans all ready; alone is a choice for the one registered",
+      !W.canStart(lobby([1], [1])) && !W.canStart(lobby([1, 2], [1, 0])) && W.canStart(lobby([1, 2], [1, 1])) && W.canStartAlone(lobby([1], [0]), 1) && !W.canStartAlone(lobby([1], [0]), 2) && !W.canStartAlone(lobby([1, 2], [0, 0]), 1) && !W.canStartAlone({ phase: "play", reg: [1], ready: [0] }, 1));
+    record("block live: the wire's maps and the cap match the rules", W.MAPS.every(m => S.ARENAS[m]) && W.MAPS.length === Object.keys(S.ARENAS).length && W.MAX_SIDE <= S.CONFIG.MAX_SIDE && W.MAX_SIDE === 4);
+    // Seat maps: own Ooga at actor 0, own side first, for every seat; both directions invert each other.
+    let seatsOk = true;
+    for (const size of [1, 2, 3, 4]) for (let me = -1; me < size * 2; me++) {
+      const m = L.seatMap(size, me);
+      if (me >= 0 && m.toLocal[me] !== 0) seatsOk = false;
+      if (me >= 0 && m.team !== (me < size ? "blue" : "red")) seatsOk = false;
+      for (let s = 0; s < size * 2; s++) if (m.toSeat[m.toLocal[s]] !== s || (m.toLocal[s] < size) !== ((s < size) === (me < size))) seatsOk = false;
+    }
+    record("block live: a seat maps to a page's own Ooga at actor 0, own side first", seatsOk);
+    // A played 4v4: host at seat 5, a guest at seat 2 and a deck page agree on the world, under the frame limit.
+    const hostMap = L.seatMap(4, 5), guestMap = L.seatMap(4, 2), deckMap = L.seatMap(4, -1);
+    const host = S.create({ team: hostMap.team, seed: 4242, size: 4, map: "fort", prep: 0 }), guest = S.create({ team: guestMap.team, seed: 4242, size: 4, map: "fort", prep: 0 }), deck = S.create({ team: deckMap.team, seed: 4242, size: 4, map: "fort", prep: 0 });
+    const buf = new DataView(new ArrayBuffer(W.FRAME_MAX)), input = still();
+    let biggest = 0, total = 0, frames = 0;
+    for (let i = 0; i < 2400; i++) {
+      S.tick(host, S.CONFIG.STEP, input);
+      if (i % 12 === 0) { const n = L.encode(host, hostMap, 7, 1, ++frames, buf); biggest = Math.max(biggest, n); total += n; host.eventCount = 0; }
+    }
+    const nextG = new Float32Array(32), nextD = new Float32Array(32), n = L.encode(host, hostMap, 7, 1, frames + 1, buf);
+    const copy = new DataView(buf.buffer.slice(0, n));
+    L.decode(copy, guest, guestMap, nextG); L.decode(copy, deck, deckMap, nextD);
+    let agree = true;
+    for (let s = 0; s < 8; s++) {
+      const a = host.actors[hostMap.toLocal[s]], g = guestMap.toLocal[s], d = deckMap.toLocal[s];
+      if (Math.abs(nextG[g * 4] - a.x) > 0.02 || Math.abs(nextD[d * 4 + 1] - a.z) > 0.02 || guest.actors[g].splat !== Math.round(a.splat * 10) / 10) agree = false;
+    }
+    record("block live: a 4v4 frame reaches a guest and the watch deck intact and under the limit", agree && biggest > 0 && biggest <= W.FRAME_MAX && guest.score.blue === host.score.blue && Math.abs(guest.time - host.time) < 0.01 && host.time > 19 && (() => {
+      host.actors[hostMap.toLocal[3]].captures = 2;
+      const m = L.encode(host, hostMap, 7, 1, frames + 2, buf);
+      L.decode(new DataView(buf.buffer.slice(0, m)), deck, deckMap, nextD);
+      return deck.actors[deckMap.toLocal[3]].captures === 2;
+    })(), `max ${biggest}, avg ${Math.round(total / frames)} bytes`);
+    context.blockFrameBytes = { biggest, average: Math.round(total / frames) };
+    // 1v1 is a real match with bots and flags, and a solo step is untouched by the new input table.
+    const one = S.create({ team: "blue", seed: 9, size: 1, map: "fort", prep: 0 });
+    one.actors[1].bot = true;
+    for (let i = 0; i < 1200; i++) S.tick(one, S.CONFIG.STEP, still());
+    const solo = (t) => { const s = S.create({ team: "blue", seed: 77, size: 3, map: "town", prep: 1 }); if (t) s.inputs = null; for (let i = 0; i < 1800; i++) S.tick(s, S.CONFIG.STEP, still()); return s.actors.map(a => a.x + a.z).join(","); };
+    record("block live: 1v1 runs, and a solo round is unchanged", one.actors.length === 2 && one.time > 9 && solo(false) === solo(true));
+    // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
+    const session = (selfId) => {
+      const subs = new Set(), frames_ = new Set(), sent = [], bins = [];
+      const net = { state: { selfId }, serverNow: () => context.clock + (context.skew || 0), subscribeBf: f => { subs.add(f); return () => subs.delete(f); }, subscribeBfFrame: f => { frames_.add(f); return () => frames_.delete(f); }, sendBf: m => { sent.push(m); return true; }, sendBfInput: m => { sent.push({ ...m }); return true; }, sendBfFrame: b => { bins.push(b.slice().buffer); } };
+      const seen = { sim: null, started: 0 }, live = L.create({ net, now: () => context.clock, resolveBody: () => {}, onMatch: () => {}, onHost: () => { seen.tookOver = true; },
+        onStart: (m, role, map) => { seen.started++; seen.role = role; const s = S.create({ team: map.team, seed: m.seed, size: m.size, map: "fort", prep: 0 }); seen.sim = s; S.reset(s, m.seed); live.bind(s); } });
+      return { live, sent, bins, seen, tell: m => { for (const f of subs) f({ k: "match", ...m }); }, input: m => { for (const f of subs) f({ k: "input", ...m }); }, frame: b => { for (const f of frames_) f(b); } };
+    };
+    context.clock = 1000;
+    const match = { s: "0123456789abcdef", phase: "play", size: 2, map: 0, reg: [], ready: [], seats: [10, 20, 30, 0], host: 10, epoch: 1, tag: 99, seed: 5 };
+    const A = session(10), B = session(20), D = session(40);
+    A.tell(match); B.tell(match); D.tell(match);
+    const a = A.seen.sim, b = B.seen.sim, dk = D.seen.sim;
+    record("block live: roles and NPC fill from the seats", A.seen.role === "host" && B.seen.role === "guest" && D.seen.role === "watch" && a.actors[3].bot === true && !a.actors[0].bot && !b.actors[0].bot);
+    const mv = A.live.map.toLocal[1], before = a.actors[mv].x;
+    A.input({ from: 1, s: match.s, q: 1, x: 1000, z: 0, f: 0, b: 1 });
+    for (let i = 0; i < 120; i++) { context.clock += 1000 / 120; A.live.hostStep(); S.tick(a, S.CONFIG.STEP, still()); }
+    record("block live: a guest's input drives its Ooga on the host", Math.abs(a.actors[mv].x - before) > 0.5, `moved ${a.actors[mv].x - before}`);
+    A.input({ from: 3, s: match.s, q: 2, x: 1000, z: 0, f: 0, b: 0 });
+    record("block live: an NPC seat cannot be driven", !A.live.map || a.inputs[A.live.map.toLocal[3]] === null);
+    A.live.after(0.2, still());
+    record("block live: the host sends a frame and guests apply it", A.bins.length === 1 && (B.frame(A.bins[0]), D.frame(A.bins[0]), true) && Math.abs(b.flags.blue.x - a.flags.blue.x) < 0.1);
+    const deckAct = D.live.act === undefined ? false : D.live.role === "watch" && (() => { D.live.after(0.05, still()); return D.sent.filter(m => m.k === "input" || m.t === "bf").length === 0; })();
+    record("block live: the watch deck sends no input", deckAct);
+    record("block live: no game action works from the chairs", D.live.act("drop", 0) === false && D.sent.filter(m => m.k === "input").length === 0);
+    B.live.after(1, still());
+    record("block live: a guest sends bounded input", B.sent.some(m => m.k === "input" && m.q === 0 && m.s === match.s));
+    const leftA = { ...match, seats: [10, 0, 30, 0] };
+    A.tell(leftA); record("block live: a leaver's seat falls back to an NPC", a.actors[mv].bot === true);
+    const handed = { ...match, seats: [0, 20, 30, 0], host: 20, epoch: 2 };
+    B.tell(handed);
+    record("block live: on handover the next page hosts from its last state", B.live.role === "host" && B.seen.tookOver === true && B.seen.sim.inputs !== null);
+    B.tell({ ...handed, phase: "lobby", reg: [20], ready: [0], seats: [] }); D.tell({ ...handed, phase: "lobby", reg: [20], ready: [0], seats: [] });
+    record("block live: the round's end returns everyone to the lobby role", B.live.role === "none" && D.live.role === "none");
+    A.live.dispose(); B.live.dispose(); D.live.dispose();
+    {
+      // Review regressions: handover with a hook in flight, every event reaching the wire, the last frame for viewers, hostile frames, demotion, the server clock.
+      context.clock = 5000;
+      const round2 = { s: "fedcba9876543210", phase: "play", size: 2, map: 0, reg: [], ready: [], seats: [11, 22, 0, 0], host: 11, epoch: 1, tag: 77, seed: 5 };
+      const H = session(11), G = session(22); H.tell(round2); G.tell(round2);
+      const gs = G.seen.sim; gs.actors[0].hk = 3; gs.actors[0].hookTarget = -1; gs.actors[1].hk = 5; gs.actors[1].hookTarget = -1;
+      let thrown = false; try { S.tick(gs, S.CONFIG.STEP, still()); } catch { thrown = true; }
+      record("block live: a hook in flight with no target would crash a promoted host (the bug's precondition)", thrown);
+      S.settleHooks(gs); let threw2 = false; try { S.tick(gs, S.CONFIG.STEP, still()); } catch { threw2 = true; }
+      G.tell({ ...round2, seats: [0, 22, 0, 0], host: 22, epoch: 2 }); gs.actors[0].hk = 3; gs.actors[0].hookTarget = -1;
+      record("block live: settling hooks on promotion keeps the round running", !threw2 && gs.actors[1].hk === 4 && gs.actors[1].hookTarget === -1 && G.live.role === "host");
+      G.tell({ ...round2, seats: [11, 22, 0, 0], host: 11, epoch: 3 });
+      record("block live: a host handed over to another page becomes a guest", G.live.role === "guest" && G.seen.sim.inputs === null);
+      const LH = session(31); LH.tell({ ...round2, tag: 78, s: "aaaaaaaaaaaaaaaa", seats: [31, 0, 0, 0], host: 31, epoch: 1 });
+      const hs = LH.seen.sim; LH.live.after(0.2, still());
+      hs.eventCount = 1; hs.events[0].type = "jump"; hs.events[0].team = "blue"; hs.events[0].actor = 0; hs.events[0].by = -1; hs.events[0].x = hs.events[0].y = hs.events[0].z = 1;
+      LH.live.after(0.01, still()); hs.eventCount = 0;
+      hs.eventCount = 1; hs.events[0].type = "land"; LH.live.after(0.2, still()); hs.eventCount = 0;
+      const seenSim = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 }), sameMap = L.seatMap(2, 0), fr = new DataView(LH.bins.at(-1));
+      L.decode(fr, seenSim, sameMap, new Float32Array(16));
+      record("block live: events from every frame since the last send reach the wire", seenSim.eventCount === 2 && seenSim.events[0].type === "jump" && seenSim.events[1].type === "land");
+      hs.over = true; hs.winner = "blue"; LH.live.after(0.01, still());
+      record("block live: the last frame of a round is always one viewers receive", new DataView(LH.bins.at(-1)).getUint32(12, true) % 2 === 0);
+      const good = new Uint8Array(LH.bins.at(-1)), corrupt = (fn) => { const c = good.slice(); fn(c); return new DataView(c.buffer); };
+      const viewSim = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 });
+      record("block live: a valid frame passes the hostile-frame check", L.validFrame(new DataView(good.buffer), viewSim, sameMap));
+      const bad = [corrupt(() => {}).buffer.slice(0, good.length - 3), corrupt(c => { c[W.FRAME_HEADER + 10] = 99; }).buffer, corrupt(c => { c[W.FRAME_HEADER + 21] = 200; }).buffer, corrupt(c => { c[good.length - 1] = 255; c[good.length - 11] = 200; }).buffer];
+      record("block live: truncated frames, bad enums and bad counts are refused", bad.every(b => !L.validFrame(new DataView(b), viewSim, sameMap)));
+      const before = viewSim.score.blue;
+      record("block live: a refused frame leaves the sim untouched", viewSim.score.blue === before && viewSim.eventCount === 0);
+      const C = session(41), cm = { s: "bbbbbbbbbbbbbbbb", phase: "countdown", size: 2, map: 0, reg: [41, 42], ready: [1, 1], seats: [41, 42, 0, 0], host: 41, epoch: 1, tag: 79, seed: 2, start: context.clock + 3000 };
+      C.tell(cm);
+      context.skew = 5000; C.live.lobbyTick(0.1); const goSkew = C.sent.some(m => m.k === "go");
+      context.skew = -5000; const C2 = session(43); C2.tell({ ...cm, seats: [43, 42, 0, 0], reg: [43, 42] }); C2.live.lobbyTick(0.1); const noGo = !C2.sent.some(m => m.k === "go");
+      context.skew = 0;
+      record("block live: the countdown ends on the room's clock, not the page's", goSkew && noGo);
+      for (const x of [H, G, LH, C, C2]) x.live.dispose();
+    }
+    const wentTo = []; L.openWatchDeck((scene, place) => wentTo.push(scene, place));
+    const idle = session(50); idle.tell({ phase: "empty" }); idle.live.after(0.2, still());
+    record("block live: the watch-deck entry opens the game on the deck, and with no round a page sends nothing", wentTo[0] === "block" && wentTo[1] === W.WATCH_DECK_PLACE && idle.live.role === "none" && idle.sent.length === 0 && idle.bins.length === 0);
+    idle.live.dispose();
+    {
+      const viewerCtx = { window: { BL: { models: { box: () => ({}) } } } };
+      runInNewContext(await readFile(new URL("../src/js/block-viewer.js", import.meta.url), "utf8"), viewerCtx);
+      const V = viewerCtx.window.BL.blockViewer, node = (o = {}) => ({ position: { x: 0, y: 0, z: 0 }, ...o, kids: [] }), arena = { L: 20 }, kids = [], cam = { position: {}, target: {} };
+      const set = (v, x, y, z) => { v.x = x; v.y = y; v.z = z; };
+      const chairs = V.buildChairs(node, (p, ...c) => { p.kids.push(...c); kids.push(...c); }, node(), arena);
+      V.look(cam, arena, 0, 0, set);
+      const opts = {}; for (const k of ["clear", "horizon", "zenith", "sky"]) opts[k] = new Float32Array(3); V.white(opts);
+      record("block live: the viewing chairs are a row of plain chairs above the field, on a white backdrop", kids.length === 11 && chairs.position.y > 5 && cam.position.y > cam.target.y && [...opts.sky].every(v => v === 1) && opts.clouds === 0 && opts.bloomStrength === 0 && opts.sea === null);
+      // The default view holds every map's whole island; measured by projecting its rim through the camera.
+      const fits = (A, aspect) => {
+        const f = {}; V.frame(A, f);
+        const dx = 0, dy = -Math.sin(f.down), dz = -Math.cos(f.down), ux = 0, uy = Math.cos(f.down), uz = -Math.sin(f.down);
+        const tanV = Math.tan(V.FOV / 2), tanH = tanV * aspect;
+        for (let i = 0; i < 64; i++) {
+          const a = i / 64 * Math.PI * 2, x = A.W * Math.cos(a), y = -f.y, z = A.L * Math.sin(a) - f.z;
+          const depth = dx * x + dy * y + dz * z, up = ux * x + uy * y + uz * z, side = x;
+          if (depth <= 0 || Math.abs(up / depth) > tanV * 1.02 || Math.abs(side / depth) > tanH) return false;
+        }
+        return true;
+      };
+      const all = Object.keys(S.ARENAS).every(k => fits(S.ARENAS[k], 16 / 9));
+      const seats = Object.keys(S.ARENAS).every(k => { const f = V.frame(S.ARENAS[k], {}); return f.y < 46 && f.y > 0; });
+      record("block live: the chairs sit closer and still hold the whole field at the default view", all && seats);
+      record("block live: viewer zoom stops at the default view and a maximum, eases, and is direct under Calm", V.zoomBy(1, 0.5) === 1 && V.zoomBy(3, 9) === V.ZOOM_MAX && V.clampZoom(2) === 2 && V.easeZoom(1, 2, 0.05, false) > 1 && V.easeZoom(1, 2, 0.05, false) < 2 && V.easeZoom(1, 2, 0.05, true) === 2);
+      const seen = { total: -1 }, capSim = { score: { blue: 1, red: 2 } };
+      const onSit = V.newCaptures(capSim, seen), none = V.newCaptures(capSim, seen);
+      capSim.score.blue = 2; const one = V.newCaptures(capSim, seen), again = V.newCaptures(capSim, seen);
+      capSim.score.red = 4; const skippedFrames = V.newCaptures(capSim, seen);
+      capSim.score.blue = capSim.score.red = 0; const newRound = V.newCaptures(capSim, seen);
+      capSim.score.red = 1; const firstOfRound = V.newCaptures(capSim, seen);
+      record("block live: a viewer hears each capture once, from the score, across skipped frames and new rounds", onSit === 0 && none === 0 && one === 1 && again === 0 && skippedFrames === 2 && newRound === 0 && firstOfRound === 1);
+      const statSeen = [], steals = { was: [], count: [] }, mkSim = (c, h, carry) => ({ actors: c.map((n, i) => ({ id: i, captures: n, hits: h[i], team: i < 2 ? "blue" : "red", carrying: carry[i] || null })) });
+      V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals); V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, "red"]), steals);
+      V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], [null, null, null, null]), steals); V.trackSteals(mkSim([0, 0, 0, 0], [0, 0, 0, 0], ["red", null, null, null]), steals);
+      const firstRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
+      const steadyRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
+      steals.count.length = 0; const emptiedRows = V.statRows(mkSim([0, 0, 0, 0], [0, 0, 0, 0], [null, null, null, null]), steals, statSeen);
+      record("block live: the stats table counts captures, stolen and splats, sorted by captures, and each steal once; a new round empties it",
+        JSON.stringify(firstRows.map(r => [r.id, r.captures, r.stolen, r.hits])) === JSON.stringify([[2, 3, 0, 0], [0, 1, 2, 0], [3, 1, 0, 5], [1, 0, 0, 2]]) && steadyRows === null && emptiedRows.length === 0);
+      const board = { blue: -1 }, boardSim = { score: { blue: 2, red: 1 }, prep: 0, time: 75.4, target: 3 };
+      const changed = V.fillBoard(boardSim, board), still2 = V.fillBoard(boardSim, board);
+      boardSim.prep = 3.5;
+      record("block live: the scoreboard reads match state and repaints only on a change", changed && !still2 && board.blue === 2 && board.red === 1 && board.clock === "1:15" && board.goal === "First to 3" && V.fillBoard(boardSim, board) && board.clock === "Build 4");
+    }
+  }
   {
     const g = BL.game.create({ catalog: [] });
     g.recordCloudHopper("bitcoin-bill", 1, 50000, 4);
@@ -7706,6 +7878,30 @@ const gameRulesChecks = async () => {
         gbot.bot = true; Object.assign(gbot, { x: cx, z: cz, y: S.GRAVE_Y, grounded: true, guard: 9 });
         run(gb2, 6, still, () => !S.inGrave(gbot.x, gbot.z) && gbot.y >= -0.1);
         rows.graveBotOut = !S.inGrave(gbot.x, gbot.z);
+        // A block thrown into a grave lands and is lifted out to ground the bots can reach.
+        const gf = fresh("haunted"), fb = gf.flags.red;
+        for (const k of gf.crates) k.live = false;
+        Object.assign(fb, { state: "flying", carrier: null, thrower: -1, t: 0, x: cx, y: 1, z: cz, vx: 0, vy: 0, vz: 0, hookedBy: -1 });
+        run(gf, 2, still, () => fb.state !== "flying");
+        rows.graveBlockLands = fb.state === "dropped" && fb.y === 0 && !S.inGrave(fb.x, fb.z);
+        // Below the surface it always lands, even travelling along the pit and out through its wall, at any depth.
+        rows.graveBlockAlong = [-0.2, -0.5, -0.95, -1.5].every((y) => {
+          const q = fresh("haunted"), f2 = q.flags.red;
+          for (const k of q.crates) k.live = false;
+          Object.assign(f2, { state: "flying", carrier: null, thrower: -1, t: 0, x: cx, y, z: cz, vx: 0, vy: -0.5, vz: 12, hookedBy: -1 });
+          run(q, 3, still, () => f2.state !== "flying");
+          return f2.state === "dropped" && f2.y === 0 && !S.inGrave(f2.x, f2.z);
+        });
+        // Wherever a block is lifted out of a grave to, it is outside the margin bots walk round the grave with.
+        S.create({ map: "haunted" });
+        const graveMargin = S.CONFIG.BODY_R;
+        rows.graveRestReach = S.ARENAS.haunted.graves.every(([x0, x1, z0, z1]) => [[(x0 + x1) / 2, (z0 + z1) / 2], [x0 - 0.1, z0 - 0.1], [x1 + 0.1, z1 + 0.1], [x0 - 0.3, (z0 + z1) / 2], [(x0 + x1) / 2, z1 + 0.3]].every(([x, z]) => {
+          const p = S.restSpot(x, z);
+          return S.clearLine(p.x, p.z, p.x + 0.01, p.z, graveMargin);
+        }));
+        // A walk is blocked only by a line that really crosses a grave; a throw at chest height never is.
+        const [lx0, lx1, lz0, lz1] = S.ARENAS.haunted.graves[0], lxm = (lx0 + lx1) / 2;
+        rows.graveLine = !S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.4) && S.clearLine(lx1 + 1, lz0 - 3, lx1 + 1, lz1 + 3, 0.4) && S.clearLine(lxm, lz0 - 3, lxm, lz1 + 3, 0.05, 1.8);
         S.create({ map: "haunted" });
         rows.graveRest = I.graves.every(([x0, x1, z0, z1]) => { const p = S.restSpot((x0 + x1) / 2, (z0 + z1) / 2); return !S.inGrave(p.x, p.z); });
       }

@@ -350,7 +350,7 @@
     zoneLine = sceneSections.find((el) => el.dataset.scene === next.id && zoneLines.has(el)) || null;
     zoneLineFor = "";
     // Off the zipline the sides board is the arrival: no title card first.
-    for (const el of intros) el.hidden = el.dataset.intro !== next.id || place === "zipline";
+    for (const el of intros) el.hidden = el.dataset.intro !== next.id || place === "zipline" || place === BL.blockWire.WATCH_DECK_PLACE;
     // Arcade games share the hall's controls and start with folded social panels.
     document.body.dataset.activeScene = next.id;
     document.body.classList.toggle("arcade-game", arcadeScenes.has(next.id) || next.id === "hub" && place === "cloud-hopper");

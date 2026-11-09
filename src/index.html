@@ -1002,6 +1002,24 @@
         <div class="garage-head">
           <h2><span data-sign>Block Frenzy</span></h2>
           <p class="help block-tip" id="block-tip"></p>
+          <section id="block-live" class="block-live" hidden aria-label="Live match">
+            <h3 class="section-head" id="block-live-title">Live match</h3>
+            <p class="help" id="block-live-status"></p>
+            <div class="block-live-sizes" id="block-live-sizes" hidden>
+              <button type="button" class="block-side block-target" data-action="block-live-size-1" data-live-size="1" aria-pressed="false">1v1</button>
+              <button type="button" class="block-side block-target" data-action="block-live-size-2" data-live-size="2" aria-pressed="false">2v2</button>
+              <button type="button" class="block-side block-target" data-action="block-live-size-3" data-live-size="3" aria-pressed="false">3v3</button>
+              <button type="button" class="block-side block-target" data-action="block-live-size-4" data-live-size="4" aria-pressed="false">4v4</button>
+            </div>
+            <ul class="block-live-list" id="block-live-list"></ul>
+            <div class="block-live-buttons">
+              <button type="button" data-action="block-live-reg" id="block-live-reg">Register</button>
+              <button type="button" data-action="block-live-ready" id="block-live-ready" hidden>Ready!</button>
+              <button type="button" data-action="block-live-alone" id="block-live-alone" hidden>Start alone</button>
+              <button type="button" data-action="block-live-wait" id="block-live-wait" hidden>Wait for players</button>
+              <button type="button" data-action="block-live-watch" id="block-live-watch" hidden>Watch from the deck</button>
+            </div>
+          </section>
           <p class="help" id="block-board-help">Pick a side. Steal the rivals' Bitcoin block (their colour), carry it to your own stand while your block is home. First to 3 captures wins.</p>
         </div>
         <div class="garage-columns">
@@ -1081,12 +1099,18 @@
           <div class="race-lap block-weather"><b id="block-weather-word">Clear</b></div>
         </div>
       </div>
+      <section class="block-watch" id="block-watch" hidden aria-label="Watch deck" aria-live="polite">
+        <span id="block-watch-line"></span>
+        <button type="button" data-action="block-live-reg" id="block-watch-reg">Register for next round</button>
+        <button type="button" data-action="block-board">Main menu</button>
+      </section>
+      <div class="block-viewer-board" id="block-viewer-board" hidden aria-live="off"><div class="block-board-side" data-side="blue"><span>Blue</span><b id="block-viewer-blue">0</b></div><div class="block-board-mid"><small id="block-viewer-goal"></small><small id="block-viewer-clock"></small></div><div class="block-board-side" data-side="red"><span>Red</span><b id="block-viewer-red">0</b></div><table class="block-board-stats" id="block-viewer-captures" hidden></table></div>
       <div class="race-center" id="block-center" hidden>GO!</div>
       <div class="block-struggle" id="block-struggle" hidden>
         <span id="block-struggle-word">Mash SPACE!</span> <b id="block-struggle-left">6</b>
         <div class="block-struggle-bar" id="block-struggle-meter" role="meter" aria-label="Struggle meter" aria-valuemin="0" aria-valuemax="60" aria-valuenow="0"><i id="block-struggle-fill"></i></div>
       </div>
- <section class="block-help" id="block-help" hidden aria-label="How to play">
+ <section class="block-help" id="block-help-box" hidden aria-label="How to play">
         <h3>How to play</h3>
         <p>Steal the rivals' Bitcoin block and carry it to your stand while your own block is home. Gorillas drag you to the edge: mash Space to fill the meter and break free. Fall off and you fly back, or respawn at home.</p>
         <div class="block-keys" id="block-help-keys"></div>
@@ -2072,6 +2096,15 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       <label class="hangar-sound-row" for="hangar-vibration"><span>Vibration</span><input type="range" id="hangar-vibration" min="0" max="100" step="5" value="100"></label>
       <p class="hangar-sound-note">Pad vibration: Chrome and Edge</p>
     </section>
+    <dialog class="hangar-keypad" id="hangar-keypad" aria-label="Door keypad" data-state="idle" tabindex="-1">
+      <div class="hangar-keypad-head">
+        <h3 id="hangar-keypad-name">Control room</h3>
+        <button type="button" class="hangar-keypad-close" id="hangar-keypad-close" aria-label="Close keypad">✕</button>
+      </div>
+      <p class="hangar-keypad-screen" id="hangar-keypad-screen" aria-live="polite">ENTER CODE</p>
+      <div class="hangar-keypad-keys"><button type="button" data-key="1">1</button><button type="button" data-key="2">2</button><button type="button" data-key="3">3</button><button type="button" data-key="4">4</button><button type="button" data-key="5">5</button><button type="button" data-key="6">6</button><button type="button" data-key="7">7</button><button type="button" data-key="8">8</button><button type="button" data-key="9">9</button><button type="button" class="hangar-keypad-go" data-key="clear" aria-label="Clear">CLR</button><button type="button" data-key="0">0</button><button type="button" class="hangar-keypad-go" data-key="enter" aria-label="Enter">ENT</button></div>
+      <p class="hangar-keypad-note" data-coarse="Tap a code, then ENT">Type a code, then Enter</p>
+    </dialog>
     <div class="ghost-player" id="ghost-player" hidden>
       <span class="ghost-player-note" aria-hidden="true">♪</span>
       <span class="ghost-player-title" id="ghost-player-title"></span>
@@ -2190,6 +2223,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/reaction-policy.js"></script>
   <script src="js/voice-blend.js"></script>
   <script src="js/hockey-wire.js"></script>
+  <script src="js/block-wire.js"></script>
   <script src="js/arcade-cabinets.js"></script>
   <script src="js/net.js"></script>
   <script src="js/highscores.js"></script>
@@ -2289,11 +2323,13 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/hangar-models.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-fire.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-terminals.js" data-defer="hangar-scene"></script>
+  <script src="js/hangar-keypad.js" data-defer="hangar-scene"></script>
   <script src="js/sis-models.js" data-defer="hangar-scene"></script>
   <script src="js/sis.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-anomaly.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-crane.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-room-fire.js" data-defer="hangar-scene"></script>
+  <script src="js/hangar-meltdown.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-window.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-guide.js" data-defer="hangar-scene"></script>
   <script src="js/hangar-audio.js" data-defer="hangar-scene"></script>
@@ -2322,6 +2358,8 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/dsb-menu-shell.js"></script>
   <script src="js/wallets-menu.js"></script>
   <script src="js/block-sim.js"></script>
+  <script src="js/block-live.js"></script>
+  <script src="js/block-viewer.js" data-defer="block-viewer"></script>
   <script src="js/block-trivia.js"></script>
   <script src="js/block-models.js"></script>
   <script src="js/block-audio.js"></script>

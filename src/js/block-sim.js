@@ -601,6 +601,17 @@
   // start, through the map's fixed blocks (`resolve`, a body's own collision), worked out once a map, on the same
   // half-metre grid as the terrain. `restSpot` writes the nearest such spot to (x, z) into REST.
   const REST_CELL = 0.5, REST = { x: 0, z: 0 }, REST_BODY = { x: 0, y: 0, z: 0, crouch: false }, restCache = {};
+  // Graves are widened by a body's radius in `clearLine`, so a block resting nearer than that could never be walked to;
+  // half a cell more because `restSpot` keeps the exact point of any cell it accepts.
+  const GRAVE_REST_M = CONFIG.BODY_R + REST_CELL * 0.5 + 0.01;
+  const nearGrave = (x, z) => {
+    const list = ARENA.graves;
+    if (list) for (let i = 0; i < list.length; i++) {
+      const g = list[i];
+      if (x > g[0] - GRAVE_REST_M && x < g[1] + GRAVE_REST_M && z > g[2] - GRAVE_REST_M && z < g[3] + GRAVE_REST_M) return true;
+    }
+    return false;
+  };
   const restFor = () => {
     let G = restCache[ARENA.id];
     if (G) return G;
@@ -608,7 +619,7 @@
     CRATES = [];
     const clear = (i, j) => {
       const x = i * REST_CELL - ARENA.W, z = j * REST_CELL - ARENA.L;
-      if (!isleIn(x, z, 1) || inGrave(x, z)) return false;
+      if (!isleIn(x, z, 1) || nearGrave(x, z)) return false;
       REST_BODY.x = x; REST_BODY.y = 0; REST_BODY.z = z;
       resolve(REST_BODY, CONFIG.BODY_R * 0.95, 0.05);
       return REST_BODY.x === x && REST_BODY.z === z;
@@ -724,34 +735,36 @@
     }
     return false;
   };
+  // True when the segment from (ax, az) to (bx, bz) crosses the rectangle [x0, x1] by [z0, z1].
+  const crossesRect = (ax, az, bx, bz, x0, x1, z0, z1) => {
+    let t0 = 0, t1 = 1;
+    const dx = bx - ax, dz = bz - az;
+    if (Math.abs(dx) < 1e-9) { if (ax <= x0 || ax >= x1) return false; } else {
+      let a = (x0 - ax) / dx, c = (x1 - ax) / dx;
+      if (a > c) { const s = a; a = c; c = s; }
+      t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      if (t0 >= t1) return false;
+    }
+    if (Math.abs(dz) < 1e-9) { if (az <= z0 || az >= z1) return false; } else {
+      let a = (z0 - az) / dz, c = (z1 - az) / dz;
+      if (a > c) { const s = a; a = c; c = s; }
+      t0 = Math.max(t0, a); t1 = Math.min(t1, c);
+      if (t0 >= t1) return false;
+    }
+    return true;
+  };
   // True when the straight line from (ax, az) to (bx, bz) misses every box, widened by r, that stands on the ground.
-  // `over` skips boxes lower than it: a throw at chest height clears crates and low walls.
+  // `over` skips boxes lower than it: a throw at chest height clears crates and low walls, and any open grave.
   const clearLine = (ax, az, bx, bz, r, over = 0) => {
-    // Open graves count as in the way, so bots walk round them.
-    if (ARENA.graves) for (let i = 0; i < ARENA.graves.length; i++) {
-      const g = ARENA.graves[i], cx = Math.max(g[0], Math.min(g[1], (ax + bx) / 2)), cz = Math.max(g[2], Math.min(g[3], (az + bz) / 2));
-      const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cz - az) * dz) / (dx * dx + dz * dz || 1)));
-      if (Math.hypot(ax + dx * t - cx, az + dz * t - cz) < r + Math.hypot(g[1] - g[0], g[3] - g[2]) * 0.5) return false;
+    // Open graves count as in the way of a walk, so bots go round them.
+    if (!over && ARENA.graves) for (let i = 0; i < ARENA.graves.length; i++) {
+      const g = ARENA.graves[i];
+      if (crossesRect(ax, az, bx, bz, g[0] - r, g[1] + r, g[2] - r, g[3] + r)) return false;
     }
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
       if (b[5] > 1.4 || b[4] < over) continue;
-      const x0 = b[0] - r, x1 = b[1] + r, z0 = b[2] - r, z1 = b[3] + r;
-      let t0 = 0, t1 = 1;
-      const dx = bx - ax, dz = bz - az;
-      if (Math.abs(dx) < 1e-9) { if (ax <= x0 || ax >= x1) continue; } else {
-        let a = (x0 - ax) / dx, c = (x1 - ax) / dx;
-        if (a > c) { const s = a; a = c; c = s; }
-        t0 = Math.max(t0, a); t1 = Math.min(t1, c);
-        if (t0 >= t1) continue;
-      }
-      if (Math.abs(dz) < 1e-9) { if (az <= z0 || az >= z1) continue; } else {
-        let a = (z0 - az) / dz, c = (z1 - az) / dz;
-        if (a > c) { const s = a; a = c; c = s; }
-        t0 = Math.max(t0, a); t1 = Math.min(t1, c);
-        if (t0 >= t1) continue;
-      }
-      return false;
+      if (crossesRect(ax, az, bx, bz, b[0] - r, b[1] + r, b[2] - r, b[3] + r)) return false;
     }
     return true;
   };
@@ -759,13 +772,13 @@
   // A round. `team` is the player's colour; `seed` seeds the bots and the weather; `prep` the fortifying seconds.
   // `names` names the four Oogas: the player first, then their teammate, then the two rivals (only carried for the
   // scene).
-  // `size` Oogas a side (2 to `MAX_SIDE`): the player first, then their teammates, then the rivals. `skill` picks the
+  // `size` Oogas a side (1 to `MAX_SIDE`): the player first, then their teammates, then the rivals. `skill` picks the
   // bots' `SKILLS`.
   const create = ({ team = "blue", seed = 1, names = [], prep = CONFIG.PREP_S, target = CONFIG.CAPTURES, size = 2, skill = "normal", map = "fort" } = {}) => {
     map = ARENAS[map] ? map : "fort";
     const A = ARENAS[map];
     const rival = other(team);
-    size = Math.max(2, Math.min(CONFIG.MAX_SIDE, size | 0));
+    size = Math.max(1, Math.min(CONFIG.MAX_SIDE, size | 0));
     const actors = Array.from({ length: size * 2 }, (_, i) => ({
       id: i, slot: i % size, name: names[i] || null, team: i < size ? team : rival, bot: i > 0, role: i % size % 2 ? "defend" : "attack",
       x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0, heading: 0, moving: 0, carrying: null, splat: 0, guard: 0, cooldown: 0,
@@ -970,7 +983,8 @@
     else { f.x = nx; f.z = nz; }
     f.y = Math.max(ny, -1);
     const ground = groundAt(f.x, f.z, f.y + 0.3, 0.2);
-    if (f.y <= ground) {
+    // Falling below the surface (only an open grave lets it) always ends the flight, whichever way it went in.
+    if (f.y <= ground || (f.y < 0 && f.vy <= 0)) {
       // Wherever it fell (a roof, the centre deck), it comes to rest on the nearest ground the bots can reach.
       const at = restSpot(f.x, f.z);
       f.state = "dropped";
@@ -1582,6 +1596,11 @@
     a.flight = 0; a.jumps = 1;
     emit(sim, "chuteoff", a.team, id, a.x, a.y, a.z);
     return true;
+  };
+  // A page taking over as a live round's host holds what frames carry, and frames carry no hook's target: a hook
+  // reeling or yanking a target nobody can name comes home instead.
+  const settleHooks = (sim) => {
+    for (const a of sim.actors) if (a.hk === H_YANK || a.hk === H_REEL) { a.hk = H_BACK; a.hookTarget = -1; }
   };
   const hookBack = (sim, a, why) => {
     // Let go of a block still on the rope, and it lands where it is.
@@ -2708,7 +2727,8 @@
   };
   // One fixed step. `input` is the player's: `x`, `z` a world-space move direction of length up to 1, `sprint`,
   // `jump` (a press), `crouch` (held), and optionally `face`, the yaw the player looks along. The scene throws, drops and builds through `fire`, `drop` and `build`.
-  const tick = (sim, dt, input) => {
+  // `given` is the visitor's input. A live round's host sets `sim.inputs[id]` for each other live Ooga.
+  const tick = (sim, dt, given) => {
     use(sim);
     sim.time += dt;
     const prepWas = sim.prep;
@@ -2723,6 +2743,7 @@
     const N = sim.actors.length;
     for (let n = 0; n < N; n++) {
       const a = sim.actors[sim.flip ? N - 1 - n : n];
+      const input = (sim.inputs && sim.inputs[a.id]) || given;
       if (a.cooldown > 0) a.cooldown -= dt;
       if (a.monkeyCool > 0) a.monkeyCool -= dt;
       if (a.boltCool > 0) a.boltCool -= dt;
@@ -3062,7 +3083,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();
