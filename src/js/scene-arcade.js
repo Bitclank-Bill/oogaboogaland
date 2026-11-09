@@ -1880,7 +1880,8 @@
       p.x = clamp(p.x, -HALL.halfW + 0.8, HALL.halfW - 0.8);
       const under = avatar && feetOf() < 1 ? clamp((MEZZ.z1 + 1 - avatar.root.position.z) / 1.2, 0, 1) : 0;
       p.y = clamp(p.y, 0.5, under ? MEZZ.y - 0.45 + (1 - under) * (HALL.h - MEZZ.y) : HALL.h - 0.8);
-      p.z = clamp(p.z, HALL.back + 0.8, HALL.front + (Math.abs(p.x) < HALL.door - 0.5 ? HALL.exit - 1 : -0.8));
+      // Only a walk through the doors takes the view past them: shut, they stop it as the rest of the wall does.
+      p.z = clamp(p.z, HALL.back + 0.8, HALL.front + (doorWalk && doorWalk.holding && Math.abs(p.x) < HALL.door - 0.5 ? HALL.exit - 1 : -0.8));
     };
     pilot = pilotMod.create({
       // The visitor's view, combat and weapon come in from the last scene and go on to the next (pilot.js `carried`).
