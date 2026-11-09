@@ -8178,7 +8178,10 @@ const gameRulesChecks = async () => {
     // hall's side within the opening, and the door opens no new way out of the hall.
     {
       const W = BL.arcadeBlockWatch, D = W.DOOR, H = BL.arcadeModels.BLOCK_HALL;
-      const toasts = [], left = W.goToWatchDeck({ toast: (m) => toasts.push(m) });
+      const opened = [], sentGo = (id, place) => opened.push(id, place), savedLive = BL.blockLive; BL.blockLive = { openWatchDeck: (g) => { g("block", "watch-deck"); return true; } };
+      const left = W.goToWatchDeck(sentGo); BL.blockLive = savedLive;
+      const sb = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8");
+      const wayBack = sb.includes('go(home, doorVisit ? BL.arcadeBlockWatch.PLACE : undefined)') && sb.includes("go(home, BL.arcadeBlockWatch.PLACE_FULL)") && W.PLACE === "block-watch" && W.PLACE_FULL === "block-watch-full";
       const menu = { querySelector: () => ({}), addEventListener() {}, removeEventListener() {} };
       context.document = context.document || { getElementById: () => menu }; context.matchMedia = context.matchMedia || (() => ({ matches: true }));
       let crossed = 0;
@@ -8193,10 +8196,10 @@ const gameRulesChecks = async () => {
       const levels = !sees(D.plane - 0.5, D.z, D.y - 1.5) && !sees(D.plane - 0.5, D.z, D.y + D.h + 0.1);
       const clearDoor = D.z0 - 0.38 > BL.arcadeModels.BLOCK_HALL.pictures[3][0] + 0.91 && D.z1 + 0.38 < H.torches[3][1] - 0.07;
       const back = W.ARRIVAL.x > H.x0 && W.ARRIVAL.x < D.plane - 1 && W.ARRIVAL.z === D.z;
-      record("arcade watch door: signed-in only, stub deck moves nobody, portal crossed from the hall once, no new way out",
-        !W.mayWatch(null, false) && !!W.mayWatch({ id: 1 }, false) && !!W.mayWatch(null, true) && left === false && toasts.join() === W.SOON
+      record("arcade watch door: signed-in only, sends the viewer to the chairs and back in front of the door, portal crossed from the hall once, no new way out",
+        !W.mayWatch(null, false) && !!W.mayWatch({ id: 1 }, false) && !!W.mayWatch(null, true) && left === true && opened.join() === "block,watch-deck" && wayBack
         && !offSide && !wide && through && once && again && crossed === 2 && rock && crosses && seamless && onlyOpening && levels && clearDoor && back,
-        JSON.stringify({ left, offSide, wide, through, once, again, crossed, rock, crosses, seamless, onlyOpening, levels, clearDoor, back }));
+        JSON.stringify({ left, opened, wayBack, offSide, wide, through, once, again, crossed, rock, crosses, seamless, onlyOpening, levels, clearDoor, back }));
     }
     // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
     const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});
