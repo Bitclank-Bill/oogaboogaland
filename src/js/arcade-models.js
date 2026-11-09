@@ -24,7 +24,7 @@
   // The hall, in the cave's frame: the mouth at +z (`front`). A timber mezzanine (`MEZZ`) runs along the back wall
   // with a stair up each side wall; a round stage (`STAGE`, two steps up) holds the live games in the middle.
   // `exit`: the passage past the doors, as long as the cave's walk from its doors to its mouth on the island.
-  const HALL = { halfW: 18, back: -24, front: 6, h: 11, door: 1.7, doorH: 3.1, exit: 6 };
+  const HALL = { halfW: 18, back: -24, front: 6, h: 11, door: 1.7, doorH: 3.1, exit: 6.1 };
   const STAGE = { x: 0, z: -7.5, r: 4.6, inner: 4.2, low: 0.18, high: 0.36 };
   // The mezzanine's deck (its top at `y`, from `z0` at the back wall to its front edge `z1`) and its two stairs up
   // the side walls, [x, z] at the foot and the head, `w` wide.
@@ -257,17 +257,24 @@
   };
   // The hall's floor, in the cave in front of it (#554), so the two read as one place: packed earth under the same
   // crazy paving, laid wall to wall from the mouth back past the doors. Mouth frame (`z` falling into the cave). Built
-  // once a page; cosmetic, on top of the terrain's own floor.
-  const caveFloor = cached(() => {
-    // The hall's stones as its firelight shows them: the cave has no fires, so the warmth is in the tones.
-    const TONES = ["#b39268", "#a68660", "#be9d73", "#957956"], seeds = [], rand = mulberry32(3401), stones = geometry(), SPACE = 1.1;
-    const inside = (x, z) => Math.abs(x) < (z > -0.5 ? 2.5 : 3.85) && z < 0.3 && z > -7;
+  // once a page; cosmetic, on top of the terrain's own floor. Variant 1 stops at the doors, for the hall's copy of the cave.
+  const CAVE_FLOOR_END = 0.1, CAVE_DOORS_Z = -5.6;
+  const caveFloor = variants((toDoors) => {
+    // The hall's stones as its firelight shows them, measured on screen just inside its doors. The cave has no fires of
+    // its own, so they glow in those colours, the same at any hour, as the hall's firelight does.
+    // The hall blooms bright things more than the island does, so its copy of this floor starts darker to end up the same.
+    const TONES = toDoors ? ["#352214", "#2f1f12", "#3b2716", "#291b11"] : ["#513420", "#472e1c", "#5b3c23", "#3e291a"], seeds = [], rand = mulberry32(3401), stones = geometry(), SPACE = 1.1;
+    const back = toDoors ? CAVE_DOORS_Z : -7.1, inside = (x, z) => Math.abs(x) < (z > -0.5 ? 2.5 : 3.85) && z < CAVE_FLOOR_END + 0.5 && z > back + 0.1;
     for (let z = -6.8; z < 0.4; z += SPACE) for (let x = -3.9; x < 4; x += SPACE) {
       const sx = x + (rand() - 0.5) * 0.5, sz = z + (rand() - 0.5) * 0.5;
       seeds.push([sx, sz, inside(sx, sz)]);
     }
-    paving(seeds, 0.78).forEach(({ poly }) => flagstone(stones, poly, TONES[Math.floor(rand() * TONES.length)], 0.012, 0.004, 0.16));
-    const floor = merge(box({ w: 7.8, h: 0.02, d: 7.5, color: "#6c4e33", emissive: 0.1, offset: { x: 0, y: -0.006, z: -3.35 } }), stones);
+    // Cut square just inside the mouth, a little short of the grass and the path.
+    paving(seeds, 0.78).forEach(({ poly }) => {
+      const end = clipped(poly, 0, 1, CAVE_FLOOR_END), cut = toDoors ? clipped(end, 0, -1, -CAVE_DOORS_Z) : end;
+      if (cut.length > 2) flagstone(stones, cut, TONES[Math.floor(rand() * TONES.length)], 0.012, 0.004, 1);
+    });
+    const floor = merge(box({ w: 7.8, h: 0.02, d: CAVE_FLOOR_END - back, color: toDoors ? "#24130a" : "#3a1e0e", emissive: 1, offset: { x: 0, y: -0.006, z: (CAVE_FLOOR_END + back) / 2 } }), stones);
     floor.castShadow = false;
     return floor;
   });

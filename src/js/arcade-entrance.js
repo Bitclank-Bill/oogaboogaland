@@ -14,36 +14,58 @@
   const cabinetOf = (id) => AM.CABINETS.find((c) => !c.service && gameOf(c).id === id);
   const framesOf = (c) => (c.game >= 0 ? AM.attractFrames(c.game) : AM.retroFrames ? AM.retroFrames(c.retro) : null);
 
+  // One cabinet of the six, in the cave's frame: its nodes, showing no game yet.
+  const entry = (parent, slot) => {
+    const node = createNode({ position: { x: slot.lx, y: 0, z: slot.lz }, rotation: { x: 0, y: slot.turn, z: 0 } });
+    const body = createNode({}), screen = createNode({ position: { x: 0, y: AM.SCREEN.y, z: AM.SCREEN.z }, rotation: { x: AM.SCREEN.lean, y: 0, z: 0 }, sightHidden: true, depthBias: -0.1 });
+    const marquee = createNode({ position: { x: 0, y: AM.MARQUEE.y, z: AM.MARQUEE.z } });
+    addChild(node, body, screen, marquee);
+    addChild(parent, node);
+    return { slot, node, body, screen, marquee, game: null, cabinet: null, frames: null, shown: -1,
+      action: { kind: "arcade-cabinet", slot: slot.slot }, owner: { kind: "arcade-cabinet", slot: slot.slot, priority: 2, weaponType: "none" } };
+  };
+  // What one cabinet shows: its body, marquee and attract loop.
+  const dress = (e, id) => {
+    const c = cabinetOf(id), named = gameOf(c);
+    e.game = id; e.cabinet = c; e.frames = framesOf(c); e.shown = -1;
+    e.body.geometry = AM.cabinet(c.index);
+    e.screen.visible = !!e.frames;
+    if (e.frames) e.screen.geometry = e.frames[0];
+    const sign = BL.hubModels.caveSign(named.title, named.icon), b = boundsOf(sign), k = AM.MARQUEE.w / (b.max[0] - b.min[0]);
+    e.marquee.geometry = sign;
+    e.marquee.scale = { x: k, y: k, z: k };
+  };
+  // The hall's copy of the six, past its doors: the same games the island is showing, nothing to walk into or press.
+  const yard = (parent) => {
+    const entries = AC.slots.map((slot) => entry(parent, slot));
+    const show = (top) => { entries.forEach((e, i) => { if (e.game !== top[i]) dress(e, top[i]); }); };
+    show(BL.arcadePopular.top());
+    const off = BL.arcadePopular.subscribe(show);
+    return { entries, dispose: off, update(elapsed) {
+      const frame = Math.floor(elapsed * AM.FPS) % AM.FRAMES;
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (e.frames && e.shown !== frame && frame < e.frames.length) { e.shown = frame; e.screen.geometry = e.frames[frame]; }
+      }
+    } };
+  };
+
   const build = ({ root, group, mouth: m, solids, addTarget, removeTarget, reachable }) => {
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry);
-    addChild(group, createNode({ geometry: AM.caveFloor(), sightHidden: true }));
+    addChild(group, createNode({ geometry: AM.caveFloor(0), sightHidden: true }));
     const door = BL.arcadeDoors.create({ parent: group, z: DOOR_Z, wall: true, solids });
     const frame = { x: m.x, z: m.z, sr, cr, ry: m.ry, plane: DOOR_Z, floor: m.floorY };
-    const entries = AC.slots.map((slot) => {
-      const node = createNode({ position: { x: slot.lx, y: 0, z: slot.lz }, rotation: { x: 0, y: slot.turn, z: 0 } });
-      const body = createNode({}), screen = createNode({ position: { x: 0, y: AM.SCREEN.y, z: AM.SCREEN.z }, rotation: { x: AM.SCREEN.lean, y: 0, z: 0 }, sightHidden: true, depthBias: -0.1 });
-      const marquee = createNode({ position: { x: 0, y: AM.MARQUEE.y, z: AM.MARQUEE.z } });
-      addChild(node, body, screen, marquee);
-      addChild(group, node);
-      return { slot, node, body, screen, marquee, game: null, cabinet: null, frames: null, shown: -1,
-        action: { kind: "arcade-cabinet", slot: slot.slot }, owner: { kind: "arcade-cabinet", slot: slot.slot, priority: 2, weaponType: "none" } };
-    });
+    const entries = AC.slots.map((slot) => entry(group, slot));
     const doorActions = { enter: { kind: "arcade-door", state: "enter" }, loading: { kind: "arcade-door", state: "loading" }, retry: { kind: "arcade-door", state: "retry" } };
     let visit = null, walk = null, shell = null, windowGroup = null, off = null, barrier = false, prefetch = 0, request = 0, taken = false;
 
     // One cabinet shows one game: its body, marquee and attract loop, and the footprint the walkers meet.
     const setGame = (e, id) => {
       if (e.game === id) return;
-      const c = cabinetOf(id), named = gameOf(c), registered = e.game !== null;
+      const registered = e.game !== null;
       if (registered) solids.remove(e.body);
-      e.game = id; e.cabinet = c; e.frames = framesOf(c); e.shown = -1;
-      e.body.geometry = AM.cabinet(c.index);
+      dress(e, id);
       solids.add(e.body);
-      e.screen.visible = !!e.frames;
-      if (e.frames) e.screen.geometry = e.frames[0];
-      const sign = BL.hubModels.caveSign(named.title, named.icon), b = boundsOf(sign), k = AM.MARQUEE.w / (b.max[0] - b.min[0]);
-      e.marquee.geometry = sign;
-      e.marquee.scale = { x: k, y: k, z: k };
     };
     const show = (top) => { entries.forEach((e, i) => setGame(e, top[i])); };
     const setBarrier = (on) => {
@@ -87,7 +109,7 @@
     const bind = (v) => {
       visit = v;
       request++; taken = false;
-      walk = BL.arcadeDoors.walk({ door, frame, sign: -1, pilot: v.pilot, crew: v.crew, camera: v.camera, prepare, onThrough, onState: () => { v.refreshPrompt(); } });
+      walk = BL.arcadeDoors.walk({ door, frame, sign: -1, pilot: v.pilot, crew: v.crew, camera: v.camera, prepare, onThrough, onState: () => { v.refreshPrompt(); }, followMin: v.followMin });
       door.set(false);
       setBarrier(true);
       for (const e of entries) addTarget(e.body, e.owner, { radius: 0.9 });
@@ -118,7 +140,8 @@
       }
     };
     // Once the camera is final for the frame: the stand-in through the open doors.
-    const afterCamera = (camera) => {
+    const afterCamera = (camera, dt) => {
+      if (walk) walk.view(dt);
       if (!shell) return;
       if (door.k > 0) shell.update(camera);
       else shell.root.visible = false;
@@ -191,7 +214,7 @@
       const { pilot } = visit, player = pilot.player, along = DOOR_Z + crossing.past, across = crossing.across;
       pilot.navigate({ position: { x: m.x + sr * along + cr * across, y: m.floorY, z: m.z + cr * along - sr * across }, yaw: m.ry + Math.PI, pitch: crossing.pitch, dist: crossing.dist, framed: true });
       setBarrier(false);
-      walk.arrive(crossing, player, m.ry + Math.PI, crossing.past);
+      walk.arrive(crossing, player, m.ry + Math.PI);
     };
     // Back from a cabinet here: where it stood, as itself, the view behind it.
     const standAt = (slot) => {
@@ -205,5 +228,5 @@
     };
     return { door, entries, frame, bind, unbind, update, afterCamera, nearby, use, tap, tip, prompt, arrive, standAt, stay, liveGeometry, dispose, get walk() { return walk; }, get shell() { return shell; } };
   };
-  BL.arcadeEntrance = { build, DOOR_Z };
+  BL.arcadeEntrance = { build, yard, DOOR_Z };
 })();

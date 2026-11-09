@@ -1,18 +1,20 @@
 // The double doors between the island and Ooga Arcade's hall (#554), one rig in each scene's copy of the same doorway,
 // in the door's frame with +z out of the hall: the leaves swing out (+z), toward the mainland, by themselves, on their
-// own nodes. A door's `walk` takes a visitor through: it keeps the doors shut while what lies beyond readies, with the
-// visitor still driving outside them, opens them, walks the Ooga through at an even pace with the view following
-// behind, and hands over to the other scene, whose own rig walks the Ooga on until it has arrived and the view has come
-// through the doorway after it, gives the controls back and closes the doors behind. Allocates nothing a frame.
+// own nodes. A door's `walk` takes a visitor through as the Timechain Sphere's doorway does: it keeps the doors shut
+// while what lies beyond readies, with the visitor still driving outside them, opens them, swoops the view into the
+// Ooga's own eyes and walks it through at an even pace, hands over to the other scene from that same eye, whose own rig
+// walks the Ooga on and closes the doors behind it before gliding the view back out. Allocates nothing a frame.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { createNode, addChild } = BL.scene;
   const { clamp } = BL.math;
   const AM = BL.arcadeModels;
-  // Past the doors: how far an Ooga must get before the other scene can take over, how far past they keep open for the
-  // view (`VIEW_CLEAR`, the doors' swing), and how long a walk may run before it lets go.
-  const OPEN = 1.55, OPEN_S = 0.85, FAR = 3.4, TOUCH = 1.25, GRACE = 0.5, PAST = 0.6, ARRIVE = 2.8, ON_PAST = 1.2, SPEED = 0.55, AHEAD = 1.6, LIMIT = 9, VIEW_CLEAR = 1.2, VIEW_DIST = 3;
+  // The walk: how far past the doors an Ooga goes on the far side before the controls come back, how far past they keep
+  // open for the view (`VIEW_CLEAR`, the doors' swing), how far short of them the eye hands over, the swoop's seconds and
+  // how long a walk may run before it lets go.
+  const OPEN = 1.55, OPEN_S = 0.85, FAR = 3.4, TOUCH = 1.25, GRACE = 0.5, ARRIVE = 2.4, SPEED = 0.55, AHEAD = 1.6, LIMIT = 9, VIEW_CLEAR = 1.2, HAND = 0.15, GLIDE = 0.45, LET_GO_PITCH = 0.12, CLEAR_BACK = 0.7;
+  const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)");
   const smooth = (t) => t * t * (3 - 2 * t);
 
   // A door rig under `parent`, at (x, y, z) turned `turn` there: the frame, the wall (`wall` for a cave with no rock
@@ -42,15 +44,67 @@
     return { node, frame, left, right, update, set, get k() { return k; }, get open() { return k > 0.65; }, get opening() { return opening; } };
   };
 
-  // Taking a visitor through: `frame` is the door's in the world (x, z, sr, cr of its turn, and `plane`, how far along
-  // it the door's plane stands from there); `sign` is the way through (-1 going in along -z, +1 going out). The scene
-  // reads `hold()` for what the Ooga is doing, and hands `prepare()` (what lies beyond, a promise or null) and
-  // `onThrough(crossing)`, the switch to the other scene.
-  // `camera` is the scene's; with `through` set (`maxPast` metres of room past the doors) the Ooga walks on until the view
-  // has come through the doorway after it, and the other scene takes over from there.
-  const walk = ({ door, frame: F, sign, pilot, crew, camera, prepare, onThrough, onState = () => {}, through = false, maxPast = 3.4 }) => {
-    const state = { phase: "idle", wanted: false, x: 0, z: 0, seen: false, t: 0, target: 0, cave: null, ready: false, failed: false, busy: false };
+  // Taking a visitor through, as the Timechain Sphere's doorway does: as the doors open the view swoops into the Ooga's
+  // own eyes (`view`, once the camera is final for the frame) and stays there through the doorway, so the other scene
+  // takes over from that same eye as it reaches the doors, and goes on from it until the Ooga has walked `ARRIVE` metres
+  // past them, when the doors close behind it and the view glides back out to the visitor's own. `frame` is the door's
+  // in the world (x, z, sr, cr of its turn, and `plane`, how far along it the door's plane stands from there); `sign` is
+  // the way through (-1 going in along -z, +1 going out); `prepare()` readies what lies beyond (a promise or null) and
+  // `onThrough(crossing)` is the switch to the other scene.
+  const walk = ({ door, frame: F, sign, pilot, crew, camera, prepare, onThrough, onState = () => {}, followMin = 3 }) => {
+    const state = { phase: "idle", wanted: false, x: 0, z: 0, seen: false, t: 0, cave: null, ready: false, failed: false, busy: false, settle: false, yaw: 0, dist: 4.5,
+      lens: null, glide: 1, from: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, fromFov: 0, pitch: 0, head: null };
     const set = (phase) => { if (state.phase !== phase) { state.phase = phase; onState(phase); } };
+    const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    // The eye as the pilot's first person places it, so the view held here and the pilot's own are the same view.
+    const eyePose = (cave, out) => {
+      const p = cave.root.position, heading = cave.root.rotation.y, ahead = 0.16 * cave.traits.height * Math.cos(state.pitch);
+      out.x = p.x + Math.sin(heading) * ahead; out.z = p.z + Math.cos(heading) * ahead;
+      out.y = p.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift;
+      out.yaw = heading; out.pitch = state.pitch;
+    };
+    const readPose = (out) => {
+      const p = camera.position, t = camera.target, dx = t.x - p.x, dy = t.y - p.y, dz = t.z - p.z;
+      out.x = p.x; out.y = p.y; out.z = p.z; out.yaw = Math.atan2(dx, dz); out.pitch = Math.atan2(dy, Math.hypot(dx, dz));
+    };
+    const putPose = (a, b, k) => {
+      const e = smooth(k), yaw = a.yaw + wrap(b.yaw - a.yaw) * e, pitch = a.pitch + (b.pitch - a.pitch) * e, cp = Math.cos(pitch), p = camera.position, t = camera.target;
+      p.x = a.x + (b.x - a.x) * e; p.y = a.y + (b.y - a.y) * e; p.z = a.z + (b.z - a.z) * e;
+      t.x = p.x + Math.sin(yaw) * cp; t.y = p.y + Math.sin(pitch); t.z = p.z + Math.cos(yaw) * cp;
+      camera.up = null;
+      return e;
+    };
+    const hideHead = (cave, on) => {
+      if (on && !state.head) { state.head = { node: cave.parts.head, was: cave.parts.head.cameraHidden }; cave.parts.head.cameraHidden = true; }
+      else if (!on && state.head) { state.head.node.cameraHidden = state.head.was; state.head = null; }
+    };
+    const lens = (name) => { readPose(state.from); state.fromFov = camera.fov; state.lens = name; state.glide = REDUCED.matches ? 1 : 0; };
+    // Lets the Ooga go: the controls back, and the view gliding out from the eyes to the visitor's own.
+    const letGo = (cave) => {
+      crew.steer(0, 0, 0, 0, 0);
+      hideHead(cave, false);
+      pilot.setExternalControl(false);
+      lens("back");
+      const p = cave.root.position;
+      pilot.navigate({ position: { x: p.x, y: p.y - cave.baseY, z: p.z }, yaw: cave.root.rotation.y + Math.PI, pitch: LET_GO_PITCH, dist: followMin });
+    };
+    // Called once the camera is final for the frame.
+    const view = (dt) => {
+      const cave = state.cave;
+      if (state.lens === "eyes" && cave) {
+        state.glide = Math.min(1, state.glide + dt / GLIDE);
+        eyePose(cave, state.to);
+        const e = putPose(state.from, state.to, state.glide), fov = pilot.eyeFov();
+        camera.fov = state.fromFov ? state.fromFov + (fov - state.fromFov) * e : fov;
+        if (state.glide > 0.5) hideHead(cave, true);
+      } else if (state.lens === "back") {
+        state.glide = Math.min(1, state.glide + dt / GLIDE);
+        readPose(state.to);
+        const fov = camera.fov, e = putPose(state.from, state.to, state.glide);
+        camera.fov = state.fromFov + (fov - state.fromFov) * e;
+        if (state.glide >= 1) state.lens = null;
+      }
+    };
     const load = () => {
       if (state.ready || state.busy) return;
       state.busy = true; state.failed = false;
@@ -70,15 +124,13 @@
       const eye = camera.position, eyeAlong = (eye.x - F.x) * F.sr + (eye.z - F.z) * F.cr - F.plane;
       if (state.phase === "arriving") {
         state.t += dt;
-        const o = pilot.orbit, to = -sign * (state.stopAt + AHEAD) + F.plane;
+        const to = -sign * (state.stopAt + AHEAD) + F.plane;
         const dx = F.x + F.sr * to + F.cr * across * 0.5 - p.x, dz = F.z + F.cr * to - F.sr * across * 0.5 - p.z, m = Math.hypot(dx, dz) || 1;
         crew.steer(dx / m, dz / m, 0, 1, 0, SPEED);
-        const behind = state.yaw;
-        o.tYaw = o.yaw + Math.atan2(Math.sin(behind - o.yaw), Math.cos(behind - o.yaw));
         // The doors stay open until the view has come through them, and the walk until it has too.
         const viewPast = -sign * eyeAlong;
-        if (d >= state.stopAt && viewPast >= VIEW_CLEAR || state.t > LIMIT) { crew.steer(0, 0, 0, 0, 0); state.settle = true; set("idle"); }
         door.update(dt, viewPast < VIEW_CLEAR);
+        if (d >= state.stopAt && viewPast >= VIEW_CLEAR || state.t > LIMIT) { letGo(player); state.settle = true; set("idle"); }
         return;
       }
       if (state.settle) {
@@ -91,26 +143,22 @@
       if (state.phase === "opening" || state.phase === "walking") {
         state.t += dt;
         const moved = Math.hypot(p.x - state.x, p.z - state.z);
-        const lost = player !== state.cave || moved > 1.2 || state.t > LIMIT;
-        if (lost) { crew.steer(0, 0, 0, 0, 0); set("idle"); state.wanted = false; door.update(dt, false); return; }
+        if (player !== state.cave || moved > 1.2 || state.t > LIMIT) { letGo(state.cave || player); set("idle"); state.wanted = false; door.update(dt, false); return; }
         state.x = p.x; state.z = p.z;
         door.update(dt, true);
-        const o = pilot.orbit, heading = sign < 0 ? F.ry : F.ry + Math.PI;
-        o.tYaw = o.yaw + Math.atan2(Math.sin(heading - o.yaw), Math.cos(heading - o.yaw));
         // It walks up from wherever it stands while the doors open, stopping only if it reaches them still shut.
         if (state.phase === "opening") {
           if (door.k < GRACE && d < TOUCH) { crew.steer(0, 0, 0, 0, 0); return; }
           if (door.k >= GRACE) set("walking");
         }
-        const to = F.plane + sign * AHEAD + along, target = to, side = across * 0.4;
-        const dx = F.x + F.sr * target + F.cr * side - p.x, dz = F.z + F.cr * target - F.sr * side - p.z, m = Math.hypot(dx, dz) || 1;
+        const to = F.plane + sign * AHEAD + along, side = across * 0.4;
+        const dx = F.x + F.sr * to + F.cr * side - p.x, dz = F.z + F.cr * to - F.sr * side - p.z, m = Math.hypot(dx, dz) || 1;
         crew.steer(dx / m, dz / m, 0, 1, 0, SPEED);
-        // Where there is room past the doors the view comes in close and through the doorway before the switch.
-        if (through) o.tDist = Math.min(o.tDist, VIEW_DIST);
-        if (through ? d < -PAST && (sign * eyeAlong >= 0.3 || -d >= maxPast || state.t > LIMIT - 1) : d < -PAST) {
+        // The other scene takes over from this eye just before it reaches the doors.
+        if (state.glide >= 1 && -sign * eyeAlong <= HAND) {
           crew.steer(0, 0, 0, 0, 0);
           set("through");
-          if (onThrough({ across, past: -d, pitch: o.pitch, dist: o.dist }) === false) { set("idle"); state.wanted = false; }
+          if (onThrough({ across, past: -d, pitch: state.pitch, dist: state.dist }) === false) { letGo(player); set("idle"); state.wanted = false; }
         }
         return;
       }
@@ -122,22 +170,30 @@
       const atDoor = near && d < TOUCH;
       if (state.ready && near && (state.wanted || atDoor && inward > 0.2) && Math.abs(p.y - player.baseY - (F.floor || 0)) < 0.3) {
         state.wanted = false;
-        state.t = 0; state.cave = player;
+        state.t = 0; state.cave = player; state.dist = pilot.orbit.dist; state.pitch = 0;
+        pilot.setExternalControl(true);
+        lens("eyes");
         set("opening");
       } else if (!near) state.wanted = false;
       door.update(dt, false);
     };
-    // `from` is how far past the door the Ooga now stands: the walk carries it `ON_PAST` farther at least before it hands
-    // back, and far enough that the view comes through the doorway behind it (`viewPast`).
-    const arrive = (crossing, player, yaw, from = crossing.past) => {
-      state.t = 0; state.cave = player; state.yaw = yaw; state.ready = true; door.set(true);
-      state.stopAt = Math.max(ARRIVE, from + ON_PAST, crossing.dist * Math.cos(crossing.pitch) + VIEW_CLEAR);
-      state.seen = false;
+    // Coming in on the far side: at the eye the other scene left off from, and on from there.
+    const arrive = (crossing, player, yaw) => {
+      player.root.rotation.y = yaw + Math.PI;
+      // Far enough on that the view handed back, at its nearest behind the Ooga, stands clear of the doors.
+      Object.assign(state, { t: 0, cave: player, yaw, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, followMin * Math.cos(LET_GO_PITCH) + CLEAR_BACK) });
+      door.set(true);
+      pilot.setExternalControl(true);
+      hideHead(player, true);
       set("arriving");
     };
-    const reset = () => { state.wanted = state.seen = state.settle = false; state.busy = false; set("idle"); };
-    return { state, update, ask, arrive, reset, load, get phase() { return state.phase; }, get holding() { return state.phase === "opening" || state.phase === "walking" || state.phase === "through" || state.phase === "arriving"; } };
+    const reset = () => {
+      state.wanted = state.seen = state.settle = false; state.busy = false; state.lens = null;
+      if (state.cave) { hideHead(state.cave, false); pilot.setExternalControl(false); }
+      set("idle");
+    };
+    return { state, update, view, ask, arrive, reset, load, get phase() { return state.phase; }, get holding() { return state.phase === "opening" || state.phase === "walking" || state.phase === "through" || state.phase === "arriving"; } };
   };
 
-  BL.arcadeDoors = { create, walk, ARRIVE, PAST };
+  BL.arcadeDoors = { create, walk, ARRIVE };
 })();

@@ -102,7 +102,7 @@
   // so the wheel knows when to celebrate.
   let lastPlayer = null, lastTickets = null, unsubscribeAccount = null, remotes = null, footsteps = null;
   // The way out (#554): the doors, the walk through them, and the last frame held over the switch.
-  let doors = null, doorWalk = null, grabNext = false, still = 0, stillHold = 0, sceneCanvas = null;
+  let doors = null, doorWalk = null, grabNext = false, still = 0, stillHold = 0, sceneCanvas = null, caveCopy = null, caveYard = null;
   const scoreSubscriptions = [];
   const machineBest = (kind, id) => kind === "hockey" ? 0 : BL.highscores.best(kind, id) ?? game.arcadeBest(id);
   const refreshScores = (kind) => {
@@ -856,6 +856,8 @@
     lamp(-3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55);
     lamp(3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55);
     lamp(0, 2.8, HALL.front - 1, 6, 1.2, 0.68, 0.32);
+    // Down the passage past the doors, so its floor keeps the colour of the cave it leads to.
+    lamp(0, 2.6, HALL.front + 4, 6.5, 0.66, 0.37, 0.18);
     lamp(LAYOUT.backDoor.x, 2.4, LAYOUT.backDoor.z + 0.8, 4.5, 1.2, 0.85, 0.5);
     fixedLights = n;
     RENDER_OPTS.lightCount = Math.min(BL.glRenderer.POINT_LIGHT_CAPACITY, n + AM.lanterns().lights.length / 3);
@@ -1570,7 +1572,7 @@
     for (const [dx, dz] of [[-5, 3.3], [6, 1.9]]) spot("host", S.x + dx, S.z + dz, toward(S.x + dx, S.z + dz, 0, HALL.front));
     spot("wheel", W.x + 1.7, W.z - 0.1, toward(W.x + 1.7, W.z - 0.1, W.x, W.z));
     spot("fame", F.x - 0.4, F.z + 3, toward(F.x - 0.4, F.z + 3, F.x, F.z));
-    spot("welcome", 1.9, HALL.front - 1.6, toward(1.9, HALL.front - 1.6, 0, HALL.front));
+    spot("welcome", 2.6, HALL.front - 4.2, toward(2.6, HALL.front - 4.2, 0, HALL.front));
     spot("call", 8.2, -1.2, Math.PI); spot("call", -7.2, 0.6, -Math.PI / 2);
     LAYOUT.changers.forEach((p, i) => { toHall(p, 0, 1.15, at); spot(i ? "muncher" : "totem", at.x, at.z, p.turn + Math.PI); });
     // The attendant keeps an eye on the kiddie rides from the entry avenue, by the silverback and by the baby mammoth.
@@ -2008,17 +2010,22 @@
       pilot.refreshCombat();
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
+    // Past the doors, a true copy of the island's cave (arcade-entrance.js), its floor and rock, the same six cabinets.
+    caveCopy = createNode({ position: { x: 0, y: 0, z: HALL.front - BL.arcadeEntrance.DOOR_Z } });
+    addChild(caveCopy, createNode({ geometry: AM.caveFloor(1), sightHidden: true }), createNode({ geometry: AM.caveRoom(), sightHidden: true }));
+    addChild(root, caveCopy);
+    caveYard = BL.arcadeEntrance.yard(caveCopy);
     // The doors out to the island (arcade-doors.js).
     const crossing = ctx.from === "hub" ? world.arcadeCrossing : null;
     world.arcadeCrossing = null;
     doors = BL.arcadeDoors.create({ parent: root, z: HALL.front });
-    doorWalk = avatar ? BL.arcadeDoors.walk({ door: doors, frame: { x: 0, z: 0, sr: 0, cr: 1, ry: 0, plane: HALL.front, floor: 0 }, sign: 1, pilot, crew: people, camera, prepare: readyIsland(ctx), onThrough: throughDoors, through: true }) : null;
+    doorWalk = avatar ? BL.arcadeDoors.walk({ door: doors, frame: { x: 0, z: 0, sr: 0, cr: 1, ry: 0, plane: HALL.front, floor: 0 }, sign: 1, pilot, crew: people, camera, prepare: readyIsland(ctx), onThrough: throughDoors, followMin: FOLLOW.min }) : null;
     still = stillHold = 0; grabNext = false;
     if (crossing && avatar && doorWalk) {
       const x = crossing.across, z = HALL.front - crossing.past;
       Object.assign(avatar.root.position, { x, y: avatar.baseY, z });
       pilot.navigate({ position: { x, y: 0, z }, yaw: 0, pitch: crossing.pitch, dist: crossing.dist, framed: true });
-      doorWalk.arrive(crossing, avatar, 0, crossing.past);
+      doorWalk.arrive(crossing, avatar, 0);
       still = 1; stillHold = BL.factoryWindow.GLIDE.still;
     }
     unsubscribeAccount = BL.net.subscribe(accountChanged);
@@ -2060,7 +2067,8 @@
     hockeyPlayers = BL.hockeyPlayers.create({ root, games: hockeyGames, body: id => id === BL.net.state.selfId ? people.player : remotes.body(id) });
     audio = BL.carnivalAudio.create();
     audio.room(true);
-    powerT = from < 0 && !machineFrom && !retroFrom ? 0 : 99;
+    // Walked in through the doors the room is already lit, as the visitor saw it through them.
+    powerT = from < 0 && !machineFrom && !retroFrom && !crossing ? 0 : 99;
     if (powerT === 0) for (const q of power) q.node.glow = 0.08;
     ambientT = 1;
     // Back with more tickets than last time (a game's, or a spin's left turning): the wheel's pods and the room's lights
@@ -2129,11 +2137,13 @@
     }
     if (!leaving) pilot.readInput(dt);
     slideStep(dt);
+    if (caveYard && doors.k > 0) caveYard.update(elapsed);
     if (doorWalk && !leaving) doorWalk.update(dt, pilot.player);
     else if (doors) doors.update(dt, doorWalk && doorWalk.holding);
     if (still > 0 && (stillHold -= dt) <= 0) still = Math.max(0, still - dt / BL.factoryWindow.GLIDE.dissolve);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
+    if (doorWalk) doorWalk.view(dt);
     // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
     const drivenHere = people && people.player;
     BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
@@ -2263,7 +2273,8 @@
 
   const leave = () => {
     captureOnArrival = false;
-    doors = doorWalk = null;
+    doors = doorWalk = caveCopy = null;
+    if (caveYard) { caveYard.dispose(); caveYard = null; }
     revealCabinetPlayers();
     openingRequest++;
     if (!openingGame) BL.net.leaveCabinet();

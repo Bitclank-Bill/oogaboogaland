@@ -107,7 +107,7 @@
   // The flagstone walks, [x0, x1, z0, z1]: in from the tunnel to the stone circle round the stage, from behind the
   // jackpot wheel's footing to the claws and along the gallery street under the deck, and out to the shy, the food
   // court and the snack bar, the skee lanes and the hoops.
-  const WALKS = [[-2.3, 2.3, -2.4, HALL.front + HALL.exit], [-1.6, 1.6, -21.4, -14.4], [-9.7, 9.7, -21.2, -18.7], [-12.9, -5.4, -7.8, -5.8], [-15.8, -2.6, 0.2, 1.9], [2.2, 9.4, -2.7, -1.9], [7.4, 12.4, -1.9, 3.8]];
+  const WALKS = [[-2.3, 2.3, -2.4, HALL.front + 0.4], [-1.6, 1.6, -21.4, -14.4], [-9.7, 9.7, -21.2, -18.7], [-12.9, -5.4, -7.8, -5.8], [-15.8, -2.6, 0.2, 1.9], [2.2, 9.4, -2.7, -1.9], [7.4, 12.4, -1.9, 3.8]];
   // Reed mats where the players stand, [x0, x1, z0, z1]: the skee lanes, the hoops, the shy, the claws, the pinball
   // tables, the snack bar's counter and the pool tables.
   const MATS = [[9.25, 12.55, -3.4, -2.05], [12.35, 13.75, 1.95, 5.65], [-13.5, -12.05, -8.4, -5.2], [-4.3, 4.3, -22.75, -21.45], [4.9, 7.8, -22.25, -21.05], [-16.6, -13.2, 1.9, 3.05], [-9, -6.6, -13.85, -12.75], [6.6, 9, -13.85, -12.75]];
@@ -564,11 +564,11 @@
     const block = (x, y, z, w, d) => flat.push(box({ w, h: 1, d, color: STONE[Math.floor(rand() * 3)], offset: { x, y: y + 0.5, z } }));
     // The way out: a short rock tunnel past the doorway, two timber sets across it (bark log posts under a log lintel
     // bound to them with rope), the flagstones on under them, and the jungle outside at its far end.
-    for (let z = HALL.front + 0.5; z < OUT; z++) {
+    for (let z = HALL.front + 0.5; z < HALL.front + 1; z++) {
       for (let y = 0; y < HALL.doorH + 1; y++) { for (const s of [-1, 1]) { block(s * (HALL.door + 0.5), y, z, 1, 1); } }
       block(0, HALL.doorH, z, HALL.door * 2, 1);
     }
-    for (const z of [HALL.front + 0.8, HALL.front + 2.6]) {
+    for (const z of [HALL.front + 0.8]) {
       for (const s of [-1, 1]) {
         timber.push(J.log(s * (HALL.door - 0.19), -0.02, z, s * (HALL.door - 0.17), HALL.doorH - 0.1, z, 0.16, "#5a3c22"));
         timber.push(J.lashing(s * (HALL.door - 0.18), HALL.doorH - 0.4, z, 0, 1, 0, 0.16), J.lashing(s * (HALL.door - 0.18), HALL.doorH - 0.145, z, 1, 0, 0, 0.17));
@@ -579,7 +579,7 @@
     // glow over the horizon in bands, a far line of treetops, a palm leaning in from one side with its fronds hanging
     // and big leaves at the foot of the view, all dark against the light. Drawn on the xy plane, turned to face the
     // hall at the tunnel's end.
-    const view = geometry(), vw = HALL.door, vh = HALL.doorH, SKY = ["#e6cf98", "#f7e0aa", "#f0d6a0", "#e2cc9c", "#d0c49c", "#bab89a"];
+    const view = geometry(), vw = 2.5, vh = 3, SKY = ["#e6cf98", "#f7e0aa", "#f0d6a0", "#e2cc9c", "#d0c49c", "#bab89a"];
     SKY.forEach((c, k) => daubPoly(view, [[-vw, vh * k / 6], [vw, vh * k / 6], [vw, vh * (k + 1) / 6], [-vw, vh * (k + 1) / 6]], c, 0.8 - k * 0.05));
     daubPoly(view, [[-vw, 0], [vw, 0], [vw, 0.95], [-vw, 0.95]], "#4e6238", 0.3, 0.01);
     for (let k = 0; k < 9; k++) { daubDot(view, -vw + k * vw / 4 + ((k * 7) % 3 - 1) * 0.12, 0.95 + (k % 3) * 0.08, 0.34 + (k * 5 % 4) * 0.06, 0.26 + (k * 3 % 4) * 0.05, k % 2 ? "#4e6238" : "#456034", 0.3, 0, 0.01, 12); }
@@ -1298,26 +1298,59 @@
   // The hall itself (#554), seen through the doors from the island's cave (`hangar-window.js` pulls it into the shallow
   // room behind them): its own floor, rock, timber, stage and cabinets, with the hall's firelight baked into their
   // colours by the Factory window's bake, so the view through the doors is the room the visitor is about to walk into.
-  const SHELL_MOOD = { sky: [0.4, 0.35, 0.3], ground: [0.2, 0.16, 0.12], floor: 0.27, sun: [0.2, 0.9, 0.4], direct: [0.56, 0.48, 0.4], strength: 0.28, fill: [0.05, 0.04, 0.07],
+  const SHELL_MOOD = { sky: [0.18, 0.15, 0.12], ground: [0.09, 0.07, 0.05], floor: 0.1, sun: [0.2, 0.9, 0.4], direct: [0.3, 0.25, 0.2], strength: 0.16, fill: [0.03, 0.02, 0.04],
     fog: [0.06, 0.045, 0.035], near: 20, far: 42, eye: [0, 2, HALL.front], dim: 1, knee: 0.7, cap: 1.1 };
   const hallShell = BL.models.cachedSteps(function* (slice = null) {
     const FM = BL.factoryModels, S = BL.arcadeModels.SCREEN, W = LAYOUT.wheel, fires = [];
     for (const s of [-1, 1]) for (const z of [-17, -11, -5, 1]) fires.push([s * 12.5, 6.6, z, 8, 1.3, 0.76, 0.4]);
     const lights = FM.windowLights([[LAYOUT.sign.x, LAYOUT.sign.y, LAYOUT.sign.z + 2, 11, 1.3, 0.78, 0.45], [-1.1, 4, -7, 9, 1.35, 0.98, 0.62], [1.1, 4, -7, 9, 1.35, 0.98, 0.62],
       [W.x, W.y, W.z + 1.3, 5.5, 1.2, 0.85, 0.5], [0, 2.8, HALL.front - 1, 6, 1.2, 0.68, 0.32], [-3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55], [3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55], ...fires]);
-    const bake = (g) => FM.bakeWindow({ verts: Array.from(g.verts), faces: g.faces.map((f) => ({ ...f, i: Array.from(f.i) })), lines: [] }, lights, [0, 0, 0], SHELL_MOOD);
-    const made = [], H = yield* hall.steps(slice), St = yield* stage.steps(slice), M = yield* mezzanine.steps(slice), L = yield* lanterns.steps(slice), Wh = yield* wheel.steps(slice);
-    const parts = [H.floor, H.rock, H.timber, L.frame, L.glass, St.body, St.lit, M.body, Wh.frame, Wh.face];
+    // The models' `moved`, `scaled` and `turned*` change the mesh they are given: everything here is a copy, so the hall's
+    // own meshes and the cabinets' shared screens stay exactly as the hall stands them.
+    const copy = (g) => ({ ...g, verts: Array.from(g.verts), faces: g.faces.map((f) => ({ ...f, i: Array.from(f.i) })), lines: [] });
+    const bake = (g) => FM.bakeWindow(copy(g), lights, [0, 0, 0], SHELL_MOOD);
+    const made = [], H = yield* hall.steps(slice), St = yield* stage.steps(slice), M = yield* mezzanine.steps(slice), L = yield* lanterns.steps(slice), Wh = yield* wheel.steps(slice), Ce = yield* ceiling.steps(slice);
+    // Each part where the hall stands it: the stage and the wheel are built in frames of their own.
+    const Sg = LAYOUT.sign, Fr = signFrame(), SN = BL.arcadeModels.SIGN_FRAME, sign = BL.hubModels.caveSign(SN.name, SN.icon), sb = BL.scene.boundsOf(sign), sk = (SN.w - 0.9) / (sb.max[0] - sb.min[0]);
+    const at = (g, p) => moved(copy(g), p.x, p.y || 0, p.z);
+    const parts = [H.floor, H.rock, H.timber, L.frame, L.glass, M.body, Ce, at(St.body, STAGE), at(St.lit, STAGE), at(Wh.frame, W), at(Wh.face, W), ...Wh.bulbs.map((b) => at(b, W)),
+      at(Fr.frame, Sg), at(Fr.bulbs, Sg), moved(scaled(copy(sign), sk), Sg.x, Sg.y, Sg.z + 0.08)];
     for (const part of parts) { made.push(bake(part)); yield* pause(slice); }
     const cabs = [];
     for (const c of LAYOUT.cabinets) {
       if (c.service) continue;
       const frames = c.game >= 0 ? BL.arcadeModels.attractFrames(c.game) : retroFrames(c.retro);
-      cabs.push(moved(turnedY(merge(BL.arcadeModels.cabinet(c.index), moved(turnedX(frames[0], S.lean), 0, S.y, S.z)), c.turn), c.x, c.y, c.z));
+      const named = c.game >= 0 ? GAMES[c.game] : BL.arcadeModels.RETRO[c.retro], MQ = BL.arcadeModels.MARQUEE, mark = BL.hubModels.caveSign(named.title, named.icon), mb = BL.scene.boundsOf(mark), mk = MQ.w / (mb.max[0] - mb.min[0]);
+      cabs.push(moved(turnedY(merge(copy(BL.arcadeModels.cabinet(c.index)), moved(turnedX(copy(frames[0]), S.lean), 0, S.y, S.z), moved(scaled(copy(mark), mk), 0, MQ.y, MQ.z)), c.turn), c.x, c.y, c.z));
       yield* pause(slice);
     }
     made.push(bake(merge(...cabs)));
     return made;
+  });
+  // The rock of the island's Arcade cave (#554), as the hall's copy of it past its doors: its walls with their alcoves,
+  // roof and mouth, in the mouth's frame (+z out of the cave, the doors at -5.6), glowing the cave's own dark colours
+  // since the hall's fires don't reach it. Its floor is `caveFloor(1)` and its cabinets are `arcadeEntrance.yard`'s.
+  const caveRoom = cached(() => {
+    const ROCK = "#080707", ROOF = "#0c0a0b", DOORS = -5.6, MOUTH = 0.5, HW = 3.25, DEEP = 0.6, H = 4, HIGH = 2.75, WIDE = 1.5, ALONG = [1.25, 2.85, 4.45];
+    const lit = (w, h, d, x, y, z, color = ROCK) => box({ w, h, d, color, emissive: 1, offset: { x, y, z } }), parts = [];
+    parts.push(lit(HW * 2 + DEEP * 2 + 0.4, 0.2, MOUTH - DOORS, 0, H + 0.1, (MOUTH + DOORS) / 2, ROOF));
+    const THICK = DEEP + 0.4;
+    for (const s of [-1, 1]) {
+      // The wall's runs between the alcoves, thick enough to be the alcoves' sides, then each alcove's back and lintel.
+      const span = (a0, a1) => { if (a1 > a0) parts.push(lit(THICK, H, a1 - a0, s * (HW + THICK / 2), H / 2, -(a0 + a1) / 2)); };
+      let from = -MOUTH;
+      for (const a of ALONG) {
+        span(from, a - WIDE / 2);
+        parts.push(lit(0.2, HIGH, WIDE, s * (HW + DEEP + 0.1), HIGH / 2, -a), lit(THICK, H - HIGH, WIDE, s * (HW + THICK / 2), (H + HIGH) / 2, -a));
+        from = a + WIDE / 2;
+      }
+      span(from, -DOORS);
+      parts.push(lit(HW + THICK - 2.5, H, 0.3, s * (2.5 + (HW + THICK - 2.5) / 2), H / 2, MOUTH + 0.15));
+    }
+    parts.push(lit(5, H - 3, 0.3, 0, (H + 3) / 2, MOUTH + 0.15));
+    // Its overhead string lights.
+    for (const x of [-2.35, 2.35]) for (let z = -1.5; z >= -5.2; z -= 0.6) parts.push(box({ w: 0.11, h: 0.14, d: 0.11, color: "#ff2a1e", emissive: 1, offset: { x, y: 3.56, z } }));
+    return merge(...parts);
   });
   const lanterns = BL.models.cachedSteps(function* (slice = null) {
     const J = BL.hubModels, round = [], flat = [], glow = [], flames = [], lights = [], kinds = [], footprints = [], ties = [], leaf = mulberry32(1707);
@@ -4636,6 +4669,6 @@
   };
   Object.assign(BL.arcadeModels, {
     buildSteps,
-    hallShell, haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
+    hallShell, caveRoom, haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
   });
 })();

@@ -6083,7 +6083,7 @@
   // The Arcade cave's doors and cabinets, handed this visit's controls (arcade-entrance.js).
   const bindArcadeEntrance = (ctx) => {
     if (!arcadeMouth) return;
-    arcadeMouth.entrance.bind({ pilot, crew, input, hud, ctx, world, go, renderer, camera, cabinet: ctx.cabinet, coarse: COARSE, refreshPrompt: () => {},
+    arcadeMouth.entrance.bind({ pilot, crew, input, hud, ctx, world, go, renderer, camera, cabinet: ctx.cabinet, coarse: COARSE, followMin: FOLLOW.min, refreshPrompt: () => {},
       entering: () => entering, setEntering: (on) => { entering = on; }, grab: () => { factoryWalk.grab = true; arcadeMouth.snap = true; } });
   };
   const enterScene = (view, id) => {
@@ -6317,7 +6317,7 @@
   // walking in hidden, cropped to `V` and graded: the record a scene hangs past its own end of the tunnel.
   // Ooga Arcade's exit looks at this from behind its doors (#554): the cave and the mainland past its mouth, as seen from
   // the doors looking out, to the passage's measure in the hall, with the doors and their gorillas left out of the shot.
-  const ARCADE_VIEW = { width: 512, eye: 1.7, across: 0.29, up: 0.24, down: 0.29, colour: 1, mist: 0, haze: [0, 0, 0] };
+  const ARCADE_VIEW = { width: 640, eye: 1.2, across: 0.413, up: 0.297, down: 0.198, colour: 1, mist: 0, haze: [0, 0, 0] };
   const snapArcadeView = () => {
     const entrance = arcadeMouth.entrance, view = snapFromShield(entrance.door.node, arcadeMouth.slot && island.mouths.find((m) => m.id === arcadeMouth.slot.id), BL.arcadeEntrance.DOOR_Z, ARCADE_VIEW);
     if (view) world.arcadeView = view;
@@ -8199,7 +8199,7 @@
     // clampCamera resolves the eye's entrance crossing inside pilot.update.
     // Commit portal and Matrix state after that, before rendering, so mirror and interior never disagree.
     syncMatrixInside(player);
-    if (arcadeMouth && !cloudPlaying()) arcadeMouth.entrance.afterCamera(camera);
+    if (arcadeMouth && !cloudPlaying()) arcadeMouth.entrance.afterCamera(camera, dt);
     // The factory's window follows the eye, so it moves once the camera is final for the frame.
     if (factoryMouth && factoryMouth.hall) factoryMouth.hall.update(dt, camera, RENDER_OPTS, !factoryMouth.phase.paused);
     if (factoryMouth && factoryMouth.roofWindow) {
