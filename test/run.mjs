@@ -29684,7 +29684,7 @@ const terrainCacheChecks = async () => {
 // must keep its golden digest, and the snapshot's queries, rehydrated after a structured clone (the Worker's and
 // IndexedDB's codec), must answer exactly as the direct build does on a seeded sample of every query.
 // The golden is the island as it was built before the snapshot existed.
-const TERRAIN_GOLDEN = "5584e554d39886fc";
+const TERRAIN_GOLDEN = "951371a2c7d04b9d";
 const terrainParityChecks = (BL, island) => {
   const islandDigest = (built) => {
     const h = createHash("sha256"), g = built.geometry, faces = g.faces;
@@ -30388,9 +30388,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
         samples++;
       }
       const middle = (room.from + room.to) / 2;
-      // The Arcade's long walls are recessed for its cabinets, so their rock stands past the recess.
-      const recess = mouth.id === "c3" ? 0.6 : 0;
-      const walls = [at(-room.w / 2 - recess - 0.5, middle), at(room.w / 2 + recess + 0.5, middle), at(0, room.to + 0.5)];
+      const walls = [at(-room.w / 2 - 0.5, middle), at(room.w / 2 + 0.5, middle), at(0, room.to + 0.5)];
       const sweepFrom = at(0, -1.4), sweepTo = at(0, room.to - 0.5);
       rows.push({ id: mouth.id, dimensions: room.w === shape[0] && room.h === 4 && room.from === shape[1] && room.to === shape[2], samples, owned, clear, enclosed,
         swept: island.voxelSegmentClearAt(sweepFrom.x, 0.05, sweepFrom.z, sweepTo.x, 0.05, sweepTo.z, 0.3, 1.7), walls: walls.every((p) => island.solidAt(p.x, 1, p.z)) });
@@ -30399,18 +30397,18 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     record("surface caves: every non-HQ mouth uses a terrain-fitted full-height carved chamber with owned air, solid floors, roofs and enclosing walls", rows.length === 6 && [...new Set(rows.map((row) => row.id))].sort().join() === Object.keys(expected).sort().join()
       && rows.every((row) => row.dimensions && row.samples === (row.id === "c3" ? 36 : 33) && row.owned && row.clear && row.enclosed && row.swept && row.walls)
       && ramps.length === 2 && ramps.every((mouth) => mouth.room.w === 6 && mouth.room.h === 4 && mouth.room.from === 2.5 && mouth.room.to === 6.5), JSON.stringify({ rows, ramps: ramps.map((mouth) => ({ id: mouth.id, room: mouth.room })) }));
-    // #554: the Arcade cave's six cabinets stand in the recesses the terrain cuts, at the seats the room is told.
+    // #554: the Arcade cave's four cabinets stand in the recesses the terrain cuts, at the seats the room is told.
     const CAB = BL.arcadeCabinets, arcadeCave = island.mouths.find((m) => m.id === "c3"), recessColumn = { caveIndex: 0, floor: 0, ceiling: 0 };
-    const slotClear = CAB.slots.length === 6 && CAB.slots.every((s) => {
+    const slotClear = CAB.slots.length === 4 && CAB.slots.every((s) => {
       const sr = Math.sin(arcadeCave.ry), cr = Math.cos(arcadeCave.ry), x = arcadeCave.x + cr * s.lx + sr * s.lz, z = arcadeCave.z - sr * s.lx + cr * s.lz;
       return island.cavityAt(x, z, recessColumn, 7, 1) && recessColumn.caveIndex === 7 && recessColumn.ceiling >= 2.75 && island.clearAt(x, 0.05, z, 0.3, 2.4);
     });
     const sameMouth = Math.abs(arcadeCave.x - CAB.MOUTH.x) < 1e-6 && Math.abs(arcadeCave.z - CAB.MOUTH.z) < 1e-6 && Math.abs(arcadeCave.ry - CAB.MOUTH.ry) < 1e-6;
     const seat = CAB.get(CAB.outdoorSeat("mine")), popular = BL.arcadePopular;
     const tied = popular.pick(null), ranked = popular.pick({ stacker: 9, snake: 9, dash: 3, pong: 2, flap: 1, invaders: 1 });
-    record("arcade entrance: its six cabinets stand in terrain recesses at the room's seats, keep a seat apart from the hall's, and the most played take them in a stable order",
+    record("arcade entrance: its four cabinets stand in terrain recesses at the room's seats, keep a seat apart from the hall's, and the most played take them in a stable order",
       slotClear && sameMouth && seat.outdoor && seat.game === "mine" && CAB.get("mine").outdoor === undefined && !CAB.get("race@out")
-        && tied.join() === popular.DEFAULT.join() && ranked.length === 6 && ranked.slice(0, 2).join() === "snake,stacker" && ranked[2] === "dash",
+        && tied.join() === popular.DEFAULT.join() && ranked.length === 4 && ranked.slice(0, 2).join() === "snake,stacker" && ranked[2] === "dash",
       JSON.stringify({ slotClear, sameMouth, seat, tied, ranked }));
   }
   portalChecks(BL,el);

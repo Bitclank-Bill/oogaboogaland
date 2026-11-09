@@ -415,7 +415,7 @@ test("a game's cave cabinet and hall cabinet seat two players at once, and a pla
   // A cave seat can only be taken from outside, at a real slot.
   h.advance(1000); h.send(a.ws, { t: "zone", name: "arcade.hall" }); h.send(a.ws, { ...cave, q: 4 });
   assert.equal(h.room.players.get(1).cabinet, null);
-  for (const patch of [{ slot: undefined }, { slot: 6 }, { slot: 1.5 }, { slot: "0" }, { id: "race@out" }])
+  for (const patch of [{ slot: undefined }, { slot: 4 }, { slot: 1.5 }, { slot: "0" }, { id: "race@out" }])
     assert.equal(protocol.parseClientMessage(JSON.stringify({ t: "cabinet", id: "mine@out", q: 1, op: "take", slot: 0, ...patch })), null);
   if (h.room.flushTimer) clearTimeout(h.room.flushTimer);
 });

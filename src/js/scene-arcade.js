@@ -2010,7 +2010,7 @@
       pilot.refreshCombat();
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
-    // Past the doors, a true copy of the island's cave (arcade-entrance.js), its floor and rock, the same six cabinets.
+    // Past the doors, a true copy of the island's cave (arcade-entrance.js), its floor and rock, the same four cabinets.
     caveCopy = createNode({ position: { x: 0, y: 0, z: HALL.front - BL.arcadeEntrance.DOOR_Z } });
     addChild(caveCopy, createNode({ geometry: AM.caveFloor(1), sightHidden: true }), createNode({ geometry: AM.caveRoom(), sightHidden: true }));
     addChild(root, caveCopy);
@@ -2018,7 +2018,7 @@
     // The doors out to the island (arcade-doors.js).
     const crossing = ctx.from === "hub" ? world.arcadeCrossing : null;
     world.arcadeCrossing = null;
-    doors = BL.arcadeDoors.create({ parent: root, z: HALL.front });
+    doors = BL.arcadeDoors.create({ parent: root, z: HALL.front, wall: true });
     doorWalk = avatar ? BL.arcadeDoors.walk({ door: doors, frame: { x: 0, z: 0, sr: 0, cr: 1, ry: 0, plane: HALL.front, floor: 0 }, sign: 1, pilot, crew: people, camera, prepare: readyIsland(ctx), onThrough: throughDoors, followMin: FOLLOW.min }) : null;
     still = stillHold = 0; grabNext = false;
     if (crossing && avatar && doorWalk) {

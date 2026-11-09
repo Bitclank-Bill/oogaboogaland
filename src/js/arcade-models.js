@@ -300,6 +300,8 @@
     for (let i = 0; i < n; i++) planks.push(doorPlank(w * (i + 0.5), w - 0.012, h - 0.05, i % 2 ? "#6e4726" : "#5e3c20"));
     for (const y of [0.42, h / 2, h - 0.5]) for (const face of [-1, 1]) iron.push(box({ w: half - 0.12, h: 0.09, d: 0.018, color: "#4a4644", emissive: 0.18, offset: { x: half / 2 + 0.03, y, z: face * deep * 0.2 } }));
     for (const face of [-1, 1]) iron.push(box({ w: 0.11, h: 0.11, d: 0.05, color: BANANA, emissive: 0.1, offset: { x: half - 0.26, y: h * 0.47, z: face * (deep * 0.2 + 0.03) } }));
+    // A batten down the meeting edge, so nothing shows between the shut leaves.
+    planks.push(doorPlank(half, 0.03, h - 0.05, "#2e1c0e"));
     const leaf = merge(...planks, ...iron);
     const stone = "#413a35", wallPieces = [];
     for (const s of [-1, 1]) wallPieces.push(box({ w: 1.4, h: 4.3, d: 0.4, color: stone, offset: { x: s * (half + post + 0.7), y: 2.15 } }));

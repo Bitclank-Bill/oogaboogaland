@@ -726,20 +726,18 @@
     // Ooga Arcade's yard, outside its mouth.
     // A joystick the size of an Ooga: a red ball on a steel stick, its yellow-rimmed base set with two buttons.
     bigJoystick: () => author((put, box) => {
-      box(SOLID, -9, 8, 0, 2, -9, 8, (x, y, z) => y === 2 && (x === -9 || x === 8 || z === -9 || z === 8) ? 18 : 5);
-      box(SOLID, -1, 0, 3, 18, -1, 0, 38);
-      for (let k = -6; k <= 6; k++) disc((x, y, z) => put(SOLID, x, y, z, x < -2 && y > 25 && z > 1 ? 16 : 19), Math.sqrt(36.5 - k * k), 23 + k);
-      for (let y = 3; y <= 4; y++) {
-        disc((x, yy, z) => put(SOLID, x, yy, z, 19), 2, y, 5, 5);
-        disc((x, yy, z) => put(SOLID, x, yy, z, 18), 2, y, -5, 5);
-      }
+      box(SOLID, -6, 5, 0, 1, -6, 5, (x, y, z) => y === 1 && (x === -6 || x === 5 || z === -6 || z === 5) ? 18 : 5);
+      box(SOLID, -1, 0, 2, 12, -1, 0, 38);
+      for (let k = -4; k <= 4; k++) disc((x, y, z) => put(SOLID, x, y, z, x < -1 && y > 17 && z > 0 ? 16 : 19), Math.sqrt(18.2 - k * k), 16 + k);
+      disc((x, y, z) => put(SOLID, x, y, z, 19), 1.6, 2, 3, 3);
+      disc((x, y, z) => put(SOLID, x, y, z, 18), 1.6, 2, -3, 3);
     }),
     // A leaning pile of gold tokens, each pressed with a darker rim.
     tokenStack: () => author((put) => {
       const stack = (cx, cz, n, lean) => {
-        for (let y = 0; y < n * 2; y++) disc((x, yy, z, d) => put(SOLID, x, yy, z, d > 5 ? 59 : 18), 6, y, cx + ((y >> 1) % 3 === 2 ? lean : 0), cz);
+        for (let y = 0; y < n * 2; y++) disc((x, yy, z, d) => put(SOLID, x, yy, z, d > 3.2 ? 59 : 18), 4.2, y, cx + ((y >> 1) % 3 === 2 ? lean : 0), cz);
       };
-      stack(-3, 0, 6, 1); stack(7, 4, 3, -1); stack(1, -8, 2, 0);
+      stack(-2, 0, 4, 1); stack(5, 3, 2, -1); stack(1, -6, 1, 0);
     }),
     // B.C.A.: a standing abacus of banana and ivory beads on brass rods, and a lectern with the open ledger and
     // a spike of receipts.

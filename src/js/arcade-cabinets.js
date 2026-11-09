@@ -13,13 +13,13 @@
       z: z + Math.cos(turn) * 1.25, yaw: turn + Math.PI });
   });
   const byId = new Map(entries.map(entry => [entry.id, entry]));
-  // Six more stand recessed three a side into the walls of the cave in front of the hall's doors (#554). Which game each
+  // Four more stand recessed two a side into the walls of the cave in front of the hall's doors (#554). Which game each
   // shows is the page's own reading of the plays (`arcade-popular.js`), so the seat belongs to the game (`<id>@out`,
   // separate from the one in the hall, so the two play at once and share its board) and `slot` says where it stands.
   // In the mouth's frame, +z out of the cave; MOUTH is where terrain.js puts the 3 o'clock mouth (the suite checks it).
   const OUTDOOR = "@out", MOUTH = Object.freeze({ x: 22, z: 0, ry: -Math.PI / 2 });
-  // Spread down the cave's length, first just inside the mouth; the terrain's shallow alcoves (`ARCADE_CAVE`) take their backs.
-  const NICHE = Object.freeze({ along: Object.freeze([1.25, 2.85, 4.45]), x: 3.37 });
+  // Just inside the mouth, well short of the doors, at the hall's own spacing; the terrain's shallow alcoves (`ARCADE_CAVE`) take their backs.
+  const NICHE = Object.freeze({ along: Object.freeze([1.15, 2.65]), x: 3.37 });
   const sr = Math.sin(MOUTH.ry), cr = Math.cos(MOUTH.ry);
   // Nearest the mouth first, left then right, so the most played stand where a visitor comes in.
   const slots = Object.freeze(NICHE.along.flatMap((along, row) => [-1, 1].map((side, n) => {

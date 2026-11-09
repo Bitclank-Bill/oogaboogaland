@@ -102,7 +102,7 @@ the unattributed machine record. No scores are uploaded from local saves.
 
 ## The cave's cabinets and what is played (#554)
 
-The Arcade's cave on the island shows the six most played of the twelve seat cabinets. Score data cannot answer that:
+The Arcade's cave on the island shows the four most played of the twelve seat cabinets. Score data cannot answer that:
 `game_highscores` keeps only each machine's record and `cabinet_runs`/`cloud_hopper_runs` only each board's best 1,024
 distinct finishes, so a play that does not reach a board leaves no trace, and signed-out plays leave none at all. So
 `0010_cabinet_plays.sql` adds `cabinet_plays(game, day, plays)`: one counter per game per UTC day, nothing about who

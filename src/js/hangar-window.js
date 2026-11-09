@@ -32,8 +32,8 @@
   // The door-frame central collineation centred on the eye (ex, ey, ez): the axis plane z = axis stays put and the
   // plane at infinity comes to z = axis - DEPTH, so every point behind the axis moves along its own sight line into
   // that band, never past the eye. Column-major; its last row is not (0, 0, 0, 1), so what it draws is `projective`.
-  const relief = (out, ex, ey, ez, axis, depth) => {
-    const c = 1 / (ez - axis + depth);
+  const relief = (out, ex, ey, ez, axis) => {
+    const c = 1 / (ez - axis + DEPTH);
     out[0] = 1; out[1] = 0; out[2] = 0; out[3] = 0;
     out[4] = 0; out[5] = 1; out[6] = 0; out[7] = 0;
     out[8] = -ex * c; out[9] = -ey * c; out[10] = 1 - ez * c; out[11] = -c;
@@ -54,19 +54,18 @@
   // The window at a door: `group` is the door's node under the scene's root, its +z out into this room and its sill at
   // y 0, so its own placement is the door's frame in the world; `pieces` are the stand-in's geometries in the room
   // beyond's frame, `beyond` that frame to the door's (`across`), and `plane` where the shield stands.
-  // `half`, `top`, `depth` and `back` (how far behind the shield the relief's axis stands) fit another doorway.
-  const create = ({ group, pieces, beyond, plane, half = HALF, top = TOP, depth = DEPTH, back = 0.5 }) => {
+  const create = ({ group, pieces, beyond, plane }) => {
     const GROUP = mat4.fromTRS(mat4.create(), group.position, group.rotation, group.scale), TO_DOOR = mat4.invert(mat4.create(), GROUP);
-    const axis = plane - back, mid = axis - depth / 2, band = depth / 2 + 0.05;
+    const axis = plane - 0.5, mid = axis - DEPTH / 2, band = DEPTH / 2 + 0.05;
     const ax = GROUP[0], az = GROUP[2], zx = GROUP[8], zz = GROUP[10], ox = GROUP[12], oy = GROUP[13], oz = GROUP[14];
-    const clipSlab = new Float32Array([ax / half, 0, az / half, -(ax * ox + az * oz) / half]);
+    const clipSlab = new Float32Array([ax / HALF, 0, az / HALF, -(ax * ox + az * oz) / HALF]);
     const clipSlab2 = new Float32Array([zx / band, 0, zz / band, -(zx * ox + zz * oz + mid) / band]);
     // Every batch culls as the clip box, the only place any of it draws.
-    const sphere = [ox + zx * mid, oy + top / 2, oz + zz * mid, Math.hypot(half, top / 2, band) + 0.1];
+    const sphere = [ox + zx * mid, oy + TOP / 2, oz + zz * mid, Math.hypot(HALF, TOP / 2, band) + 0.1];
     const at = `${ox},${oy},${oz},${ax},${az}`, clip = (geometry) => {
       const kept = clipped.get(geometry);
       if (kept && kept.at === at) return kept.geo;
-      const geo = { ...geometry, projective: true, clipMinY: oy + 0.01, clipMaxY: oy + top, clipSlab, clipSlab2 };
+      const geo = { ...geometry, projective: true, clipMinY: oy + 0.01, clipMaxY: oy + TOP, clipSlab, clipSlab2 };
       clipped.set(geometry, { at, geo });
       return geo;
     };
@@ -89,7 +88,7 @@
       const shown = ez - plane > NEAR && Math.hypot(ex, ey - MIDDLE, ez - plane) < FAR;
       root.visible = shown;
       if (!shown) return;
-      mat4.multiply(TMP, relief(RELIEF, ex, ey, ez, axis, depth), beyond);
+      mat4.multiply(TMP, relief(RELIEF, ex, ey, ez, axis), beyond);
       mat4.multiply(W, GROUP, TMP);
       version++;
       for (let i = 0; i < batches.length; i++) {

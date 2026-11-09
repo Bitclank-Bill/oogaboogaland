@@ -302,9 +302,9 @@
   const MOUTH = { w: 5, h: 3, depth: 5, front: 0.5 };
   const ROOM = { w: 6, h: 4, from: 2.5, to: 6.5 };
   // The Arcade cave's extras (#554): the back runs on to `to` for the room behind its doors, and each long wall has a
-  // shallow alcove (`depth` into the rock, `w` wide, `h` high) for each of its three cabinets (`arcadeCabinets.slots`),
-  // spread from just inside the mouth to just before the doors.
-  const ARCADE_CAVE = { id: "c3", to: 7, alcove: { along: [1.25, 2.85, 4.45], w: 1.5, depth: 0.6, h: 2.75 } };
+  // shallow alcove (`depth` into the rock, `w` wide, `h` high) for each of its two cabinets (`arcadeCabinets.slots`),
+  // just inside the mouth and well short of the doors.
+  const ARCADE_CAVE = { id: "c3", to: 7, alcove: { along: [1.15, 2.65], w: 1.5, depth: 0.6, h: 2.75 } };
   const PATH_HALF = 0.75;
   const RING_HALF = PATH_HALF * 1.5;
   const PATH_UNIT = UNIT / 2;

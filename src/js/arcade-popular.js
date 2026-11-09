@@ -1,14 +1,14 @@
-// Which six cabinets stand in the cave in front of Ooga Arcade (#554): the most played lately, by the Worker's tally
+// Which four cabinets stand in the cave in front of Ooga Arcade (#554): the most played lately, by the Worker's tally
 // of every cabinet opened to play (`/api/arcade-plays`), signed in or not. Scores can't say that: a board keeps only
 // the best finishes and a machine only its record. With no reading yet, or no Worker, it is DEFAULT.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const SLOTS = 6, TIMEOUT_MS = 6000, FRESH_MS = 30000;
-  const DEFAULT = ["cloud-hopper", "mine", "drop", "orbit", "invaders", "snake"];
+  const SLOTS = 4, TIMEOUT_MS = 6000, FRESH_MS = 30000;
+  const DEFAULT = ["cloud-hopper", "mine", "drop", "orbit"];
   const ids = BL.arcadeCabinets.entries.map((e) => e.id);
   const order = (id) => { const i = DEFAULT.indexOf(id); return i < 0 ? DEFAULT.length + ids.indexOf(id) : i; };
-  // The six with the most plays, most played first, ties in the default order.
+  // The four with the most plays, most played first, ties in the default order.
   const pick = (plays) => [...ids].sort((a, b) => ((plays && plays[b]) || 0) - ((plays && plays[a]) || 0) || order(a) - order(b)).slice(0, SLOTS);
   const available = () => !!BL.net && BL.net.state.backend && BL.net.state.arcadePlays === true;
   const listeners = new Set();

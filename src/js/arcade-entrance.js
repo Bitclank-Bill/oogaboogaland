@@ -1,20 +1,20 @@
 // The cave in front of Ooga Arcade's hall (#554), under the 3 o'clock mouth's node on the island: the double doors at
-// its back and the six most played cabinets, three a side, in the terrain's recesses down its long walls
+// its back and the four most played cabinets, two a side, in the terrain's recesses near the mouth
 // (`arcadeCabinets.slots`, chosen by `arcade-popular.js`). A cabinet here is the game's second machine: it plays with
-// its own seat (`<id>@out`), beside the hall's, and shares its board. The doors are `arcade-doors.js`; behind them, once
-// the hall is ready, stands the hall's own meshes in its firelight (`hallShell`), through `hangar-window.js`, so the
-// shallow room behind the doors shows as the whole hall. Built with the island; `bind` per visit; allocates nothing a frame.
+// its own seat (`<id>@out`), beside the hall's, and shares its board. The doors are `arcade-doors.js`: a visitor hands
+// over to the hall with them still shut, so what they open on is the hall itself. Built with the island; `bind` per
+// visit; allocates nothing a frame.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { createNode, addChild, removeChild, boundsOf } = BL.scene;
+  const { createNode, addChild, boundsOf } = BL.scene;
   const AM = BL.arcadeModels, AC = BL.arcadeCabinets;
   const DOOR_Z = -5.6, DOOR_ACTION = DOOR_Z + 0.9, DOOR_REACH = 1.9, REACH = 1.05, NEAR_SQ = 400;
   const gameOf = (c) => (c.game >= 0 ? AM.GAMES[c.game] : AM.RETRO[c.retro]);
   const cabinetOf = (id) => AM.CABINETS.find((c) => !c.service && gameOf(c).id === id);
   const framesOf = (c) => (c.game >= 0 ? AM.attractFrames(c.game) : AM.retroFrames ? AM.retroFrames(c.retro) : null);
 
-  // One cabinet of the six, in the cave's frame: its nodes, showing no game yet.
+  // One cabinet of the four, in the cave's frame: its nodes, showing no game yet.
   const entry = (parent, slot) => {
     const node = createNode({ position: { x: slot.lx, y: 0, z: slot.lz }, rotation: { x: 0, y: slot.turn, z: 0 } });
     const body = createNode({}), screen = createNode({ position: { x: 0, y: AM.SCREEN.y, z: AM.SCREEN.z }, rotation: { x: AM.SCREEN.lean, y: 0, z: 0 }, sightHidden: true, depthBias: -0.1 });
@@ -35,7 +35,7 @@
     e.marquee.geometry = sign;
     e.marquee.scale = { x: k, y: k, z: k };
   };
-  // The hall's copy of the six, past its doors: the same games the island is showing, nothing to walk into or press.
+  // The hall's copy of the four, past its doors: the same games the island is showing, nothing to walk into or press.
   const yard = (parent) => {
     const entries = AC.slots.map((slot) => entry(parent, slot));
     const show = (top) => { entries.forEach((e, i) => { if (e.game !== top[i]) dress(e, top[i]); }); };
@@ -50,14 +50,14 @@
     } };
   };
 
-  const build = ({ root, group, mouth: m, solids, addTarget, removeTarget, reachable }) => {
+  const build = ({ group, mouth: m, solids, addTarget, removeTarget, reachable }) => {
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry);
     addChild(group, createNode({ geometry: AM.caveFloor(0), sightHidden: true }));
     const door = BL.arcadeDoors.create({ parent: group, z: DOOR_Z, wall: true, solids });
     const frame = { x: m.x, z: m.z, sr, cr, ry: m.ry, plane: DOOR_Z, floor: m.floorY };
     const entries = AC.slots.map((slot) => entry(group, slot));
     const doorActions = { enter: { kind: "arcade-door", state: "enter" }, loading: { kind: "arcade-door", state: "loading" }, retry: { kind: "arcade-door", state: "retry" } };
-    let visit = null, walk = null, shell = null, windowGroup = null, off = null, barrier = false, prefetch = 0, request = 0, taken = false;
+    let visit = null, walk = null, off = null, barrier = false, prefetch = 0, request = 0, taken = false;
 
     // One cabinet shows one game: its body, marquee and attract loop, and the footprint the walkers meet.
     const setGame = (e, id) => {
@@ -83,15 +83,9 @@
       const asked = models.withScope("arcade", () => scene.prepare ? scene.prepare(null, ctx, "arcade") : null);
       const built = () => {
         const steps = models.withScope("arcade", () => scene.buildSteps(ctx));
-        return BL.buildTasks.run(steps, "arcade", ctx.signal).then(() => (visit.renderer.kind === "canvas2d" ? null : BL.buildTasks.run(AM.hallShell.steps({ until: 0, budget: BL.buildTasks.SLICE_MS, work: 0 }), "arcade", ctx.signal))).then(fitShell);
+        return BL.buildTasks.run(steps, "arcade", ctx.signal);
       };
       return asked && asked.then ? asked.then(built) : built();
-    };
-    const fitShell = () => {
-      if (shell || visit.renderer.kind === "canvas2d" || !AM.hallShell) return;
-      windowGroup = createNode({ position: { x: m.x + sr * DOOR_Z, y: m.floorY, z: m.z + cr * DOOR_Z }, rotation: { x: 0, y: m.ry, z: 0 }, sightHidden: true });
-      addChild(root, windowGroup);
-      shell = BL.hangarWindow.create({ group: windowGroup, pieces: AM.hallShell(), beyond: BL.hangarWindow.across(0, 0, AM.HALL.front, Math.PI, 0), plane: 0, half: 3.2, top: 4, depth: 0.28, back: 1 });
     };
     const refreshFrames = () => { for (const e of entries) if (!e.frames && (e.frames = framesOf(e.cabinet))) { e.shown = -1; e.screen.visible = true; e.screen.geometry = e.frames[0]; } };
 
@@ -109,7 +103,7 @@
     const bind = (v) => {
       visit = v;
       request++; taken = false;
-      walk = BL.arcadeDoors.walk({ door, frame, sign: -1, pilot: v.pilot, crew: v.crew, camera: v.camera, prepare, onThrough, onState: () => { v.refreshPrompt(); }, followMin: v.followMin });
+      walk = BL.arcadeDoors.walk({ door, frame, sign: -1, pilot: v.pilot, crew: v.crew, camera: v.camera, prepare, onThrough, onState: () => { v.refreshPrompt(); }, followMin: v.followMin, shut: true });
       door.set(false);
       setBarrier(true);
       for (const e of entries) addTarget(e.body, e.owner, { radius: 0.9 });
@@ -139,13 +133,8 @@
         }
       }
     };
-    // Once the camera is final for the frame: the stand-in through the open doors.
-    const afterCamera = (camera, dt) => {
-      if (walk) walk.view(dt);
-      if (!shell) return;
-      if (door.k > 0) shell.update(camera);
-      else shell.root.visible = false;
-    };
+    // Once the camera is final for the frame: the view through a door walk.
+    const afterCamera = (camera, dt) => { if (walk) walk.view(dt); };
 
     const nearby = (x, y, z, player) => {
       if (!walk) return null;
@@ -205,7 +194,7 @@
       });
     };
     // A way back that was cancelled, or a seat refused: the cave is playable again.
-    const stay = () => { if (taken || visit) { taken = false; } };
+    const stay = () => { taken = false; if (walk && walk.holding) walk.reset(); };
 
     // Coming back out through the doors: the Ooga on past them, the view behind it, the doors standing open.
     // Coming back out through the doors: the Ooga and the view as they stood when the hall let go, both past the doors
@@ -222,11 +211,8 @@
       pilot.navigate({ position: { x: at.x, y: m.floorY, z: at.z }, yaw: at.yaw + Math.PI, pitch: 0.18, dist: 4 });
     };
     const liveGeometry = (set) => { for (const e of entries) if (e.frames) for (const f of e.frames) set.add(f); };
-    const dispose = () => {
-      unbind();
-      if (shell) { shell.dispose(); removeChild(root, windowGroup); shell = windowGroup = null; }
-    };
-    return { door, entries, frame, bind, unbind, update, afterCamera, nearby, use, tap, tip, prompt, arrive, standAt, stay, liveGeometry, dispose, get walk() { return walk; }, get shell() { return shell; } };
+    const dispose = unbind;
+    return { door, entries, frame, bind, unbind, update, afterCamera, nearby, use, tap, tip, prompt, arrive, standAt, stay, liveGeometry, dispose, get walk() { return walk; } };
   };
   BL.arcadeEntrance = { build, yard, DOOR_Z };
 })();

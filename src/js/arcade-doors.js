@@ -1,9 +1,10 @@
 // The double doors between the island and Ooga Arcade's hall (#554), one rig in each scene's copy of the same doorway,
 // in the door's frame with +z out of the hall: the leaves swing out (+z), toward the mainland, by themselves, on their
 // own nodes. A door's `walk` takes a visitor through as the Timechain Sphere's doorway does: it keeps the doors shut
-// while what lies beyond readies, with the visitor still driving outside them, opens them, swoops the view into the
-// Ooga's own eyes and walks it through at an even pace, hands over to the other scene from that same eye, whose own rig
-// walks the Ooga on and closes the doors behind it before gliding the view back out. Allocates nothing a frame.
+// while what lies beyond readies, with the visitor still driving outside them, swoops the view into the Ooga's own eyes
+// and hands over to the other scene from that same eye, whose own rig walks the Ooga on and closes the doors behind it
+// before gliding the view back out. Going in from the island it hands over with the doors still shut (`shut`), so the
+// hall opens them itself and all that comes into view through them is the real hall. Allocates nothing a frame.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -50,15 +51,17 @@
   // past them, when the doors close behind it and the view glides back out to the visitor's own. `frame` is the door's
   // in the world (x, z, sr, cr of its turn, and `plane`, how far along it the door's plane stands from there); `sign` is
   // the way through (-1 going in along -z, +1 going out); `prepare()` readies what lies beyond (a promise or null) and
-  // `onThrough(crossing)` is the switch to the other scene.
-  const walk = ({ door, frame: F, sign, pilot, crew, camera, prepare, onThrough, onState = () => {}, followMin = 3 }) => {
+  // `onThrough(crossing)` is the switch to the other scene. With `shut` that switch comes as soon as the view is in the
+  // Ooga's eyes, these doors never opening: the other scene needs its own copy of this side of them.
+  const walk = ({ door, frame: F, sign, pilot, crew, camera, prepare, onThrough, onState = () => {}, followMin = 3, shut = false }) => {
     const state = { phase: "idle", wanted: false, x: 0, z: 0, seen: false, t: 0, cave: null, ready: false, failed: false, busy: false, settle: false, yaw: 0, dist: 4.5,
-      lens: null, glide: 1, from: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, fromFov: 0, pitch: 0, head: null };
+      lens: null, glide: 1, heading: 0, from: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, to: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, fromFov: 0, pitch: 0, head: null };
     const set = (phase) => { if (state.phase !== phase) { state.phase = phase; onState(phase); } };
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-    // The eye as the pilot's first person places it, so the view held here and the pilot's own are the same view.
+    // The eye as the pilot's first person places it, looking straight down the way through, so the view held here and
+    // the one the other scene takes over are the same view whichever way the Ooga was still turning.
     const eyePose = (cave, out) => {
-      const p = cave.root.position, heading = cave.root.rotation.y, ahead = 0.16 * cave.traits.height * Math.cos(state.pitch);
+      const p = cave.root.position, heading = state.heading, ahead = 0.16 * cave.traits.height * Math.cos(state.pitch);
       out.x = p.x + Math.sin(heading) * ahead; out.z = p.z + Math.cos(heading) * ahead;
       out.y = p.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift;
       out.yaw = heading; out.pitch = state.pitch;
@@ -105,6 +108,12 @@
         if (state.glide >= 1) state.lens = null;
       }
     };
+    // The switch to the other scene; the crossing says where the Ooga stands to these doors and how it left them.
+    const handOver = (player, across, d) => {
+      crew.steer(0, 0, 0, 0, 0);
+      set("through");
+      if (onThrough({ across, past: -d, pitch: state.pitch, dist: state.dist, shut }) === false) { letGo(player); set("idle"); state.wanted = false; }
+    };
     const load = () => {
       if (state.ready || state.busy) return;
       state.busy = true; state.failed = false;
@@ -124,12 +133,14 @@
       const eye = camera.position, eyeAlong = (eye.x - F.x) * F.sr + (eye.z - F.z) * F.cr - F.plane;
       if (state.phase === "arriving") {
         state.t += dt;
+        // The doors stay open until the view has come through them, and the walk until it has too. Handed over with
+        // them shut, the Ooga waits at them until they have begun to part.
+        const viewPast = -sign * eyeAlong;
+        door.update(dt, viewPast < VIEW_CLEAR);
+        if (door.k < GRACE && d < 0 && d > -TOUCH) { crew.steer(0, 0, 0, 0, 0); return; }
         const to = -sign * (state.stopAt + AHEAD) + F.plane;
         const dx = F.x + F.sr * to + F.cr * across * 0.5 - p.x, dz = F.z + F.cr * to - F.sr * across * 0.5 - p.z, m = Math.hypot(dx, dz) || 1;
         crew.steer(dx / m, dz / m, 0, 1, 0, SPEED);
-        // The doors stay open until the view has come through them, and the walk until it has too.
-        const viewPast = -sign * eyeAlong;
-        door.update(dt, viewPast < VIEW_CLEAR);
         if (d >= state.stopAt && viewPast >= VIEW_CLEAR || state.t > LIMIT) { letGo(player); state.settle = true; set("idle"); }
         return;
       }
@@ -145,7 +156,8 @@
         const moved = Math.hypot(p.x - state.x, p.z - state.z);
         if (player !== state.cave || moved > 1.2 || state.t > LIMIT) { letGo(state.cave || player); set("idle"); state.wanted = false; door.update(dt, false); return; }
         state.x = p.x; state.z = p.z;
-        door.update(dt, true);
+        door.update(dt, !shut);
+        if (shut && state.glide >= 1) { handOver(player, across, d); return; }
         // It walks up from wherever it stands while the doors open, stopping only if it reaches them still shut.
         if (state.phase === "opening") {
           if (door.k < GRACE && d < TOUCH) { crew.steer(0, 0, 0, 0, 0); return; }
@@ -155,14 +167,10 @@
         const dx = F.x + F.sr * to + F.cr * side - p.x, dz = F.z + F.cr * to - F.sr * side - p.z, m = Math.hypot(dx, dz) || 1;
         crew.steer(dx / m, dz / m, 0, 1, 0, SPEED);
         // The other scene takes over from this eye just before it reaches the doors.
-        if (state.glide >= 1 && -sign * eyeAlong <= HAND) {
-          crew.steer(0, 0, 0, 0, 0);
-          set("through");
-          if (onThrough({ across, past: -d, pitch: state.pitch, dist: state.dist }) === false) { letGo(player); set("idle"); state.wanted = false; }
-        }
+        if (state.glide >= 1 && -sign * eyeAlong <= HAND) handOver(player, across, d);
         return;
       }
-      if (state.phase === "through") { door.update(dt, true); return; }
+      if (state.phase === "through") { door.update(dt, !shut); return; }
       const near = d > -0.4 && d < FAR && Math.abs(across) < AM.DOOR.half + 0.7;
       const moved = state.seen ? Math.hypot(p.x - state.x, p.z - state.z) : 0, inward = state.seen && moved < Math.max(0.5, dt * 12) ? ((-sign * ((state.x - F.x) * F.sr + (state.z - F.z) * F.cr - F.plane)) - d) / Math.max(dt, 1e-3) : 0;
       state.x = p.x; state.z = p.z; state.seen = true;
@@ -170,7 +178,7 @@
       const atDoor = near && d < TOUCH;
       if (state.ready && near && (state.wanted || atDoor && inward > 0.2) && Math.abs(p.y - player.baseY - (F.floor || 0)) < 0.3) {
         state.wanted = false;
-        state.t = 0; state.cave = player; state.dist = pilot.orbit.dist; state.pitch = 0;
+        state.t = 0; state.cave = player; state.dist = pilot.orbit.dist; state.pitch = 0; state.heading = Math.atan2(sign * F.sr, sign * F.cr);
         pilot.setExternalControl(true);
         lens("eyes");
         set("opening");
@@ -181,8 +189,8 @@
     const arrive = (crossing, player, yaw) => {
       player.root.rotation.y = yaw + Math.PI;
       // Far enough on that the view handed back, at its nearest behind the Ooga, stands clear of the doors.
-      Object.assign(state, { t: 0, cave: player, yaw, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, followMin * Math.cos(LET_GO_PITCH) + CLEAR_BACK) });
-      door.set(true);
+      Object.assign(state, { t: 0, cave: player, yaw, heading: yaw + Math.PI, ready: true, seen: false, dist: crossing.dist, pitch: crossing.pitch, lens: "eyes", glide: 1, fromFov: 0, stopAt: Math.max(ARRIVE, followMin * Math.cos(LET_GO_PITCH) + CLEAR_BACK) });
+      door.set(!crossing.shut);
       pilot.setExternalControl(true);
       hideHead(player, true);
       set("arriving");
