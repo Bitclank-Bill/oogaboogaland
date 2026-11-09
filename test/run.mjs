@@ -3234,7 +3234,7 @@ const { autoQualityProbe } = (() => {
     const create = (quality = "high", renderedFrames = 100, deviceMemory) => {
       const changes = [], state = { focused: true, now: 0 };
       const renderer = { kind: "webgl2", quality, setQuality(value) { this.quality = value; changes.push(value); } };
-      const context = { renderer, navigator: { deviceMemory }, window: { matchMedia: () => ({ matches: false }) }, document: { hasFocus: () => state.focused }, transition: null, renderedFrames, showQuality() {} };
+      const context = { renderer, navigator: { deviceMemory }, window: { matchMedia: () => ({ matches: false }) }, document: { hasFocus: () => state.focused }, transition: null, active: { warming: false }, renderedFrames, showQuality() {} };
       const tier = runInNewContext(`${opening}\n${controller}\n({ autoTier, tierFromBoot, BOOT_MEDIUM, BOOT_LOW })`, context);
       // The governor reads delivered intervals only, so a frame costs the probe nothing but the interval it took.
       const frames = (count, interval = 1000 / 60) => { for (let n = 0; n < count; n++) tier.autoTier(interval, state.now += interval); };
@@ -3253,6 +3253,8 @@ const { autoQualityProbe } = (() => {
     const excluded = create(); excluded.frames(600);
     excluded.state.focused = false; excluded.frames(600, 40);
     excluded.state.focused = true; excluded.context.transition = {}; excluded.frames(600, 40);
+    // A scene readying the next behind its door spends part of these frames on that, so they say nothing of the tier.
+    excluded.context.transition = null; excluded.context.active.warming = true; excluded.frames(600, 40);
     const fallback = create(); fallback.renderer.kind = "canvas2d"; fallback.frames(600, 40);
     // Boot cost is the only device signal Safari cannot mask, and it is read once, before any frame exists. The
     // boots sit inside the director's own bands, so recalibrating its thresholds never strands this check.
@@ -4525,6 +4527,94 @@ const canvasSurfaceCacheChecks = async () => {
   }
   record("Canvas surface compatibility: the production painter needs no filter, readback or resize, keeps source and coverage draws, uses valid additive alpha for overbright light, and restores context state before reuse",
     rows.every(row => Object.values(row).every(Boolean)), JSON.stringify(rows));
+};
+// A door's far side readied ahead of the crossing: what it asks for, when, and that a failure neither traps nor loops.
+const doorReadyChecks = async () => {
+  const source = await readFile(join(root, "src/js/door-ready.js"), "utf8"), flush = () => new Promise(setImmediate);
+  const fixture = (steps = null) => {
+    const present = new Set(), calls = [], answers = new Map(), scopes = [];
+    const deferred = { present: (group) => present.has(group), prefetch: (group) => calls.push(`prefetch ${group}`),
+      load: (group) => { calls.push(`load ${group}`); return present.has(group) ? null : new Promise((resolve, reject) => answers.set(group, { resolve, reject })); } };
+    const BL = { deferred, models: { withScope: (id, build, arg) => { scopes.push(id); return build(arg); } } };
+    runInNewContext(source, { window: { BL }, performance });
+    return { door: BL.doorReady.create({ code: "hall", extra: "wing", scope: "place", steps }), present, calls, answers, scopes };
+  };
+  {
+    const f = fixture();
+    f.door.approach();
+    const asked = f.calls.join();
+    f.present.add("hall");
+    f.door.approach();
+    record("door ready: nearing a door asks speculatively for its code, and only then for the code it opens without, which would otherwise fetch its base again", asked === "prefetch hall" && f.calls.join() === "prefetch hall,prefetch wing", f.calls.join());
+  }
+  {
+    const f = fixture();
+    f.door.commit();
+    f.answers.get("hall").reject(new Error("refused"));
+    await flush();
+    const failed = f.door.failed && !f.door.ready, before = f.calls.length;
+    for (let i = 0; i < 60; i++) { f.door.approach(); f.door.step(3); }
+    const quiet = f.calls.length === before;
+    f.door.commit();
+    const retried = !f.door.failed && f.calls.length === before + 1;
+    f.present.add("hall");
+    f.answers.get("hall").resolve(null);
+    await flush();
+    f.door.step(3);
+    record("door ready: a refused download is failed until the next walk in, with no request of its own meanwhile, and that walk tries again and opens it", failed && quiet && retried && f.door.ready, JSON.stringify({ failed, quiet, retried, phase: f.door.phase, calls: f.calls }));
+  }
+  {
+    const f = fixture();
+    f.door.commit();
+    const late = f.answers.get("hall");
+    f.door.commit();
+    late.reject(new Error("timed out"));
+    await flush();
+    record("door ready: an earlier try failing late does not fail the walk in that followed it", !f.door.failed, f.door.phase);
+  }
+  {
+    const budgets = [];
+    let finished = 0;
+    const f = fixture(function* (slice) { try { budgets.push(slice.budget); yield; budgets.push(slice.budget); yield; } finally { finished++; } });
+    f.present.add("hall");
+    f.door.step(3);
+    const first = f.door.working && !f.door.ready;
+    f.door.step(20);
+    const second = f.door.working && !finished;
+    f.door.step(20);
+    f.door.step(20);
+    record("door ready: construction runs one frame's slice at a time on the budget of that frame, in the place's own scope, and is ready when it ends", first && second && f.door.ready && !f.door.working && budgets.join() === "3,20" && finished === 1 && f.scopes.every((s) => s === "place"), JSON.stringify({ first, second, budgets, finished, phase: f.door.phase, scopes: f.scopes }));
+  }
+  {
+    let finished = 0;
+    const f = fixture(function* () { try { yield; yield; } finally { finished++; } });
+    f.present.add("hall");
+    f.door.step(3);
+    f.door.reset();
+    const none = fixture(() => null);
+    none.present.add("hall");
+    none.door.step(3);
+    record("door ready: a reset closes construction part way through and goes back to nothing readied; a place with nothing to build is ready as soon as its code is", finished === 1 && f.door.phase === "idle" && none.door.ready, JSON.stringify({ finished, phase: f.door.phase, none: none.door.phase }));
+  }
+  {
+    const f = fixture();
+    f.door.commit();
+    f.door.step(3);
+    const beforeBase = !f.calls.includes("load wing");
+    f.present.add("hall");
+    f.answers.get("hall").resolve(null);
+    await flush();
+    f.door.step(3);
+    const waiting = f.door.ready && !f.door.extraDone && f.calls.includes("load wing");
+    f.answers.get("wing").reject(new Error("refused"));
+    await flush();
+    const given = f.door.extraDone && !f.door.failed;
+    const here = fixture();
+    here.present.add("hall");
+    here.door.step(3);
+    here.present.add("wing");
+    record("door ready: walking in asks for the optional code once the rest has come, and its failure neither fails the door nor keeps anyone waiting", beforeBase && waiting && given && here.door.extraDone, JSON.stringify({ beforeBase, waiting, given, calls: f.calls }));
+  }
 };
 const deferredLoadingChecks = async () => {
   {
@@ -10137,7 +10227,7 @@ const adaptiveQualityChecks = async () => {
   const r = autoQualityProbe();
   record("memory policy: devices below 8 GiB release the hub, 8 GiB retains it, unknown memory retains it with a fine pointer and releases it with a coarse one, and the explicit policy overrides either; the island cache's second build follows the same rule unless `terrainworker` forces it", r.hubMemory && r.cacheMemory, JSON.stringify(r));
   record("adaptive quality: a GPU-bound machine is seen through delivered frames and loses a tier within two seconds", r.healthy && r.gpuBound && r.reactsFast, JSON.stringify(r));
-  record("adaptive quality: warmup, transitions, background frames and isolated spikes do not lower quality", r.warmup && r.ignoresPauses && r.ignoresSpikes && r.fallback, JSON.stringify(r));
+  record("adaptive quality: warmup, transitions, a scene readying the next, background frames and isolated spikes do not lower quality", r.warmup && r.ignoresPauses && r.ignoresSpikes && r.fallback, JSON.stringify(r));
   record("adaptive quality: steps one tier at a time and stops at the lowest", r.bounded, JSON.stringify(r));
   record("adaptive quality: boot cost seeds the opening tier, only ever downward", r.bootFast && r.bootMedium && r.bootLow && r.bootOneWay && r.bootKeepsCoarse && r.bootMemory && r.memoryBoot, JSON.stringify(r));
 };
@@ -11583,7 +11673,7 @@ const factoryHostedShield = { name: "factory hosted shield", refuse: "/js/factor
 const hubHostedOptionalGame = { name: "hub hosted optional game", refuse: "/js/cloud-hopper-", why: "rule: an island visit leaves Cloud Hopper unloaded, and its real cabinet can recover from a refused download without losing its actor", run: async (b, site) => {
   const cold = await b.evaluate(`({ absent: !BL.cloudHopper && !document.querySelector(".cloud-hopper-panel"), scene: __ooga.scene, frames: __ooga.renderedFrames })`);
   await b.evaluate(`(() => { const B=__ooga,a=B.cavemen.get("portlandhodl"),slot=BL.caves.slots.find(s=>s.scene==="arcade"),m=B.mouths.find(m=>m.id===slot.id);
-    if(B.crew.player!==a)B.pilot.possess(a); B.pilot.navigate({position:{x:m.x-Math.sin(m.ry)*1.2,y:m.floorY,z:m.z-Math.cos(m.ry)*1.2},yaw:m.ry,pitch:.4,dist:10}); B.advance(.5,1/60); })()`);
+    if(B.crew.player!==a)B.pilot.possess(a); B.pilot.navigate({position:{x:m.x-Math.sin(m.ry)*4.5,y:m.floorY,z:m.z-Math.cos(m.ry)*4.5},yaw:m.ry,pitch:.4,dist:10}); B.advance(.5,1/60); })()`);
   await b.key(" ");
   if (!await untilPage(b, 'B.scene === "arcade" && !B.transitioning', 30000)) throw Error("Arcade did not open: " + JSON.stringify(await b.evaluate('({scene:__ooga.scene,transitioning:__ooga.transitioning,notice:document.getElementById("toast").textContent})')));
   const approach = `(() => { const B=__ooga,a=B.pilot.player,s=BL.arcadeModels.CABINETS[0].play;
@@ -13324,7 +13414,7 @@ const hubRainforestSteps = { name: "rainforest bridge steps", why: "regression: 
 // A scene's construction slices run as real tasks while the fade holds black, so each step gives them one, as tourGo does.
 const WAIT_OUT = `(async () => { const B = window.__ooga, t0 = performance.now(); while ((B.transitioning || B.scene === "hub") && performance.now() - t0 < 20000) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); return B.scene; })()`;
 const hubRoutes = { name: "hub routes", why: "playthrough: every scene the island opens is reached the way a player gets there", run: async (b) => {
-  await b.evaluate(`(() => { ${DRIVEN_OF} const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); if (!drivenOf(B, a)) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
+  await b.evaluate(`(() => { ${DRIVEN_OF} const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "arcade"), m = B.mouths.find((m) => m.id === slot.id); if (!drivenOf(B, a)) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 4.5, y: m.floorY, z: m.z - Math.cos(m.ry) * 4.5 }, yaw: m.ry, pitch: 0.4, dist: 10 }); B.advance(0.5, 1 / 60); })()`);
   await b.key(" ");
   const reached = { arcade: await b.evaluate(WAIT_OUT) };
   await tourGo(b, "hub");
@@ -18121,12 +18211,14 @@ const factoryFloor = { name: "factory floor", why: "regression: stairs landed ag
 const factoryEntrance = { name: "factory entrance", why: "regression: flying above the mouth entered the factory and reaching its front wall away from the doorway exited; real doorway crossings must still keep the same Ooga", run: async (b) => {
   const above = await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), m = B.mouths.find((m) => m.id === "c2"), along = window.BL.factoryModels.SHIELD_Z - 0.1; if (B.crew.player !== a && B.crew.player?.npc !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * along, y: m.floorY + 20, z: m.z + Math.cos(m.ry) * along }, yaw: m.ry, pitch: 0.2, dist: 5 }); B.advance(1 / 60, 1 / 60); const d = B.pilot.player; return { scene: B.scene, transitioning: B.transitioning, height: d ? d.root.position.y - d.baseY - m.floorY : null }; })()`);
   record("factory entrance: flying above the shield stays on the island", above.scene === "hub" && !above.transitioning && above.height > 3, JSON.stringify(above));
+  // A warm-up parked part way, its next slice held back so it cannot finish: near the mouth its frames do not count as evidence for the quality tier, and from out of range they do again.
+  const warm = await b.evaluate(`(() => { const B = window.__ooga, H = window.BL.scenes.hub, R = H.debug.factoryReady, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "factory"), m = B.mouths.find((m) => m.id === slot.id), stand = (along) => { B.pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * along, y: m.floorY, z: m.z + Math.cos(m.ry) * along }, yaw: m.ry, pitch: 0.2, dist: 5 }); B.advance(2 / 60, 1 / 60); }; if (B.crew.player !== a && B.crew.player?.npc !== a) B.pilot.possess(a); const step = R.step; R.reset(); step(0.001); R.step = () => {}; stand(8); const near = H.warming; stand(20); const far = H.warming, parked = R.working; R.step = step; return { near, far, parked }; })()`);
+  record("factory entrance: a warm-up left unfinished by walking away from the mouth stops holding back the quality tier", warm.near === true && warm.far === false && warm.parked === true, JSON.stringify(warm));
   await b.evaluate(`(() => { const B = window.__ooga, a = B.cavemen.get("portlandhodl"), slot = window.BL.caves.slots.find((s) => s.scene === "factory"), m = B.mouths.find((m) => m.id === slot.id), along = window.BL.factoryModels.SHIELD_Z + 0.6; if (B.crew.player !== a && B.crew.player?.npc !== a) B.pilot.possess(a); B.pilot.navigate({ position: { x: m.x + Math.sin(m.ry) * along, y: m.floorY, z: m.z + Math.cos(m.ry) * along }, yaw: m.ry, pitch: 0.2, dist: 5 }); B.advance(0.5, 1 / 60); /* the carried loadout is the driven body's (a separate one in the hub) */ const d = B.crew.player; B.crew.configureWeapon(d, 2, 23); B.crew.removeMagazines(d); B.crew.collectGroundMagazine(7, d); B.crew.collectGroundMagazine(11, d); window.__mouth = { x: m.x, z: m.z, ry: m.ry }; })()`);
   // In through the shield on a held key, a frame at a time. Yield only while a transition's deferred code or sliced
   // construction needs real tasks, as tourGo does; once arrived the walk is stepped without yielding. The hall comes on under the island's last frame with
-  // it a step past its own shield and the view in the exit tunnel, walking on. A key pressed during that walk, once the
-  // walk is done, carries the Ooga no further until it is let go; a step back from where an arrival stands then stays
-  // in the hall.
+  // the Ooga a step short of its own shield, seen from its own eyes, walking on. A forward key held through that walk
+  // goes on walking when it is done, and the view is back behind the Ooga; a step back from there stays in the hall.
   const keys = `const toward = (dx, dz) => { const c = B.camera, fx = c.target.x - c.position.x, fz = c.target.z - c.position.z, l = Math.hypot(fx, fz), f = [fx / l, fz / l], r = [-f[1], f[0]]; const score = { w: f[0] * dx + f[1] * dz, s: -(f[0] * dx + f[1] * dz), d: -(r[0] * dx + r[1] * dz), a: r[0] * dx + r[1] * dz }; return Object.entries(score).sort((p, q) => q[1] - p[1])[0][0]; }; const key = (k, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: k, code: "Key" + k.toUpperCase(), bubbles: true })); const shot = () => { const W = B.factory.walk, p = B.crew.player.root.position; return { phase: W.phase, still: +W.still.toFixed(2), z: +p.z.toFixed(2), camZ: +B.camera.position.z.toFixed(2) }; }; const crossing = async (id, sample) => { const end = performance.now() + 20000; let frames = 0; while (frames < 300 && performance.now() < end) { B.advance(1 / 60, 1 / 60); if (B.scene === id && !B.transitioning) return sample(); if (B.transitioning) await new Promise(r => setTimeout(r, 0)); else frames++; } return null; };`;
   const glideIn = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth; ${keys}
     const k = toward(-Math.sin(m.ry), -Math.cos(m.ry)); key(k, true);
@@ -18140,17 +18232,17 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   })()`);
   const first = glideIn.first, on = glideIn.on;
   const arrived = await b.evaluate(`(async () => { const B = window.__ooga, end = performance.now() + 20000; while ((B.transitioning || B.scene !== "factory") && performance.now() < end) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); const a = B.crew.player, out = { scene: B.scene, ooga: a ? a.traits.name : null, unarmed: !!a && ${unarmedInPage("a")}, ammo: a && a.weapon.ammo, spares: a && a.weapon.parked.spareAmmo.join(","), z0: +a.root.position.z.toFixed(2) }; const key = (down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: "s", code: "KeyS", bubbles: true })); key(true); B.advance(0.08, 1 / 60); key(false); B.advance(0.5, 1 / 60); out.back = { scene: B.scene, transitioning: B.transitioning, phase: B.factory.walk.phase, z: +a.root.position.z.toFixed(2) }; return out; })()`);
-  const F = await b.evaluate(`(() => { const F = window.BL.factoryModels; return { gate: F.HALL.front - 0.6, front: F.HALL.front, arrival: F.LAYOUT.entrance.z + 1, shield: F.SHIELD_Z }; })()`);
-  record("factory entrance: walking in, the Ooga walks itself through the shield, with no fade, the island's last frame dissolving off the hall's first: it comes on a step past the hall's own shield with the view behind it in the exit tunnel and walks on to where an arrival stands, a key pressed on the way carries it no further until let go, and a step back from there stays in the hall",
-    !!first && first.phase === 1 && first.still >= 0.9 && first.z <= F.gate && first.z >= F.gate - 0.8 && first.camZ > F.front - 1.2
-      && !!on && Math.abs(on.z - F.arrival) < 0.4 && Math.abs(on.held - on.z) < 0.05
+  const F = await b.evaluate(`(() => { const F = window.BL.factoryModels; return { gate: F.HALL.front - 0.6, stop: window.BL.factoryWindow.stopPast(3), shield: F.SHIELD_Z }; })()`);
+  record("factory entrance: walking in, the view swoops into the Ooga's eyes and the hall takes over from that eye with no fade, the island's last frame dissolving off the hall's first: it comes on a step short of the hall's own shield and walks on far enough for the view handed back to clear it, a forward key held through the walk carries on walking when it ends, and a step back from there stays in the hall",
+    !!first && first.phase === 1 && first.still >= 0.9 && first.z > F.gate - 0.5 && first.z < F.gate + 1 && Math.abs(first.camZ - first.z) < 0.5
+      && !!on && Math.abs(on.z - (F.gate - F.stop)) < 0.4 && on.held < on.z - 0.3
       && arrived.back.scene === "factory" && !arrived.back.transitioning && arrived.back.phase === 0 && arrived.back.z > arrived.z0 + 0.2, JSON.stringify({ first, on, back: arrived.back, z0: arrived.z0, F }));
   const outside = await b.evaluate(`(() => { const B = window.__ooga, e = window.BL.factoryModels.LAYOUT.entrance, rows = []; for (const [name, x, y] of [["beside", 10, e.y], ["below", 0, 0], ["above", 0, e.y + 12]]) { if (B.scene !== "factory" || B.transitioning) break; B.pilot.navigate({ position: { x, y, z: 29 }, yaw: Math.PI, pitch: 0.2, dist: 5 }); B.advance(1 / 60, 1 / 60); rows.push({ name, scene: B.scene, transitioning: B.transitioning }); } return rows; })()`);
   record("factory entrance: positions beside, below and above the exit doorway stay in the factory", outside.length === 3 && outside.every((r) => r.scene === "factory" && !r.transitioning), JSON.stringify(outside));
   await b.evaluate(`(() => { const B = window.__ooga, a = B.crew.player, e = window.BL.factoryModels.LAYOUT.entrance; B.pilot.navigate({ position: { x: 0, y: e.y, z: e.z + 2.2 }, yaw: 0, pitch: 0.2, dist: 5 }); if (B.pilot.aiming) B.pilot.modeAction("mode-toggle"); B.advance(0.5, 1 / 60); })()`);
-  // Out through the gate's shield the same way, yielding for transition tasks only: the island has the Ooga at the
-  // mouth's rim under the hall's last frame, the view behind it in the tunnel, and walks it on out of the mouth; a key
-  // pressed on the way that now means back in carries it no further until it is let go.
+  // Out through the gate's shield the same way, yielding for transition tasks only: the island has the Ooga at its own
+  // shield under the hall's last frame, seen from its own eyes, and walks it on down the tunnel; a key pressed on the way
+  // that now means back in carries it no further until it is let go.
   const glideOut = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), along = (q) => +((q.x - m.x) * sr + (q.z - m.z) * cr).toFixed(2); ${keys}
     const k = toward(0, 1); key(k, true);
     const rim = await crossing("hub", () => ({ ooga: along(B.crew.player.root.position), view: along(B.camera.position) }));
@@ -18163,14 +18255,20 @@ const factoryEntrance = { name: "factory entrance", why: "regression: flying abo
   })()`);
   const rim = glideOut.rim, walkedOut = glideOut.walkedOut || {};
   const back = await b.evaluate(`(async () => { const B = window.__ooga, m = window.__mouth, end = performance.now() + 20000; while ((B.transitioning || B.scene !== "hub") && performance.now() < end) { B.advance(1 / 30, 1 / 30); await new Promise(r => setTimeout(r, 0)); } B.advance(0.3, 1 / 30); const p = B.crew.player && B.crew.player.root.position; return { scene: B.scene, ooga: B.crew.player ? B.crew.player.traits.name : null, fromMouth: p ? +Math.hypot(p.x - m.x, p.z - m.z).toFixed(1) : null, rifle: !!p && B.crew.player.weapon.equipped && !B.crew.player.weapon.primaryEquipped && B.crew.player.weapon.selectedSlot === 2, ammo: p && B.crew.player.weapon.ammo, spares: p && B.crew.player.weapon.spareAmmo.join(","), carry: !B.pilot.aiming && document.getElementById("weapon-reticle").hidden }; })()`);
-  record("factory entrance: walking out, the walk takes the Ooga into the hall's shield and the island has it at the mouth's rim under the hall's last frame, the view behind it in the tunnel, walking on out of the mouth, and a key pressed on the way back toward the tunnel carries it no further until let go",
-    !!rim && rim.ooga > -0.6 && rim.ooga < 1.2 && rim.view < rim.ooga - 2 && rim.view > F.shield && walkedOut.after > rim.ooga + 0.8 && Math.abs(walkedOut.held - walkedOut.after) < 0.05, JSON.stringify({ rim, walkedOut }));
+  record("factory entrance: walking out, the view swoops into the Ooga's eyes and the island takes over from that eye at its own shield under the hall's last frame, walking on down the tunnel, and a key pressed on the way back toward the shield carries it no further until let go",
+    !!rim && rim.ooga > F.shield - 1 && rim.ooga < F.shield + 0.6 && Math.abs(rim.view - rim.ooga) < 0.5 && walkedOut.after > F.shield + 3 && Math.abs(walkedOut.held - walkedOut.after) < 0.05, JSON.stringify({ rim, walkedOut }));
   record("factory doorway: inside the hall the visitor has no weapon or weapon button while the selected rifle, rounds and spare magazines wait parked; all of them come back at the island, with carry chosen inside", arrived.unarmed && arrived.ammo === 23 && arrived.spares === "7,11" && back.rifle && back.ammo === 23 && back.spares === "7,11" && back.carry, JSON.stringify({ arrived, back }));
   await tourGo(b, "factory");
   await b.key("Escape");
   await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
   const escaped = await b.evaluate(`({ scene: __ooga.scene, driving: __ooga.pilot.player?.traits.name || null })`);
   record("factory entrance: walking through the 2 o'clock shield takes the same Ooga inside and walking out returns it to the mouth; Escape leaves the factory still driving it, never letting go", arrived.scene === "factory" && arrived.ooga === "portlandhodl" && back.scene === "hub" && back.ooga === "portlandhodl" && back.fromMouth !== null && back.fromMouth < 10 && escaped.scene === "hub" && escaped.driving === "portlandhodl", JSON.stringify({ arrived, back, escaped }));
+  // Left for another scene, the hall's builders go while the island still holds its last meshes: the door must ready the hall again, not report it ready with nothing built.
+  await tourGo(b, "factory");
+  await tourGo(b, "lab");
+  await tourGo(b, "hub");
+  const stale = await b.evaluate(`(() => { const R = window.BL.scenes.hub.debug.factoryReady; R.reset(); R.step(0.001); return { kept: !!window.BL.scenes.factory.retainedGeometry, working: R.working }; })()`);
+  record("factory entrance: with the hall's builders released since the island kept its meshes, the door readies the hall again", stale.kept && stale.working, JSON.stringify(stale));
 } };
 // ₿IFRÖST. In from the top of the pass stairs through the arch, over the
 // bridge and through the portal's field as the widest Ooga; W A S D in the hall; back out through the field; Escape.
@@ -18811,9 +18909,10 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
 // Carry aim intent and cursor focus across the real doorway, while parking weapons only during the visit.
 const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions lost mouse-look focus, could leave combat players by the pile, and must restore the parked outside loadout", run: async (b) => {
   await b.send("Page.bringToFront");
-  const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning`, 20000);
+  // Arrived once a door walk, in the two scenes that have one, has handed the Ooga back.
+  const arrive = async (scene) => untilPage(b, `B.scene === "${scene}" && !B.transitioning && (B.scene === "hub" ? BL.scenes.hub.debug.arcadeEntrance.walk.phase === "idle" : B.scene === "arcade" ? BL.scenes.arcade.debug.arcade.doorWalk.phase === "idle" : true)`, 20000);
   const leave = async () => {
-    await b.evaluate(`(() => { const B = __ooga, a = B.pilot.player; a.root.position.x = 0; a.root.position.z = BL.arcadeModels.HALL.front + 1.3; B.advance(0.2, 1 / 60); })()`);
+    await b.evaluate(`(() => { const B = __ooga, walk = BL.scenes.arcade.debug.arcade.doorWalk; B.pilot.navigate({ position: { x: 0, y: 0, z: BL.arcadeModels.HALL.front - 1.1 }, yaw: Math.PI, pitch: 0.2, dist: 4 }); walk.ask(); })()`);
     return arrive("hub");
   };
   const read = `(() => {
@@ -18834,7 +18933,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
       B.pilot.weaponMode(2); w.ammo = 11; if (!w.spareAmmo.length) B.crew.collectMagazine(a); w.spareAmmo[0] = 4; w.unlimited = false; B.pilot.enterClose();
       if (w.aiming !== ${mode !== 'carry'}) B.pilot.modeAction("mode-toggle");
       const m = B.mouths.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id);
-      B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 1.2, y: m.floorY, z: m.z - Math.cos(m.ry) * 1.2 }, yaw: m.ry, pitch: 0.3, dist: 6 });
+      B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 4.5, y: m.floorY, z: m.z - Math.cos(m.ry) * 4.5 }, yaw: m.ry, pitch: 0.3, dist: 6 });
       ${mode === 'focused' ? 'B.pilot.focusAim();' : 'B.pilot.freeCursor();'}
       B.advance(0.2, 1 / 60);
     })()`);
@@ -18875,6 +18974,7 @@ const arcadeCarry = { name: "arcade carry", why: "regression: Arcade transitions
       && r.outside.primary === r.before.primary && r.outside.secondary === r.before.secondary && !r.outside.unlimited
       && r.outside.along < 0 && r.outside.along > -3 && Math.abs(r.outside.across) < 0.5 && Math.abs(r.outside.feet - r.outside.floor) < 0.1), JSON.stringify(rows));
   // Physical games use the ordinary return transition, without the cabinet zoom.
+  await b.evaluate(`(() => { const B = __ooga, m = B.mouths.find(m => m.id === BL.caves.slots.find(s => s.scene === "arcade").id); B.pilot.navigate({ position: { x: m.x - Math.sin(m.ry) * 4.5, y: m.floorY, z: m.z - Math.cos(m.ry) * 4.5 }, yaw: m.ry, pitch: 0.3, dist: 6 }); B.advance(0.2, 1 / 60); })()`);
   await b.key(" "); await arrive("arcade");
   await b.key("x");
   await untilPage(b, 'document.pointerLockElement === document.getElementById("scene")');
@@ -29919,7 +30019,7 @@ const terrainCacheChecks = async () => {
 // must keep its golden digest, and the snapshot's queries, rehydrated after a structured clone (the Worker's and
 // IndexedDB's codec), must answer exactly as the direct build does on a seeded sample of every query.
 // The golden is the island as it was built before the snapshot existed.
-const TERRAIN_GOLDEN = "cdfe1bb2820f5119";
+const TERRAIN_GOLDEN = "951371a2c7d04b9d";
 const terrainParityChecks = (BL, island) => {
   const islandDigest = (built) => {
     const h = createHash("sha256"), g = built.geometry, faces = g.faces;
@@ -30484,7 +30584,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   const clearance = claimClearanceProof();
   record("hub footprint clearance: conservative rejection preserves circular boundaries, live reservations and exceptional numbers", clearance.failures === 0 && clearance.cases >= 4000, JSON.stringify(clearance));
   await cloudHopperFailureChecks(BL);
-  await deferredLoadingChecks(); await hudNoticeChecks(); await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await oogatronReplayChecks(); await mirrorRippleChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await timechainRoomChecks(); await timechainBlockChecks(); await environmentSoundChecks(); await weatherStepChecks(); await hammockChecks(); await poolLayoutChecks(); await gameRulesChecks(); await highscoreClientChecks(); await ghostHuntChecks(); await donationClientChecks(); await poolWildlifeChecks(); await totemFeedChecks();
+  await deferredLoadingChecks(); await doorReadyChecks(); await hudNoticeChecks(); await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await oogatronReplayChecks(); await mirrorRippleChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await timechainRoomChecks(); await timechainBlockChecks(); await environmentSoundChecks(); await weatherStepChecks(); await hammockChecks(); await poolLayoutChecks(); await gameRulesChecks(); await highscoreClientChecks(); await ghostHuntChecks(); await donationClientChecks(); await poolWildlifeChecks(); await totemFeedChecks();
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
@@ -30606,7 +30706,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   {
     const expected = {
       c11: [6.25, 0.75, 6.75], c10: [6.25, 0.75, 6.75], c9: [7, 0.5, 6.75],
-      c1: [6.25, 0.75, 6.75], c2: [6.25, 0.75, 6.75], c3: [6.5, 0.5, 6.75]
+      c1: [6.25, 0.75, 6.75], c2: [6.25, 0.75, 6.75], c3: [6.5, 0.5, 7]
     };
     const column = { caveIndex: 0, floor: 0, ceiling: 0 }, rows = [];
     for (let caveIndex = 0; caveIndex < island.mouths.length; caveIndex++) {
@@ -30630,8 +30730,21 @@ record("character visibility source bakes: ownership wrappers share exact immuta
     }
     const ramps = island.mouths.filter((mouth) => mouth.id === "c730" || mouth.id === "c5");
     record("surface caves: every non-HQ mouth uses a terrain-fitted full-height carved chamber with owned air, solid floors, roofs and enclosing walls", rows.length === 6 && [...new Set(rows.map((row) => row.id))].sort().join() === Object.keys(expected).sort().join()
-      && rows.every((row) => row.dimensions && row.samples === 33 && row.owned && row.clear && row.enclosed && row.swept && row.walls)
+      && rows.every((row) => row.dimensions && row.samples === (row.id === "c3" ? 36 : 33) && row.owned && row.clear && row.enclosed && row.swept && row.walls)
       && ramps.length === 2 && ramps.every((mouth) => mouth.room.w === 6 && mouth.room.h === 4 && mouth.room.from === 2.5 && mouth.room.to === 6.5), JSON.stringify({ rows, ramps: ramps.map((mouth) => ({ id: mouth.id, room: mouth.room })) }));
+    // #554: the Arcade cave's four cabinets stand in the recesses the terrain cuts, at the seats the room is told.
+    const CAB = BL.arcadeCabinets, arcadeCave = island.mouths.find((m) => m.id === "c3"), recessColumn = { caveIndex: 0, floor: 0, ceiling: 0 };
+    const slotClear = CAB.slots.length === 4 && CAB.slots.every((s) => {
+      const sr = Math.sin(arcadeCave.ry), cr = Math.cos(arcadeCave.ry), x = arcadeCave.x + cr * s.lx + sr * s.lz, z = arcadeCave.z - sr * s.lx + cr * s.lz;
+      return island.cavityAt(x, z, recessColumn, 7, 1) && recessColumn.caveIndex === 7 && recessColumn.ceiling >= 2.75 && island.clearAt(x, 0.05, z, 0.3, 2.4);
+    });
+    const sameMouth = Math.abs(arcadeCave.x - CAB.MOUTH.x) < 1e-6 && Math.abs(arcadeCave.z - CAB.MOUTH.z) < 1e-6 && Math.abs(arcadeCave.ry - CAB.MOUTH.ry) < 1e-6;
+    const seat = CAB.get(CAB.outdoorSeat("mine")), popular = BL.arcadePopular;
+    const tied = popular.pick(null), ranked = popular.pick({ stacker: 9, snake: 9, dash: 3, pong: 2, flap: 1, invaders: 1 });
+    record("arcade entrance: its four cabinets stand in terrain recesses at the room's seats, keep a seat apart from the hall's, and the most played take them in a stable order",
+      slotClear && sameMouth && seat.outdoor && seat.game === "mine" && CAB.get("mine").outdoor === undefined && !CAB.get("race@out")
+        && tied.join() === popular.DEFAULT.join() && ranked.length === 4 && ranked.slice(0, 2).join() === "snake,stacker" && ranked[2] === "dash",
+      JSON.stringify({ slotClear, sameMouth, seat, tied, ranked }));
   }
   portalChecks(BL,el);
   {
