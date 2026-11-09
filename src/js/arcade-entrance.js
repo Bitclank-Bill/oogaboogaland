@@ -16,6 +16,7 @@
 
   const build = ({ root, group, mouth: m, solids, addTarget, removeTarget, reachable }) => {
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry);
+    addChild(group, createNode({ geometry: AM.caveFloor(), sightHidden: true }));
     const door = BL.arcadeDoors.create({ parent: group, z: DOOR_Z, wall: true, solids });
     const frame = { x: m.x, z: m.z, sr, cr, ry: m.ry, plane: DOOR_Z, floor: m.floorY };
     const entries = AC.slots.map((slot) => {

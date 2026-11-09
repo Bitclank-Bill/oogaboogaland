@@ -397,6 +397,14 @@ test("a game's cave cabinet and hall cabinet seat two players at once, and a pla
   assert.equal(h.room.players.get(2).cabinet.id, "mine@out");
   const p = h.room.players.get(2);
   assert.deepEqual([p.x, p.y, p.z, p.yaw, p.zone], [at.x, at.y, at.z, at.yaw, "outside"]);
+  // A player at a cave cabinet stays in the main island's voice: its islanders hear them and they hear its islanders, never the hall.
+  const hallSeat = h.room.players.get(1), mic = { sub: "listen", track: "mic" };
+  p.voice = hallSeat.voice = mic;
+  const island = { id: 3, body: "c", zone: "outside", voice: mic };
+  const peers = protocol.voicePeers([hallSeat, p, island]);
+  assert.deepEqual(peers.get(2), [3]);
+  assert.deepEqual(peers.get(3), [2]);
+  assert.deepEqual(peers.get(1), []);
   // The cave's seat is still one player's, and one player holds one cabinet.
   h.send(a.ws, { ...hall, op: "leave" });
   h.advance(1000); h.send(a.ws, { t: "zone", name: "outside" }); h.send(a.ws, { ...cave, q: 3 });

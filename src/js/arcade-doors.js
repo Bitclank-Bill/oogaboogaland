@@ -97,9 +97,10 @@
         door.update(dt, true);
         const o = pilot.orbit, heading = sign < 0 ? F.ry : F.ry + Math.PI;
         o.tYaw = o.yaw + Math.atan2(Math.sin(heading - o.yaw), Math.cos(heading - o.yaw));
+        // It walks up from wherever it stands while the doors open, stopping only if it reaches them still shut.
         if (state.phase === "opening") {
-          if (door.k < GRACE) { crew.steer(0, 0, 0, 0, 0); return; }
-          set("walking");
+          if (door.k < GRACE && d < TOUCH) { crew.steer(0, 0, 0, 0, 0); return; }
+          if (door.k >= GRACE) set("walking");
         }
         const to = F.plane + sign * AHEAD + along, target = to, side = across * 0.4;
         const dx = F.x + F.sr * target + F.cr * side - p.x, dz = F.z + F.cr * target - F.sr * side - p.z, m = Math.hypot(dx, dz) || 1;

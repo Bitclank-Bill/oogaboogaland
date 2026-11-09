@@ -1,7 +1,7 @@
 // Scene-only arcade geometry. Shared island props and their model-cache owners stay in arcade-models.js.
 (() => {
   "use strict";
-  const { BANANA, BANANA_LEAF_TONES, BARK, BL, BONE, BONE_INK, CABINETS, CLAW, DART, DOT, EARTH_BLACK, EARTH_CHALK, EARTH_OCHRE, EARTH_RED, EMBER_GLOW, FAME, FAME_ROW, FAME_W, FRAMES, GAMES, GLASS_DK, GLYPH_H, GLYPH_W, GRID_H, GRID_W, HALL, HAUNT, HOCKEY, HOOP, LAYOUT, MAMMOTH_AT, MARK, MAT_Y, METER_LEN, METER_WINDOW, MEZZ, MEZZ_POSTS, NUTS, PALETTES, PICTOS, PIN, PIXEL, POOL, POOL_COLORS, POSTER_SCALE, PRIZES, PRIZE_SHELF, RETRO, RIDE_BEAT, RIDE_Y, ROPE, SCREEN, SHY, SIGN_FRAME, SKEE, SPOTS, SPOT_Y, STAGE, TIMBER_DK, TIMBER_LT, TRACKING, WHEEL_COST, WHEEL_VALUES, along, at, bake, bananaLeaf, band, beam, bevelBox, blaze, boneTusk, box, cached, ccw, centred, daubDot, daubHand, daubPoly, daubStroke, daubTaper, daubZigzag, dots, earth, face, facing, flame, geometry, grid, hexToRgb, hide, lathe, leafBlade, line, merge, mirror, moved, mulberry32, nut, oval, pictograph, prism, pushVert, rect, ring, scaled, shaded, sideShape, signBinding, stone, strip, text, textWidth, tikiMouth, tint, titleBones, torus, tuck, turn, turnedX, turnedY, turnedZ, unshadowed, variants, zigzag } = window.BL.arcadeModelsSceneKit;
+  const { BANANA, BANANA_LEAF_TONES, BARK, BL, BONE, BONE_INK, CABINETS, CLAW, DART, DOT, EARTH_BLACK, EARTH_CHALK, EARTH_OCHRE, EARTH_RED, EMBER_GLOW, FAME, FAME_ROW, FAME_W, FRAMES, GAMES, GLASS_DK, GLYPH_H, GLYPH_W, GRID_H, GRID_W, HALL, HAUNT, HOCKEY, HOOP, LAYOUT, MAMMOTH_AT, MARK, MAT_Y, METER_LEN, METER_WINDOW, MEZZ, MEZZ_POSTS, NUTS, PALETTES, PICTOS, PIN, PIXEL, POOL, POOL_COLORS, POSTER_SCALE, PRIZES, PRIZE_SHELF, RETRO, RIDE_BEAT, RIDE_Y, ROPE, SCREEN, SHY, SIGN_FRAME, SKEE, SPOTS, SPOT_Y, STAGE, TIMBER_DK, TIMBER_LT, TRACKING, WHEEL_COST, WHEEL_VALUES, along, at, bake, bananaLeaf, band, beam, bevelBox, blaze, boneTusk, box, cached, ccw, centred, daubDot, daubHand, daubPoly, daubStroke, daubTaper, daubZigzag, dots, earth, face, facing, flame, geometry, grid, hexToRgb, hide, lathe, leafBlade, line, merge, mirror, moved, mulberry32, nut, oval, pictograph, prism, pushVert, rect, ring, scaled, shaded, sideShape, signBinding, stone, strip, text, textWidth, tikiMouth, tint, titleBones, torus, tuck, turn, turnedX, turnedY, turnedZ, unshadowed, variants, zigzag, paving, flagstone, clipped } = window.BL.arcadeModelsSceneKit;
   // Construction checkpoints (see build-tasks.js). They reach it only when sliced, so an unsliced build runs without it.
   const pause = function* (slice) { if (slice) yield* BL.buildTasks.pause(slice); };
 
@@ -107,7 +107,7 @@
   // The flagstone walks, [x0, x1, z0, z1]: in from the tunnel to the stone circle round the stage, from behind the
   // jackpot wheel's footing to the claws and along the gallery street under the deck, and out to the shy, the food
   // court and the snack bar, the skee lanes and the hoops.
-  const WALKS = [[-2.3, 2.3, -2.4, HALL.front + 4], [-1.6, 1.6, -21.4, -14.4], [-9.7, 9.7, -21.2, -18.7], [-12.9, -5.4, -7.8, -5.8], [-15.8, -2.6, 0.2, 1.9], [2.2, 9.4, -2.7, -1.9], [7.4, 12.4, -1.9, 3.8]];
+  const WALKS = [[-2.3, 2.3, -2.4, HALL.front + HALL.exit], [-1.6, 1.6, -21.4, -14.4], [-9.7, 9.7, -21.2, -18.7], [-12.9, -5.4, -7.8, -5.8], [-15.8, -2.6, 0.2, 1.9], [2.2, 9.4, -2.7, -1.9], [7.4, 12.4, -1.9, 3.8]];
   // Reed mats where the players stand, [x0, x1, z0, z1]: the skee lanes, the hoops, the shy, the claws, the pinball
   // tables, the snack bar's counter and the pool tables.
   const MATS = [[9.25, 12.55, -3.4, -2.05], [12.35, 13.75, 1.95, 5.65], [-13.5, -12.05, -8.4, -5.2], [-4.3, 4.3, -22.75, -21.45], [4.9, 7.8, -22.25, -21.05], [-16.6, -13.2, 1.9, 3.05], [-9, -6.6, -13.85, -12.75], [6.6, 9, -13.85, -12.75]];
@@ -260,48 +260,6 @@
     ["B", -16.2, "fern moss"], ["B", -10.3, "fern shroom"], ["B", -9.1, "crystal"], ["B", 9.2, "shroom moss"], ["B", 10.3, "fern"], ["B", 16.2, "shroom fern"],
     ["F", 8.2, "fern moss"], ["F", 10.3, "shroom fern"], ["F", 12.2, "crystal"]
   ];
-  // Crazy paving: each real seed's flagstone is its cell among all the seeds (the unseen ones only cut), `GROUT`
-  // short of halfway to each neighbour and cut to an octagon `reach` round the seed, so the stones at a walk's edge
-  // round off and the walk frays into the earth. Each stone comes back as its outline, its middle and its inner radius.
-  const GROUT = 0.035;
-  const clipped = (poly, nx, nz, c) => {
-    const out = [];
-    for (let i = 0; i < poly.length; i++) {
-      const p = poly[i], q = poly[(i + 1) % poly.length], dp = nx * p[0] + nz * p[1] - c, dq = nx * q[0] + nz * q[1] - c;
-      if (dp <= 0) out.push(p);
-      if ((dp <= 0) !== (dq <= 0)) { const t = dp / (dp - dq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
-    }
-    return out;
-  };
-  const paving = (seeds, reach) => {
-    const stones = [], corner = reach / Math.cos(Math.PI / 8);
-    for (const [x, z, real] of seeds) {
-      if (!real) continue;
-      let poly = Array.from({ length: 8 }, (_, k) => [x + Math.cos((k + 0.5) / 8 * Math.PI * 2) * corner, z + Math.sin((k + 0.5) / 8 * Math.PI * 2) * corner]);
-      for (const [qx, qz] of seeds) {
-        const dx = qx - x, dz = qz - z, d = Math.hypot(dx, dz);
-        if (d > 1e-6 && d < reach * 2.2) poly = clipped(poly, dx / d, dz / d, ((qx + x) * dx + (qz + z) * dz) / (2 * d) - GROUT / 2);
-      }
-      if (poly.length < 3) continue;
-      const cx = poly.reduce((t, p) => t + p[0], 0) / poly.length, cz = poly.reduce((t, p) => t + p[1], 0) / poly.length;
-      let r = Infinity;
-      for (let i = 0; i < poly.length; i++) {
-        const [px, pz] = poly[i], [qx, qz] = poly[(i + 1) % poly.length], l = Math.hypot(qx - px, qz - pz);
-        if (l > 1e-6) r = Math.min(r, Math.abs((qx - px) * (cz - pz) - (qz - pz) * (cx - px)) / l);
-      }
-      stones.push({ poly, x: cx, z: cz, r });
-    }
-    return stones;
-  };
-  // A flagstone on `poly` ([x, z] corners): a flat top `top` high inset from its edge, and a bevel falling to `foot`
-  // all round it in a darker shade, glowing `e`.
-  const flagstone = (geo, poly, tone, top, foot = 0.004, e = 0.03) => {
-    const cx = poly.reduce((t, p) => t + p[0], 0) / poly.length, cz = poly.reduce((t, p) => t + p[1], 0) / poly.length, rgb = hexToRgb(tone), edge = rgb.map((v) => Math.round(v * 0.78));
-    const lo = poly.map(([x, z]) => pushVert(geo, x, foot, z));
-    const hi = poly.map(([x, z]) => { const dx = x - cx, dz = z - cz, k = Math.max(0.5, 1 - 0.07 / (Math.hypot(dx, dz) || 1)); return pushVert(geo, cx + dx * k, top, cz + dz * k); });
-    face(geo, facing(geo, hi.slice(), UP), rgb, { emissive: e });
-    for (let i = 0; i < poly.length; i++) { const j = (i + 1) % poly.length; face(geo, facing(geo, [lo[i], lo[j], hi[j], hi[i]], UP), edge, { emissive: e * 0.67 }); }
-  };
   // Lays blocks over a `cols` by `rows` grid of metre cells, row by row: at each cell not yet covered (and `free`),
   // one of `sizes` [across, up] picked at random, shrunk until it fits, handed to `put(i, j, w, h)`.
   const layBlocks = (cols, rows, sizes, rand, free, put) => {
@@ -409,7 +367,7 @@
   const CREEPERS = [[-1, 2.3, 0.2], [1, -8.5, 0.2], [1, -1.1, 0.2], [-1, -22.4, MEZZ.y], [1, -22.4, MEZZ.y]];
   const PEEKS = [[-1, -19.6], [1, -19.6], [1, 0.45]];
   const hall = BL.models.cachedSteps(function* (slice = null) {
-    const rand = mulberry32(3303), timber = [], OUT = HALL.front + 4;
+    const rand = mulberry32(3303), timber = [], OUT = HALL.front + HALL.exit;
     const W = HALL.halfW * 2, D = HALL.front - HALL.back, WAIN = 1.3;
     // The packed earth, on out through the tunnel. Its painted skins are drawn on the xy plane (y there is -z in the
     // hall) and `laid` flat `y` up: darker earth in big soft patches, each tone its own height, more sand and grit

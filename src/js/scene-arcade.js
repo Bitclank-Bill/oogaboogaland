@@ -65,7 +65,7 @@
   // How near a play spot counts as standing at it, and where walking out leaves.
   const REACH = 1.1, EXIT_Z = HALL.front - 0.2;
   // How far past the doors the picture of the mainland hangs, at the passage's end.
-  const DOOR_VIEW = 3.95;
+  const DOOR_VIEW = HALL.exit - 0.05;
   // The jackpot wheel's top prize, and the pitch of the level view of it a spin swings the camera to.
   const WHEEL_JACKPOT = Math.max(...AM.WHEEL_VALUES), WHEEL_PITCH = -0.06;
   // What the Oogas say about the room, in their own words: [tooltip, what a tap tells you].
@@ -1172,7 +1172,7 @@
   // hold a walk, but the floor may lie any way below, so a walking or running jump carries on as on the island (#420).
   const flyableFor = (ax, az, bx, bz, y, height, actor) => {
     const r = Math.min(actor.bodyRadius || BODY, BODY);
-    if (bz > HALL.front + 3.7 && bx < HALL.halfW || underStair(bx, bz, y)) return false;
+    if (bz > HALL.front + HALL.exit - 0.5 && bx < HALL.halfW || underStair(bx, bz, y)) return false;
     if (wallDepth(bx, bz, r, y) > Math.max(0, wallDepth(ax, az, r, y)) + 1e-6) return false;
     for (let i = 0; i < blocks.length; i++) if (!clearOf(blocks[i], ax, az, bx, bz, r, y)) return false;
     for (let i = 0; i < RAILS.length; i++) if (!clearOf(RAILS[i], ax, az, bx, bz, r, y)) return false;
@@ -1878,7 +1878,7 @@
       p.x = clamp(p.x, -HALL.halfW + 0.8, HALL.halfW - 0.8);
       const under = avatar && feetOf() < 1 ? clamp((MEZZ.z1 + 1 - avatar.root.position.z) / 1.2, 0, 1) : 0;
       p.y = clamp(p.y, 0.5, under ? MEZZ.y - 0.45 + (1 - under) * (HALL.h - MEZZ.y) : HALL.h - 0.8);
-      p.z = clamp(p.z, HALL.back + 0.8, HALL.front + (Math.abs(p.x) < HALL.door - 0.5 ? 3 : -0.8));
+      p.z = clamp(p.z, HALL.back + 0.8, HALL.front + (Math.abs(p.x) < HALL.door - 0.5 ? HALL.exit - 1 : -0.8));
     };
     pilot = pilotMod.create({
       // The visitor's view, combat and weapon come in from the last scene and go on to the next (pilot.js `carried`).
