@@ -121,6 +121,8 @@
   const HP_MS = 250, HP_STEP = 4, BOUND_XZ = 160, BOUND_Y_MIN = -130, BOUND_Y_MAX = 100;
   const PING_MS = 10000, PING_MISSES = 3;
   const HIDDEN_PAUSE_MS = 5 * 60000;
+  // How long before leaving a hidden tab still in voice hears each warning.
+  const HIDDEN_WARN_BEFORE_MS = [30000, 15000];
   const BACKOFF_MS = 500, BACKOFF_MAX_MS = 15000;
   // The room's own limits (worker/src/protocol.js): characters in a line, lines it holds.
   const CHAT_MAX = BL.chatPolicy.MAX, CHAT_KEEP = 100;
@@ -722,7 +724,7 @@
     if (stopped || ws || !state.me) return;
     setRoom("connecting");
     // A tab opened in the background has no visibility change to arm this.
-    if (document.hidden && !hiddenTimer) hiddenTimer = window.setTimeout(pause, HIDDEN_PAUSE_MS);
+    if (document.hidden && !hiddenTimer) armHidden();
     ws = new WebSocket(`${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/room`);
     ws.binaryType = "arraybuffer";
     ws.onmessage = onMessage;
@@ -902,10 +904,29 @@
     window.clearTimeout(hiddenTimer);
     hiddenTimer = 0;
     if (document.hidden) {
-      if (state.me && !stopped) hiddenTimer = window.setTimeout(pause, HIDDEN_PAUSE_MS);
+      if (state.me && !stopped) armHidden();
     } else if (state.room === "paused") {
       rejoin();
     }
+  };
+  // Someone in voice hears it coming: two warnings, then a hang-up that plays out before voice stops with the room.
+  let hiddenStage = 0;
+  const armHidden = () => {
+    hiddenStage = 0;
+    hiddenTimer = window.setTimeout(hiddenTick, HIDDEN_PAUSE_MS - HIDDEN_WARN_BEFORE_MS[0]);
+  };
+  const hiddenTick = () => {
+    hiddenTimer = 0;
+    if (!document.hidden || stopped || !state.me) return;
+    if (hiddenStage < HIDDEN_WARN_BEFORE_MS.length) {
+      BL.voice.warnLeaving(hiddenStage);
+      const left = HIDDEN_WARN_BEFORE_MS[hiddenStage++];
+      hiddenTimer = window.setTimeout(hiddenTick, left - (HIDDEN_WARN_BEFORE_MS[hiddenStage] || 0));
+      return;
+    }
+    const playing = BL.voice.hangUp();
+    if (playing) hiddenTimer = window.setTimeout(pause, playing);
+    else pause();
   };
   const pause = () => {
     hiddenTimer = 0;

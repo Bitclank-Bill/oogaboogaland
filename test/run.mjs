@@ -25779,13 +25779,13 @@ const voiceAloneChecks = async () => {
 // A fresh fixture of voice.js for the failure paths: whatever the SFU refuses is named in `failing`, and timers are held.
 const voiceFailureChecks = async () => {
   const source=readFileSync(join(root,"src/js/contributor-identities.js"),"utf8")+readFileSync(join(root,"src/js/voice.js"),"utf8");
-  const page=(joined=false)=>{
+  const page=(joined=false,AudioContext=undefined)=>{
     const timers=[],calls=[],failing=new Set(),holds=new Map();let holdLeave=null;
     const track={enabled:true,stopped:false,stop(){this.stopped=true;}},stream={getAudioTracks:()=>[track],getTracks:()=>[track]};
     class Pc {constructor(){this.connectionState="connected";this.iceGatheringState="complete";this.localDescription={sdp:"v=0"};}addTransceiver(){return {mid:"0"};}getTransceivers(){return [];}addEventListener(){}async createOffer(){return {};}async createAnswer(){return {};}async setLocalDescription(){}async setRemoteDescription(){}close(){this.connectionState="closed";}}
     class Audio {pause(){}play(){return Promise.resolve();}}
     const fetch=async(url,o)=>{const op=url.split("/").pop();calls.push(op);if(op==="leave"&&holdLeave)await holdLeave;if(holds.has(op))await holds.get(op);return failing.has(op)?{ok:false,status:503,json:async()=>({error:"sfu"})}:{ok:true,status:200,json:async()=>({tracks:[],sessionDescription:{}})};};
-    const context={window:{BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"},zone:"outside",self:{x:0,y:0,z:0,zone:"outside"},blendTo:null,blendT:0},setMuted(){},remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{}},voiceBlend:{}},setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{createElement:()=>({volume:1})},navigator:{userActivation:{hasBeenActive:true},mediaDevices:{getUserMedia:async()=>stream}},localStorage:{getItem:k=>joined&&k.includes("voice-joined")?"1":null,setItem(){},removeItem(){}},fetch,RTCPeerConnection:Pc,MediaStream:class {},Audio,AbortController,console};
+    const context={window:{BL:{net:{state:{connectionToken:"synthetic",me:{id:900,login:"listener"},zone:"outside",self:{x:0,y:0,z:0,zone:"outside"},blendTo:null,blendT:0},setMuted(){},remotes:new Map(),voiceLink:()=>"none",subscribe:()=>()=>{}},voiceBlend:{}},setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){},AudioContext},document:{createElement:()=>({volume:1})},navigator:{userActivation:{hasBeenActive:true},mediaDevices:{getUserMedia:async()=>stream}},localStorage:{getItem:k=>joined&&k.includes("voice-joined")?"1":null,setItem(){},removeItem(){}},fetch,RTCPeerConnection:Pc,MediaStream:class {},Audio,AudioContext,AbortController,console};
     context.window.navigator=context.navigator;context.window.document=context.document;context.window.localStorage=context.localStorage;
     runInNewContext(source,context);
     return {V:context.window.BL.voice,timers,calls,failing,holds,track,hold:p=>{holdLeave=p;}};
@@ -25826,6 +25826,17 @@ const voiceFailureChecks = async () => {
   const unplugged=page();
   await unplugged.V.enable();await settle();
   unplugged.calls.length=0;unplugged.track.onended();await settle();
+  // The leaving cues: nothing for someone not in voice, straight to the output for someone who is, and gone with the context.
+  const nodes={gains:0,oscs:[],out:[]};
+  class Audio2 {constructor(){this.state="running";this.currentTime=5;this.destination={};}addEventListener(){}resume(){return Promise.resolve();}close(){return Promise.resolve();}
+    createGain(){nodes.gains++;const param={value:0,cancelScheduledValues(){},setValueAtTime(){},linearRampToValueAtTime(){}};return {gain:param,connect:to=>nodes.out.push(to===this.destination)};}
+    createOscillator(){const notes=[];nodes.oscs.push(notes);return {frequency:{setValueAtTime:hz=>notes.push(Math.round(hz))},connect(){},start(){}};}}
+  const cues=page(false,Audio2);
+  const silent=[cues.V.hangUp(),nodes.gains];
+  await cues.V.listen();await settle();
+  cues.V.warnLeaving(0);const first=nodes.oscs[0].length;cues.V.warnLeaving(1);const hang=cues.V.hangUp(),notes=nodes.oscs[0].slice();
+  cues.V.stop();
+  record("voice cues: only someone in voice hears them, straight to the output on one voice, and the hang-up says how long it plays",silent.join()==="0,0"&&nodes.gains===1&&nodes.out.join()==="true"&&first===2&&notes.length===8&&notes[7]<notes[5]&&notes[5]<notes[4]+1&&hang>600&&cues.V.hangUp()===0,JSON.stringify({silent,first,notes,hang,gains:nodes.gains}));
   record("voice recovery: a microphone that ends brings the speaker back, publishing",unplugged.V.stats.publishing&&unplugged.calls.includes("publish"),JSON.stringify({calls:unplugged.calls,publishing:unplugged.V.stats.publishing}));
 };
 // Someone who pressed Join voice comes back in voice, muted, on their first press, with the microphone never touched
@@ -27164,7 +27175,7 @@ const netFixture=(BL,response,step=200,cookie="")=>{
   const source=readFileSync(join(root,"src/js/net.js"),"utf8");
   const sockets=[],sent=[],events=new Map(),navigations=[],timers=[],intervals=[];let calls=0,tick=1000,savedViews=0;
   class Socket {static OPEN=1;constructor(){this.readyState=1;sockets.push(this);}send(v){sent.push(typeof v==="string"&&v!=="ping"?JSON.parse(v):v);}close(){this.readyState=3;}}
-  const voice={setPeers:()=>{},restart:()=>{},stop:()=>{}};
+  const voice={setPeers:()=>{},restart:()=>{},stop:()=>{},warnings:[],hangUps:0,playing:0,warnLeaving(stage){this.warnings.push(stage);},hangUp(){this.hangUps++;return this.playing;}};
   const location={protocol:"https:",host:"fixture.invalid",pathname:"/",search:"",assign:url=>navigations.push(url)},pilot={saveLoginView(){savedViews++;}};
   const context={window:{BL:{characters:BL.characters,accountIdentities:BL.accountIdentities,contributors:BL.contributors,donations:BL.donations,chatPolicy:BL.chatPolicy,reactionPolicy:BL.reactionPolicy,arcadeCabinets:BL.arcadeCabinets,chalkBoard:BL.chalkBoard,voiceBlend:BL.voiceBlend,voice,pilot},setTimeout:(fn,ms)=>{timers.push({fn,ms});return 1;},clearTimeout(){},setInterval:(fn,ms)=>{intervals.push({fn,ms});return 1;},clearInterval(){}},document:{hidden:false,cookie,addEventListener:(k,v)=>events.set(k,v),removeEventListener:k=>events.delete(k)},location,fetch:async(...args)=>{calls++;return response(...args);},AbortSignal,WebSocket:Socket,performance:{now:()=>tick+=step},Date,ArrayBuffer,URLSearchParams};
   runInNewContext(source,context);
@@ -27181,13 +27192,35 @@ const roomSocketChecks = async BL => {
   const heard = ws.readyState === 1 && f.sockets.length === 1;
   tick();
   record("room socket: pings that go unanswered end a half-open socket, and any answer resets the count", heard && ws.readyState === 3 && f.net.state.room === "connecting" && timers.length > 0, JSON.stringify({ ready: ws.readyState, room: f.net.state.room }));
+  // Fires the timers a hidden tab has armed, in order, as the clock reaches each.
+  const run = (f, marks) => { for (let i = 0; i < 12; i++) { const t = f.timers.find(t => !t.ran && marks.includes(t.ms)); if (!t) break; t.ran = true; t.fn(); } };
   const hidden = netFixture(BL, reply);
   hidden.document.hidden = true;
   await hidden.net.start();
   hidden.sockets[0].onopen();
-  const pause = hidden.timers.find(t => t.ms === 5 * 60000);
-  if (pause) pause.fn();
-  record("room socket: a tab opened hidden leaves the room after its five minutes like any other", !!pause && hidden.sockets[0].readyState === 3 && hidden.net.state.room === "paused", JSON.stringify({ armed: !!pause, room: hidden.net.state.room }));
+  const delays = () => hidden.timers.map(t => t.ms).filter(ms => ms === 270000 || ms === 15000);
+  run(hidden, [270000, 15000]);
+  record("room socket: a tab opened hidden leaves the room after its five minutes like any other", hidden.sockets[0].readyState === 3 && hidden.net.state.room === "paused", JSON.stringify({ room: hidden.net.state.room, delays: delays() }));
+  record("hidden tab: the warnings come at 4:30 and 4:45 and the hang-up at five minutes", delays().join() === "270000,15000,15000" && hidden.voice.warnings.join() === "0,1" && hidden.voice.hangUps === 1, JSON.stringify({ delays: delays(), warnings: hidden.voice.warnings, hangUps: hidden.voice.hangUps }));
+  // In voice the hang-up plays out first, and leaves the room only when it is over.
+  const speaking = netFixture(BL, reply);
+  speaking.voice.playing = 700;
+  speaking.document.hidden = true;
+  await speaking.net.start();
+  speaking.sockets[0].onopen();
+  run(speaking, [270000, 15000]);
+  const before = speaking.net.state.room, last = speaking.timers.at(-1);
+  last.fn();
+  record("hidden tab: the room is left only once the hang-up has played", before !== "paused" && last.ms === 700 && speaking.net.state.room === "paused", JSON.stringify({ before, last: last.ms, room: speaking.net.state.room }));
+  // Back on the tab in time, nothing more is heard and the visitor stays in the room.
+  const back = netFixture(BL, reply);
+  back.document.hidden = true;
+  await back.net.start();
+  back.sockets[0].onopen();
+  run(back, [270000]);
+  back.document.hidden = false; back.events.get("visibilitychange")();
+  run(back, [15000]);
+  record("hidden tab: coming back after a warning stops the rest and keeps the room", back.voice.warnings.join() === "0" && back.voice.hangUps === 0 && back.sockets[0].readyState === 1, JSON.stringify({ warnings: back.voice.warnings, hangUps: back.voice.hangUps }));
 };
 const cabinetNetworkChecks = async BL => {
   const C = BL.arcadeCabinets;

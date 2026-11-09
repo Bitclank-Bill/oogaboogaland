@@ -438,6 +438,42 @@
     window.addEventListener("keydown", wake, true);
   }
 
+  // What a visitor in voice hears as a hidden tab nears leaving the room (net.js), and the hang-up as it does: on this
+  // page alone, straight to the context's output as the voices go, so the environment mute does not silence them. One
+  // oscillator and gain for the context's life; a cue only schedules automation on them. Each note is [Hz, seconds].
+  const CUE_LEVEL = 0.22, CUE_EDGE = 0.012, CUE_GAP = 0.05, CUE_START = 0.02;
+  const CUE_WARNINGS = [[[659.25, 0.16], [880, 0.24]], [[880, 0.12], [880, 0.12], [880, 0.2]]];
+  const CUE_HANG_UP = [[523.25, 0.16], [392, 0.16], [261.63, 0.36]];
+  let cueOsc = null, cueGain = null;
+  const playCue = (notes) => {
+    if (!stats.enabled || !audio || audio.state !== "running") return 0;
+    if (!cueGain) {
+      cueGain = audio.createGain();
+      cueGain.gain.value = 0;
+      cueGain.connect(audio.destination);
+      cueOsc = audio.createOscillator();
+      cueOsc.type = "triangle";
+      cueOsc.connect(cueGain);
+      cueOsc.start();
+    }
+    const gain = cueGain.gain, begin = audio.currentTime + CUE_START;
+    gain.cancelScheduledValues(begin);
+    let t = begin;
+    for (let i = 0; i < notes.length; i++) {
+      const hz = notes[i][0], seconds = notes[i][1];
+      cueOsc.frequency.setValueAtTime(hz, t);
+      gain.setValueAtTime(0, t);
+      gain.linearRampToValueAtTime(CUE_LEVEL, t + CUE_EDGE);
+      gain.setValueAtTime(CUE_LEVEL, t + seconds - CUE_EDGE);
+      gain.linearRampToValueAtTime(0, t + seconds);
+      t += seconds + CUE_GAP;
+    }
+    return Math.ceil((t - audio.currentTime) * 1000);
+  };
+  const warnLeaving = (stage) => { playCue(CUE_WARNINGS[stage]); };
+  // How long the hang-up lasts, in milliseconds, so the room is left once it has played; 0 for a visitor not in voice.
+  const hangUp = () => playCue(CUE_HANG_UP);
+
   // Listening does not acquire or publish a microphone. Both entry points run inside a gesture.
   const listen = async () => {
     activate();
@@ -707,6 +743,7 @@
     micMeter = null;
     if (audio) audio.close().catch(() => {});
     audio = null;
+    cueOsc = cueGain = null;
     stats.muted = stats.alone = false; stats.micError = "";
     BL.net.setMuted(false);
     desired = [];
@@ -915,5 +952,5 @@
   const inspect = () => ({ desired: desired.slice(), pulled: [...subs.keys()], publish: pubPc ? pubPc.connectionState : "none", receive: subPc ? subPc.connectionState : "none",
     playback: GAIN_PLAY ? "gain" : "element", context: audio ? audio.state : "none" });
 
-  BL.voice = { preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, enable, listen, dropMic, setMuted, toggle, leave, restart, stop, setPeers, subscribe, dispose, inspect, speaking, inEarshot, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
+  BL.voice = { warnLeaving, hangUp, preflight, cancelPreflight, devices, selectDevice, setReceiveLevel, enable, listen, dropMic, setMuted, toggle, leave, restart, stop, setPeers, subscribe, dispose, inspect, speaking, inEarshot, muteLocal, mutedLocally, setVolume, volumeOf, VOLUME_MAX, setRadius, falloff, fades: ELEMENT_VOLUME || GAIN_PLAY, RADIUS_MIN, RADIUS_MAX, stats };
 })();
