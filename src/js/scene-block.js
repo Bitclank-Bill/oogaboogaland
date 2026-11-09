@@ -160,7 +160,10 @@
   const el = {};
   const blockScene = {
     id: "block", voiceZone: BL.blockWire.ZONE, renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
-    get inMotion() { return phase === "play" || fx.inMotion; }
+    get inMotion() { return phase === "play" || fx.inMotion; },
+    // The director stops a scene behind the controller screen, and a host that stops stops the round for everyone (and
+    // loses its seat): View and Menu shut it again in a live round, in a microtask because it is still opening here.
+    controlsHelpHold(on) { if (on && phase === "play" && liveRound()) { queueMicrotask(BL.padSettings.close); notice("Controller settings wait until the round ends", 1800); } }
   };
 
   const place = (node) => { addChild(root, node); placed.push(node); return node; };
@@ -407,7 +410,8 @@
     }
   };
   const registered = () => !!round && !!round.match && round.match.reg.includes(BL.net.state.selfId);
-  const firstRegistered = () => !!round && !!round.match && round.match.reg[0] === BL.net.state.selfId && round.match.phase === "lobby";
+  // Whoever picks the next round's map: not once its countdown has begun.
+  const firstRegistered = () => !!round && !!round.match && round.match.reg[0] === BL.net.state.selfId && round.match.phase !== "countdown";
   const isReady = () => { const m = round.match, i = m.reg.indexOf(BL.net.state.selfId); return i >= 0 && m.ready[i] === 1; };
   const liveNames = (m, map) => {
     const taken = new Set(), names = new Array(m.size * 2), people = roster(), own = BL.net.ownAmong(contributors.activeRoster), self = BL.net.state.selfId;
@@ -548,6 +552,7 @@
     }
     // The round over or gone: the deck, or a round whose host vanished, goes back to the shared menu.
     if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); deckSteals.was.length = 0; deckSteals.count.length = 0; deckSteals.home.blue = deckSteals.home.red = false; }
+    followMatchMap();
     if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound() && !sim.over)) showBoard();
   };
   const openRound = () => {
@@ -584,6 +589,7 @@
     you = 0; watchVisit = false; chairsGreeted = false;
     if (kept) { Object.assign(selection, kept); kept = null; liveCast = null; if (sim) { const was = sim.map; recast(); if (was !== selection.map) { buildMap(); mapBase = null; } } }
     phase = "board";
+    followMatchMap();
     if (el.againBtn) el.againBtn.textContent = "Again";
     el.board.hidden = false;
     el.results.hidden = el.strip.hidden = el.center.hidden = el.notice.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = true;
@@ -2298,16 +2304,25 @@
     paintTeams();
     nameShowcase();
   };
-  const chooseMap = (id) => {
+  // The map on show: its button, the pick and the scenery behind the board change together.
+  const showMap = (id) => {
     for (const b of el.maps) b.setAttribute("aria-pressed", String(b.dataset.map === id));
-    if (id === selection.map && sim && sim.map === id) return;
+    if (id === selection.map && sim && sim.map === id) return false;
     selection.map = id;
+    if (sim) { recast(); buildMap(); mapBase = null; }
+    return true;
+  };
+  const chooseMap = (id) => {
+    // Registered behind someone else, the board shows the map they picked.
+    if (registered() && !firstRegistered()) return;
+    if (!showMap(id)) return;
     savePicks();
-    if (round && firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(id));
-    if (!sim) return;
-    recast();
-    buildMap();
-    mapBase = null;
+    if (firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(id));
+  };
+  // Registered for a round about to run, the board shows the map it will play: the Worker's word, whoever picked it.
+  const followMatchMap = () => {
+    const m = round && round.match;
+    if (phase === "board" && m && m.phase !== "play" && registered()) showMap(WIRE.MAPS[m.map]);
   };
   // Everything that belongs to the map, under one node so a new map replaces it whole: the ground and buildings, the
   // quiz pads, power-up spots, trampolines, ammo caches, and the campfire with its three dancing potato Oogas.
@@ -2783,7 +2798,7 @@
         if (!round) return;
         const own = BL.net.ownAmong(contributors.activeRoster);
         if (registered()) { round.unregister(); BL.net.setBody(null); }
-        else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); round.register(); }
+        else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); round.register(WIRE.MAPS.indexOf(selection.map)); }
       }
       else if (action === "block-live-ready") round.setReady(!isReady());
       else if (action === "block-live-alone") round.startAlone();

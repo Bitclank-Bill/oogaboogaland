@@ -7232,6 +7232,7 @@ const gameRulesChecks = async () => {
         onStart: (m, role, map) => { seen.started++; seen.role = role; const s = S.create({ team: map.team, seed: m.seed, size: m.size, map: "fort", prep: 0 }); seen.sim = s; S.reset(s, m.seed); live.bind(s); } });
       return { live, sent, bins, seen, tell: m => { for (const f of subs) f({ k: "match", ...m }); }, input: m => { for (const f of subs) f({ k: "input", ...m }); }, frame: b => { for (const f of frames_) f(b); } };
     };
+    { const a = session(1); a.live.register(1); record("block live: registering sends the map picked on the board", a.sent.length === 1 && a.sent[0].k === "reg" && a.sent[0].m === 1, JSON.stringify(a.sent)); a.live.dispose?.(); }
     context.clock = 1000;
     const match = { s: "0123456789abcdef", phase: "play", size: 2, map: 0, reg: [], ready: [], seats: [10, 20, 30, 0], host: 10, epoch: 1, tag: 99, seed: 5 };
     const A = session(10), B = session(20), D = session(40);

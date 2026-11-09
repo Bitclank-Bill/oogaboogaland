@@ -87,6 +87,41 @@ test("random teams are as even as can be, and every empty seat is an NPC", () =>
     }
   }
 });
+test("the first to register brings the map picked on the board: bounded, and theirs alone", async t => {
+  const base = { t: "bf", v: 1, k: "reg" };
+  assert.deepEqual(protocol.parseClientMessage(JSON.stringify(base)), { t: "bf", k: "reg" }, "the map is optional");
+  assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m: 1 })).m, 1);
+  for (const m of [-1, W.MAPS.length, 1.5, "1", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, String(m));
+  const h = harness(t), [a, b] = await crowd(h, 2);
+  send(h, a, "reg", { m: 1 });
+  assert.equal(h.room.blockMatch.map, 1, "Town, from the board");
+  send(h, b, "reg", { m: 3 });
+  assert.equal(h.room.blockMatch.map, 1, "the second registrant's board does not choose");
+  send(h, b, "opt", { n: 2, m: 3 });
+  assert.equal(h.room.blockMatch.map, 1, "nor can they change it");
+  send(h, a, "opt", { n: 2, m: 2 });
+  assert.equal(h.room.blockMatch.map, 2, "the first registered still can");
+  send(h, a, "unreg");
+  send(h, a, "reg", { m: 3 });
+  assert.equal(h.room.blockMatch.map, 2, "back in behind someone else, it stays");
+  send(h, b, "unreg"); send(h, a, "unreg");
+  send(h, a, "reg", { m: 1 }); send(h, a, "alone");
+  assert.equal(h.room.blockMatch.phase, "play");
+  assert.equal(h.room.blockMatch.map, 1, "Pick Town, Register, Start alone plays Town");
+});
+test("a map picked while a round runs waits for the next round, and leaves this one alone", async t => {
+  const h = harness(t), [a, b] = await crowd(h, 2);
+  send(h, a, "reg", { m: 1 }); send(h, a, "alone");
+  const m = h.room.blockMatch;
+  send(h, b, "reg", { m: 3 });
+  assert.equal(m.map, 1, "the round under way keeps its map");
+  send(h, b, "opt", { n: 2, m: 2 });
+  assert.equal(m.map, 1);
+  send(h, a, "over", { s: m.s, w: 0 });
+  assert.equal(h.room.blockMatch.phase, "lobby");
+  assert.equal(h.room.blockMatch.map, 2, "the waiter's latest pick");
+  assert.equal(h.room.blockMatch.reg[0], b.p.id);
+});
 test("a round starts only when everyone registered is ready, and alone at once", async t => {
   const h = harness(t), [a, b, c] = await crowd(h, 3);
   send(h, a, "reg"); send(h, a, "ready", { r: 1 });

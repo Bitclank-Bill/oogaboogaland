@@ -46,7 +46,9 @@
   const parse = m => {
     if (m.v !== WIRE) return null;
     const base = { t: "bf", k: m.k };
-    if (["hello", "reg", "unreg", "beat", "alone"].includes(m.k)) return base;
+    if (["hello", "unreg", "beat", "alone"].includes(m.k)) return base;
+    // The map already picked on the board, by index: only the first to register's counts.
+    if (m.k === "reg") return m.m === undefined ? base : integer(m.m, 0, MAPS.length - 1) ? { ...base, m: m.m } : null;
     if (m.k === "watch") return integer(m.on, 0, 1) ? { ...base, on: m.on } : null;
     if (m.k === "ready") return integer(m.r, 0, 1) ? { ...base, r: m.r } : null;
     if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, 0, MAPS.length - 1) ? { ...base, n: m.n, m: m.m } : null;
