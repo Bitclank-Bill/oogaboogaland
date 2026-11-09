@@ -1285,6 +1285,20 @@
     for (let k = 0; k < 16; k++) sky.push(puff(k, X + (cloudRand() - 0.5) * 240, -30 + cloudRand() * 80, -60 - cloudRand() * 80, 1.2 + cloudRand() * 2));
     return { rock, ledge: shaded(round, flat), props: merge(...props), sky: merge(...sky) };
   });
+  // The doorway to watch Block Frenzy (`BL.arcadeBlockWatch`): a timber set proud of the hall's east wall, like the hall's
+  // own, with a vine along its lintel. The rock stays whole behind it; the scene hangs the portal and the sign in it.
+  const blockWatchDoor = cached(() => {
+    const { DOOR: D } = BL.arcadeBlockWatch, J = BL.hubModels, X = BLOCK_HALL.x1 - 0.3, Y = D.y, TOP = Y + D.h, round = [];
+    for (const z of [D.z0 - 0.22, D.z1 + 0.22]) round.push(J.log(X, Y - 0.02, z, X, TOP + 0.05, z, 0.16, "#5a3c22"), J.lashing(X, TOP - 0.45, z, 0, 1, 0, 0.16));
+    round.push(J.log(X, TOP + 0.04, D.z0 - 0.42, X, TOP + 0.02, D.z1 + 0.42, 0.17, "#5c3f25"));
+    // The hanging sign's ropes, and the blade sign's bark arm out from the post over the hall.
+    for (const z of [D.z - 0.85, D.z + 0.85]) round.push(J.log(BLOCK_HALL.x1 - 0.42, Y + BL.arcadeBlockWatch.SIGN_Y + 0.2, z, BLOCK_HALL.x1 - 0.42, TOP, z, 0.018, "#c9a36a"));
+    const armY = Y + BL.arcadeBlockWatch.BLADE_Y + 0.42, armZ = D.z1 + 0.22;
+    round.push(J.log(X, armY, armZ, BLOCK_HALL.x1 - 1.85, armY, armZ, 0.07, "#5a3c22"), J.lashing(X, armY, armZ, 1, 0, 0, 0.08));
+    return J.withJungle(shaded(round, []), (g) => {
+      J.garland(g, J.sagPoints(X - 0.14, TOP + 0.14, D.z0 - 0.3, X - 0.14, TOP + 0.14, D.z1 + 0.3, 0.16), { r: 0.04, every: 0.45, size: 0.26, droop: 0.55, out: [-1, 0, 0], rand: mulberry32(7411) });
+    });
+  });
   const haunt = BL.models.cachedSteps(function* (slice = null) {
     const { z0, z1, y: Y, h: H, end, arena: A } = HAUNT, X0 = HALL.halfW, L = end - X0, TOP = Y + H, MID = (z0 + z1) / 2, J = BL.hubModels, TAU = Math.PI * 2;
     const rand = mulberry32(6601), crag = geometry(), flat = [], round = [], parts = [], glow = [];
@@ -4769,6 +4783,6 @@
   };
   Object.assign(BL.arcadeModels, {
     buildSteps,
-    blockHall, haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
+    blockHall, blockWatchDoor, haunt, steelDoor, gargoyle, gargoyleLetter, GARGOYLE_EYES, gargoyleLaser, ARENA_TOTEMS, ironFence, IRON_FENCE, spotCan, spotRods, wheelAt, wheelStop, lanterns, ceiling, stage, mezzanine, wheel, clawMachine, claw, pinball, pinAt, airHockey, hockeyPieces, changer, ropes, retroFrames, retroStart, retroLine, ride, rideBeat, poolRing, dartSight, boardPost, pinFlipper, pinLight, pinTooth, pinRamp, clawMark, poolTable, poolBall, poolCue, poolDot, dartBoard, dart, dartOche, clawBooth, clawPrize, ticketStrip, fameBoard, fameFrame, prizeShelf, pennants, discoBall, speakers, tableProps, trashBin, ticketBucket, directory, wornPatch, backDoor, chainLink, prize, prizeCounter, staffHat, staffVest, staffProp, bulbFrame, zoneSign, posterFrame, posterArt, table, planterPot, hall, signFrame, rallyRepairBay, repairDriver, attractStart, bestLine, digit, board, skeeLane, skeeDot, hoopMachine, hoop, coconutShy, coconut, shyVine, coconutBall, balls, meter, arrow, snackBar
   });
 })();
