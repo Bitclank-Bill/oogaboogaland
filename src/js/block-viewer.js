@@ -78,8 +78,9 @@
     setVec(camera.target, Math.sin(turn) * Math.cos(down) * 60, SEAT.y - Math.sin(down) * 60, SEAT.z + Math.cos(turn) * Math.cos(down) * 60);
   };
   // A flat white backdrop in place of the sky: no clouds, sun disc, stars, fog or bloom to compute. Allocates nothing.
+  const WHITE_KEYS = ["clear", "horizon", "zenith", "sky"];
   const white = (opts) => {
-    for (const key of ["clear", "horizon", "zenith", "sky"]) opts[key].fill(1);
+    for (let i = 0; i < WHITE_KEYS.length; i++) opts[WHITE_KEYS[i]].fill(1);
     opts.sea = null; opts.clouds = 0; opts.stars = 0; opts.bloomStrength = 0; opts.fogNear = 1e4; opts.fogFar = 2e4; opts.sunStrength = 0;
   };
   BL.blockViewer = { FOV, ZOOM_MIN, ZOOM_MAX, frame, place, buildChairs, look, white, clampZoom, zoomBy, easeZoom, fillBoard, newCaptures, trackSteals, statRows };

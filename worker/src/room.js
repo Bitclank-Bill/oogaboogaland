@@ -436,6 +436,7 @@ export class Room extends DurableObject {
       if (msg.on === p.visible) return;
       p.visible = msg.on;
       this.electGhostHost();
+      block.visibility(this, p);
     } else if (msg.t === "zone") {
       if (msg.name === p.zone) return;
       if (msg.name !== DOOR_ZONE) this.cancelDoor(p);

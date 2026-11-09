@@ -28,6 +28,7 @@ export const block = {
     best.ready = kept.map(i => best.ready[i]); best.reg = kept.map(i => best.reg[i]);
     room.blockMatch = best;
     for (const id of [...best.reg, ...best.seats]) if (id) room.blockSeen.set(id, now);
+    if (best.phase === "countdown" && !here(best.host)) block.unseat(best);
     if (best.phase !== "lobby" && !best.seats.some(Boolean)) block.finish(room, best, -1);
     else if (best.phase === "play" && !here(best.host)) block.elect(room, best);
     block.save(room, best);
@@ -103,6 +104,8 @@ export const block = {
     if (m.phase === "lobby" && !m.reg.length) { block.close(room, m); return; }
     // Back to one person: their "ready" was for a group, so the choice to start alone or wait comes back.
     if (m.phase === "lobby" && m.reg.length === 1) m.ready[0] = 0;
+    // Whoever left may have been the only one not ready.
+    if (m.phase === "lobby" && W.canStart(m)) block.begin(room, m, Date.now());
     block.tell(room, m);
   },
   sweep(room) {
@@ -110,6 +113,17 @@ export const block = {
     if (!m) return;
     const now = Date.now();
     for (const id of [...m.reg, ...m.seats]) if (id && (!W.eligible(room.players.get(id)) || now - (room.blockSeen.get(id) || 0) > W.IDLE_MS)) block.leave(room, id);
+    // A countdown ends by the room's own clock, so nobody's page clock can hold a round back.
+    const still = room.blockMatch;
+    if (still && still.phase === "countdown" && now >= still.start) { block.play(still); block.tell(room, still); }
+  },
+  // A host whose page went hidden stops stepping the game: hand over at once if another seated page is on show.
+  visibility(room, p) {
+    const m = room.blockMatch;
+    if (!m || m.phase !== "play" || m.host !== p.id || p.visible) return;
+    if (!m.seats.some(id => id && id !== p.id && room.players.get(id)?.visible)) return;
+    block.elect(room, m);
+    block.tell(room, m);
   },
   arrive(room, p) {
     if (p.zone === W.ZONE) block.tell(room, room.blockMatch, p);
@@ -140,7 +154,8 @@ export const block = {
       return;
     }
     if (!W.eligible(p)) return;
-    if (m0 && (W.seatOf(m0, p.id) >= 0 || m0.reg.includes(p.id))) room.blockSeen.set(p.id, now);
+    // A host in play proves itself by its frames, so a page that only beats can't hold a round.
+    if (m0 && (W.seatOf(m0, p.id) >= 0 || m0.reg.includes(p.id)) && !(m0.phase === "play" && m0.host === p.id)) room.blockSeen.set(p.id, now);
     block.sweep(room);
     let m = room.blockMatch;
     if (msg.k === "beat") return;

@@ -152,7 +152,8 @@
   const onDeck = () => phase === "watch";
   // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
   const zoomDeck = (k) => { audio.unlock(); deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, k); };
-  const SEA_LEVEL = RENDER_OPTS.sea;
+  const SEA_LEVEL = RENDER_OPTS.sea, FOG_NEAR = RENDER_OPTS.fogNear, FOG_FAR = RENDER_OPTS.fogFar, BLOOM = RENDER_OPTS.bloomStrength;
+  const undeckRender = () => { RENDER_OPTS.sea = SEA_LEVEL; RENDER_OPTS.fogNear = FOG_NEAR; RENDER_OPTS.fogFar = FOG_FAR; RENDER_OPTS.bloomStrength = BLOOM; };
   const liveRound = () => !!round && (round.role === "host" || round.role === "guest");
   const acts = (name, id, a, b, c) => onDeck() ? false : liveRound() ? round.act(name, id, a, b, c) : SIM[name](sim, id, a, b, c);
   let jumpWas = false;
@@ -540,10 +541,10 @@
     }
     // The round over or gone: the deck, or a round whose host vanished, goes back to the shared menu.
     if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); }
-    if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound())) showBoard();
+    if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound() && !sim.over)) showBoard();
   };
   const openRound = () => {
-    round = BL.blockLive.create({ onMatch: renderLive, onStart: liveBegin, onHost: () => notice("You're hosting this round now", 2400),
+    round = BL.blockLive.create({ onMatch: (m) => { if (!m || m.phase !== "play") arrival = false; renderLive(m); }, onStart: liveBegin, onHost: () => notice("You're hosting this round now", 2400),
       onChairsFull: () => { chairsFull = true; if (onDeck()) showBoard(); else renderLive(round.match); } });
     arrival = true;
     round.hello();
@@ -560,7 +561,7 @@
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
     if (round && chairsFull) renderLive(round.match);
-    RENDER_OPTS.sea = SEA_LEVEL;
+    undeckRender();
     if (el.gameButtons) el.gameButtons(false);
     if (deck) { deck.visible = false; for (const n of mapClouds) n.visible = true; if (fireNode) fireNode.visible = true; if (dancers) for (const d of dancers) d.visible = true; }
     if (onDeck() && round) round.watchFeed(false);
@@ -628,8 +629,8 @@
     phase = "results";
     const won = sim.winner === sim.team, ms = Math.round(sim.time * 1000);
     // The fastest win is kept for the usual first to three; every round still counts.
-    const best = liveRound() ? false : game.recordBlock({ won, ms: sim.target === C.CAPTURES ? ms : 0 });
-    if (liveRound()) el.againBtn.textContent = "New game?";
+    const best = kept ? false : game.recordBlock({ won, ms: sim.target === C.CAPTURES ? ms : 0 });
+    if (kept) el.againBtn.textContent = "New game?";
     result = { won, ms, best };
     el.strip.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = true;
     el.center.hidden = el.notice.hidden = true;
@@ -1526,9 +1527,10 @@
   const zipNow = () => {
     if (!inRound()) return false;
     if (openWalletMenu()) return true;
-    if (acts("launch", 0)) return true;
+    // A guest's action is only a request, so it picks here what the host would have tried first.
+    const a = sim.actors[0], guest = !!round && round.role === "guest";
+    if ((!guest || SIM.nearCatapult(sim, a) || SIM.nearEnemyCatapult(sim, a)) && acts("launch", 0)) return true;
     if (acts("zip", 0, cam.face)) return true;
-    const a = sim.actors[0];
     if (cam.island) return false;
     notice(sim.prep > 0 ? "The zipline opens when the round starts" : a.holding ? "Put the crate down first (F)" : "Climb a sniper tower's ladder and stand by the cable to ride", 1600);
     return false;
@@ -1550,7 +1552,7 @@
   };
   const dropBlock = () => {
     if (!inRound()) return false;
-    if (acts("drop", 0)) return true;
+    if ((!(round && round.role === "guest") || sim.actors[0].carrying) && acts("drop", 0)) return true;
     // No block in hand: K sets a held wallet down, ticking.
     if (acts("dropWallet", 0)) { notice(`Wallet set down · it goes off in ${C.WALLET_FUSE} s · get clear!`, 1800); return true; }
     notice("Nothing to drop", 900);
@@ -2833,6 +2835,7 @@
     if (el.live) el.live.hidden = true;
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
+    undeckRender();
     deck = null; you = 0; kept = null; liveCast = null; watchVisit = false;
     BL.net.setBody(null);
     closeWalletMenu();

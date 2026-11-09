@@ -241,6 +241,45 @@ test("a new page hears the current match on arrival; an older page is never told
   assert.equal(last(b.ws).phase, "lobby"); assert.deepEqual([...last(b.ws).reg], [1]);
   assert.ok(b.ws.sent.find(m => m.t === "welcome").features.includes(W.FEATURE));
 });
+test("a countdown ends by the room's clock with no go from anyone", async t => {
+  const h = harness(t), list = await crowd(h, 2), [a] = list;
+  for (const x of list) send(h, x, "reg"); for (const x of list) send(h, x, "ready", { r: 1 });
+  assert.equal(h.room.blockMatch.phase, "countdown");
+  h.advance(W.COUNTDOWN_MS + 10); send(h, a, "beat");
+  assert.equal(h.room.blockMatch.phase, "play");
+});
+test("a host that only beats loses the round to the next seat; one that sends frames keeps it", async t => {
+  const h = harness(t), list = await crowd(h, 2), m = startRound(h, list);
+  const host = list.find(x => x.id === m.host), guest = list.find(x => x !== host), epoch = m.epoch;
+  for (let i = 0; i < 4; i++) { h.advance(W.IDLE_MS / 3); send(h, host, "beat"); send(h, guest, "beat"); }
+  assert.equal(m.host, guest.id, "beating is no proof of a live host");
+  assert.equal(m.epoch, epoch + 1);
+});
+test("when the last unready player leaves, an all-ready lobby starts", async t => {
+  const h = harness(t), list = await crowd(h, 3), [a, b, c] = list;
+  for (const x of list) send(h, x, "reg"); send(h, a, "ready", { r: 1 }); send(h, b, "ready", { r: 1 });
+  assert.equal(h.room.blockMatch.phase, "lobby");
+  send(h, c, "unreg");
+  assert.equal(h.room.blockMatch.phase, "countdown");
+});
+test("a hidden host hands over to a seated page on show, and stays if none is", async t => {
+  const h = harness(t), list = await crowd(h, 2), m = startRound(h, list);
+  const host = list.find(x => x.id === m.host), guest = list.find(x => x !== host);
+  guest.p.visible = false;
+  h.send(host.ws, { t: "visible", on: false }); assert.equal(m.host, host.id, "nobody on show to take it");
+  guest.p.visible = true; host.p.visible = true;
+  h.send(host.ws, { t: "visible", on: false }); assert.equal(m.host, guest.id);
+});
+test("a restored countdown with its host gone goes back to the lobby", async t => {
+  const h = harness(t), list = await crowd(h, 2);
+  for (const x of list) send(h, x, "reg"); for (const x of list) send(h, x, "ready", { r: 1 });
+  const m = h.room.blockMatch, host = list.find(x => x.id === m.host);
+  assert.equal(m.phase, "countdown");
+  host.ws.store.body = null;
+  await h.wake();
+  const again = h.room.blockMatch;
+  assert.equal(again.phase, "lobby"); assert.deepEqual([...again.seats], []);
+});
 test("at most five viewers, the sixth is told the chairs are full, and a leaving viewer frees a seat", async t => {
   const h = harness(t), list = await crowd(h, 2), m = startRound(h, list), viewers = [];
   for (let i = 0; i < 6; i++) { const ws = await h.join(20 + i, "ooga" + (20 + i)); h.send(ws, { t: "zone", name: W.ZONE }); h.send(ws, { t: "bf", k: "watch", on: 1 }); viewers.push({ ws, p: h.room.players.get(20 + i) }); }

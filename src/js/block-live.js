@@ -45,8 +45,49 @@
   const seatRef = (v, map) => u8(v == null || v < 0 ? 255 : map.toSeat[v]);
   const localRef = (map) => { const v = r8(); return v === 255 ? -1 : map.toLocal[v]; };
   const BUDGET = W.FRAME_MAX - 64, MAX_SHOTS = 32, MAX_EVENTS = 24;
+  const ACTOR_BYTES = NUMBERS.reduce((n, f) => n + (f[2] === 2 ? 2 : 1), 0) + 2 + 2 + 12;
+  const ACTOR_AT = {}; NUMBERS.reduce((n, f) => { ACTOR_AT[f[0]] = n; return n + (f[2] === 2 ? 2 : 1); }, 0);
+  const SWITCH_AT = NUMBERS.reduce((n, f) => n + (f[2] === 2 ? 2 : 1), 0);
+  // A frame is the host's word: every count, enum and seat is checked against this page's pools before anything is
+  // written, so a corrupt or hostile frame is dropped whole and never touches the sim. Allocates nothing.
+  const validFrame = (v, sim, map) => {
+    const len = v.byteLength, seats = map.toLocal.length, seatOk = b => b === 255 || b < seats, teamOk = b => b <= 2;
+    let o = W.FRAME_HEADER;
+    if (o + 21 > len || !teamOk(v.getUint8(o + 8)) || v.getUint8(o + 10) >= WEATHER.length) return false;
+    o += 21;
+    for (let i = 0; i < 2; i++) { if (o + 8 > len || v.getUint8(o) >= FLAG_STATES.length || !seatOk(v.getUint8(o + 7))) return false; o += 8; }
+    for (let s = 0; s < seats; s++) {
+      if (o + ACTOR_BYTES > len) return false;
+      const wallet = v.getInt8(o + ACTOR_AT.wallet), grabbed = v.getUint8(o + ACTOR_AT.grabbed), hk = v.getUint8(o + ACTOR_AT.hk), flight = v.getUint8(o + ACTOR_AT.flight);
+      const ride = v.getUint8(o + SWITCH_AT + 2), rider = v.getUint8(o + SWITCH_AT + 3), carried = v.getUint16(o + SWITCH_AT, true) >> 14;
+      if (wallet < -1 || wallet >= sim.wallets.length || grabbed > sim.gorillas.length || hk > 5 || flight > 2 || ride > seats || rider > seats || carried > 2) return false;
+      o += ACTOR_BYTES;
+    }
+    if (o + 4 > len) return false;
+    const mask = v.getUint32(o, true);
+    o += 4;
+    for (let i = 0; i < 32; i++) if (mask >>> i & 1) { if (i >= sim.crates.length || o + 7 > len || !teamOk(v.getUint8(o))) return false; o += 7; }
+    if (o + 1 > len) return false;
+    let n = v.getUint8(o++);
+    if (n > sim.shots.length) return false;
+    for (let i = 0; i < n; i++) { if (o + 15 > len || v.getUint8(o) >= SHOT_KINDS.length || !teamOk(v.getUint8(o + 1)) || !seatOk(v.getUint8(o + 2))) return false; o += 15; }
+    if (o + 1 > len) return false;
+    n = v.getUint8(o++);
+    if (n > sim.wallets.length) return false;
+    for (let i = 0; i < n; i++) { if (o + 13 > len || v.getUint8(o) >= sim.wallets.length || !seatOk(v.getUint8(o + 2)) || !teamOk(v.getUint8(o + 3)) || !seatOk(v.getUint8(o + 12))) return false; o += 13; }
+    if (o + sim.gorillas.length * 10 + sim.ghosts.length * 9 + sim.hooks.length * 8 > len) return false;
+    for (let i = 0; i < sim.gorillas.length; i++) { if (!seatOk(v.getUint8(o + 9))) return false; o += 10; }
+    o += sim.ghosts.length * 9;
+    for (let i = 0; i < sim.hooks.length; i++) { if (!seatOk(v.getUint8(o + 7))) return false; o += 8; }
+    o += sim.traps.length + sim.caches.length + sim.peels.length + sim.puddles.length + sim.vends.length + sim.powers.length * 2;
+    if (o + 1 > len) return false;
+    n = v.getUint8(o++);
+    if (n > MAX_EVENTS || o + n * 10 !== len) return false;
+    for (let i = 0; i < n; i++) { if (v.getUint8(o) >= EVENT_TYPES.length || !teamOk(v.getUint8(o + 1)) || !seatOk(v.getUint8(o + 2)) || !seatOk(v.getUint8(o + 3))) return false; o += 10; }
+    return true;
+  };
   // The whole visible state of a sim, in seat order, into `buffer`. Returns the byte length. Allocates nothing.
-  const encode = (sim, map, tag, epoch, q, buffer) => {
+  const encode = (sim, map, tag, epoch, q, buffer, events = sim.events, eventCount = sim.eventCount) => {
     dv = buffer; at = 0;
     u32(W.MAGIC); u32(tag); u32(epoch); u32(q);
     u8(sim.prep * 4); u32(Math.round(sim.time * 1000)); u8(sim.score.blue); u8(sim.score.red); u8(sim.over ? 1 : 0); u8(TEAM_CODE(sim.winner)); u8(sim.goldLeft);
@@ -89,8 +130,8 @@
     dark(sim.traps); dark(sim.caches); dark(sim.peels); dark(sim.puddles); dark(sim.vends);
     for (let i = 0; i < sim.powers.length; i++) { u8(sim.powers[i].dark * 4); u8(sim.powers[i].kind); }
     countAt = at; count = 0; at++;
-    for (let i = 0; i < sim.eventCount && count < MAX_EVENTS && at < W.FRAME_MAX - 12; i++) {
-      const e = sim.events[i], type = EVENT_INDEX.get(e.type);
+    for (let i = 0; i < eventCount && count < MAX_EVENTS && at < W.FRAME_MAX - 12; i++) {
+      const e = events[i], type = EVENT_INDEX.get(e.type);
       if (type === undefined) continue;
       u8(type); u8(TEAM_CODE(e.team)); seatRef(e.actor, map); seatRef(e.by, map); i16(e.x * 64); i16(e.y * 64); i16(e.z * 64);
       count++;
@@ -147,7 +188,10 @@
   const STALE_MS = 500;
   const create = ({ net = BL.net, onMatch, onStart, onHost, onChairsFull = () => {}, now = () => performance.now(), resolveBody = (a, r) => SIM.resolve(a, r) }) => {
     let match = null, sim = null, map = null, role = "none", seat = -1, startedTag = -1, epochSeen = 0, lastQ = -1, q = 0, inputQ = 0, sendWait = 0, beatWait = 0, goSent = false, lastAt = 0, jump = 0, frameAge = 0, frameGap = 1 / W.HZ, haveFrame = false;
-    const buffer = new DataView(new ArrayBuffer(W.FRAME_MAX)), bytes = new Uint8Array(buffer.buffer), actions = [], remote = [];
+    const buffer = new DataView(new ArrayBuffer(W.FRAME_MAX)), bytes = new Uint8Array(buffer.buffer), actions = [], remote = [], sendViews = [];
+    // The events of every simulated frame since the last send, so none is lost to the 10 Hz cadence.
+    const pending = Array.from({ length: MAX_EVENTS }, () => ({ type: "", team: null, actor: -1, by: -1, x: 0, y: 0, z: 0 }));
+    let pendingCount = 0;
     let prev = new Float32Array(0), next = new Float32Array(0), inputs = [];
     const self = () => net.state.selfId;
     const beginRound = () => {
@@ -185,7 +229,8 @@
         if (startedTag !== m.tag) beginRound();
         else {
           markBots();
-          if (hostChanged && role === "guest" && m.host === self()) { role = "host"; if (sim) { sim.inputs = inputs; for (let i = 0; i < sim.actors.length; i++) settle(i); sim.acc = 0; } lastQ = -1; q = 0; epochSeen = m.epoch; onHost(); }
+          if (hostChanged && role === "guest" && m.host === self()) { role = "host"; if (sim) { sim.inputs = inputs; for (let i = 0; i < sim.actors.length; i++) settle(i); sim.acc = 0; SIM.settleHooks(sim); } lastQ = -1; q = 0; pendingCount = 0; epochSeen = m.epoch; onHost(); }
+          else if (hostChanged && role === "host" && m.host !== self()) { role = "guest"; if (sim) { sim.inputs = null; for (let i = 0; i < sim.actors.length; i++) hold(i); } epochSeen = m.epoch; lastQ = -1; haveFrame = false; sendWait = 0; }
           else if (hostChanged) { epochSeen = m.epoch; lastQ = -1; haveFrame = false; }
           if (m.host === self() && role === "host") epochSeen = m.epoch;
           if (role !== "watch" && role !== "none" && W.seatOf(m, self()) < 0) endRound();
@@ -195,11 +240,13 @@
       onMatch(m);
     };
     const endRound = () => { role = "none"; seat = -1; map = null; startedTag = -1; if (sim) { sim.inputs = null; for (const a of sim.actors) a.bot = a.id > 0; } sim = null; };
+    const hold = (i) => { const a = sim.actors[i], o = i * 4; next[o] = prev[o] = a.x; next[o + 1] = prev[o + 1] = a.z; next[o + 2] = prev[o + 2] = a.y; next[o + 3] = prev[o + 3] = a.heading; };
     const settle = (i) => { const a = sim.actors[i]; a.x = next[i * 4]; a.z = next[i * 4 + 1]; a.y = next[i * 4 + 2]; a.heading = next[i * 4 + 3]; };
     const receiveFrame = (data) => {
       if (!sim || !map || role === "host" || !match) return;
       const view = new DataView(data), tag = view.getUint32(4, true), epoch = view.getUint32(8, true), frameQ = view.getUint32(12, true);
       if (tag !== match.tag || epoch !== epochSeen || frameQ <= lastQ) return;
+      if (!validFrame(view, sim, map)) return;
       lastQ = frameQ;
       const t = now();
       if (haveFrame) { const gap = (t - lastAt) / 1000; frameGap = clamp(gap, 0.05, 0.3); }
@@ -242,11 +289,15 @@
       }
     };
     const hostSend = (dt) => {
+      for (let i = 0; i < sim.eventCount && pendingCount < MAX_EVENTS; i++) Object.assign(pending[pendingCount++], sim.events[i]);
       sendWait -= dt;
       if (sendWait > 0 && !sim.over) return;
       sendWait = 1 / W.HZ;
-      const n = encode(sim, map, match.tag, match.epoch, ++q, buffer);
-      net.sendBfFrame(bytes.subarray(0, n));
+      // Viewers take even frames: the last frame of a round is always one of them.
+      if (sim.over && q % 2 === 0) q++;
+      const n = encode(sim, map, match.tag, match.epoch, ++q, buffer, pending, pendingCount);
+      pendingCount = 0;
+      net.sendBfFrame(sendViews[n] ||= bytes.subarray(0, n));
       if (sim.over) net.sendBf({ k: "over", s: match.s, w: sim.winner === null ? -1 : sim.winner === "blue" ? 0 : 1 });
     };
     // Guest and watcher: others glide between frames, and shots fly on between them too.
@@ -288,7 +339,7 @@
       if (!match) return;
       beatWait -= dt;
       if (beatWait <= 0 && (match.reg.includes(self()) || W.seatOf(match, self()) >= 0)) { beatWait = 2; command("beat"); }
-      if (match.phase === "countdown" && !goSent && W.seatOf(match, self()) >= 0 && Date.now() + 200 >= match.start) { goSent = command("go", { s: match.s }); }
+      if (match.phase === "countdown" && !goSent && W.seatOf(match, self()) >= 0 && net.serverNow() + 200 >= match.start) { goSent = command("go", { s: match.s }); }
     };
     return {
       get role() { return role; }, get match() { return match; }, get seat() { return seat; }, get map() { return map; },
@@ -309,5 +360,5 @@
   // The one way in for a visitor who only came to watch: pass a scene's `go` (the director's or the arcade's `open`).
   // Signed-in Oogas land on the watch deck, round or no round; signed out or on an older Worker, the ordinary menu.
   const openWatchDeck = (go) => go("block", W.WATCH_DECK_PLACE);
-  BL.blockLive = { create, seatMap, encode, decode, EVENT_TYPES, openWatchDeck };
+  BL.blockLive = { create, seatMap, encode, decode, validFrame, EVENT_TYPES, openWatchDeck };
 })();
