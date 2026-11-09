@@ -749,7 +749,7 @@
   };
   // The name shown for Ooga i: "You" for the visitor, else its display name.
   const nameOf = (i) => {
-    if (i === 0) return "You";
+    if (i === 0 && !onDeck()) return "You";
     const n = sim.actors[i].name;
     return n ? contributors.traitsFor(n).display || n : `${sim.actors[i].team === "blue" ? "Blue" : "Red"} ${i}`;
   };
