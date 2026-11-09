@@ -212,9 +212,9 @@
       }
       // The grappling hook's rope and head (Cloud Hopper's models), hung in world space while it is out, and a coiled
       // hook on the hip while it is held.
-      const rope = place(createNode({ geometry: BL.cloudHopperModels.rope(), visible: false, sightHidden: true }));
-      const hookHead = place(createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true }));
-      const hookHip = createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
+      const rope = place(createNode({ geometry: BM.rope(), visible: false, sightHidden: true }));
+      const hookHead = place(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true }));
+      const hookHip = createNode({ geometry: BM.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
       addChild(body, hookHip);
       return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
     });
@@ -2220,7 +2220,7 @@
     // The two grappling hooks, wherever they're hidden this round.
     hookStill = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     hookNodes = [];
-    for (let i = 0; i < C.HOOKS; i++) hookNodes.push(add(createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true, scale: { x: 1.4, y: 1.4, z: 1.4 } })));
+    for (let i = 0; i < C.HOOKS; i++) hookNodes.push(add(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true, scale: { x: 1.4, y: 1.4, z: 1.4 } })));
     // Haunted Hollow's ghosts, one node each (the sim has the haunts both ways round).
     ghostNodes = [];
     for (let i = 0; i < (A.ghosts || []).length * 2; i++) ghostNodes.push(add(createNode({ geometry: BM.ghost(), visible: false, scale: { x: 1.1, y: 1.1, z: 1.1 } })));

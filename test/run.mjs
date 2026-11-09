@@ -8212,6 +8212,18 @@ const gameRulesChecks = async () => {
     const q = { support: (x, z) => far(z) ? H.cloudY : z >= H.ledge - 0.5 ? H.y : NaN, clear: () => true, landable: (x, y, z) => far(z) };
     const plan = Z.layout("arcade", { x: H.top.x, y: H.y, z: H.top.z }, H.stop.x, H.stop.z, H.sag, { bottomGap: 1, bottomGround: () => H.cloudY }), run = Z.survey(plan.line, plan.grabS, q);
     const arcadeSource = readFileSync(new URL("../src/js/scene-arcade.js", import.meta.url), "utf8");
+    // A hosted page carries a deferred group only once it is fetched; the source tree and portable page always have it, so only this reads the difference.
+    {
+      const source = (f) => readFileSync(new URL("../src/js/" + f, import.meta.url), "utf8"), page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+      const tags = [...page.matchAll(/<script src="js\/([\w.-]+\.js)"(?: data-defer="([\w-]+)")?><\/script>/g)], groupOf = new Map(tags.map(([, f, g]) => [f, g || ""])), owners = new Map();
+      for (const [f, g] of groupOf) if (g) for (const [, name] of source(f).matchAll(/BL\.(\w+)\s*=(?!=)/g)) if (!owners.has(name)) owners.set(name, g);
+      for (const [f, g] of groupOf) if (!g && !f.endsWith(".gen.js")) for (const [, name] of source(f).matchAll(/BL\.(\w+)\s*=(?!=)/g)) owners.delete(name);
+      // Each of these is read only on a path that has loaded its group: the viewing chairs, and a line laid in DSB Land.
+      const loaded = { "scene-block.js": ["blockViewer"], "zipline.js": ["dsbCoast"] };
+      const stray = [...groupOf.keys()].filter(f => /^(block-|scene-block|zipline|arcade-scene-models)/.test(f)).flatMap(f => [...new Set([...source(f).matchAll(/BL\.(\w+)/g)].map(m => m[1]))]
+        .filter(n => owners.has(n) && owners.get(n) !== groupOf.get(f) && !(loaded[f] || []).includes(n)).map(n => f + ": " + n));
+      record("arcade block hall: the hall and Block Frenzy read no deferred group's code a hosted page hasn't fetched", stray.length === 0 && /BL\.blockModels = \{ hookHead, rope,/.test(source("block-models.js")), JSON.stringify(stray));
+    }
     record("arcade block hall: the zipline runs clear from the ledge into the clouds and hands off to Block Frenzy's start before its end",
       run.ok && H.fade > H.stop.z && H.fade < H.ledge && !A.BLOCK_HALL.island && plan.stand.z < H.z0 && plan.stand.z > H.ledge
       && /open\("block", "zipline"\)/.test(arcadeSource) && arcadeSource.includes('fromBlockHall = ctx.from === "block"'), JSON.stringify({ ok: run.ok, landing: run.landing, blocked: run.blocked }));
