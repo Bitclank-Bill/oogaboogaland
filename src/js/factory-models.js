@@ -927,30 +927,38 @@
   // it in front. The stone under them is a few long faces, which that sort places by their middles, deep in the tunnel;
   // FLOOR_BIAS (m, `depthBias`, Canvas 2D only) sorts the boards just nearer, so the far ones are not painted over.
   const PLANK_TONES = [TIMBER, TIMBER_LT, "#946236"], FLOOR_BIAS = -0.2, PLANK_SPAN = 0.6, PLANK_TOP = 0.02, PLANK_BEVEL = 0.04;
+  // A board's tone as the hall's lamps show it: redder and darker than the island's sun makes the same wood. Measured
+  // off the rendered balcony, against the display grade's curve, so these shades are read from the screen, not worked
+  // out. The island's end of the floor takes HALL_BOARD with HALL_BOARD_GLOW of it self-lit, the share at which its
+  // clock dimming the boards and the grade lifting them at night about cancel, since the hall has no clock of its own;
+  // the balcony its window shows behind the shield is fully self-lit, so HALL_BOARD_WINDOW.
+  const HALL_BOARD = [0.53, 0.37, 0.29], HALL_BOARD_WINDOW = [0.36, 0.28, 0.25], HALL_BOARD_GLOW = 0.33;
+  const hallBoard = (tone, shade = HALL_BOARD) => `#${hexToRgb(tone).map((c, i) => Math.round(c * shade[i]).toString(16).padStart(2, "0")).join("")}`;
   // The section of `deckParts`' boards, chamfered along both top edges, run from z `near` to `far`.
-  const plankRun = (x, w, near, far, tone) => {
+  const plankRun = (x, w, near, far, tone, emissive) => {
     const geo = geometry(), hw = w / 2, low = PLANK_TOP - 0.2, rgb = hexToRgb(tone), spans = Math.ceil((near - far) / PLANK_SPAN);
     const section = [[-hw, low, -1, 0], [-hw, PLANK_TOP - PLANK_BEVEL, -1, 1], [-hw + PLANK_BEVEL, PLANK_TOP, 0, 1], [hw - PLANK_BEVEL, PLANK_TOP, 1, 1], [hw, PLANK_TOP - PLANK_BEVEL, 1, 0], [hw, low]];
     const rings = [];
     for (let i = 0; i <= spans; i++) rings.push(section.map(([sx, sy]) => pushVert(geo, x + sx, sy, near - (near - far) * i / spans)));
-    for (let i = 0; i < spans; i++) for (let k = 0; k < 5; k++) face(geo, orient(geo, [rings[i][k], rings[i][k + 1], rings[i + 1][k + 1], rings[i + 1][k]], section[k][2], section[k][3], 0), rgb);
-    face(geo, orient(geo, [...rings[0]], 0, 0, 1), rgb);
-    face(geo, orient(geo, [...rings[spans]], 0, 0, -1), rgb);
+    for (let i = 0; i < spans; i++) for (let k = 0; k < 5; k++) face(geo, orient(geo, [rings[i][k], rings[i][k + 1], rings[i + 1][k + 1], rings[i + 1][k]], section[k][2], section[k][3], 0), rgb, { emissive });
+    face(geo, orient(geo, [...rings[0]], 0, 0, 1), rgb, { emissive });
+    face(geo, orient(geo, [...rings[spans]], 0, 0, -1), rgb, { emissive });
     return geo;
   };
-  const tunnelFloor = (out, reach) => {
+  const tunnelFloor = (out, reach, island) => {
+    const paint = island ? hallBoard : (tone) => tone, emissive = island ? HALL_BOARD_GLOW : 0;
     const e = LAYOUT.entrance, n = Math.max(2, Math.round(e.w / 0.9)), rand = mulberry32(Math.round(e.x * 7 + e.z)), w = e.w / n - 0.05;
     out.push(moved(turnedX(models.panel({ w: e.w, h: reach - SHIELD_Z, tilesX: n, tilesY: Math.ceil((reach - SHIELD_Z) / PLANK_SPAN), color: "#1c120a" }), -Math.PI / 2), 0, 0.006, (reach + SHIELD_Z) / 2));
-    for (let i = 0; i < n; i++) out.push(plankRun(((i + 0.5) / n - 0.5) * e.w, w, reach, SHIELD_Z, PLANK_TONES[Math.floor(rand() * 3)]));
-    for (const s of [-1, 1]) out.push(plankRun(s * 2.75, 0.46, -2.5, SHIELD_Z, s < 0 ? TIMBER_LT : TIMBER));
+    for (let i = 0; i < n; i++) out.push(plankRun(((i + 0.5) / n - 0.5) * e.w, w, reach, SHIELD_Z, paint(PLANK_TONES[Math.floor(rand() * 3)]), emissive));
+    for (const s of [-1, 1]) out.push(plankRun(s * 2.75, 0.46, -2.5, SHIELD_Z, paint(s < 0 ? TIMBER_LT : TIMBER), emissive));
   };
 
   // The part both ends share: the boarded floor (out to `reach`, since the factory's end stops at the rim), three
   // timber sets, the patch boards between them, and the shield's emitters, iron posts with cyan coils just outside the
   // phase plane, which is as wide as the mouth's opening (about ±2.5 m).
-  const tunnelFrame = (reach) => {
+  const tunnelFrame = (reach, island = false) => {
     const geos = [], glow = [], flat = [], round = [], planks = [];
-    tunnelFloor(planks, reach);
+    tunnelFloor(planks, reach, island);
     TUNNEL_BOARDS.forEach(([z, w, depth, x], i) => {
       for (const s of [-1, 1]) tunnelBoard({ flat, round, glow }, w, depth, s * x, z, -s * Math.PI / 2, 0x7a11 + i * 2 + (s > 0 ? 1 : 0));
     });
@@ -983,7 +991,7 @@
     ]);
   });
   const hubTunnel = cached(() => {
-    const { geos, glow, boards, floor } = tunnelFrame(0.3);
+    const { geos, glow, boards, floor } = tunnelFrame(0.3, true);
     geos.push(box({ w: 4.6, h: 3.6, d: 0.2, color: "#1f140e", offset: { y: 1.8, z: SHIELD_Z - 1.35 } }));
     // The bolt and its lamps are what Canvas 2D shows past the shield in place of the hall's window, in whose band they would stand.
     const backdrop = [moved(smoothBolt(2.2, 0.24, "#ffd84a", 1), 0, 1.6, SHIELD_Z - 1.1)];
@@ -1327,8 +1335,10 @@
       const n = Math.max(2, Math.round(e.w / 0.9)), prand = mulberry32(Math.round(e.x * 7 + e.z)), top = e.y + 0.02, z0 = e.z - e.d / 2 + 0.02;
       for (let i = 0; i < n; i++) {
         const x = e.x + ((i + 0.5) / n - 0.5) * e.w, hw = e.w / n / 2 - 0.025, color = [TIMBER, TIMBER_LT, "#946236"][Math.floor(prand() * 3)];
-        parts.push(span(x - hw, x + hw, top - 0.2, top, z0, CUT, color));
-        front.push(span(x - hw, x + hw, e.y, top, CUT, WINDOW_SHIELD - 0.02, color));
+        // Self-lit in the hall's own colour, which the bake keeps, so the deck meets the tunnel's boards at the shield.
+        const lit = hallBoard(color, HALL_BOARD_WINDOW);
+        parts.push(span(x - hw, x + hw, top - 0.2, top, z0, CUT, lit, 1));
+        front.push(span(x - hw, x + hw, e.y, top, CUT, WINDOW_SHIELD - 0.02, lit, 1));
       }
       const ex = e.w / 2 - 0.1, ez0 = e.z - e.d / 2 + 0.1, ez1 = e.z + e.d / 2 - 0.1, [[, , a0, a1]] = L.walk, cz = (a0 + a1) / 2, ch = (a1 - a0) / 2 - 0.1, sh = L.stairway[6] / 2 + 0.1;
       // The left rail opens to the hangar's walkway while the hangar is open, as the right one does to the kiosk's.
