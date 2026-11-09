@@ -7262,7 +7262,7 @@ const gameRulesChecks = async () => {
       const chairs = V.buildChairs(node, (p, ...c) => { p.kids.push(...c); kids.push(...c); }, node(), arena);
       V.look(cam, arena, 0, 0, set);
       const opts = {}; for (const k of ["clear", "horizon", "zenith", "sky"]) opts[k] = new Float32Array(3); V.white(opts);
-      record("block live: the viewing chairs are a row of plain chairs above the field, on a white backdrop", kids.length === 11 && chairs.position.y > 10 && cam.position.y > cam.target.y && [...opts.sky].every(v => v === 1) && opts.clouds === 0 && opts.bloomStrength === 0);
+      record("block live: the viewing chairs are a row of plain chairs above the field, on a white backdrop", kids.length === 11 && chairs.position.y > 5 && cam.position.y > cam.target.y && [...opts.sky].every(v => v === 1) && opts.clouds === 0 && opts.bloomStrength === 0 && opts.sea === null);
       // The default view holds every map's whole island; measured by projecting its rim through the camera.
       const fits = (A, aspect) => {
         const f = {}; V.frame(A, f);

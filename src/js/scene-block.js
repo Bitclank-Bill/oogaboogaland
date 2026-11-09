@@ -150,6 +150,9 @@
   let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 };
   let watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
+  // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
+  const zoomDeck = (k) => { audio.unlock(); deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, k); };
+  const SEA_LEVEL = RENDER_OPTS.sea;
   const liveRound = () => !!round && (round.role === "host" || round.role === "guest");
   const acts = (name, id, a, b, c) => liveRound() ? round.act(name, id, a, b, c) : SIM[name](sim, id, a, b, c);
   let jumpWas = false;
@@ -462,6 +465,8 @@
     BL.blockViewer.place(deck, SIM.ARENA);
     deckZoom = deckZoomTo = 1; deckYaw = deckPitch = 0;
     deckBoard.blue = -1; deckCaps.total = -1;
+    // A late arrival skips the title card: the chairs are the place they came to.
+    document.querySelector('[data-intro="block"]:not([hidden]) [data-action="intro-go"]')?.click();
     audio.unlock();
     el.viewerBoard.hidden = false;
     deck.visible = true;
@@ -537,6 +542,7 @@
     if (liveRound() && !sim.over) round.unregister();
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
+    RENDER_OPTS.sea = SEA_LEVEL;
     if (deck) { deck.visible = false; for (const n of mapClouds) n.visible = true; if (fireNode) fireNode.visible = true; if (dancers) for (const d of dancers) d.visible = true; }
     if (onDeck() && round) round.watchFeed(false);
     you = 0; watchVisit = false;
@@ -2224,6 +2230,7 @@
     if (e.key === "g" || e.key === "G") cycleTool(1);
     if (e.key === "f" || e.key === "F") grabCrate();
     if (e.key === "k" || e.key === "K") dropBlock();
+    if (onDeck()) { if (e.key === "+" || e.key === "=") zoomDeck(1.3); else if (e.key === "-" || e.key === "_") zoomDeck(1 / 1.3); return; }
     if ((e.key === "+" || e.key === "=") && scoped()) zoomScope(1);
     if ((e.key === "-" || e.key === "_") && scoped()) zoomScope(-1);
     if (e.key === "v" || e.key === "V") cycleView();
@@ -2702,7 +2709,6 @@
       onHoverMove: (hit, p) => { if (hit && hit.owner.kind === "ooga") hud.tooltip.show(actors[hit.owner.index].cave.traits.display, p.x, p.y, actors[hit.owner.index].cave); },
       // A mouse throws on press (`onLockedDown`); a tap on a touch screen throws here.
       onTap: () => { if (phase === "play" && COARSE) paint(); },
-      onZoom: (k) => { if (onDeck()) audio.unlock(), deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, 1 / k); },
       onOrbit: (dx, dy) => {
         // On the board a drag turns the Ooga on show.
         if (phase === "board") { preview.spin = wrap(preview.spin + dx * 8e-3); return; }
@@ -2713,6 +2719,7 @@
       },
       // The wheel or a two-finger swipe zooms the sniper's scope, and otherwise the camera.
       onZoom: (k, gesture) => {
+        if (onDeck()) { zoomDeck(1 / k); return; }
         if (!inRound() || k === 1) return;
         if (scoped()) { if (gesture !== cam.zoomGesture) { cam.zoomGesture = gesture; zoomScope(k > 1 ? -1 : 1); } return; }
         if (cam.island) { cam.islandZoom = clamp(cam.islandZoom * k, ZOOM.island[0], ZOOM.island[1]); saveView(); return; }
@@ -2742,8 +2749,6 @@
       else if (action === "block-live-wait") round.setReady(true);
       else if (action.startsWith("block-live-size-")) round.setOptions(Number(action.slice(-1)), WIRE.MAPS.indexOf(selection.map));
       else if (action === "block-live-watch") joinDeck();
-      else if (action === "block-watch-in" && onDeck()) audio.unlock(), deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, 1.3);
-      else if (action === "block-watch-out" && onDeck()) audio.unlock(), deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, 1 / 1.3);
       else if (action === "block-board") showBoard();
       else if (action === "block-help") el.helpBox.hidden = !el.helpBox.hidden;
       else if (action === "block-drop") dropBlock();

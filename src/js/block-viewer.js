@@ -4,7 +4,7 @@
 (() => {
   "use strict";
   const BL = window.BL, M = BL.models;
-  const COUNT = 5, GAP = 1.6, FOV = 50 * Math.PI / 180, ZOOM_MIN = 1, ZOOM_MAX = 3.5;
+  const COUNT = 5, GAP = 1.05, FOV = 50 * Math.PI / 180, ZOOM_MIN = 1, ZOOM_MAX = 3.5;
   // Where the seat is for a map, written into `out`: low over the near edge, far enough back that the whole field fits
   // the view at zoom 1, near edge at the bottom and far edge at the top. Scales with the map.
   const frame = (arena, out = {}) => {
@@ -34,18 +34,18 @@
     return true;
   };
   const buildChairs = (createNode, addChild, parent, arena) => {
-    const seat = M.box({ w: 0.9, h: 0.1, d: 0.9, color: "#d9d9d9" }), back = M.box({ w: 0.9, h: 0.9, d: 0.1, color: "#d9d9d9" });
+    const seat = M.box({ w: 0.55, h: 0.08, d: 0.55, color: "#d9d9d9" }), back = M.box({ w: 0.55, h: 0.55, d: 0.08, color: "#d9d9d9" });
     const group = createNode();
     for (let i = 0; i < COUNT; i++) {
       const x = (i - (COUNT - 1) / 2) * GAP;
-      addChild(group, createNode({ geometry: seat, position: { x, y: 0, z: 0 } }), createNode({ geometry: back, position: { x, y: 0.5, z: 0.4 } }));
+      addChild(group, createNode({ geometry: seat, position: { x, y: 0, z: 0 } }), createNode({ geometry: back, position: { x, y: 0.3, z: 0.25 } }));
     }
     addChild(parent, group);
     place(group, arena);
     return group;
   };
-  // Just in front of the camera and below it, so the row shows along the bottom of the view.
-  const place = (group, arena) => { frame(arena, SEAT); group.position.y = SEAT.y - 2.1; group.position.z = SEAT.z - 1.2; };
+  // Below the camera and ahead of it, so the row sits along the bottom of the view and the field stays clear.
+  const place = (group, arena) => { frame(arena, SEAT); group.position.y = SEAT.y - 3.4; group.position.z = SEAT.z - 2.1; };
   // The middle chair, looking down at the field; a drag looks about, and nothing else moves the view.
   const look = (camera, arena, yaw, pitch, setVec, zoom = 1) => {
     frame(arena, SEAT);
@@ -57,7 +57,7 @@
   // A flat white backdrop in place of the sky: no clouds, sun disc, stars, fog or bloom to compute. Allocates nothing.
   const white = (opts) => {
     for (const key of ["clear", "horizon", "zenith", "sky"]) opts[key].fill(1);
-    opts.clouds = 0; opts.stars = 0; opts.bloomStrength = 0; opts.fogNear = 1e4; opts.fogFar = 2e4; opts.sunStrength = 0;
+    opts.sea = null; opts.clouds = 0; opts.stars = 0; opts.bloomStrength = 0; opts.fogNear = 1e4; opts.fogFar = 2e4; opts.sunStrength = 0;
   };
   BL.blockViewer = { FOV, ZOOM_MIN, ZOOM_MAX, frame, place, buildChairs, look, white, clampZoom, zoomBy, easeZoom, fillBoard, newCaptures };
 })();

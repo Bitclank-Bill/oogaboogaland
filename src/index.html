@@ -1103,9 +1103,8 @@
         <span id="block-watch-line"></span>
         <button type="button" data-action="block-live-reg" id="block-watch-reg">Register for next round</button>
         <button type="button" data-action="block-board">Main menu</button>
-        <span class="block-watch-zoom"><button type="button" data-action="block-watch-out" aria-label="Zoom out">&minus;</button><button type="button" data-action="block-watch-in" aria-label="Zoom in">+</button></span>
       </section>
-      <div class="block-viewer-board" id="block-viewer-board" hidden aria-live="off"><span>Blue</span><b id="block-viewer-blue">0</b><b id="block-viewer-red">0</b><span>Red</span><small id="block-viewer-goal"></small><small id="block-viewer-clock"></small></div>
+      <div class="block-viewer-board" id="block-viewer-board" hidden aria-live="off"><div class="block-board-side" data-side="blue"><span>Blue</span><b id="block-viewer-blue">0</b></div><div class="block-board-mid"><small id="block-viewer-goal"></small><small id="block-viewer-clock"></small></div><div class="block-board-side" data-side="red"><span>Red</span><b id="block-viewer-red">0</b></div></div>
       <div class="race-center" id="block-center" hidden>GO!</div>
       <div class="block-struggle" id="block-struggle" hidden>
         <span id="block-struggle-word">Mash SPACE!</span> <b id="block-struggle-left">6</b>
