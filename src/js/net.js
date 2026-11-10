@@ -1203,11 +1203,11 @@
   const goDoor = (cycle) => chatIdValid(cycle) && doorSend(JSON.stringify({ t: "door", op: "go", cycle }));
   const doneDoor = (cycle) => chatIdValid(cycle) && doorSend(JSON.stringify({ t: "door", op: "done", cycle }));
   const cancelDoor = () => doorSend('{"t":"door","op":"cancel"}');
-  // A room's lock (room.js): from inside, set it or open it with its PIN; from the doorway, try the PIN for the way in.
+  // A room's lock (room.js): from inside, set its PIN or open it (anyone inside may); from the doorway, try the PIN.
   const roomPin = (op, room, pin) => state.roomLocks && Number.isInteger(room) && room >= 1 && room <= 9 && /^[0-9]{4}$/.test(pin)
     && doorSend(JSON.stringify({ t: "door", op, room, pin }));
   const lockRoom = (room, pin) => roomPin("lock", room, pin);
-  const unlockRoom = (room, pin) => roomPin("unlock", room, pin);
+  const unlockRoom = (room) => state.roomLocks && Number.isInteger(room) && room >= 1 && room <= 9 && doorSend(JSON.stringify({ t: "door", op: "unlock", room }));
   const tryRoomPin = (room, pin) => roomPin("try", room, pin);
   const passDoor = (door, dir) => typeof door === "string" && DOOR_NAME.test(door) && (dir === "in" || dir === "out")
     && doorSend(JSON.stringify({ t: "door", op: "pass", door, dir }));

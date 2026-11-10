@@ -153,7 +153,7 @@
     card: "Latest blocks · tap for the charts",
     terminal: "Holdings desk · tap for Timechain Index holdings",
     door: "The way out · use the Exit button",
-    lockkey: "Room lock · walk up and press Space, then type a 4-digit PIN",
+    lockkey: "Room lock · walk up and press Space",
     table: "Meeting table · jump up on it",
     chair: COARSE ? "Chair · tap SIT beside it" : "Chair · Space beside it sits"
   };
@@ -354,8 +354,8 @@
       }
       return near;
     };
-    // The room's lock, shared rooms only: Space beside its keypad takes the view and the keys. Four digits lock the room
-    // (`net.lockRoom`) or open it again; the room keeps the PIN, and is free again by itself once nobody is inside.
+    // The room's lock, shared rooms only: Space beside its keypad takes the view and the keys. Four digits and LOCK lock the
+    // room (`net.lockRoom`); UNLOCK opens it for anyone inside, and it opens by itself once nobody is inside.
     const lockPad = built.lockPad, LOCK_ANSWER = 4, LOCK_NOTE = 1.4, LOCKED_RED = "#ff4a3d";
     const DOTS = ["", "*", "**", "***", "****"], lock = { on: false, digits: "", sent: 0, note: "", noteLeft: 0, leaveLeft: 0, locked: false, ease: 1, from: { x: 0, y: 0, z: 0 }, fromLook: { x: 0, y: 0, z: 0 } };
     const isLocked = () => shared && !!BL.net.state.lockedRooms[room.id];
@@ -386,12 +386,11 @@
       const c = camera.position, t = camera.target;
       lock.from.x = c.x; lock.from.y = c.y; lock.from.z = c.z;
       lock.fromLook.x = t.x; lock.fromLook.y = t.y; lock.fromLook.z = t.z;
-      hud.hint(isLocked() ? "Type the PIN to unlock · Esc steps back" : "Type a 4-digit PIN to lock the room · Esc steps back", 7000);
+      hud.hint(isLocked() ? "Press UNLOCK to open the room · Esc steps back" : "Type a 4-digit PIN, then press LOCK · Esc steps back", 7000);
       return true;
     };
     const lockSend = () => {
-      const unlocking = isLocked();
-      if ((unlocking ? BL.net.unlockRoom : BL.net.lockRoom)(room.id, lock.digits)) lock.sent = LOCK_ANSWER;
+      if (isLocked() ? BL.net.unlockRoom(room.id) : BL.net.lockRoom(room.id, lock.digits)) lock.sent = LOCK_ANSWER;
       else { lock.digits = ""; lockNote("NO SIGNAL"); }
     };
     const lockPress = (key) => {
@@ -399,10 +398,9 @@
       if (key === "back") {
         if (lock.digits) lock.digits = lock.digits.slice(0, -1);
         else lockLetGo();
-      } else if (/^[0-9]$/.test(key) && lock.digits.length < 4) {
-        lock.digits += key;
-        if (lock.digits.length === 4) lockSend();
-      }
+      } else if (key === "enter") {
+        if (isLocked() || lock.digits.length === 4) lockSend();
+      } else if (/^[0-9]$/.test(key) && !isLocked() && lock.digits.length < 4) lock.digits += key;
     };
     const lockKeys = (e) => {
       if (!lock.on || e.metaKey || e.ctrlKey || e.altKey || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
@@ -411,6 +409,7 @@
       if (e.repeat) return;
       if (/^[0-9]$/.test(e.key)) lockPress(e.key);
       else if (e.key === "Backspace") lockPress("back");
+      else if (e.key === "Enter") lockPress("enter");
       else if (e.key === "Escape" && !lock.sent) lockLetGo();
     };
     window.addEventListener("keydown", lockKeys, { capture: true, signal: ctx.signal });
@@ -427,8 +426,9 @@
         hud.toast(locked ? `${room.name} is locked · players outside need its PIN` : `${room.name} is unlocked`);
       }
       built.lockSign.visible = locked && doors.open < 0.05;
-      const words = lock.noteLeft > 0 ? lock.note : lock.on ? lock.digits ? DOTS[lock.digits.length] : locked ? "ENTER PIN TO UNLOCK" : "SET 4-DIGIT PIN" : !shared ? "SOLO" : locked ? "LOCKED" : "UNLOCKED";
+      const words = lock.noteLeft > 0 ? lock.note : locked ? "LOCKED" : lock.on ? lock.digits ? DOTS[lock.digits.length] : "SET 4-DIGIT PIN" : !shared ? "SOLO" : "UNLOCKED";
       lockPad.say(words, locked ? LOCKED_RED : undefined);
+      lockPad.actAs(locked ? "UNLOCK" : "LOCK", locked || lock.digits.length === 4);
       lockPad.tick(dt);
       if (!lock.on) return;
       lock.ease = Math.min(1, lock.ease + dt / LOCK_GLIDE);
@@ -445,7 +445,7 @@
       if (event.op !== "lock-result" || event.room !== room.id || !lock.sent) return;
       lock.sent = 0; lock.digits = "";
       if (event.ok) lockNote(event.action === "lock" ? "LOCKED" : "UNLOCKED", true);
-      else lockNote(event.reason === "wait" ? "TRY LATER" : event.reason === "already-locked" ? "LOCKED" : "WRONG PIN");
+      else lockNote(event.reason === "already-locked" ? "LOCKED" : "TRY AGAIN");
     };
     for (const key of lockPad.keys) target(key.node, { kind: "lockkey", key: key.key }, key.key.length === 1 ? 0.055 : 0.09);
     const useNear = () => {

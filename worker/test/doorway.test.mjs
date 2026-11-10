@@ -138,7 +138,7 @@ test("a room locked from inside keeps everyone out but those with its PIN, and o
   assert.equal(r.players.get(3).zone, "sphere-4");
 });
 
-test("the PIN unlocks from inside, wrong tries run out, and a lock survives hibernation in its occupants' sockets", async () => {
+test("anyone inside may unlock, wrong tries run out, and a lock survives hibernation in its occupants' sockets", async () => {
   const h = host(), r = h.room(), inside = await h.join(r, 1, "a"), outside = await h.join(r, 2, "b");
   await h.enter(r, inside, "a", "sphere-2");
   await h.enter(r, outside, "b", "sphere");
@@ -155,10 +155,10 @@ test("the PIN unlocks from inside, wrong tries run out, and a lock survives hibe
   h.advance(61000);
   await h.send(woken, outside, { t: "door", op: "try", room: 2, pin: "4321" });
   assert.equal(messages(outside, "door", "lock-result").at(-1).ok, true);
-  await h.send(woken, inside, { t: "door", op: "unlock", room: 2, pin: "0001" });
-  assert.equal(messages(inside, "door", "lock-result").at(-1).reason, "wrong");
+  await h.send(woken, outside, { t: "door", op: "unlock", room: 2 });
+  assert.equal(messages(outside, "door", "lock-result").at(-1).reason, "wrong-room", "only someone inside opens it");
   h.advance(1000);
-  await h.send(woken, inside, { t: "door", op: "unlock", room: 2, pin: "4321" });
+  await h.send(woken, inside, { t: "door", op: "unlock", room: 2 });
   assert.equal(messages(inside, "door", "lock-result").at(-1).ok, true);
   assert.deepEqual(messages(outside, "door", "locks").at(-1).rooms, []);
   assert.equal(woken.players.get(1).roomLock, null);

@@ -336,6 +336,9 @@
   const BACK_KEY = keyFace(0.12, 0.07, "BACK", 0.0066, "#4a3a30", "#f2d39a");
   const ENTER_KEY = keyFace(0.12, 0.07, "ENTER", 0.0055, "#5a4022", "#f2d39a");
   const READY_ENTER_KEY = keyFace(0.125, 0.075, "ENTER", 0.0055, "#ffbd53", "#17110a", 1);
+  // The same key on the lock inside a room: plain, then ready.
+  const ACT_KEYS = { LOCK: [keyFace(0.12, 0.07, "LOCK", 0.0066, "#5a4022", "#f2d39a"), keyFace(0.125, 0.075, "LOCK", 0.0066, "#ffbd53", "#17110a", 1)],
+    UNLOCK: [keyFace(0.12, 0.07, "UNLOCK", 0.0046, "#5a4022", "#f2d39a"), keyFace(0.125, 0.075, "UNLOCK", 0.0046, "#ffbd53", "#17110a", 1)] };
   const ZERO_KEY = keyFace(0.085, 0.07, "0", 0.0105, "#3a3430", "#f2d39a");
   // A number over which a locked room's padlock hangs.
   const PADLOCK = [".###.", "#...#", "#...#", "#####", "##.##", "#####"];
@@ -418,7 +421,9 @@
       locked[digit] = on ? 1 : 0;
       keys[digit - 1].node.geometry = cap(digit);
     };
-    return { pad, keys: [...keys, zero, back, enter], readout, say, tick: display.tick, choose, lock };
+    // What the Enter key reads on the room's lock, and whether it is ready to press.
+    const actAs = (word, ready) => { enter.node.geometry = ACT_KEYS[word][ready ? 1 : 0]; };
+    return { pad, keys: [...keys, zero, back, enter], readout, say, tick: display.tick, choose, lock, actAs };
   };
   const build = (island) => {
     let rim = 27.4;

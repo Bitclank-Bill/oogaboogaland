@@ -310,17 +310,16 @@ export class Room extends DurableObject {
       this.broadcast({ t: "door", op: "locks", rooms: this.lockedRooms() });
       return reply(true);
     }
-    if (this.pinRefused(p, now)) return reply(false, "wait");
     if (msg.op === "unlock") {
+      // Anyone inside may open it.
       if (!p.body || this.roomOf(p.zone) !== msg.room) return reply(false, "wrong-room");
       if (!lock) return reply(true);
-      if (lock.pin !== msg.pin) { this.pinWrong(p, now); return reply(false, "wrong"); }
-      this.pinTries.delete(p.id);
       this.roomLocks.delete(msg.room);
       this.shareRoomLock(msg.room, null);
       this.broadcast({ t: "door", op: "locks", rooms: this.lockedRooms() });
       return reply(true);
     }
+    if (this.pinRefused(p, now)) return reply(false, "wait");
     if (!p.body || p.zone !== DOOR_ZONE) return reply(false, "not-at-door");
     if (!lock) return reply(true);
     if (lock.pin !== msg.pin) { this.pinWrong(p, now); return reply(false, "wrong"); }

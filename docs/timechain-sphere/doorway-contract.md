@@ -46,7 +46,7 @@ A signed-in player inside a numbered room can lock it with a 4-digit PIN from th
 | Message | When |
 |---|---|
 | `{ t: "door", op: "lock", room, pin }` | From inside that room: lock it. Refused if it is already locked. |
-| `{ t: "door", op: "unlock", room, pin }` | From inside that room: open it with its PIN. |
+| `{ t: "door", op: "unlock", room }` | From inside that room: open it. Anyone inside may. |
 | `{ t: "door", op: "try", room, pin }` | From the doorway's zone: the PIN for a locked room. |
 | `{ t: "door", op: "lock-result", action, room, ok, reason }` | The answer to any of those, to the sender alone; `reason` is `wrong`, `wait`, `wrong-room`, `not-at-door` or `already-locked`. |
 | `{ t: "door", op: "locks", rooms }` | Which rooms are locked now, to every page, whenever that changes. |

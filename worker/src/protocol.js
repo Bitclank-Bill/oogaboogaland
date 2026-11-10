@@ -403,8 +403,9 @@ export const parseClientMessage = (text) => {
     if (msg.op === "cancel") return { t: "door", op: "cancel" };
     if (msg.op === "pass") return typeof msg.door === "string" && DOOR_ROOM.test(msg.door) && (msg.dir === "in" || msg.dir === "out")
       ? { t: "door", op: "pass", door: msg.door, dir: msg.dir } : null;
-    if (msg.op === "lock" || msg.op === "unlock" || msg.op === "try") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 && typeof msg.pin === "string" && ROOM_PIN.test(msg.pin)
+    if (msg.op === "lock" || msg.op === "try") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 && typeof msg.pin === "string" && ROOM_PIN.test(msg.pin)
       ? { t: "door", op: msg.op, room: msg.room, pin: msg.pin } : null;
+    if (msg.op === "unlock") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 ? { t: "door", op: "unlock", room: msg.room } : null;
     return null;
   }
   if (msg.t === "wallet") {
