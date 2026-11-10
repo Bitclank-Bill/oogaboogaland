@@ -320,7 +320,8 @@
       get version() { return holdingsVersion; },
       go: (i) => { feeds.holdingsIndex = i; holdingsVersion++; sweep = true; }
     };
-    // A kind's own moving parts, driven every frame from its nodes (timechain-room-*.js `animate`).
+    // A kind's own moving parts, driven every frame from its nodes (timechain-room-*.js `animate`), its taps, and
+    // what it lets go of on leaving (`dispose`, the Block Party's radio).
     const motion = kind.animate ? kind.animate(built.nodes, built) : null;
 
     const NO_ACTORS = [], actors = [];
@@ -806,6 +807,7 @@
       timechain: {
         room, visit, layout: L, built, reader, holdings, guide, doors, seats,
         get avatar() { return avatar; }, get remotes() { return remotes; }, get sound() { return sound.stats; },
+        get motion() { return motion && motion.stats; },
         get slots() { return all.map((s) => ({ key: s.key, shown: !!s.node.geometry })); }, get exitEye() { return exitEye; },
         exit: walkOut, chartBoard, holdingsBoard
       }
@@ -821,6 +823,7 @@
       reader.dispose();
       holdings.dispose();
       sound.dispose();
+      if (motion && motion.dispose) motion.dispose();
       if (unsubscribeDoor) unsubscribeDoor();
       unsubscribeAccount();
       window.removeEventListener("keydown", armsKeys, true);

@@ -3,9 +3,11 @@
 // sweeping round it in spirals and a scatter of warm LED dots. Under it an LED dance floor whose rings step through
 // the same colours on every beat, the DJ booth at the front with its decks and the lasers sweeping from it, a stack of
 // speakers either side thumping, the mirror ball turning under the crown, the bar on the left and high tables round
-// the floor. The latest block hangs on the dome over the booth. The room keeps a steady 124 BPM, and every twelve
-// seconds the bass drops as it does on a block: a ring of light falls down the dome, a wave of light runs out across
-// the floor, the lasers fan wide and the sign over the booth says so.
+// the floor. The latest block hangs on the dome over the booth. EDM Sessions plays live (timechain-party-radio.js) and
+// the lights follow its beat, found in the music as it plays; until the beat is found, or where the stream can't be
+// analysed, they keep a steady 124 BPM. Every twelve seconds, on the next bar, the bass drops as it does on a block: a
+// ring of light falls down the dome, a wave of light runs out across the floor, the lasers fan wide and the sign over
+// the booth says so.
 (() => {
   "use strict";
   const BL = window.BL;
@@ -24,8 +26,10 @@
   // node per band colour and one for the drop (VARIANTS), only one of them shown.
   // Canvas 2D sorts the tiles as if TILE_BIAS metres nearer, so the floor's large pieces under them never paint over.
   const FZ = -1, TILE = 0.8, FLOOR_R = 5.4, RINGS = 8, VARIANTS = BANDS.length + 1, TILE_BIAS = -0.7;
-  // The beat, and the drop that stands in for a block: every DROP_EVERY seconds from DROP_FIRST, DROP_TIME long.
-  const BEAT = 60 / 124, DROP_EVERY = 12, DROP_FIRST = 3, DROP_TIME = 1.6;
+  // The beat with no music to follow, and the drop that stands in for a block: due every DROP_EVERY seconds from
+  // DROP_FIRST, starting on the next bar of BAR beats, DROP_TIME long. Following the radio, the room's beat eases to
+  // its tempo at TEMPO_RATE and its phase at PHASE_RATE a second, so a beat found or lost never jumps the floor.
+  const BEAT = 60 / 124, DROP_EVERY = 12, DROP_FIRST = 3, DROP_TIME = 1.6, BAR = 4, TEMPO_RATE = 3, PHASE_RATE = 6;
   // The lasers' colours, their beams built LASER_LEN long and stretched to the dome; the sign's height in a drop.
   const LASERS = ["#3cff7a", "#ff3ce0", "#3cc8ff", "#ffd03c", "#3cff7a", "#ff3ce0"], LASER_LEN = 14, SIGN_Y = 8.2, AWAY = -3;
   // A bar stool's sitting height.
@@ -310,7 +314,7 @@
   };
 
   // The room alive: the beat on the floor, the cones, the meters and the lights; the lasers sweeping, the decks and
-  // the ball turning; and a drop every DROP_EVERY seconds.
+  // the ball turning; and a drop every DROP_EVERY seconds. The radio plays for the visit and is let go in `dispose`.
   const animate = (nodes, built) => {
     const L = built.layout, from = laserFrom(L), aim = { yaw: 0, pitch: 0, reach: 0, dx: 0, dy: 0, dz: 0 }, rgb = [0, 0, 0];
     const tiles = [];
@@ -326,12 +330,22 @@
     const e0 = ROOMS.edgeEl(L, 0) / DEG;
     // The planned colours of the floor's and the ball's lights, which the beat and the drop scale.
     const floorRgb = built.lights[2].slice(4, 7), ballRgb = built.lights[3].slice(4, 7);
-    let next = DROP_FIRST, dropT = -1;
+    let next = DROP_FIRST, dropT = -1, beat = 0, rate = 1 / BEAT, lastStep = 0, hit = 1;
+    const radio = BL.timechainPartyRadio.create(), heard = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 };
     const setLight = (lights, i, r, g, b) => { const o = i * 8; lights[o + 4] = r; lights[o + 5] = g; lights[o + 6] = b; };
     return {
       update(dt, t) {
-        const beat = t / BEAT, step = Math.floor(beat), kick = Math.exp(-(beat - step) * 6);
-        if (t >= next) { next += DROP_EVERY; dropT = 0; }
+        // The room's beat: its own steady one, or eased onto the music's tempo and phase; it never runs backward, so
+        // the floor never steps back a ring. Between kicks the beat lights only as hard as the music hits now.
+        radio.sample(heard);
+        rate += ((heard.live ? heard.bpm / 60 : 1 / BEAT) - rate) * Math.min(1, dt * TEMPO_RATE);
+        let move = rate * dt;
+        if (heard.live) { const off = heard.phase - (beat - Math.floor(beat)); move += (off - Math.round(off)) * Math.min(1, dt * PHASE_RATE); }
+        beat += Math.max(0, move);
+        hit += ((heard.live ? 0.35 + 0.65 * heard.level : 1) - hit) * Math.min(1, dt * TEMPO_RATE);
+        const step = Math.floor(beat), kick = Math.exp(-(beat - step) * 6) * hit;
+        if (t >= next && step !== lastStep && step % BAR === 0) { next = t + DROP_EVERY; dropT = 0; }
+        lastStep = step;
         if (dropT >= 0 && (dropT += dt / DROP_TIME) >= 1) dropT = -1;
         const d = dropT, dropping = d >= 0, boom = dropping ? 1 - d : 0;
         // The floor: each ring a band colour, stepping outward a ring every beat and pulsing; in a drop, a wave of the
@@ -384,10 +398,13 @@
         }
       },
       tap(owner, hud) {
+        if (owner.kind === "booth" || owner.kind === "decks" || owner.kind === "speaker") { hud.toast(radio.words()); return true; }
         if (owner.kind !== "live") return false;
         hud.toast("The latest block, from mempool.space · the bass drops on every one");
         return true;
-      }
+      },
+      get stats() { return radio.stats; },
+      dispose() { radio.dispose(); }
     };
   };
   BL.timechainRoomKinds.party = { plan, animate };

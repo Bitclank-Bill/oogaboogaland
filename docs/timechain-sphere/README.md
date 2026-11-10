@@ -41,7 +41,7 @@ Byte-level exception: the portable single file (`oogaboogaland.html`) and the so
 | 0 | Planetarium: tonight's sky over London from reclining seats round the star projector | 8 m |
 | 1 | Conference Room: the round table for eight under live block and mining charts; the one room that locks | 10.5 m |
 | 2 | Low Time Preference Temple: a meditation temple round the Satoshi statue | 15 m |
-| 3 | Block Party: an LED dance floor under a dome-wide light show | 13.5 m |
+| 3 | Block Party: an LED dance floor under a dome-wide light show, EDM Sessions playing live and the lights on its beat | 13.5 m |
 | 4 | Fireside Lounge: sofas round a fire pit under the Milky Way | 9 m |
 | 5 | Proof of Work-out: exercise bikes facing a mountain sunrise | 12 m |
 | 6 | The Observatory: a telescope under a slit to the night sky | 12 m |

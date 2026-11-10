@@ -20365,6 +20365,50 @@ const modelResidencyChecks = BL => {
     JSON.stringify({ kept, dropped, caught }));
 };
 
+// Regression: the Block Party's beat once came from a spectrum read once a drawn frame, and the hold of 60 frames a
+// second on a grid of 100 onsets a second favoured some tempos (a house track at 126 read as 150); a bassline's
+// off-beat figure read as 4/3 of the beat; and beatless noise could pass for one. Kicks at 128 BPM through the page's
+// own low-pass, meter and tracker lock to the same beat at 60 and 144 frames a second, and noise and silence never do.
+const partyRadioChecks = async () => {
+  const context = { window: { BL: {} } };
+  runInNewContext(await readFile(new URL("../src/js/timechain-party-radio.js", import.meta.url), "utf8"), context);
+  const P = context.window.BL.timechainPartyRadio, SR = 48000, BPM = 128, T0 = 0.2, SECS = 12;
+  let seed = 9; const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  // A kick (a falling sine) on every beat over a steady bass tone, or the tone and noise alone, low-passed as the page's
+  // BiquadFilterNode is.
+  const track = (kicks, noise) => {
+    const x = new Float32Array(SECS * SR), beat = 60 / BPM, w = 2 * Math.PI * 150 / SR, al = Math.sin(w) / Math.SQRT2, c = Math.cos(w), a0 = 1 + al;
+    const b0 = (1 - c) / 2 / a0, b1 = (1 - c) / a0, a1 = -2 * c / a0, a2 = (1 - al) / a0;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) {
+      const t = i / SR, since = ((t - T0) % beat + beat) % beat;
+      const v = (kicks ? 0.8 * Math.sin(2 * Math.PI * (50 + 80 * Math.exp(-since / 0.02)) * since) * Math.exp(-since / 0.12) : 0) + 0.09 * Math.sin(2 * Math.PI * 110 * t) + noise * (rnd() * 2 - 1);
+      const y = b0 * v + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = v; y2 = y1; y1 = y; x[i] = y;
+    }
+    return x;
+  };
+  // The track delivered a frame at a time, as the page's analyser holds it, with what the room would read each frame.
+  const play = (pcm, fps) => {
+    const m = P.meter(SR), tr = P.tracker(SR / m.block), wave = new Float32Array(8192), out = {}, errs = [];
+    let firstLive = -1, live = 0, frames = 0;
+    for (let f = 1; f / fps * SR <= pcm.length; f++) {
+      const t = f / fps, end = Math.floor(t * SR);
+      for (let i = 0; i < wave.length; i++) { const k = end - wave.length + i; wave[i] = k >= 0 ? pcm[k] : 0; }
+      m.take(wave, end, tr); tr.read(t, out);
+      if (t < 6) continue;
+      frames++;
+      if (!out.live) continue;
+      live++; if (firstLive < 0) firstLive = t;
+      let e = out.phase - (((t - T0) * BPM / 60) % 1 + 1) % 1; e -= Math.round(e); errs.push(Math.abs(e) * 60000 / BPM);
+    }
+    return { live: live / frames, bpm: +out.bpm.toFixed(2), err: errs.length ? +(errs.reduce((a, b) => a + b, 0) / errs.length).toFixed(1) : null };
+  };
+  const kicks = track(true, 0.05), at60 = play(kicks, 60), at144 = play(kicks, 144), noise = play(track(false, 0.3), 60), silence = play(new Float32Array(SECS * SR), 60);
+  record("party radio: kicks lock at their tempo and on their beat alike at 60 and 144 frames a second, and noise and silence never lock",
+    at60.live === 1 && at144.live === 1 && Math.abs(at60.bpm - BPM) < 1 && Math.abs(at144.bpm - at60.bpm) < 0.3 && at60.err < 30 && at144.err < 30
+      && noise.live === 0 && silence.live === 0, JSON.stringify({ at60, at144, noise, silence }));
+};
+
 // Rule: a room id is validated at every boundary, and the three sizes are one design whose doorway, arrival, button and
 // chairs keep human size while the architecture scales and the table grows to seat 4, 8 and 12.
 const timechainRoomChecks = async () => {
@@ -24548,10 +24592,10 @@ scene("dsb", { label: "dsb feeds and audio", url: hubPage(src, "scene=dsb"), ste
   } finally { await b.evaluate(`__entranceAudio?.dispose(); delete window.__entranceAudio; AudioContext.prototype.createBufferSource = __dsbSoundProbe.original; delete window.__dsbSoundProbe;`); }
 } }] });
 scene("dsb", { label: "dsb shared player", url: hubPage(dist), steps: [{ name: "dsb shared player", why: "contract: preserve DSB scene behavior independently of the hub entrance", run: async (b) => {
-  record("dsb compatibility: built CSP preserves exactly the weather and DSB network permissions", await b.evaluate(`(() => {
+  record("dsb compatibility: built CSP preserves exactly the weather, DSB and Block Party network permissions", await b.evaluate(`(() => {
     const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]').content;
     const sources = name => policy.split(";").map(s => s.trim().split(/\\s+/)).find(s => s[0] === name).slice(1).sort().join("|");
-    return sources("connect-src") === ["'self'", "https:", "wss:"].sort().join("|") && sources("worker-src") === "'self'" && sources("media-src") === ["'self'", "https://stream.noderunnersradio.com"].sort().join("|") && !policy.includes("unsafe-");
+    return sources("connect-src") === ["'self'", "https:", "wss:"].sort().join("|") && sources("worker-src") === "'self'" && sources("media-src") === ["'self'", "https://stream.noderunnersradio.com", "https://s2.radio.co"].sort().join("|") && !policy.includes("unsafe-");
   })()`));
   record("dsb registry: c10 is B.C.A.'s hub office and DSB is internally addressable without a cave", await b.evaluate(`(BL.caves.slots.find(s => s.id === "c10").status === "open" && BL.caves.slots.find(s => s.id === "c10").scene === null && BL.caves.slots.find(s => s.id === "c10").place === "bca") && !BL.caves.slots.some(s => s.scene === "dsb") && !!BL.scenes.dsb`));
   record("dsb compatibility: hub keeps the Agent module without spawning a standalone gorilla", await b.evaluate(`__ooga.scene === "hub" && !__ooga.agent && !!BL.agent && !!BL.characters.get("rules-without-rulers") && Object.hasOwn(__ooga, "agent") && Object.hasOwn(__ooga, "dsb") && !__ooga.dsb`));
@@ -30721,7 +30765,7 @@ record("character visibility source bakes: ownership wrappers share exact immuta
   const clearance = claimClearanceProof();
   record("hub footprint clearance: conservative rejection preserves circular boundaries, live reservations and exceptional numbers", clearance.failures === 0 && clearance.cases >= 4000, JSON.stringify(clearance));
   await cloudHopperFailureChecks(BL);
-  await deferredLoadingChecks(); await doorReadyChecks(); await hudNoticeChecks(); await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await oogatronReplayChecks(); await mirrorRippleChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await timechainRoomChecks(); await timechainBlockChecks(); await environmentSoundChecks(); await weatherStepChecks(); await hammockChecks(); await poolLayoutChecks(); await gameRulesChecks(); await highscoreClientChecks(); await ghostHuntChecks(); await donationClientChecks(); await donationResumeCheck(); await poolWildlifeChecks(); await totemFeedChecks();
+  await deferredLoadingChecks(); await doorReadyChecks(); await hudNoticeChecks(); await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await oogatronReplayChecks(); await mirrorRippleChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await dsbSharedDataChecks(); await timechainDataChecks(); await timechainRoomChecks(); await partyRadioChecks(); await timechainBlockChecks(); await environmentSoundChecks(); await weatherStepChecks(); await hammockChecks(); await poolLayoutChecks(); await gameRulesChecks(); await highscoreClientChecks(); await ghostHuntChecks(); await donationClientChecks(); await donationResumeCheck(); await poolWildlifeChecks(); await totemFeedChecks();
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
