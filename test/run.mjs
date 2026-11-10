@@ -6658,14 +6658,14 @@ const hammockChecks = async () => {
     if (parts.chukTrail) R.crew.poseEquipment(cave, true, 1.1);
     const trailsHidden = !parts.chukTrail || parts.chukTrail.every(n => !n.visible);
     const lookPeer = { ...peer, visual: new Int16Array(17) };
-    parts.head.rotation.x = 0.65; lookPeer.visual[0] = 65;
+    parts.head.rotation.x = 0.65; parts.head.rotation.y = 0.9; lookPeer.visual[0] = 65;
     ham.poseRemote(cave, feet, lookPeer, true);
-    const lookedUp = parts.head.rotation.x === 0.65;
+    const lookedUp = parts.head.rotation.x === 0.65 && parts.head.rotation.y === 0.9;
     parts.head.rotation.x = -0.45; lookPeer.visual[0] = -45;
     ham.poseRemote(cave, feet, { ...lookPeer, rest: [0, 3, 128, 0, 0, 0] }, true);
     const lookedDown = parts.head.rotation.x === -0.45;
     ham.poseRemote(cave, feet, peer, true);
-    const legacyNeutral = parts.head.rotation.x === 0;
+    const legacyNeutral = parts.head.rotation.x === 0 && parts.head.rotation.y === 0;
     ham.poseRemote(cave, feet, peer, false);
     const hidden = !holder.visible && !flame.visible;
     cave.weapon.primaryOwned = cave.weapon.secondaryOwned = cave.jetpackOwned = false;
@@ -6724,7 +6724,7 @@ const hammockChecks = async () => {
     const dropped = !cave.restEquipment && !droppedHolder.parent && !cave.hammockRest;
     gearRows.push({ handle, actual, laid, steadyLayout, localMatchesRemote, localReleased, hidden, absent, entering, exiting, restored, dropped, trailsStarted, trailsHidden, trailsResumed, lookedUp, lookedDown, legacyNeutral });
   }
-  record("hub hammock: the actual club, authored axe or hockey stick, rifle and owned pack stay together under rest, laid flat under the cloth the same way in the world whatever rounds, reload pop, flash, flame or nunchaku state each page parks them in, by the page lying in it and another page's remote copy alike, including late entry/exit poses; absent gear and active twirl afterimages stay hidden, and get-up or removal restores attachments and the current twirl without changing ammo; modern rest/exit retains shared up/down head look while legacy peers remain neutral",
+  record("hub hammock: the actual club, authored axe or hockey stick, rifle and owned pack stay together under rest, laid flat under the cloth the same way in the world whatever rounds, reload pop, flash, flame or nunchaku state each page parks them in, by the page lying in it and another page's remote copy alike, including late entry/exit poses; absent gear and active twirl afterimages stay hidden, and get-up or removal restores attachments and the current twirl without changing ammo; modern rest/exit retains the shared head look, up, down and to the side, while legacy peers remain neutral",
     gearRows.every(row => Object.entries(row).every(([key, value]) => key === "handle" || value)), JSON.stringify(gearRows));
   // Every Ooga on the roster as the live crew builds it (its hashed or authored traits, so its own height scales its
   // club, rifle and jetpack), its own pack or the hub's put on as the crew puts it on, stowed by a resting peer's pose.

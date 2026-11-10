@@ -3305,6 +3305,15 @@
       }
       syncHeadVisibility(cave);
     };
+    // A body lying in a hammock keeps its own head still, since the eye's frame is read from it (`applyLyingView`), so the
+    // first-person look it gives is written here for the room (crew.js `visualState`); neutral in any other view.
+    const shareRestLook = () => {
+      const cave = player();
+      if (!cave?.camp.seat?.lying) return;
+      const looking = closeWanted && lyingView === 1;
+      cave.restLookYaw = looking ? lyingYaw : 0;
+      cave.restLookPitch = looking ? lyingPitch : 0;
+    };
     const update = (dt) => {
       arriving = null;
       if (ctx.carry && player()) remember(player());
@@ -3312,6 +3321,7 @@
       const blending = handoff.active;
       if (blending) { handoff.restore(); solvingHandoff = true; }
       updateCamera(dt);
+      shareRestLook();
       solvingHandoff = false;
       if (handoff.apply(dt) || blending) finishHandoffView(dt);
     };
