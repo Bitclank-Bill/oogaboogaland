@@ -7259,12 +7259,218 @@ const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
 
 // The games' rules and saves in Node, under the same localStorage the page uses: the mine's seeded sim,
 // every game's stored best, the tickets a machine spends and the jackpot wheel's odds.
-const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-sim", "highscore-rules", "game", "cloud-hopper-levels"];
+const GAME_SOURCES = ["math", "grapple", "contributor-identities", "donations", "rocket-parts", "mine-rigs", "mine-sim", "block-wire", "block-sim", "block-live", "highscore-rules", "game", "cloud-hopper-levels"];
 const gameRulesChecks = async () => {
   const store = new Map();
   const context = { window: {}, URLSearchParams, location: { search: "" }, localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) } };
   for (const name of GAME_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const BL = context.window.BL, M = BL.mineSim, R = BL.mineRigs;
+  {
+    const S = BL.blockSim, W = BL.blockWire, L = BL.blockLive;
+    const still = () => ({ x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 });
+    const emitted = [...(await readFile(new URL("../src/js/block-sim.js", import.meta.url), "utf8")).matchAll(/emit\(sim, "([a-z0-9]+)"/g)].map(m => m[1]);
+    const missing = [...new Set(emitted)].filter(t => !L.EVENT_TYPES.includes(t));
+    record("block live: every event the rules emit has a wire code", missing.length === 0, missing.join(","));
+    const lobby = (reg, ready) => ({ phase: "lobby", reg, ready });
+    record("block live: a round starts itself only with two humans all ready; alone is a choice for the one registered",
+      !W.canStart(lobby([1], [1])) && !W.canStart(lobby([1, 2], [1, 0])) && W.canStart(lobby([1, 2], [1, 1])) && W.canStartAlone(lobby([1], [0]), 1) && !W.canStartAlone(lobby([1], [0]), 2) && !W.canStartAlone(lobby([1, 2], [0, 0]), 1) && !W.canStartAlone({ phase: "play", reg: [1], ready: [0] }, 1));
+    record("block live: the wire's maps and the cap match the rules", W.MAPS.every(m => S.ARENAS[m]) && W.MAPS.length === Object.keys(S.ARENAS).length && W.MAX_SIDE <= S.CONFIG.MAX_SIDE && W.MAX_SIDE === 4);
+    // Seat maps: own Ooga at actor 0, own side first, for every seat; both directions invert each other.
+    let seatsOk = true;
+    for (const size of [1, 2, 3, 4]) for (let me = -1; me < size * 2; me++) {
+      const m = L.seatMap(size, me);
+      if (me >= 0 && m.toLocal[me] !== 0) seatsOk = false;
+      if (me >= 0 && m.team !== (me < size ? "blue" : "red")) seatsOk = false;
+      for (let s = 0; s < size * 2; s++) if (m.toSeat[m.toLocal[s]] !== s || (m.toLocal[s] < size) !== ((s < size) === (me < size))) seatsOk = false;
+    }
+    record("block live: a seat maps to a page's own Ooga at actor 0, own side first", seatsOk);
+    // A played 4v4: host at seat 5, a guest at seat 2 and a deck page agree on the world, under the frame limit.
+    const hostMap = L.seatMap(4, 5), guestMap = L.seatMap(4, 2), deckMap = L.seatMap(4, -1);
+    const host = S.create({ team: hostMap.team, seed: 4242, size: 4, map: "fort", prep: 0 }), guest = S.create({ team: guestMap.team, seed: 4242, size: 4, map: "fort", prep: 0 }), deck = S.create({ team: deckMap.team, seed: 4242, size: 4, map: "fort", prep: 0 });
+    const buf = new DataView(new ArrayBuffer(W.FRAME_MAX)), input = still();
+    let biggest = 0, total = 0, frames = 0;
+    for (let i = 0; i < 2400; i++) {
+      S.tick(host, S.CONFIG.STEP, input);
+      if (i % 12 === 0) { const n = L.encode(host, hostMap, 7, 1, ++frames, buf); biggest = Math.max(biggest, n); total += n; host.eventCount = 0; }
+    }
+    const nextG = new Float32Array(32), nextD = new Float32Array(32), n = L.encode(host, hostMap, 7, 1, frames + 1, buf);
+    const copy = new DataView(buf.buffer.slice(0, n));
+    L.decode(copy, guest, guestMap, nextG); L.decode(copy, deck, deckMap, nextD);
+    let agree = true;
+    for (let s = 0; s < 8; s++) {
+      const a = host.actors[hostMap.toLocal[s]], g = guestMap.toLocal[s], d = deckMap.toLocal[s];
+      if (Math.abs(nextG[g * 4] - a.x) > 0.02 || Math.abs(nextD[d * 4 + 1] - a.z) > 0.02 || guest.actors[g].splat !== Math.round(a.splat * 10) / 10) agree = false;
+    }
+    record("block live: a 4v4 frame reaches a guest and the watch deck intact and under the limit", agree && biggest > 0 && biggest <= W.FRAME_MAX && guest.score.blue === host.score.blue && Math.abs(guest.time - host.time) < 0.01 && host.time > 19 && (() => {
+      host.actors[hostMap.toLocal[3]].captures = 2;
+      const m = L.encode(host, hostMap, 7, 1, frames + 2, buf);
+      L.decode(new DataView(buf.buffer.slice(0, m)), deck, deckMap, nextD);
+      return deck.actors[deckMap.toLocal[3]].captures === 2;
+    })(), `max ${biggest}, avg ${Math.round(total / frames)} bytes`);
+    context.blockFrameBytes = { biggest, average: Math.round(total / frames) };
+    // 1v1 is a real match with bots and flags, and a solo step is untouched by the new input table.
+    const one = S.create({ team: "blue", seed: 9, size: 1, map: "fort", prep: 0 });
+    one.actors[1].bot = true;
+    for (let i = 0; i < 1200; i++) S.tick(one, S.CONFIG.STEP, still());
+    const solo = (t) => { const s = S.create({ team: "blue", seed: 77, size: 3, map: "town", prep: 1 }); if (t) s.inputs = null; for (let i = 0; i < 1800; i++) S.tick(s, S.CONFIG.STEP, still()); return s.actors.map(a => a.x + a.z).join(","); };
+    record("block live: 1v1 runs, and a solo round is unchanged", one.actors.length === 2 && one.time > 9 && solo(false) === solo(true));
+    // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
+    const session = (selfId) => {
+      const subs = new Set(), frames_ = new Set(), sent = [], bins = [];
+      const net = { state: { selfId }, serverNow: () => context.clock + (context.skew || 0), subscribeBf: f => { subs.add(f); return () => subs.delete(f); }, subscribeBfFrame: f => { frames_.add(f); return () => frames_.delete(f); }, sendBf: m => { sent.push(m); return true; }, sendBfInput: m => { sent.push({ ...m }); return true; }, sendBfFrame: b => { bins.push(b.slice().buffer); } };
+      const seen = { sim: null, started: 0 }, live = L.create({ net, now: () => context.clock, resolveBody: () => {}, onMatch: () => {}, onHost: () => { seen.tookOver = true; },
+        onStart: (m, role, map) => { seen.started++; seen.role = role; const s = S.create({ team: map.team, seed: m.seed, size: m.size, map: "fort", prep: 0 }); seen.sim = s; S.reset(s, m.seed); live.bind(s); } });
+      return { live, sent, bins, seen, tell: m => { for (const f of subs) f({ k: "match", ...m }); }, input: m => { for (const f of subs) f({ k: "input", ...m }); }, frame: b => { for (const f of frames_) f(b); } };
+    };
+    { const a = session(1); a.live.register(1); record("block live: registering sends the map picked on the board", a.sent.length === 1 && a.sent[0].k === "reg" && a.sent[0].m === 1, JSON.stringify(a.sent)); a.live.dispose?.(); }
+    context.clock = 1000;
+    const match = { s: "0123456789abcdef", phase: "play", size: 2, map: 0, reg: [], ready: [], seats: [10, 20, 30, 0], host: 10, epoch: 1, tag: 99, seed: 5 };
+    const A = session(10), B = session(20), D = session(40);
+    A.tell(match); B.tell(match); D.tell(match);
+    const a = A.seen.sim, b = B.seen.sim, dk = D.seen.sim;
+    record("block live: roles and NPC fill from the seats", A.seen.role === "host" && B.seen.role === "guest" && D.seen.role === "watch" && a.actors[3].bot === true && !a.actors[0].bot && !b.actors[0].bot);
+    const mv = A.live.map.toLocal[1], before = a.actors[mv].x;
+    A.input({ from: 1, s: match.s, q: 1, x: 1000, z: 0, f: 0, b: 1 });
+    for (let i = 0; i < 120; i++) { context.clock += 1000 / 120; A.live.hostStep(); S.tick(a, S.CONFIG.STEP, still()); }
+    record("block live: a guest's input drives its Ooga on the host", Math.abs(a.actors[mv].x - before) > 0.5, `moved ${a.actors[mv].x - before}`);
+    A.input({ from: 3, s: match.s, q: 2, x: 1000, z: 0, f: 0, b: 0 });
+    record("block live: an NPC seat cannot be driven", !A.live.map || a.inputs[A.live.map.toLocal[3]] === null);
+    A.live.after(0.2, still());
+    record("block live: the host sends a frame and guests apply it", A.bins.length === 1 && (B.frame(A.bins[0]), D.frame(A.bins[0]), true) && Math.abs(b.flags.blue.x - a.flags.blue.x) < 0.1);
+    const deckAct = D.live.act === undefined ? false : D.live.role === "watch" && (() => { D.live.after(0.05, still()); return D.sent.filter(m => m.k === "input" || m.t === "bf").length === 0; })();
+    record("block live: the watch deck sends no input", deckAct);
+    record("block live: no game action works from the chairs", D.live.act("drop", 0) === false && D.sent.filter(m => m.k === "input").length === 0);
+    B.live.after(1, still());
+    record("block live: a guest sends bounded input", B.sent.some(m => m.k === "input" && m.q === 0 && m.s === match.s));
+    const leftA = { ...match, seats: [10, 0, 30, 0] };
+    A.tell(leftA); record("block live: a leaver's seat falls back to an NPC", a.actors[mv].bot === true);
+    const handed = { ...match, seats: [0, 20, 30, 0], host: 20, epoch: 2 };
+    B.tell(handed);
+    record("block live: on handover the next page hosts from its last state", B.live.role === "host" && B.seen.tookOver === true && B.seen.sim.inputs !== null);
+    B.tell({ ...handed, phase: "lobby", reg: [20], ready: [0], seats: [] }); D.tell({ ...handed, phase: "lobby", reg: [20], ready: [0], seats: [] });
+    record("block live: the round's end returns everyone to the lobby role", B.live.role === "none" && D.live.role === "none");
+    A.live.dispose(); B.live.dispose(); D.live.dispose();
+    {
+      // Review regressions: handover with a hook in flight, every event reaching the wire, the last frame for viewers, hostile frames, demotion, the server clock.
+      context.clock = 5000;
+      const round2 = { s: "fedcba9876543210", phase: "play", size: 2, map: 0, reg: [], ready: [], seats: [11, 22, 0, 0], host: 11, epoch: 1, tag: 77, seed: 5 };
+      const H = session(11), G = session(22); H.tell(round2); G.tell(round2);
+      const gs = G.seen.sim; gs.actors[0].hk = 3; gs.actors[0].hookTarget = -1; gs.actors[1].hk = 5; gs.actors[1].hookTarget = -1;
+      let thrown = false; try { S.tick(gs, S.CONFIG.STEP, still()); } catch { thrown = true; }
+      record("block live: a hook in flight with no target would crash a promoted host (the bug's precondition)", thrown);
+      S.settleHooks(gs); let threw2 = false; try { S.tick(gs, S.CONFIG.STEP, still()); } catch { threw2 = true; }
+      G.tell({ ...round2, seats: [0, 22, 0, 0], host: 22, epoch: 2 }); gs.actors[0].hk = 3; gs.actors[0].hookTarget = -1;
+      record("block live: settling hooks on promotion keeps the round running", !threw2 && gs.actors[1].hk === 4 && gs.actors[1].hookTarget === -1 && G.live.role === "host");
+      G.tell({ ...round2, seats: [11, 22, 0, 0], host: 11, epoch: 3 });
+      record("block live: a host handed over to another page becomes a guest", G.live.role === "guest" && G.seen.sim.inputs === null);
+      const LH = session(31); LH.tell({ ...round2, tag: 78, s: "aaaaaaaaaaaaaaaa", seats: [31, 0, 0, 0], host: 31, epoch: 1 });
+      const hs = LH.seen.sim; LH.live.after(0.2, still());
+      hs.eventCount = 1; hs.events[0].type = "jump"; hs.events[0].team = "blue"; hs.events[0].actor = 0; hs.events[0].by = -1; hs.events[0].x = hs.events[0].y = hs.events[0].z = 1;
+      LH.live.after(0.01, still()); hs.eventCount = 0;
+      hs.eventCount = 1; hs.events[0].type = "land"; LH.live.after(0.2, still()); hs.eventCount = 0;
+      const seenSim = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 }), sameMap = L.seatMap(2, 0), fr = new DataView(LH.bins.at(-1));
+      L.decode(fr, seenSim, sameMap, new Float32Array(16));
+      record("block live: events from every frame since the last send reach the wire", seenSim.eventCount === 2 && seenSim.events[0].type === "jump" && seenSim.events[1].type === "land");
+      hs.over = true; hs.winner = "blue"; LH.live.after(0.01, still());
+      record("block live: the last frame of a round is always one viewers receive", new DataView(LH.bins.at(-1)).getUint32(12, true) % 2 === 0);
+      const good = new Uint8Array(LH.bins.at(-1)), corrupt = (fn) => { const c = good.slice(); fn(c); return new DataView(c.buffer); };
+      const viewSim = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 });
+      record("block live: a valid frame passes the hostile-frame check", L.validFrame(new DataView(good.buffer), viewSim, sameMap));
+      const bad = [corrupt(() => {}).buffer.slice(0, good.length - 3), corrupt(c => { c[W.FRAME_HEADER + 10] = 99; }).buffer, corrupt(c => { c[W.FRAME_HEADER + 21] = 200; }).buffer, corrupt(c => { c[good.length - 1] = 255; c[good.length - 11] = 200; }).buffer];
+      record("block live: truncated frames, bad enums and bad counts are refused", bad.every(b => !L.validFrame(new DataView(b), viewSim, sameMap)));
+      const before = viewSim.score.blue;
+      record("block live: a refused frame leaves the sim untouched", viewSim.score.blue === before && viewSim.eventCount === 0);
+      const C = session(41), cm = { s: "bbbbbbbbbbbbbbbb", phase: "countdown", size: 2, map: 0, reg: [41, 42], ready: [1, 1], seats: [41, 42, 0, 0], host: 41, epoch: 1, tag: 79, seed: 2, start: context.clock + 3000 };
+      C.tell(cm);
+      context.skew = 5000; C.live.lobbyTick(0.1); const goSkew = C.sent.some(m => m.k === "go");
+      context.skew = -5000; const C2 = session(43); C2.tell({ ...cm, seats: [43, 42, 0, 0], reg: [43, 42] }); C2.live.lobbyTick(0.1); const noGo = !C2.sent.some(m => m.k === "go");
+      context.skew = 0;
+      record("block live: the countdown ends on the room's clock, not the page's", goSkew && noGo);
+      for (const x of [H, G, LH, C, C2]) x.live.dispose();
+    }
+    {
+      const scene = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), opens = scene.lastIndexOf("    showBoard();\n");
+      record("regression: a chairs visit survives the board the scene opens on, so the doorway lands in the chairs", opens > 0 && scene.indexOf("watchVisit = ctx.place === WIRE.WATCH_DECK_PLACE;", opens) > opens);
+      record("regression: a chairs visit is seated at once, room or no room, and nothing on the deck needs the room", scene.indexOf("if (watchVisit) showDeck();", opens) > opens && scene.includes("if (round) round.watchFeed(true);") && scene.includes("if (round) round.after(dt, move); sim.eventCount = 0;"));
+      record("regression: landing in the chairs plays its own cue once a visit, not on each new round", scene.includes("if (!chairsGreeted) { chairsGreeted = true; audio.cues.seat(); }") && (await readFile(new URL("../src/js/block-audio.js", import.meta.url), "utf8")).includes("seat: () =>"));
+      record("regression: only a seated player's own actor is called You; a viewer sees that actor's real name", scene.includes('if (i === 0 && !onDeck()) return "You";') && !scene.includes('if (i === 0) return "You";'));
+    }
+    {
+      const src = await readFile(new URL("../src/js/block-sim.js", import.meta.url), "utf8"), scene = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), idLike = /^(a|m|best|holder|me|o|target|t|r)\.id$|^id$/;
+      const odd = L.ACTOR_EVENTS.filter(t => [...src.matchAll(new RegExp('emit\\(sim, "' + t + '", ([^,]+), ([^,]+),', "g"))].some(m => !idLike.test(m[2].trim())));
+      record("block live: events the wire demands an actor for are only ever raised with a real Ooga", odd.length === 0, odd.join(","));
+      const frameOf = (fix) => { const h = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 }), m = L.seatMap(2, 0), b = new DataView(new ArrayBuffer(W.FRAME_MAX)); fix(h); return new DataView(b.buffer.slice(0, L.encode(h, m, 1, 1, 1, b))); };
+      const viewS = S.create({ team: "blue", seed: 1, size: 2, map: "fort", prep: 0 }), viewM = L.seatMap(2, 0);
+      const wallet = (state, owner, stuck) => (h) => { Object.assign(h.wallets[0], { live: true, state, owner, stuck, team: "blue", look: 0, x: 0, y: 0, z: 0, fuse: 1 }); };
+      const event = (type, actor) => (h) => { h.eventCount = 1; Object.assign(h.events[0], { type, team: "blue", actor, by: -1, x: 0, y: 0, z: 0 }); };
+      record("block live: a frame naming no Ooga where one is required is refused; legal no-Ooga events pass", !L.validFrame(frameOf(wallet(0, -1, -1)), viewS, viewM) && !L.validFrame(frameOf(wallet(3, 0, -1)), viewS, viewM) && L.validFrame(frameOf(wallet(1, -1, -1)), viewS, viewM) && !L.validFrame(frameOf(event("pickup", -1)), viewS, viewM) && L.validFrame(frameOf(event("go", -1)), viewS, viewM));
+      record("regression: Enter, Space and Play share one menu helper that does nothing from the chairs and leaves a live results screen for the shared menu", scene.includes('if (e.key === "Enter" && phase !== "play") beginFromMenu();') && scene.includes('return beginFromMenu();') && /beginFromMenu = \(\) => \{\s*if \(onDeck\(\)\) return false;\s*if \(phase === "results" && kept\) \{ showBoard\(\); return true; \}/.test(scene));
+      record("regression: the zoom keys work from the chairs, ahead of the check that ends key handling outside play", scene.indexOf('if (onDeck()) { if (e.key === "+"') > 0 && scene.indexOf('if (onDeck()) { if (e.key === "+"') < scene.indexOf('if (phase !== "play" || e.repeat'));
+      record("regression: the last frame's winning capture is heard before the reset, and a thrown event can't leave the queue full", /renderLive = \(m\) => \{[\s\S]{0,200}hearCaptures\(\)/.test(scene) && scene.includes("} finally { sim.eventCount = 0; }"));
+      record("regression: chairs-full clears out of play and a no-room visit has no dead Register button", scene.includes("if (!play) chairsFull = false;") && scene.includes("el.watchReg.hidden = !round;"));
+    }
+    const wentTo = []; L.openWatchDeck((scene, place) => wentTo.push(scene, place));
+    const idle = session(50); idle.tell({ phase: "empty" }); idle.live.after(0.2, still());
+    record("block live: the watch-deck entry opens the game on the deck, and with no round a page sends nothing", wentTo[0] === "block" && wentTo[1] === W.WATCH_DECK_PLACE && idle.live.role === "none" && idle.sent.length === 0 && idle.bins.length === 0);
+    idle.live.dispose();
+    {
+      const viewerCtx = { window: { BL: { models: { box: () => ({}) } } } };
+      runInNewContext(await readFile(new URL("../src/js/block-viewer.js", import.meta.url), "utf8"), viewerCtx);
+      const V = viewerCtx.window.BL.blockViewer, node = (o = {}) => ({ position: { x: 0, y: 0, z: 0 }, ...o, kids: [] }), arena = { L: 20 }, kids = [], cam = { position: {}, target: {} };
+      const set = (v, x, y, z) => { v.x = x; v.y = y; v.z = z; };
+      const chairs = V.buildChairs(node, (p, ...c) => { p.kids.push(...c); kids.push(...c); }, node(), arena);
+      V.look(cam, arena, 0, 0, set);
+      const opts = {}; for (const k of ["clear", "horizon", "zenith", "sky"]) opts[k] = new Float32Array(3); V.white(opts);
+      record("block live: the viewing chairs are a row of plain chairs above the field, on a white backdrop", kids.length === 11 && chairs.position.y > 5 && cam.position.y > cam.target.y && [...opts.sky].every(v => v === 1) && opts.clouds === 0 && opts.bloomStrength === 0 && opts.sea === null);
+      // The default view holds every map's whole island; measured by projecting its rim through the camera.
+      const fits = (A, aspect) => {
+        const f = {}; V.frame(A, f);
+        const dx = 0, dy = -Math.sin(f.down), dz = -Math.cos(f.down), ux = 0, uy = Math.cos(f.down), uz = -Math.sin(f.down);
+        const tanV = Math.tan(V.FOV / 2), tanH = tanV * aspect;
+        for (let i = 0; i < 64; i++) {
+          const a = i / 64 * Math.PI * 2, x = A.W * Math.cos(a), y = -f.y, z = A.L * Math.sin(a) - f.z;
+          const depth = dx * x + dy * y + dz * z, up = ux * x + uy * y + uz * z, side = x;
+          if (depth <= 0 || Math.abs(up / depth) > tanV * 1.02 || Math.abs(side / depth) > tanH) return false;
+        }
+        return true;
+      };
+      const all = Object.keys(S.ARENAS).every(k => fits(S.ARENAS[k], 16 / 9));
+      const seats = Object.keys(S.ARENAS).every(k => { const f = V.frame(S.ARENAS[k], {}); return f.y < 46 && f.y > 0; });
+      record("block live: the chairs sit closer and still hold the whole field at the default view", all && seats);
+      record("block live: viewer zoom stops at the default view and a maximum, eases, and is direct under Calm", V.zoomBy(1, 0.5) === 1 && V.zoomBy(3, 9) === V.ZOOM_MAX && V.clampZoom(2) === 2 && V.easeZoom(1, 2, 0.05, false) > 1 && V.easeZoom(1, 2, 0.05, false) < 2 && V.easeZoom(1, 2, 0.05, true) === 2);
+      const seen = { total: -1 }, capSim = { score: { blue: 1, red: 2 } };
+      const onSit = V.newCaptures(capSim, seen), none = V.newCaptures(capSim, seen);
+      capSim.score.blue = 2; const one = V.newCaptures(capSim, seen), again = V.newCaptures(capSim, seen);
+      capSim.score.red = 4; const skippedFrames = V.newCaptures(capSim, seen);
+      capSim.score.blue = capSim.score.red = 0; const newRound = V.newCaptures(capSim, seen);
+      capSim.score.red = 1; const firstOfRound = V.newCaptures(capSim, seen);
+      const arrive = { total: -1 }, midRound = { score: { blue: 0, red: 0 } };
+      const beforeFrame = V.newCaptures(midRound, arrive, false);
+      midRound.score.blue = 2; midRound.score.red = 1;
+      const firstFrame = V.newCaptures(midRound, arrive, true);
+      midRound.score.red = 2; const nextCapture = V.newCaptures(midRound, arrive, true), repeat = V.newCaptures(midRound, arrive, true);
+      record("block live: arriving mid-round plays nothing for captures already on the board, then one per new capture", beforeFrame === 0 && firstFrame === 0 && nextCapture === 1 && repeat === 0);
+      record("block live: a viewer hears each capture once, from the score, across skipped frames and new rounds", onSit === 0 && none === 0 && one === 1 && again === 0 && skippedFrames === 2 && newRound === 0 && firstOfRound === 1);
+      const statSeen = [], steals = { was: [], count: [], home: { blue: false, red: false } };
+      const mkSim = (c, h, carry, flags = { blue: "home", red: "home" }) => ({ flags: { blue: { state: flags.blue }, red: { state: flags.red } }, actors: c.map((n, i) => ({ id: i, captures: n, hits: h[i], team: i < 2 ? "blue" : "red", carrying: carry[i] || null })) });
+      const zero = [0, 0, 0, 0];
+      V.trackSteals(mkSim(zero, zero, [null, null, null, null]), steals); // the first look only learns the flags
+      V.trackSteals(mkSim(zero, zero, ["red", null, null, "blue"], { blue: "carried", red: "carried" }), steals); // two steals off the stands
+      V.trackSteals(mkSim(zero, zero, ["red", null, null, "blue"], { blue: "carried", red: "carried" }), steals); // held: no new steal
+      V.trackSteals(mkSim(zero, zero, [null, "red", null, null], { blue: "dropped", red: "carried" }), steals); // a pass or re-grab: not off the stand, and not a steal
+      V.trackSteals(mkSim(zero, zero, [null, null, null, null], { blue: "home", red: "home" }), steals);
+      V.trackSteals(mkSim(zero, zero, ["red", null, null, null], { blue: "home", red: "carried" }), steals); // off the stand again
+      const firstRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
+      const steadyRows = V.statRows(mkSim([1, 0, 3, 1], [0, 2, 0, 5], [null, null, null, null]), steals, statSeen);
+      steals.count.length = 0; const emptiedRows = V.statRows(mkSim([0, 0, 0, 0], [0, 0, 0, 0], [null, null, null, null]), steals, statSeen);
+      record("block live: the stats table counts captures, stolen and splats, sorted by captures; a steal is only off the stand, not a pass or re-grab; a new round empties it",
+        JSON.stringify(firstRows.map(r => [r.id, r.captures, r.stolen, r.hits])) === JSON.stringify([[2, 3, 0, 0], [0, 1, 2, 0], [3, 1, 1, 5], [1, 0, 0, 2]]) && steadyRows === null && emptiedRows.length === 0);
+      const board = { blue: -1 }, boardSim = { score: { blue: 2, red: 1 }, prep: 0, time: 75.4, target: 3 };
+      const changed = V.fillBoard(boardSim, board), still2 = V.fillBoard(boardSim, board);
+      boardSim.prep = 3.5;
+      record("block live: the scoreboard reads match state and repaints only on a change", changed && !still2 && board.blue === 2 && board.red === 1 && board.clock === "1:15" && board.goal === "First to 3" && V.fillBoard(boardSim, board) && board.clock === "Build 4");
+    }
+  }
   {
     const g = BL.game.create({ catalog: [] });
     g.recordCloudHopper("bitcoin-bill", 1, 50000, 4);
@@ -8093,7 +8299,7 @@ const gameRulesChecks = async () => {
     // The jackpot wheel, from arcade-models.js and its scene half on the builders they load with: the house wins slowly, and every
     // wedge, from a turn at rest and one far round after many spins, stops under the clapper wherever in it the spin
     // aims, after its whole turns and less than one more.
-    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "arcade-scene-models"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
+    for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
     // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
     const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});
@@ -8183,20 +8389,50 @@ const gameRulesChecks = async () => {
     record("arcade scores: every carnival and retro machine carries its own permanent registered ID, including duplicates; excluded worlds have no score contract",
       Object.keys(machines).length === 16 && ids.length === 26 && new Set(ids).size === 26 && registered
         && L.frames.hockey.length === 3 && ["ghost", "poker", "dsb", "hockey"].every(id => BL.highscoreRules.get(id) === null), JSON.stringify({ registered, machines: ids }));
-    // Block Frenzy adds a fifth stage slot, so nothing on the mezzanine may shift: each retro cabinet still plays its
-    // own retro game under that game's registered ID, in order after the stage's slots; every cabinet game is on
-    // exactly one cabinet (Rally on its service cabinet by the retro row, Cloud Hopper in Rally's old stage slot); a
-    // cabinet's machine ID, where it has one, is its own game's; and Block Frenzy, outside the shared registry, has none.
+    // Block Frenzy left the stage for its hall: the stage is back to rock's four cabinets on rock's arc and anchors, and
+    // Block Frenzy has no cabinet at all.
     const cabs = A.CABINETS, retroRows = cabs.filter(c => c.retro >= 0), stage = cabs.filter(c => c.retro < 0 && !c.service), first = retroRows[0].index;
     const retroOwn = retroRows.length === A.RETRO.length && first === stage.length && retroRows.every((c, k) => c.index === first + k && c.retro === k
       && c.game === -1 && c.scoreId === A.RETRO[k].scoreId && BL.highscoreRules.games[A.RETRO[k].id].machines.includes(c.scoreId));
     const gameOwn = A.GAMES.every((g, k) => cabs.filter(c => c.game === k).length === 1) && cabs.every(c => c.retro >= 0 || A.GAMES[c.game]);
-    const idsOwn = cabs.every(c => c.retro >= 0 || c.scoreId === null || (c.scoreId === A.GAMES[c.game].scoreId && BL.highscoreRules.get(A.GAMES[c.game].id) !== null));
     const byId = (id) => cabs.find(c => c.game === A.GAMES.findIndex(g => g.id === id));
-    const placed = stage.length === 5 && byId("cloud-hopper") === cabs[0] && byId("block") === stage[4] && byId("race").service && byId("race").z === retroRows[0].z
-      && byId("block").scoreId === null && BL.highscoreRules.get("block") === null;
-    record("arcade cabinets: Block Frenzy's stage slot leaves every retro cabinet on its own game and score ID, and every cabinet game stands on one cabinet with its own ID or none",
-      retroOwn && gameOwn && idsOwn && placed, JSON.stringify(cabs.map(c => [c.index, c.game, c.retro, c.scoreId, !!c.service])));
+    const cabinetsWorld = {};
+    runInNewContext(readFileSync(new URL("../src/js/arcade-cabinets.js", import.meta.url), "utf8"), cabinetsWorld);
+    const anchors = cabinetsWorld.BL.arcadeCabinets.entries.slice(0, 4).map((e, i) => { const a = (i - 1.5) * 0.265, turn = -a; return Math.abs(e.x - (8 * Math.sin(a) + Math.sin(turn) * 1.25)) < 1e-9 && e.y === 0.36; });
+    const placed = stage.length === 4 && !A.GAMES.some(g => g.id === "block") && byId("cloud-hopper") === cabs[0] && byId("race").service && byId("race").z === retroRows[0].z && anchors.every(Boolean);
+    record("arcade cabinets: the stage is back to four cabinets on rock's arc and anchors, every retro cabinet keeps its own game and ID, and Block Frenzy has no cabinet",
+      retroOwn && gameOwn && placed, JSON.stringify({ stage: stage.length, anchors, games: A.GAMES.map(g => g.id) }));
+    // The entry hall: the mouth clear of the back wall's paintings and the deck's fire bowls, the passage level with the
+    // deck, reaching the ledge; the Rally poster beside the mouth and off it; Ghost Hunter's hall exactly where it was.
+    const H = A.BLOCK_HALL, rallyPosters = L.posters.filter(p => p[4] === 0), beside = rallyPosters.find(p => p[2] === A.HALL.back + 0.1);
+    record("arcade block hall: a walkable passage from the deck to the cliff ledge, the Rally poster moved just beside the mouth, Ghost Hunter's hall untouched",
+      H.y === A.MEZZ.y && H.x0 >= 8 && H.x1 <= 12 && H.z0 < A.HALL.back && H.ledge < H.z0 && H.h === A.HAUNT.h && H.x1 - H.x0 === A.HAUNT.z1 - A.HAUNT.z0 && A.HALL.back - H.z0 === A.HAUNT.end - A.HALL.halfW
+      && !!beside && beside[0] > H.x1 && beside[0] < H.x1 + 1.5 && beside[1] + 0.7 < 6 && !L.posters.some(p => p[2] === A.HALL.back + 0.1 && p[0] > H.x0 && p[0] < H.x1)
+      && A.HAUNT.z0 === -22 && A.HAUNT.z1 === -18 && A.HAUNT.y === A.MEZZ.y && A.HAUNT.h === 4 && A.HAUNT.end === 34,
+      JSON.stringify({ H, posters: rallyPosters }));
+    const racked = H.racks.flatMap(([, , rows]) => rows.map(([id]) => id));
+    record("arcade block hall: three racks hold the game's nine weapons, each from its own held model",
+      racked.length === 9 && racked.filter(Number.isInteger).every((i, k) => i === k) && racked.includes("hook") && racked.includes("wallet") && H.pictures.length === 4, JSON.stringify(racked));
+    // The zipline off the ledge: the survey over the scene's world, ledge to island, is clean and the ride ends on the island's top.
+    const Z = BL.zipline, far = (z) => z <= H.stop.z + 1;
+    const q = { support: (x, z) => far(z) ? H.cloudY : z >= H.ledge - 0.5 ? H.y : NaN, clear: () => true, landable: (x, y, z) => far(z) };
+    const plan = Z.layout("arcade", { x: H.top.x, y: H.y, z: H.top.z }, H.stop.x, H.stop.z, H.sag, { bottomGap: 1, bottomGround: () => H.cloudY }), run = Z.survey(plan.line, plan.grabS, q);
+    const arcadeSource = readFileSync(new URL("../src/js/scene-arcade.js", import.meta.url), "utf8");
+    // A hosted page carries a deferred group only once it is fetched; the source tree and portable page always have it, so only this reads the difference.
+    {
+      const source = (f) => readFileSync(new URL("../src/js/" + f, import.meta.url), "utf8"), page = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+      const tags = [...page.matchAll(/<script src="js\/([\w.-]+\.js)"(?: data-defer="([\w-]+)")?><\/script>/g)], groupOf = new Map(tags.map(([, f, g]) => [f, g || ""])), owners = new Map();
+      for (const [f, g] of groupOf) if (g) for (const [, name] of source(f).matchAll(/BL\.(\w+)\s*=(?!=)/g)) if (!owners.has(name)) owners.set(name, g);
+      for (const [f, g] of groupOf) if (!g && !f.endsWith(".gen.js")) for (const [, name] of source(f).matchAll(/BL\.(\w+)\s*=(?!=)/g)) owners.delete(name);
+      // Each of these is read only on a path that has loaded its group: the viewing chairs, and a line laid in DSB Land.
+      const loaded = { "scene-block.js": ["blockViewer"], "zipline.js": ["dsbCoast"] };
+      const stray = [...groupOf.keys()].filter(f => /^(block-|scene-block|zipline|arcade-scene-models)/.test(f)).flatMap(f => [...new Set([...source(f).matchAll(/BL\.(\w+)/g)].map(m => m[1]))]
+        .filter(n => owners.has(n) && owners.get(n) !== groupOf.get(f) && !(loaded[f] || []).includes(n)).map(n => f + ": " + n));
+      record("arcade block hall: the hall and Block Frenzy read no deferred group's code a hosted page hasn't fetched", stray.length === 0 && /BL\.blockModels = \{ hookHead, rope,/.test(source("block-models.js")), JSON.stringify(stray));
+    }
+    record("arcade block hall: the zipline runs clear from the ledge into the clouds and hands off to Block Frenzy's start before its end",
+      run.ok && H.fade > H.stop.z && H.fade < H.ledge && !A.BLOCK_HALL.island && plan.stand.z < H.z0 && plan.stand.z > H.ledge
+      && /open\("block", "zipline"\)/.test(arcadeSource) && arcadeSource.includes('fromBlockHall = ctx.from === "block"'), JSON.stringify({ ok: run.ok, landing: run.landing, blocked: run.blocked }));
     {
       // The handrail slide: Space offers it only at a stair's head, inside the stair beside its hall-side handrail and
       // facing down it, never anywhere along the deck's rail between the stairs' heads; a slide runs the cane from
@@ -10128,10 +10364,9 @@ const hubWorkingArrival = { name: "hub working arrival", why: "regression: worki
 const hubLiveWake = { name: "hub live wake", why: "regression: live activity must clear HQ and basement mattresses before reuse; passive Hub NPCs now leave every bed by beam", run: async b => {
   const state = await b.evaluate(`(() => {
     const B = __ooga, scene = BL.scenes.hub, now = Date.now(), day = 86400000, mattresses = B.headquarters.mattresses;
-    // The baked roster ages with the clock, so the sleepers are made here. Sani is the Sphere's resident, hidden in its
-    // ball whatever his activity says, so he is no rainforest walker. Activity is set directly and settled at once:
+    // The baked roster ages with the clock, so the sleepers are made here. Activity is set directly and settled at once:
     // applyActivity would hand it to the hub's listener, which walks new sleepers in from the pile.
-    const cast = B.crew.list.filter(c => c !== B.pilot.player && !c.override && c.traits.name !== "SaniExp");
+    const cast = B.crew.list.filter(c => c !== B.pilot.player && !c.override);
     const sleepAt = (c, at) => { c.contributor.lastCommitAt = c.contributor.lastContributionAt = at; };
     // Earlier steps may leave sleepers walking to reserved beds. A same-state refresh deliberately leaves
     // that travel alone, so expire those naps first and let fresh away-to-sleeping transitions settle them.
@@ -10192,7 +10427,7 @@ const hubSeparateBodies = { name: "hub separate bodies", why: "rule: a driven Oo
         && crew.list.every(o => o === c || seatOf(o) !== i);
       const npcState = (c) => ({ state: c.state, override: c.override, seat: seatOf(c), bed: c.bedroll, mode: c.bedTravel.mode, visible: c.root.visible,
         human: !!c.humanControlled, remote: !!c.remoteControlled, passive: c.nonInteractive, ghost: !!c.ghostTrack && ghosts.has(c) });
-      const eligible = c => c.root.visible && !c.remoteControlled && !c.ghostTrack && !c.override && c.traits.name !== "SaniExp";
+      const eligible = c => c.root.visible && !c.remoteControlled && !c.ghostTrack && !c.override;
       const pick = (test) => crew.list.find(c => eligible(c) && test(c));
       const cases = [["seated", c => c.state === "chilling" && seatHeld(c, seatOf(c))], ["sleeping", c => c.state === "sleeping" && !!c.bedroll && c.bedTravel.mode === "rest"],
         ["working", c => c.state === "working" && !c.bedTravel.mode]];
@@ -10423,7 +10658,7 @@ const hubGuestLikeness = { name: "hub guest likeness", why: "regression: a guest
     const copies = (guest) => crew.list.filter(c => c === guest || c.npc === guest).length + (guest.localBody ? 1 : 0);
     const guest = crew.cavemen.get("Ooga"), temp = crew.cavemen.get("fixture-temp");
     const contributor = crew.list.find(c => !c.contributor.temporary && c.root.visible && !c.ghostTrack && !c.remoteControlled
-      && (c.state === "chilling" || c.state === "working") && c.traits.name !== "SaniExp");
+      && (c.state === "chilling" || c.state === "working"));
     try {
       pilot.release(true); play.release(); step(0.3);
       if (!guest || !temp || !contributor) return { missing: { guest: !!guest, temp: !!temp, contributor: !!contributor } };
@@ -11830,7 +12065,7 @@ const blockWalk = { name: "block walk", why: "rule: W A S D move the visitor's O
   const rows = {};
   for (const k of "wsadqe") {
     // The map's own gorillas, trap and peels stand round this spot: they would drag or trip the Ooga being measured.
-    await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, a = s.actors[0]; s.prep = 0; Object.assign(s.weather, { left: 1e9 }); a.x = -14; a.z = 2; a.vx = a.vz = 0; for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 30 : -30; } for (const g of s.gorillas) { g.x = g.wx = g.hx = 34; g.z = g.wz = g.hz = 34; g.holding = -1; } for (const h of [...s.peels, ...s.traps]) { h.walkX ??= h.x; h.walkZ ??= h.z; h.x = h.z = 999; } B.advance(0.6, 1 / 60); const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); window.__walk = { fx: vx / l, fz: vz / l, x0: a.x, z0: a.z }; })()`);
+    await b.evaluate(`(() => { const B = window.__ooga, s = B.block.sim, a = s.actors[0]; s.prep = 0; a.flight = 0; a.y = 0; a.vy = 0; a.grounded = true; Object.assign(s.weather, { left: 1e9 }); a.x = -14; a.z = 2; a.vx = a.vz = 0; for (const o of s.actors) if (o.id) { o.x = 20; o.z = o.team === s.team ? 30 : -30; } for (const g of s.gorillas) { g.x = g.wx = g.hx = 34; g.z = g.wz = g.hz = 34; g.holding = -1; } for (const h of [...s.peels, ...s.traps]) { h.walkX ??= h.x; h.walkZ ??= h.z; h.x = h.z = 999; } B.advance(0.6, 1 / 60); const c = B.camera, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); window.__walk = { fx: vx / l, fz: vz / l, x0: a.x, z0: a.z }; })()`);
     await holdKey(b, k, 0.5);
     rows[k] = await b.evaluate(`(() => { const q = window.__walk, a = window.__ooga.block.sim.actors[0], c = window.__ooga.camera, dx = a.x - q.x0, dz = a.z - q.z0, vx = c.target.x - c.position.x, vz = c.target.z - c.position.z, l = Math.hypot(vx, vz); return { fwd: +(dx * q.fx + dz * q.fz).toFixed(2), side: +(dx * -q.fz + dz * q.fx).toFixed(2), turn: +((vx / l) * -q.fz + (vz / l) * q.fx).toFixed(2) }; })()`);
   }
@@ -11859,6 +12094,7 @@ const dropStart = { name: "drop start", why: "regression: Space on the title car
   await b.key(" ");
   const closed = await st();
   await b.key("Enter");
+  await b.evaluate(`(() => { const a = window.__ooga.block.sim.actors[0]; a.flight = 0; a.y = 0; a.vy = 0; a.grounded = true; })()`);
   const climb = await st();
   const mark = await b.evaluate(`(() => { const B = window.__ooga; let t = 0; for (; t < 60 && !B.drop.jumpOpen; t += 0.25) B.advance(0.25, 1 / 60); return t; })()`);
   await b.key(" ");
@@ -18853,6 +19089,16 @@ const arcadeHandrail = { name: "arcade handrail slide", why: "playthrough: Space
       && !off.seated && !off.sliding && off.feet > 0.5 && Math.abs(off.feet - off.ground) < 0.01 && off.walkable
       && deck.every(d => !d.hint.includes("slide") && !d.seated), JSON.stringify({ rows, off, deck }));
 } };
+const arcadeBlockHall = { name: "arcade block hall", why: "rule: an Ooga walks the hall from the deck to the cliff ledge and only there is offered the zipline", run: async (b) => {
+  const r = await b.evaluate(`(() => {
+    const B = __ooga, A = BL.arcadeModels, H = A.BLOCK_HALL, actor = B.cavemen.get('portlandhodl');
+    let ok = true, x = H.x - 0.6, z = -20;
+    while (z > H.ledge + 0.8) { const nz = z - 0.2; ok = ok && B.arcade.walkable(x, z, x, nz, H.y, actor.bodyHeight, actor) && B.arcade.supportAt(x, nz, H.y) === H.y; z = nz; }
+    const past = B.arcade.walkable(x, H.ledge + 0.5, x, H.ledge - 0.6, H.y, actor.bodyHeight, actor);
+    return { ok, z, past, wall: B.arcade.walkable(H.x0 - 0.3, -28, H.x0 - 0.3, -28.2, H.y, actor.bodyHeight, actor) };
+  })()`);
+  record("arcade block hall: walkable from the deck to the ledge, held by its railing and walls", r.ok && !r.past && !r.wall, JSON.stringify(r));
+} };
 const arcadeStage = { name: "arcade stage approaches", why: "regression: oversized decorative root collision boxes blocked walking onto the central stage from its sides and back", run: async (b) => {
   const r = await b.evaluate(`(() => {
     const B = __ooga, A = B.arcade, S = BL.arcadeModels.STAGE, a = B.pilot.player, rows = [];
@@ -20679,41 +20925,6 @@ scene("hub", { label: "timechain doorway", query: "solo=1&character=portlandhodl
 // The released hub (phones under 8 GB): the walk-out rebuilds the hub behind the room's held frame.
 scene("hub", { label: "timechain doorway release", query: "solo=1&character=portlandhodl&view=timechain&pos=0&hubcache=release", opts: { motion: true }, steps: [sphereApproach, sphereCrossing] });
 scene("hub", { label: "timechain doorway canvas2d", exclusive: true, query: "solo=1&character=portlandhodl&view=timechain&pos=0&canvas2d=1", steps: [sphereApproach, sphereCrossing] });
-scene("hub", { label: "timechain resident", steps: [{ name: "timechain resident", why: "regression: Sani belongs in the Sphere while sleeping or away, and on the mainland while working or chilling", run: async (b) => {
-  const r = await b.evaluate(`(() => {
-    const B = __ooga, ${sphereLocal}, c = B.cavemen.get("SaniExp"), entry = c.contributor;
-    const saved = { lastCommitAt: entry.lastCommitAt, lastContributionAt: entry.lastContributionAt, override: c.override };
-    const sample = () => ({ state: c.state, visible: c.root.visible, held: T.residentInside,
-      fromMiddle: Math.hypot(c.root.position.x - T.place.x, c.root.position.z - T.place.z),
-      bed: !!c.bedroll || !!c.bedTravel.mode, walk: !!c.walk });
-    const activity = age => {
-      entry.lastCommitAt = entry.lastContributionAt = Date.now() - age;
-      B.refreshStates(); B.advance(0.5, 1 / 60);
-      return sample();
-    };
-    try {
-      c.override = null;
-      const away = activity(40 * 86400000), working = activity(1000), sleeping = activity(2 * 86400000);
-      // Driven, Sani is a separate body (#501) that steps out onto the bridge before the doors; the NPC stays inside.
-      B.pilot.possess(c); B.advance(0.3, 1 / 60);
-      const body = B.pilot.player, driven = !!body && body !== c && body.npc === c;
-      const out = { driven, visible: driven && body.root.visible, fromDoors: driven ? local(body.root.position) - SP.THRESHOLD : null, npc: sample() };
-      B.pilot.release(true); B.refreshStates(); B.advance(0.5, 1 / 60);
-      const again = sample(), chilling = activity(2 * 3600000), back = activity(40 * 86400000);
-      return { away, working, sleeping, out, again, chilling, back };
-    } finally {
-      B.pilot.release(true);
-      entry.lastCommitAt = saved.lastCommitAt; entry.lastContributionAt = saved.lastContributionAt; c.override = saved.override;
-      B.refreshStates();
-    }
-  })()`);
-  const inside = row => !row.visible && row.held && row.fromMiddle < 0.5 && !row.bed && !row.walk;
-  const mainland = row => row.visible && !row.held && row.fromMiddle > 20 && !row.bed;
-  record("timechain resident: sleeping and away Sani lives inside the Sphere without a bed, his driven body emerges onto the bridge while he stays in, and he is inside when released; working and chilling Sani joins the mainland crew",
-    r.away.state === "away" && inside(r.away) && r.sleeping.state === "sleeping" && inside(r.sleeping) && inside(r.again) && inside(r.back)
-      && r.working.state === "working" && mainland(r.working) && r.chilling.state === "chilling" && mainland(r.chilling)
-      && r.out.driven && r.out.visible && r.out.fromDoors > 1 && inside(r.out.npc), JSON.stringify(r));
-} }] });
 const roomPage = (room, query = "") => `${src}?debug=1&nosim=1${clock(`character=portlandhodl&pos=0${query ? "&" + query : ""}`)}#/sphere-${room}`;
 const roomGo = (room) => `(() => { const B = window.__ooga; B.go("timechain", "${room}"); for (let i = 0; i < 150 && (B.transitioning || B.scene !== "timechain" || B.timechain.room.id !== ${room}); i++) B.advance(1 / 30, 1 / 30); B.advance(0.3, 1 / 30); B.housekeep(); const s = B.stats(); return { scene: B.scene, room: B.timechain.room.id, records: B.renderer.stats.records, nodes: s.allNodes, targets: s.targets, dom: s.dom, timers: s.timers, requests: s.requests }; })()`;
 const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out arrival gets a solo copy of its room with first-person, shoulder and orbit views, without weapons or a jetpack, its screens painted, and touches no network under nosim", run: async (b) => {
@@ -23342,7 +23553,7 @@ scene("arcade", { label: "cabinet public route", opts: { motion: true }, steps: 
   const cancelled = await wait(`document.body.dataset.cabinetPhase === 'idle' && document.body.dataset.activeScene === 'arcade'`);
   record("cabinet public route: direct arrival and a link from the hall both visit the cabinet, play and cancel cleanly", menu && full && returned && linked && cancelled, JSON.stringify({menu,full,returned,linked,cancelled}));
 } }] });
-scene("arcade", { query: "character=portlandhodl", exclusive: true, steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadeHandrail, arcadePlay, trip("arcade")] });
+scene("arcade", { query: "character=portlandhodl", exclusive: true, steps: [arcadeWalking, arcadeMachine, arcadeHall, arcadeCarry, arcadeMaintenance, arcadeStage, arcadeBlockHall, arcadeHandrail, arcadePlay, trip("arcade")] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeSpectatorAmmo] });
 scene("arcade", { label: "ghost spectate follows", query: "character=portlandhodl", steps: [arcadeSpectateFollow] });
 scene("arcade", { query: "character=portlandhodl", steps: [arcadeRemoteWeapons] });
