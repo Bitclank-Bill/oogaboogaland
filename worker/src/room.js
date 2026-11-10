@@ -173,7 +173,7 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm };
   }
 
   view(p) {
@@ -210,6 +210,8 @@ export class Room extends DurableObject {
       for (const pass of p.passes) this.doorPasses.set(pass.cycle, { ...pass, id: p.id });
       if (p.roomLock && this.roomOf(p.zone) === p.roomLock.room) this.roomLocks.set(p.roomLock.room, { pin: p.roomLock.pin, passes: new Map() });
       else p.roomLock = null;
+      if (p.pinTries && (p.pinTries.until > now || now - p.pinTries.at <= PIN_WAIT_MS)) this.pinTries.set(p.id, p.pinTries);
+      p.pinTries = undefined;
     }
     queued.sort((a, b) => a.door.at - b.door.at || a.id - b.id);
     active.sort((a, b) => a.door.at - b.door.at || a.id - b.id);
@@ -289,17 +291,25 @@ export class Room extends DurableObject {
     if (left !== entered) this.freeEmptyRoom(left);
   }
 
-  // Whether this socket has run out of tries; a wrong PIN counts one, a right one forgives them.
+  // Whether this player has run out of tries; a wrong PIN counts one, a right one forgives them. The tally is the
+  // player's, not the socket's: it outlives a reconnect, and rides the socket's attachment through hibernation. A tally
+  // is forgotten a wait's length after its last wrong try, so the map holds only the players trying lately.
   pinRefused(p, now) {
     const tries = this.pinTries.get(p.id);
     return !!tries && tries.until > now;
   }
 
   pinWrong(p, now) {
-    const tries = this.pinTries.get(p.id) || { count: 0, until: 0 };
-    tries.count++;
+    for (const [id, old] of this.pinTries) if (old.until <= now && now - old.at > PIN_WAIT_MS) this.pinTries.delete(id);
+    const tries = this.pinTries.get(p.id) || { count: 0, until: 0, at: 0 };
+    tries.count++; tries.at = now;
     if (tries.count >= PIN_TRIES) { tries.count = 0; tries.until = now + PIN_WAIT_MS; }
     this.pinTries.set(p.id, tries);
+    p.ws.serializeAttachment(this.attachment(p));
+  }
+
+  pinRight(p) {
+    if (this.pinTries.delete(p.id)) p.ws.serializeAttachment(this.attachment(p));
   }
 
   roomLockMessage(p, msg, now) {
@@ -327,7 +337,7 @@ export class Room extends DurableObject {
     if (!p.body || p.zone !== DOOR_ZONE) return reply(false, "not-at-door");
     if (!lock) return reply(true);
     if (lock.pin !== msg.pin) { this.pinWrong(p, now); return reply(false, "wrong"); }
-    this.pinTries.delete(p.id);
+    this.pinRight(p);
     lock.passes.set(p.id, now + PIN_PASS_MS);
     return reply(true);
   }
@@ -746,8 +756,6 @@ export class Room extends DurableObject {
     const lockedIn = this.roomOf(p.zone), held = this.roomLocks.get(lockedIn);
     if (held) held.passes.set(p.id, Date.now() + PIN_PASS_MS);
     this.freeEmptyRoom(lockedIn);
-    const tries = this.pinTries.get(p.id);
-    if (tries && tries.until <= Date.now()) this.pinTries.delete(p.id);
     this.broadcast({ t: "leave", id: p.id, reason });
     this.electHost();
     this.electGhostHost();

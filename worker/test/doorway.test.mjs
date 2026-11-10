@@ -166,6 +166,34 @@ test("anyone inside may unlock, wrong tries run out, and a lock survives hiberna
   assert.equal(woken.players.get(1).roomLock, null);
 });
 
+test("wrong PIN tries are the player's: a reconnect or a hibernation does not start them again", async () => {
+  const h = host(), r = h.room(), inside = await h.join(r, 1, "a");
+  let outside = await h.join(r, 2, "b");
+  await h.enter(r, inside, "a", "sphere-6");
+  await h.enter(r, outside, "b", "sphere");
+  await h.send(r, inside, { t: "door", op: "lock", room: 6, pin: "2468" });
+  const wrong = async (room, ws) => { h.advance(1000); await h.send(room, ws, { t: "door", op: "try", room: 6, pin: "0000" }); return messages(ws, "door", "lock-result").at(-1).reason; };
+  for (let i = 0; i < 4; i++) await wrong(r, outside);
+  r.webSocketClose(outside);
+  outside = await h.join(r, 2, "b");
+  await h.enter(r, outside, "b", "sphere");
+  assert.equal(await wrong(r, outside), "wrong", "the fifth try is still answered");
+  h.advance(1000);
+  await h.send(r, outside, { t: "door", op: "try", room: 6, pin: "2468" });
+  assert.equal(messages(outside, "door", "lock-result").at(-1).reason, "wait", "four tries, a reconnect and one more still make the player wait");
+  h.advance(61000);
+  for (let i = 0; i < 4; i++) await wrong(r, outside);
+  h.runtime.listed = h.accepted.filter((ws) => !ws.closed);
+  const woken = h.room();
+  assert.equal(await wrong(woken, outside), "wrong");
+  h.advance(1000);
+  await h.send(woken, outside, { t: "door", op: "try", room: 6, pin: "2468" });
+  assert.equal(messages(outside, "door", "lock-result").at(-1).reason, "wait", "the tally comes back with the socket after hibernation");
+  h.advance(61000);
+  await h.send(woken, outside, { t: "door", op: "try", room: 6, pin: "2468" });
+  assert.equal(messages(outside, "door", "lock-result").at(-1).ok, true, "the wait passes, and the right PIN opens the door");
+});
+
 test("a cancelled door alarm does not pull the ordinary account sweep forward", async () => {
   const h = host(), r = h.room(), a = await h.join(r, 1, "a");
   await h.enter(r, a, "a");
