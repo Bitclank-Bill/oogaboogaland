@@ -870,10 +870,12 @@
     let live = true, built = null;
     const lights = { ...RENDER_OPTS, shadowCenter: { ...RENDER_OPTS.shadowCenter }, lights: new Float32Array(BL.glRenderer.POINT_LIGHT_CAPACITY * 8) };
     const ready = (async () => {
+      // A step that finds nothing left to do (false) takes no frame.
+      let idle = false;
       for (const step of RM.prepareSteps(room.id)) {
-        await frame();
+        if (!idle) await frame();
         if (!live) return;
-        step();
+        idle = step() === false;
       }
       built = RM.build(room.id);
       lightRoom(lights, built);

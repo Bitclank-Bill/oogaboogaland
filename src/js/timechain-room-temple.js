@@ -96,9 +96,11 @@
   // reflecting the hall, the sky's cool light higher on the figure and the timber floor's warm dark lower down.
   const S = { N: 48, W: 0.76, thick: 0.0065, rowH: 0.009, dz: 0.005, Z0: -0.66, NZ: 193 };
   const ROWS = Math.ceil(0.9 / S.rowH);
-  // How many panels each step of the build samples, finds the outlines of and cuts into faces: a step a frame.
-  const CHUNK = { occ: 2, shape: 4, faces: 2 };
-  const STATUE_STEPS = Math.ceil(S.N / CHUNK.occ) + Math.ceil(S.N / CHUNK.shape) + Math.ceil(S.N / CHUNK.faces) + 1;
+  // The build pauses after every `occRows` rows of a panel's sampling, every panel's outlines and every panel's faces;
+  // a step at the doorway runs as many of those pieces as fit in `BUDGET` milliseconds, a step a frame, so the island
+  // keeps its frames. `STATUE_STEPS` is how many steps it can take at most.
+  const CHUNK = { occRows: 20 }, BUDGET = 8;
+  const STATUE_STEPS = S.N * Math.ceil(Math.ceil(0.9 / S.rowH) / CHUNK.occRows) + 2 * S.N + 1;
   // Polished steel and its cut edges (duller and warmer): what each reflects by its height on the figure, from the warm
   // timber floor low down through the paper walls to the cool sky at the hood, lighter on faces that look up at the
   // lamps and darker on those that look down at the floor. The faces glow a little, so the baked light reads however
@@ -124,9 +126,12 @@
     const zb = (k) => Z0 - dz / 2 + k * dz, slatX = (i) => -W / 2 + (i + 0.5) * W / N, occ = [];
     for (let i = 0; i < N; i++) {
       const x = slatX(i), g = new Uint8Array(rows * NZ);
-      for (let r = 0; r < rows; r++) { const y = (r + 0.5) * rowH, parts = near(x, y); for (let k = 0; k < NZ; k++) g[r * NZ + k] = inside(x, y, Z0 + k * dz, parts) ? 1 : 0; }
+      for (let r = 0; r < rows; r++) {
+        const y = (r + 0.5) * rowH, parts = near(x, y);
+        for (let k = 0; k < NZ; k++) g[r * NZ + k] = inside(x, y, Z0 + k * dz, parts) ? 1 : 0;
+        if (r % CHUNK.occRows === CHUNK.occRows - 1) yield;
+      }
       occ.push(g);
-      if (i % CHUNK.occ === CHUNK.occ - 1) yield;
     }
     const at = (j, r, k) => j >= 0 && j < N && r >= 0 && r < rows && k >= 0 && k < NZ && occ[j][r * NZ + k] === 1;
     const cellOf = (y, z) => [Math.floor(y / rowH + 1e-6), Math.floor((z - zb(0)) / dz + 1e-6)];
@@ -188,7 +193,7 @@
         list.push(row);
       }
       shapes.push(list);
-      if (i % CHUNK.shape === CHUNK.shape - 1) yield;
+      yield;
     }
     const geo = blank();
     // A quad of steel or cut edge, its colour the mean of the light at its corners.
@@ -235,7 +240,7 @@
             quad(CUT, [xa, y0, za], [xb, y0, za], [xb, y0, zc], [xa, y0, zc], NY, [edgeLight(i - 1, yd, za), edgeLight(i + 1, yd, za), edgeLight(i + 1, yd, zc), edgeLight(i - 1, yd, zc)], 1);
         }
       }
-      if (i % CHUNK.faces === CHUNK.faces - 1) yield;
+      yield;
     }
     // The spacers: a short bar across each gap where both panels reach, every sixth row, offset gap to gap like brickwork.
     const bar = (x0, x1, y0, y1, z0, z1, side, cap) => {
@@ -266,16 +271,19 @@
   // Built once per page in steps at the doorway (`steps`), or whole when the plan asks for it first.
   const statueRead = BL.models.cachedSteps(statueBuild);
   const statue = () => BL.models.withScope("timechain", statueRead);
+  // Each step false once the statue is built, so the doorway spends no frame on the steps left over.
   const steps = () => {
     let it = null, done = false;
-    const advance = (all) => BL.models.withScope("timechain", () => {
-      if (done) return;
+    const advance = () => BL.models.withScope("timechain", () => {
+      if (done) return false;
       if (!it) it = statueRead.steps();
-      let next = it.next();
-      while (all && !next.done) next = it.next();
+      const end = performance.now() + BUDGET;
+      let next;
+      do next = it.next(); while (!next.done && performance.now() < end);
       if (next.done) { done = true; it = null; }
+      return true;
     });
-    return Array.from({ length: STATUE_STEPS }, (_, i) => () => advance(i === STATUE_STEPS - 1));
+    return Array.from({ length: STATUE_STEPS }, () => advance);
   };
 
   // ---------- shapes the kit lacks ----------
