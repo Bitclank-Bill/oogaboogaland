@@ -36,6 +36,8 @@
 // the frame the playhead has reached, and that frame's events replay then, after its poses. The first
 // frame of a puppet is shown at once, as is the first matching frame after a host's frames of another
 // format, which discard everything kept before them. The wire format is unchanged.
+// Handing back. A frame overwrites a puppet's status and work, never this page's own travel to and from bed, so a puppet
+// that stops following (a new host, this page elected, another cast) goes through `crew.resumeFromHost` first.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -190,6 +192,10 @@
     const writeXYZ = (o, v) => {
       out[o] = v.x; out[o + 1] = v.y; out[o + 2] = v.z;
     };
+    const placed = (f, o) => {
+      for (let j = 2; j < 15; j++) if ((j < 8 || j > 11) && !Number.isFinite(f[o + j])) return false;
+      return true;
+    };
     const encodeCave = (o, i, cave) => {
       const r = cave.root, p = cave.parts;
       let flags = 0;
@@ -321,7 +327,8 @@
       const base = s * n * RECORD;
       for (let k = 0; k < count; k++) {
         const o = HEADER + k * RECORD, i = f[o];
-        if (!(i >= 0 && i < n)) continue;
+        // The host is only another page: a transform that is no number would poison the Ooga here for good.
+        if (!(i >= 0 && i < n) || !placed(f, o)) continue;
         for (let j = 0; j < RECORD; j++) target[i * RECORD + j] = ring[base + i * RECORD + j] = f[o + j];
         carries[s * n + i] = 1;
         if (!have[i]) fresh[i] = 1;
@@ -507,8 +514,13 @@
       if (moved) onModelChange(cave);
     };
 
-    const release = () => {
-      for (let i = 0; i < n; i++) list[i].puppet = false;
+    // Hands the puppets back to their own AI. `resume` is false only when the crew is about to go with the visit.
+    const release = (resume = true) => {
+      for (let i = 0; i < n; i++) {
+        const cave = list[i], was = cave.puppet;
+        cave.puppet = false;
+        if (was && resume) crew.resumeFromHost(cave);
+      }
       incompatible = false;
       have.fill(0);
       fresh.fill(0);
@@ -582,8 +594,9 @@
       due.length = 0;
     };
 
-    const dispose = () => {
-      release();
+    // `keepCrew`: a kept hub's suspension, whose crew runs on after it. Otherwise the scene's systems are already going.
+    const dispose = (keepCrew = false) => {
+      release(keepCrew);
       role = "solo";
       resetEvents();
     };

@@ -299,7 +299,10 @@
       w.equipped = held === 2; w.primaryEquipped = held === 1; w.aiming = !!mode;
       w.ammo = weapon >> 3;
       parts.head.quaternion = null;
-      parts.head.rotation.x += ((v ? v[0] / 100 : 0) - parts.head.rotation.x) * (1 - Math.exp(-EASE * dt));
+      const headEase = 1 - Math.exp(-EASE * dt);
+      parts.head.rotation.x += ((v ? v[0] / 100 : 0) - parts.head.rotation.x) * headEase;
+      // Settled in the hammock, the head turns as its owner looks round (hub-hammock.js `poseRemote` keeps it through the bed's pose).
+      parts.head.rotation.y += ((v && rec.rest && rec.rest[1] === 2 ? v[2] / 100 : 0) - parts.head.rotation.y) * headEase;
       w.aimPitch = v ? v[1] / 100 : parts.head.rotation.x;
       w.aimYaw = v ? v[2] / 100 : 0;
       w.recoil = held === 2 ? Math.max(v ? v[4] / 1000 - age : 0, 0.24 - (now - entry.shotAt) / 1000, 0) : 0;
@@ -523,7 +526,7 @@
       ctx.restore();
     };
     const drawNames = (ctx, project, showHealth = false) => {
-      const ownHand = net.state && net.state.hand ? BL.reactionPolicy.HANDS[net.state.handTone] : "";
+      const ownHand = net.state && net.state.hand ? (net.state.handEmoji || BL.reactionPolicy.HANDS[net.state.handTone]) : "";
       // The visitor's own line stands over their raised hand, on whichever body they drive now.
       const own = player ? player() : crew && crew.player, speaker = ownHand && own || null;
       if (lifted !== speaker) {
@@ -590,7 +593,7 @@
         entry.screenX = mid; entry.plateLeft = left; entry.plateTop = top; entry.plateW = boxW; entry.plateH = boxH;
         entry.plateTextX = textX; entry.plateBaseline = line + nameBaseline;
         // A reaction and the raised hand over the plate's box, centred on it (clamped with it at the view's edge).
-        if (entry.reactT > 0 || rec.hand) drawReaction(ctx, left + boxW / 2, top, entry.react, entry.reactT, rec.hand ? BL.reactionPolicy.HANDS[rec.handTone] : "");
+        if (entry.reactT > 0 || rec.hand) drawReaction(ctx, left + boxW / 2, top, entry.react, entry.reactT, rec.hand ? (rec.handEmoji || BL.reactionPolicy.HANDS[rec.handTone]) : "");
         ctx.strokeStyle = NAME_STROKE;
         ctx.fillStyle = NAME_FILL;
         ctx.strokeText(rec.display, textX, line + nameBaseline);

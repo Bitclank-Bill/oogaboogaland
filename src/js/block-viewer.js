@@ -19,20 +19,24 @@
   // One frame of a zoom toward its target; under Calm the view goes straight there.
   const easeZoom = (cur, target, dt, calm) => calm ? target : cur + (target - cur) * Math.min(1, dt * 10);
   // How many captures happened since the last look, from the score a frame carries, so a skipped frame can't lose one
-  // or count one twice. The first look after sitting down counts nothing; a score that drops is a new round.
-  const newCaptures = (sim, seen) => {
+  // or count one twice. Nothing counts until the first frame has landed (`live`), and that first look only notes the
+  // score: arriving partway through a round plays nothing. A score that drops is a new round.
+  const newCaptures = (sim, seen, live = true) => {
+    if (!live) return 0;
     const total = sim.score.blue + sim.score.red, was = seen.total;
     seen.total = total;
     return was < 0 || total < was ? 0 : total - was;
   };
-  // Stolen blocks aren't a stat of the rules: a viewer counts each time it sees an Ooga start carrying the other side's
-  // block, from the carrying state every frame already holds. Counts from when the viewer sat down.
+  // Stolen blocks aren't a stat of the rules: a viewer counts each time it sees an Ooga take the other side's block off
+  // its home stand, from the carrying and flag state every frame already holds, so passes and re-grabs don't count.
+  // Counts from when the viewer sat down.
   const trackSteals = (sim, st) => {
     for (let i = 0; i < sim.actors.length; i++) {
       const a = sim.actors[i], other = !!a.carrying && a.carrying !== a.team;
-      if (other && !st.was[i]) st.count[i] = (st.count[i] || 0) + 1;
+      if (other && !st.was[i] && st.home[a.carrying]) st.count[i] = (st.count[i] || 0) + 1;
       st.was[i] = other;
     }
+    st.home.blue = sim.flags.blue.state === "home"; st.home.red = sim.flags.red.state === "home";
   };
   // Each player or NPC with a stat this round, sorted by captures: captures, blocks stolen and splats landed (the same
   // captures and hits the results table shows). `seen` holds the last values: null while nothing changed, so it costs

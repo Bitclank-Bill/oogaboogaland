@@ -13,7 +13,7 @@ const take = (p, key, rate, burst, now) => {
 };
 const sessionId = () => { const bytes = new Uint8Array(8); crypto.getRandomValues(bytes); return Array.from(bytes, n => n.toString(16).padStart(2, "0")).join(""); };
 const random = () => { const v = new Uint32Array(1); crypto.getRandomValues(v); return v[0] / 0x100000000; };
-const fresh = () => ({ wire: W.WIRE, s: sessionId(), phase: "lobby", size: 2, map: 0, reg: [], ready: [], seats: [], host: 0, epoch: 0, seed: 0, q: -1, tag: 0, start: 0, win: -1, rev: 0, keeper: 0 });
+const fresh = () => ({ wire: W.WIRE, s: sessionId(), phase: "lobby", size: 2, map: 0, next: -1, reg: [], ready: [], seats: [], host: 0, epoch: 0, seed: 0, q: -1, tag: 0, start: 0, win: -1, rev: 0, keeper: 0 });
 // The round's tag in every binary frame, so a frame from an earlier round or host can't be taken for this one.
 const tagOf = s => parseInt(s.slice(0, 8), 16) >>> 0;
 export const block = {
@@ -73,6 +73,9 @@ export const block = {
   // Waiters from the deck first, so a full table can't lock them out forever, then those who just played.
   finish(room, m, win) {
     const reg = m.reg.slice(0, W.MAX_PLAYERS);
+    // Someone waited through this round and picked a map: the next one plays it.
+    if (m.reg.length && m.next >= 0) m.map = m.next;
+    m.next = -1;
     for (const id of m.seats) if (id && !reg.includes(id) && reg.length < W.MAX_PLAYERS) reg.push(id);
     m.phase = "lobby"; m.reg = reg; m.ready = reg.map(() => 0); m.seats = []; m.host = 0; m.win = win; m.start = 0;
     if (!reg.length) { block.close(room, m); return null; }
@@ -95,6 +98,8 @@ export const block = {
     const i = m.reg.indexOf(id), seat = W.seatOf(m, id);
     if (i < 0 && seat < 0) return;
     if (i >= 0) { m.reg.splice(i, 1); m.ready.splice(i, 1); }
+    // A first waiter's map leaves with them.
+    if (i === 0) m.next = -1;
     if (m.phase === "countdown") block.unseat(m);
     else if (seat >= 0 && m.phase === "play") {
       m.seats[seat] = 0;
@@ -162,6 +167,8 @@ export const block = {
     if (msg.k === "reg") {
       if (!W.canRegister(m, p.id)) return;
       if (!m) m = room.blockMatch = fresh();
+      // The first to register brings the map on their board; while a round runs it waits for the next one.
+      if (!m.reg.length && msg.m !== undefined) { if (m.phase === "play") m.next = msg.m; else m.map = msg.m; }
       m.reg.push(p.id); m.ready.push(0);
       room.blockSeen.set(p.id, now);
       if (m.phase === "countdown") block.unseat(m);
@@ -171,8 +178,10 @@ export const block = {
     if (!m) return;
     if (msg.k === "unreg") { block.leave(room, p.id); return; }
     if (msg.k === "opt") {
-      if (m.phase !== "lobby" || m.reg[0] !== p.id) return;
-      m.size = msg.n; m.map = msg.m;
+      if (m.reg[0] !== p.id || m.phase === "countdown") return;
+      // A round under way keeps its map and size: the first waiter's pick is for the next one.
+      if (m.phase === "play") m.next = msg.m;
+      else { m.size = msg.n; m.map = msg.m; }
       block.tell(room, m);
       return;
     }

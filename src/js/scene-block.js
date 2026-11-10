@@ -147,11 +147,11 @@
   // The live round (block-live.js), present only signed in on a Worker that offers it. `you` is the actor events call
   // "me" (none on the watch deck); `liveCast` the round's names by actor; `kept` the solo picks a live round borrows.
   const WIRE = BL.blockWire;
-  let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [] };
+  let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [], home: { blue: false, red: false } };
   // Came through the arcade's watch door: every way out goes back in front of it, and full chairs turn the viewer back there.
   let doorVisit = false, chairsBounce = false;
   const goHome = () => go(home, doorVisit ? BL.arcadeBlockWatch.PLACE : undefined);
-  let chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
+  let chairsGreeted = false, chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
   // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
   const zoomDeck = (k) => { audio.unlock(); deckZoomTo = BL.blockViewer.zoomBy(deckZoomTo, k); };
@@ -159,13 +159,21 @@
   const undeckRender = () => { RENDER_OPTS.sea = SEA_LEVEL; RENDER_OPTS.fogNear = FOG_NEAR; RENDER_OPTS.fogFar = FOG_FAR; RENDER_OPTS.bloomStrength = BLOOM; };
   const liveRound = () => !!round && (round.role === "host" || round.role === "guest");
   const acts = (name, id, a, b, c) => onDeck() ? false : liveRound() ? round.act(name, id, a, b, c) : SIM[name](sim, id, a, b, c);
-  let jumpWas = false;
+  let jumpWas = false, panelOpen = false;
   const el = {};
   const blockScene = {
     id: "block", voiceZone: BL.blockWire.ZONE, renderOpts: RENDER_OPTS, root: null, camera: null, input: null, debug: null, agent: null, agentControls: null,
-    get inMotion() { return phase === "play" || fx.inMotion; }
+    get inMotion() { return phase === "play" || fx.inMotion; },
+    // A live session keeps stepping behind the controls panels: a host that stopped would freeze the round and lose its
+    // seat, and a registered page would stop beating. Its Ooga stands idle meanwhile (`panelLive`).
+    get runsBehindPanels() { return liveRound() || registered(); },
+    controlsHelpHold(on) {
+      panelOpen = on;
+      if (on && panelLive()) { trigger = false; arrows.left = arrows.right = 0; move.crouch = 0; jumpWas = false; }
+    }
   };
 
+  const panelLive = () => panelOpen && blockScene.runsBehindPanels;
   const place = (node) => { addChild(root, node); placed.push(node); return node; };
   const roster = () => contributors.activeRoster.map((c) => c.name);
   // The four Oogas: the visitor's own when signed in, else the one a cabinet sent in, else the first; then three
@@ -228,9 +236,9 @@
       }
       // The grappling hook's rope and head (Cloud Hopper's models), hung in world space while it is out, and a coiled
       // hook on the hip while it is held.
-      const rope = place(createNode({ geometry: BL.cloudHopperModels.rope(), visible: false, sightHidden: true }));
-      const hookHead = place(createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true }));
-      const hookHip = createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
+      const rope = place(createNode({ geometry: BM.rope(), visible: false, sightHidden: true }));
+      const hookHead = place(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true }));
+      const hookHip = createNode({ geometry: BM.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
       addChild(body, hookHip);
       return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
     });
@@ -410,7 +418,8 @@
     }
   };
   const registered = () => !!round && !!round.match && round.match.reg.includes(BL.net.state.selfId);
-  const firstRegistered = () => !!round && !!round.match && round.match.reg[0] === BL.net.state.selfId && round.match.phase === "lobby";
+  // Whoever picks the next round's map: not once its countdown has begun.
+  const firstRegistered = () => !!round && !!round.match && round.match.reg[0] === BL.net.state.selfId && round.match.phase !== "countdown";
   const isReady = () => { const m = round.match, i = m.reg.indexOf(BL.net.state.selfId); return i >= 0 && m.ready[i] === 1; };
   const liveNames = (m, map) => {
     const taken = new Set(), names = new Array(m.size * 2), people = roster(), own = BL.net.ownAmong(contributors.activeRoster), self = BL.net.state.selfId;
@@ -466,17 +475,19 @@
     chairsFull = false;
     if (round) round.watchFeed(true);
     else if (el.watchLine) el.watchLine.textContent = "No round running.";
+    el.watchReg.hidden = !round;
     you = -9;
     phase = "watch"; paused = false;
     deck ||= BL.blockViewer.buildChairs(createNode, addChild, place(createNode()), SIM.ARENA);
     BL.blockViewer.place(deck, SIM.ARENA);
     deckZoom = deckZoomTo = 1; deckYaw = deckPitch = 0;
-    deckBoard.blue = -1; deckCaps.total = -1; deckCapSeen.length = 0; deckSteals.was.length = 0; deckSteals.count.length = 0;
+    deckBoard.blue = -1; deckCaps.total = -1; deckCapSeen.length = 0; deckSteals.was.length = 0; deckSteals.count.length = 0; deckSteals.home.blue = deckSteals.home.red = false;
     el.viewerCaps.textContent = ""; el.viewerCaps.hidden = true;
     el.gameButtons(true);
     // A late arrival skips the title card: the chairs are the place they came to.
     document.querySelector('[data-intro="block"]:not([hidden]) [data-action="intro-go"]')?.click();
     audio.unlock();
+    if (!chairsGreeted) { chairsGreeted = true; audio.cues.seat(); }
     el.viewerBoard.hidden = false;
     deck.visible = true;
     // Only the match below: no drifting clouds, campfire, weather or sounds of its own.
@@ -501,10 +512,11 @@
     line(["Player", "Mined", "Stolen", "Splats"], "", "th");
     for (const r of rows) line([nameOf(r.id), r.captures, r.stolen, r.hits], r.team, "td");
   };
+  const hearCaptures = () => { for (let n = BL.blockViewer.newCaptures(sim, deckCaps, !!round && round.hasFrame); n > 0; n--) audio.cues.capture(); };
   const deckView = (dt) => {
     deckZoom = BL.blockViewer.easeZoom(deckZoom, deckZoomTo, dt, hookStill);
     BL.blockViewer.look(camera, SIM.ARENA, deckYaw, deckPitch, setVec, deckZoom);
-    for (let n = BL.blockViewer.newCaptures(sim, deckCaps); n > 0; n--) audio.cues.capture();
+    hearCaptures();
     BL.blockViewer.trackSteals(sim, deckSteals);
     const statRows = BL.blockViewer.statRows(sim, deckSteals, deckCapSeen);
     if (statRows) paintStats(statRows);
@@ -514,11 +526,14 @@
   };
   const whoName = (id) => { const rec = BL.net.remotes.get(id); return rec ? (rec.display || rec.login || "an Ooga") : BL.net.state.selfId === id ? "You" : "an Ooga"; };
   const renderLive = (m) => {
+    // A round's last frame lands just before the lobby message: hear its winning capture before anything resets.
+    if (onDeck() && (!m || m.phase !== "play")) hearCaptures();
     if (!el.live) return;
     el.live.hidden = !round;
     if (!round) return;
     const self = BL.net.state.selfId, play = !!m && m.phase === "play", count = m ? m.reg.length : 0, me = !!m && m.reg.includes(self), mine = !!m && m.reg[0] === self;
     const seated = play && WIRE.seatOf(m, self) >= 0;
+    if (!play) chairsFull = false;
     el.liveTitle.textContent = play ? "Round under way" : m && m.phase === "countdown" ? "Starting…" : "Live match";
     const solo = !!m && m.phase === "lobby" && count === 1 && me, waiting = solo && isReady();
     el.liveStatus.textContent = chairsFull ? "The viewing chairs are full. You can register for the next round or go back."
@@ -544,7 +559,8 @@
       el.watchReg.textContent = me ? "Unregister" : "Register for next round";
     }
     // The round over or gone: the deck, or a round whose host vanished, goes back to the shared menu.
-    if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); }
+    if (watchVisit && onDeck() && deckLive && !(play)) { deckLive = false; SIM.reset(sim, sim.seed); deckSteals.was.length = 0; deckSteals.count.length = 0; deckSteals.home.blue = deckSteals.home.red = false; }
+    followMatchMap();
     if ((!m || m.phase === "lobby" || m.phase === "countdown") && (onDeck() && !watchVisit || kept && phase === "play" && !liveRound() && !sim.over)) showBoard();
   };
   const openRound = () => {
@@ -554,6 +570,15 @@
     round.hello();
     renderLive(null);
     if (watchVisit) showDeck();
+  };
+  // Every way of asking to play from a menu: nothing from the chairs, the shared menu after a live round, otherwise a
+  // solo round, giving up any place in the lobby first.
+  const beginFromMenu = () => {
+    if (onDeck()) return false;
+    if (phase === "results" && kept) { showBoard(); return true; }
+    if (registered()) round.unregister();
+    start();
+    return true;
   };
   const showBoard = () => {
     el.tip.textContent = TIPS[tipK++ % TIPS.length];
@@ -569,9 +594,10 @@
     if (el.gameButtons) el.gameButtons(false);
     if (deck) { deck.visible = false; for (const n of mapClouds) n.visible = true; if (fireNode) fireNode.visible = true; if (dancers) for (const d of dancers) d.visible = true; }
     if (onDeck() && round) round.watchFeed(false);
-    you = 0; watchVisit = false;
+    you = 0; watchVisit = false; chairsGreeted = false;
     if (kept) { Object.assign(selection, kept); kept = null; liveCast = null; if (sim) { const was = sim.map; recast(); if (was !== selection.map) { buildMap(); mapBase = null; } } }
     phase = "board";
+    followMatchMap();
     if (el.againBtn) el.againBtn.textContent = "Again";
     el.board.hidden = false;
     el.results.hidden = el.strip.hidden = el.center.hidden = el.notice.hidden = el.toolBar.hidden = el.map.hidden = el.feed.hidden = true;
@@ -871,6 +897,7 @@
     }
   };
   const readEvents = () => {
+    try {
     for (let i = 0; i < sim.eventCount; i++) {
       const e = sim.events[i], mine = e.team === sim.team, me = e.actor === you;
       hear(e, me, mine);
@@ -1121,14 +1148,14 @@
         if (me) { closeQuiz(); notice("The bubble wore off. Run!", 2200); }
       } else if (e.type === "win") say(e.actor, LINES.win, 2.4);
     }
-    sim.eventCount = 0;
+    } finally { sim.eventCount = 0; }
   };
 
   // Space and the act button start a round from the board or the results; in play they fall through to the jump.
   // Space (or the touch act button) uses what stands beside the Ooga, as on the island: a wallet machine, a catapult or
   // a tower's zipline; anywhere else it jumps. On the board and the results it starts a round.
   const act = () => {
-    if (phase === "board" || phase === "results") { start(); return true; }
+    if (phase === "board" || phase === "results") return beginFromMenu();
     if (phase !== "play" || paused || quiz.open || wmenu.open) return false;
     const a = sim.actors[0];
     if (!SIM.nearVend(sim, a) && !SIM.nearCatapult(sim, a) && !SIM.nearEnemyCatapult(sim, a) && !SIM.nearZip(sim, a)) return false;
@@ -1408,6 +1435,7 @@
     }
   };
   const onArrow = (e) => {
+    if (panelLive()) return;
     const down = e.type === "keydown" ? 1 : 0;
     if (e.key === "ArrowLeft") arrows.left = down;
     else if (e.key === "ArrowRight") arrows.right = down;
@@ -1457,7 +1485,7 @@
     cam.pitch = cam.first ? clamp(cam.pitch + e.movementY * 2.2e-3 * k, -0.7, 1.15) : clamp(cam.pitch + e.movementY * 2.2e-3, CAM.pitch[0], CAM.pitch[1]);
   };
   const lockMouse = () => {
-    if (COARSE || locked() || !el.canvas.requestPointerLock) return;
+    if (COARSE || locked() || !el.canvas.requestPointerLock || panelLive()) return;
     const lock = el.canvas.requestPointerLock();
     if (lock && lock.catch) lock.catch(() => { });
   };
@@ -1479,7 +1507,7 @@
   // page's own key routing (which leaves Tab on a focused button to the browser) and before the browser moves the focus.
   // A game choice: on the island the first Tab frees a captured mouse; here Escape or X does.
   const onTabKey = (e) => {
-    if (e.key !== "Tab" || phase !== "play" || quiz.open || paused) return;
+    if (e.key !== "Tab" || phase !== "play" || quiz.open || paused || panelLive()) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -1489,7 +1517,7 @@
   // Caught first, as Tab is: a menu control left focused (the Ooga picker, a button) would otherwise take the key, and
   // only a text field keeps it.
   const onBuildKey = (e) => {
-    if ((e.key !== "b" && e.key !== "B" && e.code !== "KeyB") || !inRound() || quiz.open || e.metaKey || e.ctrlKey || e.altKey) return;
+    if ((e.key !== "b" && e.key !== "B" && e.code !== "KeyB") || !inRound() || quiz.open || e.metaKey || e.ctrlKey || e.altKey || panelLive()) return;
     const t = e.target;
     if (t && (t.isContentEditable || (t.closest && t.closest("input, textarea")))) return;
     e.preventDefault();
@@ -1508,7 +1536,7 @@
     if (k === "sniper" && !a.sniper) { notice("The sniper rifle stays up the towers · climb a ladder", 1600); return; }
     chooseTool(k);
   };
-  const onCrouchKey = (e) => { if (e.key === "c" || e.key === "C") move.crouch = e.type === "keydown" ? 1 : 0; };
+  const onCrouchKey = (e) => { if (!panelLive() && (e.key === "c" || e.key === "C")) move.crouch = e.type === "keydown" ? 1 : 0; };
   // Pick up the crate in front, or set the held one down (stacking it on a crate there).
   const grabCrate = () => {
     if (!inRound()) return false;
@@ -2156,7 +2184,8 @@
     if (round) round.lobbyTick(dt);
     if (phase === "play" && paused && !liveRound()) controls.read();
     else if (phase === "play") {
-      readInput(dt);
+      if (panelLive()) { controls.read(); move.x = move.z = move.sprint = move.jump = move.jet = move.crouch = 0; }
+      else readInput(dt);
       // Choosing a wallet: the Ooga stands still; walking off (or being knocked away) from the machine closes the panel.
       if (wmenu.open) {
         move.x = move.z = move.sprint = move.jump = move.jet = move.crouch = 0;
@@ -2181,7 +2210,7 @@
       readEvents();
       updateStrip();
       if (sim.over) finish();
-    } else if (onDeck()) { controls.read(); round.after(dt, move); sim.eventCount = 0; updateStrip(); }
+    } else if (onDeck()) { controls.read(); if (round) round.after(dt, move); sim.eventCount = 0; updateStrip(); }
     else controls.read();
     poseActors(dt, elapsed);
     poseBlocks(elapsed);
@@ -2223,6 +2252,7 @@
     hud.setStats(game.state);
   };
   const onKey = (e) => {
+    if (panelLive()) return;
     audio.unlock();
     // Escape steps back one thing at a time, as on the island: the captured mouse, then the view, then a pause, then
     // the board, then the Arcade.
@@ -2234,7 +2264,8 @@
       else goHome();
       return;
     }
-    if (e.key === "Enter" && phase !== "play") start();
+    if (onDeck()) { if (e.key === "+" || e.key === "=") zoomDeck(1.3); else if (e.key === "-" || e.key === "_") zoomDeck(1 / 1.3); return; }
+    if (e.key === "Enter" && phase !== "play") beginFromMenu();
     else if (e.key === "Enter" && !e.repeat && !quiz.open && !paused) paint();
     if (phase !== "play" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "p" || e.key === "P") { if (!quiz.open) setPaused(!paused); return; }
@@ -2256,7 +2287,6 @@
     if (e.key === "g" || e.key === "G") cycleTool(1);
     if (e.key === "f" || e.key === "F") grabCrate();
     if (e.key === "k" || e.key === "K") dropBlock();
-    if (onDeck()) { if (e.key === "+" || e.key === "=") zoomDeck(1.3); else if (e.key === "-" || e.key === "_") zoomDeck(1 / 1.3); return; }
     if ((e.key === "+" || e.key === "=") && scoped()) zoomScope(1);
     if ((e.key === "-" || e.key === "_") && scoped()) zoomScope(-1);
     if (e.key === "v" || e.key === "V") cycleView();
@@ -2286,16 +2316,24 @@
     paintTeams();
     nameShowcase();
   };
-  const chooseMap = (id) => {
+  // The map on show: its button, the pick and the scenery behind the board change together.
+  const showMap = (id) => {
     for (const b of el.maps) b.setAttribute("aria-pressed", String(b.dataset.map === id));
-    if (id === selection.map && sim && sim.map === id) return;
+    if (id === selection.map && sim && sim.map === id) return false;
     selection.map = id;
-    savePicks();
-    if (round && firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(id));
-    if (!sim) return;
-    recast();
-    buildMap();
-    mapBase = null;
+    if (sim) { recast(); buildMap(); mapBase = null; }
+    return true;
+  };
+  const chooseMap = (id) => {
+    // Registered behind someone else, the board shows the map they picked.
+    if (registered() && !firstRegistered()) { notice(round.match.phase === "countdown" ? "The map is set for this round" : "The first registered picks the map", 1800); return; }
+    if (showMap(id)) savePicks();
+    if (firstRegistered()) round.setOptions(round.match.size, WIRE.MAPS.indexOf(id));
+  };
+  // Registered for a round about to run, the board shows the map it will play: the Worker's word, whoever picked it.
+  const followMatchMap = () => {
+    const m = round && round.match;
+    if (phase === "board" && m && m.phase !== "play" && registered()) showMap(WIRE.MAPS[m.map]);
   };
   // Everything that belongs to the map, under one node so a new map replaces it whole: the ground and buildings, the
   // quiz pads, power-up spots, trampolines, ammo caches, and the campfire with its three dancing potato Oogas.
@@ -2409,7 +2447,7 @@
     // The two grappling hooks, wherever they're hidden this round.
     hookStill = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     hookNodes = [];
-    for (let i = 0; i < C.HOOKS; i++) hookNodes.push(add(createNode({ geometry: BL.cloudHopperModels.hookHead(), visible: false, sightHidden: true, scale: { x: 1.4, y: 1.4, z: 1.4 } })));
+    for (let i = 0; i < C.HOOKS; i++) hookNodes.push(add(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true, scale: { x: 1.4, y: 1.4, z: 1.4 } })));
     // Haunted Hollow's ghosts, one node each (the sim has the haunts both ways round).
     ghostNodes = [];
     for (let i = 0; i < (A.ghosts || []).length * 2; i++) ghostNodes.push(add(createNode({ geometry: BM.ghost(), visible: false, scale: { x: 1.1, y: 1.1, z: 1.1 } })));
@@ -2767,12 +2805,12 @@
     hud.onAction((action) => {
       // Nothing in the chairs reaches the game: a viewer has no Ooga, tools or block.
       if (onDeck() && (action === "block-drop" || action === "act" || action === "block-view")) return;
-      if (action === "block-again" && kept) showBoard();
-      else if (action === "block-start" || action === "block-again") { if (registered()) round.unregister(); start(); }
+      if (action === "block-start" || action === "block-again") beginFromMenu();
       else if (action === "block-live-reg") {
+        if (!round) return;
         const own = BL.net.ownAmong(contributors.activeRoster);
         if (registered()) { round.unregister(); BL.net.setBody(null); }
-        else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); round.register(); }
+        else if (own) { BL.net.setBody(own); BL.net.sendPose(0, 0, 0, 0); const pick = WIRE.MAPS.indexOf((kept || selection).map); round.register(pick < 0 ? undefined : pick); }
       }
       else if (action === "block-live-ready") round.setReady(!isReady());
       else if (action === "block-live-alone") round.startAlone();
@@ -2845,7 +2883,8 @@
     if (el.watch) el.watch.hidden = true;
     if (el.viewerBoard) el.viewerBoard.hidden = true;
     undeckRender();
-    deck = null; you = 0; kept = null; liveCast = null; watchVisit = false;
+    chairsGreeted = false;
+    deck = null; you = 0; kept = null; liveCast = null; watchVisit = false; panelOpen = false;
     BL.net.setBody(null);
     closeWalletMenu();
     if (wmenu.root) { wmenu.root.remove(); wmenu.root = wmenu.picks = wmenu.take = null; }
@@ -2911,7 +2950,8 @@
     phase = "board";
     skyClouds = []; skyPerch = null;
     sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = trampNodes = powerNodes = result = null;
-    mapRoot = fireNode = dancers = peelNodes = catapults = null;
+    mapRoot = fireNode = dancers = peelNodes = catapults = walletNodes = vendNodes = boltNode = boltRing = null;
+    hookNodes = []; ghostNodes = [];
     catNear = false;
     for (const t of SIM.TEAMS) iceNodes[t] = null;
     zipNear = false;

@@ -10,6 +10,9 @@
   // Every event block-sim emits, by index on the wire. An unlisted one is dropped; the suite checks the list is whole.
   const EVENT_TYPES = ["blast", "boing", "bolt", "boltwarn", "boo", "build", "burn", "cache", "callride", "capture", "chute", "chuteoff", "clean", "climbed", "cooled", "edgedrop", "enemycat", "ghostback", "ghostpop", "go", "gold", "goldsteal", "gorillahit", "gorillahooked", "grab", "homers", "hookbite", "hookbounce", "hookget", "hookhide", "hookrelease", "hooksteal", "hookthrow", "hookwarn", "hopoff", "hopon", "jump", "jump2", "land", "landed", "laseroff", "laseron", "launch", "lift", "mined", "miss", "net", "netsteal", "newblock", "pass", "pickup", "power", "puddle", "refill", "rekt", "reload", "reloaded", "rescue", "respawn", "return", "set", "slip", "smash", "splat", "steady", "struggle", "stuck", "thrown", "touchdown", "trap", "unnet", "unzip", "waiting", "wallet", "wbounce", "wdrop", "weather", "win", "winded", "windup", "wthrow", "yank", "zip", "fire", "throw", "bonk", "boom", "pop", "breakfree", "letgo", "netmiss", "rifle", "unrifle", "drop", "knock", "escape", "timeout", "hookmiss"];
   const EVENT_INDEX = new Map(EVENT_TYPES.map((t, i) => [t, i]));
+  // Events the rules only ever raise for a real Ooga; the suite checks the list against block-sim.js.
+  const ACTOR_EVENTS = ["boing", "boltwarn", "boo", "build", "burn", "cache", "callride", "capture", "chute", "chuteoff", "clean", "climbed", "cooled", "edgedrop", "enemycat", "gold", "gorillahooked", "grab", "homers", "hookbite", "hookbounce", "hookget", "hookrelease", "hookthrow", "hopoff", "hopon", "jump", "jump2", "land", "laseroff", "laseron", "launch", "lift", "netsteal", "pass", "pickup", "power", "puddle", "refill", "rekt", "reload", "reloaded", "rescue", "respawn", "slip", "steady", "struggle", "thrown", "touchdown", "trap", "unnet", "unzip", "waiting", "wallet", "wdrop", "win", "winded", "windup", "wthrow", "yank", "zip"];
+  const NEEDS_ACTOR = EVENT_TYPES.map(t => ACTOR_EVENTS.includes(t));
   const SHOT_KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate", "homer"];
   const FLAG_STATES = ["home", "carried", "dropped", "flying"];
   const WEATHER = ["clear", "rain", "wind", "snow", "storm", "fog"];
@@ -74,7 +77,7 @@
     if (o + 1 > len) return false;
     n = v.getUint8(o++);
     if (n > sim.wallets.length) return false;
-    for (let i = 0; i < n; i++) { if (o + 13 > len || v.getUint8(o) >= sim.wallets.length || !seatOk(v.getUint8(o + 2)) || !teamOk(v.getUint8(o + 3)) || !seatOk(v.getUint8(o + 12))) return false; o += 13; }
+    for (let i = 0; i < n; i++) { if (o + 13 > len || v.getUint8(o) >= sim.wallets.length || !seatOk(v.getUint8(o + 2)) || !teamOk(v.getUint8(o + 3)) || !seatOk(v.getUint8(o + 12))) return false; if (v.getUint8(o + 1) === 0 && v.getUint8(o + 2) === 255 || v.getUint8(o + 1) === 3 && v.getUint8(o + 12) === 255) return false; o += 13; }
     if (o + sim.gorillas.length * 10 + sim.ghosts.length * 9 + sim.hooks.length * 8 > len) return false;
     for (let i = 0; i < sim.gorillas.length; i++) { if (!seatOk(v.getUint8(o + 9))) return false; o += 10; }
     o += sim.ghosts.length * 9;
@@ -83,7 +86,7 @@
     if (o + 1 > len) return false;
     n = v.getUint8(o++);
     if (n > MAX_EVENTS || o + n * 10 !== len) return false;
-    for (let i = 0; i < n; i++) { if (v.getUint8(o) >= EVENT_TYPES.length || !teamOk(v.getUint8(o + 1)) || !seatOk(v.getUint8(o + 2)) || !seatOk(v.getUint8(o + 3))) return false; o += 10; }
+    for (let i = 0; i < n; i++) { if (v.getUint8(o) >= EVENT_TYPES.length || !teamOk(v.getUint8(o + 1)) || !seatOk(v.getUint8(o + 2)) || !seatOk(v.getUint8(o + 3)) || NEEDS_ACTOR[v.getUint8(o)] && v.getUint8(o + 2) === 255) return false; o += 10; }
     return true;
   };
   // The whole visible state of a sim, in seat order, into `buffer`. Returns the byte length. Allocates nothing.
@@ -342,7 +345,7 @@
       if (match.phase === "countdown" && !goSent && W.seatOf(match, self()) >= 0 && net.serverNow() + 200 >= match.start) { goSent = command("go", { s: match.s }); }
     };
     return {
-      get role() { return role; }, get match() { return match; }, get seat() { return seat; }, get map() { return map; },
+      get hasFrame() { return haveFrame; }, get role() { return role; }, get match() { return match; }, get seat() { return seat; }, get map() { return map; },
       bind, act, lobbyTick, hostStep,
       // A frame's work on a live round, after the host stepped it (or in place of stepping, on a guest or the deck).
       after(dt, move) {
@@ -352,7 +355,7 @@
       },
       watchNow() { if (match && match.phase === "play") { startedTag = -1; beginRound(); } },
       watchFeed: (on) => command("watch", { on: on ? 1 : 0 }),
-      hello: () => command("hello"), register: () => command("reg"), unregister: () => command("unreg"), setReady: (r) => command("ready", { r: r ? 1 : 0 }), startAlone: () => command("alone"),
+      hello: () => command("hello"), register: (m) => command("reg", { m }), unregister: () => command("unreg"), setReady: (r) => command("ready", { r: r ? 1 : 0 }), startAlone: () => command("alone"),
       setOptions: (n, m) => command("opt", { n, m }),
       dispose() { endRound(); offs.forEach(off => off()); }
     };
@@ -360,5 +363,5 @@
   // The one way in for a visitor who only came to watch: pass a scene's `go` (the director's or the arcade's `open`).
   // Signed-in Oogas land on the watch deck, round or no round; signed out or on an older Worker, the ordinary menu.
   const openWatchDeck = (go) => go("block", W.WATCH_DECK_PLACE);
-  BL.blockLive = { create, seatMap, encode, decode, validFrame, EVENT_TYPES, openWatchDeck };
+  BL.blockLive = { create, seatMap, encode, decode, validFrame, EVENT_TYPES, openWatchDeck, ACTOR_EVENTS };
 })();
