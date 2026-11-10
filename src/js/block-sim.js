@@ -29,10 +29,8 @@
 // answering a Bitcoin question (the scene asks it and calls `escape`), or the bubble wears off after `TRAP_MAX_S`.
 // Bots "work the question" for a seeded few seconds. A sprung pad goes dark for `TRAP_REARM_S`.
 //
-// Weather: the sky turns from clear to stormy and back on a seeded schedule; a storm brings rain and lightning.
-//
 // Every number lives in CONFIG. The arena, its blocks and the stands live in ARENA. Actors, flags, shots, crates and
-// the event ring are preallocated in `create`; `step` allocates nothing. Bots and weather draw from the run's seeded
+// the event ring are preallocated in `create`; `step` allocates nothing. Bots draw from the run's seeded
 // `rng`, so a seed replays a round.
 (() => {
   "use strict";
@@ -46,7 +44,6 @@
     TRAP_R: 0.95, TRAP_MAX_S: 25, TRAP_REARM_S: 8, BOT_THINK: [3.5, 8], MAX_SIDE: 5,
     PREP_S: 20, CRATE_HALF: 0.6, CRATE_H: 1.1, MAX_CRATES: 32, CRATE_STOCK: 3, PUSH: 0.55, STAND_CLEAR: 2.4,
     NET_S: 4, NET_SLOW: 0.4, PASS_SPEED: 13, PASS_LIFT: 5, PASS_GRAVITY: 13, PASS_SAFE: 0.45, CATCH_R: 1.5,
-    WEATHER_S: [24, 42],
     TRAMP_R: 1.0, BOUNCE: 13.5, STEP_UP: 0.45, FIRE_R: 0.95, BURN_HOPS: 3, BURN_SLOW: 0.25,
     JET_FUEL: 2.6, JET_REFILL: 3, JET_ACCEL: 27, JET_RISE: 6, JET_CEILING: 15,
     GORILLA_SPEED: 3.2, GORILLA_CHARGE: 8, GORILLA_SIGHT: 8, GORILLA_LEASH: 11, GORILLA_WANDER: 5, GORILLA_R: 0.75,
@@ -70,9 +67,7 @@
     // edge (it no longer stands on the island and is kept out of its rock); one that falls past `FALL_FLOOR` comes back
     // in its own block zone. A block carried over the edge drops at the edge and goes home after `EDGE_HOME_S`. The
     // rock under the island is `ISLE_EDGE` deep at the edge and deepens toward the middle, `ISLE_DEPTH` at most.
-    // Lightning in a storm: every `BOLT_S` or so a spot under a seeded Ooga is warned (`BOLT_WARN`), then struck; anyone
-    // still within `BOLT_R` is splatted (no more than once per `BOLT_COOL` each).
-    BOLT_S: [7, 13], BOLT_WARN: 1.4, BOLT_R: 1.8, BOLT_COOL: 18, PUDDLE_R: 0.9, PUDDLE_REARM: 6,
+    PUDDLE_R: 0.9, PUDDLE_REARM: 6,
     RIM: 0.6, RESPAWN_GUARD: 0.4, ENEMY_CAT_UP: 17, ENEMY_CAT_PAST: 9, FALL_FLOOR: -40, EDGE_HOME_S: 3, ISLE_EDGE: 2.5, ISLE_DEPTH: 14,
     // The grappling hook (Cloud Hopper's, a special weapon here): `HOOKS` a map, hidden at seeded spots from the map's
     // hand-checked `hookSpots`. It flies out at `HOOK_FLY`, up to `HOOK_RANGE`; a bite on rock pulls the Ooga toward it at
@@ -769,7 +764,7 @@
     return true;
   };
 
-  // A round. `team` is the player's colour; `seed` seeds the bots and the weather; `prep` the fortifying seconds.
+  // A round. `team` is the player's colour; `seed` seeds the bots; `prep` the fortifying seconds.
   // `names` names the four Oogas: the player first, then their teammate, then the two rivals (only carried for the
   // scene).
   // `size` Oogas a side (1 to `MAX_SIDE`): the player first, then their teammates, then the rivals. `skill` picks the
@@ -787,7 +782,7 @@
       climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", grabbed: 0, grabFill: 0, flung: false, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       wallet: -1, knock: 0, soot: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, vendGo: 0, vendI: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
       detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
-      boltCool: 0, hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
+      hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
     }));
     const flags = {};
     for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0, homeT: 0, hookedBy: -1, graceT: 0 };
@@ -806,9 +801,8 @@
     const vends = A.vends.map(([x, z]) => ({ x, z, dark: 0 }));
     const hooks = Array.from({ length: CONFIG.HOOKS }, () => ({ state: 0, x: 0, y: 0, z: 0, holder: -1 }));
     const events = Array.from({ length: CONFIG.MAX_EVENTS }, () => ({ type: "", team: null, actor: -1, by: -1, x: 0, y: 0, z: 0 }));
-    const weather = { kind: "clear", left: 0, strength: 0, boltT: 0, boltWarn: 0, boltX: 0, boltZ: 0 };
     const puddles = (A.puddles || []).map(([x, z]) => ({ x, z, dark: 0 }));
-    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, live: null, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, puddles, gorillas, ghosts, wallets, vends, hooks, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, weather, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
+    const sim = { goldLeft: CONFIG.GOLD_GUNS, map, team, rival, seed, target, size, skill, bots: SKILLS[skill] || SKILLS.normal, prepS: prep, prep: 0, rng: mulberry32(seed), actors, flags, shots, crates, traps, caches, powers, peels, puddles, gorillas, ghosts, wallets, vends, hooks, halving: { blue: 0, red: 0 }, cold: { blue: 0, red: 0 }, events, eventCount: 0, score: { blue: 0, red: 0 }, time: 0, flip: false, over: false, winner: null, acc: 0 };
     reset(sim);
     return sim;
   };
@@ -886,8 +880,6 @@
     for (const c of sim.caches) c.dark = 0;
     for (const p of sim.peels) p.dark = 0;
     for (const p of sim.puddles) p.dark = 0;
-    sim.weather.boltT = CONFIG.BOLT_S[0]; sim.weather.boltWarn = 0;
-    for (const a of sim.actors) a.boltCool = 0;
     for (const w of sim.wallets) w.live = false;
     for (const g of sim.ghosts) { g.x = g.wx = g.hx; g.z = g.wz = g.hz; g.state = 0; g.t = 0; }
     for (const v of sim.vends) v.dark = 0;
@@ -902,8 +894,6 @@
     // after that each draws from the seed, so a seed replays the round's power-ups too.
     for (let i = 0; i < sim.powers.length; i++) { const p = sim.powers[i]; p.dark = 0; p.kind = [0, 3, seed & 1 ? 2 : 1][(i >> 1) % 3]; }
     for (const t of TEAMS) sim.halving[t] = sim.cold[t] = 0;
-    const w = sim.weather;
-    w.kind = "clear"; w.left = CONFIG.WEATHER_S[0]; w.strength = 0;
     sim.score.blue = sim.score.red = 0;
     sim.time = sim.acc = 0;
     sim.prep = sim.prepS;
@@ -2647,60 +2637,6 @@
       if (!ok) { c.x = ox; c.z = oz; } else if (Math.abs(c.x - ox) + Math.abs(c.z - oz) > 1e-6) a.pushing = true;
     }
   };
-  // The weather: a seeded run of clear and stormy spells, `strength` easing in and out of a storm (0 to 1).
-  // Each map's chance of a stormy spell.
-  const MAP_WEATHER = { fort: 0.2, town: 0.15, jungle: 0.4, haunted: 0.3 };
-  const stepBolt = (sim, w, dt) => {
-    if (w.boltWarn > 0) {
-      if ((w.boltWarn -= dt) > 0) return;
-      w.boltWarn = 0;
-      emit(sim, "bolt", null, -1, w.boltX, 0, w.boltZ);
-      for (const a of sim.actors) {
-        if (!open(a) || a.boltCool > 0 || a.grabbed || (a.x - w.boltX) ** 2 + (a.z - w.boltZ) ** 2 > CONFIG.BOLT_R * CONFIG.BOLT_R) continue;
-        a.boltCool = CONFIG.BOLT_COOL;
-        splat(sim, a, false, null);
-      }
-      return;
-    }
-    if (w.kind !== "storm" || (w.boltT -= dt) > 0) return;
-    let n = 0;
-    for (const a of sim.actors) if (open(a) && a.boltCool <= 0 && !a.grabbed && onIsland(a.x, a.z) && a.y > -0.5) n++;
-    if (!n) { w.boltT = 2; return; }
-    let k = Math.floor(sim.rng() * n);
-    for (const a of sim.actors) {
-      if (!open(a) || a.boltCool > 0 || a.grabbed || !onIsland(a.x, a.z) || a.y <= -0.5 || k--) continue;
-      w.boltX = a.x; w.boltZ = a.z;
-      emit(sim, "boltwarn", a.team, a.id, a.x, 0, a.z);
-      break;
-    }
-    w.boltWarn = CONFIG.BOLT_WARN;
-    w.boltT = CONFIG.BOLT_S[0] + sim.rng() * (CONFIG.BOLT_S[1] - CONFIG.BOLT_S[0]);
-  };
-  const stepWeather = (sim, dt) => {
-    const w = sim.weather;
-    w.left -= dt;
-    if (w.left <= 0) {
-      // Live weather (`setLive`) holds its kind; otherwise each spell is a seeded draw.
-      // Its own mix on each map; a busy network still makes a storm.
-      const r = sim.rng();
-      w.kind = sim.live === "storm" || r < MAP_WEATHER[sim.map] ? "storm" : "clear";
-      w.left = CONFIG.WEATHER_S[0] + sim.rng() * (CONFIG.WEATHER_S[1] - CONFIG.WEATHER_S[0]);
-      emit(sim, "weather", null, -1, 0, 0, 0);
-    }
-    w.strength += ((w.kind === "storm" ? 1 : 0) - w.strength) * Math.min(1, dt * 0.4);
-    stepBolt(sim, w, dt);
-  };
-
-  // A busy Bitcoin network (`kind` "storm") brings a storm over a map's own seeded weather at once; anything else leaves
-  // that weather alone.
-  const setLive = (sim, kind) => {
-    // Only a busy network (storm) overrides a map's own weather; calmer fees say nothing.
-    kind = kind === "storm" ? "storm" : null;
-    if (kind === sim.live) return false;
-    sim.live = kind;
-    if (kind && kind !== sim.weather.kind) sim.weather.left = 0;
-    return true;
-  };
   // A real Bitcoin block was just found: every quiz pad and ammo cache is ready again.
   const newBlock = (sim, height = 0) => {
     for (const t of sim.traps) t.dark = 0;
@@ -2736,7 +2672,6 @@
       sim.prep = Math.max(0, sim.prep - dt);
       if (prepWas > 0 && sim.prep === 0) emit(sim, "go", null, -1, 0, 0, 0);
     }
-    stepWeather(sim, dt);
     // Each step takes the four in the other order from the last, so neither side always moves, picks up or reaches a
     // dropped block first.
     sim.flip = !sim.flip;
@@ -2746,7 +2681,6 @@
       const input = (sim.inputs && sim.inputs[a.id]) || given;
       if (a.cooldown > 0) a.cooldown -= dt;
       if (a.monkeyCool > 0) a.monkeyCool -= dt;
-      if (a.boltCool > 0) a.boltCool -= dt;
       if (a.hCool > 0) a.hCool -= dt;
       if (a.flingT > 0) a.flingT = a.grounded ? 0 : a.flingT - dt;
       if (a.hk) { a.hookHold = !a.bot && !!input.crouch; stepHook(sim, a, dt); }
@@ -3083,7 +3017,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();

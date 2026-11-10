@@ -12,9 +12,9 @@ Solo by default. Signed-in Oogas can also play together: see Live rounds below.
 
 | File | Job |
 |---|---|
-| `block-sim.js` | The rules as pure functions, no DOM or scene: the arena, actors, blocks, throws, crates, quiz traps, weather and bots, on a 1/120 s fixed step that allocates nothing. Seeded, so a seed replays a round. |
+| `block-sim.js` | The rules as pure functions, no DOM or scene: the arena, actors, blocks, throws, crates, quiz traps and bots, on a 1/120 s fixed step that allocates nothing. Seeded, so a seed replays a round. |
 | `block-trivia.js` | 35 multiple-choice Bitcoin questions, each with a one-line fact, for the quiz traps. |
-| `block-models.js` | Cached geometry: Fort Chaos, the stands, the two team blocks, crates, paint balls, grenades, rockets, nets, splats, quiz pads and bubbles, rain. |
+| `block-models.js` | Cached geometry: Fort Chaos, the stands, the two team blocks, crates, paint balls, grenades, rockets, nets, splats, quiz pads and bubbles. |
 | `scene-block.js` | The scene: the side and Ooga picker, the round, the HUD, the cameras, the quiz card and the results. Registers `BL.scenes.block`. |
 
 Shared files touched, each by the smallest change: `arcade-models.js`, `arcade-scene-models.js` and `scene-arcade.js` (the entry hall: `BLOCK_HALL`, its walk, sight and light, and its zipline off the ledge; the stage stays rock's four cabinets, and the Rally poster moved just beside the mouth),
@@ -53,14 +53,13 @@ card), `src/style.css` (the game's panels, appended), `test/run.mjs` (rules in t
   from below, and come down on top to stand there. The leaves themselves stay decor, so nobody hides inside them, and
   the chase camera comes in front of (or over) leaves as it does walls. The two trees before each sniper tower stand
   low (3.5 m), so the scope sees over them.
-- **Weather.** A seeded run of clear and stormy spells. Storms darken the light and bring rain and lightning.
 - **Movement.** Jump, and jump again in the air: a double jump reaches 2.55 m and clears the forts' 2.4 m walls, the
   stilt huts' floors and the centre deck, carrying or not. Shift sprints for up to 4 s, refilling after a rest. C
   crouches: slower, shorter, under chest-height paint.
 
 ## Play-test additions
 
-Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort Chaos at sunset, Ooga Town at midday, Gorilla Jungle cloudy and always raining with puddles that slip you, Haunted Hollow at night on a brick field. Storms warn a spot and then strike whoever stays with lightning (`bolt`), once per `BOLT_COOL` each. A busy network (fees at the storm rate) brings a storm over a map's own weather; calmer fees change nothing. Haunted Hollow has lamps, neon on the cave walls, a few open graves to fall in and step out of with a skeleton and a ghost. The Detail setting on the menu turns off foliage, rain, lightning effects and that dressing; the rules stay. `N` hides the mini-map, `?` or Help opens the in-play help. Ooga Town's block stand is at the back of its building, under the upper floor. Haunted Hollow's scoring ring is out behind each house at the back of the map, its tall iron gate is solid with the way round either end, and its open graves are too deep for one jump: a double jump, the jetpack or the hook gets you out.
+Each map has its own fixed time of day and sky (`MAP_HOUR`, `MAP_CLOUDS` in the scene): Fort Chaos at sunset, Ooga Town at midday, Gorilla Jungle cloudy with puddles that slip you, Haunted Hollow at night on a brick field. There is no weather on any map: no storms, rain, lightning or thunder, and mempool fees change nothing (a block found still readies the pads and caches). Haunted Hollow has lamps, neon on the cave walls, a few open graves to fall in and step out of with a skeleton and a ghost. The Detail setting on the menu turns off foliage and that dressing; the rules stay. `N` hides the mini-map, `?` or Help opens the in-play help. Ooga Town's block stand is at the back of its building, under the upper floor. Haunted Hollow's scoring ring is out behind each house at the back of the map, its tall iron gate is solid with the way round either end, and its open graves are too deep for one jump: a double jump, the jetpack or the hook gets you out.
 
 ## Towers, ziplines and ammo caches
 
@@ -171,8 +170,9 @@ a character file hangs on its Ooga as `parts.dog` is let off the lead in this sc
 The global tier plays the rules through the sim's own calls: pickup, a drop held until you step out, scoring only
 with your own block home, a splat dropping the carrier's block, which stays until its own side carries it home, a
 quiz trap holding and shielding, a net slowing and grounding, a crate pushed, a pass caught, a crate lifted, stacked
-and thrown to stun, and a seeded round on
-autopilot replaying exactly to three captures. The `block` scene runs the title card and Escape, W S and A D on screen,
+and thrown to stun, a seeded round on
+autopilot replaying exactly to three captures, and two minutes of seeded play on every map raising no storm, rain or
+lightning. The `block` scene runs the title card and Escape, W S and A D on screen,
 a quiz trap through a wrong and a right answer, an autopilot round to its saved results, and the round trip.
 
 The entry hall's Node checks cover the stage's four cabinets, the hall reaching the ledge, the zipline's survey and the Rally poster's move; the `arcade` step walks it. Browser scenes have not been run for this

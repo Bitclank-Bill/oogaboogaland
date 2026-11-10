@@ -525,12 +525,6 @@
     geo.castShadow = false;
     return geo;
   });
-  // A rain streak, a thin pale bar.
-  const streak = cached(() => {
-    const geo = box({ w: 0.025, h: 0.5, d: 0.025, color: "#c8d8ff", emissive: 0.4 });
-    geo.castShadow = false;
-    return geo;
-  });
   // The guns, each in its own frame with the grip at the origin and the muzzle along +z, in team colours (variants by
   // team): a paintball marker with a hopper, a chunky grenade launcher with a drum, a big shoulder rocket launcher, a
   // short, wide net launcher and a long sniper rifle with a scope.
@@ -876,10 +870,8 @@
     for (let y = 0.15; y <= top; y += 0.3) parts.push(box({ w, h: 0.05, d: 0.05, color: "#b0905a", offset: { y } }));
     return merge(...parts);
   });
-  // A rain puddle: a flat dark pool (Gorilla Jungle's).
+  // A puddle: a flat dark pool (Gorilla Jungle's).
   const puddle = cached(() => box({ w: 1.6, h: 0.02, d: 1.3, color: "#3a5a78", emissive: 0.05, offset: { y: 0.015 } }));
-  // The lightning bolt's column, a tall thin white box with its foot at y 0.
-  const bolt = cached(() => box({ w: 0.28, h: 40, d: 0.28, color: "#eaf4ff", emissive: 1, offset: { y: 20 } }));
   // Haunted Hollow's dressing, one merged mesh: lamps along the routes, neon tubes on the cave walls, skeletons in the
   // open graves. Glow is emissive faces only, no extra lights.
   const hauntDress = cached(() => {
@@ -922,5 +914,5 @@
     line.castShadow = false;
     return line;
   });
-  BL.blockModels = { hookHead, rope, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, isle, keel, puddle, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();
