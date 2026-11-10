@@ -7324,6 +7324,27 @@ const gameRulesChecks = async () => {
     });
     record("block frenzy: no map has weather; two minutes of seeded play on each raises no storm, rain or lightning bolt",
       skies.every((r) => r.time >= 119 && !r.sky.length && !r.held) && S.setLive === undefined && !Object.keys(S.CONFIG).some((k) => /^(WEATHER|BOLT)/.test(k)), JSON.stringify(skies));
+    // Four power-ups, no laser eyes: every spot on every map starts and redraws one of them from the seed, a taken one
+    // gives its own, and the host's kinds reach a guest through the live frame.
+    const drawn = new Set(), given = new Set();
+    let powersOk = S.POWERS.join() === "boots,halving,cold,monkeys" && !Object.keys(S.CONFIG).some((k) => /^(LASER|BEAM)/.test(k));
+    for (const map of W.MAPS) {
+      const s = S.create({ team: "blue", seed: 8, size: 1, map, prep: 0 }), me = s.actors[0];
+      for (const o of s.actors) o.bot = false;
+      powersOk &&= s.powers.length > 0 && s.powers.every((p) => S.POWERS[p.kind]) && !("laser" in me) && !("beam" in me);
+      for (let n = 0; n < 12; n++) for (const p of s.powers) {
+        p.dark = 0; Object.assign(me, { x: p.x, z: p.z, y: 0, vx: 0, vz: 0, grounded: true, splat: 0, trapped: 0, grabbed: 0 });
+        S.tick(s, S.CONFIG.STEP, still());
+        for (let e = 0; e < s.eventCount; e++) if (s.events[e].type === "power") given.add(S.POWERS[s.events[e].y]);
+        s.eventCount = 0; drawn.add(S.POWERS[p.kind]);
+      }
+    }
+    const ph = S.create({ team: "blue", seed: 8, size: 1, map: "fort", prep: 0 }), pg = S.create({ team: "blue", seed: 9, size: 1, map: "fort", prep: 0 }), pm = L.seatMap(1, 0);
+    ph.powers.forEach((p, i) => { p.kind = i % S.POWERS.length; });
+    L.decode(new DataView(buf.buffer.slice(0, L.encode(ph, pm, 7, 1, 1, buf))), pg, pm, new Float32Array(8));
+    const wired = pg.powers.every((p, i) => p.kind === ph.powers[i].kind);
+    record("block frenzy power-ups: four kinds without laser eyes, each spot drawing one from the seed and giving its own, and the host's reach a guest",
+      powersOk && drawn.size === 4 && given.size === 4 && [...drawn, ...given].every((k) => k) && wired && !L.EVENT_TYPES.some((t) => t.startsWith("laser")), JSON.stringify({ powersOk, drawn: [...drawn], given: [...given], wired }));
     // The session over a fake room: a guest's input moves its actor on the host, a leaver becomes an NPC, the host hands over.
     const session = (selfId) => {
       const subs = new Set(), frames_ = new Set(), sent = [], bins = [];
@@ -8168,7 +8189,7 @@ const gameRulesChecks = async () => {
       each("carrying", () => { me.carrying = sim.rival; }, () => { me.carrying = null; });
       each("holding", () => { me.holding = true; }, () => { me.holding = false; });
       each("splatted", () => { me.splat = 1; }, () => { me.splat = 0; });
-      for (const k of ["boots", "laser", "monkeys"]) each(k, () => { me[k] = 2.5; }, () => { me[k] = 0; });
+      for (const k of ["boots", "monkeys"]) each(k, () => { me[k] = 2.5; }, () => { me[k] = 0; });
       for (const k of ["halving", "cold"]) each(k, () => { sim[k][sim.team] = 3; }, () => { sim[k][sim.team] = 0; });
       me.boots = 2.5; changed(); me.boots = 2.1; const powerSecond = !changed(); me.boots = 1.9; const powerTick = changed(); me.boots = 0; changed();
       // Their power-ups are not on the visitor's strip.

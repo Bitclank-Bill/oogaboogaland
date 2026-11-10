@@ -167,13 +167,6 @@
       grunt: (k = 1) => blip("triangle", 170, 140, 0.01, 0.05, 0.08, 0.12 * k),
       yelp: (k = 1) => blip("triangle", 520, 780, 0.005, 0.05, 0.12, 0.14 * k),
       free: () => chord([0, 7, 12], 0.05, "triangle", 0.05, 0.18),
-      // Laser eyes, the Ooga way: a soft "ooo-GA!" (a low hoot sliding up, then down), then silly boings, up and down
-      // by turns, through the beam's three seconds. Seven voices at most, as before, so other cues are not cut off.
-      laser: (k = 1) => {
-        blip("triangle", 170, 250, 0.02, 0.12, 0.06, 0.13 * k);
-        blip("triangle", 300, 160, 0.01, 0.1, 0.14, 0.13 * k, 0.2);
-        for (let i = 0; i < 5; i++) blip("sine", i % 2 ? 520 : 300, i % 2 ? 300 : 520, 0.01, 0.1, 0.12, 0.06 * k, 0.55 + i * 0.5);
-      },
       // A ghost: a wavering whoo, falling; a pop when it's painted away.
       boo: (k = 1) => { for (let i = 0; i < 3; i++) blip("sine", 620 - i * 60, 240, 0.08, 0.25, 0.4, 0.14 * k, i * 0.12); },
       ghostPop: (k = 1) => { blip("triangle", 900, 1800, 0.005, 0.04, 0.15, 0.14 * k); splatNoise(0.3 * k, 0.2); },

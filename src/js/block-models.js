@@ -644,8 +644,7 @@
     return merge(...parts);
   });
   // The power-ups, each a floating glowing token over a little plinth: a lightning bolt (boots), a coin cut in half
-  // (the halving), an ice cube (cold storage) and a visor with two red eyes (laser eyes); and the ice over a frozen
-  // block.
+  // (the halving), an ice cube (cold storage) and a monkey (the monkeys); and the ice over a frozen block.
   const power = variants((i) => {
     const parts = [box({ w: 0.7, h: 0.12, d: 0.7, color: "#3a3430", offset: { y: 0.06 } })], y = 1.1;
     if (i === 0) {
@@ -656,11 +655,8 @@
     } else if (i === 2) {
       parts.push(bevelBox({ w: 0.5, h: 0.5, d: 0.5, color: "#bfe8ff", emissive: 0.7, offset: { y } }));
       parts.push(box({ w: 0.3, h: 0.06, d: 0.52, color: "#ffffff", emissive: 1, offset: { y: y + 0.1 } }));
-    } else if (i === 4) {
-      parts.push(moved(monkey(), 0, y - 0.35, 0));
     } else {
-      parts.push(box({ w: 0.6, h: 0.18, d: 0.14, color: "#24242a", offset: { y } }));
-      for (const x of [-0.15, 0.15]) parts.push(box({ w: 0.14, h: 0.1, d: 0.16, color: "#ff2a1a", emissive: 1, offset: { x, y } }));
+      parts.push(moved(monkey(), 0, y - 0.35, 0));
     }
     return merge(...parts);
   });
@@ -796,20 +792,6 @@
     }
     return merge(...parts);
   });
-  // The laser-eyes beam: a white-hot core in a red glow, one metre long along +z from the origin (the scene stretches
-  // it to the beam's length), in two strands a hand apart, one from each eye.
-  const beam = cached(() => {
-    const parts = [];
-    for (const x of [-0.07, 0.07]) {
-      parts.push(box({ w: 0.035, h: 0.035, d: 1, color: "#fff4f0", emissive: 1, offset: { x, z: 0.5 } }));
-      parts.push(box({ w: 0.09, h: 0.09, d: 1, color: "#ff2a1a", emissive: 1, offset: { x, z: 0.5 } }));
-    }
-    const geo = merge(...parts);
-    geo.castShadow = false;
-    return geo;
-  });
-  // Laser eyes lit: two glowing red eyes, set over the Ooga's own.
-  const laserEyes = cached(() => merge(box({ w: 0.1, h: 0.07, d: 0.06, color: "#ff3a1a", emissive: 1, offset: { x: -0.07 } }), box({ w: 0.1, h: 0.07, d: 0.06, color: "#ff3a1a", emissive: 1, offset: { x: 0.07 } })));
   // A ghost: a pale glowing sheet, round on top and flaring to a ragged hem, two dark eyes and an open mouth, its arms
   // out. Faces +z, its middle at y 0.
   const ghost = cached(() => {
@@ -914,5 +896,5 @@
     line.castShadow = false;
     return line;
   });
-  BL.blockModels = { hookHead, rope, isle, keel, puddle, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, isle, keel, puddle, hauntDress, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();
