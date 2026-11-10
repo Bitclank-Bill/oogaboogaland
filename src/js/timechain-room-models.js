@@ -202,7 +202,7 @@
         const p = at(o.x || 0, 0, o.z || 0);
         into.solids.push(o.r !== undefined ? { x: p.x, z: p.z, r: o.r, top: o.top, below: o.below } : { x: p.x, z: p.z, hx: o.hx, hz: o.hz, ry: -K.yaw(o.ry || 0), top: o.top, below: o.below });
       },
-      // A seat for the visitor's Ooga: `y` its height, `floor` what it stands on, facing `heading` in this frame;
+      // A seat for the visitor's Ooga: `y` its height over `floor`, what it stands on, facing `heading` in this frame;
       // standing up leaves it at `back` behind it.
       seat: (x, z, heading, y = 0.5, floor = 0, back = 1.35, kind = "chair") => {
         const p = at(x, floor, z), ry = K.yaw(heading), sx = Math.sin(ry), sz = Math.cos(ry);
@@ -565,8 +565,9 @@
     } });
     return noShadow(merge(box({ w: 3.1, h: 0.56, d: 0.02, color: "#2a0806", emissive: 0.3 }), litWord("ROOM LOCKED", px, LOCK_RED, 1, z), locks));
   });
-  // How far Canvas 2D's depth sort pulls a mark in front of the face it lies on (the door's chain, EXIT).
-  const MARK_BIAS = -0.3;
+  // How far Canvas 2D's depth sort pulls a mark in front of the face it lies on (the door's chain, EXIT), and a live
+  // picture in front of the dome's faces round it.
+  const MARK_BIAS = -0.3, PATCH_BIAS = -1.5;
 
   // ---------- a room's plan, and a visit's nodes ----------
   // Everything a kind declares for its room, built once per room: its static meshes merged, its nodes, solids, seats,
@@ -621,11 +622,13 @@
       const f = spec.flat, node = createNode({ position: { x: f.x, y: f.y, z: f.z }, rotation: { x: f.rx || 0, y: f.ry || 0, z: 0 } });
       return { holder: node, node };
     }
+    // On the dome a picture lies just inside faces far bigger than its own, so Canvas 2D's depth sort, face by face,
+    // would put the dome in front of parts of it: it is pulled forward past them.
     if (spec.cap) {
-      const node = createNode({ rotation: { x: Math.PI / 2, y: 0, z: 0 }, position: { x: 0, y: L.c, z: 0 } });
+      const node = createNode({ rotation: { x: Math.PI / 2, y: 0, z: 0 }, position: { x: 0, y: L.c, z: 0 }, depthBias: PATCH_BIAS });
       return { holder: node, node };
     }
-    const holder = createNode({ rotation: { x: 0, y: -(spec.az0 + spec.az1) / 2 * DEG, z: 0 } }), node = createNode({ position: { x: 0, y: 0, z: -1 } });
+    const holder = createNode({ rotation: { x: 0, y: -(spec.az0 + spec.az1) / 2 * DEG, z: 0 } }), node = createNode({ position: { x: 0, y: 0, z: -1 }, depthBias: PATCH_BIAS });
     addChild(holder, node);
     return { holder, node };
   };
