@@ -37,7 +37,9 @@ import "../../src/js/reaction-policy.js";
 //                 { t: "ghost", k, g?, d?, h? }  HALLOWEEN: the ghost hunt's `start`, `ready`, `pause` or `leave`, or `hits` h, for its
 //                                host, from a page in the arcade's ghost arena
 //                 { t: "react", e }              an emoji over the driven body for a moment (see Reactions below)
-//                 { t: "hand", on, tone? }       the raised hand up or down, in skin tone 0 (none) to 5
+//                 { t: "hand", on, tone?, e? }   the persistent slot up or down; e omitted/empty means the hand in tone 0 to 5
+//                 { t: "link", to, on }          ask player `to` for a voice link, or take this player's ask back (see Voice links below)
+//                 { t: "link-all" }              link with everyone here who has asked this player, or with nobody waiting take back all its asks
 //                 { t: "chalk", v, k, ... }     the EntropyLab chalkboard: `take` or `drop` the board, or an edit by
 //                                                whoever holds it, on board layout `v` (chalk-board.js VERSION; see
 //                                                CHALK_HZ below)
@@ -61,7 +63,9 @@ import "../../src/js/reaction-policy.js";
 //                 blend { id, to, k }        a player's crossing changed; welcome and join carry blendTo and blendK
 //                 voice { peers, gens }      whom to hear, and each one's publication count (a new count is a
 //                                            microphone published again, to be pulled again); in the Studio also
-//                                            `listeners`, the other receive sessions there
+//                                            `listeners`, the other receive sessions there and linked partners'
+//                                            anywhere; `ears` elsewhere, how many can hear this page without
+//                                            publishing, so it hears none of them
 //                 studio-state { state }     the Studio's host, mode, program anchor, seats and this page's own
 //                                            rights; studio-result { action, commandId, ok, error, revision }
 //                                            answers a command; studio-mic-revoked: drop the microphone now
@@ -87,8 +91,11 @@ import "../../src/js/reaction-policy.js";
 //                                            the arena follow it; welcome carries ghostHost and ghostFollowers; binary
 //                                            frames led by GHOST_MAGIC from it, to pages in the arena
 //                 react { id, e }            player `id` reacted with emoji `e`, to the players in their zone
-//                 hand { id, on, tone }      player `id` raised or lowered their hand; welcome and join carry `hand`
-//                                            and `handTone`. To the sender alone, its own id: a change it was refused
+//                 hand { id, on, tone, e }   player `id` toggled or changed their slot; welcome and join carry `hand`
+//                                            `handTone` and `handEmoji`. To the sender alone: a change it was refused
+//                 links { wants, linked, refused?, all?, n? }  this player's own asks and which of them are two-way links, after
+//                                            welcome and on every change to either; `refused: "full"` when an ask did not fit;
+//                                            in answer to link-all, `all` ("linked", "unlinked" or "none") and how many it changed, `n`
 // Zones: `<group>` or `<group>.<place>`. Voice is shared within a group; who is shown is matched on the whole
 // name, since a place inside a group can have coordinates of its own. The exception is the main world, every zone the
 // island scene reports (`BLEND.WORLD`): its players are all shown to each other (`seenTogether`) and its voice goes by
@@ -112,7 +119,17 @@ import "../../src/js/reaction-policy.js";
 // flag on the player's record, in its attachment and every view, sent to everyone on a change only. Both spend one
 // per-record bucket of REACT_HZ a second bursting to REACT_BURST (the page mirrors it, a little short); over it a
 // reaction is dropped without a word, and a hand change is refused with the sender's own `hand { id, on, tone }` as
-// the room holds it, so the sender's page puts it back.
+// the room holds it, so the sender's page puts it back. HAND_EMOJI_FEATURE allows the same slot to carry `e`, one
+// policy-valid emoji, or "" for the original hand. Old pages omit it and still see the hand; old rooms never receive it.
+// Voice links: a room that keeps them lists LINK_FEATURE in welcome's `features`. Each player holds a set of asks by
+// account id, and two who have asked for each other are linked: `voicePeers` lets them hear each other wherever they
+// are, in any zone or none, with or without a body. An ask is told only to the one who made it, so the player asked
+// sees nothing until they ask too; breaking a link takes back only the breaker's ask, so the other's still stands, and
+// they can cancel it. `link-all` answers every ask waiting on the sender from a player in the room or, with none
+// waiting, takes back all of the sender's asks. The asks go to the room's storage (`voiceLinks`, one value, LINK_WANTS an account and
+// LINK_ACCOUNTS accounts at most) on each change and last until taken back or the account is deleted
+// (`forgetVoiceLinks`). A Studio audience member still loses their microphone there: a link carries voices, it grants
+// no microphone.
 // "ping" answers "pong" without waking the room (setWebSocketAutoResponse).
 
 export const TICK_HZ = 15;
@@ -158,6 +175,7 @@ export const CHAT_BURST = 3;
 // Active accounts plus bounded reconnect debt, held only while the room is awake.
 export const CHAT_BUCKET_KEEP = MAX_PLAYERS * 2;
 export const REACT_FEATURE = "react-v1";
+export const HAND_EMOJI_FEATURE = "hand-emoji-v1";
 export const REACT_HZ = 3;
 export const REACT_BURST = 6;
 // The page sends `{"t":"chat","text":…}` with its text already sanitized, under MESSAGE_MAX; the margin is
@@ -181,6 +199,11 @@ export const PM_INVITES = 4;
 export const PM_BLOCKS = 32;
 // Accounts whose blocks and rate limits the room keeps across their reconnects while it is awake, as chat's buckets.
 export const PM_ACCOUNT_KEEP = MAX_PLAYERS * 2;
+export const LINK_FEATURE = "vlink-v1";
+export const LINK_HZ = 2;
+export const LINK_BURST = 6;
+export const LINK_WANTS = 64;
+export const LINK_ACCOUNTS = 512;
 const PM_OPS = ["invite", "accept", "decline", "block", "end"];
 const PM_DATA = /^[A-Za-z0-9+/]+={0,2}$/;
 // The Sphere's one exterior doorway is a short, server-leased FIFO. Room door transits are independent
@@ -193,6 +216,14 @@ export const DOOR_TRANSIT_MS = 12000;
 export const DOOR_PASS_MS = 8000;
 export const DOOR_HZ = 4;
 export const DOOR_BURST = 6;
+// A numbered room can be locked from inside with a 4-digit PIN (ROOM_LOCK_FEATURE in welcome's `features`). A right PIN
+// from outside, or a socket dropped inside, holds the way in for PIN_PASS_MS. A socket gets PIN_TRIES wrong tries before
+// it waits PIN_WAIT_MS, so a PIN cannot be walked through at the door's rate.
+export const ROOM_LOCK_FEATURE = "room-lock-v1";
+export const ROOM_PIN = /^[0-9]{4}$/;
+export const PIN_PASS_MS = 60000;
+export const PIN_TRIES = 5;
+export const PIN_WAIT_MS = 60000;
 // HALLOWEEN: the arcade's ghost hunt's reports to its host: a follower's hits, every target's summed damage a tenth of a second
 // at a time in one `hits` report (up to 60 a target), so any mix of rifle and monkey fire stays at ten reports a second;
 // the rest of the budget is for a start or pause.
@@ -203,6 +234,11 @@ export const SHOT_BURST = 6;
 export const SHOT_RANGE = 120;
 export const SWING_HZ = 4;
 export const SWING_BURST = 4;
+// The frames that change who sees and hears whom, each fanned out to the whole room: well over anything a page sends,
+// and low enough that one account cannot saturate the island's only room.
+export const CONTROL_FRAMES = new Set(["hub", "visible", "zone", "poker-voice", "mute", "body"]);
+export const CONTROL_HZ = 8;
+export const CONTROL_BURST = 20;
 export const GHOST_HZ = 20;
 export const GHOST_BURST = 24;
 // Chalkboard: the EntropyLab board on the island, kept for good. One page at a time holds it, and only while its
@@ -293,8 +329,13 @@ export const parseClientMessage = (text) => {
   if (!msg || typeof msg !== "object" || Array.isArray(msg)) return false;
   // Only chat and private frames earn the longer frame: a repeated key could make a prefixed frame parse as anything.
   if (text.length > MESSAGE_MAX && msg.t !== "chat" && msg.t !== "pm") return false;
-  if (msg.t === "cabinet") return CABINETS.get(msg.id) && (msg.op === "take" || msg.op === "leave") && Number.isSafeInteger(msg.q) && msg.q > 0
-    ? { t: "cabinet", op: msg.op, id: msg.id, q: msg.q } : null;
+  if (msg.t === "cabinet") {
+    const seat = CABINETS.get(msg.id);
+    if (!seat || (msg.op !== "take" && msg.op !== "leave") || !Number.isSafeInteger(msg.q) || msg.q <= 0) return null;
+    // A seat in the island's cave names the spot it stands at; a hall cabinet's is its own.
+    if (!seat.outdoor) return { t: "cabinet", op: msg.op, id: msg.id, q: msg.q };
+    return Number.isInteger(msg.slot) && CABINETS.slot(msg.slot) ? { t: "cabinet", op: msg.op, id: msg.id, q: msg.q, slot: msg.slot } : null;
+  }
   if (msg.t === "hockey") return HOCKEY.parse(msg);
   if (msg.t === "studio") return parseStudioCommand(msg);
   if (msg.t === "pose") {
@@ -362,6 +403,9 @@ export const parseClientMessage = (text) => {
     if (msg.op === "cancel") return { t: "door", op: "cancel" };
     if (msg.op === "pass") return typeof msg.door === "string" && DOOR_ROOM.test(msg.door) && (msg.dir === "in" || msg.dir === "out")
       ? { t: "door", op: "pass", door: msg.door, dir: msg.dir } : null;
+    if (msg.op === "lock" || msg.op === "try") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 && typeof msg.pin === "string" && ROOM_PIN.test(msg.pin)
+      ? { t: "door", op: msg.op, room: msg.room, pin: msg.pin } : null;
+    if (msg.op === "unlock") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 ? { t: "door", op: "unlock", room: msg.room } : null;
     return null;
   }
   if (msg.t === "wallet") {
@@ -388,8 +432,12 @@ export const parseClientMessage = (text) => {
   if (msg.t === "react") return globalThis.BL.reactionPolicy.valid(msg.e) ? { t: "react", e: msg.e } : null;
   if (msg.t === "hand") {
     const tone = msg.tone === undefined ? 0 : msg.tone;
-    return typeof msg.on === "boolean" && globalThis.BL.reactionPolicy.tone(tone) ? { t: "hand", on: msg.on, tone } : null;
+    const e = msg.e === undefined ? "" : msg.e;
+    return typeof msg.on === "boolean" && globalThis.BL.reactionPolicy.tone(tone) && (e === "" || globalThis.BL.reactionPolicy.valid(e))
+      ? { t: "hand", on: msg.on, tone, e } : null;
   }
+  if (msg.t === "link") return Number.isSafeInteger(msg.to) && msg.to > 0 && typeof msg.on === "boolean" ? { t: "link", to: msg.to, on: msg.on } : null;
+  if (msg.t === "link-all") return { t: "link-all" };
   if (msg.t === "shot") {
     const a = msg.a;
     if (!Array.isArray(a) || a.length !== 6 || !a.every(finite)) return null;
@@ -504,11 +552,7 @@ export const claimRefusal = (index, login, body, _players, contributor = false, 
 export const VOICE_TRACK = "mic";
 
 /** The voice group of a zone name: its alias's (`BLEND.ALIASES`), else the part before its `.place`. */
-export const zoneGroup = (zone) => {
-  if (typeof zone === "string" && Object.hasOwn(BLEND.ALIASES, zone)) return BLEND.ALIASES[zone];
-  const dot = typeof zone === "string" ? zone.indexOf(".") : -1;
-  return dot < 0 ? zone : zone.slice(0, dot);
-};
+export const zoneGroup = BLEND.group;
 
 /** Whether two zones' players are shown to each other, for what the room relays of them: the same zone, or two of the
  *  main world, all in the island scene's coordinates. */
@@ -533,13 +577,44 @@ export const voiceTogether = (p, q) => {
   return sharesPlace(p, group, q) && (group !== "ember-den" || (p.pokerVoice ?? null) === (q.pokerVoice ?? null));
 };
 
-/** Map of player id → sorted ids that player should hear. */
-export const voicePeers = (players, studio = null) => {
+/** Whether accounts `a` and `b` have each asked for a voice link with the other. */
+export const voiceLinked = (links, a, b) => !!links && !!links.get(a)?.has(b) && !!links.get(b)?.has(a);
+
+/** In voice as every roster shows it: a live microphone, or back from an earlier session hearing others, microphone closed and muted. */
+export const inVoice = (p) => !!p.voice.track || !!p.voice.sub && p.muted === true;
+
+/** The asks as they load from storage, bounded and checked; anything malformed is dropped. */
+export const restoreLinks = (stored) => {
+  const links = new Map();
+  if (!Array.isArray(stored)) return links;
+  for (const row of stored.slice(0, LINK_ACCOUNTS)) {
+    if (!Array.isArray(row) || !Number.isSafeInteger(row[0]) || row[0] <= 0 || !Array.isArray(row[1])) continue;
+    const wants = new Set(row[1].filter((id) => Number.isSafeInteger(id) && id > 0 && id !== row[0]).slice(0, LINK_WANTS));
+    if (wants.size) links.set(row[0], wants);
+  }
+  return links;
+};
+
+/** The asks as they go to storage. */
+export const storedLinks = (links) => [...links].map(([id, wants]) => [id, [...wants]]);
+
+/** What player `id` is told: their own asks, and which of those are two-way. */
+export const linkView = (links, id) => {
+  const wants = [...(links.get(id) || [])];
+  return { wants, linked: wants.filter((other) => voiceLinked(links, id, other)) };
+};
+
+/** Map of player id → sorted ids that player should hear. A voice link needs only a receive session and a live microphone. */
+export const voicePeers = (players, studio = null, links = null) => {
   const out = new Map();
   for (const p of players) {
     const ids = [];
-    if (voiceListener(p, studio)) {
-      for (const q of players) if (q !== p && voiceAudible(q, studio) && voiceTogether(p, q) && q.voice && q.voice.track) ids.push(q.id);
+    if (p.voice && p.voice.sub) {
+      const listens = voiceListener(p, studio);
+      for (const q of players) {
+        if (q === p || !q.voice || !q.voice.track) continue;
+        if (voiceLinked(links, p.id, q.id) || listens && voiceAudible(q, studio) && voiceTogether(p, q)) ids.push(q.id);
+      }
       ids.sort((a, b) => a - b);
     }
     out.set(p.id, ids);

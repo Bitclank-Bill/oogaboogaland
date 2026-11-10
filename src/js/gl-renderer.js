@@ -31,8 +31,10 @@
   const INSTANCE_FLOATS = 20;
   const NO_OBJECT_CLIP = new Float32Array([0, 0, 0, -1]);
   const NO_OBJECT_SLAB = new Float32Array(4);
-  // A glossy reflector's capture: its size against the tier's mirror size, and how many frames apart it refreshes.
-  const GLOSS_CAPTURE = { size: 0.5, every: 2 };
+  // A glossy reflector's capture: its size against the tier's mirror size, and how many frames apart it refreshes on
+  // each tier at most. A capture shows the floor as the eye saw it then, so while the eye moves (a turn swings the view
+  // round the Ooga) one reused between captures trails the floor; High takes a fresh one every frame.
+  const GLOSS_CAPTURE = { size: 0.5, every: { high: 1, medium: 2, low: 2 } };
   // Up to two cone lights (`renderOpts.spotLight`, 12 floats each); a scene that passes one has the second zeroed.
   const NO_SPOT_LIGHT = new Float32Array(24), SPOT_SCRATCH = new Float32Array(24);
   const spotUniform = (spot) => {
@@ -1804,7 +1806,8 @@ void main() {
       return info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : null;
     });
     let width = 0, height = 0, dpr = 1, pw = 0, ph = 0;
-    let lost = false;
+    const LOST_FRAMES = 900;
+    let lost = false, lostFrames = 0;
     const size = { width: 0, height: 0 };
     const view = mat4.create();
     const proj = mat4.create();
@@ -1887,7 +1890,7 @@ void main() {
     // Stable records keep their own buffer, so a stationary prop never joins the per-frame copy.
     const instanceStream = { buffer: null, data: null, capacity: 0, slot: 0, trimFrame: -1, trimSince: -1 };
     const reflectorNodes = [], reflectorTargets = new Map();
-    let reflectorTurn = 0, reflectorPass = null, reflectorFrame = 0, glossFrame = 0;
+    let reflectorTurn = 0, reflectorPass = null, reflectorFrame = 0, glossClock = 0;
     let reducedCapture = false;
     // Glass (`geometry.glass`, its see-through alpha) draws after everything opaque and the sky, blended and leaving
     // the depth alone, back faces first so a tube shows its far wall through its near one. `glassPass` is set while it
@@ -1962,8 +1965,11 @@ void main() {
         mirrorDebug.resources++;
       }
       if (mirror.programReady) return true;
+      if (mirror.program.failed) return false;
       if (parallel && !gl.getProgramParameter(mirror.program.prog, parallel.COMPLETION_STATUS_KHR)) return false;
-      finishProgram(mirror.program);
+      // Optional, as the rig programs are: a link failure costs the mirror, never the frame.
+      try { finishProgram(mirror.program); }
+      catch (err) { mirror.program.failed = err; return false; }
       mirror.programReady = true;
       return true;
     };
@@ -2097,7 +2103,7 @@ void main() {
     };
     const reflectorTarget = (geometry) => {
       let t = reflectorTargets.get(geometry);
-      if (!t) reflectorTargets.set(geometry, t = { fb: null, tex: null, depth: null, size: 0, renderWidth: 0, renderHeight: 0, viewProj: new Float32Array(16), valid: false, area: 0, record: null });
+      if (!t) reflectorTargets.set(geometry, t = { fb: null, tex: null, depth: null, size: 0, renderWidth: 0, renderHeight: 0, viewProj: new Float32Array(16), valid: false, area: 0, record: null, at: 0 });
       return t;
     };
     // One square allocation per reflector at the tier's mirror size, as the mirror keeps.
@@ -3301,8 +3307,10 @@ void main() {
         mirrorDebug.resources++;
       }
       if (environment.ready) return true;
+      if (environment.program.failed) return false;
       if (parallel && !gl.getProgramParameter(environment.program.prog, parallel.COMPLETION_STATUS_KHR)) return false;
-      finishProgram(environment.program);
+      try { finishProgram(environment.program); }
+      catch (err) { environment.program.failed = err; return false; }
       environment.ready = true;
       return true;
     };
@@ -3340,6 +3348,7 @@ void main() {
     const onLost = (e) => {
       e.preventDefault();
       lost = true;
+      lostFrames = 0;
       destroyInstanceStream();
       imageTextures = rippleBodyTextures = 0;
       for (const rec of records.values()) { rec.imageTexture = rec.rippleBodyTexture = rec.rippleBodyState = null; rec.imageElement = null; }
@@ -3943,7 +3952,7 @@ void main() {
         return;
       }
       mirrorDebug.reflectionOnlyCount = 0;
-      for (const rec of activeRecords) if (rec !== mirror.record) mirrorDebug.reflectionOnlyCount += rec.cameraHiddenCount;
+      for (let i = 0; i < activeRecords.length; i++) if (activeRecords[i] !== mirror.record) mirrorDebug.reflectionOnlyCount += activeRecords[i].cameraHiddenCount;
       mirrorCapturedViewProj.set(mirrorViewProj);
       // The texture and its projection stay paired at this size until the next completed capture:
       // a skipped pass (cadence, occlusion) must not sample it at the frame's new render dimensions.
@@ -4215,6 +4224,8 @@ void main() {
     // Rig mode is per-call opt-in: the director passes the scene's choice
     // explicitly every frame, so snapshot callers never inherit a live rig.
     const render = (root, camera, opts = {}, meshRigs = opts.meshRigs === true) => {
+      // A context usually comes back within moments. Still gone after this many visible frames, the director's fallback takes over.
+      if (lost && ++lostFrames > LOST_FRAMES && !failure) failure = new Error("WebGL context lost and not restored");
       if (lost || !pollPrograms()) return false;
       collectNear = camera.near;
       // The scene's ancestor flags (matrix modes, camera/cutaway hides) were settled by the scene's update.
@@ -4463,11 +4474,13 @@ void main() {
         const due = qualityName === "high" || reflectorFrame++ % settings.mirrorCadence === 0;
         if (!due && best >= 0 && reflectorTargets.get(reflectorNodes[best].geometry).valid
           && (qualityName === "low" || bestArea * 25 < width * height)) best = -1;
-        // A glossy one, once it has a reflection, refreshes no more often than every `GLOSS_CAPTURE.every` frames on any
-        // tier, nor takes the other pass's turn meanwhile (`resting`).
+        // A glossy one, once it has a reflection, waits its tier's `GLOSS_CAPTURE.every` frames from its last capture
+        // (`at`), nor takes the other pass's turn meanwhile (`resting`). A tier whose cadence is already that long refreshes
+        // it on its cadence: the wait is counted in frames, not in the tier's due frames.
+        glossClock++;
         let resting = -1;
         if (best >= 0 && reflectorNodes[best].geometry.gloss && reflectorTargets.get(reflectorNodes[best].geometry).valid
-          && glossFrame++ % GLOSS_CAPTURE.every) { resting = best; best = -1; }
+          && glossClock - reflectorTargets.get(reflectorNodes[best].geometry).at < GLOSS_CAPTURE.every[qualityName]) { resting = best; best = -1; }
         // One just come into view with nothing captured yet goes first.
         let turn = -1;
         for (let i = 0; due && i < n && turn < 0; i++) {
@@ -4483,7 +4496,9 @@ void main() {
           const i = pass ? turn : best;
           if (i < 0) continue;
           const node = reflectorNodes[i], t = reflectorTargets.get(node.geometry);
-          if (prepareMirrorCamera(camera, node, t)) renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, blacklight, -1, t);
+          if (!prepareMirrorCamera(camera, node, t)) continue;
+          renderMirrorCapture(clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, nLights, skyOn, fogColor, fogA, fogB, matrix, spotLight, blacklight, -1, t);
+          t.at = glossClock;
         }
       }
       const viewActor = opts.beforeView?.();
@@ -4505,7 +4520,7 @@ void main() {
               break;
             }
           }
-          for (const rec of activeRecords) uploadForRender(rec);
+          for (let i = 0; i < activeRecords.length; i++) uploadForRender(activeRecords[i]);
           flushInstanceStream();
         } finally {
           opts.afterView?.();

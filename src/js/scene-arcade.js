@@ -64,6 +64,8 @@
   };
   // How near a play spot counts as standing at it, and where walking out leaves.
   const REACH = 1.1, EXIT_Z = HALL.front - 0.2;
+  // How far past the doors the picture of the mainland hangs: where the cave's floor ends and the grass begins.
+  const DOOR_VIEW = 5.6;
   // The jackpot wheel's top prize, and the pitch of the level view of it a spin swings the camera to.
   const WHEEL_JACKPOT = Math.max(...AM.WHEEL_VALUES), WHEEL_PITCH = -0.06;
   // What the Oogas say about the room, in their own words: [tooltip, what a tap tells you].
@@ -89,9 +91,8 @@
   // the iron fence across the hallway's mouth (how far up), the totems and their lit parts, whether the visitor's Ooga carries its rifle
   // (in the arena), the voice zone it reports and the one it is turning to, which half of the hallway it is on, how far
   // along the hallway it stands and how loud the hunt's music and sound play for it (#422).
-  let ghostEntry = null, ghosts = null, ghostChannel = null, tess = null, gameMode = false, fence = null, fenceK = 0, totemsAt = [], totemLife = [], lasers = [], armed = false, rifleWas = false;
+  let ghostEntry = null, ghosts = null, ghostChannel = null, tess = null, gameMode = false, fence = null, fenceK = 0, totemsAt = [], totemLife = [], lasers = [], armed = false, inArena = false, rifleWas = false;
   let zoneNow = "arcade.hall", zoneHeld = 0, exitButton = null, hallwayFar = false, hallwayAlong = 0, huntHearing = 0;
-  let outsideWeapon = null;
   let stations = null, blocks = null, carnival = null, staff = null, orders = 0, ticketBoard = null, prizeUi = null;
   let crowd = null, spin = null;
   let unwatchHockey = null, hockeyPlayers = null;
@@ -100,6 +101,8 @@
   // Who walked in, kept across a game so they come back out as themselves, and the ticket balance at the last visit,
   // so the wheel knows when to celebrate.
   let lastPlayer = null, lastTickets = null, unsubscribeAccount = null, remotes = null, footsteps = null;
+  // The way out (#554): the doors, the walk through them, and the last frame held over the switch.
+  let doors = null, doorWalk = null, grabNext = false, still = 0, stillHold = 0, sceneCanvas = null, caveCopy = null, caveYard = null;
   const scoreSubscriptions = [];
   const machineBest = (kind, id) => kind === "hockey" ? 0 : BL.highscores.best(kind, id) ?? game.arcadeBest(id);
   const refreshScores = (kind) => {
@@ -158,13 +161,30 @@
     if (leaving) return;
     leaving = go("hub");
   };
+  // Through the doors and out to the island, as one walk: the island's own frame takes over from the hall's.
+  const throughDoors = (crossing) => {
+    if (leaving) return false;
+    world.arcadeCrossing = crossing;
+    grabNext = true;
+    pilot.controls.reset(); input.reset(); pilot.setActive(false); hud.tooltip.hide();
+    leaving = true;
+    if (!go("hub", null, true)) { leaving = false; world.arcadeCrossing = null; pilot.setActive(true); return false; }
+    return true;
+  };
+  // What the island needs ready first: on a released hub, its pure builds.
+  const readyIsland = (ctx) => () => {
+    const scene = BL.scenes.hub;
+    if (!scene.buildSteps || scene.retained) return null;
+    return BL.buildTasks.run(BL.models.withScope("hub", () => scene.buildSteps(ctx)), "hub", ctx.signal);
+  };
   // Into a game; a carnival machine names which of its kind (`place`), and the game comes back to it.
   const open = (id, place = null) => {
     if (leaving) return;
     if (id === "race") { hud.toast("Ooga Rally · out of order"); return; }
     const cabinetId = id === "hub" && place === "cloud-hopper" ? "cloud-hopper" : id;
     const cabinet = LAYOUT.cabinets.find(c => (c.game >= 0 ? GAMES[c.game].id : AM.RETRO[c.retro].id) === cabinetId);
-    if (!cabinet) {
+    // A machine, or a cabinet outside the seat registry (Block Frenzy's, played solo), opens its scene directly.
+    if (!cabinet || !BL.arcadeCabinets.get(cabinetId)) {
       const preferred = id === "hockey" && Number.isInteger(place) && BL.hockeyWire.TABLES[place] && avatar && avatar.root.position.z < BL.hockeyWire.TABLES[place][1] ? 1 : 0;
       if (go(id, place)) { if (id === "hockey") world.hockeyEnd = preferred; leaving = openingGame = true; } return;
     }
@@ -200,7 +220,7 @@
     node.cameraHidden = true;
   };
   // A cabinet return or interrupted load makes the hall playable again.
-  const stay = () => { leaving = openingGame = false; revealCabinetPlayers(); cabinetFocus = null; captureOnArrival = true; };
+  const stay = () => { leaving = openingGame = false; revealCabinetPlayers(); cabinetFocus = null; captureOnArrival = true; grabNext = false; if (doorWalk) doorWalk.reset(); pilot.setActive(true); };
 
   // The line under each loop: the visitor's best in that game, or a call to play. A retro game's best is an arcade one.
   const bestOf = (id) => {
@@ -226,7 +246,11 @@
   const build = () => {
     const hall = AM.hall(), frame = AM.signFrame(), S = LAYOUT.sign;
     addChild(root, createNode({ geometry: hall.floor }), createNode({ geometry: hall.rock }), createNode({ geometry: hall.timber }),
-      createNode({ geometry: hall.outside, sightHidden: true }));
+      // Past the doors: the mainland as the island photographed it on the way in (`world.arcadeView`, from the doors
+      // looking out), or with no visit from the island, the jungle drawn simply.
+      world.arcadeView
+        ? createNode({ geometry: BL.factoryModels.outsideView(world.arcadeView, DOOR_VIEW), position: { x: 0, y: 0, z: HALL.front + DOOR_VIEW }, rotation: { x: 0, y: Math.PI, z: 0 }, sightHidden: true })
+        : createNode({ geometry: hall.outside, sightHidden: true }));
     // The haunted hallway off the deck's right end, and its carved sign over the mouth, facing the hall.
     const haunt = AM.haunt(), ghostSign = BL.hubModels.caveSign("Ghost Hunter", "ghost", false, true), gb = boundsOf(ghostSign), gk = 3.2 / (gb.max[0] - gb.min[0]);
     addChild(root, createNode({ geometry: haunt.rock }), createNode({ geometry: haunt.props }), createNode({ geometry: haunt.glass, sightHidden: true }),
@@ -782,8 +806,6 @@
     // pick the club or the rifle, G swaps, V fires. Outside a hunt they meet nothing but the herald.
     if (!e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (BL.controls.matches(e, "view") && pilot.modeAction("mode-toggle")) return true;
-      if (BL.controls.matches(e, "weapon") && pilot.weaponMode(Number(e.key))) return true;
-      if (BL.controls.matches(e, "swapWeapon")) { pilot.weaponAction("weapon-toggle"); return true; }
       if (BL.controls.matches(e, "attack")) { pilot.weaponAction("weapon-fire"); return true; }
     }
     if (BL.controls.matches(e, "resetView") && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) return pilot.resetCamera();
@@ -834,6 +856,8 @@
     lamp(-3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55);
     lamp(3.5, MEZZ.y + 2.2, -16.5, 6.5, 1.1, 0.8, 0.55);
     lamp(0, 2.8, HALL.front - 1, 6, 1.2, 0.68, 0.32);
+    // Down the passage past the doors, so its floor keeps the colour of the cave it leads to.
+    lamp(0, 2.6, HALL.front + 4, 6.5, 0.66, 0.37, 0.18);
     lamp(LAYOUT.backDoor.x, 2.4, LAYOUT.backDoor.z + 0.8, 4.5, 1.2, 0.85, 0.5);
     fixedLights = n;
     RENDER_OPTS.lightCount = Math.min(BL.glRenderer.POINT_LIGHT_CAPACITY, n + AM.lanterns().lights.length / 3);
@@ -993,7 +1017,8 @@
     // The Ooga list stays up through a hunt, as it does in the hall.
     document.body.classList.toggle("game-mode", on);
   };
-  // The outside loadout is parked for this visit. The arena lends a rifle; the hall never has usable weapons.
+  // The outside loadout is parked for this visit, and nobody has a weapon in the hall or the arena. Only a hunter of a
+  // hunt that has started gets one: the ghost blaster and its pack (ghost-gear.js), never a primary.
   const putWeaponsAway = () => {
     const w = avatar.weapon;
     people.selectWeapon(0, avatar);
@@ -1007,11 +1032,11 @@
     if (on) {
       rifleWas = w.unlimited; w.unlimited = true;
       w.secondaryOwned = true;
-      // The rifle in hand, not just carried, so a shot can wake the herald (a carried rifle never fires).
+      BL.ghostGear.wear(avatar);
+      hud.setWeaponSkin("ghost");
       pilot.weaponMode(2);
-      hud.hint(COARSE ? "Rifle out · tap the ghost or shoot it to start the hunt" : "Rifle out · X to aim, then shoot the ghost (or click it) to start the hunt", 6000);
     }
-    else { w.unlimited = rifleWas; putWeaponsAway(); }
+    else { w.unlimited = rifleWas; BL.ghostGear.remove(avatar); hud.setWeaponSkin(""); putWeaponsAway(); }
     pilot.refreshCombat();
   };
   // Not in the hunt (it filled, or they never readied): walked out to the hallway before the fence rises, facing in.
@@ -1032,10 +1057,11 @@
     gameMode: setGameMode,
     lobbyOpen: (on, restore) => pilot.setMenuOpen(on, restore),
     spectate: (on) => { if (on) sendToHallway(); },
+    // The aiming view inside the press that readied up; the gun itself comes with the hunt (`arm`).
     readyGun: () => {
-      if (!armed) return;
+      if (!inArena) return;
       if (!pilot.aiming) pilot.modeAction("mode-toggle");
-      pilot.weaponMode(2);
+      if (armed) pilot.weaponMode(2);
     },
     holdView: (on) => { pilot.setActive(!on); pilot.controls.reset(); input.reset(); pilot.setExternalControl(on); },
     heldAxes: () => pilot.controls.read(),
@@ -1076,7 +1102,9 @@
   // side of FENCE_X.
   const ARENA = HAUNT.arena, HAUNT_SIDE = 0.65, ARENA_SIDE = 0.75, GHOST_KEEP = 3.7, FENCE_X = HAUNT.end - 0.05, FENCE_GAP = 0.15, HALLWAY_HOLD = 0.03;
   const wallDepth = (x, z, r, feet = 0) => {
-    const hall = Math.max(Math.abs(x) + r - SIDE_FACE, BACK_FACE + r - z, Math.min(z + r - FRONT_FACE, Math.abs(x) + r - JAMB));
+    // The doors stand shut across the doorway unless they are open.
+    const front = doors && doors.k < 0.65 ? z + r - FRONT_FACE : Math.min(z + r - FRONT_FACE, Math.abs(x) + r - JAMB);
+    const hall = Math.max(Math.abs(x) + r - SIDE_FACE, BACK_FACE + r - z, front);
     if (feet < HAUNT.y - 1) return hall;
     const d = Math.hypot(x - ARENA.x, z - ARENA.z), fenced = fenceK > 0.15;
     let arena = Math.max(d + r - ARENA.r + ARENA_SIDE, gameMode ? -Infinity : GHOST_KEEP + r - d, fenced ? FENCE_X + FENCE_GAP + r - x : -Infinity);
@@ -1146,7 +1174,7 @@
   // hold a walk, but the floor may lie any way below, so a walking or running jump carries on as on the island (#420).
   const flyableFor = (ax, az, bx, bz, y, height, actor) => {
     const r = Math.min(actor.bodyRadius || BODY, BODY);
-    if (bz > HALL.front + 2 && bx < HALL.halfW || underStair(bx, bz, y)) return false;
+    if (bz > HALL.front + HALL.exit - 0.5 && bx < HALL.halfW || underStair(bx, bz, y)) return false;
     if (wallDepth(bx, bz, r, y) > Math.max(0, wallDepth(ax, az, r, y)) + 1e-6) return false;
     for (let i = 0; i < blocks.length; i++) if (!clearOf(blocks[i], ax, az, bx, bz, r, y)) return false;
     for (let i = 0; i < RAILS.length; i++) if (!clearOf(RAILS[i], ax, az, bx, bz, r, y)) return false;
@@ -1185,11 +1213,19 @@
     BL.math.mat4.transformPoint(inViewMiddle, m, center[0], center[1], center[2]);
     return sightClear(c.x, c.y, c.z, inViewMiddle[0], inViewMiddle[1], inViewMiddle[2]);
   };
+  // HALLOWEEN: a click at a screen point on the herald wakes it or readies up, from inside the arena and before any gun.
+  const clickHerald = (x, y) => {
+    if (armed || !inArena) return false;
+    const hit = input.pick(x, y);
+    if (!hit || hit.owner.kind !== "halloween" || !hit.owner.tap || !inView(hit)) return false;
+    hit.owner.tap();
+    return true;
+  };
   // What the overlay draws at a place (an NPC's line, a player's name, the hunt's marks) shows only where it can be seen:
   // from inside the arena, nothing from outside the hallway and the arena, without a test, and otherwise along an open
   // line from the view (fx's `overlayVisible`, and `characterOccluded` for a line over a character's head).
   const pointHidden = (x, y, z) => {
-    if (armed && !inHaunt(x, z)) return true;
+    if (inArena && !inHaunt(x, z)) return true;
     const c = camera.position;
     return !sightClear(c.x, c.y, c.z, x, y, z);
   };
@@ -1536,7 +1572,7 @@
     for (const [dx, dz] of [[-5, 3.3], [6, 1.9]]) spot("host", S.x + dx, S.z + dz, toward(S.x + dx, S.z + dz, 0, HALL.front));
     spot("wheel", W.x + 1.7, W.z - 0.1, toward(W.x + 1.7, W.z - 0.1, W.x, W.z));
     spot("fame", F.x - 0.4, F.z + 3, toward(F.x - 0.4, F.z + 3, F.x, F.z));
-    spot("welcome", 1.9, HALL.front - 1.6, toward(1.9, HALL.front - 1.6, 0, HALL.front));
+    spot("welcome", 2.6, HALL.front - 4.2, toward(2.6, HALL.front - 4.2, 0, HALL.front));
     spot("call", 8.2, -1.2, Math.PI); spot("call", -7.2, 0.6, -Math.PI / 2);
     LAYOUT.changers.forEach((p, i) => { toHall(p, 0, 1.15, at); spot(i ? "muncher" : "totem", at.x, at.z, p.turn + Math.PI); });
     // The attendant keeps an eye on the kiddie rides from the entry avenue, by the silverback and by the baby mammoth.
@@ -1809,6 +1845,7 @@
     root = createNode();
     hud = hudMod.create({ signal: ctx.signal, roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
     hooks = {};
+    sceneCanvas = ctx.canvas;
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     // In the haunted hallway the view's target and the camera keep to the passage under its roof, and in the arena
     // inside its wall and under its top, `pad` from each.
@@ -1843,13 +1880,22 @@
       p.x = clamp(p.x, -HALL.halfW + 0.8, HALL.halfW - 0.8);
       const under = avatar && feetOf() < 1 ? clamp((MEZZ.z1 + 1 - avatar.root.position.z) / 1.2, 0, 1) : 0;
       p.y = clamp(p.y, 0.5, under ? MEZZ.y - 0.45 + (1 - under) * (HALL.h - MEZZ.y) : HALL.h - 0.8);
-      p.z = clamp(p.z, HALL.back + 0.8, HALL.front + (Math.abs(p.x) < HALL.door - 0.5 ? 3 : -0.8));
+      // Only a walk through the doors takes the view past them: shut, they stop it as the rest of the wall does.
+      p.z = clamp(p.z, HALL.back + 0.8, HALL.front + (doorWalk && doorWalk.holding && Math.abs(p.x) < HALL.door - 0.5 ? HALL.exit - 1 : -0.8));
     };
     pilot = pilotMod.create({
       // The visitor's view, combat and weapon come in from the last scene and go on to the next (pilot.js `carried`).
       carry: true,
       renderer, canvas: ctx.canvas, camera, hud, presets: views, landing: "entrance", pitch: PITCH, dist: DIST,
       follow: FOLLOW, clampTarget, clampCamera, ceilingAt: () => HALL.h - 1, coarse: COARSE, mayPossess, combatOnly: () => gameMode && armed,
+      // HALLOWEEN: in combat view a click on the herald under the dot wakes it, as a click does in carry; so does the
+      // click that captures a free cursor on it.
+      primaryAction: (down) => {
+        if (!down) return false;
+        const r = document.getElementById("weapon-reticle").getBoundingClientRect();
+        return clickHerald(r.left + r.width / 2, r.top + r.height / 2);
+      },
+      captureClick: clickHerald,
       close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: (x, z) => supportAt(x, z, feetOf()) }
     });
     const tipFor = (hit) => {
@@ -1871,7 +1917,7 @@
       // Nothing through a wall or a floor: no tooltip, and no game started by a tap.
       onHover: (hit, p) => {
         if (hit && !inView(hit)) hit = null;
-        if (hit?.owner.kind === "cabinet" && GAMES[hit.owner.game] && !GAMES[hit.owner.game].unavailable && GAMES[hit.owner.game].id !== "cloud-hopper") BL.deferred.prefetchScene(GAMES[hit.owner.game].id);
+        if (hit?.owner.kind === "cabinet" && GAMES[hit.owner.game] && !GAMES[hit.owner.game].unavailable) BL.deferred.prefetchScene(GAMES[hit.owner.game].id);
         if (hit) hud.tooltip.show(tipFor(hit), p.x, p.y);
         else hud.tooltip.hide();
       },
@@ -1880,7 +1926,7 @@
         if (!hit || !inView(hit)) return;
         const o = hit.owner;
         // The herald and the hunt answer a tap only from inside the arena.
-        if (o.kind === "halloween") { if (armed && o.tap) o.tap(); return; }
+        if (o.kind === "halloween") { if (inArena && o.tap) o.tap(); return; }
         if (o.kind === "repair") return hud.toast("Clanker is repairing Ooga Rally · out of order");
         if (o.kind === "cabinet") return play(o.game);
         if (o.kind === "retro") return open(AM.RETRO[o.retro].id, 0);
@@ -1961,21 +2007,40 @@
         people.selectWeapon(0, avatar);
         avatar.weapon.aiming = false;
       }
-      const w = avatar.weapon;
-      outsideWeapon = { primaryOwned: w.primaryOwned, secondaryOwned: w.secondaryOwned, selectedSlot: w.selectedSlot,
-        held: w.equipped ? 2 : w.primaryEquipped ? 1 : 0, unlimited: w.unlimited, ammo: w.ammo, spareAmmo: w.spareAmmo.slice() };
-      putWeaponsAway();
+      people.parkWeapons(avatar);
+      pilot.refreshCombat();
     } else if (from >= 0) pilot.goPreset(GAMES[from].id);
     lastPlayer = playerName;
+    // Past the doors, a true copy of the island's cave (arcade-entrance.js), its floor and rock, the same four cabinets.
+    caveCopy = createNode({ position: { x: 0, y: 0, z: HALL.front - BL.arcadeEntrance.DOOR_Z } });
+    addChild(caveCopy, createNode({ geometry: AM.caveFloor(1), sightHidden: true }), createNode({ geometry: AM.caveRoom(), sightHidden: true }));
+    addChild(root, caveCopy);
+    caveYard = BL.arcadeEntrance.yard(caveCopy);
+    // The doors out to the island (arcade-doors.js).
+    const crossing = ctx.from === "hub" ? world.arcadeCrossing : null;
+    world.arcadeCrossing = null;
+    doors = BL.arcadeDoors.create({ parent: root, z: HALL.front, wall: true });
+    doorWalk = avatar ? BL.arcadeDoors.walk({ door: doors, frame: { x: 0, z: 0, sr: 0, cr: 1, ry: 0, plane: HALL.front, floor: 0 }, sign: 1, pilot, crew: people, camera, prepare: readyIsland(ctx), onThrough: throughDoors, followMin: FOLLOW.min }) : null;
+    still = stillHold = 0; grabNext = false;
+    if (crossing && avatar && doorWalk) {
+      const x = crossing.across, z = HALL.front - crossing.past;
+      Object.assign(avatar.root.position, { x, y: avatar.baseY, z });
+      pilot.navigate({ position: { x, y: 0, z }, yaw: 0, pitch: crossing.pitch, dist: crossing.dist, framed: true });
+      doorWalk.arrive(crossing, avatar, 0);
+      still = 1; stillHold = BL.factoryWindow.GLIDE.still;
+    }
     unsubscribeAccount = BL.net.subscribe(accountChanged);
     crowd = []; walkers = [];
     // Other signed-in players keep their real Ooga or gorilla avatars; no simulated roster crowd is created.
     remotes = BL.remotePlayers.create({ root, crew: people, fx,
       visible: (rec) => HALL_ZONES.has(rec.zone) && !(ghosts && ghosts.down(rec.id)),
-      posed: (cave, feet) => {
-        // The shared unarmed pose keeps a club outside; Arcade parks it for every visitor.
+      posed: (cave, feet, rec) => {
+        // The shared unarmed pose keeps a club outside; Arcade parks it for every visitor. A gun, and the ghost gear with
+        // it, only on a hunter of a hunt under way, never a spectator.
         if (cave.parts.club) cave.parts.club.visible = false;
-        if (cave.parts.gun && !inArenaRing(cave.root.position.x, cave.root.position.z, feet)) cave.parts.gun.visible = false;
+        const hunter = !!ghosts && gameMode && ghosts.isHunter(rec.id) && inArenaRing(cave.root.position.x, cave.root.position.z, feet);
+        if (cave.parts.gun && !hunter) cave.parts.gun.visible = false;
+        if (hunter) { BL.ghostGear.wear(cave); BL.ghostGear.pose(cave); } else BL.ghostGear.remove(cave); // HALLOWEEN
         // Sliding down a handrail, sat on the cane as the crew sits a seated Ooga.
         if (railSitter(cave)) {
           cave.parts.legR.rotation.x = cave.parts.legL.rotation.x = -Math.PI / 2;
@@ -1985,7 +2050,7 @@
     });
     // HALLOWEEN: the ghost hunt, played in the arena: its herald over the middle until a click or a shot from inside
     // wakes it and its code loads, kept in step with the others in the arena through the room (`ghostChannel`).
-    zoneNow = "arcade.hall"; zoneHeld = 0; armed = false; hallwayFar = false; hallwayAlong = 0; huntHearing = 0;
+    zoneNow = "arcade.hall"; zoneHeld = 0; armed = inArena = false; hallwayFar = false; hallwayAlong = 0; huntHearing = 0;
     exitButton = document.getElementById("ghost-exit");
     exitButton.hidden = true;
     ghostChannel = BL.ghostEntry.channel();
@@ -2003,7 +2068,8 @@
     hockeyPlayers = BL.hockeyPlayers.create({ root, games: hockeyGames, body: id => id === BL.net.state.selfId ? people.player : remotes.body(id) });
     audio = BL.carnivalAudio.create();
     audio.room(true);
-    powerT = from < 0 && !machineFrom && !retroFrom ? 0 : 99;
+    // Walked in through the doors the room is already lit, as the visitor saw it through them.
+    powerT = from < 0 && !machineFrom && !retroFrom && !crossing ? 0 : 99;
     if (powerT === 0) for (const q of power) q.node.glow = 0.08;
     ambientT = 1;
     // Back with more tickets than last time (a game's, or a spin's left turning): the wheel's pods and the room's lights
@@ -2036,10 +2102,10 @@
     arcadeScene.input = input;
     arcadeScene.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
-      arcade: { screens, crowd, walkers, bots, spin, play, open, stations, carnival, nearStation, supportAt, slide: SLIDE, railSitter, walkable: walkableFor, flyable: flyableFor, sightClear, pointHidden, blocks, audio, staff, life, get frame() { return shownFrame; } },
+      arcade: { screens, crowd, walkers, bots, spin, play, open, stations, carnival, nearStation, supportAt, slide: SLIDE, railSitter, walkable: walkableFor, flyable: flyableFor, sightClear, pointHidden, blocks, audio, staff, life, get frame() { return shownFrame; }, get doors() { return doors; }, get doorWalk() { return doorWalk; } },
       // HALLOWEEN: the arena's hunt (its herald's until it has loaded).
       get halloween() { return ghosts ? ghosts.debug : ghostEntry && ghostEntry.debug; },
-      get arena() { return { armed, zone: zoneNow, fence: fenceK, gameMode, along: hallwayAlong, hearing: huntHearing, blendTo: BL.net.state.blendTo, blendT: BL.net.state.blendT }; }
+      get arena() { return { armed, inArena, zone: zoneNow, fence: fenceK, gameMode, along: hallwayAlong, hearing: huntHearing, blendTo: BL.net.state.blendTo, blendT: BL.net.state.blendT }; }
     };
   };
 
@@ -2050,7 +2116,7 @@
     if (queuedCabinet) { const id = queuedCabinet; queuedCabinet = null; open(id); }
     // A scene handoff restores soft mouse-look only. Capture once when the hall
     // is playable again, after the cabinet's return zoom; Escape stays released.
-    if (captureOnArrival && !leaving && !cabinetView.active) {
+    if (captureOnArrival && !leaving && !cabinetView.active && !(doorWalk && doorWalk.holding)) {
       captureOnArrival = false;
       pilot.focusAim(true);
     }
@@ -2067,13 +2133,18 @@
       const p = pilot.player ? pilot.player.root.position : camera.position;
       for (let i = 0; i < live.length; i++) {
         const c = live[i], dx = p.x - c.x, dy = p.y - c.y, dz = p.z - c.z;
-        if (GAMES[c.game] && !GAMES[c.game].unavailable && GAMES[c.game].id !== "cloud-hopper" && dx * dx + dy * dy + dz * dz <= 225) BL.deferred.prefetchScene(GAMES[c.game].id);
+        if (GAMES[c.game] && !GAMES[c.game].unavailable && dx * dx + dy * dy + dz * dz <= 225) BL.deferred.prefetchScene(GAMES[c.game].id);
       }
     }
     if (!leaving) pilot.readInput(dt);
     slideStep(dt);
+    if (caveYard && doors.k > 0) caveYard.update(elapsed);
+    if (doorWalk && !leaving) doorWalk.update(dt, pilot.player);
+    else if (doors) doors.update(dt, doorWalk && doorWalk.holding);
+    if (still > 0 && (stillHold -= dt) <= 0) still = Math.max(0, still - dt / BL.factoryWindow.GLIDE.dissolve);
     if (people) people.update(dt, elapsed);
     pilot.update(dt);
+    if (doorWalk) doorWalk.view(dt);
     // The Ooga driven here goes to the room with where it stands and its health; other players here are shown.
     const drivenHere = people && people.player;
     BL.net.setBody(drivenHere ? drivenHere.traits.name : null);
@@ -2084,7 +2155,10 @@
     // not), held a quarter second before it changes.
     const feet = drivenHere ? drivenHere.root.position.y - drivenHere.baseY : 0;
     const inRing = !!drivenHere && drivenHere === avatar && inArenaRing(drivenHere.root.position.x, drivenHere.root.position.z, feet);
-    if (inRing !== armed && avatar) arm(inRing);
+    if (inRing !== inArena) { inArena = inRing; if (inRing && !(ghosts && ghosts.hunting)) hud.hint(COARSE ? "Tap the ghost to start the hunt" : "Click the ghost to start the hunt", 6000); }
+    const hunting = inRing && gameMode && !!ghosts && ghosts.inHunt;
+    if (hunting !== armed && avatar) arm(hunting);
+    if (armed) BL.ghostGear.pose(avatar, pilot.mode !== "first-person");
     // Arena entry/exit changes the held weapon after the pilot's pose; publish the final loadout.
     if (drivenHere) {
       const p = drivenHere.root.position;
@@ -2173,7 +2247,6 @@
           hud.setAct(act);
         } else { hud.hideHint(); pilot.showAct(); }
       }
-      if (p.z > EXIT_Z + 1.2 && Math.abs(p.x) < HALL.door) leaveCave();
     }
     ghostChannel.update(dt);
     if (ghosts) { ghosts.update(dt); tess.update(dt, elapsed); }
@@ -2192,11 +2265,17 @@
     remotes.drawNames(ctx2d, project);
     if (hockeyPlayers) hockeyPlayers.draw(ctx2d, project);
     if (ghosts) ghosts.drawOverlay(ctx2d, project);
+    // Over everything: the island's last frame, dissolving off the hall's first; and the hall's own, taken once drawn
+    // as the Ooga walks out through the doors.
+    BL.factoryWindow.still(ctx2d, still);
+    if (grabNext) { grabNext = false; BL.factoryWindow.grab(sceneCanvas); }
   };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
   const leave = () => {
     captureOnArrival = false;
+    doors = doorWalk = caveCopy = null;
+    if (caveYard) { caveYard.dispose(); caveYard = null; }
     revealCabinetPlayers();
     openingRequest++;
     if (!openingGame) BL.net.leaveCabinet();
@@ -2215,18 +2294,10 @@
     ghostChannel.dispose();
     setGameMode(false);
     if (armed) arm(false);
-    if (avatar && outsideWeapon) {
-      const w = avatar.weapon;
-      w.primaryOwned = outsideWeapon.primaryOwned; w.secondaryOwned = outsideWeapon.secondaryOwned;
-      w.unlimited = outsideWeapon.unlimited;
-      // Arena swaps and knockout drops belong to the borrowed rifle, not the parked mainland magazines.
-      // Combat cleanup above returns the drops before these original counts are restored.
-      w.ammo = outsideWeapon.ammo;
-      w.spareAmmo.splice(0, w.spareAmmo.length, ...outsideWeapon.spareAmmo);
-      people.selectWeapon(outsideWeapon.held, avatar);
-      w.selectedSlot = outsideWeapon.selectedSlot;
-      outsideWeapon = null;
-    }
+    hud.setWeaponSkin("");
+    // Arena swaps and knockout drops belong to the borrowed rifle, not the parked mainland magazines.
+    // Combat cleanup above returns the drops before these original counts are restored.
+    if (avatar) people.unparkWeapons(avatar);
     document.body.classList.remove("game-mode");
     exitButton.hidden = true;
     ghosts = ghostEntry = ghostChannel = tess = fence = exitButton = null;
@@ -2284,6 +2355,7 @@
     if (avatar) set.add(avatar.headOpen).add(avatar.headClosed);
     if (remotes) remotes.liveGeometry(set);
     if (hockeyPlayers) hockeyPlayers.liveGeometry(set);
+    BL.ghostGear.liveGeometry(set); // HALLOWEEN
     if (ghosts) { ghosts.liveGeometry(set); tess.liveGeometry(set); }
     else if (ghostEntry) ghostEntry.liveGeometry(set);
   };
@@ -2305,7 +2377,7 @@
   });
   arcadeScene.prepare = () => { const loading = BL.deferred.load("arcade"); return loading ? loading.then(() => null) : null; };
   BL.scenes = BL.scenes || {};
-  arcadeScene.controlsHelp = touch => { const help = pilot.controlsHelp(touch, ["weapon", "attack", "swapWeapon"]); help.title = "Ooga Arcade · " + help.title; return help; };
+  arcadeScene.controlsHelp = touch => { const help = pilot.controlsHelp(touch, ["attack"]); help.title = "Ooga Arcade · " + help.title; return help; };
   arcadeScene.controlsHelpHold = on => { pilot.controls.reset(); pilot.setMenuOpen(on, false); };
   BL.scenes.arcade = arcadeScene;
 })();

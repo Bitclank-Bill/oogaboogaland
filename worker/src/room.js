@@ -24,16 +24,19 @@
 // awake (`pmAccounts`); the frames pass straight through and are never kept.
 // Reactions: an emoji goes to the sender's zone and is never kept; the raised hand lives on the record and its
 // attachment, so a woken room still shows it, and goes to everyone on a change. One bucket a record limits both.
+// Voice links: each account's asks live in the room's storage, so a link outlives reconnects, sleep and deploys (see
+// Voice links in protocol.js). Nothing runs for them while idle.
 
 import { DurableObject } from "cloudflare:workers";
 import {
   CABINETS, hockey, CLOSE_KICK, CLOSE_PROTOCOL, MAX_PLAYERS, MOVE_HZ, STALE_MS, SWEEP_MS, CLEANUP_MS, TICK_HZ,
   NPC_FRAME_MAX, NPC_HZ, OUTSIDE, HP_HZ, VOICE_TRACK, CHAT_HZ, CHAT_BURST, CHAT_BUCKET_KEEP, CHAT_RETRY_KEEP, CHAT_FEATURE,
-  DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, GHOST_HZ, GHOST_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST, REACT_FEATURE, REACT_HZ, REACT_BURST,
+  DOOR_ZONE, DOOR_ROOM, DOOR_GRANT_MS, DOOR_TRANSIT_MS, DOOR_PASS_MS, DOOR_HZ, DOOR_BURST, ROOM_LOCK_FEATURE, PIN_PASS_MS, PIN_TRIES, PIN_WAIT_MS, CONTROL_FRAMES, CONTROL_HZ, CONTROL_BURST, GHOST_HZ, GHOST_BURST, SHOT_HZ, SHOT_BURST, SWING_HZ, SWING_BURST, REACT_FEATURE, HAND_EMOJI_FEATURE, REACT_HZ, REACT_BURST,
   GHOST_MAGIC, GHOST_FRAME_MAX, GHOST_FRAME_HZ, GHOST_FRAME_BURST, inGhostArena, ghostCandidate, watchesGhost,
   CHALK, CHALK_HZ, CHALK_BURST, CHALK_IDLE_MS, CHALK_SAVE_MS, CHALK_TELL_MS, CHALK_FEATURE,
   WALLET_CAP, WALLET_HZ, WALLET_BURST,
   PM_FEATURE, PM_HZ, PM_BURST, PM_INVITE_HZ, PM_INVITE_BURST, PM_CONTROL_HZ, PM_CONTROL_BURST, PM_INVITES, PM_BLOCKS, PM_ACCOUNT_KEEP,
+  LINK_FEATURE, LINK_HZ, LINK_BURST, LINK_WANTS, LINK_ACCOUNTS, voiceLinked, restoreLinks, storedLinks, linkView, inVoice,
   chatLog, castIndex, bodyName, ownedBody, electHost, npcFollowers, claimRefusal, parseClientMessage, playerFromHeaders, spawnPoint, takeToken, voicePeers,
   BLEND, BLEND_HZ, seenTogether,
 } from "./protocol.js";
@@ -75,10 +78,16 @@ export class Room extends DurableObject {
     this.chatAccepted = new Map();
     this.chatBuckets = new Map();
     this.pmAccounts = new Map();
+    this.links = new Map();
     this.doorQueue = [];
     this.doorActive = null;
     this.doorPasses = new Map();
     this.doorId = 0;
+    // Locked Sphere rooms by number: { pin, passes: id -> ms the way in stays open }. Every page hears which rooms are
+    // locked; only the players inside one hear its PIN. Every occupant's socket attachment carries its room's lock so
+    // hibernation keeps it.
+    this.roomLocks = new Map();
+    this.pinTries = new Map();
     this.sweepAt = 0;
     this.cleanupAt = 0;
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -95,6 +104,7 @@ export class Room extends DurableObject {
       this.studio.hands = [...new Set((Array.isArray(this.studio.hands) ? this.studio.hands : []).filter(seated))].slice(0, MAX_PLAYERS);
       this.studio.invited = this.studio.mode === "qa" ? [...new Set((Array.isArray(this.studio.invited) ? this.studio.invited : []).filter(seated))].slice(0, MAX_PLAYERS) : [];
       this.cleanupJobs = (await ctx.storage.get("voiceCleanup")) || [];
+      this.links = restoreLinks(await ctx.storage.get("voiceLinks"));
       const chalk = await ctx.storage.get("chalk"), marks = chalk && CHALK.restore(chalk.marks);
       // A board stored before the board grew (no `v`) is widened as it loads; the next save stores it widened.
       if (marks) this.chalk = CHALK.board(chalk.v === CHALK.VERSION ? marks : CHALK.widen(marks));
@@ -118,8 +128,11 @@ export class Room extends DurableObject {
         if (set === null || set > this.cleanupAt) await ctx.storage.setAlarm(this.cleanupAt);
       }
     });
-    // A woken room rebuilds its roster from the attachments its sockets carry.
+    // A woken room rebuilds its roster from the attachments its sockets carry. The runtime still lists a socket that is
+    // closing, newest first, and a half-open one can stay closing for minutes: it must never take a player's record from
+    // the socket that replaced it, or bring back a player evicted.
     for (const ws of ctx.getWebSockets()) {
+      if (ws.readyState > 1) continue;
       const a = ws.deserializeAttachment();
       if (a) this.players.set(a.id, this.record(ws, a));
     }
@@ -142,7 +155,7 @@ export class Room extends DurableObject {
   }
 
   record(ws, a) {
-    return { ws, voice: { pub: null, sub: null, track: null, gen: 0, mids: {}, pubMid: null }, muted: false, hand: false, handTone: 0, hp: 100, ko: false, g: null, j: 0, w: 0, v: null, va: 0, sent: null, zone: OUTSIDE, pokerVoice: null, inHub: false, visible: true, joinedAt: Date.now(), door: null, passes: [], blendTo: null, blendK: 0, pm: { inv: [], open: 0, blocked: [] }, ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, blendBucket: { tokens: BLEND_HZ, at: Date.now() }, doorBucket: { tokens: DOOR_BURST, at: Date.now() }, ghostBucket: { tokens: GHOST_BURST, at: Date.now() }, ghostFrameBucket: { tokens: GHOST_FRAME_BURST, at: Date.now() }, chatBucket: this.chatBucketFor(a.id, Date.now()), seenAt: Date.now() };
+    return { ws, voice: { pub: null, sub: null, track: null, gen: 0, mids: {}, pubMid: null }, muted: false, hand: false, handTone: 0, handEmoji: "", hp: 100, ko: false, g: null, j: 0, w: 0, v: null, va: 0, sent: null, zone: OUTSIDE, pokerVoice: null, inHub: false, visible: true, joinedAt: Date.now(), door: null, passes: [], roomLock: null, blendTo: null, blendK: 0, pm: { inv: [], open: 0, blocked: [] }, ...a, bucket: { tokens: MOVE_HZ, at: Date.now() }, npcBucket: { tokens: NPC_HZ, at: Date.now() }, hpBucket: { tokens: HP_HZ, at: Date.now() }, blendBucket: { tokens: BLEND_HZ, at: Date.now() }, doorBucket: { tokens: DOOR_BURST, at: Date.now() }, ghostBucket: { tokens: GHOST_BURST, at: Date.now() }, ghostFrameBucket: { tokens: GHOST_FRAME_BURST, at: Date.now() }, chatBucket: this.chatBucketFor(a.id, Date.now()), seenAt: a.joinedAt || Date.now() };
   }
 
   // Retain account debt across socket records, only while awake. Reclaim fully replenished
@@ -160,11 +173,11 @@ export class Room extends DurableObject {
   }
 
   attachment(p) {
-    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm };
+    return { cabinet: p.cabinet || null, cabinetBucket: p.cabinetBucket || null, hockey: p.hockey || null, hockeyBuckets: p.hockeyBuckets || null, id: p.id, login: p.login, display: p.display, contributor: p.contributor, body: p.body, connectionToken: p.connectionToken, studioSeat: p.studioSeat, studioRevoked: !!p.studioRevoked, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: p.voice, muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, sent: p.sent, zone: p.zone, pokerVoice: p.pokerVoice, inHub: p.inHub, visible: p.visible, joinedAt: p.joinedAt, door: p.door, passes: p.passes, roomLock: p.roomLock, pinTries: this.pinTries.get(p.id) || null, blendTo: p.blendTo, blendK: p.blendK, pm: p.pm };
   }
 
   view(p) {
-    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: !!p.voice.track, muted: p.muted, hand: p.hand, handTone: p.handTone, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK };
+    return { id: p.id, login: p.login, display: p.display, body: p.body, zone: p.zone, x: p.x, y: p.y, z: p.z, yaw: p.yaw, g: p.g, j: p.j, w: p.w, v: p.v, va: p.va, r: p.r, voice: inVoice(p), muted: p.muted, hand: p.hand, handTone: p.handTone, handEmoji: p.handEmoji, hp: p.hp, ko: p.ko, blendTo: p.blendTo, blendK: p.blendK };
   }
 
   send(ws, msg) {
@@ -195,6 +208,10 @@ export class Room extends DurableObject {
       } else p.door = null;
       p.passes = Array.isArray(p.passes) ? p.passes.filter((x) => x && DOOR_ROOM.test(x.door) && x.exp > now && p.body && p.zone === x.door) : [];
       for (const pass of p.passes) this.doorPasses.set(pass.cycle, { ...pass, id: p.id });
+      if (p.roomLock && this.roomOf(p.zone) === p.roomLock.room) this.roomLocks.set(p.roomLock.room, { pin: p.roomLock.pin, passes: new Map() });
+      else p.roomLock = null;
+      if (p.pinTries && (p.pinTries.until > now || now - p.pinTries.at <= PIN_WAIT_MS)) this.pinTries.set(p.id, p.pinTries);
+      p.pinTries = undefined;
     }
     queued.sort((a, b) => a.door.at - b.door.at || a.id - b.id);
     active.sort((a, b) => a.door.at - b.door.at || a.id - b.id);
@@ -211,6 +228,8 @@ export class Room extends DurableObject {
       p.ws.serializeAttachment(this.attachment(p));
       this.replayDoor(p);
     }
+    // A lease that ran out while the room slept has no alarm left to pass the doors on.
+    if (!this.doorActive) this.grantDoor(now);
   }
 
   doorCycle(p) {
@@ -229,14 +248,113 @@ export class Room extends DurableObject {
     }
   }
 
+  // A numbered room's zone's number, or 0.
+  roomOf(zone) {
+    const match = DOOR_ROOM.exec(zone);
+    return match ? Number(match[1]) : 0;
+  }
+
+  lockedRooms() {
+    return [...this.roomLocks.keys()].sort((a, b) => a - b);
+  }
+
+  // A locked room lets in whoever is holding a pass; everyone else needs the PIN.
+  mayEnter(p, room, now) {
+    const lock = this.roomLocks.get(room);
+    return !lock || (lock.passes.get(p.id) || 0) > now;
+  }
+
+  // Every occupant carries the lock, so whichever socket a hibernated room wakes with still has it.
+  shareRoomLock(room, lock) {
+    for (const o of this.players.values()) if (this.roomOf(o.zone) === room) {
+      o.roomLock = lock ? { room, pin: lock.pin } : null;
+      o.ws.serializeAttachment(this.attachment(o));
+      if (lock) this.send(o.ws, { t: "door", op: "room-pin", room, pin: lock.pin });
+    }
+  }
+
+  // Nobody left inside: the room opens by itself.
+  freeEmptyRoom(room) {
+    if (!room || !this.roomLocks.has(room)) return;
+    for (const o of this.players.values()) if (this.roomOf(o.zone) === room) return;
+    this.roomLocks.delete(room);
+    this.broadcast({ t: "door", op: "locks", rooms: this.lockedRooms() });
+  }
+
+  // A pass is spent on walking in; the new occupant holds the lock with everyone else inside.
+  roomZoneChanged(p, from) {
+    const entered = this.roomOf(p.zone), left = this.roomOf(from), lock = entered ? this.roomLocks.get(entered) : null;
+    if (lock) {
+      lock.passes.delete(p.id); p.roomLock = { room: entered, pin: lock.pin };
+      this.send(p.ws, { t: "door", op: "room-pin", room: entered, pin: lock.pin });
+    } else p.roomLock = null;
+    if (left !== entered) this.freeEmptyRoom(left);
+  }
+
+  // Whether this player has run out of tries; a wrong PIN counts one, a right one forgives them. The tally is the
+  // player's, not the socket's: it outlives a reconnect, and rides the socket's attachment through hibernation. A tally
+  // is forgotten a wait's length after its last wrong try, so the map holds only the players trying lately.
+  pinRefused(p, now) {
+    const tries = this.pinTries.get(p.id);
+    return !!tries && tries.until > now;
+  }
+
+  pinWrong(p, now) {
+    for (const [id, old] of this.pinTries) if (old.until <= now && now - old.at > PIN_WAIT_MS) this.pinTries.delete(id);
+    const tries = this.pinTries.get(p.id) || { count: 0, until: 0, at: 0 };
+    tries.count++; tries.at = now;
+    if (tries.count >= PIN_TRIES) { tries.count = 0; tries.until = now + PIN_WAIT_MS; }
+    this.pinTries.set(p.id, tries);
+    p.ws.serializeAttachment(this.attachment(p));
+  }
+
+  pinRight(p) {
+    if (this.pinTries.delete(p.id)) p.ws.serializeAttachment(this.attachment(p));
+  }
+
+  roomLockMessage(p, msg, now) {
+    const reply = (ok, reason = "") => this.send(p.ws, { t: "door", op: "lock-result", action: msg.op, room: msg.room, ok, reason });
+    const lock = this.roomLocks.get(msg.room);
+    if (msg.op === "lock") {
+      if (!p.body || this.roomOf(p.zone) !== msg.room) return reply(false, "wrong-room");
+      if (lock) return reply(false, "already-locked");
+      const made = { pin: msg.pin, passes: new Map() };
+      this.roomLocks.set(msg.room, made);
+      this.shareRoomLock(msg.room, made);
+      this.broadcast({ t: "door", op: "locks", rooms: this.lockedRooms() });
+      return reply(true);
+    }
+    if (msg.op === "unlock") {
+      // Anyone inside may open it.
+      if (!p.body || this.roomOf(p.zone) !== msg.room) return reply(false, "wrong-room");
+      if (!lock) return reply(true);
+      this.roomLocks.delete(msg.room);
+      this.shareRoomLock(msg.room, null);
+      this.broadcast({ t: "door", op: "locks", rooms: this.lockedRooms() });
+      return reply(true);
+    }
+    if (this.pinRefused(p, now)) return reply(false, "wait");
+    if (!p.body || p.zone !== DOOR_ZONE) return reply(false, "not-at-door");
+    if (!lock) return reply(true);
+    if (lock.pin !== msg.pin) { this.pinWrong(p, now); return reply(false, "wrong"); }
+    this.pinRight(p);
+    lock.passes.set(p.id, now + PIN_PASS_MS);
+    return reply(true);
+  }
+
   async doorMessage(p, msg) {
     const now = Date.now();
     if (!takeToken(p.doorBucket, DOOR_HZ, now, DOOR_BURST)) {
       this.send(p.ws, { t: "door", op: "denied", reason: "rate" });
       return;
     }
+    if (msg.op === "lock" || msg.op === "unlock" || msg.op === "try") {
+      this.roomLockMessage(p, msg, now);
+      return;
+    }
     if (msg.op === "ask") {
       if (!p.body || p.zone !== DOOR_ZONE) { this.send(p.ws, { t: "door", op: "denied", reason: "not-at-door" }); return; }
+      if (msg.dir === "in" && !this.mayEnter(p, msg.room, now)) { this.send(p.ws, { t: "door", op: "denied", reason: "locked" }); return; }
       if (p.door) { this.send(p.ws, { t: "door", op: "denied", reason: "already-waiting" }); return; }
       if (this.doorQueue.length >= MAX_PLAYERS) { this.send(p.ws, { t: "door", op: "denied", reason: "full" }); return; }
       p.door = { phase: "queued", dir: msg.dir, room: msg.room, at: now, exp: Number.MAX_SAFE_INTEGER };
@@ -361,10 +479,11 @@ export class Room extends DurableObject {
 
     const others = [];
     for (const o of this.players.values()) if (o !== p) others.push(this.view(o));
-    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, features: [CABINETS.FEATURE, "door", CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", REACT_FEATURE] });
+    this.send(server, { t: "welcome", you: this.view(p), players: others, connectionToken: p.connectionToken, tickHz: TICK_HZ, now: Date.now(), loopEpoch: this.loopEpoch, host: this.hostId, followers: this.followers, ghostHost: this.ghostHostId, ghostFollowers: this.ghostFollowers, locks: this.lockedRooms(), features: [CABINETS.FEATURE, CABINETS.OUTDOOR_FEATURE, "door", ROOM_LOCK_FEATURE, CHAT_FEATURE, PM_FEATURE, CHALK_FEATURE, "hockey-v4", REACT_FEATURE, HAND_EMOJI_FEATURE, LINK_FEATURE] });
     // A message of its own after welcome, so a page that does not know chat ignores it; empty after the room slept.
     this.send(server, { t: "chat-history", messages: this.chat.list() });
     this.sendCabinets(server);
+    this.sendLinks(p);
     this.send(server, { t: "chalk-board", marks: this.chalk.marks, editor: this.chalkEditor ? this.chalkEditor.id : 0 });
     this.broadcast({ t: "join", p: this.view(p) }, server);
     this.sendStudio(p);
@@ -400,6 +519,10 @@ export class Room extends DurableObject {
     // While playing, the room owns the floor pose and body, regardless of game-scene reports.
     if (p.cabinet && ["pose", "zone", "body", "blend", "hp", "shot", "swing", "hockey"].includes(msg.t)) return;
     if (msg.t === "hockey") { hockey.message(this, p, msg); ws.serializeAttachment(this.attachment(p)); return; }
+    if (CONTROL_FRAMES.has(msg.t)) {
+      if (!p.controlBucket) p.controlBucket = { tokens: CONTROL_BURST, at: p.seenAt };
+      if (!takeToken(p.controlBucket, CONTROL_HZ, p.seenAt, CONTROL_BURST)) return;
+    }
     if (msg.t === "studio") {
       this.studioMessage(p, msg);
     } else if (msg.t === "pose") {
@@ -429,11 +552,14 @@ export class Room extends DurableObject {
       this.electGhostHost();
     } else if (msg.t === "zone") {
       if (msg.name === p.zone) return;
+      const room = this.roomOf(msg.name);
+      if (room && !this.mayEnter(p, room, Date.now())) { this.send(p.ws, { t: "door", op: "denied", reason: "locked" }); return; }
       if (msg.name !== DOOR_ZONE) this.cancelDoor(p);
       if (msg.name !== p.zone) this.clearPasses(p);
       const leavingStudio = p.zone === STUDIO_ZONE, watched = watchesGhost(p), from = p.zone;
       if (msg.name !== "arcade.hall") hockey.leave(this, p.id);
       p.zone = msg.name;
+      this.roomZoneChanged(p, from);
       hockey.arrive(this, p);
       p.pokerVoice = null;
       if (this.chalkEditor && this.chalkEditor.id === p.id && this.chalkRefusal(p)) this.chalkLetGo(p);
@@ -498,16 +624,22 @@ export class Room extends DurableObject {
       for (const other of this.players.values()) if (other !== p && seenTogether(other.zone, p.zone)) this.send(other.ws, out);
       return;
     } else if (msg.t === "hand") {
-      if (msg.on === p.hand && (!msg.on || msg.tone === p.handTone)) return;
+      if (msg.on === p.hand && (!msg.on || msg.tone === p.handTone && msg.e === p.handEmoji)) return;
       // Over the bucket the change is refused, and the sender hears the hand the room still holds, so its page never
       // shows one nobody else sees.
       if (!this.reactToken(p)) {
-        this.send(p.ws, { t: "hand", id: p.id, on: p.hand, tone: p.handTone });
+        this.send(p.ws, { t: "hand", id: p.id, on: p.hand, tone: p.handTone, e: p.handEmoji });
         return;
       }
       p.hand = msg.on;
       p.handTone = msg.tone;
-      this.broadcast({ t: "hand", id: p.id, on: p.hand, tone: p.handTone }, p.ws);
+      p.handEmoji = msg.e;
+      this.broadcast({ t: "hand", id: p.id, on: p.hand, tone: p.handTone, e: p.handEmoji }, p.ws);
+    } else if (msg.t === "link") {
+      // Nothing in the attachment changes: asks live in storage, by account.
+      return this.linkMessage(p, msg);
+    } else if (msg.t === "link-all") {
+      return this.linkAllMessage(p);
     } else if (msg.t === "door") {
       return this.doorMessage(p, msg);
     } else if (msg.t === "chalk") {
@@ -593,11 +725,12 @@ export class Room extends DurableObject {
     const reply = reason => this.send(p.ws, { t: "cabinet", id: msg.id, q: msg.q, ok: !reason, reason });
     p.cabinetBucket ||= { tokens: 3, at: Date.now() };
     if (!takeToken(p.cabinetBucket, 2, Date.now(), 3)) { reply("Please wait before trying again"); return; }
-    if (!p.body || p.zone !== "arcade.hall" || p.ko) { reply("Stand in the arcade with your Ooga first"); return; }
+    const seat = CABINETS.get(msg.id);
+    if (!p.body || p.zone !== (seat.outdoor ? OUTSIDE : "arcade.hall") || p.ko) { reply("Stand in the arcade with your Ooga first"); return; }
     if (p.cabinet) { reply(p.cabinet.id === msg.id && p.cabinet.q === msg.q ? null : "You already have a cabinet open"); return; }
     for (const other of this.players.values()) if (other.cabinet?.id === msg.id) { reply("This cabinet is occupied"); return; }
     // No await between checking and assigning: concurrent requests have exactly one winner.
-    const at = CABINETS.get(msg.id);
+    const at = seat.outdoor ? CABINETS.slot(msg.slot) : seat;
     p.cabinet = { id: msg.id, q: msg.q };
     p.x = at.x; p.y = at.y; p.z = at.z; p.yaw = at.yaw; p.g = null; p.j = p.w = 0; p.v = null; p.va = 0; p.r = undefined;
     p.blendTo = null; p.blendK = 0;
@@ -619,6 +752,10 @@ export class Room extends DurableObject {
     this.background(this.clearVoice(p));
     this.privateLeave(p);
     this.players.delete(p.id);
+    // A dropped socket can come straight back in; the last one out frees the room.
+    const lockedIn = this.roomOf(p.zone), held = this.roomLocks.get(lockedIn);
+    if (held) held.passes.set(p.id, Date.now() + PIN_PASS_MS);
+    this.freeEmptyRoom(lockedIn);
     this.broadcast({ t: "leave", id: p.id, reason });
     this.electHost();
     this.electGhostHost();
@@ -650,6 +787,7 @@ export class Room extends DurableObject {
     this.drop(p, reason);
     this.send(p.ws, { t: "kick", reason });
     try {
+      p.ws.serializeAttachment(null);
       p.ws.close(CLOSE_KICK, reason);
     } catch {
       // Already closed.
@@ -825,6 +963,78 @@ export class Room extends DurableObject {
 
   saveAttachment(p) { p.ws.serializeAttachment(this.attachment(p)); }
 
+  sendLinks(p, refused, all, n) { this.send(p.ws, { t: "links", ...linkView(this.links, p.id), ...(refused ? { refused } : {}), ...(all ? { all, n } : {}) }); }
+
+  saveLinks() { if (this.ctx && this.ctx.storage) this.background(this.ctx.storage.put("voiceLinks", storedLinks(this.links))); }
+
+  // One player asking for a voice link or taking their ask back. Only the asker is told, unless that made or broke a
+  // link: then the other is told too, and who hears whom changes (`enforceStudio` closes what may no longer be heard).
+  linkMessage(p, msg) {
+    if (msg.to === p.id) return;
+    if (!p.linkBucket) p.linkBucket = { tokens: LINK_BURST, at: p.seenAt };
+    if (!takeToken(p.linkBucket, LINK_HZ, p.seenAt, LINK_BURST)) return;
+    const wants = this.links.get(p.id);
+    if (!!wants?.has(msg.to) === msg.on) return;
+    if (msg.on && !this.players.has(msg.to)) return;
+    if (msg.on && (wants ? wants.size >= LINK_WANTS : this.links.size >= LINK_ACCOUNTS)) return this.sendLinks(p, "full");
+    const was = voiceLinked(this.links, p.id, msg.to);
+    if (!msg.on) {
+      wants.delete(msg.to);
+      if (!wants.size) this.links.delete(p.id);
+    } else if (wants) wants.add(msg.to);
+    else this.links.set(p.id, new Set([msg.to]));
+    this.saveLinks();
+    this.sendLinks(p);
+    if (was === voiceLinked(this.links, p.id, msg.to)) return;
+    const q = this.players.get(msg.to);
+    if (q) this.sendLinks(q);
+    this.enforceStudio();
+  }
+
+  // The L key: link with everyone in the room who has asked this player and has not been asked back, as far as the
+  // limits allow, or with nobody waiting take back every ask of this player's. One token, however many it changes; only
+  // those whose link was made or broken are told.
+  linkAllMessage(p) {
+    if (!p.linkBucket) p.linkBucket = { tokens: LINK_BURST, at: p.seenAt };
+    if (!takeToken(p.linkBucket, LINK_HZ, p.seenAt, LINK_BURST)) return;
+    let wants = this.links.get(p.id);
+    const waiting = [];
+    for (const id of this.players.keys()) if (id !== p.id && this.links.get(id)?.has(p.id) && !wants?.has(id)) waiting.push(id);
+    if (waiting.length) {
+      if (!wants && this.links.size >= LINK_ACCOUNTS) return this.sendLinks(p, "full");
+      if (!wants) this.links.set(p.id, wants = new Set());
+      const fits = waiting.slice(0, LINK_WANTS - wants.size);
+      for (const id of fits) wants.add(id);
+      if (!fits.length) return this.sendLinks(p, "full");
+      this.saveLinks();
+      this.sendLinks(p, fits.length < waiting.length ? "full" : undefined, "linked", fits.length);
+      for (const id of fits) this.sendLinks(this.players.get(id));
+    } else if (wants) {
+      const broken = [...wants].filter((id) => voiceLinked(this.links, p.id, id));
+      this.links.delete(p.id);
+      this.saveLinks();
+      this.sendLinks(p, undefined, "unlinked", wants.size);
+      for (const id of broken) { const q = this.players.get(id); if (q) this.sendLinks(q); }
+    } else return this.sendLinks(p, undefined, "none", 0);
+    this.enforceStudio();
+  }
+
+  // An account deleted (`DELETE /api/me`, through the Worker's binding alone): its asks, and every ask of it, go.
+  async forgetVoiceLinks(id) {
+    const told = [];
+    let changed = this.links.delete(id);
+    for (const [other, wants] of this.links) {
+      if (!wants.delete(id)) continue;
+      changed = true;
+      told.push(other);
+      if (!wants.size) this.links.delete(other);
+    }
+    if (!changed) return;
+    await this.ctx.storage.put("voiceLinks", storedLinks(this.links));
+    for (const other of told) { const p = this.players.get(other); if (p) this.sendLinks(p); }
+    this.enforceStudio();
+  }
+
   // One bucket a record for reactions and the hand, made full on first use.
   reactToken(p) {
     if (!p.reactBucket) p.reactBucket = { tokens: REACT_BURST, at: p.seenAt };
@@ -883,28 +1093,36 @@ export class Room extends DurableObject {
   // voice session opened, announced or left.
   updateVoice() {
     if (!this.sfu) return;
-    const desired = voicePeers([...this.players.values()], this.studio);
+    const desired = this.voicePlan();
+    // Who hears a speaker without publishing is on no list of the speaker's own, so count them for it.
+    const quiet = new Map();
+    for (const q of this.players.values()) if (q.voice.sub && !q.voice.track) for (const id of desired.get(q.id) || []) quiet.set(id, (quiet.get(id) || 0) + 1);
     for (const p of this.players.values()) {
       const peers = desired.get(p.id) || [];
-      const gens = peers.map((id) => this.players.get(id).voice.gen || 0);
+      const reopened = p.voice.reopened || {}, gens = peers.map((id) => (this.players.get(id).voice.gen || 0) + (reopened[id] || 0));
       // Receiving attendees do not publish tracks. Their receive sessions, rather
       // than the list of speakers this player hears, keep a Studio microphone live.
+      // A linked partner's does too, wherever that partner is, since it hears from anywhere.
       let listeners;
       if (p.zone === STUDIO_ZONE) {
         listeners = 0;
-        for (const q of this.players.values()) if (q !== p && q.zone === STUDIO_ZONE && q.voice && q.voice.sub) listeners++;
+        for (const q of this.players.values()) if (q !== p && q.voice && q.voice.sub && (q.zone === STUDIO_ZONE || voiceLinked(this.links, p.id, q.id))) listeners++;
       }
-      const sig = peers.map((id, i) => `${id}:${gens[i]}`).join(",") + (listeners === undefined ? "" : `|${listeners}`);
+      // Someone back from an earlier session with the microphone closed, or a linked partner in a Studio audience.
+      const ears = p.zone === STUDIO_ZONE ? 0 : quiet.get(p.id) || 0;
+      const sig = peers.map((id, i) => `${id}:${gens[i]}`).join(",") + (listeners === undefined ? "" : `|${listeners}`) + (ears ? `+${ears}` : "");
       if (p.sent === sig) continue;
       p.sent = sig;
       p.ws.serializeAttachment(this.attachment(p));
-      this.send(p.ws, { t: "voice", peers, gens, ...(listeners === undefined ? {} : { listeners }) });
+      this.send(p.ws, { t: "voice", peers, gens, ...(listeners === undefined ? {} : { listeners }), ...(ears ? { ears } : {}) });
     }
   }
 
+  voicePlan() { return voicePeers([...this.players.values()], this.studio, this.links); }
+
   // Every other page's roster shows who is in voice (a live microphone) and who muted it: sent on a change only.
   voiceState(p) {
-    this.broadcast({ t: "vstate", id: p.id, voice: !!p.voice.track, muted: p.muted }, p.ws);
+    this.broadcast({ t: "vstate", id: p.id, voice: inVoice(p), muted: p.muted }, p.ws);
   }
 
   // /voice/<op> from the Worker, which checked the session and set x-player-id. Ops: session (a publish
@@ -941,7 +1159,7 @@ export class Room extends DurableObject {
     }
     if (this.players.get(p.id) !== p || (p.connectionToken && request.headers.get("x-room-token") !== p.connectionToken)) return json({ error: "connection replaced" }, 409);
     if ((this.cleanupJobs || []).length >= 64 && !["leave", "unpublish", "close"].includes(op)) return json({ error: "media cleanup backlog; try later" }, 503);
-    const was = !!p.voice.track;
+    const was = inVoice(p);
     const voice = p.voice;
     let generation = voice.version || 0;
     const current = () => this.players.get(p.id) === p && p.voice === voice && (voice.version || 0) === generation;
@@ -962,7 +1180,7 @@ export class Room extends DurableObject {
         if (kind === "sub") p.sent = null;
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
-        if (was && !p.voice.track) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "publish") {
@@ -994,12 +1212,12 @@ export class Room extends DurableObject {
         p.voice.gen = Math.max(Date.now(), (p.voice.gen || 0) + 1);
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
-        if (!was) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "pull") {
         if (!p.voice.sub || !Array.isArray(body.ids)) return json({ error: "bad pull" }, 400);
-        const allowed = new Set(voicePeers([...this.players.values()], this.studio).get(p.id) || []);
+        const allowed = new Set(this.voicePlan().get(p.id) || []);
         if (Object.keys(p.voice.mids || {}).length >= 64) return json({ error: "close old subscriptions first" }, 409);
         const tracks = [], requested = new Map();
         for (const id of [...new Set(body.ids.slice(0, 64))]) {
@@ -1021,7 +1239,7 @@ export class Room extends DurableObject {
         // only the tracks still eligible (same publisher session and track) and close every other one, through
         // the retried cleanup queue, before its descriptor reaches the page.
         const live = current() && p.voice.sub === receivingSession;
-        const allowedNow = live ? new Set(voicePeers([...this.players.values()], this.studio).get(p.id) || []) : new Set();
+        const allowedNow = live ? new Set(this.voicePlan().get(p.id) || []) : new Set();
         const kept = [], close = [];
         for (const t of res.tracks || []) {
           const asked = requested.get(t.sessionId), q = asked && this.players.get(asked.id);
@@ -1060,14 +1278,14 @@ export class Room extends DurableObject {
         await this.clearVoiceKind(p, "pub");
         p.ws.serializeAttachment(this.attachment(p));
         this.enforceStudio(); this.updateVoice();
-        if (was) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       if (op === "leave") {
         await this.clearVoice(p);
         p.ws.serializeAttachment(this.attachment(p));
         this.updateVoice();
-        if (was) this.voiceState(p);
+        if (was !== inVoice(p)) this.voiceState(p);
         return json({ ok: true });
       }
       return json({ error: "unknown voice op" }, 404);
@@ -1339,11 +1557,18 @@ export class Room extends DurableObject {
         this.send(p.ws, { t: "studio-mic-revoked" });
       }
     }
-    const desired = voicePeers([...this.players.values()], this.studio);
+    const desired = this.voicePlan();
     for (const p of this.players.values()) {
       const allowed = new Set(desired.get(p.id));
       const mids = Object.keys(p.voice.mids || {}).filter(mid => !allowed.has(p.voice.mids[mid]));
-      if (mids.length) { this.background(this.queueClose(p.voice.sub, mids)); for (const mid of mids) delete p.voice.mids[mid]; p.ws.serializeAttachment(this.attachment(p)); }
+      if (mids.length) {
+        this.background(this.queueClose(p.voice.sub, mids));
+        // The page cannot see this close: a speaker back in its list with the same publication must still read as new, or it is never pulled again.
+        const reopened = p.voice.reopened ||= {};
+        for (const id of Object.keys(reopened)) if (!this.players.has(Number(id))) delete reopened[id];
+        for (const mid of mids) { reopened[p.voice.mids[mid]] = (reopened[p.voice.mids[mid]] || 0) + 1; delete p.voice.mids[mid]; }
+        p.ws.serializeAttachment(this.attachment(p));
+      }
     }
     this.updateVoice();
   }
@@ -1401,7 +1626,10 @@ export class Room extends DurableObject {
             const state = await this.sfu.getSession(job.session);
             const inactive = new Set((state.tracks || []).filter(t => t.status === "inactive").map(t => t.mid));
             job.mids = job.mids.filter(mid => !inactive.has(mid) || (job.midVersions || {})[mid] !== priorVersions[mid]);
-            job.mids = [...new Set(job.mids.concat((state.tracks || []).filter(t => t.status !== "inactive" && typeof t.mid === "string").map(t => t.mid)))];
+            // Only a session nobody holds any more is swept for what is left. On a live one that would close every voice
+            // it still receives, with no page any the wiser: one listener gone deaf to everybody.
+            const held = [...this.players.values()].some(p => p.voice.sub === job.session || p.voice.pub === job.session);
+            if (!held) job.mids = [...new Set(job.mids.concat((state.tracks || []).filter(t => t.status !== "inactive" && typeof t.mid === "string").map(t => t.mid)))];
           }
           const mids = job.mids.slice();
           const versions = { ...(job.midVersions || {}) };
@@ -1410,7 +1638,8 @@ export class Room extends DurableObject {
           const succeeded = new Set((Array.isArray(res.tracks) ? res.tracks : []).filter(t => t && typeof t.mid === "string" && !t.errorCode).map(t => t.mid));
           job.mids = job.mids.filter(mid => !succeeded.has(mid) || (job.midVersions || {})[mid] !== versions[mid]);
           for (const mid of succeeded) if (!job.mids.includes(mid) && job.midVersions) delete job.midVersions[mid];
-          if (job.mids.length) job.inspect = true;
+          // A close this pass sent that the SFU did not confirm; a mid queued while it was on its way is simply next.
+          if (mids.some(mid => job.mids.includes(mid))) job.inspect = true;
           // A concurrent queue may have appended/reallocated owned MIDs while upstream was pending.
           if ((job.revision || 0) !== revision || job.mids.length || (job.inspect && Date.now() < job.inspectUntil)) continue;
           this.cleanupJobs.splice(this.cleanupJobs.indexOf(job), 1);

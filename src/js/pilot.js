@@ -4,7 +4,7 @@
   const { clamp, damp, mat4, quat } = BL.math;
   const { boundsOf, updateWorld } = BL.scene;
   const { create: createControls } = BL.controls;
-  const { BUTTON: PAD, state: pad } = BL.gamepad;
+  const { ACTION: PAD, state: pad } = BL.gamepad, padActions = pad.actions;
   const BASE_FOV = 48 * Math.PI / 180;
   const MAX_FOV = 64 * Math.PI / 180;
   const MIN_HFOV = 58 * Math.PI / 180;
@@ -419,6 +419,10 @@
     let lockPending = false, lockCancelled = false, aimLocked = false, softAimFocused = false, externalControl = false, externalCombat = null, menuOpen = false, unlockedAt = -Infinity;
     let savedPitch = 0, savedDist = 0, savedNear = camera.near, sightClear = null, cursorClear = null, aimSurface = null;
     const weaponViewReady = (cave) => active && !!cave && !cave.health.stunned && !restingView(cave) && (closeWanted || (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode);
+    // Lying in a hammock keeps the view it was lain down in: combat's look and capture carry on, with the weapons parked
+    // under the cloth (the crew refuses them on a seat) and a dot for a crosshair (`syncWeaponHud`).
+    const lyingLook = (cave) => active && !!cave && !!cave.camp.seat?.lying && !crew.sleeping && !cave.health.stunned;
+    const restCombat = (cave) => lyingLook(cave) && cave.weapon.aiming;
     const shoulderBoomPitch = (pitch) => Math.max(pitch, Math.min(0, pitch + SHOULDER_LEVEL));
     // Level and downward aim lift the eye so the head sits below the
     // crosshair and the band beside it stays clear. Looking up sinks the body
@@ -436,14 +440,14 @@
     };
     const armed = () => {
       const cave = player();
-      return weaponViewReady(cave) && cave.weapon.aiming;
+      return weaponViewReady(cave) && cave.weapon.aiming || restCombat(cave);
     };
     // A scene may keep combat out of the overhead view (`noOverhead`, Cloud Hopper's): combat then keeps to the
     // shoulder and first person, X entering it at the shoulder and nothing leaving the shoulder for overhead.
     const noOverhead = () => !!ctx.noOverhead?.();
     const aimView = () => {
       const cave = player();
-      return weaponViewReady(cave) && (closeWanted || shoulderView);
+      return (weaponViewReady(cave) || restCombat(cave)) && (closeWanted || shoulderView);
     };
     const lyingType = (cave) => cave && (closeWanted || closeMix > 0) && cave.root.quaternion
       ? restingView(cave) ? 1 : cave.camp.rolling ? 2 : 0 : 0;
@@ -1235,7 +1239,7 @@
         assistedTargetInRange = assistedTargetClose = false;
         assistedTargetDistance = Infinity;
       }
-      if (Math.hypot(dx, dz) > 0.05) {
+      if (Math.hypot(dx, dz) > 0.05 && !cave.camp.seat?.lying) {
         const turn = Math.atan2(Math.sin(Math.atan2(dx, dz) - cave.root.rotation.y), Math.cos(Math.atan2(dx, dz) - cave.root.rotation.y));
         crew.look(cave.root.rotation.y + turn * (1 - Math.exp(-20 * dt)), pitch, 1);
       }
@@ -1562,7 +1566,11 @@
         if (document.pointerLockElement !== canvas) {
           const alreadyFocused = softAimFocused;
           lockAim();
-          if (!alreadyFocused) return;
+          if (!alreadyFocused) {
+            // The capturing click never attacks, but a scene may answer what the free cursor was on.
+            if (e.button === 0) ctx.captureClick?.(e.clientX, e.clientY);
+            return;
+          }
         }
         resumePose();
         // A scene may take the left button first (`primaryAction`, Cloud Hopper's grappling hook), and then its release.
@@ -1840,7 +1848,7 @@
       clearRightGesture();
       shoulderView = shoulder || cave.weapon.aiming && noOverhead();
       if (aimView()) {
-        if (!cave.camp.rolling) lockCurrentAimPoint();
+        if (!cave.camp.rolling && !cave.camp.seat?.lying) lockCurrentAimPoint();
         closeWanted = false;
         closeExitScale = 1;
         headOrbit = exitAngleHold = entryOffsetActive = entryRebase = false;
@@ -1901,11 +1909,16 @@
       else hud.setJetpack(!!(cave && cave.jet), !!(cave && cave.jet), cave ? cave.jetFuel : 0);
     };
     const syncModeHud = () => {
-      if (hud.setMode) hud.setMode(player(), armed(), viewMode(), true, !!crew?.weaponsEnabled);
+      // With no weapon to its name the mode button only changes how the view looks around.
+      const w = player()?.weapon;
+      if (hud.setMode) hud.setMode(player(), armed(), viewMode(), true, !!crew?.weaponsEnabled && (!w || w.primaryOwned || w.secondaryOwned));
     };
     let reloadPrompt = false;
     const syncWeaponHud = () => {
       const cave = player(), weapon = cave && cave.weapon;
+      // With no weapon to aim, combat's crosshair is a single dot: none owned, or all of them laid under the hammock.
+      const unarmed = String(!!weapon && (!weapon.primaryOwned && !weapon.secondaryOwned || !!cave.camp.seat?.lying));
+      if (reticle.dataset.unarmed !== unarmed) reticle.dataset.unarmed = unarmed;
       const ready = !!crew?.weaponsEnabled && !!weapon && !cave.grabbedBy && !crew.sleeping && (!cave.camp.seat || cave.camp.seat.allowWeapons) && !cave.bedTravel.mode;
       const primaryReady = ready && weapon.primaryOwned;
       const secondaryReady = ready && weapon.secondaryOwned;
@@ -2019,7 +2032,7 @@
     const shooterView = (active, px = null, py = null, scroll = false) => {
       resumePose();
       const cave = player();
-      if (!weaponViewReady(cave) || !active && cave.weapon.aiming && noOverhead()) return;
+      if (!weaponViewReady(cave) && !restCombat(cave) || !active && cave.weapon.aiming && noOverhead()) return;
       clearRightGesture();
       if (active && birdsEye() && !closeWanted) {
         anchorOverheadPointer(cave);
@@ -2120,7 +2133,7 @@
       const combatOnly = !!ctx.combatOnly?.();
       if (combatOnly && cave.weapon.aiming) return true;
       // A game's combat intent survives sleep/stuns; readiness still gates aiming and attacks.
-      if (!weaponViewReady(cave) && !combatOnly) {
+      if (!weaponViewReady(cave) && !lyingLook(cave) && !combatOnly) {
         hud.hint(crew.sleeping ? "Wake this Ooga Booga before entering shooter mode" : "Stand up before entering shooter mode");
         return true;
       }
@@ -2298,7 +2311,8 @@
       c.relYaw = (overhead ? overheadYaw : orbit.yaw) - cave.root.rotation.y;
       c.pitch = overhead ? Math.PI / 2 : orbit.pitch; c.distance = overhead ? overheadHeight - cave.baseY : orbit.dist;
       c.height = overhead ? overheadHeight - feet : camera.position.y - feet; c.side = shoulderSideTarget < 0 ? -1 : 1;
-      c.held = w.equipped ? 2 : w.primaryEquipped ? 1 : 0; c.ammo = w.ammo;
+      // Parked weapons (crew.js `parkWeapons`) are still the visitor's: the next scene with weapons gets them back.
+      c.held = w.parked ? w.parked.held : w.equipped ? 2 : w.primaryEquipped ? 1 : 0; c.ammo = w.parked ? w.parked.ammo : w.ammo;
       if (!KEEP_VIEW || ctx.combatOnly?.()) return;
       chosen.view = c.view; chosen.combat = c.combat; chosen.relYaw = c.relYaw; chosen.pitch = c.pitch;
       chosen.distance = c.distance; chosen.height = c.height; chosen.side = c.side; chosen.held = c.held;
@@ -2308,10 +2322,11 @@
     // A scene's arrival with the visitor's own Ooga: possessed with the view and combat it last had where they carry, its
     // weapon back in hand where this scene allows (the primary when the rifle is not), and the next `navigate` keeping the
     // look, pitch and zoom. Nothing blends in from the old scene's camera, whose coordinates mean nothing here. Before
-    // anything is carried this page, the view this browser last chose stands in, for whichever Ooga arrives. Whether a
-    // carried state was applied; without one it is an ordinary possess.
-    const arrive = (cave) => {
-      const c = !ctx.carry ? null : carried ? (carried.name === cave.traits.name ? carried : null) : saved;
+    // anything is carried this page, the view this browser last chose stands in, for whichever Ooga arrives; `anyOoga`
+    // takes what is carried for a different Ooga too (one account's Ooga giving way to another's). Whether a carried
+    // state was applied; without one it is an ordinary possess.
+    const arrive = (cave, anyOoga = false) => {
+      const c = !ctx.carry ? null : carried ? (anyOoga || carried.name === cave.traits.name ? carried : null) : saved;
       if (!c) { possess(cave); return false; }
       const t = captureControl(arrivalTransition), feet = cave.root.position.y - cave.baseY, held = c.held, ammo = c.ammo, focused = c.focused;
       t.active = true; t.view = c.view; t.combat = c.combat; t.yaw = cave.root.rotation.y + c.relYaw; t.pitch = c.pitch;
@@ -2631,33 +2646,33 @@
     const resetPad = () => { padFrame = pad.frame; padFire = padAds = mouseAds = ads = false; };
     const readPad = () => {
       const live = active && !externalControl && !menuOpen;
-      if (padPrimary && (!live || !(pad.held & PAD.rt))) { padPrimary = false; ctx.primaryAction(false); }
-      if (padFire && (!live || !(pad.held & PAD.rt))) {
+      if (padPrimary && (!live || !(padActions.held & PAD.fire))) { padPrimary = false; ctx.primaryAction(false); }
+      if (padFire && (!live || !(padActions.held & PAD.fire))) {
         padFire = false;
         weaponAction("weapon-primary-up");
         crew.setWeaponTrigger(false);
       }
-      if (padAds && (!live || !armed() || !(pad.held & PAD.lt))) {
+      if (padAds && (!live || !armed() || !(padActions.held & PAD.aim))) {
         padAds = false;
         if (!(live && armed() && mouseAds)) ads = false;
       }
       if (pad.frame === padFrame) return;
       padFrame = pad.frame;
       const cave = player();
-      if (!live || !pad.pressed || !cave) return;
-      if (pad.pressed & PAD.view && crew.weaponsEnabled) modeAction("mode-toggle");
-      if (pad.pressed & PAD.lt && armed()) {
+      if (!live || !padActions.pressed || !cave) return;
+      if (padActions.pressed & PAD.view && crew.weaponsEnabled) modeAction("mode-toggle");
+      if (padActions.pressed & PAD.aim && armed()) {
         if (birdsEye()) shooterView(true, renderer.size.width / 2, renderer.size.height / 2);
         else padAds = ads = true;
       }
-      if (pad.pressed & PAD.rt && ctx.primaryAction?.(true)) padPrimary = true;
-      else if (pad.pressed & PAD.rt) {
+      if (padActions.pressed & PAD.fire && ctx.primaryAction?.(true)) padPrimary = true;
+      else if (padActions.pressed & PAD.fire) {
         if (!armed()) weaponAction("weapon-fire");
         else padFire = weaponAction(cave.weapon.primaryEquipped ? "weapon-primary-down" : "weapon-fire", true);
       }
-      if (pad.pressed & PAD.x && cave.weapon.equipped) weaponAction(ctx.reloadAnywhere ? "weapon-reload" : "magazine-swap");
-      if (pad.pressed & PAD.y) weaponAction("weapon-toggle");
-      if (pad.pressed & PAD.b && armed() && cave.weapon.equipped) weaponAction("weapon-bash");
+      if (padActions.pressed & PAD.reload && cave.weapon.equipped) weaponAction(ctx.reloadAnywhere ? "weapon-reload" : "magazine-swap");
+      if (padActions.pressed & PAD.swapWeapon) weaponAction("weapon-toggle");
+      if (padActions.pressed & PAD.bash && armed() && cave.weapon.equipped) weaponAction("weapon-bash");
     };
     const readInput = (dt) => {
       readPad();
@@ -2679,7 +2694,8 @@
       }
       if (aimView()) {
         // Armed, the controls keep Q/E off the look axis (birds-eye orbits with them); aiming views turn with them here.
-        const turn = clamp(a.yaw + a.orbitYaw, -1, 1);
+        // A pad's look speed lets `a.yaw` pass 1; Q and E take only the room left, as they did at 1.
+        const turnMax = Math.max(1, Math.abs(a.yaw)), turn = clamp(a.yaw + a.orbitYaw, -turnMax, turnMax);
         if (a.x || a.y || a.up || turn || a.pitch) releaseCursorAim();
         if (lying) moveLyingView(turn * YAW_RATE * dt, a.pitch * PITCH_RATE * dt);
         else if (turning && !turn && !a.pitch) {
@@ -2782,7 +2798,7 @@
     // The camera moves only on input: no drift, auto-orbit or inertia.
 
     const poseAim = () => {
-      if (player()?.grabbedBy) return;
+      if (player()?.grabbedBy || player()?.camp.seat?.lying) return;
       if (aimPreserveFacing) {
         crew.look(aimBodyYaw, aimBodyPitch, 1);
         player().parts.head.rotation.y = aimBodyHeadYaw;
@@ -2822,8 +2838,8 @@
       adsMix = damp(adsMix, ads ? 1 : 0, CLOSE_RATE, dt);
       if (Math.abs(adsMix - (ads ? 1 : 0)) < CLOSE_SNAP) adsMix = ads ? 1 : 0;
       const h = cave.traits.height, p = cave.root.position;
-      if (cave.camp.rolling && closeWanted) {
-        // First person belongs to the rolling head rather than an upright
+      if ((cave.camp.rolling || cave.camp.seat?.lying) && closeWanted) {
+        // First person belongs to the rolling or resting head rather than an upright
         // world-space boom. The rendered head supplies the eye, forward and
         // up axes, while bounded local look follows it through the roll.
         syncLyingView(cave);
@@ -3289,6 +3305,15 @@
       }
       syncHeadVisibility(cave);
     };
+    // A body lying in a hammock keeps its own head still, since the eye's frame is read from it (`applyLyingView`), so the
+    // first-person look it gives is written here for the room (crew.js `visualState`); neutral in any other view.
+    const shareRestLook = () => {
+      const cave = player();
+      if (!cave?.camp.seat?.lying) return;
+      const looking = closeWanted && lyingView === 1;
+      cave.restLookYaw = looking ? lyingYaw : 0;
+      cave.restLookPitch = looking ? lyingPitch : 0;
+    };
     const update = (dt) => {
       arriving = null;
       if (ctx.carry && player()) remember(player());
@@ -3296,6 +3321,7 @@
       const blending = handoff.active;
       if (blending) { handoff.restore(); solvingHandoff = true; }
       updateCamera(dt);
+      shareRestLook();
       solvingHandoff = false;
       if (handoff.apply(dt) || blending) finishHandoffView(dt);
     };
@@ -3931,7 +3957,7 @@
       if (cave) {
         if (!touch) rows.push(H.row(["shiftleft"], "Run"));
         rows.push(H.row(touch ? [] : [" "], hud.el.act.textContent.trim() || "Jump / use nearby object", touch ? "Action button" : ""));
-        if (!firstOnly && !ctx.combatOnly?.() && weaponViewReady(cave)) add("view", "Toggle view control", "View button");
+        if (!firstOnly && !ctx.combatOnly?.() && (weaponViewReady(cave) || lyingLook(cave))) add("view", "Toggle view control", "View button");
         if (!touch && !firstOnly && weaponViewReady(cave)) rows.push(H.row([], armed() ? "Zoom / aim" : "Zoom / change view", armed() ? "Hold right mouse click" : "Right mouse click"));
         if (!touch && armed() && shoulderView && !closeWanted) rows.push(H.row(["shiftright"], "Tap to swap shoulder · hold with A/D to peek"));
         if (!touch && birdsEye()) add("north", "Face north", "");
