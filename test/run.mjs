@@ -29926,8 +29926,8 @@ const terrainCacheChecks = async () => {
 // terrain-snapshot.js is a hand-kept copy of terrain.js's queries, for the Worker build. The directly built island
 // must keep its golden digest, and the snapshot's queries, rehydrated after a structured clone (the Worker's and
 // IndexedDB's codec), must answer exactly as the direct build does on a seeded sample of every query.
-// The golden is the island as it was built before the snapshot existed.
-const TERRAIN_GOLDEN = "951371a2c7d04b9d";
+// The golden is the island as it was built before the snapshot existed, since given EntropyLab's white floor.
+const TERRAIN_GOLDEN = "7ceeb12cec5b0ec3";
 const terrainParityChecks = (BL, island) => {
   const islandDigest = (built) => {
     const h = createHash("sha256"), g = built.geometry, faces = g.faces;

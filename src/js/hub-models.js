@@ -685,13 +685,6 @@
   };
   // Cached furniture geometry; each visit owns its graph, solid registrations
   // and local work destinations. The center stays open from the original arch.
-  const LAB_FLOOR_LIFT = 0.012, LAB_FLOOR_TILE = 0.75;
-  const labFloorGeometries = new Map();
-  const labFloor = (room) => {
-    const key = `${room.w}:${room.to}`;
-    if (!labFloorGeometries.has(key)) labFloorGeometries.set(key, BL.models.panel({ w: room.w, h: room.to, tilesX: Math.round(room.w / LAB_FLOOR_TILE), tilesY: Math.round(room.to / LAB_FLOOR_TILE), color: "#f4f4f0", altColor: "#e8e8e3", emissive: 0.08 }));
-    return labFloorGeometries.get(key);
-  };
   const entropyLab = (room, floorY = 0) => {
     const { createNode, addChild } = BL.scene, node = createNode(), solids = [], stations = [], equipment = [], displays = [];
     const half = room.w / 2, back = -room.to + 0.28, rearWork = back + 1.60;
@@ -703,8 +696,6 @@
       const item = createNode({ geometry, position: { x, y: 0, z }, rotation: { x: 0, y: heading, z: 0 } });
       addChild(node, item); solids.push(item); return item;
     };
-    // White tiles over the cut floor, from the mouth to the back wall; walkers stay on the terrain just under them.
-    addChild(node, createNode({ geometry: labFloor(room), position: { x: 0, y: LAB_FLOOR_LIFT, z: -room.to / 2 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 }, depthBias: 1.2, sightHidden: true }));
     for (const x of [-half + 1.17, 0, half - 1.17]) {
       const desk = place(labDesk(), x, back), display = createLabScreen(desk, stations.length, 0, x ? codeGeometry[0] : null);
       if (!x) {
