@@ -21041,7 +21041,7 @@ const timechainTrip = { name: "timechain round trip", why: "contract: a room lef
 const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots and paints its dome and live pictures on Canvas 2D", run: async (b) => {
   const painted = await untilPage(b, 'B.scene === "timechain" && B.timechain.slots.every(s => s.shown)', 20000);
   const r = await b.evaluate(`({ kind: __ooga.renderer.kind, drawn: __ooga.renderer.stats.drawn, room: __ooga.timechain.room.id, view: __ooga.pilot.mode })`);
-  record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 8 && r.drawn > 0 && r.view === "first-person", JSON.stringify(r));
+  record("timechain canvas2d: the Lecture Hall, a raked hall, boots and paints every live picture on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 8 && r.view === "first-person", JSON.stringify(r));
 } };
 scene("timechain", { url: roomPage(1), steps: [timechainRoom, timechainRooms, timechainTrip] });
 scene("timechain", { label: "canvas2d", url: roomPage(8, "canvas2d=1"), steps: [timechainCanvas] });

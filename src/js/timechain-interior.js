@@ -212,16 +212,25 @@
       if (!guided) p.z = Math.min(p.z, L.doorZ - 0.3);
       p.y = clamp(p.y, ROOMS.floorAt(L, p.x, p.z) + 0.4, roof(p.x, p.z, 0.5));
     };
-    // The eye stays inside the sphere, over the floor and short of the doors.
+    // The eye stays inside the sphere, over the floor and short of the doors. The floor and the dome meet the wall (in
+    // the theater at a shallow angle, its sphere's middle under the landing), so the eye is pulled in from the wall at
+    // its height, then put between the floor and the dome over where it stands, and where they leave it no room it is
+    // pulled further in, until it is inside all three.
     const clampCamera = (p) => {
       const x = p.x, y = p.y, z = p.z;
-      if (!corridor(p)) {
-        const dy = p.y - L.c, d = Math.hypot(p.x, dy, p.z), max = L.R - 0.3;
-        if (d > max) { const k = max / d; p.x *= k; p.z *= k; p.y = L.c + dy * k; }
-      }
       if (!guided || Math.abs(p.x) > DOOR.halfW - 0.2) p.z = Math.min(p.z, L.doorZ - 0.2);
       else p.z = Math.min(p.z, L.doorZ + DOOR.vestibule - 0.3);
-      p.y = clamp(p.y, ROOMS.floorAt(L, p.x, p.z) + 0.3, roof(p.x, p.z, 0.3));
+      const walled = !corridor(p), R = L.R - 0.3;
+      for (let pass = 0; pass < 8; pass++) {
+        if (walled) {
+          const dy = clamp(p.y - L.c, -R + 0.1, R - 0.1), max = Math.sqrt(R * R - dy * dy), r = Math.hypot(p.x, p.z);
+          if (r > max) { p.x *= max / r; p.z *= max / r; }
+        }
+        const lo = ROOMS.floorAt(L, p.x, p.z) + 0.3, hi = roof(p.x, p.z, 0.3);
+        if (lo <= hi) { p.y = clamp(p.y, lo, hi); if (!walled || Math.hypot(p.x, p.y - L.c, p.z) <= R + 1e-9) break; continue; }
+        const r = Math.hypot(p.x, p.z), k = r > 0.25 ? (r - 0.25) / r : 0;
+        p.x *= k; p.z *= k; p.y = lo;
+      }
       return p.x !== x || p.y !== y || p.z !== z;
     };
     const keepCameraInside = () => {
