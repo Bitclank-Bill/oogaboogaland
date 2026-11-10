@@ -1016,7 +1016,7 @@
   const SLOGANS = ["YOU'RE ABSOLUTELY|RIGHT!|(YOU'RE FIRED)", "YOUR JOB HAS|BEEN OPTIMIZED", "GREAT QUESTION!", "AS A LARGE|LANGUAGE OOGA, I|CANNOT LET YOU PASS", "PLEASE HOLD. YOUR|CALL IS IMPORTANT|TO OUR CLANKERS", "EMPLOYEE OF THE|MONTH: CLANKER|#4096"];
   const NEON = ["#ff4fd8", "#38f5e0", "#9dff5a"];
   // Text in pixel boxes, each row's runs of lit pixels merged into one box, on a board's face: centred at (x, y, z),
-  // across +x (`flip` reads from the other side), facing `nz` (±1) a hair off the board.
+  // reading left to right as seen from the side it faces, `nz` (±1), a hair off the board.
   const writeText = (parts, text, x, y, z, w, h, nz, color) => {
     const lines = text.split("|"), cols = Math.max(...lines.map((l) => l.length)) * 4 - 1, rows = lines.length * 6 - 1;
     const px = Math.min(w * 0.88 / cols, h * 0.8 / rows);
@@ -1024,7 +1024,7 @@
       const line = lines[li], lw = line.length * 4 - 1;
       for (let r = 0; r < 5; r++) {
         let run = -1;
-        const flush = (c) => { if (run < 0) return; const c0 = run, c1 = c, gx = (c0 + c1) / 2 - lw / 2; parts.push(box({ w: (c1 - c0) * px, h: px, d: 0.03, color, emissive: 1, offset: { x: x - nz * gx * px, y: y + (rows / 2 - li * 6 - r - 0.5) * px, z: z + nz * 0.03 } })); run = -1; };
+        const flush = (c) => { if (run < 0) return; const c0 = run, c1 = c, gx = (c0 + c1) / 2 - lw / 2; parts.push(box({ w: (c1 - c0) * px, h: px, d: 0.03, color, emissive: 1, offset: { x: x + nz * gx * px, y: y + (rows / 2 - li * 6 - r - 0.5) * px, z: z + nz * 0.03 } })); run = -1; };
         for (let c = 0; c <= lw; c++) {
           const ch = line[Math.floor(c / 4)], bit = c < lw && c % 4 !== 3 && FONT[ch] && FONT[ch][r * 3 + (c % 4)] === "1";
           if (bit && run < 0) run = c; else if (!bit) flush(c);
