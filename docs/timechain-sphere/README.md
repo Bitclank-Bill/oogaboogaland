@@ -19,7 +19,7 @@ Frontend, implemented:
 | Routes `/sphere-0` … `/sphere-9`, reload and history (a stored visit repeats only as it was; a signed-in arrival without one goes to the keypad with the room chosen) | `src/js/routes.js`, `src/js/scene-timechain.js`, `prepare` in `src/js/director.js` |
 | Hosted deferral: the interior's modules leave the hosted pages for one same-origin file fetched after Enter; the portable page keeps them inline | `data-defer` in `src/index.html`, `scripts/build.mjs`, `scripts/distribution-modules.mjs`, `src/js/deferred.js` |
 
-Backend, still to do: the doorway reservation and transit messages in [doorway-contract.md](doorway-contract.md) (until the room advertises them, crossings run on the traveler's page alone), and regression coverage for nine-way voice isolation, stale pulls and reconnects. An authorized Timechain Index data proxy only if a key is configured.
+Backend, still to do: the doorway reservation and transit messages in [doorway-contract.md](doorway-contract.md) (until the room advertises them, crossings run on the traveler's page alone), and regression coverage for ten-way voice isolation, stale pulls and reconnects. An authorized Timechain Index data proxy only if a key is configured.
 
 Byte-level exception: the portable single file (`oogaboogaland.html`) and the source tree carry the interior's code inline, about 125 KB, because a file:// page has no second file to fetch. Hosted pages (`npm run site`, `npm run build:site`) do not.
 
@@ -75,7 +75,7 @@ Account lookup failure must not lock the exterior controls or wait forever. Afte
 
 ## Network and resource boundaries
 
-- Exterior zone: `sphere`; interior zones: `sphere-1` through `sphere-9`. Do not use dot suffixes: current grouping would merge their voice groups.
+- Exterior zone: `sphere`; interior zones: `sphere-0` through `sphere-9`. Do not use dot suffixes: current grouping would merge their voice groups.
 - Use `none` while handing off. Join a destination only with its valid arrival pose. Exact room filtering controls remote actors; stale SFU pulls must be rejected. Reconnect restores a shared active room only.
 - Ambient sound is client-owned, as in DSB venues. Dispose it on departure; it may share audio assets across replicas.
 - The hub owns shell, bridge, doors, keypad and bounded passage visuals. A separate interior scene owns its selected room, exclusive charts/data, audio, input and GPU resources.
