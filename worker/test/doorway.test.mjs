@@ -103,6 +103,67 @@ test("leases expire by alarm, disconnects release the doorway, and room transits
   assert.equal(messages(c, "transit").at(-1).door, "sphere-7", "a late observer receives the active transit on entering that exact room");
 });
 
+test("a room locked from inside keeps everyone out but those with its PIN, and opens when its last occupant goes", async () => {
+  const h = host(), r = h.room(), inside = await h.join(r, 1, "a"), friend = await h.join(r, 2, "b"), stranger = await h.join(r, 3, "c");
+  await h.enter(r, inside, "a", "sphere-4");
+  await h.enter(r, friend, "b", "sphere");
+  await h.enter(r, stranger, "c", "sphere");
+  assert.ok(messages(friend, "welcome").at(-1).features.includes("room-lock-v1"));
+  assert.deepEqual(messages(friend, "welcome").at(-1).locks, []);
+  await h.send(r, friend, { t: "door", op: "lock", room: 4, pin: "1234" });
+  assert.equal(messages(friend, "door", "lock-result").at(-1).reason, "wrong-room", "only someone inside locks a room");
+  await h.send(r, inside, { t: "door", op: "lock", room: 4, pin: "1234" });
+  assert.equal(messages(inside, "door", "lock-result").at(-1).ok, true);
+  assert.deepEqual(messages(stranger, "door", "locks").at(-1).rooms, [4], "everyone hears which rooms are locked");
+  assert.ok(!JSON.stringify(stranger.sent).includes("1234"), "no client is ever told the PIN");
+  await h.send(r, stranger, { t: "door", op: "ask", dir: "in", room: 4 });
+  assert.equal(messages(stranger, "door", "denied").at(-1).reason, "locked");
+  await h.send(r, stranger, { t: "zone", name: "sphere-4" });
+  assert.equal(r.players.get(3).zone, "sphere", "a locked room's zone cannot simply be claimed");
+  await h.send(r, stranger, { t: "door", op: "try", room: 4, pin: "0000" });
+  assert.equal(messages(stranger, "door", "lock-result").at(-1).reason, "wrong");
+  await h.send(r, friend, { t: "door", op: "try", room: 4, pin: "1234" });
+  assert.equal(messages(friend, "door", "lock-result").at(-1).ok, true);
+  await h.send(r, friend, { t: "door", op: "ask", dir: "in", room: 4 });
+  assert.ok(messages(friend, "door", "grant").length, "the right PIN opens the door");
+  await h.send(r, friend, { t: "door", op: "cancel" });
+  await h.send(r, friend, { t: "zone", name: "sphere-4" });
+  assert.equal(r.players.get(2).zone, "sphere-4");
+  await h.send(r, friend, { t: "zone", name: "sphere" });
+  await h.send(r, friend, { t: "zone", name: "sphere-4" });
+  assert.equal(r.players.get(2).zone, "sphere", "a pass is spent on walking in, so someone who left needs the PIN again");
+  await h.send(r, inside, { t: "zone", name: "sphere" });
+  assert.deepEqual(messages(stranger, "door", "locks").at(-1).rooms, [], "the room opens by itself once nobody is inside");
+  await h.send(r, stranger, { t: "zone", name: "sphere-4" });
+  assert.equal(r.players.get(3).zone, "sphere-4");
+});
+
+test("the PIN unlocks from inside, wrong tries run out, and a lock survives hibernation in its occupants' sockets", async () => {
+  const h = host(), r = h.room(), inside = await h.join(r, 1, "a"), outside = await h.join(r, 2, "b");
+  await h.enter(r, inside, "a", "sphere-2");
+  await h.enter(r, outside, "b", "sphere");
+  await h.send(r, inside, { t: "door", op: "lock", room: 2, pin: "4321" });
+  await h.send(r, inside, { t: "door", op: "lock", room: 2, pin: "9999" });
+  assert.equal(messages(inside, "door", "lock-result").at(-1).reason, "already-locked");
+  h.runtime.listed = h.accepted.filter((ws) => !ws.closed);
+  const woken = h.room();
+  assert.deepEqual([...woken.roomLocks.keys()], [2], "the lock comes back from the occupants' attachments");
+  for (let i = 0; i < 5; i++) { h.advance(1000); await h.send(woken, outside, { t: "door", op: "try", room: 2, pin: "0000" }); }
+  h.advance(1000);
+  await h.send(woken, outside, { t: "door", op: "try", room: 2, pin: "4321" });
+  assert.equal(messages(outside, "door", "lock-result").at(-1).reason, "wait", "five wrong tries make a socket wait, even with the right PIN");
+  h.advance(61000);
+  await h.send(woken, outside, { t: "door", op: "try", room: 2, pin: "4321" });
+  assert.equal(messages(outside, "door", "lock-result").at(-1).ok, true);
+  await h.send(woken, inside, { t: "door", op: "unlock", room: 2, pin: "0001" });
+  assert.equal(messages(inside, "door", "lock-result").at(-1).reason, "wrong");
+  h.advance(1000);
+  await h.send(woken, inside, { t: "door", op: "unlock", room: 2, pin: "4321" });
+  assert.equal(messages(inside, "door", "lock-result").at(-1).ok, true);
+  assert.deepEqual(messages(outside, "door", "locks").at(-1).rooms, []);
+  assert.equal(woken.players.get(1).roomLock, null);
+});
+
 test("a cancelled door alarm does not pull the ordinary account sweep forward", async () => {
   const h = host(), r = h.room(), a = await h.join(r, 1, "a");
   await h.enter(r, a, "a");

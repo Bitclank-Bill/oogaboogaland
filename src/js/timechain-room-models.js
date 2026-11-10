@@ -308,8 +308,9 @@
   });
   // EXIT in the island's 5x7 letters (jumbotron.js), amber on the doorway's header, about its own middle and facing
   // -z, into the room: one face a run of lit cells in a row.
-  const exitWord = own(() => {
-    const T = BL.jumbotron.text, word = "EXIT", px = 0.036, geo = blank(), IN = [0, 0, -1];
+  // A word in the jumbotron's letters, lit, facing into the room.
+  const litWord = (word, px, color, emissive, z = 0) => {
+    const T = BL.jumbotron.text, geo = blank(), IN = [0, 0, -1];
     const cols = word.length * (T.GLYPH_W + T.TRACKING) - T.TRACKING;
     // Seen from the room the word reads toward -x.
     const x = (col) => (cols / 2 - col) * px, y = (row) => (T.GLYPH_H / 2 - row) * px;
@@ -320,11 +321,22 @@
         if (!lit[c]) continue;
         let e = c;
         while (lit[e + 1]) e++;
-        quad(geo, [x(e + 1), y(row + 1), 0], [x(c), y(row + 1), 0], [x(c), y(row), 0], [x(e + 1), y(row), 0], C.amber, 0.9, IN);
+        quad(geo, [x(e + 1), y(row + 1), z], [x(c), y(row + 1), z], [x(c), y(row), z], [x(e + 1), y(row), z], color, emissive, IN);
         c = e;
       }
     }
     return noShadow(geo);
+  };
+  const exitWord = own(() => litWord("EXIT", 0.036, C.amber, 0.9));
+  // Across the doors while the room is locked: ROOM LOCKED in red between two padlocks.
+  const LOCK_RED = "#ff3b30", PADLOCK = [".###.", "#...#", "#...#", "#####", "##.##", "#####"];
+  const lockedSign = own(() => {
+    const px = 0.036, z = -0.012, IN = [0, 0, -1], locks = blank();
+    for (const side of [-1, 1]) PADLOCK.forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] === "#") {
+      const x = side * 1.34 + (2.5 - c) * px, y = (3 - r) * px;
+      quad(locks, [x - px, y - px, z], [x, y - px, z], [x, y, z], [x - px, y, z], LOCK_RED, 1, IN);
+    } });
+    return noShadow(merge(box({ w: 3.1, h: 0.56, d: 0.02, color: "#2a0806", emissive: 0.3 }), litWord("ROOM LOCKED", px, LOCK_RED, 1, z), locks));
   });
   // The meeting table: a dark drum on a pedestal with an amber band, as wide as the room's layout makes it (`k` times
   // the smallest room's) at one height, and a flat ₿ in its top. The top is laid in squares a ₿ pixel across, cut to
@@ -407,6 +419,11 @@
     const terminal = createNode({ position: { x: 0, y: DESK_SCREEN.y, z: DESK_SCREEN.z } });
     addChild(deskNode, terminal);
     addChild(root, tableNode, ...chairs, deskNode);
+    // The lock: its keypad faces into the room, and the sign across the doors hangs there only while it is locked.
+    const lockPad = BL.timechainModels.padRig(), lockSign = createNode({ geometry: lockedSign(), depthBias: MARK_BIAS, position: { x: 0, y: L.lockSign.y, z: L.lockSign.z }, visible: false, sightHidden: true });
+    lockPad.pad.position.x = L.lockPad.x; lockPad.pad.position.y = L.lockPad.y; lockPad.pad.position.z = L.lockPad.z;
+    lockPad.pad.rotation.y = Math.PI;
+    addChild(root, lockPad.pad, lockSign);
     // Point lights, the fixed ones first: warm over the table and the corners, the screens' wash, the vestibule.
     const lights = [
       [0, L.wall - 0.4, 0, 9 * s, 0.95, 0.62, 0.3],
@@ -417,10 +434,10 @@
       [0, DOOR.height - 0.4, L.doorZ + DOOR.vestibule * 0.5, 3.2, 0.32, 0.2, 0.08]
     ];
     return {
-      root, layout: L, doors, screens, cards, exitButton, exitSign, terminal, table: tableNode, chairs, desk: deskNode, lights
+      root, layout: L, doors, screens, cards, exitButton, exitSign, terminal, table: tableNode, chairs, desk: deskNode, lights, lockPad, lockSign
     };
   };
   // Every geometry a room of this size draws, for the scene's live set and for releasing a preview.
-  const geometries = (scale) => [hall(scale), glow(scale), vestibule(scale), vestibuleGlow(scale), ...leaves(), ...chains(), button(), exitWord(), table(scale), chair(), desk()];
+  const geometries = (scale) => [hall(scale), glow(scale), vestibule(scale), vestibuleGlow(scale), ...leaves(), ...chains(), button(), exitWord(), lockedSign(), table(scale), chair(), desk()];
   BL.timechainRoomModels = { build, picture, geometries, DESK_SCREEN, COLORS: C };
 })();

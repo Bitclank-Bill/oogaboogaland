@@ -153,6 +153,7 @@
     card: "Latest blocks · tap for the charts",
     terminal: "Holdings desk · tap for Timechain Index holdings",
     door: "The way out · use the Exit button",
+    lockkey: "Room lock · walk up and press Space, then type a 4-digit PIN",
     table: "Meeting table · jump up on it",
     chair: COARSE ? "Chair · tap SIT beside it" : "Chair · Space beside it sits"
   };
@@ -353,9 +354,104 @@
       }
       return near;
     };
+    // The room's lock, shared rooms only: Space beside its keypad takes the view and the keys. Four digits lock the room
+    // (`net.lockRoom`) or open it again; the room keeps the PIN, and is free again by itself once nobody is inside.
+    const lockPad = built.lockPad, LOCK_ANSWER = 4, LOCK_NOTE = 1.4, LOCKED_RED = "#ff4a3d";
+    const DOTS = ["", "*", "**", "***", "****"], lock = { on: false, digits: "", sent: 0, note: "", noteLeft: 0, leaveLeft: 0, locked: false, ease: 1, from: { x: 0, y: 0, z: 0 }, fromLook: { x: 0, y: 0, z: 0 } };
+    const isLocked = () => shared && !!BL.net.state.lockedRooms[room.id];
+    const nearLock = () => {
+      if (!avatar || avatar.camp.seat) return false;
+      const p = avatar.root.position;
+      return Math.hypot(p.x - L.lockPad.x, p.z - L.lockPad.z) < L.lockReach;
+    };
+    const lockNote = (words, leave = false) => { lock.note = words; lock.noteLeft = LOCK_NOTE; lock.leaveLeft = leave ? LOCK_NOTE : 0; };
+    const lockLetGo = () => {
+      if (!lock.on) return;
+      lock.on = false; lock.digits = ""; lock.sent = 0; lock.leaveLeft = 0;
+      if (avatar) avatar.parts.head.cameraHidden = false;
+      pilot.setExternalControl(false);
+      hud.el.act.hidden = !avatar;
+      pilot.showAct();
+    };
+    const lockEngage = () => {
+      if (lock.on || !avatar || guide.stage) return false;
+      if (!shared) { hud.toast("A solo copy is yours alone: nobody else can come in"); return true; }
+      if (!BL.net.state.roomLocks) { hud.toast("This room can't be locked just now"); return true; }
+      lock.on = true; lock.digits = ""; lock.sent = 0; lock.noteLeft = 0; lock.ease = 0;
+      people.steer(0, 0, 0, 0, 0);
+      pilot.setExternalControl(true);
+      if (document.pointerLockElement) document.exitPointerLock();
+      hud.el.act.hidden = true;
+      avatar.parts.head.cameraHidden = true;
+      const c = camera.position, t = camera.target;
+      lock.from.x = c.x; lock.from.y = c.y; lock.from.z = c.z;
+      lock.fromLook.x = t.x; lock.fromLook.y = t.y; lock.fromLook.z = t.z;
+      hud.hint(isLocked() ? "Type the PIN to unlock · Esc steps back" : "Type a 4-digit PIN to lock the room · Esc steps back", 7000);
+      return true;
+    };
+    const lockSend = () => {
+      const unlocking = isLocked();
+      if ((unlocking ? BL.net.unlockRoom : BL.net.lockRoom)(room.id, lock.digits)) lock.sent = LOCK_ANSWER;
+      else { lock.digits = ""; lockNote("NO SIGNAL"); }
+    };
+    const lockPress = (key) => {
+      if (!lock.on || lock.sent || lock.leaveLeft) return;
+      if (key === "back") {
+        if (lock.digits) lock.digits = lock.digits.slice(0, -1);
+        else lockLetGo();
+      } else if (/^[0-9]$/.test(key) && lock.digits.length < 4) {
+        lock.digits += key;
+        if (lock.digits.length === 4) lockSend();
+      }
+    };
+    const lockKeys = (e) => {
+      if (!lock.on || e.metaKey || e.ctrlKey || e.altKey || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.repeat) return;
+      if (/^[0-9]$/.test(e.key)) lockPress(e.key);
+      else if (e.key === "Backspace") lockPress("back");
+      else if (e.key === "Escape" && !lock.sent) lockLetGo();
+    };
+    window.addEventListener("keydown", lockKeys, { capture: true, signal: ctx.signal });
+    // While the keypad has the keys the view stands square in front of it, gliding there and held; everything else follows
+    // from the room's own word on the lock.
+    const LOCK_EYE = 0.82, LOCK_GLIDE = 0.35;
+    const lockUpdate = (dt) => {
+      lock.noteLeft = Math.max(0, lock.noteLeft - dt);
+      if (lock.sent > 0 && (lock.sent -= dt) <= 0) { lock.digits = ""; lockNote("NO ANSWER"); }
+      if (lock.leaveLeft > 0 && (lock.leaveLeft -= dt) <= 0) lockLetGo();
+      const locked = isLocked();
+      if (locked !== lock.locked) {
+        lock.locked = locked;
+        hud.toast(locked ? `${room.name} is locked · players outside need its PIN` : `${room.name} is unlocked`);
+      }
+      built.lockSign.visible = locked && doors.open < 0.05;
+      const words = lock.noteLeft > 0 ? lock.note : lock.on ? lock.digits ? DOTS[lock.digits.length] : locked ? "ENTER PIN TO UNLOCK" : "SET 4-DIGIT PIN" : !shared ? "SOLO" : locked ? "LOCKED" : "UNLOCKED";
+      lockPad.say(words, locked ? LOCKED_RED : undefined);
+      lockPad.tick(dt);
+      if (!lock.on) return;
+      lock.ease = Math.min(1, lock.ease + dt / LOCK_GLIDE);
+      const e = lock.ease * lock.ease * (3 - 2 * lock.ease), P = L.lockPad, eyeZ = P.z - LOCK_EYE;
+      camera.position.x = lock.from.x + (P.x - lock.from.x) * e;
+      camera.position.y = lock.from.y + (P.y - lock.from.y) * e;
+      camera.position.z = lock.from.z + (eyeZ - lock.from.z) * e;
+      camera.target.x = lock.fromLook.x + (P.x - lock.fromLook.x) * e;
+      camera.target.y = lock.fromLook.y + (P.y - lock.fromLook.y) * e;
+      camera.target.z = lock.fromLook.z + (P.z - lock.fromLook.z) * e;
+      camera.up = null;
+    };
+    const lockHeard = (event) => {
+      if (event.op !== "lock-result" || event.room !== room.id || !lock.sent) return;
+      lock.sent = 0; lock.digits = "";
+      if (event.ok) lockNote(event.action === "lock" ? "LOCKED" : "UNLOCKED", true);
+      else lockNote(event.reason === "wait" ? "TRY LATER" : event.reason === "already-locked" ? "LOCKED" : "WRONG PIN");
+    };
+    for (const key of lockPad.keys) target(key.node, { kind: "lockkey", key: key.key }, key.key.length === 1 ? 0.055 : 0.09);
     const useNear = () => {
       if (guide.stage) return false;
       if (nearExit()) { walkOut(); return true; }
+      if (nearLock()) return lockEngage();
       const chair = nearChair();
       return !!chair && people.sitPlayer(chair);
     };
@@ -421,6 +517,12 @@
     const sound = ambience(room, ctx.signal);
     // Another player crossing this room's own doorway opens its doors here too (net.js `subscribeDoor`).
     const unsubscribeDoor = shared ? BL.net.subscribeDoor((event) => {
+      if (event.op === "denied" && event.reason === "locked") {
+        hud.toast(`${room.name} is locked from inside`);
+        handOff();
+        return;
+      }
+      lockHeard(event);
       if (event.t !== "transit" || event.door !== room.zone) return;
       doors.until = Math.max(doors.until, performance.now() + Math.max(0, Math.min(8000, event.exp - BL.net.serverNow())));
     }) : null;
@@ -497,6 +599,11 @@
         if (!hit || guide.stage) return;
         const o = hit.owner;
         if (o.kind === "exit") { if (nearExit()) walkOut(); else hud.toast("Walk up to the Exit button, then press it"); }
+        else if (o.kind === "lockkey") {
+          if (lock.on) lockPress(o.key);
+          else if (!nearLock()) hud.toast("Walk up to the keypad, then press Space");
+          else { lockEngage(); lockPress(o.key); }
+        }
         else if (o.kind === "screen" || o.kind === "card") { chartIndex = o.kind === "screen" ? o.index : 2; chartVersion++; hud.openBoard(chartBoard); }
         else if (o.kind === "terminal") { holdingsVersion++; hud.openBoard(holdingsBoard); }
         else if (o.kind === "door") hud.toast(COARSE ? "Tap EXIT beside the doors to walk out" : "Press Space at the Exit button to walk out");
@@ -522,7 +629,7 @@
       if (!mode) return;
       let others = 0;
       if (shared) for (const rec of BL.net.remotes.values()) if (rec.zone === room.zone && rec.body) others++;
-      const text = shared ? `${room.name} · ${room.scale}×${others ? ` · ${others + 1} here` : ""}` : `${room.name} · Solo visit · not signed in`;
+      const text = shared ? `${room.name} · ${room.scale}×${isLocked() ? " · LOCKED" : ""}${others ? ` · ${others + 1} here` : ""}` : `${room.name} · Solo visit · not signed in`;
       if (mode.textContent !== text) mode.textContent = text;
     };
     showMode();
@@ -602,11 +709,13 @@
       }
       if (remotes) remotes.update(dt);
       footsteps.update(driven);
+      lockUpdate(dt);
       if (avatar && !guide.stage) {
-        const near = avatar.camp.seat ? "stand" : nearExit() ? "exit" : nearChair() ? "sit" : null;
+        const near = lock.on ? null : avatar.camp.seat ? "stand" : nearExit() ? "exit" : nearLock() ? "lock" : nearChair() ? "sit" : null;
         if (near !== guide.near) {
           guide.near = near;
           if (near === "exit") { hud.setAct("EXIT"); hud.hint(COARSE ? "Tap EXIT to walk out" : "Space · Exit"); }
+          else if (near === "lock") { hud.setAct(isLocked() ? "UNLOCK" : "LOCK"); hud.hint(COARSE ? "Tap to use the room's lock" : isLocked() ? "Space · Unlock the room" : "Space · Lock the room"); }
           else if (near === "sit") { hud.setAct("SIT"); hud.hint(COARSE ? "Tap SIT to take the chair" : "Space · Sit"); }
           else if (near === "stand") { hud.setAct("STAND UP!"); hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up"); }
           else pilot.showAct();

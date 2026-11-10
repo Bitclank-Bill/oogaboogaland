@@ -105,6 +105,9 @@
       arrival: { x: 0, z: doorZ - 2.4, heading: Math.PI },
       exitButton: { x: -(DOOR.halfW + 0.72), y: 1.2, z: doorZ - 0.07 },
       exitReach: 2.2,
+      // The room's lock: a keypad on the wall the other side of the doors from the Exit button, and the sign across the
+      // doors while it is locked.
+      lockPad: { x: DOOR.halfW + 0.72, y: 1.25, z: doorZ - 0.03 }, lockReach: 2.2, lockSign: { y: 2.3, z: doorZ - 0.03 },
       // The walk out stops at the door's foot, square to it, before the doors part.
       doorStep: { x: 0, z: doorZ - 0.9 },
       // Where the eye stands when a crossing from the island hands over (in the vestibule, facing the room through the

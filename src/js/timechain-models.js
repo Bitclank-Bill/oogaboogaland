@@ -308,7 +308,7 @@
   const keypad = cached(() => {
     const parts = [
       box({ w: 0.44, h: 0.7, d: 0.05, color: "#2a2420" }),
-      box({ w: 0.36, h: 0.09, d: 0.012, color: "#1a120a", emissive: 0.35, offset: { y: 0.25, z: 0.03 } }),
+      box({ w: 0.39, h: 0.09, d: 0.012, color: "#1a120a", emissive: 0.35, offset: { y: 0.25, z: 0.03 } }),
       ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([x, y]) => box({ w: 0.03, h: 0.03, d: 0.012, color: "#8a7a6a", offset: { x: x * 0.19, y: y * 0.32, z: 0.03 } }))
     ];
     return merge(...parts);
@@ -332,22 +332,35 @@
   );
   const DIGIT_KEYS = Array.from({ length: 9 }, (_, i) => keyFace(0.085, 0.085, String(i + 1), 0.011, "#3a3430", "#f2d39a"));
   const LIT_DIGIT_KEYS = Array.from({ length: 9 }, (_, i) => keyFace(0.09, 0.09, String(i + 1), 0.011, "#f7931a", "#17110a", 1));
-  const BACK_KEY = keyFace(0.15, 0.07, "BACK", 0.0072, "#4a3a30", "#f2d39a");
-  const ENTER_KEY = keyFace(0.15, 0.07, "ENTER", 0.0062, "#5a4022", "#f2d39a");
-  const READY_ENTER_KEY = keyFace(0.155, 0.075, "ENTER", 0.0062, "#ffbd53", "#17110a", 1);
+  const BACK_KEY = keyFace(0.12, 0.07, "BACK", 0.0066, "#4a3a30", "#f2d39a");
+  const ENTER_KEY = keyFace(0.12, 0.07, "ENTER", 0.0055, "#5a4022", "#f2d39a");
+  const READY_ENTER_KEY = keyFace(0.125, 0.075, "ENTER", 0.0055, "#ffbd53", "#17110a", 1);
+  const ZERO_KEY = keyFace(0.085, 0.07, "0", 0.0105, "#3a3430", "#f2d39a");
+  // A number over which a locked room's padlock hangs.
+  const PADLOCK = [".###.", "#...#", "#...#", "#####", "##.##", "#####"];
+  const LOCKED_KEY = merge(box({ w: 0.085, h: 0.085, d: 0.02, color: "#5a1c14", emissive: 0.35 }), (() => {
+    const geo = { verts: [], faces: [], lines: [], castShadow: false }, pixel = 0.011, z = 0.0115;
+    PADLOCK.forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] === "#") {
+      const x = (c - 2.5) * pixel, y = (2 - r) * pixel;
+      facing(geo, [[x, y, z], [x + pixel, y, z], [x + pixel, y + pixel, z], [x, y + pixel, z]], "#ffbd53", 0.9, [0, 0, 1]);
+    } });
+    return geo;
+  })());
   // The keypad's small window: one canvas in the signs' 3 by 5 pixels. Words that fit stand centred; longer ones run
   // across it and round again, repainted only when they have moved a cell.
-  const WINDOW = { w: 0.36, h: 0.09, width: 128, height: 32, dot: 4, top: 6, speed: 14, gap: 10 };
+  const WINDOW = { w: 0.39, h: 0.09, width: 140, height: 32, dot: 4, top: 6, speed: 14, gap: 10 };
+  // One hidden digit of a PIN.
+  const WINDOW_DOT = ["000", "111", "111", "111", "000"];
   const windowRig = () => {
     const canvas = document.createElement("canvas");
     canvas.width = WINDOW.width; canvas.height = WINDOW.height;
     const ctx = canvas.getContext("2d"), glyphs = BL.hubModels.SIGN_GLYPHS, cells = WINDOW.width / WINDOW.dot, W = WINDOW.w / 2, H = WINDOW.h / 2;
     const geometry = { verts: [-W, -H, 0, W, -H, 0, W, H, 0, -W, H, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.9 }], lines: [], castShadow: false };
     geometry.imageSurface = { canvas, version: 0, rect: [-W, -H, WINDOW.w, WINDOW.h], background: [26, 18, 10] };
-    let words = "", wide = 0, clock = 0, drawn = -1;
+    let words = "", ink = "#f7931a", wide = 0, clock = 0, drawn = -1;
     const draw = (x) => {
       for (let i = 0; i < words.length; i++) {
-        const glyph = glyphs[words[i]];
+        const glyph = words[i] === "*" ? WINDOW_DOT : glyphs[words[i]];
         if (!glyph) continue;
         for (let r = 0; r < glyph.length; r++) for (let c = 0; c < glyph[r].length; c++) if (glyph[r][c] === "1") ctx.fillRect((x + i * 4 + c) * WINDOW.dot, WINDOW.top + r * WINDOW.dot, WINDOW.dot, WINDOW.dot);
       }
@@ -355,14 +368,14 @@
     const paint = (offset) => {
       drawn = offset;
       ctx.fillStyle = "#1a120a"; ctx.fillRect(0, 0, WINDOW.width, WINDOW.height);
-      ctx.fillStyle = "#f7931a";
+      ctx.fillStyle = ink;
       if (wide <= cells) draw(Math.floor((cells - wide) / 2));
       else { draw(1 - offset); draw(1 - offset + wide + WINDOW.gap); }
       geometry.imageSurface.version++;
     };
-    const say = (text) => {
-      if (text === words) return;
-      words = text; clock = 0;
+    const say = (text, color = "#f7931a") => {
+      if (text === words && color === ink) return;
+      words = text; ink = color; clock = 0;
       wide = text.length ? text.length * 4 - 1 : 0;
       paint(0);
     };
@@ -374,6 +387,37 @@
     };
     paint(0);
     return { geometry, say, tick };
+  };
+  // A keypad as a set of nodes, unplaced: the doorway's outside and the lock inside every room. 1–9, Back, 0 and Enter
+  // are each a node the scene can pick; `choose` lights a number, `lock` hangs a padlock over one, `say` writes the window.
+  const padRig = () => {
+    const pad = createNode({ geometry: keypad(), sightHidden: true });
+    const keys = KEYS.map((key, i) => ({ key: String(i + 1), node: createNode({ geometry: DIGIT_KEYS[i], position: { x: key.x, y: key.y, z: 0.033 }, sightHidden: true }) }));
+    const back = { key: "back", node: createNode({ geometry: BACK_KEY, position: { x: -0.1125, y: -0.235, z: 0.033 }, sightHidden: true }) };
+    const zero = { key: "0", node: createNode({ geometry: ZERO_KEY, position: { x: 0, y: -0.235, z: 0.033 }, sightHidden: true }) };
+    const enter = { key: "enter", node: createNode({ geometry: ENTER_KEY, position: { x: 0.1125, y: -0.235, z: 0.033 }, sightHidden: true }) };
+    const display = windowRig();
+    const readout = createNode({ geometry: display.geometry, position: { x: 0, y: 0.25, z: 0.0365 }, visible: false, sightHidden: true });
+    readout.room = 0;
+    addChild(pad, readout, ...keys.map(key => key.node), back.node, zero.node, enter.node);
+    const say = (text, ink) => { display.say(text, ink); readout.visible = !!text; };
+    const locked = new Uint8Array(10);
+    // A key lit (1–9), or none (0); the selected number and ready Enter label turn black against amber.
+    let selected = 0;
+    const cap = (digit) => digit === selected ? LIT_DIGIT_KEYS[digit - 1] : locked[digit] ? LOCKED_KEY : DIGIT_KEYS[digit - 1];
+    const choose = (digit) => {
+      const was = selected;
+      selected = digit > 0 && digit <= 9 ? digit : 0;
+      if (was) keys[was - 1].node.geometry = cap(was);
+      if (selected) keys[selected - 1].node.geometry = cap(selected);
+      enter.node.geometry = selected ? READY_ENTER_KEY : ENTER_KEY;
+      readout.room = selected;
+    };
+    const lock = (digit, on) => {
+      locked[digit] = on ? 1 : 0;
+      keys[digit - 1].node.geometry = cap(digit);
+    };
+    return { pad, keys: [...keys, zero, back, enter], readout, say, tick: display.tick, choose, lock };
   };
   const build = (island) => {
     let rim = 27.4;
@@ -426,15 +470,8 @@
     addChild(entrance, createNode({ position: { x: 0, y: 5.6, z: 0 }, geometry: BL.hubModels.caveSign("TIMECHAIN SPHERE") }));
     const bridgeNode = createNode({ position: { x: 0, y: 0, z: bridgeZ }, geometry: bridge() });
     const plugNode = createNode({ geometry: plug(), sightHidden: true });
-    const K = SPOTS.KEYPAD, pad = createNode({ geometry: keypad(), position: { x: K.x, y: K.y, z: K.z }, sightHidden: true });
-    const keys = KEYS.map((key, i) => ({ key: String(i + 1), node: createNode({ geometry: DIGIT_KEYS[i], position: { x: key.x, y: key.y, z: 0.033 }, sightHidden: true }) }));
-    const back = { key: "back", node: createNode({ geometry: BACK_KEY, position: { x: -0.085, y: -0.235, z: 0.033 }, sightHidden: true }) };
-    const enter = { key: "enter", node: createNode({ geometry: ENTER_KEY, position: { x: 0.085, y: -0.235, z: 0.033 }, sightHidden: true }) };
-    const display = windowRig();
-    const readout = createNode({ geometry: display.geometry, position: { x: 0, y: 0.25, z: 0.0365 }, visible: false, sightHidden: true });
-    readout.room = 0;
-    const say = (text) => { display.say(text); readout.visible = !!text; };
-    addChild(pad, readout, ...keys.map(key => key.node), back.node, enter.node);
+    const K = SPOTS.KEYPAD, rig = padRig(), pad = rig.pad;
+    pad.position.x = K.x; pad.position.y = K.y; pad.position.z = K.z;
     // The traveler's look into their room hangs here, just in front of the curtain, on their page alone.
     const picture = createNode({ position: { x: 0, y: PASSAGE.floor, z: PASSAGE.curtain + 0.03 }, sightHidden: true });
     const glow = createNode({ geometry: passageGlow(), sightHidden: true });
@@ -452,16 +489,7 @@
       // Canvas 2D sorts whole faces: pull the inner marks ahead of the larger tiles beneath them.
       for (const batch of logoBatches) batch.node.depthBias = inside ? -1.2 : 0;
     };
-    // A key lit (1–9), or none (0); the selected number and ready Enter label turn black against amber.
-    let selected = 0;
-    const choose = (digit) => {
-      if (selected) keys[selected - 1].node.geometry = DIGIT_KEYS[selected - 1];
-      selected = digit > 0 && digit <= 9 ? digit : 0;
-      if (selected) keys[selected - 1].node.geometry = LIT_DIGIT_KEYS[selected - 1];
-      enter.node.geometry = selected ? READY_ENTER_KEY : ENTER_KEY;
-      readout.room = selected;
-    };
-    return { node, shell: shellNode, outer, turn, setDoors, view, screen, logoBatches, entrance, bridge: bridgeNode, doors, plug: plugNode, keypad: pad, keys: [...keys, back, enter], readout, say, tick: display.tick, choose, picture, place };
+    return { node, shell: shellNode, outer, turn, setDoors, view, screen, logoBatches, entrance, bridge: bridgeNode, doors, plug: plugNode, keypad: pad, keys: rig.keys, readout: rig.readout, say: rig.say, tick: rig.tick, choose: rig.choose, lock: rig.lock, picture, place };
   };
   // Most of the time the screen holds its picture; every minute or so it runs a seven-second show on the lunes'
   // `glow` and `highlight`, never the same one twice running, then settles back exactly. Some shows take the logos
@@ -544,5 +572,5 @@
     };
     return step;
   };
-  BL.timechainModels = { SITE, DIR, PASSAGE, SPOTS, HEARTBEAT, build, show };
+  BL.timechainModels = { SITE, DIR, PASSAGE, SPOTS, HEARTBEAT, build, show, padRig };
 })();

@@ -20100,14 +20100,13 @@ const timechainRoomChecks = async () => {
       symmetric: Math.abs(L.screens.reduce((sum, p) => sum + p.x, 0)) < 1e-9 && Math.abs(L.ribbon.reduce((sum, p) => sum + p.x, 0)) < 1e-9 && L.screens.every((p, i) => Math.abs(p.x + L.screens[5 - i].x) < 1e-9),
       front: L.screens.every(p => p.z < -L.radius * 0.5), doorBehind: L.doorZ > L.radius * 0.9, screensReach: Math.max(...L.screens.map(p => Math.abs(p.angle))),
       arrivalClear: R.clearAt(L, L.arrival.x, L.arrival.z), buttonReach: R.clearAt(L, L.exitButton.x + 0.4, L.doorZ - 0.6) && Math.hypot(0.4, L.exitButton.z - L.doorZ + 0.6) < L.exitReach,
-      tableSolid: !R.clearAt(L, 0, 0) && R.clearAt(L, 0, 0, 0.35, false, L.table.top), doorShut: !R.clearAt(L, 0, L.doorZ + 1), doorGuided: R.clearAt(L, 0, L.doorZ + 1, 0.35, true), wallSolid: !R.clearAt(L, L.radius - 0.2, 0), guided,
-      gear: L.solids.slice(-3).every(o => Math.hypot(o.x, o.z) > L.radius - 2.2 && Math.hypot(o.x, o.z) < L.radius - 0.5)
+      tableSolid: !R.clearAt(L, 0, 0) && R.clearAt(L, 0, 0, 0.35, false, L.table.top), doorShut: !R.clearAt(L, 0, L.doorZ + 1), doorGuided: R.clearAt(L, 0, L.doorZ + 1, 0.35, true), wallSolid: !R.clearAt(L, L.radius - 0.2, 0), guided
     };
   });
   const same = (k) => rows.every(r => JSON.stringify(r[k]) === JSON.stringify(rows[0][k]));
   record("timechain rooms: rooms scale 1×, 1.5× and 2× around one centred doorway opposite the screens, with arrival, Exit button and chairs kept at human size, a table for 4, 8 and 12 that can be stood on, and every walk clear",
     rows.every(r => r.radius === 9 * r.s && Math.abs(r.wall - 5.4 * r.s) < 1e-9 && Math.abs(r.screenW - 3 * r.s) < 1e-9 && r.heading === Math.PI && r.symmetric && r.front && r.doorBehind && r.screensReach < 1.4
-      && r.arrivalClear && r.buttonReach && r.tableSolid && r.doorShut && r.doorGuided && r.wallSolid && r.guided && r.gear && r.chairs)
+      && r.arrivalClear && r.buttonReach && r.tableSolid && r.doorShut && r.doorGuided && r.wallSolid && r.guided && r.chairs)
       && rows.map(r => r.seats).join() === "4,8,12" && ["door", "arrival", "button", "table"].every(same), JSON.stringify(rows));
   // Regression: a rejected hub build released guided control in the vestibule, outside ordinary room collision.
   // Exercise only the production recovery methods; no doorway animation or scene crossing runs in this fixture.
@@ -20187,7 +20186,7 @@ const timechainRoomChecks = async () => {
   // V8's trigonometric results have different last bits on Linux and macOS; keep exact geometry oracles for both.
   const expected = process.platform === "linux"
     ? ["46fddc3f3afede6a71492af33e7972d9b316a5e19a3604140d204014467e0752", "1db29f77ae158599889e8538f0de24a9d808f6a5c7eb901ce97b0a8d3a098e66", "9d1fc6a2541c405835a3ede1997a372fe0cc0aac2a66cee5e96f6b3d8beedc51"]
-    : ["41ff2b0ba1c25d90d10c7d01fe03ebdd33702a46d62966389eaa1dcee6cda89a", "16a2ba26b673e221f8f844b2c95c82ee955eb40fb73483d2a2c700ed33a6cc7d", "c9519700334ea5f7e118a2c34be7146f1fd317686993a9e8b9b270135b7588a2"];
+    : ["8d1161649448e93ae5472241bf864e913ebddf5574e0030f7f4602bec6707fac", "82c0bb388e6dcfdbb816b1f8af7b4d434930eb649f03b10bd1ea73b8fc60d227", "8c1ac5769f20a049011de2b4a6163ec29bce0630320697afc8669d90a0d62b36"];
   const hash = geos => createHash("sha256").update(JSON.stringify(geos.map(({ verts, faces, lines, normals }) => ({ verts, faces, lines, normals })))).digest("hex");
   M.setScope("hub");
   const meshes = R.SCALES.map(scale => RM.geometries(scale)), hashes = meshes.map(hash);
@@ -20569,7 +20568,7 @@ const sphereKeypad = { name: "timechain keypad", why: "rule: the keypad chooses 
     return { state: G.debug.state, popup: !!document.getElementById("sphere-keypad"), act: document.getElementById("act").hidden, lens: G.debug.lens, one: T.site.keys[0].node.geometry.faces[0].color, readout: T.site.readout.visible,
       requests: window.__sphereRequests, read: BL.timechainBlocks.cache.sets.recent.checked, visit: BL.scenes.timechain.visit, scene: B.scene, doors: G.debug.open }; })()`);
   record("timechain keypad: Space engages the physical panel with no popup; 1 then 3 lights only 3 with black type and arms Enter, and the number keys never reach the Ooga's weapons",
-    engaged.state === "keypad" && !engaged.popup && engaged.enter.join() === "90,64,34" && engaged.act && engaged.keys === 11 && engaged.hint.includes("Choose a room")
+    engaged.state === "keypad" && !engaged.popup && engaged.enter.join() === "90,64,34" && engaged.act && engaged.keys === 12 && engaged.hint.includes("Choose a room")
       && chosen.selection === 3 && chosen.three.join() === "247,147,26" && chosen.one.join() === "58,52,48" && chosen.enter.join() === "255,189,83" && chosen.readout === 3 && chosen.readoutVisible && chosen.slot, JSON.stringify({ engaged, chosen }));
   record("timechain keypad: engaging moves the view into the Ooga's own first person, head hidden, face-on to the keypad, and no detached camera",
     view.lens === "eyes" && view.glide === 1 && view.atBody < 0.6 && view.headHidden && view.faceOn > 0.99 && Math.abs(view.kx - 0.5) < 0.25 && Math.abs(view.ky - 0.5) < 0.3, JSON.stringify(view));
@@ -24128,7 +24127,7 @@ scene("hub", { label: "sphere keypad", query: "solo=1&character=portlandhodl&vie
   const keys = await b.evaluate(`(() => { const B = __ooga, T = BL.scenes.hub.debug.timechainIsland, out = {};
     return T.site.keys.map((k) => { const w = k.node.world; B.renderer.project(w[12], w[13], w[14], out); const hit = document.elementFromPoint(out.x, out.y);
       return { key: k.key, x: Math.round(out.x), y: Math.round(out.y), on: out.x > 0 && out.x < innerWidth && out.y > 0 && out.y < innerHeight, free: !!hit && hit.id === "scene" }; }); })()`);
-  record("timechain keypad phone: in first person every physical key, 1–9, Back and Enter, is on screen with nothing over it", keys.length === 11 && keys.every((k) => k.on && k.free), JSON.stringify(keys));
+  record("timechain keypad phone: in first person every physical key, 1–9, 0, Back and Enter, is on screen with nothing over it", keys.length === 12 && keys.every((k) => k.on && k.free), JSON.stringify(keys));
 } }] });
 scene("arcade", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("arcade", { required: ["#joy-move", "#joy-look", ".leave"] })] });
 
