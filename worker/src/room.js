@@ -249,10 +249,10 @@ export class Room extends DurableObject {
     }
   }
 
-  // A numbered room's zone's number, or 0.
+  // A numbered room's zone's number (0–9), or -1.
   roomOf(zone) {
     const match = DOOR_ROOM.exec(zone);
-    return match ? Number(match[1]) : 0;
+    return match ? Number(match[1]) : -1;
   }
 
   lockedRooms() {
@@ -276,7 +276,7 @@ export class Room extends DurableObject {
 
   // Nobody left inside: the room opens by itself.
   freeEmptyRoom(room) {
-    if (!room || !this.roomLocks.has(room)) return;
+    if (room < 0 || !this.roomLocks.has(room)) return;
     for (const o of this.players.values()) if (this.roomOf(o.zone) === room) return;
     this.roomLocks.delete(room);
     this.broadcast({ t: "door", op: "locks", rooms: this.lockedRooms() });
@@ -284,7 +284,7 @@ export class Room extends DurableObject {
 
   // A pass is spent on walking in; the new occupant holds the lock with everyone else inside.
   roomZoneChanged(p, from) {
-    const entered = this.roomOf(p.zone), left = this.roomOf(from), lock = entered ? this.roomLocks.get(entered) : null;
+    const entered = this.roomOf(p.zone), left = this.roomOf(from), lock = entered >= 0 ? this.roomLocks.get(entered) : null;
     if (lock) {
       lock.passes.delete(p.id); p.roomLock = { room: entered, pin: lock.pin };
       this.send(p.ws, { t: "door", op: "room-pin", room: entered, pin: lock.pin });
@@ -557,7 +557,7 @@ export class Room extends DurableObject {
     } else if (msg.t === "zone") {
       if (msg.name === p.zone) return;
       const room = this.roomOf(msg.name);
-      if (room && !this.mayEnter(p, room, Date.now())) { this.send(p.ws, { t: "door", op: "denied", reason: "locked" }); return; }
+      if (room >= 0 && !this.mayEnter(p, room, Date.now())) { this.send(p.ws, { t: "door", op: "denied", reason: "locked" }); return; }
       if (msg.name !== DOOR_ZONE) this.cancelDoor(p);
       if (msg.name !== p.zone) this.clearPasses(p);
       const leavingStudio = p.zone === STUDIO_ZONE, watched = watchesGhost(p), from = p.zone;

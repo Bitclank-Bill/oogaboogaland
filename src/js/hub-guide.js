@@ -26,7 +26,7 @@
     crew: "Every Ooga stands for one of the crew's contributors.",
     jumbotron: "The jumbotron shows the crew's activity, live.",
     totems: "The totems light up when Bitcoin Core, BTCPay, LND or CLN merge a PR.",
-    timechain: "Out west, the Timechain Sphere: nine rooms behind one door.",
+    timechain: "Out west, the Timechain Sphere: ten rooms behind one door, from a planetarium to a movie theater.",
     timechainWalls: "Walk over the bridge and pick a room at the keypad: 1 to 3 are normal sized, 4 to 6 bigger, 7 to 9 biggest.",
     timechainBoards: "Inside, a wall of live block and mining charts, and the holdings desk.",
     timechainSani: "Sani's in every room in his recliner. Signed in, you share a room with whoever picks the same number.",
@@ -69,7 +69,8 @@
     resting: "I'm resting my voice until tomorrow. Ask me about a place!",
     slowDown: "One at a time! Ask me again in a minute.",
     newsKortik: "New in the Factory: Kortik's Switchboard, where a grumpy samurai routes Lightning by hand. Don't poke him!",
-    newsSphereRooms: "The Timechain Sphere has nine rooms now. Pick one at the keypad by its doors!",
+    newsSphereRooms: "The Timechain Sphere has rooms behind its doors now. Pick one at the keypad!",
+    newsSphereTen: "Every room in the Timechain Sphere is its own place now: a planetarium, a temple, a block party, a mining museum, a movie theater and more. Pick a number at the keypad!",
     newsBca: "New at 10 o'clock: B.C.A., Banana Certified Accounting. Suited gorillas count the bananas!",
     newsMainland: "You can tip from right here now, no trip to the Factory. Your bananas fly out of its roof tube onto the pile!",
     newsPanels: "The Bananas, Oogas and Chat panels have one new look, and the Bananas panel ranks the top donors.",
@@ -106,6 +107,7 @@
   // and her line. A new feature worth showing a returning visitor is one entry here, added at the top: a visitor's news
   // is everything listed above the newest entry they were last offered.
   const NEWS = [
+    { date: "2026-11-10", at: "timechain", line: "newsSphereTen" },
     { date: "2026-10-22", at: "factory", line: "newsKortik" },
     { date: "2026-10-19", at: "timechain", line: "newsSphereRooms" },
     { date: "2026-10-18", at: "bca", line: "newsBca" },

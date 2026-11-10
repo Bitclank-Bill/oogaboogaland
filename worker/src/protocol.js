@@ -212,7 +212,10 @@ const PM_DATA = /^[A-Za-z0-9+/]+={0,2}$/;
 // The Sphere's one exterior doorway is a short, server-leased FIFO. Room door transits are independent
 // announcements inside exactly one numbered room. Alarms, rather than timers, expire both while idle.
 export const DOOR_ZONE = "sphere";
-export const DOOR_ROOM = /^sphere-([1-9])$/;
+export const DOOR_ROOM = /^sphere-([0-9])$/;
+// Of the Sphere's ten rooms (0–9) only room 1, the Conference Room, has a lock (src/js/timechain-rooms.js `lockable`).
+export const LOCKABLE_ROOMS = [1];
+const sphereRoom = (room) => Number.isInteger(room) && room >= 0 && room <= 9;
 export const DOOR_CYCLE = /^[A-Za-z0-9_-]{1,64}$/;
 export const DOOR_GRANT_MS = 5000;
 export const DOOR_TRANSIT_MS = 12000;
@@ -400,16 +403,16 @@ export const parseClientMessage = (text) => {
     return op ? { t: "chalk", ...op } : null;
   }
   if (msg.t === "door") {
-    if (msg.op === "ask") return (msg.dir === "in" || msg.dir === "out") && Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9
+    if (msg.op === "ask") return (msg.dir === "in" || msg.dir === "out") && sphereRoom(msg.room)
       ? { t: "door", op: "ask", dir: msg.dir, room: msg.room } : null;
     if (msg.op === "go" || msg.op === "done") return typeof msg.cycle === "string" && DOOR_CYCLE.test(msg.cycle)
       ? { t: "door", op: msg.op, cycle: msg.cycle } : null;
     if (msg.op === "cancel") return { t: "door", op: "cancel" };
     if (msg.op === "pass") return typeof msg.door === "string" && DOOR_ROOM.test(msg.door) && (msg.dir === "in" || msg.dir === "out")
       ? { t: "door", op: "pass", door: msg.door, dir: msg.dir } : null;
-    if (msg.op === "lock" || msg.op === "try") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 && typeof msg.pin === "string" && ROOM_PIN.test(msg.pin)
+    if (msg.op === "lock" || msg.op === "try") return LOCKABLE_ROOMS.includes(msg.room) && typeof msg.pin === "string" && ROOM_PIN.test(msg.pin)
       ? { t: "door", op: msg.op, room: msg.room, pin: msg.pin } : null;
-    if (msg.op === "unlock") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 ? { t: "door", op: "unlock", room: msg.room } : null;
+    if (msg.op === "unlock") return LOCKABLE_ROOMS.includes(msg.room) ? { t: "door", op: "unlock", room: msg.room } : null;
     return null;
   }
   if (msg.t === "wallet") {
