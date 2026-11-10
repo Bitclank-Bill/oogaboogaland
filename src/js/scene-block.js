@@ -2167,7 +2167,8 @@
   };
 
   const update = (dt, elapsed) => {
-    if (chairsBounce) { chairsBounce = false; go(home, WIRE.DOOR_FULL_PLACE); return; }
+    // The director refuses `go` while the arrival still fades in, so a bounce it refuses waits for a later update.
+    if (chairsBounce && go(home, WIRE.DOOR_FULL_PLACE)) { chairsBounce = false; return; }
     sceneTime = elapsed;
     if (skyPerch) skyPerch.visible = phase === "board";
     for (let i = 0; i < skyClouds.length; i++) {

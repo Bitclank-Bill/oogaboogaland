@@ -8301,7 +8301,7 @@ const gameRulesChecks = async () => {
     // aims, after its whole turns and less than one more.
     for (const name of ["scene", "models", "blaze", "contributor-identities", "activity-repos", "jumbotron", "hub-models", "hockey-wire", "arcade-models", "haunt-models", "ooga-portal-models", "ooga-portal", "arcade-block-watch", "arcade-scene-models", "zipline-models", "zipline"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
     runInNewContext(await readFile(new URL("../src/js/arcade-games.js", import.meta.url), "utf8"), context);
-    // The Block Frenzy watch door: signed-in only, the deck is a stub that moves nobody, the real portal is crossed from the
+    // The Block Frenzy watch door: signed-in only, it opens Block Frenzy's watch deck, the real portal is crossed from the
     // hall's side within the opening, and the door opens no new way out of the hall.
     {
       const W = BL.arcadeBlockWatch, D = W.DOOR, H = BL.arcadeModels.BLOCK_HALL;
@@ -8324,6 +8324,19 @@ const gameRulesChecks = async () => {
         !W.mayWatch(null, false) && !!W.mayWatch({ id: 1 }, false) && !!W.mayWatch(null, true) && left === true && opened.join() === "block,watch-deck" && wayBack
         && shown && trigger && rock && crosses && seamless && onlyOpening && levels && clearDoor && back,
         JSON.stringify({ left, opened, wayBack, shown, trigger, rock, crosses, seamless, onlyOpening, levels, clearDoor, back }));
+      // The scene's own full-chairs answer and update bounce, run with a director that refuses `go` while the arrival fades in.
+      const fullAnswer = sb.match(/onChairsFull: (\(\) => \{.*\}) \}\);/)?.[1], bounceLine = sb.match(/^ {4}if \(chairsBounce\b.*$/m)?.[0];
+      if (!fullAnswer || !bounceLine) throw Error("block chairs bounce anchors missing");
+      let busy = true; const goes = [];
+      const visit = new Function("go", "WIRE", `let chairsFull = false, doorVisit = true, chairsBounce = false; const home = "arcade", round = null, onDeck = () => true, showBoard = () => {}, renderLive = () => {};
+        const onChairsFull = ${fullAnswer}; const update = () => { ${bounceLine} return "frame"; };
+        return { onChairsFull, update, pending: () => chairsBounce };`)((id, place) => { goes.push(id, place); return !busy; }, BL.blockWire);
+      visit.onChairsFull();
+      const refused = visit.update() === "frame" && visit.update() === "frame" && visit.pending() && goes.length === 4;
+      busy = false;
+      const bounced = visit.update() === undefined && !visit.pending() && goes.slice(-2).join() === "arcade,block-watch-full", once = visit.update() === "frame" && goes.length === 6;
+      record("regression: full chairs answered while the arrival still fades in keep the bounce pending until the director takes `go`, then send the viewer back to the door once",
+        refused && bounced && once, JSON.stringify({ refused, bounced, once, goes }));
     }
     // Solo smash assistance must never send an out-of-bounds authoritative frame at a rail.
     const soloAim={x:1}, solo=BL.arcadeGames.airHockey({node:BL.scene.createNode(),aim:soloAim,onEnd(){},burst(){}});
