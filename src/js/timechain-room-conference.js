@@ -69,11 +69,12 @@
   // The crown: the next block, how full the mempool's next template is and what it pays, and the last block's age.
   const CROWN = 1024;
   const crownKey = (reader, now) => {
-    const blocks = reader.value("recent"), b = blocks && blocks[0], p = reader.value("projected");
+    const blocks = reader.value("recent"), b = blocks && blocks[0], projected = reader.value("projected"), p = projected && projected[0];
     return `${b ? b.height : "-"}|${p ? p.vsize + ":" + p.fees : "-"}|${b ? CH.format.ago(now - b.time * 1000) : reader.status("recent")}`;
   };
   const paintCrown = (ctx, reader, now) => {
-    const N = CROWN, cx = N / 2, K = RM.paintKit, blocks = reader.value("recent"), b = blocks && blocks[0], p = reader.value("projected");
+    // The projected blocks come next first: the template the next block will be mined from is the first.
+    const N = CROWN, cx = N / 2, K = RM.paintKit, blocks = reader.value("recent"), b = blocks && blocks[0], projected = reader.value("projected"), p = projected && projected[0];
     ctx.fillStyle = "#0b0a09"; ctx.fillRect(0, 0, N, N);
     ctx.fillStyle = "#100d0b"; ctx.beginPath(); ctx.arc(cx, cx, 470, 0, K.TAU); ctx.fill();
     ctx.strokeStyle = C.amber; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(cx, cx, 470, 0, K.TAU); ctx.stroke();
