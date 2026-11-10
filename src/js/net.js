@@ -197,7 +197,7 @@
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
   const offline = new URLSearchParams(location.search);
-  const state = { roomLocks: false, lockedRooms: new Uint8Array(10), roomPin: "", roomPinRoom: 0, backend: false, games: [], me: null, donations: false, tess: false, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
+  const state = { roomLocks: false, lockedRooms: new Uint8Array(10), roomPin: "", roomPinRoom: -1, backend: false, games: [], me: null, donations: false, tess: false, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, chalk: null, blendTo: null, blendT: 0, reactions: false, customHand: false, hand: false, handTone: 0, handEmoji: "",
@@ -379,19 +379,22 @@
   const chatHeard = (lines, replace, receipt = null) => {
     for (const fn of chatSubscribers) fn(lines, replace, receipt);
   };
-  // Which of the Sphere's numbered rooms are locked from inside (`state.lockedRooms`, 1 by room number); true when that changed.
+  // The Sphere's rooms are numbered 0–9; only the Conference Room has a lock (timechain-rooms.js `lockable`).
+  const sphereRoom = (room) => Number.isInteger(room) && room >= 0 && room <= 9;
+  const lockableRoom = (room) => sphereRoom(room) && !!BL.timechainRooms && BL.timechainRooms.ROOMS[room].lockable;
+  // Which of the Sphere's rooms are locked from inside (`state.lockedRooms`, 1 by room number); true when that changed.
   const setLockedRooms = (rooms) => {
     let changed = false;
-    for (let room = 1; room <= 9; room++) {
+    for (let room = 0; room <= 9; room++) {
       const locked = Array.isArray(rooms) && rooms.includes(room) ? 1 : 0;
       if (state.lockedRooms[room] !== locked) { state.lockedRooms[room] = locked; changed = true; }
     }
-    if (!state.lockedRooms[state.roomPinRoom]) forgetRoomPin();
+    if (state.roomPinRoom >= 0 && !state.lockedRooms[state.roomPinRoom]) forgetRoomPin();
     return changed;
   };
   // The PIN of the locked room this page stands in (`state.roomPin`), which the room tells only those inside it; kept
   // until the room opens, the page leaves it or the socket goes.
-  const forgetRoomPin = () => { state.roomPin = ""; state.roomPinRoom = 0; };
+  const forgetRoomPin = () => { state.roomPin = ""; state.roomPinRoom = -1; };
   const doorHeard = (event) => {
     for (const fn of doorSubscribers) fn(event);
   };
@@ -656,11 +659,11 @@
       else if (msg.op === "wait") doorHeard({ t: "door", op: "wait", ahead: Number.isSafeInteger(msg.ahead) && msg.ahead >= 0 ? msg.ahead : 0 });
       else if (msg.op === "denied") doorHeard({ t: "door", op: "denied", reason: typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "" });
       else if (msg.op === "locks") { setLockedRooms(msg.rooms); doorHeard({ t: "door", op: "locks" }); }
-      else if (msg.op === "room-pin" && Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 && typeof msg.pin === "string" && /^[0-9]{4}$/.test(msg.pin)) {
+      else if (msg.op === "room-pin" && sphereRoom(msg.room) && typeof msg.pin === "string" && /^[0-9]{4}$/.test(msg.pin)) {
         state.roomPin = msg.pin; state.roomPinRoom = msg.room;
         doorHeard({ t: "door", op: "room-pin", room: msg.room });
       }
-      else if (msg.op === "lock-result" && (msg.action === "lock" || msg.action === "unlock" || msg.action === "try") && Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9) doorHeard({ t: "door", op: "lock-result", action: msg.action, room: msg.room, ok: msg.ok === true, reason: typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "" });
+      else if (msg.op === "lock-result" && (msg.action === "lock" || msg.action === "unlock" || msg.action === "try") && sphereRoom(msg.room)) doorHeard({ t: "door", op: "lock-result", action: msg.action, room: msg.room, ok: msg.ok === true, reason: typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "" });
     } else if (msg.t === "transit") {
       const transit = transitOf(msg);
       if (transit && transit.actor !== state.selfId) doorHeard(transit);
@@ -1177,16 +1180,16 @@
     ws.send(text);
     return true;
   };
-  const askDoor = (dir, room) => (dir === "in" || dir === "out") && Number.isInteger(room) && room >= 1 && room <= 9
+  const askDoor = (dir, room) => (dir === "in" || dir === "out") && sphereRoom(room)
     && doorSend(JSON.stringify({ t: "door", op: "ask", dir, room }));
   const goDoor = (cycle) => chatIdValid(cycle) && doorSend(JSON.stringify({ t: "door", op: "go", cycle }));
   const doneDoor = (cycle) => chatIdValid(cycle) && doorSend(JSON.stringify({ t: "door", op: "done", cycle }));
   const cancelDoor = () => doorSend('{"t":"door","op":"cancel"}');
   // A room's lock (room.js): from inside, set its PIN or open it (anyone inside may); from the doorway, try the PIN.
-  const roomPin = (op, room, pin) => state.roomLocks && Number.isInteger(room) && room >= 1 && room <= 9 && /^[0-9]{4}$/.test(pin)
+  const roomPin = (op, room, pin) => state.roomLocks && lockableRoom(room) && /^[0-9]{4}$/.test(pin)
     && doorSend(JSON.stringify({ t: "door", op, room, pin }));
   const lockRoom = (room, pin) => roomPin("lock", room, pin);
-  const unlockRoom = (room) => state.roomLocks && Number.isInteger(room) && room >= 1 && room <= 9 && doorSend(JSON.stringify({ t: "door", op: "unlock", room }));
+  const unlockRoom = (room) => state.roomLocks && lockableRoom(room) && doorSend(JSON.stringify({ t: "door", op: "unlock", room }));
   const tryRoomPin = (room, pin) => roomPin("try", room, pin);
   const passDoor = (door, dir) => typeof door === "string" && DOOR_NAME.test(door) && (dir === "in" || dir === "out")
     && doorSend(JSON.stringify({ t: "door", op: "pass", door, dir }));
