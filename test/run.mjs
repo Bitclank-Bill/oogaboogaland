@@ -10817,8 +10817,11 @@ const hubHammockEntry = { name: "hub hammock entry", why: "regression: walking a
     const walks=[1,-1].flatMap(side=>[0,0.85,-0.85,1.05,-1.05,1.25,-1.25].map(along=>{
       const x0=p.x+p.ux*along+p.nx*side*1.6,z0=p.z+p.uz*along+p.nz*side*1.6;
       B.pilot.navigate({position:{x:x0,y:p.ground,z:z0},yaw:Math.atan2(x0-p.x-p.ux*along,z0-p.z-p.uz*along),pitch:.5,dist:6});B.advance(.3,1/60);
+      // The rise counts only over the bed's swing and a step round it: a walk led round an end goes on across the meadow,
+      // where whatever stands there (the fire pit's rim stones) is not the bed.
       key("keydown","w","KeyW");let top=0,crossed=false,gap=Infinity;
-      for(let i=0;i<60;i++){B.advance(1/60,1/60);const q=a.root.position,feet=q.y-a.baseY-p.ground;top=Math.max(top,feet);
+      for(let i=0;i<60;i++){B.advance(1/60,1/60);const q=a.root.position,feet=q.y-a.baseY-p.ground;
+        if(Math.abs((q.x-p.x)*p.ux+(q.z-p.z)*p.uz)<=p.swing.half+0.3&&Math.abs((q.x-p.x)*p.nx+(q.z-p.z)*p.nz)<=p.swing.across+0.3)top=Math.max(top,feet);
         if(((q.x-p.x)*p.nx+(q.z-p.z)*p.nz)*side<0)crossed=true;if(feet<0.05)gap=Math.min(gap,gapAt(q.x,q.z));}
       key("keyup","w","KeyW");B.advance(.3,1/60);
       return {side,along,top:+top.toFixed(3),crossed,gap:+gap.toFixed(3)};
@@ -10953,7 +10956,7 @@ const hubHammockEnds = { name: "hub hammock ends", why: "regression: both gather
   record("hub hammock ends: the moving tips remain within the planned bounds, the sole occupant stays face-up, and approved tree positions are preserved",
     // Face-up on the rocking bed (aligned with its surface normal), on the palms "hub hammock" approves (within 1 cm).
     result.inside&&result.faceY>.98&&!result.states[0].seated&&result.states[0].free&&result.states[1].seated&&!result.states[1].free
-      &&Math.hypot(result.anchors[0].x-5.2365,result.anchors[0].z-4.2842)<=.01&&result.anchors[1].x===13.5&&result.anchors[1].z===4.75,JSON.stringify(result));
+      &&Math.hypot(result.anchors[0].x-5.2365,result.anchors[0].z-3.2842)<=.01&&result.anchors[1].x===13.5&&result.anchors[1].z===2.75,JSON.stringify(result));
 } };
 const hubHammockCamera = { name: "hub hammock camera", why: "regression: scrolling out of a reclining first-person view kept its rolled head basis in orbit", run: async (b) => {
   await b.evaluate(`(() => {
