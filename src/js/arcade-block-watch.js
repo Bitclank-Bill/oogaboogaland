@@ -13,7 +13,7 @@
   // Over the tallest walker's head, in the view from the hall's middle: the hanging sign and the blade sign's heights.
   const SIGN_Y = 2.6, BLADE_Y = 3.1;
   const APERTURE = Object.freeze({ width: 2.5, height: H, footWidth: 2.5, footHeight: 0, inset: 0.06 });
-  const PLACE = "block-watch", PLACE_FULL = "block-watch-full", ARRIVAL = Object.freeze({ x: BH.x1 - 1.6, z: CENTRE, facing: -Math.PI / 2, deck: true });
+  const PLACE = BL.blockWire.DOOR_PLACE, PLACE_FULL = BL.blockWire.DOOR_FULL_PLACE, ARRIVAL = Object.freeze({ x: BH.x1 - 1.6, z: CENTRE, facing: -Math.PI / 2, deck: true });
   // How far a body reaches into rock here, negative in the clear: the hall's walk bound carried on to the portal, only
   // on the hall's own level and only across the opening.
   const doorDepth = (x, z, r, feet) => feet < Y - 1 || feet > Y + H ? Infinity : Math.max(BH.x0 + r - x, x + r - DOOR.reach, DOOR.z0 + r - z, z + r - DOOR.z1);

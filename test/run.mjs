@@ -8308,7 +8308,7 @@ const gameRulesChecks = async () => {
       const opened = [], sentGo = (id, place) => opened.push(id, place), savedLive = BL.blockLive; BL.blockLive = { openWatchDeck: (g) => { g("block", "watch-deck"); return true; } };
       const left = W.goToWatchDeck(sentGo); BL.blockLive = savedLive;
       const sb = await readFile(new URL("../src/js/scene-block.js", import.meta.url), "utf8");
-      const wayBack = sb.includes('go(home, doorVisit ? BL.arcadeBlockWatch.PLACE : undefined)') && sb.includes("go(home, BL.arcadeBlockWatch.PLACE_FULL)") && /watchVisit = ctx\.place === WIRE\.WATCH_DECK_PLACE;\s+if \(watchVisit\) showDeck\(\);/.test(sb) && W.PLACE === "block-watch" && W.PLACE_FULL === "block-watch-full";
+      const wayBack = sb.includes('go(home, doorVisit ? WIRE.DOOR_PLACE : undefined)') && sb.includes("go(home, WIRE.DOOR_FULL_PLACE)") && /watchVisit = ctx\.place === WIRE\.WATCH_DECK_PLACE;\s+if \(watchVisit\) showDeck\(\);/.test(sb) && W.PLACE === "block-watch" && W.PLACE_FULL === "block-watch-full";
       const menu = { querySelector: () => ({}), addEventListener() {}, removeEventListener() {} };
       context.document = context.document || { getElementById: () => menu }; context.matchMedia = context.matchMedia || (() => ({ matches: true }));
       const gate = BL.oogaPortal.create({ radius: 1.6, outerRadius: 1.8, aperture: W.APERTURE, position: { x: D.plane, y: D.y + D.h / 2, z: D.z }, rotation: { x: Math.PI / 2, y: -Math.PI / 2, z: 0 }, receiving: true, reducedMotion: true, now: () => 0 });

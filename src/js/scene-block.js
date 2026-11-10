@@ -150,7 +150,7 @@
   let deckZoom = 1, deckZoomTo = 1; const deckBoard = { blue: -1, red: -1, clock: "", goal: "" }, deckCaps = { total: -1 }, deckCapSeen = [], deckSteals = { was: [], count: [], home: { blue: false, red: false } };
   // Came through the arcade's watch door: every way out goes back in front of it, and full chairs turn the viewer back there.
   let doorVisit = false, chairsBounce = false;
-  const goHome = () => go(home, doorVisit ? BL.arcadeBlockWatch.PLACE : undefined);
+  const goHome = () => go(home, doorVisit ? WIRE.DOOR_PLACE : undefined);
   let chairsGreeted = false, chairsFull = false, watchVisit = false, deckLive = false, round = null, you = 0, liveCast = null, kept = null, arrival = true, deck = null, deckYaw = 0, deckPitch = 0;
   const onDeck = () => phase === "watch";
   // The scope's +/- keys, the wheel and a pinch all zoom the chairs' view: the game's own zoom controls, nothing new.
@@ -2167,7 +2167,7 @@
   };
 
   const update = (dt, elapsed) => {
-    if (chairsBounce) { chairsBounce = false; go(home, BL.arcadeBlockWatch.PLACE_FULL); return; }
+    if (chairsBounce) { chairsBounce = false; go(home, WIRE.DOOR_FULL_PLACE); return; }
     sceneTime = elapsed;
     if (skyPerch) skyPerch.visible = phase === "board";
     for (let i = 0; i < skyClouds.length; i++) {
