@@ -765,7 +765,9 @@
   };
   // True when the straight line from (ax, az) to (bx, bz) misses every box, widened by r, that stands on the ground.
   // `over` skips boxes lower than it: a throw at chest height clears crates and low walls, and any open grave.
-  const clearLine = (ax, az, bx, bz, r, over = 0) => {
+  // `floor` reads it on a raised floor instead (Haunted Hollow's yards, for the bots' nav): only boxes standing on that
+  // floor count, not the cellar's walls under it.
+  const clearLine = (ax, az, bx, bz, r, over = 0, floor = 0) => {
     // Open graves count as in the way of a walk, so bots go round them.
     if (!over && ARENA.graves) for (let i = 0; i < ARENA.graves.length; i++) {
       const g = ARENA.graves[i];
@@ -773,7 +775,7 @@
     }
     for (let i = 0, n = boxCount(); i < n; i++) {
       const b = boxAt(i);
-      if (b[5] > 1.4 || b[4] < over) continue;
+      if (b[5] > floor + 1.4 || b[4] < floor + over) continue;
       if (crossesRect(ax, az, bx, bz, b[0] - r, b[1] + r, b[2] - r, b[3] + r)) return false;
     }
     return true;
@@ -2102,7 +2104,7 @@
     const pts = [...ARENA.nav.blue, ...ARENA.nav.red], n = pts.length, keep = CRATES;
     CRATES = [];
     const lvl = (p) => p[2] || 0;
-    const see = Array.from({ length: n }, (_, i) => pts.map((q, j) => i !== j && lvl(pts[i]) === lvl(q) && clearLine(pts[i][0], pts[i][1], q[0], q[1], CONFIG.BODY_R * 0.8)));
+    const see = Array.from({ length: n }, (_, i) => pts.map((q, j) => i !== j && lvl(pts[i]) === lvl(q) && clearLine(pts[i][0], pts[i][1], q[0], q[1], CONFIG.BODY_R * 0.8, lvl(q) ? 0.05 : 0, lvl(q))));
     const linked = new Set();
     for (const [i, j] of ARENA.nav.links || []) { see[i][j] = see[j][i] = true; linked.add(i).add(j); }
     CRATES = keep;
@@ -2110,7 +2112,7 @@
     return N;
   };
   // When the bot can't run straight at its goal (or is up on a yard), the next node on the shortest way there through
-  // the nodes on its own floor, every half second.
+  // the nodes on its own floor (seen past only that floor's boxes), every half second.
   const navigate = (sim, a, dt) => {
     if (!ARENA.nav || a.riding || a.flight || a.climbing) return;
     if (a.y < 1.5 && clearLine(a.x, a.z, goal.x, goal.z, CONFIG.BODY_R * 0.9)) { a.navI = -1; return; }
@@ -2126,7 +2128,7 @@
     for (let i = 0; i < n; i++) {
       const pl = pts[i][2] || 0;
       seeEnd[i] = pl === 0 && clearLine(pts[i][0], pts[i][1], goal.x, goal.z, CONFIG.BODY_R * 0.8) ? 1 : 0;
-      dist[i] = pl === level && clearLine(a.x, a.z, pts[i][0], pts[i][1], CONFIG.BODY_R * 0.8) ? Math.hypot(pts[i][0] - a.x, pts[i][1] - a.z) : Infinity;
+      dist[i] = pl === level && clearLine(a.x, a.z, pts[i][0], pts[i][1], CONFIG.BODY_R * 0.8, level ? 0.05 : 0, level) ? Math.hypot(pts[i][0] - a.x, pts[i][1] - a.z) : Infinity;
       prev[i] = -1; done[i] = 0;
     }
     dist[n] = Infinity; prev[n] = -1; done[n] = 0;

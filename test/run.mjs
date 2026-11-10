@@ -8096,6 +8096,19 @@ const gameRulesChecks = async () => {
         for (let t = 0; t < 4 && !chased; t += S.CONFIG.STEP) { const pz = d.z; S.tick(q, S.CONFIG.STEP, still); q.eventCount = 0; if (through(d, hI.backDoors[0], pz)) chased = true; }
         out.defend = chased;
         record("block frenzy haunted back door: each cellar's back door is open at walking height under the yard, walled either side and clear to the scoring ring; a raider from the field round the house takes the block through it on both sides, and a defender at the stand chases a thief out through it", Object.values(out).every(Boolean), JSON.stringify(out));
+        // Raids from the spawn and the field, on both sides: a raider bot reaches the rivals' block in its cellar, by
+        // whichever way, and never stands stuck up on the house's floor (the yard's nav once saw the cellar's walls under
+        // it, and a bot in the house lost its way for the rest of the round). Inside the house is its floor within its walls.
+        const raids = {};
+        for (const [team, sx, sz] of [["blue", -6, -26.6], ["blue", 6, -26.6], ["blue", 0, -10], ["blue", -20, 0], ["blue", 20, 10], ["red", 6, 26.6], ["red", -6, 26.6], ["red", 0, 10], ["red", 20, 0], ["red", -20, -10]]) {
+          const rq = fresh("haunted"), a = rq.actors.find((o) => o.team !== team);
+          for (const k of rq.crates) k.live = false;
+          Object.assign(a, { bot: true, role: "attack", x: sx, z: sz, y: 0 });
+          let t = 0, up = 0;
+          for (; t < 45 && a.carrying !== team; t += S.CONFIG.STEP) { S.tick(rq, S.CONFIG.STEP, still); rq.eventCount = 0; if (a.y > 2.5 && Math.abs(a.x) < 8 && Math.abs(a.z) > 36 && Math.abs(a.z) < 47) up += S.CONFIG.STEP; }
+          raids[`${team}@${sx},${sz}`] = a.carrying === team && up < 8 ? +t.toFixed(1) : `fail ${t.toFixed(1)}s, ${up.toFixed(1)}s in the house`;
+        }
+        record("block frenzy haunted raids: from the spawn and the field, on both sides, a raider bot reaches the rivals' block within 45 s and never stands stuck on the house's floor", Object.values(raids).every((v) => typeof v === "number"), JSON.stringify(raids));
       }
       {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
