@@ -16,7 +16,7 @@
   // The binary snapshot's header: "BFZ1", then u32 round tag, u32 host epoch, u32 sequence (all little-endian).
   const MAGIC = 0x315a4642, FRAME_HEADER = 16, FRAME_MAX = 2048, FRAME_HZ = 12;
   // Indexes on the wire; the sim's ARENAS keys are checked against these in the suite.
-  const MAPS = ["fort", "town", "jungle", "haunted"];
+  const MAPS = ["fort", "town", "jungle", "haunted", "clank"];
   // What a guest asks its host to do for it, by index on the wire: `yaw` and `pitch` go in thousandths of a radian.
   const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "dropWallet", "throwWallet", "takeWallet", "escape", "cutChute"];
   const KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate", "homer"];
