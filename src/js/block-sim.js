@@ -71,7 +71,7 @@
     // an Ooga whose feet are under its top. A bot in the mirage round the Mainframe may chase a phantom for `MIRAGE_S`,
     // and not again for `MIRAGE_COOL`.
     HALLU_FIRST: 40, HALLU_JITTER: 6, HALLU_GAP: [32, 46], DECOY_S: 15, DECOY_STAGGER: 0.9, MAX_DECOYS: 6,
-    FIREWALL_ON: 3, FIREWALL_OFF: 4, FIREWALL_WARN: 0.8, MIRAGE_S: 3, MIRAGE_COOL: 8,
+    FIREWALL_ON: 3, FIREWALL_OFF: 4, FIREWALL_WARN: 0.8, MIRAGE_S: 2.5, MIRAGE_COOL: 15,
     GOAL_R: 2.4, HOP_R: 1.8, RIDE_UP: 0.55, RIDE_BACK: 0.42, MOUNT_SLOW: 0.85, CALL_S: 6, CALL_R: 12,
     TOWER_TOP: 6.4, CLIMB: 3.6, ZIP_SPEED: 15, ZIP_HANG: 1.9, ZIP_R: 1.6, CACHE_S: 15, CACHE_R: 1.2,
     // The floating island: its edges are open. A body whose feet are more than `RIM` under the top has gone over the
@@ -2141,20 +2141,19 @@
   // the Mainframe or the side line, or back off it.
   const dodgeFirewall = (sim, a) => {
     const F = ARENA.firewall;
-    if (!F || a.y > 0.5 || a.riding || a.flight || Math.abs(a.z) > 4 || Math.sign(goal.z) === Math.sign(a.z) && Math.abs(goal.z) > 0.6) return;
+    if (!F || a.y > 0.5 || a.riding || a.flight) return;
+    const hot = firewallState(sim) !== 0 || firewallIn(sim) < 1.6, side = a.z >= 0 ? 1 : -1;
+    // On the line while it's on or about to be: step off it to the nearer side.
+    if (hot && Math.abs(a.z) < F.half + CONFIG.BODY_R + 0.6 && inFirewall(a.x, 0, CONFIG.BODY_R + 0.3)) { goal.x = a.x; goal.z = side * 2.2; return; }
+    if (!hot || Math.abs(a.z) > 4 || Math.sign(goal.z) === side && Math.abs(goal.z) > 0.6) return;
     const dz = goal.z - a.z, cx = Math.abs(dz) > 1e-6 ? a.x + (goal.x - a.x) * (0 - a.z) / dz : a.x;
-    if (!inFirewall(cx, 0, CONFIG.BODY_R + 0.2)) return;
-    const st = firewallState(sim), soon = firewallIn(sim);
-    if (st === 0 && soon > 1.3) return;
-    const side = a.z >= 0 ? 1 : -1;
-    // Too close to make it: back off the line.
-    if (Math.abs(a.z) < 1.1) { goal.x = a.x; goal.z = side * 2.2; return; }
-    // Round it: the gap beside the Mainframe or past the half's outer end, whichever is nearer.
+    if (!inFirewall(cx, 0, CONFIG.BODY_R + 0.3)) return;
+    // Round it: the gap beside the Mainframe or past the half's outer end, whichever is nearer; wait short of the line.
     for (const [x0, x1] of F.halves) {
-      if (cx <= x0 - CONFIG.BODY_R - 0.2 || cx >= x1 + CONFIG.BODY_R + 0.2) continue;
-      const inner = Math.abs(x0) < Math.abs(x1) ? x0 : x1, outer = inner === x0 ? x1 : x0;
-      const gx = Math.abs(a.x - inner) < Math.abs(a.x - outer) ? inner - Math.sign(outer - inner) * 0.9 : outer + Math.sign(outer - inner) * 1.1;
-      goal.x = gx; goal.z = side * 0.9;
+      if (cx <= x0 - CONFIG.BODY_R - 0.3 || cx >= x1 + CONFIG.BODY_R + 0.3) continue;
+      const inner = Math.abs(x0) < Math.abs(x1) ? x0 : x1, outer = inner === x0 ? x1 : x0, out = Math.sign(outer - inner);
+      const gx = Math.abs(a.x - inner) < Math.abs(a.x - outer) ? inner - out * 0.75 : outer + out * 1.2;
+      if (Math.abs(a.x - gx) < 1.2) { goal.x = gx; goal.z = -side * 1.5; } else { goal.x = gx; goal.z = side * 1.6; }
       return;
     }
   };
@@ -2163,7 +2162,7 @@
     if (!ARENA.mirage) return;
     if (a.mirageCool > 0) a.mirageCool -= dt;
     const inside = inMirage(a.x, a.z) && !a.carrying;
-    if (inside && !a.inMirage && a.mirageCool <= 0 && sim.prep <= 0 && sim.rng() < sim.bots.fool) {
+    if (inside && !a.inMirage && a.mirageCool <= 0 && sim.prep <= 0 && sim.rng() < sim.bots.fool * 0.5) {
       const M = ARENA.mirage, ang = sim.rng() * Math.PI * 2, rr = M.r * (0.4 + 0.5 * sim.rng());
       a.mirageT = CONFIG.MIRAGE_S; a.mirageX = M.x + Math.sin(ang) * rr; a.mirageZ = M.z + Math.cos(ang) * rr;
       emit(sim, "mirage", a.team, a.id, a.x, 1, a.z);
