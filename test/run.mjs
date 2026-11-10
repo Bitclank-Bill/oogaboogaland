@@ -8067,6 +8067,37 @@ const gameRulesChecks = async () => {
       }
       record("block frenzy grapple: a hook found at a hidden spot bites rock and reels its Ooga in, yanks a block off a rival carrier but not a teammate, a wallet bomb steals a held hook, and a hook lost over the edge goes back into hiding", Object.values(rows).every(Boolean), JSON.stringify(rows));
       {
+        // Haunted Hollow's back doors: each cellar's doorway is open at walking height under the yard's floor, with the
+        // wall either side; a raider coming round the house from the field takes the block through it on either side,
+        // and a defender at the stand chases a thief out through it.
+        const hI = S.ARENAS.haunted, R = S.CONFIG.BODY_R, out = {};
+        S.create({ map: "haunted" });
+        out.open = hI.backDoors.every(([x0, x1, z0, z1]) => {
+          const xm = (x0 + x1) / 2, zm = (z0 + z1) / 2, s = Math.sign(zm);
+          return [0.2, 1, 1.7, 2.3].every((y) => [x0 + R, xm, x1 - R].every((x) => !S.solidAt(x, y, zm))) && S.solidAt(x0 - 0.5, 1, zm) && S.solidAt(x1 + 0.5, 1, zm) &&
+            S.solidAt(xm, 2.85, zm) && S.clearLine(xm, zm + s * 1.5, xm, zm - s * 1.5, R) && S.clearLine(xm, zm + s * 1.5, hI.goals[s > 0 ? "blue" : "red"].x, hI.goals[s > 0 ? "blue" : "red"].z, R);
+        });
+        const nav = hI.nav, nn = nav.blue.length;
+        out.navLinks = nav.red.length === nn && nav.links.every(([i, j]) => i >= 0 && j >= 0 && i < nn * 2 && j < nn * 2 && (i < nn) === (j < nn));
+        const through = (a, [x0, x1, z0, z1], pz) => a.x > x0 && a.x < x1 && (pz - (z0 + z1) / 2) * (a.z - (z0 + z1) / 2) <= 0;
+        for (const [team, door, sx, sz] of [["blue", hI.backDoors[0], -20, 44], ["red", hI.backDoors[1], 20, -44]]) {
+          const q = fresh("haunted"), a = q.actors.find((o) => o.team !== team);
+          for (const k of q.crates) k.live = false;
+          Object.assign(a, { bot: true, role: "attack", x: sx, z: sz, y: 0 });
+          let via = false, t = 0;
+          for (; t < 10 && a.carrying !== team; t += S.CONFIG.STEP) { const pz = a.z; S.tick(q, S.CONFIG.STEP, still); q.eventCount = 0; if (through(a, door, pz)) via = true; }
+          out[team + "Steal"] = a.carrying === team && via;
+        }
+        const q = fresh("haunted"), d = q.actors[1], c = q.actors[2], st = hI.stands.blue;
+        for (const k of q.crates) k.live = false;
+        Object.assign(d, { bot: true, role: "defend", x: st.x, z: st.z - 1, y: 0 }); Object.assign(c, { x: -8, z: 53, y: 0, carrying: "blue" });
+        Object.assign(q.flags.blue, { state: "carried", carrier: 2 });
+        let chased = false;
+        for (let t = 0; t < 4 && !chased; t += S.CONFIG.STEP) { const pz = d.z; S.tick(q, S.CONFIG.STEP, still); q.eventCount = 0; if (through(d, hI.backDoors[0], pz)) chased = true; }
+        out.defend = chased;
+        record("block frenzy haunted back door: each cellar's back door is open at walking height under the yard, walled either side and clear to the scoring ring; a raider from the field round the house takes the block through it on both sides, and a defender at the stand chases a thief out through it", Object.values(out).every(Boolean), JSON.stringify(out));
+      }
+      {
         // wicked's gorillas: a charge and grab dropping the block where it was grabbed, a drag by the feet to the nearest
         // edge, a throw off it, a jetpack back, breaking free by mashing, and the hook stunning a gorilla to free its
         // captive, once per cooldown.

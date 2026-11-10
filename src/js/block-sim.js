@@ -389,16 +389,22 @@
   };
   // Haunted Hollow: a bigger field (60 x 100 m), a graveyard, and at each end a haunted house up on a raised yard 3 m
   // high, reached by stairs at its front. The block isn't out in the open: it's down in the cellar under the yard, in
-  // the back room of a little maze. The cellar has two ways in: the side doors at ground level, through a front
-  // passage and a middle one (each wall leaving a gap at the other end), or the stairs down from inside the house,
-  // which come out right by the block. `nav` is the cellar's way through, for the bots.
+  // the back room of a little maze. The cellar has three ways in: the side doors at ground level, through a front
+  // passage and a middle one (each wall leaving a gap at the other end), the stairs down from inside the house,
+  // which come out right by the block, or the back door (`backDoors`), a wide doorway in the back wall right behind the
+  // block, opening onto the ground behind the house. `nav` is the cellar's way through, for the bots.
   const hauntedHollow = () => {
     const half = [], steps = [], decor = [];
     const YARD = 3, UNDER = 2.7;
+    // The back door's opening [x0, x1] in the back wall, 2.4 m wide, beside the block's stand.
+    const DOOR = [-12.2, -9.8];
     // The yard over the cellar: a floor with the stairwell's hole in it.
     half.push([-14, 14, 32, 43, YARD, UNDER], [-14, 14, 46.8, 49, YARD, UNDER], [-14, -6, 43, 46.8, YARD, UNDER], [-3, 14, 43, 46.8, YARD, UNDER]);
-    // The cellar's outer walls, a side door into its front passage at each side.
-    half.push([-14, 14, 32, 32.4, UNDER, 0], [-14, 14, 48.6, 49, UNDER, 0]);
+    // The cellar's outer walls, a side door into its front passage at each side and the back door behind the block:
+    // the back wall either side of it, a timber post each side (0.3 m wide, standing 0.1 m proud of the wall) and a
+    // lintel across, 2.4 m up under the yard's floor.
+    half.push([-14, 14, 32, 32.4, UNDER, 0], [-14, DOOR[0] - 0.3, 48.6, 49, UNDER, 0], [DOOR[1] + 0.3, 14, 48.6, 49, UNDER, 0]);
+    half.push([DOOR[0] - 0.3, DOOR[0], 48.5, 49.1, UNDER, 0], [DOOR[1], DOOR[1] + 0.3, 48.5, 49.1, UNDER, 0], [DOOR[0] - 0.3, DOOR[1] + 0.3, 48.5, 49.1, UNDER, 2.4]);
     for (const s of [-1, 1]) {
       const x0 = s > 0 ? 13.6 : -14, x1 = s > 0 ? 14 : -13.6;
       half.push([x0, x1, 32.4, 33, UNDER, 0], [x0, x1, 35.5, 48.6, UNDER, 0]);
@@ -447,7 +453,9 @@
       // The middle three are up on the yard: a node's third number is its floor, 0 if left out.
       [-4.5, 46.6], [-4.5, 42.3, YARD], [0, 37.6, YARD], [0, 34.2, YARD], [0, 27.8],
       // The scoring ring behind the house.
-      [0, 51.5]];
+      [0, 51.5],
+      // The back door: outside it behind the house, and inside it by the block (indices 26 and 27).
+      [(DOOR[0] + DOOR[1]) / 2, 50.4], [(DOOR[0] + DOOR[1]) / 2, 47.6]];
     // Node pairs joined though a straight line between them crosses a step (the stairs are walked, not seen through).
     const linkHalf = [[20, 21], [21, 22], [22, 23], [23, 24], [8, 20]];
     return {
@@ -473,6 +481,8 @@
       zipEnd: [-4, 3.1, -29],
       // Each house's cellar, and where an Ooga up on its yard drops in: the top of the stairs inside the house.
       cellars: [{ box: [-14, 14, 32, 49], entry: [-4.5, 43.4] }, { box: [-14, 14, -49, -32], entry: [4.5, -43.4] }],
+      // Each cellar's back door [x0, x1, z0, z1], the opening through its back wall: blue's, then red's turned.
+      backDoors: [[DOOR[0], DOOR[1], 48.6, 49], [-DOOR[1], -DOOR[0], -49, -48.6]],
       nav: { blue: navHalf, red: navHalf.map(([x, z, y]) => y ? [-x, -z, y] : [-x, -z]), links: [...linkHalf, ...linkHalf.map(([i, j]) => [i + navHalf.length, j + navHalf.length])] },
       guard: { blue: { x: 0, z: 29 }, red: { x: 0, z: -29 } },
       traps: two([[0, 35.4], [10, 40.2], [-12, 15], [16, 2], [-6, 26], [-1, 44]]),
