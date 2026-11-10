@@ -6320,6 +6320,8 @@
   };
   // B.C.A.'s veil, in a banker's lamp amber, where the lab's stands, so the gorillas' suits show from where they cross.
   const BCA_TINT = [1, 0.78, 0.4], BCA_VEIL_Z = 0.5;
+  // EntropyLab's veil: its glyphs are white.
+  const ENTROPY_TINT = [1, 1, 1];
   const bcaVeil = (dt, elapsed) => {
     updatePortalEffects(bcaMouth.phase, dt);
     bcaMouth.office.update(dt);
@@ -11498,7 +11500,7 @@
     };
     shared.onBodyMove = moveCampBody;
     mirrorCave.ripples = BL.mirrorRipples.create(mirrorCave.node);
-    entropyLab.phase = BL.labPhase.create(entropyLab.group, entropyLab.mouth, entropyLab.opening);
+    entropyLab.phase = BL.labPhase.create(entropyLab.group, entropyLab.mouth, entropyLab.opening, 0.5, ENTROPY_TINT);
     yield* pause(slice);
     for (const veil of caveVeils) {
       veil.phase = BL.labPhase.create(veil.group, veil.mouth, veil.opening, veil.plane, veil.tint);
