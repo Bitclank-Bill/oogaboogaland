@@ -8410,6 +8410,14 @@ const gameRulesChecks = async () => {
       && !!beside && beside[0] > H.x1 && beside[0] < H.x1 + 1.5 && beside[1] + 0.7 < 6 && !L.posters.some(p => p[2] === A.HALL.back + 0.1 && p[0] > H.x0 && p[0] < H.x1)
       && A.HAUNT.z0 === -22 && A.HAUNT.z1 === -18 && A.HAUNT.y === A.MEZZ.y && A.HAUNT.h === 4 && A.HAUNT.end === 34,
       JSON.stringify({ H, posters: rallyPosters }));
+    // HALLOWEEN: the hunt's own copy of the arena (ghost-sim.js `ARENA`, which the server's hunt runs too) is the arena the
+    // arcade builds: its radius, the wall top the ghosts come over and each elixir in front of its totem.
+    runInNewContext(await readFile(new URL("../src/js/ghost-sim.js", import.meta.url), "utf8"), context);
+    const GA = BL.ghostSim.ARENA, built = A.haunt().totems;
+    record("ghost arena: the hunt's arena, the server's too, is the one the arcade builds",
+      GA.r === A.HAUNT.arena.r && GA.wall === A.HAUNT.arena.wall && GA.spots[1] === A.HAUNT.arena.wall + 1.2 && built.length === GA.elixirs.length
+      && built.every((t, k) => t.elixir.x === GA.elixirs[k].x && t.elixir.y === GA.elixirs[k].y && t.elixir.z === GA.elixirs[k].z),
+      JSON.stringify({ r: GA.r, wall: GA.wall, built: built.map((t) => t.elixir), elixirs: GA.elixirs }));
     const racked = H.racks.flatMap(([, , rows]) => rows.map(([id]) => id));
     record("arcade block hall: three racks hold the game's nine weapons, each from its own held model",
       racked.length === 9 && racked.filter(Number.isInteger).every((i, k) => i === k) && racked.includes("hook") && racked.includes("wallet") && H.pictures.length === 4, JSON.stringify(racked));
@@ -8490,12 +8498,10 @@ const ghostEntryChecks = async () => {
   const BL = context.window.BL;
   BL.ghostHeraldData = { front: "", back: "", side: "" };
   const fixture = (role = "solo", portable = false) => {
-    const state = { loads: 0, made: 0, starts: 0, heard: [], snapshots: [], notices: [] }, pending = [], targets = new Map();
-    const rootNode = BL.scene.createNode(), npcSync = { role, extra: null };
-    let listener = null, sync = null;
-    const net = { state: { hostId: role === "follow" ? 2 : 1 }, serverNow: () => 1.7e12,
-      subscribeGhost(fn) { listener = fn; return () => { if (listener === fn) listener = null; }; }, sendGhost() {} };
-    BL.net = net;
+    const state = { loads: 0, made: 0, starts: 0, snapshots: [], notices: [] }, pending = [], targets = new Map();
+    const rootNode = BL.scene.createNode(), npcSync = { role, extra: null, onMotion: null, send: () => true };
+    let sync = null;
+    BL.net = { state: {}, serverNow: () => 1.7e12 };
     BL.deferred = { load: () => {
       state.loads++;
       return portable ? null : new Promise((resolve, reject) => pending.push({ resolve, reject }));
@@ -8504,11 +8510,10 @@ const ghostEntryChecks = async () => {
       heraldAt: () => ({ x: 0, y: 0, z: 0 }), npcSync, addTarget: (node, owner) => targets.set(node, owner), removeTarget: node => targets.delete(node),
       hud: { toast: text => state.notices.push(text) }, fx: { spawnParticle() {} }, attach: () => {
         state.made++;
-        sync = BL.ghostSync.create({ npcSync, write: () => null, onSnapshot: snap => state.snapshots.push(snap), onMessage: msg => state.heard.push(msg) });
-        return { start: () => state.starts++, receive: sync.receive, restore: snap => state.snapshots.push(snap), debug: { state: "IDLE" } };
+        sync = BL.ghostSync.create({ npcSync, onSnapshot: snap => state.snapshots.push(snap), onMotion: () => {} });
+        return { start: () => state.starts++, restore: snap => state.snapshots.push(snap), debug: { state: "IDLE" } };
       } });
-    return { entry, state, pending, targets, rootNode, npcSync, net, message: msg => listener && listener(msg),
-      dispose: () => { entry.dispose(); if (sync) sync.dispose(); }, listening: () => !!listener };
+    return { entry, state, pending, targets, rootNode, npcSync, dispose: () => { entry.dispose(); if (sync) sync.dispose(); } };
   };
   const rows = [], active = { k: "gh", v: 1, s: [10] }, latest = { k: "gh", v: 1, s: [1] };
   {
@@ -8522,7 +8527,7 @@ const ghostEntryChecks = async () => {
     f.pending[0].resolve(); await Promise.resolve();
     const handedOff = f.npcSync.extra;
     f.entry.dispose();
-    rows.push({ once: once && f.state.made === 1 && f.state.starts === 1, handoff: f.targets.size === 0 && f.rootNode.children.length === 0 && f.npcSync.extra === handedOff && f.listening() });
+    rows.push({ once: once && f.state.made === 1 && f.state.starts === 1, handoff: f.targets.size === 0 && f.rootNode.children.length === 0 && f.npcSync.extra === handedOff });
     f.dispose();
   }
   {
@@ -8537,7 +8542,7 @@ const ghostEntryChecks = async () => {
   {
     const f = fixture();
     f.entry.hit(true, true); f.dispose(); f.pending[0].resolve(); await Promise.resolve();
-    rows.push({ late: f.state.made === 0 && f.targets.size === 0 && f.rootNode.children.length === 0 && !f.listening() && f.npcSync.extra === null });
+    rows.push({ late: f.state.made === 0 && f.targets.size === 0 && f.rootNode.children.length === 0 && f.npcSync.extra === null });
   }
   {
     const f = fixture("follow");
@@ -8549,34 +8554,11 @@ const ghostEntryChecks = async () => {
     f.dispose();
   }
   {
-    const f = fixture("host");
-    f.message({ k: "start", from: -1 }); f.message({ k: "ready", from: 3 });
-    const ignored = f.state.loads === 0;
-    f.message({ k: "start", from: 3 }); f.message({ k: "start", from: 3 });
-    f.pending[0].resolve(); await Promise.resolve();
-    rows.push({ host: ignored && f.state.loads === 1 && f.state.made === 1 && f.state.heard.length === 1 && f.state.heard[0].from === 3 && f.state.heard[0].k === "start" });
-    f.dispose();
-  }
-  for (const role of ["host", "follow"]) {
-    const f = fixture(role);
-    if (role === "host") f.message({ k: "start", from: 3 }); else f.npcSync.extra.read(active);
-    f.net.state.hostId = 4; f.npcSync.role = "follow";
-    f.pending[0].resolve(); await Promise.resolve();
-    rows.push({ changedHost: f.state.heard.length === 0 && f.state.snapshots.length === 0 });
-    f.dispose();
-  }
-  {
+    // A page that stops following the server while the hunt loads (it walked out, or signed out) is not handed it.
     const f = fixture("follow");
-    f.npcSync.extra.read(active); f.net.state.hostId = 1; f.npcSync.role = "host";
+    f.npcSync.extra.read(active); f.npcSync.role = "solo";
     f.pending[0].resolve(); await Promise.resolve();
-    rows.push({ takeover: f.state.snapshots.length === 1 && f.state.snapshots[0] === active && f.state.starts === 0 });
-    f.dispose();
-  }
-  {
-    const f = fixture("host");
-    f.message({ k: "start", from: 3 }); f.pending[0].reject(new Error("offline")); await Promise.resolve();
-    f.message({ k: "start", from: 4 }); f.pending[1].resolve(); await Promise.resolve();
-    rows.push({ remoteRetry: f.state.loads === 2 && f.state.made === 1 && f.state.heard.length === 1 && f.state.heard[0].from === 4 });
+    rows.push({ leftFollow: f.state.made === 1 && f.state.snapshots.length === 0 });
     f.dispose();
   }
   {
@@ -8585,14 +8567,14 @@ const ghostEntryChecks = async () => {
     rows.push({ portable: f.state.loads === 1 && f.state.made === 1 && f.state.starts === 1 && !f.entry.debug.loading });
     f.dispose();
   }
-  record("ghost entry lifecycle: idle visits and melee load no hunt, concurrent starts attach once, failures retry, departures cancel, and current-host starts and latest snapshots survive the deferred handoff in hosted and portable builds",
+  record("ghost entry lifecycle: idle visits and melee load no hunt, concurrent starts attach once, failures retry, departures cancel, and the server's latest state survives the deferred handoff in hosted and portable builds",
     rows.every(row => Object.values(row).every(Boolean)), JSON.stringify(rows));
 };
 // HALLOWEEN: the hub's ghost hunt (ghost-sim.js), its rules run in Node with scripted players on a ring of crest spots.
 const ghostHuntChecks = async () => {
   await ghostEntryChecks();
   const context = { window: {} };
-  runInNewContext(await readFile(new URL("../src/js/ghost-sim.js", import.meta.url), "utf8"), context);
+  for (const name of ["ghost-sim", "game-timeline", "game-wire"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const G = context.window.BL.ghostSim, ST = G.STATE, T0 = 1.7e12, FRAME = 16;
   const spots = [];
   for (let i = 0; i < 120; i++) { const a = i / 120 * Math.PI * 2; spots.push(Math.sin(a) * 25.5, 4, -Math.cos(a) * 25.5, a); }
@@ -8796,14 +8778,66 @@ const ghostHuntChecks = async () => {
     let now = T0;
     const tick = () => { now += FRAME; z.beginPresence(); const p = z.present(1, 0, 0, 6); if (p) p.invulnUntil = z.state.now + 60000; z.advance(now); };
     while (now < T0 + 60000 && z.state.state !== ST.ACTIVE) tick();
-    const before = z.halving();
+    const full = z.shotDamage(), before = z.halving();
     z.debug.hourglass();
     const glass = z.brutes.find((b) => b.on && b.kind === 3);
     while (now < T0 + 120000 && glass.phase < G.BRUTE_PHASE.SHAKE) tick();
-    const halved = z.halving();
+    const halved = z.halving() && z.shotDamage() < full && z.shotDamage() >= 1;
     for (let i = 0; i < 400 && !glass.dying; i++) z.hit(glass.id, 5, 1);
-    const lifted = !z.halving();
+    const lifted = !z.halving() && z.shotDamage() === full;
     record("ghost hunt: a standing hourglass halves every rifle round until it dies", !before && halved && lifted, JSON.stringify({ before, halved, lifted }));
+  }
+  {
+    // The rules a shot is decided by, the server's and a page's alike: a line meets the target the rules lay out (one
+    // its page saw passing a little wide, too, when the page names it), and lands only for a hunter in the hunt and
+    // standing, never for a stranger or someone down.
+    const z = begin(29);
+    let now = T0;
+    const tick = () => { now += FRAME; z.beginPresence(); for (const id of [1, 2]) { const p = z.present(id, id * 3, 0, 6); if (p) p.invulnUntil = z.state.now + 60000; } z.advance(now); };
+    while (now < T0 + 90000 && !(z.state.state === ST.ACTIVE && z.ghosts.some((g) => g.on && !g.dying))) tick();
+    const W = G.TARGET_WIDTH, rows = z.targets(new Float64Array(G.TARGET_SLOTS * W)), out = {};
+    const slot = z.ghosts.findIndex((g) => g.on && !g.dying), g = z.ghosts[slot], o = slot * W, only = rows.slice();
+    for (let s = 0; s < G.TARGET_SLOTS; s++) if (s !== slot) only[s * W + 5] = 0;
+    const toward = (x, y, zz) => { const d = [x - 3, y - 1.2, zz - 6], l = Math.hypot(...d); return d.map((v) => v / l); };
+    const [dx, dy, dz] = toward(only[o + 1], only[o + 2], only[o + 3]);
+    const met = G.resolveShot(only, 3, 1.2, 6, dx, dy, dz, G.HIT.range, -1, 0, 0, out) && out.id === g.id;
+    const away = !G.resolveShot(only, 3, 1.2, 6, -dx, -dy, -dz, G.HIT.range, -1, 0, 0, out);
+    const flat = Math.hypot(only[o + 1] - 3, only[o + 3] - 6), e = only[o + 4] + 0.2;
+    const [wx, wy, wz] = toward(only[o + 1] - (only[o + 3] - 6) / flat * e, only[o + 2], only[o + 3] + (only[o + 1] - 3) / flat * e);
+    const wide = !G.resolveShot(only, 3, 1.2, 6, wx, wy, wz, G.HIT.range, -1, 0, 0.15, out);
+    const hinted = G.resolveShot(only, 3, 1.2, 6, wx, wy, wz, G.HIT.range, g.id, 0.3, 0.15, out) && out.id === g.id;
+    const hp = g.hp, stranger = z.hitBy(g.id, 2, 99) === "" && g.hp === hp;
+    z.playerById(2).frozenUntil = 1e12;
+    const down = z.hitBy(g.id, 2, 2) === "" && g.hp === hp;
+    const hunter = z.hitBy(g.id, 2, 1) !== "" && (g.dying > 0 || g.hp === hp - 2);
+    record("ghost hunt shots: a line meets the target the rules lay out, a hinted one a little wide too, and lands only for a hunter in the hunt and standing",
+      met && away && wide && hinted && stranger && down && hunter, JSON.stringify({ met, away, wide, hinted, stranger, down, hunter }));
+  }
+  {
+    // A hosted game's recent past (game-timeline.js) and its motion frame (game-wire.js), shared by the server and every
+    // page: a moment between two kept is eased between them where the same thing stands in a slot at both, else the
+    // nearer moment's; one outside them is the nearest kept; a frame comes back as it went, to a centimetre and a
+    // 256th of a turn, and one cut short or not a frame is refused.
+    const BL = context.window.BL, TL = BL.gameTimeline, WR = BL.gameWire;
+    const tl = TL.create({ slots: 2, width: 4, depth: 3, lerp: [1, 2] }), seen = new Float64Array(8);
+    tl.push(100, Float64Array.of(7, 0, 0, 1, 8, 5, 5, 1));
+    tl.push(200, Float64Array.of(7, 10, 20, 1, 9, 6, 6, 1));
+    const eased = tl.sample(150, seen) === 150 && seen[1] === 5 && seen[2] === 10 && seen[4] === 9 && seen[5] === 6;
+    const early = tl.sample(50, seen) === 100 && seen[1] === 0, late = tl.sample(900, seen) === 200 && seen[1] === 10;
+    tl.push(300, Float64Array.of(7, 20, 40, 1, 9, 7, 7, 1)); tl.push(400, Float64Array.of(7, 30, 60, 1, 9, 8, 8, 1));
+    const kept = tl.oldest === 200 && tl.newest === 400 && tl.count === 3;
+    const f = WR.frame(), back = WR.frame(), buf = new ArrayBuffer(WR.size(WR.MAX_ROWS, WR.MAX_CONFIRMS));
+    f.kind = 1; f.serverMs = T0 + 0.5; f.gameMs = 12345.25; f.count = 2; f.confirms = 1;
+    f.rows.set([0, 3, 70000, 1.234, -2.5, 300, Math.PI, 1, 2, 95, 5, -1, 0, 1, -0.1, 1]);
+    f.confirm.set([123456789, 7, 70000, 6, 3]);
+    const n = WR.encode(f, buf), whole = buf.slice(0, n), read = WR.decode(whole, back);
+    const same = read && back.kind === 1 && back.serverMs === f.serverMs && back.gameMs === f.gameMs && back.count === 2 && back.rows[1] === 3
+      && back.rows[2] === (70000 & 0xffff) && Math.abs(back.rows[3] - 1.234) <= 0.005 && back.rows[4] === -2.5 && back.rows[5] === 300
+      && Math.abs(back.rows[6] - Math.PI) <= Math.PI / 128 && back.rows[9] === 95 && back.confirms === 1 && back.confirm[0] === 123456789
+      && back.confirm[1] === 7 && back.confirm[2] === (70000 & 0xffff) && back.confirm[3] === 6 && back.confirm[4] === 3;
+    const refused = !WR.decode(whole.slice(0, n - 1), back) && !WR.decode(new ArrayBuffer(n), back) && back.count === 2;
+    record("game timeline and wire: the past eases between kept moments and clamps to them, and a motion frame comes back as it went or not at all",
+      eased && early && late && kept && same && refused, JSON.stringify({ eased, early, late, kept, same, refused }));
   }
 
   {
@@ -18759,23 +18793,28 @@ const arcadeHeraldClick = (view) => ({ name: "arcade herald click " + view, why:
   record("arcade herald click: clicking the ghost in " + view + " view opens the hunt's lobby", !!at && await b.evaluate(lobby), JSON.stringify(at));
 } });
 // #428: a hallway page receives the running hunt without becoming a hunter or borrowing arena ammunition.
-// A hunter gone down only follows the others: through the room's own snapshots from a host, with two other hunters in
+// A hunter gone down only follows the others: through the server's states (a fake hunt socket), with two other hunters in
 // the arena, the view rides behind one, Next moves on, one going down hands it to the other, and with nobody left it
 // holds still before the grave whatever is pressed; no view to pick, no free camera, and back whole at the round's end.
 const arcadeSpectateFollow = { name: "ghost hunt spectate follows", why: "rule: a downed hunter may only follow the hunters still standing, never roam the arena with a free or independent camera", run: async (b) => {
   await b.evaluate(`(async () => {
     const B = __ooga, N = BL.net, H = BL.arcadeModels.HAUNT, A = H.arena;
     const W = window.__follow = { fetch: window.fetch, WebSocket: window.WebSocket, sockets: [] };
-    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "portlandhodl", display: "portlandhodl" } }) }) : W.fetch(url, options);
-    window.WebSocket = class { static OPEN = 1; constructor() { this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } };
+    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "portlandhodl", display: "portlandhodl" }, games: ["ghost-hunt"] }) }) : W.fetch(url, options);
+    window.WebSocket = class { static OPEN = 1; constructor(url) { this.url = String(url); this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } };
+    // The hunt's own socket (game-net.js), opened in the arena or its hallway: the newest, welcomed as the server would.
+    Object.defineProperty(W, "game", { get: () => W.sockets.filter((s) => s.url.includes("/game/ghost-hunt/arena")).at(-1) });
+    W.welcome = () => W.game.onmessage({ data: JSON.stringify({ t: "welcome", you: 71, now: Date.now() }) });
+    W.state = () => W.game.onmessage({ data: JSON.stringify({ t: "state", now: Date.now(), s: W.host.snapshot() }) });
     N.state.started = true; N.state.resolved = false;
     await N.recheck();
     W.socket = W.sockets.at(-1);
-    W.socket.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, now: Date.now(), ghostHost: 2, ghostFollowers: 1, players: [] }) });
+    W.socket.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, now: Date.now(), players: [] }) });
     const a = B.cavemen.get("portlandhodl");
     if (B.crew.player !== a && B.crew.player?.npc !== a) B.pilot.possess(a);
     B.pilot.navigate({ position: { x: A.x, y: H.y, z: A.z + 8 }, yaw: 0, pitch: 0.18, dist: 4 });
     B.advance(0.5, 1 / 60);
+    W.welcome();
     await BL.deferred.load("halloween");
     const G = BL.ghostSim;
     // The host's hunt: this page (71) and two others (2, 3) readied in its lobby, then into a round.
@@ -18783,11 +18822,7 @@ const arcadeSpectateFollow = { name: "ghost hunt spectate follows", why: "rule: 
     W.host.start(N.serverNow(), 2);
     for (const id of [2, 71, 3]) W.host.ready(id);
     for (const p of W.host.players) if (p.on) p.inGame = 1;
-    W.frame = () => {
-      const bytes = new TextEncoder().encode(JSON.stringify(W.host.snapshot())), f = new Uint8Array(bytes.length + 4);
-      new DataView(f.buffer).setUint32(0, 0x54534847, true); f.set(bytes, 4);
-      W.socket.onmessage({ data: f.buffer });
-    };
+    W.frame = W.state;
     W.down = (id) => { const q = W.host.playerById(id); q.seg = 0; q.frozenUntil = G.CONFIG.DOWN_UNTIL; q.downAt = Math.max(1, W.host.state.now); q.downX = 0; q.downZ = 8; };
     // The other two, standing in the arena 12 m apart, as the room reports them.
     for (const [id, dx, name] of [[2, -6, "Hunter Two"], [3, 6, "Hunter Three"]])
@@ -18830,7 +18865,7 @@ const arcadeSpectateFollow = { name: "ghost hunt spectate follows", why: "rule: 
     W.host.jump(G.STATE.BREAK); for (let i = 0; i < 6; i++) { W.frame(); B.advance(0.25, 1 / 60); }
     const r = W.read();
     W.host.jump(G.STATE.DAWN); W.frame(); B.advance(0.2, 1 / 60);
-    W.socket.close(); BL.net.state.room = "off"; BL.net.remotes.delete(2); BL.net.remotes.delete(3);
+    W.socket.close(); W.game.close(); BL.net.state.room = "off"; BL.net.state.games = []; BL.net.remotes.delete(2); BL.net.remotes.delete(3);
     window.fetch = W.fetch; window.WebSocket = W.WebSocket;
     return r;
   })()`);
@@ -18850,16 +18885,27 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
   await b.evaluate(`(async () => {
     const B = __ooga, N = BL.net, H = BL.arcadeModels.HAUNT;
     const W = window.__hallAmmo = { fetch: window.fetch, WebSocket: window.WebSocket, sockets: [] };
-    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "portlandhodl", display: "portlandhodl" } }) }) : W.fetch(url, options);
-    window.WebSocket = class { static OPEN = 1; constructor() { this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } };
+    window.fetch = (url, options) => String(url) === "/api/me" ? Promise.resolve({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => ({ player: { id: 71, login: "portlandhodl", display: "portlandhodl" }, games: ["ghost-hunt"] }) }) : W.fetch(url, options);
+    window.WebSocket = class { static OPEN = 1; constructor(url) { this.url = String(url); this.readyState = 1; W.sockets.push(this); } send() {} close() { this.readyState = 3; } };
+    // The hunt's own socket (game-net.js), opened in the arena or its hallway and closed in the hall: the newest, welcomed
+    // as the server would, and sent the hunt only while it is open.
+    Object.defineProperty(W, "game", { get: () => W.sockets.filter((s) => s.url.includes("/game/ghost-hunt/arena")).at(-1) });
+    W.welcome = () => { const g = W.game; g.welcomed = true; g.onmessage({ data: JSON.stringify({ t: "welcome", you: 71, now: Date.now() }) }); };
+    W.state = () => {
+      const g = W.game;
+      if (!g || !g.onmessage) return;
+      if (!g.welcomed) W.welcome();
+      g.onmessage({ data: JSON.stringify({ t: "state", now: Date.now(), s: W.host.snapshot() }) });
+    };
     N.state.started = true; N.state.resolved = false;
     await N.recheck();
     W.socket = W.sockets.at(-1);
-    W.socket.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, now: Date.now(), ghostHost: 2, ghostFollowers: 1, players: [] }) });
+    W.socket.onmessage({ data: JSON.stringify({ t: "welcome", you: { id: 71 }, now: Date.now(), players: [] }) });
     const a = B.cavemen.get("portlandhodl");
     if (B.crew.player !== a) B.pilot.possess(a);
     B.pilot.navigate({ position: { x: H.end - 4, y: H.y, z: (H.z0 + H.z1) / 2 }, yaw: -Math.PI / 2, pitch: 0.18, dist: 4 });
     B.advance(0.5, 1 / 60);
+    W.welcome();
     a.weapon.unlimited = false; a.weapon.ammo = 7;
     B.pilot.weaponMode(2);
     W.read = () => { const w = B.pilot.player.weapon, A = BL.scenes.arcade.debug.arena; return { unlimited: w.unlimited, ammo: w.ammo, equipped: w.equipped, aiming: w.aiming, armed: A.armed, zone: A.zone }; };
@@ -18870,9 +18916,7 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
     W.host.start(N.serverNow(), 2);
     W.send = (state) => {
       W.host.jump(G.STATE[state]);
-      const bytes = new TextEncoder().encode(JSON.stringify(W.host.snapshot())), frame = new Uint8Array(bytes.length + 4);
-      new DataView(frame.buffer).setUint32(0, 0x54534847, true); frame.set(bytes, 4);
-      W.socket.onmessage({ data: frame.buffer });
+      W.state();
     };
     W.send("LAP");
   })()`);
@@ -18908,18 +18952,14 @@ const arcadeSpectatorAmmo = { name: "arcade hallway ammunition", why: "regressio
     // A hunter hurt in the snapshots: this spectator, in no hunt, hears it once; the first sight of them sounds nothing.
     W.host.debug.results(2, { kills: 0, foes: 0 }, []);
     const q = W.host.players.find(p => p.on && p.id === 2);
-    const frame = () => {
-      const bytes = new TextEncoder().encode(JSON.stringify(W.host.snapshot())), f = new Uint8Array(bytes.length + 4);
-      new DataView(f.buffer).setUint32(0, 0x54534847, true); f.set(bytes, 4);
-      W.socket.onmessage({ data: f.buffer });
-    };
+    const frame = W.state;
     q.seg = 5; frame(); B.advance(0.2, 1 / 60);
     before = G.played; frame(); B.advance(0.2, 1 / 60); sounds.steady = G.played - before;
     q.seg = 4; before = G.played; frame(); B.advance(0.2, 1 / 60); sounds.hurt = G.played - before;
     W.send("DAWN"); B.advance(0.1, 1 / 60);
     return { rows, sounds };
   })()`);
-  await b.evaluate(`(() => { const W = __hallAmmo; W.socket.close(); BL.net.state.room = "off"; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
+  await b.evaluate(`(() => { const W = __hallAmmo; W.socket.close(); W.game.close(); BL.net.state.room = "off"; BL.net.state.games = []; window.fetch = W.fetch; window.WebSocket = W.WebSocket; })()`);
   const kept = result.rows.every(r => !r.armed && r.zone === "ghost-arena.haunt" && r.received === r.state && !r.unlimited && r.ammo === result.before.ammo && r.equipped === result.before.equipped && r.aiming === result.before.aiming);
   record("arcade hallway ammunition: a signed-in hallway-only spectator keeps weapon state through every hunt phase, rejects firing and keeps the same ammunition policy at dawn",
     !result.before.armed && result.before.zone === "ghost-arena.haunt" && result.role === "follow" && !result.hunter && kept && after.fired.ammo === result.before.ammo && !after.fired.equipped && !after.fired.unlimited && !after.restored.unlimited,
