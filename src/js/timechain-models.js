@@ -287,7 +287,8 @@
       facing(geo, [at(a0, y0), at(a1, y0), at(a1, y1), at(a0, y1)], "#c7680d", 0.3, out);
       facing(geo, [at(a0, y0, LEAF_R - 0.03), at(a1, y0, LEAF_R - 0.03), at(a1, y1, LEAF_R - 0.03), at(a0, y1, LEAF_R - 0.03)], "#1b1b1e", 0, [-out[0], 0, -out[2]]);
     }
-    const e = 0.003 * side, r = SHELL_R + 0.04;
+    // The seam stands over everything painted on the doors, the ₿ included, so the crack shows through it as it passes.
+    const e = 0.003 * side, r = SYMBOL_RADIUS + 0.02;
     for (let j = 0; j < rows; j++) {
       const y0 = DOOR_TOP * j / rows, y1 = DOOR_TOP * (j + 1) / rows;
       facing(geo, [at(0, y0, r), at(e, y0, r), at(e, y1, r), at(0, y1, r)], "#2a1606", 0, [0, 0, 1]);
