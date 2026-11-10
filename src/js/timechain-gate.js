@@ -38,6 +38,8 @@
   // the curtain behind the shut doors.
   const PICTURE_Z = P.curtain + 0.03, HAND_REACH = P.mouth - 1 - PICTURE_Z, OUT_Z = P.curtain + 0.55;
   const CURVE = 24;
+  // What the keypad's small window says while it is in use: the prompt until a number is pressed, then the room.
+  const SELECT_WORDS = "SELECT ROOM NUMBER", ROOM_WORDS = Array.from({ length: 10 }, (_, room) => `ROOM ${room}`);
   // The page's first sound wakes the browser's audio, tens of milliseconds on the main thread. Engaging the keypad is
   // a gesture and the view is still at that moment, so the pause is paid there rather than at the walk's first
   // footstep in the doorway.
@@ -143,6 +145,10 @@
     };
 
     // ---------- the keypad ----------
+    const padWords = () => {
+      if (g.state !== "keypad" && g.state !== "account" && g.state !== "preparing" && g.state !== "waiting" && g.state !== "opening") return "";
+      return g.selection ? ROOM_WORDS[g.selection] : SELECT_WORDS;
+    };
     const nearKeypad = (x, y, z) => g.state === "idle" && !!crew.player && Math.hypot(x - KEYPAD.x, z - KEYPAD.z) < S.KEYPAD_REACH && Math.abs(y - KEYPAD.y) < 2;
     const keypadPitch = () => {
       const cave = crew.player, p = cave.root.position;
@@ -511,6 +517,8 @@
       const want = Math.max(g.want, now < g.remoteUntil ? 1 : 0), step = REDUCED.matches ? 1 : dt / DOOR_TIME;
       g.open = g.open < want ? Math.min(want, g.open + step) : Math.max(want, g.open - step);
       site.setDoors(g.open * g.open * (3 - 2 * g.open));
+      site.say(padWords());
+      site.tick(dt);
     };
     const view = (dt) => {
       const cave = crew.player;

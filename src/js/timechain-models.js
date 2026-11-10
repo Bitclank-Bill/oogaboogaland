@@ -335,7 +335,46 @@
   const BACK_KEY = keyFace(0.15, 0.07, "BACK", 0.0072, "#4a3a30", "#f2d39a");
   const ENTER_KEY = keyFace(0.15, 0.07, "ENTER", 0.0062, "#5a4022", "#f2d39a");
   const READY_ENTER_KEY = keyFace(0.155, 0.075, "ENTER", 0.0062, "#ffbd53", "#17110a", 1);
-  const ROOM_LABELS = Array.from({ length: 9 }, (_, i) => keyLabel(`ROOM ${i + 1}`, 0.007, "#f7931a", 1, 0));
+  // The keypad's small window: one canvas in the signs' 3 by 5 pixels. Words that fit stand centred; longer ones run
+  // across it and round again, repainted only when they have moved a cell.
+  const WINDOW = { w: 0.36, h: 0.09, width: 128, height: 32, dot: 4, top: 6, speed: 14, gap: 10 };
+  const windowRig = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = WINDOW.width; canvas.height = WINDOW.height;
+    const ctx = canvas.getContext("2d"), glyphs = BL.hubModels.SIGN_GLYPHS, cells = WINDOW.width / WINDOW.dot, W = WINDOW.w / 2, H = WINDOW.h / 2;
+    const geometry = { verts: [-W, -H, 0, W, -H, 0, W, H, 0, -W, H, 0], faces: [{ i: [0, 1, 2, 3], color: [255, 255, 255], emissive: 0.9 }], lines: [], castShadow: false };
+    geometry.imageSurface = { canvas, version: 0, rect: [-W, -H, WINDOW.w, WINDOW.h], background: [26, 18, 10] };
+    let words = "", wide = 0, clock = 0, drawn = -1;
+    const draw = (x) => {
+      for (let i = 0; i < words.length; i++) {
+        const glyph = glyphs[words[i]];
+        if (!glyph) continue;
+        for (let r = 0; r < glyph.length; r++) for (let c = 0; c < glyph[r].length; c++) if (glyph[r][c] === "1") ctx.fillRect((x + i * 4 + c) * WINDOW.dot, WINDOW.top + r * WINDOW.dot, WINDOW.dot, WINDOW.dot);
+      }
+    };
+    const paint = (offset) => {
+      drawn = offset;
+      ctx.fillStyle = "#1a120a"; ctx.fillRect(0, 0, WINDOW.width, WINDOW.height);
+      ctx.fillStyle = "#f7931a";
+      if (wide <= cells) draw(Math.floor((cells - wide) / 2));
+      else { draw(1 - offset); draw(1 - offset + wide + WINDOW.gap); }
+      geometry.imageSurface.version++;
+    };
+    const say = (text) => {
+      if (text === words) return;
+      words = text; clock = 0;
+      wide = text.length ? text.length * 4 - 1 : 0;
+      paint(0);
+    };
+    const tick = (dt) => {
+      if (wide <= cells) return;
+      clock += dt;
+      const offset = Math.floor(clock * WINDOW.speed) % (wide + WINDOW.gap);
+      if (offset !== drawn) paint(offset);
+    };
+    paint(0);
+    return { geometry, say, tick };
+  };
   const build = (island) => {
     let rim = 27.4;
     while (rim < 36 && island.surfaceAt(DIR.x * (rim + 0.1), DIR.z * (rim + 0.1)) > 0.5) rim += 0.1;
@@ -391,8 +430,10 @@
     const keys = KEYS.map((key, i) => ({ key: String(i + 1), node: createNode({ geometry: DIGIT_KEYS[i], position: { x: key.x, y: key.y, z: 0.033 }, sightHidden: true }) }));
     const back = { key: "back", node: createNode({ geometry: BACK_KEY, position: { x: -0.085, y: -0.235, z: 0.033 }, sightHidden: true }) };
     const enter = { key: "enter", node: createNode({ geometry: ENTER_KEY, position: { x: 0.085, y: -0.235, z: 0.033 }, sightHidden: true }) };
-    const readout = createNode({ position: { x: 0, y: 0.25, z: 0.0365 }, visible: false, sightHidden: true });
+    const display = windowRig();
+    const readout = createNode({ geometry: display.geometry, position: { x: 0, y: 0.25, z: 0.0365 }, visible: false, sightHidden: true });
     readout.room = 0;
+    const say = (text) => { display.say(text); readout.visible = !!text; };
     addChild(pad, readout, ...keys.map(key => key.node), back.node, enter.node);
     // The traveler's look into their room hangs here, just in front of the curtain, on their page alone.
     const picture = createNode({ position: { x: 0, y: PASSAGE.floor, z: PASSAGE.curtain + 0.03 }, sightHidden: true });
@@ -419,10 +460,8 @@
       if (selected) keys[selected - 1].node.geometry = LIT_DIGIT_KEYS[selected - 1];
       enter.node.geometry = selected ? READY_ENTER_KEY : ENTER_KEY;
       readout.room = selected;
-      readout.geometry = selected ? ROOM_LABELS[selected - 1] : null;
-      readout.visible = !!selected;
     };
-    return { node, shell: shellNode, outer, turn, setDoors, view, screen, logoBatches, entrance, bridge: bridgeNode, doors, plug: plugNode, keypad: pad, keys: [...keys, back, enter], readout, choose, picture, place };
+    return { node, shell: shellNode, outer, turn, setDoors, view, screen, logoBatches, entrance, bridge: bridgeNode, doors, plug: plugNode, keypad: pad, keys: [...keys, back, enter], readout, say, tick: display.tick, choose, picture, place };
   };
   // Most of the time the screen holds its picture; every minute or so it runs a seven-second show on the lunes'
   // `glow` and `highlight`, never the same one twice running, then settles back exactly. Some shows take the logos
