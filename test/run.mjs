@@ -10664,7 +10664,7 @@ const hubHammock = { name: "hub hammock", why: "rule: one face-up Ooga rests off
   // any level walkable ground (scene-hub.js tipOutOfHammock), which a path is; the meadow's later paths cross one landing spot.
   const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= 0.01, placed = setup.placed;
   record("hub hammock: it hangs where it always has (pivot, palms, side and stand-up spot within 1 cm), its whole swing clears the ground, and every landing spot is level, clear of the palms",
-    !!placed && near(placed.pivot, [9.3683, 4.5253]) && placed.side === 1 && near(placed.palms[0], [5.2365, 4.2842]) && near(placed.palms[1], [13.5, 4.75]) && near(placed.walkAt, [9.2988, 5.9799])
+    !!placed && near(placed.pivot, [9.3683, 3.0253]) && placed.side === 1 && near(placed.palms[0], [5.2365, 3.2842]) && near(placed.palms[1], [13.5, 2.75]) && near(placed.walkAt, [9.4536, 4.479])
       && placed.swingSway === placed.cap && placed.low >= 0.3 && placed.lands.every((l) => l.level < 0.25 && l.palm > 1.5),
     JSON.stringify(placed));
   if (!setup.hammock) return;

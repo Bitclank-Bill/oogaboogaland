@@ -153,7 +153,7 @@
   const NIGHT = 0.5, FIRE_SEAT_CHANCE = 0.5;
   // Clock-face degrees to a meadow point: 0 is -z (far), 90 is +x (right).
   const polar = (deg, r) => ({ x: Math.sin(deg * DEG) * r, z: -Math.cos(deg * DEG) * r });
-  const BUILD_DEGREES = [12, 40, 66, 80, 102, 165, 195, 212, 282, 297, 312, 340];
+  const BUILD_DEGREES = [12, 40, 66, 80, 110, 165, 195, 212, 282, 297, 312, 340];
   const BUILD_RADIUS = 13;
   const NUDGES = [0, -2, 2, -4, 4, -6, 6, -8, 8];
   const PATH_GEOMETRY = new WeakMap();
@@ -1939,15 +1939,31 @@
       consider(a, { owner }, true);
     }
     if (!chosen) return;
-    // Keep the near palm; move its companion toward the Arcade, beside the berry bush.
-    // This authored spot uses actual trunk, path and stair clearance instead of the
+    // Step the near palm NEAR_NORTH metres north of its meadow spot and move its companion toward the Arcade, beside the berry bush.
+    // These authored spots use actual trunk, path and stair clearance instead of the
     // random meadow planting's broad exclusion around the clankers' bed approach.
-    const companionX = 13.5, companionZ = 4.75;
+    const NEAR_NORTH = 1, companionX = 13.5, companionZ = 2.75;
     if (chosen.extra && planting.stands(companionX, companionZ)
       && entranceClear(companionX, companionZ, 1.2) && offRuns(companionX, companionZ) && !nearMouth(companionX, companionZ, 6)) {
       const x = companionX, z = companionZ;
       const owner = { x, z, variant: planting.variant(), node: { position: { x, y: island.surfaceAt(x, z), z }, rotation: { y: 0 } } };
-      consider(chosen.a, { owner }, true);
+      const near = chosen.a.owner, reservation = meadowPalms.find((entry) => entry.owner === near).reservation;
+      const nearZ = near.z - NEAR_NORTH, fallback = chosen, fallbackMid = nearest;
+      drop(claimed, reservation);
+      const nearFits = planting.stands(near.x, nearZ) && entranceClear(near.x, nearZ, 1.2) && offRuns(near.x, nearZ);
+      claimed.push(reservation);
+      if (nearFits) {
+        const fromZ = near.z;
+        near.z = reservation.z = near.node.position.z = nearZ;
+        near.node.position.y = island.surfaceAt(near.x, nearZ);
+        chosen = null; nearest = Infinity;
+        consider(fallback.a, { owner }, true);
+        if (!chosen) {
+          near.z = reservation.z = near.node.position.z = fromZ;
+          near.node.position.y = island.surfaceAt(near.x, fromZ);
+          chosen = fallback; nearest = fallbackMid;
+        }
+      }
     }
     if (chosen.extra) {
       const entry = planting.plant(chosen.b.owner.x, chosen.b.owner.z, 0);
