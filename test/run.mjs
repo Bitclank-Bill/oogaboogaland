@@ -20749,12 +20749,11 @@ const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out 
     emptyViews &&= empty();
     return { room: D.room.id, scale: D.room.scale, radius: D.layout.radius, mode: D.visit.mode, zone: BL.net.state.zone, body: BL.net.state.body, chip: document.getElementById("sphere-mode").textContent,
       subtitle: document.getElementById("sphere-subtitle").textContent, before, shoulder, orbit, kept, after: P.mode, player: cave.traits.name, jet: !!cave.jet, jetHud: document.getElementById("jetpack-hud").hidden,
-      emptyViews, deniedWeapons, requests: B.stats().requests, paused: D.reader.status("recent"), hash: location.hash, sani: !!D.sani && D.sani.root.visible,
-      saniState: BL.contributors.stateFor(BL.contributors.roster.find(entry => entry.name === "SaniExp")), remotes: D.remotes === null };
+      emptyViews, deniedWeapons, requests: B.stats().requests, paused: D.reader.status("recent"), hash: location.hash, remotes: D.remotes === null };
   })()`);
   record("timechain room: a signed-out arrival at /sphere-3 is a solo copy of Room 3 at 1× that publishes nothing, with its mode named and every screen painted",
     painted && r.room === 3 && r.scale === 1 && r.radius === 9 && r.mode === "solo" && r.zone === "none" && r.body === null && r.chip.includes("Solo visit · not signed in") && r.subtitle === "TCS · Room 3"
-      && r.hash === "#/sphere-3" && r.requests === 0 && r.paused === "PAUSED" && r.sani === (r.saniState === "sleeping" || r.saniState === "away") && r.remotes, JSON.stringify(r));
+      && r.hash === "#/sphere-3" && r.requests === 0 && r.paused === "PAUSED" && r.remotes, JSON.stringify(r));
   record("timechain room: scroll reaches shoulder and orbit, nothing lets go of the Ooga, and every view stays empty-handed with no jetpack",
     r.before === "first-person" && r.shoulder === "shoulder" && r.orbit === "orbit" && r.kept && r.after === "first-person"
       && r.player === "portlandhodl" && !r.jet && r.jetHud && r.emptyViews && r.deniedWeapons, JSON.stringify(r));
@@ -20840,57 +20839,6 @@ const timechainSizes = { name: "timechain sizes", why: "rule: rooms 4–6 and 7�
   record("timechain sizes: the final camera stays inside the walls, closed doors, floor and dome in every view and transition at all three room scales",
     bounds.every(r => r.frames >= 840 && r.outside === 0 && ["first-person", "shoulder", "orbit"].every(mode => r.modes.includes(mode))), JSON.stringify(bounds));
 } };
-const timechainSani = { name: "timechain sani", why: "regression: Sani's recliner spins with his laptop independently of frame rate, and his half-litre refills, spills and is cleaned up in every room", run: async (b) => {
-  const presence = await b.evaluate(`(() => {
-    const B = __ooga, c = BL.contributors.roster.find(entry => entry.name === "SaniExp");
-    const saved = [c.lastCommitAt, c.lastContributionAt], rows = [];
-    try {
-      for (const age of [40 * 86400000, 1000, 2 * 86400000, 2 * 3600000]) {
-        c.lastCommitAt = c.lastContributionAt = Date.now() - age; B.advance(0.1, 1 / 60);
-        rows.push({ state: BL.contributors.stateFor(c), visible: B.timechain.sani.root.visible });
-      }
-      return rows;
-    } finally { [c.lastCommitAt, c.lastContributionAt] = saved; B.advance(0.1, 1 / 60); }
-  })()`);
-  record("timechain sani: the room seats sleeping and away Sani, leaving his recliner empty while he works or chills on the mainland",
-    presence.map(row => row.state).join(",") === "away,working,sleeping,chilling"
-      && presence.every(row => row.visible === (row.state === "sleeping" || row.state === "away")), JSON.stringify(presence));
-  const r = await b.evaluate(`(() => {
-    const B = __ooga, D = B.timechain, L = D.layout, s = D.seat, c = D.sani, beer = D.beer, lounge = D.built.lounge;
-    const entry = BL.contributors.roster.find(entry => entry.name === "SaniExp"), saved = [entry.lastCommitAt, entry.lastContributionAt];
-    try {
-      entry.lastCommitAt = entry.lastContributionAt = Date.now() - 2 * 86400000;
-      B.advance(0.1, 1 / 60);
-      const spin = (rate) => { beer.pause(); s.angle = Math.PI; s.speed = 0; beer.act("spin", s); B.advance(2, rate); return { angle: s.angle, together: Math.abs(c.root.rotation.y - lounge.swivel.rotation.y) < 1e-8 && lounge.laptop.parent === lounge.swivel }; };
-      const slow = spin(1 / 30), fast = spin(1 / 120);
-      beer.pause();
-      const wall = [beer.dispenser, beer.cabinet, beer.bin].map(n => Math.hypot(lounge.node.position.x + n.position.x, lounge.node.position.z + n.position.z));
-      const cycle = (rate) => {
-        beer.pause(); Object.assign(beer.state, { litres: 0.5, sips: 0, refills: 0 });
-        let empty = false, filling = false, walked = false;
-        for (let i = 0; i < 130 * rate; i++) {
-          beer.update(c, s, 1 / rate);
-          const st = beer.state;
-          if (st.mode === "rise") empty ||= st.litres < 0.001;
-          if (st.mode === "walk") walked ||= Math.hypot(c.root.position.x - s.x, c.root.position.z - s.z) > 1;
-          if (st.mode === "fill") filling ||= beer.stream.visible && beer.mug.parent === beer.dispenser;
-        }
-        return { ...beer.state, empty, filling, walked, streamOff: !beer.stream.visible };
-      };
-      const slowCycle = cycle(30), fastCycle = cycle(120);
-      beer.pause(); Object.assign(beer.state, { litres: 0.5, sips: 0, refills: 0, cleaned: 0, replaced: 0 });
-      beer.act("spin", s);
-      const phases = new Set();
-      for (let i = 0; i < 40 * 60; i++) { beer.update(c, s, 1 / 60); phases.add(beer.state.mode); }
-      return { slow, fast, wall, radius: L.radius, slowCycle, fastCycle, spill: { phases: [...phases], ...beer.state, shardsHidden: !beer.shards.visible } };
-    } finally { [entry.lastCommitAt, entry.lastContributionAt] = saved; B.advance(0.1, 1 / 60); }
-  })()`);
-  record("timechain sani: Sani's recliner spins with his laptop independently of frame rate, and his beer gear stands against the room's wall",
-    r.slow.together && r.fast.together && Math.abs(r.slow.angle - r.fast.angle) < 1e-7 && Math.abs(r.slow.angle - Math.PI) > 1 && r.wall.every(d => d > r.radius - 2.2 && d < r.radius - 0.5), JSON.stringify(r));
-  record("timechain sani: an empty half-litre triggers a walk and a visible refill, at any frame rate, and a spilled glass is cleaned up and replaced",
-    [r.slowCycle, r.fastCycle].every(c => c.empty && c.filling && c.walked && c.streamOff && c.mode === "work" && c.litres === 0.5 && c.sips === 5 && c.refills === 1) && Math.abs(r.slowCycle.elapsed - r.fastCycle.elapsed) < 1e-7
-      && r.spill.phases.includes("clean") && r.spill.phases.includes("discard") && r.spill.cleaned === 1 && r.spill.replaced === 1 && r.spill.mode === "work" && r.spill.shardsHidden, JSON.stringify(r));
-} };
 const timechainTrip = { name: "timechain round trip", why: "contract: a room left and entered again keeps nothing from the last visit, leaves no timer or request running, and takes a donation whenever one arrives", run: async (b) => {
   const laps = [];
   for (let i = 0; i < 2; i++) {
@@ -20908,7 +20856,7 @@ const timechainCanvas = { name: "timechain canvas2d", why: "rule: a room boots a
   const r = await b.evaluate(`({ kind: __ooga.renderer.kind, drawn: __ooga.renderer.stats.drawn, room: __ooga.timechain.room.id, view: __ooga.pilot.mode })`);
   record("timechain canvas2d: Room 8 boots at 2× and paints every screen on Canvas 2D", painted && r.kind === "canvas2d" && r.room === 8 && r.view === "first-person", JSON.stringify(r));
 } };
-scene("timechain", { url: roomPage(3), steps: [timechainRoom, timechainSizes, timechainSani, timechainTrip] });
+scene("timechain", { url: roomPage(3), steps: [timechainRoom, timechainSizes, timechainTrip] });
 scene("timechain", { label: "canvas2d", url: roomPage(8, "canvas2d=1"), steps: [timechainCanvas] });
 scene("hub", { label: "chilling", query: "status=chillin&pos=0",
   // This placement order exhausted the old 36-point pool before the last Ooga could settle.

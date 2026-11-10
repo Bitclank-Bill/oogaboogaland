@@ -13,7 +13,7 @@
 //
 // The screens are native charts (timechain-charts.js) of mempool.space's public block and mining data
 // (timechain-blocks.js), repainted only when what they print changes, one picture a frame at most, plus the six
-// Timechain Index holdings readings at the desk's terminal. Sleeping or away, Sani sits in his recliner with his beer.
+// Timechain Index holdings readings at the desk's terminal.
 (() => {
   "use strict";
   const BL = window.BL;
@@ -152,9 +152,6 @@
     screen: "Timechain display · tap for a close-up",
     card: "Latest blocks · tap for the charts",
     terminal: "Holdings desk · tap for Timechain Index holdings",
-    sani: "Sani · tap to spin his chair",
-    beer: "500 ml beer · tap to chug",
-    recliner: "Sani's recliner · tap to spin and spill the glass",
     door: "The way out · use the Exit button",
     table: "Meeting table · jump up on it",
     chair: COARSE ? "Chair · tap SIT beside it" : "Chair · Space beside it sits"
@@ -317,14 +314,6 @@
       go: (i) => { holdingsIndex = i; holdingsVersion++; sweep = true; }
     };
 
-    // Sleeping or away, Sani is in his recliner; active, he is with the mainland crew.
-    const lounge = built.lounge, beer = BL.timechainBeer.create(lounge);
-    const seat = { x: lounge.spots.chair.x, z: lounge.spots.chair.z, angle: Math.PI, speed: 0, phase: 0, active: true };
-    target(lounge.chair, { kind: "recliner" }, 1.2);
-    target(beer.mug, { kind: "beer" }, 0.3);
-    let sani = null, saniRemote = false;
-    const saniContributor = contributors.roster.find(entry => entry.name === "SaniExp");
-    const saniActor = { x: 0, y: 0, z: 0, radius: 0.35, height: 1.8 };
     const NO_ACTORS = [], actors = [];
 
     // The visitor's Ooga: the one handed over, else the visit's, else `character=` on a page that opens here, else
@@ -345,7 +334,6 @@
     const outsideActors = () => {
       actors.length = 0;
       if (remotes) { const list = remotes.actors(); for (let i = 0; i < list.length; i++) actors.push(list[i]); }
-      if (sani && sani.root.visible) actors.push(saniActor);
       return actors.length ? actors : NO_ACTORS;
     };
     // Space beside the Exit button walks out, beside a free chair and facing it (standing on the floor) sits in it;
@@ -385,13 +373,6 @@
       avatar.root.position.y = avatar.baseY;
       pilot.possess(avatar);
       pilot.enterClose();
-    }
-    if (playerName !== "SaniExp") {
-      sani = models.caveman(contributors.traitsFor("SaniExp"));
-      sani.baseY = sani.root.position.y;
-      for (const key of ["snack", "gun", "jetpack", "jetFlame"]) if (sani.parts[key]) sani.parts[key].visible = false;
-      addChild(root, sani.root);
-      for (const key of ["head", "torso", "legL", "legR", "armL", "armR"]) if (sani.parts[key]) target(sani.parts[key], { kind: "sani" });
     }
     // In the room, as the visit has it: a guided arrival from the vestibule, or (a reload, a link, a history step)
     // standing at the arrival facing the screens.
@@ -434,7 +415,6 @@
       if (guide.stage) BL.net.passDoor(room.zone, "in");
     } else { BL.net.setBody(null); BL.net.setZone("none"); }
     remotes = shared ? BL.remotePlayers.create({ root, crew: people, fx,
-      hide: (name, on) => { if (name === "SaniExp") saniRemote = on; },
       posed: (cave) => { cave.parts.club.visible = cave.parts.gun.visible = false; }
     }) : null;
     const footsteps = BL.footsteps.create();
@@ -519,8 +499,6 @@
         if (o.kind === "exit") { if (nearExit()) walkOut(); else hud.toast("Walk up to the Exit button, then press it"); }
         else if (o.kind === "screen" || o.kind === "card") { chartIndex = o.kind === "screen" ? o.index : 2; chartVersion++; hud.openBoard(chartBoard); }
         else if (o.kind === "terminal") { holdingsVersion++; hud.openBoard(holdingsBoard); }
-        else if (o.kind === "sani" || o.kind === "recliner") beer.act("spin", seat);
-        else if (o.kind === "beer") beer.act("chug", seat);
         else if (o.kind === "door") hud.toast(COARSE ? "Tap EXIT beside the doors to walk out" : "Press Space at the Exit button to walk out");
         else if (o.kind === "chair") {
           const s = seats[o.index], p = avatar && avatar.root.position;
@@ -599,37 +577,6 @@
         }
       } else if (guide.stage === "out") people.steer(0, 0, 0, 0, 0);
     };
-    // Sani at his laptop, in the pose the island used to give him there, his beer gear doing the rest.
-    const poseSani = (dt) => {
-      if (!sani) return;
-      const state = contributors.stateFor(saniContributor);
-      const visible = !saniRemote && (state === "sleeping" || state === "away");
-      if (!visible) {
-        if (sani.root.visible) beer.pause();
-        sani.root.visible = false;
-        return;
-      }
-      sani.root.visible = true;
-      seat.phase = (seat.phase + dt * 7) % (Math.PI * 2);
-      const decay = Math.exp(-1.15 * dt);
-      seat.angle = (seat.angle + seat.speed * (1 - decay) / 1.15) % (Math.PI * 2);
-      seat.speed *= decay;
-      if (seat.speed < 0.005) seat.speed = 0;
-      lounge.swivel.rotation.y = seat.angle;
-      const h = sani.traits.height, parts = sani.parts;
-      sani.root.position.x = seat.x; sani.root.position.z = seat.z; sani.root.position.y = 0.88 * h;
-      sani.root.rotation.x = -0.23; sani.root.rotation.z = 0; sani.root.rotation.y = seat.angle;
-      lounge.chair.scale.x = lounge.chair.scale.y = lounge.chair.scale.z = h;
-      parts.legR.rotation.x = parts.legL.rotation.x = -1.05;
-      parts.armR.rotation.x = -0.95 + Math.sin(seat.phase) * 0.035;
-      parts.armL.rotation.x = -0.95 - Math.sin(seat.phase) * 0.035;
-      parts.armR.rotation.z = -0.12; parts.armL.rotation.z = 0.12;
-      parts.head.rotation.x = 0.28;
-      if (parts.club) parts.club.visible = false;
-      beer.update(sani, seat, dt);
-      saniActor.x = sani.root.position.x; saniActor.z = sani.root.position.z;
-    };
-
     const update = (dt, elapsed) => {
       pilot.readInput(dt);
       if (guide.stage && avatar) runGuide(dt);
@@ -655,7 +602,6 @@
       }
       if (remotes) remotes.update(dt);
       footsteps.update(driven);
-      poseSani(dt);
       if (avatar && !guide.stage) {
         const near = avatar.camp.seat ? "stand" : nearExit() ? "exit" : nearChair() ? "sit" : null;
         if (near !== guide.near) {
@@ -711,8 +657,8 @@
     shell.debug = {
       hud, camera, controls: pilot.controls, pilot, crew: people, cavemen: people ? people.cavemen : null,
       timechain: {
-        room, visit, layout: L, built, reader, holdings, guide, doors, beer, seat, seats,
-        get avatar() { return avatar; }, get sani() { return sani; }, get remotes() { return remotes; }, get sound() { return sound.stats; },
+        room, visit, layout: L, built, reader, holdings, guide, doors, seats,
+        get avatar() { return avatar; }, get remotes() { return remotes; }, get sound() { return sound.stats; },
         get slots() { return all.map((s) => ({ key: s.key, shown: !!s.node.geometry })); }, get exitEye() { return exitEye; },
         exit: walkOut, chartBoard, holdingsBoard
       }
@@ -736,7 +682,6 @@
         if (s.node.geometry) renderer.releaseGeometry(s.node.geometry);
         s.node.geometry = null;
       }
-      beer.dispose();
       if (remotes) remotes.dispose();
       footsteps.dispose();
       if (people) people.dispose();
