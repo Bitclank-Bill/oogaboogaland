@@ -200,7 +200,7 @@
       // What a body cannot walk through, in this frame: a circle, or a box `hx` by `hz` either side turned with the frame.
       solid: (o) => {
         const p = at(o.x || 0, 0, o.z || 0);
-        into.solids.push(o.r !== undefined ? { x: p.x, z: p.z, r: o.r, top: o.top, below: o.below } : { x: p.x, z: p.z, hx: o.hx, hz: o.hz, ry: -K.yaw(o.ry || 0), top: o.top, below: o.below });
+        into.solids.push(o.r !== undefined ? { x: p.x, z: p.z, r: o.r, top: o.top, below: o.below } : { x: p.x, z: p.z, hx: o.hx, hz: o.hz, ry: K.yaw(o.ry || 0), top: o.top, below: o.below });
       },
       // A seat for the visitor's Ooga: `y` its height over `floor`, what it stands on, facing `heading` in this frame;
       // standing up leaves it at `back` behind it.
@@ -398,13 +398,14 @@
     return geo;
   });
   // The floor's disc in rings and sectors, so Canvas 2D sorts it under what stands on it, with the floor's canvas
-  // laid on it (built in the frame a node turned flat maps it in: x across, -z up the canvas).
+  // laid on it (built in the frame a node turned flat maps it in: x across, -z up the canvas). Every ring has the same
+  // sectors, so the rings meet corner to corner and no crack opens between them.
   const floorGeometry = perRoom((id) => {
     const L = ROOMS.layout(id), canvas = paintFloor(id), into = plan(id);
     if (L.rake) return null;
-    const rf = L.r0 - 0.005, rings = Math.max(3, Math.ceil(rf / 1.6)), geo = blank();
+    const rf = L.r0 - 0.005, rings = Math.max(3, Math.ceil(rf / 1.6)), sectors = Math.max(24, Math.ceil(TAU * rf / 1.4)), geo = blank();
     for (let i = 0; i < rings; i++) {
-      const r0 = rf * i / rings, r1 = rf * (i + 1) / rings, sectors = Math.max(12, Math.ceil(TAU * r1 / 1.4));
+      const r0 = rf * i / rings, r1 = rf * (i + 1) / rings;
       for (let k = 0; k < sectors; k++) {
         const b0 = TAU * k / sectors, b1 = TAU * (k + 1) / sectors, p = (r, b) => [r * Math.sin(b), -r * Math.cos(b), 0];
         const pts = i === 0 ? [[0, 0, 0], p(r1, b0), p(r1, b1), p(r1, b1)] : [p(r0, b0), p(r1, b0), p(r1, b1), p(r0, b1)];

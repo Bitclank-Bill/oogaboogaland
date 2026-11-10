@@ -190,7 +190,10 @@
       for (let i = 0; i < tops.length; i++) {
         const o = tops[i];
         if (feet < o.top - 0.02 || o.top <= y) continue;
-        if (o.r !== undefined ? Math.hypot(x - o.x, z - o.z) < o.r + r : Math.abs(x - o.x) < o.hx + r && Math.abs(z - o.z) < o.hz + r) y = o.top;
+        if (o.r !== undefined) { if (Math.hypot(x - o.x, z - o.z) < o.r + r) y = o.top; continue; }
+        // A box in its own turned frame, as clearAt reads it (timechain-rooms.js).
+        const c = o.ry ? Math.cos(o.ry) : 1, s = o.ry ? Math.sin(o.ry) : 0, dx = x - o.x, dz = z - o.z;
+        if (Math.abs(dx * c - dz * s) < o.hx + r && Math.abs(dx * s + dz * c) < o.hz + r) y = o.top;
       }
       return y;
     };
