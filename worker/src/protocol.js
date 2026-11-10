@@ -219,6 +219,14 @@ export const DOOR_TRANSIT_MS = 12000;
 export const DOOR_PASS_MS = 8000;
 export const DOOR_HZ = 4;
 export const DOOR_BURST = 6;
+// A numbered room can be locked from inside with a 4-digit PIN (ROOM_LOCK_FEATURE in welcome's `features`). A right PIN
+// from outside, or a socket dropped inside, holds the way in for PIN_PASS_MS. A socket gets PIN_TRIES wrong tries before
+// it waits PIN_WAIT_MS, so a PIN cannot be walked through at the door's rate.
+export const ROOM_LOCK_FEATURE = "room-lock-v1";
+export const ROOM_PIN = /^[0-9]{4}$/;
+export const PIN_PASS_MS = 60000;
+export const PIN_TRIES = 5;
+export const PIN_WAIT_MS = 60000;
 // HALLOWEEN: the arcade's ghost hunt's reports to its host: a follower's hits, every target's summed damage a tenth of a second
 // at a time in one `hits` report (up to 60 a target), so any mix of rifle and monkey fire stays at ten reports a second;
 // the rest of the budget is for a start or pause.
@@ -229,6 +237,11 @@ export const SHOT_BURST = 6;
 export const SHOT_RANGE = 120;
 export const SWING_HZ = 4;
 export const SWING_BURST = 4;
+// The frames that change who sees and hears whom, each fanned out to the whole room: well over anything a page sends,
+// and low enough that one account cannot saturate the island's only room.
+export const CONTROL_FRAMES = new Set(["hub", "visible", "zone", "poker-voice", "mute", "body"]);
+export const CONTROL_HZ = 8;
+export const CONTROL_BURST = 20;
 export const GHOST_HZ = 20;
 export const GHOST_BURST = 24;
 // Chalkboard: the EntropyLab board on the island, kept for good. One page at a time holds it, and only while its
@@ -394,6 +407,9 @@ export const parseClientMessage = (text) => {
     if (msg.op === "cancel") return { t: "door", op: "cancel" };
     if (msg.op === "pass") return typeof msg.door === "string" && DOOR_ROOM.test(msg.door) && (msg.dir === "in" || msg.dir === "out")
       ? { t: "door", op: "pass", door: msg.door, dir: msg.dir } : null;
+    if (msg.op === "lock" || msg.op === "try") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 && typeof msg.pin === "string" && ROOM_PIN.test(msg.pin)
+      ? { t: "door", op: msg.op, room: msg.room, pin: msg.pin } : null;
+    if (msg.op === "unlock") return Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 ? { t: "door", op: "unlock", room: msg.room } : null;
     return null;
   }
   if (msg.t === "wallet") {

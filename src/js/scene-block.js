@@ -3082,7 +3082,8 @@
     phase = "board";
     skyClouds = []; skyPerch = null; trophy = trophyNodes = null;
     sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = trampNodes = powerNodes = result = null;
-    mapRoot = fireNode = dancers = peelNodes = catapults = null;
+    mapRoot = fireNode = dancers = peelNodes = catapults = walletNodes = vendNodes = boltNode = boltRing = null;
+    hookNodes = []; ghostNodes = [];
     catNear = false;
     for (const t of SIM.TEAMS) iceNodes[t] = null;
     zipNear = false;
