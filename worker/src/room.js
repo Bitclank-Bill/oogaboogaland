@@ -83,8 +83,9 @@ export class Room extends DurableObject {
     this.doorActive = null;
     this.doorPasses = new Map();
     this.doorId = 0;
-    // Locked Sphere rooms by number: { pin, passes: id -> ms the way in stays open }. Nothing here reaches a client but
-    // which rooms are locked; every occupant's socket attachment carries its room's lock so hibernation keeps it.
+    // Locked Sphere rooms by number: { pin, passes: id -> ms the way in stays open }. Every page hears which rooms are
+    // locked; only the players inside one hear its PIN. Every occupant's socket attachment carries its room's lock so
+    // hibernation keeps it.
     this.roomLocks = new Map();
     this.pinTries = new Map();
     this.sweepAt = 0;
@@ -266,6 +267,7 @@ export class Room extends DurableObject {
     for (const o of this.players.values()) if (this.roomOf(o.zone) === room) {
       o.roomLock = lock ? { room, pin: lock.pin } : null;
       o.ws.serializeAttachment(this.attachment(o));
+      if (lock) this.send(o.ws, { t: "door", op: "room-pin", room, pin: lock.pin });
     }
   }
 
@@ -280,8 +282,10 @@ export class Room extends DurableObject {
   // A pass is spent on walking in; the new occupant holds the lock with everyone else inside.
   roomZoneChanged(p, from) {
     const entered = this.roomOf(p.zone), left = this.roomOf(from), lock = entered ? this.roomLocks.get(entered) : null;
-    if (lock) { lock.passes.delete(p.id); p.roomLock = { room: entered, pin: lock.pin }; }
-    else p.roomLock = null;
+    if (lock) {
+      lock.passes.delete(p.id); p.roomLock = { room: entered, pin: lock.pin };
+      this.send(p.ws, { t: "door", op: "room-pin", room: entered, pin: lock.pin });
+    } else p.roomLock = null;
     if (left !== entered) this.freeEmptyRoom(left);
   }
 

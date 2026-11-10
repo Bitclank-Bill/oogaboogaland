@@ -115,7 +115,8 @@ test("a room locked from inside keeps everyone out but those with its PIN, and o
   await h.send(r, inside, { t: "door", op: "lock", room: 4, pin: "1234" });
   assert.equal(messages(inside, "door", "lock-result").at(-1).ok, true);
   assert.deepEqual(messages(stranger, "door", "locks").at(-1).rooms, [4], "everyone hears which rooms are locked");
-  assert.ok(!JSON.stringify(stranger.sent).includes("1234"), "no client is ever told the PIN");
+  assert.deepEqual(messages(inside, "door", "room-pin").at(-1), { t: "door", op: "room-pin", room: 4, pin: "1234" }, "those inside are shown the PIN");
+  assert.ok(!JSON.stringify(stranger.sent).includes("1234") && !JSON.stringify(friend.sent).includes("1234"), "nobody outside is told the PIN");
   await h.send(r, stranger, { t: "door", op: "ask", dir: "in", room: 4 });
   assert.equal(messages(stranger, "door", "denied").at(-1).reason, "locked");
   await h.send(r, stranger, { t: "zone", name: "sphere-4" });
@@ -129,6 +130,7 @@ test("a room locked from inside keeps everyone out but those with its PIN, and o
   await h.send(r, friend, { t: "door", op: "cancel" });
   await h.send(r, friend, { t: "zone", name: "sphere-4" });
   assert.equal(r.players.get(2).zone, "sphere-4");
+  assert.equal(messages(friend, "door", "room-pin").at(-1).pin, "1234", "someone walking in is shown it too");
   await h.send(r, friend, { t: "zone", name: "sphere" });
   await h.send(r, friend, { t: "zone", name: "sphere-4" });
   assert.equal(r.players.get(2).zone, "sphere", "a pass is spent on walking in, so someone who left needs the PIN again");

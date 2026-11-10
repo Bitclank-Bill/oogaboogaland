@@ -190,7 +190,7 @@
   // room: "off" (signed out or no backend), "connecting", "live", "paused" (hidden a while), or a kick that
 // stopped it ("replaced", "full").
   const offline = new URLSearchParams(location.search);
-  const state = { roomLocks: false, lockedRooms: new Uint8Array(10), backend: false, me: null, donations: false, tess: false, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
+  const state = { roomLocks: false, lockedRooms: new Uint8Array(10), roomPin: "", roomPinRoom: 0, backend: false, me: null, donations: false, tess: false, highscores: false, highscoreSnapshots: false, logoutEpoch: 0, started: false,
     resolved: offline.has("nosim") || offline.get("net") === "0" || location.protocol !== "http:" && location.protocol !== "https:",
     room: "off", selfId: 0, online: 0, released: null, loopEpoch: 0, zone: "outside", body: null, bodyKind: null, bodyName: null, hostId: 0, followers: 0, ghostHostId: 0, ghostFollowers: 0, npcVersion: 0, doorway: false, pokerVoice: null,
     self: { x: NaN, y: NaN, z: NaN, zone: "" }, chatUnicode: false, privateChat: false, chalk: null, blendTo: null, blendT: 0, reactions: false, customHand: false, hand: false, handTone: 0, handEmoji: "",
@@ -378,8 +378,12 @@
       const locked = Array.isArray(rooms) && rooms.includes(room) ? 1 : 0;
       if (state.lockedRooms[room] !== locked) { state.lockedRooms[room] = locked; changed = true; }
     }
+    if (!state.lockedRooms[state.roomPinRoom]) forgetRoomPin();
     return changed;
   };
+  // The PIN of the locked room this page stands in (`state.roomPin`), which the room tells only those inside it; kept
+  // until the room opens, the page leaves it or the socket goes.
+  const forgetRoomPin = () => { state.roomPin = ""; state.roomPinRoom = 0; };
   const doorHeard = (event) => {
     for (const fn of doorSubscribers) fn(event);
   };
@@ -646,6 +650,10 @@
       else if (msg.op === "wait") doorHeard({ t: "door", op: "wait", ahead: Number.isSafeInteger(msg.ahead) && msg.ahead >= 0 ? msg.ahead : 0 });
       else if (msg.op === "denied") doorHeard({ t: "door", op: "denied", reason: typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "" });
       else if (msg.op === "locks") { setLockedRooms(msg.rooms); doorHeard({ t: "door", op: "locks" }); }
+      else if (msg.op === "room-pin" && Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9 && typeof msg.pin === "string" && /^[0-9]{4}$/.test(msg.pin)) {
+        state.roomPin = msg.pin; state.roomPinRoom = msg.room;
+        doorHeard({ t: "door", op: "room-pin", room: msg.room });
+      }
       else if (msg.op === "lock-result" && (msg.action === "lock" || msg.action === "unlock" || msg.action === "try") && Number.isInteger(msg.room) && msg.room >= 1 && msg.room <= 9) doorHeard({ t: "door", op: "lock-result", action: msg.action, room: msg.room, ok: msg.ok === true, reason: typeof msg.reason === "string" ? msg.reason.slice(0, 32) : "" });
     } else if (msg.t === "transit") {
       const transit = transitOf(msg);
@@ -713,6 +721,7 @@
     // Any request for the doorway went with the socket.
     if (state.doorway) doorHeard({ t: "door", op: "lost" });
     state.roomLocks = false;
+    forgetRoomPin();
     if (setLockedRooms(null)) doorHeard({ t: "door", op: "locks" });
     // So did the chalkboard: the board is kept to show until the room sends it again, but nobody here holds it.
     chalkOut.length = 0;
@@ -877,6 +886,7 @@
   const setZone = (name) => {
     if (cabinetAnchor) return;
     if (name === zone) return;
+    if (name !== `sphere-${state.roomPinRoom}`) forgetRoomPin();
     // Between two zones of the main world nothing changes for voice: a crossing there is a level, whatever the zone.
     // Into the place being crossed into (voice-blend.js `place`): the crossing turns round as the room turns it, across
     // the arcade hallway's midpoint (#422) to the same crossing from its other end.

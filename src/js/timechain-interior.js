@@ -355,8 +355,15 @@
       return near;
     };
     // The room's lock, shared rooms only: Space beside its keypad takes the view and the keys. Four digits and LOCK lock the
-    // room (`net.lockRoom`); UNLOCK opens it for anyone inside, and it opens by itself once nobody is inside.
+    // room (`net.lockRoom`); UNLOCK opens it for anyone inside, and it opens by itself once nobody is inside. Locked, the
+    // keypad shows its PIN to whoever is using it (`net.state.roomPin`, which the room tells only those inside).
     const lockPad = built.lockPad, LOCK_ANSWER = 4, LOCK_NOTE = 1.4, LOCKED_RED = "#ff4a3d";
+    let pinShown = "", pinWords = "";
+    const pinLine = () => {
+      const pin = BL.net.state.roomPinRoom === room.id ? BL.net.state.roomPin : "";
+      if (pin !== pinShown) { pinShown = pin; pinWords = pin ? `PIN ${pin}` : ""; }
+      return pinWords;
+    };
     const DOTS = ["", "*", "**", "***", "****"], lock = { on: false, digits: "", sent: 0, note: "", noteLeft: 0, leaveLeft: 0, locked: false, ease: 1, from: { x: 0, y: 0, z: 0 }, fromLook: { x: 0, y: 0, z: 0 } };
     const isLocked = () => shared && !!BL.net.state.lockedRooms[room.id];
     const nearLock = () => {
@@ -386,7 +393,8 @@
       const c = camera.position, t = camera.target;
       lock.from.x = c.x; lock.from.y = c.y; lock.from.z = c.z;
       lock.fromLook.x = t.x; lock.fromLook.y = t.y; lock.fromLook.z = t.z;
-      hud.hint(isLocked() ? "Press UNLOCK to open the room · Esc steps back" : "Type a 4-digit PIN, then press LOCK · Esc steps back", 7000);
+      const pin = isLocked() && pinLine();
+      hud.hint(isLocked() ? `${pin ? `${pin} · ` : ""}Press UNLOCK to open the room · Esc steps back` : "Type a 4-digit PIN, then press LOCK · Esc steps back", 7000);
       return true;
     };
     const lockSend = () => {
@@ -426,7 +434,7 @@
         hud.toast(locked ? `${room.name} is locked · players outside need its PIN` : `${room.name} is unlocked`);
       }
       built.lockSign.visible = locked && doors.open < 0.05;
-      const words = lock.noteLeft > 0 ? lock.note : locked ? "LOCKED" : lock.on ? lock.digits ? DOTS[lock.digits.length] : "SET 4-DIGIT PIN" : !shared ? "SOLO" : "UNLOCKED";
+      const words = lock.noteLeft > 0 ? lock.note : locked ? lock.on && pinLine() || "LOCKED" : lock.on ? lock.digits ? DOTS[lock.digits.length] : "SET 4-DIGIT PIN" : !shared ? "SOLO" : "UNLOCKED";
       lockPad.say(words, locked ? LOCKED_RED : undefined);
       lockPad.actAs(locked ? "UNLOCK" : "LOCK", locked || lock.digits.length === 4);
       lockPad.tick(dt);
