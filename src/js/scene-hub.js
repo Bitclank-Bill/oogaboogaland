@@ -2983,8 +2983,8 @@
     return { site, group, claimGround, phase: null, window: null, heimdall: null, hum: 0, effectsActive: false, effectsTime: 0 };
   };
   // Repo Island off the south rim (repo-island.js): its rock, its stone bridge from the top of the south stairs and its
-  // section signs now; its totems in idle time once the visit is ready (`start`). The rock, the bridge and the signs'
-  // posts are solid, as each chunk of totems is once it joins; the bridge's lanterns are lamps. Canvas 2D gets the
+  // section plaques now; its totems in idle time once the visit is ready (`start`). The rock and the bridge are solid,
+  // as each chunk of totems is once it joins; the bridge's lanterns are lamps. Canvas 2D gets the
   // island and its bridge without the totems, which would cost it more faces than the rest of the island together.
   const buildRepoIsland = function* (slice) {
     yield* BL.repoIslandModels.rockSteps.steps(slice);
@@ -5070,6 +5070,19 @@
       p.x += dx * lo; p.y += dy * lo; p.z += dz * lo;
       break;
     }
+  };
+  // Repo Island turns whoever stands on it with it (repo-island.js `carry`): the Ooga the visitor drives (a guest's own
+  // likeness is not on the crew's list), every other Ooga the crew moves itself and the visitor's gorilla. Another
+  // page's player is turned by their own page, and a puppet by the host's.
+  const carryRepoIsland = () => {
+    const driven = pilot.player;
+    if (driven) repoIsland.carry(driven.root.position, driven.root.position.y - driven.baseY);
+    for (let i = 0; i < crew.list.length; i++) {
+      const cave = crew.list[i];
+      if (cave !== driven && !cave.puppet) repoIsland.carry(cave.root.position, cave.root.position.y - cave.baseY);
+    }
+    const gorilla = clankerPlay.player;
+    if (gorilla) repoIsland.carry(gorilla.root.position, gorilla.root.position.y);
   };
   const inBananas = (cave, x = cave.root.position.x, z = cave.root.position.z) => bananaCover.intersectsBody(x, cave.root.position.y - (cave.gorilla ? 0 : cave.baseY), z, cave.gorilla ? cave.gorilla.bodyHeight : cave.bodyHeight);
   const npcPileAt = (x, feet, z, height) => feet <= ALTAR_HEIGHT + STEP_MAX && feet + height > 0 && Math.hypot(x, z) < altar.platformRadius + PLAYER_RADIUS
@@ -8041,6 +8054,8 @@
     if (!cloudPlaying()) critters.update(dt, elapsed, RENDER_OPTS.day, RENDER_OPTS.stars, fire.k, 1);
     if (!gameMode && !cloudPlaying()) updateClouds(dt);
     updateGameRing(dt, elapsed);
+    // Repo Island turns before the solids are synced, so its ground and its riders move in the same frame.
+    if (repoIsland && !cloudPlaying() && repoIsland.turn()) carryRepoIsland();
     solids.sync();
     if (gameMode) updateRageThrowMap();
     updateSleepingSolids();
@@ -11095,7 +11110,7 @@
     if (BL.scenes.bifrost) yield* BL.bifrostIsle.prepareSteps();
     // Repo Island's rock, then its walked shells' collision trees, a task each.
     yield* BL.repoIslandModels.rockSteps.steps(slice);
-    for (const geometry of [BL.repoIslandModels.rockSteps().soil, BL.repoIslandModels.bridge().stone, BL.repoIslandModels.signs().geometry]) {
+    for (const geometry of [BL.repoIslandModels.rockSteps().soil, BL.repoIslandModels.bridge().stone]) {
       yield;
       BL.solidProps.prepare(geometry);
     }

@@ -12,7 +12,8 @@
 //
 // The list was drawn up in November 2026 from GitHub itself: every repository checked as live, not archived and its
 // own project (the forks here are the canonical ones), preferring those that merge pull requests on GitHub, since a
-// totem lights only from one. Adding a repository is one row in its section; the island lays itself out again.
+// totem lights only from one. Adding a repository is one row in its section; the island lays itself out again, and
+// when the plan says a wedge has no room, `ISLE.R` in repo-island-models.js grows a little.
 (() => {
   "use strict";
   const BL = globalThis.BL = globalThis.BL || {};
@@ -60,9 +61,11 @@
     ["btcsuite/btcwallet", "btcwallet", "WALLETD", "nodes", 0.34],
     ["getfloresta/Floresta", "Floresta", "FLOREST", "nodes", 0.32],
     ["mynodebtc/mynode", "myNode", "MYNODE", "nodes", 0.3],
+    ["libbitcoin/libbitcoin-node", "libbitcoin node", "LBNODE", "nodes", 0.3],
     ["utreexo/utreexod", "utreexod", "UTREE", "nodes", 0.28],
     ["2140-dev/kyoto", "Kyoto", "KYOTO", "nodes", 0.26],
     ["fort-nix/nix-bitcoin", "nix-bitcoin", "NIKSBTC", "nodes", 0.24],
+    ["rbitcoin-org/rbitcoin", "rbitcoin", "RBTC", "nodes", 0.24],
     // Chain Explorers
     ["mempool/mempool", "mempool.space", "MEMPOOL", "indexers", 0.6],
     ["romanz/electrs", "electrs", "ELECTRS", "indexers", 0.46],

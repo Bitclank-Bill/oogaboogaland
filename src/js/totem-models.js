@@ -89,7 +89,9 @@
   // Totem i's design laid out at its carved size, and the scale that stands its crest's tip at its importance:
   // each face's centre, the cap, the collision boxes [half x, y0, y1, half z] stacked without overlap, and the
   // eye sockets, all in metres once scaled.
-  const layoutOf = (d, importance) => {
+  // `girth`, when given, is the carving's own scale across, kept within 0.8 and 1.3 times its height's (`s`) so no face
+  // is squashed or drawn out; without it (the meadow's four) the carving keeps its shape at its height's scale.
+  const layoutOf = (d, importance, girth) => {
     let y = FOOT;
     const faces = d.faces.map((kind) => {
       const k = KINDS[kind], f = { kind, zc: 0.22, ...k, y: y + k.h / 2 };
@@ -97,7 +99,7 @@
       return f;
     });
     const last = faces[faces.length - 1], top = last.y + 0.5, crest = CRESTS[d.crest], apex = top + crest.h;
-    const s = importance * CORE_HEIGHT / apex;
+    const s = importance * CORE_HEIGHT / apex, w = girth === undefined ? s : Math.min(1.3 * s, Math.max(0.8 * s, girth));
     // One box a face's slot, the top bird's split round the band of its wings, then the cap and the crest.
     const boxes = [[0.8, 0, 0.3, 0.8]];
     faces.forEach((f, k) => {
@@ -110,8 +112,8 @@
       } else boxes.push([f.hx, y0, y1, 0.5]);
     });
     boxes.push([crest.hx, top + 0.15, apex, crest.hz]);
-    const reach = Math.max(...boxes.map((b) => Math.max(b[0], b[3]))) * s;
-    return { design: d, faces, top, apex: apex * s, carvedApex: apex, s, reach, rings: faces.slice(1).map((f) => (f.y - f.h / 2) * s), boxes: boxes.map((b) => b.map((v) => v * s)), eyes: [] };
+    const reach = Math.max(...boxes.map((b) => Math.max(b[0], b[3]))) * w;
+    return { design: d, faces, top, apex: apex * s, carvedApex: apex, s, w, reach, rings: faces.slice(1).map((f) => (f.y - f.h / 2) * s), boxes: boxes.map(([hx, y0, y1, hz]) => [hx * w, y0 * s, y1 * s, hz * w]), eyes: [] };
   };
   const layout = variants((i) => {
     const repo = BL.totemFeed.REPOS[i];
@@ -421,9 +423,10 @@
       c.round.push(moved(turnedY(dome(0, 0, 0, 0.026, 0.025, BONE, 8), a), Math.sin(a) * (R + 0.02), y, Math.cos(a) * (R + 0.02)));
     }
   };
-  const scaled = (geo, s) => {
+  // Scales a carving `w` across and `s` up.
+  const scaled = (geo, w, s) => {
     const v = geo.verts;
-    for (let k = 0; k < v.length; k++) v[k] *= s;
+    for (let k = 0; k < v.length; k++) v[k] *= k % 3 === 1 ? s : w;
     return geo;
   };
 
@@ -432,7 +435,7 @@
   const ringSector = variants((i) => {
     const L = layout(i), g = turn([[R + 0.023, -0.019], [R + 0.023, 0.019]], RING_SEGMENTS, L.design.paint, 1);
     const f = g.faces[0];
-    return noShadow(scaled({ verts: f.i.flatMap((k) => g.verts.slice(k * 3, k * 3 + 3)), faces: [{ ...f, i: [0, 1, 2, 3] }], lines: [], depthOffset: true, surfaceOverlay: true }, L.s));
+    return noShadow(scaled({ verts: f.i.flatMap((k) => g.verts.slice(k * 3, k * 3 + 3)), faces: [{ ...f, i: [0, 1, 2, 3] }], lines: [], depthOffset: true, surfaceOverlay: true }, L.w, L.s));
   });
 
   // A totem's carving at its layout L: the wood, stone, paint and board of the totem whose name board reads `word`,
@@ -461,7 +464,7 @@
         }
       });
       band(c, FOOT - 0.05);
-      const geo = scaled(shaded(c.round, c.flat), L.s);
+      const geo = scaled(shaded(c.round, c.flat), L.w, L.s);
       // Keep just the face and crest paint for the glow overlay, before adding the board and foot stones.
       // The overlay shares these exact carved surfaces and is drawn only while the repository glows.
       if (opts.highlights !== false) {
@@ -485,13 +488,13 @@
         }
         geo.featureHighlights = highlights;
       }
-      for (const e of c.eyes) { e[0] *= L.s; e[1] *= L.s; e[2] *= L.s; e[3] *= L.s; }
+      for (const e of c.eyes) { e[0] *= L.w; e[1] *= L.s; e[2] *= L.w; e[3] *= L.w; }
       // The name board, standing on its pegs in front of the stones.
-      if (opts.board !== false) flatInto(geo, moved(merge(opts.board || postSign(word, 0.32, 0.18)), 0, 0, 0.15 + 0.85 * L.s));
-      // The ring of rough stones the pole is set in.
+      if (opts.board !== false) flatInto(geo, moved(merge(opts.board || postSign(word, 0.32, 0.18)), 0, 0, 0.15 + 0.85 * L.w));
+      // The ring of rough stones the pole is set in, as wide as the pole and as tall as it is scaled.
       const rand = mulberry32(seed), s = L.s, lean = lite() || opts.leanStones, stones = bare() ? 0 : lean ? 6 : 8;
       for (let k = 0; k < stones; k++) {
-        const a = k / stones * Math.PI * 2 + (rand() - 0.5) * 0.3, rr = (R + 0.2 + rand() * 0.08) * s, r = (0.2 + rand() * 0.07) * s;
+        const a = k / stones * Math.PI * 2 + (rand() - 0.5) * 0.3, rr = (R + 0.2 + rand() * 0.08) * L.w, r = (0.2 + rand() * 0.07) * L.w;
         puff(geo, Math.sin(a) * rr, 0.1 * s, Math.cos(a) * rr, r, (0.14 + rand() * 0.05) * s, r * 0.9, STONES, rand, lean ? 3 : 5, lean ? 6 : 9, Math.floor(rand() * 3) - 1);
       }
       geo.collisionGeometry = merge(...L.boxes.map(([hx, y0, y1, hz]) => box({ w: hx * 2, h: y1 - y0, d: hz * 2, color: CHAR, offset: { y: (y0 + y1) / 2 } })));
@@ -523,7 +526,7 @@
         if (on === "#") parts.push(box({ w: cell, h: cell, d: 0.02, color: BTC, emissive: 1, offset: { x: (col - 2) * cell * side, y: cy + (3 - r) * cell, z: side * 0.06 } }));
       }));
     }
-    return noShadow(scaled(merge(...parts), L.s));
+    return noShadow(scaled(merge(...parts), L.w, L.s));
   };
   const glyphs = variants((i) => glyphsOf(layout(i), BL.totemFeed.REPOS[i].word));
 

@@ -30287,12 +30287,12 @@ const repoIslandChecks = (BL, island) => {
     if (meadow.has(t.repo)) own &&= t.design === TM.DESIGNS[BL.totemFeed.REPOS.find((r) => r.repo === t.repo).word];
     else { const key = JSON.stringify(t.design); own &&= !signatures.has(key); signatures.add(key); }
     tall &&= Math.abs(t.L.apex - t.importance * TM.CORE_HEIGHT) < 1e-9;
-    inside &&= Math.hypot(t.x, t.z) + t.L.reach < M.ISLE.R - 0.5 && (t.r === 0 || !M.pathAt(t.x, t.z, P.spokes));
+    inside &&= Math.hypot(t.x, t.z) + t.L.reach < M.PLAN.edge && (t.r === 0 || !M.pathAt(t.x, t.z, P.spokes));
   }
   const chunked = P.chunks.flat().sort((a, b) => a - b).every((at, k) => at === k) && P.chunks.flat().length === P.totems.length && P.chunks.every((c) => c.length <= M.CHUNK);
   // The bridge leaves the south terrace level with it, past the rim, and the island's middle is a deck and its radius further.
   const bridged = spot.y === island.surfaceAt(0, spot.rim - 0.3) && island.surfaceAt(0, spot.rim + 0.1) < 0.5 && spot.z === spot.rim + M.BRIDGE.span + M.ISLE.R;
-  record("repo island plan: every repository stands once, in its own carving (the meadow's four in theirs), as tall as its importance makes it, wholly on the island and off its paths, in chunks of up to four, past a bridge level with the south terrace",
+  record("repo island plan: every repository stands once, in its own carving (the meadow's four in theirs), as tall as its importance makes it, wholly inside the lip and off its paths, in chunks of up to four, past a bridge level with the south terrace",
     placed && seen.size === D.REPOS.length && own && tall && inside && chunked && bridged, JSON.stringify({ placed, count: seen.size, own, tall, inside, chunked, bridged, spot }));
   const h = createHash("sha256");
   for (let i = 0; i < 4; i++) for (const g of [TM.body(i), TM.glyphs(i), TM.featureHighlights(i)]) h.update(JSON.stringify([g.verts, g.faces.map((f) => [f.i, f.color, f.emissive || 0])]));

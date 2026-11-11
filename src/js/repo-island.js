@@ -1,6 +1,13 @@
 // Repo Island at work in the hub (repo-island-models.js builds it): the rock, the bridge and the section signs are made
 // in the hub's `enter`; the totems come after, in idle time, so the island costs the hub's boot almost nothing.
 //
+// The island turns slowly about its middle, a turn every TURN seconds, lip, signs, totems and all (`spin`, a child of
+// the group the bridge stays on); its angle comes from the clock (the room's where there is one), so every page shows
+// it at the same angle and other players stand where they do. `spin()`, called before the hub's solids are synced,
+// sets the angle and says how far it turned since the last frame; `carry(position, feet)` turns a body standing on or
+// over the island with it, as a turntable takes what stands on it. The pick targets turn with it on a pivot of their
+// own, kept off the scene graph. `?debug=1&repospin=0` holds it still.
+//
 // Idle work (`requestIdleCallback`, or short timeouts where a browser has none), a little at a time and never while
 // the page is hidden: first every chunk at its `distant` detail with its collision, runes and eyes (about a hundred
 // milliseconds in all), each chunk joining the island as it is done; then, only for a view that comes near, a chunk's
@@ -11,10 +18,12 @@
 // GPU (they stay out of `liveGeometry`), so the main island holds only the distant ones and the nearest few far ones.
 //
 // A totem lights for `repoFeed.RECENT` after its repository merges a pull request (`repo-feed.js`), as the meadow's do:
-// its runes glow in its section's rhythm, waning to 60% by the day's end, and its two crest eyes burn, each flame a
-// node on the arcade's one `blaze` geometry, lit only on a chunk carved finer than distant (across the water an ember
-// in each eye, merged with its runes, does instead). The lit runes of a chunk are merged into one mesh a brightness band
-// (fresh within FRESH, older), rebuilt only when that chunk's lit set changes, so 168 totems light in a few dozen draws.
+// its runes glow in its section's rhythm and the crystals under it glow, waning to 60% by the day's end, and its two
+// crest eyes burn, each flame a node on the arcade's one `blaze` geometry, lit only on a chunk carved finer than distant
+// (across the water an ember in each eye, merged with its runes, does instead). Each crystal cluster under the island
+// glows from a core inside its crystals, bright while at least half the totems over it are lit and dim while fewer
+// are, the cores merged into one mesh a band, rebuilt only when they change. The lit runes of a chunk are merged into one mesh a brightness band
+// (fresh within FRESH, older), rebuilt only when that chunk's lit set changes, so 170 totems light in a few dozen draws.
 // A merge seen during the visit flares that totem's runes for FLARE seconds. The runes and flames animate only while
 // the view is within ACTIVE of the island; elsewhere they hold still.
 //
@@ -27,6 +36,9 @@
   const BL = window.BL = window.BL || {};
   const { createNode, addChild, removeChild, updateWorld } = BL.scene;
   const params = new URLSearchParams(location.search), DEBUG_GLOW = params.get("debug") === "1" && params.get("totemglow") === "1";
+  const STILL = params.get("debug") === "1" && params.get("repospin") === "0";
+  // A turn every TURN seconds; a frame turning further than MAX_TURN (the page was away) carries nobody.
+  const TURN = 480, MAX_TURN = 0.05;
   // A chunk shows its near carving within NEAR of the view and its far within FAR (each let go a little further out),
   // and readies them earlier, from NEAR_PREP and FAR_PREP, so a visitor walking in finds them built and uploaded.
   const NEAR = 12, NEAR_OUT = 15, FAR = 30, FAR_OUT = 35, NEAR_PREP = 22, FAR_PREP = 36, PREP_OUT = 6;
@@ -47,33 +59,39 @@
   const create = ({ island, renderer, hooks }) => {
     const M = BL.repoIslandModels, D = BL.repoIslandData, P = M.plan(), spot = M.spot(island), feed = BL.repoFeed;
     const rock = M.rockSteps(), bridge = M.bridge(), signs = M.signs();
-    const group = createNode({ position: { x: spot.x, y: spot.y, z: spot.z }, sightHidden: true });
-    const soil = createNode({ geometry: rock.soil, sightHidden: true, sightSolid: true }), keel = createNode({ geometry: rock.keel, sightHidden: true });
+    const group = createNode({ position: { x: spot.x, y: spot.y, z: spot.z }, sightHidden: true }), spin = createNode({ sightHidden: true });
+    const soil = createNode({ geometry: rock.soil, sightHidden: true, sightSolid: true }), lip = createNode({ geometry: rock.lip, sightHidden: true });
+    const pavement = createNode({ geometry: rock.pavement, sightHidden: true }), crystals = createNode({ geometry: rock.crystals, sightHidden: true });
+    const crystalBase = createNode({ geometry: rock.crystalBase, sightHidden: true }), carpet = createNode({ geometry: rock.carpet, sightHidden: true });
     const stone = createNode({ geometry: bridge.stone, sightHidden: true, sightSolid: true }), glass = createNode({ geometry: bridge.glass, glow: 0, sightHidden: true });
     const boards = createNode({ geometry: signs.geometry, sightHidden: true });
     // Canvas 2D sorts every face it draws each frame: it gets the island and its bridge, without the signs or totems.
     const canvas = renderer.kind !== "webgl2";
-    addChild(group, soil, keel, stone, glass);
-    if (!canvas) addChild(group, boards);
+    addChild(group, spin, stone, glass);
+    addChild(spin, soil, lip);
+    if (!canvas) addChild(spin, boards, pavement, crystalBase, carpet, crystals);
     const sections = new Map(D.SECTIONS.map((s) => [s.id, s]));
     const world = (x, y, z) => ({ x: spot.x + x, y: spot.y + y, z: spot.z + z });
-    const targets = [];
-    const target = (at, owner, radius) => {
+    // The turn: its angle, its cosine and sine, and how far the last `spin` turned it.
+    let angle = 0, cos = 1, sin = 0, turned = 0, lastAt = -1;
+    // Pick targets on the island hang off `pivot`, off the scene graph, turned with the island; the bridge's stands still.
+    const pivot = createNode({ position: { x: spot.x, y: spot.y, z: spot.z } }), targets = [];
+    const target = (at, owner, radius, turning = true) => {
       const node = createNode({ position: at, geometry: PICK_GEOMETRY });
-      updateWorld(node);
+      if (turning) { addChild(pivot, node); updateWorld(pivot); } else updateWorld(node);
       hooks.addTarget(node, owner, { radius });
       targets.push(node);
       return node;
     };
-    if (!canvas) for (const s of signs.picks) target(world(s.x, s.y, s.z), { kind: "repo-sign", section: sections.get(s.id), count: P.wedges.find((w) => w.id === s.id)?.count || 0 }, s.radius);
-    target(world(0, 0.6, (bridge.from + bridge.to) / 2), { kind: "repo-bridge" }, bridge.width / 2 + 0.3);
+    if (!canvas) for (const s of signs.picks) target({ x: s.x, y: s.y, z: s.z }, { kind: "repo-sign", section: sections.get(s.id), count: P.wedges.find((w) => w.id === s.id)?.count || 0 }, s.radius);
+    target(world(0, 0.6, (bridge.from + bridge.to) / 2), { kind: "repo-bridge" }, bridge.width / 2 + 0.3, false);
     // The ground the main island's scatter keeps off: the bridge head on the south terrace.
     const claims = [[0, spot.rim - 0.5, bridge.width / 2 + 0.9], [0, spot.rim - 2, bridge.width / 2 + 0.6]];
     // The lanterns at either end of the bridge, for the hub's dusk lamps.
     const lamps = bridge.lamps.map((l) => world(l.x, l.y, l.z));
-    // Arriving: at the island's end of the bridge facing the plaza, Bitcoin Core ahead.
-    const arrival = world(0, 0, -M.ISLE.R + 2.5);
-    const view = { yaw: Math.PI, pitch: 0.24, dist: 13, target: world(0, 2.2, -M.ISLE.R + 9) };
+    // Arriving: on the lip at the bridge's end, facing in toward Bitcoin Core.
+    const arrival = world(0, M.LIP.rise, -M.ISLE.R + M.LIP.width / 2);
+    const view = { yaw: Math.PI, pitch: 0.24, dist: 13, target: world(0, 2.2, -M.ISLE.R + 6) };
 
     // ---- chunks ----
     const chunks = P.chunks.map((list, k) => ({ k, list, bounds: P.bounds[k], node: null, tier: 0, want: 0, prep: 0, distance: Infinity, meshes: [null, null, null], ready: [false, false, false],
@@ -86,16 +104,18 @@
       c.eyes = built.eyes;
       c.ready[0] = true;
       c.node = createNode({ geometry: built.mesh, sightHidden: true });
-      addChild(group, c.node);
+      addChild(spin, c.node);
       hooks.addSolid(c.node);
       c.list.forEach((at) => {
-        const t = P.totems[at], P0 = world(t.x, 0, t.z), cos = Math.cos(t.ry), sin = Math.sin(t.ry);
+        const t = P.totems[at], c0 = Math.cos(t.ry), s0 = Math.sin(t.ry);
         const owner = { kind: "repo-totem", index: t.index, at, weaponType: "none" };
+        // The ray into the island's turned frame, then the totem's own.
         owner.pickRay = (ray) => {
-          const ox = ray.ox - P0.x, oz = ray.oz - P0.z;
-          return BL.totemModels.hitOf(t.L, ox * cos - oz * sin, ray.oy - P0.y, ox * sin + oz * cos, ray.dx * cos - ray.dz * sin, ray.dy, ray.dx * sin + ray.dz * cos);
+          const wx = ray.ox - spot.x, wz = ray.oz - spot.z, ox = wx * cos - wz * sin - t.x, oz = wx * sin + wz * cos - t.z;
+          const dx = ray.dx * cos - ray.dz * sin, dz = ray.dx * sin + ray.dz * cos;
+          return BL.totemModels.hitOf(t.L, ox * c0 - oz * s0, ray.oy - spot.y, ox * s0 + oz * c0, dx * c0 - dz * s0, ray.dy, dx * s0 + dz * c0);
         };
-        target(world(t.x, t.L.apex / 2, t.z), owner, Math.max(t.L.reach, t.L.apex / 2) + 0.2);
+        target({ x: t.x, y: t.L.apex / 2, z: t.z }, owner, Math.max(t.L.reach, t.L.apex / 2) + 0.2);
       });
       litDirty = true;
     };
@@ -153,16 +173,17 @@
     };
     // Idle work runs from `start` (the visit is ready) until `pause` (the hub is suspended) or `dispose`; Canvas 2D,
     // which draws no totems, never starts it.
-    const start = () => { if (canvas) return; paused = false; schedule(); };
+    const start = () => { lastAt = -1; if (canvas) return; paused = false; schedule(); };
     const pause = () => { paused = true; cancel(); };
 
     // ---- the lit runes and fires ----
-    let litDirty = true, litVersion = -1, litChecked = 0, flare = null, flareLeft = 0, active = false, wasActive = true;
+    let litDirty = true, litVersion = -1, litChecked = 0, flare = null, flareLeft = 0, active = false, wasActive = true, gemKey = "";
+    const cluster = M.crystals(), gemBands = [null, null];
     const flames = [];
     const flameAt = (n) => {
       while (flames.length <= n) {
         const node = createNode({ geometry: BL.arcadeModels.blaze(), visible: false, sightHidden: true });
-        addChild(group, node);
+        addChild(spin, node);
         flames.push({ node, size: 0, phase: flames.length * 1.7, live: 0, chunk: null });
       }
       return flames[n];
@@ -198,13 +219,34 @@
         bands.forEach((slots, band) => {
           if (!slots.length) { if (c.buckets[band]) c.buckets[band].visible = false; return; }
           const geometry = BL.models.noShadow(BL.models.merge(...slots.map((slot) => c.glyphs[slot])));
-          if (!c.buckets[band]) { c.buckets[band] = createNode({ geometry, glow: 0, sightHidden: true }); addChild(group, c.buckets[band]); }
+          if (!c.buckets[band]) { c.buckets[band] = createNode({ geometry, glow: 0, sightHidden: true }); addChild(spin, c.buckets[band]); }
           else c.buckets[band].geometry = geometry;
           c.buckets[band].visible = true;
           c.level[band] = band ? 0.7 : 1;
         });
       }
       for (let n = fire; n < flames.length; n++) { flames[n].node.visible = false; flames[n].chunk = null; }
+      // The crystals: one bright where at least half the totems over it are lit, dim where fewer are.
+      const bands = [[], []];
+      let key = "";
+      cluster.forEach((c, k) => {
+        let lit = 0;
+        for (const at of c.totems) if (totems[at].live) lit++;
+        if (!lit) return;
+        const band = lit * 2 >= c.totems.length ? 0 : 1;
+        bands[band].push(k);
+        key += `${k}:${band},`;
+      });
+      if (key !== gemKey) {
+        gemKey = key;
+        bands.forEach((list, band) => {
+          if (!list.length) { if (gemBands[band]) gemBands[band].visible = false; return; }
+          const geometry = BL.models.noShadow(BL.models.merge(...list.map((k) => M.gem(k))));
+          if (!gemBands[band]) { gemBands[band] = createNode({ geometry, glow: 0, sightHidden: true }); addChild(spin, gemBands[band]); }
+          else gemBands[band].geometry = geometry;
+          gemBands[band].visible = true;
+        });
+      }
       wasActive = true;
     };
     const onFeed = (event) => {
@@ -212,7 +254,7 @@
       if (!event.fresh) return;
       const t = totems.find((o) => o.t.index === event.index);
       if (!t || !t.chunk || !t.chunk.glyphs) return;
-      if (!flare) { flare = createNode({ geometry: t.chunk.glyphs[t.slot], glow: 0, sightHidden: true }); addChild(group, flare); }
+      if (!flare) { flare = createNode({ geometry: t.chunk.glyphs[t.slot], glow: 0, sightHidden: true }); addChild(spin, flare); }
       flare.geometry = t.chunk.glyphs[t.slot];
       flare.visible = true;
       flareLeft = FLARE;
@@ -220,9 +262,35 @@
     };
     const unsubscribe = feed.subscribe(onFeed);
 
+    // ---- the turn ----
+    // Sets the island's angle from the clock, the room's where there is one; returns how far it turned this frame.
+    const turn = () => {
+      const now = STILL ? 0 : BL.net && BL.net.serverNow ? BL.net.serverNow() : Date.now();
+      const next = now / 1000 % TURN / TURN * Math.PI * 2;
+      turned = lastAt < 0 ? 0 : Math.atan2(Math.sin(next - angle), Math.cos(next - angle));
+      if (Math.abs(turned) > MAX_TURN) turned = 0;
+      lastAt = now;
+      angle = next; cos = Math.cos(angle); sin = Math.sin(angle);
+      spin.rotation.y = pivot.rotation.y = angle;
+      updateWorld(pivot);
+      return turned;
+    };
+    // Turns a body on or over the island (inside its edge, its feet from a little under the top to well over the
+    // tallest totem) about the island's middle by the last turn, as the ground under it turned.
+    const carry = (p, feet) => {
+      if (!turned) return;
+      const dx = p.x - spot.x, dz = p.z - spot.z;
+      if (dx * dx + dz * dz > M.ISLE.R * M.ISLE.R || feet < spot.y - 1 || feet > spot.y + 12) return;
+      const c = Math.cos(turned), s = Math.sin(turned);
+      p.x = spot.x + dx * c + dz * s;
+      p.z = spot.z - dx * s + dz * c;
+    };
+
     // ---- per frame ----
     const update = (dt, elapsed, camera) => {
-      const cx = camera.position.x - spot.x, cy = camera.position.y - spot.y - 2, cz = camera.position.z - spot.z;
+      // The view in the island's turned frame, where the chunks' bounds are.
+      const wx = camera.position.x - spot.x, wz = camera.position.z - spot.z, cy = camera.position.y - spot.y - 2;
+      const cx = wx * cos - wz * sin, cz = wx * sin + wz * cos;
       const fromMiddle = Math.hypot(cx, cz);
       active = fromMiddle < M.ISLE.R + ACTIVE;
       let wanted = false;
@@ -268,6 +336,8 @@
         node.glow = (0.45 + 0.55 * rhythm) * power;
         node.highlight = (0.45 + 1.6 * rhythm) * power;
       }
+      // The crystals' cores ripple together through the glass, the dim band at half; no highlight, which would turn them gold.
+      for (let band = 0; band < 2; band++) if (gemBands[band] && gemBands[band].visible) gemBands[band].glow = (0.75 + 0.25 * RHYTHMS.ripple(t)) * (band ? 0.5 : 1);
       for (let n = 0; n < flames.length; n++) {
         const f = flames[n];
         if (!f.node.visible) continue;
@@ -302,8 +372,8 @@
       return dx * dx + dz * dz < (M.ISLE.R + 0.5) ** 2 && feet > spot.y - 3;
     };
     const onBridge = (x, feet, z) => {
-      const lz = z - spot.z;
-      return Math.abs(x - spot.x) <= bridge.width / 2 && lz >= bridge.from + 0.6 && lz < -M.ISLE.R && feet > spot.y - 3;
+      const lx = x - spot.x, lz = z - spot.z;
+      return Math.abs(lx) <= bridge.width / 2 && lz >= bridge.from + 0.6 && lx * lx + lz * lz > M.ISLE.R * M.ISLE.R && lz < 0 && feet > spot.y - 3;
     };
     const dispose = () => {
       disposed = true;
@@ -315,8 +385,8 @@
       if (group.parent) removeChild(group.parent, group);
     };
     const stats = () => ({ chunks: chunks.length, built, tiers: chunks.map((c) => c.tier).join(""), wants: chunks.map((c) => c.want).join(""), preps: chunks.map((c) => c.prep).join(""),
-      lit: totems.filter((o) => o.live).length, flames: flames.filter((f) => f.node.visible).length, active, targets: targets.length });
-    return { spot, group, solids: canvas ? [soil, stone] : [soil, stone, boards], lamps, glass, claims, arrival, view, start, pause, update, liveGeometry, tip, open, onIsland, onBridge, dispose, stats,
+      lit: totems.filter((o) => o.live).length, flames: flames.filter((f) => f.node.visible).length, active, targets: targets.length, angle });
+    return { spot, group, solids: [soil, stone], lamps, glass, claims, arrival, view, start, pause, turn, carry, update, liveGeometry, tip, open, onIsland, onBridge, dispose, stats,
       bridgeEnds: { from: world(0, 0, bridge.from + 0.6), to: world(0, 0, bridge.to - 0.9) } };
   };
   BL.repoIsland = { create };
