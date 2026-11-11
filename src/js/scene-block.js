@@ -2357,6 +2357,8 @@
   const MAP_DECOR = { fort: ["rock", "bush", "tree"], town: ["tree", "bush", "bush"], jungle: ["tree", "tree", "bush"], haunted: ["rock", "rock", "bush"] };
   const buildDecor = (A, add) => {
     const kinds = MAP_DECOR[A.id], H = BL.hubModels;
+    // Gorilla Jungle's ring of trees is one mesh of its own.
+    if (A.id === "jungle") { add(createNode({ geometry: BM.jungleRing(), sightHidden: true })); return; }
     for (let k = 0; k < 18; k++) {
       const ang = k / 18 * Math.PI + 0.13 * (k % 5), n = 0.68 + 0.24 * ((k * 37 % 11) / 11), x = Math.sin(ang) * A.W * n, z = Math.cos(ang) * A.L * n;
       if (SIM.solidAt(x, 1, z) || SIM.solidAt(x, 3.8, z) || Math.abs(x) < A.fieldW + 1 && Math.abs(z) < A.fieldL + 1) continue;
@@ -2389,7 +2391,7 @@
     add(createNode({ geometry: BM.isle(SIM.MAPS.indexOf(selection.map)) }));
     add(createNode({ geometry: BM.keel(SIM.MAPS.indexOf(selection.map)) }));
     if (detail.full) buildDecor(A, add);
-    for (const [x, z] of A.puddles || []) add(createNode({ geometry: BM.puddle(), position: { x, y: 0, z } }));
+    if (!(A.drawn && A.drawn.puddles)) for (const [x, z] of A.puddles || []) add(createNode({ geometry: BM.puddle(), position: { x, y: 0, z } }));
     boltNode = add(createNode({ geometry: BM.bolt(), visible: false, sightHidden: true }));
     boltRing = add(createNode({ geometry: BM.ring(0), visible: false, sightHidden: true, scale: { x: 3.2, y: 1, z: 3.2 } }));
     for (let k = 0; k < 12; k++) {
@@ -2443,7 +2445,7 @@
     // The FREE WALLETS machines, facing the middle of the field.
     vendNodes = A.vends.map(([x, z]) => add(createNode({ geometry: BM.vend(), position: { x, y: 0, z }, rotation: { x: 0, y: x < 0 ? Math.PI / 2 : -Math.PI / 2, z: 0 } })));
     // Gorilla Jungle: the cargo nets up to the tree forts, and the gorillas themselves.
-    for (const n of A.nets || []) {
+    for (const n of (A.drawn && A.drawn.nets ? [] : A.nets) || []) {
       const [x0, x1, z0, z1] = n.zone, w = n.dx ? z1 - z0 : x1 - x0;
       const key = `${Math.round(Math.max(w, 1.2) * 10)}:${Math.round(n.top * 10)}`;
       add(createNode({ geometry: BM.net2(key), position: { x: (x0 + x1) / 2, y: 0, z: (z0 + z1) / 2 }, rotation: { x: 0.08, y: n.dx ? Math.PI / 2 : 0, z: 0 } }));

@@ -7604,6 +7604,77 @@ const gameRulesChecks = async () => {
       record("block frenzy jungle: an Ooga coming down on a tree lands on its leaves' top, one under the leaves stands on the ground, and the top stops nobody rising through it",
         landed.grounded && Math.abs(landed.y - landed.top) < 0.05 && under < 0.05 && open, JSON.stringify({ landed, under, open, tree: { x: tree.x, z: tree.z, y: tree.y, r: tree.r } }));
     }
+    {
+      // Gorilla Jungle's treetop walkway and temples. The walkway is level from one tree house to the other by way of
+      // the Great Tree; a net reaches it; a gorilla takes an Ooga on the ground under it and leaves one up on it alone;
+      // the temple gate is walked through under the stone head, which is somewhere to stand; and the map keeps the
+      // other maps' size, its four gorillas and a mirrored layout.
+      const J = S.ARENAS.jungle, F = S.ARENAS.fort, idle = { x: 0, z: 0, sprint: 0, jump: 0, jet: 0, crouch: 0, face: 0 }, out = {};
+      const make = () => { const r = S.create({ seed: 5, prep: 0, map: "jungle" }); for (const o of r.actors) o.bot = false; Object.assign(r.weather, { left: 1e9 }); for (const g of r.gorillas) { g.x = g.wx = g.hx = 100; g.z = g.wz = g.hz = 100; g.state = 3; g.t = 1e9; } for (const k of r.crates) k.live = false; for (const t of r.traps) t.dark = 1e9; return r; };
+      const go = (r, secs, input = idle, until = () => false) => { for (let t = 0; t < secs && !until(); t += S.CONFIG.STEP) { S.tick(r, S.CONFIG.STEP, input); r.eventCount = 0; } };
+      const high = J.caches[0][1];
+      S.create({ map: "jungle" });
+      out.size = J.fieldW === F.fieldW && J.fieldL === F.fieldL && J.W === F.W && J.L === F.L && J.gorillas.length === 4 && J.stands.blue.z === F.stands.blue.z;
+      out.mirrored = J.BLOCKS.every((b) => J.rocks.has(b) || J.BLOCKS.some((c) => c[0] === -b[1] && c[1] === -b[0] && c[2] === -b[3] && c[3] === -b[2] && c[4] === b[4] && c[5] === b[5]))
+        && J.ledges.every((b) => J.ledges.some((c) => c[0] === -b[1] && c[2] === -b[3] && c[4] === b[4]));
+      // Level all the way: down the centre line, and round the Great Tree's trunk.
+      let level = true;
+      for (let z = -16.5; z <= 16.5; z += 0.5) if (Math.abs(z) > 1.2) level &&= S.groundAt(0, z, high + 0.2) === high;
+      for (let z = -3; z <= 3; z += 0.5) for (const x of [-2, 2]) level &&= S.groundAt(x, z, high + 0.2) === high;
+      out.level = level;
+      // On foot from blue's tree house along the bridge onto the Great Tree's platform, never leaving the planks.
+      {
+        const r = make(), a = r.actors[0];
+        Object.assign(a, { x: 0, z: 16, y: high, vx: 0, vy: 0, vz: 0, grounded: true });
+        let fell = false;
+        go(r, 4, { ...idle, z: -1 }, () => { if (a.y < high - 0.01) fell = true; return fell || a.z < 2; });
+        out.bridge = !fell && a.z < 2 && a.y === high;
+      }
+      // Up a net from the ground, pushing into it.
+      {
+        const r = make(), a = r.actors[0], n = J.nets[0], [x0, x1, z0, z1] = n.zone;
+        Object.assign(a, { x: (x0 + x1) / 2 - n.dx * 0.6, z: (z0 + z1) / 2, y: 0, vx: 0, vy: 0, vz: 0, grounded: true });
+        go(r, 3, { ...idle, x: n.dx, z: n.dz }, () => a.grounded && a.y === high);
+        out.net = a.y === high && Math.abs(a.x) < 3.5;
+      }
+      // The gorillas' ground: one beside the bridge leaves an Ooga up on it alone, and takes the same Ooga on the grass.
+      {
+        const r = make(), a = r.actors[0], g = r.gorillas[0];
+        Object.assign(g, { x: 1.6, z: 7, wx: 1.6, wz: 7, hx: 1.6, hz: 7, state: 0, t: 0 });
+        Object.assign(a, { x: 0, z: 7, y: high, vx: 0, vy: 0, vz: 0, grounded: true });
+        go(r, 3);
+        const safe = !a.grabbed && a.y === high;
+        Object.assign(a, { x: 0, z: 7, y: 0, guard: 0, grounded: true });
+        go(r, 3, idle, () => a.grabbed);
+        out.gorillas = safe && !!a.grabbed;
+      }
+      // The temple gate: open under the stone head at walking and jumping height, the pillars solid either side, the
+      // head solid over it and stood on; an Ooga walks in through it on either side.
+      S.create({ map: "jungle" });
+      out.gate = [1, -1].every((s) => [0.2, 1, 1.7, 3.2].every((y) => [-2, 0, 2].every((x) => !S.solidAt(x, y, s * 23.5))) && S.solidAt(3.1, 3, s * 23.5) && S.solidAt(-3.1, 3, s * 23.5) && S.solidAt(0, 4.2, s * 23.5) && S.groundAt(0, s * 23.5, 6) === 5);
+      {
+        const r = make(), a = r.actors[0];
+        Object.assign(a, { x: 0, z: 20, y: 0, vx: 0, vy: 0, vz: 0, grounded: true });
+        go(r, 1.2, { ...idle, z: 1 });
+        out.walkIn = a.z > 24.5 && a.y === 0;
+      }
+      // The models draw the nets and puddles into the map's one mesh; the map says so, and names each of its own boxes.
+      out.kinds = J.drawn.nets && J.drawn.puddles && J.BLOCKS.filter((b) => J.kinds.has(b)).length >= 60 && J.ledges.length === J.decor.filter((d) => d.kind === "canopy").length && J.ledges.length <= 15;
+      record("block frenzy jungle walkway: the treetop walkway is level from tree house to Great Tree to tree house and walked without a fall, a net climbs to it, a gorilla takes an Ooga on the ground beside it and leaves one up on it alone, the temple gate is open under the stone head, and the map keeps the other maps' size, four gorillas and its mirrored halves", Object.values(out).every(Boolean), JSON.stringify(out));
+      // Raids from every start, on both sides: the two spawns, the centre lane, either side line, both flanks, beside
+      // the rivals' temple, the raider's own corner and its own alley. A raider bot takes the rivals' block within 30 s.
+      // The raider has a hook in hand, so none lying in a cave round the field calls it aside.
+      const raids = {};
+      for (const [team, s] of [["blue", 1], ["red", -1]]) for (const [sx, sz] of [[-1.2, -26], [1.2, -26], [0, -8], [-18, 0], [18, 0], [-16, -12], [16, 12], [12, -30], [-12, 30], [0, -36]]) {
+        const r = make(), a = r.actors.find((o) => o.team !== team);
+        for (const pw of r.powers) pw.dark = 1e9;
+        Object.assign(a, { bot: true, role: "attack", x: s * sx, z: s * sz, y: 0, hook: 1 });
+        let t = 0;
+        for (; t < 30 && a.carrying !== team; t += S.CONFIG.STEP) { S.tick(r, S.CONFIG.STEP, idle); r.eventCount = 0; }
+        raids[`${team}@${s * sx},${s * sz}`] = a.carrying === team ? +t.toFixed(1) : `fail at ${a.x.toFixed(1)},${a.z.toFixed(1)}`;
+      }
+      record("block frenzy jungle raids: from the spawns, the centre lane, the side lines, the flanks, beside the temple and the far alley, on both sides, a raider bot takes the rivals' block within 30 s", Object.values(raids).every((v) => typeof v === "number"), JSON.stringify(raids));
+    }
     record("block frenzy expert: after losing a crate target, wait three seconds, set it down and rescue the dropped home block",
       lost.lifted && waits && !lost.bot.holding && lost.r.flags.blue.state === "home",
       JSON.stringify({ lifted: lost.lifted, waits, holding: lost.bot.holding, flag: lost.r.flags.blue.state }));
@@ -7886,7 +7957,7 @@ const gameRulesChecks = async () => {
         rows.chuteHook = S.grapple(cut.m, 0, 0, 0.1) && cut.u.flight === 0 && cut.u.hk === 1;
         const cm = fresh("jungle"), cu = cm.actors[0];
         for (const k of cm.crates) k.live = false;
-        Object.assign(cu, { hook: 1, x: 5, z: 10, y: 0 });
+        Object.assign(cu, { hook: 1, x: 10, z: 8, y: 0 });
         S.grapple(cm, 0, 0, Math.atan2(5.2, 7));
         run(cm, 0.6, still, () => cu.hk === 2);
         rows.canopy = cu.hk === 2;
