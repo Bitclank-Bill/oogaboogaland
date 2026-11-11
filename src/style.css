@@ -4472,7 +4472,12 @@ body.game-mode .weapon-equipment-row > :not(.weapon-hud) {
   to { transform: scaleX(1); }
 }
 
-/* The Timechain Sphere's way out, beside the Ooga's face: an arrow out of a bracket, no words. */
+/* The way out, beside the Ooga's face: an arrow out of a bracket, no words. Where a place's banner has a Leave button,
+   hud.js shows this one, named by it, and the banner's own is kept out of sight. */
+body[data-leave-hud] .presets [data-action="leave"] {
+  display: none;
+}
+
 .leave-hud {
   flex: none;
   justify-content: center;
@@ -11146,18 +11151,6 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
 .studio-session [data-transcript] { line-height:1.5; }
 .studio-session select { max-width:100%; }
 
-.sphere-mode {
-  align-self: center;
-  padding: 0 10px;
-  color: #f2a33a;
-  font: 700 11px var(--mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-@media (max-width: 720px) {
-  .sphere-mode { white-space: normal; max-width: 46vw; overflow-wrap: anywhere; }
-}
 
 /* Block Frenzy: the side picker's two forts, the score chips in their team colours, and the blocks' states. */
 .block-sides {

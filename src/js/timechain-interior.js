@@ -886,22 +886,9 @@
       else if (action === "jetpack-toggle") hud.toast("No jetpacks in the Sphere");
       else if (action.startsWith("mode-") && !guide.stage) pilot.modeAction(action);
     });
-    const mode = document.getElementById("sphere-mode"), subtitle = document.getElementById("sphere-subtitle"), leaveButton = document.getElementById("sphere-leave");
+    // The room's name under the banner's title; nothing beside its buttons.
+    const subtitle = document.getElementById("sphere-subtitle");
     if (subtitle) subtitle.textContent = `TCS · ${room.name}`;
-    // The way out, beside the Ooga's face, for the visit.
-    if (leaveButton) leaveButton.hidden = false;
-    // The chip beside the banner's buttons (the room's name is under the title): whether the room is locked and how many
-    // are here, or that this is a solo copy; hidden when it has nothing to say; checked once a second.
-    let modeWait = 0;
-    const showMode = () => {
-      if (!mode) return;
-      let others = 0;
-      if (shared) for (const rec of BL.net.remotes.values()) if (rec.zone === room.zone && rec.body) others++;
-      const text = shared ? `${isLocked() ? "LOCKED" : ""}${isLocked() && others ? " · " : ""}${others ? `${others + 1} here` : ""}` : "Solo visit";
-      if (mode.textContent !== text) mode.textContent = text;
-      if (mode.hidden !== !text) mode.hidden = !text;
-    };
-    showMode();
     if (guide.stage) hud.hint(`Entering ${room.name}`, 5000);
 
     // The guided walks, steered as a held stick would steer them; the view turns with the walk, its pitch easing to
@@ -994,7 +981,6 @@
           else pilot.showAct();
         }
       }
-      if ((modeWait -= dt) <= 0) { modeWait = 1; showMode(); }
       paintNext();
       const heard = avatar ? avatar.root.position : camera.target;
       ear.x = heard.x; ear.y = heard.y; ear.z = heard.z;
@@ -1081,8 +1067,6 @@
       const count = input.targetCount;
       input.dispose();
       hud.dispose();
-      if (leaveButton) leaveButton.hidden = true;
-      if (mode) mode.hidden = false;
       shell.input = shell.debug = null;
       return { targets: count };
     };

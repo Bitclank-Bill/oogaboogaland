@@ -1,8 +1,10 @@
-// The Block Party's radio: a live EDM station playing in the room, and the beat its lights follow, found in the music
-// as it plays. EDM Sessions streams commercial-free through radio.co, whose stream answers with
-// Access-Control-Allow-Origin, so the page may route it through Web Audio and read it (a station without that header
-// can be heard but not analysed, and its redirect must send it too: stream.edmsessions.com's does not, so this is the
-// address it redirects to).
+// The Block Party's radio: a live dance station playing in the room, and the beat its lights follow, found in the music
+// as it plays. Its channels (`STATIONS`) are commercial-free and their streams answer with Access-Control-Allow-Origin,
+// so the page may route them through Web Audio and read them (a station without that header can be heard but not
+// analysed, and its redirect must send it too): EDM Sessions through radio.co (stream.edmsessions.com's redirect sends
+// no such header, so this is the address it redirects to), and four of SomaFM's listener-supported channels, whose
+// streams and their redirects send it. The room starts on the first; the DJ changes channel from behind the booth
+// (`tune`, `next`).
 //
 // The beat is found on the audio's own clock, never the frame rate's: each frame reads the newest stretch of the
 // stream through a low-pass (the kick), and `meter` cuts it into blocks of a RATE-th of a second by absolute sample
@@ -19,7 +21,13 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const STATION = { name: "EDM Sessions", url: "https://s2.radio.co/s30844a0f4/listen" };
+  const STATIONS = [
+    { name: "EDM Sessions", short: "EDM SESSIONS", url: "https://s2.radio.co/s30844a0f4/listen" },
+    { name: "SomaFM · The Trip", short: "THE TRIP", url: "https://ice1.somafm.com/thetrip-128-mp3" },
+    { name: "SomaFM · Beat Blender", short: "BEAT BLENDER", url: "https://ice1.somafm.com/beatblender-128-mp3" },
+    { name: "SomaFM · DEF CON Radio", short: "DEF CON RADIO", url: "https://ice1.somafm.com/defcon-128-mp3" },
+    { name: "SomaFM · Dub Step Beyond", short: "DUB STEP BEYOND", url: "https://ice1.somafm.com/dubstep-128-mp3" }
+  ], STATION = STATIONS[0];
   // The tracker: RATE onsets a second, SPAN of them kept, RECENT of them for how hard the beat hits now; tempo between
   // MIN_BPM and MAX_BPM, leaning toward LEAN so a half or double tempo loses; estimated every EVERY seconds once WARM
   // seconds are in; trusted once the onsets' normalized autocorrelation at the beat reaches CONF and until it falls
@@ -138,7 +146,7 @@
     let context = null, filter = null, analyser = null, sink = null, gain = null, wave = null, beats = null, element = null, source = null;
     let whole = null, bins = null, signal = null, edges = null;
     let mode = enabled ? "waiting" : "off", plain = false, disposed = false, timer = 0, watchdog = 0, epoch = 0;
-    let failures = 0, quiet = 0, lastTime = -1, starts = 0;
+    let failures = 0, quiet = 0, lastTime = -1, starts = 0, channel = 0;
     const applyVolume = () => {
       if (gain) gain.gain.setTargetAtTime(plain || BL.sound.muted ? 0 : VOLUME, context.currentTime, 0.4);
       if (element && plain) { element.muted = BL.sound.muted; element.volume = VOLUME; }
@@ -194,7 +202,7 @@
         if (attempt === epoch && !watchdog) watchdog = setTimeout(() => { if (attempt === epoch) failed(); }, STALL_MS);
       };
       watchdog = setTimeout(() => { if (attempt === epoch) failed(); }, STALL_MS);
-      element.src = `${STATION.url}?_=${Date.now()}`;
+      element.src = `${STATIONS[channel].url}?_=${Date.now()}`;
       element.play().catch((error) => {
         if (attempt !== epoch || disposed) return;
         if (error.name === "NotAllowedError") { dropElement(); mode = "waiting"; } else failed();
@@ -250,21 +258,35 @@
       for (let i = 0; i < out.length; i++) out[i] = signal[from + Math.floor(i * span / out.length)];
       return true;
     };
+    // Another channel: the stream let go and the new one asked for at once (after the first gesture, as ever), the
+    // beat found afresh and the plain element given up, so a channel that answers cross-origin is read again.
+    const tune = (index) => {
+      if (disposed || !enabled) return;
+      channel = ((index % STATIONS.length) + STATIONS.length) % STATIONS.length;
+      clearTimeout(timer); timer = 0;
+      dropElement();
+      plain = false; failures = 0;
+      if (mode !== "waiting") mode = "idle";
+      start();
+    };
     const reading = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 };
     // A line for a tap on the booth, the decks or the speakers.
     const words = () => {
       const muted = BL.sound.muted ? " · sound muted (the speaker button)" : "";
+      const name = STATIONS[channel].name;
       if (mode === "off") return "The radio is off on this page";
-      if (mode === "waiting") return `${STATION.name} · tap or press a key to tune in`;
-      if (mode === "connecting" || mode === "idle") return `Tuning in to ${STATION.name}…`;
-      if (mode === "offline") return `${STATION.name} isn't answering · trying again shortly`;
-      if (plain) return `Live · ${STATION.name}${muted}`;
+      if (mode === "waiting") return `${name} · tap or press a key to tune in`;
+      if (mode === "connecting" || mode === "idle") return `Tuning in to ${name}…`;
+      if (mode === "offline") return `${name} isn't answering · trying again shortly`;
+      if (plain) return `Live · ${name}${muted}`;
       track.read(context.currentTime, reading);
-      return reading.live ? `Live · ${STATION.name} · ${Math.round(reading.bpm)} BPM · the lights follow the beat${muted}` : `Live · ${STATION.name} · finding the beat${muted}`;
+      return reading.live ? `Live · ${name} · ${Math.round(reading.bpm)} BPM · the lights follow the beat${muted}` : `Live · ${name} · finding the beat${muted}`;
     };
     return {
-      sample, spectrum, scope, words,
-      get stats() { return { mode, plain, starts, failures, contexts: context ? 1 : 0, elements: element ? 1 : 0, ...track.read(context ? context.currentTime : 0, reading) }; },
+      sample, spectrum, scope, words, tune,
+      next: () => tune(channel + 1),
+      get channel() { return channel; }, get station() { return STATIONS[channel]; },
+      get stats() { return { mode, plain, starts, failures, channel, contexts: context ? 1 : 0, elements: element ? 1 : 0, ...track.read(context ? context.currentTime : 0, reading) }; },
       dispose() {
         if (disposed) return;
         disposed = true;
@@ -281,5 +303,5 @@
     };
   };
 
-  BL.timechainPartyRadio = { STATION, RATE, CONF, tracker, meter, create };
+  BL.timechainPartyRadio = { STATION, STATIONS, RATE, CONF, tracker, meter, create };
 })();

@@ -217,7 +217,9 @@
       // The dome's and the floor's paint, and a live picture on the dome.
       // `size` ({ w, h, smooth }) for a dome a kind repaints as it plays: a small canvas, drawn up smooth.
       dome: (paint, size = null) => { into.domePaint = paint; into.domeSize = size; },
-      floor: (paint) => { into.floorPaint = paint; },
+      // `size` ({ scale, emissive }) for a floor a kind repaints as it plays: `scale` pixels a metre, so whole pixels
+      // fall on a grid of that pitch, and how brightly it shows (an LED floor at full).
+      floor: (paint, size = null) => { into.floorPaint = paint; into.floorSize = size; },
       live: (spec) => { into.live.push(spec); return spec; },
       // The room's light: overrides of the scene's render options (sky, ground, direct, ambient floor, bloom).
       render: (o) => { into.render = o; },
@@ -312,7 +314,8 @@
     return canvas;
   });
   // The floor's canvas, a square laid on the floor's disc: `X` and `Y` turn metres into its pixels, the front up.
-  const floorMap = (L) => {
+  const floorMap = (L, scale = 0) => {
+    if (scale) { const N = 2 * Math.ceil(L.r0 * scale), rf = N / (2 * scale); return { N, s: scale, rf, X: (x) => N / 2 + x * scale, Y: (z) => N / 2 + z * scale }; }
     const rf = L.r0, N = Math.min(2048, Math.max(512, Math.ceil(rf * 2 * 64 / 128) * 128)), s = N / (2 * rf);
     return { N, s, rf, X: (x) => N / 2 + x * s, Y: (z) => N / 2 + z * s };
   };
@@ -348,7 +351,7 @@
   const paintFloor = perRoom((id) => {
     const into = plan(id);
     if (!into.floorPaint) return null;
-    const F = floorMap(ROOMS.layout(id)), canvas = BL.timechainCharts.canvas(F.N, F.N), ctx = canvas.getContext("2d");
+    const F = floorMap(ROOMS.layout(id), into.floorSize ? into.floorSize.scale : 0), canvas = BL.timechainCharts.canvas(F.N, F.N), ctx = canvas.getContext("2d");
     ctx.fillStyle = "#121110"; ctx.fillRect(0, 0, F.N, F.N);
     into.floorPaint(ctx, { ...F, ...paintKit, ...chainKit(F, ctx) });
     return canvas;
@@ -413,12 +416,12 @@
       for (let k = 0; k < sectors; k++) {
         const b0 = TAU * k / sectors, b1 = TAU * (k + 1) / sectors, p = (r, b) => [r * Math.sin(b), -r * Math.cos(b), 0];
         const pts = i === 0 ? [[0, 0, 0], p(r1, b0), p(r1, b1), p(r1, b1)] : [p(r0, b0), p(r1, b0), p(r1, b1), p(r0, b1)];
-        if (canvas) face(geo, pts, [255, 255, 255], 0.08, [0, 0, 1]);
+        if (canvas) face(geo, pts, [255, 255, 255], into.floorSize && into.floorSize.emissive !== undefined ? into.floorSize.emissive : 0.08, [0, 0, 1]);
         else face(geo, pts, into.floorColor || C.floor, 0, [0, 0, 1]);
       }
     }
     if (canvas) {
-      const F = floorMap(L);
+      const F = floorMap(L, into.floorSize ? into.floorSize.scale : 0);
       geo.imageSurface = { canvas, version: 1, rect: [-F.rf, -F.rf, 2 * F.rf, 2 * F.rf], tessellated: true };
     }
     return geo;
@@ -715,7 +718,8 @@
     addChild(root, createNode({ geometry: parts.wall }), createNode({ geometry: parts.glow, sightHidden: true }));
     const domeNode = dome ? createNode({ geometry: dome, position: { x: 0, y: 0, z: -1 } }) : null;
     if (domeNode) addChild(root, domeNode);
-    if (floor) addChild(root, createNode({ geometry: floor, position: { x: 0, y: L.yMin + 0.002, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 } }));
+    const floorNode = floor ? createNode({ geometry: floor, position: { x: 0, y: L.yMin + 0.002, z: 0 }, rotation: { x: -Math.PI / 2, y: 0, z: 0 } }) : null;
+    if (floorNode) addChild(root, floorNode);
     if (rake) addChild(root, createNode({ geometry: rake.body }), createNode({ geometry: rake.glow, sightHidden: true }));
     addChild(root, createNode({ geometry: bay(id) }), createNode({ geometry: vestibule(id) }), createNode({ geometry: vestibuleGlow(id), sightHidden: true }));
     const doors = [-1, 1].map((side) => createNode({ geometry: leaves(id)[side < 0 ? 0 : 1], position: { x: side * DOOR.halfW / 2, y: 0, z: L.doorZ + 0.06 } }));
@@ -758,7 +762,7 @@
     const lights = [...into.lights];
     // The doorway's own light, and a dim one in the vestibule.
     lights.push([0, 2.6, L.doorZ - 1.6, 6, 0.7, 0.46, 0.2], [0, DOOR.height - 0.4, L.doorZ + DOOR.vestibule * 0.5, 3.2, 0.32, 0.2, 0.08]);
-    return { root, layout: L, room: into.room, body, dome: domeNode, doors, exitButton, exitSign, lockPad, lockSign, lights, nodes, targets, live, seats: into.seats.map((s) => ({ ...s, sitter: null })), solids: into.solids, render: into.render || null, crown: cap };
+    return { root, layout: L, room: into.room, body, dome: domeNode, floor: floorNode, doors, exitButton, exitSign, lockPad, lockSign, lights, nodes, targets, live, seats: into.seats.map((s) => ({ ...s, sitter: null })), solids: into.solids, render: into.render || null, crown: cap };
   };
   // A room's construction as steps, each a slice of a frame at the doorway: a kind may split its own costly parts
   // (`steps`, run before its plan, each building something its plan then reads from a cache).

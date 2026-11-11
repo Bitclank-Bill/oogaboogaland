@@ -21010,12 +21010,12 @@ const timechainRoom = { name: "timechain room", why: "playthrough: a signed-out 
     const kept = P.player === cave;
     P.enterClose(); B.advance(1, 1 / 60);
     emptyViews &&= empty();
-    return { room: D.room.id, kind: D.room.kind, radius: D.layout.radius, lock: !!D.built.lockPad, mode: D.visit.mode, zone: BL.net.state.zone, body: BL.net.state.body, chip: document.getElementById("sphere-mode").textContent,
+    return { room: D.room.id, kind: D.room.kind, radius: D.layout.radius, lock: !!D.built.lockPad, mode: D.visit.mode, zone: BL.net.state.zone, body: BL.net.state.body, chip: !!document.getElementById("sphere-mode"),
       subtitle: document.getElementById("sphere-subtitle").textContent, before, shoulder, orbit, kept, after: P.mode, player: cave.traits.name, jet: !!cave.jet, jetHud: document.getElementById("jetpack-hud").hidden,
       emptyViews, deniedWeapons, requests: B.stats().requests, paused: D.reader.status("recent"), hash: location.hash, remotes: D.remotes === null };
   })()`);
-  record("timechain room: a signed-out arrival at /sphere-1 is a solo copy of the Conference Room, with its lock, that publishes nothing, with its mode named and every live picture painted",
-    painted && r.room === 1 && r.kind === "conference" && r.radius === 10.5 && r.lock && r.mode === "solo" && r.zone === "none" && r.body === null && r.chip === "Solo visit" && r.subtitle === "TCS · Conference Room"
+  record("timechain room: a signed-out arrival at /sphere-1 is a solo copy of the Conference Room, with its lock, that publishes nothing, named only under the title, with every live picture painted",
+    painted && r.room === 1 && r.kind === "conference" && r.radius === 10.5 && r.lock && r.mode === "solo" && r.zone === "none" && r.body === null && !r.chip && r.subtitle === "TCS · Conference Room"
       && r.hash === "#/sphere-1" && r.requests === 0 && r.paused === "PAUSED" && r.remotes, JSON.stringify(r));
   record("timechain room: scroll reaches shoulder and orbit, nothing lets go of the Ooga, and every view stays empty-handed with no jetpack",
     r.before === "first-person" && r.shoulder === "shoulder" && r.orbit === "orbit" && r.kept && r.after === "first-person"
@@ -24330,15 +24330,15 @@ scene("hub", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("hub", { required
   const staged = readFileSync(join(root, "scripts/site.mjs"), "utf8").includes('rel="manifest" href="manifest.webmanifest"');
   record("hub home screen: the installed name is OogaBoogaLand, with a same-origin icon; the manifest link is added only for the hosted site", meta.title === "OogaBoogaLand" && meta.capable === "yes" && meta.icon === "apple-touch-icon.png" && !meta.manifestLink && meta.manifestSrc && manifest.short_name === "OogaBoogaLand" && manifest.display === "standalone" && staged, JSON.stringify({ meta, short: manifest.short_name, staged }));
 } }] });
-scene("lab", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("lab", { required: ["#joy-move", "#joy-look", ".leave"] })] });
-scene("race", { query: "pos=0&rain=0&draw=0", opts: PHONE_SIZE, steps: [phone("race", { card: '[data-intro="race"]', play: "window.__ooga.race.startRace()", required: ["#joy-move", "#act", "#item-btn", "#race-garage-btn", ".leave"] })] });
-scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", ".leave"] })] });
-scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", ".leave"] })] });
-scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: "#mine-intro", required: ["#joy-move", "#joy-look", "#act", "#mine-view-btn", "#mine-pause-btn", "#environment-sound", ".leave"] })] });
-scene("factory", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", ".leave"] }), factoryGreeter] });
-scene("hangar", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("hangar", { required: ["#joy-move", "#joy-look", ".leave"] })] });
-scene("bifrost", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("bifrost", { required: ["#joy-move", "#joy-look", ".leave"] })] });
-scene("timechain", { url: roomPage(1), opts: PHONE_SIZE, steps: [phone("timechain", { required: ["#joy-move", "#joy-look", "#sphere-leave", "#sphere-mode"] })] });
+scene("lab", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("lab", { required: ["#joy-move", "#joy-look", "#leave-hud"] })] });
+scene("race", { query: "pos=0&rain=0&draw=0", opts: PHONE_SIZE, steps: [phone("race", { card: '[data-intro="race"]', play: "window.__ooga.race.startRace()", required: ["#joy-move", "#act", "#item-btn", "#race-garage-btn", "#leave-hud"] })] });
+scene("drop", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("drop", { card: '[data-intro="drop"]', play: "window.__ooga.drop.start()", required: ["#joy-move", "#joy-look", "#act", "#leave-hud"] })] });
+scene("orbit", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("orbit", { card: '[data-intro="orbit"]', play: "window.__ooga.orbit.launch()", required: ["#joy-move", "#act", "#leave-hud"] })] });
+scene("mine", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("mine", { card: "#mine-intro", required: ["#joy-move", "#joy-look", "#act", "#mine-view-btn", "#mine-pause-btn", "#environment-sound", "#leave-hud"] })] });
+scene("factory", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("factory", { required: ["#joy-move", "#joy-look", "#leave-hud"] }), factoryGreeter] });
+scene("hangar", { query: "pos=0&character=portlandhodl", opts: PHONE_SIZE, steps: [phone("hangar", { required: ["#joy-move", "#joy-look", "#leave-hud"] })] });
+scene("bifrost", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("bifrost", { required: ["#joy-move", "#joy-look", "#leave-hud"] })] });
+scene("timechain", { url: roomPage(1), opts: PHONE_SIZE, steps: [phone("timechain", { required: ["#joy-move", "#joy-look", "#leave-hud"] })] });
 // The keypad's controls are its physical keys: from the first person a phone shows, each is on screen with nothing of
 // the page's over it (the hint over the view takes no pointer, so it is checked as text, not as a control).
 const sphereKeypadPhone = phone("hub", { play: `(() => { const B = __ooga, ${sphereLocal}; ${sphereStand("0.7", "13.8")} T.gate.engage(); B.advance(0.6, 1 / 60); })()`, required: [] });
@@ -24401,7 +24401,7 @@ scene("hub", { label: "sphere keypad", query: "solo=1&character=portlandhodl&vie
       return { key: k.key, x: Math.round(out.x), y: Math.round(out.y), on: out.x > 0 && out.x < innerWidth && out.y > 0 && out.y < innerHeight, free: !!hit && hit.id === "scene" }; }); })()`);
   record("timechain keypad phone: in first person every physical key, 1–9, 0, Back and Enter, is on screen with nothing over it", keys.length === 12 && keys.every((k) => k.on && k.free), JSON.stringify(keys));
 } }] });
-scene("arcade", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("arcade", { required: ["#joy-move", "#joy-look", ".leave"] })] });
+scene("arcade", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("arcade", { required: ["#joy-move", "#joy-look", "#leave-hud"] })] });
 
 // Focused component fixtures enter DSB directly with the selected Ooga.
 // The Bifrost entrance playthrough separately exercises the real travel windows.
@@ -24595,7 +24595,7 @@ scene("dsb", { label: "dsb shared player", url: hubPage(dist), steps: [{ name: "
   record("dsb compatibility: built CSP preserves exactly the weather, DSB and Block Party network permissions", await b.evaluate(`(() => {
     const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]').content;
     const sources = name => policy.split(";").map(s => s.trim().split(/\\s+/)).find(s => s[0] === name).slice(1).sort().join("|");
-    return sources("connect-src") === ["'self'", "https:", "wss:"].sort().join("|") && sources("worker-src") === "'self'" && sources("media-src") === ["'self'", "https://stream.noderunnersradio.com", "https://s2.radio.co"].sort().join("|") && !policy.includes("unsafe-");
+    return sources("connect-src") === ["'self'", "https:", "wss:"].sort().join("|") && sources("worker-src") === "'self'" && sources("media-src") === ["'self'", "https://stream.noderunnersradio.com", "https://s2.radio.co", "https://ice1.somafm.com"].sort().join("|") && !policy.includes("unsafe-");
   })()`));
   record("dsb registry: c10 is B.C.A.'s hub office and DSB is internally addressable without a cave", await b.evaluate(`(BL.caves.slots.find(s => s.id === "c10").status === "open" && BL.caves.slots.find(s => s.id === "c10").scene === null && BL.caves.slots.find(s => s.id === "c10").place === "bca") && !BL.caves.slots.some(s => s.scene === "dsb") && !!BL.scenes.dsb`));
   record("dsb compatibility: hub keeps the Agent module without spawning a standalone gorilla", await b.evaluate(`__ooga.scene === "hub" && !__ooga.agent && !!BL.agent && !!BL.characters.get("rules-without-rulers") && Object.hasOwn(__ooga, "agent") && Object.hasOwn(__ooga, "dsb") && !__ooga.dsb`));

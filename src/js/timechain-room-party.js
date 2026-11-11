@@ -1,15 +1,17 @@
 // Room 3, the Block Party: a club under a dome of light (the shortlist mock-up's `buildParty`). The dome plays the
 // mock-up's light show: rings of the fee bands' colours stepping down from the crown on the beat, bands sweeping round it
-// in spirals and a scatter of warm LED dots twinkling over it. The whole floor is LED tiles whose rings step out through
-// the same colours on every beat, and the wall under the dome is an LED wall all the way round but for the doors, the
-// music's spectrum mirrored round it from the front with its wave over it. The DJ booth stands at the front, its face an LED screen of the music's spectrum and
-// wave with the room's name in the middle; behind it a truss of laser projectors, and one on each speaker stack, throws
-// fans, tunnels, scans and sheets of beams that change look every phrase. A stack of speakers either side thumps and the
-// mirror ball turns under the crown. The latest block hangs on the dome over the booth. EDM Sessions plays live
-// (timechain-party-radio.js) and the lights follow its beat, found in the music as it plays; until the beat is found, or
-// where the stream can't be analysed, they keep a steady 124 BPM and the screen makes its own spectrum from that beat.
-// Every twelve seconds, on the next bar, the bass drops as it does on a block: a ring of light falls down the dome, a
-// wave of light runs out across the floor, the lasers fan wide and strobe and the sign over the booth says so.
+// in spirals and a scatter of warm LED dots twinkling over it. The whole floor is LED panels, each a block of cells in
+// a hash grid that re-hashes on every beat, whose rings step out through the same colours on every beat, and the wall under the dome is an LED wall all the way round but for the doors, the
+// music's spectrum mirrored round it from the front with its wave over it. The DJ booth stands at the front, its face an
+// LED screen of the music's spectrum and wave with the room's name in the middle, room to walk round it to the DJ's place
+// behind and a top to jump up onto and over; behind it a truss of laser projectors, and one on each speaker stack,
+// throws fans, tunnels, scans and sheets of beams that change look every phrase. A stack of speakers either side thumps
+// and the mirror ball turns under the crown. The latest block hangs on the dome over the booth. The radio plays live
+// (timechain-party-radio.js), EDM Sessions first, and the DJ changes the channel from behind the booth; the lights
+// follow its beat, found in the music as it plays, and until the beat is found, or where the stream can't be analysed,
+// they keep a steady 124 BPM and the screens make their own spectrum from that beat. Every twelve seconds, on the next
+// bar, the bass drops as it does on a block: a ring of light falls down the dome, a wave of light runs out across the
+// floor, the lasers fan wide and strobe and the sign over the booth says so.
 (() => {
   "use strict";
   const BL = window.BL;
@@ -25,17 +27,19 @@
     surround: "#26262b", label: "#ffb04d", ink: "#0b0714", truss: "#8e929b", plate: "#1c1c20", housing: "#16161b", trim: "#0c0c0f",
     glass: "#0a1622", fin: "#26272d", knob: "#2a2a30"
   };
-  // The floor: LED tiles TILE apart round (0, FZ), TILE_H thick, over the whole floor but where the booth, the speakers,
-  // the truss's feet and the chain from the doors (from PATH_END on) stand; lit a ring at a time, each ring with a node
-  // per band colour and one for the drop (VARIANTS), only one of them shown. Canvas 2D sorts the tiles as if TILE_BIAS
-  // metres nearer, so the floor's large pieces under them never paint over.
-  const FZ = -1, TILE = 0.8, TILE_H = 0.024, VARIANTS = BANDS.length + 1, TILE_BIAS = -0.7, PATH_END = 5;
+  // The floor: LED panels TILE apart round (0, FZ), wall to wall (under the speakers and the truss's towers too) but
+  // inside the booth, lit a ring at a time; painted FLOOR_FPS times a second on the floor's own canvas at FLOOR_PX
+  // pixels a metre, so a panel is a black seam round CELLS by CELLS cells of a hash grid, each a few pixels in the
+  // panel's colour, dark or bright, on a dimmer ground of it, so each panel reads as a block.
+  const FZ = -1, TILE = 0.8, FLOOR_PX = 20, FLOOR_FPS = 30, CELLS = 4;
   // The beat with no music to follow, and the drop that stands in for a block: due every DROP_EVERY seconds from
   // DROP_FIRST, starting on the next bar of BAR beats, DROP_TIME long. Following the radio, the room's beat eases to
   // its tempo at TEMPO_RATE and its phase at PHASE_RATE a second, so a beat found or lost never jumps the floor.
   const BEAT = 60 / 124, DROP_EVERY = 12, DROP_FIRST = 3, DROP_TIME = 1.6, BAR = 4, TEMPO_RATE = 3, PHASE_RATE = 6;
   // The sign's height in a drop, and where what is put away waits.
   const SIGN_Y = 8.2, AWAY = -3;
+  // The DJ booth's top, which an Ooga can jump up onto.
+  const BOOTH_TOP = 1.03;
   // The speaker stacks' bearings, either side of the booth.
   const STACKS = [214, 146];
   // The dome: its light show repainted DOME_FPS times a second on a canvas DOME_W by DOME_H the renderer draws up smooth,
@@ -50,14 +54,15 @@
   const RGB = ["#2bff5a", "#ff2b3a", "#3b5bff", "#2bf2ff", "#ff2bea", "#ffe62b", "#f4f2ff"];
   const GREEN = 0, RED = 1, BLUE = 2, CYAN = 3, MAGENTA = 4, YELLOW = 5, WHITE = 6;
   const NB = 10, PHRASE = 16, BEAM_W = 0.007, BEAM_LEN = 8, LOOKS = 5;
-  // The truss: a box truss S square on two towers X either side of the middle behind the booth, its lower chords at Y,
+  // The truss: a box truss S square on two towers X either side of the middle behind the booth (far enough out that the
+  // widest Ooga walks between a tower and the booth's end to the DJ's place behind it), its lower chords at Y,
   // its lacing in bays BAY long. Projectors hang in yokes under its front chord at HANG, their pivots KNOB under it,
   // tipped TILT down; a projector's body is BODY, its aperture at APERTURE in its own frame.
-  const TRUSS = { S: 0.29, Y: 3.05, X: 4.9, BAY: 0.5, chord: 0.024, lace: 0.009 };
+  const TRUSS = { S: 0.29, Y: 3.05, X: 5.6, BAY: 0.5, chord: 0.024, lace: 0.009 };
   const BODY = { w: 0.3, h: 0.17, d: 0.32 }, TILT = 0.32, KNOB = 0.26, HANG = [-3.2, -1.6, 0, 1.6, 3.2], APERTURE = [0, -0.012, 0.182];
   // The booth's screen: a canvas W by H wrapped round the booth's face across HALF either side of the middle, from Y0 to
   // Y1, repainted at most FPS times a second: BARS bars of ROWS segments either side of the name, and a wave of WAVE points.
-  const SCREEN = { W: 1024, H: 144, HALF: 18.5 * DEG, Y0: 0.16, Y1: 0.92, FPS: 60, BARS: 40, ROWS: 14, LOGO_W: 300, LOGO_H: 104 };
+  const SCREEN = { W: 1024, H: 144, HALF: 18.5 * DEG, Y0: 0.16, Y1: 0.92, FPS: 60, BARS: 40, ROWS: 14, LOGO_W: 300, LOGO_H: 104, TAG: 4 };
   // The music as the room reads it once a frame for both screens: BANDS bands of its spectrum, low to high, and WAVE
   // points of its wave.
   const MUSIC = { BANDS: 96, WAVE: 512 };
@@ -69,10 +74,11 @@
   const polar = (r, b) => ({ x: r * Math.sin(b * DEG), z: r * Math.cos(b * DEG) });
   const boothZ = (L) => -(L.r0 - 2.7);
   const trussZ = (L) => boothZ(L) - 0.45;
-  // Circles along an arc round the room's middle (bearings in degrees), close enough that nobody slips between.
-  const arcSolids = (K, r, b0, b1, rad) => {
+  // Circles along an arc round the room's middle (bearings in degrees), close enough that nobody slips between; with a
+  // `top`, something to jump up onto and over.
+  const arcSolids = (K, r, b0, b1, rad, top) => {
     const n = Math.max(1, Math.ceil(Math.abs(b1 - b0) * DEG * r / (rad * 1.8)));
-    for (let i = 0; i <= n; i++) { const p = polar(r, b0 + (b1 - b0) * i / n); K.solid({ x: p.x, z: p.z, r: rad }); }
+    for (let i = 0; i <= n; i++) { const p = polar(r, b0 + (b1 - b0) * i / n); K.solid({ x: p.x, z: p.z, r: rad, top }); }
   };
   // A colour round the fee bands' wheel, `t` turns from the lowest band.
   const band = (t, out) => {
@@ -83,20 +89,59 @@
   const rgbStyle = (c) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
 
   // ---------- the floor ----------
-  // The tiles, each with the ring it lights with: every one whose corners keep clear of the wall, but under the middle
-  // of the booth, the speakers and the truss's feet, and along the chain from the doors.
+  // The panels, each with the ring it lights with: every one whose corners keep clear of the wall, but those wholly
+  // hidden inside the booth.
   const floorTiles = (L) => {
-    const rb0 = L.r0 - 3.2, rb1 = L.r0 - 2.4, wall = ROOMS.radiusAt(L, TILE_H) - 0.15, half = TILE * 0.475, n = Math.ceil((L.r0 + 1) / TILE), out = [];
-    const stands = [...STACKS.map((b) => ({ ...polar(L.r0 - 1.5, b), r: 0.9 })), ...[-1, 1].map((s) => ({ x: s * TRUSS.X, z: trussZ(L), r: 0.45 }))];
+    const rb0 = L.r0 - 3.2, rb1 = L.r0 - 2.4, wall = ROOMS.radiusAt(L, 0) - 0.15, half = TILE * 0.475, n = Math.ceil((L.r0 + 1) / TILE), out = [];
     for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) {
       const x = i * TILE, z = FZ + j * TILE, r = Math.hypot(x, z);
       if (Math.hypot(Math.abs(x) + half, Math.abs(z) + half) > wall) continue;
-      if (i === 0 && z - half > PATH_END - 0.05) continue;
       if (r > rb0 + 0.2 && r < rb1 - 0.2 && Math.abs(Math.atan2(x, z)) > 161 * DEG) continue;
-      if (stands.some((s) => Math.hypot(x - s.x, z - s.z) < s.r)) continue;
       out.push({ x, z, ring: Math.round(Math.hypot(i, j)) });
     }
     return out;
+  };
+
+  // The floor's painter, made once per canvas: the canvas near black, then each panel inside its seam written whole into
+  // one image, as the room's beat colours it. `paint(step, t, kick, front, nonce)`: each ring's band colour steps out a
+  // ring a beat and pulses; a drop's wave (`front`, a ring) runs the flash colour out; every panel's cells are a hash of
+  // its place and `nonce`, half lit in its colour, a quarter dark and a quarter bright.
+  const floors = new WeakMap();
+  const floorOf = (canvas, F, tiles) => {
+    let floor = floors.get(canvas);
+    if (floor) return floor;
+    const ctx = canvas.getContext("2d"), N = F.N, img = ctx.createImageData(N, N), px = new Uint32Array(img.data.buffer), side = Math.round(TILE * F.s);
+    // Inside the seam, cells `cell` pixels square a pixel apart, the last against the next panel's seam.
+    const pitch = Math.ceil((side - 1) / CELLS), cell = pitch - 1, c = [0, 0, 0];
+    px.fill(0xff070305);
+    // Each panel's top left pixel inside its seam, and its ring.
+    const at = new Int32Array(tiles.length), ring = new Int8Array(tiles.length);
+    tiles.forEach((t, k) => { at[k] = (Math.round(F.Y(t.z - TILE / 2)) + 1) * N + Math.round(F.X(t.x - TILE / 2)) + 1; ring[k] = t.ring; });
+    const pack = (r, g, b) => 0xff000000 | Math.min(255, b * 255) << 16 | Math.min(255, g * 255) << 8 | Math.min(255, r * 255);
+    const paint = (step, t, kick, front, nonce) => {
+      for (let k = 0; k < at.length; k++) {
+        const r = ring[k], flash = Math.abs(r - front) < 1.3, rgb = flash ? FLASH_RGB : BAND_RGB[((r - step) % 6 + 6) % 6];
+        const glow = flash ? 1.15 : 0.32 + 0.4 * Math.max(0, Math.sin(r * 1.2 - t * 6)) + 0.38 * kick;
+        c[0] = rgb[0] * glow; c[1] = rgb[1] * glow; c[2] = rgb[2] * glow;
+        const lit = pack(c[0], c[1], c[2]), dark = pack(c[0] * 0.16, c[1] * 0.16, c[2] * 0.16), gap = pack(c[0] * 0.3, c[1] * 0.3, c[2] * 0.3);
+        const bright = pack(c[0] + (glow - c[0]) * 0.45, c[1] + (glow - c[1]) * 0.45, c[2] + (glow - c[2]) * 0.45);
+        // The hash: the panel's place and the nonce mixed, two bits a cell.
+        let h = Math.imul(k + 1, 0x9e3779b1) ^ Math.imul(nonce + 7, 0x85ebca6b);
+        h = Math.imul(h ^ h >>> 15, 0x2c1b3c6d); h ^= h >>> 12;
+        for (let y = 0; y < side - 1; y++) {
+          const row = at[k] + y * N, cy = (y / pitch) | 0, edgeY = y % pitch === cell;
+          for (let x = 0; x < side - 1; x++) {
+            if (edgeY || x % pitch === cell) { px[row + x] = gap; continue; }
+            const bits = h >>> (((cy * CELLS + ((x / pitch) | 0)) * 2) & 31) & 3;
+            px[row + x] = bits === 2 ? dark : bits === 3 ? bright : lit;
+          }
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+    };
+    floor = { paint, rings: 1 + ring.reduce((m, r) => Math.max(m, r), 0) };
+    floors.set(canvas, floor);
+    return floor;
   };
 
   // ---------- the dome ----------
@@ -229,11 +274,11 @@
     }
     return out;
   };
-  // How far a beam from (x, y, z) along unit (dx, dy, dz) runs before the floor's tiles or the dome.
+  // How far a beam from (x, y, z) along unit (dx, dy, dz) runs before the floor or the dome.
   const reachOf = (L, x, y, z, dx, dy, dz) => {
     const wy = y - L.c, b = x * dx + wy * dy + z * dz, R = L.R - 0.2;
     let reach = -b + Math.sqrt(Math.max(0, b * b - (x * x + wy * wy + z * z - R * R)));
-    if (dy < -1e-4) reach = Math.min(reach, (y - TILE_H) / -dy);
+    if (dy < -1e-4) reach = Math.min(reach, (y - 0.005) / -dy);
     return reach;
   };
   // A round bar from a to b, `r` thick: a cylinder turned from +y onto the line between them.
@@ -256,6 +301,7 @@
     const { S, Y, X, BAY, chord, lace } = TRUSS, Z = trussZ(L), h = S / 2, top = Y + S, color = C.truss;
     const span = X - h;
     for (const sx of [-1, 1]) {
+      // Each tower on a base plate on the floor.
       const x = sx * X, foot = 0.02, corner = [[-h, -h], [h, -h], [h, h], [-h, h]];
       K.box(0.62, foot, 0.62, C.plate, x, foot / 2, Z);
       K.box(S + 0.04, 0.02, S + 0.04, C.plate, x, top + chord + 0.01, Z);
@@ -318,7 +364,8 @@
   // The screen's painter, made once per canvas: a dim grid of LED pixels; bars of segments either side of the name, bass
   // next to it and treble at the ends, coloured up through the fee bands with a peak over each; the wave across it all;
   // the name on its plate swelling on the kick; the edges flashing on the kick and the whole of it flooding warm in a
-  // drop. `paint(dt, t, kick, boom, bands, wave)` takes the music as the room read it (MUSIC).
+  // drop. `paint(dt, t, kick, boom, bands, wave)` takes the music as the room read it (MUSIC); `channel(name)` shows the
+  // station just tuned to in the name's place for TAG seconds.
   const screens = new WeakMap();
   const screenOf = (canvas) => {
     let screen = screens.get(canvas);
@@ -332,6 +379,16 @@
     l.fillStyle = C.ink; P.roundRect(l, 3, 3, LOGO_W - 6, LOGO_H - 6, 16); l.fill();
     l.strokeStyle = PURPLE; l.lineWidth = 4; P.roundRect(l, 3, 3, LOGO_W - 6, LOGO_H - 6, 16); l.stroke();
     P.pix(l, name, LOGO_W / 2, LOGO_H / 2, Math.min(LOGO_H * 0.42, (LOGO_W - 40) / P.pixWidth(name, 1)), C.label);
+    const tag = CH.canvas(LOGO_W, LOGO_H), g = tag.getContext("2d");
+    let tagged = 0;
+    const channel = (station) => {
+      g.clearRect(0, 0, LOGO_W, LOGO_H);
+      g.fillStyle = C.ink; P.roundRect(g, 3, 3, LOGO_W - 6, LOGO_H - 6, 16); g.fill();
+      g.strokeStyle = "#3cc8ff"; g.lineWidth = 4; P.roundRect(g, 3, 3, LOGO_W - 6, LOGO_H - 6, 16); g.stroke();
+      P.pix(g, "NOW PLAYING", LOGO_W / 2, LOGO_H * 0.3, LOGO_H * 0.15, "#c9a6ff");
+      P.pix(g, station, LOGO_W / 2, LOGO_H * 0.64, Math.min(LOGO_H * 0.3, (LOGO_W - 30) / P.pixWidth(station, 1)), C.label);
+      tagged = SCREEN.TAG;
+    };
     const rows = [];
     for (let r = 0; r < ROWS; r++) rows.push(rgbStyle(band(r / (ROWS - 1) * 5 / 6, c)));
     const level = new Float32Array(BARS), peak = new Float32Array(BARS);
@@ -370,13 +427,14 @@
       ctx.stroke();
       ctx.globalCompositeOperation = "source-over";
       const s = 1 + 0.06 * kick, lw = LOGO_W * s, lh = LOGO_H * s;
-      ctx.drawImage(logo, (W - lw) / 2, (H - lh) / 2, lw, lh);
+      tagged = Math.max(0, tagged - dt);
+      ctx.drawImage(tagged > 0 ? tag : logo, (W - lw) / 2, (H - lh) / 2, lw, lh);
       ctx.fillStyle = PURPLE; ctx.globalAlpha = 0.7 * kick;
       ctx.fillRect(0, 0, W, 4); ctx.fillRect(0, H - 4, W, 4);
       if (boom > 0) { ctx.fillStyle = FLASH; ctx.globalAlpha = boom * 0.55; ctx.fillRect(0, 0, W, H); }
       ctx.globalAlpha = 1;
     };
-    screen = { paint };
+    screen = { paint, channel };
     screens.set(canvas, screen);
     return screen;
   };
@@ -544,7 +602,7 @@
 
   const plan = (K, L) => {
     doorTrim(K, L);
-    const r0 = L.r0, BZ = boothZ(L), tiles = floorTiles(L), rings = 1 + Math.max(...tiles.map((t) => t.ring));
+    const r0 = L.r0, BZ = boothZ(L), tiles = floorTiles(L);
     K.wallColor("#140e1a");
     K.render({ sky: [0.3, 0.24, 0.42], ground: [0.12, 0.08, 0.16], direct: [0.4, 0.34, 0.5], directStrength: 0.12, ambientFloor: 0.3, bloomStrength: 0.95 });
     K.dome((ctx, D) => showOf(ctx.canvas, D).paint(SHOW_T * 1.3, SHOW_T * 5, SHOW_T * 0.05, 0.55, 0.6, 0), { w: DOME_W, h: DOME_H, smooth: true });
@@ -554,37 +612,23 @@
     madeUp(0, 0.6, 1, firstBands, firstWave);
     wallOf(wallCanvas).paint(0.1, 0, 0, 0.6, 0, firstBands, firstWave);
     K.node("wall", wallGeometry(L, wallCanvas), 0, 0, -1, { glow: true, depthBias: WALL_BIAS, target: { kind: "booth", tip: "LED wall", radius: 1.5, data: { say: "Block Party · the music round the room" } } });
-    // The floor: near black, under each tile its colour as the floor starts, dimmed, between black seams (hidden under
-    // the tiles, but where Canvas 2D sorts a large piece of the floor over one, it shows a tile rather than a hole), and
-    // the chain from the doors to the tiles.
-    K.floor((ctx, F) => {
-      const { N, X, Y, s } = F;
-      ctx.fillStyle = "#050307"; ctx.fillRect(0, 0, N, N);
-      ctx.globalAlpha = 0.7;
-      for (const t of tiles) { ctx.fillStyle = BANDS[t.ring % 6]; ctx.fillRect(X(t.x - 0.38), Y(t.z - 0.38), 0.76 * s, 0.76 * s); }
-      ctx.globalAlpha = 1;
-      F.path(0, L.doorZ, 0, PATH_END);
-    });
-
-    // The tiles: each ring in every colour it takes, stacked a hair apart with the colour it starts in uppermost, so the
-    // room seen before its first frame shows the rings as they start.
-    for (let k = 0; k < rings; k++) for (let v = 0; v < VARIANTS; v++) {
-      const color = v < BANDS.length ? BANDS[v] : FLASH, lift = v === k % 6 ? 0.004 : v < BANDS.length ? 0.0005 * v : 0;
-      K.node(`tile${k}_${v}`, (n) => { for (const t of tiles) if (t.ring === k) n.box(0.76, TILE_H, 0.76, color, t.x, TILE_H / 2, t.z, { emissive: 1, glow: true }); }, 0, lift, 0, { glow: true, depthBias: TILE_BIAS });
-    }
+    // The floor: its LED panels painted as the room starts, then repainted as it plays.
+    K.floor((ctx, F) => floorOf(ctx.canvas, F, tiles).paint(0, 0, 0.6, -9, 0), { scale: FLOOR_PX, emissive: 1 });
 
     // The DJ booth at the front: a curved desk, its face an LED screen in a dark bezel lit violet along its edges, its
     // decks and mixer on top.
     const rb0 = r0 - 3.2, rb1 = r0 - 2.4, a0 = 160 * DEG, a1 = 200 * DEG, rs = rb0 - 0.046;
     K.sector(0, rb0, rb1, a0, a1, 0, 1.0, C.booth);
-    K.sector(0, rb0 - 0.06, rb1, a0, a1, 1.0, 1.03, C.boothTop);
+    K.sector(0, rb0 - 0.06, rb1, a0, a1, 1.0, BOOTH_TOP, C.boothTop);
     K.sector(0, rb0 - 0.04, rb0, a0, a1, 0.1, 0.98, C.bezel, { steps: 40 });
     for (const y of [0.115, 0.945]) K.sector(0, rb0 - 0.05, rb0 - 0.04, a0, a1, y, y + 0.012, PURPLE, { emissive: 1, glow: true, steps: 40 });
     const screenCanvas = CH.canvas(SCREEN.W, SCREEN.H);
     screenOf(screenCanvas).paint(0.1, 0, 0.6, 0, firstBands, firstWave);
     K.node("screen", screenGeometry(rs, screenCanvas), 0, 0, -rs,
       { glow: true, depthBias: -0.3, target: { kind: "booth", tip: "DJ booth", radius: 1.3, data: { say: "Block Party · the bass drops on every block" } } });
-    arcSolids(K, (rb0 + rb1) / 2, 160, 200, 0.42);
+    // The desk stands in the way of feet below its top, so an Ooga walks round it to the DJ's place behind, or jumps up
+    // onto it and over.
+    arcSolids(K, (rb0 + rb1) / 2, 160, 200, 0.42, BOOTH_TOP);
     for (const side of [-1, 1]) {
       const x = side * 0.65;
       K.cyl(0.3, 0.3, 0.05, C.metal, x, 1.055, BZ, { seg: 24 });
@@ -668,9 +712,8 @@
   // plays for the visit and is let go in `dispose`.
   const animate = (nodes, built) => {
     const L = built.layout, rigs = rigsOf(L), rgb = [0, 0, 0], F = new Float64Array(3);
-    const tiles = [];
-    for (let k = 0; nodes[`tile${k}_0`]; k++) { const row = []; for (let v = 0; v < VARIANTS; v++) row.push(nodes[`tile${k}_${v}`]); tiles.push(row); }
-    const RINGS = tiles.length, FAR = Math.round(7 / TILE);
+    const floorSurface = built.floor && built.floor.geometry.imageSurface, floor = floorSurface && floors.get(floorSurface.canvas);
+    const RINGS = floor ? floor.rings : 1, FAR = Math.round(7 / TILE);
     // The beams, their dots and their colours now; each colour's beam and dot, from the beams that start in it.
     const count = rigs.length * NB, beams = [], hits = [], beamGeo = [], dotGeo = [], colorNow = new Uint8Array(count);
     for (let p = 0; p < rigs.length; p++) for (let j = 0; j < NB; j++) {
@@ -694,9 +737,17 @@
     const e0 = ROOMS.edgeEl(L, 0) / DEG;
     // The planned colours of the floor's and the ball's lights, which the beat and the drop scale.
     const floorRgb = built.lights[2].slice(4, 7), ballRgb = built.lights[3].slice(4, 7), screenRgb = built.lights[8].slice(4, 7);
-    let next = DROP_FIRST, dropT = -1, beat = 0, rate = 1 / BEAT, lastStep = 0, hit = 1, spin = SHOW_T * 1.3, domeWait = 0, screenWait = 0, screenDt = 0;
+    let next = DROP_FIRST, dropT = -1, beat = 0, rate = 1 / BEAT, lastStep = 0, hit = 1, spin = SHOW_T * 1.3, domeWait = 0, screenWait = 0, screenDt = 0, floorWait = 0, nonce = 0;
     const radio = BL.timechainPartyRadio.create(), heard = { live: false, bpm: 0, phase: 0, level: 0, conf: 0 }, bulbs = RM.bulbsOf(nodes);
     const setLight = (lights, i, r, g, b) => { const o = i * 8; lights[o + 4] = r; lights[o + 5] = g; lights[o + 6] = b; };
+    // The DJ's place, behind the booth from its back toward the truss and within its ends: Space there changes the
+    // channel for this page, named on the booth's screen.
+    const behind = L.r0 - 2.4, stations = BL.timechainPartyRadio.STATIONS.length;
+    const CHANNEL = { key: "channel", label: "CHANNEL", hint: "Space · Change the channel", tap: "Tap CHANNEL to change the channel", run: (hud) => {
+      radio.next();
+      screen.channel(radio.station.short);
+      hud.toast(`Channel ${radio.channel + 1} of ${stations} · ${radio.station.name}`);
+    } };
     return {
       update(dt, t) {
         // The room's beat: its own steady one, or eased onto the music's tempo and phase; it never runs backward, so
@@ -714,13 +765,15 @@
         for (let i = 0; i < bulbs.length; i++) bulbs[i].glow = (i + step) % 3 === 0 ? 0.55 + 0.45 * kick : 0.12;
         if (dropT >= 0 && (dropT += dt / DROP_TIME) >= 1) dropT = -1;
         const d = dropT, dropping = d >= 0, boom = dropping ? 1 - d : 0;
-        // The floor: each ring a band colour, stepping outward a ring every beat and pulsing; in a drop, a wave of the
-        // flash colour running out from the middle once the dome's ring has come down.
+        // The floor: each ring a band colour, stepping outward a ring every beat and pulsing, its panels re-hashed on
+        // every beat as a miner tries nonces; in a drop, the block found, the hashes hold and a wave of the flash colour
+        // runs out from the middle once the dome's ring has come down.
         const front = dropping ? (d - 0.3) / 0.6 * (RINGS + 1) : -9;
-        for (let k = 0; k < RINGS; k++) {
-          const flash = Math.abs(k - front) < 1.3, show = flash ? BANDS.length : ((k - step) % 6 + 6) % 6, row = tiles[k];
-          for (let v = 0; v < VARIANTS; v++) row[v].visible = v === show;
-          row[show].glow = flash ? 1 : 0.22 + 0.45 * Math.max(0, Math.sin(k * 1.2 - t * 6)) + 0.33 * kick;
+        if (!dropping) nonce = step;
+        if (floor && (floorWait -= dt) <= 0) {
+          floorWait = 1 / FLOOR_FPS;
+          floor.paint(step, t, kick, front, nonce);
+          floorSurface.version++;
         }
         // The lasers: every beam aimed, stretched to what it meets and its dot set there, in its colour.
         aim(rigs, beat, kick, boom, look, F);
@@ -792,6 +845,10 @@
           const sc = 0.7 + 0.5 * kick + boom;
           setLight(lights, 8, screenRgb[0] * sc, screenRgb[1] * sc, screenRgb[2] * sc);
         }
+      },
+      near(x, z) {
+        const r = Math.hypot(x, z);
+        return r > behind - 0.1 && r < behind + 1.5 && Math.abs(Math.atan2(x, z)) > 163 * DEG ? CHANNEL : null;
       },
       tap(owner, hud) {
         if (owner.kind === "booth" || owner.kind === "decks" || owner.kind === "speaker") { hud.toast(radio.words()); return true; }

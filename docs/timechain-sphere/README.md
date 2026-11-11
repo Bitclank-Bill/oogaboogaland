@@ -41,7 +41,7 @@ Byte-level exception: the portable single file (`oogaboogaland.html`) and the so
 | 0 | Planetarium: tonight's sky over London from reclining seats round the star projector | 8 m |
 | 1 | Conference Room: the round table for eight under live block and mining charts; the one room that locks | 10.5 m |
 | 2 | Satoshi's Temple: a meditation temple round the Satoshi statue at half as large again as life; its bell, gong, singing bowl and wind bells are heard, its koi fed, its trees shaken, its lanterns put out or lit | 15 m |
-| 3 | Block Party: an LED floor wall to wall under a dome-wide light show, a truss of laser projectors over the DJ booth, and the music's spectrum on the booth's screen and an LED wall all round the room, EDM Sessions playing live and all of it on its beat | 13.5 m |
+| 3 | Block Party: a floor of LED panels in a hash grid that re-hashes on the beat, wall to wall under a dome-wide light show, a truss of laser projectors over a DJ booth you can walk behind (and change the channel) or jump over, and the music's spectrum on the booth's screen and an LED wall all round the room, EDM Sessions or SomaFM playing live and all of it on its beat | 13.5 m |
 | 4 | Fireside Lounge: sofas round a fire pit under the Milky Way | 9 m |
 | 5 | Proof of Work-out: exercise bikes facing a mountain sunrise | 12 m |
 | 6 | The Observatory: a telescope under a slit to the night sky | 12 m |
@@ -67,7 +67,7 @@ For exit, publish exterior zone `sphere` with a valid exterior pose behind the o
 
 Signed-out visitors get the same keypad, ten choices, rooms, camera rules and guided flow in a private local copy. The number chooses the template only. Two guests choosing 3, or a guest and a signed-in player choosing 3, never share occupancy.
 
-Show “Solo visit” beside the banner's buttons (the room's name is already under the title). The way out is the wordless exit button left of the Ooga's face, in every room. Do not register guest rooms, poses, transit events, occupancy, persistent identifiers, remote actors or voice; do not request a microphone. No `sphere-guest` network zone. Guest door cycles are local and do not contend with the shared doorway. Public charts and local ambience still work after entry.
+The banner names the room under its title and nothing more; the way out is the wordless exit button left of the Ooga's face, in every room. Do not register guest rooms, poses, transit events, occupancy, persistent identifiers, remote actors or voice; do not request a microphone. No `sphere-guest` network zone. Guest door cycles are local and do not contend with the shared doorway. Public charts and local ambience still work after entry.
 
 Wait for account resolution before choosing shared versus solo mode, then keep the choice for the visit. Pending authentication is not confirmed sign-out. Late authentication/reconnect cannot publish a solo room. Sign-in returns to the exterior keypad for deliberate shared entry. Logout or session revocation inside immediately removes shared presence/voice and returns safely outside.
 
