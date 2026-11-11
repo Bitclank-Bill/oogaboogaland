@@ -16,7 +16,8 @@
   const C = {
     amber: "#f7931a", amberText: "#ffb04d", white: "#f4efe6", grey: "#a89c8b", ink: "#14110e", stone: "#d8d0c2", post: "#3a3530",
     alu: "#b8bec6", dark: "#1c1e22", beige: "#cfc6b0", pcb: "#1f6b3a", chip: "#111111", fanPlate: "#2a2d32", fanHole: "#0d0e10",
-    blade: "#41454c", hub: "#7a8089", led: "#3ce07a", cable: "#1d6fd6", label: "#e8e8ea"
+    blade: "#41454c", hub: "#7a8089", led: "#3ce07a", cable: "#1d6fd6", label: "#e8e8ea",
+    boss: "#17191c", sticker: "#e2ddd0", guard: "#5f646b", screw: "#5d636b"
   };
 
   // ---------- what the museum says (checked against Sergio Demian Lerner's research for Satoshi's machine, the Bitcoin
@@ -36,7 +37,7 @@
   };
   const MINERS = [
     { year: 2009.1, title: "CPU", name: "Satoshi's computer", model: "cpu", jth: 2e7,
-      text: "One high-end 2009 CPU, five threads at once: the first blocks as Sergio Demian Lerner reads them.",
+      text: "One high-end 2009 CPU, five threads at once.",
       stats: [["Hashrate", "~7-20 MH/s"], ["Power", "~200 W"], ["J/TH", "~10-29 million"]],
       about: "Sergio Demian Lerner found the Patoshi pattern in the earliest blocks, the miner most think was Satoshi. In 2020 he showed it swept five nonce ranges in parallel, each in order, rarely touching the timestamp: multi-threading on one machine, not some fifty PCs. A single high-end desktop or server of 2009 running a tuned miner could have mined every Patoshi block, and his own test CPU runs about as fast as the Intel Core i7-965 Extreme, 2009's fastest desktop chip. He links Patoshi to Satoshi by evidence, not proof.",
       specs: [["Processor", "Intel Core i7-965 Extreme class (Nehalem, 45 nm)"], ["Cores", "4 cores, 8 threads, 3.2 GHz"], ["Mining", "5 threads, each sweeping its own fifth of the nonces"], ["Hashrate", "~7 MH/s plain, ~20 MH/s with 4-way SSE2"], ["Lerner's test", "a difficulty-1 block every 619 s, 219 s with SSE2"], ["CPU power", "130 W (TDP); the PC ~200 W"], ["Network, 2009", "about 5 MH/s in all"], ["Machines", "one, by Lerner's reading"]],
@@ -129,9 +130,11 @@
   const TOP = 0.9, BIG = 2.2;
 
   // ---------- the models, 1.6 times life size, each on its plinth with its front to -z (the ring's middle) ----------
-  // Real sizes in millimetres, scaled to the museum's by `mm`. Every label and screen is drawn in the island's letters
-  // as geometry, so the viewer (which draws faces alone) shows them as the hall does.
-  const mm = (v) => v * 1.6e-3;
+  // Real sizes in millimetres, scaled to the museum's by `mm`. Every label and screen is drawn as geometry, so the
+  // viewer shows them as the hall does. Where one part lies on another it stands at least LIFT proud of it, and no two
+  // faces looking the same way share a plane where they overlap, so the hall's depth test never flickers between them
+  // and the viewer always has a true order to draw them in.
+  const mm = (v) => v * 1.6e-3, LIFT = 0.002, HALF = Math.PI / 2;
   const ANTMINER = {
     s9: { len: 350, wid: 135, hei: 158, psu: "side", fans: 1, color: "#b8bec6", frame: "#8d939b", text: "S9" },
     s17: { len: 298, wid: 178, hei: 296, psu: "top", fans: 2, color: "#aab0b8", frame: "#7f858d", text: "S17 PRO" },
@@ -139,213 +142,573 @@
     s21: { len: 400, wid: 195, hei: 290, psu: "top", fans: 2, color: "#7d838c", frame: "#555a62", text: "S21" },
     hydro: { len: 410, wid: 170, hei: 209, psu: "in", fans: 0, color: "#3a3e45", frame: "#25282d", text: "S21 XP HYD" }
   };
-  // A miner in kit `k`, standing at height `y`, `s` times the museum's size.
-  const model = (k, kind, s = 1, y = 0) => {
-    const B = (w, h, d, color, x, yy, z, o) => k.box(w * s, h * s, d * s, color, x * s, y + yy * s, z * s, o);
-    const Y = (rt, rb, h, color, x, yy, z, o) => k.cyl(rt * s, rb * s, h * s, color, x * s, y + yy * s, z * s, o);
-    const R = (rr, r, color, x, yy, z, o) => k.torus(rr * s, r * s, color, x * s, y + yy * s, z * s, o);
-    const lit = (w, h, d, color, x, yy, z, e = 0.95) => B(w, h, d, color, x, yy, z, { emissive: e, glow: true });
-    // Words in the island's letters, `px` a pixel, facing -z (turned by `ry`) about (x, yy, z).
-    const say = (text, px, color, x, yy, z, ry = 0, e = 0.25) => k.add(RM.helpers.litWord(text, px * s, color, e), x * s, y + yy * s, z * s, { ry });
-    // A fan on an end facing `dir` (-1 toward -z, 1 toward +z), `w` across, its middle at (x, yy) and that end at z: its
-    // square frame, the dark well, seven swept blades round the hub, and the wire guard's rings and spokes.
-    const fan = (w, x, yy, z, dir) => {
-      const at = (t) => z + dir * t, round = { rx: Math.PI / 2 };
-      B(w, w, 0.01, C.fanPlate, x, yy, at(0.005));
-      Y(0.46 * w, 0.46 * w, 0.004, C.fanHole, x, yy, at(0.011), { ...round, seg: 18 });
-      for (let b = 0; b < 7; b++) { const a = b / 7 * P.TAU; B(0.3 * w, 0.11 * w, 0.004, C.blade, x + Math.cos(a) * 0.24 * w, yy + Math.sin(a) * 0.24 * w, at(0.015), { rz: a + 0.6 }); }
-      Y(0.13 * w, 0.13 * w, 0.008, C.hub, x, yy, at(0.019), { ...round, seg: 12 });
-      for (const r of [0.2, 0.33, 0.45]) R(r * w, 0.004, "#60656c", x, yy, at(0.024), { ...round, seg: 24, sides: 3 });
-      for (let b = 0; b < 4; b++) B(0.9 * w, 0.006, 0.004, "#60656c", x, yy, at(0.024), { rz: b * Math.PI / 4 });
+  // Rows of pixels ("#" filled) as one flat geometry facing -z, its middle at the origin, each `px` across and `py`
+  // tall: QR codes and barcodes, built as the island's words are.
+  const pixels = (rows, px, py, color, emissive = 0.1) => {
+    const geo = RM.helpers.blank(), H = rows.length, W = rows[0].length, IN = [0, 0, -1];
+    const x = (c) => (W / 2 - c) * px, y = (r) => (H / 2 - r) * py;
+    rows.forEach((row, r) => {
+      for (let c = 0; c < W; c++) {
+        if (row[c] !== "#") continue;
+        let e = c;
+        while (row[e + 1] === "#") e++;
+        RM.helpers.quad(geo, [x(e + 1), y(r + 1), 0], [x(c), y(r + 1), 0], [x(c), y(r), 0], [x(e + 1), y(r), 0], color, emissive, IN);
+        c = e;
+      }
+    });
+    return BL.models.noShadow(geo);
+  };
+  // A QR code's 21 rows: its three finder squares, the timing lines and a fixed scatter of modules.
+  const QR = (() => {
+    const N = 21, rows = [];
+    const finder = (r, c) => {
+      for (const [r0, c0] of [[0, 0], [0, 14], [14, 0]]) {
+        const a = r - r0, b = c - c0;
+        if (a < -1 || a > 7 || b < -1 || b > 7) continue;
+        if (a < 0 || a > 6 || b < 0 || b > 6) return 0;
+        return Math.max(Math.abs(a - 3), Math.abs(b - 3)) === 2 ? 0 : 1;
+      }
+      return -1;
     };
-    // A label: a white plate with ANTMINER over the model, on the face toward -z at (x, yy, z), turned by `ry`.
-    const label = (text, w, x, yy, z, ry = 0) => {
-      const c = Math.cos(ry), sn = Math.sin(ry), along = (d) => [x - sn * d, z - c * d];
-      const [px, pz] = along(0.004);
-      k.add(BL.models.box({ w: w * s, h: w * 0.42 * s, d: 0.004 * s, color: C.label }), px * s, y + yy * s, pz * s, { ry });
-      const [tx, tz] = along(0.007);
-      say("ANTMINER", w / 60, "#17110a", tx, yy + w * 0.08, tz, ry, 0.1);
-      say(text, w / Math.max(40, text.length * 6.5), "#17110a", tx, yy - w * 0.09, tz, ry, 0.1);
+    for (let r = 0; r < N; r++) {
+      let row = "";
+      for (let c = 0; c < N; c++) {
+        const f = finder(r, c);
+        row += f === 1 || f === -1 && ((r === 6 || c === 6) ? (r + c) % 2 === 0 : (r * 7 + c * 13 + r * c * 3) % 5 < 2) ? "#" : ".";
+      }
+      rows.push(row);
+    }
+    return rows;
+  })();
+  const BARCODE = ["#.##.#..###.#.#..##.###.#..#.##..#.###.##.#"];
+  // Which way a frame's -z looks: its turn about y, then about x.
+  const FACES = { "-z": [0, 0], "+z": [Math.PI, 0], "-x": [HALF, 0], "+x": [-HALF, 0], "+y": [0, HALF], "-y": [0, -HALF] };
+
+  // A miner in kit `root`, standing at height `y`, `s` times the museum's size.
+  const model = (root, kind, s = 1, y = 0) => {
+    // The tools for a frame `k` whose origin stands `base` up: boxes; cylinders, upright unless turned; tori, flat unless
+    // turned; lit boxes; words and pixel rows, facing -z; `at`, a frame of its own placed and turned in this one, and
+    // `face`, one whose -z looks along a face; and `cable`, a square-section run through axis-aligned points.
+    const tools = (k, base) => {
+      const T = {
+        B: (w, h, d, color, x, yy, z, o) => k.box(w * s, h * s, d * s, color, x * s, base + yy * s, z * s, o),
+        Y: (rt, rb, h, color, x, yy, z, o) => k.cyl(rt * s, rb * s, h * s, color, x * s, base + yy * s, z * s, o),
+        R: (rr, r, color, x, yy, z, o) => k.torus(rr * s, r * s, color, x * s, base + yy * s, z * s, o),
+        lit: (w, h, d, color, x, yy, z, e = 0.95) => T.B(w, h, d, color, x, yy, z, { emissive: e, glow: true }),
+        add: (geo, x, yy, z) => k.add(geo, x * s, base + yy * s, z * s),
+        say: (text, px, color, x, yy, z, e = 0.25) => T.add(RM.helpers.litWord(text, px * s, color, e), x, yy, z),
+        dots: (rows, px, py, color, x, yy, z, e) => T.add(pixels(rows, px * s, py * s, color, e), x, yy, z),
+        at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0),
+        face: (face, x, yy, z, spin = 0) => T.at(x, yy, z, FACES[face][0], FACES[face][1], spin),
+        cable: (pts, r, color) => {
+          for (let i = 1; i < pts.length; i++) {
+            const [ax, ay, az] = pts[i - 1], [bx, by, bz] = pts[i];
+            T.B(Math.abs(bx - ax) + r, Math.abs(by - ay) + r, Math.abs(bz - az) + r, color, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+          }
+        }
+      };
+      return T;
+    };
+    const T = tools(root, y), { B, Y, R, lit } = T;
+    // In a frame looking out of a face, the depth of layer `n` laid on it (LIFT thick, each LIFT clear of the last)
+    // and of words written on that layer.
+    const lay = (n) => -0.003 - 0.004 * n, ink = (n) => lay(n) - 0.0025;
+    // A fan, `w` across, its back on frame F's origin and blowing out along its -z: the square frame with a boss at
+    // each corner, the dark well, seven pitched blades round the hub and its sticker, and the wire guard.
+    const fan = (F, w) => {
+      F.B(w, w, 0.014, C.fanPlate, 0, 0, -0.007);
+      for (const cx of [-1, 1]) for (const cy of [-1, 1]) F.Y(0.055 * w, 0.055 * w, 0.004, C.boss, cx * 0.41 * w, cy * 0.41 * w, -0.016, { rx: HALF, seg: 6 });
+      F.Y(0.465 * w, 0.465 * w, 0.002, C.fanHole, 0, 0, -0.015, { rx: HALF, seg: 18 });
+      for (let b = 0; b < 7; b++) F.at(0, 0, -0.024, 0, 0, b / 7 * P.TAU).B(0.3 * w, 0.13 * w, 0.003, C.blade, 0.25 * w, 0, 0, { rx: 0.35 });
+      F.Y(0.14 * w, 0.14 * w, 0.014, C.hub, 0, 0, -0.024, { rx: HALF, seg: 12 });
+      F.Y(0.1 * w, 0.1 * w, 0.002, C.sticker, 0, 0, -0.0325, { rx: HALF, seg: 10 });
+      for (const r of [0.2, 0.32, 0.44]) F.R(r * w, 0.0035, C.guard, 0, 0, -0.04, { rx: HALF, seg: 16, sides: 3 });
+      for (let b = 0; b < 4; b++) F.B(0.92 * w, 0.006, 0.004, C.guard, 0, 0, -0.04, { rz: b * Math.PI / 4 });
+    };
+    // A graphics card's blower, `r` round, in its shroud at frame F's origin: the dark intake, nine pitched blades,
+    // the hub and its red cap.
+    const blower = (F, r) => {
+      F.Y(r, r, 0.002, C.fanHole, 0, 0, -0.001, { rx: HALF, seg: 20 });
+      for (let b = 0; b < 9; b++) F.at(0, 0, -0.0055, 0, 0, b / 9 * P.TAU).B(0.62 * r, 0.1 * r, 0.003, C.blade, 0.55 * r, 0, 0, { rx: 0.5 });
+      F.Y(0.3 * r, 0.3 * r, 0.006, C.hub, 0, 0, -0.005, { rx: HALF, seg: 14 });
+      F.Y(0.2 * r, 0.2 * r, 0.002, "#c8102e", 0, 0, -0.009, { rx: HALF, seg: 14 });
+    };
+    // A screw head at (x, yy) on frame F's face.
+    const screw = (F, x, yy, r = 0.0055, on = 0) => F.Y(r, r, 0.003, C.screw, x, yy, on - 0.0015, { rx: HALF, seg: 8 });
+    // An Antminer's label, `w` across, its middle at frame F's origin: ANTMINER and the model over a barcode, the QR
+    // code beside them and BITMAIN under it.
+    const label = (F, w, text) => {
+      const h = w * 0.46, z = -LIFT - 0.0015, q = h * 0.7 / 21;
+      F.B(w, h, LIFT, C.label, 0, 0, -LIFT / 2);
+      F.say("ANTMINER", w * 0.0105, C.ink, w * 0.16, h * 0.28, z, 0.1);
+      F.say(text, w * Math.min(0.0105, 0.36 / (text.length * 6)), C.ink, w * 0.16, h * 0.02, z, 0.1);
+      F.dots(BARCODE, w * 0.012, h * 0.2, C.ink, w * 0.16, -h * 0.28, z, 0.05);
+      F.dots(QR, q, q, C.ink, -w * 0.3, h * 0.04, z, 0.05);
+      F.say("BITMAIN", w * 0.005, "#55504a", -w * 0.3, -h * 0.42, z, 0.1);
+    };
+    // The control board's panel at frame F's origin, `w` by `h`: the network port with its two lights, the status
+    // lights, the IP Report button and the reset hole, in a column when the panel stands tall.
+    const ports = (F, w, h) => {
+      const tall = h > w, at = (a, b) => tall ? [0, b] : [a, 0];
+      F.B(w, h, 0.004, "#1c1e22", 0, 0, -0.002);
+      const [px, py] = at(w * 0.28, h * 0.26);
+      F.B(0.017, 0.014, 0.006, "#0b0b0d", px, py, -0.007);
+      F.lit(0.003, 0.003, LIFT, C.led, px + 0.006, py + 0.0055, -0.011);
+      F.lit(0.003, 0.003, LIFT, C.amber, px - 0.006, py + 0.0055, -0.011);
+      const [lx, ly] = at(-w * 0.02, -h * 0.02);
+      F.lit(0.005, 0.005, LIFT, C.led, lx + (tall ? -0.006 : 0), ly + (tall ? 0 : 0.005), -0.005);
+      F.lit(0.005, 0.005, LIFT, "#ff4a3d", lx + (tall ? 0.006 : 0), ly - (tall ? 0 : 0.005), -0.005);
+      const [bx, by] = at(-w * 0.26, -h * 0.22);
+      F.Y(0.0035, 0.0035, 0.004, "#2a2a2a", bx, by, -0.006, { rx: HALF, seg: 8 });
+      F.Y(0.0015, 0.0015, LIFT, "#050505", bx + (tall ? 0 : -0.012), by + (tall ? -0.014 : 0), -0.005, { rx: HALF, seg: 6 });
     };
 
     if (kind === "cpu") {
-      // A high-end 2009 desktop: a black tower, its side open on an X58 board with a tower cooler on the CPU, RAM, a
-      // graphics card and the power supply; a 20-inch screen running Bitcoin 0.1 with Generate Coins on; keyboard
-      // and mouse.
-      const tx = -0.42, tw = mm(205), th = mm(470), td = mm(470), side = tx - tw / 2;
-      B(tw, th, td, "#16171a", tx, th / 2, 0);
-      B(tw * 0.96, th * 0.98, 0.012, "#0e0f11", tx, th / 2, -td / 2 - 0.006);
-      for (let i = 0; i < 2; i++) { B(tw * 0.84, mm(42), 0.008, "#2a2c30", tx, th - mm(60) - i * mm(48), -td / 2 - 0.014); B(tw * 0.6, 0.004, 0.004, "#55585e", tx, th - mm(60) - i * mm(48), -td / 2 - 0.019); }
-      for (let i = 0; i < 6; i++) B(tw * 0.84, 0.006, 0.006, "#22242a", tx, mm(70) + i * mm(30), -td / 2 - 0.014);
-      R(0.022, 0.005, "#2b6fd8", tx, th - mm(170), -td / 2 - 0.016, { rx: Math.PI / 2, seg: 14, sides: 3, emissive: 0.9, glow: true });
-      lit(0.008, 0.008, 0.004, "#ff9a2a", tx + 0.05, th - mm(170), -td / 2 - 0.016);
-      // The open side: the board, the CPU's cooler (fins and fan), six blue sticks of RAM, the graphics card and the
-      // power supply at the foot, the case's frame round the opening.
-      const sx = side - 0.003;
-      B(0.004, th * 0.86, td * 0.86, "#0d0e10", sx + 0.006, th * 0.5, 0);
-      B(0.006, mm(305), mm(244), "#1c2b22", sx + 0.01, th * 0.58, mm(20));
-      B(0.012, mm(60), mm(60), "#9aa0a8", sx + 0.004, th * 0.7, -mm(10));
-      for (let f = 0; f < 9; f++) B(0.07, mm(120), 0.003, "#c9ccd2", sx - 0.03, th * 0.7, -mm(50) + f * mm(10));
-      Y(mm(55), mm(55), 0.01, "#202226", sx - 0.068, th * 0.7, -mm(10), { rz: Math.PI / 2, seg: 16 });
-      Y(mm(18), mm(18), 0.012, "#3a3d42", sx - 0.072, th * 0.7, -mm(10), { rz: Math.PI / 2, seg: 10 });
-      for (let r = 0; r < 6; r++) B(0.012, mm(130), 0.006, "#2f6fd6", sx - 0.004, th * 0.72, mm(70) + r * mm(9));
-      B(0.03, mm(110), mm(260), "#1a1a1c", sx - 0.012, th * 0.4, mm(10));
-      B(0.032, 0.006, mm(260), "#c8102e", sx - 0.013, th * 0.4 + mm(52), mm(10));
-      B(0.008, mm(86), mm(150), "#2a2c30", sx + 0.004, mm(60), mm(140));
-      for (const [h, d, yy, z] of [[th, 0.02, th / 2, -td / 2 + 0.01], [th, 0.02, th / 2, td / 2 - 0.01], [0.02, td, th - 0.01, 0], [0.02, td, 0.01, 0]]) B(0.012, h, d, "#26272b", sx, yy, z);
-      // The screen on its stand, Bitcoin 0.1 lit on it.
-      const mx = 0.2, mw = mm(470), mh = mm(320), my = mm(110) + mh / 2, mz = 0.06;
-      B(mm(240), 0.012, mm(190), "#141518", mx, 0.006, mz + 0.05);
-      B(mm(50), mm(110), mm(30), "#141518", mx, mm(60), mz + 0.07);
+      // A high-end 2009 desktop with its side panel off: the chassis open on the board, a tower cooler on the CPU, six
+      // sticks of RAM, the graphics card, two hard drives, the DVD writer and the power supply with its cables; on its
+      // front the drive bays, the mesh and the power and reset buttons, on its back the ports. A 20-inch screen shows
+      // Bitcoin 0.1 open on Windows XP, generating; a full keyboard, and the mouse on its pad.
+      const tx = -0.42, tw = mm(205), th = mm(470), td = mm(470), hf = 0.014, t = 0.01, fz = 0.03;
+      const x0 = tx - tw / 2, x1 = tx + tw / 2, z0 = -td / 2, z1 = td / 2, top = hf + th, inZ = (z0 + fz + z1 - t) / 2, inD = td - fz - t;
+      for (const fx of [x0 + 0.03, x1 - 0.03]) for (const fzz of [z0 + 0.05, z1 - 0.05]) Y(0.016, 0.02, hf, "#0c0c0e", fx, hf / 2, fzz, { seg: 10 });
+      B(tw, th, fz, "#141518", tx, hf + th / 2, z0 + fz / 2);
+      B(tw, th, t, "#1a1b1e", tx, hf + th / 2, z1 - t / 2);
+      B(tw, t, inD, "#16171a", tx, top - t / 2, inZ);
+      B(tw, t, inD, "#16171a", tx, hf + t / 2, inZ);
+      B(t, th - 2 * t, inD, "#16171a", x1 - t / 2, hf + th / 2, inZ);
+      // The board on its tray, and on it the CPU's tower cooler (base, heat pipes, fins and its fan), the RAM in its
+      // slots, the chipset's heatsink and the expansion slots.
+      const xb = x1 - t - 0.004, cy = 0.6, cz = 0.16, fin = 0.19;
+      B(0.004, mm(305), mm(244), "#1f2a24", xb + 0.002, top - t - 0.02 - mm(152.5), z1 - t - 0.02 - mm(122));
+      B(0.022, 0.07, 0.07, "#b9bec4", xb - 0.011, cy, cz);
+      for (let i = 0; i < 4; i++) Y(0.005, 0.005, 0.22, "#b87333", xb - 0.13, cy - 0.03 + i * 0.02, cz, { rz: HALF, seg: 8 });
+      for (let i = 0; i < 16; i++) B(0.002, fin, fin, "#c9ccd2", xb - 0.05 - i * 0.012, cy, cz);
+      fan(T.face("-z", xb - 0.14, cy, cz - fin / 2), fin);
+      for (let i = 0; i < 6; i++) {
+        const z = 0.012 - i * 0.0105;
+        B(0.006, 0.23, 0.0085, "#111214", xb - 0.003, cy + 0.01, z);
+        B(0.05, 0.213, 0.005, i % 2 ? "#2b67cf" : "#2f6fd6", xb - 0.028, cy + 0.01, z);
+        B(0.004, 0.2, 0.0085, "#1d3f8a", xb - 0.055, cy + 0.01, z);
+      }
+      B(0.03, 0.05, 0.06, "#7f868e", xb - 0.015, 0.48, 0.17);
+      for (let i = 0; i < 4; i++) B(0.012, 0.05, 0.004, "#9aa1a9", xb - 0.036, 0.48, 0.148 + i * 0.015);
+      for (const yy of [0.44, 0.29, 0.26]) B(0.006, 0.01, 0.14, "#0e0f11", xb - 0.003, yy, 0.27);
+      // The graphics card in the top slot: its shroud, the red stripe and its name on the edge we see, the blower
+      // under it and its two power plugs.
+      const gy = 0.41, gz = z1 - t - 0.2135, gx = xb - 0.095, ge = xb - 0.184;
+      B(0.178, 0.061, 0.427, "#191a1c", gx, gy, gz);
+      const G = T.face("-x", ge, gy, gz);
+      G.B(0.3, 0.012, LIFT, "#c8102e", 0, 0.014, -LIFT / 2);
+      G.say("HD 4870", 0.0028, "#e8e8e8", -0.13, -0.012, -0.0035, 0.4);
+      blower(T.face("-y", gx, gy - 0.0305, gz - 0.12), 0.042);
+      for (const dz of [-0.016, 0.016]) T.face("-x", ge, gy, gz - 0.18 + dz).B(0.024, 0.018, 0.012, "#0b0b0d", 0, 0, -0.006);
+      // The power supply at the foot, its sticker, and its cables: two to the card, the board's 24-pin.
+      const psx = x1 - t - 0.122, psy = hf + t + 0.069, psz = z1 - t - 0.128;
+      B(0.24, 0.138, 0.256, "#2b2d31", psx, psy, psz);
+      const Ps = T.face("-x", psx - 0.12, psy, psz);
+      Ps.B(0.14, 0.08, LIFT, C.label, 0, 0, -LIFT / 2);
+      Ps.say("850 W", 0.0042, C.ink, 0, 0.012, -0.0035, 0.1);
+      Ps.B(0.1, 0.006, LIFT, "#c8102e", 0, -0.02, -LIFT - LIFT / 2);
+      T.cable([[ge - 0.016, gy, gz - 0.18], [ge - 0.016, 0.12, gz - 0.18], [ge - 0.016, 0.12, psz - 0.128]], 0.012, "#111113");
+      T.cable([[xb - 0.05, 0.1, psz - 0.128], [xb - 0.05, 0.1, -0.06], [xb - 0.05, 0.45, -0.06], [xb - 0.02, 0.45, -0.06]], 0.022, "#141416");
+      B(0.02, 0.06, 0.018, "#e9e7e0", xb - 0.01, 0.45, -0.036);
+      // The drive cage at the front: two hard drives with their stickers and red SATA cables, and the DVD writer.
+      const hx = x0 + 0.105, hz = z0 + fz + 0.123;
+      for (const sx of [-1, 1]) B(0.004, 0.22, 0.24, "#3a3d42", hx + sx * 0.0855, 0.16, hz);
+      [0.09, 0.15].forEach((yy, i) => {
+        B(0.163, 0.042, 0.235, "#a9adb3", hx, yy, hz);
+        const D = T.face("+y", hx, yy + 0.021, hz);
+        D.B(0.11, 0.15, LIFT, "#e9e9e9", 0, 0.02, -LIFT / 2);
+        D.say("500 GB", 0.003, C.ink, 0, 0.05, -0.0035, 0.1);
+        T.cable([[hx + 0.05, yy, hz + 0.118], [hx + 0.05, yy, -0.085 - i * 0.012], [xb - 0.02, yy, -0.085 - i * 0.012], [xb - 0.02, 0.3 + i * 0.03, -0.085 - i * 0.012], [xb - 0.02, 0.3 + i * 0.03, -0.04]], 0.008, "#c8102e");
+      });
+      B(0.234, 0.066, 0.272, "#26282c", (x0 + xb) / 2, top - t - 0.05, z0 + fz + 0.136);
+      // The front: the DVD writer's face with its tray seam, eject button and light; a blank bay; the power button
+      // in its blue ring, reset and the lights; the mesh; and the front ports on top.
+      const Fr = T.face("-z", tx, 0, z0), ody = top - t - 0.05;
+      Fr.B(0.234, 0.066, 0.004, "#202226", 0, ody, -0.002);
+      Fr.B(0.2, 0.0025, LIFT, "#0a0a0b", 0, ody + 0.012, -0.005);
+      Fr.B(0.016, 0.006, LIFT, "#3a3c40", -0.09, ody - 0.02, -0.005);
+      Fr.lit(0.006, 0.003, LIFT, "#3cff6a", -0.06, ody - 0.02, -0.005);
+      Fr.B(0.234, 0.066, 0.004, "#1b1c1f", 0, ody - 0.072, -0.002);
+      Fr.Y(0.026, 0.026, 0.006, "#202226", 0, 0.52, -0.003, { rx: HALF, seg: 18 });
+      Fr.R(0.03, 0.004, "#2b6fd8", 0, 0.52, -0.003, { rx: HALF, seg: 18, sides: 4, emissive: 0.9, glow: true });
+      Fr.Y(0.008, 0.008, 0.004, "#2a2c30", -0.07, 0.52, -0.002, { rx: HALF, seg: 10 });
+      Fr.lit(0.006, 0.006, LIFT, "#4aa3ff", 0.06, 0.53, -0.001);
+      Fr.lit(0.006, 0.006, LIFT, "#ff4a3d", 0.06, 0.51, -0.001);
+      for (let i = 0; i < 19; i++) Fr.B(tw * 0.78, 0.008, LIFT, "#0b0b0c", 0, 0.05 + i * 0.022, -0.001);
+      const Tp = T.face("+y", tx, top, z0 + fz + 0.04);
+      for (const lx of [0.06, 0.04]) Tp.B(0.014, 0.006, 0.004, "#0b0b0d", lx, 0, -0.002);
+      [["#e88aa8", -0.04], ["#7cc576", -0.06]].forEach(([c, lx]) => Tp.Y(0.005, 0.005, 0.004, c, lx, 0, -0.002, { rx: HALF, seg: 10 }));
+      // The back: the board's port shield, the card's bracket and the slot covers, the case fan's grille, and the
+      // power supply's grille, inlet and switch.
+      const Bk = T.face("+z", xb - 0.04, 0, z1);
+      Bk.B(0.07, 0.25, LIFT, "#8e949b", 0, 0.6, -LIFT / 2);
+      for (let i = 0; i < 4; i++) Bk.B(0.03, 0.026, 0.004, "#0b0b0d", 0, 0.68 - i * 0.04, -LIFT - 0.002);
+      [["#e88aa8", -0.012], ["#7cc576", 0], ["#4aa3ff", 0.012]].forEach(([c, lx]) => Bk.Y(0.0045, 0.0045, 0.004, c, lx, 0.505, -LIFT - 0.002, { rx: HALF, seg: 10 }));
+      Bk.B(0.11, 0.07, LIFT, "#3b3f45", 0.06, gy, -LIFT / 2);
+      for (const ly of [-0.016, 0.016]) Bk.B(0.04, 0.014, 0.004, "#e8e8ea", 0.06, gy + ly, -LIFT - 0.002);
+      for (let i = 0; i < 4; i++) Bk.B(0.11, 0.028, LIFT, "#7d838a", 0.06, 0.32 - i * 0.034, -LIFT / 2);
+      const Ex = T.face("+z", xb - 0.17, cy, z1);
+      Ex.Y(0.07, 0.07, LIFT, C.fanHole, 0, 0, -LIFT / 2, { rx: HALF, seg: 20 });
+      for (const r of [0.03, 0.05, 0.068]) Ex.R(r, 0.003, C.guard, 0, 0, -0.006, { rx: HALF, seg: 20, sides: 3 });
+      const Pr = T.face("+z", psx, psy, z1);
+      Pr.Y(0.055, 0.055, LIFT, C.fanHole, -0.03, 0, -LIFT / 2, { rx: HALF, seg: 20 });
+      for (const r of [0.025, 0.045]) Pr.R(r, 0.003, C.guard, -0.03, 0, -0.006, { rx: HALF, seg: 20, sides: 3 });
+      Pr.B(0.04, 0.03, 0.006, "#0b0b0d", 0.07, 0.02, -0.003);
+      Pr.B(0.012, 0.018, 0.006, "#c8102e", 0.07, -0.03, -0.003);
+      // The screen on its stand, Windows XP's hill and sky on it, the taskbar, and Bitcoin 0.1's window: its title,
+      // the menu and toolbar, the address, the balance, the transactions and the status bar, all as Satoshi's would
+      // have read them while generating.
+      const mx = 0.2, mw = mm(470), mh = mm(320), my = mm(110) + mh / 2, mz = 0.08;
+      B(mm(240), 0.014, mm(190), "#141518", mx, 0.007, mz + 0.06);
+      B(mm(60), mm(180), mm(30), "#141518", mx, 0.014 + mm(90), mz + 0.075);
       B(mw, mh, 0.03, "#121316", mx, my, mz);
-      // Its layers stand a clear step apart and the window shares the screen's middle, so a face-sorting renderer (the
-      // viewer, Canvas 2D) keeps them in order from any side.
-      B(mw - 0.04, mh - 0.05, 0.004, "#0b0e12", mx, my, mz - 0.019);
-      const sw = mw - 0.06, wh = mh - 0.09, top = my + wh / 2 - 0.015, left = mx + sw / 2;
-      lit(sw, wh, 0.002, "#d8d4c8", mx, my, mz - 0.028, 0.6);
-      lit(sw, 0.03, 0.002, "#2b5fae", mx, top, mz - 0.034, 0.8);
-      say("BITCOIN", 0.0045, "#ffffff", left - 0.12, top, mz - 0.037, 0, 0.9);
-      say("BALANCE  50.00", 0.0042, "#1a1a1a", mx, top - 0.06, mz - 0.037, 0, 0.5);
-      say("GENERATE COINS: ON", 0.0042, "#1a1a1a", mx, top - 0.1, mz - 0.037, 0, 0.5);
-      say("BLOCKS  1207", 0.0042, "#1a1a1a", mx, top - 0.14, mz - 0.037, 0, 0.5);
-      // The keyboard, its keys in rows, and the mouse.
-      const kx = 0.14, kz = -0.32;
-      B(mm(450), 0.02, mm(150), "#1a1b1e", kx, 0.01, kz);
-      for (let r = 0; r < 5; r++) for (let c = 0; c < 15; c++) B(mm(23), 0.008, mm(22), "#2c2e33", kx - mm(200) + c * mm(28.5), 0.024, kz - mm(58) + r * mm(28));
-      B(mm(65), 0.022, mm(110), "#1a1b1e", kx + mm(330), 0.011, kz + 0.01);
+      B(mw * 0.62, mh * 0.6, 0.045, "#16171a", mx, my - 0.02, mz + 0.0375);
+      const S = T.face("-z", mx, 0, mz - 0.015);
+      S.lit(0.006, 0.006, LIFT, "#4aa3ff", -mw / 2 + 0.03, my - mh / 2 + 0.012, -LIFT / 2, 0.9);
+      for (let i = 0; i < 4; i++) S.B(0.008, 0.004, LIFT, "#2a2c30", -mw / 2 + 0.06 + i * 0.022, my - mh / 2 + 0.012, -LIFT / 2);
+      const sw = mw - 0.06, sh = mh - 0.074, sy = my + 0.006;
+      S.B(mw - 0.036, mh - 0.05, LIFT, "#0b0e12", 0, sy, -LIFT / 2);
+      S.lit(sw, sh * 0.58, LIFT, "#4d82d6", 0, sy + sh * 0.21, lay(0), 0.75);
+      S.lit(sw, sh * 0.42, LIFT, "#4c9a2a", 0, sy - sh * 0.29, lay(0), 0.75);
+      for (const [cx, cy2, w2] of [[-sw * 0.33, sy + sh * 0.38, 0.09], [-sw * 0.42, sy + sh * 0.27, 0.06]]) S.lit(w2, 0.014, LIFT, "#eef3ff", cx, cy2, lay(1), 0.8);
+      const bar = sy - sh / 2 + 0.014;
+      S.lit(sw, 0.028, LIFT, "#245edb", 0, bar, lay(1), 0.8);
+      S.lit(0.075, 0.024, LIFT, "#3c9a3c", sw / 2 - 0.042, bar, lay(2), 0.85);
+      S.say("START", 0.0022, "#ffffff", sw / 2 - 0.044, bar, ink(2), 0.9);
+      S.lit(0.08, 0.024, LIFT, "#1b8de6", -sw / 2 + 0.045, bar, lay(2), 0.85);
+      S.say("10:35 PM", 0.0016, "#ffffff", -sw / 2 + 0.045, bar, ink(2), 0.9);
+      const ww = sw * 0.66, wh = sh * 0.8, wx = sw * 0.08, wy = sy - sh / 2 + 0.04 + wh / 2, wl = wx + ww / 2, wt = wy + wh / 2;
+      S.lit(ww, wh, LIFT, "#ece9d8", wx, wy, lay(1), 0.75);
+      S.lit(ww, 0.03, LIFT, "#0a58ca", wx, wt - 0.015, lay(2), 0.85);
+      S.lit(0.016, 0.016, LIFT, "#f7931a", wl - 0.016, wt - 0.015, lay(3), 0.9);
+      S.say("BITCOIN", 0.0026, "#ffffff", wl - 0.075, wt - 0.015, ink(2), 0.95);
+      S.lit(0.02, 0.02, LIFT, "#d8402b", wx - ww / 2 + 0.015, wt - 0.015, lay(3), 0.9);
+      S.say("X", 0.0022, "#ffffff", wx - ww / 2 + 0.015, wt - 0.015, ink(3), 0.95);
+      for (const i of [1, 2]) S.lit(0.02, 0.02, LIFT, "#3b77e6", wx - ww / 2 + 0.015 + i * 0.024, wt - 0.015, lay(3), 0.9);
+      // Words too small to read at this size stand as grey strokes, as they would to the eye.
+      const words = (list, yy, n, color = "#6a6a6a", from = wl - 0.014) => { let x = from; for (const w2 of list) { S.lit(w2, 0.006, LIFT, color, x - w2 / 2, yy, lay(n), 0.6); x -= w2 + 0.012; } };
+      words([0.024, 0.044, 0.028], wt - 0.042, 2, "#3a3a3a");
+      for (const [i, bw] of [[0, 0.1], [1, 0.12]]) {
+        const bx = wl - 0.012 - (i ? 0.1 + 0.012 : 0) - bw / 2;
+        S.lit(bw, 0.026, LIFT, "#f6f5f0", bx, wt - 0.072, lay(2), 0.75);
+        S.lit(bw * 0.7, 0.006, LIFT, "#3a3a3a", bx, wt - 0.072, lay(3), 0.6);
+      }
+      words([0.07], wt - 0.106, 2, "#3a3a3a");
+      S.lit(0.2, 0.022, LIFT, "#ffffff", wl - 0.1 - 0.2 / 2, wt - 0.106, lay(2), 0.8);
+      S.lit(0.16, 0.006, LIFT, "#3a3a3a", wl - 0.1 - 0.2 / 2, wt - 0.106, lay(3), 0.6);
+      S.say("BALANCE: 50.00", 0.0026, "#1a1a1a", wl - 0.014 - 0.109, wt - 0.142, ink(1), 0.5);
+      const listTop = wt - 0.162, listH = wh - 0.162 - 0.034;
+      S.lit(ww - 0.024, listH, LIFT, "#ffffff", wx, listTop - listH / 2, lay(2), 0.8);
+      S.lit(ww - 0.024, 0.02, LIFT, "#dcd8c8", wx, listTop - 0.01, lay(3), 0.75);
+      for (let r = 0; r < 4; r++) {
+        let x = wl - 0.026;
+        for (const w2 of [0.06, 0.05, 0.11, 0.04]) { S.lit(w2, 0.006, LIFT, r ? "#5a5a5a" : "#2a2a2a", x - w2 / 2, listTop - 0.01 - (r ? 0.014 + r * 0.024 : 0), lay(r ? 3 : 4), 0.6); x -= w2 + 0.03; }
+      }
+      S.lit(ww, 0.022, LIFT, "#e0dccb", wx, wy - wh / 2 + 0.011, lay(2), 0.75);
+      S.say("GENERATING", 0.0018, "#1a1a1a", wl - 0.014 - 0.0531, wy - wh / 2 + 0.011, ink(2), 0.5);
+      words([0.05, 0.06], wy - wh / 2 + 0.011, 3, "#5a5a5a", wl - 0.14);
+      // A full 2009 keyboard: the main block, the arrows and the block over them, the number pad and its lights;
+      // the mouse on its pad, its cable running under the tower.
+      const kx = 0.13, kz = -0.47, u = mm(19), left = kx + 11.45 * u;
+      B(u * 22.9, 0.022, u * 6.6, "#18191c", kx, 0.011, kz);
+      const key = (x, z, w2) => B(w2 * u - 0.005, 0.012, u - 0.005, "#26282c", x - w2 * u / 2, 0.028, z);
+      const ROWS = [[1, -1, 1, 1, 1, 1, -0.5, 1, 1, 1, 1, -0.5, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2], [1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5],
+        [1.75, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2.25], [2.25, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2.75], [1.25, 1.25, 1.25, 6.25, 1.25, 1.25, 1.25, 1.25]];
+      ROWS.forEach((row, r) => {
+        const z = kz + (2.6 - r - (r ? 0.3 : 0)) * u;
+        let x = left - 0.2 * u;
+        for (const w2 of row) { if (w2 > 0) key(x, z, w2); x -= Math.abs(w2) * u; }
+      });
+      const nav = left - 15.4 * u;
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) key(nav - c * u, kz + (1.3 - r) * u, 1);
+      for (const [c, r] of [[1, 3], [0, 4], [1, 4], [2, 4]]) key(nav - c * u, kz + (1.3 - r) * u, 1);
+      const pad = left - 18.6 * u;
+      for (let r = 0; r < 5; r++) for (let c = 0; c < 4; c++) {
+        if (c === 3 && (r === 2 || r === 4) || r === 4 && c === 1) continue;
+        const tallKey = c === 3 && (r === 1 || r === 3), wide = r === 4 && c === 0;
+        B((wide ? 2 : 1) * u - 0.005, 0.012, (tallKey ? 2 : 1) * u - 0.005, "#26282c", pad - c * u - (wide ? u : u / 2), 0.028, kz + (1.3 - r - (tallKey ? 0.5 : 0)) * u);
+      }
+      for (let i = 0; i < 3; i++) lit(0.004, LIFT, 0.004, i === 0 ? C.led : "#203024", pad - 1.2 * u - i * 0.02, 0.023, kz + 2.9 * u, i ? 0 : 0.9);
+      const mox = -0.33, moz = -0.47;
+      B(0.22, 0.003, 0.2, "#2a2c30", mox, 0.0015, moz);
+      B(0.064, 0.022, 0.104, "#1d1e21", mox, 0.003 + 0.011, moz);
+      B(0.05, 0.008, 0.06, "#26282c", mox, 0.025 + 0.004, moz - 0.012);
+      B(0.002, LIFT, 0.05, "#0c0c0e", mox, 0.033 + LIFT / 2, moz - 0.02);
+      Y(0.008, 0.008, 0.007, "#4a4d52", mox, 0.032, moz - 0.03, { rz: HALF, seg: 10 });
+      T.cable([[mox, 0.007, moz + 0.055], [mox, 0.007, 0.0]], 0.006, "#121214");
       return {};
     }
     if (kind === "gpu") {
-      // An open aluminium frame: the board on the floor of it, four Radeon HD 5870s standing on riser cables, the power
-      // supply at the side.
-      for (const [x, z] of [[-0.3, -0.27], [0.3, -0.27], [-0.3, 0.27], [0.3, 0.27]]) B(0.025, 0.46, 0.025, C.alu, x, 0.23, z);
-      for (const z of [-0.27, 0.27]) B(0.62, 0.02, 0.025, C.alu, 0, 0.45, z);
-      for (const x of [-0.3, 0.3]) B(0.025, 0.02, 0.56, C.alu, x, 0.45, 0);
-      B(0.6, 0.012, 0.56, "#9aa0a8", 0, 0.006, 0);
-      B(mm(244), 0.012, mm(305), "#1c2b22", -0.05, 0.02, 0.02);
-      for (let r = 0; r < 4; r++) B(0.012, mm(120), 0.008, "#2f6fd6", 0.06, 0.06, -0.12 + r * 0.012);
-      B(mm(150), mm(86), mm(160), "#2a2c30", 0.44, mm(43), 0.1);
-      fan(mm(80), 0.44, mm(43), 0.1 - mm(80), -1);
-      [-0.18, -0.06, 0.06, 0.18].forEach((x) => {
-        const cl = mm(281), ch = mm(111), cw = mm(38), cy = 0.24 + ch / 2;
-        B(cw, ch, cl, "#1a1a1c", x, cy, 0);
-        B(cw + 0.002, 0.008, cl, "#c8102e", x, cy + ch / 2 - 0.012, 0);
-        B(0.006, ch + 0.02, 0.012, "#b8bec6", x, cy, -cl / 2 - 0.006);
-        for (let p = 0; p < 2; p++) B(0.008, 0.016, 0.03, "#0c0c0e", x, cy - 0.04 + p * 0.03, -cl / 2 - 0.016);
-        Y(mm(36), mm(36), 0.006, "#0c0c0e", x - cw / 2 - 0.002, cy, cl / 2 - mm(60), { rz: Math.PI / 2, seg: 16 });
-        Y(mm(12), mm(12), 0.008, "#3a3d42", x - cw / 2 - 0.004, cy, cl / 2 - mm(60), { rz: Math.PI / 2, seg: 10 });
-        for (let p = 0; p < 2; p++) B(0.012, 0.012, 0.022, "#0c0c0e", x, cy + ch / 2 + 0.006, cl / 2 - mm(30) - p * 0.03);
-        B(0.012, 0.22, 0.004, "#b38b3a", x, 0.13, 0.05);
+      // A 2010 open rig: an aluminium frame, the board on its floor, and four Radeon HD 5870s hung on the top bar,
+      // each fed by a riser ribbon from its slot and two power cables from the big power supply beside the frame.
+      for (const [x, z] of [[-0.3, -0.27], [0.3, -0.27], [-0.3, 0.27], [0.3, 0.27]]) {
+        B(0.025, 0.448, 0.025, C.alu, x, 0.236, z);
+        for (const sx of [-1, 1]) B(LIFT, 0.4, 0.006, "#5b6168", x + sx * (0.0125 + LIFT / 2), 0.226, z);
+      }
+      for (const z of [-0.27, 0.27]) B(0.575, 0.02, 0.02, C.alu, 0, 0.45, z);
+      B(0.58, 0.02, 0.02, C.alu, 0, 0.45, 0);
+      for (const x of [-0.3, 0.3]) B(0.02, 0.02, 0.515, C.alu, x, 0.45, 0);
+      B(0.62, 0.012, 0.56, "#9aa0a8", 0, 0.006, 0);
+      const bx = -0.05, bz = 0.02, by = 0.012;
+      B(mm(244), 0.004, mm(305), "#1c2b22", bx, by + 0.002, bz);
+      // The slots sit apart from the cards over them, so no ribbon runs up where another does.
+      const slots = [-0.22, -0.15, -0.08, -0.01];
+      for (const x of slots) B(0.012, 0.01, 0.14, "#0c0c0e", x, by + 0.009, -0.05);
+      B(0.07, 0.03, 0.07, "#9aa0a8", bx + 0.04, by + 0.019, bz + 0.12);
+      fan(T.face("+y", bx + 0.04, by + 0.034, bz + 0.12), 0.07);
+      for (const x of [bx + 0.115, bx + 0.13]) B(0.006, 0.05, 0.21, "#2f6fd6", x, by + 0.029, bz + 0.05);
+      B(0.03, 0.012, 0.02, "#e9e7e0", bx + 0.16, by + 0.01, bz - 0.12);
+      B(0.012, 0.02, 0.006, "#c9ccd2", bx - 0.19, by + 0.014, bz + 0.25);
+      B(0.016, 0.012, 0.03, "#2556b4", bx - 0.19, by + 0.014, bz + 0.27);
+      const cards = [-0.18, -0.06, 0.06, 0.18], CY = 0.329, CL = 0.427, CW = 0.061;
+      cards.forEach((x, i) => {
+        B(CW, 0.178, CL, "#18181a", x, CY, 0);
+        const L = T.face("-x", x - CW / 2, CY, 0);
+        L.B(0.26, 0.012, LIFT, "#c8102e", 0.08, 0.05, -LIFT / 2);
+        L.B(0.26, 0.012, LIFT, "#c8102e", 0.08, -0.05, -LIFT / 2);
+        L.say("HD 5870", 0.003, "#e8e8e8", 0.08, 0, -0.0035, 0.4);
+        blower(T.face("-x", x - CW / 2, CY - 0.01, 0.12), 0.05);
+        const Br = T.face("-z", x, CY, -CL / 2);
+        Br.B(CW + 0.004, 0.2, 0.004, "#b8bec6", 0, 0.01, -0.002);
+        for (const yy of [0.05, 0.015]) Br.B(0.03, 0.014, 0.004, "#e8e8ea", 0, yy, -0.006);
+        for (let v = 0; v < 4; v++) Br.B(0.04, 0.006, LIFT, "#2a2c30", 0, -0.03 - v * 0.014, -0.005);
+        for (const dz of [0.15, 0.18]) B(0.03, 0.01, 0.022, "#0b0b0d", x, CY + 0.089 + 0.005, dz);
+        // Its riser ribbon up from its slot, across and up to the card, each one's run lower than the last so none
+        // crosses another; and its power cables over to the supply.
+        const sx = slots[i], ry = 0.136 - i * 0.012, y0 = by + 0.016, y1 = CY - 0.089, cz = 0.155 + i * 0.008;
+        B(0.003, ry - y0, 0.05, "#8d9db6", sx, (y0 + ry) / 2, -0.05);
+        B(Math.abs(x - sx) + 0.003, 0.003, 0.05, "#8d9db6", (x + sx) / 2, ry, -0.05);
+        B(0.003, y1 - ry, 0.05, "#8d9db6", x, (ry + y1) / 2, -0.05);
+        T.cable([[x, CY + 0.099, cz], [x, 0.433, cz], [0.29, 0.433, cz], [0.29, 0.03 + i * 0.016, cz], [0.311, 0.03 + i * 0.016, cz]], 0.008, "#151517");
       });
+      // The power supply beside the frame, lying long, its fan on top, its sockets and its label.
+      const px = 0.455, pw = mm(180), ph = mm(86), pd = mm(150), pz = 0.165;
+      B(pw, ph, pd, "#26282c", px, ph / 2, pz);
+      fan(T.face("+y", px + 0.03, ph, pz), 0.19);
+      const Pl = T.face("-z", px, 0, pz - pd / 2);
+      Pl.B(0.16, 0.07, LIFT, C.label, 0, ph / 2, -LIFT / 2);
+      Pl.say("1200 W", 0.0045, C.ink, 0, ph / 2 + 0.008, -0.0035, 0.1);
       return {};
     }
     if (kind === "pool") {
-      // A small rack: two servers and the pool's switch, cables to four miners round its foot.
-      const rw = mm(330), rh = mm(370), rd = mm(300);
-      B(rw, rh, rd, "#1b1c20", 0, rh / 2, 0);
-      for (let u = 0; u < 3; u++) {
-        const yy = rh - 0.1 - u * mm(70);
-        B(rw * 0.92, mm(44), 0.01, u === 2 ? "#26292e" : "#2e3137", 0, yy, -rd / 2 - 0.005);
-        for (let l = 0; l < (u === 2 ? 12 : 3); l++) lit(0.008, 0.008, 0.004, l % 3 ? C.led : C.amber, -rw * 0.38 + l * (u === 2 ? 0.036 : 0.05), yy, -rd / 2 - 0.012);
+      // A pool is an idea, not a machine: here the rack that ran one, a 10-inch frame holding its switch, two
+      // servers and a UPS, and four rigs round its foot, each cabled to the switch.
+      const rw = 0.41, rh = 0.62, rd = 0.33, px0 = rw / 2 - 0.015, pz0 = rd / 2 - 0.015;
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) B(0.03, rh, 0.03, "#1b1c20", sx * px0, rh / 2, sz * pz0);
+      for (const yy of [0.012, rh - 0.012]) {
+        for (const sz of [-1, 1]) B(rw - 0.06, 0.024, 0.024, "#232428", 0, yy, sz * pz0);
+        for (const sx of [-1, 1]) B(0.024, 0.024, rd - 0.06, "#232428", sx * px0, yy, 0);
       }
-      for (let i = 0; i < 4; i++) {
-        const a = (i + 0.5) / 4 * P.TAU, x = Math.sin(a) * 0.42, z = Math.cos(a) * 0.36;
-        B(0.14, 0.12, 0.14, "#2a2c30", x, 0.06, z);
-        fan(0.09, x, 0.06, z - 0.07, -1);
-        lit(0.01, 0.01, 0.004, C.led, x + 0.05, 0.1, z - 0.072);
-        B(0.012, 0.012, Math.hypot(x, z) - 0.16, C.cable, x / 2, 0.012, z / 2, { ry: Math.atan2(x, z) });
+      const U = mm(44.45), front = -pz0 - 0.015;
+      // Each piece: a box between the posts, and its face across them.
+      const unit = (n, yy, color, body) => {
+        B(rw - 0.064, n * U - 0.004, rd - 0.05, body, 0, yy, 0);
+        const F = T.face("-z", 0, yy, front);
+        F.B(rw, n * U - 0.004, 0.004, color, 0, 0, -0.002);
+        for (const sx of [-1, 1]) screw(F, sx * (rw / 2 - 0.012), 0, 0.004, -0.004);
+        return F;
+      };
+      const sw = unit(1, rh - 0.06, "#2e3137", "#1f2125");
+      for (let p = 0; p < 16; p++) {
+        const x = 0.14 - (p % 8) * 0.032, yy = p < 8 ? 0.011 : -0.011;
+        sw.B(0.018, 0.016, 0.004, "#0b0b0d", x, yy, -0.006);
+        sw.lit(0.003, 0.003, LIFT, p % 3 ? C.led : C.amber, x + 0.007, yy + 0.0065, -0.009, p % 2 ? 0.95 : 0.3);
       }
+      sw.say("POOL", 0.003, "#cfd3d8", -0.145, 0, -0.0055, 0.6);
+      [rh - 0.06 - U * 1.5 - 0.01, rh - 0.06 - U * 3.5 - 0.02].forEach((yy) => {
+        const sv = unit(2, yy, "#30343a", "#202226");
+        for (let b = 0; b < 4; b++) {
+          const x = 0.12 - b * 0.07;
+          sv.B(0.062, 0.05, 0.004, "#45494f", x, -0.01, -0.006);
+          sv.B(0.05, 0.008, LIFT, "#6d7178", x, -0.025, -0.009);
+          sv.lit(0.004, 0.004, LIFT, b % 2 ? C.led : "#4aa3ff", x + 0.024, 0.008, -0.009);
+        }
+        sv.Y(0.008, 0.008, 0.004, "#3a3d42", -0.17, 0.03, -0.006, { rx: HALF, seg: 10 });
+        sv.lit(0.004, 0.004, LIFT, C.led, -0.17, 0.012, -0.005);
+      });
+      const ups = unit(2, 0.024 + U + 0.006, "#2a2c30", "#1c1d20");
+      ups.lit(0.06, 0.03, LIFT, "#2f7fd6", 0.06, 0.006, -0.005, 0.8);
+      ups.say("230V", 0.0022, "#e8f4ff", 0.06, 0.006, -0.0085, 0.9);
+      for (let b = 0; b < 3; b++) ups.Y(0.006, 0.006, 0.004, "#3a3d42", -0.06 - b * 0.03, 0, -0.006, { rx: HALF, seg: 10 });
+      // Four rigs round its foot, each an open frame with two cards and its own light, cabled to the switch.
+      [[-0.42, -0.36], [0.42, -0.36], [-0.42, 0.2], [0.42, 0.2]].forEach(([x, z], i) => {
+        const m = 0.16;
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) B(0.012, m - 0.006, 0.012, C.alu, x + sx * (m / 2 - 0.006), (m + 0.006) / 2, z + sz * (m / 2 - 0.006));
+        for (const sz of [-1, 1]) B(m - 0.024, 0.01, 0.01, C.alu, x, m - 0.005, z + sz * (m / 2 - 0.006));
+        B(m - 0.01, 0.006, m - 0.01, "#9aa0a8", x, 0.003, z);
+        for (const dx of [-0.03, 0.03]) {
+          B(0.022, 0.07, 0.12, "#18181a", x + dx, 0.06, z);
+          T.face("-z", x + dx, 0.06, z - 0.06).B(0.026, 0.074, 0.003, "#b8bec6", 0, 0, -0.0015);
+          T.face("-x", x + dx - 0.011, 0.06, z).B(0.09, 0.006, LIFT, "#c8102e", 0, 0.025, -LIFT / 2);
+        }
+        T.face("-z", x - m / 2 + 0.006, m - 0.03, z - m / 2).lit(0.006, 0.006, LIFT, C.led, 0, 0, -LIFT / 2);
+        // Each its own run to the floor and across, the back pair over the front pair where they cross.
+        const jx = 0.14 - (i % 8) * 0.032, jy = rh - 0.06 + 0.011, cz = front - 0.04 - i * 0.012, cx = x + (i < 2 ? 0.03 : -0.03), cy = i < 2 ? 0.006 : 0.0145;
+        T.cable([[jx, jy, front - 0.012], [jx, jy, cz], [jx, cy, cz], [cx, cy, cz], [cx, cy, z]], 0.008, i % 2 ? "#2b6fd8" : "#e2c24a");
+      });
       return {};
     }
     if (kind === "fpga") {
-      // Two X6500 boards on standoffs: each two Spartan-6 chips under finned heatsinks with fans, USB and power.
+      // Two X6500 boards on brass standoffs: on each two Spartan-6 FPGAs under finned heatsinks with their fans, the
+      // power regulators and their coils, capacitors, the USB port, the power plug, the JTAG header and the lights.
       for (const z of [-0.12, 0.12]) {
-        const bw = mm(150), bd = mm(100), by = 0.05;
-        for (const [x, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) Y(0.006, 0.006, by, C.alu, x * bw * 0.44, by / 2, z + dz * bd * 0.42, { seg: 6 });
-        B(bw, 0.004, bd, "#18241c", 0, by, z);
+        const bw = 0.24, bd = 0.16, by = 0.05, top = by + 0.0016;
+        for (const [x, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) Y(0.006, 0.006, by, "#c9a23a", x * bw * 0.44, by / 2, z + dz * bd * 0.42, { seg: 6 });
+        B(bw, 0.0032, bd, "#18241c", 0, by, z);
+        const P2 = T.face("+y", 0, top, z);
+        P2.say("X6500", 0.0032, "#e8e8e8", 0, 0.05, -0.0015, 0.2);
         for (const x of [-0.06, 0.06]) {
-          B(mm(40), 0.008, mm(40), "#c9ccd2", x, by + 0.008, z);
-          for (let f = 0; f < 5; f++) B(mm(40), 0.016, 0.003, "#c9ccd2", x, by + 0.02, z - mm(16) + f * mm(8));
-          fan(mm(40), x, by + 0.032, z, 1);
+          B(0.045, 0.004, 0.045, "#1a1a1a", x, top + 0.002, z);
+          B(0.064, 0.006, 0.064, "#c9ccd2", x, top + 0.007, z);
+          for (let f = 0; f < 7; f++) B(0.064, 0.02, 0.003, "#c9ccd2", x, top + 0.02, z - 0.03 + f * 0.01);
+          fan(T.face("+y", x, top + 0.03, z), 0.064);
         }
-        B(0.02, 0.012, 0.02, "#8a8f96", -bw / 2 + 0.012, by + 0.008, z - bd / 2 + 0.015);
-        B(0.016, 0.016, 0.022, "#0c0c0e", bw / 2 - 0.012, by + 0.01, z - bd / 2 + 0.015);
-        lit(0.006, 0.004, 0.006, C.led, 0, by + 0.004, z - bd / 2 + 0.01);
+        for (let i = 0; i < 4; i++) B(0.012, 0.008, 0.012, "#5c6067", -0.1 + i * 0.02 + (i > 1 ? 0.14 : 0), top + 0.004, z + 0.06);
+        for (let i = 0; i < 6; i++) Y(0.004, 0.004, 0.01, "#1d1e21", -0.105 + i * 0.012 + (i > 2 ? 0.17 : 0), top + 0.005, z - 0.045, { seg: 8 });
+        B(0.02, 0.008, 0.016, "#c9ccd2", -bw / 2 + 0.012, top + 0.004, z - bd / 2 + 0.014);
+        B(0.026, 0.016, 0.022, "#f1efe6", bw / 2 - 0.016, top + 0.008, z - bd / 2 + 0.016);
+        B(0.03, 0.01, 0.012, "#0c0c0e", 0, top + 0.005, z + bd / 2 - 0.012);
+        for (const dx of [-0.008, 0.008]) lit(0.005, 0.003, 0.004, dx < 0 ? C.led : C.amber, dx, top + 0.0015, z - bd / 2 + 0.01);
       }
       return {};
     }
     if (kind === "avalon") {
-      // Avalon's first batch: a black steel box with a fan grille and the orange stripe; three Block Erupters in a hub.
-      const aw = mm(200), ah = mm(320), ad = mm(300), ax = -0.16;
-      B(aw, ah, ad, "#232327", ax, ah / 2, 0);
-      lit(aw + 0.004, 0.03, ad + 0.004, "#f28a1a", ax, ah - 0.06, 0, 0.9);
-      fan(aw * 0.82, ax, ah * 0.45, -ad / 2, -1);
-      for (let r = 0; r < 7; r++) B(0.004, 0.006, ad * 0.8, "#121214", ax + aw / 2 + 0.002, 0.08 + r * 0.05, 0);
-      say("AVALON", 0.006, "#f2f2f2", ax, ah - 0.11, -ad / 2 - 0.004, 0, 0.4);
-      B(0.012, 0.012, 0.012, "#0c0c0e", ax + 0.07, 0.05, -ad / 2 - 0.006);
-      // The USB hub and its sticks: blue boards, aluminium heatsinks, the plugs down in the hub.
-      B(mm(140), mm(22), mm(60), "#1a1b1e", 0.26, mm(11), 0);
-      for (let i = 0; i < 3; i++) {
-        const x = 0.2 + i * 0.06, sy = mm(22) + mm(50);
-        B(mm(10), mm(100), mm(30), "#2556b4", x, sy, 0);
-        B(mm(14), mm(46), mm(26), "#c9a23a", x, sy + mm(10), 0);
-        for (let f = 0; f < 4; f++) B(mm(18), mm(40), 0.003, "#c9a23a", x, sy + mm(10), -mm(9) + f * mm(6));
-        lit(0.006, 0.006, 0.004, C.led, x, sy - mm(36), -mm(16));
+      // Avalon's first batch: a black steel box on rubber feet, the orange band, its big front fan behind the guard,
+      // vents down its side, the ports and inlet at the back; beside it four Block Erupters in a powered USB hub, and
+      // the little desk fan their owners set blowing on them.
+      const aw = mm(200), ah = mm(320), ad = mm(300), ax = -0.16, af = 0.012;
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) Y(0.012, 0.014, af, "#0c0c0e", ax + sx * (aw / 2 - 0.03), af / 2, sz * (ad / 2 - 0.03), { seg: 10 });
+      B(aw, ah, ad, "#232327", ax, af + ah / 2, 0);
+      lit(aw + 2 * LIFT, 0.03, ad + 2 * LIFT, "#f28a1a", ax, af + ah - 0.06, 0, 0.9);
+      fan(T.face("-z", ax, af + ah * 0.42, -ad / 2), aw * 0.82);
+      T.face("-z", ax, af + ah - 0.112, -ad / 2).say("AVALON", 0.006, "#f2f2f2", 0, 0, -0.0015, 0.4);
+      const Sd = T.face("+x", ax + aw / 2, 0, 0);
+      for (let r = 0; r < 7; r++) Sd.B(ad * 0.7, 0.006, LIFT, "#121214", 0, af + 0.08 + r * 0.045, -LIFT / 2);
+      const Bk = T.face("+z", ax, 0, ad / 2);
+      Bk.B(0.04, 0.03, 0.006, "#0b0b0d", 0.05, af + 0.08, -0.003);
+      Bk.B(0.017, 0.014, 0.006, "#0b0b0d", -0.04, af + 0.2, -0.003);
+      Bk.lit(0.004, 0.004, LIFT, C.led, -0.04, af + 0.215, -0.007);
+      const hx = 0.24, hy = mm(22);
+      B(mm(150), hy, mm(55), "#e9e9e6", hx, hy / 2, 0);
+      for (let i = 0; i < 7; i++) {
+        const x = hx - 0.105 + i * 0.035;
+        T.face("-z", x, hy / 2, -mm(27.5)).lit(0.004, 0.004, LIFT, "#4aa3ff", 0, 0, -LIFT / 2, i < 4 ? 0.95 : 0.2);
+        if (i >= 4) { T.face("+y", x, hy, 0).B(0.018, 0.008, LIFT, "#0b0b0d", 0, 0, -LIFT / 2); continue; }
+        const sy = hy + mm(50);
+        B(mm(13), mm(14), mm(5), "#c9ccd2", x, hy + mm(7), 0);
+        B(mm(3), mm(86), mm(28), "#2556b4", x, sy + mm(4), 0);
+        B(mm(8), mm(52), mm(26), "#c9a23a", x + mm(6), sy + mm(6), 0);
+        for (let f = 0; f < 4; f++) B(mm(10), mm(46), 0.003, "#d6b14a", x + mm(13), sy + mm(6), -mm(10) + f * mm(6.5));
+        T.face("-x", x - mm(1.5), sy + mm(38), mm(8)).lit(0.004, 0.004, LIFT, C.led, 0, 0, -LIFT / 2);
       }
+      T.cable([[hx + mm(75), 0.006, 0], [0.5, 0.006, 0], [0.5, 0.006, 0.4]], 0.008, "#151517");
+      // The desk fan: its base, stem, motor, four blades and the cage, blowing across the sticks.
+      const fx = 0.44, fz = -0.2, fh = 0.2, Fn = T.at(fx, fh, fz, 2.16);
+      Y(0.05, 0.056, 0.014, "#e9e9e6", fx, 0.007, fz, { seg: 16 });
+      Y(0.008, 0.008, fh - 0.03, "#d6d6d2", fx, 0.014 + (fh - 0.03) / 2, fz, { seg: 10 });
+      Fn.Y(0.024, 0.026, 0.05, "#e9e9e6", 0, 0, 0.03, { rx: HALF, seg: 14 });
+      for (let b = 0; b < 4; b++) Fn.at(0, 0, -0.012, 0, 0, b / 4 * P.TAU).B(0.05, 0.03, 0.003, "#cfe3f5", 0.032, 0, 0, { rx: 0.4 });
+      Fn.Y(0.012, 0.012, 0.012, "#e9e9e6", 0, 0, -0.012, { rx: HALF, seg: 10 });
+      for (const r of [0.03, 0.06]) Fn.R(r, 0.0025, "#d6d6d2", 0, 0, -0.03, { rx: HALF, seg: 20, sides: 3 });
+      Fn.R(0.064, 0.003, "#d6d6d2", 0, 0, -0.008, { rx: HALF, seg: 20, sides: 3 });
+      for (let b = 0; b < 6; b++) Fn.B(0.128, 0.003, 0.003, "#d6d6d2", 0, 0, -0.03, { rz: b * Math.PI / 6 });
       return {};
     }
     if (kind === "bitaxe") {
-      // The Bitaxe Gamma: its board on standoffs, the chip's heatsink and fan, the ESP32 module, the little screen
-      // (hashrate on it), the power jack and the USB port.
-      const bw = mm(100), bd = mm(76), by = 0.03;
-      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) Y(0.006, 0.006, by, C.alu, x * bw * 0.44, by / 2, z * bd * 0.42, { seg: 6 });
-      B(bw, 0.004, bd, "#16181c", 0, by, 0);
-      B(mm(40), 0.006, mm(40), "#c9ccd2", 0.012, by + 0.006, 0.01);
-      for (let f = 0; f < 7; f++) B(mm(40), mm(14), 0.0025, "#c9ccd2", 0.012, by + 0.02, 0.01 - mm(17) + f * mm(5.6));
-      fan(mm(40), 0.012, by + 0.042, 0.01, 1);
-      B(mm(18), 0.006, mm(25), "#9aa0a8", -0.055, by + 0.005, 0.02);
-      B(mm(38), mm(12), 0.004, "#0c0c0e", -0.03, by + mm(8), -bd / 2 + 0.006);
-      say("1.2 TH/S", 0.0012, "#bfe8ff", -0.03, by + mm(8), -bd / 2 + 0.003, 0, 0.9);
-      B(0.016, 0.014, 0.02, "#0c0c0e", bw / 2 - 0.012, by + 0.009, -bd / 2 + 0.012);
-      B(0.014, 0.006, 0.01, "#8a8f96", bw / 2 - 0.035, by + 0.005, -bd / 2 + 0.006);
-      lit(0.004, 0.003, 0.004, C.led, -bw / 2 + 0.01, by + 0.004, -bd / 2 + 0.01);
+      // The Bitaxe Gamma, open hardware: its black board on standoffs, the BM1370's heatsink and fan, the ESP32-S3
+      // module, the little screen showing its hashrate, the power stage's coils and capacitors, the USB-C port, the
+      // barrel jack with its power cable, the BOOT button, its light, and BITAXE on the silkscreen.
+      const bw = mm(100), bd = mm(76), by = 0.03, top = by + 0.002;
+      for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) Y(0.006, 0.006, by, "#c9a23a", x * bw * 0.44, by / 2, z * bd * 0.42, { seg: 6 });
+      B(bw, 0.004, bd, "#121417", 0, by, 0);
+      T.face("+y", 0, top, 0).say("BITAXE", 0.002, "#e8e8e8", 0.035, -0.052, -0.0015, 0.2);
+      const hx = 0.012, hz = 0.012;
+      B(mm(40), 0.006, mm(40), "#c9ccd2", hx, top + 0.003, hz);
+      for (let f = 0; f < 7; f++) B(mm(40), mm(14), 0.0025, "#c9ccd2", hx, top + 0.006 + mm(7), hz - mm(17) + f * mm(5.6));
+      fan(T.face("+y", hx, top + 0.006 + mm(14), hz), mm(40));
+      T.cable([[0.048, top + 0.02, 0.036], [0.054, top + 0.02, 0.036], [0.054, top + 0.004, 0.036]], 0.003, "#1c1c1c");
+      B(mm(18), 0.0035, mm(25.5), "#c9ccd2", -0.052, top + 0.00175, 0.02);
+      B(mm(16), 0.0015, mm(6), "#1d2a24", -0.052, top + 0.00075, 0.02 + mm(12.75) + mm(3));
+      B(mm(30), 0.004, mm(14), "#1b2a4a", -0.03, top + 0.002, -bd / 2 + 0.016);
+      B(mm(24), LIFT, mm(7), "#05070a", -0.03, top + 0.004 + LIFT / 2, -bd / 2 + 0.016);
+      T.face("+y", -0.03, top + 0.004 + LIFT, -bd / 2 + 0.016).say("1.2 TH/S", 0.0008, "#bfe8ff", 0, 0, -0.0015, 0.95);
+      for (let i = 0; i < 3; i++) B(0.012, 0.008, 0.012, "#5c6067", 0.062, top + 0.004, -0.03 + i * 0.016);
+      for (let i = 0; i < 4; i++) Y(0.003, 0.003, 0.008, "#d8c79a", 0.075, top + 0.004, -0.032 + i * 0.012, { seg: 8 });
+      B(0.014, 0.006, 0.01, "#9aa0a8", -bw / 2 + 0.006, top + 0.003, -0.02);
+      B(0.02, 0.014, 0.024, "#0c0c0e", 0.068, top + 0.007, 0.035);
+      T.cable([[0.078, top + 0.007, 0.035], [0.14, top + 0.007, 0.035], [0.14, 0.004, 0.035], [0.14, 0.004, 0.3]], 0.008, "#151517");
+      B(0.006, 0.004, 0.006, "#2a2c30", -0.074, top + 0.002, 0.052);
+      lit(0.004, 0.0025, 0.004, C.led, -0.07, top + 0.00125, 0.036);
       return {};
     }
-    // An Antminer: its shell, darker end frames, its fans, the hash boards' bolts down its sides, its power supply on
-    // top (or beside it, the S9's), the controller's port and lights at the front corner, and its label on the side.
-    const A = ANTMINER[kind], len = mm(A.len), wid = mm(A.wid), hei = mm(A.hei), top = A.psu === "top" ? mm(50) : 0, body = hei - top;
-    B(wid, body, len, A.color, 0, body / 2, 0);
-    for (const dz of [-1, 1]) B(wid + 0.006, body + 0.006, 0.02, A.frame, 0, body / 2, dz * (len / 2 - 0.01));
-    for (const sx of [-1, 1]) for (let i = 1; i <= 3; i++) for (let b = 0; b < 4; b++) B(0.004, 0.008, 0.008, A.frame, sx * (wid / 2 + 0.002), body * i / 4, -len * 0.36 + b * len * 0.24);
+    // An Antminer: its shell between end frames a little proud of it all round, its fans, screws down its sides, its
+    // power supply on top (or beside it, the S9's, with its cables), the control board's ports at the front and its
+    // label on the side; the hydro-cooled one has a closed front with its couplings, hoses, handles and power terminal.
+    const A = ANTMINER[kind], len = mm(A.len), wid = mm(A.wid), hei = mm(A.hei), top = A.psu === "top" ? mm(52) : 0, body = hei - top, et = 0.024;
+    B(wid, body, len - 2 * et, A.color, 0, body / 2, 0);
+    for (const dz of [-1, 1]) B(wid + 2 * LIFT, body + LIFT, et, A.frame, 0, (body + LIFT) / 2, dz * (len / 2 - et / 2));
+    for (const sx of [-1, 1]) {
+      const F = T.face(sx < 0 ? "-x" : "+x", sx * wid / 2, 0, 0);
+      for (const yy of [body * 0.1, body * 0.9]) for (let i = 0; i < 4; i++) screw(F, -len * 0.33 + i * len * 0.22, yy);
+    }
+    const lw = Math.min(len * 0.5, 0.3, (0.4 * body - 0.01) / 0.23);
+    label(T.face("-x", -wid / 2, body * 0.5, len * 0.04), lw, A.text);
+    const f = A.fans ? Math.min(wid * 0.9, body / A.fans * 0.94) : 0;
     if (A.fans) {
-      const f = Math.min(wid * 0.92, body / A.fans * 0.92);
-      for (const dir of [-1, 1]) for (let n = 0; n < A.fans; n++) fan(f, 0, body * (n + 0.5) / A.fans, dir * len / 2, dir);
+      for (const dir of [-1, 1]) for (let n = 0; n < A.fans; n++) fan(T.face(dir < 0 ? "-z" : "+z", 0, body * (n + 0.5) / A.fans, dir * len / 2), f);
+      const room = (wid - f) / 2;
+      if (room >= 0.045) ports(T.face("-z", -(wid + f) / 4, body * 0.78, -len / 2), room - 0.016, 0.09);
+      else ports(T.face("-z", -wid / 2 + 0.07, (body / 2 + f / 2 + body) / 2, -len / 2), 0.11, Math.min(0.024, body / 2 - f / 2 - 0.004));
     } else {
-      // Water-cooled: a closed front with the water in and out (blue and red couplings) and no fans.
-      B(wid * 0.9, body * 0.85, 0.01, "#24272c", 0, body / 2, -len / 2 - 0.006);
-      for (const [x, color] of [[-wid * 0.22, "#2b6fd8"], [wid * 0.22, "#d8402b"]]) {
-        Y(0.022, 0.022, 0.05, "#b8bec6", x, body * 0.35, -len / 2 - 0.03, { rx: Math.PI / 2, seg: 12 });
-        Y(0.026, 0.026, 0.02, color, x, body * 0.35, -len / 2 - 0.06, { rx: Math.PI / 2, seg: 12 });
+      const F = T.face("-z", 0, 0, -len / 2);
+      F.B(wid * 0.92, body * 0.9, 0.006, "#24272c", 0, body / 2, -0.003);
+      for (const [x, color] of [[wid * 0.18, "#2b6fd8"], [-wid * 0.18, "#d8402b"]]) {
+        const hy = body * 0.3, out = 0.6 - len / 2;
+        F.Y(0.018, 0.018, 0.04, "#b8bec6", x, hy, -0.026, { rx: HALF, seg: 12 });
+        F.Y(0.023, 0.023, 0.012, color, x, hy, -0.03, { rx: HALF, seg: 12 });
+        F.Y(0.02, 0.02, 0.06, "#141414", x, hy, -0.075, { rx: HALF, seg: 12 });
+        F.Y(0.02, 0.02, hy - 0.02, "#141414", x, (hy + 0.02) / 2, -0.105, { seg: 12 });
+        F.Y(0.02, 0.02, out - 0.105, "#141414", x, 0.02, -(out + 0.105) / 2, { rx: HALF, seg: 12 });
       }
+      for (const sx of [-1, 1]) {
+        const hx = sx * (wid / 2 - 0.02);
+        for (const yy of [body * 0.2, body * 0.8]) F.B(0.014, 0.014, 0.03, "#9aa0a8", hx, yy, -0.021);
+        F.B(0.014, body * 0.6 + 0.014, 0.014, "#9aa0a8", hx, body / 2, -0.043);
+      }
+      F.B(0.06, 0.04, 0.02, "#111113", 0, body * 0.7, -0.016);
+      for (let i = 0; i < 3; i++) F.Y(0.0045, 0.0045, 0.003, "#c9ccd2", -0.02 + i * 0.02, body * 0.7, -0.0275, { rx: HALF, seg: 8 });
+      ports(T.face("-z", -0.05, body * 0.85, -len / 2 - 0.006), 0.1, 0.03);
     }
     if (A.psu === "top") {
-      B(wid * 0.96, top, len * 0.94, "#2a2d32", 0, body + top / 2, 0);
-      fan(top * 0.86, wid * 0.25, body + top / 2, -len * 0.47, -1);
-      B(0.03, 0.02, 0.012, "#0c0c0e", -wid * 0.25, body + top / 2, len * 0.47 + 0.006);
+      const pl = len - 2 * et - 0.004, pw = wid - 0.012;
+      B(pw, top, pl, "#2a2d32", 0, body + top / 2, 0);
+      const Pt = T.face("+y", 0, body + top, 0);
+      for (let i = 0; i < 9; i++) Pt.B(pw * 0.6, 0.006, LIFT, "#16181b", 0, -pl * 0.4 + i * 0.016, -LIFT / 2);
+      const Ps = T.face("-x", -pw / 2, body + top / 2, pl * 0.2);
+      Ps.B(0.08, top * 0.6, LIFT, C.label, 0, 0, -LIFT / 2);
+      Ps.say(kind === "s17" ? "APW9" : "APW12", 0.0024, C.ink, 0, 0, -0.0035, 0.1);
+      const In = T.face("-z", pw * 0.25, body + top / 2, -pl / 2);
+      In.B(0.04, top * 0.6, 0.006, "#0b0b0d", 0, 0, -0.003);
+      for (let i = 0; i < 3; i++) In.B(0.004, 0.008, LIFT, "#c9ccd2", -0.01 + i * 0.01, 0, -0.007);
+      fan(T.face("+z", pw * 0.2, body + top / 2, pl / 2), top * 0.86);
     }
     if (A.psu === "side") {
-      const pl = mm(260), pw = mm(150), ph = mm(86), px = wid / 2 + 0.06 + pw / 2;
-      B(pw, ph, pl, "#2a2d32", px, ph / 2, 0.02);
-      fan(ph * 0.86, px, ph / 2, 0.02 - pl / 2, -1);
-      for (let c = 0; c < 3; c++) B(0.06 + pw / 2, 0.01, 0.01, "#121214", wid / 2 + (0.06 + pw / 2) / 2, ph - 0.015, -0.08 + c * 0.06);
+      const pl = mm(260), pw = mm(150), ph = mm(86), px = wid / 2 + 0.06 + pw / 2, pz = 0.02;
+      B(pw, ph, pl, "#2a2d32", px, ph / 2, pz);
+      fan(T.face("-z", px, ph / 2, pz - pl / 2), ph * 0.86);
+      const Pt = T.face("+y", px, ph, pz);
+      for (let i = 0; i < 6; i++) Pt.B(pw * 0.6, 0.006, LIFT, "#16181b", 0, -pl * 0.4 + i * 0.016, -LIFT / 2);
+      Pt.B(0.1, 0.06, LIFT, C.label, 0, pl * 0.15, -LIFT / 2);
+      Pt.say("APW3", 0.004, C.ink, 0, pl * 0.15, -0.0035, 0.1);
+      T.face("+z", px, ph / 2, pz + pl / 2).B(0.04, 0.03, 0.006, "#0b0b0d", 0, 0, -0.003);
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) {
+        const yy = ph * (0.35 + r * 0.35), z = 0.1 + c * 0.06;
+        T.cable([[px - pw / 2, yy, z], [wid / 2 + 0.012, yy, z]], 0.01, "#121214");
+        B(0.012, 0.022, 0.03, "#0b0b0d", wid / 2 + 0.006, yy, z);
+      }
     }
-    // The controller at the front's top corner: its network port and two lights.
-    const cx = wid / 2 - 0.035, cy = body - 0.03, cz = -len / 2 - 0.012;
-    B(0.05, 0.035, 0.006, "#1c1e22", cx, cy, cz);
-    B(0.016, 0.014, 0.006, "#0c0c0e", cx - 0.01, cy, cz - 0.004);
-    lit(0.006, 0.006, 0.004, C.led, cx + 0.012, cy + 0.008, cz - 0.004);
-    lit(0.006, 0.006, 0.004, "#ff4a3d", cx + 0.012, cy - 0.006, cz - 0.004);
-    label(A.text, Math.min(len * 0.42, 0.22), -wid / 2, body * 0.55, len * 0.05, Math.PI / 2);
     return {};
   };
   // The plinth every exhibit stands on: pale stone with an amber band under its top.

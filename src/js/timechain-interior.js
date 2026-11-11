@@ -676,10 +676,11 @@
       }
     };
     const unsubscribeAccount = BL.net.subscribe(accountChanged);
-    // Weapon shortcuts do nothing in here; right-click and scroll keep the pilot's camera controls.
+    // Weapon shortcuts do nothing in here (a dialog, such as the model viewer, keeps its own keys); right-click and
+    // scroll keep the pilot's camera controls.
     const WEAPON_KEYS = new Set(["1", "2", "r", "f", "g"]);
     const armsKeys = (e) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || !WEAPON_KEYS.has(e.key.toLowerCase()) || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || !WEAPON_KEYS.has(e.key.toLowerCase()) || e.target && e.target.closest && e.target.closest("input, textarea, [contenteditable], dialog")) return;
       e.preventDefault();
       e.stopImmediatePropagation();
     };
