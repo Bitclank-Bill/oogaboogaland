@@ -2453,11 +2453,12 @@
       }
     };
     // A page following the room's host takes its Oogas' status from the frames and leaves its own bed trip as it was.
-    // Handed back awake, that trip would hold the Ooga in `runBed`, rifle hidden and club in hand, with `applyState`
-    // seeing no change of status to end it. It takes up the host's status afresh, as `runBed` settles a trip begun
-    // before an Ooga became passive.
+    // Handed back awake, that trip would hold the Ooga in `runBed`, rifle hidden and club in hand. Still sleeping,
+    // a local `rest` could leave it at the host's travelling position forever. Reapply the host's status once at
+    // handoff, settling sleepers in this page's reserved bed just as at arrival; frames do not carry bed ownership.
     const resumeFromHost = (cave) => {
-      if (cave.state !== "working" && cave.state !== "chilling" || !cave.bedTravel.mode) return;
+      if (cave === player || cave.remoteControlled) return;
+      if (cave.state !== "sleeping" && ((cave.state !== "working" && cave.state !== "chilling") || !cave.bedTravel.mode)) return;
       const state = cave.state;
       cave.state = "away"; applyState(cave, state, true);
     };
