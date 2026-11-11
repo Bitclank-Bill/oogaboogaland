@@ -1014,7 +1014,7 @@
       } else if (e.type === "gorillahooked") {
         fx.burst(e.x, e.y, e.z, 10, STAR_BITS, 2);
       } else if (e.type === "hookmiss") {
-        if (me) { notice("Missed · the hook recharges", 900); updateTools(); }
+        if (me) { notice("Missed", 700); updateTools(); }
       } else if (e.type === "respawn") {
         if (me) { center("BACK HOME", 1000); notice(COARSE ? "You fell off the island · hold Jump in the air to jetpack back next time" : "You fell off the island · hold Space in the air to jetpack back next time", 2600); }
       } else if (e.type === "go") {
@@ -1271,7 +1271,6 @@
     if (!a.hook) { notice("No hook yet · two hide in caves, on rocks and up trees, or mine a block to take one", 2000); return false; }
     const q = aimPoint(), oy = a.y + (a.crouch ? C.CROUCH_H - 0.25 : C.SHOT_Y), dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
     const ok = acts("grapple", 0, Math.atan2(dx, dz), clamp(Math.atan2(q.y - oy, flat), -1.45, 1.45));
-    if (!ok && a.hCool > 0) notice(`Hook recharging · ${Math.ceil(a.hCool)} s`, 900);
     return ok;
   };
   const scoped = () => tool === "sniper" && !!sim && cam.first;
@@ -1894,8 +1893,8 @@
       const t = elapsed - c.at, up = t < 0.15 ? t / 0.15 : Math.max(0, 1 - (t - 0.15) / 1.4);
       c.arm.rotation.x = -0.25 + up * 1.9;
     }
-    // The hook's slot shows when it is recharging; repainted only when that changes.
-    { const m = sim.actors[0], busy = m.hook > 0 && (m.hk > 0 || m.hCool > 0); if (busy !== hookBusy) { hookBusy = busy; updateTools(); } }
+    // The hook's slot shows while it is out; repainted only when that changes.
+    { const m = sim.actors[0], busy = m.hook > 0 && m.hk > 0; if (busy !== hookBusy) { hookBusy = busy; updateTools(); } }
     // The other side's catapult warns you first: it throws you the wrong way.
     { const m = phase === "play" && SIM.nearEnemyCatapult(sim, sim.actors[0]); if (m !== enemyCatNear) { enemyCatNear = m; updateTools(); if (m) notice("Enemy catapult! It'll throw you off the back", 2400); } }
     const onPad = phase === "play" && SIM.nearCatapult(sim, sim.actors[0]);

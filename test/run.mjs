@@ -7435,14 +7435,29 @@ const gameRulesChecks = async () => {
       record("block hook: the rivals' block comes off its stand to a hook aimed low or at its middle wherever one aimed high takes it (bar a low wall in the way), on every map; your own block at home is never pulled, the stand bites",
         pulls.every((r) => r.high >= 2 && r.low >= 2 && r.low >= r.high - 1 && r.mid >= r.high - 1 && r.own >= 2) && S.CONFIG.HOOK_STAND_R ** 2 > 1.2 && S.CONFIG.HOOK_RANGE === 24, JSON.stringify(pulls));
     }
+    // No recharge: a hook fires again the moment it is back in the hand, after a miss and after pulling a block in, and
+    // never while it is still out; a bot alone waits between throws.
+    {
+      const mk = () => { const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), a = s.actors[0]; for (const q of s.actors) { q.bot = false; q.guard = 0; if (q !== a) { q.x = 300; q.z = 300; } } s.gorillas.length = 0; a.hook = 1; s.hooks[0].state = 1; s.hooks[0].holder = 0; return { s, a }; };
+      const until = (s, done, max = 600) => { let n = 0; for (; n < max && !done(); n++) S.tick(s, S.CONFIG.STEP, still()); return n; };
+      const m = mk(); m.a.x = 8; m.a.z = 9; m.a.y = 0;
+      const first = S.grapple(m.s, 0, 0, 1.2), whileOut = S.grapple(m.s, 0, 0, 1.2), flew = until(m.s, () => m.a.hk === 0), second = S.grapple(m.s, 0, 0, 1.2); until(m.s, () => m.a.hk === 0); const third = S.grapple(m.s, 0, 0, 1.2);
+      const b = mk(), f = b.s.flags.red; b.a.x = f.x; b.a.z = f.z + 6; b.a.y = 0; if (S.ARENA.stands.red.z > 0) b.a.z = f.z - 6;
+      const took = S.grapple(b.s, 0, Math.atan2(f.x - b.a.x, f.z - b.a.z), Math.atan2(1.5 - S.CONFIG.SHOT_Y, 6)); until(b.s, () => b.a.hk === 0);
+      const carrying = b.a.carrying === "red"; S.drop(b.s, 0); const afterBlock = S.grapple(b.s, 0, 0, 1.2);
+      const bot = mk(); bot.a.bot = true; bot.a.x = 8; bot.a.z = 9; S.grapple(bot.s, 0, 0, 1.2); until(bot.s, () => bot.a.hk === 0);
+      const out = { first, whileOut, flew, second, third, took, carrying, afterBlock, botWaits: bot.a.hookWait > 0, playerWaits: m.a.hookWait, cool: "HOOK_COOL" in S.CONFIG || "HOOK_YANK_COOL" in S.CONFIG || "hCool" in m.a };
+      record("block hook: no recharge: a hook that missed fires again the moment it is back, and again, and after pulling a block in; never while it is still out; only a bot waits between throws",
+        first && !whileOut && flew > 5 && flew < 240 && second && third && took && carrying && afterBlock && out.botWaits && out.playerWaits === 0 && !out.cool, JSON.stringify(out));
+    }
     // The weapons bar: what a slot shows is the rules' word (not yours yet, yours and out, ready, and the count beside
     // it), and the page's eight slots stand in key order, each named, the sniper rifle always among them.
     {
       const s = S.create({ team: "blue", seed: 4, size: 2, map: "town", prep: 0 }), a = s.actors[0], st = (k) => S.slotState(a, k), n = (k) => S.slotCount(a, k);
       const fresh = { paint: [st("paint"), n("paint")], sniper: [st("sniper"), n("sniper")], ak: [st("ak"), n("ak")], grenade: [st("grenade"), n("grenade")], gold: [st("gold"), n("gold")], hook: [st("hook"), n("hook")], crate: n("crate") };
       a.grenade = a.rocket = a.net = 0; const out = ["grenade", "rocket", "net"].map((k) => st(k) + n(k));
-      a.gold = true; a.hook = 1; a.hCool = 1; a.akReload = 1; const owned = [st("gold"), n("gold"), st("hook"), n("hook"), n("ak")];
-      a.hCool = 0; a.akReload = 0; a.akMag = 7; const settled = [n("hook"), n("ak")];
+      a.gold = true; a.hook = 1; a.hk = 1; a.akReload = 1; const owned = [st("gold"), n("gold"), st("hook"), n("hook"), n("ak")];
+      a.hk = 0; a.akReload = 0; a.akMag = 7; const settled = [n("hook"), n("ak")];
       const html = readFileSync(new URL("../src/index.html", import.meta.url), "utf8"), bar = html.slice(html.indexOf('<div class="block-slots">'), html.indexOf('<div class="block-actions">'));
       const slots = [...bar.matchAll(/<button type="button" data-tool="(\w+)" aria-pressed="\w+" aria-label="([^"]+)" title="([^"]+)"[^>]*><kbd>(\d)<\/kbd><svg class="block-slot-icon" viewBox="0 0 16 12"[^>]*>(.*?)<\/svg><b><\/b><\/button>/g)];
       const keys = JSON.parse(readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8").match(/const TOOL_KEYS = (\{[^}]+\});/)[1].replace(/(\d):/g, '"$1":'));
@@ -7984,7 +7999,8 @@ const gameRulesChecks = async () => {
       run(r, 0.5, still, () => o.hk === 2);
       const bx = o.x, bz = o.z;
       run(r, 1.5);
-      rows.pull = bit && Math.hypot(o.x - bx, o.z - bz) > 2 && o.hCool > 0 && !S.grapple(r, 0, yaw, 0);
+      run(r, 2, still, () => o.hk === 0);
+      rows.pull = bit && Math.hypot(o.x - bx, o.z - bz) > 2 && o.hk === 0 && S.grapple(r, 0, yaw, 0) && !S.grapple(r, 0, yaw + 3, 0.4);
       r = fresh(); o = r.actors[0];
       const c = r.actors[2];
       o.hook = 1; o.x = -17; o.z = -1; c.x = -17; c.z = 10; r.flags.blue.state = "carried"; r.flags.blue.carrier = 2; c.carrying = "blue";
@@ -8019,7 +8035,7 @@ const gameRulesChecks = async () => {
           return { m, u };
         };
         let hooked = hookAt((m, u) => { u.x = 0; u.z = -20; u.aim0 = Math.PI; });
-        rows.stand = hooked.u.carrying === "red" && hooked.m.flags.red.state === "carried" && hooked.m.flags.red.carrier === 0 && hooked.u.hCool > 2.5;
+        rows.stand = hooked.u.carrying === "red" && hooked.m.flags.red.state === "carried" && hooked.m.flags.red.carrier === 0;
         hooked = hookAt((m) => Object.assign(m.flags.red, { state: "dropped", x: -17, y: 0, z: 8, homeT: 0 }));
         rows.loose = hooked.u.carrying === "red" && hooked.m.flags.red.state === "carried";
         hooked = hookAt((m) => Object.assign(m.flags.blue, { state: "dropped", x: -17, y: 0, z: 8, homeT: 0 }));

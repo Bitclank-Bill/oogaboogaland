@@ -76,9 +76,10 @@
     // held stops the pull and leaves the swing. It ends `HOOK_MIN` from the bite or after `HOOK_HOLD_S`, and the Ooga
     // keeps its speed for `HOOK_FLING_S` (the air's usual steering held off). A
     // rival carrying a block has the block yanked out of their hands after `HOOK_WARN`. A gorilla is stunned for
-    // `HOOK_STUN_S`, dropping its captive, and can't be hook-stunned again for `HOOK_STUN_COOL`. `HOOK_COOL` between throws.
-    HOOKS: 2, HOOK_R: 1.1, HOOK_RANGE: 24, HOOK_FLY: 60, HOOK_MIN: 1.6, HOOK_HOLD_S: 4, HOOK_COOL: 2.5, HOOK_WARN: 0.35,
-    HOOK_HIT_R: 0.7, HOOK_STUN_S: 2.5, HOOK_STUN_COOL: 8, HOOK_YANK_LIFT: 6, HOOK_HOP: 4, HOOK_AIR: 0.12, HOOK_PULL: 16, HOOK_ACCEL: 45, HOOK_FLING_S: 0.8, HOOK_YANK_COOL: 12, BLOCK_GRACE_S: 0.7, HOOK_BLOCK_R: 0.9, HOOK_STAND_R: 1.1, HOOK_BLOCK_H: 2.2, HOOK_BLOCK_PULL: 30
+    // `HOOK_STUN_S`, dropping its captive, and can't be hook-stunned again for `HOOK_STUN_COOL`. A hook is ready again the moment it is back in the hand
+    // (one out at a time); only a bot waits between throws (`HOOK_BOT_WAIT`, `HOOK_BOT_YANK_WAIT` after pulling a block in).
+    HOOKS: 2, HOOK_R: 1.1, HOOK_RANGE: 24, HOOK_FLY: 60, HOOK_MIN: 1.6, HOOK_HOLD_S: 4, HOOK_BOT_WAIT: 2.5, HOOK_WARN: 0.35,
+    HOOK_HIT_R: 0.7, HOOK_STUN_S: 2.5, HOOK_STUN_COOL: 8, HOOK_YANK_LIFT: 6, HOOK_HOP: 4, HOOK_AIR: 0.12, HOOK_PULL: 16, HOOK_ACCEL: 45, HOOK_FLING_S: 0.8, HOOK_BOT_YANK_WAIT: 12, BLOCK_GRACE_S: 0.7, HOOK_BLOCK_R: 0.9, HOOK_STAND_R: 1.1, HOOK_BLOCK_H: 2.2, HOOK_BLOCK_PULL: 30
   };
   // The tools: speed, upward lob, gravity, life in seconds, hit radius, burst radius (0 for none), cooldown, and how
   // many a full refill holds (0 for no limit).
@@ -782,7 +783,7 @@
       climbing: false, riding: false, zipT: 0, flight: 0, zipLine: "blue", lastKind: "paint", wield: "", grabbed: 0, grabFill: 0, flung: false, fuel: 2.6, jetting: false, boots: 0, laser: 0, burnt: 0, slip: 0, gold: false, akMag: 30, akReload: 0, monkeys: 0, monkeyCool: 0,
       knock: 0, spooked: 0, beam: 0, beamLen: 0, ride: 0, rider: 0, calling: 0, navI: -1, navT: 0, route: "", routeT: 0, botClimb: false, botStop: false, botStraight: false, crateGo: 0, crateX: 0, crateZ: 0, routeBan: 0, jetT: 0, hopT: 0, crateT: 0, stacks: 0,
       detourX: 0, detourZ: 0, painted: 0, captures: 0, splats: 0, hits: 0, longShot: 0, rescues: 0, edgeX: 0, edgeY: 0, edgeZ: 0, falls: 0,
-      boltCool: 0, hook: 0, hk: 0, hookT: 0, hookLen: 0, hCool: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
+      boltCool: 0, hook: 0, hk: 0, hookT: 0, hookLen: 0, hookWait: 0, hookTarget: -1, hookTip: { x: 0, y: 0, z: 0 }, hookEnd: { x: 0, y: 0, z: 0 }, hookHold: false, flingT: 0
     }));
     const flags = {};
     for (const t of TEAMS) flags[t] = { team: t, state: "home", x: ARENA.stands[t].x, y: 0, z: ARENA.stands[t].z, carrier: null, vx: 0, vy: 0, vz: 0, thrower: -1, t: 0, homeT: 0, hookedBy: -1, graceT: 0 };
@@ -861,7 +862,7 @@
       a.fuel = CONFIG.JET_FUEL; a.jetting = false; a.grabbed = a.grabFill = 0; a.flung = false;
       a.sniper = 1; a.climbing = a.riding = false; a.zipT = 0; a.flight = 0; a.boots = a.laser = a.beam = a.burnt = a.slip = 0; a.gold = false; a.akMag = CONFIG.AK_MAG; a.akReload = 0; a.monkeys = 0;
       a.knock = 0; a.wield = ""; a.ride = a.rider = a.calling = 0;
-      a.hook = a.hk = a.hookT = a.hookLen = a.hCool = a.flingT = 0; a.hookTarget = -1; a.hookHold = false;
+      a.hook = a.hk = a.hookT = a.hookLen = a.hookWait = a.flingT = 0; a.hookTarget = -1; a.hookHold = false;
       a.route = ""; a.routeT = a.jetT = a.hopT = a.crateT = a.stacks = a.crateGo = a.routeBan = 0; a.botClimb = false;
       refill(a);
       a.crates = CONFIG.CRATE_STOCK;
@@ -1340,7 +1341,7 @@
   // What the weapons bar shows for a tool: `slotState` is "locked" (the Ooga doesn't have it yet), "empty" (it does,
   // with none left) or "ready"; `slotCount` is the number beside it, "" for a tool that never runs out.
   const slotState = (a, kind) => kind === "gold" ? (a.gold ? "ready" : "locked") : kind === "hook" ? (a.hook ? "ready" : "locked") : TOOLS[kind] && TOOLS[kind].max && a[kind] <= 0 ? "empty" : "ready";
-  const slotCount = (a, kind) => kind === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : kind === "hook" ? (a.hook && (a.hk || a.hCool > 0) ? "…" : "") : kind === "crate" ? String(a.crates) : TOOLS[kind] && TOOLS[kind].max ? String(a[kind]) : "";
+  const slotCount = (a, kind) => kind === "ak" ? (a.akReload > 0 ? "…" : String(a.akMag)) : kind === "hook" ? (a.hook && a.hk ? "…" : "") : kind === "crate" ? String(a.crates) : TOOLS[kind] && TOOLS[kind].max ? String(a[kind]) : "";
   const wield = (sim, id, t) => {
     const a = sim.actors[id], k = Math.round(t), kind = WIELD[k];
     if (!a || !Number.isInteger(k) || !kind || kind === "gold" && !a.gold || kind === "hook" && !a.hook) return false;
@@ -1359,7 +1360,7 @@
     } else if (held === "hook" && a.hook) {
       const h = sim.hooks[a.hook - 1];
       if (a.hk) hookBack(sim, a, "hookrelease");
-      a.hk = 0; a.hook = 0; a.hCool = 0;
+      a.hk = 0; a.hook = 0;
       restOf(a, h); h.state = 0; h.holder = -1; h.owner = a.id; h.back = CONFIG.DROP_BACK_S;
       emit(sim, "hookdrop", a.team, a.id, h.x, h.y, h.z);
     }
@@ -1604,13 +1605,13 @@
   const H_OUT = 1, H_BIT = 2, H_YANK = 3, H_BACK = 4, H_REEL = 5;
   const chestY = (a) => a.y + (a.crouch ? CONFIG.CROUCH_H - 0.25 : CONFIG.SHOT_Y);
   // Throw `id`'s hook along `yaw` and `pitch`; thrown already and bitten, the same press lets go. False when there is
-  // no hook, it is recharging or the Ooga can't.
+  // no hook, it is still out or the Ooga can't.
   const grapple = (sim, id = 0, yaw = sim.actors[id].heading, pitch = 0.2) => {
     use(sim);
     const a = sim.actors[id];
     if (sim.over || !a.hook) return false;
     if (a.hk === H_BIT || a.hk === H_YANK) { hookBack(sim, a, "hookrelease"); return true; }
-    if (a.hk || a.hCool > 0 || sim.prep > 0 || a.splat > 0 || a.trapped > 0 || a.grabbed || a.riding || a.flight === 1 || a.climbing || a.holding) return false;
+    if (a.hk || sim.prep > 0 || a.splat > 0 || a.trapped > 0 || a.grabbed || a.riding || a.flight === 1 || a.climbing || a.holding) return false;
     if (a.flight === 2) cutChute(sim, id);
     const c = Math.cos(pitch), dx = Math.sin(yaw) * c, dy = Math.sin(pitch), dz = Math.cos(yaw) * c, oy = chestY(a);
     a.hk = H_OUT; a.heading = yaw; a.hookT = 0;
@@ -1619,7 +1620,7 @@
     emit(sim, "hookthrow", a.team, id, a.x, oy, a.z);
     return true;
   };
-  // Let go, or a miss: the head flies back to the hand and the hook recharges.
+  // Let go, or a miss: the head flies back to the hand, and the hook is ready again when it gets there.
   // A block on the rope comes to an end: into the hooker's hands, or, if they can't take it, on reachable ground beside
   // them. The rules are touching's: the rival block is carried, your own loose block goes home.
   const reelEnd = (sim, a, f, reached) => {
@@ -1671,7 +1672,7 @@
     // Let go of a block still on the rope, and it lands where it is.
     if (a.hk === H_REEL) { const f = sim.flags[TEAMS[a.hookTarget]]; if (f.hookedBy === a.id) reelEnd(sim, a, f, false); }
     if (a.hk === H_BIT && !a.grounded) a.flingT = CONFIG.HOOK_FLING_S;
-    a.hk = H_BACK; a.hookTarget = -1; a.hCool = CONFIG.HOOK_COOL;
+    a.hk = H_BACK; a.hookTarget = -1; if (a.bot) a.hookWait = CONFIG.HOOK_BOT_WAIT;
     emit(sim, why, a.team, a.id, a.hookTip.x, a.hookTip.y, a.hookTip.z);
   };
   // What a hook bites: anything solid, and what the boxes leave out: the canopies, the stands, the catapults.
@@ -1703,7 +1704,7 @@
       tip.x = f.x; tip.y = f.y; tip.z = f.z;
       if (!arrived) return;
       reelEnd(sim, a, f, true);
-      a.hk = H_BACK; a.hookTarget = -1; a.hCool = CONFIG.HOOK_YANK_COOL;
+      a.hk = H_BACK; a.hookTarget = -1; if (a.bot) a.hookWait = CONFIG.HOOK_BOT_YANK_WAIT;
       emit(sim, "hookrelease", a.team, a.id, tip.x, tip.y, tip.z);
       return;
     }
@@ -1796,7 +1797,7 @@
     for (let i = 0; i < sim.hooks.length; i++) {
       const h = sim.hooks[i];
       if (h.state !== 0 || Math.abs(a.y - h.y) > 0.8 || (a.x - h.x) ** 2 + (a.z - h.z) ** 2 > CONFIG.HOOK_R * CONFIG.HOOK_R) continue;
-      h.state = 1; h.holder = a.id; h.owner = -1; h.back = 0; a.hook = i + 1; a.hk = 0; a.hCool = 0;
+      h.state = 1; h.holder = a.id; h.owner = -1; h.back = 0; a.hook = i + 1; a.hk = 0;
       emit(sim, "hookget", a.team, a.id, h.x, h.y, h.z);
       return;
     }
@@ -2264,7 +2265,7 @@
       a.vx = Math.sin(h) * sp; a.vz = Math.cos(h) * sp;
       a.jetT = 0.25; a.botClimb = a.botStop = false;
       // With a hook in hand, bite the rock at the rim and be reeled back in.
-      if (a.hook && !a.hk && a.hCool <= 0) { const flat = Math.hypot(goal.x - a.x, goal.z - a.z) || 1; grapple(sim, a.id, h, Math.atan2(-1.5 - chestY(a), flat)); }
+      if (a.hook && !a.hk && a.hookWait <= 0) { const flat = Math.hypot(goal.x - a.x, goal.z - a.z) || 1; grapple(sim, a.id, h, Math.atan2(-1.5 - chestY(a), flat)); }
       return;
     }
     const ex = sim.bots.expert;
@@ -2359,7 +2360,7 @@
       }
       return;
     }
-    if (a.hook && !a.hk && a.hCool <= 0 && sim.prep <= 0) botHook(sim, a);
+    if (a.hook && !a.hk && a.hookWait <= 0 && sim.prep <= 0) botHook(sim, a);
     // A gorilla charging this Ooga: a splat of paint stuns it (the hook, above, frees a teammate from one).
     if (a.cooldown <= 0 && sim.prep <= 0 && !a.holding && sim.rng() < dt * 1.2) {
       for (const g of sim.gorillas) {
@@ -2450,7 +2451,7 @@
       const o = sim.actors[h.owner];
       h.back = 0; h.owner = -1;
       if (o.hook) { hideHook(sim, h); continue; }
-      h.state = 1; h.holder = o.id; o.hook = i + 1; o.hk = 0; o.hCool = 0;
+      h.state = 1; h.holder = o.id; o.hook = i + 1; o.hk = 0;
       emit(sim, "hookback", o.team, o.id, o.x, o.y, o.z);
     }
   };
@@ -2660,7 +2661,7 @@
     else if (a.carrying) dropFlag(sim, a, "edgedrop");
     a.flung = false;
     // A grappling hook lost over the edge goes back into hiding.
-    if (a.hook) { if (a.hk === H_REEL) hookBack(sim, a, "hookrelease"); hideHook(sim, sim.hooks[a.hook - 1]); a.hook = 0; a.hk = 0; a.hCool = 0; }
+    if (a.hook) { if (a.hk === H_REEL) hookBack(sim, a, "hookrelease"); hideHook(sim, sim.hooks[a.hook - 1]); a.hook = 0; a.hk = 0; }
     const at = startAt(a.team, a.slot, sim.size);
     a.x = a.lastX = a.edgeX = at[0]; a.z = a.lastZ = a.edgeZ = at[1]; a.y = a.edgeY = 0;
     a.vx = a.vy = a.vz = 0; a.grounded = true; a.jumps = 0; a.flight = 0; a.riding = a.climbing = a.holding = a.jetting = false;
@@ -2691,7 +2692,7 @@
       if (a.cooldown > 0) a.cooldown -= dt;
       if (a.monkeyCool > 0) a.monkeyCool -= dt;
       if (a.boltCool > 0) a.boltCool -= dt;
-      if (a.hCool > 0) a.hCool -= dt;
+      if (a.hookWait > 0) a.hookWait -= dt;
       if (a.flingT > 0) a.flingT = a.grounded ? 0 : a.flingT - dt;
       if (a.hk) { a.hookHold = !a.bot && !!input.crouch; stepHook(sim, a, dt); }
       // Status clocks belong to every actor, including mounted riders and grabbed actors that return early.
