@@ -468,7 +468,7 @@
   const RECT_AXES = [[1, 0, 2], [1, 0, 2], [0, 1, 2], [0, 1, 2], [2, 0, 1], [2, 0, 1]], RECT_SWAP = [true, true, false, false, true, true];
   const rectMasks = [new Uint16Array(0), new Uint16Array(0), new Uint16Array(0), new Uint16Array(0), new Uint16Array(0), new Uint16Array(0)];
   const rectLists = [[], [], [], [], [], []];
-  const gridRects = (v, emit) => {
+  const gridRects = (v, emit, cap = Infinity) => {
     const { x0, y0, z0, nx, ny, nz, cells } = v.box(), total = cells.length, base = [x0, y0, z0], size = [nx, ny, nz], step = [ny * nz, nz, 1];
     if (rectMasks[0].length < total) for (let d = 0; d < 6; d++) rectMasks[d] = new Uint16Array(total);
     const [m0, m1, m2, m3, m4, m5] = rectMasks, [l0, l1, l2, l3, l4, l5] = rectLists;
@@ -493,8 +493,8 @@
         at[0] = Math.floor(start / sx); at[1] = Math.floor(start / sy) % ny; at[2] = start % nz;
         const b0 = at[B], r0 = at[R];
         let r1 = r0, b1 = b0;
-        while (r1 + 1 < nR && mask[start + (r1 + 1 - r0) * sR] === c) r1++;
-        for (let row = true; row && b1 + 1 < nB; ) {
+        while (r1 + 1 < nR && r1 - r0 + 1 < cap && mask[start + (r1 + 1 - r0) * sR] === c) r1++;
+        for (let row = true; row && b1 + 1 < nB && b1 - b0 + 1 < cap; ) {
           const line = start + (b1 + 1 - b0) * sB;
           for (let r = 0; r <= r1 - r0 && row; r++) row = mask[line + r * sR] === c;
           if (row) b1++;
@@ -503,25 +503,255 @@
         const a = at[A] + base[A], bl = b0 + base[B], bh = b1 + base[B], rl = r0 + base[R], rh = r1 + base[R];
         if (RECT_SWAP[d]) RECT_QUADS[d](QUAD, a, bl, bh, rl, rh);
         else RECT_QUADS[d](QUAD, a, rl, rh, bl, bh);
-        emit(QUAD, c - 1);
+        emit(QUAD, c - 1, d);
       }
     }
   };
-  const voxelGeometry = (vox, { unit, palette, origin = { x: 0, y: 0, z: 0 }, emissive = {}, rects = false }) => {
+  // EXPLORATION ONLY (the style pass's candidates, removed before rollout): ?oogastyle=A heroic proportions on the
+  // boxy body; B also clean colour and soft vertex normals; C the same body sculpted (its mesh smoothed, so edges
+  // bevel and steps become slopes); D also each test character's own reference detail (character files read STYLE).
+  // ?soft=radius,bias,cap and ?sculpt=iterations,limit tune B and C; ?fine=2|4 the grid.
+  const STYLE_PARAMS = (() => {
+    try {
+      const q = new URLSearchParams(location.search), list = (name) => (q.get(name) || "").split(",").map(Number);
+      return { style: q.get("oogastyle") || "", soft: list("soft"), sculpt: list("sculpt"), fine: Number(q.get("fine")) || 0 };
+    } catch { return { style: "", soft: [], sculpt: [], fine: 0 }; }
+  })();
+  const STYLE = STYLE_PARAMS.style, SOFT = STYLE === "B", SCULPT = STYLE === "C" || STYLE === "D";
+  const SOFT_R = STYLE_PARAMS.soft[0] || 4, SOFT_BIAS = STYLE_PARAMS.soft[1] >= 0 ? STYLE_PARAMS.soft[1] : 0.4, SOFT_CAP = STYLE_PARAMS.soft[2] || 8;
+  // [steps, limit] for a chiselled part: the body's slopes ease fully, a head keeps its blocks and only bevels.
+  const SCULPT_BODY = [STYLE_PARAMS.sculpt[0] || 4, STYLE_PARAMS.sculpt[1] || 0.5], SCULPT_HEAD = [STYLE_PARAMS.sculpt[2] || 2, STYLE_PARAMS.sculpt[3] || 0.3];
+  // A fine map as a chiselled mesh: every exposed cell face a quad on shared corners; the corners where faces of more
+  // than one direction meet ease toward their neighbours' middle a few times (never further than `limit` of a cell from
+  // where they began, so a thin strap keeps its thickness), which bevels every edge and turns a run of small steps into
+  // a slope. Faces shade flat across any edge sharper than CREASE and soft across a gentler one, so bevels and planes
+  // stay crisp while a slope's ripples disappear. Faces deep inside a flat stretch never move and merge into
+  // rectangles as `gridRects` merges them; the rest merge in runs wherever a stretch of them is one shape repeated.
+  const CREASE = Math.cos(28 * Math.PI / 180);
+  const runFaces = [0, 1, 2, 3, 4, 5].map(() => new Int32Array(0));
+  const sculptedGeometry = (vox, { unit, palette, origin, emissive, decor }, steps, limit) => {
+    const geo = geometry(), rgb = palette.map((c) => typeof c === "string" ? hexToRgb(c) : c);
+    const { x0, y0, z0, nx, ny, nz, cells } = vox.box(), wy = ny + 1, wz = nz + 1, ids = new Int32Array((nx + 1) * wy * wz);
+    const base = [], quads = [], cellOf = [];
+    const corner = (x, y, z) => {
+      const at = (x * wy + y) * wz + z;
+      if (!ids[at]) { base.push(x, y, z); ids[at] = base.length / 3; }
+      return ids[at] - 1;
+    };
+    const sx = ny * nz, sy = nz;
+    // Each exposed face: its four corners (wound as RECT_QUADS wind them), its colour and its direction.
+    const add = (d, x, y, z, c, i) => {
+      if (d < 2) RECT_QUADS[d](QUAD, y, x, x, z, z);
+      else if (d < 4) RECT_QUADS[d](QUAD, x, z, z, y, y);
+      else RECT_QUADS[d](QUAD, z, x, x, y, y);
+      quads.push(corner(QUAD[0], QUAD[1], QUAD[2]), corner(QUAD[3], QUAD[4], QUAD[5]), corner(QUAD[6], QUAD[7], QUAD[8]), corner(QUAD[9], QUAD[10], QUAD[11]), c, d);
+      cellOf.push(i);
+    };
+    for (let x = 0, i = 0; x < nx; x++) for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++, i++) {
+      const c = cells[i];
+      if (!c) continue;
+      if (y + 1 >= ny || !cells[i + sy]) add(0, x, y, z, c, i);
+      if (y === 0 || !cells[i - sy]) add(1, x, y, z, c, i);
+      if (x + 1 >= nx || !cells[i + sx]) add(2, x, y, z, c, i);
+      if (x === 0 || !cells[i - sx]) add(3, x, y, z, c, i);
+      if (z + 1 >= nz || !cells[i + 1]) add(4, x, y, z, c, i);
+      if (z === 0 || !cells[i - 1]) add(5, x, y, z, c, i);
+    }
+    const count = base.length / 3, faces = cellOf.length;
+    // Which direction's faces alone meet at a corner (-2 where more than one does: only those corners move).
+    const only = new Int8Array(count).fill(-1);
+    for (let q = 0; q < quads.length; q += 6) for (let e = 0; e < 4; e++) {
+      const v = quads[q + e], d = quads[q + 5];
+      only[v] = only[v] === -1 || only[v] === d ? d : -2;
+    }
+    let pos = Float32Array.from(base), next = new Float32Array(pos.length);
+    const sum = new Float32Array(pos.length), near = new Uint16Array(count);
+    for (let step = 0; step < steps; step++) {
+      sum.fill(0); near.fill(0);
+      for (let q = 0; q < quads.length; q += 6) for (let e = 0; e < 4; e++) {
+        const a = quads[q + e] * 3, b = quads[q + (e + 1 & 3)] * 3;
+        sum[a] += pos[b]; sum[a + 1] += pos[b + 1]; sum[a + 2] += pos[b + 2]; near[a / 3]++;
+        sum[b] += pos[a]; sum[b + 1] += pos[a + 1]; sum[b + 2] += pos[a + 2]; near[b / 3]++;
+      }
+      for (let v = 0; v < count; v++) {
+        const o = v * 3;
+        if (only[v] !== -2) { next[o] = pos[o]; next[o + 1] = pos[o + 1]; next[o + 2] = pos[o + 2]; continue; }
+        for (let a = 0; a < 3; a++) {
+          const eased = pos[o + a] + (sum[o + a] / near[v] - pos[o + a]) * 0.6, from = base[o + a];
+          next[o + a] = eased < from - limit ? from - limit : eased > from + limit ? from + limit : eased;
+        }
+      }
+      const swap = pos; pos = next; next = swap;
+    }
+    // Each face's own normal, and the faces round each corner.
+    const normal = new Float32Array(faces * 3), first = new Int32Array(count + 1), round = new Int32Array(faces * 4);
+    for (let f = 0, q = 0; f < faces; f++, q += 6) {
+      let ax = 0, ay = 0, az = 0;
+      for (let e = 0; e < 4; e++) {
+        const a = quads[q + e] * 3, b = quads[q + (e + 1 & 3)] * 3;
+        ax += (pos[a + 1] - pos[b + 1]) * (pos[a + 2] + pos[b + 2]);
+        ay += (pos[a + 2] - pos[b + 2]) * (pos[a] + pos[b]);
+        az += (pos[a] - pos[b]) * (pos[a + 1] + pos[b + 1]);
+        first[quads[q + e] + 1]++;
+      }
+      const l = Math.hypot(ax, ay, az) || 1;
+      normal[f * 3] = ax / l; normal[f * 3 + 1] = ay / l; normal[f * 3 + 2] = az / l;
+    }
+    for (let v = 0; v < count; v++) first[v + 1] += first[v];
+    const fill = first.slice(0, count);
+    for (let f = 0, q = 0; f < faces; f++, q += 6) for (let e = 0; e < 4; e++) round[fill[quads[q + e]]++] = f;
+    const verts = geo.verts, normals = [];
+    // A face's corner as its own vertex, its normal the faces round it that lie within CREASE of this face's.
+    const put = (f, v) => {
+      const fx = normal[f * 3], fy = normal[f * 3 + 1], fz = normal[f * 3 + 2];
+      let ax = 0, ay = 0, az = 0;
+      for (let n = first[v]; n < first[v + 1]; n++) {
+        const g = round[n] * 3;
+        if (normal[g] * fx + normal[g + 1] * fy + normal[g + 2] * fz >= CREASE) { ax += normal[g]; ay += normal[g + 1]; az += normal[g + 2]; }
+      }
+      const l = Math.hypot(ax, ay, az) || 1;
+      verts.push(origin.x + (pos[v * 3] + x0) * unit, origin.y + (pos[v * 3 + 1] + y0) * unit, origin.z + (pos[v * 3 + 2] + z0) * unit);
+      normals.push(ax / l, ay / l, az / l);
+      return verts.length / 3 - 1;
+    };
+    const emitFace = (colour, a, b, c, e) => face(geo, [a, b, c, e], rgb[colour - 1], { emissive: emissive[colour - 1] || 0 });
+    // Flat faces go to the masks and merge; the rest are looked up by cell for the runs.
+    const total = cells.length;
+    if (rectMasks[0].length < total) for (let d = 0; d < 6; d++) rectMasks[d] = new Uint16Array(total);
+    if (runFaces[0].length < total) for (let d = 0; d < 6; d++) runFaces[d] = new Int32Array(total);
+    for (let d = 0; d < 6; d++) rectLists[d].length = 0;
+    const size = [nx, ny, nz], step3 = [sx, sy, 1], bent = [];
+    for (let f = 0, q = 0; f < faces; f++, q += 6) {
+      const d = quads[q + 5];
+      if (only[quads[q]] === d && only[quads[q + 1]] === d && only[quads[q + 2]] === d && only[quads[q + 3]] === d) {
+        rectMasks[d][cellOf[f]] = quads[q + 4]; rectLists[d].push(cellOf[f]);
+      } else { runFaces[d][cellOf[f]] = f + 1; bent.push(f); }
+    }
+    const at = [0, 0, 0], done = new Uint8Array(faces);
+    const same = (qa, qb) => {
+      for (let e = 0; e < 4; e++) {
+        const a = quads[qa + e] * 3, b = quads[qb + e] * 3;
+        for (let n = 0; n < 3; n++) if (Math.abs(pos[a + n] - base[a + n] - pos[b + n] + base[b + n]) > 1e-4) return false;
+      }
+      return true;
+    };
+    for (let n = 0; n < bent.length; n++) {
+      const f = bent[n], q = f * 6;
+      if (done[f]) continue;
+      const d = quads[q + 5], colour = quads[q + 4], axes = RECT_AXES[d], cell = cellOf[f];
+      at[0] = Math.floor(cell / sx); at[1] = Math.floor(cell / sy) % ny; at[2] = cell % nz;
+      let last = f, axis = axes[2];
+      for (let attempt = 0; attempt < 2 && last === f; attempt++) {
+        axis = axes[2 - attempt];
+        for (let c = cell + step3[axis], m = at[axis] + 1; m < size[axis]; c += step3[axis], m++) {
+          const g = runFaces[d][c] - 1;
+          if (g < 0 || done[g] || quads[g * 6 + 4] !== colour || !same(q, g * 6)) break;
+          done[g] = 1; last = g;
+        }
+      }
+      done[f] = 1;
+      // Each corner from the run's first face where it is the low end along the run, else from its last.
+      const out = [0, 0, 0, 0];
+      for (let e = 0; e < 4; e++) {
+        const low = base[quads[q + e] * 3 + axis] === at[axis];
+        out[e] = low ? put(f, quads[q + e]) : put(last, quads[last * 6 + e]);
+      }
+      emitFace(colour, out[0], out[1], out[2], out[3]);
+    }
+    for (let n = 0; n < bent.length; n++) runFaces[quads[bent[n] * 6 + 5]][cellOf[bent[n]]] = 0;
+    for (let d = 0; d < 6; d++) {
+      const [A, B, R] = RECT_AXES[d], mask = rectMasks[d], list = rectLists[d], sB = step3[B], sR = step3[R], nB = size[B], nR = size[R], f = QUAD_NORMALS[d];
+      const flat = (x, y, z) => {
+        verts.push(origin.x + (x + x0) * unit, origin.y + (y + y0) * unit, origin.z + (z + z0) * unit);
+        normals.push(f[0], f[1], f[2]);
+        return verts.length / 3 - 1;
+      };
+      for (let n = 0; n < list.length; n++) {
+        const start = list[n], c = mask[start];
+        if (!c) continue;
+        at[0] = Math.floor(start / sx); at[1] = Math.floor(start / sy) % ny; at[2] = start % nz;
+        const b0 = at[B], r0 = at[R];
+        let r1 = r0, b1 = b0;
+        while (r1 + 1 < nR && mask[start + (r1 + 1 - r0) * sR] === c) r1++;
+        for (let row = true; row && b1 + 1 < nB; ) {
+          const line = start + (b1 + 1 - b0) * sB;
+          for (let r = 0; r <= r1 - r0 && row; r++) row = mask[line + r * sR] === c;
+          if (row) b1++;
+        }
+        for (let b = 0; b <= b1 - b0; b++) for (let r = 0; r <= r1 - r0; r++) mask[start + b * sB + r * sR] = 0;
+        if (RECT_SWAP[d]) RECT_QUADS[d](QUAD, at[A], b0, b1, r0, r1);
+        else RECT_QUADS[d](QUAD, at[A], r0, r1, b0, b1);
+        emitFace(c, flat(QUAD[0], QUAD[1], QUAD[2]), flat(QUAD[3], QUAD[4], QUAD[5]), flat(QUAD[6], QUAD[7], QUAD[8]), flat(QUAD[9], QUAD[10], QUAD[11]));
+      }
+    }
+    // What a part wears that no block could be (`decor(geo, rgb)`: fur cut in shards) is added after, flat shaded.
+    if (decor) decor(geo, rgb);
+    const given = new Float32Array(verts.length);
+    given.set(normals);
+    geo.normals = given;
+    return geo;
+  };
+  // A flat polygon seen from both sides, for cloth and fur: `points` are [x, y, z] in turn.
+  const leaf = (geo, points, color) => {
+    const ids = points.map((p) => pushVert(geo, p[0], p[1], p[2]));
+    face(geo, ids, color);
+    face(geo, ids.map((id, n) => pushVert(geo, points[n][0], points[n][1], points[n][2])).reverse(), color);
+  };
+  const QUAD_NORMALS = [[0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]], SOFT_OUT = [0, 0, 0];
+  // Soft shading for a refined part (`soften`, in cells): each rectangle corner's normal leans from its face's toward
+  // the way the part's mass falls away around it, the cells filled in a cube `soften` across either side of the corner
+  // (read from a summed table), so stepped curves shade as the round surfaces they stand for and flat faces stay flat.
+  const softNormals = (vox, R) => {
+    const { x0, y0, z0, nx, ny, nz, cells } = vox.box(), W = nx + 2 * R, H = ny + 2 * R, D = nz + 2 * R;
+    const sy = D + 1, sx = (H + 1) * sy, table = new Int32Array((W + 1) * sx);
+    for (let i = 0; i < W; i++) for (let j = 0; j < H; j++) for (let k = 0; k < D; k++) {
+      const x = i - R, y = j - R, z = k - R;
+      const filled = x >= 0 && y >= 0 && z >= 0 && x < nx && y < ny && z < nz && cells[(x * ny + y) * nz + z] ? 1 : 0;
+      const at = (i + 1) * sx + (j + 1) * sy + k + 1;
+      table[at] = filled + table[at - sx] + table[at - sy] + table[at - 1] - table[at - sx - sy] - table[at - sx - 1] - table[at - sy - 1] + table[at - sx - sy - 1];
+    }
+    // Cells filled with grid coordinates in [a0, a1) x [b0, b1) x [c0, c1).
+    const sum = (a0, a1, b0, b1, c0, c1) => table[a1 * sx + b1 * sy + c1] - table[a0 * sx + b1 * sy + c1] - table[a1 * sx + b0 * sy + c1] - table[a1 * sx + b1 * sy + c0]
+      + table[a0 * sx + b0 * sy + c1] + table[a0 * sx + b1 * sy + c0] + table[a1 * sx + b0 * sy + c0] - table[a0 * sx + b0 * sy + c0];
+    return (px, py, pz, fx, fy, fz, out) => {
+      const i = px - x0 + R, j = py - y0 + R, k = pz - z0 + R;
+      const gx = sum(i - R, i, j - R, j + R, k - R, k + R) - sum(i, i + R, j - R, j + R, k - R, k + R);
+      const gy = sum(i - R, i + R, j - R, j, k - R, k + R) - sum(i - R, i + R, j, j + R, k - R, k + R);
+      const gz = sum(i - R, i + R, j - R, j + R, k - R, k) - sum(i - R, i + R, j - R, j + R, k, k + R);
+      const g = Math.hypot(gx, gy, gz);
+      let nx = fx * SOFT_BIAS, ny = fy * SOFT_BIAS, nz = fz * SOFT_BIAS;
+      if (g) { nx += gx / g; ny += gy / g; nz += gz / g; } else { nx = fx; ny = fy; nz = fz; }
+      // Never turned away from its own face, or the face would light from behind.
+      if (nx * fx + ny * fy + nz * fz <= 0.2) { nx = fx; ny = fy; nz = fz; }
+      const l = Math.hypot(nx, ny, nz);
+      out[0] = nx / l; out[1] = ny / l; out[2] = nz / l;
+    };
+  };
+  const voxelGeometry = (vox, { unit, palette, origin = { x: 0, y: 0, z: 0 }, emissive = {}, rects = false, soften = 0, sculpt = false, decor = null }) => {
+    if (sculpt) return sculptedGeometry(vox, { unit, palette, origin, emissive, decor }, sculpt[0], sculpt[1]);
     const geo = geometry();
     geo.voxel = new Float32Array([unit, origin.x, origin.y, origin.z]);
     const rgb = palette.map((c) => typeof c === "string" ? hexToRgb(c) : c);
     const emit = (pts, c) => {
       face(geo, pts.map(([x, y, z]) => pushVert(geo, origin.x + x * unit, origin.y + y * unit, origin.z + z * unit)), rgb[c], { emissive: emissive[c] || 0 });
     };
-    // A rectangle's four corners come flat (`QUAD`).
-    const quad = (o, c) => {
+    // A rectangle's four corners come flat (`QUAD`), with its direction for soft normals.
+    const soft = rects && soften ? softNormals(vox, soften) : null, normals = soft ? [] : null;
+    const quad = (o, c, d) => {
       const n = geo.verts.length / 3;
-      for (let q = 0; q < 12; q += 3) geo.verts.push(origin.x + o[q] * unit, origin.y + o[q + 1] * unit, origin.z + o[q + 2] * unit);
+      for (let q = 0; q < 12; q += 3) {
+        geo.verts.push(origin.x + o[q] * unit, origin.y + o[q + 1] * unit, origin.z + o[q + 2] * unit);
+        if (soft) {
+          const f = QUAD_NORMALS[d];
+          soft(o[q], o[q + 1], o[q + 2], f[0], f[1], f[2], SOFT_OUT);
+          normals.push(SOFT_OUT[0], SOFT_OUT[1], SOFT_OUT[2]);
+        }
+      }
       face(geo, [n, n + 1, n + 2, n + 3], rgb[c], { emissive: emissive[c] || 0 });
     };
-    if (rects) gridRects(vox, quad);
+    if (rects) gridRects(vox, quad, soft ? SOFT_CAP : Infinity);
     else voxelFaces((fn) => vox.each(fn), vox.has, emit);
+    if (normals) geo.normals = Float32Array.from(normals);
     return geo;
   };
   const clamp255 = (v) => Math.max(0, Math.min(255, Math.round(v)));
@@ -968,7 +1198,8 @@
   // authored units and drawn at whatever FINE is. Colours come from the authored part region by region, so a sleeve, a
   // cuff, a boot or a glove stays where its owner drew it, and whatever a hook built out past the plain part rides along.
   // Nothing here draws from `k.rand`: the body's own small variation and the cloth's weave are hashed from the grid.
-  const FINE = 4, LEG_UNITS = 7, FOOT_UNITS = 1.5, TORSO_RISE = 1, LEGS_IN = 0.5;
+  const FINE = STYLE_PARAMS.fine || 4, LEG_UNITS = 7, FOOT_UNITS = 1.5, TORSO_RISE = 1, LEGS_IN = 0.5;
+  const HEROIC = STYLE !== "" && STYLE !== "R", CLEAN = SOFT || SCULPT, ARMS_IN = 1.1, SLIM_ARMS_IN = 0.5;
   // Every Ooga is built through here, many cells at a time, so the hot paths keep Math's functions at hand.
   const { imul, floor, abs } = Math;
   const fineMix = (x, y, z) => ((imul(x + 101, 73856093) ^ imul(y + 37, 19349663) ^ imul(z + 13, 83492791)) >>> 0) % 1000;
@@ -1099,20 +1330,35 @@
   // plain block (FIST_HALF each way, FIST_TOP tall), then [y, half width, half depth, corner radius]: a wrist and forearm,
   // the upper arm swelling smoothly into the shoulder's deltoid and rolling over at its top, which stands half a unit
   // over the pivot (11), level with the torso's top. A slim build's shoulder is its arm's width, rounded over.
-  const FIST_TOP = 3, FIST_HALF = 2, ARM_TOP = 11.5;
-  const ARM_PROFILE = [[3, 1.5, 1.5, 0.8], [6, 1.5, 1.5, 1], [8, 2.4, 2, 1.4], [8.6, 2.5, 2, 1.5], [10.4, 2.5, 2, 1.6], [11, 2.3, 1.85, 1.6],
-    [11.3, 2, 1.6, 1.4], [11.5, 1.6, 1.3, 1.1]];
-  const SLIM_ARM_PROFILE = [[3, 1.5, 1.5, 0.8], [10.6, 1.5, 1.5, 1], [11.5, 1.1, 1.1, 0.8]];
+  const FIST_TOP = HEROIC ? 2.75 : 3, FIST_HALF = 2, ARM_TOP = HEROIC ? 9 : 11.5;
+  // [half width, half depth] of a fist: the plain block, or the heroic build's smaller one sized to its arm.
+  const FIST = HEROIC ? [1.75, 1.75, 0.5] : [FIST_HALF, FIST_HALF, 0], SLIM_FIST = HEROIC ? [1.25, 1.25, 0.4] : FIST;
+  // The heroic arm is blocks, each one width its whole height (a step between two is bevelled by the mesh): the arm, a
+  // deltoid capping it wider, and the deltoid's top cut in.
+  const ARM_PROFILE = HEROIC
+    ? [[2.75, 1.5, 1.5, 0.5], [6.99, 1.5, 1.5, 0.5], [7, 1.75, 1.75, 0.6], [8.49, 1.75, 1.75, 0.6], [8.5, 1.5, 1.5, 0.75], [9, 1.5, 1.5, 0.75]]
+    : [[3, 1.5, 1.5, 0.8], [6, 1.5, 1.5, 1], [8, 2.4, 2, 1.4], [8.6, 2.5, 2, 1.5], [10.4, 2.5, 2, 1.6], [11, 2.3, 1.85, 1.6],
+      [11.3, 2, 1.6, 1.4], [11.5, 1.6, 1.3, 1.1]];
+  const SLIM_ARM_PROFILE = HEROIC
+    ? [[2.75, 1, 1, 0.4], [7.24, 1, 1, 0.4], [7.25, 1.25, 1.25, 0.5], [8.49, 1.25, 1.25, 0.5], [8.5, 1, 1, 0.5], [9, 1, 1, 0.5]]
+    : [[3, 1.5, 1.5, 0.8], [10.6, 1.5, 1.5, 1], [11.5, 1.1, 1.1, 0.8]];
   // Which authored row a height on the arm takes its colours from: the fist from the fist's two, the arm from its six,
   // the shoulder from its three.
-  const armSourceY = (y) => y < FIST_TOP ? Math.min(1, Math.floor(y / 1.5)) : y < 8.5 ? Math.min(7, 2 + Math.floor((y - 3) * 6 / 5.5)) : Math.min(10, 8 + Math.floor(y - 8.5));
+  const armSourceY = HEROIC
+    ? (y) => y < FIST_TOP ? Math.min(1, Math.floor(y / (FIST_TOP / 2))) : y < 7 ? Math.min(7, 2 + Math.floor((y - FIST_TOP) * 6 / (7 - FIST_TOP))) : Math.min(10, 8 + Math.floor((y - 7) * 2))
+    : (y) => y < FIST_TOP ? Math.min(1, Math.floor(y / 1.5)) : y < 8.5 ? Math.min(7, 2 + Math.floor((y - 3) * 6 / 5.5)) : Math.min(10, 8 + Math.floor(y - 8.5));
   // The leg in authored units from the sole, about its axis 2 in from the authored leg's corner: the foot a plain block
   // FOOT_UNITS tall, as wide as the shin, then [y, half width, half depth, corner radius]: from the ankle the leg widens
   // evenly all the way to the hip, where it is as wide as the authored leg, so it is already narrowing where it leaves
   // the loincloth and nothing bulges under the cloth. `THIGH` is its top, for the hips.
-  const FOOT_BOX = [0.5, 3.5, 0, 5];
-  const LEG_PROFILE = [[FOOT_UNITS, 1.5, 1.5, 0.9], [2.5, 1.5, 1.5, 0.9], [LEG_UNITS, 2, 2, 1.2]];
-  const THIGH = LEG_PROFILE[LEG_PROFILE.length - 1];
+  const FOOT_BOX = HEROIC ? [0.25, 3.75, 0, 5.25] : [0.5, 3.5, 0, 5];
+  // The heroic leg is blocks too: a shin, and a thigh a step fuller from the knee up; a slim build's slenderer.
+  const LEG_PROFILE = HEROIC
+    ? [[FOOT_UNITS, 1.5, 1.5, 0.5], [3.74, 1.5, 1.5, 0.5], [3.75, 1.75, 1.75, 0.6], [LEG_UNITS, 1.75, 1.75, 0.6]]
+    : [[FOOT_UNITS, 1.5, 1.5, 0.9], [2.5, 1.5, 1.5, 0.9], [LEG_UNITS, 2, 2, 1.2]];
+  const SLIM_LEG_PROFILE = HEROIC ? [[FOOT_UNITS, 1.25, 1.25, 0.4], [3.74, 1.25, 1.25, 0.4], [3.75, 1.5, 1.5, 0.5], [LEG_UNITS, 1.5, 1.5, 0.5]] : LEG_PROFILE;
+  const SLIM_FOOT_BOX = HEROIC ? [0.5, 3.5, 0.25, 4.75] : FOOT_BOX;
+  const THIGH = LEG_PROFILE[LEG_PROFILE.length - 1], SLIM_THIGH = SLIM_LEG_PROFILE[SLIM_LEG_PROFILE.length - 1];
   // A leg's authored rows are two of foot and three of leg: the foot's lower row its sole, the leg's end rows keep their
   // thickness (a cuff, a boot's top) and its middle row stretches.
   const legSourceY = (y) => y < 1 ? 0 : y < FOOT_UNITS ? 1 : y < 2.5 ? 2 : y < 6 ? 3 : 4;
@@ -1564,22 +1810,26 @@
     // head's three faces), "torso", "arm", "fingers" and "leg" (with its side), in fine cells of the part's own frame,
     // `k.fine` of them to an authored unit.
     const weaves = new Map(), refinedSources = new Set();
+    let modelled = false, elbow = null, back = 0, armScale = 1, fist = null;
     // The face button's head, built the first time something shows it (only a face icon does).
     let facePending = null;
     {
       const F = FINE, fineU = u / F, bakeOf = new Map(), done = new Map();
       for (const bake of bakes) bakeOf.set(bake.geo, bake);
-      const fineBake = (v, origin, emissive) => {
+      const fineBake = (v, origin, emissive, head = false, decor = null) => {
         v.trim();
-        const geo = voxelGeometry(v, { unit: fineU, palette, origin, emissive, rects: true });
-        bakes.push({ v, origin, emissive, geo, unit: fineU, rects: true });
+        const soften = SOFT ? SOFT_R : 0, sculpt = SCULPT ? head ? SCULPT_HEAD : SCULPT_BODY : false;
+        const geo = voxelGeometry(v, { unit: fineU, palette, origin, emissive, rects: true, soften, sculpt, decor });
+        bakes.push({ v, origin, emissive, geo, unit: fineU, rects: true, soften, sculpt, decor });
         return geo;
       };
       // The body's own fine variation: skin and hair speckled grain by grain, a fleck or two in the fur.
       const fineBody = (c, x, y, z, salt) => {
+        // A chiselled body's skin is one flat colour, and nothing is speckled.
+        if (SCULPT) return c === P.skinDk ? P.skin : c;
         const m = grainMix(x, y, z, salt);
-        return c === P.skin || c === P.skinDk ? (m < 40 ? P.skinDk : P.skin)
-          : c === P.hair || c === P.hairDk ? (m < 120 ? P.hairDk : P.hair) : c === P.fur && m < 25 ? P.spot : c;
+        return c === P.skin || c === P.skinDk ? (m < (CLEAN ? 10 : 40) ? P.skinDk : P.skin)
+          : c === P.hair || c === P.hairDk ? (m < (CLEAN ? 60 : 120) ? P.hairDk : P.hair) : c === P.fur && m < (CLEAN ? 8 : 25) ? P.spot : c;
       };
       const once = (geo, tag, make) => {
         const key = geo, seen = done.get(key);
@@ -1606,6 +1856,7 @@
       const BODY_COLOURS = new Set([P.skin, P.skinDk, P.hair, P.hairDk, P.fur, P.spot, P.white, P.black, P.nose, P.stubble]);
       const fabric = (v, salt, emissive, keep) => {
         v.trim();
+        if (SCULPT) return v;
         const { x0, y0, z0, nx, ny, nz, cells } = v.box(), counts = new Uint32Array(palette.length + 1), least = 4 * F * F * F;
         for (let i = 0; i < cells.length; i++) counts[cells[i]]++;
         // Which colours weave: worn widely, not the body's own, not glowing.
@@ -1615,8 +1866,8 @@
           const stored = cells[i];
           if (!woven[stored] || keep && keep(x + x0, y + y0, z + z0)) continue;
           const m = grainMix(x + x0, y + y0, z + z0, salt);
-          if (m < 70) cells[i] = weave(stored - 1, true) + 1;
-          else if (m >= 975) cells[i] = weave(stored - 1, false) + 1;
+          if (m < (CLEAN ? 30 : 70)) cells[i] = weave(stored - 1, true) + 1;
+          else if (m >= (CLEAN ? 990 : 975)) cells[i] = weave(stored - 1, false) + 1;
         }
         return v;
       };
@@ -1624,7 +1875,12 @@
       // from the brow down: eyes, nose, mouth, beard and paint) keeps every cell, so no face changes.
       const faceKeep = (x, y, z) => z >= 5 * F && y < 6 * F;
       const HEAD_EDGES = [...upEdges(half(4), half(3)), ...rimEdges(1, half(4), half(4), half(3)), ...rimEdges(-1, half(2), half(3), half(2))];
-      const roundHead = (v) => fabric(rounded(upscaled(v), HEAD_EDGES, faceKeep), 900, k.headEmissive, faceKeep);
+      // A chiselled head keeps its authored blocks: its back corners and crown are notched a whole block, as the blocks
+      // of a rounded cube step, and the bevel is the mesh's.
+      const BLOCK_EDGES = upEdges(2, 2), blockKeep = (x, y, z) => z >= 5 && y < 6;
+      const blocks = (v) => { const out = makeFineVox(); v.each((x, y, z, c) => out.set(x, y, z, c)); return out; };
+      const roundHead = SCULPT ? (v) => upscaled(rounded(blocks(v), BLOCK_EDGES, blockKeep))
+        : (v) => fabric(rounded(upscaled(v), HEAD_EDGES, faceKeep), 900, k.headEmissive, faceKeep);
       // Each authored head is rounded once and copied for each use. The closed eyes are the open head with its eye
       // cells closed (they lie on the face, which rounding and weave leave alone), and the face button the open head cut
       // to the portrait's bounds.
@@ -1648,7 +1904,7 @@
       const head = (geo, part) => once(geo, part, (bake) => {
         const v = roundedOf(bake.v).clone();
         if (dress.refine) dress.refine(k, part, v);
-        return fineBake(v, bake.origin, bake.emissive);
+        return fineBake(v, bake.origin, bake.emissive, true);
       });
       // The face button is the same rounded head, cut to the portrait's bounds.
       const portrait = (geo) => once(geo, "portrait", (bake) => {
@@ -1658,7 +1914,7 @@
           if (x >= lo[0] && x <= hi[0] && y >= lo[1] && y <= hi[1] && z >= lo[2] && z <= hi[2]) v.set(x, y, z, c);
         });
         if (dress.refine) dress.refine(k, "portrait", v);
-        return fineBake(v, bake.origin, bake.emissive);
+        return fineBake(v, bake.origin, bake.emissive, true);
       });
       // The torso, TORSO_RISE taller than it was authored, in proportion: its hip band two units tall, not three, and
       // its chest the longer for it (`TORSO_FROM`, a new height's authored one, in units), easing out into a full chest
@@ -1671,13 +1927,25 @@
       const TORSO_KNOTS = [[0, 0], [3, 2], [4, 3], [8, 8 + TORSO_RISE]];
       const TORSO_FROM = TORSO_KNOTS.map(([a, b]) => [b, a]);
       // A slim build's waist comes in over the belt; the others' lower torso keeps its width up into the chest.
-      const SIDE = traits.slim ? [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]] : [[4.75, 0], [5.1, 0.5], [9, 0.5]];
-      const REACH = [[4.25, 3.5], [4.75, 2.9], [5.25, 2.35], [5.75, 1.95], [6.5, 1.65], [7.5, 1.5], [9, 1.5]];
-      const DEEP = [[4.5, 0], [5, 0.5], [8.5, 0.5], [9, 0.25]];
+      const SIDE = HEROIC && traits.slim ? [[2.6, 0], [3.1, -0.75], [4.4, -0.75], [5.4, 0], [6, 0.25], [9, 0.25]]
+        : traits.slim ? [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]] : [[4.75, 0], [5.1, 0.5], [9, 0.5]];
+      const REACH = HEROIC
+        ? traits.slim ? [[5.5, 1.5], [6.5, 1.1], [7.5, 0.9], [9, 0.85]] : [[4.25, 2.2], [5, 1.8], [6, 1.4], [7, 1.1], [9, 1]]
+        : [[4.25, 3.5], [4.75, 2.9], [5.25, 2.35], [5.75, 1.95], [6.5, 1.65], [7.5, 1.5], [9, 1.5]];
+      const DEEP = HEROIC ? [[4.75, 0], [5.25, 0.25], [8.5, 0.25], [9, 0]] : [[4.5, 0], [5, 0.5], [8.5, 0.5], [9, 0.25]];
+      // The heroic chest: how much further a column at dx from the middle, yc up the torso, stands out than DEEP. A
+      // regular build's is two broad plates, squarish and rounded at the corners, with a shallow line down the
+      // breastbone; a slim build's two smaller round forms.
+      const CHEST = traits.slim ? [1.45, 6.7, 1.3, 1.15, 0.6, 2.5] : [1.95, 7.05, 1.75, 1.5, 0.5, 4];
+      const chest = (dx, yc) => {
+        if (!HEROIC) return 0;
+        const [cx, cy, rx, ry, out, power] = CHEST;
+        return Math.abs((Math.abs(dx) - cx) / rx) ** power + Math.abs((yc - cy) / ry) ** power <= 1 ? out : 0;
+      };
       // The back, by how far it stands out past the authored torso, in units up it: rising a little from the waist and
       // level from there to the top, smooth across, so no ledge or bump shows on it.
       const BACK = [[4.25, 0], [5.5, 0.15], [9, 0.15]];
-      const BAND_UNITS = 2, BAND_IN = traits.slim ? [[1, 0, 0], [1.25, 0.1, 0], [2, 0.8, 0.5]] : [[1, 0, 0], [2, 0.4, 0.5]], WRAP = [2, 2.5, 1.25];
+      const BAND_UNITS = 2, BAND_IN = traits.slim ? [[1, 0, 0], [1.25, 0.1, 0], [2, 0.8, 0.5]] : [[1, 0, 0], [2, 0.4, 0.5]], WRAP = HEROIC ? [2.75, 2.75, 1.5] : [2, 2.5, 1.25];
       // The shoulder line keeps nearly square into the shoulders (its top's side edges barely rounded), so the upper back
       // meets each deltoid rather than falling away before it.
       const TORSO_EDGES = [...upEdges(half(3), half(4)), ...rimEdges(1, half(1), half(2), half(3)), ...rimEdges(-1, half(2), half(2), half(2))];
@@ -1702,8 +1970,8 @@
       // just before and behind them.
       const hips = () => {
         const sx = parts.torso.scale.x * fineU, sz = parts.torso.scale.z * fineU, legX = Math.abs(parts.legR.position.x), legZ = parts.legR.position.z - 0.5 * u;
-        const xR = Math.ceil(CX - 0.5 + (legX + THIGH[1] * u) / sx);
-        return { xL: 2 * CX - 1 - xR, xR, zf: Math.ceil(CZ - 0.5 + (legZ + THIGH[2] * u) / sz), zb: Math.floor(CZ - 0.5 + (legZ - THIGH[2] * u) / sz) };
+        const thigh = traits.slim ? SLIM_THIGH : THIGH, xR = Math.ceil(CX - 0.5 + (legX + thigh[1] * u) / sx);
+        return { xL: 2 * CX - 1 - xR, xR, zf: Math.ceil(CZ - 0.5 + (legZ + thigh[2] * u) / sz), zb: Math.floor(CZ - 0.5 + (legZ - thigh[2] * u) / sz) };
       };
       const torso = (geo) => once(geo, "torso", (bake) => {
         const old = upscaled(bake.v), ob = old.box(), sx = parts.torso.scale.x, top = (8 + TORSO_RISE) * F;
@@ -1767,11 +2035,12 @@
         for (let y = bandRows; y < top; y++) {
           const yc = (y + 0.5) / F;
           const front = Math.round(profile(DEEP, yc, at)[0] * F), back = Math.round(profile(BACK, yc, at)[0] * F);
-          if (front || back) for (let x = 0; x < 9 * F; x++) {
+          if (front || back || HEROIC) for (let x = 0; x < 9 * F; x++) {
             const run = runZ(v, x, y);
             if (!run || run[1] - run[0] < 2.5 * F) continue;
             const cf = v.get(x, y, run[1]), cb = v.get(x, y, run[0]);
-            for (let n = 1; n <= front; n++) v.set(x, y, run[1] + n, cf);
+            const plate = Math.round(chest((x + 0.5 - CX) / F, yc) * F);
+            for (let n = 1; n <= front + plate; n++) v.set(x, y, run[1] + n, cf);
             for (let n = 1; n <= back; n++) v.set(x, y, run[0] - n, cb);
           }
           const by = Math.round(profile(SIDE, yc, at)[0] * F);
@@ -1793,8 +2062,38 @@
         // character whose own torso has trousers, shorts or a suit and no flaps keeps its clothes bare.
         let flapped = false;
         bake.v.each((x, y, z, c) => { if (y < 0 && (c === loinA || c === loinB)) flapped = true; });
-        const wrap = (x, y, z) => { if (flapped) v.set(x, y, z, grainMix(x, y, z, 900) < 140 ? loinB : loinA); };
-        const hem = (x, z, units) => {
+        const wrap = (x, y, z) => { if (flapped && !SCULPT) v.set(x, y, z, grainMix(x, y, z, 900) < 140 ? loinB : loinA); };
+        // Chiselled, the wrap is fur cut in shards instead: two rows of pointed flat pieces hung from the band's foot
+        // all the way round, the under row longer and darker, now and then a piece in the loincloth's second colour.
+        const shards = flapped && SCULPT ? (geo, rgb) => {
+          const o = bake.origin, X = (x) => o.x + x * fineU, Z = (z) => o.z + z * fineU, top = 0.35 * u;
+          const dark = rgb[loinA].map((value) => clamp255(value * 0.72)), W = 1.5 * u;
+          // One side's row: from a to b along it, `out` the way it faces, each piece `long` units, `row` 0 under, 1 over.
+          const side = (ax, az, bx, bz, ox, oz, long, row, salt) => {
+            const span = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(span / W)), dx = (bx - ax) / n, dz = (bz - az) / n;
+            for (let i = row ? 0 : -1; i < n; i++) {
+              const t0 = Math.max(0, i + (row ? 0 : 0.5)), t1 = Math.min(n, i + (row ? 1 : 1.5));
+              if (t1 - t0 < 0.2) continue;
+              const m = fineMix(i + salt, row + 7, salt), len = (long + (m % 5) * 0.12 - 0.24 + (row ? 0 : 0.55)) * u, lean = ((m >> 3) % 5 - 2) * 0.09;
+              const off = (0.06 + row * 0.1) * u, flare = off + 0.3 * u, tm = (t0 + t1) / 2 + lean * (t1 - t0);
+              const at = (t, y, push) => [ax + dx * t + ox * push, y, az + dz * t + oz * push];
+              leaf(geo, [at(t0, top, off), at(t0, -len * 0.5, off + 0.12 * u), at(tm, -len, flare), at(t1, -len * 0.5, off + 0.12 * u), at(t1, top, off)],
+                row ? m % 4 === 0 ? rgb[loinB] : rgb[loinA] : dark);
+            }
+          };
+          const x0 = X(xL), x1 = X(xR + 1), z0 = Z(zb), z1 = Z(zf + 1);
+          for (let row = 0; row < 2; row++) {
+            side(x0, z1, x1, z1, 0, 1, WRAP[0], row, 11);
+            side(x1, z0, x0, z0, 0, -1, WRAP[1], row, 23);
+            side(x1, z1, x1, z0, 1, 0, WRAP[2], row, 37);
+            side(x0, z0, x0, z1, -1, 0, WRAP[2], row, 51);
+          }
+        } : null;
+        // The heroic hem is cut in tufts: points a unit and a half apart, each a little longer or shorter than the last.
+        const hem = HEROIC ? (x, z, units) => {
+          const t = ((x + 0.5) / F + (z > CZ ? 0 : 0.75)) / 1.5, tuft = Math.floor(t), along = t - tuft;
+          return Math.round((units - Math.abs(along - 0.5) * 2 * 0.9 - (fineMix(tuft, 3, z) % 3) * 0.2) * F);
+        } : (x, z, units) => {
           const m = grainMix(x, 0, z, 811);
           return Math.round(units * F) - (m > 965 ? 3 : m < 150 ? 2 : m < 450 ? 1 : 0);
         };
@@ -1824,6 +2123,7 @@
           const { x0, y0, z0, nx, ny, nz, cells } = v.box(), skin = P.skin + 1, fur = P.fur + 1;
           for (let x = 0, i = 0; x < nx; x++) for (let y = 0; y < ny; y++) for (let z = 0; z < nz; z++, i++) {
             const stored = cells[i];
+            if (SCULPT) { if (stored === P.skinDk + 1) cells[i] = skin; continue; }
             if (stored !== skin && stored !== fur) continue;
             const m = grainMix(x + x0, y + y0, z + z0, 300);
             if (stored === skin && m < 30) cells[i] = P.skinDk + 1;
@@ -1832,14 +2132,15 @@
         }
         fabric(v, 300, bake.emissive);
         if (dress.refine) dress.refine(k, "torso", v);
-        return fineBake(v, bake.origin, bake.emissive);
+        return fineBake(v, bake.origin, bake.emissive, false, shards);
       });
       // The arm about its axis, the fist a plain block as Kortik's is, its colours the authored part's.
       const arm = (geo) => once(geo, "arm", (bake) => {
         const src = colourSource(bake.v), v = makeFineVox(null, [-3 * F, 6 * F, -F, 12 * F, -3 * F, 6 * F]), knots = traits.slim ? SLIM_ARM_PROFILE : ARM_PROFILE, A = 1.5;
+        const fist = traits.slim ? SLIM_FIST : FIST;
         for (let y = 0; y < ARM_TOP * F; y++) {
           const yc = (y + 0.5) / F, sy = armSourceY(yc);
-          if (yc < FIST_TOP) at[0] = at[1] = FIST_HALF, at[2] = 0;
+          if (yc < FIST_TOP) at[0] = fist[0], at[1] = fist[1], at[2] = fist[2];
           else profile(knots, yc, at);
           const [hx, hz, rc] = at;
           // The authored cell under a run of fine ones answers them all.
@@ -1855,7 +2156,8 @@
         layExtras(v, extrasOf(bake.v, PLAIN_ARM), ARM_ROWS_OF, 1.5 * F, 1.5 * F);
         fabric(v, 100, bake.emissive);
         if (dress.refine) dress.refine(k, "arm", v);
-        return fineBake(v, bake.origin, bake.emissive);
+        // The shoulder stays half a unit over the pivot however long the arm is.
+        return fineBake(v, { x: bake.origin.x, y: bake.origin.y + (11.5 - ARM_TOP) * u, z: bake.origin.z }, bake.emissive);
       });
       // The fist is the hand, as Kortik's is: no fingers on it. The finger nodes stay for the poses and rigs that name
       // them, holding one cell inside the fist where nothing sees it.
@@ -1871,12 +2173,13 @@
         for (let y = 0; y < LEG_UNITS * F; y++) {
           const yc = (y + 0.5) / F, sy = legSourceY(yc);
           if (yc < FOOT_UNITS) {
-            for (let x = FOOT_BOX[0] * F; x < FOOT_BOX[1] * F; x++) for (let z = FOOT_BOX[2] * F; z < FOOT_BOX[3] * F; z++) {
+            const foot = traits.slim ? SLIM_FOOT_BOX : FOOT_BOX;
+            for (let x = Math.floor(foot[0] * F); x < Math.ceil(foot[1] * F); x++) for (let z = Math.floor(foot[2] * F); z < Math.ceil(foot[3] * F); z++) {
               v.set(x, y, z, fineBody(src(Math.floor((x + 0.5) / F), sy, Math.min(5, Math.floor((z + 0.5) / F * 6 / 5))), x, y, z, salt));
             }
             continue;
           }
-          const [hx, hz, rc] = profile(LEG_PROFILE, yc, at);
+          const [hx, hz, rc] = profile(traits.slim ? SLIM_LEG_PROFILE : LEG_PROFILE, yc, at);
           let srcX = NaN, srcZ = NaN, colour;
           for (let x = Math.floor((A - hx) * F) - 1; x <= Math.ceil((A + hx) * F); x++) for (let z = Math.floor((A - hz) * F) - 1; z <= Math.ceil((A + hz) * F); z++) {
             const xc = (x + 0.5) / F, zc = (z + 0.5) / F;
@@ -1907,6 +2210,11 @@
       // The legs stand closer, so the hips need be no wider than the waist and chest carry them.
       parts.legR.position.x += LEGS_IN * u;
       parts.legL.position.x -= LEGS_IN * u;
+      // The heroic build's slimmer arms hang closer in, their shoulders set into the torso's.
+      if (HEROIC) {
+        parts.armR.position.x += (traits.slim ? SLIM_ARMS_IN : ARMS_IN) * u;
+        parts.armL.position.x -= (traits.slim ? SLIM_ARMS_IN : ARMS_IN) * u;
+      }
       // The longer torso lifts the head and the arms, and what a hook hung on the torso or on the root over the hip
       // keeps its place on it: a piece beside an arm (a cub carried on it) rises with the arm, anything else by how far
       // its middle's height moved; one standing before the hip band comes back with the band's front.
@@ -1948,7 +2256,67 @@
       parts.head.position.y += rise;
       parts.armR.position.y += rise;
       parts.armL.position.y += rise;
+      // A shorter arm takes what it holds up with its fist, and anything hung on the arm by its height along it.
+      if (ARM_TOP !== 11.5) {
+        const fistDrop = (ARM_TOP - 0.5) * u, oldFist = 8 * u, newFist = (ARM_TOP - 0.5 - FIST_TOP) * u;
+        const armY = (y) => y <= -oldFist ? y + 11 * u - fistDrop : y * newFist / oldFist;
+        for (const key of ["armR", "armL"]) for (const child of parts[key].children) {
+          if (child.position.y) { child.position.y = armY(child.position.y); continue; }
+          const box = span(child, 0, 0, 0, [Infinity, -Infinity, Infinity, -Infinity, Infinity]);
+          if (box[2] <= box[3]) { const c = (box[2] + box[3]) / 2; child.position.y += armY(c) - c; }
+        }
+      }
       const previousHead = headOpen;
+      // EXPLORATION (?oogastyle=R): a body modelled from scratch (`dress.model`, see hero-body.js) stands in for the
+      // refined one. Its head stays the authored blocks unless it models its own.
+      const model = STYLE === "R" && dress.model ? dress.model(k) : null;
+      if (model) {
+        parts.torso.geometry = model.torso;
+        parts.torso.scale.x = parts.torso.scale.z = 1;
+        for (const [key, side] of [["armR", -1], ["armL", 1]]) {
+          parts[key].geometry = side < 0 ? model.arm : model.armL || model.arm;
+          parts[key].position.x = side * model.armX;
+          parts[key].position.y -= model.armDrop || 0;
+          // A shorter arm is the rig's arm scaled, with everything on it; what it holds is scaled back to size.
+          parts[key].scale.x = parts[key].scale.y = parts[key].scale.z = model.armScale;
+        }
+        // Its hands are whole hands on the rig's finger nodes, which turn them in toward the body at rest. Each hangs
+        // from a forearm of its own, jointed to the upper arm at the elbow (`elbow`: where, the forearm's length to the
+        // hand, and its lean at rest), so the hand point stays where the rig has it while the arm bends.
+        parts.fingersR.geometry = model.handR;
+        parts.fingersL.geometry = model.handL;
+        for (const [key, side] of [["armR", -1], ["armL", 1]]) {
+          const fingers = parts[side < 0 ? "fingersR" : "fingersL"];
+          // The left hand is empty at rest, and hangs by the body's relaxed bend where it has one.
+          const bend = side > 0 && model.elbow.relaxed !== undefined ? model.elbow.relaxed : model.elbow.rest;
+          const fore = createNode({ position: { x: 0, y: model.elbow.y, z: model.elbow.z }, rotation: { x: -bend, y: 0, z: 0 }, geometry: model.forearm });
+          parts[side < 0 ? "forearmR" : "forearmL"] = fore;
+          addChild(parts[key], fore);
+          BL.scene.removeChild(parts[key], fingers);
+          addChild(fore, fingers);
+          fingers.position.x = fingers.position.z = 0;
+          fingers.position.y = -model.elbow.length;
+        }
+        // At rest the right forearm comes up square to the club in its hand, which is gripped at the hand point.
+        {
+          const flex = Math.max(model.elbow.rest, Math.min(1.5, Math.PI / 2 - clubRest.x));
+          parts.forearmR.rotation.x = -flex;
+          parts.club.position.x = 0;
+          parts.club.position.y = model.elbow.y - model.elbow.length * Math.cos(flex);
+          parts.club.position.z = model.elbow.z + model.elbow.length * Math.sin(flex);
+        }
+        elbow = model.elbow;
+        back = model.back;
+        armScale = model.armScale;
+        fist = model.fist;
+        parts.club.scale.x = parts.club.scale.y = parts.club.scale.z = 1 / armScale;
+        modelled = true;
+        for (const key of ["legR", "legL"]) parts[key].geometry = model.leg;
+        if (model.legX) { parts.legR.position.x = -model.legX; parts.legL.position.x = model.legX; }
+        if (model.headOpen) { headOpen = model.headOpen; headClosed = model.headClosed || model.headOpen; portraitHead = model.portrait || model.headOpen; parts.head.geometry = headOpen; }
+        const face = portraitHead;
+        facePending = () => face;
+      } else {
       headOpen = head(headOpen, "head");
       headClosed = head(headClosed, "closed");
       const authoredPortrait = portraitHead;
@@ -1962,6 +2330,7 @@
         const node = parts[key], geo = node.geometry;
         node.geometry = bakeOf.has(geo) ? leg(geo, side) : stretch(geo);
         for (const child of node.children) if (child.geometry) child.geometry = stretch(child.geometry, child.position.y);
+      }
       }
       // The rounded heads are not kept: the face button, when it comes, rounds its own again.
       roundedHeads.clear();
@@ -1999,7 +2368,7 @@
       tint = new Map();
       for (const bake of bakes) {
         if (!live.has(bake.geo) || tint.has(bake.geo)) continue;
-        const twin = voxelGeometry(bake.v, { unit: bake.unit, palette: alt, origin: bake.origin, emissive: bake.emissive, rects: bake.rects });
+        const twin = voxelGeometry(bake.v, { unit: bake.unit, palette: alt, origin: bake.origin, emissive: bake.emissive, rects: bake.rects, soften: bake.soften, sculpt: bake.sculpt, decor: bake.decor });
         tint.set(bake.geo, twin).set(twin, bake.geo);
       }
     }
@@ -2039,7 +2408,7 @@
         let twin = null;
         if (tint) {
           const bake = bakes[bakes.length - 1];
-          twin = voxelGeometry(bake.v, { unit: bake.unit, palette: tintPalette, origin: bake.origin, emissive: bake.emissive, rects: bake.rects });
+          twin = voxelGeometry(bake.v, { unit: bake.unit, palette: tintPalette, origin: bake.origin, emissive: bake.emissive, rects: bake.rects, soften: bake.soften, sculpt: bake.sculpt, decor: bake.decor });
           twin.characterPart = true;
           tint.set(face, twin).set(twin, face);
         }
@@ -2048,7 +2417,7 @@
       }
       return face;
     };
-    return { root, parts, traits, headOffset: 1.1 * h + legH + TORSO_RISE * u - 5 * u, headOpen, headClosed, get portraitHead() { return faceHead(); }, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
+    return { root, parts, traits, modelled, elbow, back, armScale, fist, headOffset: 1.1 * h + legH + TORSO_RISE * u - 5 * u, headOpen, headClosed, get portraitHead() { return faceHead(); }, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
   };
   // Traits hash from the handle, so one handle always builds the same voxels.
   // Callers get fresh nodes over shared geometry: one build per contributor, GPU records survive a scene swap.
@@ -2076,7 +2445,7 @@
     const skins = { club: { ...template.skins.club }, gun: { ...template.skins.gun } };
     // The face button's head is the template's, built when first read; a clone swapping colourways may set its own.
     let face;
-    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed,
+    return { root, parts, traits, modelled: template.modelled, elbow: template.elbow, back: template.back, armScale: template.armScale, fist: template.fist, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed,
       get portraitHead() { return face === undefined ? template.portraitHead : face; }, set portraitHead(geometry) { face = geometry; },
       skins, clubRest: template.clubRest, clubCarry: template.clubCarry, tint: template.tint, gunHeadBounds: template.gunHeadBounds };
   };
@@ -2806,5 +3175,6 @@
     for (const geo of set) if (geo.foliageLods?.owner === geo) { set.add(geo.foliageLods.medium); set.add(geo.foliageLods.far); }
     return set;
   };
-  BL.models = { GUN_BANANA_SCALE, characterGeometry, foliageLods, paintFoliageAtlas, addLods, beam, forwardLathe, turn, shaded, torus, along, chain, railParts, columnParts, deckGrid, deckPosts, deckParts, deckRailSpans, stairParts, stairTreads, lanternParts, LANTERN_GLASS, geometry, pushVert, face, cutCylinder, voxCoords, box, bevelBox, panel, lathe, glassVessel, attachGlassShell, tube, ring, polyline, merge, forward, moved, turnedX, turnedY, turnedZ, prism, cached, cachedSteps, variants, scopedMap, track, setScope, withScope, release, assertReleased, noShadow, makeVox, voxelGeometry, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, spareMagazine, caveman, CLUB_PALETTE, GOLD_CLUB_PALETTE, labRoom, buildableGeos, crate, die, dieRotationFor, SWAG, TIER_COLORS };
+  BL.models = {
+    STYLE, GUN_BANANA_SCALE, characterGeometry, foliageLods, paintFoliageAtlas, addLods, beam, forwardLathe, turn, shaded, torus, along, chain, railParts, columnParts, deckGrid, deckPosts, deckParts, deckRailSpans, stairParts, stairTreads, lanternParts, LANTERN_GLASS, geometry, pushVert, face, cutCylinder, voxCoords, box, bevelBox, panel, lathe, glassVessel, attachGlassShell, tube, ring, polyline, merge, forward, moved, turnedX, turnedY, turnedZ, prism, cached, cachedSteps, variants, scopedMap, track, setScope, withScope, release, assertReleased, noShadow, makeVox, voxelGeometry, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, spareMagazine, caveman, CLUB_PALETTE, GOLD_CLUB_PALETTE, labRoom, buildableGeos, crate, die, dieRotationFor, SWAG, TIER_COLORS };
 })();
