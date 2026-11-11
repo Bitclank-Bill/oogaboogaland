@@ -491,8 +491,10 @@
   const LANTERN_AT = [[-2.0, 7.2], [2.0, 7.2], [-2.0, 4.3], [2.0, 4.3], [-2.0, 1.75], [2.0, 1.75], [POND.x - 1.6, 4.5], [BELL.x - 2.4, BELL.z + 2.6], [-6.3, -1.5]];
   // The paper lamps along the hall's front, the pagoda's tiers and the bamboo's clumps.
   const PAPER = [-3.0, -1.5, 0, 1.5, 3.0], TIERS = 5, CLUMPS = 6;
-  // The cranes flying round under the dome: how many, the loop's radius, height and pace (radians a second).
-  const BIRDS = 6, FLIGHT = { r: 7.2, y: 10.8, w: 0.16 };
+  // The cranes flying round under the dome, high against its sky near the crown and at about half life size, so they
+  // read as far off: how many, the loop's radius, height and pace (radians a second), how much the loop swings in and
+  // out, how far apart the V's ranks fly, and their size.
+  const BIRDS = 6, FLIGHT = { r: 6.5, y: 14.8, w: 0.14, swing: 0.5, apart: 0.5, scale: 0.55 };
   const MOON = { az: 22, el: 34 }, LINE = { az0: 10, az1: 34, el0: 25, el1: 29, w: 1200 };
   const SKY = [[90, "#0c0f2c"], [55, "#2a2456"], [28, "#6e4a7a"], [12, "#c9756a"], [3, "#f0b07a"], [-90, "#f0b07a"]];
   // The bridge's arch: its deck's height at `t` of the way across, from the pond's near end (+z) to the bell tower's.
@@ -1268,7 +1270,7 @@
     const wingL = wing(1), wingR = wing(-1);
     let craneGeo = null;
     for (let i = 0; i < BIRDS; i++) {
-      craneGeo = noShadow(K.node(`bird${i}`, craneGeo || craneBody, 0, FLIGHT.y, -FLIGHT.r, { glow: true }).geometry);
+      craneGeo = noShadow(K.node(`bird${i}`, craneGeo || craneBody, 0, FLIGHT.y, -FLIGHT.r, { glow: true, scale: FLIGHT.scale }).geometry);
       K.node(`wingL${i}`, wingL, 0.07, 0.04, 0.05, { parent: `bird${i}`, glow: true });
       K.node(`wingR${i}`, wingR, -0.07, 0.04, 0.05, { parent: `bird${i}`, glow: true });
     }
@@ -1635,11 +1637,11 @@
         // beat, and now and then the flock glides.
         for (let i = 0; i < BIRDS; i++) {
           const rank = Math.ceil(i / 2), side = i === 0 ? 0 : i % 2 ? 1 : -1, n = birds[i];
-          const th = t * FLIGHT.w - rank * 0.1, out = FLIGHT.r + side * rank * 0.9, r1 = out + 1.2 * Math.sin(2 * th), r2 = out + 1.2 * Math.sin(2 * th + 0.02);
+          const th = t * FLIGHT.w - rank * 0.09, out = FLIGHT.r + side * rank * FLIGHT.apart, r1 = out + FLIGHT.swing * Math.sin(2 * th), r2 = out + FLIGHT.swing * Math.sin(2 * th + 0.02);
           const x = r1 * Math.cos(th), z = r1 * Math.sin(th), dx = r2 * Math.cos(th + 0.01) - x, dz = r2 * Math.sin(th + 0.01) - z;
           const glide = smooth(0.62, 0.82, 0.5 + 0.5 * Math.sin(t * 0.37 + rank * 0.25)), beat = t * 6.2 + i * 0.7;
           const flap = (1 - glide) * (0.14 + 0.55 * Math.sin(beat)) + glide * 0.06;
-          n.position.x = x; n.position.z = z; n.position.y = FLIGHT.y + 0.4 * Math.sin(3 * th) + rank * 0.15 - (1 - glide) * 0.05 * Math.sin(beat);
+          n.position.x = x; n.position.z = z; n.position.y = FLIGHT.y + 0.35 * Math.sin(3 * th) + rank * 0.12 - (1 - glide) * 0.04 * Math.sin(beat);
           n.rotation.y = Math.atan2(dx, dz); n.rotation.z = 0.16;
           wingsL[i].rotation.z = flap; wingsR[i].rotation.z = -flap;
         }
