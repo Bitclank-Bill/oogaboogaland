@@ -413,21 +413,51 @@
     if (n !== struggleStep) { struggleStep = n; el.struggleFill.style.transform = `scaleX(${n / STRUGGLE_STEPS})`; el.struggleMeter.setAttribute("aria-valuenow", String(n)); }
     if (left !== struggleLeft) { struggleLeft = left; el.struggleLeft.textContent = String(left); }
   };
-  // The grouped controls list (`CONTROL_GROUPS`), the same on the menu and in the in-play Help.
+  // The grouped controls list (`CONTROL_GROUPS`), the same on the menu and in the in-play Help: each group whole, each
+  // row its keys (each a key cap) and a short action, every one a binding this scene handles (`onKey`, the shared
+  // controls for W A S D, Q E, the arrows, Shift and Space, and the pointer). `SUMMARY` is the board's one line.
   const CONTROL_GROUPS = [
-    ["Move", [["W A S D", "Move"], ["Q E", "Turn"], ["Shift", "Sprint"], ["Space", "Jump, twice to climb"], ["Space held", "Jetpack in the air"], ["C", "Crouch"], ["Space", "Zipline, catapult"], ["Space, E or click", "Mash to break a gorilla's grip"]]],
-    ["Weapons", [["1 to 8", "Pick a weapon"], ["G", "Next weapon"], ["Click", "Fire"], ["Right click", "Aim, or sniper scope"]]],
-    ["Hook", [["R", "Fire at the crosshair, or let go"], ["Jump", "Let go"], ["C held", "Stop pulling, swing"]]],
-    ["Blocks", [["Touch", "Pick up or send home"], ["K", "Drop"], ["Tab or T", "Throw to a teammate"], ["F", "Lift or set a crate"], ["B", "Place a crate"]]],
-    ["View", [["X", "Capture the mouse"], ["V", "Change view"], ["U", "Hide the weapons bar"], ["N", "Hide the map"], ["?", "Help"], ["P", "Pause"], ["Esc", "Step back"]]]
+    ["Move", [[["W", "A", "S", "D"], "Move"], [["Q", "E"], "Turn (or ← →)"], [["Shift"], "Sprint"], [["C"], "Crouch (hold)"], [["Space"], "Jump, double jump, jetpack, ride"],
+      [["Space", "E"], "Break a gorilla's grip"], [["H"], "Climb on a teammate"], [["J"], "Call a teammate up"]]],
+    ["Weapons", [[["1", "–", "8"], "Pick a weapon"], [["G"], "Next weapon"], [["Click"], "Fire (or Enter)"], [["Right click"], "Aim, sniper scope"], [["+", "−"], "Zoom the scope"]]],
+    ["Hook", [[["R"], "Fire, or let go"], [["Space"], "Let go"], [["C"], "Swing (hold)"]]],
+    ["Block and crates", [[["K"], "Drop the block"], [["Tab"], "Throw the block (or T)"], [["F"], "Lift or set a crate"], [["B"], "Place a crate"], [["Click"], "Throw a held crate"]]],
+    ["View and game", [[["X"], "Capture the mouse"], [["V"], "Change view"], [["Wheel"], "Zoom"], [["0"], "Level the camera"], [["U"], "Hide the weapons bar"], [["N"], "Hide the map"],
+      [["1", "–", "4"], "Answer a quiz"], [["?"], "Help"], [["P"], "Pause"], [["Esc"], "Step back"]]]
   ];
-  const TOUCH_GROUPS = [["Controls", [["Left stick", "Move"], ["Right stick", "Turn and aim"], ["Jump or tap", "Mash to break a gorilla's grip"], ["Jump", "Jump, jetpack"], ["Throw!", "Fire"], ["Weapons bar", "Tap a weapon"], ["Ride", "Zipline, catapult, wallets"]]]];
+  const TOUCH_GROUPS = [["Controls", [[["Left stick"], "Move"], [["Right stick"], "Turn and aim"], [["Jump"], "Jump, jetpack"], [["Jump"], "Break a gorilla's grip (tap fast)"], [["Throw!"], "Fire"], [["Weapons bar"], "Pick a weapon"], [["Ride"], "Zipline, catapult"]]]];
+  const SUMMARY = [[["W", "A", "S", "D"], "move"], [["Q", "E"], "turn"], [["Click"], "fires"], [["Space"], "jumps"], [["Tab"], "throws"], [["P"], "pauses"], [["Esc"], "steps back"]];
+  // Key caps for `keys` ("–" between two is a range, drawn as plain text), then the words, into `row`.
+  const keyCaps = (row, keys) => {
+    const caps = document.createElement("span");
+    caps.className = "block-key-caps";
+    for (const key of keys) {
+      if (key === "–") { const to = document.createElement("i"); to.textContent = "–"; caps.append(to); continue; }
+      const k = document.createElement("kbd"); k.textContent = key; caps.append(k);
+    }
+    row.append(caps);
+  };
   const paintControls = (box) => {
     box.replaceChildren();
     for (const [name, rows] of COARSE ? TOUCH_GROUPS : CONTROL_GROUPS) {
-      const head = document.createElement("h4"); head.textContent = name; box.append(head);
-      for (const [key, what] of rows) { const row = document.createElement("div"), k = document.createElement("kbd"), s = document.createElement("span"); k.textContent = key; s.textContent = what; row.append(k, s); box.append(row); }
+      const group = document.createElement("section"), head = document.createElement("h4");
+      group.className = "block-key-group"; group.setAttribute("aria-label", name);
+      head.textContent = name; group.append(head);
+      for (const [keys, what] of rows) { const row = document.createElement("div"), s = document.createElement("span"); keyCaps(row, keys); s.textContent = what; row.append(s); group.append(row); }
+      box.append(group);
     }
+  };
+  // The board's one line: a few keys and what they do, in the same key caps.
+  const paintSummary = (box) => {
+    box.replaceChildren();
+    SUMMARY.forEach(([keys, what], i) => {
+      const part = document.createElement("span");
+      part.className = "block-key-part";
+      keyCaps(part, keys);
+      part.append(` ${what}`);
+      box.append(part);
+      if (i < SUMMARY.length - 1) box.append(" · ");
+    });
   };
   const registered = () => !!round && !!round.match && round.match.reg.includes(BL.net.state.selfId);
   // Whoever picks the next round's map: not once its countdown has begun.
@@ -2932,7 +2962,8 @@
     el.help = document.getElementById("block-help");
     el.controlsList = document.getElementById("block-controls-list");
     // The board keeps one short line; the whole list waits behind "All controls", so it never crowds the choices.
-    el.help.textContent = COARSE ? "Left stick moves · right stick turns · Paint! throws · View · Main menu" : "W A S D move · Q E turn · click fires · Space jumps · Tab throws · P pauses · Escape steps back";
+    if (COARSE) el.help.textContent = "Left stick moves · right stick turns · Throw! fires · View · Main menu";
+    else paintSummary(el.help);
     paintControls(el.controlsList);
     showBoard();
     // The board the scene opens on clears a watch visit; one arriving for the chairs still wants them, at once, room or no room.

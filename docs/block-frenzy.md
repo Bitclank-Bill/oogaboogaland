@@ -222,6 +222,9 @@ page-wide mute (`sound.js`: the banner speaker and M). Keys only Block Frenzy ne
 | Shift (held) | Sprint |
 | Tab or T | Throw what is in hand: the block to a teammate, or a held crate |
 | K | Drop the block |
+| H | Climb on a teammate's back, or hop off |
+| J | Call a teammate to climb on your back |
+| 0 | Level the camera |
 | B | Place a new crate from your stock |
 | F | Lift the crate in front, or set the held one down (stacking it) |
 | C (held) | Crouch |
@@ -236,6 +239,8 @@ R fires the grappling hook at the crosshair (or lets it go), when you have one; 
 Touch: the left stick moves, the right stick turns, Jump and Throw! buttons, a tool bar (its Ride button uses a
 zipline or catapult) and a View button; Main menu goes back to the board. A gamepad drives the sticks and
 A jumps, through the shared controls.
+
+The board's All controls list (`CONTROL_GROUPS` in `scene-block.js`, also the in-play Help) shows these as five whole groups, Move, Weapons, Hook, Block and crates, View and game, in a grid three, two or one across by its width, each row key caps and a short action; a unit check holds it to the keys the scene really handles, both ways.
 
 ## Characters
 

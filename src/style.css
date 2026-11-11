@@ -12377,25 +12377,12 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
   color: #ffd27a !important;
 }
 
-/* Block Frenzy's controls list: grouped key and action rows on a dark backing. */
-/* With All controls open, the panel grows sideways and the list runs in columns, so it stays on screen. */
+/* Block Frenzy's controls list: whole groups in a grid that is three across when wide, two when middling and one when
+   narrow (by the list's own width), each group's rows aligned in two columns: key caps, then a short action. */
 @media (min-width: 900px) {
   #block-board:has(.block-controls[open]) {
     width: min(94vw, 1060px);
     max-width: min(94vw, 1060px);
-  }
-
-  #block-board .block-keys {
-    column-count: 3;
-    column-gap: 22px;
-  }
-
-  #block-board .block-keys h4 {
-    break-after: avoid;
-  }
-
-  #block-board .block-keys div {
-    break-inside: avoid;
   }
 }
 
@@ -12409,6 +12396,10 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
 }
 
 .block-keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 10px 18px;
+  align-items: start;
   padding: 8px 10px;
   border-radius: 6px;
   background: rgba(18, 11, 6, 0.82);
@@ -12416,26 +12407,63 @@ body.arcade-game .cloud-hopper-panel { z-index: 40; }
   font-size: 12px;
 }
 
-.block-keys h4 {
-  margin: 8px 0 3px;
+.block-key-group {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: center;
+}
+
+.block-key-group h4 {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 210, 122, 0.25);
   color: #ffd27a;
   font-size: 12px;
 }
 
-.block-keys h4:first-child {
-  margin-top: 0;
+.block-key-group div {
+  display: contents;
 }
 
-.block-keys div {
-  display: grid;
-  grid-template-columns: 112px 1fr;
-  gap: 6px;
-  padding: 1px 0;
+.block-key-group div > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.block-keys kbd {
-  font: inherit;
+.block-key-caps {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.block-key-caps i {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.block-keys kbd,
+.block-key-part kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 4px;
+  border: 1px solid rgba(255, 210, 122, 0.45);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
   color: #ffd27a;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.block-key-part {
+  white-space: nowrap;
 }
 
 .block-live { margin: 8px 0; }

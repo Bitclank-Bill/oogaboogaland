@@ -7506,6 +7506,27 @@ const gameRulesChecks = async () => {
         && /const tally = onDeck\(\) \? null : SIM\.tallyOf\(sim, 0, mvp\), best = tally \? game\.recordBlock\(tally\) : false;/.test(sceneSrc) && (sceneSrc.match(/recordBlock\(/g) || []).length === 1
         && ["mined", "home", "splats", "splatted", "mvps"].every((k) => pageSrc.includes(`id="block-rec-${k}"`)), JSON.stringify({ old, t1, t2, t3, after, reloaded, mended }));
     }
+    // The controls list: five whole groups, each row key caps and a short action, no key twice in a group, and every
+    // key it names is one the scene handles (its key handler, the tool keys, the shared controls and the pointer);
+    // every key the handler takes is in it.
+    {
+      const src = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), cssSrc = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+      const groups = new Function(`return ${src.match(/const CONTROL_GROUPS = (\[[\s\S]*?\n  \]);/)[1]}`)();
+      const handled = new Set([...src.matchAll(/e\.key === "([^"]+)"/g)].map((m) => m[1].toUpperCase()));
+      for (const k of Object.keys(JSON.parse(src.match(/const TOOL_KEYS = (\{[^}]+\});/)[1].replace(/(\d):/g, '"$1":')))) handled.add(k);
+      if (/e\.code !== "KeyB"/.test(src)) handled.add("B");
+      if (/e\.key === "c" \|\| e\.key === "C"/.test(src)) handled.add("C");
+      const shared = ["W", "A", "S", "D", "Q", "E", "Shift", "Space", "Click", "Right click", "Wheel", "Esc", "Tab", "+", "−", "–", "Enter", "1", "2", "3", "4"];
+      const named = groups.flatMap(([, rows]) => rows.flatMap(([keys]) => keys)), words = groups.flatMap(([, rows]) => rows.map(([keys, what]) => keys.join(" ") + " " + what)).join(" | ");
+      const unknown = named.filter((k) => !shared.includes(k) && !handled.has(k.toUpperCase()));
+      const missing = [...handled].filter((k) => k.length === 1 && /[A-Z0-9?]/.test(k) && k !== "/" && !named.includes(k) && !named.includes(k.toLowerCase()) && !new RegExp(`\\(or ${k}\\)`).test(words) && !/^[1-8]$/.test(k) && k !== "_" && k !== "=");
+      const dupes = groups.filter(([, rows]) => new Set(rows.map(([keys]) => keys.join(" "))).size !== rows.length).map(([n]) => n);
+      const longest = Math.max(...groups.flatMap(([, rows]) => rows.map(([, what]) => what.length)));
+      const ctl = { names: groups.map(([n]) => n).join(), unknown, missing, dupes, longest, sniper: /Right click.*sniper scope/.test(words), hook: /R Fire, or let go/.test(words), drop: /K Drop the block/.test(words), bar: /U Hide the weapons bar/.test(words),
+        grid: /\.block-keys \{\s*display: grid;\s*grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 230px\), 1fr\)\);/.test(cssSrc) && !/column-count: 3/.test(cssSrc.slice(cssSrc.indexOf("Block Frenzy's controls list"))), summary: /paintSummary\(el\.help\)/.test(src) && !/wallets/.test(src.match(/const TOUCH_GROUPS = [^\n]*/)[0]) };
+      record("block controls: five whole groups (Move, Weapons, Hook, Block and crates, View and game) laid out as a grid, no key twice in a group, short actions, every key named is one the scene handles and every key it handles is named (the sniper scope, the hook's R, K, U among them)",
+        ctl.names === "Move,Weapons,Hook,Block and crates,View and game" && !unknown.length && !missing.length && !dupes.length && longest <= 34 && ctl.sniper && ctl.hook && ctl.drop && ctl.bar && ctl.grid && ctl.summary, JSON.stringify(ctl));
+    }
     // The weapons bar: what a slot shows is the rules' word (not yours yet, yours and out, ready, and the count beside
     // it), and the page's eight slots stand in key order, each named, the sniper rifle always among them.
     {
