@@ -64,10 +64,10 @@ const frame = (m, q = 1, size = 64) => { const b = new ArrayBuffer(size), v = ne
 
 test("the page and the Worker share one cap of four a side", () => {
   assert.equal(W.MAX_SIDE, 4); assert.equal(W.MAX_PLAYERS, 8);
-  const base = { t: "bf", v: 1, k: "opt", n: 4, m: 0 };
+  const base = { t: "bf", v: 1, k: "opt", n: 4, m: 1 };
   assert.ok(protocol.parseClientMessage(JSON.stringify(base)));
   for (const n of [0, 5, 1.5, "2", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, n })), null, String(n));
-  for (const m of [-1, W.MAPS.length, null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null);
+  for (const m of [-1, 0, W.MAPS.length, null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, "Fort Chaos is retired");
   assert.equal(W.sizeFor(1, 8), 4); assert.equal(W.sizeFor(1, 3), 2); assert.equal(W.sizeFor(4, 1), 4); assert.equal(W.sizeFor(1, 1), 2, "never a 1v1");
   assert.equal(W.duel([7, 0, 9, 0], 2), true); assert.equal(W.duel([7, 8, 9, 0], 2), false); assert.equal(W.duel([7, 0, 0, 0], 2), false);
 });
@@ -92,7 +92,7 @@ test("the first to register brings the map picked on the board: bounded, and the
   const base = { t: "bf", v: 1, k: "reg" };
   assert.deepEqual(protocol.parseClientMessage(JSON.stringify(base)), { t: "bf", k: "reg" }, "the map is optional");
   assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m: 1 })).m, 1);
-  for (const m of [-1, W.MAPS.length, 1.5, "1", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, String(m));
+  for (const m of [-1, 0, W.MAPS.length, 1.5, "1", null]) assert.equal(protocol.parseClientMessage(JSON.stringify({ ...base, m })), null, String(m));
   const h = harness(t), [a, b] = await crowd(h, 2);
   send(h, a, "reg", { m: 1 });
   assert.equal(h.room.blockMatch.map, 1, "Town, from the board");
@@ -166,8 +166,8 @@ test("a round starts only when everyone registered is ready, and alone at once",
 test("only the first registered picks the map and size, and the size grows to seat everyone", async t => {
   const h = harness(t), [a, b, c] = await crowd(h, 3);
   send(h, a, "reg"); send(h, b, "reg"); send(h, c, "reg");
-  send(h, b, "opt", { n: 4, m: 3 }); assert.equal(h.room.blockMatch.size, 2); assert.equal(h.room.blockMatch.map, 0);
-  send(h, a, "opt", { n: 1, m: 3 }); assert.equal(h.room.blockMatch.map, 0, "a size of one is refused");
+  send(h, b, "opt", { n: 4, m: 3 }); assert.equal(h.room.blockMatch.size, 2); assert.equal(h.room.blockMatch.map, W.FIRST_MAP);
+  send(h, a, "opt", { n: 1, m: 3 }); assert.equal(h.room.blockMatch.map, W.FIRST_MAP, "a size of one is refused");
   send(h, a, "opt", { n: 3, m: 2 }); assert.equal(h.room.blockMatch.size, 3); assert.equal(h.room.blockMatch.map, 2);
   for (const x of [a, b, c]) send(h, x, "ready", { r: 1 });
   assert.equal(h.room.blockMatch.size, 2, "three players need two a side");

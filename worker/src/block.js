@@ -13,7 +13,7 @@ const take = (p, key, rate, burst, now) => {
 };
 const sessionId = () => { const bytes = new Uint8Array(8); crypto.getRandomValues(bytes); return Array.from(bytes, n => n.toString(16).padStart(2, "0")).join(""); };
 const random = () => { const v = new Uint32Array(1); crypto.getRandomValues(v); return v[0] / 0x100000000; };
-const fresh = () => ({ wire: W.WIRE, s: sessionId(), phase: "lobby", size: 2, map: 0, next: -1, reg: [], ready: [], seats: [], host: 0, epoch: 0, seed: 0, q: -1, tag: 0, start: 0, win: -1, rev: 0, keeper: 0 });
+const fresh = () => ({ wire: W.WIRE, s: sessionId(), phase: "lobby", size: 2, map: W.FIRST_MAP, next: -1, reg: [], ready: [], seats: [], host: 0, epoch: 0, seed: 0, q: -1, tag: 0, start: 0, win: -1, rev: 0, keeper: 0 });
 // The round's tag in every binary frame, so a frame from an earlier round or host can't be taken for this one.
 const tagOf = s => parseInt(s.slice(0, 8), 16) >>> 0;
 export const block = {

@@ -16,7 +16,10 @@
   // The binary snapshot's header: "BFZ1", then u32 round tag, u32 host epoch, u32 sequence (all little-endian).
   const MAGIC = 0x315a4642, FRAME_HEADER = 16, FRAME_MAX = 2048, FRAME_HZ = 12;
   // Indexes on the wire; the sim's ARENAS keys are checked against these in the suite.
+  // The wire numbers the maps by this list. Fort Chaos (0) is retired from play and keeps its number, so no other map's
+  // changes: a round is on `FIRST_MAP` or later.
   const MAPS = ["fort", "town", "jungle", "haunted"];
+  const FIRST_MAP = 1;
   // What a guest asks its host to do for it, by index on the wire: `yaw` and `pitch` go in thousandths of a radian.
   const ACTIONS = ["fire", "grapple", "build", "grab", "pass", "launch", "zip", "hopOn", "callRide", "drop", "dropWallet", "throwWallet", "takeWallet", "escape", "cutChute"];
   const KINDS = ["paint", "grenade", "rocket", "net", "sniper", "ak", "gold", "crate", "homer"];
@@ -51,10 +54,10 @@
     const base = { t: "bf", k: m.k };
     if (["hello", "unreg", "beat", "alone"].includes(m.k)) return base;
     // The map already picked on the board, by index: only the first to register's counts.
-    if (m.k === "reg") return m.m === undefined ? base : integer(m.m, 0, MAPS.length - 1) ? { ...base, m: m.m } : null;
+    if (m.k === "reg") return m.m === undefined ? base : integer(m.m, FIRST_MAP, MAPS.length - 1) ? { ...base, m: m.m } : null;
     if (m.k === "watch") return integer(m.on, 0, 1) ? { ...base, on: m.on } : null;
     if (m.k === "ready") return integer(m.r, 0, 1) ? { ...base, r: m.r } : null;
-    if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, 0, MAPS.length - 1) ? { ...base, n: m.n, m: m.m } : null;
+    if (m.k === "opt") return integer(m.n, MIN_SIDE, MAX_SIDE) && integer(m.m, FIRST_MAP, MAPS.length - 1) ? { ...base, n: m.n, m: m.m } : null;
     if (!session(m.s)) return null;
     base.s = m.s;
     if (m.k === "go") return base;
@@ -71,5 +74,5 @@
     }
     return null;
   };
-  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, ACTIONS, KINDS, parse, eligible, sizeFor, split, duel, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
+  BL.blockWire = { FEATURE, ZONE, WATCH_DECK_PLACE, WIRE, MAX_SIDE, MAX_VIEWERS, MIN_SIDE, MAX_PLAYERS, HZ, INPUT_HZ, IDLE_MS, COUNTDOWN_MS, MAGIC, FRAME_HEADER, FRAME_MAX, FRAME_HZ, MAPS, FIRST_MAP, ACTIONS, KINDS, parse, eligible, sizeFor, split, duel, allReady, canStart, canStartAlone, seatOf, canEnter, watching, canRegister };
 })();

@@ -1,4 +1,4 @@
-// Block Frenzy: capture the flag on Fort Chaos, Bitcoin themed. Each side guards its Bitcoin block, a glowing cube in
+// Block Frenzy: capture the flag, Bitcoin themed. Each side guards its Bitcoin block, a glowing cube in
 // its team's colour on a stand in its fort; steal the other side's, carry it home and touch your own stand while your own block is
 // home. Paint splats a rival for a moment (a carrier drops what they carry) and nobody dies. Two a side: the visitor
 // and a teammate against two rivals, the three bots run by `block-sim.js`. First to three captures.
@@ -82,14 +82,14 @@
   // The side, the Ooga, the captures to win, the Oogas a side and the bots' skill the visitor picked on the board; the
   // last three are remembered in this browser (`PICKS_KEY`) for next time.
   const TARGETS = [1, 3, 5, 7], SIZES = [2, 3, 4, 5], PICKS_KEY = "oogaboogaland.blockPicks";
-  const selection = { team: "blue", ooga: null, target: 3, size: 3, skill: "normal", map: "fort" };
+  const selection = { team: "blue", ooga: null, target: 3, size: 3, skill: "normal", map: "town" };
   const loadPicks = () => {
     try {
       const p = JSON.parse(localStorage.getItem(PICKS_KEY) || "{}");
       if (TARGETS.includes(p.target)) selection.target = p.target;
       if (SIZES.includes(p.size)) selection.size = p.size;
       if (SIM.SKILLS[p.skill]) selection.skill = p.skill;
-      if (SIM.ARENAS[p.map]) selection.map = p.map;
+      if (SIM.ARENAS[p.map] && WIRE.MAPS.indexOf(p.map) !== 0) selection.map = p.map;
     } catch { /* nothing saved, or storage closed: the defaults stand */ }
   };
   const savePicks = () => {
