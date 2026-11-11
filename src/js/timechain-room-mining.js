@@ -918,6 +918,27 @@
     for (const [text, y] of [["One S21 (200 TH/s) outhashes the whole", 0.27], ["2012 network (~16 TH/s) about 13 times over", 0.5]]) { P.fit(ctx, text, w * 0.9, 600, h * 0.14); ctx.fillText(text, w / 2, h * y); }
     P.pix(ctx, "MODELS 1.6X LIFE SIZE · STATS APPROXIMATE", w / 2, h * 0.76, h * 0.075, C.amberText);
   };
+  // The sign wrapped round the middle plinth's tapering side toward the doors, 4 mm proud of it: a band `SIGN.arc`
+  // radians round and `SIGN.h` tall about `SIGN.y`, built in the frame of a node standing `SIGN.R` out toward the doors
+  // and turned to face the middle, so the picture's curve (the renderer's `curve`, mapped by angle round a centre `R`
+  // behind it) is the plinth's own and its letters keep their shape all the way round. That frame mirrors the
+  // picture, so it is painted mirrored.
+  const SIGN = { y: 0.55, h: 0.5, arc: 1.28, R: 1.3 - 0.55 * 0.1 / TOP, n: 24 };
+  const signBand = own(() => {
+    const canvas = CH.canvas(1000, 310), ctx = canvas.getContext("2d");
+    ctx.translate(1000, 0); ctx.scale(-1, 1);
+    paintSign(ctx, 1000, 310);
+    const { face, blank } = RM.helpers, geo = blank(), r = (y) => 1.3 - y * 0.1 / TOP + 0.004;
+    const at = (a, y) => [-r(y) * Math.sin(a), y, SIGN.R - r(y) * Math.cos(a)];
+    const y0 = SIGN.y - SIGN.h / 2, y1 = SIGN.y + SIGN.h / 2;
+    for (let i = 0; i < SIGN.n; i++) {
+      const a0 = -SIGN.arc / 2 + SIGN.arc * i / SIGN.n, a1 = a0 + SIGN.arc / SIGN.n, am = (a0 + a1) / 2;
+      face(geo, [at(a0, y0), at(a1, y0), at(a1, y1), at(a0, y1)], [255, 255, 255], 0.9, [-Math.sin(am), 0, -Math.cos(am)]);
+    }
+    geo.castShadow = false;
+    geo.imageSurface = { canvas, version: 1, rect: [-SIGN.arc / 2 * SIGN.R, y0, SIGN.arc * SIGN.R, SIGN.h], curve: [SIGN.R, 0, 0], tessellated: true };
+    return geo;
+  });
   // The crown: today's rate in full, live from mempool.space's reading when there is one, else the baked figure. Its
   // picture is laid out on 1024 units and painted at CROWN pixels, small enough that Canvas 2D's shaded-picture cache
   // keeps it whole beside the plaques.
@@ -1057,10 +1078,11 @@
       g.node(null, cards[i], 0, 0.45, -0.604, { ry: Math.PI, glow: true, target });
       g.solid({ x: 0, z: 0, hx: 0.66, hz: 0.66 });
     });
-    // The middle: a round plinth with an amber ring, its sign toward the doors, and a big S21 turning on it.
+    // The middle: a round plinth with an amber ring, its sign wrapped round it toward the doors, and a big S21 turning
+    // on it.
     K.cyl(1.2, 1.3, TOP, CONCRETE, 0, TOP / 2, 0, { seg: 48 });
     K.torus(1.2, 0.03, C.amber, 0, TOP, 0, { emissive: 1, glow: true, seg: 64 });
-    K.picture(1.6, 0.5, 1000, 310, paintSign, 0, 0.55, 1.29, { rx: -0.1, target: { kind: "sign", tip: "One S21 against the 2012 network", radius: 0.9, data: { say: "One S21 (200 TH/s) outhashes the whole 2012 network (~16 TH/s) about 13 times over" } } });
+    K.node(null, signBand(), 0, 0, SIGN.R, { ry: Math.PI, glow: true, target: { kind: "sign", tip: "One S21 against the 2012 network", radius: 0.9, data: { say: "One S21 (200 TH/s) outhashes the whole 2012 network (~16 TH/s) about 13 times over" } } });
     K.node("turntable", (k) => model(k, "s21", BIG, 0), 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap to see it up close", radius: 1.2, index: S21 } });
     K.solid({ x: 0, z: 0, r: 1.38 });
     // Point lights: the turntable's spot, the exhibits round the ring, the dome's wash.
