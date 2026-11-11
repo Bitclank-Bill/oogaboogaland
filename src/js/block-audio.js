@@ -123,6 +123,9 @@
       count: () => blip("square", NOTE(3), NOTE(3), 0.01, 0.07, 0.06, 0.14),
       go: () => chord([0, 7, 12], 0.09, "square", 0.08, 0.18),
       fire: (k = 1) => { blip("triangle", 420, 160, 0.003, 0.02, 0.06, 0.22 * k); splatNoise(0.25 * k, 0.06); },
+      // A round from an AK, the Ghost Hunter's rifle shot (ghost-audio.js `shot`): a short dull crack of low-passed noise
+      // over a low thump.
+      gun: (k = 1) => { burst("splat", "splatFilter", 0.55 * k, 0.003, 0.14, 1800, 260); blip("sine", 150, 55, 0.002, 0.03, 0.1, 0.4 * k); },
       throw: (k = 1) => blip("sine", 260, 110, 0.005, 0.03, 0.12, 0.2 * k),
       sniper: (k = 1) => { blip("square", 1800, 300, 0.001, 0.01, 0.09, 0.16 * k); burst("splat", "splatFilter", 0.6 * k, 0.002, 0.18, 5000, 900); },
       rocket: (k = 1) => { blip("sawtooth", 90, 260, 0.02, 0.2, 0.2, 0.16 * k); burst("splat", "splatFilter", 0.3 * k, 0.05, 0.5, 600, 2400); },

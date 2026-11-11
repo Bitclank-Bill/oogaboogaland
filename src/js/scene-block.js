@@ -25,6 +25,10 @@
   const BL = window.BL = window.BL || {};
   const { math, models, contributors, daylight, game: gameMod, pile: pileMod, hud: hudMod, interact: interactMod, controls: controlsMod, fx: fxMod } = BL;
   const SIM = BL.blockSim, BM = BL.blockModels, C = SIM.CONFIG;
+  // An AK's round, as the island rifle's (crew.js `GUN_FLASH_TIME`, `GUN_KICK`): how long the flash shows, how long the
+  // kick lasts, and where on the gun the muzzle is. `SHOT_IDLE` is the seconds-since-a-round of a gun not lately fired.
+  const FLASH_S = 0.035, KICK_S = 0.045, SHOT_IDLE = 1, MUZZLE = { x: 0, y: 0.063, z: 0.93 };
+  const gunKick = (since) => { const k = Math.max(0, 1 - since / KICK_S); return k * k; };
   const { clamp, damp } = math;
   const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible, updateWorld, boundsOf } = BL.scene;
   const params = new URLSearchParams(location.search);
@@ -103,7 +107,7 @@
   // touch or debug call reaches it, so nothing acts while paused. Resume, Board and Sound stay open while paused.
   const inRound = () => phase === "play" && !paused;
   let sim = null, phase = "board", sceneTime = 0, stateTimer = 0, hintTimer = 0, lineN = 0, result = null;
-  let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, walletNodes = null, vendNodes = null, zipNear = false, trampNodes = null, trampSeen = false, powerNodes = null;
+  let actors = null, blocks = null, shots = null, splats = null, splatNext = 0, ticks = null, pads = null, crates = null, rain = null, caches = null, fpGun = null, fpGunL = null, fpFlash = null, fpFlashL = null, walletNodes = null, vendNodes = null, zipNear = false, trampNodes = null, trampSeen = false, powerNodes = null;
   let mapRoot = null, fireNode = null, dancers = null, burnSeen = false, peelNodes = null, catapults = null, catNear = false;
   const iceNodes = {};
   let tool = "paint", flash = 0, flashT = 0, audio = null, unfeed = null;
@@ -211,6 +215,7 @@
       addChild(body, ring, blob, bubble, netted, held, trolley, chute, jet, eyes, ...monkeys);
       // The gun sits in the right hand, its muzzle along the arm; the caveman's own club stays home.
       let gun = null, gunL = null;
+      const flash = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false }), flashL = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false });
       if (cave) {
         const h = cave.headOffset / 1.1, u = h / 16;
         gun = createNode({ geometry: BM.gun(0), position: { x: 0, y: -10 * u, z: 0.03 }, rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: h / 1.5, y: h / 1.5, z: h / 1.5 }, visible: false });
@@ -218,6 +223,7 @@
         // The left hand's golden AK, shown only with the pair.
         gunL = createNode({ geometry: BM.gun(0), position: { x: 0, y: -10 * u, z: 0.03 }, rotation: { x: Math.PI / 2, y: 0, z: 0 }, scale: { x: h / 1.5, y: h / 1.5, z: h / 1.5 }, visible: false });
         addChild(cave.parts.armL, gunL);
+        addChild(gun, flash); addChild(gunL, flashL);
         if (cave.parts.club) cave.parts.club.visible = false;
       }
       place(body);
@@ -237,7 +243,7 @@
       const hookHead = place(createNode({ geometry: BM.hookHead(), visible: false, sightHidden: true }));
       const hookHip = createNode({ geometry: BM.hookHead(), visible: false, position: { x: 0.3, y: 0.85, z: -0.18 }, rotation: { x: 1.2, y: 0, z: 0 }, scale: { x: 0.45, y: 0.45, z: 0.45 } });
       addChild(body, hookHip);
-      return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
+      return { body, cave, ring, blob, bubble, netted, held, trolley, chute, monkeys, jet, jetFlame, gun, gunL, flash, flashL, shot: SHOT_IDLE, pet, eyes, beam, rope, hookHead, hookHip, phase: 0, name };
     });
   };
   const disposeActors = () => {
@@ -743,7 +749,12 @@
   // Each event's sound, quieter the further it happened from the visitor's Ooga; the visitor's own moments play full.
   const hear = (e, me, mine) => {
     const p = sim.actors[0], k = me ? 1 : clamp(1 - Math.hypot(e.x - p.x, e.z - p.z) / 32, 0.12, 1), c = audio.cues, t = e.type;
-    if (t === "fire") c.fire(k);
+    if (t === "fire") {
+      // An AK's round sounds and kicks as the island rifle's does (`SHOT_IDLE` is how long since one, on each actor).
+      const shooter = e.actor >= 0 ? sim.actors[e.actor] : null;
+      if (shooter && (shooter.lastKind === "ak" || shooter.lastKind === "gold")) { c.gun(k); if (actors && actors[e.actor]) actors[e.actor].shot = 0; }
+      else c.fire(k);
+    }
     else if (t === "throw") { const kind = e.actor >= 0 ? sim.actors[e.actor].lastKind : ""; if (kind === "sniper") c.sniper(k); else if (kind === "rocket") c.rocket(k); else if (kind === "net") c.hookThrow(k); else c.throw(k); }
     else if (t === "splat") c.splat(me ? 1 : k);
     else if (t === "miss" || t === "netmiss") c.miss(k);
@@ -1324,7 +1335,7 @@
       return thrown;
     }
     const dx = q.x - a.x, dz = q.z - a.z, flat = Math.hypot(dx, dz) || 1;
-    const lob = tool === "grenade" ? 0.3 : tool === "rocket" || tool === "sniper" ? 0 : tool === "net" ? -0.02 : tool === "gold" || tool === "ak" ? -0.06 : -0.09;
+    const lob = tool === "grenade" ? 0.3 : tool === "rocket" || tool === "sniper" ? 0 : tool === "net" ? -0.02 : SIM.flatPitch(flat, SIM.TOOLS[tool]);
     const pitch = clamp(Math.atan2(q.y - oy, flat) + lob, -1.4, 1.4);
     const ok = acts("fire", 0, Math.atan2(dx, dz), pitch, tool);
     // Say why a throw didn't go, so the tools never seem locked: paint on you, a quiz bubble, or an empty tool.
@@ -1743,6 +1754,8 @@
         a.gunL.visible = armed && g === GUN_OF.gold;
         if (a.gunL.visible) a.gunL.geometry = a.gun.geometry;
       }
+      a.shot = Math.min(SHOT_IDLE, a.shot + dt);
+      a.flash.visible = a.flashL.visible = armed && a.shot < FLASH_S;
       // A crate to the head shows stars, not paint.
       a.blob.visible = s.splat > 0 && !s.bonked;
       if (s.trapped > 0) a.bubble.rotation.y = elapsed * 0.8;
@@ -1831,8 +1844,10 @@
       } else if (armed) {
         // Gun up and forward, the other hand under it; a big launcher sits higher, on the shoulder.
         const kick = s.cooldown > (s.bot ? sim.bots.cool : SIM.TOOLS.paint.cool) - 0.12 ? 0.18 : 0;
-        p.armR.rotation.x = (g === 2 ? -1.75 : -1.45) - kick;
-        p.armL.rotation.x = g === 2 ? -1.9 : -1.25;
+        // One kick a round from an AK, gone before the next (crew.js's rifle).
+        const round = gunKick(a.shot);
+        p.armR.rotation.x = (g === 2 ? -1.75 : -1.45) - kick - 0.11 * round;
+        p.armL.rotation.x = (g === 2 ? -1.9 : -1.25) - (g === GUN_OF.gold ? 0.11 * round : 0);
       } else if (s.ride) {
         // Riding with nothing in hand: arms round the shoulders in front.
         p.armL.rotation.x = p.armR.rotation.x = -1.5;
@@ -2050,9 +2065,12 @@
       if (showGun) {
         fpGun.geometry = BM.gun(g * 2 + TEAM_INDEX[me.team]);
         const fx2 = Math.sin(cam.yaw) * c, fz2 = Math.cos(cam.yaw) * c, fy2 = Math.sin(up), rx = -Math.cos(cam.yaw), rz = Math.sin(cam.yaw);
-        setVec(fpGun.position, camera.position.x + fx2 * 0.55 + rx * 0.24, eye + fy2 * 0.55 - (g === 2 ? 0.12 : 0.22), camera.position.z + fz2 * 0.55 + rz * 0.24);
+        // A round pulls the gun back and tips it up a touch, as the island rifle does at the eye.
+        const round = gunKick(actors[0].shot), reach = 0.55 - 0.04 * round;
+        setVec(fpGun.position, camera.position.x + fx2 * reach + rx * 0.24, eye + fy2 * reach - (g === 2 ? 0.12 : 0.22) - 0.02 * round, camera.position.z + fz2 * reach + rz * 0.24);
         fpGun.rotation.y = cam.yaw;
-        fpGun.rotation.x = -up;
+        fpGun.rotation.x = -up - 0.035 * round;
+        fpFlash.visible = fpFlashL.visible = actors[0].shot < FLASH_S;
       }
       // With the golden pair, the second AK sits low and left.
       fpGunL.visible = showGun && tool === "gold";
@@ -2061,7 +2079,7 @@
         const rx = -Math.cos(cam.yaw), rz = Math.sin(cam.yaw);
         setVec(fpGunL.position, fpGun.position.x - rx * 0.48, fpGun.position.y, fpGun.position.z - rz * 0.48);
         fpGunL.rotation.y = cam.yaw;
-        fpGunL.rotation.x = -up;
+        fpGunL.rotation.x = fpGun.rotation.x;
       }
       setVec(RENDER_OPTS.shadowCenter, x, 0, z);
       return;
@@ -2731,6 +2749,8 @@
     // The gun in view in first person.
     fpGun = place(createNode({ geometry: BM.gun(0), visible: false }));
     fpGunL = place(createNode({ geometry: BM.gun(0), visible: false }));
+    fpFlash = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false }); fpFlashL = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false });
+    addChild(fpGun, fpFlash); addChild(fpGunL, fpFlashL);
     walletNodes = [];
     for (let i = 0; i < C.WALLET_CAP; i++) {
       const node = place(createNode({ geometry: BM.walletDevice(0), visible: false, scale: { x: 1.6, y: 1.6, z: 1.6 } }));
@@ -2952,7 +2972,7 @@
     hud.dispose();
     phase = "board";
     skyClouds = []; skyPerch = null;
-    sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = trampNodes = powerNodes = result = null;
+    sim = blocks = shots = splats = ticks = pads = crates = rain = caches = fpGun = fpGunL = fpFlash = fpFlashL = trampNodes = powerNodes = result = null;
     mapRoot = fireNode = dancers = peelNodes = catapults = walletNodes = vendNodes = boltNode = boltRing = null;
     hookNodes = []; ghostNodes = [];
     catNear = false;
@@ -2965,6 +2985,7 @@
   const liveGeometry = (set) => {
     if (actors) for (const a of actors) if (a.cave) set.add(a.cave.headOpen).add(a.cave.headClosed);
     for (let i = 0; i < 6; i++) set.add(BM.splat(i));
+    set.add(BM.muzzleFlash());
     for (let i = 0; i < 2; i++) set.add(BM.ball(i)).add(BM.ring(i));
   };
   const stats = () => {

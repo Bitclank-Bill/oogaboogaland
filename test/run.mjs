@@ -7315,6 +7315,9 @@ const gameRulesChecks = async () => {
     for (let i = 0; i < 1200; i++) S.tick(one, S.CONFIG.STEP, still());
     const solo = (t) => { const s = S.create({ team: "blue", seed: 77, size: 3, map: "town", prep: 1 }); if (t) s.inputs = null; for (let i = 0; i < 1800; i++) S.tick(s, S.CONFIG.STEP, still()); return s.actors.map(a => a.x + a.z).join(","); };
     record("block live: there is no 1v1 (a size of one runs two a side), and a solo round is unchanged", one.size === 2 && one.actors.length === 4 && one.time > 9 && solo(false) === solo(true));
+    // Paint and the AKs go where they are aimed.
+    const flat = ["paint", "ak", "gold"].map((kind) => { const T = S.TOOLS[kind], d = 20, t = d / T.speed, p = S.flatPitch(d, T), y = (T.lift + Math.sin(p) * T.speed) * t - 0.5 * T.gravity * t * t; return Math.abs(y) < 0.1 && T.speed * T.life >= 25 && T.gravity <= 1.5; });
+    record("block shots: paint and the AKs arrive within 10 cm of the aim at 20 m with about their old reach", flat.every(Boolean), JSON.stringify(flat));
 
     // A round of one person a side may score with its own block away, and no other.
     const scoring = (duel) => { const s = S.create({ team: "blue", seed: 3, size: 2, map: "fort", prep: 0 }), a = s.actors[0], st = S.ARENA.stands.blue; s.duel = duel; s.flags.blue.state = "dropped"; s.flags.blue.x = 0; s.flags.blue.z = 0; s.flags.red.state = "carried"; s.flags.red.carrier = 0; a.carrying = "red"; a.x = st.x; a.z = st.z; a.y = 0; S.tick(s, S.CONFIG.STEP, still()); return a.captures; };

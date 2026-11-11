@@ -3,7 +3,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { box, bevelBox, merge, moved, turnedX, turnedY, turnedZ, torus, cached, variants, geometry, pushVert, face, tube, lathe } = BL.models;
+  const { gunGeometry, GUN_PALETTE, GOLD_GUN_PALETTE, box, bevelBox, merge, moved, turnedX, turnedY, turnedZ, torus, cached, variants, geometry, pushVert, face, tube, lathe } = BL.models;
   const { hexToRgb } = BL.math;
   // Each map's own ground and buildings are `arena(map index)`; its ziplines `zipline(map index * 2 + side)`.
   const SIM = BL.blockSim;
@@ -542,9 +542,17 @@
     const grip = () => parts.push(box({ w: 0.07, h: 0.18, d: 0.09, color: DARK, offset: { y: -0.08, z: -0.02 } }));
     if (kind === "paint") {
       grip();
-      parts.push(bevelBox({ w: 0.1, h: 0.12, d: 0.36, color: METAL, offset: { y: 0.03, z: 0.08 } }));
-      parts.push(box({ w: 0.05, h: 0.05, d: 0.32, color: DARK, offset: { y: 0.05, z: 0.4 } }));
-      parts.push(bevelBox({ w: 0.16, h: 0.16, d: 0.18, color: c.paint, emissive: 0.4, offset: { y: 0.17, z: 0.06 } }));
+      // A paintball marker: a body with a trigger guard, a long ported barrel with a coloured tip, a feed neck up to a
+      // loader of paint with a lid, and an air bottle under the back.
+      parts.push(bevelBox({ w: 0.1, h: 0.13, d: 0.4, color: METAL, offset: { y: 0.03, z: 0.08 } }));
+      parts.push(box({ w: 0.05, h: 0.05, d: 0.5, color: DARK, offset: { y: 0.05, z: 0.5 } }));
+      for (const z of [0.42, 0.54, 0.66]) parts.push(box({ w: 0.062, h: 0.062, d: 0.025, color: METAL, offset: { y: 0.05, z } }));
+      parts.push(box({ w: 0.07, h: 0.07, d: 0.06, color: c.paint, emissive: 0.5, offset: { y: 0.05, z: 0.76 } }));
+      parts.push(box({ w: 0.05, h: 0.012, d: 0.12, color: METAL, offset: { y: -0.11, z: 0.05 } }), box({ w: 0.05, h: 0.07, d: 0.012, color: METAL, offset: { y: -0.075, z: 0.105 } }));
+      parts.push(box({ w: 0.06, h: 0.09, d: 0.06, color: DARK, offset: { y: 0.13, z: 0.1 } }));
+      parts.push(bevelBox({ w: 0.2, h: 0.2, d: 0.24, color: c.paint, emissive: 0.4, offset: { y: 0.27, z: 0.08 } }));
+      parts.push(box({ w: 0.15, h: 0.03, d: 0.18, color: c.deep, offset: { y: 0.385, z: 0.08 } }));
+      parts.push(bevelBox({ w: 0.12, h: 0.12, d: 0.36, color: c.deep, offset: { y: -0.13, z: -0.24 } }));
       parts.push(box({ w: 0.06, h: 0.07, d: 0.16, color: c.deep, offset: { y: 0.0, z: -0.16 } }));
     } else if (kind === "grenade") {
       grip();
@@ -570,26 +578,12 @@
       parts.push(box({ w: 0.32, h: 0.32, d: 0.04, color: DARK, offset: { y: 0.1, z: 0.53 } }));
       for (const [x, y] of [[-0.2, -0.1], [0.2, -0.1], [-0.2, 0.3], [0.2, 0.3]]) parts.push(box({ w: 0.08, h: 0.08, d: 0.08, color: "#c9b48a", offset: { x, y, z: 0.55 } }));
       parts.push(box({ w: 0.06, h: 0.08, d: 0.14, color: c.paint, emissive: 0.5, offset: { y: 0.35, z: 0.14 } }));
-    } else if (kind === "ak") {
-      // The Ooga AK: a wooden stock and grip, a dark receiver, a long barrel with a front sight, and a curved banana
-      // magazine in the team's colour.
-      grip();
-      parts.push(bevelBox({ w: 0.09, h: 0.12, d: 0.36, color: "#7a4e2a", offset: { y: 0.0, z: -0.3 } }));
-      parts.push(bevelBox({ w: 0.1, h: 0.13, d: 0.42, color: METAL, offset: { y: 0.04, z: 0.08 } }));
-      parts.push(box({ w: 0.08, h: 0.06, d: 0.2, color: "#7a4e2a", offset: { y: 0.0, z: 0.36 } }));
-      parts.push(box({ w: 0.04, h: 0.04, d: 0.42, color: DARK, offset: { y: 0.06, z: 0.62 } }));
-      parts.push(box({ w: 0.03, h: 0.07, d: 0.03, color: DARK, offset: { y: 0.12, z: 0.8 } }));
-      for (let k = 0; k < 3; k++) parts.push(box({ w: 0.07, h: 0.1, d: 0.08, color: k ? c.paint : "#ffd23a", emissive: 0.3, offset: { y: -0.08 - k * 0.09, z: 0.18 + k * 0.045 } }));
-    } else if (kind === "gold") {
-      // The Golden AK: a gold receiver and stock, a curved magazine, a long barrel with a front sight, and a hopper
-      // of gold paint on top. It shines.
-      grip();
-      parts.push(bevelBox({ w: 0.1, h: 0.14, d: 0.46, color: GOLD, emissive: 0.45, offset: { y: 0.04, z: 0.1 } }));
-      parts.push(bevelBox({ w: 0.08, h: 0.12, d: 0.34, color: GOLD_DK, emissive: 0.3, offset: { y: 0.0, z: -0.3 } }));
-      parts.push(box({ w: 0.05, h: 0.05, d: 0.5, color: GOLD, emissive: 0.45, offset: { y: 0.07, z: 0.58 } }));
-      parts.push(box({ w: 0.03, h: 0.08, d: 0.03, color: GOLD_DK, emissive: 0.3, offset: { y: 0.13, z: 0.78 } }));
-      for (let k = 0; k < 3; k++) parts.push(box({ w: 0.07, h: 0.1, d: 0.08, color: GOLD_DK, emissive: 0.3, offset: { y: -0.08 - k * 0.09, z: 0.2 + k * 0.04 } }));
-      parts.push(bevelBox({ w: 0.14, h: 0.12, d: 0.14, color: GOLD, emissive: 0.7, offset: { y: 0.17, z: 0.06 } }));
+    } else if (kind === "ak" || kind === "gold") {
+      // The island's own rifle (models.js `gunGeometry`), its plain or Golden AK palette, moved so the hand is on its
+      // grip; the Ooga AK wears a band of its team's colour on the handguard, and the golden one a shine on top.
+      const size = 1.1, gold = kind === "gold";
+      parts.push(moved(gunGeometry(size, gold ? GOLD_GUN_PALETTE : GUN_PALETTE), 0, 0.074, 0.18));
+      parts.push(box({ w: 0.11, h: 0.14, d: 0.05, color: gold ? GOLD : c.paint, emissive: gold ? 0.7 : 0.4, offset: { y: 0.074, z: 0.44 } }));
     } else {
       // The sniper rifle: a long stock and barrel, a team-coloured scope with glowing lenses.
       grip();
@@ -707,6 +701,8 @@
     }
     return merge(...parts);
   });
+  // An AK's muzzle flash, the island rifle's (crew.js `GUN_FLASH`): a bright cross with a white-hot middle.
+  const muzzleFlash = cached(() => { const geo = merge(box({ w: 0.12, h: 0.035, d: 0.07, color: "#ffd94a", emissive: 1 }), box({ w: 0.035, h: 0.12, d: 0.07, color: "#ffd94a", emissive: 1 }), box({ w: 0.05, h: 0.05, d: 0.08, color: "#fff4c4", emissive: 1 })); geo.castShadow = false; return geo; });
   // A ball of gold paint, for the Golden AK.
   const goldBall = cached(() => { const geo = bevelBox({ w: 0.22, h: 0.22, d: 0.22, color: GOLD, emissive: 0.9 }); geo.castShadow = false; return geo; });
   // A catapult in its team's colours, in its own frame throwing toward +z: a timber base on wheels with two uprights
@@ -922,5 +918,5 @@
     line.castShadow = false;
     return line;
   });
-  BL.blockModels = { hookHead, rope, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
+  BL.blockModels = { hookHead, rope, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, walletDevice, walletLight, vend, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();

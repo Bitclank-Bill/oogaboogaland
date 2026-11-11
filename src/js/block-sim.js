@@ -87,7 +87,8 @@
   // The tools: speed, upward lob, gravity, life in seconds, hit radius, burst radius (0 for none), cooldown, and how
   // many a full refill holds (0 for no limit).
   const TOOLS = {
-    paint: { speed: 24, lift: 2.2, gravity: 9, life: 1.1, r: 0.5, blast: 0, cool: 0.32, max: 0 },
+    // Paint and the AKs fly nearly straight, as the Ghost Hunter's rounds do: a ball goes where the crosshair is.
+    paint: { speed: 34, lift: 0.4, gravity: 1.5, life: 0.8, r: 0.5, blast: 0, cool: 0.32, max: 0 },
     grenade: { speed: 12, lift: 4.5, gravity: 14, life: 2.2, r: 0.45, blast: 2.6, cool: 0.8, max: 3 },
     rocket: { speed: 28, lift: 0, gravity: 0, life: 1.6, r: 0.55, blast: 3.2, cool: 1.2, max: 1 },
     // The net launcher: flat and fast, opening wide in flight.
@@ -98,16 +99,18 @@
     // The Golden Dual AKs: one in each hand, full auto, both firing every round (two balls `GOLD_SIDE` either side of
     // the Ooga), never empty. There are `GOLD_GUNS` pairs a round: mining a block wins a pair while any are left, and
     // a wallet bomb stuck on whoever holds them takes them when it goes off.
-    gold: { speed: 36, lift: 1.2, gravity: 6.5, life: 1.1, r: 0.48, blast: 0, cool: 0.08, max: 0 },
+    gold: { speed: 46, lift: 0.3, gravity: 1.2, life: 0.85, r: 0.48, blast: 0, cool: 0.08, max: 0 },
     // The Ooga AK, the island's rifle: a tap fires one round, a held trigger fires on full auto every `cool` (the island
     // AK's 0.09 s), from a `AK_MAG`-round magazine that reloads itself in `AK_RELOAD` when it runs dry.
-    ak: { speed: 38, lift: 1.0, gravity: 6, life: 1.0, r: 0.42, blast: 0, cool: 0.09, max: 0 },
+    ak: { speed: 48, lift: 0.3, gravity: 1.2, life: 0.8, r: 0.42, blast: 0, cool: 0.09, max: 0 },
     // The monkeys' heat-seekers: a little missile that steers for the nearest rival (`target`), splatting it.
     homer: { speed: 25, lift: 0, gravity: 0, life: 2.4, r: 0.8, blast: 0, cool: 0, max: 0 }
   };
   const KINDS = ["paint", "grenade", "rocket", "net"];
   // The six devices from the wallet store, in its order.
   const WALLETS = ["Rektdger", "ClownCard", "BrickBox02", "Passpoor", "Jaded", "SeedSnitcher"];
+  // The small pitch that cancels a nearly flat tool's lob and fall over `dist`, so its round arrives where it was aimed.
+  const flatPitch = (dist, tool) => { const t = dist / tool.speed; return -(tool.lift * t - 0.5 * tool.gravity * t * t) / Math.max(1, dist); };
   const WALLET_THROW = { speed: CONFIG.WALLET_SPEED, lift: CONFIG.WALLET_LIFT, gravity: CONFIG.WALLET_GRAVITY };
   // The maps. A map is its blocks, each [x0, x1, z0, z1, top, bottom] (bottom 0 unless it floats: a floor, a roof or
   // a wall's upper half), and the places on it. x runs across, z along, the ground is at y 0, blue's end is at +z and
@@ -2349,7 +2352,8 @@
         if (a.aim >= sim.bots.aim) {
           a.aim = 0;
           const dist = Math.sqrt(best), yaw = a.heading + (sim.rng() - 0.5) * 2 * sim.bots.spread;
-          fire(sim, a.id, yaw, Math.min(0.12, Math.max(-0.2, (dist - 8) * -0.006 - 0.05)), a.gold ? "gold" : "paint");
+          const kind = a.gold ? "gold" : "paint";
+          fire(sim, a.id, yaw, flatPitch(dist, TOOLS[kind]), kind);
         }
       }
       return;
@@ -2502,8 +2506,8 @@
         a.aim = ex && (kind === "ak" || kind === "gold") ? sim.bots.aim : 0;
         const lead = dist / TOOLS[kind].speed;
         const yaw = Math.atan2(t.x + t.vx * lead - a.x, t.z + t.vz * lead - a.z) + (sim.rng() - 0.5) * 2 * sim.bots.spread;
-        // Paint lobs flatter at range so the ball arrives near chest height; a grenade arcs to its range.
-        const pitch = kind === "grenade" ? lobPitch(dist) : kind === "rocket" ? -0.03 : Math.min(0.12, Math.max(-0.12, (dist - 8) * -0.006));
+        // Paint and the AKs go straight at the chest; a grenade arcs to its range.
+        const pitch = kind === "grenade" ? lobPitch(dist) : kind === "rocket" ? -0.03 : kind === "net" ? Math.min(0.12, Math.max(-0.12, (dist - 8) * -0.006)) : flatPitch(dist, TOOLS[kind]);
         fire(sim, a.id, yaw, pitch, kind);
       }
     }
@@ -3088,7 +3092,7 @@
     v.second = second; v.boots = boots; v.laser = laser; v.monkeys = monkeys; v.halving = halving; v.cold = cold;
     return true;
   };
-  BL.blockSim = { settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
+  BL.blockSim = { flatPitch, settleHooks, parachuteIn, LEAF_TOP, stripView, stripChanged, hopOn, callRide, WALLETS, takeWallet, throwWallet, dropWallet, nearVend, CONFIG, TOOLS, KINDS, SKILLS, POWERS, ARENAS, MAPS, TEAMS, other, create, reset, step, tick, setLive, newBlock, launch, nearCatapult, nearEnemyCatapult, fire, drop, pass, build, grab, zip, nearZip, onTower, escape, clearLine, solidAt, resolve, groundAt, onIsland, isleDepth, grapple, restSpot, edgeDist, cutChute, inGrave, inGraveOf, GRAVE_Y };
   // The map last stepped (or reset), for the scene's and models' reads.
   Object.defineProperty(BL.blockSim, "ARENA", { get: () => ARENA, enumerable: true });
 })();
