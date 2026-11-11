@@ -40,7 +40,7 @@
       game.mallet(side, target);
       const center = W.TABLES[slot >> 1], sign = end ? -1 : 1;
       const halfW = BL.arcadeModels.HOCKEY.d * W.SCALE / 2, halfL = BL.arcadeModels.HOCKEY.w * W.SCALE / 2;
-      const arm = cave.parts.armR, leg = cave.traits.height * 5 / 16, shoulder = leg + arm.position.y;
+      const arm = cave.parts.armR, leg = cave.traits.height * BL.models.BODY.hip, shoulder = leg + arm.position.y;
       const hand = -cave.parts.fingersR.position.y, across = arm.position.x, height = target.y;
       const shoulderRadius = Math.hypot(shoulder, arm.position.z);
       // Move along the outside of this half. Offset the feet along a rail at short reach, so the

@@ -49,6 +49,12 @@ The hall's existing remote-player renderer shows real seated humans through ordi
 
 Hockey retains `arcade.hall`, the driven body and its physical seat pose through the lobby, countdown, game, menu and results. A narrowly scoped synchronous Arcade/hockey scene handoff suppresses the temporary body release that would otherwise clear the voice peer list. Other scene transitions keep the existing release contract. Failure during handoff releases the body. The page's existing voice controller remains the sole voice subscription owner; range, zone eligibility, individual mute, microphone mute and receive volume remain intact. Hall incidental sound sources are shared by `arcade-ambience.js`, heard from the seat with the existing 16 m attenuation and stereo pan, through the existing environment-mute output. No new audio context or voice subscription is added.
 
+## Integration with rock dc381fa8 (2026-11-11)
+
+The reach solver now uses the refined body's authored hip height instead of the old short-leg ratio. Its existing arm and palm measurements follow the new torso automatically. The regression measures feet from each actual rig's initial root height, independently of the solver constant.
+
+After integration, the focused hockey browser checks pass 7/7: 100 targets across both ends and small/tall rigs retain palm contact within 0.00000164 m, correct-half foot clearance, rigid arm scale and full restoration. Rapid small reversals move the feet at most 0.00649 m per frame and retain palm error below 0.00000099 m. These are local geometric checks, not deployed multiplayer latency or real-device acceptance.
+
 ## Local evidence (2026-11-03)
 
 These are bounded local checks, not a live authenticated multiplayer deployment:
