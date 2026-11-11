@@ -13677,7 +13677,7 @@ const hubChalkboardEraser = { name: "chalkboard eraser", why: "rule: an eraser p
   await b.evaluate(`(() => { const c = document.getElementById("chalk-canvas"); window.__chalkPixels = () => c.getContext("2d").getImageData(0, 0, 1200, 750).data; window.__chalkBefore = __chalkPixels(); document.getElementById("chalk-eraser").click(); })()`);
   const onBoard = await b.evaluate(`(() => { const r = document.getElementById("chalk-canvas").getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; })()`);
   const boardAt = (x, y) => ({ x: onBoard.left + x / 1200 * onBoard.width, y: onBoard.top + y / 750 * onBoard.height });
-  await b.drag(boardAt(586, 296), boardAt(586, 344)); await b.drag(boardAt(614, 344), boardAt(614, 296)); await b.drag(boardAt(600, 296), boardAt(600, 344)); await b.sleep(50);
+  await b.drag(boardAt(600, 287), boardAt(600, 353)); await b.sleep(50);
   const scrub = await b.evaluate(`(() => { const now = __chalkPixels(), then = __chalkBefore, swept = (x, y) => x >= 570 && x < 630 && y >= 266 && y < 374; let outside = 0, ink = 0, left = 0, h = 2166136261;
     for (let y = 0; y < 750; y++) for (let x = 0; x < 1200; x++) { const i = (y * 1200 + x) * 4; h = Math.imul(Math.imul(Math.imul(h ^ now[i], 16777619) ^ now[i + 1], 16777619) ^ now[i + 2], 16777619);
       if (!swept(x, y) && (now[i] !== then[i] || now[i + 1] !== then[i + 1] || now[i + 2] !== then[i + 2])) outside++;
@@ -27911,7 +27911,7 @@ const privatePadChecks = async () => {
 // travels, held to the smudge's floor and ceiling and the same on every repaint; and an eraser line stored before the
 // footprint draws as it always did.
 const chalkboardEraserChecks = async (BL) => {
-  const EW = 26, EH = 58, W = 1200, H = 750, nodes = new Map(), timers = [], C = BL.chalkBoard, tiles = new Map();
+  const EW = 58, EH = 26, W = 1200, H = 750, nodes = new Map(), timers = [], C = BL.chalkBoard, tiles = new Map();
   let stored = null, rect = { left: 0, top: 0, width: 800, height: 500 }, saved = null;
   // A canvas that keeps what is filled and stroked, with the path each used.
   const calls = [], state = { path: [] };
@@ -27921,8 +27921,9 @@ const chalkboardEraserChecks = async (BL) => {
     : k === "beginPath" ? () => { t.path = []; } : k === "moveTo" || k === "lineTo" ? (x, y) => { t.path.push([x, y]); }
     : k === "fill" ? () => { calls.push({ op: "fill", style: t.fillStyle, blend: t.globalCompositeOperation, path: t.path }); }
     : k === "stroke" ? () => { calls.push({ op: "stroke", style: t.strokeStyle, width: t.lineWidth, cap: t.lineCap, path: t.path }); } : () => {}, set: (t, k, v) => (t[k] = v, true) });
-  const element = () => ({ handlers: {}, style: {}, dataset: {}, hidden: false, disabled: false, value: "", textContent: "",
-    classList: { toggle() {}, add() {}, remove() {} }, setAttribute() {}, focus() {}, blur() {}, addEventListener(type, fn) { this.handlers[type] = fn; } });
+  const element = () => { const classes = new Set(), attributes = {}; return { handlers: {}, style: {}, dataset: {}, hidden: false, disabled: false, value: "", textContent: "", attributes,
+    classList: { toggle(name, on) { if (on) classes.add(name); else classes.delete(name); }, add(name) { classes.add(name); }, remove(name) { classes.delete(name); }, contains: name => classes.has(name) },
+    setAttribute(name, value) { attributes[name] = value; }, focus() {}, blur() {}, addEventListener(type, fn) { this.handlers[type] = fn; } }; };
   const document = { pointerLockElement: null, createElement: () => ({ getContext: () => inert }), getElementById(id) {
     if (!nodes.has(id)) nodes.set(id, Object.assign(element(), id === "chalk-modal" ? { open: false, showModal() { this.open = true; }, close() { if (this.open) { this.open = false; this.handlers.close(); } } }
       : id === "chalk-canvas" ? { getContext: () => ctx, getBoundingClientRect: () => rect, setPointerCapture() {}, hasPointerCapture: () => true, releasePointerCapture() {} } : {}));
@@ -27958,7 +27959,7 @@ const chalkboardEraserChecks = async (BL) => {
     }
     return cells;
   };
-  const box = (l, t) => { const cells = new Set(); for (let y = t; y < t + EH; y++) for (let x = l; x < l + EW; x++) cells.add(`${x},${y}`); return cells; };
+  const box = (l, t, w = EW, h = EH) => { const cells = new Set(); for (let y = t; y < t + h; y++) for (let x = l; x < l + w; x++) cells.add(`${x},${y}`); return cells; };
   const same = (a, b) => a.size === b.size && [...a].every(c => b.has(c));
   const holds = (a, b) => [...b].every(c => a.has(c));
   const corner = (x, y) => [Math.round(Math.round(x / rect.width * 1000) / 1000 * W - EW / 2), Math.round(Math.round(y / rect.height * 1000) / 1000 * H - EH / 2)];
@@ -27996,15 +27997,32 @@ const chalkboardEraserChecks = async (BL) => {
   // A pointer that stops a little past the last point it laid still erases to where the cursor stands.
   from = calls.length; stroke([700, 500], [800, 500], [802, 500]);
   const [endL, endT] = corner(802, 500), reached = holds(covered(from), box(endL, endT));
+  // Clicking Eraser again turns the block upright, the cursor with it at once, and R turns it back; each line keeps
+  // the way it was held when drawn.
+  const eraserButton = document.getElementById("chalk-eraser"), hint = document.getElementById("chalk-hint"), heldIs = (w, h) => Math.abs(parseFloat(held.style.width) - w) < 1e-6 && Math.abs(parseFloat(held.style.height) - h) < 1e-6;
+  pointer("pointermove", 400, 600);
+  const sideways = heldIs(EW, EH) && eraserButton.attributes["aria-label"].includes("sideways") && hint.textContent.includes("press R");
+  eraserButton.handlers.click();
+  const clicked = heldIs(EH, EW) && pointerNode.classList.contains("upright") && eraserButton.attributes["aria-label"].includes("upright") && eraserButton.attributes["aria-pressed"] === "true";
+  from = calls.length; stroke([400, 600]);
+  const uprightTap = same(covered(from), box(387, 571, EH, EW));
+  let prevented = false;
+  dialog.handlers.keydown({ key: "R", preventDefault() { prevented = true; } });
+  const keyed = prevented && heldIs(EW, EH) && !pointerNode.classList.contains("upright");
+  dialog.handlers.keydown({ key: "r", ctrlKey: true, preventDefault() {} });
+  const chord = heldIs(EW, EH);
+  from = calls.length; stroke([800, 600]);
+  const sidewaysTap = same(covered(from), box(771, 587));
+  const turned = sideways && clicked && uprightTap && keyed && chord && sidewaysTap;
   // Every step clamps down to the ceiling, then up to the floor, over the same path, and leaves normal drawing on.
   const fills = calls.filter(smudged), erasers = fills.length;
   const clamped = erasers > 0 && erasers % 2 === 0 && fills.every((c, i) => c.blend === (i % 2 ? "lighten" : "darken") && (i % 2 === 0 || (JSON.stringify(c.path) === JSON.stringify(fills[i - 1].path) && c.style !== fills[i - 1].style))) && state.globalCompositeOperation === "source-over";
   dialog.close();
   const kept = stored.slice(0, old.length), oldKept = JSON.stringify(kept) === JSON.stringify(old);
-  const newMarks = stored.slice(old.length), tagged = newMarks.length > 0 && newMarks.every(m => m.t === "e" && m.s === 4 && m.f === 1);
+  const newMarks = stored.slice(old.length), tagged = newMarks.length > 2 && newMarks.every((m, i) => m.t === "e" && m.s === 4 && m.f === (i === newMarks.length - 2 ? 2 : 1));
   const tapMark = JSON.stringify(newMarks[0].p) === JSON.stringify([0.5, 0.4, 0.5, 0.4]);
-  record("chalkboard eraser: the cursor is the footprint at any board size, a tap erases one footprint, a drag sweeps the same ground either way and reaches where the pointer stopped; marks stored before it draw their old band and stay as stored",
-    oldDrawn && cursor && tap && swept && level && reached && oldKept && tagged && tapMark && clamped, JSON.stringify({ oldDrawn, bands, sizes, tap, directions, level, reached, oldKept, tagged, tapMark, erasers, clamped }));
+  record("chalkboard eraser: the cursor is the footprint at any board size, a tap erases one footprint, a drag sweeps the same ground either way and reaches where the pointer stopped, Eraser again or R turns the block and each line keeps how it was held; marks stored before it draw their old band and stay as stored",
+    oldDrawn && cursor && tap && swept && level && reached && turned && oldKept && tagged && tapMark && clamped, JSON.stringify({ oldDrawn, bands, sizes, tap, directions, level, reached, turn: { sideways, clicked, uprightTap, keyed, chord, sidewaysTap }, oldKept, tagged, tapMark, erasers, clamped }));
   // A replay paints the same as the stroke did, draw for draw, and another's live edit paints the same footprint.
   const drawn = (start) => JSON.stringify(calls.slice(start).filter(smudged).map(c => [c.style.tile, c.blend, c.path]));
   from = calls.length; board.open(null); const replayed = covered(from), firstPaint = drawn(from); dialog.close();
@@ -28015,18 +28033,23 @@ const chalkboardEraserChecks = async (BL) => {
   room({ t: "chalk-board", marks: [...old, { t: "e", s: 4, f: 1, p: [0.25, 0.25, 0.25, 0.25] }], editor: 72 });
   const roomKept = f.net.state.chalk?.board.marks.at(-1).f === 1 && f.net.state.chalk.board.marks[1].f === undefined;
   from = calls.length; room({ t: "chalk", id: 72, k: "line", m: "e", p: [500, 400, 500, 400] });
-  const live = same(covered(from), box(587, 271));
+  const live = same(covered(from), box(571, 287));
   from = calls.length; room({ t: "chalk", id: 72, k: "more", p: [600, 400] });
-  const liveMore = same(covered(from), (() => { const cells = new Set(); for (let y = 271; y < 329; y++) for (let x = 587; x < 733; x++) cells.add(`${x},${y}`); return cells; })());
+  const liveMore = same(covered(from), (() => { const cells = new Set(); for (let y = 287; y < 313; y++) for (let x = 571; x < 749; x++) cells.add(`${x},${y}`); return cells; })());
   // The contract: a new line is told apart, the board reads back with it, nothing else may carry it.
   const b = C.board([]), s = C.session(b); C.apply(b, { k: "line", m: "e", p: [10, 10, 20, 20] }, s); C.apply(b, { k: "line", m: "c", p: [10, 10, 20, 20] }, s);
-  const applied = b.marks[0].f === 1 && b.marks[0].s === 4 && b.marks[1].f === undefined && b.marks[1].s === 2;
+  C.apply(b, C.parse({ k: "line", m: "e", o: 2, p: [10, 10, 20, 20] }), s);
+  const applied = b.marks[0].f === 1 && b.marks[0].s === 4 && b.marks[1].f === undefined && b.marks[1].s === 2 && b.marks[2].f === 2 && b.marks[2].s === 4;
+  const edits = JSON.stringify(C.parse({ k: "line", m: "e", o: 2, p: [1, 1, 2, 2] })) === JSON.stringify({ k: "line", m: "e", o: 2, p: [1, 1, 2, 2] }) && C.parse({ k: "line", m: "e", o: 1, p: [1, 1, 2, 2] }).o === undefined
+    && [{ m: "e", o: 3 }, { m: "e", o: "2" }, { m: "c", o: 2 }].every(m => C.parse({ k: "line", p: [1, 1, 2, 2], ...m }) === null);
+  from = calls.length; room({ t: "chalk", id: 72, k: "line", m: "e", o: 2, p: [250, 400, 250, 400] });
+  const liveUpright = same(covered(from), box(287, 271, EH, EW)) && f.net.state.chalk.board.marks.at(-1).f === 2;
   const line = (mark) => ({ p: [0, 0, 1, 1], ...mark });
-  const accepted = [{ t: "e", s: 4, f: 1 }, { t: "e", s: 4 }, { t: "e" }, { t: "c", s: 2 }].every(m => C.restore([line(m)]));
-  const refused = [{ t: "c", s: 2, f: 1 }, { t: "e", s: 4, f: 2 }, { t: "e", s: 4, f: "1" }].every(m => C.restore([line(m)]) === null);
+  const accepted = [{ t: "e", s: 4, f: 1 }, { t: "e", s: 4, f: 2 }, { t: "e", s: 4 }, { t: "e" }, { t: "c", s: 2 }].every(m => C.restore([line(m)]));
+  const refused = [{ t: "c", s: 2, f: 1 }, { t: "c", s: 2, f: 2 }, { t: "e", s: 4, f: 3 }, { t: "e", s: 4, f: "1" }].every(m => C.restore([line(m)]) === null);
   const widened = C.widen([line({ t: "e", s: 4, f: 1 })])[0].f === 1;
-  record("chalkboard eraser marks: a replay paints the same smudge draw for draw from no random source, another's live edit paints the footprint; the contract tags new eraser lines, keeps their width for older readers, reads back old and new, and refuses a bad tag",
-    replayed.size > 0 && repainted && seeded && roomKept && live && liveMore && applied && accepted && refused && widened, JSON.stringify({ replayed: replayed.size, repainted, seeded, roomKept, live, liveMore, applied, accepted, refused, widened }));
+  record("chalkboard eraser marks: a replay paints the same smudge draw for draw from no random source, another's live edit paints the footprint; the contract tags new eraser lines sideways or upright, takes the edit's `o` and refuses a bad one, keeps their width for older readers, reads back old and new, and refuses a bad tag",
+    replayed.size > 0 && repainted && seeded && roomKept && live && liveMore && liveUpright && applied && edits && accepted && refused && widened, JSON.stringify({ replayed: replayed.size, repainted, seeded, roomKept, live, liveMore, liveUpright, applied, edits, accepted, refused, widened }));
   board.dispose?.(); f.net.dispose();
 };
 // Rule (#391): the chalkboard on the page edits only through the shared contract. Alone it keeps the visitor's own

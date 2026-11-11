@@ -146,9 +146,15 @@ test("room: a new eraser line is kept with its footprint tag, and an older one i
   send(r, a, { t: "chalk", k: "take" });
   send(r, a, { t: "chalk", k: "line", m: "e", p: [500, 400, 500, 400] });
   assert.deepEqual(heard(b, "chalk").at(-1), { t: "chalk", k: "line", m: "e", p: [500, 400, 500, 400], id: 1 }, "a tap's one-point line is relayed");
+  send(r, a, { t: "chalk", k: "line", m: "e", o: 2, p: [250, 400, 250, 400] });
+  assert.deepEqual(heard(b, "chalk").at(-1), { t: "chalk", k: "line", m: "e", o: 2, p: [250, 400, 250, 400], id: 1 }, "an upright eraser's line is relayed as held");
+  const relayed = heard(b, "chalk").length;
+  send(r, a, { t: "chalk", k: "line", m: "e", o: 3, p: [1, 1, 2, 2] });
+  send(r, a, { t: "chalk", k: "line", m: "c", o: 2, p: [1, 1, 2, 2] });
+  assert.equal(heard(b, "chalk").length, relayed, "a bad orientation is refused");
   send(r, a, { t: "chalk", k: "drop" });
   await h.settle();
-  const marks = [...older, { t: "e", s: 4, f: 1, p: [0.5, 0.4, 0.5, 0.4] }];
+  const marks = [...older, { t: "e", s: 4, f: 1, p: [0.5, 0.4, 0.5, 0.4] }, { t: "e", s: 4, f: 2, p: [0.25, 0.4, 0.25, 0.4] }];
   assert.deepEqual(h.saved.get("chalk"), { marks, v: CHALK.VERSION }, "stored with its tag, beside the older lines");
   const woken = await h.room();
   assert.deepEqual(woken.chalk.marks, marks, "and it reads back after the room sleeps");
