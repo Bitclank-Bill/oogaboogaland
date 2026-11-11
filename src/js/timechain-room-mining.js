@@ -239,6 +239,55 @@
     return rows;
   })();
   const BARCODE = ["#.##.#..###.#.#..##.###.#..#.##..#.###.##.#"];
+  // Cables and ribbons as they lie: a run through corner points with every corner bent in a curve (a quadratic Bézier
+  // with the corner as its control) that starts `round` before it and ends `round` after, or less on a short leg, and
+  // each end carried `tuck` on into whatever it plugs into, so no end cap lies on a face.
+  const v3 = { sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], len: (a) => Math.hypot(a[0], a[1], a[2]), cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] };
+  const unit = (a) => { const l = v3.len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const bend = (pts, round, tuck) => {
+    const P = pts.map((p) => p.slice()), last = P.length - 1;
+    const d0 = unit(v3.sub(P[0], P[1])), d1 = unit(v3.sub(P[last], P[last - 1]));
+    for (let a = 0; a < 3; a++) { P[0][a] += d0[a] * tuck; P[last][a] += d1[a] * tuck; }
+    const out = [P[0]];
+    for (let i = 1; i < last; i++) {
+      const p = P[i - 1], c = P[i], q = P[i + 1], l0 = v3.len(v3.sub(c, p)), l1 = v3.len(v3.sub(q, c)), cut = Math.min(round, 0.45 * l0, 0.45 * l1);
+      if (cut < 1e-6) { out.push(c); continue; }
+      const a = c.map((v, k) => v + (p[k] - v) * cut / l0), b = c.map((v, k) => v + (q[k] - v) * cut / l1);
+      for (let n = 0; n <= 6; n++) { const t = n / 6, u = 1 - t; out.push([0, 1, 2].map((k) => u * u * a[k] + 2 * u * t * c[k] + t * t * b[k])); }
+    }
+    out.push(P[last]);
+    return out.filter((p, i) => i === 0 || v3.len(v3.sub(p, out[i - 1])) > 1e-6);
+  };
+  // A cross-section `section` ([[n, b], ...] round its middle) swept along a run: at each point square to the run, `n`
+  // along a normal carried along it without twisting (or, given `up`, square to `up`, for a ribbon that lies flat
+  // across `up`) and `b` along the third axis; capped at both ends.
+  const sweep = (run, section, color, up = null) => {
+    const geo = RM.helpers.blank(), rings = [], ends = run.length - 1;
+    let N = null;
+    for (let j = 0; j <= ends; j++) {
+      const t = unit(v3.sub(run[Math.min(j + 1, ends)], run[Math.max(j - 1, 0)]));
+      let B;
+      if (up) { N = unit(v3.cross(t, up)); B = v3.cross(N, t); } else {
+        if (!N) N = unit(v3.cross(t, Math.abs(t[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+        const along = N[0] * t[0] + N[1] * t[1] + N[2] * t[2];
+        N = unit([N[0] - t[0] * along, N[1] - t[1] * along, N[2] - t[2] * along]);
+        B = v3.cross(t, N);
+      }
+      rings.push(section.map(([a, b]) => [0, 1, 2].map((k) => run[j][k] + N[k] * a + B[k] * b)));
+    }
+    // Each side between two rings as two triangles: a quad between rings turned along a curve is not quite flat, and
+    // the model viewer's tree would cut such a face again and again.
+    const n = section.length;
+    for (let j = 0; j < ends; j++) for (let k = 0; k < n; k++) {
+      const a = rings[j][k], b = rings[j][(k + 1) % n], c = rings[j + 1][(k + 1) % n], d = rings[j + 1][k];
+      const out = v3.sub(a.map((v, i) => (v + c[i]) / 2), [0, 1, 2].map((i) => (run[j][i] + run[j + 1][i]) / 2));
+      RM.helpers.face(geo, [a, b, c], color, 0, out);
+      RM.helpers.face(geo, [a, c, d], color, 0, out);
+    }
+    RM.helpers.face(geo, rings[0], color, 0, v3.sub(run[0], run[1]));
+    RM.helpers.face(geo, rings[ends], color, 0, v3.sub(run[ends], run[ends - 1]));
+    return geo;
+  };
   // Which way a frame's -z looks: its turn about y, then about x.
   const FACES = { "-z": [0, 0], "+z": [Math.PI, 0], "-x": [HALF, 0], "+x": [-HALF, 0], "+y": [0, HALF], "-y": [0, -HALF] };
 
@@ -246,7 +295,8 @@
   const model = (root, kind, s = 1, y = 0) => {
     // The tools for a frame `k` whose origin stands `base` up: boxes; cylinders, upright unless turned; tori, flat unless
     // turned; lit boxes; words and pixel rows, facing -z; `at`, a frame of its own placed and turned in this one, and
-    // `face`, one whose -z looks along a face; and `cable`, a square-section run through axis-aligned points.
+    // `face`, one whose -z looks along a face; `cable`, a round cable `r` thick through corner points, bent smoothly at
+    // each; and `ribbon`, a flat ribbon `w` wide and `t` thick, lying flat across `up`, through corner points the same.
     const tools = (k, base) => {
       const T = {
         B: (w, h, d, color, x, yy, z, o) => k.box(w * s, h * s, d * s, color, x * s, base + yy * s, z * s, o),
@@ -259,10 +309,12 @@
         at: (x, yy, z, ry = 0, rx = 0, rz = 0) => tools(k.group(x * s, base + yy * s, z * s, ry, rx, rz), 0),
         face: (face, x, yy, z, spin = 0) => T.at(x, yy, z, FACES[face][0], FACES[face][1], spin),
         cable: (pts, r, color) => {
-          for (let i = 1; i < pts.length; i++) {
-            const [ax, ay, az] = pts[i - 1], [bx, by, bz] = pts[i];
-            T.B(Math.abs(bx - ax) + r, Math.abs(by - ay) + r, Math.abs(bz - az) + r, color, (ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
-          }
+          const ring = Array.from({ length: 8 }, (_, i) => [Math.cos(i / 8 * P.TAU) * r * s / 2, Math.sin(i / 8 * P.TAU) * r * s / 2]);
+          T.add(sweep(bend(pts.map((p) => p.map((v) => v * s)), Math.max(0.03, 5 * r) * s, 0.3 * r * s), ring, color), 0, 0, 0);
+        },
+        ribbon: (pts, w, t, color, up) => {
+          const flat = [[-t * s / 2, -w * s / 2], [t * s / 2, -w * s / 2], [t * s / 2, w * s / 2], [-t * s / 2, w * s / 2]];
+          T.add(sweep(bend(pts.map((p) => p.map((v) => v * s)), 0.035 * s, 0.002 * s), flat, color, up), 0, 0, 0);
         }
       };
       return T;
@@ -571,9 +623,7 @@
         // Its riser ribbon up from its slot, across and up to the card, each one's run lower than the last so none
         // crosses another; and its power cables over to the supply.
         const sx = slots[i], ry = 0.136 - i * 0.012, y0 = by + 0.016, y1 = CY - 0.089, cz = 0.155 + i * 0.008;
-        B(0.003, ry - y0, 0.05, "#8d9db6", sx, (y0 + ry) / 2, -0.05);
-        B(Math.abs(x - sx) + 0.003, 0.003, 0.05, "#8d9db6", (x + sx) / 2, ry, -0.05);
-        B(0.003, y1 - ry, 0.05, "#8d9db6", x, (ry + y1) / 2, -0.05);
+        T.ribbon([[sx, y0, -0.05], [sx, ry, -0.05], [x, ry, -0.05], [x, y1, -0.05]], 0.05, 0.003, "#8d9db6", [0, 0, 1]);
         T.cable([[x, CY + 0.099, cz], [x, 0.433, cz], [0.29, 0.433, cz], [0.29, 0.03 + i * 0.016, cz], [0.311, 0.03 + i * 0.016, cz]], 0.008, "#151517");
       });
       // The power supply beside the frame, lying long, its fan on top, its sockets and its label.

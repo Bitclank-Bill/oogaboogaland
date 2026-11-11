@@ -108,8 +108,9 @@
       if (value < score) { score = value; best = s; }
     }
     const node = { nx: best.nx, ny: best.ny, nz: best.nz, d: best.d, on: [], front: null, back: null }, front = [], back = [];
+    // The splitter lies on its own plane even if it is not quite flat, so the tree always ends.
     for (const q of list) {
-      const w = side(q, node.nx, node.ny, node.nz, node.d);
+      const w = q === best ? 0 : side(q, node.nx, node.ny, node.nz, node.d);
       if (w === 0) node.on.push(q); else if (w === 1) front.push(q); else if (w === -1) back.push(q);
       else cut(q, node.nx, node.ny, node.nz, node.d, front, back);
     }
