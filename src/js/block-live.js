@@ -321,7 +321,7 @@
     const predict = (dt, move) => {
       const a = sim.actors[0], C = SIM.CONFIG;
       const free = a.splat <= 0 && a.trapped <= 0 && !a.grabbed && !a.ride && !a.riding && !a.flight && a.slip <= 0 && a.knock <= 0;
-      if (free) { const speed = C.SPEED * (a.carrying ? C.CARRY : 1) * (move.sprint && !a.tired ? C.SPRINT : 1) * (a.netted > 0 ? C.NET_SLOW : 1); a.x += move.x * speed * dt; a.z += move.z * speed * dt; a.heading = move.face; }
+      if (free) { const speed = C.SPEED * (move.sprint && !a.tired ? C.SPRINT : 1) * (a.netted > 0 ? C.NET_SLOW : 1); a.x += move.x * speed * dt; a.z += move.z * speed * dt; a.heading = move.face; }
       resolveBody(a, C.BODY_R);
       const dx = next[0] - a.x, dz = next[1] - a.z, far = Math.abs(dx) > 3 || Math.abs(dz) > 3, k = far ? 1 : Math.min(1, dt * 8);
       a.x += dx * k; a.z += dz * k;
