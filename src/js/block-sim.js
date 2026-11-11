@@ -78,7 +78,7 @@
     // rival carrying a block has the block yanked out of their hands after `HOOK_WARN`. A gorilla is stunned for
     // `HOOK_STUN_S`, dropping its captive, and can't be hook-stunned again for `HOOK_STUN_COOL`. `HOOK_COOL` between throws.
     HOOKS: 2, HOOK_R: 1.1, HOOK_RANGE: 24, HOOK_FLY: 60, HOOK_MIN: 1.6, HOOK_HOLD_S: 4, HOOK_COOL: 2.5, HOOK_WARN: 0.35,
-    HOOK_HIT_R: 0.7, HOOK_STUN_S: 2.5, HOOK_STUN_COOL: 8, HOOK_YANK_LIFT: 6, HOOK_HOP: 4, HOOK_AIR: 0.12, HOOK_PULL: 16, HOOK_ACCEL: 45, HOOK_FLING_S: 0.8, HOOK_YANK_COOL: 12, BLOCK_GRACE_S: 0.7, HOOK_BLOCK_R: 0.9, HOOK_BLOCK_H: 2.2, HOOK_BLOCK_PULL: 30
+    HOOK_HIT_R: 0.7, HOOK_STUN_S: 2.5, HOOK_STUN_COOL: 8, HOOK_YANK_LIFT: 6, HOOK_HOP: 4, HOOK_AIR: 0.12, HOOK_PULL: 16, HOOK_ACCEL: 45, HOOK_FLING_S: 0.8, HOOK_YANK_COOL: 12, BLOCK_GRACE_S: 0.7, HOOK_BLOCK_R: 0.9, HOOK_STAND_R: 1.1, HOOK_BLOCK_H: 2.2, HOOK_BLOCK_PULL: 30
   };
   // The tools: speed, upward lob, gravity, life in seconds, hit radius, burst radius (0 for none), cooldown, and how
   // many a full refill holds (0 for no limit).
@@ -1724,12 +1724,15 @@
         }
       }
       // A block on its stand or loose on the ground: only one that could be touched up (not your own at home, not one in
-      // cold storage, not one this Ooga just let go of).
+      // cold storage, not one this Ooga just let go of). One on its stand is taken from anywhere the stand itself would
+      // be met (`HOOK_STAND_R`, a little past the stand's own bite), so a hook aimed low at it brings the block and
+      // never bites the stand under it.
       for (let t = 0; t < TEAMS.length; t++) {
         const f = sim.flags[TEAMS[t]];
         if ((f.state !== "home" && f.state !== "dropped") || (f.state === "home" && (f.team === a.team || sim.cold[f.team] > 0)) || a.blocked === f.team) continue;
         const dy = tip.y - f.y;
-        if (dy < -0.3 || dy > CONFIG.HOOK_BLOCK_H || (tip.x - f.x) ** 2 + (tip.z - f.z) ** 2 > CONFIG.HOOK_BLOCK_R * CONFIG.HOOK_BLOCK_R) continue;
+        const reach = f.state === "home" ? CONFIG.HOOK_STAND_R : CONFIG.HOOK_BLOCK_R;
+        if (dy < -0.3 || dy > CONFIG.HOOK_BLOCK_H || (tip.x - f.x) ** 2 + (tip.z - f.z) ** 2 > reach * reach) continue;
         reelIn(sim, a, f);
         emit(sim, "yank", f.team, a.id, f.x, f.y, f.z, -1);
         return;

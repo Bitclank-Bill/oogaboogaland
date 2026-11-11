@@ -7416,6 +7416,25 @@ const gameRulesChecks = async () => {
         && out.none === 2 && out.noneRow === 0 && out.hostPick === 0 && out.guestPick === 0 && out.hostRow === "0,1" && out.guestRow === "0,1"
         && page.includes('id="block-lineup-list"') && page.includes('id="block-crown-icon"') && /tag\.setAttribute\("aria-label", "Most valuable Ooga"\)/.test(sc) && /SIM\.mvp\(sim, seatOfActor\)/.test(sc) && /SIM\.lineup\(sim, seatOfActor\)/.test(sc), JSON.stringify(out));
     }
+    // The hook takes the rivals' block off its stand wherever on it the hook is aimed, low or high, from the open side,
+    // on every map: a hook aimed low once bit the stand under the block and pulled the Ooga in instead.
+    {
+      const pulls = S.MAPS.map((map) => {
+        const row = { map, low: 0, mid: 0, high: 0, own: 0 };
+        for (const [key, aimY] of [["low", 0.3], ["mid", 0.9], ["high", 1.5], ["own", 0.5]]) for (let k = 0; k < 8; k++) {
+          const s = S.create({ team: "blue", seed: 4, size: 2, map, prep: 0 }), a = s.actors[0], f = s.flags[key === "own" ? "blue" : "red"], d = 6, ang = k / 8 * Math.PI * 2;
+          for (const q of s.actors) { q.bot = false; q.guard = 0; if (q !== a) { q.x = 300; q.z = 300; } } s.gorillas.length = 0;
+          a.x = f.x + Math.sin(ang) * d; a.z = f.z + Math.cos(ang) * d; a.y = 0; a.hook = 1; s.hooks[0].state = 1; s.hooks[0].holder = 0;
+          S.grapple(s, 0, Math.atan2(f.x - a.x, f.z - a.z), Math.atan2(aimY - S.CONFIG.SHOT_Y, d));
+          let took = false, bit = false;
+          for (let n = 0; n < 240 && !took && !bit; n++) { S.tick(s, S.CONFIG.STEP, still()); for (let i = 0; i < s.eventCount; i++) { took = took || s.events[i].type === "yank"; bit = bit || s.events[i].type === "hookbite"; } }
+          if (key === "own" ? bit && s.flags.blue.state === "home" : took) row[key]++;
+        }
+        return row;
+      });
+      record("block hook: the rivals' block comes off its stand to a hook aimed low or at its middle wherever one aimed high takes it (bar a low wall in the way), on every map; your own block at home is never pulled, the stand bites",
+        pulls.every((r) => r.high >= 2 && r.low >= 2 && r.low >= r.high - 1 && r.mid >= r.high - 1 && r.own >= 2) && S.CONFIG.HOOK_STAND_R ** 2 > 1.2 && S.CONFIG.HOOK_RANGE === 24, JSON.stringify(pulls));
+    }
     // The weapons bar: what a slot shows is the rules' word (not yours yet, yours and out, ready, and the count beside
     // it), and the page's eight slots stand in key order, each named, the sniper rifle always among them.
     {
