@@ -13823,7 +13823,7 @@ const hubNameplates = { name: "live nameplates", why: "rule: names over live pla
 // would, walks off it, then walks and jumps at the tall one, which no jump clears. Its gorilla, driven, then does the
 // same. The spot has nothing else to stand on near it: a tree's crown is a landing surface, and a rider lifted within
 // a step of one steps onto it.
-const hubPlayerStacking = { name: "players stand on players", why: "regression: landing on another player from above sank into their body, and a driven gorilla passed straight through them; their head holds the lander, Ooga or gorilla, carries it as they walk or fly and lets go when they leave, and a jump or fall into them is held off as a walk is", run: async (b) => {
+const hubPlayerStacking = { name: "players stand on players", why: "regression: landing on another player from above sank into their body, and a driven gorilla passed straight through them; their head holds the lander, Ooga or gorilla, carries it as they walk or fly and lets go when they leave, and a jump or fall into them is held off", run: async (b) => {
   const SHORT = "NickDaGreek", TALL = "rules-without-rulers";
   const drops = await b.evaluate(`(() => {
     const B = __ooga, npc = B.cavemen.get("portlandhodl"), net = BL.net;
@@ -13896,9 +13896,14 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
     const run = (jump) => {
       B.pilot.navigate({ position: { x: fromX, y: B.island.surfaceAt(fromX, fromZ), z: fromZ }, yaw: S.ang, pitch: 0.4, dist: 10 });
       const accepted = jump ? B.crew.jumpPlayer() : true;
-      let nearest = Infinity, peak = 0;
-      for (let i = 0; i < 90; i++) { B.advance(1 / 60, 1 / 60); nearest = Math.min(nearest, S.off()); peak = Math.max(peak, S.feet() - S.ground); }
-      return { accepted, nearest, peak };
+      let nearest = Infinity, air = Infinity, peak = 0;
+      for (let i = 0; i < 90; i++) {
+        B.advance(1 / 60, 1 / 60);
+        const off = S.off(), up = S.feet() - S.ground;
+        nearest = Math.min(nearest, off); peak = Math.max(peak, up);
+        if (up > 0.05) air = Math.min(air, off);
+      }
+      return { accepted, nearest, air, peak };
     };
     return { walk: run(false), jump: run(true) };
   })()`);
@@ -14004,10 +14009,11 @@ const hubPlayerStacking = { name: "players stand on players", why: "regression: 
   const kept = s => Math.abs(s.feet - ride.start.feet) < 0.03 && Math.abs(s.off - ride.start.off) < 0.05;
   record("players stand on players: standing on a player who walks, rises 3 m and comes down keeps the rider on their head, and walking off lands beside them",
     Math.abs(ride.start.feet - short.height) < 0.02 && kept(ride.walked) && kept(ride.up) && kept(ride.down)
-      && Math.abs(walkOff.feet) < 1e-3 && walkOff.off >= approach.walk.nearest - 0.02,
+      && Math.abs(walkOff.feet) < 1e-3 && walkOff.off >= approach.jump.air - 0.02,
     JSON.stringify({ ride, walkOff }));
-  record("players stand on players: a jump at a player too tall to clear is held off as far as a walk at them is",
-    approach.walk.nearest < 2 && approach.jump.accepted && approach.jump.peak > 0.5 && approach.jump.nearest >= approach.walk.nearest - 0.02,
+  // On foot players give way (crew.js PUSH_DEPTH): a walk presses into the gap a jump keeps.
+  record("players stand on players: a jump at a player too tall to clear is held off in the air, where a walk at them presses into their gap",
+    approach.jump.accepted && approach.jump.peak > 0.5 && approach.jump.air < 2 && approach.walk.nearest < approach.jump.air * 0.7,
     JSON.stringify(approach));
   record("players stand on players: the visitor's gorilla lands on a player's head at their height, rides them as they walk, rise 3 m and come down, and falls to the ground when they leave",
     driven.possessed && Math.abs(driven.landed.feet - driven.height) < 0.03 && driven.landed.off < 0.25
@@ -24398,9 +24404,9 @@ const hubHammockTap = { name: "hub hammock tap", why: "rule: on a phone one tap 
 scene("hub", { label: "sphere keypad", query: "solo=1&character=portlandhodl&view=timechain&pos=0", opts: PHONE_SIZE, steps: [hubHammockTap, { ...sphereKeypadPhone, name: "sphere keypad phone", run: async (b) => {
   await sphereKeypadPhone.run(b);
   const keys = await b.evaluate(`(() => { const B = __ooga, T = BL.scenes.hub.debug.timechainIsland, out = {};
-    return T.site.keys.map((k) => { const w = k.node.world; B.renderer.project(w[12], w[13], w[14], out); const hit = document.elementFromPoint(out.x, out.y);
+    return [...T.site.keys, { key: "directory", node: T.site.directoryKey }].map((k) => { const w = k.node.world; B.renderer.project(w[12], w[13], w[14], out); const hit = document.elementFromPoint(out.x, out.y);
       return { key: k.key, x: Math.round(out.x), y: Math.round(out.y), on: out.x > 0 && out.x < innerWidth && out.y > 0 && out.y < innerHeight, free: !!hit && hit.id === "scene" }; }); })()`);
-  record("timechain keypad phone: in first person every physical key, 1–9, 0, Back and Enter, is on screen with nothing over it", keys.length === 12 && keys.every((k) => k.on && k.free), JSON.stringify(keys));
+  record("timechain keypad phone: in first person every physical key, 1–9, 0, Back, Enter and Directory, is on screen with nothing over it", keys.length === 13 && keys.every((k) => k.on && k.free), JSON.stringify(keys));
 } }] });
 scene("arcade", { query: "pos=0", opts: PHONE_SIZE, steps: [phone("arcade", { required: ["#joy-move", "#joy-look", "#leave-hud"] })] });
 
