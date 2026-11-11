@@ -844,5 +844,32 @@
     line.castShadow = false;
     return line;
   });
+  // The laser-eyes beam: a white-hot core in a red glow, one metre long along +z from the origin (the scene stretches
+  // it to the beam's length), in two strands a hand apart, one from each eye.
+  const beam = cached(() => {
+    const parts = [];
+    for (const x of [-0.07, 0.07]) {
+      parts.push(box({ w: 0.035, h: 0.035, d: 1, color: "#fff4f0", emissive: 1, offset: { x, z: 0.5 } }));
+      parts.push(box({ w: 0.09, h: 0.09, d: 1, color: "#ff2a1a", emissive: 1, offset: { x, z: 0.5 } }));
+    }
+    const geo = merge(...parts);
+    geo.castShadow = false;
+    return geo;
+  });
+  // Laser eyes lit: two glowing red eyes, set over the Ooga's own.
+  const laserEyes = cached(() => merge(box({ w: 0.1, h: 0.07, d: 0.06, color: "#ff3a1a", emissive: 1, offset: { x: -0.07 } }), box({ w: 0.1, h: 0.07, d: 0.06, color: "#ff3a1a", emissive: 1, offset: { x: 0.07 } })));
+  // A ghost: a pale glowing sheet, round on top and flaring to a ragged hem, two dark eyes and an open mouth, its arms
+  // out. Faces +z, its middle at y 0.
+  const ghost = cached(() => {
+    const sheet = "#e8eefc", parts = [
+      lathe({ profile: [[0, 0.75], [0.3, 0.68], [0.45, 0.45], [0.5, 0.1], [0.56, -0.35], [0.66, -0.62], [0, -0.62]], segments: 10, color: sheet, emissive: 0.55 })
+    ];
+    // The ragged hem: tatters hanging below.
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; parts.push(box({ w: 0.2, h: 0.22, d: 0.2, color: sheet, emissive: 0.5, offset: { x: Math.sin(a) * 0.55, y: -0.72 - (k % 2) * 0.08, z: Math.cos(a) * 0.55 } })); }
+    parts.push(box({ w: 0.11, h: 0.17, d: 0.05, color: "#141018", offset: { x: -0.15, y: 0.35, z: 0.46 } }), box({ w: 0.11, h: 0.17, d: 0.05, color: "#141018", offset: { x: 0.15, y: 0.35, z: 0.46 } }));
+    parts.push(box({ w: 0.16, h: 0.2, d: 0.05, color: "#141018", offset: { y: 0.08, z: 0.5 } }));
+    for (const s of [-1, 1]) parts.push(box({ w: 0.36, h: 0.14, d: 0.16, color: sheet, emissive: 0.5, offset: { x: s * 0.6, y: 0.08, z: 0.12 } }));
+    return merge(...parts);
+  });
   BL.blockModels = { hookHead, rope, muzzleFlash, isle, keel, puddle, bolt, hauntDress, beam, laserEyes, ghost, net2, jetpack, jetFlames, monkey, catapult, catapultArm, chute, goldBall, banana, bananaPile, peel, firePit, flames, potato, potatoArm, power, ice, tramp, TEAM, ORANGE, GUNS, arena, stand, block, tick, ball, splat, ring, pad, bubble, crate, grenade, rocket, net, draped, streak, gun, ladder, rack, zipline, trolley, cache, SPLATS: 6 };
 })();
