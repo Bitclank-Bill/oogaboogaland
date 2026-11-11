@@ -1374,7 +1374,7 @@
       // The torso, TORSO_RISE taller than it was authored, in proportion: its hip band two units tall, not three, and
       // its chest the longer for it (`TORSO_FROM`, a new height's authored one, in units), easing out into a full chest
       // (`SIDE`, how far its sides move; a slim build's waist comes in over the belt first, the others' keeps its width),
-      // deeper before and behind (`DEEP`), which runs out under each arm's shoulder its whole height (`REACH`, how far
+      // deeper before (`DEEP`) and shaped behind (`BACK`), which runs out under each arm's shoulder its whole height (`REACH`, how far
       // short of the arm's middle it stops) so the shoulder sits in the torso. Its hip band fits the body over the thighs
       // and slopes in to the waist (`BAND_IN`, a slim build's the more), and
       // the loincloth is a wrap close round them, a panel before and behind and a shorter one down each hip, in place of
@@ -1384,7 +1384,10 @@
       // A slim build's waist comes in over the belt; the others' lower torso keeps its width up into the chest.
       const SIDE = traits.slim ? [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]] : [[4.75, 0], [5.1, 0.5], [9, 0.5]];
       const REACH = [[4.5, 3], [5, 2.5], [5.5, 1.75], [8.5, 1.75], [9, 2.25]];
-      const DEEP = [[4.5, 0, 0], [5, 0.5, 0], [5.5, 0.5, 0.5], [8.5, 0.5, 0.5], [9, 0.25, 0.25]];
+      const DEEP = [[4.5, 0], [5, 0.5], [8.5, 0.5], [9, 0.25]];
+      // The back, by how far it stands out past the authored torso, in units up it: rising gently from the waist into
+      // the upper back and rounding over at the top, smooth across, so no ledge or bump shows on it.
+      const BACK = [[4.25, 0], [5.5, 0.15], [6.75, 0.4], [8.25, 0.4], [9, 0.1]];
       const BAND_UNITS = 2, BAND_IN = traits.slim ? [[1, 0, 0], [1.25, 0.1, 0], [2, 0.8, 0.5]] : [[1, 0, 0], [2, 0.4, 0.5]], WRAP = [2, 2.5, 1.25];
       const TORSO_EDGES = [...upEdges(half(4), half(4)), ...rimEdges(1, half(3), half(3), half(3)), ...rimEdges(-1, half(2), half(2), half(2))];
       const CX = 4.5 * F, CZ = 3 * F, at = [0, 0, 0];
@@ -1452,8 +1455,7 @@
         const reach = [Math.abs(parts.armR.position.x) / sx / fineU, Math.abs(parts.armL.position.x) / sx / fineU];
         for (let y = bandRows; y < top; y++) {
           const yc = (y + 0.5) / F;
-          profile(DEEP, yc, at);
-          const front = Math.round(at[0] * F), back = Math.round(at[1] * F);
+          const front = Math.round(profile(DEEP, yc, at)[0] * F), back = Math.round(profile(BACK, yc, at)[0] * F);
           if (front || back) for (let x = 0; x < 9 * F; x++) {
             const run = runZ(v, x, y);
             if (!run || run[1] - run[0] < 2.5 * F) continue;
