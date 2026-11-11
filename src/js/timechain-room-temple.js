@@ -1300,7 +1300,7 @@
       const a0 = i / 40 * TAU, a1 = (i + 1) / 40 * TAU, [r0] = RINGS[k], [r1] = RINGS[k + 1], p = (r, a) => [Math.sin(a) * POND.rx * r, 0, Math.cos(a) * POND.rz * r];
       face(water, r0 ? [p(r0, a0), p(r1, a0), p(r1, a1), p(r0, a1)] : [[0, 0, 0], p(r1, a0), p(r1, a1)], RINGS[k][1], 0.3, UP);
     }
-    water.glass = 0.72;
+    water.glass = 0.34;
     K.node("water", noShadow(water), POND.x, WATER, POND.z, { target: { kind: "pond", tip: "Koi pond · tap where you'd like to throw the koi some food", radius: 3.8, pick: ["water", "pads"] } });
     for (let i = 0; i < 40; i++) {
       const a = i / 40 * TAU;
