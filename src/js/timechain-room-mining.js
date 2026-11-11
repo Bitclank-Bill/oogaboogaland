@@ -213,17 +213,54 @@
     // In a frame looking out of a face, the depth of layer `n` laid on it (LIFT thick, each LIFT clear of the last)
     // and of words written on that layer.
     const lay = (n) => -0.003 - 0.004 * n, ink = (n) => lay(n) - 0.0025;
-    // A fan, `w` across, its back on frame F's origin and blowing out along its -z: the square frame with a boss at
-    // each corner, the dark well, seven pitched blades round the hub and its sticker, and the wire guard.
-    const fan = (F, w) => {
-      F.B(w, w, 0.014, C.fanPlate, 0, 0, -0.007);
-      for (const cx of [-1, 1]) for (const cy of [-1, 1]) F.Y(0.055 * w, 0.055 * w, 0.004, C.boss, cx * 0.41 * w, cy * 0.41 * w, -0.016, { rx: HALF, seg: 6 });
-      F.Y(0.465 * w, 0.465 * w, 0.002, C.fanHole, 0, 0, -0.015, { rx: HALF, seg: 18 });
-      for (let b = 0; b < 7; b++) F.at(0, 0, -0.024, 0, 0, b / 7 * P.TAU).B(0.3 * w, 0.13 * w, 0.003, C.blade, 0.25 * w, 0, 0, { rx: 0.35 });
-      F.Y(0.14 * w, 0.14 * w, 0.014, C.hub, 0, 0, -0.024, { rx: HALF, seg: 12 });
-      F.Y(0.1 * w, 0.1 * w, 0.002, C.sticker, 0, 0, -0.0325, { rx: HALF, seg: 10 });
-      for (const r of [0.2, 0.32, 0.44]) F.R(r * w, 0.0035, C.guard, 0, 0, -0.04, { rx: HALF, seg: 16, sides: 3 });
-      for (let b = 0; b < 4; b++) F.B(0.92 * w, 0.006, 0.004, C.guard, 0, 0, -0.04, { rz: b * Math.PI / 4 });
+    // A screw head at (x, yy) on frame F's face.
+    const screw = (F, x, yy, r = 0.0055, on = 0) => F.Y(r, r, 0.003, C.screw, x, yy, on - 0.0015, { rx: HALF, seg: 8 });
+    // A fan, `w` across and `d` deep, its back on frame F's origin and blowing out along its -z: the square housing
+    // round its throat, the three struts that hold the motor, seven pitched blades round the hub, and its sticker.
+    const fan = (F, w, d = 0.25 * w) => {
+      const t = 0.06 * w, c = 0.12 * w;
+      for (const sy of [-1, 1]) F.B(w, t, d, C.fanPlate, 0, sy * (w - t) / 2, -d / 2);
+      for (const sx of [-1, 1]) F.B(t, w - 2 * t, d, C.fanPlate, sx * (w - t) / 2, 0, -d / 2);
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) F.B(c, c, d, C.fanPlate, sx * (w / 2 - t - c / 2), sy * (w / 2 - t - c / 2), -d / 2);
+      for (let b = 0; b < 3; b++) F.at(0, 0, -0.0025, 0, 0, HALF + b / 3 * P.TAU).B(0.3 * w, 0.035 * w, 0.003, C.fanPlate, 0.29 * w, 0, 0);
+      for (let b = 0; b < 7; b++) F.at(0, 0, -0.5 * d, 0, 0, b / 7 * P.TAU).B(0.26 * w, 0.13 * w, 0.003, C.blade, 0.29 * w, 0, 0, { rx: 0.35 });
+      F.Y(0.17 * w, 0.17 * w, 0.85 * d - 0.006, C.hub, 0, 0, -(0.85 * d + 0.006) / 2, { rx: HALF, seg: 12 });
+      F.Y(0.12 * w, 0.12 * w, 0.002, C.sticker, 0, 0, -0.85 * d - 0.001, { rx: HALF, seg: 10 });
+    };
+    // A wire guard over an opening `w` across in a face at frame F's origin, lying on that face: three rings, a boss in
+    // the middle, and two wires across that reach past the opening onto the face, screwed down at their ends.
+    const guard = (F, w) => {
+      for (const r of [0.18, 0.31, 0.44]) F.R(r * w, 0.0035, C.guard, 0, 0, -0.0035, { rx: HALF, seg: 16, sides: 3 });
+      F.B(w + 0.016, 0.006, 0.004, C.guard, 0, 0, -0.002);
+      F.B(0.006, w + 0.004, 0.004, C.guard, 0, 0, -0.002);
+      F.Y(0.07 * w, 0.07 * w, 0.003, C.guard, 0, 0, -0.0055, { rx: HALF, seg: 10 });
+      for (const sx of [-1, 1]) screw(F, sx * (w / 2 + 0.004), 0, 0.004, -0.004);
+    };
+    // A fan behind a grille flush on a face (a power supply's): the dark throat, the blades and hub just behind the
+    // wires, and the guard's rings, rim and cross over them.
+    const grille = (F, w) => {
+      F.Y(0.47 * w, 0.47 * w, LIFT, C.fanHole, 0, 0, -LIFT / 2, { rx: HALF, seg: 18 });
+      for (let b = 0; b < 7; b++) F.at(0, 0, -0.0055, 0, 0, b / 7 * P.TAU).B(0.26 * w, 0.12 * w, 0.0015, C.blade, 0.29 * w, 0, 0, { rx: 0.2 });
+      F.Y(0.15 * w, 0.15 * w, 0.006, C.hub, 0, 0, -0.005, { rx: HALF, seg: 12 });
+      for (const r of [0.2, 0.33, 0.47]) F.R(r * w, 0.003, C.guard, 0, 0, -0.013, { rx: HALF, seg: 16, sides: 3 });
+      for (let b = 0; b < 2; b++) F.B(0.94 * w, 0.005, 0.004, C.guard, 0, 0, -0.013, { rz: b * HALF });
+    };
+    // An end plate `depth` deep facing out along `face` at z, `W2` across about x and `H2` tall from y0, with a square
+    // opening `f` across for a fan at each height in `holes`: each fan set back in its opening, a dark throat behind
+    // it, and its guard over the opening, fixed to the plate.
+    const bay = (face, x, y0, z, W2, H2, holes, f, color, depth) => {
+      const Fp = T.face(face, x, 0, z), side = (W2 - f) / 2;
+      for (const sx of [-1, 1]) Fp.B(side, H2, depth, color, sx * (f + side) / 2, y0 + H2 / 2, depth / 2);
+      let y = y0;
+      for (const yy of [...holes, null]) {
+        const top = yy === null ? y0 + H2 : yy - f / 2;
+        if (top - y > 1e-6) Fp.B(f, top - y, depth, color, 0, (y + top) / 2, depth / 2);
+        if (yy === null) break;
+        y = yy + f / 2;
+        Fp.Y(0.47 * f, 0.47 * f, LIFT, C.fanHole, 0, yy, depth - 0.0055, { rx: HALF, seg: 18 });
+        fan(Fp.at(0, yy, depth), f * 0.96, depth - 0.008);
+        guard(Fp.at(0, yy, 0), f);
+      }
     };
     // A graphics card's blower, `r` round, in its shroud at frame F's origin: the dark intake, nine pitched blades,
     // the hub and its red cap.
@@ -233,8 +270,6 @@
       F.Y(0.3 * r, 0.3 * r, 0.006, C.hub, 0, 0, -0.005, { rx: HALF, seg: 14 });
       F.Y(0.2 * r, 0.2 * r, 0.002, "#c8102e", 0, 0, -0.009, { rx: HALF, seg: 14 });
     };
-    // A screw head at (x, yy) on frame F's face.
-    const screw = (F, x, yy, r = 0.0055, on = 0) => F.Y(r, r, 0.003, C.screw, x, yy, on - 0.0015, { rx: HALF, seg: 8 });
     // An Antminer's label, `w` across, its middle at frame F's origin: ANTMINER and the model over a barcode, the QR
     // code beside them and BITMAIN under it.
     const label = (F, w, text) => {
@@ -486,7 +521,7 @@
       // The power supply beside the frame, lying long, its fan on top, its sockets and its label.
       const px = 0.455, pw = mm(180), ph = mm(86), pd = mm(150), pz = 0.165;
       B(pw, ph, pd, "#26282c", px, ph / 2, pz);
-      fan(T.face("+y", px + 0.03, ph, pz), 0.19);
+      grille(T.face("+y", px + 0.03, ph, pz), 0.19);
       const Pl = T.face("-z", px, 0, pz - pd / 2);
       Pl.B(0.16, 0.07, LIFT, C.label, 0, ph / 2, -LIFT / 2);
       Pl.say("1200 W", 0.0045, C.ink, 0, ph / 2 + 0.008, -0.0035, 0.1);
@@ -580,9 +615,9 @@
       // the little desk fan their owners set blowing on them.
       const aw = mm(200), ah = mm(320), ad = mm(300), ax = -0.16, af = 0.012;
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) Y(0.012, 0.014, af, "#0c0c0e", ax + sx * (aw / 2 - 0.03), af / 2, sz * (ad / 2 - 0.03), { seg: 10 });
-      B(aw, ah, ad, "#232327", ax, af + ah / 2, 0);
+      B(aw, ah, ad - 0.03, "#232327", ax, af + ah / 2, 0.015);
+      bay("-z", ax, af, -ad / 2, aw, ah, [af + ah * 0.42], aw * 0.82, "#232327", 0.03);
       lit(aw + 2 * LIFT, 0.03, ad + 2 * LIFT, "#f28a1a", ax, af + ah - 0.06, 0, 0.9);
-      fan(T.face("-z", ax, af + ah * 0.42, -ad / 2), aw * 0.82);
       T.face("-z", ax, af + ah - 0.112, -ad / 2).say("AVALON", 0.006, "#f2f2f2", 0, 0, -0.0015, 0.4);
       const Sd = T.face("+x", ax + aw / 2, 0, 0);
       for (let r = 0; r < 7; r++) Sd.B(ad * 0.7, 0.006, LIFT, "#121214", 0, af + 0.08 + r * 0.045, -LIFT / 2);
@@ -643,21 +678,27 @@
       lit(0.004, 0.0025, 0.004, C.led, -0.07, top + 0.00125, 0.036);
       return {};
     }
-    // An Antminer: its shell between end frames a little proud of it all round, its fans, screws down its sides, its
+    // An Antminer: its shell between end plates a little proud of it all round, its fans set back in them under their
+    // guards, screws down its sides, its
     // power supply on top (or beside it, the S9's, with its cables), the control board's ports at the front and its
     // label on the side; the hydro-cooled one has a closed front with its couplings, hoses, handles and power terminal.
-    const A = ANTMINER[kind], len = mm(A.len), wid = mm(A.wid), hei = mm(A.hei), top = A.psu === "top" ? mm(52) : 0, body = hei - top, et = 0.024;
+    const A = ANTMINER[kind], len = mm(A.len), wid = mm(A.wid), hei = mm(A.hei), top = A.psu === "top" ? mm(52) : 0, body = hei - top, et = 0.04;
+    const f = A.fans ? Math.min(wid * 0.9, body / A.fans * 0.94) : 0, holes = [];
+    for (let n = 0; n < A.fans; n++) holes.push(body * (n + 0.5) / A.fans);
     B(wid, body, len - 2 * et, A.color, 0, body / 2, 0);
-    for (const dz of [-1, 1]) B(wid + 2 * LIFT, body + LIFT, et, A.frame, 0, (body + LIFT) / 2, dz * (len / 2 - et / 2));
+    // Each end a plate a little proud of the shell all round: round the fans, set back in it under their guards, or
+    // closed on the hydro-cooled one.
+    for (const dz of [-1, 1]) {
+      if (A.fans) bay(dz < 0 ? "-z" : "+z", 0, 0, dz * len / 2, wid + 2 * LIFT, body + LIFT, holes, f, A.frame, et);
+      else B(wid + 2 * LIFT, body + LIFT, et, A.frame, 0, (body + LIFT) / 2, dz * (len / 2 - et / 2));
+    }
     for (const sx of [-1, 1]) {
       const F = T.face(sx < 0 ? "-x" : "+x", sx * wid / 2, 0, 0);
       for (const yy of [body * 0.1, body * 0.9]) for (let i = 0; i < 4; i++) screw(F, -len * 0.33 + i * len * 0.22, yy);
     }
     const lw = Math.min(len * 0.5, 0.3, (0.4 * body - 0.01) / 0.23);
     label(T.face("-x", -wid / 2, body * 0.5, len * 0.04), lw, A.text);
-    const f = A.fans ? Math.min(wid * 0.9, body / A.fans * 0.94) : 0;
     if (A.fans) {
-      for (const dir of [-1, 1]) for (let n = 0; n < A.fans; n++) fan(T.face(dir < 0 ? "-z" : "+z", 0, body * (n + 0.5) / A.fans, dir * len / 2), f);
       const room = (wid - f) / 2;
       if (room >= 0.045) ports(T.face("-z", -(wid + f) / 4, body * 0.78, -len / 2), room - 0.016, 0.09);
       else ports(T.face("-z", -wid / 2 + 0.07, (body / 2 + f / 2 + body) / 2, -len / 2), 0.11, Math.min(0.024, body / 2 - f / 2 - 0.004));
@@ -692,12 +733,12 @@
       const In = T.face("-z", pw * 0.25, body + top / 2, -pl / 2);
       In.B(0.04, top * 0.6, 0.006, "#0b0b0d", 0, 0, -0.003);
       for (let i = 0; i < 3; i++) In.B(0.004, 0.008, LIFT, "#c9ccd2", -0.01 + i * 0.01, 0, -0.007);
-      fan(T.face("+z", pw * 0.2, body + top / 2, pl / 2), top * 0.86);
+      grille(T.face("+z", pw * 0.2, body + top / 2, pl / 2), top * 0.86);
     }
     if (A.psu === "side") {
       const pl = mm(260), pw = mm(150), ph = mm(86), px = wid / 2 + 0.06 + pw / 2, pz = 0.02;
       B(pw, ph, pl, "#2a2d32", px, ph / 2, pz);
-      fan(T.face("-z", px, ph / 2, pz - pl / 2), ph * 0.86);
+      grille(T.face("-z", px, ph / 2, pz - pl / 2), ph * 0.86);
       const Pt = T.face("+y", px, ph, pz);
       for (let i = 0; i < 6; i++) Pt.B(pw * 0.6, 0.006, LIFT, "#16181b", 0, -pl * 0.4 + i * 0.016, -LIFT / 2);
       Pt.B(0.1, 0.06, LIFT, C.label, 0, pl * 0.15, -LIFT / 2);
