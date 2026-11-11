@@ -1383,13 +1383,16 @@
       const TORSO_FROM = TORSO_KNOTS.map(([a, b]) => [b, a]);
       // A slim build's waist comes in over the belt; the others' lower torso keeps its width up into the chest.
       const SIDE = traits.slim ? [[2.95, 0], [3.05, -0.5], [4.25, -0.5], [4.75, 0], [5.1, 0.5], [9, 0.5]] : [[4.75, 0], [5.1, 0.5], [9, 0.5]];
-      const REACH = [[4.5, 3], [5, 2.5], [5.5, 1.75], [8.5, 1.75], [9, 2.25]];
+      const REACH = [[4.5, 3], [5, 2.5], [5.5, 1.75], [7.5, 1.5], [9, 1.5]];
       const DEEP = [[4.5, 0], [5, 0.5], [8.5, 0.5], [9, 0.25]];
-      // The back, by how far it stands out past the authored torso, in units up it: rising gently from the waist into
-      // the upper back and rounding over at the top, smooth across, so no ledge or bump shows on it.
-      const BACK = [[4.25, 0], [5.5, 0.15], [6.75, 0.4], [8.25, 0.4], [9, 0.1]];
+      // The back, by how far it stands out past the authored torso, in units up it: rising a little from the waist and
+      // level from there to the top, smooth across, so no ledge or bump shows on it.
+      const BACK = [[4.25, 0], [5.5, 0.15], [9, 0.15]];
       const BAND_UNITS = 2, BAND_IN = traits.slim ? [[1, 0, 0], [1.25, 0.1, 0], [2, 0.8, 0.5]] : [[1, 0, 0], [2, 0.4, 0.5]], WRAP = [2, 2.5, 1.25];
-      const TORSO_EDGES = [...upEdges(half(4), half(4)), ...rimEdges(1, half(3), half(3), half(3)), ...rimEdges(-1, half(2), half(2), half(2))];
+      // The shoulder line keeps nearly square into the shoulders (its top's side edges barely rounded), so the upper back
+      // meets each deltoid rather than falling away before it.
+      const TORSO_EDGES = [...upEdges(half(3), half(4)), ...rimEdges(1, half(1), half(2), half(3)), ...rimEdges(-1, half(2), half(2), half(2))];
+      const TORSO_SOFT = [...upEdges(half(1), half(1)), ...rimEdges(1, half(1), half(1), half(1))];
       const CX = 4.5 * F, CZ = 3 * F, at = [0, 0, 0];
       // The run of a row through the torso's middle, along x at depth z (or along z at column x), or null.
       const runX = (v, y, z) => {
@@ -1453,6 +1456,8 @@
         }
         // The chest deeper, the waist in and the chest out, and its sides into the shoulders.
         const reach = [Math.abs(parts.armR.position.x) / sx / fineU, Math.abs(parts.armL.position.x) / sx / fineU];
+        // The chest deeper, the back shaped, the waist in and the chest out; the sides go out into the shoulders after
+        // the rounding (below).
         for (let y = bandRows; y < top; y++) {
           const yc = (y + 0.5) / F;
           const front = Math.round(profile(DEEP, yc, at)[0] * F), back = Math.round(profile(BACK, yc, at)[0] * F);
@@ -1463,8 +1468,8 @@
             for (let n = 1; n <= front; n++) v.set(x, y, run[1] + n, cf);
             for (let n = 1; n <= back; n++) v.set(x, y, run[0] - n, cb);
           }
-          const by = Math.round(profile(SIDE, yc, at)[0] * F), short = yc >= REACH[0][0] ? profile(REACH, yc, at)[0] * F : Infinity;
-          for (let z = -F; z < 7 * F; z++) {
+          const by = Math.round(profile(SIDE, yc, at)[0] * F);
+          if (by) for (let z = -F; z < 7 * F; z++) {
             const run = runX(v, y, z);
             if (!run || run[1] - run[0] < 4.5 * F) continue;
             const [lo, hi] = run;
@@ -1473,9 +1478,7 @@
               continue;
             }
             const cl = v.get(lo, y, z), ch = v.get(hi, y, z);
-            const toL = Math.min(lo - by, Math.ceil(CX - (reach[0] - short) - 0.5)), toR = Math.max(hi + by, Math.floor(CX + (reach[1] - short) - 0.5));
-            for (let x = lo - 1; x >= toL; x--) v.set(x, y, z, cl);
-            for (let x = hi + 1; x <= toR; x++) v.set(x, y, z, ch);
+            for (let n = 1; n <= by; n++) { v.set(lo - n, y, z, cl); v.set(hi + n, y, z, ch); }
           }
         }
         // The wrap: front and back panels clear of the band's rounded corners, the back a little longer over the seat, a
@@ -1492,6 +1495,21 @@
         }
         for (let z = zb + F; z <= zf - F; z++) for (const x of [xL, xR]) for (let y = -1, n = hem(z, x, WRAP[2]); y >= -n; y--) wrap(x, y, z);
         rounded(v, TORSO_EDGES);
+        // Then the upper torso's sides carried out under each shoulder at every depth, so the back and chest meet each
+        // deltoid square rather than rounding away before it, and only softened there.
+        const reachFrom = Math.floor(REACH[0][0] * F);
+        for (let y = reachFrom; y < top; y++) {
+          const short = profile(REACH, (y + 0.5) / F, at)[0] * F;
+          for (let z = -2 * F; z < 8 * F; z++) {
+            const run = runX(v, y, z);
+            if (!run || run[1] - run[0] < 4.5 * F) continue;
+            const [lo, hi] = run, cl = v.get(lo, y, z), ch = v.get(hi, y, z);
+            const toL = Math.ceil(CX - (reach[0] - short) - 0.5), toR = Math.floor(CX + (reach[1] - short) - 0.5);
+            for (let x = lo - 1; x >= toL; x--) v.set(x, y, z, cl);
+            for (let x = hi + 1; x <= toR; x++) v.set(x, y, z, ch);
+          }
+        }
+        rounded(v, TORSO_SOFT, (x, y) => y < reachFrom);
         for (const [key, c] of v.map) {
           if (c !== P.skin && c !== P.fur) continue;
           voxCoords(key, CELL);

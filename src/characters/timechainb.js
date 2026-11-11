@@ -89,7 +89,9 @@
       // The Anunnaki: a gold banded cap over the brow, hair curling down the back and sides, a full beard to the chest
       crown(k, v) {
         const P = k.P, gold = k.color("#d4a83a"), goldDk = k.color("#9c7a22");
-        const curl = (x, y, z) => (x + y + z) % 2 ? P.hairDk : P.hair;
+        // The curls in their own copy of the hair's two colours, so the head's ragged-hair pass leaves them whole.
+        const hair = k.color("#33200f"), hairDk = k.color("#2b1b0d");
+        const curl = (x, y, z) => (x + y + z) % 2 ? hairDk : hair;
         v.fill(-1, 7, -4, 5, -2, -1, curl);
         v.fill(-1, -1, -4, 5, 0, 2, curl);
         v.fill(7, 7, -4, 5, 0, 2, curl);
@@ -97,7 +99,7 @@
         v.fill(0, 6, -2, -1, 5, 8, curl);
         v.fill(1, 5, -5, -3, 6, 8, curl);
         v.fill(2, 4, -7, -6, 7, 8, curl);
-        v.set(3, -8, 8, P.hairDk);
+        v.set(3, -8, 8, hairDk);
         v.fill(-1, 7, 6, 8, -1, 6, (x, y) => y === 7 ? gold : goldDk);
         v.fill(0, 6, 9, 9, 0, 5, gold);
         v.fill(1, 5, 10, 10, 1, 4, goldDk);
