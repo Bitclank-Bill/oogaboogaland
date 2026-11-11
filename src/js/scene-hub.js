@@ -2917,6 +2917,7 @@
       addProp(kind, node, worldX(x, z), worldZ(x, z), radius);
     }
     for (const key of site.keys) addTarget(key.node, { kind: "sphere-key", key: key.key, priority: 2 }, { radius: key.key.length === 1 ? 0.055 : 0.09 });
+    addTarget(site.directoryKey, { kind: "sphere-directory", priority: 2 }, { radius: 0.16 });
     // From the bridge, square to the doors with the keypad in view.
     presets.timechain = { yaw: p.ry, pitch: 0.1, dist: 9, target: { x: worldX(0.6, 13.2), y: p.y + 2.2, z: worldZ(0.6, 13.2) } };
     const claimGround = () => {
@@ -5649,6 +5650,8 @@
         return "Room sign · tap to copy hash";
       case "sphere-key":
         return o.key === "back" ? "Back · return to room choice" : o.key === "enter" ? "Enter · open selected room" : `Room ${o.key} · select`;
+      case "sphere-directory":
+        return "Directory · which room each number opens";
       case "lab-link":
         return "EntropyLab · open website in a new tab";
       case "book":
@@ -5764,7 +5767,7 @@
   };
   const reticleTarget = (hit) => {
     const o = hit.owner;
-    if (hit.node === mirrorCave.node || o.kind === "cave-sign" || o.kind === "room-sign" || o.kind === "sphere-key"
+    if (hit.node === mirrorCave.node || o.kind === "cave-sign" || o.kind === "room-sign" || o.kind === "sphere-key" || o.kind === "sphere-directory"
       || o.kind === "lab-link" || o.kind === "piece" || o.kind === "book") return "object";
     if (o.kind === "cave") return o.slot.status === "open" && !walkedInto(o.slot) ? "object" : "none";
     if (o.kind === "prop" && RETICLE_PROPS.has(o.prop)) return "object";
@@ -6500,6 +6503,9 @@
         }
         break;
       }
+      case "sphere-directory":
+        hud.openBoard(timechainIsland.site.directory);
+        break;
       case "lab-link":
         window.open("https://entropylab.online", "_blank", "noopener,noreferrer");
         break;
@@ -11631,6 +11637,8 @@
     // Signed-in visitors elsewhere, as the Oogas they drive; the crew walks round them.
     shared.outsideActors = () => cloudPlaying() ? CLOUD_NO_ACTORS : remotes.actors();
     shared.outsideActorHeight = REMOTE_BODY_HEIGHT;
+    // At the Timechain Sphere's keypad and through its doors the Ooga keeps its place; others walk through it instead.
+    shared.holdsPlace = () => !!timechainIsland?.gate?.busy;
     shared.characterModel = takePreparedCharacter;
     // Hub NPCs pass through each other and players, and beam between routines.
     shared.npcPassive = true;
@@ -11758,7 +11766,7 @@
         return rendered;
       }, keep: keepGeometry });
     // A room's address opened signed in, with no visit of this tab's own to repeat, comes here with the room chosen.
-    if (timechainIsland.gate.preselected) hud.toast(`Room ${timechainIsland.gate.preselected} is chosen at the keypad · walk up to it and press Enter to go in`);
+    if (timechainIsland.gate.preselected >= 0) hud.toast(`Room ${timechainIsland.gate.preselected} is chosen at the keypad · walk up to it and press Enter to go in`);
     clankerMeshes = BL.solidProps.create();
     clankerPartOwners = new WeakMap();
     headquarters.solids.companions = clankerMeshes;
