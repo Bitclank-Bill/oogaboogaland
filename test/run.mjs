@@ -7407,6 +7407,15 @@ const gameRulesChecks = async () => {
       const slots = [...bar.matchAll(/<button type="button" data-tool="(\w+)" aria-pressed="\w+" aria-label="([^"]+)" title="([^"]+)"[^>]*><kbd>(\d)<\/kbd><svg class="block-slot-icon" viewBox="0 0 16 12"[^>]*>(.*?)<\/svg><b><\/b><\/button>/g)];
       const keys = JSON.parse(readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8").match(/const TOOL_KEYS = (\{[^}]+\});/)[1].replace(/(\d):/g, '"$1":'));
       const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+      // The board's weapons preview: one entry a tool in key order, named as its slot is, each with a line whose numbers
+      // are the rules' own, and a previous and a next button; reduced motion neither turns nor steps it.
+      const scene = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), AR = S.ARSENAL;
+      const preview = { tools: AR.map(([k]) => k).join() === S.WIELD.filter((k) => k !== "grab").join() && AR.every(([k], i) => keys[i + 1] === k), names: AR.every(([, name], i) => slots[i] && slots[i][2] === name),
+        blurbs: AR.every(([, , b]) => b.length >= 30 && b.length <= 80 && b.endsWith(".")), numbers: S.TOOLS.grenade.max === 3 && S.TOOLS.net.max === 3 && S.TOOLS.rocket.max === 1 && S.CONFIG.AK_MAG === 30 && S.CONFIG.HOOKS === 2 && S.TOOLS.paint.max === 0 && S.TOOLS.gold.max === 0,
+        buttons: /data-weapon-step="-1" aria-label="Previous weapon"/.test(html) && /data-weapon-step="1" aria-label="Next weapon"/.test(html) && html.includes('id="block-weapon-blurb"'),
+        calm: /if \(!CLOUD_CALM\) \{\s*show\.spin = [^}]*showWeapon\(show\.i \+ 1\);\s*\}/.test(scene), hidden: /#block-board\[hidden\] ~ \.block-weapon-card \{\s*display: none/.test(css.replace(/#block-board\[hidden\] ~ \.block-preview-name,\s*/, "")) };
+      record("block weapons preview: the board's list covers every tool of the arsenal in key order under its slot's name, each with a short line whose numbers are the rules', with previous and next buttons, hidden with the board and still under reduced motion",
+        Object.values(preview).every(Boolean), JSON.stringify({ preview, arsenal: AR.map(([k, n]) => k + ":" + n) }));
       const named = slots.every((m, i) => Number(m[4]) === i + 1 && keys[i + 1] === m[1] && m[2].length > 4 && m[3] === `${m[2]} (${i + 1})` && (m[5].match(/<path/g) || []).length >= 5);
       record("block weapons bar: a slot is locked until its tool is owned, empty with a 0 when it runs out and ready otherwise, counts show only where a tool runs out or reloads, and the eight named slots stand in key order with detailed icons, the selected one grown in place and still under reduced motion",
         fresh.paint.join() === "ready," && fresh.sniper.join() === "ready," && fresh.ak.join() === "ready,30" && fresh.grenade.join() === "ready,3" && fresh.gold.join() === "locked," && fresh.hook.join() === "locked," && fresh.crate === "3"
@@ -8531,7 +8540,7 @@ const gameRulesChecks = async () => {
       record("block models: the file loads with every exported name defined, and the scene reads nothing the models or the sim lack",
         modelsLoad === "" && Object.keys(BM).length > 40 && undefinedNames.length === 0 && absent.length === 0 && simAsked.length === 0, JSON.stringify({ modelsLoad, undefinedNames, absent, simAsked }));
       record("block models: each tool's gun, the hook launcher among them, is one cached mesh a team of at most 400 faces",
-        placed.length > 40 && guns.length === 8 && guns[7].kind === "hook" && guns.every(g => g.shared && g.teams && g.faces > 100 && g.faces <= 400)
+        placed.length > 40 && BL.blockSim.ARSENAL.every(([k]) => BM.GUNS.includes(k)) && guns.length === 8 && guns[7].kind === "hook" && guns.every(g => g.shared && g.teams && g.faces > 100 && g.faces <= 400)
         && held.every(n => n > 0 && n <= 400) && thrown.every(n => n > 0 && n <= 400), JSON.stringify({ absent, guns, held, thrown }));
     }
     const racked = H.racks.flatMap(([, , rows]) => rows.map(([id]) => id));

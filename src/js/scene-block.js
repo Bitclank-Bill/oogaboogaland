@@ -2010,6 +2010,21 @@
   // turning slowly all the way round (a drag turns it faster); on a narrow one the board fills the screen and the
   // view circles the fort.
   const preview = { spin: 0, wide: false };
+  // The weapons preview beside it: each tool of the arsenal (`SIM.ARSENAL`) in turn, its held model turning over the
+  // Ooga's head and its name and blurb on a card. It steps on by itself every `SHOW_S`; a press of the card's buttons
+  // steps it and holds it there `SHOW_HOLD_S`. Reduced motion: no turning and no stepping by itself.
+  const SHOW_S = 4.5, SHOW_HOLD_S = 12, SHOW_STILL = 2.4;
+  const show = { i: 0, spin: 0, t: 0, hold: 0, shown: -1, node: null };
+  const showWeapon = (i) => {
+    const n = SIM.ARSENAL.length;
+    show.i = ((i % n) + n) % n; show.t = 0;
+    if (show.shown === show.i) return;
+    show.shown = show.i;
+    el.weaponName.textContent = SIM.ARSENAL[show.i][1];
+    el.weaponBlurb.textContent = SIM.ARSENAL[show.i][2];
+    el.weaponCount.textContent = `${show.i + 1} / ${n}`;
+  };
+  const onWeaponStep = (e) => { show.hold = SHOW_HOLD_S; showWeapon(show.i + Number(e.currentTarget.dataset.weaponStep)); };
   // The start menu's sky: the hub's voxel clouds drifting round the view, high over the map.
   const CLOUD_Y = 220, CLOUD_SPAN = 170, CLOUD_DRIFT = 2.2, CLOUD_CALM = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let skyClouds = [], skyPerch = null, mapClouds = [];
@@ -2030,6 +2045,8 @@
     if (fpGun) fpGun.visible = fpGunL.visible = false;
     preview.wide = window.innerWidth >= PREVIEW_MIN_W;
     el.previewName.hidden = !preview.wide;
+    if (el.weaponCard.hidden === preview.wide) el.weaponCard.hidden = !preview.wide;
+    if (show.node) show.node.visible = preview.wide;
     // The Ooga picker sits under the Ooga on show when there is one, else in the board.
     const home = preview.wide ? el.previewPick : el.oogaSlot;
     if (el.oogaPick.parentNode !== home) {
@@ -2049,6 +2066,17 @@
     me.x = x; me.z = z; me.y = CLOUD_Y; me.grounded = true; me.flight = 0; me.moving = 0;
     me.carrying = null; me.holding = false; me.splat = me.trapped = me.burnt = me.slip = 0;
     me.heading = preview.spin;
+    // The weapon on show, in the chosen side's colours, turning over the Ooga's head.
+    if (!CLOUD_CALM) {
+      show.spin = wrap(show.spin + dt * 0.9);
+      if (show.hold > 0) show.hold -= dt;
+      else if ((show.t += dt) >= SHOW_S) showWeapon(show.i + 1);
+    }
+    if (show.node) {
+      show.node.geometry = BM.gun(BM.GUNS.indexOf(SIM.ARSENAL[show.i][0]) * 2 + TEAM_INDEX[t]);
+      setVec(show.node.position, x, CLOUD_Y + 2.3, z);
+      show.node.rotation.y = CLOUD_CALM ? SHOW_STILL * sign : show.spin;
+    }
     // The camera out past the gate at chest height, looking a little to the Ooga's left so it stands right of the board.
     setVec(camera.position, x, CLOUD_Y + 1.45, z - sign * 3.7);
     setVec(camera.target, x + sign * 1.25, CLOUD_Y + 1.0, z);
@@ -2057,6 +2085,7 @@
   const update = (dt, elapsed) => {
     sceneTime = elapsed;
     if (skyPerch) skyPerch.visible = phase === "board";
+    if (show.node && phase !== "board") show.node.visible = false;
     for (let i = 0; i < skyClouds.length; i++) {
       const n = skyClouds[i];
       n.visible = phase === "board";
@@ -2523,6 +2552,14 @@
     el.paintBtn = document.getElementById("block-paint");
     el.toolBar = document.getElementById("block-tools");
     el.toolName = document.getElementById("block-tool-name");
+    el.weaponCard = document.getElementById("block-weapon-card");
+    el.weaponName = document.getElementById("block-weapon-name");
+    el.weaponBlurb = document.getElementById("block-weapon-blurb");
+    el.weaponCount = document.getElementById("block-weapon-count");
+    el.weaponSteps = [...el.weaponCard.querySelectorAll("[data-weapon-step]")];
+    for (const b of el.weaponSteps) b.addEventListener("click", onWeaponStep);
+    show.shown = -1; show.hold = 0;
+    showWeapon(0);
     loadDetail();
     el.details = [...document.querySelectorAll("#block-board [data-detail]")];
     el.onDetail = (e) => chooseDetail(e.currentTarget.dataset.detail === "full");
@@ -2618,6 +2655,7 @@
     for (const t of SIM.TEAMS) iceNodes[t] = place(createNode({ geometry: BM.ice(), visible: false }));
     mapRoot = null;
     // The gun in view in first person.
+    show.node = place(createNode({ geometry: BM.gun(0), visible: false, sightHidden: true, scale: { x: 0.85, y: 0.85, z: 0.85 } }));
     fpGun = place(createNode({ geometry: BM.gun(0), visible: false }));
     fpGunL = place(createNode({ geometry: BM.gun(0), visible: false }));
     fpFlash = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false }); fpFlashL = createNode({ geometry: BM.muzzleFlash(), position: { ...MUZZLE }, visible: false });
@@ -2664,7 +2702,7 @@
       onTap: () => { if (phase === "play" && COARSE) paint(); },
       onOrbit: (dx, dy) => {
         // On the board a drag turns the Ooga on show.
-        if (phase === "board") { preview.spin = wrap(preview.spin + dx * 8e-3); return; }
+        if (phase === "board") { preview.spin = wrap(preview.spin + dx * 8e-3); show.spin = wrap(show.spin + dx * 8e-3); return; }
         if (onDeck()) { audio.unlock(); deckYaw = clamp(deckYaw - dx * 5e-3, -1.1, 1.1); deckPitch = clamp(deckPitch + dy * 3e-3, -0.25, 0.5); return; }
         if (!inRound()) return;
         cam.face = wrap(cam.face - dx * 5e-3);
@@ -2799,6 +2837,9 @@
     el.toolBar.hidden = true;
     for (const b of el.tools) b.removeEventListener("click", el.onTool);
     for (const b of el.details) b.removeEventListener("click", el.onDetail);
+    for (const b of el.weaponSteps) b.removeEventListener("click", onWeaponStep);
+    el.weaponCard.hidden = true;
+    show.node = null;
     el.barMin.removeEventListener("click", toggleBar);
     el.barGrip.removeEventListener("pointerdown", onBarDown);
     el.barGrip.removeEventListener("pointermove", onBarMove);

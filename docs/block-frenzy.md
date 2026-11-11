@@ -79,6 +79,14 @@ Each map has its own time of day and weather mix (`MAP_WEATHER`, seeded): Fort C
   Walking onto one refills grenades, rockets, nets and the crate stock as your stand does, then it goes dark for 15 s
   (`CACHE_S`). A real Bitcoin block found while you play makes every cache and quiz pad ready again.
 
+## The board's weapons preview
+
+On a wide screen the board shows, with the visitor's Ooga turning on its cloud, each tool of the arsenal in turn
+(`SIM.ARSENAL`: tool, name, a line on what it does): its held model turning over the Ooga's head in the chosen side's
+colours, drawn in the scene as the Ooga is, and a card with its name, its line and previous and next buttons. It steps
+on every 4.5 s; a press steps it and holds it 12 s; a drag turns it with the Ooga. Reduced motion neither turns nor
+steps it. Narrow screens, where the Ooga isn't shown either, don't show it. It is hidden with the board and in a round.
+
 ## Held weapons
 
 The weapons bar has a slot a weapon in key order (`1` to `8`), each named in its title and drawn side-on from its model in
