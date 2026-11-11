@@ -7433,8 +7433,10 @@ const gameRulesChecks = async () => {
       const scene = readFileSync(new URL("../src/js/scene-block.js", import.meta.url), "utf8"), AR = S.ARSENAL;
       const preview = { tools: AR.map(([k]) => k).join() === S.WIELD.filter((k) => k !== "grab").join() && AR.every(([k], i) => keys[i + 1] === k), names: AR.every(([, name], i) => slots[i] && slots[i][2] === name),
         blurbs: AR.every(([, , b]) => b.length >= 30 && b.length <= 80 && b.endsWith(".")), numbers: S.TOOLS.grenade.max === 3 && S.TOOLS.net.max === 3 && S.TOOLS.rocket.max === 1 && S.CONFIG.AK_MAG === 30 && S.CONFIG.HOOKS === 2 && S.TOOLS.paint.max === 0 && S.TOOLS.gold.max === 0,
+        board: /const showing = preview\.wide && el\.intro\.hidden;/.test(scene) && /show\.node\.visible = showing;/.test(scene) && /el\.weaponCard\.hidden = !showing;/.test(scene) && html.includes('id="block-intro" data-intro="block"'),
+        clear: /right: max\(12px, min\(9vw, calc\(50vw - 46vh - 250px\)\)\);/.test(css) && /if \(SHOW_AT\.x > edge\) \{\s*renderer\.ray\(edge, SHOW_AT\.y, camera, SHOW_RAY\);/.test(scene),
         buttons: /data-weapon-step="-1" aria-label="Previous weapon"/.test(html) && /data-weapon-step="1" aria-label="Next weapon"/.test(html) && html.includes('id="block-weapon-blurb"'),
-        calm: /if \(!CLOUD_CALM\) \{\s*show\.spin = [^}]*showWeapon\(show\.i \+ 1\);\s*\}/.test(scene), hidden: /#block-board\[hidden\] ~ \.block-weapon-card \{\s*display: none/.test(css.replace(/#block-board\[hidden\] ~ \.block-preview-name,\s*/, "")) };
+        calm: /if \(!CLOUD_CALM && showing\) \{\s*show\.spin = [^}]*showWeapon\(show\.i \+ 1\);\s*\}/.test(scene), hidden: /#block-board\[hidden\] ~ \.block-weapon-card \{\s*display: none/.test(css.replace(/#block-board\[hidden\] ~ \.block-preview-name,\s*/, "")) };
       record("block board: no Ooga picker, only the Ooga's name; the cast still starts from the visitor's own Ooga, then the one driven in, then the roster's first",
         !/<select[^>]*id="block-ooga"/.test(html) && !html.includes("block-preview-pick") && /<p class="block-ooga" id="block-ooga"><\/p>/.test(html) && !/oogaPick|previewPick/.test(scene)
         && /const first = own \|\| selection\.ooga \|\| names\[0\] \|\| null;/.test(scene) && /el\.previewName\.firstChild\.textContent = el\.oogaName\.textContent = /.test(scene), "");

@@ -2078,8 +2078,16 @@
   // The weapons preview beside it: each tool of the arsenal (`SIM.ARSENAL`) in turn, its held model turning over the
   // Ooga's head and its name and blurb on a card. It steps on by itself every `SHOW_S`; a press of the card's buttons
   // steps it and holds it there `SHOW_HOLD_S`. Reduced motion: no turning and no stepping by itself.
-  const SHOW_S = 4.5, SHOW_HOLD_S = 12, SHOW_STILL = 2.4;
-  const show = { i: 0, spin: 0, t: 0, hold: 0, shown: -1, node: null };
+  // The weapon turns over the Ooga's head; where the card would cover it (a view less wide for its height), it is held
+  // left of the card's edge instead: `SHOW_REACH` is the room its turn is given, and the card's edge is measured again
+  // only when the page's size changes or the card comes back. Neither shows while the title card is up.
+  const SHOW_S = 4.5, SHOW_HOLD_S = 12, SHOW_STILL = 2.4, SHOW_K = 0.85, SHOW_REACH = 0.75, SHOW_GAP = 8;
+  const SHOW_AT = { x: 0, y: 0, depth: 0 }, SHOW_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1 };
+  const show = { i: 0, spin: 0, t: 0, hold: 0, shown: -1, node: null, w: 0, h: 0, left: 0, ch: 1 };
+  const measureShow = () => {
+    const v = el.weaponCard.getBoundingClientRect(), c = el.canvas.getBoundingClientRect();
+    show.w = window.innerWidth; show.h = window.innerHeight; show.left = v.left - c.left; show.ch = c.height || 1;
+  };
   const showWeapon = (i) => {
     const n = SIM.ARSENAL.length;
     show.i = ((i % n) + n) % n; show.t = 0;
@@ -2110,8 +2118,10 @@
     if (fpGun) fpGun.visible = fpGunL.visible = false;
     preview.wide = window.innerWidth >= PREVIEW_MIN_W;
     el.previewName.hidden = !preview.wide;
-    if (el.weaponCard.hidden === preview.wide) el.weaponCard.hidden = !preview.wide;
-    if (show.node) show.node.visible = preview.wide;
+    // The weapons preview waits for the board itself: not while the title card is up.
+    const showing = preview.wide && el.intro.hidden;
+    if (el.weaponCard.hidden === showing) { el.weaponCard.hidden = !showing; show.w = 0; }
+    if (show.node) show.node.visible = showing;
     // The Ooga's name is under the Ooga on show when there is one, else in the board.
     if (el.oogaSlot.hidden !== preview.wide) el.oogaSlot.hidden = preview.wide;
     // Up in the clouds, far above the map, whose island lies below the view.
@@ -2128,15 +2138,26 @@
     me.carrying = null; me.holding = false; me.splat = me.trapped = me.burnt = me.slip = 0;
     me.heading = preview.spin;
     // The weapon on show, in the chosen side's colours, turning over the Ooga's head.
-    if (!CLOUD_CALM) {
+    if (!CLOUD_CALM && showing) {
       show.spin = wrap(show.spin + dt * 0.9);
       if (show.hold > 0) show.hold -= dt;
       else if ((show.t += dt) >= SHOW_S) showWeapon(show.i + 1);
     }
-    if (show.node) {
+    if (show.node && showing) {
       show.node.geometry = BM.gun(BM.GUNS.indexOf(SIM.ARSENAL[show.i][0]) * 2 + TEAM_INDEX[t]);
       setVec(show.node.position, x, CLOUD_Y + 2.3, z);
       show.node.rotation.y = CLOUD_CALM ? SHOW_STILL * sign : show.spin;
+      // Over the Ooga's head, unless its turn would pass behind the card: then as far left as clears the card's edge,
+      // at the same height and distance (by the view's own ray through that point).
+      if (show.w !== window.innerWidth || show.h !== window.innerHeight) measureShow();
+      if (renderer.project(x, CLOUD_Y + 2.3, z, SHOW_AT)) {
+        const reach = SHOW_REACH * show.ch / 2 / (-SHOW_AT.depth * Math.tan(camera.fov / 2)), edge = show.left - SHOW_GAP - reach;
+        if (SHOW_AT.x > edge) {
+          renderer.ray(edge, SHOW_AT.y, camera, SHOW_RAY);
+          const far = Math.hypot(x - SHOW_RAY.ox, CLOUD_Y + 2.3 - SHOW_RAY.oy, z - SHOW_RAY.oz);
+          setVec(show.node.position, SHOW_RAY.ox + SHOW_RAY.dx * far, SHOW_RAY.oy + SHOW_RAY.dy * far, SHOW_RAY.oz + SHOW_RAY.dz * far);
+        }
+      }
     }
     // The camera out past the gate at chest height, looking a little to the Ooga's left so it stands right of the board.
     setVec(camera.position, x, CLOUD_Y + 1.45, z - sign * 3.7);
@@ -2621,6 +2642,7 @@
     el.lineupList = document.getElementById("block-lineup-list");
     el.crownIcon = document.getElementById("block-crown-icon");
     el.weaponCard = document.getElementById("block-weapon-card");
+    el.intro = document.getElementById("block-intro");
     el.weaponName = document.getElementById("block-weapon-name");
     el.weaponBlurb = document.getElementById("block-weapon-blurb");
     el.weaponCount = document.getElementById("block-weapon-count");
@@ -2719,7 +2741,8 @@
     for (const t of SIM.TEAMS) iceNodes[t] = place(createNode({ geometry: BM.ice(), visible: false }));
     mapRoot = null;
     // The gun in view in first person.
-    show.node = place(createNode({ geometry: BM.gun(0), visible: false, sightHidden: true, scale: { x: 0.85, y: 0.85, z: 0.85 } }));
+    show.node = place(createNode({ geometry: BM.gun(0), visible: false, sightHidden: true, scale: { x: SHOW_K, y: SHOW_K, z: SHOW_K } }));
+    show.w = 0;
     podium.crown = place(createNode({ geometry: BM.crown(), visible: false, sightHidden: true }));
     fpGun = place(createNode({ geometry: BM.gun(0), visible: false }));
     fpGunL = place(createNode({ geometry: BM.gun(0), visible: false }));

@@ -95,7 +95,9 @@ On a wide screen the board shows, with the visitor's Ooga turning on its cloud, 
 (`SIM.ARSENAL`: tool, name, a line on what it does): its held model turning over the Ooga's head in the chosen side's
 colours, drawn in the scene as the Ooga is, and a card with its name, its line and previous and next buttons. It steps
 on every 4.5 s; a press steps it and holds it 12 s; a drag turns it with the Ooga. Reduced motion neither turns nor
-steps it. Narrow screens, where the Ooga isn't shown either, don't show it. It is hidden with the board and in a round.
+steps it. Neither the card nor the weapon shows while the title card is up: they come with the board itself. Where
+the card would cover the weapon (a view less wide for its height) the card keeps further right and the scene holds
+the weapon left of the card's edge. Narrow screens, where the Ooga isn't shown either, don't show it. It is hidden with the board and in a round.
 
 ## Held weapons
 

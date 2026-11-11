@@ -11761,11 +11761,13 @@ body.dsb-menu-open :is(.bottom-hud,.top-hud,#joy-move,#joy-look,#act,.weapon-hud
   }
 }
 
-/* The board's weapons preview: its card up by the weapon turning over the Ooga on show. */
+/* The board's weapons preview: its card up by the weapon turning over the Ooga on show. The Ooga stands a share of
+   the view's height right of its middle, so on a view less wide for its height the card keeps further right, clear of
+   the weapon (the scene also holds the weapon left of the card's edge). */
 .block-weapon-card {
   position: absolute;
   z-index: 11;
-  right: 9vw;
+  right: max(12px, min(9vw, calc(50vw - 46vh - 250px)));
   top: 14%;
   width: 250px;
   max-width: 28vw;
