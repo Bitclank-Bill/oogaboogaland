@@ -35,6 +35,8 @@
     s3: { href: "https://www.coindesk.com/markets/2014/06/30/bitmain-releases-energy-efficient-478ghs-antminer-s3", label: "CoinDesk · Bitmain releases the 478 GH/s AntMiner S3 (2014)" },
     s7: { href: "https://www.asicminervalue.com/miners/bitmain/antminer-s7", label: "ASIC Miner Value · Antminer S7" },
     s21: { href: "https://support.bitmain.com/hc/en-us/articles/23794895251609-S21-Specification", label: "Bitmain · S21 specification" },
+    proto: { href: "https://proto.xyz/products/rig", label: "Proto · Rig specifications" },
+    protoReview: { href: "https://hashrateindex.com/blog/proto-rig-review-blocks-open-source-revolution-challenges-bitcoin-minings-status-quo/", label: "Hashrate Index · Proto Rig review" },
     xp: { href: "https://support.bitmain.com/hc/en-us/articles/34523540504857-S21-XP-Hyd-Specification", label: "Bitmain · S21 XP Hyd specification" },
     hashrate: { href: "https://mempool.space/graphs/mining/hashrate-difficulty", label: "mempool.space · network hashrate" }
   };
@@ -53,7 +55,8 @@
       note: "Hashrates from the Bitcoin Wiki's table of measured results.", sources: [SRC.gpu] },
     { year: 2010.95, title: "POOLS", name: "Mining pools", model: "pool", jth: null,
       text: "Slush's pool found its first block in December 2010: miners share the work and split the reward for steadier pay.",
-      stats: [["Idea", "share the work"], ["Pay", "small, steady"], ["Today", "most hashrate"]],
+      stats: [],
+      paragraph: "Alone, a small miner could wait months for a block. In a pool everyone works on the same block and proves their part with shares, easier near-misses; whoever finds it, the reward is split by shares, so pay comes small and steady. Nearly all hashrate mines in pools today.",
       about: "Alone, a small miner could wait months for a block. A pool hands everyone the same block to work on and counts easier near-misses, shares, as proof of each one's work; when anyone finds the block, the reward is split by shares. Slush's pool was the first, in late 2010.",
       specs: [["First", "Slush's pool, first block December 2010"], ["Shares", "easier hashes that prove the work"], ["Pay", "each reward split by shares"], ["Today", "nearly all hashrate mines in pools"]],
       note: "A pool is an idea, not a machine: here a rack of servers and its switch.", sources: [] },
@@ -116,7 +119,13 @@
       stats: [["Hashrate", "473 TH/s"], ["Power", "5,676 W"], ["J/TH", "12"]],
       about: "No fans: water through cold plates carries the heat away, quietly, to a dry cooler outside or to heat a building. Nearly half a petahash in a box, at 12 joules a terahash.",
       specs: [["Hashrate", "473 TH/s"], ["Power", "5,676 W"], ["Efficiency", "12.0 J/TH"], ["Cooling", "water, no fans"], ["Input", "380-415 V AC"], ["Size", "~410 × 170 × 209 mm"], ["Weight", "~13.8 kg"], ["Released", "2024"]],
-      note: "Power and hashrate from Bitmain; size and weight as listed by sellers.", sources: [SRC.xp] }
+      note: "Power and hashrate from Bitmain; size and weight as listed by sellers.", sources: [SRC.xp] },
+    { year: 2025.62, title: "PROTO", name: "Proto Rig", model: "proto", jth: 14.1,
+      text: "Block's modular miner: nine hashboards that swap out on the rack in under 90 seconds.",
+      stats: [["Hashrate", "819 TH/s"], ["Power", "12,000 W"], ["J/TH", "14.1"]],
+      about: "Block's Proto Rig, revealed in August 2025, is built to be repaired and upgraded rather than thrown away: nine hashboards, three fanless power supplies, six fans and the control board each come out by hand on the rack, so a miner can keep the chassis and change only the boards as chips improve.",
+      specs: [["Hashrate", "up to 819 TH/s (91 TH/s a board)"], ["Power", "up to 12,000 W"], ["Efficiency", "as low as 14.1 J/TH"], ["Hashboards", "9, replaceable"], ["Power supplies", "3 × 4,000 W, fanless"], ["Fans", "6 × 48 V, up to 9,000 RPM"], ["Repairs", "tool-free on the rack, under 90 s"], ["Size", "390 × 290 × 500 mm"], ["Weight", "110 lb (about 50 kg)"], ["Cooling", "air, or immersion"], ["Revealed", "August 2025"]],
+      note: "From Proto's specifications; the model follows them at 1.6 times life size.", sources: [SRC.proto, SRC.protoReview] }
   ];
   // Network hashrate, log10 of hashes a second: mempool.space's daily estimates (/api/v1/mining/hashrate/all)
   // averaged over five weeks round each point, every quarter from January 2009 to November 2026.
@@ -695,6 +704,47 @@
       lit(0.004, 0.0025, 0.004, C.led, -0.07, top + 0.00125, 0.036);
       return {};
     }
+    if (kind === "proto") {
+      // Block's Proto Rig, as its specifications lay it out: one chassis, the nine hashboards slid in side by side at
+      // the front, each with its pull tab, light and vents; over them the three fanless power supplies and the control
+      // board; six fans behind grilles at the back with the power inlets over them and their cords; carry handles
+      // and PROTO on the sides.
+      const W = mm(390), Hh = mm(290), D = mm(500), lip = 0.02, zf = -D / 2, inner = W / 2 - 0.016, mid = Hh - 0.016 - 0.1 - 0.006;
+      B(W, Hh, D - lip, "#1c1d21", 0, Hh / 2, lip / 2);
+      for (const sx of [-1, 1]) B(0.016, Hh, lip, "#2b2d32", sx * (W / 2 - 0.008), Hh / 2, zf + lip / 2);
+      for (const [yy, h] of [[Hh - 0.008, 0.016], [0.008, 0.016], [mid, 0.012]]) B(2 * inner, h, lip, "#2b2d32", 0, yy, zf + lip / 2);
+      const bw = (2 * inner - 8 * 0.004) / 9, by0 = 0.016, bh = mid - 0.006 - by0, byc = by0 + bh / 2, front = zf + 0.004;
+      for (let i = 0; i < 9; i++) {
+        const x = inner - bw / 2 - i * (bw + 0.004), F = T.face("-z", x, 0, front);
+        B(bw, bh, lip - 0.004, "#2f3237", x, byc, zf + 0.004 + (lip - 0.004) / 2);
+        F.B(0.034, 0.014, 0.006, "#d9dde2", 0, byc + bh / 2 - 0.03, -0.003);
+        F.lit(0.008, 0.008, LIFT, i === 4 ? C.amber : C.led, 0, byc + bh / 2 - 0.06, -LIFT / 2, 0.9);
+        for (let j = 0; j < 5; j++) F.B(0.04, 0.006, LIFT, "#0e0f11", 0, byc - 0.12 + j * 0.03, -LIFT / 2);
+      }
+      const py = mid + 0.006 + 0.05, cw = 0.09, pw = (2 * inner - cw - 3 * 0.004) / 3;
+      for (let i = 0; i < 3; i++) {
+        const x = inner - pw / 2 - i * (pw + 0.004), F = T.face("-z", x, py, front);
+        B(pw, 0.1, lip - 0.004, "#26282c", x, py, zf + 0.004 + (lip - 0.004) / 2);
+        for (let j = 0; j < 6; j++) F.B(pw * 0.62, 0.005, LIFT, "#0e0f11", -pw * 0.1, -0.03 + j * 0.012, -LIFT / 2);
+        F.lit(0.006, 0.006, LIFT, C.led, pw * 0.36, 0.025, -LIFT / 2, 0.9);
+        F.B(0.012, 0.05, 0.008, "#9aa0a8", pw * 0.36, -0.012, -0.004);
+      }
+      const cx = -inner + cw / 2;
+      B(cw, 0.1, lip - 0.004, "#26282c", cx, py, zf + 0.004 + (lip - 0.004) / 2);
+      ports(T.face("-z", cx, py, front), cw - 0.012, 0.09);
+      for (const sx of [-1, 1]) {
+        const F = T.face(sx < 0 ? "-x" : "+x", sx * W / 2, 0, 0);
+        for (const lx of [-0.12, 0.12]) F.B(0.03, 0.014, 0.03, "#9aa0a8", lx, Hh * 0.75, -0.015);
+        F.B(0.27, 0.016, 0.014, "#9aa0a8", 0, Hh * 0.75, -0.037);
+      }
+      T.face("-x", -W / 2, Hh * 0.45, 0).say("PROTO", 0.009, "#f2f2f2", 0, 0, -0.0015, 0.6);
+      for (const x of [-0.17, 0, 0.17]) for (const yy of [0.1, 0.26]) grille(T.face("+z", x, yy, D / 2), 0.15);
+      for (const x of [-0.17, 0, 0.17]) {
+        T.face("+z", x, py, D / 2).B(0.05, 0.035, 0.006, "#0b0b0d", 0, 0, -0.003);
+        T.cable([[x, py, D / 2 + 0.013], [x, py, 0.59], [x, 0.008, 0.59]], 0.014, "#151517");
+      }
+      return {};
+    }
     // An Antminer: its shell between end plates a little proud of it all round, its fans set back in them under their
     // guards, screws down its sides, its
     // power supply on top (or beside it, the S9's, with its cables), the control board's ports at the front and its
@@ -807,6 +857,16 @@
       for (const [j, label] of [[1e7, "10,000,000"], [1e5, "100,000"], [1e3, "1,000"], [10, "10"]]) ctx.fillText(label, at(j), 302 * k);
       ctx.textAlign = "left";
     }
+    // A plaque with no figures to give says its piece in a paragraph instead.
+    if (ex.paragraph) {
+      ctx.fillStyle = "#d4c8b6"; ctx.font = P.font(400, 21 * k);
+      let words = "", py = 262 * k;
+      for (const word of ex.paragraph.split(" ")) {
+        const t = words ? words + " " + word : word;
+        if (ctx.measureText(t).width > 500 * k) { ctx.fillText(words, 28 * k, py); py += 28 * k; words = word; } else words = t;
+      }
+      ctx.fillText(words, 28 * k, py);
+    }
     ex.stats.forEach(([key, value], i) => {
       const x = (28 + i * 172) * k;
       ctx.fillStyle = "#d98a2b"; ctx.font = P.font(500, 19 * k); ctx.fillText(key, x, 360 * k);
@@ -895,7 +955,7 @@
       D.sky(ctx, [[90, "#0a0b0f"], [0, "#0e0f13"]]);
       const X = (yr) => D.x(azOf(yr)), base = D.y(lo);
       for (const [, a, b, color] of ERAS) { ctx.fillStyle = color; ctx.fillRect(X(a), D.y(hi + 4), X(b) - X(a), base - D.y(hi + 4)); }
-      for (const [name, a, b] of ERAS) D.pixText(ctx, name, azOf((a + b) / 2), hi + 2, name === "ASIC" ? 1.3 : 0.8, "rgba(255,230,190,.9)");
+      for (const [name, a, b] of ERAS) D.pixText(ctx, name, azOf((a + b) / 2), hi + 2, 0.8, "rgba(255,230,190,.9)");
       for (const [lg, unit] of UNITS) {
         ctx.fillStyle = "rgba(255,255,255,.1)"; ctx.fillRect(0, D.y(elOf(lg)) - 1, D.W, 2);
         for (const az of [180, -40, 60]) D.text(ctx, unit, az, elOf(lg) + 1.2, 0.69, "rgba(200,200,210,.75)", 600, D.MONO);
@@ -971,17 +1031,6 @@
     K.picture(1.6, 0.5, 1000, 310, paintSign, 0, 0.55, 1.29, { rx: -0.1, target: { kind: "sign", tip: "One S21 against the 2012 network", radius: 0.9, data: { say: "One S21 (200 TH/s) outhashes the whole 2012 network (~16 TH/s) about 13 times over" } } });
     K.node("turntable", (k) => model(k, "s21", BIG, 0), 0, TOP + 0.005, 0, { target: { kind: "exhibit", tip: "Antminer S21 · tap to see it up close", radius: 1.2, index: S21 } });
     K.solid({ x: 0, z: 0, r: 1.38 });
-    // Two benches either side of the middle, facing the turning S21, each seating two.
-    for (const side of [-1, 1]) {
-      const b = K.group(side * 4.5, 0, 0, -side * Math.PI / 2);
-      const seats = [-0.55, 0.55].map((x) => b.seat(x, 0, 0, 0.46, 0, 1.3));
-      b.node(null, (k) => {
-        k.box(2, 0.08, 0.5, "#4a3a2c", 0, 0.42, 0);
-        for (const x of [-0.85, 0.85]) k.box(0.1, 0.38, 0.42, STEEL, x, 0.19, 0);
-        k.box(1.9, 0.02, 0.03, C.amber, 0, 0.36, 0.26, { emissive: 0.7 });
-      }, 0, 0, 0, { target: { kind: "chair", tip: "Bench", radius: 1, index: seats[0].index } });
-      b.solid({ x: 0, z: 0, hx: 1.05, hz: 0.3 });
-    }
     // Point lights: the turntable's spot, the exhibits round the ring, the dome's wash.
     K.light(0, 5.5, 0, 14, 1, 0.94, 0.86);
     for (const az of [-150, -102, -30, 36, 108, 146]) K.light(9.2 * Math.sin(az * P.DEG), 3.8, -9.2 * Math.cos(az * P.DEG), 8, 0.78, 0.7, 0.6);
